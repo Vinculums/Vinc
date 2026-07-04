@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vinc"
+version = "0.0.1"
+description = "Vinc — 독립 설치형 데이터 마이닝 데스크톱 앱 (임베디드 그래프 스토어)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "weg-9000" }]
+dependencies = []
+
+# 데스크톱 동결 전용 — PyPI 미배포. 런타임 extras 는 M2/M3 에서 채운다.
+[project.optional-dependencies]
+# embedded = ["ladybug-db"]   # ← P1-0 실측 후 실제 패키지 식별자로 확정(설계 §2-2)
+# embed    = ["sentence-transformers"]  # 다국어 mpnet 768d
+# neo4j    = ["neo4j>=5"]      # 마이그레이션 경로용 백엔드
+
+[tool.setuptools]
+py-modules = []
