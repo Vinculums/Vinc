@@ -34,11 +34,14 @@ _EXCLUDE_DIRS = {
     ".venv", "venv", "models",  # models/ = 임베딩 캐시(바이너리)
 }
 
-# 자기 자신·정책 문서는 금지어를 '정의'하므로 제외(오탐 회피).
-# vinc.a.terms 는 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 동거 시 대비.
+# 자기 자신·정책/계획 문서는 금지어를 '정의·인용'하므로 제외(오탐 회피).
+# 이들은 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 레포 동거 시 대비.
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
-    "vinc.a.terms.md",
+    "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
+    "vinc.a.terms.md",               # 금지 어휘 정본
+    "UI_INVENTORY_AUDIT.md",         # 흡수 매트릭스가 금지 카피를 예시 인용
+    "PLAN.md",                       # 실행 계획이 F1/F7 토큰을 규칙으로 명명
 )
 
 
