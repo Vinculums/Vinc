@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""마크다운 파일을 청킹하고 임베딩을 생성해 Neo4j에 적재한다. (Chonkie 기반)
+"""마크다운 파일을 청킹하고 임베딩을 생성해 임베디드 스토어에 적재한다. (Chonkie 기반)
 
 사용:
     python embed_pipeline.py --product <product_name> [--dry-run]
@@ -22,7 +22,11 @@ from typing import Any
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from store.backend import open_store  # noqa: E402
-from store.config import load_config  # noqa: E402
+from store.config import (  # noqa: E402
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_DIM_BY_MODEL,
+    load_config,
+)
 
 # ── Chonkie 임포트 ────────────────────────────────────────────────────────────
 # Chonkie is loaded lazily (see _load_chonkie) so this module imports cleanly
@@ -52,10 +56,8 @@ def _load_chonkie() -> None:
 
 # ── 상수 ─────────────────────────────────────────────────────────────────────
 PARQUET_FILENAME = "chunks.parquet"
-# 임베딩 차원은 모델별로 다르다: voyage-3=1024, mpnet(local)=768.
-# main 에서 args.model 에 따라 EMBEDDING_DIM_BY_MODEL 로 선택한다.
-EMBEDDING_DIM_BY_MODEL = {"anthropic": 1024, "local": 768}
-EMBEDDING_DIM = 1024  # 기본값(anthropic). main 에서 모델에 맞게 재설정.
+# 임베딩 차원은 모델별로 다르다 — store.config 가 단일 출처(§8, local-en=768 등).
+EMBEDDING_DIM = EMBEDDING_DIM_BY_MODEL.get(DEFAULT_EMBEDDING_MODEL, 768)  # main 에서 재설정
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 VOYAGE_MODEL = "voyage-3"
@@ -87,16 +89,14 @@ def _load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="마크다운 청킹 + 임베딩 → Neo4j 적재 파이프라인 (Chonkie 기반)",
+        description="마크다운 청킹 + 임베딩 → 임베디드 스토어 적재 파이프라인 (Chonkie 기반)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
   python embed_pipeline.py --product my-product
   python embed_pipeline.py --product my-product --dry-run
   python embed_pipeline.py --product my-product --model local
-  python embed_pipeline.py --product my-product --force \\
-      --neo4j-uri bolt://db.internal:7687 \\
-      --neo4j-user admin
+  python embed_pipeline.py --product my-product --force
         """,
     )
     p.add_argument("--product", required=True,
@@ -305,25 +305,11 @@ def build_embeddings_model(model_type: str):
             sys.exit(1)
 
 
-# ── Neo4j ────────────────────────────────────────────────────────────────────
+# ── 적재 ─────────────────────────────────────────────────────────────────────
 
 def model_dim(model_type: str) -> int:
-    """모델별 임베딩 차원. anthropic(voyage-3)=1024 / local(mpnet)=768."""
-    return 1024 if model_type == "anthropic" else 768
-
-
-def ensure_vector_index(session, dims: int = EMBEDDING_DIM) -> None:
-    session.run(
-        """
-        CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
-        FOR (c:Chunk) ON (c.embedding)
-        OPTIONS {indexConfig: {
-            `vector.dimensions`: $dims,
-            `vector.similarity_function`: 'cosine'
-        }}
-        """,
-        dims=dims,
-    )
+    """모델별 임베딩 차원 — store.config 단일 출처(§8). anthropic=1024 / local=768."""
+    return EMBEDDING_DIM_BY_MODEL.get(model_type, EMBEDDING_DIM)
 
 
 def merge_chunks(session, records: list[dict]) -> int:
@@ -357,21 +343,6 @@ def merge_chunks(session, records: list[dict]) -> int:
             )
             count += 1
     return count
-
-
-def link_chunks_to_nodes(session) -> None:
-    """doc_id로 Policy/Reference 노드와 [:HAS_CHUNK] 관계 연결."""
-    session.run(
-        """
-        MATCH (c:Chunk)
-        WHERE c.doc_id IS NOT NULL
-        OPTIONAL MATCH (p:Policy {doc_id: c.doc_id})
-        OPTIONAL MATCH (r:Reference {doc_id: c.doc_id})
-        WITH c, coalesce(p, r) AS parent
-        WHERE parent IS NOT NULL
-        MERGE (parent)-[:HAS_CHUNK]->(c)
-        """
-    )
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
@@ -479,20 +450,22 @@ def main() -> None:
     final_records = cached_records + new_records
     save_checkpoint(args.product, final_records)
 
-    # 7. Neo4j 적재
+    # 7. 임베디드 스토어 적재
     store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)
-    neo4j_count = 0
+    stored_count = 0
     try:
+        # 인덱스 생명주기(§5-4·§6-2 M6): 인덱스가 걸린 embedding 열은 수정 불가 →
+        # 적재 전 drop, 적재 후 build. (Chunk 는 벡터/FTS 검색용 독립 노드 — PM
+        # Policy/Reference 로의 HAS_CHUNK 링크는 Vinc 범위 밖이라 미수행.)
+        store.drop_search_indexes()
+        print("[INFO] :Chunk 노드 MERGE 시작...")
         with store.session() as session:
-            print(f"[INFO] 벡터 인덱스 확인/생성 (dim={model_dim(args.model)})...")
-            ensure_vector_index(session, model_dim(args.model))
-            print("[INFO] :Chunk 노드 MERGE 시작...")
-            neo4j_count = merge_chunks(session, final_records)
-            print("[INFO] [:HAS_CHUNK] 관계 연결 시작...")
-            link_chunks_to_nodes(session)
+            stored_count = merge_chunks(session, final_records)
+        print(f"[INFO] 검색 인덱스 build (벡터 dim={model_dim(args.model)} + FTS)...")
+        store.build_search_indexes(dim=model_dim(args.model))
     finally:
         store.close()
 
@@ -501,7 +474,7 @@ def main() -> None:
     print(f"[완료] 처리 파일: {len(new_files)}개 (스킵: {skip_count}개)")
     print(f"[완료] 총 청크: {total_chunks}개")
     print(f"[완료] 임베딩 모델: {model_name}")
-    print(f"[완료] Neo4j (:Chunk) 노드: {neo4j_count}개")
+    print(f"[완료] :Chunk 노드 적재: {stored_count}개")
     print(f"[완료] 청킹 라이브러리: chonkie {CHONKIE_VERSION}")
 
 

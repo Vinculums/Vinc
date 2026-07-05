@@ -168,8 +168,9 @@ class EmbeddedBackend:
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
                 f"번들 필요(§9). 원인: {exc}") from exc
 
-    def build_search_indexes(self, *, dim: int) -> None:
-        """적재 후 벡터+FTS 인덱스 (재)생성. 멱등(기존 drop 후 재생성)."""
+    def drop_search_indexes(self) -> None:
+        """벡터+FTS 인덱스 제거(멱등). ⚠ **적재 전 호출 필수** — 인덱스가 걸린
+        embedding 열은 수정 불가하므로, 재적재 시 먼저 drop 해야 MERGE 가 가능하다."""
         self._load_ext("vector")
         self._load_ext("fts")
         for call in (f"CALL DROP_VECTOR_INDEX('Chunk','{self._VEC_INDEX}')",
@@ -178,6 +179,12 @@ class EmbeddedBackend:
                 self._conn.execute(call)
             except Exception:
                 pass  # 미존재 — 무시(멱등)
+
+    def build_search_indexes(self, *, dim: int) -> None:
+        """**적재 후** 벡터(HNSW)+FTS(BM25) 인덱스 생성. 재적재 시엔 사전
+        `drop_search_indexes()` 로 기존 인덱스를 먼저 제거해야 한다(embed 잡 순서)."""
+        self._load_ext("vector")
+        self._load_ext("fts")
         self._conn.execute(f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
