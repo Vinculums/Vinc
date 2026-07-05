@@ -21,10 +21,15 @@ def _scan_text(name: str, content: str):
 
 class TestGate(unittest.TestCase):
     def test_f1_billing_metering(self):
-        v = _scan_text("a.py", "usage_record = 1\ntoken_margin = 2\nplan.kind\n")
+        v = _scan_text("a.py", "usage_record = 1\ntoken_margin = 2\nUsageRecord()\n")
         gates = {x.gate for x in v}
         self.assertIn("F1", gates)
         self.assertEqual(3, len(v))
+
+    def test_f1_allows_open_domain_billing_word(self):
+        # "billing" 은 오픈도메인 데이터·QueryPlan.kind 는 정본 코드 — F1 아님(§1)
+        v = _scan_text("a.py", 'domain = "billing"\nplan.kind == "recall"\ntags = ["quota"]\n')
+        self.assertEqual(0, len(v))
 
     def test_f2_learning_copy(self):
         v = _scan_text("a.ts", '"나의 기억"\n"학습을 자산으로"\n"배움"\n')
