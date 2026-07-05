@@ -112,16 +112,21 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
 
 
 def _parse_body_sections(text: str) -> dict[str, str]:
-    """마크다운 body 에서 ## 섹션별 텍스트를 추출한다."""
+    """마크다운 body 에서 섹션별 텍스트를 추출한다.
+
+    **h2·h3 모두 캡처**한다: reflect-session 템플릿·실데이터의 세션 파일은 세션
+    요약/완료 항목/발견된 패턴을 `### `(h3)로 쓰는데, h2 만 분리하면 이 섹션들을
+    하나도 못 잡아 completed_items·patterns·summary 가 전부 공백이 됐다(P1 포트
+    발견). 과거·타 포맷의 `## ` 회귀를 막으려 h2 캡처는 유지한다."""
     sections: dict[str, str] = {}
     current: str | None = None
     lines: list[str] = []
     body = _FRONTMATTER_RE.sub("", text, count=1)
     for line in body.splitlines():
-        if line.startswith("## "):
+        if line.startswith("## ") or line.startswith("### "):
             if current is not None:
                 sections[current] = "\n".join(lines).strip()
-            current = line[3:].strip()
+            current = line.lstrip("#").strip()
             lines = []
         else:
             lines.append(line)
@@ -160,9 +165,10 @@ _LEARNING_SEG = re.compile(r"learning/([^/\s,+)]+)")
 _BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
 
 
-def _split_patterns(text: str) -> list[str]:
-    """패턴 섹션 텍스트 → STRING[](설계 §5-2 — tags·observations 와 동류 리스트).
-    불릿/번호 마커를 떼고 비어있지 않은 줄만 취한다."""
+def _bullet_items(text: str) -> list[str]:
+    """불릿 섹션 텍스트 → STRING[](설계 §5-2 리스트 속성). 완료 항목·발견된 패턴
+    모두 항목 목록이므로 줄 단위로 나눠 마커를 떼고 비어있지 않은 줄만 취한다
+    (중첩 하위불릿은 개별 항목으로 평탄화)."""
     out: list[str] = []
     for line in text.splitlines():
         s = _BULLET_RE.sub("", line).strip()
@@ -215,13 +221,14 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
         or fm.get("summary", "")
     )[:500]  # 최대 500자
 
-    # 완료 여부(BOOL, 설계 §5-2): 완료 항목 섹션에 내용이 있으면 True. 임베디드
-    # 백엔드는 타입 선언형이라(Neo4j schema-free 와 달리) STRING 을 BOOL 열에
-    # 넣을 수 없다 — 선언 타입에 맞춘다.
+    # 완료 항목(STRING[], 설계 §5-2): "완료 항목" 섹션은 완료한 항목들의 **목록**
+    # 이다(reflect-session 템플릿 실측). 원본 DDL 의 completed:BOOL 은 소스·소비처
+    # 모두 부재한 감사 오류로 판정 → completed_items:STRING[] 로 개명·재타입.
     completed_text = sections.get("완료 항목") or sections.get("완료한 것") or ""
 
-    # 발견 패턴(STRING[], 설계 §5-2): 섹션을 줄 단위 리스트로(불릿 마커 제거).
-    patterns_text = sections.get("발견된 패턴") or sections.get("패턴") or ""
+    # 발견 패턴(STRING[], 설계 §5-2): "발견된 패턴 후보" 섹션의 항목 목록.
+    patterns_text = (sections.get("발견된 패턴 후보") or sections.get("발견된 패턴")
+                     or sections.get("패턴") or "")
 
     return {
         "episode_id": session_id,
@@ -237,8 +244,8 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
         "workspace": fm.get("workspace", ""),
         "mode": fm.get("mode", ""),
         "summary": summary,
-        "completed": bool(completed_text.strip()),
-        "patterns": _split_patterns(patterns_text),
+        "completed_items": _bullet_items(completed_text),
+        "patterns": _bullet_items(patterns_text),
         "source_file": str(file_path),
     }
 
@@ -256,10 +263,10 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
             n.domain      = $domain,
             n.workspace   = $workspace,
             n.mode        = $mode,
-            n.summary     = $summary,
-            n.completed   = $completed,
-            n.patterns    = $patterns,
-            n.source_file = $source_file
+            n.summary        = $summary,
+            n.completed_items = $completed_items,
+            n.patterns       = $patterns,
+            n.source_file    = $source_file
         """,
         episode_id=ep["episode_id"],
         title=ep["title"],
@@ -270,7 +277,7 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
         workspace=ep["workspace"],
         mode=ep["mode"],
         summary=ep["summary"],
-        completed=ep["completed"],
+        completed_items=ep["completed_items"],
         patterns=ep["patterns"],
         source_file=ep["source_file"],
     )

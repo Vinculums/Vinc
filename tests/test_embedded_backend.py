@@ -69,7 +69,7 @@ class EmbeddedE2E(unittest.TestCase):
             "date": "2026-07-04", "owner_id": "user:weg1456",
             "tenant_id": "tenant:local", "domain": "billing",
             "workspace": "planning", "mode": "advisor",
-            "summary": "discussed refunds", "completed": True,
+            "summary": "discussed refunds", "completed_items": ["refund flow"],
             "patterns": ["p1", "p2"], "source_file": "recall/s1.md",
         }
         with store.session() as session:
@@ -93,7 +93,7 @@ class EmbeddedE2E(unittest.TestCase):
         store = open_store(cfg)
         store.provision(dim=cfg.embedding_dim)
         base = {"date": "2026-07-01", "tenant_id": "t", "workspace": "w",
-                "mode": "m", "summary": "s", "completed": True,
+                "mode": "m", "summary": "s", "completed_items": [],
                 "patterns": [], "source_file": "f"}
         with store.session() as s:
             merge_episode(s, {**base, "episode_id": "plain", "title": "plain",
@@ -175,7 +175,7 @@ class EmbeddedE2E(unittest.TestCase):
             merge_episode(s, {"episode_id": "s1", "title": "Refund session",
                               "date": "2026-07-01", "owner_id": "u", "tenant_id": "t",
                               "domain": "billing", "workspace": "w", "mode": "m",
-                              "summary": "structural summary", "completed": True,
+                              "summary": "structural summary", "completed_items": [],
                               "patterns": [], "source_file": "recall/s1.md"})
         # 서버측 pack.json 모사 — preference 신호가 실려 있고 title 은 다른(구/무의미) 값.
         pack = {"kind": PACK_KIND, "owner": "u", "episodes": [{
@@ -314,7 +314,7 @@ class EmbeddedE2E(unittest.TestCase):
         store = open_store(cfg)
         store.provision(dim=cfg.embedding_dim)
         base = {"date": "2026-07-04", "tenant_id": "tenant:local",
-                "workspace": "", "mode": "", "summary": "", "completed": False,
+                "workspace": "", "mode": "", "summary": "", "completed_items": [],
                 "patterns": [], "source_file": ""}
         with store.session() as session:
             merge_episode(session, {**base, "episode_id": "a", "title": "A",

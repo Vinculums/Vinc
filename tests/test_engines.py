@@ -116,6 +116,30 @@ class RecallParseTests(unittest.TestCase):
         sections = r._parse_body_sections(text)
         self.assertTrue(any("summary" in v.lower() or "요약" in k for k, v in sections.items()))
 
+    def test_parse_body_sections_captures_h3(self):
+        # 실데이터·reflect-session 템플릿은 ### (h3) 를 쓴다 — h2 만 잡으면 섹션이
+        # 전부 공백이 됐다(P1 포트 발견). h2·h3 모두 캡처하며 h2 회귀도 유지.
+        r = importlib.import_module("engines.recall_to_neo4j")
+        text = "### 세션 요약\n한 일\n\n### 완료 항목\n- a\n- b\n"
+        sections = r._parse_body_sections(text)
+        self.assertIn("완료 항목", sections)
+        self.assertIn("세션 요약", sections)
+
+    def test_build_episode_completed_items_and_patterns_are_lists(self):
+        # completed_items·patterns 는 STRING[] (목록). completed 는 BOOL 이 아니다.
+        import tempfile
+        from datetime import date as _date
+        r = importlib.import_module("engines.recall_to_neo4j")
+        md = ("---\nowner: user:x\ndomain: math\n---\n"
+              "### 완료 항목\n- 노트 작성\n- index 갱신\n"
+              "### 발견된 패턴 후보\n- 묶음 패턴\n")
+        d = Path(tempfile.mkdtemp()) / "session-01.md"
+        d.write_text(md, encoding="utf-8")
+        ep = r.build_episode(d, _date(2026, 7, 1))
+        self.assertEqual(ep["completed_items"], ["노트 작성", "index 갱신"])
+        self.assertEqual(ep["patterns"], ["묶음 패턴"])
+        self.assertNotIn("completed", ep)   # BOOL 필드 미신설
+
 
 class ConceptsParseTests(unittest.TestCase):
     def test_h1_and_oneliner(self):

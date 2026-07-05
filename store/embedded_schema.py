@@ -23,7 +23,9 @@ _NODE_TABLES: dict[str, dict] = {
         ("episode_id", "STRING"), ("title", "STRING"), ("date", "STRING"),
         ("owner_id", "STRING"), ("tenant_id", "STRING"), ("domain", "STRING"),
         ("workspace", "STRING"), ("mode", "STRING"), ("summary", "STRING"),
-        ("completed", "BOOL"), ("patterns", "STRING[]"), ("source_file", "STRING"),
+        # completed_items·patterns 는 항목 **목록**(STRING[]). 원본 completed:BOOL 은
+        # 소스·소비처 부재한 감사 오류로 판정, completed_items 로 개명·재타입(§5-2).
+        ("completed_items", "STRING[]"), ("patterns", "STRING[]"), ("source_file", "STRING"),
         ("pinned", "BOOL"), ("tags", "STRING[]"),
         ("access_count", "INT64"), ("last_access", "STRING")]},
     # concepts_to_neo4j
