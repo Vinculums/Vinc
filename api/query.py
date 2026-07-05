@@ -149,12 +149,22 @@ def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
 
 def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
     """Decision support: traverse policy/concept relations around a topic to
-    surface conflicts, prerequisites, and cross-domain bridges."""
+    surface conflicts, prerequisites, and cross-domain bridges.
+
+    임베디드(Kùzu 계보) 방언 정합(§6-2, P1-0 실측):
+    - **M7**: 라벨 없는 `MATCH (n)` 에서 참조하는 속성은 **어느 노드 테이블엔가 존재해야**
+      한다 — 부재 시 Binder 오류. 기존 `n.id` 는 모든 테이블에 없어(episode_id/
+      concept_id/bridge_id/… 만 존재) 항상 오류이자 사문(死文)이므로 제거하고, 실제
+      시작 노드(Concept·Bridge)의 식별자·title 로 매칭한다.
+    - **M3**: 네이티브 가변길이 `*1..d` 는 기본 WALK 라 엣지 재사용 사이클을 허용해
+      경로 수가 폭증한다(3노드 사이클서 *1..8 시 510경로 실측). `TRAIL`(엣지 무재사용,
+      키워드는 범위 **앞**)로 가드 → 동일 셋업 6경로."""
     depth = max(1, min(int(depth), 4))
     params = {"topic": topic}
     cypher = (
-        "MATCH (n) WHERE n.id = $topic OR n.concept_id = $topic OR n.title = $topic "
-        f"MATCH path = (n)-[*1..{depth}]-(m) "
+        "MATCH (n) WHERE n.concept_id = $topic OR n.bridge_id = $topic "
+        "OR n.title = $topic "
+        f"MATCH path = (n)-[* TRAIL 1..{depth}]-(m) "
         "RETURN n, relationships(path) AS rels, m "
         "LIMIT 100"
     )

@@ -168,11 +168,26 @@ class ShapeGraphTests(unittest.TestCase):
 
     def test_decide_plan_depth_clamped(self):
         plan = q.decide_plan("g5.b.x", depth=99)
-        self.assertIn("*1..4", plan.cypher)  # clamped to 4
+        self.assertIn("TRAIL 1..4", plan.cypher)  # clamped to 4
 
     def test_decide_plan_min_depth(self):
         plan = q.decide_plan("t", depth=0)
-        self.assertIn("*1..1", plan.cypher)
+        self.assertIn("TRAIL 1..1", plan.cypher)
+
+    def test_decide_plan_no_absent_id_property(self):
+        # M7(§6-2): 라벨 없는 MATCH 는 어느 테이블엔가 있는 속성만 참조 가능.
+        # `n.id` 는 모든 노드 테이블에 부재 → Binder 오류이자 사문이므로 금지.
+        plan = q.decide_plan("t")
+        self.assertNotIn("n.id", plan.cypher)
+        for prop in ("n.concept_id", "n.bridge_id", "n.title"):
+            self.assertIn(prop, plan.cypher)   # 실재 시작 노드 식별자/title
+
+    def test_decide_plan_trail_guard_prevents_edge_reuse(self):
+        # M3(§6-2): 기본 WALK 는 엣지 재사용 사이클 허용 → 경로 폭증. TRAIL 가드
+        # (키워드가 범위 앞)로 엣지 무재사용. WALK 형식(`*1..`)은 남지 않아야 한다.
+        plan = q.decide_plan("t", depth=3)
+        self.assertIn("TRAIL 1..3", plan.cypher)
+        self.assertNotIn("*1..", plan.cypher)
 
 
 class ExecuteTests(unittest.TestCase):

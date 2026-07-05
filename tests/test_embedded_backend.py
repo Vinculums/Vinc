@@ -158,6 +158,31 @@ class EmbeddedE2E(unittest.TestCase):
         store.close()
         self.assertEqual(rows[0]["c"], 3)  # 3 Concept 관계
 
+    def test_decide_traversal_on_embedded(self):
+        """decide 질의가 임베디드에서 동작(§6-2 M7 라벨없는 MATCH 속성 바인딩 +
+        M3 TRAIL 사이클 가드). WALK 였다면 사이클서 경로 폭증, `n.id` 였다면 Binder
+        오류 — 둘 다 회귀 방지."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("a", "b", "c"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u'",
+                      id=cid)
+            # 삼각 사이클 a→b→c→a (WALK 라면 깊은 depth 서 경로 폭증)
+            for src, dst in (("a", "b"), ("b", "c"), ("c", "a")):
+                s.run("MATCH (x:Concept{concept_id:$s}),(y:Concept{concept_id:$t}) "
+                      "MERGE (x)-[:RELATED_TO]->(y)", s=src, t=dst)
+        store.close()
+
+        r = q.decide("a", depth=4)
+        self.assertTrue(r["executed"], r.get("note"))
+        self.assertGreater(len(r["rows"]), 0)   # 사이클 위 노드서 경로 존재
+
     def test_vector_and_fts_search(self):
         """M5/M6: 벡터(HNSW)+FTS(BM25) 검색 — 활성 기본 드라이버로. 검색 확장이
         없으면(ladybug 는 별도 다운로드 → 오프라인 시 번들 §9; 프록시 차단 환경)
