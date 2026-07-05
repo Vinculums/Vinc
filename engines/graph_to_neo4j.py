@@ -16,6 +16,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+# 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store.backend import open_store  # noqa: E402
+from store.config import load_config  # noqa: E402
+
 
 VALID_NODE_TYPES = {
     # PM_PLANNING 노드
@@ -136,24 +142,6 @@ def classify_nodes(nodes: list[dict]) -> dict[str, list[dict]]:
 
 
 # ── Neo4j 적재 ───────────────────────────────────────────────────────────────
-
-def get_driver(uri: str, user: str, password: str):
-    try:
-        from neo4j import GraphDatabase  # type: ignore
-    except ImportError:
-        print("[ERROR] neo4j 패키지가 없습니다. pip install neo4j 를 실행하세요.", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
-        driver.verify_connectivity()
-        return driver
-    except Exception as e:
-        print(f"[ERROR] Neo4j 연결 실패: {e}", file=sys.stderr)
-        print(f"        URI: {uri}, 사용자: {user}", file=sys.stderr)
-        print("        Neo4j 서버가 실행 중인지, 연결 정보가 올바른지 확인하세요.", file=sys.stderr)
-        sys.exit(1)
-
 
 # ── 학습 노드 소유·도메인 해석 (개인 학습 메모리) ────────────────────────────
 # owner = 학습하는 개인, domain = 자유 사용자 정의 문자열(물리/수학/예술/…).
@@ -410,17 +398,20 @@ def main() -> None:
         return
 
     start = time.time()
-    driver = get_driver(args.neo4j_uri, args.neo4j_user, password)
+    store = open_store(load_config({"uri": args.neo4j_uri, "user": args.neo4j_user, "password": password}))
+    if store is None:
+        print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
+        sys.exit(1)
 
     try:
-        with driver.session() as session:
+        with store.session() as session:
             print("[INFO] Neo4j 노드 MERGE 시작...")
             node_counts = merge_nodes(session, classified)
 
             print("[INFO] Neo4j 관계 MERGE 시작...")
             edge_counts = merge_edges(session, edges)
     finally:
-        driver.close()
+        store.close()
 
     elapsed = time.time() - start
     print(f"\n[완료] 소요 시간: {elapsed:.1f}초")

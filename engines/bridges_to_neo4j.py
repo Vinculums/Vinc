@@ -23,6 +23,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store.backend import open_store  # noqa: E402
+from store.config import load_config  # noqa: E402
+
 # hub-root 우선순위: --hub-root > env MEMORY_HUB_ROOT > 레거시 weg9000-hub(존재 시) > CWD.
 # (독립 레포로 추출되면서 v1 의 parents[2]/weg9000-hub 가정이 깨진다 — recall/embed 처럼
 #  CWD/명시 인자 기반으로 정렬한다. 레거시 경로는 존재 시 하위호환 폴백.)
@@ -167,16 +173,6 @@ def collect_bridges() -> list[dict[str, Any]]:
     return out
 
 
-def get_driver():
-    from neo4j import GraphDatabase  # type: ignore
-    drv = GraphDatabase.driver(
-        os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687"),
-        auth=(os.environ.get("NEO4J_USER", "neo4j"), os.environ.get("NEO4J_PASSWORD", "")),
-    )
-    drv.verify_connectivity()
-    return drv
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="결합 노트 → :Bridge 적재")
     ap.add_argument("--dry-run", action="store_true")
@@ -199,9 +195,12 @@ def main() -> None:
     if not os.environ.get("NEO4J_PASSWORD"):
         print("[ERROR] NEO4J_PASSWORD 없음.", file=sys.stderr); sys.exit(1)
 
-    drv = get_driver()
+    store = open_store(load_config())
+    if store is None:
+        print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
+        sys.exit(1)
     connects = 0
-    with drv.session(database=os.environ.get("NEO4J_DATABASE", "neo4j")) as s:
+    with store.session() as s:
         for b in bridges:
             s.run(
                 """
@@ -239,7 +238,7 @@ def main() -> None:
                     bid=b["bridge_id"], stem=token, dom=dom, role=role,
                 ).single()
                 connects += res["c"] if res else 0
-    drv.close()
+    store.close()
     print(f"\n[완료] :Bridge {len(bridges)}개 / CONNECTS(개념 정합) {connects}개 적재")
 
 

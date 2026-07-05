@@ -21,6 +21,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store.backend import open_store  # noqa: E402
+from store.config import load_config  # noqa: E402
+
 # 패턴 코드: U-01 / MM-12 / R-09 처럼 대문자 1~3 + '-' + 숫자.
 _CODE = re.compile(r"^([A-Z]{1,3}-\d+)\b\s*(.*)$")
 
@@ -101,21 +107,6 @@ def _load_dotenv() -> None:
             return
 
 
-def get_driver(uri: str, user: str, password: str):
-    try:
-        from neo4j import GraphDatabase  # type: ignore
-    except ImportError:
-        print("[ERROR] neo4j 패키지가 없습니다. pip install neo4j.", file=sys.stderr)
-        sys.exit(1)
-    try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
-        driver.verify_connectivity()
-        return driver
-    except Exception as e:
-        print(f"[ERROR] Neo4j 연결 실패: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="user-model 학습 패턴표 → Neo4j :LearnerPattern")
     p.add_argument("--source", default=os.environ.get("MEMORY_LEARNER_MODEL"),
@@ -153,13 +144,16 @@ def main() -> None:
         print("[ERROR] NEO4J_PASSWORD 가 없습니다.", file=sys.stderr)
         sys.exit(1)
 
-    driver = get_driver(uri, user, password)
+    store = open_store(load_config({"uri": uri, "user": user, "password": password}))
+    if store is None:
+        print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
+        sys.exit(1)
     try:
-        with driver.session() as session:
+        with store.session() as session:
             for p in patterns:
                 merge_pattern(session, p)
     finally:
-        driver.close()
+        store.close()
     print(f"[완료] :LearnerPattern 적재: {len(patterns)}개")
 
 

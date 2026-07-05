@@ -19,6 +19,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store.backend import open_store  # noqa: E402
+from store.config import load_config  # noqa: E402
+
 # ── 경로 해석 ────────────────────────────────────────────────────────────────
 # hub-root 우선순위: --hub-root > env MEMORY_HUB_ROOT > 레거시 weg9000-hub(존재 시) > CWD.
 # v1 은 __file__ 기준 weg9000-hub 를 가정했으나, 독립 레포로 추출되면서 그 가정이
@@ -181,16 +187,6 @@ def extract_edges(concepts: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
     return list({e for e in edges})
 
 
-def get_driver():
-    from neo4j import GraphDatabase  # type: ignore
-    uri = os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687")
-    user = os.environ.get("NEO4J_USER", "neo4j")
-    pw = os.environ.get("NEO4J_PASSWORD", "")
-    drv = GraphDatabase.driver(uri, auth=(user, pw))
-    drv.verify_connectivity()
-    return drv
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="학습 노트 → :Concept 적재")
     ap.add_argument("--dry-run", action="store_true")
@@ -224,8 +220,11 @@ def main() -> None:
     if not os.environ.get("NEO4J_PASSWORD"):
         print("[ERROR] NEO4J_PASSWORD 없음.", file=sys.stderr); sys.exit(1)
 
-    drv = get_driver()
-    with drv.session(database=os.environ.get("NEO4J_DATABASE", "neo4j")) as s:
+    store = open_store(load_config())
+    if store is None:
+        print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
+        sys.exit(1)
+    with store.session() as s:
         for c in concepts:
             s.run(
                 """
@@ -248,7 +247,7 @@ def main() -> None:
                 src=src, tgt=tgt,
             )
             rel_loaded += 1
-    drv.close()
+    store.close()
     print(f"\n[완료] :Concept {len(concepts)}개 / 관계 {rel_loaded}개 적재")
 
 

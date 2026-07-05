@@ -21,6 +21,12 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store.backend import open_store  # noqa: E402
+from store.config import load_config  # noqa: E402
+
 
 # ── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -229,27 +235,6 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
     }
 
 
-# ── Neo4j 연결 ───────────────────────────────────────────────────────────────
-
-def get_driver(uri: str, user: str, password: str):
-    try:
-        from neo4j import GraphDatabase  # type: ignore
-    except ImportError:
-        print("[ERROR] neo4j 패키지가 없습니다. pip install neo4j 를 실행하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-    try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
-        driver.verify_connectivity()
-        return driver
-    except Exception as e:
-        print(f"[ERROR] Neo4j 연결 실패: {e}", file=sys.stderr)
-        print(f"        URI: {uri}, 사용자: {user}", file=sys.stderr)
-        print("        .env 의 NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD 를 확인하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
-
 # ── Episode MERGE ─────────────────────────────────────────────────────────────
 
 def merge_episode(session, ep: dict[str, Any]) -> None:
@@ -377,17 +362,20 @@ def main() -> None:
         print("\n[DRY-RUN] 완료. --dry-run 없이 실행하면 적재됩니다.")
         return
 
-    # 3. Neo4j 적재
-    driver = get_driver(uri, user, password)
+    # 3. 스토어 적재 (백엔드 중립 — 설계 §4-3)
+    store = open_store(load_config({"uri": uri, "user": user, "password": password}))
+    if store is None:
+        print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
+        sys.exit(1)
     loaded = 0
     try:
-        with driver.session() as session:
+        with store.session() as session:
             print("[INFO] :Episode 노드 MERGE 시작...")
             for ep in episodes:
                 merge_episode(session, ep)
                 loaded += 1
     finally:
-        driver.close()
+        store.close()
 
     # 4. Archival 이관 (--migrate)
     moved = skipped_migrate = 0

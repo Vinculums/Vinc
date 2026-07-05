@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Protocol, runtime_checkable
 
 from .config import StoreConfig, load_config
@@ -28,10 +29,22 @@ from .config import StoreConfig, load_config
 
 @runtime_checkable
 class GraphStore(Protocol):
-    """의도적으로 최소 표면 (설계 §4-2)."""
+    """의도적으로 최소 표면 (설계 §4-2).
+
+    두 접근 표면:
+      - `run(query, params)` — 단발 실행(플랜 실행기 `api/query.py` 가 사용).
+      - `session()` — 컨텍스트 매니저. 다중 `session.run(cypher, **kwargs)` 를 내는
+        엔진 적재부가 사용한다(§4-3 최소 diff: 획득부만 store 로 바꾸고 호출부 보존).
+        yield 되는 세션은 neo4j 세션과 동형(`.run(cypher, **kwargs)` → 반복 가능한
+        레코드 결과, `.single()` 지원). 백엔드가 드라이버/스토어를 여는 유일 지점.
+    """
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
         """읽기/쓰기 공용 Cypher 실행 → 행 리스트(dict)."""
+        ...
+
+    def session(self):
+        """`with store.session() as session:` — neo4j 동형 세션 컨텍스트."""
         ...
 
     def provision(self, *, dim: int) -> list[str]:
@@ -79,12 +92,19 @@ class Neo4jBackend:
             return None
         return cls(drv, cfg)
 
-    def _session(self):
+    @contextmanager
+    def session(self):
+        """neo4j 세션을 그대로 yield — 엔진의 `session.run(cypher, **kwargs)` 무변경."""
         kw = {"database": self._cfg.database} if self._cfg.database else {}
-        return self._driver.session(**kw)
+        session = self._driver.session(**kw)
+        try:  # pragma: no cover - requires live db
+            yield session
+        finally:
+            session.close()
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
-        with self._session() as session:  # pragma: no cover - requires live db
+        kw = {"database": self._cfg.database} if self._cfg.database else {}
+        with self._driver.session(**kw) as session:  # pragma: no cover - requires live db
             return [dict(r) for r in session.run(query, **(params or {}))]
 
     def provision(self, *, dim: int) -> list[str]:
