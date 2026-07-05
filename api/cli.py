@@ -94,6 +94,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--query", default="")
     p.add_argument("--topic", default="")
 
+    # ── 사이드카(M4 · P2) — HTTP 레이어·백업·온보딩 ──────────────────────────
+    sv = sub.add_parser("serve", help="run the loopback sidecar HTTP server (P2)")
+    sv.add_argument("--host", default="127.0.0.1", help="bind host (loopback only, §3-1)")
+    sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
+    sv.add_argument("--parent-pid", type=int, default=None,
+                    help="watch this PID; clean-shutdown when it exits (shell heartbeat, E6)")
+    sv.add_argument("--token", default=None, help="session token (default: generate)")
+    sv.add_argument("--profile", default=None, help="domain profile.yml path (backup 동봉)")
+    sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
+
+    bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
+    bk.add_argument("--out", required=True, help="archive output dir")
+    bk.add_argument("--packs", default=None, help="exported packs dir to include")
+    bk.add_argument("--profile", default=None, help="domain profile.yml to include")
+
+    ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase, F4)")
+    ob.add_argument("--profile", required=True, help="credential file path (auth.json)")
+    ob.add_argument("--passphrase", default=None,
+                    help="passphrase (omit to read from stdin/getpass — non-echoing)")
+    ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "recall":
@@ -132,6 +153,32 @@ def main(argv: list[str] | None = None) -> int:
         else:
             plan = q.decide_plan(args.topic)
         return _emit(plan.to_dict())
+    if args.cmd == "serve":
+        from . import server
+        server.serve(host=args.host, port=args.port, parent_pid=args.parent_pid,
+                     token=args.token, packs_dir=args.packs, profile_path=args.profile)
+        return 0
+    if args.cmd == "backup":
+        # 단발 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지). 워커 잡
+        # 경유가 아니어도 프로세스가 하나라 일관성 성립.
+        from .backup import make_backup
+        from store.config import load_config
+        from store.backend import open_store
+        store = open_store(load_config())
+        if store is None:
+            return _emit({"error": "no reachable store (드라이버 미설치) — 백업 불가"})
+        try:
+            return _emit(make_backup(store, args.out, packs_dir=args.packs,
+                                     profile_path=args.profile))
+        finally:
+            store.close()
+    if args.cmd == "onboard":
+        from . import auth
+        passphrase = args.passphrase
+        if passphrase is None:
+            import getpass
+            passphrase = getpass.getpass("passphrase: ")
+        return _emit(auth.create_profile(passphrase, path=args.profile, force=args.force))
     return 2
 
 

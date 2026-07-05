@@ -175,13 +175,19 @@ def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
 # 드라이버 취득은 store.backend.open_store 로 일원화(설계 §4-1). 여기서는 백엔드를
 # 열고 plan.cypher 를 store.run 으로 실행할 뿐 — 드라이버를 직접 열지 않는다.
 
-def execute(plan: QueryPlan, cfg: StoreConfig | None = None) -> dict:
+def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None) -> dict:
     """Run a plan if a store is reachable; otherwise return the plan only.
 
     백엔드 중립(설계 §4-3): `open_store(cfg)` 가 None(도달 불가)이면 순수 플랜을
-    `executed=False` 로 반환 — DB 부재 시 결정론 계약 유지(§1 불변 원칙)."""
+    `executed=False` 로 반환 — DB 부재 시 결정론 계약 유지(§1 불변 원칙).
+
+    ``store`` 주입(사이드카 §11 P2): 호출부가 이미 연 스토어(잡 워커의 writer 또는
+    read 뷰)를 넘기면 그것을 재사용한다 — 이때는 **열지도 닫지도 않는다**(수명은
+    호출부 소유). 미주입(기본)이면 종전대로 호출당 open→close 한다(기존 계약 불변)."""
     cfg = cfg or load_config()
-    store = open_store(cfg)
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
     base = {"plan": plan.to_dict(), "executed": False, "rows": []}
     if store is None:
         base["note"] = "no reachable store (dry plan returned)"
@@ -196,7 +202,8 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None) -> dict:
         # 실행하지 못하면 순수 플랜을 executed=False 로 반환한다(무 크래시 계약).
         base["note"] = f"store 실행 실패 — dry plan 반환: {type(exc).__name__}: {exc}"
     finally:
-        store.close()
+        if owns:
+            store.close()   # 주입 스토어는 호출부가 소유 — 여기서 닫지 않는다.
     return base
 
 
@@ -205,11 +212,11 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None) -> dict:
 def recall(query: str = "", *, owner: str | None = None, tenant: str | None = None,
            domain: str | None = None, workspace: str | None = None,
            tags: list[str] | None = None, rank: str = "recency", limit: int = 10,
-           weights: dict | None = None, cfg=None) -> dict:
+           weights: dict | None = None, cfg=None, store=None) -> dict:
     res = execute(
         recall_plan(query, owner=owner, tenant=tenant, domain=domain,
                     workspace=workspace, tags=tags, rank=rank, limit=limit, weights=weights),
-        cfg,
+        cfg, store=store,
     )
     # preference 랭킹은 백엔드 밖 순수 함수로(§4-2). 플랜은 후보 전량을 date DESC 로
     # 가져오고, 여기서 점수·상한을 적용한다.
@@ -233,8 +240,8 @@ def domains_plan(*, owner: str | None = None) -> QueryPlan:
     return QueryPlan("domains", cypher, params, note="open-domain discovery (data-driven, not a fixed list)")
 
 
-def domains(*, owner: str | None = None, cfg=None) -> dict:
-    return execute(domains_plan(owner=owner), cfg)
+def domains(*, owner: str | None = None, cfg=None, store=None) -> dict:
+    return execute(domains_plan(owner=owner), cfg, store=store)
 
 
 def learner_model_plan(*, owner: str) -> QueryPlan:
@@ -251,8 +258,8 @@ def learner_model_plan(*, owner: str) -> QueryPlan:
     return QueryPlan("learner_model", cypher, {"owner": owner}, note="personal learning-method model")
 
 
-def learner_model(*, owner: str, cfg=None) -> dict:
-    return execute(learner_model_plan(owner=owner), cfg)
+def learner_model(*, owner: str, cfg=None, store=None) -> dict:
+    return execute(learner_model_plan(owner=owner), cfg, store=store)
 
 
 def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
@@ -307,21 +314,25 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
-def graph(*, owner: str, domain: str | None = None, cfg=None) -> dict:
-    res = execute(graph_plan(owner=owner, domain=domain), cfg)
+def graph(*, owner: str, domain: str | None = None, cfg=None, store=None) -> dict:
+    res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     shaped = shape_graph(res.get("rows", []))
     return {"executed": res.get("executed", False), **shaped}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,
-           top_k: int = 5, filters: dict | None = None, cfg=None) -> dict:
+           top_k: int = 5, filters: dict | None = None, cfg=None, store=None) -> dict:
     """하이브리드 검색 — BM25(FTS) + (선택)벡터 암을 RRF 로 융합(§4-2).
 
     벡터 암은 **쿼리 임베딩 주입형**(§3-1): 호출부(사이드카)가 모델로 쿼리를
     임베딩해 ``query_embedding`` 으로 넘긴다 → 검색 코드는 임베딩 모델과 무관.
-    미주입 시 BM25 단독. 인덱스·확장 부재 시 executed=False 로 강등(무 크래시)."""
+    미주입 시 BM25 단독. 인덱스·확장 부재 시 executed=False 로 강등(무 크래시).
+
+    ``store`` 주입(사이드카 §11 P2): read 뷰를 넘기면 재사용(열지도 닫지도 않음)."""
     cfg = cfg or load_config()
-    store = open_store(cfg)
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
     base = {"kind": "search", "executed": False, "rows": []}
     if store is None:
         base["note"] = "no reachable store"
@@ -336,9 +347,10 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     except Exception as exc:
         base["note"] = f"search 실행 실패 — {type(exc).__name__}: {exc}"
     finally:
-        store.close()
+        if owns:
+            store.close()
     return base
 
 
-def decide(topic: str, *, depth: int = 2, cfg=None) -> dict:
-    return execute(decide_plan(topic, depth=depth), cfg)
+def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
+    return execute(decide_plan(topic, depth=depth), cfg, store=store)

@@ -59,13 +59,17 @@ def touch_plan(episode_id: str, *, now: str | None = None) -> QueryPlan:
 
 # ── Public entry points ──────────────────────────────────────────────────────
 
-def pin(episode_id: str, *, pinned: bool = True, cfg=None) -> dict:
-    return execute(pin_plan(episode_id, pinned=pinned), cfg)
+# ``store`` 주입(사이드카 §11 P2): 쓰기는 잡 워커의 단일 writer Connection 으로
+# 직렬화된다(R4). 워커가 자신이 소유한 writer 스토어를 넘기면 execute 는 그것을
+# 재사용하고 닫지 않는다(수명은 서버 소유). 미주입 시 종전대로 호출당 open→close.
+
+def pin(episode_id: str, *, pinned: bool = True, cfg=None, store=None) -> dict:
+    return execute(pin_plan(episode_id, pinned=pinned), cfg, store=store)
 
 
-def tag(episode_id: str, tags: list[str], *, cfg=None) -> dict:
-    return execute(tag_plan(episode_id, tags), cfg)
+def tag(episode_id: str, tags: list[str], *, cfg=None, store=None) -> dict:
+    return execute(tag_plan(episode_id, tags), cfg, store=store)
 
 
-def touch(episode_id: str, *, now: str | None = None, cfg=None) -> dict:
-    return execute(touch_plan(episode_id, now=now), cfg)
+def touch(episode_id: str, *, now: str | None = None, cfg=None, store=None) -> dict:
+    return execute(touch_plan(episode_id, now=now), cfg, store=store)

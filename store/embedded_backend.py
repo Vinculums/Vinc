@@ -82,6 +82,29 @@ class _Session:
         pass
 
 
+class _ReaderView:
+    """단일 Database 의 별도 read Connection 뷰(R4 — 서버 조회 경로). `GraphStore` 의
+    read 표면(run/fulltext_search/vector_search/close)만 노출해 `api.query.execute`·
+    `api.query.search` 에 store 로 주입된다. 쓰기(SET) 는 이 뷰로 흘리지 않는다 —
+    쓰기는 잡 워커의 writer Connection 으로만 직렬화된다(R4)."""
+
+    def __init__(self, backend: "EmbeddedBackend", conn):
+        self._b = backend
+        self._conn = conn
+
+    def run(self, query: str, params: dict | None = None) -> list[dict]:
+        return _exec_to_dicts(self._conn, query, params or None)
+
+    def fulltext_search(self, text, top_k, filters=None) -> list[dict]:
+        return self._b.fulltext_search(text, top_k, filters, conn=self._conn)
+
+    def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
+        return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
+
+    def close(self) -> None:
+        self._conn = None   # 요청 종료 시 커넥션 해제(Database 는 서버가 계속 소유)
+
+
 def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
     """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리."""
     res = conn.execute(cypher, params) if params else conn.execute(cypher)
@@ -133,8 +156,22 @@ class EmbeddedBackend:
         finally:
             session.close()
 
-    def run(self, query: str, params: dict | None = None) -> list[dict]:
-        return _exec_to_dicts(self._conn, query, params or None)
+    def run(self, query: str, params: dict | None = None, *, conn=None) -> list[dict]:
+        return _exec_to_dicts(conn or self._conn, query, params or None)
+
+    # ── 서버 read 경로 — 별도 Connection(R4) ──────────────────────────────────
+    # 사이드카(§11 P2)는 단일 Database 를 프로세스 수명 동안 소유하고, 쓰기는 잡
+    # 워커의 단일 writer Connection 으로 직렬화한다(R4 쓰기 지점). 조회는 동일
+    # Database 에서 파생한 **별도 reader Connection** 으로 수행해, 쓰기 잡 진행
+    # 중에도 응답성을 유지한다(§11 P2 게이트 — "잡 실행 중 조회 응답성"). Kùzu 계보는
+    # Database 당 다중 Connection + MVCC 로 writer 진행 중 reader 스냅샷 일관을
+    # 보장한다(P2 착수 시 실측 확정 — 불성립 시 reader 직렬화로 폴백).
+    def reader_view(self) -> "_ReaderView":
+        """이 Database 에서 새 Connection 을 파생한 read 전용 뷰(R4). execute·search 가
+        소비하는 표면(run/fulltext_search/vector_search/close)만 제공한다. 요청 단위로
+        생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능)."""
+        drv, _ = _import_driver(self._cfg.embedded_driver)
+        return _ReaderView(self, drv.Connection(self._db))
 
     def provision(self, *, dim: int) -> list[str]:
         statements = render_embedded_ddl(dim=dim)
@@ -156,11 +193,13 @@ class EmbeddedBackend:
     _FTS_INDEX = "chunk_ft"
     _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
-    def _load_ext(self, ext: str) -> None:
+    def _load_ext(self, ext: str, conn=None) -> None:
         """벡터/FTS 확장 로드. kuzu 는 정적 링크(무연산), ladybug 는 다운로드 필요.
-        확장 부재 시 명확한 오류로 강등(오프라인 미번들 상황 — §9)."""
+        확장 부재 시 명확한 오류로 강등(오프라인 미번들 상황 — §9). reader Connection
+        경유 검색 시엔 그 conn 에 로드한다(확장 로드는 커넥션 스코프일 수 있음)."""
+        c = conn or self._conn
         try:
-            self._conn.execute(f"LOAD EXTENSION {ext}")
+            c.execute(f"LOAD EXTENSION {ext}")
         except Exception as exc:
             if "already" in str(exc).lower() or "statically linked" in str(exc).lower():
                 return
@@ -188,8 +227,9 @@ class EmbeddedBackend:
         self._conn.execute(f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
-    def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
-        self._load_ext("vector")
+    def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
+        c = conn or self._conn
+        self._load_ext("vector", c)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)  # pre-filter 과추출(§4-2)
         params: dict = {"emb": list(embedding), "k": k}
         where = _filter_clause("node", filters, params)
@@ -199,10 +239,11 @@ class EmbeddedBackend:
             "RETURN node.chunk_id AS id, node.text AS text, distance "
             "ORDER BY distance LIMIT $k"
         )
-        return _exec_to_dicts(self._conn, cypher, params)[:int(top_k)]
+        return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
-    def fulltext_search(self, text, top_k, filters=None) -> list[dict]:
-        self._load_ext("fts")
+    def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
+        c = conn or self._conn
+        self._load_ext("fts", c)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)
         params: dict = {"q": text, "k": k}
         where = _filter_clause("node", filters, params)
@@ -212,7 +253,7 @@ class EmbeddedBackend:
             "RETURN node.chunk_id AS id, node.text AS text, score "
             "ORDER BY score DESC LIMIT $k"
         )
-        return _exec_to_dicts(self._conn, cypher, params)[:int(top_k)]
+        return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
     def snapshot(self, dest_dir: str) -> str:
         """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2)."""

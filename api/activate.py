@@ -173,7 +173,7 @@ def activate(query: str = "", *, owner: str, tenant: str | None = None,
              tags: list[str] | None = None, rank: str = "preference", limit: int = 20,
              include_model: bool = False,
              generated_at: str | None = None, out_dir: str | Path | None = None,
-             cfg=None) -> dict:
+             cfg=None, store=None) -> dict:
     """Recall owner-scoped records and build a portable context pack.
 
     ``domain`` (free, user-defined) optionally scopes the pack to one dataset
@@ -187,8 +187,9 @@ def activate(query: str = "", *, owner: str, tenant: str | None = None,
     기본 노출이 아니다). Preference 신호(pinned/tags/access_count/last_access)는
     rank 무관 항상 수록된다(§10·D4). Writes three files when ``out_dir`` given."""
     res = q.recall(query, owner=owner, tenant=tenant, domain=domain,
-                   workspace=workspace, tags=tags, rank=rank, limit=limit, cfg=cfg)
-    model_rows = q.learner_model(owner=owner, cfg=cfg).get("rows", []) if include_model else []
+                   workspace=workspace, tags=tags, rank=rank, limit=limit, cfg=cfg, store=store)
+    model_rows = (q.learner_model(owner=owner, cfg=cfg, store=store).get("rows", [])
+                  if include_model else [])
     pack = build_context_pack(res.get("rows", []), owner=owner, query=query,
                               generated_at=generated_at, learner_model=model_rows)
     out: dict = {
