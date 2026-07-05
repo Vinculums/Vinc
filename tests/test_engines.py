@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ENGINES = [
-    "embed_pipeline", "recall_to_neo4j",
+    "embed_pipeline", "recall_to_neo4j", "pack_ingest",
     "skill_tracker", "concepts_to_neo4j", "bridges_to_neo4j",
 ]  # graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
 

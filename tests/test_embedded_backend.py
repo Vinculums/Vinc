@@ -158,6 +158,67 @@ class EmbeddedE2E(unittest.TestCase):
         store.close()
         self.assertEqual(rows[0]["c"], 3)  # 3 Concept 관계
 
+    def test_pack_ingest_overlays_preference_roundtrip(self):
+        """A+2 2단계(§10): 재수집된 Episode 위에 pack.json 의 preference 신호만
+        오버레이 — 구조(title 등)는 보존, pinned/tags/access 는 팩 값으로. 멱등."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.recall_to_neo4j import merge_episode
+        from engines.pack_ingest import overlay_pack, PACK_KIND
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        # 1단계 재수집: 구조만(런타임 preference 없음).
+        with store.session() as s:
+            merge_episode(s, {"episode_id": "s1", "title": "Refund session",
+                              "date": "2026-07-01", "owner_id": "u", "tenant_id": "t",
+                              "domain": "billing", "workspace": "w", "mode": "m",
+                              "summary": "structural summary", "completed": True,
+                              "patterns": [], "source_file": "recall/s1.md"})
+        # 서버측 pack.json 모사 — preference 신호가 실려 있고 title 은 다른(구/무의미) 값.
+        pack = {"kind": PACK_KIND, "owner": "u", "episodes": [{
+            "id": "s1", "title": "STALE TITLE", "owner": "u", "domain": "billing",
+            "pinned": True, "tags": ["refund", "kr"], "access_count": 9,
+            "last_access": "2026-07-04"}]}
+        with store.session() as s:
+            n1 = overlay_pack(s, pack)
+            n2 = overlay_pack(s, pack)   # 재실행 — 멱등
+        store.close()
+        self.assertEqual((n1, n2), (1, 1))
+
+        r = q.recall(owner="u", rank="preference")
+        self.assertTrue(r["executed"])
+        row = next(x for x in r["rows"] if x["id"] == "s1")
+        self.assertTrue(row["pinned"])                       # 팩 preference 오버레이
+        self.assertEqual(set(row["tags"]), {"refund", "kr"})
+        self.assertEqual(row["access_count"], 9)
+        self.assertEqual(row["title"], "Refund session")     # 재수집 구조 보존(팩 미덮어씀)
+
+    def test_pack_only_ingest_creates_node(self):
+        """대안 경로(§10 '팩 단독'): 재수집 없이 팩만 적재 시 노드가 생성되고
+        구조는 팩 수록 범위로 채워진다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.pack_ingest import overlay_pack, PACK_KIND
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        pack = {"kind": PACK_KIND, "owner": "u", "episodes": [{
+            "id": "p1", "title": "Pack-only ep", "owner": "u", "domain": "d",
+            "date": "2026-07-03", "pinned": False, "tags": [], "access_count": 0}]}
+        with store.session() as s:
+            overlay_pack(s, pack)
+        store.close()
+
+        r = q.recall(owner="u")
+        ids = {x["id"]: x for x in r["rows"]}
+        self.assertIn("p1", ids)
+        self.assertEqual(ids["p1"]["title"], "Pack-only ep")   # 팩 구조 채움
+
     def test_decide_traversal_on_embedded(self):
         """decide 질의가 임베디드에서 동작(§6-2 M7 라벨없는 MATCH 속성 바인딩 +
         M3 TRAIL 사이클 가드). WALK 였다면 사이클서 경로 폭증, `n.id` 였다면 Binder
