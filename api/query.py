@@ -107,6 +107,9 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
         # 인덱스 스코어링 방언이 Neo4j 와 달라(§6), Cypher 내 점수식은 이식성이 낮다.
         # 스코프 필터된 후보 전량을 신호와 함께 가져와(단일 사용자 규모 — §12 R5)
         # 인-프로세스로 랭크·상한한다.
+        # ⚠ kuzu 는 **미사용 파라미터를 거부**한다("Parameter … not found", §6 방언).
+        # preference 플랜은 Cypher 에 $limit 를 쓰지 않으므로(파이썬에서 상한) 제거.
+        params.pop("limit", None)
         cypher = (
             f"MATCH (e:Episode) {clause} "
             f"RETURN {projection} "

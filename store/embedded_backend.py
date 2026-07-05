@@ -21,12 +21,16 @@ from .embedded_schema import render_embedded_ddl
 
 def _import_driver(prefer: str | None = None):
     """임베디드 드라이버 단일 임포트 지점(§2-2 R1 — 포크 결합 상한).
-    prefer="kuzu"|"ladybug" 로 선호 지정 가능(config.embedded_driver). 기본 자동:
-    ladybug(v0.18.0) → kuzu(0.11.3 폴백). (모듈, 이름) 또는 (None, None)."""
+
+    **기본값 = kuzu 0.11.3**(설계 §13 D14 결정): 벡터/FTS 가 정적 링크라 설치 즉시
+    오프라인 동작(§1 핵심 경로). ladybug v0.18.0 은 확장을 런타임 다운로드하므로
+    오프라인 배포엔 부적합 — `embedded_driver="ladybug"` 노브로 옵트인만 유지(R1).
+    prefer 로 선호 지정. ⚠ ladybug·kuzu 는 한 프로세스 공존 불가(네이티브 타입 충돌)
+    이므로 첫 성공 임포트에서 즉시 반환한다. (모듈, 이름) 또는 (None, None)."""
     order = {
         "kuzu": ["kuzu", "ladybug"],
         "ladybug": ["ladybug", "kuzu"],
-    }.get(prefer, ["ladybug", "kuzu"])
+    }.get(prefer, ["kuzu", "ladybug"])   # 기본 kuzu-first (D14)
     for name in order:
         try:
             return __import__(name), name

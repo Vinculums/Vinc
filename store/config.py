@@ -30,8 +30,10 @@ class StoreConfig:
     #   "embedded" — 인프로세스 LadybugDB(Kùzu 계보) — Vinc 기본·유일 배포 백엔드.
     # (서버 Neo4j 백엔드는 weg-9000-memory 레포 소관 — Vinc 미탑재.)
     backend: str = "embedded"
-    # 임베디드 드라이버 선호(계보 포크 — R1 교체 보험). None=자동(ladybug→kuzu).
-    #   "kuzu": 벡터/FTS 확장이 정적 링크(오프라인 즉시). "ladybug": v0.18.0(확장 별도).
+    # 임베디드 드라이버 선호(계보 포크 — R1 교체 보험). None=기본 **kuzu**(D14):
+    #   벡터/FTS 정적 링크로 오프라인 즉시(§1). "ladybug"=v0.18.0 옵트인(확장 런타임
+    #   다운로드 — 오프라인 배포 시 번들 필요, §9). ladybug 가 확장 정적/오프라인
+    #   번들 공식 지원 시 기본 전환 재평가(D14 재검토 조건).
     embedded_driver: str | None = None
     data_dir: str | None = None          # 임베디드 스토어 데이터 디렉토리(§3-2)
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
