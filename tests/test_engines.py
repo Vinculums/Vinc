@@ -31,6 +31,36 @@ class ImportTests(unittest.TestCase):
         self.assertTrue(hasattr(mod, "_load_chonkie"))
 
 
+class EmbedModelVocabTests(unittest.TestCase):
+    """embed_pipeline 의 --model 어휘·차원은 store.config(§8) 단일 출처를 따른다.
+    실제 임베딩 로드(HF 다운로드) 없이 매핑만 검증(오프라인 CI)."""
+
+    def setUp(self):
+        self.e = importlib.import_module("engines.embed_pipeline")
+        from store.config import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIM_BY_MODEL
+        self.default = DEFAULT_EMBEDDING_MODEL
+        self.dims = EMBEDDING_DIM_BY_MODEL
+
+    def test_cli_default_is_offline_english(self):
+        # F5·§8: 키 없이 기동해야 하므로 기본은 오프라인 영어 모델(local-en) — anthropic 아님.
+        ns = self.e.build_parser().parse_args(["--product", "x"])
+        self.assertEqual(ns.model, self.default)
+        self.assertEqual(ns.model, "local-en")
+
+    def test_cli_choices_match_config_vocab(self):
+        choices = self.e.build_parser()._option_string_actions["--model"].choices
+        self.assertEqual(set(choices), set(self.dims))  # 파이프라인 독자 명칭 금지
+
+    def test_model_dim_delegates_to_config(self):
+        for key, dim in self.dims.items():
+            self.assertEqual(self.e.model_dim(key), dim)
+
+    def test_local_en_maps_to_bge_english(self):
+        # §8 영어 1차: local-en=bge-base-en(768), local-en-large=bge-large-en(1024).
+        self.assertEqual(self.e.ST_MODEL_BY_KEY["local-en"], "BAAI/bge-base-en-v1.5")
+        self.assertEqual(self.e.ST_MODEL_BY_KEY["local-en-large"], "BAAI/bge-large-en-v1.5")
+
+
 class HubRootResolutionTests(unittest.TestCase):
     """Portability: concepts/bridges must resolve hub-root from arg/env/CWD,
     not a hardcoded v1 monorepo path (regression for the extraction bug)."""

@@ -4,7 +4,7 @@
 
 사용:
     python embed_pipeline.py --product <product_name> [--dry-run]
-    python embed_pipeline.py --product <product_name> --model local
+    python embed_pipeline.py --product <product_name> --model local-en
     python embed_pipeline.py --product <product_name> --force
 """
 from __future__ import annotations
@@ -60,8 +60,20 @@ PARQUET_FILENAME = "chunks.parquet"
 EMBEDDING_DIM = EMBEDDING_DIM_BY_MODEL.get(DEFAULT_EMBEDDING_MODEL, 768)  # main 에서 재설정
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
+# 임베딩 모델 어휘는 store.config(§8) 와 동일하다 — 파이프라인이 독자 명칭을 두지
+# 않도록 식별자·차원은 config 단일 출처를 따른다. 로컬(오프라인) 모델은 §8 영어 1차:
+#   local-en = bge-base-en-v1.5(기본·768) · local-en-large = bge-large-en-v1.5(1024).
+#   anthropic = voyage-3(1024, API 키 옵션) · local = legacy 다국어 mpnet(back-compat).
 VOYAGE_MODEL = "voyage-3"
+LOCAL_EN_MODEL = "BAAI/bge-base-en-v1.5"
+LOCAL_EN_LARGE_MODEL = "BAAI/bge-large-en-v1.5"
 LOCAL_MODEL = "paraphrase-multilingual-mpnet-base-v2"
+# sentence-transformers 로 로드하는 오프라인 모델의 (식별자 → HF 모델명) 매핑.
+ST_MODEL_BY_KEY = {
+    "local-en": LOCAL_EN_MODEL,
+    "local-en-large": LOCAL_EN_LARGE_MODEL,
+    "local": LOCAL_MODEL,
+}
 BATCH_SIZE = 64
 
 _DOC_ID_RE = re.compile(r"[A-Z]\d+-[A-Z](?:-\d+)?")
@@ -95,15 +107,17 @@ def build_parser() -> argparse.ArgumentParser:
 예시:
   python embed_pipeline.py --product my-product
   python embed_pipeline.py --product my-product --dry-run
-  python embed_pipeline.py --product my-product --model local
+  python embed_pipeline.py --product my-product --model local-en
   python embed_pipeline.py --product my-product --force
         """,
     )
     p.add_argument("--product", required=True,
                    help="WORKSPACES/planning/{product}/drafts/ 경로 결정")
-    p.add_argument("--model", choices=["anthropic", "local"], default="anthropic",
-                   help="임베딩 모델 선택: anthropic(voyage-3) 또는 local(sentence-transformers). "
-                        "기본값: anthropic")
+    p.add_argument("--model", choices=list(EMBEDDING_DIM_BY_MODEL),
+                   default=DEFAULT_EMBEDDING_MODEL,
+                   help="임베딩 모델(store.config §8 단일 어휘). local-en=bge-base-en(기본·오프라인) · "
+                        "local-en-large=bge-large-en · anthropic=voyage-3(API 키 필요) · "
+                        f"local=legacy 다국어. 기본값: {DEFAULT_EMBEDDING_MODEL}(오프라인·키 불필요)")
     p.add_argument("--force", action="store_true",
                    help="체크포인트(chunks.parquet) 무시하고 전체 재처리")
     p.add_argument("--dry-run", action="store_true",
@@ -286,8 +300,9 @@ def build_embeddings_model(model_type: str):
             or os.environ.get("ANTHROPIC_API_KEY")
         )
         if not api_key:
-            print("[임베딩 API 키 없음 — --model local 로 전환합니다]")
-            return build_embeddings_model("local")
+            # F5·§1: 키 없이도 기동해야 한다 → 오프라인 기본 모델(local-en)로 전환.
+            print(f"[임베딩 API 키 없음 — 오프라인 기본 모델(--model {DEFAULT_EMBEDDING_MODEL})로 전환합니다]")
+            return build_embeddings_model(DEFAULT_EMBEDDING_MODEL)
         try:
             from chonkie.embeddings import VoyageAIEmbeddings
             return VoyageAIEmbeddings(model=VOYAGE_MODEL, api_key=api_key)
@@ -296,9 +311,10 @@ def build_embeddings_model(model_type: str):
             print('pip install "chonkie[voyageai]"', file=sys.stderr)
             sys.exit(1)
     else:
+        st_name = ST_MODEL_BY_KEY.get(model_type, LOCAL_EN_MODEL)
         try:
             from chonkie.embeddings import SentenceTransformerEmbeddings
-            return SentenceTransformerEmbeddings(model=LOCAL_MODEL)
+            return SentenceTransformerEmbeddings(model=st_name)
         except ImportError:
             print("[sentence-transformers 미설치]")
             print('pip install "chonkie[st]"')
@@ -409,7 +425,7 @@ def main() -> None:
         return
 
     # 4. 임베딩 — EmbeddingsRefinery
-    model_name = VOYAGE_MODEL if args.model == "anthropic" else LOCAL_MODEL
+    model_name = VOYAGE_MODEL if args.model == "anthropic" else ST_MODEL_BY_KEY.get(args.model, LOCAL_EN_MODEL)
     all_raw_chunks = [c for _, chunks in file_chunk_map for c in chunks]
 
     if all_raw_chunks:
