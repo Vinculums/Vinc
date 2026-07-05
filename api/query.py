@@ -145,10 +145,15 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None) -> dict:
     if store is None:
         base["note"] = "no reachable store (dry plan returned)"
         return base
-    try:  # pragma: no cover - requires live store
+    try:
         rows = store.run(plan.cypher, plan.params)
         base["executed"] = True
         base["rows"] = rows
+    except Exception as exc:
+        # 강등(graceful degradation, §3-4): 미프로비저닝·미구현 방언(search 는
+        # M5 store.fulltext_search 로 승격 예정 — §4-2·§6-2) 등 스토어가 플랜을
+        # 실행하지 못하면 순수 플랜을 executed=False 로 반환한다(무 크래시 계약).
+        base["note"] = f"store 실행 실패 — dry plan 반환: {type(exc).__name__}: {exc}"
     finally:
         store.close()
     return base

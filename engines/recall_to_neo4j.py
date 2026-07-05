@@ -90,12 +90,6 @@ def build_parser() -> argparse.ArgumentParser:
   python recall_to_neo4j.py --migrate
         """,
     )
-    p.add_argument("--neo4j-uri", default=None,
-                   help="Neo4j URI (기본값: NEO4J_URI 환경변수 → neo4j://127.0.0.1:7687)")
-    p.add_argument("--neo4j-user", default=None,
-                   help="Neo4j 사용자명 (기본값: NEO4J_USER 환경변수 → neo4j)")
-    p.add_argument("--neo4j-password", default=None,
-                   help="Neo4j 비밀번호 (기본값: NEO4J_PASSWORD 환경변수)")
     p.add_argument("--migrate", action="store_true",
                    help=f"{ARCHIVE_DAYS}일 경과 파일을 archival/episode/ 로 이동")
     p.add_argument("--dry-run", action="store_true",
@@ -314,17 +308,6 @@ def main() -> None:
 
     args = build_parser().parse_args()
 
-    # 연결 정보: 인수 > 환경변수 > 기본값
-    uri = args.neo4j_uri or os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687")
-    user = args.neo4j_user or os.environ.get("NEO4J_USER", "neo4j")
-    password = args.neo4j_password or os.environ.get("NEO4J_PASSWORD", "")
-
-    if not password and not args.dry_run:
-        print("[ERROR] Neo4j 비밀번호가 없습니다.", file=sys.stderr)
-        print("        NEO4J_PASSWORD 환경변수 또는 --neo4j-password 인수를 사용하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
     start = time.time()
 
     # 1. 세션 파일 수집
@@ -363,7 +346,7 @@ def main() -> None:
         return
 
     # 3. 스토어 적재 (백엔드 중립 — 설계 §4-3)
-    store = open_store(load_config({"uri": uri, "user": user, "password": password}))
+    store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)

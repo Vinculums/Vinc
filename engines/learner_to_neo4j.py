@@ -113,9 +113,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help="user-model 마크다운 경로 (env MEMORY_LEARNER_MODEL)")
     p.add_argument("--owner", default=os.environ.get("MEMORY_DEFAULT_OWNER", "tenant:shared"),
                    help="학습자 owner_id (env MEMORY_DEFAULT_OWNER)")
-    p.add_argument("--neo4j-uri", default=None)
-    p.add_argument("--neo4j-user", default=None)
-    p.add_argument("--neo4j-password", default=None)
     p.add_argument("--dry-run", action="store_true", help="파싱 결과만 출력, 적재 없음")
     return p
 
@@ -137,14 +134,7 @@ def main() -> None:
             print(f"  ... 외 {len(patterns) - 15}개")
         return
 
-    uri = args.neo4j_uri or os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687")
-    user = args.neo4j_user or os.environ.get("NEO4J_USER", "neo4j")
-    password = args.neo4j_password or os.environ.get("NEO4J_PASSWORD", "")
-    if not password:
-        print("[ERROR] NEO4J_PASSWORD 가 없습니다.", file=sys.stderr)
-        sys.exit(1)
-
-    store = open_store(load_config({"uri": uri, "user": user, "password": password}))
+    store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)

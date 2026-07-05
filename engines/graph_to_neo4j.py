@@ -86,12 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--product", required=True,
                    help="WORKSPACES/planning/{product}/graph/graph.json 경로 결정")
-    p.add_argument("--neo4j-uri", default="neo4j://127.0.0.1:7687",
-                   help="Neo4j URI (기본값: neo4j://127.0.0.1:7687, .env NEO4J_URI 우선)")
-    p.add_argument("--neo4j-user", default="neo4j",
-                   help="Neo4j 사용자명 (기본값: neo4j)")
-    p.add_argument("--neo4j-password", default=None,
-                   help="Neo4j 비밀번호. NEO4J_PASSWORD 환경변수 우선 적용")
     p.add_argument("--dry-run", action="store_true",
                    help="실제 적재 없이 파싱 결과(노드·관계 수)만 출력")
     return p
@@ -365,15 +359,6 @@ def main() -> None:
     _load_dotenv()
     args = build_parser().parse_args()
 
-    # 연결 정보: 환경변수(.env) 우선 → 인수 폴백
-    args.neo4j_uri = os.environ.get("NEO4J_URI") or args.neo4j_uri
-    args.neo4j_user = os.environ.get("NEO4J_USER") or args.neo4j_user
-    password = os.environ.get("NEO4J_PASSWORD") or args.neo4j_password
-    if not password and not args.dry_run:
-        print("[ERROR] Neo4j 비밀번호가 없습니다.", file=sys.stderr)
-        print("        NEO4J_PASSWORD 환경변수 또는 --neo4j-password 인수를 사용하세요.", file=sys.stderr)
-        sys.exit(1)
-
     print(f"[INFO] graph.json 로드: WORKSPACES/planning/{args.product}/graph/graph.json")
     data = load_graph(args.product)
 
@@ -398,7 +383,7 @@ def main() -> None:
         return
 
     start = time.time()
-    store = open_store(load_config({"uri": args.neo4j_uri, "user": args.neo4j_user, "password": password}))
+    store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)

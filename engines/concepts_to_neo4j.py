@@ -217,9 +217,6 @@ def main() -> None:
         print(f"  관계 타입별: {rel_counts}")
         return
 
-    if not os.environ.get("NEO4J_PASSWORD"):
-        print("[ERROR] NEO4J_PASSWORD 없음.", file=sys.stderr); sys.exit(1)
-
     store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)

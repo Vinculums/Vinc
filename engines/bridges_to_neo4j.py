@@ -192,8 +192,6 @@ def main() -> None:
     if args.dry_run:
         print("\n[DRY-RUN] 적재 없이 종료.")
         return
-    if not os.environ.get("NEO4J_PASSWORD"):
-        print("[ERROR] NEO4J_PASSWORD 없음.", file=sys.stderr); sys.exit(1)
 
     store = open_store(load_config())
     if store is None:

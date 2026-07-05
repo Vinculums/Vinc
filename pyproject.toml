@@ -12,11 +12,12 @@ license = { text = "MIT" }
 authors = [{ name = "weg-9000" }]
 dependencies = []
 
-# 데스크톱 동결 전용 — PyPI 미배포. 런타임 extras 는 M2/M3 에서 채운다.
+# 데스크톱 동결 전용 — PyPI 미배포. Vinc 는 임베디드 전용(서버 Neo4j 미탑재).
 [project.optional-dependencies]
-# embedded = ["ladybug-db"]   # ← P1-0 실측 후 실제 패키지 식별자로 확정(설계 §2-2)
-# embed    = ["sentence-transformers"]  # 다국어 mpnet 768d
-# neo4j    = ["neo4j>=5"]      # 마이그레이션 경로용 백엔드
+# 임베디드 그래프 스토어 — P1-0 실측 확인: PyPI `ladybug` = LadybugDB v0.18.0.
+# 빌드 시 정확한 버전 핀(명칭 churn 대비 §2-2). kuzu 0.11.3 은 폴백.
+embedded = ["ladybug"]        # LadybugDB (Kùzu 계보). fallback: kuzu==0.11.3
+embed    = ["sentence-transformers"]  # 영어 retrieval bge-base-en 768d (§8)
 
 [tool.setuptools]
 py-modules = []

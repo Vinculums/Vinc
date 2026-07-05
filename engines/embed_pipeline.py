@@ -101,12 +101,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--product", required=True,
                    help="WORKSPACES/planning/{product}/drafts/ 경로 결정")
-    p.add_argument("--neo4j-uri", default="neo4j://127.0.0.1:7687",
-                   help="Neo4j URI (기본값: neo4j://127.0.0.1:7687, .env NEO4J_URI 우선)")
-    p.add_argument("--neo4j-user", default="neo4j",
-                   help="Neo4j 사용자명 (기본값: neo4j)")
-    p.add_argument("--neo4j-password", default=None,
-                   help="Neo4j 비밀번호. NEO4J_PASSWORD 환경변수 우선 적용")
     p.add_argument("--model", choices=["anthropic", "local"], default="anthropic",
                    help="임베딩 모델 선택: anthropic(voyage-3) 또는 local(sentence-transformers). "
                         "기본값: anthropic")
@@ -390,16 +384,6 @@ def main() -> None:
     # 임베딩 차원을 선택한 모델에 맞게 설정 (벡터 인덱스 차원 정합)
     EMBEDDING_DIM = EMBEDDING_DIM_BY_MODEL.get(args.model, EMBEDDING_DIM)
 
-    # 연결 정보: 환경변수(.env) 우선 → 인수 폴백
-    args.neo4j_uri = os.environ.get("NEO4J_URI") or args.neo4j_uri
-    args.neo4j_user = os.environ.get("NEO4J_USER") or args.neo4j_user
-    password = os.environ.get("NEO4J_PASSWORD") or args.neo4j_password
-    if not password and not args.dry_run:
-        print("[ERROR] Neo4j 비밀번호가 없습니다.", file=sys.stderr)
-        print("        NEO4J_PASSWORD 환경변수 또는 --neo4j-password 인수를 사용하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
     start_time = time.time()
     prefix = detect_prefix()
 
@@ -496,7 +480,7 @@ def main() -> None:
     save_checkpoint(args.product, final_records)
 
     # 7. Neo4j 적재
-    store = open_store(load_config({"uri": args.neo4j_uri, "user": args.neo4j_user, "password": password}))
+    store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)

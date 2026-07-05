@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""라이브 스토어 end-to-end 검증 — "데이터플레인이 실제로 동작하는가".
+"""라이브 임베디드 스토어 end-to-end 검증 — "데이터플레인이 실제로 동작하는가".
 
-verify.py(stdlib·무 DB 게이트)와 달리 **실제 스토어**를 요구한다.
+verify.py(stdlib·무 DB 게이트)와 달리 **실제 임베디드 스토어**(LadybugDB/Kùzu)를
+요구한다. 인프로세스라 서버 없이 이 환경에서 그대로 돈다(설계 §11 P1 게이트).
 
-- `--backend neo4j`(기본): 서버 Neo4j 검증(마이그레이션·서버 경로). 스키마
-  introspection(SHOW CONSTRAINTS/INDEXES)은 Neo4j 방언이라 이 경로 전용.
-- **임베디드(LadybugDB) e2e 는 `tests/test_embedded_backend.py`** 가 담당한다 —
-  인프로세스라 `verify.py` 안에서 그대로 실행된다(드라이버 설치 시). 임베디드는
-  스키마 introspection 대신 provision→write→read 왕복으로 검증(설계 §5·§11 P1).
+  ① 스토어/스키마  — open + provision(멱등, §5)
+  ② 데이터 상태    — 라벨별 카운트, owner_id/domain 커버리지(%)
+  ③ read API       — recall/domains/graph/learner executed=True + 실 rows
+  ④ Activate       — 컨텍스트팩 생성(에피소드·학습법)
 
-드라이버 취득은 `store.backend.open_store` 단일 지점(설계 §4-1).
+드라이버 취득은 `store.backend.open_store` 단일 지점(§4-1). 사전에 엔진으로 데이터를
+적재한 스토어를 대상으로 실행한다(빈 스토어면 카운트 0 → FAIL 로 상태를 보고).
 
-    NEO4J_PASSWORD=... python e2e_live.py --owner user:doheon
-exit 0 = PASS, 1 = FAIL, 2 = 연결 불가/설정 오류.
+    MEMORY_DATA_DIR=~/.local/share/vinc/store python e2e_live.py --owner user:doheon
+exit 0 = PASS, 1 = FAIL, 2 = 스토어 불가.
 """
 from __future__ import annotations
 
@@ -23,38 +24,29 @@ import sys
 
 from store.config import load_config
 from store.backend import open_store
-from store.schema import MIGRATIONS
 from api import query as q
 from api import activate as act
 
 _OK, _FAIL = "  PASS", "  FAIL"
 
-
-def check_schema(session) -> list[tuple[bool, str]]:
-    out = []
-    have_c = {r["name"] for r in session.run("SHOW CONSTRAINTS YIELD name")}
-    have_i = {r["name"] for r in session.run("SHOW INDEXES YIELD name")}
-    have = have_c | have_i
-    for m in MIGRATIONS:
-        target = {"i_chunk_embedding": "chunk_embedding",
-                  "i_chunk_text_ft": "chunk_text_ft"}.get(m.id, m.id)
-        out.append((target in have, f"schema: {target}"))
-    return out
+_LABELS = ("Episode", "Concept", "Bridge", "LearnerPattern", "Chunk")
 
 
-def check_counts(session) -> tuple[list[tuple[bool, str]], dict]:
+def check_counts(store) -> tuple[list[tuple[bool, str]], dict]:
     counts = {}
-    for label in ("Episode", "Concept", "Bridge", "LearnerPattern", "Chunk"):
-        counts[label] = session.run(f"MATCH (n:{label}) RETURN count(n) AS c").single()["c"]
+    for label in _LABELS:
+        rows = store.run(f"MATCH (n:{label}) RETURN count(n) AS c")
+        counts[label] = (rows[0]["c"] if rows else 0)
     checks = [(counts["Episode"] > 0, f"data: :Episode {counts['Episode']}개"),
               (counts["Concept"] > 0, f"data: :Concept {counts['Concept']}개")]
     cov = {}
     for label, prop in (("Episode", "owner_id"), ("Episode", "domain"),
                         ("Concept", "owner_id"), ("Concept", "domain")):
         total = counts[label] or 1
-        n = session.run(
-            f"MATCH (n:{label}) WHERE n.{prop} IS NOT NULL AND n.{prop} <> '' RETURN count(n) AS c"
-        ).single()["c"]
+        rows = store.run(
+            f"MATCH (n:{label}) WHERE n.{prop} IS NOT NULL AND n.{prop} <> '' "
+            "RETURN count(n) AS c")
+        n = (rows[0]["c"] if rows else 0)
         pct = round(100.0 * n / total, 1)
         cov[f"{label}.{prop}"] = pct
         checks.append((pct >= 90.0, f"coverage: {label}.{prop} {pct}% (≥90 기대)"))
@@ -80,33 +72,24 @@ def check_api(owner: str, domain: str | None) -> tuple[list[tuple[bool, str]], d
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="live store end-to-end 검증")
+    ap = argparse.ArgumentParser(description="live embedded store end-to-end 검증")
     ap.add_argument("--owner", required=True, help="검증할 owner_id (예: user:doheon)")
     ap.add_argument("--domain", default=None, help="표본 도메인(자유 문자열, 생략=전체)")
-    ap.add_argument("--backend", default=None, choices=["neo4j", "embedded"],
-                    help="스토어 백엔드(생략 시 config). 스키마 introspection 은 neo4j 전용")
     args = ap.parse_args()
 
-    overrides = {"backend": args.backend} if args.backend else None
-    cfg = load_config(overrides)
+    cfg = load_config()
     store = open_store(cfg)
     if store is None:
-        print(f"[e2e] 스토어 연결 불가 (backend={cfg.backend}). 자격/설치 확인.", file=sys.stderr)
+        print("[e2e] 임베디드 스토어 불가 — 드라이버(ladybug/kuzu) 설치 확인.", file=sys.stderr)
         return 2
 
     all_checks: list[tuple[bool, str]] = []
     info: dict = {}
     try:
-        if cfg.backend == "neo4j":
-            with store.session() as s:
-                all_checks += check_schema(s)
-                counts_checks, counts_info = check_counts(s)
-                all_checks += counts_checks
-                info.update(counts_info)
-        else:
-            # 임베디드: introspection 방언 부재 — 상세 왕복은 test_embedded_backend.py.
-            print("[e2e] embedded 백엔드: 스키마 introspection 생략 "
-                  "(provision→write→read 왕복은 tests/test_embedded_backend.py).")
+        store.provision(dim=cfg.embedding_dim)  # 멱등(§5)
+        counts_checks, counts_info = check_counts(store)
+        all_checks += counts_checks
+        info.update(counts_info)
     finally:
         store.close()
 
@@ -114,7 +97,7 @@ def main() -> int:
     all_checks += api_checks
     info.update(api_info)
 
-    print("vinc · live e2e\n" + "=" * 40)
+    print("vinc · live embedded e2e\n" + "=" * 40)
     failed = 0
     for ok, msg in all_checks:
         print((_OK if ok else _FAIL) + " " + msg)

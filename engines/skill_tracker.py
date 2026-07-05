@@ -88,12 +88,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--duration-min", type=float, default=0,
                    help="소요 시간(분)")
     # 공통
-    p.add_argument("--neo4j-uri", default=None,
-                   help="Neo4j URI (기본값: NEO4J_URI 환경변수 → neo4j://127.0.0.1:7687)")
-    p.add_argument("--neo4j-user", default=None,
-                   help="Neo4j 사용자명 (기본값: NEO4J_USER → neo4j)")
-    p.add_argument("--neo4j-password", default=None,
-                   help="Neo4j 비밀번호 (기본값: NEO4J_PASSWORD 환경변수)")
     p.add_argument("--output", default=None,
                    help="(report 전용) 출력 파일 경로. 기본값: CONTEXT/memory/recall/skill-report-{date}.md")
     p.add_argument("--dry-run", action="store_true",
@@ -266,10 +260,6 @@ def main() -> None:
     _load_dotenv()
     args = build_parser().parse_args()
 
-    uri = args.neo4j_uri or os.environ.get("NEO4J_URI", "neo4j://127.0.0.1:7687")
-    user = args.neo4j_user or os.environ.get("NEO4J_USER", "neo4j")
-    password = args.neo4j_password or os.environ.get("NEO4J_PASSWORD", "")
-
     # dry-run: log 액션만 미적재 허용
     if args.dry_run and args.action == "log":
         now = datetime.now()
@@ -285,13 +275,8 @@ def main() -> None:
         print("[DRY-RUN] 완료. --dry-run 없이 실행하면 Neo4j 에 적재됩니다.")
         return
 
-    if not password:
-        print("[ERROR] Neo4j 비밀번호가 없습니다. NEO4J_PASSWORD 환경변수를 설정하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
     start = time.time()
-    store = open_store(load_config({"uri": uri, "user": user, "password": password}))
+    store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)
