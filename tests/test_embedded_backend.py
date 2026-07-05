@@ -80,6 +80,33 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(len(res["rows"]), 1, "MERGE 멱등 실패(2회 적재→1행 기대)")
         self.assertEqual(res["rows"][0]["title"], "Refund policy session")
 
+    def test_preference_recall_ranks_on_embedded(self):
+        """preference recall 이 임베디드에서 동작(방언 회귀 방지) — 점수는 백엔드 밖."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.recall_to_neo4j import merge_episode
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        base = {"date": "2026-07-01", "tenant_id": "t", "workspace": "w",
+                "mode": "m", "summary": "s", "completed": True,
+                "patterns": [], "source_file": "f"}
+        with store.session() as s:
+            merge_episode(s, {**base, "episode_id": "plain", "title": "plain",
+                              "owner_id": "u", "domain": "d", "date": "2026-07-03"})
+            merge_episode(s, {**base, "episode_id": "pinned", "title": "pinned",
+                              "owner_id": "u", "domain": "d"})
+            s.run("MATCH (e:Episode {episode_id:'pinned'}) "
+                  "SET e.pinned=true, e.access_count=10")
+        store.close()
+
+        r = q.recall(owner="u", rank="preference")
+        self.assertTrue(r["executed"])
+        self.assertEqual(r["rows"][0]["id"], "pinned")   # pin+freq 부스트로 선두
+        self.assertGreater(r["rows"][0]["score"], r["rows"][1]["score"])
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

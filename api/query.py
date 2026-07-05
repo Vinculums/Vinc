@@ -27,9 +27,32 @@ class QueryPlan:
 
 # ── Plan builders (pure) ─────────────────────────────────────────────────────
 
-# Default preference weights for rank="preference". Tunable per call; surfaced in
-# the plan params so a caller (and tests) can see exactly how a ranking was scored.
+# Default preference weights for rank="preference". Tunable per call.
 PREF_WEIGHTS = {"w_pin": 3.0, "w_freq": 1.0, "w_tag": 2.0, "freq_k": 5.0}
+
+
+def score_preference(rows: list[dict], *, weights: dict | None = None,
+                     tags: list[str] | None = None, limit: int = 10) -> list[dict]:
+    """소유자 선호 신호로 recall 후보를 랭크하는 **순수 함수**(백엔드 무의존, §4-2).
+
+    점수 = w_pin·pin + w_freq·(access_count 포화항) + w_tag·(tags 교집합 수).
+    각 행에 ``score`` 를 부여하고 점수 내림차순으로 상한 ``limit`` 까지 반환한다.
+    입력 ``rows`` 는 recency(date DESC) 정렬 상태를 전제 — 파이썬 정렬이 안정적이라
+    동점은 recency tie-break 로 유지된다."""
+    w = {**PREF_WEIGHTS, **(weights or {})}
+    tagset = set(tags or [])
+
+    def _score(r: dict) -> float:
+        pin = 1.0 if r.get("pinned") else 0.0
+        ac = float(r.get("access_count") or 0)
+        freq = ac / (ac + w["freq_k"]) if (ac + w["freq_k"]) else 0.0
+        overlap = float(len(tagset & set(r.get("tags") or []))) if tagset else 0.0
+        return w["w_pin"] * pin + w["w_freq"] * freq + w["w_tag"] * overlap
+
+    scored = sorted(rows, key=_score, reverse=True)  # stable → recency tie-break 유지
+    for r in scored:
+        r["score"] = _score(r)
+    return scored[:limit]
 
 
 def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None = None,
@@ -75,24 +98,19 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
                   "coalesce(e.pinned, false) AS pinned, coalesce(e.tags, []) AS tags")
 
     if rank == "preference":
-        w = {**PREF_WEIGHTS, **(weights or {})}
-        params.update(w)
-        # pin boost + saturating access-frequency term + optional tag overlap.
-        terms = [
-            "$w_pin * (CASE WHEN coalesce(e.pinned, false) THEN 1.0 ELSE 0.0 END)",
-            "$w_freq * (toFloat(coalesce(e.access_count, 0)) / (toFloat(coalesce(e.access_count, 0)) + $freq_k))",
-        ]
-        if tags:
-            params["tags"] = tags
-            terms.append("$w_tag * toFloat(size([t IN coalesce(e.tags, []) WHERE t IN $tags]))")
-        score_expr = " + ".join(terms)
+        # 선호 점수는 **백엔드 밖 순수 함수**(:func:`score_preference`)로 매긴다 —
+        # RRF 융합과 동형(§4-2). 임베디드(Kùzu 계보)는 toFloat·리스트 컴프리헨션·
+        # 인덱스 스코어링 방언이 Neo4j 와 달라(§6), Cypher 내 점수식은 이식성이
+        # 낮다. 스코프 필터된 후보 전량을 pin/access_count/tags 와 함께 가져와
+        # (단일 사용자 규모 — §12 R5) 인-프로세스로 랭크·상한한다.
+        proj = projection + ", coalesce(e.access_count, 0) AS access_count"
         cypher = (
             f"MATCH (e:Episode) {clause} "
-            f"WITH e, ({score_expr}) AS pref_score "
-            f"RETURN {projection}, pref_score AS score "
-            "ORDER BY pref_score DESC, e.date DESC LIMIT $limit"
+            f"RETURN {proj} "
+            "ORDER BY e.date DESC"        # 안정 정렬 기반(동점 시 recency tie-break)
         )
-        return QueryPlan("recall", cypher, params, note="episodic recall (preference-aligned)")
+        return QueryPlan("recall", cypher, params,
+                         note="episodic recall (preference — scored in-process)")
 
     cypher = (
         f"MATCH (e:Episode) {clause} "
@@ -163,12 +181,18 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None) -> dict:
 
 def recall(query: str = "", *, owner: str | None = None, tenant: str | None = None,
            domain: str | None = None, workspace: str | None = None,
-           tags: list[str] | None = None, rank: str = "recency", limit: int = 10, cfg=None) -> dict:
-    return execute(
+           tags: list[str] | None = None, rank: str = "recency", limit: int = 10,
+           weights: dict | None = None, cfg=None) -> dict:
+    res = execute(
         recall_plan(query, owner=owner, tenant=tenant, domain=domain,
-                    workspace=workspace, tags=tags, rank=rank, limit=limit),
+                    workspace=workspace, tags=tags, rank=rank, limit=limit, weights=weights),
         cfg,
     )
+    # preference 랭킹은 백엔드 밖 순수 함수로(§4-2). 플랜은 후보 전량을 date DESC 로
+    # 가져오고, 여기서 점수·상한을 적용한다.
+    if rank == "preference" and res.get("executed"):
+        res["rows"] = score_preference(res["rows"], weights=weights, tags=tags, limit=limit)
+    return res
 
 
 def domains_plan(*, owner: str | None = None) -> QueryPlan:

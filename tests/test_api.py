@@ -111,29 +111,46 @@ class ShapeGraphTests(unittest.TestCase):
         self.assertIn("ORDER BY e.date DESC", plan.cypher)
         self.assertNotIn("pref_score", plan.cypher)
 
-    def test_recall_preference_rank_scores_and_orders(self):
+    def test_recall_preference_plan_fetches_signal_columns_by_date(self):
+        # 점수는 백엔드 밖(score_preference)에서 매긴다 — 플랜은 신호 열을 date DESC 로
+        # 전량 가져올 뿐(Cypher 내 점수식·방언 없음, §4-2).
         plan = q.recall_plan(owner="u1", rank="preference")
-        self.assertIn("pref_score", plan.cypher)
-        self.assertIn("ORDER BY pref_score DESC, e.date DESC", plan.cypher)
-        # pin + frequency terms present; weights surfaced as params
-        self.assertIn("e.pinned", plan.cypher)
-        self.assertIn("e.access_count", plan.cypher)
-        self.assertEqual(plan.params["w_pin"], 3.0)
-        self.assertEqual(plan.params["freq_k"], 5.0)
-        # no tags passed -> no tag scoring term / no tags param
-        self.assertNotIn("$w_tag", plan.cypher)
-        self.assertNotIn("tags", plan.params)
+        self.assertIn("access_count", plan.cypher)   # 점수 신호 투영
+        self.assertIn("coalesce(e.pinned, false) AS pinned", plan.cypher)
+        self.assertIn("ORDER BY e.date DESC", plan.cypher)
+        self.assertNotIn("toFloat", plan.cypher)      # 방언 함수 제거
+        self.assertNotIn("pref_score", plan.cypher)
 
-    def test_recall_preference_tag_boost_only_when_tags(self):
-        plan = q.recall_plan(owner="u1", rank="preference", tags=["billing", "kr"])
-        self.assertIn("e.tags", plan.cypher)
-        self.assertEqual(plan.params["tags"], ["billing", "kr"])
-        self.assertIn("$w_tag", plan.cypher)
+    def test_score_preference_pin_and_frequency(self):
+        rows = [
+            {"id": "a", "pinned": False, "access_count": 0, "tags": []},
+            {"id": "b", "pinned": True, "access_count": 0, "tags": []},   # pin boost
+            {"id": "c", "pinned": False, "access_count": 100, "tags": []},  # freq
+        ]
+        ranked = q.score_preference(rows, limit=10)
+        self.assertEqual(ranked[0]["id"], "b")        # w_pin(3) > w_freq 포화항
+        self.assertEqual({r["id"] for r in ranked}, {"a", "b", "c"})
+        self.assertTrue(all("score" in r for r in ranked))
 
-    def test_recall_preference_custom_weights(self):
-        plan = q.recall_plan(owner="u1", rank="preference", weights={"w_pin": 9.0})
-        self.assertEqual(plan.params["w_pin"], 9.0)
-        self.assertEqual(plan.params["w_freq"], 1.0)  # default preserved
+    def test_score_preference_tag_overlap_only_when_tags(self):
+        rows = [
+            {"id": "a", "pinned": False, "access_count": 0, "tags": ["billing"]},
+            {"id": "b", "pinned": False, "access_count": 0, "tags": ["x"]},
+        ]
+        ranked = q.score_preference(rows, tags=["billing", "kr"], limit=10)
+        self.assertEqual(ranked[0]["id"], "a")        # 태그 겹침 부스트
+        # 태그 미지정 시 겹침항 0 — 순서는 recency(입력 순서) 유지
+        ranked0 = q.score_preference(rows, tags=None, limit=10)
+        self.assertEqual([r["id"] for r in ranked0], ["a", "b"])
+
+    def test_score_preference_custom_weights_and_limit(self):
+        rows = [
+            {"id": "a", "pinned": True, "access_count": 0, "tags": []},
+            {"id": "b", "pinned": False, "access_count": 100, "tags": []},
+        ]
+        ranked = q.score_preference(rows, weights={"w_pin": 0.0}, limit=1)
+        self.assertEqual(len(ranked), 1)
+        self.assertEqual(ranked[0]["id"], "b")        # w_pin=0 → 빈도 우세
 
     def test_search_plan_uses_fulltext_index(self):
         plan = q.search_plan("환불", top_k=3)
