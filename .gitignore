@@ -6,3 +6,7 @@ dist/
 build/
 *.egg-info/
 models/
+vinc_store
+*.lbug
+*.kuzu
+vinc_e2e/
