@@ -125,7 +125,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.plankind == "recall":
             plan = q.recall_plan(args.query)
         elif args.plankind == "search":
-            plan = q.search_plan(args.query)
+            # search 는 단일 Cypher 플랜이 아니라 store.fulltext_search +
+            # (선택)vector_search + RRF 융합이다(§4-2) — 인스펙션용 기술 dict.
+            return _emit({"kind": "search", "arms": ["fulltext(BM25)", "vector(주입 시)"],
+                          "fusion": "RRF(k=60)", "note": "store 메서드 경유 — 단일 Cypher 아님"})
         else:
             plan = q.decide_plan(args.topic)
         return _emit(plan.to_dict())

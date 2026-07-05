@@ -152,10 +152,19 @@ class ShapeGraphTests(unittest.TestCase):
         self.assertEqual(len(ranked), 1)
         self.assertEqual(ranked[0]["id"], "b")        # w_pin=0 → 빈도 우세
 
-    def test_search_plan_uses_fulltext_index(self):
-        plan = q.search_plan("환불", top_k=3)
-        self.assertIn("chunk_text_ft", plan.cypher)
-        self.assertEqual(plan.params["top_k"], 3)
+    def test_rrf_fuse_combines_arms(self):
+        # RRF: 두 암(vector·BM25) 순위를 1/(k+rank) 합산 융합(§4-2, 순수 함수).
+        vec = [{"id": "a"}, {"id": "b"}, {"id": "c"}]     # a 최상위
+        fts = [{"id": "c"}, {"id": "a"}, {"id": "d"}]     # c 최상위
+        fused = q.rrf_fuse([vec, fts], top_k=3)
+        ids = [r["id"] for r in fused]
+        # a: 1/61+1/62, c: 1/63+1/61 — a·c 가 양쪽 상위라 선두, 단일 등장 b/d 후순위
+        self.assertEqual(set(ids[:2]), {"a", "c"})
+        self.assertTrue(all("rrf_score" in r for r in fused))
+
+    def test_rrf_single_arm_passthrough(self):
+        fused = q.rrf_fuse([[{"id": "x"}, {"id": "y"}]], top_k=1)
+        self.assertEqual(fused[0]["id"], "x")
 
     def test_decide_plan_depth_clamped(self):
         plan = q.decide_plan("g5.b.x", depth=99)
@@ -175,8 +184,12 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(res["rows"], [])
 
     def test_search_entrypoint(self):
+        # search 는 store.fulltext_search + (선택)vector_search + RRF(§4-2). 인덱스
+        # 미구축 시 executed=False 로 강등(무 크래시). plan dict 아님(kind=search).
         res = q.search("query")
-        self.assertEqual(res["plan"]["kind"], "search")
+        self.assertEqual(res["kind"], "search")
+        self.assertIn("executed", res)
+        self.assertEqual(res["rows"], [])
 
     def test_decide_entrypoint(self):
         res = q.decide("topic")

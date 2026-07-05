@@ -126,18 +126,25 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
     return QueryPlan("recall", cypher, params, note="3-tier episodic memory (owner-scoped)")
 
 
-def search_plan(query: str, *, top_k: int = 5) -> QueryPlan:
-    """Hybrid retrieval over Chunk nodes. The vector arm needs a query embedding
-    supplied at execution; the plan expresses the BM25 (fulltext) arm, which is
-    fused with the vector arm via RRF in ``execute``."""
-    params = {"q": query, "top_k": int(top_k)}
-    cypher = (
-        "CALL db.index.fulltext.queryNodes('chunk_text_ft', $q) "
-        "YIELD node, score "
-        "RETURN node.id AS id, node.text AS text, score "
-        "ORDER BY score DESC LIMIT $top_k"
-    )
-    return QueryPlan("search", cypher, params, note="BM25 arm (fuse with vector via RRF)")
+def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
+             top_k: int | None = None, id_key: str = "id") -> list[dict]:
+    """Reciprocal Rank Fusion — 하이브리드 검색의 순수 융합 함수(§4-2, 백엔드 밖).
+
+    각 순위 리스트에서 항목의 기여 = 1/(k + rank). 여러 암(vector·BM25)의 기여를
+    합산해 재정렬한다. 학습·점수 보정 불요(k≈60 기본). 각 행에 ``rrf_score`` 부여."""
+    scores: dict = {}
+    rows_by_id: dict = {}
+    for rows in ranked_lists:
+        for rank, row in enumerate(rows):
+            rid = row.get(id_key)
+            if rid is None:
+                continue
+            scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank + 1)
+            rows_by_id.setdefault(rid, row)
+    fused = sorted(rows_by_id.values(), key=lambda r: scores[r[id_key]], reverse=True)
+    for r in fused:
+        r["rrf_score"] = scores[r[id_key]]
+    return fused[:top_k] if top_k else fused
 
 
 def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
@@ -296,8 +303,31 @@ def graph(*, owner: str, domain: str | None = None, cfg=None) -> dict:
     return {"executed": res.get("executed", False), **shaped}
 
 
-def search(query: str, *, top_k: int = 5, cfg=None) -> dict:
-    return execute(search_plan(query, top_k=top_k), cfg)
+def search(query: str, *, query_embedding: list[float] | None = None,
+           top_k: int = 5, filters: dict | None = None, cfg=None) -> dict:
+    """하이브리드 검색 — BM25(FTS) + (선택)벡터 암을 RRF 로 융합(§4-2).
+
+    벡터 암은 **쿼리 임베딩 주입형**(§3-1): 호출부(사이드카)가 모델로 쿼리를
+    임베딩해 ``query_embedding`` 으로 넘긴다 → 검색 코드는 임베딩 모델과 무관.
+    미주입 시 BM25 단독. 인덱스·확장 부재 시 executed=False 로 강등(무 크래시)."""
+    cfg = cfg or load_config()
+    store = open_store(cfg)
+    base = {"kind": "search", "executed": False, "rows": []}
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        arms = [store.fulltext_search(query, top_k, filters)]   # BM25 암
+        if query_embedding is not None:
+            arms.append(store.vector_search(query_embedding, top_k, filters))
+        rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+        base["executed"] = True
+        base["rows"] = rows
+    except Exception as exc:
+        base["note"] = f"search 실행 실패 — {type(exc).__name__}: {exc}"
+    finally:
+        store.close()
+    return base
 
 
 def decide(topic: str, *, depth: int = 2, cfg=None) -> dict:

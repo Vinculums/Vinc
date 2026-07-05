@@ -186,6 +186,37 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(v[0]["id"], "a")                       # 최근접
         self.assertEqual({r["id"] for r in f}, {"a", "c"})      # refund 포함 청크
 
+    def test_hybrid_search_rrf_via_api(self):
+        """api.query.search 하이브리드(BM25+벡터 RRF, §4-2) — 쿼리 임베딩 주입형."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=4)
+        with store.session() as s:
+            for cid, txt, emb in [
+                ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
+                ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
+                ("c", "refund dispute resolution", [0.9, 0.2, 0.0, 0.0])]:
+                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.embedding=$e",
+                      id=cid, t=txt, e=emb)
+        try:
+            store.build_search_indexes(dim=4)
+        except RuntimeError as exc:
+            store.close()
+            self.skipTest(f"검색 확장 미가용 — §9: {exc}")
+        store.close()
+        # BM25 단독
+        r1 = q.search("refund", top_k=3)
+        self.assertTrue(r1["executed"])
+        self.assertTrue({"a", "c"} <= {row["id"] for row in r1["rows"]})
+        # 하이브리드(쿼리 임베딩 주입) → RRF 융합
+        r2 = q.search("refund", query_embedding=[1.0, 0.0, 0.0, 0.0], top_k=3)
+        self.assertTrue(r2["executed"])
+        self.assertTrue(all("rrf_score" in row for row in r2["rows"]))
+        self.assertEqual(r2["rows"][0]["id"], "a")   # 벡터 최근접 + BM25 refund 겹침
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config
