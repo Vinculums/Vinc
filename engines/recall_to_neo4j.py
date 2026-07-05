@@ -157,6 +157,18 @@ def collect_session_files() -> list[tuple[Path, date]]:
 # ── Episode 노드 생성 ─────────────────────────────────────────────────────────
 
 _LEARNING_SEG = re.compile(r"learning/([^/\s,+)]+)")
+_BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
+
+
+def _split_patterns(text: str) -> list[str]:
+    """패턴 섹션 텍스트 → STRING[](설계 §5-2 — tags·observations 와 동류 리스트).
+    불릿/번호 마커를 떼고 비어있지 않은 줄만 취한다."""
+    out: list[str] = []
+    for line in text.splitlines():
+        s = _BULLET_RE.sub("", line).strip()
+        if s:
+            out.append(s[:200])
+    return out[:50]
 
 
 def _primary_domain(raw: str) -> str:
@@ -203,11 +215,13 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
         or fm.get("summary", "")
     )[:500]  # 최대 500자
 
-    # 완료 항목: 해당 섹션 텍스트
-    completed = sections.get("완료 항목") or sections.get("완료한 것") or ""
+    # 완료 여부(BOOL, 설계 §5-2): 완료 항목 섹션에 내용이 있으면 True. 임베디드
+    # 백엔드는 타입 선언형이라(Neo4j schema-free 와 달리) STRING 을 BOOL 열에
+    # 넣을 수 없다 — 선언 타입에 맞춘다.
+    completed_text = sections.get("완료 항목") or sections.get("완료한 것") or ""
 
-    # 발견 패턴
-    patterns = sections.get("발견된 패턴") or sections.get("패턴") or ""
+    # 발견 패턴(STRING[], 설계 §5-2): 섹션을 줄 단위 리스트로(불릿 마커 제거).
+    patterns_text = sections.get("발견된 패턴") or sections.get("패턴") or ""
 
     return {
         "episode_id": session_id,
@@ -223,8 +237,8 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
         "workspace": fm.get("workspace", ""),
         "mode": fm.get("mode", ""),
         "summary": summary,
-        "completed": completed[:300],
-        "patterns": patterns[:300],
+        "completed": bool(completed_text.strip()),
+        "patterns": _split_patterns(patterns_text),
         "source_file": str(file_path),
     }
 

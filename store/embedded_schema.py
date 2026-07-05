@@ -47,7 +47,9 @@ _NODE_TABLES: dict[str, dict] = {
     "LearnerPattern": {"pk": "pattern_id", "cols": [
         ("pattern_id", "STRING"), ("owner_id", "STRING"), ("code", "STRING"),
         ("name", "STRING"), ("description", "STRING"), ("domain", "STRING"),
-        ("observations", "STRING[]")]},
+        # observations 는 관측 **횟수(count)** 다 — learner 파서가 표의 n 셀을
+        # int 로 뽑고 activate 가 `n={}` 로 표시(§5-2 감사정정: 리스트 아님).
+        ("observations", "INT64")]},
     # embed_pipeline — 벡터 차원은 provision 시 주입({dim}). HAS_CHUNK(→PM) 제외.
     "Chunk": {"pk": "chunk_id", "cols": [
         ("chunk_id", "STRING"), ("source_file", "STRING"), ("doc_id", "STRING"),
