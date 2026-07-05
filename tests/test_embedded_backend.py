@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from store.embedded_backend import _import_driver  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
+# ⚠ ladybug 와 kuzu 는 한 프로세스에 공존 불가(pybind11 타입 재등록 충돌). 테스트는
+# **활성 기본 드라이버 하나만** 쓴다 — 두 번째 드라이버를 절대 import 하지 않는다.
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug/kuzu) 미설치 — e2e skip")
@@ -155,6 +157,34 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN count(r) AS c")
         store.close()
         self.assertEqual(rows[0]["c"], 3)  # 3 Concept 관계
+
+    def test_vector_and_fts_search(self):
+        """M5/M6: 벡터(HNSW)+FTS(BM25) 검색 — 활성 기본 드라이버로. 검색 확장이
+        없으면(ladybug 는 별도 다운로드 → 오프라인 시 번들 §9; 프록시 차단 환경)
+        skip. kuzu 는 정적 링크라 그대로 실행. (두 드라이버 동시 import 금지.)"""
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()                    # 활성 기본 드라이버(두 번째 import 금지)
+        store = open_store(cfg)
+        self.assertIsNotNone(store)
+        store.provision(dim=4)
+        with store.session() as s:
+            for cid, txt, emb in [
+                ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
+                ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
+                ("c", "refund dispute", [0.9, 0.2, 0.0, 0.0])]:
+                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.embedding=$e",
+                      id=cid, t=txt, e=emb)
+        try:
+            store.build_search_indexes(dim=4)   # 적재 후 인덱스 build(HNSW)
+        except RuntimeError as exc:
+            store.close()
+            self.skipTest(f"검색 확장 미가용({store.driver_name}) — §9 번들 필요: {exc}")
+        v = store.vector_search([1.0, 0.0, 0.0, 0.0], top_k=2)
+        f = store.fulltext_search("refund", top_k=3)
+        store.close()
+        self.assertEqual(v[0]["id"], "a")                       # 최근접
+        self.assertEqual({r["id"] for r in f}, {"a", "c"})      # refund 포함 청크
 
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""

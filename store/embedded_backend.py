@@ -19,18 +19,34 @@ from .config import StoreConfig
 from .embedded_schema import render_embedded_ddl
 
 
-def _import_driver():
-    """임베디드 드라이버 단일 임포트 지점. (모듈, 이름) 반환 또는 (None, None)."""
-    try:
-        import ladybug as drv  # LadybugDB v0.18.0 (PyPI `ladybug`)
-        return drv, "ladybug"
-    except ImportError:
-        pass
-    try:
-        import kuzu as drv  # 폴백 — Kùzu 0.11.3 핀
-        return drv, "kuzu"
-    except ImportError:
-        return None, None
+def _import_driver(prefer: str | None = None):
+    """임베디드 드라이버 단일 임포트 지점(§2-2 R1 — 포크 결합 상한).
+    prefer="kuzu"|"ladybug" 로 선호 지정 가능(config.embedded_driver). 기본 자동:
+    ladybug(v0.18.0) → kuzu(0.11.3 폴백). (모듈, 이름) 또는 (None, None)."""
+    order = {
+        "kuzu": ["kuzu", "ladybug"],
+        "ladybug": ["ladybug", "kuzu"],
+    }.get(prefer, ["ladybug", "kuzu"])
+    for name in order:
+        try:
+            return __import__(name), name
+        except ImportError:
+            continue
+    return None, None
+
+
+def _filter_clause(var: str, filters: dict | None, params: dict) -> str:
+    """스코프 필터를 WHERE 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params
+    를 in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이 WHERE 로 붙인다."""
+    if not filters:
+        return ""
+    preds = []
+    for key in ("owner_id", "domain", "tenant_id"):
+        val = filters.get(key)
+        if val is not None:
+            preds.append(f"{var}.{key} = ${key}")
+            params[key] = val
+    return ("WHERE " + " AND ".join(preds) + " ") if preds else ""
 
 
 class _Result:
@@ -90,14 +106,19 @@ class EmbeddedBackend:
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
-        drv, name = _import_driver()
+        drv, name = _import_driver(cfg.embedded_driver)
         if drv is None:
             return None
         import os
         data_dir = cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
-        db = drv.Database(data_dir)
-        conn = drv.Connection(db)
+        try:
+            db = drv.Database(data_dir)
+            conn = drv.Connection(db)
+        except Exception:
+            # 스토어 열기 실패(락·손상·드라이버 초기화) → None 강등(§3-4).
+            # 호출부(execute)는 executed=False 로 처리.
+            return None
         return cls(db, conn, name, cfg)
 
     @contextmanager
@@ -122,11 +143,65 @@ class EmbeddedBackend:
                     raise
         return statements
 
+    # ── 검색 인덱스 (M5/M6) ────────────────────────────────────────────────
+    # Kùzu 계보의 벡터(HNSW)·FTS(BM25)는 확장 기능이다. kuzu 0.11.3 은 정적 링크
+    # (오프라인 즉시), ladybug v0.18.0 은 별도 확장 → **오프라인 배포 시 번들 필수**
+    # (§9). ⚠ 인덱스가 embedding 열에 걸려 있으면 그 열을 수정할 수 없다 —
+    # 인덱스는 **적재 후 build**, 재적재 전 **drop**(embed 잡이 관리, §3-1-1).
+    _VEC_INDEX = "chunk_vec"
+    _FTS_INDEX = "chunk_ft"
+    _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
+
+    def _load_ext(self, ext: str) -> None:
+        """벡터/FTS 확장 로드. kuzu 는 정적 링크(무연산), ladybug 는 다운로드 필요.
+        확장 부재 시 명확한 오류로 강등(오프라인 미번들 상황 — §9)."""
+        try:
+            self._conn.execute(f"LOAD EXTENSION {ext}")
+        except Exception as exc:
+            if "already" in str(exc).lower() or "statically linked" in str(exc).lower():
+                return
+            raise RuntimeError(
+                f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
+                f"번들 필요(§9). 원인: {exc}") from exc
+
+    def build_search_indexes(self, *, dim: int) -> None:
+        """적재 후 벡터+FTS 인덱스 (재)생성. 멱등(기존 drop 후 재생성)."""
+        self._load_ext("vector")
+        self._load_ext("fts")
+        for call in (f"CALL DROP_VECTOR_INDEX('Chunk','{self._VEC_INDEX}')",
+                     f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')"):
+            try:
+                self._conn.execute(call)
+            except Exception:
+                pass  # 미존재 — 무시(멱등)
+        self._conn.execute(f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
+        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+
     def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
-        raise NotImplementedError("벡터 인덱스 질의는 P1 후속(§6-2 M6)")
+        self._load_ext("vector")
+        k = int(top_k) * (self._OVERSAMPLE if filters else 1)  # pre-filter 과추출(§4-2)
+        params: dict = {"emb": list(embedding), "k": k}
+        where = _filter_clause("node", filters, params)
+        cypher = (
+            f"CALL QUERY_VECTOR_INDEX('Chunk','{self._VEC_INDEX}', $emb, $k) "
+            f"{where}"
+            "RETURN node.chunk_id AS id, node.text AS text, distance "
+            "ORDER BY distance LIMIT $k"
+        )
+        return _exec_to_dicts(self._conn, cypher, params)[:int(top_k)]
 
     def fulltext_search(self, text, top_k, filters=None) -> list[dict]:
-        raise NotImplementedError("FTS 질의는 P1 후속(§6-2 M5)")
+        self._load_ext("fts")
+        k = int(top_k) * (self._OVERSAMPLE if filters else 1)
+        params: dict = {"q": text, "k": k}
+        where = _filter_clause("node", filters, params)
+        cypher = (
+            f"CALL QUERY_FTS_INDEX('Chunk','{self._FTS_INDEX}', $q) "
+            f"{where}"
+            "RETURN node.chunk_id AS id, node.text AS text, score "
+            "ORDER BY score DESC LIMIT $k"
+        )
+        return _exec_to_dicts(self._conn, cypher, params)[:int(top_k)]
 
     def snapshot(self, dest_dir: str) -> str:
         """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2)."""
