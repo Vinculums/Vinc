@@ -171,18 +171,21 @@ def write_pack(pack: ContextPack, out_dir: str | Path) -> dict:
 def activate(query: str = "", *, owner: str, tenant: str | None = None,
              domain: str | None = None, workspace: str | None = None,
              tags: list[str] | None = None, rank: str = "preference", limit: int = 20,
-             include_model: bool = True,
+             include_model: bool = False,
              generated_at: str | None = None, out_dir: str | Path | None = None,
              cfg=None) -> dict:
-    """Recall an individual's learning and build a portable context pack.
+    """Recall owner-scoped records and build a portable context pack.
 
-    ``domain`` (free, user-defined — physics/math/art/…) optionally scopes the pack
-    to one learning domain; omit to export across all of the owner's domains.
-    ``include_model`` (default True) also exports the person's *learning method*
-    (LearnerPattern rows) so the pack is "my learning *and how I learn it*".
-    Defaults to ``rank="preference"`` — an export should lead with what the learner
-    actually cares about. Writes the three files when ``out_dir`` is given,
-    otherwise returns the pack inline."""
+    ``domain`` (free, user-defined) optionally scopes the pack to one dataset
+    partition; omit to export across all of the owner's domains. Defaults to
+    ``rank="preference"`` — an export leads with the owner's preference signals.
+
+    ``include_model`` (**default False** — Vinc 기본 export 은 learner 섹션 부재:
+    설계 §13 D6 · WO §3 F6, 학습 프레이밍 미승계 §1). 마이그레이션(A+2, §10)의
+    무손실 이관 시에만 ``True`` 로 learner 신호(LearnerPattern)를 포함한다 — 이때만
+    pack 에 학습법 섹션이 실린다(D4 는 pack 이 신호를 담을 수 **있게** 하는 것이지
+    기본 노출이 아니다). Preference 신호(pinned/tags/access_count/last_access)는
+    rank 무관 항상 수록된다(§10·D4). Writes three files when ``out_dir`` given."""
     res = q.recall(query, owner=owner, tenant=tenant, domain=domain,
                    workspace=workspace, tags=tags, rank=rank, limit=limit, cfg=cfg)
     model_rows = q.learner_model(owner=owner, cfg=cfg).get("rows", []) if include_model else []

@@ -92,21 +92,24 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
         where.append("(toLower(e.title) CONTAINS toLower($q) OR toLower(e.summary) CONTAINS toLower($q))")
         params["q"] = query
     clause = ("WHERE " + " AND ".join(where)) if where else ""
+    # 투영에 preference 신호(pinned/tags/access_count/last_access)를 항상 포함한다 —
+    # 이 신호는 런타임 축적분으로 원문 재수집으로 복원 불가하며 pack.json 이 유일한
+    # 무손실 이관 통로다(설계 §10·D4). recency·preference 공통.
     projection = ("e.episode_id AS id, e.title AS title, e.date AS date, "
                   "e.owner_id AS owner, e.domain AS domain, e.tenant_id AS tenant, "
                   "e.workspace AS workspace, e.summary AS summary, "
-                  "coalesce(e.pinned, false) AS pinned, coalesce(e.tags, []) AS tags")
+                  "coalesce(e.pinned, false) AS pinned, coalesce(e.tags, []) AS tags, "
+                  "coalesce(e.access_count, 0) AS access_count, e.last_access AS last_access")
 
     if rank == "preference":
         # 선호 점수는 **백엔드 밖 순수 함수**(:func:`score_preference`)로 매긴다 —
         # RRF 융합과 동형(§4-2). 임베디드(Kùzu 계보)는 toFloat·리스트 컴프리헨션·
-        # 인덱스 스코어링 방언이 Neo4j 와 달라(§6), Cypher 내 점수식은 이식성이
-        # 낮다. 스코프 필터된 후보 전량을 pin/access_count/tags 와 함께 가져와
-        # (단일 사용자 규모 — §12 R5) 인-프로세스로 랭크·상한한다.
-        proj = projection + ", coalesce(e.access_count, 0) AS access_count"
+        # 인덱스 스코어링 방언이 Neo4j 와 달라(§6), Cypher 내 점수식은 이식성이 낮다.
+        # 스코프 필터된 후보 전량을 신호와 함께 가져와(단일 사용자 규모 — §12 R5)
+        # 인-프로세스로 랭크·상한한다.
         cypher = (
             f"MATCH (e:Episode) {clause} "
-            f"RETURN {proj} "
+            f"RETURN {projection} "
             "ORDER BY e.date DESC"        # 안정 정렬 기반(동점 시 recency tie-break)
         )
         return QueryPlan("recall", cypher, params,

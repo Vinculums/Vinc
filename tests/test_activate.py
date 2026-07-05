@@ -31,6 +31,23 @@ class PackJsonTests(unittest.TestCase):
         self.assertEqual(d["episode_count"], 2)
         self.assertEqual(d["episodes"][0]["title"], "Billing 정책 결정")
 
+    def test_preference_signals_survive_lossless(self):
+        # D4(§10): 런타임 축적 신호(pinned/tags/access_count/last_access)는 재수집으로
+        # 복원 불가 — pack.json 이 무손실 이관 통로. recall 투영이 이 신호를 담고,
+        # build_context_pack 이 그대로 보존해야 한다.
+        rows = [{"id": "e1", "title": "T", "pinned": True, "tags": ["keep"],
+                 "access_count": 7, "last_access": "2026-07-04T10:00"}]
+        ep = act.build_context_pack(rows, owner="u").to_json()["episodes"][0]
+        for k, v in {"pinned": True, "tags": ["keep"], "access_count": 7,
+                     "last_access": "2026-07-04T10:00"}.items():
+            self.assertEqual(ep[k], v)
+
+    def test_default_export_omits_learner_section(self):
+        # WO §3 F6 · 설계 D6: Vinc 기본 pack 은 learner 섹션 부재(학습 프레이밍 미승계).
+        # activate 기본 include_model=False.
+        import inspect
+        self.assertIs(inspect.signature(act.activate).parameters["include_model"].default, False)
+
 
 class PackMarkdownTests(unittest.TestCase):
     def test_markdown_has_title_pin_tags(self):
