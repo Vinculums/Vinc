@@ -26,8 +26,10 @@ class PinTests(unittest.TestCase):
 class TagTests(unittest.TestCase):
     def test_tag_is_set_union(self):
         plan = pref.tag_plan("s1", ["billing", "kr"])
-        # union: append only tags not already present (no dupes, no removals)
-        self.assertIn("WHERE NOT t IN coalesce(e.tags, [])", plan.cypher)
+        # union: 기존+신규 합집합(중복 제거). kuzu 리스트 컴프리헨션 미지원 →
+        # list_distinct(list_cat(...))로 정합(§6-2). 리스트 컴프리헨션 잔존 금지.
+        self.assertIn("list_distinct(list_cat(coalesce(e.tags, []), $tags))", plan.cypher)
+        self.assertNotIn("[t IN $tags", plan.cypher)
         self.assertEqual(plan.params["tags"], ["billing", "kr"])
 
 

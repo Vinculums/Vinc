@@ -219,6 +219,32 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertIn("p1", ids)
         self.assertEqual(ids["p1"]["title"], "Pack-only ep")   # 팩 구조 채움
 
+    def test_tag_set_union_on_embedded(self):
+        """tag 오버레이가 임베디드에서 동작(§6-2 리스트컴프 미지원 회귀 방지). 구
+        list-comp 였다면 kuzu 파서 오류로 크래시 — list_distinct(list_cat) 정합."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.recall_to_neo4j import merge_episode
+        from api import preference as pref
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            merge_episode(s, {"episode_id": "t1", "title": "T", "date": "2026-07-01",
+                              "owner_id": "u", "tenant_id": "t", "domain": "d",
+                              "workspace": "w", "mode": "m", "summary": "s",
+                              "completed_items": [], "patterns": [], "source_file": "f"})
+        store.close()
+
+        pref.tag("t1", tags=["billing", "kr"])
+        pref.tag("t1", tags=["kr", "refund"])   # kr 중복 — 합집합, 미중복
+        r = q.recall(owner="u")
+        row = next(x for x in r["rows"] if x["id"] == "t1")
+        self.assertEqual(set(row["tags"]), {"billing", "kr", "refund"})
+        self.assertEqual(len(row["tags"]), 3)   # 중복 제거 확인
+
     def test_decide_traversal_on_embedded(self):
         """decide 질의가 임베디드에서 동작(§6-2 M7 라벨없는 MATCH 속성 바인딩 +
         M3 TRAIL 사이클 가드). WALK 였다면 사이클서 경로 폭증, `n.id` 였다면 Binder

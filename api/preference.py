@@ -26,11 +26,14 @@ def pin_plan(episode_id: str, *, pinned: bool = True) -> QueryPlan:
 
 
 def tag_plan(episode_id: str, tags: list[str]) -> QueryPlan:
-    """Add owner tags to an Episode (set-union; never duplicates, never removes)."""
+    """Add owner tags to an Episode (set-union; never duplicates, never removes).
+
+    임베디드(Kùzu 계보) 정합(§6-2): 리스트 컴프리헨션(`[t IN $x WHERE …]`)은 kuzu
+    파서가 거부하므로 `list_distinct(list_cat(...))` 로 합집합을 만든다 — 기존 태그
+    순서 유지 + 신규만 추가(중복 제거). 실측 확인."""
     cypher = (
         "MATCH (e:Episode {episode_id: $id}) "
-        "SET e.tags = coalesce(e.tags, []) + "
-        "[t IN $tags WHERE NOT t IN coalesce(e.tags, [])] "
+        "SET e.tags = list_distinct(list_cat(coalesce(e.tags, []), $tags)) "
         "RETURN e.episode_id AS id, e.tags AS tags"
     )
     return QueryPlan("tag", cypher, {"id": episode_id, "tags": list(tags)},
