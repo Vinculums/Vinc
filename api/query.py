@@ -246,11 +246,13 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
         where.append("c.domain = $domain")
         params["domain"] = domain
     clause = "WHERE " + " AND ".join(where)
+    # 관계 타입 함수는 `label(r)` — 임베디드(Kùzu 계보)에 `type()` 부재(§6-2 M4,
+    # P1-0 실측 확정). Neo4j 는 label()도 지원하므로 백엔드 중립.
     cypher = (
         f"MATCH (c:Concept) {clause} "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
-        "type(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
+        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 

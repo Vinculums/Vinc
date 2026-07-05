@@ -107,6 +107,29 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(r["rows"][0]["id"], "pinned")   # pin+freq 부스트로 선두
         self.assertGreater(r["rows"][0]["score"], r["rows"][1]["score"])
 
+    def test_graph_query_uses_label_on_embedded(self):
+        """graph 마이닝 질의가 임베디드에서 동작(§6-2 M4: type(r)→label(r))."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid, dom in [("a", "math"), ("b", "math"), ("iso", "art")]:
+                s.run(f"MERGE (n:Concept {{concept_id:'{cid}'}}) "
+                      f"SET n.title='{cid}', n.owner_id='u', n.domain='{dom}'")
+            s.run("MATCH (a:Concept{concept_id:'a'}), (b:Concept{concept_id:'b'}) "
+                  "MERGE (a)-[:RELATED_TO]->(b)")
+        store.close()
+
+        g = q.graph(owner="u")
+        self.assertTrue(g["executed"])
+        self.assertEqual(len(g["nodes"]), 3)          # iso 고립 노드 포함(OPTIONAL)
+        self.assertEqual(len(g["edges"]), 1)
+        self.assertEqual(g["edges"][0]["type"], "RELATED_TO")
+
     def test_memory_relation_tables_usable(self):
         """§5-3 관계 테이블(Concept↔Concept 3종, Bridge→Domain/Concept)이 Kùzu 에서
         선언·MERGE 가능(엔진 concepts/bridges 의 관계 Cypher 동형)."""
