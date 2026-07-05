@@ -107,6 +107,32 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(r["rows"][0]["id"], "pinned")   # pin+freq 부스트로 선두
         self.assertGreater(r["rows"][0]["score"], r["rows"][1]["score"])
 
+    def test_memory_relation_tables_usable(self):
+        """§5-3 관계 테이블(Concept↔Concept 3종, Bridge→Domain/Concept)이 Kùzu 에서
+        선언·MERGE 가능(엔진 concepts/bridges 의 관계 Cypher 동형)."""
+        from store.config import load_config
+        from store.backend import open_store
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            s.run("MERGE (a:Concept {concept_id:'c1'}) SET a.title='A'")
+            s.run("MERGE (b:Concept {concept_id:'c2'}) SET b.title='B'")
+            for rel in ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO"):
+                s.run(f"MATCH (a:Concept {{concept_id:'c1'}}), "
+                      f"(b:Concept {{concept_id:'c2'}}) MERGE (a)-[:{rel}]->(b)")
+            s.run("MERGE (br:Bridge {bridge_id:'br1'}) SET br.title='X'")
+            s.run("MERGE (d:Domain {name:'art'})")
+            s.run("MATCH (br:Bridge {bridge_id:'br1'}), (d:Domain {name:'art'}) "
+                  "MERGE (br)-[:CROSSES]->(d)")
+            s.run("MATCH (br:Bridge {bridge_id:'br1'}), (c:Concept {concept_id:'c1'}) "
+                  "MERGE (br)-[r:CONNECTS {role:'input'}]->(c)")
+        rows = store.run("MATCH (a:Concept)-[r]->(b:Concept) "
+                         "RETURN count(r) AS c")
+        store.close()
+        self.assertEqual(rows[0]["c"], 3)  # 3 Concept 관계
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

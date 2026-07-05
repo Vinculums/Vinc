@@ -2,64 +2,89 @@
 """Embedded (LadybugDB/Kùzu) 스키마 렌더러 — 설계 §5 (schema-free LPG → 테이블 선행).
 
 Neo4j 는 SET 이 임의 속성을 만들 수 있으나 임베디드 백엔드는 **열을 먼저 선언**해야
-한다(§5-2). 각 엔진의 SET 절에서 도출한 열 명세가 여기 SSoT 다. 노드 테이블은
-`store/schema.py` 의 제약 11건(§5-1)과 PK 가 일치한다.
+한다(§5-2). 각 엔진의 실제 MERGE/SET 전수 조사에서 도출한 열 명세가 여기 SSoT 다
+(투기적 열 금지 — 엔진이 쓰는 것만).
 
-⚠ 현 단계(M2 e2e): **노드 테이블** 렌더 — Episode 는 §5-2 전체 열 완비(recall e2e).
-   관계 테이블(§5-3)·나머지 노드 전체 열 감사는 P1 후속(각 엔진 SET 전수 조사).
+**범위: 메모리 데이터플레인만**(발주자 결정). weg 플랫폼 PM 정책 그래프
+(graph_to_neo4j: Policy/Screen/Reference/Gate/Procedure/Memory + 동적 관계)는 Vinc
+범위 밖 — 미선언. Chunk 의 HAS_CHUNK 도 Policy/Reference(PM) 대상이라 제외(Chunk 는
+벡터/FTS 검색용 독립 노드).
+
+노드 6엔진: recall(Episode)·concepts(Concept)·bridges(Bridge·Domain)·
+skill_tracker(SkillExecution)·learner(LearnerPattern)·embed(Chunk).
 """
 from __future__ import annotations
 
-# 노드 테이블 열 명세 (label → [(col, type), ...], 마지막에 PK 지정).
-# type: STRING · INT64 · DOUBLE · BOOL · DATE · TIMESTAMP · STRING[] · FLOAT[{dim}]
+# 노드 테이블 열 명세 (label → {pk, cols:[(col,type)]}).
+# type: STRING · INT64 · DOUBLE · BOOL · STRING[] · FLOAT[{dim}]. 날짜는 STRING.
 _NODE_TABLES: dict[str, dict] = {
-    # Episode — recall_to_neo4j SET + preference(pin/tag/touch) + §5-2 전체
-    "Episode": {
-        "pk": "episode_id",
-        "cols": [
-            ("episode_id", "STRING"), ("title", "STRING"), ("date", "STRING"),
-            ("owner_id", "STRING"), ("tenant_id", "STRING"), ("domain", "STRING"),
-            ("workspace", "STRING"), ("mode", "STRING"), ("summary", "STRING"),
-            ("completed", "BOOL"), ("patterns", "STRING[]"), ("source_file", "STRING"),
-            ("pinned", "BOOL"), ("tags", "STRING[]"),
-            ("access_count", "INT64"), ("last_access", "STRING"),
-        ],
-    },
+    # recall_to_neo4j.merge_episode + preference(pin/tag/touch) — §5-2 전체
+    "Episode": {"pk": "episode_id", "cols": [
+        ("episode_id", "STRING"), ("title", "STRING"), ("date", "STRING"),
+        ("owner_id", "STRING"), ("tenant_id", "STRING"), ("domain", "STRING"),
+        ("workspace", "STRING"), ("mode", "STRING"), ("summary", "STRING"),
+        ("completed", "BOOL"), ("patterns", "STRING[]"), ("source_file", "STRING"),
+        ("pinned", "BOOL"), ("tags", "STRING[]"),
+        ("access_count", "INT64"), ("last_access", "STRING")]},
+    # concepts_to_neo4j
     "Concept": {"pk": "concept_id", "cols": [
-        ("concept_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
-        ("domain", "STRING"), ("summary", "STRING")]},
-    "LearnerPattern": {"pk": "pattern_id", "cols": [
-        ("pattern_id", "STRING"), ("code", "STRING"), ("name", "STRING"),
-        ("description", "STRING"), ("domain", "STRING"),
-        ("observations", "STRING[]"), ("owner_id", "STRING")]},
-    "SkillExecution": {"pk": "exec_id", "cols": [
-        ("exec_id", "STRING"), ("skill", "STRING"), ("mode", "STRING"),
-        ("outcome", "STRING"), ("duration_min", "DOUBLE"), ("date", "STRING")]},
+        ("concept_id", "STRING"), ("stem", "STRING"), ("owner_id", "STRING"),
+        ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
+        ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
+        ("tags", "STRING[]"), ("source_file", "STRING")]},
+    # bridges_to_neo4j
     "Bridge": {"pk": "bridge_id", "cols": [
-        ("bridge_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING")]},
+        ("bridge_id", "STRING"), ("title", "STRING"), ("status", "STRING"),
+        ("created", "STRING"), ("source_domain", "STRING"),
+        ("target_domain", "STRING"), ("source_file", "STRING")]},
     "Domain": {"pk": "name", "cols": [("name", "STRING")]},
-    # Chunk — embed_pipeline. 벡터 차원은 provision 시 주입({dim}).
-    "Chunk": {"pk": "id", "cols": [
-        ("id", "STRING"), ("text", "STRING"), ("embedding", "FLOAT[{dim}]"),
-        ("source", "STRING")]},
-    # PM 계 노드(graph_to_neo4j)
-    "Policy": {"pk": "id", "cols": [("id", "STRING"), ("title", "STRING"), ("node_type", "STRING")]},
-    "Screen": {"pk": "id", "cols": [("id", "STRING"), ("title", "STRING"), ("node_type", "STRING")]},
-    "Reference": {"pk": "id", "cols": [("id", "STRING"), ("title", "STRING"), ("node_type", "STRING")]},
-    "Gate": {"pk": "id", "cols": [("id", "STRING"), ("title", "STRING"), ("node_type", "STRING")]},
+    # skill_tracker
+    "SkillExecution": {"pk": "exec_id", "cols": [
+        ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
+        ("mode", "STRING"), ("outcome", "STRING"), ("duration_min", "DOUBLE"),
+        ("date", "STRING"), ("timestamp", "STRING")]},
+    # learner_to_neo4j
+    "LearnerPattern": {"pk": "pattern_id", "cols": [
+        ("pattern_id", "STRING"), ("owner_id", "STRING"), ("code", "STRING"),
+        ("name", "STRING"), ("description", "STRING"), ("domain", "STRING"),
+        ("observations", "STRING[]")]},
+    # embed_pipeline — 벡터 차원은 provision 시 주입({dim}). HAS_CHUNK(→PM) 제외.
+    "Chunk": {"pk": "chunk_id", "cols": [
+        ("chunk_id", "STRING"), ("source_file", "STRING"), ("doc_id", "STRING"),
+        ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
+        ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
+        ("embedding", "FLOAT[{dim}]")]},
 }
+
+# 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
+#   concepts: (Concept)-[:PREREQUISITE_OF|DERIVES_FROM|RELATED_TO]->(Concept)
+#   bridges:  (Bridge)-[:CROSSES]->(Domain) · (Bridge)-[:CONNECTS {role}]->(Concept)
+_REL_TABLES: list[tuple] = [
+    ("PREREQUISITE_OF", "Concept", "Concept", []),
+    ("DERIVES_FROM", "Concept", "Concept", []),
+    ("RELATED_TO", "Concept", "Concept", []),
+    ("CROSSES", "Bridge", "Domain", []),
+    ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
+]
 
 
 def render_node_tables(*, dim: int) -> list[str]:
-    out: list[str] = []
+    out = []
     for label, spec in _NODE_TABLES.items():
         cols = ", ".join(f"{c} {t.replace('{dim}', str(dim))}" for c, t in spec["cols"])
         out.append(f"CREATE NODE TABLE {label}({cols}, PRIMARY KEY({spec['pk']}))")
     return out
 
 
+def render_rel_tables() -> list[str]:
+    out = []
+    for label, src, dst, props in _REL_TABLES:
+        cols = "".join(f", {p} {t}" for p, t in props)
+        out.append(f"CREATE REL TABLE {label}(FROM {src} TO {dst}{cols})")
+    return out
+
+
 def render_embedded_ddl(*, dim: int) -> list[str]:
     """임베디드 백엔드 스키마 DDL(멱등 — provision 이 'already exists' 무시).
-
-    현 단계: 노드 테이블. 관계 테이블(§5-3)은 P1 후속."""
-    return render_node_tables(dim=dim)
+    노드 테이블 선행 후 관계 테이블(FROM/TO 노드가 먼저 존재해야 함)."""
+    return render_node_tables(dim=dim) + render_rel_tables()

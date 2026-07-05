@@ -86,7 +86,16 @@ class ProvisionTests(unittest.TestCase):
         self.assertTrue(res.dry_run)
         self.assertEqual(len(res.statements), len(eschema.render_embedded_ddl(dim=768)))
         self.assertEqual(res.applied, 0)
-        self.assertTrue(all(s.startswith("CREATE NODE TABLE") for s in res.statements))
+        # 노드 테이블 선행 후 관계 테이블(FROM/TO 노드 존재 전제)
+        self.assertTrue(all(s.startswith(("CREATE NODE TABLE", "CREATE REL TABLE"))
+                            for s in res.statements))
+
+    def test_relation_tables_declared(self):
+        ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
+        # concepts(Concept↔Concept 3종) · bridges(CROSSES/CONNECTS)
+        self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept)", ddl)
+        self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
+        self.assertIn("CONNECTS(FROM Bridge TO Concept, role STRING)", ddl)
 
     def test_plan_matches_dim(self):
         c = cfgmod.StoreConfig(embedding_model="local-en-large")  # 1024

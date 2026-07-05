@@ -11,9 +11,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ENGINES = [
-    "graph_to_neo4j", "embed_pipeline", "recall_to_neo4j",
+    "embed_pipeline", "recall_to_neo4j",
     "skill_tracker", "concepts_to_neo4j", "bridges_to_neo4j",
-]
+]  # graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
 
 
 class ImportTests(unittest.TestCase):
@@ -56,18 +56,6 @@ class HubRootResolutionTests(unittest.TestCase):
         # with no env and no legacy hub, default resolves to a real Path (not crash)
         self.assertIsInstance(c._default_hub(), Path)
 
-
-class GraphClassifyTests(unittest.TestCase):
-    def test_classify_nodes_groups_by_type(self):
-        g = importlib.import_module("engines.graph_to_neo4j")
-        nodes = [
-            {"id": "P1", "node_type": "policy"},
-            {"id": "S1", "node_type": "screen"},
-            {"id": "P2", "node_type": "policy"},
-        ]
-        classified = g.classify_nodes(nodes)
-        self.assertEqual(len(classified.get("policy", [])), 2)
-        self.assertEqual(len(classified.get("screen", [])), 1)
 
 
 class RecallParseTests(unittest.TestCase):
