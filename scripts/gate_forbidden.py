@@ -56,11 +56,11 @@ class Rule:
     allow_within: re.Pattern | None = None
 
 
-# ── F1 과금·계측 (vinc.a.terms §4) — CP 빌링/미터링 *코드 식별자* + 결제 UI 카피 ─
-# ⚠ 주의: F1 은 **billing 기능(CP 계측 코드·결제 표면)**을 금지한다. 영어 단어
-# "billing"/"quota" 자체는 **오픈도메인 사용자 데이터**(§1 — domain 은 자유 문자열,
-# 사용자가 billing 문서를 마이닝할 수 있음)로 정당하므로 금지 토큰이 아니다.
-# `plan.kind` 도 `QueryPlan.kind`(정본 질의 플랜 타입)와 충돌하므로 제외한다.
+# ── F1 과금·계측 (vinc.a.terms §4, v0.4 정밀화) — CP 계측 코드 식별자 0건 ──
+# v0.4 정정: 영어 단어 billing/quota 자체는 금지 아님(도메인 자유 문자열 오탐 회피),
+# plan.kind 는 정본 QueryPlan.kind 와 충돌하므로 제외. F1 은 CP 계측 '코드 식별자'를
+# 겨냥한다. 결제 UI 카피(과금·결제·구독·요금제)는 grep 토큰에서 제외 — 정책·설계 문서가
+# 그 어휘로 '금지'를 서술하며 널리 등장해 오탐이 크다. UI 카피는 코드/UI 리뷰에서 강제.
 _F1 = [
     Rule("F1", "usage_record", re.compile(r"usage_record"),
          note="CP 사용량 계측 레코드"),
@@ -68,10 +68,6 @@ _F1 = [
          note="CP 토큰 마진 과금"),
     Rule("F1", "UsageRecord", re.compile(r"\bUsageRecord\b"),
          note="CP 계측 클래스"),
-    Rule("F1", "과금", re.compile(r"과금")),
-    Rule("F1", "결제", re.compile(r"결제")),
-    Rule("F1", "구독", re.compile(r"구독")),
-    Rule("F1", "요금제", re.compile(r"요금제")),
 ]
 
 # ── F2 학습 프레이밍 카피 (vinc.a.terms §5) — UI 문자열 0건 ────────────────
