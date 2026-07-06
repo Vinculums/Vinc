@@ -41,10 +41,10 @@ engines:
   enabled:
     - graph       # graph_to_neo4j   : policy/screen LPG + 8 relation types
     - embed       # embed_pipeline   : chunk + Voyage/mpnet embeddings + parquet
-    - recall      # recall_to_neo4j  : 3-tier episodic memory
+    - recall      # recall_ingest    : 3-tier episodic memory
     - skill       # skill_tracker    : SkillExecution analytics
-    - concepts    # concepts_to_neo4j: distilled Concept graph
-    - bridges     # bridges_to_neo4j : cross-domain Bridge links
+    - concepts    # concepts_ingest  : distilled Concept graph
+    - bridges     # bridges_ingest   : cross-domain Bridge links
 
 # ── Store presets (gate_preset analogue; see cp_adapter/tenant_admin.py) ──────
 presets:

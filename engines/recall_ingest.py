@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONTEXT/memory/recall/ 세션 로그를 Neo4j (:Episode) 노드로 적재한다.
+"""CONTEXT/memory/recall/ 세션 로그를 (:Episode) 노드로 적재한다(GraphStore 추상화
+경유, [[vinc.c.dataplane#§1]] — Vinc 는 임베디드 전용, Neo4j 미탑재).
 30일 경과 파일을 CONTEXT/memory/archival/episode/ 로 이동하는 migrate 기능 포함.
 
 사용:
-    python recall_to_neo4j.py [--dry-run]
-    python recall_to_neo4j.py --migrate [--dry-run]
-    python recall_to_neo4j.py --neo4j-uri neo4j://127.0.0.1:7687 --neo4j-user neo4j
+    python recall_ingest.py [--dry-run]
+    python recall_ingest.py --migrate [--dry-run]
 """
 from __future__ import annotations
 
@@ -73,21 +73,21 @@ def _load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="recall 세션 로그 → Neo4j :Episode 적재 + Archival 이관",
+        description="recall 세션 로그 → :Episode 적재 + Archival 이관",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  # 전체 recall 세션을 Neo4j에 적재 (dry-run)
-  python recall_to_neo4j.py --dry-run
+  # 전체 recall 세션을 적재 (dry-run)
+  python recall_ingest.py --dry-run
 
   # 실제 적재
-  python recall_to_neo4j.py
+  python recall_ingest.py
 
   # 30일 경과 파일 archival/ 로 이관 (dry-run)
-  python recall_to_neo4j.py --migrate --dry-run
+  python recall_ingest.py --migrate --dry-run
 
   # 이관 + 적재 동시 실행
-  python recall_to_neo4j.py --migrate
+  python recall_ingest.py --migrate
         """,
     )
     p.add_argument("--migrate", action="store_true",

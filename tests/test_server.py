@@ -217,5 +217,61 @@ class FakeStoreDataTests(unittest.TestCase):
             self.assertTrue(any("SET e.pinned" in c for c, _ in store.writes))
 
 
+class IngestRouteTests(unittest.TestCase):
+    """POST /ingest — 인라인 vinc_ingest 어댑터([[vinc.mcp.skeleton]] §7) HTTP 경로."""
+
+    class _FakeSession:
+        """engines.fragment_ingest 가 기대하는 세션 표면(run + single())만 최소 구현.
+        모든 노드를 신규(비존재)로 취급 — HTTP 라우팅·잡 큐 왕복 검증이 목적이며
+        create/match 판별은 tests/test_fragment_ingest.py 가 이미 커버한다."""
+        class _Result:
+            def single(self_inner):
+                return None
+        def run(self, cypher, **params):
+            self.last = (cypher, params)
+            return self._Result()
+
+    class _Store:
+        driver_name = "fake"
+        def __init__(self):
+            self.session_obj = IngestRouteTests._FakeSession()
+        def session(self):
+            import contextlib
+            @contextlib.contextmanager
+            def _cm():
+                yield self.session_obj
+            return _cm()
+        def close(self): pass
+
+    def test_no_store_degrades_executed_false(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]})
+            self.assertEqual(code, 200)
+            self.assertFalse(obj["executed"])
+            self.assertEqual(obj["warnings"], ["no reachable store"])
+
+    def test_valid_fragment_merges_via_writer_session(self):
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
+                "edges": [],
+            })
+            self.assertEqual(code, 200)
+            self.assertTrue(obj["executed"])
+            self.assertEqual(obj["merged"]["nodes"], {"created": 1, "matched": 0})
+            self.assertEqual(obj["warnings"], [])
+
+    def test_unsupported_node_type_reports_warning_over_http(self):
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "r1", "type": "record", "title": "T"}]})
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["merged"]["nodes"], {"created": 0, "matched": 0})
+            self.assertTrue(any("record" in w for w in obj["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

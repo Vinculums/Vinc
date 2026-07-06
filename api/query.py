@@ -2,8 +2,9 @@
 """Query planners + executors for recall / search / decide.
 
 A QueryPlan is a (cypher, params) pair plus metadata. Plans are pure and
-testable. ``execute`` runs a plan against Neo4j (driver imported lazily); when
-no driver/password is available it returns the plan with ``executed=False`` so
+testable. ``execute`` runs a plan against the embedded GraphStore
+(``store.backend.open_store`` — Vinc is embedded-only, no Neo4j); when no
+driver is reachable it returns the plan with ``executed=False`` so
 callers — and tests — get a deterministic result without a live database.
 """
 from __future__ import annotations
