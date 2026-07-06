@@ -34,14 +34,14 @@ _EXCLUDE_DIRS = {
     ".venv", "venv", "models",  # models/ = 임베딩 캐시(바이너리)
 }
 
-# 자기 자신·정책 문서는 금지어를 '정의'하므로 제외(오탐 회피).
-# vinc.a.terms 는 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 동거 시 대비.
+# 자기 자신·정책/계획 문서는 금지어를 '정의·인용'하므로 제외(오탐 회피).
+# 이들은 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 레포 동거 시 대비.
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
-    "tests/test_gate_forbidden.py",  # 게이트 테스트 — 금지어 픽스처를 의도적으로 포함
-    "vinc.a.terms.md",
-    # 금지 어휘를 '정의·설명'하는 정책 문서(흡수 매트릭스 등)는 오탐 회피 위해 제외.
-    "UI_INVENTORY_AUDIT.md",
+    "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
+    "vinc.a.terms.md",               # 금지 어휘 정본
+    "UI_INVENTORY_AUDIT.md",         # 흡수 매트릭스가 금지 카피를 예시 인용
+    "PLAN.md",                       # 실행 계획이 F1/F7 토큰을 규칙으로 명명
 )
 
 
@@ -59,12 +59,15 @@ class Rule:
 # ── F1 과금·계측 (vinc.a.terms §4, v0.4 정밀화) — CP 계측 코드 식별자 0건 ──
 # v0.4 정정: 영어 단어 billing/quota 자체는 금지 아님(도메인 자유 문자열 오탐 회피),
 # plan.kind 는 정본 QueryPlan.kind 와 충돌하므로 제외. F1 은 CP 계측 '코드 식별자'를
-# 겨냥한다. 결제 UI 카피(과금·결제·구독·요금제)는 Vinc 코드/UI 리뷰에서 강제하며,
-# 그 어휘를 '설명'하는 정책 문서(vinc.a.terms·UI_INVENTORY_AUDIT)는 allowlist.
+# 겨냥한다. 결제 UI 카피(과금·결제·구독·요금제)는 grep 토큰에서 제외 — 정책·설계 문서가
+# 그 어휘로 '금지'를 서술하며 널리 등장해 오탐이 크다. UI 카피는 코드/UI 리뷰에서 강제.
 _F1 = [
-    Rule("F1", "usage_record", re.compile(r"usage_record")),
-    Rule("F1", "token_margin", re.compile(r"token_margin")),
-    Rule("F1", "UsageRecord", re.compile(r"\bUsageRecord\b")),
+    Rule("F1", "usage_record", re.compile(r"usage_record"),
+         note="CP 사용량 계측 레코드"),
+    Rule("F1", "token_margin", re.compile(r"token_margin"),
+         note="CP 토큰 마진 과금"),
+    Rule("F1", "UsageRecord", re.compile(r"\bUsageRecord\b"),
+         note="CP 계측 클래스"),
 ]
 
 # ── F2 학습 프레이밍 카피 (vinc.a.terms §5) — UI 문자열 0건 ────────────────

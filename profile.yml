@@ -1,0 +1,52 @@
+# weg-9000-memory — tenant-agnostic profile (revamp pattern).
+#
+# This file holds defaults that are independent of any single tenant. Per-tenant
+# values (Neo4j database name, enabled engines) live in tenants/{id}/memory.yml,
+# written by cp_adapter/tenant_admin.py at provisioning time. Environment
+# variables override these defaults (see store/config.py resolution order).
+
+name: default
+
+# ── Store ────────────────────────────────────────────────────────────────────
+store:
+  # Neo4j connection (env: NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD / NEO4J_DATABASE)
+  uri: "neo4j://127.0.0.1:7687"
+  user: "neo4j"
+  # password: set via NEO4J_PASSWORD env, never committed
+
+# ── Embeddings ───────────────────────────────────────────────────────────────
+embeddings:
+  # anthropic -> voyage-3 (1024 dims) | local -> mpnet (768 dims)
+  model: "anthropic"
+  chunk_size: 500
+  chunk_overlap: 50
+
+# ── Learning ownership (individual owner + open, user-defined domain) ────────
+# The memory is one person's cross-domain learning. Engines stamp learning nodes
+# (Episode/Concept/Procedure/Memory) with owner_id + domain + tenant_id
+# (frontmatter owner:/domain:/tenant: > env MEMORY_DEFAULT_OWNER/MEMORY_TENANT_ID
+# > default below; domain falls back to workspace:). `domain` is a FREE string
+# (physics/math/art/economics/…), never a fixed list — discover it via
+# `api.cli domains`. Un-owned nodes belong to the shared pool, never to a person.
+ownership:
+  default_owner: "tenant:shared"   # env: MEMORY_DEFAULT_OWNER
+
+# ── 3-tier recall memory retention (days) ────────────────────────────────────
+retention:
+  core_days: 30        # tier 1: hot, kept in graph
+  archival_days: 90    # tier 3: migrate to archival store past this age
+
+# ── Engines (the 6 ingestion pipelines) ──────────────────────────────────────
+engines:
+  enabled:
+    - graph       # graph_to_neo4j   : policy/screen LPG + 8 relation types
+    - embed       # embed_pipeline   : chunk + Voyage/mpnet embeddings + parquet
+    - recall      # recall_to_neo4j  : 3-tier episodic memory
+    - skill       # skill_tracker    : SkillExecution analytics
+    - concepts    # concepts_to_neo4j: distilled Concept graph
+    - bridges     # bridges_to_neo4j : cross-domain Bridge links
+
+# ── Store presets (gate_preset analogue; see cp_adapter/tenant_admin.py) ──────
+presets:
+  default: standard
+  available: [lightweight, standard, strict]
