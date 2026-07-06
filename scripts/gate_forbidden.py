@@ -38,7 +38,10 @@ _EXCLUDE_DIRS = {
 # vinc.a.terms 는 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 동거 시 대비.
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
+    "tests/test_gate_forbidden.py",  # 게이트 테스트 — 금지어 픽스처를 의도적으로 포함
     "vinc.a.terms.md",
+    # 금지 어휘를 '정의·설명'하는 정책 문서(흡수 매트릭스 등)는 오탐 회피 위해 제외.
+    "UI_INVENTORY_AUDIT.md",
 )
 
 
@@ -53,13 +56,15 @@ class Rule:
     allow_within: re.Pattern | None = None
 
 
-# ── F1 과금·계측 (vinc.a.terms §4) — 코드·개념·UI 불문, 전체 0건 ──────────
+# ── F1 과금·계측 (vinc.a.terms §4, v0.4 정밀화) — CP 계측 코드 식별자 0건 ──
+# v0.4 정정: 영어 단어 billing/quota 자체는 금지 아님(도메인 자유 문자열 오탐 회피),
+# plan.kind 는 정본 QueryPlan.kind 와 충돌하므로 제외. F1 은 CP 계측 '코드 식별자'를
+# 겨냥한다. 결제 UI 카피(과금·결제·구독·요금제)는 Vinc 코드/UI 리뷰에서 강제하며,
+# 그 어휘를 '설명'하는 정책 문서(vinc.a.terms·UI_INVENTORY_AUDIT)는 allowlist.
 _F1 = [
     Rule("F1", "usage_record", re.compile(r"usage_record")),
     Rule("F1", "token_margin", re.compile(r"token_margin")),
-    Rule("F1", "billing", re.compile(r"(?i)\bbilling\b")),
-    Rule("F1", "quota", re.compile(r"(?i)\bquota\b")),
-    Rule("F1", "plan.kind", re.compile(r"plan\.kind")),
+    Rule("F1", "UsageRecord", re.compile(r"\bUsageRecord\b")),
 ]
 
 # ── F2 학습 프레이밍 카피 (vinc.a.terms §5) — UI 문자열 0건 ────────────────
