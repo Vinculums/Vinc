@@ -1,0 +1,26 @@
+[package]
+name = "vinc-app"
+version = "0.1.0"
+description = "Vinc 데스크톱 셸 — 오프라인 데이터 마이닝 (제어=IPC · 데이터=사이드카 HTTP)"
+authors = ["vinc"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# Tauri v2 관례: 데스크톱/모바일 공유 진입점.
+name = "vinc_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# 프로덕션 빌드에서 devtools 제외.
+custom-protocol = ["tauri/custom-protocol"]

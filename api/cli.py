@@ -31,6 +31,17 @@ def _emit(obj: dict) -> int:
     return 0
 
 
+def _read_passphrase(value: str | None) -> str:
+    """패스프레이즈 소스 해소(F4 — 로컬만). ``None`` → getpass(비에코),
+    ``'-'`` → stdin 1줄(셸/파이프 주입: argv 노출 회피), 그 외 → 리터럴."""
+    if value == "-":
+        return sys.stdin.readline().rstrip("\n")
+    if value is None:
+        import getpass
+        return getpass.getpass("passphrase: ")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="weg-9000-memory query API")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -112,8 +123,13 @@ def main(argv: list[str] | None = None) -> int:
     ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase, F4)")
     ob.add_argument("--profile", required=True, help="credential file path (auth.json)")
     ob.add_argument("--passphrase", default=None,
-                    help="passphrase (omit to read from stdin/getpass — non-echoing)")
+                    help="passphrase ('-' = read one line from stdin; omit = getpass — non-echoing)")
     ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
+
+    vf = sub.add_parser("verify", help="verify a passphrase against the local credential (F4, no network)")
+    vf.add_argument("--profile", required=True, help="credential file path (auth.json)")
+    vf.add_argument("--passphrase", default=None,
+                    help="passphrase ('-' = read one line from stdin; omit = getpass — non-echoing)")
 
     args = ap.parse_args(argv)
 
@@ -174,11 +190,15 @@ def main(argv: list[str] | None = None) -> int:
             store.close()
     if args.cmd == "onboard":
         from . import auth
-        passphrase = args.passphrase
-        if passphrase is None:
-            import getpass
-            passphrase = getpass.getpass("passphrase: ")
+        passphrase = _read_passphrase(args.passphrase)
         return _emit(auth.create_profile(passphrase, path=args.profile, force=args.force))
+    if args.cmd == "verify":
+        # F4 로컬 검증: 일치 시 종료코드 0, 불일치 시 1(셸/IPC 가 성공여부로 읽음).
+        from . import auth
+        passphrase = _read_passphrase(args.passphrase)
+        ok = auth.verify_passphrase(passphrase, path=args.profile)
+        _emit({"verified": bool(ok)})
+        return 0 if ok else 1
     return 2
 
 
