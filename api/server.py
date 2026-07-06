@@ -128,8 +128,11 @@ class VincApp:
                                             domain=p.get("domain"), store=r))
 
     def read_search(self, p):
+        domain = p.get("domain")
         return self._read(lambda r: q.search(_req(p, "query"),
-                                             top_k=_int(p.get("top_k"), 5), store=r))
+                                             top_k=_int(p.get("top_k"), 5),
+                                             filters={"domain": domain} if domain else None,
+                                             store=r))
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),
@@ -174,6 +177,13 @@ class VincApp:
             rank=body.get("rank", "preference"), tags=body.get("tags"),
             limit=_int(body.get("limit"), 20), include_model=not bool(body.get("no_model")),
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
+
+    def write_ingest(self, body):
+        # MCP vinc_ingest 인라인 어댑터([[vinc.mcp.skeleton]] §7) — 작은 대화형
+        # fragment 라 잡 큐 비동기(202+폴링) 대신 동기 run_sync 로 즉시 결과 반환.
+        from engines.fragment_ingest import ingest_fragment
+        res = self.jobs.run_sync("ingest_fragment", lambda: ingest_fragment(self.store, body))
+        return 200, res
 
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
@@ -310,6 +320,7 @@ class _Handler(BaseHTTPRequestHandler):
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/activate": app.write_activate, "/backup": app.submit_backup,
+            "/ingest": app.write_ingest,
         }
         if path in table:
             return table[path](body)
