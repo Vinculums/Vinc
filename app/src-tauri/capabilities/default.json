@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Vinc 셸 기본 권한 — 창 제어 · 파일 다이얼로그 · 사이드카 spawn.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "dialog:default",
+    "shell:allow-open"
+  ]
+}
