@@ -186,6 +186,19 @@ class ThemeStoreTests(unittest.TestCase):
         ts.create_theme("t")
         self.assertTrue(ts.has_theme("t"))   # 무 크래시 — 인메모리 강등
 
+    def test_data_dir_is_db_file_path_uses_sibling_not_inside(self):
+        # cfg.data_dir 는 임베디드 DB **파일** 경로다(kuzu 는 디렉토리를 거부). 그
+        # 경로 안(<data_dir>/themes.json)이 아니라 형제(<data_dir>.themes.json)에
+        # 써야 실배포에서 NotADirectoryError 로 죽지 않는다.
+        base = tempfile.mkdtemp()
+        db_file = os.path.join(base, "store")
+        open(db_file, "w").close()           # data_dir 가 파일로 실존하는 상황 재현
+        ts = ThemeStore(db_file)
+        ts.create_theme("t")                 # 파일 안에 쓰려 하면 NotADirectoryError
+        self.assertTrue(os.path.isfile(db_file + ".themes.json"))
+        self.assertFalse(os.path.isdir(db_file))        # DB 파일은 여전히 파일
+        self.assertTrue(ThemeStore(db_file).has_theme("t"))   # 재로드 지속
+
     def test_reject_does_not_touch_graph_only_vocabulary(self):
         # 경계: reject 는 어휘만 — resolve 후 사라지지만 그래프 인스턴스는 별개(미검증 대상).
         ts = self._store()

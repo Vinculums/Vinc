@@ -284,6 +284,33 @@ class IngestRouteTests(unittest.TestCase):
             names = {p["name"] for p in obj["proposed_types"]}
             self.assertIn("해체주의", names)
 
+    def test_ratify_roundtrip_type_becomes_authoritative_for_later_ingest(self):
+        # A안 핵심 가치 CI 잠금: 어휘 밖 타입으로 인스턴스 적재(proposed 편입) → 타입
+        # ratify(어휘 SSoT 뒤집힘) → 같은 타입 재적재 시 **재제안 안 됨**(이제 기지·
+        # authored 타입). 인스턴스에 status 열이 없어 어휘 상태가 곧 모든 인스턴스의
+        # 도출 상태다 — 재제안 부재가 그 도출 뒤집힘의 CI 관측 지점.
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            # 1) 어휘 밖 타입으로 인스턴스 2개 적재 → proposed 편입
+            _req(base, "/ingest", method="POST", body={
+                "theme_id": "fashion",
+                "nodes": [{"id": "x1", "type": "해체주의", "title": "A"},
+                          {"id": "x2", "type": "해체주의", "title": "B"}]})
+            code, obj = _req(base, "/types?theme_id=fashion&status=proposed")
+            self.assertIn("해체주의", {t["name"] for t in obj["types"]})
+            # 2) 타입 1줄 ratify → authored
+            code, obj = _req(base, "/types/ratify", method="POST",
+                             body={"theme_id": "fashion", "name": "해체주의"})
+            self.assertEqual(obj["type"]["status"], "authored")
+            code, obj = _req(base, "/types?theme_id=fashion&status=authored")
+            self.assertIn("해체주의", {t["name"] for t in obj["types"]})
+            # 3) 같은 타입 재적재 → 이미 어휘에 있으므로 proposed_types 비어 있음
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "theme_id": "fashion",
+                "nodes": [{"id": "x3", "type": "해체주의", "title": "C"}]})
+            self.assertEqual(obj["proposed_types"], [])
+            self.assertEqual(obj["skipped"], 0)
+
 
 class ThemeTypeRouteTests(unittest.TestCase):
     """주제·타입 어휘 CRUD 라우트 — data_dir 없는 인메모리 ThemeStore(오프라인)."""

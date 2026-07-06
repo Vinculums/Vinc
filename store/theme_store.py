@@ -2,7 +2,7 @@
 """Theme / Type 어휘 스토어 — 주제별 사용자 저작 타입 어휘 (D11-R2 · THESIS T3·T9).
 
 **어휘는 해석의 *틀*이지 해석의 *내용*(노드·엣지)이 아니다** — 그래서 그래프
-(GraphStore→LadybugDB)가 아니라 별도 주제 메타(`<data_dir>/themes.json`)에 둔다.
+(GraphStore→LadybugDB)가 아니라 별도 주제 메타(`<data_dir>.themes.json` — DB 파일 형제)에 둔다.
 어휘 편집이 그래프 데이터를 건드리지 않게 분리하는 것이 요점(IMPL §3).
 
 원자적 쓰기(tempfile + os.replace)는 `vinc_mcp/lifecycle.py::_write_state_atomic`
@@ -37,7 +37,11 @@ LEGACY_EDGE_TYPES: tuple[str, ...] = ("relates_to", "prerequisite_of",
                                       "derives_from", "connects_via")
 
 _STORE_VERSION = 1
-_FILENAME = "themes.json"
+# 어휘 메타는 **DB 파일의 형제**(`<data_dir>.themes.json`)로 둔다. `cfg.data_dir` 는
+# 임베디드 DB **파일** 경로다(kuzu 0.11.3 `Database(path)` 는 디렉토리를 거부·파일 생성 —
+# embedded_backend.py:143) → data_dir 안에 파일을 넣을 수 없다. 형제 파일이라 DB 와
+# 충돌하지 않고 백업 시 같은 부모 디렉토리에서 발견된다.
+_SUFFIX = ".themes.json"
 
 # 상태·출처 어휘(D11-R2 §2).
 STATUS_AUTHORED = "authored"
@@ -71,7 +75,7 @@ def _empty_state() -> dict:
 
 
 class ThemeStore:
-    """`<data_dir>/themes.json` 어휘 스토어. `data_dir=None` 이면 인메모리 강등
+    """`<data_dir>.themes.json`(DB 파일 형제) 어휘 스토어. `data_dir=None` 이면 인메모리 강등
     (무 크래시 — store=None 강등과 평행). 뮤테이션은 잡 큐로 직렬화 호출 전제."""
 
     def __init__(self, data_dir: str | os.PathLike | None = None):
@@ -81,7 +85,9 @@ class ThemeStore:
     # ── 영속 ──────────────────────────────────────────────────────────────
     @property
     def _path(self) -> Path | None:
-        return self._data_dir / _FILENAME if self._data_dir else None
+        # DB 파일의 형제 파일(`<data_dir>.themes.json`). data_dir 안에 넣지 않는다
+        # (data_dir 는 kuzu DB 파일이라 그 안에 파일 생성 불가 — 상단 주석 참조).
+        return Path(str(self._data_dir) + _SUFFIX) if self._data_dir else None
 
     def _load(self) -> dict:
         if self._data_dir is None:

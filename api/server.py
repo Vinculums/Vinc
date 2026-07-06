@@ -78,7 +78,7 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
-        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>/themes.json). 그래프와
+        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json (DB 파일 형제)). 그래프와
         # 분리된 어휘 write 표면(스토어별 단일 write). data_dir 없으면 인메모리 강등.
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
