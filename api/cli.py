@@ -90,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     av.add_argument("--limit", type=int, default=20)
     av.add_argument("--now", default=None, help="ISO-8601 generated_at stamp (optional)")
     av.add_argument("--no-model", action="store_true", help="exclude the learning method (LearnerPattern) from the pack")
+    av.add_argument("--theme", default=None, help="theme_id to attach its authored type vocabulary (proposed excluded)")
     av.add_argument("--out", default=None, help="dir to write pack.md/pack.json/mcp.json (else emit inline)")
 
     s = sub.add_parser("search", help="hybrid vector+BM25 search")
@@ -150,10 +151,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "touch":
         return _emit(pref.touch(args.episode, now=args.now))
     if args.cmd == "activate":
+        themes = None
+        if args.theme:
+            from store.theme_store import ThemeStore
+            from store.config import load_config
+            themes = ThemeStore(load_config().data_dir)
         return _emit(act.activate(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
                                   workspace=args.workspace, tags=_csv(args.tags),
                                   rank=args.rank, limit=args.limit, include_model=not args.no_model,
-                                  generated_at=args.now, out_dir=args.out))
+                                  generated_at=args.now, out_dir=args.out,
+                                  theme_id=args.theme, themes=themes))
     if args.cmd == "search":
         return _emit(q.search(args.query, top_k=args.top_k))
     if args.cmd == "decide":
