@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engines import learner_to_neo4j as lm  # noqa: E402
+from engines import learner_ingest as lm  # noqa: E402
 from api import activate as act  # noqa: E402
 
 # A user-model-shaped patterns table (as in CONTEXT/identity/user-model.md).

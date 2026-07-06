@@ -58,7 +58,7 @@ class EmbeddedE2E(unittest.TestCase):
     def test_recall_engine_write_and_query_roundtrip(self):
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from api import query as q
 
         cfg = load_config()
@@ -86,7 +86,7 @@ class EmbeddedE2E(unittest.TestCase):
         """preference recall 이 임베디드에서 동작(방언 회귀 방지) — 점수는 백엔드 밖."""
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from api import query as q
 
         cfg = load_config()
@@ -163,7 +163,7 @@ class EmbeddedE2E(unittest.TestCase):
         오버레이 — 구조(title 등)는 보존, pinned/tags/access 는 팩 값으로. 멱등."""
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from engines.pack_ingest import overlay_pack, PACK_KIND
         from api import query as q
 
@@ -224,7 +224,7 @@ class EmbeddedE2E(unittest.TestCase):
         list-comp 였다면 kuzu 파서 오류로 크래시 — list_distinct(list_cat) 정합."""
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from api import preference as pref
         from api import query as q
 
@@ -333,7 +333,7 @@ class EmbeddedE2E(unittest.TestCase):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from api import query as q
 
         cfg = load_config()

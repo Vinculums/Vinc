@@ -33,11 +33,11 @@ export MEMORY_DEFAULT_OWNER=user:doheon                  # 학습자 owner_id
 ```bash
 python -m store.provision --apply                        # 스키마 19 statements (멱등)
 cd $MEMORY_HUB_ROOT                                      # recall/graph 는 CWD 기준
-python -m engines.recall_to_neo4j                        # :Episode (owner·domain)
-python -m engines.concepts_to_neo4j                      # :Concept (도메인 자동 발견)
-python -m engines.bridges_to_neo4j                       # :Bridge (source=MEMORY_BRIDGE_SOURCE)
+python -m engines.recall_ingest                        # :Episode (owner·domain)
+python -m engines.concepts_ingest                      # :Concept (도메인 자동 발견)
+python -m engines.bridges_ingest                       # :Bridge (source=MEMORY_BRIDGE_SOURCE)
 cd -                                                     # memory 레포로 복귀
-python -m engines.learner_to_neo4j \
+python -m engines.learner_ingest \
     --source $MEMORY_HUB_ROOT/CONTEXT/identity/user-model.md --owner $MEMORY_DEFAULT_OWNER
 # (선택) embed_pipeline / skill_tracker / graph_to_neo4j 도 동일하게 재실행
 ```
@@ -50,7 +50,7 @@ python -m engines.learner_to_neo4j \
 ```bash
 python -m store.provision --apply                                        # 새 스키마
 python -m store.provision --backfill-owner --backfill-domain --apply     # owner ← 기본값, domain ← workspace
-python -m engines.learner_to_neo4j --source .../user-model.md --owner user:doheon
+python -m engines.learner_ingest --source .../user-model.md --owner user:doheon
 ```
 
 ## 검증 — "실제로 동작하는가"

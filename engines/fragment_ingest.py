@@ -21,7 +21,7 @@ from typing import Any
 
 # node.type → (label, id 컬럼, 세팅 가능한 D11 필드). record 는 대응 노드 테이블이
 # 없어 미지원(warnings). Domain 의 PK 는 실제로 `name`(D11 이 가정하는 `domain_id`
-# 아님) — Bridge 의 CROSSES 관계가 이미 이 컬럼에 의존한다(bridges_to_neo4j.py).
+# 아님) — Bridge 의 CROSSES 관계가 이미 이 컬럼에 의존한다(bridges_ingest.py).
 _NODE_SPECS: dict[str, dict[str, Any]] = {
     "concept": {"label": "Concept", "id_col": "concept_id",
                 "settable": {"title": "title", "domain": "domain", "tags": "tags"},

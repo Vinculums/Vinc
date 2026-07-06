@@ -8,7 +8,7 @@ bridge/index/self-check 등은 제외한다.
 intra-domain [[wikilink]] 을 (:Concept)-[:PREREQUISITE_OF|:DERIVES_FROM|:RELATED_TO]->(:Concept) 로 best-effort 연결.
 
 사용:
-    python concepts_to_neo4j.py [--dry-run]
+    python concepts_ingest.py [--dry-run]
 """
 from __future__ import annotations
 
