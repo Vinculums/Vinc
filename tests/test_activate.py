@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -86,7 +87,8 @@ class WriteTests(unittest.TestCase):
 
 
 class ActivateEntryTests(unittest.TestCase):
-    def test_activate_without_db_returns_inline_pack(self):
+    @mock.patch("api.query.open_store", return_value=None)
+    def test_activate_without_db_returns_inline_pack(self, _open):
         # no DB -> recall returns no rows; pack is empty but well-formed
         res = act.activate(owner="user:weg1456")
         self.assertEqual(res["owner"], "user:weg1456")

@@ -1,0 +1,18 @@
+# Vinc Tauri shell — P4 packaging scaffold (DEC D1: shell = Tauri).
+# 제어 = Tauri IPC(사이드카 수명주기·파일 다이얼로그), 데이터 = localhost HTTP.
+# 빌드·서명·3플랫폼 설치본은 P4 마일스톤에서(클린 VM 게이트) — 본 스캐폴드는
+# 구성 형태를 고정할 뿐 CI/개발 환경에서 cargo 빌드를 요구하지 않는다.
+[package]
+name = "vinc"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

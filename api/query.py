@@ -392,7 +392,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
 
 
 def domain_ties_plan(*, owner: str) -> QueryPlan:
-    """Atlas L0 결합 행렬(D16) — 도메인이 다른 Concept 간 엣지를 도메인 쌍으로 집계."""
+    """Atlas L0 결합 행렬(D16) — 도메인이 다른 Concept 간 직접 엣지를 도메인 쌍으로 집계."""
     cypher = (
         "MATCH (a:Concept)-[r]->(b:Concept) "
         "WHERE a.owner_id = $owner AND b.owner_id = $owner AND a.domain <> b.domain "
@@ -402,13 +402,35 @@ def domain_ties_plan(*, owner: str) -> QueryPlan:
     return QueryPlan("domain_ties", cypher, {"owner": owner}, note="cross-domain tie matrix (L0)")
 
 
+def bridge_ties_plan() -> QueryPlan:
+    """L0 결합 행렬의 Bridge 축 — 실데이터(weg-9000 허브)에서 개념 간 엣지는 전부
+    도메인 내부이고 크로스도메인은 :Bridge 가 1급으로 담는다(2026-07-10 실측).
+    Bridge 는 소유 스탬프가 없는 구조 노드라 owner 필터 없음."""
+    cypher = (
+        "MATCH (b:Bridge) "
+        "WHERE b.source_domain IS NOT NULL AND b.target_domain IS NOT NULL "
+        "RETURN b.source_domain AS source, b.target_domain AS target, count(*) AS ties "
+        "ORDER BY ties DESC"
+    )
+    return QueryPlan("bridge_ties", cypher, {}, note="bridge tie matrix (L0)")
+
+
 def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
     """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(`/domains` 집계) +
-    도메인 간 결합 행렬. UI 는 이 응답만으로 L0 를 그린다(그래프 로직 UI 반입 금지)."""
+    도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로 L0 를
+    그린다(그래프 로직 UI 반입 금지)."""
     d = execute(domains_plan(owner=owner), cfg, store=store)
     t = execute(domain_ties_plan(owner=owner), cfg, store=store)
+    b = execute(bridge_ties_plan(), cfg, store=store)
+    merged: dict[tuple[str, str], int] = {}
+    for row in [*t.get("rows", []), *b.get("rows", [])]:
+        key = (row.get("source") or "", row.get("target") or "")
+        if key[0] and key[1]:
+            merged[key] = merged.get(key, 0) + int(row.get("ties") or 0)
+    ties = [{"source": s, "target": tg, "ties": n}
+            for (s, tg), n in sorted(merged.items(), key=lambda kv: -kv[1])]
     return {"executed": bool(d.get("executed")),
-            "domains": d.get("rows", []), "ties": t.get("rows", [])}
+            "domains": d.get("rows", []), "ties": ties}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,

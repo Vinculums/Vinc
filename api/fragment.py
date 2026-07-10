@@ -68,6 +68,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
             _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
+        if label == "Episode":
+            # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
+            if node.get("date") is not None:
+                _set("date", str(node["date"]))
+            if node.get("summary") is not None:
+                _set("summary", str(node["summary"]))
         if label in ("Record", "Concept", "Episode") and (owner_explicit or not matched):
             _set("owner_id", owner)
         if label == "Record":

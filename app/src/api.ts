@@ -45,6 +45,10 @@ export const api = {
   domains: (owner: string) => call("/domains", { owner }),
   activate: (owner: string, opts: Record<string, unknown> = {}) =>
     call("/activate", undefined, { owner, ...opts }),
+  share: (owner: string, opts: { domain?: string; seed?: string; depth?: number } = {}) =>
+    call("/share", { owner, ...opts }),
+  importPack: (pack: unknown, owner: string) =>
+    call("/ingest/pack", undefined, { pack, owner }),
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
 };

@@ -40,10 +40,17 @@ export const COPY = {
     actions: { atlas: "Show in Atlas", open: "Open" },
   },
   packs: {
-    idle: "Bundle records into a pack you can carry anywhere.",
+    idle: "Bundle records into a pack you can carry anywhere — or hand a slice of your data to someone else.",
     idleCta: "Create a pack",
+    shareCta: "Share a slice",
+    importCta: "Import a pack",
     loading: (n: number) => `Packing ${n} records…`,
+    importing: "Importing…",
     success: (n: number, size: string) => `Pack ready — ${n} records, ${size}.`,
+    shareReady: (c: number, e: number) => `Share pack ready — ${c} concepts, ${e} connections.`,
+    shareNote: "Preference signals stay with you — the pack carries content only.",
+    imported: (created: number, matched: number) =>
+      `Imported — ${created} new, ${matched} already here.`,
     successCta: "Reveal in folder",
     error: "The pack didn't finish. Try again — your records are untouched.",
   },

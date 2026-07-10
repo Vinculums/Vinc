@@ -256,9 +256,17 @@ class EmbeddedBackend:
         return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
     def snapshot(self, dest_dir: str) -> str:
-        """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2)."""
+        """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2).
+
+        복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — kuzu 는 close 시점에
+        체크포인트하므로, 열린 스토어를 그대로 복사하면 미반영(빈 테이블) 사본이
+        나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행."""
         import os
         import shutil
+        try:
+            self.run("CHECKPOINT")
+        except Exception:
+            pass   # 방언 미지원 시 — close 경로 스냅샷(단발 CLI)은 이미 일관
         src = self._cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
         os.makedirs(dest_dir, exist_ok=True)
         base = os.path.basename(src.rstrip("/")) or "store"

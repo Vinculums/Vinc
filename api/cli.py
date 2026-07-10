@@ -95,6 +95,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--topic", default="")
 
     # ── 사이드카(M4 · P2) — HTTP 레이어·백업·온보딩 ──────────────────────────
+    sh = sub.add_parser("share", help="build a share pack — hand your data to someone else (D19)")
+    sh.add_argument("--owner", required=True, help="origin owner scope (whose data to pack)")
+    sh.add_argument("--domain", default=None, help="scope: one dataset partition")
+    sh.add_argument("--tags", default=None, help="scope: comma-separated tag filter (any-overlap)")
+    sh.add_argument("--seed", default=None, help="scope: pack only the seed's neighborhood (Atlas L2)")
+    sh.add_argument("--depth", type=int, default=2, help="seed neighborhood depth 1–4 (default 2)")
+    sh.add_argument("--no-records", action="store_true", help="concepts/edges only (skip Episode records)")
+    sh.add_argument("--out", required=True, help="pack file to write (JSON)")
+
+    im = sub.add_parser("import", help="import a share pack under YOUR owner scope (idempotent MERGE)")
+    im.add_argument("--pack", required=True, help="pack file (JSON) to import")
+    im.add_argument("--owner", required=True, help="recipient owner scope to stamp")
+
     sv = sub.add_parser("serve", help="run the loopback sidecar HTTP server (P2)")
     sv.add_argument("--host", default="127.0.0.1", help="bind host (loopback only, §3-1)")
     sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
@@ -153,6 +166,23 @@ def main(argv: list[str] | None = None) -> int:
         else:
             plan = q.decide_plan(args.topic)
         return _emit(plan.to_dict())
+    if args.cmd == "share":
+        from . import share
+        pack = share.build_share_pack(owner=args.owner, domain=args.domain,
+                                      tags=_csv(args.tags), seed=args.seed, depth=args.depth,
+                                      include_records=not args.no_records)
+        if pack.get("executed"):
+            from pathlib import Path
+            Path(args.out).write_text(
+                json.dumps({k: v for k, v in pack.items() if k != "executed"},
+                           ensure_ascii=False, indent=2), encoding="utf-8")
+            return _emit({"out": args.out, "manifest": pack["manifest"]})
+        return _emit(pack)
+    if args.cmd == "import":
+        from . import share
+        with open(args.pack, encoding="utf-8") as f:
+            pack = json.load(f)
+        return _emit(share.import_share_pack(pack, owner=args.owner))
     if args.cmd == "serve":
         from . import server
         server.serve(host=args.host, port=args.port, parent_pid=args.parent_pid,

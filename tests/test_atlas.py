@@ -96,12 +96,16 @@ class AtlasL0Tests(unittest.TestCase):
     def test_atlas_l0_combines_domains_and_ties(self):
         fake = _FakeStore({
             "count(*) AS episodes": [{"domain": "math", "episodes": 3}],
-            "AS ties": [{"source": "math", "target": "art", "ties": 2}],
+            "a.domain <> b.domain": [{"source": "math", "target": "art", "ties": 2}],
+            # Bridge 축(실데이터에서 크로스도메인은 :Bridge 가 1급 — 합산돼야 함)
+            "MATCH (b:Bridge)": [{"source": "math", "target": "physics", "ties": 5}],
         })
         res = q.atlas_l0(owner="user:t", store=fake)
         self.assertTrue(res["executed"])
         self.assertEqual(res["domains"][0]["domain"], "math")
-        self.assertEqual(res["ties"][0]["ties"], 2)
+        self.assertEqual(res["ties"],
+                         [{"source": "math", "target": "physics", "ties": 5},
+                          {"source": "math", "target": "art", "ties": 2}])
 
 
 class FragmentMergeTests(unittest.TestCase):

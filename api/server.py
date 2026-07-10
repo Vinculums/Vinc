@@ -36,6 +36,7 @@ from . import query as q
 from . import preference as pref
 from . import activate as act
 from . import fragment as frag
+from . import share
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -134,6 +135,13 @@ class VincApp:
         # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
         return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
 
+    def read_share(self, p):
+        # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
+        return self._read(lambda r: share.build_share_pack(
+            owner=_req(p, "owner"), domain=p.get("domain"), tags=_csv(p.get("tags")),
+            seed=p.get("seed"), depth=_int(p.get("depth"), 2),
+            include_records=not p.get("no_records"), store=r))
+
     def read_search(self, p):
         return self._read(lambda r: q.search(_req(p, "query"),
                                              top_k=_int(p.get("top_k"), 5), store=r))
@@ -184,6 +192,13 @@ class VincApp:
 
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
+        if engine == "pack":
+            # share pack 들여오기(D19) — 수신자 owner 재스탬핑, 잡 큐 직렬화(R4).
+            owner = _req(body, "owner")
+            res = self.jobs.run_sync("ingest:pack",
+                                     lambda: share.import_share_pack(
+                                         body.get("pack") or {}, owner=owner, store=self.store))
+            return 200, res
         if engine == "fragment":
             # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
             # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200).
@@ -307,7 +322,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
-            "/atlas": app.read_atlas,
+            "/atlas": app.read_atlas, "/share": app.read_share,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
         }
