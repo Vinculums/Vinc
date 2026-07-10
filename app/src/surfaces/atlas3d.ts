@@ -31,8 +31,12 @@ export type N3 = {
 export type L3 = { source: string; target: string; type?: string; cross?: boolean; weight?: number };
 
 function material(color: number, opacity = 1): THREE.Material {
-  return new THREE.MeshLambertMaterial({
-    color, transparent: opacity < 1, opacity,
+  // D33 — 무광 Lambert(밋밋한 점토 질감)를 플랫 셰이딩 Standard 로 교체:
+  // 면 단위 음영으로 각(육각·팔면체의 판형 인상)이 서고, 잉크 도장 같은
+  // 단단한 표면이 된다. 색은 그대로 모노크롬(닫힌 층).
+  return new THREE.MeshStandardMaterial({
+    color, roughness: 0.55, metalness: 0.12, flatShading: true,
+    transparent: opacity < 1, opacity,
   });
 }
 
@@ -96,20 +100,25 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
       `<span style="color:#14110d;background:#f7f4ef;border:1px solid #ded8cc;
        border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
-    .linkColor((l: any) => (l.cross ? "#6a6252" : "#8d8574"))
-    .linkOpacity(0.55)
-    .linkWidth((l: any) => (l.weight ? 0.6 + Math.log1p(l.weight) : l.cross ? 0.5 : 1.0))
+    // D33 — 엣지 = 헤어라인: linkWidth 미지정(0) = 튜브 메시가 아닌 THREE.Line.
+    // 뚱뚱한 반투명 튜브를 제거하고, 가중치는 굵기 대신 잉크 농도로 옮긴다.
+    // 완만한 곡률로 겹친 선을 갈라 읽히게 한다(연결의 "부드러움").
+    .linkOpacity(0.85)
+    .linkCurvature(0.18)
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
     .linkDirectionalArrowLength((l: any) => prefs.arrows &&
-      ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(l.type || "") ? 3.2 : 0)
+      ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(l.type || "") ? 2.6 : 0)
     .linkDirectionalArrowRelPos(0.94);
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
   scene.fog = flat ? null : new THREE.Fog(PAPER, S * 2.6, S * 9);   // 원경이 종이로 "서서히" 잦아듦
   g.lights([
-    new THREE.AmbientLight(0xffffff, 1.7),
-    (() => { const d = new THREE.DirectionalLight(0xfff8ec, 1.6); d.position.set(60, 120, 80); return d; })(),
+    new THREE.AmbientLight(0xffffff, 1.1),
+    // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
+    // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33).
+    new THREE.HemisphereLight(0xfff8ec, 0x9a917d, 0.9),
+    (() => { const d = new THREE.DirectionalLight(0xfff8ec, 1.5); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
   if (controls) {
@@ -149,7 +158,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
     if (hoverId && s !== hoverId && t !== hoverId) return "#e2dccf";   // paper 후퇴
-    return l.cross ? "#6a6252" : "#8d8574";
+    // D33 — 농도 = 가중치(굵기 개정): 가중 엣지(L0 ties)는 세기에 따라 진하게,
+    // 무가중 크로스도메인은 저농도(구 "세선"의 등가), 기본은 중간 잉크.
+    if (l.weight) return l.weight >= 6 ? "#38332a" : l.weight >= 2 ? "#6f6754" : "#8d8574";
+    return l.cross ? "#b3a992" : "#8d8574";
   };
   g.linkColor(linkColorFn);
   const fadeTargets = new Map<THREE.MeshLambertMaterial, number>();
