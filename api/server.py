@@ -140,6 +140,12 @@ class VincApp:
         return self._read(lambda r: q.promote_candidates(
             owner=_req(p, "owner"), min_access=_int(p.get("min_access"), 3), store=r))
 
+    def read_suggest(self, p):
+        # 고아 최소화(D32) — 태그·도메인 근사 잇기 후보(조회 전용, D25 전 단계).
+        return self._read(lambda r: q.suggest_ties(
+            owner=_req(p, "owner"), node=_req(p, "node"),
+            limit=_int(p.get("limit"), 5), store=r))
+
     def read_coupling(self, p):
         # Compare 뷰(D22) — 두 도메인의 개념 대 개념 결합쌍.
         return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
@@ -345,6 +351,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/recall": app.read_recall, "/domains": app.read_domains,
             "/atlas": app.read_atlas, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
+            "/suggest-ties": app.read_suggest,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
         }

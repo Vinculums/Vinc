@@ -359,7 +359,11 @@ def layout_positions(nodes: list[dict], edges: list[dict]) -> list[dict]:
         else:
             ang = 2 * math.pi * di / d_count
             cx, cy = math.cos(ang), math.sin(ang)
-        members = sorted(by_domain[dom], key=lambda n: (-int(n.get("degree") or 0), str(n.get("id"))))
+        # pin 이 허브 승격 1순위(D32), 다음이 연결수 — pinned 열이 아직 없는
+        # 노드종(Concept, P4 스키마 델타)은 자연히 degree 기준으로만 정렬된다.
+        members = sorted(by_domain[dom],
+                         key=lambda n: (-int(bool(n.get("pinned"))),
+                                        -int(n.get("degree") or 0), str(n.get("id"))))
         count = len(members)
         for i, n in enumerate(members):
             r = 0.08 * math.sqrt(i)
@@ -530,6 +534,57 @@ def promote_candidates_plan(*, owner: str, min_access: int = 3) -> QueryPlan:
 
 def promote_candidates(*, owner: str, min_access: int = 3, cfg=None, store=None) -> dict:
     return execute(promote_candidates_plan(owner=owner, min_access=min_access), cfg, store=store)
+
+
+def concept_meta_plan(*, owner: str) -> QueryPlan:
+    """잇기 제안용 Concept 메타(id·title·domain·tags) — 순수 조회."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.owner_id = $owner "
+        "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
+        "coalesce(c.tags, []) AS tags ORDER BY id"
+    )
+    return QueryPlan("concept_meta", cypher, {"owner": owner},
+                     note="concept metadata for tie suggestions")
+
+
+def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None) -> dict:
+    """고아(저연결) 노드의 잇기 후보 — D25(임베딩 유사도)의 **전 단계** 결정론 근사
+    (D32): 같은 도메인 +1, 태그 교집합 각 +2. 이미 연결된 노드는 제외. 조회 전용 —
+    확정(엣지 생성)은 fragment MERGE(POST /ingest/fragment) 경유로 단일 쓰기
+    표면(R4)을 유지한다."""
+    meta = execute(concept_meta_plan(owner=owner), cfg, store=store)
+    if not meta.get("executed"):
+        return {"executed": False, "node": node, "suggestions": [],
+                "note": meta.get("note", "")}
+    rows = meta.get("rows", [])
+    me = next((r for r in rows if r.get("id") == node), None)
+    if me is None:
+        return {"executed": True, "node": node, "suggestions": [],
+                "note": f"unknown concept: {node}"}
+    g = execute(graph_plan(owner=owner), cfg, store=store)
+    linked = {node}
+    for r in g.get("rows", []):
+        if r.get("id") == node and r.get("target"):
+            linked.add(r["target"])
+        elif r.get("target") == node and r.get("id"):
+            linked.add(r["id"])
+    my_tags = set(me.get("tags") or [])
+    my_domain = me.get("domain") or ""
+    out = []
+    for r in rows:
+        cid = r.get("id")
+        if not cid or cid in linked:
+            continue
+        shared = sorted(my_tags & set(r.get("tags") or []))
+        score = 2 * len(shared) + (1 if my_domain and r.get("domain") == my_domain else 0)
+        if score <= 0:
+            continue
+        out.append({"id": cid, "title": r.get("title") or cid,
+                    "domain": r.get("domain") or "", "shared_tags": shared,
+                    "score": score})
+    out.sort(key=lambda s: (-s["score"], s["id"]))   # 결정론 순서
+    return {"executed": True, "node": node,
+            "suggestions": out[:max(1, int(limit))]}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,

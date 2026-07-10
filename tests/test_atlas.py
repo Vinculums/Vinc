@@ -204,3 +204,57 @@ class CouplingTests(unittest.TestCase):
         self.assertEqual(kinds[("c1", "p1")], "direct")   # 직접이 매개에 우선
         self.assertEqual(kinds[("c2", "p2")], "bridge")
         self.assertEqual(len(res["pairs"]), 2)
+
+
+class PinnedHubTests(unittest.TestCase):
+    def test_pinned_outranks_degree_for_hub_center(self):
+        # pin 이 허브 승격 1순위(D32) — degree 9 보다 pinned degree 1 이 중심(r=0).
+        nodes = [{"id": "a", "domain": "math", "degree": 9},
+                 {"id": "p", "domain": "math", "degree": 1, "pinned": True}]
+        out = {n["id"]: n for n in q.layout_positions(nodes, [])}
+        self.assertEqual((out["p"]["x"], out["p"]["y"], out["p"]["z"]), (0.0, 0.0, 0.0))
+        self.assertNotEqual(out["a"]["z"], 0.0)
+
+
+class SuggestTiesTests(unittest.TestCase):
+    """고아 잇기 후보(D32) — 태그 교집합 +2·같은 도메인 +1, 기연결 제외, 결정론 순."""
+
+    def test_orphan_gets_tag_and_domain_candidates(self):
+        fake = _FakeStore({
+            "AS tags ORDER BY id": [
+                {"id": "a", "title": "A", "domain": "math", "tags": ["fft", "waves"]},
+                {"id": "b", "title": "B", "domain": "math", "tags": ["fft"]},
+                {"id": "c", "title": "C", "domain": "art", "tags": ["waves"]},
+                {"id": "d", "title": "D", "domain": "art", "tags": []},
+                {"id": "e", "title": "E", "domain": "math", "tags": []},
+            ],
+            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+                {"id": "a", "target": None},            # a 는 고아
+                {"id": "b", "target": "e"},
+            ],
+        })
+        res = q.suggest_ties(owner="user:t", node="a", store=fake)
+        self.assertTrue(res["executed"])
+        got = [(s["id"], s["score"]) for s in res["suggestions"]]
+        # b: fft(2)+도메인(1)=3 · c: waves(2)=2 · e: 도메인만=1 · d: 0 → 제외
+        self.assertEqual(got, [("b", 3), ("c", 2), ("e", 1)])
+        self.assertEqual(res["suggestions"][0]["shared_tags"], ["fft"])
+
+    def test_already_linked_excluded(self):
+        fake = _FakeStore({
+            "AS tags ORDER BY id": [
+                {"id": "a", "title": "A", "domain": "math", "tags": ["x"]},
+                {"id": "b", "title": "B", "domain": "math", "tags": ["x"]},
+            ],
+            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+                {"id": "b", "target": "a"},             # 기존 b→a — 재제안 금지
+            ],
+        })
+        res = q.suggest_ties(owner="user:t", node="a", store=fake)
+        self.assertEqual(res["suggestions"], [])
+
+    def test_unknown_node_is_empty_not_error(self):
+        fake = _FakeStore({"AS tags ORDER BY id": []})
+        res = q.suggest_ties(owner="user:t", node="ghost", store=fake)
+        self.assertTrue(res["executed"])
+        self.assertEqual(res["suggestions"], [])

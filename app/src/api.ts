@@ -49,6 +49,9 @@ export const api = {
   share: (owner: string, opts: { domain?: string; seed?: string; depth?: number; ids?: string } = {}) =>
     call("/share", { owner, ...opts }),
   promoteCandidates: (owner: string) => call("/promote-candidates", { owner }),
+  suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
+  // fragment MERGE(D11 §5) — Bind 확정도 이 단일 쓰기 표면을 그대로 쓴다(D32)
+  ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
   importPack: (pack: unknown, owner: string) =>
     call("/ingest/pack", undefined, { pack, owner }),
   backup: (out: string) => call("/backup", undefined, { out }),

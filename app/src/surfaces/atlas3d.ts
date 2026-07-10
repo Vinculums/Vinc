@@ -24,6 +24,7 @@ export type N3 = {
   id: string; label: string; domain?: string; degree?: number;
   kind?: string;              // concept | episode | record | bridge | domain
   gateway?: boolean; focus?: boolean; records?: number;
+  pinned?: boolean;           // D32 — pin 은 허브 승격(크기 가중; 레이아웃은 사이드카)
   x?: number; y?: number; z?: number;
   fx?: number; fy?: number; fz?: number;
 };
@@ -43,6 +44,7 @@ function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
     ? 6 + 2.2 * Math.sqrt(n.records || 1)
     : prefs.size === "uniform" ? 5
     : Math.min(3 + 1.4 * Math.sqrt(n.degree || 1), 12);
+  if (n.pinned) r *= 1.25;   // pin = 허브 승격(D32) — 확정된 노드는 한 급 크게
   // 2D 는 깊이 겹침 여지가 없어 조밀 — 반경을 줄여 겹침 비율 자체를 낮춘다
   if (prefs.view === "2d" && n.kind !== "domain") r *= 0.7;
   let geo: THREE.BufferGeometry;
@@ -133,7 +135,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   if (handlers.onRightClick) g.onNodeRightClick((n: any) => handlers.onRightClick!(n));
   if (handlers.onLinkClick) g.onLinkClick((l: any) => handlers.onLinkClick!(l));
 
-  // hover: 이웃 유지·비이웃 대기 후퇴(재질 투명도) — spec 3D 단서
+  // hover: 이웃 유지·비이웃 대기 후퇴 — 노드는 rAF 이징 페이드(스냅 금지),
+  // 엣지는 hover 노드 비인접분을 paper 로 후퇴(집중 효과 완성, D32).
   const neighbors = new Map<string, Set<string>>();
   for (const l of links) {
     const s = typeof l.source === "object" ? (l.source as any).id : l.source;
@@ -141,17 +144,40 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (neighbors.get(s) || neighbors.set(s, new Set()).get(s)!).add(t);
     (neighbors.get(t) || neighbors.set(t, new Set()).get(t)!).add(s);
   }
+  let hoverId: string | null = null;
+  const linkColorFn = (l: any) => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    if (hoverId && s !== hoverId && t !== hoverId) return "#e2dccf";   // paper 후퇴
+    return l.cross ? "#6a6252" : "#8d8574";
+  };
+  g.linkColor(linkColorFn);
+  const fadeTargets = new Map<THREE.MeshLambertMaterial, number>();
+  let raf = 0;
+  const tween = () => {
+    let live = false;
+    fadeTargets.forEach((target, mat) => {
+      const d = target - mat.opacity;
+      if (Math.abs(d) > 0.01) { mat.opacity += d * 0.25; live = true; }
+      else mat.opacity = target;
+    });
+    raf = live ? requestAnimationFrame(tween) : 0;
+  };
   g.onNodeHover((n: any) => {
+    hoverId = n ? n.id : null;
     const keep = n ? new Set([n.id, ...(neighbors.get(n.id) || [])]) : null;
     g.graphData().nodes.forEach((m: any) => {
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
       const fade = keep ? !keep.has(m.id) : false;
+      const base = m.gateway ? 0.45 : 1;
       obj.traverse((c: THREE.Object3D) => {
         const mat = (c as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
-        if (mat) { mat.transparent = true; mat.opacity = fade ? 0.12 : (m.gateway ? 0.45 : 1); }
+        if (mat) { mat.transparent = true; fadeTargets.set(mat, fade ? 0.12 : base); }
       });
     });
+    if (!raf) raf = requestAnimationFrame(tween);
+    g.linkColor(linkColorFn);   // 접근자 재적용 → 링크색 재평가
     el.style.cursor = n ? "pointer" : "";
   });
   return g;

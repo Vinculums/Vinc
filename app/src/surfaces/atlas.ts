@@ -50,7 +50,7 @@ export async function renderAtlas(el: HTMLElement) {
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   const trail: Level[] = [];
 
-  // deep links: #atlas/<domain> · #atlas/compare/<a>/<b>
+  // deep links: #atlas/<domain> · #atlas/compare/<a>/<b> · #atlas/trace/<id>(L2)
   const parts = location.hash.split("/").map(decodeURIComponent);
   const deep = parts[1] || "";
 
@@ -80,6 +80,8 @@ export async function renderAtlas(el: HTMLElement) {
       <p class="hint">Labels</p>
       <p>${chip("labels", "hover", "on hover", p.labels === "hover")} ${chip("labels", "none", "off", p.labels === "none")}</p>
       <p>${chip("arrows", "toggle", "Direction arrows", p.arrows)}</p>
+      <p class="hint">Unlinked nodes</p>
+      <p>${chip("unlinked", "show", "show", p.unlinked === "show")} ${chip("unlinked", "hide", "hide", p.unlinked === "hide")}</p>
       <label class="hint" style="display:block">Spread
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>
@@ -132,6 +134,11 @@ export async function renderAtlas(el: HTMLElement) {
   function toL3(edges: GraphEdge[]): L3[] {
     return edges.map((e) => ({ source: e.source, target: e.target, type: e.type, cross: e.cross_domain }));
   }
+  /** D32 — Unlinked 필터(열린 층): 고아(연결 0)를 숨긴다. 초점(seed)은 항상 유지. */
+  function filterUnlinked(ns: N3[]): N3[] {
+    if (loadPrefs().unlinked !== "hide") return ns;
+    return ns.filter((n) => (n.degree || 0) > 0 || n.focus);
+  }
 
   async function showL0() {
     setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
@@ -177,10 +184,60 @@ export async function renderAtlas(el: HTMLElement) {
       <h2>${nd.label}</h2>
       <p><span class="badge">domain: ${nd.domain || "—"}</span></p>
       <p class="hint">${nd.degree || 0} connections${nd.gateway ? " · gateway" : ""}.</p>
-      <button class="btn btn-primary" id="focus">Trace from here</button>`;
+      <button class="btn btn-primary" id="focus">Trace from here</button>
+      <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {
       trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]);
     });
+    // D32 고아 최소화 — 연결 0 이면 잇기 후보(태그·도메인 근사, D25 전 단계)를
+    // 제안하고, Bind 는 fragment MERGE(단일 쓰기 표면)로 확정한다.
+    if ((nd.degree || 0) === 0) void suggestTiesInto(nd);
+  }
+
+  async function suggestTiesInto(nd: N3) {
+    const box = detail.querySelector<HTMLElement>("#ties-suggest");
+    if (!box) return;
+    box.innerHTML = `<p class="hint">Looking for possible ties…</p>`;
+    try {
+      const res = await api.suggestTies(cfg.owner, nd.id);
+      const sug: { id: string; title: string; domain: string; shared_tags: string[] }[] =
+        res.suggestions || [];
+      if (!res.executed || sug.length === 0) {
+        box.innerHTML = `<p class="hint">Unlinked — no tie candidates yet.
+          Tag it to surface matches.</p>`;
+        return;
+      }
+      box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">Unlinked — possible ties</p>` +
+        sug.map((s, i) => `
+          <div class="list-row">
+            <span class="title" style="font-size:.9em">${s.title}
+              ${s.shared_tags.length ? `<span class="hint">· ${s.shared_tags.join(", ")}</span>` : ""}</span>
+            <span class="actions" style="visibility:visible"><button data-bind="${i}">Bind</button></span>
+          </div>`).join("");
+      box.querySelectorAll<HTMLElement>("[data-bind]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const s = sug[Number(b.dataset.bind)];
+          b.textContent = "…";
+          try {
+            // 양 노드 모두 기존 노드(matched) — title 만 동봉해 클로버 없이 MERGE
+            await api.ingestFragment({
+              nodes: [{ type: "concept", id: nd.id, title: nd.label },
+                      { type: "concept", id: s.id, title: s.title }],
+              edges: [{ type: "relates_to", from: nd.id, to: s.id }],
+            });
+            await show(trail[trail.length - 1], false);   // 재렌더(연결 반영)
+            detail.hidden = false;                        // show() 가 닫으므로 확인 문구 재표시
+            detail.innerHTML = `<h2>${nd.label}</h2>
+              <p>Bound to <b>${s.title}</b> — 1 connection added.</p>`;
+          } catch {
+            b.textContent = "Bind";
+            box.insertAdjacentHTML("beforeend",
+              `<div class="error-banner">Couldn't bind — sidecar unreachable.</div>`);
+          }
+        }));
+    } catch {
+      box.innerHTML = `<p class="hint">Tie suggestions unavailable.</p>`;
+    }
   }
 
   async function showL1(domain: string) {
@@ -190,7 +247,7 @@ export async function renderAtlas(el: HTMLElement) {
       setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
     }
     setMsg("");
-    g3 = mount3d(canvas, toN3(res.nodes, domain), toL3(res.edges), {
+    g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, domain)), toL3(res.edges), {
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
         else openDetail(nd);
@@ -212,7 +269,7 @@ export async function renderAtlas(el: HTMLElement) {
     const res = await api.graph(cfg.owner, { seed, depth: 2 });
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     setMsg("");
-    g3 = mount3d(canvas, toN3(res.nodes, undefined, seed), toL3(res.edges), {
+    g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, undefined, seed)), toL3(res.edges), {
       onClick: (nd) => openDetail(nd),
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
     });
@@ -399,6 +456,7 @@ export async function renderAtlas(el: HTMLElement) {
 
   trail.push({ kind: "l0" });
   if (deep === "compare" && parts[2] && parts[3]) trail.push({ kind: "compare", a: parts[2], b: parts[3] });
+  else if (deep === "trace" && parts[2]) trail.push({ kind: "l2", seed: parts[2] });
   else if (deep) trail.push({ kind: "l1", domain: deep });
   await show(trail[trail.length - 1]);
 }

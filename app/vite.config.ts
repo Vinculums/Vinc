@@ -6,7 +6,7 @@ import { defineConfig } from "vite";
 const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 const PATHS = ["/health", "/atlas", "/graph", "/recall", "/search", "/domains",
   "/learner", "/decide", "/activate", "/backup", "/pin", "/tag", "/touch",
-  "/ingest", "/jobs", "/plan", "/share", "/coupling"];
+  "/ingest", "/jobs", "/plan", "/share", "/coupling", "/suggest-ties"];
 
 export default defineConfig({
   server: {

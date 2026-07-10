@@ -12,10 +12,13 @@ export type AtlasPrefs = {
   labels: "hover" | "none";
   arrows: boolean;             // directional arrowheads (prerequisite/derives/inherits)
   spread: number;              // layout spread multiplier (0.6–1.6)
+  unlinked: "show" | "hide";   // orphan nodes (degree 0) — D32 orphan minimization
 };
 
 const KEY = "vinc.atlas.prefs";
-const DEFAULTS: AtlasPrefs = { view: "3d", size: "links", labels: "hover", arrows: true, spread: 1 };
+const DEFAULTS: AtlasPrefs = {
+  view: "3d", size: "links", labels: "hover", arrows: true, spread: 1, unlinked: "show",
+};
 
 export function loadPrefs(): AtlasPrefs {
   try {
@@ -28,6 +31,7 @@ export function loadPrefs(): AtlasPrefs {
       labels: p.labels === "none" ? "none" : "hover",
       arrows: p.arrows !== false,
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
+      unlinked: p.unlinked === "hide" ? "hide" : "show",
     };
   } catch {
     return { ...DEFAULTS };
