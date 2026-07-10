@@ -63,7 +63,7 @@ class SubgraphPlanTests(unittest.TestCase):
         ids = {n["id"] for n in res["nodes"]}
         self.assertEqual(ids, {"a", "b"})                  # z 는 ego 경계 밖
         self.assertEqual(len(res["edges"]), 1)
-        self.assertTrue(all("x" in n and "y" in n for n in res["nodes"]))  # D17 좌표
+        self.assertTrue(all("x" in n and "y" in n and "z" in n for n in res["nodes"]))  # D17 3D 좌표
 
 
 class LayoutTests(unittest.TestCase):
@@ -75,8 +75,8 @@ class LayoutTests(unittest.TestCase):
     def test_deterministic(self):
         n1 = q.layout_positions(self._nodes(), [])
         n2 = q.layout_positions(self._nodes(), [])
-        self.assertEqual([(n["x"], n["y"]) for n in n1],
-                         [(n["x"], n["y"]) for n in n2])   # 순수 함수(D17)
+        self.assertEqual([(n["x"], n["y"], n["z"]) for n in n1],
+                         [(n["x"], n["y"], n["z"]) for n in n2])   # 순수 함수(D17·3D)
 
     def test_domains_form_separate_clusters(self):
         nodes = q.layout_positions(self._nodes(), [])

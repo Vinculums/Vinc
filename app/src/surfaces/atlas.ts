@@ -2,19 +2,17 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode } from "../api";
 import { COPY } from "../copy";
+import { mount3d, type L3, type N3 } from "./atlas3d";
 
-/** Surface 3 — Atlas (spec: vinc.d.graph v0.2, DEC D16·D17).
+/** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
  *
- *  Three-level semantic zoom:
- *    L0 Domain Atlas — domains as supernodes (size = record count), ties as
- *      weighted edges. Data: GET /atlas.
- *    L1 Domain Lens — one domain's nodes + edge-of-lens gateways (ghost nodes
- *      that cross into another domain; click to follow). Data: GET /graph?domain=.
- *    L2 Node Focus — seed+depth ego. Data: GET /graph?seed=&depth=.
+ *  Full-3D renderer (DEC D21 revised): L0 Domain Atlas / L1 Domain Lens /
+ *  L2 Node Focus run on three.js (see atlas3d.ts — primitives = type,
+ *  monochrome ink materials, paper fog). Compare keeps flat Sigma lenses —
+ *  side-by-side comparison is deliberately planar.
  *
- *  Layout comes precomputed from the sidecar (D17) — the UI only consumes x/y.
- *  Monochrome contract: cross-domain edges are dashed-equivalent (lighter +
- *  thinner), highlight is the single point color; no per-domain colors. */
+ *  Navigation: L0 click = open lens · L0 link click = Compare ·
+ *  L1 click = gateway→follow / node→detail · right-click = L2 refocus. */
 
 type Level = { kind: "l0" } | { kind: "l1"; domain: string } | { kind: "l2"; seed: string }
   | { kind: "compare"; a: string; b: string };
@@ -22,7 +20,7 @@ type Level = { kind: "l0" } | { kind: "l1"; domain: string } | { kind: "l2"; see
 const INK = "#14110d";
 const INK_MUTE = "#6a6252";
 const PAPER_EDGE = "#ded8cc";
-const POINT = "#3e4c63";   // --ring / --primary (single point color)
+const POINT = "#3e4c63";
 
 export async function renderAtlas(el: HTMLElement) {
   el.innerHTML = `
@@ -37,8 +35,8 @@ export async function renderAtlas(el: HTMLElement) {
   const detail = el.querySelector<HTMLElement>("#atlas-detail")!;
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
 
-  let sigma: Sigma | null = null;
-  let extraSigmas: Sigma[] = [];   // Compare 뷰의 좌우 렌즈 인스턴스
+  let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
+  let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   const trail: Level[] = [];
 
   // deep links: #atlas/<domain> · #atlas/compare/<a>/<b>
@@ -57,26 +55,19 @@ export async function renderAtlas(el: HTMLElement) {
       b.addEventListener("click", () => { trail.length = Number(b.dataset.i) + 1; show(trail[trail.length - 1], false); }));
   }
 
-  function mount(graph: Graph, handlers: {
-    onClick?: (node: string) => void; onDouble?: (node: string) => void;
-  }) {
-    sigma?.kill();
-    sigma = new Sigma(graph, canvas, { allowInvalidContainer: true });
-    // hover reducer — neighbors stay, the rest fade (D16 interaction grammar)
-    let hovered: string | null = null;
-    sigma.setSetting("nodeReducer", (node, data) => {
-      if (!hovered) return data;
-      if (node === hovered || graph.areNeighbors(node, hovered)) return { ...data, zIndex: 1 };
-      return { ...data, color: PAPER_EDGE, label: "" };
-    });
-    sigma.setSetting("edgeReducer", (edge, data) => {
-      if (!hovered) return data;
-      return graph.hasExtremity(edge, hovered) ? data : { ...data, color: "#efeae1" };
-    });
-    sigma.on("enterNode", ({ node }) => { hovered = node; sigma!.refresh(); });
-    sigma.on("leaveNode", () => { hovered = null; sigma!.refresh(); });
-    if (handlers.onClick) sigma.on("clickNode", ({ node }) => handlers.onClick!(node));
-    if (handlers.onDouble) sigma.on("doubleClickNode", ({ node }) => handlers.onDouble!(node));
+  function toN3(nodes: GraphNode[], lensDomain?: string, focusId?: string): N3[] {
+    return nodes.map((nd) => ({
+      id: nd.id,
+      label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
+      domain: nd.domain, degree: nd.degree,
+      kind: (nd as any).kind || "concept",
+      gateway: lensDomain !== undefined && nd.domain !== lensDomain,
+      focus: focusId !== undefined && nd.id === focusId,
+      x: nd.x, y: nd.y, z: (nd as any).z,
+    }));
+  }
+  function toL3(edges: GraphEdge[]): L3[] {
+    return edges.map((e) => ({ source: e.source, target: e.target, type: e.type, cross: e.cross_domain }));
   }
 
   async function showL0() {
@@ -90,33 +81,83 @@ export async function renderAtlas(el: HTMLElement) {
       return;
     }
     setMsg("");
-    const g = new Graph();
     const n = Math.max(domains.length, 1);
-    domains.forEach((d, i) => {
+    const nodes: N3[] = domains.map((d, i) => {
       const ang = (2 * Math.PI * i) / n;
-      g.addNode(d.domain, {
-        label: d.domain, x: Math.cos(ang), y: Math.sin(ang),
-        size: 8 + 3 * Math.sqrt(d.episodes), color: INK,
-      });
+      return { id: d.domain, label: d.domain, kind: "domain", records: d.episodes,
+               x: Math.cos(ang), y: Math.sin(ang) * 0.25, z: Math.sin(ang) };
     });
-    for (const t of ties) {
-      if (g.hasNode(t.source) && g.hasNode(t.target) && !g.hasEdge(t.source, t.target))
-        g.addEdge(t.source, t.target, { size: 1 + Math.log1p(t.ties), color: INK_MUTE });
-    }
-    mount(g, { onClick: (node) => { trail.push({ kind: "l1", domain: node }); show(trail[trail.length - 1]); } });
-    // L0 결합 엣지 클릭 → Compare 뷰(D22 — 개념 대 개념 결합)
-    sigma!.setSetting("enableEdgeEvents", true);
-    sigma!.on("clickEdge", ({ edge }) => {
-      const [a, b] = g.extremities(edge);
-      trail.push({ kind: "compare", a, b }); show(trail[trail.length - 1]);
+    // Bridge 전용 도메인(레코드 0 — 예: 브릿지 매트릭스의 외부 축)은 L0 노드가
+    // 없으므로 결합에서 제외 — 미지 노드 참조는 렌더러가 거부한다.
+    const known = new Set(nodes.map((d) => d.id));
+    const links: L3[] = ties
+      .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
+      .map((t) => ({ source: t.source, target: t.target, cross: true, weight: t.ties }));
+    g3 = mount3d(canvas, nodes, links, {
+      onClick: (nd) => { trail.push({ kind: "l1", domain: nd.id }); show(trail[trail.length - 1]); },
+      onLinkClick: (l) => {
+        const a = typeof l.source === "object" ? l.source.id : l.source;
+        const b = typeof l.target === "object" ? l.target.id : l.target;
+        trail.push({ kind: "compare", a, b }); show(trail[trail.length - 1]);
+      },
     });
   }
 
-  /** Compare 뷰(D22) — 좌우 도메인 렌즈 + 중앙 개념 결합 레일.
-   *  직접 크로스도메인 엣지(파선 표기)와 Bridge 매개쌍(점선+마름모 표기)을 나열하고,
-   *  레일 hover 시 양쪽 렌즈에서 해당 개념쌍이 점등된다(brushing & linking). */
+  function openDetail(nd: N3) {
+    detail.hidden = false;
+    detail.innerHTML = `
+      <h2>${nd.label}</h2>
+      <p><span class="badge">domain: ${nd.domain || "—"}</span></p>
+      <p class="hint">${nd.degree || 0} connections${nd.gateway ? " · gateway" : ""}.</p>
+      <button class="btn btn-primary" id="focus">Trace from here</button>`;
+    detail.querySelector("#focus")!.addEventListener("click", () => {
+      trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]);
+    });
+  }
+
+  async function showL1(domain: string) {
+    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
+    const res = await api.graph(cfg.owner, { domain });
+    if (!res.executed || (res.nodes || []).length === 0) {
+      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
+    }
+    setMsg("");
+    g3 = mount3d(canvas, toN3(res.nodes, domain), toL3(res.edges), {
+      onClick: (nd) => {
+        if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
+        else openDetail(nd);
+      },
+      onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
+    });
+  }
+
+  async function showL2(seed: string) {
+    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
+    const res = await api.graph(cfg.owner, { seed, depth: 2 });
+    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    setMsg("");
+    g3 = mount3d(canvas, toN3(res.nodes, undefined, seed), toL3(res.edges), {
+      onClick: (nd) => openDetail(nd),
+      onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
+    });
+  }
+
+  /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
+   *  의도적으로 평면(나란히 대조가 목적 — 3D 회전은 좌우 대응을 깨뜨림). */
+  function addShapedGraph(g: Graph, nodes: GraphNode[], edges: GraphEdge[]) {
+    for (const nd of nodes) {
+      const label = nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label;
+      g.addNode(nd.id, { label, x: nd.x ?? 0, y: nd.y ?? 0,
+        size: 4 + Math.sqrt(nd.degree || 1) * 2, color: INK, domain: nd.domain });
+    }
+    for (const e of edges) {
+      if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target))
+        g.addEdge(e.source, e.target, { size: e.cross_domain ? 0.8 : 1.6,
+          color: e.cross_domain ? INK_MUTE : PAPER_EDGE });
+    }
+  }
+
   async function showCompare(a: string, b: string) {
-    sigma?.kill(); sigma = null;
     setMsg("");
     canvas.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 22rem 1fr;height:100%">
@@ -132,10 +173,10 @@ export async function renderAtlas(el: HTMLElement) {
       api.graph(cfg.owner, { domain: a }), api.graph(cfg.owner, { domain: b }),
       api.coupling(cfg.owner, a, b),
     ]);
-    const mk = (el: HTMLElement, res: any) => {
+    const mk = (elm: HTMLElement, res: any) => {
       const g = new Graph();
       addShapedGraph(g, res.nodes || [], res.edges || []);
-      const s = new Sigma(g, el, { allowInvalidContainer: true });
+      const s = new Sigma(g, elm, { allowInvalidContainer: true });
       extraSigmas.push(s);
       return { g, s };
     };
@@ -153,7 +194,7 @@ export async function renderAtlas(el: HTMLElement) {
           ${p.via_title ? `<span class="meta">via ${p.via_title}</span>` : ""}
         </div>`).join("");
     const highlight = (p: any | null) => {
-      for (const { g, s } of [left, right]) {
+      for (const { s } of [left, right]) {
         s.setSetting("nodeReducer", (node, data) => {
           if (!p) return data;
           const hit = node === p.a_id || node === p.b_id;
@@ -161,7 +202,6 @@ export async function renderAtlas(el: HTMLElement) {
                      : { ...data, color: PAPER_EDGE, label: "" };
         });
         s.refresh();
-        void g;
       }
     };
     railEl.querySelectorAll(".list-row").forEach((row) => {
@@ -170,79 +210,12 @@ export async function renderAtlas(el: HTMLElement) {
     });
   }
 
-  function addShapedGraph(g: Graph, nodes: GraphNode[], edges: GraphEdge[], lensDomain?: string) {
-    for (const nd of nodes) {
-      const gateway = lensDomain !== undefined && nd.domain !== lensDomain;
-      // ghost nodes arrive with label=id — strip the type prefix for display
-      const label = nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label;
-      g.addNode(nd.id, {
-        label, x: nd.x ?? 0, y: nd.y ?? 0,
-        size: 4 + Math.sqrt(nd.degree || 1) * 2,
-        color: gateway ? INK_MUTE : INK,           // gateway = ghost weight, not color hue
-        gateway, domain: nd.domain,
-      });
-    }
-    for (const e of edges) {
-      if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target))
-        g.addEdge(e.source, e.target, {
-          size: e.cross_domain ? 0.8 : 1.6,        // dashed-equivalent under monochrome
-          color: e.cross_domain ? INK_MUTE : PAPER_EDGE,
-        });
-    }
-  }
-
-  function openDetail(node: string, g: Graph) {
-    const a = g.getNodeAttributes(node);
-    detail.hidden = false;
-    detail.innerHTML = `
-      <h2>${a.label}</h2>
-      <p class="meta hint">${a.domain || ""}</p>
-      <p class="hint">${g.degree(node)} connections.</p>
-      <button class="btn btn-primary" id="focus">Trace from here</button>`;
-    detail.querySelector("#focus")!.addEventListener("click", () => {
-      trail.push({ kind: "l2", seed: node }); show(trail[trail.length - 1]);
-    });
-  }
-
-  async function showL1(domain: string) {
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { domain });
-    if (!res.executed || (res.nodes || []).length === 0) {
-      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
-    }
-    setMsg("");
-    const g = new Graph();
-    addShapedGraph(g, res.nodes, res.edges, domain);
-    mount(g, {
-      onClick: (node) => {
-        if (g.getNodeAttribute(node, "gateway")) {
-          const next = g.getNodeAttribute(node, "domain");
-          trail.push({ kind: "l1", domain: next }); show(trail[trail.length - 1]);
-        } else openDetail(node, g);
-      },
-      onDouble: (node) => { trail.push({ kind: "l2", seed: node }); show(trail[trail.length - 1]); },
-    });
-  }
-
-  async function showL2(seed: string) {
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { seed, depth: 2 });
-    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
-    setMsg("");
-    const g = new Graph();
-    addShapedGraph(g, res.nodes, res.edges);
-    if (g.hasNode(seed)) g.setNodeAttribute(seed, "color", POINT);  // the single point color
-    mount(g, { onClick: (node) => openDetail(node, g), onDouble: (node) => {
-      trail.push({ kind: "l2", seed: node }); show(trail[trail.length - 1]);
-    }});
-  }
-
   async function show(level: Level, push = true) {
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
     detail.hidden = true;
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
-    sigma?.kill(); sigma = null;
+    if (g3) { g3._destructor?.(); g3 = null; }
     canvas.innerHTML = "";
     drawCrumb();
     try {

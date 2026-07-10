@@ -341,29 +341,34 @@ def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
 
 
 def layout_positions(nodes: list[dict], edges: list[dict]) -> list[dict]:
-    """결정론 레이아웃(D17) — **순수 함수**, 난수·시간 무의존이라 같은 그래프는 항상
-    같은 좌표(플랜 순수성 계약과 동형). 도메인 클러스터를 단위원 둘레에 정렬 배치하고,
-    클러스터 내부는 (degree DESC, id) 순 아르키메데스 나선으로 편다. 힘-지향 정밀화는
-    후속(사이드카 잡)이며 UI 는 본 좌표를 소비만 한다."""
+    """결정론 3D 레이아웃(D17 + D21 개정) — **순수 함수**, 난수·시간 무의존이라 같은
+    그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인 클러스터 중심을 xy
+    단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 (degree DESC, id) 순
+    **fibonacci 구면 산개**로 편다(허브가 중심, 반경 = 0.08·√i). 힘-지향 정밀화는
+    후속(사이드카 잡)이며 UI(3D 렌더러)는 본 좌표를 소비만 한다."""
     import math
+    GOLDEN = 2.399963229728653
     by_domain: dict[str, list[dict]] = {}
     for n in nodes:
         by_domain.setdefault(n.get("domain") or "", []).append(n)
     domains = sorted(by_domain)
     d_count = max(len(domains), 1)
     for di, dom in enumerate(domains):
-        # 클러스터 중심 — 도메인 1개면 원점, 복수면 단위원 둘레.
         if d_count == 1:
             cx, cy = 0.0, 0.0
         else:
             ang = 2 * math.pi * di / d_count
             cx, cy = math.cos(ang), math.sin(ang)
         members = sorted(by_domain[dom], key=lambda n: (-int(n.get("degree") or 0), str(n.get("id"))))
+        count = len(members)
         for i, n in enumerate(members):
-            r = 0.08 * math.sqrt(i)            # 나선 반경(허브가 중심)
-            a = i * 2.399963229728653          # golden angle — 균등 산개
-            n["x"] = round(cx + r * math.cos(a), 6)
-            n["y"] = round(cy + r * math.sin(a), 6)
+            r = 0.08 * math.sqrt(i)
+            t = i / max(count - 1, 1)
+            phi = math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * t)))   # 극각 — 구면 균등
+            theta = i * GOLDEN
+            n["x"] = round(cx + r * math.sin(phi) * math.cos(theta), 6)
+            n["y"] = round(cy + r * math.sin(phi) * math.sin(theta), 6)
+            n["z"] = round(r * math.cos(phi), 6)
     return nodes
 
 
@@ -468,11 +473,29 @@ def coupling(*, owner: str, a: str, b: str, cfg=None, store=None) -> dict:
             "a": a, "b": b, "pairs": out}
 
 
+def concept_domains_plan(*, owner: str) -> QueryPlan:
+    """L0 도메인 집계의 Concept 축 — Episode 없는 코퍼스(개념 위주 허브, 실측:
+    weg-9000 적재분)에서도 L0 가 그려져야 한다."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+        "RETURN c.domain AS domain, count(*) AS records ORDER BY records DESC"
+    )
+    return QueryPlan("concept_domains", cypher, {"owner": owner}, note="concept counts per domain (L0)")
+
+
 def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
-    """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(`/domains` 집계) +
-    도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로 L0 를
-    그린다(그래프 로직 UI 반입 금지)."""
+    """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(Episode ∪ Concept
+    합산) + 도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로
+    L0 를 그린다(그래프 로직 UI 반입 금지)."""
     d = execute(domains_plan(owner=owner), cfg, store=store)
+    c = execute(concept_domains_plan(owner=owner), cfg, store=store)
+    counts: dict[str, int] = {}
+    for row in d.get("rows", []):
+        counts[row["domain"]] = counts.get(row["domain"], 0) + int(row.get("episodes") or 0)
+    for row in c.get("rows", []):
+        counts[row["domain"]] = counts.get(row["domain"], 0) + int(row.get("records") or 0)
+    domains = [{"domain": k, "episodes": v} for k, v in
+               sorted(counts.items(), key=lambda kv: -kv[1])]
     t = execute(domain_ties_plan(owner=owner), cfg, store=store)
     b = execute(bridge_ties_plan(), cfg, store=store)
     merged: dict[tuple[str, str], int] = {}
@@ -482,8 +505,8 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
             merged[key] = merged.get(key, 0) + int(row.get("ties") or 0)
     ties = [{"source": s, "target": tg, "ties": n}
             for (s, tg), n in sorted(merged.items(), key=lambda kv: -kv[1])]
-    return {"executed": bool(d.get("executed")),
-            "domains": d.get("rows", []), "ties": ties}
+    return {"executed": bool(d.get("executed") or c.get("executed")),
+            "domains": domains, "ties": ties}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,
