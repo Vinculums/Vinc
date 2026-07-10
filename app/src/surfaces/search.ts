@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { COPY } from "../copy";
+import { header } from "../components";
 
 /** Surface 4 — Search (spec: vinc.d.atlas-visual-language §4, DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -21,7 +22,7 @@ const MARK: Record<string, string> = { keyword: "≡", semantic: "≈" };
 
 export function renderSearch(el: HTMLElement) {
   el.innerHTML = `
-    <h1>Search</h1>
+    ${header("search", "Search", "Meaning + keyword, fused · /search")}
     <form id="search-form" role="search">
       <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core &quot;phrase&quot;"
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);

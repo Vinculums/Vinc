@@ -1,16 +1,19 @@
 import { COPY } from "../copy";
+import { header, headerCta } from "../components";
+import { icon } from "../icons";
 
-/** Surface 1 — Intake (spec: vinc.d.ingest v0.2).
- *  First-run setup is this surface's empty state; no separate onboarding (D15).
- *  File pick will move to Tauri IPC dialog when the shell lands (P4). */
+/** Surface 1 — Intake (Figma 5:2 grammar · spec vinc.d.ingest v0.2).
+ *  First-run setup lives in this surface's empty state (D15); the 설치 셋업
+ *  frame (4:29)'s stepper survives as the inline preparing indicator. */
 export function renderIntake(el: HTMLElement) {
   el.innerHTML = `
-    <h1>Intake</h1>
+    ${header("ingest", "Intake", "Sources become records · /ingest/{engine}",
+             headerCta("choose", "upload", "Choose sources"))}
     <div class="empty" id="drop">
+      ${icon("ingest", 30)}
       <h2>${COPY.intake.idleTitle}</h2>
       <p>${COPY.intake.idleBody}</p>
       <p class="hint">${COPY.sovereignty}</p>
-      <button class="btn btn-primary" id="choose">${COPY.intake.idleCta}</button>
     </div>
     <div id="intake-status" role="status"></div>
   `;

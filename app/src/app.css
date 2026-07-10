@@ -12,29 +12,84 @@ body {
   line-height: var(--lh, 1.5);
 }
 
-#shell { display: grid; grid-template-columns: 13rem 1fr; height: 100vh; }
+/* ── Shell: icon rail (D26 — 56px, labels on hover/`[` expand; HIG: never
+      hidden by default). Active = surface lift + weight (Figma 5:2 grammar). */
+#shell { display: grid; grid-template-columns: 3.5rem 1fr; height: 100vh; }
+#shell.rail-expanded, #shell:has(#rail:hover) { grid-template-columns: 12.5rem 1fr; }
 
-#nav {
+#rail {
   display: flex; flex-direction: column; gap: var(--space-1, .25rem);
-  padding: var(--space-4, 1rem);
+  padding: var(--space-3, .75rem) var(--space-2, .5rem);
   border-right: 1px solid hsl(var(--border));
+  overflow: hidden; white-space: nowrap; transition: none;
 }
 #brand {
   font-family: var(--font-heading, inherit);
-  font-size: var(--fs-display, 1.6rem); line-height: var(--lh-tight, 1.1);
-  font-weight: 700; margin-bottom: var(--space-4, 1rem);
+  font-size: 1.35rem; line-height: var(--lh-tight, 1.1);
+  font-weight: 700; margin: 0 0 var(--space-4, 1rem) var(--space-2, .5rem);
 }
-#nav a {
+#brand .rail-label { display: none; }
+#shell.rail-expanded #brand .rail-label,
+#shell:has(#rail:hover) #brand .rail-label { display: inline; }
+
+#rail a, #rail #settings-btn {
+  display: flex; align-items: center; gap: var(--space-3, .75rem);
   color: hsl(var(--muted-foreground)); text-decoration: none;
-  padding: var(--space-2, .5rem) var(--space-3, .75rem);
-  border-radius: var(--radius);
+  padding: var(--space-2, .5rem);
+  border-radius: var(--radius); border: none; background: none;
+  font: inherit; cursor: pointer; text-align: left;
 }
-#nav a.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
-#nav a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-#settings-btn {
-  margin-top: auto; background: none; border: 1px solid hsl(var(--border));
-  border-radius: var(--radius); padding: var(--space-2, .5rem);
-  color: hsl(var(--muted-foreground)); cursor: pointer; font: inherit;
+#rail .rail-label { display: none; }
+#shell.rail-expanded #rail .rail-label,
+#shell:has(#rail:hover) #rail .rail-label { display: inline; }
+#rail a.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+#rail a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+#rail #settings-btn { margin-top: auto; }
+
+.icon { display: inline-flex; width: var(--icon-size, 20px); height: var(--icon-size, 20px); flex: none; }
+.icon svg { width: 100%; height: 100%; }
+
+/* Surface header (Figma: icon + display title + endpoint meta + point CTA) */
+.surface-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: var(--space-5, 1.25rem);
+}
+.surface-title { display: flex; gap: var(--space-3, .75rem); align-items: flex-start; }
+.surface-title h1 { margin: 0; }
+.surface-meta { margin: .15rem 0 0; }
+.header-cta { display: inline-flex; align-items: center; gap: .4rem; }
+
+/* Command palette / cheatsheet overlay */
+#palette, #cheatsheet {
+  position: fixed; inset: 0; z-index: 50;
+  background: hsl(var(--foreground) / .18);
+  display: grid; place-items: start center; padding-top: 14vh;
+}
+.palette-card {
+  width: 34rem; max-width: 90vw;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
+  padding: var(--space-3, .75rem);
+}
+.palette-card input {
+  width: 100%; font: inherit; padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  margin-bottom: var(--space-2, .5rem);
+}
+.palette-row {
+  display: flex; justify-content: space-between; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) var(--space-3, .75rem);
+  border-radius: var(--radius); cursor: pointer;
+}
+.palette-row.sel, .palette-row:hover { background: hsl(var(--background)); font-weight: 700; }
+
+/* Domain badge (Figma 6:57 detail rail: "domain: research" chip) */
+.badge {
+  display: inline-block; border: 1px solid hsl(var(--border));
+  border-radius: 999px; padding: 0 var(--space-2, .5rem);
+  font-size: var(--fs-0, .8rem); color: hsl(var(--muted-foreground));
+  background: hsl(var(--background));
 }
 
 #surface { padding: var(--space-6, 1.5rem); overflow: auto; position: relative; }
@@ -98,7 +153,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 
 /* Settings popover */
 #settings-popover {
-  position: fixed; left: 13.5rem; bottom: var(--space-4, 1rem); z-index: 10;
+  position: fixed; left: 4rem; bottom: var(--space-4, 1rem); z-index: 10;
   width: 24rem; background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius); box-shadow: var(--shadow-elev-2, none);
   padding: var(--space-4, 1rem);
