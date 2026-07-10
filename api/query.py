@@ -415,6 +415,59 @@ def bridge_ties_plan() -> QueryPlan:
     return QueryPlan("bridge_ties", cypher, {}, note="bridge tie matrix (L0)")
 
 
+def direct_coupling_plan(*, owner: str, a: str, b: str) -> QueryPlan:
+    """Compare 뷰(D22) — 두 도메인 사이 **개념 대 개념** 직접 크로스도메인 엣지."""
+    cypher = (
+        "MATCH (x:Concept)-[r]->(y:Concept) "
+        "WHERE x.owner_id = $owner AND y.owner_id = $owner "
+        "AND ((x.domain = $a AND y.domain = $b) OR (x.domain = $b AND y.domain = $a)) "
+        "RETURN x.concept_id AS a_id, x.title AS a_title, x.domain AS a_domain, "
+        "y.concept_id AS b_id, y.title AS b_title, label(r) AS rel"
+    )
+    return QueryPlan("coupling_direct", cypher, {"owner": owner, "a": a, "b": b},
+                     note="concept-level direct cross-domain edges")
+
+
+def bridge_coupling_plan(*, a: str, b: str) -> QueryPlan:
+    """Compare 뷰(D22) — Bridge 매개 개념쌍: (cA)←CONNECTS─(Bridge)─CONNECTS→(cB),
+    cA.domain=$a · cB.domain=$b. weg-9000 실데이터에서 직접 엣지는 0 이고 결합은
+    Bridge 가 담당(실측) — 매개쌍이 주 신호다."""
+    cypher = (
+        "MATCH (x:Concept)<-[:CONNECTS]-(br:Bridge)-[:CONNECTS]->(y:Concept) "
+        "WHERE x.domain = $a AND y.domain = $b "
+        "RETURN x.concept_id AS a_id, x.title AS a_title, "
+        "y.concept_id AS b_id, y.title AS b_title, "
+        "br.bridge_id AS via, br.title AS via_title"
+    )
+    return QueryPlan("coupling_bridge", cypher, {"a": a, "b": b},
+                     note="bridge-mediated concept pairs")
+
+
+def coupling(*, owner: str, a: str, b: str, cfg=None, store=None) -> dict:
+    """두 도메인의 개념 결합쌍(D22) — 직접 엣지 ∪ Bridge 매개. 쌍 단위 dedup,
+    직접 결합 우선 정렬."""
+    d = execute(direct_coupling_plan(owner=owner, a=a, b=b), cfg, store=store)
+    br = execute(bridge_coupling_plan(a=a, b=b), cfg, store=store)
+    pairs: dict[tuple[str, str], dict] = {}
+    for r in d.get("rows", []):
+        # 방향 정규화: a 도메인 쪽을 왼쪽에.
+        left_first = r.get("a_domain") == a
+        ai, at = (r["a_id"], r["a_title"]) if left_first else (r["b_id"], r["b_title"])
+        bi, bt = (r["b_id"], r["b_title"]) if left_first else (r["a_id"], r["a_title"])
+        pairs[(ai, bi)] = {"a_id": ai, "a_title": at or ai, "b_id": bi,
+                           "b_title": bt or bi, "kind": "direct", "rel": r.get("rel")}
+    for r in br.get("rows", []):
+        key = (r["a_id"], r["b_id"])
+        if key not in pairs:   # 직접 결합이 매개보다 강한 신호 — 우선
+            pairs[key] = {"a_id": r["a_id"], "a_title": r.get("a_title") or r["a_id"],
+                          "b_id": r["b_id"], "b_title": r.get("b_title") or r["b_id"],
+                          "kind": "bridge", "via": r.get("via"),
+                          "via_title": r.get("via_title")}
+    out = sorted(pairs.values(), key=lambda p: (p["kind"] != "direct", p["a_title"]))
+    return {"executed": bool(d.get("executed") or br.get("executed")),
+            "a": a, "b": b, "pairs": out}
+
+
 def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
     """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(`/domains` 집계) +
     도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로 L0 를
@@ -451,10 +504,20 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         base["note"] = "no reachable store"
         return base
     try:
-        arms = [store.fulltext_search(query, top_k, filters)]   # BM25 암
+        kw = store.fulltext_search(query, top_k, filters)       # BM25 암
+        arms = [kw]
+        arm_names = ["keyword"]
         if query_embedding is not None:
             arms.append(store.vector_search(query_embedding, top_k, filters))
+            arm_names.append("semantic")
+        # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
+        membership: dict = {}
+        for name, rows_ in zip(arm_names, arms):
+            for r in rows_:
+                membership.setdefault(r.get("id"), []).append(name)
         rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+        for r in rows:
+            r["arms"] = membership.get(r.get("id"), [])
         base["executed"] = True
         base["rows"] = rows
     except Exception as exc:

@@ -42,6 +42,7 @@ export const api = {
     call("/graph", { owner, ...opts }),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
+  coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
   domains: (owner: string) => call("/domains", { owner }),
   activate: (owner: string, opts: Record<string, unknown> = {}) =>
     call("/activate", undefined, { owner, ...opts }),

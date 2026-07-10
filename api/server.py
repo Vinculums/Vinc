@@ -135,6 +135,11 @@ class VincApp:
         # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
         return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
 
+    def read_coupling(self, p):
+        # Compare 뷰(D22) — 두 도메인의 개념 대 개념 결합쌍.
+        return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
+                                               a=_req(p, "a"), b=_req(p, "b"), store=r))
+
     def read_share(self, p):
         # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
         return self._read(lambda r: share.build_share_pack(
@@ -323,6 +328,7 @@ class _Handler(BaseHTTPRequestHandler):
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
             "/atlas": app.read_atlas, "/share": app.read_share,
+            "/coupling": app.read_coupling,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
         }

@@ -172,3 +172,35 @@ class FragmentMergeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CouplingTests(unittest.TestCase):
+    """Compare 뷰(D22) — 개념 대 개념 결합쌍 계약."""
+
+    def test_direct_plan_matches_both_directions(self):
+        plan = q.direct_coupling_plan(owner="u", a="math", b="physics")
+        self.assertIn("x.domain = $a AND y.domain = $b", plan.cypher)
+        self.assertIn("x.domain = $b AND y.domain = $a", plan.cypher)
+
+    def test_bridge_plan_traverses_connects_both_arms(self):
+        plan = q.bridge_coupling_plan(a="math", b="physics")
+        self.assertIn("<-[:CONNECTS]-(br:Bridge)-[:CONNECTS]->", plan.cypher)
+
+    def test_coupling_merges_and_prefers_direct(self):
+        fake = _FakeStore({
+            "label(r) AS rel": [
+                {"a_id": "c1", "a_title": "C1", "a_domain": "math",
+                 "b_id": "p1", "b_title": "P1", "rel": "RELATED_TO"}],
+            "br.bridge_id AS via": [
+                # 직접 결합과 동일 쌍(무시) + 신규 매개쌍
+                {"a_id": "c1", "a_title": "C1", "b_id": "p1", "b_title": "P1",
+                 "via": "br-x", "via_title": "X"},
+                {"a_id": "c2", "a_title": "C2", "b_id": "p2", "b_title": "P2",
+                 "via": "br-y", "via_title": "Y"}],
+        })
+        res = q.coupling(owner="u", a="math", b="physics", store=fake)
+        self.assertTrue(res["executed"])
+        kinds = {(p["a_id"], p["b_id"]): p["kind"] for p in res["pairs"]}
+        self.assertEqual(kinds[("c1", "p1")], "direct")   # 직접이 매개에 우선
+        self.assertEqual(kinds[("c2", "p2")], "bridge")
+        self.assertEqual(len(res["pairs"]), 2)
