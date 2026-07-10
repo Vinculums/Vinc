@@ -314,10 +314,101 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
-def graph(*, owner: str, domain: str | None = None, cfg=None, store=None) -> dict:
+def subgraph_ids_plan(seed: str, *, depth: int = 2) -> QueryPlan:
+    """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
+    MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
+    §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다."""
+    depth = max(1, min(int(depth), 4))
+    cypher = (
+        "MATCH (n:Concept) WHERE n.concept_id = $seed "
+        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Concept) "
+        "RETURN DISTINCT m.concept_id AS id"
+    )
+    return QueryPlan("subgraph_ids", cypher, {"seed": seed},
+                     note=f"seed+depth traversal (depth={depth})")
+
+
+def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
+    """id 집합의 Concept 행 + 나가는 엣지(§4-2 — 엣지의 서브그래프 외부 여과는
+    파이썬 shape 단계에서). `graph_plan` 과 동일 투영."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.concept_id IN $ids "
+        "OPTIONAL MATCH (c)-[r]->(d:Concept) "
+        "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
+        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
+    )
+    return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
+
+
+def layout_positions(nodes: list[dict], edges: list[dict]) -> list[dict]:
+    """결정론 레이아웃(D17) — **순수 함수**, 난수·시간 무의존이라 같은 그래프는 항상
+    같은 좌표(플랜 순수성 계약과 동형). 도메인 클러스터를 단위원 둘레에 정렬 배치하고,
+    클러스터 내부는 (degree DESC, id) 순 아르키메데스 나선으로 편다. 힘-지향 정밀화는
+    후속(사이드카 잡)이며 UI 는 본 좌표를 소비만 한다."""
+    import math
+    by_domain: dict[str, list[dict]] = {}
+    for n in nodes:
+        by_domain.setdefault(n.get("domain") or "", []).append(n)
+    domains = sorted(by_domain)
+    d_count = max(len(domains), 1)
+    for di, dom in enumerate(domains):
+        # 클러스터 중심 — 도메인 1개면 원점, 복수면 단위원 둘레.
+        if d_count == 1:
+            cx, cy = 0.0, 0.0
+        else:
+            ang = 2 * math.pi * di / d_count
+            cx, cy = math.cos(ang), math.sin(ang)
+        members = sorted(by_domain[dom], key=lambda n: (-int(n.get("degree") or 0), str(n.get("id"))))
+        for i, n in enumerate(members):
+            r = 0.08 * math.sqrt(i)            # 나선 반경(허브가 중심)
+            a = i * 2.399963229728653          # golden angle — 균등 산개
+            n["x"] = round(cx + r * math.cos(a), 6)
+            n["y"] = round(cy + r * math.sin(a), 6)
+    return nodes
+
+
+def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
+          depth: int = 2, cfg=None, store=None) -> dict:
+    """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
+    seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
+    결정론 레이아웃 좌표(x,y)가 포함된다(D17)."""
+    if seed:
+        ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+        if not ids_res.get("executed"):
+            return {"executed": False, "nodes": [], "edges": [],
+                    "note": ids_res.get("note", "")}
+        ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+        res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
+        shaped = shape_graph(res.get("rows", []))
+        keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
+        shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
+        shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
+        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"])
+        return {"executed": res.get("executed", False), "seed": seed, "depth": depth, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     shaped = shape_graph(res.get("rows", []))
+    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"])
     return {"executed": res.get("executed", False), **shaped}
+
+
+def domain_ties_plan(*, owner: str) -> QueryPlan:
+    """Atlas L0 결합 행렬(D16) — 도메인이 다른 Concept 간 엣지를 도메인 쌍으로 집계."""
+    cypher = (
+        "MATCH (a:Concept)-[r]->(b:Concept) "
+        "WHERE a.owner_id = $owner AND b.owner_id = $owner AND a.domain <> b.domain "
+        "RETURN a.domain AS source, b.domain AS target, count(*) AS ties "
+        "ORDER BY ties DESC"
+    )
+    return QueryPlan("domain_ties", cypher, {"owner": owner}, note="cross-domain tie matrix (L0)")
+
+
+def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
+    """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(`/domains` 집계) +
+    도메인 간 결합 행렬. UI 는 이 응답만으로 L0 를 그린다(그래프 로직 UI 반입 금지)."""
+    d = execute(domains_plan(owner=owner), cfg, store=store)
+    t = execute(domain_ties_plan(owner=owner), cfg, store=store)
+    return {"executed": bool(d.get("executed")),
+            "domains": d.get("rows", []), "ties": t.get("rows", [])}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,

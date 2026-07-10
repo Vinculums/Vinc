@@ -27,19 +27,25 @@ _NODE_TABLES: dict[str, dict] = {
         # 소스·소비처 부재한 감사 오류로 판정, completed_items 로 개명·재타입(§5-2).
         ("completed_items", "STRING[]"), ("patterns", "STRING[]"), ("source_file", "STRING"),
         ("pinned", "BOOL"), ("tags", "STRING[]"),
-        ("access_count", "INT64"), ("last_access", "STRING")]},
-    # concepts_ingest
+        ("access_count", "INT64"), ("last_access", "STRING"), ("props", "STRING")]},
+    # concepts_ingest (+ props: MCP fragment 자유 속성 — JSON 직렬화 문자열, D11 §5)
     "Concept": {"pk": "concept_id", "cols": [
         ("concept_id", "STRING"), ("stem", "STRING"), ("owner_id", "STRING"),
         ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
         ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
-        ("tags", "STRING[]"), ("source_file", "STRING")]},
+        ("tags", "STRING[]"), ("source_file", "STRING"), ("props", "STRING")]},
     # bridges_ingest
     "Bridge": {"pk": "bridge_id", "cols": [
         ("bridge_id", "STRING"), ("title", "STRING"), ("status", "STRING"),
         ("created", "STRING"), ("source_domain", "STRING"),
-        ("target_domain", "STRING"), ("source_file", "STRING")]},
+        ("target_domain", "STRING"), ("source_file", "STRING"), ("props", "STRING")]},
     "Domain": {"pk": "name", "cols": [("name", "STRING")]},
+    # MCP fragment 의 record 노드(D11 §5 — 적재 단위 일반 레코드). 엔진 소비처 없음,
+    # 쓰기 경로는 api/fragment.merge_fragment 단일 지점.
+    "Record": {"pk": "record_id", "cols": [
+        ("record_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
+        ("tenant_id", "STRING"), ("domain", "STRING"), ("tags", "STRING[]"),
+        ("created", "STRING"), ("props", "STRING")]},
     # skill_tracker
     "SkillExecution": {"pk": "exec_id", "cols": [
         ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
@@ -69,6 +75,12 @@ _REL_TABLES: list[tuple] = [
     ("RELATED_TO", "Concept", "Concept", []),
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
+    # MCP fragment 엣지(D11 §5) 지원 —
+    #   inherits_from(Concept→Concept)는 1급 관계 테이블.
+    #   Record 참여 엣지는 임베디드 rel 테이블이 FROM/TO 타입 고정이므로
+    #   ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment 엣지 타입 보존).
+    ("INHERITS_FROM", "Concept", "Concept", []),
+    ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
 ]
 
 

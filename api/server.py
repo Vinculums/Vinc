@@ -35,6 +35,7 @@ from store.backend import open_store
 from . import query as q
 from . import preference as pref
 from . import activate as act
+from . import fragment as frag
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -124,8 +125,14 @@ class VincApp:
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
     def read_graph(self, p):
+        # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
-                                            domain=p.get("domain"), store=r))
+                                            domain=p.get("domain"), seed=p.get("seed"),
+                                            depth=_int(p.get("depth"), 2), store=r))
+
+    def read_atlas(self, p):
+        # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
+        return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
 
     def read_search(self, p):
         return self._read(lambda r: q.search(_req(p, "query"),
@@ -177,6 +184,12 @@ class VincApp:
 
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
+        if engine == "fragment":
+            # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
+            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200).
+            res = self.jobs.run_sync("ingest:fragment",
+                                     lambda: frag.merge_fragment(body, store=self.store))
+            return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
             return 400, {"error": f"unknown ingest engine: {engine}"}
@@ -294,6 +307,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
+            "/atlas": app.read_atlas,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
         }
