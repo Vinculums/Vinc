@@ -10,3 +10,4 @@ vinc_store
 *.lbug
 *.kuzu
 vinc_e2e/
+node_modules/

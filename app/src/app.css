@@ -1,0 +1,111 @@
+/* Vinc shell chrome — consumes design tokens only (no literal colors/sizes).
+   Ink & Paper: monochrome + single point color; state = notation + text weight. */
+@import "./tokens.css";
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-ui, system-ui), system-ui, sans-serif;
+  font-size: var(--fs-1, 1rem);
+  line-height: var(--lh, 1.5);
+}
+
+#shell { display: grid; grid-template-columns: 13rem 1fr; height: 100vh; }
+
+#nav {
+  display: flex; flex-direction: column; gap: var(--space-1, .25rem);
+  padding: var(--space-4, 1rem);
+  border-right: 1px solid hsl(var(--border));
+}
+#brand {
+  font-family: var(--font-heading, inherit);
+  font-size: var(--fs-display, 1.6rem); line-height: var(--lh-tight, 1.1);
+  font-weight: 700; margin-bottom: var(--space-4, 1rem);
+}
+#nav a {
+  color: hsl(var(--muted-foreground)); text-decoration: none;
+  padding: var(--space-2, .5rem) var(--space-3, .75rem);
+  border-radius: var(--radius);
+}
+#nav a.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+#nav a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+#settings-btn {
+  margin-top: auto; background: none; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); padding: var(--space-2, .5rem);
+  color: hsl(var(--muted-foreground)); cursor: pointer; font: inherit;
+}
+
+#surface { padding: var(--space-6, 1.5rem); overflow: auto; position: relative; }
+
+h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.15); margin-top: 0; }
+.hint { color: hsl(var(--muted-foreground)); }
+
+.btn {
+  display: inline-block; font: inherit; cursor: pointer;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  padding: var(--space-2, .5rem) var(--space-4, 1rem);
+}
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+
+.empty {
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-8, 2rem); text-align: center;
+}
+.error-banner {
+  border: 1px solid hsl(var(--danger)); border-radius: var(--radius);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem);
+  font-weight: 700;  /* bold ink, not color */
+}
+.error-banner::before { content: "△ "; }
+
+.list-row {
+  display: flex; align-items: baseline; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.list-row .title { flex: 1; }
+.list-row .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-0, .875rem); }
+.list-row .actions { visibility: hidden; display: flex; gap: var(--space-2, .5rem); }
+.list-row:hover .actions { visibility: visible; }
+.list-row .actions button { background: none; border: none; cursor: pointer; font: inherit; color: hsl(var(--primary)); padding: 0; }
+
+.chip {
+  display: inline-block; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  padding: 0 var(--space-3, .75rem); cursor: pointer; background: none; font: inherit;
+  color: hsl(var(--muted-foreground));
+}
+.chip.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+
+/* Atlas */
+#atlas-canvas { position: absolute; inset: 0; }
+#atlas-crumb {
+  position: absolute; top: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
+  display: flex; gap: var(--space-2, .5rem); align-items: center;
+}
+#atlas-crumb button { background: none; border: none; font: inherit; cursor: pointer; color: hsl(var(--primary)); padding: 0; }
+#atlas-detail {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 20rem; z-index: 2;
+  background: hsl(var(--card)); border-left: 1px solid hsl(var(--border));
+  padding: var(--space-4, 1rem); overflow: auto;
+}
+#atlas-legend {
+  position: absolute; bottom: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
+  display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap;
+}
+
+/* Settings popover */
+#settings-popover {
+  position: fixed; left: 13.5rem; bottom: var(--space-4, 1rem); z-index: 10;
+  width: 24rem; background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-elev-2, none);
+  padding: var(--space-4, 1rem);
+}
+#settings-popover label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+#settings-popover input {
+  width: 100%; font: inherit; padding: var(--space-2, .5rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vinc — Mine what matters.</title>
+  </head>
+  <body>
+    <div id="shell">
+      <nav id="nav" aria-label="Surfaces">
+        <div id="brand">Vinc</div>
+        <a href="#intake" data-surface="intake">Intake</a>
+        <a href="#records" data-surface="records">Records</a>
+        <a href="#atlas" data-surface="atlas">Atlas</a>
+        <a href="#search" data-surface="search">Search</a>
+        <a href="#packs" data-surface="packs">Packs</a>
+        <button id="settings-btn" aria-haspopup="dialog">Settings</button>
+      </nav>
+      <main id="surface" aria-live="polite"></main>
+      <div id="settings-popover" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
