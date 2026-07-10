@@ -4,6 +4,7 @@ import { api, cfg, type GraphEdge, type GraphNode } from "../api";
 import { COPY } from "../copy";
 import { enableLasso, mount3d, type L3, type N3 } from "./atlas3d";
 import { openShareSheet } from "../sheets";
+import { loadPrefs, savePrefs, type AtlasPrefs } from "../atlas-prefs";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
  *
@@ -33,6 +34,9 @@ export async function renderAtlas(el: HTMLElement) {
     <div id="atlas-msg" style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"></div>
     <div id="atlas-tools" style="position:absolute;top:var(--space-4,1rem);right:var(--space-6,1.5rem);z-index:2;display:flex;gap:.5rem"></div>
     <div id="atlas-float" style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:3" hidden></div>
+    <div id="atlas-view-panel" hidden style="position:absolute;top:3.2rem;right:var(--space-6,1.5rem);z-index:4;
+         width:17rem;background:hsl(var(--card));border:1px solid hsl(var(--border));
+         border-radius:var(--radius);box-shadow:var(--shadow-elev-2,none);padding:var(--space-4,1rem)"></div>
   `;
   const canvas = el.querySelector<HTMLElement>("#atlas-canvas")!;
   const crumbEl = el.querySelector<HTMLElement>("#atlas-crumb")!;
@@ -40,6 +44,7 @@ export async function renderAtlas(el: HTMLElement) {
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
   const tools = el.querySelector<HTMLElement>("#atlas-tools")!;
   const float = el.querySelector<HTMLElement>("#atlas-float")!;
+  const viewPanel = el.querySelector<HTMLElement>("#atlas-view-panel")!;
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
@@ -50,6 +55,57 @@ export async function renderAtlas(el: HTMLElement) {
   const deep = parts[1] || "";
 
   function setMsg(html: string) { msg.innerHTML = html; msg.style.display = html ? "grid" : "none"; }
+
+  /** D31 — 인캔버스 View 컨트롤(열린 층만: 2D/3D·크기·라벨·화살촉·산개).
+   *  닫힌 층(형태=타입·포인트색=초점·모노크롬)은 노출하지 않는다. */
+  function viewControl() {
+    const p = loadPrefs();
+    tools.insertAdjacentHTML("afterbegin",
+      `<button class="chip" id="t-view" aria-haspopup="true">View · ${p.view === "2d" ? "2D" : "3D"}</button>`);
+    tools.querySelector("#t-view")!.addEventListener("click", () => {
+      viewPanel.hidden = !viewPanel.hidden;
+      if (!viewPanel.hidden) drawViewPanel();
+    });
+  }
+
+  function drawViewPanel() {
+    const p = loadPrefs();
+    const chip = (pref: string, val: string, label: string, active: boolean) =>
+      `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
+    viewPanel.innerHTML = `
+      <p class="hint" style="margin-top:0">View</p>
+      <p>${chip("view", "3d", "3D", p.view === "3d")} ${chip("view", "2d", "2D — flat", p.view === "2d")}</p>
+      <p class="hint">Node size</p>
+      <p>${chip("size", "links", "by connections", p.size === "links")} ${chip("size", "uniform", "uniform", p.size === "uniform")}</p>
+      <p class="hint">Labels</p>
+      <p>${chip("labels", "hover", "on hover", p.labels === "hover")} ${chip("labels", "none", "off", p.labels === "none")}</p>
+      <p>${chip("arrows", "toggle", "Direction arrows", p.arrows)}</p>
+      <label class="hint" style="display:block">Spread
+        <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
+      </label>
+      <p class="hint" style="margin-bottom:0">Shapes and the point color stay fixed —
+        they carry meaning, so a shared pack reads the same everywhere.</p>`;
+    viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.pref as keyof AtlasPrefs;
+        const cur = loadPrefs();
+        applyPrefs(k === "arrows" ? { arrows: !cur.arrows } : ({ [k]: b.dataset.val } as Partial<AtlasPrefs>));
+      }));
+    viewPanel.querySelector<HTMLInputElement>("#pref-spread")!.addEventListener("change", (e) =>
+      applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }));
+  }
+
+  async function applyPrefs(mut: Partial<AtlasPrefs>) {
+    savePrefs({ ...loadPrefs(), ...mut });
+    const lv = trail[trail.length - 1];
+    if (lv.kind === "l0" || lv.kind === "l1" || lv.kind === "l2") {
+      await show(lv, false);              // 좌표는 그대로 — 렌더 프리퍼런스만 재적용
+      viewPanel.hidden = false;           // 패널 유지(연속 조정)
+      drawViewPanel();
+    } else {
+      drawViewPanel();
+    }
+  }
 
   function drawCrumb() {
     crumbEl.innerHTML = trail.map((lv, i) => {
@@ -89,10 +145,11 @@ export async function renderAtlas(el: HTMLElement) {
     }
     setMsg("");
     const n = Math.max(domains.length, 1);
+    const flat = loadPrefs().view === "2d";   // 2D 에선 원환을 화면 평면(x/y)에 그대로
     const nodes: N3[] = domains.map((d, i) => {
       const ang = (2 * Math.PI * i) / n;
       return { id: d.domain, label: d.domain, kind: "domain", records: d.episodes,
-               x: Math.cos(ang), y: Math.sin(ang) * 0.25, z: Math.sin(ang) };
+               x: Math.cos(ang), y: Math.sin(ang) * (flat ? 1 : 0.25), z: flat ? 0 : Math.sin(ang) };
     });
     // Bridge 전용 도메인(레코드 0 — 예: 브릿지 매트릭스의 외부 축)은 L0 노드가
     // 없으므로 결합에서 제외 — 미지 노드 참조는 렌더러가 거부한다.
@@ -100,7 +157,8 @@ export async function renderAtlas(el: HTMLElement) {
     const links: L3[] = ties
       .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
       .map((t) => ({ source: t.source, target: t.target, cross: true, weight: t.ties }));
-    tools.innerHTML = `<button class="chip" id="t-grid">Grid</button><button class="chip" id="t-matrix">Matrix</button>`;
+    tools.insertAdjacentHTML("beforeend",
+      `<button class="chip" id="t-grid">Grid</button><button class="chip" id="t-matrix">Matrix</button>`);
     tools.querySelector("#t-grid")!.addEventListener("click", () => { trail.push({ kind: "grid" }); show(trail[trail.length - 1]); });
     tools.querySelector("#t-matrix")!.addEventListener("click", () => { trail.push({ kind: "matrix" }); show(trail[trail.length - 1]); });
     g3 = mount3d(canvas, nodes, links, {
@@ -319,11 +377,14 @@ export async function renderAtlas(el: HTMLElement) {
     detail.hidden = true;
     tools.innerHTML = "";
     float.hidden = true;
+    viewPanel.hidden = true;
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     if (g3) { g3._destructor?.(); g3 = null; }
     canvas.innerHTML = "";
     drawCrumb();
+    // View 컨트롤은 3D 레벨에만 — Compare/Grid/Matrix 는 의도적 평면(D22)
+    if (level.kind === "l0" || level.kind === "l1" || level.kind === "l2") viewControl();
     try {
       if (level.kind === "l0") await showL0();
       else if (level.kind === "l1") await showL1(level.domain);

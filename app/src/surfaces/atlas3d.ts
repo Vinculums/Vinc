@@ -11,6 +11,7 @@
  *  pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
+import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
 
 const PAPER = 0xefeae1;
 const INK = 0x14110d;
@@ -34,12 +35,16 @@ function material(color: number, opacity = 1): THREE.Material {
   });
 }
 
-function nodeObject(n: N3): THREE.Object3D {
+function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
   const opacity = n.gateway ? 0.45 : 1;
   const color = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
-  const r = n.kind === "domain"
+  // D31 열린 층 — 크기 스케일만 사용자 선택(√연결수 ↔ 균일); 형태=타입은 닫힌 층.
+  let r = n.kind === "domain"
     ? 6 + 2.2 * Math.sqrt(n.records || 1)
+    : prefs.size === "uniform" ? 5
     : Math.min(3 + 1.4 * Math.sqrt(n.degree || 1), 12);
+  // 2D 는 깊이 겹침 여지가 없어 조밀 — 반경을 줄여 겹침 비율 자체를 낮춘다
+  if (prefs.view === "2d" && n.kind !== "domain") r *= 0.7;
   let geo: THREE.BufferGeometry;
   switch (n.kind) {
     case "domain":   // 대형 육각기둥 + 외곽 링(이중육각의 입체화)
@@ -58,49 +63,71 @@ function nodeObject(n: N3): THREE.Object3D {
     ring.rotation.x = Math.PI / 2;
     mesh.add(ring);
   }
+  // 2D 모드: 기둥류를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게 — 형태=타입
+  // 판독을 평면에서도 유지 (D31 §1.5: 2D 는 동일 렌더러의 z 평면화).
+  if (prefs.view === "2d" && (n.kind === "concept" || n.kind === "domain"))
+    mesh.rotation.x = Math.PI / 2;
   return mesh;
 }
 
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3) => void;
   onLinkClick?: (l: any) => void;
-}): ForceGraph3DInstance {
+}, prefs: AtlasPrefs = loadPrefs()): ForceGraph3DInstance {
+  const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
+  const S = SCALE * prefs.spread;
   for (const n of nodes) {   // pin deterministic sidecar coords (D17)
-    if (n.x !== undefined) { n.fx = n.x * SCALE; n.fy = (n.y || 0) * SCALE; n.fz = (n.z || 0) * SCALE; }
+    if (n.x === undefined) continue;
+    // 2D 는 직교 투영이 아닌 경사 사영으로 접는다: z 분리를 y 에 보존해
+    // z 로만 갈라져 있던(같은 클러스터) 노드들이 평면에서도 겹치지 않는다.
+    // 좌표는 동일 사이드카 정본 — 사영 계수만 상수(결정론 유지).
+    n.fx = n.x * S;
+    n.fy = flat ? ((n.y || 0) + (n.z || 0) * 0.55) * S : (n.y || 0) * S;
+    n.fz = flat ? 0 : (n.z || 0) * S;
   }
   const g = new ForceGraph3D(el)
     .graphData({ nodes, links })
     .backgroundColor("#efeae1")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
-    .nodeThreeObject((n: any) => nodeObject(n))
-    .nodeLabel((n: any) => `<span style="color:#14110d;background:#f7f4ef;border:1px solid #ded8cc;
+    .nodeThreeObject((n: any) => nodeObject(n, prefs))
+    .nodeLabel((n: any) => prefs.labels === "none" ? "" :
+      `<span style="color:#14110d;background:#f7f4ef;border:1px solid #ded8cc;
        border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
     .linkColor((l: any) => (l.cross ? "#6a6252" : "#8d8574"))
     .linkOpacity(0.55)
     .linkWidth((l: any) => (l.weight ? 0.6 + Math.log1p(l.weight) : l.cross ? 0.5 : 1.0))
-    // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2)
-    .linkDirectionalArrowLength((l: any) =>
+    // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
+    .linkDirectionalArrowLength((l: any) => prefs.arrows &&
       ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(l.type || "") ? 3.2 : 0)
     .linkDirectionalArrowRelPos(0.94);
 
-  // 대기(fog = paper) + 무채 조명 보정
+  // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
-  scene.fog = new THREE.Fog(PAPER, SCALE * 2.6, SCALE * 9);   // 원경이 종이로 "서서히" 잦아듦
+  scene.fog = flat ? null : new THREE.Fog(PAPER, S * 2.6, S * 9);   // 원경이 종이로 "서서히" 잦아듦
   g.lights([
     new THREE.AmbientLight(0xffffff, 1.7),
     (() => { const d = new THREE.DirectionalLight(0xfff8ec, 1.6); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
-  if (controls) { controls.enableDamping = true; controls.autoRotate = false; }
-  // 초기 프레이밍: 오블리크 각도에서 전체를 담는다(정면 뷰는 육각기둥이 사각으로 보임)
-  g.cameraPosition({ x: SCALE * 1.1, y: SCALE * 0.9, z: SCALE * 2.1 }, { x: 0, y: 0, z: 0 }, 0);
+  if (controls) {
+    controls.enableDamping = true; controls.autoRotate = false;
+    controls.enableRotate = !flat;          // 2D: 팬/줌만 — 회전 잠금
+  }
+  if (flat) {
+    // 정면 카메라 — 화면 x/y 가 곧 레이아웃 x/y
+    g.cameraPosition({ x: 0, y: 0, z: S * 2.2 }, { x: 0, y: 0, z: 0 }, 0);
+  } else {
+    // 초기 프레이밍: 오블리크 각도에서 전체를 담는다(정면 뷰는 육각기둥이 사각으로 보임)
+    g.cameraPosition({ x: S * 1.1, y: S * 0.9, z: S * 2.1 }, { x: 0, y: 0, z: 0 }, 0);
+  }
   setTimeout(() => (g as any).zoomToFit?.(500, 60), 250);
 
   if (handlers.onClick) g.onNodeClick((n: any) => {
-    // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to)
+    // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to); 2D 는 시축 유지 직진
     const d = 42 + (n.degree || 1);
-    g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, 700);
+    if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, 700);
+    else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, 700);
     handlers.onClick!(n);
   });
   if (handlers.onRightClick) g.onNodeRightClick((n: any) => handlers.onRightClick!(n));
