@@ -2,7 +2,8 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode } from "../api";
 import { COPY } from "../copy";
-import { mount3d, type L3, type N3 } from "./atlas3d";
+import { enableLasso, mount3d, type L3, type N3 } from "./atlas3d";
+import { openShareSheet } from "../sheets";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
  *
@@ -15,7 +16,8 @@ import { mount3d, type L3, type N3 } from "./atlas3d";
  *  L1 click = gateway→follow / node→detail · right-click = L2 refocus. */
 
 type Level = { kind: "l0" } | { kind: "l1"; domain: string } | { kind: "l2"; seed: string }
-  | { kind: "compare"; a: string; b: string };
+  | { kind: "compare"; a: string; b: string }
+  | { kind: "grid" } | { kind: "matrix" };
 
 const INK = "#14110d";
 const INK_MUTE = "#6a6252";
@@ -29,11 +31,15 @@ export async function renderAtlas(el: HTMLElement) {
     <div id="atlas-legend"></div>
     <div id="atlas-detail" hidden></div>
     <div id="atlas-msg" style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"></div>
+    <div id="atlas-tools" style="position:absolute;top:var(--space-4,1rem);right:var(--space-6,1.5rem);z-index:2;display:flex;gap:.5rem"></div>
+    <div id="atlas-float" style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:3" hidden></div>
   `;
   const canvas = el.querySelector<HTMLElement>("#atlas-canvas")!;
   const crumbEl = el.querySelector<HTMLElement>("#atlas-crumb")!;
   const detail = el.querySelector<HTMLElement>("#atlas-detail")!;
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
+  const tools = el.querySelector<HTMLElement>("#atlas-tools")!;
+  const float = el.querySelector<HTMLElement>("#atlas-float")!;
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
@@ -48,7 +54,8 @@ export async function renderAtlas(el: HTMLElement) {
   function drawCrumb() {
     crumbEl.innerHTML = trail.map((lv, i) => {
       const name = lv.kind === "l0" ? "Atlas" : lv.kind === "l1" ? lv.domain
-        : lv.kind === "compare" ? `${lv.a} ⇄ ${lv.b}` : lv.seed;
+        : lv.kind === "compare" ? `${lv.a} ⇄ ${lv.b}`
+        : lv.kind === "grid" ? "Grid" : lv.kind === "matrix" ? "Matrix" : lv.seed;
       return `<button data-i="${i}">${name}</button>${i < trail.length - 1 ? "›" : ""}`;
     }).join(" ");
     crumbEl.querySelectorAll("button").forEach((b) =>
@@ -93,6 +100,9 @@ export async function renderAtlas(el: HTMLElement) {
     const links: L3[] = ties
       .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
       .map((t) => ({ source: t.source, target: t.target, cross: true, weight: t.ties }));
+    tools.innerHTML = `<button class="chip" id="t-grid">Grid</button><button class="chip" id="t-matrix">Matrix</button>`;
+    tools.querySelector("#t-grid")!.addEventListener("click", () => { trail.push({ kind: "grid" }); show(trail[trail.length - 1]); });
+    tools.querySelector("#t-matrix")!.addEventListener("click", () => { trail.push({ kind: "matrix" }); show(trail[trail.length - 1]); });
     g3 = mount3d(canvas, nodes, links, {
       onClick: (nd) => { trail.push({ kind: "l1", domain: nd.id }); show(trail[trail.length - 1]); },
       onLinkClick: (l) => {
@@ -129,6 +139,14 @@ export async function renderAtlas(el: HTMLElement) {
       },
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
     });
+    enableLasso(g3, canvas, (ids) => {
+      float.hidden = false;
+      float.innerHTML = `<button class="btn btn-primary">Share this slice (${ids.length})</button>`;
+      float.querySelector("button")!.addEventListener("click", () => {
+        float.hidden = true; openShareSheet({ ids });
+      });
+      setTimeout(() => { float.hidden = true; }, 8000);
+    });
   }
 
   async function showL2(seed: string) {
@@ -139,6 +157,14 @@ export async function renderAtlas(el: HTMLElement) {
     g3 = mount3d(canvas, toN3(res.nodes, undefined, seed), toL3(res.edges), {
       onClick: (nd) => openDetail(nd),
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
+    });
+    enableLasso(g3, canvas, (ids) => {
+      float.hidden = false;
+      float.innerHTML = `<button class="btn btn-primary">Share this slice (${ids.length})</button>`;
+      float.querySelector("button")!.addEventListener("click", () => {
+        float.hidden = true; openShareSheet({ ids });
+      });
+      setTimeout(() => { float.hidden = true; }, 8000);
     });
   }
 
@@ -210,9 +236,89 @@ export async function renderAtlas(el: HTMLElement) {
     });
   }
 
+
+  /** Multiples 그리드(Phase C1) — 도메인당 평면 미니 렌즈(좌표 재사용), hover 시
+   *  같은 id(크로스도메인 고스트)가 다른 카드에서 동시 점등(brushing&linking). */
+  async function showGrid() {
+    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
+    const l0 = await api.atlasL0(cfg.owner);
+    const domains: string[] = (l0.domains || []).slice(0, 9).map((d: any) => d.domain);
+    if (domains.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
+    setMsg("");
+    canvas.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${Math.min(domains.length, 3)},1fr);
+      gap:.75rem;height:100%;padding:3rem 0 .5rem">${domains.map((d) => `
+      <div style="display:flex;flex-direction:column;border:1px solid ${PAPER_EDGE};border-radius:var(--radius);overflow:hidden">
+        <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
+        <div data-mini="${d}" style="flex:1;min-height:0"></div>
+      </div>`).join("")}</div>`;
+    const cards: { d: string; g: Graph; s: Sigma }[] = [];
+    for (const d of domains) {
+      const res = await api.graph(cfg.owner, { domain: d });
+      const g = new Graph();
+      addShapedGraph(g, res.nodes || [], res.edges || []);
+      const s = new Sigma(g, canvas.querySelector(`[data-mini="${CSS.escape(d)}"]`) as HTMLElement,
+                          { allowInvalidContainer: true, renderLabels: false });
+      extraSigmas.push(s);
+      cards.push({ d, g, s });
+    }
+    for (const card of cards) {
+      card.s.on("enterNode", ({ node }) => {
+        for (const other of cards) {
+          other.s.setSetting("nodeReducer", (n, data) =>
+            n === node ? { ...data, color: POINT, size: (data.size as number) * 1.5, zIndex: 1 }
+                       : other === card ? data : { ...data, color: PAPER_EDGE });
+          other.s.refresh();
+        }
+      });
+      card.s.on("leaveNode", () => {
+        for (const other of cards) { other.s.setSetting("nodeReducer", null as any); other.s.refresh(); }
+      });
+    }
+    canvas.querySelectorAll("[data-open]").forEach((b) =>
+      b.addEventListener("click", () => {
+        trail.push({ kind: "l1", domain: (b as HTMLElement).dataset.open! }); show(trail[trail.length - 1]);
+      }));
+  }
+
+  /** Coupling Matrix(Phase C2) — 도메인×도메인 히트맵(잉크 농도 3단), 셀 → Compare. */
+  async function showMatrix() {
+    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
+    const l0 = await api.atlasL0(cfg.owner);
+    const domains: string[] = (l0.domains || []).map((d: any) => d.domain);
+    const ties = new Map<string, number>();
+    for (const t of l0.ties || []) {
+      ties.set(`${t.source}|${t.target}`, (ties.get(`${t.source}|${t.target}`) || 0) + t.ties);
+      ties.set(`${t.target}|${t.source}`, (ties.get(`${t.target}|${t.source}`) || 0) + t.ties);
+    }
+    setMsg("");
+    const max = Math.max(1, ...ties.values());
+    const shade = (v: number) => v === 0 ? "transparent"
+      : v < max / 3 ? "hsl(var(--muted))" : v < (2 * max) / 3 ? "hsl(var(--muted-foreground)/.45)" : "hsl(var(--foreground)/.8)";
+    canvas.innerHTML = `<div style="padding:3.5rem 1rem 1rem;overflow:auto;height:100%">
+      <table style="border-collapse:collapse">
+        <tr><th></th>${domains.map((d) => `<th style="padding:.3rem .6rem;font-weight:400" class="hint">${d}</th>`).join("")}</tr>
+        ${domains.map((a) => `<tr><th style="padding:.3rem .6rem;text-align:right;font-weight:400" class="hint">${a}</th>
+          ${domains.map((b) => {
+            const v = a === b ? 0 : (ties.get(`${a}|${b}`) || 0);
+            return `<td data-a="${a}" data-b="${b}" title="${v} ties" style="width:3.2rem;height:2.4rem;
+              border:1px solid ${PAPER_EDGE};background:${shade(v)};cursor:${v ? "pointer" : "default"};
+              text-align:center;color:${v >= (2 * max) / 3 && v > 0 ? "hsl(var(--background))" : "inherit"}">${v || ""}</td>`;
+          }).join("")}</tr>`).join("")}
+      </table></div>`;
+    canvas.querySelectorAll("td[data-a]").forEach((td) =>
+      td.addEventListener("click", () => {
+        const a = (td as HTMLElement).dataset.a!, b = (td as HTMLElement).dataset.b!;
+        if (a !== b && (td as HTMLElement).title !== "0 ties") {
+          trail.push({ kind: "compare", a, b }); show(trail[trail.length - 1]);
+        }
+      }));
+  }
+
   async function show(level: Level, push = true) {
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
     detail.hidden = true;
+    tools.innerHTML = "";
+    float.hidden = true;
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     if (g3) { g3._destructor?.(); g3 = null; }
@@ -222,6 +328,8 @@ export async function renderAtlas(el: HTMLElement) {
       if (level.kind === "l0") await showL0();
       else if (level.kind === "l1") await showL1(level.domain);
       else if (level.kind === "compare") await showCompare(level.a, level.b);
+      else if (level.kind === "grid") await showGrid();
+      else if (level.kind === "matrix") await showMatrix();
       else await showL2(level.seed);
     } catch {
       setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`);

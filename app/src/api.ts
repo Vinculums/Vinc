@@ -46,8 +46,9 @@ export const api = {
   domains: (owner: string) => call("/domains", { owner }),
   activate: (owner: string, opts: Record<string, unknown> = {}) =>
     call("/activate", undefined, { owner, ...opts }),
-  share: (owner: string, opts: { domain?: string; seed?: string; depth?: number } = {}) =>
+  share: (owner: string, opts: { domain?: string; seed?: string; depth?: number; ids?: string } = {}) =>
     call("/share", { owner, ...opts }),
+  promoteCandidates: (owner: string) => call("/promote-candidates", { owner }),
   importPack: (pack: unknown, owner: string) =>
     call("/ingest/pack", undefined, { pack, owner }),
   backup: (out: string) => call("/backup", undefined, { out }),

@@ -131,3 +131,39 @@ class ImportPackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IdsScopeAndInboxTests(unittest.TestCase):
+    def test_ids_scope_packs_exact_set(self):
+        store = _FakeStore({"one_liner": _CONCEPTS, "OPTIONAL MATCH": _EDGE_ROWS})
+        pack = share.build_share_pack(owner="user:alice", ids=["concept:a", "concept:b"],
+                                      generated_at="x", store=store)
+        self.assertEqual(pack["manifest"]["scope"]["ids"], 2)
+        self.assertEqual(pack["manifest"]["counts"]["records"], 0)  # ids 스코프 = 개념 중심
+        cy = [c for c, p in store.calls if "IN $ids" in c]
+        self.assertTrue(cy)                                          # 명시 집합 질의
+
+    def test_scan_inbox_imports_and_marks_done(self):
+        import json as _json, tempfile, os
+        from pathlib import Path as _P
+        store = _FakeStore()
+        with tempfile.TemporaryDirectory() as d:
+            good = {"vinc_pack": 1, "fragment": {"nodes": [{"id": "c1", "type": "concept"}], "edges": []}}
+            _P(d, "a.json").write_text(_json.dumps(good))
+            _P(d, "bad.json").write_text("{not json")
+            res = share.scan_inbox(d, owner="user:me", store=store)
+            self.assertTrue(res["executed"])
+            self.assertEqual(len(res["imported"]), 1)
+            self.assertEqual(len(res["errors"]), 1)
+            self.assertTrue(os.path.exists(os.path.join(d, "a.json.done")))
+            merge_params = [p for c, p in store.calls if c.startswith("MERGE")]
+            self.assertTrue(all(p.get("owner_id") == "user:me" for p in merge_params))
+
+
+class PromoteCandidatesTests(unittest.TestCase):
+    def test_plan_targets_unpinned_with_signal_threshold(self):
+        from api import query as q
+        plan = q.promote_candidates_plan(owner="u", min_access=5)
+        self.assertIn("coalesce(e.pinned, false) = false", plan.cypher)
+        self.assertIn("$min_access", plan.cypher)
+        self.assertNotIn("SET ", plan.cypher)   # 조회 전용 — 단일 쓰기 표면 유지

@@ -32,10 +32,36 @@ export function renderSearch(el: HTMLElement) {
     <div id="search-body"><p class="hint">${COPY.search.idle}</p></div>`;
   const body = el.querySelector<HTMLElement>("#search-body")!;
 
-  el.querySelector("#search-form")!.addEventListener("submit", async (e) => {
+  const RECENT_KEY = "vinc.search.recent";
+  const recent: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  if (recent.length)
+    body.innerHTML = `<p class="hint">${COPY.search.idle}</p>` +
+      recent.map((r) => `<button class="chip" data-recent>${r}</button>`).join(" ");
+  body.querySelectorAll("[data-recent]").forEach((b) =>
+    b.addEventListener("click", () => {
+      (el.querySelector("#q") as HTMLInputElement).value = (b as HTMLElement).textContent!;
+      run((b as HTMLElement).textContent!.trim(), false);
+    }));
+
+  let debounce: number | undefined;
+  el.querySelector("#q")!.addEventListener("input", (e) => {
+    clearTimeout(debounce);
+    const raw = (e.target as HTMLInputElement).value.trim();
+    if (raw.length >= 2)
+      debounce = window.setTimeout(() => run(raw, false), 250);   // 라이브(250ms)
+  });
+
+  el.querySelector("#search-form")!.addEventListener("submit", (e) => {
     e.preventDefault();
     const raw = (el.querySelector("#q") as HTMLInputElement).value.trim();
-    if (!raw) return;
+    if (raw) run(raw, true);
+  });
+
+  async function run(raw: string, commit: boolean) {
+    if (commit) {
+      const next = [raw, ...recent.filter((r) => r !== raw)].slice(0, 6);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    }
     const { text, domain, tag } = parseQuery(raw);
     body.innerHTML = `<div class="hint">Searching…</div>`;
     try {
@@ -72,5 +98,5 @@ export function renderSearch(el: HTMLElement) {
     } catch {
       body.innerHTML = `<div class="error-banner">${COPY.search.error}</div>`;
     }
-  });
+  }
 }

@@ -129,3 +129,44 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   });
   return g;
 }
+
+/** Shift+드래그 화면 사각 선택(Phase B lasso) — 3D 노드의 화면 투영 좌표로 포함
+ *  판정한다. 드래그 동안 orbit 컨트롤을 잠근다. */
+export function enableLasso(g: any, el: HTMLElement, onSelect: (ids: string[]) => void) {
+  let box: HTMLDivElement | null = null;
+  let start: { x: number; y: number } | null = null;
+  el.addEventListener("mousedown", (e) => {
+    if (!e.shiftKey) return;
+    e.preventDefault(); e.stopPropagation();
+    const controls: any = g.controls(); if (controls) controls.enabled = false;
+    const r = el.getBoundingClientRect();
+    start = { x: e.clientX - r.left, y: e.clientY - r.top };
+    box = document.createElement("div");
+    box.style.cssText = "position:absolute;border:1px dashed #3e4c63;background:rgba(62,76,99,.08);z-index:5;pointer-events:none";
+    el.appendChild(box);
+  }, true);
+  el.addEventListener("mousemove", (e) => {
+    if (!start || !box) return;
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    box.style.left = Math.min(x, start.x) + "px";
+    box.style.top = Math.min(y, start.y) + "px";
+    box.style.width = Math.abs(x - start.x) + "px";
+    box.style.height = Math.abs(y - start.y) + "px";
+  });
+  el.addEventListener("mouseup", (e) => {
+    if (!start || !box) return;
+    const r = el.getBoundingClientRect();
+    const x2 = e.clientX - r.left, y2 = e.clientY - r.top;
+    const [x0, x1] = [Math.min(start.x, x2), Math.max(start.x, x2)];
+    const [y0, y1] = [Math.min(start.y, y2), Math.max(start.y, y2)];
+    box.remove(); box = null; start = null;
+    const controls: any = g.controls(); if (controls) controls.enabled = true;
+    if (x1 - x0 < 8 || y1 - y0 < 8) return;   // 미세 드래그 무시
+    const ids = g.graphData().nodes.filter((n: any) => {
+      const s2 = g.graph2ScreenCoords(n.fx ?? n.x, n.fy ?? n.y, n.fz ?? n.z);
+      return s2.x >= x0 && s2.x <= x1 && s2.y >= y0 && s2.y <= y1;
+    }).map((n: any) => n.id);
+    if (ids.length) onSelect(ids);
+  });
+}

@@ -1,0 +1,28 @@
+{
+  "vinc_pack": 1,
+  "kind": "share",
+  "manifest": {
+    "created": "2026-07-10T00:00:00Z",
+    "scope": { "domain": null, "tags": [], "seed": null, "depth": null, "ids": 6 },
+    "counts": { "concepts": 6, "records": 0, "edges": 6 },
+    "note": "Sample corpus bundled with Vinc — remove any time."
+  },
+  "fragment": {
+    "nodes": [
+      { "id": "concept:coffee-roasting", "type": "concept", "title": "Coffee roasting", "domain": "coffee", "tags": ["craft"] },
+      { "id": "concept:maillard-reaction", "type": "concept", "title": "Maillard reaction", "domain": "coffee" },
+      { "id": "concept:extraction-yield", "type": "concept", "title": "Extraction yield", "domain": "coffee" },
+      { "id": "concept:heat-transfer", "type": "concept", "title": "Heat transfer", "domain": "kitchen-science" },
+      { "id": "concept:browning", "type": "concept", "title": "Browning", "domain": "kitchen-science" },
+      { "id": "concept:solubility", "type": "concept", "title": "Solubility", "domain": "kitchen-science" }
+    ],
+    "edges": [
+      { "from": "concept:maillard-reaction", "to": "concept:coffee-roasting", "type": "prerequisite_of" },
+      { "from": "concept:coffee-roasting", "to": "concept:extraction-yield", "type": "relates_to" },
+      { "from": "concept:heat-transfer", "to": "concept:maillard-reaction", "type": "prerequisite_of" },
+      { "from": "concept:browning", "to": "concept:maillard-reaction", "type": "derives_from" },
+      { "from": "concept:solubility", "to": "concept:extraction-yield", "type": "relates_to" },
+      { "from": "concept:heat-transfer", "to": "concept:browning", "type": "relates_to" }
+    ]
+  }
+}

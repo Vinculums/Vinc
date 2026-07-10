@@ -3,6 +3,7 @@
 @import "./tokens.css";
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
 html, body { height: 100%; margin: 0; }
 body {
   background: hsl(var(--background));

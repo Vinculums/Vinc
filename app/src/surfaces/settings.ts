@@ -18,7 +18,20 @@ export function renderSettings(el: HTMLElement) {
     <input id="s-token" value="${cfg.token}" />
     <label for="s-owner">Owner scope</label>
     <input id="s-owner" value="${cfg.owner}" />
+    <label>Theme</label>
+    <p>
+      ${["auto", "light", "dark"].map((t) => `
+        <button class="chip${(localStorage.getItem("vinc.theme") || "auto") === t ? " active" : ""}"
+                data-theme-opt="${t}">${t}</button>`).join(" ")}
+    </p>
   `;
+  el.querySelectorAll<HTMLElement>("[data-theme-opt]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
+      const { applyTheme } = await import("../main");
+      applyTheme();
+      renderSettings(el);
+    }));
   el.querySelector<HTMLInputElement>("#s-base")!.addEventListener("change", (e) =>
     (cfg.base = (e.target as HTMLInputElement).value));
   el.querySelector<HTMLInputElement>("#s-token")!.addEventListener("change", (e) =>

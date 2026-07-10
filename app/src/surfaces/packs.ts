@@ -2,6 +2,7 @@ import { api, cfg } from "../api";
 import { COPY } from "../copy";
 import { header, headerCta } from "../components";
 import { icon } from "../icons";
+import { openImportSheet } from "../sheets";
 
 /** Surface 5 — Packs (spec: vinc.d.packs v0.2, DEC D19).
  *  Context packs (/activate) + share packs (/share, custom scope) + import
@@ -81,13 +82,8 @@ export function renderPacks(el: HTMLElement) {
   el.querySelector<HTMLInputElement>("#import-file")!.addEventListener("change", async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    status.innerHTML = `<p class="hint">${COPY.packs.importing}</p>`;
     try {
-      const pack = JSON.parse(await file.text());
-      const res = await api.importPack(pack, cfg.owner);
-      if (res.executed === false) throw new Error(res.error);
-      const m = res.merged?.nodes || {};
-      status.innerHTML = `<p>${COPY.packs.imported(m.created ?? 0, m.matched ?? 0)}</p>`;
+      openImportSheet(JSON.parse(await file.text()));   // B3 — 미리보기 시트 경유
     } catch {
       status.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
     }

@@ -73,12 +73,15 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
 
 def build_share_pack(*, owner: str, domain: str | None = None,
                      tags: list[str] | None = None, seed: str | None = None,
+                     ids: list[str] | None = None,
                      depth: int = 2, include_records: bool = True,
                      generated_at: str | None = None,
                      cfg=None, store=None) -> dict:
     """스코프된 공유 팩을 만든다. 반환 dict 를 그대로 JSON 파일로 저장해 전달한다."""
-    # 1) 스코프 결정 — seed 가 있으면 ego 서브그래프가 스코프의 정본.
-    if seed:
+    # 1) 스코프 결정 — ids(명시 집합: lasso 영역 선택, Phase B) > seed(ego) > domain.
+    if ids is not None:
+        c_res = q.execute(_concepts_plan(owner=owner, ids=sorted(ids)), cfg, store=store)
+    elif seed:
         ids_res = q.execute(q.subgraph_ids_plan(seed, depth=depth), cfg, store=store)
         if not ids_res.get("executed"):
             return {"executed": False, "note": ids_res.get("note", "no reachable store")}
@@ -107,9 +110,9 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             seen.add(key)
             edges.append({"from": r["id"], "to": tgt, "type": ftype})
 
-    # 3) 레코드(Episode) — 도메인/태그 스코프에서만(ego 스코프는 개념 중심).
+    # 3) 레코드(Episode) — 도메인/태그 스코프에서만(ids/ego 스코프는 개념 중심).
     episodes: list[dict] = []
-    if include_records and not seed:
+    if include_records and not seed and ids is None:
         ep_res = q.execute(_episodes_plan(owner=owner, domain=domain), cfg, store=store)
         episodes = _tag_filter(ep_res.get("rows", []), tags)
 
@@ -143,7 +146,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         "manifest": {
             "created": created,
             "scope": {"domain": domain, "tags": tags or [],
-                      "seed": seed, "depth": depth if seed else None},
+                      "seed": seed, "depth": depth if seed else None,
+                      "ids": len(ids) if ids is not None else None},
             "counts": {"concepts": len(concepts), "records": len(episodes),
                        "edges": len(edges)},
             "note": "Preference signals are not included — they stay with the origin account.",
@@ -174,3 +178,28 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None) -> dict:
             store.close()
     res["manifest"] = pack.get("manifest")
     return res
+
+
+def scan_inbox(path: str, *, owner: str, store) -> dict:
+    """Pull inbox(Phase E2) — 디렉토리의 `*.json`/`*.vincpack` 공유 팩을 일괄
+    수입한다(잡 큐에서 실행 — 긴 작업). 파일 단위 결과·오류를 모아 반환하며,
+    성공 파일은 `.done` 접미로 옮겨 재수입을 막는다(멱등 이중 안전)."""
+    from pathlib import Path as _P
+    root = _P(path)
+    results, errors = [], []
+    if not root.is_dir():
+        return {"executed": False, "error": f"inbox not a directory: {path}"}
+    for f in sorted(root.glob("*")):
+        if f.suffix.lower() not in (".json", ".vincpack") or f.name.endswith(".done"):
+            continue
+        try:
+            pack = json.loads(f.read_text(encoding="utf-8"))
+            res = import_share_pack(pack, owner=owner, store=store)
+            if res.get("executed"):
+                f.rename(f.with_name(f.name + ".done"))
+                results.append({"file": f.name, "merged": res["merged"]})
+            else:
+                errors.append({"file": f.name, "error": res.get("error", "?")})
+        except (ValueError, OSError) as exc:
+            errors.append({"file": f.name, "error": f"{type(exc).__name__}: {exc}"})
+    return {"executed": True, "imported": results, "errors": errors}

@@ -509,6 +509,29 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
             "domains": domains, "ties": ties}
 
 
+def promote_candidates_plan(*, owner: str, min_access: int = 3) -> QueryPlan:
+    """확정(pin) 후보 조회(Phase E1 — 조회 전용, 쓰기는 기존 /pin 경유라 단일 쓰기
+    표면 유지). 반복 관측된 발견 = 아직 pin 되지 않았는데 실사용 신호(access_count·
+    tags)가 임계를 넘는 Episode — weg-9000 pattern-promoter 의 "N≥3 승격"을 실측
+    신호로 재구현한 것(학습 어휘 미반입, 갭 분석 권고 4)."""
+    cypher = (
+        "MATCH (e:Episode) WHERE e.owner_id = $owner "
+        "AND coalesce(e.pinned, false) = false "
+        "AND (coalesce(e.access_count, 0) >= $min_access OR size(coalesce(e.tags, [])) >= 2) "
+        "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
+        "coalesce(e.access_count, 0) AS access_count, coalesce(e.tags, []) AS tags, "
+        "e.last_access AS last_access "
+        "ORDER BY access_count DESC LIMIT 20"
+    )
+    return QueryPlan("promote_candidates", cypher,
+                     {"owner": owner, "min_access": int(min_access)},
+                     note="pin candidates from measured signals (read-only)")
+
+
+def promote_candidates(*, owner: str, min_access: int = 3, cfg=None, store=None) -> dict:
+    return execute(promote_candidates_plan(owner=owner, min_access=min_access), cfg, store=store)
+
+
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, cfg=None, store=None) -> dict:
     """하이브리드 검색 — BM25(FTS) + (선택)벡터 암을 RRF 로 융합(§4-2).
