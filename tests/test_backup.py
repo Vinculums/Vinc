@@ -76,7 +76,7 @@ class SnapshotRoundTripTests(unittest.TestCase):
     def test_snapshot_restore_roundtrip(self):
         from store.config import load_config
         from store.backend import open_store
-        from engines.recall_to_neo4j import merge_episode
+        from engines.recall_ingest import merge_episode
         from api import query as q
 
         with tempfile.TemporaryDirectory() as d:

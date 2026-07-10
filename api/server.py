@@ -51,7 +51,7 @@ def _ingest_recall(store, body: dict) -> dict:
     if store is None:
         return {"engine": "recall", "executed": False, "ingested": 0,
                 "note": "no reachable store"}
-    from engines.recall_to_neo4j import merge_episode
+    from engines.recall_ingest import merge_episode
     n = 0
     with store.session() as s:
         for ep in episodes:

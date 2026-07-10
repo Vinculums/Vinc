@@ -18,7 +18,7 @@ from __future__ import annotations
 # 노드 테이블 열 명세 (label → {pk, cols:[(col,type)]}).
 # type: STRING · INT64 · DOUBLE · BOOL · STRING[] · FLOAT[{dim}]. 날짜는 STRING.
 _NODE_TABLES: dict[str, dict] = {
-    # recall_to_neo4j.merge_episode + preference(pin/tag/touch) — §5-2 전체
+    # recall_ingest.merge_episode + preference(pin/tag/touch) — §5-2 전체
     "Episode": {"pk": "episode_id", "cols": [
         ("episode_id", "STRING"), ("title", "STRING"), ("date", "STRING"),
         ("owner_id", "STRING"), ("tenant_id", "STRING"), ("domain", "STRING"),
@@ -28,13 +28,13 @@ _NODE_TABLES: dict[str, dict] = {
         ("completed_items", "STRING[]"), ("patterns", "STRING[]"), ("source_file", "STRING"),
         ("pinned", "BOOL"), ("tags", "STRING[]"),
         ("access_count", "INT64"), ("last_access", "STRING")]},
-    # concepts_to_neo4j
+    # concepts_ingest
     "Concept": {"pk": "concept_id", "cols": [
         ("concept_id", "STRING"), ("stem", "STRING"), ("owner_id", "STRING"),
         ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
         ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
         ("tags", "STRING[]"), ("source_file", "STRING")]},
-    # bridges_to_neo4j
+    # bridges_ingest
     "Bridge": {"pk": "bridge_id", "cols": [
         ("bridge_id", "STRING"), ("title", "STRING"), ("status", "STRING"),
         ("created", "STRING"), ("source_domain", "STRING"),
@@ -45,7 +45,7 @@ _NODE_TABLES: dict[str, dict] = {
         ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
         ("mode", "STRING"), ("outcome", "STRING"), ("duration_min", "DOUBLE"),
         ("date", "STRING"), ("timestamp", "STRING")]},
-    # learner_to_neo4j
+    # learner_ingest
     "LearnerPattern": {"pk": "pattern_id", "cols": [
         ("pattern_id", "STRING"), ("owner_id", "STRING"), ("code", "STRING"),
         ("name", "STRING"), ("description", "STRING"), ("domain", "STRING"),

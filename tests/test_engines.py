@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ENGINES = [
-    "embed_pipeline", "recall_to_neo4j", "pack_ingest",
-    "skill_tracker", "concepts_to_neo4j", "bridges_to_neo4j",
+    "embed_pipeline", "recall_ingest", "pack_ingest",
+    "skill_tracker", "concepts_ingest", "bridges_ingest",
 ]  # graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
 
 
@@ -66,14 +66,14 @@ class HubRootResolutionTests(unittest.TestCase):
     not a hardcoded v1 monorepo path (regression for the extraction bug)."""
 
     def test_concepts_set_hub_repoints_learning(self):
-        c = importlib.import_module("engines.concepts_to_neo4j")
+        c = importlib.import_module("engines.concepts_ingest")
         with tempfile.TemporaryDirectory() as d:
             c._set_hub(d)
             self.assertEqual(c.HUB, Path(d).resolve())
             self.assertEqual(c.LEARNING, Path(d).resolve() / "WORKSPACES" / "learning")
 
     def test_bridges_set_hub_rebuilds_bridge_dirs(self):
-        b = importlib.import_module("engines.bridges_to_neo4j")
+        b = importlib.import_module("engines.bridges_ingest")
         with tempfile.TemporaryDirectory() as d:
             b._set_hub(d)
             self.assertEqual(b.SOURCE_DIR,
@@ -82,7 +82,7 @@ class HubRootResolutionTests(unittest.TestCase):
             self.assertTrue(all(str(d) in str(bd[0]) for bd in b.BRIDGE_DIRS))
 
     def test_default_hub_falls_back_to_cwd(self):
-        c = importlib.import_module("engines.concepts_to_neo4j")
+        c = importlib.import_module("engines.concepts_ingest")
         # with no env and no legacy hub, default resolves to a real Path (not crash)
         self.assertIsInstance(c._default_hub(), Path)
 
@@ -90,28 +90,28 @@ class HubRootResolutionTests(unittest.TestCase):
 
 class RecallParseTests(unittest.TestCase):
     def test_primary_domain_normalizes_list_form(self):
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         self.assertEqual(r._primary_domain("art"), "art")
         self.assertEqual(r._primary_domain("[math, art]"), "math")  # real hub sessions use this
         self.assertEqual(r._primary_domain(""), "")
 
     def test_primary_domain_extracts_from_path_workspace(self):
         # 구세대 physics 세션의 서술형 workspace — learning/<seg> 추출 (도메인 불문)
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         self.assertEqual(r._primary_domain("WORKSPACES/learning/physics/modern + CONTEXT/identity"), "physics")
         self.assertEqual(r._primary_domain("WORKSPACES/learning/pottery/intro"), "pottery")
         # learning 세그먼트 없는 서술형은 도메인이 아님
         self.assertEqual(r._primary_domain("CONTEXT/identity + audit"), "")
 
     def test_parse_frontmatter(self):
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         text = "---\nsession_id: s1\ntitle: Hello\nworkspace: planning\n---\n## 세션 요약\nbody\n"
         fm = r._parse_frontmatter(text)
         self.assertEqual(fm.get("session_id"), "s1")
         self.assertEqual(fm.get("title"), "Hello")
 
     def test_parse_body_sections(self):
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         text = "## 세션 요약\nThis is the summary.\n\n## 완료 항목\n- done\n"
         sections = r._parse_body_sections(text)
         self.assertTrue(any("summary" in v.lower() or "요약" in k for k, v in sections.items()))
@@ -119,7 +119,7 @@ class RecallParseTests(unittest.TestCase):
     def test_parse_body_sections_captures_h3(self):
         # 실데이터·reflect-session 템플릿은 ### (h3) 를 쓴다 — h2 만 잡으면 섹션이
         # 전부 공백이 됐다(P1 포트 발견). h2·h3 모두 캡처하며 h2 회귀도 유지.
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         text = "### 세션 요약\n한 일\n\n### 완료 항목\n- a\n- b\n"
         sections = r._parse_body_sections(text)
         self.assertIn("완료 항목", sections)
@@ -129,7 +129,7 @@ class RecallParseTests(unittest.TestCase):
         # completed_items·patterns 는 STRING[] (목록). completed 는 BOOL 이 아니다.
         import tempfile
         from datetime import date as _date
-        r = importlib.import_module("engines.recall_to_neo4j")
+        r = importlib.import_module("engines.recall_ingest")
         md = ("---\nowner: user:x\ndomain: math\n---\n"
               "### 완료 항목\n- 노트 작성\n- index 갱신\n"
               "### 발견된 패턴 후보\n- 묶음 패턴\n")
@@ -143,7 +143,7 @@ class RecallParseTests(unittest.TestCase):
 
 class ConceptsParseTests(unittest.TestCase):
     def test_h1_and_oneliner(self):
-        c = importlib.import_module("engines.concepts_to_neo4j")
+        c = importlib.import_module("engines.concepts_ingest")
         text = "# Entropy\n\n## 한 줄 핵심\n무질서도의 척도.\n"
         self.assertEqual(c._h1(text), "Entropy")
         self.assertIn("무질서", c._one_liner(text))
@@ -153,11 +153,11 @@ class OpenDomainTests(unittest.TestCase):
     """Domains must be discovered from the filesystem, not a hardcoded list."""
 
     def test_concepts_has_no_hardcoded_domain_list(self):
-        c = importlib.import_module("engines.concepts_to_neo4j")
+        c = importlib.import_module("engines.concepts_ingest")
         self.assertFalse(hasattr(c, "DOMAINS"))  # the fixed list is gone
 
     def test_concepts_discovers_arbitrary_domains(self):
-        c = importlib.import_module("engines.concepts_to_neo4j")
+        c = importlib.import_module("engines.concepts_ingest")
         with tempfile.TemporaryDirectory() as d:
             learning = Path(d) / "WORKSPACES" / "learning"
             # a domain nobody hardcoded — proves it's open
@@ -167,12 +167,12 @@ class OpenDomainTests(unittest.TestCase):
             self.assertEqual(found, ["linguistics", "physics", "pottery"])
 
     def test_bridges_source_domain_is_configurable(self):
-        b = importlib.import_module("engines.bridges_to_neo4j")
+        b = importlib.import_module("engines.bridges_ingest")
         # default is math (back-compat) but it's env-driven, not forced
         self.assertIsInstance(b.SOURCE_DOMAIN, str)
 
     def test_bridges_collect_inputs_is_domain_agnostic(self):
-        b = importlib.import_module("engines.bridges_to_neo4j")
+        b = importlib.import_module("engines.bridges_ingest")
         fm = {"chemistry_inputs": ["01-bonds"], "biology_inputs": ["02-cells"], "title": "x"}
         inputs = b._collect_inputs(fm)
         self.assertEqual(inputs, {"chemistry": ["01-bonds"], "biology": ["02-cells"]})
