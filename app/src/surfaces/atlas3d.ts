@@ -5,10 +5,10 @@
  *  materials (ink/ink_soft/ink_mute), paper background + fog, one neutral
  *  directional light. The single point color marks "the current focus" only.
  *
- *  Node primitives = type: hex prism (Concept) · sphere (Episode/Record) ·
- *  octahedron (Bridge) · large hex prism + ring (L0 Domain). Gateways are
- *  translucent. Sidecar supplies deterministic x/y/z (D17) — positions are
- *  pinned (fx/fy/fz), no client force simulation. */
+ *  Node primitives = type (D35): sphere (Concept) · small regular hex prism
+ *  (Episode/Record — all edges equal) · octahedron (Bridge) · sphere + ring
+ *  (L0 Domain). Gateways are translucent. Sidecar supplies deterministic
+ *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
@@ -59,25 +59,28 @@ function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
   const r = nodeRadius(n, prefs);
   let geo: THREE.BufferGeometry;
   switch (n.kind) {
-    case "domain":   // 대형 육각기둥 + 외곽 링(이중육각의 입체화)
-    case "concept":  // 육각기둥
-      geo = new THREE.CylinderGeometry(r, r, r * 0.75, 6); break;
+    case "domain":   // 구 + 적도 링(D35 개정 — 이중육각 계보는 기록물로 이관)
+    case "concept":  // 구 — 최다 노드종에 최소 잉크 형태(시각 비대 완화, D35)
+      geo = new THREE.SphereGeometry(r, 20, 14); break;
     case "bridge":   // 정팔면체(마름모의 입체화)
       geo = new THREE.OctahedronGeometry(r); break;
-    default:         // episode/record — 구
-      geo = new THREE.SphereGeometry(r, 20, 14);
+    default: {       // episode/record — 작은 정육각기둥(변 = 높이: 전 모서리 등길이, D35)
+      const s = r * 0.75;
+      geo = new THREE.CylinderGeometry(s, s, s, 6); break;
+    }
   }
   const mesh = new THREE.Mesh(geo, material(color, opacity));
   if (n.kind === "domain") {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 6),   // 6각 토러스 링
+      new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24),   // 원형 링(토성형)
       material(INK_MUTE, 0.9));
-    ring.rotation.x = Math.PI / 2;
+    // 3D: 적도면(xz)에 두르고, 2D: 카메라를 향해(xy) — 판독 유지
+    if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
     mesh.add(ring);
   }
-  // 2D 모드: 기둥류를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게 — 형태=타입
-  // 판독을 평면에서도 유지 (D31 §1.5: 2D 는 동일 렌더러의 z 평면화).
-  if (prefs.view === "2d" && (n.kind === "concept" || n.kind === "domain"))
+  // 2D 모드: 기둥류(기록물)를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게 —
+  // 형태=타입 판독을 평면에서도 유지 (D31 §1.5: 2D 는 동일 렌더러의 z 평면화).
+  if (prefs.view === "2d" && n.kind !== "domain" && n.kind !== "concept" && n.kind !== "bridge")
     mesh.rotation.x = Math.PI / 2;
   return mesh;
 }
