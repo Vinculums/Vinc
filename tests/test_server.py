@@ -243,9 +243,17 @@ class IngestRouteTests(unittest.TestCase):
             return _cm()
         def close(self): pass
 
+    def test_missing_theme_id_400(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]})
+            self.assertEqual(code, 400)
+            self.assertIn("theme_id", obj["error"])
+
     def test_no_store_degrades_executed_false(self):
         with running_server(_app()) as base:
             code, obj = _req(base, "/ingest", method="POST", body={
+                "theme_id": "t1",
                 "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]})
             self.assertEqual(code, 200)
             self.assertFalse(obj["executed"])
@@ -255,22 +263,90 @@ class IngestRouteTests(unittest.TestCase):
         app = _app(store=self._Store())
         with running_server(app) as base:
             code, obj = _req(base, "/ingest", method="POST", body={
+                "theme_id": "t1",
                 "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
                 "edges": [],
             })
             self.assertEqual(code, 200)
             self.assertTrue(obj["executed"])
             self.assertEqual(obj["merged"]["nodes"], {"created": 1, "matched": 0})
-            self.assertEqual(obj["warnings"], [])
+            self.assertEqual(obj["skipped"], 0)
 
-    def test_unsupported_node_type_reports_warning_over_http(self):
+    def test_out_of_vocab_type_folds_to_proposed_over_http(self):
         app = _app(store=self._Store())
         with running_server(app) as base:
             code, obj = _req(base, "/ingest", method="POST", body={
-                "nodes": [{"id": "r1", "type": "record", "title": "T"}]})
+                "theme_id": "fashion",
+                "nodes": [{"id": "x1", "type": "해체주의", "title": "T"}]})
             self.assertEqual(code, 200)
-            self.assertEqual(obj["merged"]["nodes"], {"created": 0, "matched": 0})
-            self.assertTrue(any("record" in w for w in obj["warnings"]))
+            self.assertEqual(obj["merged"]["nodes"], {"created": 1, "matched": 0})
+            self.assertEqual(obj["skipped"], 0)
+            names = {p["name"] for p in obj["proposed_types"]}
+            self.assertIn("해체주의", names)
+
+    def test_ratify_roundtrip_type_becomes_authoritative_for_later_ingest(self):
+        # A안 핵심 가치 CI 잠금: 어휘 밖 타입으로 인스턴스 적재(proposed 편입) → 타입
+        # ratify(어휘 SSoT 뒤집힘) → 같은 타입 재적재 시 **재제안 안 됨**(이제 기지·
+        # authored 타입). 인스턴스에 status 열이 없어 어휘 상태가 곧 모든 인스턴스의
+        # 도출 상태다 — 재제안 부재가 그 도출 뒤집힘의 CI 관측 지점.
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            # 1) 어휘 밖 타입으로 인스턴스 2개 적재 → proposed 편입
+            _req(base, "/ingest", method="POST", body={
+                "theme_id": "fashion",
+                "nodes": [{"id": "x1", "type": "해체주의", "title": "A"},
+                          {"id": "x2", "type": "해체주의", "title": "B"}]})
+            code, obj = _req(base, "/types?theme_id=fashion&status=proposed")
+            self.assertIn("해체주의", {t["name"] for t in obj["types"]})
+            # 2) 타입 1줄 ratify → authored
+            code, obj = _req(base, "/types/ratify", method="POST",
+                             body={"theme_id": "fashion", "name": "해체주의"})
+            self.assertEqual(obj["type"]["status"], "authored")
+            code, obj = _req(base, "/types?theme_id=fashion&status=authored")
+            self.assertIn("해체주의", {t["name"] for t in obj["types"]})
+            # 3) 같은 타입 재적재 → 이미 어휘에 있으므로 proposed_types 비어 있음
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "theme_id": "fashion",
+                "nodes": [{"id": "x3", "type": "해체주의", "title": "C"}]})
+            self.assertEqual(obj["proposed_types"], [])
+            self.assertEqual(obj["skipped"], 0)
+
+
+class ThemeTypeRouteTests(unittest.TestCase):
+    """주제·타입 어휘 CRUD 라우트 — data_dir 없는 인메모리 ThemeStore(오프라인)."""
+
+    def test_theme_create_list_activate(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/themes", method="POST",
+                             body={"theme_id": "fashion", "title": "F", "guiding_questions": ["q?"]})
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["theme"]["theme_id"], "fashion")
+            # 시드된 어휘(구 enum → proposed)
+            code, obj = _req(base, "/types?theme_id=fashion&status=proposed")
+            self.assertEqual(code, 200)
+            names = {t["name"] for t in obj["types"]}
+            self.assertIn("concept", names)
+            code, obj = _req(base, "/themes")
+            self.assertEqual(obj["active_theme_id"], "fashion")
+
+    def test_ratify_moves_proposed_to_authored(self):
+        with running_server(_app()) as base:
+            _req(base, "/themes", method="POST", body={"theme_id": "t"})
+            code, obj = _req(base, "/types/ratify", method="POST",
+                             body={"theme_id": "t", "name": "concept"})
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["type"]["status"], "authored")
+
+    def test_ratify_unknown_theme_404(self):
+        with running_server(_app()) as base:
+            code, _ = _req(base, "/types/ratify", method="POST",
+                           body={"theme_id": "ghost", "name": "concept"})
+            self.assertEqual(code, 404)
+
+    def test_types_requires_theme_id(self):
+        with running_server(_app()) as base:
+            code, _ = _req(base, "/types")
+            self.assertEqual(code, 400)
 
 
 if __name__ == "__main__":

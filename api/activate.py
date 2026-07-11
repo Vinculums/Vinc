@@ -40,10 +40,14 @@ class ContextPack:
     generated_at: str | None
     episodes: list[dict]
     learner_model: list[dict] = field(default_factory=list)  # how this person learns (U-patterns)
+    theme_id: str | None = None
+    # 주제 어휘(선택) — **authored 만** 실린다. proposed(재가 전 잠정)는 팩·내보내기에
+    # 하중을 지지 않는다(THESIS §6 잠정상태 · D11-R2). activate() 가 필터해 넣어준다.
+    vocabulary: list[dict] = field(default_factory=list)
 
     # ── JSON shape (programmatic ingestion) ──────────────────────────────────
     def to_json(self) -> dict:
-        return {
+        out = {
             "kind": "weg-9000-memory/context-pack",
             "owner": self.owner,
             "query": self.query,
@@ -52,6 +56,9 @@ class ContextPack:
             "episodes": self.episodes,
             "learner_model": self.learner_model,
         }
+        if self.theme_id is not None:
+            out["theme"] = {"theme_id": self.theme_id, "vocabulary": self.vocabulary}
+        return out
 
     def _learner_section(self) -> list[str]:
         if not self.learner_model:
@@ -144,13 +151,17 @@ class ContextPack:
 
 def build_context_pack(rows: list[dict], *, owner: str, query: str = "",
                        generated_at: str | None = None,
-                       learner_model: list[dict] | None = None) -> ContextPack:
+                       learner_model: list[dict] | None = None,
+                       theme_id: str | None = None,
+                       vocabulary: list[dict] | None = None) -> ContextPack:
     """Assemble a ContextPack from recall rows (pure). ``learner_model`` is the
     person's LearnerPattern rows (how they learn) — carried so an export is "my
-    learning *and how I learn it*"."""
+    learning *and how I learn it*". ``vocabulary`` (authored 만) 은 주제 타입 어휘를
+    함께 이전한다 — 어휘는 소유·이전 단위(THESIS T4·D11-R2 §8)."""
     episodes = [dict(r) for r in rows]
     return ContextPack(owner=owner, query=query, generated_at=generated_at,
-                       episodes=episodes, learner_model=[dict(p) for p in (learner_model or [])])
+                       episodes=episodes, learner_model=[dict(p) for p in (learner_model or [])],
+                       theme_id=theme_id, vocabulary=[dict(t) for t in (vocabulary or [])])
 
 
 def write_pack(pack: ContextPack, out_dir: str | Path) -> dict:
@@ -173,6 +184,7 @@ def activate(query: str = "", *, owner: str, tenant: str | None = None,
              tags: list[str] | None = None, rank: str = "preference", limit: int = 20,
              include_model: bool = False,
              generated_at: str | None = None, out_dir: str | Path | None = None,
+             theme_id: str | None = None, themes=None,
              cfg=None, store=None) -> dict:
     """Recall owner-scoped records and build a portable context pack.
 
@@ -190,8 +202,13 @@ def activate(query: str = "", *, owner: str, tenant: str | None = None,
                    workspace=workspace, tags=tags, rank=rank, limit=limit, cfg=cfg, store=store)
     model_rows = (q.learner_model(owner=owner, cfg=cfg, store=store).get("rows", [])
                   if include_model else [])
+    # 주제 어휘 동봉(선택) — **authored 만**. proposed(재가 전)는 팩에 실리지 않는다
+    # (THESIS §6 잠정상태 · D11-R2 수용기준). 단일 필터 라인.
+    vocabulary = ([t for t in themes.list_types(theme_id) if t.get("status") == "authored"]
+                  if (theme_id and themes is not None) else None)
     pack = build_context_pack(res.get("rows", []), owner=owner, query=query,
-                              generated_at=generated_at, learner_model=model_rows)
+                              generated_at=generated_at, learner_model=model_rows,
+                              theme_id=theme_id, vocabulary=vocabulary)
     out: dict = {
         "owner": owner,
         "episode_count": len(pack.episodes),

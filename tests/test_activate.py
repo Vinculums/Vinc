@@ -85,6 +85,33 @@ class WriteTests(unittest.TestCase):
             self.assertEqual(data["episode_count"], 2)
 
 
+class PackVocabularyTests(unittest.TestCase):
+    """주제 어휘 동봉 — authored 만 실린다(proposed 는 팩에서 제외, D11-R2 수용기준)."""
+
+    def test_no_theme_means_no_theme_block(self):
+        d = act.build_context_pack(ROWS, owner="u").to_json()
+        self.assertNotIn("theme", d)
+
+    def test_theme_block_carries_authored_vocabulary(self):
+        vocab = [{"name": "해체주의", "kind": "node", "status": "authored"}]
+        d = act.build_context_pack(ROWS, owner="u", theme_id="fashion",
+                                   vocabulary=vocab).to_json()
+        self.assertEqual(d["theme"]["theme_id"], "fashion")
+        self.assertEqual([t["name"] for t in d["theme"]["vocabulary"]], ["해체주의"])
+
+    def test_activate_filters_proposed_out_of_pack(self):
+        from store.theme_store import ThemeStore
+        ts = ThemeStore(tempfile.mkdtemp())
+        ts.create_theme("fashion")           # concept 등 시드는 proposed
+        ts.propose_type("fashion", "node", "해체주의")
+        ts.ratify("fashion", "해체주의")      # 이것만 authored
+        res = act.activate(owner="u", theme_id="fashion", themes=ts)
+        vocab = res["pack"]["json"]["theme"]["vocabulary"]
+        names = {t["name"] for t in vocab}
+        self.assertEqual(names, {"해체주의"})            # authored 만
+        self.assertNotIn("concept", names)               # proposed 제외
+
+
 class ActivateEntryTests(unittest.TestCase):
     def test_activate_without_db_returns_inline_pack(self):
         # no DB -> recall returns no rows; pack is empty but well-formed

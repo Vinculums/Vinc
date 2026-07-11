@@ -58,6 +58,15 @@ _NODE_TABLES: dict[str, dict] = {
         ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
         ("embedding", "FLOAT[{dim}]")]},
+    # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2 · fragment_ingest).
+    # 레거시 4타입(concept/domain/bridge/episode)은 전용 테이블 유지; 어휘 밖 신규
+    # 타입은 여기로 exact-id MERGE 된다. `type` 은 theme 어휘가 SSoT(여기 저장은 값).
+    # `theme_id` 는 노드 소유 = 주제 귀속(THEME-DEEP §6)을 스키마에 각인 — domain 은
+    # 승계하지 않는다(필요 시 tags/주제 메타로 흡수). 투기 아님: fragment 노드가 싣는
+    # settable 상한(id/type/title/owner/theme/tags)이라 하중을 지는 열이다.
+    "Entity": {"pk": "entity_id", "cols": [
+        ("entity_id", "STRING"), ("type", "STRING"), ("title", "STRING"),
+        ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
 }
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -69,6 +78,9 @@ _REL_TABLES: list[tuple] = [
     ("RELATED_TO", "Concept", "Concept", []),
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
+    # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity). exact `(from,
+    # type, to)` MERGE 로 rel-property `type` 이 매칭 키에 참여한다(D11-R2 §4).
+    ("TYPED", "Entity", "Entity", [("type", "STRING")]),
 ]
 
 

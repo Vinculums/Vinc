@@ -31,10 +31,12 @@ class BuildAppTests(unittest.TestCase):
         handle = SidecarHandle(host="127.0.0.1", port=1, token="t", pid=1, spawned_by_us=False)
         self.app = build_app(data_dir=self.tmp, handle=handle)
 
-    def test_registers_all_five_tools(self):
+    def test_registers_expected_tools(self):
         names = {t.name for t in asyncio.run(self.app.list_tools())}
-        self.assertEqual(names, {"vinc_search", "vinc_recall", "vinc_graph",
-                                 "vinc_decide", "vinc_ingest"})
+        self.assertEqual(names, {
+            "vinc_search", "vinc_recall", "vinc_graph", "vinc_decide", "vinc_ingest",
+            "vinc_themes_list", "vinc_themes_create", "vinc_themes_activate",
+            "vinc_types_list", "vinc_types_ratify", "vinc_types_reject", "vinc_types_rename"})
 
     def test_vinc_graph_tool_reports_gap_without_touching_bridge(self):
         # 실 사이드카가 없는 handle(port=1) 이라 bridge 를 건드리는 도구였다면 실패
