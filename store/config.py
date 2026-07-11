@@ -72,3 +72,22 @@ def load_config(overrides: dict | None = None) -> StoreConfig:
     cfg.core_days = int(pick("core_days", "MEMORY_CORE_DAYS", 30))
     cfg.archival_days = int(pick("archival_days", "MEMORY_ARCHIVAL_DAYS", 90))
     return cfg
+
+def resolve_data_dir(cli_value: str | None = None, *, create: bool = True) -> str:
+    """앱 진입점(cli serve·데스크톱 셸)용 데이터 경로 해석(D43):
+    ``--data`` > ``MEMORY_DATA_DIR`` > **``~/.vinc/db``**(설치형 기본 홈).
+
+    라이브러리 기본값(load_config 의 data_dir=None)은 그대로 둔다 — 검증
+    (verify.py 무 DB 강등)의 순수성을 앱 기본 경로가 오염하지 않게, 홈 폴더
+    적용은 진입점만의 결정이다. 기본 홈일 때만 표준 하위 구조를 만든다:
+    ``~/.vinc/{db, packs/, inbox/, backups/}`` — 백업 = 폴더 하나 복사."""
+    import pathlib
+
+    explicit = cli_value or os.environ.get("MEMORY_DATA_DIR")
+    if explicit:
+        return explicit
+    root = pathlib.Path.home() / ".vinc"
+    if create:
+        for sub in ("packs", "inbox", "backups"):
+            (root / sub).mkdir(parents=True, exist_ok=True)
+    return str(root / "db")

@@ -2,37 +2,48 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Vinc",
   "version": "0.1.0",
-  "identifier": "com.vinc.app",
+  "identifier": "app.vinc.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "Vinc",
-        "width": 1200,
+        "title": "Vinc — Mine what matters.",
+        "width": 1280,
         "height": 800,
-        "minWidth": 920,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false
+        "minWidth": 960,
+        "minHeight": 600
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Offline-first desktop data mining.",
+    "longDescription": "Ingest a corpus, map it as a graph, search it by meaning, and export packs — entirely on this machine.",
+    "externalBin": ["binaries/vinc-sidecar"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
+      "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["vincpack"],
+        "name": "Vinc Pack",
+        "description": "Portable Vinc knowledge pack",
+        "role": "Viewer"
+      }
     ]
   }
 }

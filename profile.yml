@@ -1,52 +1,58 @@
-# weg-9000-memory — tenant-agnostic profile (revamp pattern).
+# Vinc — 기본 도메인 프로필 (오프라인·임베디드).
 #
-# This file holds defaults that are independent of any single tenant. Per-tenant
-# values (Neo4j database name, enabled engines) live in tenants/{id}/memory.yml,
-# written by cp_adapter/tenant_admin.py at provisioning time. Environment
-# variables override these defaults (see store/config.py resolution order).
+# 이 파일은 **문서용 기본값 참조**이자 `api.cli backup --profile <path>` 로 백업
+# 아카이브에 동봉할 수 있는 도메인 프로필이다. 런타임 설정의 SSoT 는 코드
+# `store/config.py`(StoreConfig + load_config) 이며, 실제 해석 순서는
+# **인자 > 환경변수(MEMORY_*) > 기본값** 이다. 아래 값은 그 기본값의 사람이 읽는
+# 미러다 — 코드와 어긋나면 store/config.py 가 정본.
+#
+# Vinc 는 임베디드 전용(설계 §1): 외부 인프라·API 키·서버 없이 오프라인 동작한다.
+# Neo4j 서버 설정(uri/user/password)·멀티테넌트 프로비저닝은 서버 경로 레포
+# (weg-9000-memory) 의 관심사이며 여기에는 없다.
 
 name: default
 
-# ── Store ────────────────────────────────────────────────────────────────────
+# ── Store (임베디드 그래프 스토어) ────────────────────────────────────────────
+# 백엔드는 store/backend.open_store 단일 지점에서 취득한다. Neo4j 연결 인자 없음.
 store:
-  # Neo4j connection (env: NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD / NEO4J_DATABASE)
-  uri: "neo4j://127.0.0.1:7687"
-  user: "neo4j"
-  # password: set via NEO4J_PASSWORD env, never committed
+  backend: embedded            # env: MEMORY_STORE_BACKEND  (유일 배포 백엔드)
+  # 임베디드 드라이버: 미지정 시 기본 kuzu(정적 링크 — 오프라인 즉시, DEC D14).
+  # "ladybug"(v0.18.0) 는 확장 런타임 다운로드가 필요해 옵트인.
+  embedded_driver: null        # env: MEMORY_EMBEDDED_DRIVER  (null=kuzu)
+  data_dir: null               # env: MEMORY_DATA_DIR  (null=기본 데이터 디렉토리)
 
-# ── Embeddings ───────────────────────────────────────────────────────────────
+# ── Embeddings (로컬·검색 전용) ───────────────────────────────────────────────
+# 기본은 로컬 오프라인 retrieval 모델(F5: 키 없이 기동). 임베딩은 검색 인덱스
+# 용도로만 쓰이고 연결·구조화에는 사용하지 않는다.
 embeddings:
-  # anthropic -> voyage-3 (1024 dims) | local -> mpnet (768 dims)
-  model: "anthropic"
+  # local-en=bge-base-en-v1.5(768) · local-en-large=bge-large-en-v1.5(1024)
+  # anthropic=voyage-3(1024, API 키 필요 — 옵션) · local=legacy mpnet(768, back-compat)
+  model: local-en              # env: MEMORY_EMBEDDING_MODEL
   chunk_size: 500
   chunk_overlap: 50
 
-# ── Learning ownership (individual owner + open, user-defined domain) ────────
-# The memory is one person's cross-domain learning. Engines stamp learning nodes
-# (Episode/Concept/Procedure/Memory) with owner_id + domain + tenant_id
-# (frontmatter owner:/domain:/tenant: > env MEMORY_DEFAULT_OWNER/MEMORY_TENANT_ID
-# > default below; domain falls back to workspace:). `domain` is a FREE string
-# (physics/math/art/economics/…), never a fixed list — discover it via
-# `api.cli domains`. Un-owned nodes belong to the shared pool, never to a person.
+# ── 소유·스코프 (단일 사용자, 자유 문자열 domain) ────────────────────────────
+# 노드는 owner_id + domain + tenant_id 로 스탬핑된다. domain 은 고정 목록이 아닌
+# 자유 문자열(physics/math/art/economics/…) — `api.cli domains` 로 발견한다.
+# tenant 는 단일 사용자 상수 tenant:local (설계 §3-3). 과금·외부 계정 개념 없음.
 ownership:
-  default_owner: "tenant:shared"   # env: MEMORY_DEFAULT_OWNER
+  default_owner: "tenant:local"   # env: MEMORY_DEFAULT_OWNER
+  tenant_id: "tenant:local"
 
-# ── 3-tier recall memory retention (days) ────────────────────────────────────
+# ── 3-tier recall 메모리 보존(일) ────────────────────────────────────────────
 retention:
-  core_days: 30        # tier 1: hot, kept in graph
-  archival_days: 90    # tier 3: migrate to archival store past this age
+  core_days: 30        # env: MEMORY_CORE_DAYS     — tier 1: hot, 그래프 유지
+  archival_days: 90    # env: MEMORY_ARCHIVAL_DAYS — tier 3: 이 나이 초과 시 archival 이관
 
-# ── Engines (the 6 ingestion pipelines) ──────────────────────────────────────
+# ── 적재 엔진 (마크다운 → 임베디드 스토어) ────────────────────────────────────
+# 파일명은 engines/<name>.py. graph_to_neo4j(PM 정책 그래프)는 weg-9000 레포
+# 소관으로 Vinc 범위 밖이라 여기에 없다.
 engines:
   enabled:
-    - graph       # graph_to_neo4j   : policy/screen LPG + 8 relation types
-    - embed       # embed_pipeline   : chunk + Voyage/mpnet embeddings + parquet
-    - recall      # recall_ingest    : 3-tier episodic memory
-    - skill       # skill_tracker    : SkillExecution analytics
-    - concepts    # concepts_ingest  : distilled Concept graph
-    - bridges     # bridges_ingest   : cross-domain Bridge links
-
-# ── Store presets (gate_preset analogue; see cp_adapter/tenant_admin.py) ──────
-presets:
-  default: standard
-  available: [lightweight, standard, strict]
+    - embed_pipeline    # chunk + 로컬 임베딩 + parquet 체크포인트(증분)
+    - recall_ingest     # 3-tier episodic memory (:Episode)
+    - concepts_ingest   # distilled Concept 그래프 (도메인 자동 발견)
+    - bridges_ingest    # cross-domain Bridge 링크
+    - learner_ingest    # user-model 패턴 (:LearnerPattern)
+    - skill_tracker     # SkillExecution 분석
+    - pack_ingest       # pack.json preference 오버레이(마이그레이션)

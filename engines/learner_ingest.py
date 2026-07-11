@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""user-model 의 학습 패턴표 → (:LearnerPattern) 적재.
+"""user-model 의 학습 패턴표 → Neo4j (:LearnerPattern) 적재.
 
 한 개인이 *어떻게* 학습하는가(U-패턴: 흐름구조 선호·연속흡수·회귀흡수·도메인쌍
 결합 …)는 가장 개인적인 데이터 — 인지 지문이다. 이 엔진은 user-model 마크다운의
@@ -108,7 +108,7 @@ def _load_dotenv() -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="user-model 학습 패턴표 → :LearnerPattern")
+    p = argparse.ArgumentParser(description="user-model 학습 패턴표 → Neo4j :LearnerPattern")
     p.add_argument("--source", default=os.environ.get("MEMORY_LEARNER_MODEL"),
                    help="user-model 마크다운 경로 (env MEMORY_LEARNER_MODEL)")
     p.add_argument("--owner", default=os.environ.get("MEMORY_DEFAULT_OWNER", "tenant:shared"),

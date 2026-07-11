@@ -22,10 +22,6 @@ embed    = ["sentence-transformers"]  # 영어 retrieval bge-base-en 768d (§8)
 # stdlib(http.server). 이 extra 없이도 코어·조회·서버 기동은 동작하며, 온보딩·
 # 패스프레이즈 검증만 불가하다(F5: 키 없이 기동).
 server   = ["argon2-cffi"]    # argon2id 자격 해시(로컬 로그인 F4)
-# vinc-mcp(D11 Push MVP) stdio 서버 — 공식 Anthropic MCP Python SDK(PyPI `mcp`).
-# 패키지는 `vinc_mcp/`(최상위 `mcp/` 아님) — 그 이름이면 레포 루트가 sys.path 에
-# 오를 때 이 extra 의 `mcp` 를 자기 자신으로 가려 임포트가 깨진다.
-mcp      = ["mcp"]
 
 [tool.setuptools]
 py-modules = []

@@ -2,9 +2,8 @@
 """Query planners + executors for recall / search / decide.
 
 A QueryPlan is a (cypher, params) pair plus metadata. Plans are pure and
-testable. ``execute`` runs a plan against the embedded GraphStore
-(``store.backend.open_store`` — Vinc is embedded-only, no Neo4j); when no
-driver is reachable it returns the plan with ``executed=False`` so
+testable. ``execute`` runs a plan against Neo4j (driver imported lazily); when
+no driver/password is available it returns the plan with ``executed=False`` so
 callers — and tests — get a deterministic result without a live database.
 """
 from __future__ import annotations
@@ -315,10 +314,431 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
-def graph(*, owner: str, domain: str | None = None, cfg=None, store=None) -> dict:
+def subgraph_ids_plan(seed: str, *, depth: int = 2) -> QueryPlan:
+    """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
+    MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
+    §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다."""
+    depth = max(1, min(int(depth), 4))
+    cypher = (
+        "MATCH (n:Concept) WHERE n.concept_id = $seed "
+        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Concept) "
+        "RETURN DISTINCT m.concept_id AS id"
+    )
+    return QueryPlan("subgraph_ids", cypher, {"seed": seed},
+                     note=f"seed+depth traversal (depth={depth})")
+
+
+def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
+    """id 집합의 Concept 행 + 나가는 엣지(§4-2 — 엣지의 서브그래프 외부 여과는
+    파이썬 shape 단계에서). `graph_plan` 과 동일 투영."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.concept_id IN $ids "
+        "OPTIONAL MATCH (c)-[r]->(d:Concept) "
+        "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
+        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
+    )
+    return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
+
+
+LAYOUTS = ("shell", "radial", "circle", "tree", "organic")
+_DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
+
+
+def _cluster_shell(members, ids, adj, directed, math, GOLDEN):
+    """fibonacci 구면 산개(기본) — 허브가 중심, 반경 = 0.08·√i."""
+    count = len(members)
+    pos = {}
+    for i, n in enumerate(members):
+        r = 0.08 * math.sqrt(i)
+        t = i / max(count - 1, 1)
+        phi = math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * t)))   # 극각 — 구면 균등
+        theta = i * GOLDEN
+        pos[n["id"]] = (r * math.sin(phi) * math.cos(theta),
+                        r * math.sin(phi) * math.sin(theta),
+                        r * math.cos(phi))
+    return pos
+
+
+def _cluster_radial(members, ids, adj, directed, math, GOLDEN):
+    """Centralized Burst — 허브(정렬 1위)가 중심, BFS 깊이 = 동심 껍질 반경."""
+    inset = set(ids)
+    depth = {ids[0]: 0}
+    frontier = [ids[0]]
+    while frontier:
+        nxt = []
+        for u in frontier:
+            for v in sorted(adj.get(u, ())):
+                if v in inset and v not in depth:
+                    depth[v] = depth[u] + 1
+                    nxt.append(v)
+        frontier = nxt
+    stray = max(depth.values(), default=0) + 1   # 미도달(고아) — 최외곽 껍질
+    counts: dict[int, int] = {}
+    for n in members:
+        d = depth.get(n["id"], stray)
+        counts[d] = counts.get(d, 0) + 1
+    ring: dict[int, int] = {}
+    pos = {}
+    for n in members:
+        d = depth.get(n["id"], stray)
+        j = ring[d] = ring.get(d, -1) + 1
+        k = counts[d]
+        # 껍질 반경은 노드 수에 적응 — 둘레 간격이 노드 지름(≈0.17)을 넘도록
+        r = max(0.14 * d, 0.033 * k) if d else 0.0
+        theta = 2 * math.pi * j / max(k, 1) + d * 0.5   # 껍질 내 균등 + 위상 오프셋
+        pos[n["id"]] = (r * math.cos(theta), r * math.sin(theta),
+                        0.04 * d * math.sin(theta * 0.7))
+    return pos
+
+
+def _cluster_circle(members, ids, adj, directed, math, GOLDEN):
+    """Circular Ties — 원둘레 정렬(정렬 순서 유지), 엣지는 현(chord)으로 읽힌다."""
+    count = len(members)
+    R = min(0.42, 0.10 * math.sqrt(count) + 0.08)
+    pos = {}
+    for i, n in enumerate(members):
+        theta = 2 * math.pi * i / max(count, 1)
+        pos[n["id"]] = (R * math.cos(theta), R * math.sin(theta), 0.0)
+    return pos
+
+
+def _cluster_tree(members, ids, adj, directed, math, GOLDEN):
+    """Ramification — 방향 관계(prerequisite/derives/inherits)로 계층 배치.
+    루트 = 방향 유입이 없는 노드, 층 = BFS 깊이(순환은 방문 가드로 절단).
+    방향 엣지에 안 걸린 노드는 최하단 별도 층."""
+    inset = set(ids)
+    incoming = {i: 0 for i in ids}
+    for s, targets in directed.items():
+        if s not in inset:
+            continue
+        for t in targets:
+            if t in inset:
+                incoming[t] = incoming.get(t, 0) + 1
+    involved = {i for i in ids
+                if incoming.get(i, 0) or any(t in inset for t in directed.get(i, ()))}
+    roots = sorted(i for i in involved if incoming.get(i, 0) == 0) or sorted(involved)[:1]
+    layer = {r: 0 for r in roots}
+    frontier = list(roots)
+    while frontier:
+        nxt = []
+        for u in frontier:
+            for v in sorted(directed.get(u, ())):
+                if v in inset and v not in layer:
+                    layer[v] = layer[u] + 1
+                    nxt.append(v)
+        frontier = nxt
+    bottom = max(layer.values(), default=0) + 1
+    rows: dict[int, list] = {}
+    for n in members:
+        rows.setdefault(layer.get(n["id"], bottom), []).append(n["id"])
+    total = len(rows)
+    pos = {}
+    for li, (lv, row) in enumerate(sorted(rows.items())):
+        y = (total - 1) / 2 * 0.13 - li * 0.13     # 위(루트) → 아래
+        k = len(row)
+        for j, nid in enumerate(row):
+            pos[nid] = ((j - (k - 1) / 2) * 0.12, y, 0.0)
+    return pos
+
+
+def _cluster_organic(members, ids, adj, directed, math, GOLDEN):
+    """Organic Rhizome — 힘-지향을 **시드 고정 + 반복 수 고정**으로 결정론화(D17
+    유지). 초기 배치 = shell(순수), 척력 1/d² + 엣지 스프링, 60 반복 후 정규화."""
+    pos = {k: list(v) for k, v in
+           _cluster_shell(members, ids, adj, directed, math, GOLDEN).items()}
+    inset = set(ids)
+    springs = [(u, v) for u in ids for v in sorted(adj.get(u, ()))
+               if v in inset and u < v]
+    K_REP, K_SPR, REST, STEP = 0.009, 0.05, 0.34, 1.0
+    for _ in range(60):
+        force = {i: [0.0, 0.0, 0.0] for i in ids}
+        for a in range(len(ids)):
+            for b in range(a + 1, len(ids)):
+                u, v = ids[a], ids[b]
+                dx = [pos[u][c] - pos[v][c] for c in range(3)]
+                d2 = max(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2, 1e-6)
+                f = min(K_REP / d2, 0.05)
+                d = math.sqrt(d2)
+                for c in range(3):
+                    force[u][c] += f * dx[c] / d
+                    force[v][c] -= f * dx[c] / d
+        for u, v in springs:
+            dx = [pos[u][c] - pos[v][c] for c in range(3)]
+            d = max(math.sqrt(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2), 1e-6)
+            f = K_SPR * (d - REST)
+            for c in range(3):
+                force[u][c] -= f * dx[c] / d
+                force[v][c] += f * dx[c] / d
+        for i in ids:
+            for c in range(3):
+                pos[i][c] += max(-0.04, min(0.04, force[i][c] * STEP))
+    radii = sorted(math.sqrt(sum(p[c] ** 2 for c in range(3))) for p in pos.values())
+    # 80분위 반경 기준 정규화(양방향) — 최외곽(척력에 밀린 고아)이 아니라 본체
+    # 밀도를 목표에 맞춘다. rmax 기준은 고아 하나가 본체를 상대 압축시킨다(실측).
+    r_ref = radii[int(0.8 * (len(radii) - 1))] if radii else 0.0
+    scale = 0.30 / r_ref if r_ref > 1e-6 else 1.0
+    return {i: (p[0] * scale, p[1] * scale, p[2] * scale) for i, p in pos.items()}
+
+
+_CLUSTER_LAYOUTS = {"shell": _cluster_shell, "radial": _cluster_radial,
+                    "circle": _cluster_circle, "tree": _cluster_tree,
+                    "organic": _cluster_organic}
+
+
+def layout_positions(nodes: list[dict], edges: list[dict],
+                     layout: str = "shell") -> list[dict]:
+    """결정론 3D 레이아웃(D17 + D21 개정 + D34 프리셋) — **순수 함수**, 난수·시간
+    무의존이라 같은 그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인
+    클러스터 중심을 xy 단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 프리셋
+    (shell·radial·circle·tree·organic — D34, 미지 값은 shell 강등)으로 편다.
+    내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32)."""
+    import math
+    GOLDEN = 2.399963229728653
+    cluster_fn = _CLUSTER_LAYOUTS.get(layout, _cluster_shell)
+    adj: dict[str, set] = {}
+    directed: dict[str, set] = {}
+    for e in edges or []:
+        s, t = e.get("source"), e.get("target")
+        if not s or not t:
+            continue
+        adj.setdefault(s, set()).add(t)
+        adj.setdefault(t, set()).add(s)
+        if (e.get("type") or "") in _DIRECTED_RELS:
+            directed.setdefault(s, set()).add(t)
+    by_domain: dict[str, list[dict]] = {}
+    for n in nodes:
+        by_domain.setdefault(n.get("domain") or "", []).append(n)
+    domains = sorted(by_domain)
+    d_count = max(len(domains), 1)
+    for di, dom in enumerate(domains):
+        if d_count == 1:
+            cx, cy = 0.0, 0.0
+        else:
+            ang = 2 * math.pi * di / d_count
+            cx, cy = math.cos(ang), math.sin(ang)
+        members = sorted(by_domain[dom],
+                         key=lambda n: (-int(bool(n.get("pinned"))),
+                                        -int(n.get("degree") or 0), str(n.get("id"))))
+        ids = [n["id"] for n in members]
+        pos = cluster_fn(members, ids, adj, directed, math, GOLDEN)
+        for n in members:
+            lx, ly, lz = pos[n["id"]]
+            n["x"] = round(cx + lx, 6)
+            n["y"] = round(cy + ly, 6)
+            n["z"] = round(lz, 6)
+    return nodes
+
+
+def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
+          depth: int = 2, layout: str = "shell", cfg=None, store=None) -> dict:
+    """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
+    seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
+    결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
+    (shell·radial·circle·tree·organic, 미지 값 shell 강등)."""
+    if seed:
+        ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+        if not ids_res.get("executed"):
+            return {"executed": False, "nodes": [], "edges": [],
+                    "note": ids_res.get("note", "")}
+        ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+        res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
+        shaped = shape_graph(res.get("rows", []))
+        keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
+        shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
+        shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
+        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
+        return {"executed": res.get("executed", False), "seed": seed, "depth": depth, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     shaped = shape_graph(res.get("rows", []))
+    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
     return {"executed": res.get("executed", False), **shaped}
+
+
+def domain_ties_plan(*, owner: str) -> QueryPlan:
+    """Atlas L0 결합 행렬(D16) — 도메인이 다른 Concept 간 직접 엣지를 도메인 쌍으로 집계."""
+    cypher = (
+        "MATCH (a:Concept)-[r]->(b:Concept) "
+        "WHERE a.owner_id = $owner AND b.owner_id = $owner AND a.domain <> b.domain "
+        "RETURN a.domain AS source, b.domain AS target, count(*) AS ties "
+        "ORDER BY ties DESC"
+    )
+    return QueryPlan("domain_ties", cypher, {"owner": owner}, note="cross-domain tie matrix (L0)")
+
+
+def bridge_ties_plan() -> QueryPlan:
+    """L0 결합 행렬의 Bridge 축 — 실데이터(weg-9000 허브)에서 개념 간 엣지는 전부
+    도메인 내부이고 크로스도메인은 :Bridge 가 1급으로 담는다(2026-07-10 실측).
+    Bridge 는 소유 스탬프가 없는 구조 노드라 owner 필터 없음."""
+    cypher = (
+        "MATCH (b:Bridge) "
+        "WHERE b.source_domain IS NOT NULL AND b.target_domain IS NOT NULL "
+        "RETURN b.source_domain AS source, b.target_domain AS target, count(*) AS ties "
+        "ORDER BY ties DESC"
+    )
+    return QueryPlan("bridge_ties", cypher, {}, note="bridge tie matrix (L0)")
+
+
+def direct_coupling_plan(*, owner: str, a: str, b: str) -> QueryPlan:
+    """Compare 뷰(D22) — 두 도메인 사이 **개념 대 개념** 직접 크로스도메인 엣지."""
+    cypher = (
+        "MATCH (x:Concept)-[r]->(y:Concept) "
+        "WHERE x.owner_id = $owner AND y.owner_id = $owner "
+        "AND ((x.domain = $a AND y.domain = $b) OR (x.domain = $b AND y.domain = $a)) "
+        "RETURN x.concept_id AS a_id, x.title AS a_title, x.domain AS a_domain, "
+        "y.concept_id AS b_id, y.title AS b_title, label(r) AS rel"
+    )
+    return QueryPlan("coupling_direct", cypher, {"owner": owner, "a": a, "b": b},
+                     note="concept-level direct cross-domain edges")
+
+
+def bridge_coupling_plan(*, a: str, b: str) -> QueryPlan:
+    """Compare 뷰(D22) — Bridge 매개 개념쌍: (cA)←CONNECTS─(Bridge)─CONNECTS→(cB),
+    cA.domain=$a · cB.domain=$b. weg-9000 실데이터에서 직접 엣지는 0 이고 결합은
+    Bridge 가 담당(실측) — 매개쌍이 주 신호다."""
+    cypher = (
+        "MATCH (x:Concept)<-[:CONNECTS]-(br:Bridge)-[:CONNECTS]->(y:Concept) "
+        "WHERE x.domain = $a AND y.domain = $b "
+        "RETURN x.concept_id AS a_id, x.title AS a_title, "
+        "y.concept_id AS b_id, y.title AS b_title, "
+        "br.bridge_id AS via, br.title AS via_title"
+    )
+    return QueryPlan("coupling_bridge", cypher, {"a": a, "b": b},
+                     note="bridge-mediated concept pairs")
+
+
+def coupling(*, owner: str, a: str, b: str, cfg=None, store=None) -> dict:
+    """두 도메인의 개념 결합쌍(D22) — 직접 엣지 ∪ Bridge 매개. 쌍 단위 dedup,
+    직접 결합 우선 정렬."""
+    d = execute(direct_coupling_plan(owner=owner, a=a, b=b), cfg, store=store)
+    br = execute(bridge_coupling_plan(a=a, b=b), cfg, store=store)
+    pairs: dict[tuple[str, str], dict] = {}
+    for r in d.get("rows", []):
+        # 방향 정규화: a 도메인 쪽을 왼쪽에.
+        left_first = r.get("a_domain") == a
+        ai, at = (r["a_id"], r["a_title"]) if left_first else (r["b_id"], r["b_title"])
+        bi, bt = (r["b_id"], r["b_title"]) if left_first else (r["a_id"], r["a_title"])
+        pairs[(ai, bi)] = {"a_id": ai, "a_title": at or ai, "b_id": bi,
+                           "b_title": bt or bi, "kind": "direct", "rel": r.get("rel")}
+    for r in br.get("rows", []):
+        key = (r["a_id"], r["b_id"])
+        if key not in pairs:   # 직접 결합이 매개보다 강한 신호 — 우선
+            pairs[key] = {"a_id": r["a_id"], "a_title": r.get("a_title") or r["a_id"],
+                          "b_id": r["b_id"], "b_title": r.get("b_title") or r["b_id"],
+                          "kind": "bridge", "via": r.get("via"),
+                          "via_title": r.get("via_title")}
+    out = sorted(pairs.values(), key=lambda p: (p["kind"] != "direct", p["a_title"]))
+    return {"executed": bool(d.get("executed") or br.get("executed")),
+            "a": a, "b": b, "pairs": out}
+
+
+def concept_domains_plan(*, owner: str) -> QueryPlan:
+    """L0 도메인 집계의 Concept 축 — Episode 없는 코퍼스(개념 위주 허브, 실측:
+    weg-9000 적재분)에서도 L0 가 그려져야 한다."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+        "RETURN c.domain AS domain, count(*) AS records ORDER BY records DESC"
+    )
+    return QueryPlan("concept_domains", cypher, {"owner": owner}, note="concept counts per domain (L0)")
+
+
+def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
+    """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(Episode ∪ Concept
+    합산) + 도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로
+    L0 를 그린다(그래프 로직 UI 반입 금지)."""
+    d = execute(domains_plan(owner=owner), cfg, store=store)
+    c = execute(concept_domains_plan(owner=owner), cfg, store=store)
+    counts: dict[str, int] = {}
+    for row in d.get("rows", []):
+        counts[row["domain"]] = counts.get(row["domain"], 0) + int(row.get("episodes") or 0)
+    for row in c.get("rows", []):
+        counts[row["domain"]] = counts.get(row["domain"], 0) + int(row.get("records") or 0)
+    domains = [{"domain": k, "episodes": v} for k, v in
+               sorted(counts.items(), key=lambda kv: -kv[1])]
+    t = execute(domain_ties_plan(owner=owner), cfg, store=store)
+    b = execute(bridge_ties_plan(), cfg, store=store)
+    merged: dict[tuple[str, str], int] = {}
+    for row in [*t.get("rows", []), *b.get("rows", [])]:
+        key = (row.get("source") or "", row.get("target") or "")
+        if key[0] and key[1]:
+            merged[key] = merged.get(key, 0) + int(row.get("ties") or 0)
+    ties = [{"source": s, "target": tg, "ties": n}
+            for (s, tg), n in sorted(merged.items(), key=lambda kv: -kv[1])]
+    return {"executed": bool(d.get("executed") or c.get("executed")),
+            "domains": domains, "ties": ties}
+
+
+def promote_candidates_plan(*, owner: str, min_access: int = 3) -> QueryPlan:
+    """확정(pin) 후보 조회(Phase E1 — 조회 전용, 쓰기는 기존 /pin 경유라 단일 쓰기
+    표면 유지). 반복 관측된 발견 = 아직 pin 되지 않았는데 실사용 신호(access_count·
+    tags)가 임계를 넘는 Episode — weg-9000 pattern-promoter 의 "N≥3 승격"을 실측
+    신호로 재구현한 것(학습 어휘 미반입, 갭 분석 권고 4)."""
+    cypher = (
+        "MATCH (e:Episode) WHERE e.owner_id = $owner "
+        "AND coalesce(e.pinned, false) = false "
+        "AND (coalesce(e.access_count, 0) >= $min_access OR size(coalesce(e.tags, [])) >= 2) "
+        "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
+        "coalesce(e.access_count, 0) AS access_count, coalesce(e.tags, []) AS tags, "
+        "e.last_access AS last_access "
+        "ORDER BY access_count DESC LIMIT 20"
+    )
+    return QueryPlan("promote_candidates", cypher,
+                     {"owner": owner, "min_access": int(min_access)},
+                     note="pin candidates from measured signals (read-only)")
+
+
+def promote_candidates(*, owner: str, min_access: int = 3, cfg=None, store=None) -> dict:
+    return execute(promote_candidates_plan(owner=owner, min_access=min_access), cfg, store=store)
+
+
+def concept_meta_plan(*, owner: str) -> QueryPlan:
+    """잇기 제안용 Concept 메타(id·title·domain·tags) — 순수 조회."""
+    cypher = (
+        "MATCH (c:Concept) WHERE c.owner_id = $owner "
+        "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
+        "coalesce(c.tags, []) AS tags ORDER BY id"
+    )
+    return QueryPlan("concept_meta", cypher, {"owner": owner},
+                     note="concept metadata for tie suggestions")
+
+
+def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None) -> dict:
+    """고아(저연결) 노드의 잇기 후보 — D25(임베딩 유사도)의 **전 단계** 결정론 근사
+    (D32): 같은 도메인 +1, 태그 교집합 각 +2. 이미 연결된 노드는 제외. 조회 전용 —
+    확정(엣지 생성)은 fragment MERGE(POST /ingest/fragment) 경유로 단일 쓰기
+    표면(R4)을 유지한다."""
+    meta = execute(concept_meta_plan(owner=owner), cfg, store=store)
+    if not meta.get("executed"):
+        return {"executed": False, "node": node, "suggestions": [],
+                "note": meta.get("note", "")}
+    rows = meta.get("rows", [])
+    me = next((r for r in rows if r.get("id") == node), None)
+    if me is None:
+        return {"executed": True, "node": node, "suggestions": [],
+                "note": f"unknown concept: {node}"}
+    g = execute(graph_plan(owner=owner), cfg, store=store)
+    linked = {node}
+    for r in g.get("rows", []):
+        if r.get("id") == node and r.get("target"):
+            linked.add(r["target"])
+        elif r.get("target") == node and r.get("id"):
+            linked.add(r["id"])
+    my_tags = set(me.get("tags") or [])
+    my_domain = me.get("domain") or ""
+    out = []
+    for r in rows:
+        cid = r.get("id")
+        if not cid or cid in linked:
+            continue
+        shared = sorted(my_tags & set(r.get("tags") or []))
+        score = 2 * len(shared) + (1 if my_domain and r.get("domain") == my_domain else 0)
+        if score <= 0:
+            continue
+        out.append({"id": cid, "title": r.get("title") or cid,
+                    "domain": r.get("domain") or "", "shared_tags": shared,
+                    "score": score})
+    out.sort(key=lambda s: (-s["score"], s["id"]))   # 결정론 순서
+    return {"executed": True, "node": node,
+            "suggestions": out[:max(1, int(limit))]}
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,
@@ -339,10 +759,20 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         base["note"] = "no reachable store"
         return base
     try:
-        arms = [store.fulltext_search(query, top_k, filters)]   # BM25 암
+        kw = store.fulltext_search(query, top_k, filters)       # BM25 암
+        arms = [kw]
+        arm_names = ["keyword"]
         if query_embedding is not None:
             arms.append(store.vector_search(query_embedding, top_k, filters))
+            arm_names.append("semantic")
+        # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
+        membership: dict = {}
+        for name, rows_ in zip(arm_names, arms):
+            for r in rows_:
+                membership.setdefault(r.get("id"), []).append(name)
         rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+        for r in rows:
+            r["arms"] = membership.get(r.get("id"), [])
         base["executed"] = True
         base["rows"] = rows
     except Exception as exc:

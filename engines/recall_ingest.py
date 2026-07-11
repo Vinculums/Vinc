@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONTEXT/memory/recall/ 세션 로그를 (:Episode) 노드로 적재한다(GraphStore 추상화
-경유, [[vinc.c.dataplane#§1]] — Vinc 는 임베디드 전용, Neo4j 미탑재).
+"""CONTEXT/memory/recall/ 세션 로그를 임베디드 스토어 (:Episode) 노드로 적재한다.
 30일 경과 파일을 CONTEXT/memory/archival/episode/ 로 이동하는 migrate 기능 포함.
+드라이버 취득은 store.backend.open_store 단일 지점(설계 §4) — 연결 인자 없음.
 
 사용:
     python recall_ingest.py [--dry-run]
@@ -73,11 +73,11 @@ def _load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="recall 세션 로그 → :Episode 적재 + Archival 이관",
+        description="recall 세션 로그 → Neo4j :Episode 적재 + Archival 이관",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  # 전체 recall 세션을 적재 (dry-run)
+  # 전체 recall 세션을 Neo4j에 적재 (dry-run)
   python recall_ingest.py --dry-run
 
   # 실제 적재

@@ -1,0 +1,29 @@
+# Vinc MCP 어댑터 — Streamable HTTP + OAuth(루프백 8790, 공개는 Caddy 전담).
+# 설치: /etc/systemd/system/vinc-mcp.service 로 복사 후
+#   systemctl daemon-reload && systemctl enable --now vinc-mcp
+[Unit]
+Description=Vinc MCP adapter (Streamable HTTP + OAuth gate)
+After=vinc-sidecar.service
+Requires=vinc-sidecar.service
+
+[Service]
+Type=simple
+User=vinc
+Group=vinc
+# /etc/vinc/mcp.env (권한 600 — D36: 시크릿은 서버 env 로만):
+#   VINC_SIDECAR_TOKEN=<sidecar.env 와 동일 값>
+#   VINC_OAUTH_ADMIN_KEY=<random — 커넥터 인가 1회에 사용>
+EnvironmentFile=/etc/vinc/mcp.env
+ExecStart=/opt/vinc/vinc-sidecar mcp serve-http --no-spawn \
+    --host 127.0.0.1 --port 8790 \
+    --token ${VINC_SIDECAR_TOKEN} \
+    --oauth --issuer https://mcp.${VINC_DOMAIN}
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

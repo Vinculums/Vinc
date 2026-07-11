@@ -35,6 +35,8 @@ from store.backend import open_store
 from . import query as q
 from . import preference as pref
 from . import activate as act
+from . import fragment as frag
+from . import share
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -78,8 +80,8 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
-        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json (DB 파일 형제)). 그래프와
-        # 분리된 어휘 write 표면(스토어별 단일 write). data_dir 없으면 인메모리 강등.
+        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
+        # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
@@ -128,15 +130,48 @@ class VincApp:
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
     def read_graph(self, p):
+        # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
+        # layout = D34 프리셋(shell·radial·circle·tree·organic — 미지 값 shell 강등).
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
-                                            domain=p.get("domain"), store=r))
+                                            domain=p.get("domain"), seed=p.get("seed"),
+                                            depth=_int(p.get("depth"), 2),
+                                            layout=p.get("layout") or "shell", store=r))
+
+    def read_atlas(self, p):
+        # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
+        return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
+
+    def read_promote(self, p):
+        # Phase E1 — pin 후보 조회(읽기 전용). 확정은 기존 /pin 경유.
+        return self._read(lambda r: q.promote_candidates(
+            owner=_req(p, "owner"), min_access=_int(p.get("min_access"), 3), store=r))
+
+    def read_suggest(self, p):
+        # 고아 최소화(D32) — 태그·도메인 근사 잇기 후보(조회 전용, D25 전 단계).
+        return self._read(lambda r: q.suggest_ties(
+            owner=_req(p, "owner"), node=_req(p, "node"),
+            limit=_int(p.get("limit"), 5), store=r))
+
+    def read_coupling(self, p):
+        # Compare 뷰(D22) — 두 도메인의 개념 대 개념 결합쌍.
+        return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
+                                               a=_req(p, "a"), b=_req(p, "b"), store=r))
+
+    def read_share(self, p):
+        # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
+        return self._read(lambda r: share.build_share_pack(
+            owner=_req(p, "owner"), domain=p.get("domain"), tags=_csv(p.get("tags")),
+            seed=p.get("seed"), ids=_csv(p.get("ids")), depth=_int(p.get("depth"), 2),
+            include_records=not p.get("no_records"), store=r))
 
     def read_search(self, p):
-        domain = p.get("domain")
+        # Phase E3 — pre-filter 푸시다운은 Chunk 실존 열(layer·doc_id)만. domain/tag
+        # 는 Chunk 스키마에 열이 없어 구조적으로 불가 — P4 스키마 델타로 이관(계획 §E3).
+        filters = {k: v for k, v in
+                   (("layer", p.get("layer")), ("doc_id", p.get("doc"))) if v}
         return self._read(lambda r: q.search(_req(p, "query"),
                                              top_k=_int(p.get("top_k"), 5),
-                                             filters={"domain": domain} if domain else None,
-                                             store=r))
+                                             filters=filters or None, store=r))
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),
@@ -174,33 +209,21 @@ class VincApp:
         return 200, res
 
     def write_activate(self, body):
-        # activate 는 DB read + 파일 write(팩) — 조회 경로(reader)로 처리. theme_id
-        # 주면 authored 어휘를 팩에 동봉(proposed 는 제외 — self.themes 가 필터).
+        # activate 는 DB read + 파일 write(팩) — 조회 경로(reader)로 처리.
         return self._read(lambda r: act.activate(
             body.get("query", ""), owner=_req(body, "owner"), domain=body.get("domain"),
             tenant=body.get("tenant"), workspace=body.get("workspace"),
             rank=body.get("rank", "preference"), tags=body.get("tags"),
             limit=_int(body.get("limit"), 20), include_model=not bool(body.get("no_model")),
-            generated_at=body.get("now"), out_dir=body.get("out"),
-            theme_id=body.get("theme_id"), themes=self.themes, store=r))
+            generated_at=body.get("now"), out_dir=body.get("out"), store=r))
 
     def write_ingest(self, body):
-        # MCP vinc_ingest 인라인 어댑터([[vinc.mcp.skeleton]] §7) — 작은 대화형
-        # fragment 라 잡 큐 비동기(202+폴링) 대신 동기 run_sync 로 즉시 결과 반환.
-        # theme_id 필수(D11-R2 §3) — 없으면 authoritative 400 reject.
-        theme_id = body.get("theme_id")
-        if not theme_id:
-            return 400, {"error": "missing field: theme_id"}
-        from engines.fragment_ingest import ingest_fragment
-
-        def _job():
-            # 사용자가 명명한 주제 컨테이너를 보장(멱등 — 구 enum 초안 시드). 없는
-            # 주제로 적재 시 크래시 대신 컨테이너 생성. 어휘 확정은 여전히 재가로만.
-            if not self.themes.has_theme(theme_id):
-                self.themes.create_theme(theme_id)
-            return ingest_fragment(self.store, body, theme_id=theme_id, themes=self.themes)
-
-        res = self.jobs.run_sync("ingest_fragment", _job)
+        # 적재 단일화(발주자 결정 2026-07-11) — `/ingest` 도 레거시 fragment 경로
+        # (Record/props, D11 §5, api/fragment.merge_fragment)로 수렴한다. 테마 적재
+        # (D11-R2 Entity/TYPED·engines.fragment_ingest)는 **휴면**: 스키마·어휘
+        # (ThemeStore·/themes·/types)는 남되 적재 경로는 이 하나다. theme_id 는 무시.
+        res = self.jobs.run_sync("ingest:fragment",
+                                 lambda: frag.merge_fragment(body, store=self.store))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
@@ -267,6 +290,25 @@ class VincApp:
 
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
+        if engine == "inbox":
+            # Phase E2 — Pull inbox: 디렉토리의 공유 팩 일괄 수입(긴 작업 → 202 잡).
+            path, owner = _req(body, "path"), _req(body, "owner")
+            job = self.jobs.submit("ingest:inbox",
+                                   lambda: share.scan_inbox(path, owner=owner, store=self.store))
+            return 202, job.to_dict()
+        if engine == "pack":
+            # share pack 들여오기(D19) — 수신자 owner 재스탬핑, 잡 큐 직렬화(R4).
+            owner = _req(body, "owner")
+            res = self.jobs.run_sync("ingest:pack",
+                                     lambda: share.import_share_pack(
+                                         body.get("pack") or {}, owner=owner, store=self.store))
+            return 200, res
+        if engine == "fragment":
+            # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
+            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200).
+            res = self.jobs.run_sync("ingest:fragment",
+                                     lambda: frag.merge_fragment(body, store=self.store))
+            return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
             return 400, {"error": f"unknown ingest engine: {engine}"}
@@ -384,6 +426,9 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
+            "/atlas": app.read_atlas, "/share": app.read_share,
+            "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
+            "/suggest-ties": app.read_suggest,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

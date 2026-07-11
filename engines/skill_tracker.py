@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""스킬 실행 이력을 (:SkillExecution) 노드로 적재하고
+"""스킬 실행 이력을 (:SkillExecution) 노드로 Neo4j 에 적재하고
 스킬별 사용 통계를 분석해 출력한다.
 
 사용:
@@ -53,7 +53,7 @@ def _load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="WEG-9000 스킬 실행 이력 추적기 - :SkillExecution 노드 관리",
+        description="WEG-9000 스킬 실행 이력 추적기 - Neo4j :SkillExecution 노드 관리",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
   # 전체 효과성 리포트 생성
   python skill_tracker.py --action report
 
-  # dry-run (미적재)
+  # dry-run (Neo4j 미적재)
   python skill_tracker.py --action log --skill think --workspace . --dry-run
         """,
     )
@@ -91,9 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", default=None,
                    help="(report 전용) 출력 파일 경로. 기본값: CONTEXT/memory/recall/skill-report-{date}.md")
     p.add_argument("--dry-run", action="store_true",
-                   help="적재 없이 파싱 결과만 출력")
+                   help="Neo4j 적재 없이 파싱 결과만 출력")
     return p
 
+
+# ── Neo4j 연결 ───────────────────────────────────────────────────────────────
 
 # ── 핵심 함수 ─────────────────────────────────────────────────────────────────
 
@@ -270,7 +272,7 @@ def main() -> None:
         print(f"  outcome:      {args.outcome}")
         print(f"  duration_min: {args.duration_min}")
         print(f"  date:         {now.strftime('%Y-%m-%d')}")
-        print("[DRY-RUN] 완료. --dry-run 없이 실행하면 적재됩니다.")
+        print("[DRY-RUN] 완료. --dry-run 없이 실행하면 Neo4j 에 적재됩니다.")
         return
 
     start = time.time()
