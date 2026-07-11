@@ -340,14 +340,171 @@ def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
     return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
 
 
-def layout_positions(nodes: list[dict], edges: list[dict]) -> list[dict]:
-    """결정론 3D 레이아웃(D17 + D21 개정) — **순수 함수**, 난수·시간 무의존이라 같은
-    그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인 클러스터 중심을 xy
-    단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 (degree DESC, id) 순
-    **fibonacci 구면 산개**로 편다(허브가 중심, 반경 = 0.08·√i). 힘-지향 정밀화는
-    후속(사이드카 잡)이며 UI(3D 렌더러)는 본 좌표를 소비만 한다."""
+LAYOUTS = ("shell", "radial", "circle", "tree", "organic")
+_DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
+
+
+def _cluster_shell(members, ids, adj, directed, math, GOLDEN):
+    """fibonacci 구면 산개(기본) — 허브가 중심, 반경 = 0.08·√i."""
+    count = len(members)
+    pos = {}
+    for i, n in enumerate(members):
+        r = 0.08 * math.sqrt(i)
+        t = i / max(count - 1, 1)
+        phi = math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * t)))   # 극각 — 구면 균등
+        theta = i * GOLDEN
+        pos[n["id"]] = (r * math.sin(phi) * math.cos(theta),
+                        r * math.sin(phi) * math.sin(theta),
+                        r * math.cos(phi))
+    return pos
+
+
+def _cluster_radial(members, ids, adj, directed, math, GOLDEN):
+    """Centralized Burst — 허브(정렬 1위)가 중심, BFS 깊이 = 동심 껍질 반경."""
+    inset = set(ids)
+    depth = {ids[0]: 0}
+    frontier = [ids[0]]
+    while frontier:
+        nxt = []
+        for u in frontier:
+            for v in sorted(adj.get(u, ())):
+                if v in inset and v not in depth:
+                    depth[v] = depth[u] + 1
+                    nxt.append(v)
+        frontier = nxt
+    stray = max(depth.values(), default=0) + 1   # 미도달(고아) — 최외곽 껍질
+    counts: dict[int, int] = {}
+    for n in members:
+        d = depth.get(n["id"], stray)
+        counts[d] = counts.get(d, 0) + 1
+    ring: dict[int, int] = {}
+    pos = {}
+    for n in members:
+        d = depth.get(n["id"], stray)
+        j = ring[d] = ring.get(d, -1) + 1
+        k = counts[d]
+        # 껍질 반경은 노드 수에 적응 — 둘레 간격이 노드 지름(≈0.17)을 넘도록
+        r = max(0.14 * d, 0.033 * k) if d else 0.0
+        theta = 2 * math.pi * j / max(k, 1) + d * 0.5   # 껍질 내 균등 + 위상 오프셋
+        pos[n["id"]] = (r * math.cos(theta), r * math.sin(theta),
+                        0.04 * d * math.sin(theta * 0.7))
+    return pos
+
+
+def _cluster_circle(members, ids, adj, directed, math, GOLDEN):
+    """Circular Ties — 원둘레 정렬(정렬 순서 유지), 엣지는 현(chord)으로 읽힌다."""
+    count = len(members)
+    R = min(0.42, 0.10 * math.sqrt(count) + 0.08)
+    pos = {}
+    for i, n in enumerate(members):
+        theta = 2 * math.pi * i / max(count, 1)
+        pos[n["id"]] = (R * math.cos(theta), R * math.sin(theta), 0.0)
+    return pos
+
+
+def _cluster_tree(members, ids, adj, directed, math, GOLDEN):
+    """Ramification — 방향 관계(prerequisite/derives/inherits)로 계층 배치.
+    루트 = 방향 유입이 없는 노드, 층 = BFS 깊이(순환은 방문 가드로 절단).
+    방향 엣지에 안 걸린 노드는 최하단 별도 층."""
+    inset = set(ids)
+    incoming = {i: 0 for i in ids}
+    for s, targets in directed.items():
+        if s not in inset:
+            continue
+        for t in targets:
+            if t in inset:
+                incoming[t] = incoming.get(t, 0) + 1
+    involved = {i for i in ids
+                if incoming.get(i, 0) or any(t in inset for t in directed.get(i, ()))}
+    roots = sorted(i for i in involved if incoming.get(i, 0) == 0) or sorted(involved)[:1]
+    layer = {r: 0 for r in roots}
+    frontier = list(roots)
+    while frontier:
+        nxt = []
+        for u in frontier:
+            for v in sorted(directed.get(u, ())):
+                if v in inset and v not in layer:
+                    layer[v] = layer[u] + 1
+                    nxt.append(v)
+        frontier = nxt
+    bottom = max(layer.values(), default=0) + 1
+    rows: dict[int, list] = {}
+    for n in members:
+        rows.setdefault(layer.get(n["id"], bottom), []).append(n["id"])
+    total = len(rows)
+    pos = {}
+    for li, (lv, row) in enumerate(sorted(rows.items())):
+        y = (total - 1) / 2 * 0.13 - li * 0.13     # 위(루트) → 아래
+        k = len(row)
+        for j, nid in enumerate(row):
+            pos[nid] = ((j - (k - 1) / 2) * 0.12, y, 0.0)
+    return pos
+
+
+def _cluster_organic(members, ids, adj, directed, math, GOLDEN):
+    """Organic Rhizome — 힘-지향을 **시드 고정 + 반복 수 고정**으로 결정론화(D17
+    유지). 초기 배치 = shell(순수), 척력 1/d² + 엣지 스프링, 60 반복 후 정규화."""
+    pos = {k: list(v) for k, v in
+           _cluster_shell(members, ids, adj, directed, math, GOLDEN).items()}
+    inset = set(ids)
+    springs = [(u, v) for u in ids for v in sorted(adj.get(u, ()))
+               if v in inset and u < v]
+    K_REP, K_SPR, REST, STEP = 0.009, 0.05, 0.34, 1.0
+    for _ in range(60):
+        force = {i: [0.0, 0.0, 0.0] for i in ids}
+        for a in range(len(ids)):
+            for b in range(a + 1, len(ids)):
+                u, v = ids[a], ids[b]
+                dx = [pos[u][c] - pos[v][c] for c in range(3)]
+                d2 = max(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2, 1e-6)
+                f = min(K_REP / d2, 0.05)
+                d = math.sqrt(d2)
+                for c in range(3):
+                    force[u][c] += f * dx[c] / d
+                    force[v][c] -= f * dx[c] / d
+        for u, v in springs:
+            dx = [pos[u][c] - pos[v][c] for c in range(3)]
+            d = max(math.sqrt(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2), 1e-6)
+            f = K_SPR * (d - REST)
+            for c in range(3):
+                force[u][c] -= f * dx[c] / d
+                force[v][c] += f * dx[c] / d
+        for i in ids:
+            for c in range(3):
+                pos[i][c] += max(-0.04, min(0.04, force[i][c] * STEP))
+    radii = sorted(math.sqrt(sum(p[c] ** 2 for c in range(3))) for p in pos.values())
+    # 80분위 반경 기준 정규화(양방향) — 최외곽(척력에 밀린 고아)이 아니라 본체
+    # 밀도를 목표에 맞춘다. rmax 기준은 고아 하나가 본체를 상대 압축시킨다(실측).
+    r_ref = radii[int(0.8 * (len(radii) - 1))] if radii else 0.0
+    scale = 0.30 / r_ref if r_ref > 1e-6 else 1.0
+    return {i: (p[0] * scale, p[1] * scale, p[2] * scale) for i, p in pos.items()}
+
+
+_CLUSTER_LAYOUTS = {"shell": _cluster_shell, "radial": _cluster_radial,
+                    "circle": _cluster_circle, "tree": _cluster_tree,
+                    "organic": _cluster_organic}
+
+
+def layout_positions(nodes: list[dict], edges: list[dict],
+                     layout: str = "shell") -> list[dict]:
+    """결정론 3D 레이아웃(D17 + D21 개정 + D34 프리셋) — **순수 함수**, 난수·시간
+    무의존이라 같은 그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인
+    클러스터 중심을 xy 단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 프리셋
+    (shell·radial·circle·tree·organic — D34, 미지 값은 shell 강등)으로 편다.
+    내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32)."""
     import math
     GOLDEN = 2.399963229728653
+    cluster_fn = _CLUSTER_LAYOUTS.get(layout, _cluster_shell)
+    adj: dict[str, set] = {}
+    directed: dict[str, set] = {}
+    for e in edges or []:
+        s, t = e.get("source"), e.get("target")
+        if not s or not t:
+            continue
+        adj.setdefault(s, set()).add(t)
+        adj.setdefault(t, set()).add(s)
+        if (e.get("type") or "") in _DIRECTED_RELS:
+            directed.setdefault(s, set()).add(t)
     by_domain: dict[str, list[dict]] = {}
     for n in nodes:
         by_domain.setdefault(n.get("domain") or "", []).append(n)
@@ -359,28 +516,25 @@ def layout_positions(nodes: list[dict], edges: list[dict]) -> list[dict]:
         else:
             ang = 2 * math.pi * di / d_count
             cx, cy = math.cos(ang), math.sin(ang)
-        # pin 이 허브 승격 1순위(D32), 다음이 연결수 — pinned 열이 아직 없는
-        # 노드종(Concept, P4 스키마 델타)은 자연히 degree 기준으로만 정렬된다.
         members = sorted(by_domain[dom],
                          key=lambda n: (-int(bool(n.get("pinned"))),
                                         -int(n.get("degree") or 0), str(n.get("id"))))
-        count = len(members)
-        for i, n in enumerate(members):
-            r = 0.08 * math.sqrt(i)
-            t = i / max(count - 1, 1)
-            phi = math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * t)))   # 극각 — 구면 균등
-            theta = i * GOLDEN
-            n["x"] = round(cx + r * math.sin(phi) * math.cos(theta), 6)
-            n["y"] = round(cy + r * math.sin(phi) * math.sin(theta), 6)
-            n["z"] = round(r * math.cos(phi), 6)
+        ids = [n["id"] for n in members]
+        pos = cluster_fn(members, ids, adj, directed, math, GOLDEN)
+        for n in members:
+            lx, ly, lz = pos[n["id"]]
+            n["x"] = round(cx + lx, 6)
+            n["y"] = round(cy + ly, 6)
+            n["z"] = round(lz, 6)
     return nodes
 
 
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
-          depth: int = 2, cfg=None, store=None) -> dict:
+          depth: int = 2, layout: str = "shell", cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
-    결정론 레이아웃 좌표(x,y)가 포함된다(D17)."""
+    결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
+    (shell·radial·circle·tree·organic, 미지 값 shell 강등)."""
     if seed:
         ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
         if not ids_res.get("executed"):
@@ -392,11 +546,11 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
         shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
-        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"])
+        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         return {"executed": res.get("executed", False), "seed": seed, "depth": depth, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     shaped = shape_graph(res.get("rows", []))
-    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"])
+    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
     return {"executed": res.get("executed", False), **shaped}
 
 

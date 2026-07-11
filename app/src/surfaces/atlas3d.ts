@@ -210,6 +210,142 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   return g;
 }
 
+/** Multiples 그리드 3D 미니(D34) — WebGL 컨텍스트는 **1개**: 단일 렌더러가
+ *  카드별 씬을 setScissor/setViewport 로 나눠 그린다(브라우저 컨텍스트 상한
+ *  ~16 회피). 미니는 정적 오블리크 컷 + hover 시 같은 id 를 전 카드 동시
+ *  점등(brushing & linking, 포인트색). 캔버스는 pointer-events:none — 카드
+ *  헤더 버튼 클릭은 그대로 통과하고 hover 는 컨테이너 리스너로 받는다. */
+export function mountMinis3d(
+  container: HTMLElement,
+  cells: { el: HTMLElement; nodes: N3[]; links: L3[] }[],
+  prefs: AtlasPrefs = loadPrefs(),
+): { highlight: (id: string | null) => void; dispose: () => void } {
+  const flat = prefs.view === "2d";
+  const S = 60;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setScissorTest(true);
+  Object.assign(renderer.domElement.style,
+    { position: "absolute", inset: "0", pointerEvents: "none" });
+  container.style.position = "relative";
+  container.appendChild(renderer.domElement);
+
+  type Cell = { scene: THREE.Scene; camera: THREE.PerspectiveCamera;
+                el: HTMLElement; meshes: Map<string, THREE.Mesh> };
+  const built: Cell[] = cells.map((c) => {
+    const scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+    scene.add(new THREE.HemisphereLight(0xfff8ec, 0x9a917d, 0.9));
+    const dl = new THREE.DirectionalLight(0xfff8ec, 1.5);
+    dl.position.set(30, 60, 40);
+    scene.add(dl);
+    // 셀 로컬 정규화: 무게중심을 원점으로(클러스터 오프셋 제거)
+    const n0 = Math.max(c.nodes.length, 1);
+    const cx = c.nodes.reduce((a, n) => a + (n.x || 0), 0) / n0;
+    const cy = c.nodes.reduce((a, n) => a + (n.y || 0), 0) / n0;
+    const pos = new Map<string, THREE.Vector3>();
+    const meshes = new Map<string, THREE.Mesh>();
+    let rad = 1;
+    for (const n of c.nodes) {
+      const p = new THREE.Vector3(((n.x || 0) - cx) * S, ((n.y || 0) - cy) * S,
+                                  flat ? 0 : (n.z || 0) * S);
+      pos.set(n.id, p);
+      rad = Math.max(rad, p.length());
+      const m = nodeObject(n, prefs) as THREE.Mesh;
+      m.scale.setScalar(0.5);            // 미니 마크는 절반 크기
+      m.position.copy(p);
+      (m as any).userData.nid = n.id;
+      (m as any).userData.base = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
+      meshes.set(n.id, m);
+      scene.add(m);
+    }
+    for (const l of c.links) {
+      const a = pos.get(typeof l.source === "object" ? (l.source as any).id : l.source);
+      const b = pos.get(typeof l.target === "object" ? (l.target as any).id : l.target);
+      if (!a || !b) continue;
+      // 본뷰와 동일한 완만한 곡률 — 중점을 수직 방향으로 살짝 띄운 2차 베지어
+      const mid = a.clone().add(b).multiplyScalar(0.5)
+        .add(new THREE.Vector3(0, 0, flat ? 0 : a.distanceTo(b) * 0.12)
+          .add(new THREE.Vector3(0, flat ? a.distanceTo(b) * 0.1 : 0, 0)));
+      const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+      const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(16));
+      scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial(
+        { color: l.cross ? 0xb3a992 : 0x8d8574, transparent: true, opacity: 0.75 })));
+    }
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
+    if (flat) camera.position.set(0, 0, rad * 3.0);
+    else camera.position.set(rad * 1.5, rad * 1.1, rad * 2.6);
+    camera.lookAt(0, 0, 0);
+    return { scene, camera, el: c.el, meshes };
+  });
+
+  function renderAll() {
+    const crect = container.getBoundingClientRect();
+    if (crect.width < 2 || crect.height < 2) return;
+    renderer.setSize(crect.width, crect.height, false);
+    for (const cell of built) {
+      const r = cell.el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      const left = r.left - crect.left;
+      const bottom = crect.bottom - r.bottom;
+      renderer.setViewport(left, bottom, r.width, r.height);
+      renderer.setScissor(left, bottom, r.width, r.height);
+      cell.camera.aspect = r.width / Math.max(r.height, 1);
+      cell.camera.updateProjectionMatrix();
+      renderer.render(cell.scene, cell.camera);
+    }
+  }
+  // 최초 레이아웃 확정 후 1회 + 리사이즈 시 — 미니는 정적 컷(조용한 그리드)
+  requestAnimationFrame(renderAll);
+  const onResize = () => renderAll();
+  window.addEventListener("resize", onResize);
+
+  function highlight(id: string | null) {
+    for (const cell of built)
+      cell.meshes.forEach((m, nid) => {
+        m.traverse((c2: THREE.Object3D) => {
+          const mat = (c2 as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+          if (!mat) return;
+          if (id && nid === id) mat.color.setHex(POINT);
+          else mat.color.setHex((m as any).userData.base ?? INK);
+        });
+      });
+    renderAll();
+  }
+  // hover 판정: 셀 rect → NDC → 레이캐스트, 같은 id 전 카드 점등
+  const ray = new THREE.Raycaster();
+  const onMove = (e: MouseEvent) => {
+    let hit: string | null = null;
+    for (const cell of built) {
+      const r = cell.el.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
+        continue;
+      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1,
+                                    -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, cell.camera);
+      const hits = ray.intersectObjects([...cell.meshes.values()], true);
+      for (const h of hits) {
+        let o: THREE.Object3D | null = h.object;
+        while (o && !(o as any).userData?.nid) o = o.parent;
+        if (o) { hit = (o as any).userData.nid; break; }
+      }
+      break;
+    }
+    highlight(hit);
+  };
+  container.addEventListener("mousemove", onMove);
+
+  return {
+    highlight,
+    dispose() {
+      window.removeEventListener("resize", onResize);
+      container.removeEventListener("mousemove", onMove);
+      renderer.dispose();
+      renderer.domElement.remove();
+    },
+  };
+}
+
 /** Shift+드래그 화면 사각 선택(Phase B lasso) — 3D 노드의 화면 투영 좌표로 포함
  *  판정한다. 드래그 동안 orbit 컨트롤을 잠근다. */
 export function enableLasso(g: any, el: HTMLElement, onSelect: (ids: string[]) => void) {

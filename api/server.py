@@ -127,9 +127,11 @@ class VincApp:
 
     def read_graph(self, p):
         # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
+        # layout = D34 프리셋(shell·radial·circle·tree·organic — 미지 값 shell 강등).
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
-                                            depth=_int(p.get("depth"), 2), store=r))
+                                            depth=_int(p.get("depth"), 2),
+                                            layout=p.get("layout") or "shell", store=r))
 
     def read_atlas(self, p):
         # Atlas L0(D16) — 도메인 분포 + 결합 행렬.

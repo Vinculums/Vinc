@@ -2,9 +2,9 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode } from "../api";
 import { COPY } from "../copy";
-import { enableLasso, mount3d, type L3, type N3 } from "./atlas3d";
+import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d";
 import { openShareSheet } from "../sheets";
-import { loadPrefs, savePrefs, type AtlasPrefs } from "../atlas-prefs";
+import { LAYOUTS, loadPrefs, savePrefs, type AtlasLayout, type AtlasPrefs } from "../atlas-prefs";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
  *
@@ -47,8 +47,10 @@ export async function renderAtlas(el: HTMLElement) {
   const viewPanel = el.querySelector<HTMLElement>("#atlas-view-panel")!;
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
+  let minis3d: { dispose(): void } | null = null;   // Grid 미니(단일 렌더러, D34)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
+  const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
   const trail: Level[] = [];
 
   // deep links: #atlas/<domain> · #atlas/compare/<a>/<b> · #atlas/trace/<id>(L2)
@@ -83,6 +85,8 @@ export async function renderAtlas(el: HTMLElement) {
       <p>${chip("arrows", "toggle", "Direction arrows", p.arrows)}</p>
       <p class="hint">Unlinked nodes</p>
       <p>${chip("unlinked", "show", "show", p.unlinked === "show")} ${chip("unlinked", "hide", "hide", p.unlinked === "hide")}</p>
+      <p class="hint">Layout</p>
+      <p>${LAYOUTS.map((l) => chip("layout", l, l, p.layout === l)).join(" ")}</p>
       <label class="hint" style="display:block">Spread
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>
@@ -248,7 +252,7 @@ export async function renderAtlas(el: HTMLElement) {
 
   async function showL1(domain: string) {
     setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { domain });
+    const res = await api.graph(cfg.owner, { domain, layout: loadPrefs().layout });
     if (!res.executed || (res.nodes || []).length === 0) {
       setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
     }
@@ -273,7 +277,7 @@ export async function renderAtlas(el: HTMLElement) {
 
   async function showL2(seed: string) {
     setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { seed, depth: 2 });
+    const res = await api.graph(cfg.owner, { seed, depth: 2, layout: loadPrefs().layout });
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     setMsg("");
     curEdges = res.edges || [];
@@ -368,35 +372,36 @@ export async function renderAtlas(el: HTMLElement) {
     const domains: string[] = (l0.domains || []).slice(0, 9).map((d: any) => d.domain);
     if (domains.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
     setMsg("");
+    const lay = (d: string) => cardLayout.get(d) || loadPrefs().layout;
     canvas.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${Math.min(domains.length, 3)},1fr);
       gap:.75rem;height:100%;padding:3rem 0 .5rem">${domains.map((d) => `
       <div style="display:flex;flex-direction:column;border:1px solid ${PAPER_EDGE};border-radius:var(--radius);overflow:hidden">
-        <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
+          <button class="chip" data-cycle="${d}" title="Cycle layout (D34)"
+                  style="border:none;border-radius:0;padding:.35rem .75rem">${lay(d)} ↻</button>
+        </div>
         <div data-mini="${d}" style="flex:1;min-height:0"></div>
       </div>`).join("")}</div>`;
-    const cards: { d: string; g: Graph; s: Sigma }[] = [];
+    // 카드별 레이아웃 사이클 — 프리셋만 바꿔 그리드 재조회(좌표는 사이드카 정본)
+    canvas.querySelectorAll<HTMLElement>("[data-cycle]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const d = b.dataset.cycle!;
+        cardLayout.set(d, LAYOUTS[(LAYOUTS.indexOf(lay(d)) + 1) % LAYOUTS.length]);
+        show(trail[trail.length - 1], false);
+      }));
+    // 미니 = 3D(단일 WebGL 렌더러 뷰포트 분할 — 컨텍스트 상한 회피, D34).
+    // hover 시 같은 id(크로스도메인 고스트)가 전 카드에서 포인트색 동시 점등.
+    const cells: { el: HTMLElement; nodes: N3[]; links: L3[] }[] = [];
     for (const d of domains) {
-      const res = await api.graph(cfg.owner, { domain: d });
-      const g = new Graph();
-      addShapedGraph(g, res.nodes || [], res.edges || []);
-      const s = new Sigma(g, canvas.querySelector(`[data-mini="${CSS.escape(d)}"]`) as HTMLElement,
-                          { allowInvalidContainer: true, renderLabels: false });
-      extraSigmas.push(s);
-      cards.push({ d, g, s });
-    }
-    for (const card of cards) {
-      card.s.on("enterNode", ({ node }) => {
-        for (const other of cards) {
-          other.s.setSetting("nodeReducer", (n, data) =>
-            n === node ? { ...data, color: POINT, size: (data.size as number) * 1.5, zIndex: 1 }
-                       : other === card ? data : { ...data, color: PAPER_EDGE });
-          other.s.refresh();
-        }
-      });
-      card.s.on("leaveNode", () => {
-        for (const other of cards) { other.s.setSetting("nodeReducer", null as any); other.s.refresh(); }
+      const res = await api.graph(cfg.owner, { domain: d, layout: lay(d) });
+      cells.push({
+        el: canvas.querySelector(`[data-mini="${CSS.escape(d)}"]`) as HTMLElement,
+        nodes: filterUnlinked(toN3(res.nodes || [])),
+        links: toL3(res.edges || []),
       });
     }
+    minis3d = mountMinis3d(canvas.firstElementChild as HTMLElement, cells);
     canvas.querySelectorAll("[data-open]").forEach((b) =>
       b.addEventListener("click", () => {
         trail.push({ kind: "l1", domain: (b as HTMLElement).dataset.open! }); show(trail[trail.length - 1]);
@@ -445,6 +450,7 @@ export async function renderAtlas(el: HTMLElement) {
     viewPanel.hidden = true;
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
+    if (minis3d) { minis3d.dispose(); minis3d = null; }
     if (g3) { g3._destructor?.(); g3 = null; }
     canvas.innerHTML = "";
     drawCrumb();

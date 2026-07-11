@@ -6,6 +6,9 @@
  *  and is deliberately not user-configurable. Persisted per machine via
  *  localStorage; no sidecar contract involved (coords stay D17 canonical). */
 
+export type AtlasLayout = "shell" | "radial" | "circle" | "tree" | "organic";
+export const LAYOUTS: AtlasLayout[] = ["shell", "radial", "circle", "tree", "organic"];
+
 export type AtlasPrefs = {
   view: "3d" | "2d";           // 2d = same renderer, z flattened + locked camera
   size: "links" | "uniform";   // node radius: √degree vs uniform
@@ -13,11 +16,13 @@ export type AtlasPrefs = {
   arrows: boolean;             // directional arrowheads (prerequisite/derives/inherits)
   spread: number;              // layout spread multiplier (0.6–1.6)
   unlinked: "show" | "hide";   // orphan nodes (degree 0) — D32 orphan minimization
+  layout: AtlasLayout;         // D34 preset — coords stay sidecar-computed (D17)
 };
 
 const KEY = "vinc.atlas.prefs";
 const DEFAULTS: AtlasPrefs = {
-  view: "3d", size: "links", labels: "hover", arrows: true, spread: 1, unlinked: "show",
+  view: "3d", size: "links", labels: "hover", arrows: true, spread: 1,
+  unlinked: "show", layout: "shell",
 };
 
 export function loadPrefs(): AtlasPrefs {
@@ -32,6 +37,7 @@ export function loadPrefs(): AtlasPrefs {
       arrows: p.arrows !== false,
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
       unlinked: p.unlinked === "hide" ? "hide" : "show",
+      layout: LAYOUTS.includes(p.layout) ? p.layout : "shell",
     };
   } catch {
     return { ...DEFAULTS };

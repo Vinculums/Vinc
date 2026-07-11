@@ -38,7 +38,7 @@ export type GraphEdge = { source: string; target: string; type: string; cross_do
 export const api = {
   health: () => call("/health"),
   atlasL0: (owner: string) => call("/atlas", { owner }),
-  graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number } = {}) =>
+  graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
     call("/graph", { owner, ...opts }),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),

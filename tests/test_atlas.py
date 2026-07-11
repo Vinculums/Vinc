@@ -258,3 +258,64 @@ class SuggestTiesTests(unittest.TestCase):
         res = q.suggest_ties(owner="user:t", node="ghost", store=fake)
         self.assertTrue(res["executed"])
         self.assertEqual(res["suggestions"], [])
+
+
+class LayoutPresetTests(unittest.TestCase):
+    """D34 레이아웃 프리셋 — 전부 순수 함수(결정론), 미지 값은 shell 강등."""
+
+    def _graph(self):
+        nodes = [{"id": "hub", "domain": "math", "degree": 3},
+                 {"id": "a", "domain": "math", "degree": 2},
+                 {"id": "b", "domain": "math", "degree": 2},
+                 {"id": "lone", "domain": "math", "degree": 0}]
+        edges = [{"source": "hub", "target": "a", "type": "PREREQUISITE_OF"},
+                 {"source": "a", "target": "b", "type": "RELATED_TO"},
+                 {"source": "hub", "target": "b", "type": "RELATED_TO"}]
+        return nodes, edges
+
+    def _run(self, layout):
+        import copy
+        nodes, edges = self._graph()
+        return {n["id"]: n for n in
+                q.layout_positions(copy.deepcopy(nodes), edges, layout)}
+
+    def test_all_presets_deterministic(self):
+        for layout in q.LAYOUTS:
+            p1, p2 = self._run(layout), self._run(layout)
+            self.assertEqual([(p1[k]["x"], p1[k]["y"], p1[k]["z"]) for k in sorted(p1)],
+                             [(p2[k]["x"], p2[k]["y"], p2[k]["z"]) for k in sorted(p2)],
+                             layout)
+
+    def test_unknown_layout_degrades_to_shell(self):
+        self.assertEqual([(n["x"], n["y"], n["z"]) for n in self._run("??").values()],
+                         [(n["x"], n["y"], n["z"]) for n in self._run("shell").values()])
+
+    def test_radial_hub_center_and_orphan_outermost(self):
+        import math
+        pos = self._run("radial")
+        self.assertEqual((pos["hub"]["x"], pos["hub"]["y"]), (0.0, 0.0))  # 허브 = 중심
+        r = {k: math.hypot(v["x"], v["y"]) for k, v in pos.items()}
+        self.assertGreater(r["lone"], max(r["a"], r["b"]))   # 고아 = 최외곽 껍질
+
+    def test_circle_puts_all_on_equal_radius(self):
+        import math
+        pos = self._run("circle")
+        radii = {round(math.hypot(v["x"], v["y"]), 4) for v in pos.values()}
+        self.assertEqual(len(radii), 1)                       # 전원 동일 반경
+        self.assertTrue(all(v["z"] == 0.0 for v in pos.values()))
+
+    def test_tree_layers_follow_direction(self):
+        pos = self._run("tree")
+        # hub -PREREQUISITE-> a : 루트(hub)가 위(y 큰 쪽), a 가 아래
+        self.assertGreater(pos["hub"]["y"], pos["a"]["y"])
+        # 방향 엣지에 안 걸린 lone 은 최하단
+        self.assertLess(pos["lone"]["y"], pos["a"]["y"])
+
+    def test_organic_pulls_connected_closer_than_unconnected(self):
+        import math
+        pos = self._run("organic")
+        d = lambda u, v: math.dist(
+            (pos[u]["x"], pos[u]["y"], pos[u]["z"]),
+            (pos[v]["x"], pos[v]["y"], pos[v]["z"]))
+        # 엣지(hub-a)가 비엣지(hub-lone)보다 가깝다 — 스프링 대 척력의 기본 성질
+        self.assertLess(d("hub", "a"), d("hub", "lone"))
