@@ -72,9 +72,9 @@ a{color:inherit}
 .bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
 /* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
 .bg-spotlight{position:absolute;inset:0;
-  background:radial-gradient(130% 62% at 50% 20%, hsl(var(--background)/.90) 0%, hsl(var(--background)/.50) 34%, transparent 66%)}
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
 [data-theme="dark"] .bg-spotlight{
-  background:radial-gradient(130% 62% at 50% 20%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.45) 34%, transparent 66%)}
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
 /* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
 .bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
 [data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
@@ -837,60 +837,87 @@ if ("IntersectionObserver" in window) {
 </script>
 
 <script>
-// 배경 하프톤 도트 — canvas 에 가우시안 반경 폴오프로 수렴점(우하단)을 향해 커지는 도트 매트릭스.
-// 정적(리사이즈·테마변경 시에만 재드로우), dpr 대응, 색은 --ring 토큰에서 읽는다. CSP-safe.
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
 (function(){
   var cv = document.getElementById("bg-halftone");
   if (!cv || !cv.getContext) return;
-  var ctx = cv.getContext("2d"), raf = 0, rt = 0;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
   function isDark(){
     var t = document.documentElement.dataset.theme;
     if (t === "dark") return true;
     if (t === "light") return false;
     return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   }
-  function ring(){
+  function recolor(){
     var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
-    var p = v.split(/\s+/);
-    if (p.length >= 3 && p[0] !== "") return { h:parseFloat(p[0]), s:parseFloat(p[1]), l:parseFloat(p[2]) };
-    return isDark() ? { h:218, s:31, l:66 } : { h:217, s:23, l:32 };
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
   }
-  function draw(){
-    var w = window.innerWidth, h = window.innerHeight;
-    if (!w || !h) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    cv.style.width = w + "px"; cv.style.height = h + "px";
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    var pitch = Math.max(18, Math.min(Math.min(w, h) / 34, 26));
-    var maxR = pitch * 0.5;
-    var sigma = Math.hypot(w, h) * 0.40, twoS2 = 2 * sigma * sigma;
-    var fx = 0.72 * w, fy = 0.62 * h;
-    var c = ring(), dark = isDark();
-    var aBase = dark ? 0.11 : 0.08, aGain = dark ? 0.20 : 0.16;
-    var pre = "hsla(" + c.h + "," + c.s + "%," + c.l + "%,";
-    for (var y = pitch / 2; y < h; y += pitch){
-      for (var x = pitch / 2; x < w; x += pitch){
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
         var dx = x - fx, dy = y - fy;
         var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
-        var r = maxR * f;
-        if (r < 0.35) continue;
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, 6.2831853);
-        ctx.fillStyle = pre + (aBase + aGain * f).toFixed(3) + ")";
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
         ctx.fill();
       }
     }
   }
-  function schedule(){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
-  function onResize(){ clearTimeout(rt); rt = setTimeout(schedule, 150); }
-  draw();   // 최초 페인트는 rAF 의존 없이 동기 실행(백그라운드 탭에서도 그려짐)
-  window.addEventListener("resize", onResize);
-  new MutationObserver(schedule).observe(document.documentElement,
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
     { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
-  var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
-  if (mq){ if (mq.addEventListener) mq.addEventListener("change", schedule); else if (mq.addListener) mq.addListener(schedule); }
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
 })();
 </script>
 </body>
