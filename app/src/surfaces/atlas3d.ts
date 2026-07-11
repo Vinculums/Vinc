@@ -100,9 +100,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     n.fy = flat ? ((n.y || 0) + (n.z || 0) * 0.55) * S : (n.y || 0) * S;
     n.fz = flat ? 0 : (n.z || 0) * S;
   }
-  const g = new ForceGraph3D(el)
+  // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
+  // 다크 테마는 잉크 마크가 배경에 묻히므로 기존 종이 캔버스 유지(마크 반전은 P4).
+  const darkTheme = document.documentElement.dataset.theme === "dark";
+  const g = new ForceGraph3D(el, { rendererConfig: { alpha: true, antialias: true } } as any)
     .graphData({ nodes, links })
-    .backgroundColor("#efeae1")
+    .backgroundColor(darkTheme ? "#efeae1" : "rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
     .nodeThreeObject((n: any) => nodeObject(n, prefs))

@@ -15,7 +15,15 @@
 /* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
 html, body { height: 100%; margin: 0; }
 body {
-  background: hsl(var(--background));
+  /* D37 보강 — 환경 대기(ambient): 유리가 흡수할 배경. 비의미 워시 3개 —
+     밝은 종이빛(좌상)·포인트색 속삭임(우, 상한 .08)·모래빛(하단). 전부
+     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변). */
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--card)) 0%, transparent 60%),
+    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
+    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--muted)) 0%, transparent 60%),
+    hsl(var(--background));
+  background-attachment: fixed;
   color: hsl(var(--foreground));
   font-family: var(--font-ui, system-ui), system-ui, sans-serif;
   font-size: var(--fs-1, 1rem);
