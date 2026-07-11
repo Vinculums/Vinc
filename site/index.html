@@ -49,20 +49,38 @@ a{color:inherit}
 ::selection{background:hsl(var(--ring)/.28)}
 .wrap{max-width:66rem;margin:0 auto;padding:0 1.5rem}
 
-/* ── 배경 성좌(고정, 은은한 노드 필드) ─────────────────────────── */
-.sky{
-  position:fixed;inset:0;z-index:-1;pointer-events:none;
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
   background:
-    radial-gradient(70rem 46rem at 18% -12%, hsl(var(--ring)/.10), transparent 62%),
-    radial-gradient(56rem 40rem at 108% 14%, hsl(var(--ring)/.07), transparent 58%),
-    radial-gradient(50rem 50rem at 50% 118%, hsl(var(--ring)/.05), transparent 55%);
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
 }
-.sky svg{position:absolute;inset:0;width:100%;height:100%;color:hsl(var(--foreground))}
-.sky .l1{opacity:.16}.sky .l2{opacity:.09}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 62% at 50% 20%, hsl(var(--background)/.90) 0%, hsl(var(--background)/.50) 34%, transparent 66%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 62% at 50% 20%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.45) 34%, transparent 66%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
 @media (prefers-reduced-motion: no-preference){
-  .sky .l1{animation:drift 90s linear infinite alternate}
-  .sky .l2{animation:drift 140s linear infinite alternate-reverse}
-  @keyframes drift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
 }
 
 /* ── 헤더 ─────────────────────────────────────────────────────── */
@@ -86,6 +104,29 @@ header{
   font:inherit;font-size:.78rem;padding:.18rem .62rem;border-radius:999px;cursor:pointer;
 }
 .chipbar button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
 @media (max-width:46rem){.nav .links{display:none}}
 
 /* ── 버튼 ─────────────────────────────────────────────────────── */
@@ -413,33 +454,45 @@ footer .brand-mini svg{width:16px;height:16px}
     <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
   </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24">
     <path d="M12 3 14 10 21 12 14 14 12 21 10 14 3 12 10 10Z" fill="currentColor"/>
   </symbol>
 </svg>
 
-<!-- ── 배경 성좌 ─────────────────────────────────────────────── -->
-<div class="sky" aria-hidden="true">
-  <svg class="l1" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" fill="none">
-    <g stroke="currentColor" stroke-width="1">
-      <path d="M150 120 260 190M260 190 210 320M260 190 420 150M980 90 1080 210M1080 210 940 290M420 640 560 700M560 700 660 610"/>
-    </g>
-    <g fill="currentColor">
-      <circle cx="150" cy="120" r="3.5"/><circle cx="260" cy="190" r="5"/><circle cx="210" cy="320" r="2.6"/>
-      <circle cx="420" cy="150" r="3"/><circle cx="980" cy="90" r="3"/><circle cx="1080" cy="210" r="4.6"/>
-      <circle cx="940" cy="290" r="2.6"/><circle cx="420" cy="640" r="3.4"/><circle cx="560" cy="700" r="4.6"/>
-      <circle cx="660" cy="610" r="2.6"/>
-    </g>
-  </svg>
-  <svg class="l2" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" fill="none">
-    <g stroke="currentColor" stroke-width="1">
-      <path d="M80 480 190 545M700 130 810 80M810 80 900 170M1050 520 1130 620M340 420 430 480"/>
-    </g>
-    <g fill="currentColor">
-      <circle cx="80" cy="480" r="2.4"/><circle cx="190" cy="545" r="3.6"/><circle cx="700" cy="130" r="2.4"/>
-      <circle cx="810" cy="80" r="3.2"/><circle cx="900" cy="170" r="2.2"/><circle cx="1050" cy="520" r="2.8"/>
-      <circle cx="1130" cy="620" r="4"/><circle cx="340" cy="420" r="2.2"/><circle cx="430" cy="480" r="3.2"/>
-    </g>
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
   </svg>
 </div>
 
@@ -454,11 +507,10 @@ footer .brand-mini svg{width:16px;height:16px}
       <a href="#vows" data-i="nav3">Privacy</a>
     </nav>
     <div class="end">
-      <span class="chipbar" role="group" aria-label="Language">
-        <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
-      </span>
-      <span class="chipbar" role="group" aria-label="Theme">
-        <button data-th="dark" data-i="thDark">Dark</button><button data-th="light" data-i="thLight">Light</button>
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
       </span>
       <a class="btn primary small" href="https://github.com/weg-9000/vinc/releases/latest" data-i="navGet">Download</a>
     </div>
@@ -469,7 +521,6 @@ footer .brand-mini svg{width:16px;height:16px}
   <!-- ── 히어로 ─────────────────────────────────────────────── -->
   <section class="hero wrap">
     <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
-    <div><span class="eyebrow" data-i="eyebrow">Offline-first knowledge management</span></div>
     <h1 data-i="tagline">Think with AI.<br><em>See your knowledge mapped.</em></h1>
     <p class="sub" data-i="sub">Unfold the notes and documents sleeping in your folders into a living
       knowledge graph. Explore it, search it by meaning, and bundle what you need
@@ -676,6 +727,23 @@ footer .brand-mini svg{width:16px;height:16px}
   </div>
 </footer>
 
+<!-- 언어 선택 모달 -->
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span>
+      <span class="nm">English</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+    <button class="langopt" data-lang="ko">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span>
+      <span class="nm">한국어</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
 // 카피 덱 — D42 원칙. 한국어 카피는 발주자 저작본(2026-07-12)이 정본이다.
 const DECK = {
@@ -684,7 +752,7 @@ const DECK = {
     _title: "Vinc · 지식의 지도",
     _desc: "오프라인 기반 지식 관리 도구 Vinc. 내 PC에서만 동작하는 AI로 노트와 문서를 지식 지도로 펼치고, 의미로 찾고, 팩으로 공유하세요. 모든 데이터는 내 기기를 떠나지 않습니다.",
     nav1: "사용 흐름", nav2: "핵심 기능", nav3: "프라이버시", navGet: "다운로드",
-    thDark: "다크", thLight: "라이트",
+    thDark: "다크", thLight: "라이트", langTitle: "언어",
     eyebrow: "오프라인 기반 지식 관리 도구",
     tagline: "AI와 함께 지식을 연결하고<br><em>생각의 깊이를 더하세요.</em>",
     sub: "폴더 속에 잠들어 있던 노트와 문서들을 살아 숨 쉬는 지식 그래프로 펼쳐보세요. 탐색하고, 의미를 찾고, 원하는 만큼 묶어 공유하는 모든 과정이 오직 내 PC 안에서 안전하게 이루어집니다.",
@@ -740,8 +808,13 @@ function setTheme(t){
     b.classList.toggle("active", b.dataset.th === t));
   try { localStorage.setItem("vinc.site.theme", t); } catch {}
 }
+// 언어 모달 열고/닫기 + 선택
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", (e) => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") langModal.hidden = true; });
 document.querySelectorAll("[data-lang]").forEach(b =>
-  b.addEventListener("click", () => setLang(b.dataset.lang)));
+  b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
 document.querySelectorAll("[data-th]").forEach(b =>
   b.addEventListener("click", () => setTheme(b.dataset.th)));
 
@@ -759,6 +832,64 @@ if ("IntersectionObserver" in window) {
 } else {
   document.querySelectorAll(".rv").forEach(el => el.classList.add("in"));
 }
+</script>
+
+<script>
+// 배경 하프톤 도트 — canvas 에 가우시안 반경 폴오프로 수렴점(우하단)을 향해 커지는 도트 매트릭스.
+// 정적(리사이즈·테마변경 시에만 재드로우), dpr 대응, 색은 --ring 토큰에서 읽는다. CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d"), raf = 0, rt = 0;
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function ring(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/);
+    if (p.length >= 3 && p[0] !== "") return { h:parseFloat(p[0]), s:parseFloat(p[1]), l:parseFloat(p[2]) };
+    return isDark() ? { h:218, s:31, l:66 } : { h:217, s:23, l:32 };
+  }
+  function draw(){
+    var w = window.innerWidth, h = window.innerHeight;
+    if (!w || !h) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    cv.style.width = w + "px"; cv.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    var pitch = Math.max(18, Math.min(Math.min(w, h) / 34, 26));
+    var maxR = pitch * 0.5;
+    var sigma = Math.hypot(w, h) * 0.40, twoS2 = 2 * sigma * sigma;
+    var fx = 0.72 * w, fy = 0.62 * h;
+    var c = ring(), dark = isDark();
+    var aBase = dark ? 0.11 : 0.08, aGain = dark ? 0.20 : 0.16;
+    var pre = "hsla(" + c.h + "," + c.s + "%," + c.l + "%,";
+    for (var y = pitch / 2; y < h; y += pitch){
+      for (var x = pitch / 2; x < w; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        var r = maxR * f;
+        if (r < 0.35) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 6.2831853);
+        ctx.fillStyle = pre + (aBase + aGain * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function schedule(){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+  function onResize(){ clearTimeout(rt); rt = setTimeout(schedule, 150); }
+  draw();   // 최초 페인트는 rAF 의존 없이 동기 실행(백그라운드 탭에서도 그려짐)
+  window.addEventListener("resize", onResize);
+  new MutationObserver(schedule).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq){ if (mq.addEventListener) mq.addEventListener("change", schedule); else if (mq.addListener) mq.addListener(schedule); }
+})();
 </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vinc User Guide · five intuitive screens</title>
+<title>User guide</title>
 <meta name="description" content="A visual walkthrough of Vinc's five screens: Intake, Records, Atlas, Search, and Packs. Each scene replays the real app in motion.">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <!-- 자기완결: 외부 요청 0. 장면 5개 = 실제 앱 표면 복제(app/src/surfaces/*.ts 구조,
@@ -58,6 +58,29 @@ header.site{
 .chipbar{display:inline-flex;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
 .chipbar button{border:0;background:transparent;color:hsl(var(--muted-foreground));font:inherit;font-size:.78rem;padding:.18rem .62rem;border-radius:999px;cursor:pointer}
 .chipbar button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
 .btn{
   display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;
   font-weight:570;font-size:.9375rem;line-height:1;
@@ -76,7 +99,7 @@ header.site{
 .btn.small{padding:.5rem .95rem;font-size:.84rem}
 
 /* ── 인트로 ───────────────────────────────────────────────────── */
-.intro{padding:4.2rem 0 2.4rem;text-align:center}
+.intro{padding:3rem 0 1.6rem;text-align:center}
 .eyebrow{
   display:inline-flex;align-items:center;gap:.45rem;font-size:.8125rem;
   color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border));
@@ -538,6 +561,32 @@ footer .bm svg{width:16px;height:16px}
     <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
   </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
   <symbol id="i-cursor" viewBox="0 0 24 24">
     <path d="M5 3l14 8.2-6.8 1.5L9.4 20z" fill="#EAE5DD" stroke="#16130F" stroke-width="1.4" stroke-linejoin="round"/>
   </symbol>
@@ -553,11 +602,10 @@ footer .bm svg{width:16px;height:16px}
       <span class="crumbsep">/</span><span class="crumb" data-i="crumb">User guide</span>
     </a>
     <div class="end">
-      <span class="chipbar" role="group" aria-label="Language">
-        <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
-      </span>
-      <span class="chipbar" role="group" aria-label="Theme">
-        <button data-th="dark" data-i="thDark">Dark</button><button data-th="light" data-i="thLight">Light</button>
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
       </span>
       <a class="btn primary small" href="https://github.com/weg-9000/vinc/releases/latest" data-i="navGet">Download</a>
     </div>
@@ -567,10 +615,7 @@ footer .bm svg{width:16px;height:16px}
 <main>
   <!-- ── 인트로 ─────────────────────────────────────────────── -->
   <section class="intro wrap">
-    <div><span class="eyebrow" data-i="eyebrow">User guide</span></div>
-    <h1 data-i="introT">Five screens are all it takes.</h1>
-    <p class="sub" data-i="introS">Everything Vinc can do lives on five intuitive screens. Preview below
-      exactly what you'll meet after install, in motion.</p>
+    <h1 data-i="introT">User guide</h1>
     <nav class="toc" aria-label="Chapters">
       <a href="#ch1"><b>1</b><span data-i="toc1">Intake</span></a>
       <a href="#ch2"><b>2</b><span data-i="toc2">Records</span></a>
@@ -980,17 +1025,33 @@ footer .bm svg{width:16px;height:16px}
   </div>
 </footer>
 
+<!-- 언어 선택 모달 -->
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span>
+      <span class="nm">English</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+    <button class="langopt" data-lang="ko">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span>
+      <span class="nm">한국어</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
 // 카피 덱 — 장면 문구는 앱 정본(app/src/copy.ts) 원문을 그대로 사용한다.
 const DECK = {
   en: {},
   ko: {
-    _title: "Vinc 사용 가이드 · 가장 직관적인 5개의 화면",
+    _title: "사용 가이드",
     _desc: "Vinc의 핵심 기능이 담긴 5개의 화면(가져오기·문서함·지식 지도·검색·팩)을 실제 앱 작동 화면과 함께 안내합니다.",
-    crumb: "사용 가이드", navGet: "다운로드", thDark: "다크", thLight: "라이트",
+    crumb: "사용 가이드", navGet: "다운로드", thDark: "다크", thLight: "라이트", langTitle: "언어",
     eyebrow: "사용 가이드",
-    introT: "5개의 화면이면 충분합니다.",
-    introS: "Vinc의 모든 강력한 기능들은 직관적인 5개의 화면 안에 담겨있습니다. 아래의 가이드에서 앱 설치 후 마주하게 될 실제 모습을 미리 확인해 보세요.",
+    introT: "사용 가이드",
     toc1: "가져오기", toc2: "문서함", toc3: "지식 지도", toc4: "검색", toc5: "팩", toc6: "Claude 연결",
     /* 1 · 가져오기 */
     ch1n: "01 · 가져오기 (INTAKE)",
@@ -1105,8 +1166,13 @@ function setTheme(t){
     b.classList.toggle("active", b.dataset.th === t));
   try { localStorage.setItem("vinc.site.theme", t); } catch {}
 }
+// 언어 모달 열고/닫기 + 선택
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", (e) => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") langModal.hidden = true; });
 document.querySelectorAll("[data-lang]").forEach(b =>
-  b.addEventListener("click", () => setLang(b.dataset.lang)));
+  b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
 document.querySelectorAll("[data-th]").forEach(b =>
   b.addEventListener("click", () => setTheme(b.dataset.th)));
 let lang = null, theme = null;
