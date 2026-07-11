@@ -22,7 +22,7 @@ export function renderPacks(el: HTMLElement) {
             <input id="import-file" type="file" accept="application/json" hidden />
           </p>
           <p class="hint">
-            <label>Share — domain <input id="share-domain" placeholder="all" style="width:8rem" /></label>
+            <label>Share · domain <input id="share-domain" placeholder="all" style="width:8rem" /></label>
             <label> start from <input id="share-seed" placeholder="(anywhere)" style="width:12rem" /></label>
             <label> reach <input id="share-depth" type="number" min="1" max="4" value="2" style="width:3rem" /></label>
           </p>
@@ -70,7 +70,7 @@ export function renderPacks(el: HTMLElement) {
       pv.innerHTML = `<p class="hint" style="margin-top:0">Preview</p>
         <h3 style="margin:.2rem 0">${a.download}</h3>
         <p class="hint">${c.concepts ?? 0} concepts · ${c.edges ?? 0} connections · ${c.records ?? 0} records</p>
-        <p class="hint">Offline-portable — ${COPY.packs.shareNote}</p>`;
+        <p class="hint">Offline-portable. ${COPY.packs.shareNote}</p>`;
     } catch {
       status.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
     }

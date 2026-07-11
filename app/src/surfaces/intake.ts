@@ -9,7 +9,7 @@ import samplePack from "../sample-pack.json";
  *  frame (4:29)'s stepper survives as the inline preparing indicator. */
 export function renderIntake(el: HTMLElement) {
   el.innerHTML = `
-    ${header("ingest", "Intake", "Drop sources — they become records.",
+    ${header("ingest", "Intake", "Drop sources. They become records.",
              headerCta("choose", "upload", "Choose sources"))}
     <div class="empty" id="drop">
       ${icon("ingest", 30)}
@@ -25,8 +25,8 @@ export function renderIntake(el: HTMLElement) {
   drop.addEventListener("dragover", (e) => e.preventDefault());
   drop.addEventListener("drop", (e) => {
     e.preventDefault();
-    status.innerHTML = `<p class="hint">Dropping folders arrives with the desktop app —
-      for now, start with the sample below.</p>`;
+    status.innerHTML = `<p class="hint">Dropping folders arrives with the desktop app.
+      For now, start with the sample below.</p>`;
   });
   // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
   // 그 스코프로 전환해 Atlas 를 바로 체험. (스코프 삭제 op 는 P4 — Settings 의
@@ -37,7 +37,7 @@ export function renderIntake(el: HTMLElement) {
       const res = await api.importPack(samplePack, "sample:demo");
       if (res.executed === false) throw new Error(res.error);
       cfg.owner = "sample:demo";
-      status.innerHTML = `<p>Sample loaded — 6 concepts across 2 domains. You're browsing
+      status.innerHTML = `<p>Sample loaded: 6 concepts across 2 domains. You're browsing
         the sample space now (switch back anytime in Settings).</p>
         <a class="btn btn-primary" href="#atlas">Open in Atlas</a>`;
     } catch {
@@ -45,7 +45,7 @@ export function renderIntake(el: HTMLElement) {
     }
   });
   el.querySelector("#choose")!.addEventListener("click", () => {
-    status.innerHTML = `<p class="hint">Choosing folders arrives with the desktop app —
-      for now, try the sample pack below.</p>`;
+    status.innerHTML = `<p class="hint">Choosing folders arrives with the desktop app.
+      For now, try the sample pack below.</p>`;
   });
 }

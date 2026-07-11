@@ -11,7 +11,7 @@ export function renderSettings(el: HTMLElement) {
     <label>MCP</label><p class="hint">${COPY.settings.mcp}</p>
     <label>Data</label><p class="hint">${COPY.settings.data}</p>
     <label for="s-owner">Workspace</label>
-    <p class="hint">Which space you're browsing — switch back after trying the sample.</p>
+    <p class="hint">Which space you're browsing. Switch back after trying the sample.</p>
     <input id="s-owner" value="${cfg.owner}" />
     <label>Theme</label>
     <p>
@@ -24,7 +24,7 @@ export function renderSettings(el: HTMLElement) {
       <label for="s-base">Engine address</label>
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">Connection secret</label>
-      <p class="hint">Filled automatically by the app — only change this if you run the engine yourself.</p>
+      <p class="hint">Filled automatically by the app. Only change this if you run the engine yourself.</p>
       <input id="s-token" value="${cfg.token}" />
     </details>
   `;

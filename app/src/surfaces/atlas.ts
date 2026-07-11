@@ -76,7 +76,7 @@ export async function renderAtlas(el: HTMLElement) {
       `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
     viewPanel.innerHTML = `
       <p class="hint" style="margin-top:0">View</p>
-      <p>${chip("view", "3d", "3D", p.view === "3d")} ${chip("view", "2d", "2D — flat", p.view === "2d")}</p>
+      <p>${chip("view", "3d", "3D", p.view === "3d")} ${chip("view", "2d", "2D", p.view === "2d")}</p>
       <p class="hint">Node size</p>
       <p>${chip("size", "links", "by connections", p.size === "links")} ${chip("size", "uniform", "uniform", p.size === "uniform")}</p>
       <p class="hint">Labels</p>
@@ -89,8 +89,8 @@ export async function renderAtlas(el: HTMLElement) {
       <label class="hint" style="display:block">Spread
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>
-      <p class="hint" style="margin-bottom:0">Shapes and the point color stay fixed —
-        they carry meaning, so a shared pack reads the same everywhere.</p>`;
+      <p class="hint" style="margin-bottom:0">Shapes and the point color stay fixed.
+        They carry meaning, so a shared pack reads the same everywhere.</p>`;
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.pref as keyof AtlasPrefs;
@@ -190,7 +190,7 @@ export async function renderAtlas(el: HTMLElement) {
     detail.hidden = false;
     detail.innerHTML = `
       <h2>${nd.label}</h2>
-      <p><span class="badge">domain: ${nd.domain || "—"}</span></p>
+      <p><span class="badge">domain: ${nd.domain || "none"}</span></p>
       <p class="hint">${nd.degree || 0} connections${out + inn > 0
         ? ` · → ${out} out · ← ${inn} in` : ""}${nd.gateway ? " · gateway" : ""}.</p>
       <button class="btn btn-primary" id="focus">Trace from here</button>
@@ -212,11 +212,11 @@ export async function renderAtlas(el: HTMLElement) {
       const sug: { id: string; title: string; domain: string; shared_tags: string[] }[] =
         res.suggestions || [];
       if (!res.executed || sug.length === 0) {
-        box.innerHTML = `<p class="hint">Unlinked — no tie candidates yet.
+        box.innerHTML = `<p class="hint">Unlinked. No tie candidates yet.
           Tag it to surface matches.</p>`;
         return;
       }
-      box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">Unlinked — possible ties</p>` +
+      box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">Unlinked · possible ties</p>` +
         sug.map((s, i) => `
           <div class="list-row">
             <span class="title" style="font-size:.9em">${s.title}
@@ -237,11 +237,11 @@ export async function renderAtlas(el: HTMLElement) {
             await show(trail[trail.length - 1], false);   // 재렌더(연결 반영)
             detail.hidden = false;                        // show() 가 닫으므로 확인 문구 재표시
             detail.innerHTML = `<h2>${nd.label}</h2>
-              <p>Bound to <b>${s.title}</b> — 1 connection added.</p>`;
+              <p>Bound to <b>${s.title}</b> · one connection added.</p>`;
           } catch {
             b.textContent = "Bind";
             box.insertAdjacentHTML("beforeend",
-              `<div class="error-banner">Couldn't bind — try again in a moment.</div>`);
+              `<div class="error-banner">Couldn't bind. Try again in a moment.</div>`);
           }
         }));
     } catch {

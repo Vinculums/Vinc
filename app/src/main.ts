@@ -40,7 +40,7 @@ async function route() {
 }
 
 window.addEventListener("hashchange", route);
-document.title = `Vinc — ${COPY.tagline}`;
+document.title = `Vinc · ${COPY.tagline}`;
 
 const popover = document.getElementById("settings-popover")!;
 document.getElementById("settings-btn")!.addEventListener("click", () => {
