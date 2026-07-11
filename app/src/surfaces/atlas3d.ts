@@ -40,9 +40,8 @@ function material(color: number, opacity = 1): THREE.Material {
   });
 }
 
-function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
-  const opacity = n.gateway ? 0.45 : 1;
-  const color = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
+/** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
+function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   // D31 열린 층 — 크기 스케일만 사용자 선택(√연결수 ↔ 균일); 형태=타입은 닫힌 층.
   let r = n.kind === "domain"
     ? 6 + 2.2 * Math.sqrt(n.records || 1)
@@ -51,6 +50,13 @@ function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
   if (n.pinned) r *= 1.25;   // pin = 허브 승격(D32) — 확정된 노드는 한 급 크게
   // 2D 는 깊이 겹침 여지가 없어 조밀 — 반경을 줄여 겹침 비율 자체를 낮춘다
   if (prefs.view === "2d" && n.kind !== "domain") r *= 0.7;
+  return r;
+}
+
+function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
+  const opacity = n.gateway ? 0.45 : 1;
+  const color = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
+  const r = nodeRadius(n, prefs);
   let geo: THREE.BufferGeometry;
   switch (n.kind) {
     case "domain":   // 대형 육각기둥 + 외곽 링(이중육각의 입체화)
@@ -108,7 +114,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
     .linkDirectionalArrowLength((l: any) => prefs.arrows &&
       ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(l.type || "") ? 2.6 : 0)
-    .linkDirectionalArrowRelPos(0.94);
+    // 화살촉을 도착 노드 "표면 바로 밖"에 띄운다(D33) — 고정 94% 는 큰 노드
+    // (허브)에서 메시 안에 파묻힌다. 좌표는 핀 고정이라 선분 길이가 결정론.
+    .linkDirectionalArrowRelPos((l: any) => {
+      const s = typeof l.source === "object" ? l.source : null;
+      const t = typeof l.target === "object" ? l.target : null;
+      if (!s || !t || s.fx === undefined || t.fx === undefined) return 0.94;
+      const len = Math.hypot(t.fx - s.fx, t.fy - s.fy, (t.fz || 0) - (s.fz || 0));
+      if (!len) return 0.94;
+      return Math.max(0.5, 1 - (nodeRadius(t, prefs) + 2.5) / len);
+    });
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();

@@ -48,6 +48,7 @@ export async function renderAtlas(el: HTMLElement) {
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
+  let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
   const trail: Level[] = [];
 
   // deep links: #atlas/<domain> · #atlas/compare/<a>/<b> · #atlas/trace/<id>(L2)
@@ -179,11 +180,16 @@ export async function renderAtlas(el: HTMLElement) {
   }
 
   function openDetail(nd: N3) {
+    // 방향성 관계(화살촉 3종)만 in/out 분리 표기 — 대칭(relates_to)은 방향이 무의미
+    const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
+    const out = curEdges.filter((e) => e.source === nd.id && DIRECTED.includes(e.type)).length;
+    const inn = curEdges.filter((e) => e.target === nd.id && DIRECTED.includes(e.type)).length;
     detail.hidden = false;
     detail.innerHTML = `
       <h2>${nd.label}</h2>
       <p><span class="badge">domain: ${nd.domain || "—"}</span></p>
-      <p class="hint">${nd.degree || 0} connections${nd.gateway ? " · gateway" : ""}.</p>
+      <p class="hint">${nd.degree || 0} connections${out + inn > 0
+        ? ` · → ${out} out · ← ${inn} in` : ""}${nd.gateway ? " · gateway" : ""}.</p>
       <button class="btn btn-primary" id="focus">Trace from here</button>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {
@@ -247,6 +253,7 @@ export async function renderAtlas(el: HTMLElement) {
       setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
     }
     setMsg("");
+    curEdges = res.edges || [];
     g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, domain)), toL3(res.edges), {
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
@@ -269,6 +276,7 @@ export async function renderAtlas(el: HTMLElement) {
     const res = await api.graph(cfg.owner, { seed, depth: 2 });
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     setMsg("");
+    curEdges = res.edges || [];
     g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, undefined, seed)), toL3(res.edges), {
       onClick: (nd) => openDetail(nd),
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
