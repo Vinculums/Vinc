@@ -1,0 +1,26 @@
+# Vinc 사이드카 — 루프백 전용(F4). 데이터 홈 = ~/.vinc (D43).
+# 설치: /etc/systemd/system/vinc-sidecar.service 로 복사 후
+#   systemctl daemon-reload && systemctl enable --now vinc-sidecar
+[Unit]
+Description=Vinc sidecar (loopback graph store API)
+After=network.target
+
+[Service]
+Type=simple
+User=vinc
+Group=vinc
+# 토큰은 유닛 밖 env 파일로만(권한 600) — 레포·번들 반입 금지(D36).
+#   /etc/vinc/sidecar.env 예시: VINC_SIDECAR_TOKEN=<random>
+EnvironmentFile=/etc/vinc/sidecar.env
+ExecStart=/opt/vinc/vinc-sidecar serve --port 8787 --token ${VINC_SIDECAR_TOKEN}
+Restart=on-failure
+RestartSec=3
+# 하드닝 — 사이드카는 홈(~/.vinc)만 쓴다
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/vinc/.vinc
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

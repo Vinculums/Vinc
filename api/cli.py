@@ -131,6 +131,31 @@ def main(argv: list[str] | None = None) -> int:
                     help="passphrase (omit to read from stdin/getpass — non-echoing)")
     ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
 
+    # ── MCP 어댑터(D11 · P5 선행) — stdio/HTTP 전송 + 클라이언트 등록 ────────
+    mc = sub.add_parser("mcp", help="connect Claude to this store (MCP)")
+    msub = mc.add_subparsers(dest="mcpcmd", required=True)
+    for name, hint in (("serve", "stdio transport — for Claude Code/Desktop"),
+                       ("serve-http", "Streamable HTTP transport — remote profile (D36)")):
+        mp = msub.add_parser(name, help=hint)
+        mp.add_argument("--base", default=None, help="sidecar base URL (default 127.0.0.1:8787)")
+        mp.add_argument("--token", default=None, help="sidecar session token")
+        mp.add_argument("--owner", default=None, help="default owner scope (default user:local)")
+        mp.add_argument("--no-spawn", action="store_true",
+                        help="fail instead of starting a sidecar when none is running")
+        if name == "serve-http":
+            mp.add_argument("--host", default="127.0.0.1", help="bind host (loopback only — F4)")
+            mp.add_argument("--port", type=int, default=8790)
+            mp.add_argument("--auth-token", default=None,
+                            help="static bearer token (default: env VINC_MCP_TOKEN)")
+            mp.add_argument("--oauth", action="store_true",
+                            help="enable the OAuth gate (admin key from env VINC_OAUTH_ADMIN_KEY)")
+            mp.add_argument("--issuer", default=None,
+                            help="public issuer URL for OAuth metadata (e.g. https://mcp.example.com)")
+    mi = msub.add_parser("install", help="register this server with a local Claude client")
+    mi.add_argument("--client", choices=["code", "desktop"], required=True)
+    mi.add_argument("--desktop-config", default=None,
+                    help="override claude_desktop_config.json path (tests/portable installs)")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "recall":
@@ -212,6 +237,28 @@ def main(argv: list[str] | None = None) -> int:
                                      profile_path=args.profile))
         finally:
             store.close()
+    if args.cmd == "mcp":
+        if args.mcpcmd == "install":
+            from vinc_mcp.install import install
+            return _emit(install(args.client, desktop_path=args.desktop_config))
+        from vinc_mcp.bridge import Bridge
+        bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
+        bridge.ensure(spawn=not args.no_spawn)
+        if args.mcpcmd == "serve":
+            from vinc_mcp.stdio import serve as serve_stdio
+            return serve_stdio(bridge)
+        if args.mcpcmd == "serve-http":
+            from vinc_mcp.http_server import serve_http
+            from vinc_mcp.oauth import OAuthGate
+            static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
+            gate = None
+            if args.oauth:
+                issuer = args.issuer or f"http://{args.host}:{args.port}"
+                # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
+                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"))
+            return serve_http(bridge, host=args.host, port=args.port,
+                              static_token=static, oauth=gate)
+        return 2
     if args.cmd == "onboard":
         from . import auth
         passphrase = args.passphrase

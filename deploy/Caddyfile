@@ -1,0 +1,21 @@
+# Vinc 원격 프로파일(D36 §5) — Caddy 리버스 프록시 + 자동 TLS.
+# 적용: {$VINC_DOMAIN} 을 실제 도메인으로 치환(또는 env 로 주입) 후
+#   /etc/caddy/Caddyfile 로 복사, `systemctl reload caddy`.
+
+{$VINC_DOMAIN} {
+    root * /srv/www
+    file_server
+    encode gzip
+    header {
+        # 정적 홈페이지 — 최소 표면(외부 리소스 0 이므로 강한 CSP 가능)
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+    }
+}
+
+mcp.{$VINC_DOMAIN} {
+    # MCP 어댑터(Streamable HTTP + OAuth) — 루프백 8790 만 노출 대상.
+    # 사이드카(8787)는 어떤 블록에도 노출하지 않는다(F4).
+    reverse_proxy 127.0.0.1:8790
+}

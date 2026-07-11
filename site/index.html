@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vinc · Mine what matters.</title>
+<meta name="description" content="Vinc is an offline-first desktop app: ingest a corpus, map it as a graph, search it by meaning, and share packs. Your data never leaves your machine.">
+<!-- 자기완결: 외부 폰트·스크립트·이미지 0 (remote-profile §5 — 정적 전용·최소 표면).
+     색·형태 값은 Vinc-docs/DESIGN design-tokens.json 정본에서 복사(수기 동기). -->
+<style>
+:root{
+  --background:39 30% 91%; --foreground:34 21% 6%; --card:38 33% 95%;
+  --muted-foreground:40 13% 37%; --border:40 21% 84%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%; --ring:217 23% 32%;
+  --radius:.75rem; --radius-sm:.5rem;
+  --shadow:0 4px 12px hsl(38 12% 10% / .10);
+}
+[data-theme="dark"]{
+  --background:34 19% 7%; --foreground:37 24% 89%; --card:40 16% 11%;
+  --muted-foreground:38 12% 59%; --border:34 14% 20%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%; --ring:218 31% 66%;
+  --shadow:0 4px 12px hsl(0 0% 0% / .35);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{
+  font:0.9375rem/1.55 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR",sans-serif;
+  color:hsl(var(--foreground));
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, hsl(var(--ring)/.07), transparent 60%),
+    radial-gradient(50rem 36rem at 110% 20%, hsl(var(--ring)/.05), transparent 55%),
+    hsl(var(--background));
+  min-height:100vh;
+}
+a{color:inherit}
+.wrap{max-width:62rem;margin:0 auto;padding:0 1.25rem}
+header{display:flex;align-items:center;gap:.75rem;padding:1.1rem 0}
+header .mark{width:28px;height:28px}
+header .name{font-weight:650;letter-spacing:.01em}
+header nav{margin-left:auto;display:flex;gap:.4rem;align-items:center}
+.chipbar{display:inline-flex;border:1px solid hsl(var(--border));border-radius:999px;padding:.15rem;background:hsl(var(--card)/.6)}
+.chipbar button{
+  border:0;background:transparent;color:hsl(var(--muted-foreground));
+  font:inherit;font-size:.8125rem;padding:.2rem .7rem;border-radius:999px;cursor:pointer;
+}
+.chipbar button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.hero{padding:4.5rem 0 3rem;text-align:center}
+.hero .mark{width:72px;height:72px;margin-bottom:1.4rem}
+h1{font-size:clamp(2.25rem,1.6rem + 2.6vw,3.5rem);line-height:1.1;font-weight:650;letter-spacing:-.01em}
+.sub{color:hsl(var(--muted-foreground));max-width:36rem;margin:1rem auto 0}
+.cta{margin-top:2.2rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+.btn{
+  display:inline-block;text-decoration:none;font-weight:560;font-size:.9375rem;
+  padding:.62rem 1.25rem;border-radius:var(--radius-sm);
+  border:1px solid hsl(var(--border));
+}
+.btn.primary{
+  background:linear-gradient(hsl(var(--primary)/.94),hsl(var(--primary)));
+  color:hsl(var(--primary-foreground));border-color:transparent;
+  box-shadow:inset 0 1px 0 hsl(0 0% 100%/.12), var(--shadow);
+}
+.btn.quiet{background:hsl(var(--card)/.5)}
+.btn:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));padding:2.5rem 0}
+.card{
+  background:hsl(var(--card));border:1px solid hsl(var(--border));
+  border-radius:var(--radius);padding:1.4rem;box-shadow:var(--shadow);
+}
+.card h2{font-size:1.0625rem;font-weight:600;margin-bottom:.45rem}
+.card p{color:hsl(var(--muted-foreground));font-size:.875rem}
+.card .glyph{width:26px;height:26px;margin-bottom:.9rem;opacity:.85}
+.privacy{
+  border:1px solid hsl(var(--border));border-radius:var(--radius);
+  padding:1.3rem 1.5rem;margin:1rem 0 3rem;text-align:center;
+  background:hsl(var(--card)/.45);color:hsl(var(--muted-foreground));font-size:.875rem;
+}
+.privacy b{color:hsl(var(--foreground));font-weight:600}
+footer{border-top:1px solid hsl(var(--border));padding:1.6rem 0 2.4rem;
+  color:hsl(var(--muted-foreground));font-size:.8125rem;display:flex;gap:1.2rem;flex-wrap:wrap}
+footer a{text-decoration:none}
+footer a:hover{color:hsl(var(--foreground))}
+@media (prefers-reduced-motion: no-preference){
+  .hero .mark{transition:transform .5s ease}
+  .hero .mark:hover{transform:rotate(-6deg)}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true">
+  <!-- 앱 아이콘과 동일 기하: V 헤어라인 획 + 노드 구슬(그래프 은유) -->
+  <symbol id="vmark" viewBox="0 0 100 100">
+    <g stroke="currentColor" stroke-width="6" fill="none">
+      <line x1="30" y1="28" x2="50" y2="74"/><line x1="70" y1="28" x2="50" y2="74"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="30" cy="28" r="7"/><circle cx="70" cy="28" r="7"/><circle cx="50" cy="74" r="9"/>
+    </g>
+  </symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <svg class="mark" aria-hidden="true"><use href="#vmark"/></svg>
+    <span class="name">Vinc</span>
+    <nav>
+      <span class="chipbar" role="group" aria-label="Language">
+        <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+      </span>
+      <span class="chipbar" role="group" aria-label="Theme">
+        <button data-th="dark">Dark</button><button data-th="light">Light</button>
+      </span>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <svg class="mark" style="color:hsl(var(--ring))" aria-hidden="true"><use href="#vmark"/></svg>
+      <h1 data-i="tagline">Mine what matters.</h1>
+      <p class="sub" data-i="sub">Vinc is an offline desktop app. Bring in your notes and documents,
+        see them as a living graph, search by meaning, and hand curated packs to anyone.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/weg-9000/vinc/releases/latest" data-i="download">Download</a>
+        <a class="btn quiet" href="https://github.com/weg-9000/vinc" data-i="source">View source</a>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="Features">
+      <div class="card">
+        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
+        <h2 data-i="f1t">Intake</h2>
+        <p data-i="f1b">Drop in a folder of notes. Vinc mines concepts, records, and the ties between them.</p>
+      </div>
+      <div class="card">
+        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
+        <h2 data-i="f2t">Atlas</h2>
+        <p data-i="f2b">A 3D map of everything you know: domains as constellations, ideas as glass beads, ties as hairlines.</p>
+      </div>
+      <div class="card">
+        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
+        <h2 data-i="f3t">Packs</h2>
+        <p data-i="f3b">Select a neighborhood of the graph and export it as a portable pack. Import someone else's with one click.</p>
+      </div>
+    </section>
+
+    <section class="privacy">
+      <span data-i="privacy"><b>Yours, on this machine.</b> Vinc runs fully offline: no account, no keys,
+      no telemetry. Your data lives in one folder you can copy, back up, or delete.</span>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 Vinc · MIT License</span>
+    <a href="https://github.com/weg-9000/vinc" data-i="source2">GitHub</a>
+    <a href="https://github.com/weg-9000/vinc-docs" data-i="docs">Documentation</a>
+  </footer>
+</div>
+
+<script>
+// 카피 덱: 앱 D42 와 동일 원칙 — 한국어는 번역이 아닌 저작(채굴·기록·잇기 어휘).
+const DECK = {
+  en: {}, // 마크업 기본값이 영어 덱
+  ko: {
+    tagline: "중요한 것을 캐낸다.",
+    sub: "Vinc 는 오프라인 데스크톱 앱입니다. 노트와 문서를 들여오면 살아있는 그래프로 펼쳐 보여주고, 의미로 찾고, 골라 담은 팩을 누구에게든 건넬 수 있습니다.",
+    download: "내려받기", source: "소스 보기",
+    f1t: "Intake", f1b: "노트 폴더를 끌어다 놓으세요. Vinc 가 개념과 기록, 그 사이의 이음새를 캐냅니다.",
+    f2t: "Atlas", f2b: "내가 아는 것 전부의 3D 지도: 영역은 성좌로, 생각은 유리 구슬로, 이음새는 가는 선으로.",
+    f3t: "Packs", f3b: "그래프의 한 동네를 골라 팩으로 내보내고, 남의 팩은 클릭 한 번으로 들여옵니다.",
+    privacy: "<b>당신의 것, 이 기계 안에.</b> Vinc 는 완전한 오프라인으로 동작합니다: 계정도, 키도, 원격 수집도 없습니다. 데이터는 폴더 하나에 살고, 복사·백업·삭제 전부 당신 마음입니다.",
+    source2: "GitHub", docs: "문서",
+  },
+};
+const EN = {};   // 최초 로드 시 영어 원문 백업
+document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+DECK.en = EN;
+function setLang(l){
+  const deck = DECK[l] || DECK.en;
+  document.querySelectorAll("[data-i]").forEach(el => {
+    if (deck[el.dataset.i]) el.innerHTML = deck[el.dataset.i];
+  });
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-lang]").forEach(b =>
+    b.classList.toggle("active", b.dataset.lang === l));
+  try { localStorage.setItem("vinc.site.lang", l); } catch {}
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-th]").forEach(b =>
+    b.classList.toggle("active", b.dataset.th === t));
+  try { localStorage.setItem("vinc.site.theme", t); } catch {}
+}
+document.querySelectorAll("[data-lang]").forEach(b =>
+  b.addEventListener("click", () => setLang(b.dataset.lang)));
+document.querySelectorAll("[data-th]").forEach(b =>
+  b.addEventListener("click", () => setTheme(b.dataset.th)));
+let lang = null, theme = null;
+try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
+setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
+setTheme(theme || "dark");   // 제품과 동일: 기본 다크(D38)
+</script>
+</body>
+</html>

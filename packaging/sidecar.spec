@@ -14,6 +14,9 @@ a = Analysis(
         "engines.recall_ingest", "engines.concepts_ingest",
         "engines.bridges_ingest", "engines.learner_ingest",
         "engines.pack_ingest", "kuzu",
+        # MCP 어댑터(P5) — cli 가 지연 임포트하므로 명시
+        "vinc_mcp.bridge", "vinc_mcp.stdio", "vinc_mcp.http_server",
+        "vinc_mcp.oauth", "vinc_mcp.install",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다.
