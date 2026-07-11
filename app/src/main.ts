@@ -53,19 +53,19 @@ const palette = document.getElementById("palette")!;
 type Cmd = { label: string; hint: string; run: () => void };
 const COMMANDS: Cmd[] = [
   ...ORDER.map((s, i) => ({
-    label: `Go to ${s[0].toUpperCase()}${s.slice(1)}`, hint: `${i + 1}`,
+    label: COPY.ui.palette.goTo(`${s[0].toUpperCase()}${s.slice(1)}`), hint: `${i + 1}`,
     run: () => { location.hash = `#${s}`; },
   })),
-  { label: "Ingest sources", hint: "Intake", run: () => { location.hash = "#intake"; } },
-  { label: "Share a slice", hint: "Packs", run: () => { location.hash = "#packs"; } },
-  { label: "Open Settings", hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
+  { label: COPY.ui.palette.ingest, hint: "Intake", run: () => { location.hash = "#intake"; } },
+  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs"; } },
+  { label: COPY.ui.palette.settings, hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
 ];
 
 function openPalette() {
   palette.hidden = false;
   palette.innerHTML = `
     <div class="palette-card" role="dialog" aria-label="Command palette">
-      <input id="palette-q" placeholder="Type a command…" autocomplete="off" />
+      <input id="palette-q" placeholder="${COPY.ui.palette.typeCommand}" autocomplete="off" />
       <div id="palette-list"></div>
     </div>`;
   const q = palette.querySelector<HTMLInputElement>("#palette-q")!;
@@ -78,7 +78,7 @@ function openPalette() {
     list.innerHTML = hits.map((c, i) => `
       <div class="palette-row${i === sel ? " sel" : ""}" data-i="${i}">
         <span>${c.label}</span><span class="hint">${c.hint}</span>
-      </div>`).join("") || `<div class="hint" style="padding:.5rem">No commands.</div>`;
+      </div>`).join("") || `<div class="hint" style="padding:.5rem">${COPY.ui.palette.noCommands}</div>`;
     list.querySelectorAll(".palette-row").forEach((row) =>
       row.addEventListener("click", () => { hits[Number((row as HTMLElement).dataset.i)].run(); close(); }));
     return hits;
@@ -102,9 +102,9 @@ function openCheatsheet() {
   cheatsheet.hidden = false;
   cheatsheet.innerHTML = `
     <div class="palette-card" role="dialog" aria-label="Keyboard shortcuts">
-      <h2 style="margin:.2rem 0 .8rem">Keyboard</h2>
-      ${[["1–5", "Go to surface"], ["⌘/Ctrl K", "Command palette"], ["[", "Collapse/expand rail"],
-         ["f", "Fit selection (Atlas)"], ["Esc", "Step back"], ["?", "This sheet"]]
+      <h2 style="margin:.2rem 0 .8rem">${COPY.ui.palette.keyboard}</h2>
+      ${[["1–5", COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.palette.cmdPalette], ["[", COPY.ui.palette.railToggle],
+         ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
         .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`).join("")}
     </div>`;
   cheatsheet.addEventListener("click", () => { cheatsheet.hidden = true; }, { once: true });

@@ -4,6 +4,7 @@
 const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
 const OWNER_KEY = "vinc.owner";
+const LANG_KEY = "vinc.lang";
 
 export const cfg = {
   // 기본 = same-origin(vite dev proxy 경유). Tauri 셸(P4)에서는 사이드카 주소 직접 지정.
@@ -13,6 +14,13 @@ export const cfg = {
   set token(v: string) { localStorage.setItem(TOKEN_KEY, v); },
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
   set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
+  // D42 — 표면 언어. 무설정 = OS 로케일 추종(ko-* → 한국어), 그 외 영어.
+  get lang(): "en" | "ko" {
+    const v = localStorage.getItem(LANG_KEY);
+    if (v === "ko" || v === "en") return v;
+    return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+  },
+  set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
 };
 
 async function call(path: string, params?: Record<string, string | number | undefined>,

@@ -19,7 +19,7 @@ function overlay(): HTMLElement {
 
 export async function openShareSheet(scope: { ids?: string[]; seed?: string; domain?: string; depth?: number }) {
   const el = overlay();
-  el.innerHTML = `<div class="palette-card" style="width:42rem"><p class="hint">Preparing the slice…</p></div>`;
+  el.innerHTML = `<div class="palette-card" style="width:42rem"><p class="hint">${COPY.ui.sheet.preparing}</p></div>`;
   try {
     const pack = await api.share(cfg.owner, {
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
@@ -28,18 +28,18 @@ export async function openShareSheet(scope: { ids?: string[]; seed?: string; dom
     const c = pack.manifest?.counts || {};
     el.innerHTML = `
       <div class="palette-card" style="width:42rem" role="dialog" aria-label="Share this slice">
-        <h2 style="margin:.2rem 0">Share this slice</h2>
-        <p class="hint">${c.concepts ?? 0} concepts · ${c.edges ?? 0} connections · ${c.records ?? 0} records</p>
+        <h2 style="margin:.2rem 0">${COPY.ui.sheet.shareTitle}</h2>
+        <p class="hint">${COPY.ui.sheet.counts(c.concepts ?? 0, c.edges ?? 0, c.records ?? 0)}</p>
         <div style="max-height:16rem;overflow:auto;border:1px solid hsl(var(--border));border-radius:var(--radius);padding:.25rem .75rem;margin:.5rem 0">
           ${nodes.map((n, i) => `
             <label class="list-row" style="cursor:pointer">
               <input type="checkbox" checked data-i="${i}" />
               <span class="title">${n.title}</span><span class="meta">${n.domain || n.type}</span>
-            </label>`).join("") || `<p class="hint">Nothing in scope.</p>`}
+            </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
         </div>
-        <p class="hint">Your pins, tag signals and usage stay with you. The pack carries content only.</p>
-        <p><button class="btn btn-primary" id="sheet-save">Save pack file</button>
-           <button class="btn" id="sheet-cancel">Cancel</button></p>
+        <p class="hint">${COPY.ui.sheet.keepNote}</p>
+        <p><button class="btn btn-primary" id="sheet-save">${COPY.ui.sheet.save}</button>
+           <button class="btn" id="sheet-cancel">${COPY.ui.common.cancel}</button></p>
       </div>`;
     el.querySelector("#sheet-cancel")!.addEventListener("click", () => { el.hidden = true; });
     el.querySelector("#sheet-save")!.addEventListener("click", () => {
@@ -69,12 +69,11 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
   const n = (pack?.fragment?.nodes || []).length;
   el.innerHTML = `
     <div class="palette-card" style="width:36rem" role="dialog" aria-label="Import a pack">
-      <h2 style="margin:.2rem 0">Import a pack</h2>
-      <p class="hint">Created ${m.created || "?"} · scope ${JSON.stringify(m.scope || {})}</p>
-      <p>${c.concepts ?? n} concepts · ${c.edges ?? 0} connections · ${c.records ?? 0} records.
-         Anything already here will be updated in place.</p>
-      <p><button class="btn btn-primary" id="sheet-import">Import as mine</button>
-         <button class="btn" id="sheet-cancel">Cancel</button></p>
+      <h2 style="margin:.2rem 0">${COPY.ui.sheet.importTitle}</h2>
+      <p class="hint">${COPY.ui.sheet.createdScope(m.created || "?", JSON.stringify(m.scope || {}))}</p>
+      <p>${COPY.ui.sheet.updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0)}</p>
+      <p><button class="btn btn-primary" id="sheet-import">${COPY.ui.sheet.importMine}</button>
+         <button class="btn" id="sheet-cancel">${COPY.ui.common.cancel}</button></p>
       <div id="sheet-result" role="status"></div>
     </div>`;
   el.querySelector("#sheet-cancel")!.addEventListener("click", () => { el.hidden = true; });
@@ -86,7 +85,7 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
       if (res.executed === false) throw new Error(res.error);
       const mm = res.merged?.nodes || {};
       out.innerHTML = `<p>${COPY.packs.imported(mm.created ?? 0, mm.matched ?? 0)}</p>
-        <a class="btn" href="#atlas" onclick="document.getElementById('sheet-overlay').hidden=true">View in Atlas</a>`;
+        <a class="btn" href="#atlas" onclick="document.getElementById('sheet-overlay').hidden=true">${COPY.ui.sheet.viewAtlas}</a>`;
       onDone?.(res);
     } catch {
       out.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;

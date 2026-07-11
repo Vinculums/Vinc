@@ -8,12 +8,12 @@ import { stateDot } from "../icons";
  *  ○ plain — state is never color), meta line "domain · date · pin". */
 export async function renderRecords(el: HTMLElement) {
   el.innerHTML = `
-    ${header("recall", "Records", "Everything mined, in one place.")}
-    <input id="records-filter" type="search" placeholder="Filter records…"
+    ${header("recall", "Records", COPY.ui.meta.records)}
+    <input id="records-filter" type="search" placeholder="${COPY.ui.recordsUi.filter}"
            style="width:100%;font:inherit;padding:var(--space-3,.75rem);margin-bottom:var(--space-4,1rem);
                   border:1px solid hsl(var(--input));border-radius:var(--radius);
                   background:hsl(var(--card));color:hsl(var(--foreground))" />
-    <div id="records-body"><div class="hint">Loading…</div></div>`;
+    <div id="records-body"><div class="hint">${COPY.ui.common.loading}</div></div>`;
   const body = el.querySelector<HTMLElement>("#records-body")!;
   const filter = el.querySelector<HTMLInputElement>("#records-filter")!;
   let rows: any[] = [];

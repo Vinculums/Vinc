@@ -22,7 +22,7 @@ const MARK: Record<string, string> = { keyword: "≡", semantic: "≈" };
 
 export function renderSearch(el: HTMLElement) {
   el.innerHTML = `
-    ${header("search", "Search", "Meaning and keywords, together.")}
+    ${header("search", "Search", COPY.ui.meta.search)}
     <form id="search-form" role="search">
       <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core &quot;phrase&quot;"
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);
@@ -63,7 +63,7 @@ export function renderSearch(el: HTMLElement) {
       localStorage.setItem(RECENT_KEY, JSON.stringify(next));
     }
     const { text, domain, tag } = parseQuery(raw);
-    body.innerHTML = `<div class="hint">Searching…</div>`;
+    body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
     try {
       const res = await api.search(text || raw);
       let rows: any[] = res.rows || [];

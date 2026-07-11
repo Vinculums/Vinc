@@ -63,7 +63,7 @@ export async function renderAtlas(el: HTMLElement) {
   function viewControl() {
     const p = loadPrefs();
     tools.insertAdjacentHTML("afterbegin",
-      `<button class="chip" id="t-view" aria-haspopup="true">View · ${p.view === "2d" ? "2D" : "3D"}</button>`);
+      `<button class="chip" id="t-view" aria-haspopup="true">${COPY.ui.panel.viewChip(p.view === "2d" ? "2D" : "3D")}</button>`);
     tools.querySelector("#t-view")!.addEventListener("click", () => {
       viewPanel.hidden = !viewPanel.hidden;
       if (!viewPanel.hidden) drawViewPanel();
@@ -75,23 +75,22 @@ export async function renderAtlas(el: HTMLElement) {
     const chip = (pref: string, val: string, label: string, active: boolean) =>
       `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
     viewPanel.innerHTML = `
-      <p class="hint" style="margin-top:0">View</p>
+      <p class="hint" style="margin-top:0">${COPY.ui.panel.view}</p>
       <p><span class="seg">${chip("view", "3d", "3D", p.view === "3d")}${chip("view", "2d", "2D", p.view === "2d")}</span></p>
-      <p class="hint">Node size</p>
-      <p><span class="seg">${chip("size", "links", "by connections", p.size === "links")}${chip("size", "uniform", "uniform", p.size === "uniform")}</span></p>
-      <p class="hint">Labels</p>
-      <p><span class="seg">${chip("labels", "hover", "on hover", p.labels === "hover")}${chip("labels", "none", "off", p.labels === "none")}</span></p>
-      <p class="hint">Direction arrows</p>
-      <p><span class="seg">${chip("arrows", "on", "on", p.arrows)}${chip("arrows", "off", "off", !p.arrows)}</span></p>
-      <p class="hint">Unlinked nodes</p>
-      <p><span class="seg">${chip("unlinked", "show", "show", p.unlinked === "show")}${chip("unlinked", "hide", "hide", p.unlinked === "hide")}</span></p>
-      <p class="hint">Layout</p>
+      <p class="hint">${COPY.ui.panel.nodeSize}</p>
+      <p><span class="seg">${chip("size", "links", COPY.ui.panel.byConnections, p.size === "links")}${chip("size", "uniform", COPY.ui.panel.uniform, p.size === "uniform")}</span></p>
+      <p class="hint">${COPY.ui.panel.labels}</p>
+      <p><span class="seg">${chip("labels", "hover", COPY.ui.panel.onHover, p.labels === "hover")}${chip("labels", "none", COPY.ui.panel.off, p.labels === "none")}</span></p>
+      <p class="hint">${COPY.ui.panel.arrows}</p>
+      <p><span class="seg">${chip("arrows", "on", COPY.ui.panel.on, p.arrows)}${chip("arrows", "off", COPY.ui.panel.off, !p.arrows)}</span></p>
+      <p class="hint">${COPY.ui.panel.unlinkedNodes}</p>
+      <p><span class="seg">${chip("unlinked", "show", COPY.ui.panel.show, p.unlinked === "show")}${chip("unlinked", "hide", COPY.ui.panel.hide, p.unlinked === "hide")}</span></p>
+      <p class="hint">${COPY.ui.panel.layout}</p>
       <p><span class="seg">${LAYOUTS.map((l) => chip("layout", l, l, p.layout === l)).join("")}</span></p>
-      <label class="hint" style="display:block">Spread
+      <label class="hint" style="display:block">${COPY.ui.panel.spread}
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>
-      <p class="hint" style="margin-bottom:0">Shapes and the point color stay fixed.
-        They carry meaning, so a shared pack reads the same everywhere.</p>`;
+      <p class="hint" style="margin-bottom:0">${COPY.ui.panel.fixedNote}</p>`;
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.pref as keyof AtlasPrefs;
@@ -170,7 +169,7 @@ export async function renderAtlas(el: HTMLElement) {
       .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
       .map((t) => ({ source: t.source, target: t.target, cross: true, weight: t.ties }));
     tools.insertAdjacentHTML("beforeend",
-      `<button class="chip" id="t-grid">Grid</button><button class="chip" id="t-matrix">Matrix</button>`);
+      `<button class="chip" id="t-grid">${COPY.ui.atlasx.grid}</button><button class="chip" id="t-matrix">${COPY.ui.atlasx.matrix}</button>`);
     tools.querySelector("#t-grid")!.addEventListener("click", () => { trail.push({ kind: "grid" }); show(trail[trail.length - 1]); });
     tools.querySelector("#t-matrix")!.addEventListener("click", () => { trail.push({ kind: "matrix" }); show(trail[trail.length - 1]); });
     g3 = mount3d(canvas, nodes, links, {
@@ -191,10 +190,10 @@ export async function renderAtlas(el: HTMLElement) {
     detail.hidden = false;
     detail.innerHTML = `
       <h2>${nd.label}</h2>
-      <p><span class="badge">domain: ${nd.domain || "none"}</span></p>
-      <p class="hint">${nd.degree || 0} connections${out + inn > 0
-        ? ` · → ${out} out · ← ${inn} in` : ""}${nd.gateway ? " · gateway" : ""}.</p>
-      <button class="btn btn-primary" id="focus">Trace from here</button>
+      <p><span class="badge">${COPY.ui.atlasx.domain(nd.domain || COPY.ui.common.none)}</span></p>
+      <p class="hint">${COPY.ui.atlasx.connections(nd.degree || 0)}${out + inn > 0
+        ? COPY.ui.atlasx.outIn(out, inn) : ""}${nd.gateway ? COPY.ui.atlasx.gateway : ""}.</p>
+      <button class="btn btn-primary" id="focus">${COPY.ui.atlasx.traceCta}</button>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {
       trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]);
@@ -207,22 +206,21 @@ export async function renderAtlas(el: HTMLElement) {
   async function suggestTiesInto(nd: N3) {
     const box = detail.querySelector<HTMLElement>("#ties-suggest");
     if (!box) return;
-    box.innerHTML = `<p class="hint">Looking for possible ties…</p>`;
+    box.innerHTML = `<p class="hint">${COPY.ui.atlasx.suggestLooking}</p>`;
     try {
       const res = await api.suggestTies(cfg.owner, nd.id);
       const sug: { id: string; title: string; domain: string; shared_tags: string[] }[] =
         res.suggestions || [];
       if (!res.executed || sug.length === 0) {
-        box.innerHTML = `<p class="hint">Unlinked. No tie candidates yet.
-          Tag it to surface matches.</p>`;
+        box.innerHTML = `<p class="hint">${COPY.ui.atlasx.suggestNone}</p>`;
         return;
       }
-      box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">Unlinked · possible ties</p>` +
+      box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">${COPY.ui.atlasx.suggestHeader}</p>` +
         sug.map((s, i) => `
           <div class="list-row">
             <span class="title" style="font-size:.9em">${s.title}
               ${s.shared_tags.length ? `<span class="hint">· ${s.shared_tags.join(", ")}</span>` : ""}</span>
-            <span class="actions" style="visibility:visible"><button data-bind="${i}">Bind</button></span>
+            <span class="actions" style="visibility:visible"><button data-bind="${i}">${COPY.ui.atlasx.bind}</button></span>
           </div>`).join("");
       box.querySelectorAll<HTMLElement>("[data-bind]").forEach((b) =>
         b.addEventListener("click", async () => {
@@ -238,15 +236,15 @@ export async function renderAtlas(el: HTMLElement) {
             await show(trail[trail.length - 1], false);   // 재렌더(연결 반영)
             detail.hidden = false;                        // show() 가 닫으므로 확인 문구 재표시
             detail.innerHTML = `<h2>${nd.label}</h2>
-              <p>Bound to <b>${s.title}</b> · one connection added.</p>`;
+              <p>${COPY.ui.atlasx.bound(s.title)}</p>`;
           } catch {
             b.textContent = "Bind";
             box.insertAdjacentHTML("beforeend",
-              `<div class="error-banner">Couldn't bind. Try again in a moment.</div>`);
+              `<div class="error-banner">${COPY.ui.atlasx.bindFail}</div>`);
           }
         }));
     } catch {
-      box.innerHTML = `<p class="hint">Tie suggestions unavailable.</p>`;
+      box.innerHTML = `<p class="hint">${COPY.ui.atlasx.unavailable}</p>`;
     }
   }
 
@@ -267,7 +265,7 @@ export async function renderAtlas(el: HTMLElement) {
     });
     enableLasso(g3, canvas, (ids) => {
       float.hidden = false;
-      float.innerHTML = `<button class="btn btn-primary">Share this slice (${ids.length})</button>`;
+      float.innerHTML = `<button class="btn btn-primary">${COPY.ui.atlasx.shareSlice(ids.length)}</button>`;
       float.querySelector("button")!.addEventListener("click", () => {
         float.hidden = true; openShareSheet({ ids });
       });
@@ -287,7 +285,7 @@ export async function renderAtlas(el: HTMLElement) {
     });
     enableLasso(g3, canvas, (ids) => {
       float.hidden = false;
-      float.innerHTML = `<button class="btn btn-primary">Share this slice (${ids.length})</button>`;
+      float.innerHTML = `<button class="btn btn-primary">${COPY.ui.atlasx.shareSlice(ids.length)}</button>`;
       float.querySelector("button")!.addEventListener("click", () => {
         float.hidden = true; openShareSheet({ ids });
       });
@@ -318,7 +316,7 @@ export async function renderAtlas(el: HTMLElement) {
         <div id="cmp-rail" style="overflow:auto;border-left:1px solid ${PAPER_EDGE};
              border-right:1px solid ${PAPER_EDGE};padding:0 1rem">
           <h3 style="position:sticky;top:0;background:hsl(var(--background))">${a} ⇄ ${b}</h3>
-          <div id="cmp-pairs" class="hint">Loading ties…</div>
+          <div id="cmp-pairs" class="hint">${COPY.ui.atlasx.tiesLoading}</div>
         </div>
         <div id="cmp-b"></div>
       </div>`;
@@ -339,12 +337,12 @@ export async function renderAtlas(el: HTMLElement) {
     const railEl = canvas.querySelector<HTMLElement>("#cmp-pairs")!;
     railEl.classList.remove("hint");
     railEl.innerHTML = pairs.length === 0
-      ? `<p class="hint">No concept-level ties yet between these domains.</p>`
+      ? `<p class="hint">${COPY.ui.atlasx.noTies}</p>`
       : pairs.map((p, i) => `
         <div class="list-row" data-i="${i}">
           <span class="title" style="font-size:.9em">${p.a_title}
             <span class="hint">${p.kind === "direct" ? "⇢" : "◇"}</span> ${p.b_title}</span>
-          ${p.via_title ? `<span class="meta">via ${p.via_title}</span>` : ""}
+          ${p.via_title ? `<span class="meta">${COPY.ui.atlasx.via(p.via_title)}</span>` : ""}
         </div>`).join("");
     const highlight = (p: any | null) => {
       for (const { s } of [left, right]) {

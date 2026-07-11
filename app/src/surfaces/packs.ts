@@ -9,7 +9,7 @@ import { openImportSheet } from "../sheets";
  *  (/ingest/pack — idempotent, stamped with YOUR owner). */
 export function renderPacks(el: HTMLElement) {
   el.innerHTML = `
-    ${header("pack-export", "Packs", "Bundle, hand off, bring in.",
+    ${header("pack-export", "Packs", COPY.ui.meta.packs,
              headerCta("create", "pack-export", COPY.packs.idleCta))}
     <div style="display:grid;grid-template-columns:1fr 20rem;gap:var(--space-5,1.25rem)">
       <div>
@@ -22,16 +22,16 @@ export function renderPacks(el: HTMLElement) {
             <input id="import-file" type="file" accept="application/json" hidden />
           </p>
           <p class="hint">
-            <label>Share · domain <input id="share-domain" placeholder="all" style="width:8rem" /></label>
-            <label> start from <input id="share-seed" placeholder="(anywhere)" style="width:12rem" /></label>
-            <label> reach <input id="share-depth" type="number" min="1" max="4" value="2" style="width:3rem" /></label>
+            <label>${COPY.ui.packsUi.share} · ${COPY.ui.packsUi.domain} <input id="share-domain" placeholder="all" style="width:8rem" /></label>
+            <label> ${COPY.ui.packsUi.startFrom} <input id="share-seed" placeholder="(anywhere)" style="width:12rem" /></label>
+            <label> ${COPY.ui.packsUi.reach} <input id="share-depth" type="number" min="1" max="4" value="2" style="width:3rem" /></label>
           </p>
         </div>
       </div>
       <aside id="packs-preview" style="background:hsl(var(--card));border:1px solid hsl(var(--border));
              border-radius:var(--radius);padding:var(--space-4,1rem)">
-        <p class="hint" style="margin-top:0">Preview</p>
-        <p class="hint">Create or share a pack to see its manifest here.</p>
+        <p class="hint" style="margin-top:0">${COPY.ui.packsUi.preview}</p>
+        <p class="hint">${COPY.ui.packsUi.previewHint}</p>
       </aside>
     </div>
     <div id="packs-status" role="status"></div>`;
@@ -67,10 +67,10 @@ export function renderPacks(el: HTMLElement) {
       status.innerHTML = `<p>${COPY.packs.shareReady(c.concepts ?? 0, c.edges ?? 0)}</p>
         <p class="hint">${COPY.packs.shareNote}</p>`;
       const pv = el.querySelector<HTMLElement>("#packs-preview")!;
-      pv.innerHTML = `<p class="hint" style="margin-top:0">Preview</p>
+      pv.innerHTML = `<p class="hint" style="margin-top:0">${COPY.ui.packsUi.preview}</p>
         <h3 style="margin:.2rem 0">${a.download}</h3>
         <p class="hint">${c.concepts ?? 0} concepts · ${c.edges ?? 0} connections · ${c.records ?? 0} records</p>
-        <p class="hint">Offline-portable. ${COPY.packs.shareNote}</p>`;
+        <p class="hint">${COPY.ui.packsUi.offline} ${COPY.packs.shareNote}</p>`;
     } catch {
       status.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
     }
