@@ -96,8 +96,8 @@
   --border: 34 14% 20%; /* #39332B  ← {d_border} */
   --input: 34 14% 20%; /* #39332B  ← {d_border} */
   --ring: 218 31% 66%; /* #8FA3C4  ← {d_point} */
-  --primary: 218 31% 66%; /* #8FA3C4  ← {d_point} */
-  --primary-foreground: 34 19% 7%; /* #16130F  ← {d_bg} */
+  --primary: 217 23% 32%; /* #3E4C63  ← {point} — C안: 다크도 딥 잉크블루 */
+  --primary-foreground: 37 24% 89%; /* #EAE5DD  ← {d_text} — C안 */
   --primary-soft: 40 16% 15%; /* #2C2820  ← {d_fog} */
   --accent: 40 16% 15%; /* #2C2820  ← {d_fog} */
   --accent-foreground: 37 24% 89%; /* #EAE5DD  ← {d_text} */
