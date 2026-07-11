@@ -1,0 +1,80 @@
+# Vinc 릴리스 파이프라인(D43 — P4). 태그 v* 푸시 시 3 OS에서
+# ① PyInstaller로 사이드카 단일 바이너리를 만들고
+# ② Tauri externalBin 규약 위치(binaries/vinc-sidecar-<target-triple>)에 배치한 뒤
+# ③ tauri-action으로 설치본을 빌드해 드래프트 릴리스에 올린다.
+# 서명(코드사인·공증)은 후속 마일스톤 — 시크릿이 갖춰지면 tauri-action env로 주입.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 사이드카(Python) ────────────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install sidecar build deps
+        run: pip install kuzu==0.11.3 pyyaml pyinstaller
+      - name: Build sidecar binary
+        run: pyinstaller -y packaging/sidecar.spec
+      - name: Stage sidecar as Tauri externalBin
+        shell: bash
+        run: |
+          mkdir -p app/src-tauri/binaries
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          cp "dist/vinc-sidecar${ext}" \
+             "app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}"
+      - name: Smoke test sidecar
+        shell: bash
+        run: |
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          "app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}" --help
+
+      # ── 셸(Tauri) ──────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install app deps
+        working-directory: app
+        run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - name: Linux webkit deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: "Vinc ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false

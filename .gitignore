@@ -11,3 +11,6 @@ vinc_store
 *.kuzu
 vinc_e2e/
 node_modules/
+app/src-tauri/target/
+app/src-tauri/binaries/
+app/src-tauri/gen/

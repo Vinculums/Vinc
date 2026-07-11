@@ -28,6 +28,22 @@
     "targets": "all",
     "category": "Productivity",
     "shortDescription": "Offline-first desktop data mining.",
-    "longDescription": "Ingest a corpus, map it as a graph, search it by meaning, and export packs — entirely on this machine."
+    "longDescription": "Ingest a corpus, map it as a graph, search it by meaning, and export packs — entirely on this machine.",
+    "externalBin": ["binaries/vinc-sidecar"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["vincpack"],
+        "name": "Vinc Pack",
+        "description": "Portable Vinc knowledge pack",
+        "role": "Viewer"
+      }
+    ]
   }
 }

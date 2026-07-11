@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import query as q
@@ -115,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="watch this PID; clean-shutdown when it exits (shell heartbeat, E6)")
     sv.add_argument("--token", default=None, help="session token (default: generate)")
     sv.add_argument("--profile", default=None, help="domain profile.yml path (backup 동봉)")
+    sv.add_argument("--data", default=None,
+                    help="data home (default: MEMORY_DATA_DIR, else ~/.vinc — D43)")
     sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
 
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
@@ -185,8 +188,15 @@ def main(argv: list[str] | None = None) -> int:
         return _emit(share.import_share_pack(pack, owner=args.owner))
     if args.cmd == "serve":
         from . import server
-        server.serve(host=args.host, port=args.port, parent_pid=args.parent_pid,
-                     token=args.token, packs_dir=args.packs, profile_path=args.profile)
+        from store.config import load_config, resolve_data_dir
+        # D43 — 설치형 기본 데이터 홈: --data > MEMORY_DATA_DIR > ~/.vinc
+        data_dir = resolve_data_dir(args.data)
+        packs = args.packs
+        if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
+            packs = os.path.join(os.path.dirname(data_dir), "packs")
+        server.serve(load_config({"data_dir": data_dir}),
+                     host=args.host, port=args.port, parent_pid=args.parent_pid,
+                     token=args.token, packs_dir=packs, profile_path=args.profile)
         return 0
     if args.cmd == "backup":
         # 단발 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지). 워커 잡
