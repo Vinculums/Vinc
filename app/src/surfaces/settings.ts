@@ -14,11 +14,11 @@ export function renderSettings(el: HTMLElement) {
     <p class="hint">Which space you're browsing. Switch back after trying the sample.</p>
     <input id="s-owner" value="${cfg.owner}" />
     <label>Theme</label>
-    <p>
+    <p><span class="seg">
       ${["dark", "light", "auto"].map((t) => `
         <button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t ? " active" : ""}"
-                data-theme-opt="${t}">${t}</button>`).join(" ")}
-    </p>
+                data-theme-opt="${t}">${t}</button>`).join("")}
+    </span></p>
     <details style="margin-top:var(--space-3,.75rem)">
       <summary class="hint" style="cursor:pointer">Advanced</summary>
       <label for="s-base">Engine address</label>

@@ -76,16 +76,17 @@ export async function renderAtlas(el: HTMLElement) {
       `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
     viewPanel.innerHTML = `
       <p class="hint" style="margin-top:0">View</p>
-      <p>${chip("view", "3d", "3D", p.view === "3d")} ${chip("view", "2d", "2D", p.view === "2d")}</p>
+      <p><span class="seg">${chip("view", "3d", "3D", p.view === "3d")}${chip("view", "2d", "2D", p.view === "2d")}</span></p>
       <p class="hint">Node size</p>
-      <p>${chip("size", "links", "by connections", p.size === "links")} ${chip("size", "uniform", "uniform", p.size === "uniform")}</p>
+      <p><span class="seg">${chip("size", "links", "by connections", p.size === "links")}${chip("size", "uniform", "uniform", p.size === "uniform")}</span></p>
       <p class="hint">Labels</p>
-      <p>${chip("labels", "hover", "on hover", p.labels === "hover")} ${chip("labels", "none", "off", p.labels === "none")}</p>
-      <p>${chip("arrows", "toggle", "Direction arrows", p.arrows)}</p>
+      <p><span class="seg">${chip("labels", "hover", "on hover", p.labels === "hover")}${chip("labels", "none", "off", p.labels === "none")}</span></p>
+      <p class="hint">Direction arrows</p>
+      <p><span class="seg">${chip("arrows", "on", "on", p.arrows)}${chip("arrows", "off", "off", !p.arrows)}</span></p>
       <p class="hint">Unlinked nodes</p>
-      <p>${chip("unlinked", "show", "show", p.unlinked === "show")} ${chip("unlinked", "hide", "hide", p.unlinked === "hide")}</p>
+      <p><span class="seg">${chip("unlinked", "show", "show", p.unlinked === "show")}${chip("unlinked", "hide", "hide", p.unlinked === "hide")}</span></p>
       <p class="hint">Layout</p>
-      <p>${LAYOUTS.map((l) => chip("layout", l, l, p.layout === l)).join(" ")}</p>
+      <p><span class="seg">${LAYOUTS.map((l) => chip("layout", l, l, p.layout === l)).join("")}</span></p>
       <label class="hint" style="display:block">Spread
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>
@@ -94,8 +95,8 @@ export async function renderAtlas(el: HTMLElement) {
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.pref as keyof AtlasPrefs;
-        const cur = loadPrefs();
-        applyPrefs(k === "arrows" ? { arrows: !cur.arrows } : ({ [k]: b.dataset.val } as Partial<AtlasPrefs>));
+        applyPrefs(k === "arrows" ? { arrows: b.dataset.val === "on" }
+                                  : ({ [k]: b.dataset.val } as Partial<AtlasPrefs>));
       }));
     viewPanel.querySelector<HTMLInputElement>("#pref-spread")!.addEventListener("change", (e) =>
       applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }));

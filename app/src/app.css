@@ -207,3 +207,37 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
     }
   }
 }
+
+/* ── D41 — macOS 컨트롤 문법: 세그먼티드 컨트롤(패널 선택지) + 버튼 폴리시.
+      홈 파인 트랙 위에 활성 세그먼트가 "떠오른 썸"으로 — 색이 아닌 높이가 상태. */
+.seg {
+  display: inline-flex; gap: 2px; padding: 2px; vertical-align: middle;
+  flex-wrap: wrap; max-width: 100%;   /* 5지선다(Layout)는 두 줄로 접힘 */
+  background: hsl(var(--muted) / .85);
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: .6rem;
+}
+.seg .chip {
+  border: none; border-radius: .45rem; background: none;
+  padding: .14rem .7rem; color: hsl(var(--muted-foreground));
+}
+.seg .chip.active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground)); font-weight: 600;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .22), inset 0 1px 0 hsl(0 0% 100% / .3);
+}
+[data-theme="dark"] .seg .chip.active {
+  background: hsl(var(--foreground) / .16);   /* 다크 mac: 밝은 회색 썸 */
+  box-shadow: 0 1px 2px hsl(0 0% 0% / .5), inset 0 1px 0 hsl(0 0% 100% / .12);
+}
+
+.btn {
+  border-radius: .55rem;
+  background: linear-gradient(hsl(var(--card)), hsl(var(--muted)));
+  box-shadow: 0 1px 1.5px hsl(var(--foreground) / .16), inset 0 1px 0 hsl(0 0% 100% / .3);
+}
+.btn:active { transform: translateY(.5px); filter: brightness(.97); }
+.btn-primary {
+  background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
+}
