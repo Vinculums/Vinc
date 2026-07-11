@@ -57,14 +57,40 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## 3. 코드 가져오기 + 하드닝
 
+레포가 비공개라 **SSH 배포키(read-only)** 로 클론한다. 서버에서 키를 만들고
+공개키만 GitHub 레포에 등록한다 — 개인키는 서버 밖으로 나가지 않는다.
+
 ```bash
 apt-get update -qq && apt-get install -y -qq git
-git clone https://github.com/weg-9000/vinc.git /root/vinc
+
+# (1) 서버에서 배포키 생성(암호 없이 — 무인 클론용)
+ssh-keygen -t ed25519 -f /root/.ssh/vinc_deploy -N "" -C "vinc-deploy@vincs"
+cat /root/.ssh/vinc_deploy.pub          # 이 한 줄을 아래 (2)에 등록
+```
+
+**(2) GitHub 등록:** `github.com/weg-9000/vinc` → Settings → Deploy keys →
+Add deploy key → 위 공개키 붙여넣기. **"Allow write access" 는 체크하지 않는다**
+(배포는 읽기만 필요). 저장.
+
+```bash
+# (3) 이 키로만 github 에 접속하도록 SSH 설정
+cat >> /root/.ssh/config <<'EOF'
+Host github.com
+    IdentityFile /root/.ssh/vinc_deploy
+    IdentitiesOnly yes
+EOF
+chmod 600 /root/.ssh/config
+ssh -o StrictHostKeyChecking=accept-new -T git@github.com   # "Hi weg-9000/vinc ..." 나오면 OK
+
+# (4) SSH 로 클론
+git clone git@github.com:weg-9000/vinc.git /root/vinc
 cd /root/vinc
 git checkout claude/weg-vinc-gap-analysis-r1vpwl   # 배포 트랙 브랜치(머지 후엔 main)
 
 sudo bash deploy/harden.sh
 ```
+> Deploy key 는 **이 레포 하나**에만 유효하다(계정 전체 권한이 아님) — 서버가
+> 노출돼도 피해 범위가 이 레포 읽기로 한정된다.
 harden.sh 가 하는 일: UFW(22/80/443) · SSH 비밀번호 로그인 차단 · fail2ban ·
 자동 보안 패치 · 스왑 · `vinc` 배포 계정 · `/opt/vinc /srv/www /etc/vinc` 생성.
 
