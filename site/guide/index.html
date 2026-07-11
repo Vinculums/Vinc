@@ -409,6 +409,69 @@ header.site{
 .s5 .pv-fill h5{font-size:.72rem;font-weight:640;color:var(--w-text);word-break:break-all}
 .s5 .pv-fill .ln{height:5px;border-radius:3px;background:color-mix(in srgb,var(--w-mutedfg) 28%,transparent);margin-top:.5rem}
 
+/* ═══ + · MCP (Connect to Claude) (13s) ══════════════════════ */
+.mcpcard{
+  --w-bg:#16130F; --w-surface:#211E18; --w-fog:#2C2820;
+  --w-border:#39332B; --w-text:#EAE5DD; --w-text-soft:#C7C0B2; --w-mutedfg:#A39A8A;
+  --w-point:#8FA3C4; --w-ok:#8FB48C;
+  border-radius:var(--radius-lg);border:1px solid var(--w-border);
+  background:var(--w-bg);color:var(--w-text);box-shadow:var(--shadow-float);
+  overflow:hidden;padding:1.2rem;
+}
+.mcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width:44rem){.mcp-grid{grid-template-columns:1fr}}
+.term,.conn{border:1px solid var(--w-border);border-radius:.7rem;background:var(--w-surface);overflow:hidden}
+.term-bar{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;border-bottom:1px solid var(--w-border);background:var(--w-fog)}
+.term-bar i{width:8px;height:8px;border-radius:50%;background:var(--w-mutedfg);opacity:.4}
+.term-ttl{margin-left:.4rem;font-size:.68rem;color:var(--w-mutedfg)}
+.term-body{padding:.9rem 1rem;font-family:var(--font-mono,ui-monospace,monospace);font-size:.78rem;min-height:8.5rem}
+.term-body .pr{color:var(--w-point)}
+.term-body .cmd{color:var(--w-text)}
+.term-body .cmd span{opacity:0}
+.term-body .tc{display:inline-block;width:.5em;height:1em;background:var(--w-text-soft);vertical-align:-.15em;opacity:0}
+.term-body .out{color:var(--w-mutedfg);margin-top:.5rem;opacity:0}
+.term-body .out.o1{color:var(--w-ok)}
+.conn{display:flex;flex-direction:column}
+.conn-head{display:flex;align-items:center;gap:.6rem;padding:.85rem .9rem;border-bottom:1px solid var(--w-border)}
+.conn-mark{width:28px;height:28px;border-radius:.5rem;display:grid;place-items:center;background:color-mix(in srgb,var(--w-point) 16%,transparent);color:var(--w-text)}
+.conn-mark svg{width:18px;height:18px}
+.conn-name{font-size:.85rem;font-weight:640}
+.conn-sub{font-size:.66rem;color:var(--w-mutedfg)}
+.conn-dot{margin-left:auto;font-size:.66rem;font-weight:600;color:var(--w-ok);display:inline-flex;align-items:center;gap:.35rem;opacity:0}
+.conn-dot::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--w-ok)}
+.conn-tools{display:flex;flex-wrap:wrap;gap:.4rem;padding:.85rem .9rem;flex:1;align-content:flex-start}
+.conn-tools .tool{
+  display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;
+  font-family:var(--font-mono,ui-monospace,monospace);color:var(--w-text-soft);
+  border:1px solid var(--w-border);border-radius:999px;padding:.24rem .6rem;background:var(--w-fog);
+  opacity:0;
+}
+.conn-tools .tool svg{width:11px;height:11px;color:var(--w-point)}
+.conn-alt{font-size:.66rem;color:var(--w-mutedfg);padding:.7rem .9rem;border-top:1px solid var(--w-border);line-height:1.55}
+.conn-alt b{color:var(--w-text-soft);font-family:var(--font-mono,ui-monospace,monospace)}
+@media (prefers-reduced-motion: no-preference){
+  .s6 .c1{animation:m6c1 13s steps(1) infinite}
+  .s6 .c2{animation:m6c2 13s steps(1) infinite}
+  .s6 .tc{animation:m6tc 13s steps(1) infinite}
+  @keyframes m6c1{0%,8%{opacity:0}10%,94%{opacity:1}96%,100%{opacity:0}}
+  @keyframes m6c2{0%,16%{opacity:0}18%,94%{opacity:1}96%,100%{opacity:0}}
+  @keyframes m6tc{0%,7%{opacity:0}8%,26%{opacity:1}27%,100%{opacity:0}}
+  .s6 .o1{animation:m6o1 13s ease infinite}
+  .s6 .o2{animation:m6o2 13s ease infinite}
+  @keyframes m6o1{0%,28%{opacity:0;transform:translateY(3px)}31%,94%{opacity:1;transform:none}96%,100%{opacity:0}}
+  @keyframes m6o2{0%,31%{opacity:0;transform:translateY(3px)}34%,94%{opacity:1;transform:none}96%,100%{opacity:0}}
+  .s6 .conn-dot{animation:m6dot 13s ease infinite}
+  @keyframes m6dot{0%,36%{opacity:0}40%,94%{opacity:1}96%,100%{opacity:0}}
+  .s6 .tool{animation:m6tool 13s ease infinite}
+  .s6 .t1{animation-delay:0s}.s6 .t2{animation-delay:.4s}.s6 .t3{animation-delay:.8s}
+  .s6 .t4{animation-delay:1.2s}.s6 .t5{animation-delay:1.6s}
+  @keyframes m6tool{0%,42%{opacity:0;transform:translateY(4px) scale(.96)}47%,92%{opacity:1;transform:none}95%,100%{opacity:0}}
+}
+@media (prefers-reduced-motion: reduce){
+  .s6 .c1,.s6 .c2,.s6 .o1,.s6 .o2,.s6 .conn-dot,.s6 .tool{opacity:1!important;transform:none!important}
+  .s6 .tc{display:none}
+}
+
 /* ── 단축키 ───────────────────────────────────────────────────── */
 .keys{border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.55);padding:2.2rem 2rem}
 .keys h2{text-align:center;font-size:clamp(1.4rem,1.1rem+1.2vw,1.9rem);font-weight:680;letter-spacing:-.01em}
@@ -514,6 +577,7 @@ footer .bm svg{width:16px;height:16px}
       <a href="#ch3"><b>3</b><span data-i="toc3">Atlas</span></a>
       <a href="#ch4"><b>4</b><span data-i="toc4">Search</span></a>
       <a href="#ch5"><b>5</b><span data-i="toc5">Packs</span></a>
+      <a href="#ch6"><b>+</b><span data-i="toc6">Connect to Claude</span></a>
     </nav>
   </section>
 
@@ -838,6 +902,52 @@ footer .bm svg{width:16px;height:16px}
     </div>
   </section>
 
+  <!-- ═══ + · MCP (Connect to Claude) ═════════════════════════ -->
+  <section id="ch6" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch6n">+ · CONNECT TO CLAUDE (MCP)</span>
+      <h2 data-i="ch6t">Ask Claude, answered from your own knowledge.</h2>
+      <p data-i="ch6b">Vinc speaks MCP (Model Context Protocol), so Claude Desktop, Claude Code,
+        and Claude on the web can read your knowledge map and answer with it — while every
+        document stays on your machine. Connect once, then just ask.</p>
+      <ul class="tips">
+        <li data-i="ch6tip1">Local setup is one command: <kbd>vinc mcp install --client desktop</kbd> (or <kbd>--client code</kbd>). Restart Claude and Vinc's tools appear.</li>
+        <li data-i="ch6tip2">Claude only sees the answers to the tools it calls. Your files are never uploaded.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="mcpcard s6" role="img" aria-label="Connecting Vinc to Claude via MCP: an install command runs and the tools connect">
+        <div class="mcp-grid">
+          <!-- 왼쪽: 로컬 설치(터미널) -->
+          <div class="term">
+            <div class="term-bar"><i></i><i></i><i></i><span class="term-ttl" data-i="mcpTermTitle">Terminal — local setup</span></div>
+            <div class="term-body">
+              <div class="line"><span class="pr">$</span> <span class="cmd"><span class="c1 fx" data-i="mcpCmd1">vinc mcp install </span><span class="c2 fx" data-i="mcpCmd2">--client desktop</span></span><span class="tc fx"></span></div>
+              <div class="out o1 fx" data-i="mcpOut1">✓ Registered Vinc with Claude Desktop.</div>
+              <div class="out o2 fx" data-i="mcpOut2">  Restart Claude to load the tools.</div>
+            </div>
+          </div>
+          <!-- 오른쪽: 커넥터 카드 + 연결된 도구 -->
+          <div class="conn">
+            <div class="conn-head">
+              <span class="conn-mark"><svg aria-hidden="true"><use href="#vlogo"/></svg></span>
+              <div><div class="conn-name" data-i="mcpConnName">Vinc</div><div class="conn-sub" data-i="mcpConnSub">MCP connector · local</div></div>
+              <span class="conn-dot fx" data-i="mcpConnected">Connected</span>
+            </div>
+            <div class="conn-tools">
+              <span class="tool t1 fx"><svg aria-hidden="true"><use href="#i-search"/></svg>vinc_search</span>
+              <span class="tool t2 fx"><svg aria-hidden="true"><use href="#i-graph"/></svg>vinc_graph</span>
+              <span class="tool t3 fx"><svg aria-hidden="true"><use href="#i-domains"/></svg>vinc_domains</span>
+              <span class="tool t4 fx"><svg aria-hidden="true"><use href="#i-recall"/></svg>vinc_recall</span>
+              <span class="tool t5 fx"><svg aria-hidden="true"><use href="#i-decide"/></svg>vinc_decide</span>
+            </div>
+            <div class="conn-alt" data-i="mcpAlt">Hosted instance? Add a custom connector in claude.ai with the URL <b>https://mcp.vincs.app/mcp</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── 단축키 ─────────────────────────────────────────────── -->
   <section class="wrap" style="padding:3rem 0">
     <div class="keys rv">
@@ -881,7 +991,7 @@ const DECK = {
     eyebrow: "사용 가이드",
     introT: "5개의 화면이면 충분합니다.",
     introS: "Vinc의 모든 강력한 기능들은 직관적인 5개의 화면 안에 담겨있습니다. 아래의 가이드에서 앱 설치 후 마주하게 될 실제 모습을 미리 확인해 보세요.",
-    toc1: "가져오기", toc2: "문서함", toc3: "지식 지도", toc4: "검색", toc5: "팩",
+    toc1: "가져오기", toc2: "문서함", toc3: "지식 지도", toc4: "검색", toc5: "팩", toc6: "Claude 연결",
     /* 1 · 가져오기 */
     ch1n: "01 · 가져오기 (INTAKE)",
     ch1t: "끌어다 놓기만 하세요. 나머지는 Vinc가 알아서 합니다.",
@@ -951,6 +1061,18 @@ const DECK = {
     m5pvhint: "팩을 만들면 상세 정보가 여기에 표시됩니다.",
     m5counts: "개념 24개 · 연결 61개 · 문서 128개",
     m5off: "오프라인 휴대 가능.",
+    /* + · MCP */
+    ch6n: "+ · CLAUDE 연결 (MCP)",
+    ch6t: "내 지식에서 답을 찾는 Claude.",
+    ch6b: "Vinc는 MCP(Model Context Protocol)를 지원합니다. Claude 데스크톱·Claude Code·웹의 Claude가 내 지식 지도를 읽고 답할 수 있으면서도, 모든 문서는 내 기기에만 머뭅니다. 한 번만 연결하면, 이후에는 그냥 물어보세요.",
+    ch6tip1: "로컬 설정은 명령 한 줄이면 끝입니다. <kbd>vinc mcp install --client desktop</kbd> (또는 <kbd>--client code</kbd>). Claude를 재시작하면 Vinc 도구가 나타납니다.",
+    ch6tip2: "Claude는 호출한 도구의 결과만 봅니다. 파일 자체는 절대 업로드되지 않습니다.",
+    mcpTermTitle: "터미널 — 로컬 설정",
+    mcpCmd1: "vinc mcp install ", mcpCmd2: "--client desktop",
+    mcpOut1: "✓ Claude 데스크톱에 Vinc를 등록했습니다.",
+    mcpOut2: "  도구를 불러오려면 Claude를 재시작하세요.",
+    mcpConnName: "Vinc", mcpConnSub: "MCP 커넥터 · 로컬", mcpConnected: "연결됨",
+    mcpAlt: "호스팅 인스턴스인가요? claude.ai에서 사용자 지정 커넥터를 추가하고 URL <b>https://mcp.vincs.app/mcp</b> 를 입력하세요.",
     /* 단축키·마무리 */
     keysT: "키보드가 더 빠릅니다.",
     k1: "화면 이동", k2: "커맨드 팔레트", k3: "사이드바 열기/닫기",
