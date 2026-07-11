@@ -1,0 +1,10 @@
+# 배포 산출물은 리눅스에서 실행된다 — 반드시 LF 로 체크아웃한다.
+# (Windows 작업트리에서 tar/scp 로 서버에 올릴 때 CRLF 가 섞이면 bash `set -euo
+#  pipefail\r` 같은 파싱 오류·cron/systemd 오작동이 난다. deploy 브링업 중 실측.)
+*.sh        text eol=lf
+*.service   text eol=lf
+*.cron      text eol=lf
+*.py        text eol=lf
+Caddyfile   text eol=lf
+deploy/**   text eol=lf
+scripts/**  text eol=lf

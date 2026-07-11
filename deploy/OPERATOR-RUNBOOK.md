@@ -10,7 +10,8 @@
 |---|---|
 | 도메인 | **vincs.app** (커넥터 = `mcp.vincs.app`) |
 | VM | Ubuntu 24.04 · 4 vCPU / 8GB / SSD 150GB |
-| 공인 IP | `1.201.120.27` |
+| 공인 IP | `1.201.120.125` |
+| 로그인 계정 | **`ubuntu`**(클라우드 키 주입 — root 아님, `sudo` 로 권한 상승) |
 
 ## 시크릿 규칙 (D36)
 
@@ -35,7 +36,7 @@ cat ~/.ssh/id_ed25519.pub      # 이 한 줄을 1단계에서 서버에 등록
 ## 1. 로그인 · 비밀번호 교체 · 키 등록
 
 ```bash
-ssh root@1.201.120.27          # 최초 비밀번호로 1회
+ssh root@1.201.120.125          # 최초 비밀번호로 1회
 ```
 서버 안에서:
 ```bash
@@ -45,7 +46,7 @@ echo "ssh-ed25519 AAAA...내_공개키" >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-**게이트:** `exit` 후 `ssh root@1.201.120.27` 로 **비밀번호 없이** 재접속되면 OK.
+**게이트:** `exit` 후 `ssh root@1.201.120.125` 로 **비밀번호 없이** 재접속되면 OK.
 (안 되면 비밀번호로 다시 들어와 원인 확인 — 하드닝 전이라 비밀번호는 아직 살아 있다.)
 
 ## 2. 클라우드 보안 그룹
@@ -103,16 +104,16 @@ harden.sh 가 하는 일: UFW(22/80/443) · SSH 비밀번호 로그인 차단 ·
 
 | 이름 | 타입 | 값 |
 |---|---|---|
-| `@` | A | `1.201.120.27` |
-| `mcp` | A | `1.201.120.27` |
+| `@` | A | `1.201.120.125` |
+| `mcp` | A | `1.201.120.125` |
 
 전파 확인(로컬 또는 서버):
 ```bash
 dig +short vincs.app
-dig +short mcp.vincs.app         # 둘 다 1.201.120.27 이 나와야 함
+dig +short mcp.vincs.app         # 둘 다 1.201.120.125 이 나와야 함
 ```
 
-**게이트:** 두 이름 모두 `1.201.120.27` 로 해석.
+**게이트:** 두 이름 모두 `1.201.120.125` 로 해석.
 
 ## 5. Caddy — 리버스 프록시 + 자동 TLS
 
@@ -162,7 +163,7 @@ systemctl daemon-reload && systemctl enable --now vinc-sidecar
 source /etc/vinc/sidecar.env
 curl -s -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" http://127.0.0.1:8787/health   # {"status":"ok"}
 ```
-외부에서 `1.201.120.27:8787` 직접 접근은 **안 돼야** 정상(UFW 차단).
+외부에서 `1.201.120.125:8787` 직접 접근은 **안 돼야** 정상(UFW 차단).
 데이터 홈 `~vinc/.vinc/{db,packs,inbox,backups}` 자동 생성 확인.
 
 ## 7. MCP 어댑터 + 커넥터 등록
@@ -205,15 +206,30 @@ GitHub Releases 로 연결(릴리스가 아직 없으면 P4 태그를 밀어 발
 
 ## 9. 백업 + 복원 리허설
 
+야간 백업은 **서버 프로세스 내부 스냅샷**(HTTP `POST /backup`)이다 — 사이드카가
+소유한 Database 에서 CHECKPOINT+복사를 수행하므로 **무중단·무락**이다. CLI
+`vinc-sidecar backup` 은 별도 프로세스로 kuzu 를 다시 열어 **서비스 기동 중 배타
+락으로 실패**한다(브링업 중 실측) — 그래서 백업 헬퍼가 HTTP 경로를 쓴다.
+
 ```bash
+# 백업 헬퍼 + cron 설치
+install -m 755 /root/vinc/deploy/vinc-backup.sh /opt/vinc/vinc-backup.sh
 cp /root/vinc/deploy/backup.cron /etc/cron.d/vinc-backup
 
 # 복원 리허설 — 백업은 복원이 증명될 때까지 백업이 아니다
-sudo -u vinc /opt/vinc/vinc-sidecar backup --out /tmp/rehearsal
-MEMORY_DATA_DIR=/tmp/rehearsal/db /opt/vinc/vinc-sidecar domains --owner user:local
+/opt/vinc/vinc-backup.sh /home/vinc/.vinc/backups/rehearsal        # 무중단 스냅샷
+sudo -u vinc env MEMORY_DATA_DIR=/home/vinc/.vinc/backups/rehearsal/db \
+    /opt/vinc/vinc-sidecar domains --owner user:local             # 복원본 조회
+rm -rf /home/vinc/.vinc/backups/rehearsal
 ```
 
-**게이트:** 복원본에서 조회가 동작하면 PASS. 결과를 p5-remote-rollout 장부에 기록.
+**게이트:** 스냅샷 생성 + 복원본 조회가 동작하면 PASS(빈 DB 는 graceful dry-plan —
+첫 ingest 후 실데이터 왕복 재확인 권장). 결과를 p5-remote-rollout 장부에 기록.
+
+> 참고(계정): 이 VM 은 클라우드가 키를 `ubuntu` 계정에 주입했다 — 위 명령의
+> `/root/vinc` 경로·root 실행은 실제로는 `~ubuntu/vinc` + `sudo` 로 수행했다.
+> 비공개 레포 클론(3단계) 대신 **로컬 작업트리를 tar/scp 로 전송**해 GitHub 배포키
+> 등록을 생략했다(둘 다 유효 — 산출물 동일).
 
 ---
 
@@ -222,7 +238,7 @@ MEMORY_DATA_DIR=/tmp/rehearsal/db /opt/vinc/vinc-sidecar domains --owner user:lo
 - [ ] 1. 키 로그인 OK · 비밀번호 교체
 - [ ] 2. 보안 그룹 22/80/443 만
 - [ ] 3. harden.sh · 비밀번호 SSH 거부
-- [ ] 4. DNS 2건 → 1.201.120.27
+- [ ] 4. DNS 2건 → 1.201.120.125
 - [ ] 5. https://vincs.app · https://mcp.vincs.app 인증서
 - [ ] 6. 사이드카 /health OK · 8787 외부 차단
 - [ ] 7. /mcp 무토큰 401 · 커넥터 실호출 왕복
