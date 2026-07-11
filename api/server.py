@@ -72,7 +72,7 @@ class VincApp:
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
 
     def __init__(self, cfg=None, *, store=None, auth=None, jobs=None,
-                 packs_dir=None, profile_path=None, ingest=None):
+                 packs_dir=None, profile_path=None, ingest=None, themes=None):
         self.cfg = cfg or load_config()
         self.store = store                    # 공유 writer 백엔드(단일 Database) 또는 None
         self.auth = auth or SessionAuth()
@@ -80,6 +80,10 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
+        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
+        # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
+        from store.theme_store import ThemeStore
+        self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
 
     @classmethod
@@ -212,6 +216,87 @@ class VincApp:
             rank=body.get("rank", "preference"), tags=body.get("tags"),
             limit=_int(body.get("limit"), 20), include_model=not bool(body.get("no_model")),
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
+
+    def write_ingest(self, body):
+        # MCP vinc_ingest 인라인 어댑터([[vinc.mcp.skeleton]] §7) — 작은 대화형
+        # fragment 라 잡 큐 비동기(202+폴링) 대신 동기 run_sync 로 즉시 결과 반환.
+        # theme_id 필수(D11-R2 §3) — 없으면 authoritative 400 reject.
+        theme_id = body.get("theme_id")
+        if not theme_id:
+            return 400, {"error": "missing field: theme_id"}
+        from engines.fragment_ingest import ingest_fragment
+
+        def _job():
+            # 사용자가 명명한 주제 컨테이너를 보장(멱등 — 구 enum 초안 시드). 없는
+            # 주제로 적재 시 크래시 대신 컨테이너 생성. 어휘 확정은 여전히 재가로만.
+            if not self.themes.has_theme(theme_id):
+                self.themes.create_theme(theme_id)
+            return ingest_fragment(self.store, body, theme_id=theme_id, themes=self.themes)
+
+        res = self.jobs.run_sync("ingest_fragment", _job)
+        return 200, res
+
+    # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
+    def read_themes(self, p):
+        return 200, {"active_theme_id": self.themes.active_theme_id(),
+                     "themes": self.themes.list_themes()}
+
+    def read_types(self, p):
+        theme_id = _req(p, "theme_id")
+        kind = p.get("kind") or None
+        status = p.get("status") or None
+        return 200, {"theme_id": theme_id,
+                     "types": self.themes.list_types(theme_id, kind=kind, status=status)}
+
+    def write_theme_create(self, body):
+        theme_id = _req(body, "theme_id")
+        gq = body.get("guiding_questions") or []
+        res = self.jobs.run_sync("theme_create", lambda: self.themes.create_theme(
+            theme_id, body.get("title", ""), list(gq)))
+        return 200, {"theme": res}
+
+    def write_theme_activate(self, body):
+        theme_id = _req(body, "theme_id")
+        ok = self.jobs.run_sync("theme_activate", lambda: self.themes.activate_theme(theme_id))
+        if not ok:
+            return 404, {"error": f"no such theme: {theme_id}"}
+        return 200, {"active_theme_id": theme_id}
+
+    # 어휘 뮤테이션은 잡 큐(run_sync)로 직렬화되며, 그 안의 예외는 JobError 로
+    # 감싸져 500 이 된다 — "없는 주제/타입" 은 잡 실행 전에 읽기로 미리 검사해
+    # 404 로 매핑한다(단일 사용자·직렬화라 TOCTOU 무해).
+    def _resolve_type_kind(self, theme_id: str, name: str) -> str | None:
+        for kind in ("node", "edge"):
+            if self.themes.resolve_type(theme_id, kind, name) is not None:
+                return kind
+        return None
+
+    def write_type_ratify(self, body):
+        theme_id, name = _req(body, "theme_id"), _req(body, "name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        if self._resolve_type_kind(theme_id, name) is None:
+            return 404, {"error": f"type not found: {name}"}
+        res = self.jobs.run_sync("type_ratify", lambda: self.themes.ratify(theme_id, name))
+        return 200, {"type": res}
+
+    def write_type_reject(self, body):
+        theme_id, name = _req(body, "theme_id"), _req(body, "name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        ok = self.jobs.run_sync("type_reject", lambda: self.themes.reject(theme_id, name))
+        return 200, {"removed": bool(ok), "name": name}
+
+    def write_type_rename(self, body):
+        theme_id = _req(body, "theme_id")
+        from_name, to_name = _req(body, "from_name"), _req(body, "to_name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        if self._resolve_type_kind(theme_id, from_name) is None:
+            return 404, {"error": f"type not found: {from_name}"}
+        res = self.jobs.run_sync("type_rename", lambda: self.themes.rename(
+            theme_id, from_name, to_name))
+        return 200, {"type": res}
 
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
@@ -356,6 +441,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/suggest-ties": app.read_suggest,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
+            "/themes": app.read_themes, "/types": app.read_types,
         }
         if path in table:
             return table[path](p)
@@ -370,6 +456,10 @@ class _Handler(BaseHTTPRequestHandler):
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/activate": app.write_activate, "/backup": app.submit_backup,
+            "/ingest": app.write_ingest,
+            "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
+            "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
+            "/types/rename": app.write_type_rename,
         }
         if path in table:
             return table[path](body)
