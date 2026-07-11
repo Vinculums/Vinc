@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release notes · Vinc</title>
+<meta name="description" content="Vinc release notes and version history.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<style>
+:root{
+  --background:39 30% 91%; --foreground:34 21% 6%;
+  --card:38 33% 95%; --muted:39 26% 87%; --muted-foreground:40 13% 37%;
+  --border:40 21% 84%; --ring:217 23% 32%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%; --accent:39 22% 85%;
+  --radius:.75rem; --radius-sm:.5rem; --radius-lg:1.5rem;
+  --shadow-2:0 4px 12px hsl(38 12% 10%/.10); --shadow-3:0 8px 24px hsl(38 12% 10%/.14);
+  --shadow-float:0 30px 60px -16px hsl(38 12% 10%/.18);
+}
+[data-theme="dark"]{
+  --background:34 19% 7%; --foreground:37 24% 89%;
+  --card:40 16% 11%; --muted:43 23% 12%; --muted-foreground:38 12% 59%;
+  --border:34 14% 20%; --ring:218 31% 66%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%; --accent:40 16% 15%;
+  --shadow-2:0 4px 12px hsl(0 0% 0%/.35); --shadow-3:0 8px 24px hsl(0 0% 0%/.45);
+  --shadow-float:0 30px 60px -16px hsl(0 0% 0%/.55);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;
+  color:hsl(var(--foreground));background:hsl(var(--background));min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+::selection{background:hsl(var(--ring)/.28)}
+.wrap{max-width:48rem;margin:0 auto;padding:0 1.5rem}
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(55% 45% at 50% -8%, hsl(var(--ring)/.09), transparent 62%),hsl(var(--background))}
+header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid hsl(var(--border)/.7)}
+.nav{display:flex;align-items:center;gap:1rem;padding:.8rem 0;max-width:60rem;margin:0 auto;padding-left:1.5rem;padding-right:1.5rem}
+.brand{display:flex;align-items:center;gap:.55rem;text-decoration:none}
+.brand svg{width:26px;height:26px}
+.brand b{font-weight:680;font-size:1.0625rem}
+.brand .sep{color:hsl(var(--muted-foreground));font-weight:400}
+.brand .crumb{color:hsl(var(--muted-foreground));font-weight:500;font-size:.9375rem}
+.nav .end{margin-left:auto;display:flex;gap:.55rem;align-items:center}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;text-decoration:none;font-weight:570;font-size:.9375rem;line-height:1;padding:.68rem 1.25rem;border-radius:var(--radius-sm);border:1px solid hsl(var(--border));transition:transform .15s ease,box-shadow .15s ease,background .15s}
+.btn svg{width:16px;height:16px}
+.btn.primary{background:linear-gradient(hsl(var(--primary)/.92),hsl(var(--primary)));color:hsl(var(--primary-foreground));border-color:transparent;box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14),var(--shadow-2)}
+.btn.primary:hover{transform:translateY(-1px)}
+.btn.quiet{background:hsl(var(--card)/.55)}
+.btn.quiet:hover{background:hsl(var(--card))}
+.btn.small{padding:.5rem .95rem;font-size:.84rem}
+
+.hero{padding:3.5rem 0 1rem;text-align:center}
+.hero .logo{width:52px;height:52px;margin:0 auto 1rem;display:block;color:hsl(var(--foreground))}
+.hero h1{font-size:clamp(1.8rem,1.4rem+2vw,2.6rem);font-weight:700;letter-spacing:-.02em}
+.hero .sub{color:hsl(var(--muted-foreground));margin:.8rem auto 0;max-width:30rem}
+
+.empty{margin:2rem 0 1rem;border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.6);padding:2.4rem 1.6rem;text-align:center}
+.empty .tag{display:inline-block;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--ring));border:1px solid hsl(var(--ring)/.4);border-radius:999px;padding:.22rem .7rem;margin-bottom:1rem}
+.empty h2{font-size:1.25rem;font-weight:660}
+.empty p{color:hsl(var(--muted-foreground));margin:.6rem auto 0;max-width:32rem}
+.empty .cta{margin-top:1.5rem;display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
+
+.road{margin:2.5rem 0 1rem}
+.road h2{font-size:1.1rem;font-weight:660;text-align:center;margin-bottom:1.4rem}
+.road ol{list-style:none;max-width:34rem;margin:0 auto;position:relative;padding-left:1.6rem}
+.road ol::before{content:"";position:absolute;left:5px;top:.4rem;bottom:.4rem;width:2px;background:hsl(var(--border))}
+.road li{position:relative;padding:0 0 1.3rem .2rem}
+.road li::before{content:"";position:absolute;left:-1.6rem;top:.28rem;width:12px;height:12px;border-radius:50%;background:hsl(var(--background));border:2px solid hsl(var(--border))}
+.road li.done::before{background:hsl(var(--ring));border-color:hsl(var(--ring))}
+.road li.now::before{border-color:hsl(var(--ring));box-shadow:0 0 0 3px hsl(var(--ring)/.2)}
+.road li h3{font-size:.95rem;font-weight:620;display:flex;align-items:center;gap:.5rem}
+.road li .st{font-size:.68rem;font-weight:600;border-radius:999px;padding:.08rem .5rem;border:1px solid hsl(var(--border));color:hsl(var(--muted-foreground))}
+.road li.done .st{color:hsl(var(--ring));border-color:hsl(var(--ring)/.4)}
+.road li.now .st{color:hsl(var(--ring));border-color:hsl(var(--ring)/.5);background:hsl(var(--ring)/.1)}
+.road li p{color:hsl(var(--muted-foreground));font-size:.86rem;margin-top:.25rem}
+
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
+
+footer{border-top:1px solid hsl(var(--border));padding:1.8rem 0 2.6rem;margin-top:2.5rem;color:hsl(var(--muted-foreground));font-size:.8125rem}
+footer .row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center;max-width:60rem;margin:0 auto;padding:0 1.5rem}
+footer a{text-decoration:none}
+footer a:hover{color:hsl(var(--foreground))}
+footer .bm{display:flex;align-items:center;gap:.45rem;margin-right:auto}
+footer .bm svg{width:16px;height:16px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vlogo" viewBox="0 0 100 100">
+    <g fill="currentColor"><circle cx="50" cy="13" r="3.8"/><circle cx="50" cy="28" r="6.4"/><circle cx="50" cy="50" r="13"/></g>
+    <path d="M26 53 50 77 74 53" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
+</svg>
+
+<div class="bg" aria-hidden="true"></div>
+
+<header class="site">
+  <div class="nav">
+    <a class="brand" href="../" aria-label="Vinc home">
+      <svg aria-hidden="true"><use href="#vlogo"/></svg><b>Vinc</b>
+      <span class="sep">/</span><span class="crumb" data-i="crumb">Release notes</span>
+    </a>
+    <div class="end">
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
+    <h1 data-i="h1">Release notes</h1>
+    <p class="sub" data-i="sub">Version history and what changes in each Vinc release.</p>
+  </section>
+
+  <section class="empty">
+    <span class="tag" data-i="tag">No releases yet</span>
+    <h2 data-i="emptyT">The first stable build is on the way.</h2>
+    <p data-i="emptyB">Vinc hasn't published a versioned release yet. Once the first build ships, every version's changes will be listed here. Until then, follow along on the download page.</p>
+    <div class="cta">
+      <a class="btn primary" href="../download/"><svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="ctaDl">Go to downloads</span></a>
+      <a class="btn quiet" href="https://github.com/weg-9000/vinc" data-i="ctaSrc">Watch on GitHub</a>
+    </div>
+  </section>
+
+  <section class="road">
+    <h2 data-i="roadT">On the way to v0.1</h2>
+    <ol>
+      <li class="done"><h3><span data-i="r1">Offline core &amp; graph store</span> <span class="st" data-i="stDone">Done</span></h3><p data-i="r1b">Ingest, graph, semantic search and packs running fully offline.</p></li>
+      <li class="done"><h3><span data-i="r2">Desktop shell &amp; MCP connector</span> <span class="st" data-i="stDone">Done</span></h3><p data-i="r2b">Tauri shell over the local sidecar; connect to Claude via MCP.</p></li>
+      <li class="now"><h3><span data-i="r3">Signed installers for 3 platforms</span> <span class="st" data-i="stNow">In progress</span></h3><p data-i="r3b">macOS · Windows · Linux builds — this is when downloads go live.</p></li>
+      <li><h3><span data-i="r4">Auto-update</span> <span class="st" data-i="stPlan">Planned</span></h3><p data-i="r4b">In-app updates once code signing is in place.</p></li>
+    </ol>
+  </section>
+</main>
+
+<footer>
+  <div class="row">
+    <span class="bm"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="../" data-i="fHome">Home</a>
+    <a href="../download/" data-i="fDl">Download</a>
+    <a href="https://github.com/weg-9000/vinc" data-i="fSource">Source</a>
+  </div>
+</footer>
+
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en"><span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span><span class="nm">English</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+    <button class="langopt" data-lang="ko"><span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span><span class="nm">한국어</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+  </div>
+</div>
+
+<script>
+const DECK = {
+  en: {},
+  ko: {
+    _title: "릴리스 노트 · Vinc",
+    _desc: "Vinc 릴리스 노트와 버전 기록.",
+    crumb: "릴리스 노트",
+    h1: "릴리스 노트",
+    sub: "버전별 변경 사항과 각 릴리스에서 달라지는 점을 기록합니다.",
+    tag: "아직 릴리스 없음",
+    emptyT: "첫 정식 빌드를 준비하고 있습니다.",
+    emptyB: "아직 버전이 매겨진 릴리스가 게시되지 않았습니다. 첫 빌드가 나오면 버전별 변경 사항이 여기에 기록됩니다. 그때까지는 다운로드 페이지에서 소식을 확인하세요.",
+    ctaDl: "다운로드 페이지", ctaSrc: "GitHub에서 지켜보기",
+    roadT: "v0.1까지의 여정",
+    r1: "오프라인 코어 · 그래프 스토어", r1b: "적재·그래프·의미 검색·팩이 완전한 오프라인으로 동작합니다.",
+    r2: "데스크톱 셸 · MCP 커넥터", r2b: "로컬 사이드카 위의 Tauri 셸, MCP로 Claude 연결.",
+    r3: "3개 플랫폼 서명 설치본", r3b: "macOS · Windows · Linux 빌드 — 이 시점에 다운로드가 열립니다.",
+    r4: "자동 업데이트", r4b: "코드 서명이 갖춰지면 앱 내 업데이트 제공.",
+    stDone: "완료", stNow: "진행 중", stPlan: "예정",
+    fHome: "홈", fDl: "다운로드", fSource: "소스",
+    langTitle: "언어",
+  },
+};
+const EN = {};
+document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+EN._title = document.title;
+EN._desc = document.querySelector('meta[name="description"]').content;
+DECK.en = EN;
+
+function setLang(l){
+  const d = DECK[l] || EN;
+  document.querySelectorAll("[data-i]").forEach(el => { if (d[el.dataset.i]) el.innerHTML = d[el.dataset.i]; });
+  document.title = d._title || EN._title;
+  document.querySelector('meta[name="description"]').content = d._desc || EN._desc;
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-lang]").forEach(b => b.classList.toggle("active", b.dataset.lang === l));
+  try { localStorage.setItem("vinc.site.lang", l); } catch {}
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("active", b.dataset.th === t));
+  try { localStorage.setItem("vinc.site.theme", t); } catch {}
+}
+document.querySelectorAll("[data-th]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.th)));
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", e => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") langModal.hidden = true; });
+document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
+
+let lang = null, theme = null;
+try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
+setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
+setTheme(theme || "dark");
+</script>
+</body>
+</html>
