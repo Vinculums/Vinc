@@ -218,22 +218,12 @@ class VincApp:
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
 
     def write_ingest(self, body):
-        # MCP vinc_ingest 인라인 어댑터([[vinc.mcp.skeleton]] §7) — 작은 대화형
-        # fragment 라 잡 큐 비동기(202+폴링) 대신 동기 run_sync 로 즉시 결과 반환.
-        # theme_id 필수(D11-R2 §3) — 없으면 authoritative 400 reject.
-        theme_id = body.get("theme_id")
-        if not theme_id:
-            return 400, {"error": "missing field: theme_id"}
-        from engines.fragment_ingest import ingest_fragment
-
-        def _job():
-            # 사용자가 명명한 주제 컨테이너를 보장(멱등 — 구 enum 초안 시드). 없는
-            # 주제로 적재 시 크래시 대신 컨테이너 생성. 어휘 확정은 여전히 재가로만.
-            if not self.themes.has_theme(theme_id):
-                self.themes.create_theme(theme_id)
-            return ingest_fragment(self.store, body, theme_id=theme_id, themes=self.themes)
-
-        res = self.jobs.run_sync("ingest_fragment", _job)
+        # 적재 단일화(발주자 결정 2026-07-11) — `/ingest` 도 레거시 fragment 경로
+        # (Record/props, D11 §5, api/fragment.merge_fragment)로 수렴한다. 테마 적재
+        # (D11-R2 Entity/TYPED·engines.fragment_ingest)는 **휴면**: 스키마·어휘
+        # (ThemeStore·/themes·/types)는 남되 적재 경로는 이 하나다. theme_id 는 무시.
+        res = self.jobs.run_sync("ingest:fragment",
+                                 lambda: frag.merge_fragment(body, store=self.store))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
