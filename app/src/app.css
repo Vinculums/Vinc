@@ -4,6 +4,11 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
+/* 네이티브 컨트롤(슬라이더·체크박스)도 포인트 토큰으로 — 브라우저 기본
+   선명 파랑(#2196F3류)은 시스템 밖 색(디자인 토큰 §point 금지선). */
+input[type="range"], input[type="checkbox"], input[type="radio"], progress {
+  accent-color: hsl(var(--primary));
+}
 
 /* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
       불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */

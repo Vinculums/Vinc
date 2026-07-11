@@ -95,8 +95,8 @@
   --muted-foreground: 38 12% 59%; /* #A39A8A  ← {d_mutedfg} */
   --border: 34 14% 20%; /* #39332B  ← {d_border} */
   --input: 34 14% 20%; /* #39332B  ← {d_border} */
-  --ring: 218 18% 60%; /* #8593AB  ← {d_point} */
-  --primary: 218 18% 60%; /* #8593AB  ← {d_point} */
+  --ring: 218 31% 66%; /* #8FA3C4  ← {d_point} */
+  --primary: 218 31% 66%; /* #8FA3C4  ← {d_point} */
   --primary-foreground: 34 19% 7%; /* #16130F  ← {d_bg} */
   --primary-soft: 40 16% 15%; /* #2C2820  ← {d_fog} */
   --accent: 40 16% 15%; /* #2C2820  ← {d_fog} */
