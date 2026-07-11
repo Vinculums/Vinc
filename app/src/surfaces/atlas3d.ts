@@ -11,6 +11,7 @@
  *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
 
 const PAPER = 0xefeae1;
@@ -51,14 +52,25 @@ export type N3 = {
 };
 export type L3 = { source: string; target: string; type?: string; cross?: boolean; weight?: number };
 
+// D40 — 글래스 노드(발주자 지시): 프로스티드 유리. 완전 투명은 실루엣
+// (형태=타입)을 무너뜨리므로 프로스트 불투명도를 기본으로 두고, 클리어코트
+// 하이라이트 + 환경맵 반사가 "유리 느낌"을 만든다. 색은 모노크롬 유지.
+const NODE_OP = 0.72;   // 일반 노드 프로스트
+const GATE_OP = 0.35;   // 게이트웨이 — 더 투명("여기 소속 아님")
+
 function material(color: number, opacity = 1): THREE.Material {
-  // D33 — 무광 Lambert(밋밋한 점토 질감)를 플랫 셰이딩 Standard 로 교체:
-  // 면 단위 음영으로 각(육각·팔면체의 판형 인상)이 서고, 잉크 도장 같은
-  // 단단한 표면이 된다. 색은 그대로 모노크롬(닫힌 층).
-  return new THREE.MeshStandardMaterial({
-    color, roughness: 0.55, metalness: 0.12, flatShading: true,
-    transparent: opacity < 1, opacity,
+  return new THREE.MeshPhysicalMaterial({
+    color, transparent: true, opacity,
+    roughness: 0.18, metalness: 0,
+    clearcoat: 1, clearcoatRoughness: 0.15,
+    envMapIntensity: 0.9,
   });
+}
+
+/** 환경맵(유리 반사원) — 렌더러당 1회 생성해 씬에 심는다. */
+function applyEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
 
 /** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
@@ -75,7 +87,7 @@ function nodeRadius(n: N3, prefs: AtlasPrefs): number {
 }
 
 function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): THREE.Object3D {
-  const opacity = n.gateway ? 0.45 : 1;
+  const opacity = n.gateway ? GATE_OP : NODE_OP;
   const color = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
   const r = nodeRadius(n, prefs);
   let geo: THREE.BufferGeometry;
@@ -94,7 +106,7 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): TH
   if (n.kind === "domain") {
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24),   // 원형 링(토성형)
-      material(pal.inkMute, 0.9));
+      material(pal.inkMute, 0.85));
     // 3D: 적도면(xz)에 두르고, 2D: 카메라를 향해(xy) — 판독 유지
     if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
     mesh.add(ring);
@@ -154,6 +166,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
+  const r3 = (g as any).renderer?.();
+  if (r3) applyEnvironment(r3, scene);   // 유리 반사원(D40)
   scene.fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);   // 원경이 배경으로 "서서히" 잦아듦
   g.lights([
     new THREE.AmbientLight(0xffffff, darkTheme ? 0.9 : 1.1),
@@ -224,7 +238,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
       const fade = keep ? !keep.has(m.id) : false;
-      const base = m.gateway ? 0.45 : 1;
+      const base = m.gateway ? GATE_OP : NODE_OP;
       obj.traverse((c: THREE.Object3D) => {
         const mat = (c as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
         if (mat) { mat.transparent = true; fadeTargets.set(mat, fade ? 0.12 : base); }
@@ -257,11 +271,14 @@ export function mountMinis3d(
     { position: "absolute", inset: "0", pointerEvents: "none" });
   container.style.position = "relative";
   container.appendChild(renderer.domElement);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // D40
 
   type Cell = { scene: THREE.Scene; camera: THREE.PerspectiveCamera;
                 el: HTMLElement; meshes: Map<string, THREE.Mesh> };
   const built: Cell[] = cells.map((c) => {
     const scene = new THREE.Scene();
+    scene.environment = envTex;   // 유리 반사원(D40)
     scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     scene.add(new THREE.HemisphereLight(0xfff8ec, 0x9a917d, 0.9));
     const dl = new THREE.DirectionalLight(0xfff8ec, 1.5);
