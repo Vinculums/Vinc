@@ -123,7 +123,7 @@ document.addEventListener("keydown", (e) => {
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────
 const THEME_KEY = "vinc.theme";   // "auto" | "light" | "dark"
 export function applyTheme() {
-  const pref = localStorage.getItem(THEME_KEY) || "auto";
+  const pref = localStorage.getItem(THEME_KEY) || "dark";   // D38 — 기본 = 다크
   const dark = pref === "dark" || (pref === "auto" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";

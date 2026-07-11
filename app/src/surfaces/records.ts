@@ -8,7 +8,7 @@ import { stateDot } from "../icons";
  *  ○ plain — state is never color), meta line "domain · date · pin". */
 export async function renderRecords(el: HTMLElement) {
   el.innerHTML = `
-    ${header("recall", "Records", "Browse and query records · /recall")}
+    ${header("recall", "Records", "Everything mined, in one place.")}
     <input id="records-filter" type="search" placeholder="Filter records…"
            style="width:100%;font:inherit;padding:var(--space-3,.75rem);margin-bottom:var(--space-4,1rem);
                   border:1px solid hsl(var(--input));border-radius:var(--radius);

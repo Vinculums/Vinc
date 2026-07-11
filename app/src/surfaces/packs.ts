@@ -9,11 +9,8 @@ import { openImportSheet } from "../sheets";
  *  (/ingest/pack — idempotent, stamped with YOUR owner). */
 export function renderPacks(el: HTMLElement) {
   el.innerHTML = `
-    ${header("pack-export", "Packs", "Bundle, hand off, bring in · /activate · /share",
+    ${header("pack-export", "Packs", "Bundle, hand off, bring in.",
              headerCta("create", "pack-export", COPY.packs.idleCta))}
-    <p style="margin-top:0">
-      <span class="chip active">.md</span> <span class="chip">.json</span> <span class="chip">mcp.json</span>
-    </p>
     <div style="display:grid;grid-template-columns:1fr 20rem;gap:var(--space-5,1.25rem)">
       <div>
         <div class="empty" id="packs-empty">
@@ -25,9 +22,9 @@ export function renderPacks(el: HTMLElement) {
             <input id="import-file" type="file" accept="application/json" hidden />
           </p>
           <p class="hint">
-            <label>Scope — domain <input id="share-domain" placeholder="all" style="width:8rem" /></label>
-            <label> seed <input id="share-seed" placeholder="(none)" style="width:12rem" /></label>
-            <label> depth <input id="share-depth" type="number" min="1" max="4" value="2" style="width:3rem" /></label>
+            <label>Share — domain <input id="share-domain" placeholder="all" style="width:8rem" /></label>
+            <label> start from <input id="share-seed" placeholder="(anywhere)" style="width:12rem" /></label>
+            <label> reach <input id="share-depth" type="number" min="1" max="4" value="2" style="width:3rem" /></label>
           </p>
         </div>
       </div>

@@ -9,7 +9,7 @@ import samplePack from "../sample-pack.json";
  *  frame (4:29)'s stepper survives as the inline preparing indicator. */
 export function renderIntake(el: HTMLElement) {
   el.innerHTML = `
-    ${header("ingest", "Intake", "Sources become records · /ingest/{engine}",
+    ${header("ingest", "Intake", "Drop sources — they become records.",
              headerCta("choose", "upload", "Choose sources"))}
     <div class="empty" id="drop">
       ${icon("ingest", 30)}
@@ -25,8 +25,8 @@ export function renderIntake(el: HTMLElement) {
   drop.addEventListener("dragover", (e) => e.preventDefault());
   drop.addEventListener("drop", (e) => {
     e.preventDefault();
-    status.innerHTML = `<p class="hint">Local ingest runs through the sidecar job queue —
-      wire this drop to <code>POST /ingest/{engine}</code> when the Tauri file scope lands (P4).</p>`;
+    status.innerHTML = `<p class="hint">Dropping folders arrives with the desktop app —
+      for now, start with the sample below.</p>`;
   });
   // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
   // 그 스코프로 전환해 Atlas 를 바로 체험. (스코프 삭제 op 는 P4 — Settings 의
@@ -37,15 +37,15 @@ export function renderIntake(el: HTMLElement) {
       const res = await api.importPack(samplePack, "sample:demo");
       if (res.executed === false) throw new Error(res.error);
       cfg.owner = "sample:demo";
-      status.innerHTML = `<p>Sample in — 6 concepts across 2 domains. Owner scope switched to
-        <code>sample:demo</code> (switch back in Settings).</p>
+      status.innerHTML = `<p>Sample loaded — 6 concepts across 2 domains. You're browsing
+        the sample space now (switch back anytime in Settings).</p>
         <a class="btn btn-primary" href="#atlas">Open in Atlas</a>`;
     } catch {
       status.innerHTML = `<div class="error-banner">${COPY.intake.error("the sample pack")}</div>`;
     }
   });
   el.querySelector("#choose")!.addEventListener("click", () => {
-    status.innerHTML = `<p class="hint">File dialogs arrive with the Tauri shell (P4).
-      Until then, ingest from the CLI: <code>python -m api.cli ingest</code>.</p>`;
+    status.innerHTML = `<p class="hint">Choosing folders arrives with the desktop app —
+      for now, try the sample pack below.</p>`;
   });
 }

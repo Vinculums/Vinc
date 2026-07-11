@@ -241,7 +241,7 @@ export async function renderAtlas(el: HTMLElement) {
           } catch {
             b.textContent = "Bind";
             box.insertAdjacentHTML("beforeend",
-              `<div class="error-banner">Couldn't bind — sidecar unreachable.</div>`);
+              `<div class="error-banner">Couldn't bind — try again in a moment.</div>`);
           }
         }));
     } catch {
