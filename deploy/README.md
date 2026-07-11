@@ -10,7 +10,7 @@
    (22/80/443 만 개방 · SSH 키 전용 · fail2ban · 자동 패치 · vinc 계정)
 2. **DNS·TLS**: 레지스트라에서 A 레코드 2건(루트, `mcp.`) →
    `sudo apt install caddy` → 이 폴더의 Caddyfile 을 `/etc/caddy/Caddyfile` 로
-   복사, `VINC_DOMAIN=example.com` 을 `/etc/caddy/caddy.env` 등으로 주입 →
+   복사, `VINC_DOMAIN=vincs.app` 을 `/etc/caddy/caddy.env` 등으로 주입(확정 도메인, 2026-07-11) →
    `systemctl reload caddy`. 인증서는 자동(Let's Encrypt).
 3. **사이드카**: P4 릴리스의 리눅스 `vinc-sidecar` 바이너리를 `/opt/vinc/` 에
    배치 → `/etc/vinc/sidecar.env` 에 `VINC_SIDECAR_TOKEN=<random>` (권한 600) →
