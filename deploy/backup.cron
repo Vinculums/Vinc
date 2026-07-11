@@ -1,0 +1,12 @@
+# Vinc 야간 백업(R9 — P5 계획 §2-6). /etc/cron.d/vinc-backup 으로 복사.
+# backup 명령이 일관 스냅샷 + packs/profile 동봉 아카이브를 만든다.
+# 이탈 백업(오브젝트 스토리지 업로드)은 rclone 원격 구성 후 주석 해제.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# 매일 03:30 — 로컬 스냅샷(7일 보관)
+30 3 * * * vinc /opt/vinc/vinc-sidecar backup --out /home/vinc/.vinc/backups/$(date +\%Y\%m\%d) >> /home/vinc/.vinc/backups/backup.log 2>&1
+# 매일 03:50 — 7일 지난 스냅샷 정리
+50 3 * * * vinc find /home/vinc/.vinc/backups -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
+# 매일 04:00 — 이탈 백업(구성 후 주석 해제)
+# 0 4 * * * vinc rclone sync /home/vinc/.vinc/backups remote:vinc-backups --max-age 48h

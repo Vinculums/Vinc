@@ -9,10 +9,10 @@
 
 (:Bridge)-[:CROSSES {role}]->(:Domain)
 (:Bridge)-[:CONNECTS {role}]->(:Concept)   # frontmatter 의 임의 ``{domain}_inputs`` 가 개념 stem 과 정합
-선행: concepts_to_neo4j.py (CONNECTS 해석에 :Concept.stem 필요)
+선행: concepts_ingest.py (CONNECTS 해석에 :Concept.stem 필요)
 
 사용:
-    python bridges_to_neo4j.py [--dry-run]
+    python bridges_ingest.py [--dry-run]
 """
 from __future__ import annotations
 

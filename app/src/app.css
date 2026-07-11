@@ -1,0 +1,243 @@
+/* Vinc shell chrome — consumes design tokens only (no literal colors/sizes).
+   Ink & Paper: monochrome + single point color; state = notation + text weight. */
+@import "./tokens.css";
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
+/* 네이티브 컨트롤(슬라이더·체크박스)도 포인트 토큰으로 — 브라우저 기본
+   선명 파랑(#2196F3류)은 시스템 밖 색(디자인 토큰 §point 금지선). */
+input[type="range"], input[type="checkbox"], input[type="radio"], progress {
+  accent-color: hsl(var(--ring));   /* 라이트=포인트 동일, 다크=라이튼(가시성) */
+}
+
+/* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
+      불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */
+:root {
+  --glass-bg: hsl(var(--card) / .58);
+  --glass-blur: blur(14px) saturate(1.15);
+  --glass-edge: inset 0 1px 0 hsl(0 0% 100% / .35);
+}
+/* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
+html, body { height: 100%; margin: 0; }
+body {
+  /* D37 보강 — 환경 대기(ambient): 유리가 흡수할 배경. 비의미 워시 3개 —
+     밝은 종이빛(좌상)·포인트색 속삭임(우, 상한 .08)·모래빛(하단). 전부
+     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변). */
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--card)) 0%, transparent 60%),
+    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
+    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--muted)) 0%, transparent 60%),
+    hsl(var(--background));
+  background-attachment: fixed;
+  color: hsl(var(--foreground));
+  font-family: var(--font-ui, system-ui), system-ui, sans-serif;
+  font-size: var(--fs-1, 1rem);
+  line-height: var(--lh, 1.5);
+}
+
+/* ── Shell: icon rail (D26 — 56px, labels on hover/`[` expand; HIG: never
+      hidden by default). Active = surface lift + weight (Figma 5:2 grammar). */
+#shell { display: grid; grid-template-columns: 3.5rem 1fr; height: 100vh; }
+#shell.rail-expanded, #shell:has(#rail:hover) { grid-template-columns: 12.5rem 1fr; }
+
+#rail {
+  display: flex; flex-direction: column; gap: var(--space-1, .25rem);
+  padding: var(--space-3, .75rem) var(--space-2, .5rem);
+  border-right: 1px solid hsl(var(--border));
+  overflow: hidden; white-space: nowrap; transition: none;
+}
+#brand {
+  font-family: var(--font-heading, inherit);
+  font-size: 1.35rem; line-height: var(--lh-tight, 1.1);
+  font-weight: 700; margin: 0 0 var(--space-4, 1rem) var(--space-2, .5rem);
+}
+#brand .rail-label { display: none; }
+#shell.rail-expanded #brand .rail-label,
+#shell:has(#rail:hover) #brand .rail-label { display: inline; }
+
+#rail a, #rail #settings-btn {
+  display: flex; align-items: center; gap: var(--space-3, .75rem);
+  color: hsl(var(--muted-foreground)); text-decoration: none;
+  padding: var(--space-2, .5rem);
+  border-radius: var(--radius); border: none; background: none;
+  font: inherit; cursor: pointer; text-align: left;
+}
+#rail .rail-label { display: none; }
+#shell.rail-expanded #rail .rail-label,
+#shell:has(#rail:hover) #rail .rail-label { display: inline; }
+#rail a.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+#rail a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+#rail #settings-btn { margin-top: auto; }
+
+.icon { display: inline-flex; width: var(--icon-size, 20px); height: var(--icon-size, 20px); flex: none; }
+.icon svg { width: 100%; height: 100%; }
+
+/* Surface header (Figma: icon + display title + endpoint meta + point CTA) */
+.surface-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: var(--space-5, 1.25rem);
+}
+.surface-title { display: flex; gap: var(--space-3, .75rem); align-items: flex-start; }
+.surface-title h1 { margin: 0; }
+.surface-meta { margin: .15rem 0 0; }
+.header-cta { display: inline-flex; align-items: center; gap: .4rem; }
+
+/* Command palette / cheatsheet overlay */
+#palette, #cheatsheet {
+  position: fixed; inset: 0; z-index: 50;
+  background: hsl(var(--foreground) / .18);
+  display: grid; place-items: start center; padding-top: 14vh;
+}
+.palette-card {
+  width: 34rem; max-width: 90vw;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
+  padding: var(--space-3, .75rem);
+}
+.palette-card input {
+  width: 100%; font: inherit; padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  margin-bottom: var(--space-2, .5rem);
+}
+.palette-row {
+  display: flex; justify-content: space-between; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) var(--space-3, .75rem);
+  border-radius: var(--radius); cursor: pointer;
+}
+.palette-row.sel, .palette-row:hover { background: hsl(var(--background)); font-weight: 700; }
+
+/* Domain badge (Figma 6:57 detail rail: "domain: research" chip) */
+.badge {
+  display: inline-block; border: 1px solid hsl(var(--border));
+  border-radius: 999px; padding: 0 var(--space-2, .5rem);
+  font-size: var(--fs-0, .8rem); color: hsl(var(--muted-foreground));
+  background: hsl(var(--background));
+}
+
+#surface { padding: var(--space-6, 1.5rem); overflow: auto; position: relative; }
+
+h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.15); margin-top: 0; }
+.hint { color: hsl(var(--muted-foreground)); }
+
+.btn {
+  display: inline-block; font: inherit; cursor: pointer;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  padding: var(--space-2, .5rem) var(--space-4, 1rem);
+}
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+
+.empty {
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-8, 2rem); text-align: center;
+}
+.error-banner {
+  border: 1px solid hsl(var(--danger)); border-radius: var(--radius);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem);
+  font-weight: 700;  /* bold ink, not color */
+}
+.error-banner::before { content: "△ "; }
+
+.list-row {
+  display: flex; align-items: baseline; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.list-row .title { flex: 1; }
+.list-row .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-0, .875rem); }
+.list-row .actions { visibility: hidden; display: flex; gap: var(--space-2, .5rem); }
+.list-row:hover .actions { visibility: visible; }
+.list-row .actions button { background: none; border: none; cursor: pointer; font: inherit; color: hsl(var(--primary)); padding: 0; }
+
+.chip {
+  display: inline-block; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  padding: 0 var(--space-3, .75rem); cursor: pointer; background: none; font: inherit;
+  color: hsl(var(--muted-foreground));
+}
+.chip.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+
+/* Atlas */
+#atlas-canvas { position: absolute; inset: 0; }
+#atlas-crumb {
+  position: absolute; top: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
+  display: flex; gap: var(--space-2, .5rem); align-items: center;
+}
+#atlas-crumb button { background: none; border: none; font: inherit; cursor: pointer; color: hsl(var(--primary)); padding: 0; }
+#atlas-detail {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 20rem; z-index: 2;
+  background: hsl(var(--card)); border-left: 1px solid hsl(var(--border));
+  padding: var(--space-4, 1rem); overflow: auto;
+}
+#atlas-legend {
+  position: absolute; bottom: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
+  display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap;
+}
+#atlas-view-panel {   /* 시각 속성은 여기(D37 글래스가 말미에서 덮음) — 레이아웃만 인라인 */
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); padding: var(--space-4, 1rem);
+}
+
+/* Settings popover */
+#settings-popover {
+  position: fixed; left: 4rem; bottom: var(--space-4, 1rem); z-index: 10;
+  width: 24rem; background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-elev-2, none);
+  padding: var(--space-4, 1rem);
+}
+#settings-popover label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+#settings-popover input {
+  width: 100%; font: inherit; padding: var(--space-2, .5rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+
+/* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.
+      기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
+@supports (backdrop-filter: blur(1px)) {
+  @media not (prefers-reduced-transparency: reduce) {
+    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
+    }
+    .palette-card, #atlas-view-panel, #settings-popover {
+      border: 1px solid hsl(var(--border) / .6);
+    }
+  }
+}
+
+/* ── D41 — macOS 컨트롤 문법: 세그먼티드 컨트롤(패널 선택지) + 버튼 폴리시.
+      홈 파인 트랙 위에 활성 세그먼트가 "떠오른 썸"으로 — 색이 아닌 높이가 상태. */
+.seg {
+  display: inline-flex; gap: 2px; padding: 2px; vertical-align: middle;
+  flex-wrap: wrap; max-width: 100%;   /* 5지선다(Layout)는 두 줄로 접힘 */
+  background: hsl(var(--muted) / .85);
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: .6rem;
+}
+.seg .chip {
+  border: none; border-radius: .45rem; background: none;
+  padding: .14rem .7rem; color: hsl(var(--muted-foreground));
+}
+.seg .chip.active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground)); font-weight: 600;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .22), inset 0 1px 0 hsl(0 0% 100% / .3);
+}
+[data-theme="dark"] .seg .chip.active {
+  background: hsl(var(--foreground) / .16);   /* 다크 mac: 밝은 회색 썸 */
+  box-shadow: 0 1px 2px hsl(0 0% 0% / .5), inset 0 1px 0 hsl(0 0% 100% / .12);
+}
+
+.btn {
+  border-radius: .55rem;
+  background: linear-gradient(hsl(var(--card)), hsl(var(--muted)));
+  box-shadow: 0 1px 1.5px hsl(var(--foreground) / .16), inset 0 1px 0 hsl(0 0% 100% / .3);
+}
+.btn:active { transform: translateY(.5px); filter: brightness(.97); }
+.btn-primary {
+  background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
+}

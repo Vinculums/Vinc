@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# 에디터
+.DS_Store
+*.log

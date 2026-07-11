@@ -137,10 +137,10 @@ class FullPipelineE2E(unittest.TestCase):
         store.close()
 
         # ── 5개 엔진 full main() 순차 실행 ──────────────────────────────────
-        self._run_engine("recall_to_neo4j", [])
-        self._run_engine("concepts_to_neo4j", ["--hub-root", str(self.hub)])
-        self._run_engine("bridges_to_neo4j", ["--hub-root", str(self.hub)])
-        self._run_engine("learner_to_neo4j", ["--source", str(self.hub / "user-model.md"),
+        self._run_engine("recall_ingest", [])
+        self._run_engine("concepts_ingest", ["--hub-root", str(self.hub)])
+        self._run_engine("bridges_ingest", ["--hub-root", str(self.hub)])
+        self._run_engine("learner_ingest", ["--source", str(self.hub / "user-model.md"),
                                               "--owner", _OWNER])
         self._run_engine("skill_tracker", ["--action", "log", "--skill", "planning",
                                            "--workspace", "planning", "--mode", "PM_PLANNING",

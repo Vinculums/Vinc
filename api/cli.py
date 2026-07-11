@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import query as q
@@ -95,6 +96,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--topic", default="")
 
     # ── 사이드카(M4 · P2) — HTTP 레이어·백업·온보딩 ──────────────────────────
+    sh = sub.add_parser("share", help="build a share pack — hand your data to someone else (D19)")
+    sh.add_argument("--owner", required=True, help="origin owner scope (whose data to pack)")
+    sh.add_argument("--domain", default=None, help="scope: one dataset partition")
+    sh.add_argument("--tags", default=None, help="scope: comma-separated tag filter (any-overlap)")
+    sh.add_argument("--seed", default=None, help="scope: pack only the seed's neighborhood (Atlas L2)")
+    sh.add_argument("--depth", type=int, default=2, help="seed neighborhood depth 1–4 (default 2)")
+    sh.add_argument("--no-records", action="store_true", help="concepts/edges only (skip Episode records)")
+    sh.add_argument("--out", required=True, help="pack file to write (JSON)")
+
+    im = sub.add_parser("import", help="import a share pack under YOUR owner scope (idempotent MERGE)")
+    im.add_argument("--pack", required=True, help="pack file (JSON) to import")
+    im.add_argument("--owner", required=True, help="recipient owner scope to stamp")
+
     sv = sub.add_parser("serve", help="run the loopback sidecar HTTP server (P2)")
     sv.add_argument("--host", default="127.0.0.1", help="bind host (loopback only, §3-1)")
     sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
@@ -102,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="watch this PID; clean-shutdown when it exits (shell heartbeat, E6)")
     sv.add_argument("--token", default=None, help="session token (default: generate)")
     sv.add_argument("--profile", default=None, help="domain profile.yml path (backup 동봉)")
+    sv.add_argument("--data", default=None,
+                    help="data home (default: MEMORY_DATA_DIR, else ~/.vinc — D43)")
     sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
 
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
@@ -114,6 +130,31 @@ def main(argv: list[str] | None = None) -> int:
     ob.add_argument("--passphrase", default=None,
                     help="passphrase (omit to read from stdin/getpass — non-echoing)")
     ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
+
+    # ── MCP 어댑터(D11 · P5 선행) — stdio/HTTP 전송 + 클라이언트 등록 ────────
+    mc = sub.add_parser("mcp", help="connect Claude to this store (MCP)")
+    msub = mc.add_subparsers(dest="mcpcmd", required=True)
+    for name, hint in (("serve", "stdio transport — for Claude Code/Desktop"),
+                       ("serve-http", "Streamable HTTP transport — remote profile (D36)")):
+        mp = msub.add_parser(name, help=hint)
+        mp.add_argument("--base", default=None, help="sidecar base URL (default 127.0.0.1:8787)")
+        mp.add_argument("--token", default=None, help="sidecar session token")
+        mp.add_argument("--owner", default=None, help="default owner scope (default user:local)")
+        mp.add_argument("--no-spawn", action="store_true",
+                        help="fail instead of starting a sidecar when none is running")
+        if name == "serve-http":
+            mp.add_argument("--host", default="127.0.0.1", help="bind host (loopback only — F4)")
+            mp.add_argument("--port", type=int, default=8790)
+            mp.add_argument("--auth-token", default=None,
+                            help="static bearer token (default: env VINC_MCP_TOKEN)")
+            mp.add_argument("--oauth", action="store_true",
+                            help="enable the OAuth gate (admin key from env VINC_OAUTH_ADMIN_KEY)")
+            mp.add_argument("--issuer", default=None,
+                            help="public issuer URL for OAuth metadata (e.g. https://mcp.example.com)")
+    mi = msub.add_parser("install", help="register this server with a local Claude client")
+    mi.add_argument("--client", choices=["code", "desktop"], required=True)
+    mi.add_argument("--desktop-config", default=None,
+                    help="override claude_desktop_config.json path (tests/portable installs)")
 
     args = ap.parse_args(argv)
 
@@ -153,10 +194,34 @@ def main(argv: list[str] | None = None) -> int:
         else:
             plan = q.decide_plan(args.topic)
         return _emit(plan.to_dict())
+    if args.cmd == "share":
+        from . import share
+        pack = share.build_share_pack(owner=args.owner, domain=args.domain,
+                                      tags=_csv(args.tags), seed=args.seed, depth=args.depth,
+                                      include_records=not args.no_records)
+        if pack.get("executed"):
+            from pathlib import Path
+            Path(args.out).write_text(
+                json.dumps({k: v for k, v in pack.items() if k != "executed"},
+                           ensure_ascii=False, indent=2), encoding="utf-8")
+            return _emit({"out": args.out, "manifest": pack["manifest"]})
+        return _emit(pack)
+    if args.cmd == "import":
+        from . import share
+        with open(args.pack, encoding="utf-8") as f:
+            pack = json.load(f)
+        return _emit(share.import_share_pack(pack, owner=args.owner))
     if args.cmd == "serve":
         from . import server
-        server.serve(host=args.host, port=args.port, parent_pid=args.parent_pid,
-                     token=args.token, packs_dir=args.packs, profile_path=args.profile)
+        from store.config import load_config, resolve_data_dir
+        # D43 — 설치형 기본 데이터 홈: --data > MEMORY_DATA_DIR > ~/.vinc
+        data_dir = resolve_data_dir(args.data)
+        packs = args.packs
+        if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
+            packs = os.path.join(os.path.dirname(data_dir), "packs")
+        server.serve(load_config({"data_dir": data_dir}),
+                     host=args.host, port=args.port, parent_pid=args.parent_pid,
+                     token=args.token, packs_dir=packs, profile_path=args.profile)
         return 0
     if args.cmd == "backup":
         # 단발 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지). 워커 잡
@@ -172,6 +237,28 @@ def main(argv: list[str] | None = None) -> int:
                                      profile_path=args.profile))
         finally:
             store.close()
+    if args.cmd == "mcp":
+        if args.mcpcmd == "install":
+            from vinc_mcp.install import install
+            return _emit(install(args.client, desktop_path=args.desktop_config))
+        from vinc_mcp.bridge import Bridge
+        bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
+        bridge.ensure(spawn=not args.no_spawn)
+        if args.mcpcmd == "serve":
+            from vinc_mcp.stdio import serve as serve_stdio
+            return serve_stdio(bridge)
+        if args.mcpcmd == "serve-http":
+            from vinc_mcp.http_server import serve_http
+            from vinc_mcp.oauth import OAuthGate
+            static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
+            gate = None
+            if args.oauth:
+                issuer = args.issuer or f"http://{args.host}:{args.port}"
+                # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
+                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"))
+            return serve_http(bridge, host=args.host, port=args.port,
+                              static_token=static, oauth=gate)
+        return 2
     if args.cmd == "onboard":
         from . import auth
         passphrase = args.passphrase

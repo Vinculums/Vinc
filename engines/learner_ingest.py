@@ -10,7 +10,7 @@
 파서(parse_learner_model)는 순수·stdlib — DB 없이 테스트된다.
 
 사용:
-    python learner_to_neo4j.py --source CONTEXT/identity/user-model.md --owner user:doheon [--dry-run]
+    python learner_ingest.py --source CONTEXT/identity/user-model.md --owner user:doheon [--dry-run]
 """
 from __future__ import annotations
 

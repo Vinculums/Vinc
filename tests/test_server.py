@@ -217,5 +217,85 @@ class FakeStoreDataTests(unittest.TestCase):
             self.assertTrue(any("SET e.pinned" in c for c, _ in store.writes))
 
 
+class IngestRouteTests(unittest.TestCase):
+    """POST /ingest — 적재 단일화(2026-07-11): 레거시 fragment 경로(Record/props,
+    api/fragment.merge_fragment)로 수렴. 테마 적재(Entity/TYPED)는 휴면. MERGE
+    create/match 판별·상세 계약은 tests/test_atlas.py 가 커버(여기선 HTTP 왕복)."""
+
+    class _Store:
+        """레거시 merge_fragment 는 store.run(cypher, params)->list 를 쓴다(count 는
+        빈 리스트=신규). test_atlas 의 더블과 동형 — HTTP 왕복만 검증한다."""
+        driver_name = "fake"
+        def run(self, cypher, params=None):
+            return []
+        def close(self): pass
+
+    def test_no_theme_id_required(self):
+        # 단일화 핵심: theme_id 없이도 적재된다(구 D11-R2 400 reject 폐지).
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
+                "edges": []})
+            self.assertEqual(code, 200)
+            self.assertTrue(obj["executed"])
+            self.assertEqual(obj["merged"]["nodes"], {"created": 1, "matched": 0})
+
+    def test_no_store_degrades_executed_false(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]})
+            self.assertEqual(code, 200)
+            self.assertFalse(obj["executed"])
+            self.assertEqual(obj["warnings"], ["no reachable store"])
+
+    def test_ingest_and_ingest_fragment_are_the_same_path(self):
+        # /ingest 와 /ingest/fragment 가 동일 레거시 경로임을 HTTP 로 확인.
+        app = _app(store=self._Store())
+        with running_server(app) as base:
+            a = _req(base, "/ingest", method="POST", body={
+                "nodes": [{"id": "concept:x", "type": "concept"}]})[1]
+            b = _req(base, "/ingest/fragment", method="POST", body={
+                "nodes": [{"id": "concept:x", "type": "concept"}]})[1]
+            self.assertEqual(a["merged"], b["merged"])
+
+
+class ThemeTypeRouteTests(unittest.TestCase):
+    """주제·타입 어휘 CRUD 라우트 — data_dir 없는 인메모리 ThemeStore(오프라인)."""
+
+    def test_theme_create_list_activate(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/themes", method="POST",
+                             body={"theme_id": "fashion", "title": "F", "guiding_questions": ["q?"]})
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["theme"]["theme_id"], "fashion")
+            # 시드된 어휘(구 enum → proposed)
+            code, obj = _req(base, "/types?theme_id=fashion&status=proposed")
+            self.assertEqual(code, 200)
+            names = {t["name"] for t in obj["types"]}
+            self.assertIn("concept", names)
+            code, obj = _req(base, "/themes")
+            self.assertEqual(obj["active_theme_id"], "fashion")
+
+    def test_ratify_moves_proposed_to_authored(self):
+        with running_server(_app()) as base:
+            _req(base, "/themes", method="POST", body={"theme_id": "t"})
+            code, obj = _req(base, "/types/ratify", method="POST",
+                             body={"theme_id": "t", "name": "concept"})
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["type"]["status"], "authored")
+
+    def test_ratify_unknown_theme_404(self):
+        with running_server(_app()) as base:
+            code, _ = _req(base, "/types/ratify", method="POST",
+                           body={"theme_id": "ghost", "name": "concept"})
+            self.assertEqual(code, 404)
+
+    def test_types_requires_theme_id(self):
+        with running_server(_app()) as base:
+            code, _ = _req(base, "/types")
+            self.assertEqual(code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

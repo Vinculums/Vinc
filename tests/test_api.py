@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -100,7 +101,8 @@ class ShapeGraphTests(unittest.TestCase):
         intra = [e for e in g["edges"] if e["target"] == "math-02"][0]
         self.assertFalse(intra["cross_domain"])
 
-    def test_graph_entrypoint_without_db(self):
+    @mock.patch("api.query.open_store", return_value=None)
+    def test_graph_entrypoint_without_db(self, _open):
         g = q.graph(owner="user:doheon")
         self.assertFalse(g["executed"])
         self.assertEqual(g["nodes"], [])
@@ -191,7 +193,8 @@ class ShapeGraphTests(unittest.TestCase):
 
 
 class ExecuteTests(unittest.TestCase):
-    def test_execute_without_db_returns_plan(self):
+    @mock.patch("api.query.open_store", return_value=None)
+    def test_execute_without_db_returns_plan(self, _open):
         # no NEO4J_PASSWORD / no driver -> executed False, plan present
         res = q.recall("x")
         self.assertFalse(res["executed"])

@@ -18,7 +18,7 @@ from __future__ import annotations
 # 노드 테이블 열 명세 (label → {pk, cols:[(col,type)]}).
 # type: STRING · INT64 · DOUBLE · BOOL · STRING[] · FLOAT[{dim}]. 날짜는 STRING.
 _NODE_TABLES: dict[str, dict] = {
-    # recall_to_neo4j.merge_episode + preference(pin/tag/touch) — §5-2 전체
+    # recall_ingest.merge_episode + preference(pin/tag/touch) — §5-2 전체
     "Episode": {"pk": "episode_id", "cols": [
         ("episode_id", "STRING"), ("title", "STRING"), ("date", "STRING"),
         ("owner_id", "STRING"), ("tenant_id", "STRING"), ("domain", "STRING"),
@@ -27,25 +27,31 @@ _NODE_TABLES: dict[str, dict] = {
         # 소스·소비처 부재한 감사 오류로 판정, completed_items 로 개명·재타입(§5-2).
         ("completed_items", "STRING[]"), ("patterns", "STRING[]"), ("source_file", "STRING"),
         ("pinned", "BOOL"), ("tags", "STRING[]"),
-        ("access_count", "INT64"), ("last_access", "STRING")]},
-    # concepts_to_neo4j
+        ("access_count", "INT64"), ("last_access", "STRING"), ("props", "STRING")]},
+    # concepts_ingest (+ props: MCP fragment 자유 속성 — JSON 직렬화 문자열, D11 §5)
     "Concept": {"pk": "concept_id", "cols": [
         ("concept_id", "STRING"), ("stem", "STRING"), ("owner_id", "STRING"),
         ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
         ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
-        ("tags", "STRING[]"), ("source_file", "STRING")]},
-    # bridges_to_neo4j
+        ("tags", "STRING[]"), ("source_file", "STRING"), ("props", "STRING")]},
+    # bridges_ingest
     "Bridge": {"pk": "bridge_id", "cols": [
         ("bridge_id", "STRING"), ("title", "STRING"), ("status", "STRING"),
         ("created", "STRING"), ("source_domain", "STRING"),
-        ("target_domain", "STRING"), ("source_file", "STRING")]},
+        ("target_domain", "STRING"), ("source_file", "STRING"), ("props", "STRING")]},
     "Domain": {"pk": "name", "cols": [("name", "STRING")]},
+    # MCP fragment 의 record 노드(D11 §5 — 적재 단위 일반 레코드). 엔진 소비처 없음,
+    # 쓰기 경로는 api/fragment.merge_fragment 단일 지점.
+    "Record": {"pk": "record_id", "cols": [
+        ("record_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
+        ("tenant_id", "STRING"), ("domain", "STRING"), ("tags", "STRING[]"),
+        ("created", "STRING"), ("props", "STRING")]},
     # skill_tracker
     "SkillExecution": {"pk": "exec_id", "cols": [
         ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
         ("mode", "STRING"), ("outcome", "STRING"), ("duration_min", "DOUBLE"),
         ("date", "STRING"), ("timestamp", "STRING")]},
-    # learner_to_neo4j
+    # learner_ingest
     "LearnerPattern": {"pk": "pattern_id", "cols": [
         ("pattern_id", "STRING"), ("owner_id", "STRING"), ("code", "STRING"),
         ("name", "STRING"), ("description", "STRING"), ("domain", "STRING"),
@@ -58,6 +64,14 @@ _NODE_TABLES: dict[str, dict] = {
         ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
         ("embedding", "FLOAT[{dim}]")]},
+    # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2 · engines/
+    # fragment_ingest). 레거시 4타입(concept/domain/bridge/episode)은 전용 테이블
+    # 유지; 어휘 밖 신규 타입은 여기로 exact-id MERGE 된다. `type` 은 theme 어휘가
+    # SSoT(여기 저장은 값). `theme_id` 는 노드 소유 = 주제 귀속(THEME-DEEP §6)을
+    # 스키마에 각인. (구 D11 §5 의 Record/props 경로는 공존 — api/fragment.py.)
+    "Entity": {"pk": "entity_id", "cols": [
+        ("entity_id", "STRING"), ("type", "STRING"), ("title", "STRING"),
+        ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
 }
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -69,6 +83,15 @@ _REL_TABLES: list[tuple] = [
     ("RELATED_TO", "Concept", "Concept", []),
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
+    # MCP fragment 엣지(D11 §5) 지원 —
+    #   inherits_from(Concept→Concept)는 1급 관계 테이블.
+    #   Record 참여 엣지는 임베디드 rel 테이블이 FROM/TO 타입 고정이므로
+    #   ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment 엣지 타입 보존).
+    ("INHERITS_FROM", "Concept", "Concept", []),
+    ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
+    # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
+    # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
+    ("TYPED", "Entity", "Entity", [("type", "STRING")]),
 ]
 
 

@@ -35,6 +35,8 @@ from store.backend import open_store
 from . import query as q
 from . import preference as pref
 from . import activate as act
+from . import fragment as frag
+from . import share
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -51,7 +53,7 @@ def _ingest_recall(store, body: dict) -> dict:
     if store is None:
         return {"engine": "recall", "executed": False, "ingested": 0,
                 "note": "no reachable store"}
-    from engines.recall_to_neo4j import merge_episode
+    from engines.recall_ingest import merge_episode
     n = 0
     with store.session() as s:
         for ep in episodes:
@@ -70,7 +72,7 @@ class VincApp:
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
 
     def __init__(self, cfg=None, *, store=None, auth=None, jobs=None,
-                 packs_dir=None, profile_path=None, ingest=None):
+                 packs_dir=None, profile_path=None, ingest=None, themes=None):
         self.cfg = cfg or load_config()
         self.store = store                    # 공유 writer 백엔드(단일 Database) 또는 None
         self.auth = auth or SessionAuth()
@@ -78,6 +80,10 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
+        # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
+        # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
+        from store.theme_store import ThemeStore
+        self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
 
     @classmethod
@@ -124,12 +130,48 @@ class VincApp:
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
     def read_graph(self, p):
+        # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
+        # layout = D34 프리셋(shell·radial·circle·tree·organic — 미지 값 shell 강등).
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
-                                            domain=p.get("domain"), store=r))
+                                            domain=p.get("domain"), seed=p.get("seed"),
+                                            depth=_int(p.get("depth"), 2),
+                                            layout=p.get("layout") or "shell", store=r))
+
+    def read_atlas(self, p):
+        # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
+        return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
+
+    def read_promote(self, p):
+        # Phase E1 — pin 후보 조회(읽기 전용). 확정은 기존 /pin 경유.
+        return self._read(lambda r: q.promote_candidates(
+            owner=_req(p, "owner"), min_access=_int(p.get("min_access"), 3), store=r))
+
+    def read_suggest(self, p):
+        # 고아 최소화(D32) — 태그·도메인 근사 잇기 후보(조회 전용, D25 전 단계).
+        return self._read(lambda r: q.suggest_ties(
+            owner=_req(p, "owner"), node=_req(p, "node"),
+            limit=_int(p.get("limit"), 5), store=r))
+
+    def read_coupling(self, p):
+        # Compare 뷰(D22) — 두 도메인의 개념 대 개념 결합쌍.
+        return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
+                                               a=_req(p, "a"), b=_req(p, "b"), store=r))
+
+    def read_share(self, p):
+        # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
+        return self._read(lambda r: share.build_share_pack(
+            owner=_req(p, "owner"), domain=p.get("domain"), tags=_csv(p.get("tags")),
+            seed=p.get("seed"), ids=_csv(p.get("ids")), depth=_int(p.get("depth"), 2),
+            include_records=not p.get("no_records"), store=r))
 
     def read_search(self, p):
+        # Phase E3 — pre-filter 푸시다운은 Chunk 실존 열(layer·doc_id)만. domain/tag
+        # 는 Chunk 스키마에 열이 없어 구조적으로 불가 — P4 스키마 델타로 이관(계획 §E3).
+        filters = {k: v for k, v in
+                   (("layer", p.get("layer")), ("doc_id", p.get("doc"))) if v}
         return self._read(lambda r: q.search(_req(p, "query"),
-                                             top_k=_int(p.get("top_k"), 5), store=r))
+                                             top_k=_int(p.get("top_k"), 5),
+                                             filters=filters or None, store=r))
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),
@@ -175,8 +217,98 @@ class VincApp:
             limit=_int(body.get("limit"), 20), include_model=not bool(body.get("no_model")),
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
 
+    def write_ingest(self, body):
+        # 적재 단일화(발주자 결정 2026-07-11) — `/ingest` 도 레거시 fragment 경로
+        # (Record/props, D11 §5, api/fragment.merge_fragment)로 수렴한다. 테마 적재
+        # (D11-R2 Entity/TYPED·engines.fragment_ingest)는 **휴면**: 스키마·어휘
+        # (ThemeStore·/themes·/types)는 남되 적재 경로는 이 하나다. theme_id 는 무시.
+        res = self.jobs.run_sync("ingest:fragment",
+                                 lambda: frag.merge_fragment(body, store=self.store))
+        return 200, res
+
+    # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
+    def read_themes(self, p):
+        return 200, {"active_theme_id": self.themes.active_theme_id(),
+                     "themes": self.themes.list_themes()}
+
+    def read_types(self, p):
+        theme_id = _req(p, "theme_id")
+        kind = p.get("kind") or None
+        status = p.get("status") or None
+        return 200, {"theme_id": theme_id,
+                     "types": self.themes.list_types(theme_id, kind=kind, status=status)}
+
+    def write_theme_create(self, body):
+        theme_id = _req(body, "theme_id")
+        gq = body.get("guiding_questions") or []
+        res = self.jobs.run_sync("theme_create", lambda: self.themes.create_theme(
+            theme_id, body.get("title", ""), list(gq)))
+        return 200, {"theme": res}
+
+    def write_theme_activate(self, body):
+        theme_id = _req(body, "theme_id")
+        ok = self.jobs.run_sync("theme_activate", lambda: self.themes.activate_theme(theme_id))
+        if not ok:
+            return 404, {"error": f"no such theme: {theme_id}"}
+        return 200, {"active_theme_id": theme_id}
+
+    # 어휘 뮤테이션은 잡 큐(run_sync)로 직렬화되며, 그 안의 예외는 JobError 로
+    # 감싸져 500 이 된다 — "없는 주제/타입" 은 잡 실행 전에 읽기로 미리 검사해
+    # 404 로 매핑한다(단일 사용자·직렬화라 TOCTOU 무해).
+    def _resolve_type_kind(self, theme_id: str, name: str) -> str | None:
+        for kind in ("node", "edge"):
+            if self.themes.resolve_type(theme_id, kind, name) is not None:
+                return kind
+        return None
+
+    def write_type_ratify(self, body):
+        theme_id, name = _req(body, "theme_id"), _req(body, "name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        if self._resolve_type_kind(theme_id, name) is None:
+            return 404, {"error": f"type not found: {name}"}
+        res = self.jobs.run_sync("type_ratify", lambda: self.themes.ratify(theme_id, name))
+        return 200, {"type": res}
+
+    def write_type_reject(self, body):
+        theme_id, name = _req(body, "theme_id"), _req(body, "name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        ok = self.jobs.run_sync("type_reject", lambda: self.themes.reject(theme_id, name))
+        return 200, {"removed": bool(ok), "name": name}
+
+    def write_type_rename(self, body):
+        theme_id = _req(body, "theme_id")
+        from_name, to_name = _req(body, "from_name"), _req(body, "to_name")
+        if not self.themes.has_theme(theme_id):
+            return 404, {"error": f"unknown theme_id: {theme_id}"}
+        if self._resolve_type_kind(theme_id, from_name) is None:
+            return 404, {"error": f"type not found: {from_name}"}
+        res = self.jobs.run_sync("type_rename", lambda: self.themes.rename(
+            theme_id, from_name, to_name))
+        return 200, {"type": res}
+
     # ── 비동기 잡(ingest / backup) ────────────────────────────────────────
     def submit_ingest(self, engine, body):
+        if engine == "inbox":
+            # Phase E2 — Pull inbox: 디렉토리의 공유 팩 일괄 수입(긴 작업 → 202 잡).
+            path, owner = _req(body, "path"), _req(body, "owner")
+            job = self.jobs.submit("ingest:inbox",
+                                   lambda: share.scan_inbox(path, owner=owner, store=self.store))
+            return 202, job.to_dict()
+        if engine == "pack":
+            # share pack 들여오기(D19) — 수신자 owner 재스탬핑, 잡 큐 직렬화(R4).
+            owner = _req(body, "owner")
+            res = self.jobs.run_sync("ingest:pack",
+                                     lambda: share.import_share_pack(
+                                         body.get("pack") or {}, owner=owner, store=self.store))
+            return 200, res
+        if engine == "fragment":
+            # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
+            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200).
+            res = self.jobs.run_sync("ingest:fragment",
+                                     lambda: frag.merge_fragment(body, store=self.store))
+            return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
             return 400, {"error": f"unknown ingest engine: {engine}"}
@@ -294,8 +426,12 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
+            "/atlas": app.read_atlas, "/share": app.read_share,
+            "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
+            "/suggest-ties": app.read_suggest,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
+            "/themes": app.read_themes, "/types": app.read_types,
         }
         if path in table:
             return table[path](p)
@@ -310,6 +446,10 @@ class _Handler(BaseHTTPRequestHandler):
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/activate": app.write_activate, "/backup": app.submit_backup,
+            "/ingest": app.write_ingest,
+            "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
+            "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
+            "/types/rename": app.write_type_rename,
         }
         if path in table:
             return table[path](body)
