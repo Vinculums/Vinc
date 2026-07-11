@@ -4,6 +4,15 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
+
+/* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
+      불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */
+:root {
+  --glass-bg: hsl(var(--card) / .58);
+  --glass-blur: blur(14px) saturate(1.15);
+  --glass-edge: inset 0 1px 0 hsl(0 0% 100% / .35);
+}
+/* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
 html, body { height: 100%; margin: 0; }
 body {
   background: hsl(var(--background));
@@ -151,6 +160,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   position: absolute; bottom: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
   display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap;
 }
+#atlas-view-panel {   /* 시각 속성은 여기(D37 글래스가 말미에서 덮음) — 레이아웃만 인라인 */
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); padding: var(--space-4, 1rem);
+}
 
 /* Settings popover */
 #settings-popover {
@@ -164,4 +177,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
   background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+
+/* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.
+      기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
+@supports (backdrop-filter: blur(1px)) {
+  @media not (prefers-reduced-transparency: reduce) {
+    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
+    }
+    .palette-card, #atlas-view-panel, #settings-popover {
+      border: 1px solid hsl(var(--border) / .6);
+    }
+  }
 }

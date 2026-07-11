@@ -34,9 +34,8 @@ export async function renderAtlas(el: HTMLElement) {
     <div id="atlas-msg" style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"></div>
     <div id="atlas-tools" style="position:absolute;top:var(--space-4,1rem);right:var(--space-6,1.5rem);z-index:2;display:flex;gap:.5rem"></div>
     <div id="atlas-float" style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:3" hidden></div>
-    <div id="atlas-view-panel" hidden style="position:absolute;top:3.2rem;right:var(--space-6,1.5rem);z-index:4;
-         width:17rem;background:hsl(var(--card));border:1px solid hsl(var(--border));
-         border-radius:var(--radius);box-shadow:var(--shadow-elev-2,none);padding:var(--space-4,1rem)"></div>
+    <div id="atlas-view-panel" hidden
+         style="position:absolute;top:3.2rem;right:var(--space-6,1.5rem);z-index:4;width:17rem"></div>
   `;
   const canvas = el.querySelector<HTMLElement>("#atlas-canvas")!;
   const crumbEl = el.querySelector<HTMLElement>("#atlas-crumb")!;
