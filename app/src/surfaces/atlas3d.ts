@@ -20,6 +20,27 @@ const INK_MUTE = 0x6a6252;
 const POINT = 0x3e4c63;
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
+/** D39 — 다크 Atlas 반전 팔레트: 어두운 배경(캔버스 투명 → body 대기) 위에
+ *  밝은 잉크 마크. 모노크롬 규율은 유지 — 잉크 축만 뒤집힌다. 초점 포인트는
+ *  다크에서 라이튼 잉크블루(#8FA3C4 — 딥 블루는 어둠에 묻힘). */
+type Palette = {
+  ink: number; inkMute: number; point: number; fog: number;
+  link: { heavy: string; mid: string; base: string; cross: string; fade: string };
+  label: string;
+};
+function themePalette(): Palette {
+  const dark = document.documentElement.dataset.theme === "dark";
+  return dark ? {
+    ink: 0xeae5dd, inkMute: 0xa39a8a, point: 0x8fa3c4, fog: 0x16130f,
+    link: { heavy: "#e5dfd3", mid: "#b7ae9e", base: "#948b7a", cross: "#6b6355", fade: "#332e26" },
+    label: "color:#eae5dd;background:#211e18;border:1px solid #39332b",
+  } : {
+    ink: INK, inkMute: INK_MUTE, point: POINT, fog: PAPER,
+    link: { heavy: "#38332a", mid: "#6f6754", base: "#8d8574", cross: "#b3a992", fade: "#e2dccf" },
+    label: "color:#14110d;background:#f7f4ef;border:1px solid #ded8cc",
+  };
+}
+
 export type N3 = {
   id: string; label: string; domain?: string; degree?: number;
   kind?: string;              // concept | episode | record | bridge | domain
@@ -53,9 +74,9 @@ function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   return r;
 }
 
-function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
+function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): THREE.Object3D {
   const opacity = n.gateway ? 0.45 : 1;
-  const color = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
+  const color = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
   const r = nodeRadius(n, prefs);
   let geo: THREE.BufferGeometry;
   switch (n.kind) {
@@ -73,7 +94,7 @@ function nodeObject(n: N3, prefs: AtlasPrefs): THREE.Object3D {
   if (n.kind === "domain") {
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24),   // 원형 링(토성형)
-      material(INK_MUTE, 0.9));
+      material(pal.inkMute, 0.9));
     // 3D: 적도면(xz)에 두르고, 2D: 카메라를 향해(xy) — 판독 유지
     if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
     mesh.add(ring);
@@ -101,17 +122,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     n.fz = flat ? 0 : (n.z || 0) * S;
   }
   // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
-  // 다크 테마는 잉크 마크가 배경에 묻히므로 기존 종이 캔버스 유지(마크 반전은 P4).
+  // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
+  const pal = themePalette();
   const g = new ForceGraph3D(el, { rendererConfig: { alpha: true, antialias: true } } as any)
     .graphData({ nodes, links })
-    .backgroundColor(darkTheme ? "#efeae1" : "rgba(0,0,0,0)")
+    .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
-    .nodeThreeObject((n: any) => nodeObject(n, prefs))
+    .nodeThreeObject((n: any) => nodeObject(n, prefs, pal))
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
-      `<span style="color:#14110d;background:#f7f4ef;border:1px solid #ded8cc;
-       border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
+      `<span style="${pal.label};border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
     // D33 — 엣지 = 헤어라인: linkWidth 미지정(0) = 튜브 메시가 아닌 THREE.Line.
     // 뚱뚱한 반투명 튜브를 제거하고, 가중치는 굵기 대신 잉크 농도로 옮긴다.
     // 완만한 곡률로 겹친 선을 갈라 읽히게 한다(연결의 "부드러움").
@@ -133,13 +154,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
-  scene.fog = flat ? null : new THREE.Fog(PAPER, S * 2.6, S * 9);   // 원경이 종이로 "서서히" 잦아듦
+  scene.fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);   // 원경이 배경으로 "서서히" 잦아듦
   g.lights([
-    new THREE.AmbientLight(0xffffff, 1.1),
+    new THREE.AmbientLight(0xffffff, darkTheme ? 0.9 : 1.1),
     // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
-    // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33).
-    new THREE.HemisphereLight(0xfff8ec, 0x9a917d, 0.9),
-    (() => { const d = new THREE.DirectionalLight(0xfff8ec, 1.5); d.position.set(60, 120, 80); return d; })(),
+    // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33). 다크는 감광.
+    new THREE.HemisphereLight(0xfff8ec, 0x9a917d, darkTheme ? 0.7 : 0.9),
+    (() => { const d = new THREE.DirectionalLight(0xfff8ec, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
   if (controls) {
@@ -178,11 +199,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const linkColorFn = (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
-    if (hoverId && s !== hoverId && t !== hoverId) return "#e2dccf";   // paper 후퇴
+    if (hoverId && s !== hoverId && t !== hoverId) return pal.link.fade;   // 배경으로 후퇴
     // D33 — 농도 = 가중치(굵기 개정): 가중 엣지(L0 ties)는 세기에 따라 진하게,
-    // 무가중 크로스도메인은 저농도(구 "세선"의 등가), 기본은 중간 잉크.
-    if (l.weight) return l.weight >= 6 ? "#38332a" : l.weight >= 2 ? "#6f6754" : "#8d8574";
-    return l.cross ? "#b3a992" : "#8d8574";
+    // 무가중 크로스도메인은 저농도(구 "세선"의 등가), 기본은 중간 잉크. 다크는 반전(D39).
+    if (l.weight) return l.weight >= 6 ? pal.link.heavy : l.weight >= 2 ? pal.link.mid : pal.link.base;
+    return l.cross ? pal.link.cross : pal.link.base;
   };
   g.linkColor(linkColorFn);
   const fadeTargets = new Map<THREE.MeshLambertMaterial, number>();
@@ -227,6 +248,7 @@ export function mountMinis3d(
   prefs: AtlasPrefs = loadPrefs(),
 ): { highlight: (id: string | null) => void; dispose: () => void } {
   const flat = prefs.view === "2d";
+  const pal = themePalette();
   const S = 60;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -257,11 +279,11 @@ export function mountMinis3d(
                                   flat ? 0 : (n.z || 0) * S);
       pos.set(n.id, p);
       rad = Math.max(rad, p.length());
-      const m = nodeObject(n, prefs) as THREE.Mesh;
+      const m = nodeObject(n, prefs, pal) as THREE.Mesh;
       m.scale.setScalar(0.5);            // 미니 마크는 절반 크기
       m.position.copy(p);
       (m as any).userData.nid = n.id;
-      (m as any).userData.base = n.focus ? POINT : n.gateway ? INK_MUTE : INK;
+      (m as any).userData.base = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
       meshes.set(n.id, m);
       scene.add(m);
     }
@@ -276,7 +298,7 @@ export function mountMinis3d(
       const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
       const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(16));
       scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial(
-        { color: l.cross ? 0xb3a992 : 0x8d8574, transparent: true, opacity: 0.75 })));
+        { color: l.cross ? pal.link.cross : pal.link.base, transparent: true, opacity: 0.75 })));
     }
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
     if (flat) camera.position.set(0, 0, rad * 3.0);
@@ -312,8 +334,8 @@ export function mountMinis3d(
         m.traverse((c2: THREE.Object3D) => {
           const mat = (c2 as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
           if (!mat) return;
-          if (id && nid === id) mat.color.setHex(POINT);
-          else mat.color.setHex((m as any).userData.base ?? INK);
+          if (id && nid === id) mat.color.setHex(pal.point);
+          else mat.color.setHex((m as any).userData.base ?? pal.ink);
         });
       });
     renderAll();
