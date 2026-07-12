@@ -99,6 +99,20 @@ header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.7
 .empty p{color:hsl(var(--muted-foreground));margin:.6rem auto 0;max-width:32rem}
 .empty .cta{margin-top:1.5rem;display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
 
+.rel{margin:2rem 0 1rem}
+.relcard{border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.6);padding:1.8rem 1.6rem;box-shadow:var(--shadow-2)}
+.relhead{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem}
+.relver{font-weight:680;font-size:1.05rem;color:hsl(var(--foreground));border:1px solid hsl(var(--ring)/.45);border-radius:999px;padding:.15rem .75rem}
+.reldate{color:hsl(var(--muted-foreground));font-size:.85rem}
+.relbadge{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--ring));border:1px solid hsl(var(--ring)/.4);border-radius:999px;padding:.14rem .55rem}
+.relcard h2{font-size:1.25rem;font-weight:660}
+.relcard>p{color:hsl(var(--muted-foreground));margin-top:.5rem}
+.rellist{list-style:none;margin:1.1rem 0 0;padding:0}
+.rellist li{position:relative;padding:.3rem 0 .3rem 1.3rem;font-size:.9rem}
+.rellist li::before{content:"";position:absolute;left:.15rem;top:.78rem;width:6px;height:6px;border-radius:50%;background:hsl(var(--ring))}
+.relnote{margin-top:1.1rem;font-size:.82rem;color:hsl(var(--muted-foreground));border-top:1px solid hsl(var(--border));padding-top:.9rem}
+.relcard .cta{margin-top:1.3rem;display:flex;gap:.7rem;flex-wrap:wrap}
+
 .road{margin:2.5rem 0 1rem}
 .road h2{font-size:1.1rem;font-weight:660;text-align:center;margin-bottom:1.4rem}
 .road ol{list-style:none;max-width:34rem;margin:0 auto;position:relative;padding-left:1.6rem}
@@ -206,23 +220,37 @@ footer .bm svg{width:16px;height:16px}
     <p class="sub" data-i="sub">Version history and what changes in each Vinc release.</p>
   </section>
 
-  <section class="empty">
-    <span class="tag" data-i="tag">No releases yet</span>
-    <h2 data-i="emptyT">The first stable build is on the way.</h2>
-    <p data-i="emptyB">Vinc hasn't published a versioned release yet. Once the first build ships, every version's changes will be listed here. Until then, follow along on the download page.</p>
-    <div class="cta">
-      <a class="btn primary" href="../download/"><svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="ctaDl">Go to downloads</span></a>
-      <a class="btn quiet" href="https://github.com/Vinclums/Vincs-app" data-i="ctaSrc">Watch on GitHub</a>
-    </div>
+  <section class="rel">
+    <article class="relcard">
+      <div class="relhead">
+        <span class="relver">v0.1.0</span>
+        <span class="reldate" data-i="d1date">July 13, 2026</span>
+        <span class="relbadge" data-i="d1tag">Pre-release</span>
+      </div>
+      <h2 data-i="d1t">First public build</h2>
+      <p data-i="d1lead">Vinc's first downloadable build — the full offline core in a desktop shell, for macOS, Windows and Linux.</p>
+      <ul class="rellist">
+        <li data-i="d1a">Offline core: ingest a corpus, map it as a graph, search it by meaning, and export packs — entirely on your machine.</li>
+        <li data-i="d1b">Desktop shell (Tauri) over the local sidecar. No account, no cloud, no telemetry.</li>
+        <li data-i="d1c">Connect to Claude through the built-in MCP connector.</li>
+        <li data-i="d1d">Installers: macOS .dmg (Apple Silicon), Windows .exe, Linux .AppImage / .deb.</li>
+      </ul>
+      <p class="relnote" data-i="d1note">Heads-up: this build isn't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn on first launch — that's expected for a first release, and signed builds follow. Intel Macs: build from source for now.</p>
+      <div class="cta">
+        <a class="btn primary" href="../download/"><svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="d1dl">Download v0.1.0</span></a>
+        <a class="btn quiet" href="https://github.com/Vinclums/Vincs-app/releases" data-i="d1watch">All releases on GitHub</a>
+      </div>
+    </article>
   </section>
 
   <section class="road">
-    <h2 data-i="roadT">On the way to v0.1</h2>
+    <h2 data-i="roadT">Roadmap</h2>
     <ol>
       <li class="done"><h3><span data-i="r1">Offline core &amp; graph store</span> <span class="st" data-i="stDone">Done</span></h3><p data-i="r1b">Ingest, graph, semantic search and packs running fully offline.</p></li>
       <li class="done"><h3><span data-i="r2">Desktop shell &amp; MCP connector</span> <span class="st" data-i="stDone">Done</span></h3><p data-i="r2b">Tauri shell over the local sidecar; connect to Claude via MCP.</p></li>
-      <li class="now"><h3><span data-i="r3">Signed installers for 3 platforms</span> <span class="st" data-i="stNow">In progress</span></h3><p data-i="r3b">macOS · Windows · Linux builds. This is when downloads go live.</p></li>
-      <li><h3><span data-i="r4">Auto-update</span> <span class="st" data-i="stPlan">Planned</span></h3><p data-i="r4b">In-app updates once code signing is in place.</p></li>
+      <li class="done"><h3><span data-i="r3">Installers for 3 platforms</span> <span class="st" data-i="stDone">Done</span></h3><p data-i="r3b">macOS · Windows · Linux builds. Downloads are live.</p></li>
+      <li class="now"><h3><span data-i="r4">Code signing &amp; notarization</span> <span class="st" data-i="stNow">In progress</span></h3><p data-i="r4b">Removes the first-launch security warnings on Windows and macOS.</p></li>
+      <li><h3><span data-i="r5">Auto-update</span> <span class="st" data-i="stPlan">Planned</span></h3><p data-i="r5b">In-app updates once code signing is in place.</p></li>
     </ol>
   </section>
 </main>
@@ -253,15 +281,21 @@ const DECK = {
     crumb: "릴리스 노트",
     h1: "릴리스 노트",
     sub: "버전별 변경 사항과 각 릴리스에서 달라지는 점을 기록합니다.",
-    tag: "아직 릴리스 없음",
-    emptyT: "첫 정식 빌드를 준비하고 있습니다.",
-    emptyB: "아직 버전이 매겨진 릴리스가 게시되지 않았습니다. 첫 빌드가 나오면 버전별 변경 사항이 여기에 기록됩니다. 그때까지는 다운로드 페이지에서 소식을 확인하세요.",
-    ctaDl: "다운로드 페이지", ctaSrc: "GitHub에서 지켜보기",
-    roadT: "v0.1까지의 여정",
+    d1date: "2026년 7월 13일", d1tag: "프리릴리스",
+    d1t: "첫 공개 빌드",
+    d1lead: "내려받을 수 있는 Vinc의 첫 빌드 — 완전한 오프라인 코어를 데스크톱 셸에 담아 macOS·Windows·Linux로 제공합니다.",
+    d1a: "오프라인 코어: 자료를 적재하고, 그래프로 잇고, 의미로 검색하고, 팩으로 내보내기 — 전부 내 기기에서.",
+    d1b: "로컬 사이드카 위의 데스크톱 셸(Tauri). 계정도, 클라우드도, 원격 수집도 없습니다.",
+    d1c: "내장 MCP 커넥터로 Claude에 연결.",
+    d1d: "설치본: macOS .dmg(Apple Silicon) · Windows .exe · Linux .AppImage / .deb.",
+    d1note: "참고: 이 빌드는 아직 코드 서명이 없어 Windows SmartScreen·macOS Gatekeeper가 첫 실행 시 경고합니다 — 첫 릴리스에선 정상이며 서명 빌드가 곧 제공됩니다. 인텔 맥은 당분간 소스에서 빌드하세요.",
+    d1dl: "v0.1.0 다운로드", d1watch: "GitHub의 모든 릴리스",
+    roadT: "로드맵",
     r1: "오프라인 코어 · 그래프 스토어", r1b: "적재·그래프·의미 검색·팩이 완전한 오프라인으로 동작합니다.",
     r2: "데스크톱 셸 · MCP 커넥터", r2b: "로컬 사이드카 위의 Tauri 셸, MCP로 Claude 연결.",
-    r3: "3개 플랫폼 서명 설치본", r3b: "macOS · Windows · Linux 빌드. 이 시점에 다운로드가 열립니다.",
-    r4: "자동 업데이트", r4b: "코드 서명이 갖춰지면 앱 내 업데이트 제공.",
+    r3: "3개 플랫폼 설치본", r3b: "macOS · Windows · Linux 빌드. 다운로드가 열렸습니다.",
+    r4: "코드 서명 · 공증", r4b: "Windows·macOS 첫 실행 보안 경고를 없앱니다.",
+    r5: "자동 업데이트", r5b: "코드 서명이 갖춰지면 앱 내 업데이트 제공.",
     stDone: "완료", stNow: "진행 중", stPlan: "예정",
     fHome: "홈", fDl: "다운로드", fSource: "소스",
     langTitle: "언어",

@@ -69,7 +69,7 @@ ssh-keygen -t ed25519 -f /root/.ssh/vinc_deploy -N "" -C "vinc-deploy@vincs"
 cat /root/.ssh/vinc_deploy.pub          # 이 한 줄을 아래 (2)에 등록
 ```
 
-**(2) GitHub 등록:** `github.com/weg-9000/vinc` → Settings → Deploy keys →
+**(2) GitHub 등록:** `github.com/Vinclums/Vinc` → Settings → Deploy keys →
 Add deploy key → 위 공개키 붙여넣기. **"Allow write access" 는 체크하지 않는다**
 (배포는 읽기만 필요). 저장.
 
@@ -81,10 +81,10 @@ Host github.com
     IdentitiesOnly yes
 EOF
 chmod 600 /root/.ssh/config
-ssh -o StrictHostKeyChecking=accept-new -T git@github.com   # "Hi weg-9000/vinc ..." 나오면 OK
+ssh -o StrictHostKeyChecking=accept-new -T git@github.com   # "Hi Vinclums/Vinc ..." 나오면 OK
 
 # (4) SSH 로 클론
-git clone git@github.com:weg-9000/vinc.git /root/vinc
+git clone git@github.com:Vinclums/Vinc.git /root/vinc
 cd /root/vinc
 git checkout claude/weg-vinc-gap-analysis-r1vpwl   # 배포 트랙 브랜치(머지 후엔 main)
 

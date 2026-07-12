@@ -13,8 +13,8 @@
 |---|---|
 | 설계 SSoT | `weg-9000-docs/CONTEXT/reference-docs/weg/C/weg.c.memory-standalone.md` (v0.3) |
 | 흡수 절차 | `weg-9000-docs/WORK-ORDERS/WO-MEM-SA-001.md` (§3 반입 금지 = 하드 룰) |
-| 용어·금지 어휘 | `weg-9000/Vinc-docs vinc/A/vinc.a.terms.md` |
-| 실행 계획 | `weg-9000/Vinc-docs PLAN.md` |
+| 용어·금지 어휘 | `Vinclums/Vinc-docs vinc/A/vinc.a.terms.md` |
+| 실행 계획 | `Vinclums/Vinc-docs PLAN.md` |
 
 ## 아키텍처 (전략 B — 임베디드 그래프 스토어)
 
