@@ -1,7 +1,11 @@
 # Vinc 릴리스 파이프라인(D43 — P4). 태그 v* 푸시 시 3 OS에서
 # ① PyInstaller로 사이드카 단일 바이너리를 만들고
 # ② Tauri externalBin 규약 위치(binaries/vinc-sidecar-<target-triple>)에 배치한 뒤
-# ③ tauri-action으로 설치본을 빌드해 드래프트 릴리스에 올린다.
+# ③ tauri-action으로 설치본을 "빌드만" 하고(릴리스 생성 안 함) 아티팩트로 업로드.
+# ④ 단일 publish 잡이 모든 설치본을 모아 공개 릴리스 레포(Vinclums/Vincs-app)의
+#    Releases 에 draft 로 발행한다(멀티-OS 동시 발행 경합 회피).
+# 소스 레포(Vinclums/Vinc)는 비공개 → 바이너리만 공개 레포로 내보낸다.
+# 발행에는 Vincs-app 에 contents:write 권한을 가진 PAT 시크릿 RELEASE_TOKEN 을 쓴다.
 # 서명(코드사인·공증)은 후속 마일스톤 — 시크릿이 갖춰지면 tauri-action env로 주입.
 name: release
 
@@ -11,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -69,12 +73,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
+      - name: Build Tauri bundles
+        uses: tauri-apps/tauri-action@v0
         with:
           projectPath: app
-          tagName: ${{ github.ref_name }}
-          releaseName: "Vinc ${{ github.ref_name }}"
-          releaseDraft: true
-          prerelease: false
+
+      # 표준 설치본만 골라 수집(존재하는 것만; .app 디렉터리·서명파일 등은 제외).
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          find app/src-tauri/target/release/bundle -type f \
+            \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.msi' \
+               -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+            -exec cp {} artifacts/ \;
+          echo "── collected ──"; ls -la artifacts
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.triple }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dl
+          pattern: installers-*
+          merge-multiple: true
+      - name: List collected assets
+        run: |
+          echo "── to publish ──"; ls -la dl
+      # 공개 릴리스 레포(Vincs-app)에 draft 로 발행. 사람이 확인 후 Publish.
+      - name: Publish draft release to Vincs-app
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Vinclums/Vincs-app
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "Vinc ${{ github.ref_name }}"
+          draft: true
+          fail_on_unmatched_files: true
+          files: dl/*
