@@ -44,6 +44,13 @@
         "description": "Portable Vinc knowledge pack",
         "role": "Viewer"
       }
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": ["English", "Korean"]
+      }
+    }
   }
 }
