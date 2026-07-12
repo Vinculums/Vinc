@@ -65,9 +65,14 @@ Test-send through Resend + a Litmus/Email-on-Acid preview before going live.
   co-located with the sidecar's local DB.
 - **Auth → passwordless magic-link** (no passwords stored — smaller attack surface; pairs
   with the Resend email service). Account is created on first verified link.
-- **API →** a small service on the VM behind Caddy (e.g. `api.vincs.app`), talking to the
-  managed MySQL over the cloud's private network. Sessions via httpOnly/Secure/SameSite cookies.
-- Backend deploy is **deferred**; UI + this spec first. Full hardened spec: `ARCHITECTURE.md`.
+- **API →** a small service on the VM behind Caddy, served **same-origin at `vincs.app/api`**
+  (loopback reverse_proxy — keeps the `__Host-` session cookie host-only + first-party), talking
+  to the managed MySQL over the cloud's **private network** (no public DB endpoint).
+- **Sessions →** opaque, revocable, server-side (256-bit) — not JWT. Tokens stored as
+  `HMAC(pepper, token)`. Magic link delivered in the URL **fragment**, consumed on an explicit click.
+- Backend deploy is **deferred**; UI + spec first. **Full hardened spec: [`ARCHITECTURE.md`](ARCHITECTURE.md)**
+  (schema DDL, API contracts, security controls, EN/KO UI copy, deferred items) — produced by a
+  4-lens adversarial review.
 
 **Screens to design (site + Figma), deferred backend:**
 `/login` · `/signup` · `/account` (subscription + newsletter prefs) · password reset ·
