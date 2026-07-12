@@ -6,9 +6,17 @@ const TOKEN_KEY = "vinc.sidecar.token";
 const OWNER_KEY = "vinc.owner";
 const LANG_KEY = "vinc.lang";
 
+// Tauri 셸 webview 의 origin 은 tauri://localhost(mac·linux) 또는
+// http://tauri.localhost(windows) — 사이드카가 아니다. 셸(main.rs)은 사이드카를
+// 127.0.0.1:8787 고정 포트로 띄우므로, 셸 안에서는 그 주소가 기본값이다.
+// (127.0.0.1 은 secure-context 예외라 tauri:// 에서의 fetch 도 차단되지 않는다.)
+const IN_SHELL =
+  location.protocol === "tauri:" || location.hostname === "tauri.localhost";
+const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
+
 export const cfg = {
-  // 기본 = same-origin(vite dev proxy 경유). Tauri 셸(P4)에서는 사이드카 주소 직접 지정.
-  get base(): string { return localStorage.getItem(BASE_KEY) || location.origin; },
+  // 기본 = 셸에서는 고정 사이드카 주소, 브라우저에서는 same-origin(vite dev proxy 경유).
+  get base(): string { return localStorage.getItem(BASE_KEY) || DEFAULT_BASE; },
   set base(v: string) { localStorage.setItem(BASE_KEY, v); },
   get token(): string { return localStorage.getItem(TOKEN_KEY) || ""; },
   set token(v: string) { localStorage.setItem(TOKEN_KEY, v); },
