@@ -59,9 +59,15 @@ Test-send through Resend + a Litmus/Email-on-Acid preview before going live.
 - Marketing copy must stay honest: the app is still "no account, no login." Position the
   web account as *"optional — for the website / Pro, not for your app."*
 
-**Suggested minimal stack (when built):** a small API on the VM (or an edge function) +
-Postgres + a vetted auth library (email+password with argon2id, or passwordless magic-link
-which pairs naturally with the email service). Sessions via httpOnly cookies. No app coupling.
+**Confirmed stack (owner, 2026-07-12):**
+- **DB → cloud provider's managed "Cloud DB for MySQL"** (same cloud as the VM, private
+  network, currently free). Managed = provider handles backups/patching/HA. **Not**
+  co-located with the sidecar's local DB.
+- **Auth → passwordless magic-link** (no passwords stored — smaller attack surface; pairs
+  with the Resend email service). Account is created on first verified link.
+- **API →** a small service on the VM behind Caddy (e.g. `api.vincs.app`), talking to the
+  managed MySQL over the cloud's private network. Sessions via httpOnly/Secure/SameSite cookies.
+- Backend deploy is **deferred**; UI + this spec first. Full hardened spec: `ARCHITECTURE.md`.
 
 **Screens to design (site + Figma), deferred backend:**
 `/login` · `/signup` · `/account` (subscription + newsletter prefs) · password reset ·

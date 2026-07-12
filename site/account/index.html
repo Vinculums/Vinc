@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account · Vinc</title>
+<meta name="description" content="Manage your Vinc web account. The desktop app stays offline and account-free.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<style>
+:root{
+  --background:39 30% 91%; --foreground:34 21% 6%;
+  --card:38 33% 95%; --muted:39 26% 87%; --muted-foreground:40 13% 37%;
+  --border:40 21% 84%; --ring:217 23% 32%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%; --accent:39 22% 85%;
+  --radius:.75rem; --radius-sm:.5rem; --radius-lg:1.5rem;
+  --shadow-2:0 4px 12px hsl(38 12% 10%/.10); --shadow-3:0 8px 24px hsl(38 12% 10%/.14);
+  --shadow-float:0 30px 60px -16px hsl(38 12% 10%/.18);
+}
+[data-theme="dark"]{
+  --background:34 19% 7%; --foreground:37 24% 89%;
+  --card:40 16% 11%; --muted:43 23% 12%; --muted-foreground:38 12% 59%;
+  --border:34 14% 20%; --ring:218 31% 66%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%; --accent:40 16% 15%;
+  --shadow-2:0 4px 12px hsl(0 0% 0%/.35); --shadow-3:0 8px 24px hsl(0 0% 0%/.45);
+  --shadow-float:0 30px 60px -16px hsl(0 0% 0%/.55);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;
+  color:hsl(var(--foreground));background:hsl(var(--background));min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+::selection{background:hsl(var(--ring)/.28)}
+.wrap{max-width:48rem;margin:0 auto;padding:0 1.5rem}
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
+  background:
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
+header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid hsl(var(--border)/.7)}
+.nav{display:flex;align-items:center;gap:1rem;padding:.8rem 0;max-width:60rem;margin:0 auto;padding-left:1.5rem;padding-right:1.5rem}
+.brand{display:flex;align-items:center;gap:.55rem;text-decoration:none}
+.brand svg{width:26px;height:26px}
+.brand b{font-weight:680;font-size:1.0625rem}
+.brand .sep{color:hsl(var(--muted-foreground));font-weight:400}
+.brand .crumb{color:hsl(var(--muted-foreground));font-weight:500;font-size:.9375rem}
+.nav .end{margin-left:auto;display:flex;gap:.55rem;align-items:center}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;text-decoration:none;font-weight:570;font-size:.9375rem;line-height:1;padding:.68rem 1.25rem;border-radius:var(--radius-sm);border:1px solid hsl(var(--border));transition:transform .15s ease,box-shadow .15s ease,background .15s}
+.btn svg{width:16px;height:16px}
+.btn.primary{background:linear-gradient(hsl(var(--primary)/.92),hsl(var(--primary)));color:hsl(var(--primary-foreground));border-color:transparent;box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14),var(--shadow-2)}
+.btn.primary:hover{transform:translateY(-1px)}
+.btn.quiet{background:hsl(var(--card)/.55)}
+.btn.quiet:hover{background:hsl(var(--card))}
+.btn.small{padding:.5rem .95rem;font-size:.84rem}
+
+.hero{padding:3.5rem 0 1rem;text-align:center}
+.hero .logo{width:52px;height:52px;margin:0 auto 1rem;display:block;color:hsl(var(--foreground))}
+.hero h1{font-size:clamp(1.8rem,1.4rem+2vw,2.6rem);font-weight:700;letter-spacing:-.02em}
+.hero .sub{color:hsl(var(--muted-foreground));margin:.8rem auto 0;max-width:30rem}
+
+.empty{margin:2rem 0 1rem;border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.6);padding:2.4rem 1.6rem;text-align:center}
+.empty .tag{display:inline-block;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--ring));border:1px solid hsl(var(--ring)/.4);border-radius:999px;padding:.22rem .7rem;margin-bottom:1rem}
+.empty h2{font-size:1.25rem;font-weight:660}
+.empty p{color:hsl(var(--muted-foreground));margin:.6rem auto 0;max-width:32rem}
+.empty .cta{margin-top:1.5rem;display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
+
+.road{margin:2.5rem 0 1rem}
+.road h2{font-size:1.1rem;font-weight:660;text-align:center;margin-bottom:1.4rem}
+.road ol{list-style:none;max-width:34rem;margin:0 auto;position:relative;padding-left:1.6rem}
+.road ol::before{content:"";position:absolute;left:5px;top:.4rem;bottom:.4rem;width:2px;background:hsl(var(--border))}
+.road li{position:relative;padding:0 0 1.3rem .2rem}
+.road li::before{content:"";position:absolute;left:-1.6rem;top:.28rem;width:12px;height:12px;border-radius:50%;background:hsl(var(--background));border:2px solid hsl(var(--border))}
+.road li.done::before{background:hsl(var(--ring));border-color:hsl(var(--ring))}
+.road li.now::before{border-color:hsl(var(--ring));box-shadow:0 0 0 3px hsl(var(--ring)/.2)}
+.road li h3{font-size:.95rem;font-weight:620;display:flex;align-items:center;gap:.5rem}
+.road li .st{font-size:.68rem;font-weight:600;border-radius:999px;padding:.08rem .5rem;border:1px solid hsl(var(--border));color:hsl(var(--muted-foreground))}
+.road li.done .st{color:hsl(var(--ring));border-color:hsl(var(--ring)/.4)}
+.road li.now .st{color:hsl(var(--ring));border-color:hsl(var(--ring)/.5);background:hsl(var(--ring)/.1)}
+.road li p{color:hsl(var(--muted-foreground));font-size:.86rem;margin-top:.25rem}
+
+/* auth */
+.authwrap{max-width:26rem;padding-top:2.5rem}
+.authcard{border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.78);padding:2.2rem 2rem;text-align:center}
+.authcard .logo{width:44px;height:44px;margin:0 auto .9rem;display:block;color:hsl(var(--foreground))}
+.authcard h1{font-size:1.5rem;font-weight:680;letter-spacing:-.01em}
+.authcard .sub{color:hsl(var(--muted-foreground));margin:.6rem auto 0;font-size:.95rem;max-width:22rem}
+.authform{margin-top:1.4rem;display:flex;flex-direction:column;gap:.7rem}
+.field{display:flex;align-items:center;gap:.55rem;border:1px solid hsl(var(--border));border-radius:var(--radius-sm);background:hsl(var(--background)/.6);padding:0 .8rem}
+.field .fl{display:grid;place-items:center;color:hsl(var(--muted-foreground))}
+.field .fl svg{width:16px;height:16px}
+.field input{flex:1;border:0;background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.72rem 0;outline:none}
+.field input::placeholder{color:hsl(var(--muted-foreground))}
+.note{margin-top:1rem;font-size:.8rem;color:hsl(var(--muted-foreground));line-height:1.6}
+.divider{display:flex;align-items:center;gap:.8rem;margin:1.4rem 0;color:hsl(var(--muted-foreground));font-size:.75rem}
+.divider::before,.divider::after{content:"";height:1px;flex:1;background:hsl(var(--border))}
+.btn.block{width:100%}
+.btn.danger{background:hsl(var(--danger)/.14);color:hsl(var(--foreground));border-color:hsl(var(--danger)/.4)}
+.sentmark{width:52px;height:52px;border-radius:50%;margin:0 auto .3rem;display:grid;place-items:center;background:hsl(var(--ring)/.15);color:hsl(var(--ring))}
+.sentmark svg{width:24px;height:24px}
+.statecap{max-width:26rem;margin:1.4rem auto .2rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground))}
+/* account */
+.acard{border:1px solid hsl(var(--border));border-radius:var(--radius);background:hsl(var(--card)/.7);padding:1.3rem 1.4rem;margin-top:1rem}
+.acard.danger{border-color:hsl(var(--danger)/.35)}
+.arow{display:flex;align-items:center;gap:1rem}
+.avatar{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:hsl(var(--ring)/.18);color:hsl(var(--ring));font-weight:700;font-size:1.1rem;flex:none}
+.aemail{font-size:.95rem;font-weight:600}
+.aplan{margin-top:.25rem}
+.badge{display:inline-block;font-size:.7rem;font-weight:600;color:hsl(var(--ring));border:1px solid hsl(var(--ring)/.4);border-radius:999px;padding:.12rem .5rem}
+.acard h3{font-size:1rem;font-weight:640}
+.acard .mut{color:hsl(var(--muted-foreground));font-size:.85rem;margin-top:.25rem;max-width:26rem;line-height:1.55}
+.btn.disabled{opacity:.55;pointer-events:none}
+.toggle{width:42px;height:24px;border-radius:999px;background:hsl(var(--ring));position:relative;flex:none}
+.toggle .knob{position:absolute;top:2px;left:20px;width:20px;height:20px;border-radius:50%;background:#fff}
+.acwrap{max-width:34rem;padding-top:2.2rem}
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
+
+footer{border-top:1px solid hsl(var(--border));padding:1.8rem 0 2.6rem;margin-top:2.5rem;color:hsl(var(--muted-foreground));font-size:.8125rem}
+footer .row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center;max-width:60rem;margin:0 auto;padding:0 1.5rem}
+footer a{text-decoration:none}
+footer a:hover{color:hsl(var(--foreground))}
+footer .bm{display:flex;align-items:center;gap:.45rem;margin-right:auto}
+footer .bm svg{width:16px;height:16px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vlogo" viewBox="0 0 100 100">
+    <g fill="currentColor"><circle cx="50" cy="13" r="3.8"/><circle cx="50" cy="28" r="6.4"/><circle cx="50" cy="50" r="13"/></g>
+    <path d="M26 53 50 77 74 53" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
+
+<header class="site">
+  <div class="nav">
+    <a class="brand" href="../" aria-label="Vinc home">
+      <svg aria-hidden="true"><use href="#vlogo"/></svg><b>Vinc</b>
+      <span class="sep">/</span><span class="crumb" data-i="crumb">Account</span>
+    </a>
+    <div class="end">
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap acwrap">
+  <section class="hero" style="padding:2.2rem 0 .4rem;text-align:left">
+    <h1 data-i="h1" style="text-align:left">Account</h1>
+  </section>
+  <section class="acard">
+    <div class="arow">
+      <div class="avatar">Y</div>
+      <div>
+        <div class="aemail">you@example.com</div>
+        <div class="aplan"><span class="badge" data-i="planFree">Free plan</span></div>
+      </div>
+      <a class="btn quiet small" href="../login/" style="margin-left:auto" data-i="signout">Sign out</a>
+    </div>
+  </section>
+  <section class="acard">
+    <h3 data-i="proT">Vinc Pro</h3>
+    <p class="mut" data-i="proB">Coming later — per-account sharing and more. Your offline app stays free and account-free either way.</p>
+    <p style="margin-top:.9rem"><span class="btn quiet small disabled" data-i="proCta">Notify me</span></p>
+  </section>
+  <section class="acard">
+    <div class="arow">
+      <div>
+        <h3 data-i="nlT">Release news</h3>
+        <p class="mut" data-i="nlB">An occasional email when a new version ships. Nothing else, unsubscribe any time.</p>
+      </div>
+      <span class="toggle" role="switch" aria-checked="true" aria-label="Release news" style="margin-left:auto"><span class="knob"></span></span>
+    </div>
+  </section>
+  <section class="acard danger">
+    <div class="arow">
+      <div>
+        <h3 data-i="delT">Delete account</h3>
+        <p class="mut" data-i="delB">Removes your website account and unsubscribes you. Your local app data is never touched.</p>
+      </div>
+      <span class="btn danger small" style="margin-left:auto" data-i="delCta">Delete</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+      <div class="row">
+    <span class="bm"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="../" data-i="fHome">Home</a>
+    <a href="../download/" data-i="fDownload">Download</a>
+    <a href="../guide/" data-i="fGuide">User guide</a>
+    <a href="../release/" data-i="fRelease">Release notes</a>
+  </div>
+</footer>
+
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en"><span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span><span class="nm">English</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+    <button class="langopt" data-lang="ko"><span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span><span class="nm">한국어</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+  </div>
+</div>
+
+<script>
+const DECK = {
+  en: {},
+  ko: {
+    _title: "계정 · Vinc",
+    _desc: "Vinc 웹 계정 관리. 데스크톱 앱은 오프라인·무계정으로 유지됩니다.",
+    crumb: "계정",
+    h1: "계정",
+    planFree: "무료 플랜", signout: "로그아웃",
+    proT: "Vinc Pro", proB: "추후 제공 — 계정별 공유 등. 어느 쪽이든 오프라인 앱은 무료·무계정으로 유지됩니다.", proCta: "출시 알림 받기",
+    nlT: "릴리스 소식", nlB: "새 버전이 나올 때만 가끔 이메일을 보냅니다. 그 외엔 없으며 언제든 구독 취소 가능합니다.",
+    delT: "계정 삭제", delB: "웹 계정을 삭제하고 구독을 해지합니다. 로컬 앱 데이터는 절대 건드리지 않습니다.", delCta: "삭제",
+    fHome: "홈", fDownload: "다운로드", fGuide: "사용 가이드", fRelease: "릴리스 노트",
+    langTitle: "언어",
+  },
+};
+const EN = {};
+document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+EN._title = document.title;
+EN._desc = document.querySelector('meta[name="description"]').content;
+DECK.en = EN;
+
+function setLang(l){
+  const d = DECK[l] || EN;
+  document.querySelectorAll("[data-i]").forEach(el => { if (d[el.dataset.i]) el.innerHTML = d[el.dataset.i]; });
+  document.title = d._title || EN._title;
+  document.querySelector('meta[name="description"]').content = d._desc || EN._desc;
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-lang]").forEach(b => b.classList.toggle("active", b.dataset.lang === l));
+  try { localStorage.setItem("vinc.site.lang", l); } catch {}
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("active", b.dataset.th === t));
+  try { localStorage.setItem("vinc.site.theme", t); } catch {}
+}
+document.querySelectorAll("[data-th]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.th)));
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", e => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") langModal.hidden = true; });
+document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
+
+let lang = null, theme = null;
+try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
+setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
+setTheme(theme || "dark");
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
+</script>
+</body>
+</html>
