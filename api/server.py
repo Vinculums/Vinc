@@ -89,7 +89,15 @@ class VincApp:
     @classmethod
     def open(cls, cfg=None, **kw) -> "VincApp":
         cfg = cfg or load_config()
-        return cls(cfg, store=open_store(cfg), **kw)   # 드라이버 미설치 시 store=None
+        store = open_store(cfg)                        # 드라이버 미설치 시 store=None
+        if store is not None:
+            # 첫 실행 스키마 멱등 생성. serve 경로엔 별도 provision 단계가 없어(데스크톱
+            # 앱은 `vinc-sidecar serve` 만 띄운다) 미프로비저닝 스토어면 모든 적재가
+            # 'Table Concept does not exist' 로 실패한다. store.provision 은 멱등이라
+            # 매 기동 안전(이미 있으면 무시). 별도 store 를 여는 store.provision.provision()
+            # 은 배타 락 충돌 때문에 쓰지 않고, 이미 열린 store 에 직접 적용한다.
+            store.provision(dim=cfg.embedding_dim)
+        return cls(cfg, store=store, **kw)
 
     # reader 뷰: 공유 Database 에서 별도 Connection(R4). 없으면 None(각 q 함수가
     # 자체 open→None→강등). 요청 단위로 생성·close.
