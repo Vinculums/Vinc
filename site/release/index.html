@@ -223,6 +223,26 @@ footer .bm svg{width:16px;height:16px}
   <section class="rel">
     <article class="relcard">
       <div class="relhead">
+        <span class="relver">v0.1.1</span>
+        <span class="reldate" data-i="d0date">July 13, 2026</span>
+        <span class="relbadge" data-i="d0tag">Pre-release</span>
+      </div>
+      <h2 data-i="d0t">First-run data loading fixed</h2>
+      <p data-i="d0lead">A follow-up build to v0.1.0. If v0.1.0 refused to load any data on a fresh install, this release is the cure — update and ingest works from the first launch.</p>
+      <ul class="rellist">
+        <li data-i="d0a">Fixed: on a brand-new install, every ingest — the bundled sample pack included — failed because the local store's schema was never created. The sidecar now provisions the schema at startup, so loading data works from the very first run.</li>
+        <li data-i="d0b">Fixed: in packaged builds the app pointed its data calls at the wrong address instead of the local engine — it now connects out of the box.</li>
+        <li data-i="d0c">Windows: the installer now installs per-user (no admin prompt) and lets you pick English or Korean during setup.</li>
+      </ul>
+      <p class="relnote" data-i="d0note">This build is still unsigned — the first-launch notes under v0.1.0 below still apply.</p>
+      <div class="cta">
+        <a class="btn primary" href="../download/"><svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="d0dl">Download v0.1.1</span></a>
+        <a class="btn quiet" href="https://github.com/Vinclums/Vincs-app/releases" data-i="d0watch">All releases on GitHub</a>
+      </div>
+    </article>
+
+    <article class="relcard">
+      <div class="relhead">
         <span class="relver">v0.1.0</span>
         <span class="reldate" data-i="d1date">July 13, 2026</span>
         <span class="relbadge" data-i="d1tag">Pre-release</span>
@@ -281,6 +301,14 @@ const DECK = {
     crumb: "릴리스 노트",
     h1: "릴리스 노트",
     sub: "버전별 변경 사항과 각 릴리스에서 달라지는 점을 기록합니다.",
+    d0date: "2026년 7월 13일", d0tag: "프리릴리스",
+    d0t: "첫 실행 데이터 적재 수정",
+    d0lead: "v0.1.0 후속 빌드입니다. v0.1.0이 새 설치에서 데이터를 전혀 적재하지 못했다면 이 릴리스가 해결합니다 — 업데이트하면 첫 실행부터 적재가 동작합니다.",
+    d0a: "수정: 새로 설치한 환경에서 로컬 스토어의 스키마가 생성되지 않아 동봉 샘플 팩을 포함한 모든 적재가 실패하던 문제. 이제 사이드카가 기동 시 스키마를 준비해 첫 실행부터 데이터 적재가 동작합니다.",
+    d0b: "수정: 설치본에서 앱이 로컬 엔진이 아닌 잘못된 주소로 데이터 호출을 보내던 문제 — 이제 설치 직후 바로 연결됩니다.",
+    d0c: "Windows: 설치관리자가 관리자 권한 없이 사용자 단위로 설치되며, 설치 중 한국어/영어를 선택할 수 있습니다.",
+    d0note: "이 빌드도 아직 코드 서명이 없습니다 — 아래 v0.1.0의 첫 실행 안내가 그대로 적용됩니다.",
+    d0dl: "v0.1.1 다운로드", d0watch: "GitHub의 모든 릴리스",
     d1date: "2026년 7월 13일", d1tag: "프리릴리스",
     d1t: "첫 공개 빌드",
     d1lead: "내려받을 수 있는 Vinc의 첫 빌드 — 완전한 오프라인 코어를 데스크톱 셸에 담아 macOS·Windows·Linux로 제공합니다.",
