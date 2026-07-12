@@ -142,6 +142,9 @@ header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.7
 .fr-card ol{margin:0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.5rem}
 .fr-card li{font-size:.84rem;color:hsl(var(--muted-foreground));line-height:1.5}
 .fr-card li b{color:hsl(var(--foreground));font-weight:600}
+.fr-note{text-align:center;font-size:.78rem;color:hsl(var(--muted-foreground));margin-top:1.4rem}
+.fr-note a{color:hsl(var(--ring));text-decoration:none}
+.fr-note a:hover{text-decoration:underline}
 
 /* 언어 모달 */
 .langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
@@ -311,6 +314,7 @@ footer .bm svg{width:16px;height:16px}
         </ol>
       </div>
     </div>
+    <p class="fr-note" data-i="frNote">Windows code signing for Vinc is provided free of charge by <a href="https://signpath.org" target="_blank" rel="noopener noreferrer">SignPath Foundation</a>.</p>
   </section>
 </main>
 
@@ -361,6 +365,7 @@ const DECK = {
     frWin1: "설치 파일을 실행합니다. SmartScreen이 <b>\"Windows의 PC 보호\"</b>를 띄울 수 있습니다.",
     frWin2: "<b>추가 정보</b>를 누릅니다.",
     frWin3: "<b>실행</b>을 누릅니다.",
+    frNote: "Vinc의 Windows 코드 서명은 <a href=\"https://signpath.org\" target=\"_blank\" rel=\"noopener noreferrer\">SignPath Foundation</a>이 무상 제공합니다.",
     fHome: "홈", fRelease: "릴리스 노트", fSource: "소스",
     langTitle: "언어",
     fHome: "홈", fDownload: "다운로드", fGuide: "사용 가이드", fRelease: "릴리스 노트",
