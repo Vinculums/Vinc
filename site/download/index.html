@@ -131,6 +131,18 @@ header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.7
 .assure{text-align:center;padding:2.5rem 0 1rem;color:hsl(var(--muted-foreground));font-size:.9rem}
 .assure b{color:hsl(var(--foreground));font-weight:600}
 
+/* 첫 실행 안내 */
+.firstrun{padding:1rem 0 1rem}
+.firstrun h2{text-align:center;font-size:1.15rem;font-weight:660}
+.firstrun .lead{text-align:center;color:hsl(var(--muted-foreground));font-size:.85rem;margin:.5rem auto 1.4rem;max-width:36rem}
+.fr-grid{display:grid;gap:1.1rem;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))}
+.fr-card{border:1px solid hsl(var(--border));border-radius:var(--radius);background:hsl(var(--card)/.7);padding:1.3rem 1.4rem}
+.fr-card h3{font-size:.98rem;font-weight:640;display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem}
+.fr-card h3 svg{width:18px;height:18px;color:hsl(var(--foreground))}
+.fr-card ol{margin:0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.5rem}
+.fr-card li{font-size:.84rem;color:hsl(var(--muted-foreground));line-height:1.5}
+.fr-card li b{color:hsl(var(--foreground));font-weight:600}
+
 /* 언어 모달 */
 .langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .langmodal[hidden]{display:none}
@@ -240,7 +252,7 @@ footer .bm svg{width:16px;height:16px}
     <p class="detect" id="detectNote" data-i="detectGeneric">Choose your platform below.</p>
     <div class="notice">
       <svg aria-hidden="true"><use href="#i-info"/></svg>
-      <span data-i="notice">The first stable build is being prepared. These buttons link to the installer files on GitHub Releases, which appear once the first release is published. See the <a href="../release/">release notes</a>.</span>
+      <span data-i="notice">Vinc isn't code-signed yet, so your system may warn the first time you open it — it's safe. See <a href="#firstrun">First launch</a> below, or the <a href="../release/">release notes</a>.</span>
     </div>
   </section>
 
@@ -277,6 +289,29 @@ footer .bm svg{width:16px;height:16px}
     </div>
     <p class="assure"><b data-i="assureB">Yours, on this machine.</b> <span data-i="assure">Vinc runs fully offline. No account, no telemetry. Your data lives in one folder you control.</span></p>
   </section>
+
+  <section class="firstrun wrap" id="firstrun">
+    <h2 data-i="frT">First launch</h2>
+    <p class="lead" data-i="frLead">Vinc isn't code-signed yet, so your system may warn the first time you open it. It's safe — here's how.</p>
+    <div class="fr-grid">
+      <div class="fr-card">
+        <h3><svg aria-hidden="true"><use href="#i-desktop"/></svg> macOS</h3>
+        <ol>
+          <li data-i="frMac1">Drag Vinc into Applications, then try to open it.</li>
+          <li data-i="frMac2">If it's blocked, open <b>System Settings → Privacy &amp; Security</b>.</li>
+          <li data-i="frMac3">Next to the Vinc message, click <b>Open Anyway</b> — or right-click the app and choose <b>Open</b>.</li>
+        </ol>
+      </div>
+      <div class="fr-card">
+        <h3><svg aria-hidden="true"><use href="#i-desktop"/></svg> Windows</h3>
+        <ol>
+          <li data-i="frWin1">Run the installer. SmartScreen may show <b>"Windows protected your PC"</b>.</li>
+          <li data-i="frWin2">Click <b>More info</b>.</li>
+          <li data-i="frWin3">Click <b>Run anyway</b>.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer>
@@ -309,7 +344,7 @@ const DECK = {
     dlGeneric: "다운로드", detectGeneric: "아래에서 플랫폼을 선택하세요.",
     dlFor: function(os){ return os + "용 다운로드"; },
     detectFor: function(os){ return "현재 기기로 " + os + "가 감지되었습니다."; },
-    notice: "첫 정식 빌드를 준비 중입니다. 아래 버튼은 GitHub Releases의 설치 파일로 연결되며, 첫 릴리스가 게시되면 자동으로 활성화됩니다. <a href=\"../release/\">릴리스 노트</a>를 확인하세요.",
+    notice: "Vinc는 아직 코드 서명 전이라 처음 실행 시 시스템이 경고할 수 있습니다 — 안전합니다. 아래 <a href=\"#firstrun\">첫 실행</a> 또는 <a href=\"../release/\">릴리스 노트</a>를 확인하세요.",
     hereTag: "현재 기기",
     macReq: "Apple Silicon (M1 이상) · macOS 12+",
     macFoot: "인텔 맥은 당분간 소스에서 빌드하세요.",
@@ -318,6 +353,14 @@ const DECK = {
     linuxReq: "64-bit · glibc",
     linuxFoot: "그 외 포맷(.rpm)은 GitHub Releases에서.",
     assureB: "당신의 것, 이 기기 안에.", assure: "Vinc는 완전한 오프라인으로 동작합니다. 계정도, 원격 수집도 없습니다. 데이터는 당신이 관리하는 폴더 하나에 있습니다.",
+    frT: "첫 실행",
+    frLead: "Vinc는 아직 코드 서명 전이라 처음 실행할 때 시스템이 경고할 수 있습니다. 안전하니 아래대로 열면 됩니다.",
+    frMac1: "Vinc를 응용 프로그램 폴더로 옮긴 뒤 실행해 보세요.",
+    frMac2: "차단되면 <b>시스템 설정 → 개인정보 보호 및 보안</b>을 엽니다.",
+    frMac3: "Vinc 관련 문구 옆의 <b>확인 없이 열기</b>를 누릅니다 — 또는 앱을 우클릭해 <b>열기</b>를 선택합니다.",
+    frWin1: "설치 파일을 실행합니다. SmartScreen이 <b>\"Windows의 PC 보호\"</b>를 띄울 수 있습니다.",
+    frWin2: "<b>추가 정보</b>를 누릅니다.",
+    frWin3: "<b>실행</b>을 누릅니다.",
     fHome: "홈", fRelease: "릴리스 노트", fSource: "소스",
     langTitle: "언어",
     fHome: "홈", fDownload: "다운로드", fGuide: "사용 가이드", fRelease: "릴리스 노트",
