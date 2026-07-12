@@ -42,6 +42,39 @@ a{color:inherit}
 .wrap{max-width:66rem;margin:0 auto;padding:0 1.5rem}
 
 /* ── 헤더 ─────────────────────────────────────────────────────── */
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
+  background:
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
 header.site{
   position:sticky;top:0;z-index:10;
   background:hsl(var(--background)/.78);
@@ -595,6 +628,17 @@ footer .bm svg{width:16px;height:16px}
   </symbol>
 </svg>
 
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
+
 <header class="site">
   <div class="wrap nav">
     <a class="brand" href="../" aria-label="Vinc home">
@@ -953,7 +997,7 @@ footer .bm svg{width:16px;height:16px}
       <span class="num" data-i="ch6n">+ · CONNECT TO CLAUDE (MCP)</span>
       <h2 data-i="ch6t">Ask Claude, answered from your own knowledge.</h2>
       <p data-i="ch6b">Vinc speaks MCP (Model Context Protocol), so Claude Desktop, Claude Code,
-        and Claude on the web can read your knowledge map and answer with it — while every
+        and Claude on the web can read your knowledge map and answer with it, while every
         document stays on your machine. Connect once, then just ask.</p>
       <ul class="tips">
         <li data-i="ch6tip1">Local setup is one command: <kbd>vinc mcp install --client desktop</kbd> (or <kbd>--client code</kbd>). Restart Claude and Vinc's tools appear.</li>
@@ -965,7 +1009,7 @@ footer .bm svg{width:16px;height:16px}
         <div class="mcp-grid">
           <!-- 왼쪽: 로컬 설치(터미널) -->
           <div class="term">
-            <div class="term-bar"><i></i><i></i><i></i><span class="term-ttl" data-i="mcpTermTitle">Terminal — local setup</span></div>
+            <div class="term-bar"><i></i><i></i><i></i><span class="term-ttl" data-i="mcpTermTitle">Terminal · local setup</span></div>
             <div class="term-body">
               <div class="line"><span class="pr">$</span> <span class="cmd"><span class="c1 fx" data-i="mcpCmd1">vinc mcp install </span><span class="c2 fx" data-i="mcpCmd2">--client desktop</span></span><span class="tc fx"></span></div>
               <div class="out o1 fx" data-i="mcpOut1">✓ Registered Vinc with Claude Desktop.</div>
@@ -1018,10 +1062,11 @@ footer .bm svg{width:16px;height:16px}
 </main>
 
 <footer>
-  <div class="wrap row">
-    <span class="bm"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
-    <a href="https://github.com/weg-9000/vinc">GitHub</a>
-    <a href="../" data-i="home2">Home</a>
+    <div class="wrap row">
+    <span class="brand-mini"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="../" data-i="fHome">Home</a>
+    <a href="../download/" data-i="fDownload">Download</a>
+    <a href="../release/" data-i="fRelease">Release notes</a>
   </div>
 </footer>
 
@@ -1128,7 +1173,7 @@ const DECK = {
     ch6b: "Vinc는 MCP(Model Context Protocol)를 지원합니다. Claude 데스크톱·Claude Code·웹의 Claude가 내 지식 지도를 읽고 답할 수 있으면서도, 모든 문서는 내 기기에만 머뭅니다. 한 번만 연결하면, 이후에는 그냥 물어보세요.",
     ch6tip1: "로컬 설정은 명령 한 줄이면 끝입니다. <kbd>vinc mcp install --client desktop</kbd> (또는 <kbd>--client code</kbd>). Claude를 재시작하면 Vinc 도구가 나타납니다.",
     ch6tip2: "Claude는 호출한 도구의 결과만 봅니다. 파일 자체는 절대 업로드되지 않습니다.",
-    mcpTermTitle: "터미널 — 로컬 설정",
+    mcpTermTitle: "터미널 · 로컬 설정",
     mcpCmd1: "vinc mcp install ", mcpCmd2: "--client desktop",
     mcpOut1: "✓ Claude 데스크톱에 Vinc를 등록했습니다.",
     mcpOut2: "  도구를 불러오려면 Claude를 재시작하세요.",
@@ -1188,6 +1233,91 @@ if ("IntersectionObserver" in window) {
 } else {
   document.querySelectorAll(".rv").forEach(el => el.classList.add("in"));
 }
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
 </script>
 </body>
 </html>

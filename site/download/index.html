@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Download Vinc</title>
-<meta name="description" content="Download Vinc for macOS, Windows, and Linux. Offline-first — no account, no cloud.">
+<meta name="description" content="Download Vinc for macOS, Windows, and Linux. Offline-first. No account, no cloud.">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <!-- 자기완결·CSP 준수. 설치 파일은 GitHub Releases(P4 파이프라인 산출물)에 호스팅된다.
      정식 릴리스 게시 전에는 버튼이 releases/latest 자산으로 연결(게시 시 자동 해소). -->
@@ -33,11 +33,39 @@ body{font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Ma
 a{color:inherit}
 ::selection{background:hsl(var(--ring)/.28)}
 .wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem}
-.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
   background:
-    radial-gradient(60% 45% at 50% -8%, hsl(var(--ring)/.10), transparent 62%),
-    radial-gradient(40% 40% at 88% 18%, hsl(250 45% 60%/.06), transparent 70%),
-    hsl(var(--background))}
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
 
 /* 헤더 */
 header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.78);
@@ -172,7 +200,16 @@ footer .bm svg{width:16px;height:16px}
   </symbol>
 </svg>
 
-<div class="bg" aria-hidden="true"></div>
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
 
 <header class="site">
   <div class="wrap nav">
@@ -194,7 +231,7 @@ footer .bm svg{width:16px;height:16px}
   <section class="hero wrap">
     <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
     <h1 data-i="h1">Download Vinc</h1>
-    <p class="sub" data-i="sub">Offline-first knowledge tool for your desktop. No account, no cloud — installs and runs on your machine.</p>
+    <p class="sub" data-i="sub">Offline-first knowledge tool for your desktop. No account, no cloud. It installs and runs on your machine.</p>
     <p class="ver"><span data-i="verLabel">Version</span> 0.1.0 · <span data-i="verState">pre-release</span></p>
     <div class="primary-dl">
       <a class="btn primary" id="primaryDl" href="https://github.com/weg-9000/vinc/releases/latest">
@@ -238,16 +275,16 @@ footer .bm svg{width:16px;height:16px}
         <p class="foot" data-i="linuxFoot">More formats (.rpm) via GitHub Releases.</p>
       </div>
     </div>
-    <p class="assure"><b data-i="assureB">Yours, on this machine.</b> <span data-i="assure">Vinc runs fully offline — no account, no telemetry. Your data lives in one folder you control.</span></p>
+    <p class="assure"><b data-i="assureB">Yours, on this machine.</b> <span data-i="assure">Vinc runs fully offline. No account, no telemetry. Your data lives in one folder you control.</span></p>
   </section>
 </main>
 
 <footer>
-  <div class="wrap row">
+    <div class="wrap row">
     <span class="bm"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
     <a href="../" data-i="fHome">Home</a>
+    <a href="../guide/" data-i="fGuide">User guide</a>
     <a href="../release/" data-i="fRelease">Release notes</a>
-    <a href="https://github.com/weg-9000/vinc" data-i="fSource">Source</a>
   </div>
 </footer>
 
@@ -264,7 +301,7 @@ const DECK = {
   en: {},
   ko: {
     _title: "Vinc 다운로드",
-    _desc: "macOS · Windows · Linux용 Vinc를 내려받으세요. 오프라인 우선 — 계정도, 클라우드도 없습니다.",
+    _desc: "macOS · Windows · Linux용 Vinc를 내려받으세요. 오프라인 우선. 계정도, 클라우드도 없습니다.",
     crumb: "다운로드",
     h1: "Vinc 다운로드",
     sub: "데스크톱용 오프라인 우선 지식 도구. 계정도 클라우드도 없이, 내 기기에 설치되어 내 기기에서 동작합니다.",
@@ -280,9 +317,10 @@ const DECK = {
     winFoot: "서명된 빌드는 후속 마일스톤에서 제공됩니다.",
     linuxReq: "64-bit · glibc",
     linuxFoot: "그 외 포맷(.rpm)은 GitHub Releases에서.",
-    assureB: "당신의 것, 이 기기 안에.", assure: "Vinc는 완전한 오프라인으로 동작합니다 — 계정도, 원격 수집도 없습니다. 데이터는 당신이 관리하는 폴더 하나에 있습니다.",
+    assureB: "당신의 것, 이 기기 안에.", assure: "Vinc는 완전한 오프라인으로 동작합니다. 계정도, 원격 수집도 없습니다. 데이터는 당신이 관리하는 폴더 하나에 있습니다.",
     fHome: "홈", fRelease: "릴리스 노트", fSource: "소스",
     langTitle: "언어",
+    fHome: "홈", fDownload: "다운로드", fGuide: "사용 가이드", fRelease: "릴리스 노트",
   },
 };
 const OSNAME = { mac: "macOS", win: "Windows", linux: "Linux" };
@@ -355,6 +393,91 @@ try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getIte
 setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
 setTheme(theme || "dark");
 applyDetect();
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
 </script>
 </body>
 </html>
