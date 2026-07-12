@@ -99,6 +99,9 @@ jobs:
 
   publish:
     needs: build
+    # 태그 푸시(refs/tags/v*)에서만 발행. 수동 workflow_dispatch 는 빌드 검증만 하고
+    # 발행은 건너뛴다(브랜치명으로 쓰레기 릴리스가 생기지 않게).
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download all installers
