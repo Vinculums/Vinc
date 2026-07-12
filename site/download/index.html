@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download Vinc</title>
+<meta name="description" content="Download Vinc for macOS, Windows, and Linux. Offline-first. No account, no cloud.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<!-- 자기완결·CSP 준수. 설치 파일은 GitHub Releases(P4 파이프라인 산출물)에 호스팅된다.
+     정식 릴리스 게시 전에는 버튼이 releases/latest 자산으로 연결(게시 시 자동 해소). -->
+<style>
+:root{
+  --background:39 30% 91%; --foreground:34 21% 6%;
+  --card:38 33% 95%; --muted:39 26% 87%; --muted-foreground:40 13% 37%;
+  --border:40 21% 84%; --ring:217 23% 32%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%; --accent:39 22% 85%;
+  --radius:.75rem; --radius-sm:.5rem; --radius-lg:1.5rem;
+  --shadow-2:0 4px 12px hsl(38 12% 10%/.10); --shadow-3:0 8px 24px hsl(38 12% 10%/.14);
+  --shadow-float:0 30px 60px -16px hsl(38 12% 10%/.18);
+}
+[data-theme="dark"]{
+  --background:34 19% 7%; --foreground:37 24% 89%;
+  --card:40 16% 11%; --muted:43 23% 12%; --muted-foreground:38 12% 59%;
+  --border:34 14% 20%; --ring:218 31% 66%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%; --accent:40 16% 15%;
+  --shadow-2:0 4px 12px hsl(0 0% 0%/.35); --shadow-3:0 8px 24px hsl(0 0% 0%/.45);
+  --shadow-float:0 30px 60px -16px hsl(0 0% 0%/.55);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;
+  color:hsl(var(--foreground));background:hsl(var(--background));min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+::selection{background:hsl(var(--ring)/.28)}
+.wrap{max-width:60rem;margin:0 auto;padding:0 1.5rem}
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
+  background:
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
+
+/* 헤더 */
+header.site{position:sticky;top:0;z-index:10;background:hsl(var(--background)/.78);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid hsl(var(--border)/.7)}
+.nav{display:flex;align-items:center;gap:1rem;padding:.8rem 0}
+.brand{display:flex;align-items:center;gap:.55rem;text-decoration:none}
+.brand svg{width:26px;height:26px}
+.brand b{font-weight:680;font-size:1.0625rem}
+.brand .sep{color:hsl(var(--muted-foreground));font-weight:400}
+.brand .crumb{color:hsl(var(--muted-foreground));font-weight:500;font-size:.9375rem}
+.nav .end{margin-left:auto;display:flex;gap:.55rem;align-items:center}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+
+/* 버튼 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;text-decoration:none;font-weight:570;font-size:.9375rem;line-height:1;padding:.72rem 1.35rem;border-radius:var(--radius-sm);border:1px solid hsl(var(--border));transition:transform .15s ease,box-shadow .15s ease,background .15s}
+.btn svg{width:16px;height:16px}
+.btn.primary{background:linear-gradient(hsl(var(--primary)/.92),hsl(var(--primary)));color:hsl(var(--primary-foreground));border-color:transparent;box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14),var(--shadow-2)}
+.btn.primary:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14),var(--shadow-3)}
+.btn.quiet{background:hsl(var(--card)/.55)}
+.btn.quiet:hover{background:hsl(var(--card))}
+.btn.small{padding:.5rem .95rem;font-size:.84rem}
+.btn.block{width:100%}
+
+/* 히어로 */
+.hero{padding:4rem 0 1.5rem;text-align:center}
+.hero .logo{width:64px;height:64px;margin:0 auto 1.2rem;display:block;color:hsl(var(--foreground))}
+.hero h1{font-size:clamp(2rem,1.5rem+2.4vw,3rem);font-weight:700;letter-spacing:-.02em}
+.hero .sub{color:hsl(var(--muted-foreground));margin:.9rem auto 0;max-width:34rem}
+.hero .ver{margin-top:.6rem;font-size:.8125rem;color:hsl(var(--muted-foreground)/.85)}
+.hero .primary-dl{margin-top:1.8rem}
+.hero .primary-dl .btn{min-width:15rem}
+.hero .detect{margin-top:.6rem;font-size:.78rem;color:hsl(var(--muted-foreground))}
+
+/* 준비중 배너 */
+.notice{max-width:44rem;margin:1.5rem auto 0;display:flex;gap:.7rem;align-items:flex-start;
+  border:1px solid hsl(var(--border));border-radius:var(--radius);background:hsl(var(--card)/.6);
+  padding:.9rem 1.1rem;font-size:.85rem;color:hsl(var(--muted-foreground))}
+.notice svg{width:17px;height:17px;color:hsl(var(--ring));flex:none;margin-top:.1rem}
+.notice a{color:hsl(var(--ring));text-decoration:none;font-weight:560}
+.notice a:hover{text-decoration:underline}
+
+/* 플랫폼 그리드 */
+.plat{padding:2.5rem 0 1rem}
+.dl-grid{display:grid;gap:1.1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))}
+.dl-card{border:1px solid hsl(var(--border));border-radius:var(--radius);background:hsl(var(--card));padding:1.5rem;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s}
+.dl-card.here{border-color:hsl(var(--ring)/.55);box-shadow:0 0 0 1px hsl(var(--ring)/.35),var(--shadow-2)}
+.dl-card .os{display:flex;align-items:center;gap:.6rem;margin-bottom:.2rem}
+.dl-card .os svg{width:22px;height:22px;color:hsl(var(--foreground))}
+.dl-card h3{font-size:1.1rem;font-weight:660}
+.dl-card .req{font-size:.78rem;color:hsl(var(--muted-foreground));margin:.15rem 0 1rem}
+.dl-card .here-tag{margin-left:auto;font-size:.68rem;font-weight:600;color:hsl(var(--ring));border:1px solid hsl(var(--ring)/.4);border-radius:999px;padding:.1rem .5rem}
+.dl-card .acts{margin-top:auto;display:flex;flex-direction:column;gap:.5rem}
+.dl-card .foot{font-size:.74rem;color:hsl(var(--muted-foreground));margin-top:.7rem}
+
+/* 안심 문구 */
+.assure{text-align:center;padding:2.5rem 0 1rem;color:hsl(var(--muted-foreground));font-size:.9rem}
+.assure b{color:hsl(var(--foreground));font-weight:600}
+
+/* 언어 모달 */
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
+
+/* 푸터 */
+footer{border-top:1px solid hsl(var(--border));padding:1.8rem 0 2.6rem;margin-top:2.5rem;color:hsl(var(--muted-foreground));font-size:.8125rem}
+footer .row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center}
+footer a{text-decoration:none}
+footer a:hover{color:hsl(var(--foreground))}
+footer .bm{display:flex;align-items:center;gap:.45rem;margin-right:auto}
+footer .bm svg{width:16px;height:16px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vlogo" viewBox="0 0 100 100">
+    <g fill="currentColor"><circle cx="50" cy="13" r="3.8"/><circle cx="50" cy="28" r="6.4"/><circle cx="50" cy="50" r="13"/></g>
+    <path d="M26 53 50 77 74 53" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-desktop" viewBox="0 0 24 24">
+    <rect x="3" y="4.5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+    <path d="M8 20h8M12 16.5V20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1.15" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
+</svg>
+
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="../" aria-label="Vinc home">
+      <svg aria-hidden="true"><use href="#vlogo"/></svg><b>Vinc</b>
+      <span class="sep">/</span><span class="crumb" data-i="crumb">Download</span>
+    </a>
+    <div class="end">
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
+    <h1 data-i="h1">Download Vinc</h1>
+    <p class="sub" data-i="sub">Offline-first knowledge tool for your desktop. No account, no cloud. It installs and runs on your machine.</p>
+    <p class="ver"><span data-i="verLabel">Version</span> 0.1.0 · <span data-i="verState">pre-release</span></p>
+    <div class="primary-dl">
+      <a class="btn primary" id="primaryDl" href="https://github.com/weg-9000/vinc/releases/latest">
+        <svg aria-hidden="true"><use href="#i-download"/></svg><span id="primaryLabel" data-i="dlGeneric">Download</span></a>
+    </div>
+    <p class="detect" id="detectNote" data-i="detectGeneric">Choose your platform below.</p>
+    <div class="notice">
+      <svg aria-hidden="true"><use href="#i-info"/></svg>
+      <span data-i="notice">The first stable build is being prepared. These buttons link to the installer files on GitHub Releases, which appear once the first release is published. See the <a href="../release/">release notes</a>.</span>
+    </div>
+  </section>
+
+  <section class="plat wrap">
+    <div class="dl-grid">
+      <div class="dl-card" data-os="mac">
+        <div class="os"><svg aria-hidden="true"><use href="#i-desktop"/></svg><h3>macOS</h3><span class="here-tag" data-i="hereTag" hidden>Your device</span></div>
+        <p class="req" data-i="macReq">Apple Silicon (M1 or newer) · macOS 12+</p>
+        <div class="acts">
+          <a class="btn primary block" href="https://github.com/weg-9000/vinc/releases/latest/download/Vinc_0.1.0_aarch64.dmg">
+            <svg aria-hidden="true"><use href="#i-download"/></svg> .dmg</a>
+        </div>
+        <p class="foot" data-i="macFoot">Intel Macs: build from source for now.</p>
+      </div>
+      <div class="dl-card" data-os="win">
+        <div class="os"><svg aria-hidden="true"><use href="#i-desktop"/></svg><h3>Windows</h3><span class="here-tag" data-i="hereTag" hidden>Your device</span></div>
+        <p class="req" data-i="winReq">Windows 10 or newer · 64-bit</p>
+        <div class="acts">
+          <a class="btn primary block" href="https://github.com/weg-9000/vinc/releases/latest/download/Vinc_0.1.0_x64-setup.exe">
+            <svg aria-hidden="true"><use href="#i-download"/></svg> <span data-i="winExe">.exe installer</span></a>
+        </div>
+        <p class="foot" data-i="winFoot">A signed build follows a later milestone.</p>
+      </div>
+      <div class="dl-card" data-os="linux">
+        <div class="os"><svg aria-hidden="true"><use href="#i-desktop"/></svg><h3>Linux</h3><span class="here-tag" data-i="hereTag" hidden>Your device</span></div>
+        <p class="req" data-i="linuxReq">64-bit · glibc</p>
+        <div class="acts">
+          <a class="btn primary block" href="https://github.com/weg-9000/vinc/releases/latest/download/Vinc_0.1.0_amd64.AppImage">
+            <svg aria-hidden="true"><use href="#i-download"/></svg> AppImage</a>
+          <a class="btn quiet block" href="https://github.com/weg-9000/vinc/releases/latest/download/Vinc_0.1.0_amd64.deb">.deb</a>
+        </div>
+        <p class="foot" data-i="linuxFoot">More formats (.rpm) via GitHub Releases.</p>
+      </div>
+    </div>
+    <p class="assure"><b data-i="assureB">Yours, on this machine.</b> <span data-i="assure">Vinc runs fully offline. No account, no telemetry. Your data lives in one folder you control.</span></p>
+  </section>
+</main>
+
+<footer>
+    <div class="wrap row">
+    <span class="bm"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="../" data-i="fHome">Home</a>
+    <a href="../guide/" data-i="fGuide">User guide</a>
+    <a href="../release/" data-i="fRelease">Release notes</a>
+  </div>
+</footer>
+
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en"><span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span><span class="nm">English</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+    <button class="langopt" data-lang="ko"><span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span><span class="nm">한국어</span><svg class="ck" aria-hidden="true"><use href="#i-check"/></svg></button>
+  </div>
+</div>
+
+<script>
+const DECK = {
+  en: {},
+  ko: {
+    _title: "Vinc 다운로드",
+    _desc: "macOS · Windows · Linux용 Vinc를 내려받으세요. 오프라인 우선. 계정도, 클라우드도 없습니다.",
+    crumb: "다운로드",
+    h1: "Vinc 다운로드",
+    sub: "데스크톱용 오프라인 우선 지식 도구. 계정도 클라우드도 없이, 내 기기에 설치되어 내 기기에서 동작합니다.",
+    verLabel: "버전", verState: "정식 출시 전",
+    dlGeneric: "다운로드", detectGeneric: "아래에서 플랫폼을 선택하세요.",
+    dlFor: function(os){ return os + "용 다운로드"; },
+    detectFor: function(os){ return "현재 기기로 " + os + "가 감지되었습니다."; },
+    notice: "첫 정식 빌드를 준비 중입니다. 아래 버튼은 GitHub Releases의 설치 파일로 연결되며, 첫 릴리스가 게시되면 자동으로 활성화됩니다. <a href=\"../release/\">릴리스 노트</a>를 확인하세요.",
+    hereTag: "현재 기기",
+    macReq: "Apple Silicon (M1 이상) · macOS 12+",
+    macFoot: "인텔 맥은 당분간 소스에서 빌드하세요.",
+    winReq: "Windows 10 이상 · 64-bit", winExe: ".exe 설치본",
+    winFoot: "서명된 빌드는 후속 마일스톤에서 제공됩니다.",
+    linuxReq: "64-bit · glibc",
+    linuxFoot: "그 외 포맷(.rpm)은 GitHub Releases에서.",
+    assureB: "당신의 것, 이 기기 안에.", assure: "Vinc는 완전한 오프라인으로 동작합니다. 계정도, 원격 수집도 없습니다. 데이터는 당신이 관리하는 폴더 하나에 있습니다.",
+    fHome: "홈", fRelease: "릴리스 노트", fSource: "소스",
+    langTitle: "언어",
+    fHome: "홈", fDownload: "다운로드", fGuide: "사용 가이드", fRelease: "릴리스 노트",
+  },
+};
+const OSNAME = { mac: "macOS", win: "Windows", linux: "Linux" };
+const EN = {};
+document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+EN._title = document.title;
+EN._desc = document.querySelector('meta[name="description"]').content;
+EN.dlFor = function(os){ return "Download for " + os; };
+EN.detectFor = function(os){ return "We detected " + os + " on your device."; };
+DECK.en = EN;
+
+function deck(){ return DECK[document.documentElement.lang === "ko" ? "ko" : "en"] || EN; }
+function setLang(l){
+  const d = DECK[l] || EN;
+  document.querySelectorAll("[data-i]").forEach(el => { if (d[el.dataset.i]) el.innerHTML = d[el.dataset.i]; });
+  document.title = d._title || EN._title;
+  document.querySelector('meta[name="description"]').content = d._desc || EN._desc;
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-lang]").forEach(b => b.classList.toggle("active", b.dataset.lang === l));
+  try { localStorage.setItem("vinc.site.lang", l); } catch {}
+  applyDetect();
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("active", b.dataset.th === t));
+  try { localStorage.setItem("vinc.site.theme", t); } catch {}
+}
+document.querySelectorAll("[data-th]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.th)));
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", e => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") langModal.hidden = true; });
+document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
+
+// OS 감지 → 기본 버튼/카드 강조
+function detectOS(){
+  var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
+  if (p.indexOf("win") >= 0) return "win";
+  if (p.indexOf("mac") >= 0 || p.indexOf("iphone") >= 0 || p.indexOf("ipad") >= 0) return "mac";
+  if (p.indexOf("linux") >= 0 || p.indexOf("x11") >= 0 || p.indexOf("android") >= 0) return "linux";
+  return null;
+}
+var OS = detectOS();
+function applyDetect(){
+  var d = deck();
+  var primary = document.getElementById("primaryDl");
+  var label = document.getElementById("primaryLabel");
+  var note = document.getElementById("detectNote");
+  document.querySelectorAll(".dl-card").forEach(c => {
+    var on = OS && c.dataset.os === OS;
+    c.classList.toggle("here", !!on);
+    var tag = c.querySelector(".here-tag"); if (tag) tag.hidden = !on;
+  });
+  if (OS){
+    var card = document.querySelector('.dl-card[data-os="' + OS + '"]');
+    var href = card ? card.querySelector("a.btn.primary").getAttribute("href") : "#";
+    primary.setAttribute("href", href);
+    label.innerHTML = (d.dlFor ? d.dlFor(OSNAME[OS]) : ("Download for " + OSNAME[OS]));
+    note.innerHTML = (d.detectFor ? d.detectFor(OSNAME[OS]) : "");
+  } else {
+    primary.setAttribute("href", "#platforms");
+    label.innerHTML = d.dlGeneric || "Download";
+    note.innerHTML = d.detectGeneric || "";
+  }
+}
+document.querySelector(".plat").id = "platforms";
+
+let lang = null, theme = null;
+try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
+setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
+setTheme(theme || "dark");
+applyDetect();
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
+</script>
+</body>
+</html>

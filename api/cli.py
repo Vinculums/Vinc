@@ -122,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
 
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
     bk.add_argument("--out", required=True, help="archive output dir")
+    bk.add_argument("--data", default=None,
+                    help="data home to back up (default: MEMORY_DATA_DIR or ~/.vinc/db)")
     bk.add_argument("--packs", default=None, help="exported packs dir to include")
     bk.add_argument("--profile", default=None, help="domain profile.yml to include")
 
@@ -224,14 +226,17 @@ def main(argv: list[str] | None = None) -> int:
                      token=args.token, packs_dir=packs, profile_path=args.profile)
         return 0
     if args.cmd == "backup":
-        # 단발 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지). 워커 잡
-        # 경유가 아니어도 프로세스가 하나라 일관성 성립.
+        # 단발(오프라인) 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지).
+        # ⚠ 서버 기동 중에는 kuzu 배타 락으로 열리지 않는다 — 서비스가 떠 있으면
+        # HTTP `POST /backup`(서버 프로세스 내부 스냅샷)을 써야 무중단이다(deploy/
+        # vinc-backup.sh). 이 CLI 경로는 서비스 정지 시의 오프라인 백업용.
+        # D43 데이터 홈 해석(serve 와 동일): --data > MEMORY_DATA_DIR > ~/.vinc/db.
         from .backup import make_backup
-        from store.config import load_config
+        from store.config import load_config, resolve_data_dir
         from store.backend import open_store
-        store = open_store(load_config())
+        store = open_store(load_config({"data_dir": resolve_data_dir(args.data, create=False)}))
         if store is None:
-            return _emit({"error": "no reachable store (드라이버 미설치) — 백업 불가"})
+            return _emit({"error": "no reachable store (드라이버 미설치/락) — 백업 불가"})
         try:
             return _emit(make_backup(store, args.out, packs_dir=args.packs,
                                      profile_path=args.profile))

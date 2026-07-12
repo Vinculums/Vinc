@@ -18,12 +18,21 @@ ufw --force enable
 
 echo "[3/5] SSH — 키 인증 전용"
 mkdir -p /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/90-vinc-harden.conf <<'CONF'
+# sshd 는 sshd_config.d/*.conf 를 이름순으로 읽고 **먼저 나온 값이 이긴다**. cloud-init
+# 의 50-cloud-init/60-cloudimg-settings 가 PasswordAuthentication yes 를 먼저 선언하므로,
+# 우리 설정은 그보다 앞서 읽히도록 00- 접두어로 둔다(90- 이면 덮여서 비번인증이 안 꺼짐).
+cat > /etc/ssh/sshd_config.d/00-vinc-harden.conf <<'CONF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 CONF
-systemctl reload ssh || systemctl reload sshd
+# 방어적: 앞서 쓴 90- 잔재 제거 + 다른 드롭인의 'PasswordAuthentication yes' 무력화.
+rm -f /etc/ssh/sshd_config.d/90-vinc-harden.conf
+for f in /etc/ssh/sshd_config.d/*.conf; do
+  [ "$f" = /etc/ssh/sshd_config.d/00-vinc-harden.conf ] && continue
+  sed -i 's/^[[:space:]]*PasswordAuthentication[[:space:]]\+yes/PasswordAuthentication no/I' "$f" 2>/dev/null || true
+done
+sshd -t && { systemctl reload ssh || systemctl reload sshd; }
 
 echo "[4/5] fail2ban 기동"
 systemctl enable --now fail2ban

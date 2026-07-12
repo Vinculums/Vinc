@@ -1,0 +1,1323 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User guide</title>
+<meta name="description" content="A visual walkthrough of Vinc's five screens: Intake, Records, Atlas, Search, and Packs. Each scene replays the real app in motion.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<!-- 자기완결: 외부 요청 0. 장면 5개 = 실제 앱 표면 복제(app/src/surfaces/*.ts 구조,
+     문구는 app/src/copy.ts 덱 원문). 모션은 전부 CSS 키프레임 루프, reduced-motion 시
+     커서를 숨기고 완료 상태를 정지 표시한다. 항상 다크 창(D38). -->
+<style>
+/* ── 토큰 (Ink & Paper 정본 미러) ─────────────────────────────── */
+:root{
+  --background:39 30% 91%; --foreground:34 21% 6%;
+  --card:38 33% 95%; --muted:39 26% 87%; --muted-foreground:40 13% 37%;
+  --border:40 21% 84%; --ring:217 23% 32%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%;
+  --radius:.75rem; --radius-sm:.5rem; --radius-lg:1.5rem;
+  --shadow-2:0 4px 12px hsl(38 12% 10%/.10);
+  --shadow-3:0 8px 24px hsl(38 12% 10%/.14);
+  --shadow-float:0 30px 60px -16px hsl(38 12% 10%/.18);
+}
+[data-theme="dark"]{
+  --background:34 19% 7%; --foreground:37 24% 89%;
+  --card:40 16% 11%; --muted:43 23% 12%; --muted-foreground:38 12% 59%;
+  --border:34 14% 20%; --ring:218 31% 66%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%;
+  --shadow-2:0 4px 12px hsl(0 0% 0%/.35);
+  --shadow-3:0 8px 24px hsl(0 0% 0%/.45);
+  --shadow-float:0 30px 60px -16px hsl(0 0% 0%/.55);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{
+  font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;
+  color:hsl(var(--foreground));background:hsl(var(--background));
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+a{color:inherit}
+::selection{background:hsl(var(--ring)/.28)}
+.wrap{max-width:66rem;margin:0 auto;padding:0 1.5rem}
+
+/* ── 헤더 ─────────────────────────────────────────────────────── */
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
+  background:
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
+header.site{
+  position:sticky;top:0;z-index:10;
+  background:hsl(var(--background)/.78);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid hsl(var(--border)/.7);
+}
+.nav{display:flex;align-items:center;gap:1rem;padding:.8rem 0}
+.brand{display:flex;align-items:center;gap:.55rem;text-decoration:none}
+.brand svg{width:26px;height:26px}
+.brand b{font-weight:680;font-size:1.0625rem}
+.brand .crumbsep{color:hsl(var(--muted-foreground));font-weight:400}
+.brand .crumb{color:hsl(var(--muted-foreground));font-weight:500;font-size:.9375rem}
+.nav .end{margin-left:auto;display:flex;gap:.55rem;align-items:center}
+.chipbar{display:inline-flex;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.chipbar button{border:0;background:transparent;color:hsl(var(--muted-foreground));font:inherit;font-size:.78rem;padding:.18rem .62rem;border-radius:999px;cursor:pointer}
+.chipbar button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
+.btn{
+  display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;
+  font-weight:570;font-size:.9375rem;line-height:1;
+  padding:.72rem 1.35rem;border-radius:var(--radius-sm);
+  border:1px solid hsl(var(--border));
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.btn svg{width:16px;height:16px}
+.btn.primary{
+  background:linear-gradient(hsl(var(--primary)/.92),hsl(var(--primary)));
+  color:hsl(var(--primary-foreground));border-color:transparent;
+  box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14), var(--shadow-2);
+}
+.btn.primary:hover{transform:translateY(-1px)}
+.btn.quiet{background:hsl(var(--card)/.55)}
+.btn.small{padding:.5rem .95rem;font-size:.84rem}
+
+/* ── 인트로 ───────────────────────────────────────────────────── */
+.intro{padding:3rem 0 1.6rem;text-align:center}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:.45rem;font-size:.8125rem;
+  color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border));
+  border-radius:999px;padding:.32rem .95rem;background:hsl(var(--card)/.5);margin-bottom:1.4rem;
+}
+.eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:hsl(var(--ring))}
+.intro h1{font-size:clamp(2rem,1.4rem + 2.8vw,3.2rem);line-height:1.14;font-weight:700;letter-spacing:-.02em}
+.intro .sub{color:hsl(var(--muted-foreground));max-width:37rem;margin:1.2rem auto 0;font-size:1.03rem;line-height:1.75}
+.toc{margin-top:2rem;display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
+.toc a{
+  text-decoration:none;font-size:.84rem;color:hsl(var(--muted-foreground));
+  border:1px solid hsl(var(--border));border-radius:999px;padding:.38rem 1rem;
+  background:hsl(var(--card)/.5);transition:color .15s,border-color .15s;
+}
+.toc a:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.toc a b{color:hsl(var(--ring));font-weight:600;margin-right:.35rem}
+
+/* ── 챕터 ─────────────────────────────────────────────────────── */
+.chapter{padding:3.4rem 0;scroll-margin-top:4.5rem}
+.chapter .head{max-width:40rem;margin-bottom:1.8rem}
+.chapter .num{font-size:.72rem;letter-spacing:.14em;color:hsl(var(--ring));font-weight:600}
+.chapter h2{font-size:clamp(1.5rem,1.2rem + 1.3vw,2.1rem);font-weight:680;letter-spacing:-.015em;margin:.5rem 0 .7rem}
+.chapter .head p{color:hsl(var(--muted-foreground));line-height:1.75}
+.tips{margin-top:1rem;display:flex;flex-direction:column;gap:.45rem}
+.tips li{
+  list-style:none;font-size:.85rem;color:hsl(var(--muted-foreground));
+  display:flex;gap:.55rem;align-items:baseline;
+}
+.tips li::before{content:"";width:5px;height:5px;border-radius:50%;background:hsl(var(--ring));flex:none;transform:translateY(-.14em)}
+.tips kbd{
+  font:inherit;font-size:.74rem;border:1px solid hsl(var(--border));
+  border-radius:.3rem;padding:.05rem .4rem;background:hsl(var(--card));color:hsl(var(--foreground));
+}
+
+/* 스크롤 리빌 */
+.rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){.rv{opacity:1;transform:none;transition:none}}
+
+/* ── 장면 공통: 앱 창(항상 다크) ──────────────────────────────── */
+.scene{position:relative}
+.window{
+  --w-bg:#16130F; --w-surface:#211E18; --w-fog:#2C2820;
+  --w-border:#39332B; --w-text:#EAE5DD; --w-text-soft:#C7C0B2; --w-mutedfg:#A39A8A;
+  --w-point:#8FA3C4; --w-pointfill:#3E4C63;
+  border-radius:var(--radius-lg);border:1px solid var(--w-border);
+  background:var(--w-bg);color:var(--w-text);
+  box-shadow:var(--shadow-float);overflow:hidden;
+  font-size:.82rem;
+}
+.window .tbar{
+  display:flex;align-items:center;gap:.42rem;padding:.6rem .95rem;
+  border-bottom:1px solid var(--w-border);background:var(--w-surface);
+}
+.window .tbar i{width:9px;height:9px;border-radius:50%;background:var(--w-mutedfg);opacity:.35}
+.window .body{display:flex;min-height:22rem}
+.rail{
+  width:48px;flex:none;border-right:1px solid var(--w-border);background:var(--w-surface);
+  display:flex;flex-direction:column;align-items:center;gap:.3rem;padding:.65rem 0 .75rem;
+}
+.rail .vb{width:26px;height:26px;display:grid;place-items:center;color:var(--w-text);margin-bottom:.4rem}
+.rail .vb svg{width:20px;height:20px}
+.rail a{width:31px;height:31px;border-radius:.5rem;display:grid;place-items:center;color:var(--w-mutedfg)}
+.rail a svg{width:15px;height:15px}
+.rail a.on{background:color-mix(in srgb, var(--w-point) 18%, transparent);color:var(--w-point)}
+.rail .sp{flex:1}
+.surface{flex:1;min-width:0;padding:1rem 1.15rem;position:relative;overflow:hidden}
+.shead{display:flex;align-items:flex-start;gap:.6rem;margin-bottom:.9rem}
+.shead > svg{width:21px;height:21px;color:var(--w-text);margin-top:.1rem}
+.shead h4{font-size:.98rem;font-weight:650}
+.shead .smeta{font-size:.72rem;color:var(--w-mutedfg);margin-top:.12rem}
+.shead .scta{
+  margin-left:auto;display:inline-flex;align-items:center;gap:.4rem;
+  font-size:.74rem;font-weight:560;color:var(--w-text);
+  background:linear-gradient(color-mix(in srgb,var(--w-pointfill) 92%,white 0%),var(--w-pointfill));
+  border:0;border-radius:.45rem;padding:.42rem .8rem;
+}
+.shead .scta svg{width:12px;height:12px}
+.hintx{font-size:.72rem;color:var(--w-mutedfg)}
+/* 빈 상태 */
+.emptyx{
+  border:1.5px dashed var(--w-border);border-radius:.8rem;
+  padding:1.6rem 1.2rem;text-align:center;transition:border-color .3s;
+}
+.emptyx svg{width:26px;height:26px;color:var(--w-text-soft)}
+.emptyx h5{font-size:.95rem;font-weight:640;margin:.6rem 0 .3rem}
+.emptyx p{font-size:.78rem;color:var(--w-mutedfg)}
+.emptyx .bx{
+  display:inline-block;margin-top:.75rem;font-size:.74rem;color:var(--w-text);
+  border:1px solid var(--w-border);border-radius:.45rem;padding:.4rem .85rem;background:var(--w-fog);
+}
+/* 리스트 행 */
+.lrow{display:flex;align-items:center;gap:.55rem;padding:.5rem .2rem;border-bottom:1px solid var(--w-border)}
+.lrow .st{color:var(--w-text-soft);font-size:.8rem;width:1em;flex:none}
+.lrow .ttl{font-size:.8rem;color:var(--w-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow .meta{margin-left:auto;font-size:.66rem;color:var(--w-mutedfg);flex:none}
+.lrow .act{display:flex;gap:.3rem;flex:none}
+.lrow .act i{
+  font-style:normal;font-size:.64rem;color:var(--w-mutedfg);
+  border:1px solid var(--w-border);border-radius:999px;padding:.12rem .5rem;
+}
+/* 입력 필드 */
+.fld{
+  display:flex;align-items:center;gap:.5rem;
+  border:1px solid var(--w-border);border-radius:.55rem;
+  background:var(--w-surface);padding:.55rem .75rem;margin-bottom:.8rem;
+  font-size:.78rem;color:var(--w-mutedfg);
+}
+.fld svg{width:12px;height:12px;flex:none}
+.fld .typed{color:var(--w-text)}
+.fld .typed span{opacity:0}
+.fld .tcaret{display:inline-block;width:1px;height:.9em;background:var(--w-text-soft);vertical-align:-.1em;opacity:0}
+.fld .ph{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 커서 + 클릭 파문 */
+.cur{position:absolute;width:17px;height:17px;z-index:6;opacity:0;pointer-events:none;filter:drop-shadow(0 1px 2px rgb(0 0 0/.5))}
+.rip{
+  position:absolute;width:30px;height:30px;border-radius:50%;z-index:5;pointer-events:none;
+  border:1.5px solid var(--w-point);opacity:0;transform:scale(.3);
+}
+@media (prefers-reduced-motion: reduce){
+  .cur,.rip{display:none}
+  .fx{animation:none!important}
+  .fin{opacity:1!important;transform:none!important}
+  .dim-on-filter{opacity:1!important}
+}
+
+/* ═══ 장면 1 · Intake (11s) ═══════════════════════════════════ */
+.s1 .cur{animation:s1cur 11s ease-in-out infinite}
+@keyframes s1cur{
+  0%,3%{opacity:0;transform:translate(330px,250px)}
+  6%{opacity:1}
+  20%,24%{opacity:1;transform:translate(200px,150px)}
+  27%{opacity:0;transform:translate(200px,150px)}
+  100%{opacity:0;transform:translate(330px,250px)}
+}
+.s1 .folder{
+  position:absolute;z-index:5;opacity:0;
+  display:flex;align-items:center;gap:.4rem;
+  font-size:.7rem;color:var(--w-text);
+  border:1px solid var(--w-border);border-radius:.5rem;
+  padding:.35rem .7rem;background:var(--w-fog);box-shadow:0 8px 20px rgb(0 0 0/.45);
+  animation:s1fold 11s ease-in-out infinite;
+}
+.s1 .folder svg{width:12px;height:12px;color:var(--w-text-soft)}
+@keyframes s1fold{
+  0%,3%{opacity:0;transform:translate(345px,262px)}
+  6%{opacity:.96}
+  20%{opacity:.96;transform:translate(215px,162px)}
+  24%{opacity:0;transform:translate(215px,166px) scale(.85)}
+  100%{opacity:0;transform:translate(345px,262px)}
+}
+.s1 .emptyx{animation:s1drop 11s ease infinite}
+@keyframes s1drop{
+  0%,18%{border-color:var(--w-border);background:transparent}
+  21%,25%{border-color:var(--w-point);background:color-mix(in srgb,var(--w-point) 7%,transparent)}
+  30%,100%{border-color:var(--w-border);background:transparent}
+}
+.s1 .prog{opacity:0;margin-top:.9rem;animation:s1prog 11s ease infinite}
+@keyframes s1prog{0%,25%{opacity:0}29%,53%{opacity:1}58%,100%{opacity:0}}
+.s1 .pbar{height:4px;border-radius:3px;background:var(--w-fog);margin-top:.45rem;overflow:hidden}
+.s1 .pbar i{display:block;height:100%;width:0;border-radius:3px;background:var(--w-point);animation:s1fill 11s ease infinite}
+@keyframes s1fill{0%,27%{width:0}55%,100%{width:100%}}
+.s1 .done{opacity:0;margin-top:.9rem;display:flex;align-items:center;gap:.7rem;animation:s1done 11s ease infinite}
+@keyframes s1done{0%,56%{opacity:0;transform:translateY(6px)}61%,94%{opacity:1;transform:none}98%,100%{opacity:0}}
+.s1 .done .bx{margin-top:0;background:var(--w-pointfill);border-color:transparent;color:var(--w-text)}
+
+/* ═══ 장면 2 · Records (11s) ══════════════════════════════════ */
+.s2 .cur{animation:s2cur 11s ease-in-out infinite}
+@keyframes s2cur{
+  0%,4%{opacity:0;transform:translate(340px,230px)}
+  7%{opacity:1}
+  15%,18%{opacity:1;transform:translate(150px,92px)}
+  19%{transform:translate(150px,92px) scale(.9)}
+  21%{transform:translate(150px,92px) scale(1)}
+  30%{opacity:1;transform:translate(150px,92px)}
+  36%{opacity:0}
+  100%{opacity:0;transform:translate(340px,230px)}
+}
+.s2 .rip{left:138px;top:80px;animation:s2rip 11s ease infinite}
+@keyframes s2rip{0%,18%{opacity:0;transform:scale(.3)}20%{opacity:.8}26%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+.s2 .tcaret{animation:s2caret 11s steps(1) infinite}
+@keyframes s2caret{0%,17%{opacity:0}18%,60%{opacity:1}61%,100%{opacity:0}}
+.s2 .t1{animation:s2t1 11s steps(1) infinite}
+.s2 .t2{animation:s2t2 11s steps(1) infinite}
+.s2 .t3{animation:s2t3 11s steps(1) infinite}
+@keyframes s2t1{0%,23%{opacity:0}24%,88%{opacity:1}89%,100%{opacity:0}}
+@keyframes s2t2{0%,27%{opacity:0}28%,88%{opacity:1}89%,100%{opacity:0}}
+@keyframes s2t3{0%,31%{opacity:0}32%,88%{opacity:1}89%,100%{opacity:0}}
+.s2 .dim-on-filter{animation:s2dim 11s ease infinite}
+@keyframes s2dim{0%,36%{opacity:1}42%,86%{opacity:.14}92%,100%{opacity:1}}
+.s2 .h-all{animation:s2hall 11s steps(1) infinite}
+.s2 .h-filt{position:absolute;animation:s2hfilt 11s steps(1) infinite}
+@keyframes s2hall{0%,39%{opacity:1}40%,88%{opacity:0}89%,100%{opacity:1}}
+@keyframes s2hfilt{0%,39%{opacity:0}40%,88%{opacity:1}89%,100%{opacity:0}}
+
+/* ═══ 장면 3 · Atlas (12s) ════════════════════════════════════ */
+.s3 .canvasx{position:relative;flex:1;min-width:0;overflow:hidden;
+  background:radial-gradient(24rem 15rem at 60% 42%, color-mix(in srgb,var(--w-point) 7%,transparent), transparent 70%), var(--w-bg);}
+.s3 svg.graph{position:absolute;inset:0;width:100%;height:100%}
+.s3 .crumbx{position:absolute;top:.8rem;left:1rem;z-index:2;font-size:.7rem;color:var(--w-mutedfg)}
+.s3 .crumbx b{color:var(--w-text-soft);font-weight:600}
+.s3 .toolsx{position:absolute;top:.7rem;right:.9rem;z-index:2;display:flex;gap:.3rem}
+.s3 .chipx{font-size:.66rem;color:var(--w-mutedfg);border:1px solid var(--w-border);border-radius:999px;padding:.15rem .55rem;background:color-mix(in srgb,var(--w-surface) 82%,transparent)}
+.s3 .chipx.on{color:var(--w-point);border-color:color-mix(in srgb,var(--w-point) 45%,transparent)}
+.s3 .legend{position:absolute;left:1rem;bottom:.8rem;z-index:2;display:flex;gap:.35rem}
+.s3 .legend .chipx{display:inline-flex;align-items:center;gap:.35rem}
+.s3 .legend .chipx::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--dot,var(--w-point))}
+.s3 .edge{stroke:var(--w-mutedfg);stroke-opacity:.32;stroke-width:1.1;fill:none}
+.s3 .edge.hl{stroke:var(--w-point);stroke-opacity:.8;stroke-width:1.5}
+.s3 .node{fill:var(--w-mutedfg);fill-opacity:.72}
+.s3 .node.pt{fill:var(--w-point)}
+.s3 .halo{fill:none;stroke:var(--w-point);stroke-opacity:.38;stroke-width:1.3;stroke-dasharray:4 5;opacity:0;animation:s3halo 12s ease infinite}
+@keyframes s3halo{0%,20%{opacity:0}24%,92%{opacity:1}96%,100%{opacity:0}}
+.s3 .cur{animation:s3cur 12s ease-in-out infinite}
+@keyframes s3cur{
+  0%,3%{opacity:0;transform:translate(370px,270px)}
+  6%{opacity:1}
+  16%,19%{opacity:1;transform:translate(258px,158px)}
+  20%{transform:translate(258px,158px) scale(.9)}
+  22%{transform:translate(258px,158px) scale(1)}
+  40%{opacity:1;transform:translate(258px,158px)}
+  52%,58%{opacity:1;transform:translate(172px,105px)}
+  80%{opacity:1;transform:translate(172px,105px)}
+  86%{opacity:0}
+  100%{opacity:0;transform:translate(370px,270px)}
+}
+.s3 .rip{left:244px;top:144px;animation:s3rip 12s ease infinite}
+@keyframes s3rip{0%,19%{opacity:0;transform:scale(.3)}21%{opacity:.8}27%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+.s3 .detailx{
+  position:absolute;right:.8rem;top:2.6rem;z-index:3;width:11.6rem;
+  border:1px solid var(--w-border);border-radius:.65rem;
+  background:color-mix(in srgb, var(--w-surface) 94%, transparent);
+  padding:.75rem .8rem;box-shadow:0 12px 30px rgb(0 0 0/.4);
+  opacity:0;transform:translateX(12px);animation:s3panel 12s ease infinite;
+}
+@keyframes s3panel{0%,22%{opacity:0;transform:translateX(12px)}27%,93%{opacity:1;transform:none}97%,100%{opacity:0}}
+.s3 .detailx .t{display:flex;align-items:center;gap:.4rem;font-size:.76rem;font-weight:600;color:var(--w-text)}
+.s3 .detailx .t::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--w-point);flex:none}
+.s3 .detailx .sub{font-size:.66rem;color:var(--w-mutedfg);margin:.3rem 0 .55rem}
+.s3 .detailx .bxs{display:flex;flex-direction:column;gap:.3rem}
+.s3 .detailx .bxs i{font-style:normal;font-size:.66rem;color:var(--w-text-soft);border:1px solid var(--w-border);border-radius:.4rem;padding:.28rem .55rem;text-align:center}
+.s3 .tipx{
+  position:absolute;left:96px;top:120px;z-index:3;max-width:13rem;
+  font-size:.66rem;color:var(--w-text-soft);
+  border:1px solid var(--w-border);border-radius:.5rem;padding:.4rem .6rem;
+  background:color-mix(in srgb, var(--w-surface) 94%, transparent);
+  box-shadow:0 8px 20px rgb(0 0 0/.4);
+  opacity:0;animation:s3tip 12s ease infinite;
+}
+@keyframes s3tip{0%,54%{opacity:0;transform:translateY(4px)}58%,82%{opacity:1;transform:none}86%,100%{opacity:0}}
+@media (prefers-reduced-motion: no-preference){
+  .s3 .fl{transform-box:fill-box;transform-origin:center;animation:s3float 7s ease-in-out infinite alternate}
+  .s3 .fl.f2{animation-duration:8.5s;animation-delay:-2.5s}
+  .s3 .fl.f3{animation-duration:9.5s;animation-delay:-5s}
+  @keyframes s3float{from{transform:translateY(-2.5px)}to{transform:translateY(2.5px)}}
+}
+
+/* ═══ 장면 4 · Search (12s) ═══════════════════════════════════ */
+.s4 .cur{animation:s4cur 12s ease-in-out infinite}
+@keyframes s4cur{
+  0%,3%{opacity:0;transform:translate(330px,240px)}
+  6%{opacity:1}
+  12%,15%{opacity:1;transform:translate(170px,95px)}
+  16%{transform:translate(170px,95px) scale(.9)}
+  18%{transform:translate(170px,95px) scale(1)}
+  26%{opacity:1;transform:translate(170px,95px)}
+  32%{opacity:0}
+  100%{opacity:0;transform:translate(330px,240px)}
+}
+.s4 .rip{left:158px;top:83px;animation:s4rip 12s ease infinite}
+@keyframes s4rip{0%,15%{opacity:0;transform:scale(.3)}17%{opacity:.8}23%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+.s4 .tcaret{animation:s4caret 12s steps(1) infinite}
+@keyframes s4caret{0%,15%{opacity:0}16%,44%{opacity:1}45%,100%{opacity:0}}
+.s4 .t1{animation:s4t1 12s steps(1) infinite}
+.s4 .t2{animation:s4t2 12s steps(1) infinite}
+.s4 .t3{animation:s4t3 12s steps(1) infinite}
+.s4 .t4{animation:s4t4 12s steps(1) infinite}
+@keyframes s4t1{0%,19%{opacity:0}20%,90%{opacity:1}91%,100%{opacity:0}}
+@keyframes s4t2{0%,23%{opacity:0}24%,90%{opacity:1}91%,100%{opacity:0}}
+@keyframes s4t3{0%,27%{opacity:0}28%,90%{opacity:1}91%,100%{opacity:0}}
+@keyframes s4t4{0%,31%{opacity:0}32%,90%{opacity:1}91%,100%{opacity:0}}
+.s4 .searching{opacity:0;animation:s4sea 12s steps(1) infinite}
+@keyframes s4sea{0%,34%{opacity:0}35%,41%{opacity:1}42%,100%{opacity:0}}
+.s4 .res{opacity:0;animation:s4res 12s ease infinite}
+.s4 .res.r2{animation-name:s4res2}.s4 .res.r3{animation-name:s4res3}
+.s4 .res.r4{animation-name:s4res4}.s4 .res.r5{animation-name:s4res5}.s4 .res.r6{animation-name:s4res6}
+@keyframes s4res{0%,42%{opacity:0;transform:translateY(6px)}46%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+@keyframes s4res2{0%,44%{opacity:0;transform:translateY(6px)}48%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+@keyframes s4res3{0%,46%{opacity:0;transform:translateY(6px)}50%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+@keyframes s4res4{0%,48%{opacity:0;transform:translateY(6px)}52%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+@keyframes s4res5{0%,50%{opacity:0;transform:translateY(6px)}54%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+@keyframes s4res6{0%,52%{opacity:0;transform:translateY(6px)}56%,92%{opacity:1;transform:none}96%,100%{opacity:0}}
+.s4 h6{font-size:.72rem;font-weight:640;color:var(--w-text-soft);margin:.55rem 0 .1rem}
+.s4 h6 span{color:var(--w-mutedfg);font-weight:400}
+.s4 .mark{color:var(--w-point);font-size:.74rem;letter-spacing:.05em}
+
+/* ═══ 장면 5 · Packs (12s) ════════════════════════════════════ */
+.s5 .cols{display:grid;grid-template-columns:1fr 12rem;gap:.9rem}
+@media (max-width:40rem){.s5 .cols{grid-template-columns:1fr}}
+.s5 aside{
+  border:1px solid var(--w-border);border-radius:.65rem;
+  background:var(--w-surface);padding:.75rem .85rem;min-height:11rem;position:relative;
+}
+.s5 .btnrow{display:flex;gap:.4rem;justify-content:center;margin-top:.75rem;flex-wrap:wrap}
+.s5 .ctrls{display:flex;gap:.7rem;justify-content:center;margin-top:.7rem;font-size:.64rem;color:var(--w-mutedfg);flex-wrap:wrap}
+.s5 .ctrls b{color:var(--w-text-soft);font-weight:500;border:1px solid var(--w-border);border-radius:.3rem;padding:.05rem .4rem;margin-left:.25rem}
+.s5 .cur{animation:s5cur 12s ease-in-out infinite}
+@keyframes s5cur{
+  0%,4%{opacity:0;transform:translate(320px,240px)}
+  7%{opacity:1}
+  14%,17%{opacity:1;transform:translate(128px,205px)}
+  18%{transform:translate(128px,205px) scale(.9)}
+  20%{transform:translate(128px,205px) scale(1)}
+  28%{opacity:1;transform:translate(128px,205px)}
+  34%{opacity:0}
+  100%{opacity:0;transform:translate(320px,240px)}
+}
+.s5 .rip{left:116px;top:193px;animation:s5rip 12s ease infinite}
+@keyframes s5rip{0%,17%{opacity:0;transform:scale(.3)}19%{opacity:.8}25%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+.s5 .share-btn{animation:s5press 12s ease infinite}
+@keyframes s5press{0%,17%{background:var(--w-fog)}19%,22%{background:color-mix(in srgb,var(--w-point) 22%,var(--w-fog))}25%,100%{background:var(--w-fog)}}
+.s5 .packing{opacity:0;margin-top:.7rem;animation:s5pack 12s steps(1) infinite}
+@keyframes s5pack{0%,20%{opacity:0}21%,33%{opacity:1}34%,100%{opacity:0}}
+.s5 .ready{opacity:0;margin-top:.7rem;animation:s5ready 12s ease infinite}
+@keyframes s5ready{0%,34%{opacity:0;transform:translateY(5px)}38%,93%{opacity:1;transform:none}97%,100%{opacity:0}}
+.s5 .pv-empty{animation:s5pvout 12s steps(1) infinite}
+@keyframes s5pvout{0%,33%{opacity:1}34%,93%{opacity:0}94%,100%{opacity:1}}
+.s5 .pv-fill{position:absolute;inset:.75rem .85rem;opacity:0;animation:s5pvin 12s ease infinite}
+@keyframes s5pvin{0%,34%{opacity:0;transform:translateY(5px)}38%,93%{opacity:1;transform:none}97%,100%{opacity:0}}
+.s5 .pv-fill h5{font-size:.72rem;font-weight:640;color:var(--w-text);word-break:break-all}
+.s5 .pv-fill .ln{height:5px;border-radius:3px;background:color-mix(in srgb,var(--w-mutedfg) 28%,transparent);margin-top:.5rem}
+
+/* ═══ + · MCP (Connect to Claude) (13s) ══════════════════════ */
+.mcpcard{
+  --w-bg:#16130F; --w-surface:#211E18; --w-fog:#2C2820;
+  --w-border:#39332B; --w-text:#EAE5DD; --w-text-soft:#C7C0B2; --w-mutedfg:#A39A8A;
+  --w-point:#8FA3C4; --w-ok:#8FB48C;
+  border-radius:var(--radius-lg);border:1px solid var(--w-border);
+  background:var(--w-bg);color:var(--w-text);box-shadow:var(--shadow-float);
+  overflow:hidden;padding:1.2rem;
+}
+.mcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width:44rem){.mcp-grid{grid-template-columns:1fr}}
+.term,.conn{border:1px solid var(--w-border);border-radius:.7rem;background:var(--w-surface);overflow:hidden}
+.term-bar{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;border-bottom:1px solid var(--w-border);background:var(--w-fog)}
+.term-bar i{width:8px;height:8px;border-radius:50%;background:var(--w-mutedfg);opacity:.4}
+.term-ttl{margin-left:.4rem;font-size:.68rem;color:var(--w-mutedfg)}
+.term-body{padding:.9rem 1rem;font-family:var(--font-mono,ui-monospace,monospace);font-size:.78rem;min-height:8.5rem}
+.term-body .pr{color:var(--w-point)}
+.term-body .cmd{color:var(--w-text)}
+.term-body .cmd span{opacity:0}
+.term-body .tc{display:inline-block;width:.5em;height:1em;background:var(--w-text-soft);vertical-align:-.15em;opacity:0}
+.term-body .out{color:var(--w-mutedfg);margin-top:.5rem;opacity:0}
+.term-body .out.o1{color:var(--w-ok)}
+.conn{display:flex;flex-direction:column}
+.conn-head{display:flex;align-items:center;gap:.6rem;padding:.85rem .9rem;border-bottom:1px solid var(--w-border)}
+.conn-mark{width:28px;height:28px;border-radius:.5rem;display:grid;place-items:center;background:color-mix(in srgb,var(--w-point) 16%,transparent);color:var(--w-text)}
+.conn-mark svg{width:18px;height:18px}
+.conn-name{font-size:.85rem;font-weight:640}
+.conn-sub{font-size:.66rem;color:var(--w-mutedfg)}
+.conn-dot{margin-left:auto;font-size:.66rem;font-weight:600;color:var(--w-ok);display:inline-flex;align-items:center;gap:.35rem;opacity:0}
+.conn-dot::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--w-ok)}
+.conn-tools{display:flex;flex-wrap:wrap;gap:.4rem;padding:.85rem .9rem;flex:1;align-content:flex-start}
+.conn-tools .tool{
+  display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;
+  font-family:var(--font-mono,ui-monospace,monospace);color:var(--w-text-soft);
+  border:1px solid var(--w-border);border-radius:999px;padding:.24rem .6rem;background:var(--w-fog);
+  opacity:0;
+}
+.conn-tools .tool svg{width:11px;height:11px;color:var(--w-point)}
+.conn-alt{font-size:.66rem;color:var(--w-mutedfg);padding:.7rem .9rem;border-top:1px solid var(--w-border);line-height:1.55}
+.conn-alt b{color:var(--w-text-soft);font-family:var(--font-mono,ui-monospace,monospace)}
+@media (prefers-reduced-motion: no-preference){
+  .s6 .c1{animation:m6c1 13s steps(1) infinite}
+  .s6 .c2{animation:m6c2 13s steps(1) infinite}
+  .s6 .tc{animation:m6tc 13s steps(1) infinite}
+  @keyframes m6c1{0%,8%{opacity:0}10%,94%{opacity:1}96%,100%{opacity:0}}
+  @keyframes m6c2{0%,16%{opacity:0}18%,94%{opacity:1}96%,100%{opacity:0}}
+  @keyframes m6tc{0%,7%{opacity:0}8%,26%{opacity:1}27%,100%{opacity:0}}
+  .s6 .o1{animation:m6o1 13s ease infinite}
+  .s6 .o2{animation:m6o2 13s ease infinite}
+  @keyframes m6o1{0%,28%{opacity:0;transform:translateY(3px)}31%,94%{opacity:1;transform:none}96%,100%{opacity:0}}
+  @keyframes m6o2{0%,31%{opacity:0;transform:translateY(3px)}34%,94%{opacity:1;transform:none}96%,100%{opacity:0}}
+  .s6 .conn-dot{animation:m6dot 13s ease infinite}
+  @keyframes m6dot{0%,36%{opacity:0}40%,94%{opacity:1}96%,100%{opacity:0}}
+  .s6 .tool{animation:m6tool 13s ease infinite}
+  .s6 .t1{animation-delay:0s}.s6 .t2{animation-delay:.4s}.s6 .t3{animation-delay:.8s}
+  .s6 .t4{animation-delay:1.2s}.s6 .t5{animation-delay:1.6s}
+  @keyframes m6tool{0%,42%{opacity:0;transform:translateY(4px) scale(.96)}47%,92%{opacity:1;transform:none}95%,100%{opacity:0}}
+}
+@media (prefers-reduced-motion: reduce){
+  .s6 .c1,.s6 .c2,.s6 .o1,.s6 .o2,.s6 .conn-dot,.s6 .tool{opacity:1!important;transform:none!important}
+  .s6 .tc{display:none}
+}
+
+/* ── 단축키 ───────────────────────────────────────────────────── */
+.keys{border:1px solid hsl(var(--border));border-radius:var(--radius-lg);background:hsl(var(--card)/.55);padding:2.2rem 2rem}
+.keys h2{text-align:center;font-size:clamp(1.4rem,1.1rem+1.2vw,1.9rem);font-weight:680;letter-spacing:-.01em}
+.keys .kgrid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));max-width:44rem;margin:1.8rem auto 0}
+.keys .k{display:flex;align-items:center;gap:.8rem;font-size:.875rem;color:hsl(var(--muted-foreground))}
+.keys .k kbd{
+  font:inherit;font-size:.78rem;border:1px solid hsl(var(--border));
+  border-radius:.4rem;padding:.22rem .6rem;background:hsl(var(--background));
+  color:hsl(var(--foreground));white-space:nowrap;
+}
+
+/* ── 마지막 CTA · 푸터 ────────────────────────────────────────── */
+.fin{text-align:center;padding:4.5rem 0 4rem}
+.fin h2{font-size:clamp(1.7rem,1.3rem + 1.8vw,2.5rem);font-weight:700;letter-spacing:-.02em}
+.fin p{color:hsl(var(--muted-foreground));margin:.8rem 0 1.8rem}
+.fin .cta{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+footer{border-top:1px solid hsl(var(--border));padding:1.8rem 0 2.6rem;color:hsl(var(--muted-foreground));font-size:.8125rem}
+footer .row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center}
+footer a{text-decoration:none}
+footer a:hover{color:hsl(var(--foreground))}
+footer .bm{display:flex;align-items:center;gap:.45rem;margin-right:auto}
+footer .bm svg{width:16px;height:16px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vlogo" viewBox="0 0 100 100">
+    <g fill="currentColor">
+      <circle cx="50" cy="13" r="3.8"/><circle cx="50" cy="28" r="6.4"/><circle cx="50" cy="50" r="13"/>
+    </g>
+    <path d="M26 53 50 77 74 53" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-ingest" viewBox="0 0 24 24">
+    <circle cx="12" cy="5" r="3.2" fill="currentColor"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/>
+    <circle cx="12" cy="13.6" r="1.3" fill="currentColor"/><rect x="3" y="16.5" width="18" height="4.5" rx="2.25" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-recall" viewBox="0 0 24 24">
+    <circle cx="7" cy="7" r="1.9" fill="currentColor"/><circle cx="12" cy="7" r="1.9" fill="currentColor"/><circle cx="17" cy="7" r="1.9" fill="currentColor"/>
+    <circle cx="7" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.9" fill="none"/><circle cx="17" cy="12" r="1.9" fill="currentColor"/>
+    <circle cx="7" cy="17" r="1.9" fill="currentColor"/><circle cx="12" cy="17" r="1.9" fill="currentColor"/><circle cx="17" cy="17" r="1.9" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24">
+    <path d="M12 7 6 17M12 7 18 17M6 17h12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <circle cx="12" cy="7" r="3.8" fill="currentColor"/><circle cx="6" cy="17" r="3" fill="currentColor"/><circle cx="18" cy="17" r="3" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-pack" viewBox="0 0 24 24">
+    <ellipse cx="11" cy="16.5" rx="7.5" ry="2.2" fill="currentColor"/><ellipse cx="11" cy="20" rx="7.5" ry="2.2" fill="currentColor"/>
+    <path d="M13 14.5 18 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18.5" cy="6.5" r="2.6" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="2.3" fill="none"/>
+    <circle cx="15.2" cy="15.2" r="2" fill="currentColor"/><circle cx="18.4" cy="18.4" r="1.3" fill="currentColor"/><circle cx="20.8" cy="20.8" r="0.8" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24">
+    <path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="15" cy="7" r="2.7" fill="currentColor"/><circle cx="8" cy="12" r="2.7" fill="currentColor"/><circle cx="17" cy="17" r="2.7" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24">
+    <path d="M12 20V9m0 0 4.5 4.5M12 9 7.5 13.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 4.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24">
+    <path d="M5 3l14 8.2-6.8 1.5L9.4 20z" fill="#EAE5DD" stroke="#16130F" stroke-width="1.4" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24">
+    <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4L12 7h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="../" aria-label="Vinc home">
+      <svg aria-hidden="true"><use href="#vlogo"/></svg><b>Vinc</b>
+      <span class="crumbsep">/</span><span class="crumb" data-i="crumb">User guide</span>
+    </a>
+    <div class="end">
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </span>
+      <a class="btn primary small" href="../download/" data-i="navGet">Download</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- ── 인트로 ─────────────────────────────────────────────── -->
+  <section class="intro wrap">
+    <h1 data-i="introT">User guide</h1>
+    <nav class="toc" aria-label="Chapters">
+      <a href="#ch1"><b>1</b><span data-i="toc1">Intake</span></a>
+      <a href="#ch2"><b>2</b><span data-i="toc2">Records</span></a>
+      <a href="#ch3"><b>3</b><span data-i="toc3">Atlas</span></a>
+      <a href="#ch4"><b>4</b><span data-i="toc4">Search</span></a>
+      <a href="#ch5"><b>5</b><span data-i="toc5">Packs</span></a>
+      <a href="#ch6"><b>+</b><span data-i="toc6">Connect to Claude</span></a>
+    </nav>
+  </section>
+
+  <!-- ═══ 1 · Intake ══════════════════════════════════════════ -->
+  <section id="ch1" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch1n">01 · INTAKE</span>
+      <h2 data-i="ch1t">Just drag and drop. Vinc handles the rest.</h2>
+      <p data-i="ch1b">Drop your notes and documents onto the window. Vinc analyzes their
+        content and finds the key concepts and hidden connections. First time?
+        The built-in sample pack shows you a finished knowledge map in one minute.</p>
+      <ul class="tips">
+        <li data-i="ch1tip1">All analysis happens safely on your PC. Nothing is ever sent to an outside server.</li>
+        <li data-i="ch1tip2">When analysis finishes, press Open in Atlas to see the finished map right away.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="window s1" role="img" aria-label="Intake surface: a folder is dropped, ingest runs, and a success message appears">
+        <div class="tbar"><i></i><i></i><i></i></div>
+        <div class="body">
+          <div class="rail" aria-hidden="true">
+            <span class="vb"><svg><use href="#vlogo"/></svg></span>
+            <a class="on"><svg><use href="#i-ingest"/></svg></a>
+            <a><svg><use href="#i-recall"/></svg></a>
+            <a><svg><use href="#i-graph"/></svg></a>
+            <a><svg><use href="#i-search"/></svg></a>
+            <a><svg><use href="#i-pack"/></svg></a>
+            <span class="sp"></span>
+            <a><svg><use href="#i-settings"/></svg></a>
+          </div>
+          <div class="surface">
+            <div class="shead">
+              <svg aria-hidden="true"><use href="#i-ingest"/></svg>
+              <div><h4>Intake</h4><div class="smeta" data-i="m1meta">Documents in, knowledge out.</div></div>
+              <button class="scta" tabindex="-1"><svg aria-hidden="true"><use href="#i-upload"/></svg><span data-i="m1cta">Choose files</span></button>
+            </div>
+            <div class="emptyx fx">
+              <svg aria-hidden="true"><use href="#i-ingest"/></svg>
+              <h5 data-i="m1title">Add your data.</h5>
+              <p data-i="m1body">Drop files or folders here, or choose them yourself.</p>
+              <p class="hintx" style="margin-top:.4rem" data-i="m1sov">Everything is analyzed on this PC. Your data never leaves.</p>
+              <span class="bx" data-i="m1sample">Try the sample pack</span>
+            </div>
+            <div class="prog fx">
+              <span class="hintx" data-i="m1loading">Analyzing 86 of 128 documents…</span>
+              <div class="pbar"><i class="fx"></i></div>
+            </div>
+            <div class="done fx fin">
+              <span data-i="m1done" style="font-size:.8rem">Done. 128 documents organized into 4 topics.</span>
+              <span class="bx" data-i="m1atlas">Open in Atlas</span>
+            </div>
+            <div class="folder fx" aria-hidden="true"><svg><use href="#i-folder"/></svg><span>notes/</span></div>
+            <svg class="cur fx" aria-hidden="true"><use href="#i-cursor"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 2 · Records ═════════════════════════════════════════ -->
+  <section id="ch2" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch2n">02 · RECORDS</span>
+      <h2 data-i="ch2t">All your knowledge, neatly in one place.</h2>
+      <p data-i="ch2b">Every document you add is organized here. Find anything instantly with
+        live search, and pin what you open often. The leading icon (● pinned,
+        ◐ tagged, ○ plain) shows each document's state at a glance.</p>
+      <ul class="tips">
+        <li data-i="ch2tip1">Show in Atlas reveals exactly where a document sits on your knowledge map.</li>
+        <li data-i="ch2tip2">State is drawn with icon shapes, not colors, so it reads clearly in dark and light mode alike.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="window s2" role="img" aria-label="Records surface: typing in the filter narrows the list instantly">
+        <div class="tbar"><i></i><i></i><i></i></div>
+        <div class="body">
+          <div class="rail" aria-hidden="true">
+            <span class="vb"><svg><use href="#vlogo"/></svg></span>
+            <a><svg><use href="#i-ingest"/></svg></a>
+            <a class="on"><svg><use href="#i-recall"/></svg></a>
+            <a><svg><use href="#i-graph"/></svg></a>
+            <a><svg><use href="#i-search"/></svg></a>
+            <a><svg><use href="#i-pack"/></svg></a>
+            <span class="sp"></span>
+            <a><svg><use href="#i-settings"/></svg></a>
+          </div>
+          <div class="surface">
+            <div class="shead">
+              <svg aria-hidden="true"><use href="#i-recall"/></svg>
+              <div><h4>Records</h4><div class="smeta" data-i="m2meta">All your knowledge in one place.</div></div>
+            </div>
+            <div class="fld">
+              <svg aria-hidden="true"><use href="#i-search"/></svg>
+              <span class="typed"><span class="t1 fx" data-i="m2q1">gra</span><span class="t2 fx" data-i="m2q2">p</span><span class="t3 fx" data-i="m2q3">h</span></span><span class="tcaret fx"></span>
+              <span class="ph" data-i="m2filter">Search documents…</span>
+            </div>
+            <div style="position:relative;height:1.1rem;margin-bottom:.2rem">
+              <span class="hintx h-all fx" data-i="m2hall">128 documents · 4 topics</span>
+              <span class="hintx h-filt fx" data-i="m2hfilt">1 document · 1 topic</span>
+            </div>
+            <div class="lrow dim-on-filter fx"><span class="st">●</span><span class="ttl" data-i="m2r1">Vector index design notes</span><span class="meta" data-i="m2r1m">research · 06-12 · pin</span><span class="act"><i data-i="m2atlas">Show in Atlas</i><i data-i="m2pin">Pin</i></span></div>
+            <div class="lrow"><span class="st">◐</span><span class="ttl" data-i="m2r2">Graph store comparison</span><span class="meta" data-i="m2r2m">research · 06-28</span><span class="act"><i data-i="m2atlas2">Show in Atlas</i><i data-i="m2pin2">Pin</i></span></div>
+            <div class="lrow dim-on-filter fx"><span class="st">○</span><span class="ttl" data-i="m2r3">Pack format spec</span><span class="meta" data-i="m2r3m">systems · 07-02</span><span class="act"><i data-i="m2atlas3">Show in Atlas</i><i data-i="m2pin3">Pin</i></span></div>
+            <div class="lrow dim-on-filter fx"><span class="st">◐</span><span class="ttl" data-i="m2r4">Onboarding flow sketch</span><span class="meta" data-i="m2r4m">design · 07-05</span><span class="act"><i data-i="m2atlas4">Show in Atlas</i><i data-i="m2pin4">Pin</i></span></div>
+            <div class="lrow dim-on-filter fx"><span class="st">●</span><span class="ttl" data-i="m2r5">Hybrid search experiments</span><span class="meta" data-i="m2r5m">research · 07-08 · pin</span><span class="act"><i data-i="m2atlas5">Show in Atlas</i><i data-i="m2pin5">Pin</i></span></div>
+            <div class="rip fx" aria-hidden="true"></div>
+            <svg class="cur fx" aria-hidden="true"><use href="#i-cursor"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 3 · Atlas ═══════════════════════════════════════════ -->
+  <section id="ch3" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch3n">03 · ATLAS</span>
+      <h2 data-i="ch3t">The knowledge in your head, unfolded into a map.</h2>
+      <p data-i="ch3b">Scattered memos link together into one great map of knowledge. Click a
+        node for details, follow the lines between topics, and discover
+        unexpected insights. Move freely between 2D and 3D views.</p>
+      <ul class="tips">
+        <li data-i="ch3tip1">Node size follows the number of linked documents. Adjust layout and spacing from the panel on the right.</li>
+        <li data-i="ch3tip2">Shapes and the point color stay consistent, so a shared pack blends into your existing map without friction.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="window s3" role="img" aria-label="Atlas surface: clicking a node opens its detail panel, hovering a gateway shows a crossing tooltip">
+        <div class="tbar"><i></i><i></i><i></i></div>
+        <div class="body">
+          <div class="rail" aria-hidden="true">
+            <span class="vb"><svg><use href="#vlogo"/></svg></span>
+            <a><svg><use href="#i-ingest"/></svg></a>
+            <a><svg><use href="#i-recall"/></svg></a>
+            <a class="on"><svg><use href="#i-graph"/></svg></a>
+            <a><svg><use href="#i-search"/></svg></a>
+            <a><svg><use href="#i-pack"/></svg></a>
+            <span class="sp"></span>
+            <a><svg><use href="#i-settings"/></svg></a>
+          </div>
+          <div class="canvasx" aria-hidden="true">
+            <div class="crumbx"><b>Atlas</b> · <span data-i="m3crumb">4 topics · 128 documents</span></div>
+            <div class="toolsx"><span class="chipx on">2D</span><span class="chipx">3D</span></div>
+            <svg class="graph" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice">
+              <g>
+                <path class="edge" d="M252 152 172 104"/>
+                <path class="edge" d="M252 152 208 246"/>
+                <path class="edge" d="M252 152 384 118"/>
+                <path class="edge" d="M252 152 356 250"/>
+                <path class="edge" d="M172 104 96 148"/>
+                <path class="edge" d="M384 118 470 76"/>
+                <path class="edge" d="M384 118 462 176"/>
+                <path class="edge" d="M356 250 444 302"/>
+                <path class="edge" d="M208 246 128 300"/>
+                <path class="edge" d="M470 76 552 120"/>
+                <path class="edge hl" d="M252 152 172 104"/>
+                <path class="edge hl" d="M252 152 384 118"/>
+              </g>
+              <g>
+                <circle class="node fl"    cx="208" cy="246" r="7"/>
+                <circle class="node fl f2" cx="356" cy="250" r="8"/>
+                <circle class="node fl f3" cx="462" cy="176" r="5"/>
+                <circle class="node fl"    cx="470" cy="76"  r="6"/>
+                <circle class="node fl f2" cx="444" cy="302" r="5"/>
+                <circle class="node fl f3" cx="128" cy="300" r="4.5"/>
+                <circle class="node fl"    cx="96"  cy="148" r="4.5"/>
+                <circle class="node fl f2" cx="552" cy="120" r="4"/>
+                <circle class="node pt fl"    cx="252" cy="152" r="12"/>
+                <circle class="node pt fl f2" cx="172" cy="104" r="8"/>
+                <circle class="node pt fl f3" cx="384" cy="118" r="7"/>
+              </g>
+              <circle class="halo fx" cx="252" cy="152" r="19"/>
+            </svg>
+            <div class="tipx fx" data-i="m3tip">Crosses into design. Click to follow.</div>
+            <div class="detailx fx fin">
+              <div class="t" data-i="m3sel">Hybrid search</div>
+              <div class="sub" data-i="m3sub">topic: research · 8 connections</div>
+              <div class="bxs">
+                <i data-i="m3trace">Trace from here</i>
+                <i data-i="m3slice">Share as a pack (12)</i>
+              </div>
+            </div>
+            <div class="legend">
+              <span class="chipx" style="--dot:var(--w-point)" data-i="m3d1">research</span>
+              <span class="chipx" style="--dot:var(--w-text-soft)" data-i="m3d2">design</span>
+              <span class="chipx" style="--dot:var(--w-mutedfg)" data-i="m3d3">systems</span>
+            </div>
+            <div class="rip fx" aria-hidden="true"></div>
+            <svg class="cur fx" aria-hidden="true"><use href="#i-cursor"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 4 · Search ══════════════════════════════════════════ -->
+  <section id="ch4" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch4n">04 · SEARCH</span>
+      <h2 data-i="ch4t">Beyond keywords: search by meaning.</h2>
+      <p data-i="ch4b">Hybrid search reads context as well as words (≡ keyword match,
+        ≈ semantic match), pinpointing exactly the document you had in mind,
+        fast and precisely.</p>
+      <ul class="tips">
+        <li data-i="ch4tip1">Use <kbd>domain:</kbd> <kbd>tag:</kbd> and <kbd>"exact phrase"</kbd> operators to narrow the scope precisely.</li>
+        <li data-i="ch4tip2">No luck? Open the Atlas. A visual connection often hands you the answer.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="window s4" role="img" aria-label="Search surface: typing a query shows grouped results with keyword and semantic marks">
+        <div class="tbar"><i></i><i></i><i></i></div>
+        <div class="body">
+          <div class="rail" aria-hidden="true">
+            <span class="vb"><svg><use href="#vlogo"/></svg></span>
+            <a><svg><use href="#i-ingest"/></svg></a>
+            <a><svg><use href="#i-recall"/></svg></a>
+            <a><svg><use href="#i-graph"/></svg></a>
+            <a class="on"><svg><use href="#i-search"/></svg></a>
+            <a><svg><use href="#i-pack"/></svg></a>
+            <span class="sp"></span>
+            <a><svg><use href="#i-settings"/></svg></a>
+          </div>
+          <div class="surface">
+            <div class="shead">
+              <svg aria-hidden="true"><use href="#i-search"/></svg>
+              <div><h4>Search</h4><div class="smeta" data-i="m4meta">Meaning and keywords, together.</div></div>
+            </div>
+            <div class="fld">
+              <svg aria-hidden="true"><use href="#i-search"/></svg>
+              <span class="typed"><span class="t1 fx" data-i="m4q1">vec</span><span class="t2 fx" data-i="m4q2">tor </span><span class="t3 fx" data-i="m4q3">sea</span><span class="t4 fx" data-i="m4q4">rch</span></span><span class="tcaret fx"></span>
+              <span class="ph" data-i="m4ph">Search all your documents by meaning or keyword.</span>
+            </div>
+            <div class="hintx searching fx" data-i="m4searching">Searching…</div>
+            <div class="res fx fin hintx" data-i="m4matches">5 results</div>
+            <h6 class="res r2 fx fin">research <span>3</span></h6>
+            <div class="lrow res r3 fx fin"><span class="ttl" data-i="m4r1">Hybrid search experiments</span><span class="meta mark">≈≡</span><span class="act"><i data-i="m4atlas">Show in Atlas</i></span></div>
+            <div class="lrow res r4 fx fin"><span class="ttl" data-i="m4r2">Vector index design notes</span><span class="meta mark">≈</span><span class="act"><i data-i="m4atlas2">Show in Atlas</i></span></div>
+            <h6 class="res r5 fx fin">systems <span>2</span></h6>
+            <div class="lrow res r6 fx fin"><span class="ttl" data-i="m4r3">Query planner notes</span><span class="meta mark">≡</span><span class="act"><i data-i="m4atlas3">Show in Atlas</i></span></div>
+            <div class="rip fx" aria-hidden="true"></div>
+            <svg class="cur fx" aria-hidden="true"><use href="#i-cursor"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 5 · Packs ═══════════════════════════════════════════ -->
+  <section id="ch5" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch5n">05 · PACKS</span>
+      <h2 data-i="ch5t">Bundle, share, and merge your knowledge.</h2>
+      <p data-i="ch5b">Cut out any part of your knowledge map and bundle it into a single Pack
+        file. Set a topic and a reach, build a share pack, and hand it to a
+        teammate. An imported pack blends right into your map.</p>
+      <ul class="tips">
+        <li data-i="ch5tip1">Packs carry pure document content only. Your personal tags and pins are never shared.</li>
+        <li data-i="ch5tip2">Safe updates: re-importing an existing document never duplicates data. It simply refreshes to the latest content.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="window s5" role="img" aria-label="Packs surface: clicking Share a slice builds a pack and fills the preview panel">
+        <div class="tbar"><i></i><i></i><i></i></div>
+        <div class="body">
+          <div class="rail" aria-hidden="true">
+            <span class="vb"><svg><use href="#vlogo"/></svg></span>
+            <a><svg><use href="#i-ingest"/></svg></a>
+            <a><svg><use href="#i-recall"/></svg></a>
+            <a><svg><use href="#i-graph"/></svg></a>
+            <a><svg><use href="#i-search"/></svg></a>
+            <a class="on"><svg><use href="#i-pack"/></svg></a>
+            <span class="sp"></span>
+            <a><svg><use href="#i-settings"/></svg></a>
+          </div>
+          <div class="surface">
+            <div class="shead">
+              <svg aria-hidden="true"><use href="#i-pack"/></svg>
+              <div><h4>Packs</h4><div class="smeta" data-i="m5meta">Bundle, share, merge.</div></div>
+              <button class="scta" tabindex="-1"><svg aria-hidden="true"><use href="#i-pack"/></svg><span data-i="m5cta">Create a pack</span></button>
+            </div>
+            <div class="cols">
+              <div>
+                <div class="emptyx" style="border-style:solid">
+                  <svg aria-hidden="true"><use href="#i-pack"/></svg>
+                  <p style="margin-top:.5rem" data-i="m5idle">Bundle your knowledge into a portable package, or share it safely with someone else.</p>
+                  <div class="btnrow">
+                    <span class="bx share-btn fx" style="margin-top:0" data-i="m5share">Share a pack</span>
+                    <span class="bx" style="margin-top:0" data-i="m5import">Import a pack</span>
+                  </div>
+                  <div class="ctrls">
+                    <span data-i="m5dom">topic</span><b>research</b>
+                    <span data-i="m5seed">start from</span><b data-i="m5seedv">(anywhere)</b>
+                    <span data-i="m5reach">reach</span><b>2</b>
+                  </div>
+                </div>
+                <div class="hintx packing fx" data-i="m5packing">Packing 128 documents…</div>
+                <div class="ready fx fin">
+                  <div style="font-size:.78rem" data-i="m5ready">Pack ready: 24 concepts, 61 connections inside.</div>
+                  <div class="hintx" style="margin-top:.25rem" data-i="m5note">Packs carry document content only. Personal tags and pins are never shared.</div>
+                </div>
+              </div>
+              <aside>
+                <div class="pv-empty fx">
+                  <p class="hintx" style="margin-top:0" data-i="m5pv">Preview</p>
+                  <p class="hintx" data-i="m5pvhint">Create a pack to see its details here.</p>
+                </div>
+                <div class="pv-fill fx fin">
+                  <p class="hintx" style="margin-top:0" data-i="m5pv2">Preview</p>
+                  <h5>vinc-share-research.json</h5>
+                  <p class="hintx" style="margin-top:.35rem" data-i="m5counts">24 concepts · 61 connections · 128 documents</p>
+                  <div class="ln" style="width:86%"></div>
+                  <div class="ln" style="width:62%"></div>
+                  <p class="hintx" style="margin-top:.5rem" data-i="m5off">Offline-portable.</p>
+                </div>
+              </aside>
+            </div>
+            <div class="rip fx" aria-hidden="true"></div>
+            <svg class="cur fx" aria-hidden="true"><use href="#i-cursor"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ + · MCP (Connect to Claude) ═════════════════════════ -->
+  <section id="ch6" class="chapter wrap">
+    <div class="head rv">
+      <span class="num" data-i="ch6n">+ · CONNECT TO CLAUDE (MCP)</span>
+      <h2 data-i="ch6t">Ask Claude, answered from your own knowledge.</h2>
+      <p data-i="ch6b">Vinc speaks MCP (Model Context Protocol), so Claude Desktop, Claude Code,
+        and Claude on the web can read your knowledge map and answer with it, while every
+        document stays on your machine. Connect once, then just ask.</p>
+      <ul class="tips">
+        <li data-i="ch6tip1">Local setup is one command: <kbd>vinc mcp install --client desktop</kbd> (or <kbd>--client code</kbd>). Restart Claude and Vinc's tools appear.</li>
+        <li data-i="ch6tip2">Claude only sees the answers to the tools it calls. Your files are never uploaded.</li>
+      </ul>
+    </div>
+    <div class="scene rv">
+      <div class="mcpcard s6" role="img" aria-label="Connecting Vinc to Claude via MCP: an install command runs and the tools connect">
+        <div class="mcp-grid">
+          <!-- 왼쪽: 로컬 설치(터미널) -->
+          <div class="term">
+            <div class="term-bar"><i></i><i></i><i></i><span class="term-ttl" data-i="mcpTermTitle">Terminal · local setup</span></div>
+            <div class="term-body">
+              <div class="line"><span class="pr">$</span> <span class="cmd"><span class="c1 fx" data-i="mcpCmd1">vinc mcp install </span><span class="c2 fx" data-i="mcpCmd2">--client desktop</span></span><span class="tc fx"></span></div>
+              <div class="out o1 fx" data-i="mcpOut1">✓ Registered Vinc with Claude Desktop.</div>
+              <div class="out o2 fx" data-i="mcpOut2">  Restart Claude to load the tools.</div>
+            </div>
+          </div>
+          <!-- 오른쪽: 커넥터 카드 + 연결된 도구 -->
+          <div class="conn">
+            <div class="conn-head">
+              <span class="conn-mark"><svg aria-hidden="true"><use href="#vlogo"/></svg></span>
+              <div><div class="conn-name" data-i="mcpConnName">Vinc</div><div class="conn-sub" data-i="mcpConnSub">MCP connector · local</div></div>
+              <span class="conn-dot fx" data-i="mcpConnected">Connected</span>
+            </div>
+            <div class="conn-tools">
+              <span class="tool t1 fx"><svg aria-hidden="true"><use href="#i-search"/></svg>vinc_search</span>
+              <span class="tool t2 fx"><svg aria-hidden="true"><use href="#i-graph"/></svg>vinc_graph</span>
+              <span class="tool t3 fx"><svg aria-hidden="true"><use href="#i-domains"/></svg>vinc_domains</span>
+              <span class="tool t4 fx"><svg aria-hidden="true"><use href="#i-recall"/></svg>vinc_recall</span>
+              <span class="tool t5 fx"><svg aria-hidden="true"><use href="#i-decide"/></svg>vinc_decide</span>
+            </div>
+            <div class="conn-alt" data-i="mcpAlt">Hosted instance? Add a custom connector in claude.ai with the URL <b>https://mcp.vincs.app/mcp</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 단축키 ─────────────────────────────────────────────── -->
+  <section class="wrap" style="padding:3rem 0">
+    <div class="keys rv">
+      <h2 data-i="keysT">Faster with the keyboard.</h2>
+      <div class="kgrid">
+        <div class="k"><kbd>1–5</kbd><span data-i="k1">Go to screen</span></div>
+        <div class="k"><kbd>⌘/Ctrl K</kbd><span data-i="k2">Command palette</span></div>
+        <div class="k"><kbd>[</kbd><span data-i="k3">Open or close the sidebar</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 마지막 CTA ─────────────────────────────────────────── -->
+  <section class="fin wrap rv">
+    <h2 data-i="finT">Seeing is believing. Try it yourself.</h2>
+    <p data-i="finS">Vinc is 100% free and open source. Open the built-in sample pack and see your first knowledge map right now.</p>
+    <div class="cta">
+      <a class="btn primary" href="../download/">
+        <svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="download">Download</span></a>
+      <a class="btn quiet" href="../" data-i="homeBtn">Back to home</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+    <div class="wrap row">
+    <span class="brand-mini"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="../" data-i="fHome">Home</a>
+    <a href="../download/" data-i="fDownload">Download</a>
+    <a href="../release/" data-i="fRelease">Release notes</a>
+  </div>
+</footer>
+
+<!-- 언어 선택 모달 -->
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span>
+      <span class="nm">English</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+    <button class="langopt" data-lang="ko">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span>
+      <span class="nm">한국어</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// 카피 덱 — 장면 문구는 앱 정본(app/src/copy.ts) 원문을 그대로 사용한다.
+const DECK = {
+  en: {},
+  ko: {
+    _title: "사용 가이드",
+    _desc: "Vinc의 핵심 기능이 담긴 5개의 화면(가져오기·문서함·지식 지도·검색·팩)을 실제 앱 작동 화면과 함께 안내합니다.",
+    crumb: "사용 가이드", navGet: "다운로드", thDark: "다크", thLight: "라이트", langTitle: "언어",
+    eyebrow: "사용 가이드",
+    introT: "사용 가이드",
+    toc1: "가져오기", toc2: "문서함", toc3: "지식 지도", toc4: "검색", toc5: "팩", toc6: "Claude 연결",
+    /* 1 · 가져오기 */
+    ch1n: "01 · 가져오기 (INTAKE)",
+    ch1t: "끌어다 놓기만 하세요. 나머지는 Vinc가 알아서 합니다.",
+    ch1b: "노트와 문서를 화면에 끌어다 놓으세요. Vinc가 문서의 내용을 분석하여 핵심 개념과 숨겨진 연결고리를 찾아냅니다. 처음이라면 내장된 샘플 팩으로 1분 만에 완성되는 지식 지도를 직접 체험해 보세요.",
+    ch1tip1: "모든 데이터 분석은 내 PC 안에서만 안전하게 이루어지며, 외부 서버로 절대 유출되지 않습니다.",
+    ch1tip2: "분석이 끝나면 'Atlas에서 열기'를 눌러 완성된 지도를 즉시 확인할 수 있습니다.",
+    m1meta: "문서를 가져오면 지식이 됩니다.", m1cta: "파일 선택",
+    m1title: "데이터 추가하기", m1body: "파일이나 폴더를 여기에 끌어다 놓거나, 직접 선택해 주세요.",
+    m1sov: "모든 분석은 내 PC 안에서만 이루어집니다. 데이터가 외부로 나가지 않습니다.",
+    m1sample: "샘플 팩 체험하기",
+    m1loading: "128개의 문서 중 86개 분석 중...",
+    m1done: "분석 완료! 4개의 주제로 128개의 문서가 정리되었습니다.", m1atlas: "Atlas에서 열기",
+    /* 2 · 문서함 */
+    ch2n: "02 · 문서함 (RECORDS)",
+    ch2t: "내가 모은 모든 지식이 한곳에.",
+    ch2b: "추가한 문서는 모두 이곳에 가지런히 정리됩니다. 실시간 검색으로 원하는 문서를 빠르게 찾고, 자주 보는 문서는 상단에 고정해 두세요. 리스트 앞의 아이콘(● 고정, ◐ 태그됨, ○ 일반)으로 문서의 상태를 직관적으로 확인할 수 있습니다.",
+    ch2tip1: "'Atlas에서 보기'를 누르면 해당 문서가 지식 지도상에서 어디에 위치하는지 바로 보여줍니다.",
+    ch2tip2: "문서의 상태는 색상이 아닌 아이콘 모양으로 표시되어, 다크 모드나 라이트 모드 어디서든 명확하게 구분됩니다.",
+    m2meta: "내가 모은 지식을 한곳에.", m2filter: "문서 검색…",
+    m2q1: "그", m2q2: "래", m2q3: "프",
+    m2hall: "문서 128개 · 주제 4개", m2hfilt: "문서 1개 · 주제 1개",
+    m2r1: "벡터 색인 설계 노트", m2r1m: "research · 06-12 · 고정",
+    m2r2: "그래프 스토어 비교", m2r2m: "research · 06-28",
+    m2r3: "팩 포맷 정리", m2r3m: "systems · 07-02",
+    m2r4: "온보딩 흐름 스케치", m2r4m: "design · 07-05",
+    m2r5: "하이브리드 검색 실험", m2r5m: "research · 07-08 · 고정",
+    m2atlas: "Atlas에서 보기", m2pin: "고정", m2atlas2: "Atlas에서 보기", m2pin2: "고정",
+    m2atlas3: "Atlas에서 보기", m2pin3: "고정", m2atlas4: "Atlas에서 보기", m2pin4: "고정",
+    m2atlas5: "Atlas에서 보기", m2pin5: "고정",
+    /* 3 · 지식 지도 */
+    ch3n: "03 · 지식 지도 (ATLAS)",
+    ch3t: "내 머릿속 지식이 한 장의 지도로 펼쳐집니다.",
+    ch3b: "단편적인 메모들이 서로 연결되어 거대한 지식의 지도를 이룹니다. 점(노드)을 클릭해 상세 내용을 확인하고, 다른 주제와 연결된 선을 따라가며 새로운 인사이트를 발견하세요. 2D와 3D 화면을 자유롭게 오가며 탐험할 수 있습니다.",
+    ch3tip1: "노드의 크기는 연결된 문서의 수에 비례합니다. 우측 패널에서 배치와 간격을 자유롭게 조절해 보세요.",
+    ch3tip2: "형태와 포인트 색상은 일관되게 유지되므로, 공유받은 팩(Pack) 데이터도 이질감 없이 기존 지도에 자연스럽게 어우러집니다.",
+    m3crumb: "주제 4개 · 문서 128개",
+    m3tip: "\'design\' 주제로 이어집니다. 클릭해서 이동하세요.",
+    m3sel: "하이브리드 검색", m3sub: "주제: research · 연결 8개",
+    m3trace: "여기서 추적", m3slice: "팩으로 공유 (12)",
+    m3d1: "research", m3d2: "design", m3d3: "systems",
+    /* 4 · 검색 */
+    ch4n: "04 · 검색 (SEARCH)",
+    ch4t: "단순한 키워드를 넘어, \'의미\'를 찾아냅니다.",
+    ch4b: "단어뿐만 아니라 문맥의 의미까지 파악하는 하이브리드 검색을 지원합니다. (≡ 키워드 일치, ≈ 의미 일치) 내가 찾고자 하는 바로 그 문서를 가장 빠르고 정확하게 찾아줍니다.",
+    ch4tip1: "<kbd>domain:</kbd> <kbd>tag:</kbd> <kbd>&quot;정확한 문구&quot;</kbd> 등의 연산자를 활용해 검색 범위를 정교하게 좁힐 수 있습니다.",
+    ch4tip2: "원하는 검색 결과가 없다면 Atlas(지식 지도)를 열어보세요. 시각적인 연결고리가 뜻밖의 해답을 줄 수 있습니다.",
+    m4meta: "의미와 키워드를 함께.",
+    m4q1: "벡", m4q2: "터 ", m4q3: "검", m4q4: "색",
+    m4ph: "저장된 모든 문서를 의미와 키워드로 검색해 보세요.",
+    m4searching: "검색 중…", m4matches: "5개의 결과",
+    m4r1: "하이브리드 검색 실험", m4r2: "벡터 색인 설계 노트", m4r3: "쿼리 플래너 노트",
+    m4atlas: "Atlas에서 보기", m4atlas2: "Atlas에서 보기", m4atlas3: "Atlas에서 보기",
+    /* 5 · 팩 */
+    ch5n: "05 · 팩 (PACKS)",
+    ch5t: "지식을 묶고, 나누고, 결합하세요.",
+    ch5b: "지식 지도의 특정 부분만 잘라내어 하나의 파일(Pack)로 묶을 수 있습니다. 주제와 범위를 설정해 공유용 팩을 만들고 동료와 나누어 보세요. 전달받은 팩을 불러오면 내 지도에 자연스럽게 흡수됩니다.",
+    ch5tip1: "팩에는 순수한 문서 내용만 담깁니다. 내가 설정한 개인적인 태그나 고정 상태는 타인에게 공유되지 않습니다.",
+    ch5tip2: "안전한 업데이트: 이미 존재하는 문서를 다시 불러와도 데이터가 중복되지 않으며, 최신 내용으로만 깔끔하게 덮어씁니다.",
+    m5meta: "묶고, 나누고, 결합하고.", m5cta: "팩 만들기",
+    m5idle: "내 지식을 패키지로 묶어 휴대하거나, 다른 사람에게 안전하게 공유하세요.",
+    m5share: "팩 공유하기", m5import: "팩 불러오기",
+    m5dom: "주제", m5seed: "시작 지점", m5seedv: "(어디서든)", m5reach: "범위",
+    m5packing: "128개의 문서를 팩으로 묶는 중...",
+    m5ready: "팩 완성! 개념 24개, 연결 61개가 담겼습니다.",
+    m5note: "팩에는 문서 내용만 담기며, 개인 태그와 고정 상태는 공유되지 않습니다.",
+    m5pv: "미리보기", m5pv2: "미리보기",
+    m5pvhint: "팩을 만들면 상세 정보가 여기에 표시됩니다.",
+    m5counts: "개념 24개 · 연결 61개 · 문서 128개",
+    m5off: "오프라인 휴대 가능.",
+    /* + · MCP */
+    ch6n: "+ · CLAUDE 연결 (MCP)",
+    ch6t: "내 지식에서 답을 찾는 Claude.",
+    ch6b: "Vinc는 MCP(Model Context Protocol)를 지원합니다. Claude 데스크톱·Claude Code·웹의 Claude가 내 지식 지도를 읽고 답할 수 있으면서도, 모든 문서는 내 기기에만 머뭅니다. 한 번만 연결하면, 이후에는 그냥 물어보세요.",
+    ch6tip1: "로컬 설정은 명령 한 줄이면 끝입니다. <kbd>vinc mcp install --client desktop</kbd> (또는 <kbd>--client code</kbd>). Claude를 재시작하면 Vinc 도구가 나타납니다.",
+    ch6tip2: "Claude는 호출한 도구의 결과만 봅니다. 파일 자체는 절대 업로드되지 않습니다.",
+    mcpTermTitle: "터미널 · 로컬 설정",
+    mcpCmd1: "vinc mcp install ", mcpCmd2: "--client desktop",
+    mcpOut1: "✓ Claude 데스크톱에 Vinc를 등록했습니다.",
+    mcpOut2: "  도구를 불러오려면 Claude를 재시작하세요.",
+    mcpConnName: "Vinc", mcpConnSub: "MCP 커넥터 · 로컬", mcpConnected: "연결됨",
+    mcpAlt: "호스팅 인스턴스인가요? claude.ai에서 사용자 지정 커넥터를 추가하고 URL <b>https://mcp.vincs.app/mcp</b> 를 입력하세요.",
+    /* 단축키·마무리 */
+    keysT: "키보드가 더 빠릅니다.",
+    k1: "화면 이동", k2: "커맨드 팔레트", k3: "사이드바 열기/닫기",
+    finT: "백문이 불여일견, 직접 경험해 보세요.",
+    finS: "Vinc는 100% 무료 오픈소스입니다. 기본 제공되는 샘플 팩으로 나만의 지식 지도를 지금 바로 확인해 보세요.",
+    download: "다운로드", homeBtn: "홈으로", home2: "홈",
+  },
+};
+const EN = {};
+document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+EN._title = document.title;
+EN._desc = document.querySelector('meta[name="description"]').content;
+DECK.en = EN;
+
+function setLang(l){
+  const deck = DECK[l] || DECK.en;
+  document.querySelectorAll("[data-i]").forEach(el => {
+    if (deck[el.dataset.i]) el.innerHTML = deck[el.dataset.i];
+  });
+  document.title = deck._title || DECK.en._title;
+  document.querySelector('meta[name="description"]').content = deck._desc || DECK.en._desc;
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-lang]").forEach(b =>
+    b.classList.toggle("active", b.dataset.lang === l));
+  try { localStorage.setItem("vinc.site.lang", l); } catch {}
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll("[data-th]").forEach(b =>
+    b.classList.toggle("active", b.dataset.th === t));
+  try { localStorage.setItem("vinc.site.theme", t); } catch {}
+}
+// 언어 모달 열고/닫기 + 선택
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", (e) => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") langModal.hidden = true; });
+document.querySelectorAll("[data-lang]").forEach(b =>
+  b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
+document.querySelectorAll("[data-th]").forEach(b =>
+  b.addEventListener("click", () => setTheme(b.dataset.th)));
+let lang = null, theme = null;
+try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
+setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
+setTheme(theme || "dark");
+
+if ("IntersectionObserver" in window) {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }), { threshold: .12 });
+  document.querySelectorAll(".rv").forEach(el => io.observe(el));
+} else {
+  document.querySelectorAll(".rv").forEach(el => el.classList.add("in"));
+}
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
+</script>
+</body>
+</html>

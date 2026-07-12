@@ -3,181 +3,804 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vinc · Mine what matters.</title>
-<meta name="description" content="Vinc is an offline-first desktop app: ingest a corpus, map it as a graph, search it by meaning, and share packs. Your data never leaves your machine.">
+<title>Vinc · Map of knowledge.</title>
+<meta name="description" content="Vinc is an offline-first knowledge tool. Think with AI that runs entirely on your machine: turn your notes and documents into a knowledge map, search by meaning, and share packs. Your data never leaves your device.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <!-- 자기완결: 외부 폰트·스크립트·이미지 0 (remote-profile §5 — 정적 전용·최소 표면).
-     색·형태 값은 Vinc-docs/DESIGN design-tokens.json 정본에서 복사(수기 동기). -->
+     색·형태 값은 Vinc-docs/DESIGN design-tokens.json 정본에서 복사(수기 동기).
+     로고 = Figma 시안(33:46) 재저작: comet(낙하) + caret(반전 V) — "떨어지는 것을 받아 잇는다".
+     앱 목업 = 실제 셸 복제(app/index.html 레일 + Atlas 표면, D26/D38) — 항상 다크. -->
 <style>
+/* ── 토큰 (Ink & Paper 정본 미러) ─────────────────────────────── */
 :root{
-  --background:39 30% 91%; --foreground:34 21% 6%; --card:38 33% 95%;
-  --muted-foreground:40 13% 37%; --border:40 21% 84%;
-  --primary:217 23% 32%; --primary-foreground:39 30% 91%; --ring:217 23% 32%;
-  --radius:.75rem; --radius-sm:.5rem;
-  --shadow:0 4px 12px hsl(38 12% 10% / .10);
+  --background:39 30% 91%; --foreground:34 21% 6%;
+  --card:38 33% 95%; --muted:39 26% 87%; --muted-foreground:40 13% 37%;
+  --border:40 21% 84%; --ring:217 23% 32%;
+  --primary:217 23% 32%; --primary-foreground:39 30% 91%;
+  --accent:39 22% 85%;
+  --radius:.75rem; --radius-sm:.5rem; --radius-lg:1.5rem;
+  --shadow-2:0 4px 12px hsl(38 12% 10%/.10);
+  --shadow-3:0 8px 24px hsl(38 12% 10%/.14);
+  --shadow-float:0 30px 60px -16px hsl(38 12% 10%/.18);
 }
 [data-theme="dark"]{
-  --background:34 19% 7%; --foreground:37 24% 89%; --card:40 16% 11%;
-  --muted-foreground:38 12% 59%; --border:34 14% 20%;
-  --primary:217 23% 32%; --primary-foreground:37 24% 89%; --ring:218 31% 66%;
-  --shadow:0 4px 12px hsl(0 0% 0% / .35);
+  --background:34 19% 7%; --foreground:37 24% 89%;
+  --card:40 16% 11%; --muted:43 23% 12%; --muted-foreground:38 12% 59%;
+  --border:34 14% 20%; --ring:218 31% 66%;
+  --primary:217 23% 32%; --primary-foreground:37 24% 89%;
+  --accent:40 16% 15%;
+  --shadow-2:0 4px 12px hsl(0 0% 0%/.35);
+  --shadow-3:0 8px 24px hsl(0 0% 0%/.45);
+  --shadow-float:0 30px 60px -16px hsl(0 0% 0%/.55);
 }
+
+/* ── 베이스 ───────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0}
 html{scroll-behavior:smooth}
 body{
-  font:0.9375rem/1.55 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR",sans-serif;
+  font:0.9375rem/1.6 ui-sans-serif,system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",sans-serif;
   color:hsl(var(--foreground));
-  background:
-    radial-gradient(60rem 40rem at 15% -10%, hsl(var(--ring)/.07), transparent 60%),
-    radial-gradient(50rem 36rem at 110% 20%, hsl(var(--ring)/.05), transparent 55%),
-    hsl(var(--background));
+  background:hsl(var(--background));
   min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
 }
 a{color:inherit}
-.wrap{max-width:62rem;margin:0 auto;padding:0 1.25rem}
-header{display:flex;align-items:center;gap:.75rem;padding:1.1rem 0}
-header .mark{width:28px;height:28px}
-header .name{font-weight:650;letter-spacing:.01em}
-header nav{margin-left:auto;display:flex;gap:.4rem;align-items:center}
-.chipbar{display:inline-flex;border:1px solid hsl(var(--border));border-radius:999px;padding:.15rem;background:hsl(var(--card)/.6)}
+::selection{background:hsl(var(--ring)/.28)}
+.wrap{max-width:66rem;margin:0 auto;padding:0 1.5rem}
+
+/* ── 배경: 수렴 하프톤 + 그레인 오로라 (수렴점=우하단, 4레이어) ───────
+   레퍼런스 2종(레드 하프톤 도트 + 그레이니 오로라)을 Ink&Paper 팔레트로 융합.
+   자기완결·CSP 준수(외부/ data: URI 0): 인라인 canvas + CSS 그라디언트 + 인라인 SVG feTurbulence. */
+.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;isolation:isolate;background:hsl(var(--background))}
+/* (1) 오로라 — 블러 없는 % 방사 그라디언트 4블롭, 테마별 알파/색만 교체(무 JS) */
+.bg-aurora{position:absolute;inset:-15%;width:130%;height:130%;will-change:transform;
+  background:
+    radial-gradient(56% 50% at 74% 58%, hsl(var(--ring)/.12), transparent 70%),
+    radial-gradient(44% 40% at 86% 22%, hsl(250 45% 60%/.08), transparent 72%),
+    radial-gradient(52% 48% at 16% 30%, hsl(232 42% 50%/.07), transparent 72%),
+    radial-gradient(70% 60% at 50% 112%, hsl(250 45% 60%/.06), transparent 70%);
+}
+[data-theme="dark"] .bg-aurora{
+  background:
+    radial-gradient(56% 50% at 74% 56%, hsl(var(--ring)/.22), transparent 70%),
+    radial-gradient(44% 40% at 86% 20%, hsl(255 46% 64%/.16), transparent 72%),
+    radial-gradient(52% 48% at 16% 28%, hsl(232 46% 58%/.14), transparent 72%),
+    radial-gradient(70% 60% at 50% 114%, hsl(250 50% 55%/.12), transparent 70%);
+}
+/* (2) 하프톤 도트 — canvas(가우시안 반경 폴오프, dpr 대응). JS가 그림 */
+.bg-halftone{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* (3) 히어로 스포트라이트 — 상단 중앙 텍스트 가독 보호(배경색으로 도트를 덮음) */
+.bg-spotlight{position:absolute;inset:0;
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.82) 0%, hsl(var(--background)/.44) 34%, transparent 64%)}
+[data-theme="dark"] .bg-spotlight{
+  background:radial-gradient(130% 60% at 50% 18%, hsl(var(--background)/.74) 0%, hsl(var(--background)/.40) 34%, transparent 64%)}
+/* (4) 필름 그레인 — 인라인 SVG feTurbulence, .bg 안에서만 블렌드(isolation) */
+.bg-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.30;mix-blend-mode:soft-light}
+[data-theme="dark"] .bg-grain{opacity:.48;mix-blend-mode:overlay}
+@media (prefers-reduced-motion: no-preference){
+  .bg-aurora{animation:bgdrift 60s ease-in-out infinite alternate}
+  @keyframes bgdrift{from{transform:translate3d(-1.5%,-1%,0)}to{transform:translate3d(1.5%,1.5%,0)}}
+}
+
+/* ── 헤더 ─────────────────────────────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:10;
+  background:hsl(var(--background)/.78);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid hsl(var(--border)/.7);
+}
+.nav{display:flex;align-items:center;gap:1.4rem;padding:.8rem 0}
+.brand{display:flex;align-items:center;gap:.55rem;text-decoration:none}
+.brand svg{width:26px;height:26px}
+.brand b{font-weight:680;letter-spacing:.01em;font-size:1.0625rem}
+.nav .links{display:flex;gap:1.1rem;font-size:.875rem;color:hsl(var(--muted-foreground))}
+.nav .links a{text-decoration:none;padding:.25rem 0;transition:color .15s}
+.nav .links a:hover{color:hsl(var(--foreground))}
+.nav .end{margin-left:auto;display:flex;gap:.55rem;align-items:center}
+.chipbar{display:inline-flex;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
 .chipbar button{
   border:0;background:transparent;color:hsl(var(--muted-foreground));
-  font:inherit;font-size:.8125rem;padding:.2rem .7rem;border-radius:999px;cursor:pointer;
+  font:inherit;font-size:.78rem;padding:.18rem .62rem;border-radius:999px;cursor:pointer;
 }
 .chipbar button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
-.hero{padding:4.5rem 0 3rem;text-align:center}
-.hero .mark{width:72px;height:72px;margin-bottom:1.4rem}
-h1{font-size:clamp(2.25rem,1.6rem + 2.6vw,3.5rem);line-height:1.1;font-weight:650;letter-spacing:-.01em}
-.sub{color:hsl(var(--muted-foreground));max-width:36rem;margin:1rem auto 0}
-.cta{margin-top:2.2rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+.iconbtn{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid hsl(var(--border));background:hsl(var(--card)/.6);color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:hsl(var(--foreground));border-color:hsl(var(--ring)/.5)}
+.iconbtn svg{width:17px;height:17px}
+.segtoggle{display:inline-flex;gap:.08rem;border:1px solid hsl(var(--border));border-radius:999px;padding:.13rem;background:hsl(var(--card)/.6)}
+.segtoggle button{display:grid;place-items:center;width:27px;height:27px;border:0;border-radius:999px;background:transparent;color:hsl(var(--muted-foreground));cursor:pointer;transition:color .15s,background .15s}
+.segtoggle button svg{width:15px;height:15px}
+.segtoggle button.active{background:hsl(var(--foreground)/.10);color:hsl(var(--foreground))}
+.iconbtn:focus-visible,.segtoggle button:focus-visible,.langopt:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+.langmodal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1.5rem;background:hsl(0 0% 0%/.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.langmodal[hidden]{display:none}
+.langmodal-card{width:min(20rem,100%);background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius-lg);box-shadow:var(--shadow-float);padding:1.1rem;animation:lmpop .18s ease}
+@keyframes lmpop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.langmodal-card{animation:none}}
+.langmodal-h{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:hsl(var(--muted-foreground));margin:.1rem .25rem .7rem}
+.langopt{display:flex;align-items:center;gap:.7rem;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:hsl(var(--foreground));font:inherit;font-size:.95rem;padding:.62rem .7rem;cursor:pointer;transition:background .12s,border-color .12s}
+.langopt+.langopt{margin-top:.2rem}
+.langopt:hover{background:hsl(var(--muted)/.6)}
+.langopt .fl{width:22px;height:15px;border-radius:2px;overflow:hidden;box-shadow:0 0 0 1px hsl(var(--border));flex:none;display:block}
+.langopt .fl svg{width:100%;height:100%;display:block}
+.langopt .nm{flex:1}
+.langopt .ck{width:17px;height:17px;color:hsl(var(--ring));opacity:0;flex:none}
+.langopt.active{background:hsl(var(--ring)/.10);border-color:hsl(var(--ring)/.35)}
+.langopt.active .ck{opacity:1}
+@media (max-width:46rem){.nav .links{display:none}}
+
+/* ── 버튼 ─────────────────────────────────────────────────────── */
 .btn{
-  display:inline-block;text-decoration:none;font-weight:560;font-size:.9375rem;
-  padding:.62rem 1.25rem;border-radius:var(--radius-sm);
+  display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;
+  font-weight:570;font-size:.9375rem;line-height:1;
+  padding:.72rem 1.35rem;border-radius:var(--radius-sm);
   border:1px solid hsl(var(--border));
+  transition:transform .15s ease, box-shadow .15s ease, background .15s;
 }
+.btn svg{width:16px;height:16px}
 .btn.primary{
-  background:linear-gradient(hsl(var(--primary)/.94),hsl(var(--primary)));
+  background:linear-gradient(hsl(var(--primary)/.92),hsl(var(--primary)));
   color:hsl(var(--primary-foreground));border-color:transparent;
-  box-shadow:inset 0 1px 0 hsl(0 0% 100%/.12), var(--shadow);
+  box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14), var(--shadow-2);
 }
-.btn.quiet{background:hsl(var(--card)/.5)}
+.btn.primary:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 hsl(0 0% 100%/.14), var(--shadow-3)}
+.btn.quiet{background:hsl(var(--card)/.55)}
+.btn.quiet:hover{background:hsl(var(--card))}
+.btn.small{padding:.5rem .95rem;font-size:.84rem}
 .btn:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
-.grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));padding:2.5rem 0}
+
+/* ── 히어로 ───────────────────────────────────────────────────── */
+.hero{padding:5.2rem 0 3.2rem;text-align:center;position:relative}
+.hero .logo{width:92px;height:92px;margin:0 auto 1.7rem;display:block;color:hsl(var(--foreground))}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:.45rem;
+  font-size:.8125rem;color:hsl(var(--muted-foreground));
+  border:1px solid hsl(var(--border));border-radius:999px;
+  padding:.32rem .95rem;background:hsl(var(--card)/.5);margin-bottom:1.5rem;
+}
+.eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:hsl(var(--ring))}
+h1{
+  font-size:clamp(2.4rem,1.5rem + 3.9vw,4.1rem);
+  line-height:1.12;font-weight:700;letter-spacing:-.022em;
+  margin:0 auto;
+}
+h1 em{font-style:normal;color:hsl(var(--ring))}
+.hero .sub{
+  color:hsl(var(--muted-foreground));max-width:39rem;margin:1.4rem auto 0;
+  font-size:1.0625rem;line-height:1.75;
+}
+.cta{margin-top:2.4rem;display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+.platforms{margin-top:1.1rem;font-size:.8125rem;color:hsl(var(--muted-foreground)/.85)}
+
+/* 로고 낙하 연출 */
+@media (prefers-reduced-motion: no-preference){
+  .logo .d1,.logo .d2,.logo .d3{animation:drop .8s cubic-bezier(.22,1.2,.36,1) both}
+  .logo .d2{animation-delay:.12s}.logo .d3{animation-delay:.24s}
+  .logo .vee{stroke-dasharray:76;stroke-dashoffset:76;animation:draw .7s .38s ease-out forwards}
+  @keyframes drop{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
+  @keyframes draw{to{stroke-dashoffset:0}}
+}
+
+/* ── 앱 목업 — 실제 셸 복제(레일+Atlas), 항상 다크(D38) ────────── */
+.stage{padding:1.5rem 0 5rem}
+.window{
+  /* 다크 토큰 고정(라이트 테마에서도 앱은 다크로 보여준다) */
+  --w-bg:#16130F; --w-surface:#211E18; --w-muted:#262218; --w-fog:#2C2820;
+  --w-border:#39332B; --w-text:#EAE5DD; --w-text-soft:#C7C0B2; --w-mutedfg:#A39A8A;
+  --w-point:#8FA3C4;
+  max-width:58rem;margin:0 auto;border-radius:var(--radius-lg);
+  border:1px solid var(--w-border);
+  background:var(--w-bg);color:var(--w-text);
+  box-shadow:var(--shadow-float);
+  overflow:hidden;
+}
+.window .bar{
+  display:flex;align-items:center;gap:.45rem;padding:.66rem 1rem;
+  border-bottom:1px solid var(--w-border);background:var(--w-surface);
+}
+.window .bar i{width:10px;height:10px;border-radius:50%;background:var(--w-mutedfg);opacity:.35}
+.window .bar .pill{
+  margin:0 auto;display:flex;align-items:center;gap:.5rem;
+  font-size:.75rem;color:var(--w-mutedfg);
+  border:1px solid var(--w-border);border-radius:999px;padding:.24rem 1rem;
+  background:var(--w-bg);
+}
+.window .bar .pill svg{width:11px;height:11px}
+.window .bar .pill kbd{
+  font:inherit;font-size:.66rem;border:1px solid var(--w-border);
+  border-radius:.3rem;padding:.05rem .32rem;color:var(--w-mutedfg);
+}
+.window .bar .caret{
+  display:inline-block;width:1px;height:.85em;background:var(--w-text-soft);
+  vertical-align:-.12em;
+}
+.window .body{display:flex;min-height:25rem}
+
+/* 아이콘 레일(D26 — 실제 앱과 동일한 표면 순서) */
+.rail{
+  width:52px;flex:none;border-right:1px solid var(--w-border);
+  background:var(--w-surface);
+  display:flex;flex-direction:column;align-items:center;gap:.35rem;
+  padding:.7rem 0 .8rem;
+}
+.rail .vbrand{
+  width:30px;height:30px;display:grid;place-items:center;
+  color:var(--w-text);margin-bottom:.5rem;
+}
+.rail .vbrand svg{width:22px;height:22px}
+.rail a{
+  width:34px;height:34px;border-radius:.55rem;display:grid;place-items:center;
+  color:var(--w-mutedfg);
+}
+.rail a svg{width:17px;height:17px}
+.rail a.active{background:color-mix(in srgb, var(--w-point) 18%, transparent);color:var(--w-point)}
+.rail .gap{flex:1}
+
+/* Atlas 캔버스 */
+.canvas{position:relative;flex:1;overflow:hidden;
+  background:
+    radial-gradient(28rem 18rem at 62% 40%, color-mix(in srgb, var(--w-point) 7%, transparent), transparent 70%),
+    var(--w-bg);
+}
+.canvas > svg.graph{position:absolute;inset:0;width:100%;height:100%}
+.canvas .crumb{
+  position:absolute;top:.9rem;left:1rem;z-index:2;
+  display:flex;align-items:center;gap:.45rem;
+  font-size:.72rem;color:var(--w-mutedfg);
+}
+.canvas .crumb b{color:var(--w-text-soft);font-weight:600}
+.canvas .tools{position:absolute;top:.8rem;right:1rem;z-index:2;display:flex;gap:.35rem}
+.canvas .chip{
+  font-size:.7rem;color:var(--w-mutedfg);
+  border:1px solid var(--w-border);border-radius:999px;padding:.18rem .6rem;
+  background:color-mix(in srgb, var(--w-surface) 82%, transparent);
+}
+.canvas .chip.on{color:var(--w-point);border-color:color-mix(in srgb, var(--w-point) 45%, transparent)}
+.canvas .legend{
+  position:absolute;left:1rem;bottom:.9rem;z-index:2;
+  display:flex;gap:.4rem;flex-wrap:wrap;
+}
+.canvas .legend .chip{display:inline-flex;align-items:center;gap:.4rem}
+.canvas .legend .chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dot,var(--w-point))}
+/* 상세 패널(atlas-detail) — 리빌 후 슬라이드 인 */
+.detail{
+  position:absolute;right:.9rem;top:3.1rem;z-index:2;width:12.5rem;
+  border:1px solid var(--w-border);border-radius:.7rem;
+  background:color-mix(in srgb, var(--w-surface) 92%, transparent);
+  padding:.85rem .9rem;box-shadow:0 12px 30px rgb(0 0 0/.4);
+  opacity:0;transform:translateX(14px);
+}
+.stage.in .detail{transition:opacity .5s .55s ease, transform .5s .55s ease;opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){.stage.in .detail{transition:none}}
+.detail .t{display:flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:600;color:var(--w-text)}
+.detail .t::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--w-point);flex:none}
+.detail .ln{height:6px;border-radius:4px;background:color-mix(in srgb, var(--w-mutedfg) 30%, transparent);margin-top:.55rem}
+.detail .tags{display:flex;gap:.3rem;margin-top:.65rem}
+.detail .tags i{
+  font-style:normal;font-size:.64rem;color:var(--w-mutedfg);
+  border:1px solid var(--w-border);border-radius:999px;padding:.1rem .5rem;
+}
+@media (max-width:40rem){.rail{display:none}.detail{display:none}}
+
+/* 그래프 모션 — 리빌 시 간선 드로우, 노드 부유, 신호 이동 */
+.graph .edge{stroke:var(--w-mutedfg);stroke-opacity:.32;stroke-width:1.1;fill:none}
+.graph .edge.hl{stroke:var(--w-point);stroke-opacity:.8;stroke-width:1.5}
+.graph .node{fill:var(--w-mutedfg);fill-opacity:.72}
+.graph .node.pt{fill:var(--w-point);fill-opacity:1}
+.graph .halo{fill:none;stroke:var(--w-point);stroke-opacity:.38;stroke-width:1.3;stroke-dasharray:4 5}
+.graph text{fill:var(--w-text-soft);font-size:10.5px;font-family:inherit}
+.graph .lbl-dim{fill:var(--w-mutedfg);font-size:9.5px}
+@media (prefers-reduced-motion: no-preference){
+  .stage .graph .edge{stroke-dasharray:1;stroke-dashoffset:1}
+  .stage.in .graph .edge{animation:edraw 1s ease-out forwards}
+  .stage.in .graph .edge.hl{animation-duration:1.3s}
+  .graph .edge:nth-of-type(2n){animation-delay:.15s}
+  .graph .edge:nth-of-type(3n){animation-delay:.3s}
+  @keyframes edraw{to{stroke-dashoffset:0}}
+  .graph .fl{transform-box:fill-box;transform-origin:center;animation:float 7s ease-in-out infinite alternate}
+  .graph .fl.f2{animation-duration:8.5s;animation-delay:-2.5s}
+  .graph .fl.f3{animation-duration:9.5s;animation-delay:-5s}
+  @keyframes float{from{transform:translateY(-2.5px)}to{transform:translateY(2.5px)}}
+  .graph .halo{transform-box:fill-box;transform-origin:center;animation:spin 16s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .graph .pt.sel{animation:selpulse 3s ease-in-out infinite}
+  @keyframes selpulse{0%,100%{fill-opacity:.85}50%{fill-opacity:1}}
+  .zoomg{transform-box:fill-box;transform-origin:center;animation:breathe 22s ease-in-out infinite alternate}
+  @keyframes breathe{from{transform:scale(1)}to{transform:scale(1.045)}}
+  .pill .caret{animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  @supports (offset-path: path("M0 0L1 1")) {
+    .signal{
+      offset-path:path("M356 208 246 138");offset-rotate:0deg;
+      animation:travel 3.6s ease-in-out infinite;
+    }
+    .signal.s2{offset-path:path("M356 208 486 156");animation-delay:1.8s}
+    @keyframes travel{
+      0%{offset-distance:0%;opacity:0}12%{opacity:1}
+      78%{opacity:1}95%,100%{offset-distance:100%;opacity:0}
+    }
+  }
+}
+
+/* ── 섹션 공통 ────────────────────────────────────────────────── */
+section{padding:5rem 0}
+/* Features·Privacy 섹션은 위쪽 여백을 더 크게(앞 섹션과 붙는 느낌 완화) */
+#features,#vows{padding-top:8.5rem}
+.sec-head{max-width:36rem;margin:0 auto 3rem;text-align:center}
+.sec-head h2{font-size:clamp(1.7rem,1.3rem + 1.6vw,2.4rem);font-weight:680;letter-spacing:-.015em;line-height:1.18}
+.sec-head p{color:hsl(var(--muted-foreground));margin-top:.7rem}
+
+/* 스크롤 리빌 */
+.rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){.rv{opacity:1;transform:none;transition:none}}
+
+/* ── 3단계 흐름 ───────────────────────────────────────────────── */
+.steps{display:grid;gap:1.5rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));counter-reset:step}
+.step{
+  position:relative;padding:1.6rem 1.5rem;border:1px solid hsl(var(--border));
+  border-radius:var(--radius);background:hsl(var(--card)/.6);
+}
+.step::before{
+  counter-increment:step;content:counter(step,decimal-leading-zero);
+  font-size:.72rem;letter-spacing:.14em;color:hsl(var(--ring));
+  display:block;margin-bottom:.9rem;font-weight:600;
+}
+.step svg{width:30px;height:30px;color:hsl(var(--foreground));margin-bottom:.9rem}
+.step h3{font-size:1.0625rem;font-weight:640;margin-bottom:.4rem}
+.step p{color:hsl(var(--muted-foreground));font-size:.875rem}
+
+/* ── 기능 그리드 ──────────────────────────────────────────────── */
+.grid{display:grid;gap:1.5rem;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))}
 .card{
   background:hsl(var(--card));border:1px solid hsl(var(--border));
-  border-radius:var(--radius);padding:1.4rem;box-shadow:var(--shadow);
+  border-radius:var(--radius);padding:1.5rem;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s;
 }
-.card h2{font-size:1.0625rem;font-weight:600;margin-bottom:.45rem}
-.card p{color:hsl(var(--muted-foreground));font-size:.875rem}
-.card .glyph{width:26px;height:26px;margin-bottom:.9rem;opacity:.85}
-.privacy{
-  border:1px solid hsl(var(--border));border-radius:var(--radius);
-  padding:1.3rem 1.5rem;margin:1rem 0 3rem;text-align:center;
-  background:hsl(var(--card)/.45);color:hsl(var(--muted-foreground));font-size:.875rem;
+.card:hover{transform:translateY(-3px);box-shadow:var(--shadow-3);border-color:hsl(var(--ring)/.4)}
+.card .ic{
+  width:42px;height:42px;border-radius:.65rem;display:grid;place-items:center;
+  background:hsl(var(--ring)/.12);color:hsl(var(--ring));margin-bottom:1rem;
 }
-.privacy b{color:hsl(var(--foreground));font-weight:600}
-footer{border-top:1px solid hsl(var(--border));padding:1.6rem 0 2.4rem;
-  color:hsl(var(--muted-foreground));font-size:.8125rem;display:flex;gap:1.2rem;flex-wrap:wrap}
+.card .ic svg{width:22px;height:22px}
+.card h3{font-size:1rem;font-weight:640;margin-bottom:.4rem}
+.card p{color:hsl(var(--muted-foreground));font-size:.86rem}
+
+/* ── 프라이버시 ───────────────────────────────────────────────── */
+.vows{
+  border:1px solid hsl(var(--border));border-radius:var(--radius-lg);
+  background:
+    radial-gradient(40rem 22rem at 50% -30%, hsl(var(--ring)/.10), transparent 70%),
+    hsl(var(--card)/.55);
+  padding:3.2rem 2rem;
+}
+.vows .cols{display:grid;gap:2.2rem;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));max-width:56rem;margin:0 auto}
+.vow{text-align:center}
+.vow svg{width:26px;height:26px;color:hsl(var(--ring));margin-bottom:.8rem}
+.vow h3{font-size:1.2rem;font-weight:680;letter-spacing:-.01em;margin-bottom:.5rem}
+.vow p{color:hsl(var(--muted-foreground));font-size:.875rem;max-width:22rem;margin:0 auto}
+
+/* ── 마지막 CTA ───────────────────────────────────────────────── */
+.fin{text-align:center;padding:5rem 0 4.5rem}
+.fin .logo{width:56px;height:56px;margin:0 auto 1.4rem;color:hsl(var(--ring))}
+.fin h2{font-size:clamp(1.8rem,1.3rem + 2.1vw,2.7rem);font-weight:700;letter-spacing:-.02em;max-width:24ch;margin:0 auto}
+.fin p{color:hsl(var(--muted-foreground));margin:.9rem auto 2rem;max-width:34rem}
+
+/* ── 푸터 ─────────────────────────────────────────────────────── */
+footer{border-top:1px solid hsl(var(--border));padding:1.8rem 0 2.6rem;
+  color:hsl(var(--muted-foreground));font-size:.8125rem}
+footer .row{display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center}
 footer a{text-decoration:none}
 footer a:hover{color:hsl(var(--foreground))}
-@media (prefers-reduced-motion: no-preference){
-  .hero .mark{transition:transform .5s ease}
-  .hero .mark:hover{transform:rotate(-6deg)}
-}
+footer .brand-mini{display:flex;align-items:center;gap:.45rem;margin-right:auto}
+footer .brand-mini svg{width:16px;height:16px}
 </style>
 </head>
 <body>
-<svg width="0" height="0" aria-hidden="true">
-  <!-- 앱 아이콘과 동일 기하: V 헤어라인 획 + 노드 구슬(그래프 은유) -->
-  <symbol id="vmark" viewBox="0 0 100 100">
-    <g stroke="currentColor" stroke-width="6" fill="none">
-      <line x1="30" y1="28" x2="50" y2="74"/><line x1="70" y1="28" x2="50" y2="74"/>
-    </g>
+
+<!-- ── 심볼 정의 ─────────────────────────────────────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- 로고: Figma 시안 33:46 — comet(점 3개 낙하) + caret 반전(V가 받는다).
+       vinculum = 결속: 떨어지는 조각을 V 가 받아 잇는다. -->
+  <symbol id="vlogo" viewBox="0 0 100 100">
     <g fill="currentColor">
-      <circle cx="30" cy="28" r="7"/><circle cx="70" cy="28" r="7"/><circle cx="50" cy="74" r="9"/>
+      <circle class="d1" cx="50" cy="13" r="3.8"/>
+      <circle class="d2" cx="50" cy="28" r="6.4"/>
+      <circle class="d3" cx="50" cy="50" r="13"/>
     </g>
+    <path class="vee" d="M26 53 50 77 74 53" fill="none" stroke="currentColor"
+          stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <!-- Notation 아이콘(DESIGN/assets/icons · app/src/icons 정본 미러) -->
+  <symbol id="i-ingest" viewBox="0 0 24 24">
+    <circle cx="12" cy="5" r="3.2" fill="currentColor"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/>
+    <circle cx="12" cy="13.6" r="1.3" fill="currentColor"/><rect x="3" y="16.5" width="18" height="4.5" rx="2.25" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-recall" viewBox="0 0 24 24">
+    <circle cx="7" cy="7" r="1.9" fill="currentColor"/><circle cx="12" cy="7" r="1.9" fill="currentColor"/><circle cx="17" cy="7" r="1.9" fill="currentColor"/>
+    <circle cx="7" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.9" fill="none"/><circle cx="17" cy="12" r="1.9" fill="currentColor"/>
+    <circle cx="7" cy="17" r="1.9" fill="currentColor"/><circle cx="12" cy="17" r="1.9" fill="currentColor"/><circle cx="17" cy="17" r="1.9" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24">
+    <path d="M12 7 6 17M12 7 18 17M6 17h12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <circle cx="12" cy="7" r="3.8" fill="currentColor"/><circle cx="6" cy="17" r="3" fill="currentColor"/><circle cx="18" cy="17" r="3" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-pack" viewBox="0 0 24 24">
+    <ellipse cx="11" cy="16.5" rx="7.5" ry="2.2" fill="currentColor"/><ellipse cx="11" cy="20" rx="7.5" ry="2.2" fill="currentColor"/>
+    <path d="M13 14.5 18 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18.5" cy="6.5" r="2.6" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="2.3" fill="none"/>
+    <circle cx="15.2" cy="15.2" r="2" fill="currentColor"/><circle cx="18.4" cy="18.4" r="1.3" fill="currentColor"/><circle cx="20.8" cy="20.8" r="0.8" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24">
+    <path d="M3 7h18M3 12h18M3 17h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="15" cy="7" r="2.7" fill="currentColor"/><circle cx="8" cy="12" r="2.7" fill="currentColor"/><circle cx="17" cy="17" r="2.7" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-domains" viewBox="0 0 24 24">
+    <ellipse cx="12" cy="6.5" rx="8.5" ry="2.1" fill="currentColor"/><ellipse cx="12" cy="12" rx="6.5" ry="2.1" fill="currentColor"/>
+    <ellipse cx="12" cy="17.5" rx="4.5" ry="2.1" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-decide" viewBox="0 0 24 24">
+    <path d="M5 5 12 12 5 19Z" fill="currentColor"/><path d="M19 5 12 12 19 19Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24">
+    <ellipse cx="12" cy="6.5" rx="8" ry="2.1" fill="currentColor"/><ellipse cx="12" cy="12" rx="8" ry="2.1" fill="currentColor"/>
+    <ellipse cx="12" cy="17.5" rx="8" ry="2.1" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24">
+    <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" fill="currentColor"/>
+    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 4v10m0 0 4.5-4.5M12 14 7.5 9.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 19.5h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M5 7h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></g>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M20.5 14.6A8.2 8.2 0 0 1 9.4 3.5 7.2 7.2 0 1 0 20.5 14.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <path d="M5 12.5 10 17.5 19.5 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="flag-us" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <g fill="#B22234"><rect width="20" height="2"/><rect y="4" width="20" height="2"/><rect y="8" width="20" height="2"/><rect y="12" width="20" height="2"/></g>
+    <rect width="9" height="8" fill="#3C3B6E"/>
+    <g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="4.5" cy="2" r=".6"/><circle cx="7" cy="2" r=".6"/><circle cx="2" cy="4" r=".6"/><circle cx="4.5" cy="4" r=".6"/><circle cx="7" cy="4" r=".6"/><circle cx="2" cy="6" r=".6"/><circle cx="4.5" cy="6" r=".6"/><circle cx="7" cy="6" r=".6"/></g>
+  </symbol>
+  <symbol id="flag-kr" viewBox="0 0 20 14">
+    <rect width="20" height="14" fill="#fff"/>
+    <circle cx="10" cy="7" r="3.2" fill="#CD2E3A"/>
+    <path d="M6.8 7a3.2 3.2 0 0 0 6.4 0 1.6 1.6 0 0 1-3.2 0 1.6 1.6 0 0 0-3.2 0z" fill="#0047A0"/>
+    <g stroke="#222" stroke-width=".5"><path d="M2.4 2.2h2.2M2.4 3.2h2.2M2.4 4.2h2.2"/><path d="M15.4 2.2h2.2M15.4 3.2h2.2M15.4 4.2h2.2"/><path d="M2.4 9.8h2.2M2.4 10.8h2.2M2.4 11.8h2.2"/><path d="M15.4 9.8h2.2M15.4 10.8h2.2M15.4 11.8h2.2"/></g>
+  </symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24">
+    <path d="M12 3 14 10 21 12 14 14 12 21 10 14 3 12 10 10Z" fill="currentColor"/>
   </symbol>
 </svg>
 
-<div class="wrap">
-  <header>
-    <svg class="mark" aria-hidden="true"><use href="#vmark"/></svg>
-    <span class="name">Vinc</span>
-    <nav>
-      <span class="chipbar" role="group" aria-label="Language">
-        <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
-      </span>
-      <span class="chipbar" role="group" aria-label="Theme">
-        <button data-th="dark">Dark</button><button data-th="light">Light</button>
-      </span>
+<!-- ── 배경: 수렴 하프톤 + 그레인 오로라 ─────────────────────────── -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-aurora"></div>
+  <canvas id="bg-halftone" class="bg-halftone"></canvas>
+  <div class="bg-spotlight"></div>
+  <svg class="bg-grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="bg-grain-f"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#bg-grain-f)"/>
+  </svg>
+</div>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="Vinc home">
+      <svg aria-hidden="true"><use href="#vlogo"/></svg><b>Vinc</b>
+    </a>
+    <nav class="links" aria-label="Sections">
+      <a href="#how" data-i="nav1">How it works</a>
+      <a href="#features" data-i="nav2">Features</a>
+      <a href="#vows" data-i="nav3">Privacy</a>
     </nav>
-  </header>
+    <div class="end">
+      <button class="iconbtn" id="langBtn" aria-haspopup="dialog" aria-label="Language · 언어"><svg aria-hidden="true"><use href="#i-globe"/></svg></button>
+      <span class="segtoggle" role="group" aria-label="Theme">
+        <button data-th="light" aria-label="Light mode"><svg aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button data-th="dark" aria-label="Dark mode"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </span>
+      <a class="btn primary small" href="download/" data-i="navGet">Download</a>
+    </div>
+  </div>
+</header>
 
-  <main>
-    <section class="hero">
-      <svg class="mark" style="color:hsl(var(--ring))" aria-hidden="true"><use href="#vmark"/></svg>
-      <h1 data-i="tagline">Mine what matters.</h1>
-      <p class="sub" data-i="sub">Vinc is an offline desktop app. Bring in your notes and documents,
-        see them as a living graph, search by meaning, and hand curated packs to anyone.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/weg-9000/vinc/releases/latest" data-i="download">Download</a>
-        <a class="btn quiet" href="https://github.com/weg-9000/vinc" data-i="source">View source</a>
-      </div>
-    </section>
+<main id="top">
+  <!-- ── 히어로 ─────────────────────────────────────────────── -->
+  <section class="hero wrap">
+    <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
+    <h1 data-i="tagline">Think with AI.<br><em>See your knowledge mapped.</em></h1>
+    <p class="sub" data-i="sub">Unfold the notes and documents sleeping in your folders into a living
+      knowledge graph. Explore it, search it by meaning, and bundle what you need
+      to share. Every step of it happens safely on your PC.</p>
+    <div class="cta">
+      <a class="btn primary" href="download/">
+        <svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="download">Download</span></a>
+      <a class="btn quiet" href="guide/" data-i="docsBtn">User guide</a>
+    </div>
+    <p class="platforms" data-i="platforms">macOS · Windows · Linux. No sign-up, no cloud, no setup.</p>
+  </section>
 
-    <section class="grid" aria-label="Features">
-      <div class="card">
-        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
-        <h2 data-i="f1t">Intake</h2>
-        <p data-i="f1b">Drop in a folder of notes. Vinc mines concepts, records, and the ties between them.</p>
+  <!-- ── 앱 화면(실제 셸 복제 · 항상 다크) ───────────────────── -->
+  <div class="stage wrap rv">
+    <div class="window" role="img" aria-label="Vinc app, dark mode: the Atlas surface showing a knowledge graph">
+      <div class="bar">
+        <i></i><i></i><i></i>
+        <span class="pill"><svg aria-hidden="true"><use href="#i-search"/></svg><span data-i="mockSearch">Search by meaning</span><span class="caret"></span><kbd>⌘K</kbd></span>
       </div>
-      <div class="card">
-        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
-        <h2 data-i="f2t">Atlas</h2>
-        <p data-i="f2b">A 3D map of everything you know: domains as constellations, ideas as glass beads, ties as hairlines.</p>
+      <div class="body">
+        <!-- 아이콘 레일: 실제 앱 표면 순서(Intake·Records·Atlas·Search·Packs·Settings) -->
+        <div class="rail" aria-hidden="true">
+          <span class="vbrand"><svg><use href="#vlogo"/></svg></span>
+          <a><svg><use href="#i-ingest"/></svg></a>
+          <a><svg><use href="#i-recall"/></svg></a>
+          <a class="active"><svg><use href="#i-graph"/></svg></a>
+          <a><svg><use href="#i-search"/></svg></a>
+          <a><svg><use href="#i-pack"/></svg></a>
+          <span class="gap"></span>
+          <a><svg><use href="#i-settings"/></svg></a>
+        </div>
+        <!-- Atlas 캔버스 -->
+        <div class="canvas" aria-hidden="true">
+          <div class="crumb"><b data-i="mockAtlas">Atlas</b><span>·</span><span data-i="mockDomains">3 domains · 128 records</span></div>
+          <div class="tools">
+            <span class="chip on">2D</span><span class="chip">3D</span>
+          </div>
+          <svg class="graph" viewBox="0 0 720 400" preserveAspectRatio="xMidYMid slice">
+            <g class="zoomg">
+              <!-- 간선 -->
+              <g>
+                <path class="edge" pathLength="1" d="M356 208 246 138"/>
+                <path class="edge" pathLength="1" d="M356 208 296 300"/>
+                <path class="edge" pathLength="1" d="M356 208 486 156"/>
+                <path class="edge" pathLength="1" d="M356 208 462 288"/>
+                <path class="edge" pathLength="1" d="M246 138 152 100"/>
+                <path class="edge" pathLength="1" d="M246 138 186 232"/>
+                <path class="edge" pathLength="1" d="M486 156 576 96"/>
+                <path class="edge" pathLength="1" d="M486 156 560 212"/>
+                <path class="edge" pathLength="1" d="M462 288 546 340"/>
+                <path class="edge" pathLength="1" d="M296 300 208 348"/>
+                <path class="edge" pathLength="1" d="M152 100 92 168"/>
+                <path class="edge" pathLength="1" d="M576 96 646 148"/>
+                <path class="edge hl" pathLength="1" d="M356 208 246 138"/>
+                <path class="edge hl" pathLength="1" d="M356 208 486 156"/>
+                <path class="edge hl" pathLength="1" d="M246 138 152 100"/>
+              </g>
+              <!-- 신호(간선 위를 흐르는 점) -->
+              <circle class="signal" r="2.6" fill="var(--w-point)"/>
+              <circle class="signal s2" r="2.6" fill="var(--w-point)"/>
+              <!-- 노드 -->
+              <g>
+                <circle class="node fl"    cx="296" cy="300" r="7"/>
+                <circle class="node fl f2" cx="462" cy="288" r="8.5"/>
+                <circle class="node fl f3" cx="186" cy="232" r="5"/>
+                <circle class="node fl"    cx="576" cy="96"  r="6.5"/>
+                <circle class="node fl f2" cx="560" cy="212" r="5"/>
+                <circle class="node fl f3" cx="546" cy="340" r="5.5"/>
+                <circle class="node fl"    cx="208" cy="348" r="4.5"/>
+                <circle class="node fl f2" cx="92"  cy="168" r="4.5"/>
+                <circle class="node fl f3" cx="646" cy="148" r="4"/>
+                <circle class="node pt sel fl" cx="356" cy="208" r="13"/>
+                <circle class="node pt fl f2"  cx="246" cy="138" r="9"/>
+                <circle class="node pt fl f3"  cx="486" cy="156" r="8"/>
+                <circle class="node pt fl"     cx="152" cy="100" r="6"/>
+              </g>
+              <!-- 선택 링 -->
+              <circle class="halo" cx="356" cy="208" r="20"/>
+            </g>
+          </svg>
+          <div class="legend">
+            <span class="chip" style="--dot:var(--w-point)" data-i="mockD1">Research</span>
+            <span class="chip" style="--dot:var(--w-text-soft)" data-i="mockD2">Design</span>
+            <span class="chip" style="--dot:var(--w-mutedfg)" data-i="mockD3">Systems</span>
+          </div>
+          <div class="detail">
+            <div class="t" data-i="mockSel">Hybrid search</div>
+            <div class="ln" style="width:88%"></div>
+            <div class="ln" style="width:64%"></div>
+            <div class="ln" style="width:76%"></div>
+            <div class="tags"><i data-i="mockTag1">8 links</i><i data-i="mockTag2">pinned</i></div>
+          </div>
+        </div>
       </div>
-      <div class="card">
-        <svg class="glyph" aria-hidden="true"><use href="#vmark"/></svg>
-        <h2 data-i="f3t">Packs</h2>
-        <p data-i="f3b">Select a neighborhood of the graph and export it as a portable pack. Import someone else's with one click.</p>
-      </div>
-    </section>
+    </div>
+  </div>
 
-    <section class="privacy">
-      <span data-i="privacy"><b>Yours, on this machine.</b> Vinc runs fully offline: no account, no keys,
-      no telemetry. Your data lives in one folder you can copy, back up, or delete.</span>
-    </section>
-  </main>
+  <!-- ── 사용 흐름 ──────────────────────────────────────────── -->
+  <section id="how" class="wrap">
+    <div class="sec-head rv">
+      <h2 data-i="howT">Three clicks.</h2>
+      <p data-i="howS">A pile of files becomes a map of knowledge.</p>
+    </div>
+    <div class="steps">
+      <div class="step rv">
+        <svg aria-hidden="true"><use href="#i-ingest"/></svg>
+        <h3 data-i="s1t">Effortless import</h3>
+        <p data-i="s1b">Just drag a folder in. Vinc finds the key concepts and the hidden links between your documents, on its own.</p>
+      </div>
+      <div class="step rv">
+        <svg aria-hidden="true"><use href="#i-graph"/></svg>
+        <h3 data-i="s2t">Explore the atlas</h3>
+        <p data-i="s2b">Knowledge trapped in text unfolds into one visual map. Wander a universe of your own ideas, drawn in dots and lines.</p>
+      </div>
+      <div class="step rv">
+        <svg aria-hidden="true"><use href="#i-pack"/></svg>
+        <h3 data-i="s3t">Share as packs</h3>
+        <p data-i="s3b">Cut out a single topic from the graph and pass it on. A received pack folds into the other person's map in one click.</p>
+      </div>
+    </div>
+  </section>
 
-  <footer>
-    <span>© 2026 Vinc · MIT License</span>
-    <a href="https://github.com/weg-9000/vinc" data-i="source2">GitHub</a>
-    <a href="https://github.com/weg-9000/vinc-docs" data-i="docs">Documentation</a>
-  </footer>
+  <!-- ── 핵심 기능 ──────────────────────────────────────────── -->
+  <section id="features" class="wrap">
+    <div class="sec-head rv">
+      <h2 data-i="featT">No setup maze. No subscription.</h2>
+      <p data-i="featS">Powerful features that stretch what you know.</p>
+    </div>
+    <div class="grid">
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-search"/></svg></span>
+        <h3 data-i="f1t">Semantic search that reads context</h3>
+        <p data-i="f1b">Meaning, not word-matching. Hybrid vector + BM25 search pinpoints the exact document on the tip of your tongue.</p>
+      </div>
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-graph"/></svg></span>
+        <h3 data-i="f2t">A graph that evolves by itself</h3>
+        <p data-i="f2b">The moment a note lands, it links to what you already have. No more orphan memos, no abandoned folders.</p>
+      </div>
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-domains"/></svg></span>
+        <h3 data-i="f3t">Interests, filed automatically</h3>
+        <p data-i="f3b">Skip the folder chores. As your data grows, Vinc clusters related topics and lays them out visually.</p>
+      </div>
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-pack"/></svg></span>
+        <h3 data-i="f4t">Knowledge that travels</h3>
+        <p data-i="f4b">Extract any part of your graph as a single file. Open formats, never captive to one platform.</p>
+      </div>
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-decide"/></svg></span>
+        <h3 data-i="f5t">Decisions you can see</h3>
+        <p data-i="f5b">Facing a hard call? Follow the graph's threads and let the connections point toward an answer.</p>
+      </div>
+      <div class="card rv">
+        <span class="ic"><svg aria-hidden="true"><use href="#i-stack"/></svg></span>
+        <h3 data-i="f6t">The easiest backup there is</h3>
+        <p data-i="f6b">Everything lives in one local folder. Copying it is a backup. Putting it back is a restore.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 프라이버시 ─────────────────────────────────────────── -->
+  <section id="vows" class="wrap">
+    <div class="vows rv">
+      <div class="sec-head" style="margin-bottom:2.4rem">
+        <h2 data-i="vowT">100% under your control.</h2>
+        <p data-i="vowS">Vinc never touches your data. Period.</p>
+      </div>
+      <div class="cols">
+        <div class="vow">
+          <svg aria-hidden="true"><use href="#i-lock"/></svg>
+          <h3 data-i="v1t">No sign-up, no login</h3>
+          <p data-i="v1b">Vinc doesn't ask who you are. No onboarding forms to fill, no personal data to leak.</p>
+        </div>
+        <div class="vow">
+          <svg aria-hidden="true"><use href="#i-sparkle"/></svg>
+          <h3 data-i="v2t">Completely offline</h3>
+          <p data-i="v2b">Works on a plane, in a cabin, behind an air gap. Everything is processed on your device, never on someone else's server.</p>
+        </div>
+        <div class="vow">
+          <svg aria-hidden="true"><use href="#i-stack"/></svg>
+          <h3 data-i="v3t">Free of lock-in</h3>
+          <p data-i="v3b">A local folder, open formats, MIT license. Your data isn't tied to any app's lifespan. It's yours for good.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 마지막 CTA ─────────────────────────────────────────── -->
+  <section class="fin wrap rv">
+    <svg class="logo" aria-hidden="true"><use href="#vlogo"/></svg>
+    <h2 data-i="finT">Now, connect what you know.</h2>
+    <p data-i="finS">100% free and open source. Five minutes from install to your first knowledge graph.</p>
+    <a class="btn primary" href="download/">
+      <svg aria-hidden="true"><use href="#i-download"/></svg><span data-i="download2">Download</span></a>
+  </section>
+</main>
+
+<footer>
+    <div class="wrap row">
+    <span class="brand-mini"><svg aria-hidden="true"><use href="#vlogo"/></svg><span>© 2026 Vinc · MIT License</span></span>
+    <a href="download/" data-i="fDownload">Download</a>
+    <a href="guide/" data-i="fGuide">User guide</a>
+    <a href="release/" data-i="fRelease">Release notes</a>
+  </div>
+</footer>
+
+<!-- 언어 선택 모달 -->
+<div class="langmodal" id="langModal" hidden>
+  <div class="langmodal-card" role="dialog" aria-modal="true" aria-label="Language">
+    <div class="langmodal-h" data-i="langTitle">Language</div>
+    <button class="langopt" data-lang="en">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-us"/></svg></span>
+      <span class="nm">English</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+    <button class="langopt" data-lang="ko">
+      <span class="fl"><svg aria-hidden="true"><use href="#flag-kr"/></svg></span>
+      <span class="nm">한국어</span>
+      <svg class="ck" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+  </div>
 </div>
 
 <script>
-// 카피 덱: 앱 D42 와 동일 원칙 — 한국어는 번역이 아닌 저작(채굴·기록·잇기 어휘).
+// 카피 덱 — D42 원칙. 한국어 카피는 발주자 저작본(2026-07-12)이 정본이다.
 const DECK = {
   en: {}, // 마크업 기본값이 영어 덱
   ko: {
-    tagline: "중요한 것을 캐낸다.",
-    sub: "Vinc 는 오프라인 데스크톱 앱입니다. 노트와 문서를 들여오면 살아있는 그래프로 펼쳐 보여주고, 의미로 찾고, 골라 담은 팩을 누구에게든 건넬 수 있습니다.",
-    download: "내려받기", source: "소스 보기",
-    f1t: "Intake", f1b: "노트 폴더를 끌어다 놓으세요. Vinc 가 개념과 기록, 그 사이의 이음새를 캐냅니다.",
-    f2t: "Atlas", f2b: "내가 아는 것 전부의 3D 지도: 영역은 성좌로, 생각은 유리 구슬로, 이음새는 가는 선으로.",
-    f3t: "Packs", f3b: "그래프의 한 동네를 골라 팩으로 내보내고, 남의 팩은 클릭 한 번으로 들여옵니다.",
-    privacy: "<b>당신의 것, 이 기계 안에.</b> Vinc 는 완전한 오프라인으로 동작합니다: 계정도, 키도, 원격 수집도 없습니다. 데이터는 폴더 하나에 살고, 복사·백업·삭제 전부 당신 마음입니다.",
-    source2: "GitHub", docs: "문서",
+    _title: "Vinc · 지식의 지도",
+    _desc: "오프라인 기반 지식 관리 도구 Vinc. 내 PC에서만 동작하는 AI로 노트와 문서를 지식 지도로 펼치고, 의미로 찾고, 팩으로 공유하세요. 모든 데이터는 내 기기를 떠나지 않습니다.",
+    nav1: "사용 흐름", nav2: "핵심 기능", nav3: "프라이버시", navGet: "다운로드",
+    thDark: "다크", thLight: "라이트", langTitle: "언어",
+    eyebrow: "오프라인 기반 지식 관리 도구",
+    tagline: "AI와 함께 지식을 연결하고<br><em>생각의 깊이를 더하세요.</em>",
+    sub: "폴더 속에 잠들어 있던 노트와 문서들을 살아 숨 쉬는 지식 그래프로 펼쳐보세요. 탐색하고, 의미를 찾고, 원하는 만큼 묶어 공유하는 모든 과정이 오직 내 PC 안에서 안전하게 이루어집니다.",
+    download: "다운로드", docsBtn: "사용 가이드 보기", download2: "다운로드",
+    platforms: "macOS · Windows · Linux 지원. 가입, 클라우드, 복잡한 설정 없이 바로 시작하세요.",
+    mockSearch: "의미로 검색", mockAtlas: "아틀라스", mockDomains: "3개 분야 · 128개 문서",
+    mockD1: "리서치", mockD2: "디자인", mockD3: "시스템",
+    mockSel: "하이브리드 검색", mockTag1: "연결 8", mockTag2: "고정됨",
+    howT: "단 세 번의 클릭.",
+    howS: "파일 더미가 지식의 지도로 탈바꿈합니다.",
+    s1t: "간편한 가져오기", s1b: "폴더를 끌어다 놓기만 하세요. Vinc가 문서 속 핵심 개념과 숨겨진 연결고리를 스스로 찾아냅니다.",
+    s2t: "지식 지도 탐험", s2b: "텍스트에 갇혀있던 내 지식들이 한눈에 들어오는 시각적 지도로 펼쳐집니다. 점과 선으로 연결된 나만의 생각 우주를 탐험해 보세요.",
+    s3t: "지식 묶음 공유", s3b: "그래프의 특정 주제만 잘라내어 공유하세요. 전달받은 '팩(Pack)'은 클릭 한 번으로 상대방의 지도에 자연스럽게 흡수됩니다.",
+    featT: "복잡한 설정도, 구독료도 없습니다.",
+    featS: "당신의 지식을 확장해 줄 Vinc의 강력한 기능들",
+    f1t: "맥락을 읽는 시맨틱 검색", f1b: "단순한 단어 매칭이 아닌 '의미'를 찾아냅니다. 벡터(Vector)와 BM25를 결합한 하이브리드 검색으로 머릿속에 맴도는 바로 그 문서를 정확하게 찾아보세요.",
+    f2t: "스스로 진화하는 그래프", f2b: "새로운 메모를 추가하는 순간, 기존의 지식들과 자동으로 연결됩니다. 더 이상 고립된 메모나 방치된 폴더는 없습니다.",
+    f3t: "자동화된 관심사 분류", f3b: "일일이 폴더를 정리할 필요가 없습니다. 데이터가 쌓이면 Vinc가 알아서 연관된 주제를 시각적으로 묶어 보여줍니다.",
+    f4t: "자유로운 지식의 이동", f4b: "완성된 그래프의 일부를 하나의 파일로 추출할 수 있습니다. 특정 플랫폼에 갇히지 않는 열린 포맷을 지원합니다.",
+    f5t: "직관적인 의사결정", f5b: "복잡한 생각이나 결정을 앞두고 있다면 그래프의 흐름을 따라가 보세요. 생각의 연결고리를 눈으로 확인하며 해답의 실마리를 찾을 수 있습니다.",
+    f6t: "가장 쉬운 백업과 복구", f6b: "모든 데이터는 단 하나의 로컬 폴더에 저장됩니다. 폴더를 복사하면 백업 완료, 제자리에 두면 복원 완료입니다.",
+    vowT: "100% 당신의 통제 하에. 완벽한 프라이버시.",
+    vowS: "Vinc는 사용자의 데이터에 일절 관여하지 않습니다.",
+    v1t: "가입 및 로그인 불필요", v1b: "Vinc는 당신이 누구인지 묻지 않습니다. 번거로운 가입 절차도, 개인정보 유출의 위험도 없습니다.",
+    v2t: "완벽한 오프라인 환경", v2b: "비행기, 산장, 망분리 환경 어디서든 작동합니다. 모든 데이터 처리는 외부 서버가 아닌 기기 내부에서만 독립적으로 이루어집니다.",
+    v3t: "데이터 종속성 탈피", v3b: "로컬 폴더, 오픈 포맷, MIT 라이선스. 당신의 데이터는 특정 앱의 수명에 갇히지 않고 영구적으로 보존됩니다.",
+    finT: "이제, 당신의 지식을 연결할 차례입니다.",
+    finS: "100% 무료 오픈소스. 설치부터 나만의 지식 그래프를 확인하기까지 5분이면 충분합니다.",
+    release: "릴리즈 노트",
   },
 };
 const EN = {};   // 최초 로드 시 영어 원문 백업
 document.querySelectorAll("[data-i]").forEach(el => { EN[el.dataset.i] = el.innerHTML; });
+EN._title = document.title;
+EN._desc = document.querySelector('meta[name="description"]').content;
 DECK.en = EN;
+
 function setLang(l){
   const deck = DECK[l] || DECK.en;
   document.querySelectorAll("[data-i]").forEach(el => {
     if (deck[el.dataset.i]) el.innerHTML = deck[el.dataset.i];
   });
+  document.title = deck._title || DECK.en._title;
+  document.querySelector('meta[name="description"]').content = deck._desc || DECK.en._desc;
   document.documentElement.lang = l;
   document.querySelectorAll("[data-lang]").forEach(b =>
     b.classList.toggle("active", b.dataset.lang === l));
@@ -189,14 +812,115 @@ function setTheme(t){
     b.classList.toggle("active", b.dataset.th === t));
   try { localStorage.setItem("vinc.site.theme", t); } catch {}
 }
+// 언어 모달 열고/닫기 + 선택
+const langModal = document.getElementById("langModal");
+document.getElementById("langBtn").addEventListener("click", () => { langModal.hidden = false; });
+langModal.addEventListener("click", (e) => { if (e.target === langModal) langModal.hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") langModal.hidden = true; });
 document.querySelectorAll("[data-lang]").forEach(b =>
-  b.addEventListener("click", () => setLang(b.dataset.lang)));
+  b.addEventListener("click", () => { setLang(b.dataset.lang); langModal.hidden = true; }));
 document.querySelectorAll("[data-th]").forEach(b =>
   b.addEventListener("click", () => setTheme(b.dataset.th)));
+
 let lang = null, theme = null;
 try { lang = localStorage.getItem("vinc.site.lang"); theme = localStorage.getItem("vinc.site.theme"); } catch {}
 setLang(lang || ((navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en"));
 setTheme(theme || "dark");   // 제품과 동일: 기본 다크(D38)
+
+// 스크롤 리빌 — IO 미지원 환경은 항상 표시
+if ("IntersectionObserver" in window) {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }), { threshold: .12 });
+  document.querySelectorAll(".rv").forEach(el => io.observe(el));
+} else {
+  document.querySelectorAll(".rv").forEach(el => el.classList.add("in"));
+}
+</script>
+
+<script>
+// 배경 도트 필드 — 아주 작은 도트 그리드가 마우스 포인터를 따라 부드럽게 밝아진다(Stitch풍).
+// 스포트라이트 초점이 커서로 이징 이동, 정지하면 rAF 중단. 커서 없으면 중앙에서 휴지.
+// dpr 대응, 색은 --ring 토큰. prefers-reduced-motion 시 마우스 추종 비활성(정적). CSP-safe.
+(function(){
+  var cv = document.getElementById("bg-halftone");
+  if (!cv || !cv.getContext) return;
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, dpr = 1, pitch = 20;
+  var reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var fx, fy, tx, ty, running = false, idleT = 0, rt = 0;
+  var COL = "hsla(217,23%,32%,", ABASE = 0.07, AGAIN = 0.26;
+
+  function isDark(){
+    var t = document.documentElement.dataset.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function recolor(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--ring").trim();
+    var p = v.split(/\s+/), h, s, l, dark = isDark();
+    if (p.length >= 3 && p[0] !== ""){ h = parseFloat(p[0]); s = parseFloat(p[1]); l = parseFloat(p[2]); }
+    else if (dark){ h = 218; s = 31; l = 66; } else { h = 217; s = 23; l = 32; }
+    COL = "hsla(" + h + "," + s + "%," + l + "%,";
+    ABASE = dark ? 0.10 : 0.07;
+    AGAIN = dark ? 0.30 : 0.26;
+  }
+  function restX(){ return W * 0.5; }
+  function restY(){ return H * 0.42; }
+
+  function size(){
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pitch = Math.max(16, Math.min(Math.sqrt(W * H / 3600), 40));   // 도트 수 ~일정(작은 도트, 미세 그리드)
+    if (fx === undefined){ fx = restX(); fy = restY(); tx = fx; ty = fy; }
+  }
+  function render(){
+    if (!W || !H) return;
+    ctx.clearRect(0, 0, W, H);
+    var sigma = Math.max(150, Math.min(Math.min(W, H) * 0.28, 340)), twoS2 = 2 * sigma * sigma;
+    var baseR = 0.5, boost = 1.75;   // 최대 반경 ~2.25px (작게)
+    for (var y = pitch / 2; y < H; y += pitch){
+      for (var x = pitch / 2; x < W; x += pitch){
+        var dx = x - fx, dy = y - fy;
+        var f = Math.exp(-(dx * dx + dy * dy) / twoS2);
+        ctx.beginPath();
+        ctx.arc(x, y, baseR + boost * f, 0, 6.2831853);
+        ctx.fillStyle = COL + (ABASE + AGAIN * f).toFixed(3) + ")";
+        ctx.fill();
+      }
+    }
+  }
+  function frame(){
+    fx += (tx - fx) * 0.14; fy += (ty - fy) * 0.14;
+    render();
+    if (Math.abs(tx - fx) < 0.5 && Math.abs(ty - fy) < 0.5){ fx = tx; fy = ty; render(); running = false; return; }
+    requestAnimationFrame(frame);
+  }
+  function start(){ if (!running){ running = true; requestAnimationFrame(frame); } }
+
+  recolor(); size(); render();   // 최초 동기 렌더(백그라운드 탭에서도)
+
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt = setTimeout(function(){ size(); if (!running) render(); }, 150); });
+  new MutationObserver(function(){ recolor(); if (!running) render(); }).observe(document.documentElement,
+    { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  var mqd = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  if (mqd){ var onc = function(){ recolor(); if (!running) render(); }; if (mqd.addEventListener) mqd.addEventListener("change", onc); else if (mqd.addListener) mqd.addListener(onc); }
+
+  if (!reduce){
+    window.addEventListener("mousemove", function(e){
+      tx = e.clientX; ty = e.clientY;
+      clearTimeout(idleT);
+      idleT = setTimeout(function(){ tx = restX(); ty = restY(); start(); }, 2600);
+      start();
+    }, { passive: true });
+    document.addEventListener("mouseleave", function(){ tx = restX(); ty = restY(); start(); });
+  }
+})();
 </script>
 </body>
 </html>
