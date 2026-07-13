@@ -139,6 +139,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .error-banner::before { content: "△ "; }
 
+/* Intake — 팩 파일 드롭존 + 본인문서=MCP 안내 */
+#drop { cursor: pointer; transition: border-color .15s, background .15s; }
+#drop.drag { border-color: hsl(var(--foreground) / .5); background: hsl(var(--card) / .5); }
+.mcp-note {
+  margin-top: var(--space-4, 1rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-4, 1rem); background: hsl(var(--card) / .4);
+}
+.mcp-note h3 { font-size: var(--fs-1, .95rem); margin: 0 0 var(--space-2, .5rem); }
+.mcp-note p { color: hsl(var(--muted-foreground)); margin: 0; font-size: var(--fs-0, .85rem); }
+
 .list-row {
   display: flex; align-items: baseline; gap: var(--space-3, .75rem);
   padding: var(--space-2, .5rem) 0;

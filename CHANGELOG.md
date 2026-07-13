@@ -11,6 +11,10 @@ Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/
 - **fix(app)**: 패키징된 셸에서 프론트엔드 데이터 호출이 사이드카가 아닌 webview origin
   (`tauri://localhost` 등)으로 향하던 문제 — 셸 감지 시 기본 base 를 셸이 고정한
   `http://127.0.0.1:8787` 로 설정. Settings 의 수동 지정은 계속 우선한다. (`app/src/api.ts`)
+- **feat(app)**: Intake 에서 **지식 팩 파일 import** — `.vincpack`/`.json` 을 파일 선택 또는
+  드래그&드롭으로 `/ingest/pack`·`/ingest/fragment` 에 적재(HTML File API, 플러그인 불요;
+  셸 드롭은 `dragDropEnabled:false` 로 웹뷰 수신). 자리표시자("데스크톱 앱에서 제공") 제거,
+  **본인 문서→그래프는 Claude/MCP 경로**임을 Intake 에 정직하게 안내. (`app/src/surfaces/intake.ts`)
 - **build(installer)**: Windows NSIS 설치관리자 per-user 설치(관리자 권한 불요) + 설치 중
   한국어/영어 언어 선택. (`tauri.conf.json`, 26455b4)
 - site: `/download` 첫 실행 우회 안내(미서명 빌드) · SignPath 귀속 문구, `/release` v0.1.0 노트.
