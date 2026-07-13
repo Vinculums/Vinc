@@ -3,6 +3,18 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.2 — 2026-07-14
+
+- **fix(app)**: 패키지 앱에서 **사이드카 세션 토큰이 프론트에 안정적으로 전달되지 않아
+  모든 데이터 호출이 401 로 거부**되던 문제(샘플 팩·파일 import 포함) 해소. 셸이 `win.eval`
+  로 localStorage 에 토큰을 넣던 방식이 페이지 로드 타이밍에 불안정했음 → main.rs 에
+  `sidecar_conn` Tauri 커맨드를 추가해 프론트가 기동 시 포트·토큰을 직접 받아 설정(정본,
+  `win.eval` 은 폴백 유지). `connectSidecar` 가 `/health` 응답까지 대기해 기동 지연에 의한
+  첫 상호작용 실패도 방지. `withGlobalTauri` 활성화(invoke 노출).
+  (`app/src-tauri/src/main.rs`, `app/src/api.ts`, `app/src/main.ts`, `tauri.conf.json`)
+- 진단: 사이드카 직접 호출 시 인증 토큰과 함께면 `/domains` 200·`executed:true`, 무토큰
+  401 확인 → 스토어·프로비저닝·적재는 정상, 토큰 전달만이 결함이었음.
+
 ## v0.1.1 — 2026-07-13
 
 - **fix(sidecar)**: 첫 실행 데이터 적재 실패 해소. 신규 설치본에서 로컬 스토어 스키마가

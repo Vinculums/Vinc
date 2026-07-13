@@ -7,6 +7,7 @@ import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
+import { connectSidecar } from "./api";
 
 type Surface = "intake" | "records" | "atlas" | "search" | "packs";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
@@ -131,4 +132,9 @@ export function applyTheme() {
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 applyTheme();
 
-route();
+// 셸이면 사이드카 접속정보(포트·토큰)를 먼저 확보한 뒤 첫 화면을 그린다.
+// (브라우저 dev 는 connectSidecar 가 즉시 반환 → 기존과 동일)
+(async () => {
+  await connectSidecar();
+  route();
+})();

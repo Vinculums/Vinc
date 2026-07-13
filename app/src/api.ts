@@ -31,6 +31,26 @@ export const cfg = {
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
 };
 
+/** 셸에서 사이드카 접속정보(포트·세션 토큰)를 받아 cfg 에 주입한다. main.rs 의
+ *  `sidecar_conn` 커맨드를 invoke 해 win.eval 타이밍 의존 없이 토큰을 확보하고(정본),
+ *  이어 /health 가 응답할 때까지 잠깐 대기해 첫 상호작용 실패(기동 지연)를 막는다.
+ *  브라우저(dev)에는 __TAURI__ 가 없어 no-op — same-origin vite 프록시를 그대로 쓴다. */
+export async function connectSidecar(): Promise<void> {
+  const invoke = (window as any).__TAURI__?.core?.invoke;
+  if (typeof invoke !== "function") return;
+  try {
+    const c = await invoke("sidecar_conn") as { port?: number; token?: string };
+    if (c?.port) cfg.base = `http://127.0.0.1:${c.port}`;
+    if (c?.token) cfg.token = c.token;
+  } catch (e) {
+    console.error("sidecar_conn 실패:", e);
+  }
+  for (let i = 0; i < 20; i++) {                     // 사이드카 기동 대기 ≤ ~5s
+    try { if ((await fetch(new URL("/health", cfg.base))).ok) return; } catch {}
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown): Promise<any> {
   const url = new URL(path, cfg.base);

@@ -1,15 +1,34 @@
 // Vinc Tauri shell (P4 — D43) — control plane only.
 // Spawns the bundled sidecar (externalBin `vinc-sidecar`) with a per-session
-// random token, hands the token to the webview, and owns window lifecycle +
-// native file dialogs. All data flows over localhost HTTP (never IPC) — see
-// Vinc-docs vinc/ARCHITECTURE.md. Data home defaults to ~/.vinc (D43).
+// random token, and hands the connection info (port + token) to the webview via
+// the `sidecar_conn` command — the frontend invokes it on startup and configures
+// its HTTP client. (A `win.eval` localStorage write is kept as a best-effort
+// fallback; it is timing-fragile, which is why the command is the source of truth.)
+// All data flows over localhost HTTP (never IPC) — see Vinc-docs vinc/ARCHITECTURE.md.
+// Data home defaults to ~/.vinc (D43).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
+const SIDECAR_PORT: u16 = 8787;
+
 struct Sidecar(std::sync::Mutex<Option<CommandChild>>);
+
+/// 프론트가 기동 시 `invoke("sidecar_conn")` 로 받는 사이드카 접속정보.
+#[derive(Clone, serde::Serialize)]
+struct Conn {
+    port: u16,
+    token: String,
+}
+
+/// 사이드카 접속정보(포트·세션 토큰)를 프론트에 확정적으로 전달한다.
+/// `win.eval` 은 페이지 로드 타이밍에 불안정 → 이 커맨드가 정본 경로다.
+#[tauri::command]
+fn sidecar_conn(conn: tauri::State<'_, Conn>) -> Conn {
+    conn.inner().clone()
+}
 
 /// 로컬 세션 토큰 — 실행마다 새로 생성(F4: 자격은 세션 한정).
 /// RandomState 는 OS 엔트로피로 시드되므로 외부 crate 없이 충분하다.
@@ -31,17 +50,25 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar(std::sync::Mutex::new(None)))
+        .manage(Conn {
+            port: SIDECAR_PORT,
+            token: token.clone(),
+        })
+        .invoke_handler(tauri::generate_handler![sidecar_conn])
         .setup(move |app| {
+            // 포트는 SIDECAR_PORT 와 동일해야 함(Conn 과 동기) — v0.1.1 에서 CI 빌드에
+            // 성공한 리터럴 args 패턴 유지.
             let sidecar = app
                 .shell()
                 .sidecar("vinc-sidecar")?
                 .args(["serve", "--port", "8787", "--token", &token]);
             let (_events, child) = sidecar.spawn()?;
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
+            // 폴백(정본은 sidecar_conn 커맨드): 웹뷰 localStorage 에도 토큰 주입 시도.
             if let Some(win) = app.get_webview_window("main") {
-                win.eval(&format!(
+                let _ = win.eval(&format!(
                     "localStorage.setItem('vinc.sidecar.token','{token}')"
-                ))?;
+                ));
             }
             Ok(())
         })
