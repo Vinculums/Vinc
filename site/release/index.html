@@ -233,6 +233,7 @@ footer .bm svg{width:16px;height:16px}
         <li data-i="d0a">Fixed: on a brand-new install, every ingest — the bundled sample pack included — failed because the local store's schema was never created. The sidecar now provisions the schema at startup, so loading data works from the very first run.</li>
         <li data-i="d0b">Fixed: in packaged builds the app pointed its data calls at the wrong address instead of the local engine — it now connects out of the box.</li>
         <li data-i="d0c">Windows: the installer now installs per-user (no admin prompt) and lets you pick English or Korean during setup.</li>
+        <li data-i="d0d">New: import knowledge packs (.vincpack / .json) right in Intake — choose a file or drag one in. To build a graph from your own documents, connect Claude through the MCP connector (Settings → MCP).</li>
       </ul>
       <p class="relnote" data-i="d0note">This build is still unsigned — the first-launch notes under v0.1.0 below still apply.</p>
       <div class="cta">
@@ -307,6 +308,7 @@ const DECK = {
     d0a: "수정: 새로 설치한 환경에서 로컬 스토어의 스키마가 생성되지 않아 동봉 샘플 팩을 포함한 모든 적재가 실패하던 문제. 이제 사이드카가 기동 시 스키마를 준비해 첫 실행부터 데이터 적재가 동작합니다.",
     d0b: "수정: 설치본에서 앱이 로컬 엔진이 아닌 잘못된 주소로 데이터 호출을 보내던 문제 — 이제 설치 직후 바로 연결됩니다.",
     d0c: "Windows: 설치관리자가 관리자 권한 없이 사용자 단위로 설치되며, 설치 중 한국어/영어를 선택할 수 있습니다.",
+    d0d: "새 기능: Intake에서 지식 팩 파일(.vincpack / .json)을 바로 가져오기 — 파일 선택 또는 드래그&드롭. 본인 문서로 그래프를 만들려면 MCP 커넥터로 Claude를 연결하세요(Settings → MCP).",
     d0note: "이 빌드도 아직 코드 서명이 없습니다 — 아래 v0.1.0의 첫 실행 안내가 그대로 적용됩니다.",
     d0dl: "v0.1.1 다운로드", d0watch: "GitHub의 모든 릴리스",
     d1date: "2026년 7월 13일", d1tag: "프리릴리스",
