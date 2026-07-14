@@ -3,6 +3,17 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.4 — 2026-07-14
+
+- **fix(sidecar)**: **첫 실행 적재의 진짜 원인 — CORS 부재** 해소. 패키지 앱 웹뷰
+  (`http://tauri.localhost` / `tauri://localhost`)는 사이드카(`http://127.0.0.1:8787`)와
+  교차출처인데 사이드카가 `Access-Control-Allow-Origin` 을 안 보내 브라우저가 fetch 를
+  차단("Failed to fetch") → 샘플·팩 import 실패(dev 는 same-origin 프록시라 안 걸렸음).
+  모든 응답에 `Access-Control-Allow-Origin: *` + OPTIONS 프리플라이트 처리 추가(루프백 +
+  Bearer 토큰이라 무단 접근은 토큰에서 차단). v0.1.3 진단(`Failed to fetch · token=64ch ·
+  health TIMEOUT`)으로 토큰은 정상·연결만 막힘을 확인해 특정. (`api/server.py`)
+- v0.1.3 의 진단 노출(sidecarDiag)·토큰 견고화는 유지.
+
 ## v0.1.3 — 2026-07-14
 
 - **diag/fix(app)**: v0.1.2 에서도 첫 실행 적재가 실패하는 사례 대응. 토큰 획득을 더 견고하게
