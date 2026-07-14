@@ -30,6 +30,31 @@ fn sidecar_conn(conn: tauri::State<'_, Conn>) -> Conn {
     conn.inner().clone()
 }
 
+/// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 1회 등록한다. 번들 사이드카
+/// `mcp install --client <desktop|code>` 를 실행(서버 기동 아님, one-shot)해 결과
+/// JSON(stdout)을 프론트에 돌려준다. 실패 시 stderr/stdout 을 Err 로 전달.
+#[tauri::command]
+async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, String> {
+    if client != "desktop" && client != "code" {
+        return Err(format!("unknown client: {client}"));
+    }
+    let out = app
+        .shell()
+        .sidecar("vinc-sidecar")
+        .map_err(|e| e.to_string())?
+        .args(["mcp", "install", "--client", &client])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    if out.status.success() {
+        Ok(stdout)
+    } else {
+        Err(if stderr.trim().is_empty() { stdout } else { stderr })
+    }
+}
+
 /// 로컬 세션 토큰 — 실행마다 새로 생성(F4: 자격은 세션 한정).
 /// RandomState 는 OS 엔트로피로 시드되므로 외부 crate 없이 충분하다.
 fn session_token() -> String {
@@ -54,7 +79,7 @@ fn main() {
             port: SIDECAR_PORT,
             token: token.clone(),
         })
-        .invoke_handler(tauri::generate_handler![sidecar_conn])
+        .invoke_handler(tauri::generate_handler![sidecar_conn, mcp_install])
         .setup(move |app| {
             // 포트는 SIDECAR_PORT 와 동일해야 함(Conn 과 동기) — v0.1.1 에서 CI 빌드에
             // 성공한 리터럴 args 패턴 유지.

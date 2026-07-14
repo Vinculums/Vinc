@@ -10,6 +10,11 @@ export function renderSettings(el: HTMLElement) {
     <h2>Settings</h2>
     <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>
     <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
+    <p><span class="seg">
+      <button class="btn" id="mcp-desktop">${U.mcpDesktop}</button>
+      <button class="btn" id="mcp-code">${U.mcpCode}</button>
+    </span></p>
+    <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>
     <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
     <label for="s-owner">${U.workspace}</label>
     <p class="hint">${U.workspaceHint}</p>
@@ -54,4 +59,21 @@ export function renderSettings(el: HTMLElement) {
     (cfg.token = (e.target as HTMLInputElement).value));
   el.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
     (cfg.owner = (e.target as HTMLInputElement).value));
+
+  // MCP — 이 설치본을 로컬 Claude 클라이언트(Desktop/Code)에 등록. main.rs 의
+  // mcp_install 커맨드가 번들 사이드카 `mcp install` 을 실행한다(셸에서만 동작).
+  const mcpResult = el.querySelector<HTMLElement>("#mcp-result")!;
+  async function connectMcp(client: "desktop" | "code") {
+    const invoke = (window as any).__TAURI__?.core?.invoke;
+    if (typeof invoke !== "function") { mcpResult.textContent = U.mcpNoShell; return; }
+    mcpResult.textContent = U.mcpInstalling;
+    try {
+      await invoke("mcp_install", { client });
+      mcpResult.textContent = U.mcpDone(client);
+    } catch (e: any) {
+      mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
+    }
+  }
+  el.querySelector("#mcp-desktop")!.addEventListener("click", () => connectMcp("desktop"));
+  el.querySelector("#mcp-code")!.addEventListener("click", () => connectMcp("code"));
 }

@@ -3,6 +3,16 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.5 — 2026-07-14
+
+- **feat(app)**: Settings→MCP 에 **로컬 Claude 연결 버튼**(Claude Desktop / Claude Code).
+  main.rs `mcp_install` Tauri 커맨드가 번들 사이드카 `mcp install --client <desktop|code>` 를
+  실행해 클라이언트 설정에 Vinc(stdio MCP)를 등록 → 재시작하면 Claude 가 로컬 그래프를
+  읽고/쓴다("내 문서→그래프"의 실제 경로). 그동안 Settings 의 MCP 는 안내 텍스트뿐이었음.
+  (`app/src-tauri/src/main.rs`, `app/src/surfaces/settings.ts`)
+- 참고: 원격 커넥터(`mcp.vincs.app/mcp`)는 서버 가동·OAuth 디스커버리 200 확인 — claude.ai
+  커스텀 커넥터 등록(발주자 1회)만 남음.
+
 ## v0.1.4 — 2026-07-14
 
 - **fix(sidecar)**: **첫 실행 적재의 진짜 원인 — CORS 부재** 해소. 패키지 앱 웹뷰

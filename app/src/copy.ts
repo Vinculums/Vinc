@@ -120,6 +120,10 @@ const EN = {
       theme: "Theme", language: "Language", advanced: "Advanced",
       engine: "Engine address", secret: "Connection secret",
       secretHint: "Filled in automatically by the app. Only change this if you run the engine yourself.",
+      mcpDesktop: "Connect Claude Desktop", mcpCode: "Connect Claude Code",
+      mcpInstalling: "Connecting…",
+      mcpDone: (client: string) => `Registered with Claude ${client === "desktop" ? "Desktop" : "Code"}. Restart it to reach Vinc.`,
+      mcpFail: "Couldn't connect", mcpNoShell: "Available in the desktop app only.",
     },
     palette: {
       typeCommand: "Type a command…", noCommands: "No commands.",
@@ -264,6 +268,10 @@ const KO: Deck = {
       theme: "테마", language: "언어", advanced: "고급",
       engine: "엔진 주소", secret: "연결 시크릿",
       secretHint: "앱이 자동으로 채웁니다. 엔진을 직접 운영할 때만 변경하세요.",
+      mcpDesktop: "Claude Desktop에 연결", mcpCode: "Claude Code에 연결",
+      mcpInstalling: "연결 중…",
+      mcpDone: (client) => `Claude ${client === "desktop" ? "Desktop" : "Code"}에 등록됐습니다. 재시작하면 Vinc에 접근합니다.`,
+      mcpFail: "연결 실패", mcpNoShell: "데스크톱 앱에서만 가능합니다.",
     },
     palette: {
       typeCommand: "명령 입력…", noCommands: "명령이 없습니다.",
