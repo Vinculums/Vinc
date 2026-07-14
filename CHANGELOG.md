@@ -3,6 +3,14 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.3 — 2026-07-14
+
+- **diag/fix(app)**: v0.1.2 에서도 첫 실행 적재가 실패하는 사례 대응. 토큰 획득을 더 견고하게
+  (`__TAURI__` 주입 대기 후 `sidecar_conn` invoke) 하고, 적재 실패 시 **실제 에러와 연결
+  상태(base · token 유무 · HTTP 상태 · health)를 화면에 노출**해 원인을 즉시 특정한다.
+  샘플/파일 import 둘 다 동일 지점(사이드카 `/ingest/pack` HTTP)에서 실패 확인 → 데이터가
+  아니라 연결/인증 문제로 좁혀짐. (`app/src/api.ts` sidecarDiag, `app/src/surfaces/intake.ts`)
+
 ## v0.1.2 — 2026-07-14
 
 - **fix(app)**: 패키지 앱에서 **사이드카 세션 토큰이 프론트에 안정적으로 전달되지 않아

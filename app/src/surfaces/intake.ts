@@ -1,7 +1,7 @@
 import { COPY } from "../copy";
 import { header, headerCta } from "../components";
 import { icon } from "../icons";
-import { api, cfg } from "../api";
+import { api, cfg, sidecarDiag } from "../api";
 import samplePack from "../sample-pack.json";
 
 /** Surface 1 — Intake (Figma 5:2 grammar · spec vinc.d.ingest v0.2).
@@ -84,12 +84,13 @@ export function renderIntake(el: HTMLElement) {
     status.innerHTML = `<p class="hint">${ui.importing}</p>`;
     let nodes = 0, edges = 0, ok = 0;
     const failed: string[] = [];
+    let lastErr: any = null;
     for (const f of files) {
       try {
         const r = await importOne(f);
         nodes += r.nodes; edges += r.edges; ok++;
-      } catch {
-        failed.push(f.name);
+      } catch (e) {
+        failed.push(f.name); lastErr = e;
       }
     }
     if (ok > 0) {
@@ -99,7 +100,8 @@ export function renderIntake(el: HTMLElement) {
         (failed.length ? `<p class="hint">${ui.someFailed(failed.join(", "))}</p>` : "") +
         `<a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>`;
     } else {
-      status.innerHTML = `<div class="error-banner">${COPY.intake.error(failed.join(", ") || "the file")}</div>`;
+      status.innerHTML = `<div class="error-banner">${COPY.intake.error(failed.join(", ") || "the file")}</div>`
+        + `<p class="hint" style="font-size:.72rem;word-break:break-all;margin-top:.4rem;opacity:.75">진단: ${(lastErr && lastErr.message) || lastErr} · ${sidecarDiag}</p>`;
     }
   }
 
@@ -113,8 +115,9 @@ export function renderIntake(el: HTMLElement) {
       cfg.owner = "sample:demo";
       status.innerHTML = `<p>${ui.sampleLoaded}</p>
         <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>`;
-    } catch {
-      status.innerHTML = `<div class="error-banner">${COPY.intake.error("the sample pack")}</div>`;
+    } catch (e: any) {
+      status.innerHTML = `<div class="error-banner">${COPY.intake.error("the sample pack")}</div>`
+        + `<p class="hint" style="font-size:.72rem;word-break:break-all;margin-top:.4rem;opacity:.75">진단: ${(e && e.message) || e} · ${sidecarDiag}</p>`;
     }
   });
 }
