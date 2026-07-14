@@ -8,7 +8,8 @@ const LANG_KEY = "vinc.lang";
 
 // Tauri 셸 webview 의 origin 은 tauri://localhost(mac·linux) 또는
 // http://tauri.localhost(windows) — 사이드카가 아니다. 셸(main.rs)은 사이드카를
-// 127.0.0.1:8787 고정 포트로 띄우므로, 셸 안에서는 그 주소가 기본값이다.
+// 127.0.0.1 의 동적 포트로 띄우고 그 포트를 sidecar_conn 으로 넘기므로, 아래 8787 은
+// connectSidecar 가 실제 포트를 주입하기 전까지의 폴백 기본값일 뿐이다.
 // (127.0.0.1 은 secure-context 예외라 tauri:// 에서의 fetch 도 차단되지 않는다.)
 const IN_SHELL =
   location.protocol === "tauri:" || location.hostname === "tauri.localhost";

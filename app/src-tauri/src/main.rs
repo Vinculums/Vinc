@@ -12,7 +12,7 @@ use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
-const SIDECAR_PORT: u16 = 8787;
+const SIDECAR_PORT: u16 = 8787; // 폴백 전용 — 실제 포트는 pick_free_port() 로 동적 배정.
 
 struct Sidecar(std::sync::Mutex<Option<CommandChild>>);
 
@@ -69,24 +69,36 @@ fn session_token() -> String {
         .collect()
 }
 
+/// 스폰 직전 OS 가 배정한 빈 포트를 잡아 즉시 반환 → 사이드카가 그 포트로 bind 한다.
+/// 고정 8787 을 (강제종료로 잔존한) 옛 사이드카가 물고 있어도 새 실행은 다른 포트를 써
+/// 충돌하지 않는다(잔존 사이드카 재발 방지). 반환~재bind 사이의 짧은 창은 루프백 임시
+/// 포트라 사실상 무해하며, 실패 시 고정 포트로 폴백한다.
+fn pick_free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .unwrap_or(SIDECAR_PORT)
+}
+
 fn main() {
     let token = session_token();
+    let port = pick_free_port();
+    let port_arg = port.to_string();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar(std::sync::Mutex::new(None)))
         .manage(Conn {
-            port: SIDECAR_PORT,
+            port,
             token: token.clone(),
         })
         .invoke_handler(tauri::generate_handler![sidecar_conn, mcp_install])
         .setup(move |app| {
-            // 포트는 SIDECAR_PORT 와 동일해야 함(Conn 과 동기) — v0.1.1 에서 CI 빌드에
-            // 성공한 리터럴 args 패턴 유지.
+            // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
             let sidecar = app
                 .shell()
                 .sidecar("vinc-sidecar")?
-                .args(["serve", "--port", "8787", "--token", &token]);
+                .args(["serve", "--port", &port_arg, "--token", &token]);
             let (_events, child) = sidecar.spawn()?;
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
             // 폴백(정본은 sidecar_conn 커맨드): 웹뷰 localStorage 에도 토큰 주입 시도.
