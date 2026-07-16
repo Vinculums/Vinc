@@ -32,7 +32,11 @@ export const cfg = {
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
 };
 
-/** 연결 셋업 진단 문자열 — 실패 시 화면에 노출해 원인을 즉시 파악(v0.1.3). */
+/** 연결 셋업 진단 문자열 — 실패 시 화면에 노출해 원인을 즉시 파악(v0.1.3).
+ *  v0.1.7: 앱 버전 + 셸이 준 실제 포트(conn.port)를 박는다 — "base=8787 인데 어느
+ *  버전인가/셸이 무슨 포트를 줬나"가 리포트만으로 판별되게(macOS 리포트 대응). */
+declare const __APP_VERSION__: string;   // vite define 주입(빌드 상수)
+const APP_V = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 export let sidecarDiag = "(connectSidecar 미실행)";
 
 /** 셸에서 사이드카 접속정보(포트·세션 토큰)를 받아 cfg 에 주입한다. main.rs 의
@@ -54,7 +58,8 @@ export async function connectSidecar(): Promise<void> {
     const c = await invoke("sidecar_conn") as { port?: number; token?: string };
     if (c?.port) cfg.base = `http://127.0.0.1:${c.port}`;
     if (c?.token) cfg.token = c.token;
-    sidecarDiag = `base=${cfg.base} token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
+    sidecarDiag = `v${APP_V} conn.port=${c?.port ?? "?"} base=${cfg.base} `
+      + `token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
   } catch (e: any) {
     sidecarDiag = `invoke sidecar_conn 예외: ${e?.message || e}`;
   }

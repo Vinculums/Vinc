@@ -24,7 +24,9 @@ from vinc_mcp.oauth import OAuthGate, _s256  # noqa: E402
 from vinc_mcp.rpc import Dispatcher  # noqa: E402
 
 D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
-             "vinc_domains", "vinc_suggest_ties", "vinc_ingest"}
+             "vinc_domains", "vinc_suggest_ties", "vinc_ingest",
+             # T3c — 오염 정리 쓰기 표면(비가역).
+             "vinc_delete", "vinc_merge_nodes"}
 
 
 class _StubBridge(Bridge):
@@ -48,15 +50,17 @@ class ToolContractTests(unittest.TestCase):
             self.assertTrue(t["description"], t["name"])
             self.assertEqual(t["inputSchema"]["type"], "object", t["name"])
 
-    def test_single_write_surface(self):
+    def test_write_surfaces_are_explicit(self):
+        # 구 계약(쓰기 표면 = ingest 단독)은 T3c 로 확장 — 쓰기 표면은 여전히
+        # **명시된 3개뿐**(ingest + 오염 정리용 delete/merge, 둘 다 비가역)이어야 한다.
         b = _StubBridge()
         for t in tools.specs():
             args = {"query": "x", "seed_id": "concept:x", "topic": "x",
-                    "node": "concept:x", "nodes": [{"id": "c:x", "type": "concept"}]}
+                    "node": "concept:x", "nodes": [{"id": "c:x", "type": "concept"}],
+                    "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y"}
             tools.call(t["name"], args, b)
-        writes = [c for c in b.calls if c[0] == "POST"]
-        self.assertEqual(len(writes), 1)
-        self.assertEqual(writes[0][1], "/ingest/fragment")
+        writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
+        self.assertEqual(writes, ["/delete", "/ingest/fragment", "/merge-nodes"])
 
     def test_owner_default_injected(self):
         b = _StubBridge()

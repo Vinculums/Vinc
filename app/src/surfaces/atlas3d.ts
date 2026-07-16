@@ -129,16 +129,24 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 2D 는 직교 투영이 아닌 경사 사영으로 접는다: z 분리를 y 에 보존해
     // z 로만 갈라져 있던(같은 클러스터) 노드들이 평면에서도 겹치지 않는다.
     // 좌표는 동일 사이드카 정본 — 사영 계수만 상수(결정론 유지).
-    n.fx = n.x * S;
-    n.fy = flat ? ((n.y || 0) + (n.z || 0) * 0.55) * S : (n.y || 0) * S;
-    n.fz = flat ? 0 : (n.z || 0) * S;
+    // 렌더 좌표(x/y/z)에 직접 기록한다 — fx 핀만 두고 엔진 틱의 핀→좌표 복사에
+    // 의존하면, digest(비동기)가 메시를 원점에 재생성한 뒤 cooldown 0 으로 틱 없이
+    // 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉친다(세부 뷰 2D 미적용의 실측 원인).
+    // fx/fy/fz 는 "엔진이 돌아도 못 움직이게" 하는 핀으로 병기한다.
+    const px = n.x * S;
+    const py = (flat ? (n.y || 0) + (n.z || 0) * 0.55 : (n.y || 0)) * S;
+    const pz = flat ? 0 : (n.z || 0) * S;
+    n.x = px; n.y = py; n.z = pz;
+    n.fx = px; n.fy = py; n.fz = pz;
   }
   // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
   const pal = themePalette();
+  // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
+  // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
+  // (기본값은 마운트 순간 스냅샷이라 스크롤바 등장 뒤 컨테이너보다 커져 넘친다 — 실측).
   const g = new ForceGraph3D(el, { rendererConfig: { alpha: true, antialias: true } } as any)
-    .graphData({ nodes, links })
     .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
@@ -162,7 +170,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       const len = Math.hypot(t.fx - s.fx, t.fy - s.fy, (t.fz || 0) - (s.fz || 0));
       if (!len) return 0.94;
       return Math.max(0.5, 1 - (nodeRadius(t, prefs) + 2.5) / len);
-    });
+    })
+    .graphData({ nodes, links });
+  if (el.clientWidth > 1 && el.clientHeight > 1) {
+    g.width(el.clientWidth).height(el.clientHeight);
+  }
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
@@ -188,7 +200,32 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 초기 프레이밍: 오블리크 각도에서 전체를 담는다(정면 뷰는 육각기둥이 사각으로 보임)
     g.cameraPosition({ x: S * 1.1, y: S * 0.9, z: S * 2.1 }, { x: 0, y: 0, z: 0 }, 0);
   }
-  setTimeout(() => (g as any).zoomToFit?.(500, 60), 250);
+  // 결정론 프레이밍(구 setTimeout 250ms 제거): digest(비동기)로 메시가 생길 때까지
+  // rAF 로 대기 → d3ReheatSimulation() 으로 위치 동기화 프레임을 1회 강제한다.
+  // cooldown 0 의 정지 분기에서도 three-forcegraph 는 노드·링크 위치를 갱신하고,
+  // 좌표는 핀 고정이라 이동은 없다(원점 뭉침의 결정적 해소). 그 다음 프레임에 프레이밍.
+  let dead = false;
+  const settle = (tries: number) => {
+    if (dead) return;
+    const ns: any[] = g.graphData().nodes;
+    if (ns.length && !ns.some((n) => n.__threeObj) && tries < 60) {
+      requestAnimationFrame(() => settle(tries + 1)); return;
+    }
+    (g as any).d3ReheatSimulation?.();
+    requestAnimationFrame(() => { if (!dead) (g as any).zoomToFit?.(400, 60); });
+  };
+  requestAnimationFrame(() => settle(0));
+  // 컨테이너 추적 리사이즈 — 창 크기 변경·스크롤바 등장에도 캔버스가 컨테이너와 일치.
+  const ro = new ResizeObserver(() => {
+    if (!dead && el.clientWidth > 1 && el.clientHeight > 1)
+      g.width(el.clientWidth).height(el.clientHeight);
+  });
+  ro.observe(el);
+  const baseDestructor = (g as any)._destructor?.bind(g);
+  (g as any)._destructor = () => { dead = true; ro.disconnect(); baseDestructor?.(); };
+  // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 메시 위치·카메라
+  // 상태를 수치로 검증하는 데 쓴다(2026-07 세부 뷰 원점 뭉침 회귀 감시).
+  if (import.meta.env.DEV) (window as any).__g3 = g;
 
   if (handlers.onClick) g.onNodeClick((n: any) => {
     // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to); 2D 는 시축 유지 직진
@@ -275,7 +312,8 @@ export function mountMinis3d(
   const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // D40
 
   type Cell = { scene: THREE.Scene; camera: THREE.PerspectiveCamera;
-                el: HTMLElement; meshes: Map<string, THREE.Mesh> };
+                el: HTMLElement; meshes: Map<string, THREE.Mesh>;
+                rad: number; pad: number; dir: THREE.Vector3 };
   const built: Cell[] = cells.map((c) => {
     const scene = new THREE.Scene();
     scene.environment = envTex;   // 유리 반사원(D40)
@@ -284,18 +322,22 @@ export function mountMinis3d(
     const dl = new THREE.DirectionalLight(0xfff8ec, 1.5);
     dl.position.set(30, 60, 40);
     scene.add(dl);
-    // 셀 로컬 정규화: 무게중심을 원점으로(클러스터 오프셋 제거)
+    // 셀 로컬 정규화: 무게중심을 원점으로(클러스터 오프셋 제거 — z 포함, 3D 컷에서
+    // z 오프셋이 크면 rad 가 부풀어 프레이밍이 어긋난다)
     const n0 = Math.max(c.nodes.length, 1);
     const cx = c.nodes.reduce((a, n) => a + (n.x || 0), 0) / n0;
     const cy = c.nodes.reduce((a, n) => a + (n.y || 0), 0) / n0;
+    const cz = flat ? 0 : c.nodes.reduce((a, n) => a + (n.z || 0), 0) / n0;
     const pos = new Map<string, THREE.Vector3>();
     const meshes = new Map<string, THREE.Mesh>();
     let rad = 1;
+    let maxMeshR = 0;   // 노드 중심 반경에 더할 메시 반경 마진(미니 스케일 0.5 반영)
     for (const n of c.nodes) {
       const p = new THREE.Vector3(((n.x || 0) - cx) * S, ((n.y || 0) - cy) * S,
-                                  flat ? 0 : (n.z || 0) * S);
+                                  flat ? 0 : ((n.z || 0) - cz) * S);
       pos.set(n.id, p);
       rad = Math.max(rad, p.length());
+      maxMeshR = Math.max(maxMeshR, nodeRadius(n, prefs) * 0.5);
       const m = nodeObject(n, prefs, pal) as THREE.Mesh;
       m.scale.setScalar(0.5);            // 미니 마크는 절반 크기
       m.position.copy(p);
@@ -318,10 +360,12 @@ export function mountMinis3d(
         { color: l.cross ? pal.link.cross : pal.link.base, transparent: true, opacity: 0.75 })));
     }
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
-    if (flat) camera.position.set(0, 0, rad * 3.0);
-    else camera.position.set(rad * 1.5, rad * 1.1, rad * 2.6);
+    // 시선 방향만 여기서 고정 — 거리는 셀 aspect 를 아는 renderAll 에서 확정한다.
+    const dir = flat ? new THREE.Vector3(0, 0, 1)
+                     : new THREE.Vector3(1.5, 1.1, 2.6).normalize();
+    camera.position.copy(dir).multiplyScalar(rad * 3);   // 잠정값
     camera.lookAt(0, 0, 0);
-    return { scene, camera, el: c.el, meshes };
+    return { scene, camera, el: c.el, meshes, rad, pad: maxMeshR + 2, dir };
   });
 
   function renderAll() {
@@ -335,15 +379,27 @@ export function mountMinis3d(
       const bottom = crect.bottom - r.bottom;
       renderer.setViewport(left, bottom, r.width, r.height);
       renderer.setScissor(left, bottom, r.width, r.height);
-      cell.camera.aspect = r.width / Math.max(r.height, 1);
+      const aspect = r.width / Math.max(r.height, 1);
+      // aspect 반영 프레이밍 — 세로 fov 만으로 잡은 고정 거리(구 rad*3)는 세로형
+      // 카드에서 가로 시야가 rad 보다 좁아져 좌우 노드가 카드 밖으로 잘렸다(실측).
+      // 가로·세로 중 좁은 축이 (rad+pad) 를 담도록 거리를 확정한다.
+      const fitDist = ((cell.rad + cell.pad) * 1.12) /
+        (Math.tan(THREE.MathUtils.degToRad(cell.camera.fov / 2)) * Math.min(1, aspect));
+      cell.camera.position.copy(cell.dir).multiplyScalar(fitDist);
+      cell.camera.lookAt(0, 0, 0);
+      cell.camera.aspect = aspect;
       cell.camera.updateProjectionMatrix();
       renderer.render(cell.scene, cell.camera);
     }
   }
-  // 최초 레이아웃 확정 후 1회 + 리사이즈 시 — 미니는 정적 컷(조용한 그리드)
+  // 최초 레이아웃 확정 후 1회 + 컨테이너/창 리사이즈 시 — 미니는 정적 컷(조용한 그리드)
   requestAnimationFrame(renderAll);
   const onResize = () => renderAll();
   window.addEventListener("resize", onResize);
+  const ro = new ResizeObserver(onResize);
+  ro.observe(container);
+  // dev 전용 진단 핸들(프로덕션 번들 제거) — 그리드 fit(투영좌표⊂카드 rect) 수치 검증용.
+  if (import.meta.env.DEV) (window as any).__minis = { built, renderAll };
 
   function highlight(id: string | null) {
     for (const cell of built)
@@ -384,6 +440,7 @@ export function mountMinis3d(
     highlight,
     dispose() {
       window.removeEventListener("resize", onResize);
+      ro.disconnect();
       container.removeEventListener("mousemove", onMove);
       renderer.dispose();
       renderer.domElement.remove();

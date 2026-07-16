@@ -229,7 +229,11 @@ def domains_plan(*, owner: str | None = None) -> QueryPlan:
     """Discover the learning domains present in the store — enumerated from the
     data, never a fixed list. Domains are whatever the learner chose to study; you
     find out *what* someone has learned by asking the graph, not a config enum.
-    Optionally scoped to one ``owner``. Returns ``{domain, episodes}`` rows."""
+    Optionally scoped to one ``owner``. Returns ``{domain, episodes}`` rows.
+
+    Episode 전용 — Atlas L0(:func:`atlas_l0`)가 Concept 축과 별도로 이 플랜을 그대로
+    재사용하므로(§ concept_domains_plan 병행) 여기서는 손대지 않는다. 도메인 목록
+    화면의 Episode 편향 해소는 :func:`domain_counts_plan`/:func:`domains` 가 맡는다."""
     where = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL" if owner else "WHERE e.domain IS NOT NULL"
     params: dict = {"owner": owner} if owner else {}
     cypher = (
@@ -240,8 +244,60 @@ def domains_plan(*, owner: str | None = None) -> QueryPlan:
     return QueryPlan("domains", cypher, params, note="open-domain discovery (data-driven, not a fixed list)")
 
 
+def domain_counts_plan(*, owner: str | None = None) -> QueryPlan:
+    """`/domains` 의 Episode 편향 해소(C2) — Episode 만 집계하면 Concept·Record
+    위주 도메인이 목록에서 통째로 빠진다(실사용 사고 원인). Episode·Concept·Record
+    3개 노드 테이블을 도메인별로 각각 집계해 ``kind`` 태그와 함께 한 결과셋으로
+    담는다 — 합산·정렬은 :func:`domains`(순수 후처리)가 맡는다.
+
+    단일 Cypher(UNION ALL) — Kùzu 0.11.3 실측 지원 확인(2026-07): 서로 다른 라벨의
+    MATCH 절을 UNION ALL 로 이어도 파라미터 공유·리터럴 컬럼이 그대로 동작한다."""
+    if owner:
+        where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
+        where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
+        where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
+        params: dict = {"owner": owner}
+    else:
+        where_e = "WHERE e.domain IS NOT NULL"
+        where_c = "WHERE c.domain IS NOT NULL"
+        where_r = "WHERE r.domain IS NOT NULL"
+        params = {}
+    cypher = (
+        f"MATCH (e:Episode) {where_e} "
+        "RETURN e.domain AS domain, count(*) AS n, 'episodes' AS kind "
+        "UNION ALL "
+        f"MATCH (c:Concept) {where_c} "
+        "RETURN c.domain AS domain, count(*) AS n, 'concepts' AS kind "
+        "UNION ALL "
+        f"MATCH (r:Record) {where_r} "
+        "RETURN r.domain AS domain, count(*) AS n, 'records' AS kind"
+    )
+    return QueryPlan("domains", cypher, params,
+                     note="Episode+Concept+Record 집계 (open-domain discovery, data-driven)")
+
+
 def domains(*, owner: str | None = None, cfg=None, store=None) -> dict:
-    return execute(domains_plan(owner=owner), cfg, store=store)
+    """도메인 목록(C2) — Episode·Concept·Record 3종을 모두 세어 `{domain, episodes,
+    concepts, records, total}` 로 병합, total 내림차순 정렬. `episodes` 필드는
+    하위호환으로 유지(값 = Episode 카운트만)."""
+    res = execute(domain_counts_plan(owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return res
+    agg: dict[str, dict] = {}
+    for row in res.get("rows", []):
+        dom = row.get("domain")
+        if not dom:
+            continue
+        bucket = agg.setdefault(dom, {"domain": dom, "episodes": 0, "concepts": 0, "records": 0})
+        kind = row.get("kind")
+        if kind in bucket:
+            bucket[kind] += int(row.get("n") or 0)
+    rows = list(agg.values())
+    for r in rows:
+        r["total"] = r["episodes"] + r["concepts"] + r["records"]
+    rows.sort(key=lambda r: (-r["total"], r["domain"]))
+    res["rows"] = rows
+    return res
 
 
 def learner_model_plan(*, owner: str) -> QueryPlan:
@@ -279,7 +335,8 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
         f"MATCH (c:Concept) {clause} "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
-        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
+        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
+        "d.title AS target_label"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 
@@ -304,7 +361,10 @@ def shape_graph(rows: list[dict]) -> dict:
         _node(nid, r.get("label"), r.get("domain"))
         tgt = r.get("target")
         if tgt:
-            _node(tgt, tgt, r.get("target_domain"))
+            # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
+            # target-only 로 등장한 노드가 항상 id 노출로 폴백됐다(_node 의
+            # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
+            _node(tgt, r.get("target_label"), r.get("target_domain"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             cross = bool(src_dom and tgt_dom and src_dom != tgt_dom)
             edges.append({"source": nid, "target": tgt,
@@ -335,9 +395,30 @@ def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
         "MATCH (c:Concept) WHERE c.concept_id IN $ids "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
-        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain"
+        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
+        "d.title AS target_label"
     )
     return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
+
+
+_SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용
+    "concept": ("Concept", "concept_id"),
+    "episode": ("Episode", "episode_id"),
+    "record": ("Record", "record_id"),
+    "bridge": ("Bridge", "bridge_id"),
+}
+
+
+def seed_lookup_plan(seed: str) -> QueryPlan:
+    """seed 노드 존재 선조회(C4) — '노드 없음'과 '노드는 있으나 연결 0(고립)'을
+    구분하기 위한 최소 조회(id·title 만). id 접두사(`concept:`·`episode:`·
+    `record:`·`bridge:`)로 테이블을 판별하고, 접두사가 없거나 미지의 접두사면
+    Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을 쓴다 —
+    순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다."""
+    prefix = seed.split(":", 1)[0] if ":" in seed else ""
+    label, pk = _SEED_TABLES.get(prefix, ("Concept", "concept_id"))
+    cypher = f"MATCH (n:{label}) WHERE n.{pk} = $seed RETURN n.{pk} AS id, n.title AS title"
+    return QueryPlan("seed_lookup", cypher, {"seed": seed}, note=f"seed existence probe ({label})")
 
 
 LAYOUTS = ("shell", "radial", "circle", "tree", "organic")
@@ -538,7 +619,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     if seed:
         ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
         if not ids_res.get("executed"):
-            return {"executed": False, "nodes": [], "edges": [],
+            return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
                     "note": ids_res.get("note", "")}
         ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
         res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
@@ -546,8 +627,28 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
         shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
+        executed = res.get("executed", False)
+        found = True
+        if not shaped["nodes"]:
+            # C4: 순회·행 조회가 둘 다 비었다 — '시드 자체가 없음'과 '시드는 있으나
+            # 연결이 0(고립)'이 여태 구분 불가했다(실사용에서 실재 episode 시드가
+            # 빈 응답을 받아 '데이터 없음'으로 오판됨). 이 갈래에서만 선조회한다 —
+            # Concept 시드가 실재하면 위 graph_rows_for_ids_plan 이 이미 자기 자신을
+            # 한 행(고립 시 rel/target=NULL)으로 돌려주므로 shaped["nodes"] 가 비지
+            # 않는다; 여기 도달하는 건 시드가 아예 없거나 Concept 밖 타입(episode/
+            # record/bridge, 그 순회는 범위 밖)일 때뿐이다.
+            seed_res = execute(seed_lookup_plan(seed), cfg, store=store)
+            if not seed_res.get("executed"):
+                return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
+                        "note": seed_res.get("note", "")}
+            seed_row = next((r for r in seed_res.get("rows", []) if r.get("id") == seed), None)
+            found = seed_row is not None
+            if found:
+                kind = seed.split(":", 1)[0] if ":" in seed else "concept"
+                shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
+                                    "domain": "", "kind": kind, "degree": 0}]
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
-        return {"executed": res.get("executed", False), "seed": seed, "depth": depth, **shaped}
+        return {"executed": executed, "seed": seed, "depth": depth, "found": found, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     shaped = shape_graph(res.get("rows", []))
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
@@ -741,42 +842,150 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
             "suggestions": out[:max(1, int(limit))]}
 
 
+def _classify_chunk_error(exc: Exception) -> str:
+    """Chunk 검색 실패 사유 분류(T3b-1 — '실패 침묵' 제거의 근거). '인덱스 부재'와
+    '확장 미가용'과 '미프로비저닝'을 구분해 응답 error 에 접두로 담는다(실측 문구):
+    - index_missing: "Table Chunk doesn't have an index with name chunk_ft"
+    - extension_unavailable: `_load_ext` 강등 문구("... 확장 미가용 ...", 오프라인 미번들)
+    - not_provisioned: "Table Chunk does not exist"(스키마 선행 안 됨)."""
+    m = str(exc).lower()
+    if "have an index" in m:                       # doesn't/does not have an index
+        return "index_missing"
+    if "확장 미가용" in str(exc) or ("extension" in m and "미가용" in str(exc)):
+        return "extension_unavailable"
+    if "does not exist" in m or ("table" in m and "exist" in m):
+        return "not_provisioned"
+    return "error"
+
+
+def _chunk_count(store) -> int:
+    """Chunk 행 수(지연 빌드 여부 판단용). 조회 실패(미프로비저닝 등)는 0 으로 강등."""
+    try:
+        r = store.run("MATCH (c:Chunk) RETURN count(c) AS c")
+        return int(r[0].get("c")) if r else 0
+    except Exception:
+        return 0
+
+
+def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
+    """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
+    인덱스·확장 부재는 예외로 전파(호출부가 지연 빌드·error 표면화를 담당)."""
+    kw = store.fulltext_search(query, top_k, filters)           # BM25 암
+    arms = [kw]
+    arm_names = ["keyword"]
+    if query_embedding is not None:
+        arms.append(store.vector_search(query_embedding, top_k, filters))
+        arm_names.append("semantic")
+    # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
+    membership: dict = {}
+    for name, rows_ in zip(arm_names, arms):
+        for r in rows_:
+            membership.setdefault(r.get("id"), []).append(name)
+    rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+    for r in rows:
+        r["arms"] = membership.get(r.get("id"), [])
+    return rows
+
+
+def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
+    """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
+    **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
+    가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
+    실사용 사고의 직접 원인. 이 폴백이 그 갈래를 해소한다.
+
+    Kùzu 0.11.3 실측: `lower(coalesce(x,'')) CONTAINS lower($q)` 대소문자 무시 매치.
+    반환 행: {id, title, kind('concept'|'record'), domain, matched_in('title'|
+    'one_liner'|'props')}. ⚠ UNION ALL 은 전체 결과 LIMIT 를 무시하므로(실측) 상한은
+    파이썬 슬라이스로 건다. 빈 쿼리는 모든 노드를 삼키므로 스킵([])."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    cypher = (
+        "MATCH (c:Concept) "
+        "WHERE (lower(coalesce(c.title,'')) CONTAINS lower($q) "
+        "OR lower(coalesce(c.one_liner,'')) CONTAINS lower($q) "
+        "OR lower(coalesce(c.props,'')) CONTAINS lower($q)) "
+        "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, c.domain AS domain, "
+        "CASE WHEN lower(coalesce(c.title,'')) CONTAINS lower($q) THEN 'title' "
+        "WHEN lower(coalesce(c.one_liner,'')) CONTAINS lower($q) THEN 'one_liner' "
+        "ELSE 'props' END AS matched_in "
+        "UNION ALL "
+        "MATCH (r:Record) "
+        "WHERE (lower(coalesce(r.title,'')) CONTAINS lower($q) "
+        "OR lower(coalesce(r.props,'')) CONTAINS lower($q)) "
+        "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, r.domain AS domain, "
+        "CASE WHEN lower(coalesce(r.title,'')) CONTAINS lower($q) THEN 'title' "
+        "ELSE 'props' END AS matched_in"
+    )
+    rows = store.run(cypher, {"q": q})
+    # 결정론 순서: 타이틀 매치 우선(가장 강한 신호), 그 다음 id. 상한은 파이썬에서.
+    rows.sort(key=lambda r: (0 if r.get("matched_in") == "title" else 1, str(r.get("id"))))
+    return rows[:max(1, int(limit))]
+
+
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, cfg=None, store=None) -> dict:
-    """하이브리드 검색 — BM25(FTS) + (선택)벡터 암을 RRF 로 융합(§4-2).
+    """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
+    실사용 사고 대응을 얹는다:
 
-    벡터 암은 **쿼리 임베딩 주입형**(§3-1): 호출부(사이드카)가 모델로 쿼리를
-    임베딩해 ``query_embedding`` 으로 넘긴다 → 검색 코드는 임베딩 모델과 무관.
-    미주입 시 BM25 단독. 인덱스·확장 부재 시 executed=False 로 강등(무 크래시).
+      1. **실패 침묵 제거** — Chunk 검색 실행 실패 시 최상위 ``error`` 로 표면화한다
+         (``executed:False`` 유지). '인덱스 부재'와 '확장 미가용'을 접두로 구분
+         (:func:`_classify_chunk_error`). 이전엔 실패가 `executed:false`+빈 rows 로
+         침묵해 호출자가 '결과 없음'으로 오판했다.
+      2. **지연 인덱스 자동 빌드** — FTS 가 '인덱스 부재'로 실패하면 Chunk 행이 있을
+         때 인덱스를 1회 빌드(멱등)하고 재검색한다. Chunk 0개면 빌드 없이 조용히 폴백.
+      3. **Concept/Record 타이틀 폴백(핵심)** — FTS/벡터 결과와 무관하게 항상 노드
+         폴백 검색을 수행해 신규 필드 ``node_hits`` 에 담는다. ``rows`` 는 Chunk 결과
+         전용(하위호환). Chunk 0개 스토어에서도 개념이 검색된다.
 
+    벡터 암은 **쿼리 임베딩 주입형**(§3-1) — 미주입 시 BM25 단독.
     ``store`` 주입(사이드카 §11 P2): read 뷰를 넘기면 재사용(열지도 닫지도 않음)."""
     cfg = cfg or load_config()
     owns = store is None
     if owns:
         store = open_store(cfg)
-    base = {"kind": "search", "executed": False, "rows": []}
+    base = {"kind": "search", "executed": False, "rows": [], "node_hits": []}
     if store is None:
-        base["note"] = "no reachable store"
+        base["note"] = base["error"] = "no reachable store"
         return base
     try:
-        kw = store.fulltext_search(query, top_k, filters)       # BM25 암
-        arms = [kw]
-        arm_names = ["keyword"]
-        if query_embedding is not None:
-            arms.append(store.vector_search(query_embedding, top_k, filters))
-            arm_names.append("semantic")
-        # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
-        membership: dict = {}
-        for name, rows_ in zip(arm_names, arms):
-            for r in rows_:
-                membership.setdefault(r.get("id"), []).append(name)
-        rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
-        for r in rows:
-            r["arms"] = membership.get(r.get("id"), [])
-        base["executed"] = True
-        base["rows"] = rows
-    except Exception as exc:
-        base["note"] = f"search 실행 실패 — {type(exc).__name__}: {exc}"
+        # (3) 노드 폴백 — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로를 막지 않는다.
+        try:
+            base["node_hits"] = _node_fallback_search(store, query, limit=top_k)
+        except Exception as exc:
+            base["node_hits"] = []
+            base["node_error"] = f"{type(exc).__name__}: {exc}"
+
+        # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
+        try:
+            base["rows"] = _chunk_arms(store, query, query_embedding, top_k, filters)
+            base["executed"] = True
+        except Exception as exc:
+            if _classify_chunk_error(exc) != "index_missing":
+                base["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
+                base["note"] = base["error"]
+            else:
+                n = _chunk_count(store)
+                builder = getattr(store, "ensure_search_indexes", None)
+                if n == 0:
+                    # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
+                    base["executed"] = True
+                    base["note"] = "no chunks indexed — node_hits only"
+                elif builder is None:
+                    base["error"] = f"index_missing: {type(exc).__name__}: {exc}"
+                    base["note"] = base["error"]
+                else:
+                    try:
+                        # 벡터 인덱스는 쿼리 임베딩 검색이 필요할 때만 빌드(dim 주입).
+                        vdim = cfg.embedding_dim if query_embedding is not None else None
+                        builder(dim=vdim)
+                        base["rows"] = _chunk_arms(store, query, query_embedding, top_k, filters)
+                        base["executed"] = True
+                        base["note"] = "search index built on demand"
+                    except Exception as exc2:
+                        base["error"] = (f"index_build_failed: "
+                                         f"{type(exc2).__name__}: {exc2}")
+                        base["note"] = base["error"]
     finally:
         if owns:
             store.close()
@@ -785,3 +994,210 @@ def search(query: str, *, query_embedding: list[float] | None = None,
 
 def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
     return execute(decide_plan(topic, depth=depth), cfg, store=store)
+
+
+# ── 삭제 / 병합 (T3c C3 — 오염 정리 쓰기 표면) ────────────────────────────────
+# 실사용 사고 ③: 쓰기 표면이 MERGE 단독이라 중복·빈 껍데기 노드(concept:ipaas 등)가
+# 생겨도 되돌릴 수단이 없어 오염이 영구화됐다. delete/merge 는 그 정리 수단이다 —
+# 둘 다 **비가역**. 사이드카에서는 잡 큐(run_sync)로 직렬화된다(단일 writer, R4).
+
+_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record"}   # owner_id 열 보유(스코프 가드)
+_CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
+
+
+def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None) -> dict:
+    """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별
+    (:data:`_SEED_TABLES` 재사용) — 미지 접두사(Entity 등)는 표를 특정할 수 없어
+    ``found:False`` 로 안전 거부한다. 존재 확인 → 부착 엣지 수(양방향) 카운트 →
+    ``DETACH DELETE``(Kùzu 0.11.3 실측 지원). ``owner`` 를 주면 owner_id 열이 있는
+    라벨(Concept/Episode/Record)에 한해 소유 일치 시에만 삭제(스코프 1차 §1 가드).
+
+    반환: 삭제 시 ``{executed:True, found:True, deleted:{node:1, edges:n}}``,
+    미존재·미지 접두사 시 ``{executed:True, found:False}``."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "delete", "executed": False, "found": False, "node": node_id}
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
+    prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
+    label_pk = _SEED_TABLES.get(prefix)
+    try:
+        if label_pk is None:
+            base["executed"] = True
+            base["note"] = f"unknown id prefix — cannot resolve table for {node_id!r}"
+            return base
+        label, pk = label_pk
+        scope = ""
+        params: dict = {"id": node_id}
+        if owner and label in _OWNER_SCOPED_LABELS:
+            scope = " AND n.owner_id = $owner"
+            params["owner"] = owner
+        exists = store.run(
+            f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN count(n) AS c", params)
+        base["executed"] = True
+        if not (exists and exists[0].get("c")):
+            base["note"] = f"node not found: {node_id}"
+            return base
+        base["found"] = True
+        deg = store.run(
+            f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(r) AS c", params)
+        edges = int(deg[0].get("c")) if deg else 0
+        store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
+        base["deleted"] = {"node": 1, "edges": edges}
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
+def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
+                cfg=None, store=None) -> dict:
+    """두 Concept 를 **비가역** 병합(T3c) — ``drop`` 의 모든 연결을 ``keep`` 으로
+    재지향한 뒤 ``drop`` 을 삭제한다. v0.1.7 범위는 **Concept↔Concept 전용**(실사용
+    정리 대상이 concept 중복 껍데기) — 그 외 타입 쌍은 ``executed:True``+``error`` 로
+    거부한다. drop 의 title/props 는 버린다(keep 우선).
+
+    재지향 대상: CC 4종(:data:`_CC_RELS`)의 outgoing·incoming 각각, ATTACHES_TO
+    (Record→drop) incoming, CONNECTS(Bridge→drop) incoming. keep→keep 자기루프가 될
+    엣지(상대가 keep/drop)·keep 에 이미 있는 동일 엣지는 스킵한다(중복 방지;
+    RELATED_TO 는 무방향이라 역방향 존재도 중복으로 간주 — fragment.py 정책 일치).
+
+    반환: ``{executed, found, repointed, skipped, dropped}``. keep/drop 미존재 시
+    ``found:False``."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "merge", "executed": False, "keep": keep_id, "drop": drop_id}
+    try:
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
+            return base
+        kp = keep_id.split(":", 1)[0] if ":" in keep_id else ""
+        dp = drop_id.split(":", 1)[0] if ":" in drop_id else ""
+        if kp != "concept" or dp != "concept":
+            base["executed"] = True
+            base["error"] = ("merge_nodes v0.1.7 supports concept↔concept only "
+                             f"(got keep={kp or '?'}, drop={dp or '?'})")
+            return base
+        if keep_id == drop_id:
+            base["executed"] = True
+            base["error"] = "keep and drop are the same node"
+            return base
+
+        def _exists(cid: str) -> bool:
+            r = store.run("MATCH (c:Concept) WHERE c.concept_id = $id RETURN count(c) AS c",
+                          {"id": cid})
+            return bool(r and r[0].get("c"))
+
+        base["executed"] = True
+        if not (_exists(keep_id) and _exists(drop_id)):
+            base["found"] = False
+            base["note"] = "keep or drop not found"
+            return base
+        base["found"] = True
+
+        repointed = skipped = 0
+
+        def _cc_exists(rel: str, s: str, d: str) -> bool:
+            r = store.run(
+                f"MATCH (a:Concept)-[:{rel}]->(b:Concept) "
+                "WHERE a.concept_id = $s AND b.concept_id = $d RETURN count(*) AS c",
+                {"s": s, "d": d})
+            return bool(r and r[0].get("c"))
+
+        def _others(rel: str, incoming: bool) -> set:
+            if incoming:
+                cy = (f"MATCH (x:Concept)-[:{rel}]->(d:Concept) WHERE d.concept_id = $id "
+                      "RETURN DISTINCT x.concept_id AS other")
+            else:
+                cy = (f"MATCH (d:Concept)-[:{rel}]->(x:Concept) WHERE d.concept_id = $id "
+                      "RETURN DISTINCT x.concept_id AS other")
+            return {row["other"] for row in store.run(cy, {"id": drop_id}) if row.get("other")}
+
+        for rel in _CC_RELS:
+            for incoming in (False, True):
+                for other in _others(rel, incoming):
+                    if other in (keep_id, drop_id):      # keep 자기루프·drop 내부 엣지 → 스킵
+                        skipped += 1
+                        continue
+                    # incoming: (other)-[rel]->(keep) / outgoing: (keep)-[rel]->(other)
+                    s, d = (other, keep_id) if incoming else (keep_id, other)
+                    dup = _cc_exists(rel, s, d)
+                    if not dup and rel == "RELATED_TO":
+                        dup = _cc_exists(rel, d, s)       # 무방향 — 역방향도 중복
+                    if dup:
+                        skipped += 1
+                        continue
+                    store.run(
+                        "MATCH (a:Concept),(b:Concept) "
+                        "WHERE a.concept_id = $s AND b.concept_id = $d "
+                        f"MERGE (a)-[:{rel}]->(b)", {"s": s, "d": d})
+                    repointed += 1
+
+        # ATTACHES_TO incoming: (rec:Record)-[a]->(drop) → (rec)-[a]->(keep), type 보존.
+        for row in store.run(
+                "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) WHERE d.concept_id = $id "
+                "RETURN DISTINCT r.record_id AS other, a.type AS type", {"id": drop_id}):
+            other = row.get("other")
+            if not other:
+                continue
+            ex = store.run(
+                "MATCH (r:Record)-[:ATTACHES_TO]->(k:Concept) "
+                "WHERE r.record_id = $r AND k.concept_id = $k RETURN count(*) AS c",
+                {"r": other, "k": keep_id})
+            if ex and ex[0].get("c"):
+                skipped += 1
+                continue
+            if row.get("type") is not None:
+                store.run(
+                    "MATCH (r:Record),(k:Concept) WHERE r.record_id = $r AND k.concept_id = $k "
+                    "MERGE (r)-[e:ATTACHES_TO]->(k) SET e.type = $t",
+                    {"r": other, "k": keep_id, "t": row["type"]})
+            else:
+                store.run(
+                    "MATCH (r:Record),(k:Concept) WHERE r.record_id = $r AND k.concept_id = $k "
+                    "MERGE (r)-[e:ATTACHES_TO]->(k)", {"r": other, "k": keep_id})
+            repointed += 1
+
+        # CONNECTS incoming: (br:Bridge)-[c]->(drop) → (br)-[c]->(keep), role 보존.
+        for row in store.run(
+                "MATCH (b:Bridge)-[c:CONNECTS]->(d:Concept) WHERE d.concept_id = $id "
+                "RETURN DISTINCT b.bridge_id AS other, c.role AS role", {"id": drop_id}):
+            other = row.get("other")
+            if not other:
+                continue
+            ex = store.run(
+                "MATCH (b:Bridge)-[:CONNECTS]->(k:Concept) "
+                "WHERE b.bridge_id = $b AND k.concept_id = $k RETURN count(*) AS c",
+                {"b": other, "k": keep_id})
+            if ex and ex[0].get("c"):
+                skipped += 1
+                continue
+            if row.get("role") is not None:
+                store.run(
+                    "MATCH (b:Bridge),(k:Concept) WHERE b.bridge_id = $b AND k.concept_id = $k "
+                    "MERGE (b)-[e:CONNECTS]->(k) SET e.role = $role",
+                    {"b": other, "k": keep_id, "role": row["role"]})
+            else:
+                store.run(
+                    "MATCH (b:Bridge),(k:Concept) WHERE b.bridge_id = $b AND k.concept_id = $k "
+                    "MERGE (b)-[e:CONNECTS]->(k)", {"b": other, "k": keep_id})
+            repointed += 1
+
+        # drop 삭제(부착 엣지 포함) — title/props 버림(keep 우선).
+        store.run("MATCH (c:Concept) WHERE c.concept_id = $id DETACH DELETE c", {"id": drop_id})
+        base["repointed"] = repointed
+        base["skipped"] = skipped
+        base["dropped"] = drop_id
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns:
+            store.close()
+    return base

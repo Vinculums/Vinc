@@ -169,7 +169,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .chip.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
 
 /* Atlas */
-#atlas-canvas { position: absolute; inset: 0; }
+#atlas-canvas { position: absolute; inset: 0; overflow: hidden; }
 #atlas-crumb {
   position: absolute; top: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
   display: flex; gap: var(--space-2, .5rem); align-items: center;

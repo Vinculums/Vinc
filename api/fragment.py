@@ -10,6 +10,16 @@ enum 밖 노드/엣지 타입은 warnings 로 반환하고 스킵한다(무단 �
 - 엣지: Concept→Concept 4종(relates_to·prerequisite_of·derives_from·inherits_from),
   connects_via(Bridge→Concept → CONNECTS), Record→Concept 는 ATTACHES_TO{type}로
   원 타입을 보존해 수용(임베디드 rel 테이블의 FROM/TO 고정 제약 우회).
+
+안정성 보강(실사용 사고 대응, 2026-07-16):
+- partial 신호: warnings 가 1개 이상이면 응답에 partial:True 를 얹는다 — executed:True 만
+  보고 전량 성공으로 오인하는 것을 막는다(하위호환: warnings 없으면 필드 자체 생략).
+- RELATED_TO 무방향 dedupe: relates_to(concept→concept) MERGE 전에 역방향
+  (b)-[:RELATED_TO]->(a) 존재를 확인해 있으면 신규 생성을 skip 한다(양방향 재적재로
+  degree 가 부풀지 않도록). skip 개수는 merged.edges.skipped_duplicate 로 보고(0이면
+  필드 생략). 다른 CC 엣지(방향성 있는 prerequisite_of 등)에는 적용하지 않는다.
+  Record→Concept ATTACHES_TO 는 노드 타입이 비대칭이라(from=Record만 허용) 역방향
+  MERGE 자체가 구조적으로 불가능 — 별도 dedupe 불필요.
 """
 from __future__ import annotations
 
@@ -91,46 +101,80 @@ def _node_types(fragment_nodes: list[dict]) -> dict[str, str]:
             for n in fragment_nodes}
 
 
-def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -> bool:
+_ALLOWED_PAIRS_HINT = (
+    "allowed pairs: relates_to|prerequisite_of|derives_from|inherits_from = "
+    "concept→concept or record→concept; connects_via = bridge→concept"
+)
+
+
+def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -> str | None:
+    """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵)."""
     etype = (edge.get("type") or "").strip()
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     if etype not in _EDGE_TYPES:
-        warnings.append(f"unsupported edge type '{etype}' — skipped ({src}→{dst})")
-        return False
+        warnings.append(
+            f"unsupported edge type '{etype}' — skipped ({src}→{dst}); {_ALLOWED_PAIRS_HINT}")
+        return None
     st, dt = types.get(src, ""), types.get(dst, "")
 
     if etype == "connects_via":
         if (st, dt) != ("bridge", "concept"):
-            warnings.append(f"connects_via expects bridge→concept — skipped ({st}→{dt})")
-            return False
+            warnings.append(
+                f"connects_via expects bridge→concept — skipped ({st or '?'}→{dt or '?'}); "
+                f"{_ALLOWED_PAIRS_HINT}")
+            return None
         store.run(
             "MATCH (a:Bridge), (b:Concept) WHERE a.bridge_id = $s AND b.concept_id = $d "
             "MERGE (a)-[:CONNECTS]->(b)", {"s": src, "d": dst})
-        return True
+        return "created"
     if (st, dt) == ("concept", "concept"):
+        if etype == "relates_to":
+            # RELATED_TO 는 의미상 무방향(개념↔개념) — 역방향 (b)-[:RELATED_TO]->(a) 가
+            # 이미 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
+            rev = store.run(
+                "MATCH (b:Concept)-[:RELATED_TO]->(a:Concept) "
+                "WHERE b.concept_id = $d AND a.concept_id = $s RETURN count(*) AS c",
+                {"s": src, "d": dst})
+            if rev and rev[0].get("c"):
+                return "skipped_duplicate"
         rel = _CC_EDGES[etype]
         store.run(
             "MATCH (a:Concept), (b:Concept) WHERE a.concept_id = $s AND b.concept_id = $d "
             f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst})
-        return True
+        return "created"
     if (st, dt) == ("record", "concept"):
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
+        # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
+        # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         store.run(
             "MATCH (a:Record), (b:Concept) WHERE a.record_id = $s AND b.concept_id = $d "
             "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type = $t",
             {"s": src, "d": dst, "t": etype})
-        return True
-    warnings.append(f"edge '{etype}' between {st or '?'}→{dt or '?'} 미지원 — skipped")
-    return False
+        return "created"
+    warnings.append(
+        f"edge '{etype}' between {st or '?'}→{dt or '?'} 미지원 — skipped; "
+        f"{_ALLOWED_PAIRS_HINT}")
+    return None
+
+
+def _finalize(result: dict, warnings: list[str]) -> dict:
+    """warnings 를 응답에 얹고, 1개 이상이면 partial:True 를 추가한다(실사용 사고 §1 —
+    executed:True 만 보고 전량 성공으로 오인하는 것을 막음). warnings 없으면 partial
+    필드 자체를 생략해 기존 응답과 하위호환을 유지한다."""
+    result["warnings"] = warnings
+    if warnings:
+        result["partial"] = True
+    return result
 
 
 def merge_fragment(fragment: dict, *, store) -> dict:
-    """fragment 전체 MERGE. 반환 = D11 §4 계약:
-    ``{merged:{nodes:{created,matched}, edges:{created}}, warnings:[…]}``."""
+    """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial 확장):
+    ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
+    warnings:[…], executed:…, [partial:True]}``."""
     warnings: list[str] = []
-    created = matched = e_created = 0
     if store is None:
-        return {"merged": None, "warnings": ["no reachable store"], "executed": False}
+        return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
+    created = matched = e_created = e_skipped_dup = 0
     nodes = list(fragment.get("nodes") or [])
     edges = list(fragment.get("edges") or [])
     owner_explicit = bool((fragment.get("owner") or "").strip())
@@ -141,7 +185,13 @@ def merge_fragment(fragment: dict, *, store) -> dict:
         matched += (r == "matched")
     types = _node_types(nodes)
     for e in edges:
-        e_created += bool(_merge_edge(store, e, types, warnings))
-    return {"merged": {"nodes": {"created": created, "matched": matched},
-                       "edges": {"created": e_created}},
-            "warnings": warnings, "executed": True}
+        r = _merge_edge(store, e, types, warnings)
+        e_created += (r == "created")
+        e_skipped_dup += (r == "skipped_duplicate")
+    edges_out = {"created": e_created}
+    if e_skipped_dup:
+        edges_out["skipped_duplicate"] = e_skipped_dup
+    return _finalize(
+        {"merged": {"nodes": {"created": created, "matched": matched}, "edges": edges_out},
+         "executed": True},
+        warnings)

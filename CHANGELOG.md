@@ -3,6 +3,39 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.7 — 2026-07-16
+
+- **fix(app)**: **세부 뷰(도메인/노드 포커스)에서 2D 모드 미적용 — 노드가 원점에 뭉치던 결함**
+  수정. 좌표를 `fx/fy/fz` 핀에만 의존하지 않고 렌더 속성(x/y/z)에도 직접 기록해, 비동기 digest
+  가 메시를 재생성한 뒤 cooldown 0 으로 틱 없이 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉치던
+  경합을 제거 — rAF 로 메시 생성을 기다렸다가 `d3ReheatSimulation()` 으로 동기화 프레임을 1 회
+  강제한다. (`app/src/surfaces/atlas3d.ts`)
+- **fix(app)**: 그리드(Multiples) 뷰에서 **각 카드의 그래프가 카드 밖으로 잘리던 결함** 수정 —
+  세로 fov 만으로 고정하던 카메라 거리를 카드 비율(aspect, 좁은 축 기준)로 재계산해 좌우/상하
+  노드가 프레임 안에 들어온다. (`app/src/surfaces/atlas3d.ts`)
+- **fix(app)**: 창 크기 변경 시 **캔버스가 컨테이너를 따라가지 않던 문제** 수정 — 세부 뷰·그리드
+  뷰 양쪽에 `ResizeObserver` 를 붙여 실측 크기로 추적, 캔버스 넘침으로 생기던 불필요한
+  스크롤바도 함께 사라진다. (`app/src/surfaces/atlas3d.ts`)
+- **fix(sidecar)**: **Windows 에서 Claude Desktop 이 Vinc 를 실행하면 즉시 종료되던 크래시**
+  수정 — 콘솔/파이프 기본 인코딩(cp949)에서 비-ASCII 직렬화(MCP stdio 포함)가
+  UnicodeEncodeError 로 죽던 문제. 표준 입출력 스트림을 UTF-8 로 강제 재구성. 이제 "Connect
+  Claude Desktop" 이후 도구가 정상 동작한다. (`api/cli.py`)
+- **fix(api)**: **vinc_domains 가 Episode 만 세던 편향** 수정 — Concept·Record 를 포함한 3종을
+  도메인별로 집계해 `{episodes, concepts, records, total}` 로 병합 응답(`episodes` 필드는
+  하위호환 유지). (`api/query.py`)
+- **fix(api)**: vinc_graph — **연결로만 등장한 노드의 label 이 id 로 노출되던 버그** 수정(title
+  반환), **시드 미존재(`found:false`)와 고립 노드(연결 0, 시드 단독 반환)를 구분**하는 선조회
+  추가. (`api/query.py`)
+- **fix(api)**: vinc_ingest — 일부 엣지가 스킵됐는데도 `executed:true` 만 보고 전량 성공으로
+  오인되던 문제 — **warnings 존재 시 `partial:true` 신호 추가**. `relates_to` 는 무방향으로
+  취급해 역방향 엣지가 이미 있으면 재생성을 skip(양방향 재적재로 degree 가 부풀지 않도록),
+  skip 수는 `edges.skipped_duplicate` 로 보고. 도구 설명(`tools/list`)에 엣지 허용 (from,to)
+  매트릭스를 명시. (`api/fragment.py`, `vinc_mcp/rpc.py`)
+- **fix(tools)**: vinc_search — **검색 인덱스 부재 시 조용히 실패하던 문제** 대응. 자동 인덱스
+  빌드 시도 + Concept/Record 제목 검색 폴백(`node_hits`) + 명시적 `error` 신호.
+- **feat(tools)**: 신규 **`vinc_delete`**(노드 삭제) · **`vinc_merge_nodes`**(중복 concept 병합)
+  — 오염 정리용 비가역 도구.
+
 ## v0.1.6 — 2026-07-15
 
 - **fix(app)**: **사이드카를 고정 8787 대신 동적 포트로 기동** — 앱을 비정상 종료(강제

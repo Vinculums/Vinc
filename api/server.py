@@ -234,6 +234,21 @@ class VincApp:
                                  lambda: frag.merge_fragment(body, store=self.store))
         return 200, res
 
+    # ── 삭제 / 병합 라우트 (T3c — 오염 정리 쓰기 표면, R4 직렬화) ────────────────
+    # 뮤테이션이므로 잡 큐(run_sync)로 단일 writer 에 직렬화한다(pin/tag/ingest 동형).
+    # 둘 다 **비가역** — DETACH DELETE. writer store(self.store)로 실행.
+    def write_delete(self, body):
+        node = _req(body, "node")
+        res = self.jobs.run_sync("delete",
+                                 lambda: q.delete_node(node, store=self.store))
+        return 200, res
+
+    def write_merge(self, body):
+        keep, drop = _req(body, "keep"), _req(body, "drop")
+        res = self.jobs.run_sync("merge_nodes",
+                                 lambda: q.merge_nodes(keep, drop, store=self.store))
+        return 200, res
+
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
     def read_themes(self, p):
         return 200, {"active_theme_id": self.themes.active_theme_id(),
@@ -470,6 +485,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/activate": app.write_activate, "/backup": app.submit_backup,
             "/ingest": app.write_ingest,
+            "/delete": app.write_delete, "/merge-nodes": app.write_merge,
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

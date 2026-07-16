@@ -92,11 +92,27 @@ def _t_ingest(args, bridge):
     return bridge.request("POST", "/ingest/fragment", body=fragment)
 
 
+def _t_delete(args, bridge):
+    return bridge.request("POST", "/delete", body={"node": args["node_id"]})
+
+
+def _t_merge(args, bridge):
+    return bridge.request("POST", "/merge-nodes",
+                          body={"keep": args["keep_id"], "drop": args["drop_id"]})
+
+
 TOOLS: list[dict] = [
     {
         "name": "vinc_search",
         "description": "Hybrid full-text + vector search over the local Vinc store. "
-                       "Call this before vinc_ingest to find existing node ids to reuse.",
+                       "Returns two result sets: `rows` = text-chunk matches (BM25/vector), "
+                       "and `node_hits` = Concept/Record matches on their title/one_liner/props "
+                       "(each with id, title, kind, domain, matched_in). `node_hits` is ALWAYS "
+                       "populated by a title-substring scan, so concepts and records are findable "
+                       "even in a store with zero indexed text chunks. Call this before "
+                       "vinc_ingest to find existing node ids to reuse. If the backend search "
+                       "fails, a top-level `error` string says why (e.g. index_missing vs "
+                       "extension_unavailable) instead of silently returning empty.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
@@ -149,10 +165,41 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_ingest",
         "description": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. "
-                       "The only write surface. Reuse existing ids (read-before-write); unknown "
+                       "The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). "
+                       "Reuse existing ids (read-before-write); unknown "
                        "type values are skipped and reported in warnings.",
         "inputSchema": _FRAGMENT_SCHEMA,
         "run": _t_ingest,
+    },
+    {
+        "name": "vinc_delete",
+        "description": "Irreversibly delete ONE node and all its attached edges by exact id "
+                       "(DETACH DELETE). node_id must be an exact, type-prefixed id "
+                       "(e.g. concept:ipaas, record:memo, episode:s1, bridge:b1); the prefix "
+                       "selects the table. Unknown prefixes return found:false (no-op). Use to "
+                       "remove polluted or duplicate shell nodes. This is irreversible — confirm "
+                       "the exact id via vinc_search/vinc_graph first. Returns "
+                       "{executed, found, deleted:{node, edges}}; found:false if the id is absent.",
+        "inputSchema": {"type": "object", "properties": {
+            "node_id": {"type": "string",
+                        "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."},
+        }, "required": ["node_id"]},
+        "run": _t_delete,
+    },
+    {
+        "name": "vinc_merge_nodes",
+        "description": "Irreversibly merge two concepts: repoint every edge of drop_id onto keep_id, "
+                       "then delete drop_id (its title/props are discarded — keep wins). "
+                       "CONCEPT-ONLY in this version: both ids must be concept:* (other type pairs "
+                       "are rejected with an error). Self-loop and already-present edges are skipped "
+                       "(RELATED_TO is treated as undirected). Use to fold a duplicate concept shell "
+                       "into the canonical one. This is irreversible — confirm both exact ids first. "
+                       "Returns {executed, found, repointed, skipped, dropped}.",
+        "inputSchema": {"type": "object", "properties": {
+            "keep_id": {"type": "string", "description": "Concept id to keep (survivor)."},
+            "drop_id": {"type": "string", "description": "Concept id to merge in and delete."},
+        }, "required": ["keep_id", "drop_id"]},
+        "run": _t_merge,
     },
 ]
 

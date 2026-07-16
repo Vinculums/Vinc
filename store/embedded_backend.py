@@ -101,6 +101,11 @@ class _ReaderView:
     def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
         return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
 
+    def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
+        """검색 인덱스 지연 보장(T3b) — **reader 자기 커넥션**에서 빌드해, 지연 빌드
+        직후 같은 뷰가 곧바로 재검색하게 한다(cross-connection 가시성 문제 회피)."""
+        return self._b.ensure_search_indexes(dim=dim, conn=self._conn)
+
     def close(self) -> None:
         self._conn = None   # 요청 종료 시 커넥션 해제(Database 는 서버가 계속 소유)
 
@@ -226,6 +231,36 @@ class EmbeddedBackend:
         self._load_ext("fts")
         self._conn.execute(f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+
+    def ensure_search_indexes(self, *, dim: int | None = None, conn=None) -> dict:
+        """검색 인덱스 **지연 보장**(멱등) — 부재 시에만 생성한다(T3b 실사용 사고 대응).
+
+        `build_search_indexes` 와 달리 이미 있으면 'already exists' 를 흡수해 재빌드하지
+        않는다 — search 경로가 '인덱스 부재'로 실패했을 때 1회만 부르는 자동 복구용
+        (`api.query.search`). FTS(BM25)는 항상, 벡터(HNSW)는 `dim` 이 주어질 때만
+        보장한다(쿼리 임베딩 검색이 필요할 때만 벡터 인덱스 생성). 반환 {fts, vector}
+        = 이번 호출에서 실제 생성했는지. `conn` 미지정 시 writer 커넥션 — reader 뷰는
+        자기 커넥션을 넘겨(:meth:`_ReaderView.ensure_search_indexes`) 같은 커넥션이
+        곧바로 재검색하게 한다(실측: reader 커넥션 빌드도 catalog 에 반영돼 writer 도
+        본다)."""
+        c = conn or self._conn
+        built = {"fts": False, "vector": False}
+
+        def _create(ext: str, call: str) -> bool:
+            self._load_ext(ext, c)
+            try:
+                c.execute(call)
+                return True
+            except Exception as exc:      # 이미 존재 → 무시(멱등), 그 외는 전파
+                if "already exists" in str(exc).lower():
+                    return False
+                raise
+
+        built["fts"] = _create("fts", f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+        if dim is not None:
+            built["vector"] = _create(
+                "vector", f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
+        return built
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn
