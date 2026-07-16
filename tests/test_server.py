@@ -72,7 +72,44 @@ def _app(store=None):
 
 class AuthTests(unittest.TestCase):
     def test_health_no_auth(self):
+        # 요지는 "무인증 준비성 프로브" — 토큰 없이 200 이어야 한다.
+        # (status 값 자체는 스토어 상태에 달렸다 — HealthContractTests 참조)
         with running_server(_app()) as base:
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(code, 200)
+            self.assertIn(obj["status"], ("ok", "degraded"))
+
+
+class HealthContractTests(unittest.TestCase):
+    """/health 는 **성치 않은 기동을 숨기지 않는다**(2026-07 macOS 리포트 대응):
+    사이드카가 떴어도 스토어가 없거나 스키마 생성이 실패했으면 status=degraded +
+    사유를 준다. "ok" 만 보고 정상이라 믿으면 뒤따르는 전 조회가 원인 불명으로
+    깨지고, 앱에는 health TIMEOUT/빈 결과만 남는다."""
+
+    def test_no_store_is_degraded(self):
+        with running_server(_app(store=None)) as base:
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "degraded")
+            self.assertIn("store", obj.get("error", ""))
+
+    def test_provision_error_surfaced(self):
+        app = VincApp(store=None, auth=SessionAuth(_TOKEN),
+                      provision_error="RuntimeError: boom")
+        with running_server(app) as base:
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "degraded")
+            self.assertEqual(obj["provision_error"], "RuntimeError: boom")
+
+    def test_healthy_store_is_ok(self):
+        # 스토어가 성하면 그대로 ok — 강등 신호가 남발되지 않아야 한다.
+        class _FakeStore:
+            driver_name = "fake"
+
+            def close(self):   # VincApp.close() 가 종료 시 호출
+                pass
+        with running_server(_app(store=_FakeStore())) as base:
             code, obj = _req(base, "/health", token=None)
             self.assertEqual(code, 200)
             self.assertEqual(obj["status"], "ok")

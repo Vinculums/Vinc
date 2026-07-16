@@ -9,12 +9,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 const SIDECAR_PORT: u16 = 8787; // 폴백 전용 — 실제 포트는 pick_free_port() 로 동적 배정.
 
 struct Sidecar(std::sync::Mutex<Option<CommandChild>>);
+
+/// 사이드카 수명 이벤트 기록 — 죽은 이유를 프론트 진단에 실어 보내기 위한 버퍼.
+/// 이게 없으면 사이드카가 즉사해도 화면엔 "health TIMEOUT" 뿐이라 원인 추적이
+/// 불가능하다(macOS 격리로 Gatekeeper 가 조용히 SIGKILL 하는 사례 — 2026-07).
+struct SidecarLog(std::sync::Mutex<Vec<String>>);
+
+impl SidecarLog {
+    fn push(&self, line: String) {
+        let mut v = self.0.lock().unwrap();
+        if v.len() < 24 {   // 상한 — 진단 문자열이 UI 를 삼키지 않게
+            v.push(line);
+        }
+    }
+}
 
 /// 프론트가 기동 시 `invoke("sidecar_conn")` 로 받는 사이드카 접속정보.
 #[derive(Clone, serde::Serialize)]
@@ -28,6 +42,19 @@ struct Conn {
 #[tauri::command]
 fn sidecar_conn(conn: tauri::State<'_, Conn>) -> Conn {
     conn.inner().clone()
+}
+
+/// 사이드카가 남긴 수명 이벤트(stderr·종료코드·시그널·스폰 에러)를 프론트에 준다.
+/// 프론트는 `/health` 대기 실패 시 이걸 진단 문자열에 덧붙인다 — "왜 안 떴나"가
+/// 화면에 바로 보이게(실패 신호 설계: 조용한 실패 금지).
+#[tauri::command]
+fn sidecar_status(log: tauri::State<'_, SidecarLog>) -> String {
+    let v = log.0.lock().unwrap();
+    if v.is_empty() {
+        "no sidecar events".into()
+    } else {
+        v.join(" ; ")
+    }
 }
 
 /// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 1회 등록한다. 번들 사이드카
@@ -88,19 +115,39 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar(std::sync::Mutex::new(None)))
+        .manage(SidecarLog(std::sync::Mutex::new(Vec::new())))
         .manage(Conn {
             port,
             token: token.clone(),
         })
-        .invoke_handler(tauri::generate_handler![sidecar_conn, mcp_install])
+        .invoke_handler(tauri::generate_handler![sidecar_conn, sidecar_status, mcp_install])
         .setup(move |app| {
             // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
             let sidecar = app
                 .shell()
                 .sidecar("vinc-sidecar")?
                 .args(["serve", "--port", &port_arg, "--token", &token]);
-            let (_events, child) = sidecar.spawn()?;
+            let (mut events, child) = sidecar.spawn()?;
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
+            // 사이드카 수명 이벤트를 흘려보내지 않고 기록한다 — 프론트가
+            // `sidecar_status` 로 읽어 진단에 싣는다(조용한 즉사 방지).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(ev) = events.recv().await {
+                    let line = match ev {
+                        CommandEvent::Stderr(b) => {
+                            let s = String::from_utf8_lossy(&b).trim().to_string();
+                            if s.is_empty() { continue; }
+                            format!("stderr: {}", s.chars().take(200).collect::<String>())
+                        }
+                        CommandEvent::Error(e) => format!("spawn error: {e}"),
+                        CommandEvent::Terminated(p) => format!(
+                            "terminated: code={:?} signal={:?}", p.code, p.signal),
+                        _ => continue,
+                    };
+                    handle.state::<SidecarLog>().push(line);
+                }
+            });
             // 폴백(정본은 sidecar_conn 커맨드): 웹뷰 localStorage 에도 토큰 주입 시도.
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.eval(&format!(

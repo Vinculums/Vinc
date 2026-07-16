@@ -63,13 +63,29 @@ export async function connectSidecar(): Promise<void> {
   } catch (e: any) {
     sidecarDiag = `invoke sidecar_conn 예외: ${e?.message || e}`;
   }
-  for (let i = 0; i < 20; i++) {                     // 사이드카 기동 대기 ≤ ~5s
+  // 사이드카 기동 대기 ≤ ~12s — PyInstaller 단일파일은 첫 실행에 압축 해제가 있어
+  // (특히 macOS 콜드 스타트) 5s 로는 정상 기동도 오판할 수 있다.
+  for (let i = 0; i < 48; i++) {
     try {
-      if ((await fetch(new URL("/health", cfg.base))).ok) { sidecarDiag += " · health ok"; return; }
+      const res = await fetch(new URL("/health", cfg.base));
+      if (res.ok) {
+        // 사이드카가 떴어도 스토어가 성치 않으면(구버전 잔존 스토어의 프로비저닝
+        // 실패 등) status=degraded 로 온다 — "ok" 로 뭉개면 뒤따르는 전 조회가
+        // 원인 불명으로 깨진다. 사유를 진단에 그대로 싣는다.
+        const h = await res.json().catch(() => ({} as any));
+        sidecarDiag += h?.status === "degraded"
+          ? ` · health DEGRADED[${h.provision_error || h.error || "?"}]`
+          : " · health ok";
+        return;
+      }
     } catch {}
     await new Promise((r) => setTimeout(r, 250));
   }
-  sidecarDiag += " · health TIMEOUT";
+  // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
+  // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
+  let why = "";
+  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `status 조회 실패: ${e?.message || e}`; }
+  sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 
 async function call(path: string, params?: Record<string, string | number | undefined>,

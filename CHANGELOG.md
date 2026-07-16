@@ -3,6 +3,33 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.8 — 2026-07-16
+
+macOS 리포트(`Load failed · base=http://127.0.0.1:49358 token=64ch · health TIMEOUT`)
+추적 중 드러난 **진단 불능** 자체를 없애는 릴리스. 실제 Apple Silicon 러너에 배포본을
+설치해 3차에 걸쳐 실측한 결과 — 격리(quarantine)·콜드스타트 지연·웹뷰 혼합콘텐츠
+차단 **가설 3개가 모두 반증**됐고(깨끗한 macOS 에선 v0.1.6 이 정상 동작), 원인이
+그 기기 고유임이 드러났다. 그런데 앱은 "health TIMEOUT" 외에 아무것도 말해주지
+못했다 — 그 침묵이 진짜 결함이다.
+
+- **fix(sidecar)**: **프로비저닝 실패가 사이드카를 통째로 죽이던 문제** 해소.
+  `VincApp.open` 이 `store.provision` 예외를 밖으로 흘려 serve 가 즉사 → 포트에
+  아무도 남지 않고 앱엔 원인 불명 "health TIMEOUT" 만 남았다(구버전 잔존 스토어·락·
+  손상이면 재현). 이제 기동을 계속하고 사유를 stderr + `/health` 로 표면화한다.
+  (`api/server.py`)
+- **fix(sidecar)**: `/health` 가 **성치 않은 기동을 숨기지 않는다** — 스토어 부재나
+  프로비저닝 실패 시 `{"status":"degraded", "provision_error"|"error": …}`. 기존
+  정상 경로는 `{"status":"ok"}` 그대로(하위호환). 계약 테스트 3종 추가. (`api/server.py`,
+  `tests/test_server.py`)
+- **feat(app)**: 셸이 **사이드카 수명 이벤트(stderr·종료코드·시그널·스폰 에러)를 수집**해
+  `sidecar_status` 커맨드로 노출, 프론트가 health 실패 시 진단에 그대로 싣는다
+  (`… health TIMEOUT · sidecar[terminated: code=1 …]`). 그동안 이 이벤트를 버리고
+  있어 사이드카 즉사가 원인 불명이었다. (`app/src-tauri/src/main.rs`, `app/src/api.ts`)
+- **fix(app)**: health 대기 5s→12s(PyInstaller 단일파일 콜드 스타트 여유), degraded
+  응답을 진단에 표기, 진단 문자열에 **앱 버전·셸이 준 실제 포트**를 각인
+  (`v0.1.8 conn.port=… base=… token=…`) — 리포트만으로 버전·포트 혼동이 없게.
+  (`app/src/api.ts`, `app/vite.config.ts`)
+
 ## v0.1.7 — 2026-07-16
 
 - **fix(app)**: **세부 뷰(도메인/노드 포커스)에서 2D 모드 미적용 — 노드가 원점에 뭉치던 결함**

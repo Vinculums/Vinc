@@ -72,9 +72,13 @@ class VincApp:
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
 
     def __init__(self, cfg=None, *, store=None, auth=None, jobs=None,
-                 packs_dir=None, profile_path=None, ingest=None, themes=None):
+                 packs_dir=None, profile_path=None, ingest=None, themes=None,
+                 provision_error=None):
         self.cfg = cfg or load_config()
         self.store = store                    # 공유 writer 백엔드(단일 Database) 또는 None
+        # 기동 시 스키마 생성이 실패했다면 그 사유(없으면 None) — /health 로 노출해
+        # "왜 조회가 다 깨지나"를 앱이 바로 알 수 있게 한다(open() 주석 참조).
+        self.provision_error = provision_error
         self.auth = auth or SessionAuth()
         self.jobs = jobs or JobQueue()
         self.packs_dir = packs_dir
@@ -90,14 +94,24 @@ class VincApp:
     def open(cls, cfg=None, **kw) -> "VincApp":
         cfg = cfg or load_config()
         store = open_store(cfg)                        # 드라이버 미설치 시 store=None
+        provision_error = None
         if store is not None:
             # 첫 실행 스키마 멱등 생성. serve 경로엔 별도 provision 단계가 없어(데스크톱
             # 앱은 `vinc-sidecar serve` 만 띄운다) 미프로비저닝 스토어면 모든 적재가
             # 'Table Concept does not exist' 로 실패한다. store.provision 은 멱등이라
             # 매 기동 안전(이미 있으면 무시). 별도 store 를 여는 store.provision.provision()
             # 은 배타 락 충돌 때문에 쓰지 않고, 이미 열린 store 에 직접 적용한다.
-            store.provision(dim=cfg.embedding_dim)
-        return cls(cfg, store=store, **kw)
+            try:
+                store.provision(dim=cfg.embedding_dim)
+            except Exception as exc:
+                # **기동을 죽이지 않는다**(2026-07 macOS 리포트 대응): 프로비저닝 실패가
+                # 예외로 새어 나가면 serve 가 통째로 죽어 포트에 아무도 남지 않고, 앱은
+                # 원인 불명의 "health TIMEOUT" 만 본다. 스토어 상태 문제(구버전 잔존
+                # 스토어·락·손상)는 조회 응답의 error 로 표면화하는 편이 진단 가능하다.
+                # 기동은 계속하되 사유를 stderr(셸이 수집)와 /health 에 남긴다.
+                provision_error = f"{type(exc).__name__}: {exc}"
+                print(f"vinc-sidecar: provision failed — {provision_error}", file=sys.stderr)
+        return cls(cfg, store=store, provision_error=provision_error, **kw)
 
     # reader 뷰: 공유 Database 에서 별도 Connection(R4). 없으면 None(각 q 함수가
     # 자체 open→None→강등). 요청 단위로 생성·close.
@@ -437,7 +451,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         # /health — 무인증 준비성 프로브.
         if method == "GET" and path == "/health":
-            return self._send(200, {"status": "ok"})
+            # 기동은 했지만 스토어가 성치 않은 상태(프로비저닝 실패·드라이버 부재)를
+            # 숨기지 않는다 — "ok" 만 보고 정상이라 믿으면 뒤따르는 전 조회가 원인
+            # 불명으로 깨진다(실패 신호 설계: 조용한 성공 금지).
+            body = {"status": "ok"}
+            if getattr(self.app, "provision_error", None):
+                body = {"status": "degraded", "provision_error": self.app.provision_error}
+            elif self.app.store is None:
+                body = {"status": "degraded", "error": "no reachable store"}
+            return self._send(200, body)
 
         # 인증(F4): Bearer 세션 토큰 필수.
         if not self.app.auth.check_header(self.headers.get("Authorization")):
