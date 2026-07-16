@@ -205,18 +205,35 @@ TOOLS: list[dict] = [
 
 _BY_NAME = {t["name"]: t for t in TOOLS}
 
+# A1.9 A2 — 데스크탑 커넥터 1개 통합: 모든 도구가 target 으로 로컬/원격을 고른다.
+# 원본 스키마는 깨끗이 두고 specs() 에서 주입한다(9개 스키마 반복 편집 회피).
+_TARGET_PROP = {"target": {
+    "type": "string", "enum": ["local", "remote"], "default": "local",
+    "description": "Which store to act on: 'local' (this machine's Vinc, the default) or "
+                   "'remote' (your account graph on mcp.vincs.app). Remote needs a key "
+                   "(VINC_REMOTE_MCP_TOKEN); its owner is fixed by that key."}}
+
 
 def specs() -> list[dict]:
-    return [{"name": t["name"], "description": t["description"],
-             "inputSchema": t["inputSchema"]} for t in TOOLS]
+    out = []
+    for t in TOOLS:
+        sch = t["inputSchema"]
+        props = {**sch.get("properties", {}), **_TARGET_PROP}
+        out.append({"name": t["name"], "description": t["description"],
+                    "inputSchema": {**sch, "properties": props}})
+    return out
 
 
 def call(name: str, args: dict | None, bridge: Bridge) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
-    args = args or {}
+    args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
+    target = (args.pop("target", None) or "local").lower()
     for req in tool["inputSchema"].get("required", []):
         if args.get(req) in (None, ""):
             raise ValueError(f"missing required argument: {req}")
+    if target == "remote":
+        from . import remote                    # 지연 import — 로컬 경로엔 부담 0
+        return remote.call(name, args)
     return tool["run"](args, bridge)

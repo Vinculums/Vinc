@@ -107,6 +107,29 @@ fn pick_free_port() -> u16 {
         .unwrap_or(SIDECAR_PORT)
 }
 
+/// `~/.vinc/session.json` 경로 — 사이드카 데이터 홈(파이썬 `resolve_data_dir` 의
+/// `~/.vinc`)과 정합. MCP 브리지(`mcp serve`)가 이 파일을 읽어 **앱 사이드카에 attach**
+/// 한다(자기 사이드카를 8787 에 따로 띄우지 않음) → 같은 `~/.vinc` 를 두 프로세스가
+/// 여는 스토어 이중 개방·좀비를 근절(A1.9).
+fn session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().home_dir().ok().map(|h| h.join(".vinc").join("session.json"))
+}
+
+/// 세션 파일을 원자적으로 기록(temp → rename). 실패는 무시(진단 편의일 뿐 필수 아님).
+fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
+    let Some(path) = session_path(app) else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let body = format!(
+        "{{\"port\":{},\"token\":\"{}\",\"pid\":{},\"v\":\"0.1.9\"}}",
+        port, token, std::process::id());
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, body).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
 fn main() {
     let token = session_token();
     let port = pick_free_port();
@@ -129,6 +152,8 @@ fn main() {
                 .args(["serve", "--port", &port_arg, "--token", &token]);
             let (mut events, child) = sidecar.spawn()?;
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
+            // MCP 브리지가 이 사이드카를 찾아 붙도록 세션 파일 기록(A1.9).
+            write_session(&app.handle(), port, &token);
             // 사이드카 수명 이벤트를 흘려보내지 않고 기록한다 — 프론트가
             // `sidecar_status` 로 읽어 진단에 싣는다(조용한 즉사 방지).
             let handle = app.handle().clone();
@@ -160,6 +185,11 @@ fn main() {
         .expect("error while building Vinc");
     app.run(|app, event| {
         if let RunEvent::Exit = event {
+            // 세션 파일 제거(정상 종료) — 브리지가 stale 세션에 붙지 않게. 크래시로
+            // 남을 수 있어 브리지는 pid 생존 + /health 로 재검증한다(파일 존재만 신뢰 X).
+            if let Some(path) = session_path(app) {
+                let _ = std::fs::remove_file(path);
+            }
             if let Some(child) = app.state::<Sidecar>().0.lock().unwrap().take() {
                 let _ = child.kill();
             }

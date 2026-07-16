@@ -3,6 +3,40 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.1.9 — 2026-07-17
+
+연결 계층 신뢰성 릴리스. 다리(원격↔로컬) 검증 중 드러난 구조 결함들을 잡았다 —
+MCP 브리지가 고정 8787 로 자기 사이드카를 따로 띄워 앱과 같은 `~/.vinc` 를 두
+프로세스가 여는(데이터 상호 불가시·좀비·손상 위험) 문제가 핵심.
+
+- **fix(app·mcp)**: **세션 핸드셰이크** — 앱이 기동 시 `~/.vinc/session.json`
+  `{port, token, pid}` 을 원자적 기록(종료 시 삭제)하고, MCP 브리지가 이를 읽어
+  **앱 사이드카에 attach** 한다(자기 사이드카를 8787 에 따로 spawn 하지 않음).
+  세션이 없거나 stale 이면 **빈 포트 선점 + `--parent-pid`** 로 자기 spawn(고정
+  8787·좀비 폐기 — 어댑터가 죽으면 사이드카 자동 정리). (`app/src-tauri/src/main.rs`,
+  `vinc_mcp/bridge.py`)
+- **feat(mcp)**: **데스크탑 커넥터 1개 통합** — 도구 9종에 `target`(`local`|`remote`,
+  기본 local) 파라미터. `remote` 는 `mcp.vincs.app/mcp` 로 JSON-RPC 프록시(신규
+  `vinc_mcp/remote.py`, stdlib urllib). Claude 가 `target` 만 바꿔 원격↔로컬 다리를
+  놓는다. 원격 인증은 env `VINC_REMOTE_MCP_TOKEN`(v0.2.0 회원 발급 키), owner 는
+  원격이 토큰으로 정하므로 전송하지 않는다(멀티테넌트 안전). (`vinc_mcp/tools.py`,
+  `vinc_mcp/remote.py`)
+- **fix(api)**: `vinc_search` 노드 폴백을 **토큰 AND** 로 — 예전엔 쿼리 전체를 통짜
+  substring 매치해 "agentic automation orchestration" 처럼 단어가 여러 필드에 흩어지면
+  0건이었다. 이제 공백 토큰화(상한 8)해 모든 토큰이 어느 필드(title/one_liner/props)든
+  포함되면 매치(단일 토큰은 하위호환). (`api/query.py`)
+- **fix(api)**: `vinc_graph` 가 노드의 **props·tags 를 반환** — 다리로 복사할 때 요약이
+  유실돼 `vinc_decide`(49컬럼 토큰 폭발)를 우회해야 했다. props 는 dict 로 파싱해 바로
+  되먹일 수 있다. (`api/query.py`)
+- **fix(api)**: `vinc_decide` **응답 정규화** — 경로 순회의 49컬럼 합집합·시드 중복
+  직렬화(토큰 폭발)를 걷어내고, 검증된 하위 planner 를 조합해 `{nodes, edges,
+  conflicts}`(MCP-INTERFACE §4 계약)로 축약한다. conflicts = 크로스도메인 엣지 투영.
+  (`api/query.py`)
+- 참고: 원격 인증(`VINC_REMOTE_MCP_TOKEN`)은 v0.1.9 에선 MCP 클라이언트 설정의 env 로
+  수동 지정한다 — 회원 로그인 기반 커넥터 발급·자동 유지는 **v0.2.0**. 앱 Settings 에
+  원격 필드를 두지 않은 건 target=remote 가 MCP 어댑터 계층(앱 사이드카 아님)에서
+  처리되어 앱 UI 와 무관하기 때문이다.
+
 ## v0.1.8 — 2026-07-16
 
 macOS 리포트(`Load failed · base=http://127.0.0.1:49358 token=64ch · health TIMEOUT`)

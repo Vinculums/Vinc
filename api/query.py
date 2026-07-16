@@ -8,6 +8,7 @@ callers — and tests — get a deterministic result without a live database.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from store.config import StoreConfig, load_config
@@ -335,22 +336,42 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
         f"MATCH (c:Concept) {clause} "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
+        "c.props AS props, c.tags AS tags, "
         "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
-        "d.title AS target_label"
+        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
+
+
+def _props_to_obj(raw) -> dict:
+    """props 정규화(A1.9 A4) — 스토어는 props 를 JSON **문자열**로 저장한다(임베디드
+    스키마). 다리(bridge)에서 vinc_ingest 로 바로 되먹일 수 있게 dict 로 파싱한다.
+    dict 면 그대로, 문자열이면 json.loads, 실패·null 이면 {}."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            v = json.loads(raw)
+            return v if isinstance(v, dict) else {"_": v}
+        except Exception:
+            return {}
+    return {}
 
 
 def shape_graph(rows: list[dict]) -> dict:
     """Turn graph rows into ``{nodes, edges}`` (pure). Nodes de-duplicated by id
     with degree counted; edges mark ``cross_domain`` when endpoints differ in
-    domain. Domain is a free/open string — never interpreted against a list."""
+    domain. Domain is a free/open string — never interpreted against a list.
+
+    A1.9(A4): 노드에 ``props``(dict)·``tags``(list)를 실어 다리에서 요약이 유실되지
+    않게 한다(예전엔 id/label/domain/kind/degree 만 반환)."""
     nodes: dict[str, dict] = {}
 
-    def _node(nid, label, dom):
+    def _node(nid, label, dom, props=None, tags=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
-                          "kind": "concept", "degree": 0}
+                          "kind": "concept", "degree": 0,
+                          "props": _props_to_obj(props), "tags": list(tags or [])}
         return nodes[nid]
 
     edges: list[dict] = []
@@ -358,13 +379,14 @@ def shape_graph(rows: list[dict]) -> dict:
         nid = r.get("id")
         if not nid:
             continue
-        _node(nid, r.get("label"), r.get("domain"))
+        _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
             # target-only 로 등장한 노드가 항상 id 노출로 폴백됐다(_node 의
             # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
-            _node(tgt, r.get("target_label"), r.get("target_domain"))
+            _node(tgt, r.get("target_label"), r.get("target_domain"),
+                  r.get("target_props"), r.get("target_tags"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             cross = bool(src_dom and tgt_dom and src_dom != tgt_dom)
             edges.append({"source": nid, "target": tgt,
@@ -395,8 +417,9 @@ def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
         "MATCH (c:Concept) WHERE c.concept_id IN $ids "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
+        "c.props AS props, c.tags AS tags, "
         "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
-        "d.title AS target_label"
+        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags"
     )
     return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
 
@@ -646,7 +669,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             if found:
                 kind = seed.split(":", 1)[0] if ":" in seed else "concept"
                 shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
-                                    "domain": "", "kind": kind, "degree": 0}]
+                                    "domain": "", "kind": kind, "degree": 0,
+                                    "props": {}, "tags": []}]   # A4 형태 정합
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         return {"executed": executed, "seed": seed, "depth": depth, "found": found, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
@@ -893,31 +917,48 @@ def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
     실사용 사고의 직접 원인. 이 폴백이 그 갈래를 해소한다.
 
-    Kùzu 0.11.3 실측: `lower(coalesce(x,'')) CONTAINS lower($q)` 대소문자 무시 매치.
+    **A1.9 토큰화**(구 검색 0건 해소): 예전엔 쿼리 전체를 통짜 substring 매치해
+    "agentic automation" 처럼 단어가 여러 필드에 흩어지면 0건이었다. 이제 공백으로
+    토큰화(상한 8)해 **모든 토큰이 어느 필드(title/one_liner/props)든 포함**되면 매치한다
+    (토큰 AND). 단일 토큰이면 기존 통짜 매치와 동일(하위호환).
+
+    Kùzu 0.11.3 실측: `lower(coalesce(x,'')) CONTAINS $tok`(토큰은 파이썬에서 소문자화).
     반환 행: {id, title, kind('concept'|'record'), domain, matched_in('title'|
-    'one_liner'|'props')}. ⚠ UNION ALL 은 전체 결과 LIMIT 를 무시하므로(실측) 상한은
-    파이썬 슬라이스로 건다. 빈 쿼리는 모든 노드를 삼키므로 스킵([])."""
+    'one_liner'|'props')} — matched_in 은 **모든 토큰을 담은 최강 필드**(전부 title 이면
+    'title'). ⚠ UNION ALL 은 전체 결과 LIMIT 를 무시하므로(실측) 상한은 파이썬 슬라이스로
+    건다. 빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
     q = (query or "").strip()
     if not q:
         return []
+    toks = [t for t in q.lower().split() if t][:8]
+    if not toks:
+        return []
+    params = {f"q{i}": t for i, t in enumerate(toks)}
+    idx = range(len(toks))
+
+    def _all(field: str) -> str:      # 모든 토큰이 이 한 필드에 (matched_in 판정용)
+        return "(" + " AND ".join(
+            f"lower(coalesce({field},'')) CONTAINS $q{i}" for i in idx) + ")"
+
+    def _any(fields: tuple[str, ...], i: int) -> str:   # 토큰 i 가 지정 필드들 중 어디든
+        return "(" + " OR ".join(
+            f"lower(coalesce({f},'')) CONTAINS $q{i}" for f in fields) + ")"
+
+    c_fields = ("c.title", "c.one_liner", "c.props")
+    r_fields = ("r.title", "r.props")
+    where_c = " AND ".join(_any(c_fields, i) for i in idx)   # 토큰 전부, 각자 어느 필드든
+    where_r = " AND ".join(_any(r_fields, i) for i in idx)
     cypher = (
-        "MATCH (c:Concept) "
-        "WHERE (lower(coalesce(c.title,'')) CONTAINS lower($q) "
-        "OR lower(coalesce(c.one_liner,'')) CONTAINS lower($q) "
-        "OR lower(coalesce(c.props,'')) CONTAINS lower($q)) "
+        f"MATCH (c:Concept) WHERE {where_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, c.domain AS domain, "
-        "CASE WHEN lower(coalesce(c.title,'')) CONTAINS lower($q) THEN 'title' "
-        "WHEN lower(coalesce(c.one_liner,'')) CONTAINS lower($q) THEN 'one_liner' "
-        "ELSE 'props' END AS matched_in "
+        f"CASE WHEN {_all('c.title')} THEN 'title' "
+        f"WHEN {_all('c.one_liner')} THEN 'one_liner' ELSE 'props' END AS matched_in "
         "UNION ALL "
-        "MATCH (r:Record) "
-        "WHERE (lower(coalesce(r.title,'')) CONTAINS lower($q) "
-        "OR lower(coalesce(r.props,'')) CONTAINS lower($q)) "
+        f"MATCH (r:Record) WHERE {where_r} "
         "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, r.domain AS domain, "
-        "CASE WHEN lower(coalesce(r.title,'')) CONTAINS lower($q) THEN 'title' "
-        "ELSE 'props' END AS matched_in"
+        f"CASE WHEN {_all('r.title')} THEN 'title' ELSE 'props' END AS matched_in"
     )
-    rows = store.run(cypher, {"q": q})
+    rows = store.run(cypher, params)
     # 결정론 순서: 타이틀 매치 우선(가장 강한 신호), 그 다음 id. 상한은 파이썬에서.
     rows.sort(key=lambda r: (0 if r.get("matched_in") == "title" else 1, str(r.get("id"))))
     return rows[:max(1, int(limit))]
@@ -992,8 +1033,50 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     return base
 
 
+def decide_topic_resolve_plan(topic: str) -> QueryPlan:
+    """decide 토픽 → seed concept_id 해석(A1.9 A5). concept_id 정확일치 또는 title
+    대소문자 무시 일치. decide_plan 의 `title=$topic`(완전일치) 대비 title 은 관대."""
+    cypher = ("MATCH (c:Concept) WHERE c.concept_id = $topic "
+              "OR lower(coalesce(c.title,'')) = lower($topic) "
+              "RETURN c.concept_id AS id LIMIT 1")
+    return QueryPlan("decide_resolve", cypher, {"topic": topic}, note="resolve topic → concept seed")
+
+
 def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
-    return execute(decide_plan(topic, depth=depth), cfg, store=store)
+    """결정 지원(A1.9 A5 정규화) — MCP-INTERFACE §4 계약 `{nodes, edges, conflicts}`.
+
+    **왜 decide_plan 을 직접 실행하지 않나**: decide_plan 의 경로 순회
+    `(n)-[* TRAIL]-(m)` 는 각 행이 시드 n 전체를 재직렬화(49컬럼 합집합, 대부분 null →
+    토큰 폭발, 노션 §3.7)하고 중간 노드의 문자열 id 를 돌려주지 않아 깨끗한 그래프
+    재구성이 불가하다. 그래서 **검증된 하위 planner 를 조합**한다: 토픽→seed 해석 →
+    `subgraph_ids_plan`(TRAIL 순회) → `graph_rows_for_ids_plan` → `shape_graph`
+    (dedup·props/tags 포함). blowup 을 없애고 label=title·props 를 얻는다.
+    (decide_plan 은 `/plan` 표시·테스트용으로 유지 — 순회 의도의 표현.)
+
+    ``conflicts``: 스키마에 1급 '상충' 관계가 없으므로, 결정에 유의미한 구조적 긴장 =
+    **크로스도메인 엣지**(docstring 의 'cross-domain bridges')를 투영한다(날조 없음)."""
+    base = {"kind": "decide", "executed": False, "topic": topic, "depth": depth,
+            "found": False, "nodes": [], "edges": [], "conflicts": []}
+    res = execute(decide_topic_resolve_plan(topic), cfg, store=store)
+    if not res.get("executed"):
+        base["note"] = res.get("note", "")
+        return base
+    base["executed"] = True
+    seed = next((r["id"] for r in res.get("rows", []) if r.get("id")), None)
+    if not seed:
+        base["note"] = f"topic not found: {topic}"
+        return base
+    base["found"] = True
+    ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+    ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+    rows_res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
+    shaped = shape_graph(rows_res.get("rows", []))
+    keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
+    shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
+    shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
+    conflicts = [{"source": e["source"], "target": e["target"], "type": e["type"],
+                  "reason": "cross_domain"} for e in shaped["edges"] if e.get("cross_domain")]
+    return {**base, "nodes": shaped["nodes"], "edges": shaped["edges"], "conflicts": conflicts}
 
 
 # ── 삭제 / 병합 (T3c C3 — 오염 정리 쓰기 표면) ────────────────────────────────

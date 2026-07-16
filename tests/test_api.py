@@ -210,8 +210,14 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(res["rows"], [])
 
     def test_decide_entrypoint(self):
+        # A1.9(A5): decide 는 raw plan 을 노출하지 않고 정규화 계약
+        # {kind, executed, topic, nodes, edges, conflicts}(MCP-INTERFACE §4)를 반환한다.
+        # 스토어 없음 → executed:False 로 강등(무 크래시), 필드는 존재.
         res = q.decide("topic")
-        self.assertEqual(res["plan"]["kind"], "decide")
+        self.assertEqual(res["kind"], "decide")
+        self.assertIn("executed", res)
+        for k in ("nodes", "edges", "conflicts"):
+            self.assertEqual(res[k], [])
 
 
 if __name__ == "__main__":
