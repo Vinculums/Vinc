@@ -31,17 +31,19 @@ _REL_TO_FRAGMENT = {rel: ft for ft, rel in frag._CC_EDGES.items()}
 
 def _concepts_plan(*, owner: str, domain: str | None = None,
                    ids: list[str] | None = None) -> q.QueryPlan:
-    """공유 투영 — preference 신호 없는 콘텐츠 필드만."""
-    where, params = [], {}
+    """공유 투영 — preference 신호 없는 콘텐츠 필드만.
+
+    ⚠ owner 는 **모든 스코프에서 무조건** 건다(SEC-2). 예전엔 ids 분기가 owner 를
+    받고도 쓰지 않아, 남의 concept_id 를 알면 그 콘텐츠가 팩에 실렸다 — SEC-1 과
+    같은 결함(인자만 받고 술어에 안 씀). 호스티드에서 이 경로가 export 로 쓰이므로
+    필터는 협상 대상이 아니다."""
+    where, params = ["c.owner_id = $owner"], {"owner": owner}
     if ids is not None:
         where.append("c.concept_id IN $ids")
         params["ids"] = ids
-    else:
-        where.append("c.owner_id = $owner")
-        params["owner"] = owner
-        if domain:
-            where.append("c.domain = $domain")
-            params["domain"] = domain
+    elif domain:
+        where.append("c.domain = $domain")
+        params["domain"] = domain
     cypher = (
         f"MATCH (c:Concept) WHERE {' AND '.join(where)} "
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
@@ -82,7 +84,9 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     if ids is not None:
         c_res = q.execute(_concepts_plan(owner=owner, ids=sorted(ids)), cfg, store=store)
     elif seed:
-        ids_res = q.execute(q.subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+        # SEC-2: 순회도 owner 스코프 — 안 그러면 남의 시드에서 남의 서브그래프를 뽑는다.
+        ids_res = q.execute(q.subgraph_ids_plan(seed, depth=depth, owner=owner),
+                            cfg, store=store)
         if not ids_res.get("executed"):
             return {"executed": False, "note": ids_res.get("note", "no reachable store")}
         ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
@@ -97,7 +101,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     # 2) 스코프 내 엣지 — Atlas 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
     edges: list[dict] = []
     if id_set:
-        e_res = q.execute(q.graph_rows_for_ids_plan(sorted(id_set)), cfg, store=store)
+        e_res = q.execute(q.graph_rows_for_ids_plan(sorted(id_set), owner=owner),
+                          cfg, store=store)
         seen = set()
         for r in e_res.get("rows", []):
             ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")

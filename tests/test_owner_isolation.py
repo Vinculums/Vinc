@@ -115,6 +115,26 @@ def test_every_read_tool_sends_owner_to_sidecar():
         assert params.get("owner") == OWNER, f"{name} 이 owner 를 안 보냄"
 
 
+# ── SEC-2: share/export 경로도 owner 를 건다 ─────────────────────────────────
+# build_share_pack 은 S1 동기화 export 의 토대다 — 여기가 새면 남의 지식이 팩에 실려
+# 원격으로 나간다. 예전엔 ids/seed 스코프가 owner 를 받고도 술어에 안 썼다(SEC-1 동류).
+def test_share_concepts_plan_always_scopes_owner():
+    from api import share
+
+    for kw in ({}, {"domain": "d"}, {"ids": ["concept:x"]}):
+        p = share._concepts_plan(owner=OWNER, **kw)
+        assert "c.owner_id = $owner" in p.cypher, kw
+        assert p.params["owner"] == OWNER, kw
+
+
+def test_share_episodes_plan_scopes_owner():
+    from api import share
+
+    p = share._episodes_plan(owner=OWNER)
+    assert "e.owner_id = $owner" in p.cypher
+    assert p.params["owner"] == OWNER
+
+
 def test_ingest_write_carries_forced_owner():
     b = _StubBridge()
     tools.call("vinc_ingest", {"nodes": [{"id": "c:x", "type": "concept"}],
