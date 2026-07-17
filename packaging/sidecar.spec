@@ -17,6 +17,12 @@ a = Analysis(
         # MCP 어댑터(P5) — cli 가 지연 임포트하므로 명시
         "vinc_mcp.bridge", "vinc_mcp.stdio", "vinc_mcp.http_server",
         "vinc_mcp.oauth", "vinc_mcp.install",
+        # v0.1.9/v0.2.0 — 호출 시점 지연 임포트라 정적 분석이 놓칠 수 있다:
+        #   remote      : tools.call() 안에서 target=remote 일 때만
+        #   entitlement : cli 의 serve-http 분기 안에서만
+        # store/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
+        "vinc_mcp.remote", "vinc_mcp.entitlement",
+        "vinc_mcp.store", "vinc_mcp.edverify",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다.
