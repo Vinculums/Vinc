@@ -172,12 +172,42 @@ class _Handler(BaseHTTPRequestHandler):
     def app(self) -> MCPHTTPApp:
         return self.server.app  # type: ignore[attr-defined]
 
+    # ── CORS ────────────────────────────────────────────────────────────────
+    # 브라우저 클라이언트 지원(Anthropic 원격 MCP 요건). 대상은 Claude 웹과 MCP
+    # Inspector(로컬 디버깅). **와일드카드를 쓰지 않는다** — 허용 오리진만 반사한다.
+    # 인증은 Bearer 헤더이지 쿠키가 아니므로 credentials 는 불필요하고, 그래서
+    # 오리진 반사가 CSRF 표면을 열지 않는다(브라우저가 남의 토큰을 실어주지 못한다).
+    _CORS_ORIGINS = ("https://claude.ai", "https://claude.com",
+                     "http://localhost:6274", "http://127.0.0.1:6274")
+
+    def _cors_headers(self) -> dict:
+        origin = self.headers.get("Origin")
+        if not origin or origin not in self._CORS_ORIGINS:
+            return {}
+        return {"Access-Control-Allow-Origin": origin,
+                "Vary": "Origin",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers":
+                    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
+                "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
+                "Access-Control-Max-Age": "86400"}
+
+    def do_OPTIONS(self):  # noqa: N802
+        """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
+        self.send_response(204)
+        for k, v in self._cors_headers().items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     # ── 응답 헬퍼 ───────────────────────────────────────────────────────────
     def _json(self, code: int, obj: dict, headers: dict | None = None) -> None:
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
+        for k, v in self._cors_headers().items():
+            self.send_header(k, v)
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers()

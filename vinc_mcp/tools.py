@@ -212,6 +212,33 @@ TOOLS: list[dict] = [
 
 _BY_NAME = {t["name"]: t for t in TOOLS}
 
+# ── 도구 안전 주석 (MCP annotations) ─────────────────────────────────────────
+# Anthropic 원격 MCP 디렉토리 제출 요건 — readOnly/destructive 표식은 **선택이 아니라
+# 필수**이며 누락 시 거부된다. 호스트가 이걸로 확인 프롬프트·자동승인 정책을 정한다.
+# ⚠ 주석은 **힌트**다(스펙 명시) — 신뢰 경계가 아니다. 실제 강제는 서버측
+# forced_owner 스탬핑·쿼터가 한다(http_server.resolve_auth).
+#
+# destructiveHint 는 스펙상 **기본값이 true** 라, 파괴적이지 않은 쓰기(ingest)는
+# 명시적으로 false 를 줘야 호스트가 과하게 겁주지 않는다.
+# openWorldHint=false: 전부 닫힌 도메인(내 로컬 스토어 또는 내 계정 그래프)만 만진다.
+_ANNOTATIONS: dict[str, dict] = {
+    "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},
+    "vinc_recall": {"title": "Recall episodes", "readOnlyHint": True},
+    "vinc_graph": {"title": "Explore the graph", "readOnlyHint": True},
+    "vinc_decide": {"title": "Decision support", "readOnlyHint": True},
+    "vinc_domains": {"title": "List domains", "readOnlyHint": True},
+    "vinc_suggest_ties": {"title": "Suggest links", "readOnlyHint": True},
+    # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
+    "vinc_ingest": {"title": "Save to the graph", "readOnlyHint": False,
+                    "destructiveHint": False, "idempotentHint": True},
+    # 비가역 — 호스트가 반드시 확인을 받게 한다.
+    "vinc_delete": {"title": "Delete a node (irreversible)", "readOnlyHint": False,
+                    "destructiveHint": True, "idempotentHint": True},
+    "vinc_merge_nodes": {"title": "Merge two concepts (irreversible)",
+                         "readOnlyHint": False, "destructiveHint": True,
+                         "idempotentHint": False},
+}
+
 # A1.9 A2 — 데스크탑 커넥터 1개 통합: 모든 도구가 target 으로 로컬/원격을 고른다.
 # 원본 스키마는 깨끗이 두고 specs() 에서 주입한다(9개 스키마 반복 편집 회피).
 _TARGET_PROP = {"target": {
@@ -226,8 +253,12 @@ def specs() -> list[dict]:
     for t in TOOLS:
         sch = t["inputSchema"]
         props = {**sch.get("properties", {}), **_TARGET_PROP}
-        out.append({"name": t["name"], "description": t["description"],
-                    "inputSchema": {**sch, "properties": props}})
+        spec = {"name": t["name"], "description": t["description"],
+                "inputSchema": {**sch, "properties": props}}
+        ann = _ANNOTATIONS.get(t["name"])
+        if ann:
+            spec["annotations"] = dict(ann)
+        out.append(spec)
     return out
 
 
