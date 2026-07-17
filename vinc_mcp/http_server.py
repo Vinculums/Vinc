@@ -164,6 +164,33 @@ class MCPHTTPApp:
         plan = payload.get("plan") if payload.get("plan") in ("free", "pro") else "free"
         return self.oauth.complete_connect(req, owner=f"user:{sub}", plan=plan)
 
+    # ── 계정 삭제 캐스케이드(§5.9) ─────────────────────────────────────────────
+    def purge_enabled(self) -> bool:
+        """계정 공개키가 핀됐을 때만 활성(점진 배포 게이트 — 없으면 /internal/purge 503).
+
+        OAuth·member connect 와 독립: purge 는 신뢰 방향이 verify-key 와 같고(계정→우리)
+        account 공개키만 있으면 성립한다."""
+        return bool(self.account_public)
+
+    def purge_owner_request(self, assertion: str) -> dict:
+        """계정 서명 purge 어서션(typ=purge·iss=account·aud=mcp·≤2분)을 검증해 `sub`
+        로 owner 를 유도하고, 사이드카에 owner 전 노드 삭제를 프록시한다.
+
+        owner 는 **서명된 sub 에서만** 온다(요청 바디 미수용) — 유효한 A 소유자용
+        어서션을 B 삭제에 재사용할 수 없다. 멱등 DETACH DELETE 라 만료창(≤2분) 내
+        재생도 무해(이미 지워졌으면 0건). public_id 는 uuidv7 로 재사용되지 않아
+        재등록 계정을 오삭제할 위험도 없다."""
+        if not self.purge_enabled():
+            raise PermissionError("purge is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "purge" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired purge request")
+        sub = payload.get("sub")
+        if not isinstance(sub, str) or not sub:
+            raise ValueError("purge request is missing a subject")
+        return self.bridge.request("POST", "/sync/purge-owner", body={"owner": f"user:{sub}"})
+
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "vinc-mcp"
@@ -327,7 +354,30 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, reply, {"Mcp-Session-Id": session})
         if url.path in ("/sync/push", "/sync/pull"):
             return self._sync(url.path)
+        if url.path == "/internal/purge-owner":
+            return self._internal_purge()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
+
+    # ── 계정 삭제 캐스케이드(§5.9) — 서명된 내부 purge ───────────────────────────
+    def _internal_purge(self):
+        """`POST /internal/purge-owner` — 계정 서명 어서션 → owner 전 노드 삭제.
+
+        **이 경로는 공개 도달 금지**(deploy/Caddyfile 이 mcp.* 의 /internal/* 를 404
+        로 차단, 루프백 127.0.0.1:8790 만). 그 위에 계정 Ed25519 어서션을 필수화해
+        심층방어한다(verify-key 의 대칭 — 신뢰 방향만 반대: 계정이 서명, 우리가
+        account 공개키로 검증). owner 는 서명된 `sub` 에서만 유도 → 스코프 위조 불가."""
+        if not self.app.purge_enabled():
+            return self._json(503, {"error": "purge_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        try:
+            out = self.app.purge_owner_request(assertion)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        except Exception as e:   # 사이드카 도달 불가 — 계정이 재시도(fail-closed)
+            return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
+        return self._json(200, out)
 
     # ── 동기화(S1) — 회원 그래프 push/pull ────────────────────────────────────
     def _sync(self, path: str):

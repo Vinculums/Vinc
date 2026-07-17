@@ -353,6 +353,57 @@ class EmbeddedE2E(unittest.TestCase):
         ids = {r["id"] for r in res["rows"]}
         self.assertEqual(ids, {"a"}, "스코프 밖(bob) 데이터가 혼입됨 — §1 위반")
 
+    def test_purge_owner_deletes_only_that_owner(self):
+        """계정 삭제 캐스케이드(§5.9) — owner purge 가 **그 소유만** 지우고 다른
+        owner 는 온전. 소유 스코프 삭제이므로 SEC-1/SEC-2 격리가 전제 — 실엔진
+        2-소유자로 '한쪽만 지워지는가'를 직접 본다(스텁으론 못 잡는 층)."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.recall_ingest import merge_episode
+        from api import query as q
+        from api import fragment as frag
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        base = {"date": "2026-07-04", "tenant_id": "tenant:local", "workspace": "",
+                "mode": "", "summary": "", "completed_items": [], "patterns": [],
+                "source_file": ""}
+        with store.session() as s:
+            merge_episode(s, {**base, "episode_id": "ea", "title": "A",
+                              "owner_id": "user:alice", "domain": "d"})
+            merge_episode(s, {**base, "episode_id": "eb", "title": "B",
+                              "owner_id": "user:bob", "domain": "d"})
+        # 개념은 원격 쓰기 표면(MCP fragment)으로 소유 스탬핑 — apply_delta 와 동경로.
+        frag.merge_fragment({"owner": "user:alice",
+                             "nodes": [{"id": "concept:a", "type": "concept", "title": "CA"}]},
+                            store=store)
+        frag.merge_fragment({"owner": "user:bob",
+                             "nodes": [{"id": "concept:b", "type": "concept", "title": "CB"}]},
+                            store=store)
+
+        out = q.purge_owner("user:alice", store=store)
+        self.assertTrue(out["executed"], out)
+        self.assertEqual(out["deleted"]["Episode"], 1)
+        self.assertEqual(out["deleted"]["Concept"], 1)
+
+        def _count(label: str, owner: str) -> int:
+            r = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c",
+                          {"o": owner})
+            return int(r[0]["c"]) if r else -1
+
+        # alice 는 전멸, bob 은 온전
+        self.assertEqual(_count("Episode", "user:alice"), 0, "alice 에피소드가 남음")
+        self.assertEqual(_count("Concept", "user:alice"), 0, "alice 개념이 남음")
+        self.assertEqual(_count("Episode", "user:bob"), 1, "bob 에피소드가 함께 지워짐 — 격리 위반")
+        self.assertEqual(_count("Concept", "user:bob"), 1, "bob 개념이 함께 지워짐 — 격리 위반")
+
+        # 멱등 — 다시 purge 해도 0건, 에러 없음
+        again = q.purge_owner("user:alice", store=store)
+        self.assertTrue(again["executed"])
+        self.assertEqual(again["total"], 0)
+        store.close()
+
 
 if __name__ == "__main__":
     unittest.main()

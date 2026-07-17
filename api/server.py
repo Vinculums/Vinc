@@ -85,6 +85,7 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
+        self._sync_running = False            # 동시 sync 거부 플래그(S2, 커서 경합 방지)
         # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
@@ -394,6 +395,42 @@ class VincApp:
             owner=owner, bundle=bundle, cfg=self.cfg, store=self.store))
         return 200, res
 
+    def write_sync_purge_owner(self, body):
+        """owner 소유 전 노드 DETACH DELETE (계정 삭제 캐스케이드, §5.9).
+
+        원격에서는 vinc_mcp/http_server 의 /internal/purge-owner 가 계정 서명
+        어서션을 검증한 뒤 이 라우트로 프록시한다 — owner 는 그쪽이 서명된
+        `sub` 에서 유도해 실어 보낸다(스코프 위조 불가). 비가역 쓰기 → 잡 큐
+        직렬화(R4, 단일 writer)."""
+        owner = _req(body, "owner")
+        res = self.jobs.run_sync("sync:purge", lambda: q.purge_owner(
+            owner, cfg=self.cfg, store=self.store))
+        return 200, res
+
+    def submit_sync(self, body):
+        """동기화 세션 트리거(S2) — pull → push 를 잡으로(202+job_id).
+
+        **회원 키는 바디로만** 받는다(env·레포·디스크 반입 없음, D36). 원격 왕복이
+        오래 걸릴 수 있어 submit(202) — 앱은 /jobs/{id} 로 폴링한다.
+        동시 sync 는 sync_running 플래그로 거부(409) — 커서 경합 방지."""
+        token = body.get("token")
+        if not token:
+            return 400, {"error": "missing field: token (member key)"}
+        if self._sync_running:
+            return 409, {"error": "a sync is already in progress"}
+        owner = body.get("owner") or "user:local"   # 앱이 자기 로컬 owner 를 실어 보낸다
+        remote = sync.RemoteHTTP(token, body.get("base"))
+
+        def _job():
+            self._sync_running = True
+            try:
+                return sync.run(self.store, self.cfg, owner=owner, remote=remote)
+            finally:
+                self._sync_running = False
+
+        job = self.jobs.submit("sync", _job)
+        return 202, job.to_dict()
+
     def submit_backup(self, body):
         out = body.get("out")
         if not out:
@@ -559,6 +596,11 @@ class _Handler(BaseHTTPRequestHandler):
             # 동기화 데이터플레인(S1) — 사이드카 내부 표면(8787 은 공개 미노출, F4).
             "/sync/domains": app.write_sync_domains,
             "/sync/apply-delta": app.write_sync_apply_delta,
+            # 계정 삭제 캐스케이드(§5.9) — owner 전 노드 purge. 원격에선 MCP
+            # /internal/purge-owner 가 계정 서명 검증 후 프록시(owner 위조 불가).
+            "/sync/purge-owner": app.write_sync_purge_owner,
+            # 동기화 세션 트리거(S2) — pull→push 오케스트레이션(202+job_id).
+            "/sync": app.submit_sync,
         }
         if path in table:
             return table[path](body)

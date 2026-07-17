@@ -15,6 +15,12 @@
 }
 
 mcp.{$VINC_DOMAIN} {
+    # 내부 표면(/internal/*)은 공개 도달 금지 — 계정 삭제 캐스케이드용 purge 는
+    # 루프백(127.0.0.1:8790)에서만 닿아야 한다(verify-key 대칭, 심층방어). 서명
+    # 게이트(계정 Ed25519)가 이미 막지만, 공개 프록시에서 아예 빼서 표면을 줄인다.
+    @internal path /internal/*
+    respond @internal 404
+
     # MCP 어댑터(Streamable HTTP + OAuth) — 루프백 8790 만 노출 대상.
     # 사이드카(8787)는 어떤 블록에도 노출하지 않는다(F4).
     reverse_proxy 127.0.0.1:8790

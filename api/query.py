@@ -1336,3 +1336,57 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         if owns:
             store.close()
     return base
+
+
+# ── owner 전체 purge (계정 삭제 캐스케이드, B2 §5.9) ──────────────────────────
+# 계정(Vinc-homepage)이 하드삭제될 때 호스티드 그래프에 남는 회원 지식을 함께 지운다.
+# 계정 서비스는 B2 경계상 MCP DB 에 직접 못 닿으므로, 계정이 Ed25519 로 서명한 삭제
+# 요청을 MCP `/internal/purge-owner` 가 검증해(account 공개키) 사이드카의 이 함수로
+# 프록시한다. owner_id 가 있는 라벨(스키마 파생 — Concept/Episode/Record/Entity/
+# LearnerPattern)의 소유 노드를 부착 엣지와 함께 DETACH DELETE 한다. 멱등.
+def _purge_labels() -> list[str]:
+    """owner 스코프 삭제 대상 라벨 — 스키마 SSoT + 소유 툼스톤. 지연 임포트(백엔드
+    중립 유지). owner_scoped_labels 는 owner_id 열 보유 라벨만 돌려주므로 여기 전부
+    ``n.owner_id = $o`` 필터가 성립한다. `_Tombstone`(메타)도 owner_id 를 가져 포함."""
+    from store.embedded_schema import owner_scoped_labels
+    return owner_scoped_labels() + ["_Tombstone"]
+
+
+def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
+    """``owner`` 소유의 **전 노드**를 부착 엣지와 함께 비가역 DETACH DELETE.
+
+    계정 삭제 캐스케이드 전용(§5.9). 소유 스코프이므로 SEC-1/SEC-2 의 owner 격리가
+    전제 — 소유가 안 갈리면 남의 노드가 지워질 수 있다. 라벨별 삭제 건수를 돌려줘
+    호출자(계정)가 감사할 수 있게 한다. **owner 가 비었으면 거부**(빈 술어로 전삭제
+    사고 방지). Bridge/Domain/Chunk 는 owner_id 가 없어 소유로 못 가르는 잔여 —
+    [[vinc-owner-isolation-sec1]] 의 알려진 한계와 동일(원격엔 MCP 쓰기로만 생기고
+    Bridge 는 현재 소유 스탬프 미부여)."""
+    cfg = cfg or load_config()
+    base = {"kind": "purge", "executed": False, "owner": owner}
+    if not owner or not isinstance(owner, str):
+        base["error"] = base["note"] = "refusing to purge without an owner"
+        return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
+    deleted: dict[str, int] = {}
+    try:
+        for label in _purge_labels():
+            cnt = store.run(
+                f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c", {"o": owner})
+            n = int(cnt[0].get("c")) if cnt else 0
+            if n:
+                store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o DETACH DELETE n", {"o": owner})
+            deleted[label] = n
+        base["executed"] = True
+        base["deleted"] = deleted
+        base["total"] = sum(deleted.values())
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns:
+            store.close()
+    return base

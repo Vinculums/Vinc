@@ -109,6 +109,16 @@ _META_TABLES: dict[str, dict] = {
         ("origin", "STRING")]},
 }
 
+# owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
+# _NODE_TABLES 에서 파생하므로 새 라벨에 owner_id 가 붙으면 자동 포함된다(예: 미해결
+# 과제인 Bridge 소유 스탬프가 들어오면 purge 가 즉시 커버). Bridge/Domain/Chunk/
+# SkillExecution 은 owner_id 가 없어(구조·파생 노드) 여기 안 든다 — 소유로 못 가른다.
+def owner_scoped_labels() -> list[str]:
+    """owner_id 열을 선언한 노드 라벨(선언 순서). 소유 스코프 purge 의 대상 집합."""
+    return [lbl for lbl, spec in _NODE_TABLES.items()
+            if any(col == "owner_id" for col, _ in spec["cols"])]
+
+
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
 SCHEMA_VERSION = 1
 
