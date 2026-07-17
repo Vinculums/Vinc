@@ -37,6 +37,7 @@ from . import preference as pref
 from . import activate as act
 from . import fragment as frag
 from . import share
+from . import sync
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -356,6 +357,43 @@ class VincApp:
         job = self.jobs.submit(f"ingest:{engine}", lambda: fn(self.store, body))
         return 202, job.to_dict()
 
+    # ── 동기화 데이터플레인(S1) ───────────────────────────────────────────────
+    # 이 라우트들은 **사이드카 내부 표면**이다(8787 은 Caddy 미노출, F4). 원격에서는
+    # vinc_mcp/http_server 의 /sync/push|pull 이 인증(resolve_auth)을 거쳐 bridge 로
+    # 여기에 프록시한다 — owner 는 항상 그쪽이 토큰에서 해석해 넘긴다.
+    def read_sync_domains(self, p):
+        """선택 가능 도메인 + 현재 선택. 오프라인 우선 UI 의 데이터원."""
+        owner = _req(p, "owner")
+        return self._read(lambda r: {
+            "executed": True,
+            "selected": sync.get_selected_domains(r),
+            "domains": q.domains(owner=owner, store=r).get("rows", []),
+        })
+
+    def write_sync_domains(self, body):
+        """선택 도메인 저장(정본은 사이드카 — CLI·재설치에도 일관)."""
+        doms = body.get("domains")
+        if not isinstance(doms, list):
+            return 400, {"error": "missing field: domains (list)"}
+        res = self.jobs.run_sync(
+            "sync:domains", lambda: {"executed": True,
+                                     "selected": sync.set_selected_domains(self.store, doms)})
+        return 200, res
+
+    def read_sync_pull_delta(self, p):
+        """이 스토어의 delta 를 번들로 — 원격에선 pull, 로컬에선 push 소스."""
+        owner = _req(p, "owner")
+        return self._read(lambda r: sync.export_delta(
+            owner=owner, since=_int(p.get("since"), 0), cfg=self.cfg, store=r))
+
+    def write_sync_apply_delta(self, body):
+        """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4)."""
+        owner = _req(body, "owner")
+        bundle = body.get("bundle") or {}
+        res = self.jobs.run_sync("sync:apply", lambda: sync.apply_delta(
+            owner=owner, bundle=bundle, cfg=self.cfg, store=self.store))
+        return 200, res
+
     def submit_backup(self, body):
         out = body.get("out")
         if not out:
@@ -496,6 +534,9 @@ class _Handler(BaseHTTPRequestHandler):
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
+            # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
+            "/sync/domains": app.read_sync_domains,
+            "/sync/pull-delta": app.read_sync_pull_delta,
         }
         if path in table:
             return table[path](p)
@@ -515,6 +556,9 @@ class _Handler(BaseHTTPRequestHandler):
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,
+            # 동기화 데이터플레인(S1) — 사이드카 내부 표면(8787 은 공개 미노출, F4).
+            "/sync/domains": app.write_sync_domains,
+            "/sync/apply-delta": app.write_sync_apply_delta,
         }
         if path in table:
             return table[path](body)

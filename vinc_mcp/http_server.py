@@ -295,7 +295,39 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return None
             return self._json(200, reply, {"Mcp-Session-Id": session})
+        if url.path in ("/sync/push", "/sync/pull"):
+            return self._sync(url.path)
         return self._json(404, {"error": f"no such route: POST {url.path}"})
+
+    # ── 동기화(S1) — 회원 그래프 push/pull ────────────────────────────────────
+    def _sync(self, path: str):
+        """`/sync/push|pull` — 사이드카 `/sync/*` 로 프록시.
+
+        **인증**: `resolve_auth` 를 여기서 **다시** 부른다(do_POST 의 /mcp 분기 안에만
+        있으므로 새 라우트는 자기 책임). owner 없는 인증(static 토큰 = 단일 테넌트)은
+        거부 — 동기화는 회원 스코프 전용이다.
+
+        **쿼터 면제**: Dispatcher(rpc)를 우회하므로 `quota_check` 가 아예 안 불린다.
+        의도된 설계 — 무료 15회/일은 도구 호출 한도이지, 동기화가 그걸로 막히면
+        기능 자체가 성립하지 않는다(delta 한 번에 수백 노드가 오간다)."""
+        auth = self.app.resolve_auth(self.headers.get("Authorization"))
+        if not auth["ok"]:
+            return self._unauthorized()
+        owner = auth["owner"]
+        if not owner:
+            return self._json(400, {"error": "sync requires a member-scoped key "
+                                             "(static-token auth has no owner)"})
+        body = self._body()
+        try:
+            if path == "/sync/pull":
+                out = self.app.bridge.request("GET", "/sync/pull-delta", params={
+                    "owner": owner, "since": int(body.get("since") or 0)})
+            else:
+                out = self.app.bridge.request("POST", "/sync/apply-delta", body={
+                    "owner": owner, "bundle": body.get("bundle") or {}})
+        except Exception as e:
+            return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
+        return self._json(200, out)
 
     def log_message(self, fmt, *args):  # 조용히 — 로그는 systemd/journald 몫
         pass
