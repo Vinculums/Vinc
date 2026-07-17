@@ -5,13 +5,16 @@
 동적 클라이언트 등록(RFC 7591) + 인가 코드 + PKCE(S256 전용) + 토큰 발급.
 자원 서버와 인가 서버는 같은 프로세스(단일 사용자 규모 R5 — 분리 이득 없음).
 
-승인 모델: /authorize 는 **관리 키**(env VINC_OAUTH_ADMIN_KEY, 서버에서만 주입
-— 번들·레포 반입 금지, D36 제약)를 아는 소유자만 통과하는 자동 승인이다.
-동의 화면·다중 사용자 계정은 비범위(P5 계획 §3). 키 미설정 시 인가는 전면
-거부되고 정적 토큰 모드만 남는다.
+승인 2모드(둘 다 이 게이트가 지원):
+  - **관리 키**(env VINC_OAUTH_ADMIN_KEY): /authorize?key= 자동 승인. 파일럿·
+    부트스트랩용. 이 경로로 발급된 토큰은 owner=None(=단일 테넌트 하위호환).
+  - **회원 승인**(B-B3): /authorize → connect_request 저장 → 공홈 로그인·동의 →
+    owner=user:{public_id} 로 코드·토큰 스탬핑. authorize_member()/complete().
+키·회원경로 모두 미설정이면 인가는 거부되고 정적 토큰 모드만 남는다.
 
-상태는 프로세스 메모리(코드 5분·토큰 기본 1시간 TTL) — 재기동 시 클라이언트가
-재인가하면 되는 규모이고, 디스크에 자격을 남기지 않는 쪽이 안전하다.
+상태 영속(B-A): 인메모리 dict → vinc_mcp.store.Store(SQLite/WAL). **재기동에도
+클라이언트·토큰·쿼터가 유지**된다(재인가 불필요). 기본 store 는 인메모리
+(`:memory:`, 디스크 미오염) — 프로덕션은 cli.py 가 디스크 Store 를 주입한다.
 """
 from __future__ import annotations
 
@@ -21,8 +24,11 @@ import secrets
 import time
 import urllib.parse
 
+from .store import Store
+
 CODE_TTL = 300
 TOKEN_TTL = 3600
+CONNECT_TTL = 600      # 회원 승인 대기(B-B3) — 10분
 
 
 def _s256(verifier: str) -> str:
@@ -32,14 +38,11 @@ def _s256(verifier: str) -> str:
 
 class OAuthGate:
     def __init__(self, issuer: str, admin_key: str | None,
-                 token_ttl: int = TOKEN_TTL):
+                 token_ttl: int = TOKEN_TTL, *, store: Store | None = None):
         self.issuer = issuer.rstrip("/")
         self.admin_key = admin_key or None
         self.token_ttl = token_ttl
-        self.clients: dict[str, dict] = {}
-        self.codes: dict[str, dict] = {}
-        self.tokens: dict[str, float] = {}     # access_token → 만료 epoch
-        self.refresh: dict[str, str] = {}      # refresh_token → client_id
+        self.store = store if store is not None else Store(":memory:")
 
     # ── 메타데이터 ──────────────────────────────────────────────────────────
     def resource_metadata(self) -> dict:
@@ -64,21 +67,16 @@ class OAuthGate:
         if not isinstance(uris, list) or not all(isinstance(u, str) for u in uris) or not uris:
             raise ValueError("redirect_uris (non-empty list) is required")
         client_id = secrets.token_urlsafe(16)
-        self.clients[client_id] = {"redirect_uris": uris,
-                                   "name": body.get("client_name") or ""}
+        self.store.add_client(client_id, uris, body.get("client_name") or "")
         return {"client_id": client_id, "redirect_uris": uris,
                 "token_endpoint_auth_method": "none",
                 "grant_types": ["authorization_code", "refresh_token"],
                 "response_types": ["code"]}
 
-    # ── 인가(코드 + PKCE) ───────────────────────────────────────────────────
-    def authorize(self, params: dict) -> str:
-        """검증 통과 시 redirect 대상 URL 을 돌려준다(302 Location)."""
-        if self.admin_key is None:
-            raise PermissionError("authorization disabled: no admin key configured")
-        if params.get("key") != self.admin_key:
-            raise PermissionError("wrong or missing admin key")
-        client = self.clients.get(params.get("client_id") or "")
+    # ── 인가 파라미터 검증(두 승인 모드 공통) ────────────────────────────────
+    def _validate_authorize(self, params: dict) -> tuple[str, str, str]:
+        """(client_id, redirect_uri, challenge) 반환 — 검증 실패 시 예외."""
+        client = self.store.get_client(params.get("client_id") or "")
         if client is None:
             raise ValueError("unknown client_id")
         redirect = params.get("redirect_uri") or ""
@@ -89,51 +87,92 @@ class OAuthGate:
         challenge = params.get("code_challenge") or ""
         if not challenge or params.get("code_challenge_method") != "S256":
             raise ValueError("PKCE S256 code_challenge is required")
+        return params["client_id"], redirect, challenge
+
+    # ── 인가: 관리 키 자동 승인(코드 + PKCE) ─────────────────────────────────
+    def authorize(self, params: dict) -> str:
+        """관리 키 경로. 검증 통과 시 redirect 대상 URL(302 Location)."""
+        if self.admin_key is None:
+            raise PermissionError("authorization disabled: no admin key configured")
+        if params.get("key") != self.admin_key:
+            raise PermissionError("wrong or missing admin key")
+        client_id, redirect, challenge = self._validate_authorize(params)
         code = secrets.token_urlsafe(24)
-        self.codes[code] = {"client_id": params["client_id"], "redirect_uri": redirect,
-                            "challenge": challenge, "exp": time.time() + CODE_TTL}
+        # 관리 키 경로 = 단일 테넌트 하위호환 → owner/plan 미지정(None).
+        self.store.add_code(code, client_id, redirect, challenge,
+                            owner=None, plan=None, exp=time.time() + CODE_TTL)
+        return self._redirect_with(redirect, {"code": code}, params.get("state"))
+
+    # ── 인가: 회원 승인 대기 등록(B-B3) ──────────────────────────────────────
+    def begin_connect(self, params: dict) -> tuple[str, dict]:
+        """검증 후 connect_request 를 저장하고 (req_id, client_meta) 반환.
+
+        http_server 가 이를 CRA 로 서명해 공홈 /connect 로 리다이렉트한다.
+        승인은 계정 서비스가 하고, complete() 로 코드가 발급된다.
+        """
+        client_id, redirect, challenge = self._validate_authorize(params)
+        client = self.store.get_client(client_id)
+        req_id = secrets.token_urlsafe(18)
+        self.store.add_connect_request(req_id, client_id, redirect, challenge,
+                                       params.get("state"), exp=time.time() + CONNECT_TTL)
+        return req_id, {"client_id": client_id, "client_name": (client or {}).get("name", ""),
+                        "redirect_uri": redirect}
+
+    def complete_connect(self, req_id: str, owner: str, plan: str) -> str:
+        """계정 승인(AA 검증 후) → connect_request 단일 소비 → 코드 발급 → redirect URL.
+
+        owner/plan 이 코드에 스탬핑되고, 이후 토큰까지 전파된다(멀티테넌트 바인딩).
+        """
+        rec = self.store.consume_connect_request(req_id)
+        if rec is None:
+            raise ValueError("connect request not found, expired, or already used")
+        code = secrets.token_urlsafe(24)
+        self.store.add_code(code, rec["client_id"], rec["redirect_uri"], rec["challenge"],
+                            owner=owner, plan=plan, exp=time.time() + CODE_TTL)
+        self.store.set_owner_plan(owner, plan)
+        return self._redirect_with(rec["redirect_uri"], {"code": code}, rec.get("state"))
+
+    @staticmethod
+    def _redirect_with(redirect: str, qs: dict, state: str | None) -> str:
+        if state:
+            qs = {**qs, "state": state}
         sep = "&" if "?" in redirect else "?"
-        qs = {"code": code}
-        if params.get("state"):
-            qs["state"] = params["state"]
         return redirect + sep + urllib.parse.urlencode(qs)
 
     # ── 토큰 발급 ───────────────────────────────────────────────────────────
     def token(self, form: dict) -> dict:
         grant = form.get("grant_type")
         if grant == "authorization_code":
-            rec = self.codes.pop(form.get("code") or "", None)
+            rec = self.store.pop_code(form.get("code") or "")
             if rec is None or rec["exp"] < time.time():
                 raise ValueError("invalid or expired code")
             if form.get("client_id") != rec["client_id"]:
                 raise ValueError("client_id mismatch")
             if form.get("redirect_uri") != rec["redirect_uri"]:
                 raise ValueError("redirect_uri mismatch")
-            verifier = form.get("code_verifier") or ""
-            if _s256(verifier) != rec["challenge"]:
+            if _s256(form.get("code_verifier") or "") != rec["challenge"]:
                 raise ValueError("PKCE verification failed")
-            return self._issue(rec["client_id"])
+            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"))
         if grant == "refresh_token":
-            client_id = self.refresh.pop(form.get("refresh_token") or "", None)
-            if client_id is None:
+            rec = self.store.pop_refresh(form.get("refresh_token") or "")
+            if rec is None:
                 raise ValueError("invalid refresh_token")
-            return self._issue(client_id)
+            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"))
         raise ValueError(f"unsupported grant_type: {grant}")
 
-    def _issue(self, client_id: str) -> dict:
+    def _issue(self, client_id: str, owner: str | None = None,
+               plan: str | None = None) -> dict:
         access = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
-        self.tokens[access] = time.time() + self.token_ttl
-        self.refresh[refresh] = client_id
+        self.store.add_token(access, client_id, owner, plan, time.time() + self.token_ttl)
+        self.store.add_refresh(refresh, client_id, owner, plan)
         return {"access_token": access, "token_type": "Bearer",
                 "expires_in": self.token_ttl, "refresh_token": refresh}
 
     # ── 자원 접근 검증 ──────────────────────────────────────────────────────
     def verify(self, token: str) -> bool:
-        exp = self.tokens.get(token)
-        if exp is None:
-            return False
-        if exp < time.time():
-            self.tokens.pop(token, None)
-            return False
-        return True
+        return self.store.get_token(token) is not None
+
+    def resolve(self, token: str) -> dict | None:
+        """유효 토큰이면 {client_id, owner, plan, exp}, 아니면 None(owner 스탬핑용)."""
+        return self.store.get_token(token)

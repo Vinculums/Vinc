@@ -224,12 +224,18 @@ def specs() -> list[dict]:
     return out
 
 
-def call(name: str, args: dict | None, bridge: Bridge) -> dict:
+def call(name: str, args: dict | None, bridge: Bridge,
+         forced_owner: str | None = None) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
+    # owner 강제 스탬핑(B-B2): 원격 인증경로가 소유자를 해석했으면 클라이언트가 보낸
+    # owner 를 **덮어쓴다** → 한 회원의 토큰으로 남의 스코프에 못 닿는다(멀티테넌트
+    # 봉쇄). forced_owner 없음(로컬 stdio/정적)이면 기존 단일유저 동작 유지.
+    if forced_owner:
+        args["owner"] = forced_owner
     for req in tool["inputSchema"].get("required", []):
         if args.get(req) in (None, ""):
             raise ValueError(f"missing required argument: {req}")

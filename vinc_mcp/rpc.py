@@ -60,7 +60,10 @@ class Dispatcher:
         self.initialized = False
 
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
-    def handle(self, msg: dict) -> dict | None:
+    # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
+    # plan: 소유자 티어(B-D2 쿼터에서 사용) — 로컬 stdio 는 둘 다 None.
+    def handle(self, msg: dict, forced_owner: str | None = None,
+               plan: str | None = None, quota=None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -71,7 +74,8 @@ class Dispatcher:
                 self.initialized = True
             return None
         try:
-            result = self._dispatch(method, params)
+            result = self._dispatch(method, params, forced_owner=forced_owner,
+                                    plan=plan, quota=quota)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
         except (KeyError, ValueError) as e:
@@ -82,7 +86,8 @@ class Dispatcher:
             return None
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
-    def _dispatch(self, method: str, params: dict) -> dict:
+    def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
+                  plan: str | None = None, quota=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
             return {
@@ -97,8 +102,15 @@ class Dispatcher:
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
+            # 쿼터는 여기서만 소비(B-D2) — initialize/tools_list/ping 은 무료라
+            # 커넥터 등록·핸드셰이크가 한도를 갉아먹지 않는다. 로컬 stdio 는
+            # forced_owner 가 없어 quota 가 호출되지 않는다(무제한).
+            if quota is not None and forced_owner:
+                denial = quota(forced_owner, plan)
+                if denial is not None:
+                    return denial
             try:
-                out = tools.call(name, args, self.bridge)
+                out = tools.call(name, args, self.bridge, forced_owner=forced_owner)
             except (KeyError, ValueError):
                 raise                       # 잘못된 도구/인자 = 프로토콜 오류(-32602)
             except Exception as e:          # 실행 오류 = 도구 결과로 강등(스펙)

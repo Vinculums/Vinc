@@ -273,11 +273,37 @@ def main(argv: list[str] | None = None) -> int:
             static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
             gate = None
             if args.oauth:
+                from vinc_mcp.store import Store, resolve_state_dir
                 issuer = args.issuer or f"http://{args.host}:{args.port}"
+                # 상태는 디스크 SQLite 로 영속(B-A) — 재기동에도 커넥터 유지.
+                # 경로: env VINC_MCP_STATE_DIR(프로덕션 = /var/lib/vinc-mcp) > ~/.vinc/mcp.
+                store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
                 # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
-                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"))
-            return serve_http(bridge, host=args.host, port=args.port,
-                              static_token=static, oauth=gate)
+                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
+            # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
+            from vinc_mcp import entitlement
+            vk = entitlement.verify_key if entitlement.enabled() else None
+            # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
+            # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
+            quota_cfg = None
+            if os.environ.get("VINC_QUOTA") == "on":
+                quota_cfg = {
+                    "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "15")),
+                    "pro_limit": int(os.environ.get("VINC_PRO_DAILY_LIMIT", "2000")),
+                    "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
+                    "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
+                }
+            # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
+            # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
+            from vinc_mcp import edverify as _ev
+            seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
+            acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
+            return serve_http(
+                bridge, host=args.host, port=args.port,
+                static_token=static, oauth=gate, verify_key=vk, quota_config=quota_cfg,
+                mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
+                account_public=_ev.load_public(acct_raw) if acct_raw else None,
+                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.app/connect")
         return 2
     if args.cmd == "onboard":
         from . import auth
