@@ -4,7 +4,7 @@ import { COPY } from "../copy";
 /** Settings popover (spec: vinc.d.settings v0.1) — exactly three items: Lock (D7
  *  opt-in), MCP observation, Data. Plus dev-scaffold sidecar fields; developer
  *  config (embedding model, driver) stays env-only by design. */
-export function renderSettings(el: HTMLElement) {
+export async function renderSettings(el: HTMLElement) {
   const U = COPY.ui.settingsUi;
   el.innerHTML = `
     <h2>Settings</h2>
@@ -15,6 +15,15 @@ export function renderSettings(el: HTMLElement) {
       <button class="btn" id="mcp-code">${U.mcpCode}</button>
     </span></p>
     <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>
+    <label>${U.sync}</label><p class="hint">${U.syncHint}</p>
+    <label for="s-sync-key">${U.syncKey}</label>
+    <p class="hint">${U.syncKeyHint}</p>
+    <input id="s-sync-key" type="password" placeholder="vinc_sk_…"
+           value="${(localStorage.getItem("vinc.sync.key") || "").replace(/"/g, "&quot;")}" />
+    <p class="hint" style="margin-top:.5rem">${U.syncDomains}</p>
+    <div id="sync-domains" class="hint" style="font-size:.8rem">…</div>
+    <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
+    <div id="sync-result" class="hint" style="font-size:.78rem"></div>
     <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
     <label for="s-owner">${U.workspace}</label>
     <p class="hint">${U.workspaceHint}</p>
@@ -76,4 +85,59 @@ export function renderSettings(el: HTMLElement) {
   }
   el.querySelector("#mcp-desktop")!.addEventListener("click", () => connectMcp("desktop"));
   el.querySelector("#mcp-code")!.addEventListener("click", () => connectMcp("code"));
+
+  // ── 계정 그래프 동기화(S5) ────────────────────────────────────────────────
+  // 회원 키는 이 기기 localStorage 에만(민감정보 — cfg/서버 저장 안 함). 도메인 선택은
+  // 사이드카 정본(_SyncMeta)에 저장 — 오프라인 우선 약속의 UI 각인.
+  const keyInput = el.querySelector<HTMLInputElement>("#s-sync-key")!;
+  keyInput.addEventListener("change", () =>
+    localStorage.setItem("vinc.sync.key", keyInput.value.trim()));
+
+  const domBox = el.querySelector<HTMLElement>("#sync-domains")!;
+  const syncResult = el.querySelector<HTMLElement>("#sync-result")!;
+  const { api, pollJob } = await import("../api");
+
+  async function loadDomains() {
+    try {
+      const res = await api.syncDomains(cfg.owner);
+      const rows: Array<{ domain: string }> = res.domains || [];
+      const selected = new Set<string>(res.selected || []);
+      if (!rows.length) { domBox.textContent = U.syncNoDomains; return; }
+      domBox.innerHTML = rows.map((r) => {
+        const d = r.domain;
+        const on = selected.has(d) ? " checked" : "";
+        const safe = d.replace(/"/g, "&quot;");
+        return `<label style="display:block;font-weight:400;margin:.15rem 0">
+          <input type="checkbox" data-sync-dom="${safe}"${on} /> ${safe}</label>`;
+      }).join("");
+      domBox.querySelectorAll<HTMLInputElement>("[data-sync-dom]").forEach((cb) =>
+        cb.addEventListener("change", async () => {
+          const picked = [...domBox.querySelectorAll<HTMLInputElement>("[data-sync-dom]:checked")]
+            .map((c) => c.dataset.syncDom!);
+          try { await api.setSyncDomains(picked); } catch { /* 사이드카 미가동 등 무시 */ }
+        }));
+    } catch {
+      domBox.textContent = U.syncNoDomains;
+    }
+  }
+  void loadDomains();
+
+  el.querySelector("#sync-now")!.addEventListener("click", async () => {
+    const key = (localStorage.getItem("vinc.sync.key") || "").trim();
+    if (!key) { syncResult.textContent = U.syncNeedKey; return; }
+    syncResult.textContent = U.syncing;
+    try {
+      const job = await api.syncNow(key, cfg.owner);
+      const done = await pollJob(job.job_id, (s) => {
+        if (s.status === "running") syncResult.textContent = U.syncing;
+      });
+      const r = done.result || {};
+      const up = r?.push?.sent ?? 0;
+      const down = (r?.pull?.applied ?? 0) + (r?.pull?.merged ?? 0);
+      syncResult.textContent = U.syncDone(up, down);
+      void loadDomains();
+    } catch (e: any) {
+      syncResult.textContent = `${U.syncFail}: ${(e && e.message) || e}`;
+    }
+  });
 }

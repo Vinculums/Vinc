@@ -129,4 +129,28 @@ export const api = {
     call("/ingest/pack", undefined, { pack, owner }),
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
+
+  // ── 계정 그래프 동기화(S5) ──────────────────────────────────────────────
+  // 선택 가능 도메인 + 현재 선택. 오프라인 우선 UI 의 데이터원.
+  syncDomains: (owner: string) => call("/sync/domains", { owner }),
+  setSyncDomains: (domains: string[]) => call("/sync/domains", undefined, { domains }),
+  // 회원 키는 **바디로만** 사이드카에 전달(env·디스크·레포 반입 없음). 긴 작업 →
+  // 202+job_id; 진행은 pollJob 으로. base 는 테스트용 override(기본 mcp.vincs.app).
+  syncNow: (token: string, owner: string, base?: string) =>
+    call("/sync", undefined, { token, owner, ...(base ? { base } : {}) }),
+  jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
+
+/** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */
+export async function pollJob(jobId: string, onTick?: (s: any) => void,
+                             { intervalMs = 900, timeoutMs = 300000 } = {}): Promise<any> {
+  const t0 = Date.now();
+  for (;;) {
+    const s = await api.jobStatus(jobId);
+    onTick?.(s);
+    if (s.status === "done") return s;
+    if (s.status === "error") throw new Error(s.error || "sync job failed");
+    if (Date.now() - t0 > timeoutMs) throw new Error("sync timed out");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
