@@ -191,13 +191,17 @@ class VincApp:
         # 는 Chunk 스키마에 열이 없어 구조적으로 불가 — P4 스키마 델타로 이관(계획 §E3).
         filters = {k: v for k, v in
                    (("layer", p.get("layer")), ("doc_id", p.get("doc"))) if v}
+        # SEC-1: owner 는 선택(로컬 단일 사용자는 미지정 = 전역). 호스티드 원격은
+        # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
         return self._read(lambda r: q.search(_req(p, "query"),
                                              top_k=_int(p.get("top_k"), 5),
-                                             filters=filters or None, store=r))
+                                             filters=filters or None,
+                                             owner=p.get("owner") or None, store=r))
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),
-                                             depth=_int(p.get("depth"), 2), store=r))
+                                             depth=_int(p.get("depth"), 2),
+                                             owner=p.get("owner") or None, store=r))
 
     def read_plan(self, kind, p):
         if kind == "recall":

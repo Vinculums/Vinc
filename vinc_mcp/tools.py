@@ -54,8 +54,11 @@ def _owner(args: dict, bridge: Bridge) -> str:
 
 
 def _t_search(args, bridge):
+    # SEC-1: owner 를 반드시 실어 보낸다. 여태 미전송이라 forced_owner 스탬핑이
+    # 무의미했고 node_hits 가 남의 Concept/Record 를 그대로 돌려줬다.
     return bridge.request("GET", "/search", params={
-        "query": args["query"], "top_k": args.get("limit", 20)})
+        "query": args["query"], "top_k": args.get("limit", 20),
+        "owner": _owner(args, bridge)})
 
 
 def _t_recall(args, bridge):
@@ -72,8 +75,10 @@ def _t_graph(args, bridge):
 
 
 def _t_decide(args, bridge):
+    # SEC-1: owner 미전송이었다 — 토픽 해석부터 남의 개념을 시드로 잡을 수 있었다.
     return bridge.request("GET", "/decide", params={
-        "topic": args["topic"], "depth": args.get("depth", 2)})
+        "topic": args["topic"], "depth": args.get("depth", 2),
+        "owner": _owner(args, bridge)})
 
 
 def _t_domains(args, bridge):
@@ -116,6 +121,7 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
+            "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
     },
@@ -144,6 +150,7 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "topic": {"type": "string"},
             "depth": {"type": "integer", "default": 2},
+            "owner": {"type": "string"},
         }, "required": ["topic"]}, "run": _t_decide,
     },
     {

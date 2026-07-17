@@ -396,32 +396,54 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
-def subgraph_ids_plan(seed: str, *, depth: int = 2) -> QueryPlan:
+def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
     """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
     MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
-    §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다."""
+    §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
+
+    ⚠ owner 필수성(SEC-1): 이 플랜은 여태 owner 를 받지 않아 **호스티드 멀티테넌트에서
+    남의 개념을 순회**했다(`vinc_graph` 는 seed 필수라 항상 이 경로). owner 를 주면
+    시드와 도달 노드를 모두 그 소유자로 제한한다. 중간 홉은 필터하지 않지만, 쓰기가
+    owner 스탬프를 강제하므로 교차 소유자 엣지가 생기지 않아 결과는 owner-clean 이다.
+    owner=None(로컬 단일 사용자)이면 기존 동작."""
     depth = max(1, min(int(depth), 4))
+    params: dict = {"seed": seed}
+    n_where, m_where = "n.concept_id = $seed", ""
+    if owner:
+        n_where += " AND n.owner_id = $owner"
+        m_where = " WHERE m.owner_id = $owner"
+        params["owner"] = owner
     cypher = (
-        "MATCH (n:Concept) WHERE n.concept_id = $seed "
-        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Concept) "
+        f"MATCH (n:Concept) WHERE {n_where} "
+        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Concept){m_where} "
         "RETURN DISTINCT m.concept_id AS id"
     )
-    return QueryPlan("subgraph_ids", cypher, {"seed": seed},
+    return QueryPlan("subgraph_ids", cypher, params,
                      note=f"seed+depth traversal (depth={depth})")
 
 
-def graph_rows_for_ids_plan(ids: list[str]) -> QueryPlan:
+def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
     """id 집합의 Concept 행 + 나가는 엣지(§4-2 — 엣지의 서브그래프 외부 여과는
-    파이썬 shape 단계에서). `graph_plan` 과 동일 투영."""
+    파이썬 shape 단계에서). `graph_plan` 과 동일 투영.
+
+    ⚠ owner 필수성(SEC-1): id 집합이 이미 owner-scoped 여도 **엣지 대상 d 는 별개**다 —
+    필터가 없으면 남의 노드가 target_label/target_props 로 노출된다. 소유자를 주면
+    행(c)과 엣지 대상(d)을 모두 제한한다."""
+    params: dict = {"ids": ids}
+    c_where, d_where = "c.concept_id IN $ids", ""
+    if owner:
+        c_where += " AND c.owner_id = $owner"
+        d_where = " WHERE d.owner_id = $owner"
+        params["owner"] = owner
     cypher = (
-        "MATCH (c:Concept) WHERE c.concept_id IN $ids "
-        "OPTIONAL MATCH (c)-[r]->(d:Concept) "
+        f"MATCH (c:Concept) WHERE {c_where} "
+        f"OPTIONAL MATCH (c)-[r]->(d:Concept){d_where} "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
         "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags"
     )
-    return QueryPlan("graph", cypher, {"ids": ids}, note="subgraph rows for id set")
+    return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
 
 _SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용
@@ -432,16 +454,26 @@ _SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용
 }
 
 
-def seed_lookup_plan(seed: str) -> QueryPlan:
+def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     """seed 노드 존재 선조회(C4) — '노드 없음'과 '노드는 있으나 연결 0(고립)'을
     구분하기 위한 최소 조회(id·title 만). id 접두사(`concept:`·`episode:`·
     `record:`·`bridge:`)로 테이블을 판별하고, 접두사가 없거나 미지의 접두사면
     Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을 쓴다 —
-    순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다."""
+    순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다.
+
+    ⚠ owner(SEC-1): Concept/Episode/Record 는 owner 로 제한한다. **Bridge 는 스키마에
+    owner_id 가 없는 구조 노드**(embedded_schema `_NODE_TABLES`)라 필터가 불가능하다 —
+    호스티드에서 `bridge:*` 시드는 존재 여부(title)까지만 노출될 수 있다. Bridge 는
+    MCP fragment 로 만들 수 있으니 소유 스탬프 부여는 후속 과제로 남긴다."""
     prefix = seed.split(":", 1)[0] if ":" in seed else ""
     label, pk = _SEED_TABLES.get(prefix, ("Concept", "concept_id"))
-    cypher = f"MATCH (n:{label}) WHERE n.{pk} = $seed RETURN n.{pk} AS id, n.title AS title"
-    return QueryPlan("seed_lookup", cypher, {"seed": seed}, note=f"seed existence probe ({label})")
+    params: dict = {"seed": seed}
+    where = f"n.{pk} = $seed"
+    if owner and label != "Bridge":
+        where += " AND n.owner_id = $owner"
+        params["owner"] = owner
+    cypher = f"MATCH (n:{label}) WHERE {where} RETURN n.{pk} AS id, n.title AS title"
+    return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
 LAYOUTS = ("shell", "radial", "circle", "tree", "organic")
@@ -640,12 +672,14 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
     (shell·radial·circle·tree·organic, 미지 값 shell 강등)."""
     if seed:
-        ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+        # SEC-1: seed 갈래도 owner 스코프를 지킨다. 여태 owner 를 받고도 쓰지 않아
+        # 호스티드에서 남의 서브그래프가 그대로 보였다(vinc_graph 는 seed 필수).
+        ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
         if not ids_res.get("executed"):
             return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
                     "note": ids_res.get("note", "")}
         ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
-        res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
+        res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
         shaped = shape_graph(res.get("rows", []))
         keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
@@ -660,7 +694,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             # 한 행(고립 시 rel/target=NULL)으로 돌려주므로 shaped["nodes"] 가 비지
             # 않는다; 여기 도달하는 건 시드가 아예 없거나 Concept 밖 타입(episode/
             # record/bridge, 그 순회는 범위 밖)일 때뿐이다.
-            seed_res = execute(seed_lookup_plan(seed), cfg, store=store)
+            seed_res = execute(seed_lookup_plan(seed, owner=owner), cfg, store=store)
             if not seed_res.get("executed"):
                 return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
                         "note": seed_res.get("note", "")}
@@ -911,7 +945,8 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     return rows
 
 
-def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
+def _node_fallback_search(store, query: str, *, limit: int = 20,
+                          owner: str | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -933,8 +968,13 @@ def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
     toks = [t for t in q.lower().split() if t][:8]
     if not toks:
         return []
-    params = {f"q{i}": t for i, t in enumerate(toks)}
+    params: dict = {f"q{i}": t for i, t in enumerate(toks)}
     idx = range(len(toks))
+    # SEC-1: 소유자 스코프. 없으면(로컬 단일 사용자) 기존 전역 검색.
+    own_c = own_r = ""
+    if owner:
+        own_c, own_r = " AND c.owner_id = $owner", " AND r.owner_id = $owner"
+        params["owner"] = owner
 
     def _all(field: str) -> str:      # 모든 토큰이 이 한 필드에 (matched_in 판정용)
         return "(" + " AND ".join(
@@ -949,12 +989,12 @@ def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
     where_c = " AND ".join(_any(c_fields, i) for i in idx)   # 토큰 전부, 각자 어느 필드든
     where_r = " AND ".join(_any(r_fields, i) for i in idx)
     cypher = (
-        f"MATCH (c:Concept) WHERE {where_c} "
+        f"MATCH (c:Concept) WHERE {where_c}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, c.domain AS domain, "
         f"CASE WHEN {_all('c.title')} THEN 'title' "
         f"WHEN {_all('c.one_liner')} THEN 'one_liner' ELSE 'props' END AS matched_in "
         "UNION ALL "
-        f"MATCH (r:Record) WHERE {where_r} "
+        f"MATCH (r:Record) WHERE {where_r}{own_r} "
         "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, r.domain AS domain, "
         f"CASE WHEN {_all('r.title')} THEN 'title' ELSE 'props' END AS matched_in"
     )
@@ -965,7 +1005,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20) -> list[dict]:
 
 
 def search(query: str, *, query_embedding: list[float] | None = None,
-           top_k: int = 5, filters: dict | None = None, cfg=None, store=None) -> dict:
+           top_k: int = 5, filters: dict | None = None, owner: str | None = None,
+           cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -992,7 +1033,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     try:
         # (3) 노드 폴백 — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로를 막지 않는다.
         try:
-            base["node_hits"] = _node_fallback_search(store, query, limit=top_k)
+            base["node_hits"] = _node_fallback_search(store, query, limit=top_k, owner=owner)
         except Exception as exc:
             base["node_hits"] = []
             base["node_error"] = f"{type(exc).__name__}: {exc}"
@@ -1033,16 +1074,25 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     return base
 
 
-def decide_topic_resolve_plan(topic: str) -> QueryPlan:
+def decide_topic_resolve_plan(topic: str, *, owner: str | None = None) -> QueryPlan:
     """decide 토픽 → seed concept_id 해석(A1.9 A5). concept_id 정확일치 또는 title
-    대소문자 무시 일치. decide_plan 의 `title=$topic`(완전일치) 대비 title 은 관대."""
-    cypher = ("MATCH (c:Concept) WHERE c.concept_id = $topic "
-              "OR lower(coalesce(c.title,'')) = lower($topic) "
-              "RETURN c.concept_id AS id LIMIT 1")
-    return QueryPlan("decide_resolve", cypher, {"topic": topic}, note="resolve topic → concept seed")
+    대소문자 무시 일치. decide_plan 의 `title=$topic`(완전일치) 대비 title 은 관대.
+
+    ⚠ owner(SEC-1): 소유자를 주면 그 스코프 안에서만 해석한다. 없으면 남의 개념을
+    시드로 잡아 서브그래프 전체를 되돌려줬다. OR 조건은 반드시 괄호로 묶는다 —
+    안 그러면 owner AND 가 뒤 절에만 붙어 필터가 무력화된다."""
+    params: dict = {"topic": topic}
+    where = ("(c.concept_id = $topic "
+             "OR lower(coalesce(c.title,'')) = lower($topic))")
+    if owner:
+        where += " AND c.owner_id = $owner"
+        params["owner"] = owner
+    cypher = f"MATCH (c:Concept) WHERE {where} RETURN c.concept_id AS id LIMIT 1"
+    return QueryPlan("decide_resolve", cypher, params, note="resolve topic → concept seed")
 
 
-def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
+def decide(topic: str, *, depth: int = 2, owner: str | None = None,
+           cfg=None, store=None) -> dict:
     """결정 지원(A1.9 A5 정규화) — MCP-INTERFACE §4 계약 `{nodes, edges, conflicts}`.
 
     **왜 decide_plan 을 직접 실행하지 않나**: decide_plan 의 경로 순회
@@ -1057,7 +1107,9 @@ def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
     **크로스도메인 엣지**(docstring 의 'cross-domain bridges')를 투영한다(날조 없음)."""
     base = {"kind": "decide", "executed": False, "topic": topic, "depth": depth,
             "found": False, "nodes": [], "edges": [], "conflicts": []}
-    res = execute(decide_topic_resolve_plan(topic), cfg, store=store)
+    # SEC-1: 토픽 해석·순회·행조회 전부 owner 스코프. 없으면 남의 개념을 시드로
+    # 잡아 서브그래프가 통째로 노출됐다(vinc_decide 는 owner 를 보내지도 않았다).
+    res = execute(decide_topic_resolve_plan(topic, owner=owner), cfg, store=store)
     if not res.get("executed"):
         base["note"] = res.get("note", "")
         return base
@@ -1067,9 +1119,9 @@ def decide(topic: str, *, depth: int = 2, cfg=None, store=None) -> dict:
         base["note"] = f"topic not found: {topic}"
         return base
     base["found"] = True
-    ids_res = execute(subgraph_ids_plan(seed, depth=depth), cfg, store=store)
+    ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
     ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
-    rows_res = execute(graph_rows_for_ids_plan(ids), cfg, store=store)
+    rows_res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
     shaped = shape_graph(rows_res.get("rows", []))
     keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
