@@ -24,6 +24,7 @@ from typing import Any
 # 스토어 추상화(설계 §4) — 드라이버 취득은 store.backend.open_store 단일 지점.
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from api import revstamp  # noqa: E402  (동기화 스탬핑 — S0)
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 
@@ -253,33 +254,49 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
 # ── Episode MERGE ─────────────────────────────────────────────────────────────
 
 def merge_episode(session, ep: dict[str, Any]) -> None:
+    """Episode 멱등 MERGE. 사이드카 `/ingest/recall` 의 쓰기 지점.
+
+    동기화 스탬핑(S0): 신규이거나 추적필드가 실제로 달라졌을 때만 updated_at/rev/
+    sync_seq 를 찍는다 — 같은 배치 재적재가 가짜 델타를 만들지 않게. 읽기·스탬프·쓰기를
+    모두 **이 session** 으로 처리해 배치 내 연속 쓰기가 서로를 본다."""
+    params: dict[str, Any] = {
+        "episode_id": ep["episode_id"],
+        "title": ep["title"],
+        "date": ep["date"],
+        "owner_id": ep["owner_id"],
+        "tenant_id": ep["tenant_id"],
+        "domain": ep["domain"],
+        "workspace": ep["workspace"],
+        "mode": ep["mode"],
+        "summary": ep["summary"],
+        "completed_items": ep["completed_items"],
+        "patterns": ep["patterns"],
+        "source_file": ep["source_file"],
+    }
+    sets = [
+        "n.title = $title", "n.date = $date", "n.owner_id = $owner_id",
+        "n.tenant_id = $tenant_id", "n.domain = $domain", "n.workspace = $workspace",
+        "n.mode = $mode", "n.summary = $summary",
+        "n.completed_items = $completed_items", "n.patterns = $patterns",
+        "n.source_file = $source_file",
+    ]
+
+    r = revstamp.session_runner(session)
+    # merge_episode 가 쓰는 추적필드만 비교(tags·pinned 는 preference 소관 — 미기재).
+    incoming = {"title": ep["title"], "date": ep["date"],
+                "domain": ep["domain"], "summary": ep["summary"]}
+    cur = r.run("MATCH (n:Episode) WHERE n.episode_id = $id "
+                "RETURN n.rev AS rev, n.title AS title, n.date AS date, "
+                "n.domain AS domain, n.summary AS summary", {"id": ep["episode_id"]})
+    if not cur or revstamp.differs(cur[0], incoming):
+        params["__ua"] = revstamp.hlc_now(r)
+        params["__rev"] = int((cur[0].get("rev") if cur else 0) or 0) + 1
+        params["__seq"] = revstamp.next_seq(r, ep.get("owner_id") or "user:local")
+        sets += ["n.updated_at = $__ua", "n.rev = $__rev", "n.sync_seq = $__seq"]
+
     session.run(
-        """
-        MERGE (n:Episode {episode_id: $episode_id})
-        SET n.title       = $title,
-            n.date        = $date,
-            n.owner_id    = $owner_id,
-            n.tenant_id   = $tenant_id,
-            n.domain      = $domain,
-            n.workspace   = $workspace,
-            n.mode        = $mode,
-            n.summary        = $summary,
-            n.completed_items = $completed_items,
-            n.patterns       = $patterns,
-            n.source_file    = $source_file
-        """,
-        episode_id=ep["episode_id"],
-        title=ep["title"],
-        date=ep["date"],
-        owner_id=ep["owner_id"],
-        tenant_id=ep["tenant_id"],
-        domain=ep["domain"],
-        workspace=ep["workspace"],
-        mode=ep["mode"],
-        summary=ep["summary"],
-        completed_items=ep["completed_items"],
-        patterns=ep["patterns"],
-        source_file=ep["source_file"],
+        f"MERGE (n:Episode {{episode_id: $episode_id}}) SET {', '.join(sets)}",
+        **params,
     )
 
 

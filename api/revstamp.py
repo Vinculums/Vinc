@@ -35,6 +35,25 @@ def tracked_fields(label: str) -> tuple[str, ...]:
     return TRACKED.get(label, ())
 
 
+class _SessionRunner:
+    """neo4j 동형 session(`run(cypher, **kwargs)`)을 store 인터페이스
+    (`run(cypher, params_dict) -> list[dict]`)로 감싼다.
+
+    왜 필요한가: 엔진(engines/*)은 session 으로 쓰고, revstamp 헬퍼는 store 규약을
+    쓴다. 읽기·스탬프·쓰기를 **같은 커넥션**에 묶어야 한 배치 안의 연속 쓰기가 서로를
+    본다(별도 커넥션은 MVCC 스냅샷이 달라 같은 id 재적재를 신규로 오판할 수 있다)."""
+
+    def __init__(self, session):
+        self._s = session
+
+    def run(self, cypher: str, params: dict | None = None) -> list[dict]:
+        return list(self._s.run(cypher, **(params or {})))
+
+
+def session_runner(session) -> _SessionRunner:
+    return _SessionRunner(session)
+
+
 def _meta_get(store, key: str, default: str = "0") -> str:
     rows = store.run("MATCH (m:_SyncMeta) WHERE m.key = $k RETURN m.value AS v", {"k": key})
     v = rows[0].get("v") if rows else None
@@ -83,6 +102,17 @@ def next_seq(store, owner: str) -> int:
     cur = int(_meta_get(store, key, "0")) + 1
     _meta_set(store, key, cur)
     return cur
+
+
+def make_stamp(store, current: dict) -> dict:
+    """현재 행({rev, owner})에서 다음 스탬프 {updated_at, rev, sync_seq} 생성.
+
+    호출부가 **실제 변경임을 이미 판정한 뒤**에만 부른다(pin/tag 등 단일필드 편집).
+    fragment 경로는 자체 변경감지를 하므로 이 헬퍼를 쓰지 않는다."""
+    owner = current.get("owner") or "user:local"
+    return {"updated_at": hlc_now(store),
+            "rev": int(current.get("rev") or 0) + 1,
+            "sync_seq": next_seq(store, owner)}
 
 
 def _norm(v):
