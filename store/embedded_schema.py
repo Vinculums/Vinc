@@ -74,6 +74,58 @@ _NODE_TABLES: dict[str, dict] = {
         ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
 }
 
+# ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
+# 동기화 대상 콘텐츠 라벨에 공통 부여. 마이그레이션 ALTER 도 이 명세에서 생성(DRY).
+#   updated_at: HLC 문자열(스토어 내 단조) — 같은 필드 충돌의 타이브레이크.
+#   rev       : 인과적 백업 순서(updated_at 동률 시).
+#   sync_seq  : owner별 단조 카운터 — pull delta(since) 커서.
+# default 는 ALTER 백필용(Kùzu 0.11.3 ADD+DEFAULT 로 기존 행 채움, 실측 확인).
+_TRACK_COLS: list[tuple[str, str, str]] = [   # (col, type, default-literal)
+    ("updated_at", "STRING", "''"),
+    ("rev", "INT64", "0"),
+    ("sync_seq", "INT64", "0"),
+]
+# owner 스코프 + 사용자 저작 콘텐츠(=동기화 단위). Domain 은 bare 구조 노드(필드 없음),
+# Chunk/SkillExecution/LearnerPattern 은 동기화 제외(문서임베딩·로그·파생) → 추적열 없음.
+_TRACKED_LABELS: tuple[str, ...] = ("Concept", "Episode", "Record", "Bridge", "Entity")
+
+for _lbl in _TRACKED_LABELS:
+    _NODE_TABLES[_lbl]["cols"] = _NODE_TABLES[_lbl]["cols"] + [(c, t) for c, t, _ in _TRACK_COLS]
+
+# ── 동기화 메타 테이블 (S0, `_`-접두 = 데이터플레인과 구분) ──────────────────────
+# _SchemaMeta : schema_version 등 스키마 메타(로컬·원격 공통).
+# _SyncMeta   : 커서·선택도메인·owner 매핑·sync_running·last_hlc (대부분 로컬 전용).
+# _SyncBase   : 3-way 병합 기준본 — 노드당 마지막 동기화 시 필드 스냅샷(로컬 전용).
+# _Tombstone  : 삭제 표식 — 하드삭제로 못 하는 삭제 전파용.
+_META_TABLES: dict[str, dict] = {
+    "_SchemaMeta": {"pk": "key", "cols": [("key", "STRING"), ("value", "STRING")]},
+    "_SyncMeta": {"pk": "key", "cols": [("key", "STRING"), ("value", "STRING")]},
+    "_SyncBase": {"pk": "node_id", "cols": [
+        ("node_id", "STRING"), ("label", "STRING"), ("fields", "STRING"),
+        ("base_rev", "INT64"), ("base_updated_at", "STRING")]},
+    "_Tombstone": {"pk": "node_id", "cols": [
+        ("node_id", "STRING"), ("label", "STRING"), ("owner_id", "STRING"),
+        ("deleted_at", "STRING"), ("rev", "INT64"), ("sync_seq", "INT64"),
+        ("origin", "STRING")]},
+}
+
+# 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
+SCHEMA_VERSION = 1
+
+
+def migration_statements(from_version: int) -> list[str]:
+    """`from_version`(현재 기록된 버전) 이후 SCHEMA_VERSION 까지 적용할 ALTER 문.
+
+    각 문은 **멱등-흡수 전제**(migrate 가 'already' 계열 오류 무시): 신규 설치는
+    render_embedded_ddl 이 이미 추적열 포함 테이블을 만들어 여기 ALTER 가 no-op 이고,
+    구 설치는 기존 테이블에 열을 추가(ADD+DEFAULT 백필)한다. 둘 다 같은 최종형으로 수렴."""
+    stmts: list[str] = []
+    if from_version < 1:   # v1 — 추적열 도입
+        for lbl in _TRACKED_LABELS:
+            for col, typ, default in _TRACK_COLS:
+                stmts.append(f"ALTER TABLE {lbl} ADD {col} {typ} DEFAULT {default}")
+    return stmts
+
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
 #   concepts: (Concept)-[:PREREQUISITE_OF|DERIVES_FROM|RELATED_TO]->(Concept)
 #   bridges:  (Bridge)-[:CROSSES]->(Domain) · (Bridge)-[:CONNECTS {role}]->(Concept)
@@ -95,12 +147,21 @@ _REL_TABLES: list[tuple] = [
 ]
 
 
-def render_node_tables(*, dim: int) -> list[str]:
+def _render_node_tables(tables: dict, *, dim: int) -> list[str]:
     out = []
-    for label, spec in _NODE_TABLES.items():
+    for label, spec in tables.items():
         cols = ", ".join(f"{c} {t.replace('{dim}', str(dim))}" for c, t in spec["cols"])
         out.append(f"CREATE NODE TABLE {label}({cols}, PRIMARY KEY({spec['pk']}))")
     return out
+
+
+def render_node_tables(*, dim: int) -> list[str]:
+    return _render_node_tables(_NODE_TABLES, dim=dim)
+
+
+def render_meta_tables() -> list[str]:
+    """동기화 메타 테이블 DDL(S0). 데이터플레인과 독립(관계 참조 없음)."""
+    return _render_node_tables(_META_TABLES, dim=0)
 
 
 def render_rel_tables() -> list[str]:
@@ -112,6 +173,7 @@ def render_rel_tables() -> list[str]:
 
 
 def render_embedded_ddl(*, dim: int) -> list[str]:
-    """임베디드 백엔드 스키마 DDL(멱등 — provision 이 'already exists' 무시).
-    노드 테이블 선행 후 관계 테이블(FROM/TO 노드가 먼저 존재해야 함)."""
-    return render_node_tables(dim=dim) + render_rel_tables()
+    """임베디드 백엔드 스키마 DDL(멱등 — migrate 가 'already exists' 무시).
+    노드 테이블 선행 후 관계 테이블(FROM/TO 노드가 먼저 존재해야 함). 동기화 메타
+    테이블은 관계 참조가 없어 노드 뒤·관계 앞 어디든 무방(노드 뒤에 붙임)."""
+    return render_node_tables(dim=dim) + render_meta_tables() + render_rel_tables()

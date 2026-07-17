@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 
+from . import revstamp
+
 _NODE_MAP = {   # fragment type → (label, pk column)
     "record": ("Record", "record_id"),
     "concept": ("Concept", "concept_id"),
@@ -61,9 +63,18 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         return None
     label, pk = _NODE_MAP[ntype]
 
-    exists = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN count(n) AS c",
-                       {"id": nid})
-    matched = bool(exists and exists[0].get("c"))
+    # 존재확인 + (추적 라벨이면) 현재 추적필드값도 함께 조회 — 변경감지 스탬핑(S0).
+    tracked = revstamp.tracked_fields(label)
+    if tracked:
+        proj = "n.rev AS rev, " + ", ".join(f"n.{c} AS {c}" for c in tracked)
+        cur_rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN {proj}", {"id": nid})
+        matched = bool(cur_rows)
+        current = cur_rows[0] if cur_rows else {}
+    else:
+        exists = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN count(n) AS c",
+                           {"id": nid})
+        matched = bool(exists and exists[0].get("c"))
+        current = {}
 
     sets, params = [], {"id": nid}
     def _set(col, val):
@@ -90,6 +101,16 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _set("tenant_id", "tenant:local")
     elif node.get("props") is not None:
         warnings.append(f"domain node '{nid}' — props{{}} 미보존(열 없음)")
+
+    # 변경감지 스탬핑(S0): 신규이거나 추적필드가 실제로 달라졌을 때만 rev/updated_at/
+    # sync_seq 를 찍는다 — 멱등 재적재는 무스탬프(가짜 충돌 방지). 원격에서 apply 되는
+    # 경로는 스탬프를 원격값 그대로 보존하므로 이 함수를 타지 않는다(api/sync).
+    if tracked:
+        incoming = {c: params[c] for c in tracked if c in params}
+        if not matched or revstamp.differs(current, incoming):
+            _set("updated_at", revstamp.hlc_now(store))
+            _set("rev", int(current.get("rev") or 0) + 1)
+            _set("sync_seq", revstamp.next_seq(store, owner))
 
     set_clause = (" SET " + ", ".join(sets)) if sets else ""
     store.run(f"MERGE (n:{label} {{{pk}: $id}}){set_clause}", params)

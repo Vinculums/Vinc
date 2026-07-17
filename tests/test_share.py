@@ -120,7 +120,10 @@ class ImportPackTests(unittest.TestCase):
         res = share.import_share_pack(pack, owner="user:bob", store=store)
         self.assertTrue(res["executed"])
         self.assertEqual(res["merged"]["nodes"]["created"], 2)
-        merge_params = [p for cy, p in store.calls if cy.startswith("MERGE")]
+        # 노드 MERGE 만 — S0 스탬핑이 `_SyncMeta`(HLC·seq 카운터)에도 MERGE 하므로
+        # 그건 제외한다(owner 를 실어야 할 대상이 아니다).
+        merge_params = [p for cy, p in store.calls
+                        if cy.startswith("MERGE") and "_SyncMeta" not in cy]
         self.assertTrue(all(p.get("owner_id") == "user:bob" for p in merge_params))
         # Episode 콘텐츠 필드 사상
         ep = [p for p in merge_params if p.get("id") == "ep:1"][0]
@@ -156,7 +159,8 @@ class IdsScopeAndInboxTests(unittest.TestCase):
             self.assertEqual(len(res["imported"]), 1)
             self.assertEqual(len(res["errors"]), 1)
             self.assertTrue(os.path.exists(os.path.join(d, "a.json.done")))
-            merge_params = [p for c, p in store.calls if c.startswith("MERGE")]
+            merge_params = [p for c, p in store.calls
+                            if c.startswith("MERGE") and "_SyncMeta" not in c]
             self.assertTrue(all(p.get("owner_id") == "user:me" for p in merge_params))
 
 

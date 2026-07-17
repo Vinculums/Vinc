@@ -16,7 +16,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from .config import StoreConfig
-from .embedded_schema import render_embedded_ddl
+from .embedded_schema import SCHEMA_VERSION, migration_statements, render_embedded_ddl
 
 
 def _import_driver(prefer: str | None = None):
@@ -178,16 +178,52 @@ class EmbeddedBackend:
         drv, _ = _import_driver(self._cfg.embedded_driver)
         return _ReaderView(self, drv.Connection(self._db))
 
-    def provision(self, *, dim: int) -> list[str]:
-        statements = render_embedded_ddl(dim=dim)
-        for stmt in statements:
-            # CREATE ... IF NOT EXISTS 부재 방언 대비 — 이미 존재 시 무시(멱등).
+    def _exec_idem(self, stmt: str) -> None:
+        """DDL 멱등 실행 — 'already' 계열(테이블/속성 이미 존재)만 흡수, 그 외 전파.
+        Kùzu 0.11.3 는 CREATE ... IF NOT EXISTS 부재, ALTER ADD 중복 시 'already' 메시지."""
+        try:
+            self._conn.execute(stmt)
+        except Exception as exc:
+            if "already" not in str(exc).lower():
+                raise
+
+    def _schema_version(self) -> int:
+        """_SchemaMeta 의 schema_version(없으면 0 — 마이그레이션 이전 설치)."""
+        try:
+            rows = self.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v")
+        except Exception:
+            return 0
+        if rows and rows[0].get("v") not in (None, ""):
             try:
-                self._conn.execute(stmt)
-            except Exception as exc:  # 테이블 이미 존재 등
-                if "already exists" not in str(exc).lower():
-                    raise
-        return statements
+                return int(rows[0]["v"])
+            except (TypeError, ValueError):
+                return 0
+        return 0
+
+    def migrate(self, *, dim: int) -> dict:
+        """스키마 제자리 마이그레이션(S0). 신규 설치·구 설치 모두 최종형으로 수렴.
+
+        1) base DDL(멱등) — 신규 설치는 추적열 포함 테이블 + 메타 테이블 생성; 구 설치는
+           기존 테이블 skip + 신규 메타 테이블만 생성.
+        2) 버전 게이트 — _SchemaMeta 의 기록 버전 이후 ALTER 스텝 적용(구 설치의 기존
+           테이블에 추적열 ADD+DEFAULT 백필; 신규 설치는 이미 있어 no-op 흡수).
+        3) 버전 기록. **ALTER ADD 는 additive → 롤백 시 구코드가 새 열을 단순 무시.**"""
+        for stmt in render_embedded_ddl(dim=dim):
+            self._exec_idem(stmt)
+        cur = self._schema_version()
+        target = SCHEMA_VERSION
+        for stmt in migration_statements(cur):
+            self._exec_idem(stmt)
+        if cur < target:
+            self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
+                     {"v": str(target)})
+        return {"migrated_from": cur, "migrated_to": target}
+
+    def provision(self, *, dim: int) -> list[str]:
+        """호환 진입점 — migrate() 로 위임(기존 호출부 무변경으로 마이그레이션 획득)."""
+        self.migrate(dim=dim)
+        return render_embedded_ddl(dim=dim)
 
     # ── 검색 인덱스 (M5/M6) ────────────────────────────────────────────────
     # Kùzu 계보의 벡터(HNSW)·FTS(BM25)는 확장 기능이다. kuzu 0.11.3 은 정적 링크

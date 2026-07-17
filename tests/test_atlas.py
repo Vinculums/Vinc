@@ -149,8 +149,13 @@ class FragmentMergeTests(unittest.TestCase):
         res = frag.merge_fragment({"nodes": []}, store=None)
         self.assertFalse(res["executed"])
 
+    # S0 이후 추적 라벨(Concept 등)의 존재확인은 `count(n)` 이 아니라 **현재 추적필드
+    # 투영**이다(변경감지 스탬핑에 현재값이 필요) — 더블도 그 질의에 응답해야 '기존
+    # 노드'를 흉내낼 수 있다. 투영은 `n.rev AS rev, n.title AS title, …` 로 시작한다.
+    _EXISTING = {"n.rev AS rev": [{"rev": 0, "title": "concept:a"}]}
+
     def test_matched_counted_on_existing_node(self):
-        fake = _FakeStore({"RETURN count(n) AS c": [{"c": 1}]})
+        fake = _FakeStore(dict(self._EXISTING))
         res = frag.merge_fragment(
             {"nodes": [{"id": "concept:a", "type": "concept"}]}, store=fake)
         self.assertEqual(res["merged"]["nodes"], {"created": 0, "matched": 1})
@@ -158,15 +163,18 @@ class FragmentMergeTests(unittest.TestCase):
     def test_reMERGE_without_owner_does_not_clobber_owner_id(self):
         # owner 미지정 재-MERGE 가 기존 노드 owner_id 를 기본값으로 덮어쓰면 스코프
         # 필터(§1 불변)가 깨진다 — 생성 시/명시 시에만 스탬핑.
-        fake = _FakeStore({"RETURN count(n) AS c": [{"c": 1}]})   # 기존 노드
+        fake = _FakeStore(dict(self._EXISTING))                   # 기존 노드
         frag.merge_fragment({"nodes": [{"id": "concept:a", "type": "concept"}]}, store=fake)
-        merge_params = [p for c, p in fake.calls if c.startswith("MERGE")]
+        # 노드 MERGE 만 — S0 스탬핑의 `_SyncMeta` MERGE 는 owner 대상이 아니다.
+        merge_params = [p for c, p in fake.calls
+                        if c.startswith("MERGE") and "_SyncMeta" not in c]
         self.assertTrue(all("owner_id" not in p for p in merge_params))
         # 명시 owner 는 기존 노드여도 스탬핑
-        fake2 = _FakeStore({"RETURN count(n) AS c": [{"c": 1}]})
+        fake2 = _FakeStore(dict(self._EXISTING))
         frag.merge_fragment({"nodes": [{"id": "concept:a", "type": "concept"}],
                              "owner": "user:t"}, store=fake2)
-        merge_params2 = [p for c, p in fake2.calls if c.startswith("MERGE")]
+        merge_params2 = [p for c, p in fake2.calls
+                         if c.startswith("MERGE") and "_SyncMeta" not in c]
         self.assertTrue(any(p.get("owner_id") == "user:t" for p in merge_params2))
 
 
