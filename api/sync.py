@@ -24,6 +24,7 @@ import json
 
 from . import fragment as frag
 from . import revstamp
+from . import syncmerge
 from . import query as q
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
@@ -31,6 +32,63 @@ from . import query as q
 CHUNK_BYTES = 3 * 1024 * 1024
 
 _SEL_KEY = "selected_domains"
+
+# ── 동기화 필드(=merge_fragment 가 실제로 왕복시키는 것만, S3) ─────────────────
+# 급소: 3-way 병합은 로컬·원격·base 를 **같은 표현**으로 비교해야 한다. fragment 쓰기
+# 경로(_merge_node)가 쓰는 필드만 왕복 가능하다 — Concept 의 topic/one_liner/status/
+# stem, Episode 의 pinned 은 fragment 가 안 써서(엔진·preference 소관) 동기화하면
+# 유실된다. 그래서 sync 는 왕복 가능한 필드만 나른다(그 외는 기기 로컬로 남는다).
+SYNC_FIELDS: dict[str, tuple[str, ...]] = {
+    "Concept": ("title", "domain", "tags", "props"),
+    "Episode": ("title", "date", "domain", "summary", "tags"),
+}
+# fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 는 fragment 왕복 결함이
+# 있어(구조 필드 미기록) 현재 sync 범위 밖 — Concept/Episode 만.
+_SYNC_TYPES = {"concept": "Concept", "episode": "Episode"}
+
+
+def _snapshot(label: str, node: dict) -> dict:
+    """노드(번들 노드 또는 로컬 조회 dict)에서 sync 필드만 **raw** 로 뽑되 표현을
+    통일한다: props 는 항상 dict(로컬 DB 는 JSON 문자열이라 파싱), tags 는 항상 list.
+    로컬·원격·base 가 같은 표현이라야 3-way 비교·쓰기·저장이 일관된다. 값 비교는
+    syncmerge._norm(dict→정렬 JSON, list→tuple)이 담당한다."""
+    snap: dict = {}
+    for f in SYNC_FIELDS.get(label, ()):
+        v = node.get(f)
+        if f == "props":
+            if isinstance(v, str):
+                try:
+                    v = json.loads(v) if v else {}
+                except (TypeError, ValueError):
+                    v = {}
+            elif v is None:
+                v = {}
+        elif f == "tags" and v is None:
+            v = []
+        snap[f] = v
+    return snap
+
+
+# ── 3-way base(_SyncBase, 로컬 전용) ──────────────────────────────────────────
+def get_base(store, node_id: str) -> dict | None:
+    rows = store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id "
+                     "RETURN b.fields AS f, b.base_rev AS rev, b.base_updated_at AS ua",
+                     {"id": node_id})
+    if not rows:
+        return None
+    return {"fields": syncmerge.parse_base(rows[0].get("f")),
+            "rev": int(rows[0].get("rev") or 0), "ua": rows[0].get("ua") or ""}
+
+
+def set_base(store, node_id: str, label: str, fields: dict, rev: int, ua: str) -> None:
+    store.run("MERGE (b:_SyncBase {node_id: $id}) "
+              "SET b.label = $l, b.fields = $f, b.base_rev = $rev, b.base_updated_at = $ua",
+              {"id": node_id, "l": label, "f": syncmerge.dump_base(fields),
+               "rev": int(rev or 0), "ua": ua or ""})
+
+
+def del_base(store, node_id: str) -> None:
+    store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b", {"id": node_id})
 
 
 # ── 선택 도메인 (오프라인 우선 옵트인) ────────────────────────────────────────
@@ -98,23 +156,18 @@ def _episodes_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
 
 
 def _node_from_concept(r: dict) -> dict:
+    # sync 는 **raw props** 만 나른다(topic/one_liner 는 fragment 왕복 불가라 폴딩 안 함).
     props = {}
-    if r.get("topic"):
-        props["topic"] = r["topic"]
-    if r.get("one_liner"):
-        props["one_liner"] = r["one_liner"]
     if r.get("props"):
         try:
-            props.update(json.loads(r["props"]))
+            props = json.loads(r["props"]) or {}
         except (TypeError, ValueError):
-            pass
-    n = {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
-         "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
-         "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
-         "_seq": int(r.get("sync_seq") or 0)}
-    if props:
-        n["props"] = props
-    return n
+            props = {}
+    return {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
+            "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
+            "props": props,
+            "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_seq": int(r.get("sync_seq") or 0)}
 
 
 def _node_from_episode(r: dict) -> dict:
@@ -225,60 +278,87 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
     return chunks
 
 
-# ── apply ─────────────────────────────────────────────────────────────────────
-def _strip_meta(node: dict) -> dict:
-    return {k: v for k, v in node.items() if not k.startswith("_")}
+# ── apply (3-way 병합, S3) ────────────────────────────────────────────────────
+def _local_snapshot(store, label: str, pk: str, nid: str) -> dict | None:
+    """로컬 노드의 sync 필드 + rev/updated_at. 없으면 None."""
+    cols = ", ".join(f"x.{c} AS {c}" for c in SYNC_FIELDS[label])
+    rows = store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
+                     f"RETURN {cols}, x.rev AS rev, x.updated_at AS updated_at", {"id": nid})
+    if not rows:
+        return None
+    r = rows[0]
+    snap = _snapshot(label, r)
+    snap["_rev"] = int(r.get("rev") or 0)
+    snap["_ua"] = r.get("updated_at") or ""
+    return snap
 
 
-def _is_stale(cur_row: dict | None, node: dict) -> bool:
-    """저장본이 인바운드보다 **새롭거나 같으면** True → 적용 안 함.
-
-    두 일을 동시에 한다:
-      - **LWW**: 늦게 도착한 옛 변경이 최신을 덮지 못하게(updated_at 우선, 동률 시 rev).
-      - **에코 차단**: 같은 버전이 되돌아오면(updated_at·rev 동일) 무연산 → 무한
-        왕복이 끊긴다. `>` 가 아니라 `>=` 인 이유가 이것이다.
-    필드단위 3-way 병합은 **클라이언트**가 push 전에 끝낸다(S3) — 허브는 LWW 스토어."""
-    if not cur_row:
-        return False
-    cu, nu = cur_row.get("updated_at") or "", node.get("_updated_at") or ""
-    if cu != nu:
-        return cu > nu                    # HLC ISO 는 고정폭 → 사전순 = 시간순
-    return int(cur_row.get("rev") or 0) >= int(node.get("_rev") or 0)
+def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dict:
+    """병합 결과(snapshot)를 merge_fragment 가 쓸 수 있는 노드로. props=dict, tags=list."""
+    node = {"id": nid, "type": ntype}
+    node.update(merged)   # title/domain/tags/props(+date/summary) — 이미 raw 표현
+    return node
 
 
 def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
-    """delta 번들을 이 스토어에 적용(LWW).
+    """delta 번들을 **필드단위 3-way 병합**으로 적용(S3 — 발주자 핵심 요구).
 
-    스탬프 처리가 급소다:
-      - `updated_at`/`rev` 는 **콘텐츠 버전 정체성** → 보낸 쪽 값을 그대로 보존한다.
-        재스탬프하면 수신 즉시 '새 로컬 변경'이 되어 되돌아간다(무한 왕복).
-      - `sync_seq` 는 **저장소별 전송 커서** → 보낸 쪽 번호는 이 스토어의 번호 공간에서
-        의미가 없다. **받는 쪽이 자기 카운터로 새로 매긴다** — 그래야 이 스토어를
-        pull 하는 다른 기기의 커서가 성립한다.
-    merge_fragment 가 변경감지로 로컬 스탬프를 찍으므로, 적용 후 위 규칙대로 덮어쓴다."""
-    out = {"executed": False, "applied": 0, "skipped_stale": 0, "edges": 0, "warnings": []}
+    각 노드: base(마지막 동기화값) 대비 local·remote 를 필드별로 병합한다. 서로 다른
+    필드를 고쳤으면 **둘 다 보존**, 같은 필드 충돌만 노드 타이브레이크(updated_at→rev→id)
+    로 최신승. 병합 결과가 로컬과 달라졌으면 새 HLC 로 스탬프해 push 가 집어가게 하고,
+    **base 는 원격값으로** 갱신한다 — 그래야 다음 push 가 로컬-only 필드만 감지한다
+    (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
+    """
+    out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
+           "edges": 0, "warnings": []}
     if store is None:
         out["note"] = "no reachable store"
         return out
 
-    fresh: list[dict] = []
+    writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
+    base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
-        label_pk = frag._NODE_MAP.get(ntype or "")
-        if not nid or not label_pk:
+        label = _SYNC_TYPES.get(ntype or "")
+        if not nid or not label:
             out["warnings"].append(f"unsupported node — skipped ({nid or '?'})")
             continue
-        label, pk = label_pk
-        cur = store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
-                        "RETURN x.rev AS rev, x.updated_at AS updated_at", {"id": nid})
-        if _is_stale(cur[0] if cur else None, n):
-            out["skipped_stale"] += 1
-            continue
-        fresh.append(n)
+        pk = frag._NODE_MAP[ntype][1]
+        remote_snap = _snapshot(label, n)
+        r_rev, r_ua = int(n.get("_rev") or 0), n.get("_updated_at") or ""
+        local = _local_snapshot(store, label, pk, nid)
 
-    if fresh or bundle.get("edges"):
+        if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
+            writes.append({"node": _merged_fragment_node(label, nid, ntype, remote_snap),
+                           "ua": r_ua, "rev": r_rev})
+            base_updates.append((nid, label, remote_snap, r_rev, r_ua))
+            continue
+
+        l_rev, l_ua = local.pop("_rev"), local.pop("_ua")
+        base = get_base(store, nid)
+        # base 없음 = 공통 조상 없음(양쪽 독립 존재) → 빈 조상: 모든 필드가 '양쪽 변경'
+        # 으로 취급돼 값이 다르면 필드별 LWW. dict(local) 로 두면 push 후·pull 전 로컬
+        # 편집이 조상에 섞여 유실된다(그 편집이 원격과 충돌 시). 빈 조상이 안전측.
+        base_fields = base["fields"] if base else {}
+        remote_newer = syncmerge.node_remote_newer(l_rev, l_ua, r_rev, r_ua, nid)
+        merged, conflicts = syncmerge.three_way(base_fields, local, remote_snap,
+                                                remote_newer=remote_newer)
+
+        if not syncmerge.maps_equal(merged, local):
+            # 병합이 로컬을 바꿈 → 새 상태로 스탬프(신규 HLC·rev+1). push 가 집어간다.
+            writes.append({"node": _merged_fragment_node(label, nid, ntype, merged),
+                           "ua": revstamp.hlc_now(store),
+                           "rev": max(l_rev, r_rev) + 1})
+            out["merged"] += 1
+        else:
+            out["skipped_stale"] += 1           # 로컬에 반영할 변화 없음
+        # base 는 항상 원격이 가진 값으로 — 다음 push 가 로컬-only 필드만 delta 로 본다.
+        base_updates.append((nid, label, remote_snap, r_rev, r_ua))
+        revstamp.observe_hlc(store, r_ua)
+
+    if writes or bundle.get("edges"):
         res = frag.merge_fragment(
-            {"owner": owner, "nodes": [_strip_meta(n) for n in fresh],
+            {"owner": owner, "nodes": [w["node"] for w in writes],
              "edges": bundle.get("edges") or []}, store=store)
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
@@ -286,16 +366,17 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     else:
         out["executed"] = True
 
-    for n in fresh:
-        label, pk = frag._NODE_MAP[n["type"]]
-        store.run(
-            f"MATCH (x:{label}) WHERE x.{pk} = $id "
-            "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
-            {"id": n["id"], "ua": n.get("_updated_at") or "",
-             "rev": int(n.get("_rev") or 0),
-             "seq": revstamp.next_seq(store, owner)})   # ← 수신측 자기 번호
-        revstamp.observe_hlc(store, n.get("_updated_at") or "")
-    out["applied"] = len(fresh)
+    # merge_fragment 가 방금 로컬 스탬프를 찍었으므로, 결정된 스탬프로 덮어쓴다.
+    for w in writes:
+        node = w["node"]
+        label, pk = frag._NODE_MAP[node["type"]]
+        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
+                  "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
+                  {"id": node["id"], "ua": w["ua"], "rev": int(w["rev"]),
+                   "seq": revstamp.next_seq(store, owner)})
+    for nid, label, fields, rev, ua in base_updates:
+        set_base(store, nid, label, fields, rev, ua)
+    out["applied"] = len(writes)
     return out
 
 
@@ -329,7 +410,12 @@ class RemoteHTTP:
 
 
 def push_local(store, cfg, *, owner: str, remote) -> dict:
-    """로컬 delta 를 원격에 push. 커서는 **push 성공 후에만** 전진(중단 시 재전송)."""
+    """로컬 delta 를 원격에 push. 커서는 **push 성공 후에만** 전진(중단 시 재전송).
+
+    push 성공 후 보낸 노드의 **base 를 로컬 현재값으로** 갱신한다(S3). 이유: base 는
+    '마지막으로 원격과 합의한 값'이라야 3-way 가 이후 로컬 편집만 delta 로 잡는다.
+    안 하면 로컬-only 편집이 매 sync 재전송되거나(에코), push 후·pull 전 편집이 조상에
+    섞여 유실될 수 있다."""
     since = get_cursor(store, "push")
     bundle = export_delta(owner=owner, since=since, cfg=cfg, store=store)
     if not bundle.get("executed"):
@@ -338,6 +424,11 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
     if not nodes and not (bundle.get("edges") or []):
         return {"phase": "push", "executed": True, "sent": 0, "cursor": since}
     res = remote.push(chunk_bundle(bundle))
+    for n in nodes:                       # base := 방금 보낸(=원격과 합의된) 값
+        label = _SYNC_TYPES.get(n.get("type") or "")
+        if label:
+            set_base(store, n["id"], label, _snapshot(label, n),
+                     int(n.get("_rev") or 0), n.get("_updated_at") or "")
     set_cursor(store, "push", bundle["next_cursor"])
     return {"phase": "push", "executed": True, "sent": len(nodes),
             "remote": res, "cursor": bundle["next_cursor"]}

@@ -53,18 +53,18 @@ def _n(ua: str, rev: int) -> dict:
     return {"id": "concept:x", "type": "concept", "_updated_at": ua, "_rev": rev}
 
 
-def test_stale_guard_is_lww_with_echo_break():
+def test_node_tiebreak_updated_at_then_rev_then_id():
+    """노드 승자 판정(3-way 충돌 필드에 적용) — updated_at→rev→id."""
+    from api import syncmerge
     older, newer = "2026-01-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z"
-    # 저장본이 더 최신 → 인바운드 무시(늦게 온 옛 변경이 최신을 못 덮는다)
-    assert sync._is_stale({"updated_at": newer, "rev": 2}, _n(older, 1)) is True
-    # 인바운드가 더 최신 → 적용
-    assert sync._is_stale({"updated_at": older, "rev": 1}, _n(newer, 2)) is False
-    # 같은 버전이 되돌아옴 → 무연산(에코 차단). `>` 가 아니라 `>=` 인 이유.
-    assert sync._is_stale({"updated_at": newer, "rev": 2}, _n(newer, 2)) is True
-    # updated_at 동률 → rev 로 결정
-    assert sync._is_stale({"updated_at": newer, "rev": 1}, _n(newer, 2)) is False
-    # 저장본 없음 → 신규 적용
-    assert sync._is_stale(None, _n(older, 1)) is False
+    # 원격이 더 최신 → True
+    assert syncmerge.node_remote_newer(1, older, 2, newer, "c:x") is True
+    # 로컬이 더 최신 → False
+    assert syncmerge.node_remote_newer(2, newer, 1, older, "c:x") is False
+    # updated_at 동률 → rev 로
+    assert syncmerge.node_remote_newer(1, newer, 2, newer, "c:x") is True
+    # updated_at·rev 동률 → id 결정론(remote_id 미지정이면 local_id 로 False)
+    assert syncmerge.node_remote_newer(2, newer, 2, newer, "c:x") is False
 
 
 # ── 청킹: 자기완결(엣지 양끝 노드 동봉) ───────────────────────────────────────
