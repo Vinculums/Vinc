@@ -297,3 +297,79 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         revstamp.observe_hlc(store, n.get("_updated_at") or "")
     out["applied"] = len(fresh)
     return out
+
+
+# ── 오케스트레이터 (S2) ───────────────────────────────────────────────────────
+# 로컬 사이드카가 원격(mcp.vincs.app)에 대해 pull/push 를 조율한다. 원격 호출은
+# 주입(remote 객체)이라 인프로세스 스텁과 실 HTTP 양쪽으로 검증된다.
+#
+# 커서 2개(서로 다른 seq 공간):
+#   cursor:push — **로컬** sync_seq. 이후 로컬 변경분만 push.
+#   cursor:pull — **허브** sync_seq. 이후 허브 변경분만 pull.
+#
+# echo: pull 로 받은 노드는 로컬 seq 가 새로 매겨져 다음 push 에 실릴 수 있으나,
+# updated_at/rev 를 보존하므로 허브 stale 가드가 되돌림을 막는다(무손상, 헛트래픽만).
+# 그 헛트래픽은 S3 의 base(로컬≠base 일 때만 push)가 완전히 없앤다.
+
+
+class RemoteHTTP:
+    """syncclient 를 감싼 원격 어댑터(프로덕션). 회원 키·기본 mcp.vincs.app."""
+
+    def __init__(self, token: str, base: str | None = None):
+        self.token = token
+        self.base = base or "https://mcp.vincs.app"
+
+    def pull(self, since: int) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.pull(since=since, token=self.token, base=self.base)
+
+    def push(self, chunks: list[dict]) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.push(chunks, token=self.token, base=self.base)
+
+
+def push_local(store, cfg, *, owner: str, remote) -> dict:
+    """로컬 delta 를 원격에 push. 커서는 **push 성공 후에만** 전진(중단 시 재전송)."""
+    since = get_cursor(store, "push")
+    bundle = export_delta(owner=owner, since=since, cfg=cfg, store=store)
+    if not bundle.get("executed"):
+        return {"phase": "push", "executed": False, "note": bundle.get("note")}
+    nodes = bundle.get("nodes") or []
+    if not nodes and not (bundle.get("edges") or []):
+        return {"phase": "push", "executed": True, "sent": 0, "cursor": since}
+    res = remote.push(chunk_bundle(bundle))
+    set_cursor(store, "push", bundle["next_cursor"])
+    return {"phase": "push", "executed": True, "sent": len(nodes),
+            "remote": res, "cursor": bundle["next_cursor"]}
+
+
+def pull_apply(store, cfg, *, owner: str, remote) -> dict:
+    """원격 delta 를 페이지 단위로 받아 apply. 커서는 **apply·전진이 내구된 뒤에만**."""
+    since = get_cursor(store, "pull")
+    applied = skipped = pages = 0
+    warnings: list[str] = []
+    while pages < 1000:                       # 안전 상한(무한루프 방어)
+        page = remote.pull(since)
+        nodes = page.get("nodes") or []
+        r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store)
+        applied += r["applied"]
+        skipped += r["skipped_stale"]
+        warnings += r.get("warnings") or []
+        pages += 1
+        nxt = int(page.get("next_cursor", since))
+        advanced = nxt > since
+        if advanced:
+            since = nxt
+            set_cursor(store, "pull", since)   # 페이지별 내구 전진
+        if not nodes or not advanced:
+            break
+    return {"phase": "pull", "applied": applied, "skipped_stale": skipped,
+            "pages": pages, "cursor": since, "warnings": warnings}
+
+
+def run(store, cfg, *, owner: str, remote) -> dict:
+    """한 동기화 세션: **pull 먼저**(원격 최신을 받아 병합 후 push — lost-update 창
+    최소, 플랜 §6-1) → push. 잡 워커에서 돌아 로컬 쓰기가 단일 writer 로 직렬화된다."""
+    pu = pull_apply(store, cfg, owner=owner, remote=remote)
+    ph = push_local(store, cfg, owner=owner, remote=remote)
+    return {"executed": True, "pull": pu, "push": ph}
