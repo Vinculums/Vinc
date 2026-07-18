@@ -89,18 +89,16 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # ── OS 코드사인·공증(별개 마일스톤, 인증서=소유자 조달) ──────────────
-          # 아래 시크릿이 있으면 tauri-action 이 macOS .app/.dmg 를 서명·공증한다.
-          # 미설정이면 조용히 미서명 빌드(현행) — 첫 실행 경고 유지. 유료 인증서 필요:
+          # ⚠ 시크릿 미설정 상태에서 `APPLE_*: ${{ secrets.… }}` 를 직접 배선하면
+          # Actions 가 **빈 문자열 env 를 주입**하고, Tauri 번들러는 존재하는(빈 값
+          # 포함) APPLE_SIGNING_IDENTITY 로 codesign 을 시도해 macOS 빌드가 깨진다
+          # (v0.4.0 1차 태그 빌드 실패 실측 — Linux/Windows 는 무영향이라 통과).
+          # 인증서 조달 후 재배선할 것 — 그때는 빈 값 가드(pre-step 에서 비어있지
+          # 않을 때만 $GITHUB_ENV 로 내보내기)와 함께:
           #   APPLE_CERTIFICATE: base64(Developer ID Application .p12)
           #   APPLE_CERTIFICATE_PASSWORD: .p12 비밀번호
           #   APPLE_SIGNING_IDENTITY: "Developer ID Application: <이름> (<TEAMID>)"
           #   APPLE_ID / APPLE_PASSWORD(앱 전용 암호) / APPLE_TEAM_ID: 공증(notary)용
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # Windows Authenticode: tauri v2 는 app/src-tauri/tauri.conf.json 의
           #   bundle.windows.certificateThumbprint(로컬 인증서 저장소) 또는 signCommand
           #   (Azure Trusted Signing 등)로 설정한다 — env 로는 주입 불가. 인증서 확보 후
