@@ -97,7 +97,10 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): TH
       geo = new THREE.SphereGeometry(r, 20, 14); break;
     case "bridge":   // 정팔면체(마름모의 입체화)
       geo = new THREE.OctahedronGeometry(r); break;
-    default: {       // episode/record — 작은 정육각기둥(변 = 높이: 전 모서리 등길이, D35)
+    default: {       // episode/record/entity — 작은 정육각기둥(변 = 높이, D35).
+                     // entity(F1 개방층)는 의도적 폴스루: 프리미티브 집합은 닫힌
+                     // 층(D31/D35)이라 수리 단위로 늘리지 않는다 — 사용자 저작
+                     // 타입 레코드에 "물질" 마크(육각기둥)가 의미상으로도 맞다.
       const s = r * 0.75;
       geo = new THREE.CylinderGeometry(s, s, s, 6); break;
     }

@@ -5,7 +5,17 @@
 도메인은 강제하지 않는다 — ``WORKSPACES/learning/`` 아래의 **모든** 하위 디렉토리를
 도메인으로 자동 발견한다(사용자가 무엇을 배우든). 번호형 개념 노트만 대상으로 하며
 bridge/index/self-check 등은 제외한다.
-intra-domain [[wikilink]] 을 (:Concept)-[:PREREQUISITE_OF|:DERIVES_FROM|:RELATED_TO]->(:Concept) 로 best-effort 연결.
+
+관계 추출(F6 보수, 2026-07-19):
+- **방향 관계(PREREQUISITE_OF·DERIVES_FROM)는 frontmatter 명시만** —
+  ``prerequisite_of: [stem…]`` / ``derives_from: [stem…]`` (스칼라도 허용).
+  구 키워드 라인 분류("다음/선행/한계" 등)는 일상어 오탐으로 폐기 — 화살촉(강한
+  시각 주장)을 무검증 휴리스틱 위에 세우지 않는다.
+- intra-domain ``[[wikilink]]`` 추론은 전부 RELATED_TO 로 강등. 끝점 정렬 정준화로
+  A↔B 상호 링크를 1개로 접고, 같은 무순서쌍에 방향 엣지가 있으면 억제한다
+  (degree 이중 계상 방지). MERGE 시 DB 역방향 존재도 검사한다(정준화 이전 스토어
+  재적재 치유 — api/fragment.py 의 relates_to dedupe 와 동일 정책).
+- 잔여: 과거 키워드 추론으로 이미 적재된 방향 엣지는 재적재로 삭제되지 않는다.
 
 사용:
     python concepts_ingest.py [--dry-run]
@@ -160,15 +170,34 @@ def collect_concepts() -> list[dict[str, Any]]:
                 "tags": fm.get("tags", []) if isinstance(fm.get("tags"), list) else [],
                 "source_file": str(md.relative_to(HUB)),
                 "_text": text,
+                "_fm": fm,   # F6 — 방향 관계의 frontmatter 명시 해석용
             })
     return out
 
 
+# frontmatter 명시 방향 관계 키(F6) — 값은 같은 도메인의 대상 stem(리스트/스칼라).
+_FM_REL_KEYS = {"prerequisite_of": "PREREQUISITE_OF", "derives_from": "DERIVES_FROM"}
+
+
 def extract_edges(concepts: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
-    """intra-domain [[link]] → (src_id, rel_type, tgt_id) best-effort."""
+    """intra-domain 관계 추출(F6) → (src_id, rel_type, tgt_id) best-effort.
+
+    방향 관계는 frontmatter 명시만(_FM_REL_KEYS), [[wikilink]] 추론은 전부
+    RELATED_TO(끝점 정렬 정준화 + 방향 존재 쌍 억제). 반환은 정렬 리스트 —
+    dry-run/테스트의 결정론."""
     by_stem: dict[tuple[str, str], str] = {(c["domain"], c["stem"]): c["concept_id"] for c in concepts}
-    edges: list[tuple[str, str, str]] = []
+    directed: set[tuple[str, str, str]] = set()
+    related: set[tuple[str, str]] = set()   # 정준화된 무순서쌍 (min, max)
     for c in concepts:
+        fm = c.get("_fm") or {}
+        for key, rel in _FM_REL_KEYS.items():
+            vals = fm.get(key)
+            if vals is None:
+                continue
+            for stem in (vals if isinstance(vals, list) else [vals]):
+                tid = by_stem.get((c["domain"], str(stem).strip()))
+                if tid and tid != c["concept_id"]:
+                    directed.add((c["concept_id"], rel, tid))
         body = _FM_RE.sub("", c["_text"], count=1)
         for line in body.splitlines():
             for raw in _WIKILINK.findall(line):
@@ -176,15 +205,12 @@ def extract_edges(concepts: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
                 key = (c["domain"], target)
                 if key not in by_stem or by_stem[key] == c["concept_id"]:
                     continue
-                if any(w in line for w in ("다음", "prereq", "선행")):
-                    rel = "PREREQUISITE_OF"
-                elif any(w in line for w in ("한계", "이전", "한 단계 전")):
-                    rel = "DERIVES_FROM"
-                else:
-                    rel = "RELATED_TO"
-                edges.append((c["concept_id"], rel, by_stem[key]))
-    # 중복 제거
-    return list({e for e in edges})
+                a, b = sorted((c["concept_id"], by_stem[key]))
+                related.add((a, b))
+    directed_pairs = {tuple(sorted((s, t))) for s, _, t in directed}
+    edges = list(directed) + [(a, "RELATED_TO", b)
+                              for a, b in related if (a, b) not in directed_pairs]
+    return sorted(edges)
 
 
 def main() -> None:
@@ -234,8 +260,21 @@ def main() -> None:
                 topic=c["topic"], title=c["title"], one_liner=c["one_liner"], status=c["status"],
                 created=c["created"], tags=c["tags"], src=c["source_file"],
             )
-        rel_loaded = 0
+        rel_loaded = rel_skipped = 0
         for src, rel, tgt in edges:
+            if rel == "RELATED_TO":
+                # F6 — DB 역방향 dedupe: 정준화 이전에 적재된 스토어는 (b)->(a) 방향을
+                # 이미 들고 있을 수 있다. 존재하면 skip(api/fragment.py 정책 일치).
+                res = s.run(
+                    """
+                    MATCH (b:Concept {concept_id:$tgt})-[:RELATED_TO]->(a:Concept {concept_id:$src})
+                    RETURN count(*) AS c
+                    """,
+                    src=src, tgt=tgt,
+                ).single()
+                if res and res["c"]:
+                    rel_skipped += 1
+                    continue
             s.run(
                 f"""
                 MATCH (a:Concept {{concept_id:$src}}), (b:Concept {{concept_id:$tgt}})
@@ -245,7 +284,8 @@ def main() -> None:
             )
             rel_loaded += 1
     store.close()
-    print(f"\n[완료] :Concept {len(concepts)}개 / 관계 {rel_loaded}개 적재")
+    print(f"\n[완료] :Concept {len(concepts)}개 / 관계 {rel_loaded}개 적재"
+          + (f" (역방향 중복 skip {rel_skipped}개)" if rel_skipped else ""))
 
 
 if __name__ == "__main__":

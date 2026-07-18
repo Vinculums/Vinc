@@ -48,9 +48,11 @@ class SubgraphPlanTests(unittest.TestCase):
             self.assertEqual(res["edges"], [])
 
     def test_graph_seed_prunes_ego_boundary(self):
+        # 응답 키는 graph_rows_for_ids_plan 고유 substring — 축 플랜(F2)도 "IN $ids"
+        # 를 포함하므로 범용 키는 더블 충돌을 낳는다(축 플랜은 무응답 → 빈 행).
         fake = _FakeStore({
             "DISTINCT m.concept_id": [{"id": "b"}],
-            "IN $ids": [
+            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
                 {"id": "a", "label": "A", "domain": "math",
                  "rel": "RELATED_TO", "target": "b", "target_domain": "physics"},
                 # depth+1 유출 엣지 — target 'z' 는 id 집합 밖 → shape 후 제거돼야 함
@@ -64,6 +66,50 @@ class SubgraphPlanTests(unittest.TestCase):
         self.assertEqual(ids, {"a", "b"})                  # z 는 ego 경계 밖
         self.assertEqual(len(res["edges"]), 1)
         self.assertTrue(all("x" in n and "y" in n and "z" in n for n in res["nodes"]))  # D17 3D 좌표
+
+    def test_graph_seed_renders_bridge_glue(self):
+        # F2 — '보이지 않는 접착제' 회귀: kept 개념에 닿는 브릿지가 매개자 노드 +
+        # 양팔 엣지로 렌더되고 keep 에 편입된다. F3 — 팔이 degree 에 반영된다.
+        fake = _FakeStore({
+            "DISTINCT m.concept_id": [{"id": "b"}],
+            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+                {"id": "a", "label": "A", "domain": "math"},
+                {"id": "b", "label": "B", "domain": "physics"},
+            ],
+            "MATCH (b:Bridge)-[r:CONNECTS]->(c:Concept)": [
+                {"id": "bridge:x", "label": "X", "domain": "math", "domain2": "physics",
+                 "kind": "bridge", "rel": "CONNECTS", "role": "math_input",
+                 "target": "a", "target_domain": "math", "target_kind": "concept"},
+                {"id": "bridge:x", "label": "X", "domain": "math", "domain2": "physics",
+                 "kind": "bridge", "rel": "CONNECTS", "role": "physics_input",
+                 "target": "b", "target_domain": "physics", "target_kind": "concept"},
+            ],
+        })
+        res = q.graph(owner="user:t", seed="a", depth=2, store=fake)
+        by_id = {n["id"]: n for n in res["nodes"]}
+        self.assertIn("bridge:x", by_id)                    # 매개자 keep 편입
+        self.assertEqual(by_id["bridge:x"]["kind"], "bridge")
+        self.assertEqual(by_id["bridge:x"].get("domain2"), "physics")
+        arms = [e for e in res["edges"] if e["type"] == "CONNECTS"]
+        self.assertEqual(len(arms), 2)                      # 양팔 렌더(글루 가시화)
+        self.assertEqual({e.get("role") for e in arms}, {"math_input", "physics_input"})
+        self.assertEqual(by_id["a"]["degree"], 1)           # F3 — 브릿지 팔 카운트
+
+    def test_entity_seed_uses_typed_traversal(self):
+        # F1 — entity: 시드는 전용 순회(TYPED 폐쇄 성분) + r.type 을 rel 로 투영.
+        fake = _FakeStore({
+            "DISTINCT m.entity_id": [{"id": "entity:e2"}],
+            "OPTIONAL MATCH (e)-[r:TYPED]->(d:Entity)": [
+                {"id": "entity:e1", "label": "E1", "domain": "", "kind": "entity",
+                 "rel": "influences", "target": "entity:e2", "target_domain": "",
+                 "target_label": "E2", "target_kind": "entity"},
+            ],
+        })
+        res = q.graph(owner="user:t", seed="entity:e1", depth=2, store=fake)
+        self.assertTrue(res["executed"])
+        kinds = {n["id"]: n["kind"] for n in res["nodes"]}
+        self.assertEqual(kinds, {"entity:e1": "entity", "entity:e2": "entity"})
+        self.assertEqual(res["edges"][0]["type"], "influences")   # 캐리어명 아닌 사용자 타입
 
 
 class LayoutTests(unittest.TestCase):
@@ -92,6 +138,13 @@ class AtlasL0Tests(unittest.TestCase):
         plan = q.domain_ties_plan(owner="user:t")
         self.assertIn("a.domain <> b.domain", plan.cypher)
         self.assertIn("count(*)", plan.cypher)
+
+    def test_bridge_ties_plan_scopes_owner_with_legacy_transition(self):
+        # F5 — owner 지정 시 과도기 술어(내 것 + 레거시 ''), 미지정(로컬)은 글로벌.
+        plan = q.bridge_ties_plan(owner="user:t")
+        self.assertIn("(b.owner_id = $owner OR b.owner_id = '')", plan.cypher)
+        self.assertEqual(plan.params, {"owner": "user:t"})
+        self.assertNotIn("$owner", q.bridge_ties_plan().cypher)
 
     def test_atlas_l0_combines_domains_and_ties(self):
         fake = _FakeStore({
@@ -135,15 +188,155 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertIn(":ATTACHES_TO", joined)              # record 참여 엣지
         self.assertIn('"note": "x"', joined + str([p for _, p in fake.calls]))
 
-    def test_unsupported_types_warn_and_skip(self):
+    def test_open_types_route_to_entity_carrier(self):
+        # F1 — 미지 노드 타입은 skip 이 아니라 Entity 캐리어로 MERGE(정보 손실 0),
+        # 양 끝이 개방 타입인 엣지는 TYPED{type} 캐리어로 간다.
         fake = _FakeStore()
         res = frag.merge_fragment({
-            "nodes": [{"id": "x", "type": "policy"}],       # enum 밖 노드
-            "edges": [{"from": "a", "to": "b", "type": "blocks"}],  # enum 밖 엣지
+            "nodes": [{"id": "policy:p1", "type": "policy", "title": "P1"},
+                      {"id": "policy:p2", "type": "policy", "title": "P2"}],
+            "edges": [{"from": "policy:p1", "to": "policy:p2", "type": "blocks"}],
         }, store=fake)
+        self.assertTrue(res["executed"])
+        self.assertEqual(res["merged"]["nodes"]["created"], 2)
+        self.assertEqual(res["merged"]["edges"]["created"], 1)
+        self.assertEqual(res["warnings"], [])
+        joined = "\n".join(c for c, _ in fake.calls)
+        self.assertIn("MERGE (n:Entity {entity_id: $id})", joined)
+        self.assertIn("MERGE (a)-[:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
+
+    def test_entity_without_title_skips_with_warning(self):
+        # 개방층의 skip 은 형태 오류뿐 — Entity 는 title 필수(휴면 엔진 동형).
+        fake = _FakeStore()
+        res = frag.merge_fragment({"nodes": [{"id": "x", "type": "policy"}]}, store=fake)
         self.assertEqual(res["merged"]["nodes"]["created"], 0)
+        self.assertEqual(len(res["warnings"]), 1)
+        self.assertTrue(res.get("partial"))
+
+    def test_unsupported_pair_between_legacy_types_still_skips(self):
+        # 레거시 노드 간 미지 엣지 = 토폴로지 한계(rel 테이블 고정) — 여전히 warn+skip.
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "episode:e1", "type": "episode", "title": "E"},
+                      {"id": "record:r1", "type": "record", "title": "R"}],
+            "edges": [{"from": "episode:e1", "to": "record:r1", "type": "blocks"}],
+        }, store=fake)
         self.assertEqual(res["merged"]["edges"]["created"], 0)
-        self.assertEqual(len(res["warnings"]), 2)
+        self.assertEqual(len(res["warnings"]), 1)
+
+    def test_theme_fold_proposes_open_types(self):
+        # F1 — 어휘 밖 타입은 proposed 편입 + default 테마 lazy 생성·활성, Entity 행에
+        # theme_id 각인. proposed_types 는 비어있지 않을 때만 응답에 실린다.
+        from store.theme_store import ThemeStore
+        themes = ThemeStore(None)   # 인메모리 강등
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "policy:p1", "type": "policy", "title": "P1"},
+                      {"id": "policy:p2", "type": "policy", "title": "P2"}],
+            "edges": [{"from": "policy:p1", "to": "policy:p2", "type": "blocks"}],
+        }, store=fake, themes=themes)
+        self.assertEqual(res["proposed_types"],
+                         [{"kind": "node", "name": "policy"},
+                          {"kind": "edge", "name": "blocks"}])
+        self.assertEqual(themes.active_theme_id(), "default")
+        ent = [p for c, p in fake.calls if "MERGE (n:Entity" in c]
+        self.assertTrue(ent and all(p.get("theme_id") == "default" for p in ent))
+
+    def test_no_proposed_types_field_without_open_types(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment({"nodes": [{"id": "concept:a", "type": "concept"}]},
+                                  store=fake)
+        self.assertNotIn("proposed_types", res)
+
+    def test_entity_sec3_skips_foreign_owned(self):
+        # SEC-3 승계 — 타 테넌트 소유 Entity 에 강제 owner 경로 MERGE 는 skip.
+        fake = _FakeStore({"n.rev AS rev": [
+            {"rev": 1, "type": "policy", "title": "P", "tags": [],
+             "theme_id": "", "owner_id": "user:bob"}]})
+        res = frag.merge_fragment({
+            "nodes": [{"id": "policy:p1", "type": "policy", "title": "P"}],
+            "owner": "user:alice"}, store=fake)
+        self.assertEqual(res["merged"]["nodes"], {"created": 0, "matched": 0})
+        self.assertTrue(any("owned by another tenant" in w for w in res["warnings"]))
+
+    def test_entity_rev_not_stamped_when_unchanged(self):
+        # revstamp 승계 — 동일 내용 재적재는 무스탬프(가짜 충돌 방지).
+        cur = {"rev": 3, "type": "policy", "title": "P1", "tags": [],
+               "theme_id": "", "owner_id": ""}
+        fake = _FakeStore({"n.rev AS rev": [cur]})
+        frag.merge_fragment({"nodes": [{"id": "policy:p1", "type": "policy",
+                                        "title": "P1"}]}, store=fake)
+        merge_params = [p for c, p in fake.calls if c.startswith("MERGE (n:Entity")]
+        self.assertTrue(merge_params)
+        self.assertTrue(all("rev" not in p for p in merge_params))
+
+    def test_about_edge_episode_to_concept(self):
+        # F4 — about(Episode→Concept → ABOUT), 양 끝 owner 스코프.
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "episode:e1", "type": "episode", "title": "E1"},
+                      {"id": "concept:c1", "type": "concept", "title": "C1"}],
+            "edges": [{"from": "episode:e1", "to": "concept:c1", "type": "about"}],
+            "owner": "user:t",
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 1)
+        about = [c for c, _ in fake.calls if "MERGE (a)-[:ABOUT]->(b)" in c]
+        self.assertEqual(len(about), 1)
+        self.assertIn("a.owner_id = $owner", about[0])
+        self.assertIn("b.owner_id = $owner", about[0])
+
+    def test_about_wrong_pair_skips(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "concept:c1", "type": "concept"},
+                      {"id": "concept:c2", "type": "concept"}],
+            "edges": [{"from": "concept:c1", "to": "concept:c2", "type": "about"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        self.assertEqual(len(res["warnings"]), 1)
+
+    def test_connects_via_role_participates_in_merge(self):
+        # F9 — role 지정 시 MERGE 패턴 참여(bridges_ingest 동형), 미지정은 bare MERGE.
+        fake = _FakeStore()
+        frag.merge_fragment({
+            "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"},
+                      {"id": "concept:c1", "type": "concept", "title": "C"}],
+            "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via",
+                       "role": "math_input"}],
+        }, store=fake)
+        joined = "\n".join(c for c, _ in fake.calls)
+        self.assertIn("MERGE (a)-[:CONNECTS {role: $role}]->(b)", joined)
+        fake2 = _FakeStore()
+        frag.merge_fragment({
+            "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"},
+                      {"id": "concept:c1", "type": "concept", "title": "C"}],
+            "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via"}],
+        }, store=fake2)
+        self.assertIn("MERGE (a)-[:CONNECTS]->(b)", "\n".join(c for c, _ in fake2.calls))
+
+    def test_bridge_owner_stamped_and_edge_scoped(self):
+        # F5 — Bridge 노드 owner 스탬프(생성/명시) + connects_via 의 Bridge 끝점 스코프.
+        fake = _FakeStore()
+        frag.merge_fragment({
+            "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"},
+                      {"id": "concept:c1", "type": "concept", "title": "C"}],
+            "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via"}],
+            "owner": "user:t",
+        }, store=fake)
+        bridge_merge = [p for c, p in fake.calls if "MERGE (n:Bridge" in c]
+        self.assertTrue(any(p.get("owner_id") == "user:t" for p in bridge_merge))
+        cv = [c for c, _ in fake.calls if "MERGE (a)-[:CONNECTS]->(b)" in c][0]
+        self.assertIn("a.owner_id = $owner", cv)
+
+    def test_bridge_sec3_skips_foreign_owned(self):
+        fake = _FakeStore({"n.rev AS rev": [
+            {"rev": 1, "title": "B", "status": "", "source_domain": "",
+             "target_domain": "", "props": "", "owner_id": "user:bob"}]})
+        res = frag.merge_fragment({
+            "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"}],
+            "owner": "user:alice"}, store=fake)
+        self.assertEqual(res["merged"]["nodes"], {"created": 0, "matched": 0})
+        self.assertTrue(any("owned by another tenant" in w for w in res["warnings"]))
 
     def test_no_store_degrades(self):
         res = frag.merge_fragment({"nodes": []}, store=None)
@@ -193,6 +386,14 @@ class CouplingTests(unittest.TestCase):
     def test_bridge_plan_traverses_connects_both_arms(self):
         plan = q.bridge_coupling_plan(a="math", b="physics")
         self.assertIn("<-[:CONNECTS]-(br:Bridge)-[:CONNECTS]->", plan.cypher)
+
+    def test_bridge_plan_scopes_owner(self):
+        # F5 — Concept 양끝 엄격 + Bridge 과도기 술어. 무 owner 는 글로벌(로컬 현행).
+        plan = q.bridge_coupling_plan(a="math", b="physics", owner="u")
+        self.assertIn("x.owner_id = $owner", plan.cypher)
+        self.assertIn("y.owner_id = $owner", plan.cypher)
+        self.assertIn("(br.owner_id = $owner OR br.owner_id = '')", plan.cypher)
+        self.assertNotIn("$owner", q.bridge_coupling_plan(a="math", b="physics").cypher)
 
     def test_coupling_merges_and_prefers_direct(self):
         fake = _FakeStore({
@@ -265,6 +466,18 @@ class SuggestTiesTests(unittest.TestCase):
         fake = _FakeStore({"AS tags ORDER BY id": []})
         res = q.suggest_ties(owner="user:t", node="ghost", store=fake)
         self.assertTrue(res["executed"])
+        self.assertEqual(res["suggestions"], [])
+
+    def test_bridge_mediated_neighbor_excluded(self):
+        # F3 — 브릿지 매개로 이미 이어진 개념은 잇기 후보에서 제외(접착제 인지).
+        fake = _FakeStore({
+            "AS tags ORDER BY id": [
+                {"id": "a", "title": "A", "domain": "math", "tags": ["x"]},
+                {"id": "b", "title": "B", "domain": "math", "tags": ["x"]},
+            ],
+            "DISTINCT y.concept_id AS id": [{"id": "b"}],
+        })
+        res = q.suggest_ties(owner="user:t", node="a", store=fake)
         self.assertEqual(res["suggestions"], [])
 
 

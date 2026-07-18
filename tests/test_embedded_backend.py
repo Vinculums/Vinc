@@ -461,6 +461,105 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(again["total"], 0)
         store.close()
 
+    def test_open_layer_typed_merge_semantics(self):
+        """F1 — 핵심 Kùzu 가정 검증: rel-속성이 MERGE 패턴에 참여하면 같은 type 은
+        멱등, 다른 type 은 병렬 엣지. + fragment 경로의 Entity/TYPED·revstamp 왕복."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        fragment = {
+            "nodes": [{"id": "policy:p1", "type": "policy", "title": "P1"},
+                      {"id": "policy:p2", "type": "policy", "title": "P2"}],
+            "edges": [{"from": "policy:p1", "to": "policy:p2", "type": "blocks"}],
+            "owner": "user:alice",
+        }
+        r1 = frag.merge_fragment(fragment, store=store)
+        self.assertEqual(r1["merged"]["nodes"]["created"], 2, r1)
+        r2 = frag.merge_fragment(fragment, store=store)   # 멱등 재적재
+        self.assertEqual(r2["merged"]["nodes"], {"created": 0, "matched": 2})
+        frag.merge_fragment({**fragment, "edges": [
+            {"from": "policy:p1", "to": "policy:p2", "type": "enables"}]}, store=store)
+        rows = store.run("MATCH (:Entity)-[r:TYPED]->(:Entity) RETURN count(r) AS c")
+        self.assertEqual(int(rows[0]["c"]), 2)   # blocks(멱등) + enables(병렬)
+        rev = store.run("MATCH (n:Entity) WHERE n.entity_id = 'policy:p1' "
+                        "RETURN n.rev AS r")
+        self.assertEqual(int(rev[0]["r"]), 1)    # 동일 재적재 무스탬프
+        store.close()
+
+    def test_about_edge_roundtrip_and_graph_visibility(self):
+        """F4/F2 — about 적재 → graph(owner, domain) 축 합류로 에피소드 노드·ABOUT
+        엣지가 렌더되고 개념 degree 에 반영된다(브릿지 팔 과소 카운트의 동형 회귀)."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        frag.merge_fragment({
+            "nodes": [{"id": "episode:e1", "type": "episode", "title": "E1", "domain": "d"},
+                      {"id": "concept:c1", "type": "concept", "title": "C1", "domain": "d"}],
+            "edges": [{"from": "episode:e1", "to": "concept:c1", "type": "about"}],
+            "owner": "user:alice",
+        }, store=store)
+        res = q.graph(owner="user:alice", domain="d", store=store)
+        by_id = {n["id"]: n for n in res["nodes"]}
+        self.assertIn("episode:e1", by_id, res)
+        self.assertEqual(by_id["episode:e1"]["kind"], "episode")
+        self.assertEqual(by_id["concept:c1"]["degree"], 1)
+        self.assertTrue(any(e["type"] == "ABOUT" for e in res["edges"]))
+        store.close()
+
+    def test_bridge_owner_scoping_2owner_with_legacy(self):
+        """F5 — alice/bob 브릿지 + 레거시 '' 브릿지: atlas_l0(alice) 의 Bridge 결합에
+        bob 것은 없고, 자기 것 + 레거시(과도기 술어)는 있다. 실엔진 2-소유자 검증
+        ([[vinc-owner-isolation-sec1]] — 스텁 아님)."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+
+        def _mk(owner: str, bid: str) -> None:
+            frag.merge_fragment({"nodes": [{"id": bid, "type": "bridge", "title": bid}],
+                                 "owner": owner}, store=store)
+            store.run("MATCH (b:Bridge) WHERE b.bridge_id = $id "
+                      "SET b.source_domain = 'm', b.target_domain = 'p'", {"id": bid})
+
+        _mk("user:alice", "bridge:a")
+        _mk("user:bob", "bridge:b")
+        store.run("MERGE (b:Bridge {bridge_id:'bridge:legacy'}) "
+                  "SET b.source_domain='m', b.target_domain='p', b.owner_id=''")
+        res = q.atlas_l0(owner="user:alice", store=store)
+        ties = {(t["source"], t["target"]): t["ties"] for t in res["ties"]}
+        self.assertEqual(ties.get(("m", "p")), 2, res)   # alice + legacy, bob 제외
+        store.close()
+
+    def test_migrate_records_schema_version_2(self):
+        """v2 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 2 를 기록하고
+        Bridge.owner_id 조회가 동작한다(신규 설치는 base DDL, 구 설치는 ALTER 수렴)."""
+        from store.config import load_config
+        from store.backend import open_store
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                         "RETURN m.value AS v")
+        self.assertEqual(rows[0]["v"], "2")
+        store.run("MERGE (b:Bridge {bridge_id:'b0'}) SET b.owner_id = 'user:x'")
+        got = store.run("MATCH (b:Bridge) WHERE b.owner_id = 'user:x' RETURN count(b) AS c")
+        self.assertEqual(int(got[0]["c"]), 1)
+        store.close()
+
 
 if __name__ == "__main__":
     unittest.main()

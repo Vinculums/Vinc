@@ -134,8 +134,16 @@ async function call(path: string, params?: Record<string, string | number | unde
   return res.json();
 }
 
-export type GraphNode = { id: string; label: string; domain: string; degree: number; x?: number; y?: number };
-export type GraphEdge = { source: string; target: string; type: string; cross_domain: boolean };
+export type GraphNode = {
+  id: string; label: string; domain: string; degree: number;
+  kind?: string;      // concept | bridge | episode | record | entity (F2 — 부착 축)
+  domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
+  x?: number; y?: number; z?: number;
+};
+export type GraphEdge = {
+  source: string; target: string; type: string; cross_domain: boolean;
+  role?: string;      // CONNECTS.role / ATTACHES_TO.type 질화자 (F2)
+};
 
 export const api = {
   health: () => call("/health"),

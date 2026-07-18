@@ -48,6 +48,49 @@ def test_export_with_no_selection_emits_nothing():
     assert out["executed"] and out["nodes"] == [] and "no domains selected" in out["note"]
 
 
+# ── F4: ABOUT(Episode→Concept) 엣지 동기화 커버리지 ──────────────────────────
+def test_about_edges_covered_by_rel_map_and_plan():
+    """_REL_TO_FRAGMENT 에 ABOUT 편입 + 전용 플랜(Episode 소스는 Concept 소스 전용
+    graph_rows_for_ids_plan 이 못 본다)의 스코프 술어."""
+    assert sync._REL_TO_FRAGMENT["ABOUT"] == "about"
+    assert sync._REL_TO_FRAGMENT["RELATED_TO"] == "relates_to"   # 기존 역맵 불변
+    p = sync._episode_about_plan(["episode:e1", "concept:c1"], owner=OWNER)
+    assert "MATCH (e:Episode)-[:ABOUT]->(c:Concept)" in p.cypher
+    assert "e.episode_id IN $ids" in p.cypher
+    assert "c.concept_id IN $ids" in p.cypher
+    assert "e.owner_id = $owner" in p.cypher
+    assert "c.owner_id = $owner" in p.cypher
+
+
+def test_export_carries_about_edges_when_both_endpoints_in_bundle():
+    """export_delta — Episode·Concept 이 같은 번들에 있을 때만 about 엣지 동봉."""
+    class _SubFake:
+        def __init__(self, responses):
+            self.responses = responses
+        def run(self, cypher, params=None):
+            for key, rows in self.responses.items():
+                if key in cypher:
+                    return rows
+            return []
+        def close(self):
+            pass
+
+    fake = _SubFake({
+        "MATCH (c:Concept) WHERE": [
+            {"id": "concept:c1", "title": "C1", "domain": "d", "sync_seq": 1}],
+        "MATCH (e:Episode) WHERE": [
+            {"id": "episode:e1", "title": "E1", "domain": "d", "sync_seq": 2}],
+        "-[:ABOUT]->": [
+            {"id": "episode:e1", "rel": "ABOUT", "target": "concept:c1"},
+            # 번들 밖 끝점 — 실리면 안 된다(수신측 fragment 가 타입 해석 불가)
+            {"id": "episode:ghost", "rel": "ABOUT", "target": "concept:c1"}],
+    })
+    out = sync.export_delta(owner=OWNER, since=0, domains=["d"], store=fake)
+    assert out["executed"]
+    assert {"from": "episode:e1", "to": "concept:c1", "type": "about"} in out["edges"]
+    assert all(e["from"] != "episode:ghost" for e in out["edges"])
+
+
 # ── LWW / 에코 차단 ───────────────────────────────────────────────────────────
 def _n(ua: str, rev: int) -> dict:
     return {"id": "concept:x", "type": "concept", "_updated_at": ua, "_rev": rev}

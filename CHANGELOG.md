@@ -3,6 +3,87 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.4.0 — 그래프 구조 수리 9건 (2026-07-19)
+
+`vinc.d.graph-structure-analysis` 냉철 분석(F1–F9)의 전면 수리. 스키마
+`SCHEMA_VERSION=2`(기동 시 자동 마이그레이션 — 하위호환), 실엔진 검증 완료.
+
+- **개방층(Entity/TYPED) 재활성화 — 라이브 포팅(F1)**: 휴면이던 D11-R2 사용자
+  저작 타입 적재를 `api/fragment.py`(단일 쓰기 표면)에 포팅 — 미지 노드 타입은
+  skip 이 아니라 Entity 캐리어로 영속, 양끝 개방 타입 엣지는 TYPED{type}, 어휘
+  proposed 편입 + `proposed_types` 응답. revstamp(동기화)·SEC-3·dedupe 승계.
+  MCP `vinc_ingest` 스키마 type enum 제거, `theme_id`(선택) 전달. 미지 접두사
+  시드(`theory:x`)의 Entity 프로브·전용 L2 순회. (`api/fragment.py`,
+  `vinc_mcp/tools.py`·`rpc.py`, `api/query.py`)
+- **Atlas Concept 단일 축 해소(F2)**: 축 플랜 3종(Bridge CONNECTS·Episode
+  ABOUT·Record ATTACHES_TO)이 L1/L2 에 합류 — 브릿지 매개 개념이 엣지 없이 떠
+  있던 '보이지 않는 접착제' 제거(매개자 keep 편입), 팔면체·육각기둥 마크가
+  실데이터로 렌더. (`api/query.py`, `app/src/surfaces/atlas.ts`)
+- **degree 정직화(F3)**: CONNECTS/ABOUT/ATTACHES_TO/TYPED 전부 양끝 카운트 —
+  브릿지 팔만 가진 개념이 '고아'로 잇기 제안을 받던 모순 제거. 상세 레일에
+  부착 카운트 표기.
+- **ABOUT(Episode→Concept) 관계 신설(F4)**: episodic↔semantic 다리 — fragment
+  `about` 엣지 + 동기화 export 편입(`_episode_about_plan`).
+- **Bridge 소유 편입(F5, 스키마 v2)**: `owner_id` 열 + purge 자동 커버 +
+  ties/coupling/seed/merge 재지향 owner 스코프 — 호스티드 L0 교차테넌트 집계
+  차단. 레거시 행은 `''` 과도기 술어(`_bridge_owner_pred`), bridges_ingest
+  재실행이 백필 경로.
+- **위키링크 보수(F6/F8)**: 방향 관계(PREREQUISITE_OF·DERIVES_FROM)는
+  frontmatter 명시만, 키워드 추론은 RELATED_TO 강등 + 정준화·역방향 dedupe
+  (fragment 정책 일치). (`engines/concepts_ingest.py`)
+- **connects_via role(F9)**: fragment 경로도 선택 `role` 지원(bridges_ingest
+  MERGE 의미론 동형).
+- props 경계 명문화(F7)·엣지 톰스톤 부재 등 잔여 한계는 `vinc.c.dataplane` v0.4
+  등재.
+
+### 함께 출시 — main, v0.3.1 이후 (2026-07-18 기준)
+
+v0.3.1 태그(`18d7231`) 이후 `main` 에 올라간 작업. 웹 Vinc·커뮤니티·엣지
+하드닝은 이미 vincs.app 에 라이브지만, 데스크톱 설치본에는 v0.4.0 이 첫 포함이다.
+사용자 노출 카피 정본은 여전히 `site/release/`.
+
+- **MCP 커넥터 제거**: Settings→MCP 에 [Desktop에서 제거]/[Code에서 제거] 버튼 —
+  그동안 install 만 있고 uninstall 이 없었다. 셸 `mcp_uninstall` Tauri 커맨드 →
+  번들 사이드카 `mcp uninstall --client desktop|code`. Desktop 은
+  `claude_desktop_config.json` 을 **백업 후 `mcpServers.vinc` 키만** 제거(나머지
+  보존, 항목 없으면 `removed:false` 로 멱등), Code 는 `claude mcp remove --scope
+  user vinc`. (`vinc_mcp/install.py`, `api/cli.py`, `app/src-tauri/src/main.rs`,
+  `app/src/surfaces/settings.ts`, `app/src/copy.ts`, b9b1cc3)
+- **SEC-3 — 호스티드 쓰기 owner 격리**: 읽기(SEC-1/2)에 이어 **쓰기 경로**
+  (delete·merge·pin·tag·ingest)도 owner 스코프로 강제한다 — 모든 Concept MATCH 에
+  `owner_id` 술어. MCP `call()` 이 원격 타깃에서 클라이언트가 실어 보낸 owner 를
+  `forced_owner` 로 덮어써 교차테넌트 쓰기를 봉쇄(로컬 stdio 는 단일 유저라
+  무스코프 유지). 실엔진 2-owner 테스트로 검증. (`api/fragment.py`,
+  `api/preference.py`, `api/query.py`, `vinc_mcp/tools.py`,
+  `tests/test_write_tenancy.py`, f8942ed·cf8abb4)
+- **MCP 쓰기 도구 3종 정착**: 라이브 MCP 표면은 도구 9종 — 읽기 6종
+  (`vinc_search`·`vinc_recall`·`vinc_graph`·`vinc_decide`·`vinc_domains`·
+  `vinc_suggest_ties`), 쓰기 3종(`vinc_ingest` + SEC-3 이 추가한 `vinc_delete`
+  [DETACH DELETE]·`vinc_merge_nodes`[concept fold], 둘 다 owner 스코프 비가역
+  정리 도구). (`vinc_mcp/tools.py`)
+- **웹 Vinc (vincs.app/app/) 라이브**: 데스크톱 앱 프론트의 **브라우저 빌드**.
+  인증 = 계정 세션쿠키(`__Host-session`) → 계정 `/api/graph` 프록시 → 서명
+  Ed25519 `typ:"proxy"` 어서션 → 허브 `/internal/graph-owner`(owner = 세션 sub
+  강제, B2 불변식: 공개키만 공유). 완전 쓰기 패리티(delete/merge/pin/tag/ingest).
+  `ensureWebAuth` 부팅 게이트가 인증을 먼저 확인(`__Host-csrf` 동기 확인 or
+  `/api/me`)해 로그아웃 시 즉시 `/login`(앱 깜빡임 제거·왕복 0). `vite base` 를
+  `VITE_BASE` env 로 빼 **웹 빌드만** `/app/`. FORB '반입 금지'·'외부 왕복 없음'
+  불변식은 네이티브 데스크톱 경계에만 해당하며, 웹 빌드는 계정 세션으로
+  인증한다. (9bdd544·c7487a3·76679cd·b5010da·5868e28·10e1c6c)
+- **커뮤니티 공유 (vincs.app/community/) 라이브**: 웹 Vinc Packs 표면에
+  [커뮤니티에 공유] — 동의 게이트 게시 시트가 share 팩(= MCP fragment 동형)을
+  페이로드로 공개 갤러리에 게시(owner 는 세션 강제). 계정 백엔드 `api.community` +
+  `community_packs`(마이그레이션 008) + `packSummary`(도메인 분포·교차도메인%·
+  top 태그·엣지 타입 시각요약). 즉시 공개 + 경량 안전 모더레이션. (bf6360f)
+- **엣지 하드닝**: `deploy/Caddyfile` 을 배포 정본과 1:1 동기화 — 캐시(해시에셋
+  `immutable` 1y, HTML `no-cache`, `/api`·`/internal` `no-store`), `encode zstd
+  gzip`, 보안헤더(HSTS `max-age=1y includeSubDomains`, CSP `frame-ancestors
+  'none'`, `X-Frame-Options DENY`, `X-Content-Type-Options nosniff`,
+  `Referrer-Policy no-referrer`), `mcp.vincs.app` 의 `/internal/*` 공개 404(루프백
+  8790 전용), `/api/*` → 계정 Hono 8080. (`deploy/Caddyfile`, 1710b07)
+- **build(app)**: macOS 코드서명·공증 CI 스캐폴딩(env 훅) — **별개 마일스톤**으로
+  표기, 아직 실제 서명 발효 전(v0.3.1 의 minisign 업데이터 서명과는 별개). (65e8479)
+
 ## v0.3.1 — 2026-07-18
 
 자동 업데이트 릴리스. **설치된 앱이 스스로 새 버전을 받는다** — 지금까지는 매번

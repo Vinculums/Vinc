@@ -42,8 +42,9 @@ SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
 }
-# fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 는 fragment 왕복 결함이
-# 있어(구조 필드 미기록) 현재 sync 범위 밖 — Concept/Episode 만.
+# fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 제외는 이제 왕복 결함이
+# 아니라 **스코프 결정**(F1 포팅으로 Entity 필드는 왕복 가능; Bridge 구조 필드
+# source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제. Concept/Episode 만.
 _SYNC_TYPES = {"concept": "Concept", "episode": "Episode"}
 
 
@@ -267,8 +268,13 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
     if ids:
         rel_res = q.execute(q.graph_rows_for_ids_plan(sorted(ids), owner=owner),
                             cfg, store=store)
+        # F4 — Episode 소스 엣지(ABOUT)는 graph_rows_for_ids_plan(Concept 소스 전용)이
+        # 못 본다 → 전용 플랜으로 별도 조회. apply 측은 무변경(fragment `about` 분기).
+        about_res = q.execute(_episode_about_plan(sorted(ids), owner=owner),
+                              cfg, store=store)
+        about_rows = about_res.get("rows", []) if about_res.get("executed") else []
         seen = set()
-        for r in rel_res.get("rows", []):
+        for r in [*rel_res.get("rows", []), *about_rows]:
             ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")
             tgt = r.get("target")
             if not ftype or not tgt or tgt not in ids or r["id"] not in ids:
@@ -296,8 +302,26 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
     return base
 
 
-# share.py 의 역매핑을 재사용(중복 정의 회피).
+# share.py 의 역매핑을 재사용(중복 정의 회피). + F4: ABOUT(Episode→Concept) 편입 —
+# _EC_EDGES 는 _CC_EDGES 와 분리 유지(여기 역맵이 Concept 엣지 export 전용이라는
+# 전제를 오염시키지 않기 위함), 합류는 이 지점에서만.
 _REL_TO_FRAGMENT = {rel: ft for ft, rel in frag._CC_EDGES.items()}
+_REL_TO_FRAGMENT.update({rel: ft for ft, rel in frag._EC_EDGES.items()})
+
+
+def _episode_about_plan(ids: list[str], *, owner: str) -> "q.QueryPlan":
+    """번들 내 Episode→Concept ABOUT 엣지(F4) — graph_rows_for_ids_plan 이 Concept
+    소스만 순회하므로 Episode 소스 엣지는 여기서 별도로 뽑는다. 양끝 모두 번들 id
+    집합 + owner 스코프. ⚠ 엣지 톰스톤은 없다 — ABOUT 삭제는 전파되지 않는 기지
+    한계(노드 톰스톤과 달리 엣지는 삭제 표식 테이블이 없음)."""
+    cypher = (
+        "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
+        "WHERE e.episode_id IN $ids AND c.concept_id IN $ids "
+        "AND e.owner_id = $owner AND c.owner_id = $owner "
+        "RETURN e.episode_id AS id, 'ABOUT' AS rel, c.concept_id AS target"
+    )
+    return q.QueryPlan("sync_about_edges", cypher, {"ids": ids, "owner": owner},
+                       note="episode ABOUT edges for sync bundle (F4)")
 
 
 # ── 청킹 ──────────────────────────────────────────────────────────────────────

@@ -4,14 +4,21 @@
 [[vinc.c.p5-remote-rollout]](Vinc-docs), 설계는 [[vinc.d.remote-profile]](D36).
 각 단계 끝의 **게이트**를 통과해야 다음으로 넘어간다.
 
+> 이 런북은 **Vinc 앱 서버 트랙**(사이드카 + MCP 어댑터 + 정적 홈페이지)을
+> 세운다. 라이브 vincs.app 은 그 위에 **계정 백엔드·웹 Vinc·커뮤니티**가
+> 같은 오리진으로 동거한다(2026-07-18 라이브). 계정/이메일/홈페이지/커뮤니티는
+> **별도 비공개 리포 `Vinc-homepage`** 가 정본이며(6·9단계에서 연동), 이 런북은
+> 그 연동 지점을 명시한다.
+
 ## 대상
 
 | 항목 | 값 |
 |---|---|
 | 도메인 | **vincs.app** (커넥터 = `mcp.vincs.app`) |
-| VM | Ubuntu 24.04 · 4 vCPU / 8GB / SSD 150GB |
+| 웹 VM | Ubuntu 24.04 · 4 vCPU / 8GB / SSD 150GB |
 | 공인 IP | `1.201.120.125` |
 | 로그인 계정 | **`ubuntu`**(클라우드 키 주입 — root 아님, `sudo` 로 권한 상승) |
+| 계정 DB | 관리형 MySQL, 사설 **`192.168.0.38:3306`**(별도 인스턴스 — 웹 VM에서만 접속, 공개 엔드포인트 없음) |
 
 ## 시크릿 규칙 (D36)
 
@@ -86,7 +93,7 @@ ssh -o StrictHostKeyChecking=accept-new -T git@github.com   # "Hi Vinclums/Vinc 
 # (4) SSH 로 클론
 git clone git@github.com:Vinclums/Vinc.git /root/vinc
 cd /root/vinc
-git checkout claude/weg-vinc-gap-analysis-r1vpwl   # 배포 트랙 브랜치(머지 후엔 main)
+git checkout main                       # 배포 트랙은 main 에 머지됨(P5 롤아웃 이후)
 
 sudo bash deploy/harden.sh
 ```
@@ -115,7 +122,16 @@ dig +short mcp.vincs.app         # 둘 다 1.201.120.125 이 나와야 함
 
 **게이트:** 두 이름 모두 `1.201.120.125` 로 해석.
 
-## 5. Caddy — 리버스 프록시 + 자동 TLS
+## 5. Caddy — 리버스 프록시 + 자동 TLS + 엣지 하드닝
+
+`deploy/Caddyfile` 은 **배포 정본과 1:1**(편집 시 서버에도 반영)이며, 단순
+프록시가 아니다. 루트 블록이 **`/api/*`→계정 백엔드(127.0.0.1:8080, 6단계)**,
+`/app/*`·`/community/*` 정적 서빙, 캐시 정책(해시에셋 1년 immutable·HTML no-cache·
+`/api`·`/internal` no-store), 보안 헤더(HSTS includeSubDomains·CSP
+`frame-ancestors 'none'`·X-Frame-Options DENY·X-Content-Type-Options nosniff·
+Referrer-Policy no-referrer), `encode zstd gzip` 를 모두 담는다. `mcp.` 블록은
+루프백 8790 으로 프록시하되 **`/internal/*` 는 공개 404**(graph-owner/purge-owner 는
+계정 백엔드가 루프백으로만 호출 — 심층방어).
 
 ```bash
 # Caddy 설치(공식 저장소)
@@ -126,15 +142,50 @@ apt-get update -qq && apt-get install -y caddy
 
 # 설정 배치 + 도메인 주입
 cp /root/vinc/deploy/Caddyfile /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile     # 문법 확인
 mkdir -p /etc/systemd/system/caddy.service.d
 printf '[Service]\nEnvironment=VINC_DOMAIN=vincs.app\n' > /etc/systemd/system/caddy.service.d/override.conf
 systemctl daemon-reload && systemctl restart caddy
 ```
 
 **게이트:** `curl -I https://vincs.app` 가 유효 인증서로 응답(콘텐츠는 아직 없어도 됨).
-`https://mcp.vincs.app` 도 인증서 발급 확인(502 여도 TLS 만 되면 통과 — 어댑터는 7단계).
+`https://mcp.vincs.app` 도 인증서 발급 확인(어댑터 미기동이면 502 여도 TLS 만 되면 통과).
+`/api/*`·`/app/`·`/community/` 는 백엔드/자산이 아직 없으면 502·404 가 정상(각각 6·9단계 이후 채워짐).
+엣지 하드닝 확인:
+```bash
+curl -sI https://vincs.app | grep -i 'strict-transport\|x-frame-options'         # HSTS·DENY 헤더 존재
+curl -s -o /dev/null -w '%{http_code}\n' https://mcp.vincs.app/internal/graph-owner   # 404(공개 차단)
+```
 
-## 6. 사이드카 바이너리 빌드 + 서비스
+## 6. 계정 백엔드 (Hono 8080) + DB — /api·웹 Vinc·커뮤니티 전제
+
+정본은 **`Vinc-homepage` 리포**(`account/README.md`, `account/db/README.md`)다.
+이 서비스가 있어야 `/api/*`(로그인·뉴스레터·API 키·커넥터 온보딩·그래프 프록시·
+커뮤니티)가 살고, 그 위에서 웹 Vinc·커뮤니티가 동작한다. 앱 사이드카(8787)와는
+시크릿을 공유하지 않는 **물리적·인증적 별개 서비스**(전용 유저 `vinc-acct`).
+
+```bash
+# (1) DB — 관리형 MySQL(192.168.0.38:3306). 콘솔에서 bootstrap DDL 1회,
+#     이후 dbmate 로 마이그레이션 001~008 적용(계정 리포 db/README.md 절차).
+#     require_secure_transport=ON · ACG 는 웹 VM 사설 IP(192.168.0.38/32)만 허용.
+#     008 = community_packs(커뮤니티), 007 = users.plan ENUM('free','pro'),
+#     006 = api_keys(커넥터 API 키). dbmate 는 forward-only.
+dbmate up && dbmate status                    # 001→008 적용 확인
+
+# (2) 앱 배치 — Node 22 + Hono 빌드 산출물을 /opt/vinc-account 에.
+#     시크릿(pepper/세션/CSRF/DB pw/서명키)은 /etc/vinc-account/env(0600, vinc-acct)에만.
+cp account/deploy/vinc-account.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now vinc-account
+```
+
+**게이트:**
+```bash
+curl -s http://127.0.0.1:8080/api/health        # 내부 헬스 OK
+curl -sI https://vincs.app/api/health           # Caddy /api/*→8080 프록시 왕복(외부 오리진 경유)
+```
+DB 는 웹 VM에서만(사설 IP·SSL) 연결되고 외부/평문 연결은 거부돼야 정상.
+
+## 7. 사이드카 바이너리 빌드 + 서비스
 
 최초 배포는 서버에서 직접 동결한다(이후 릴리스는 P4 태그 파이프라인 산출물 사용).
 
@@ -166,7 +217,13 @@ curl -s -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" http://127.0.0.1:8787/hea
 외부에서 `1.201.120.125:8787` 직접 접근은 **안 돼야** 정상(UFW 차단).
 데이터 홈 `~vinc/.vinc/{db,packs,inbox,backups}` 자동 생성 확인.
 
-## 7. MCP 어댑터 + 커넥터 등록
+## 8. MCP 어댑터 + 커넥터 등록
+
+어댑터는 루프백 8790 에서 Streamable HTTP + OAuth 로 뜨고, 공개는 Caddy `mcp.`
+블록이 전담한다. `vinc-mcp.service` 는 **사이드카 토큰 외에 서명키·계정 공개키·
+계정 내부 URL** 을 요구한다(웹 Vinc·회원 인증 경로가 이 값들로 동작 — 빠지면
+기동·회원경로 실패). 티어 쿼터와 OAuth/쿼터 상태 영속 경로(`StateDirectory=
+vinc-mcp` → `/var/lib/vinc-mcp`)는 유닛 파일에 이미 박혀 있다.
 
 ```bash
 umask 077
@@ -175,36 +232,67 @@ cat > /etc/vinc/mcp.env <<EOF
 VINC_DOMAIN=vincs.app
 VINC_SIDECAR_TOKEN=$SIDE
 VINC_OAUTH_ADMIN_KEY=$(openssl rand -hex 24)
+VINC_MCP_ED25519_SEED=$(openssl rand -base64 32)
+VINC_ACCOUNT_PUBLIC_KEY=<계정 백엔드 서명 공개키 base64 — /etc/vinc-account/env 값과 동일>
+VINC_ACCOUNT_INTERNAL_URL=http://127.0.0.1:8080
 EOF
 chmod 600 /etc/vinc/mcp.env
 
 cp /root/vinc/deploy/vinc-mcp.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now vinc-mcp
 ```
+> `VINC_MCP_ED25519_SEED` 는 MCP 가 계정에 보내는 어서션의 서명키(계정이 공개키를
+> 핀). `VINC_ACCOUNT_PUBLIC_KEY` 는 그 역방향(계정 어서션 검증). 두 값은 계정
+> 백엔드와 **짝을 맞춰** 발급/공유해야 한다(공개키만 교환 — B2 불변식).
 
 **게이트(무인증 거부):**
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://mcp.vincs.app/mcp -d '{}'   # 401
+ls -ld /var/lib/vinc-mcp        # StateDirectory 생성 확인(OAuth·쿼터 SQLite 영속 → 재시작해도 커넥터 재연결 불필요)
 ```
 
-**커넥터 등록(claude.ai, 수동 1회):** 설정 → 커넥터 → 사용자 지정 커넥터 추가 →
-URL `https://mcp.vincs.app/mcp`. OAuth 인가 단계에서 우리 게이트는 관리 키
-승인 모델이다(단일 소유자) — 인가 URL 뒤에 `&key=<VINC_OAUTH_ADMIN_KEY 값>` 을
-붙여 1회 승인한다. 관리 키는 `/etc/vinc/mcp.env` 안에만 있다.
+**커넥터 등록:** 정상 경로는 **회원 로그인 온보딩**이다 — 회원이 `vincs.app/connect`
+에서 커넥터를 연결하고 API 키(`vinc_sk_…`)를 발급받는다(무료/Pro 티어 쿼터 적용).
+`&key=<VINC_OAUTH_ADMIN_KEY>` 관리 키 승인은 **단일 소유자용 레거시 폴백**으로만
+남아 있다(회원 경로 활성 후 폐기 가능 — 유닛 주석). claude.ai 에서 사용자 지정
+커넥터로 `https://mcp.vincs.app/mcp` 를 등록한다.
 
-**게이트:** 커넥터에서 `vinc_domains`·`vinc_graph` 실호출이 실데이터로 응답.
+**게이트:** 커넥터에서 `vinc_domains`·`vinc_search` 실호출이 실데이터로 응답(회원 owner 스코프).
 
-## 8. 홈페이지 게시
+> 커넥터 **제거**는 서버가 아니라 클라이언트 쪽 — 앱 Settings 의
+> 'Remove from Desktop/Code' 버튼 또는 `vinc mcp uninstall --client desktop|code`
+> (desktop 은 백업 후 Vinc 키만 제거).
+
+## 9. 홈페이지 + 웹 Vinc + 커뮤니티 게시
+
+공개 사이트(홈·로그인·`/connect`·`/privacy`·구독/해지 인터스티셜·**커뮤니티
+갤러리 `/community/`**)의 정본은 **`Vinc-homepage` 리포의 `site/`** 다. 웹 Vinc
+(`/app/`)는 데스크탑 앱과 **같은 dist 를 서브패스로** 서빙한다 — 웹 빌드만
+`VITE_BASE=/app/` 로 뽑아 자산이 `/app/assets/*` 를 가리키게 하고 `/srv/www/app/`
+에 배포한다(해시 라우팅 SPA → 미존재 경로는 `/app/index.html` 폴백).
 
 ```bash
-rsync -av /root/vinc/site/ /srv/www/
+# (1) 공개 홈페이지 + 커뮤니티 갤러리 — Vinc-homepage/site 정본
+rsync -av /root/vinc-homepage/site/ /srv/www/
+
+# (2) 웹 Vinc — 앱 리포 web 빌드를 /app 서브패스로
+cd /root/vinc/app
+VITE_BASE=/app/ npm ci && VITE_BASE=/app/ npm run build
+rsync -av dist/ /srv/www/app/
+
 chown -R vinc:vinc /srv/www
 ```
+> 앱 리포에도 `Vinc/site/` 스냅샷이 있으나, 라이브 공개 사이트·커뮤니티·계정
+> 인터스티셜의 정본은 `Vinc-homepage` 리포다(2026-07 홈페이지 분리). 최초 실
+> 배포는 로컬 작업트리를 tar/scp 로 전송해 GitHub 배포키 등록을 생략했다(하단 참고).
 
-**게이트:** 브라우저에서 `https://vincs.app` 가 홈페이지를 렌더, 다운로드 버튼이
-GitHub Releases 로 연결(릴리스가 아직 없으면 P4 태그를 밀어 발행).
+**게이트:** 브라우저에서 `https://vincs.app` 홈페이지 렌더, 다운로드 버튼이
+GitHub Releases(현행 v0.3.1)로 연결. `https://vincs.app/app/` 웹 Vinc 부팅(로그인
+안 됐으면 `/login` 리다이렉트 — `ensureWebAuth` 게이트), 로그인 후 그래프 왕복.
+`https://vincs.app/community/` 갤러리 렌더. 회원이 웹 Packs 표면에서 지식팩을
+게시하면 갤러리에 시각요약(도메인 분포·교차도메인%·top 태그·엣지 타입)과 함께 노출.
 
-## 9. 백업 + 복원 리허설
+## 10. 백업 + 복원 리허설
 
 야간 백업은 **서버 프로세스 내부 스냅샷**(HTTP `POST /backup`)이다 — 사이드카가
 소유한 Database 에서 CHECKPOINT+복사를 수행하므로 **무중단·무락**이다. CLI
@@ -229,7 +317,8 @@ rm -rf /home/vinc/.vinc/backups/rehearsal
 > 참고(계정): 이 VM 은 클라우드가 키를 `ubuntu` 계정에 주입했다 — 위 명령의
 > `/root/vinc` 경로·root 실행은 실제로는 `~ubuntu/vinc` + `sudo` 로 수행했다.
 > 비공개 레포 클론(3단계) 대신 **로컬 작업트리를 tar/scp 로 전송**해 GitHub 배포키
-> 등록을 생략했다(둘 다 유효 — 산출물 동일).
+> 등록을 생략했다(둘 다 유효 — 산출물 동일). 계정 백엔드·공개 홈페이지·커뮤니티는
+> 별도 `Vinc-homepage` 리포에서 같은 방식으로 전송·배포했다(6·9단계).
 
 ---
 
@@ -237,18 +326,27 @@ rm -rf /home/vinc/.vinc/backups/rehearsal
 
 - [ ] 1. 키 로그인 OK · 비밀번호 교체
 - [ ] 2. 보안 그룹 22/80/443 만
-- [ ] 3. harden.sh · 비밀번호 SSH 거부
+- [ ] 3. harden.sh · 비밀번호 SSH 거부 · main 체크아웃
 - [ ] 4. DNS 2건 → 1.201.120.125
-- [ ] 5. https://vincs.app · https://mcp.vincs.app 인증서
-- [ ] 6. 사이드카 /health OK · 8787 외부 차단
-- [ ] 7. /mcp 무토큰 401 · 커넥터 실호출 왕복
-- [ ] 8. 홈페이지 렌더
-- [ ] 9. 복원 리허설 PASS
+- [ ] 5. https://vincs.app · https://mcp.vincs.app 인증서 · HSTS/X-Frame 헤더 · /internal 404
+- [ ] 6. 계정 백엔드 /api/health OK · DB 마이그레이션 008 적용 · /api 프록시 왕복
+- [ ] 7. 사이드카 /health OK · 8787 외부 차단
+- [ ] 8. /mcp 무토큰 401 · StateDirectory 영속 · 회원 커넥터 실호출 왕복
+- [ ] 9. 홈페이지 렌더 · 웹 Vinc(/app/) 부팅 · 커뮤니티(/community/) 갤러리
+- [ ] 10. 복원 리허설 PASS
 
 ## 문제 대응
 
-- `systemctl status vinc-sidecar` / `journalctl -u vinc-sidecar -n 50` — 서비스 로그.
+- `systemctl status vinc-sidecar` / `journalctl -u vinc-sidecar -n 50` — 사이드카 로그.
+- `systemctl status vinc-account` / `journalctl -u vinc-account -n 50` — 계정 백엔드 로그
+  (DB 연결 실패면 사설 IP·SSL CA `/etc/vinc-account/db-ca.pem`·ACG 확인).
+- `journalctl -u vinc-mcp -n 50` — 어댑터 로그. 기동 즉시 죽으면 `/etc/vinc/mcp.env`
+  의 `VINC_MCP_ED25519_SEED`·`VINC_ACCOUNT_PUBLIC_KEY` 누락 또는 `/var/lib/vinc-mcp`
+  (StateDirectory) 쓰기 불가를 먼저 의심.
 - Caddy 인증서 실패: DNS 전파(4단계) 미완이면 발급 실패 → `dig` 재확인 후
   `systemctl restart caddy`.
 - 커넥터 401 지속: `/etc/vinc/mcp.env` 의 `VINC_SIDECAR_TOKEN` 이
   `/etc/vinc/sidecar.env` 값과 동일한지 확인.
+- `/api/*` 502: 계정 백엔드(6단계) 미기동 — `vinc-account` 상태 확인.
+- 웹 Vinc(`/app/`)가 계속 `/login` 으로 튕김: 계정 세션쿠키(`__Host-session`)
+  미발급 — 로그인 흐름·계정 백엔드 정상 여부 확인(웹 Vinc 는 계정 세션으로 인증).

@@ -34,10 +34,13 @@ _NODE_TABLES: dict[str, dict] = {
         ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
         ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
         ("tags", "STRING[]"), ("source_file", "STRING"), ("props", "STRING")]},
-    # bridges_ingest
+    # bridges_ingest (+ owner_id v2 — F5: 무소유 구조 노드였던 Bridge 를 소유
+    # 스코프에 편입. '' = v2 마이그레이션 이전 레거시 행(신뢰할 소유 원천 부재 —
+    # 호스티드는 다중 테넌트 혼재 — 라 백필하지 않는다; 로컬은 bridges_ingest
+    # 재실행이 자연 치유). owner_scoped_labels() 파생으로 purge 자동 커버.)
     "Bridge": {"pk": "bridge_id", "cols": [
-        ("bridge_id", "STRING"), ("title", "STRING"), ("status", "STRING"),
-        ("created", "STRING"), ("source_domain", "STRING"),
+        ("bridge_id", "STRING"), ("owner_id", "STRING"), ("title", "STRING"),
+        ("status", "STRING"), ("created", "STRING"), ("source_domain", "STRING"),
         ("target_domain", "STRING"), ("source_file", "STRING"), ("props", "STRING")]},
     "Domain": {"pk": "name", "cols": [("name", "STRING")]},
     # MCP fragment 의 record 노드(D11 §5 — 적재 단위 일반 레코드). 엔진 소비처 없음,
@@ -110,8 +113,8 @@ _META_TABLES: dict[str, dict] = {
 }
 
 # owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
-# _NODE_TABLES 에서 파생하므로 새 라벨에 owner_id 가 붙으면 자동 포함된다(예: 미해결
-# 과제인 Bridge 소유 스탬프가 들어오면 purge 가 즉시 커버). Bridge/Domain/Chunk/
+# _NODE_TABLES 에서 파생하므로 새 라벨에 owner_id 가 붙으면 자동 포함된다(v2 에서
+# Bridge 소유 스탬프가 들어와 purge 가 즉시 커버 — 파생 설계의 실증). Domain/Chunk/
 # SkillExecution 은 owner_id 가 없어(구조·파생 노드) 여기 안 든다 — 소유로 못 가른다.
 def owner_scoped_labels() -> list[str]:
     """owner_id 열을 선언한 노드 라벨(선언 순서). 소유 스코프 purge 의 대상 집합."""
@@ -120,7 +123,7 @@ def owner_scoped_labels() -> list[str]:
 
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -134,6 +137,11 @@ def migration_statements(from_version: int) -> list[str]:
         for lbl in _TRACKED_LABELS:
             for col, typ, default in _TRACK_COLS:
                 stmts.append(f"ALTER TABLE {lbl} ADD {col} {typ} DEFAULT {default}")
+    if from_version < 2:   # v2 — Bridge 소유 스탬프 (F5). '' = 레거시 미소유:
+        # 기존 행의 신뢰할 소유 원천이 없어(호스티드는 다중 테넌트 혼재) 백필하지
+        # 않는다. 조회측은 과도기 술어(owner OR '')로 좁히고(query._bridge_owner_pred),
+        # 로컬은 bridges_ingest 재실행으로 실소유 백필된다.
+        stmts.append("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -151,6 +159,10 @@ _REL_TABLES: list[tuple] = [
     #   ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment 엣지 타입 보존).
     ("INHERITS_FROM", "Concept", "Concept", []),
     ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
+    # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
+    # `about`(api/fragment._EC_EDGES)이 유일 쓰기 경로. 신규 rel 테이블은 매 부팅
+    # 멱등 DDL 재실행이 자동 생성하므로 마이그레이션 스텝 불요.
+    ("ABOUT", "Episode", "Concept", []),
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),

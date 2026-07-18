@@ -251,12 +251,14 @@ class VincApp:
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
 
     def write_ingest(self, body):
-        # 적재 단일화(발주자 결정 2026-07-11) — `/ingest` 도 레거시 fragment 경로
-        # (Record/props, D11 §5, api/fragment.merge_fragment)로 수렴한다. 테마 적재
-        # (D11-R2 Entity/TYPED·engines.fragment_ingest)는 **휴면**: 스키마·어휘
-        # (ThemeStore·/themes·/types)는 남되 적재 경로는 이 하나다. theme_id 는 무시.
+        # 적재 단일화(발주자 결정 2026-07-11 → 2026-07-19 개정) — `/ingest` 는
+        # fragment 단일 경로(api/fragment.merge_fragment)로 수렴한다. 구 휴면이던
+        # 개방층(D11-R2 Entity/TYPED)은 이 라이브 경로에 **포팅**되어 재활성화 —
+        # revstamp·SEC-3·dedupe 를 승계한 채 theme 어휘 편입(themes 전달)이 산다.
+        # engines/fragment_ingest.py 는 계보 참조용으로만 남는다(호출부 없음).
         res = self.jobs.run_sync("ingest:fragment",
-                                 lambda: frag.merge_fragment(body, store=self.store))
+                                 lambda: frag.merge_fragment(body, store=self.store,
+                                                             themes=self.themes))
         return 200, res
 
     # ── 삭제 / 병합 라우트 (T3c — 오염 정리 쓰기 표면, R4 직렬화) ────────────────
@@ -358,9 +360,11 @@ class VincApp:
             return 200, res
         if engine == "fragment":
             # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
-            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200).
+            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200). themes 전달로
+            # 개방층(F1) 어휘 편입 활성 — /ingest 와 동일 계약.
             res = self.jobs.run_sync("ingest:fragment",
-                                     lambda: frag.merge_fragment(body, store=self.store))
+                                     lambda: frag.merge_fragment(body, store=self.store,
+                                                                 themes=self.themes))
             return 200, res
         fn = self.ingest.get(engine)
         if fn is None:

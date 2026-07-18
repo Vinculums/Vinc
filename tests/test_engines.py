@@ -149,6 +149,58 @@ class ConceptsParseTests(unittest.TestCase):
         self.assertIn("무질서", c._one_liner(text))
 
 
+class WikilinkEdgeTests(unittest.TestCase):
+    """F6 — 위키링크 보수: 방향은 frontmatter 명시만, 추론은 RELATED_TO 정준화."""
+
+    @staticmethod
+    def _concept(cid, stem, domain, text="", fm=None):
+        return {"concept_id": cid, "stem": stem, "domain": domain,
+                "_text": text, "_fm": fm or {}}
+
+    def _extract(self, concepts):
+        c = importlib.import_module("engines.concepts_ingest")
+        return c.extract_edges(concepts)
+
+    def test_keyword_lines_demoted_to_related(self):
+        # 구 휴리스틱이 PREREQUISITE_OF 로 오분류하던 "다음" 일상어 → RELATED_TO.
+        concepts = [
+            self._concept("m-a", "01-a", "math", text="다음 주제는 [[01-b]] 를 본다.\n"),
+            self._concept("m-b", "01-b", "math"),
+        ]
+        edges = self._extract(concepts)
+        self.assertEqual(edges, [("m-a", "RELATED_TO", "m-b")])
+
+    def test_frontmatter_declares_directed_edges(self):
+        concepts = [
+            self._concept("m-a", "01-a", "math",
+                          fm={"prerequisite_of": ["01-b"], "derives_from": "01-c"}),
+            self._concept("m-b", "01-b", "math"),
+            self._concept("m-c", "01-c", "math"),
+        ]
+        edges = set(self._extract(concepts))
+        self.assertIn(("m-a", "PREREQUISITE_OF", "m-b"), edges)
+        self.assertIn(("m-a", "DERIVES_FROM", "m-c"), edges)   # 스칼라도 허용
+
+    def test_mutual_wikilinks_collapse_to_one_related(self):
+        # A↔B 상호 링크 → 정준화(min,max) 1개 — degree 부풀림 방지.
+        concepts = [
+            self._concept("m-a", "01-a", "math", text="[[01-b]]\n"),
+            self._concept("m-b", "01-b", "math", text="[[01-a]]\n"),
+        ]
+        edges = self._extract(concepts)
+        self.assertEqual(edges, [("m-a", "RELATED_TO", "m-b")])
+
+    def test_related_suppressed_when_directed_exists(self):
+        # 같은 무순서쌍에 방향 엣지가 있으면 RELATED_TO 억제(이중 계상 방지).
+        concepts = [
+            self._concept("m-a", "01-a", "math", text="[[01-b]]\n",
+                          fm={"prerequisite_of": ["01-b"]}),
+            self._concept("m-b", "01-b", "math"),
+        ]
+        edges = self._extract(concepts)
+        self.assertEqual(edges, [("m-a", "PREREQUISITE_OF", "m-b")])
+
+
 class OpenDomainTests(unittest.TestCase):
     """Domains must be discovered from the filesystem, not a hardcoded list."""
 

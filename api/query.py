@@ -364,14 +364,24 @@ def shape_graph(rows: list[dict]) -> dict:
     domain. Domain is a free/open string — never interpreted against a list.
 
     A1.9(A4): 노드에 ``props``(dict)·``tags``(list)를 실어 다리에서 요약이 유실되지
-    않게 한다(예전엔 id/label/domain/kind/degree 만 반환)."""
+    않게 한다(예전엔 id/label/domain/kind/degree 만 반환).
+
+    F2/F3(2026-07-19): 행이 이종 kind(bridge/episode/record/entity)와 엣지 질화자
+    (role)를 실어오면 그대로 셰이핑한다 — ``kind``/``target_kind`` 부재 시
+    'concept'(하위호환), ``domain2``(브릿지 target_domain)는 존재 시에만 노드에
+    부착. **degree 는 도착한 모든 엣지 행을 양 끝에 카운트** — 축 플랜(CONNECTS/
+    ABOUT/ATTACHES_TO/TYPED)이 합류하는 것 자체가 F3(과소 카운트) 수리다(같은
+    물리 엣지는 정확히 한 플랜에서만 오므로 이중 계상 없음). 노드 dedup 은 선착
+    우선 — 호출부가 Concept 축을 먼저 넣는 고정 순서로 결정론을 보장한다."""
     nodes: dict[str, dict] = {}
 
-    def _node(nid, label, dom, props=None, tags=None):
+    def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
-                          "kind": "concept", "degree": 0,
+                          "kind": kind or "concept", "degree": 0,
                           "props": _props_to_obj(props), "tags": list(tags or [])}
+            if domain2:
+                nodes[nid]["domain2"] = domain2
         return nodes[nid]
 
     edges: list[dict] = []
@@ -379,18 +389,24 @@ def shape_graph(rows: list[dict]) -> dict:
         nid = r.get("id")
         if not nid:
             continue
-        _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"))
+        _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
+              r.get("kind"), r.get("domain2"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
             # target-only 로 등장한 노드가 항상 id 노출로 폴백됐다(_node 의
             # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
             _node(tgt, r.get("target_label"), r.get("target_domain"),
-                  r.get("target_props"), r.get("target_tags"))
+                  r.get("target_props"), r.get("target_tags"), r.get("target_kind"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
+            # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
+            # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
             cross = bool(src_dom and tgt_dom and src_dom != tgt_dom)
-            edges.append({"source": nid, "target": tgt,
-                          "type": r.get("rel") or "RELATED_TO", "cross_domain": cross})
+            edge = {"source": nid, "target": tgt,
+                    "type": r.get("rel") or "RELATED_TO", "cross_domain": cross}
+            if r.get("role"):
+                edge["role"] = r["role"]
+            edges.append(edge)
             nodes[nid]["degree"] += 1
             nodes[tgt]["degree"] += 1
     return {"nodes": list(nodes.values()), "edges": edges}
@@ -400,6 +416,12 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) ->
     """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
     MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
     §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
+
+    depth 의미(F2/F4 이후): 무라벨 순회는 모든 rel 테이블을 지난다 — Bridge 매개
+    (CONNECTS 2홉)에 더해 ABOUT/ATTACHES_TO 도 홉이 되므로, depth-2 에서 같은
+    에피소드/레코드에 공동 부착된 개념들이 서로의 이웃이 된다(브릿지 형제와 동형).
+    부착도 구조라는 의도된 의미 — rel 타입 제한(-[:A|B *]-)은 방언 위험 대비 이득이
+    없어 하지 않는다.
 
     ⚠ owner 필수성(SEC-1): 이 플랜은 여태 owner 를 받지 않아 **호스티드 멀티테넌트에서
     남의 개념을 순회**했다(`vinc_graph` 는 seed 필수라 항상 이 경로). owner 를 주면
@@ -446,31 +468,181 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
 
-_SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용
+# ── Atlas 축 플랜(F2 — Concept 단일 축 해소) ─────────────────────────────────
+# 부착 축 3종(Bridge·Episode·Record)을 별도 순수 플랜으로 두고 파이썬 셰이핑에서
+# 합류한다(UNION ALL 메가플랜 대신 — 이종 투영의 NULL 패딩 회피 + 플랜별 강등:
+# 미마이그레이션 스토어에서 새 축만 조용히 빈 행이 되고 Concept 축은 산다).
+# 공통 계약: **비-OPTIONAL 매치** — 부착 없는 항목은 렌더 대상이 아니다(Atlas =
+# 연결 뷰; 미부착 Episode/Record 의 표면은 Records/L0 집계). domain(L1 렌즈)과
+# ids(L2 ego 후조회)는 상호 배제. ids 모드는 **어느 한쪽 끝점**이 집합에 들면
+# 매치 — concept 시드에선 팔이 kept 개념에 닿을 때(접착제), episode:/record:/
+# bridge: 시드에선 자기 부착이 나온다(고립 폴백 대신 depth-1 이웃 렌더).
+
+def bridge_rows_plan(*, owner: str, domain: str | None = None,
+                     ids: list[str] | None = None) -> QueryPlan:
+    """Bridge 노드 + CONNECTS 팔(F2). 노드 domain = source_domain(단일 결정값),
+    target_domain 은 domain2 로 병기(상세 레일용). L1 소속은 선언 필드(source/
+    target_domain)를 신뢰 — 실 CONNECTS 끝점과 어긋난 브릿지는 렌즈에서 빠질 수
+    있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + Concept 엄격."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    where = [_bridge_owner_pred("b"), "c.owner_id = $owner"]
+    params: dict = {"owner": owner}
+    if domain:
+        where.append("(b.source_domain = $domain OR b.target_domain = $domain)")
+        params["domain"] = domain
+    if ids:
+        where.append("(c.concept_id IN $ids OR b.bridge_id IN $ids)")
+        params["ids"] = ids
+    cypher = (
+        "MATCH (b:Bridge)-[r:CONNECTS]->(c:Concept) "
+        f"WHERE {' AND '.join(where)} "
+        "RETURN b.bridge_id AS id, b.title AS label, b.source_domain AS domain, "
+        "b.target_domain AS domain2, b.props AS props, 'bridge' AS kind, "
+        "'CONNECTS' AS rel, r.role AS role, "
+        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+    )
+    return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
+
+
+def episode_rows_plan(*, owner: str, domain: str | None = None,
+                      ids: list[str] | None = None) -> QueryPlan:
+    """Episode 노드 + ABOUT 팔(F2/F4). L1 소속은 (자기 domain OR 부착 개념 domain)
+    — 렌즈 밖 에피소드가 렌즈 안 개념에 부착된 경우가 정확히 F2 가 숨기던 연결이라
+    OR 가 의도다."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    where = ["e.owner_id = $owner", "c.owner_id = $owner"]
+    params: dict = {"owner": owner}
+    if domain:
+        where.append("(e.domain = $domain OR c.domain = $domain)")
+        params["domain"] = domain
+    if ids:
+        where.append("(c.concept_id IN $ids OR e.episode_id IN $ids)")
+        params["ids"] = ids
+    cypher = (
+        "MATCH (e:Episode)-[r:ABOUT]->(c:Concept) "
+        f"WHERE {' AND '.join(where)} "
+        "RETURN e.episode_id AS id, e.title AS label, e.domain AS domain, "
+        "e.props AS props, coalesce(e.tags, []) AS tags, 'episode' AS kind, "
+        "'ABOUT' AS rel, "
+        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+    )
+    return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
+
+
+def record_rows_plan(*, owner: str, domain: str | None = None,
+                     ids: list[str] | None = None) -> QueryPlan:
+    """Record 노드 + ATTACHES_TO 팔(F2). 엣지 질화자 r.type 은 role 슬롯으로 투영
+    (CONNECTS.role 과 단일 선택 열 공유 — shape_graph 계약)."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    where = ["rc.owner_id = $owner", "c.owner_id = $owner"]
+    params: dict = {"owner": owner}
+    if domain:
+        where.append("(rc.domain = $domain OR c.domain = $domain)")
+        params["domain"] = domain
+    if ids:
+        where.append("(c.concept_id IN $ids OR rc.record_id IN $ids)")
+        params["ids"] = ids
+    cypher = (
+        "MATCH (rc:Record)-[r:ATTACHES_TO]->(c:Concept) "
+        f"WHERE {' AND '.join(where)} "
+        "RETURN rc.record_id AS id, rc.title AS label, rc.domain AS domain, "
+        "rc.props AS props, coalesce(rc.tags, []) AS tags, 'record' AS kind, "
+        "'ATTACHES_TO' AS rel, r.type AS role, "
+        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+    )
+    return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
+
+
+_GRAPH_AXIS_PLANS = (bridge_rows_plan, episode_rows_plan, record_rows_plan)
+
+
+# ── entity-시드 L2(F1) — TYPED 는 Entity↔Entity 폐쇄 성분 ────────────────────
+# Entity 는 domain 열이 없고(테마 귀속) 어떤 레거시 rel 테이블에도 닿지 않으므로
+# L1/개념시드 L2 에는 **구조적으로** 등장하지 않는다. 가시성은 entity: 시드 전용.
+
+def entity_subgraph_ids_plan(seed: str, *, depth: int = 2,
+                             owner: str | None = None) -> QueryPlan:
+    """entity-시드 순회 — subgraph_ids_plan 과 동형(TRAIL 가드, depth 1..4 클램프).
+    Entity 는 신규 테이블(레거시 '' 없음)이라 엄격 owner."""
+    depth = max(1, min(int(depth), 4))
+    params: dict = {"seed": seed}
+    n_where, m_where = "n.entity_id = $seed", ""
+    if owner:
+        n_where += " AND n.owner_id = $owner"
+        m_where = " WHERE m.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH (n:Entity) WHERE {n_where} "
+        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Entity){m_where} "
+        "RETURN DISTINCT m.entity_id AS id"
+    )
+    return QueryPlan("entity_subgraph_ids", cypher, params,
+                     note=f"entity seed traversal (depth={depth})")
+
+
+def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
+    """Entity id 집합 행 + 나가는 TYPED 엣지. rel 은 label(r)="TYPED"(무의미한 캐리어
+    이름)가 아니라 **r.type(사용자 저작 타입)** 을 투영 — 그것이 의미다. domain 은
+    ''(Entity 무도메인 — entity-시드 L2 는 단일 중앙 클러스터로 레이아웃)."""
+    params: dict = {"ids": ids}
+    e_where, d_where = "e.entity_id IN $ids", ""
+    if owner:
+        e_where += " AND e.owner_id = $owner"
+        d_where = " WHERE d.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH (e:Entity) WHERE {e_where} "
+        f"OPTIONAL MATCH (e)-[r:TYPED]->(d:Entity){d_where} "
+        "RETURN e.entity_id AS id, e.title AS label, '' AS domain, "
+        "coalesce(e.tags, []) AS tags, 'entity' AS kind, "
+        "r.type AS rel, d.entity_id AS target, '' AS target_domain, "
+        "d.title AS target_label, coalesce(d.tags, []) AS target_tags, "
+        "'entity' AS target_kind"
+    )
+    return QueryPlan("entity_graph", cypher, params, note="entity rows for id set (TYPED)")
+
+
+_SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용 (+ entity, F1)
     "concept": ("Concept", "concept_id"),
     "episode": ("Episode", "episode_id"),
     "record": ("Record", "record_id"),
     "bridge": ("Bridge", "bridge_id"),
+    "entity": ("Entity", "entity_id"),
 }
+
+
+def _seed_table(seed: str) -> tuple[str, str]:
+    """seed id → (라벨, PK 열). 접두사 없음(콜론 부재) = Concept(하위호환).
+    **미지 접두사 = Entity**(F1) — 개방층 노드 id 는 사용자 저작 타입이 접두사라
+    (`theory:duality` 등) 열거 불가능하다; 레거시 접두사는 전부 위 표에 있으므로
+    표 밖 접두사는 개방층으로 라우팅하는 것이 정확하다(실측: 구 Concept 폴백은
+    theory:* 시드를 '없음'으로 오판)."""
+    prefix = seed.split(":", 1)[0] if ":" in seed else ""
+    if not prefix:
+        return ("Concept", "concept_id")
+    return _SEED_TABLES.get(prefix, ("Entity", "entity_id"))
 
 
 def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     """seed 노드 존재 선조회(C4) — '노드 없음'과 '노드는 있으나 연결 0(고립)'을
     구분하기 위한 최소 조회(id·title 만). id 접두사(`concept:`·`episode:`·
-    `record:`·`bridge:`)로 테이블을 판별하고, 접두사가 없거나 미지의 접두사면
-    Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을 쓴다 —
-    순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다.
+    `record:`·`bridge:`·`entity:`)로 테이블을 판별하고, 접두사가 없거나 미지의
+    접두사면 Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을
+    쓴다 — 순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다.
 
-    ⚠ owner(SEC-1): Concept/Episode/Record 는 owner 로 제한한다. **Bridge 는 스키마에
-    owner_id 가 없는 구조 노드**(embedded_schema `_NODE_TABLES`)라 필터가 불가능하다 —
-    호스티드에서 `bridge:*` 시드는 존재 여부(title)까지만 노출될 수 있다. Bridge 는
-    MCP fragment 로 만들 수 있으니 소유 스탬프 부여는 후속 과제로 남긴다."""
-    prefix = seed.split(":", 1)[0] if ":" in seed else ""
-    label, pk = _SEED_TABLES.get(prefix, ("Concept", "concept_id"))
+    owner(SEC-1): Concept/Episode/Record/Entity 는 엄격 owner 로 제한한다. Bridge 는
+    v2(F5)에서 owner_id 를 얻어 과도기 술어(:func:`_bridge_owner_pred`)로 필터한다
+    — 구 '필터 불가' 예외(존재 여부 노출)는 해소됐다. 미지 접두사는 Entity 로
+    프로브한다(:func:`_seed_table` — 개방층 id 는 임의 접두사)."""
+    label, pk = _seed_table(seed)
     params: dict = {"seed": seed}
     where = f"n.{pk} = $seed"
-    if owner and label != "Bridge":
-        where += " AND n.owner_id = $owner"
+    if owner:
+        where += (f" AND {_bridge_owner_pred('n')}" if label == "Bridge"
+                  else " AND n.owner_id = $owner")
         params["owner"] = owner
     cypher = f"MATCH (n:{label}) WHERE {where} RETURN n.{pk} AS id, n.title AS title"
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
@@ -670,18 +842,46 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
-    (shell·radial·circle·tree·organic, 미지 값 shell 강등)."""
+    (shell·radial·circle·tree·organic, 미지 값 shell 강등).
+
+    F2(2026-07-19): Concept 단일 축 해소 — 축 플랜 3종(Bridge·Episode·Record)이
+    합류해 부착 노드·엣지가 렌더된다. L2 에선 매개자(브릿지 등)가 keep 집합에
+    편입돼 '보이지 않는 접착제'(kept 개념 둘이 엣지 없이 떠 있던 문제)가 사라진다.
+    entity: 시드는 전용 순회(TYPED 폐쇄 성분 — :func:`entity_subgraph_ids_plan`)."""
     if seed:
         # SEC-1: seed 갈래도 owner 스코프를 지킨다. 여태 owner 를 받고도 쓰지 않아
         # 호스티드에서 남의 서브그래프가 그대로 보였다(vinc_graph 는 seed 필수).
-        ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
+        # entity 판정은 접두사 라우팅(_seed_table) — 개방층 id 는 임의 접두사(F1).
+        entity_seed = _seed_table(seed)[0] == "Entity"
+        ids_res = execute(
+            entity_subgraph_ids_plan(seed, depth=depth, owner=owner) if entity_seed
+            else subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
         if not ids_res.get("executed"):
             return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
                     "note": ids_res.get("note", "")}
         ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
-        res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
-        shaped = shape_graph(res.get("rows", []))
+        res = execute(
+            entity_rows_for_ids_plan(ids, owner=owner) if entity_seed
+            else graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
+        rows = list(res.get("rows", []))
         keep = set(ids)   # 엣지의 depth+1 유출 대상 제거(ego 경계)
+        if not entity_seed:
+            # F2 — 접착제 후조회: 축 플랜을 ids 모드로 실행해 매개자(브릿지·에피소드·
+            # 레코드)와 그 팔을 합류시키고, 양 끝점을 keep 에 편입한다(매개자 렌더 +
+            # episode:/record:/bridge: 시드의 depth-1 이웃). 플랜별 강등이 미마이그레이션
+            # 스토어를 자가 처리한다(빈 행 — Concept 축은 산다).
+            for plan_fn in _GRAPH_AXIS_PLANS:
+                ax = execute(plan_fn(owner=owner, ids=ids), cfg, store=store)
+                if not ax.get("executed"):
+                    continue
+                ax_rows = ax.get("rows", [])
+                rows += ax_rows
+                for r in ax_rows:
+                    if r.get("id"):
+                        keep.add(r["id"])
+                    if r.get("target"):
+                        keep.add(r["target"])
+        shaped = shape_graph(rows)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
         shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
         executed = res.get("executed", False)
@@ -690,10 +890,11 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             # C4: 순회·행 조회가 둘 다 비었다 — '시드 자체가 없음'과 '시드는 있으나
             # 연결이 0(고립)'이 여태 구분 불가했다(실사용에서 실재 episode 시드가
             # 빈 응답을 받아 '데이터 없음'으로 오판됨). 이 갈래에서만 선조회한다 —
-            # Concept 시드가 실재하면 위 graph_rows_for_ids_plan 이 이미 자기 자신을
-            # 한 행(고립 시 rel/target=NULL)으로 돌려주므로 shaped["nodes"] 가 비지
-            # 않는다; 여기 도달하는 건 시드가 아예 없거나 Concept 밖 타입(episode/
-            # record/bridge, 그 순회는 범위 밖)일 때뿐이다.
+            # Concept/Entity 시드가 실재하면 위 rows 플랜이 이미 자기 자신을 한 행
+            # (고립 시 rel/target=NULL)으로 돌려주므로 shaped["nodes"] 가 비지 않고,
+            # 부착 있는 episode/record/bridge 시드는 축 플랜(ids 모드)이 잡는다.
+            # 여기 도달하는 건 시드가 아예 없거나, Concept 밖 타입이 **부착도 0**
+            # 인(진짜 고립) 경우뿐이다.
             seed_res = execute(seed_lookup_plan(seed, owner=owner), cfg, store=store)
             if not seed_res.get("executed"):
                 return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
@@ -708,7 +909,14 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         return {"executed": executed, "seed": seed, "depth": depth, "found": found, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
-    shaped = shape_graph(res.get("rows", []))
+    rows = list(res.get("rows", []))
+    # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
+    # 의 선착 우선이 Concept 투영을 이기게(결정론).
+    for plan_fn in _GRAPH_AXIS_PLANS:
+        ax = execute(plan_fn(owner=owner, domain=domain), cfg, store=store)
+        if ax.get("executed"):
+            rows += ax.get("rows", [])
+    shaped = shape_graph(rows)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
     return {"executed": res.get("executed", False), **shaped}
 
@@ -724,17 +932,34 @@ def domain_ties_plan(*, owner: str) -> QueryPlan:
     return QueryPlan("domain_ties", cypher, {"owner": owner}, note="cross-domain tie matrix (L0)")
 
 
-def bridge_ties_plan() -> QueryPlan:
+def _bridge_owner_pred(alias: str) -> str:
+    """Bridge 소유 술어(F5, **과도기**) — ``(owner OR '')``. '' = v2 마이그레이션이
+    백필한 레거시 미소유 행: 신뢰할 소유 원천이 없어(호스티드 다중 테넌트 혼재)
+    실소유 백필이 불가하고, 엄격 ``= $owner`` 는 기존 로컬 사용자의 L0 결합을 즉시
+    소거하는 회귀다. 이 술어는 오늘의 완전 무스코프(전 테넌트 전량 노출)를 "내 것 +
+    마이그레이션 이전분"으로 좁히는 단조 개선이며, 신규 쓰기는 전부 스탬프되므로
+    (fragment·bridges_ingest) 새 데이터는 누출 불가. 로컬 백필(bridges_ingest
+    재실행)이 보편화되면 OR 절만 삭제해 엄격 전환한다 — 이 함수가 유일 정의 지점."""
+    return f"({alias}.owner_id = $owner OR {alias}.owner_id = '')"
+
+
+def bridge_ties_plan(*, owner: str | None = None) -> QueryPlan:
     """L0 결합 행렬의 Bridge 축 — 실데이터(weg-9000 허브)에서 개념 간 엣지는 전부
     도메인 내부이고 크로스도메인은 :Bridge 가 1급으로 담는다(2026-07-10 실측).
-    Bridge 는 소유 스탬프가 없는 구조 노드라 owner 필터 없음."""
+    v2(F5)에서 Bridge 가 owner_id 를 얻어 owner 지정 시 과도기 술어로 스코프한다
+    (구 '소유 스탬프 없음 → 필터 불가' 제약 해소 — 호스티드 교차테넌트 집계 차단)."""
+    where = "b.source_domain IS NOT NULL AND b.target_domain IS NOT NULL"
+    params: dict = {}
+    if owner:
+        where += f" AND {_bridge_owner_pred('b')}"
+        params["owner"] = owner
     cypher = (
         "MATCH (b:Bridge) "
-        "WHERE b.source_domain IS NOT NULL AND b.target_domain IS NOT NULL "
+        f"WHERE {where} "
         "RETURN b.source_domain AS source, b.target_domain AS target, count(*) AS ties "
         "ORDER BY ties DESC"
     )
-    return QueryPlan("bridge_ties", cypher, {}, note="bridge tie matrix (L0)")
+    return QueryPlan("bridge_ties", cypher, params, note="bridge tie matrix (L0)")
 
 
 def direct_coupling_plan(*, owner: str, a: str, b: str) -> QueryPlan:
@@ -750,18 +975,25 @@ def direct_coupling_plan(*, owner: str, a: str, b: str) -> QueryPlan:
                      note="concept-level direct cross-domain edges")
 
 
-def bridge_coupling_plan(*, a: str, b: str) -> QueryPlan:
+def bridge_coupling_plan(*, a: str, b: str, owner: str | None = None) -> QueryPlan:
     """Compare 뷰(D22) — Bridge 매개 개념쌍: (cA)←CONNECTS─(Bridge)─CONNECTS→(cB),
     cA.domain=$a · cB.domain=$b. weg-9000 실데이터에서 직접 엣지는 0 이고 결합은
-    Bridge 가 담당(실측) — 매개쌍이 주 신호다."""
+    Bridge 가 담당(실측) — 매개쌍이 주 신호다. owner 지정 시(F5) Concept 양끝은
+    엄격, Bridge 는 과도기 술어(:func:`_bridge_owner_pred`)로 스코프한다."""
+    where = "x.domain = $a AND y.domain = $b"
+    params: dict = {"a": a, "b": b}
+    if owner:
+        where += (" AND x.owner_id = $owner AND y.owner_id = $owner "
+                  f"AND {_bridge_owner_pred('br')}")
+        params["owner"] = owner
     cypher = (
         "MATCH (x:Concept)<-[:CONNECTS]-(br:Bridge)-[:CONNECTS]->(y:Concept) "
-        "WHERE x.domain = $a AND y.domain = $b "
+        f"WHERE {where} "
         "RETURN x.concept_id AS a_id, x.title AS a_title, "
         "y.concept_id AS b_id, y.title AS b_title, "
         "br.bridge_id AS via, br.title AS via_title"
     )
-    return QueryPlan("coupling_bridge", cypher, {"a": a, "b": b},
+    return QueryPlan("coupling_bridge", cypher, params,
                      note="bridge-mediated concept pairs")
 
 
@@ -769,7 +1001,7 @@ def coupling(*, owner: str, a: str, b: str, cfg=None, store=None) -> dict:
     """두 도메인의 개념 결합쌍(D22) — 직접 엣지 ∪ Bridge 매개. 쌍 단위 dedup,
     직접 결합 우선 정렬."""
     d = execute(direct_coupling_plan(owner=owner, a=a, b=b), cfg, store=store)
-    br = execute(bridge_coupling_plan(a=a, b=b), cfg, store=store)
+    br = execute(bridge_coupling_plan(a=a, b=b, owner=owner), cfg, store=store)
     pairs: dict[tuple[str, str], dict] = {}
     for r in d.get("rows", []):
         # 방향 정규화: a 도메인 쪽을 왼쪽에.
@@ -814,7 +1046,7 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
     domains = [{"domain": k, "episodes": v} for k, v in
                sorted(counts.items(), key=lambda kv: -kv[1])]
     t = execute(domain_ties_plan(owner=owner), cfg, store=store)
-    b = execute(bridge_ties_plan(), cfg, store=store)
+    b = execute(bridge_ties_plan(owner=owner), cfg, store=store)
     merged: dict[tuple[str, str], int] = {}
     for row in [*t.get("rows", []), *b.get("rows", [])]:
         key = (row.get("source") or "", row.get("target") or "")
@@ -849,6 +1081,19 @@ def promote_candidates(*, owner: str, min_access: int = 3, cfg=None, store=None)
     return execute(promote_candidates_plan(owner=owner, min_access=min_access), cfg, store=store)
 
 
+def bridge_neighbors_plan(node: str, *, owner: str) -> QueryPlan:
+    """잇기 제안의 접착제 인지(F3) — ``node`` 와 Bridge 매개로 이미 이어진 개념
+    (CONNECTS 양팔 반대편). Bridge 는 과도기 술어, 개념은 엄격 owner."""
+    cypher = (
+        "MATCH (x:Concept)<-[:CONNECTS]-(b:Bridge)-[:CONNECTS]->(y:Concept) "
+        f"WHERE x.concept_id = $node AND {_bridge_owner_pred('b')} "
+        "AND y.owner_id = $owner "
+        "RETURN DISTINCT y.concept_id AS id"
+    )
+    return QueryPlan("bridge_neighbors", cypher, {"node": node, "owner": owner},
+                     note="bridge-mediated neighbors (tie-suggest exclusion)")
+
+
 def concept_meta_plan(*, owner: str) -> QueryPlan:
     """잇기 제안용 Concept 메타(id·title·domain·tags) — 순수 조회."""
     cypher = (
@@ -881,6 +1126,11 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
             linked.add(r["target"])
         elif r.get("target") == node and r.get("id"):
             linked.add(r["id"])
+    # F3 — 접착제 인지: 브릿지 매개로 이미 이어진 개념도 linked 에 합류시켜 기존
+    # 글루를 중복 제안하지 않는다(graph_plan 은 CC 직접 엣지만 본다).
+    bn = execute(bridge_neighbors_plan(node, owner=owner), cfg, store=store)
+    if bn.get("executed"):
+        linked.update(r["id"] for r in bn.get("rows", []) if r.get("id"))
     my_tags = set(me.get("tags") or [])
     my_domain = me.get("domain") or ""
     out = []
@@ -1261,6 +1511,9 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         # 최종삭제도 소유 노드에만 닿는다. owner=None(로컬 단일유저)이면 현행(무스코프).
         osc = bool(owner)
         oscope = (lambda var: f" AND {var}.owner_id = $owner") if osc else (lambda var: "")
+        # F5 — Bridge 는 과도기 술어(레거시 '' 포함, _bridge_owner_pred 와 동일 정책).
+        bscope = (lambda var: f" AND ({var}.owner_id = $owner OR {var}.owner_id = '')"
+                  ) if osc else (lambda var: "")
         op = {"owner": owner} if osc else {}   # 파라미터 스프레드(무스코프면 빈 dict)
 
         def _exists(cid: str) -> bool:
@@ -1349,18 +1602,19 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             repointed += 1
 
         # CONNECTS incoming: (br:Bridge)-[c]->(drop) → (br)-[c]->(keep), role 보존.
-        # SEC-3: Concept 끝점(drop·keep)만 owner 스코프 — Bridge 는 owner_id 없음(SEC-1
-        # 잔여, 소유불가 remainder). drop/keep 스코프로 남의 concept 재지향은 막힌다.
+        # SEC-3: Concept 끝점(drop·keep)은 엄격 owner 스코프, Bridge 는 v2(F5)에서
+        # owner_id 를 얻어 과도기 술어(bscope — 레거시 '' 포함)로 스코프한다.
         for row in store.run(
                 "MATCH (b:Bridge)-[c:CONNECTS]->(d:Concept) "
-                f"WHERE d.concept_id = $id{oscope('d')} "
+                f"WHERE d.concept_id = $id{oscope('d')}{bscope('b')} "
                 "RETURN DISTINCT b.bridge_id AS other, c.role AS role", {"id": drop_id, **op}):
             other = row.get("other")
             if not other:
                 continue
             ex = store.run(
                 "MATCH (b:Bridge)-[:CONNECTS]->(k:Concept) "
-                f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} RETURN count(*) AS c",
+                f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
+                "RETURN count(*) AS c",
                 {"b": other, "k": keep_id, **op})
             if ex and ex[0].get("c"):
                 skipped += 1
@@ -1368,13 +1622,13 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             if row.get("role") is not None:
                 store.run(
                     "MATCH (b:Bridge),(k:Concept) "
-                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} "
+                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
                     "MERGE (b)-[e:CONNECTS]->(k) SET e.role = $role",
                     {"b": other, "k": keep_id, "role": row["role"], **op})
             else:
                 store.run(
                     "MATCH (b:Bridge),(k:Concept) "
-                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} "
+                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
                     "MERGE (b)-[e:CONNECTS]->(k)", {"b": other, "k": keep_id, **op})
             repointed += 1
 

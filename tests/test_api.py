@@ -76,6 +76,29 @@ class PlanTests(unittest.TestCase):
         self.assertIn("c.domain = $domain", plan.cypher)
         self.assertIn("OPTIONAL MATCH (c)-[r]->(d:Concept)", plan.cypher)
 
+    def test_bridge_rows_plan_lens_and_ids_modes(self):
+        # F2 축 플랜 — L1(domain)과 L2 후조회(ids)는 상호 배제, 투영에 kind/domain2/role.
+        p = q.bridge_rows_plan(owner="u", domain="math")
+        self.assertIn("(b.source_domain = $domain OR b.target_domain = $domain)", p.cypher)
+        self.assertIn("(b.owner_id = $owner OR b.owner_id = '')", p.cypher)
+        self.assertIn("'bridge' AS kind", p.cypher)
+        self.assertIn("b.target_domain AS domain2", p.cypher)
+        self.assertIn("r.role AS role", p.cypher)
+        pi = q.bridge_rows_plan(owner="u", ids=["concept:a"])
+        self.assertIn("(c.concept_id IN $ids OR b.bridge_id IN $ids)", pi.cypher)
+        with self.assertRaises(AssertionError):
+            q.bridge_rows_plan(owner="u", domain="d", ids=["x"])
+
+    def test_episode_and_record_rows_plans(self):
+        pe = q.episode_rows_plan(owner="u", domain="math")
+        self.assertIn("MATCH (e:Episode)-[r:ABOUT]->(c:Concept)", pe.cypher)
+        self.assertIn("(e.domain = $domain OR c.domain = $domain)", pe.cypher)
+        self.assertIn("'episode' AS kind", pe.cypher)
+        pr = q.record_rows_plan(owner="u", ids=["concept:a"])
+        self.assertIn("MATCH (rc:Record)-[r:ATTACHES_TO]->(c:Concept)", pr.cypher)
+        self.assertIn("r.type AS role", pr.cypher)
+        self.assertIn("(c.concept_id IN $ids OR rc.record_id IN $ids)", pr.cypher)
+
 
 class ShapeGraphTests(unittest.TestCase):
     ROWS = [
@@ -100,6 +123,28 @@ class ShapeGraphTests(unittest.TestCase):
         self.assertTrue(bridge["cross_domain"])
         intra = [e for e in g["edges"] if e["target"] == "math-02"][0]
         self.assertFalse(intra["cross_domain"])
+
+    def test_heterogeneous_kinds_and_degree(self):
+        # F2/F3 — 이종 kind 행: kind/target_kind/domain2/role 반영 + 모든 엣지 타입이
+        # 양 끝 degree 에 카운트(브릿지 팔만 가진 개념이 고아가 아니게 — F3 회귀).
+        rows = [
+            {"id": "c1", "label": "C1", "domain": "math"},   # 엣지 없는 개념 행
+            {"id": "bridge:x", "label": "X", "domain": "math", "domain2": "physics",
+             "kind": "bridge", "rel": "CONNECTS", "role": "math_input",
+             "target": "c1", "target_domain": "math", "target_kind": "concept"},
+            {"id": "episode:e1", "label": "E1", "domain": "math", "kind": "episode",
+             "rel": "ABOUT", "target": "c1", "target_domain": "math",
+             "target_kind": "concept"},
+        ]
+        g = q.shape_graph(rows)
+        by_id = {n["id"]: n for n in g["nodes"]}
+        self.assertEqual(by_id["bridge:x"]["kind"], "bridge")
+        self.assertEqual(by_id["bridge:x"]["domain2"], "physics")
+        self.assertEqual(by_id["episode:e1"]["kind"], "episode")
+        self.assertEqual(by_id["c1"]["kind"], "concept")     # kind 부재 → 기본값
+        self.assertEqual(by_id["c1"]["degree"], 2)           # CONNECTS + ABOUT 카운트
+        roles = {e["type"]: e.get("role") for e in g["edges"]}
+        self.assertEqual(roles, {"CONNECTS": "math_input", "ABOUT": None})
 
     @mock.patch("api.query.open_store", return_value=None)
     def test_graph_entrypoint_without_db(self, _open):

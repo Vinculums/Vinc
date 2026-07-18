@@ -96,6 +96,22 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept)", ddl)
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
         self.assertIn("CONNECTS(FROM Bridge TO Concept, role STRING)", ddl)
+        # F4 — episodic↔semantic 다리
+        self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept)", ddl)
+
+    def test_bridge_owner_column_and_v2_migration(self):
+        # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').
+        ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
+        bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
+        self.assertIn("owner_id STRING", bridge_ddl)
+        self.assertEqual(eschema.SCHEMA_VERSION, 2)
+        self.assertEqual(eschema.migration_statements(1),
+                         ["ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''"])
+        # 0→2 는 v1(추적열) 스텝을 포함한 채 v2 스텝으로 끝난다
+        v0 = eschema.migration_statements(0)
+        self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
+        self.assertTrue(any("ADD updated_at" in s for s in v0))
+        self.assertEqual(eschema.migration_statements(2), [])   # 최신은 no-op
 
     def test_plan_matches_dim(self):
         c = cfgmod.StoreConfig(embedding_model="local-en-large")  # 1024

@@ -80,6 +80,29 @@ class ToolContractTests(unittest.TestCase):
         tools.call("vinc_ingest", {"nodes": [{"id": "c:x", "type": "concept"}]}, b)
         self.assertEqual(b.calls[0][3]["owner"], "user:test")
 
+    def test_ingest_schema_is_open_layer(self):
+        # F1 — type enum 제거(서버가 라우팅 SSoT — 개방 캐리어를 호스트에서 차단 금지),
+        # theme_id·edge.role 은 선택 필드로 추가.
+        schema = next(t for t in tools.specs() if t["name"] == "vinc_ingest")["inputSchema"]
+        node_type = schema["properties"]["nodes"]["items"]["properties"]["type"]
+        edge_props = schema["properties"]["edges"]["items"]["properties"]
+        self.assertNotIn("enum", node_type)
+        self.assertNotIn("enum", edge_props["type"])
+        self.assertIn("role", edge_props)
+        self.assertIn("theme_id", schema["properties"])
+        desc = next(t for t in tools.specs() if t["name"] == "vinc_ingest")["description"]
+        self.assertIn("proposed_types", desc)          # 개방층 계약 안내
+        self.assertNotIn("unknown type values are skipped", desc)
+
+    def test_ingest_forwards_theme_id(self):
+        b = _StubBridge()
+        tools.call("vinc_ingest", {"nodes": [{"id": "p:x", "type": "policy", "title": "X"}],
+                                   "theme_id": "art"}, b)
+        self.assertEqual(b.calls[0][3]["theme_id"], "art")
+        b2 = _StubBridge()
+        tools.call("vinc_ingest", {"nodes": [{"id": "c:x", "type": "concept"}]}, b2)
+        self.assertNotIn("theme_id", b2.calls[0][3])   # 미지정 시 필드 자체 생략
+
 
 class DispatcherTests(unittest.TestCase):
     def setUp(self):

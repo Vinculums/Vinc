@@ -16,25 +16,11 @@ from .bridge import Bridge
 
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-# tools/list 응답의 description 보강 — 원 정의(vinc_mcp/tools.py)는 이번 작업 스코프
-# 밖(다른 에이전트 동시 작업 파일 제외 목록에는 없으나, 작업 파일을 정확히 2개로
-# 한정한 지시에 따라 여기서 override 한다). fragment.py 실제 허용 (from,to) 쌍을
-# 그대로 반영 — 실사용 사고: 허용 안 되는 쌍은 skip 되고 warnings + partial:true 로
-# 보고된다는 점을 명시한다.
+# tools/list 응답의 description 보강. vinc_ingest 의 구 override(허용 행렬)는 F1
+# 개방층 포팅과 함께 원 정의(vinc_mcp/tools.py — 정본)로 이관·삭제했다: 개방
+# 캐리어(Entity/TYPED)·about·role·proposed_types 를 포함한 최신 계약은 tools.py 가
+# 단일 출처다. 남은 override 는 이 작업과 무관한 보강 2건뿐.
 _DESC_OVERRIDES: dict[str, str] = {
-    "vinc_ingest": (
-        "MERGE an authored graph fragment (nodes + edges) into the store by exact id. "
-        "The only write surface. Reuse existing ids (read-before-write). "
-        "Edge (from,to) allow-matrix (api/fragment.py SSoT): "
-        "relates_to | prerequisite_of | derives_from | inherits_from = concept→concept "
-        "or record→concept (record→concept is preserved as ATTACHES_TO{type=<edge type>} "
-        "since the embedded rel table fixes FROM=Record/TO=Concept); "
-        "connects_via = bridge→concept (stored as CONNECTS). relates_to is treated as "
-        "undirected between concepts: if the reverse edge already exists, the new one is "
-        "skipped and counted as merged.edges.skipped_duplicate. Any node type, edge type, "
-        "or (from,to) pair outside this matrix is skipped and reported in warnings, and "
-        "the response sets partial:true whenever warnings is non-empty."
-    ),
     "vinc_recall": (
         "List recent episodes in an owner scope, optionally narrowed by domain or tags. "
         "Episodes only — for Concept or Record nodes use vinc_graph or vinc_search instead."

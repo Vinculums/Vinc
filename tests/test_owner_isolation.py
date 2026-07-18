@@ -51,13 +51,32 @@ def test_graph_rows_plan_scopes_rows_and_edge_targets():
 
 
 def test_seed_lookup_plan_scopes_owned_tables():
-    for seed in ("concept:x", "episode:e1", "record:r1"):
+    for seed in ("concept:x", "episode:e1", "record:r1", "entity:n1"):
         p = q.seed_lookup_plan(seed, owner=OWNER)
         assert "n.owner_id = $owner" in p.cypher, seed
-    # Bridge 는 스키마에 owner_id 가 없다 — 필터하면 쿼리가 깨진다(알려진 한계).
+    # F1 — 미지 접두사 = 개방층 id(사용자 저작 타입) → Entity 프로브. 무접두사는
+    # Concept(하위호환).
+    assert "MATCH (n:Entity)" in q.seed_lookup_plan("theory:x", owner=OWNER).cypher
+    assert "MATCH (n:Concept)" in q.seed_lookup_plan("bare", owner=OWNER).cypher
+    # Bridge 는 v2(F5)에서 owner_id 를 얻어 과도기 술어로 필터한다 — 구 '필터 불가'
+    # 한계(존재 여부 노출) 해소.
     pb = q.seed_lookup_plan("bridge:b1", owner=OWNER)
-    assert "owner_id" not in pb.cypher
-    assert "owner" not in pb.params
+    assert "(n.owner_id = $owner OR n.owner_id = '')" in pb.cypher
+    assert pb.params["owner"] == OWNER
+
+
+def test_bridge_axis_plans_scope_owner():
+    """F5 — Bridge 관련 신규/개정 플랜 전부 owner 술어를 갖는다(과도기 '' 포함)."""
+    pred = "owner_id = $owner OR"
+    assert pred in q.bridge_ties_plan(owner=OWNER).cypher
+    assert pred in q.bridge_coupling_plan(a="a", b="b", owner=OWNER).cypher
+    assert pred in q.bridge_rows_plan(owner=OWNER, domain="d").cypher
+    assert pred in q.bridge_neighbors_plan("concept:x", owner=OWNER).cypher
+    # 부착 축(Episode/Record)과 entity 플랜은 엄격 스코프
+    assert "e.owner_id = $owner" in q.episode_rows_plan(owner=OWNER, domain="d").cypher
+    assert "rc.owner_id = $owner" in q.record_rows_plan(owner=OWNER, domain="d").cypher
+    assert "n.owner_id = $owner" in q.entity_subgraph_ids_plan("entity:x", owner=OWNER).cypher
+    assert "e.owner_id = $owner" in q.entity_rows_for_ids_plan(["entity:x"], owner=OWNER).cypher
 
 
 def test_decide_resolve_plan_scopes_and_parenthesizes_or():

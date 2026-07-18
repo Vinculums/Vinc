@@ -129,10 +129,13 @@ export async function renderAtlas(el: HTMLElement) {
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
       domain: nd.domain, degree: nd.degree,
-      kind: (nd as any).kind || "concept",
-      gateway: lensDomain !== undefined && nd.domain !== lensDomain,
+      kind: nd.kind || "concept",
+      // 브릿지는 gateway 판정 면제(F2) — 단일 domain 이 없다(domain=source_domain 은
+      // 보고 편의). 반투명+클릭 시 렌즈 이동은 브릿지에 무의미하다.
+      gateway: lensDomain !== undefined && nd.domain !== lensDomain
+        && (nd.kind || "concept") !== "bridge",
       focus: focusId !== undefined && nd.id === focusId,
-      x: nd.x, y: nd.y, z: (nd as any).z,
+      x: nd.x, y: nd.y, z: nd.z,
     }));
   }
   function toL3(edges: GraphEdge[]): L3[] {
@@ -187,12 +190,17 @@ export async function renderAtlas(el: HTMLElement) {
     const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
     const out = curEdges.filter((e) => e.source === nd.id && DIRECTED.includes(e.type)).length;
     const inn = curEdges.filter((e) => e.target === nd.id && DIRECTED.includes(e.type)).length;
+    // 부착(F2) — 브릿지·에피소드·레코드 팔은 화살촉 없는 구조 연결이라 별도 집계
+    const ATTACH = ["CONNECTS", "ABOUT", "ATTACHES_TO"];
+    const att = curEdges.filter((e) =>
+      (e.source === nd.id || e.target === nd.id) && ATTACH.includes(e.type)).length;
     detail.hidden = false;
     detail.innerHTML = `
       <h2>${nd.label}</h2>
       <p><span class="badge">${COPY.ui.atlasx.domain(nd.domain || COPY.ui.common.none)}</span></p>
       <p class="hint">${COPY.ui.atlasx.connections(nd.degree || 0)}${out + inn > 0
-        ? COPY.ui.atlasx.outIn(out, inn) : ""}${nd.gateway ? COPY.ui.atlasx.gateway : ""}.</p>
+        ? COPY.ui.atlasx.outIn(out, inn) : ""}${att > 0
+        ? COPY.ui.atlasx.attachments(att) : ""}${nd.gateway ? COPY.ui.atlasx.gateway : ""}.</p>
       <button class="btn btn-primary" id="focus">${COPY.ui.atlasx.traceCta}</button>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {

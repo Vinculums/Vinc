@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from .bridge import Bridge
 
+# F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
+# 영속한다(5종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
+# 개방층을 호스트에서 차단하는 오류였다. 라우팅 행렬은 description 으로 안내.
 _FRAGMENT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -20,11 +23,15 @@ _FRAGMENT_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "id": {"type": "string", "description": "Canonical MERGE key, type-prefixed (e.g. concept:margiela)."},
-                    "type": {"type": "string", "enum": ["record", "concept", "domain", "bridge", "episode"]},
-                    "title": {"type": "string"},
-                    "domain": {"type": "string", "description": "Free-form domain string (no fixed list)."},
+                    "type": {"type": "string",
+                             "description": "record|concept|domain|bridge|episode route to dedicated "
+                                            "tables; ANY other type persists to the open Entity carrier "
+                                            "and is folded into the theme vocabulary as proposed."},
+                    "title": {"type": "string",
+                              "description": "Required for open (non-legacy) types."},
+                    "domain": {"type": "string", "description": "Free-form domain string (no fixed list). Not persisted on open-type nodes."},
                     "tags": {"type": "array", "items": {"type": "string"}},
-                    "props": {"type": "object", "description": "Free-form extension properties."},
+                    "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
                 },
                 "required": ["id", "type"],
             },
@@ -37,13 +44,22 @@ _FRAGMENT_SCHEMA = {
                     "from": {"type": "string"},
                     "to": {"type": "string"},
                     "type": {"type": "string",
-                             "enum": ["relates_to", "prerequisite_of", "derives_from",
-                                      "inherits_from", "connects_via"]},
+                             "description": "relates_to|prerequisite_of|derives_from|inherits_from = "
+                                            "concept→concept; connects_via = bridge→concept; "
+                                            "about = episode→concept; record→concept preserves the "
+                                            "type on ATTACHES_TO; between two open-type nodes ANY "
+                                            "type persists via the TYPED carrier."},
+                    "role": {"type": "string",
+                             "description": "Optional CONNECTS role (connects_via only) — participates "
+                                            "in the merge key; different roles create parallel edges."},
                 },
                 "required": ["from", "to", "type"],
             },
         },
         "owner": {"type": "string", "description": "Owner scope to stamp (defaults to the local owner)."},
+        "theme_id": {"type": "string",
+                     "description": "Theme to fold open-type names into (optional — defaults to the "
+                                    "active theme, creating 'default' lazily)."},
     },
     "required": ["nodes"],
 }
@@ -94,6 +110,8 @@ def _t_suggest(args, bridge):
 def _t_ingest(args, bridge):
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
                 "owner": _owner(args, bridge)}
+    if args.get("theme_id"):   # F1 — 개방층 어휘 편입 대상 테마(선택)
+        fragment["theme_id"] = args["theme_id"]
     return bridge.request("POST", "/ingest/fragment", body=fragment)
 
 
@@ -180,8 +198,17 @@ TOOLS: list[dict] = [
         "name": "vinc_ingest",
         "description": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. "
                        "The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). "
-                       "Reuse existing ids (read-before-write); unknown "
-                       "type values are skipped and reported in warnings.",
+                       "Reuse existing ids (read-before-write). Node types record|concept|domain|"
+                       "bridge|episode route to dedicated tables; ANY other node type persists to "
+                       "the open Entity carrier and is folded into the theme vocabulary as proposed "
+                       "(returned in proposed_types for ratification). Edges: relates_to|"
+                       "prerequisite_of|derives_from|inherits_from = concept→concept (relates_to "
+                       "dedupes the reverse direction); connects_via = bridge→concept (optional "
+                       "role); about = episode→concept; record→concept preserves the type on "
+                       "ATTACHES_TO; between two open-type nodes ANY edge type persists via the "
+                       "TYPED carrier. Only malformed nodes (missing id/title) and unsupported "
+                       "(from,to) pairs between legacy types are skipped — reported in warnings "
+                       "with partial:true.",
         "inputSchema": _FRAGMENT_SCHEMA,
         "run": _t_ingest,
     },

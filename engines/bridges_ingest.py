@@ -198,16 +198,24 @@ def main() -> None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)
     connects = 0
+    # F5 — Bridge 소유 스탬프(v2): env MEMORY_DEFAULT_OWNER(기본 tenant:shared,
+    # concepts/recall/learner 관례 동형). 재실행이 레거시 ''(v2 마이그레이션 백필)
+    # 행의 자연 치유 경로다. ⚠ MCP/fragment 경로와 파이프라인을 섞는 허브는
+    # MEMORY_DEFAULT_OWNER 를 MCP owner 와 정렬할 것 — 어긋나면 owner 스코프
+    # 조회(atlas L0 결합 등)에서 서로의 브릿지가 갈라져 보인다.
+    owner = os.environ.get("MEMORY_DEFAULT_OWNER", "tenant:shared")
     with store.session() as s:
         for b in bridges:
             s.run(
                 """
                 MERGE (n:Bridge {bridge_id:$bid})
                 SET n.title=$title, n.status=$status, n.created=$created,
-                    n.source_domain=$sd, n.target_domain=$td, n.source_file=$src
+                    n.source_domain=$sd, n.target_domain=$td, n.source_file=$src,
+                    n.owner_id=$owner
                 """,
                 bid=b["bridge_id"], title=b["title"], status=b["status"], created=b["created"],
                 sd=b["source_domain"], td=b["target_domain"], src=b["source_file"],
+                owner=owner,
             )
             # CROSSES → Domain (양쪽)
             for dom in (b["source_domain"], b["target_domain"]):

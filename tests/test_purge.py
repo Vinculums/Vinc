@@ -32,10 +32,12 @@ def test_owner_scoped_labels_are_exactly_owner_id_bearing():
     from store.embedded_schema import owner_scoped_labels, _NODE_TABLES
 
     osl = owner_scoped_labels()
-    for lbl in ("Concept", "Episode", "Record", "Entity", "LearnerPattern"):
+    # Bridge 는 v2(F5)에서 owner_id 를 얻어 편입 — 파생 설계의 실증(스키마에 열을
+    # 붙이자 purge 가 자동 커버).
+    for lbl in ("Concept", "Episode", "Record", "Entity", "LearnerPattern", "Bridge"):
         assert lbl in osl, f"{lbl} 은 owner_id 를 가지는데 purge 대상에서 빠짐"
     # 구조·파생 노드(owner_id 없음)는 소유로 못 가르므로 대상 아님
-    for lbl in ("Bridge", "Domain", "Chunk", "SkillExecution"):
+    for lbl in ("Domain", "Chunk", "SkillExecution"):
         assert lbl not in osl
     # 파생 계약: 목록의 모든 라벨이 실제 owner_id 열을 가진다(SSoT 교차확인)
     for lbl in osl:
