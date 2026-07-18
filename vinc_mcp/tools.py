@@ -98,12 +98,19 @@ def _t_ingest(args, bridge):
 
 
 def _t_delete(args, bridge):
-    return bridge.request("POST", "/delete", body={"node": args["node_id"]})
+    # SEC-3: forced_owner(원격)를 body 로 실어 사이드카가 owner 스코프 삭제를 하게
+    # 한다. args["owner"] 는 call() 에서 원격이면 forced_owner 로 덮여 있고(멀티테넌트
+    # 봉쇄), 로컬 stdio 면 없음 → owner=None → 무스코프(단일유저 현행). bridge.owner
+    # 폴백을 **쓰지 않는다**: 로컬을 실수로 스코프해 자기 노드 삭제가 깨지지 않게.
+    return bridge.request("POST", "/delete",
+                          body={"node": args["node_id"], "owner": args.get("owner")})
 
 
 def _t_merge(args, bridge):
+    # SEC-3: 위와 동일 — owner 를 실어 남의 concept 병합·재지향·삭제를 막는다.
     return bridge.request("POST", "/merge-nodes",
-                          body={"keep": args["keep_id"], "drop": args["drop_id"]})
+                          body={"keep": args["keep_id"], "drop": args["drop_id"],
+                                "owner": args.get("owner")})
 
 
 TOOLS: list[dict] = [

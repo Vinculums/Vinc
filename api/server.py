@@ -217,23 +217,28 @@ class VincApp:
 
     # ── 쓰기 라우트(동기, 잡 큐 직렬화 R4) ─────────────────────────────────
     def write_pin(self, body):
+        # SEC-3: owner 전달 → 강제 owner(원격/웹)면 소유 episode 만 pin(교차테넌트 차단).
         ep = _req(body, "episode")
+        owner = body.get("owner") or None
         res = self.jobs.run_sync("pin", lambda: pref.pin(
-            ep, pinned=not bool(body.get("off")), store=self.store))
+            ep, pinned=not bool(body.get("off")), owner=owner, store=self.store))
         return 200, res
 
     def write_tag(self, body):
         ep = _req(body, "episode")
+        owner = body.get("owner") or None
         tags = body.get("tags") or []
         if isinstance(tags, str):
             tags = _csv(tags) or []
-        res = self.jobs.run_sync("tag", lambda: pref.tag(ep, list(tags), store=self.store))
+        res = self.jobs.run_sync("tag",
+                                 lambda: pref.tag(ep, list(tags), owner=owner, store=self.store))
         return 200, res
 
     def write_touch(self, body):
         ep = _req(body, "episode")
+        owner = body.get("owner") or None
         res = self.jobs.run_sync("touch", lambda: pref.touch(
-            ep, now=body.get("now"), store=self.store))
+            ep, now=body.get("now"), owner=owner, store=self.store))
         return 200, res
 
     def write_activate(self, body):
@@ -258,15 +263,20 @@ class VincApp:
     # 뮤테이션이므로 잡 큐(run_sync)로 단일 writer 에 직렬화한다(pin/tag/ingest 동형).
     # 둘 다 **비가역** — DETACH DELETE. writer store(self.store)로 실행.
     def write_delete(self, body):
+        # SEC-3: owner 를 엔진에 전달 → owner 주어지면 owner_id 스코프 삭제(교차테넌트
+        # 봉쇄). 로컬 앱은 owner 미전송 → None → 무스코프(현행). 원격/웹은 강제 owner.
         node = _req(body, "node")
+        owner = body.get("owner") or None
         res = self.jobs.run_sync("delete",
-                                 lambda: q.delete_node(node, store=self.store))
+                                 lambda: q.delete_node(node, owner=owner, store=self.store))
         return 200, res
 
     def write_merge(self, body):
+        # SEC-3: owner 전달 → merge_nodes 가 keep·drop 소유 일치 시에만 병합(교차테넌트 봉쇄).
         keep, drop = _req(body, "keep"), _req(body, "drop")
+        owner = body.get("owner") or None
         res = self.jobs.run_sync("merge_nodes",
-                                 lambda: q.merge_nodes(keep, drop, store=self.store))
+                                 lambda: q.merge_nodes(keep, drop, owner=owner, store=self.store))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────

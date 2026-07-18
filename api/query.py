@@ -1192,6 +1192,13 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
         if owner and label in _OWNER_SCOPED_LABELS:
             scope = " AND n.owner_id = $owner"
             params["owner"] = owner
+        elif owner:
+            # SEC-3: owner 강제 경로인데 라벨(Bridge 등)이 owner_id 를 안 가지면 스코프
+            # 불가 → 무스코프 삭제로 교차테넌트가 되므로 **거부**한다(fail-closed).
+            # 로컬 무스코프(owner=None)는 이 분기를 타지 않아 현행 유지.
+            base["executed"] = True
+            base["note"] = f"refused: {label} is not owner-scoped ({node_id})"
+            return base
         exists = store.run(
             f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN count(n) AS c", params)
         base["executed"] = True
@@ -1248,9 +1255,18 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             base["error"] = "keep and drop are the same node"
             return base
 
+        # SEC-3: owner 가 주어지면 모든 Concept/Record MATCH 를 소유자로 스코프한다.
+        # keep·drop 중 하나라도 호출자 소유가 아니면 _exists 게이트에서 found:False 로
+        # 즉시 중단(어떤 쓰기도 하기 전) → 남의 concept 병합·재지향·삭제 불가. 재지향·
+        # 최종삭제도 소유 노드에만 닿는다. owner=None(로컬 단일유저)이면 현행(무스코프).
+        osc = bool(owner)
+        oscope = (lambda var: f" AND {var}.owner_id = $owner") if osc else (lambda var: "")
+        op = {"owner": owner} if osc else {}   # 파라미터 스프레드(무스코프면 빈 dict)
+
         def _exists(cid: str) -> bool:
-            r = store.run("MATCH (c:Concept) WHERE c.concept_id = $id RETURN count(c) AS c",
-                          {"id": cid})
+            r = store.run(
+                f"MATCH (c:Concept) WHERE c.concept_id = $id{oscope('c')} "
+                "RETURN count(c) AS c", {"id": cid, **op})
             return bool(r and r[0].get("c"))
 
         base["executed"] = True
@@ -1265,18 +1281,22 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         def _cc_exists(rel: str, s: str, d: str) -> bool:
             r = store.run(
                 f"MATCH (a:Concept)-[:{rel}]->(b:Concept) "
-                "WHERE a.concept_id = $s AND b.concept_id = $d RETURN count(*) AS c",
-                {"s": s, "d": d})
+                f"WHERE a.concept_id = $s AND b.concept_id = $d{oscope('a')}{oscope('b')} "
+                "RETURN count(*) AS c",
+                {"s": s, "d": d, **op})
             return bool(r and r[0].get("c"))
 
         def _others(rel: str, incoming: bool) -> set:
+            # drop 과 이웃 x 를 모두 owner 로 스코프 — 남의 노드로 향한 엣지는 재지향 대상 아님.
             if incoming:
-                cy = (f"MATCH (x:Concept)-[:{rel}]->(d:Concept) WHERE d.concept_id = $id "
+                cy = (f"MATCH (x:Concept)-[:{rel}]->(d:Concept) "
+                      f"WHERE d.concept_id = $id{oscope('d')}{oscope('x')} "
                       "RETURN DISTINCT x.concept_id AS other")
             else:
-                cy = (f"MATCH (d:Concept)-[:{rel}]->(x:Concept) WHERE d.concept_id = $id "
+                cy = (f"MATCH (d:Concept)-[:{rel}]->(x:Concept) "
+                      f"WHERE d.concept_id = $id{oscope('d')}{oscope('x')} "
                       "RETURN DISTINCT x.concept_id AS other")
-            return {row["other"] for row in store.run(cy, {"id": drop_id}) if row.get("other")}
+            return {row["other"] for row in store.run(cy, {"id": drop_id, **op}) if row.get("other")}
 
         for rel in _CC_RELS:
             for incoming in (False, True):
@@ -1294,63 +1314,76 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                         continue
                     store.run(
                         "MATCH (a:Concept),(b:Concept) "
-                        "WHERE a.concept_id = $s AND b.concept_id = $d "
-                        f"MERGE (a)-[:{rel}]->(b)", {"s": s, "d": d})
+                        f"WHERE a.concept_id = $s AND b.concept_id = $d{oscope('a')}{oscope('b')} "
+                        f"MERGE (a)-[:{rel}]->(b)", {"s": s, "d": d, **op})
                     repointed += 1
 
         # ATTACHES_TO incoming: (rec:Record)-[a]->(drop) → (rec)-[a]->(keep), type 보존.
+        # SEC-3: Record·drop·keep 모두 owner 스코프 — 남의 Record 를 내 keep 으로 못 옮긴다.
         for row in store.run(
-                "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) WHERE d.concept_id = $id "
-                "RETURN DISTINCT r.record_id AS other, a.type AS type", {"id": drop_id}):
+                "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) "
+                f"WHERE d.concept_id = $id{oscope('d')}{oscope('r')} "
+                "RETURN DISTINCT r.record_id AS other, a.type AS type", {"id": drop_id, **op}):
             other = row.get("other")
             if not other:
                 continue
             ex = store.run(
                 "MATCH (r:Record)-[:ATTACHES_TO]->(k:Concept) "
-                "WHERE r.record_id = $r AND k.concept_id = $k RETURN count(*) AS c",
-                {"r": other, "k": keep_id})
+                f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
+                "RETURN count(*) AS c",
+                {"r": other, "k": keep_id, **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
             if row.get("type") is not None:
                 store.run(
-                    "MATCH (r:Record),(k:Concept) WHERE r.record_id = $r AND k.concept_id = $k "
+                    "MATCH (r:Record),(k:Concept) "
+                    f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
                     "MERGE (r)-[e:ATTACHES_TO]->(k) SET e.type = $t",
-                    {"r": other, "k": keep_id, "t": row["type"]})
+                    {"r": other, "k": keep_id, "t": row["type"], **op})
             else:
                 store.run(
-                    "MATCH (r:Record),(k:Concept) WHERE r.record_id = $r AND k.concept_id = $k "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k)", {"r": other, "k": keep_id})
+                    "MATCH (r:Record),(k:Concept) "
+                    f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
+                    "MERGE (r)-[e:ATTACHES_TO]->(k)", {"r": other, "k": keep_id, **op})
             repointed += 1
 
         # CONNECTS incoming: (br:Bridge)-[c]->(drop) → (br)-[c]->(keep), role 보존.
+        # SEC-3: Concept 끝점(drop·keep)만 owner 스코프 — Bridge 는 owner_id 없음(SEC-1
+        # 잔여, 소유불가 remainder). drop/keep 스코프로 남의 concept 재지향은 막힌다.
         for row in store.run(
-                "MATCH (b:Bridge)-[c:CONNECTS]->(d:Concept) WHERE d.concept_id = $id "
-                "RETURN DISTINCT b.bridge_id AS other, c.role AS role", {"id": drop_id}):
+                "MATCH (b:Bridge)-[c:CONNECTS]->(d:Concept) "
+                f"WHERE d.concept_id = $id{oscope('d')} "
+                "RETURN DISTINCT b.bridge_id AS other, c.role AS role", {"id": drop_id, **op}):
             other = row.get("other")
             if not other:
                 continue
             ex = store.run(
                 "MATCH (b:Bridge)-[:CONNECTS]->(k:Concept) "
-                "WHERE b.bridge_id = $b AND k.concept_id = $k RETURN count(*) AS c",
-                {"b": other, "k": keep_id})
+                f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} RETURN count(*) AS c",
+                {"b": other, "k": keep_id, **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
             if row.get("role") is not None:
                 store.run(
-                    "MATCH (b:Bridge),(k:Concept) WHERE b.bridge_id = $b AND k.concept_id = $k "
+                    "MATCH (b:Bridge),(k:Concept) "
+                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} "
                     "MERGE (b)-[e:CONNECTS]->(k) SET e.role = $role",
-                    {"b": other, "k": keep_id, "role": row["role"]})
+                    {"b": other, "k": keep_id, "role": row["role"], **op})
             else:
                 store.run(
-                    "MATCH (b:Bridge),(k:Concept) WHERE b.bridge_id = $b AND k.concept_id = $k "
-                    "MERGE (b)-[e:CONNECTS]->(k)", {"b": other, "k": keep_id})
+                    "MATCH (b:Bridge),(k:Concept) "
+                    f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')} "
+                    "MERGE (b)-[e:CONNECTS]->(k)", {"b": other, "k": keep_id, **op})
             repointed += 1
 
         # drop 삭제(부착 엣지 포함) — title/props 버림(keep 우선).
+        # SEC-3: 최종 파괴 연산도 owner 스코프(벨트&서스펜더 — _exists 게이트로 이미 소유
+        # 확인됐지만, 파괴 연산은 이중 가드). owner 불일치면 아무것도 안 지운다.
         _write_tombstone(store, drop_id, "Concept", owner)   # drop 도 전파(S4)
-        store.run("MATCH (c:Concept) WHERE c.concept_id = $id DETACH DELETE c", {"id": drop_id})
+        store.run(f"MATCH (c:Concept) WHERE c.concept_id = $id{oscope('c')} DETACH DELETE c",
+                  {"id": drop_id, **op})
         base["repointed"] = repointed
         base["skipped"] = skipped
         base["dropped"] = drop_id

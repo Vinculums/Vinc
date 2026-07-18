@@ -62,12 +62,17 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         warnings.append(f"node without id — skipped (type={ntype})")
         return None
     label, pk = _NODE_MAP[ntype]
+    owner_scoped = label in ("Record", "Concept", "Episode")   # owner_id 를 가진 라벨
 
     # 존재확인 + (추적 라벨이면) 현재 추적필드값도 함께 조회 — 변경감지 스탬핑(S0).
+    # SEC-3: owner-스코프 라벨이면 기존 owner_id 도 조회해 교차테넌트 충돌을 판별한다.
     tracked = revstamp.tracked_fields(label)
     if tracked:
-        proj = "n.rev AS rev, " + ", ".join(f"n.{c} AS {c}" for c in tracked)
-        cur_rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN {proj}", {"id": nid})
+        cols = ["n.rev AS rev"] + [f"n.{c} AS {c}" for c in tracked]
+        if owner_scoped:
+            cols.append("n.owner_id AS owner_id")
+        cur_rows = store.run(
+            f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN {', '.join(cols)}", {"id": nid})
         matched = bool(cur_rows)
         current = cur_rows[0] if cur_rows else {}
     else:
@@ -75,6 +80,16 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                            {"id": nid})
         matched = bool(exists and exists[0].get("c"))
         current = {}
+
+    # SEC-3: PK 충돌 소유권 탈취 차단. ID(concept:*)는 콘텐츠기반 공유 PK라, 강제 owner
+    # 경로(owner_explicit=호스티드/원격/웹)에서 **남이 이미 소유한** 노드에 MERGE 하면
+    # owner_id 재스탬핑(탈취) + 내용 덮어쓰기가 된다. 소유자가 다르면 노드를 건너뛴다
+    # (SET/MERGE 전에). 로컬(owner_explicit=False)이나 신규(not matched)는 현행 유지.
+    if owner_scoped and owner_explicit and matched:
+        existing_owner = current.get("owner_id")
+        if existing_owner and existing_owner != owner:
+            warnings.append(f"id {nid} owned by another tenant — skipped")
+            return None
 
     sets, params = [], {"id": nid}
     def _set(col, val):
@@ -128,8 +143,14 @@ _ALLOWED_PAIRS_HINT = (
 )
 
 
-def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -> str | None:
-    """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵)."""
+def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
+                *, owner: str | None = None, owner_explicit: bool = False) -> str | None:
+    """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
+
+    SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record)을
+    owner_id 로 스코프한다 — 내 fragment 가 남의 노드 ID 를 참조해도 그 노드로 향한
+    엣지는 MATCH 되지 않아 no-op(남의 서브그래프에 엣지 주입 차단). Bridge 는 owner_id
+    가 없어(SEC-1 잔여) Concept 쪽만 스코프한다. 로컬(owner_explicit=False)은 현행."""
     etype = (edge.get("type") or "").strip()
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     if etype not in _EDGE_TYPES:
@@ -137,6 +158,10 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -
             f"unsupported edge type '{etype}' — skipped ({src}→{dst}); {_ALLOWED_PAIRS_HINT}")
         return None
     st, dt = types.get(src, ""), types.get(dst, "")
+    osc = bool(owner_explicit and owner)
+    def _o(var: str) -> str:
+        return f" AND {var}.owner_id = $owner" if osc else ""
+    op = {"owner": owner} if osc else {}
 
     if etype == "connects_via":
         if (st, dt) != ("bridge", "concept"):
@@ -145,8 +170,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -
                 f"{_ALLOWED_PAIRS_HINT}")
             return None
         store.run(
-            "MATCH (a:Bridge), (b:Concept) WHERE a.bridge_id = $s AND b.concept_id = $d "
-            "MERGE (a)-[:CONNECTS]->(b)", {"s": src, "d": dst})
+            "MATCH (a:Bridge), (b:Concept) "
+            f"WHERE a.bridge_id = $s AND b.concept_id = $d{_o('b')} "
+            "MERGE (a)-[:CONNECTS]->(b)", {"s": src, "d": dst, **op})
         return "created"
     if (st, dt) == ("concept", "concept"):
         if etype == "relates_to":
@@ -154,23 +180,26 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str]) -
             # 이미 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
             rev = store.run(
                 "MATCH (b:Concept)-[:RELATED_TO]->(a:Concept) "
-                "WHERE b.concept_id = $d AND a.concept_id = $s RETURN count(*) AS c",
-                {"s": src, "d": dst})
+                f"WHERE b.concept_id = $d AND a.concept_id = $s{_o('b')}{_o('a')} "
+                "RETURN count(*) AS c",
+                {"s": src, "d": dst, **op})
             if rev and rev[0].get("c"):
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
         store.run(
-            "MATCH (a:Concept), (b:Concept) WHERE a.concept_id = $s AND b.concept_id = $d "
-            f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst})
+            "MATCH (a:Concept), (b:Concept) "
+            f"WHERE a.concept_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+            f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst, **op})
         return "created"
     if (st, dt) == ("record", "concept"):
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
         # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         store.run(
-            "MATCH (a:Record), (b:Concept) WHERE a.record_id = $s AND b.concept_id = $d "
+            "MATCH (a:Record), (b:Concept) "
+            f"WHERE a.record_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
             "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type = $t",
-            {"s": src, "d": dst, "t": etype})
+            {"s": src, "d": dst, "t": etype, **op})
         return "created"
     warnings.append(
         f"edge '{etype}' between {st or '?'}→{dt or '?'} 미지원 — skipped; "
@@ -206,7 +235,7 @@ def merge_fragment(fragment: dict, *, store) -> dict:
         matched += (r == "matched")
     types = _node_types(nodes)
     for e in edges:
-        r = _merge_edge(store, e, types, warnings)
+        r = _merge_edge(store, e, types, warnings, owner=owner, owner_explicit=owner_explicit)
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     edges_out = {"created": e_created}
