@@ -193,6 +193,19 @@ export const community = {
     communityPost("/api/community/publish", { title, description, pack }),
 };
 
+/** 웹모드 부팅 인증 게이트 — /api/me 로 세션을 **먼저** 확인한다. 미인증이면 서피스를
+ *  렌더하기 전에 /login 으로 보내고 false 를 돌려준다(main.ts 가 렌더를 중단). 이게 없으면
+ *  앱이 화면을 먼저 그린 뒤 데이터 호출이 401 을 받고서야 리다이렉트돼 "화면 깜빡임 → 로그인"
+ *  이 된다. 셸/브라우저 dev(WEB=false)에서는 호출되지 않는다(세션 개념 없음). */
+export async function ensureWebAuth(): Promise<boolean> {
+  try {
+    const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
+    if (res.ok) return true;
+  } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
+  location.assign("/login");
+  return false;
+}
+
 /** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */
 export async function pollJob(jobId: string, onTick?: (s: any) => void,
                              { intervalMs = 900, timeoutMs = 300000 } = {}): Promise<any> {

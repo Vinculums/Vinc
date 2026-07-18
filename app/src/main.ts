@@ -7,7 +7,7 @@ import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
-import { connectSidecar, WEB } from "./api";
+import { connectSidecar, WEB, ensureWebAuth } from "./api";
 import { checkForUpdate } from "./update";
 
 type Surface = "intake" | "records" | "atlas" | "search" | "packs";
@@ -139,7 +139,13 @@ applyTheme();
   // 셸이면 사이드카 접속(포트·토큰) 확보. 웹 Vinc(호스티드)는 로컬 사이드카가 없어
   // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).
-  if (!WEB) await connectSidecar();
+  if (!WEB) {
+    await connectSidecar();
+  } else {
+    // 웹모드: 서피스를 그리기 **전에** 세션을 확인한다 — 미인증이면 즉시 /login 으로
+    // (앱이 잠깐 떴다가 데이터 401 로 뒤늦게 리다이렉트되는 깜빡임 제거).
+    if (!(await ensureWebAuth())) return;
+  }
   route();
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
