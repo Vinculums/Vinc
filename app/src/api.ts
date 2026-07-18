@@ -198,6 +198,13 @@ export const community = {
  *  앱이 화면을 먼저 그린 뒤 데이터 호출이 401 을 받고서야 리다이렉트돼 "화면 깜빡임 → 로그인"
  *  이 된다. 셸/브라우저 dev(WEB=false)에서는 호출되지 않는다(세션 개념 없음). */
 export async function ensureWebAuth(): Promise<boolean> {
+  // 빠른 경로(왕복 0): 세션이 서면 __Host-csrf(JS-readable)가 함께 세팅된다. 그 쿠키가
+  // 아예 없으면 로그인한 적 없음 → 서버 확인 없이 즉시 /login (never-logged-in = 흔한
+  // 경우, 완전 즉시 리다이렉트). 쿠키가 있으면 만료됐을 수 있어 /api/me 로 검증한다.
+  if (!/(?:^|;\s*)__Host-csrf=/.test(document.cookie)) {
+    location.assign("/login");
+    return false;
+  }
   try {
     const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
     if (res.ok) return true;
