@@ -122,7 +122,15 @@ async function call(path: string, params?: Record<string, string | number | unde
     },
     body: isWrite ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    // 웹모드에서 세션 만료(401) → 로그인으로 보낸다(앱=/app/, 로그인=/login).
+    // 죽은 사이드카에 조용히 실패하지 않고 "다시 로그인" 경로를 준다.
+    if (WEB && res.status === 401) {
+      location.assign("/login");
+      throw new Error("session expired");
+    }
+    throw new Error(`${res.status} ${await res.text()}`);
+  }
   return res.json();
 }
 
