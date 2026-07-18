@@ -15,6 +15,11 @@ export async function renderSettings(el: HTMLElement) {
       <button class="btn" id="mcp-desktop">${U.mcpDesktop}</button>
       <button class="btn" id="mcp-code">${U.mcpCode}</button>
     </span></p>
+    <p class="hint" style="margin-top:.35rem">${U.mcpRemoveHint}</p>
+    <p><span class="seg">
+      <button class="btn" id="mcp-rm-desktop">${U.mcpRemoveDesktop}</button>
+      <button class="btn" id="mcp-rm-code">${U.mcpRemoveCode}</button>
+    </span></p>
     <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>
     <label>${U.sync}</label><p class="hint">${U.syncHint}</p>
     <label for="s-sync-key">${U.syncKey}</label>
@@ -77,22 +82,24 @@ export async function renderSettings(el: HTMLElement) {
   el.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
     (cfg.owner = (e.target as HTMLInputElement).value));
 
-  // MCP — 이 설치본을 로컬 Claude 클라이언트(Desktop/Code)에 등록. main.rs 의
-  // mcp_install 커맨드가 번들 사이드카 `mcp install` 을 실행한다(셸에서만 동작).
+  // MCP — 이 설치본을 로컬 Claude 클라이언트(Desktop/Code)에 등록/해제. main.rs 의
+  // mcp_install / mcp_uninstall 이 번들 사이드카 `mcp install|uninstall` 을 실행한다(셸 전용).
   const mcpResult = el.querySelector<HTMLElement>("#mcp-result")!;
-  async function connectMcp(client: "desktop" | "code") {
+  async function mcpAction(action: "install" | "uninstall", client: "desktop" | "code") {
     const invoke = (window as any).__TAURI__?.core?.invoke;
     if (typeof invoke !== "function") { mcpResult.textContent = U.mcpNoShell; return; }
-    mcpResult.textContent = U.mcpInstalling;
+    mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
     try {
-      await invoke("mcp_install", { client });
-      mcpResult.textContent = U.mcpDone(client);
+      await invoke(action === "install" ? "mcp_install" : "mcp_uninstall", { client });
+      mcpResult.textContent = action === "install" ? U.mcpDone(client) : U.mcpRemoved(client);
     } catch (e: any) {
       mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
     }
   }
-  el.querySelector("#mcp-desktop")!.addEventListener("click", () => connectMcp("desktop"));
-  el.querySelector("#mcp-code")!.addEventListener("click", () => connectMcp("code"));
+  el.querySelector("#mcp-desktop")!.addEventListener("click", () => mcpAction("install", "desktop"));
+  el.querySelector("#mcp-code")!.addEventListener("click", () => mcpAction("install", "code"));
+  el.querySelector("#mcp-rm-desktop")!.addEventListener("click", () => mcpAction("uninstall", "desktop"));
+  el.querySelector("#mcp-rm-code")!.addEventListener("click", () => mcpAction("uninstall", "code"));
 
   // ── 계정 그래프 동기화(S5) ────────────────────────────────────────────────
   // 회원 키는 이 기기 localStorage 에만(민감정보 — cfg/서버 저장 안 함). 도메인 선택은

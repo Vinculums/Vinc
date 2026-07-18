@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from vinc_mcp import tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
-from vinc_mcp.install import install_desktop  # noqa: E402
+from vinc_mcp.install import install_desktop, uninstall_desktop  # noqa: E402
 from vinc_mcp.oauth import OAuthGate, _s256  # noqa: E402
 from vinc_mcp.rpc import Dispatcher  # noqa: E402
 
@@ -291,6 +291,28 @@ class InstallDesktopTests(unittest.TestCase):
             self.assertIsNone(res["backup"])
             cfg = json.loads(p.read_text(encoding="utf-8"))
             self.assertIn("vinc", cfg["mcpServers"])
+
+    def test_uninstall_removes_only_vinc_and_backs_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "claude_desktop_config.json"
+            p.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}},
+                                     "theme": "dark"}), encoding="utf-8")
+            install_desktop(p)
+            res = uninstall_desktop(p)
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+            self.assertTrue(res["removed"])
+            self.assertNotIn("vinc", cfg["mcpServers"])      # vinc 제거
+            self.assertIn("other", cfg["mcpServers"])        # 남의 서버 보존
+            self.assertEqual(cfg["theme"], "dark")           # 설정 보존
+            self.assertTrue(Path(res["backup"]).exists())    # 백업 생성
+
+    def test_uninstall_idempotent_and_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "claude_desktop_config.json"
+            p.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+            self.assertFalse(uninstall_desktop(p)["removed"])   # 없으면 removed:False(에러 아님)
+            missing = Path(tmp) / "nope" / "claude_desktop_config.json"
+            self.assertFalse(uninstall_desktop(missing)["removed"])  # 파일 부재도 안전
 
 
 if __name__ == "__main__":

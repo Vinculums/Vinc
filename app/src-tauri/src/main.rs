@@ -60,8 +60,8 @@ fn sidecar_status(log: tauri::State<'_, SidecarLog>) -> String {
 /// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 1회 등록한다. 번들 사이드카
 /// `mcp install --client <desktop|code>` 를 실행(서버 기동 아님, one-shot)해 결과
 /// JSON(stdout)을 프론트에 돌려준다. 실패 시 stderr/stdout 을 Err 로 전달.
-#[tauri::command]
-async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, String> {
+/// `mcp install|uninstall --client <desktop|code>` one-shot 실행 공용부.
+async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Result<String, String> {
     if client != "desktop" && client != "code" {
         return Err(format!("unknown client: {client}"));
     }
@@ -69,7 +69,7 @@ async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, St
         .shell()
         .sidecar("vinc-sidecar")
         .map_err(|e| e.to_string())?
-        .args(["mcp", "install", "--client", &client])
+        .args(["mcp", action, "--client", client])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -80,6 +80,19 @@ async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, St
     } else {
         Err(if stderr.trim().is_empty() { stdout } else { stderr })
     }
+}
+
+/// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 등록(install).
+#[tauri::command]
+async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, String> {
+    mcp_action(&app, "install", &client).await
+}
+
+/// Settings→MCP: 등록 해제(uninstall) — claude_desktop_config.json 의 vinc 키 제거
+/// (백업 후) 또는 `claude mcp remove`. install 의 역연산, 멱등.
+#[tauri::command]
+async fn mcp_uninstall(app: tauri::AppHandle, client: String) -> Result<String, String> {
+    mcp_action(&app, "uninstall", &client).await
 }
 
 /// 로컬 세션 토큰 — 실행마다 새로 생성(F4: 자격은 세션 한정).
@@ -145,7 +158,7 @@ fn main() {
             port,
             token: token.clone(),
         })
-        .invoke_handler(tauri::generate_handler![sidecar_conn, sidecar_status, mcp_install])
+        .invoke_handler(tauri::generate_handler![sidecar_conn, sidecar_status, mcp_install, mcp_uninstall])
         .setup(move |app| {
             // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
             let sidecar = app

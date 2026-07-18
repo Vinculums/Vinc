@@ -172,6 +172,10 @@ def main(argv: list[str] | None = None) -> int:
     mi.add_argument("--client", choices=["code", "desktop"], required=True)
     mi.add_argument("--desktop-config", default=None,
                     help="override claude_desktop_config.json path (tests/portable installs)")
+    mu = msub.add_parser("uninstall", help="remove this server from a local Claude client")
+    mu.add_argument("--client", choices=["code", "desktop"], required=True)
+    mu.add_argument("--desktop-config", default=None,
+                    help="override claude_desktop_config.json path (tests/portable installs)")
 
     args = ap.parse_args(argv)
 
@@ -261,6 +265,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.mcpcmd == "install":
             from vinc_mcp.install import install
             return _emit(install(args.client, desktop_path=args.desktop_config))
+        if args.mcpcmd == "uninstall":
+            from vinc_mcp.install import uninstall
+            return _emit(uninstall(args.client, desktop_path=args.desktop_config))
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
         bridge.ensure(spawn=not args.no_spawn)
