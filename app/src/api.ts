@@ -170,6 +170,29 @@ export const api = {
   jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
 
+// ── 커뮤니티 공유(웹 전용) ─────────────────────────────────────────────────
+// 그래프 프록시(/api/graph)와 별개인 계정 라우트(/api/community). 세션 쿠키 +
+// 쓰기 CSRF. 셸/브라우저 dev 에는 세션이 없어 사실상 웹모드 전용(버튼도 WEB 가드).
+async function communityPost(path: string, body: unknown): Promise<any> {
+  const res = await fetch(new URL(path, location.origin), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    if (res.status === 401) { location.assign("/login"); throw new Error("session expired"); }
+    throw new Error(`${res.status} ${await res.text()}`);
+  }
+  return res.json();
+}
+
+export const community = {
+  /** 지식 팩을 공개 갤러리에 게시. 반환 {publicId}. 데이터가 공개된다(호출부가 동의 확인). */
+  publish: (title: string, description: string, pack: unknown): Promise<{ publicId: string }> =>
+    communityPost("/api/community/publish", { title, description, pack }),
+};
+
 /** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */
 export async function pollJob(jobId: string, onTick?: (s: any) => void,
                              { intervalMs = 900, timeoutMs = 300000 } = {}): Promise<any> {
