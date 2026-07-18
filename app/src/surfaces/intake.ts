@@ -1,7 +1,7 @@
 import { COPY } from "../copy";
 import { header, headerCta } from "../components";
 import { icon } from "../icons";
-import { api, cfg, sidecarDiag } from "../api";
+import { api, cfg, sidecarDiag, WEB } from "../api";
 import samplePack from "../sample-pack.json";
 
 /** Surface 1 — Intake (Figma 5:2 grammar · spec vinc.d.ingest v0.2).
@@ -19,16 +19,17 @@ export function renderIntake(el: HTMLElement) {
       ${icon("ingest", 30)}
       <h2>${COPY.intake.idleTitle}</h2>
       <p>${COPY.intake.idleBody}</p>
-      <p class="hint">${COPY.sovereignty}</p>
+      <p class="hint">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
       <p>
         <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
-        <button class="btn" id="try-sample">${COPY.ui.intakeUi.trySample}</button>
+        ${WEB ? "" : `<button class="btn" id="try-sample">${COPY.ui.intakeUi.trySample}</button>`}
       </p>
     </div>
+    ${WEB ? "" : `
     <div class="mcp-note">
       <h3>${COPY.ui.intakeUi.mcpTitle}</h3>
       <p>${COPY.ui.intakeUi.mcpBody}</p>
-    </div>
+    </div>`}
     <input type="file" id="file-input" accept=".vincpack,.json,application/json" multiple hidden />
     <div id="intake-status" role="status"></div>
   `;
@@ -107,7 +108,7 @@ export function renderIntake(el: HTMLElement) {
 
   // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
   // 그 스코프로 전환해 Atlas 를 바로 체험. (Settings 의 Owner scope 로 본인 데이터 복귀.)
-  el.querySelector("#try-sample")!.addEventListener("click", async () => {
+  el.querySelector("#try-sample")?.addEventListener("click", async () => {
     status.innerHTML = `<p class="hint">${ui.importingSample}</p>`;
     try {
       const res = await api.importPack(samplePack, "sample:demo");

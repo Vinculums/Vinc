@@ -55,6 +55,63 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertTrue(any("CREATE NODE TABLE Episode" in s for s in stmts))
         store.close()
 
+    def test_write_tenancy_2owner_scoped(self):
+        """SEC-3 — 강제 owner 쓰기 경로가 **실 엔진에서** 교차테넌트를 차단하는가.
+        스텁(test_write_tenancy)이 초록이어도 엔진이 다르게 굴 수 있으니(SEC-1 교훈)
+        진짜 Kùzu 로 A 가 B 의 노드를 delete/merge 못 하고, ingest 소유권 탈취가
+        거부되는지 본다. SEC-1 읽기 격리(test_scope_filter_isolates_owners)의 쓰기측."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+        from api import query as q
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+
+        def ingest(owner, nid, title="x"):
+            frag.merge_fragment(
+                {"owner": owner, "nodes": [{"id": nid, "type": "concept", "title": title}],
+                 "edges": []}, store=store)
+
+        def exists(nid):
+            r = store.run("MATCH (c:Concept) WHERE c.concept_id = $id RETURN count(c) AS c",
+                          {"id": nid})
+            return bool(r and r[0]["c"])
+
+        ingest("user:A", "concept:shared", "A owns")
+        ingest("user:B", "concept:bonly", "B owns")
+
+        # delete: B 는 A 의 노드를 못 지운다(found:False, 노드 생존) / A 는 자기 것을 지운다
+        r = q.delete_node("concept:shared", owner="user:B", store=store)
+        self.assertIs(r.get("found"), False)
+        self.assertTrue(exists("concept:shared"))
+        r = q.delete_node("concept:shared", owner="user:A", store=store)
+        self.assertTrue(r.get("found") and r.get("deleted"))
+        self.assertFalse(exists("concept:shared"))
+
+        # ingest 소유권 탈취 거부: A 가 B 소유 id 를 강제 owner 로 적재 → owner 불변·미덮어씀·경고
+        out = frag.merge_fragment(
+            {"owner": "user:A",
+             "nodes": [{"id": "concept:bonly", "type": "concept", "title": "HIJACK"}], "edges": []},
+            store=store)
+        row = store.run("MATCH (c:Concept) WHERE c.concept_id = 'concept:bonly' "
+                        "RETURN c.owner_id AS o, c.title AS t")[0]
+        self.assertEqual(row["o"], "user:B")
+        self.assertNotEqual(row["t"], "HIJACK")
+        self.assertTrue(any("another tenant" in str(w) for w in (out.get("warnings") or [])))
+
+        # merge: B 는 A 의 두 concept 를 병합 못 한다(found:False, drop 생존) / A 는 병합한다
+        ingest("user:A", "concept:a1")
+        ingest("user:A", "concept:a2")
+        r = q.merge_nodes("concept:a1", "concept:a2", owner="user:B", store=store)
+        self.assertIs(r.get("found"), False)
+        self.assertTrue(exists("concept:a2"))
+        r = q.merge_nodes("concept:a1", "concept:a2", owner="user:A", store=store)
+        self.assertTrue(r.get("found"))
+        self.assertFalse(exists("concept:a2"))
+        store.close()
+
     def test_recall_engine_write_and_query_roundtrip(self):
         from store.config import load_config
         from store.backend import open_store

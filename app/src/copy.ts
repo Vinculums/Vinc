@@ -10,6 +10,7 @@ import { cfg } from "./api";
 const EN = {
   tagline: "Discover the core of your knowledge.",
   sovereignty: "Vinc runs entirely on your device. Nothing ever leaves.",
+  sovereigntyWeb: "This is your account graph — the same knowledge across the desktop app and your devices.",
   intake: {
     idleTitle: "Add knowledge to Vinc.",
     idleBody: "Import a knowledge pack — a .vincpack or .json file. Drag it here, or choose a file.",
@@ -178,6 +179,7 @@ type Deck = typeof EN;
 const KO: Deck = {
   tagline: "흩어진 지식의 핵심을 발견하세요.",
   sovereignty: "Vinc는 현재 기기에서만 안전하게 동작합니다. 어떤 데이터도 외부로 유출되지 않습니다.",
+  sovereigntyWeb: "여기는 계정 그래프입니다 — 데스크탑 앱·다른 기기와 같은 지식을 봅니다.",
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
     idleBody: "지식 팩 파일(.vincpack 또는 .json)을 가져오세요. 여기에 끌어다 놓거나 파일을 선택하면 됩니다.",

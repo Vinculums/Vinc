@@ -138,6 +138,14 @@ class Bridge:
         if self.health():
             return self
         if not spawn:
+            # --no-spawn(허브 attach): 사이드카가 아직 기동 중일 수 있다 — 동시 재시작
+            # 레이스(sidecar 가 Kùzu 스토어를 여는 데 잠깐 걸린다). wait 동안 폴링해
+            # 준비되면 attach → 첫판 crash 제거(systemd 자동복구되지만 무해한 실패를 없앤다).
+            deadline = time.time() + wait
+            while time.time() < deadline:
+                time.sleep(0.3)
+                if self.health():
+                    return self
             raise RuntimeError(f"sidecar unreachable: {self.base}")
         if not self.token:
             self.token = secrets.token_urlsafe(24)
