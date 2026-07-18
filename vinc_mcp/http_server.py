@@ -22,6 +22,7 @@ SSE 스트림은 제공하지 않는다(GET /mcp → 405) — 우리 도구는 �
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.parse
@@ -33,6 +34,28 @@ from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import Dispatcher
 
 MAX_BODY = 4 * 1024 * 1024
+
+# 웹 Vinc 그래프 프록시 표면(op → (method, 사이드카 경로)). 계정 세션→서명 어서션이
+# 이 op 만 요청할 수 있고, 화이트리스트 외는 거부한다. **제외**: themes/types(전역
+# vocab, owner 차원 없음)·sync/*(데스크탑↔계정 동기화 기계)·backup(로컬 파일)·
+# purge(전용 서명 경로). owner 는 항상 서명된 sub 에서 강제 주입된다(SEC-3 + 프록시).
+_PROXY_OPS: dict[str, tuple[str, str | None]] = {
+    # 읽기(GET)
+    "atlas": ("GET", "/atlas"), "graph": ("GET", "/graph"),
+    "recall": ("GET", "/recall"), "search": ("GET", "/search"),
+    "coupling": ("GET", "/coupling"), "suggest-ties": ("GET", "/suggest-ties"),
+    "decide": ("GET", "/decide"), "domains": ("GET", "/domains"),
+    "promote-candidates": ("GET", "/promote-candidates"),
+    "learner": ("GET", "/learner"), "share": ("GET", "/share"),
+    "job": ("GET", None),   # /jobs/{id} — id 검증 후 특수 처리
+    # 쓰기(POST) — SEC-3 하드닝된 owner-스코프 경로
+    "pin": ("POST", "/pin"), "tag": ("POST", "/tag"), "touch": ("POST", "/touch"),
+    "activate": ("POST", "/activate"),
+    "ingest-fragment": ("POST", "/ingest/fragment"),
+    "ingest-pack": ("POST", "/ingest/pack"),
+    "delete": ("POST", "/delete"), "merge-nodes": ("POST", "/merge-nodes"),
+}
+_JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class MCPHTTPApp:
@@ -190,6 +213,48 @@ class MCPHTTPApp:
         if not isinstance(sub, str) or not sub:
             raise ValueError("purge request is missing a subject")
         return self.bridge.request("POST", "/sync/purge-owner", body={"owner": f"user:{sub}"})
+
+    # ── 웹 Vinc 그래프 프록시(계정 세션 → 서명 어서션 → owner 강제 read/write) ─────
+    def graph_enabled(self) -> bool:
+        """계정 공개키 핀 시에만 활성 — purge 와 같은 게이트(계정→우리 신뢰 방향)."""
+        return bool(self.account_public)
+
+    def graph_owner_request(self, assertion: str, args: dict) -> dict:
+        """계정 서명 proxy 어서션(typ=proxy·iss=account·aud=mcp·op·≤2분)을 검증해 `sub`
+        로 owner 를 **강제**하고, op 를 사이드카 read/write 라우트로 프록시한다.
+
+        owner 는 서명된 `sub` 에서만 온다 — args 의 owner 는 pop 해 버린다(클라/계정
+        바디 어느 쪽도 owner 를 못 정한다 → 교차테넌트 봉쇄, SEC-3 와 이중). op 는
+        화이트리스트(_PROXY_OPS)로만. 유효한 A 어서션을 B 스코프에 못 쓴다(sub 고정)."""
+        if not self.graph_enabled():
+            raise PermissionError("graph proxy is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "proxy" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired proxy request")
+        sub = payload.get("sub")
+        if not isinstance(sub, str) or not sub:
+            raise ValueError("proxy request is missing a subject")
+        op = payload.get("op")
+        route = _PROXY_OPS.get(op) if isinstance(op, str) else None
+        if route is None:
+            raise ValueError(f"unsupported proxy op: {op!r}")
+        method, path = route
+        owner = f"user:{sub}"
+        args = dict(args or {})
+        args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
+
+        if op == "job":   # /jobs/{id} 폴링 — id 는 토큰꼴만(경로주입·타 라우트 차단)
+            jid = str(args.get("id") or "")
+            if not _JOB_ID_RE.fullmatch(jid):
+                raise ValueError("invalid job id")
+            return self.bridge.request("GET", f"/jobs/{jid}")
+        if op == "activate":   # 클라가 호스트 임의 파일경로 지정 못 하게(활성 팩 인라인)
+            args.pop("out", None)
+        if method == "GET":
+            return self.bridge.request("GET", path, params={**args, "owner": owner})
+        # POST: owner 를 바디 최상위에 강제 — fragment.owner·write_* 전부 최상위 owner 를 읽음.
+        return self.bridge.request("POST", path, body={**args, "owner": owner})
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -356,6 +421,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._sync(url.path)
         if url.path == "/internal/purge-owner":
             return self._internal_purge()
+        if url.path == "/internal/graph-owner":
+            return self._internal_graph()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
     # ── 계정 삭제 캐스케이드(§5.9) — 서명된 내부 purge ───────────────────────────
@@ -376,6 +443,26 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         except Exception as e:   # 사이드카 도달 불가 — 계정이 재시도(fail-closed)
+            return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
+        return self._json(200, out)
+
+    def _internal_graph(self):
+        """`POST /internal/graph-owner` — 계정 서명 proxy 어서션 → owner 강제 read/write.
+
+        purge 와 동일 신뢰 모델(계정 서명·우리가 account 공개키로 검증·루프백+Caddy 404
+        차단). 웹 Vinc 의 데이터 평면: 로그인 계정 세션이 계정 백엔드를 거쳐 여기로 오고,
+        owner 는 서명된 sub 에서만 강제된다. 바디 = op 인자(owner 제외), 어서션 = op 지정."""
+        if not self.app.graph_enabled():
+            return self._json(503, {"error": "graph_proxy_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        args = self._body()
+        try:
+            out = self.app.graph_owner_request(assertion, args)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        except Exception as e:   # 사이드카 도달 불가
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
