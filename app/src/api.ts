@@ -15,6 +15,20 @@ const IN_SHELL =
   location.protocol === "tauri:" || location.hostname === "tauri.localhost";
 const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 
+// 웹 Vinc(홈페이지용): 셸도 아니고 로컬 dev(localhost)도 아니면 = 호스티드 웹
+// (vincs.app/app). 이 경우 데이터 평면은 로컬 사이드카가 아니라 **계정 프록시**
+// (/api/graph/*)로 가고, 인증은 Bearer 토큰이 아니라 **계정 세션 쿠키**로 한다
+// (쓰기는 CSRF 더블서브밋). owner 는 클라가 보내지 않는다 — 허브가 세션 sub 로 강제.
+// (로컬 vite dev 는 !IN_SHELL 이지만 localhost 라 WEB=false → 기존 same-origin 프록시.)
+export const WEB = !IN_SHELL
+  && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+
+/** __Host-csrf(JS-readable) 쿠키 값 — 웹모드 쓰기의 CSRF 더블서브밋 헤더용. */
+function csrfToken(): string {
+  const m = document.cookie.match(/(?:^|;\s*)__Host-csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]!) : "";
+}
+
 export const cfg = {
   // 기본 = 셸에서는 고정 사이드카 주소, 브라우저에서는 same-origin(vite dev proxy 경유).
   get base(): string { return localStorage.getItem(BASE_KEY) || DEFAULT_BASE; },
@@ -90,16 +104,23 @@ export async function connectSidecar(): Promise<void> {
 
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown): Promise<any> {
-  const url = new URL(path, cfg.base);
+  // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.app).
+  //   call("/atlas") → /api/graph/atlas · call("/ingest/fragment") → /api/graph/ingest/fragment
+  const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+  const isWrite = body !== undefined;
   const res = await fetch(url, {
-    method: body === undefined ? "GET" : "POST",
+    method: isWrite ? "POST" : "GET",
+    // 웹: 계정 세션 쿠키를 실어 보낸다(같은 오리진). 셸: 쿠키 없음.
+    ...(WEB ? { credentials: "include" as const } : {}),
     headers: {
-      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      // 셸: 세션 토큰(Bearer). 웹: 쿠키 세션이라 Bearer 불필요, 쓰기엔 CSRF 더블서브밋.
+      ...(!WEB && cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+      ...(isWrite ? { "Content-Type": "application/json" } : {}),
+      ...(WEB && isWrite ? { "X-CSRF-Token": csrfToken() } : {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: isWrite ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();

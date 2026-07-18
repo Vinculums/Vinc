@@ -1,4 +1,4 @@
-import { cfg } from "../api";
+import { cfg, WEB } from "../api";
 import { COPY } from "../copy";
 
 /** Settings popover (spec: vinc.d.settings v0.1) — exactly three items: Lock (D7
@@ -9,6 +9,7 @@ export async function renderSettings(el: HTMLElement) {
   el.innerHTML = `
     <h2>Settings</h2>
     <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>
+    ${WEB ? "" : `
     <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
     <p><span class="seg">
       <button class="btn" id="mcp-desktop">${U.mcpDesktop}</button>
@@ -23,11 +24,12 @@ export async function renderSettings(el: HTMLElement) {
     <p class="hint" style="margin-top:.5rem">${U.syncDomains}</p>
     <div id="sync-domains" class="hint" style="font-size:.8rem">…</div>
     <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
-    <div id="sync-result" class="hint" style="font-size:.78rem"></div>
+    <div id="sync-result" class="hint" style="font-size:.78rem"></div>`}
     <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
+    ${WEB ? "" : `
     <label for="s-owner">${U.workspace}</label>
     <p class="hint">${U.workspaceHint}</p>
-    <input id="s-owner" value="${cfg.owner}" />
+    <input id="s-owner" value="${cfg.owner}" />`}
     <label>${U.theme}</label>
     <p><span class="seg">
       ${["dark", "light", "auto"].map((t) => `
@@ -40,6 +42,7 @@ export async function renderSettings(el: HTMLElement) {
         <button class="chip${cfg.lang === l ? " active" : ""}"
                 data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("")}
     </span></p>
+    ${WEB ? "" : `
     <details style="margin-top:var(--space-3,.75rem)">
       <summary class="hint" style="cursor:pointer">${U.advanced}</summary>
       <label for="s-base">${U.engine}</label>
@@ -47,7 +50,7 @@ export async function renderSettings(el: HTMLElement) {
       <label for="s-token">${U.secret}</label>
       <p class="hint">${U.secretHint}</p>
       <input id="s-token" value="${cfg.token}" />
-    </details>
+    </details>`}
   `;
   // D42 — 언어 전환: 전 표면 재렌더가 필요하므로 reload(팔레트·타이틀 포함)
   el.querySelectorAll<HTMLElement>("[data-lang-opt]").forEach((b) =>
@@ -62,6 +65,11 @@ export async function renderSettings(el: HTMLElement) {
       applyTheme();
       renderSettings(el);
     }));
+  // 웹 Vinc(호스티드): 아래는 전부 셸/로컬 전용(사이드카 base·token·owner, MCP install,
+  // 계정 키 동기화). 웹은 owner 를 세션이 강제하고 로컬 사이드카가 없어 이 UI 자체를
+  // 렌더하지 않았으므로(위 HTML 가드), 여기서 배선도 건너뛴다.
+  if (WEB) return;
+
   el.querySelector<HTMLInputElement>("#s-base")!.addEventListener("change", (e) =>
     (cfg.base = (e.target as HTMLInputElement).value));
   el.querySelector<HTMLInputElement>("#s-token")!.addEventListener("change", (e) =>

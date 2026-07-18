@@ -7,7 +7,7 @@ import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
-import { connectSidecar } from "./api";
+import { connectSidecar, WEB } from "./api";
 import { checkForUpdate } from "./update";
 
 type Surface = "intake" | "records" | "atlas" | "search" | "packs";
@@ -136,7 +136,10 @@ applyTheme();
 // 셸이면 사이드카 접속정보(포트·토큰)를 먼저 확보한 뒤 첫 화면을 그린다.
 // (브라우저 dev 는 connectSidecar 가 즉시 반환 → 기존과 동일)
 (async () => {
-  await connectSidecar();
+  // 셸이면 사이드카 접속(포트·토큰) 확보. 웹 Vinc(호스티드)는 로컬 사이드카가 없어
+  // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
+  // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).
+  if (!WEB) await connectSidecar();
   route();
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
