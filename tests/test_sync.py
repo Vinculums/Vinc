@@ -96,6 +96,29 @@ def test_small_bundle_stays_single_chunk():
     assert len(chunks[0]["nodes"]) == 3 and chunks[0]["edges"] == edges
 
 
+# ── 삭제 전파(S4) ─────────────────────────────────────────────────────────────
+def test_chunking_carries_tombstones():
+    """삭제 표식은 유실되면 안 된다 — 노드 있으면 첫 청크에, 없으면 전용 청크에."""
+    tombs = [{"node_id": "concept:x", "label": "Concept", "deleted_at": "2026", "_seq": 3}]
+    # 노드 있음 → 첫 청크에 실림
+    ch = sync.chunk_bundle({"nodes": [_node(0)], "edges": [], "tombstones": tombs})
+    assert ch[0]["tombstones"] == tombs
+    # 삭제-only(노드 0) → 전용 청크
+    ch2 = sync.chunk_bundle({"nodes": [], "edges": [], "tombstones": tombs})
+    assert len(ch2) == 1 and ch2[0]["tombstones"] == tombs
+    # 완전 빈 번들 → 청크 없음
+    assert sync.chunk_bundle({"nodes": [], "edges": [], "tombstones": []}) == []
+
+
+def test_tombstone_plan_scopes_owner_and_synced_labels():
+    p = sync._tombstones_delta_plan(owner="user:a", since=0)
+    assert "t.owner_id = $owner" in p.cypher
+    assert "t.label IN ['Concept', 'Episode']" in p.cypher   # 동기화 라벨만
+    assert "sync_seq >" not in p.cypher                       # since=0 = 전량
+    p1 = sync._tombstones_delta_plan(owner="user:a", since=7)
+    assert "t.sync_seq > $since" in p1.cypher and p1.params["since"] == 7
+
+
 # ── 선택 도메인 저장 ──────────────────────────────────────────────────────────
 def test_selected_domains_roundtrip_and_normalize():
     class _Mem:

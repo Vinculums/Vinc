@@ -91,6 +91,59 @@ def del_base(store, node_id: str) -> None:
     store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b", {"id": node_id})
 
 
+# ── tombstone(삭제 전파, S4) ──────────────────────────────────────────────────
+def get_tombstone(store, node_id: str) -> dict | None:
+    rows = store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id "
+                     "RETURN t.deleted_at AS da, t.rev AS rev", {"id": node_id})
+    if not rows:
+        return None
+    return {"deleted_at": rows[0].get("da") or "", "rev": int(rows[0].get("rev") or 0)}
+
+
+def put_tombstone(store, node_id: str, label: str, owner: str, deleted_at: str,
+                  rev: int) -> None:
+    """수신한 삭제를 재전파용으로 남긴다. deleted_at 은 **원래 삭제 시각 보존**(의미),
+    sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙."""
+    store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
+              "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'remote'",
+              {"id": node_id, "l": label, "o": owner, "da": deleted_at,
+               "rev": int(rev), "seq": revstamp.next_seq(store, owner)})
+
+
+def del_tombstone(store, node_id: str) -> None:
+    store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id DELETE t", {"id": node_id})
+
+
+def _tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
+    """owner 의 tombstone 중 sync_seq > since(최초 sync 면 since=0 전량). 동기화 라벨만
+    (Concept/Episode) — 그 외 라벨 삭제는 전파할 곳이 없다."""
+    where = ["t.owner_id = $owner", "t.label IN ['Concept', 'Episode']"]
+    params: dict = {"owner": owner}
+    if since > 0:
+        where.append("t.sync_seq > $since")
+        params["since"] = since
+    cypher = (f"MATCH (t:_Tombstone) WHERE {' AND '.join(where)} "
+              "RETURN t.node_id AS node_id, t.label AS label, t.deleted_at AS deleted_at, "
+              "t.rev AS rev, t.sync_seq AS sync_seq ORDER BY t.sync_seq")
+    return q.QueryPlan("sync_tombstones", cypher, params, note="owner-scoped delete markers")
+
+
+def gc_tombstones(store, *, keep_days: int = 90, now_ms: int | None = None) -> int:
+    """안전 지평 지난 tombstone 청소. 보수적 90일 — 그 안에 모든 기기가 pull 했다고
+    가정. 문자열 비교(HLC ISO 고정폭)라 임계 ISO 를 만들어 그 이하를 지운다."""
+    import datetime
+    ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000) \
+        if now_ms is None else now_ms
+    cutoff = revstamp._fmt(ms - keep_days * 86400 * 1000)
+    cur = store.run("MATCH (t:_Tombstone) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
+                    "RETURN count(t) AS c", {"c": cutoff})
+    n = int(cur[0].get("c") or 0) if cur else 0
+    if n:
+        store.run("MATCH (t:_Tombstone) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
+                  "DELETE t", {"c": cutoff})
+    return n
+
+
 # ── 선택 도메인 (오프라인 우선 옵트인) ────────────────────────────────────────
 def get_selected_domains(store) -> list[str]:
     raw = revstamp._meta_get(store, _SEL_KEY, "")
@@ -226,10 +279,20 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             seen.add(key)
             edges.append({"from": r["id"], "to": tgt, "type": ftype})
 
-    nxt = max([since] + [n["_seq"] for n in nodes]) if nodes else since
-    base.update({"executed": True, "nodes": nodes, "edges": edges, "next_cursor": nxt,
+    # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된
+    # 노드의 도메인을 알 수 없으니 owner 전체). 수신측이 부활 가드로 안전 적용.
+    t_res = q.execute(_tombstones_delta_plan(owner=owner, since=since), cfg, store=store)
+    tombstones = [{"node_id": r["node_id"], "label": r["label"],
+                   "deleted_at": r.get("deleted_at") or "", "rev": int(r.get("rev") or 0),
+                   "_seq": int(r.get("sync_seq") or 0)}
+                  for r in (t_res.get("rows", []) if t_res.get("executed") else [])]
+
+    seqs = [n["_seq"] for n in nodes] + [t["_seq"] for t in tombstones]
+    nxt = max([since] + seqs) if seqs else since
+    base.update({"executed": True, "nodes": nodes, "edges": edges,
+                 "tombstones": tombstones, "next_cursor": nxt,
                  "counts": {"concepts": len(c_rows), "episodes": len(e_rows),
-                            "edges": len(edges)}})
+                            "edges": len(edges), "tombstones": len(tombstones)}})
     return base
 
 
@@ -244,8 +307,12 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
     끝점이 갈라진 엣지는 마지막 청크에 양끝 노드를 다시 실어 함께 보낸다."""
     nodes = bundle.get("nodes") or []
     edges = bundle.get("edges") or []
+    tombs = bundle.get("tombstones") or []
     if not nodes:
-        return [{"nodes": [], "edges": []}] if not edges else []
+        # 노드가 없어도 엣지·tombstone 은 실어 보낸다(삭제-only sync).
+        if not edges and not tombs:
+            return []
+        return [{"nodes": [], "edges": edges, "tombstones": tombs}]
 
     by_id = {n["id"]: n for n in nodes}
     chunks: list[dict] = []
@@ -275,6 +342,9 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
         need = {e["from"] for e in spill} | {e["to"] for e in spill}
         chunks.append({"nodes": [by_id[i] for i in sorted(need) if i in by_id],
                        "edges": spill})
+    # tombstone 은 작아 첫 청크에 전부 싣는다(한 번만 적용되게).
+    if tombs:
+        chunks[0]["tombstones"] = tombs
     return chunks
 
 
@@ -310,7 +380,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
-           "edges": 0, "warnings": []}
+           "edges": 0, "deleted": 0, "resurrected": 0, "warnings": []}
     if store is None:
         out["note"] = "no reachable store"
         return out
@@ -326,6 +396,18 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
         r_rev, r_ua = int(n.get("_rev") or 0), n.get("_updated_at") or ""
+
+        # 부활 가드(S4): 로컬 tombstone 이 인바운드 편집보다 **새롭거나 같으면** 삭제가
+        # 이긴다 → upsert 무시(지운 노드가 옛 편집으로 되살아나지 않게). 인바운드가 더
+        # 최신이면(삭제 후 재생성) tombstone 을 걷고 적용한다.
+        tomb = get_tombstone(store, nid)
+        if tomb:
+            if tomb["deleted_at"] >= r_ua:
+                out["skipped_stale"] += 1
+                continue
+            del_tombstone(store, nid)
+            out["resurrected"] += 1
+
         local = _local_snapshot(store, label, pk, nid)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
@@ -376,6 +458,27 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                    "seq": revstamp.next_seq(store, owner)})
     for nid, label, fields, rev, ua in base_updates:
         set_base(store, nid, label, fields, rev, ua)
+
+    # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
+    # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
+    # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다.
+    for t in bundle.get("tombstones") or []:
+        tid, tlabel = t.get("node_id"), t.get("label")
+        t_da = t.get("deleted_at") or ""
+        pk = {"Concept": "concept_id", "Episode": "episode_id"}.get(tlabel or "")
+        if not tid or not pk:
+            continue
+        cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id RETURN x.updated_at AS ua",
+                        {"id": tid})
+        if cur and (cur[0].get("ua") or "") > t_da:
+            continue                          # 삭제 이후 재편집됨 → 삭제 무시
+        if cur:
+            store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id DETACH DELETE x", {"id": tid})
+            out["deleted"] += 1
+        del_base(store, tid)
+        put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
+        revstamp.observe_hlc(store, t_da)
+
     out["applied"] = len(writes)
     return out
 
@@ -421,8 +524,9 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
     if not bundle.get("executed"):
         return {"phase": "push", "executed": False, "note": bundle.get("note")}
     nodes = bundle.get("nodes") or []
-    if not nodes and not (bundle.get("edges") or []):
-        return {"phase": "push", "executed": True, "sent": 0, "cursor": since}
+    tombs = bundle.get("tombstones") or []
+    if not nodes and not (bundle.get("edges") or []) and not tombs:
+        return {"phase": "push", "executed": True, "sent": 0, "deletes": 0, "cursor": since}
     res = remote.push(chunk_bundle(bundle))
     for n in nodes:                       # base := 방금 보낸(=원격과 합의된) 값
         label = _SYNC_TYPES.get(n.get("type") or "")
@@ -430,21 +534,23 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
             set_base(store, n["id"], label, _snapshot(label, n),
                      int(n.get("_rev") or 0), n.get("_updated_at") or "")
     set_cursor(store, "push", bundle["next_cursor"])
-    return {"phase": "push", "executed": True, "sent": len(nodes),
+    return {"phase": "push", "executed": True, "sent": len(nodes), "deletes": len(tombs),
             "remote": res, "cursor": bundle["next_cursor"]}
 
 
 def pull_apply(store, cfg, *, owner: str, remote) -> dict:
     """원격 delta 를 페이지 단위로 받아 apply. 커서는 **apply·전진이 내구된 뒤에만**."""
     since = get_cursor(store, "pull")
-    applied = skipped = pages = 0
+    applied = skipped = deleted = pages = 0
     warnings: list[str] = []
     while pages < 1000:                       # 안전 상한(무한루프 방어)
         page = remote.pull(since)
         nodes = page.get("nodes") or []
+        tombs = page.get("tombstones") or []
         r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store)
         applied += r["applied"]
         skipped += r["skipped_stale"]
+        deleted += r.get("deleted", 0)
         warnings += r.get("warnings") or []
         pages += 1
         nxt = int(page.get("next_cursor", since))
@@ -452,10 +558,10 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
         if advanced:
             since = nxt
             set_cursor(store, "pull", since)   # 페이지별 내구 전진
-        if not nodes or not advanced:
+        if (not nodes and not tombs) or not advanced:
             break
     return {"phase": "pull", "applied": applied, "skipped_stale": skipped,
-            "pages": pages, "cursor": since, "warnings": warnings}
+            "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
 
 
 def run(store, cfg, *, owner: str, remote) -> dict:

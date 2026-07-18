@@ -1137,6 +1137,28 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
 # 둘 다 **비가역**. 사이드카에서는 잡 큐(run_sync)로 직렬화된다(단일 writer, R4).
 
 _OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record"}   # owner_id 열 보유(스코프 가드)
+
+
+def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None:
+    """삭제 표식(S4) — 삭제 전파용. 하드삭제(DETACH DELETE)만으론 수신측이 삭제를
+    영영 모른다. 삭제 직전 노드의 rev/updated_at 을 보존하고 새 deleted_at(HLC)·
+    sync_seq 를 찍어 `_Tombstone` 에 남긴다. owner 스코프 라벨(Concept/Episode/Record)
+    만 — 그 외는 동기화 대상이 아니라 전파할 곳이 없다. 지연 import(순환 회피)."""
+    if label not in _OWNER_SCOPED_LABELS:
+        return
+    from . import revstamp
+    pk = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_id"}[label]
+    rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
+                     "RETURN n.rev AS rev, n.updated_at AS ua, n.owner_id AS owner",
+                     {"id": node_id})
+    if not rows:
+        return
+    own = owner or rows[0].get("owner") or "user:local"
+    store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
+              "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'local'",
+              {"id": node_id, "l": label, "o": own,
+               "da": revstamp.hlc_now(store), "rev": int(rows[0].get("rev") or 0),
+               "seq": revstamp.next_seq(store, own)})
 _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
 
 
@@ -1180,6 +1202,7 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
         deg = store.run(
             f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(r) AS c", params)
         edges = int(deg[0].get("c")) if deg else 0
+        _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
         base["deleted"] = {"node": 1, "edges": edges}
     except Exception as exc:
@@ -1326,6 +1349,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             repointed += 1
 
         # drop 삭제(부착 엣지 포함) — title/props 버림(keep 우선).
+        _write_tombstone(store, drop_id, "Concept", owner)   # drop 도 전파(S4)
         store.run("MATCH (c:Concept) WHERE c.concept_id = $id DETACH DELETE c", {"id": drop_id})
         base["repointed"] = repointed
         base["skipped"] = skipped
