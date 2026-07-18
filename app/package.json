@@ -1,7 +1,7 @@
 {
   "name": "vinc-app",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Vinc desktop UI — 5 surfaces + Settings (D15), Atlas semantic zoom (D16). Frontend for the local sidecar; Tauri shell wrap is P4.",
   "type": "module",
   "scripts": {
@@ -11,6 +11,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "3d-force-graph": "^1.80.0",
     "graphology": "^0.26.0",
     "sigma": "^3.0.3",

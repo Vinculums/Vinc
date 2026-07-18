@@ -1,12 +1,18 @@
 # Vinc 릴리스 파이프라인(D43 — P4). 태그 v* 푸시 시 3 OS에서
 # ① PyInstaller로 사이드카 단일 바이너리를 만들고
 # ② Tauri externalBin 규약 위치(binaries/vinc-sidecar-<target-triple>)에 배치한 뒤
-# ③ tauri-action으로 설치본을 "빌드만" 하고(릴리스 생성 안 함) 아티팩트로 업로드.
-# ④ 단일 publish 잡이 모든 설치본을 모아 공개 릴리스 레포(Vinclums/Vincs-app)의
-#    Releases 에 draft 로 발행한다(멀티-OS 동시 발행 경합 회피).
+# ③ tauri-action으로 설치본 + **업데이터 아티팩트(서명본)**를 "빌드만" 하고
+#    (릴리스 생성 안 함) 아티팩트로 업로드.
+# ④ 단일 publish 잡이 모든 설치본·업데이터 번들을 모으고 latest.json(업데이터 매니페스트)을
+#    조립해 공개 릴리스 레포(Vinclums/Vincs-app)의 Releases 에 draft 로 발행한다.
 # 소스 레포(Vinclums/Vinc)는 비공개 → 바이너리만 공개 레포로 내보낸다.
 # 발행에는 Vincs-app 에 contents:write 권한을 가진 PAT 시크릿 RELEASE_TOKEN 을 쓴다.
-# 서명(코드사인·공증)은 후속 마일스톤 — 시크릿이 갖춰지면 tauri-action env로 주입.
+#
+# 자동 업데이트(v0.3.0~): tauri-action 이 TAURI_SIGNING_PRIVATE_KEY 로 업데이터 번들을
+# 서명한다(개인키 시크릿이 없으면 .sig 미생성 → collect 단계가 실패 = 무서명 릴리스 차단).
+# 공개키는 app/src-tauri/tauri.conf.json 의 plugins.updater.pubkey 에 박혀 있어, 클라이언트가
+# 서명 불일치 번들을 거부한다. latest.json 은 releases/latest/download/latest.json 으로 서빙된다.
+# 코드사인·공증(OS 신뢰 서명)은 여기와 별개의 후속 마일스톤 — 업데이터 서명은 진위 검증용.
 name: release
 
 on:
@@ -75,25 +81,52 @@ jobs:
             librsvg2-dev patchelf
 
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
+      # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.
       - name: Build Tauri bundles
         uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
 
-      # 표준 설치본만 골라 수집(존재하는 것만; .app 디렉터리·서명파일 등은 제외).
-      - name: Collect installers
+      # 설치본(사람용) + 업데이터 아티팩트(플랫폼 1종)·서명·latest.json 조각을 수집.
+      # 조각을 빌드 잡에서 만드는 이유: 여기서만 triple(=플랫폼 키)과 .sig 를 확실히 안다.
+      - name: Collect installers & updater artifacts
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          find app/src-tauri/target/release/bundle -type f \
+          bundle=app/src-tauri/target/release/bundle
+          # 사람이 받는 표준 설치본
+          find "$bundle" -type f \
             \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.msi' \
                -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
             -exec cp {} artifacts/ \;
+          # 업데이터 아티팩트: 플랫폼별 1종(+ .sig). 키 = OS-ARCH(latest.json 규약).
+          case "${{ matrix.triple }}" in
+            *linux*)   key=linux-x86_64;   upd=$(find "$bundle" -type f -name '*.AppImage'    | head -1);;
+            *windows*) key=windows-x86_64; upd=$(find "$bundle" -type f -name '*-setup.exe'   | head -1);;
+            *darwin*)  key=darwin-aarch64; upd=$(find "$bundle" -type f -name '*.app.tar.gz'  | head -1);;
+            *) echo "unknown triple ${{ matrix.triple }}"; exit 1;;
+          esac
+          sig="${upd}.sig"
+          if [ -z "${upd:-}" ] || [ ! -f "$sig" ]; then
+            echo "❌ 업데이터 서명 누락(key=$key) — TAURI_SIGNING_PRIVATE_KEY 시크릿이 설정됐는지 확인."
+            echo "── bundle 트리 ──"; ls -R "$bundle" || true
+            exit 1
+          fi
+          cp "$upd" artifacts/
+          base=$(basename "$upd")
+          url="https://github.com/Vinclums/Vincs-app/releases/download/${{ github.ref_name }}/${base}"
+          # 조각: { "<key>": { "signature": "<.sig 내용>", "url": "<자산 URL>" } }
+          jq -n --arg k "$key" --arg s "$(cat "$sig")" --arg u "$url" \
+            '{($k): {signature: $s, url: $u}}' > "artifacts/latest-${key}.json"
           echo "── collected ──"; ls -la artifacts
-      - name: Upload installers
+      - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
-          name: installers-${{ matrix.triple }}
+          name: bundles-${{ matrix.triple }}
           path: artifacts/*
           if-no-files-found: error
 
@@ -104,14 +137,29 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Download all installers
+      - name: Download all bundles
         uses: actions/download-artifact@v4
         with:
           path: dl
-          pattern: installers-*
+          pattern: bundles-*
           merge-multiple: true
-      - name: List collected assets
+      # latest.json 조립: 플랫폼 조각들을 하나의 platforms 맵으로 병합.
+      - name: Assemble updater manifest (latest.json)
         run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"                       # v0.3.1 → 0.3.1
+          if ! ls dl/latest-*.json >/dev/null 2>&1; then
+            echo "❌ latest.json 조각이 없다 — 업데이터 서명 단계 확인."; exit 1
+          fi
+          platforms=$(jq -s 'add' dl/latest-*.json)
+          jq -n --arg v "$ver" \
+                --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                --arg n "Vinc ${GITHUB_REF_NAME} — see https://github.com/Vinclums/Vincs-app/releases" \
+                --argjson p "$platforms" \
+             '{version: $v, notes: $n, pub_date: $d, platforms: $p}' > dl/latest.json
+          echo "── latest.json ──"; cat dl/latest.json
+          # 조각·서명은 공개 릴리스 자산으로 올리지 않는다(서명은 latest.json 안에 내용으로 박힘).
+          rm -f dl/latest-*.json dl/*.sig
           echo "── to publish ──"; ls -la dl
       # 공개 릴리스 레포(Vincs-app)에 draft 로 발행. 사람이 확인 후 Publish.
       - name: Publish draft release to Vincs-app

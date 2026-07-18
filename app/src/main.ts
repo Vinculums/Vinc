@@ -8,6 +8,7 @@ import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar } from "./api";
+import { checkForUpdate } from "./update";
 
 type Surface = "intake" | "records" | "atlas" | "search" | "packs";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
@@ -137,4 +138,6 @@ applyTheme();
 (async () => {
   await connectSidecar();
   route();
+  // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
+  void checkForUpdate();
 })();

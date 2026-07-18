@@ -137,6 +137,8 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Sidecar(std::sync::Mutex::new(None)))
         .manage(SidecarLog(std::sync::Mutex::new(Vec::new())))
         .manage(Conn {

@@ -75,6 +75,14 @@ const EN = {
       packs: "Bundle, share, merge.",
     },
     common: { cancel: "Cancel", loading: "Loading…", none: "none" },
+    update: {
+      available: (v: string) => `Vinc ${v} is ready to install.`,
+      install: "Install & restart", later: "Later",
+      downloading: "Downloading…",
+      pct: (p: number) => `Downloading… ${p}%`,
+      installing: "Installing… the app will restart.",
+      failed: "Update failed — you can keep using this version.",
+    },
     panel: {
       view: "View", viewChip: (d: string) => `View · ${d}`,
       nodeSize: "Node size", byConnections: "by connections", uniform: "uniform",
@@ -233,6 +241,14 @@ const KO: Deck = {
       packs: "묶고, 나누고, 결합하고.",
     },
     common: { cancel: "취소", loading: "불러오는 중…", none: "없음" },
+    update: {
+      available: (v) => `Vinc ${v} 설치 준비 완료.`,
+      install: "설치하고 재시작", later: "나중에",
+      downloading: "내려받는 중…",
+      pct: (p) => `내려받는 중… ${p}%`,
+      installing: "설치 중… 앱이 다시 시작됩니다.",
+      failed: "업데이트 실패 — 지금 버전을 계속 쓰셔도 됩니다.",
+    },
     panel: {
       view: "보기", viewChip: (d) => `보기 · ${d}`,
       nodeSize: "노드 크기", byConnections: "연결수 비례", uniform: "균일",
