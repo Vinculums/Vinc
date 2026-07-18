@@ -1,6 +1,8 @@
 /* Vinc shell chrome — consumes design tokens only (no literal colors/sizes).
-   Ink & Paper: monochrome + single point color; state = notation + text weight. */
-@import "./tokens.css";
+   Signal: 다크 우선, 페리윙클 인디고 액센트; 상태 = 표기(●◐○) + 색 병행.
+   토큰 출처 = Vinc-design 허브(sync_out) — desktop이 :root 기본, web은 [data-skin="web"] 스코프. */
+@import "./tokens.desktop.css";
+@import "./tokens.web.css";
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
@@ -16,6 +18,14 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
   --glass-bg: hsl(var(--card) / .58);
   --glass-blur: blur(14px) saturate(1.15);
   --glass-edge: inset 0 1px 0 hsl(0 0% 100% / .35);
+  /* 레거시 별칭 — 구 app.css가 참조하던 미정의 토큰을 Signal 토큰으로 연결.
+     참조처(--fs-0/--fs-1/--lh/--icon-size)를 정식 토큰명으로 개명하면 제거. */
+  --fs-0: var(--fs-sm);
+  --fs-1: var(--fs-base);
+  --lh: var(--lh-normal);
+  --icon-size: 18px;
+  --shadow-2: var(--shadow-elev-2);
+  --shadow-3: var(--shadow-elev-3);
 }
 /* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
 html, body { height: 100%; margin: 0; }

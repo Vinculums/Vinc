@@ -122,6 +122,17 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { palette.hidden = true; cheatsheet.hidden = true; }
 });
 
+// ── Skin (Signal) — 웹 Vinc=web(Home·Signal), 데스크탑=desktop(Deep Signal) ──
+// 같은 번들이 두 표면을 서빙하므로 런타임에 data-skin으로 토큰 세트를 고른다.
+// dev 오버라이드: ?skin=web|desktop 또는 localStorage "vinc.skin"
+// (localhost dev는 WEB=false라 오버라이드 없이는 웹 스킨을 볼 수 없다.)
+const skinOverride =
+  new URLSearchParams(location.search).get("skin") || localStorage.getItem("vinc.skin");
+document.documentElement.dataset.skin =
+  skinOverride === "web" || skinOverride === "desktop"
+    ? skinOverride
+    : WEB ? "web" : "desktop";
+
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────
 const THEME_KEY = "vinc.theme";   // "auto" | "light" | "dark"
 export function applyTheme() {

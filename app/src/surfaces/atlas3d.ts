@@ -13,32 +13,27 @@ import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
+import { palette as signal, type ThemeMode } from "../theme";
 
-const PAPER = 0xefeae1;
-const INK = 0x14110d;
-const INK_SOFT = 0x47423a;
-const INK_MUTE = 0x6a6252;
-const POINT = 0x3e4c63;
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
-/** D39 — 다크 Atlas 반전 팔레트: 어두운 배경(캔버스 투명 → body 대기) 위에
- *  밝은 잉크 마크. 모노크롬 규율은 유지 — 잉크 축만 뒤집힌다. 초점 포인트는
- *  다크에서 라이튼 잉크블루(#8FA3C4 — 딥 블루는 어둠에 묻힘). */
+/** Signal 팔레트 — 토큰과 같은 원천(Vinc-design 허브 gen_theme_ts 생성물).
+ *  다크(기본) = Deep Signal: 딥 차콜 위 페리윙클 포커스. 라이트 = 그레인+잉크.
+ *  themePalette()가 유일한 런타임 seam — 하드코딩 hex 금지. */
 type Palette = {
   ink: number; inkMute: number; point: number; fog: number;
   link: { heavy: string; mid: string; base: string; cross: string; fade: string };
   label: string;
 };
 function themePalette(): Palette {
-  const dark = document.documentElement.dataset.theme === "dark";
-  return dark ? {
-    ink: 0xeae5dd, inkMute: 0xa39a8a, point: 0x8fa3c4, fog: 0x16130f,
-    link: { heavy: "#e5dfd3", mid: "#b7ae9e", base: "#948b7a", cross: "#6b6355", fade: "#332e26" },
-    label: "color:#eae5dd;background:#211e18;border:1px solid #39332b",
-  } : {
-    ink: INK, inkMute: INK_MUTE, point: POINT, fog: PAPER,
-    link: { heavy: "#38332a", mid: "#6f6754", base: "#8d8574", cross: "#b3a992", fade: "#e2dccf" },
-    label: "color:#14110d;background:#f7f4ef;border:1px solid #ded8cc",
+  const mode: ThemeMode =
+    document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const p = signal[mode];
+  return {
+    ink: p.text, inkMute: p.textMute,
+    point: mode === "dark" ? p.ring : p.primary,   // 다크는 페리윙클(가시성), 라이트는 로고 인디고
+    fog: p.background,
+    link: p.linkRamp, label: p.labelCss,
   };
 }
 
@@ -188,8 +183,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     new THREE.AmbientLight(0xffffff, darkTheme ? 0.9 : 1.1),
     // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
     // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33). 다크는 감광.
-    new THREE.HemisphereLight(0xfff8ec, 0x9a917d, darkTheme ? 0.7 : 0.9),
-    (() => { const d = new THREE.DirectionalLight(0xfff8ec, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
+    new THREE.HemisphereLight(0xf0f1fa, 0x565b74, darkTheme ? 0.7 : 0.9),
+    (() => { const d = new THREE.DirectionalLight(0xf0f1fa, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
   if (controls) {
@@ -321,8 +316,8 @@ export function mountMinis3d(
     const scene = new THREE.Scene();
     scene.environment = envTex;   // 유리 반사원(D40)
     scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-    scene.add(new THREE.HemisphereLight(0xfff8ec, 0x9a917d, 0.9));
-    const dl = new THREE.DirectionalLight(0xfff8ec, 1.5);
+    scene.add(new THREE.HemisphereLight(0xf0f1fa, 0x565b74, 0.9));
+    const dl = new THREE.DirectionalLight(0xf0f1fa, 1.5);
     dl.position.set(30, 60, 40);
     scene.add(dl);
     // 셀 로컬 정규화: 무게중심을 원점으로(클러스터 오프셋 제거 — z 포함, 3D 컷에서
@@ -463,7 +458,7 @@ export function enableLasso(g: any, el: HTMLElement, onSelect: (ids: string[]) =
     const r = el.getBoundingClientRect();
     start = { x: e.clientX - r.left, y: e.clientY - r.top };
     box = document.createElement("div");
-    box.style.cssText = "position:absolute;border:1px dashed #3e4c63;background:rgba(62,76,99,.08);z-index:5;pointer-events:none";
+    box.style.cssText = "position:absolute;border:1px dashed #8f96d9;background:rgba(143,150,217,.08);z-index:5;pointer-events:none";
     el.appendChild(box);
   }, true);
   el.addEventListener("mousemove", (e) => {

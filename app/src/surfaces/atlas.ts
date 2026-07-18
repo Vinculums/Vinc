@@ -20,10 +20,20 @@ type Level = { kind: "l0" } | { kind: "l1"; domain: string } | { kind: "l2"; see
   | { kind: "compare"; a: string; b: string }
   | { kind: "grid" } | { kind: "matrix" };
 
-const INK = "#14110d";
-const INK_MUTE = "#6a6252";
-const PAPER_EDGE = "#ded8cc";
-const POINT = "#3e4c63";
+// Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
+import { palette as signal, hexStr } from "../theme";
+function curPal() {
+  return signal[document.documentElement.dataset.theme === "dark" ? "dark" : "light"];
+}
+const THEME = {
+  get ink() { return hexStr(curPal().text); },
+  get inkMute() { return hexStr(curPal().textMute); },
+  get edge() { return hexStr(curPal().line); },
+  get point() {
+    const dark = document.documentElement.dataset.theme === "dark";
+    return hexStr(dark ? curPal().ring : curPal().primary);
+  },
+};
 
 export async function renderAtlas(el: HTMLElement) {
   el.innerHTML = `
@@ -307,12 +317,12 @@ export async function renderAtlas(el: HTMLElement) {
     for (const nd of nodes) {
       const label = nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label;
       g.addNode(nd.id, { label, x: nd.x ?? 0, y: nd.y ?? 0,
-        size: 4 + Math.sqrt(nd.degree || 1) * 2, color: INK, domain: nd.domain });
+        size: 4 + Math.sqrt(nd.degree || 1) * 2, color: THEME.ink, domain: nd.domain });
     }
     for (const e of edges) {
       if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target))
         g.addEdge(e.source, e.target, { size: e.cross_domain ? 0.8 : 1.6,
-          color: e.cross_domain ? INK_MUTE : PAPER_EDGE });
+          color: e.cross_domain ? THEME.inkMute : THEME.edge });
     }
   }
 
@@ -321,8 +331,8 @@ export async function renderAtlas(el: HTMLElement) {
     canvas.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 22rem 1fr;height:100%">
         <div id="cmp-a"></div>
-        <div id="cmp-rail" style="overflow:auto;border-left:1px solid ${PAPER_EDGE};
-             border-right:1px solid ${PAPER_EDGE};padding:0 1rem">
+        <div id="cmp-rail" style="overflow:auto;border-left:1px solid ${THEME.edge};
+             border-right:1px solid ${THEME.edge};padding:0 1rem">
           <h3 style="position:sticky;top:0;background:hsl(var(--background))">${a} ⇄ ${b}</h3>
           <div id="cmp-pairs" class="hint">${COPY.ui.atlasx.tiesLoading}</div>
         </div>
@@ -357,8 +367,8 @@ export async function renderAtlas(el: HTMLElement) {
         s.setSetting("nodeReducer", (node, data) => {
           if (!p) return data;
           const hit = node === p.a_id || node === p.b_id;
-          return hit ? { ...data, color: POINT, zIndex: 1, size: (data.size as number) * 1.4 }
-                     : { ...data, color: PAPER_EDGE, label: "" };
+          return hit ? { ...data, color: THEME.point, zIndex: 1, size: (data.size as number) * 1.4 }
+                     : { ...data, color: THEME.edge, label: "" };
         });
         s.refresh();
       }
@@ -381,7 +391,7 @@ export async function renderAtlas(el: HTMLElement) {
     const lay = (d: string) => cardLayout.get(d) || loadPrefs().layout;
     canvas.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${Math.min(domains.length, 3)},1fr);
       gap:.75rem;height:100%;padding:3rem 0 .5rem">${domains.map((d) => `
-      <div style="display:flex;flex-direction:column;border:1px solid ${PAPER_EDGE};border-radius:var(--radius);overflow:hidden">
+      <div style="display:flex;flex-direction:column;border:1px solid ${THEME.edge};border-radius:var(--radius);overflow:hidden">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
           <button class="chip" data-cycle="${d}" title="Cycle layout (D34)"
@@ -435,7 +445,7 @@ export async function renderAtlas(el: HTMLElement) {
           ${domains.map((b) => {
             const v = a === b ? 0 : (ties.get(`${a}|${b}`) || 0);
             return `<td data-a="${a}" data-b="${b}" title="${v} ties" style="width:3.2rem;height:2.4rem;
-              border:1px solid ${PAPER_EDGE};background:${shade(v)};cursor:${v ? "pointer" : "default"};
+              border:1px solid ${THEME.edge};background:${shade(v)};cursor:${v ? "pointer" : "default"};
               text-align:center;color:${v >= (2 * max) / 3 && v > 0 ? "hsl(var(--background))" : "inherit"}">${v || ""}</td>`;
           }).join("")}</tr>`).join("")}
       </table></div>`;
