@@ -85,8 +85,26 @@ jobs:
       - name: Build Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:
+          # 업데이터 서명(진위 검증용, 이미 활성) — 자동 업데이트 번들 .sig.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # ── OS 코드사인·공증(별개 마일스톤, 인증서=소유자 조달) ──────────────
+          # 아래 시크릿이 있으면 tauri-action 이 macOS .app/.dmg 를 서명·공증한다.
+          # 미설정이면 조용히 미서명 빌드(현행) — 첫 실행 경고 유지. 유료 인증서 필요:
+          #   APPLE_CERTIFICATE: base64(Developer ID Application .p12)
+          #   APPLE_CERTIFICATE_PASSWORD: .p12 비밀번호
+          #   APPLE_SIGNING_IDENTITY: "Developer ID Application: <이름> (<TEAMID>)"
+          #   APPLE_ID / APPLE_PASSWORD(앱 전용 암호) / APPLE_TEAM_ID: 공증(notary)용
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows Authenticode: tauri v2 는 app/src-tauri/tauri.conf.json 의
+          #   bundle.windows.certificateThumbprint(로컬 인증서 저장소) 또는 signCommand
+          #   (Azure Trusted Signing 등)로 설정한다 — env 로는 주입 불가. 인증서 확보 후
+          #   tauri.conf 에 배선. (EV/OV 코드사인 인증서 또는 Trusted Signing 필요.)
         with:
           projectPath: app
 
