@@ -188,6 +188,15 @@ class VincApp:
         return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
                                                a=_req(p, "a"), b=_req(p, "b"), store=r))
 
+    def read_diagnose(self, p):
+        # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
+        # components(기본) | communities. algo 확장 부재 시 executed=False 강등.
+        kind = (p.get("kind") or "components").lower()
+        owner = _req(p, "owner")
+        if kind == "communities":
+            return self._read(lambda r: q.communities(owner=owner, store=r))
+        return self._read(lambda r: q.component_diagnosis(owner=owner, store=r))
+
     def read_share(self, p):
         # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
         return self._read(lambda r: share.build_share_pack(
@@ -664,7 +673,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/recall": app.read_recall, "/domains": app.read_domains,
             "/atlas": app.read_atlas, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
-            "/suggest-ties": app.read_suggest,
+            "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

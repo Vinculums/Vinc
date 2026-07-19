@@ -26,7 +26,9 @@ from vinc_mcp.rpc import Dispatcher  # noqa: E402
 D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_domains", "vinc_suggest_ties", "vinc_ingest",
              # T3c — 오염 정리 쓰기 표면(비가역). + S4 확장: 엣지 삭제(툼스톤 전파).
-             "vinc_delete", "vinc_delete_edge", "vinc_merge_nodes"}
+             "vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
+             # E-G3 — 구조 진단(조회 전용): WCC 고아·컴포넌트 + Louvain 커뮤니티.
+             "vinc_diagnose"}
 
 
 class _StubBridge(Bridge):

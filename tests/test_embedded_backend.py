@@ -434,6 +434,43 @@ class EmbeddedE2E(unittest.TestCase):
         gauge = next(h for h in r["node_hits"] if h["id"] == "gauge")
         self.assertIn("graph", gauge["arms"])   # D24 매치 표기
 
+    def test_eg3_component_diagnosis_and_communities(self):
+        """E-G3: algo 확장(WCC·Louvain) 구조 진단. kuzu 정적 링크 — 실행. ladybug
+        오프라인 미번들이면 강등(executed=False)이라 skip."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("a", "b", "c", "d", "e", "lone"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                      "n.title=$id, n.domain='math'", id=cid)
+            # 컴포넌트1: a-b-c 삼각, 컴포넌트2: d-e, 고아: lone
+            for x, y in (("a", "b"), ("b", "c"), ("c", "a"), ("d", "e")):
+                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                      "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
+        # algo 확장 가용성 확인(kuzu 정적 / ladybug 다운로드)
+        diag = q.component_diagnosis(owner="u", store=store)
+        if not diag["executed"]:
+            store.close()
+            self.skipTest(f"algo 확장 미가용 — §9: {diag.get('note')}")
+        # 고아 = lone (단일 노드 컴포넌트)
+        self.assertIn("lone", diag["orphans"])
+        self.assertEqual(diag["orphan_count"], 1)
+        # 컴포넌트 3개(삼각·페어·고아), 최대 컴포넌트 크기 3
+        self.assertEqual(diag["component_count"], 3)
+        self.assertEqual(diag["components"][0]["size"], 3)
+
+        com = q.communities(owner="u", store=store)
+        store.close()
+        self.assertTrue(com["executed"])
+        # 최소 2개 커뮤니티(삼각·페어 분리) — 고립 lone(-1)은 제외
+        sizes = {c["size"] for c in com["communities"]}
+        self.assertIn(3, sizes)
+        self.assertTrue(all(c["dominant_domain"] == "math" for c in com["communities"]))
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

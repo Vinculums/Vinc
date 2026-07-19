@@ -107,6 +107,13 @@ def _t_suggest(args, bridge):
         "limit": args.get("limit", 5)})
 
 
+def _t_diagnose(args, bridge):
+    # E-G3 구조 진단(조회 전용) — kind=components(WCC 고아·컴포넌트) | communities
+    # (Louvain 군집). algo 확장 부재 시 사이드카가 executed=False 로 강등.
+    return bridge.request("GET", "/diagnose", params={
+        "owner": _owner(args, bridge), "kind": args.get("kind", "components")})
+
+
 def _t_ingest(args, bridge):
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
                 "owner": _owner(args, bridge)}
@@ -201,6 +208,24 @@ TOOLS: list[dict] = [
             "limit": {"type": "integer", "default": 5},
             "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_suggest,
+    },
+    {
+        "name": "vinc_diagnose",
+        "description": "Structural diagnosis of the owner's concept graph (read-only, E-G3). "
+                       "kind='components' (default) runs weakly-connected-components: returns "
+                       "{components:[{group,size,members}], orphans:[id…], component_count, "
+                       "orphan_count} — the disconnected 'islands' and singleton concepts that "
+                       "want linking (feeds vinc_suggest_ties). kind='communities' runs Louvain: "
+                       "returns {communities:[{community,size,dominant_domain,members}]} — the "
+                       "measured clusters (distinct from the domain axis), a basis for proposing "
+                       "themes (ratified by the user, never auto-written). Delegates to the native "
+                       "algo extension; executed:false with a note if the extension is unavailable "
+                       "(offline unbundled).",
+        "inputSchema": {"type": "object", "properties": {
+            "kind": {"type": "string", "enum": ["components", "communities"],
+                     "description": "components (WCC orphans/islands) | communities (Louvain clusters)."},
+            "owner": {"type": "string"},
+        }}, "run": _t_diagnose,
     },
     {
         "name": "vinc_ingest",

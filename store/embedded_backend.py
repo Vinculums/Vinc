@@ -326,6 +326,54 @@ class EmbeddedBackend:
         )
         return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
+    # ── 그래프 알고리즘 (E-G3) ─────────────────────────────────────────────────
+    # algo 확장(kuzu 정적 링크 → 오프라인 즉시; ladybug 는 다운로드 §9)로 구조 진단을
+    # 네이티브 엔진에 위임(리서치 ④ — 구조 연산은 알고리즘에, 모델은 컨트롤러).
+    # project_graph 를 멱등 생성→실행→드랍한다(T3b 지연 빌드 패턴과 동형의 관리).
+    # 개념 관계 그래프 위 WCC(고아·컴포넌트)·Louvain(커뮤니티)·PageRank(전역 중요도).
+    _ALGO_METRIC = {   # algo → 반환 지표 컬럼명(kuzu 0.11.3 실측)
+        "weakly_connected_components": "group_id",
+        "strongly_connected_components": "group_id",
+        "louvain": "louvain_id",
+        "page_rank": "rank",
+    }
+    # 기본 프로젝션 = Concept + 개념-개념 관계 4종(방향 무관 구조 연결성).
+    _ALGO_NODE_TABLES = ("Concept",)
+    _ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
+
+    def graph_algo(self, algo: str, *, node_tables: tuple | None = None,
+                   rel_tables: tuple | None = None, id_col: str = "concept_id",
+                   graph_name: str = "_vinc_algo", conn=None) -> list[dict]:
+        """algo 확장 그래프 알고리즘 실행(E-G3). 반환 ``[{id, value}]`` — id 는
+        ``node.<id_col>``, value 는 알고리즘 지표(group_id/louvain_id/rank). 확장
+        미가용(오프라인 미번들) 시 :meth:`_load_ext` 가 RuntimeError 로 강등한다
+        (호출부가 executed=False 로 표면화). project_graph 는 전체 테이블을 투영하므로
+        (owner 필터 불가) 소유자 스코프는 **호출부가 결과를 owner 개념 집합과 교차**
+        해 적용한다(교차소유자 엣지 부재 → 컴포넌트/커뮤니티는 owner-clean)."""
+        c = conn or self._conn
+        metric = self._ALGO_METRIC.get(algo)
+        if metric is None:
+            raise ValueError(f"unsupported graph algo: {algo!r} "
+                             f"(지원: {sorted(self._ALGO_METRIC)})")
+        self._load_ext("algo", c)
+        nt = "[" + ", ".join(f"'{t}'" for t in (node_tables or self._ALGO_NODE_TABLES)) + "]"
+        rt = "[" + ", ".join(f"'{t}'" for t in (rel_tables or self._ALGO_REL_TABLES)) + "]"
+
+        def _drop():
+            try:
+                c.execute(f"CALL drop_projected_graph('{graph_name}')")
+            except Exception:
+                pass   # 미존재 — 무시(멱등)
+
+        _drop()   # 이전 잔여 프로젝션 정리(멱등 생성)
+        c.execute(f"CALL project_graph('{graph_name}', {nt}, {rt})")
+        try:
+            return _exec_to_dicts(
+                c, f"CALL {algo}('{graph_name}') "
+                   f"RETURN node.{id_col} AS id, {metric} AS value", None)
+        finally:
+            _drop()   # 실행 후 프로젝션 정리(카탈로그 누수 방지)
+
     def snapshot(self, dest_dir: str) -> str:
         """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2).
 

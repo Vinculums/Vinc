@@ -1240,6 +1240,131 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
             "suggestions": out[:max(1, int(limit))]}
 
 
+# ── 구조 진단 (E-G3) — algo 확장 위임(WCC·Louvain) · 조회 전용 ─────────────────
+# 구조 연산을 네이티브 알고리즘에 위임(리서치 ④). 전부 조회 전용·강등 계약:
+# store 가 graph_algo 를 미지원하거나(추상화 폴백) algo 확장이 부재하면(오프라인
+# 미번들 §9) executed=False + note 로 강등한다(무크래시). owner 스코프는 결과를
+# owner 개념 집합과 교차해 적용(project_graph 는 전체 투영 — 교차소유자 엣지 부재라
+# 컴포넌트/커뮤니티는 owner-clean).
+
+def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
+    """owner 의 Concept id 집합(스코프 교차용). owner=None(로컬)이면 None(전체)."""
+    if not owner:
+        return None
+    rows = store.run("MATCH (c:Concept) WHERE c.owner_id = $owner "
+                     "RETURN c.concept_id AS id", {"owner": owner})
+    return {r["id"] for r in rows if r.get("id")}
+
+
+def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
+    """store.graph_algo 안전 호출 — (rows, None) 또는 (None, note). ``rel_tables``
+    미지정 시 어댑터 기본(개념 관계 4종). Louvain 은 단일 엣지 테이블만 지원하므로
+    (kuzu 0.11.3 실측) 호출부가 RELATED_TO 단일 투영을 넘긴다."""
+    fn = getattr(store, "graph_algo", None)
+    if fn is None:
+        return None, "algo_unsupported: store has no graph_algo (backend fallback)"
+    try:
+        return (fn(algo, rel_tables=rel_tables) if rel_tables else fn(algo)), None
+    except Exception as exc:
+        return None, f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
+
+
+def component_diagnosis(*, owner: str | None = None, cfg=None, store=None) -> dict:
+    """E-G3 WCC 구조 진단 — 연결 컴포넌트 수·크기 분포 + 고아(단일 노드) 개념 목록.
+    "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
+
+    반환 {executed, components:[{group, size, members(≤50)}], orphans:[id…],
+    component_count, orphan_count}. algo 부재 시 executed=False + note."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "component_diagnosis", "executed": False,
+            "components": [], "orphans": [], "component_count": 0, "orphan_count": 0}
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        rows, note = _run_algo(store, "weakly_connected_components")
+        if rows is None:
+            base["note"] = note
+            return base
+        scope = _owner_concept_ids(store, owner)
+        groups: dict = {}
+        for r in rows:
+            cid, grp = r.get("id"), r.get("value")
+            if not cid or (scope is not None and cid not in scope):
+                continue
+            groups.setdefault(grp, []).append(cid)
+        comps = [{"group": g, "size": len(m), "members": sorted(m)[:50]}
+                 for g, m in groups.items()]
+        comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
+        orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
+        base.update(executed=True, components=comps, orphans=orphans,
+                    component_count=len(comps), orphan_count=len(orphans))
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
+def communities(*, owner: str | None = None, cfg=None, store=None) -> dict:
+    """E-G3 Louvain 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
+    각 커뮤니티에 지배 도메인·크기·대표(사전순 첫 id)를 붙여 **테마 proposed 제안**의
+    근거로 쓴다(재가는 사용자 — T1/T3, 여기서는 쓰기 없음). 조회 전용.
+
+    반환 {executed, communities:[{community, size, dominant_domain, members(≤50)}],
+    community_count}. Louvain 미배정(-1, 고립)은 별도 집계에서 제외. algo 부재 시
+    executed=False + note."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "communities", "executed": False,
+            "communities": [], "community_count": 0}
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        # Louvain 은 단일 엣지 테이블만(kuzu 0.11.3) — RELATED_TO 단일 투영(개념
+        # 관계의 주축: wikilink 추론이 전부 RELATED_TO 로 강등돼 밀도 최고). 방향
+        # 관계는 커뮤니티 검출에서 제외되나 근사로 충분(도메인 축 별개의 '실측 군집').
+        rows, note = _run_algo(store, "louvain", rel_tables=("RELATED_TO",))
+        if rows is None:
+            base["note"] = note
+            return base
+        scope = _owner_concept_ids(store, owner)
+        # 도메인 부착(지배 도메인 산정) — owner 스코프 개념 도메인 맵.
+        dwhere = "WHERE c.owner_id = $owner " if owner else ""
+        dparams = {"owner": owner} if owner else None
+        drows = store.run("MATCH (c:Concept) " + dwhere +
+                          "RETURN c.concept_id AS id, c.domain AS domain", dparams)
+        domain_of = {r["id"]: (r.get("domain") or "") for r in drows}
+        groups: dict = {}
+        for r in rows:
+            cid, com = r.get("id"), r.get("value")
+            if not cid or com == -1 or (scope is not None and cid not in scope):
+                continue   # -1 = Louvain 미배정(고립) — 커뮤니티 아님
+            groups.setdefault(com, []).append(cid)
+        out = []
+        for com, members in groups.items():
+            dom_counts: dict = {}
+            for cid in members:
+                d = domain_of.get(cid, "")
+                if d:
+                    dom_counts[d] = dom_counts.get(d, 0) + 1
+            dominant = max(dom_counts.items(), key=lambda kv: (kv[1], kv[0]))[0] \
+                if dom_counts else ""
+            out.append({"community": com, "size": len(members),
+                        "dominant_domain": dominant, "members": sorted(members)[:50]})
+        out.sort(key=lambda c: (-c["size"], str(c["community"])))
+        base.update(executed=True, communities=out, community_count=len(out))
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
 def _classify_chunk_error(exc: Exception) -> str:
     """Chunk 검색 실패 사유 분류(T3b-1 — '실패 침묵' 제거의 근거). '인덱스 부재'와
     '확장 미가용'과 '미프로비저닝'을 구분해 응답 error 에 접두로 담는다(실측 문구):
