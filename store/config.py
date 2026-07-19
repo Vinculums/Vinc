@@ -31,9 +31,16 @@ class StoreConfig:
     # (서버 Neo4j 백엔드는 weg-9000-memory 레포 소관 — Vinc 미탑재.)
     backend: str = "embedded"
     # 임베디드 드라이버 선호(계보 포크 — R1 교체 보험). None=기본 **kuzu**(D14):
-    #   벡터/FTS 정적 링크로 오프라인 즉시(§1). "ladybug"=v0.18.0 옵트인(확장 런타임
-    #   다운로드 — 오프라인 배포 시 번들 필요, §9). ladybug 가 확장 정적/오프라인
-    #   번들 공식 지원 시 기본 전환 재평가(D14 재검토 조건).
+    #   벡터/FTS/algo 정적 링크로 오프라인 즉시(§1). "ladybug"=v0.18.0 옵트인(확장
+    #   런타임 다운로드 — 오프라인 배포 시 번들 필요, §9).
+    #
+    #   **LadybugDB 전환(D14 재평가, PLAN-GRAPHRAG-LADYBUG-2026-07)**: 활성 후계로
+    #   전환 방향은 확정이나 **G0 게이트(오프라인 확장 번들 검증) 통과가 전제**다 —
+    #   ladybug 확장은 런타임 다운로드형이라 "설치 즉시 오프라인" 불변식(§1)을 지키려면
+    #   번들 경로 확증이 필요하다. G0 미통과 동안 기본은 kuzu 유지(정적 링크). 전환은
+    #   저장 포맷 비호환이라 파일 복사가 아닌 **논리 이관**(store/migrate.py — 두
+    #   프로세스: kuzu export → ladybug import)이다. 이 노브가 프로세스별 드라이버
+    #   고정점(MEMORY_EMBEDDED_DRIVER).
     embedded_driver: str | None = None
     data_dir: str | None = None          # 임베디드 스토어 데이터 디렉토리(§3-2)
     embedding_model: str = DEFAULT_EMBEDDING_MODEL

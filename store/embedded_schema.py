@@ -226,6 +226,19 @@ def render_rel_tables() -> list[str]:
     return out
 
 
+def node_table_specs() -> dict[str, dict]:
+    """노드 테이블 명세(label → {pk, cols}) — 논리 이관(store/migrate.py)의 SSoT.
+    데이터플레인만(meta `_`-테이블 제외). 스키마가 진실이라 이관이 열 추가에 자동 추종."""
+    return {lbl: {"pk": spec["pk"], "cols": [c for c, _ in spec["cols"]]}
+            for lbl, spec in _NODE_TABLES.items()}
+
+
+def rel_table_specs() -> list[dict]:
+    """관계 테이블 명세(label·from·to·props 열) — 논리 이관용."""
+    return [{"label": lbl, "from": src, "to": dst, "props": [p for p, _ in props]}
+            for lbl, src, dst, props in _REL_TABLES]
+
+
 def render_embedded_ddl(*, dim: int) -> list[str]:
     """임베디드 백엔드 스키마 DDL(멱등 — migrate 가 'already exists' 무시).
     노드 테이블 선행 후 관계 테이블(FROM/TO 노드가 먼저 존재해야 함). 동기화 메타
