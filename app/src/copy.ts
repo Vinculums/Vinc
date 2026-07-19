@@ -133,6 +133,10 @@ const EN = {
       addMore: "Add more",
     },
     settingsUi: {
+      // 모달 탭(GNB) 라벨 + 섹션 소제목
+      title: "Settings", close: "Close",
+      tabAccount: "Account", tabConnections: "Connections", tabData: "Data", tabAdvanced: "Advanced",
+      appearance: "Appearance", account: "Account",
       lock: "Lock", mcp: "MCP", data: "Data",
       workspace: "Workspace",
       workspaceHint: "The space you're viewing. Switch back after trying the sample.",
@@ -333,6 +337,10 @@ const KO: Deck = {
       addMore: "계속 추가",
     },
     settingsUi: {
+      // 모달 탭(GNB) 라벨 + 섹션 소제목
+      title: "설정", close: "닫기",
+      tabAccount: "계정", tabConnections: "연결", tabData: "데이터", tabAdvanced: "고급",
+      appearance: "화면", account: "계정",
       lock: "잠금", mcp: "MCP", data: "데이터",
       workspace: "작업 공간",
       workspaceHint: "지금 보고 있는 공간입니다. 샘플 체험 후 되돌리세요.",

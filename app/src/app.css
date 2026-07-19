@@ -301,22 +301,47 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border-radius: var(--radius); padding: var(--space-4, 1rem);
 }
 
-/* Settings — 우측 슬라이드오버 (Figma: B · 우측 380px + 딤, 사이드바 제외).
+/* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
    플로팅 글라스 문법(D37 @supports 블록이 유리화). */
 #settings-scrim {
-  position: fixed; inset: 0 0 0 14.5rem; z-index: 40;   /* 사이드바(232px) 제외 딤 */
-  background: hsl(0 0% 0% / .42);
+  position: fixed; inset: 0; z-index: 40;
+  background: hsl(0 0% 0% / .5);
 }
 #settings-popover {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
-  width: 23.75rem; max-width: 92vw;
-  background: hsl(var(--card)); border-left: 1px solid hsl(var(--border));
-  box-shadow: -12px 0 34px hsl(0 0% 0% / .38);
-  padding: var(--space-5, 1.25rem) var(--space-5, 1.25rem) var(--space-6, 1.5rem);
-  overflow-y: auto; animation: settings-slide .18s ease-out;
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 41;
+  width: min(42rem, 94vw); max-height: 86vh;
+  display: flex; flex-direction: column;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: .9rem; box-shadow: 0 24px 64px hsl(0 0% 0% / .5);
+  overflow: hidden; animation: settings-pop .16s ease-out;
 }
-@keyframes settings-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+/* opacity 미포함 — 프리뷰가 CSS 애니를 자동 진행 안 해도 보임(비-스트랜딩). */
+@keyframes settings-pop {
+  from { transform: translate(-50%, -50%) scale(.97); }
+  to   { transform: translate(-50%, -50%) scale(1); }
+}
 @media (prefers-reduced-motion: reduce) { #settings-popover { animation: none; } }
+
+/* 탭바(GNB) + 닫기 */
+.settings-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .5rem .6rem .5rem 1rem; border-bottom: 1px solid hsl(var(--border)); flex: 0 0 auto;
+}
+.settings-tabs { display: flex; gap: .15rem; flex-wrap: wrap; }
+.settings-tab {
+  font: inherit; border: none; background: none; cursor: pointer;
+  padding: .4rem .7rem; border-radius: .5rem; color: hsl(var(--muted-foreground));
+}
+.settings-tab:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.settings-tab.active { background: hsl(var(--muted)); color: hsl(var(--foreground)); font-weight: 600; }
+.settings-close {
+  font: inherit; font-size: 1.05rem; line-height: 1; border: none; background: none; cursor: pointer;
+  color: hsl(var(--muted-foreground)); padding: .35rem .55rem; border-radius: .5rem; flex: 0 0 auto;
+}
+.settings-close:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.settings-body { padding: var(--space-4, 1rem) var(--space-5, 1.25rem) var(--space-6, 1.5rem); overflow-y: auto; }
+.settings-body > label:first-child { margin-top: 0; }
+.settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
 #settings-popover label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
 #settings-popover input {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
