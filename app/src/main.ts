@@ -1,8 +1,6 @@
 import "./app.css";
 import { COPY } from "./copy";
 import { icon } from "./icons";
-import { renderIntake } from "./surfaces/intake";
-import { renderRecords } from "./surfaces/records";
 import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
@@ -10,15 +8,16 @@ import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth } from "./api";
 import { checkForUpdate } from "./update";
 
-type Surface = "intake" | "records" | "atlas" | "search" | "packs";
+// LNB 통합(5→3): Atlas / Search(+Records) / Packs(+Intake).
+type Surface = "atlas" | "search" | "packs";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
-  intake: renderIntake,
-  records: renderRecords,
   atlas: renderAtlas,
   search: renderSearch,
   packs: renderPacks,
 };
-const ORDER: Surface[] = ["intake", "records", "atlas", "search", "packs"];
+const ORDER: Surface[] = ["atlas", "search", "packs"];
+// 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
+const ALIAS: Record<string, Surface> = { intake: "packs", records: "search" };
 
 const surfaceEl = document.getElementById("surface")!;
 const rail = document.getElementById("rail")!;
@@ -52,10 +51,15 @@ async function loadRailDomains() {
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
-  return (h in SURFACES ? h : "intake") as Surface;
+  if (h in SURFACES) return h as Surface;
+  if (h in ALIAS) return ALIAS[h];
+  return "atlas";   // 기본 첫 화면 = Atlas(최상단)
 }
 
 async function route() {
+  // 구 표면 해시로 진입 시 정본 해시로 정규화(활성 하이라이트·딥링크 일치).
+  const rawHead = location.hash.replace(/^#/, "").split("/")[0];
+  if (rawHead in ALIAS) { location.hash = `#${ALIAS[rawHead]}`; return; }  // hashchange → 재진입
   const s = current();
   rail.querySelectorAll("a").forEach((a) =>
     a.classList.toggle("active", a.dataset.surface === s));
@@ -87,8 +91,8 @@ const COMMANDS: Cmd[] = [
     label: COPY.ui.palette.goTo(`${s[0].toUpperCase()}${s.slice(1)}`), hint: `${i + 1}`,
     run: () => { location.hash = `#${s}`; },
   })),
-  { label: COPY.ui.palette.ingest, hint: "Intake", run: () => { location.hash = "#intake"; } },
-  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs"; } },
+  { label: COPY.ui.palette.ingest, hint: "Packs", run: () => { location.hash = "#packs/import"; } },
+  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs/share"; } },
   { label: COPY.ui.palette.settings, hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
 ];
 
@@ -145,7 +149,7 @@ document.addEventListener("keydown", (e) => {
   const inField = (e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA";
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
   if (inField) return;
-  if (e.key >= "1" && e.key <= "5") location.hash = `#${ORDER[Number(e.key) - 1]}`;
+  if (e.key >= "1" && e.key <= "3") location.hash = `#${ORDER[Number(e.key) - 1]}`;
   if (e.key === "[") document.getElementById("shell")!.classList.toggle("rail-expanded");
   if (e.key === "?") openCheatsheet();
   if (e.key === "Escape") { palette.hidden = true; cheatsheet.hidden = true; }

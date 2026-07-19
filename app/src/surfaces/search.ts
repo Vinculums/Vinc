@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { COPY } from "../copy";
 import { header } from "../components";
+import { renderBrowse } from "./records";
 
 /** Surface 4 — Search (spec: vinc.d.atlas-visual-language §4, DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -34,19 +35,28 @@ export function renderSearch(el: HTMLElement) {
 
   const RECENT_KEY = "vinc.search.recent";
   const recent: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
-  if (recent.length)
-    body.innerHTML = `<p class="hint">${COPY.search.idle}</p>` +
-      recent.map((r) => `<button class="chip" data-recent>${r}</button>`).join(" ");
-  body.querySelectorAll("[data-recent]").forEach((b) =>
-    b.addEventListener("click", () => {
-      (el.querySelector("#q") as HTMLInputElement).value = (b as HTMLElement).textContent!;
-      run((b as HTMLElement).textContent!.trim(), false);
-    }));
+
+  // 빈 검색어(부팅·필드 비움) = 전체 문서 브라우즈(구 Records 흡수) + 최근검색 칩.
+  function showEmpty() {
+    body.innerHTML = `<div id="search-recent"></div><div id="search-list"></div>`;
+    const rec = body.querySelector<HTMLElement>("#search-recent")!;
+    if (recent.length) {
+      rec.innerHTML = recent.map((r) => `<button class="chip" data-recent>${r}</button>`).join(" ");
+      rec.querySelectorAll("[data-recent]").forEach((b) =>
+        b.addEventListener("click", () => {
+          (el.querySelector("#q") as HTMLInputElement).value = (b as HTMLElement).textContent!;
+          run((b as HTMLElement).textContent!.trim(), false);
+        }));
+    }
+    void renderBrowse(body.querySelector<HTMLElement>("#search-list")!);
+  }
+  showEmpty();
 
   let debounce: number | undefined;
   el.querySelector("#q")!.addEventListener("input", (e) => {
     clearTimeout(debounce);
     const raw = (e.target as HTMLInputElement).value.trim();
+    if (raw.length === 0) { showEmpty(); return; }        // 필드 비우면 브라우즈 복귀
     if (raw.length >= 2)
       debounce = window.setTimeout(() => run(raw, false), 250);   // 라이브(250ms)
   });

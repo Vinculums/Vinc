@@ -1,24 +1,52 @@
 import { api, cfg, community, WEB } from "../api";
 import { COPY } from "../copy";
-import { header, headerCta } from "../components";
+import { header } from "../components";
 import { icon } from "../icons";
 import { openImportSheet } from "../sheets";
+import { renderIntake } from "./intake";
 
-/** Surface 5 — Packs (spec: vinc.d.packs v0.2, DEC D19).
- *  Context packs (/activate) + share packs (/share, custom scope) + import
- *  (/ingest/pack — idempotent, stamped with YOUR owner). */
+/** Surface — Packs (LNB 통합: Intake + Packs). 세그먼트 탭 두 개:
+ *  · 가져오기 = Intake 드롭존 3-state(헤더리스 재사용, tenant:local 적재)
+ *  · 공유·내보내기 = context 팩(/activate) + share 팩(/share) + 커뮤니티 게시 + import(sheet).
+ *  탭 상태 = 해시 꼬리(#packs/import | #packs/share, 기본 import). 탭 클릭은 해시만
+ *  바꾸고 route()가 재렌더 → 딥링크·새로고침 시 탭 복원. */
 export function renderPacks(el: HTMLElement) {
+  const U = COPY.ui.packsUi;
+  const tail = location.hash.split("/")[1];
+  const tab: "import" | "share" = tail === "share" ? "share" : "import";
+
   el.innerHTML = `
-    ${header("pack-export", "Packs", COPY.ui.meta.packs,
-             headerCta("create", "pack-export", COPY.packs.idleCta))}
+    ${header("pack-export", "Packs", COPY.ui.meta.packs)}
+    <span class="seg" id="packs-tabs" role="tablist">
+      <button class="chip${tab === "import" ? " active" : ""}" data-tab="import" role="tab">${U.importTab}</button>
+      <button class="chip${tab === "share" ? " active" : ""}" data-tab="share" role="tab">${U.shareTab}</button>
+    </span>
+    <div id="packs-tab-body" style="margin-top:var(--space-4,1rem)"></div>`;
+
+  el.querySelectorAll<HTMLElement>("#packs-tabs [data-tab]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const t = b.dataset.tab as "import" | "share";
+      if (t === tab) return;
+      location.hash = `#packs/${t}`;   // hashchange → route() → 재렌더(해시 꼬리로 탭 결정)
+    }));
+
+  const tabBody = el.querySelector<HTMLElement>("#packs-tab-body")!;
+  if (tab === "import") renderIntake(tabBody, { withHeader: false });
+  else renderShare(tabBody);
+}
+
+/** 공유·내보내기 탭 — 구 Packs 본문(create/share/publish/import) 그대로. */
+function renderShare(host: HTMLElement) {
+  host.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 20rem;gap:var(--space-5,1.25rem)">
       <div>
         <div class="empty" id="packs-empty">
           ${icon("pack-export", 30)}
           <p>${COPY.packs.idle}</p>
           <p>
+            <button class="btn btn-primary" id="create">${COPY.packs.idleCta}</button>
             <button class="btn" id="share">${COPY.packs.shareCta}</button>
-            ${WEB ? `<button class="btn btn-primary" id="publish">${COPY.ui.packsUi.publishCta}</button>` : ""}
+            ${WEB ? `<button class="btn" id="publish">${COPY.ui.packsUi.publishCta}</button>` : ""}
             <label class="btn" for="import-file" style="cursor:pointer">${COPY.packs.importCta}</label>
             <input id="import-file" type="file" accept="application/json" hidden />
           </p>
@@ -36,10 +64,10 @@ export function renderPacks(el: HTMLElement) {
       </aside>
     </div>
     <div id="packs-status" role="status"></div>`;
-  const status = el.querySelector<HTMLElement>("#packs-status")!;
-  const val = (id: string) => (el.querySelector(`#${id}`) as HTMLInputElement).value.trim();
+  const status = host.querySelector<HTMLElement>("#packs-status")!;
+  const val = (id: string) => (host.querySelector(`#${id}`) as HTMLInputElement).value.trim();
 
-  el.querySelector("#create")!.addEventListener("click", async () => {
+  host.querySelector("#create")!.addEventListener("click", async () => {
     status.innerHTML = `<p class="hint">${COPY.packs.loading(0)}</p>`;
     try {
       const res = await api.activate(cfg.owner);
@@ -49,7 +77,7 @@ export function renderPacks(el: HTMLElement) {
     }
   });
 
-  el.querySelector("#share")!.addEventListener("click", async () => {
+  host.querySelector("#share")!.addEventListener("click", async () => {
     status.innerHTML = `<p class="hint">${COPY.packs.loading(0)}</p>`;
     try {
       const pack = await api.share(cfg.owner, {
@@ -67,7 +95,7 @@ export function renderPacks(el: HTMLElement) {
       URL.revokeObjectURL(a.href);
       status.innerHTML = `<p>${COPY.packs.shareReady(c.concepts ?? 0, c.edges ?? 0)}</p>
         <p class="hint">${COPY.packs.shareNote}</p>`;
-      const pv = el.querySelector<HTMLElement>("#packs-preview")!;
+      const pv = host.querySelector<HTMLElement>("#packs-preview")!;
       pv.innerHTML = `<p class="hint" style="margin-top:0">${COPY.ui.packsUi.preview}</p>
         <h3 style="margin:.2rem 0">${a.download}</h3>
         <p class="hint">${c.concepts ?? 0} concepts · ${c.edges ?? 0} connections · ${c.records ?? 0} records</p>
@@ -79,8 +107,8 @@ export function renderPacks(el: HTMLElement) {
 
   // 웹 전용 — 도메인 슬라이스를 공개 커뮤니티 갤러리에 게시. 데이터가 공개되므로
   // 명시 동의를 받는다. owner 는 세션이 강제하니 cfg.owner 는 무시된다(허브가 sub 로).
-  el.querySelector("#publish")?.addEventListener("click", async () => {
-    const U = COPY.ui.packsUi;
+  host.querySelector("#publish")?.addEventListener("click", async () => {
+    const P = COPY.ui.packsUi;
     status.innerHTML = `<p class="hint">${COPY.packs.loading(0)}</p>`;
     let pack: any;
     try {
@@ -91,40 +119,40 @@ export function renderPacks(el: HTMLElement) {
       });
     } catch { status.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`; return; }
     const c = pack.manifest?.counts || {};
-    if (!(c.concepts > 0)) { status.innerHTML = `<p class="hint">${U.publishEmpty}</p>`; return; }
+    if (!(c.concepts > 0)) { status.innerHTML = `<p class="hint">${P.publishEmpty}</p>`; return; }
     status.innerHTML = `
       <div style="max-width:26rem;border:1px solid hsl(var(--border));border-radius:var(--radius);
                   padding:var(--space-4,1rem);background:hsl(var(--card))">
-        <h3 style="margin:.1rem 0 .3rem">${U.publishTitle}</h3>
-        <p class="hint">${U.publishScope(c.concepts ?? 0, c.edges ?? 0)}</p>
-        <input id="pub-title" placeholder="${U.publishName}" style="width:100%;margin:.3rem 0" />
-        <textarea id="pub-desc" placeholder="${U.publishDesc}" rows="2" style="width:100%;margin:.3rem 0"></textarea>
+        <h3 style="margin:.1rem 0 .3rem">${P.publishTitle}</h3>
+        <p class="hint">${P.publishScope(c.concepts ?? 0, c.edges ?? 0)}</p>
+        <input id="pub-title" placeholder="${P.publishName}" style="width:100%;margin:.3rem 0" />
+        <textarea id="pub-desc" placeholder="${P.publishDesc}" rows="2" style="width:100%;margin:.3rem 0"></textarea>
         <label class="hint" style="display:flex;gap:.4rem;align-items:flex-start;margin:.3rem 0">
-          <input type="checkbox" id="pub-consent" /> <span>${U.publishConsent}</span></label>
-        <p><button class="btn btn-primary" id="pub-go">${U.publishGo}</button></p>
+          <input type="checkbox" id="pub-consent" /> <span>${P.publishConsent}</span></label>
+        <p><button class="btn btn-primary" id="pub-go">${P.publishGo}</button></p>
         <div id="pub-msg" class="hint"></div>
       </div>`;
     // 제목 기본값은 JS 로 주입(HTML 속성 인젝션 회피 — 사용자 입력 도메인).
-    const titleInput = el.querySelector<HTMLInputElement>("#pub-title")!;
+    const titleInput = host.querySelector<HTMLInputElement>("#pub-title")!;
     titleInput.value = val("share-domain") || "";
-    const msg = el.querySelector<HTMLElement>("#pub-msg")!;
-    el.querySelector("#pub-go")!.addEventListener("click", async () => {
-      if (!el.querySelector<HTMLInputElement>("#pub-consent")!.checked) { msg.textContent = U.publishNeedConsent; return; }
+    const msg = host.querySelector<HTMLElement>("#pub-msg")!;
+    host.querySelector("#pub-go")!.addEventListener("click", async () => {
+      if (!host.querySelector<HTMLInputElement>("#pub-consent")!.checked) { msg.textContent = P.publishNeedConsent; return; }
       const title = titleInput.value.trim();
-      if (!title) { msg.textContent = U.publishNeedName; return; }
-      const desc = el.querySelector<HTMLTextAreaElement>("#pub-desc")!.value.trim();
+      if (!title) { msg.textContent = P.publishNeedName; return; }
+      const desc = host.querySelector<HTMLTextAreaElement>("#pub-desc")!.value.trim();
       msg.textContent = COPY.packs.loading(0);
       try {
         await community.publish(title, desc, pack);
-        status.innerHTML = `<p>${U.publishDone}</p>
-          <p><a class="btn btn-primary" href="/community" target="_blank" rel="noopener">${U.publishView}</a></p>`;
+        status.innerHTML = `<p>${P.publishDone}</p>
+          <p><a class="btn btn-primary" href="/community" target="_blank" rel="noopener">${P.publishView}</a></p>`;
       } catch {
         msg.innerHTML = `<span class="error-banner">${COPY.packs.error}</span>`;
       }
     });
   });
 
-  el.querySelector<HTMLInputElement>("#import-file")!.addEventListener("change", async (e) => {
+  host.querySelector<HTMLInputElement>("#import-file")!.addEventListener("change", async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     try {

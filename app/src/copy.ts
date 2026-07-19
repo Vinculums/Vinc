@@ -176,6 +176,7 @@ const EN = {
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
+      importTab: "Import", shareTab: "Share & export",
       preview: "Preview",
       previewHint: "Create a pack to see its details here.",
       share: "Share", domain: "topic", startFrom: "start from", reach: "reach",
@@ -375,6 +376,7 @@ const KO: Deck = {
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
+      importTab: "가져오기", shareTab: "공유·내보내기",
       preview: "미리보기",
       previewHint: "팩을 만들면 상세 정보가 여기에 표시됩니다.",
       share: "공유", domain: "주제", startFrom: "시작 지점", reach: "범위",

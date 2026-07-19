@@ -11,13 +11,15 @@ import samplePack from "../sample-pack.json";
  *  웹뷰 수신(tauri.conf). 카피는 정본(COPY) — 시안 더미 문구 미사용. */
 const USER_OWNER = "tenant:local";   // 본인 데이터 공간(샘플 sample:demo 와 분리)
 
-export function renderIntake(el: HTMLElement) {
+export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
   const ui = COPY.ui.intakeUi;
+  // Packs '가져오기' 탭이 헤더리스로 재사용(패널 헤더+탭은 packs 가 제공).
+  const chrome = opts?.withHeader === false ? "" : header("ingest", "Intake", COPY.ui.meta.intake);
 
   // ── 상태 1 — Empty (42:3): 대시 드롭존 + 로고 마크 + CTA. mcp-note 유지. ──
   function showIdle() {
     el.innerHTML = `
-      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      ${chrome}
       <div class="intake-stage">
         <div class="dropzone" id="drop" role="button" tabindex="0">
           <span class="dz-mark">${icon("ingest", 34)}</span>
@@ -91,7 +93,7 @@ export function renderIntake(el: HTMLElement) {
   // ── 상태 2 — Ingesting (42:5): 파일별 행(●◐○ + 진행 바 + 상태 라벨). ──
   async function importFiles(files: File[]) {
     el.innerHTML = `
-      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      ${chrome}
       <div class="intake-stage">
         <section class="proc-panel">
           <div class="proc-head">
@@ -156,7 +158,7 @@ export function renderIntake(el: HTMLElement) {
   // ── 상태 3 — Success (42:7): check + 요약 + 개념 칩(실 도메인) + 버튼 2종. ──
   function showSuccess(r: { files: number; nodes: number; edges: number; failed: string[] }) {
     el.innerHTML = `
-      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      ${chrome}
       <div class="intake-stage">
         <div class="success-stage">
           <span class="success-check">${icon("check", 30)}</span>
@@ -196,7 +198,7 @@ export function renderIntake(el: HTMLElement) {
   // ── 오류 — 전량 실패 시. 이미 넣은 것은 안전(카피 정본). ──
   function showError(src: string, err: any) {
     el.innerHTML = `
-      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      ${chrome}
       <div class="intake-stage">
         <div class="success-stage">
           <div class="error-banner">${COPY.intake.error(src)}</div>
@@ -214,7 +216,7 @@ export function renderIntake(el: HTMLElement) {
   // 그 스코프로 전환해 Atlas 를 바로 체험. (Settings 의 Owner scope 로 본인 복귀.)
   async function trySample() {
     el.innerHTML = `
-      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      ${chrome}
       <div class="intake-stage">
         <section class="proc-panel proc-slim">
           <div class="proc-head"><h2>${ui.importingSample}</h2></div>
@@ -225,7 +227,7 @@ export function renderIntake(el: HTMLElement) {
       if (res.executed === false) throw new Error(res.error);
       cfg.owner = "sample:demo";
       el.innerHTML = `
-        ${header("ingest", "Intake", COPY.ui.meta.intake)}
+        ${chrome}
         <div class="intake-stage">
           <div class="success-stage">
             <span class="success-check">${icon("check", 30)}</span>

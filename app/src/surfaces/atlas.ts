@@ -164,7 +164,7 @@ export async function renderAtlas(el: HTMLElement) {
     const ties: { source: string; target: string; ties: number }[] = res.ties || [];
     if (!res.executed || domains.length === 0) {
       setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
-        <a class="btn btn-primary" href="#intake">${COPY.atlas.idleCta}</a></div>`);
+        <a class="btn btn-primary" href="#packs">${COPY.atlas.idleCta}</a></div>`);
       return;
     }
     setMsg("");
