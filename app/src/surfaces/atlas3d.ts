@@ -13,7 +13,7 @@ import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
-import { palette as signal, type ThemeMode } from "../theme";
+import { palette as signal, atlasScene, type ThemeMode } from "../theme";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -62,6 +62,62 @@ function material(color: number, opacity = 1): THREE.Material {
   });
 }
 
+// ── 성좌 글로우(Figma 92:211, 토큰=theme.ts atlasScene) — 깊이 계층별 헤일로.
+//    다크(박물관 다크뷰) 전용: focus 글로우 최대 → near → mid(링) → far 페이드.
+//    계층 = 초점(seed)으로부터의 홉 거리(초점 없는 층은 허브도 degree 근사). ──
+type Tier = "focus" | "near" | "mid" | "far";
+let _glowTex: THREE.Texture | null = null;
+function glowTexture(): THREE.Texture {
+  if (_glowTex) return _glowTex;
+  const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
+  const ctx = cv.getContext("2d")!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.22, "rgba(255,255,255,0.55)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+  _glowTex = new THREE.CanvasTexture(cv);
+  return _glowTex;
+}
+function glowSprite(color: number, size: number, opacity: number): THREE.Sprite {
+  const mat = new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true,
+    opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.userData.base = opacity;
+  const sp = new THREE.Sprite(mat); sp.scale.set(size, size, 1);
+  return sp;
+}
+function assignTiers(nodes: N3[], links: L3[]) {
+  const idOf = (x: any) => (typeof x === "object" ? x.id : x);
+  const nbr = new Map<string, Set<string>>();
+  for (const l of links) {
+    const s = idOf(l.source), t = idOf(l.target);
+    (nbr.get(s) || nbr.set(s, new Set()).get(s)!).add(t);
+    (nbr.get(t) || nbr.set(t, new Set()).get(t)!).add(s);
+  }
+  const focusIds = nodes.filter((n) => n.focus).map((n) => n.id);
+  if (focusIds.length) {   // 초점 있는 뷰(L2) — BFS 홉 거리로 계층
+    const hop = new Map<string, number>();
+    let frontier = new Set(focusIds), d = 0;
+    while (frontier.size && d < 8) {
+      const next = new Set<string>();
+      for (const id of frontier) {
+        if (!hop.has(id)) hop.set(id, d);
+        for (const m of nbr.get(id) || []) if (!hop.has(m)) next.add(m);
+      }
+      frontier = next; d++;
+    }
+    for (const n of nodes) {
+      const h = hop.get(n.id);
+      (n as any).__tier = (h === 0 ? "focus" : h === 1 ? "near" : h === 2 ? "mid" : "far") as Tier;
+    }
+  } else {   // 초점 없는 뷰(L0/L1) — 허브도(degree)로 깊이(성좌감 유지, 고아만 far)
+    for (const n of nodes) {
+      const deg = n.degree || 0;
+      (n as any).__tier = (n.pinned || deg >= 8 ? "near" : deg >= 2 ? "mid" : "far") as Tier;
+    }
+  }
+}
+
 /** 환경맵(유리 반사원) — 렌더러당 1회 생성해 씬에 심는다. */
 function applyEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -81,9 +137,8 @@ function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   return r;
 }
 
-function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): THREE.Object3D {
-  const opacity = n.gateway ? GATE_OP : NODE_OP;
-  const color = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
+function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glow = false): THREE.Object3D {
+  const dark = document.documentElement.dataset.theme === "dark";
   const r = nodeRadius(n, prefs);
   let geo: THREE.BufferGeometry;
   switch (n.kind) {
@@ -93,24 +148,48 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette()): TH
     case "bridge":   // 정팔면체(마름모의 입체화)
       geo = new THREE.OctahedronGeometry(r); break;
     default: {       // episode/record/entity — 작은 정육각기둥(변 = 높이, D35).
-                     // entity(F1 개방층)는 의도적 폴스루: 프리미티브 집합은 닫힌
-                     // 층(D31/D35)이라 수리 단위로 늘리지 않는다 — 사용자 저작
-                     // 타입 레코드에 "물질" 마크(육각기둥)가 의미상으로도 맞다.
       const s = r * 0.75;
       geo = new THREE.CylinderGeometry(s, s, s, 6); break;
     }
   }
-  const mesh = new THREE.Mesh(geo, material(color, opacity));
+
+  // ── 성좌 글로우(Figma 92:211) — 다크 전용, domain 제외. 계층 fill + 링 + 헤일로. ──
+  if (dark && glow && n.kind !== "domain") {
+    const tier = ((n as any).__tier || "near") as Tier;
+    const spec: any = atlasScene.node[tier];
+    const stroke: number | undefined = spec.stroke;
+    const fill = n.gateway ? pal.inkMute : (n.focus ? atlasScene.node.focus.fill : spec.fill);
+    const baseOp = n.gateway ? GATE_OP : 1;
+    const mat = new THREE.MeshBasicMaterial({ color: fill, transparent: true, opacity: baseOp });
+    mat.userData.base = baseOp;
+    const mesh = new THREE.Mesh(geo, mat);
+    if (stroke !== undefined) {   // mid/far — 링(stroke 색)으로 어두운 fill 을 가시화
+      const ringMat = new THREE.MeshBasicMaterial({ color: stroke, transparent: true, opacity: 0.95 });
+      ringMat.userData.base = 0.95;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.3, Math.max(r * 0.12, 0.4), 6, 20), ringMat);
+      if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
+      mesh.add(ring);
+    }
+    const glowColor = stroke ?? spec.fill;
+    const k = tier === "focus" ? 6 : tier === "near" ? 4.5 : tier === "mid" ? 3.5 : 3;
+    mesh.add(glowSprite(glowColor, r * k, spec.glowOpacity));
+    if (prefs.view === "2d" && n.kind !== "concept" && n.kind !== "bridge") mesh.rotation.x = Math.PI / 2;
+    return mesh;
+  }
+
+  // ── 기본(라이트 or 글로우 미적용: 미니 그리드) — 글래스 잉크(D40). ──
+  const opacity = n.gateway ? GATE_OP : NODE_OP;
+  const color = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
+  const mat = material(color, opacity);
+  mat.userData.base = opacity;
+  const mesh = new THREE.Mesh(geo, mat);
   if (n.kind === "domain") {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24),   // 원형 링(토성형)
-      material(pal.inkMute, 0.85));
-    // 3D: 적도면(xz)에 두르고, 2D: 카메라를 향해(xy) — 판독 유지
+    const ringMat = material(pal.inkMute, 0.85); ringMat.userData.base = 0.85;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24), ringMat);
     if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
     mesh.add(ring);
   }
-  // 2D 모드: 기둥류(기록물)를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게 —
-  // 형태=타입 판독을 평면에서도 유지 (D31 §1.5: 2D 는 동일 렌더러의 z 평면화).
+  // 2D 모드: 기둥류(기록물)를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게(D31 §1.5).
   if (prefs.view === "2d" && n.kind !== "domain" && n.kind !== "concept" && n.kind !== "bridge")
     mesh.rotation.x = Math.PI / 2;
   return mesh;
@@ -141,6 +220,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
   const pal = themePalette();
+  assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
   // (기본값은 마운트 순간 스냅샷이라 스크롤바 등장 뒤 컨테이너보다 커져 넘친다 — 실측).
@@ -148,7 +228,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
-    .nodeThreeObject((n: any) => nodeObject(n, prefs, pal))
+    .nodeThreeObject((n: any) => nodeObject(n, prefs, pal, true))
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
       `<span style="${pal.label};border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
     // D33 — 엣지 = 헤어라인: linkWidth 미지정(0) = 튜브 메시가 아닌 THREE.Line.
@@ -255,7 +335,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return l.cross ? pal.link.cross : pal.link.base;
   };
   g.linkColor(linkColorFn);
-  const fadeTargets = new Map<THREE.MeshLambertMaterial, number>();
+  const fadeTargets = new Map<THREE.Material, number>();
   let raf = 0;
   const tween = () => {
     let live = false;
@@ -273,10 +353,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
       const fade = keep ? !keep.has(m.id) : false;
-      const base = m.gateway ? GATE_OP : NODE_OP;
       obj.traverse((c: THREE.Object3D) => {
-        const mat = (c as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
-        if (mat) { mat.transparent = true; fadeTargets.set(mat, fade ? 0.12 : base); }
+        const mat = (c as any).material as THREE.Material | undefined;
+        if (mat && "opacity" in mat) {   // mesh fill·링·글로우 스프라이트 공통 — 각자 저장한 base 로 복귀
+          const b = (mat.userData?.base as number | undefined) ?? (m.gateway ? GATE_OP : NODE_OP);
+          mat.transparent = true; fadeTargets.set(mat, fade ? b * 0.15 : b);
+        }
       });
     });
     if (!raf) raf = requestAnimationFrame(tween);
