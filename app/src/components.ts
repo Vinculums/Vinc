@@ -2,14 +2,13 @@
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
 import { icon } from "./icons";
 
-/** Surface header: notation icon + display title + muted meta line
- *  (Figma: 아이콘 + 타이틀 + 엔드포인트 서브텍스트). */
-export function header(iconName: string, title: string, meta: string,
+/** Surface header: display title + muted meta line. (아이콘은 LNB 와 중복이라
+ *  페이지에서 미표기 — iconName 은 호출부 안정성 위해 시그니처만 유지.) */
+export function header(_iconName: string, title: string, meta: string,
                        cta = ""): string {
   return `
     <header class="surface-header">
       <div class="surface-title">
-        ${icon(iconName, 26)}
         <div>
           <h1>${title}</h1>
           <p class="hint surface-meta">${meta}</p>

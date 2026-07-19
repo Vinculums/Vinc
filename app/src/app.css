@@ -26,7 +26,10 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
   --icon-size: 18px;
   --shadow-2: var(--shadow-elev-2);
   --shadow-3: var(--shadow-elev-3);
+  /* 로고 팁 그라디언트(홈페이지 정본과 동일) — 본체 currentColor→팁. 라이트 기본. */
+  --logo-tip: #32355C;
 }
+:root[data-theme="dark"] { --logo-tip: #BDBFE3; }
 /* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
 html, body { height: 100%; margin: 0; }
 body {
@@ -62,27 +65,23 @@ body {
   padding: var(--space-3, .75rem) var(--space-2, .5rem) var(--space-4, 1rem);
   font-weight: 600; font-size: var(--fs-lg); color: hsl(var(--foreground));
 }
-#brand .brand-mark {
-  display: grid; place-items: center; width: 1.625rem; height: 1.625rem; flex: 0 0 auto;
-  border-radius: .5rem; background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
-  font-weight: 700; font-size: .9rem; font-family: var(--font-heading, inherit);
+#brand .brand-logo {
+  width: 1.5rem; height: 1.5rem; flex: 0 0 auto;
+  color: hsl(var(--foreground));   /* 본체 = 전경색, 팁 = --logo-tip 그라디언트 */
 }
 .rail-nav { display: flex; flex-direction: column; gap: 2px; }
 
 #rail a, #rail #settings-btn {
   display: flex; align-items: center; gap: var(--space-3, .625rem);
-  width: 100%; height: 2.375rem; padding: 0 var(--space-3, .75rem) 0 .875rem;
-  border-radius: .5625rem; border: none; background: none; position: relative;
+  width: 100%; height: 2.125rem; padding: 0 var(--space-3, .75rem);
+  border-radius: .5rem; border: none; background: none; position: relative;
   color: hsl(var(--muted-foreground)); text-decoration: none;
   font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: left;
 }
 #rail a:hover, #rail #settings-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 #rail a svg, #rail #settings-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
+/* 활성 = 컴팩트 하이라이트(끝부분 막대 없음). */
 #rail a.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 600; }
-#rail a.active::before {
-  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 2px; height: 1.375rem; border-radius: 1px; background: hsl(var(--primary-foreground));
-}
 #rail a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 
 /* DOMAINS 섹션 */
@@ -302,13 +301,22 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border-radius: var(--radius); padding: var(--space-4, 1rem);
 }
 
-/* Settings popover */
-#settings-popover {
-  position: fixed; left: 4rem; bottom: var(--space-4, 1rem); z-index: 10;
-  width: 24rem; background: hsl(var(--card)); border: 1px solid hsl(var(--border));
-  border-radius: var(--radius); box-shadow: var(--shadow-elev-2, none);
-  padding: var(--space-4, 1rem);
+/* Settings — 우측 슬라이드오버 (Figma: B · 우측 380px + 딤, 사이드바 제외).
+   플로팅 글라스 문법(D37 @supports 블록이 유리화). */
+#settings-scrim {
+  position: fixed; inset: 0 0 0 14.5rem; z-index: 40;   /* 사이드바(232px) 제외 딤 */
+  background: hsl(0 0% 0% / .42);
 }
+#settings-popover {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
+  width: 23.75rem; max-width: 92vw;
+  background: hsl(var(--card)); border-left: 1px solid hsl(var(--border));
+  box-shadow: -12px 0 34px hsl(0 0% 0% / .38);
+  padding: var(--space-5, 1.25rem) var(--space-5, 1.25rem) var(--space-6, 1.5rem);
+  overflow-y: auto; animation: settings-slide .18s ease-out;
+}
+@keyframes settings-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { #settings-popover { animation: none; } }
 #settings-popover label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
 #settings-popover input {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);

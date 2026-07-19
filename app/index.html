@@ -8,7 +8,20 @@
   <body>
     <div id="shell">
       <nav id="rail" aria-label="Surfaces">
-        <div id="brand" title="Vinc"><span class="brand-mark">V</span><span class="rail-label">Vinc</span></div>
+        <div id="brand" title="Vinc">
+          <svg class="brand-logo" viewBox="33.319 32.199 96.405 88.832" role="img" aria-label="Vinc">
+            <defs>
+              <linearGradient id="vinc-brand-tip" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="currentColor"/>
+                <stop offset=".62" stop-color="currentColor"/>
+                <stop offset="1" stop-color="var(--logo-tip)"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#vinc-brand-tip)" transform="translate(33.319 32.259)" d="M 0 0.005 L 21.11 0 C 21.556 0.229 22.041 0.075 22.547 0.172 C 22.841 0.228 22.981 0.418 23.167 0.493 C 13.185 2.829 11.365 12.432 13.475 21.213 C 13.948 23.144 14.603 25.026 15.431 26.834 C 16.796 29.856 18.468 32.834 20.054 35.748 L 25.482 45.796 L 30.022 54.186 C 32.473 58.781 34.317 62.626 38.3 66.171 C 47.532 74.389 57.627 69.751 63.478 60.129 L 63.722 60.324 C 63.03 61.718 61.941 63.459 61.162 64.912 C 58.758 69.462 56.312 73.989 53.824 78.494 C 52.036 81.756 49.924 85.448 48.306 88.772 L 17.001 31.259 C 13.467 24.674 9.895 18.108 6.287 11.563 C 4.234 7.778 2.142 3.714 0 0.005 Z"/>
+            <path fill="url(#vinc-brand-tip)" transform="translate(107.968 32.2)" d="M 5.659 0 C 7.012 0.029 8.744 -0.015 10.051 0.05 C 13.952 0.016 17.854 0.015 21.756 0.046 C 18.102 7.064 14.135 14.134 10.343 21.092 L 0.202 39.897 L 0 39.668 C 1.895 36.227 3.701 32.713 5.583 29.265 C 9.416 22.243 16.076 4.729 5.809 0.378 C 5.729 0.388 4.317 0.278 4.048 0.27 L 3.879 0.131 C 4.135 -0.033 5.279 0.006 5.659 0 Z"/>
+          </svg>
+          <span class="rail-label">Vinc</span>
+        </div>
         <div class="rail-nav">
           <a href="#intake" data-surface="intake" data-icon="ingest"><span class="rail-label">Intake</span></a>
           <a href="#records" data-surface="records" data-icon="recall"><span class="rail-label">Records</span></a>
@@ -26,7 +39,8 @@
         </div>
       </nav>
       <main id="surface" aria-live="polite"></main>
-      <div id="settings-popover" hidden></div>
+      <div id="settings-scrim" hidden></div>
+      <div id="settings-popover" role="dialog" aria-label="Settings" aria-modal="true" hidden></div>
       <div id="palette" hidden></div>
       <div id="cheatsheet" hidden></div>
     </div>

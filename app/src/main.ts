@@ -66,10 +66,17 @@ async function route() {
 window.addEventListener("hashchange", route);
 document.title = `Vinc · ${COPY.tagline}`;
 
+// Settings — 우측 슬라이드오버(딤 스크림 + 우측 패널). 스크림/Esc 로 닫힘.
 const popover = document.getElementById("settings-popover")!;
+const settingsScrim = document.getElementById("settings-scrim")!;
+function openSettings() { settingsScrim.hidden = false; popover.hidden = false; void renderSettings(popover); }
+function closeSettings() { settingsScrim.hidden = true; popover.hidden = true; }
 document.getElementById("settings-btn")!.addEventListener("click", () => {
-  popover.hidden = !popover.hidden;
-  if (!popover.hidden) renderSettings(popover);
+  if (popover.hidden) openSettings(); else closeSettings();
+});
+settingsScrim.addEventListener("click", closeSettings);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !popover.hidden) closeSettings();
 });
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
