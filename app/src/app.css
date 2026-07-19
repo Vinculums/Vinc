@@ -53,44 +53,31 @@ body {
 /* ── Signal 사이드바 (Figma 130:443) — 232px 확장 고정. 토큰=기존 Signal set. ── */
 #shell { display: grid; grid-template-columns: 14.5rem 1fr; height: 100vh; }
 
-/* ── 공홈 GNB (웹 빌드 전용) ────────────────────────────────────────────
-   data-skin="web"(호스티드 vincs.app/app 또는 dev ?skin=web)에서만 표시.
-   데스크탑 셸에선 숨겨 앱 크롬(좌측 레일)만 남긴다. 토큰만 사용 — 리터럴 색 없음. */
-#site-gnb { display: none; }
-[data-skin="web"] #site-gnb {
-  --gnb-h: 3.25rem;
-  display: block; position: sticky; top: 0; z-index: 30;
-  background: hsl(var(--background) / .82);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid hsl(var(--border) / .7);
-}
+/* ── 공홈 GNB 레이아웃(웹 빌드) ──────────────────────────────────────────
+   GNB 마크업·스타일은 공유 /assets/gnb.js(단일 소스)가 web skin에서 런타임 주입한다.
+   여기선 셸 높이만 GNB(3.25rem)만큼 줄인다 — 데스크탑은 GNB 미주입이라 영향 없음. */
 [data-skin="web"] #shell { height: calc(100vh - 3.25rem); }
-.gnb-inner { height: 3.25rem; display: flex; align-items: center; gap: 1.4rem; padding: 0 1.25rem; }
-.gnb-brand { display: flex; align-items: center; gap: .55rem; text-decoration: none; color: hsl(var(--foreground)); }
-.gnb-logo { width: 24px; height: 24px; color: hsl(var(--primary)); }
-.gnb-brand b { font-weight: 680; letter-spacing: .01em; font-size: 1.0625rem; }
-.gnb-links { display: flex; gap: 1.1rem; font-size: .875rem; color: hsl(var(--muted-foreground)); }
-.gnb-links a { text-decoration: none; padding: .25rem 0; transition: color .15s; }
-.gnb-links a:hover { color: hsl(var(--foreground)); }
-.gnb-links a.active { color: hsl(var(--foreground)); font-weight: 600; }
-.gnb-end { margin-left: auto; display: flex; gap: .55rem; align-items: center; }
-.gnb-iconbtn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px;
-  border: 1px solid hsl(var(--border)); background: hsl(var(--card) / .6); color: hsl(var(--muted-foreground)); cursor: pointer;
-  transition: color .15s, border-color .15s; }
-.gnb-iconbtn:hover { color: hsl(var(--foreground)); border-color: hsl(var(--ring) / .5); }
-.gnb-iconbtn svg { width: 17px; height: 17px; }
-.gnb-seg { display: inline-flex; gap: .08rem; border: 1px solid hsl(var(--border)); border-radius: 999px; padding: .13rem; background: hsl(var(--card) / .6); }
-.gnb-seg button { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 999px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; transition: color .15s, background .15s; }
-.gnb-seg button svg { width: 15px; height: 15px; }
-.gnb-seg button.active { background: hsl(var(--foreground) / .10); color: hsl(var(--foreground)); }
-.gnb-btn { display: inline-flex; align-items: center; gap: .4rem; text-decoration: none; font-weight: 570; font-size: .84rem; line-height: 1;
-  padding: .5rem .95rem; border-radius: var(--radius-sm, .5rem); border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); transition: background .15s, transform .15s; }
-.gnb-btn.quiet { background: hsl(var(--card) / .55); }
-.gnb-btn.quiet:hover { background: hsl(var(--card)); }
-.gnb-btn.primary { background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary))); color: hsl(var(--primary-foreground)); border-color: transparent; }
-.gnb-btn.primary:hover { transform: translateY(-1px); }
-[data-skin="web"] #site-gnb :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-@media (max-width: 640px) { .gnb-links { display: none; } .gnb-inner { gap: .8rem; } }
+
+/* ── 커스텀 타이틀바 (데스크탑 셸 전용 · tauri decorations:false 프레임리스).
+   웹 빌드·브라우저 dev 는 [data-shell] 미부여로 숨김 → OS/브라우저 크롬 그대로. ── */
+:root { --titlebar-h: 2.1rem; }
+#titlebar { display: none; }
+[data-shell] #titlebar {
+  display: flex; align-items: stretch; justify-content: space-between;
+  height: var(--titlebar-h); flex: 0 0 auto;
+  background: hsl(var(--card)); border-bottom: 1px solid hsl(var(--border));
+  user-select: none; -webkit-user-select: none;
+}
+[data-shell] #shell { height: calc(100vh - var(--titlebar-h)); }
+.tb-title { display: flex; align-items: center; padding-left: .75rem; font-size: .72rem; font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
+.tb-controls { display: flex; }
+.tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
+.tb-btn svg { width: 11px; height: 11px; }
+.tb-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.tb-close:hover { background: hsl(0 72% 51%); color: #fff; }
+.tb-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+/* 웹앱에선 브랜드 로고가 상단 GNB에 있으므로 좌측 레일의 로고 블록은 중복 → 숨김. */
+[data-skin="web"] #brand { display: none; }
 
 #rail {
   display: flex; flex-direction: column;

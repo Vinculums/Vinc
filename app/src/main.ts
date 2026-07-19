@@ -166,31 +166,28 @@ document.documentElement.dataset.skin =
     ? skinOverride
     : WEB ? "web" : "desktop";
 
-// ── 웹 스킨: 공홈 GNB 배선(현지화 + 테마/언어 토글). 데스크탑 셸은 GNB가 숨겨져 no-op. ──
+// ── 커스텀 타이틀바 — 데스크탑 셸(tauri decorations:false)에서만 노출·배선.
+// 웹/브라우저 dev 는 __TAURI__.window 부재 → data-shell 미부여로 CSS가 숨김.
+const tauriWin = (window as any).__TAURI__?.window;
+if (!WEB && tauriWin) {
+  document.documentElement.dataset.shell = "";
+  const appWin = tauriWin.getCurrentWindow();
+  document.getElementById("tb-min")?.addEventListener("click", () => appWin.minimize());
+  document.getElementById("tb-max")?.addEventListener("click", () => appWin.toggleMaximize());
+  document.getElementById("tb-close")?.addEventListener("click", () => appWin.close());
+}
+
+// ── 웹 스킨: 공홈 GNB를 공유 단일 소스(/assets/gnb.js)로 런타임 주입. 데스크탑 셸은 미주입. ──
+// 같은 오리진(vincs.app)이라 사이트의 gnb.js 를 그대로 로드 → 홈·서브페이지와 100% 동일한 GNB.
+// (로컬 dev ?skin=web 은 vite가 이 파일을 서빙하지 않아 GNB 미표시 — 배포 환경 전용.)
 if (document.documentElement.dataset.skin === "web") {
-  const gnb = document.getElementById("site-gnb");
-  if (gnb) {
-    const L = cfg.lang === "ko"
-      ? { nav1: "사용 흐름", nav2: "핵심 기능", nav3: "프라이버시", nav4: "웹 앱", nav5: "커뮤니티", account: "계정", get: "다운로드" }
-      : { nav1: "How it works", nav2: "Features", nav3: "Privacy", nav4: "Web app", nav5: "Community", account: "Account", get: "Download" };
-    gnb.querySelectorAll<HTMLElement>("[data-gi]").forEach((el) => {
-      const v = (L as Record<string, string>)[el.dataset.gi!];
-      if (v) el.textContent = v;
-    });
-    const curTheme = (localStorage.getItem("vinc.theme") || "dark") === "light" ? "light" : "dark";
-    gnb.querySelectorAll<HTMLButtonElement>(".gnb-seg button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.th === curTheme);
-      b.addEventListener("click", () => {
-        localStorage.setItem("vinc.theme", b.dataset.th!);
-        applyTheme();
-        gnb.querySelectorAll(".gnb-seg button").forEach((x) => x.classList.toggle("active", x === b));
-      });
-    });
-    gnb.querySelector("#gnb-lang")?.addEventListener("click", () => {
-      cfg.lang = cfg.lang === "ko" ? "en" : "ko";
-      location.reload();
-    });
-  }
+  (window as unknown as { VINC_GNB: unknown }).VINC_GNB = {
+    ctx: "app", active: "app", signedIn: true, lang: cfg.lang,
+  };
+  const g = document.createElement("script");
+  g.src = "/assets/gnb.js";
+  g.defer = true;
+  document.head.appendChild(g);
 }
 
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────

@@ -17,7 +17,8 @@
         "height": 800,
         "minWidth": 960,
         "minHeight": 600,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "decorations": false
       }
     ],
     "security": {
@@ -59,6 +60,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
         "displayLanguageSelector": true,
         "languages": ["English", "Korean"]
       }
