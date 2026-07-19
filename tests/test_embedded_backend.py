@@ -390,6 +390,50 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertTrue(all("rrf_score" in row for row in r2["rows"]))
         self.assertEqual(r2["rows"][0]["id"], "a")   # 벡터 최근접 + BM25 refund 겹침
 
+    def test_eg1_graph_arm_surfaces_mentioned_concepts(self):
+        """E-G1: 상위 Chunk 의 :MENTIONS 이웃 개념이 node_hits 그래프 암으로 승격.
+        핵심 — 질문과 title 매치가 없는 개념도, 관련 청크가 그것을 언급하면 검색에
+        나온다(다중 홉 가교, HippoRAG 이부 그래프 결정론 번역)."""
+        from store.config import load_config
+        from store.backend import open_store
+        from engines.mentions_link import link_mentions
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=4)
+        with store.session() as s:
+            # 청크: refund 를 논하지만 본문에 'gauge' 라는 단어는 없다.
+            s.run("MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.embedding=$e, "
+                  "c.source_file='/abs/topo.md'",
+                  t="refund policy and dispute resolution", e=[1.0, 0.1, 0.0, 0.0])
+            # 개념 gauge: title 이 'gauge' 라 쿼리 'refund' 와 title 매치 안 됨.
+            # 그러나 source_file basename(topo.md) 이 청크와 같아 MENTIONS 로 이어진다.
+            s.run("MERGE (c:Concept {concept_id:'gauge'}) SET c.title='gauge', "
+                  "c.owner_id='u', c.domain='physics', c.source_file='physics/topo.md'")
+            # 이웃 개념 duality: gauge 와 RELATED_TO — 1-hop 확산 대상.
+            s.run("MERGE (c:Concept {concept_id:'duality'}) SET c.title='duality', "
+                  "c.owner_id='u', c.domain='physics', c.source_file='physics/x.md'")
+            s.run("MATCH (a:Concept{concept_id:'gauge'}),(b:Concept{concept_id:'duality'}) "
+                  "MERGE (a)-[:RELATED_TO]->(b)")
+        try:
+            store.build_search_indexes(dim=4)
+        except RuntimeError as exc:
+            store.close()
+            self.skipTest(f"검색 확장 미가용 — §9: {exc}")
+        stats = link_mentions(store, owner="u")   # 결정론 링커
+        store.close()
+        self.assertGreaterEqual(stats["links"], 1)
+        self.assertEqual(stats["by_method"].get("source"), 1)   # basename 일치
+
+        r = q.search("refund", owner="u", top_k=5)
+        self.assertTrue(r["executed"])
+        hit_ids = {h["id"] for h in r["node_hits"]}
+        # gauge: 직접 언급(그래프 암), duality: 1-hop 이웃 — 둘 다 title 매치 없이 등장
+        self.assertIn("gauge", hit_ids)
+        self.assertIn("duality", hit_ids)
+        gauge = next(h for h in r["node_hits"] if h["id"] == "gauge")
+        self.assertIn("graph", gauge["arms"])   # D24 매치 표기
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

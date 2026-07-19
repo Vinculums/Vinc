@@ -482,6 +482,15 @@ def main() -> None:
             stored_count = merge_chunks(session, final_records)
         print(f"[INFO] 검색 인덱스 build (벡터 dim={model_dim(args.model)} + FTS)...")
         store.build_search_indexes(dim=model_dim(args.model))
+        # E-G1 — Chunk↔Concept :MENTIONS 결정론 링크(그래프-검색 접속). Concept 이
+        # 아직 없으면(concepts_ingest 미실행) 링크 0 — 무해. MENTIONS 는 인덱스와
+        # 무관한 별도 rel 테이블이라 build 뒤 안전. (재적재는 MERGE 로 멱등.)
+        try:
+            from engines.mentions_link import link_mentions
+            stats = link_mentions(store)
+            print(f"[INFO] :MENTIONS 링크 {stats['links']}개 {stats['by_method']}")
+        except Exception as exc:   # 링크 실패가 임베딩 적재를 무효화하지 않는다(증강).
+            print(f"[WARN] :MENTIONS 링크 스킵: {type(exc).__name__}: {exc}", file=sys.stderr)
     finally:
         store.close()
 

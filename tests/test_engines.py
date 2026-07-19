@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 ENGINES = [
     "embed_pipeline", "recall_ingest", "pack_ingest",
-    "skill_tracker", "concepts_ingest", "bridges_ingest",
+    "skill_tracker", "concepts_ingest", "bridges_ingest", "mentions_link",
 ]  # graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
 
 
@@ -228,6 +228,60 @@ class OpenDomainTests(unittest.TestCase):
         fm = {"chemistry_inputs": ["01-bonds"], "biology_inputs": ["02-cells"], "title": "x"}
         inputs = b._collect_inputs(fm)
         self.assertEqual(inputs, {"chemistry": ["01-bonds"], "biology": ["02-cells"]})
+
+
+class MentionsLinkTests(unittest.TestCase):
+    """E-G1 compute_links — 결정론 Chunk↔Concept 링크 규칙(순수)."""
+
+    def setUp(self):
+        self.m = importlib.import_module("engines.mentions_link")
+
+    def test_source_basename_match_is_strongest(self):
+        # source_file basename 이 같으면 method='source'(절대 vs 상대경로 무관)
+        chunks = [{"chunk_id": "ch1", "source_file": "/abs/path/03-duality.md",
+                   "text": "무관한 본문"}]
+        concepts = [{"concept_id": "c1", "title": "쌍대성", "stem": "03-duality",
+                     "source_file": "math/topo/03-duality.md"}]
+        links = self.m.compute_links(chunks, concepts)
+        self.assertEqual(links, [{"chunk_id": "ch1", "concept_id": "c1",
+                                  "method": "source"}])
+
+    def test_title_all_tokens_present(self):
+        # title 의 유의 토큰이 전부 chunk 에 있으면 method='title'
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": "이 문단은 gauge theory 와 duality 를 다룬다"}]
+        concepts = [{"concept_id": "c1", "title": "gauge duality", "stem": "z",
+                     "source_file": "b/y.md"}]
+        links = self.m.compute_links(chunks, concepts)
+        self.assertEqual([(l["concept_id"], l["method"]) for l in links],
+                         [("c1", "title")])
+
+    def test_title_partial_tokens_no_match(self):
+        # title 토큰이 일부만 있으면 매치 안 함(AND 규칙 — 노이즈 억제)
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": "gauge 만 언급하고 나머지는 없음"}]
+        concepts = [{"concept_id": "c1", "title": "gauge duality symmetry",
+                     "stem": "z", "source_file": "b/y.md"}]
+        self.assertEqual(self.m.compute_links(chunks, concepts), [])
+
+    def test_stem_fallback(self):
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": "본문에 identifier renorm 가 토큰으로 등장"}]
+        concepts = [{"concept_id": "c1", "title": "관측 불가 제목zzz",
+                     "stem": "renorm", "source_file": "b/y.md"}]
+        links = self.m.compute_links(chunks, concepts)
+        self.assertEqual([(l["concept_id"], l["method"]) for l in links],
+                         [("c1", "stem")])
+
+    def test_deterministic_sorted_output(self):
+        chunks = [{"chunk_id": "ch2", "source_file": "/a/b.md", "text": "alpha beta"},
+                  {"chunk_id": "ch1", "source_file": "/a/b.md", "text": "alpha beta"}]
+        concepts = [{"concept_id": "cB", "title": "alpha", "stem": "s1", "source_file": ""},
+                    {"concept_id": "cA", "title": "beta", "stem": "s2", "source_file": ""}]
+        links = self.m.compute_links(chunks, concepts)
+        # (chunk_id, concept_id) 정렬 — 결정론
+        keys = [(l["chunk_id"], l["concept_id"]) for l in links]
+        self.assertEqual(keys, sorted(keys))
 
 
 if __name__ == "__main__":

@@ -1344,6 +1344,80 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     return rows[:max(1, int(limit))]
 
 
+def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
+                      limit: int = 20) -> list[dict]:
+    """E-G1 그래프 암 — 상위 Chunk 가 :MENTIONS 하는 Concept + 그 1-hop Concept
+    이웃을 후보로 승격한다(리서치 ① 다중 홉 가교 — 이부 그래프 확산의 결정론 번역).
+
+    ``chunk_ids`` 는 **랭크 순서**(상위 청크 우선). 직접 언급 개념이 이웃보다 앞서고
+    (더 강한 신호), 같은 층 내에서는 그 개념을 언급한 최상위 청크의 랭크로 정렬한다.
+    반환 행은 node_hits 동형 {id,title,kind:'concept',domain,matched_in:'graph'} —
+    :func:`search` 가 title 폴백과 RRF 융합한다. MENTIONS/Chunk 부재 시 [](하위호환).
+
+    owner(SEC-1): Concept·이웃 모두 owner 스코프. `-[r]-` 무방향 1-hop(방언 중립)."""
+    if not chunk_ids:
+        return []
+    params: dict = {"ids": list(chunk_ids)}
+    own_c = own_nb = ""
+    if owner:
+        own_c = " AND c.owner_id = $owner"
+        own_nb = " AND nb.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+        f"WHERE ch.chunk_id IN $ids{own_c} "
+        "OPTIONAL MATCH (c)-[r]-(nb:Concept) "
+        f"WHERE nb.concept_id <> c.concept_id{own_nb} "
+        "RETURN ch.chunk_id AS chunk_id, c.concept_id AS id, c.title AS title, "
+        "c.domain AS domain, nb.concept_id AS nb_id, nb.title AS nb_title, "
+        "nb.domain AS nb_domain"
+    )
+    rows = store.run(cypher, params)
+    rank = {cid: i for i, cid in enumerate(chunk_ids)}
+    direct: dict[str, dict] = {}   # concept_id → best (min chunk rank)
+    neigh: dict[str, dict] = {}    # 1-hop 이웃(직접 언급이 아닌 것만)
+    for r in rows:
+        cid = r.get("id")
+        if not cid:
+            continue
+        cr = rank.get(r.get("chunk_id"), 10 ** 9)
+        cur = direct.get(cid)
+        if cur is None or cr < cur["_r"]:
+            direct[cid] = {"id": cid, "title": r.get("title"),
+                           "domain": r.get("domain"), "_r": cr}
+        nb = r.get("nb_id")
+        if nb and nb != cid:
+            neigh.setdefault(nb, {"id": nb, "title": r.get("nb_title"),
+                                  "domain": r.get("nb_domain")})
+    for cid in direct:            # 직접 언급이면 이웃 목록에서 제외(중복 방지)
+        neigh.pop(cid, None)
+    ordered = (sorted(direct.values(), key=lambda x: (x["_r"], x["id"]))
+               + sorted(neigh.values(), key=lambda x: x["id"]))
+    out = [{"id": x["id"], "title": x.get("title") or x["id"], "kind": "concept",
+            "domain": x.get("domain") or "", "matched_in": "graph"}
+           for x in ordered]
+    return out[:max(1, int(limit))]
+
+
+def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
+                    top_k: int) -> list[dict]:
+    """title 폴백 + 그래프 암을 개념-공간 RRF 융합(§4-2, D24 매치 표기). 각 행에
+    ``arms``(title/graph 멤버십)를 부여한다. 그래프 암이 비면 **융합하지 않고**
+    title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변)."""
+    membership: dict = {}
+    for name, rows_ in (("title", title_hits), ("graph", graph_hits)):
+        for r in rows_:
+            membership.setdefault(r.get("id"), set()).add(name)
+    if not graph_hits:
+        for r in title_hits:
+            r["arms"] = sorted(membership.get(r.get("id"), []))
+        return title_hits
+    fused = rrf_fuse([title_hits, graph_hits], top_k=top_k)   # title 우선(행 유지)
+    for r in fused:
+        r["arms"] = sorted(membership.get(r.get("id"), []))
+    return fused
+
+
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cfg=None, store=None) -> dict:
@@ -1371,12 +1445,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         base["note"] = base["error"] = "no reachable store"
         return base
     try:
-        # (3) 노드 폴백 — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로를 막지 않는다.
+        # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
+        # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
+        title_hits: list[dict] = []
         try:
-            base["node_hits"] = _node_fallback_search(store, query, limit=top_k, owner=owner)
+            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner)
         except Exception as exc:
-            base["node_hits"] = []
             base["node_error"] = f"{type(exc).__name__}: {exc}"
+        base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
         try:
@@ -1408,6 +1484,16 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         base["error"] = (f"index_build_failed: "
                                          f"{type(exc2).__name__}: {exc2}")
                         base["note"] = base["error"]
+
+        # (4) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
+        # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
+        try:
+            chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")]
+            graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
+            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k)
+        except Exception as exc:
+            base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
+            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k)
     finally:
         if owns:
             store.close()

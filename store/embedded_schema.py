@@ -173,6 +173,13 @@ _REL_TABLES: list[tuple] = [
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),
+    # E-G1 — 그래프-검색 접속(이부 그래프). Chunk(벡터/FTS 검색 노드)를 그것이
+    # 언급하는 Concept 에 잇는다. 생성은 LLM OpenIE 가 아니라 **결정론**(source_file
+    # basename 일치 또는 title/stem 토큰 매칭 — engines/mentions_link.py). 이 다리로
+    # 검색이 "질문과 유사한 청크"만이 아니라 "그 청크가 언급하는 개념의 이웃"까지
+    # 후보로 올린다(리서치 ① 다중 홉 가교 해소, HippoRAG 이부 그래프의 결정론 번역).
+    # method = 링크 근거('source'|'title'|'stem') — 재적재 시 드랍-리빌드 관리.
+    ("MENTIONS", "Chunk", "Concept", [("method", "STRING")]),
 ]
 
 
