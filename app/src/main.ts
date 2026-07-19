@@ -5,7 +5,7 @@ import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
-import { connectSidecar, WEB, ensureWebAuth } from "./api";
+import { connectSidecar, WEB, ensureWebAuth, cfg } from "./api";
 import { checkForUpdate } from "./update";
 
 // LNB 통합(5→3): Atlas / Search(+Records) / Packs(+Intake).
@@ -91,8 +91,8 @@ const COMMANDS: Cmd[] = [
     label: COPY.ui.palette.goTo(`${s[0].toUpperCase()}${s.slice(1)}`), hint: `${i + 1}`,
     run: () => { location.hash = `#${s}`; },
   })),
-  { label: COPY.ui.palette.ingest, hint: "Packs", run: () => { location.hash = "#packs/import"; } },
-  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs/share"; } },
+  { label: COPY.ui.palette.ingest, hint: "Packs", run: () => { location.hash = "#packs"; } },
+  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs"; } },
   { label: COPY.ui.palette.settings, hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
 ];
 
@@ -165,6 +165,33 @@ document.documentElement.dataset.skin =
   skinOverride === "web" || skinOverride === "desktop"
     ? skinOverride
     : WEB ? "web" : "desktop";
+
+// ── 웹 스킨: 공홈 GNB 배선(현지화 + 테마/언어 토글). 데스크탑 셸은 GNB가 숨겨져 no-op. ──
+if (document.documentElement.dataset.skin === "web") {
+  const gnb = document.getElementById("site-gnb");
+  if (gnb) {
+    const L = cfg.lang === "ko"
+      ? { nav1: "사용 흐름", nav2: "핵심 기능", nav3: "프라이버시", nav4: "웹 앱", nav5: "커뮤니티", account: "계정", get: "다운로드" }
+      : { nav1: "How it works", nav2: "Features", nav3: "Privacy", nav4: "Web app", nav5: "Community", account: "Account", get: "Download" };
+    gnb.querySelectorAll<HTMLElement>("[data-gi]").forEach((el) => {
+      const v = (L as Record<string, string>)[el.dataset.gi!];
+      if (v) el.textContent = v;
+    });
+    const curTheme = (localStorage.getItem("vinc.theme") || "dark") === "light" ? "light" : "dark";
+    gnb.querySelectorAll<HTMLButtonElement>(".gnb-seg button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.th === curTheme);
+      b.addEventListener("click", () => {
+        localStorage.setItem("vinc.theme", b.dataset.th!);
+        applyTheme();
+        gnb.querySelectorAll(".gnb-seg button").forEach((x) => x.classList.toggle("active", x === b));
+      });
+    });
+    gnb.querySelector("#gnb-lang")?.addEventListener("click", () => {
+      cfg.lang = cfg.lang === "ko" ? "en" : "ko";
+      location.reload();
+    });
+  }
+}
 
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────
 const THEME_KEY = "vinc.theme";   // "auto" | "light" | "dark"

@@ -194,6 +194,14 @@ const EN = {
       publishNeedName: "Give the pack a name.",
       publishEmpty: "Nothing to share in that scope. Pick a topic with some concepts.",
       publishDone: "Published to the community.", publishView: "View in gallery",
+      // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
+      secImport: "Import", secImportDesc: "Bring a pack file into your graph.",
+      secShare: "Share", secShareDesc: "Pick a topic and send a slice to someone.",
+      secCommunity: "Publish to community", secCommunityDesc: "Make a topic public in the gallery.",
+      topic: "Topic", allTopics: "All topics",
+      previewSave: "Preview & save",
+      backupLink: "Create a full backup pack",
+      backupDesc: "Export everything — for migrating to a new device or an MCP client.",
     },
     recordsUi: { filter: "Search documents…" },
     sheet: {
@@ -398,6 +406,14 @@ const KO: Deck = {
       publishNeedName: "팩 이름을 입력하세요.",
       publishEmpty: "그 범위에 공유할 게 없습니다. concept 이 있는 주제를 고르세요.",
       publishDone: "커뮤니티에 게시했습니다.", publishView: "갤러리에서 보기",
+      // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
+      secImport: "가져오기", secImportDesc: "팩 파일을 내 그래프에 병합합니다.",
+      secShare: "공유하기", secShareDesc: "주제를 골라 슬라이스를 누군가에게 전달합니다.",
+      secCommunity: "커뮤니티에 게시", secCommunityDesc: "주제를 갤러리에 공개합니다.",
+      topic: "주제", allTopics: "전체 주제",
+      previewSave: "미리보기·저장",
+      backupLink: "전체 백업 팩 만들기",
+      backupDesc: "전체를 내보냅니다 — 새 기기 이관이나 MCP 클라이언트용.",
     },
     recordsUi: { filter: "문서 검색..." },
     sheet: {

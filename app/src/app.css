@@ -53,6 +53,45 @@ body {
 /* ── Signal 사이드바 (Figma 130:443) — 232px 확장 고정. 토큰=기존 Signal set. ── */
 #shell { display: grid; grid-template-columns: 14.5rem 1fr; height: 100vh; }
 
+/* ── 공홈 GNB (웹 빌드 전용) ────────────────────────────────────────────
+   data-skin="web"(호스티드 vincs.app/app 또는 dev ?skin=web)에서만 표시.
+   데스크탑 셸에선 숨겨 앱 크롬(좌측 레일)만 남긴다. 토큰만 사용 — 리터럴 색 없음. */
+#site-gnb { display: none; }
+[data-skin="web"] #site-gnb {
+  --gnb-h: 3.25rem;
+  display: block; position: sticky; top: 0; z-index: 30;
+  background: hsl(var(--background) / .82);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid hsl(var(--border) / .7);
+}
+[data-skin="web"] #shell { height: calc(100vh - 3.25rem); }
+.gnb-inner { height: 3.25rem; display: flex; align-items: center; gap: 1.4rem; padding: 0 1.25rem; }
+.gnb-brand { display: flex; align-items: center; gap: .55rem; text-decoration: none; color: hsl(var(--foreground)); }
+.gnb-logo { width: 24px; height: 24px; color: hsl(var(--primary)); }
+.gnb-brand b { font-weight: 680; letter-spacing: .01em; font-size: 1.0625rem; }
+.gnb-links { display: flex; gap: 1.1rem; font-size: .875rem; color: hsl(var(--muted-foreground)); }
+.gnb-links a { text-decoration: none; padding: .25rem 0; transition: color .15s; }
+.gnb-links a:hover { color: hsl(var(--foreground)); }
+.gnb-links a.active { color: hsl(var(--foreground)); font-weight: 600; }
+.gnb-end { margin-left: auto; display: flex; gap: .55rem; align-items: center; }
+.gnb-iconbtn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card) / .6); color: hsl(var(--muted-foreground)); cursor: pointer;
+  transition: color .15s, border-color .15s; }
+.gnb-iconbtn:hover { color: hsl(var(--foreground)); border-color: hsl(var(--ring) / .5); }
+.gnb-iconbtn svg { width: 17px; height: 17px; }
+.gnb-seg { display: inline-flex; gap: .08rem; border: 1px solid hsl(var(--border)); border-radius: 999px; padding: .13rem; background: hsl(var(--card) / .6); }
+.gnb-seg button { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 999px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; transition: color .15s, background .15s; }
+.gnb-seg button svg { width: 15px; height: 15px; }
+.gnb-seg button.active { background: hsl(var(--foreground) / .10); color: hsl(var(--foreground)); }
+.gnb-btn { display: inline-flex; align-items: center; gap: .4rem; text-decoration: none; font-weight: 570; font-size: .84rem; line-height: 1;
+  padding: .5rem .95rem; border-radius: var(--radius-sm, .5rem); border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); transition: background .15s, transform .15s; }
+.gnb-btn.quiet { background: hsl(var(--card) / .55); }
+.gnb-btn.quiet:hover { background: hsl(var(--card)); }
+.gnb-btn.primary { background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary))); color: hsl(var(--primary-foreground)); border-color: transparent; }
+.gnb-btn.primary:hover { transform: translateY(-1px); }
+[data-skin="web"] #site-gnb :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+@media (max-width: 640px) { .gnb-links { display: none; } .gnb-inner { gap: .8rem; } }
+
 #rail {
   display: flex; flex-direction: column;
   padding: var(--space-2, .5rem);
@@ -261,6 +300,33 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .chip.chip-static { cursor: default; color: hsl(var(--muted-foreground)); }
 .success-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-4, 1rem); flex-wrap: wrap; justify-content: center; }
 .success-stage .diag { font-size: .72rem; word-break: break-all; opacity: .75; margin-top: .4rem; }
+
+/* ── Packs — 토글 제거, 의도별 섹션 카드(가져오기/공유/커뮤니티/백업). ── */
+.pack-card {
+  max-width: 44rem; margin: 0 0 var(--space-4, 1rem);
+  border: 1px solid hsl(var(--border)); border-radius: .75rem;
+  background: hsl(var(--card) / .5); padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
+}
+#pack-import.pack-card { padding-bottom: var(--space-2, .5rem); }   /* 드롭존 자체 여백 보유 */
+.pack-h { margin: 0; font-size: var(--fs-base); color: hsl(var(--foreground)); }
+.pack-desc { margin: .2rem 0 var(--space-3, .75rem); font-size: var(--fs-sm); }
+.pack-note { margin: var(--space-3, .75rem) 0 0; font-size: var(--fs-sm); }
+.pack-row { display: flex; align-items: end; gap: var(--space-3, .75rem); flex-wrap: wrap; }
+.pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.pack-field select {
+  font: inherit; padding: var(--space-2, .5rem) var(--space-3, .75rem); min-width: 12rem;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+/* 가져오기 섹션 안의 드롭존: 카드 안이므로 무대 상단 여백·최대폭 제거 */
+#pack-import-host .intake-stage { margin-top: 0; max-width: none; }
+.pack-backup { max-width: 44rem; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
+.pack-linkbtn {
+  font: inherit; background: none; border: none; cursor: pointer; padding: 0;
+  color: hsl(var(--primary)); text-decoration: underline; flex: 0 0 auto;
+}
+.pack-linkbtn:hover { color: hsl(var(--foreground)); }
+.pack-backup .hint { font-size: var(--fs-sm); }
 
 .list-row {
   display: flex; align-items: baseline; gap: var(--space-3, .75rem);
