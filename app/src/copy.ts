@@ -122,6 +122,15 @@ const EN = {
       trySample: "Try the sample pack",
       importingSample: "Importing the sample…",
       sampleLoaded: "Sample loaded: 6 concepts across 2 topics. You're viewing the sample space now (switch back anytime in Settings).",
+      // Ingesting panel (Figma 42:5) — per-file weave, state as ●◐○ + label.
+      processing: (done: number, total: number) => `${done} / ${total} processed · on your device only`,
+      stPending: "Waiting",
+      stActive: "Linking…",
+      stDone: "Done",
+      stFailed: "Couldn't read",
+      // Success panel (Figma 42:7).
+      successBody: "Newly linked concepts are now in your Atlas.",
+      addMore: "Add more",
     },
     settingsUi: {
       lock: "Lock", mcp: "MCP", data: "Data",
@@ -312,6 +321,15 @@ const KO: Deck = {
       trySample: "샘플 팩 체험하기",
       importingSample: "샘플 불러오는 중…",
       sampleLoaded: "샘플을 불러왔습니다: 2개 주제, 개념 6개. 지금은 샘플 공간을 보고 있습니다(Settings에서 언제든 되돌릴 수 있습니다).",
+      // Ingesting 패널 (Figma 42:5) — 파일별 엮기, 상태는 ●◐○ + 라벨.
+      processing: (done, total) => `${done} / ${total} 처리 · 로컬에서만`,
+      stPending: "대기",
+      stActive: "개념 연결 중",
+      stDone: "완료",
+      stFailed: "읽지 못함",
+      // Success 패널 (Figma 42:7).
+      successBody: "새로 연결된 개념이 Atlas에 반영되었습니다.",
+      addMore: "계속 추가",
     },
     settingsUi: {
       lock: "잠금", mcp: "MCP", data: "데이터",

@@ -1,66 +1,73 @@
 import { COPY } from "../copy";
-import { header, headerCta } from "../components";
-import { icon } from "../icons";
+import { header } from "../components";
+import { icon, stateDot } from "../icons";
 import { api, cfg, sidecarDiag, WEB } from "../api";
 import samplePack from "../sample-pack.json";
 
-/** Surface 1 — Intake (Figma 5:2 grammar · spec vinc.d.ingest v0.2).
- *  실제 적재 = 지식 팩/프래그먼트 파일 import(.vincpack/.json → /ingest/pack·
- *  /ingest/fragment). 원문 문서→그래프 추출은 앱이 아닌 Claude/MCP 경로(§mcp-note).
- *  파일 읽기는 HTML File API(플러그인 불요); 셸 드롭은 dragDropEnabled:false 로 웹뷰
- *  수신(tauri.conf). 신규 유저는 공홈 제공 팩 또는 샘플로 시작. */
+/** Surface 1 — Intake (Signal 재스타일 · Figma 42:3 Empty / 42:5 Ingesting /
+ *  42:7 Success). 실제 적재 = 지식 팩/프래그먼트 파일 import(.vincpack/.json →
+ *  /ingest/pack·/ingest/fragment). 원문 문서→그래프 추출은 앱이 아닌 Claude/MCP
+ *  경로(§mcp-note). 파일 읽기는 HTML File API; 셸 드롭은 dragDropEnabled:false 로
+ *  웹뷰 수신(tauri.conf). 카피는 정본(COPY) — 시안 더미 문구 미사용. */
 const USER_OWNER = "tenant:local";   // 본인 데이터 공간(샘플 sample:demo 와 분리)
 
 export function renderIntake(el: HTMLElement) {
-  el.innerHTML = `
-    ${header("ingest", "Intake", COPY.ui.meta.intake,
-             headerCta("choose", "upload", COPY.intake.idleCta))}
-    <div class="empty" id="drop">
-      ${icon("ingest", 30)}
-      <h2>${COPY.intake.idleTitle}</h2>
-      <p>${COPY.intake.idleBody}</p>
-      <p class="hint">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
-      <p>
-        <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
-        ${WEB ? "" : `<button class="btn" id="try-sample">${COPY.ui.intakeUi.trySample}</button>`}
-      </p>
-    </div>
-    ${WEB ? "" : `
-    <div class="mcp-note">
-      <h3>${COPY.ui.intakeUi.mcpTitle}</h3>
-      <p>${COPY.ui.intakeUi.mcpBody}</p>
-    </div>`}
-    <input type="file" id="file-input" accept=".vincpack,.json,application/json" multiple hidden />
-    <div id="intake-status" role="status"></div>
-  `;
-  const drop = el.querySelector<HTMLElement>("#drop")!;
-  const status = el.querySelector<HTMLElement>("#intake-status")!;
-  const input = el.querySelector<HTMLInputElement>("#file-input")!;
   const ui = COPY.ui.intakeUi;
 
-  const openPicker = () => input.click();
-  el.querySelector("#choose")!.addEventListener("click", openPicker);
-  el.querySelector("#pick")!.addEventListener("click", openPicker);
-  drop.addEventListener("click", (e) => {
-    if ((e.target as HTMLElement).closest("button")) return;   // 버튼은 자체 핸들러
-    openPicker();
-  });
-  input.addEventListener("change", () => {
-    if (input.files && input.files.length) importFiles(Array.from(input.files));
-    input.value = "";   // 같은 파일 재선택 허용
-  });
+  // ── 상태 1 — Empty (42:3): 대시 드롭존 + 로고 마크 + CTA. mcp-note 유지. ──
+  function showIdle() {
+    el.innerHTML = `
+      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      <div class="intake-stage">
+        <div class="dropzone" id="drop" role="button" tabindex="0">
+          <span class="dz-mark">${icon("ingest", 34)}</span>
+          <h2>${COPY.intake.idleTitle}</h2>
+          <p class="dz-body">${COPY.intake.idleBody}</p>
+          <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
+          <div class="dz-actions">
+            <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
+            ${WEB ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
+          </div>
+        </div>
+        ${WEB ? "" : `
+        <div class="mcp-note">
+          <h3>${ui.mcpTitle}</h3>
+          <p>${ui.mcpBody}</p>
+        </div>`}
+      </div>
+      <input type="file" id="file-input" accept=".vincpack,.json,application/json" multiple hidden />
+    `;
+    const drop = el.querySelector<HTMLElement>("#drop")!;
+    const input = el.querySelector<HTMLInputElement>("#file-input")!;
+    const openPicker = () => input.click();
 
-  // 드래그&드롭(웹뷰 HTML5 — 셸은 dragDropEnabled:false 로 수신)
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
-  drop.addEventListener("drop", (e) => {
-    e.preventDefault();
-    drop.classList.remove("drag");
-    const files = e.dataTransfer?.files;
-    if (files && files.length) importFiles(Array.from(files));
-  });
+    el.querySelector("#pick")!.addEventListener("click", openPicker);
+    drop.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;   // 버튼은 자체 핸들러
+      openPicker();
+    });
+    drop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
+    });
+    input.addEventListener("change", () => {
+      if (input.files && input.files.length) importFiles(Array.from(input.files));
+      input.value = "";   // 같은 파일 재선택 허용
+    });
 
-  // 파일 1개 적재 — 형식 감지(share pack: vinc_pack 래퍼 · bare fragment: nodes/edges).
+    // 드래그&드롭(웹뷰 HTML5 — 셸은 dragDropEnabled:false 로 수신)
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("drag");
+      const files = e.dataTransfer?.files;
+      if (files && files.length) importFiles(Array.from(files));
+    });
+
+    el.querySelector("#try-sample")?.addEventListener("click", trySample);
+  }
+
+  // ── 파일 1개 적재 — 형식 감지(share pack 래퍼 · bare fragment). ──
   async function importOne(f: File): Promise<{ nodes: number; edges: number }> {
     const obj = JSON.parse(await f.text());
     let res: any;
@@ -81,44 +88,162 @@ export function renderIntake(el: HTMLElement) {
     };
   }
 
+  // ── 상태 2 — Ingesting (42:5): 파일별 행(●◐○ + 진행 바 + 상태 라벨). ──
   async function importFiles(files: File[]) {
-    status.innerHTML = `<p class="hint">${ui.importing}</p>`;
+    el.innerHTML = `
+      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      <div class="intake-stage">
+        <section class="proc-panel">
+          <div class="proc-head">
+            <h2>${ui.importing}</h2>
+            <p class="hint proc-meta" id="proc-meta">${ui.processing(0, files.length)}</p>
+          </div>
+          <div class="proc-rows" id="proc-rows">
+            ${files.map((f, i) => procRow(f.name, i)).join("")}
+          </div>
+        </section>
+      </div>
+    `;
+    const metaEl = el.querySelector<HTMLElement>("#proc-meta")!;
+
     let nodes = 0, edges = 0, ok = 0;
     const failed: string[] = [];
     let lastErr: any = null;
-    for (const f of files) {
+
+    for (let i = 0; i < files.length; i++) {
+      setRow(i, "active");
       try {
-        const r = await importOne(f);
+        const r = await importOne(files[i]);
         nodes += r.nodes; edges += r.edges; ok++;
+        setRow(i, "done");
       } catch (e) {
-        failed.push(f.name); lastErr = e;
+        failed.push(files[i].name); lastErr = e;
+        setRow(i, "failed");
       }
+      metaEl.textContent = ui.processing(i + 1, files.length);
     }
+
     if (ok > 0) {
       cfg.owner = USER_OWNER;   // 본인 공간으로 전환해 방금 넣은 데이터를 본다
-      status.innerHTML =
-        `<p>${ui.imported(ok, nodes, edges)}</p>` +
-        (failed.length ? `<p class="hint">${ui.someFailed(failed.join(", "))}</p>` : "") +
-        `<a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>`;
+      showSuccess({ files: ok, nodes, edges, failed });
     } else {
-      status.innerHTML = `<div class="error-banner">${COPY.intake.error(failed.join(", ") || "the file")}</div>`
-        + `<p class="hint" style="font-size:.72rem;word-break:break-all;margin-top:.4rem;opacity:.75">진단: ${(lastErr && lastErr.message) || lastErr} · ${sidecarDiag}</p>`;
+      showError(failed.join(", ") || "the file", lastErr);
     }
   }
 
-  // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
-  // 그 스코프로 전환해 Atlas 를 바로 체험. (Settings 의 Owner scope 로 본인 데이터 복귀.)
-  el.querySelector("#try-sample")?.addEventListener("click", async () => {
-    status.innerHTML = `<p class="hint">${ui.importingSample}</p>`;
+  function procRow(name: string, i: number): string {
+    const safe = esc(name);
+    return `
+      <div class="proc-row" data-row="${i}" data-state="pending">
+        <span class="proc-mark">${stateDot("empty", 16)}</span>
+        <span class="proc-name" title="${safe}">${safe}</span>
+        <span class="proc-bar"><i></i></span>
+        <span class="proc-status">${ui.stPending}</span>
+      </div>`;
+  }
+
+  function setRow(i: number, state: "active" | "done" | "failed") {
+    const row = el.querySelector<HTMLElement>(`.proc-row[data-row="${i}"]`);
+    if (!row) return;
+    row.dataset.state = state;
+    const mark = row.querySelector<HTMLElement>(".proc-mark")!;
+    const status = row.querySelector<HTMLElement>(".proc-status")!;
+    if (state === "active") { mark.innerHTML = stateDot("half", 16); status.textContent = ui.stActive; }
+    else if (state === "done") { mark.innerHTML = stateDot("filled", 16); status.textContent = ui.stDone; }
+    else { mark.innerHTML = icon("alert", 16); status.textContent = ui.stFailed; }
+  }
+
+  // ── 상태 3 — Success (42:7): check + 요약 + 개념 칩(실 도메인) + 버튼 2종. ──
+  function showSuccess(r: { files: number; nodes: number; edges: number; failed: string[] }) {
+    el.innerHTML = `
+      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      <div class="intake-stage">
+        <div class="success-stage">
+          <span class="success-check">${icon("check", 30)}</span>
+          <h2>${ui.imported(r.files, r.nodes, r.edges)}</h2>
+          <p class="hint success-body">${ui.successBody}</p>
+          ${r.failed.length ? `<p class="hint success-failed">${ui.someFailed(r.failed.join(", "))}</p>` : ""}
+          <div class="concept-chips" id="concept-chips" hidden></div>
+          <div class="success-actions">
+            <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>
+            <button class="btn" id="add-more">${ui.addMore}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    el.querySelector("#add-more")!.addEventListener("click", showIdle);
+    void loadConceptChips();
+  }
+
+  // 개념 칩 = 본인 공간의 실 도메인(상위 3개). 사이드카 미가동/빈 그래프면 조용히 숨김.
+  async function loadConceptChips() {
+    const box = el.querySelector<HTMLElement>("#concept-chips");
+    if (!box) return;
     try {
-      const res = await api.importPack(samplePack, "sample:demo");
+      const res: any = await api.domains(USER_OWNER);
+      const rows: Array<{ domain: string; count?: number; n?: number }> =
+        Array.isArray(res) ? res : (res?.domains || []);
+      if (!rows.length) return;
+      box.innerHTML = rows.slice(0, 3).map((d) => {
+        const name = esc(String(d.domain ?? ""));
+        const c = d.count ?? d.n;
+        return `<span class="chip chip-static">${name}${c != null ? ` · ${c}` : ""}</span>`;
+      }).join("");
+      box.hidden = false;
+    } catch { /* 조용히 숨김 유지 */ }
+  }
+
+  // ── 오류 — 전량 실패 시. 이미 넣은 것은 안전(카피 정본). ──
+  function showError(src: string, err: any) {
+    el.innerHTML = `
+      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      <div class="intake-stage">
+        <div class="success-stage">
+          <div class="error-banner">${COPY.intake.error(src)}</div>
+          <p class="hint diag">진단: ${esc(String((err && err.message) || err))} · ${esc(sidecarDiag)}</p>
+          <div class="success-actions">
+            <button class="btn btn-primary" id="retry">${COPY.intake.idleCta}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    el.querySelector("#retry")!.addEventListener("click", showIdle);
+  }
+
+  // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
+  // 그 스코프로 전환해 Atlas 를 바로 체험. (Settings 의 Owner scope 로 본인 복귀.)
+  async function trySample() {
+    el.innerHTML = `
+      ${header("ingest", "Intake", COPY.ui.meta.intake)}
+      <div class="intake-stage">
+        <section class="proc-panel proc-slim">
+          <div class="proc-head"><h2>${ui.importingSample}</h2></div>
+        </section>
+      </div>`;
+    try {
+      const res: any = await api.importPack(samplePack, "sample:demo");
       if (res.executed === false) throw new Error(res.error);
       cfg.owner = "sample:demo";
-      status.innerHTML = `<p>${ui.sampleLoaded}</p>
-        <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>`;
+      el.innerHTML = `
+        ${header("ingest", "Intake", COPY.ui.meta.intake)}
+        <div class="intake-stage">
+          <div class="success-stage">
+            <span class="success-check">${icon("check", 30)}</span>
+            <h2>${ui.sampleLoaded}</h2>
+            <div class="success-actions">
+              <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>
+            </div>
+          </div>
+        </div>`;
     } catch (e: any) {
-      status.innerHTML = `<div class="error-banner">${COPY.intake.error("the sample pack")}</div>`
-        + `<p class="hint" style="font-size:.72rem;word-break:break-all;margin-top:.4rem;opacity:.75">진단: ${(e && e.message) || e} · ${sidecarDiag}</p>`;
+      showError("the sample pack", e);
     }
-  });
+  }
+
+  showIdle();
+}
+
+function esc(s: string): string {
+  return s.replace(/[<>&"]/g, (m) => (
+    { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
 }

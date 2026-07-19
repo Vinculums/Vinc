@@ -180,16 +180,88 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .error-banner::before { content: "△ "; }
 
-/* Intake — 팩 파일 드롭존 + 본인문서=MCP 안내 */
-#drop { cursor: pointer; transition: border-color .15s, background .15s; }
-#drop.drag { border-color: hsl(var(--foreground) / .5); background: hsl(var(--card) / .5); }
-.mcp-note {
-  margin-top: var(--space-4, 1rem);
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-  padding: var(--space-4, 1rem); background: hsl(var(--card) / .4);
+/* ── Intake — Signal 재스타일 (Figma 42:3 Empty / 42:5 Ingesting / 42:7 Success).
+      3-state 공통: 무대(stage)는 넓은 다크 캔버스 중앙에 카드 하나. 글로우 금지
+      (그래프 노드 전용) — 크롬은 플랫 + 검정 depth 그림자만. ── */
+.intake-stage {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-4, 1rem);
+  max-width: 40rem; margin: clamp(1rem, 6vh, 4rem) auto 0;
 }
-.mcp-note h3 { font-size: var(--fs-1, .95rem); margin: 0 0 var(--space-2, .5rem); }
-.mcp-note p { color: hsl(var(--muted-foreground)); margin: 0; font-size: var(--fs-0, .85rem); }
+
+/* 42:3 — 대시 드롭존 */
+.dropzone {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2, .5rem);
+  padding: var(--space-8, 2.5rem) var(--space-6, 1.5rem);
+  border: 1px dashed hsl(var(--border)); border-radius: .9rem;
+  background: hsl(var(--card) / .35); cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.drag { border-color: hsl(var(--primary) / .7); background: hsl(var(--card) / .6); }
+.dropzone:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.dropzone .dz-mark { display: grid; place-items: center; color: hsl(var(--muted-foreground)); margin-bottom: var(--space-2, .5rem); }
+.dropzone h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.dropzone .dz-body { margin: 0; color: hsl(var(--muted-foreground)); font-size: var(--fs-base); }
+.dropzone .dz-sov { margin: .1rem 0 0; font-size: var(--fs-sm); }
+.dz-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-3, .75rem); flex-wrap: wrap; justify-content: center; }
+
+/* 본인문서 = MCP 안내 (Signal 카드) */
+.mcp-note {
+  width: 100%;
+  border: 1px solid hsl(var(--border)); border-radius: .75rem;
+  padding: var(--space-4, 1rem); background: hsl(var(--card) / .5);
+}
+.mcp-note h3 { font-size: var(--fs-base); margin: 0 0 var(--space-2, .5rem); color: hsl(var(--foreground)); }
+.mcp-note p { color: hsl(var(--muted-foreground)); margin: 0; font-size: var(--fs-sm); }
+
+/* 42:5 — Ingesting 처리 패널 */
+.proc-panel {
+  width: 100%;
+  border: 1px solid hsl(var(--border)); border-radius: .9rem;
+  background: hsl(var(--card)); padding: var(--space-5, 1.25rem) var(--space-6, 1.5rem);
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28));
+}
+.proc-head h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.proc-head .proc-meta { margin: .2rem 0 0; font-size: var(--fs-sm); }
+.proc-rows { margin-top: var(--space-4, 1rem); display: flex; flex-direction: column; }
+.proc-row {
+  display: grid; grid-template-columns: auto 1fr minmax(6rem, 10rem) auto;
+  align-items: center; gap: var(--space-3, .75rem);
+  padding: var(--space-3, .75rem) 0; border-top: 1px solid hsl(var(--border) / .6);
+}
+.proc-row:first-child { border-top: none; }
+.proc-mark { display: inline-flex; color: hsl(var(--muted-foreground)); }
+.proc-row[data-state="active"] .proc-mark { color: hsl(var(--primary)); }
+.proc-row[data-state="done"] .proc-mark { color: hsl(var(--foreground)); }
+.proc-row[data-state="failed"] .proc-mark { color: hsl(var(--danger)); }
+.proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); font-size: var(--fs-base); }
+.proc-bar { position: relative; height: 4px; border-radius: 2px; background: hsl(var(--muted)); overflow: hidden; }
+.proc-bar > i {
+  position: absolute; inset: 0 100% 0 0; border-radius: 2px;
+  background: hsl(var(--primary)); transition: right .35s ease;
+}
+.proc-row[data-state="active"] .proc-bar > i { right: 45%; }
+.proc-row[data-state="done"] .proc-bar > i { right: 0; }
+.proc-row[data-state="failed"] .proc-bar > i { right: 55%; background: hsl(var(--danger)); }
+.proc-status { font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); text-align: right; white-space: nowrap; }
+.proc-row[data-state="failed"] .proc-status { color: hsl(var(--danger)); }
+.proc-slim { text-align: center; }
+
+/* 42:7 — Success */
+.success-stage {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2, .5rem); padding: var(--space-6, 1.5rem) 0;
+}
+.success-check { display: grid; place-items: center; color: hsl(var(--primary)); margin-bottom: var(--space-1, .25rem); }
+.success-stage h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.success-body { margin: 0; font-size: var(--fs-base); }
+.success-failed { margin: .1rem 0 0; font-size: var(--fs-sm); }
+.concept-chips { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; justify-content: center; margin-top: var(--space-2, .5rem); }
+.chip.chip-static { cursor: default; color: hsl(var(--muted-foreground)); }
+.success-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-4, 1rem); flex-wrap: wrap; justify-content: center; }
+.success-stage .diag { font-size: .72rem; word-break: break-all; opacity: .75; margin-top: .4rem; }
 
 .list-row {
   display: flex; align-items: baseline; gap: var(--space-3, .75rem);
