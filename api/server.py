@@ -188,6 +188,18 @@ class VincApp:
         return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
                                                a=_req(p, "a"), b=_req(p, "b"), store=r))
 
+    def read_neighbors(self, p):
+        # E-G5 단일 홉 관측(SoG) — 개념의 1-hop 관계망 요약(조회 전용).
+        return self._read(lambda r: q.neighbors(
+            _req(p, "node"), owner=_req(p, "owner"),
+            limit=_int(p.get("limit"), 50), store=r))
+
+    def read_path(self, p):
+        # E-G7 최단 경로 증거 체인 — 두 개념 사이 all-shortest 경로(조회 전용).
+        return self._read(lambda r: q.shortest_path(
+            _req(p, "a"), _req(p, "b"), max_depth=_int(p.get("max_depth"), 6),
+            owner=_req(p, "owner"), store=r))
+
     def read_merge_candidates(self, p):
         # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).
         return self._read(lambda r: q.suggest_merge_candidates(
@@ -681,6 +693,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/merge-candidates": app.read_merge_candidates,
+            "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

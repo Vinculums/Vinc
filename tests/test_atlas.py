@@ -280,7 +280,9 @@ class FragmentMergeTests(unittest.TestCase):
             "owner": "user:t",
         }, store=fake)
         self.assertEqual(res["merged"]["edges"]["created"], 1)
-        about = [c for c, _ in fake.calls if "MERGE (a)-[:ABOUT]->(b)" in c]
+        # E-G6 — MERGE 에 rel 변수(r) 도입(선택 evidence/confidence SET 용). evidence
+        # 미제공이면 SET 절 없음.
+        about = [c for c, _ in fake.calls if "MERGE (a)-[r:ABOUT]->(b)" in c]
         self.assertEqual(len(about), 1)
         self.assertIn("a.owner_id = $owner", about[0])
         self.assertIn("b.owner_id = $owner", about[0])

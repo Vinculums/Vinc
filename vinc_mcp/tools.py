@@ -52,6 +52,11 @@ _FRAGMENT_SCHEMA = {
                     "role": {"type": "string",
                              "description": "Optional CONNECTS role (connects_via only) — participates "
                                             "in the merge key; different roles create parallel edges."},
+                    "evidence": {"type": "string",
+                                 "description": "Optional source sentence backing this relation (E-G6) — "
+                                                "concept↔concept edges and about only."},
+                    "confidence": {"type": "number",
+                                   "description": "Optional relation confidence 0.0–1.0 (E-G6)."},
                 },
                 "required": ["from", "to", "type"],
             },
@@ -105,6 +110,20 @@ def _t_suggest(args, bridge):
     return bridge.request("GET", "/suggest-ties", params={
         "owner": _owner(args, bridge), "node": args["node"],
         "limit": args.get("limit", 5)})
+
+
+def _t_neighbors(args, bridge):
+    # E-G5 단일 홉 관측(SoG) — 개념의 1-hop 관계망(조회 전용).
+    return bridge.request("GET", "/neighbors", params={
+        "owner": _owner(args, bridge), "node": args["node"],
+        "limit": args.get("limit", 50)})
+
+
+def _t_path(args, bridge):
+    # E-G7 최단 경로 증거 체인 — 두 개념 사이 all-shortest 경로(조회 전용).
+    return bridge.request("GET", "/path", params={
+        "owner": _owner(args, bridge), "a": args["a"], "b": args["b"],
+        "max_depth": args.get("max_depth", 6)})
 
 
 def _t_merge_candidates(args, bridge):
@@ -215,6 +234,33 @@ TOOLS: list[dict] = [
             "limit": {"type": "integer", "default": 5},
             "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_suggest,
+    },
+    {
+        "name": "vinc_neighbors",
+        "description": "Observe ONE concept's immediate (1-hop) relation network — a lightweight "
+                       "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
+                       "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
+                       "graph one hop at a time (observe → pick next node) instead of pulling a whole "
+                       "depth-2 subgraph via vinc_graph — far fewer tokens per step. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "node": {"type": "string", "description": "Exact concept id to observe (e.g. concept:duality)."},
+            "limit": {"type": "integer", "default": 50},
+            "owner": {"type": "string"},
+        }, "required": ["node"]}, "run": _t_neighbors,
+    },
+    {
+        "name": "vinc_path",
+        "description": "Find the shortest relation path(s) between two concepts (E-G7) — the densest "
+                       "physically-connected edge chain, returned as an ordered id/title sequence. "
+                       "Returns {found, length, paths:[{ids,titles,length}], count} with ALL "
+                       "shortest paths (ties included). Use this to give a model concrete evidence "
+                       "of HOW two concepts connect instead of guessing. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "a": {"type": "string", "description": "Exact source concept id."},
+            "b": {"type": "string", "description": "Exact target concept id."},
+            "max_depth": {"type": "integer", "default": 6, "description": "Max path length (1–8)."},
+            "owner": {"type": "string"},
+        }, "required": ["a", "b"]}, "run": _t_path,
     },
     {
         "name": "vinc_merge_candidates",
@@ -337,6 +383,11 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_decide": {"title": "Decision support", "readOnlyHint": True},
     "vinc_domains": {"title": "List domains", "readOnlyHint": True},
     "vinc_suggest_ties": {"title": "Suggest links", "readOnlyHint": True},
+    # E-G3/G4/G5/G7 — 전부 조회 전용(진단·제안·관측·경로). 쓰기 아님.
+    "vinc_diagnose": {"title": "Diagnose graph structure", "readOnlyHint": True},
+    "vinc_merge_candidates": {"title": "Suggest merge candidates", "readOnlyHint": True},
+    "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
+    "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
     "vinc_ingest": {"title": "Save to the graph", "readOnlyHint": False,
                     "destructiveHint": False, "idempotentHint": True},

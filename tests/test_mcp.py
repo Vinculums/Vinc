@@ -30,7 +30,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # E-G3 — 구조 진단(조회 전용): WCC 고아·컴포넌트 + Louvain 커뮤니티.
              "vinc_diagnose",
              # E-G4 — 중복 개념 병합 후보(조회 전용, 확정은 merge_nodes 경유).
-             "vinc_merge_candidates"}
+             "vinc_merge_candidates",
+             # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
+             "vinc_neighbors", "vinc_path"}
 
 
 class _StubBridge(Bridge):
@@ -62,7 +64,8 @@ class ToolContractTests(unittest.TestCase):
             args = {"query": "x", "seed_id": "concept:x", "topic": "x",
                     "node": "concept:x", "nodes": [{"id": "c:x", "type": "concept"}],
                     "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y",
-                    "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to"}
+                    "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
+                    "a": "concept:x", "b": "concept:y"}   # E-G7 vinc_path 필수 인자
             tools.call(t["name"], args, b)
         writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
         self.assertEqual(writes, ["/delete", "/delete-edge", "/ingest/fragment",

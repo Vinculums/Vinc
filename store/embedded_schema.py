@@ -129,8 +129,12 @@ def owner_scoped_labels() -> list[str]:
             if any(col == "owner_id" for col, _ in spec["cols"])]
 
 
+# E-G6 증거·신뢰도 열을 얻는 rel 라벨(마이그레이션 ALTER 대상 — DRY).
+_EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO",
+                                   "INHERITS_FROM", "ABOUT")
+
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -149,27 +153,41 @@ def migration_statements(from_version: int) -> list[str]:
         # 않는다. 조회측은 과도기 술어(owner OR '')로 좁히고(query._bridge_owner_pred),
         # 로컬은 bridges_ingest 재실행으로 실소유 백필된다.
         stmts.append("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''")
+    if from_version < 3:   # v3 — E-G6 관계 증거·신뢰도(선택 속성). rel 테이블 ALTER
+        # ADD+DEFAULT(실측: kuzu 0.11.3 rel 테이블 지원). 신규 설치는 render 가 이미
+        # 열 포함 rel 테이블을 만들어 no-op 흡수; 구 설치는 CC 4종+ABOUT 에 백필.
+        for rel in _EVIDENCE_RELS:
+            stmts.append(f"ALTER TABLE {rel} ADD evidence STRING DEFAULT ''")
+            stmts.append(f"ALTER TABLE {rel} ADD confidence DOUBLE DEFAULT 0.0")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
 #   concepts: (Concept)-[:PREREQUISITE_OF|DERIVES_FROM|RELATED_TO]->(Concept)
 #   bridges:  (Bridge)-[:CROSSES]->(Domain) · (Bridge)-[:CONNECTS {role}]->(Concept)
+# E-G6 — 관계 증거·신뢰도(선택 속성). 리서치 Pydantic RelationshipEdge 의
+# evidence(원문 구절)·confidence(0~1)에 대응. CC 4종 + ABOUT 에 부여해 관계 출처
+# 추적을 노드(source_file)에서 엣지 수준으로 내린다. 상류가 안 보내면 기본값('',
+# 0.0)이라 저작 부담 강제 없음(하위호환). 향후 E-G2 전이 가중·E-G7 경로 가중
+# (1/confidence)의 기반. v3 마이그레이션이 기존 rel 테이블에 ALTER ADD(실측: kuzu
+# 0.11.3 rel 테이블 ALTER ADD+DEFAULT 지원).
+_EDGE_EVIDENCE_COLS: list[tuple[str, str]] = [("evidence", "STRING"), ("confidence", "DOUBLE")]
+
 _REL_TABLES: list[tuple] = [
-    ("PREREQUISITE_OF", "Concept", "Concept", []),
-    ("DERIVES_FROM", "Concept", "Concept", []),
-    ("RELATED_TO", "Concept", "Concept", []),
+    ("PREREQUISITE_OF", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
+    ("DERIVES_FROM", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
+    ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
     # MCP fragment 엣지(D11 §5) 지원 —
     #   inherits_from(Concept→Concept)는 1급 관계 테이블.
     #   Record 참여 엣지는 임베디드 rel 테이블이 FROM/TO 타입 고정이므로
     #   ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment 엣지 타입 보존).
-    ("INHERITS_FROM", "Concept", "Concept", []),
+    ("INHERITS_FROM", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
     ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
     # `about`(api/fragment._EC_EDGES)이 유일 쓰기 경로. 신규 rel 테이블은 매 부팅
     # 멱등 DDL 재실행이 자동 생성하므로 마이그레이션 스텝 불요.
-    ("ABOUT", "Episode", "Concept", []),
+    ("ABOUT", "Episode", "Concept", list(_EDGE_EVIDENCE_COLS)),
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),

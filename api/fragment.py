@@ -288,6 +288,20 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return f" AND {var}.owner_id = $owner" if osc else ""
     op = {"owner": owner} if osc else {}
 
+    # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여(CC 4종 + about 만 —
+    # 그 rel 테이블만 열을 가진다). 미제공이면 열은 스키마 기본값('', 0.0) 유지.
+    def _ev_set(rel_var: str) -> tuple[str, dict]:
+        ev, conf = edge.get("evidence"), edge.get("confidence")
+        sets, p = [], {}
+        if ev is not None:
+            sets.append(f"{rel_var}.evidence = $evid"); p["evid"] = str(ev)
+        if conf is not None:
+            try:
+                p["conf"] = float(conf); sets.append(f"{rel_var}.confidence = $conf")
+            except (TypeError, ValueError):
+                warnings.append(f"edge confidence not a number — ignored ({src}→{dst})")
+        return ((" SET " + ", ".join(sets)) if sets else ""), p
+
     # 개방층 우선(F1): 양 끝이 Entity 라우팅이면 알려진 타입명(relates_to 등)이어도
     # TYPED 로 간다 — Entity 테이블 간에는 레거시 rel 테이블이 존재하지 않는다.
     if _is_open(st) and _is_open(dt):
@@ -339,10 +353,11 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         rel = _EC_EDGES[etype]
         was = _edge_exists(store, rel, src, dst)
+        ev_set, ev_p = _ev_set("r")
         store.run(
             "MATCH (a:Episode), (b:Concept) "
             f"WHERE a.episode_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst, **op})
+            f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
             _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
         return "created"
@@ -359,10 +374,11 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
         was = _edge_exists(store, rel, src, dst)
+        ev_set, ev_p = _ev_set("r")
         store.run(
             "MATCH (a:Concept), (b:Concept) "
             f"WHERE a.concept_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst, **op})
+            f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
             _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
         return "created"

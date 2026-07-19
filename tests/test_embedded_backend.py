@@ -434,6 +434,37 @@ class EmbeddedE2E(unittest.TestCase):
         gauge = next(h for h in r["node_hits"] if h["id"] == "gauge")
         self.assertIn("graph", gauge["arms"])   # D24 매치 표기
 
+    def test_eg5_neighbors_and_eg7_shortest_path(self):
+        """E-G5 단일 홉 관측 + E-G7 최단 경로 — 임베디드 실행."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("a", "b", "c", "d", "e"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                      "n.title=$id, n.domain='m'", id=cid)
+            # a-b, a-c (a 의 이웃 2개), 경로 a..d: a-b-...-d 없음; a-c-e-d 구성
+            for x, y in (("a", "b"), ("a", "c"), ("c", "e"), ("e", "d")):
+                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                      "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
+
+        # E-G5 — a 의 1-hop 이웃 = {b, c}
+        nb = q.neighbors("a", owner="u", store=store)
+        self.assertTrue(nb["executed"])
+        self.assertEqual({n["id"] for n in nb["neighbors"]}, {"b", "c"})
+        self.assertEqual(nb["by_rel"].get("RELATED_TO"), 2)
+
+        # E-G7 — a → d 최단 경로 = a-c-e-d (길이 3)
+        sp = q.shortest_path("a", "d", owner="u", store=store)
+        store.close()
+        self.assertTrue(sp["executed"])
+        self.assertTrue(sp["found"])
+        self.assertEqual(sp["length"], 3)
+        self.assertEqual(sp["paths"][0]["ids"], ["a", "c", "e", "d"])
+
     def test_eg3_component_diagnosis_and_communities(self):
         """E-G3: algo 확장(WCC·Louvain) 구조 진단. kuzu 정적 링크 — 실행. ladybug
         오프라인 미번들이면 강등(executed=False)이라 skip."""
@@ -670,9 +701,10 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(int(ts2[0]["c"]), 0)
         store.close()
 
-    def test_migrate_records_schema_version_2(self):
-        """v2 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 2 를 기록하고
-        Bridge.owner_id 조회가 동작한다(신규 설치는 base DDL, 구 설치는 ALTER 수렴)."""
+    def test_migrate_records_schema_version_3(self):
+        """v3 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 3 을 기록하고
+        Bridge.owner_id(v2)·관계 evidence/confidence(v3, E-G6) 가 동작한다(신규
+        설치는 base DDL, 구 설치는 ALTER 수렴)."""
         from store.config import load_config
         from store.backend import open_store
 
@@ -681,10 +713,19 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "2")
+        self.assertEqual(rows[0]["v"], "3")
         store.run("MERGE (b:Bridge {bridge_id:'b0'}) SET b.owner_id = 'user:x'")
         got = store.run("MATCH (b:Bridge) WHERE b.owner_id = 'user:x' RETURN count(b) AS c")
         self.assertEqual(int(got[0]["c"]), 1)
+        # E-G6 — 관계 증거·신뢰도 열이 존재해 SET/조회가 동작한다.
+        for cid in ("x", "y"):
+            store.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u'", {"id": cid})
+        store.run("MATCH (a:Concept{concept_id:'x'}),(b:Concept{concept_id:'y'}) "
+                  "MERGE (a)-[r:RELATED_TO]->(b) SET r.evidence='원문', r.confidence=0.75")
+        ev = store.run("MATCH ()-[r:RELATED_TO]->() "
+                       "RETURN r.evidence AS e, r.confidence AS c")
+        self.assertEqual(ev[0]["e"], "원문")
+        self.assertAlmostEqual(float(ev[0]["c"]), 0.75)
         store.close()
 
 

@@ -1240,6 +1240,117 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
             "suggestions": out[:max(1, int(limit))]}
 
 
+# ── 단일 홉 관측 창구 (E-G5) — SoG Observe-then-Navigate 경량 프리미티브 ────────
+# 리서치 SoG(Search-on-Graph)의 "단일 홉 관측 창구"를 경량 MCP 표면으로 제공한다.
+# 상류 모델이 depth-2 ego 전체(vinc_graph 최소 단위) 대신 한 홉씩 관측·항해하게 해
+# 토큰을 아낀다(-69.9% 근거). 조회 전용 — 개념의 1-hop 관계망을 rel 타입별로 요약.
+
+def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
+    """개념의 1-hop 이웃(무방향) — rel 타입·이웃 id/title/domain. `label(r)`(임베디드
+    타입 함수 §6-2 M4). owner 지정 시 양 끝 스코프."""
+    params: dict = {"node": node}
+    n_where, m_where = "n.concept_id = $node", ""
+    if owner:
+        n_where += " AND n.owner_id = $owner"
+        m_where = " AND m.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH (n:Concept)-[r]-(m:Concept) WHERE {n_where}{m_where} "
+        "RETURN label(r) AS rel, m.concept_id AS id, m.title AS title, m.domain AS domain"
+    )
+    return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
+
+
+def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
+              cfg=None, store=None) -> dict:
+    """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
+    neighbors:[{rel,id,title,domain}], by_rel:{rel:count}, count}. 결정론 순서
+    (rel, id). 상류 SoG 항해의 관측 표면."""
+    res = execute(neighbors_plan(node, owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return {"kind": "neighbors", "executed": False, "node": node,
+                "neighbors": [], "by_rel": {}, "count": 0, "note": res.get("note", "")}
+    seen: set = set()
+    out: list[dict] = []
+    by_rel: dict[str, int] = {}
+    for r in sorted(res.get("rows", []),
+                    key=lambda r: (str(r.get("rel")), str(r.get("id")))):
+        key = (r.get("rel"), r.get("id"))
+        if not r.get("id") or key in seen:
+            continue
+        seen.add(key)
+        out.append({"rel": r.get("rel"), "id": r.get("id"),
+                    "title": r.get("title") or r.get("id"), "domain": r.get("domain") or ""})
+        by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
+    return {"kind": "neighbors", "executed": True, "node": node,
+            "neighbors": out[:max(1, int(limit))], "by_rel": by_rel, "count": len(out)}
+
+
+# ── 최단 경로 증거 체인 (E-G7) — 분산 증거 단편화 해소 ─────────────────────────
+# 리서치 최단 경로 — 두 개념 사이 물리적으로 연결된 가장 조밀한 엣지 체인을 인출해
+# 상류 모델에 증거로 준다(추측 없는 인과 증빙). kuzu `* ALL SHORTEST`(실측 확인) —
+# 동률 최단 경로 전부. TRAIL ego 순회(목표 미지정)와 달리 **목표쌍 지정형**.
+
+def shortest_path_plan(a_id: str, b_id: str, *, max_depth: int = 6,
+                       owner: str | None = None) -> QueryPlan:
+    """두 개념 간 최단 경로(들). `* ALL SHORTEST 1..d`(엔드포인트 owner 스코프 —
+    교차소유자 엣지 부재라 중간 홉 스코프 불요). nodes(p) 시퀀스 + 길이 반환."""
+    depth = max(1, min(int(max_depth), 8))
+    params: dict = {"a": a_id, "b": b_id}
+    a_where, b_where = "a.concept_id = $a", "b.concept_id = $b"
+    if owner:
+        a_where += " AND a.owner_id = $owner"
+        b_where += " AND b.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH p = (a:Concept)-[* ALL SHORTEST 1..{depth}]-(b:Concept) "
+        f"WHERE {a_where} AND {b_where} "
+        "RETURN nodes(p) AS ns, length(p) AS len ORDER BY len LIMIT 25"
+    )
+    return QueryPlan("shortest_path", cypher, params,
+                     note=f"all-shortest concept path (≤{depth})")
+
+
+def _node_seq(ns) -> list[dict]:
+    """nodes(p) 원소(노드 dict)에서 {id,title} 시퀀스 추출(방언 키 방어)."""
+    out = []
+    for n in ns or []:
+        if isinstance(n, dict):
+            cid = n.get("concept_id") or n.get("id")
+            if cid:
+                out.append({"id": cid, "title": n.get("title") or cid})
+    return out
+
+
+def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
+                  owner: str | None = None, cfg=None, store=None) -> dict:
+    """E-G7 — 두 개념 간 최단 경로 증거 체인(조회 전용). 반환 {executed, found,
+    a, b, length, paths:[{ids,titles}], count}. 경로 부재 시 found=False."""
+    res = execute(shortest_path_plan(a_id, b_id, max_depth=max_depth, owner=owner),
+                  cfg, store=store)
+    base = {"kind": "shortest_path", "executed": res.get("executed", False),
+            "found": False, "a": a_id, "b": b_id, "length": None,
+            "paths": [], "count": 0}
+    if not res.get("executed"):
+        base["note"] = res.get("note", "")
+        return base
+    seqs = []
+    for r in res.get("rows", []):
+        seq = _node_seq(r.get("ns"))
+        if len(seq) >= 2:
+            seqs.append({"ids": [s["id"] for s in seq],
+                         "titles": [s["title"] for s in seq],
+                         "length": len(seq) - 1})
+    # 결정론 정렬(길이→노드 시퀀스) + dedup
+    uniq: dict = {}
+    for s in sorted(seqs, key=lambda s: (s["length"], s["ids"])):
+        uniq.setdefault(tuple(s["ids"]), s)
+    paths = list(uniq.values())
+    base.update(found=bool(paths), paths=paths, count=len(paths),
+                length=paths[0]["length"] if paths else None)
+    return base
+
+
 # ── ER 병합 후보 제안 (E-G4) — 조회 전용, 자동 병합 금지(THESIS T1) ────────────
 # 리서치 ③(개체 식별 해소)의 **검출 단계만** 채택한다 — 자동 병합은 영구 금지
 # (오병합 비가역·LLM 판정 반입 금지·"시스템은 제안만"). 여기서는 결정론 타이틀

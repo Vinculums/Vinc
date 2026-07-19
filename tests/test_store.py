@@ -93,11 +93,14 @@ class ProvisionTests(unittest.TestCase):
     def test_relation_tables_declared(self):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         # concepts(Concept↔Concept 3종) · bridges(CROSSES/CONNECTS)
-        self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept)", ddl)
+        # E-G6 — CC 4종 + ABOUT 에 evidence/confidence 선택 열 부여(관계 출처 추적).
+        self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept, "
+                      "evidence STRING, confidence DOUBLE)", ddl)
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
         self.assertIn("CONNECTS(FROM Bridge TO Concept, role STRING)", ddl)
-        # F4 — episodic↔semantic 다리
-        self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept)", ddl)
+        # F4 — episodic↔semantic 다리(+ E-G6 증거·신뢰도)
+        self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept, "
+                      "evidence STRING, confidence DOUBLE)", ddl)
         # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
         self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
 
@@ -106,14 +109,19 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 2)
-        self.assertEqual(eschema.migration_statements(1),
-                         ["ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''"])
-        # 0→2 는 v1(추적열) 스텝을 포함한 채 v2 스텝으로 끝난다
+        self.assertEqual(eschema.SCHEMA_VERSION, 3)   # E-G6 관계 증거·신뢰도
+        self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
+                      eschema.migration_statements(1))
+        # 0→3 는 v1(추적열)·v2(Bridge owner)·v3(관계 증거) 스텝을 모두 포함한다
         v0 = eschema.migration_statements(0)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
         self.assertTrue(any("ADD updated_at" in s for s in v0))
-        self.assertEqual(eschema.migration_statements(2), [])   # 최신은 no-op
+        self.assertTrue(any("ADD evidence STRING" in s for s in v0))     # v3
+        self.assertTrue(any("ADD confidence DOUBLE" in s for s in v0))   # v3
+        # v2→3 = 관계 증거 ALTER만(Bridge·추적열은 이미 적용됨)
+        v2 = eschema.migration_statements(2)
+        self.assertTrue(all("evidence" in s or "confidence" in s for s in v2))
+        self.assertEqual(eschema.migration_statements(3), [])   # 최신은 no-op
 
     def test_plan_matches_dim(self):
         c = cfgmod.StoreConfig(embedding_model="local-en-large")  # 1024
