@@ -3,6 +3,52 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.5.0 — 그래프 RAG 고도화 + LadybugDB 전환 레일 (2026-07-19)
+
+그래프 RAG 리서치 교차 분석(`RESEARCH-GRAPHRAG-2026-07`)의 발전 과제 E-G1~G7 을
+전면 구현하고, LadybugDB 전환 레일(T1·T2·T4·T5)을 안착시켰다. 스키마
+`SCHEMA_VERSION=3`(기동 시 자동 마이그레이션 — 하위호환), 실엔진 검증 완료.
+전 항목 백엔드 중립(GraphStore 추상화 뒤) · 반입 금지(외부 왕복 0·LLM 추론 0) ·
+결정론 · 제안-재가 · owner 스코프(SEC-1) 불변 준수.
+
+- **그래프-검색 접속(E-G1) — 이부 그래프로 다중 홉 가교 해소**: `MENTIONS(Chunk→
+  Concept)` rel 테이블 신설 + 결정론 링커(`engines/mentions_link.py` — source
+  basename·title 토큰 AND·stem 매칭, LLM 없음). `search()` 에 그래프 암 추가 —
+  상위 Chunk 의 MENTIONS 이웃 개념 + 1-hop 을 title 폴백과 RRF 융합(`node_hits`
+  증강, `arms` 매치 표기). **질문과 title 매치가 없는 개념도 관련 청크가 언급하면
+  검색에 등장한다**(HippoRAG 이부 그래프의 결정론 번역). embed 잡에 링크 편입.
+  (`store/embedded_schema.py`, `engines/mentions_link.py`·`embed_pipeline.py`,
+  `api/query.py`)
+- **ego-Personalized PageRank(E-G2) — 시드 편향 랭킹**: `ppr_scores()` 결정론
+  순수 함수(반복 고정, 대칭 RWR + 엣지 타입 가중 — Bridge CONNECTS·방향 관계
+  우대, 댕글링 재분배). `vinc_graph(seed=)` ego 뷰·`decide` 노드에 `ppr` 부여
+  (가산 메타). (`api/query.py`)
+- **구조 진단 위임(E-G3) — WCC·Louvain**: `graph_algo()` 어댑터가 algo 확장
+  (kuzu 정적 링크)에 project_graph 멱등 생성→실행→드랍으로 위임. `component_
+  diagnosis`(고아·컴포넌트 "연결 안 된 섬")·`communities`(Louvain 군집+지배도메인,
+  테마 proposed 제안 근거) 조회 전용. MCP `vinc_diagnose` + `/diagnose`.
+  (`store/embedded_backend.py`, `api/query.py`, `api/server.py`, `vinc_mcp/tools.py`)
+- **ER 병합 후보 제안(E-G4) — 자동 병합은 영구 금지(T1)**: `merge_candidates()`
+  결정론 순수 함수(정규 타이틀 완전일치·토큰 자카드·부분집합, 동일도메인 우선).
+  조회 전용 — 확정은 기존 `vinc_merge_nodes` 경유. MCP `vinc_merge_candidates` +
+  `/merge-candidates`. 중복 개념 오염 예방 표면. (`api/query.py`, 서버·MCP)
+- **관측 창구·증거·경로(E-G5/G6/G7)**: ① `vinc_neighbors` — 개념의 1-hop 관계망
+  관측(SoG Observe-then-Navigate 경량 프리미티브, 토큰 절감) ② CC 4종+ABOUT rel
+  테이블에 `evidence`/`confidence` 선택 속성(스키마 v3 ALTER, fragment 계약 하위
+  호환 수용) ③ `vinc_path` — 두 개념 간 `* ALL SHORTEST` 경로 증거 체인(분산 증거
+  단편화 해소). (`store/embedded_schema.py`, `api/fragment.py`·`query.py`·`server.py`,
+  `vinc_mcp/tools.py`)
+- **LadybugDB 전환 레일(T1·T2·T4·T5) — G0 게이트까지 kuzu 기본 유지**: 저장 포맷
+  비호환(ladybug 가 kuzu DB 파일 열기 불가 — 실측)이라 전환은 논리 이관만 가능.
+  `store/migrate.py` 드라이버 무관 export/import(스키마 SSoT 파생 — 추적열·
+  preference 신호·evidence·embedding 전량 보존, 두 프로세스: kuzu export→ladybug
+  import) + `vinc-migrate` CLI. 무손실 왕복 리허설 + 방언 재검증 매트릭스(M3
+  TRAIL·M4 label(r)·UNION ALL·ALL SHORTEST) 테스트. 드라이버 노브 D14 재평가
+  주석(G0 오프라인 확장 번들 게이트 전제). (`store/migrate.py`·`config.py`·
+  `embedded_schema.py`, `tests/test_migrate_driver.py`)
+- MCP 도구 4종 추가(`vinc_diagnose`·`vinc_merge_candidates`·`vinc_neighbors`·
+  `vinc_path`, 전부 조회 전용 read-only annotations). 테스트 418 passed.
+
 ## 미출시 (Unreleased) — main, v0.4.0 이후
 
 - **엣지 툼스톤(S4 확장) — 연결선 삭제가 기기 간 전파된다**: 엣지는 타임스탬프가
