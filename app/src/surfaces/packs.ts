@@ -31,6 +31,7 @@ export function renderPacks(el: HTMLElement) {
         </label>
         <button class="btn btn-primary" id="share-go">${U.previewSave}</button>
       </div>
+      <p class="pack-note"><a class="pack-arealink" href="#atlas">${U.shareAreaHint}</a></p>
       <p class="hint pack-note">${COPY.packs.shareNote}</p>
     </section>
 

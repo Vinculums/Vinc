@@ -311,6 +311,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pack-h { margin: 0; font-size: var(--fs-base); color: hsl(var(--foreground)); }
 .pack-desc { margin: .2rem 0 var(--space-3, .75rem); font-size: var(--fs-sm); }
 .pack-note { margin: var(--space-3, .75rem) 0 0; font-size: var(--fs-sm); }
+.pack-arealink { color: hsl(var(--primary)); text-decoration: none; font-size: var(--fs-sm); }
+.pack-arealink:hover { text-decoration: underline; color: hsl(var(--foreground)); }
 .pack-row { display: flex; align-items: end; gap: var(--space-3, .75rem); flex-wrap: wrap; }
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
 .pack-field select {

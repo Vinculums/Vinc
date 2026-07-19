@@ -44,6 +44,7 @@ export async function renderAtlas(el: HTMLElement) {
     <div id="atlas-msg" style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"></div>
     <div id="atlas-tools" style="position:absolute;top:var(--space-4,1rem);right:var(--space-6,1.5rem);z-index:2;display:flex;gap:.5rem"></div>
     <div id="atlas-float" style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:3" hidden></div>
+    <div id="atlas-hint" hidden style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:2;pointer-events:none;white-space:nowrap;font-size:.72rem;color:hsl(var(--caption-foreground));background:hsl(var(--card)/.72);border:1px solid hsl(var(--border));border-radius:999px;padding:.25rem .7rem"></div>
     <div id="atlas-view-panel" hidden
          style="position:absolute;top:3.2rem;right:var(--space-6,1.5rem);z-index:4;width:17rem"></div>
   `;
@@ -53,7 +54,23 @@ export async function renderAtlas(el: HTMLElement) {
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
   const tools = el.querySelector<HTMLElement>("#atlas-tools")!;
   const float = el.querySelector<HTMLElement>("#atlas-float")!;
+  const lassoHint = el.querySelector<HTMLElement>("#atlas-hint")!;
+  lassoHint.textContent = COPY.ui.atlasx.lassoHint;
   const viewPanel = el.querySelector<HTMLElement>("#atlas-view-panel")!;
+
+  // lasso(영역 선택→공유) 배선 + 발견성 힌트. L1/L2 그래프에서만 활성.
+  function wireLasso() {
+    lassoHint.hidden = false;   // "Shift+드래그로 영역 선택" 안내(발견성)
+    enableLasso(g3, canvas, (ids) => {
+      lassoHint.hidden = true;
+      float.hidden = false;
+      float.innerHTML = `<button class="btn btn-primary">${COPY.ui.atlasx.shareSlice(ids.length)}</button>`;
+      float.querySelector("button")!.addEventListener("click", () => {
+        float.hidden = true; openShareSheet({ ids });
+      });
+      setTimeout(() => { float.hidden = true; lassoHint.hidden = false; }, 8000);
+    });
+  }
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let minis3d: { dispose(): void } | null = null;   // Grid 미니(단일 렌더러, D34)
@@ -281,14 +298,7 @@ export async function renderAtlas(el: HTMLElement) {
       },
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
     });
-    enableLasso(g3, canvas, (ids) => {
-      float.hidden = false;
-      float.innerHTML = `<button class="btn btn-primary">${COPY.ui.atlasx.shareSlice(ids.length)}</button>`;
-      float.querySelector("button")!.addEventListener("click", () => {
-        float.hidden = true; openShareSheet({ ids });
-      });
-      setTimeout(() => { float.hidden = true; }, 8000);
-    });
+    wireLasso();
   }
 
   async function showL2(seed: string) {
@@ -301,14 +311,7 @@ export async function renderAtlas(el: HTMLElement) {
       onClick: (nd) => openDetail(nd),
       onRightClick: (nd) => { trail.push({ kind: "l2", seed: nd.id }); show(trail[trail.length - 1]); },
     });
-    enableLasso(g3, canvas, (ids) => {
-      float.hidden = false;
-      float.innerHTML = `<button class="btn btn-primary">${COPY.ui.atlasx.shareSlice(ids.length)}</button>`;
-      float.querySelector("button")!.addEventListener("click", () => {
-        float.hidden = true; openShareSheet({ ids });
-      });
-      setTimeout(() => { float.hidden = true; }, 8000);
-    });
+    wireLasso();
   }
 
   /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
@@ -463,6 +466,7 @@ export async function renderAtlas(el: HTMLElement) {
     detail.hidden = true;
     tools.innerHTML = "";
     float.hidden = true;
+    lassoHint.hidden = true;   // 기본 숨김 — L1/L2 의 wireLasso 가 다시 켠다
     viewPanel.hidden = true;
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
