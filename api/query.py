@@ -412,6 +412,94 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
+# ── ego-Personalized PageRank (E-G2) — 순수 함수 시드 편향 랭킹 ────────────────
+# 리서치(HippoRAG PPR)의 시드 편향 확산을 **백엔드 밖 결정론 순수 함수**로 옮긴다.
+# ego 서브그래프(수십~수백 노드) 위 power iteration(반복 수 고정 → 결정론, 난수·
+# 시간 무의존 — `_cluster_organic` 의 "시드 고정 + 반복 고정" 전례 동형). 전이
+# 가중에 엣지 타입 차등을 준다: Bridge CONNECTS(1급 크로스도메인 결합, §3.6)·방향
+# 관계(선행/파생/상속)를 우대해 Bridge 신호와 방향 구조를 랭킹에 편입한다. 전역
+# 지표가 필요하면(코퍼스 급성장) store 어댑터 algo `page_rank` 로 위임(E-G3
+# graph_algo) — 인터페이스 동일 유지. Cypher 내 점수식 없음(§4-2 · 임베디드 방언
+# 이식성). `rrf_fuse`/`score_preference` 와 같은 순수 함수 이웃.
+PPR_EDGE_WEIGHTS = {
+    "CONNECTS": 2.0,          # Bridge 매개 — 1급 크로스도메인 결합(§3.6)
+    "PREREQUISITE_OF": 1.5, "DERIVES_FROM": 1.5, "INHERITS_FROM": 1.5,  # 방향 구조
+}
+PPR_DEFAULT_WEIGHT = 1.0     # RELATED_TO·ABOUT·ATTACHES_TO·TYPED 등
+
+
+def ppr_scores(nodes: list[dict], edges: list[dict], seeds: list[str], *,
+               alpha: float = 0.15, iters: int = 30,
+               edge_weights: dict | None = None) -> dict[str, float]:
+    """시드 편향 개인화 페이지랭크 — 순수·결정론(반복 수 고정, 난수·시간 무의존).
+
+    ``nodes``: shape_graph 노드 리스트(각 ``{id, ...}``). ``edges``: shape_graph
+    엣지 리스트(각 ``{source, target, type}``). ``seeds``: 개인화 벡터를 실을
+    시드 id(보통 ``[seed]``). 반환 ``{node_id: score}`` (합=1 정규화, 시드에
+    가까운 하위 연결 구조로 질량이 집중).
+
+    전이 그래프는 **대칭**(엣지가 양방향 전이 — RWR/HippoRAG 관례)이며 엣지 타입
+    가중(:data:`PPR_EDGE_WEIGHTS`)을 곱한다. 댕글링(전이 이웃 0) 질량은 개인화
+    벡터로 재분배해 싱크를 막는다(질량 보존). 시드가 그래프 밖이거나 비면 균등
+    개인화로 강등. ``alpha`` = 재시작(teleport) 확률(=1-damping)."""
+    ids = [n["id"] for n in nodes if n.get("id")]
+    if not ids:
+        return {}
+    idx = {nid: i for i, nid in enumerate(ids)}
+    n = len(ids)
+    ew = {**PPR_EDGE_WEIGHTS, **(edge_weights or {})}
+    out: list[dict[int, float]] = [dict() for _ in range(n)]   # out[i][j] = 누적 가중
+    for e in edges or []:
+        s, t = e.get("source"), e.get("target")
+        if s not in idx or t not in idx or s == t:
+            continue
+        w = ew.get(e.get("type") or "", PPR_DEFAULT_WEIGHT)
+        si, ti = idx[s], idx[t]
+        out[si][ti] = out[si].get(ti, 0.0) + w
+        out[ti][si] = out[ti].get(si, 0.0) + w   # 대칭 전이
+    seed_idx = [idx[s] for s in seeds if s in idx]
+    p = [0.0] * n
+    if seed_idx:
+        for i in seed_idx:
+            p[i] = 1.0 / len(seed_idx)
+    else:
+        for i in range(n):
+            p[i] = 1.0 / n
+    r = list(p)
+    for _ in range(max(1, int(iters))):
+        nr = [alpha * p[i] for i in range(n)]
+        dangling = 0.0
+        for i in range(n):
+            deg = sum(out[i].values())
+            if deg <= 0:
+                dangling += r[i]
+                continue
+            share = (1.0 - alpha) * r[i]
+            for j, w in out[i].items():
+                nr[j] += share * (w / deg)
+        if dangling:                                   # 댕글링 질량 → 개인화 재분배
+            for i in range(n):
+                nr[i] += (1.0 - alpha) * dangling * p[i]
+        r = nr
+    total = sum(r) or 1.0
+    return {ids[i]: r[i] / total for i in range(n)}
+
+
+def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
+               iters: int = 30) -> dict:
+    """shaped 그래프의 각 노드에 ``ppr`` 필드(6자리 반올림)를 부여한다(E-G2, 가산
+    메타 — 기존 소비처 무영향). seed ego 뷰·decide 에서 호출. 시드 없거나 노드 0이면
+    무동작(빈 그래프 안전)."""
+    nodes = shaped.get("nodes") or []
+    if not nodes:
+        return shaped
+    scores = ppr_scores(nodes, shaped.get("edges") or [], seeds,
+                        alpha=alpha, iters=iters)
+    for nd in nodes:
+        nd["ppr"] = round(scores.get(nd.get("id"), 0.0), 6)
+    return shaped
+
+
 def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
     """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
     MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
@@ -906,6 +994,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                 shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
                                     "domain": "", "kind": kind, "degree": 0,
                                     "props": {}, "tags": []}]   # A4 형태 정합
+        # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
+        attach_ppr(shaped, [seed])
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         return {"executed": executed, "seed": seed, "depth": depth, "found": found, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
@@ -1376,6 +1466,7 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
+    attach_ppr(shaped, [seed])   # E-G2 — 토픽(시드) 관점 개인화 랭킹
     conflicts = [{"source": e["source"], "target": e["target"], "type": e["type"],
                   "reason": "cross_domain"} for e in shaped["edges"] if e.get("cross_domain")]
     return {**base, "nodes": shaped["nodes"], "edges": shaped["edges"], "conflicts": conflicts}

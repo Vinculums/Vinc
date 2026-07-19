@@ -325,7 +325,11 @@ class EmbeddedE2E(unittest.TestCase):
 
         r = q.decide("a", depth=4)
         self.assertTrue(r["executed"], r.get("note"))
-        self.assertGreater(len(r["rows"]), 0)   # 사이클 위 노드서 경로 존재
+        # decide 계약은 {nodes, edges, conflicts}(A1.9 A5 재설계 — 경로 blowup 제거,
+        # label=title·props 셰이핑). 사이클 위 노드서 서브그래프가 재구성돼야 한다.
+        self.assertTrue(r["found"])
+        self.assertGreater(len(r["nodes"]), 0)   # 사이클 위 노드서 서브그래프 존재
+        self.assertGreater(len(r["edges"]), 0)   # 순회 엣지 존재
 
     def test_vector_and_fts_search(self):
         """M5/M6: 벡터(HNSW)+FTS(BM25) 검색 — 활성 기본 드라이버로. 검색 확장이

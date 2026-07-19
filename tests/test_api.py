@@ -153,6 +153,63 @@ class ShapeGraphTests(unittest.TestCase):
         self.assertEqual(g["nodes"], [])
         self.assertEqual(g["edges"], [])
 
+
+class PPRTests(unittest.TestCase):
+    """E-G2 ego-Personalized PageRank 순수 함수 — 결정론·시드 편향·엣지 타입 가중."""
+
+    def _line(self):
+        # 경로 그래프 s - a - b - c (RELATED_TO), 시드 = s
+        nodes = [{"id": n} for n in ("s", "a", "b", "c")]
+        edges = [{"source": u, "target": v, "type": "RELATED_TO"}
+                 for u, v in (("s", "a"), ("a", "b"), ("b", "c"))]
+        return nodes, edges
+
+    def test_scores_sum_to_one(self):
+        nodes, edges = self._line()
+        sc = q.ppr_scores(nodes, edges, ["s"])
+        self.assertAlmostEqual(sum(sc.values()), 1.0, places=6)
+        self.assertEqual(set(sc), {"s", "a", "b", "c"})
+
+    def test_seed_bias_decays_with_distance(self):
+        # 개인화 확산: 시드는 균등(0.25) 이상으로 승격되고, 시드에서 멀어질수록
+        # 질량이 단조 감소한다(a→b→c). 대칭 RWR 이므로 degree-2 이웃 a 가 degree-1
+        # 시드 s 자신을 넘어설 수 있다(허브 효과 — 정상). 시드는 최원거리 c 를 넘는다.
+        nodes, edges = self._line()
+        sc = q.ppr_scores(nodes, edges, ["s"])
+        self.assertGreater(sc["s"], 0.25)          # 균등 이상으로 편향
+        self.assertGreater(sc["a"], sc["b"])       # 거리 감소
+        self.assertGreater(sc["b"], sc["c"])
+        self.assertGreater(sc["s"], sc["c"])        # 시드 > 최원거리
+
+    def test_deterministic_repeatable(self):
+        nodes, edges = self._line()
+        self.assertEqual(q.ppr_scores(nodes, edges, ["s"]),
+                         q.ppr_scores(nodes, edges, ["s"]))
+
+    def test_edge_type_weight_prefers_bridge(self):
+        # 허브 h 가 c1(CONNECTS, 가중 2.0)·c2(RELATED_TO, 1.0)에 각각 연결.
+        # 시드 h 에서 강가중 이웃 c1 이 c2 보다 높은 질량을 받아야.
+        nodes = [{"id": i} for i in ("h", "c1", "c2")]
+        edges = [{"source": "h", "target": "c1", "type": "CONNECTS"},
+                 {"source": "h", "target": "c2", "type": "RELATED_TO"}]
+        sc = q.ppr_scores(nodes, edges, ["h"])
+        self.assertGreater(sc["c1"], sc["c2"])
+
+    def test_empty_and_out_of_graph_seed(self):
+        self.assertEqual(q.ppr_scores([], [], ["x"]), {})
+        # 시드가 그래프 밖 → 균등 개인화로 강등(크래시 없음, 합=1)
+        nodes, edges = self._line()
+        sc = q.ppr_scores(nodes, edges, ["zzz"])
+        self.assertAlmostEqual(sum(sc.values()), 1.0, places=6)
+
+    def test_attach_ppr_adds_field(self):
+        nodes, edges = self._line()
+        shaped = {"nodes": nodes, "edges": edges}
+        q.attach_ppr(shaped, ["s"])
+        self.assertTrue(all("ppr" in n for n in shaped["nodes"]))
+        by_id = {n["id"]: n["ppr"] for n in shaped["nodes"]}
+        self.assertGreater(by_id["s"], by_id["c"])
+
     def test_recall_recency_is_default(self):
         plan = q.recall_plan(owner="u1")
         self.assertIn("ORDER BY e.date DESC", plan.cypher)
