@@ -115,6 +115,34 @@ def del_tombstone(store, node_id: str) -> None:
     store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id DELETE t", {"id": node_id})
 
 
+def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
+                       deleted_at: str) -> None:
+    """수신한 엣지 삭제를 재전파용으로 남긴다(노드 put_tombstone 동형 — deleted_at
+    원본 보존, sync_seq 는 수신측 자기 번호)."""
+    store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
+              "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
+              "t.origin = 'remote'",
+              {"k": f"{src}|{rel}|{dst}", "s": src, "r": rel, "d": dst, "o": owner,
+               "da": deleted_at, "seq": revstamp.next_seq(store, owner)})
+
+
+def _edge_tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
+    """owner 의 엣지 툼스톤 중 sync_seq > since — 동기화 rel(CC 4종+ABOUT)만."""
+    rels = sorted(q.SYNC_EDGE_RELS)
+    where = ["t.owner_id = $owner", f"t.rel IN {json.dumps(rels)}"]
+    params: dict = {"owner": owner}
+    if since > 0:
+        where.append("t.sync_seq > $since")
+        params["since"] = since
+    cypher = (
+        f"MATCH (t:_EdgeTombstone) WHERE {' AND '.join(where)} "
+        "RETURN t.src AS src, t.rel AS rel, t.dst AS dst, "
+        "t.deleted_at AS deleted_at, t.sync_seq AS sync_seq ORDER BY t.sync_seq"
+    )
+    return q.QueryPlan("sync_edge_tombstones", cypher, params,
+                       note="edge deletion markers for delta (S4 확장)")
+
+
 def _tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
     """owner 의 tombstone 중 sync_seq > since(최초 sync 면 since=0 전량). 동기화 라벨만
     (Concept/Episode) — 그 외 라벨 삭제는 전파할 곳이 없다."""
@@ -136,12 +164,15 @@ def gc_tombstones(store, *, keep_days: int = 90, now_ms: int | None = None) -> i
     ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000) \
         if now_ms is None else now_ms
     cutoff = revstamp._fmt(ms - keep_days * 86400 * 1000)
-    cur = store.run("MATCH (t:_Tombstone) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
-                    "RETURN count(t) AS c", {"c": cutoff})
-    n = int(cur[0].get("c") or 0) if cur else 0
-    if n:
-        store.run("MATCH (t:_Tombstone) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
-                  "DELETE t", {"c": cutoff})
+    n = 0
+    for label in ("_Tombstone", "_EdgeTombstone"):   # 엣지 표식도 같은 지평(S4 확장)
+        cur = store.run(f"MATCH (t:{label}) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
+                        "RETURN count(t) AS c", {"c": cutoff})
+        k = int(cur[0].get("c") or 0) if cur else 0
+        if k:
+            store.run(f"MATCH (t:{label}) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
+                      "DELETE t", {"c": cutoff})
+        n += k
     return n
 
 
@@ -293,12 +324,23 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                    "_seq": int(r.get("sync_seq") or 0)}
                   for r in (t_res.get("rows", []) if t_res.get("executed") else [])]
 
-    seqs = [n["_seq"] for n in nodes] + [t["_seq"] for t in tombstones]
+    # 엣지 삭제 표식(S4 확장) — 노드 툼스톤과 같은 커서 공간(sync_seq).
+    et_res = q.execute(_edge_tombstones_delta_plan(owner=owner, since=since),
+                       cfg, store=store)
+    edge_tombstones = [{"src": r["src"], "rel": r["rel"], "dst": r["dst"],
+                        "deleted_at": r.get("deleted_at") or "",
+                        "_seq": int(r.get("sync_seq") or 0)}
+                       for r in (et_res.get("rows", []) if et_res.get("executed") else [])]
+
+    seqs = ([n["_seq"] for n in nodes] + [t["_seq"] for t in tombstones]
+            + [t["_seq"] for t in edge_tombstones])
     nxt = max([since] + seqs) if seqs else since
     base.update({"executed": True, "nodes": nodes, "edges": edges,
-                 "tombstones": tombstones, "next_cursor": nxt,
+                 "tombstones": tombstones, "edge_tombstones": edge_tombstones,
+                 "next_cursor": nxt,
                  "counts": {"concepts": len(c_rows), "episodes": len(e_rows),
-                            "edges": len(edges), "tombstones": len(tombstones)}})
+                            "edges": len(edges), "tombstones": len(tombstones),
+                            "edge_tombstones": len(edge_tombstones)}})
     return base
 
 
@@ -312,8 +354,7 @@ _REL_TO_FRAGMENT.update({rel: ft for ft, rel in frag._EC_EDGES.items()})
 def _episode_about_plan(ids: list[str], *, owner: str) -> "q.QueryPlan":
     """번들 내 Episode→Concept ABOUT 엣지(F4) — graph_rows_for_ids_plan 이 Concept
     소스만 순회하므로 Episode 소스 엣지는 여기서 별도로 뽑는다. 양끝 모두 번들 id
-    집합 + owner 스코프. ⚠ 엣지 톰스톤은 없다 — ABOUT 삭제는 전파되지 않는 기지
-    한계(노드 톰스톤과 달리 엣지는 삭제 표식 테이블이 없음)."""
+    집합 + owner 스코프. 삭제 전파는 엣지 툼스톤(_EdgeTombstone, S4 확장)이 담당."""
     cypher = (
         "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
         "WHERE e.episode_id IN $ids AND c.concept_id IN $ids "
@@ -332,11 +373,13 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
     nodes = bundle.get("nodes") or []
     edges = bundle.get("edges") or []
     tombs = bundle.get("tombstones") or []
+    etombs = bundle.get("edge_tombstones") or []
     if not nodes:
         # 노드가 없어도 엣지·tombstone 은 실어 보낸다(삭제-only sync).
-        if not edges and not tombs:
+        if not edges and not tombs and not etombs:
             return []
-        return [{"nodes": [], "edges": edges, "tombstones": tombs}]
+        return [{"nodes": [], "edges": edges, "tombstones": tombs,
+                 "edge_tombstones": etombs}]
 
     by_id = {n["id"]: n for n in nodes}
     chunks: list[dict] = []
@@ -366,9 +409,11 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
         need = {e["from"] for e in spill} | {e["to"] for e in spill}
         chunks.append({"nodes": [by_id[i] for i in sorted(need) if i in by_id],
                        "edges": spill})
-    # tombstone 은 작아 첫 청크에 전부 싣는다(한 번만 적용되게).
+    # tombstone(노드·엣지)은 작아 첫 청크에 전부 싣는다(한 번만 적용되게).
     if tombs:
         chunks[0]["tombstones"] = tombs
+    if etombs:
+        chunks[0]["edge_tombstones"] = etombs
     return chunks
 
 
@@ -463,9 +508,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         revstamp.observe_hlc(store, r_ua)
 
     if writes or bundle.get("edges"):
+        # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
+        # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
         res = frag.merge_fragment(
             {"owner": owner, "nodes": [w["node"] for w in writes],
-             "edges": bundle.get("edges") or []}, store=store)
+             "edges": bundle.get("edges") or []}, store=store, stamp_edges=False)
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
         out["warnings"] += res.get("warnings") or []
@@ -502,6 +549,31 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         del_base(store, tid)
         put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
         revstamp.observe_hlc(store, t_da)
+
+    # 엣지 삭제 전파(S4 확장): 엣지는 타임스탬프가 없어 노드식 재편집 가드가 불가 —
+    # 삭제를 무조건 적용한다. '재생성이 삭제를 이긴다'는 별도 경로로 성립:
+    # 재생성 기기가 끝점을 스탬프(fragment._stamp_edge_endpoints — 로컬 엣지 툼스톤
+    # 상쇄 포함)해 다음 delta 에 엣지가 실려 되돌아온다.
+    for t in bundle.get("edge_tombstones") or []:
+        src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
+        ep = q.SYNC_EDGE_RELS.get(rel or "")
+        if not ep or not src or not dst:
+            continue
+        sl, sp, dl, dp = ep
+        pairs = [(src, dst)]
+        if rel == "RELATED_TO":   # 무방향 의미 — 물리 역방향도 함께(delete_edge 동형)
+            pairs.append((dst, src))
+        for s_, d_ in pairs:
+            cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                            f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(r) AS c",
+                            {"s": s_, "d": d_})
+            if cnt and int(cnt[0].get("c") or 0):
+                store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                          f"WHERE a.{sp} = $s AND b.{dp} = $d DELETE r",
+                          {"s": s_, "d": d_})
+                out["edges_deleted"] = out.get("edges_deleted", 0) + 1
+        put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
+        revstamp.observe_hlc(store, t.get("deleted_at") or "")
 
     out["applied"] = len(writes)
     return out

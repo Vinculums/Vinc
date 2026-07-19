@@ -543,6 +543,48 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(ties.get(("m", "p")), 2, res)   # alice + legacy, bob 제외
         store.close()
 
+    def test_edge_tombstone_roundtrip(self):
+        """S4 확장 실엔진 — 신규 엣지의 끝점 스탬프 → delete_edge(삭제+표식) →
+        delta export 에 edge_tombstones → 재생성이 표식을 상쇄."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+        from api import query as q
+        from api import sync
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:ea", "type": "concept", "title": "A", "domain": "d"},
+                      {"id": "concept:eb", "type": "concept", "title": "B", "domain": "d"}],
+            "edges": [{"from": "concept:ea", "to": "concept:eb", "type": "relates_to"}],
+            "owner": "user:alice",
+        }, store=store)
+        seq = store.run("MATCH (n:Concept) WHERE n.concept_id = 'concept:ea' "
+                        "RETURN n.sync_seq AS s")
+        self.assertGreater(int(seq[0]["s"]), 0)     # 엣지 생성이 끝점을 스탬프
+        res = q.delete_edge("concept:ea", "relates_to", "concept:eb",
+                            owner="user:alice", store=store)
+        self.assertTrue(res["found"], res)
+        left = store.run("MATCH (:Concept)-[r:RELATED_TO]->(:Concept) RETURN count(r) AS c")
+        self.assertEqual(int(left[0]["c"]), 0)
+        ts = store.run("MATCH (t:_EdgeTombstone) RETURN count(t) AS c")
+        self.assertEqual(int(ts[0]["c"]), 1)
+        out = sync.export_delta(owner="user:alice", since=0, domains=["d"], store=store)
+        self.assertEqual(len(out["edge_tombstones"]), 1, out)
+        self.assertEqual(out["edge_tombstones"][0]["src"], "concept:ea")
+        # 재생성 → 로컬 표식 상쇄(낡은 삭제가 재전파되지 않는다)
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:ea", "type": "concept", "title": "A"},
+                      {"id": "concept:eb", "type": "concept", "title": "B"}],
+            "edges": [{"from": "concept:ea", "to": "concept:eb", "type": "relates_to"}],
+            "owner": "user:alice",
+        }, store=store)
+        ts2 = store.run("MATCH (t:_EdgeTombstone) RETURN count(t) AS c")
+        self.assertEqual(int(ts2[0]["c"]), 0)
+        store.close()
+
     def test_migrate_records_schema_version_2(self):
         """v2 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 2 를 기록하고
         Bridge.owner_id 조회가 동작한다(신규 설치는 base DDL, 구 설치는 ALTER 수렴)."""

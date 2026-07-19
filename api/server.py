@@ -335,6 +335,17 @@ class VincApp:
                                  lambda: q.delete_node(node, owner=owner, store=self.store))
         return 200, res
 
+    def write_delete_edge(self, body):
+        # S4 확장 — 엣지 1개 삭제 + 엣지 툼스톤(삭제 전파). SEC-3: owner 주어지면
+        # 양 끝점 owner 스코프(delete 동형 — 로컬 앱은 owner 미전송 → 무스코프).
+        src, dst = _req(body, "from"), _req(body, "to")
+        etype = _req(body, "type")
+        owner = body.get("owner") or None
+        res = self.jobs.run_sync("delete_edge",
+                                 lambda: q.delete_edge(src, etype, dst, owner=owner,
+                                                       store=self.store))
+        return 200, res
+
     def write_merge(self, body):
         # SEC-3: owner 전달 → merge_nodes 가 keep·drop 소유 일치 시에만 병합(교차테넌트 봉쇄).
         keep, drop = _req(body, "keep"), _req(body, "drop")
@@ -677,7 +688,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/activate": app.write_activate, "/backup": app.submit_backup,
             "/ingest": app.write_ingest,
-            "/delete": app.write_delete, "/merge-nodes": app.write_merge,
+            "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
+            "/merge-nodes": app.write_merge,
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

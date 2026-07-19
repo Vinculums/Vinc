@@ -338,6 +338,96 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertEqual(res["merged"]["nodes"], {"created": 0, "matched": 0})
         self.assertTrue(any("owned by another tenant" in w for w in res["warnings"]))
 
+    _STAMP = "SET n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq"
+
+    def test_new_synced_edge_stamps_endpoints(self):
+        # S4 확장 — 신규 엣지는 양 끝 노드를 revstamp(증분 동기화 전파) + 같은 키의
+        # 로컬 엣지 툼스톤을 상쇄한다(재생성이 낡은 삭제를 이김).
+        fake = _FakeStore({
+            "n.rev AS rev, n.title": [],           # 노드 존재확인(신규)
+            "RETURN n.rev AS rev": [{"rev": 0}],   # 끝점 스탬프 읽기
+        })
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "concept:b", "type": "concept", "title": "B"}],
+            "edges": [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}],
+        }, store=fake)
+        stamps = [c for c, _ in fake.calls if c.startswith("MATCH (n:Concept)")
+                  and self._STAMP in c]
+        self.assertEqual(len(stamps), 2)           # 양 끝점
+        self.assertTrue(any("_EdgeTombstone" in c and "DELETE" in c
+                            for c, _ in fake.calls))
+
+    def test_existing_edge_does_not_stamp(self):
+        fake = _FakeStore({
+            "n.rev AS rev, n.title": [],
+            "-[:RELATED_TO]->": [{"c": 1}],        # 정·역방향 존재확인 모두 히트
+        })
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "concept:b", "type": "concept", "title": "B"}],
+            "edges": [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}],
+        }, store=fake)
+        self.assertFalse(any(self._STAMP in c for c, _ in fake.calls
+                             if c.startswith("MATCH (n:")))
+
+    def test_sync_apply_path_suppresses_edge_stamping(self):
+        fake = _FakeStore({
+            "n.rev AS rev, n.title": [],
+            "RETURN n.rev AS rev": [{"rev": 0}],
+        })
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "concept:b", "type": "concept", "title": "B"}],
+            "edges": [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}],
+        }, store=fake, stamp_edges=False)
+        self.assertFalse(any(self._STAMP in c for c, _ in fake.calls
+                             if c.startswith("MATCH (n:")))
+
+
+class DeleteEdgeTests(unittest.TestCase):
+    """S4 확장 — 엣지 삭제 표면: 동기화 rel 5종만, 툼스톤 기록, owner 스코프."""
+
+    def test_deletes_and_writes_tombstone(self):
+        fake = _FakeStore({"RETURN count(r) AS c": [{"c": 1}]})
+        res = q.delete_edge("concept:a", "prerequisite_of", "concept:b",
+                            owner="user:t", store=fake)
+        self.assertTrue(res["executed"] and res["found"])
+        self.assertEqual(res["deleted"]["edges"], 1)
+        joined = "\n".join(c for c, _ in fake.calls)
+        self.assertIn("-[r:PREREQUISITE_OF]->", joined)
+        self.assertIn("a.owner_id = $owner", joined)      # SEC-3 스코프
+        self.assertIn("MERGE (t:_EdgeTombstone", joined)  # 삭제 전파 표식
+
+    def test_related_to_deletes_both_directions(self):
+        fake = _FakeStore({"RETURN count(r) AS c": [{"c": 1}]})
+        res = q.delete_edge("concept:a", "relates_to", "concept:b", store=fake)
+        self.assertEqual(res["deleted"]["edges"], 2)      # 정+역방향
+        dels = [p for c, p in fake.calls if "DELETE r" in c]
+        self.assertEqual({(p["s"], p["d"]) for p in dels},
+                         {("concept:a", "concept:b"), ("concept:b", "concept:a")})
+
+    def test_about_maps_episode_concept_labels(self):
+        fake = _FakeStore({"RETURN count(r) AS c": [{"c": 1}]})
+        q.delete_edge("episode:e1", "about", "concept:c1", store=fake)
+        joined = "\n".join(c for c, _ in fake.calls)
+        self.assertIn("MATCH (a:Episode)-[r:ABOUT]->(b:Concept)", joined)
+
+    def test_unsupported_rel_refused_without_delete(self):
+        fake = _FakeStore()
+        res = q.delete_edge("bridge:b1", "connects_via", "concept:c1", store=fake)
+        self.assertTrue(res["executed"])
+        self.assertFalse(res["found"])
+        self.assertIn("unsupported edge type", res["note"])
+        self.assertFalse(any("DELETE" in c for c, _ in fake.calls))
+
+    def test_missing_edge_found_false_no_tombstone(self):
+        fake = _FakeStore({"RETURN count(r) AS c": [{"c": 0}]})
+        res = q.delete_edge("concept:a", "derives_from", "concept:b", store=fake)
+        self.assertTrue(res["executed"])
+        self.assertFalse(res["found"])
+        self.assertFalse(any("_EdgeTombstone" in c for c, _ in fake.calls))
+
     def test_no_store_degrades(self):
         res = frag.merge_fragment({"nodes": []}, store=None)
         self.assertFalse(res["executed"])

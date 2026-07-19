@@ -91,6 +91,69 @@ def test_export_carries_about_edges_when_both_endpoints_in_bundle():
     assert all(e["from"] != "episode:ghost" for e in out["edges"])
 
 
+# ── S4 확장: 엣지 툼스톤(삭제 전파) ───────────────────────────────────────────
+def test_edge_tombstone_plan_scopes_owner_and_rels():
+    p = sync._edge_tombstones_delta_plan(owner=OWNER, since=0)
+    assert "t.owner_id = $owner" in p.cypher
+    assert "ABOUT" in p.cypher and "RELATED_TO" in p.cypher   # 동기화 rel 만
+    assert "since" not in p.params                            # since=0 = 전량
+    p5 = sync._edge_tombstones_delta_plan(owner=OWNER, since=5)
+    assert "t.sync_seq > $since" in p5.cypher and p5.params["since"] == 5
+
+
+class _SubFake:
+    def __init__(self, responses=None):
+        self.responses = responses or {}
+        self.calls = []
+    def run(self, cypher, params=None):
+        self.calls.append((cypher, dict(params or {})))
+        for key, rows in self.responses.items():
+            if key in cypher:
+                return rows
+        return []
+    def close(self):
+        pass
+
+
+def test_export_carries_edge_tombstones_and_advances_cursor():
+    fake = _SubFake({
+        "MATCH (t:_EdgeTombstone)": [
+            {"src": "concept:a", "rel": "RELATED_TO", "dst": "concept:b",
+             "deleted_at": "2026-07-19T00:00:00.000Z", "sync_seq": 7}],
+    })
+    out = sync.export_delta(owner=OWNER, since=0, domains=["d"], store=fake)
+    assert out["executed"]
+    assert out["edge_tombstones"] == [
+        {"src": "concept:a", "rel": "RELATED_TO", "dst": "concept:b",
+         "deleted_at": "2026-07-19T00:00:00.000Z", "_seq": 7}]
+    assert out["next_cursor"] == 7                            # 커서가 엣지 표식도 소비
+    assert out["counts"]["edge_tombstones"] == 1
+
+
+def test_chunks_carry_edge_tombstones_once():
+    ch = sync.chunk_bundle({"nodes": [_node(0)], "edges": [],
+                            "edge_tombstones": [{"src": "a", "rel": "ABOUT", "dst": "b"}]})
+    assert ch[0]["edge_tombstones"] == [{"src": "a", "rel": "ABOUT", "dst": "b"}]
+    only = sync.chunk_bundle({"nodes": [], "edges": [],
+                              "edge_tombstones": [{"src": "a", "rel": "ABOUT", "dst": "b"}]})
+    assert len(only) == 1 and only[0]["edge_tombstones"]      # 삭제-only 번들도 전송
+
+
+def test_apply_deletes_edge_and_repropagates():
+    """엣지 툼스톤 적용: RELATED_TO 는 양방향 삭제, 수신측 자기 표식(origin remote)
+    기록으로 다른 기기 재전파."""
+    fake = _SubFake({"RETURN count(r) AS c": [{"c": 1}]})
+    out = sync.apply_delta(owner=OWNER, bundle={
+        "nodes": [], "edges": [],
+        "edge_tombstones": [{"src": "concept:a", "rel": "RELATED_TO",
+                             "dst": "concept:b", "deleted_at": "2026-07-19T00:00:00.000Z"}],
+    }, store=fake)
+    assert out["edges_deleted"] == 2                          # 정+역방향
+    et = [(c, p) for c, p in fake.calls if "MERGE (t:_EdgeTombstone" in c]
+    assert et, "재전파용 자기 표식이 기록돼야 한다"
+    assert et[0][1]["da"] == "2026-07-19T00:00:00.000Z"       # 원 삭제 시각 보존
+
+
 # ── LWW / 에코 차단 ───────────────────────────────────────────────────────────
 def _n(ua: str, rev: int) -> dict:
     return {"id": "concept:x", "type": "concept", "_updated_at": ua, "_rev": rev}

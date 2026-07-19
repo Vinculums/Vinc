@@ -98,6 +98,8 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("CONNECTS(FROM Bridge TO Concept, role STRING)", ddl)
         # F4 — episodic↔semantic 다리
         self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept)", ddl)
+        # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
+        self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
 
     def test_bridge_owner_column_and_v2_migration(self):
         # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').

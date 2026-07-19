@@ -5,6 +5,17 @@ Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/
 
 ## 미출시 (Unreleased) — main, v0.4.0 이후
 
+- **엣지 툼스톤(S4 확장) — 연결선 삭제가 기기 간 전파된다**: 엣지는 타임스탬프가
+  없어 하드삭제만으론 상대 기기 사본이 다음 동기화에 부활하던 공백을 닫았다.
+  ① 삭제 표면 신설 — `vinc_delete_edge` MCP 도구 + `POST /delete-edge`(동기화
+  rel 5종: CC 4종+about, RELATED_TO 는 무방향이라 양방향 삭제, SEC-3 owner 스코프)
+  ② `_EdgeTombstone` 표식(부팅 시 멱등 생성) → delta 번들 `edge_tombstones` 로
+  전파·적용·재전파, 90일 GC 동참 ③ **대칭 수리**: 신규/재생성 엣지는 양 끝 노드를
+  revstamp — 기존 노드 사이 엣지 추가가 증분 동기화에 영영 안 실리던 선행 공백도
+  함께 해소(재생성이 낡은 삭제 표식을 상쇄 — '재생성이 삭제를 이긴다' 의미론).
+  sync apply 경로는 스탬프 억제(에코 차단). (`store/embedded_schema.py`,
+  `api/query.py` delete_edge, `api/fragment.py`, `api/sync.py`,
+  `vinc_mcp/tools.py`·`http_server.py`)
 - **계정 연결 = 로그인 승인으로(키 복붙 종식)**: Settings 의 계정 키 입력을
   [계정 연결] 버튼으로 대체 — 시스템 브라우저에서 vincs.app/connect-app 로그인·
   승인만 하면 발급된 회원 키가 사이드카 루프백 메일박스(state 단일사용 게이트,

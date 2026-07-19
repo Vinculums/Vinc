@@ -53,7 +53,8 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "activate": ("POST", "/activate"),
     "ingest-fragment": ("POST", "/ingest/fragment"),
     "ingest-pack": ("POST", "/ingest/pack"),
-    "delete": ("POST", "/delete"), "merge-nodes": ("POST", "/merge-nodes"),
+    "delete": ("POST", "/delete"), "delete-edge": ("POST", "/delete-edge"),
+    "merge-nodes": ("POST", "/merge-nodes"),
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 

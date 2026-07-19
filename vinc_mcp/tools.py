@@ -131,6 +131,14 @@ def _t_merge(args, bridge):
                                 "owner": args.get("owner")})
 
 
+def _t_delete_edge(args, bridge):
+    # SEC-3: vinc_delete 동형 — 원격은 forced_owner 가 args["owner"] 를 덮고,
+    # 로컬 stdio 는 미전송 → 무스코프(단일유저 현행).
+    return bridge.request("POST", "/delete-edge",
+                          body={"from": args["from_id"], "to": args["to_id"],
+                                "type": args["type"], "owner": args.get("owner")})
+
+
 TOOLS: list[dict] = [
     {
         "name": "vinc_search",
@@ -228,6 +236,25 @@ TOOLS: list[dict] = [
         "run": _t_delete,
     },
     {
+        "name": "vinc_delete_edge",
+        "description": "Delete ONE relationship between two nodes (the nodes stay). "
+                       "Covers the synced relation types: relates_to | prerequisite_of | "
+                       "derives_from | inherits_from between concepts, and about "
+                       "(episode→concept). relates_to is undirected — both physical "
+                       "directions are removed. The deletion is recorded with an edge "
+                       "tombstone so it propagates to synced devices instead of "
+                       "resurrecting. Irreversible (re-create via vinc_ingest if needed). "
+                       "Returns {executed, found, deleted:{edges}}; found:false if no "
+                       "such edge.",
+        "inputSchema": {"type": "object", "properties": {
+            "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
+            "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
+            "type": {"type": "string",
+                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"},
+        }, "required": ["from_id", "to_id", "type"]},
+        "run": _t_delete_edge,
+    },
+    {
         "name": "vinc_merge_nodes",
         "description": "Irreversibly merge two concepts: repoint every edge of drop_id onto keep_id, "
                        "then delete drop_id (its title/props are discarded — keep wins). "
@@ -268,6 +295,9 @@ _ANNOTATIONS: dict[str, dict] = {
     # 비가역 — 호스트가 반드시 확인을 받게 한다.
     "vinc_delete": {"title": "Delete a node (irreversible)", "readOnlyHint": False,
                     "destructiveHint": True, "idempotentHint": True},
+    "vinc_delete_edge": {"title": "Delete a relationship (irreversible)",
+                         "readOnlyHint": False, "destructiveHint": True,
+                         "idempotentHint": True},
     "vinc_merge_nodes": {"title": "Merge two concepts (irreversible)",
                          "readOnlyHint": False, "destructiveHint": True,
                          "idempotentHint": False},

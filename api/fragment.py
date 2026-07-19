@@ -228,8 +228,46 @@ _ALLOWED_PAIRS_HINT = (
 )
 
 
+# 동기화 대상 엣지 rel → 끝점 (라벨, PK) — 신규 생성 시 끝점 스탬프의 라우팅 표.
+_SYNC_EDGE_ENDPOINTS: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
+    **{rel: (("Concept", "concept_id"), ("Concept", "concept_id"))
+       for rel in _CC_EDGES.values()},
+    "ABOUT": (("Episode", "episode_id"), ("Concept", "concept_id")),
+}
+
+
+def _edge_exists(store, rel: str, src: str, dst: str) -> bool:
+    (sl, sp), (dl, dp) = _SYNC_EDGE_ENDPOINTS[rel]
+    r = store.run(f"MATCH (a:{sl})-[:{rel}]->(b:{dl}) "
+                  f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(*) AS c",
+                  {"s": src, "d": dst})
+    return bool(r and r[0].get("c"))
+
+
+def _stamp_edge_endpoints(store, rel: str, src: str, dst: str, owner: str) -> None:
+    """엣지 **신규 생성** 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
+    끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
+    실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
+    끝점 활동으로 간주한다 — 부수 효과로 '편집이 삭제를 이긴다' 가드에서도 엣지
+    활동이 노드 편집처럼 취급된다(의도된 의미론). 동시에 같은 (src,rel,dst) 의
+    로컬 엣지 툼스톤을 상쇄한다(재생성이 낡은 삭제 표식을 이긴다)."""
+    for (label, pk), nid in zip(_SYNC_EDGE_ENDPOINTS[rel], (src, dst)):
+        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN n.rev AS rev",
+                         {"id": nid})
+        if not rows:
+            continue
+        store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
+                  "SET n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
+                  {"id": nid, "ua": revstamp.hlc_now(store),
+                   "rev": int(rows[0].get("rev") or 0) + 1,
+                   "seq": revstamp.next_seq(store, owner)})
+    store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k DELETE t",
+              {"k": f"{src}|{rel}|{dst}"})
+
+
 def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
-                *, owner: str | None = None, owner_explicit: bool = False) -> str | None:
+                *, owner: str | None = None, owner_explicit: bool = False,
+                stamp_edges: bool = True) -> str | None:
     """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
 
     SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
@@ -292,17 +330,21 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return "created"
     if etype in _EC_EDGES:
         # F4 — episodic↔semantic 다리. 비대칭 쌍(Episode→Concept)이라 역방향 dedupe
-        # 불요(ATTACHES_TO 동형). 엣지 톰스톤은 없다 — ABOUT 삭제는 sync 로 전파되지
-        # 않는 기지 한계(vinc.c.dataplane 등재).
+        # 불요(ATTACHES_TO 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — query.delete_edge)
+        # 이 담당한다.
         if (st, dt) != ("episode", "concept"):
             warnings.append(
                 f"about expects episode→concept — skipped ({st or '?'}→{dt or '?'}); "
                 f"{_ALLOWED_PAIRS_HINT}")
             return None
+        rel = _EC_EDGES[etype]
+        was = _edge_exists(store, rel, src, dst)
         store.run(
             "MATCH (a:Episode), (b:Concept) "
             f"WHERE a.episode_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[:{_EC_EDGES[etype]}]->(b)", {"s": src, "d": dst, **op})
+            f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst, **op})
+        if not was and stamp_edges:
+            _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
         return "created"
     if (st, dt) == ("concept", "concept"):
         if etype == "relates_to":
@@ -316,10 +358,13 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             if rev and rev[0].get("c"):
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
+        was = _edge_exists(store, rel, src, dst)
         store.run(
             "MATCH (a:Concept), (b:Concept) "
             f"WHERE a.concept_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[:{rel}]->(b)", {"s": src, "d": dst, **op})
+        if not was and stamp_edges:
+            _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
         return "created"
     if (st, dt) == ("record", "concept"):
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
@@ -347,14 +392,19 @@ def _finalize(result: dict, warnings: list[str]) -> dict:
     return result
 
 
-def merge_fragment(fragment: dict, *, store, themes=None) -> dict:
+def merge_fragment(fragment: dict, *, store, themes=None,
+                   stamp_edges: bool = True) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]]}``.
 
     ``themes``(ThemeStore, 선택): 개방층 타입의 어휘 편입(D11-R2 §3)에 쓴다 —
     서버 잡 큐 경로만 전달(server.write_ingest). sync/share 호출부는 미전달 유지
-    (복제에서 어휘 fold-in 은 부적절 — 원 저작 시점에 이미 편입됨)."""
+    (복제에서 어휘 fold-in 은 부적절 — 원 저작 시점에 이미 편입됨).
+
+    ``stamp_edges``: 신규 생성된 동기화 대상 엣지(CC 4종·ABOUT)의 양 끝 노드에
+    revstamp(엣지 추가·재생성의 증분 동기화 전파 — _stamp_edge_endpoints 주석).
+    **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다."""
     warnings: list[str] = []
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
@@ -378,7 +428,8 @@ def merge_fragment(fragment: dict, *, store, themes=None) -> dict:
         etype = (e.get("type") or "").strip()
         if etype and _is_open(st) and _is_open(dt):
             fold.fold("edge", etype)   # TYPED 캐리어행 엣지 타입만 어휘 편입
-        r = _merge_edge(store, e, types, warnings, owner=owner, owner_explicit=owner_explicit)
+        r = _merge_edge(store, e, types, warnings, owner=owner,
+                        owner_explicit=owner_explicit, stamp_edges=stamp_edges)
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     edges_out = {"created": e_created}

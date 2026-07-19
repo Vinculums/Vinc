@@ -334,6 +334,19 @@ class ThemeTypeRouteTests(unittest.TestCase):
             self.assertEqual(code, 400)
 
 
+class DeleteEdgeRouteTests(unittest.TestCase):
+    def test_route_requires_fields_and_degrades(self):
+        with running_server(_app()) as base:
+            code, obj = _req(base, "/delete-edge", method="POST",
+                             body={"from": "concept:a"})
+            self.assertEqual(code, 400)                      # to/type 누락
+            code, obj = _req(base, "/delete-edge", method="POST",
+                             body={"from": "concept:a", "to": "concept:b",
+                                   "type": "relates_to"})
+            self.assertEqual(code, 200)                      # store=None → 강등 계약
+            self.assertFalse(obj["executed"])
+
+
 class ConnectFlowTests(unittest.TestCase):
     """계정 연결(디바이스 플로우) — 메일박스 계약: start(인증) → callback(무인증,
     state 단일사용 게이트 + Origin 화이트리스트) → status(인증, 1회 전달 후 소거)."""

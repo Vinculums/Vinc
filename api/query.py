@@ -1411,6 +1411,103 @@ def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None
                "seq": revstamp.next_seq(store, own)})
 _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
 
+# 동기화 대상 엣지 rel → (src 라벨, src PK, dst 라벨, dst PK). 엣지 삭제 표면
+# (delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment 타입명
+# (relates_to·about…)도 여기로 정규화된다.
+SYNC_EDGE_RELS: dict[str, tuple[str, str, str, str]] = {
+    "RELATED_TO": ("Concept", "concept_id", "Concept", "concept_id"),
+    "PREREQUISITE_OF": ("Concept", "concept_id", "Concept", "concept_id"),
+    "DERIVES_FROM": ("Concept", "concept_id", "Concept", "concept_id"),
+    "INHERITS_FROM": ("Concept", "concept_id", "Concept", "concept_id"),
+    "ABOUT": ("Episode", "episode_id", "Concept", "concept_id"),
+}
+_FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
+    "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
+    "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",
+    "about": "ABOUT",
+}
+
+
+def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None) -> None:
+    """엣지 삭제 표식(S4 확장) — 엣지는 타임스탬프가 없어 노드보다 단순하다:
+    (src, rel, dst) 키와 삭제 시각(HLC)·sync_seq 만 기록. owner 는 src 노드의
+    소유를 승계(무스코프 삭제 시)한다 — 노드 툼스톤과 같은 규칙."""
+    from . import revstamp
+    sl, sp, _, _ = SYNC_EDGE_RELS[rel]
+    own = owner
+    if not own:
+        rows = store.run(f"MATCH (n:{sl}) WHERE n.{sp} = $id RETURN n.owner_id AS o",
+                         {"id": src})
+        own = (rows[0].get("o") if rows else None) or "user:local"
+    store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
+              "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
+              "t.origin = 'local'",
+              {"k": f"{src}|{rel}|{dst}", "s": src, "r": rel, "d": dst, "o": own,
+               "da": revstamp.hlc_now(store), "seq": revstamp.next_seq(store, own)})
+
+
+def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
+                cfg=None, store=None) -> dict:
+    """엣지 1개를 삭제하고 **엣지 툼스톤**을 남긴다(S4 확장 — 삭제 전파). 대상은
+    동기화 rel 5종(CC 4종 + ABOUT)만 — 그 외(CONNECTS·ATTACHES_TO·TYPED)는 동기화
+    밖이라 툼스톤 의미가 없고 질화자(role/type) 정합이 필요해 후속 과제.
+
+    ``edge_type`` 은 fragment 타입명(relates_to·about…)과 rel 명(RELATED_TO…) 둘 다
+    허용. RELATED_TO 는 의미상 무방향 — **양방향 물리 엣지를 모두** 지운다.
+    owner(SEC-3): 주어지면 양 끝점을 owner_id 로 스코프 — 남의 엣지는 못 지운다."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
+                                    (edge_type or "").strip().upper())
+    base = {"kind": "delete_edge", "executed": False, "found": False,
+            "src": src, "rel": rel, "dst": dst}
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
+    if rel not in SYNC_EDGE_RELS:
+        base["executed"] = True
+        base["note"] = (f"unsupported edge type {edge_type!r} — deletable: "
+                        f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
+        return base
+    sl, sp, dl, dp = SYNC_EDGE_RELS[rel]
+    scope_a = scope_b = ""
+    params: dict = {"s": src, "d": dst}
+    if owner:
+        scope_a, scope_b = " AND a.owner_id = $owner", " AND b.owner_id = $owner"
+        params["owner"] = owner
+    try:
+        pairs = [(src, dst)]
+        if rel == "RELATED_TO":   # 무방향 의미 — 역방향 물리 엣지도 대상
+            pairs.append((dst, src))
+        deleted = 0
+        for s_, d_ in pairs:
+            p = {**params, "s": s_, "d": d_}
+            cnt = store.run(
+                f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} "
+                "RETURN count(r) AS c", p)
+            if cnt and int(cnt[0].get("c") or 0):
+                store.run(
+                    f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} DELETE r", p)
+                deleted += int(cnt[0].get("c") or 0)
+        base["executed"] = True
+        if not deleted:
+            base["note"] = "edge not found"
+            return base
+        base["found"] = True
+        base["deleted"] = {"edges": deleted}
+        # 툼스톤은 정준 방향(요청 방향) 1개 — apply 측이 RELATED_TO 를 양방향 삭제한다.
+        _write_edge_tombstone(store, src, rel, dst, owner)
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns:
+            store.close()
+    return base
+
 
 def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None) -> dict:
     """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별

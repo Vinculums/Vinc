@@ -25,8 +25,8 @@ from vinc_mcp.rpc import Dispatcher  # noqa: E402
 
 D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_domains", "vinc_suggest_ties", "vinc_ingest",
-             # T3c — 오염 정리 쓰기 표면(비가역).
-             "vinc_delete", "vinc_merge_nodes"}
+             # T3c — 오염 정리 쓰기 표면(비가역). + S4 확장: 엣지 삭제(툼스톤 전파).
+             "vinc_delete", "vinc_delete_edge", "vinc_merge_nodes"}
 
 
 class _StubBridge(Bridge):
@@ -57,10 +57,12 @@ class ToolContractTests(unittest.TestCase):
         for t in tools.specs():
             args = {"query": "x", "seed_id": "concept:x", "topic": "x",
                     "node": "concept:x", "nodes": [{"id": "c:x", "type": "concept"}],
-                    "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y"}
+                    "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y",
+                    "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to"}
             tools.call(t["name"], args, b)
         writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
-        self.assertEqual(writes, ["/delete", "/ingest/fragment", "/merge-nodes"])
+        self.assertEqual(writes, ["/delete", "/delete-edge", "/ingest/fragment",
+                                  "/merge-nodes"])
 
     def test_owner_default_injected(self):
         b = _StubBridge()

@@ -110,6 +110,13 @@ _META_TABLES: dict[str, dict] = {
         ("node_id", "STRING"), ("label", "STRING"), ("owner_id", "STRING"),
         ("deleted_at", "STRING"), ("rev", "INT64"), ("sync_seq", "INT64"),
         ("origin", "STRING")]},
+    # 엣지 삭제 표식(S4 확장, 2026-07-19) — 노드와 달리 엣지는 타임스탬프가 없어
+    # 하드삭제만으론 수신측에서 부활한다(상대 사본이 다음 delta 에 실려 재 MERGE).
+    # ekey = "src|REL|dst". 동기화 rel(CC 4종+ABOUT)만 기록 의미가 있다.
+    "_EdgeTombstone": {"pk": "ekey", "cols": [
+        ("ekey", "STRING"), ("src", "STRING"), ("rel", "STRING"), ("dst", "STRING"),
+        ("owner_id", "STRING"), ("deleted_at", "STRING"), ("sync_seq", "INT64"),
+        ("origin", "STRING")]},
 }
 
 # owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
