@@ -188,6 +188,12 @@ class VincApp:
         return self._read(lambda r: q.coupling(owner=_req(p, "owner"),
                                                a=_req(p, "a"), b=_req(p, "b"), store=r))
 
+    def read_merge_candidates(self, p):
+        # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).
+        return self._read(lambda r: q.suggest_merge_candidates(
+            owner=_req(p, "owner"), min_score=float(p.get("min_score") or 0.6),
+            limit=_int(p.get("limit"), 20), store=r))
+
     def read_diagnose(self, p):
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
         # components(기본) | communities. algo 확장 부재 시 executed=False 강등.
@@ -674,6 +680,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/atlas": app.read_atlas, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
+            "/merge-candidates": app.read_merge_candidates,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

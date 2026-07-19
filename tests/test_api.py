@@ -210,6 +210,49 @@ class PPRTests(unittest.TestCase):
         by_id = {n["id"]: n["ppr"] for n in shaped["nodes"]}
         self.assertGreater(by_id["s"], by_id["c"])
 
+
+class MergeCandidatesTests(unittest.TestCase):
+    """E-G4 merge_candidates — 결정론 중복 개념 후보(순수). 자동 병합 금지 — 제안만."""
+
+    def test_exact_normalized_title(self):
+        rows = [{"id": "c1", "title": "iPaaS", "domain": "tech"},
+                {"id": "c2", "title": "ipaas", "domain": "tech"}]
+        cands = q.merge_candidates(rows)
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0]["reason"], "exact_title")
+        self.assertEqual(cands[0]["score"], 1.0)
+        self.assertTrue(cands[0]["same_domain"])
+
+    def test_token_overlap_threshold(self):
+        rows = [{"id": "a", "title": "gauge theory duality", "domain": "phys"},
+                {"id": "b", "title": "gauge theory symmetry", "domain": "phys"},
+                {"id": "c", "title": "완전 무관 주제", "domain": "phys"}]
+        cands = q.merge_candidates(rows, min_score=0.4)
+        pairs = {(x["a_id"], x["b_id"]) for x in cands}
+        self.assertIn(("a", "b"), pairs)          # 2/4 토큰 공유(jaccard 0.5)
+        self.assertNotIn(("a", "c"), pairs)       # 무관 — 후보 아님
+
+    def test_subset_relation(self):
+        rows = [{"id": "a", "title": "transformer", "domain": "ml"},
+                {"id": "b", "title": "transformer architecture", "domain": "ml"}]
+        cands = q.merge_candidates(rows)
+        self.assertEqual(cands[0]["reason"], "subset")
+        self.assertGreaterEqual(cands[0]["score"], 0.8)
+
+    def test_deterministic_and_same_domain_priority(self):
+        rows = [{"id": "a", "title": "vector", "domain": "x"},
+                {"id": "b", "title": "vector", "domain": "y"},   # cross-domain dup
+                {"id": "c", "title": "vector", "domain": "x"}]   # same-domain dup with a
+        c1 = q.merge_candidates(rows)
+        c2 = q.merge_candidates(rows)
+        self.assertEqual(c1, c2)                          # 결정론
+        self.assertTrue(c1[0]["same_domain"])             # 동일 도메인 우선
+
+    def test_no_false_positive_on_disjoint(self):
+        rows = [{"id": "a", "title": "alpha", "domain": "d"},
+                {"id": "b", "title": "beta", "domain": "d"}]
+        self.assertEqual(q.merge_candidates(rows), [])
+
     def test_recall_recency_is_default(self):
         plan = q.recall_plan(owner="u1")
         self.assertIn("ORDER BY e.date DESC", plan.cypher)

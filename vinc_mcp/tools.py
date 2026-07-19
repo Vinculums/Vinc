@@ -107,6 +107,13 @@ def _t_suggest(args, bridge):
         "limit": args.get("limit", 5)})
 
 
+def _t_merge_candidates(args, bridge):
+    # E-G4 병합 후보(조회 전용) — 확정은 vinc_merge_nodes 경유(자동 병합 금지 T1).
+    return bridge.request("GET", "/merge-candidates", params={
+        "owner": _owner(args, bridge), "limit": args.get("limit", 20),
+        "min_score": args.get("min_score", 0.6)})
+
+
 def _t_diagnose(args, bridge):
     # E-G3 구조 진단(조회 전용) — kind=components(WCC 고아·컴포넌트) | communities
     # (Louvain 군집). algo 확장 부재 시 사이드카가 executed=False 로 강등.
@@ -208,6 +215,22 @@ TOOLS: list[dict] = [
             "limit": {"type": "integer", "default": 5},
             "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_suggest,
+    },
+    {
+        "name": "vinc_merge_candidates",
+        "description": "Suggest duplicate-concept merge candidates for the owner (read-only, E-G4). "
+                       "Deterministic title similarity (exact normalized title, token Jaccard, or "
+                       "subset) — NO automatic merge, NO LLM judgement (similarity merge is "
+                       "permanently forbidden; the system only proposes). Returns {candidates:"
+                       "[{a_id,a_title,b_id,b_title,score,reason,same_domain}], count}, same-domain "
+                       "pairs first. Confirm a real duplicate by calling vinc_merge_nodes with the "
+                       "chosen keep/drop ids (irreversible).",
+        "inputSchema": {"type": "object", "properties": {
+            "limit": {"type": "integer", "default": 20},
+            "min_score": {"type": "number", "default": 0.6,
+                          "description": "Token-Jaccard threshold (0-1) for token_overlap pairs."},
+            "owner": {"type": "string"},
+        }}, "run": _t_merge_candidates,
     },
     {
         "name": "vinc_diagnose",

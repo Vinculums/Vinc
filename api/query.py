@@ -1240,6 +1240,87 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
             "suggestions": out[:max(1, int(limit))]}
 
 
+# ── ER 병합 후보 제안 (E-G4) — 조회 전용, 자동 병합 금지(THESIS T1) ────────────
+# 리서치 ③(개체 식별 해소)의 **검출 단계만** 채택한다 — 자동 병합은 영구 금지
+# (오병합 비가역·LLM 판정 반입 금지·"시스템은 제안만"). 여기서는 결정론 타이틀
+# 유사로 중복 후보를 **제안**하고, 확정(엣지 재지향+삭제)은 기존 merge_nodes
+# (비가역·사용자 지시·단일 쓰기 표면 R4) 경유. suggest_ties(D25 전 단계)와 동형의
+# 조회-전용 계층. 실사용 사고(중복 개념 오염 concept:ipaas)의 예방 표면.
+import re as _re_merge   # 모듈 상단 import 회피(국소 사용)
+
+_MERGE_TOKEN_RE = _re_merge.compile(r"[0-9a-z가-힣]+")
+
+
+def _norm_title(title: str) -> tuple[str, frozenset]:
+    """타이틀 정규화 → (정규 문자열, 토큰셋). 소문자·영숫자/한글 토큰(길이≥2 우선,
+    단 전부 짧으면 원형 유지). 결정론."""
+    toks = [t for t in _MERGE_TOKEN_RE.findall((title or "").lower())]
+    sig = [t for t in toks if len(t) >= 2] or toks
+    return ("".join(toks), frozenset(sig))
+
+
+def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
+                     limit: int = 20) -> list[dict]:
+    """중복 개념 후보쌍을 결정론적으로 산출(순수 — I/O 없음). ``rows``: [{id, title,
+    domain}]. 규칙(강→약): 정규 타이틀 완전일치(exact_title, 1.0) · 토큰 자카드
+    ≥min_score(token_overlap) · 한쪽이 다른쪽의 부분집합(subset, 0.8). 반환은
+    (동일도메인 우선, 점수 내림차순, id 사전순) 정렬 리스트."""
+    prepped = []
+    for r in rows:
+        cid = r.get("id")
+        if not cid:
+            continue
+        norm, toks = _norm_title(r.get("title") or "")
+        if not toks:
+            continue
+        prepped.append({"id": cid, "title": r.get("title") or cid,
+                        "domain": r.get("domain") or "", "norm": norm, "toks": toks})
+    prepped.sort(key=lambda x: x["id"])   # 결정론 기준 순서
+    out = []
+    for i in range(len(prepped)):
+        a = prepped[i]
+        for j in range(i + 1, len(prepped)):
+            b = prepped[j]
+            score = 0.0
+            reason = None
+            if a["norm"] and a["norm"] == b["norm"]:
+                score, reason = 1.0, "exact_title"
+            else:
+                inter = len(a["toks"] & b["toks"])
+                union = len(a["toks"] | b["toks"]) or 1
+                jac = inter / union
+                if a["toks"] <= b["toks"] or b["toks"] <= a["toks"]:
+                    score, reason = max(0.8, jac), "subset"
+                elif jac >= min_score:
+                    score, reason = jac, "token_overlap"
+            if reason:
+                out.append({"a_id": a["id"], "a_title": a["title"],
+                            "b_id": b["id"], "b_title": b["title"],
+                            "score": round(score, 4), "reason": reason,
+                            "same_domain": bool(a["domain"] and a["domain"] == b["domain"])})
+    out.sort(key=lambda c: (not c["same_domain"], -c["score"], c["a_id"], c["b_id"]))
+    return out[:max(1, int(limit))]
+
+
+def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6,
+                             limit: int = 20, cfg=None, store=None) -> dict:
+    """E-G4 — owner 개념의 중복 병합 후보(조회 전용). 확정은 vinc_merge_nodes 경유
+    (자동 병합 금지 THESIS T1). 반환 {executed, candidates:[…], count}."""
+    where = "WHERE c.owner_id = $owner " if owner else ""
+    params = {"owner": owner} if owner else None
+    plan = QueryPlan("merge_candidates",
+                     "MATCH (c:Concept) " + where +
+                     "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain",
+                     params or {}, note="concept dup candidates (read-only)")
+    res = execute(plan, cfg, store=store)
+    if not res.get("executed"):
+        return {"kind": "merge_candidates", "executed": False,
+                "candidates": [], "count": 0, "note": res.get("note", "")}
+    cands = merge_candidates(res.get("rows", []), min_score=min_score, limit=limit)
+    return {"kind": "merge_candidates", "executed": True,
+            "candidates": cands, "count": len(cands)}
+
+
 # ── 구조 진단 (E-G3) — algo 확장 위임(WCC·Louvain) · 조회 전용 ─────────────────
 # 구조 연산을 네이티브 알고리즘에 위임(리서치 ④). 전부 조회 전용·강등 계약:
 # store 가 graph_algo 를 미지원하거나(추상화 폴백) algo 확장이 부재하면(오프라인
