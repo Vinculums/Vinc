@@ -41,7 +41,7 @@ function renderShare(host: HTMLElement) {
     <div style="display:grid;grid-template-columns:1fr 20rem;gap:var(--space-5,1.25rem)">
       <div>
         <div class="empty" id="packs-empty">
-          ${icon("pack-export", 30)}
+          ${icon("recall", 30)}
           <p>${COPY.packs.idle}</p>
           <p>
             <button class="btn btn-primary" id="create">${COPY.packs.idleCta}</button>

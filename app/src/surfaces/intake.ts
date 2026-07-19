@@ -22,7 +22,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
       ${chrome}
       <div class="intake-stage">
         <div class="dropzone" id="drop" role="button" tabindex="0">
-          <span class="dz-mark">${icon("ingest", 34)}</span>
+          <span class="dz-mark">${icon("recall", 34)}</span>
           <h2>${COPY.intake.idleTitle}</h2>
           <p class="dz-body">${COPY.intake.idleBody}</p>
           <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
