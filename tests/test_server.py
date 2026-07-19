@@ -334,5 +334,77 @@ class ThemeTypeRouteTests(unittest.TestCase):
             self.assertEqual(code, 400)
 
 
+class ConnectFlowTests(unittest.TestCase):
+    """계정 연결(디바이스 플로우) — 메일박스 계약: start(인증) → callback(무인증,
+    state 단일사용 게이트 + Origin 화이트리스트) → status(인증, 1회 전달 후 소거)."""
+
+    def test_full_roundtrip_delivers_key_once(self):
+        with running_server(_app()) as base:
+            code, st = _req(base, "/connect/start", method="POST", body={})
+            self.assertEqual(code, 200)
+            state = st["state"]
+            self.assertGreaterEqual(len(state), 32)
+            # 대기 중
+            code, obj = _req(base, f"/connect/status?state={state}")
+            self.assertEqual((code, obj["status"]), (200, "pending"))
+            # 브라우저 콜백(무인증 — token=None)
+            code, obj = _req(base, "/connect/callback", method="POST", token=None,
+                             body={"state": state, "key": "vinc_sk_abc123",
+                                   "email": "u@example.com"})
+            self.assertEqual((code, obj["status"]), (200, "ok"))
+            # 1회 전달
+            code, obj = _req(base, f"/connect/status?state={state}")
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "delivered")
+            self.assertEqual(obj["key"], "vinc_sk_abc123")
+            self.assertEqual(obj["email"], "u@example.com")
+            # 소거 확인(재조회는 expired)
+            code, obj = _req(base, f"/connect/status?state={state}")
+            self.assertEqual(obj["status"], "expired")
+
+    def test_callback_rejects_bad_state_key_and_reuse(self):
+        with running_server(_app()) as base:
+            _, st = _req(base, "/connect/start", method="POST", body={})
+            state = st["state"]
+            # 미지 state
+            code, _ = _req(base, "/connect/callback", method="POST", token=None,
+                           body={"state": "ghost", "key": "vinc_sk_x"})
+            self.assertEqual(code, 400)
+            # 키 형태 오류(vinc_sk_ 접두 아님)
+            code, _ = _req(base, "/connect/callback", method="POST", token=None,
+                           body={"state": state, "key": "hunter2"})
+            self.assertEqual(code, 400)
+            # 정상 1회 → 같은 state 재사용 거부(단일사용)
+            code, _ = _req(base, "/connect/callback", method="POST", token=None,
+                           body={"state": state, "key": "vinc_sk_ok"})
+            self.assertEqual(code, 200)
+            code, _ = _req(base, "/connect/callback", method="POST", token=None,
+                           body={"state": state, "key": "vinc_sk_evil"})
+            self.assertEqual(code, 400)
+
+    def test_callback_origin_whitelist(self):
+        with running_server(_app()) as base:
+            _, st = _req(base, "/connect/start", method="POST", body={})
+            state = st["state"]
+            url = base + "/connect/callback"
+            data = json.dumps({"state": state, "key": "vinc_sk_x"}).encode()
+            r = urllib.request.Request(url, data=data, method="POST")
+            r.add_header("Content-Type", "application/json")
+            r.add_header("Origin", "https://evil.example")
+            try:
+                with urllib.request.urlopen(r, timeout=5) as resp:
+                    code = resp.status
+            except urllib.error.HTTPError as e:
+                code = e.code
+            self.assertEqual(code, 403)   # 브라우저 교차오리진은 화이트리스트만
+
+    def test_start_and_status_require_auth(self):
+        with running_server(_app()) as base:
+            code, _ = _req(base, "/connect/start", method="POST", body={}, token=None)
+            self.assertEqual(code, 401)
+            code, _ = _req(base, "/connect/status?state=x", token=None)
+            self.assertEqual(code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

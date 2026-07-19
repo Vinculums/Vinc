@@ -3,7 +3,13 @@ import { COPY } from "../copy";
 
 /** Settings popover (spec: vinc.d.settings v0.1) — exactly three items: Lock (D7
  *  opt-in), MCP observation, Data. Plus dev-scaffold sidecar fields; developer
- *  config (embedding model, driver) stays env-only by design. */
+ *  config (embedding model, driver) stays env-only by design.
+ *
+ *  계정 연결(디바이스 플로우): 회원 키 복붙을 대체한다 — [계정 연결] 이 시스템
+ *  브라우저로 vincs.app/connect-app 을 열고(로그인·승인·발급은 전부 계정 오리진),
+ *  발급된 vinc_sk_* 가 사이드카 루프백 메일박스로 돌아오면 폴링으로 1회 수령해
+ *  localStorage 에 저장한다. B1 유지 — 앱은 계정 API 를 호출하지 않는다.
+ *  수동 키 붙여넣기·작업 공간(owner)·엔진 주소는 고급(Advanced)으로 강등. */
 export async function renderSettings(el: HTMLElement) {
   const U = COPY.ui.settingsUi;
   el.innerHTML = `
@@ -22,19 +28,12 @@ export async function renderSettings(el: HTMLElement) {
     </span></p>
     <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>
     <label>${U.sync}</label><p class="hint">${U.syncHint}</p>
-    <label for="s-sync-key">${U.syncKey}</label>
-    <p class="hint">${U.syncKeyHint}</p>
-    <input id="s-sync-key" type="password" placeholder="vinc_sk_…"
-           value="${(localStorage.getItem("vinc.sync.key") || "").replace(/"/g, "&quot;")}" />
+    <div id="acct-box"></div>
     <p class="hint" style="margin-top:.5rem">${U.syncDomains}</p>
     <div id="sync-domains" class="hint" style="font-size:.8rem">…</div>
     <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
     <div id="sync-result" class="hint" style="font-size:.78rem"></div>`}
     <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
-    ${WEB ? "" : `
-    <label for="s-owner">${U.workspace}</label>
-    <p class="hint">${U.workspaceHint}</p>
-    <input id="s-owner" value="${cfg.owner}" />`}
     <label>${U.theme}</label>
     <p><span class="seg">
       ${["dark", "light", "auto"].map((t) => `
@@ -50,6 +49,13 @@ export async function renderSettings(el: HTMLElement) {
     ${WEB ? "" : `
     <details style="margin-top:var(--space-3,.75rem)">
       <summary class="hint" style="cursor:pointer">${U.advanced}</summary>
+      <label for="s-owner">${U.workspace}</label>
+      <p class="hint">${U.workspaceHint}</p>
+      <input id="s-owner" value="${cfg.owner}" />
+      <label for="s-sync-key">${U.syncKey}</label>
+      <p class="hint">${U.syncKeyHint}</p>
+      <input id="s-sync-key" type="password" placeholder="vinc_sk_…"
+             value="${(localStorage.getItem("vinc.sync.key") || "").replace(/"/g, "&quot;")}" />
       <label for="s-base">${U.engine}</label>
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
@@ -71,7 +77,7 @@ export async function renderSettings(el: HTMLElement) {
       renderSettings(el);
     }));
   // 웹 Vinc(호스티드): 아래는 전부 셸/로컬 전용(사이드카 base·token·owner, MCP install,
-  // 계정 키 동기화). 웹은 owner 를 세션이 강제하고 로컬 사이드카가 없어 이 UI 자체를
+  // 계정 연결·동기화). 웹은 owner 를 세션이 강제하고 로컬 사이드카가 없어 이 UI 자체를
   // 렌더하지 않았으므로(위 HTML 가드), 여기서 배선도 건너뛴다.
   if (WEB) return;
 
@@ -101,16 +107,79 @@ export async function renderSettings(el: HTMLElement) {
   el.querySelector("#mcp-rm-desktop")!.addEventListener("click", () => mcpAction("uninstall", "desktop"));
   el.querySelector("#mcp-rm-code")!.addEventListener("click", () => mcpAction("uninstall", "code"));
 
+  const { api, pollJob } = await import("../api");
+
+  // ── 계정 연결(디바이스 플로우) ────────────────────────────────────────────
+  // 키는 이 기기 localStorage 에만(민감정보 — cfg/서버 저장 안 함, 현행 유지).
+  const acctBox = el.querySelector<HTMLElement>("#acct-box")!;
+  let connectAbort = false;   // 재렌더/해제 시 폴링 중단
+
+  function drawAcct() {
+    const key = (localStorage.getItem("vinc.sync.key") || "").trim();
+    if (key) {
+      const who = localStorage.getItem("vinc.sync.email")
+        || key.slice(0, 12) + "…";
+      acctBox.innerHTML = `
+        <p>${U.acctConnected(who)}
+           <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
+        <p class="hint">${U.acctDisconnectHint}</p>`;
+      acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
+        connectAbort = true;
+        localStorage.removeItem("vinc.sync.key");
+        localStorage.removeItem("vinc.sync.email");
+        renderSettings(el);
+      });
+    } else {
+      acctBox.innerHTML = `
+        <p><button class="btn" id="acct-connect">${U.acctConnect}</button></p>
+        <p class="hint">${U.acctConnectHint}</p>
+        <div id="acct-result" class="hint" style="font-size:.78rem"></div>`;
+      acctBox.querySelector("#acct-connect")!.addEventListener("click", () => void startConnect());
+    }
+  }
+
+  async function startConnect() {
+    const acctResult = acctBox.querySelector<HTMLElement>("#acct-result")!;
+    try {
+      const { state } = await api.connectStart();
+      // 콜백 포트 = 사이드카(셸: 실포트 주입 완료) 또는 dev 프록시(vite → 사이드카).
+      const port = new URL(cfg.base).port || "8787";
+      const url = `https://vincs.app/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
+      const invoke = (window as any).__TAURI__?.core?.invoke;
+      if (typeof invoke === "function") await invoke("plugin:shell|open", { path: url });
+      else window.open(url, "_blank");            // 브라우저 dev 폴백
+      acctResult.textContent = U.acctConnecting;
+      connectAbort = false;
+      for (let i = 0; i < 300 && !connectAbort; i++) {   // 2s × 300 = TTL(10분)
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = await api.connectStatus(state).catch(() => null);
+        if (!st) continue;
+        if (st.status === "delivered") {
+          localStorage.setItem("vinc.sync.key", st.key);
+          if (st.email) localStorage.setItem("vinc.sync.email", st.email);
+          renderSettings(el);
+          return;
+        }
+        if (st.status === "expired") { acctResult.textContent = U.acctExpired; return; }
+      }
+      if (!connectAbort) acctResult.textContent = U.acctFail;
+    } catch (e: any) {
+      acctResult.textContent = `${U.acctFail}: ${(e && e.message) || e}`;
+    }
+  }
+  drawAcct();
+
   // ── 계정 그래프 동기화(S5) ────────────────────────────────────────────────
-  // 회원 키는 이 기기 localStorage 에만(민감정보 — cfg/서버 저장 안 함). 도메인 선택은
-  // 사이드카 정본(_SyncMeta)에 저장 — 오프라인 우선 약속의 UI 각인.
+  // 도메인 선택은 사이드카 정본(_SyncMeta)에 저장 — 오프라인 우선 약속의 UI 각인.
   const keyInput = el.querySelector<HTMLInputElement>("#s-sync-key")!;
-  keyInput.addEventListener("change", () =>
-    localStorage.setItem("vinc.sync.key", keyInput.value.trim()));
+  keyInput.addEventListener("change", () => {
+    localStorage.setItem("vinc.sync.key", keyInput.value.trim());
+    localStorage.removeItem("vinc.sync.email");   // 수동 키 = 이메일 미상
+    drawAcct();
+  });
 
   const domBox = el.querySelector<HTMLElement>("#sync-domains")!;
   const syncResult = el.querySelector<HTMLElement>("#sync-result")!;
-  const { api, pollJob } = await import("../api");
 
   async function loadDomains() {
     try {

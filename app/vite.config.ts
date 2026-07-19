@@ -7,7 +7,8 @@ import { version } from "./package.json";
 const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 const PATHS = ["/health", "/atlas", "/graph", "/recall", "/search", "/domains",
   "/learner", "/decide", "/activate", "/backup", "/pin", "/tag", "/touch",
-  "/ingest", "/jobs", "/plan", "/share", "/coupling", "/suggest-ties"];
+  "/ingest", "/jobs", "/plan", "/share", "/coupling", "/suggest-ties",
+  "/sync", "/connect"];
 
 export default defineConfig({
   // base: 셸/브라우저 dev 는 루트("/"). 웹 Vinc 는 vincs.app/app/ 로 서빙하므로

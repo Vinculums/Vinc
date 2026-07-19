@@ -3,6 +3,17 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## 미출시 (Unreleased) — main, v0.4.0 이후
+
+- **계정 연결 = 로그인 승인으로(키 복붙 종식)**: Settings 의 계정 키 입력을
+  [계정 연결] 버튼으로 대체 — 시스템 브라우저에서 vincs.app/connect-app 로그인·
+  승인만 하면 발급된 회원 키가 사이드카 루프백 메일박스(state 단일사용 게이트,
+  RFC 8252 변형)로 자동 전달된다. 앱은 계정 API 를 호출하지 않는다(B1 유지 —
+  무계정 기본 D7 불변). 수동 키 입력·작업 공간(owner)은 고급(Advanced)으로 이동.
+  루프백 도달 실패 시 페이지가 키 1회 노출 수동 폴백. (`api/server.py`
+  /connect/start·callback·status, `app/src/surfaces/settings.ts`, 사이트
+  `connect-app/` — Vinc-homepage)
+
 ## v0.4.0 — 그래프 구조 수리 9건 (2026-07-19)
 
 `vinc.d.graph-structure-analysis` 냉철 분석(F1–F9)의 전면 수리. 스키마

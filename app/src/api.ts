@@ -175,6 +175,10 @@ export const api = {
   // 202+job_id; 진행은 pollJob 으로. base 는 테스트용 override(기본 mcp.vincs.app).
   syncNow: (token: string, owner: string, base?: string) =>
     call("/sync", undefined, { token, owner, ...(base ? { base } : {}) }),
+  // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
+  // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.
+  connectStart: () => call("/connect/start", undefined, {}),
+  connectStatus: (state: string) => call("/connect/status", { state }),
   jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
 
