@@ -47,37 +47,68 @@ body {
 
 /* ── Shell: icon rail (D26 — 56px, labels on hover/`[` expand; HIG: never
       hidden by default). Active = surface lift + weight (Figma 5:2 grammar). */
-#shell { display: grid; grid-template-columns: 3.5rem 1fr; height: 100vh; }
-#shell.rail-expanded, #shell:has(#rail:hover) { grid-template-columns: 12.5rem 1fr; }
+/* ── Signal 사이드바 (Figma 130:443) — 232px 확장 고정. 토큰=기존 Signal set. ── */
+#shell { display: grid; grid-template-columns: 14.5rem 1fr; height: 100vh; }
 
 #rail {
-  display: flex; flex-direction: column; gap: var(--space-1, .25rem);
-  padding: var(--space-3, .75rem) var(--space-2, .5rem);
+  display: flex; flex-direction: column;
+  padding: var(--space-2, .5rem);
+  background: hsl(var(--card));
   border-right: 1px solid hsl(var(--border));
-  overflow: hidden; white-space: nowrap; transition: none;
+  overflow: hidden; white-space: nowrap;
 }
 #brand {
-  font-family: var(--font-heading, inherit);
-  font-size: 1.35rem; line-height: var(--lh-tight, 1.1);
-  font-weight: 700; margin: 0 0 var(--space-4, 1rem) var(--space-2, .5rem);
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  padding: var(--space-3, .75rem) var(--space-2, .5rem) var(--space-4, 1rem);
+  font-weight: 600; font-size: var(--fs-lg); color: hsl(var(--foreground));
 }
-#brand .rail-label { display: none; }
-#shell.rail-expanded #brand .rail-label,
-#shell:has(#rail:hover) #brand .rail-label { display: inline; }
+#brand .brand-mark {
+  display: grid; place-items: center; width: 1.625rem; height: 1.625rem; flex: 0 0 auto;
+  border-radius: .5rem; background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  font-weight: 700; font-size: .9rem; font-family: var(--font-heading, inherit);
+}
+.rail-nav { display: flex; flex-direction: column; gap: 2px; }
 
 #rail a, #rail #settings-btn {
-  display: flex; align-items: center; gap: var(--space-3, .75rem);
+  display: flex; align-items: center; gap: var(--space-3, .625rem);
+  width: 100%; height: 2.375rem; padding: 0 var(--space-3, .75rem) 0 .875rem;
+  border-radius: .5625rem; border: none; background: none; position: relative;
   color: hsl(var(--muted-foreground)); text-decoration: none;
-  padding: var(--space-2, .5rem);
-  border-radius: var(--radius); border: none; background: none;
-  font: inherit; cursor: pointer; text-align: left;
+  font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: left;
 }
-#rail .rail-label { display: none; }
-#shell.rail-expanded #rail .rail-label,
-#shell:has(#rail:hover) #rail .rail-label { display: inline; }
-#rail a.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+#rail a:hover, #rail #settings-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+#rail a svg, #rail #settings-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
+#rail a.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 600; }
+#rail a.active::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 1.375rem; border-radius: 1px; background: hsl(var(--primary-foreground));
+}
 #rail a:focus-visible, button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-#rail #settings-btn { margin-top: auto; }
+
+/* DOMAINS 섹션 */
+.rail-section { margin-top: var(--space-4, 1rem); padding: 0 .25rem; }
+.rail-section-label {
+  font-size: .625rem; font-weight: 600; letter-spacing: .075em;
+  color: hsl(var(--caption-foreground)); padding: 0 var(--space-2, .5rem) .375rem;
+}
+#rail-domains { display: flex; flex-direction: column; gap: .25rem; }
+.dom-row {
+  display: flex; align-items: center; gap: var(--space-3, .625rem);
+  height: 1.5rem; padding: 0 var(--space-2, .5rem); cursor: pointer;
+  color: hsl(var(--muted-foreground)); font-size: var(--fs-sm);
+}
+.dom-row:hover { color: hsl(var(--foreground)); }
+.dom-row .dom-dot { width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--caption-foreground)); flex: 0 0 auto; }
+.dom-row .dom-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dom-row .dom-count { font-size: .6875rem; color: hsl(var(--caption-foreground)); }
+.dom-row.active { color: hsl(var(--foreground)); font-weight: 600; }
+.dom-row.active .dom-dot { background: hsl(var(--ring)); }
+
+/* 하단 — 구분선 + Settings + sync */
+.rail-foot { margin-top: auto; padding-top: var(--space-2, .5rem); }
+.rail-foot::before { content: ""; display: block; height: 1px; background: hsl(var(--border)); margin: 0 var(--space-2, .5rem) var(--space-2, .5rem); }
+.rail-sync { display: flex; align-items: center; gap: var(--space-2, .5rem); padding: .375rem .75rem; font-size: .6875rem; color: hsl(var(--caption-foreground)); }
+.rail-sync .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--success)); flex: 0 0 auto; }
 
 .icon { display: inline-flex; width: var(--icon-size, 20px); height: var(--icon-size, 20px); flex: none; }
 .icon svg { width: 100%; height: 100%; }

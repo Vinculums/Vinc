@@ -8,13 +8,22 @@
   <body>
     <div id="shell">
       <nav id="rail" aria-label="Surfaces">
-        <div id="brand" title="Vinc">V<span class="rail-label">inc</span></div>
-        <a href="#intake" data-surface="intake" data-icon="ingest"><span class="rail-label">Intake</span></a>
-        <a href="#records" data-surface="records" data-icon="recall"><span class="rail-label">Records</span></a>
-        <a href="#atlas" data-surface="atlas" data-icon="graph"><span class="rail-label">Atlas</span></a>
-        <a href="#search" data-surface="search" data-icon="search"><span class="rail-label">Search</span></a>
-        <a href="#packs" data-surface="packs" data-icon="pack-export"><span class="rail-label">Packs</span></a>
-        <button id="settings-btn" data-icon="settings" aria-haspopup="dialog"><span class="rail-label">Settings</span></button>
+        <div id="brand" title="Vinc"><span class="brand-mark">V</span><span class="rail-label">Vinc</span></div>
+        <div class="rail-nav">
+          <a href="#intake" data-surface="intake" data-icon="ingest"><span class="rail-label">Intake</span></a>
+          <a href="#records" data-surface="records" data-icon="recall"><span class="rail-label">Records</span></a>
+          <a href="#atlas" data-surface="atlas" data-icon="graph"><span class="rail-label">Atlas</span></a>
+          <a href="#search" data-surface="search" data-icon="search"><span class="rail-label">Search</span></a>
+          <a href="#packs" data-surface="packs" data-icon="pack-export"><span class="rail-label">Packs</span></a>
+        </div>
+        <div class="rail-section" id="rail-domains-wrap" hidden>
+          <div class="rail-section-label">DOMAINS</div>
+          <div id="rail-domains"></div>
+        </div>
+        <div class="rail-foot">
+          <button id="settings-btn" data-icon="settings" aria-haspopup="dialog"><span class="rail-label">Settings</span></button>
+          <div class="rail-sync"><span class="sync-dot"></span><span id="sync-status" class="rail-label">Local</span></div>
+        </div>
       </nav>
       <main id="surface" aria-live="polite"></main>
       <div id="settings-popover" hidden></div>

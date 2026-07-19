@@ -23,10 +23,32 @@ const ORDER: Surface[] = ["intake", "records", "atlas", "search", "packs"];
 const surfaceEl = document.getElementById("surface")!;
 const rail = document.getElementById("rail")!;
 
-// Notation icons into the rail (D26 — 56px rail, labels on expand)
+// Notation icons into the rail (Signal 사이드바 — CSS가 18px 로 클램프)
 rail.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
-  el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon!, 20));
+  el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon!, 18));
 });
+
+// Signal 사이드바 DOMAINS — 실 도메인을 채운다(웹/사이드카 미가동·빈 그래프면 조용히 숨김).
+async function loadRailDomains() {
+  const wrap = document.getElementById("rail-domains-wrap")!;
+  const box = document.getElementById("rail-domains")!;
+  try {
+    const { api, cfg } = await import("./api");
+    const res: any = await api.domains(cfg.owner);
+    const rows: Array<{ domain: string; count?: number; n?: number }> =
+      Array.isArray(res) ? res : (res?.domains || []);
+    if (!rows.length) { wrap.hidden = true; return; }
+    box.innerHTML = rows.map((r) => {
+      const d = String(r.domain ?? "");
+      const c = r.count ?? r.n ?? "";
+      const safe = d.replace(/[<>&"]/g, (m) => (
+        { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
+      return `<div class="dom-row" title="${safe}"><span class="dom-dot"></span>`
+        + `<span class="dom-name">${safe}</span><span class="dom-count">${c}</span></div>`;
+    }).join("");
+    wrap.hidden = false;
+  } catch { wrap.hidden = true; }
+}
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
@@ -158,6 +180,7 @@ applyTheme();
     if (!(await ensureWebAuth())) return;
   }
   route();
+  void loadRailDomains();   // Signal 사이드바 도메인 목록(접속 후)
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
 })();
