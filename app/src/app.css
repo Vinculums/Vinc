@@ -290,7 +290,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 
 /* ── Packs — 토글 제거, 의도별 섹션 카드(가져오기/공유/커뮤니티/백업). ── */
 .pack-card {
-  max-width: 44rem; margin: 0 0 var(--space-4, 1rem);
+  max-width: none; margin: 0 0 var(--space-4, 1rem);
   border: 1px solid hsl(var(--border)); border-radius: .75rem;
   background: hsl(var(--card) / .5); padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
 }
@@ -309,7 +309,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 /* 가져오기 섹션 안의 드롭존: 카드 안이므로 무대 상단 여백·최대폭 제거 */
 #pack-import-host .intake-stage { margin-top: 0; max-width: none; }
-.pack-backup { max-width: 44rem; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
+.pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
 .pack-linkbtn {
   font: inherit; background: none; border: none; cursor: pointer; padding: 0;
   color: hsl(var(--primary)); text-decoration: underline; flex: 0 0 auto;
