@@ -3,6 +3,21 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## Unreleased (다음 릴리스)
+
+- **Packs 폭 수정**: 카드 `max-width` 제거 → surface 전폭(절반만 차던 문제 해소).
+- **사이드카 PyInstaller 오탐 완화(§9)**: Windows 버전 리소스(`version_info`) 추가 —
+  제품/회사/버전 메타데이터로 Defender 휴리스틱 오탐 표면 축소. `upx=False` 유지.
+  비-Windows 무시. (근본 해결 = OS 코드서명, 인증서 확보 후속.)
+- **G0 — LadybugDB 오프라인 확장 번들 실증·구현(2026-07-20)**: ladybug 확장(vector/
+  fts/algo)은 런타임 다운로드형이라 오프라인 불변식(§1)을 깬다. **실측 확정**: 캐시
+  없이 `LOAD EXTENSION <name>` 은 실패하나 **`LOAD EXTENSION '<번들 경로>'` 는
+  네트워크 없이 로드 성공**(이후 벡터/FTS 인덱스 정상). → `_load_ext` 가 번들된
+  `.lbug_extension` 을 명시 경로로 로드(`_bundled_ext_path`), spec 은
+  `VINC_SIDECAR_DRIVER=ladybug` 변형에서 datas 로 동봉. **기본은 여전히 kuzu(옵트인
+  전환).** 회귀 가드 `tests/test_ladybug_g0.py`. (`store/embedded_backend.py`,
+  `store/config.py`, `packaging/sidecar.spec`, `.github/workflows/release.yml`)
+
 ## v0.5.0 — 그래프 RAG 고도화 + LadybugDB 전환 레일 (2026-07-19)
 
 그래프 RAG 리서치 교차 분석(`RESEARCH-GRAPHRAG-2026-07`)의 발전 과제 E-G1~G7 을

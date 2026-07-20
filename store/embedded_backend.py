@@ -39,6 +39,34 @@ def _import_driver(prefer: str | None = None):
     return None, None
 
 
+def _bundled_ext_path(ext: str) -> str | None:
+    """번들된 ladybug 확장(`lib<ext>.lbug_extension`) 경로 해석 — G0 오프라인 로드용.
+
+    탐색 순서: ① PyInstaller frozen 추출 dir(`sys._MEIPASS/lbug_extensions/`)
+    ② `VINC_LBUG_EXT_DIR` env(개발/테스트 오버라이드) ③ 사이드카 실행 파일 옆
+    `lbug_extensions/`(onedir·수동 배치). 미발견 시 None → 이름 기반 폴백(dev 는
+    설치본 사용). 경로는 Cypher 문자열 리터럴용으로 슬래시 정규화."""
+    import os
+    import sys
+    fname = f"lib{ext}.lbug_extension"
+    cands: list[str] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        cands.append(os.path.join(meipass, "lbug_extensions"))
+    envdir = os.environ.get("VINC_LBUG_EXT_DIR")
+    if envdir:
+        cands.append(envdir)
+    try:
+        cands.append(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "lbug_extensions"))
+    except Exception:
+        pass
+    for d in cands:
+        p = os.path.join(d, fname)
+        if os.path.exists(p):
+            return p.replace("\\", "/")
+    return None
+
+
 def _filter_clause(var: str, filters: dict | None, params: dict) -> str:
     """스코프 필터를 WHERE 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params
     를 in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이 WHERE 로 붙인다."""
@@ -235,10 +263,25 @@ class EmbeddedBackend:
     _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
     def _load_ext(self, ext: str, conn=None) -> None:
-        """벡터/FTS 확장 로드. kuzu 는 정적 링크(무연산), ladybug 는 다운로드 필요.
-        확장 부재 시 명확한 오류로 강등(오프라인 미번들 상황 — §9). reader Connection
-        경유 검색 시엔 그 conn 에 로드한다(확장 로드는 커넥션 스코프일 수 있음)."""
+        """벡터/FTS/algo 확장 로드. kuzu 는 정적 링크(무연산), ladybug 는 확장 기능.
+
+        **G0(오프라인 확장 번들) — 실증 확정(2026-07-20):** ladybug 확장은 기본 런타임
+        다운로드(`~/.lbdb/extension/<ver>/<plat>/<ext>/lib<ext>.lbug_extension`)라 오프라인
+        불변식(§1)을 깬다. 실측: 캐시 부재 시 `LOAD EXTENSION <name>` 은 실패하나
+        **`LOAD EXTENSION '<번들 경로>'` 는 네트워크 없이 로드 성공**(이후 CREATE_VECTOR_INDEX
+        정상). → 번들된 `.lbug_extension` 을 명시 경로로 로드해 오프라인 즉시 동작을 보장한다.
+        번들 미발견(dev 등)은 이름 기반으로 강등(설치돼 있으면 로드)."""
         c = conn or self._conn
+        if self.driver_name == "ladybug":
+            p = _bundled_ext_path(ext)
+            if p:
+                try:
+                    c.execute(f"LOAD EXTENSION '{p}'")
+                    return
+                except Exception as exc:
+                    if "already" in str(exc).lower():
+                        return
+                    # 번들 경로 로드 실패 → 아래 이름 기반 폴백(dev)
         try:
             c.execute(f"LOAD EXTENSION {ext}")
         except Exception as exc:
@@ -246,7 +289,7 @@ class EmbeddedBackend:
                 return
             raise RuntimeError(
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
-                f"번들 필요(§9). 원인: {exc}") from exc
+                f"번들 필요(§9·G0). 원인: {exc}") from exc
 
     def drop_search_indexes(self) -> None:
         """벡터+FTS 인덱스 제거(멱등). ⚠ **적재 전 호출 필수** — 인덱스가 걸린

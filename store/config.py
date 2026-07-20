@@ -35,12 +35,15 @@ class StoreConfig:
     #   런타임 다운로드 — 오프라인 배포 시 번들 필요, §9).
     #
     #   **LadybugDB 전환(D14 재평가, PLAN-GRAPHRAG-LADYBUG-2026-07)**: 활성 후계로
-    #   전환 방향은 확정이나 **G0 게이트(오프라인 확장 번들 검증) 통과가 전제**다 —
-    #   ladybug 확장은 런타임 다운로드형이라 "설치 즉시 오프라인" 불변식(§1)을 지키려면
-    #   번들 경로 확증이 필요하다. G0 미통과 동안 기본은 kuzu 유지(정적 링크). 전환은
-    #   저장 포맷 비호환이라 파일 복사가 아닌 **논리 이관**(store/migrate.py — 두
-    #   프로세스: kuzu export → ladybug import)이다. 이 노브가 프로세스별 드라이버
-    #   고정점(MEMORY_EMBEDDED_DRIVER).
+    #   전환 방향 확정. **G0 게이트(오프라인 확장 번들) — 메커니즘 실증·구현 완료
+    #   (2026-07-20):** ladybug 확장은 런타임 다운로드형이나, 실측 결과 캐시 없이도
+    #   `LOAD EXTENSION '<번들 경로>'` 로 오프라인 로드 성공(이후 벡터/FTS 인덱스 정상).
+    #   → 확장(`lib<ext>.lbug_extension`)을 사이드카에 동봉(spec: VINC_SIDECAR_DRIVER=
+    #   ladybug + datas `lbug_extensions/`)하고 `embedded_backend._bundled_ext_path`+
+    #   `_load_ext` 가 명시 경로로 로드해 "설치 즉시 오프라인" 불변식(§1)을 유지한다.
+    #   **기본은 여전히 kuzu(옵트인 전환).** 실사용 전환은 저장 포맷 비호환이라 파일
+    #   복사가 아닌 **논리 이관**(store/migrate.py — kuzu export → ladybug import).
+    #   이 노브가 프로세스별 드라이버 고정점(MEMORY_EMBEDDED_DRIVER).
     embedded_driver: str | None = None
     data_dir: str | None = None          # 임베디드 스토어 데이터 디렉토리(§3-2)
     embedding_model: str = DEFAULT_EMBEDDING_MODEL

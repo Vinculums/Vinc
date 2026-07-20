@@ -45,6 +45,17 @@ jobs:
           python-version: "3.11"
       - name: Install sidecar build deps
         run: pip install kuzu==0.11.3 pyyaml pyinstaller
+      # ── LadybugDB 변형 빌드(옵트인, G0 오프라인 확장 번들) — 기본은 kuzu 유지 ──
+      # 전환 시 위 kuzu 대신 ladybug 를 깔고, 확장을 미리 INSTALL 해 ~/.lbdb 에 받아둔 뒤
+      # VINC_SIDECAR_DRIVER=ladybug 로 빌드하면 spec 이 `.lbug_extension` 을 동봉한다
+      # (store/embedded_backend._bundled_ext_path 가 런타임 오프라인 로드). 실증 완료:
+      #   - name: (ladybug) install deps + seed extensions
+      #     run: |
+      #       pip install ladybug pyyaml pyinstaller
+      #       python -c "import ladybug,tempfile,os; c=ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(),'s'))); [c.execute(f'INSTALL {e}') for e in ('vector','fts','algo')]"
+      #   - name: (ladybug) Build sidecar
+      #     env: { VINC_SIDECAR_DRIVER: ladybug }
+      #     run: pyinstaller -y packaging/sidecar.spec
       - name: Build sidecar binary
         run: pyinstaller -y packaging/sidecar.spec
       - name: Stage sidecar as Tauri externalBin
