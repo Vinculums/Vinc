@@ -500,10 +500,26 @@ class VincApp:
         return 200, res
 
     def read_sync_pull_delta(self, p):
-        """이 스토어의 delta 를 번들로 — 원격에선 pull, 로컬에선 push 소스."""
+        """이 스토어의 delta 를 번들로 — 원격에선 pull, 로컬에선 push 소스.
+
+        CRITICAL 회귀 수정(실측 확정, 2026-07-21): `sync.export_delta` 는 `domains`
+        미지정 시 `sync.get_selected_domains(store)` 로 폴백한다 — 이건 **로컬
+        디바이스의 Settings UI 도메인 체크박스** 선택값을 읽는, owner 로 구분되지
+        않는 전역 메타키(`"selected_domains"`)다. 이 핸들러는 허브(mcp.vincs.app)의
+        **공유 멀티테넌트 스토어**에서 호출되는데, 허브엔 그 키를 채우는 라우트가
+        아예 없다(`/sync/domains` 는 로컬 사이드카 전용) — 그래서 매 pull 마다
+        `get_selected_domains` 가 항상 빈 리스트를 돌려주고, `export_delta` 는
+        "선택 도메인 없음 = 빈 번들"로 즉시 강등한다. 결과: **모든 회원의 pull 이
+        100% 결정론적으로 빈 데이터** — "계정 키 넣고 동기화해도 안 불러와짐"의
+        근본원인. 수정: 이 owner 가 실제로 가진 전 도메인을 명시로 넘겨 그 폴백을
+        우회한다(허브는 "이 owner 의 전부를 서빙"이 맞는 의미 — 로컬쪽 도메인 선택은
+        push 시 로컬 스토어에서 이미 적용됨, apply_delta 는 도메인 필터가 없다)."""
         owner = _req(p, "owner")
         return self._read(lambda r: sync.export_delta(
-            owner=owner, since=_int(p.get("since"), 0), cfg=self.cfg, store=r))
+            owner=owner, since=_int(p.get("since"), 0),
+            domains=[row["domain"] for row in q.domains(owner=owner, store=r).get("rows", [])
+                     if row.get("domain")],
+            cfg=self.cfg, store=r))
 
     def write_sync_apply_delta(self, body):
         """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4)."""

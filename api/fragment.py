@@ -183,7 +183,15 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     elif label != "Domain":
         _set("title", node.get("title") or nid)
         if node.get("domain") is not None:
-            _set("domain", str(node["domain"]))
+            if label == "Bridge":
+                # Bridge 는 domain 열이 없다(source_domain/target_domain 대신) — SET
+                # 하면 Binder 예외로 죽는다(실측, 2026-07-21). 경고로 강등해 조용한
+                # 유실 대신 명시 통지, 나머지 노드/엣지 처리는 계속한다.
+                warnings.append(
+                    f"node.domain not persisted on Bridge (id={nid}); "
+                    "Bridge has source_domain/target_domain instead, not settable via fragment ingest")
+            else:
+                _set("domain", str(node["domain"]))
         if node.get("tags") is not None:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
@@ -212,7 +220,17 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _set("sync_seq", revstamp.next_seq(store, owner))
 
     set_clause = (" SET " + ", ".join(sets)) if sets else ""
-    store.run(f"MERGE (n:{label} {{{pk}: $id}}){set_clause}", params)
+    try:
+        store.run(f"MERGE (n:{label} {{{pk}: $id}}){set_clause}", params)
+    except Exception as exc:
+        # 방어 심층화: 위에서 못 막은 스키마 불일치(Binder 예외 등)가 여기서 나면
+        # 이 노드 하나만 스킵 — merge_fragment 의 문서화 계약("malformed nodes...
+        # skipped, reported in warnings with partial:true")대로. 이전엔 여기가
+        # 무방비라 노드 1개 오류가 배치 전체(나머지 노드+모든 엣지)를 날렸다(실측,
+        # 2026-07-21 — bridge.domain 케이스로 발견, 위에서 그 케이스는 막았지만
+        # 미지의 다른 케이스에 대한 안전망으로 존치).
+        warnings.append(f"node write failed — skipped (id={nid}, label={label}): {exc}")
+        return None
     return "matched" if matched else "created"
 
 

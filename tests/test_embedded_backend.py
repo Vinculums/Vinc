@@ -603,6 +603,39 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(int(rev[0]["r"]), 1)    # 동일 재적재 무스탬프
         store.close()
 
+    def test_bridge_domain_field_warns_not_crashes_batch(self):
+        """실측 회귀(2026-07-21, vinc_ingest MCP 실사용 중 발견): Bridge 는 domain
+        열이 없다(source_domain/target_domain 대신) — 예전엔 여기서 Binder 예외가
+        나머지 배치(다른 노드 전부 + 모든 엣지)를 통째로 날렸다. 이제 그 노드만
+        경고로 스킵하고 나머지는 정상 처리돼야 한다(merge_fragment 의 문서화 계약
+        "malformed nodes... skipped, reported in warnings with partial:true")."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        fragment = {
+            "nodes": [
+                {"id": "concept:c1", "type": "concept", "title": "C1"},
+                {"id": "bridge:b1", "type": "bridge", "title": "B1", "domain": "cs"},
+            ],
+            "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via"}],
+            "owner": "user:alice",
+        }
+        r = frag.merge_fragment(fragment, store=store)
+        self.assertTrue(r["executed"])
+        # 배치 계속 진행 확인 — concept 는 살아있고, bridge 도 domain 필드만 빼고 생성됨.
+        self.assertEqual(r["merged"]["nodes"]["created"], 2, r)
+        self.assertTrue(any("Bridge" in w and "domain" in w for w in r["warnings"]), r["warnings"])
+        # 엣지도 처리됨(배치가 노드 단계에서 죽지 않았다는 증거).
+        self.assertEqual(r["merged"]["edges"]["created"], 1, r)
+        rows = store.run("MATCH (b:Bridge) WHERE b.bridge_id = 'bridge:b1' "
+                         "RETURN b.title AS title")
+        self.assertEqual(rows[0]["title"], "B1")   # 나머지 필드는 정상 반영
+        store.close()
+
     def test_about_edge_roundtrip_and_graph_visibility(self):
         """F4/F2 — about 적재 → graph(owner, domain) 축 합류로 에피소드 노드·ABOUT
         엣지가 렌더되고 개념 degree 에 반영된다(브릿지 팔 과소 카운트의 동형 회귀)."""
@@ -723,6 +756,39 @@ class EmbeddedE2E(unittest.TestCase):
                        "RETURN r.evidence AS e, r.confidence AS c")
         self.assertEqual(ev[0]["e"], "원문")
         self.assertAlmostEqual(float(ev[0]["c"]), 0.75)
+        store.close()
+
+    def test_hub_pull_delta_serves_data_without_local_domain_selection(self):
+        """CRITICAL 회귀(실측 확정, 2026-07-21) — "계정 키 넣고 동기화해도 안
+        불러와짐"의 근본원인. `read_sync_pull_delta` 는 허브(공유 멀티테넌트 스토어)
+        에서 호출되는데, `sync.export_delta` 의 `domains` 미지정 폴백
+        (`get_selected_domains`)은 **로컬 디바이스의 Settings 도메인 체크박스**용
+        전역(owner 미분리) 메타키라 허브에선 항상 빈 값 → 모든 pull 이 결정론적으로
+        빈 번들이었다. 이 테스트는 도메인 선택을 **한 번도 설정하지 않은** 스토어
+        에서(허브의 실제 상태와 동일) pull 이 실제 데이터를 반환하는지 검증한다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import fragment as frag
+        from api.server import VincApp
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        # get_selected_domains 를 세팅하는 코드를 의도적으로 전혀 부르지 않는다 —
+        # 허브엔 그걸 채우는 라우트가 없다는 실제 조건을 그대로 재현.
+        frag.merge_fragment({
+            "nodes": [{"id": "concept:pulltest", "type": "concept", "title": "Pull Test",
+                      "domain": "cs"}],
+            "owner": "user:alice",
+        }, store=store)
+
+        app = VincApp(store=store)
+        code, out = app.read_sync_pull_delta({"owner": "user:alice", "since": "0"})
+        self.assertEqual(code, 200, out)
+        self.assertTrue(out.get("executed"), out)
+        ids = {n["id"] for n in (out.get("nodes") or [])}
+        self.assertIn("concept:pulltest", ids,
+                       "허브 pull 이 로컬전용 도메인선택 폴백에 걸려 빈 번들을 반환함 — 회귀")
         store.close()
 
 
