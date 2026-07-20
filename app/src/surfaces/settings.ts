@@ -83,7 +83,16 @@ export async function renderSettings(el: HTMLElement) {
 
   // ── Account 탭 ────────────────────────────────────────────────────────────
   function renderAccount(body: HTMLElement) {
+    // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시. 카피는 셸 편집 충돌 회피 위해 인라인.
+    const ko = cfg.lang === "ko";
+    const W = ko
+      ? { acct: "계정", none: "로그인되어 있지 않아요.", manage: "계정 관리", signedAs: (w: string) => "로그인: " + w }
+      : { acct: "Account", none: "Not signed in.", manage: "Manage account", signedAs: (w: string) => "Signed in as " + w };
     body.innerHTML = `
+      ${WEB ? `
+      <label>${W.acct}</label>
+      <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
+      <hr class="settings-sep" />` : ""}
       ${!WEB ? `
       <label>${U.account}</label>
       <p class="hint">${U.syncHint}</p>
@@ -101,14 +110,35 @@ export async function renderSettings(el: HTMLElement) {
       <hr class="settings-sep" />
       <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>`;
     wireThemeLang(body);
-    if (WEB || !api || !pollJob) return;
+    if (WEB) {
+      // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
+      const box = body.querySelector<HTMLElement>("#web-acct");
+      if (box) {
+        fetch("/api/me", { credentials: "include" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            const u = d && d.user;
+            if (!u) { box.textContent = W.none; return; }
+            const esc = (s: string) =>
+              String(s).replace(/[<>&"]/g, (m) => (({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }) as Record<string, string>)[m]!);
+            const who = u.username ? "@" + u.username : u.email;
+            box.innerHTML = `${W.signedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${W.manage}</a>`;
+          })
+          .catch(() => { if (box) box.textContent = ""; });
+      }
+      return;
+    }
+    if (!api || !pollJob) return;
 
     // 계정 연결(디바이스 플로우) — 키는 이 기기 localStorage 에만.
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
       const key = (localStorage.getItem("vinc.sync.key") || "").trim();
       if (key) {
-        const who = localStorage.getItem("vinc.sync.email") || key.slice(0, 12) + "…";
+        // 공개 핸들(009) 우선 표시, 없으면 이메일, 그마저 없으면 키 앞부분.
+        const username = localStorage.getItem("vinc.sync.username") || "";
+        const email = localStorage.getItem("vinc.sync.email") || "";
+        const who = username ? `@${username}` : (email || key.slice(0, 12) + "…");
         acctBox.innerHTML = `
           <p>${U.acctConnected(who)}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
@@ -117,6 +147,7 @@ export async function renderSettings(el: HTMLElement) {
           connectAbort = true;
           localStorage.removeItem("vinc.sync.key");
           localStorage.removeItem("vinc.sync.email");
+          localStorage.removeItem("vinc.sync.username");
           renderAccount(body);
         });
       } else {
@@ -146,6 +177,8 @@ export async function renderSettings(el: HTMLElement) {
           if (st.status === "delivered") {
             localStorage.setItem("vinc.sync.key", st.key);
             if (st.email) localStorage.setItem("vinc.sync.email", st.email);
+            if (st.username) localStorage.setItem("vinc.sync.username", st.username);
+            else localStorage.removeItem("vinc.sync.username"); // 핸들 미설정 계정 → 이전 값 잔존 방지
             renderAccount(body);
             return;
           }

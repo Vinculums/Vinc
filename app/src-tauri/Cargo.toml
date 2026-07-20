@@ -4,7 +4,7 @@
 # 구성 형태를 고정할 뿐 CI/개발 환경에서 cargo 빌드를 요구하지 않는다.
 [package]
 name = "vinc"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 
 [build-dependencies]
@@ -19,6 +19,9 @@ serde_json = "1"
 
 # 자동 업데이트(v0.3.0): 데스크탑만 대상 — updater 는 모바일 미지원이므로 target 가드.
 # process 는 설치 후 재기동(relaunch)용.
+# single-instance(v0.5.2): 중복 실행 시 기존 창 포커스 + 조기 종료 → 사이드카 중복
+# spawn·누수 차단. 데스크탑 전용.
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"

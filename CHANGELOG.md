@@ -3,6 +3,35 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.5.2 — 사이드카 파일락·프로세스 누수 수정 (2026-07-20)
+
+> 설치·자동업데이트 중 "다음 파일을 열 수 없습니다: …\vinc-sidecar.exe" → '무시'해야
+> 진행되던 문제와, 사이드카(`vinc-sidecar.exe`)가 실행마다 누적(관측 7개)되던 누수를
+> 근본 수정. 원인은 Defender 오탐이 아니라 **실행 중 사이드카가 .exe 이미지를 물고 있어
+> 생긴 파일 락** + 종료·크래시 시 회수 실패.
+
+- **설치 파일락 해제 — NSIS preinstall 훅**: 덮어쓰기 직전 잔존 사이드카 트리를
+  `taskkill /F /T /IM vinc-sidecar.exe` 로 종료(락 해제). `bundle.windows.nsis.installerHooks`
+  → `windows/hooks.nsh`(PREINSTALL·PREUNINSTALL). 설치 땐 MCP 브리지도 같은 이미지라
+  함께 정리(필수·자동 재기동). (`tauri.conf.json`, `windows/hooks.nsh`)
+- **종료 시 트리-kill(Windows)**: `RunEvent::Exit` 에서 `taskkill /F /T /PID <child>` 로
+  PyInstaller onefile 부트로더+파이썬 자식을 트리째 회수 — 부트로더만 죽고 자식이
+  고아로 .exe 락을 유지하던 경로 차단. (`src/main.rs`)
+- **중복 인스턴스 차단 — single-instance 플러그인**: 두 번째 실행은 기존 창 포커스 후
+  즉시 종료 → 사이드카 중복 spawn 원천 차단. 가장 먼저 등록. (`Cargo.toml`, `src/main.rs`)
+- **`--parent-pid` heartbeat 배선 + Windows-안전화**: 셸 PID 를 사이드카에 넘겨 셸이
+  크래시·강제종료로 죽으면(=`RunEvent::Exit` 미발생) 사이드카가 ~1s 내 자가종료(E6).
+  `_heartbeat` 의 부모 생존 확인을 **`os.kill(pid,0)`(Windows 에서 파괴적) → 조회 전용
+  `OpenProcess(SYNCHRONIZE)+WaitForSingleObject`** 로 교체(`_pid_alive`, POSIX 는 종전 유지).
+  실측 검증: 부모 생존 시 오종료 없음·부모 사망 시 감지. (`src/main.rs`, `api/server.py`)
+- 시작 시 이미지명 일괄 회수(`/IM`)는 **하지 않는다** — Claude 클라이언트에 붙은 브리지
+  (`vinc-sidecar.exe mcp serve`)를 오살상하기 때문(적대적 리뷰로 확인·회피). 누수는 위
+  4중 방어로 대신 막고 구버전 잔존 고아는 설치 시 훅이 정리.
+- **동반 — 계정 @username 핸들 표시(009)**: 로그인 계정을 Settings→Account 에서
+  `@username`(없으면 이메일)으로 표시. 디바이스 플로우 콜백/상태가 username 을 함께
+  실어 나르고(server, ≤20자 클램프·표시 전용), 웹은 `/api/me`. 미설정 계정은 이메일 폴백.
+  (`api/server.py`, `app/src/surfaces/settings.ts`, `tests/test_server.py`)
+
 ## v0.5.1 — UI 오버홀·데스크탑 아이덴티티·LadybugDB 전환 (2026-07-20)
 
 > **이 릴리스의 사이드카는 LadybugDB 전용 빌드로 발행한다**(release.yml

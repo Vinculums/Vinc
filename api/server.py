@@ -325,6 +325,9 @@ class VincApp:
         state = (body.get("state") or "").strip()
         key = (body.get("key") or "").strip()
         email = (body.get("email") or "").strip()
+        # username(핸들)은 표시 전용(009) — 없으면 빈 문자열. 길이만 방어적으로 클램프,
+        # 형식 검증은 계정 백엔드가 이미 함(여긴 그대로 실어 나르기만).
+        username = (body.get("username") or "").strip()
         if not state or not key.startswith("vinc_sk_") or len(key) > 200:
             return 400, {"error": "invalid payload"}
         now = time.monotonic()
@@ -334,6 +337,7 @@ class VincApp:
                 return 400, {"error": "unknown, used or expired state"}
             ent["key"] = key
             ent["email"] = email[:200]
+            ent["username"] = username[:20]
         return 200, {"status": "ok"}
 
     def read_connect_status(self, p):
@@ -348,7 +352,7 @@ class VincApp:
                 return 200, {"status": "pending"}
             self._connect.pop(state, None)   # 1회 전달 후 즉시 소거(메일박스)
             return 200, {"status": "delivered", "key": ent["key"],
-                         "email": ent.get("email", "")}
+                         "email": ent.get("email", ""), "username": ent.get("username", "")}
 
     # ── 삭제 / 병합 라우트 (T3c — 오염 정리 쓰기 표면, R4 직렬화) ────────────────
     # 뮤테이션이므로 잡 큐(run_sync)로 단일 writer 에 직렬화한다(pin/tag/ingest 동형).
@@ -751,12 +755,45 @@ def make_server(app: VincApp, host: str = "127.0.0.1", port: int = 0) -> Threadi
     return httpd
 
 
+def _pid_alive(pid: int) -> bool:
+    """부모 PID 생존 확인 — **조회 전용, 대상을 죽이지 않는다.**
+
+    POSIX 는 ``os.kill(pid, 0)`` 이 신호 없는 생존 확인이지만, **Windows 의 os.kill 은
+    TerminateProcess 로 매핑되는 파괴적 관용구**라 부모(셸)를 죽일 수 있다(CPython
+    버전·빌드별 거동 상이 — 실측). 그래서 Windows 에서는 ``OpenProcess(SYNCHRONIZE)``
+    + ``WaitForSingleObject(0)`` 로 **조회만** 한다: 핸들을 못 열거나(=종료·부재) 신호
+    상태(=종료)면 사망으로 본다. 오판은 fail-safe 방향(사이드카 자가종료)일 뿐 셸을
+    건드리지 않는다. 이 명시 경로가 있어 셸(``main.rs``)이 ``--parent-pid`` 를 안전히
+    넘길 수 있다."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        SYNCHRONIZE = 0x00100000
+        WAIT_TIMEOUT = 0x00000102   # 미신호 → 아직 실행 중
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.WaitForSingleObject.restype = wintypes.DWORD
+        k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = k32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            return False
+        try:
+            return k32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+        finally:
+            k32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)   # POSIX: 신호 0 = 생존 확인(전송 안 함)
+        return True
+    except OSError:
+        return False
+
+
 def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
     """부모(셸) 프로세스 생존 감시. 사망 시 stop 을 세워 clean shutdown 유발(E6)."""
     while not stop.wait(interval):
-        try:
-            os.kill(parent_pid, 0)   # 신호 0 = 생존 확인(전송 안 함)
-        except OSError:
+        if not _pid_alive(parent_pid):
             stop.set()
             return
 

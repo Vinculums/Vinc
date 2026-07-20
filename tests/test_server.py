@@ -360,10 +360,10 @@ class ConnectFlowTests(unittest.TestCase):
             # 대기 중
             code, obj = _req(base, f"/connect/status?state={state}")
             self.assertEqual((code, obj["status"]), (200, "pending"))
-            # 브라우저 콜백(무인증 — token=None)
+            # 브라우저 콜백(무인증 — token=None). username(009 핸들)도 함께 전달.
             code, obj = _req(base, "/connect/callback", method="POST", token=None,
                              body={"state": state, "key": "vinc_sk_abc123",
-                                   "email": "u@example.com"})
+                                   "email": "u@example.com", "username": "someuser"})
             self.assertEqual((code, obj["status"]), (200, "ok"))
             # 1회 전달
             code, obj = _req(base, f"/connect/status?state={state}")
@@ -371,9 +371,22 @@ class ConnectFlowTests(unittest.TestCase):
             self.assertEqual(obj["status"], "delivered")
             self.assertEqual(obj["key"], "vinc_sk_abc123")
             self.assertEqual(obj["email"], "u@example.com")
+            self.assertEqual(obj["username"], "someuser")
             # 소거 확인(재조회는 expired)
             code, obj = _req(base, f"/connect/status?state={state}")
             self.assertEqual(obj["status"], "expired")
+
+    def test_callback_username_optional_defaults_empty(self):
+        with running_server(_app()) as base:
+            _, st = _req(base, "/connect/start", method="POST", body={})
+            state = st["state"]
+            # username 미포함(구버전 connect-app 호환) → 빈 문자열로 안전 폴백.
+            code, obj = _req(base, "/connect/callback", method="POST", token=None,
+                             body={"state": state, "key": "vinc_sk_nouser",
+                                   "email": "u@example.com"})
+            self.assertEqual((code, obj["status"]), (200, "ok"))
+            code, obj = _req(base, f"/connect/status?state={state}")
+            self.assertEqual(obj["username"], "")
 
     def test_callback_rejects_bad_state_key_and_reuse(self):
         with running_server(_app()) as base:

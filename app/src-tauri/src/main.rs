@@ -143,11 +143,35 @@ fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
     }
 }
 
+/// (Windows) 사이드카 프로세스 트리 강제 종료 — 종료 시 부트로더만 죽고 파이썬 자식이
+/// 고아로 남아 `.exe` 락을 유지하는 것을 막는다(`/T` = 자식까지).
+#[cfg(windows)]
+fn kill_sidecar_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new("taskkill")
+        .args(["/F", "/T", "/PID", &pid.to_string()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+}
+
 fn main() {
     let token = session_token();
     let port = pick_free_port();
     let port_arg = port.to_string();
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // 단일 인스턴스 가드는 **가장 먼저** 등록(다른 플러그인 개입 전 선점). 두 번째 실행은
+    // 기존 창을 포커스하고 즉시 종료 → 사이드카 중복 spawn·누수 근절.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }));
+    }
+    let app = builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -160,11 +184,29 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![sidecar_conn, sidecar_status, mcp_install, mcp_uninstall])
         .setup(move |app| {
+            // 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
+            // RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
+            // (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
+            //
+            // 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
+            // Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc-sidecar.exe mcp serve`)
+            // 와 그 자식까지 같은 이미지명이라 죽여 실행 중 MCP 세션을 끊는다. 누수는
+            // single-instance(중복 셸 차단)+parent-pid heartbeat(크래시 고아 자가종료)+
+            // 종료 시 트리-kill 로 대신 막고, 구버전 잔존 고아는 설치 시 NSIS 훅이 정리한다.
+            let parent_pid = std::process::id().to_string();
             // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
             let sidecar = app
                 .shell()
                 .sidecar("vinc-sidecar")?
-                .args(["serve", "--port", &port_arg, "--token", &token]);
+                .args([
+                    "serve",
+                    "--port",
+                    &port_arg,
+                    "--token",
+                    &token,
+                    "--parent-pid",
+                    &parent_pid,
+                ]);
             let (mut events, child) = sidecar.spawn()?;
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
             // MCP 브리지가 이 사이드카를 찾아 붙도록 세션 파일 기록(A1.9).
@@ -206,6 +248,10 @@ fn main() {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(child) = app.state::<Sidecar>().0.lock().unwrap().take() {
+                // Windows: 부트로더만 죽으면 파이썬 자식이 고아로 .exe 락을 유지 →
+                // 트리째 강제 종료(child.kill 은 폴백).
+                #[cfg(windows)]
+                kill_sidecar_tree(child.pid());
                 let _ = child.kill();
             }
         }
