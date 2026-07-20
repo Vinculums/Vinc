@@ -2,9 +2,12 @@
 # Vinc 사이드카 단일 바이너리(D43) — 빌드: `pyinstaller packaging/sidecar.spec`
 # (레포 루트에서). kuzu 네이티브 라이브러리는 PyInstaller 가 패키지 수집으로
 # 동봉한다. 산출물: dist/vinc-sidecar(.exe) — Tauri externalBin 으로 번들.
-import pathlib
+import pathlib, sys
 
 ROOT = pathlib.Path(SPECPATH).parent
+
+# Windows 버전 리소스(§9 오탐 완화, 코드서명 전 중간 단계). 비-Windows 는 무시(None).
+VERSION_FILE = str(ROOT / "packaging" / "version_info.txt") if sys.platform == "win32" else None
 
 a = Analysis(
     [str(ROOT / "packaging" / "run_sidecar.py")],
@@ -42,5 +45,6 @@ exe = EXE(
     pyz, a.scripts, a.binaries, a.datas,
     name="vinc-sidecar",
     console=True,          # 로그 = stdout(셸이 수집)
-    upx=False,
+    upx=False,             # UPX 는 오탐을 오히려 키운다 — 끈 상태 유지(§9)
+    version=VERSION_FILE,  # Windows 버전 리소스(메타데이터로 오탐 완화)
 )
