@@ -3,7 +3,12 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
-## Unreleased (다음 릴리스)
+## v0.5.1 — UI 오버홀·데스크탑 아이덴티티·LadybugDB 전환 (2026-07-20)
+
+> **이 릴리스의 사이드카는 LadybugDB 전용 빌드로 발행한다**(release.yml
+> `VINC_SIDECAR_DRIVER=ladybug`). 테스트 기간·기존 사용자 없음(발주자 확인)이라
+> kuzu→ladybug 강제 이관 이슈 없이 신규 설치부터 ladybug. G0 확장 오프라인 동봉.
+> (v0.4.x UI 오버홀·아이콘·프레임리스 타이틀바도 이 릴리스에 첫 포함.)
 
 - **Packs 폭 수정**: 카드 `max-width` 제거 → surface 전폭(절반만 차던 문제 해소).
 - **사이드카 PyInstaller 오탐 완화(§9)**: Windows 버전 리소스(`version_info`) 추가 —
