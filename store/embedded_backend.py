@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 
 from .config import StoreConfig
@@ -37,6 +38,42 @@ def _import_driver(prefer: str | None = None):
         except ImportError:
             continue
     return None, None
+
+
+def _driver_marker(data_dir: str) -> str:
+    """스토어 옆 드라이버 각인 파일(사이드카). 저장 포맷 비호환이라 어느 드라이버로
+    만든 스토어인지 기록해, 재기동 시 같은 드라이버로 연다(오인 열기 방지)."""
+    return str(data_dir) + ".driver"
+
+
+def _resolve_driver(cfg, data_dir: str) -> str | None:
+    """자동(embedded_driver 미지정) 시 드라이버 선택 — **안전 전환 규율**:
+      · 명시 지정(env/override) → 존중.
+      · 마커 존재 → 그 드라이버(스토어를 만든 드라이버로 연다).
+      · 마커 없음 + 기존 스토어 → **kuzu**(레거시 kuzu 사용자 보호 — 강제 이관 없음).
+      · 마커 없음 + 신규(스토어 부재) → **ladybug**(새 기본; 미번들 빌드는 _import_driver
+        가 kuzu 로 폴백하므로 kuzu 전용 빌드에선 무동작 = 안전·전방호환).
+    """
+    if cfg.embedded_driver:
+        return cfg.embedded_driver
+    marker = _driver_marker(data_dir)
+    if os.path.exists(marker):
+        try:
+            name = open(marker, encoding="utf-8").read().strip()
+            if name in ("kuzu", "ladybug"):
+                return name
+        except Exception:
+            pass
+    return "kuzu" if os.path.exists(data_dir) else "ladybug"
+
+
+def _write_driver_marker(data_dir: str, name: str) -> None:
+    """실제 열린 드라이버를 각인(멱등). 실패는 무시(권한 등 — 다음 기동은 기존 감지로 폴백)."""
+    try:
+        with open(_driver_marker(data_dir), "w", encoding="utf-8") as f:
+            f.write(name)
+    except Exception:
+        pass
 
 
 def _bundled_ext_path(ext: str) -> str | None:
@@ -166,11 +203,11 @@ class EmbeddedBackend:
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
-        drv, name = _import_driver(cfg.embedded_driver)
+        data_dir = cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
+        # 안전 전환: 마커/기존 감지로 드라이버 선택(기존 kuzu 보호·신규 ladybug).
+        drv, name = _import_driver(_resolve_driver(cfg, data_dir))
         if drv is None:
             return None
-        import os
-        data_dir = cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
         try:
             db = drv.Database(data_dir)
@@ -179,6 +216,7 @@ class EmbeddedBackend:
             # 스토어 열기 실패(락·손상·드라이버 초기화) → None 강등(§3-4).
             # 호출부(execute)는 executed=False 로 처리.
             return None
+        _write_driver_marker(data_dir, name)   # 실제 사용 드라이버 각인(재기동 일치)
         return cls(db, conn, name, cfg)
 
     @contextmanager
@@ -203,7 +241,8 @@ class EmbeddedBackend:
         """이 Database 에서 새 Connection 을 파생한 read 전용 뷰(R4). execute·search 가
         소비하는 표면(run/fulltext_search/vector_search/close)만 제공한다. 요청 단위로
         생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능)."""
-        drv, _ = _import_driver(self._cfg.embedded_driver)
+        # 이미 열린 드라이버와 반드시 일치(마커 자동선택으로 cfg 기본과 다를 수 있음).
+        drv, _ = _import_driver(self.driver_name)
         return _ReaderView(self, drv.Connection(self._db))
 
     def _exec_idem(self, stmt: str) -> None:

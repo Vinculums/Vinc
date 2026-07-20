@@ -14,10 +14,12 @@ VERSION_FILE = str(ROOT / "packaging" / "version_info.txt") if sys.platform == "
 # 로 ladybug 변형 빌드: G0 확장(vector/fts/algo)을 datas 로 동봉해 런타임에 명시 경로
 # LOAD(오프라인). 빌드 전 CI 가 `INSTALL vector/fts/algo` 로 ~/.lbdb/extension/ 를
 # 채워야 한다(store/embedded_backend._bundled_ext_path 가 lbug_extensions/ 에서 로드).
+# kuzu(기본) · ladybug(신규 전용) · both(kuzu+ladybug 동봉 — 안전 전환: 기존 kuzu
+# 스토어는 kuzu 로, 신규는 ladybug 로 열어 강제 이관 없음. _resolve_driver 가 선택).
 DRIVER = os.environ.get("VINC_SIDECAR_DRIVER", "kuzu")
-DRIVER_HIDDEN = ["ladybug"] if DRIVER == "ladybug" else ["kuzu"]
+DRIVER_HIDDEN = {"ladybug": ["ladybug"], "both": ["kuzu", "ladybug"]}.get(DRIVER, ["kuzu"])
 DATAS = []
-if DRIVER == "ladybug":
+if DRIVER in ("ladybug", "both"):
     _extroot = pathlib.Path.home() / ".lbdb" / "extension"
     for _ext in ("vector", "fts", "algo"):
         _m = sorted(_extroot.glob(f"*/*/{_ext}/lib{_ext}.lbug_extension"))

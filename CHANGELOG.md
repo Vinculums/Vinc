@@ -17,6 +17,13 @@ Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/
   `VINC_SIDECAR_DRIVER=ladybug` 변형에서 datas 로 동봉. **기본은 여전히 kuzu(옵트인
   전환).** 회귀 가드 `tests/test_ladybug_g0.py`. (`store/embedded_backend.py`,
   `store/config.py`, `packaging/sidecar.spec`, `.github/workflows/release.yml`)
+- **LadybugDB 전환 3중 실증 + 안전 전환 기반(2026-07-20)**: py3.13+ladybug 0.18.2 실측 —
+  ① **앱 완전 호환**(전체 스위트 ladybug 실패 집합 = kuzu 베이스라인과 동일, 신규 실패 0)
+  ② **G0 오프라인**(위) ③ **교차 이관 무손실**(kuzu export→ladybug import 데이터 일치). →
+  **안전 전환 규율** `_resolve_driver`: 마커(`<store>.driver`) 기반 — 기존 kuzu 스토어는
+  kuzu 로(레거시 보호·강제 이관 없음), **신규 설치는 ladybug**. kuzu 전용 빌드에선 무동작
+  (전방호환). `reader_view` 를 열린 드라이버와 일치. spec `VINC_SIDECAR_DRIVER=both`
+  (kuzu+ladybug 동봉)로 안전 전환 사이드카 빌드. 기존 테스트 무회귀.
 
 ## v0.5.0 — 그래프 RAG 고도화 + LadybugDB 전환 레일 (2026-07-19)
 
