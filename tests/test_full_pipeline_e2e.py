@@ -9,7 +9,7 @@ embed 의 데이터 경로(벡터/FTS/RRF)는 합성 임베딩으로 test_embedd
 이미 e2e 커버한다 — 여기서는 청킹/임베딩 생성이 필요 없는 5개 엔진의 main()
 (recall·concepts·bridges·skill·learner)을 실제로 돌린다.
 
-드라이버(ladybug/kuzu) 미설치 시 skip. 순차 open/close 라 인프로세스로 동작.
+드라이버(ladybug) 미설치 시 skip. 순차 open/close 라 인프로세스로 동작.
 """
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug/kuzu) 미설치 — e2e skip")
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class FullPipelineE2E(unittest.TestCase):
     def setUp(self):
         self.hub = Path(tempfile.mkdtemp())

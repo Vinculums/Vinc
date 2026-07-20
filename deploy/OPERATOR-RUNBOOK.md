@@ -193,7 +193,9 @@ DB 는 웹 VM에서만(사설 IP·SSL) 연결되고 외부/평문 연결은 거�
 cd /root/vinc
 apt-get install -y python3-venv python3-pip
 python3 -m venv /root/.build-venv
-/root/.build-venv/bin/pip install -q kuzu==0.11.3 pyyaml pyinstaller
+/root/.build-venv/bin/pip install -q ladybug pyyaml pyinstaller
+# G0 확장 오프라인 번들 시드(빌드 전 필수 — spec 이 ~/.lbdb/extension 에서 datas 로 동봉):
+/root/.build-venv/bin/python -c "import ladybug,tempfile,os; c=ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(),'s'))); [c.execute('INSTALL '+e) for e in ('vector','fts','algo')]"
 /root/.build-venv/bin/pyinstaller -y packaging/sidecar.spec
 install -o vinc -g vinc -m 755 dist/vinc-sidecar /opt/vinc/vinc-sidecar
 
@@ -296,8 +298,8 @@ GitHub Releases(현행 v0.3.1)로 연결. `https://vincs.app/app/` 웹 Vinc 부�
 
 야간 백업은 **서버 프로세스 내부 스냅샷**(HTTP `POST /backup`)이다 — 사이드카가
 소유한 Database 에서 CHECKPOINT+복사를 수행하므로 **무중단·무락**이다. CLI
-`vinc-sidecar backup` 은 별도 프로세스로 kuzu 를 다시 열어 **서비스 기동 중 배타
-락으로 실패**한다(브링업 중 실측) — 그래서 백업 헬퍼가 HTTP 경로를 쓴다.
+`vinc-sidecar backup` 은 별도 프로세스로 임베디드 드라이버를 다시 열어 **서비스
+기동 중 배타 락으로 실패**한다(브링업 중 실측) — 그래서 백업 헬퍼가 HTTP 경로를 쓴다.
 
 ```bash
 # 백업 헬퍼 + cron 설치

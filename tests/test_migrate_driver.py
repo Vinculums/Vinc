@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""드라이버 전환 이관 레일(T4·T5) + 방언 재검증 매트릭스(T2).
+"""논리 이관 레일(T4·T5) + 방언 재검증 매트릭스(T2).
 
-LadybugDB 전환은 저장 포맷 비호환이라 논리 이관(export→import)만 가능하다
-(store/migrate.py). 이 테스트가 **무손실 왕복 리허설**을 상시 보증한다 — 향후
-ladybug 메이저 업그레이드 때도 재사용하는 레일. 방언 매트릭스는 **활성 드라이버**
-(이 환경은 kuzu 정적 링크; ladybug 전환 시 자동으로 그쪽 검증)에서 P1-0 방언
+`store/migrate.py` 의 논리 export→import 가 **무손실 왕복**을 보증하는지 이 테스트가
+상시 검증한다 — 향후 ladybug 메이저 업그레이드 때도 재사용하는 레일(역사: 원래
+kuzu→ladybug 드라이버 전환용으로 만들어졌으나 v0.5.3 에서 kuzu 를 제거, 이제
+백업 복원·기기 이관 등 범용 이관 경로로만 남았다). 방언 매트릭스는 P1-0 방언
 실측 항목을 회귀로 고정한다.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from store import migrate                     # noqa: E402
 
 
 class MigrationRoundTripTests(unittest.TestCase):
-    """T5 — export→import 무손실 왕복(같은 드라이버 내 리허설; 실전은 프로세스 분리)."""
+    """T5 — export→import 무손실 왕복(데이터 디렉토리 간 논리 이관 리허설)."""
 
     def _seed(self, store):
         with store.session() as s:
@@ -79,8 +79,7 @@ class MigrationRoundTripTests(unittest.TestCase):
 
 
 class DialectMatrixTests(unittest.TestCase):
-    """T2 — 활성 드라이버 방언 재검증(P1-0 실측 항목 회귀). 이 환경은 kuzu 정적
-    링크; ladybug 전환 시 같은 테스트가 그쪽을 검증한다(드라이버 무관 계약)."""
+    """T2 — ladybug 방언 재검증(P1-0 실측 항목 회귀, Kùzu 계보 공통 방언)."""
 
     def setUp(self):
         import tempfile

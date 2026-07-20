@@ -3,8 +3,8 @@
 #
 # 사이드카가 소유한 단일 Database 에서 CHECKPOINT+복사를 수행하는 HTTP
 # `POST /backup`(잡 큐 직렬화, R4)을 호출한다. CLI `vinc-sidecar backup` 은 별도
-# 프로세스로 kuzu 를 다시 열어 **서비스 기동 중 배타 락으로 실패**하므로, 야간
-# 백업의 정본 경로는 이 HTTP 엔드포인트다(서비스 정지 불필요 = 무중단).
+# 프로세스로 임베디드 드라이버를 다시 열어 **서비스 기동 중 배타 락으로 실패**
+# 하므로, 야간 백업의 정본 경로는 이 HTTP 엔드포인트다(서비스 정지 불필요 = 무중단).
 #
 # root 로 실행한다 — 세션 토큰이 /etc/vinc/sidecar.env(권한 600)에 있다.
 #   사용: vinc-backup.sh [OUT_DIR]   (기본 OUT = ~vinc/.vinc/backups/YYYYMMDD)

@@ -2,8 +2,15 @@
 """EmbeddedBackend — 인프로세스 그래프 스토어 (LadybugDB, Kùzu 계보).
 
 설계 정본 [[weg.c.memory-standalone]] §4·§5. 코드가 특정 패키지명에 결합되지
-않도록 드라이버 임포트는 이 파일 1곳에만 둔다(§2-2 리스크 대응). 후보 임포트 순서:
-`ladybug`(LadybugDB v0.18.0, PyPI `ladybug` — P1-0 실측 확인) → `kuzu`(0.11.3 핀 폴백).
+않도록 드라이버 임포트는 이 파일 1곳에만 둔다(§2-2 리스크 대응). **드라이버 =
+`ladybug` 단일(v0.5.3, 2026-07-21 — kuzu 제거)**: 테스트 기간·기존 사용자 없음
+확인(발주자) → 듀얼드라이버(마커·자동감지·이관 레일) 전체 폐기, 단일 무조건 호출로
+단순화. 폐기 배경: v0.5.1/v0.5.2 는 `hiddenimports=["ladybug"]` 만으로 빌드했는데,
+ladybug 가 네이티브 서브모듈(`._lbug`/`._lbug_capi`)을
+`importlib.import_module("._lbug", __package__)` 로 **동적** 로드해(`ladybug/
+_backend.py`) PyInstaller 정적 분석이 못 보고 통째로 누락 — `import ladybug` 는
+성공하나 `Database()` 호출이 `ModuleNotFoundError` 로 실패해 스토어가 열리지 않는
+회귀가 있었다(실측 확정·수정: `packaging/sidecar.spec` 의 `collect_all("ladybug")`).
 
 스키마 선행(§5): Neo4j 의 schema-free LPG 와 달리 노드/관계 테이블을 먼저 선언한다.
 `provision(dim)` 이 §5 테이블 DDL 을 렌더·적용한다.
@@ -20,60 +27,15 @@ from .config import StoreConfig
 from .embedded_schema import SCHEMA_VERSION, migration_statements, render_embedded_ddl
 
 
-def _import_driver(prefer: str | None = None):
-    """임베디드 드라이버 단일 임포트 지점(§2-2 R1 — 포크 결합 상한).
-
-    **기본값 = kuzu 0.11.3**(설계 §13 D14 결정): 벡터/FTS 가 정적 링크라 설치 즉시
-    오프라인 동작(§1 핵심 경로). ladybug v0.18.0 은 확장을 런타임 다운로드하므로
-    오프라인 배포엔 부적합 — `embedded_driver="ladybug"` 노브로 옵트인만 유지(R1).
-    prefer 로 선호 지정. ⚠ ladybug·kuzu 는 한 프로세스 공존 불가(네이티브 타입 충돌)
-    이므로 첫 성공 임포트에서 즉시 반환한다. (모듈, 이름) 또는 (None, None)."""
-    order = {
-        "kuzu": ["kuzu", "ladybug"],
-        "ladybug": ["ladybug", "kuzu"],
-    }.get(prefer, ["kuzu", "ladybug"])   # 기본 kuzu-first (D14)
-    for name in order:
-        try:
-            return __import__(name), name
-        except ImportError:
-            continue
-    return None, None
-
-
-def _driver_marker(data_dir: str) -> str:
-    """스토어 옆 드라이버 각인 파일(사이드카). 저장 포맷 비호환이라 어느 드라이버로
-    만든 스토어인지 기록해, 재기동 시 같은 드라이버로 연다(오인 열기 방지)."""
-    return str(data_dir) + ".driver"
-
-
-def _resolve_driver(cfg, data_dir: str) -> str | None:
-    """자동(embedded_driver 미지정) 시 드라이버 선택 — **안전 전환 규율**:
-      · 명시 지정(env/override) → 존중.
-      · 마커 존재 → 그 드라이버(스토어를 만든 드라이버로 연다).
-      · 마커 없음 + 기존 스토어 → **kuzu**(레거시 kuzu 사용자 보호 — 강제 이관 없음).
-      · 마커 없음 + 신규(스토어 부재) → **ladybug**(새 기본; 미번들 빌드는 _import_driver
-        가 kuzu 로 폴백하므로 kuzu 전용 빌드에선 무동작 = 안전·전방호환).
-    """
-    if cfg.embedded_driver:
-        return cfg.embedded_driver
-    marker = _driver_marker(data_dir)
-    if os.path.exists(marker):
-        try:
-            name = open(marker, encoding="utf-8").read().strip()
-            if name in ("kuzu", "ladybug"):
-                return name
-        except Exception:
-            pass
-    return "kuzu" if os.path.exists(data_dir) else "ladybug"
-
-
-def _write_driver_marker(data_dir: str, name: str) -> None:
-    """실제 열린 드라이버를 각인(멱등). 실패는 무시(권한 등 — 다음 기동은 기존 감지로 폴백)."""
+def _import_driver():
+    """임베디드 드라이버 단일 임포트 지점(§2-2 R1 — 결합 상한). **ladybug 전용**
+    (v0.5.3 — kuzu 제거, 안내는 모듈 docstring 참조). 미설치(개발 환경 등)면
+    (None, None) — 호출부(`EmbeddedBackend.open`)가 스토어 unreachable 로 강등
+    (§3-4), 프로세스는 크래시 없이 살아 `/health` 로 원인을 노출한다."""
     try:
-        with open(_driver_marker(data_dir), "w", encoding="utf-8") as f:
-            f.write(name)
-    except Exception:
-        pass
+        return __import__("ladybug"), "ladybug"
+    except ImportError:
+        return None, None
 
 
 def _bundled_ext_path(ext: str) -> str | None:
@@ -204,8 +166,7 @@ class EmbeddedBackend:
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
         data_dir = cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
-        # 안전 전환: 마커/기존 감지로 드라이버 선택(기존 kuzu 보호·신규 ladybug).
-        drv, name = _import_driver(_resolve_driver(cfg, data_dir))
+        drv, name = _import_driver()
         if drv is None:
             return None
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
@@ -216,7 +177,6 @@ class EmbeddedBackend:
             # 스토어 열기 실패(락·손상·드라이버 초기화) → None 강등(§3-4).
             # 호출부(execute)는 executed=False 로 처리.
             return None
-        _write_driver_marker(data_dir, name)   # 실제 사용 드라이버 각인(재기동 일치)
         return cls(db, conn, name, cfg)
 
     @contextmanager
@@ -241,8 +201,7 @@ class EmbeddedBackend:
         """이 Database 에서 새 Connection 을 파생한 read 전용 뷰(R4). execute·search 가
         소비하는 표면(run/fulltext_search/vector_search/close)만 제공한다. 요청 단위로
         생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능)."""
-        # 이미 열린 드라이버와 반드시 일치(마커 자동선택으로 cfg 기본과 다를 수 있음).
-        drv, _ = _import_driver(self.driver_name)
+        drv, _ = _import_driver()
         return _ReaderView(self, drv.Connection(self._db))
 
     def _exec_idem(self, stmt: str) -> None:
@@ -293,16 +252,16 @@ class EmbeddedBackend:
         return render_embedded_ddl(dim=dim)
 
     # ── 검색 인덱스 (M5/M6) ────────────────────────────────────────────────
-    # Kùzu 계보의 벡터(HNSW)·FTS(BM25)는 확장 기능이다. kuzu 0.11.3 은 정적 링크
-    # (오프라인 즉시), ladybug v0.18.0 은 별도 확장 → **오프라인 배포 시 번들 필수**
-    # (§9). ⚠ 인덱스가 embedding 열에 걸려 있으면 그 열을 수정할 수 없다 —
-    # 인덱스는 **적재 후 build**, 재적재 전 **drop**(embed 잡이 관리, §3-1-1).
+    # Kùzu 계보의 벡터(HNSW)·FTS(BM25)는 확장 기능이다. ladybug 는 별도 확장 →
+    # **오프라인 배포 시 번들 필수**(§9, G0). ⚠ 인덱스가 embedding 열에 걸려 있으면
+    # 그 열을 수정할 수 없다 — 인덱스는 **적재 후 build**, 재적재 전 **drop**
+    # (embed 잡이 관리, §3-1-1).
     _VEC_INDEX = "chunk_vec"
     _FTS_INDEX = "chunk_ft"
     _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
     def _load_ext(self, ext: str, conn=None) -> None:
-        """벡터/FTS/algo 확장 로드. kuzu 는 정적 링크(무연산), ladybug 는 확장 기능.
+        """벡터/FTS/algo 확장 로드(ladybug 는 확장 기능 — 정적 링크가 아님).
 
         **G0(오프라인 확장 번들) — 실증 확정(2026-07-20):** ladybug 확장은 기본 런타임
         다운로드(`~/.lbdb/extension/<ver>/<plat>/<ext>/lib<ext>.lbug_extension`)라 오프라인
@@ -311,16 +270,15 @@ class EmbeddedBackend:
         정상). → 번들된 `.lbug_extension` 을 명시 경로로 로드해 오프라인 즉시 동작을 보장한다.
         번들 미발견(dev 등)은 이름 기반으로 강등(설치돼 있으면 로드)."""
         c = conn or self._conn
-        if self.driver_name == "ladybug":
-            p = _bundled_ext_path(ext)
-            if p:
-                try:
-                    c.execute(f"LOAD EXTENSION '{p}'")
+        p = _bundled_ext_path(ext)
+        if p:
+            try:
+                c.execute(f"LOAD EXTENSION '{p}'")
+                return
+            except Exception as exc:
+                if "already" in str(exc).lower():
                     return
-                except Exception as exc:
-                    if "already" in str(exc).lower():
-                        return
-                    # 번들 경로 로드 실패 → 아래 이름 기반 폴백(dev)
+                # 번들 경로 로드 실패 → 아래 이름 기반 폴백(dev)
         try:
             c.execute(f"LOAD EXTENSION {ext}")
         except Exception as exc:
@@ -409,7 +367,7 @@ class EmbeddedBackend:
         return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
     # ── 그래프 알고리즘 (E-G3) ─────────────────────────────────────────────────
-    # algo 확장(kuzu 정적 링크 → 오프라인 즉시; ladybug 는 다운로드 §9)로 구조 진단을
+    # algo 확장(ladybug 는 다운로드형 — 오프라인 배포 시 §9 번들 필수)으로 구조 진단을
     # 네이티브 엔진에 위임(리서치 ④ — 구조 연산은 알고리즘에, 모델은 컨트롤러).
     # project_graph 를 멱등 생성→실행→드랍한다(T3b 지연 빌드 패턴과 동형의 관리).
     # 개념 관계 그래프 위 WCC(고아·컴포넌트)·Louvain(커뮤니티)·PageRank(전역 중요도).
@@ -459,9 +417,9 @@ class EmbeddedBackend:
     def snapshot(self, dest_dir: str) -> str:
         """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2).
 
-        복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — kuzu 는 close 시점에
-        체크포인트하므로, 열린 스토어를 그대로 복사하면 미반영(빈 테이블) 사본이
-        나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행."""
+        복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — Kùzu 계보는 close
+        시점에 체크포인트하므로, 열린 스토어를 그대로 복사하면 미반영(빈 테이블)
+        사본이 나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행."""
         import os
         import shutil
         try:
@@ -479,6 +437,6 @@ class EmbeddedBackend:
         return dest
 
     def close(self) -> None:
-        # ladybug/kuzu Connection/Database 는 GC 로 정리 — 명시 close 없음.
+        # ladybug Connection/Database 는 GC 로 정리 — 명시 close 없음.
         self._conn = None
         self._db = None

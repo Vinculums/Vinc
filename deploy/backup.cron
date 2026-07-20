@@ -1,6 +1,6 @@
 # Vinc 야간 백업(R9 — P5 계획 §2-6). /etc/cron.d/vinc-backup 으로 복사.
 # 서버 프로세스 내부 스냅샷(무중단) — /opt/vinc/vinc-backup.sh 가 HTTP POST /backup 을
-# 호출한다(CLI backup 은 서비스 기동 중 kuzu 배타 락으로 실패 — deploy/vinc-backup.sh 주석).
+# 호출한다(CLI backup 은 서비스 기동 중 임베디드 드라이버 배타 락으로 실패 — deploy/vinc-backup.sh 주석).
 # 이탈 백업(오브젝트 스토리지 업로드)은 rclone 원격 구성 후 주석 해제.
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

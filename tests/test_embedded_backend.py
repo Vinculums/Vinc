@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""EmbeddedBackend (LadybugDB/Kùzu) 실행 e2e — 설계 §4·§5.
+"""EmbeddedBackend (LadybugDB) 실행 e2e — 설계 §4·§5.
 
-임베디드 드라이버(ladybug/kuzu)가 설치된 환경에서만 실행(미설치 시 skip). Neo4j
-서버 e2e 와 달리 임베디드 e2e 는 인프로세스라 CI/개발 환경에서 그대로 돈다 —
-Vinc 의 실제 배포 타깃(§1).
+임베디드 드라이버(ladybug)가 설치된 환경에서만 실행(미설치 시 skip — 통상 항상
+설치돼 있음, v0.5.3 부터 유일 드라이버). Neo4j 서버 e2e 와 달리 임베디드 e2e 는
+인프로세스라 CI/개발 환경에서 그대로 돈다 — Vinc 의 실제 배포 타깃(§1).
 
 검증: ① 스키마 선행(노드 테이블 DDL) 프로비저닝 ② 리팩터된 엔진 write helper 가
 store.session() 경유로 LadybugDB 에 적재 ③ MERGE 멱등(2회→1) ④ api.query 백엔드
@@ -22,11 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from store.embedded_backend import _import_driver  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
-# ⚠ ladybug 와 kuzu 는 한 프로세스에 공존 불가(pybind11 타입 재등록 충돌). 테스트는
-# **활성 기본 드라이버 하나만** 쓴다 — 두 번째 드라이버를 절대 import 하지 않는다.
 
 
-@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug/kuzu) 미설치 — e2e skip")
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class EmbeddedE2E(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
@@ -332,12 +330,11 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertGreater(len(r["edges"]), 0)   # 순회 엣지 존재
 
     def test_vector_and_fts_search(self):
-        """M5/M6: 벡터(HNSW)+FTS(BM25) 검색 — 활성 기본 드라이버로. 검색 확장이
-        없으면(ladybug 는 별도 다운로드 → 오프라인 시 번들 §9; 프록시 차단 환경)
-        skip. kuzu 는 정적 링크라 그대로 실행. (두 드라이버 동시 import 금지.)"""
+        """M5/M6: 벡터(HNSW)+FTS(BM25) 검색. 검색 확장이 없으면(ladybug 는 별도
+        다운로드 → 오프라인 시 번들 §9; 프록시 차단 환경) skip."""
         from store.config import load_config
         from store.backend import open_store
-        cfg = load_config()                    # 활성 기본 드라이버(두 번째 import 금지)
+        cfg = load_config()
         store = open_store(cfg)
         self.assertIsNotNone(store)
         store.provision(dim=4)
@@ -466,8 +463,8 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(sp["paths"][0]["ids"], ["a", "c", "e", "d"])
 
     def test_eg3_component_diagnosis_and_communities(self):
-        """E-G3: algo 확장(WCC·Louvain) 구조 진단. kuzu 정적 링크 — 실행. ladybug
-        오프라인 미번들이면 강등(executed=False)이라 skip."""
+        """E-G3: algo 확장(WCC·Louvain) 구조 진단. ladybug 오프라인 미번들이면
+        강등(executed=False)이라 skip."""
         from store.config import load_config
         from store.backend import open_store
         from api import query as q
@@ -482,7 +479,7 @@ class EmbeddedE2E(unittest.TestCase):
             for x, y in (("a", "b"), ("b", "c"), ("c", "a"), ("d", "e")):
                 s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
-        # algo 확장 가용성 확인(kuzu 정적 / ladybug 다운로드)
+        # algo 확장 가용성 확인(다운로드형 — 오프라인 배포 시 §9 번들 필요)
         diag = q.component_diagnosis(owner="u", store=store)
         if not diag["executed"]:
             store.close()

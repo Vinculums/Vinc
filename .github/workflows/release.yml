@@ -43,16 +43,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # ── LadybugDB 전환(테스트 기간·기존 사용자 없음 → ladybug 전용 사이드카) ──
+      # ── 임베디드 드라이버 = ladybug 단일(v0.5.3, kuzu 제거) ──────────────────
       # 3중 실증 완료(앱 완전호환·G0 오프라인 확장·교차 이관 무손실, 2026-07-20).
       - name: Install sidecar build deps (LadybugDB)
         run: pip install ladybug pyyaml pyinstaller
       - name: Seed LadybugDB extensions (G0 오프라인 번들 — spec 이 datas 로 동봉)
         shell: bash
         run: python -c "import ladybug,tempfile,os; c=ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(),'s'))); [c.execute('INSTALL '+e) for e in ('vector','fts','algo')]"
-      - name: Build sidecar binary (ladybug 변형)
-        env:
-          VINC_SIDECAR_DRIVER: ladybug
+      - name: Build sidecar binary
         run: pyinstaller -y packaging/sidecar.spec
       - name: Stage sidecar as Tauri externalBin
         shell: bash
@@ -62,12 +60,36 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
           cp "dist/vinc-sidecar${ext}" \
              "app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}"
-      - name: Smoke test sidecar
+      - name: Smoke test sidecar (real store open — v0.5.1/v0.5.2 회귀 재발 방지)
+        # ⚠ 이전엔 `--help` 만 실행해 "빌드 성공"만 확인했다. v0.5.1/v0.5.2 는 그래서
+        # ladybug 네이티브 서브모듈이 동적 import(PyInstaller 정적분석 사각)로 빠진
+        # 채 빌드가 초록으로 통과·발행됐고, 실제로는 스토어가 전혀 안 열렸다(실측
+        # 확정 2026-07-21 — sidecar.spec 의 collect_all("ladybug") 로 수정). 이제
+        # 진짜로 `serve` 를 띄워 `/health` 가 "ok" 인지(=Database 실제 open) 3-OS
+        # 전부에서 확인한다 — 여기가 초록이면 빌드뿐 아니라 런타임까지 보장된다.
         shell: bash
         run: |
           ext=""
           if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
-          "app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}" --help
+          BIN="app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}"
+          "$BIN" --help
+          DATA="$(mktemp -d)/db"
+          "$BIN" serve --host 127.0.0.1 --port 18787 --token smoketest --data "$DATA" &
+          SIDECAR_PID=$!
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18787/health 2>/dev/null | \
+               python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('status')=='ok' else 1)"; then
+              ok=1; break
+            fi
+            sleep 0.5
+          done
+          kill "$SIDECAR_PID" 2>/dev/null || true
+          if [ -z "$ok" ]; then
+            echo "::error::sidecar /health never returned status=ok — store failed to open" >&2
+            exit 1
+          fi
+          echo "sidecar /health OK — store opened for real"
 
       # ── 셸(Tauri) ──────────────────────────────────────────────────────
       - uses: actions/setup-node@v4

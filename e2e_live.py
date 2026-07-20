@@ -80,7 +80,7 @@ def main() -> int:
     cfg = load_config()
     store = open_store(cfg)
     if store is None:
-        print("[e2e] 임베디드 스토어 불가 — 드라이버(ladybug/kuzu) 설치 확인.", file=sys.stderr)
+        print("[e2e] 임베디드 스토어 불가 — 드라이버(ladybug) 설치 확인.", file=sys.stderr)
         return 2
 
     all_checks: list[tuple[bool, str]] = []

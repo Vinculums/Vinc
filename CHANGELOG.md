@@ -3,6 +3,35 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.5.3 — CRITICAL: 그래프 스토어 미기동 수정 + kuzu 제거 (2026-07-21)
+
+> **v0.5.1/v0.5.2 사용자는 즉시 업데이트 필요.** 사이드카가 그래프 스토어를
+> **전혀 열지 못하는** 회귀가 있었다(`/health` → "no reachable store") — 설치는
+> 되지만 읽기·쓰기가 모두 조용히 실패했다.
+
+- **원인(실측 확정)**: ladybug 는 네이티브 서브모듈(`._lbug` pybind, `._lbug_capi`
+  ctypes)을 `importlib.import_module("._lbug", __package__)` 로 **동적** 로드한다
+  (`ladybug/_backend.py`). PyInstaller 의 정적 AST 분석은 동적 import 를 못 보므로
+  `hiddenimports=["ladybug"]` 만으로는 두 서브모듈이 빌드에서 통째로 빠졌다.
+  `import ladybug` 는 성공하지만 `ladybug.Database()` 호출이
+  `ModuleNotFoundError: No module named 'ladybug._lbug_capi'` 로 실패 →
+  `EmbeddedBackend.open` 이 `except Exception: return None` 으로 조용히 삼켜 스토어가
+  안 열렸다. 재현·수정 모두 로컬 PyInstaller 빌드로 실측(frozen exe 안에서
+  Database open→schema→write→read 성공 확인).
+- **수정**: `packaging/sidecar.spec` 이 `collect_all("ladybug")` 로 pkgutil 기반
+  서브모듈·네이티브 바이너리 수집(정적분석 의존 없음) — Windows 실제 프로덕션 빌드로
+  재검증(`import`·`Database`·스키마·쓰기·읽기·G0 확장 전부 성공, `/health`="ok").
+- **CI 스모크 테스트 강화**: 이전엔 `--help` 만 실행해 "빌드 성공"만 확인했다(그래서
+  이 회귀가 CI 초록으로 통과·발행됐다). 이제 3-OS 매트릭스 전부에서 실제 `serve` 를
+  띄우고 `/health`="ok" 를 확인한다 — macOS·Linux 도 같은 동적-import 코드 경로라
+  동일 영향 범위이므로, 이 테스트가 플랫폼별 실증을 대신한다.
+- **kuzu 완전 제거**: 테스트 기간·기존 사용자 없음 확인(발주자) → 듀얼드라이버
+  (마커 파일·자동감지·안전 이관 레일)를 전부 폐기하고 **ladybug 단일 무조건 호출**로
+  단순화(`_import_driver`/`EmbeddedBackend.open`/`reader_view`). `store/migrate.py`
+  는 범용 논리 export/import 도구로 남기고 전환-레일 프레이밍만 제거. 회귀 없음
+  (git stash A/B 비교: 리팩토링 전후 동일 11건 실패·415건 통과 — 전부 기존
+  [[windows-embedded-test-fails]] 환경 이슈, 무관).
+
 ## v0.5.2 — 사이드카 파일락·프로세스 누수 수정 (2026-07-20)
 
 > 설치·자동업데이트 중 "다음 파일을 열 수 없습니다: …\vinc-sidecar.exe" → '무시'해야

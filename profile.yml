@@ -16,9 +16,8 @@ name: default
 # 백엔드는 store/backend.open_store 단일 지점에서 취득한다. Neo4j 연결 인자 없음.
 store:
   backend: embedded            # env: MEMORY_STORE_BACKEND  (유일 배포 백엔드)
-  # 임베디드 드라이버: 미지정 시 기본 kuzu(정적 링크 — 오프라인 즉시, DEC D14).
-  # "ladybug"(v0.18.0) 는 확장 런타임 다운로드가 필요해 옵트인.
-  embedded_driver: null        # env: MEMORY_EMBEDDED_DRIVER  (null=kuzu)
+  # 임베디드 드라이버 = ladybug 단일(v0.5.3 — kuzu 제거). 확장(벡터/FTS/algo)은
+  # 런타임 다운로드형이라 오프라인 배포 시 명시 경로로 번들(G0, §9).
   data_dir: null               # env: MEMORY_DATA_DIR  (null=기본 데이터 디렉토리)
 
 # ── Embeddings (로컬·검색 전용) ───────────────────────────────────────────────

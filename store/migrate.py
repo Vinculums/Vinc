@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
 """논리 스토어 이관(T4·T5) — 드라이버 무관 export/import via GraphStore.run().
 
-**왜 논리 이관인가**: LadybugDB 0.18.x 는 kuzu 0.11.3 DB 파일을 열지 못한다(저장
-포맷 비호환 — 2026-07-19 실측: "not a valid Lbug database file"). 그래서 드라이버
-전환(D14 재평가 · G0 게이트)은 파일 복사가 아니라 **논리 덤프→재적재**여야 한다.
-이 모듈이 그 레일이며, `backup.py`(파일 스냅샷 — 동일 드라이버 백업)와 상보한다.
-
-**드라이버 공존 불가**(네이티브 타입 충돌 — embedded_backend §2-2): 한 프로세스가
-kuzu·ladybug 를 동시에 import 하지 못한다. 따라서 실제 전환은 **두 프로세스**로:
-  1) 구 드라이버(kuzu)로 `export_store` → JSON 파일.
-  2) 새 드라이버(ladybug)로 `import_store` ← 그 JSON.
-`vinc-migrate` CLI(아래 main)가 한쪽 방향을 수행한다. `MEMORY_EMBEDDED_DRIVER` 로
-드라이버를 고정해 프로세스별로 부른다.
+**용도**: 데이터 디렉토리 간 논리 덤프→재적재(백업 복원·기기 이관·덤프 점검 등).
+파일 스냅샷(`backup.py` — 동일 드라이버·바이너리 복사)과 상보하는 상위 레벨
+경로다. (역사: 원래 kuzu→ladybug 드라이버 전환용 레일로 만들어졌으나, v0.5.3 에서
+kuzu 를 제거하고 ladybug 단일로 단순화하며 그 용도는 종료 — 로직 자체는
+드라이버 무관이라 범용 export/import 도구로 남긴다.)
 
 **무손실 계약(T5 리허설)**: 스키마 SSoT(embedded_schema.node_table_specs/
 rel_table_specs)에서 열을 파생하므로, 열 추가(추적열·evidence 등)에 이관이 자동
@@ -108,8 +102,7 @@ def main() -> None:
     from .config import load_config
 
     ap = argparse.ArgumentParser(
-        description="Vinc 논리 스토어 이관(T4) — 드라이버 무관 export/import. "
-                    "드라이버 전환 시 프로세스별로: (kuzu) export → (ladybug) import.")
+        description="Vinc 논리 스토어 이관(T4) — 데이터 디렉토리 간 export/import.")
     ap.add_argument("mode", choices=["export", "import"])
     ap.add_argument("--file", required=True, help="덤프 JSON 경로")
     args = ap.parse_args()

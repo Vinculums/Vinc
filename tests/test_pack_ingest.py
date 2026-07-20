@@ -79,8 +79,8 @@ class OverlayPackTests(unittest.TestCase):
         self.assertEqual(len(s.calls), 2)
         self.assertEqual({c["episode_id"] for c in s.calls}, {"e1", "e2"})
 
-    def test_all_params_present_for_kuzu(self):
-        # Kùzu 는 미사용 파라미터를 거부 → 모든 파라미터가 매 호출에 존재해야 한다.
+    def test_all_params_present_for_embedded_dialect(self):
+        # Kùzu 계보(ladybug)는 미사용 파라미터를 거부 → 모든 파라미터가 매 호출에 존재해야 한다.
         s = _FakeSession()
         pi.overlay_pack(s, {"episodes": [{"id": "e1"}]})
         expected = {"episode_id", "pinned", "tags", "access_count", "last_access",

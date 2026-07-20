@@ -7,7 +7,7 @@
 이후 벡터/FTS 인덱스가 정상 동작한다. 이 테스트가 그 메커니즘을 상시 고정한다:
 
   · `_bundled_ext_path` 경로 해석(순수 — ladybug 불요, CI 상시 실행)
-  · ladybug 오프라인 로드(ladybug 설치 시에만; kuzu 기본 CI 에선 skip)
+  · ladybug 오프라인 로드(ladybug 미설치 개발 환경에서만 skip — v0.5.3 부터 유일 드라이버)
 """
 from __future__ import annotations
 
@@ -57,14 +57,14 @@ class BundledExtPathTests(unittest.TestCase):
 
 class LadybugOfflineLoadTests(unittest.TestCase):
     """ladybug 설치 시: 캐시 없는 오프라인에서 번들 경로 로드 → 벡터/FTS 인덱스 동작.
-    ladybug 미설치(기본 kuzu 환경)면 전체 skip."""
+    ladybug 미설치(개발 환경 등)면 전체 skip."""
 
     @classmethod
     def setUpClass(cls):
         try:
             import ladybug  # noqa: F401
         except Exception:
-            raise unittest.SkipTest("ladybug 미설치 — 기본 kuzu 환경(정적 링크, G0 무관)")
+            raise unittest.SkipTest("ladybug 미설치 — 개발 환경 확인")
 
     def test_offline_bundled_load(self):
         import ladybug, shutil, tempfile
@@ -89,7 +89,6 @@ class LadybugOfflineLoadTests(unittest.TestCase):
             conn = ladybug.Connection(db)
 
             class _Cfg:
-                embedded_driver = None
                 data_dir = None
 
             be = eb.EmbeddedBackend(db, conn, "ladybug", _Cfg())
