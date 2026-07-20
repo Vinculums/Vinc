@@ -4,7 +4,7 @@
 # 구성 형태를 고정할 뿐 CI/개발 환경에서 cargo 빌드를 요구하지 않는다.
 [package]
 name = "vinc"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 
 [build-dependencies]
