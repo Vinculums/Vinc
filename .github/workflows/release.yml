@@ -206,6 +206,32 @@ jobs:
           # 조각·서명은 공개 릴리스 자산으로 올리지 않는다(서명은 latest.json 안에 내용으로 박힘).
           rm -f dl/latest-*.json dl/*.sig
           echo "── to publish ──"; ls -la dl
+      # ── 버전 무관 고정 별칭(공홈 다운로드 링크 안정화) ─────────────────────────
+      # 배경: site/download/index.html 은 releases/latest/download/<파일명> 을 직접 링크하는데
+      # Tauri 산출물 이름엔 버전이 박혀 있다(Vinc_0.5.4_x64-setup.exe). 그래서 새 릴리스를
+      # **발행하는 순간** latest 별칭이 옮겨가며 공홈의 다운로드 링크 4개가 전부 404 가 됐고,
+      # 원자적 조정 수단이 없어 매 릴리스마다 사람이 공홈을 손으로 메꿔야 했다(실제로 v0.5.2·
+      # v0.5.3·v0.5.4 세 번 다 그렇게 했다). 같은 파일을 **버전 없는 고정 이름으로 하나 더**
+      # 올려 그 결합을 끊는다 — 공홈은 고정 이름만 가리키면 다시는 깨지지 않는다.
+      # 업데이터는 latest.json 안의 명시 URL(= 버전 박힌 원본)을 쓰므로 **영향 없다**.
+      # 대상 4종이 하나라도 없으면 조용히 넘어가지 않고 실패시킨다(조용한 실패 금지).
+      - name: Add version-stable download aliases
+        run: |
+          set -euo pipefail
+          alias_one() {
+            local pattern="$1" target="$2" m
+            m=$(find dl -maxdepth 1 -type f -name "$pattern" | head -1)
+            if [ -z "$m" ]; then
+              echo "❌ 고정 별칭 대상 없음: $pattern"; ls -la dl; exit 1
+            fi
+            cp "$m" "dl/$target"
+            echo "alias: $(basename "$m") → $target"
+          }
+          alias_one '*_x64-setup.exe'  'Vinc-x64-setup.exe'
+          alias_one '*_aarch64.dmg'    'Vinc-aarch64.dmg'
+          alias_one '*_amd64.AppImage' 'Vinc-amd64.AppImage'
+          alias_one '*_amd64.deb'      'Vinc-amd64.deb'
+          echo "── to publish (aliases included) ──"; ls -la dl
       # 공개 릴리스 레포(Vincs-app)에 draft 로 발행. 사람이 확인 후 Publish.
       - name: Publish draft release to Vincs-app
         uses: softprops/action-gh-release@v2
