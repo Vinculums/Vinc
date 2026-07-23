@@ -138,11 +138,27 @@ export type GraphNode = {
   id: string; label: string; domain: string; degree: number;
   kind?: string;      // concept | bridge | episode | record | entity (F2 — 부착 축)
   domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
+  ts?: string;        // D43 — created/date 우선, 없으면 updated_at. 빈 문자열 가능
   x?: number; y?: number; z?: number;
 };
 export type GraphEdge = {
   source: string; target: string; type: string; cross_domain: boolean;
-  role?: string;      // CONNECTS.role / ATTACHES_TO.type 질화자 (F2)
+  role?: string;        // CONNECTS.role / ATTACHES_TO.type 질화자 (F2)
+  confidence?: number;  // D43 — 0..1. 상류 미저작이면 키 자체가 없다
+  evidence?: string;    // D43 — 근거 문장. 툴팁 전용
+};
+export type LedgerRow = {
+  domain: string; concepts: number;
+  episodic: number; record: number; unsourced: number;
+  connected: number; gateway: number; orphan: number;
+};
+// D43 ego — /ledger 응답에서 UI 가 읽는 것만. scope·population 은 신형 사이드카의
+// 추가 필드다(구버전 응답엔 키 자체가 없다). seed 를 보냈는데 scope 가 없으면 구
+// 사이드카가 seed 를 무시하고 주제/전체 롤업을 돌려준 것 — UI 가 캡션으로 밝힌다.
+export type LedgerRes = {
+  executed: boolean; rows?: LedgerRow[]; note?: string;
+  scope?: "seed" | "domain" | "all";   // 무엇을 모집단으로 집계했는가(에코)
+  population?: number;                 // scope="seed" 일 때 ego 구성원 수
 };
 
 export const api = {
@@ -150,6 +166,8 @@ export const api = {
   atlasL0: (owner: string) => call("/atlas", { owner }),
   graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
     call("/graph", { owner, ...opts }),
+  ledger: (owner: string, opts: { domain?: string; seed?: string; depth?: number } = {}): Promise<LedgerRes> =>
+    call("/ledger", { owner, ...opts }),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),

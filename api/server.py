@@ -172,6 +172,14 @@ class VincApp:
         # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
         return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
 
+    def read_ledger(self, p):
+        # 원장(출처 × 주제 × 연결상태) 롤업 — 조회 전용. 쓰기 큐를 타지 않는다(R4).
+        # seed 지정 시 ego(시드 주변) 롤업 — 우선순위 seed > domain > all(D43).
+        return self._read(lambda r: q.ledger(owner=_req(p, "owner"),
+                                             domain=p.get("domain"),
+                                             seed=p.get("seed"),
+                                             depth=_int(p.get("depth"), 2), store=r))
+
     def read_promote(self, p):
         # Phase E1 — pin 후보 조회(읽기 전용). 확정은 기존 /pin 경유.
         return self._read(lambda r: q.promote_candidates(
@@ -709,7 +717,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
-            "/atlas": app.read_atlas, "/share": app.read_share,
+            "/atlas": app.read_atlas, "/ledger": app.read_ledger, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/merge-candidates": app.read_merge_candidates,

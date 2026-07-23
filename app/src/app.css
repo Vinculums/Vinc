@@ -351,9 +351,55 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   position: absolute; bottom: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
   display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap;
 }
+/* 메시지 층은 캔버스를 통째로 덮는 오버레이(inset:0)다. 문구만 얹는 층이 그 아래
+   그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
+   보이는 마크가 아무 반응도 하지 않는다 → 층은 포인터를 통과시키고, 층 안의 실제
+   컨트롤만 되살린다(빈 상태의 CTA 링크·에러 상태의 재시도 버튼은 그대로 눌린다). */
+#atlas-msg { pointer-events: none; }
+#atlas-msg a, #atlas-msg button { pointer-events: auto; }
 #atlas-view-panel {   /* 시각 속성은 여기(D37 글래스가 말미에서 덮음) — 레이아웃만 인라인 */
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius); padding: var(--space-4, 1rem);
+}
+
+/* Atlas 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
+   렌더러는 surfaces/atlas-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
+   (템플릿 문자열 안에 숨은 두 번째 스타일시트를 만들지 않는다 — 디자인 시스템·
+   모노크롬 게이트가 훑는 자리가 곧 규칙이 사는 자리다).
+   전부 모노크롬: 의미는 형태 · 농도 · 굵기가 나르고 색은 초점(--ring)뿐(D41).
+   .pl-wrap 패딩은 atlas-planar.ts 의 PAD_TOP/PAD_X/PAD_BOT 과 같은 값이어야 한다. */
+.pl-wrap { height: 100%; overflow: auto; padding: 56px 16px 16px; }
+.pl-svg { display: block; }
+.pl-svg text { font-family: inherit; }
+.pl-num { font-variant-numeric: tabular-nums; }
+.pl-ax { fill: none; stroke: hsl(var(--border)); stroke-width: 1; }
+.pl-band { fill: hsl(var(--muted)); opacity: .5; }
+.pl-cap { fill: hsl(var(--caption-foreground)); font-size: 10px; }
+.pl-sub { fill: hsl(var(--muted-foreground)); font-size: 10.5px; }
+.pl-lab { fill: hsl(var(--foreground)); font-size: 11px; }
+.pl-mark { fill: hsl(var(--card)); stroke: hsl(var(--foreground)); stroke-width: 1.4; }
+.pl-mark.pl-soft { stroke: hsl(var(--muted-foreground)); }
+.pl-mark.pl-focus { stroke: hsl(var(--ring)); stroke-width: 2; }
+.pl-edge { fill: none; stroke: hsl(var(--muted-foreground)); }
+.pl-arrow { fill: hsl(var(--muted-foreground)); }
+.pl-arrow-hl { fill: hsl(var(--ring)); }
+.pl-lane-line { fill: none; stroke: hsl(var(--muted-foreground)); stroke-linecap: round; opacity: .75; }
+.pl-seg { fill: hsl(var(--foreground)); stroke: hsl(var(--background)); stroke-width: 1.5; }
+.pl-s0 { fill-opacity: .82; }
+.pl-s1 { fill-opacity: .5; }
+.pl-s2 { fill-opacity: .26; }
+.pl-track { fill: hsl(var(--muted)); opacity: .55; }
+.pl-node, .pl-row { cursor: pointer; }
+/* 눌러도 갈 곳이 없는 행(지금 보고 있는 그 주제)은 손가락 커서를 내린다 — 보이는
+   손가락은 반드시 어딘가로 데려가야 한다. data-id 제거로 클릭 위임에서도 빠진다. */
+.pl-row.pl-static { cursor: default; }
+.pl-fade { opacity: .12; }
+.pl-hl .pl-mark, .pl-hl .pl-edge, .pl-hl .pl-lane-line { stroke: hsl(var(--ring)); }
+.pl-hl .pl-mark { stroke-width: 2; }
+.pl-hl .pl-lab { fill: hsl(var(--ring)); font-weight: 600; }
+.pl-hl .pl-seg { stroke: hsl(var(--ring)); }
+@media (prefers-reduced-motion: no-preference) {
+  .pl-node, .pl-link, .pl-row, .pl-lane { transition: opacity .22s ease; }
 }
 
 /* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.

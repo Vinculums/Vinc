@@ -41,7 +41,7 @@ MAX_BODY = 4 * 1024 * 1024
 # purge(전용 서명 경로). owner 는 항상 서명된 sub 에서 강제 주입된다(SEC-3 + 프록시).
 _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # 읽기(GET)
-    "atlas": ("GET", "/atlas"), "graph": ("GET", "/graph"),
+    "atlas": ("GET", "/atlas"), "ledger": ("GET", "/ledger"), "graph": ("GET", "/graph"),
     "recall": ("GET", "/recall"), "search": ("GET", "/search"),
     "coupling": ("GET", "/coupling"), "suggest-ties": ("GET", "/suggest-ties"),
     "decide": ("GET", "/decide"), "domains": ("GET", "/domains"),

@@ -86,15 +86,19 @@ const EN = {
     },
     panel: {
       view: "View", viewChip: (d: string) => `View · ${d}`,
+      allTopics: "All topics",
       nodeSize: "Node size", byConnections: "by connections", uniform: "uniform",
       labels: "Labels", onHover: "on hover", off: "off",
       arrows: "Direction arrows", on: "on",
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
+      depth: "Depth", docLinks: "Document links",
+      groupBy: "Group by", byTopic: "by topic", byOrigin: "by origin",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     atlasx: {
       grid: "Grid", matrix: "Matrix", traceCta: "Trace from here",
+      flow: "Flow", timeline: "Timeline", totals: "Totals",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
       outIn: (o: number, i: number) => ` · → ${o} out · ← ${i} in`,
@@ -112,6 +116,32 @@ const EN = {
       bound: (t: string) => `Linked to <b>${t}</b> · one connection added.`,
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
+      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
+      viewsHint: "Flow, Timeline and Totals are in View.",
+      flowNoTies: "No links between topics yet. Add files and the first links appear.",
+      flowNone: "No directed links here yet. Link two documents to see a flow.",
+      soloNode: "This document stands alone. Link it to another to see a flow.",
+      noDates: "No dates on these documents yet. Open a topic to see its timeline.",
+      // L0 Timeline — 주제 노드에는 날짜가 실리지 않는다. 옆의 주제 칩이 곧 다음 행동.
+      topicsNoDates: "Topics don't carry dates. Open one to see its timeline.",
+      undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
+      totalsEmpty: "Nothing to total yet. Add files and the totals fill in.",
+      totalsOff: "Totals are unavailable right now. Try again in a moment.",
+      // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
+      // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
+      totalsAround: (n: number) => `Based on ${n} document${n === 1 ? "" : "s"} around this one.`,
+      totalsTopic: "Based on this document's whole topic.",
+      // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
+      // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
+      // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
+      flowChart: (n: number, m: number) => `Flow: ${n} documents, ${m} links`,
+      timelineChart: (n: number, m: number) => `Timeline: ${n} documents across ${m} topics`,
+      totalsChart: (n: number, m: number) => `Totals: ${n} topics, ${m} documents`,
+      seg: {
+        episodic: "from a conversation", record: "from a file", unsourced: "no origin yet",
+        connected: "linked", gateway: "links other topics", orphan: "not linked yet",
+      },
+      segTip: (name: string, n: number) => `${name}: ${n} documents`,
     },
     intakeUi: {
       importing: "Importing…",
@@ -300,15 +330,19 @@ const KO: Deck = {
     },
     panel: {
       view: "보기", viewChip: (d) => `보기 · ${d}`,
+      allTopics: "모든 주제",
       nodeSize: "노드 크기", byConnections: "연결수 비례", uniform: "균일",
       labels: "라벨", onHover: "호버 시", off: "끔",
       arrows: "방향 화살표", on: "켬",
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
+      depth: "깊이", docLinks: "문서 연결",
+      groupBy: "묶음 기준", byTopic: "주제별", byOrigin: "출처별",
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     atlasx: {
       grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적",
+      flow: "흐름", timeline: "타임라인", totals: "합계",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
       outIn: (o, i) => ` · → 나감 ${o} · ← 들어옴 ${i}`,
@@ -326,6 +360,32 @@ const KO: Deck = {
       bound: (t) => `<b>${t}</b>에 연결했습니다 · 연결 1개 추가.`,
       bindFail: "연결하지 못했습니다. 잠시 후 다시 시도하세요.",
       unavailable: "연결 제안을 사용할 수 없습니다.",
+      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
+      viewsHint: "흐름 · 타임라인 · 합계는 보기 안에 있습니다.",
+      flowNoTies: "주제 사이 연결이 아직 없습니다. 파일을 추가하면 첫 연결이 생깁니다.",
+      flowNone: "아직 방향이 있는 연결이 없습니다. 문서 두 개를 연결하면 흐름이 보입니다.",
+      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 흐름이 보입니다.",
+      noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
+      // L0 Timeline — 주제 노드에는 날짜가 실리지 않는다. 옆의 주제 칩이 곧 다음 행동.
+      topicsNoDates: "주제에는 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
+      undated: (n) => `날짜 없는 문서 ${n}개.`,
+      totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 합계가 채워집니다.",
+      totalsOff: "지금은 합계를 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
+      // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
+      // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
+      totalsAround: (n) => `이 문서 주변 문서 ${n}개 기준.`,
+      totalsTopic: "이 문서가 속한 주제 전체 기준.",
+      // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
+      // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
+      // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
+      flowChart: (n, m) => `흐름: 문서 ${n}개, 연결 ${m}개`,
+      timelineChart: (n, m) => `타임라인: 주제 ${m}개에 걸친 문서 ${n}개`,
+      totalsChart: (n, m) => `합계: 주제 ${n}개, 문서 ${m}개`,
+      seg: {
+        episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
+        connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
+      },
+      segTip: (name, n) => `${name}: 문서 ${n}개`,
     },
     intakeUi: {
       importing: "가져오는 중…",

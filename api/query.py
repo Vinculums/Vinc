@@ -332,13 +332,24 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
     clause = "WHERE " + " AND ".join(where)
     # 관계 타입 함수는 `label(r)` — 임베디드(Kùzu 계보)에 `type()` 부재(§6-2 M4,
     # P1-0 실측 확정). Neo4j 는 label()도 지원하므로 백엔드 중립.
+    # D43: ts(라벨별 시간열 단일화) + 엣지 evidence/confidence. Concept→Concept 무라벨
+    # `-[r]->` 이 바인딩할 수 있는 rel 테이블은 CC 4종뿐이고 전부 E-G6 열을 가져
+    # (store.embedded_schema._EVIDENCE_RELS) 바인더가 통과한다 — CONNECTS/ATTACHES_TO/
+    # TYPED 가 후보인 플랜(bridge/record/entity 축)에 같은 열을 붙이면 Binder 오류다.
+    # ⚠ owner 필수성(SEC-1): 시작점 c 만 스코프하면 **엣지 대상 d 는 무방비**다 —
+    # `graph_rows_for_ids_plan` 과 동일 규칙으로 먼 끝점도 제한한다. 특히 D43 이
+    # r.evidence/r.confidence/target_ts 를 투영하면서 남의 증거 문장·신뢰도·시간이
+    # 클라이언트(Flow 툴팁)까지 도달할 수 있게 됐다.
     cypher = (
         f"MATCH (c:Concept) {clause} "
-        "OPTIONAL MATCH (c)-[r]->(d:Concept) "
+        "OPTIONAL MATCH (c)-[r]->(d:Concept) WHERE d.owner_id = $owner "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
-        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
-        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags"
+        "coalesce(c.created, c.updated_at, '') AS ts, "
+        "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        "d.concept_id AS target, d.domain AS target_domain, "
+        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
+        "coalesce(d.created, d.updated_at, '') AS target_ts"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 
@@ -372,16 +383,31 @@ def shape_graph(rows: list[dict]) -> dict:
     부착. **degree 는 도착한 모든 엣지 행을 양 끝에 카운트** — 축 플랜(CONNECTS/
     ABOUT/ATTACHES_TO/TYPED)이 합류하는 것 자체가 F3(과소 카운트) 수리다(같은
     물리 엣지는 정확히 한 플랜에서만 오므로 이중 계상 없음). 노드 dedup 은 선착
-    우선 — 호출부가 Concept 축을 먼저 넣는 고정 순서로 결정론을 보장한다."""
+    우선 — 호출부가 Concept 축을 먼저 넣는 고정 순서로 결정론을 보장한다.
+
+    D43(2026-07-22): 노드에 ``ts``(라벨별 시간열 — 플랜이 coalesce 로 단일화해
+    ``ts``/``target_ts`` 로 투영), 엣지에 ``confidence``/``evidence``(E-G6 선택 열).
+    ⚠ ``ts`` 계약: ``updated_at`` 은 ISO-ms UTC 라 사전식 정렬이 시간순과 일치하지만,
+    ``created``/``date`` 는 자유형식이고 자주 ``''`` 다(``Record.created`` 는 오늘
+    쓰는 코드가 없다). 따라서 ``ts`` 는 **정당하게 빈 문자열일 수 있고**, 소비처는
+    가정하지 말고 강등해야 한다(날짜 없는 노드를 제외하거나 별도 표기).
+
+    ⚠ dedup 예외 — ``ts`` 는 **빈 값일 때만 나중 행이 채운다**(그 외 필드는 선착
+    우선 불변). 같은 노드가 여러 축에서 도착할 때 먼저 온 행이 시간열을 안 실었으면
+    (또는 정말 비었으면) 뒤 행의 비지 않은 ``ts`` 로 승격한다 — 없으면 축 플랜으로만
+    도착한 개념이 영구히 무날짜로 굳는다."""
     nodes: dict[str, dict] = {}
 
-    def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None):
+    def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
                           "kind": kind or "concept", "degree": 0,
-                          "props": _props_to_obj(props), "tags": list(tags or [])}
+                          "props": _props_to_obj(props), "tags": list(tags or []),
+                          "ts": ts or ""}
             if domain2:
                 nodes[nid]["domain2"] = domain2
+        elif ts and not nodes[nid]["ts"]:
+            nodes[nid]["ts"] = ts          # 빈 ts 만 승격 — 나머지는 선착 우선
         return nodes[nid]
 
     edges: list[dict] = []
@@ -390,14 +416,15 @@ def shape_graph(rows: list[dict]) -> dict:
         if not nid:
             continue
         _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
-              r.get("kind"), r.get("domain2"))
+              r.get("kind"), r.get("domain2"), r.get("ts"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
             # target-only 로 등장한 노드가 항상 id 노출로 폴백됐다(_node 의
             # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
             _node(tgt, r.get("target_label"), r.get("target_domain"),
-                  r.get("target_props"), r.get("target_tags"), r.get("target_kind"))
+                  r.get("target_props"), r.get("target_tags"), r.get("target_kind"),
+                  ts=r.get("target_ts"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
             # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
@@ -406,6 +433,11 @@ def shape_graph(rows: list[dict]) -> dict:
                     "type": r.get("rel") or "RELATED_TO", "cross_domain": cross}
             if r.get("role"):
                 edge["role"] = r["role"]
+            # E-G6 — 관계 증거·신뢰도(선택 열). 상류 미저작 시 키를 붙이지 않는다(role 과 동형).
+            if r.get("confidence"):
+                edge["confidence"] = float(r["confidence"])
+            if r.get("evidence"):
+                edge["evidence"] = r["evidence"]
             edges.append(edge)
             nodes[nid]["degree"] += 1
             nodes[tgt]["degree"] += 1
@@ -550,8 +582,11 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         f"OPTIONAL MATCH (c)-[r]->(d:Concept){d_where} "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
-        "label(r) AS rel, d.concept_id AS target, d.domain AS target_domain, "
-        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags"
+        "coalesce(c.created, c.updated_at, '') AS ts, "
+        "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        "d.concept_id AS target, d.domain AS target_domain, "
+        "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
+        "coalesce(d.created, d.updated_at, '') AS target_ts"
     )
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
@@ -586,9 +621,11 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None,
         f"WHERE {' AND '.join(where)} "
         "RETURN b.bridge_id AS id, b.title AS label, b.source_domain AS domain, "
         "b.target_domain AS domain2, b.props AS props, 'bridge' AS kind, "
+        "coalesce(b.created, b.updated_at, '') AS ts, "
         "'CONNECTS' AS rel, r.role AS role, "
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
-        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
+        "coalesce(c.created, c.updated_at, '') AS target_ts"
     )
     return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
 
@@ -612,9 +649,15 @@ def episode_rows_plan(*, owner: str, domain: str | None = None,
         f"WHERE {' AND '.join(where)} "
         "RETURN e.episode_id AS id, e.title AS label, e.domain AS domain, "
         "e.props AS props, coalesce(e.tags, []) AS tags, 'episode' AS kind, "
-        "'ABOUT' AS rel, "
+        "coalesce(e.date, e.updated_at, '') AS ts, "
+        # ABOUT 은 E-G6 열을 가진 rel 테이블이라 evidence/confidence 투영이 안전하다.
+        "'ABOUT' AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
-        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
+        # D43: 부착 개념의 시간열도 투영한다 — 축 플랜으로만 도착하는 개념
+        # (episode:/record:/bridge: 시드 L2)이 영구 무날짜가 되던 결함(Timeline 이
+        # 전량을 '날짜 없음'으로 강등)의 절반. 나머지 절반은 shape_graph 의 ts 승격.
+        "coalesce(c.created, c.updated_at, '') AS target_ts"
     )
     return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
 
@@ -637,9 +680,11 @@ def record_rows_plan(*, owner: str, domain: str | None = None,
         f"WHERE {' AND '.join(where)} "
         "RETURN rc.record_id AS id, rc.title AS label, rc.domain AS domain, "
         "rc.props AS props, coalesce(rc.tags, []) AS tags, 'record' AS kind, "
+        "coalesce(rc.created, rc.updated_at, '') AS ts, "
         "'ATTACHES_TO' AS rel, r.type AS role, "
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
-        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind"
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
+        "coalesce(c.created, c.updated_at, '') AS target_ts"
     )
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
@@ -686,6 +731,8 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
         f"OPTIONAL MATCH (e)-[r:TYPED]->(d:Entity){d_where} "
         "RETURN e.entity_id AS id, e.title AS label, '' AS domain, "
         "coalesce(e.tags, []) AS tags, 'entity' AS kind, "
+        # Entity 는 created/date 열이 없다 — updated_at 만이 시간 원천.
+        "coalesce(e.updated_at, '') AS ts, "
         "r.type AS rel, d.entity_id AS target, '' AS target_domain, "
         "d.title AS target_label, coalesce(d.tags, []) AS target_tags, "
         "'entity' AS target_kind"
@@ -993,7 +1040,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                 kind = seed.split(":", 1)[0] if ":" in seed else "concept"
                 shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
                                     "domain": "", "kind": kind, "degree": 0,
-                                    "props": {}, "tags": []}]   # A4 형태 정합
+                                    "props": {}, "tags": [], "ts": ""}]   # A4 형태 정합
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
@@ -1146,6 +1193,227 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
             for (s, tg), n in sorted(merged.items(), key=lambda kv: -kv[1])]
     return {"executed": bool(d.get("executed") or c.get("executed")),
             "domains": domains, "ties": ties}
+
+
+# ── 원장 롤업(D43) — 출처 × 주제 × 연결상태 ──────────────────────────────────
+# Atlas Totals 관점의 데이터 원천. 두 플랜(출처 축·연결 축)을 각각 UNION ALL 로
+# 가져와 **순수 파이썬에서 접는다**(`domain_counts_plan` → `domains` 와 동형) —
+# Cypher 안에서 EXISTS{}·서브쿼리로 영리하게 굴지 않는다(임베디드 방언 이식성).
+# 고아 판정을 `component_diagnosis`(native algo 확장 위임)에 맡기지 않는 것도
+# 의도다 — algo 는 오프라인 번들에서 executed=False 로 강등되는데, 원장은 항상
+# 그려져야 한다.
+
+def ledger_origin_plan(*, owner: str, domain: str | None = None,
+                       ids: list[str] | None = None) -> QueryPlan:
+    """원장 출처 축 — 개념 전량('all') + 에피소드 부착('episodic') + 레코드 부착
+    ('record') 표식 행. 한 개념이 여러 에피소드에 부착되면 같은 표식이 여러 번
+    오지만 접기(:func:`ledger`)가 불리언이라 무해하다.
+
+    owner 규칙(SEC-1): **엣지 패턴의 양 끝을 모두** 필터한다 — 소유자 스코프 id
+    집합만으론 반대편 끝이 안전해지지 않는다. Episode/Record/Concept 는 엄격
+    ``= $owner``. 모든 UNION 분기가 ``$owner`` 를 바인딩한다(Kùzu 는 미사용
+    파라미터를 거부 — §6 방언). ``domain``/``ids`` 는 절을 낼 때만 params 에 넣고,
+    같은 이유로 낸 절은 **모든 분기에** 붙는다.
+
+    ``ids``(D43 ego 원장): 개념 c 를 시드 주변 집합으로 제한한다 — ``domain`` 렌즈와
+    상호 배제(축 플랜 관례). 부착 주체(Episode/Record)는 집합으로 제한하지 않는다 —
+    부착은 전역 사실이라 ego 밖 에피소드가 ego 개념에 부착돼도 출처다."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    params: dict = {"owner": owner}
+    and_scope = ""
+    if domain:
+        and_scope = " AND c.domain = $domain"
+        params["domain"] = domain
+    if ids:
+        and_scope = " AND c.concept_id IN $ids"
+        params["ids"] = ids
+    cypher = (
+        f"MATCH (c:Concept) WHERE c.owner_id = $owner{and_scope} "
+        "RETURN c.concept_id AS id, c.domain AS domain, "
+        "coalesce(c.created, c.updated_at, '') AS ts, 'all' AS mark "
+        "UNION ALL "
+        "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
+        f"WHERE e.owner_id = $owner AND c.owner_id = $owner{and_scope} "
+        "RETURN c.concept_id AS id, c.domain AS domain, '' AS ts, 'episodic' AS mark "
+        "UNION ALL "
+        "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
+        f"WHERE rc.owner_id = $owner AND c.owner_id = $owner{and_scope} "
+        "RETURN c.concept_id AS id, c.domain AS domain, '' AS ts, 'record' AS mark"
+    )
+    return QueryPlan("ledger", cypher, params, note="ledger origin axis (concept × source)")
+
+
+def ledger_link_plan(*, owner: str, domain: str | None = None,
+                     ids: list[str] | None = None) -> QueryPlan:
+    """원장 연결 축 — 개념 대 개념 직접 엣지('cc') + Bridge 매개 팔('bridge') 행.
+    각 행이 차수 1 을 뜻하고, ``domain``/``other`` 가 다르면 그 개념은 관문
+    (gateway)이다. 무방향 ``-[r]-`` 라 한 엣지가 양쪽 끝에서 각각 한 번 세어진다.
+
+    owner 규칙: Concept 양끝 엄격. **Bridge 만 예외** — 과도기 술어
+    (:func:`_bridge_owner_pred`, ``owner OR ''``)를 쓴다. 엄격 등호는 레거시
+    미소유 행(v2 이전)을 가진 기존 로컬 사용자의 결합을 조용히 소거하는 회귀다.
+    owner_id 열이 없는 Domain/Chunk/SkillExecution 은 롤업에 합류시키지 않는다.
+
+    ``ids``(D43 ego 원장): 제한은 **c 쪽에만** 건다 — 먼 끝점 o 는 owner 스코프만
+    유지하고 ego 로 좁히지 않는다(전역 차수·관문: 엣지가 ego 를 떠나도 그 구성원의
+    연결이다). domain 렌즈가 o 를 안 건드리는 기존 태도와 동형이라 SEC-1 양끝
+    스코프는 그대로다. ``domain`` 과 상호 배제, 모든 UNION 분기에 절을 붙인다."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    params: dict = {"owner": owner}
+    and_scope = ""
+    if domain:
+        and_scope = " AND c.domain = $domain"
+        params["domain"] = domain
+    if ids:
+        and_scope = " AND c.concept_id IN $ids"
+        params["ids"] = ids
+    cypher = (
+        "MATCH (c:Concept)-[r]-(o:Concept) "
+        "WHERE c.owner_id = $owner AND o.owner_id = $owner "
+        f"AND o.concept_id <> c.concept_id{and_scope} "
+        "RETURN c.concept_id AS id, c.domain AS domain, o.domain AS other, 'cc' AS mark "
+        "UNION ALL "
+        "MATCH (b:Bridge)-[:CONNECTS]->(c:Concept) "
+        f"WHERE {_bridge_owner_pred('b')} AND c.owner_id = $owner{and_scope} "
+        "RETURN c.concept_id AS id, b.source_domain AS domain, "
+        "b.target_domain AS other, 'bridge' AS mark"
+    )
+    return QueryPlan("ledger", cypher, params, note="ledger link axis (concept × coupling)")
+
+
+def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
+                    cfg=None, store=None) -> dict:
+    """ego 원장(D43)의 모집단 — 시드 주변 Concept id 집합. L2 서브그래프와 **같은
+    순회 기계**를 재사용해 두 관점의 모집단이 일치한다(:func:`graph` 시드 갈래와
+    동형):
+
+    - Concept 시드: :func:`subgraph_ids_plan`(depth 1..4 클램프, TRAIL 가드) 도달
+      개념 ∪ 시드 자신(graph() 997 의 시드 합류와 동일).
+    - episode:/record:/bridge: 시드: 순회가 :Concept 미매치라 0행 — 축 플랜(ids
+      모드)의 부착 끝점(target = Concept id)만 모은다. L2 keep 집합의 Concept
+      부분집합과 동일. 플랜별 강등은 graph() 와 같은 태도로 건너뛴다(미마이그레이션
+      스토어 자가 처리 — 순회가 이미 스토어 도달을 증명했다).
+    - entity: 시드(미지 접두사 포함): TYPED 폐쇄 성분이라 Concept 층에 구조적으로
+      닿지 않는다 — 항상 빈 ego.
+
+    성공 시 ``{"executed": True, "ids": [...]}``, 순회 강등 시 execute 딕셔너리를
+    그대로 돌려준다(호출부가 응답 전체를 강등)."""
+    kind = _seed_table(seed)[0]
+    if kind == "Entity":
+        return {"executed": True, "ids": []}
+    res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return res
+    if kind == "Concept":
+        return {"executed": True,
+                "ids": sorted({seed, *(r["id"] for r in res.get("rows", []) if r.get("id"))})}
+    members: set[str] = set()
+    for plan_fn in _GRAPH_AXIS_PLANS:
+        ax = execute(plan_fn(owner=owner, ids=[seed]), cfg, store=store)
+        if not ax.get("executed"):
+            continue
+        members.update(r["target"] for r in ax.get("rows", []) if r.get("target"))
+    return {"executed": True, "ids": sorted(members)}
+
+
+def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
+           depth: int = 2, cfg=None, store=None) -> dict:
+    """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.
+
+    반환 행: ``{domain, concepts, episodic, record, unsourced, connected,
+    gateway, orphan}``, concepts 내림차순.
+
+    스코프 우선순위 ``seed > domain > all``. ``seed`` 지정 시 ego 롤업 — 모집단은
+    L2 서브그래프와 같은 순회로 얻은 시드 주변 개념(:func:`_ledger_ego_ids`)이고,
+    구성원별 연결상태는 **전역**이다(엣지가 ego 를 떠나도 센다 —
+    :func:`ledger_link_plan` ids 계약). 응답에 ``scope``("seed"|"domain"|"all")와
+    ``population``(롤업에 실린 개념 총수)을 가산한다 — 구 소비처는 새 키를 무시하고,
+    새 소비처는 scope 키 부재로 구 사이드카(seed 무시 → 주제 폴백)를 판별한다
+    (버전 스큐 우아 강등). 빈 ego(미존재 시드·부착 0·entity 시드)는 DB 왕복 없이
+    ``rows=[]``·population 0 으로 답한다 — ``IN $ids`` 에 빈 리스트를 바인딩하지
+    않는다(방언 위험).
+
+    출처 3분할(episodic/record/unsourced)과 연결 3분할(connected/gateway/orphan)은
+    **각각 배타**라 두 합이 모두 정확히 concepts 다 — 소비처(Totals 누적 막대)가
+    셋을 더해 행 합계로 쓴다. 한 개념이 에피소드와 레코드에 동시에 부착되면 우선순위
+    ``episodic > record > unsourced`` 로 한 칸에만 센다(겹침을 그대로 흘리면 막대와
+    총계가 부풀었다).
+
+    도메인이 빈 개념은 롤업 키가 없어 제외한다(`domains_plan` 의
+    ``domain IS NOT NULL`` 과 같은 태도).
+
+    두 플랜 중 **하나라도 강등되면 응답 전체를 강등**한다 — 연결 축만 죽으면 차수가
+    전부 0 이라 모든 개념이 고아로 보고되는데, ``executed: true`` 를 달고 나가면
+    소비처가 그 거짓을 참으로 그린다. ego 순회 강등도 같은 태도다."""
+    scope = "domain" if domain else "all"
+    ids: list[str] | None = None
+    if seed:
+        ego = _ledger_ego_ids(seed, owner=owner, depth=depth, cfg=cfg, store=store)
+        if not ego.get("executed"):
+            return ego            # 순회 강등 = 응답 전체 강등(두-플랜 규칙과 동일)
+        scope, ids, domain = "seed", ego["ids"], None
+        if not ids:
+            plan = QueryPlan("ledger", "", {"owner": owner, "seed": seed},
+                             note="empty ego (no concept members)")
+            return {"plan": plan.to_dict(), "executed": True, "rows": [],
+                    "scope": "seed", "population": 0}
+    o = execute(ledger_origin_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    if not o.get("executed"):
+        return o
+    lk = execute(ledger_link_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    if not lk.get("executed"):
+        return lk
+
+    by_id: dict[str, dict] = {}
+    for row in o.get("rows", []):
+        nid = row.get("id")
+        if not nid:
+            continue
+        b = by_id.setdefault(nid, {"domain": "", "ts": "", "episodic": False,
+                                   "record": False, "degree": 0, "gateway": False})
+        mark = row.get("mark")
+        if mark == "all":                       # 권위 도메인·시간은 개념 자신에게서
+            b["domain"] = row.get("domain") or ""
+            b["ts"] = row.get("ts") or ""
+        elif mark == "episodic":
+            b["episodic"] = True
+        elif mark == "record":
+            b["record"] = True
+    for row in lk.get("rows", []):
+        b = by_id.get(row.get("id"))
+        if b is None:      # 출처 축에 없는 id = 스코프 밖 — 세지 않는다
+            continue
+        b["degree"] += 1
+        src, other = row.get("domain") or "", row.get("other") or ""
+        if src and other and src != other:
+            b["gateway"] = True
+
+    agg: dict[str, dict] = {}
+    for b in by_id.values():
+        dom = b["domain"]
+        if not dom:
+            continue
+        a = agg.setdefault(dom, {"domain": dom, "concepts": 0, "episodic": 0,
+                                 "record": 0, "unsourced": 0, "connected": 0,
+                                 "gateway": 0, "orphan": 0})
+        a["concepts"] += 1
+        if b["episodic"]:                       # 출처는 엄격 분할(episodic > record)
+            a["episodic"] += 1
+        elif b["record"]:
+            a["record"] += 1
+        else:
+            a["unsourced"] += 1
+        if b["degree"] == 0:
+            a["orphan"] += 1
+        if b["gateway"]:
+            a["gateway"] += 1
+        if b["degree"] > 0 and not b["gateway"]:
+            a["connected"] += 1
+    o["rows"] = sorted(agg.values(), key=lambda r: (-r["concepts"], r["domain"]))
+    # D43 ego: 스코프 에코 + 모집단(행에 실린 개념 총수 — 행 합계와 항상 일치).
+    o["scope"] = scope
+    o["population"] = sum(r["concepts"] for r in o["rows"])
+    return o
 
 
 def promote_candidates_plan(*, owner: str, min_access: int = 3) -> QueryPlan:
