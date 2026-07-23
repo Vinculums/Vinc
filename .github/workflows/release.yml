@@ -168,12 +168,18 @@ jobs:
           jq -n --arg k "$key" --arg s "$(cat "$sig")" --arg u "$url" \
             '{($k): {signature: $s, url: $u}}' > "artifacts/latest-${key}.json"
           echo "── collected ──"; ls -la artifacts
+      # 이 아티팩트는 build→publish 사이에만 쓰는 일회용 중간 산출물이다(사용자
+      # 다운로드는 Vincs-app 의 Release 자산 = 별개 저장소·할당량 무관). 기본 90일
+      # 보관이라 v0.1.0 부터 쌓여 Actions 저장 할당량을 먹었다("Artifact storage
+      # quota has been hit"). 최소값 1일로 낮춰 재발을 막는다 — publish 는 몇 분 안에
+      # 받아가므로 실질적으로 즉시 소멸이다.
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.triple }}
           path: artifacts/*
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     needs: build
