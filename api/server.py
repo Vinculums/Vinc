@@ -506,6 +506,22 @@ class VincApp:
             apply=bool(body.get("apply")), candidates=body.get("candidates")))
         return 200, res
 
+    # ── 자체호스팅 임베딩(B) — 허브 워커 왕복. 원문은 스토어 밖으로 안 나간다 ──────
+    # 사이드카 바이너리는 임베딩 스택을 번들에서 제외(2.7GB 회피)하므로, 허브의
+    # 로컬 워커(sentence-transformers)가 이 두 경로로 임베딩만 채운다. **루프백 내부
+    # 표면** — _PROXY_OPS 미등록·Caddy 미노출(웹/원격 클라가 못 부른다).
+    def read_embed_pending(self, p):
+        return self._read(lambda r: {
+            "kind": "embed.pending",
+            "chunks": docstore.pending_embed_chunks(r, limit=_int(p.get("limit"), 256))})
+
+    def write_embed_apply(self, body):
+        doc_id = _req(body, "doc_id")
+        embeddings = body.get("embeddings") or {}
+        res = self.jobs.run_sync("embed.apply", lambda: docstore.apply_embeddings(
+            self.store, doc_id, embeddings))
+        return 200, res
+
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
     def read_themes(self, p):
         return 200, {"active_theme_id": self.themes.active_theme_id(),
@@ -866,6 +882,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,
             "/sync/docs-export": app.read_sync_docs_export,   # 문서 정본 delta(D45 P3)
+            "/embed/pending": app.read_embed_pending,   # 자체호스팅 임베딩 워커(B, 내부)
             # 계정 연결(디바이스 플로우) — 메일박스 1회 수령(인증).
             "/connect/status": app.read_connect_status,
         }
@@ -889,6 +906,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
+            "/embed/apply": app.write_embed_apply,   # 자체호스팅 임베딩 워커(B, 내부)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

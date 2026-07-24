@@ -450,6 +450,62 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
     return base
 
 
+def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
+    """임베딩이 필요한(needs_embed=1) 문서를 **doc 단위**(최대 ``limit`` 개 문서)로,
+    각 문서의 전 청크 text 와 함께 낸다 — **허브 자체호스팅 임베딩 워커**용
+    (D45-E 후속·B). 워커가 이 text 를 로컬 모델로 임베딩해 :func:`apply_embeddings`
+    로 돌려보낸다(원문이 서버 밖으로 안 나감).
+
+    doc 단위로 내는 이유: 문서의 전 청크가 한 배치에 함께 가야 apply 가 needs_embed
+    를 깔끔히 내린다(청크 캡으로 쪼개면 큰 문서가 영영 안 끝난다). owner 스코프
+    아님 — 허브 서버사이드 유지보수 잡이라 전 소유자 대상. **루프백 내부 표면**
+    (공개·프록시 미노출)에서만 호출."""
+    docs = store.run(
+        "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
+        "RETURN d.doc_id AS doc_id ORDER BY d.doc_id LIMIT $lim", {"lim": int(limit)}) or []
+    out: list[dict] = []
+    for d in docs:
+        rows = store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d "
+            "RETURN c.chunk_id AS chunk_id, c.text AS text ORDER BY c.chunk_index",
+            {"d": d["doc_id"]}) or []
+        for r in rows:
+            out.append({"doc_id": d["doc_id"], "chunk_id": r["chunk_id"],
+                        "text": r.get("text") or ""})
+    return out
+
+
+def apply_embeddings(store, doc_id: str, embeddings: dict[str, list[float]]) -> dict:
+    """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에
+    강건). 문서의 모든 청크가 임베딩되면 needs_embed=0. 인덱스 열 변이라 drop →
+    SET → 검색 경로 지연 재빌드. 벡터는 워커가 만들었을 뿐 원문은 스토어에만 있다."""
+    base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
+    if not embeddings:
+        base["error"] = "no embeddings"
+        return base
+    ids = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id",
+                    {"d": doc_id}) or []
+    all_ids = {r["id"] for r in ids}
+    if not all_ids:
+        base["error"] = "unknown doc_id"
+        return base
+    _drop_indexes_if_any(store)
+    applied = 0
+    for cid, vec in embeddings.items():
+        if cid not in all_ids:
+            continue
+        store.run("MATCH (c:Chunk) WHERE c.chunk_id = $id SET c.embedding = $emb",
+                  {"id": cid, "emb": list(vec)})
+        applied += 1
+    # 전 청크가 채워졌을 때만 needs_embed 내림(부분 배치는 다음 라운드가 마저).
+    if all_ids <= set(embeddings.keys()):
+        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
+                  {"id": doc_id})
+        base["cleared"] = True
+    base.update(executed=True, embedded=applied)
+    return base
+
+
 def stale_docs(store, *, owner: str | None = None, limit: int = 50) -> list[str]:
     """재임베딩이 필요한 문서 id(needs_embed=1) — 배경 잡이 순회할 대상."""
     where = "d.needs_embed = 1"
