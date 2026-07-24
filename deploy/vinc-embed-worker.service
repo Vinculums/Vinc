@@ -9,6 +9,9 @@ Wants=vinc-sidecar.service
 [Service]
 Type=oneshot
 User=vinc
+# cwd 를 vinc 홈으로 — sentence-transformers 가 모델명을 로컬 경로로 먼저 stat 하는데
+# cwd 가 / 면 vinc 가 그 경로를 stat 못 해 PermissionError 가 난다(HF 다운로드 전).
+WorkingDirectory=/home/vinc
 # 사이드카 토큰(TOKEN)·주소는 사이드카 env 를 그대로 읽는다(루프백 8787).
 # 워커는 VINC_TOKEN 또는 TOKEN 을 읽으므로 sidecar.env 의 TOKEN 이 그대로 쓰인다.
 EnvironmentFile=/etc/vinc/sidecar.env
