@@ -185,6 +185,14 @@ export const api = {
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
   }> => call("/node-context", { owner, node, limit }),
+  // D45-V 1단계 — 흐름 선 클릭: 관계의 evidence·confidence + 양끝 노드 메타/발췌.
+  edgeContext: (owner: string, src: string, dst: string, type: string): Promise<{
+    executed: boolean; evidence?: string; confidence?: number;
+    src?: { id: string; title?: string; one_liner?: string;
+            excerpt?: { doc_id: string; excerpt: string } | null };
+    dst?: { id: string; title?: string; one_liner?: string;
+            excerpt?: { doc_id: string; excerpt: string } | null };
+  }> => call("/edge-context", { owner, src, dst, type }),
   // fragment MERGE(D11 §5) — Bind 확정도 이 단일 쓰기 표면을 그대로 쓴다(D32)
   ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
   importPack: (pack: unknown, owner: string) =>

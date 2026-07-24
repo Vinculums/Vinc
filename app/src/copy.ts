@@ -121,6 +121,19 @@ const EN = {
       sourceLoading: "Finding source passages…",
       sourceNone: "No source passages for this yet. Add documents that mention it.",
       sourceRelated: "Related passages (by title match)",
+      // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
+      relLoading: "Loading link details…",
+      relFail: "Couldn't load this link. Try again in a moment.",
+      relEvidence: "Recorded evidence",
+      relEvidenceNone: "No evidence recorded for this link yet.",
+      relConfidence: (p: number) => `confidence ${Math.round(p * 100)}%`,
+      relSentence: {
+        PREREQUISITE_OF: (a: string, b: string) => `${a} comes before ${b}.`,
+        DERIVES_FROM: (a: string, b: string) => `${a} derives from ${b}.`,
+        INHERITS_FROM: (a: string, b: string) => `${a} inherits from ${b}.`,
+        RELATED_TO: (a: string, b: string) => `${a} and ${b} are related.`,
+        ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
+      } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "Flow, Timeline and Totals are in View.",
       flowNoTies: "No links between topics yet. Add files and the first links appear.",
@@ -370,6 +383,19 @@ const KO: Deck = {
       sourceLoading: "근거 발췌를 찾는 중…",
       sourceNone: "아직 이 항목을 언급한 문서가 없습니다. 관련 문서를 추가하면 여기 나타납니다.",
       sourceRelated: "관련 발췌 (제목 일치)",
+      // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
+      relLoading: "연결 정보를 불러오는 중…",
+      relFail: "연결 정보를 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+      relEvidence: "기록된 근거",
+      relEvidenceNone: "이 연결에 기록된 근거가 아직 없습니다.",
+      relConfidence: (p) => `신뢰도 ${Math.round(p * 100)}%`,
+      relSentence: {
+        PREREQUISITE_OF: (a, b) => `${a}이(가) ${b}보다 먼저 옵니다.`,
+        DERIVES_FROM: (a, b) => `${a}은(는) ${b}에서 파생되었습니다.`,
+        INHERITS_FROM: (a, b) => `${a}은(는) ${b}을(를) 물려받습니다.`,
+        RELATED_TO: (a, b) => `${a}과(와) ${b}은(는) 서로 관련되어 있습니다.`,
+        ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
+      },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "흐름 · 타임라인 · 합계는 보기 안에 있습니다.",
       flowNoTies: "주제 사이 연결이 아직 없습니다. 파일을 추가하면 첫 연결이 생깁니다.",

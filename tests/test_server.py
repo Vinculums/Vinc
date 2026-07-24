@@ -513,6 +513,23 @@ class DocRouteE2E(unittest.TestCase):
             # 무소유 추출 거부
             code, _ = _req(base, "/doc/extract", method="POST", body={"id": did})
             self.assertEqual(code, 400)
+            # D45-V 1단계 — /edge-context: 관계 evidence·confidence + 양끝 메타
+            self.store.run(
+                "MERGE (x:Concept {concept_id:'concept:x'}) SET x.title='X', "
+                "x.one_liner='엑스', x.owner_id='user:a'")
+            self.store.run(
+                "MATCH (a:Concept {concept_id:'concept:개념하나'}), "
+                "(b:Concept {concept_id:'concept:x'}) "
+                "MERGE (a)-[r:DERIVES_FROM]->(b) SET r.evidence='근거 구절', r.confidence=0.6")
+            code, ec = _req(base, "/edge-context?src=" + _up.quote("concept:개념하나")
+                            + "&dst=concept:x&type=DERIVES_FROM&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(ec["executed"])
+            self.assertEqual(ec["evidence"], "근거 구절")
+            self.assertEqual(ec["dst"]["title"], "X")
+            # 화이트리스트 밖 타입 → executed=False(주입 차단)
+            code, bad = _req(base, "/edge-context?src=a&dst=b&type=MENTIONS&owner=user:a")
+            self.assertFalse(bad["executed"])
             # delete
             code, dele = _req(base, "/doc/delete", method="POST",
                               body={"id": did, "owner": "user:a"})

@@ -274,6 +274,44 @@ class DocstoreE2E(unittest.TestCase):
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
 
+    def test_edge_context(self):
+        # D45-V 1단계 — 흐름 선 클릭: evidence·confidence + 양끝 발췌.
+        from api import query as q
+        for cid, t in (("concept:foo", "Foo"), ("concept:bar", "Bar")):
+            self.store.run("MERGE (c:Concept {concept_id:$id}) SET c.title=$t, "
+                           "c.one_liner=$ol, c.owner_id='user:a'",
+                           {"id": cid, "t": t, "ol": f"{t} 한줄"})
+        self.store.run(
+            "MATCH (a:Concept {concept_id:'concept:foo'}), (b:Concept {concept_id:'concept:bar'}) "
+            "MERGE (a)-[r:PREREQUISITE_OF]->(b) SET r.evidence='foo 를 먼저 알아야 bar 가 선다', "
+            "r.confidence=0.8")
+        # foo 를 언급하는 정본 1건 — src 발췌 소스
+        ds.put_doc(self.store, owner="user:a", text="Foo 개념을 정리한 문서.", title="근거")
+        ctx = q.edge_context(owner="user:a", src="concept:foo", dst="concept:bar",
+                             etype="PREREQUISITE_OF", store=self.store)
+        self.assertTrue(ctx["executed"])
+        self.assertEqual(ctx["evidence"], "foo 를 먼저 알아야 bar 가 선다")
+        self.assertAlmostEqual(ctx["confidence"], 0.8)
+        self.assertEqual(ctx["src"]["title"], "Foo")
+        self.assertEqual(ctx["src"]["one_liner"], "Foo 한줄")
+        self.assertIsNotNone(ctx["src"]["excerpt"])          # MENTIONS 대표 발췌
+        self.assertIn("Foo", ctx["src"]["excerpt"]["excerpt"])
+        # 무방향 RELATED_TO — 저장 방향과 반대로 물어도 잡힌다
+        self.store.run(
+            "MATCH (a:Concept {concept_id:'concept:foo'}), (b:Concept {concept_id:'concept:bar'}) "
+            "MERGE (a)-[r:RELATED_TO]->(b) SET r.evidence='', r.confidence=0.0")
+        rev = q.edge_context(owner="user:a", src="concept:bar", dst="concept:foo",
+                             etype="RELATED_TO", store=self.store)
+        self.assertTrue(rev["executed"])
+        self.assertEqual(rev["evidence"], "")                # 빈 evidence = Empty 상태용
+        # 화이트리스트 밖 타입 거부(Cypher 주입 차단) · 소유 밖 = 미지 엣지
+        bad = q.edge_context(owner="user:a", src="a", dst="b", etype="MENTIONS",
+                             store=self.store)
+        self.assertIn("unsupported", bad.get("error", ""))
+        other = q.edge_context(owner="user:b", src="concept:foo", dst="concept:bar",
+                               etype="PREREQUISITE_OF", store=self.store)
+        self.assertFalse(other["executed"])
+
     def test_mentions_relink_per_doc(self):
         # 개념을 심고 그 제목 토큰을 담은 문서를 put → MENTIONS 생성;
         # 토큰을 뺀 편집 → 링크 소멸(DETACH + doc 단위 재계산).

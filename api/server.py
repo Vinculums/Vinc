@@ -410,6 +410,12 @@ class VincApp:
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4), store=r))
 
+    def read_edge_context(self, p):
+        # D45-V 1단계 — 흐름 뷰 선 클릭: 관계의 evidence·confidence + 양끝 발췌.
+        return self._read(lambda r: q.edge_context(
+            owner=_req(p, "owner"), src=_req(p, "src"), dst=_req(p, "dst"),
+            etype=_req(p, "type"), store=r))
+
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
 
@@ -792,6 +798,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
             "/node-context": app.read_node_context,
+            "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,

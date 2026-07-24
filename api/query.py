@@ -1411,6 +1411,84 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             store.close()
 
 
+# edge_context 허용 관계 — E-G6 evidence/confidence 보유 5종만. etype 은 Cypher 에
+# 보간되므로 **화이트리스트 검증이 보안 경계다**(임의 라벨 주입 차단).
+_EDGE_CTX_TYPES = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM",
+                   "RELATED_TO", "ABOUT")
+
+
+def edge_context(*, owner: str, src: str, dst: str, etype: str,
+                 cfg=None, store=None) -> dict:
+    """엣지→정본 컨텍스트(D45-V 1단계) — 흐름 뷰에서 선(관계)을 눌렀을 때
+    "왜 A 가 B 로 이어지는가"에 답한다. 조회 전용.
+
+    반환: 관계의 evidence(원문 구절)·confidence + 양끝 노드 메타(title·one_liner/
+    summary)와 대표 정본 발췌 1건씩(MENTIONS 첫 건 — 개념만; Episode 는 summary 가
+    곧 설명). RELATED_TO 는 무방향 매치(저장 방향 무관), ABOUT 은 Episode→Concept.
+    evidence 가 빈 관계도 executed=True 로 돌려준다 — UI 는 Empty 상태로 그린다
+    (클릭 불가 대신 "기록된 근거 없음"을 말한다, 조용한 실패 금지)."""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "edge-context", "executed": False,
+                  "src": {"id": src}, "dst": {"id": dst}, "type": etype}
+    if etype not in _EDGE_CTX_TYPES:
+        base["error"] = f"unsupported edge type: {etype}"
+        return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        if etype == "ABOUT":
+            rows = store.run(
+                "MATCH (a:Episode)-[r:ABOUT]->(b:Concept) "
+                "WHERE a.episode_id = $s AND b.concept_id = $d "
+                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                "RETURN r.evidence AS ev, r.confidence AS cf, "
+                "a.title AS at, a.summary AS ad, b.title AS bt, b.one_liner AS bd",
+                {"s": src, "d": dst, "owner": owner}) or []
+        else:
+            arrow = "-" if etype == "RELATED_TO" else "->"
+            rows = store.run(
+                f"MATCH (a:Concept)-[r:{etype}]{arrow}(b:Concept) "
+                "WHERE a.concept_id = $s AND b.concept_id = $d "
+                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                "RETURN r.evidence AS ev, r.confidence AS cf, "
+                "a.title AS at, a.one_liner AS ad, b.title AS bt, b.one_liner AS bd",
+                {"s": src, "d": dst, "owner": owner}) or []
+        if not rows:
+            base["note"] = "unknown edge (또는 소유 스코프 밖)"
+            return base
+        r = rows[0]
+        def _mention_excerpt(cid: str) -> dict | None:
+            m = store.run(
+                "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) WHERE c.concept_id = $id "
+                "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                "RETURN ch.doc_id AS doc_id, ch.text AS text "
+                "ORDER BY ch.doc_id, ch.chunk_index LIMIT 1",
+                {"id": cid, "owner": owner}) or []
+            if not m:
+                return None
+            return {"doc_id": m[0].get("doc_id") or "",
+                    "excerpt": " ".join((m[0].get("text") or "").split())[:240]}
+        base.update(
+            executed=True,
+            evidence=r.get("ev") or "",
+            confidence=float(r.get("cf") or 0.0),
+            src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
+                 "excerpt": None if etype == "ABOUT" else _mention_excerpt(src)},
+            dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
+                 "excerpt": _mention_excerpt(dst)})
+        return base
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
            depth: int = 2, cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.

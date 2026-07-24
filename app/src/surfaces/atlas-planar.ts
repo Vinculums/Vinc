@@ -109,11 +109,20 @@ function trackSize(el: HTMLElement, paint: (w: number, h: number) => void): () =
  *  대신 컨테이너에 위임 3개만 건다(다시 그려도 재배선 불필요 · dispose 가 단순). */
 function wireFocus(el: HTMLElement, h: {
   focus: (id: string) => void; clear: () => void; open: (id: string) => void;
+  /** 선(엣지) 클릭 — data-e 인덱스. 노드가 우선(마크가 DOM 상 뒤 = 위)이라
+   *  노드에 닿은 클릭은 여기로 오지 않는다. 미지정 시 기존 동작 그대로. */
+  edge?: (idx: number) => void;
 }): () => void {
   const hit = (e: Event) => (e.target as Element).closest?.("[data-id]") as SVGElement | null;
   const over = (e: Event) => { const g = hit(e); if (g) h.focus(g.dataset.id!); else h.clear(); };
   const leave = () => h.clear();
-  const click = (e: Event) => { const g = hit(e); if (g) h.open(g.dataset.id!); };
+  const click = (e: Event) => {
+    const g = hit(e);
+    if (g) { h.open(g.dataset.id!); return; }
+    if (!h.edge) return;
+    const ge = (e.target as Element).closest?.("[data-e]") as SVGElement | null;
+    if (ge) h.edge(Number(ge.dataset.e));
+  };
   el.addEventListener("mouseover", over);
   el.addEventListener("mouseleave", leave);
   el.addEventListener("click", click);
@@ -130,7 +139,9 @@ function wireFocus(el: HTMLElement, h: {
  *  나타내고(색조 금지), evidence 는 경로의 <title> = 네이티브 툴팁이 된다. */
 export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
   o: { seed?: string; depth: 1 | 2 | 3; arrows: boolean; labels: boolean;
-       onOpen: (id: string) => void }): PlanarHandle {
+       onOpen: (id: string) => void;
+       /** 선 클릭 → 관계 패널(D45-V). 미지정 = 히트영역·클릭 없음(L0 집계 엣지). */
+       onEdge?: (e: FlowEdge) => void }): PlanarHandle {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // 방향 3종만 남긴다. L0(주제 ties)은 type 대신 weight 로 방향을 싣고 오므로
   // weight 보유 엣지도 통과시킨다(L1/L2 fetch 의 GraphEdge 에는 weight 가 없다).
@@ -260,9 +271,17 @@ export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
       const x2 = b.x - rOf(e.target) - (o.arrows ? 3 : 0);
       const tip = e.evidence
         || `${byId.get(e.source)!.label} → ${byId.get(e.target)!.label}`;
+      // 히트영역(D45-V 1단계): 1~2px 선은 Fitts 상 최악의 표적 — 같은 경로에
+      // 투명 14px 스트로크를 겹쳐 클릭/hover 표적만 넓힌다(GLSP 표준 기법).
+      // pointer-events="stroke" 가 핵심: 투명 스트로크도 포인터를 받는다.
+      const hitPath = o.onEdge
+        ? `<path class="pl-hit" d="${curveH(x1, a.y, x2, b.y)}" fill="none"`
+          + ` stroke="transparent" stroke-width="14" pointer-events="stroke"`
+          + ` style="cursor:pointer"></path>`
+        : "";
       return `<g class="pl-link" data-e="${i}"><path class="pl-edge" d="${curveH(x1, a.y, x2, b.y)}"`
         + ` stroke-opacity="${(0.35 + 0.5 * c).toFixed(2)}" stroke-width="${(1 + c).toFixed(2)}"`
-        + `${o.arrows ? ` marker-end="url(#pl-arw)"` : ""}><title>${esc(tip)}</title></path></g>`;
+        + `${o.arrows ? ` marker-end="url(#pl-arw)"` : ""}><title>${esc(tip)}</title></path>${hitPath}</g>`;
     }).join("");
 
     const marks = live.map((id) => {
@@ -329,7 +348,10 @@ export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
   }
 
   const stopSize = trackSize(el, (w, h) => { el.innerHTML = wrap(draw(w, h)); collect(); });
-  const stopFocus = wireFocus(el, { focus, clear, open: o.onOpen });
+  const stopFocus = wireFocus(el, {
+    focus, clear, open: o.onOpen,
+    edge: o.onEdge ? (i) => { const e = links[i]; if (e) o.onEdge!(e); } : undefined,
+  });
   return { dispose() { stopFocus(); stopSize(); } };
 }
 

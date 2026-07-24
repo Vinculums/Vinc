@@ -461,6 +461,47 @@ export async function renderAtlas(el: HTMLElement) {
     if ((nd.degree || 0) === 0) void suggestTiesInto(nd);
   }
 
+  async function openEdgeDetail(e: { source: string; target: string; type: string }) {
+    // D45-V 1단계 — 흐름 선 클릭: "왜 A 가 B 로 이어지는가". 클릭=고정(pin) —
+    // 상세 패널 자리를 그대로 쓴다(노드 상세와 같은 표면, ESC/다른 클릭으로 이동).
+    const esc2 = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    detail.hidden = false;
+    detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.relLoading}</p>`;
+    try {
+      const res = await api.edgeContext(cfg.owner, e.source, e.target, e.type);
+      if (detail.hidden) return;   // 그 사이 다른 층으로 이동 — 늦은 응답 폐기
+      if (!res.executed) {
+        detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.relFail}</p>`;
+        return;
+      }
+      const a = res.src?.title || e.source, b = res.dst?.title || e.target;
+      const sentence = (COPY.ui.atlasx.relSentence[e.type]
+        || COPY.ui.atlasx.relSentence.RELATED_TO)(a, b);
+      const conf = res.confidence && res.confidence > 0
+        ? ` <span class="hint">· ${COPY.ui.atlasx.relConfidence(res.confidence)}</span>` : "";
+      const side = (t: string, s?: { one_liner?: string;
+                                     excerpt?: { excerpt: string } | null }) => {
+        const body = s?.one_liner || s?.excerpt?.excerpt || "";
+        return body ? `
+          <div class="list-row" style="display:block">
+            <span class="title" style="font-size:.85em">${esc2(t)}</span>
+            <p class="hint" style="margin:.15rem 0 0">${esc2(body)}</p>
+          </div>` : "";
+      };
+      detail.innerHTML = `
+        <h2>${esc2(a)} → ${esc2(b)}</h2>
+        <p>${esc2(sentence)}${conf}</p>
+        <p class="hint" style="margin-bottom:.3rem">${COPY.ui.atlasx.relEvidence}</p>
+        ${res.evidence
+          ? `<p>${esc2(res.evidence)}</p>`
+          : `<p class="hint">${COPY.ui.atlasx.relEvidenceNone}</p>`}
+        ${side(a, res.src)}${side(b, res.dst)}`;
+    } catch {
+      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.relFail}</p>`;
+    }
+  }
+
   async function loadNodeSource(nd: N3) {
     // 발췌는 증강 — 실패·부재가 상세 패널을 깨지 않는다(문구만 남기고 조용히).
     const box = detail.querySelector<HTMLElement>("#node-source");
@@ -887,6 +928,9 @@ export async function renderAtlas(el: HTMLElement) {
     } else setMsg("");
     planar = mountFlow(canvas, nodes, dirEdges, {
       seed, depth: p.flowDepth, arrows: p.arrows, labels: p.labels !== "none", onOpen: openNode,
+      // D45-V 1단계 — 실엣지 층(L1/L2)에서만 선 클릭 → 관계 패널. L0 은 주제 집계
+      // 엣지(TIES — 그래프 관계 아님)라 배선하지 않는다(showPlanar L0 분기 참조).
+      onEdge: (e) => void openEdgeDetail(e),
     });
   }
 
