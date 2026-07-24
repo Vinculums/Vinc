@@ -452,6 +452,43 @@ class VincApp:
             self.store, _req(body, "id"), owner=body.get("owner") or None))
         return 200, res
 
+    def write_doc_reembed(self, body):
+        # D45-E 후속3 — 앱 편집으로 벡터가 빠진 문서(needs_embed)의 임베딩을 채운다.
+        # 임베딩 스택(chonkie/sentence-transformers)이 없으면 조용히 note 강등(FTS 는
+        # 즉시 서빙되므로 무해). id 지정 = 그 문서, 미지정 = owner 의 stale 전부.
+        owner = body.get("owner") or None
+        did = body.get("id") or None
+
+        def _run():
+            try:
+                from engines.embed_pipeline import build_embeddings_model, _to_list, model_dim
+            except Exception as exc:
+                return {"kind": "doc.reembed", "executed": False,
+                        "note": f"embedding stack unavailable: {type(exc).__name__}"}
+            try:
+                model = build_embeddings_model("local-en")
+                from chonkie import EmbeddingsRefinery
+                from chonkie.types import Chunk as _CK
+                refinery = EmbeddingsRefinery(embedding_model=model)
+                def embed(texts):
+                    cks = [_CK(text=t, start_index=0, end_index=len(t), token_count=0) for t in texts]
+                    return [_to_list(e.embedding) for e in refinery(cks)]
+            except Exception as exc:
+                return {"kind": "doc.reembed", "executed": False,
+                        "note": f"embedding model load failed: {type(exc).__name__}"}
+            targets = [did] if did else docstore.stale_docs(self.store, owner=owner)
+            done = 0
+            for t in targets:
+                r = docstore.reembed_doc(self.store, t, owner=owner, embed=embed)
+                if r.get("executed"):
+                    done += 1
+            if targets:
+                self.store.build_search_indexes(dim=model_dim("local-en"))
+            return {"kind": "doc.reembed", "executed": True, "docs": done,
+                    "total": len(targets)}
+
+        return 200, self.jobs.run_sync("doc.reembed", _run)
+
     def write_doc_extract(self, body):
         # D45-V — 정본→노드 파생. apply=false(기본) = 후보 제안(옵션2 확인 UI 의
         # 데이터원), apply=true = 반영(옵션1 결정론 또는 승인된 후보). candidates
@@ -846,6 +883,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
+            "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

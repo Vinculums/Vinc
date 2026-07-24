@@ -196,12 +196,18 @@ export const api = {
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
   docPut: (owner: string, text: string, id?: string, title?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
-    chunks?: number; error?: string;
+    chunks?: number; needs_embed?: boolean; error?: string;
   }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}), ...(title ? { title } : {}) }),
+  docReembed: (owner: string, id: string): Promise<{ executed: boolean; docs?: number }> =>
+    call("/doc/reembed", undefined, { owner, id }),
   docExtract: (owner: string, id: string, apply = false): Promise<{
     executed: boolean; candidates?: { title: string }[];
     applied?: { created: number; matched: number }; mentions?: number;
   }> => call("/doc/extract", undefined, { owner, id, apply }),
+  docList: (owner: string): Promise<{
+    executed: boolean; count?: number;
+    docs?: { doc_id: string; title: string; origin: string; chunks: number; updated_at: string }[];
+  }> => call("/docs", { owner }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
     executed: boolean; total?: number;

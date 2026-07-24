@@ -109,10 +109,10 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 5)   # D45 — Chunk=SSoT + 문서 동기화
+        self.assertEqual(eschema.SCHEMA_VERSION, 6)   # D45-E — 편집 재임베딩 표식
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
-        # 0→5 는 v1~v5 전 스텝 포함(추적열·Bridge owner·관계 증거·Chunk SSoT·doc sync)
+        # 0→6 는 v1~v6 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed)
         v0 = eschema.migration_statements(0)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
         self.assertTrue(any("ADD updated_at" in s for s in v0))
@@ -121,13 +121,14 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("ALTER TABLE Chunk ADD owner_id STRING DEFAULT ''", v0)   # v4
         self.assertIn("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1", v0)  # v4
         self.assertIn("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0", v0)  # v5
-        # v3→5 = Chunk SSoT(v4) + _DocMeta sync_seq(v5); v4→5 = _DocMeta 만
+        self.assertIn("ALTER TABLE _DocMeta ADD needs_embed INT64 DEFAULT 0", v0)  # v6
+        # v3→6 = Chunk SSoT(v4) + _DocMeta sync_seq(v5)·needs_embed(v6)
         v3 = eschema.migration_statements(3)
         self.assertTrue(any("Chunk" in s for s in v3))
         self.assertTrue(any("_DocMeta" in s for s in v3))
-        v4 = eschema.migration_statements(4)
-        self.assertTrue(v4 and all("_DocMeta" in s for s in v4))
-        self.assertEqual(eschema.migration_statements(5), [])   # 최신은 no-op
+        v5 = eschema.migration_statements(5)
+        self.assertTrue(v5 and all("needs_embed" in s for s in v5))
+        self.assertEqual(eschema.migration_statements(6), [])   # 최신은 no-op
 
     def test_docmeta_table_and_chunk_ssot_columns(self):
         # D45 — Chunk=SSoT: 신규 설치 DDL 에 소유·오프셋 열과 _DocMeta(본문 없는

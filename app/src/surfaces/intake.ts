@@ -28,6 +28,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
           <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
           <div class="dz-actions">
             <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
+            <button class="btn" id="new-doc">${COPY.ui.atlasx.edNew}</button>
             ${WEB ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
           </div>
         </div>
@@ -44,6 +45,11 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
     const openPicker = () => input.click();
 
     el.querySelector("#pick")!.addEventListener("click", openPicker);
+    // D45-E — 빈 문서로 시작(파일 없이 앱 안에서 바로 작성 → 첫 저장 시 신규 정본 생성).
+    el.querySelector("#new-doc")?.addEventListener("click", async () => {
+      const { openDocSheet } = await import("../doc-editor");
+      await openDocSheet({ owner: USER_OWNER });
+    });
     drop.addEventListener("click", (e) => {
       if ((e.target as HTMLElement).closest("button")) return;   // 버튼은 자체 핸들러
       openPicker();

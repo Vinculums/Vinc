@@ -146,7 +146,7 @@ def _meta(store, doc_id: str) -> dict | None:
         "MATCH (d:_DocMeta) WHERE d.doc_id = $id RETURN d.doc_id AS doc_id, "
         "d.owner_id AS owner_id, d.title AS title, d.origin AS origin, "
         "d.content_hash AS content_hash, d.chunk_count AS chunk_count, "
-        "d.updated_at AS updated_at", {"id": doc_id})
+        "d.updated_at AS updated_at, d.needs_embed AS needs_embed", {"id": doc_id})
     return rows[0] if rows else None
 
 
@@ -278,12 +278,16 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             params["emb"] = list(vectors[i])
         store.run(f"MERGE (c:Chunk {{chunk_id: $id}}) SET {sets}", params)
 
+    # needs_embed: 임베딩 없이 적재됐으면 1(앱 편집·동기화 수신 경로) — 벡터 검색이
+    # 낡음을 표식하고 백그라운드 재임베딩 잡의 대상이 된다. embed 를 받은 경로(배치)는 0.
+    needs_embed = 0 if vectors is not None else 1
     store.run(
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
-        "d.updated_at = $ts, d.sync_seq = $seq",
+        "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne",
         {"id": doc_id, "owner": owner, "title": title, "origin": origin,
-         "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq})
+         "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq,
+         "ne": needs_embed})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
 
@@ -293,7 +297,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
 
     base.update(executed=True, skipped=False, chunks=len(chunks), replaced=removed,
                 content_hash=content_hash, mentions=linked, updated_at=stamp,
-                sync_seq=seq, note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
+                sync_seq=seq, needs_embed=bool(needs_embed),
+                note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     return base
 
 
@@ -359,7 +364,8 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     base.update(executed=True, text=text, title=meta.get("title") or "",
                 origin=meta.get("origin") or "", owner_id=meta.get("owner_id"),
                 content_hash=meta.get("content_hash"), chunks=len(rows),
-                updated_at=meta.get("updated_at"), verified=verified)
+                updated_at=meta.get("updated_at"), verified=verified,
+                needs_embed=bool(int(meta.get("needs_embed") or 0)))
     if not verified:
         base["note"] = ("복원 검증 실패 — 레거시(오프셋 미기록) 또는 부분 기록. "
                         "re-put 으로 치유 가능")
@@ -402,10 +408,58 @@ def list_docs(store, *, owner: str | None = None) -> dict:
     where = "WHERE d.owner_id = $o " if owner else ""
     rows = store.run(
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
-        "d.origin AS origin, d.chunk_count AS chunks, d.updated_at AS updated_at "
+        "d.origin AS origin, d.chunk_count AS chunks, d.updated_at AS updated_at, "
+        "d.needs_embed AS needs_embed "
         "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
-    return {"kind": "doc.list", "executed": True, "docs": rows or [],
-            "count": len(rows or [])}
+    docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))} for r in (rows or [])]
+    return {"kind": "doc.list", "executed": True, "docs": docs, "count": len(docs)}
+
+
+def reembed_doc(store, doc_id: str, *, owner: str | None,
+                embed: Callable[[list[str]], list[list[float]]]) -> dict:
+    """문서의 기존 청크에 임베딩을 채운다(D45-E 후속3 — 재청킹 없이 벡터만 갱신).
+
+    앱 편집/동기화 수신 경로는 임베딩 없이 청크를 적재해 needs_embed=1 이다. 이
+    잡이 그 청크의 text 를 임베딩해 embedding 열을 SET 하고 needs_embed=0 으로
+    내린다. 인덱스가 걸린 열 변이라 drop→SET→(검색 경로 지연 재빌드). SEC-1 가드."""
+    base: dict[str, Any] = {"kind": "doc.reembed", "executed": False, "doc_id": doc_id}
+    meta = _meta(store, doc_id)
+    if meta is None:
+        base["error"] = "unknown doc_id"
+        return base
+    if owner is not None and meta.get("owner_id") != owner:
+        base["error"] = "owner mismatch (SEC-1)"
+        return base
+    rows = store.run(
+        "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, c.text AS text "
+        "ORDER BY c.chunk_index", {"d": doc_id}) or []
+    if not rows:
+        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
+                  {"id": doc_id})
+        base.update(executed=True, embedded=0)
+        return base
+    vectors = embed([r.get("text") or "" for r in rows])
+    _drop_indexes_if_any(store)
+    for r, v in zip(rows, vectors):
+        store.run("MATCH (c:Chunk) WHERE c.chunk_id = $id SET c.embedding = $emb",
+                  {"id": r["id"], "emb": list(v)})
+    store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
+              {"id": doc_id})
+    base.update(executed=True, embedded=len(rows),
+                note="search indexes dropped — 검색 경로가 지연 재빌드")
+    return base
+
+
+def stale_docs(store, *, owner: str | None = None, limit: int = 50) -> list[str]:
+    """재임베딩이 필요한 문서 id(needs_embed=1) — 배경 잡이 순회할 대상."""
+    where = "d.needs_embed = 1"
+    if owner:
+        where += " AND d.owner_id = $o"
+    rows = store.run(
+        f"MATCH (d:_DocMeta) WHERE {where} RETURN d.doc_id AS id "
+        f"ORDER BY d.updated_at LIMIT {max(1, min(int(limit), 500))}",
+        {"o": owner} if owner else None) or []
+    return [r["id"] for r in rows]
 
 
 def new_doc_id() -> str:

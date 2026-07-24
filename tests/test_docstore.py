@@ -319,6 +319,24 @@ class DocstoreE2E(unittest.TestCase):
         self.assertIn("error", q.ledger_drilldown(owner="user:a", domain="phys",
                                                   mark="bogus", store=self.store))
 
+    def test_needs_embed_and_reembed(self):
+        # D45-E 후속3 — 임베딩 없이 저장하면 needs_embed=1, reembed 가 채우고 0 으로.
+        out = ds.put_doc(self.store, owner="user:a", text="벡터 없는 편집 저장. " * 40,
+                         title="편집")   # embed 미지정 → 벡터 없음
+        did = out["doc_id"]
+        self.assertTrue(out["needs_embed"])
+        self.assertEqual(ds.get_doc(self.store, did)["needs_embed"], True)
+        self.assertIn(did, ds.stale_docs(self.store, owner="user:a"))
+        # embed 를 주면 needs_embed=0(배치 경로 동형)
+        emb = lambda ts: [[1.0, 0.0, 0.0, 0.0] for _ in ts]
+        r = ds.reembed_doc(self.store, did, owner="user:a", embed=emb)
+        self.assertTrue(r["executed"])
+        self.assertGreater(r["embedded"], 0)
+        self.assertFalse(ds.get_doc(self.store, did)["needs_embed"])
+        self.assertNotIn(did, ds.stale_docs(self.store, owner="user:a"))
+        # SEC-1: 타인 재임베딩 거부
+        self.assertIn("error", ds.reembed_doc(self.store, did, owner="user:b", embed=emb))
+
     def test_doc_highlights_e2e(self):
         # D45-V2 2단계 — 전문 내 개념 언급 char 범위(밑줄용). 범위는 토큰 매칭 계산.
         text = "# 노트\n\n양자 얽힘을 정리한다. 양자 상태는 공유된다.\n"

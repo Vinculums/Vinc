@@ -25,6 +25,7 @@ const EN = {
     idle: "No documents yet.",
     idleCta: "Import files",
     header: (n: number, m: number) => `${n} documents · ${m} topics`,
+    docsHeader: (n: number) => `Documents · ${n}`,
     error: "Documents couldn't load. Retry anytime. Nothing was changed.",
     actions: { atlas: "Show in Atlas", pin: "Pin", tag: "Tag" },
   },
@@ -130,6 +131,8 @@ const EN = {
       readerUnverified: "Reconstructed (not verified)",
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "Edit",
+      edNew: "New document",
+      edTitlePlaceholder: "Untitled",
       edDone: "Done",
       edDirty: "Unsaved changes",
       edSaving: "Saving…",
@@ -140,6 +143,8 @@ const EN = {
       edReload: "Load the newer version",
       edExtractOffer: (n: number) => `${n} concept candidate${n === 1 ? "" : "s"} found · Apply`,
       edExtractDone: (c: number, m: number) => `Concepts +${c} · ${m} link${m === 1 ? "" : "s"} refreshed`,
+      edReindexing: "Updating search index…",
+      edReindexed: "Search index up to date",
       // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
       drillLoading: "Loading concepts…",
       drillFail: "Couldn't load this segment. Try again in a moment.",
@@ -318,6 +323,7 @@ const KO: Deck = {
     idle: "아직 추가된 문서가 없습니다.",
     idleCta: "파일 가져오기",
     header: (n, m) => `문서 ${n}개 · 주제 ${m}개`,
+    docsHeader: (n) => `문서 · ${n}`,
     error: "문서를 불러오지 못했습니다. 언제든 다시 시도하세요. 바뀐 것은 없습니다.",
     actions: { atlas: "Atlas에서 보기", pin: "고정", tag: "태그" },
   },
@@ -421,6 +427,8 @@ const KO: Deck = {
       readerUnverified: "복원본 (검증 안 됨)",
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "편집",
+      edNew: "새 문서",
+      edTitlePlaceholder: "제목 없음",
       edDone: "완료",
       edDirty: "저장 안 됨",
       edSaving: "저장 중…",
@@ -431,6 +439,8 @@ const KO: Deck = {
       edReload: "새 버전 불러오기",
       edExtractOffer: (n) => `개념 후보 ${n}개 발견 · 반영`,
       edExtractDone: (c, m) => `개념 +${c} · 링크 ${m}개 재연결`,
+      edReindexing: "검색 색인 최신화 중…",
+      edReindexed: "검색 색인 최신",
       // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
       drillLoading: "개념을 불러오는 중…",
       drillFail: "이 구간을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
