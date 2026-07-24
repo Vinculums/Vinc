@@ -1,45 +1,72 @@
 # Vinc 원격 프로파일(D36 §5) — Caddy 리버스 프록시 + 자동 TLS.
-# 적용: VINC_DOMAIN 을 env 로 주입(systemd Environment=VINC_DOMAIN=…) 후
+# 적용: VINC_DOMAIN(정본) 과 VINC_LEGACY_DOMAIN(구 도메인, 병행) 을 env 로 주입
+#   (systemd Environment=VINC_DOMAIN=vincs.io  Environment=VINC_LEGACY_DOMAIN=vincs.app),
 #   /etc/caddy/Caddyfile 로 복사, `caddy validate` → `systemctl reload caddy`.
 # 이 파일은 배포 정본과 1:1 — 편집 시 서버에도 반영할 것.
+#
+# 도메인 이전(vincs.app→vincs.io):
+#   - {$VINC_DOMAIN}=vincs.io 가 정본(사이트+API+MCP).
+#   - {$VINC_LEGACY_DOMAIN}=vincs.app 는 병행 유지:
+#       · /api/*·/connect-app·/auth/*·/account/*·/subscribe/*·/unsubscribe 는 계속 서빙
+#         (기존 이메일 매직링크·이미 배포된 데스크탑 클라이언트가 여기로 온다).
+#       · 그 외 마케팅 경로는 정본으로 301.
+#   - mcp.{$VINC_LEGACY_DOMAIN} 도 계속 서빙(claude.ai 커넥터·기존 클라이언트 sync 대상).
+# 구 도메인은 이미 배포된 클라이언트가 소진될 때까지(어쩌면 무기한) 은퇴하지 않는다.
 
+# ── 정본 도메인 (vincs.io) ──────────────────────────────────────────────────
 {$VINC_DOMAIN} {
-    # 계정/뉴스레터 API → 루프백 Hono 서비스 (트랙 3). api.vincs.app 없음(같은 오리진).
     reverse_proxy /api/* 127.0.0.1:8080
 
     root * /srv/www
     file_server
     encode zstd gzip
 
-    # ── 캐시 정책 ──────────────────────────────────────────────────────────
-    # 파일명에 콘텐츠 해시가 박힌 번들 = 불변 → 1년 영구캐시(재검증 왕복 제거).
     @immutable path /app/assets/* /community/assets/* /assets/*
     header @immutable Cache-Control "public, max-age=31536000, immutable"
-    # API/내부 = 세션·테넌트 데이터 → 캐시 금지(심층방어).
     @nostore path /api/* /internal/*
     header @nostore Cache-Control "no-store"
-    # 그 외(HTML·비해시 정적) = 항상 재검증(배포 즉시 반영, Etag→304).
     @revalidate not path /app/assets/* /community/assets/* /assets/* /api/* /internal/*
     header @revalidate Cache-Control "no-cache"
 
     header {
-        # 정적 홈페이지 — 최소 표면(외부 리소스 0 이므로 강한 CSP 가능)
         Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
         X-Frame-Options "DENY"
-        # HSTS — 첫 방문 이후 강제 HTTPS(다운그레이드/SSL-strip 창 차단). preload 는
-        # 되돌리기 어려워 보류(includeSubDomains 만; mcp. 도 HTTPS 이므로 안전).
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
 }
 
+# ── 구 도메인 (vincs.app) — 병행: 상호작용 경로는 서빙, 마케팅은 301 ──────────────
+{$VINC_LEGACY_DOMAIN} {
+    # 상호작용 경로는 계속 서빙(기존 이메일 링크·데스크탑 클라이언트). 오리진은
+    # 계정 백엔드 allowedOrigins·사이드카 VINC_CONNECT_ORIGINS 가 두 도메인 다 허용.
+    @keep path /api/* /internal/* /connect-app* /auth/* /account/* /subscribe/* /unsubscribe*
+    handle @keep {
+        reverse_proxy /api/* 127.0.0.1:8080
+        root * /srv/www
+        file_server
+        @nostore2 path /api/* /internal/*
+        header @nostore2 Cache-Control "no-store"
+    }
+    # 그 외(홈·guide·download·release·community·privacy 등 마케팅) → 정본으로 영구 이전.
+    handle {
+        redir https://{$VINC_DOMAIN}{uri} 301
+    }
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+# ── 정본 MCP (mcp.vincs.io) ─────────────────────────────────────────────────
 mcp.{$VINC_DOMAIN} {
-    # 내부 표면(/internal/*)은 공개 도달 금지 — graph-owner/purge-owner 는 계정
-    # 백엔드가 루프백(127.0.0.1:8790, env.mcpInternalUrl)으로만 호출한다. 서명
-    # 게이트가 이미 막지만 공개 프록시에서 빼서 공격 표면을 줄인다(심층방어).
     @internal path /internal/*
     respond @internal 404
+    reverse_proxy 127.0.0.1:8790
+}
 
+# ── 구 MCP (mcp.vincs.app) — 병행: claude.ai 커넥터·기존 클라이언트 sync 대상 ──────
+# 리다이렉트 불가(OAuth 발급자·스트리밍 API·등록된 커넥터 URL이 이 호스트를 가리킴).
+mcp.{$VINC_LEGACY_DOMAIN} {
+    @internal path /internal/*
+    respond @internal 404
     reverse_proxy 127.0.0.1:8790
 }

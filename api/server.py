@@ -329,7 +329,12 @@ class VincApp:
         """무인증(브라우저 호출) — 인증은 state 논스가 대신한다. Origin 은 심층방어
         (브라우저 교차오리진 POST 는 항상 Origin 을 실음; curl 등 무 Origin 은 state
         게이트만으로 충분)."""
-        if origin and origin != "https://vincs.app":
+        # 도메인 이전(vincs.app→vincs.io): 두 오리진을 모두 허용한다. 기존 배포 데스크탑
+        # 클라이언트는 vincs.app/connect-app 를, 신규는 vincs.io 를 연다 — 병행 필수.
+        # VINC_CONNECT_ORIGINS(콤마 구분)로 오버라이드 가능.
+        allowed = [o.strip() for o in os.environ.get(
+            "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
+        if origin and origin not in allowed:
             return 403, {"error": "origin not allowed"}
         state = (body.get("state") or "").strip()
         key = (body.get("key") or "").strip()
