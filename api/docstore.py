@@ -412,3 +412,112 @@ def new_doc_id() -> str:
     """비결정론 doc_id 가 필요할 때(내용 무관 신규 정체성)의 대안 — 기본 경로는
     make_doc_id(결정론)다."""
     return "d" + uuid.uuid4().hex[:16]
+
+
+# ── 정본→노드 파생 (D45-V — 옵션1 결정론 + 옵션2 확인 흐름의 공용 백엔드) ────────
+# 옵션1(결정론): 헤딩 구조에서 개념 후보를 기계적으로 뽑는다 — LLM 없음·오프라인·
+# 멱등. 옵션2(LLM+확인): LLM(예: Claude via MCP vinc_doc_get)이 후보를 만들되,
+# **반영은 같은 apply 계약**을 지나므로 확인 UI 는 후보의 출처를 가리지 않는다.
+# 자동 반영은 하지 않는다 — extract 는 후보 제안이 기본이고 apply 는 명시 opt-in
+# (편집이 사용자가 다듬은 개념을 조용히 덮어쓰지 않게, status='proposed' 로 표식).
+
+_SLUG_RE = re.compile(r"[^a-z0-9가-힣]+")
+
+
+def _slug(s: str) -> str:
+    return _SLUG_RE.sub("-", s.strip().lower()).strip("-")[:60]
+
+
+def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
+    """순수 결정론 추출(옵션1) — 마크다운 헤딩(##/###)마다 개념 후보 1개.
+
+    후보 = {title, one_liner(헤딩 다음 첫 비빈 줄 ≤400자 — concepts_ingest 의
+    _one_liner 관례), slug}. H1 은 문서 제목으로 보고 제외. 같은 slug 는 첫
+    등장만(멱등). LLM·네트워크·스토어 없음 — 어디서든 같은 입력 = 같은 후보."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"^(#{2,3})\s+(.+)$", line.strip())
+        if not m:
+            continue
+        title = m.group(2).strip().lstrip("*").strip()
+        slug = _slug(title)
+        if not slug or slug in seen:
+            continue
+        one_liner = ""
+        for nxt in lines[i + 1:]:
+            s = nxt.strip()
+            if s.startswith("#"):
+                break
+            if s:
+                one_liner = s.lstrip("*").strip()[:400]
+                break
+        seen.add(slug)
+        out.append({"title": title, "one_liner": one_liner, "slug": slug})
+        if len(out) >= max_candidates:
+            break
+    return out
+
+
+def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
+                candidates: list[dict] | None = None) -> dict:
+    """doc 의 개념 후보를 제안하고(apply=False), 승인되면 반영한다(apply=True).
+
+    - 후보 미지정 → 결정론 추출(extract_concepts, 옵션1). 지정 → 그 목록을 반영
+      (옵션2 — LLM/사용자가 다듬은 후보. [{title, one_liner?}] 만 신뢰하고 id 는
+      서버가 slug 로 재파생 — 외부 id 주입 금지).
+    - 반영 = Concept MERGE(concept_id = 'concept:{slug}', status='proposed',
+      domain='' — 도메인 귀속은 후속 편집/UI 몫) + 이 doc 의 MENTIONS 재링크
+      (새 개념이 즉시 뷰·검색 그래프 암에 합류). **기존 개념(matched)은 title/
+      one_liner 를 덮어쓰지 않는다** — 사용자가 다듬은 노드 보호(읽고 스킵).
+    - SEC-1: doc 소유 가드. 반환 {executed, doc_id, candidates, applied:{created,
+      matched}, mentions}."""
+    base: dict[str, Any] = {"kind": "doc.extract", "executed": False, "doc_id": doc_id}
+    meta = _meta(store, doc_id)
+    if meta is None:
+        base["error"] = "unknown doc_id"
+        return base
+    if meta.get("owner_id") != owner:
+        base["error"] = "owner mismatch — 남의 문서에서 추출할 수 없다(SEC-1)"
+        return base
+    if candidates is None:
+        got = get_doc(store, doc_id, owner=owner)
+        if not got.get("executed"):
+            base["error"] = got.get("error", "unreadable doc")
+            return base
+        cands = extract_concepts(got.get("text") or "")
+    else:
+        cands = []
+        for c in candidates:
+            title = str(c.get("title") or "").strip()
+            slug = _slug(title)
+            if title and slug:
+                cands.append({"title": title,
+                              "one_liner": str(c.get("one_liner") or "")[:400],
+                              "slug": slug})
+    base.update(executed=True, candidates=cands)
+    if not apply:
+        return base
+    created = matched = 0
+    for c in cands:
+        cid = f"concept:{c['slug']}"
+        exists = store.run(
+            "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o",
+            {"id": cid})
+        if exists:
+            if exists[0].get("o") not in (owner, "", None):
+                continue   # 남의 개념 — 건드리지 않는다(SEC-1)
+            matched += 1
+            continue       # 내 기존 개념 — 덮어쓰기 금지(사용자 손질 보호)
+        store.run(
+            "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = $ol, "
+            "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
+            "n.stem = $slug, n.source_file = $origin",
+            {"id": cid, "t": c["title"], "ol": c["one_liner"], "owner": owner,
+             "slug": c["slug"], "origin": meta.get("origin") or ""})
+        created += 1
+    linked = _relink_mentions(store, doc_id, owner=owner,
+                              origin=meta.get("origin") or "")
+    base.update(applied={"created": created, "matched": matched}, mentions=linked)
+    return base

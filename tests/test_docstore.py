@@ -106,6 +106,16 @@ class PureChunkingTests(unittest.TestCase):
         self.assertNotEqual(a, ds.doc_id_for_origin("user:a", "CONTEXT/y.md"))
         self.assertNotEqual(a, ds.doc_id_for_origin("user:b", "CONTEXT/x.md"))
 
+    def test_extract_concepts_deterministic(self):
+        # D45-V 옵션1 — 헤딩→후보, H1 제외, one_liner = 다음 첫 비빈 줄, slug 멱등.
+        text = ("# 문서제목\n\n서문.\n\n## 양자 얽힘\n\n두 입자가 상태를 공유한다.\n"
+                "### 벨 부등식\n실험 검증 기준.\n\n## 양자 얽힘\n중복 헤딩.\n")
+        cands = ds.extract_concepts(text)
+        self.assertEqual([c["title"] for c in cands], ["양자 얽힘", "벨 부등식"])  # H1·중복 제외
+        self.assertEqual(cands[0]["one_liner"], "두 입자가 상태를 공유한다.")
+        self.assertEqual(cands, ds.extract_concepts(text))   # 결정론
+        self.assertEqual(ds.extract_concepts("헤딩 없음\n그냥 본문"), [])
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocstoreE2E(unittest.TestCase):
@@ -227,6 +237,42 @@ class DocstoreE2E(unittest.TestCase):
         lyr = self.store.run("MATCH (c:Chunk) WHERE c.doc_id=$d RETURN DISTINCT c.layer AS l",
                              {"d": did})
         self.assertEqual([r["l"] for r in lyr], ["G-A"])
+
+    def test_extract_apply_and_node_context(self):
+        # D45-V e2e — 정본→노드(extract apply) → 노드→정본(node_context) 왕복.
+        from api import query as q
+        text = ("# 노트\n\n## quantum\n\n얽힘의 핵심 정리.\n\n본문에서 quantum 을 "
+                "여러 번 다룬다.\n")
+        out = ds.put_doc(self.store, owner="user:a", text=text, title="노트")
+        did = out["doc_id"]
+        # 제안(apply=False) — 후보만, 노드 미생성
+        prop = ds.extract_doc(self.store, did, owner="user:a")
+        self.assertEqual([c["title"] for c in prop["candidates"]], ["quantum"])
+        self.assertNotIn("applied", prop)
+        # 반영(apply=True) — proposed 개념 생성 + doc 재링크
+        ap = ds.extract_doc(self.store, did, owner="user:a", apply=True)
+        self.assertEqual(ap["applied"]["created"], 1)
+        self.assertGreater(ap["mentions"], 0)
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:quantum' "
+                             "RETURN c.status AS s, c.one_liner AS ol")
+        self.assertEqual(row[0]["s"], "proposed")
+        self.assertEqual(row[0]["ol"], "얽힘의 핵심 정리.")
+        # 재반영 = matched(덮어쓰기 금지·멱등)
+        ap2 = ds.extract_doc(self.store, did, owner="user:a", apply=True)
+        self.assertEqual(ap2["applied"], {"created": 0, "matched": 1})
+        # 타인 추출 거부(SEC-1)
+        self.assertIn("error", ds.extract_doc(self.store, did, owner="user:b"))
+        # 노드→정본: 클릭 상세가 one_liner + 근거 발췌를 돌려준다
+        ctx = q.node_context(owner="user:a", node="concept:quantum", store=self.store)
+        self.assertTrue(ctx["executed"])
+        self.assertEqual(ctx["one_liner"], "얽힘의 핵심 정리.")
+        self.assertEqual(ctx["arm"], "mentions")
+        self.assertGreater(len(ctx["excerpts"]), 0)
+        self.assertEqual(ctx["excerpts"][0]["doc_title"], "노트")
+        self.assertIn("quantum", ctx["excerpts"][0]["excerpt"])
+        # 미지 노드 — 실패 아님(executed=False + note)
+        miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
+        self.assertFalse(miss["executed"])
 
     def test_mentions_relink_per_doc(self):
         # 개념을 심고 그 제목 토큰을 담은 문서를 put → MENTIONS 생성;

@@ -490,6 +490,29 @@ class DocRouteE2E(unittest.TestCase):
             self.assertFalse(put2["skipped"])
             code, got2 = _req(base, f"/doc?id={did}&owner=user:a")
             self.assertEqual(got2["text"], "짧아짐")
+            # D45-V — 추출 제안(apply 없음) → 반영 → 노드 클릭 상세(정본 발췌)
+            code, put3 = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "id": did, "title": "t",
+                "text": "# t\n\n## 개념하나\n\n한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
+            self.assertEqual(code, 200)
+            code, prop = _req(base, "/doc/extract", method="POST",
+                              body={"id": did, "owner": "user:a"})
+            self.assertEqual(code, 200)
+            self.assertEqual([c["title"] for c in prop["candidates"]], ["개념하나"])
+            code, ap = _req(base, "/doc/extract", method="POST",
+                            body={"id": did, "owner": "user:a", "apply": True})
+            self.assertEqual(ap["applied"]["created"], 1)
+            import urllib.parse as _up
+            code, ctx = _req(base, "/node-context?node="
+                             + _up.quote("concept:개념하나") + "&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(ctx["executed"])
+            self.assertEqual(ctx["one_liner"], "한 줄 핵심입니다.")
+            self.assertEqual(ctx["arm"], "mentions")
+            self.assertGreater(len(ctx["excerpts"]), 0)
+            # 무소유 추출 거부
+            code, _ = _req(base, "/doc/extract", method="POST", body={"id": did})
+            self.assertEqual(code, 400)
             # delete
             code, dele = _req(base, "/doc/delete", method="POST",
                               body={"id": did, "owner": "user:a"})

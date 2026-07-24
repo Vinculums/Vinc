@@ -404,6 +404,12 @@ class VincApp:
         return self._read(lambda r: docstore.get_doc(r, _req(p, "id"),
                                                      owner=p.get("owner") or None))
 
+    def read_node_context(self, p):
+        # D45-V — 뷰 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
+        return self._read(lambda r: q.node_context(
+            owner=_req(p, "owner"), node=_req(p, "node"),
+            limit=_int(p.get("limit"), 4), store=r))
+
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
 
@@ -420,6 +426,18 @@ class VincApp:
     def write_doc_delete(self, body):
         res = self.jobs.run_sync("doc.delete", lambda: docstore.delete_doc(
             self.store, _req(body, "id"), owner=body.get("owner") or None))
+        return 200, res
+
+    def write_doc_extract(self, body):
+        # D45-V — 정본→노드 파생. apply=false(기본) = 후보 제안(옵션2 확인 UI 의
+        # 데이터원), apply=true = 반영(옵션1 결정론 또는 승인된 후보). candidates
+        # 를 실으면 그 목록을 반영(LLM/사용자 다듬은 후보 — id 는 서버 재파생).
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 추출·반영은 소유 스코프(SEC-1)"}
+        res = self.jobs.run_sync("doc.extract", lambda: docstore.extract_doc(
+            self.store, _req(body, "id"), owner=owner,
+            apply=bool(body.get("apply")), candidates=body.get("candidates")))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
@@ -771,8 +789,9 @@ class _Handler(BaseHTTPRequestHandler):
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
-            # 문서 정본(D45 P4) — get(복원+검증) · list.
+            # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
+            "/node-context": app.read_node_context,
             # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,
@@ -798,6 +817,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-nodes": app.write_merge,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
+            "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

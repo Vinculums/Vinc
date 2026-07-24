@@ -1316,6 +1316,101 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
     return {"executed": True, "ids": sorted(members)}
 
 
+def node_context(*, owner: str, node: str, limit: int = 4,
+                 cfg=None, store=None) -> dict:
+    """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
+    어느 정본이 근거인가". 조회 전용.
+
+    1) 노드 자체 설명: Concept 이면 one_liner, Episode 면 summary.
+    2) 근거 발췌: (ch:Chunk)-[:MENTIONS]->(c) 역참조 — 이 개념을 언급하는 정본
+       청크의 발췌 + 문서 제목(_DocMeta 조인). 청크 owner 는 과도기 술어
+       (owner OR '' — v4 이전 파일 파생 레거시, Bridge F5 전례와 동일).
+    3) MENTIONS 가 비면 제목 FTS 폴백(arm='fts') — 링크가 아직 없어도 "관련
+       정본"을 준다. 확장 미가용이면 조용히 빈 발췌(arm='none', 실패 아님 —
+       발췌는 증강이지 상세 패널의 성립 조건이 아니다).
+
+    반환: {executed, node, node_kind, title, one_liner,
+           excerpts: [{doc_id, doc_title, section, excerpt, method}], arm}"""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "node-context", "executed": False, "node": node,
+                  "one_liner": "", "excerpts": [], "arm": "none"}
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        lim = max(1, min(int(limit), 12))
+        # ① 노드 메타 — Concept 우선, 없으면 Episode(타임라인 뷰의 클릭 대상).
+        rows = store.run(
+            "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $owner "
+            "RETURN c.title AS title, c.one_liner AS ol", {"id": node, "owner": owner})
+        if rows:
+            base.update(executed=True, node_kind="concept",
+                        title=rows[0].get("title") or node,
+                        one_liner=rows[0].get("ol") or "")
+        else:
+            ep = store.run(
+                "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
+                "RETURN e.title AS title, e.summary AS s", {"id": node, "owner": owner})
+            if not ep:
+                base["note"] = f"unknown node: {node}"
+                return base
+            base.update(executed=True, node_kind="episode",
+                        title=ep[0].get("title") or node,
+                        one_liner=ep[0].get("s") or "")
+            return base   # Episode 는 MENTIONS 대상이 아니다 — 요약이 곧 설명.
+        # ② MENTIONS 역참조 — 정본 발췌.
+        ment = store.run(
+            "MATCH (ch:Chunk)-[m:MENTIONS]->(c:Concept) "
+            "WHERE c.concept_id = $id AND c.owner_id = $owner "
+            "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+            "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
+            "ch.section_title AS section, ch.text AS text, m.method AS method "
+            f"ORDER BY ch.doc_id, ch.chunk_index LIMIT {lim}",
+            {"id": node, "owner": owner}) or []
+        arm = "mentions" if ment else "none"
+        # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강, 실패 무해).
+        if not ment and base["title"]:
+            try:
+                hits = store.fulltext_search(base["title"], lim) or []
+                ids = [h.get("id") for h in hits if h.get("id")]
+                if ids:
+                    ment = store.run(
+                        "MATCH (ch:Chunk) WHERE ch.chunk_id IN $ids "
+                        "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                        "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
+                        "ch.section_title AS section, ch.text AS text, "
+                        "'fts' AS method", {"ids": ids, "owner": owner}) or []
+                    arm = "fts" if ment else "none"
+            except Exception:
+                pass   # 인덱스/확장 부재 — 발췌 없이 반환(arm='none')
+        # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
+        doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
+        titles: dict[str, str] = {}
+        if doc_ids:
+            for r in store.run(
+                    "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
+                    "RETURN d.doc_id AS id, d.title AS t", {"ids": doc_ids}) or []:
+                titles[r["id"]] = r.get("t") or ""
+        base["excerpts"] = [{
+            "doc_id": r.get("doc_id") or "",
+            "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
+            "section": r.get("section") or "",
+            "excerpt": " ".join((r.get("text") or "").split())[:240],
+            "method": r.get("method") or "",
+        } for r in ment]
+        base["arm"] = arm
+        return base
+    except Exception as exc:
+        base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
            depth: int = 2, cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.

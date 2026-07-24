@@ -116,6 +116,11 @@ const EN = {
       bound: (t: string) => `Linked to <b>${t}</b> · one connection added.`,
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
+      // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
+      sourceHeader: "From your documents",
+      sourceLoading: "Finding source passages…",
+      sourceNone: "No source passages for this yet. Add documents that mention it.",
+      sourceRelated: "Related passages (by title match)",
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "Flow, Timeline and Totals are in View.",
       flowNoTies: "No links between topics yet. Add files and the first links appear.",
@@ -360,6 +365,11 @@ const KO: Deck = {
       bound: (t) => `<b>${t}</b>에 연결했습니다 · 연결 1개 추가.`,
       bindFail: "연결하지 못했습니다. 잠시 후 다시 시도하세요.",
       unavailable: "연결 제안을 사용할 수 없습니다.",
+      // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
+      sourceHeader: "내 문서에서",
+      sourceLoading: "근거 발췌를 찾는 중…",
+      sourceNone: "아직 이 항목을 언급한 문서가 없습니다. 관련 문서를 추가하면 여기 나타납니다.",
+      sourceRelated: "관련 발췌 (제목 일치)",
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "흐름 · 타임라인 · 합계는 보기 안에 있습니다.",
       flowNoTies: "주제 사이 연결이 아직 없습니다. 파일을 추가하면 첫 연결이 생깁니다.",

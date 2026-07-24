@@ -178,6 +178,13 @@ export const api = {
     call("/share", { owner, ...opts }),
   promoteCandidates: (owner: string) => call("/promote-candidates", { owner }),
   suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
+  // D45-V — 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
+  // arm: 'mentions'(언급 링크) | 'fts'(제목 일치 폴백) | 'none'(발췌 없음 — 무해).
+  nodeContext: (owner: string, node: string, limit = 4): Promise<{
+    executed: boolean; title?: string; one_liner?: string; arm?: string;
+    excerpts?: { doc_id: string; doc_title: string; section: string;
+                 excerpt: string; method: string }[];
+  }> => call("/node-context", { owner, node, limit }),
   // fragment MERGE(D11 §5) — Bind 확정도 이 단일 쓰기 표면을 그대로 쓴다(D32)
   ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
   importPack: (pack: unknown, owner: string) =>

@@ -449,13 +449,50 @@ export async function renderAtlas(el: HTMLElement) {
         ? COPY.ui.atlasx.outIn(out, inn) : ""}${att > 0
         ? COPY.ui.atlasx.attachments(att) : ""}${nd.gateway ? COPY.ui.atlasx.gateway : ""}.</p>
       <button class="btn btn-primary" id="focus">${COPY.ui.atlasx.traceCta}</button>
+      <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {
       trail.push({ kind: "l2", seed: nd.id, domain: nd.domain }); show(trail[trail.length - 1]);
     });
+    // D45-V — 정본 근거: 노드 설명(one_liner) + 이 노드를 언급한 문서 발췌.
+    void loadNodeSource(nd);
     // D32 고아 최소화 — 연결 0 이면 잇기 후보(태그·도메인 근사, D25 전 단계)를
     // 제안하고, Bind 는 fragment MERGE(단일 쓰기 표면)로 확정한다.
     if ((nd.degree || 0) === 0) void suggestTiesInto(nd);
+  }
+
+  async function loadNodeSource(nd: N3) {
+    // 발췌는 증강 — 실패·부재가 상세 패널을 깨지 않는다(문구만 남기고 조용히).
+    const box = detail.querySelector<HTMLElement>("#node-source");
+    if (!box) return;
+    box.innerHTML = `<p class="hint">${COPY.ui.atlasx.sourceLoading}</p>`;
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    try {
+      const res = await api.nodeContext(cfg.owner, nd.id);
+      if (!res.executed) { box.innerHTML = ""; return; }
+      // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
+      if (!detail.contains(box) || detail.hidden) return;
+      const parts: string[] = [];
+      if (res.one_liner) parts.push(`<p>${esc(res.one_liner)}</p>`);
+      const ex = res.excerpts || [];
+      if (ex.length > 0) {
+        const header = res.arm === "fts"
+          ? COPY.ui.atlasx.sourceRelated : COPY.ui.atlasx.sourceHeader;
+        parts.push(`<p class="hint" style="margin-bottom:.3rem">${header}</p>` +
+          ex.map((e) => `
+            <div class="list-row" style="display:block">
+              <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
+                e.section ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
+              <p class="hint" style="margin:.15rem 0 0">${esc(e.excerpt)}</p>
+            </div>`).join(""));
+      } else if (!res.one_liner) {
+        parts.push(`<p class="hint">${COPY.ui.atlasx.sourceNone}</p>`);
+      }
+      box.innerHTML = parts.join("");
+    } catch {
+      box.innerHTML = "";   // 발췌 불가(구 사이드카 등) — 상세는 그대로 유효
+    }
   }
 
   async function suggestTiesInto(nd: N3) {
