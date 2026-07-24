@@ -109,19 +109,37 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 3)   # E-G6 관계 증거·신뢰도
+        self.assertEqual(eschema.SCHEMA_VERSION, 6)   # D45-E — 편집 재임베딩 표식
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
-        # 0→3 는 v1(추적열)·v2(Bridge owner)·v3(관계 증거) 스텝을 모두 포함한다
+        # 0→6 는 v1~v6 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed)
         v0 = eschema.migration_statements(0)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
         self.assertTrue(any("ADD updated_at" in s for s in v0))
         self.assertTrue(any("ADD evidence STRING" in s for s in v0))     # v3
         self.assertTrue(any("ADD confidence DOUBLE" in s for s in v0))   # v3
-        # v2→3 = 관계 증거 ALTER만(Bridge·추적열은 이미 적용됨)
-        v2 = eschema.migration_statements(2)
-        self.assertTrue(all("evidence" in s or "confidence" in s for s in v2))
-        self.assertEqual(eschema.migration_statements(3), [])   # 최신은 no-op
+        self.assertIn("ALTER TABLE Chunk ADD owner_id STRING DEFAULT ''", v0)   # v4
+        self.assertIn("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1", v0)  # v4
+        self.assertIn("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0", v0)  # v5
+        self.assertIn("ALTER TABLE _DocMeta ADD needs_embed INT64 DEFAULT 0", v0)  # v6
+        # v3→6 = Chunk SSoT(v4) + _DocMeta sync_seq(v5)·needs_embed(v6)
+        v3 = eschema.migration_statements(3)
+        self.assertTrue(any("Chunk" in s for s in v3))
+        self.assertTrue(any("_DocMeta" in s for s in v3))
+        v5 = eschema.migration_statements(5)
+        self.assertTrue(v5 and all("needs_embed" in s for s in v5))
+        self.assertEqual(eschema.migration_statements(6), [])   # 최신은 no-op
+
+    def test_docmeta_table_and_chunk_ssot_columns(self):
+        # D45 — Chunk=SSoT: 신규 설치 DDL 에 소유·오프셋 열과 _DocMeta(본문 없는
+        # 문서 정체성 레지스트리)가 포함되고, Chunk 가 purge 대상에 편입된다.
+        ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
+        chunk_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Chunk"))
+        for col in ("owner_id STRING", "char_start INT64", "char_end INT64"):
+            self.assertIn(col, chunk_ddl)
+        self.assertIn("CREATE NODE TABLE _DocMeta(doc_id STRING", ddl)
+        self.assertIn("content_hash STRING", ddl)
+        self.assertIn("Chunk", eschema.owner_scoped_labels())
 
     def test_plan_matches_dim(self):
         c = cfgmod.StoreConfig(embedding_model="local-en-large")  # 1024

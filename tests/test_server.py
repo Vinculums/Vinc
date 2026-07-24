@@ -26,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api import cli  # noqa: E402
 from api.auth import SessionAuth  # noqa: E402
 from api.server import VincApp, make_server  # noqa: E402
+from store.embedded_backend import _import_driver  # noqa: E402
+
+_DRIVER, _NAME = _import_driver()
 
 _TOKEN = "test-token-abc"
 
@@ -430,6 +433,124 @@ class ConnectFlowTests(unittest.TestCase):
             self.assertEqual(code, 401)
             code, _ = _req(base, "/connect/status?state=x", token=None)
             self.assertEqual(code, 401)
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DocRouteE2E(unittest.TestCase):
+    """D45 P4 — 문서 정본 편집 표면(HTTP) 실엔진 왕복: put→get→list→delete."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from store.config import load_config
+        from store.backend import open_store
+        self._tmp = tempfile.mkdtemp()
+        self._saved = {k: os.environ.get(k) for k in
+                       ("MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR")}
+        os.environ["MEMORY_STORE_BACKEND"] = "embedded"
+        os.environ.pop("MEMORY_DATA_DIR", None)
+        import os as _os
+        self.store = open_store(load_config({"data_dir": _os.path.join(self._tmp, "store")}))
+        self.assertIsNotNone(self.store, "임베디드 스토어 open 실패")
+        self.store.provision(dim=4)
+        self.app = VincApp(store=self.store, auth=SessionAuth(_TOKEN))
+
+    def tearDown(self):
+        import os
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_doc_crud_over_http(self):
+        text = "# HTTP 편집\n\n" + "정본 편집 표면 왕복. " * 60
+        with running_server(self.app) as base:
+            # put(신규) → doc_id
+            code, put = _req(base, "/doc/put", method="POST",
+                             body={"owner": "user:a", "text": text, "title": "t"})
+            self.assertEqual(code, 200)
+            did = put["doc_id"]
+            self.assertTrue(put["executed"] and not put["skipped"])
+            # 무소유 put 거부(SEC-1)
+            code, err = _req(base, "/doc/put", method="POST", body={"text": "x"})
+            self.assertEqual(code, 400)
+            # get(복원 + 검증)
+            code, got = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(got["verified"])
+            self.assertEqual(got["text"], text)
+            # list
+            code, lst = _req(base, "/docs?owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertEqual(lst["count"], 1)
+            # 편집(같은 id) → 재청킹
+            code, put2 = _req(base, "/doc/put", method="POST",
+                              body={"owner": "user:a", "text": "짧아짐", "id": did, "title": "t"})
+            self.assertFalse(put2["skipped"])
+            code, got2 = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(got2["text"], "짧아짐")
+            # D45-V — 추출 제안(apply 없음) → 반영 → 노드 클릭 상세(정본 발췌)
+            code, put3 = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "id": did, "title": "t",
+                "text": "# t\n\n## 개념하나\n\n한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
+            self.assertEqual(code, 200)
+            code, prop = _req(base, "/doc/extract", method="POST",
+                              body={"id": did, "owner": "user:a"})
+            self.assertEqual(code, 200)
+            self.assertEqual([c["title"] for c in prop["candidates"]], ["개념하나"])
+            code, ap = _req(base, "/doc/extract", method="POST",
+                            body={"id": did, "owner": "user:a", "apply": True})
+            self.assertEqual(ap["applied"]["created"], 1)
+            import urllib.parse as _up
+            code, ctx = _req(base, "/node-context?node="
+                             + _up.quote("concept:개념하나") + "&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(ctx["executed"])
+            self.assertEqual(ctx["one_liner"], "한 줄 핵심입니다.")
+            self.assertEqual(ctx["arm"], "mentions")
+            self.assertGreater(len(ctx["excerpts"]), 0)
+            # 무소유 추출 거부
+            code, _ = _req(base, "/doc/extract", method="POST", body={"id": did})
+            self.assertEqual(code, 400)
+            # D45-V 1단계 — /edge-context: 관계 evidence·confidence + 양끝 메타
+            self.store.run(
+                "MERGE (x:Concept {concept_id:'concept:x'}) SET x.title='X', "
+                "x.one_liner='엑스', x.owner_id='user:a'")
+            self.store.run(
+                "MATCH (a:Concept {concept_id:'concept:개념하나'}), "
+                "(b:Concept {concept_id:'concept:x'}) "
+                "MERGE (a)-[r:DERIVES_FROM]->(b) SET r.evidence='근거 구절', r.confidence=0.6")
+            code, ec = _req(base, "/edge-context?src=" + _up.quote("concept:개념하나")
+                            + "&dst=concept:x&type=DERIVES_FROM&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(ec["executed"])
+            self.assertEqual(ec["evidence"], "근거 구절")
+            self.assertEqual(ec["dst"]["title"], "X")
+            # 화이트리스트 밖 타입 → executed=False(주입 차단)
+            code, bad = _req(base, "/edge-context?src=a&dst=b&type=MENTIONS&owner=user:a")
+            self.assertFalse(bad["executed"])
+            # D45-V2 2단계 — /doc/highlights: 전문 내 개념 언급 char 범위
+            self.store.run("MERGE (c:Concept {concept_id:'concept:개념하나'}) "
+                           "SET c.stem='개념하나'")
+            code, hl = _req(base, "/doc/highlights?doc_id=" + did
+                            + "&concept_id=" + _up.quote("concept:개념하나") + "&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(hl["executed"])
+            self.assertEqual(hl["method"], "tokens")
+            # D45-V2 4단계 — /docs-in-range: 기간 항목(Episode.date)
+            self.store.run("MERGE (e:Episode {episode_id:'ev1'}) SET e.owner_id='user:a', "
+                           "e.title='EV', e.date='2026-05-15', e.domain='d'")
+            code, rng = _req(base, "/docs-in-range?start=2026-05-01&end=2026-06-01&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(rng["executed"])
+            self.assertIn("ev1", {i["id"] for i in rng["items"]})
+            # delete
+            code, dele = _req(base, "/doc/delete", method="POST",
+                              body={"id": did, "owner": "user:a"})
+            self.assertTrue(dele["executed"])
+            code, gone = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertIn("error", gone)
 
 
 if __name__ == "__main__":

@@ -178,6 +178,54 @@ export const api = {
     call("/share", { owner, ...opts }),
   promoteCandidates: (owner: string) => call("/promote-candidates", { owner }),
   suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
+  // D45-V — 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
+  // arm: 'mentions'(언급 링크) | 'fts'(제목 일치 폴백) | 'none'(발췌 없음 — 무해).
+  nodeContext: (owner: string, node: string, limit = 4): Promise<{
+    executed: boolean; title?: string; one_liner?: string; arm?: string;
+    excerpts?: { doc_id: string; doc_title: string; section: string;
+                 excerpt: string; method: string }[];
+  }> => call("/node-context", { owner, node, limit }),
+  // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
+  docGet: (owner: string, id: string): Promise<{
+    executed: boolean; text?: string; title?: string; verified?: boolean;
+    content_hash?: string; error?: string;
+  }> => call("/doc", { owner, id }),
+  docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
+    executed: boolean; ranges?: { char_start: number; char_end: number }[];
+  }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
+  docPut: (owner: string, text: string, id?: string, title?: string): Promise<{
+    executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
+    chunks?: number; needs_embed?: boolean; error?: string;
+  }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}), ...(title ? { title } : {}) }),
+  docReembed: (owner: string, id: string): Promise<{ executed: boolean; docs?: number }> =>
+    call("/doc/reembed", undefined, { owner, id }),
+  docExtract: (owner: string, id: string, apply = false): Promise<{
+    executed: boolean; candidates?: { title: string }[];
+    applied?: { created: number; matched: number }; mentions?: number;
+  }> => call("/doc/extract", undefined, { owner, id, apply }),
+  docList: (owner: string): Promise<{
+    executed: boolean; count?: number;
+    docs?: { doc_id: string; title: string; origin: string; chunks: number; updated_at: string }[];
+  }> => call("/docs", { owner }),
+  // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
+  docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
+    executed: boolean; total?: number;
+    items?: { id: string; kind: string; title: string; ts: string; domain: string }[];
+  }> => call("/docs-in-range", { owner, start, end, ...(domain ? { domain } : {}) }),
+  // D45-V2 3단계 — 합계 구간 클릭: 그 (도메인, mark) 의 개념 목록(원장 수치 정합).
+  ledgerDrilldown: (owner: string, domain: string, mark: string, seed?: string): Promise<{
+    executed: boolean; total?: number;
+    items?: { concept_id: string; title: string; one_liner: string }[];
+  }> => call("/ledger-drilldown", { owner, domain, mark, ...(seed ? { seed } : {}) }),
+  // D45-V 1단계 — 흐름 선 클릭: 관계의 evidence·confidence + 양끝 노드 메타/발췌.
+  edgeContext: (owner: string, src: string, dst: string, type: string): Promise<{
+    executed: boolean; evidence?: string; confidence?: number;
+    src?: { id: string; title?: string; one_liner?: string;
+            excerpt?: { doc_id: string; excerpt: string } | null };
+    dst?: { id: string; title?: string; one_liner?: string;
+            excerpt?: { doc_id: string; excerpt: string } | null };
+  }> => call("/edge-context", { owner, src, dst, type }),
   // fragment MERGE(D11 §5) — Bind 확정도 이 단일 쓰기 표면을 그대로 쓴다(D32)
   ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
   importPack: (pack: unknown, owner: string) =>

@@ -61,12 +61,23 @@ _NODE_TABLES: dict[str, dict] = {
         # observations 는 관측 **횟수(count)** 다 — learner 파서가 표의 n 셀을
         # int 로 뽑고 activate 가 `n={}` 로 표시(§5-2 감사정정: 리스트 아님).
         ("observations", "INT64")]},
-    # embed_pipeline — 벡터 차원은 provision 시 주입({dim}). HAS_CHUNK(→PM) 제외.
+    # embed_pipeline + api/docstore — 벡터 차원은 provision 시 주입({dim}).
+    # HAS_CHUNK(→PM) 제외. v4(D45 — Chunk=SSoT): Chunk 가 사용자 원문 텍스트의
+    # **정본**으로 승격됨에 따라
+    #   owner_id            : 소유 스코프 편입(SEC-1 격리 + 계정삭제 purge 캐스케이드.
+    #                         '' = docstore 이전 레거시 청크 — Bridge v2 전례와 동일,
+    #                         파일 배치 파생물이라 소유 원천이 없어 백필하지 않는다)
+    #   char_start/char_end : 문서 내 문자 오프셋(반개구간). doc_id 로 묶어
+    #                         chunk_index 순 연결 시 **무손실 복원**의 근거.
+    #                         -1 = 레거시(오프셋 미기록 — 복원 불가, 검색만).
+    # source_file 은 조인 키에서 **출처 표시(origin)로 강등** — 문서 정체성은 doc_id
+    # (_DocMeta)가 정본이다. 열 이름은 하위호환 위해 유지.
     "Chunk": {"pk": "chunk_id", "cols": [
         ("chunk_id", "STRING"), ("source_file", "STRING"), ("doc_id", "STRING"),
         ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
-        ("embedding", "FLOAT[{dim}]")]},
+        ("embedding", "FLOAT[{dim}]"),
+        ("owner_id", "STRING"), ("char_start", "INT64"), ("char_end", "INT64")]},
     # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2 · engines/
     # fragment_ingest). 레거시 4타입(concept/domain/bridge/episode)은 전용 테이블
     # 유지; 어휘 밖 신규 타입은 여기로 exact-id MERGE 된다. `type` 은 theme 어휘가
@@ -89,7 +100,10 @@ _TRACK_COLS: list[tuple[str, str, str]] = [   # (col, type, default-literal)
     ("sync_seq", "INT64", "0"),
 ]
 # owner 스코프 + 사용자 저작 콘텐츠(=동기화 단위). Domain 은 bare 구조 노드(필드 없음),
-# Chunk/SkillExecution/LearnerPattern 은 동기화 제외(문서임베딩·로그·파생) → 추적열 없음.
+# Chunk/SkillExecution/LearnerPattern 은 동기화 제외(로그·파생) → 추적열 없음.
+# ⚠ D45 로 Chunk 가 SSoT(정본 텍스트)가 되면서 **동기화 편입이 예정**돼 있다(P3 —
+# 텍스트만 동기화, embedding 은 기기별 재생성: 벡터가 번들 3MB 한계를 잠식하므로).
+# 그때 _TRACKED_LABELS 에 "Chunk" 추가 + 마이그레이션 스텝으로 추적열 백필.
 _TRACKED_LABELS: tuple[str, ...] = ("Concept", "Episode", "Record", "Bridge", "Entity")
 
 for _lbl in _TRACKED_LABELS:
@@ -117,12 +131,33 @@ _META_TABLES: dict[str, dict] = {
         ("ekey", "STRING"), ("src", "STRING"), ("rel", "STRING"), ("dst", "STRING"),
         ("owner_id", "STRING"), ("deleted_at", "STRING"), ("sync_seq", "INT64"),
         ("origin", "STRING")]},
+    # 문서 정체성 레지스트리(D45 — Chunk=SSoT). **본문은 없다** — 정본 텍스트는 오직
+    # Chunk.text(오프셋 연결)뿐이고, 여기는 doc 단위 정체성·변경감지 메타만 둔다:
+    #   doc_id       : 내재 식별자(경로 아님) — MENTIONS·증분·묶음의 조인 키.
+    #   content_hash : 정본 텍스트 sha256 — 변경감지(무변경 재적재 스킵)·복원 검증.
+    #   origin       : 출처 표시(구 source_file 역할) — 조인에 쓰지 않는 참고 정보.
+    "_DocMeta": {"pk": "doc_id", "cols": [
+        ("doc_id", "STRING"), ("owner_id", "STRING"), ("title", "STRING"),
+        ("origin", "STRING"), ("content_hash", "STRING"), ("chunk_count", "INT64"),
+        # updated_at = 단조 HLC(스토어 내), sync_seq = owner별 delta 커서(P3 — 문서
+        # 단위 동기화). Chunk 자체는 로컬 파생물로 두고 doc 단위로만 동기화한다
+        # (텍스트만 전송, embedding 은 수신측 재생성 — 벡터가 번들 한계를 잠식).
+        # needs_embed(D45-E 후속3) = 1 이면 이 문서 청크가 임베딩 없이 적재됨(앱 내
+        # 편집·동기화 수신 경로는 FTS 즉시·벡터 지연). 백그라운드 재임베딩 잡이 채운다.
+        ("updated_at", "STRING"), ("sync_seq", "INT64"), ("needs_embed", "INT64")]},
+    # 문서 삭제 표식(P3) — _DocMeta 하드삭제만으론 상대 사본이 다음 delta 에 실려
+    # 부활한다. doc 단위 동기화의 삭제 전파용. 재생성(put_doc)이 상쇄한다.
+    "_DocTombstone": {"pk": "doc_id", "cols": [
+        ("doc_id", "STRING"), ("owner_id", "STRING"), ("deleted_at", "STRING"),
+        ("sync_seq", "INT64")]},
 }
 
 # owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
 # _NODE_TABLES 에서 파생하므로 새 라벨에 owner_id 가 붙으면 자동 포함된다(v2 에서
-# Bridge 소유 스탬프가 들어와 purge 가 즉시 커버 — 파생 설계의 실증). Domain/Chunk/
-# SkillExecution 은 owner_id 가 없어(구조·파생 노드) 여기 안 든다 — 소유로 못 가른다.
+# Bridge, v4 에서 Chunk 가 소유 스탬프를 얻어 purge 가 즉시 커버 — 파생 설계의 실증).
+# Domain/SkillExecution 은 owner_id 가 없어(구조·로그 노드) 여기 안 든다 — 소유로 못
+# 가른다. Chunk 는 D45(SSoT 승격)로 편입 — 정본 텍스트가 계정삭제에 반드시 지워져야
+# 하므로 필수(레거시 '' 소유 행은 파일 파생물이라 스코프 매칭에서 자연 제외).
 def owner_scoped_labels() -> list[str]:
     """owner_id 열을 선언한 노드 라벨(선언 순서). 소유 스코프 purge 의 대상 집합."""
     return [lbl for lbl, spec in _NODE_TABLES.items()
@@ -134,7 +169,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 6
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -159,6 +194,18 @@ def migration_statements(from_version: int) -> list[str]:
         for rel in _EVIDENCE_RELS:
             stmts.append(f"ALTER TABLE {rel} ADD evidence STRING DEFAULT ''")
             stmts.append(f"ALTER TABLE {rel} ADD confidence DOUBLE DEFAULT 0.0")
+    if from_version < 4:   # v4 — Chunk=SSoT(D45): 소유 스코프 + 무손실 오프셋.
+        # owner_id '' = 레거시 무소유(Bridge v2 전례 — 파일 파생물이라 소유 원천
+        # 부재, 백필 안 함). char_start/end -1 = 오프셋 미기록(docstore 재적재가
+        # 자연 치유). _DocMeta 는 신규 테이블 — base DDL 멱등 재실행이 생성.
+        stmts.append("ALTER TABLE Chunk ADD owner_id STRING DEFAULT ''")
+        stmts.append("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1")
+        stmts.append("ALTER TABLE Chunk ADD char_end INT64 DEFAULT -1")
+    if from_version < 5:   # v5 — 문서 단위 동기화(P3, D45): _DocMeta 에 delta 커서.
+        # _DocTombstone 은 신규 테이블 — base DDL 멱등 재실행이 생성(ALTER 불요).
+        stmts.append("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0")
+    if from_version < 6:   # v6 — 앱 내 편집 재임베딩 표식(D45-E 후속3).
+        stmts.append("ALTER TABLE _DocMeta ADD needs_embed INT64 DEFAULT 0")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

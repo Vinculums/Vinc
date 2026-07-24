@@ -142,6 +142,28 @@ def main(argv: list[str] | None = None) -> int:
     bk.add_argument("--packs", default=None, help="exported packs dir to include")
     bk.add_argument("--profile", default=None, help="domain profile.yml to include")
 
+    # ── 문서 정본(Chunk=SSoT, D45) — 파일 없는 doc 단위 CRUD ────────────────
+    dc = sub.add_parser("doc", help="document SSoT — put/get/rm/ls raw text as chunks (D45)")
+    dsub = dc.add_subparsers(dest="doccmd", required=True)
+    dp = dsub.add_parser("put", help="ingest/update a document from raw text (stdin or --file)")
+    dp.add_argument("--owner", required=True, help="owner_id — 정본은 무소유 불가(SEC-1)")
+    dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
+    dp.add_argument("--title", default="")
+    dp.add_argument("--origin", default="", help="출처 표시(조인에 쓰지 않음 — display only)")
+    dp.add_argument("--file", default=None, help="read text from file (편의 입력 — 정본은 스토어)")
+    dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
+    dg = dsub.add_parser("get", help="reconstruct a document from its chunks (+hash verify)")
+    dg.add_argument("--id", required=True)
+    dg.add_argument("--owner", default=None, help="owner guard (SEC-1)")
+    dg.add_argument("--data", default=None)
+    dr = dsub.add_parser("rm", help="delete a document (chunks + identity)")
+    dr.add_argument("--id", required=True)
+    dr.add_argument("--owner", default=None, help="owner guard (SEC-1)")
+    dr.add_argument("--data", default=None)
+    dl = dsub.add_parser("ls", help="list documents")
+    dl.add_argument("--owner", default=None)
+    dl.add_argument("--data", default=None)
+
     ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase, F4)")
     ob.add_argument("--profile", required=True, help="credential file path (auth.json)")
     ob.add_argument("--passphrase", default=None,
@@ -261,6 +283,35 @@ def main(argv: list[str] | None = None) -> int:
                                      profile_path=args.profile))
         finally:
             store.close()
+    if args.cmd == "doc":
+        # Chunk=SSoT(D45) doc CRUD — 파일 I/O 는 --file 편의 입력뿐, 정본은 스토어.
+        from . import docstore
+        from store.config import load_config, resolve_data_dir
+        from store.backend import open_store
+        cfg = load_config({"data_dir": resolve_data_dir(args.data)})
+        store = open_store(cfg)
+        if store is None:
+            return _emit({"error": "no reachable store (드라이버 미설치/락)"})
+        try:
+            store.provision(dim=cfg.embedding_dim)   # 멱등 — v4 마이그레이션 포함
+            if args.doccmd == "put":
+                if args.file:
+                    with open(args.file, encoding="utf-8") as f:
+                        text = f.read()
+                else:
+                    text = sys.stdin.read()
+                return _emit(docstore.put_doc(store, owner=args.owner, text=text,
+                                              doc_id=args.id, title=args.title,
+                                              origin=args.origin))
+            if args.doccmd == "get":
+                return _emit(docstore.get_doc(store, args.id, owner=args.owner))
+            if args.doccmd == "rm":
+                return _emit(docstore.delete_doc(store, args.id, owner=args.owner))
+            if args.doccmd == "ls":
+                return _emit(docstore.list_docs(store, owner=args.owner))
+        finally:
+            store.close()
+        return 2
     if args.cmd == "mcp":
         if args.mcpcmd == "install":
             from vinc_mcp.install import install

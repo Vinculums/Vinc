@@ -172,6 +172,29 @@ def _t_delete_edge(args, bridge):
                                 "type": args["type"], "owner": args.get("owner")})
 
 
+# ── 문서 정본(Chunk=SSoT, D45 P4) — 편집 표면 도구 ────────────────────────────
+def _t_doc_get(args, bridge):
+    return bridge.request("GET", "/doc", params={
+        "id": args["doc_id"], "owner": _owner(args, bridge)})
+
+
+def _t_doc_list(args, bridge):
+    return bridge.request("GET", "/docs", params={"owner": _owner(args, bridge)})
+
+
+def _t_doc_put(args, bridge):
+    # 편집 왕복: doc_id 있으면 갱신(재청킹), 없으면 신규(반환 doc_id). SEC-1: owner 강제.
+    return bridge.request("POST", "/doc/put", body={
+        "owner": _owner(args, bridge), "text": args["text"],
+        "id": args.get("doc_id"), "title": args.get("title"),
+        "origin": args.get("origin")})
+
+
+def _t_doc_delete(args, bridge):
+    return bridge.request("POST", "/doc/delete", body={
+        "id": args["doc_id"], "owner": _owner(args, bridge)})
+
+
 TOOLS: list[dict] = [
     {
         "name": "vinc_search",
@@ -363,6 +386,50 @@ TOOLS: list[dict] = [
         }, "required": ["keep_id", "drop_id"]},
         "run": _t_merge,
     },
+    # ── 문서 정본(Chunk=SSoT, D45 P4) — 원문 텍스트 직접 CRUD ──────────────────
+    {
+        "name": "vinc_doc_put",
+        "description": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to "
+                       "create (the returned doc_id identifies it); pass doc_id to edit in place "
+                       "(re-chunked losslessly, stale chunks removed). The store IS the source of "
+                       "truth — no external file is needed. Returns {doc_id, chunks, replaced, "
+                       "content_hash, skipped}. Unchanged text is a no-op (skipped=true).",
+        "inputSchema": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "Full document text (the canonical content)."},
+            "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
+            "title": {"type": "string"},
+            "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
+        }, "required": ["text"]},
+        "run": _t_doc_put,
+    },
+    {
+        "name": "vinc_doc_get",
+        "description": "Reconstruct a document's canonical text from its chunks, with a `verified` "
+                       "flag (offset-contiguous + content-hash match). Returns {text, title, "
+                       "verified, chunks, updated_at}.",
+        "inputSchema": {"type": "object", "properties": {
+            "doc_id": {"type": "string"},
+        }, "required": ["doc_id"]},
+        "run": _t_doc_get,
+    },
+    {
+        "name": "vinc_doc_list",
+        "description": "List the owner's documents (doc_id, title, origin, chunk count, updated_at).",
+        "inputSchema": {"type": "object", "properties": {
+            "owner": {"type": "string"},
+        }},
+        "run": _t_doc_list,
+    },
+    {
+        "name": "vinc_doc_delete",
+        "description": "Delete a document — its chunks and identity — with deletion propagated to "
+                       "other devices on sync. Irreversible; confirm the exact doc_id first. "
+                       "Returns {executed, deleted_chunks, deleted_meta}.",
+        "inputSchema": {"type": "object", "properties": {
+            "doc_id": {"type": "string"},
+        }, "required": ["doc_id"]},
+        "run": _t_doc_delete,
+    },
 ]
 
 _BY_NAME = {t["name"]: t for t in TOOLS}
@@ -400,6 +467,14 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_merge_nodes": {"title": "Merge two concepts (irreversible)",
                          "readOnlyHint": False, "destructiveHint": True,
                          "idempotentHint": False},
+    # 문서 정본(D45 P4). get/list 는 읽기; put 은 비파괴 쓰기(내용 해시 멱등 —
+    # 같은 텍스트 재-put 은 no-op); delete 는 비가역(청크+정체성 DETACH).
+    "vinc_doc_get": {"title": "Read a document (canonical text)", "readOnlyHint": True},
+    "vinc_doc_list": {"title": "List documents", "readOnlyHint": True},
+    "vinc_doc_put": {"title": "Save or edit a document", "readOnlyHint": False,
+                     "destructiveHint": False, "idempotentHint": True},
+    "vinc_doc_delete": {"title": "Delete a document (irreversible)", "readOnlyHint": False,
+                        "destructiveHint": True, "idempotentHint": True},
 }
 
 # A1.9 A2 — 데스크탑 커넥터 1개 통합: 모든 도구가 target 으로 로컬/원격을 고른다.
