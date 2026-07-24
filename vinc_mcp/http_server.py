@@ -47,6 +47,15 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "decide": ("GET", "/decide"), "domains": ("GET", "/domains"),
     "promote-candidates": ("GET", "/promote-candidates"),
     "learner": ("GET", "/learner"), "share": ("GET", "/share"),
+    # 문서 정본·뷰별 원문(D45 — Chunk=SSoT). 웹 Vinc 완전 패리티. 전부 owner 강제
+    # (핸들러 _req(owner) 또는 프록시 sub 스탬프 + query.py/docstore owner_id WHERE 필터).
+    # 노드/엣지 클릭 상세·Reader 밑줄·합계 드릴다운·타임라인 기간·문서 리스트/복원.
+    "doc": ("GET", "/doc"), "docs": ("GET", "/docs"),
+    "doc-highlights": ("GET", "/doc/highlights"),
+    "node-context": ("GET", "/node-context"),
+    "edge-context": ("GET", "/edge-context"),
+    "ledger-drilldown": ("GET", "/ledger-drilldown"),
+    "docs-in-range": ("GET", "/docs-in-range"),
     "job": ("GET", None),   # /jobs/{id} — id 검증 후 특수 처리
     # 쓰기(POST) — SEC-3 하드닝된 owner-스코프 경로
     "pin": ("POST", "/pin"), "tag": ("POST", "/tag"), "touch": ("POST", "/touch"),
@@ -55,6 +64,13 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "ingest-pack": ("POST", "/ingest/pack"),
     "delete": ("POST", "/delete"), "delete-edge": ("POST", "/delete-edge"),
     "merge-nodes": ("POST", "/merge-nodes"),
+    # 문서 정본 쓰기(D45 — 앱 내 편집). owner 필수(put/extract 는 미전송 시 400).
+    # put=적재/편집(단일 writer 직렬화), extract=정본→개념 파생(남의 개념 불가침),
+    # reembed=편집 후 벡터 재생성(호스티드 허브에 임베딩 스택 없으면 우아히 note 강등).
+    # doc/delete 는 웹 프론트가 호출하지 않으므로 노출하지 않는다(최소 노출).
+    "doc-put": ("POST", "/doc/put"),
+    "doc-extract": ("POST", "/doc/extract"),
+    "doc-reembed": ("POST", "/doc/reembed"),
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
