@@ -109,10 +109,10 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 4)   # D45 — Chunk=SSoT(소유+오프셋)
+        self.assertEqual(eschema.SCHEMA_VERSION, 5)   # D45 — Chunk=SSoT + 문서 동기화
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
-        # 0→4 는 v1(추적열)·v2(Bridge owner)·v3(관계 증거)·v4(Chunk SSoT) 전 스텝 포함
+        # 0→5 는 v1~v5 전 스텝 포함(추적열·Bridge owner·관계 증거·Chunk SSoT·doc sync)
         v0 = eschema.migration_statements(0)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
         self.assertTrue(any("ADD updated_at" in s for s in v0))
@@ -120,10 +120,14 @@ class ProvisionTests(unittest.TestCase):
         self.assertTrue(any("ADD confidence DOUBLE" in s for s in v0))   # v3
         self.assertIn("ALTER TABLE Chunk ADD owner_id STRING DEFAULT ''", v0)   # v4
         self.assertIn("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1", v0)  # v4
-        # v3→4 = Chunk SSoT ALTER만(이전 스텝은 이미 적용됨)
+        self.assertIn("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0", v0)  # v5
+        # v3→5 = Chunk SSoT(v4) + _DocMeta sync_seq(v5); v4→5 = _DocMeta 만
         v3 = eschema.migration_statements(3)
-        self.assertTrue(v3 and all("Chunk" in s for s in v3))
-        self.assertEqual(eschema.migration_statements(4), [])   # 최신은 no-op
+        self.assertTrue(any("Chunk" in s for s in v3))
+        self.assertTrue(any("_DocMeta" in s for s in v3))
+        v4 = eschema.migration_statements(4)
+        self.assertTrue(v4 and all("_DocMeta" in s for s in v4))
+        self.assertEqual(eschema.migration_statements(5), [])   # 최신은 no-op
 
     def test_docmeta_table_and_chunk_ssot_columns(self):
         # D45 — Chunk=SSoT: 신규 설치 DDL 에 소유·오프셋 열과 _DocMeta(본문 없는

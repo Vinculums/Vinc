@@ -139,7 +139,15 @@ _META_TABLES: dict[str, dict] = {
     "_DocMeta": {"pk": "doc_id", "cols": [
         ("doc_id", "STRING"), ("owner_id", "STRING"), ("title", "STRING"),
         ("origin", "STRING"), ("content_hash", "STRING"), ("chunk_count", "INT64"),
-        ("updated_at", "STRING")]},
+        # updated_at = 단조 HLC(스토어 내), sync_seq = owner별 delta 커서(P3 — 문서
+        # 단위 동기화). Chunk 자체는 로컬 파생물로 두고 doc 단위로만 동기화한다
+        # (텍스트만 전송, embedding 은 수신측 재생성 — 벡터가 번들 한계를 잠식).
+        ("updated_at", "STRING"), ("sync_seq", "INT64")]},
+    # 문서 삭제 표식(P3) — _DocMeta 하드삭제만으론 상대 사본이 다음 delta 에 실려
+    # 부활한다. doc 단위 동기화의 삭제 전파용. 재생성(put_doc)이 상쇄한다.
+    "_DocTombstone": {"pk": "doc_id", "cols": [
+        ("doc_id", "STRING"), ("owner_id", "STRING"), ("deleted_at", "STRING"),
+        ("sync_seq", "INT64")]},
 }
 
 # owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
@@ -159,7 +167,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -191,6 +199,9 @@ def migration_statements(from_version: int) -> list[str]:
         stmts.append("ALTER TABLE Chunk ADD owner_id STRING DEFAULT ''")
         stmts.append("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1")
         stmts.append("ALTER TABLE Chunk ADD char_end INT64 DEFAULT -1")
+    if from_version < 5:   # v5 — 문서 단위 동기화(P3, D45): _DocMeta 에 delta 커서.
+        # _DocTombstone 은 신규 테이블 — base DDL 멱등 재실행이 생성(ALTER 불요).
+        stmts.append("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

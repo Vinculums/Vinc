@@ -32,7 +32,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # E-G4 — 중복 개념 병합 후보(조회 전용, 확정은 merge_nodes 경유).
              "vinc_merge_candidates",
              # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
-             "vinc_neighbors", "vinc_path"}
+             "vinc_neighbors", "vinc_path",
+             # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
+             "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete"}
 
 
 class _StubBridge(Bridge):
@@ -57,19 +59,20 @@ class ToolContractTests(unittest.TestCase):
             self.assertEqual(t["inputSchema"]["type"], "object", t["name"])
 
     def test_write_surfaces_are_explicit(self):
-        # 구 계약(쓰기 표면 = ingest 단독)은 T3c 로 확장 — 쓰기 표면은 여전히
-        # **명시된 3개뿐**(ingest + 오염 정리용 delete/merge, 둘 다 비가역)이어야 한다.
+        # 쓰기 표면은 **명시된 것만**(ingest + 오염 정리 delete/merge + D45 P4 문서
+        # 정본 put/delete)이어야 한다 — 조회 도구가 몰래 쓰지 않는다.
         b = _StubBridge()
         for t in tools.specs():
             args = {"query": "x", "seed_id": "concept:x", "topic": "x",
                     "node": "concept:x", "nodes": [{"id": "c:x", "type": "concept"}],
                     "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y",
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
-                    "a": "concept:x", "b": "concept:y"}   # E-G7 vinc_path 필수 인자
+                    "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
+                    "text": "x", "doc_id": "d0"}          # D45 P4 문서 정본 필수 인자
             tools.call(t["name"], args, b)
         writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
-        self.assertEqual(writes, ["/delete", "/delete-edge", "/ingest/fragment",
-                                  "/merge-nodes"])
+        self.assertEqual(writes, ["/delete", "/delete-edge", "/doc/delete", "/doc/put",
+                                  "/ingest/fragment", "/merge-nodes"])
 
     def test_owner_default_injected(self):
         b = _StubBridge()

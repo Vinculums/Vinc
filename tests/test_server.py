@@ -26,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api import cli  # noqa: E402
 from api.auth import SessionAuth  # noqa: E402
 from api.server import VincApp, make_server  # noqa: E402
+from store.embedded_backend import _import_driver  # noqa: E402
+
+_DRIVER, _NAME = _import_driver()
 
 _TOKEN = "test-token-abc"
 
@@ -430,6 +433,69 @@ class ConnectFlowTests(unittest.TestCase):
             self.assertEqual(code, 401)
             code, _ = _req(base, "/connect/status?state=x", token=None)
             self.assertEqual(code, 401)
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DocRouteE2E(unittest.TestCase):
+    """D45 P4 — 문서 정본 편집 표면(HTTP) 실엔진 왕복: put→get→list→delete."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from store.config import load_config
+        from store.backend import open_store
+        self._tmp = tempfile.mkdtemp()
+        self._saved = {k: os.environ.get(k) for k in
+                       ("MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR")}
+        os.environ["MEMORY_STORE_BACKEND"] = "embedded"
+        os.environ.pop("MEMORY_DATA_DIR", None)
+        import os as _os
+        self.store = open_store(load_config({"data_dir": _os.path.join(self._tmp, "store")}))
+        self.assertIsNotNone(self.store, "임베디드 스토어 open 실패")
+        self.store.provision(dim=4)
+        self.app = VincApp(store=self.store, auth=SessionAuth(_TOKEN))
+
+    def tearDown(self):
+        import os
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_doc_crud_over_http(self):
+        text = "# HTTP 편집\n\n" + "정본 편집 표면 왕복. " * 60
+        with running_server(self.app) as base:
+            # put(신규) → doc_id
+            code, put = _req(base, "/doc/put", method="POST",
+                             body={"owner": "user:a", "text": text, "title": "t"})
+            self.assertEqual(code, 200)
+            did = put["doc_id"]
+            self.assertTrue(put["executed"] and not put["skipped"])
+            # 무소유 put 거부(SEC-1)
+            code, err = _req(base, "/doc/put", method="POST", body={"text": "x"})
+            self.assertEqual(code, 400)
+            # get(복원 + 검증)
+            code, got = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(got["verified"])
+            self.assertEqual(got["text"], text)
+            # list
+            code, lst = _req(base, "/docs?owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertEqual(lst["count"], 1)
+            # 편집(같은 id) → 재청킹
+            code, put2 = _req(base, "/doc/put", method="POST",
+                              body={"owner": "user:a", "text": "짧아짐", "id": did, "title": "t"})
+            self.assertFalse(put2["skipped"])
+            code, got2 = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(got2["text"], "짧아짐")
+            # delete
+            code, dele = _req(base, "/doc/delete", method="POST",
+                              body={"id": did, "owner": "user:a"})
+            self.assertTrue(dele["executed"])
+            code, gone = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertIn("error", gone)
 
 
 if __name__ == "__main__":

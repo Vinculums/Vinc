@@ -83,6 +83,29 @@ class PureChunkingTests(unittest.TestCase):
         chunks = ds.chunk_doc("서문\n\n# 큰제목\n내용\n## 소제목\n", max_chars=10_000)
         self.assertEqual(chunks[0]["section_title"], "큰제목")
 
+    def test_external_boundaries_normalized_lossless(self):
+        # P2 — chonkie 류 외부 경계를 정규화해도 무손실이어야 한다(공백 봉합).
+        text = "문단 하나입니다.\n\n문단 둘.\n\n문단 셋 마지막."
+        # 일부러 어긋난 후보: 범위 밖(음수·초과)·중복·비정렬·공백 위 경계
+        starts = [10, 0, 10, 8, 999, -3, 20]
+        chunks = ds.chunk_doc(text, boundaries=starts)
+        self.assertEqual("".join(c["text"] for c in chunks), text)  # 무손실
+        self.assertEqual(chunks[0]["start"], 0)                     # b0=0 강제
+        for i in range(1, len(chunks)):
+            self.assertEqual(chunks[i]["start"], chunks[i - 1]["end"])  # 연속
+
+    def test_empty_boundaries_and_empty_text(self):
+        self.assertEqual(ds.chunk_doc("", boundaries=[3, 5])[0]["text"], "")
+        # 경계가 전부 무효면 단일 청크(=원문)로 귀결
+        self.assertEqual("".join(c["text"] for c in ds.chunk_doc("abc", boundaries=[9])), "abc")
+
+    def test_origin_stable_id_survives_edit(self):
+        # P2 — 파일 재적재의 정체성은 origin(경로)이지 내용이 아니다(편집 불변).
+        a = ds.doc_id_for_origin("user:a", "CONTEXT/x.md")
+        self.assertEqual(a, ds.doc_id_for_origin("user:a", "CONTEXT/x.md"))
+        self.assertNotEqual(a, ds.doc_id_for_origin("user:a", "CONTEXT/y.md"))
+        self.assertNotEqual(a, ds.doc_id_for_origin("user:b", "CONTEXT/x.md"))
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocstoreE2E(unittest.TestCase):
@@ -177,6 +200,33 @@ class DocstoreE2E(unittest.TestCase):
             "MATCH (c:Chunk) WHERE c.owner_id = $o RETURN count(c) AS c",
             {"o": "user:stay"})
         self.assertGreater(int(rows[0]["c"]), 0)                   # 남은 소유자 무손상
+
+    def test_p2_file_ingest_via_docstore(self):
+        # P2 — 파일 이관 시뮬레이션: 외부 경계 + fake 임베딩으로 put_doc 왕복 + 증분.
+        text = "# 문서\n\n" + "본문. " * 300
+        origin = "CONTEXT/reference-docs/A/001-doc.md"
+        did = ds.doc_id_for_origin("user:a", origin)
+        # fake chonkie 경계(≈120자마다) + fake 4d 임베딩
+        starts = list(range(0, len(text), 120))
+        emb = lambda texts: [[float(len(t) % 7), 0.0, 0.0, 1.0] for t in texts]
+        res = ds.put_doc(self.store, owner="user:a", text=text, doc_id=did,
+                         title="문서", origin=origin, layer="G-A",
+                         boundaries=starts, embed=emb, link=False)
+        self.assertTrue(res["executed"] and not res["skipped"])
+        self.assertGreater(res["chunks"], 1)
+        # doc_hash 로 무변경 증분 판정 → 재적재 스킵
+        self.assertEqual(ds.doc_hash(self.store, did), res["content_hash"])
+        again = ds.put_doc(self.store, owner="user:a", text=text, doc_id=did,
+                           title="문서", origin=origin, layer="G-A",
+                           boundaries=starts, embed=emb, link=False)
+        self.assertTrue(again["skipped"])
+        # 무손실 복원 + layer 보존(검색 pre-filter)
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"])
+        self.assertEqual(got["text"], text)
+        lyr = self.store.run("MATCH (c:Chunk) WHERE c.doc_id=$d RETURN DISTINCT c.layer AS l",
+                             {"d": did})
+        self.assertEqual([r["l"] for r in lyr], ["G-A"])
 
     def test_mentions_relink_per_doc(self):
         # 개념을 심고 그 제목 토큰을 담은 문서를 put → MENTIONS 생성;

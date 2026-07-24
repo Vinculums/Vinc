@@ -2521,7 +2521,7 @@ def _purge_labels() -> list[str]:
     `_Tombstone`·`_DocMeta`(메타)도 owner_id 를 가져 포함 — 정본 텍스트(Chunk)가
     지워질 때 문서 정체성 레지스트리도 함께 지운다."""
     from store.embedded_schema import owner_scoped_labels
-    return owner_scoped_labels() + ["_Tombstone", "_DocMeta"]
+    return owner_scoped_labels() + ["_Tombstone", "_DocMeta", "_DocTombstone"]
 
 
 def purge_owner(owner: str, *, cfg=None, store=None) -> dict:

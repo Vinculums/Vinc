@@ -743,17 +743,23 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "4")
+        self.assertEqual(rows[0]["v"], "5")
         # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
         store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
                   "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")
         got = store.run("MATCH (c:Chunk) WHERE c.owner_id='user:x' "
                         "RETURN c.char_start AS cs, c.char_end AS ce")
         self.assertEqual((int(got[0]["cs"]), int(got[0]["ce"])), (0, 5))
+        # v5 — _DocMeta.sync_seq + _DocTombstone(문서 단위 동기화)가 실동작한다.
         store.run("MERGE (d:_DocMeta {doc_id:'d0'}) SET d.owner_id='user:x', "
-                  "d.content_hash='h', d.chunk_count=1")
-        dm = store.run("MATCH (d:_DocMeta) RETURN d.content_hash AS h")
+                  "d.content_hash='h', d.chunk_count=1, d.sync_seq=3")
+        dm = store.run("MATCH (d:_DocMeta) RETURN d.content_hash AS h, d.sync_seq AS s")
         self.assertEqual(dm[0]["h"], "h")
+        self.assertEqual(int(dm[0]["s"]), 3)
+        store.run("MERGE (t:_DocTombstone {doc_id:'d9'}) SET t.owner_id='user:x', "
+                  "t.deleted_at='2026', t.sync_seq=4")
+        ts = store.run("MATCH (t:_DocTombstone) RETURN count(t) AS c")
+        self.assertEqual(int(ts[0]["c"]), 1)
         store.run("MERGE (b:Bridge {bridge_id:'b0'}) SET b.owner_id = 'user:x'")
         got = store.run("MATCH (b:Bridge) WHERE b.owner_id = 'user:x' RETURN count(b) AS c")
         self.assertEqual(int(got[0]["c"]), 1)

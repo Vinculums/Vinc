@@ -101,15 +101,35 @@ def plan_boundaries(text: str, *, max_chars: int = DEFAULT_MAX_CHARS) -> list[in
     return bounds
 
 
+def normalize_boundaries(text: str, starts: list[int]) -> list[int]:
+    """외부 청커(chonkie 등)의 시작 오프셋 후보를 **무손실 경계**로 정규화한다.
+
+    P2 통합의 핵심: chonkie 는 좋은 검색 청크(토큰 기준)를 주지만 경계에서 공백을
+    떨구거나 오프셋이 어긋날 수 있어 그대로 쓰면 복원이 깨진다. 후보를 (a) [0, len)
+    범위로 클램프 (b) 정렬·중복제거 (c) b0=0 강제 한 뒤 chunk_i = text[b_i:b_{i+1}]
+    로 슬라이스하면 — 공백이 어느 청크엔가 반드시 흡수되어 ``"".join == text`` 가
+    **구성으로** 성립한다(외부 청커의 손실을 정규화가 봉합)."""
+    n = len(text)
+    valid = sorted({0} | {int(s) for s in starts if 0 < int(s) < n})
+    return valid
+
+
 def _section_title(chunk: str) -> str:
     m = _HEADING_RE.search(chunk)
     return m.group(2).strip() if m else ""
 
 
-def chunk_doc(text: str, *, max_chars: int = DEFAULT_MAX_CHARS) -> list[dict]:
+def chunk_doc(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,
+              boundaries: list[int] | None = None) -> list[dict]:
     """텍스트 → [{index, start, end, text, section_title}] (순수). 복원 계약의
-    생산자 — start/end 는 반개구간 오프셋, 연결하면 원문과 바이트 동일."""
-    bounds = plan_boundaries(text, max_chars=max_chars)
+    생산자 — start/end 는 반개구간 오프셋, 연결하면 원문과 바이트 동일.
+
+    ``boundaries`` 지정 시 외부 청커의 경계를 정규화해 사용(P2 — chonkie 통합);
+    없으면 내장 문단/행/하드컷 경계(plan_boundaries)."""
+    if boundaries is not None:
+        bounds = normalize_boundaries(text, boundaries) if text else [0]
+    else:
+        bounds = plan_boundaries(text, max_chars=max_chars)
     out = []
     for i, start in enumerate(bounds):
         end = bounds[i + 1] if i + 1 < len(bounds) else len(text)
@@ -130,6 +150,47 @@ def _meta(store, doc_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def _stamp_updated_at(store) -> str:
+    """정본 갱신 시각 — 스토어 내 단조 HLC(revstamp). 벽시계 스큐에도 동기화
+    LWW 비교가 성립하도록. revstamp 미가용(경량 스토어)이면 벽시계로 강등."""
+    try:
+        from . import revstamp
+        return revstamp.hlc_now(store)
+    except Exception:
+        return _now_iso()
+
+
+def _next_doc_seq(store, owner: str) -> int:
+    """owner별 단조 doc sync_seq(P3 delta 커서). revstamp 카운터 재사용 —
+    노드 sync 와 같은 지평의 커서를 공유하지 않도록 'doc:' 네임스페이스로 분리."""
+    try:
+        from . import revstamp
+        return revstamp.next_seq(store, f"doc:{owner}")
+    except Exception:
+        return 0
+
+
+def doc_id_for_origin(owner: str, origin: str) -> str:
+    """origin(파일 경로 등 **안정 외부 식별자**) 기반 결정론 doc_id(P2). 같은
+    파일의 재적재가 같은 doc 로 수렴한다(내용 해시 기반 make_doc_id 와 달리 편집에도
+    id 불변) — 배치 파일 이관의 정체성 원천."""
+    return "d" + hashlib.sha256(f"{owner}|origin|{origin}".encode("utf-8")).hexdigest()[:16]
+
+
+def doc_hash(store, doc_id: str) -> str | None:
+    """doc 의 현재 content_hash(없으면 None) — 배치 증분이 임베딩·청킹 **전에**
+    무변경을 판정해 스킵하기 위한 값(F5 대체: 파일명 아닌 내용 기반)."""
+    m = _meta(store, doc_id)
+    return m.get("content_hash") if m else None
+
+
+def _clear_doc_tombstone(store, doc_id: str) -> None:
+    try:
+        store.run("MATCH (t:_DocTombstone) WHERE t.doc_id = $id DELETE t", {"id": doc_id})
+    except Exception:
+        pass
+
+
 def _drop_indexes_if_any(store) -> None:
     # 인덱스 걸린 열(text·embedding) 변이 전 drop(멱등). 재빌드는 검색 경로의
     # ensure_search_indexes 지연 보장(T3b)이 담당 — 여기서 재빌드하지 않는다.
@@ -145,17 +206,22 @@ def _drop_indexes_if_any(store) -> None:
 
 
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
-            title: str = "", origin: str = "",
+            title: str = "", origin: str = "", layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
+            boundaries: list[int] | None = None,
             embed: Callable[[list[str]], list[list[float]]] | None = None,
-            link: bool = True) -> dict:
+            link: bool = True, updated_at: str | None = None) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
     - 갱신: 기존 doc_id + 변경 텍스트 → 구 청크 삭제 후 재청킹(고아 0, F3 해소).
     - 무변경: content_hash 동일 → skipped(F5 — 내용 기반 변경감지).
     - SEC-1: 기존 문서의 owner 불일치 → 거부(남의 정본을 재-put 으로 탈취 불가).
-    """
+
+    ``boundaries`` (P2): 외부 청커(chonkie)의 시작 오프셋 후보 — 무손실 정규화 후
+    검색 청크로 사용(없으면 내장 경계). ``layer``: 검색 pre-filter 태그(파일 배치
+    이관 시 원 레이어 보존). ``updated_at`` (P3): 동기화 적용 시 원격 HLC 를 그대로
+    박기 위한 주입점(로컬 쓰기는 None → 스토어 HLC 스탬프)."""
     base: dict[str, Any] = {"kind": "doc.put", "executed": False}
     if not owner or not isinstance(owner, str):
         base["error"] = "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)"
@@ -178,8 +244,10 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                         content_hash=content_hash)
             return base
 
-    chunks = chunk_doc(text, max_chars=max_chars)
+    chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
     vectors = embed([c["text"] for c in chunks]) if embed and chunks else None
+    stamp = updated_at or _stamp_updated_at(store)
+    seq = _next_doc_seq(store, owner)
 
     _drop_indexes_if_any(store)
     # ① 구 청크 삭제(재청킹으로 개수가 줄어도 고아가 남지 않게 — 부착 MENTIONS 도
@@ -200,8 +268,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             "origin": origin, "sec": c["section_title"], "idx": c["index"],
             "cs": c["start"], "ce": c["end"], "cc": len(c["text"]), "text": c["text"],
         }
+        params["lyr"] = layer
         sets = ("c.doc_id = $doc, c.owner_id = $owner, c.source_file = $origin, "
-                "c.section_title = $sec, c.chunk_index = $idx, c.layer = 'ssot', "
+                "c.section_title = $sec, c.chunk_index = $idx, c.layer = $lyr, "
                 "c.char_start = $cs, c.char_end = $ce, c.char_count = $cc, "
                 "c.token_count = 0, c.text = $text")
         if vectors is not None:
@@ -212,17 +281,19 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     store.run(
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
-        "d.updated_at = $ts",
+        "d.updated_at = $ts, d.sync_seq = $seq",
         {"id": doc_id, "owner": owner, "title": title, "origin": origin,
-         "hash": content_hash, "n": len(chunks), "ts": _now_iso()})
+         "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq})
+    # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
+    _clear_doc_tombstone(store, doc_id)
 
     linked = 0
     if link:
         linked = _relink_mentions(store, doc_id, owner=owner, origin=origin)
 
     base.update(executed=True, skipped=False, chunks=len(chunks), replaced=removed,
-                content_hash=content_hash, mentions=linked,
-                note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
+                content_hash=content_hash, mentions=linked, updated_at=stamp,
+                sync_seq=seq, note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     return base
 
 
@@ -295,9 +366,13 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     return base
 
 
-def delete_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
+def delete_doc(store, doc_id: str, *, owner: str | None = None,
+               tombstone: bool = True) -> dict:
     """doc 단위 완전 삭제 — 청크(부착 MENTIONS 포함 DETACH)와 정체성 레지스트리.
-    owner 지정 시 소유 가드(SEC-1). 멱등."""
+    owner 지정 시 소유 가드(SEC-1). 멱등.
+
+    ``tombstone`` (P3): 삭제 표식을 남겨 동기화가 상대 기기에도 삭제를 전파하게
+    한다(하드삭제만으론 다음 delta 에서 부활). 동기화 apply 의 하드삭제는 False."""
     base: dict[str, Any] = {"kind": "doc.delete", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is not None and owner is not None and meta.get("owner_id") != owner:
@@ -309,8 +384,15 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     if n:
         _drop_indexes_if_any(store)
         store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
+    owner_id = (meta or {}).get("owner_id") or owner or ""
     if meta is not None:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id DELETE d", {"id": doc_id})
+    if tombstone and (meta is not None or n):
+        store.run(
+            "MERGE (t:_DocTombstone {doc_id: $id}) SET t.owner_id = $o, "
+            "t.deleted_at = $ts, t.sync_seq = $seq",
+            {"id": doc_id, "o": owner_id, "ts": _stamp_updated_at(store),
+             "seq": _next_doc_seq(store, owner_id)})
     base.update(executed=True, deleted_chunks=n, deleted_meta=meta is not None)
     return base
 

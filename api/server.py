@@ -40,6 +40,7 @@ from . import activate as act
 from . import fragment as frag
 from . import share
 from . import sync
+from . import docstore
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -393,6 +394,34 @@ class VincApp:
                                  lambda: q.merge_nodes(keep, drop, owner=owner, store=self.store))
         return 200, res
 
+    # ── 문서 정본(Chunk=SSoT, D45 P4) — 직접 수정 표면 백엔드 ──────────────────
+    # 편집 UX(웹UI·데스크탑)의 백엔드: get→편집→put 왕복. 쓰기는 잡 큐(run_sync)로
+    # 단일 writer 직렬화(재청킹·인덱스 drop 이 다른 쓰기와 경합하지 않게). SEC-1: owner
+    # 는 원격/웹에선 MCP 가 토큰에서 실어 강제, 로컬 단일 사용자는 미전송 가능.
+    # ⚠ 파생 노드(Concept) 재도출의 자동/수동 정책은 **별도 DEC**(제품 결정) — 여기선
+    # 정본 텍스트 CRUD 만 노출하고, MENTIONS 재링크는 put_doc 이 doc 단위로 수행한다.
+    def read_doc(self, p):
+        return self._read(lambda r: docstore.get_doc(r, _req(p, "id"),
+                                                     owner=p.get("owner") or None))
+
+    def read_docs(self, p):
+        return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
+
+    def write_doc_put(self, body):
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 정본은 무소유로 두지 않는다(SEC-1)"}
+        res = self.jobs.run_sync("doc.put", lambda: docstore.put_doc(
+            self.store, owner=owner, text=_req(body, "text"),
+            doc_id=body.get("id") or None, title=body.get("title") or "",
+            origin=body.get("origin") or ""))
+        return 200, res
+
+    def write_doc_delete(self, body):
+        res = self.jobs.run_sync("doc.delete", lambda: docstore.delete_doc(
+            self.store, _req(body, "id"), owner=body.get("owner") or None))
+        return 200, res
+
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────
     def read_themes(self, p):
         return 200, {"active_theme_id": self.themes.active_theme_id(),
@@ -535,6 +564,23 @@ class VincApp:
         bundle = body.get("bundle") or {}
         res = self.jobs.run_sync("sync:apply", lambda: sync.apply_delta(
             owner=owner, bundle=bundle, cfg=self.cfg, store=self.store))
+        return 200, res
+
+    def read_sync_docs_export(self, p):
+        """문서 정본 delta(D45 P3) — sync_seq > since 인 문서(복원 텍스트)+삭제 표식.
+        노드 sync 와 별개 채널: 텍스트만 전송하고 embedding·청크는 수신측 재생성."""
+        owner = _req(p, "owner")
+        return self._read(lambda r: docsync.export_docs(
+            r, owner=owner, since=_int(p.get("since"), 0)))
+
+    def write_sync_docs_apply(self, body):
+        """문서 정본 delta 적용(D45 P3 — doc 단위 LWW, 로컬 재청킹). 쓰기 → 잡 직렬화.
+        embedding 은 수신측에서 재생성하지 않는다(P3 시작본은 텍스트+FTS; 벡터는 후속
+        재임베딩 잡이 채운다) — 정본 텍스트 정합이 우선."""
+        owner = _req(body, "owner")
+        payload = body.get("payload") or {}
+        res = self.jobs.run_sync("sync:docs-apply", lambda: docsync.import_docs(
+            self.store, owner=owner, payload=payload))
         return 200, res
 
     def write_sync_purge_owner(self, body):
@@ -725,9 +771,12 @@ class _Handler(BaseHTTPRequestHandler):
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
+            # 문서 정본(D45 P4) — get(복원+검증) · list.
+            "/doc": app.read_doc, "/docs": app.read_docs,
             # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,
+            "/sync/docs-export": app.read_sync_docs_export,   # 문서 정본 delta(D45 P3)
             # 계정 연결(디바이스 플로우) — 메일박스 1회 수령(인증).
             "/connect/status": app.read_connect_status,
         }
@@ -747,12 +796,15 @@ class _Handler(BaseHTTPRequestHandler):
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
             "/merge-nodes": app.write_merge,
+            # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
+            "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,
             # 동기화 데이터플레인(S1) — 사이드카 내부 표면(8787 은 공개 미노출, F4).
             "/sync/domains": app.write_sync_domains,
             "/sync/apply-delta": app.write_sync_apply_delta,
+            "/sync/docs-apply": app.write_sync_docs_apply,    # 문서 정본 delta 적용(D45 P3)
             # 계정 삭제 캐스케이드(§5.9) — owner 전 노드 purge. 원격에선 MCP
             # /internal/purge-owner 가 계정 서명 검증 후 프록시(owner 위조 불가).
             "/sync/purge-owner": app.write_sync_purge_owner,

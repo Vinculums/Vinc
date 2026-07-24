@@ -27,6 +27,8 @@ from store.config import (  # noqa: E402
     EMBEDDING_DIM_BY_MODEL,
     load_config,
 )
+from api import docstore as ds  # noqa: E402  — 정본 쓰기 단일 지점(D45 P2)
+from engines.concepts_ingest import _default_owner  # noqa: E402  — owner 기본값 공유
 
 # ── Chonkie 임포트 ────────────────────────────────────────────────────────────
 # Chonkie is loaded lazily (see _load_chonkie) so this module imports cleanly
@@ -55,11 +57,12 @@ def _load_chonkie() -> None:
 
 
 # ── 상수 ─────────────────────────────────────────────────────────────────────
-PARQUET_FILENAME = "chunks.parquet"
 # 임베딩 차원은 모델별로 다르다 — store.config 가 단일 출처(§8, local-en=768 등).
 EMBEDDING_DIM = EMBEDDING_DIM_BY_MODEL.get(DEFAULT_EMBEDDING_MODEL, 768)  # main 에서 재설정
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+# ⚠ CHUNK_OVERLAP 은 chonkie 1.6.8 이 인자를 제거해 죽은 상수였다(F1) → 제거.
+# parquet 체크포인트(구 증분 원천)도 D45 로 폐지 — 증분은 이제 _DocMeta.content_hash
+# (내용 기반)가 판정한다(F5 해소). doc 단위 적재는 api/docstore.put_doc 이 정본.
 # 임베딩 모델 어휘는 store.config(§8) 와 동일하다 — 파이프라인이 독자 명칭을 두지
 # 않도록 식별자·차원은 config 단일 출처를 따른다. 로컬(오프라인) 모델은 §8 영어 1차:
 #   local-en = bge-base-en-v1.5(기본·768) · local-en-large = bge-large-en-v1.5(1024).
@@ -118,8 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="임베딩 모델(store.config §8 단일 어휘). local-en=bge-base-en(기본·오프라인) · "
                         "local-en-large=bge-large-en · anthropic=voyage-3(API 키 필요) · "
                         f"local=legacy 다국어. 기본값: {DEFAULT_EMBEDDING_MODEL}(오프라인·키 불필요)")
+    p.add_argument("--owner", default=None,
+                   help="정본 소유자(owner_id) — 미지정 시 MEMORY_DEFAULT_OWNER 또는 tenant:shared")
     p.add_argument("--force", action="store_true",
-                   help="체크포인트(chunks.parquet) 무시하고 전체 재처리")
+                   help="내용 해시 증분 무시하고 전체 재적재(doc 단위 재청킹)")
     p.add_argument("--dry-run", action="store_true",
                    help="청킹 결과만 출력하고 임베딩·적재는 수행하지 않음")
     return p
@@ -238,59 +243,6 @@ def _to_list(vec: Any) -> list[float]:
     return list(vec)
 
 
-def _make_chunk_id(file_path: Path, index: int, text: str) -> str:
-    return hashlib.sha256(
-        f"{file_path}::{index}::{text[:200]}".encode()
-    ).hexdigest()[:16]
-
-
-# ── 체크포인트 ────────────────────────────────────────────────────────────────
-
-def _parquet_path(product: str) -> Path:
-    return Path("WORKSPACES/planning") / product / "graph" / PARQUET_FILENAME
-
-
-def load_processed_files(product: str) -> set[str]:
-    """chunks.parquet에서 이미 처리된 source_file 집합 반환."""
-    cp = _parquet_path(product)
-    if not cp.exists():
-        return set()
-    try:
-        import pandas as pd
-        df = pd.read_parquet(cp)
-        return set(df["source_file"].unique()) if "source_file" in df.columns else set()
-    except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
-
-def load_all_records(product: str) -> list[dict]:
-    cp = _parquet_path(product)
-    if not cp.exists():
-        return []
-    try:
-        import pandas as pd
-        return pd.read_parquet(cp).to_dict("records")
-    except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-
-
-def save_checkpoint(product: str, records: list[dict]) -> None:
-    cp = _parquet_path(product)
-    cp.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import pandas as pd
-        pd.DataFrame(records).to_parquet(cp, index=False)
-    except ImportError:
-        print("[ERROR] pandas/pyarrow 패키지가 없습니다. pip install pandas pyarrow 를 실행하세요.",
-              file=sys.stderr)
-        sys.exit(1)
-    print(f"[INFO] 체크포인트 저장: {cp} ({len(records)}건)")
-
-
 # ── 임베딩 모델 팩토리 ────────────────────────────────────────────────────────
 
 def build_embeddings_model(model_type: str):
@@ -328,37 +280,12 @@ def model_dim(model_type: str) -> int:
     return EMBEDDING_DIM_BY_MODEL.get(model_type, EMBEDDING_DIM)
 
 
-def merge_chunks(session, records: list[dict]) -> int:
-    count = 0
-    for i in range(0, len(records), BATCH_SIZE):
-        batch = records[i : i + BATCH_SIZE]
-        for rec in batch:
-            session.run(
-                """
-                MERGE (c:Chunk {chunk_id: $chunk_id})
-                SET c.source_file   = $source_file,
-                    c.doc_id        = $doc_id,
-                    c.section_title = $section_title,
-                    c.chunk_index   = $chunk_index,
-                    c.layer         = $layer,
-                    c.char_count    = $char_count,
-                    c.token_count   = $token_count,
-                    c.text          = $text,
-                    c.embedding     = $embedding
-                """,
-                chunk_id=rec["chunk_id"],
-                source_file=rec["source_file"],
-                doc_id=rec["doc_id"],
-                section_title=rec["section_title"],
-                chunk_index=rec["chunk_index"],
-                layer=rec["layer"],
-                char_count=rec["char_count"],
-                token_count=rec["token_count"],
-                text=rec["text"],
-                embedding=rec["embedding"],
-            )
-            count += 1
-    return count
+def _chonkie_boundaries(raw_chunks: list) -> list[int]:
+    """chonkie 청크의 시작 오프셋 목록 → docstore 무손실 경계 후보(P2). chonkie 가
+    좋은 검색 분할(토큰 기준)을 주면 그 경계를 쓰고, docstore 가 정규화해 무손실을
+    봉합한다. start_index 미노출 빌드면 빈 목록(→ docstore 내장 경계로 폴백)."""
+    starts = [getattr(c, "start_index", None) for c in raw_chunks]
+    return [int(s) for s in starts if s is not None]
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
@@ -374,132 +301,96 @@ def main() -> None:
     start_time = time.time()
     prefix = detect_prefix()
 
-    # 1. 파일 수집
+    # 1. 파일 수집(파일 = **입력 편의**일 뿐, 정본은 스토어의 Chunk 다 — D45 P2)
     files = collect_files(args.product)
     if not files:
         print("[ERROR] 처리할 마크다운 파일이 없습니다.", file=sys.stderr)
         sys.exit(1)
     print(f"[INFO] 수집된 파일: {len(files)}개")
 
-    # 2. 체크포인트 확인 — source_file 기준 스킵
-    if args.force:
-        processed: set[str] = set()
-        cached_records: list[dict] = []
-    else:
-        processed = load_processed_files(args.product)
-        cached_records = load_all_records(args.product)
+    owner = args.owner or _default_owner()
 
-    new_files = [f for f in files if str(f) not in processed]
-    skip_count = len(files) - len(new_files)
-    print(f"[INFO] 처리 대상: {len(new_files)}개 / 스킵: {skip_count}개")
-
-    # 3. 청킹 — RecursiveChunker(recipe="markdown")
-    # chonkie 1.6.8: recipe 는 from_recipe 로, overlap 인자는 제거됨.
-    # tokenizer 는 tiktoken 인코딩명(cl100k_base)을 사용한다.
-    _load_chonkie()
-    chunker = RecursiveChunker.from_recipe(
-        "markdown",
-        lang="en",
-        tokenizer="cl100k_base",
-        chunk_size=CHUNK_SIZE,
-    )
-
-    file_chunk_map: list[tuple[Path, list]] = []
-    for f in new_files:
-        raw = chunker(f.read_text(encoding="utf-8"))
-        file_chunk_map.append((f, raw))
-        print(f"       {f.name}: {len(raw)}청크")
-
-    total_new = sum(len(c) for _, c in file_chunk_map)
-    total_chunks = len(cached_records) + total_new
-    print(f"[INFO] 총 청크: {total_chunks}개 (신규: {total_new}개)")
-
-    if args.dry_run:
-        print("\n[DRY-RUN] 임베딩·적재 없이 종료합니다.")
-        layer_counts: dict[str, int] = {}
-        for f, raw in file_chunk_map:
-            lyr = _extract_layer(f, prefix)
-            layer_counts[lyr] = layer_counts.get(lyr, 0) + len(raw)
-        for lyr, cnt in layer_counts.items():
-            print(f"[DRY-RUN]   {lyr}: {cnt}청크")
-        return
-
-    # 4. 임베딩 — EmbeddingsRefinery
-    model_name = VOYAGE_MODEL if args.model == "anthropic" else ST_MODEL_BY_KEY.get(args.model, LOCAL_EN_MODEL)
-    all_raw_chunks = [c for _, chunks in file_chunk_map for c in chunks]
-
-    if all_raw_chunks:
-        print(f"[INFO] 임베딩 생성 중 ({args.model}, {len(all_raw_chunks)}건)...")
-        embeddings_model = build_embeddings_model(args.model)
-        refinery = EmbeddingsRefinery(embedding_model=embeddings_model)
-        embedded = refinery(all_raw_chunks)
-        model_name = getattr(embeddings_model, "model", model_name)
-    else:
-        embedded = []
-
-    # 5. 메타데이터 부착 → 레코드 생성
-    new_records: list[dict] = []
-    emb_idx = 0
-    for f, raw_chunks in file_chunk_map:
-        doc_id = _extract_doc_id(f)
-        layer = _extract_layer(f, prefix)
-        node_type = _extract_node_type(f)
-        for i in range(len(raw_chunks)):
-            ec = embedded[emb_idx]
-            emb_idx += 1
-            new_records.append({
-                "chunk_id": _make_chunk_id(f, i, ec.text),
-                "source_file": str(f),
-                "doc_id": doc_id,
-                "section_title": _extract_section_title(ec.text, f),
-                "chunk_index": i,
-                "layer": layer,
-                "phase": "",
-                "node_type": node_type,
-                "char_count": len(ec.text),
-                "token_count": getattr(ec, "token_count", 0),
-                "text": ec.text,
-                "embedding": _to_list(ec.embedding),
-            })
-
-    # 6. 체크포인트 저장
-    final_records = cached_records + new_records
-    save_checkpoint(args.product, final_records)
-
-    # 7. 임베디드 스토어 적재
+    # 2. 스토어 열기 + 증분 판정(내용 해시 — parquet 폐지, F5 해소)
     store = open_store(load_config())
     if store is None:
         print("[ERROR] 스토어 연결 실패 (backend/자격 확인).", file=sys.stderr)
         sys.exit(1)
-    stored_count = 0
+    store.provision(dim=model_dim(args.model))   # 멱등 — v5 마이그레이션 포함
+
+    # origin = collect_files 가 돌려주는 경로(대개 CWD 상대) — 파일별 안정 식별자.
+    plan: list[tuple[Path, str, str, str]] = []   # (file, text, doc_id, layer)
+    skip_count = 0
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        origin = str(f)
+        did = ds.doc_id_for_origin(owner, origin)
+        if not args.force and ds.doc_hash(store, did) == hashlib.sha256(
+                text.encode("utf-8")).hexdigest():
+            skip_count += 1
+            continue
+        plan.append((f, text, did, _extract_layer(f, prefix)))
+    print(f"[INFO] 처리 대상: {len(plan)}개 / 스킵(무변경): {skip_count}개")
+
+    if args.dry_run:
+        print("\n[DRY-RUN] 임베딩·적재 없이 종료합니다.")
+        layer_counts: dict[str, int] = {}
+        for _f, _t, _d, lyr in plan:
+            layer_counts[lyr] = layer_counts.get(lyr, 0) + 1
+        for lyr, cnt in sorted(layer_counts.items()):
+            print(f"[DRY-RUN]   {lyr}: {cnt}문서")
+        store.close()
+        return
+
+    # 3. 임베딩 모델 1회 구성 → put_doc 이 청크별로 호출할 콜러블로 감싼다.
+    #    (모델은 한 번만 로드, 임베딩은 doc 최종 청크 기준으로 계산 = 무손실 정본과 정합.)
+    model_name = VOYAGE_MODEL if args.model == "anthropic" else ST_MODEL_BY_KEY.get(
+        args.model, LOCAL_EN_MODEL)
+    embed_fn = None
+    if plan:
+        _load_chonkie()
+        chunker = RecursiveChunker.from_recipe(
+            "markdown", lang="en", tokenizer="cl100k_base", chunk_size=CHUNK_SIZE)
+        embeddings_model = build_embeddings_model(args.model)
+        refinery = EmbeddingsRefinery(embedding_model=embeddings_model)
+        model_name = getattr(embeddings_model, "model", model_name)
+
+        def embed_fn(texts: list[str]) -> list[list[float]]:   # noqa: F811
+            from chonkie.types import Chunk as _CK
+            cks = [_CK(text=t, start_index=0, end_index=len(t), token_count=0) for t in texts]
+            return [_to_list(e.embedding) for e in refinery(cks)]
+
+    # 4. doc 단위 적재 — 정본 쓰기는 api/docstore.put_doc 단일 지점.
+    stored_docs = 0
+    stored_chunks = 0
     try:
-        # 인덱스 생명주기(§5-4·§6-2 M6): 인덱스가 걸린 embedding 열은 수정 불가 →
-        # 적재 전 drop, 적재 후 build. (Chunk 는 벡터/FTS 검색용 독립 노드 — PM
-        # Policy/Reference 로의 HAS_CHUNK 링크는 Vinc 범위 밖이라 미수행.)
-        store.drop_search_indexes()
-        print("[INFO] :Chunk 노드 MERGE 시작...")
-        with store.session() as session:
-            stored_count = merge_chunks(session, final_records)
+        for f, text, did, layer in plan:
+            origin = str(f)
+            title = _extract_section_title(text, f)
+            boundaries = _chonkie_boundaries(chunker(text))   # chunker: if plan 블록에서 정의
+            res = ds.put_doc(store, owner=owner, text=text, doc_id=did, title=title,
+                             origin=origin, layer=layer, boundaries=boundaries,
+                             embed=embed_fn, link=False)
+            if res.get("executed") and not res.get("skipped"):
+                stored_docs += 1
+                stored_chunks += int(res.get("chunks") or 0)
+            print(f"       {f.name}: {res.get('chunks')}청크 (doc {did[:8]})")
+        # 검색 인덱스 재빌드(적재 후 1회) + E-G1 :MENTIONS 결정론 링크.
         print(f"[INFO] 검색 인덱스 build (벡터 dim={model_dim(args.model)} + FTS)...")
         store.build_search_indexes(dim=model_dim(args.model))
-        # E-G1 — Chunk↔Concept :MENTIONS 결정론 링크(그래프-검색 접속). Concept 이
-        # 아직 없으면(concepts_ingest 미실행) 링크 0 — 무해. MENTIONS 는 인덱스와
-        # 무관한 별도 rel 테이블이라 build 뒤 안전. (재적재는 MERGE 로 멱등.)
         try:
             from engines.mentions_link import link_mentions
-            stats = link_mentions(store)
+            stats = link_mentions(store, owner=owner)
             print(f"[INFO] :MENTIONS 링크 {stats['links']}개 {stats['by_method']}")
-        except Exception as exc:   # 링크 실패가 임베딩 적재를 무효화하지 않는다(증강).
+        except Exception as exc:   # 링크 실패가 적재를 무효화하지 않는다(증강).
             print(f"[WARN] :MENTIONS 링크 스킵: {type(exc).__name__}: {exc}", file=sys.stderr)
     finally:
         store.close()
 
     elapsed = time.time() - start_time
     print(f"\n[완료] 소요 시간: {elapsed:.1f}초")
-    print(f"[완료] 처리 파일: {len(new_files)}개 (스킵: {skip_count}개)")
-    print(f"[완료] 총 청크: {total_chunks}개")
+    print(f"[완료] 적재 문서: {stored_docs}개 (스킵: {skip_count}개)")
+    print(f"[완료] 적재 청크: {stored_chunks}개")
     print(f"[완료] 임베딩 모델: {model_name}")
-    print(f"[완료] :Chunk 노드 적재: {stored_count}개")
     print(f"[완료] 청킹 라이브러리: chonkie {CHONKIE_VERSION}")
 
 
