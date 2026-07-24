@@ -188,11 +188,20 @@ export const api = {
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
   docGet: (owner: string, id: string): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
-    error?: string;
+    content_hash?: string; error?: string;
   }> => call("/doc", { owner, id }),
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
+  docPut: (owner: string, text: string, id?: string, title?: string): Promise<{
+    executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
+    chunks?: number; error?: string;
+  }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}), ...(title ? { title } : {}) }),
+  docExtract: (owner: string, id: string, apply = false): Promise<{
+    executed: boolean; candidates?: { title: string }[];
+    applied?: { created: number; matched: number }; mentions?: number;
+  }> => call("/doc/extract", undefined, { owner, id, apply }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
     executed: boolean; total?: number;

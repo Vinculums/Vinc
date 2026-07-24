@@ -671,6 +671,7 @@ export async function renderAtlas(el: HTMLElement) {
         : `<span class="hint">${COPY.ui.atlasx.readerUnverified}</span>`;
       detail.innerHTML = `
         <button class="btn" id="rdr-back">${COPY.ui.atlasx.readerBack}</button>
+        <button class="btn" id="rdr-edit">${COPY.ui.atlasx.edEdit}</button>
         <h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>
         <p>${badge}</p>
         <div id="rdr-body" style="white-space:pre-wrap;max-height:60vh;overflow:auto;
@@ -678,12 +679,189 @@ export async function renderAtlas(el: HTMLElement) {
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
         if (lastNode) openDetail(lastNode); else detail.hidden = true;
       });
+      // D45-E — 편집 진입: 같은 패널이 편집 표면으로 전환(peek-editor, 표면 신설 없음).
+      detail.querySelector("#rdr-edit")!.addEventListener("click", () =>
+        void openEditor(docId, conceptId, doc.title || "",
+                        text, doc.content_hash || ""));
       // 첫 밑줄로 스크롤(scroll-to-text-fragment 원리 차용 — 로컬 자체 구현).
       const first = detail.querySelector<HTMLElement>("#rdr-body u[data-hl]");
       first?.scrollIntoView({ block: "center" });
     } catch {
       if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerFail}</p>`;
     }
+  }
+
+  /** 결정론 미니 마크다운 렌더러(D45-E) — 라이브러리 0(오프라인·CSP·모노크롬 완전
+   *  제어). **표시 전용**: 소스는 어떤 변형도 없이 textarea 에 그대로 산다(무손실
+   *  규율 — 렌더는 view-only, 정본은 문자열 그대로 /doc/put). 전부 이스케이프 후
+   *  최소 문법만: 헤딩·굵게·기울임·코드·펜스·리스트·인용·수평선. 링크는 밑줄
+   *  텍스트로만(외부 내비 없음 — 로컬 앱). */
+  function renderMd(src: string): string {
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    const inline = (s: string) => s
+      .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/\*([^*]+)\*/g, "<i>$1</i>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<u>$1</u>");
+    const out: string[] = [];
+    const lines = src.split("\n");
+    let i = 0, list: "ul" | "ol" | null = null;
+    const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+    while (i < lines.length) {
+      const raw = lines[i];
+      const t = raw.trim();
+      if (t.startsWith("```")) {                     // 펜스 코드 — 닫힘까지 원문 그대로
+        closeList();
+        const buf: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith("```")) buf.push(lines[i++]);
+        i++;                                          // 닫는 펜스 소비(없으면 EOF)
+        out.push(`<pre style="overflow-x:auto"><code>${esc(buf.join("\n"))}</code></pre>`);
+        continue;
+      }
+      const h = /^(#{1,6})\s+(.*)$/.exec(t);
+      if (h) { closeList(); const lv = Math.min(h[1].length + 1, 6);
+        out.push(`<h${lv}>${inline(esc(h[2]))}</h${lv}>`); i++; continue; }
+      if (/^(-{3,}|\*{3,})$/.test(t)) { closeList(); out.push("<hr/>"); i++; continue; }
+      if (t.startsWith("> ")) { closeList();
+        out.push(`<blockquote class="hint">${inline(esc(t.slice(2)))}</blockquote>`); i++; continue; }
+      const li = /^[-*]\s+(.*)$/.exec(t);
+      if (li) { if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
+        out.push(`<li>${inline(esc(li[1]))}</li>`); i++; continue; }
+      const oli = /^\d+\.\s+(.*)$/.exec(t);
+      if (oli) { if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
+        out.push(`<li>${inline(esc(oli[1]))}</li>`); i++; continue; }
+      closeList();
+      if (t) out.push(`<p>${inline(esc(raw))}</p>`);
+      i++;
+    }
+    closeList();
+    return out.join("");
+  }
+
+  /** 앱 내 SSoT 편집(D45-E MVP) — 스택형 split: textarea(소스=정본 그대로) 위,
+   *  실시간 렌더 미리보기 아래("편집 즉시 보기" — 모드 토글 없음). 저장은 디바운스
+   *  자동저장 + Ctrl/Cmd+S, 상태는 무채색(저장 안 됨 → 저장 중 → 저장됨). 저장 전
+   *  원격 해시를 확인해 다기기 충돌을 감지한다(무음 LWW 덮어쓰기 금지 — 보고서
+   *  기각 3). 저장 후 개념 후보 배지 → 원클릭 반영(자동 반영 아님 — extract 는
+   *  opt-in 이라는 기존 DEC 유지, 보고서 F 와의 절충). */
+  async function openEditor(docId: string, conceptId: string, title: string,
+                            initial: string, loadedHash: string) {
+    detail.hidden = false;
+    let lastSaved = initial;
+    let hash = loadedHash;
+    let timer: number | undefined;
+    let saving = false;
+    detail.innerHTML = `
+      <button class="btn" id="ed-done">${COPY.ui.atlasx.edDone}</button>
+      <span class="hint" id="ed-status" style="margin-left:.5rem">${COPY.ui.atlasx.edSaved}</span>
+      <h2 style="margin-top:.4rem">${title.replace(/[&<>"]/g, (c) =>
+        c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;")}</h2>
+      <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:32vh;resize:vertical;
+        background:transparent;color:inherit;border:1px solid hsl(var(--border));
+        border-radius:6px;padding:.5rem;font:inherit;line-height:1.5"></textarea>
+      <div id="ed-conflict"></div>
+      <div id="ed-extract"></div>
+      <div id="ed-prev" style="max-height:34vh;overflow:auto;border-top:1px solid hsl(var(--border));
+        margin-top:.4rem;padding-top:.4rem;font-size:.9em;line-height:1.5"></div>`;
+    const src = detail.querySelector<HTMLTextAreaElement>("#ed-src")!;
+    const prev = detail.querySelector<HTMLElement>("#ed-prev")!;
+    const status = detail.querySelector<HTMLElement>("#ed-status")!;
+    const conflictBox = detail.querySelector<HTMLElement>("#ed-conflict")!;
+    const extractBox = detail.querySelector<HTMLElement>("#ed-extract")!;
+    src.value = initial;                    // value 대입 — 어떤 변형도 없이 그대로
+    prev.innerHTML = renderMd(initial);
+
+    const setStatus = (t: string) => { status.textContent = t; };
+
+    async function save(force = false) {
+      const text = src.value;
+      if (saving || (!force && text === lastSaved)) return;
+      saving = true;
+      setStatus(COPY.ui.atlasx.edSaving);
+      try {
+        // 다기기 충돌 감지 — 저장 직전 원격 해시가 내가 연 시점과 다르면 경고
+        // (무음 LWW 금지). force(덮어쓰기 확정)는 건너뛴다.
+        if (!force) {
+          const cur = await api.docGet(cfg.owner, docId);
+          if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
+            saving = false;
+            setStatus(COPY.ui.atlasx.edDirty);
+            conflictBox.innerHTML = `
+              <div class="error-banner" style="margin:.4rem 0">
+                ${COPY.ui.atlasx.edConflict}
+                <div style="margin-top:.3rem">
+                  <button class="btn" id="ed-ow">${COPY.ui.atlasx.edOverwrite}</button>
+                  <button class="btn" id="ed-rl">${COPY.ui.atlasx.edReload}</button>
+                </div></div>`;
+            conflictBox.querySelector("#ed-ow")!.addEventListener("click", () => {
+              conflictBox.innerHTML = "";
+              void save(true);
+            });
+            conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
+              conflictBox.innerHTML = "";
+              if (cur.text !== undefined) {
+                src.value = cur.text; lastSaved = cur.text;
+                hash = cur.content_hash || "";
+                prev.innerHTML = renderMd(cur.text);
+                setStatus(COPY.ui.atlasx.edSaved);
+              }
+            });
+            return;
+          }
+        }
+        const res = await api.docPut(cfg.owner, text, docId, title);
+        if (!res.executed) throw new Error(res.error || "put failed");
+        lastSaved = text;
+        hash = res.content_hash || hash;
+        setStatus(COPY.ui.atlasx.edSaved);
+        // 그래프 피드백 고리 — 후보 제안 배지(원클릭 반영, 모달 없음·흐름 유지).
+        if (!res.skipped) void offerExtract();
+      } catch {
+        setStatus(COPY.ui.atlasx.edSaveFail);
+      } finally {
+        saving = false;
+      }
+    }
+
+    async function offerExtract() {
+      try {
+        const res = await api.docExtract(cfg.owner, docId, false);
+        const n = (res.candidates || []).length;
+        if (!res.executed || n === 0) { extractBox.innerHTML = ""; return; }
+        extractBox.innerHTML =
+          `<button class="btn" style="margin-top:.3rem" id="ed-ap">${COPY.ui.atlasx.edExtractOffer(n)}</button>`;
+        extractBox.querySelector("#ed-ap")!.addEventListener("click", async () => {
+          extractBox.innerHTML = `<p class="hint">${COPY.ui.atlasx.edSaving}</p>`;
+          try {
+            const ap = await api.docExtract(cfg.owner, docId, true);
+            extractBox.innerHTML = `<p class="hint">${COPY.ui.atlasx.edExtractDone(
+              ap.applied?.created || 0, ap.mentions || 0)}</p>`;
+          } catch { extractBox.innerHTML = ""; }
+        });
+      } catch { extractBox.innerHTML = ""; }
+    }
+
+    src.addEventListener("input", () => {
+      setStatus(COPY.ui.atlasx.edDirty);
+      prev.innerHTML = renderMd(src.value);           // 편집 즉시 보기(아래 미리보기)
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void save(), 2000);   // 쉼에서 자동저장
+    });
+    src.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (timer) window.clearTimeout(timer);
+        void save();
+      }
+    });
+    detail.querySelector("#ed-done")!.addEventListener("click", async () => {
+      if (timer) window.clearTimeout(timer);
+      await save();                                    // 마지막 flush 후 Reader 복귀
+      void openReader(docId, conceptId);
+    });
+    src.focus();
   }
 
   async function suggestTiesInto(nd: N3) {
