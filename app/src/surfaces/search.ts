@@ -76,7 +76,16 @@ export function renderSearch(el: HTMLElement) {
     body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
     try {
       const res = await api.search(text || raw);
-      let rows: any[] = res.rows || [];
+      // Chunk 결과(rows)와 **개념/레코드 타이틀·그래프 매치(node_hits)를 함께** 보여준다.
+      // 백엔드(T3b)는 Chunk 인덱스에 없는 Concept/Record 를 항상 node_hits 로 반환한다
+      // ("Chunk 0개 스토어에서도 개념이 검색된다") — 팩만 넣어 문서·청크가 없어도 개념이
+      // 검색되게 하는 핵심 경로. 이전엔 프론트가 rows 만 읽어 개념이 통째로 안 보였다.
+      const nodeHits: any[] = (res.node_hits || []).map((h: any) => ({
+        ...h,
+        arms: h.matched_in === "graph" ? ["semantic"] : ["keyword"],   // 마크 재사용(≈/≡)
+        _node: true,
+      }));
+      let rows: any[] = [...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
       if (tag) rows = rows.filter((r) => (r.tags || []).includes(tag));
       if (rows.length === 0) {
