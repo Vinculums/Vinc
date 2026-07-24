@@ -84,6 +84,7 @@ export async function renderAtlas(el: HTMLElement) {
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let minis3d: { dispose(): void } | null = null;   // Grid 미니(단일 렌더러, D34)
   let planar: PlanarHandle | null = null;           // 평면 관점(Flow/Timeline/Totals, D43)
+  let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
   const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
@@ -433,6 +434,7 @@ export async function renderAtlas(el: HTMLElement) {
   }
 
   function openDetail(nd: N3) {
+    lastNode = nd;   // Reader 뒤로가기 복귀 지점
     // 방향성 관계(화살촉 3종)만 in/out 분리 표기 — 대칭(relates_to)은 방향이 무의미
     const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
     const out = curEdges.filter((e) => e.source === nd.id && DIRECTED.includes(e.type)).length;
@@ -502,6 +504,75 @@ export async function renderAtlas(el: HTMLElement) {
     }
   }
 
+  /** 합계 구간 클릭 → 개념 목록 드릴다운(D45-V2 3단계). "이 숫자는 어떤 개념들인가".
+   *  개념 클릭 → 그 개념 상세(node-context)로 한 홉 더(문서는 거기서). */
+  async function openDrilldown(domain: string, mark: string, seed?: string) {
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    detail.hidden = false;
+    detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.drillLoading}</p>`;
+    try {
+      const res = await api.ledgerDrilldown(cfg.owner, domain, mark, seed);
+      if (detail.hidden) return;
+      if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.drillFail}</p>`; return; }
+      const items = res.items || [];
+      const segName = (COPY.ui.atlasx.seg as Record<string, string>)[mark] || mark;
+      const head = `<h2>${esc(COPY.ui.atlasx.drillHeader(domain, segName, res.total || 0))}</h2>`;
+      if (items.length === 0) {
+        detail.innerHTML = head + `<p class="hint">${COPY.ui.atlasx.drillEmpty}</p>`;
+        return;
+      }
+      detail.innerHTML = head + items.map((it) => `
+        <div class="list-row drill-c" data-id="${esc(it.concept_id)}" data-lab="${esc(it.title)}"
+             data-dom="${esc(domain)}" style="display:block;cursor:pointer">
+          <span class="title" style="font-size:.9em">${esc(it.title)}</span>
+          ${it.one_liner ? `<p class="hint" style="margin:.1rem 0 0">${esc(it.one_liner)}</p>` : ""}
+        </div>`).join("");
+      detail.querySelectorAll<HTMLElement>(".drill-c").forEach((row) =>
+        row.addEventListener("click", () => openDetail({
+          id: row.dataset.id!, label: row.dataset.lab!, domain: row.dataset.dom!,
+          degree: 0,
+        } as N3)));
+    } catch {
+      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.drillFail}</p>`;
+    }
+  }
+
+  /** 타임라인 월-밴드 클릭 → 그 달 항목(D45-V2 4단계). "그때 무슨 일이 있었나".
+   *  세로 밴드 타임라인이라 브러시를 월 단위로 이산화했다(자유 픽셀 드래그 아님). */
+  async function openPeriod(month: string, domain?: string) {
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    // "YYYY-MM" → 다음 달(반개구간 상한). 날짜 파싱 없이 문자열 산술.
+    const [y, mo] = month.split("-").map(Number);
+    const end = mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+    detail.hidden = false;
+    detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.periodLoading}</p>`;
+    try {
+      const res = await api.docsInRange(cfg.owner, month, end, domain);
+      if (detail.hidden) return;
+      if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.periodFail}</p>`; return; }
+      const items = res.items || [];
+      const head = `<h2>${esc(COPY.ui.atlasx.periodHeader(month, res.total || 0))}</h2>`;
+      if (items.length === 0) {
+        detail.innerHTML = head + `<p class="hint">${COPY.ui.atlasx.periodEmpty}</p>`;
+        return;
+      }
+      detail.innerHTML = head + items.map((it) => `
+        <div class="list-row period-i" data-id="${esc(it.id)}" data-lab="${esc(it.title)}"
+             data-dom="${esc(it.domain)}" style="display:block;cursor:pointer">
+          <span class="title" style="font-size:.9em">${esc(it.title)}
+            <span class="hint">· ${esc(it.ts)}</span></span>
+        </div>`).join("");
+      detail.querySelectorAll<HTMLElement>(".period-i").forEach((row) =>
+        row.addEventListener("click", () => openDetail({
+          id: row.dataset.id!, label: row.dataset.lab!, domain: row.dataset.dom!, degree: 0,
+        } as N3)));
+    } catch {
+      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.periodFail}</p>`;
+    }
+  }
+
   async function loadNodeSource(nd: N3) {
     // 발췌는 증강 — 실패·부재가 상세 패널을 깨지 않는다(문구만 남기고 조용히).
     const box = detail.querySelector<HTMLElement>("#node-source");
@@ -520,19 +591,98 @@ export async function renderAtlas(el: HTMLElement) {
       if (ex.length > 0) {
         const header = res.arm === "fts"
           ? COPY.ui.atlasx.sourceRelated : COPY.ui.atlasx.sourceHeader;
+        // 발췌 카드 = 클릭 시 Reader 전문 승격(peek-definition 동선). doc_id 를
+        // data 로 실어 두고, 밑줄은 개념 제목 토큰을 발췌 문자열에 클라이언트 강조.
         parts.push(`<p class="hint" style="margin-bottom:.3rem">${header}</p>` +
-          ex.map((e) => `
-            <div class="list-row" style="display:block">
+          ex.map((e, i) => `
+            <div class="list-row rdr-open" data-doc="${esc(e.doc_id)}" data-i="${i}"
+                 style="display:block;cursor:pointer">
               <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
                 e.section ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
-              <p class="hint" style="margin:.15rem 0 0">${esc(e.excerpt)}</p>
+              <p class="hint" style="margin:.15rem 0 0">${underlineTerms(e.excerpt, nd.label)}</p>
             </div>`).join(""));
       } else if (!res.one_liner) {
         parts.push(`<p class="hint">${COPY.ui.atlasx.sourceNone}</p>`);
       }
       box.innerHTML = parts.join("");
+      box.querySelectorAll<HTMLElement>(".rdr-open").forEach((row) =>
+        row.addEventListener("click", () =>
+          void openReader(row.dataset.doc!, nd.id)));
     } catch {
       box.innerHTML = "";   // 발췌 불가(구 사이드카 등) — 상세는 그대로 유효
+    }
+  }
+
+  /** 발췌 문자열 안에서 개념 제목 토큰(길이≥2)을 밑줄 강조 — 색 없이(모노크롬),
+   *  <u> 만. 정본 char offset 이 아니라 발췌 로컬 매칭이라 근사지만, Reader 전문은
+   *  백엔드 계산 범위(정확)를 쓴다. */
+  function underlineTerms(text: string, label: string): string {
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    const terms = [...new Set((label.toLowerCase().match(/[0-9a-z가-힣]+/g) || [])
+      .filter((t) => t.length >= 2))].slice(0, 6);
+    if (terms.length === 0) return esc(text);
+    // 토큰 span 을 훑어 매치만 <u> — 낱말 단위(문장 전체 강조 금지, D45-V2 규율).
+    let out = "", last = 0;
+    const re = /[0-9A-Za-z가-힣]+/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      if (terms.includes(m[0].toLowerCase())) {
+        out += esc(text.slice(last, m.index)) + "<u>" + esc(m[0]) + "</u>";
+        last = m.index + m[0].length;
+      }
+    }
+    return out + esc(text.slice(last));
+  }
+
+  /** Reader 서브뷰(D45-V2 2단계) — 상세 패널을 정본 전문으로 확장한다. 새 표면
+   *  신설 없이 Atlas 안에 머문다(D15). 뒤로 = 노드 상세로 복귀. 밑줄 범위는
+   *  백엔드 /doc/highlights(토큰 매칭 계산, 정확한 char offset)로 받아 첫 범위로
+   *  스크롤한다. verified 배지로 "정본" 신뢰를 시각화. */
+  async function openReader(docId: string, conceptId: string) {
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    detail.hidden = false;
+    detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerLoading}</p>`;
+    try {
+      const [doc, hl] = await Promise.all([
+        api.docGet(cfg.owner, docId),
+        api.docHighlights(cfg.owner, docId, conceptId),
+      ]);
+      if (detail.hidden) return;
+      if (!doc.executed || doc.text === undefined) {
+        detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerFail}</p>`;
+        return;
+      }
+      const ranges = (hl.ranges || []).slice().sort((a, b) => a.char_start - b.char_start);
+      // 전문에 밑줄 삽입(백엔드 char 범위 — 정확). 범위는 겹치지 않는다고 가정
+      // (highlight_ranges 가 토큰 span 이라 서로소).
+      let body = "", last = 0;
+      const text = doc.text;
+      for (const r of ranges) {
+        if (r.char_start < last) continue;
+        body += esc(text.slice(last, r.char_start))
+          + `<u data-hl>${esc(text.slice(r.char_start, r.char_end))}</u>`;
+        last = r.char_end;
+      }
+      body += esc(text.slice(last));
+      const badge = doc.verified
+        ? `<span class="badge">${COPY.ui.atlasx.readerVerified}</span>`
+        : `<span class="hint">${COPY.ui.atlasx.readerUnverified}</span>`;
+      detail.innerHTML = `
+        <button class="btn" id="rdr-back">${COPY.ui.atlasx.readerBack}</button>
+        <h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>
+        <p>${badge}</p>
+        <div id="rdr-body" style="white-space:pre-wrap;max-height:60vh;overflow:auto;
+             font-size:.9em;line-height:1.5">${body}</div>`;
+      detail.querySelector("#rdr-back")!.addEventListener("click", () => {
+        if (lastNode) openDetail(lastNode); else detail.hidden = true;
+      });
+      // 첫 밑줄로 스크롤(scroll-to-text-fragment 원리 차용 — 로컬 자체 구현).
+      const first = detail.querySelector<HTMLElement>("#rdr-body u[data-hl]");
+      first?.scrollIntoView({ block: "center" });
+    } catch {
+      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerFail}</p>`;
     }
   }
 
@@ -814,11 +964,15 @@ export async function renderAtlas(el: HTMLElement) {
       // ego 인구 0(씨앗 부재·부착 없는 씨앗)도 rows=[] 로 온다 — 기존 빈 상태 그대로.
       if (rows.length === 0) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.totalsEmpty}</p></div>`); return; }
       setMsg("");
+      // D45-V2 3단계 — 구간 클릭 → 개념 드릴다운. l2(seed) 스코프면 원장과 같은
+      // ego 모집단을 쓰도록 seed 를 넘긴다(수치 정합).
+      const drillSeed = level.kind === "l2" ? level.seed : undefined;
       planar = mountTotals(canvas, rows, {
         group: p.totalsGroup, unlinked: p.unlinked, onOpen: openTopic,
         // 눌러도 갈 곳이 없는 행 = openTopic 이 무동작으로 삼키는 그 행. 판정 조건은
         // openTopic 의 가드와 글자 그대로 같아야 한다(L1 에서 자기 주제일 때만).
         current: level.kind === "l1" ? level.domain : undefined,
+        onSeg: (domain, mark) => void openDrilldown(domain, mark, drillSeed),
       });
       // l2 스코프 캡션 — Timeline "날짜 없음" 알약과 같은 자리·같은 기제(mountTotals
       // 는 순수 렌더러로 남긴다). 크럼은 문서 하나를 가리키므로 차트가 무엇을 세는지
@@ -901,8 +1055,12 @@ export async function renderAtlas(el: HTMLElement) {
       const dated = shown.filter((n) => !!(n.ts && n.ts.trim()));
       if (dated.length === 0) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.noDates}</p></div>`); return; }
       setMsg(solo ? `<div class="empty"><p>${COPY.ui.atlasx.soloNode}</p></div>` : "");
+      // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈, L2(ego)는
+      // 스코프가 여러 도메인이라 렌즈 없이(그 달 전체) 연다.
+      const periodDomain = level.kind === "l1" ? level.domain : undefined;
       planar = mountTimeline(canvas, nodes, {
         docs: p.timelineDocs, labels: p.labels !== "none", onOpen: openNode,
+        onMonth: (m) => void openPeriod(m, periodDomain),
       });
       // 날짜 없는 문서 수는 차트 아래 캡션 알약으로 — 레인에 못 올린 만큼을 밝힌다.
       const undated = shown.length - dated.length;

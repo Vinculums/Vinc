@@ -185,6 +185,24 @@ export const api = {
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
   }> => call("/node-context", { owner, node, limit }),
+  // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
+  docGet: (owner: string, id: string): Promise<{
+    executed: boolean; text?: string; title?: string; verified?: boolean;
+    error?: string;
+  }> => call("/doc", { owner, id }),
+  docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
+    executed: boolean; ranges?: { char_start: number; char_end: number }[];
+  }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
+  docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
+    executed: boolean; total?: number;
+    items?: { id: string; kind: string; title: string; ts: string; domain: string }[];
+  }> => call("/docs-in-range", { owner, start, end, ...(domain ? { domain } : {}) }),
+  // D45-V2 3단계 — 합계 구간 클릭: 그 (도메인, mark) 의 개념 목록(원장 수치 정합).
+  ledgerDrilldown: (owner: string, domain: string, mark: string, seed?: string): Promise<{
+    executed: boolean; total?: number;
+    items?: { concept_id: string; title: string; one_liner: string }[];
+  }> => call("/ledger-drilldown", { owner, domain, mark, ...(seed ? { seed } : {}) }),
   // D45-V 1단계 — 흐름 선 클릭: 관계의 evidence·confidence + 양끝 노드 메타/발췌.
   edgeContext: (owner: string, src: string, dst: string, type: string): Promise<{
     executed: boolean; evidence?: string; confidence?: number;

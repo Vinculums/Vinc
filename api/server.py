@@ -410,11 +410,29 @@ class VincApp:
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4), store=r))
 
+    def read_doc_highlights(self, p):
+        # D45-V2 2단계 — Reader 전문/발췌 내 개념 언급 위치(밑줄 char 범위).
+        return self._read(lambda r: docstore.doc_highlights(
+            r, _req(p, "doc_id"), _req(p, "concept_id"),
+            owner=p.get("owner") or None))
+
     def read_edge_context(self, p):
         # D45-V 1단계 — 흐름 뷰 선 클릭: 관계의 evidence·confidence + 양끝 발췌.
         return self._read(lambda r: q.edge_context(
             owner=_req(p, "owner"), src=_req(p, "src"), dst=_req(p, "dst"),
             etype=_req(p, "type"), store=r))
+
+    def read_ledger_drilldown(self, p):
+        # D45-V2 3단계 — 합계 생키 구간 클릭 → 그 구간의 개념 목록(원장 수치 정합).
+        return self._read(lambda r: q.ledger_drilldown(
+            owner=_req(p, "owner"), domain=_req(p, "domain"), mark=_req(p, "mark"),
+            seed=p.get("seed") or None, depth=_int(p.get("depth"), 2), store=r))
+
+    def read_docs_in_range(self, p):
+        # D45-V2 4단계 — 타임라인 기간 브러시: [start, end) 구간의 날짜 있는 항목.
+        return self._read(lambda r: q.docs_in_range(
+            owner=_req(p, "owner"), start=_req(p, "start"), end=_req(p, "end"),
+            domain=p.get("domain") or None, limit=_int(p.get("limit"), 200), store=r))
 
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
@@ -797,8 +815,11 @@ class _Handler(BaseHTTPRequestHandler):
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
+            "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/node-context": app.read_node_context,
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
+            "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
+            "/docs-in-range": app.read_docs_in_range,   # 타임라인 기간 브러시(D45-V2 4단계)
             # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,

@@ -121,6 +121,23 @@ const EN = {
       sourceLoading: "Finding source passages…",
       sourceNone: "No source passages for this yet. Add documents that mention it.",
       sourceRelated: "Related passages (by title match)",
+      // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
+      readerOpen: "Open the full document",
+      readerBack: "Back",
+      readerLoading: "Opening the document…",
+      readerFail: "Couldn't open this document. Try again in a moment.",
+      readerVerified: "Verified original",
+      readerUnverified: "Reconstructed (not verified)",
+      // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
+      drillLoading: "Loading concepts…",
+      drillFail: "Couldn't load this segment. Try again in a moment.",
+      drillHeader: (topic: string, seg: string, n: number) => `${topic} · ${seg} · ${n}`,
+      drillEmpty: "No concepts in this segment.",
+      // D45-V2 4단계 — 타임라인 월-밴드 클릭 기간 항목 목록.
+      periodLoading: "Loading this period…",
+      periodFail: "Couldn't load this period. Try again in a moment.",
+      periodHeader: (month: string, n: number) => `${month} · ${n}`,
+      periodEmpty: "Nothing dated in this period.",
       // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
       relLoading: "Loading link details…",
       relFail: "Couldn't load this link. Try again in a moment.",
@@ -383,6 +400,23 @@ const KO: Deck = {
       sourceLoading: "근거 발췌를 찾는 중…",
       sourceNone: "아직 이 항목을 언급한 문서가 없습니다. 관련 문서를 추가하면 여기 나타납니다.",
       sourceRelated: "관련 발췌 (제목 일치)",
+      // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
+      readerOpen: "문서 전문 열기",
+      readerBack: "뒤로",
+      readerLoading: "문서를 여는 중…",
+      readerFail: "문서를 열지 못했습니다. 잠시 후 다시 시도하세요.",
+      readerVerified: "검증된 원본",
+      readerUnverified: "복원본 (검증 안 됨)",
+      // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
+      drillLoading: "개념을 불러오는 중…",
+      drillFail: "이 구간을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+      drillHeader: (topic, seg, n) => `${topic} · ${seg} · ${n}개`,
+      drillEmpty: "이 구간에 개념이 없습니다.",
+      // D45-V2 4단계 — 타임라인 월-밴드 클릭 기간 항목 목록.
+      periodLoading: "이 기간을 불러오는 중…",
+      periodFail: "이 기간을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+      periodHeader: (month, n) => `${month} · ${n}개`,
+      periodEmpty: "이 기간에 날짜가 있는 항목이 없습니다.",
       // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
       relLoading: "연결 정보를 불러오는 중…",
       relFail: "연결 정보를 불러오지 못했습니다. 잠시 후 다시 시도하세요.",

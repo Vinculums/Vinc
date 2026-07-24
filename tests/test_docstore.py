@@ -106,6 +106,20 @@ class PureChunkingTests(unittest.TestCase):
         self.assertNotEqual(a, ds.doc_id_for_origin("user:a", "CONTEXT/y.md"))
         self.assertNotEqual(a, ds.doc_id_for_origin("user:b", "CONTEXT/x.md"))
 
+    def test_highlight_ranges_pure(self):
+        # D45-V2 2단계 — 토큰 span 밑줄 범위(순수). text[start:end] 가 그 낱말이어야.
+        text = "Quantum 얽힘은 quantum 상태를 공유한다."
+        rngs = ds.highlight_ranges(text, {"quantum", "얽힘은"})
+        got = [text[r["char_start"]:r["char_end"]] for r in rngs]
+        self.assertEqual(got, ["Quantum", "얽힘은", "quantum"])  # 대소문자 무관·전 occurrence
+        self.assertEqual(ds.highlight_ranges(text, set()), [])   # 빈 terms → 빈 범위
+        self.assertEqual(ds.highlight_ranges("", {"x"}), [])
+
+    def test_concept_terms(self):
+        t = ds._concept_terms("양자 얽힘 이론", "quantum")
+        self.assertIn("양자", t); self.assertIn("얽힘", t); self.assertIn("quantum", t)
+        self.assertNotIn("", t)
+
     def test_extract_concepts_deterministic(self):
         # D45-V 옵션1 — 헤딩→후보, H1 제외, one_liner = 다음 첫 비빈 줄, slug 멱등.
         text = ("# 문서제목\n\n서문.\n\n## 양자 얽힘\n\n두 입자가 상태를 공유한다.\n"
@@ -273,6 +287,73 @@ class DocstoreE2E(unittest.TestCase):
         # 미지 노드 — 실패 아님(executed=False + note)
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
+
+    def test_ledger_drilldown_matches_aggregate(self):
+        # D45-V2 3단계 — 드릴다운 개념 목록 수 == 원장 셀 값(공유 분류 보장).
+        from api import query as q
+        # 도메인 phys: 개념 3개 — a(에피소드 부착), b(레코드 부착), c(무출처·고아)
+        for cid in ("a", "b", "c"):
+            self.store.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
+                           "n.domain='phys', n.owner_id='user:a'", {"id": f"concept:{cid}"})
+        self.store.run("MERGE (e:Episode {episode_id:'ep1'}) SET e.owner_id='user:a', "
+                       "e.title='E'")
+        self.store.run("MATCH (e:Episode {episode_id:'ep1'}), (c:Concept {concept_id:'concept:a'}) "
+                       "MERGE (e)-[:ABOUT]->(c)")
+        self.store.run("MERGE (r:Record {record_id:'rc1'}) SET r.owner_id='user:a', r.title='R'")
+        self.store.run("MATCH (r:Record {record_id:'rc1'}), (c:Concept {concept_id:'concept:b'}) "
+                       "MERGE (r)-[:ATTACHES_TO {type:'x'}]->(c)")
+        # a-b 연결(둘 다 connected, 같은 도메인이라 gateway 아님)
+        self.store.run("MATCH (a:Concept {concept_id:'concept:a'}), (b:Concept {concept_id:'concept:b'}) "
+                       "MERGE (a)-[:RELATED_TO]->(b)")
+        led = q.ledger(owner="user:a", domain="phys", store=self.store)
+        row = next(r for r in led["rows"] if r["domain"] == "phys")
+        for mark in ("episodic", "record", "unsourced", "connected", "gateway", "orphan"):
+            dd = q.ledger_drilldown(owner="user:a", domain="phys", mark=mark, store=self.store)
+            self.assertTrue(dd["executed"])
+            self.assertEqual(dd["total"], row[mark],
+                             f"{mark}: 드릴다운 {dd['total']} != 원장 {row[mark]}")
+        # episodic 구간엔 개념 a 가 있고 title/one_liner 를 돌려준다
+        epi = q.ledger_drilldown(owner="user:a", domain="phys", mark="episodic", store=self.store)
+        self.assertEqual([i["concept_id"] for i in epi["items"]], ["concept:a"])
+        # 미지 mark 거부
+        self.assertIn("error", q.ledger_drilldown(owner="user:a", domain="phys",
+                                                  mark="bogus", store=self.store))
+
+    def test_doc_highlights_e2e(self):
+        # D45-V2 2단계 — 전문 내 개념 언급 char 범위(밑줄용). 범위는 토큰 매칭 계산.
+        text = "# 노트\n\n양자 얽힘을 정리한다. 양자 상태는 공유된다.\n"
+        out = ds.put_doc(self.store, owner="user:a", text=text, title="노트")
+        did = out["doc_id"]
+        self.store.run("MERGE (c:Concept {concept_id:'concept:q'}) SET c.title='양자', "
+                       "c.stem='양자', c.owner_id='user:a'")
+        hl = ds.doc_highlights(self.store, did, "concept:q", owner="user:a")
+        self.assertTrue(hl["executed"])
+        self.assertEqual(hl["method"], "tokens")
+        got = [text[r["char_start"]:r["char_end"]] for r in hl["ranges"]]
+        self.assertEqual(got, ["양자", "양자"])   # 전문에서 "양자" 두 번, 정확 범위
+        # SEC-1: 타인 doc/concept 거부
+        self.assertIn("error", ds.doc_highlights(self.store, did, "concept:q", owner="user:b"))
+        self.assertIn("error", ds.doc_highlights(self.store, did, "concept:missing",
+                                                 owner="user:a"))
+
+    def test_docs_in_range_e2e(self):
+        # D45-V2 4단계 — 기간 브러시: [start,end) 의 날짜 있는 Episode/Concept.
+        from api import query as q
+        for eid, d in (("e1", "2026-03-10"), ("e2", "2026-06-01"), ("e3", "2026-09-20")):
+            self.store.run("MERGE (e:Episode {episode_id:$id}) SET e.owner_id='user:a', "
+                           "e.title=$id, e.date=$d, e.domain='phys'", {"id": eid, "d": d})
+        self.store.run("MERGE (c:Concept {concept_id:'concept:k'}) SET c.owner_id='user:a', "
+                       "c.title='K', c.created='2026-05-05', c.domain='phys'")
+        # 반개구간 [2026-04, 2026-08) → e2 + concept:k (e1·e3 밖)
+        r = q.docs_in_range(owner="user:a", start="2026-04-01", end="2026-08-01",
+                            store=self.store)
+        self.assertTrue(r["executed"])
+        ids = {i["id"] for i in r["items"]}
+        self.assertEqual(ids, {"e2", "concept:k"})
+        self.assertEqual([i["ts"] for i in r["items"]], ["2026-05-05", "2026-06-01"])  # 정렬
+        # domain 렌즈 + 소유 격리
+        self.assertEqual(q.docs_in_range(owner="user:b", start="2020", end="2030",
+                                         store=self.store)["total"], 0)
 
     def test_edge_context(self):
         # D45-V 1단계 — 흐름 선 클릭: evidence·confidence + 양끝 발췌.

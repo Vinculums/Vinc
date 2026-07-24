@@ -422,6 +422,66 @@ def new_doc_id() -> str:
 # (편집이 사용자가 다듬은 개념을 조용히 덮어쓰지 않게, status='proposed' 로 표식).
 
 _SLUG_RE = re.compile(r"[^a-z0-9가-힣]+")
+# 토큰 = 소문자 영숫자/한글 낱말(mentions_link 와 같은 어휘) — 하이라이트 범위
+# 계산의 단위. 언급 위치를 **토큰 span** 으로 잡아 char_start/char_end 를 낸다.
+_HL_TOKEN_RE = re.compile(r"[0-9A-Za-z가-힣]+")
+
+
+def highlight_ranges(text: str, terms: set[str], *, max_ranges: int = 60) -> list[dict]:
+    """정본 텍스트에서 ``terms``(소문자 토큰 집합)에 일치하는 토큰의 char 범위 목록.
+
+    순수·결정론 — MENTIONS 는 method 만 저장하고 오프셋이 없으므로(F: 보고서 정정
+    1), 언급 위치는 **읽기 시점 토큰 매칭으로 계산**한다. 토큰 경계로 잘라
+    text[start:end] 가 정확히 그 낱말이라, Reader 전문/발췌에서 밑줄 범위로 쓴다.
+    인접·중복 범위는 병합하지 않는다(각 낱말이 독립 밑줄 — 문장 전체를 칠하지
+    않는다는 D45-V2 규율)."""
+    if not terms:
+        return []
+    out: list[dict] = []
+    for m in _HL_TOKEN_RE.finditer(text or ""):
+        if m.group(0).lower() in terms:
+            out.append({"char_start": m.start(), "char_end": m.end()})
+            if len(out) >= max_ranges:
+                break
+    return out
+
+
+def _concept_terms(title: str, stem: str) -> set[str]:
+    """개념의 하이라이트 대상 토큰 — 제목 유의 토큰(≤6) + stem(mentions_link 규칙과
+    같은 어휘). 너무 짧은 토큰(<2)은 소음이라 제외."""
+    toks = {t for t in _HL_TOKEN_RE.findall((title or "").lower()) if len(t) >= 2}
+    terms = set(list(toks)[:6])
+    s = (stem or "").lower().strip()
+    if len(s) >= 2:
+        terms.add(s)
+    return terms
+
+
+def doc_highlights(store, doc_id: str, concept_id: str, *,
+                   owner: str | None = None) -> dict:
+    """doc 전문에서 ``concept_id`` 가 언급된 char 범위(Reader 밑줄용, D45-V2 2단계).
+
+    범위는 저장값이 아니라 토큰 매칭 계산(보고서 정정 1). SEC-1: doc·concept 소유
+    가드. 반환 {executed, doc_id, concept_id, ranges:[{char_start,char_end}],
+    method:'tokens', terms}."""
+    base: dict[str, Any] = {"kind": "doc.highlights", "executed": False,
+                            "doc_id": doc_id, "concept_id": concept_id, "ranges": []}
+    got = get_doc(store, doc_id, owner=owner)
+    if not got.get("executed"):
+        base["error"] = got.get("error", "unreadable doc")
+        return base
+    where_owner = " AND c.owner_id = $owner" if owner else ""
+    rows = store.run(
+        f"MATCH (c:Concept) WHERE c.concept_id = $id{where_owner} "
+        "RETURN c.title AS title, c.stem AS stem",
+        {"id": concept_id, **({"owner": owner} if owner else {})})
+    if not rows:
+        base["error"] = f"unknown concept: {concept_id}"
+        return base
+    terms = _concept_terms(rows[0].get("title") or "", rows[0].get("stem") or "")
+    base.update(executed=True, ranges=highlight_ranges(got.get("text") or "", terms),
+                method="tokens", terms=sorted(terms))
+    return base
 
 
 def _slug(s: str) -> str:

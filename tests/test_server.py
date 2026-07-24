@@ -530,6 +530,21 @@ class DocRouteE2E(unittest.TestCase):
             # 화이트리스트 밖 타입 → executed=False(주입 차단)
             code, bad = _req(base, "/edge-context?src=a&dst=b&type=MENTIONS&owner=user:a")
             self.assertFalse(bad["executed"])
+            # D45-V2 2단계 — /doc/highlights: 전문 내 개념 언급 char 범위
+            self.store.run("MERGE (c:Concept {concept_id:'concept:개념하나'}) "
+                           "SET c.stem='개념하나'")
+            code, hl = _req(base, "/doc/highlights?doc_id=" + did
+                            + "&concept_id=" + _up.quote("concept:개념하나") + "&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(hl["executed"])
+            self.assertEqual(hl["method"], "tokens")
+            # D45-V2 4단계 — /docs-in-range: 기간 항목(Episode.date)
+            self.store.run("MERGE (e:Episode {episode_id:'ev1'}) SET e.owner_id='user:a', "
+                           "e.title='EV', e.date='2026-05-15', e.domain='d'")
+            code, rng = _req(base, "/docs-in-range?start=2026-05-01&end=2026-06-01&owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(rng["executed"])
+            self.assertIn("ev1", {i["id"] for i in rng["items"]})
             # delete
             code, dele = _req(base, "/doc/delete", method="POST",
                               body={"id": did, "owner": "user:a"})

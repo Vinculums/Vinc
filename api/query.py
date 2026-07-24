@@ -1489,6 +1489,59 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             store.close()
 
 
+def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None,
+                  limit: int = 200, cfg=None, store=None) -> dict:
+    """기간(날짜 범위) 항목 질의 — 타임라인 기간 브러시(D45-V2 4단계). 조회 전용.
+
+    타임라인이 그리는 점은 **날짜를 가진 Episode·Concept** 다. 브러시로 [start,end]
+    (ISO, 반개구간 [start, end])를 선택하면 그 구간 항목을 돌려준다. 1차 근거는
+    Episode.date·Concept.created(사용자가 부여한 사건/생성 시점) — **_DocMeta.
+    updated_at 은 편집시각이라 내용 시점이 아니므로 쓰지 않는다**(보고서 캐비앳).
+    ISO 문자열은 사전순 = 시간순이라 문자열 비교로 안전하게 거른다(타임라인
+    ts.slice 규약과 동형). ``domain`` 렌즈 선택. SEC-1 owner 스코프.
+
+    반환: {executed, start, end, items:[{id, kind, title, ts, domain}], total}."""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "docs-in-range", "executed": False,
+                  "start": start, "end": end, "items": []}
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        lim = max(1, min(int(limit), 1000))
+        dclause = " AND e.domain = $domain" if domain else ""
+        cclause = " AND c.domain = $domain" if domain else ""
+        params = {"owner": owner, "s": start, "e": end}
+        if domain:
+            params["domain"] = domain
+        rows = store.run(
+            "MATCH (e:Episode) WHERE e.owner_id = $owner AND e.date >= $s "
+            f"AND e.date < $e AND e.date <> ''{dclause} "
+            "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
+            "e.date AS ts, e.domain AS domain "
+            "UNION ALL "
+            "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.created >= $s "
+            f"AND c.created < $e AND c.created <> ''{cclause} "
+            "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
+            "c.created AS ts, c.domain AS domain", params) or []
+        rows.sort(key=lambda r: (r.get("ts") or "", r.get("id") or ""))
+        items = [{"id": r["id"], "kind": r.get("kind") or "", "title": r.get("title") or r["id"],
+                  "ts": r.get("ts") or "", "domain": r.get("domain") or ""}
+                 for r in rows[:lim]]
+        base.update(executed=True, items=items, total=len(items),
+                    truncated=len(rows) > lim)
+        return base
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
            depth: int = 2, cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.
@@ -1518,25 +1571,65 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
     두 플랜 중 **하나라도 강등되면 응답 전체를 강등**한다 — 연결 축만 죽으면 차수가
     전부 0 이라 모든 개념이 고아로 보고되는데, ``executed: true`` 를 달고 나가면
     소비처가 그 거짓을 참으로 그린다. ego 순회 강등도 같은 태도다."""
+    by_id, scope, degraded = _ledger_classify(
+        owner=owner, domain=domain, seed=seed, depth=depth, cfg=cfg, store=store)
+    if degraded is not None:
+        return degraded
+    if not by_id:      # 빈 ego(개념 구성원 없음) — DB 왕복 없이 빈 롤업
+        plan = QueryPlan("ledger", "", {"owner": owner, "seed": seed or ""},
+                         note="empty ego (no concept members)")
+        return {"plan": plan.to_dict(), "executed": True, "rows": [],
+                "scope": scope, "population": 0}
+
+    agg: dict[str, dict] = {}
+    for b in by_id.values():
+        dom = b["domain"]
+        if not dom:
+            continue
+        a = agg.setdefault(dom, {"domain": dom, "concepts": 0, "episodic": 0,
+                                 "record": 0, "unsourced": 0, "connected": 0,
+                                 "gateway": 0, "orphan": 0})
+        a["concepts"] += 1
+        if b["episodic"]:                       # 출처는 엄격 분할(episodic > record)
+            a["episodic"] += 1
+        elif b["record"]:
+            a["record"] += 1
+        else:
+            a["unsourced"] += 1
+        if b["degree"] == 0:
+            a["orphan"] += 1
+        if b["gateway"]:
+            a["gateway"] += 1
+        if b["degree"] > 0 and not b["gateway"]:
+            a["connected"] += 1
+    rows = sorted(agg.values(), key=lambda r: (-r["concepts"], r["domain"]))
+    # D43 ego: 스코프 에코 + 모집단(행에 실린 개념 총수 — 행 합계와 항상 일치).
+    return {"executed": True, "rows": rows, "scope": scope,
+            "population": sum(r["concepts"] for r in rows)}
+
+
+def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,
+                     depth: int, cfg, store):
+    """원장 개념별 분류(by_id) — :func:`ledger` 집계와 :func:`ledger_drilldown`
+    드릴다운이 **공유**한다(둘의 수치 정합을 구조로 보장 — 보고서 정정 2 대응:
+    드릴다운 항목 수 == 원장 셀 값). 반환 ``(by_id, scope, degraded)``:
+    degraded 가 not None 이면 그대로 반환할 강등 응답(두-플랜 규칙). by_id 는
+    concept_id → {domain, ts, episodic, record, degree, gateway}. 빈 dict = 빈 ego."""
     scope = "domain" if domain else "all"
     ids: list[str] | None = None
     if seed:
         ego = _ledger_ego_ids(seed, owner=owner, depth=depth, cfg=cfg, store=store)
         if not ego.get("executed"):
-            return ego            # 순회 강등 = 응답 전체 강등(두-플랜 규칙과 동일)
+            return None, scope, ego
         scope, ids, domain = "seed", ego["ids"], None
         if not ids:
-            plan = QueryPlan("ledger", "", {"owner": owner, "seed": seed},
-                             note="empty ego (no concept members)")
-            return {"plan": plan.to_dict(), "executed": True, "rows": [],
-                    "scope": "seed", "population": 0}
+            return {}, "seed", None
     o = execute(ledger_origin_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
     if not o.get("executed"):
-        return o
+        return None, scope, o
     lk = execute(ledger_link_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
     if not lk.get("executed"):
-        return lk
-
+        return None, scope, lk
     by_id: dict[str, dict] = {}
     for row in o.get("rows", []):
         nid = row.get("id")
@@ -1560,33 +1653,73 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
         src, other = row.get("domain") or "", row.get("other") or ""
         if src and other and src != other:
             b["gateway"] = True
+    return by_id, scope, None
 
-    agg: dict[str, dict] = {}
-    for b in by_id.values():
-        dom = b["domain"]
-        if not dom:
-            continue
-        a = agg.setdefault(dom, {"domain": dom, "concepts": 0, "episodic": 0,
-                                 "record": 0, "unsourced": 0, "connected": 0,
-                                 "gateway": 0, "orphan": 0})
-        a["concepts"] += 1
-        if b["episodic"]:                       # 출처는 엄격 분할(episodic > record)
-            a["episodic"] += 1
-        elif b["record"]:
-            a["record"] += 1
-        else:
-            a["unsourced"] += 1
-        if b["degree"] == 0:
-            a["orphan"] += 1
-        if b["gateway"]:
-            a["gateway"] += 1
-        if b["degree"] > 0 and not b["gateway"]:
-            a["connected"] += 1
-    o["rows"] = sorted(agg.values(), key=lambda r: (-r["concepts"], r["domain"]))
-    # D43 ego: 스코프 에코 + 모집단(행에 실린 개념 총수 — 행 합계와 항상 일치).
-    o["scope"] = scope
-    o["population"] = sum(r["concepts"] for r in o["rows"])
-    return o
+
+# 드릴다운 mark → by_id 분류 판정(원장 집계와 같은 배타 규칙). 출처 3분할·연결 3분할.
+_LEDGER_MARKS = ("episodic", "record", "unsourced", "connected", "gateway", "orphan")
+
+
+def _concept_in_mark(b: dict, mark: str) -> bool:
+    if mark == "episodic":
+        return b["episodic"]
+    if mark == "record":
+        return b["record"] and not b["episodic"]        # 엄격 분할(episodic > record)
+    if mark == "unsourced":
+        return not b["episodic"] and not b["record"]
+    if mark == "orphan":
+        return b["degree"] == 0
+    if mark == "gateway":
+        return b["gateway"]
+    if mark == "connected":
+        return b["degree"] > 0 and not b["gateway"]
+    return False
+
+
+def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = None,
+                     depth: int = 2, cfg=None, store=None) -> dict:
+    """합계(Totals) 생키 구간 클릭 → 그 구간에 기여한 **개념 목록**(D45-V2 3단계).
+
+    보고서 정정 2: 원장 롤업 단위는 문서가 아니라 개념이다 — 드릴다운 1홉은 개념
+    목록이고, 문서는 개념→node_context 로 한 홉 더 간다. 항목 수는 원장의 해당
+    셀 값과 **항상 일치**한다(_ledger_classify 공유). 조회 전용.
+
+    반환: {executed, domain, mark, items:[{concept_id, title, one_liner}], total}."""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "ledger-drilldown", "executed": False,
+                  "domain": domain, "mark": mark, "items": []}
+    if mark not in _LEDGER_MARKS:
+        base["error"] = f"unknown mark: {mark}"
+        return base
+    by_id, _scope, degraded = _ledger_classify(
+        owner=owner, domain=domain if not seed else None, seed=seed, depth=depth,
+        cfg=cfg, store=store)
+    if degraded is not None:
+        degraded.setdefault("kind", "ledger-drilldown")
+        return degraded
+    ids = [cid for cid, b in (by_id or {}).items()
+           if b["domain"] == domain and _concept_in_mark(b, mark)]
+    if not ids:
+        base["executed"] = True
+        base["total"] = 0
+        return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    try:
+        rows = store.run(
+            "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
+            "RETURN c.concept_id AS id, c.title AS title, c.one_liner AS ol",
+            {"ids": ids, "owner": owner}) or []
+        title = {r["id"]: {"concept_id": r["id"], "title": r.get("title") or r["id"],
+                           "one_liner": r.get("ol") or ""} for r in rows}
+        items = [title.get(cid, {"concept_id": cid, "title": cid, "one_liner": ""})
+                 for cid in sorted(ids)]
+        base.update(executed=True, items=items, total=len(items))
+        return base
+    finally:
+        if owns and store is not None:
+            store.close()
 
 
 def promote_candidates_plan(*, owner: str, min_access: int = 3) -> QueryPlan:
