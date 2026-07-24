@@ -24,57 +24,18 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
+# ── GitHub 아티팩트 미사용(저장 할당량 의존 제거) ─────────────────────────────
+# 예전엔 build 가 설치본을 `bundles-*` **Actions 아티팩트**로 올리고 publish 가
+# 내려받아 발행했다. Actions/Packages 저장은 계정 전체 공유 + Free 한도 0.5GB 라,
+# 아티팩트가 그 한도를 채우면 "Artifact storage quota has been hit"로 릴리스가
+# 통째로 막혔다(v0.6.0·v0.6.5). 이제 build 잡이 **Vincs-app 릴리스에 직접 업로드**
+# 한다 — GitHub Release 자산은 그 저장 한도와 무관(무료)하므로 저장이 꽉 차 있어도
+# 발행이 된다. 3개 build 잡이 같은 draft 에 올리는 경쟁은 create-if-not-exists +
+# `--clobber` 로 흡수한다. 중간 산출물(latest 조각)만 자산으로 잠깐 올렸다가 assemble
+# 이 병합 후 삭제한다.
 jobs:
-  # ── 오래된 워크플로 아티팩트 정리(Actions 저장 할당량 재발 방지) ────────────────
-  # 배경: bundles-* 는 build→publish 사이 일회용 중간 산출물인데, v0.1.0 부터 기본
-  # 90일 보관으로 쌓여 "Artifact storage quota has been hit"를 유발해 v0.6.0·
-  # v0.6.5 CI 를 막았다. retention-days: 1(384154c)은 **앞으로 생길** 아티팩트의
-  # 보관기간만 낮출 뿐, 이미 90일 보관으로 올라간 과거분은 그 설정 그대로 남는다
-  # — 그래서 API 로 직접 지운다. build 가 이 잡을 needs 로 기다리므로, 정리가
-  # 끝난 뒤에만 새 아티팩트가 올라가 자기 자신을 지우는 경쟁 상태가 없다.
-  purge-old-artifacts:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete old bundles-* artifacts via Actions API
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${{ github.repository }}"
-          hdr=(-H "Authorization: Bearer $GH_TOKEN"
-               -H "Accept: application/vnd.github+json"
-               -H "X-GitHub-Api-Version: 2022-11-28")
-          # ── 1) 먼저 전 페이지에서 bundles-* id 를 **전부 수집** ──────────────
-          # 삭제하며 페이지를 넘기면 목록이 밀려 일부를 건너뛴다(pagination shift).
-          # 수집을 끝낸 뒤에만 삭제한다.
-          ids=""
-          page=1
-          while :; do
-            resp=$(curl -fsS "${hdr[@]}" "$api/actions/artifacts?per_page=100&page=$page")
-            n=$(echo "$resp" | jq '.artifacts | length')
-            [ "$n" -eq 0 ] && break
-            ids="$ids $(echo "$resp" | jq -r '.artifacts[] | select(.name | startswith("bundles-")) | .id')"
-            page=$((page+1))
-          done
-          # ── 2) 삭제(개별 실패에 관대) ──────────────────────────────────────
-          # 이미 만료/삭제된 아티팩트는 404 를 줄 수 있다 — `-f` 로 잡 전체를
-          # 죽이지 않는다(하나의 잔재 때문에 릴리스가 막히면 안 된다). 2xx/404
-          # 를 성공으로 보고, 그 외에만 경고를 남긴다.
-          deleted=0
-          for aid in $ids; do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${hdr[@]}" \
-                   "$api/actions/artifacts/$aid" || echo 000)
-            case "$code" in
-              2*|404) deleted=$((deleted+1));;
-              *) echo "::warning::artifact $aid 삭제 실패(HTTP $code) — 건너뜀";;
-            esac
-          done
-          echo "정리된 이전 bundles-* 아티팩트: ${deleted}개"
-
   build:
-    needs: purge-old-artifacts
     strategy:
       fail-fast: false
       matrix:
@@ -185,20 +146,25 @@ jobs:
         with:
           projectPath: app
 
-      # 설치본(사람용) + 업데이터 아티팩트(플랫폼 1종)·서명·latest.json 조각을 수집.
-      # 조각을 빌드 잡에서 만드는 이유: 여기서만 triple(=플랫폼 키)과 .sig 를 확실히 안다.
-      - name: Collect installers & updater artifacts
+      # ── 설치본 + 업데이터 번들 + 고정 별칭 + latest 조각을 Vincs-app draft 릴리스에
+      #    **직접 업로드**한다(GitHub 아티팩트 미사용 → 저장 할당량 무관). 태그일 때만. ──
+      - name: Upload to Vincs-app draft release (no Actions artifacts)
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          mkdir -p artifacts
+          TAG="${{ github.ref_name }}"
+          REPO="Vinclums/Vincs-app"
           bundle=app/src-tauri/target/release/bundle
+          mkdir -p up
           # 사람이 받는 표준 설치본
           find "$bundle" -type f \
             \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.msi' \
                -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
-            -exec cp {} artifacts/ \;
-          # 업데이터 아티팩트: 플랫폼별 1종(+ .sig). 키 = OS-ARCH(latest.json 규약).
+            -exec cp {} up/ \;
+          # 업데이터 번들(플랫폼 1종) + 서명 → latest 조각. 키 = OS-ARCH(latest.json 규약).
           case "${{ matrix.triple }}" in
             *linux*)   key=linux-x86_64;   upd=$(find "$bundle" -type f -name '*.AppImage'    | head -1);;
             *windows*) key=windows-x86_64; upd=$(find "$bundle" -type f -name '*-setup.exe'   | head -1);;
@@ -207,98 +173,63 @@ jobs:
           esac
           sig="${upd}.sig"
           if [ -z "${upd:-}" ] || [ ! -f "$sig" ]; then
-            echo "❌ 업데이터 서명 누락(key=$key) — TAURI_SIGNING_PRIVATE_KEY 시크릿이 설정됐는지 확인."
-            echo "── bundle 트리 ──"; ls -R "$bundle" || true
-            exit 1
+            echo "❌ 업데이터 서명 누락(key=$key) — TAURI_SIGNING_PRIVATE_KEY 시크릿 확인."
+            echo "── bundle 트리 ──"; ls -R "$bundle" || true; exit 1
           fi
-          cp "$upd" artifacts/
+          cp "$upd" up/                 # 업데이터가 참조하는 번들도 릴리스 자산으로
           base=$(basename "$upd")
-          url="https://github.com/Vinclums/Vincs-app/releases/download/${{ github.ref_name }}/${base}"
-          # 조각: { "<key>": { "signature": "<.sig 내용>", "url": "<자산 URL>" } }
+          url="https://github.com/$REPO/releases/download/$TAG/$base"
+          # 조각(중간 산출물): { "<key>": { signature, url } }. assemble 이 병합 후 삭제.
           jq -n --arg k "$key" --arg s "$(cat "$sig")" --arg u "$url" \
-            '{($k): {signature: $s, url: $u}}' > "artifacts/latest-${key}.json"
-          echo "── collected ──"; ls -la artifacts
-      # 이 아티팩트는 build→publish 사이에만 쓰는 일회용 중간 산출물이다(사용자
-      # 다운로드는 Vincs-app 의 Release 자산 = 별개 저장소·할당량 무관). 기본 90일
-      # 보관이라 v0.1.0 부터 쌓여 Actions 저장 할당량을 먹었다("Artifact storage
-      # quota has been hit"). 최소값 1일로 낮춰 재발을 막는다 — publish 는 몇 분 안에
-      # 받아가므로 실질적으로 즉시 소멸이다.
-      - name: Upload bundles
-        uses: actions/upload-artifact@v4
-        with:
-          name: bundles-${{ matrix.triple }}
-          path: artifacts/*
-          if-no-files-found: error
-          retention-days: 1
+            '{($k): {signature: $s, url: $u}}' > "up/latest-${key}.json"
+          # 버전 무관 고정 별칭(공홈 다운로드 링크 안정화 — 있으면 만든다).
+          mk_alias() { local p="$1" t="$2" m; m=$(find up -maxdepth 1 -type f -name "$p" | head -1)
+                       [ -n "$m" ] && cp "$m" "up/$t" && echo "alias $(basename "$m") → $t" || true; }
+          mk_alias '*_x64-setup.exe'  'Vinc-x64-setup.exe'
+          mk_alias '*_aarch64.dmg'    'Vinc-aarch64.dmg'
+          mk_alias '*_amd64.AppImage' 'Vinc-amd64.AppImage'
+          mk_alias '*_amd64.deb'      'Vinc-amd64.deb'
+          echo "── to upload ──"; ls -la up
+          # draft 가 없으면 만든다(3개 build 잡 경쟁 — 하나만 성공, 나머지는 || true).
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$REPO" --draft \
+                 --title "Vinc $TAG" --notes "Vinc $TAG" 2>/dev/null || true
+          # --clobber: 재실행 멱등(같은 이름 자산 덮어쓰기).
+          gh release upload "$TAG" up/* --repo "$REPO" --clobber
 
-  publish:
+  assemble:
     needs: build
-    # 태그 푸시(refs/tags/v*)에서만 발행. 수동 workflow_dispatch 는 빌드 검증만 하고
-    # 발행은 건너뛴다(브랜치명으로 쓰레기 릴리스가 생기지 않게).
+    # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
-      - name: Download all bundles
-        uses: actions/download-artifact@v4
-        with:
-          path: dl
-          pattern: bundles-*
-          merge-multiple: true
-      # latest.json 조립: 플랫폼 조각들을 하나의 platforms 맵으로 병합.
-      - name: Assemble updater manifest (latest.json)
+      # 3개 build 잡이 올린 latest 조각을 릴리스에서 내려받아 latest.json 으로 병합.
+      - name: Assemble updater manifest (latest.json) from release fragments
+        shell: bash
         run: |
           set -euo pipefail
-          ver="${GITHUB_REF_NAME#v}"                       # v0.3.1 → 0.3.1
+          TAG="${{ github.ref_name }}"; REPO="Vinclums/Vincs-app"
+          ver="${TAG#v}"                                   # v0.6.5 → 0.6.5
+          mkdir -p dl
+          gh release download "$TAG" --repo "$REPO" --pattern 'latest-*.json' --dir dl
           if ! ls dl/latest-*.json >/dev/null 2>&1; then
-            echo "❌ latest.json 조각이 없다 — 업데이터 서명 단계 확인."; exit 1
+            echo "❌ latest 조각이 릴리스에 없다 — build 업로드 확인."; exit 1
           fi
           platforms=$(jq -s 'add' dl/latest-*.json)
           jq -n --arg v "$ver" \
                 --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                --arg n "Vinc ${GITHUB_REF_NAME} — see https://github.com/Vinclums/Vincs-app/releases" \
+                --arg n "Vinc ${TAG} — see https://github.com/$REPO/releases" \
                 --argjson p "$platforms" \
              '{version: $v, notes: $n, pub_date: $d, platforms: $p}' > dl/latest.json
           echo "── latest.json ──"; cat dl/latest.json
-          # 조각·서명은 공개 릴리스 자산으로 올리지 않는다(서명은 latest.json 안에 내용으로 박힘).
-          rm -f dl/latest-*.json dl/*.sig
-          echo "── to publish ──"; ls -la dl
-      # ── 버전 무관 고정 별칭(공홈 다운로드 링크 안정화) ─────────────────────────
-      # 배경: site/download/index.html 은 releases/latest/download/<파일명> 을 직접 링크하는데
-      # Tauri 산출물 이름엔 버전이 박혀 있다(Vinc_0.5.4_x64-setup.exe). 그래서 새 릴리스를
-      # **발행하는 순간** latest 별칭이 옮겨가며 공홈의 다운로드 링크 4개가 전부 404 가 됐고,
-      # 원자적 조정 수단이 없어 매 릴리스마다 사람이 공홈을 손으로 메꿔야 했다(실제로 v0.5.2·
-      # v0.5.3·v0.5.4 세 번 다 그렇게 했다). 같은 파일을 **버전 없는 고정 이름으로 하나 더**
-      # 올려 그 결합을 끊는다 — 공홈은 고정 이름만 가리키면 다시는 깨지지 않는다.
-      # 업데이터는 latest.json 안의 명시 URL(= 버전 박힌 원본)을 쓰므로 **영향 없다**.
-      # 대상 4종이 하나라도 없으면 조용히 넘어가지 않고 실패시킨다(조용한 실패 금지).
-      - name: Add version-stable download aliases
-        run: |
-          set -euo pipefail
-          alias_one() {
-            local pattern="$1" target="$2" m
-            m=$(find dl -maxdepth 1 -type f -name "$pattern" | head -1)
-            if [ -z "$m" ]; then
-              echo "❌ 고정 별칭 대상 없음: $pattern"; ls -la dl; exit 1
-            fi
-            cp "$m" "dl/$target"
-            echo "alias: $(basename "$m") → $target"
-          }
-          alias_one '*_x64-setup.exe'  'Vinc-x64-setup.exe'
-          alias_one '*_aarch64.dmg'    'Vinc-aarch64.dmg'
-          alias_one '*_amd64.AppImage' 'Vinc-amd64.AppImage'
-          alias_one '*_amd64.deb'      'Vinc-amd64.deb'
-          echo "── to publish (aliases included) ──"; ls -la dl
-      # 공개 릴리스 레포(Vincs-app)에 draft 로 발행. 사람이 확인 후 Publish.
-      - name: Publish draft release to Vincs-app
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: Vinclums/Vincs-app
-          token: ${{ secrets.RELEASE_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          name: "Vinc ${{ github.ref_name }}"
-          draft: true
-          fail_on_unmatched_files: true
-          files: dl/*
+          gh release upload "$TAG" dl/latest.json --repo "$REPO" --clobber
+          # 조각(중간 산출물)은 자산에서 제거 — 서명은 latest.json 안에 내용으로 박힘.
+          for f in dl/latest-*.json; do
+            gh release delete-asset "$TAG" "$(basename "$f")" --repo "$REPO" --yes 2>/dev/null || true
+          done
+          echo "발행 준비 완료(draft) — Vincs-app 에서 사람이 Publish."
 
   # ── 오래된 릴리스 자산 아카이브(경량 보존) ──────────────────────────────────
   # 배경: 매 릴리스마다 3-OS 설치본(dmg·setup.exe·msi·AppImage·deb·rpm …)이 공개 릴리스
@@ -309,7 +240,7 @@ jobs:
   # 웹사이트·업데이터는 releases/latest/download/ (= 최신 발행본) 만 참조하므로 영향 없다.
   # 태그 푸시에서만, publish 성공 후 실행. 발행과 같은 RELEASE_TOKEN(Vincs-app contents:write) 사용.
   prune:
-    needs: publish
+    needs: assemble
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
