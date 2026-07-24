@@ -132,7 +132,9 @@ const EN = {
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "Edit",
       edNew: "New document",
+      edExpand: "Expand",
       edTitlePlaceholder: "Untitled",
+      edConflictCopy: (t: string) => `${t} (conflict copy)`,
       edDone: "Done",
       edDirty: "Unsaved changes",
       edSaving: "Saving…",
@@ -145,6 +147,9 @@ const EN = {
       edExtractDone: (c: number, m: number) => `Concepts +${c} · ${m} link${m === 1 ? "" : "s"} refreshed`,
       edReindexing: "Updating search index…",
       edReindexed: "Search index up to date",
+      // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
+      slash: { h1: "Heading", h2: "Subheading", bullet: "Bulleted list",
+        number: "Numbered list", quote: "Quote", code: "Code block", hr: "Divider" },
       // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
       drillLoading: "Loading concepts…",
       drillFail: "Couldn't load this segment. Try again in a moment.",
@@ -428,7 +433,9 @@ const KO: Deck = {
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "편집",
       edNew: "새 문서",
+      edExpand: "확대",
       edTitlePlaceholder: "제목 없음",
+      edConflictCopy: (t) => `${t} (충돌본)`,
       edDone: "완료",
       edDirty: "저장 안 됨",
       edSaving: "저장 중…",
@@ -441,6 +448,9 @@ const KO: Deck = {
       edExtractDone: (c, m) => `개념 +${c} · 링크 ${m}개 재연결`,
       edReindexing: "검색 색인 최신화 중…",
       edReindexed: "검색 색인 최신",
+      // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
+      slash: { h1: "제목", h2: "부제목", bullet: "목록",
+        number: "번호 목록", quote: "인용", code: "코드 블록", hr: "구분선" },
       // D45-V2 3단계 — 합계 구간 클릭 드릴다운(개념 목록).
       drillLoading: "개념을 불러오는 중…",
       drillFail: "이 구간을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",

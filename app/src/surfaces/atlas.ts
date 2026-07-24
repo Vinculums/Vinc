@@ -695,14 +695,21 @@ export async function renderAtlas(el: HTMLElement) {
    *  (Records/Intake 와 동일 구현 공유). */
   async function openEditor(docId: string, conceptId: string) {
     detail.hidden = false;
-    const { mountDocEditor } = await import("../doc-editor");
+    const { mountDocEditor, openDocSheet } = await import("../doc-editor");
     detail.innerHTML = `<button class="btn" id="ed-done">${COPY.ui.atlasx.edDone}</button>
+      <button class="btn" id="ed-expand">${COPY.ui.atlasx.edExpand}</button>
       <div id="ed-host" style="margin-top:.4rem"></div>`;
     const dispose = await mountDocEditor(detail.querySelector<HTMLElement>("#ed-host")!,
       { owner: cfg.owner, docId });
     detail.querySelector("#ed-done")!.addEventListener("click", () => {
       dispose();
       void openReader(docId, conceptId);
+    });
+    // peek→전체폭 승격(D45-E 마감): 패널 편집을 접고 같은 문서를 전체폭 시트로.
+    detail.querySelector("#ed-expand")!.addEventListener("click", () => {
+      dispose();
+      detail.hidden = true;
+      void openDocSheet({ owner: cfg.owner, docId });
     });
   }
 

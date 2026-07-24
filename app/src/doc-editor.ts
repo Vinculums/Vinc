@@ -118,6 +118,17 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     timer = window.setTimeout(() => void save(), 2000);
   };
 
+  // 슬래시 커맨드 항목 — 결정론 블록(오프라인·무LLM). cursorBack 은 코드펜스처럼
+  // 커서를 안쪽에 두어야 할 때 끝에서 되돌릴 칸수.
+  const s = COPY.ui.atlasx.slash;
+  const slashItems = [
+    { label: s.h1, insert: "# " }, { label: s.h2, insert: "## " },
+    { label: s.bullet, insert: "- " }, { label: s.number, insert: "1. " },
+    { label: s.quote, insert: "> " },
+    { label: s.code, insert: "```\n\n```", cursorBack: 4 },
+    { label: s.hr, insert: "---\n" },
+  ];
+
   try {
     const mod = await import("./codemirror-editor");
     const cmHost = document.createElement("div");
@@ -125,7 +136,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       + "padding:.25rem;margin-top:.4rem;max-height:52vh;overflow:auto";
     src.replaceWith(cmHost);
     prev.remove();
-    cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save() });
+    cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),
+      slash: slashItems });
   } catch {
     src.value = initial;
     prev.innerHTML = renderMarkdown(initial);
@@ -161,8 +173,17 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
                 <button class="btn" id="ed-ow">${COPY.ui.atlasx.edOverwrite}</button>
                 <button class="btn" id="ed-rl">${COPY.ui.atlasx.edReload}</button>
               </div></div>`;
-          conflictBox.querySelector("#ed-ow")!.addEventListener("click", () => {
-            conflictBox.innerHTML = ""; void save(true);
+          conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
+            conflictBox.innerHTML = "";
+            // 덮어쓰기 전 원격본을 "충돌본" 문서로 먼저 보존(작업 소실 0 — 순수
+            // LWW 의 유일한 위험을 없앤다). 신규 doc 이라 id 없이 put.
+            if (cur.text !== undefined && cur.text !== "") {
+              try {
+                await api.docPut(opts.owner, cur.text, undefined,
+                                 COPY.ui.atlasx.edConflictCopy(cur.title || t));
+              } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
+            }
+            void save(true);
           });
           conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
             conflictBox.innerHTML = "";

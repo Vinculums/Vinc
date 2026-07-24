@@ -14,6 +14,10 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 
+/** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
+ *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
+export type SlashItem = { label: string; insert: string; cursorBack?: number };
+
 export type CmHandle = {
   getValue: () => string;
   setValue: (text: string) => void;
@@ -138,18 +142,80 @@ const livePreview = ViewPlugin.fromClass(class {
   }
 }, { decorations: (v) => v.decorations });
 
+// ── 슬래시 커맨드(D45-E 마감) — 빈 줄에서 "/" → 결정론 블록 메뉴 ──────────────
+// 커서가 "/" 하나뿐인 줄에 있으면 뜨는 작은 메뉴. 선택 = "/" 를 블록 템플릿으로
+// 교체(결정론·오프라인·무LLM). 상태는 View 옆의 DOM 하나로 관리한다.
+class SlashMenu {
+  dom: HTMLElement;
+  items: SlashItem[] = [];
+  sel = 0;
+  open = false;
+  from = 0;   // "/" 시작 오프셋(교체 범위)
+  constructor(private view: EditorView, private list: SlashItem[]) {
+    this.dom = document.createElement("div");
+    this.dom.className = "cm-slash-menu palette-card";
+    this.dom.style.cssText = "position:absolute;z-index:70;min-width:11rem;padding:.25rem;"
+      + "display:none;font-size:.85em";
+    document.body.appendChild(this.dom);
+  }
+  show(from: number) {
+    this.items = this.list; this.sel = 0; this.from = from; this.open = true;
+    const c = this.view.coordsAtPos(from);
+    if (!c) { this.hide(); return; }
+    this.dom.style.left = `${Math.round(c.left)}px`;
+    this.dom.style.top = `${Math.round(c.bottom + 4)}px`;
+    this.render();
+    this.dom.style.display = "block";
+  }
+  render() {
+    this.dom.innerHTML = this.items.map((it, i) =>
+      `<div class="cm-slash-item list-row${i === this.sel ? " sel" : ""}" data-i="${i}"
+        style="padding:.2rem .4rem;cursor:pointer;${i === this.sel
+          ? "background:hsl(var(--muted))" : ""}">${it.label.replace(/[&<>"]/g, (c) =>
+            c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;")}</div>`)
+      .join("");
+    this.dom.querySelectorAll<HTMLElement>(".cm-slash-item").forEach((el) => {
+      el.addEventListener("mousedown", (e) => { e.preventDefault(); this.choose(Number(el.dataset.i)); });
+    });
+  }
+  move(d: number) { if (!this.open) return; this.sel = (this.sel + d + this.items.length) % this.items.length; this.render(); }
+  hide() { this.open = false; this.dom.style.display = "none"; }
+  choose(i = this.sel) {
+    if (!this.open) return;
+    const it = this.items[i]; if (!it) return;
+    const to = this.from + 1;   // "/" 한 글자
+    const insert = it.insert;
+    const cursor = this.from + insert.length - (it.cursorBack || 0);
+    this.view.dispatch({
+      changes: { from: this.from, to, insert },
+      selection: { anchor: cursor },
+    });
+    this.hide(); this.view.focus();
+  }
+  destroy() { this.dom.remove(); }
+}
+
 /** CM6 인라인 라이브 프리뷰 편집기를 el 에 마운트. 실패 시 예외를 던져 호출부가
  *  MVP textarea 로 폴백하게 한다(무손실은 어느 쪽이든 동일 — 소스가 정본). */
 export function mountEditor(el: HTMLElement, opts: {
   initial: string; onChange: (text: string) => void; onSave: () => void;
+  slash?: SlashItem[];
 }): CmHandle {
   const editable = new Compartment();
+  let slash: SlashMenu | null = null;
   const view = new EditorView({
     parent: el,
     state: EditorState.create({
       doc: opts.initial,
       extensions: [
         history(),
+        // 슬래시 메뉴가 열려 있으면 방향키·Enter·Esc 를 메뉴가 가로챈다(높은 우선순위).
+        keymap.of([
+          { key: "ArrowDown", run: () => { if (slash?.open) { slash.move(1); return true; } return false; } },
+          { key: "ArrowUp", run: () => { if (slash?.open) { slash.move(-1); return true; } return false; } },
+          { key: "Enter", run: () => { if (slash?.open) { slash.choose(); return true; } return false; } },
+          { key: "Escape", run: () => { if (slash?.open) { slash.hide(); return true; } return false; } },
+        ]),
         keymap.of([
           { key: "Mod-s", preventDefault: true, run: () => { opts.onSave(); return true; } },
           ...defaultKeymap, ...historyKeymap,
@@ -158,7 +224,16 @@ export function mountEditor(el: HTMLElement, opts: {
         livePreview,
         editable.of(EditorView.editable.of(true)),
         EditorView.lineWrapping,
-        EditorView.updateListener.of((u) => { if (u.docChanged) opts.onChange(view.state.doc.toString()); }),
+        EditorView.updateListener.of((u) => {
+          if (u.docChanged) opts.onChange(view.state.doc.toString());
+          // 슬래시 트리거 — 커서가 "/" 하나뿐인 줄에 있으면 메뉴, 아니면 닫는다.
+          if (slash && (u.docChanged || u.selectionSet)) {
+            const sel = u.state.selection.main;
+            const line = u.state.doc.lineAt(sel.head);
+            if (sel.empty && line.text === "/" && sel.head === line.to) slash.show(line.from);
+            else slash.hide();
+          }
+        }),
         EditorView.theme({
           "&": { backgroundColor: "transparent", fontSize: "0.92em" },
           ".cm-content": { fontFamily: "inherit", padding: "4px 2px", caretColor: "hsl(var(--ring))" },
@@ -177,10 +252,11 @@ export function mountEditor(el: HTMLElement, opts: {
       ],
     }),
   });
+  if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
   return {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
     focus: () => view.focus(),
-    destroy: () => view.destroy(),
+    destroy: () => { slash?.destroy(); view.destroy(); },
   };
 }
