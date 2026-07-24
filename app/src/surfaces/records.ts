@@ -65,8 +65,21 @@ export async function renderBrowse(body: HTMLElement) {
   };
 
   try {
-    const [res] = await Promise.all([api.recall(cfg.owner), reloadDocs()]);
-    rows = res.executed ? res.rows || [] : [];
+    // Episode(recall) + 문서(docList) + **Concept(graph)** 를 함께 브라우즈한다.
+    // 개념은 Atlas 담당이던 구 설계 갭 해소 — 팩(=개념)만 넣어도 Search 빈 화면에
+    // 지식이 보인다. graph 는 이미 owner 스코프·화이트리스트(Atlas 와 동일 경로).
+    // ⚠ graph 는 엣지·좌표까지 실어 큰 그래프에선 무겁다 — 후속: 경량 concept-list
+    //   엔드포인트로 대체(빈화면 재조회 비용 절감).
+    const [recallRes, graphRes] = await Promise.all([
+      api.recall(cfg.owner), api.graph(cfg.owner), reloadDocs(),
+    ]);
+    const episodes: any[] = recallRes.executed ? recallRes.rows || [] : [];
+    const concepts: any[] = (graphRes.executed ? graphRes.nodes || [] : [])
+      .filter((n: any) => (n.kind || "concept") === "concept")
+      .map((n: any) => ({ id: n.id, title: n.label, domain: n.domain, tags: n.tags || [] }))
+      .sort((a: any, b: any) => (a.domain || "").localeCompare(b.domain || "")
+        || (a.title || "").localeCompare(b.title || ""));
+    rows = [...episodes, ...concepts];
     draw();
     body.addEventListener("click", async (e) => {
       const btn = (e.target as HTMLElement).closest("button[data-act]") as HTMLElement | null;
