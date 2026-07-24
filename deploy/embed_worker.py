@@ -28,7 +28,9 @@ import time
 import urllib.request
 
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
-TOKEN = os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or ""
+# 사이드카 토큰: 프로덕션 env 는 VINC_SIDECAR_TOKEN(사이드카 유닛과 동일 변수).
+TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
+         or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
 MODEL = os.environ.get("VINC_EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 DOC_BATCH = int(os.environ.get("VINC_EMBED_DOC_BATCH", "16"))   # 라운드당 문서 수
 
