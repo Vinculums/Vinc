@@ -731,10 +731,10 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(int(ts2[0]["c"]), 0)
         store.close()
 
-    def test_migrate_records_schema_version_3(self):
-        """v3 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 3 을 기록하고
-        Bridge.owner_id(v2)·관계 evidence/confidence(v3, E-G6) 가 동작한다(신규
-        설치는 base DDL, 구 설치는 ALTER 수렴)."""
+    def test_migrate_records_schema_version_4(self):
+        """v4 마이그레이션 — provision(=migrate) 후 _SchemaMeta 가 4 를 기록하고
+        Bridge.owner_id(v2)·관계 evidence/confidence(v3, E-G6)·Chunk 소유+오프셋
+        (v4, D45 Chunk=SSoT) 가 동작한다(신규 설치는 base DDL, 구 설치는 ALTER 수렴)."""
         from store.config import load_config
         from store.backend import open_store
 
@@ -743,7 +743,17 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "3")
+        self.assertEqual(rows[0]["v"], "4")
+        # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
+        store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
+                  "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")
+        got = store.run("MATCH (c:Chunk) WHERE c.owner_id='user:x' "
+                        "RETURN c.char_start AS cs, c.char_end AS ce")
+        self.assertEqual((int(got[0]["cs"]), int(got[0]["ce"])), (0, 5))
+        store.run("MERGE (d:_DocMeta {doc_id:'d0'}) SET d.owner_id='user:x', "
+                  "d.content_hash='h', d.chunk_count=1")
+        dm = store.run("MATCH (d:_DocMeta) RETURN d.content_hash AS h")
+        self.assertEqual(dm[0]["h"], "h")
         store.run("MERGE (b:Bridge {bridge_id:'b0'}) SET b.owner_id = 'user:x'")
         got = store.run("MATCH (b:Bridge) WHERE b.owner_id = 'user:x' RETURN count(b) AS c")
         self.assertEqual(int(got[0]["c"]), 1)

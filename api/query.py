@@ -2515,11 +2515,13 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
 # 프록시한다. owner_id 가 있는 라벨(스키마 파생 — Concept/Episode/Record/Entity/
 # LearnerPattern)의 소유 노드를 부착 엣지와 함께 DETACH DELETE 한다. 멱등.
 def _purge_labels() -> list[str]:
-    """owner 스코프 삭제 대상 라벨 — 스키마 SSoT + 소유 툼스톤. 지연 임포트(백엔드
+    """owner 스코프 삭제 대상 라벨 — 스키마 SSoT + 소유 메타. 지연 임포트(백엔드
     중립 유지). owner_scoped_labels 는 owner_id 열 보유 라벨만 돌려주므로 여기 전부
-    ``n.owner_id = $o`` 필터가 성립한다. `_Tombstone`(메타)도 owner_id 를 가져 포함."""
+    ``n.owner_id = $o`` 필터가 성립한다(v4 부터 Chunk 포함 — D45 Chunk=SSoT).
+    `_Tombstone`·`_DocMeta`(메타)도 owner_id 를 가져 포함 — 정본 텍스트(Chunk)가
+    지워질 때 문서 정체성 레지스트리도 함께 지운다."""
     from store.embedded_schema import owner_scoped_labels
-    return owner_scoped_labels() + ["_Tombstone"]
+    return owner_scoped_labels() + ["_Tombstone", "_DocMeta"]
 
 
 def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
@@ -2528,9 +2530,9 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
     계정 삭제 캐스케이드 전용(§5.9). 소유 스코프이므로 SEC-1/SEC-2 의 owner 격리가
     전제 — 소유가 안 갈리면 남의 노드가 지워질 수 있다. 라벨별 삭제 건수를 돌려줘
     호출자(계정)가 감사할 수 있게 한다. **owner 가 비었으면 거부**(빈 술어로 전삭제
-    사고 방지). Bridge/Domain/Chunk 는 owner_id 가 없어 소유로 못 가르는 잔여 —
-    [[vinc-owner-isolation-sec1]] 의 알려진 한계와 동일(원격엔 MCP 쓰기로만 생기고
-    Bridge 는 현재 소유 스탬프 미부여)."""
+    사고 방지). Domain 은 owner_id 가 없어 소유로 못 가르는 잔여 —
+    [[vinc-owner-isolation-sec1]] 의 알려진 한계(Bridge 는 v2, Chunk 는 v4 에서
+    소유 스탬프를 얻어 편입 — '' 소유 레거시 행만 잔여)."""
     cfg = cfg or load_config()
     base = {"kind": "purge", "executed": False, "owner": owner}
     if not owner or not isinstance(owner, str):
