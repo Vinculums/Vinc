@@ -24,9 +24,45 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
+  # ── 오래된 워크플로 아티팩트 정리(Actions 저장 할당량 재발 방지) ────────────────
+  # 배경: bundles-* 는 build→publish 사이 일회용 중간 산출물인데, v0.1.0 부터 기본
+  # 90일 보관으로 쌓여 "Artifact storage quota has been hit"를 유발해 v0.6.0·
+  # v0.6.5 CI 를 막았다. retention-days: 1(384154c)은 **앞으로 생길** 아티팩트의
+  # 보관기간만 낮출 뿐, 이미 90일 보관으로 올라간 과거분은 그 설정 그대로 남는다
+  # — 그래서 API 로 직접 지운다. build 가 이 잡을 needs 로 기다리므로, 정리가
+  # 끝난 뒤에만 새 아티팩트가 올라가 자기 자신을 지우는 경쟁 상태가 없다.
+  purge-old-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old bundles-* artifacts via Actions API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${{ github.repository }}"
+          hdr=(-H "Authorization: Bearer $GH_TOKEN"
+               -H "Accept: application/vnd.github+json"
+               -H "X-GitHub-Api-Version: 2022-11-28")
+          page=1
+          deleted=0
+          while :; do
+            resp=$(curl -fsS "${hdr[@]}" "$api/actions/artifacts?per_page=100&page=$page")
+            count=$(echo "$resp" | jq '.artifacts | length')
+            [ "$count" -eq 0 ] && break
+            ids=$(echo "$resp" | jq -r '.artifacts[] | select(.name | startswith("bundles-")) | .id')
+            for aid in $ids; do
+              curl -fsS -X DELETE "${hdr[@]}" "$api/actions/artifacts/$aid"
+              deleted=$((deleted+1))
+            done
+            page=$((page+1))
+          done
+          echo "삭제된 이전 bundles-* 아티팩트: ${deleted}개"
+
   build:
+    needs: purge-old-artifacts
     strategy:
       fail-fast: false
       matrix:
