@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from . import fragment as frag
 from . import query as q
+from . import docstore as ds
 
 PACK_VERSION = 1
 
@@ -71,6 +72,36 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
         return rows
     want = set(tags)
     return [r for r in rows if want & set(r.get("tags") or [])]
+
+
+def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dict]:
+    """팩의 개념이 참조하는(Chunk-[:MENTIONS]->Concept 역추적) 원문 문서를 export
+    형태로 모은다 — 자기완결 공유 팩(개념 + 그 소스 원문). Chunk=SSoT(D45) 이후에만
+    존재; 개념이 문서에서 추출되지 않았으면(팩·수기) 빈 목록이다.
+
+    payload 형태는 docsync.export_docs 와 동형({doc_id,title,origin,content_hash,
+    updated_at,text}) — 수신측이 import_docs 로 재청킹한다(embedding·오프셋 미전송,
+    수신 기기 재생성). SEC-1: owner 스코프 청크만 역추적한다."""
+    if not concept_ids or store is None:
+        return []
+    rows = store.run(
+        "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) "
+        "WHERE co.concept_id IN $ids AND c.owner_id = $o "
+        "RETURN DISTINCT c.doc_id AS doc_id", {"ids": list(concept_ids), "o": owner})
+    docs: list[dict] = []
+    for r in rows or []:
+        did = r.get("doc_id")
+        if not did:
+            continue
+        got = ds.get_doc(store, did, owner=owner)
+        if not got.get("executed"):
+            continue
+        docs.append({
+            "doc_id": did, "title": got.get("title") or "",
+            "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
+            "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
+        })
+    return docs
 
 
 def build_share_pack(*, owner: str, domain: str | None = None,
@@ -144,8 +175,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                       "domain": e.get("domain") or "", "tags": e.get("tags") or [],
                       "date": e.get("date"), "summary": e.get("summary")})
 
+    # 자기완결(D45) — 팩 개념이 참조하는 원문 문서를 함께 싣는다(Chunk=SSoT 이후).
+    # vinc_pack 버전은 그대로 두고 **선택 필드**로 더한다 — 구버전 앱은 이 필드를
+    # 무시하고 개념만 임포트(하위호환), 신버전은 원문까지 복원한다.
+    documents = _docs_for_concepts(store, owner=owner, concept_ids=sorted(id_set))
+
     created = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return {
+    pack = {
         "vinc_pack": PACK_VERSION,
         "kind": "share",
         "manifest": {
@@ -154,21 +190,29 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                       "seed": seed, "depth": depth if seed else None,
                       "ids": len(ids) if ids is not None else None},
             "counts": {"concepts": len(concepts), "records": len(episodes),
-                       "edges": len(edges)},
+                       "edges": len(edges), "documents": len(documents)},
             "note": "Preference signals are not included — they stay with the origin account.",
         },
         "fragment": {"nodes": nodes, "edges": edges},
         "executed": True,
     }
+    if documents:
+        pack["documents"] = documents
+    return pack
 
 
 def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None) -> dict:
-    """공유 팩 들여오기 — 수신자 ``owner`` 로 재스탬핑해 fragment MERGE(멱등)."""
+    """공유 팩 들여오기 — 수신자 ``owner`` 로 재스탬핑해 fragment MERGE(멱등).
+
+    자기완결 팩(선택 ``documents``, D45)은 개념 MERGE **다음에** 원문을 임포트한다 —
+    수신 owner 로 재청킹하고, MENTIONS 재링크가 방금 들어온 개념에 붙게 하기 위한
+    순서다. 구버전 팩엔 ``documents`` 가 없어 이 단계가 스킵된다(하위호환)."""
     if not isinstance(pack, dict) or pack.get("vinc_pack") != PACK_VERSION:
         return {"executed": False,
                 "error": f"unsupported pack version: {pack.get('vinc_pack')!r} "
                          f"(expected {PACK_VERSION})"}
     fragment = pack.get("fragment") or {}
+    documents = pack.get("documents") or []
     owns = store is None
     if owns:
         from store.backend import open_store
@@ -178,6 +222,25 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None) -> dict:
         return {"executed": False, "error": "no reachable store"}
     try:
         res = frag.merge_fragment({**fragment, "owner": owner}, store=store)
+        if documents:
+            # 원문 복원 — put_doc 으로 수신 owner 에 재청킹한다. **doc_id 는 재사용하지
+            # 않고 새로 파생한다**(doc_id=None): 팩은 교차-owner 공유라, 호스티드 단일
+            # 스토어에서 원저작자의 doc_id 를 그대로 쓰면 그의 _DocMeta(owner 불일치)에
+            # 부딪혀 거부된다. put_doc 이 (수신owner,content_hash,title)로 파생 → 충돌
+            # 없음 + 내용 동일 재임포트는 멱등(content_hash 매치 시 skip). MENTIONS 는
+            # 방금 merge 된 개념에 재링크(순서: fragment 먼저 → 여기). embedding 은
+            # 미전송·수신 재생성(스택 없으면 FTS 지연 — 기존 규율과 동일).
+            dapplied = dskipped = 0
+            for d in documents:
+                r = ds.put_doc(store, owner=owner, text=d.get("text") or "",
+                               doc_id=None, title=d.get("title") or "",
+                               origin=d.get("origin") or "")
+                if r.get("executed") and r.get("skipped"):
+                    dskipped += 1
+                elif r.get("executed"):
+                    dapplied += 1
+            res["documents"] = {"applied": dapplied, "skipped": dskipped,
+                                 "total": len(documents)}
     finally:
         if owns:
             store.close()
