@@ -1,0 +1,20 @@
+[Unit]
+# 허브 자체호스팅 임베딩 워커(B) — needs_embed 문서의 벡터를 로컬 모델로 채운다.
+# 원문은 사이드카 루프백으로만. timer 가 주기적으로 --once 로 발화한다(idle 시
+# 모델 미로드 → GET 한 번만). deploy/deploy-embed-worker.sh 가 설치한다.
+Description=Vinc self-hosted embedding worker (fills needs_embed doc vectors, local model)
+After=vinc-sidecar.service
+Wants=vinc-sidecar.service
+
+[Service]
+Type=oneshot
+User=vinc
+# 사이드카 토큰(TOKEN)·주소는 사이드카 env 를 그대로 읽는다(루프백 8787).
+# 워커는 VINC_TOKEN 또는 TOKEN 을 읽으므로 sidecar.env 의 TOKEN 이 그대로 쓰인다.
+EnvironmentFile=/etc/vinc/sidecar.env
+Environment=VINC_SIDECAR=http://127.0.0.1:8787
+# 모델 캐시(HuggingFace)는 vinc 홈 아래 — vinc 유저 쓰기 가능.
+Environment=HF_HOME=/home/vinc/.cache/huggingface
+ExecStart=/opt/vinc/embed-venv/bin/python /opt/vinc/embed_worker.py --once
+Nice=10
+TimeoutStartSec=1800

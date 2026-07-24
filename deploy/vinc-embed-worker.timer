@@ -1,0 +1,11 @@
+[Unit]
+Description=Vinc embedding worker schedule (fills pending doc vectors periodically)
+
+[Timer]
+# 부팅 2분 후 첫 발화, 이후 5분 간격. idle 라운드는 GET 한 번(모델 미로드)이라 싸다.
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

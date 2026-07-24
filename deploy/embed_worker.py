@@ -52,8 +52,7 @@ def main() -> None:
                     help="상주 모드에서 pending 이 빌 때 대기 초")
     args = ap.parse_args()
 
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(MODEL)   # 최초 1회 다운로드 → 캐시
+    model = None   # 지연 로드 — 일감 있을 때만 torch/모델을 올린다(idle timer 절약).
 
     while True:
         pending = _call(f"/embed/pending?limit={DOC_BATCH}").get("chunks", [])
@@ -62,6 +61,9 @@ def main() -> None:
                 break
             time.sleep(args.interval)
             continue
+        if model is None:
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer(MODEL)   # 최초 1회 다운로드 → 캐시
         by_doc: dict[str, list[dict]] = {}
         for c in pending:
             by_doc.setdefault(c["doc_id"], []).append(c)
