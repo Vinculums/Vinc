@@ -482,7 +482,7 @@ _ANNOTATIONS: dict[str, dict] = {
 _TARGET_PROP = {"target": {
     "type": "string", "enum": ["local", "remote"], "default": "local",
     "description": "Which store to act on: 'local' (this machine's Vinc, the default) or "
-                   "'remote' (your account graph on mcp.vincs.app). Remote needs a key "
+                   "'remote' (your account graph on mcp.vincs.io). Remote needs a key "
                    "(VINC_REMOTE_MCP_TOKEN); its owner is fixed by that key."}}
 
 

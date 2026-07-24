@@ -121,10 +121,10 @@ class MCPHTTPApp:
         tier = "Pro" if plan == "pro" else "Free"
         text = (f"{tier} tier limit reached ({limit} tool calls per "
                 f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
-                + ("" if plan == "pro" else " Upgrade for a higher limit: https://vincs.app/account"))
+                + ("" if plan == "pro" else " Upgrade for a higher limit: https://vincs.io/account"))
         return {"content": [{"type": "text", "text": text}], "isError": True,
                 "_meta": {"vinc_quota": {"limit": limit, "retry_after_s": secs,
-                                         "upgrade_url": "https://vincs.app/account"}}}
+                                         "upgrade_url": "https://vincs.io/account"}}}
 
     def dispatcher(self, session_id: str) -> Dispatcher:
         with self._lock:

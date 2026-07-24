@@ -9,7 +9,7 @@ import { COPY } from "../copy";
  *  웹 Vinc(호스티드)는 셸 전용 탭(Connections/Advanced)과 계정연결·동기화 섹션을 숨긴다.
  *
  *  계정 연결(디바이스 플로우): 회원 키 복붙 대체 — [계정 연결]이 시스템 브라우저로
- *  vincs.app/connect-app 을 열고, 발급된 vinc_sk_* 가 사이드카 루프백으로 돌아오면
+ *  vincs.io/connect-app 을 열고, 발급된 vinc_sk_* 가 사이드카 루프백으로 돌아오면
  *  폴링으로 1회 수령해 localStorage 에 저장한다(B1 유지 — 앱은 계정 API 미호출). */
 export async function renderSettings(el: HTMLElement) {
   const U = COPY.ui.settingsUi;
@@ -164,7 +164,7 @@ export async function renderSettings(el: HTMLElement) {
       try {
         const { state } = await api!.connectStart();
         const port = new URL(cfg.base).port || "8787";
-        const url = `https://vincs.app/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
+        const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
         const invoke = (window as any).__TAURI__?.core?.invoke;
         if (typeof invoke === "function") await invoke("plugin:shell|open", { path: url });
         else window.open(url, "_blank");

@@ -361,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
                 static_token=static, oauth=gate, verify_key=vk, quota_config=quota_cfg,
                 mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
                 account_public=_ev.load_public(acct_raw) if acct_raw else None,
-                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.app/connect")
+                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect")
         return 2
     if args.cmd == "onboard":
         from . import auth

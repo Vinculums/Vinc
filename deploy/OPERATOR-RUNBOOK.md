@@ -1,4 +1,10 @@
-# 운영자 런북 — vincs.app 최초 배포 (실 컴퓨터 실행용)
+# 운영자 런북 — 최초 배포 (실 컴퓨터 실행용)
+
+> **⚠ 도메인 이전(2026-07-24, 라이브)**: 정본 도메인은 이제 **`vincs.io`**(커넥터
+> `mcp.vincs.io`). 신규 브링업 시 아래 `vincs.app` 을 `vincs.io` 로 읽고, Caddy override 는
+> `Environment=VINC_DOMAIN=vincs.io` + `Environment=VINC_LEGACY_DOMAIN=vincs.app`,
+> DNS 는 `vincs.io`·`mcp.vincs.io` A 레코드로 세운다. 기존 `vincs.app` 은 병행(마케팅 301,
+> API/커넥트 서빙). 상세: 세션 메모리 `vinc-domain-migration`.
 
 이 문서는 **한 번, 손으로** 서버를 세우는 절차다. 계획 정본은
 [[vinc.c.p5-remote-rollout]](Vinc-docs), 설계는 [[vinc.d.remote-profile]](D36).

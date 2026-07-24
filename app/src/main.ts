@@ -178,7 +178,7 @@ if (!WEB && tauriWin) {
 }
 
 // ── 웹 스킨: 공홈 GNB를 공유 단일 소스(/assets/gnb.js)로 런타임 주입. 데스크탑 셸은 미주입. ──
-// 같은 오리진(vincs.app)이라 사이트의 gnb.js 를 그대로 로드 → 홈·서브페이지와 100% 동일한 GNB.
+// 같은 오리진(vincs.io)이라 사이트의 gnb.js 를 그대로 로드 → 홈·서브페이지와 100% 동일한 GNB.
 // (로컬 dev ?skin=web 은 vite가 이 파일을 서빙하지 않아 GNB 미표시 — 배포 환경 전용.)
 if (document.documentElement.dataset.skin === "web") {
   (window as unknown as { VINC_GNB: unknown }).VINC_GNB = {

@@ -580,7 +580,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
 
 
 # ── 오케스트레이터 (S2) ───────────────────────────────────────────────────────
-# 로컬 사이드카가 원격(mcp.vincs.app)에 대해 pull/push 를 조율한다. 원격 호출은
+# 로컬 사이드카가 원격(mcp.vincs.io)에 대해 pull/push 를 조율한다. 원격 호출은
 # 주입(remote 객체)이라 인프로세스 스텁과 실 HTTP 양쪽으로 검증된다.
 #
 # 커서 2개(서로 다른 seq 공간):
@@ -593,11 +593,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
 
 
 class RemoteHTTP:
-    """syncclient 를 감싼 원격 어댑터(프로덕션). 회원 키·기본 mcp.vincs.app."""
+    """syncclient 를 감싼 원격 어댑터(프로덕션). 회원 키·기본 mcp.vincs.io."""
 
     def __init__(self, token: str, base: str | None = None):
         self.token = token
-        self.base = base or "https://mcp.vincs.app"
+        self.base = base or "https://mcp.vincs.io"
 
     def pull(self, since: int) -> dict:
         from vinc_mcp import syncclient

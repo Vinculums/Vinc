@@ -38,7 +38,7 @@ def app():
     gate = OAuthGate("https://mcp.test", admin_key=None, store=Store(":memory:"))
     return MCPHTTPApp(_StubBridge(), oauth=gate, mcp_seed=MCP_SEED,
                       account_public=ev.secret_to_public(ACCT_SEED),
-                      connect_url="https://vincs.app/connect")
+                      connect_url="https://vincs.io/connect")
 
 
 def _register_and_begin(app):

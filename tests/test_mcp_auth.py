@@ -135,7 +135,7 @@ def test_quota_allows_then_denies_with_human_message():
     assert denial["isError"] is True
     q = denial["_meta"]["vinc_quota"]
     assert q["limit"] == 3 and q["retry_after_s"] == 43200
-    assert "vincs.app/account" in q["upgrade_url"]
+    assert "vincs.io/account" in q["upgrade_url"]
     assert "Free tier limit reached" in denial["content"][0]["text"]
 
 

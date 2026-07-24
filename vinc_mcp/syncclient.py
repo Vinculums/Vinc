@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""원격 동기화 클라이언트(S1) — `mcp.vincs.app/sync/{push,pull}` 왕복.
+"""원격 동기화 클라이언트(S1) — `mcp.vincs.io/sync/{push,pull}` 왕복.
 
 `remote.py` 와 왜 분리하나: 그쪽은 `tools/call` 단건 프록시(60s, owner strip)이고,
 동기화는 **대량·다청크·긴 작업**이라 요구가 다르다. 특히:
@@ -17,7 +17,7 @@ import json
 import urllib.error
 import urllib.request
 
-DEFAULT_URL = "https://mcp.vincs.app"
+DEFAULT_URL = "https://mcp.vincs.io"
 TIMEOUT = 120.0
 
 

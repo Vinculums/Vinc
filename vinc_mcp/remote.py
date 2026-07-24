@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """원격 MCP 프록시(A1.9 A2) — `target="remote"` 도구 호출을 호스티드 어댑터
-(`mcp.vincs.app/mcp`)로 JSON-RPC `tools/call` 왕복한다.
+(`mcp.vincs.io/mcp`)로 JSON-RPC `tools/call` 왕복한다.
 
 - stdlib `urllib` 만(F5 오프라인·외부 의존 0 유지).
 - 인증: env `VINC_REMOTE_MCP_TOKEN`(v0.1.9 수동; v0.2.0 회원 발급 키 `vinc_sk_*`).
-  URL 은 env `VINC_REMOTE_MCP_URL`(기본 `https://mcp.vincs.app/mcp`).
+  URL 은 env `VINC_REMOTE_MCP_URL`(기본 `https://mcp.vincs.io/mcp`).
 - **owner 는 전송하지 않는다** — 원격이 토큰으로 owner 를 정하는 게 권위(멀티테넌트,
   v0.2.0). 로컬 owner 를 실어 보내면 남의 스코프를 넘볼 여지가 되므로 제거한다.
 - 원격 서버의 `_dispatch` 는 `tools/call` 을 initialize 없이 처리한다(rpc.py) → 단건 POST.
@@ -16,7 +16,7 @@ import os
 import urllib.error
 import urllib.request
 
-DEFAULT_REMOTE_URL = "https://mcp.vincs.app/mcp"
+DEFAULT_REMOTE_URL = "https://mcp.vincs.io/mcp"
 
 
 def _endpoint() -> str:

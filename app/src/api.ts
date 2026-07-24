@@ -16,7 +16,7 @@ const IN_SHELL =
 const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 
 // 웹 Vinc(홈페이지용): 셸도 아니고 로컬 dev(localhost)도 아니면 = 호스티드 웹
-// (vincs.app/app). 이 경우 데이터 평면은 로컬 사이드카가 아니라 **계정 프록시**
+// (vincs.io/app). 이 경우 데이터 평면은 로컬 사이드카가 아니라 **계정 프록시**
 // (/api/graph/*)로 가고, 인증은 Bearer 토큰이 아니라 **계정 세션 쿠키**로 한다
 // (쓰기는 CSRF 더블서브밋). owner 는 클라가 보내지 않는다 — 허브가 세션 sub 로 강제.
 // (로컬 vite dev 는 !IN_SHELL 이지만 localhost 라 WEB=false → 기존 same-origin 프록시.)
@@ -104,7 +104,7 @@ export async function connectSidecar(): Promise<void> {
 
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown): Promise<any> {
-  // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.app).
+  // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
   //   call("/atlas") → /api/graph/atlas · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
   for (const [k, v] of Object.entries(params || {}))
@@ -238,7 +238,7 @@ export const api = {
   syncDomains: (owner: string) => call("/sync/domains", { owner }),
   setSyncDomains: (domains: string[]) => call("/sync/domains", undefined, { domains }),
   // 회원 키는 **바디로만** 사이드카에 전달(env·디스크·레포 반입 없음). 긴 작업 →
-  // 202+job_id; 진행은 pollJob 으로. base 는 테스트용 override(기본 mcp.vincs.app).
+  // 202+job_id; 진행은 pollJob 으로. base 는 테스트용 override(기본 mcp.vincs.io).
   syncNow: (token: string, owner: string, base?: string) =>
     call("/sync", undefined, { token, owner, ...(base ? { base } : {}) }),
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
