@@ -72,8 +72,47 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   const shown = prefs.unlinked === "hide"
     ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.seed)
     : nodes;
-  const sizeOf = (n: GraphNode) =>
+  // 밀도 적응 크기(D51) — sigma 는 그래프를 캔버스에 **맞춰 넣는데(auto-fit)** 노드
+  // 크기는 절대 px 다. 그래서 좌표를 아무리 키워도(=`spread`) 화면은 그대로이고,
+  // 노드만 서로 먹는다. 실측: 74노드에서 shell 54%·organic 65%·circle 51% 가 이웃과
+  // 겹쳤다. 해법은 좌표가 아니라 **크기**다 — 실제 최근접 이웃 거리를 재서 그 절반을
+  // 넘지 않게 상한을 건다. 재는 비용은 마운트 1회이고 큰 그래프는 표본으로 줄인다.
+  const density = (() => {
+    const pts = shown.map((n) => [(n.x ?? 0), (n.y ?? 0)] as const);
+    if (pts.length < 2) return Infinity;
+    const w = Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0]));
+    const h = Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1]));
+    // 렌더 배율(px/단위) — sigma 의 fit 과 같은 규칙(짧은 축 기준).
+    const k = Math.min((el.clientWidth || 1200) / Math.max(w, 1e-6),
+                       (el.clientHeight || 700) / Math.max(h, 1e-6));
+    const step = pts.length > 1200 ? Math.ceil(pts.length / 1200) : 1;   // 표본
+    const nn: number[] = [];
+    for (let i = 0; i < pts.length; i += step) {
+      let best = Infinity;
+      for (let j = 0; j < pts.length; j++) {
+        if (i === j) continue;
+        const dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1];
+        const d = dx * dx + dy * dy;
+        if (d < best) best = d;
+      }
+      if (best < Infinity) nn.push(Math.sqrt(best) * k);
+    }
+    nn.sort((a, b) => a - b);
+    return nn.length ? nn[Math.floor(nn.length / 2)] : Infinity;
+  })();
+  /** 상한(min)이 아니라 **비례 축소**다. 상한을 걸면 큰 노드만 깎여 허브 크기 신호가
+   *  죽는다(D32 의 "허브가 커 보인다"가 사라진다 — 실측에서 전부 같은 점이 됐다).
+   *  전체에 같은 배율을 곱하면 겹침은 사라지고 위계는 남는다. 0.35 하한은 너무
+   *  작아져 마크 자체가 안 보이는 것을 막는다(그 아래는 줌으로 볼 일이다). */
+  const baseSize = (n: GraphNode) =>
     prefs.size === "uniform" ? 6 : 4 + Math.sqrt(n.degree || 1) * 2;
+  const shrink = (() => {
+    if (!Number.isFinite(density) || !shown.length) return 1;
+    const meds = shown.map(baseSize).sort((a, b) => a - b);
+    const medR = meds[Math.floor(meds.length / 2)];
+    return Math.min(1, Math.max(0.35, density / (2 * medR)));
+  })();
+  const sizeOf = (n: GraphNode) => baseSize(n) * shrink;
 
   const g = new Graph();
   for (const n of shown) {

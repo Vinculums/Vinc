@@ -783,12 +783,20 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
-LAYOUTS = ("shell", "radial", "circle", "tree", "organic")
+# 사용자 선택 프리셋 정본(D34 + D50 rank + D51 dendro). `shell` 은 D51 에서 목록
+# 밖으로 나갔다 — 연결을 안 보고 간격이 노드 수에 적응하지 않아 겹침이 심했다
+# (실측 54%). `organic` 의 초기 배치로만 남는다. 테스트가 이 튜플을 훑는다.
+LAYOUTS = ("radial", "circle", "tree", "organic", "rank", "dendro")
 _DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
 
 
 def _cluster_shell(members, ids, adj, directed, math, GOLDEN):
-    """fibonacci 구면 산개(기본) — 허브가 중심, 반경 = 0.08·√i."""
+    """fibonacci 구면 산개 — 허브가 중심, 반경 = 0.08·√i.
+
+    ⚠ **사용자 선택 프리셋에서 제외됐다**(D51, 2026-07-26). 반경이 정렬 순위일 뿐
+    연결을 전혀 보지 않아 구조를 만들지 못했고, 무엇보다 간격이 노드 수에 적응하지
+    않아 **74노드에서 54%가 이웃과 겹쳤다**(실측). `organic` 의 초기 배치로만 남는다
+    (힘-지향의 시작점은 순수·결정론이어야 하므로 이 함수가 그 역할에 맞다)."""
     count = len(members)
     pos = {}
     for i, n in enumerate(members):
@@ -923,9 +931,91 @@ def _cluster_organic(members, ids, adj, directed, math, GOLDEN):
     return {i: (p[0] * scale, p[1] * scale, p[2] * scale) for i, p in pos.items()}
 
 
-_CLUSTER_LAYOUTS = {"shell": _cluster_shell, "radial": _cluster_radial,
+# 사용자 선택 프리셋(D34 + D50 rank + D51 dendro). `shell` 은 목록에서 빠졌다 —
+# `organic` 의 초기 배치로만 쓰인다(위 독스트링). 미지 값은 `radial` 로 강등한다.
+_CLUSTER_LAYOUTS = {"radial": _cluster_radial,
                     "circle": _cluster_circle, "tree": _cluster_tree,
                     "organic": _cluster_organic}
+
+
+def _global_dendro(nodes: list[dict], directed: dict[str, set], math) -> None:
+    """Dendro(D51) — 좌→우 계층 나무. 발주자 참조 이미지(논문 크로노그램) 문법:
+    왼쪽 뿌리 하나에서 갈라져 나가고, **잎은 오른쪽 끝에 정렬**되며, 커넥터가
+    부채꼴로 벌어진다.
+
+    **뼈대는 방향 관계다**(무방향으로 걷되 방향 엣지만 쓴다). 전체 엣지로 BFS 하면
+    나무가 안 나온다 — 실측 평균 차수 **17.2** 라 깊이가 0·1·2 세 층에서 끝나고
+    (1홉에 39개가 걸린다) 잎이 한 열에 60개씩 쌓여 뭉갠다. 방향 엣지만 쓰면 차수
+    **3.8**, 깊이 9층으로 고르게 퍼진다. 안 쓰인 엣지도 **그려지기는 한다** — 배치만
+    나무 골격을 따를 뿐 관계를 버리지 않는다(트리화 손실 0).
+
+    x = 깊이. 단 **부모가 있는 잎은 최대 깊이로 밀어 오른쪽에 맞춘다**(덴드로그램의
+    핵심 성질). 방향 관계가 아예 없는 외톨이는 뿌리이자 잎이라 밀지 않고 왼쪽에 둔다.
+    y = 잎을 순서대로 깔고 내부 노드는 자식들의 중앙에 앉힌다(tidy tree).
+    도메인 클러스터를 만들지 않는다 — 나무는 도메인을 가로지른다. 순수 함수(D17)."""
+    ids = [n["id"] for n in nodes]
+    if not ids:
+        return
+    inset = set(ids)
+    adj: dict[str, set] = {}
+    for s, targets in directed.items():
+        if s not in inset:
+            continue
+        for t in targets:
+            if t in inset:
+                adj.setdefault(s, set()).add(t)
+                adj.setdefault(t, set()).add(s)
+    by_id = {n["id"]: n for n in nodes}
+    order = sorted(ids, key=lambda i: (-int(bool(by_id[i].get("pinned"))),
+                                       -int(by_id[i].get("degree") or 0), str(i)))
+    depth: dict[str, int] = {}
+    kids: dict[str, list[str]] = {}
+    roots: list[str] = []
+    for start in order:                      # 성분마다 뿌리 하나(허브 우선)
+        if start in depth:
+            continue
+        roots.append(start)
+        depth[start] = 0
+        frontier = [start]
+        while frontier:
+            nxt = []
+            for u in frontier:
+                for v in sorted(adj.get(u, ())):
+                    if v in inset and v not in depth:
+                        depth[v] = depth[u] + 1
+                        kids.setdefault(u, []).append(v)
+                        nxt.append(v)
+            frontier = nxt
+    maxd = max(depth.values())
+    parented = {v for ch in kids.values() for v in ch}
+    # 잎(자식 없음)은 맨 오른쪽 열로 — 덴드로그램은 잎이 한 줄에 선다. 단 **부모도
+    # 없는 외톨이**(방향 관계 0)는 밀지 않는다: 뿌리이자 잎이라 오른쪽으로 보내면
+    # "가장 깊은 후손"과 섞여 거짓말이 된다.
+    col = {i: (maxd if (not kids.get(i) and i in parented) else depth[i]) for i in ids}
+    # y: 잎을 만나는 순서대로 깔고, 내부 노드는 자식 y 의 평균(후위 순회).
+    y: dict[str, float] = {}
+    slot = [0.0]
+
+    def place(u: str) -> float:
+        ch = kids.get(u)
+        if not ch:
+            y[u] = slot[0]
+            slot[0] += 1.0
+            return y[u]
+        vals = [place(v) for v in ch]
+        y[u] = sum(vals) / len(vals)
+        return y[u]
+
+    for r in roots:
+        place(r)
+        slot[0] += 1.0                       # 성분 사이 한 칸 띄우기
+    span = max(slot[0] - 1.0, 1.0)
+    y_step = 3.0 / span                      # 세로 총 높이 3.0 고정(간격 적응)
+    for n in nodes:
+        i = n["id"]
+        n["x"] = round((col[i] - maxd / 2) * 0.55, 6)
+        n["y"] = round((y[i] - span / 2) * y_step, 6)
+        n["z"] = 0.0
 
 
 def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
@@ -994,16 +1084,16 @@ def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
 
 
 def layout_positions(nodes: list[dict], edges: list[dict],
-                     layout: str = "shell") -> list[dict]:
+                     layout: str = "radial") -> list[dict]:
     """결정론 3D 레이아웃(D17 + D21 개정 + D34 프리셋) — **순수 함수**, 난수·시간
     무의존이라 같은 그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인
     클러스터 중심을 xy 단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 프리셋
-    (shell·radial·circle·tree·organic — D34, 미지 값은 shell 강등)으로 편다.
-    예외: **rank**(D50)는 클러스터를 만들지 않고 전역 위상 순서를 좌표에 넣는다.
+    (radial·circle·tree·organic — D34, 미지 값은 radial 강등)으로 편다. 예외:
+    **rank**(D50)·**dendro**(D51)는 클러스터를 만들지 않고 전역으로 배치한다.
     내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32)."""
     import math
     GOLDEN = 2.399963229728653
-    cluster_fn = _CLUSTER_LAYOUTS.get(layout, _cluster_shell)
+    cluster_fn = _CLUSTER_LAYOUTS.get(layout, _cluster_radial)
     adj: dict[str, set] = {}
     directed: dict[str, set] = {}
     for e in edges or []:
@@ -1014,10 +1104,13 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         adj.setdefault(t, set()).add(s)
         if (e.get("type") or "") in _DIRECTED_RELS:
             directed.setdefault(s, set()).add(t)
-    # rank(D50)만 도메인 클러스터를 만들지 않는다 — 계보가 도메인을 가로지르므로
-    # 클러스터 안에서 랭크를 매기면 흐름이 끊긴다. 전역 층화 후 즉시 반환.
+    # rank(D50)·dendro(D51)는 도메인 클러스터를 만들지 않는다 — 계보도 나무도 도메인을
+    # 가로지르므로 클러스터 안에서 매기면 구조가 끊긴다. 전역 배치 후 즉시 반환.
     if layout == "rank":
         _global_rank(nodes, directed, math)
+        return nodes
+    if layout == "dendro":
+        _global_dendro(nodes, directed, math)
         return nodes
     by_domain: dict[str, list[dict]] = {}
     for n in nodes:
@@ -1044,11 +1137,11 @@ def layout_positions(nodes: list[dict], edges: list[dict],
 
 
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
-          depth: int = 2, layout: str = "shell", cfg=None, store=None) -> dict:
+          depth: int = 2, layout: str = "radial", cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
-    (shell·radial·circle·tree·organic·rank, 미지 값 shell 강등).
+    (radial·circle·tree·organic·rank·dendro, 미지 값 radial 강등).
 
     F2(2026-07-19): Concept 단일 축 해소 — 축 플랜 3종(Bridge·Episode·Record)이
     합류해 부착 노드·엣지가 렌더된다. L2 에선 매개자(브릿지 등)가 keep 집합에
