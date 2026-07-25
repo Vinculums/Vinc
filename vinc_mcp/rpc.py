@@ -14,7 +14,11 @@ from . import __version__
 from . import tools
 from .bridge import Bridge
 
+# 최신이 앞. 클라이언트가 목록 밖 버전을 요청하면 **최신**으로 응답한다(스펙:
+# "SHOULD respond with the latest version it supports") — 구버전으로 떨어뜨리면
+# 최신 리비전으로 협상하는 비-Anthropic 호스트가 기능을 잃는다.
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0]
 
 # tools/list 응답의 description 보강. vinc_ingest 의 구 override(허용 행렬)는 F1
 # 개방층 포팅과 함께 원 정의(vinc_mcp/tools.py — 정본)로 이관·삭제했다: 개방
@@ -77,7 +81,7 @@ class Dispatcher:
         if method == "initialize":
             want = params.get("protocolVersion")
             return {
-                "protocolVersion": want if want in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[-1],
+                "protocolVersion": want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "vinc", "version": __version__},
             }

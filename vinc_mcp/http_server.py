@@ -4,7 +4,8 @@
 바인딩은 127.0.0.1 고정 기본(F4) — 공개 노출은 Caddy 가 전담한다(deploy/
 Caddyfile). 엔드포인트:
 
-  POST /mcp                              JSON-RPC 요청(단건) → JSON 응답
+  POST   /mcp                            JSON-RPC 요청(단건) → JSON 응답
+  DELETE /mcp                            세션 종료(선택 — 보내는 호스트만)
   GET  /.well-known/oauth-protected-resource     RFC 9728
   GET  /.well-known/oauth-authorization-server   RFC 8414
   POST /register    동적 클라이언트 등록
@@ -13,7 +14,9 @@ Caddyfile). 엔드포인트:
 
 인증 2모드(둘 중 하나만 통과하면 됨):
   - 정적 bearer(--auth-token | env VINC_MCP_TOKEN) — 파일럿·내부용.
-  - OAuth 게이트(--oauth) — claude.ai 커넥터 등록용.
+  - OAuth 게이트(--oauth) — 원격 커넥터 등록용. MCP 인가 스펙(RFC 9728/8414/7591
+    + PKCE)만 구현하므로 특정 벤더 전용이 아니다: claude.ai 커넥터와 ChatGPT
+    커스텀 커넥터(개발자 모드)가 같은 요건을 쓴다.
 둘 다 미설정이면 기동을 거부한다(무인증 공개 사고 방지).
 
 SSE 스트림은 제공하지 않는다(GET /mcp → 405) — 우리 도구는 전부 단발
@@ -34,6 +37,7 @@ from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import Dispatcher
 
 MAX_BODY = 4 * 1024 * 1024
+MAX_SESSIONS = 256      # Mcp-Session-Id 별 Dispatcher 상한(무한 증식 차단)
 
 # 웹 Vinc 그래프 프록시 표면(op → (method, 사이드카 경로)). 계정 세션→서명 어서션이
 # 이 op 만 요청할 수 있고, 화이트리스트 외는 거부한다. **제외**: themes/types(전역
@@ -83,7 +87,10 @@ class MCPHTTPApp:
         self.store = store if store is not None else (oauth.store if oauth else None)
         self.quota_config = quota_config
         # Dispatcher 는 상태가 initialized 플래그뿐 — 세션 간 공유해도 무해하지만
-        # 스펙의 세션 관념에 맞춰 Mcp-Session-Id 별로 분리한다.
+        # 스펙의 세션 관념에 맞춰 Mcp-Session-Id 별로 분리한다. 세션 id 는 **클라이언트
+        # 가 정한다**(우리는 발급하지 않는다) → 임의 헤더로 무한 증식할 수 있으므로
+        # 상한을 두고 오래된 것부터 버린다(FIFO). Dispatcher 는 상태가 사실상 없어
+        # 축출돼도 다음 요청에서 재생성될 뿐 손실이 없다.
         self._sessions: dict[str, Dispatcher] = {}
         self._lock = threading.Lock()
 
@@ -114,9 +121,16 @@ class MCPHTTPApp:
         with self._lock:
             d = self._sessions.get(session_id)
             if d is None:
+                while len(self._sessions) >= MAX_SESSIONS:
+                    self._sessions.pop(next(iter(self._sessions)))
                 d = Dispatcher(self.bridge)
                 self._sessions[session_id] = d
             return d
+
+    def drop_session(self, session_id: str) -> bool:
+        """세션 종료(DELETE /mcp) — 있으면 버리고 True. 멱등."""
+        with self._lock:
+            return self._sessions.pop(session_id, None) is not None
 
     def resolve_auth(self, header: str | None) -> dict:
         """Bearer 를 해석해 {ok, owner, plan, source}. owner 강제 스탬핑의 출처.
@@ -266,11 +280,15 @@ class _Handler(BaseHTTPRequestHandler):
         return self.server.app  # type: ignore[attr-defined]
 
     # ── CORS ────────────────────────────────────────────────────────────────
-    # 브라우저 클라이언트 지원(Anthropic 원격 MCP 요건). 대상은 Claude 웹과 MCP
-    # Inspector(로컬 디버깅). **와일드카드를 쓰지 않는다** — 허용 오리진만 반사한다.
-    # 인증은 Bearer 헤더이지 쿠키가 아니므로 credentials 는 불필요하고, 그래서
-    # 오리진 반사가 CSRF 표면을 열지 않는다(브라우저가 남의 토큰을 실어주지 못한다).
+    # 브라우저 클라이언트 지원(원격 MCP 요건). 대상은 브라우저에서 도는 MCP 호스트
+    # (Claude 웹 · ChatGPT 웹)와 MCP Inspector(로컬 디버깅). 서버측에서 호출하는
+    # 호스트(대부분의 커넥터 백엔드)와 데스크톱 앱(Cursor·Codex·Kimi CLI)은 CORS 를
+    # 타지 않으므로 여기 없어도 동작한다 — 이 목록은 **브라우저 오리진 전용**이다.
+    # **와일드카드를 쓰지 않는다** — 허용 오리진만 반사한다. 인증은 Bearer 헤더이지
+    # 쿠키가 아니므로 credentials 는 불필요하고, 그래서 오리진 반사가 CSRF 표면을
+    # 열지 않는다(브라우저가 남의 토큰을 실어주지 못한다).
     _CORS_ORIGINS = ("https://claude.ai", "https://claude.com",
+                     "https://chatgpt.com", "https://chat.openai.com",
                      "http://localhost:6274", "http://127.0.0.1:6274")
 
     def _cors_headers(self) -> dict:
@@ -279,7 +297,7 @@ class _Handler(BaseHTTPRequestHandler):
             return {}
         return {"Access-Control-Allow-Origin": origin,
                 "Vary": "Origin",
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
                 "Access-Control-Allow-Headers":
                     "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
                 "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
@@ -376,7 +394,11 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": str(e)})
             return self._redirect(location)
         if url.path == "/mcp":
-            return self._json(405, {"error": "SSE stream not provided; POST JSON-RPC"})
+            # 스펙상 허용된 응답 — 서버가 SSE 스트림을 제공하지 않음을 뜻한다.
+            # (Allow 헤더로 어떤 메서드가 되는지 명시: SSE 우선 시도 후 405 를
+            #  연결 실패로 오해하는 클라이언트에 다음 수를 알려준다.)
+            return self._json(405, {"error": "SSE stream not provided; POST JSON-RPC"},
+                              {"Allow": "POST, DELETE, OPTIONS"})
         if url.path == "/health":
             return self._json(200, {"status": "ok"})
         return self._json(404, {"error": f"no such route: GET {url.path}"})
@@ -425,6 +447,23 @@ class _Handler(BaseHTTPRequestHandler):
         if url.path == "/internal/graph-owner":
             return self._internal_graph()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
+
+    def do_DELETE(self):  # noqa: N802
+        """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는
+        호스트(Codex·Cursor 등)가 501 을 오류로 취급하지 않도록 명시 처리한다.
+        인증은 POST 와 동일하게 요구한다 — 남의 세션을 지우게 둘 이유가 없다."""
+        url = urllib.parse.urlparse(self.path)
+        if url.path != "/mcp":
+            return self._json(404, {"error": f"no such route: DELETE {url.path}"})
+        if not self.app.authorized(self.headers.get("Authorization")):
+            return self._unauthorized()
+        self.app.drop_session(self.headers.get("Mcp-Session-Id") or "default")
+        self.send_response(204)
+        for k, v in self._cors_headers().items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return None
 
     # ── 계정 삭제 캐스케이드(§5.9) — 서명된 내부 purge ───────────────────────────
     def _internal_purge(self):

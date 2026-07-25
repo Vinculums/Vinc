@@ -81,7 +81,10 @@ Caddy (자동 TLS, root /srv/www) — 엣지 하드닝(캐시·압축·보안 �
 
 ## MCP (두 번째 정문)
 
-Vinc 는 그래프를 MCP 서버로도 노출한다 — Claude 등 MCP 호스트가 직접 읽고 쓴다.
+Vinc 는 그래프를 MCP 서버로도 노출한다 — MCP 호스트가 직접 읽고 쓴다. 서버는
+**벤더 중립**이다(JSON-RPC + MCP 인가 스펙만 구현): Claude Desktop·Claude Code·
+Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇이든 붙고,
+원격은 claude.ai 커넥터와 ChatGPT 커스텀 커넥터(개발자 모드)가 같은 OAuth 요건을 쓴다.
 
 - 도구 9종: 읽기 6(`vinc_search`·`vinc_recall`·`vinc_graph`·`vinc_decide`·
   `vinc_domains`·`vinc_suggest_ties`) + 쓰기 3(`vinc_ingest` + `vinc_delete`
@@ -93,8 +96,11 @@ Vinc 는 그래프를 MCP 서버로도 노출한다 — Claude 등 MCP 호스트
   (`vinc_mcp/remote.py`, `VINC_REMOTE_MCP_TOKEN`).
 - 원격 디렉토리 제출용 하드닝: 도구 안전 주석(readOnly/destructive Hint), 브라우저
   CORS, 결과 크기 상한.
-- 로컬 커넥터 연결/제거: `vinc mcp install|uninstall --client desktop|code`
-  (또는 앱 Settings 의 [Remove from Desktop/Code] 버튼).
+- 로컬 호스트 연결/제거: `vinc mcp install|uninstall --client desktop|code|cursor|codex`
+  (또는 앱 Settings → Connections 의 버튼). 등록 관례는 두 종류뿐 — JSON 병합
+  (`mcpServers.vinc` 키만, 백업 후) 또는 호스트 CLI 위임(`claude|codex mcp add`).
+- 그 밖의 호스트: `vinc mcp manual` 이 붙여넣을 stdio 설정 조각을 출력한다.
+  자동 등록이 없을 뿐 **서버는 동일하게 동작**한다.
 
 ## 게이트
 
