@@ -18,10 +18,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from vinc_mcp import tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
-from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
-from vinc_mcp.install import install_desktop, uninstall_desktop  # noqa: E402
+from vinc_mcp.http_server import MAX_SESSIONS, MCPHTTPApp, make_server  # noqa: E402
+from vinc_mcp.install import (  # noqa: E402
+    CLIENTS, client_label, install_desktop, install_json, manual_entry,
+    uninstall_desktop, uninstall_json,
+)
 from vinc_mcp.oauth import OAuthGate, _s256  # noqa: E402
-from vinc_mcp.rpc import Dispatcher  # noqa: E402
+from vinc_mcp.rpc import (  # noqa: E402
+    LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS, Dispatcher,
+)
 
 D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_domains", "vinc_suggest_ties", "vinc_ingest",
@@ -129,9 +134,13 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(r["result"]["protocolVersion"], "2025-03-26")
         self.assertIn("tools", r["result"]["capabilities"])
 
-    def test_initialize_falls_back_on_unknown_version(self):
-        r = self._rpc("initialize", {"protocolVersion": "1999-01-01"})
-        self.assertEqual(r["result"]["protocolVersion"], "2024-11-05")
+    def test_initialize_falls_back_to_the_latest_supported_version(self):
+        """미지원 버전 요청 → **최신**으로 응답(스펙 SHOULD). 구버전으로 떨어뜨리면
+        새 리비전으로 협상하는 호스트가 이유 없이 기능을 잃는다."""
+        for want in ("1999-01-01", "2099-12-31"):
+            r = self._rpc("initialize", {"protocolVersion": want})
+            self.assertEqual(r["result"]["protocolVersion"], LATEST_PROTOCOL_VERSION)
+        self.assertEqual(LATEST_PROTOCOL_VERSION, max(PROTOCOL_VERSIONS))
 
     def test_notification_returns_none(self):
         self.assertIsNone(self.d.handle({"jsonrpc": "2.0",
@@ -216,12 +225,57 @@ class HTTPTransportTests(_HTTPFixture):
         with urllib.request.urlopen(req, timeout=5) as r:
             self.assertEqual(r.status, 202)
 
-    def test_get_mcp_is_405(self):
+    def test_get_mcp_is_405_and_advertises_usable_methods(self):
         try:
             urllib.request.urlopen(self.base + "/mcp", timeout=5)
             self.fail("expected 405")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 405)
+            # SSE 를 먼저 시도하는 호스트가 다음 수를 알 수 있도록 Allow 를 준다.
+            self.assertIn("POST", e.headers.get("Allow") or "")
+
+    def _delete(self, session=None, token=None):
+        req = urllib.request.Request(self.base + "/mcp", method="DELETE")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        if session:
+            req.add_header("Mcp-Session-Id", session)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_delete_terminates_session_and_is_idempotent(self):
+        """세션 종료를 보내는 호스트(Codex·Cursor 등)가 501 을 오류로 보지 않게."""
+        self._post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                   token=self.static)
+        self.assertEqual(self._delete(token=self.static), 204)
+        self.assertEqual(self._delete(token=self.static), 204)   # 멱등
+        self.assertEqual(self._delete(session="never-existed", token=self.static), 204)
+
+    def test_delete_requires_auth(self):
+        self.assertEqual(self._delete(), 401)
+
+    def test_session_table_is_bounded(self):
+        """세션 id 는 클라이언트가 정한다 — 임의 헤더로 무한 증식하면 안 된다."""
+        for i in range(MAX_SESSIONS + 20):
+            self.app.dispatcher(f"s{i}")
+        self.assertLessEqual(len(self.app._sessions), MAX_SESSIONS)
+        # 최근 것은 남고 가장 오래된 것부터 밀려난다(FIFO).
+        self.assertIn(f"s{MAX_SESSIONS + 19}", self.app._sessions)
+        self.assertNotIn("s0", self.app._sessions)
+
+    def test_cors_reflects_known_browser_hosts_only(self):
+        """브라우저에서 도는 호스트만 반사 — 와일드카드 금지(남의 오리진 차단)."""
+        for origin, allowed in (("https://claude.ai", True),
+                                ("https://chatgpt.com", True),
+                                ("https://evil.example", False)):
+            req = urllib.request.Request(self.base + "/mcp", method="OPTIONS")
+            req.add_header("Origin", origin)
+            with urllib.request.urlopen(req, timeout=5) as r:
+                got = r.headers.get("Access-Control-Allow-Origin")
+            self.assertEqual(got, origin if allowed else None, origin)
 
     def test_no_auth_config_refused(self):
         with self.assertRaises(ValueError):
@@ -348,6 +402,38 @@ class InstallDesktopTests(unittest.TestCase):
             self.assertFalse(uninstall_desktop(p)["removed"])   # 없으면 removed:False(에러 아님)
             missing = Path(tmp) / "nope" / "claude_desktop_config.json"
             self.assertFalse(uninstall_desktop(missing)["removed"])  # 파일 부재도 안전
+
+
+class HostNeutralInstallTests(unittest.TestCase):
+    """등록 헬퍼가 벤더 중립인지 — 같은 병합 로직이 어느 JSON 호스트에나 든다."""
+
+    def test_cursor_uses_the_same_merge_and_preserves_neighbours(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "mcp.json"
+            p.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}),
+                         encoding="utf-8")
+            res = install_json("cursor", p)
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+            self.assertEqual(res["label"], "Cursor")
+            self.assertIn("vinc", cfg["mcpServers"])
+            self.assertIn("other", cfg["mcpServers"])          # 남의 서버 보존
+            self.assertTrue(uninstall_json("cursor", p)["removed"])
+            self.assertNotIn("vinc", json.loads(p.read_text(encoding="utf-8"))["mcpServers"])
+
+    def test_every_declared_client_has_a_label(self):
+        for client in CLIENTS:
+            self.assertTrue(client_label(client))
+        with self.assertRaises(ValueError):
+            client_label("nope")
+
+    def test_manual_entry_is_paste_ready(self):
+        """레지스트리 밖 호스트(Kimi CLI·VS Code…)용 조각 — 자동 등록과 같은 명령."""
+        entry = manual_entry()["mcpServers"]["vinc"]
+        self.assertTrue(entry["command"])
+        self.assertIn("mcp", entry["args"])
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "mcp.json"
+            self.assertEqual(install_json("cursor", p)["entry"], entry)
 
 
 if __name__ == "__main__":

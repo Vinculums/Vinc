@@ -57,12 +57,15 @@ fn sidecar_status(log: tauri::State<'_, SidecarLog>) -> String {
     }
 }
 
-/// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 1회 등록한다. 번들 사이드카
-/// `mcp install --client <desktop|code>` 를 실행(서버 기동 아님, one-shot)해 결과
-/// JSON(stdout)을 프론트에 돌려준다. 실패 시 stderr/stdout 을 Err 로 전달.
-/// `mcp install|uninstall --client <desktop|code>` one-shot 실행 공용부.
+/// 등록 가능한 로컬 MCP 호스트 — 사이드카 `vinc_mcp.install.CLIENTS` 와 짝.
+/// 여기서 먼저 막는 이유는 임의 문자열이 CLI 인자로 흘러가지 않게 하기 위해서다.
+const MCP_CLIENTS: [&str; 4] = ["code", "desktop", "cursor", "codex"];
+
+/// Settings→MCP: 이 설치본을 로컬 MCP 호스트에 1회 등록한다. 번들 사이드카
+/// `mcp install|uninstall --client <host>` 를 실행(서버 기동 아님, one-shot)해
+/// 결과 JSON(stdout)을 프론트에 돌려준다. 실패 시 stderr/stdout 을 Err 로 전달.
 async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Result<String, String> {
-    if client != "desktop" && client != "code" {
+    if !MCP_CLIENTS.contains(&client) {
         return Err(format!("unknown client: {client}"));
     }
     let out = app
@@ -82,14 +85,14 @@ async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Resul
     }
 }
 
-/// Settings→MCP: 이 설치본을 로컬 Claude 클라이언트에 등록(install).
+/// Settings→MCP: 이 설치본을 로컬 MCP 호스트에 등록(install).
 #[tauri::command]
 async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, String> {
     mcp_action(&app, "install", &client).await
 }
 
-/// Settings→MCP: 등록 해제(uninstall) — claude_desktop_config.json 의 vinc 키 제거
-/// (백업 후) 또는 `claude mcp remove`. install 의 역연산, 멱등.
+/// Settings→MCP: 등록 해제(uninstall) — 호스트 설정 JSON 의 vinc 키 제거(백업 후)
+/// 또는 호스트 CLI 의 `mcp remove`. install 의 역연산, 멱등.
 #[tauri::command]
 async fn mcp_uninstall(app: tauri::AppHandle, client: String) -> Result<String, String> {
     mcp_action(&app, "uninstall", &client).await

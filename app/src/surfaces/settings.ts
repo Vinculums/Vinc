@@ -3,7 +3,7 @@ import { COPY } from "../copy";
 
 /** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
  *  · Account   계정 연결(디바이스 플로우) + 그래프 동기화 + Theme + Language + Lock
- *  · Connections MCP(로컬 Claude Desktop/Code 연결·해제) — 셸 전용
+ *  · Connections MCP(로컬 MCP 호스트 연결·해제) — 셸 전용
  *  · Data      로컬 데이터 폴더/백업
  *  · Advanced  작업공간(owner)·엔진·시크릿·수동 동기화 키 — 셸 전용
  *  웹 Vinc(호스티드)는 셸 전용 탭(Connections/Advanced)과 계정연결·동기화 섹션을 숨긴다.
@@ -237,35 +237,38 @@ export async function renderSettings(el: HTMLElement) {
   }
 
   // ── Connections 탭 (MCP, 셸 전용) ─────────────────────────────────────────
+  // 등록 가능한 호스트 — 사이드카 `vinc_mcp.install.CLIENTS` 와 짝. 여기 없는
+  // 호스트도 서버는 그대로 동작한다(수동 등록 안내는 U.mcpOtherHint).
+  const MCP_HOSTS = ["desktop", "code", "cursor", "codex"] as const;
+
   function renderConnections(body: HTMLElement) {
+    const buttons = (kind: "add" | "rm") => MCP_HOSTS.map((h) =>
+      `<button class="btn" id="mcp-${kind}-${h}">${
+        kind === "add" ? U.mcpConnect(U.mcpHosts[h]) : U.mcpRemove(U.mcpHosts[h])}</button>`).join("");
     body.innerHTML = `
       <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
-      <p><span class="seg">
-        <button class="btn" id="mcp-desktop">${U.mcpDesktop}</button>
-        <button class="btn" id="mcp-code">${U.mcpCode}</button>
-      </span></p>
+      <p><span class="seg">${buttons("add")}</span></p>
       <p class="hint" style="margin-top:.35rem">${U.mcpRemoveHint}</p>
-      <p><span class="seg">
-        <button class="btn" id="mcp-rm-desktop">${U.mcpRemoveDesktop}</button>
-        <button class="btn" id="mcp-rm-code">${U.mcpRemoveCode}</button>
-      </span></p>
+      <p><span class="seg">${buttons("rm")}</span></p>
+      <p class="hint" style="margin-top:.35rem">${U.mcpOtherHint}</p>
       <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
-    async function mcpAction(action: "install" | "uninstall", client: "desktop" | "code") {
+    async function mcpAction(action: "install" | "uninstall", client: string) {
       const invoke = (window as any).__TAURI__?.core?.invoke;
       if (typeof invoke !== "function") { mcpResult.textContent = U.mcpNoShell; return; }
       mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
+      const host = U.mcpHosts[client] || client;
       try {
         await invoke(action === "install" ? "mcp_install" : "mcp_uninstall", { client });
-        mcpResult.textContent = action === "install" ? U.mcpDone(client) : U.mcpRemoved(client);
+        mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
       } catch (e: any) {
         mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
       }
     }
-    body.querySelector("#mcp-desktop")!.addEventListener("click", () => mcpAction("install", "desktop"));
-    body.querySelector("#mcp-code")!.addEventListener("click", () => mcpAction("install", "code"));
-    body.querySelector("#mcp-rm-desktop")!.addEventListener("click", () => mcpAction("uninstall", "desktop"));
-    body.querySelector("#mcp-rm-code")!.addEventListener("click", () => mcpAction("uninstall", "code"));
+    for (const h of MCP_HOSTS) {
+      body.querySelector(`#mcp-add-${h}`)!.addEventListener("click", () => mcpAction("install", h));
+      body.querySelector(`#mcp-rm-${h}`)!.addEventListener("click", () => mcpAction("uninstall", h));
+    }
   }
 
   // ── Data 탭 ───────────────────────────────────────────────────────────────

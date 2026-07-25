@@ -171,9 +171,9 @@ def main(argv: list[str] | None = None) -> int:
     ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
 
     # ── MCP 어댑터(D11 · P5 선행) — stdio/HTTP 전송 + 클라이언트 등록 ────────
-    mc = sub.add_parser("mcp", help="connect Claude to this store (MCP)")
+    mc = sub.add_parser("mcp", help="connect an AI assistant to this store (MCP)")
     msub = mc.add_subparsers(dest="mcpcmd", required=True)
-    for name, hint in (("serve", "stdio transport — for Claude Code/Desktop"),
+    for name, hint in (("serve", "stdio transport — for local MCP hosts"),
                        ("serve-http", "Streamable HTTP transport — remote profile (D36)")):
         mp = msub.add_parser(name, help=hint)
         mp.add_argument("--base", default=None, help="sidecar base URL (default 127.0.0.1:8787)")
@@ -190,14 +190,17 @@ def main(argv: list[str] | None = None) -> int:
                             help="enable the OAuth gate (admin key from env VINC_OAUTH_ADMIN_KEY)")
             mp.add_argument("--issuer", default=None,
                             help="public issuer URL for OAuth metadata (e.g. https://mcp.example.com)")
-    mi = msub.add_parser("install", help="register this server with a local Claude client")
-    mi.add_argument("--client", choices=["code", "desktop"], required=True)
-    mi.add_argument("--desktop-config", default=None,
-                    help="override claude_desktop_config.json path (tests/portable installs)")
-    mu = msub.add_parser("uninstall", help="remove this server from a local Claude client")
-    mu.add_argument("--client", choices=["code", "desktop"], required=True)
-    mu.add_argument("--desktop-config", default=None,
-                    help="override claude_desktop_config.json path (tests/portable installs)")
+    from vinc_mcp.install import CLIENTS as _MCP_CLIENTS
+    for name, hint in (("install", "register this server with a local MCP host"),
+                       ("uninstall", "remove this server from a local MCP host")):
+        mx = msub.add_parser(name, help=hint)
+        mx.add_argument("--client", choices=list(_MCP_CLIENTS), required=True)
+        # --desktop-config 는 구 이름(하위호환) — 같은 dest 로 받는다.
+        mx.add_argument("--config-path", "--desktop-config", dest="config_path",
+                        default=None,
+                        help="override the host config path (tests/portable installs)")
+    msub.add_parser("manual",
+                    help="print a paste-ready stdio entry for hosts without an installer")
 
     args = ap.parse_args(argv)
 
@@ -315,10 +318,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "mcp":
         if args.mcpcmd == "install":
             from vinc_mcp.install import install
-            return _emit(install(args.client, desktop_path=args.desktop_config))
+            return _emit(install(args.client, config_path_override=args.config_path))
         if args.mcpcmd == "uninstall":
             from vinc_mcp.install import uninstall
-            return _emit(uninstall(args.client, desktop_path=args.desktop_config))
+            return _emit(uninstall(args.client, config_path_override=args.config_path))
+        if args.mcpcmd == "manual":
+            from vinc_mcp.install import manual_entry
+            return _emit(manual_entry())
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
         bridge.ensure(spawn=not args.no_spawn)
