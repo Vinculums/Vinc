@@ -215,8 +215,11 @@ export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
       layer.set(id, mx + 1);
       settled.add(id);
     }
-    // depth = 세대 상한 — 넘는 층은 그리지 않는다(이미 받아온 서브그래프의 순회 상한).
-    for (const id of ids) if (layer.get(id)! > o.depth) layer.delete(id);
+    // ⚠ 여기서는 **깊이 상한을 걸지 않는다**(D49). `depth` 는 원래 "씨앗에서 몇 세대"
+    // 라는 뜻인데, 씨앗이 없는 층(L0/L1)에 그대로 쓰면 "몇 번째 층까지"라는 **다른
+    // 뜻**이 된다. 기본값 1 로 그러면 0·1층만 남아 **뿌리→자식 쌍의 세로 목록**이
+    // 되고 계보가 통째로 잘린다(실측: 7층짜리 그래프가 2열 쌍 45개로 납작해졌다).
+    // 씨앗이 없으면 자를 기준점 자체가 없으므로 DAG 를 있는 그대로 층화한다.
   }
 
   // 그릴 노드 = 방향 엣지에 걸린 노드 + 씨앗(혼자여도 "여기 있다"는 보여준다).

@@ -214,7 +214,10 @@ export async function renderAtlas(el: HTMLElement) {
       case "2d":
         return lv.kind === "l0" ? ["labels", "spread"]
           : ["size", "labels", "arrows", "unlinked", "layout", "spread"];
-      case "flow": return ["depth", "arrows", "labels"];
+      // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
+      // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
+      // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
+      case "flow": return lv.kind === "l2" ? ["depth", "arrows", "labels"] : ["arrows", "labels"];
       case "timeline": return lv.kind === "l0" ? [] : ["docs", "labels"];
       // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
       // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
