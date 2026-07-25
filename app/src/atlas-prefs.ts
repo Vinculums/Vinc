@@ -6,8 +6,10 @@
  *  and is deliberately not user-configurable. Persisted per machine via
  *  localStorage; no sidecar contract involved (coords stay D17 canonical). */
 
-export type AtlasLayout = "shell" | "radial" | "circle" | "tree" | "organic";
-export const LAYOUTS: AtlasLayout[] = ["shell", "radial", "circle", "tree", "organic"];
+// rank(D50) — 전역 위상 순서를 좌표에 인코딩(x=랭크). 다른 프리셋과 달리 도메인
+// 클러스터를 만들지 않는다. 2D 관점에서 "흐름으로 읽히는 지도"가 되는 프리셋.
+export type AtlasLayout = "shell" | "radial" | "circle" | "tree" | "organic" | "rank";
+export const LAYOUTS: AtlasLayout[] = ["shell", "radial", "circle", "tree", "organic", "rank"];
 
 export type AtlasView = "3d" | "2d" | "flow" | "timeline" | "totals";
 export const VIEWS: AtlasView[] = ["3d", "2d", "flow", "timeline", "totals"];

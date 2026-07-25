@@ -1,5 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
+import { EdgeArrowProgram } from "sigma/rendering";
 import type { GraphEdge, GraphNode } from "../api";
 import { COPY } from "../copy";
 import { palette as signal, hexStr } from "../theme";
@@ -26,6 +27,9 @@ import type { AtlasPrefs } from "../atlas-prefs";
  *  산다. 색은 Signal 팔레트만 읽는다(hex 하드코딩 금지). */
 
 export type Handle2d = { dispose(): void };
+
+/** 방향 3종 — 화살촉이 붙는 관계(atlas-planar 의 DIRECTED 와 같은 정의). */
+const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
 
 function pal() {
   return signal[document.documentElement.dataset.theme === "dark" ? "dark" : "light"];
@@ -80,12 +84,22 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
       size: sizeOf(n), color: n.id === o.seed ? point() : ink(),
     });
   }
+  // D50 — 방향 관계는 **뼈대**, 나머지(RELATED_TO 등)는 **살**이다. 흐름 관점이
+  // 방향 3종만 그려 나머지를 통째로 버리는 것과 달리, 여기서는 둘 다 그리되 위계를
+  // 준다: 방향 엣지만 화살촉을 달고 진하게, 무방향은 옅고 가늘게 배경으로 깐다.
+  // 그래야 `rank` 프리셋에서 좌표가 만드는 흐름을 가리지 않는다.
   for (const e of edges) {
     if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
     if (g.hasEdge(e.source, e.target)) continue;
+    const dir = DIRECTED.includes(e.type);
     g.addEdge(e.source, e.target, {
-      size: e.cross_domain ? 0.8 : 1.6,
-      color: e.cross_domain ? inkMute() : line(),
+      // 화살촉은 열린 층(prefs.arrows)이 켜져 있고 방향 관계일 때만.
+      type: dir && prefs.arrows ? "arrow" : "line",
+      // 뼈대는 잉크에 가깝게, 살은 배경 쪽으로 섞어 눕힌다. `line()`(테두리색)은
+      // 뼈대로 쓰기엔 너무 옅어 방향 관계가 배경에 묻혔다(실측).
+      size: dir ? 1.8 : e.cross_domain ? 0.6 : 0.9,
+      color: dir ? inkMute() : mix(line(), bg, 0.35),
+      directed: dir,
     });
   }
 
@@ -98,12 +112,18 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
 
   const sigma = new Sigma(g, stage, {
     allowInvalidContainer: true,
+    // 화살촉 프로그램은 기본 등록이 아니다 — 켜 두지 않으면 type:"arrow" 가 무시된다.
+    edgeProgramClasses: { arrow: EdgeArrowProgram },
     renderLabels: prefs.labels !== "none",
     // **허브만** 상시 라벨(레퍼런스가 얻던 판독성). 문턱 8px = 연결수 4 이상이라
     // 위성까지 다 켜지지 않는다 — 나머지는 hover 때 sigma 가 그린다.
     // (size=uniform 이면 전부 6px 이라 상시 라벨이 없다 — 위계를 끈 선택의 결과.)
     labelRenderedSizeThreshold: prefs.labels === "none" ? 1e9 : 8,
     labelColor: { color: ink() },
+    // 라벨은 노드 오른쪽으로 뻗는데 rank 프리셋의 열 간격이 라벨보다 좁아 옆 열까지
+    // 침범한다. 격자당 하나만 남겨(밀도 제한) 겹침을 줄인다 — 나머지는 hover 로 뜬다.
+    labelGridCellSize: 140,
+    labelDensity: 0.6,
   });
 
   // ── 초점 문법(D32-a) — 초점과 이웃만 남고 나머지는 물러난다 ────────────────

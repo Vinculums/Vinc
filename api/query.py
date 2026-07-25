@@ -928,12 +928,78 @@ _CLUSTER_LAYOUTS = {"shell": _cluster_shell, "radial": _cluster_radial,
                     "organic": _cluster_organic}
 
 
+def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
+    """Rank(D50) — **전역** 위상 순서를 좌표에 인코딩한다. x = 랭크(선행 → 후행),
+    y = 같은 랭크 안 정렬. 다른 프리셋과 달리 도메인 클러스터를 만들지 않는다:
+    계보는 도메인을 가로지르므로 클러스터 안에서 랭크를 매기면 흐름이 끊긴다.
+
+    **왜 필요한가**: 2D 관점의 좌표는 여태 아무 의미도 인코딩하지 않았다(도메인을
+    원 둘레에 배치했을 뿐). 흐름 관점은 좌표에 의미가 있지만 방향 엣지 3종만 그려
+    나머지 관계가 안 보인다. 이 프리셋은 둘을 합친다 — 좌표는 흐름의 뜻을 갖고,
+    렌더러(sigma)는 모든 엣지를 그린다.
+
+    층화는 최장경로(Kahn 위상정렬). 사이클에 갇혀 큐에 못 든 노드는 확정된 상류의
+    다음 층으로 민다(첫 방문 승리) — `mountFlow` 의 층화와 같은 규칙이라 흐름 뷰와
+    2D 가 같은 랭크를 보여준다. 순수 함수(난수·시간 무의존, D17)."""
+    ids = [n["id"] for n in nodes]
+    inset = set(ids)
+    out: dict[str, list[str]] = {}
+    indeg = {i: 0 for i in ids}
+    for s, targets in directed.items():
+        if s not in inset:
+            continue
+        for t in sorted(targets):
+            if t in inset:
+                out.setdefault(s, []).append(t)
+                indeg[t] += 1
+    layer = {i: 0 for i in ids}
+    queue = [i for i in ids if indeg[i] == 0]
+    settled = set(queue)
+    qi = 0
+    while qi < len(queue):
+        u = queue[qi]; qi += 1
+        for v in out.get(u, ()):
+            layer[v] = max(layer[v], layer[u] + 1)
+            indeg[v] -= 1
+            if indeg[v] == 0:
+                settled.add(v); queue.append(v)
+    for i in ids:                     # 사이클 잔여 — 확정 상류 다음 층으로
+        if i in settled:
+            continue
+        mx = -1
+        for s, targets in directed.items():
+            if i in targets and s in settled:
+                mx = max(mx, layer[s])
+        layer[i] = mx + 1
+        settled.add(i)
+    rows: dict[int, list[dict]] = {}
+    for n in nodes:
+        rows.setdefault(layer[n["id"]], []).append(n)
+    cols = max(len(rows), 1)
+    # 종횡비 — 열은 고정 간격으로 넓게, 행은 **가장 붐비는 열이 정해진 높이에 맞게**
+    # 적응한다. 뿌리 열은 대개 수십 개라, 행 간격을 고정하면 세로로만 길어져 캔버스가
+    # 세로 스크롤이 된다(실측). 폭 = 0.5×열, 높이 = 3.0 고정 → 열이 늘수록 가로로 눕는다.
+    tallest = max((len(r) for r in rows.values()), default=1)
+    y_step = 3.0 / max(tallest - 1, 1)
+    for lv, row in rows.items():
+        # 열 안 정렬은 (pinned, degree, id) — 다른 프리셋과 같은 허브 우선 규율(D32).
+        row.sort(key=lambda n: (-int(bool(n.get("pinned"))),
+                                -int(n.get("degree") or 0), str(n.get("id"))))
+        k = len(row)
+        x = (lv - (cols - 1) / 2) * 0.5
+        for j, n in enumerate(row):
+            n["x"] = round(x, 6)
+            n["y"] = round((j - (k - 1) / 2) * y_step, 6)
+            n["z"] = 0.0
+
+
 def layout_positions(nodes: list[dict], edges: list[dict],
                      layout: str = "shell") -> list[dict]:
     """결정론 3D 레이아웃(D17 + D21 개정 + D34 프리셋) — **순수 함수**, 난수·시간
     무의존이라 같은 그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인
     클러스터 중심을 xy 단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 프리셋
     (shell·radial·circle·tree·organic — D34, 미지 값은 shell 강등)으로 편다.
+    예외: **rank**(D50)는 클러스터를 만들지 않고 전역 위상 순서를 좌표에 넣는다.
     내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32)."""
     import math
     GOLDEN = 2.399963229728653
@@ -948,6 +1014,11 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         adj.setdefault(t, set()).add(s)
         if (e.get("type") or "") in _DIRECTED_RELS:
             directed.setdefault(s, set()).add(t)
+    # rank(D50)만 도메인 클러스터를 만들지 않는다 — 계보가 도메인을 가로지르므로
+    # 클러스터 안에서 랭크를 매기면 흐름이 끊긴다. 전역 층화 후 즉시 반환.
+    if layout == "rank":
+        _global_rank(nodes, directed, math)
+        return nodes
     by_domain: dict[str, list[dict]] = {}
     for n in nodes:
         by_domain.setdefault(n.get("domain") or "", []).append(n)
@@ -977,7 +1048,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
-    (shell·radial·circle·tree·organic, 미지 값 shell 강등).
+    (shell·radial·circle·tree·organic·rank, 미지 값 shell 강등).
 
     F2(2026-07-19): Concept 단일 축 해소 — 축 플랜 3종(Bridge·Episode·Record)이
     합류해 부착 노드·엣지가 렌더된다. L2 에선 매개자(브릿지 등)가 keep 집합에
