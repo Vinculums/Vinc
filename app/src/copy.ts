@@ -105,7 +105,7 @@ const EN = {
     },
     atlasx: {
       grid: "Grid", matrix: "Matrix", traceCta: "Trace from here",
-      flow: "Flow", timeline: "Timeline", totals: "Totals",
+      flow: "Flow", timeline: "Timeline", totals: "Sankey",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
       outIn: (o: number, i: number) => ` · → ${o} out · ← ${i} in`,
@@ -188,7 +188,7 @@ const EN = {
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "Flow, Timeline and Totals are in View.",
+      viewsHint: "Flow, Timeline and Sankey are in View.",
       flowNone: "No directed links here yet. Link two documents to see a flow.",
       soloNode: "This document stands alone. Link it to another to see a flow.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
@@ -196,7 +196,7 @@ const EN = {
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
       totalsEmpty: "Nothing to total yet. Add files and the totals fill in.",
-      totalsOff: "Totals are unavailable right now. Try again in a moment.",
+      totalsOff: "The Sankey is unavailable right now. Try again in a moment.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
       totalsAround: (n: number) => `Based on ${n} document${n === 1 ? "" : "s"} around this one.`,
@@ -206,7 +206,7 @@ const EN = {
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
       flowChart: (n: number, m: number) => `Flow: ${n} documents, ${m} links`,
       timelineChart: (n: number, m: number) => `Timeline: ${n} documents across ${m} topics`,
-      totalsChart: (n: number, m: number) => `Totals: ${n} topics, ${m} documents`,
+      totalsChart: (n: number, m: number) => `Sankey: ${n} topics, ${m} documents`,
       seg: {
         episodic: "from a conversation", record: "from a file", unsourced: "no origin yet",
         connected: "linked", gateway: "links other topics", orphan: "not linked yet",
@@ -437,7 +437,7 @@ const KO: Deck = {
     },
     atlasx: {
       grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적",
-      flow: "흐름", timeline: "타임라인", totals: "합계",
+      flow: "흐름", timeline: "타임라인", totals: "Sankey",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
       outIn: (o, i) => ` · → 나감 ${o} · ← 들어옴 ${i}`,
@@ -520,15 +520,15 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "흐름 · 타임라인 · 합계는 보기 안에 있습니다.",
+      viewsHint: "흐름 · 타임라인 · Sankey는 보기 안에 있습니다.",
       flowNone: "아직 방향이 있는 연결이 없습니다. 문서 두 개를 연결하면 흐름이 보입니다.",
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 흐름이 보입니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n) => `오래된 문서 ${n}개는 그리지 않았습니다.`,
-      totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 합계가 채워집니다.",
-      totalsOff: "지금은 합계를 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
+      totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 Sankey가 채워집니다.",
+      totalsOff: "지금은 Sankey를 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
       totalsAround: (n) => `이 문서 주변 문서 ${n}개 기준.`,
