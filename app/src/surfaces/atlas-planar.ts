@@ -23,9 +23,12 @@ import { COPY } from "../copy";
  *  문구를 저작하는 다른 모듈들과 같은 규칙을 따른다(각자 COPY 를 import).
  *
  *  <svg> 에는 aria-label 만 두고 role="img" 는 두지 않는다: role="img" 는 하위
- *  트리를 통째로 접어 노드 · 엣지 · 구간마다 달아 둔 <title> 을 전부 가린다.
- *  이름은 남기고 안은 열어 둔다(키보드 순회는 이 코드베이스에 없는 문법이라
- *  새로 만들지 않는다 — 가리지 않는 것까지가 이 변경의 범위다). */
+ *  트리를 통째로 접어 마크마다 달아 둔 설명을 전부 가린다. 이름은 남기고 안은
+ *  열어 둔다(키보드 순회는 이 코드베이스에 없는 문법이라 새로 만들지 않는다).
+ *
+ *  툴팁은 `data-tip` 속성으로만 낸다(D48-T) — SVG `<title>` = 네이티브 툴팁은
+ *  WCAG 1.4.13(dismissable·hoverable·persistent)을 하나도 만족하지 못해 전면
+ *  교체했다. 실제 표시는 tooltip.ts 의 단일 오버레이가 담당한다. */
 
 export type PlanarHandle = { dispose(): void };
 export type FlowNode = { id: string; label: string; domain: string };
@@ -151,7 +154,7 @@ function wireFocus(el: HTMLElement, h: {
 // ── 1. Flow — 무엇이 무엇을 전제하는가 ────────────────────────────────────
 /** 방향 관계만의 리니지 DAG. 층화는 최장경로(수기야마 1단계), 층 안 순서는
  *  배리센터 스윕(2단계)으로 교차를 줄인다. confidence 는 농도와 굵기로만
- *  나타내고(색조 금지), evidence 는 경로의 <title> = 네이티브 툴팁이 된다. */
+ *  나타내고(색조 금지), evidence 는 경로의 `data-tip` = 자체 툴팁이 된다. */
 export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
   o: { seed?: string; depth: 1 | 2 | 3; arrows: boolean; labels: boolean;
        onOpen: (id: string) => void;
@@ -296,7 +299,7 @@ export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
         : "";
       return `<g class="pl-link" data-e="${i}"><path class="pl-edge" d="${curveH(x1, a.y, x2, b.y)}"`
         + ` stroke-opacity="${(0.35 + 0.5 * c).toFixed(2)}" stroke-width="${(1 + c).toFixed(2)}"`
-        + `${o.arrows ? ` marker-end="url(#pl-arw)"` : ""}><title>${esc(tip)}</title></path>${hitPath}</g>`;
+        + `${o.arrows ? ` marker-end="url(#pl-arw)"` : ""} data-tip="${esc(tip)}"></path>${hitPath}</g>`;
     }).join("");
 
     const marks = live.map((id) => {
@@ -305,8 +308,8 @@ export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
         ? `<text class="pl-lab" x="${num(p.x)}" y="${num(p.y - r - 6)}" text-anchor="middle">${esc(cut(n.label, 24))}</text>`
         : "";
       return `<g class="pl-node" data-id="${esc(id)}">`
-        + `<circle class="pl-mark${id === o.seed ? " pl-focus" : ""}" cx="${num(p.x)}" cy="${num(p.y)}" r="${num(r)}">`
-        + `<title>${esc(n.label)}</title></circle>${lab}</g>`;
+        + `<circle class="pl-mark${id === o.seed ? " pl-focus" : ""}" cx="${num(p.x)}" cy="${num(p.y)}" r="${num(r)}"`
+        + ` data-tip="${esc(n.label)}"></circle>${lab}</g>`;
     }).join("");
 
     return `<svg class="pl-svg" aria-label="${esc(label)}"`
@@ -399,19 +402,32 @@ export function mountTimeline(el: HTMLElement,
     per.set(m, k + 1);
   }
   const label = COPY.ui.atlasx.timelineChart(dated.length, lanes.length);
-  const LANE_W = 190, BAND_H = 96;
+  const LANE_W = 190;
+  /** 월 밴드 최소 높이(성긴 달의 기존 인상 유지)와 항목 1건이 요구하는 세로 슬롯.
+   *  SLOT_H 는 라벨 디클러터 최소 간격(13)과 같은 값이어야 한다 — 밴드가 그보다
+   *  촘촘하면 점은 들어가도 라벨이 전부 밀려 지시선만 남는다. */
+  const BAND_MIN = 96, SLOT_H = 13;
 
   function draw(w: number, h: number): string {
     const W = Math.max(w, 120 + lanes.length * LANE_W);
-    const H = Math.max(h, 90 + months.length * BAND_H);
     const top = 74, bot = 26;
-    const bandH = (H - top - bot) / Math.max(months.length, 1);
+    // D46-S: 밴드 높이는 **그 달의 항목 수에 비례**한다. 고정 96px 시절엔 한 달에
+    // 40건이 들어오면 간격이 2.4px 로 눌려(마크 반지름 5.2px) 서로 겹쳤다 —
+    // L0 가 전량이 되면서 흔한 상황이 됐다. 넘치는 높이는 .pl-wrap 이 스크롤한다.
+    const rawH = months.map((m) => Math.max(BAND_MIN, (per.get(m) || 1) * SLOT_H));
+    const rawSum = rawH.reduce((a, v) => a + v, 0);
+    const H = Math.max(h, top + bot + rawSum);
+    // 컨테이너가 더 크면 남는 높이를 비례 배분한다(빈 아래 여백 대신 숨 쉬는 밴드).
+    const k = Math.max(1, (H - top - bot) / Math.max(rawSum, 1));
+    const bandH = rawH.map((v) => v * k);
+    const bandTop: number[] = [];
+    bandH.reduce((y, v, i) => { bandTop[i] = y; return y + v; }, top);
     const laneX = (d: string) =>
       110 + ((laneAt.get(d) || 0) + 0.5) * ((W - 130) / Math.max(lanes.length, 1));
     const yOf = (n: { id: string; ts?: string }) => {
+      const i = monthAt.get(n.ts!.slice(0, 7)) || 0;
       const m = n.ts!.slice(0, 7);
-      const b = top + (monthAt.get(m) || 0) * bandH;
-      return b + (bandH * (rank.get(n.id)! + 0.5)) / Math.max(per.get(m) || 1, 1);
+      return bandTop[i] + (bandH[i] * (rank.get(n.id)! + 0.5)) / Math.max(per.get(m) || 1, 1);
     };
 
     // 월 거터 — 홀짝 밴드 + 좌측 눈금. 밴드는 muted 면이라 색이 아니라 면이 구분한다.
@@ -419,13 +435,13 @@ export function mountTimeline(el: HTMLElement,
     // 그려 노드 밑에 깔린다(점 클릭이 우선, 빈 밴드 클릭만 기간 선택).
     const bands = months.map((m, i) =>
       (i % 2 === 1
-        ? `<rect class="pl-band" x="34" y="${num(top + i * bandH)}" width="${num(W - 46)}" height="${num(bandH)}"/>`
+        ? `<rect class="pl-band" x="34" y="${num(bandTop[i])}" width="${num(W - 46)}" height="${num(bandH[i])}"/>`
         : "")
       + (o.onMonth
-        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="34" y="${num(top + i * bandH)}"`
-          + ` width="${num(W - 46)}" height="${num(bandH)}" fill="transparent" style="cursor:pointer"/>`
+        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="34" y="${num(bandTop[i])}"`
+          + ` width="${num(W - 46)}" height="${num(bandH[i])}" fill="transparent" style="cursor:pointer"/>`
         : "")
-      + `<text class="pl-cap pl-num" x="38" y="${num(top + i * bandH + 13)}">${esc(m)}</text>`)
+      + `<text class="pl-cap pl-num" x="38" y="${num(bandTop[i] + 13)}">${esc(m)}</text>`)
       .join("");
 
     const laneGs = lanes.map((d) => {
@@ -450,7 +466,7 @@ export function mountTimeline(el: HTMLElement,
           ? `<path class="pl-ax" d="M${num(xs + 6)} ${num(y)} L${num(xs + 11)} ${num(lyi)}"/>` : "";
         const text = o.labels
           ? `<text class="pl-lab" x="${num(xs + 13)}" y="${num(lyi + 4)}">${esc(cut(n.label, 20))}</text>` : "";
-        return `<g class="pl-node" data-id="${esc(n.id)}"><title>${esc(n.label)} ${esc(n.ts || "")}</title>`
+        return `<g class="pl-node" data-id="${esc(n.id)}" data-tip="${esc(n.label)} ${esc(n.ts || "")}">`
           + `${mark}${lead}${text}</g>`;
       }).join("");
       return `<g class="pl-lane" data-lane="${esc(d)}">${line}${head}${marks}</g>`;
@@ -485,91 +501,284 @@ export function mountTimeline(el: HTMLElement,
   return { dispose() { stopFocusT(); stopSize(); } };
 }
 
-// ── 3. Totals — 어디에 얼마나 쌓였는가 ────────────────────────────────────
-/** 주제당 가로 누적 막대. 구간은 색조가 아니라 잉크 농도 3단으로 갈리고,
- *  구간 사이는 배경색 실선 한 겹으로 벌린다. 합은 보존한다: 그리는 폭의 합이
- *  곧 표기하는 행 합계이고, 행 합계의 합이 곧 맨 아래 총계다. */
+// ── 3. Totals — 지식은 어디서 와서 어디에 쌓이고 어떤 상태인가 ─────────────
+/** 3열 생키(정본 [[vinc.d.graph-views]] §2.3 복귀, D47).
+ *
+ *  열: **유입원 → 주제 → 연결 상태**. 구 구현은 한 축만 고르는 누적 막대라
+ *  "대화에서 온 개념이 어느 주제에 쌓였고 그중 몇이 고아인가"를 경로로 추적할
+ *  수 없었다 — 생키의 존재 이유가 그 경로다.
+ *
+ *  **보존 불변**: 사이드카 폴드가 출처 3분할·연결 3분할을 각각 배타로 세므로
+ *  (query.py `ledger`) 두 합이 모두 정확히 `concepts` 다. 따라서 1열 합 = 2열 합
+ *  = 3열 합이 항상 성립하고, 어긋나면 그건 집계 결함이라 화면이 먼저 드러낸다
+ *  (노드 높이를 두 합의 큰 쪽으로 잡아 리본이 노드를 넘치지 않게만 방어한다).
+ *
+ *  **고아 필터를 여기서는 받지 않는다**: 고아를 숨기려면 (출처 × 상태) 교차표가
+ *  필요한데 원장은 주변합만 준다 — 주변합으로 고아를 걷어내면 1열과 3열의 합이
+ *  달라져 보존이 깨진다. 게다가 고아 리본은 D32 고아 최소화 동선의 진입점이라
+ *  숨기는 것이 이 뷰의 목적과 반대다. 교차표가 필요해지면 `/ledger` 확장(별건).
+ *
+ *  색은 여전히 단일 잉크다 — bklit 의 소스→타깃 그라디언트는 모노크롬 규율
+ *  (정본 §5 검증기 FAIL)에 걸려 채택하지 않고, 위계는 굵기와 농도만 나른다. */
+const ORIGINS = ["episodic", "record", "unsourced"] as const;
+const STATES = ["connected", "gateway", "orphan"] as const;
+/** 생키 치수 — bklit 규격(nodeWidth 16 · nodePadding 24 · lineCap 4)을 그대로 쓴다. */
+const NODE_W = 16, NODE_PAD = 24, NODE_CAP = 4;
+/** 가장 작은 노드도 이만큼은 보인다(스케일 하한 → 넘치면 H 가 자라고 스크롤). */
+const NODE_MIN = 5;
+
 export function mountTotals(el: HTMLElement, rows: LedgerRow[],
-  o: { group: "topic" | "origin"; unlinked: "show" | "hide"; current?: string;
+  o: { current?: string;
        onOpen: (domain: string) => void;
-       /** 구간 클릭 → 그 (도메인, mark) 의 개념 목록 드릴다운(D45-V2 3단계). */
+       /** 리본 클릭 → 그 (도메인, mark) 의 개념 목록 드릴다운(D45-V2 3단계).
+        *  구 누적 막대의 구간 클릭과 계약이 같다 — 리본이 곧 그 구간이다. */
        onSeg?: (domain: string, mark: string) => void }): PlanarHandle {
-  const KEYS = o.group === "origin"
-    ? (["episodic", "record", "unsourced"] as const)
-    : (["connected", "gateway", "orphan"] as const);
-  // unlinked=hide — 고아 구간을 걷어내고, 그래서 합이 0 이 된 행은 그리지 않는다.
-  const segs = KEYS.filter((k) => !(o.unlinked === "hide" && k === "orphan"));
+  const val = (r: LedgerRow, k: string) => Math.max(0, Number((r as unknown as Record<string, unknown>)[k]) || 0);
+  // 주제(2열) — 두 축 합이 다르면(구버전·집계 결함) 큰 쪽을 노드 높이로 삼아
+  // 리본이 노드를 넘치지 않게만 방어한다. 정상 데이터에선 둘이 같다.
   const data = rows.map((r) => {
-    const parts = segs.map((k) => Math.max(0, Number(r[k]) || 0));
-    return { domain: r.domain, parts, total: parts.reduce((a, b) => a + b, 0) };
+    const origin = ORIGINS.map((k) => val(r, k));
+    const state = STATES.map((k) => val(r, k));
+    const oSum = origin.reduce((a, b) => a + b, 0);
+    const sSum = state.reduce((a, b) => a + b, 0);
+    return { domain: r.domain, origin, state, total: Math.max(oSum, sSum) };
   }).filter((r) => r.total > 0);
   const grand = data.reduce((a, r) => a + r.total, 0);
-  const max = Math.max(1, ...data.map((r) => r.total));
+  // 1열·3열 노드 값 = 주제를 가로지른 합(주변합).
+  const originTot = ORIGINS.map((_, i) => data.reduce((a, r) => a + r.origin[i], 0));
+  const stateTot = STATES.map((_, i) => data.reduce((a, r) => a + r.state[i], 0));
   const label = COPY.ui.atlasx.totalsChart(data.length, grand);
-  // 구간 이름 — 원장 키(episodic·gateway…)는 코드 식별자라 화면에는 덱 문구가 나간다.
-  // 잉크 농도 3단이 무엇을 뜻하는지 풀어 주는 유일한 자리라 이 툴팁이 곧 범례다.
-  const segTip = (k: (typeof segs)[number], v: number) =>
-    COPY.ui.atlasx.segTip(COPY.ui.atlasx.seg[k], v);
-  const ROW = 34;
+  const segName = (k: string) => COPY.ui.atlasx.seg[k as keyof typeof COPY.ui.atlasx.seg];
+  const segTip = (k: string, v: number) => COPY.ui.atlasx.segTip(segName(k), v);
+  /** 첫 그림에만 진입 안무를 얹는다 — 리사이즈 재그리기마다 다시 자라면 소음이다. */
+  let first = true;
 
   function draw(w: number, h: number): string {
-    const W = Math.max(w, 520);
-    const H = Math.max(h, data.length * ROW + 76);
-    const labW = 132, numW = 56;
-    const barW = W - labW - numW - 24;
+    const W = Math.max(w, 620);
+    const labW = 136;                       // 좌우 라벨 여백(bklit margin 180 의 축약)
+    const TOP = 48, BOT = 34;               // 열 머리글 / 총계
+    // 스케일 — 노드가 가장 많은 열이 기준이고, 가장 작은 노드도 NODE_MIN 은 되게
+    // 높이를 키운다(넘치면 .pl-wrap 이 세로 스크롤). 전부 입력의 순수 함수.
+    const counts = [ORIGINS.length, data.length, STATES.length];
+    const maxCount = Math.max(...counts);
+    const vals = [...originTot, ...data.map((r) => r.total), ...stateTot].filter((v) => v > 0);
+    const minVal = vals.length ? Math.min(...vals) : 1;
+    const need = TOP + BOT + (grand * NODE_MIN) / minVal + (maxCount - 1) * NODE_PAD;
+    const H = Math.max(h, need);
+    const availH = H - TOP - BOT;
+    const scale = (availH - (maxCount - 1) * NODE_PAD) / Math.max(grand, 1);
+    const xs = [labW, (W - NODE_W) / 2, W - labW - NODE_W];
 
-    const bars = data.map((r, i) => {
-      const y = 34 + i * ROW;
-      const bh = 16;
-      let x = labW;
-      const cells = r.parts.map((v, si) => {
-        const cw = (v / max) * barW;
-        // onSeg 지정 시 구간에 data-dom·data-seg 를 달아 드릴다운 클릭 대상으로
-        // 삼는다(자기완결 — 행 dead 상태와 무관, 손가락 커서). 미지정이면 기존 그대로.
-        const segAttr = o.onSeg
-          ? ` data-dom="${esc(r.domain)}" data-seg="${segs[si]}" style="cursor:pointer"` : "";
-        const rect = v <= 0 ? "" :
-          `<rect class="pl-seg pl-s${si}" x="${num(x)}" y="${num(y)}" width="${num(cw)}" height="${bh}"${segAttr}>`
-          + `<title>${esc(segTip(segs[si], v))}</title></rect>`
-          + (cw > 24
-            ? `<text class="pl-cap pl-num" x="${num(x + cw / 2)}" y="${num(y + 11.5)}" text-anchor="middle">${v}</text>`
-            : "");
-        x += cw;
-        return rect;
-      }).join("");
-      // 이미 그 주제만 보고 있는 행(o.current)은 눌러도 갈 곳이 없다 — data-id 를
-      // 빼 hover/click 위임에서 아예 제외하고 손가락 커서도 내린다. 구간 <title>
-      // (실제 값인 툴팁)은 rect 에 달려 있어 그대로 살아 있다.
+    /** 열 하나를 세로 중앙에 쌓는다 — 값 순서는 입력 순서 그대로(결정론). */
+    const stack = (values: number[]) => {
+      const hsum = values.reduce((a, v) => a + v * scale, 0);
+      const gaps = (values.length - 1) * NODE_PAD;
+      let y = TOP + (availH - hsum - gaps) / 2;
+      return values.map((v) => { const top = y; y += v * scale + NODE_PAD; return { y: top, h: v * scale }; });
+    };
+    const oBox = stack(originTot);
+    const dBox = stack(data.map((r) => r.total));
+    const sBox = stack(stateTot);
+
+    // 리본 — 노드 안에서 값 순서대로 쌓아 교차를 줄인다. 들어오는 쪽 순서는
+    // 나가는 쪽이 정한 순서와 같아야 리본이 꼬이지 않는다(1열 순서 = ORIGINS,
+    // 3열 순서 = data 순서).
+    const oOff = originTot.map(() => 0);
+    const dInOff = data.map(() => 0);
+    const dOutOff = data.map(() => 0);
+    const sOff = stateTot.map(() => 0);
+    const links: string[] = [];
+    let li = 0;
+    const ribbon = (x1: number, y1: number, x2: number, y2: number, v: number,
+                    dom: string, mark: string, from: string, to: string) => {
+      const t = v * scale;
+      // 값 비례 농도(0.28~0.72) — 색조는 건드리지 않는다. 굵기가 값의 정본이고
+      // 농도는 읽기 보조다(정본 §5: 변별은 위치·두께·형태·직접 라벨).
+      const op = (0.28 + 0.44 * Math.min(1, v / Math.max(minVal * 4, 1))).toFixed(2);
+      // data-dom·data-seg 는 **항상** 싣는다 — 드릴다운의 표적이자 hover 초점
+      // 계산의 열쇠라, onSeg 유무로 빠지면 hover 문법까지 같이 죽는다.
+      const cls = `pl-ribbon${o.onSeg ? " pl-drill" : ""}${first ? " pl-in" : ""}`;
+      links.push(`<g class="${cls}" data-e="${li}" data-dom="${esc(dom)}"`
+        + ` data-seg="${esc(mark)}" style="--i:${li}">`
+        + `<path class="pl-flow" d="${curveH(x1, y1, x2, y2)}" pathLength="1"`
+        + ` stroke-width="${num(Math.max(t, 1))}" stroke-opacity="${op}"`
+        + ` data-tip="${esc(COPY.ui.atlasx.ribbonTip(from, to, v))}"></path></g>`);
+      li++;
+    };
+
+    ORIGINS.forEach((k, oi) => {
+      data.forEach((r, di) => {
+        const v = r.origin[oi];
+        if (v <= 0) return;
+        const y1 = oBox[oi].y + oOff[oi] + (v * scale) / 2;
+        const y2 = dBox[di].y + dInOff[di] + (v * scale) / 2;
+        oOff[oi] += v * scale; dInOff[di] += v * scale;
+        ribbon(xs[0] + NODE_W, y1, xs[1], y2, v, r.domain, k, segName(k), r.domain);
+      });
+    });
+    data.forEach((r, di) => {
+      STATES.forEach((k, si) => {
+        const v = r.state[si];
+        if (v <= 0) return;
+        const y1 = dBox[di].y + dOutOff[di] + (v * scale) / 2;
+        const y2 = sBox[si].y + sOff[si] + (v * scale) / 2;
+        dOutOff[di] += v * scale; sOff[si] += v * scale;
+        ribbon(xs[1] + NODE_W, y1, xs[2], y2, v, r.domain, k, r.domain, segName(k));
+      });
+    });
+
+    /** 노드 사각 + 바깥쪽 직접 라벨(1·3열). 판(plate)은 2열에만 필요하다. */
+    const sideNode = (id: string, x: number, box: { y: number; h: number },
+                      key: string, v: number, right: boolean, i: number) => {
+      if (v <= 0) return "";
+      const ty = box.y + box.h / 2;
+      const lx = right ? x + NODE_W + 10 : x - 10;
+      return `<g class="pl-node pl-static${first ? " pl-in" : ""}" data-id="${esc(id)}" style="--i:${i}">`
+        + `<rect class="pl-snode" x="${num(x)}" y="${num(box.y)}" width="${NODE_W}"`
+        + ` height="${num(Math.max(box.h, 1))}" rx="${NODE_CAP}"`
+        + ` data-tip="${esc(segTip(key, v))}"></rect>`
+        + `<text class="pl-lab" x="${num(lx)}" y="${num(ty - 1)}"`
+        + ` text-anchor="${right ? "start" : "end"}">${esc(cut(segName(key), 20))}</text>`
+        + `<text class="pl-cap pl-num" x="${num(lx)}" y="${num(ty + 12)}"`
+        + ` text-anchor="${right ? "start" : "end"}">${v}</text></g>`;
+    };
+    const originNodes = ORIGINS.map((k, i) =>
+      sideNode(`org:${k}`, xs[0], oBox[i], k, originTot[i], false, i)).join("");
+    const stateNodes = STATES.map((k, i) =>
+      sideNode(`st:${k}`, xs[2], sBox[i], k, stateTot[i], true, i)).join("");
+
+    // 2열(주제) — 라벨이 리본 위를 지나므로 판을 깔고 얹는다. 판 폭은 추정하지
+    // 않는다: 여기선 자리만 잡고 마운트 후 getBBox() 실측으로 맞춘다(정본 §6
+    // 실패 사례 1). 이미 그 주제를 보고 있는 행은 눌러도 갈 곳이 없어 정적이다.
+    const domainNodes = data.map((r, i) => {
       const dead = r.domain === o.current;
-      return `<g class="pl-row${dead ? " pl-static" : ""}"${dead ? "" : ` data-id="${esc(r.domain)}"`}>`
-        + `<rect class="pl-track" x="${labW}" y="${num(y)}" width="${num(barW)}" height="${bh}" rx="3"/>`
-        + `<text class="pl-lab" x="${labW - 10}" y="${num(y + 12)}" text-anchor="end">${esc(cut(r.domain, 18))}</text>`
-        + `${cells}`
-        + `<text class="pl-sub pl-num" x="${num(labW + barW + 14)}" y="${num(y + 12)}">${r.total}</text></g>`;
+      const ty = dBox[i].y + dBox[i].h / 2;
+      const lx = xs[1] + NODE_W + 9;
+      return `<g class="pl-node${dead ? " pl-static" : ""}${first ? " pl-in" : ""}"`
+        + ` data-id="${esc(r.domain)}"${dead ? "" : ` data-open="${esc(r.domain)}"`} style="--i:${i}">`
+        + `<rect class="pl-snode" x="${num(xs[1])}" y="${num(dBox[i].y)}" width="${NODE_W}"`
+        + ` height="${num(Math.max(dBox[i].h, 1))}" rx="${NODE_CAP}"`
+        + ` data-tip="${esc(COPY.ui.atlasx.segTip(r.domain, r.total))}"></rect>`
+        + `<g class="pl-plate-g">`
+        + `<rect class="pl-plate" x="${num(lx - 5)}" y="${num(ty - 10)}" width="10" height="20" rx="3"/>`
+        + `<text class="pl-lab" x="${num(lx)}" y="${num(ty + 4)}">${esc(cut(r.domain, 18))}`
+        + ` <tspan class="pl-sub pl-num">${r.total}</tspan></text></g></g>`;
     }).join("");
 
-    // 총계 — 열의 합이 보존됨을 눈으로 확인시킨다(구간 합 = 행 합 = 총계).
-    const ry = 34 + data.length * ROW + 6;
-    const foot = `<path class="pl-ax" d="M${num(labW + barW + 6)} ${num(ry)} L${num(labW + barW + numW)} ${num(ry)}"/>`
-      + `<text class="pl-lab pl-num" x="${num(labW + barW + 14)}" y="${num(ry + 15)}">${grand}</text>`;
+    const head = (x: number, anchor: string, t: string) =>
+      `<text class="pl-cap" x="${num(x)}" y="26" text-anchor="${anchor}">${esc(t)}</text>`;
+    const heads = head(xs[0] + NODE_W, "end", COPY.ui.atlasx.colOrigin)
+      + head(xs[1] + NODE_W / 2, "middle", COPY.ui.atlasx.colTopic)
+      + head(xs[2], "start", COPY.ui.atlasx.colState);
 
-    return `<svg class="pl-svg" aria-label="${esc(label)}"`
+    // 총계 — 세 열의 합이 같음을 눈으로 확인시킨다(보존 불변의 화면판).
+    const foot = `<text class="pl-sub pl-num" x="${num(W / 2)}" y="${num(H - 12)}"`
+      + ` text-anchor="middle">${esc(COPY.ui.atlasx.totalsFoot(grand))}</text>`;
+
+    return `<svg class="pl-svg pl-sankey" aria-label="${esc(label)}"`
       + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`
-      + `${bars}${foot}</svg>`;
+      + `${heads}${links.join("")}${originNodes}${domainNodes}${stateNodes}${foot}</svg>`;
   }
 
-  let rowEls: SVGElement[] = [];
-  const collect = () => { rowEls = [...el.querySelectorAll<SVGElement>(".pl-row")]; };
-  function focus(id: string) {
-    for (const g of rowEls) {
-      const on = g.dataset.id === id;
+  let nodeEls: SVGElement[] = [];
+  let ribEls: SVGElement[] = [];
+  /** 판 폭 실측 — 숨은 채로 그리면 getBBox() 가 0 을 준다(정본 §6 실패 1).
+   *  0 이 나오면 다음 프레임에 다시 잰다(탭이 보이는 순간 맞춰진다). */
+  function fitPlates(retry = true) {
+    let blind = false;
+    for (const g of el.querySelectorAll<SVGGElement>(".pl-plate-g")) {
+      const t = g.querySelector("text");
+      const p = g.querySelector<SVGRectElement>(".pl-plate");
+      if (!t || !p) continue;
+      const b = (t as SVGTextElement).getBBox();
+      if (!b.width) { blind = true; continue; }
+      p.setAttribute("x", String(Math.round((b.x - 6) * 10) / 10));
+      p.setAttribute("y", String(Math.round((b.y - 3) * 10) / 10));
+      p.setAttribute("width", String(Math.round((b.width + 12) * 10) / 10));
+      p.setAttribute("height", String(Math.round((b.height + 6) * 10) / 10));
+    }
+    if (blind && retry) requestAnimationFrame(() => fitPlates(false));
+  }
+  const collect = () => {
+    nodeEls = [...el.querySelectorAll<SVGElement>(".pl-node")];
+    ribEls = [...el.querySelectorAll<SVGElement>(".pl-ribbon")];
+    fitPlates();
+  };
+
+  /** D32-a — hover 한 노드·리본과 그에 닿은 것만 남고 나머지는 물러난다.
+   *  생키의 "닿음"은 리본 하나가 잇는 (주제 · 구간) 쌍이다. */
+  function paint(keepNode: Set<string>, keepRib: Set<Element>) {
+    for (const g of nodeEls) {
+      const on = keepNode.has(g.dataset.id || "");
+      g.classList.toggle("pl-fade", !on);
+      g.classList.toggle("pl-hl", on);
+    }
+    for (const g of ribEls) {
+      const on = keepRib.has(g);
       g.classList.toggle("pl-fade", !on);
       g.classList.toggle("pl-hl", on);
     }
   }
-  function clear() { for (const g of rowEls) g.classList.remove("pl-fade", "pl-hl"); }
+  /** 구간 키가 1열인지 3열인지 — 두 사전은 서로 겹치지 않는다(배타 6종). */
+  const sideId = (mark: string) =>
+    (ORIGINS as readonly string[]).includes(mark) ? `org:${mark}` : `st:${mark}`;
 
-  const stopSize = trackSize(el, (w, h) => { el.innerHTML = wrap(draw(w, h)); collect(); });
-  const stopFocus = wireFocus(el, { focus, clear, open: o.onOpen, seg: o.onSeg });
-  return { dispose() { stopFocus(); stopSize(); } };
+  function focusNode(id: string) {
+    const keepN = new Set([id]);
+    const keepR = new Set<Element>();
+    for (const g of ribEls) {
+      const dom = g.dataset.dom || "";
+      const mark = g.dataset.seg || "";
+      // 주제 노드는 자기 리본 전부, 구간 노드(org:/st:)는 그 구간의 리본 전부.
+      if (id !== dom && id !== sideId(mark)) continue;
+      keepR.add(g);
+      keepN.add(dom);
+      keepN.add(sideId(mark));
+    }
+    paint(keepN, keepR);
+  }
+  function focusRibbon(g: SVGElement) {
+    paint(new Set([g.dataset.dom || "", sideId(g.dataset.seg || "")]), new Set([g]));
+  }
+  function clear() {
+    for (const g of [...nodeEls, ...ribEls]) g.classList.remove("pl-fade", "pl-hl");
+  }
+
+  // 위임 3개 — 마크마다 리스너를 달지 않는다(다시 그려도 재배선 불필요).
+  // 리본이 노드보다 먼저 검사되면 안 된다: 노드는 DOM 상 뒤(위)라 겹친 자리의
+  // 포인터를 이미 가져간다. hover 는 노드 우선, 그다음 리본.
+  const over = (e: Event) => {
+    const t = e.target as Element;
+    const n = t.closest?.(".pl-node") as SVGElement | null;
+    if (n) { focusNode(n.dataset.id || ""); return; }
+    const r = t.closest?.(".pl-ribbon") as SVGElement | null;
+    if (r) { focusRibbon(r); return; }
+    clear();
+  };
+  const leave = () => clear();
+  const click = (e: Event) => {
+    const t = e.target as Element;
+    // 리본 클릭 = 구간 드릴다운(주제 열기보다 우선 — 더 구체적인 표적).
+    const seg = t.closest?.("[data-seg]") as SVGElement | null;
+    if (seg && o.onSeg) { o.onSeg(seg.dataset.dom!, seg.dataset.seg!); return; }
+    const open = t.closest?.("[data-open]") as SVGElement | null;
+    if (open) o.onOpen(open.dataset.open!);
+  };
+  el.addEventListener("mouseover", over);
+  el.addEventListener("mouseleave", leave);
+  el.addEventListener("click", click);
+
+  const stopSize = trackSize(el, (w, h) => {
+    el.innerHTML = wrap(draw(w, h));
+    first = false;   // 진입 안무는 최초 1회 — 리사이즈 재그리기는 조용히
+    collect();
+  });
+  return {
+    dispose() {
+      el.removeEventListener("mouseover", over);
+      el.removeEventListener("mouseleave", leave);
+      el.removeEventListener("click", click);
+      stopSize();
+    },
+  };
 }

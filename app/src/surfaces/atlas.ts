@@ -3,8 +3,9 @@ import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode, type LedgerRes, type LedgerRow } from "../api";
 import { COPY } from "../copy";
 import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d";
+import { mount2d, type Handle2d } from "./atlas2d";
 import { mountFlow, mountTimeline, mountTotals, timelinePool,
-         type FlowEdge, type PlanarHandle } from "./atlas-planar";
+         type PlanarHandle } from "./atlas-planar";
 import { openShareSheet } from "../sheets";
 import { confirmDestructive } from "../components";
 import { LAYOUTS, VIEWS, isPlanar, loadPrefs, savePrefs,
@@ -83,6 +84,7 @@ export async function renderAtlas(el: HTMLElement) {
   }
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
+  let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
   let minis3d: { dispose(): void } | null = null;   // Grid 미니(단일 렌더러, D34)
   let planar: PlanarHandle | null = null;           // 평면 관점(Flow/Timeline/Totals, D43)
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
@@ -200,6 +202,9 @@ export async function renderAtlas(el: HTMLElement) {
    *    (fetch 는 layout 을 실어 보내지만 mountFlow/mountTimeline 은 좌표를 안 읽는다).
    *  Totals + 출처별: 원장 구간이 episodic·record·unsourced 라 고아 구간이 없다 →
    *    unlinked 가 아무것도 바꾸지 못한다(주제별일 때만 orphan 구간을 걷어낸다). */
+  /** 평면(SVG DOM) 상한 — 노드마다 <g> 를 만드는 렌더라 전량 스코프(L0)에서
+   *  무한정 그릴 수 없다. 넘치면 최근 것부터 남기고 캡션이 잘린 수를 밝힌다. */
+  const PLANAR_CAP = 1200;
   const GRID_ROWS = ["size", "unlinked", "layout"];
   function rowsFor(lv: Level, p: AtlasPrefs): string[] {
     if (lv.kind === "grid") return GRID_ROWS;
@@ -211,7 +216,10 @@ export async function renderAtlas(el: HTMLElement) {
           : ["size", "labels", "arrows", "unlinked", "layout", "spread"];
       case "flow": return ["depth", "arrows", "labels"];
       case "timeline": return lv.kind === "l0" ? [] : ["docs", "labels"];
-      case "totals": return p.totalsGroup === "topic" ? ["group", "unlinked"] : ["group"];
+      // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
+      // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
+      // atlas-planar.mountTotals 주석). 원장 뷰에 남는 선택지가 없다.
+      case "totals": return [];
     }
   }
 
@@ -261,9 +269,6 @@ export async function renderAtlas(el: HTMLElement) {
       docs: row(COPY.ui.panel.docLinks,
         chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
         + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
-      group: row(COPY.ui.panel.groupBy,
-        chip("totalsGroup", "topic", COPY.ui.panel.byTopic, p.totalsGroup === "topic")
-        + chip("totalsGroup", "origin", COPY.ui.panel.byOrigin, p.totalsGroup === "origin")),
     };
 
     viewPanel.innerHTML = head
@@ -774,6 +779,59 @@ export async function renderAtlas(el: HTMLElement) {
     }
   }
 
+  /** 2D 관점 — 독립 렌더러(D46). 3D 씬의 z-평면화가 아니라 사이드카 xy 좌표만
+   *  쓰는 sigma 렌더러다. L0 는 3D 와 같은 주제 층(Domain Atlas, D16 불변)이되
+   *  주제 노드를 **2D 그래프로** 짓는다 — 이 관점은 3D 렌더러에 더 이상 기대지
+   *  않는다. (atlas3d 의 flat 분기는 Grid 미니 카드가 계속 쓴다.) */
+  async function show2d(level: Level) {
+    const p = curPrefs();
+    if (level.kind === "l0") {
+      setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
+      const res = await api.atlasL0(cfg.owner);
+      const domains: { domain: string; episodes: number }[] = res.domains || [];
+      if (!res.executed || domains.length === 0) {
+        setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
+          <a class="btn btn-primary" href="#packs">${COPY.atlas.idleCta}</a></div>`);
+        return;
+      }
+      setMsg("");
+      // 주제를 원 둘레에 놓는다(3D L0 의 원환을 평면으로 — 같은 배치 규칙).
+      const n = Math.max(domains.length, 1);
+      const dnodes: GraphNode[] = domains.map((d, i) => {
+        const a = (2 * Math.PI * i) / n;
+        return { id: d.domain, label: d.domain, domain: d.domain,
+                 degree: d.episodes, kind: "domain", x: Math.cos(a), y: Math.sin(a) };
+      });
+      const known = new Set(dnodes.map((d) => d.id));
+      const dedges: GraphEdge[] = (res.ties || [])
+        .filter((t: any) => t.source !== t.target && known.has(t.source) && known.has(t.target))
+        .map((t: any) => ({ source: t.source, target: t.target, type: "TIES", cross_domain: true }));
+      g2 = mount2d(canvas, dnodes, dedges, {
+        onClick: (nd) => { trail.push({ kind: "l1", domain: nd.id }); show(trail[trail.length - 1]); },
+      }, p);
+      return;
+    }
+    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
+    const { seed, domain } = scopeOf(level);
+    const res = seed !== undefined
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
+      : await api.graph(cfg.owner, { domain, layout: p.layout });
+    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    const gnodes: GraphNode[] = res.nodes || [];
+    curEdges = res.edges || [];
+    if (seed !== undefined) fillSeedDomain(seed, gnodes);
+    if (gnodes.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
+    setMsg("");
+    g2 = mount2d(canvas, gnodes, curEdges, {
+      seed,
+      onClick: (nd) => openDetail(toN3([nd])[0]),
+      onRightClick: (nd) => {
+        trail.push({ kind: "l2", seed: nd.id, domain: nd.domain });
+        show(trail[trail.length - 1]);
+      },
+    }, p);
+  }
+
   async function showL1(domain: string) {
     setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
     const res = await api.graph(cfg.owner, { domain, layout: loadPrefs().layout });
@@ -889,7 +947,7 @@ export async function renderAtlas(el: HTMLElement) {
       <div style="display:flex;flex-direction:column;border:1px solid ${THEME.edge};border-radius:var(--radius);overflow:hidden">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
-          <button class="chip" data-cycle="${d}" title="Cycle layout (D34)"
+          <button class="chip" data-cycle="${d}" data-tip="Cycle layout (D34)"
                   style="border:none;border-radius:0;padding:.35rem .75rem">${lay(d)} ↻</button>
         </div>
         <div data-mini="${d}" style="flex:1;min-height:0"></div>
@@ -939,7 +997,7 @@ export async function renderAtlas(el: HTMLElement) {
         ${domains.map((a) => `<tr><th style="padding:.3rem .6rem;text-align:right;font-weight:400" class="hint">${a}</th>
           ${domains.map((b) => {
             const v = a === b ? 0 : (ties.get(`${a}|${b}`) || 0);
-            return `<td data-a="${a}" data-b="${b}" title="${v} ties" style="width:3.2rem;height:2.4rem;
+            return `<td data-a="${a}" data-b="${b}" data-tip="${v} ties" style="width:3.2rem;height:2.4rem;
               border:1px solid ${THEME.edge};background:${shade(v)};cursor:${v ? "pointer" : "default"};
               text-align:center;color:${v >= (2 * max) / 3 && v > 0 ? "hsl(var(--background))" : "inherit"}">${v || ""}</td>`;
           }).join("")}</tr>`).join("")}
@@ -1011,7 +1069,7 @@ export async function renderAtlas(el: HTMLElement) {
       // ego 모집단을 쓰도록 seed 를 넘긴다(수치 정합).
       const drillSeed = level.kind === "l2" ? level.seed : undefined;
       planar = mountTotals(canvas, rows, {
-        group: p.totalsGroup, unlinked: p.unlinked, onOpen: openTopic,
+        onOpen: openTopic,
         // 눌러도 갈 곳이 없는 행 = openTopic 이 무동작으로 삼키는 그 행. 판정 조건은
         // openTopic 의 가드와 글자 그대로 같아야 한다(L1 에서 자기 주제일 때만).
         current: level.kind === "l1" ? level.domain : undefined,
@@ -1034,43 +1092,16 @@ export async function renderAtlas(el: HTMLElement) {
       return;
     }
 
-    // L0 — 주제 층. Flow 는 이미 받아온 ties 를 방향 그래프로 그대로 쓴다(백엔드 작업 없음).
-    if (level.kind === "l0") {
-      setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-      const res = await api.atlasL0(cfg.owner);
-      const domains: { domain: string; episodes: number }[] = res.domains || [];
-      if (!res.executed || domains.length === 0) {
-        setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
-          <a class="btn btn-primary" href="#packs">${COPY.atlas.idleCta}</a></div>`);
-        return;
-      }
-      // 주제 노드에는 날짜가 없다 — L0 Timeline 은 어떤 옵션을 눌러도 이 화면이라
-      // 옵션 행 자체를 내지 않고(rowsFor), 막다른 골목 대신 "열 수 있는 주제"를
-      // 그대로 내놓는다: 문구가 가리키는 다음 행동이 곧 화면에 있다.
-      if (p.view === "timeline") {
-        setMsg(`<div class="empty"><p>${COPY.ui.atlasx.topicsNoDates}</p>
-          <p><span class="seg">${domains.slice(0, 9).map((d) =>
-            `<button class="chip" data-topic="${d.domain}">${d.domain}</button>`).join("")}</span></p></div>`);
-        msg.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) =>
-          b.addEventListener("click", () => openTopic(b.dataset.topic!)));
-        return;
-      }
-      const topics = domains.map((d) => ({ id: d.domain, label: d.domain, domain: d.domain }));
-      const known = new Set(topics.map((t) => t.id));
-      const ties: { source: string; target: string; ties: number }[] = res.ties || [];
-      const links: FlowEdge[] = ties
-        .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
-        .map((t) => ({ source: t.source, target: t.target, type: "TIES", weight: t.ties }));
-      if (links.length === 0) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.flowNoTies}</p></div>`); return; }
-      setMsg("");
-      planar = mountFlow(canvas, topics, links, {
-        depth: p.flowDepth, arrows: p.arrows, labels: p.labels !== "none", onOpen: openTopic,
-      });
-      return;
-    }
-
-    // L1/L2 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
+    // L0/L1/L2 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
+    //
+    // D46-S: **L0 는 전량**이다(정본 [[vinc.d.graph-views]] §3.2 "L0=전체", §2.3.1
+    // 표 "L0 = 전체 개념"). 예전엔 여기서 `/atlas`(주제 집계)만 불러 흐름은 주제
+    // ties 를, 타임라인은 "주제에는 날짜가 없다" 막다른 골목을 냈다 — 합계만
+    // `/ledger?owner=` 로 이미 전량이라 관점끼리 모집단이 어긋나 있었다.
+    // `domain`·`seed` 둘 다 없으면 사이드카는 owner 스코프 전량을 돌려준다
+    // (query.py `graph()` "기본은 owner(±domain) 스코프 전체"). call() 이 undefined
+    // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
+    setMsg(`<p class="hint">${COPY.atlas.loading(level.kind === "l0" ? 0 : 1)}</p>`);
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
       : await api.graph(cfg.owner, { domain, layout: p.layout });
@@ -1078,7 +1109,14 @@ export async function renderAtlas(el: HTMLElement) {
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     if (seed !== undefined) fillSeedDomain(seed, gnodes);
-    if (gnodes.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
+    // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
+    if (gnodes.length === 0) {
+      setMsg(level.kind === "l0"
+        ? `<div class="empty"><p>${COPY.atlas.idle}</p>
+           <a class="btn btn-primary" href="#packs">${COPY.atlas.idleCta}</a></div>`
+        : `<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
+      return;
+    }
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
@@ -1098,17 +1136,32 @@ export async function renderAtlas(el: HTMLElement) {
       const dated = shown.filter((n) => !!(n.ts && n.ts.trim()));
       if (dated.length === 0) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.noDates}</p></div>`); return; }
       setMsg(solo ? `<div class="empty"><p>${COPY.ui.atlasx.soloNode}</p></div>` : "");
+      // 상한 가드 — 평면은 노드마다 <g> 를 만드는 DOM 렌더라 전량(L0)에서 수천 개면
+      // 무거워진다. 자르되 **조용히 자르지 않는다**: 최근 것부터 남기고 몇 개를
+      // 안 그렸는지 캡션에 밝힌다(정직한 축소).
+      let feed = nodes;
+      const over = dated.length - PLANAR_CAP;
+      if (over > 0) {
+        const keep = new Set(dated.slice()
+          .sort((a, b) => (a.ts! < b.ts! ? 1 : a.ts! > b.ts! ? -1 : a.id < b.id ? 1 : -1))
+          .slice(0, PLANAR_CAP).map((n) => n.id));
+        feed = nodes.filter((n) => keep.has(n.id));
+      }
       // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈, L2(ego)는
       // 스코프가 여러 도메인이라 렌즈 없이(그 달 전체) 연다.
       const periodDomain = level.kind === "l1" ? level.domain : undefined;
-      planar = mountTimeline(canvas, nodes, {
+      planar = mountTimeline(canvas, feed, {
         docs: p.timelineDocs, labels: p.labels !== "none", onOpen: openNode,
         onMonth: (m) => void openPeriod(m, periodDomain),
       });
-      // 날짜 없는 문서 수는 차트 아래 캡션 알약으로 — 레인에 못 올린 만큼을 밝힌다.
+      // 차트가 못 올린 것들을 한 줄로 밝힌다: 날짜 없는 문서 + 상한에 잘린 문서.
       const undated = shown.length - dated.length;
-      if (!solo && undated > 0) {
-        lassoHint.textContent = COPY.ui.atlasx.undated(undated);
+      const notes = [
+        undated > 0 ? COPY.ui.atlasx.undated(undated) : "",
+        over > 0 ? COPY.ui.atlasx.capped(over) : "",
+      ].filter(Boolean);
+      if (!solo && notes.length) {
+        lassoHint.textContent = notes.join(" · ");
         lassoHint.hidden = false;
       }
       return;
@@ -1146,6 +1199,7 @@ export async function renderAtlas(el: HTMLElement) {
     extraSigmas = [];
     if (minis3d) { minis3d.dispose(); minis3d = null; }
     if (planar) { planar.dispose(); planar = null; }
+    if (g2) { g2.dispose(); g2 = null; }
     if (g3) { g3._destructor?.(); g3 = null; }
     canvas.innerHTML = "";
     drawCrumb();
@@ -1158,6 +1212,7 @@ export async function renderAtlas(el: HTMLElement) {
       else if (level.kind === "grid") await showGrid();
       else if (level.kind === "matrix") await showMatrix();
       else if (isPlanar(v)) await showPlanar(level);
+      else if (v === "2d") await show2d(level);
       else if (level.kind === "l0") await showL0();
       else if (level.kind === "l1") await showL1(level.domain);
       else await showL2(level.seed);

@@ -7,6 +7,7 @@ import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg } from "./api";
 import { checkForUpdate } from "./update";
+import { installTooltip } from "./tooltip";
 
 // LNB 통합(5→3): Atlas / Search(+Records) / Packs(+Intake).
 type Surface = "atlas" | "search" | "packs";
@@ -45,10 +46,10 @@ async function loadRailDomains() {
     box.innerHTML = rows.map((r) => {
       const d = String(r.domain ?? "");
       const c = r.total ?? "";
-      return `<div class="dom-row" title="${safe(d)}" data-domain="${safe(d)}">`
+      return `<div class="dom-row" data-tip="${safe(d)}" data-domain="${safe(d)}">`
         + `<span class="dom-dot"></span><span class="dom-name">${safe(d)}</span>`
         + `<span class="dom-count">${c}</span>`
-        + `<button class="dom-edit" data-edit="${safe(d)}" title="${COPY.ui.domains.manage}"`
+        + `<button class="dom-edit" data-edit="${safe(d)}" data-tip="${COPY.ui.domains.manage}"`
         + ` aria-label="${COPY.ui.domains.manage}">⋯</button></div>`;
     }).join("");
     // S2 — 도메인 이름 변경 / 미분류로 내리기. 전역 Domain 노드는 안 건드리고
@@ -228,6 +229,9 @@ applyTheme();
 // 셸이면 사이드카 접속정보(포트·토큰)를 먼저 확보한 뒤 첫 화면을 그린다.
 // (브라우저 dev 는 connectSidecar 가 즉시 반환 → 기존과 동일)
 (async () => {
+  // 자체 툴팁(D48-T)은 라우팅보다 먼저 건다 — 첫 화면의 마크도 곧바로 담당한다.
+  // 위임 하나라 서피스가 다시 그려져도 재배선이 필요 없다.
+  installTooltip();
   // 셸이면 사이드카 접속(포트·토큰) 확보. 웹 Vinc(호스티드)는 로컬 사이드카가 없어
   // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).

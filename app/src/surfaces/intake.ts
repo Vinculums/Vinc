@@ -144,7 +144,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
     return `
       <div class="proc-row" data-row="${i}" data-state="pending">
         <span class="proc-mark">${stateDot("empty", 16)}</span>
-        <span class="proc-name" title="${safe}">${safe}</span>
+        <span class="proc-name" data-tip="${safe}">${safe}</span>
         <span class="proc-bar"><i></i></span>
         <span class="proc-status">${ui.stPending}</span>
       </div>`;

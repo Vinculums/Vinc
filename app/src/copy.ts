@@ -101,7 +101,6 @@ const EN = {
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
       depth: "Depth", docLinks: "Document links",
-      groupBy: "Group by", byTopic: "by topic", byOrigin: "by origin",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     atlasx: {
@@ -190,13 +189,12 @@ const EN = {
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "Flow, Timeline and Totals are in View.",
-      flowNoTies: "No links between topics yet. Add files and the first links appear.",
       flowNone: "No directed links here yet. Link two documents to see a flow.",
       soloNode: "This document stands alone. Link it to another to see a flow.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
-      // L0 Timeline — 주제 노드에는 날짜가 실리지 않는다. 옆의 주제 칩이 곧 다음 행동.
-      topicsNoDates: "Topics don't carry dates. Open one to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
+      // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
+      capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
       totalsEmpty: "Nothing to total yet. Add files and the totals fill in.",
       totalsOff: "Totals are unavailable right now. Try again in a moment.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
@@ -214,6 +212,20 @@ const EN = {
         connected: "linked", gateway: "links other topics", orphan: "not linked yet",
       },
       segTip: (name: string, n: number) => `${name}: ${n} documents`,
+      // D47 3열 생키 — 열 머리글은 각 열이 무엇을 세는지 한 마디로 밝힌다(원장 키
+      // 노출 금지). 리본 문구는 "어디서 어디로 얼마나"가 한 줄에 들어간다.
+      colOrigin: "Where it came from",
+      colTopic: "Topic",
+      colState: "How it's linked",
+      ribbonTip: (from: string, to: string, n: number) => `${from} → ${to}: ${n} documents`,
+      totalsFoot: (n: number) => `${n} documents, counted the same way in all three columns`,
+      // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
+      // 없이 지금 그린 그래프에서 바로 센다.
+      badgeTip: (label: string, n: number) => `${label}: ${n} link${n === 1 ? "" : "s"}`,
+      mDocs: "documents",
+      mLinked: "linked",
+      mOrphan: "not linked",
+      mLatest: "latest",
     },
     intakeUi: {
       importing: "Importing…",
@@ -417,7 +429,6 @@ const KO: Deck = {
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       depth: "깊이", docLinks: "문서 연결",
-      groupBy: "묶음 기준", byTopic: "주제별", byOrigin: "출처별",
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     atlasx: {
@@ -506,13 +517,12 @@ const KO: Deck = {
       },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       viewsHint: "흐름 · 타임라인 · 합계는 보기 안에 있습니다.",
-      flowNoTies: "주제 사이 연결이 아직 없습니다. 파일을 추가하면 첫 연결이 생깁니다.",
       flowNone: "아직 방향이 있는 연결이 없습니다. 문서 두 개를 연결하면 흐름이 보입니다.",
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 흐름이 보입니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
-      // L0 Timeline — 주제 노드에는 날짜가 실리지 않는다. 옆의 주제 칩이 곧 다음 행동.
-      topicsNoDates: "주제에는 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
+      // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
+      capped: (n) => `오래된 문서 ${n}개는 그리지 않았습니다.`,
       totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 합계가 채워집니다.",
       totalsOff: "지금은 합계를 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
@@ -530,6 +540,20 @@ const KO: Deck = {
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
       },
       segTip: (name, n) => `${name}: 문서 ${n}개`,
+      // D47 3열 생키 — 열 머리글은 각 열이 무엇을 세는지 한 마디로 밝힌다(원장 키
+      // 노출 금지). 리본 문구는 "어디서 어디로 얼마나"가 한 줄에 들어간다.
+      colOrigin: "어디서 왔는가",
+      colTopic: "주제",
+      colState: "어떻게 이어졌는가",
+      ribbonTip: (from, to, n) => `${from} → ${to}: 문서 ${n}개`,
+      totalsFoot: (n) => `문서 ${n}개, 세 열 모두 같은 기준으로 셉니다`,
+      // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
+      // 없이 지금 그린 그래프에서 바로 센다.
+      badgeTip: (label, n) => `${label}: 연결 ${n}개`,
+      mDocs: "문서",
+      mLinked: "연결됨",
+      mOrphan: "연결 없음",
+      mLatest: "최근",
     },
     intakeUi: {
       importing: "가져오는 중…",

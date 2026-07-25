@@ -102,7 +102,7 @@ export function renderSearch(el: HTMLElement) {
       }
       const row = (r: any) => {
         const marks = (r.arms || []).map((a: string) => MARK[a] || "").join("");
-        const score = r.rrf_score ? ` title="RRF ${r.rrf_score.toFixed(4)}"` : "";
+        const score = r.rrf_score ? ` data-tip="RRF ${r.rrf_score.toFixed(4)}"` : "";
         return `
           <div class="list-row">
             <span class="title">${r.title || r.section_title || r.id}</span>

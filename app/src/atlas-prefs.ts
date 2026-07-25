@@ -23,14 +23,16 @@ export type AtlasPrefs = {
   layout: AtlasLayout;         // D34 preset — coords stay sidecar-computed (D17)
   flowDepth: 1 | 2 | 3;        // Flow — 이미 받아온 서브그래프의 클라이언트 순회 상한
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
-  totalsGroup: "topic" | "origin";  // Totals — 묶음 기준
 };
+// D47 — `totalsGroup`("주제별/출처별" 묶음 토글)은 폐기했다. 합계가 3열 생키가
+// 되면서 출처와 상태를 동시에 보여주므로 고를 것이 없다. 저장된 구 값은 아래
+// loadPrefs 가 그냥 읽지 않는다(마이그레이션 불필요 — 남은 키는 무해).
 
 const KEY = "vinc.atlas.prefs";
 const DEFAULTS: AtlasPrefs = {
   view: "3d", size: "links", labels: "hover", arrows: true, spread: 1,
   unlinked: "show", layout: "shell",
-  flowDepth: 1, timelineDocs: true, totalsGroup: "topic",
+  flowDepth: 1, timelineDocs: true,
 };
 
 export function loadPrefs(): AtlasPrefs {
@@ -48,7 +50,6 @@ export function loadPrefs(): AtlasPrefs {
       layout: LAYOUTS.includes(p.layout) ? p.layout : "shell",
       flowDepth: p.flowDepth === 2 || p.flowDepth === 3 ? p.flowDepth : 1,
       timelineDocs: p.timelineDocs !== false,
-      totalsGroup: p.totalsGroup === "origin" ? "origin" : "topic",
     };
   } catch {
     return { ...DEFAULTS };

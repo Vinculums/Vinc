@@ -392,15 +392,83 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-node, .pl-row { cursor: pointer; }
 /* 눌러도 갈 곳이 없는 행(지금 보고 있는 그 주제)은 손가락 커서를 내린다 — 보이는
    손가락은 반드시 어딘가로 데려가야 한다. data-id 제거로 클릭 위임에서도 빠진다. */
-.pl-row.pl-static { cursor: default; }
-.pl-fade { opacity: .12; }
+.pl-row.pl-static, .pl-node.pl-static { cursor: default; }
 .pl-hl .pl-mark, .pl-hl .pl-edge, .pl-hl .pl-lane-line { stroke: hsl(var(--ring)); }
 .pl-hl .pl-mark { stroke-width: 2; }
 .pl-hl .pl-lab { fill: hsl(var(--ring)); font-weight: 600; }
 .pl-hl .pl-seg { stroke: hsl(var(--ring)); }
-@media (prefers-reduced-motion: no-preference) {
-  .pl-node, .pl-link, .pl-row, .pl-lane { transition: opacity .22s ease; }
+
+/* 물러남(recede) — DEC D32-a 확정값(vinc.d.atlas-visual-language §1.6 표).
+   노드 .40 / 선 .12 / 텍스트 .35, 전 관점·전 표면 공통. 뷰 코드에 숫자 리터럴을
+   두지 않기 위해 여기 한 곳에서만 정의한다(모션 토큰 계층의 선행 자리).
+   초점 자신과 그 이웃은 감쇠 없음(1.0) — .pl-fade 가 안 붙는다. */
+:root {
+  --recede-node: .4;
+  --recede-line: .12;
+  --recede-text: .35;
 }
+.pl-fade { opacity: var(--recede-node); }
+.pl-link.pl-fade, .pl-ribbon.pl-fade, .pl-lane.pl-fade { opacity: var(--recede-line); }
+.pl-fade .pl-lab, .pl-fade .pl-cap, .pl-fade .pl-sub { opacity: var(--recede-text); }
+@media (prefers-reduced-motion: no-preference) {
+  .pl-node, .pl-link, .pl-ribbon, .pl-row, .pl-lane { transition: opacity .22s ease; }
+}
+
+/* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).
+   오버레이는 포인터를 받지 않는다(캔버스의 hover·클릭을 가로채면 안 된다).
+   배지만 예외로 포인터를 받아 자체 툴팁을 띄운다. */
+.a2-stage { position: absolute; inset: 0; }
+.a2-badges { position: absolute; inset: 0; pointer-events: none; }
+.a2-badge {
+  position: absolute; top: 0; left: 0; pointer-events: auto;
+  min-width: 1.1rem; padding: 0 .28rem; border-radius: 999px;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card) / .88);
+  color: hsl(var(--caption-foreground));
+  font-size: .62rem; line-height: 1.05rem; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.a2-metrics {
+  position: absolute; left: 50%; bottom: var(--space-6, 1.5rem);
+  transform: translateX(-50%); z-index: 2; pointer-events: none;
+  display: flex; gap: 1.1rem; white-space: nowrap;
+  padding: .32rem .85rem; border-radius: 999px;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card) / .72);
+  font-size: .7rem; color: hsl(var(--caption-foreground));
+}
+.a2-metric { display: inline-flex; gap: .3rem; align-items: baseline; }
+.a2-metric b { color: hsl(var(--foreground)); font-weight: 600; }
+
+/* Totals 3열 생키(D47) — 열: 유입원 → 주제 → 연결 상태.
+   리본은 굵기가 값의 정본이고 농도는 읽기 보조다(인라인 stroke-opacity).
+   bklit 의 소스→타깃 그라디언트는 모노크롬 규율상 쓰지 않는다(정본 §5). */
+.pl-snode { fill: hsl(var(--foreground)); fill-opacity: .82; }
+.pl-flow { fill: none; stroke: hsl(var(--foreground)); stroke-linecap: butt; }
+.pl-ribbon.pl-drill { cursor: pointer; }
+.pl-hl .pl-snode { fill: hsl(var(--ring)); fill-opacity: 1; }
+.pl-hl .pl-flow { stroke: hsl(var(--ring)); }
+/* 주제 라벨은 리본 위를 지난다 — 판을 깔아 글자를 읽히게 한다. 판의 실제 폭은
+   마운트 후 getBBox() 실측으로 정해진다(추정 금지, 정본 §6 실패 1). */
+.pl-plate { fill: hsl(var(--background)); fill-opacity: .82; }
+.pl-hl .pl-plate { fill-opacity: .95; }
+
+/* 진입 안무(bklit 타임라인의 압축판) — 노드 0~360ms, 리본 160~700ms.
+   최초 1회만(리사이즈 재그리기에는 .pl-in 이 붙지 않는다). 컴포지터 속성만
+   건드린다: opacity 와 stroke-dashoffset(레이아웃 무유발). */
+@media (prefers-reduced-motion: no-preference) {
+  .pl-sankey .pl-node.pl-in {
+    opacity: 0;
+    animation: pl-node-in .36s cubic-bezier(.85, 0, .15, 1) forwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  .pl-sankey .pl-ribbon.pl-in .pl-flow {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: pl-flow-in .54s cubic-bezier(.85, 0, .15, 1) forwards;
+    animation-delay: calc(160ms + var(--i, 0) * 8ms);
+  }
+}
+@keyframes pl-node-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pl-flow-in { to { stroke-dashoffset: 0 } }
 
 /* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
    플로팅 글라스 문법(D37 @supports 블록이 유리화). */
@@ -454,17 +522,31 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
 @supports (backdrop-filter: blur(1px)) {
   @media not (prefers-reduced-transparency: reduce) {
-    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover {
+    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover, .tip {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
       box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
     }
-    .palette-card, #atlas-view-panel, #settings-popover {
+    .palette-card, #atlas-view-panel, #settings-popover, .tip {
       border: 1px solid hsl(var(--border) / .6);
     }
   }
 }
+
+/* 자체 툴팁(D48-T) — 네이티브 title 대체. WCAG 1.4.13 을 만족시키려면 툴팁이
+   **실제 요소**여야 한다(Esc 로 닫고, 위에 포인터를 올릴 수 있어야 하므로
+   pointer-events 를 끄지 않는다). 위치는 tooltip.ts 가 transform 으로 잡는다.
+   폴백(백드롭 미지원)은 불투명 카드 — 위 @supports 블록이 유리화한다. */
+.tip {
+  position: fixed; top: 0; left: 0; z-index: 60;
+  max-width: 22rem; padding: .3rem .5rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  font-size: .78rem; line-height: 1.35; white-space: pre-wrap;
+  box-shadow: var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
+}
+.tip[hidden] { display: none; }
 
 /* ── D41 — macOS 컨트롤 문법: 세그먼티드 컨트롤(패널 선택지) + 버튼 폴리시.
       홈 파인 트랙 위에 활성 세그먼트가 "떠오른 썸"으로 — 색이 아닌 높이가 상태. */
