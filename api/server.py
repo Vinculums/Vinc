@@ -179,7 +179,8 @@ class VincApp:
         return self._read(lambda r: q.ledger(owner=_req(p, "owner"),
                                              domain=p.get("domain"),
                                              seed=p.get("seed"),
-                                             depth=_int(p.get("depth"), 2), store=r))
+                                             depth=_int(p.get("depth"), 2),
+                                             by=p.get("by") or "domain", store=r))
 
     def read_promote(self, p):
         # Phase E1 — pin 후보 조회(읽기 전용). 확정은 기존 /pin 경유.

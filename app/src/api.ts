@@ -148,7 +148,9 @@ export type GraphEdge = {
   evidence?: string;    // D43 — 근거 문장. 툴팁 전용
 };
 export type LedgerRow = {
-  domain: string; concepts: number;
+  // D52 by=concept: `domain` 은 개념 id, `label` 은 제목, `topic` 은 그 개념의 주제.
+  // by=domain(기본)에서는 `domain` 이 곧 주제이고 label/topic 은 없다.
+  domain: string; label?: string; topic?: string; concepts: number;
   episodic: number; record: number; unsourced: number;
   connected: number; gateway: number; orphan: number;
 };
@@ -159,6 +161,7 @@ export type LedgerRes = {
   executed: boolean; rows?: LedgerRow[]; note?: string;
   scope?: "seed" | "domain" | "all";   // 무엇을 모집단으로 집계했는가(에코)
   population?: number;                 // scope="seed" 일 때 ego 구성원 수
+  by?: "domain" | "concept";           // D52 — 롤업 알갱이 에코(구 사이드카엔 없다)
 };
 
 export const api = {
@@ -166,7 +169,9 @@ export const api = {
   atlasL0: (owner: string) => call("/atlas", { owner }),
   graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
     call("/graph", { owner, ...opts }),
-  ledger: (owner: string, opts: { domain?: string; seed?: string; depth?: number } = {}): Promise<LedgerRes> =>
+  ledger: (owner: string,
+           opts: { domain?: string; seed?: string; depth?: number;
+                   by?: "domain" | "concept" } = {}): Promise<LedgerRes> =>
     call("/ledger", { owner, ...opts }),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),

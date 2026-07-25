@@ -1707,8 +1707,15 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
 
 
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
-           depth: int = 2, cfg=None, store=None) -> dict:
+           depth: int = 2, by: str = "domain", cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.
+
+    ``by="concept"``(D52) — **한 행이 개념 하나**가 되는 세밀 모드. 도메인을 눌러
+    들어갔을 때 생키의 가운데 열이 그 도메인 하나로 쪼그라들던 문제를 푼다(스코프를
+    좁혀도 알갱이가 그대로라 "더 깊이 안 들어가는" 것처럼 보였다). 행 값은 전부
+    0/1 이고 라벨은 개념 제목(`label`), 키(`domain` 필드)는 개념 id 다 — 소비처가
+    구간 클릭 대상을 그대로 쓸 수 있게 모양을 유지한다. 마크 판정은 드릴다운과 같은
+    :func:`_concept_in_mark` 를 쓴다(수치 정합을 구조로 보장).
 
     반환 행: ``{domain, concepts, episodic, record, unsourced, connected,
     gateway, orphan}``, concepts 내림차순.
@@ -1745,6 +1752,8 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
         return {"plan": plan.to_dict(), "executed": True, "rows": [],
                 "scope": scope, "population": 0}
 
+    if by == "concept":
+        return _ledger_by_concept(by_id, owner=owner, scope=scope, cfg=cfg, store=store)
     agg: dict[str, dict] = {}
     for b in by_id.values():
         dom = b["domain"]
@@ -1770,6 +1779,39 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
     # D43 ego: 스코프 에코 + 모집단(행에 실린 개념 총수 — 행 합계와 항상 일치).
     return {"executed": True, "rows": rows, "scope": scope,
             "population": sum(r["concepts"] for r in rows)}
+
+
+def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> dict:
+    """개념 단위 원장(D52) — 한 행 = 개념 하나. 값은 0/1 이고 세 열의 합은 여전히
+    보존된다(출처 3분할·연결 3분할이 각각 배타이므로 행마다 각 축에서 정확히 하나가
+    1 이다). 제목은 한 번의 왕복으로 채운다 — 없으면 id 를 그대로 라벨로 쓴다."""
+    ids = [cid for cid, b in by_id.items() if b.get("domain")]
+    if not ids:
+        return {"executed": True, "rows": [], "scope": scope, "population": 0,
+                "by": "concept"}
+    owns = store is None
+    if owns:
+        store = open_store(cfg or load_config())
+    try:
+        got = store.run(
+            "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
+            "RETURN c.concept_id AS id, c.title AS title",
+            {"ids": ids, "owner": owner}) or []
+        title = {r["id"]: (r.get("title") or r["id"]) for r in got}
+    finally:
+        if owns and store is not None:
+            store.close()
+    rows = []
+    for cid in ids:
+        b = by_id[cid]
+        row = {"domain": cid, "label": title.get(cid, cid), "topic": b["domain"],
+               "concepts": 1}
+        for mark in _LEDGER_MARKS:
+            row[mark] = 1 if _concept_in_mark(b, mark) else 0
+        rows.append(row)
+    rows.sort(key=lambda r: (str(r["label"]).lower(), str(r["domain"])))
+    return {"executed": True, "rows": rows, "scope": scope,
+            "population": len(rows), "by": "concept"}
 
 
 def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,

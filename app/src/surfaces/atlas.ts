@@ -4,7 +4,7 @@ import { api, cfg, type GraphEdge, type GraphNode, type LedgerRes, type LedgerRo
 import { COPY } from "../copy";
 import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d";
 import { mount2d, type Handle2d } from "./atlas2d";
-import { mountFlow, mountTimeline, mountTotals, timelinePool,
+import { mountTimeline, mountTotals, timelinePool,
          type PlanarHandle } from "./atlas-planar";
 import { openShareSheet } from "../sheets";
 import { confirmDestructive } from "../components";
@@ -108,7 +108,6 @@ export async function renderAtlas(el: HTMLElement) {
   const isScope = (lv: Level) => lv.kind === "l0" || lv.kind === "l1" || lv.kind === "l2";
   const viewName = (v: AtlasView) =>
     v === "3d" ? "3D" : v === "2d" ? "2D"
-    : v === "flow" ? COPY.ui.atlasx.flow
     : v === "timeline" ? COPY.ui.atlasx.timeline : COPY.ui.atlasx.totals;
   const frameName = (lv: Level) =>
     lv.kind === "grid" ? COPY.ui.atlasx.grid
@@ -217,7 +216,6 @@ export async function renderAtlas(el: HTMLElement) {
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "flow": return lv.kind === "l2" ? ["depth", "arrows", "labels"] : ["arrows", "labels"];
       case "timeline": return lv.kind === "l0" ? [] : ["docs", "labels"];
       // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
       // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
@@ -267,8 +265,6 @@ export async function renderAtlas(el: HTMLElement) {
       spread: `<label class="hint" style="display:block">${COPY.ui.panel.spread}
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
       </label>`,
-      depth: row(COPY.ui.panel.depth,
-        [1, 2, 3].map((d) => chip("flowDepth", String(d), String(d), p.flowDepth === d)).join("")),
       docs: row(COPY.ui.panel.docLinks,
         chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
         + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
@@ -284,7 +280,6 @@ export async function renderAtlas(el: HTMLElement) {
         const mut: Partial<AtlasPrefs> =
           k === "arrows" ? { arrows: val === "on" }
           : k === "timelineDocs" ? { timelineDocs: val === "on" }
-          : k === "flowDepth" ? { flowDepth: Number(val) as 1 | 2 | 3 }
           : ({ [k]: val } as Partial<AtlasPrefs>);
         applyPrefs(mut, `[data-pref="${k}"][data-val="${val}"]`);
       }));
@@ -832,6 +827,8 @@ export async function renderAtlas(el: HTMLElement) {
         trail.push({ kind: "l2", seed: nd.id, domain: nd.domain });
         show(trail[trail.length - 1]);
       },
+      // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
+      onEdge: (e) => void openEdgeDetail(e),
     }, p);
   }
 
@@ -1038,9 +1035,15 @@ export async function renderAtlas(el: HTMLElement) {
         // l2 는 ego 롤업(씨앗 주변 — L2 서브그래프와 같은 depth 2 순회)을 요청한다.
         // domain 은 **구버전 폴백 힌트**로 함께 싣는다: 구 사이드카는 seed 를 조용히
         // 무시하므로, domain 이 실려 있어야 전체 롤업 대신 주제 롤업으로 떨어진다.
+        // D52 — 주제를 눌러 들어왔으면(L1) **개념 단위**로 묻는다. 도메인 단위로
+        // 그대로 물으면 가운데 열이 그 주제 하나로 쪼그라들어 "더 깊이 안 들어가는"
+        // 화면이 된다(발주자 지적). 구 사이드카는 `by` 를 조용히 무시하고 주제 롤업을
+        // 돌려주므로, 응답의 `by` 에코로 판별해 라벨만 주제로 떨어뜨린다.
+        const grain: "domain" | "concept" =
+          seed === undefined && domain !== undefined ? "concept" : "domain";
         res = await api.ledger(cfg.owner,
           seed !== undefined ? { seed, depth: 2, ...(domain ? { domain } : {}) }
-          : domain ? { domain } : {});
+          : domain ? { domain, by: grain } : {});
         // 딥링크(#atlas/trace/<id>/as/totals)만 주제를 모른 채 도착한다. 신 사이드카는
         // seed 만으로 ego 를 집계하고 scope 를 에코하므로 선조회가 필요 없다 — scope
         // 부재(=seed 가 무시된 구버전)인데 domain 힌트도 못 실었을 때만, 주제를 한 번
@@ -1071,12 +1074,22 @@ export async function renderAtlas(el: HTMLElement) {
       // D45-V2 3단계 — 구간 클릭 → 개념 드릴다운. l2(seed) 스코프면 원장과 같은
       // ego 모집단을 쓰도록 seed 를 넘긴다(수치 정합).
       const drillSeed = level.kind === "l2" ? level.seed : undefined;
+      // 개념 알갱이면(D52) 가운데 열이 개념이다 — 누르면 주제가 아니라 **그 개념**으로
+      // 들어가고, 리본을 눌러도 드릴다운(=1건 목록)이 아니라 같은 곳으로 간다.
+      const byConcept = res.by === "concept";
       planar = mountTotals(canvas, rows, {
-        onOpen: openTopic,
+        onOpen: (id) => {
+          if (!byConcept) { openTopic(id); return; }
+          const row = rows.find((r) => r.domain === id);
+          trail.push({ kind: "l2", seed: id, domain: row?.topic });
+          show(trail[trail.length - 1]);
+        },
         // 눌러도 갈 곳이 없는 행 = openTopic 이 무동작으로 삼키는 그 행. 판정 조건은
         // openTopic 의 가드와 글자 그대로 같아야 한다(L1 에서 자기 주제일 때만).
-        current: level.kind === "l1" ? level.domain : undefined,
-        onSeg: (domain, mark) => void openDrilldown(domain, mark, drillSeed),
+        // 개념 알갱이에서는 모든 행이 갈 곳이 있다.
+        current: !byConcept && level.kind === "l1" ? level.domain : undefined,
+        onSeg: byConcept ? undefined
+          : (domain, mark) => void openDrilldown(domain, mark, drillSeed),
       });
       // l2 스코프 캡션 — Timeline "날짜 없음" 알약과 같은 자리·같은 기제(mountTotals
       // 는 순수 렌더러로 남긴다). 크럼은 문서 하나를 가리키므로 차트가 무엇을 세는지
@@ -1170,25 +1183,9 @@ export async function renderAtlas(el: HTMLElement) {
       return;
     }
 
-    const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
-    const dirEdges = curEdges.filter((e) => DIRECTED.includes(e.type));
-    // 씨앗 리니지는 **씨앗에 걸린** 방향 엣지에서만 자란다. 판정을 전체 dirEdges 로
-    // 하면, 이웃끼리만 방향 엣지가 있고 씨앗은 대칭 관계뿐인 흔한 서브그래프에서
-    // 점 하나만 덩그러니 그려지고 문구가 한 줄도 안 붙는다(설명 없는 막다른 골목).
-    const lone = seed !== undefined
-      && !dirEdges.some((e) => e.source === seed || e.target === seed);
-    if (seed === undefined ? dirEdges.length === 0 : lone) {
-      // 씨앗이 없는 층(L1)은 그릴 것이 아예 없으니 문구만. 씨앗이 있으면 점 하나는
-      // 그려서 "여기 있다"를 남기고 문구를 덧댄다(정말 혼자면 그 사실을 먼저 말한다).
-      setMsg(`<div class="empty"><p>${solo ? COPY.ui.atlasx.soloNode : COPY.ui.atlasx.flowNone}</p></div>`);
-      if (seed === undefined) return;
-    } else setMsg("");
-    planar = mountFlow(canvas, nodes, dirEdges, {
-      seed, depth: p.flowDepth, arrows: p.arrows, labels: p.labels !== "none", onOpen: openNode,
-      // D45-V 1단계 — 실엣지 층(L1/L2)에서만 선 클릭 → 관계 패널. L0 은 주제 집계
-      // 엣지(TIES — 그래프 관계 아님)라 배선하지 않는다(showPlanar L0 분기 참조).
-      onEdge: (e) => void openEdgeDetail(e),
-    });
+    // D53 — 평면 관점은 이제 timeline·totals 둘뿐이라 여기 도달하면 timeline 이
+    // 이미 처리하고 돌아갔어야 한다. 방어적으로 빈 상태를 남긴다.
+    setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
   }
 
   async function show(level: Level, push = true) {

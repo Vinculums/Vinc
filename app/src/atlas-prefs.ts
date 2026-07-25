@@ -11,9 +11,11 @@
 export type AtlasLayout = "radial" | "circle" | "tree" | "organic" | "rank" | "dendro";
 export const LAYOUTS: AtlasLayout[] = ["radial", "circle", "tree", "organic", "rank", "dendro"];
 
-export type AtlasView = "3d" | "2d" | "flow" | "timeline" | "totals";
-export const VIEWS: AtlasView[] = ["3d", "2d", "flow", "timeline", "totals"];
-export const isPlanar = (v: AtlasView) => v === "flow" || v === "timeline" || v === "totals";
+// D53 — `flow` 관점 폐기(발주자 지시 2026-07-26). 노드 단위로 훑는 피로가 크고,
+// 2D 의 `rank` 프리셋이 같은 위상 순서를 더 넓은 맥락과 함께 보여준다.
+export type AtlasView = "3d" | "2d" | "timeline" | "totals";
+export const VIEWS: AtlasView[] = ["3d", "2d", "timeline", "totals"];
+export const isPlanar = (v: AtlasView) => v === "timeline" || v === "totals";
 
 export type AtlasPrefs = {
   view: AtlasView;             // D43 — 관점 단일화(차원 토글을 흡수). 스코프는 trail 이 쥔다
@@ -23,7 +25,6 @@ export type AtlasPrefs = {
   spread: number;              // layout spread multiplier (0.6–1.6)
   unlinked: "show" | "hide";   // orphan nodes (degree 0) — D32 orphan minimization
   layout: AtlasLayout;         // D34 preset — coords stay sidecar-computed (D17)
-  flowDepth: 1 | 2 | 3;        // Flow — 이미 받아온 서브그래프의 클라이언트 순회 상한
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
 };
 // D47 — `totalsGroup`("주제별/출처별" 묶음 토글)은 폐기했다. 합계가 3열 생키가
@@ -34,7 +35,7 @@ const KEY = "vinc.atlas.prefs";
 const DEFAULTS: AtlasPrefs = {
   view: "3d", size: "links", labels: "hover", arrows: true, spread: 1,
   unlinked: "show", layout: "radial",
-  flowDepth: 1, timelineDocs: true,
+  timelineDocs: true,
 };
 
 export function loadPrefs(): AtlasPrefs {
@@ -50,7 +51,6 @@ export function loadPrefs(): AtlasPrefs {
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
       unlinked: p.unlinked === "hide" ? "hide" : "show",
       layout: LAYOUTS.includes(p.layout) ? p.layout : "radial",
-      flowDepth: p.flowDepth === 2 || p.flowDepth === 3 ? p.flowDepth : 1,
       timelineDocs: p.timelineDocs !== false,
     };
   } catch {

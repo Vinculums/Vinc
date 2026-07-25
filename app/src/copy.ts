@@ -100,12 +100,12 @@ const EN = {
       arrows: "Direction arrows", on: "on",
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
-      depth: "Depth", docLinks: "Document links",
+      docLinks: "Document links",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     atlasx: {
       grid: "Grid", matrix: "Matrix", traceCta: "Trace from here",
-      flow: "Flow", timeline: "Timeline", totals: "Sankey",
+      timeline: "Timeline", totals: "Sankey",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
       outIn: (o: number, i: number) => ` · → ${o} out · ← ${i} in`,
@@ -188,9 +188,8 @@ const EN = {
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "Flow, Timeline and Sankey are in View.",
-      flowNone: "No directed links here yet. Link two documents to see a flow.",
-      soloNode: "This document stands alone. Link it to another to see a flow.",
+      viewsHint: "Timeline and Sankey are in View.",
+      soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
@@ -204,7 +203,6 @@ const EN = {
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      flowChart: (n: number, m: number) => `Flow: ${n} documents, ${m} links`,
       timelineChart: (n: number, m: number) => `Timeline: ${n} documents across ${m} topics`,
       totalsChart: (n: number, m: number) => `Sankey: ${n} topics, ${m} documents`,
       seg: {
@@ -432,12 +430,12 @@ const KO: Deck = {
       arrows: "방향 화살표", on: "켬",
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
-      depth: "깊이", docLinks: "문서 연결",
+      docLinks: "문서 연결",
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     atlasx: {
       grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적",
-      flow: "흐름", timeline: "타임라인", totals: "Sankey",
+      timeline: "타임라인", totals: "Sankey",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
       outIn: (o, i) => ` · → 나감 ${o} · ← 들어옴 ${i}`,
@@ -520,9 +518,8 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "흐름 · 타임라인 · Sankey는 보기 안에 있습니다.",
-      flowNone: "아직 방향이 있는 연결이 없습니다. 문서 두 개를 연결하면 흐름이 보입니다.",
-      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 흐름이 보입니다.",
+      viewsHint: "타임라인 · Sankey는 보기 안에 있습니다.",
+      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
@@ -536,7 +533,6 @@ const KO: Deck = {
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      flowChart: (n, m) => `흐름: 문서 ${n}개, 연결 ${m}개`,
       timelineChart: (n, m) => `타임라인: 주제 ${m}개에 걸친 문서 ${n}개`,
       totalsChart: (n, m) => `합계: 주제 ${n}개, 문서 ${m}개`,
       seg: {

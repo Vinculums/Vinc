@@ -1,7 +1,7 @@
 import type { LedgerRow } from "../api";
 import { COPY } from "../copy";
 
-/** Atlas 평면 뷰 (D43) — Flow · Timeline · Totals.
+/** Atlas 평면 뷰 (D43) — Timeline · Sankey.
  *
  *  3D/2D 맵과 같은 시각 문법을 평면으로 옮긴다: 모노크롬 잉크가 정본이고
  *  의미는 형태 · 농도 · 굵기 · 위치가 나른다(색상환은 쓰지 않는다, D41).
@@ -22,6 +22,8 @@ import { COPY } from "../copy";
  *  순수 렌더러이기 때문이다. 이 파일은 차트 이름과 구간 이름을 스스로 짓는 쪽이라
  *  문구를 저작하는 다른 모듈들과 같은 규칙을 따른다(각자 COPY 를 import).
  *
+ *  D53 — Flow 렌더러는 관점 폐기와 함께 제거됐다. 남은 평면은 Timeline·Sankey 둘.
+ *
  *  <svg> 에는 aria-label 만 두고 role="img" 는 두지 않는다: role="img" 는 하위
  *  트리를 통째로 접어 마크마다 달아 둔 설명을 전부 가린다. 이름은 남기고 안은
  *  열어 둔다(키보드 순회는 이 코드베이스에 없는 문법이라 새로 만들지 않는다).
@@ -31,14 +33,9 @@ import { COPY } from "../copy";
  *  교체했다. 실제 표시는 tooltip.ts 의 단일 오버레이가 담당한다. */
 
 export type PlanarHandle = { dispose(): void };
-export type FlowNode = { id: string; label: string; domain: string };
-export type FlowEdge = {
-  source: string; target: string; type: string;
-  confidence?: number; evidence?: string; weight?: number;
-};
-
-/** 방향 3종 — 화살촉이 붙는 관계(atlas.ts:217 DIRECTED 와 같은 정의). */
-const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
+/** 타임라인이 받는 마크 — 원래 Flow 와 공유하던 모양이라 이름이 Flow* 였다.
+ *  Flow 폐기(D53) 후에도 모양은 그대로라 이름만 중립화한다. */
+export type PlanarNode = { id: string; label: string; domain: string };
 /** Timeline 에서 "문서 연결"(timelineDocs=off)로 걷어내는 부착 노드종. */
 const DOC_KINDS = ["episode", "record"];
 /** 같은 걸러내기를 호출부(빈 상태 판정·날짜 없는 수 세기)도 써야 한다 — 챠트가
@@ -151,237 +148,12 @@ function wireFocus(el: HTMLElement, h: {
   };
 }
 
-// ── 1. Flow — 무엇이 무엇을 전제하는가 ────────────────────────────────────
-/** 방향 관계만의 리니지 DAG. 층화는 최장경로(수기야마 1단계), 층 안 순서는
- *  배리센터 스윕(2단계)으로 교차를 줄인다. confidence 는 농도와 굵기로만
- *  나타내고(색조 금지), evidence 는 경로의 `data-tip` = 자체 툴팁이 된다. */
-export function mountFlow(el: HTMLElement, nodes: FlowNode[], edges: FlowEdge[],
-  o: { seed?: string; depth: 1 | 2 | 3; arrows: boolean; labels: boolean;
-       onOpen: (id: string) => void;
-       /** 선 클릭 → 관계 패널(D45-V). 미지정 = 히트영역·클릭 없음(L0 집계 엣지). */
-       onEdge?: (e: FlowEdge) => void }): PlanarHandle {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  // 방향 3종만 남긴다. L0(주제 ties)은 type 대신 weight 로 방향을 싣고 오므로
-  // weight 보유 엣지도 통과시킨다(L1/L2 fetch 의 GraphEdge 에는 weight 가 없다).
-  const kept = edges.filter((e) =>
-    e.source !== e.target && byId.has(e.source) && byId.has(e.target)
-    && (DIRECTED.includes(e.type) || e.weight !== undefined));
-  const out = new Map<string, FlowEdge[]>();
-  const inn = new Map<string, FlowEdge[]>();
-  for (const e of kept) {
-    (out.get(e.source) || out.set(e.source, []).get(e.source)!).push(e);
-    (inn.get(e.target) || inn.set(e.target, []).get(e.target)!).push(e);
-  }
-
-  const ids = nodes.map((n) => n.id);
-  const layer = new Map<string, number>();
-  if (o.seed && byId.has(o.seed)) {
-    // 씨앗 리니지 — 하류(+)·상류(-) 각각 depth 세대까지. 첫 방문 승리로
-    // 사이클을 끊는다(방문 순서 = 입력 순서라 결정론).
-    layer.set(o.seed, 0);
-    for (const dir of [1, -1]) {
-      let front = [o.seed];
-      for (let d = 1; d <= o.depth && front.length; d++) {
-        const next: string[] = [];
-        for (const v of front)
-          for (const e of (dir > 0 ? out.get(v) : inn.get(v)) || []) {
-            const nx = dir > 0 ? e.target : e.source;
-            if (!layer.has(nx)) { layer.set(nx, dir * d); next.push(nx); }
-          }
-        front = next;
-      }
-    }
-  } else {
-    // 최장경로 층화 — Kahn 위상정렬로 진입차수 0 부터 흘린다. 사이클에 갇혀
-    // 큐에 못 든 노드는 확정된 상류의 다음 층으로 밀어 넣는다(첫 방문 승리).
-    const indeg = new Map(ids.map((id) => [id, (inn.get(id) || []).length]));
-    for (const id of ids) layer.set(id, 0);
-    const queue = ids.filter((id) => indeg.get(id) === 0);
-    const settled = new Set(queue);
-    for (let qi = 0; qi < queue.length; qi++) {
-      const v = queue[qi];
-      for (const e of out.get(v) || []) {
-        layer.set(e.target, Math.max(layer.get(e.target)!, layer.get(v)! + 1));
-        const d = indeg.get(e.target)! - 1;
-        indeg.set(e.target, d);
-        if (d === 0) { settled.add(e.target); queue.push(e.target); }
-      }
-    }
-    for (const id of ids) {
-      if (settled.has(id)) continue;
-      let mx = -1;
-      for (const e of inn.get(id) || [])
-        if (settled.has(e.source)) mx = Math.max(mx, layer.get(e.source)!);
-      layer.set(id, mx + 1);
-      settled.add(id);
-    }
-    // ⚠ 여기서는 **깊이 상한을 걸지 않는다**(D49). `depth` 는 원래 "씨앗에서 몇 세대"
-    // 라는 뜻인데, 씨앗이 없는 층(L0/L1)에 그대로 쓰면 "몇 번째 층까지"라는 **다른
-    // 뜻**이 된다. 기본값 1 로 그러면 0·1층만 남아 **뿌리→자식 쌍의 세로 목록**이
-    // 되고 계보가 통째로 잘린다(실측: 7층짜리 그래프가 2열 쌍 45개로 납작해졌다).
-    // 씨앗이 없으면 자를 기준점 자체가 없으므로 DAG 를 있는 그대로 층화한다.
-  }
-
-  // 그릴 노드 = 방향 엣지에 걸린 노드 + 씨앗(혼자여도 "여기 있다"는 보여준다).
-  const linked = new Set<string>();
-  for (const e of kept)
-    if (layer.has(e.source) && layer.has(e.target)) { linked.add(e.source); linked.add(e.target); }
-  const live = ids.filter((id) => layer.has(id) && (linked.has(id) || id === o.seed));
-  const liveSet = new Set(live);
-  const links = kept.filter((e) => liveSet.has(e.source) && liveSet.has(e.target));
-
-  const minL = live.length ? Math.min(...live.map((id) => layer.get(id)!)) : 0;
-  const cols: string[][] = [];
-  for (const id of live) {
-    const li = layer.get(id)! - minL;
-    while (cols.length <= li) cols.push([]);
-    cols[li].push(id);
-  }
-
-  // 배리센터 2회 스윕 — 정규화 위치(0..1)로 비교해 열마다 개수가 달라도 공평하다.
-  // Array#sort 는 안정(ES2019)이라 같은 입력이면 같은 순서로 수렴한다.
-  const nbrOf = (id: string) => [
-    ...(out.get(id) || []).map((e) => e.target),
-    ...(inn.get(id) || []).map((e) => e.source),
-  ].filter((x) => liveSet.has(x));
-  for (let pass = 0; pass < 2; pass++)
-    for (const col of cols) {
-      const at = new Map<string, number>();
-      for (const c of cols) c.forEach((id, i) => at.set(id, (i + 0.5) / Math.max(c.length, 1)));
-      const bary = (id: string) => {
-        const ns = nbrOf(id)
-          .map((x) => at.get(x))
-          .filter((v): v is number => v !== undefined);
-        return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : at.get(id)!;
-      };
-      col.sort((a, b) => bary(a) - bary(b));
-    }
-
-  const degree = new Map(live.map((id) =>
-    [id, (out.get(id) || []).length + (inn.get(id) || []).length]));
-  const rOf = (id: string) => 6 + Math.sqrt(degree.get(id) || 1) * 1.4;
-  const label = COPY.ui.atlasx.flowChart(live.length, links.length);
-  const ROW = 40;   // 노드 최소 세로 간격 — 위에 얹는 라벨이 겹치지 않는 값
-
-  function draw(w: number, h: number): string {
-    const maxCol = Math.max(1, ...cols.map((c) => c.length));
-    const W = Math.max(w, cols.length * 210);
-    const H = Math.max(h, maxCol * ROW + 48);
-    const colX = (li: number) =>
-      cols.length <= 1 ? W / 2 : 78 + (li * (W - 156)) / (cols.length - 1);
-    const pos = new Map<string, { x: number; y: number }>();
-    cols.forEach((c, li) => {
-      const gap = (H - 48) / Math.max(c.length, 1);
-      c.forEach((id, i) => pos.set(id, { x: colX(li), y: 34 + gap * (i + 0.5) }));
-    });
-
-    // 화살촉은 열린 층(prefs.arrows)에서만. 초점 리니지용 촉을 따로 두어
-    // 강조된 선이 회색 촉으로 끝나지 않게 한다(marker 는 참조부 캐스케이드 밖).
-    const defs = o.arrows ? `<defs>
-        <marker id="pl-arw" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.5"
-                markerHeight="5.5" orient="auto-start-reverse"><path class="pl-arrow" d="M0.4 1 L7.4 4 L0.4 7 Z"/></marker>
-        <marker id="pl-arw-hl" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.5"
-                markerHeight="5.5" orient="auto-start-reverse"><path class="pl-arrow pl-arrow-hl" d="M0.4 1 L7.4 4 L0.4 7 Z"/></marker>
-      </defs>` : "";
-
-    const paths = links.map((e, i) => {
-      const a = pos.get(e.source)!, b = pos.get(e.target)!;
-      // confidence → 농도(.35+.5c) · 굵기(1+c). 색조는 절대 건드리지 않는다(D41).
-      const c = e.confidence === undefined ? 0.6 : Math.max(0, Math.min(1, e.confidence));
-      const x1 = a.x + rOf(e.source);
-      const x2 = b.x - rOf(e.target) - (o.arrows ? 3 : 0);
-      const tip = e.evidence
-        || `${byId.get(e.source)!.label} → ${byId.get(e.target)!.label}`;
-      // 히트영역(D45-V 1단계): 1~2px 선은 Fitts 상 최악의 표적 — 같은 경로에
-      // 투명 14px 스트로크를 겹쳐 클릭/hover 표적만 넓힌다(GLSP 표준 기법).
-      // pointer-events="stroke" 가 핵심: 투명 스트로크도 포인터를 받는다.
-      const hitPath = o.onEdge
-        ? `<path class="pl-hit" d="${curveH(x1, a.y, x2, b.y)}" fill="none"`
-          + ` stroke="transparent" stroke-width="14" pointer-events="stroke"`
-          + ` style="cursor:pointer"></path>`
-        : "";
-      return `<g class="pl-link" data-e="${i}"><path class="pl-edge" d="${curveH(x1, a.y, x2, b.y)}"`
-        + ` stroke-opacity="${(0.35 + 0.5 * c).toFixed(2)}" stroke-width="${(1 + c).toFixed(2)}"`
-        + `${o.arrows ? ` marker-end="url(#pl-arw)"` : ""} data-tip="${esc(tip)}"></path>${hitPath}</g>`;
-    }).join("");
-
-    const marks = live.map((id) => {
-      const n = byId.get(id)!, p = pos.get(id)!, r = rOf(id);
-      const lab = o.labels
-        ? `<text class="pl-lab" x="${num(p.x)}" y="${num(p.y - r - 6)}" text-anchor="middle">${esc(cut(n.label, 24))}</text>`
-        : "";
-      return `<g class="pl-node" data-id="${esc(id)}">`
-        + `<circle class="pl-mark${id === o.seed ? " pl-focus" : ""}" cx="${num(p.x)}" cy="${num(p.y)}" r="${num(r)}"`
-        + ` data-tip="${esc(n.label)}"></circle>${lab}</g>`;
-    }).join("");
-
-    return `<svg class="pl-svg" aria-label="${esc(label)}"`
-      + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`
-      + `${defs}${paths}${marks}</svg>`;
-  }
-
-  let nodeEls: SVGElement[] = [];
-  let linkEls: SVGElement[] = [];
-  const collect = () => {
-    nodeEls = [...el.querySelectorAll<SVGElement>(".pl-node")];
-    linkEls = [...el.querySelectorAll<SVGElement>(".pl-link")];
-  };
-
-  /** 리니지 도달집합 — 상류·하류를 따로 훑는다(양쪽에 걸친 노드에서 한쪽이
-   *  다른 쪽 탐색을 막지 않게). RELATED_TO 는 애초에 들어오지 않는다. */
-  function reach(id: string) {
-    const keepN = new Set([id]);
-    const keepE = new Set<FlowEdge>();
-    for (const dir of [1, -1]) {
-      const seen = new Set([id]);
-      const q = [id];
-      for (let qi = 0; qi < q.length; qi++)
-        for (const e of (dir > 0 ? out.get(q[qi]) : inn.get(q[qi])) || []) {
-          if (!liveSet.has(e.source) || !liveSet.has(e.target)) continue;
-          keepE.add(e);
-          const nx = dir > 0 ? e.target : e.source;
-          if (!seen.has(nx)) { seen.add(nx); keepN.add(nx); q.push(nx); }
-        }
-    }
-    return { keepN, keepE };
-  }
-  const setArrow = (g: SVGElement, on: boolean) => {
-    if (o.arrows) g.querySelector("path")?.setAttribute("marker-end", `url(#pl-arw${on ? "-hl" : ""})`);
-  };
-  function focus(id: string) {
-    if (!liveSet.has(id)) { clear(); return; }
-    const { keepN, keepE } = reach(id);
-    for (const g of nodeEls) {
-      const on = keepN.has(g.dataset.id!);
-      g.classList.toggle("pl-fade", !on);
-      g.classList.toggle("pl-hl", on);
-    }
-    for (const g of linkEls) {
-      const on = keepE.has(links[Number(g.dataset.e)]);
-      g.classList.toggle("pl-fade", !on);
-      g.classList.toggle("pl-hl", on);
-      setArrow(g, on);
-    }
-  }
-  function clear() {
-    for (const g of nodeEls) g.classList.remove("pl-fade", "pl-hl");
-    for (const g of linkEls) { g.classList.remove("pl-fade", "pl-hl"); setArrow(g, false); }
-  }
-
-  const stopSize = trackSize(el, (w, h) => { el.innerHTML = wrap(draw(w, h)); collect(); });
-  const stopFocus = wireFocus(el, {
-    focus, clear, open: o.onOpen,
-    edge: o.onEdge ? (i) => { const e = links[i]; if (e) o.onEdge!(e); } : undefined,
-  });
-  return { dispose() { stopFocus(); stopSize(); } };
-}
-
 // ── 2. Timeline — 언제 무엇이 생겼는가 ────────────────────────────────────
 /** 시간축 하나 + 주제당 레인 하나. ts 는 파싱하지 않는다: ISO 는 사전순이
  *  곧 시간순이고(자유서식 값도 같은 규칙으로 안전하게 접힌다), 월 거터는
  *  ts.slice(0,7) 로 만든다. 밀집 구간은 최소간격 디클러터 + 지시선으로 푼다. */
 export function mountTimeline(el: HTMLElement,
-  nodes: (FlowNode & { ts?: string; kind?: string })[],
+  nodes: (PlanarNode & { ts?: string; kind?: string })[],
   o: { docs: boolean; labels: boolean; onOpen: (id: string) => void;
        /** 월-밴드 클릭 → 그 달("YYYY-MM") 기간 항목(D45-V2 4단계). 세로 밴드
         *  타임라인에 맞춰 브러시를 월 단위로 이산화한다(자유 픽셀 드래그 대신). */
@@ -544,7 +316,10 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     const state = STATES.map((k) => val(r, k));
     const oSum = origin.reduce((a, b) => a + b, 0);
     const sSum = state.reduce((a, b) => a + b, 0);
-    return { domain: r.domain, origin, state, total: Math.max(oSum, sSum) };
+    // D52 — 개념 알갱이에서는 `domain` 이 개념 id 이고 화면 라벨은 `label`(제목)이다.
+    // 키와 라벨을 분리해 둬야 클릭 표적(id)과 읽는 글자(제목)가 어긋나지 않는다.
+    return { domain: r.domain, label: r.label || r.domain,
+             origin, state, total: Math.max(oSum, sSum) };
   }).filter((r) => r.total > 0);
   const grand = data.reduce((a, r) => a + r.total, 0);
   // 1열·3열 노드 값 = 주제를 가로지른 합(주변합).
@@ -678,10 +453,10 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
         + ` data-id="${esc(r.domain)}"${dead ? "" : ` data-open="${esc(r.domain)}"`} style="--i:${i}">`
         + `<rect class="pl-snode" x="${num(xs[1])}" y="${num(dBox[i].y)}" width="${NODE_W}"`
         + ` height="${num(Math.max(dBox[i].h, 1))}" rx="${NODE_CAP}"`
-        + ` data-tip="${esc(COPY.ui.atlasx.segTip(r.domain, r.total))}"></rect>`
+        + ` data-tip="${esc(COPY.ui.atlasx.segTip(r.label, r.total))}"></rect>`
         + `<g class="pl-plate-g">`
         + `<rect class="pl-plate" x="${num(lx - 5)}" y="${num(ty - 10)}" width="10" height="20" rx="3"/>`
-        + `<text class="pl-lab" x="${num(lx)}" y="${num(ty + 4)}">${esc(cut(r.domain, 18))}`
+        + `<text class="pl-lab" x="${num(lx)}" y="${num(ty + 4)}">${esc(cut(r.label, 18))}`
         + ` <tspan class="pl-sub pl-num">${r.total}</tspan></text></g></g>`;
     }).join("");
 

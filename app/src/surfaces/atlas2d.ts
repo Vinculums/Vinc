@@ -58,7 +58,10 @@ function mix(fg: string, bg: string, t: number): string {
 }
 
 export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
-  o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode) => void; seed?: string },
+  o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode) => void;
+       /** 선 클릭 → 관계 근거 패널(D45-V). 흐름 관점이 폐기되면서(D53) 이 진입점이
+        *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
+       onEdge?: (e: GraphEdge) => void; seed?: string },
   prefs: AtlasPrefs): Handle2d {
   const bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
@@ -127,11 +130,12 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   // 방향 3종만 그려 나머지를 통째로 버리는 것과 달리, 여기서는 둘 다 그리되 위계를
   // 준다: 방향 엣지만 화살촉을 달고 진하게, 무방향은 옅고 가늘게 배경으로 깐다.
   // 그래야 `rank` 프리셋에서 좌표가 만드는 흐름을 가리지 않는다.
+  const edgeOf = new Map<string, GraphEdge>();
   for (const e of edges) {
     if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
     if (g.hasEdge(e.source, e.target)) continue;
     const dir = DIRECTED.includes(e.type);
-    g.addEdge(e.source, e.target, {
+    const key = g.addEdge(e.source, e.target, {
       // 화살촉은 열린 층(prefs.arrows)이 켜져 있고 방향 관계일 때만.
       type: dir && prefs.arrows ? "arrow" : "line",
       // 뼈대는 잉크에 가깝게, 살은 배경 쪽으로 섞어 눕힌다. `line()`(테두리색)은
@@ -140,6 +144,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
       color: dir ? inkMute() : mix(line(), bg, 0.35),
       directed: dir,
     });
+    edgeOf.set(key, e);
   }
 
   // 허브 = 연결수 상위. 라벨과 배지는 여기에만 상시로 붙인다(전부 켜면 소음).
@@ -227,6 +232,11 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   sigma.on("enterNode", ({ node }) => { focus = node; sigma.refresh(); });
   sigma.on("leaveNode", () => { focus = null; sigma.refresh(); });
   sigma.on("clickNode", ({ node }) => { const n = byId.get(node); if (n) o.onClick(n); });
+  // 선 클릭 → 관계 근거(D45-V). 방향 관계에만 근거가 실리므로 그때만 연다.
+  sigma.on("clickEdge", ({ edge }) => {
+    const e = edgeOf.get(edge);
+    if (e && o.onEdge && DIRECTED.includes(e.type)) o.onEdge(e);
+  });
   sigma.on("rightClickNode", ({ node, event }) => {
     event.preventSigmaDefault();
     event.original.preventDefault();
