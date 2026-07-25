@@ -589,19 +589,36 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     const sOff = stateTot.map(() => 0);
     const links: string[] = [];
     let li = 0;
-    const ribbon = (x1: number, y1: number, x2: number, y2: number, v: number,
+    // 농도 정규화 기준은 **리본 최댓값**이다. 예전엔 노드 최솟값×4 로 나눴는데,
+    // 그 분모가 실제 리본 값 범위보다 커서 값이 6배 달라져도 농도가 0.32~0.50
+    // 안에서만 움직였다 — 농도 채널이 사실상 아무것도 나르지 않았다(실측).
+    const ribMax = Math.max(1, ...data.flatMap((r) => [...r.origin, ...r.state]));
+    const opOf = (v: number) => 0.16 + 0.5 * (v / ribMax);
+    /** 채움 밴드 — 소스 상단 → 타깃 상단으로 흐르고 두께 t 만큼 되돌아와 닫는다.
+     *  선(stroke) 리본이 아니라 면(fill)이라 **테두리를 줄 수 있다** — 겹친 리본이
+     *  한 덩어리로 뭉개지지 않게 하는 유일한 방법(모노크롬에선 색으로 못 가른다). */
+    const band = (x1: number, yTop1: number, x2: number, yTop2: number, t: number) => {
+      const mx = (x1 + x2) / 2;
+      const y1b = yTop1 + t, y2b = yTop2 + t;
+      return `M${num(x1)} ${num(yTop1)} C${num(mx)} ${num(yTop1)} ${num(mx)} ${num(yTop2)} ${num(x2)} ${num(yTop2)}`
+        + ` L${num(x2)} ${num(y2b)} C${num(mx)} ${num(y2b)} ${num(mx)} ${num(y1b)} ${num(x1)} ${num(y1b)} Z`;
+    };
+    const ribbon = (x1: number, yTop1: number, x2: number, yTop2: number, v: number,
                     dom: string, mark: string, from: string, to: string) => {
-      const t = v * scale;
-      // 값 비례 농도(0.28~0.72) — 색조는 건드리지 않는다. 굵기가 값의 정본이고
-      // 농도는 읽기 보조다(정본 §5: 변별은 위치·두께·형태·직접 라벨).
-      const op = (0.28 + 0.44 * Math.min(1, v / Math.max(minVal * 4, 1))).toFixed(2);
+      const t = Math.max(v * scale, 1);
+      // 값 비례 농도 — 색조는 건드리지 않는다. 굵기가 값의 정본이고 농도는 읽기
+      // 보조다(정본 §5: 변별은 위치·두께·형태·직접 라벨).
+      const op = opOf(v).toFixed(3);
+      // 테두리는 밴드가 충분히 두꺼울 때만 — 1~2px 리본에 0.75px 테두리를 두르면
+      // 밴드가 테두리에 먹혀 사라진다.
+      const ol = t >= 3 ? 0.75 : 0;
       // data-dom·data-seg 는 **항상** 싣는다 — 드릴다운의 표적이자 hover 초점
       // 계산의 열쇠라, onSeg 유무로 빠지면 hover 문법까지 같이 죽는다.
       const cls = `pl-ribbon${o.onSeg ? " pl-drill" : ""}${first ? " pl-in" : ""}`;
       links.push(`<g class="${cls}" data-e="${li}" data-dom="${esc(dom)}"`
         + ` data-seg="${esc(mark)}" style="--i:${li}">`
-        + `<path class="pl-flow" d="${curveH(x1, y1, x2, y2)}" pathLength="1"`
-        + ` stroke-width="${num(Math.max(t, 1))}" stroke-opacity="${op}"`
+        + `<path class="pl-flow" d="${band(x1, yTop1, x2, yTop2, t)}"`
+        + ` fill-opacity="${op}" stroke-width="${ol}"`
         + ` data-tip="${esc(COPY.ui.atlasx.ribbonTip(from, to, v))}"></path></g>`);
       li++;
     };
@@ -610,8 +627,8 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       data.forEach((r, di) => {
         const v = r.origin[oi];
         if (v <= 0) return;
-        const y1 = oBox[oi].y + oOff[oi] + (v * scale) / 2;
-        const y2 = dBox[di].y + dInOff[di] + (v * scale) / 2;
+        const y1 = oBox[oi].y + oOff[oi];
+        const y2 = dBox[di].y + dInOff[di];
         oOff[oi] += v * scale; dInOff[di] += v * scale;
         ribbon(xs[0] + NODE_W, y1, xs[1], y2, v, r.domain, k, segName(k), r.domain);
       });
@@ -620,8 +637,8 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       STATES.forEach((k, si) => {
         const v = r.state[si];
         if (v <= 0) return;
-        const y1 = dBox[di].y + dOutOff[di] + (v * scale) / 2;
-        const y2 = sBox[si].y + sOff[si] + (v * scale) / 2;
+        const y1 = dBox[di].y + dOutOff[di];
+        const y2 = sBox[si].y + sOff[si];
         dOutOff[di] += v * scale; sOff[si] += v * scale;
         ribbon(xs[1] + NODE_W, y1, xs[2], y2, v, r.domain, k, r.domain, segName(k));
       });
@@ -677,7 +694,10 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
 
     return `<svg class="pl-svg pl-sankey" aria-label="${esc(label)}"`
       + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`
-      + `${heads}${links.join("")}${originNodes}${domainNodes}${stateNodes}${foot}</svg>`;
+      // 리본은 한 겹으로 묶는다 — 겹침 블렌딩(multiply/screen)이 **리본끼리만**
+      // 일어나고 배경·노드로 새지 않게 하는 격리 경계(isolation: isolate).
+      + `${heads}<g class="pl-ribbons">${links.join("")}</g>`
+      + `${originNodes}${domainNodes}${stateNodes}${foot}</svg>`;
   }
 
   let nodeEls: SVGElement[] = [];
@@ -770,11 +790,18 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
 
   const stopSize = trackSize(el, (w, h) => {
     el.innerHTML = wrap(draw(w, h));
-    first = false;   // 진입 안무는 최초 1회 — 리사이즈 재그리기는 조용히
     collect();
   });
+  // 진입 안무는 최초 1회 — 그런데 `first` 를 그리기 콜백 안에서 내리면 **애니메이션이
+  // 사실상 안 보인다**: 첫 동기 그리기는 아직 레이아웃 전 크기(0 일 수 있다)로 나가고,
+  // 곧바로 ResizeObserver 가 실제 크기로 다시 그리면서 방금 시작한 안무를 지운다
+  // (실측: 화면의 리본에 pl-in 이 없었다). 레이아웃이 앉을 때까지(더블 rAF) 기다렸다
+  // 내려야 "사용자가 처음 보는 그림"에서 한 번 재생된다. 그 뒤 리사이즈는 조용하다.
+  const settle = requestAnimationFrame(() =>
+    requestAnimationFrame(() => { first = false; }));
   return {
     dispose() {
+      cancelAnimationFrame(settle);
       el.removeEventListener("mouseover", over);
       el.removeEventListener("mouseleave", leave);
       el.removeEventListener("click", click);
