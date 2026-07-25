@@ -233,6 +233,12 @@ export const api = {
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
 
+  // S2 — 도메인 일괄 변경. new='' 는 미분류로 내림(노드는 남는다). 전역 Domain
+  // 노드는 서버가 안 건드린다 — 내 노드의 domain 문자열만 바뀐다.
+  domainRename: (owner: string, old: string, next: string): Promise<{
+    executed: boolean; moved?: number; error?: string;
+  }> => call("/domain/rename", undefined, { owner, old, new: next }),
+
   // ── 삭제(S1) — 앱 UI 배선. 여태 백엔드·MCP 에만 있고 UI 가 없어 "추가는 원클릭,
   // 제거는 불가"였다. owner 는 웹모드에선 허브가 세션 sub 로 강제(바디 owner 무시),
   // 로컬 셸에선 여기서 넘긴 값이 스코프가 된다. 되돌릴 수 없으므로 호출부가 확인을 받는다.

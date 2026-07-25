@@ -2464,6 +2464,66 @@ _NODE_PK = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_
             "Bridge": "bridge_id", "Entity": "entity_id"}
 
 
+def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> dict:
+    """도메인 일괄 변경/재배치(S2) — **owner 스코프 문자열 편집**.
+
+    ⚠ 전역 `:Domain` 노드는 **건드리지 않는다**. Domain 은 `{name}` 뿐인 무소유
+    구조 노드라 모든 사용자가 공유한다 — 지우거나 이름을 바꾸면 남의 그래프가
+    깨진다. 실제 도메인 귀속은 Concept/Episode/Record 의 `domain` **문자열 필드**
+    이고, 그게 `/domains` 집계의 출처다. 그래서 여기서는 내 노드의 그 필드만 바꾼다.
+
+    - ``new`` 가 빈 문자열이면 **미분류로 내림**(= 사용자 체감의 "도메인 삭제":
+      도메인이 목록에서 사라지고 노드는 남는다. 노드까지 지우려면 delete_node).
+    - ``owner`` 필수 — 없으면 전 사용자 문서를 갈아버리므로 fail-closed 로 거부.
+    - 변경된 노드마다 revstamp(updated_at/rev/sync_seq)를 찍어 다기기 동기화로
+      전파한다(pin/tag 와 동형 — 안 찍으면 다른 기기가 옛 도메인을 유지한다).
+    """
+    base: dict = {"kind": "domain.rename", "executed": False,
+                  "old": old, "new": new, "moved": 0}
+    if not owner:
+        base["error"] = "owner required — 무스코프 도메인 변경은 전 사용자에 영향(SEC-1)"
+        return base
+    if not old:
+        base["error"] = "old domain required"
+        return base
+    if old == new:
+        base.update(executed=True, note="no-op (same domain)")
+        return base
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["error"] = "no reachable store"
+        return base
+    from . import revstamp
+    try:
+        moved = 0
+        per_label: dict[str, int] = {}
+        for label, pk in (("Concept", "concept_id"), ("Episode", "episode_id"),
+                          ("Record", "record_id")):
+            rows = store.run(
+                f"MATCH (n:{label}) WHERE n.owner_id = $o AND n.domain = $old "
+                f"RETURN n.{pk} AS id, n.rev AS rev", {"o": owner, "old": old}) or []
+            for r in rows:
+                st = revstamp.make_stamp(store, {"rev": r.get("rev"), "owner": owner})
+                store.run(
+                    f"MATCH (n:{label}) WHERE n.{pk} = $id AND n.owner_id = $o "
+                    "SET n.domain = $new, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
+                    {"id": r["id"], "o": owner, "new": new, "ua": st["updated_at"],
+                     "rev": st["rev"], "seq": st["sync_seq"]})
+                moved += 1
+            if rows:
+                per_label[label] = len(rows)
+        base.update(executed=True, moved=moved, by_label=per_label)
+        if moved == 0:
+            base["note"] = f"no nodes in domain {old!r} for this owner"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
 def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None:
     """삭제 표식(S4) — 삭제 전파용. 하드삭제(DETACH DELETE)만으론 수신측이 삭제를
     영영 모른다. 삭제 직전 노드의 rev/updated_at 을 보존하고 새 deleted_at(HLC)·

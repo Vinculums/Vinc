@@ -73,6 +73,8 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # 문서 삭제 — 앱 UI 삭제 배선(S1). delete/merge-nodes 와 동일 안전모델:
     # owner 는 프록시가 sub 로 강제하고, docstore.delete_doc 가 owner 불일치를 거부한다.
     "doc-delete": ("POST", "/doc/delete"),
+    # 도메인 관리(S2) — owner 노드의 domain 문자열 일괄 변경(전역 Domain 노드 불변).
+    "domain-rename": ("POST", "/domain/rename"),
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 

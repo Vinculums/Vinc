@@ -506,6 +506,17 @@ class VincApp:
             apply=bool(body.get("apply")), candidates=body.get("candidates")))
         return 200, res
 
+    def write_domain_rename(self, body):
+        # S2 — 도메인 일괄 변경/재배치. new='' 는 미분류로 내림(체감상 "도메인 삭제").
+        # 전역 Domain 노드는 불변 — owner 노드의 domain 문자열만 바뀐다(query 주석).
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 도메인 변경은 소유 스코프(SEC-1)"}
+        res = self.jobs.run_sync("domain.rename", lambda: q.rename_domain(
+            owner=owner, old=_req(body, "old"), new=body.get("new") or "",
+            store=self.store))
+        return 200, res
+
     # ── 자체호스팅 임베딩(B) — 허브 워커 왕복. 원문은 스토어 밖으로 안 나간다 ──────
     # 사이드카 바이너리는 임베딩 스택을 번들에서 제외(2.7GB 회피)하므로, 허브의
     # 로컬 워커(sentence-transformers)가 이 두 경로로 임베딩만 채운다. **루프백 내부
@@ -907,6 +918,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
             "/embed/apply": app.write_embed_apply,   # 자체호스팅 임베딩 워커(B, 내부)
+            "/domain/rename": app.write_domain_rename,   # 도메인 일괄 변경(S2)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
             "/types/rename": app.write_type_rename,

@@ -34,17 +34,41 @@ async function loadRailDomains() {
   try {
     const { api, cfg } = await import("./api");
     const res: any = await api.domains(cfg.owner);
-    const rows: Array<{ domain: string; count?: number; n?: number }> =
-      Array.isArray(res) ? res : (res?.domains || []);
+    // ⚠ /domains 는 `{rows:[{domain, concepts, episodes, records, total}]}` 를 준다.
+    // 여기서 `res.domains`·`count`/`n` 을 읽고 있어 항상 빈 배열 → **레일 DOMAINS
+    // 섹션이 늘 숨겨졌다**(S2 실측). 실제 계약(rows/total)으로 맞춘다.
+    const rows: Array<{ domain: string; total?: number }> =
+      Array.isArray(res) ? res : (res?.rows || []);
     if (!rows.length) { wrap.hidden = true; return; }
+    const safe = (s: string) => s.replace(/[<>&"]/g, (m) => (
+      { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
     box.innerHTML = rows.map((r) => {
       const d = String(r.domain ?? "");
-      const c = r.count ?? r.n ?? "";
-      const safe = d.replace(/[<>&"]/g, (m) => (
-        { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
-      return `<div class="dom-row" title="${safe}"><span class="dom-dot"></span>`
-        + `<span class="dom-name">${safe}</span><span class="dom-count">${c}</span></div>`;
+      const c = r.total ?? "";
+      return `<div class="dom-row" title="${safe(d)}" data-domain="${safe(d)}">`
+        + `<span class="dom-dot"></span><span class="dom-name">${safe(d)}</span>`
+        + `<span class="dom-count">${c}</span>`
+        + `<button class="dom-edit" data-edit="${safe(d)}" title="${COPY.ui.domains.manage}"`
+        + ` aria-label="${COPY.ui.domains.manage}">⋯</button></div>`;
     }).join("");
+    // S2 — 도메인 이름 변경 / 미분류로 내리기. 전역 Domain 노드는 안 건드리고
+    // 내 노드의 domain 문자열만 바뀐다(백엔드 rename_domain 독스트링 참조).
+    box.querySelectorAll<HTMLElement>("[data-edit]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const old = btn.dataset.edit!;
+        const { promptText } = await import("./components");
+        const next = await promptText(COPY.ui.domains.renameAsk(old), old,
+          COPY.ui.domains.rename, COPY.ui.atlasx.delCancel, COPY.ui.domains.unassign);
+        if (next === null || next === old) return;
+        try {
+          const r: any = await api.domainRename(cfg.owner, old, next);
+          if (!r.executed) throw new Error(r.error || "rename failed");
+          await loadRailDomains();
+          route();   // 현재 화면도 새 도메인으로 다시 그린다
+        } catch { /* 실패는 조용히 — 목록은 그대로다(바뀐 것 없음) */ }
+      });
+    });
     wrap.hidden = false;
   } catch { wrap.hidden = true; }
 }

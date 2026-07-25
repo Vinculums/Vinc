@@ -537,3 +537,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .update-toast { animation: none; } }
+
+/* S2 — 레일 도메인 행의 관리(⋯) 버튼. 평소엔 숨고 호버·포커스에만 드러나
+   행의 시각 밀도를 유지한다(레일은 좁다). */
+.dom-row { position: relative; }
+.dom-edit {
+  opacity: 0; background: none; border: 0; cursor: pointer; padding: 0 .25rem;
+  color: inherit; font: inherit; line-height: 1; border-radius: 4px;
+}
+.dom-row:hover .dom-edit, .dom-edit:focus-visible { opacity: .75; }
+.dom-edit:hover { opacity: 1; }

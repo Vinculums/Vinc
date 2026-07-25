@@ -190,3 +190,13 @@ def test_ingest_edge_scopes_endpoints_under_forced_owner():
     edge_cyphers = [c for c, _ in s.calls if "RELATED_TO" in c or "relates" in c.lower()]
     joined = "\n".join(edge_cyphers)
     assert "a.owner_id = $owner" in joined and "b.owner_id = $owner" in joined, joined
+
+
+# ── S2 도메인 관리 — owner 스코프 일괄 편집 ──────────────────────────────────
+def test_rename_domain_requires_owner():
+    """owner 없이 부르면 거부 — 무스코프면 전 사용자 노드를 갈아버린다(fail-closed)."""
+    s = CapturingStore()
+    out = q.rename_domain(owner="", old="physics", new="x", store=s)
+    assert out["executed"] is False
+    assert "owner" in (out.get("error") or "")
+    assert not s.calls, "거부됐는데 쿼리가 나갔다"

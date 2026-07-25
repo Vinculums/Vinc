@@ -46,6 +46,49 @@ export function confirmDestructive(message: string, confirmLabel: string,
   });
 }
 
+/** 텍스트 입력 시트(S2 도메인 이름 변경 등). resolve(문자열) = 확인, null = 취소.
+ *  세 번째 버튼(extraLabel)을 주면 그 라벨로 **빈 문자열**을 돌려준다 — 도메인
+ *  "미분류로 내리기"처럼 값을 비우는 선택지에 쓴다. */
+export function promptText(title: string, initial: string, confirmLabel: string,
+                           cancelLabel: string,
+                           extraLabel?: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const el = document.createElement("div");
+    el.style.cssText = "position:fixed;inset:0;z-index:70;background:hsl(var(--foreground)/.18);"
+      + "display:grid;place-items:center;padding:1rem";
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+    el.innerHTML = `
+      <div class="palette-card" role="dialog" aria-modal="true" style="max-width:26rem;width:100%">
+        <p style="margin:0 0 .6rem">${esc(title)}</p>
+        <input id="pt-in" value="${esc(initial)}" style="width:100%;font:inherit;
+          padding:.45rem .55rem;border:1px solid hsl(var(--input));border-radius:6px;
+          background:hsl(var(--card));color:hsl(var(--foreground))"/>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem">
+          <button class="btn" id="pt-no">${esc(cancelLabel)}</button>
+          ${extraLabel ? `<button class="btn" id="pt-x">${esc(extraLabel)}</button>` : ""}
+          <button class="btn btn-primary" id="pt-yes">${esc(confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const input = el.querySelector<HTMLInputElement>("#pt-in")!;
+    const done = (v: string | null) => {
+      el.remove(); document.removeEventListener("keydown", onKey); resolve(v);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") done(null);
+      if (e.key === "Enter" && document.activeElement === input) done(input.value.trim());
+    };
+    document.addEventListener("keydown", onKey);
+    el.addEventListener("click", (e) => { if (e.target === el) done(null); });
+    el.querySelector("#pt-no")!.addEventListener("click", () => done(null));
+    el.querySelector("#pt-x")?.addEventListener("click", () => done(""));
+    el.querySelector("#pt-yes")!.addEventListener("click", () => done(input.value.trim()));
+    input.focus();
+    input.select();
+  });
+}
+
 /** Top-right primary CTA (Figma: 포인트색 필 버튼, 화면당 1개). */
 export function headerCta(id: string, iconName: string, label: string): string {
   return `<button class="btn btn-primary header-cta" id="${id}">${icon(iconName, 16)} ${label}</button>`;

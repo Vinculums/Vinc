@@ -76,6 +76,13 @@ const EN = {
       search: "Meaning and keywords, together.",
       packs: "Bundle, share, merge.",
     },
+    // S2 — 도메인 관리(레일 DOMAINS 의 ⋯). 이름 변경은 내 노드의 도메인만 바꾼다.
+    domains: {
+      manage: "Manage",
+      rename: "Rename",
+      unassign: "Remove from this topic",
+      renameAsk: (d: string) => `Rename the topic "${d}". Everything in it moves along.`,
+    },
     common: { cancel: "Cancel", loading: "Loading…", none: "none" },
     update: {
       available: (v: string) => `Vinc ${v} is ready to install.`,
@@ -384,6 +391,13 @@ const KO: Deck = {
       records: "내가 모은 지식을 한곳에.",
       search: "의미와 키워드를 함께.",
       packs: "묶고, 나누고, 결합하고.",
+    },
+    // S2 — 도메인 관리(레일 DOMAINS 의 ⋯).
+    domains: {
+      manage: "관리",
+      rename: "이름 변경",
+      unassign: "주제에서 빼기",
+      renameAsk: (d) => `"${d}" 주제의 이름을 바꿉니다. 안에 있는 항목도 함께 옮겨집니다.`,
     },
     common: { cancel: "취소", loading: "불러오는 중…", none: "없음" },
     update: {
