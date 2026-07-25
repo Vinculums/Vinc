@@ -29,7 +29,7 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
     token = os.environ.get("VINC_REMOTE_MCP_TOKEN") or ""
     if not token:
         return {"error": "remote target requires a key — set VINC_REMOTE_MCP_TOKEN "
-                         "(get one at https://vincs.app/account).", "isError": True}
+                         "(get one at https://vincs.io/account).", "isError": True}
     payload = {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": name,
@@ -44,7 +44,7 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        hint = " (key invalid or expired — reconnect at vincs.app/account)" if e.code == 401 else ""
+        hint = " (key invalid or expired — reconnect at vincs.io/account)" if e.code == 401 else ""
         return {"error": f"remote HTTP {e.code}{hint}", "isError": True}
     except Exception as e:  # noqa: BLE001 — 네트워크/파싱 실패 전부 강등
         return {"error": f"remote unreachable: {type(e).__name__}: {e}", "isError": True}
