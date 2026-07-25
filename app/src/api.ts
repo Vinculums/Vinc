@@ -233,6 +233,20 @@ export const api = {
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
 
+  // ── 삭제(S1) — 앱 UI 배선. 여태 백엔드·MCP 에만 있고 UI 가 없어 "추가는 원클릭,
+  // 제거는 불가"였다. owner 는 웹모드에선 허브가 세션 sub 로 강제(바디 owner 무시),
+  // 로컬 셸에선 여기서 넘긴 값이 스코프가 된다. 되돌릴 수 없으므로 호출부가 확인을 받는다.
+  deleteNode: (owner: string, node: string): Promise<{
+    executed: boolean; found?: boolean;
+    deleted?: { node: number; edges: number }; note?: string; error?: string;
+  }> => call("/delete", undefined, { owner, node }),
+  deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
+    executed: boolean; deleted?: number; error?: string;
+  }> => call("/delete-edge", undefined, { owner, from, to, type }),
+  docDelete: (owner: string, id: string): Promise<{
+    executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
+  }> => call("/doc/delete", undefined, { owner, id }),
+
   // ── 계정 그래프 동기화(S5) ──────────────────────────────────────────────
   // 선택 가능 도메인 + 현재 선택. 오프라인 우선 UI 의 데이터원.
   syncDomains: (owner: string) => call("/sync/domains", { owner }),

@@ -71,6 +71,9 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "doc-put": ("POST", "/doc/put"),
     "doc-extract": ("POST", "/doc/extract"),
     "doc-reembed": ("POST", "/doc/reembed"),
+    # 문서 삭제 — 앱 UI 삭제 배선(S1). delete/merge-nodes 와 동일 안전모델:
+    # owner 는 프록시가 sub 로 강제하고, docstore.delete_doc 가 owner 불일치를 거부한다.
+    "doc-delete": ("POST", "/doc/delete"),
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 

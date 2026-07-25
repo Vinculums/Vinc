@@ -499,6 +499,14 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
   box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
 }
+/* 파괴적 확정 버튼(S1 삭제) — 확인 다이얼로그의 진행 쪽에만 쓴다. Signal 토큰
+   --danger(라이트/다크 양쪽 정의됨, error-banner 와 동일 축)를 재사용한다. */
+.btn-danger {
+  background: linear-gradient(hsl(var(--danger) / .92), hsl(var(--danger)));
+  color: hsl(var(--danger-foreground));
+  border-color: hsl(var(--danger));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .18);
+}
 
 /* ── 자동 업데이트 토스트 (v0.3.0) — 하단 중앙 부유 크롬. 비차단 알림이라
       콘텐츠 평면을 가리지 않게 안전영역 여백 + 유리 층 재사용. */

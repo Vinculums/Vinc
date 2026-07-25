@@ -147,6 +147,14 @@ const EN = {
       edExtractDone: (c: number, m: number) => `Concepts +${c} · ${m} link${m === 1 ? "" : "s"} refreshed`,
       edReindexing: "Updating search index…",
       edReindexed: "Search index up to date",
+      // S1 — 삭제(되돌릴 수 없음). 확인을 받고 나서만 실행한다.
+      del: "Delete",
+      delNodeAsk: (t: string) => `Delete "${t}"? Its connections go too. This can't be undone.`,
+      delDocAsk: (t: string) => `Delete "${t}" and its text? This can't be undone.`,
+      delConfirm: "Delete",
+      delCancel: "Keep",
+      delDone: "Deleted.",
+      delFail: "Couldn't delete. Nothing was changed. Try again.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "Heading", h2: "Subheading", bullet: "Bulleted list",
         number: "Numbered list", quote: "Quote", code: "Code block", hr: "Divider" },
@@ -448,6 +456,14 @@ const KO: Deck = {
       edExtractDone: (c, m) => `개념 +${c} · 링크 ${m}개 재연결`,
       edReindexing: "검색 색인 최신화 중…",
       edReindexed: "검색 색인 최신",
+      // S1 — 삭제(되돌릴 수 없음). 확인을 받고 나서만 실행한다.
+      del: "삭제",
+      delNodeAsk: (t) => `"${t}"을(를) 삭제할까요? 연결도 함께 사라집니다. 되돌릴 수 없습니다.`,
+      delDocAsk: (t) => `"${t}"과(와) 그 원문을 삭제할까요? 되돌릴 수 없습니다.`,
+      delConfirm: "삭제",
+      delCancel: "두기",
+      delDone: "삭제했습니다.",
+      delFail: "삭제하지 못했습니다. 바뀐 것은 없습니다. 다시 시도하세요.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "제목", h2: "부제목", bullet: "목록",
         number: "번호 목록", quote: "인용", code: "코드 블록", hr: "구분선" },

@@ -90,10 +90,29 @@ def test_delete_unscoped_when_owner_none():
     assert "owner_id = $owner" not in s.cyphers()
 
 
-def test_delete_refuses_non_owner_scoped_label_under_forced_owner():
-    """Bridge 는 owner_id 없음 → 강제 owner 경로에서 삭제 거부(fail-closed)."""
+def test_delete_scopes_bridge_by_owner():
+    """Bridge 는 v2 에서 owner 스탬프를 얻었다 → 강제 owner 경로에서 **스코프 삭제**.
+
+    (구 계약은 '거부'였다 — Bridge 에 owner_id 가 없던 시절의 fail-closed. 그 상태가
+    _OWNER_SCOPED_LABELS 에 남아 앱에서 브릿지를 못 지웠다(S1 실측). 이제 5종
+    (_SEED_TABLES = Concept·Episode·Record·Bridge·Entity) 전부 owner 스코프다.)"""
     s = CapturingStore()
     out = q.delete_node("bridge:x", owner=A, store=s)
+    assert out["found"] is True
+    # 핵심 계약: 삭제 경로의 Cypher 에 owner 술어가 박혀야 한다(교차테넌트 봉쇄).
+    assert all("owner_id = $owner" in c for c in s.cyphers() if "DETACH DELETE" in c)
+    assert any(p.get("owner") == A for _, p in s.calls)
+
+
+def test_delete_refuses_label_without_owner_column(monkeypatch):
+    """owner_id 가 없는 라벨이 삭제 대상이 되면 **거부**(fail-closed) — 심층방어.
+
+    지금은 _SEED_TABLES 5종이 모두 owner 스코프라 이 분기에 닿는 접두사가 없다.
+    새 라벨이 owner_id 없이 추가되는 미래에 무스코프 삭제(=교차테넌트)로 새지
+    않는지 합성 라벨로 못 박는다."""
+    monkeypatch.setitem(q._SEED_TABLES, "widget", ("Widget", "widget_id"))
+    s = CapturingStore()
+    out = q.delete_node("widget:x", owner=A, store=s)
     assert out["found"] is False
     assert "refused" in (out.get("note") or "")
     assert "DETACH DELETE" not in s.cyphers()   # 아무것도 안 지웠다

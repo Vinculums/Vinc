@@ -2454,18 +2454,25 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
 # 생겨도 되돌릴 수단이 없어 오염이 영구화됐다. delete/merge 는 그 정리 수단이다 —
 # 둘 다 **비가역**. 사이드카에서는 잡 큐(run_sync)로 직렬화된다(단일 writer, R4).
 
-_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record"}   # owner_id 열 보유(스코프 가드)
+# owner_id 열 보유 = 스코프 가드로 안전하게 삭제할 수 있는 라벨. _SEED_TABLES 의
+# 5종과 정확히 같다(전부 owner_id + _TRACKED_LABELS = 동기화 전파 대상).
+# ⚠ 여기 없으면 delete 가 "refused"로 거부된다 — Bridge(v2)·Entity(F1)가 소유
+# 스탬프를 얻은 뒤에도 이 집합이 3종에 머물러 있어 앱에서 브릿지를 못 지웠다(S1
+# 실측). 확장 시 _NODE_PK(툼스톤)도 같이 넓혀야 KeyError 가 안 난다.
+_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record", "Bridge", "Entity"}
+_NODE_PK = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_id",
+            "Bridge": "bridge_id", "Entity": "entity_id"}
 
 
 def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None:
     """삭제 표식(S4) — 삭제 전파용. 하드삭제(DETACH DELETE)만으론 수신측이 삭제를
     영영 모른다. 삭제 직전 노드의 rev/updated_at 을 보존하고 새 deleted_at(HLC)·
-    sync_seq 를 찍어 `_Tombstone` 에 남긴다. owner 스코프 라벨(Concept/Episode/Record)
+    sync_seq 를 찍어 `_Tombstone` 에 남긴다. owner 스코프 라벨(=_TRACKED_LABELS 5종)
     만 — 그 외는 동기화 대상이 아니라 전파할 곳이 없다. 지연 import(순환 회피)."""
     if label not in _OWNER_SCOPED_LABELS:
         return
     from . import revstamp
-    pk = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_id"}[label]
+    pk = _NODE_PK[label]
     rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
                      "RETURN n.rev AS rev, n.updated_at AS ua, n.owner_id AS owner",
                      {"id": node_id})

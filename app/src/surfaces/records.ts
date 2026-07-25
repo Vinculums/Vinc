@@ -2,6 +2,7 @@ import { api, cfg } from "../api";
 import { COPY } from "../copy";
 import { stateDot } from "../icons";
 import { openDocSheet } from "../doc-editor";
+import { confirmDestructive } from "../components";
 
 /** Browse list (구 Surface 2 — Records; LNB 통합으로 Search 빈 상태의 전체 문서
  *  브라우즈로 재사용). 자체 header/filter 크롬은 없음 — Search 의 검색 필드가
@@ -43,6 +44,7 @@ export async function renderBrowse(body: HTMLElement) {
             <span class="actions">
               <button data-act="atlas">${COPY.records.actions.atlas}</button>
               <button data-act="pin">${COPY.records.actions.pin}</button>
+              <button data-act="del">${COPY.ui.atlasx.del}</button>
             </span>
           </div>`).join("")}`;
     }
@@ -87,6 +89,21 @@ export async function renderBrowse(body: HTMLElement) {
       const row = btn.closest(".list-row") as HTMLElement;
       if (btn.dataset.act === "atlas") location.hash = `#atlas/${encodeURIComponent(row.dataset.domain || "")}`;
       if (btn.dataset.act === "pin") await api.pin(row.dataset.id!);
+      // S1 — 노드 삭제(개념·에피소드). 되돌릴 수 없어 확인 게이트를 거치고,
+      // 성공하면 목록에서 즉시 제거한다(재조회 없이 — 응답이 곧 진실).
+      if (btn.dataset.act === "del") {
+        const title = row.querySelector(".title")?.textContent || row.dataset.id || "";
+        if (!await confirmDestructive(COPY.ui.atlasx.delNodeAsk(title),
+              COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel)) return;
+        try {
+          const res = await api.deleteNode(cfg.owner, row.dataset.id!);
+          if (!res.executed) throw new Error(res.note || res.error || "delete failed");
+          rows = rows.filter((r) => r.id !== row.dataset.id);
+          draw();
+        } catch {
+          btn.textContent = COPY.ui.atlasx.delFail;
+        }
+      }
     });
   } catch {
     body.innerHTML = `<div class="error-banner">${COPY.records.error}</div>`;

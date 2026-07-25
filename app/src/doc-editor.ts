@@ -5,6 +5,7 @@
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
+import { confirmDestructive } from "./components";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -261,7 +262,9 @@ export async function openDocSheet(opts: {
   const card = document.createElement("div");
   card.className = "palette-card";
   card.style.cssText = "width:min(52rem,92vw)";
-  card.innerHTML = `<div style="display:flex;justify-content:flex-end">
+  // 삭제는 **기존 문서에만** 보인다(신규 미저장 문서는 지울 게 없다).
+  card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:.5rem">
+    <span>${opts.docId ? `<button class="btn" id="ed-del">${COPY.ui.atlasx.del}</button>` : ""}</span>
     <button class="btn" id="ed-close">${COPY.ui.atlasx.edDone}</button></div>
     <div id="ed-host"></div>`;
   el.innerHTML = "";
@@ -273,4 +276,22 @@ export async function openDocSheet(opts: {
   const close = () => { dispose(); overlayEl.hidden = true; };
   card.querySelector("#ed-close")!.addEventListener("click", close);
   overlayEl.onclick = (e) => { if (e.target === overlayEl) close(); };
+  // S1 — 문서 삭제(기존 문서에만). 확인 후 실행하고, 성공하면 시트를 닫고
+  // 호출부 목록을 갱신한다(onSaved 재사용 — "목록 새로고침" 신호로 동작).
+  const delBtn = card.querySelector<HTMLElement>("#ed-del");
+  delBtn?.addEventListener("click", async () => {
+    const title = card.querySelector<HTMLInputElement>("#ed-title")?.value
+      || COPY.ui.atlasx.edTitlePlaceholder;
+    const ok = await confirmDestructive(COPY.ui.atlasx.delDocAsk(title),
+      COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel);
+    if (!ok) return;
+    try {
+      const res = await api.docDelete(opts.owner, opts.docId!);
+      if (!res.executed) throw new Error(res.error || "delete failed");
+      close();
+      opts.onSaved?.(opts.docId!, "");
+    } catch {
+      delBtn.textContent = COPY.ui.atlasx.delFail;
+    }
+  });
 }

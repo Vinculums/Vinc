@@ -6,6 +6,7 @@ import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d"
 import { mountFlow, mountTimeline, mountTotals, timelinePool,
          type FlowEdge, type PlanarHandle } from "./atlas-planar";
 import { openShareSheet } from "../sheets";
+import { confirmDestructive } from "../components";
 import { LAYOUTS, VIEWS, isPlanar, loadPrefs, savePrefs,
          type AtlasLayout, type AtlasPrefs, type AtlasView } from "../atlas-prefs";
 
@@ -451,10 +452,25 @@ export async function renderAtlas(el: HTMLElement) {
         ? COPY.ui.atlasx.outIn(out, inn) : ""}${att > 0
         ? COPY.ui.atlasx.attachments(att) : ""}${nd.gateway ? COPY.ui.atlasx.gateway : ""}.</p>
       <button class="btn btn-primary" id="focus">${COPY.ui.atlasx.traceCta}</button>
+      <button class="btn" id="nd-del">${COPY.ui.atlasx.del}</button>
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#focus")!.addEventListener("click", () => {
       trail.push({ kind: "l2", seed: nd.id, domain: nd.domain }); show(trail[trail.length - 1]);
+    });
+    // S1 — 노드 삭제(되돌릴 수 없음). 성공하면 상세를 닫고 현재 층을 다시 그려
+    // 지도에서도 사라지게 한다(응답 후 재조회 — 엣지까지 지워지므로 부분 갱신 불가).
+    detail.querySelector("#nd-del")!.addEventListener("click", async () => {
+      if (!await confirmDestructive(COPY.ui.atlasx.delNodeAsk(nd.label),
+            COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel)) return;
+      try {
+        const res = await api.deleteNode(cfg.owner, nd.id);
+        if (!res.executed) throw new Error(res.note || res.error || "delete failed");
+        detail.hidden = true;
+        show(trail[trail.length - 1]);
+      } catch {
+        detail.querySelector("#nd-del")!.textContent = COPY.ui.atlasx.delFail;
+      }
     });
     // D45-V — 정본 근거: 노드 설명(one_liner) + 이 노드를 언급한 문서 발췌.
     void loadNodeSource(nd);
