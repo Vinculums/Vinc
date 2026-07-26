@@ -2,6 +2,7 @@
  *  The share sheet is the final editor: it shows everything that will leave
  *  (with per-node exclusion) and everything that won't (preference notice). */
 import { api, cfg } from "./api";
+import { toBytes } from "./packfile";
 import { COPY } from "./copy";
 
 function overlay(): HTMLElement {
@@ -51,12 +52,16 @@ export async function openShareSheet(scope: { ids?: string[]; seed?: string; dom
       const out = { ...pack, fragment: { nodes: keep, edges },
         manifest: { ...pack.manifest, counts: { ...c, concepts: keep.filter((n) => n.type === "concept").length, edges: edges.length } } };
       delete (out as any).executed;
-      const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`;
-      a.click(); URL.revokeObjectURL(a.href);
-      el.hidden = true;
+      // D55 — 쓰기는 zip 컨테이너로. 원문(documents)을 실은 팩이 통짜 JSON 이면
+      // 수 MB 로 붓고 문서 하나만 꺼낼 수도 없다(실측 1.6MB → 461KB, 28%).
+      void toBytes(out).then((bytes) => {
+        const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`;
+        a.click(); URL.revokeObjectURL(a.href);
+        el.hidden = true;
+      });
     });
   } catch {
     el.innerHTML = `<div class="palette-card"><div class="error-banner">${COPY.packs.error}</div></div>`;

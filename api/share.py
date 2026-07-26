@@ -21,6 +21,7 @@ import json
 from datetime import datetime, timezone
 
 from . import fragment as frag
+from . import packfile
 from . import query as q
 from . import docstore as ds
 
@@ -261,7 +262,9 @@ def scan_inbox(path: str, *, owner: str, store) -> dict:
         if f.suffix.lower() not in (".json", ".vincpack") or f.name.endswith(".done"):
             continue
         try:
-            pack = json.loads(f.read_text(encoding="utf-8"))
+            # D55 — zip 컨테이너·구 JSON 양쪽을 받는다(첫 바이트로 판별).
+            # 텍스트가 아니라 바이트로 연다: zip 을 텍스트로 읽으면 깨진다.
+            pack = packfile.read_file(f)
             res = import_share_pack(pack, owner=owner, store=store)
             if res.get("executed"):
                 f.rename(f.with_name(f.name + ".done"))

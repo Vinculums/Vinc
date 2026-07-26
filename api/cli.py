@@ -246,16 +246,15 @@ def main(argv: list[str] | None = None) -> int:
                                       tags=_csv(args.tags), seed=args.seed, depth=args.depth,
                                       include_records=not args.no_records)
         if pack.get("executed"):
-            from pathlib import Path
-            Path(args.out).write_text(
-                json.dumps({k: v for k, v in pack.items() if k != "executed"},
-                           ensure_ascii=False, indent=2), encoding="utf-8")
-            return _emit({"out": args.out, "manifest": pack["manifest"]})
+            # D55 — 쓰기는 zip 컨테이너로 간다(읽기만 두 형식 호환). 원문을 실은
+            # 팩이 통짜 JSON 이면 수 MB 로 붓고 문서 하나만 꺼낼 수도 없다.
+            from . import packfile
+            size = packfile.write_file(args.out, pack)
+            return _emit({"out": args.out, "bytes": size, "manifest": pack["manifest"]})
         return _emit(pack)
     if args.cmd == "import":
-        from . import share
-        with open(args.pack, encoding="utf-8") as f:
-            pack = json.load(f)
+        from . import share, packfile
+        pack = packfile.read_file(args.pack)
         return _emit(share.import_share_pack(pack, owner=args.owner))
     if args.cmd == "serve":
         from . import server

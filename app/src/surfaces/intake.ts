@@ -1,4 +1,5 @@
 import { COPY } from "../copy";
+import { readPackFile } from "../packfile";
 import { header } from "../components";
 import { icon, stateDot } from "../icons";
 import { api, cfg, sidecarDiag, WEB } from "../api";
@@ -77,7 +78,9 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
 
   // ── 파일 1개 적재 — 형식 감지(share pack 래퍼 · bare fragment). ──
   async function importOne(f: File): Promise<{ nodes: number; edges: number }> {
-    const obj = JSON.parse(await f.text());
+    // D55 — zip 컨테이너·구 JSON 양쪽을 받는다. `f.text()` 로 읽으면 zip 이
+    // 깨지므로 바이트로 연다(판별·해제는 packfile 이 한다).
+    const obj: any = await readPackFile(f);
     let res: any;
     if (obj && obj.vinc_pack !== undefined) {
       res = await api.importPack(obj, USER_OWNER);

@@ -1369,8 +1369,8 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
 
 def ledger_origin_plan(*, owner: str, domain: str | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
-    """원장 출처 축 — 개념 전량('all') + 에피소드 부착('episodic') + 레코드 부착
-    ('record') 표식 행. 한 개념이 여러 에피소드에 부착되면 같은 표식이 여러 번
+    """원장 출처 축 — 개념 전량('all') + 에피소드 부착('episodic') + 문서 부착
+    ('record': 구 Record ATTACHES_TO **또는** D45 문서의 Chunk MENTIONS) 표식 행. 한 개념이 여러 에피소드에 부착되면 같은 표식이 여러 번
     오지만 접기(:func:`ledger`)가 불리언이라 무해하다.
 
     owner 규칙(SEC-1): **엣지 패턴의 양 끝을 모두** 필터한다 — 소유자 스코프 id
@@ -1402,6 +1402,15 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None,
         "UNION ALL "
         "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
         f"WHERE rc.owner_id = $owner AND c.owner_id = $owner{and_scope} "
+        "RETURN c.concept_id AS id, c.domain AS domain, '' AS ts, 'record' AS mark "
+        # D54 — D45 문서(Chunk=SSoT)도 '파일에서'로 센다. 문서를 넣는 경로가 둘인데
+        # (구 Record + 신 _DocMeta/Chunk) 원장이 구 축만 보고 있어, 앱에서 문서를
+        # 넣거나 팩에 documents 를 실어 와도 출처가 영원히 "없음"이었다(실측: 개념
+        # 74개 전부 unsourced). 같은 'record' 칸에 접는다 — 화면 문구가 "파일에서"라
+        # 두 물리 표현이 같은 뜻이고, 새 칸을 만들면 카피·범례가 함께 늘어난다.
+        "UNION ALL "
+        "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+        f"WHERE ch.owner_id = $owner AND c.owner_id = $owner{and_scope} "
         "RETURN c.concept_id AS id, c.domain AS domain, '' AS ts, 'record' AS mark"
     )
     return QueryPlan("ledger", cypher, params, note="ledger origin axis (concept × source)")
