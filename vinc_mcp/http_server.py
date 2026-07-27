@@ -74,6 +74,8 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "doc-put": ("POST", "/doc/put"),
     "doc-extract": ("POST", "/doc/extract"),
     "doc-reembed": ("POST", "/doc/reembed"),
+    # 관계 근거 저작(U2) — 정본 청크에서 결정론 추출, owner 스코프.
+    "evidence-backfill": ("POST", "/evidence/backfill"),
     # 문서 삭제 — 앱 UI 삭제 배선(S1). delete/merge-nodes 와 동일 안전모델:
     # owner 는 프록시가 sub 로 강제하고, docstore.delete_doc 가 owner 불일치를 거부한다.
     "doc-delete": ("POST", "/doc/delete"),

@@ -8,6 +8,7 @@ import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg } from "./api";
 import { checkForUpdate } from "./update";
 import { installTooltip } from "./tooltip";
+import { mountTopbar, setPlainCrumb, setAtlasHooks } from "./topbar";
 
 // LNB 통합(5→3): Atlas / Search(+Records) / Packs(+Intake).
 type Surface = "atlas" | "search" | "packs";
@@ -17,62 +18,29 @@ const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
   packs: renderPacks,
 };
 const ORDER: Surface[] = ["atlas", "search", "packs"];
+// 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `atlas`(해시·딥링크·모듈)
+// 이지만 사용자에게는 `Home` 이다 — 발주자 지시 2026-07-27.
+const SURFACE_LABEL: Record<Surface, string> = {
+  atlas: COPY.ui.topbar.home, search: "Search", packs: "Packs",
+};
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
 const ALIAS: Record<string, Surface> = { intake: "packs", records: "search" };
 
 const surfaceEl = document.getElementById("surface")!;
-const rail = document.getElementById("rail")!;
+const topbar = document.getElementById("topbar")!;
 
-// Notation icons into the rail (Signal 사이드바 — CSS가 18px 로 클램프)
-rail.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
+// Notation icons into the top bar (CSS가 18px 로 클램프)
+topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
   el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon!, 18));
 });
+document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topbar.settings);
+document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
+document.getElementById("sync-status")!.textContent = COPY.ui.common.local;
+mountTopbar();
 
-// Signal 사이드바 DOMAINS — 실 도메인을 채운다(웹/사이드카 미가동·빈 그래프면 조용히 숨김).
-async function loadRailDomains() {
-  const wrap = document.getElementById("rail-domains-wrap")!;
-  const box = document.getElementById("rail-domains")!;
-  try {
-    const { api, cfg } = await import("./api");
-    const res: any = await api.domains(cfg.owner);
-    // ⚠ /domains 는 `{rows:[{domain, concepts, episodes, records, total}]}` 를 준다.
-    // 여기서 `res.domains`·`count`/`n` 을 읽고 있어 항상 빈 배열 → **레일 DOMAINS
-    // 섹션이 늘 숨겨졌다**(S2 실측). 실제 계약(rows/total)으로 맞춘다.
-    const rows: Array<{ domain: string; total?: number }> =
-      Array.isArray(res) ? res : (res?.rows || []);
-    if (!rows.length) { wrap.hidden = true; return; }
-    const safe = (s: string) => s.replace(/[<>&"]/g, (m) => (
-      { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
-    box.innerHTML = rows.map((r) => {
-      const d = String(r.domain ?? "");
-      const c = r.total ?? "";
-      return `<div class="dom-row" data-tip="${safe(d)}" data-domain="${safe(d)}">`
-        + `<span class="dom-dot"></span><span class="dom-name">${safe(d)}</span>`
-        + `<span class="dom-count">${c}</span>`
-        + `<button class="dom-edit" data-edit="${safe(d)}" data-tip="${COPY.ui.domains.manage}"`
-        + ` aria-label="${COPY.ui.domains.manage}">⋯</button></div>`;
-    }).join("");
-    // S2 — 도메인 이름 변경 / 미분류로 내리기. 전역 Domain 노드는 안 건드리고
-    // 내 노드의 domain 문자열만 바뀐다(백엔드 rename_domain 독스트링 참조).
-    box.querySelectorAll<HTMLElement>("[data-edit]").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const old = btn.dataset.edit!;
-        const { promptText } = await import("./components");
-        const next = await promptText(COPY.ui.domains.renameAsk(old), old,
-          COPY.ui.domains.rename, COPY.ui.atlasx.delCancel, COPY.ui.domains.unassign);
-        if (next === null || next === old) return;
-        try {
-          const r: any = await api.domainRename(cfg.owner, old, next);
-          if (!r.executed) throw new Error(r.error || "rename failed");
-          await loadRailDomains();
-          route();   // 현재 화면도 새 도메인으로 다시 그린다
-        } catch { /* 실패는 조용히 — 목록은 그대로다(바뀐 것 없음) */ }
-      });
-    });
-    wrap.hidden = false;
-  } catch { wrap.hidden = true; }
-}
+// DOMAINS 목록은 L0 주제 표로 이사했다(D56) — 거기가 맥락이 있는 자리다.
+// 도메인 이름 변경(S2)도 그 행의 `⋯` 로 따라갔다. 여기 있던 레일 목록은 행 클릭이
+// 아무 데도 가지 않는 장식이었다(실측).
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
@@ -86,9 +54,15 @@ async function route() {
   const rawHead = location.hash.replace(/^#/, "").split("/")[0];
   if (rawHead in ALIAS) { location.hash = `#${ALIAS[rawHead]}`; return; }  // hashchange → 재진입
   const s = current();
-  rail.querySelectorAll("a").forEach((a) =>
-    a.classList.toggle("active", a.dataset.surface === s));
   surfaceEl.innerHTML = "";
+  // 상단 바의 Atlas 전용 버튼은 표면을 떠나는 즉시 사라진다 — Atlas 면 아래에서
+  // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
+  // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
+  setAtlasHooks(null);
+  // 크럼은 표면이 채운다. Atlas 는 trail 을 그리고(스코프가 있다), 나머지 둘은
+  // 이름 한 칸이다 — 여기서 미리 세워 두면 Atlas 가 자기 것으로 덮는다.
+  // 표면 이름은 사용자 말로만 — 내부 코드명(atlas)은 해시·모듈에만 남는다(D61).
+  if (s !== "atlas") setPlainCrumb(SURFACE_LABEL[s]);
   await SURFACES[s](surfaceEl);
 }
 
@@ -113,7 +87,7 @@ const palette = document.getElementById("palette")!;
 type Cmd = { label: string; hint: string; run: () => void };
 const COMMANDS: Cmd[] = [
   ...ORDER.map((s, i) => ({
-    label: COPY.ui.palette.goTo(`${s[0].toUpperCase()}${s.slice(1)}`), hint: `${i + 1}`,
+    label: COPY.ui.palette.goTo(SURFACE_LABEL[s]), hint: `${i + 1}`,
     run: () => { location.hash = `#${s}`; },
   })),
   { label: COPY.ui.palette.ingest, hint: "Packs", run: () => { location.hash = "#packs"; } },
@@ -158,26 +132,30 @@ function openPalette() {
 
 // ── Shortcut cheatsheet (`?`) ──────────────────────────────────────────────
 const cheatsheet = document.getElementById("cheatsheet")!;
-function openCheatsheet() {
-  cheatsheet.hidden = false;
-  cheatsheet.innerHTML = `
-    <div class="palette-card" role="dialog" aria-label="Keyboard shortcuts">
-      <h2 style="margin:.2rem 0 .8rem">${COPY.ui.palette.keyboard}</h2>
-      ${[["1–5", COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.palette.cmdPalette], ["[", COPY.ui.palette.railToggle],
-         ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
-        .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`).join("")}
-    </div>`;
-  cheatsheet.addEventListener("click", () => { cheatsheet.hidden = true; }, { once: true });
+async function openCheatsheet() {
+  // 단축키 표도 시트 규격을 쓴다(D63) — 화면 위에 뜨는 것은 전부 같은 구조·같은 닫힘.
+  const { openSheet } = await import("./components");
+  const sheet = openSheet({ title: COPY.ui.palette.keyboard, width: "28rem" });
+  sheet.body.innerHTML =
+    [["1–3", COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
+     ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
+     ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
+      .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
+      .join("");
 }
 
 document.addEventListener("keydown", (e) => {
   const inField = (e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA";
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
+  // ⌘/Ctrl+K 는 상단 바 검색이 가져갔다(D57 — 조회가 제1 동선). 팔레트는 같은 키에
+  // Shift 를 더해 남긴다: 한 키에 두 동작이 붙으면 어느 쪽이 뜰지 예측할 수 없다.
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
+    e.preventDefault(); openPalette(); return;
+  }
   if (inField) return;
   if (e.key >= "1" && e.key <= "3") location.hash = `#${ORDER[Number(e.key) - 1]}`;
-  if (e.key === "[") document.getElementById("shell")!.classList.toggle("rail-expanded");
-  if (e.key === "?") openCheatsheet();
-  if (e.key === "Escape") { palette.hidden = true; cheatsheet.hidden = true; }
+  // `[`(레일 접기)는 레일과 함께 사라졌다(D56) — 상단 바는 접을 것이 없다.
+  if (e.key === "?") void openCheatsheet();
+  if (e.key === "Escape") palette.hidden = true;
 });
 
 // ── Skin (Signal) — 웹 Vinc=web(Home·Signal), 데스크탑=desktop(Deep Signal) ──
@@ -243,7 +221,6 @@ applyTheme();
     if (!(await ensureWebAuth())) return;
   }
   route();
-  void loadRailDomains();   // Signal 사이드바 도메인 목록(접속 후)
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
 })();

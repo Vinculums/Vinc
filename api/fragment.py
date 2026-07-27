@@ -202,6 +202,15 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 _set("date", str(node["date"]))
             if node.get("summary") is not None:
                 _set("summary", str(node["summary"]))
+        # 시간 원천 보존 — 팩·MCP 가 실은 `created` 를 그대로 받는다. 없으면 **신규일
+        # 때만** 지금으로 찍는다: 재-MERGE 가 원래 시점을 임포트 시각으로 덮으면
+        # 타임라인의 시간축이 "마지막으로 만진 때"로 무너진다(updated_at 이 이미 그
+        # 역할을 한다). Concept/Record 둘 다 created 열을 가진다.
+        if label in ("Concept", "Record"):
+            if node.get("created"):
+                _set("created", str(node["created"]))
+            elif not matched:
+                _set("created", revstamp.hlc_now(store))
         if label in ("Record", "Concept", "Episode", "Bridge") and (owner_explicit or not matched):
             _set("owner_id", owner)
         if label == "Record":

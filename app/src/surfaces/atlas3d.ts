@@ -124,6 +124,30 @@ function applyEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
 
+/** 상시 라벨 스프라이트 — 캔버스에 글자를 구워 카메라를 향하게 둔다(빌보드).
+ *  DOM 라벨(nodeLabel)은 hover 전용이라 상시 표시에 쓸 수 없다. 색은 잉크 하나. */
+function labelSprite(text: string, pal: Palette): THREE.Sprite {
+  const pad = 8, fs = 34;
+  const cv = document.createElement("canvas");
+  const ctx = cv.getContext("2d")!;
+  ctx.font = `600 ${fs}px system-ui, sans-serif`;
+  const cut = text.length > 22 ? text.slice(0, 21) + "…" : text;
+  cv.width = Math.ceil(ctx.measureText(cut).width) + pad * 2;
+  cv.height = fs + pad * 2;
+  const c2 = cv.getContext("2d")!;
+  c2.font = `600 ${fs}px system-ui, sans-serif`;
+  c2.textBaseline = "middle";
+  c2.fillStyle = `#${pal.ink.toString(16).padStart(6, "0")}`;
+  c2.fillText(cut, pad, cv.height / 2);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  const scale = 0.34;
+  sp.scale.set(cv.width * scale, cv.height * scale, 1);
+  sp.position.set(cv.width * scale * 0.5 + 8, 10, 0);
+  return sp;
+}
+
 /** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
 function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   // D31 열린 층 — 크기 스케일만 사용자 선택(√연결수 ↔ 균일); 형태=타입은 닫힌 층.
@@ -196,7 +220,7 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glo
 }
 
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
-  onClick?: (n: N3) => void; onRightClick?: (n: N3) => void;
+  onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
 }, prefs: AtlasPrefs = loadPrefs()): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
@@ -220,6 +244,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
   const pal = themePalette();
+  // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
+  const hubIds = new Set(nodes.slice()
+    .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
+    .slice(0, 8).filter((n) => (n.degree || 0) > 0).map((n) => n.id));
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
@@ -228,7 +256,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
-    .nodeThreeObject((n: any) => nodeObject(n, prefs, pal, true))
+    .nodeThreeObject((n: any) => {
+      const mesh = nodeObject(n, prefs, pal, true);
+      // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
+      // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
+      // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
+      if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(labelSprite(n.label, pal));
+      return mesh;
+    })
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
       `<span style="${pal.label};border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
     // D33 — 엣지 = 헤어라인: linkWidth 미지정(0) = 튜브 메시가 아닌 THREE.Line.
@@ -306,13 +341,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   if (import.meta.env.DEV) (window as any).__g3 = g;
 
   if (handlers.onClick) g.onNodeClick((n: any) => {
-    // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to); 2D 는 시축 유지 직진
-    const d = 42 + (n.degree || 1);
+    // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to); 2D 는 시축 유지 직진.
+    // V4 — 거리는 **노드 반경에 비례**한다. 구 공식 `42 + degree` 는 허브(연결 33)
+    // 에서 오히려 가까워져 카메라가 클러스터 내부로 파고들었다(실측: 화면이 거대
+    // 구체와 엣지 벽이 되어 공간 감각이 사라졌다). 반경의 일정 배수로 띄운다.
+    const d = Math.max(70, nodeRadius(n, prefs) * 9);
     if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, 700);
     else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, 700);
     handlers.onClick!(n);
   });
-  if (handlers.onRightClick) g.onNodeRightClick((n: any) => handlers.onRightClick!(n));
+  if (handlers.onRightClick)
+    g.onNodeRightClick((n: any, ev: MouseEvent) => handlers.onRightClick!(n, ev));
   if (handlers.onLinkClick) g.onLinkClick((l: any) => handlers.onLinkClick!(l));
 
   // hover: 이웃 유지·비이웃 대기 후퇴 — 노드는 rAF 이징 페이드(스냅 금지),

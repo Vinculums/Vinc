@@ -683,11 +683,111 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         store.run(
             "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = $ol, "
             "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
-            "n.stem = $slug, n.source_file = $origin",
+            "n.stem = $slug, n.source_file = $origin, n.created = $now",
             {"id": cid, "t": c["title"], "ol": c["one_liner"], "owner": owner,
-             "slug": c["slug"], "origin": meta.get("origin") or ""})
+             "slug": c["slug"], "origin": meta.get("origin") or "",
+             # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
+             "now": _now_iso()})
         created += 1
     linked = _relink_mentions(store, doc_id, owner=owner,
                               origin=meta.get("origin") or "")
-    base.update(applied={"created": created, "matched": matched}, mentions=linked)
+    ev = backfill_evidence(store, owner=owner, doc_id=doc_id)
+    base.update(applied={"created": created, "matched": matched}, mentions=linked,
+                evidence=ev)
     return base
+
+
+# 근거 문장 상한 — 툴팁·패널 한 문단 분량. 더 길면 읽히지 않고 저장만 부푼다.
+_EVIDENCE_MAX = 300
+
+
+def _sentences(text: str) -> list[str]:
+    """문장 분해 — 마침표·물음표·느낌표·줄바꿈 기준의 결정론 분해. NLP 없음."""
+    import re as _re
+    parts = _re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    return [p.strip() for p in parts if p.strip()]
+
+
+def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
+                      limit: int = 400) -> dict:
+    """관계의 **근거 문장**을 정본에서 결정론으로 채운다(E-G6 생산자, U2).
+
+    여태 스키마에는 `evidence`/`confidence` 열이 있는데 **채우는 곳이 하나도
+    없었다** — 팩도 추출도 저작하지 않아, 관계 패널이 언제나 "근거 없음"이었다
+    (실측: 방향 엣지 80개 중 보유 0). 여기서 그 공백을 메운다.
+
+    규칙(LLM 없음·오프라인·재현 가능):
+      한 청크가 두 개념을 **함께 언급**하면(MENTIONS 두 줄), 그 청크에서 두 제목이
+      **같은 문장** 안에 나타나는 첫 문장을 근거로 삼는다. 같은 문장이 없으면
+      근거로 치지 않는다 — 같은 문서에 있었다는 사실만으로는 관계의 근거가 아니다.
+
+    confidence 는 그 문장의 밀도로 매긴다(가까울수록 높다): 두 제목 사이 거리가
+    짧을수록 1.0 에 가깝고, 문장이 길게 벌어지면 0.5 로 수렴한다. 이미 근거가
+    있는 엣지는 건드리지 않는다(사용자·상류 저작 보호).
+
+    ``doc_id`` 를 주면 그 문서가 언급하는 개념들 사이 엣지만 훑는다(편집 직후
+    증분). 없으면 owner 전체. 반환 {executed, filled, scanned}."""
+    out: dict[str, Any] = {"kind": "evidence.backfill", "executed": False,
+                           "filled": 0, "scanned": 0}
+    try:
+        # ① 후보 엣지 — 근거가 비어 있는 개념 간 관계(양 끝 owner 스코프, SEC-1).
+        scope = ""
+        params: dict[str, Any] = {"owner": owner}
+        if doc_id:
+            scope = (" AND EXISTS { MATCH (ch:Chunk)-[:MENTIONS]->(a) "
+                     "WHERE ch.doc_id = $doc } ")
+            params["doc"] = doc_id
+        rows = store.run(
+            "MATCH (a:Concept)-[r]->(b:Concept) "
+            "WHERE a.owner_id = $owner AND b.owner_id = $owner "
+            f"AND (r.evidence IS NULL OR r.evidence = ''){scope}"
+            "RETURN a.concept_id AS aid, a.title AS at, "
+            "b.concept_id AS bid, b.title AS bt, label(r) AS rel "
+            f"LIMIT {int(limit)}", params) or []
+    except Exception as exc:
+        out["error"] = out["note"] = f"{type(exc).__name__}: {exc}"
+        return out
+    out["executed"] = True
+    out["scanned"] = len(rows)
+    for row in rows:
+        at, bt = (row.get("at") or "").strip(), (row.get("bt") or "").strip()
+        if len(at) < 2 or len(bt) < 2 or at.lower() == bt.lower():
+            continue
+        try:
+            chunks = store.run(
+                "MATCH (ch:Chunk)-[:MENTIONS]->(a:Concept), (ch)-[:MENTIONS]->(b:Concept) "
+                "WHERE a.concept_id = $aid AND b.concept_id = $bid "
+                "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                "RETURN ch.text AS text ORDER BY ch.chunk_id LIMIT 6",
+                {"aid": row["aid"], "bid": row["bid"], "owner": owner}) or []
+        except Exception:
+            continue
+        found: tuple[str, float] | None = None
+        for ch in chunks:
+            for sent in _sentences(ch.get("text") or ""):
+                low = sent.lower()
+                ia, ib = low.find(at.lower()), low.find(bt.lower())
+                if ia < 0 or ib < 0:
+                    continue
+                gap = abs(ia - ib)
+                # 가까울수록 높게, 멀어지면 0.5 로 수렴(상한 0.9 — 결정론 근사이지
+                # 사람이 확인한 근거가 아니라는 뜻을 수치가 스스로 말한다).
+                conf = round(max(0.5, 0.9 - gap / 400.0), 3)
+                found = (" ".join(sent.split())[:_EVIDENCE_MAX], conf)
+                break
+            if found:
+                break
+        if not found:
+            continue
+        try:
+            store.run(
+                f"MATCH (a:Concept)-[r:{row['rel']}]->(b:Concept) "
+                "WHERE a.concept_id = $aid AND b.concept_id = $bid "
+                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                "SET r.evidence = $ev, r.confidence = $cf",
+                {"aid": row["aid"], "bid": row["bid"], "owner": owner,
+                 "ev": found[0], "cf": found[1]})
+            out["filled"] += 1
+        except Exception:
+            continue
+    return out

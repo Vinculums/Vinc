@@ -149,98 +149,118 @@ function wireFocus(el: HTMLElement, h: {
 }
 
 // ── 2. Timeline — 언제 무엇이 생겼는가 ────────────────────────────────────
-/** 시간축 하나 + 주제당 레인 하나. ts 는 파싱하지 않는다: ISO 는 사전순이
- *  곧 시간순이고(자유서식 값도 같은 규칙으로 안전하게 접힌다), 월 거터는
- *  ts.slice(0,7) 로 만든다. 밀집 구간은 최소간격 디클러터 + 지시선으로 푼다. */
+/** **가로 시간축** + 주제당 레인 하나(D62 — 세로판에서 개정).
+ *
+ *  왜 눕혔는가: 세로 시간축은 주제를 열로 세우는데, 주제가 두셋뿐인 실데이터에서
+ *  레인이 화면 좌우 끝에 붙고 가운데 ~85%가 진공이 됐다(실측). 시간은 사람에게
+ *  가로로 흐르고(참조 이미지 4점 전부 가로축), 레인을 가로로 누이면 주제 수가
+ *  적을수록 오히려 각 레인이 길고 읽기 쉬워진다.
+ *
+ *  ts 는 파싱하지 않는다: ISO 는 사전순이 곧 시간순이고(자유서식 값도 같은 규칙으로
+ *  안전하게 접힌다), 월 거터는 ts.slice(0,7) 로 만든다. 한 달에 몰린 항목은 그 달
+ *  칸 안에서 가로로 흩고, 라벨은 최소간격 디클러터 + 지시선으로 푼다. */
 export function mountTimeline(el: HTMLElement,
   nodes: (PlanarNode & { ts?: string; kind?: string })[],
   o: { docs: boolean; labels: boolean; onOpen: (id: string) => void;
-       /** 월-밴드 클릭 → 그 달("YYYY-MM") 기간 항목(D45-V2 4단계). 세로 밴드
-        *  타임라인에 맞춰 브러시를 월 단위로 이산화한다(자유 픽셀 드래그 대신). */
+       /** 월 칸 클릭 → 그 달("YYYY-MM") 기간 항목(D45-V2 4단계). 가로축이라
+        *  브러시는 세로 띠 하나 = 한 달이다(자유 픽셀 드래그 대신 이산). */
        onMonth?: (month: string) => void }): PlanarHandle {
   const pool = timelinePool(nodes, o.docs);
   // 날짜 없는 노드는 레인에 올리지 않는다(빈 ts 는 정상값 — 상류가 자주 비운다).
   const dated = pool.filter((n) => !!(n.ts && n.ts.trim()))
     .slice()
     .sort((a, b) => (a.ts! < b.ts! ? -1 : a.ts! > b.ts! ? 1 : a.id < b.id ? -1 : 1));
-  const lanes = [...new Set(dated.map((n) => n.domain || ""))].sort();
+  // 주제 없는 항목(브릿지 등)도 레인 하나를 갖되 이름을 붙인다 — 무명 레인은
+  // "이게 뭐지"로 끝난다(U6). 정렬은 이름순이되 미분류는 늘 마지막.
+  const laneKey = (n: { domain: string }) => n.domain || "";
+  const lanes = [...new Set(dated.map(laneKey))]
+    .sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a < b ? -1 : 1));
   const laneAt = new Map(lanes.map((d, i) => [d, i]));
+  const laneName = (d: string) => (d || COPY.ui.atlasx.unfiled);
   const months = [...new Set(dated.map((n) => n.ts!.slice(0, 7)))];   // 정렬본 → 이미 오름차순
   const monthAt = new Map(months.map((m, i) => [m, i]));
-  // 월 안 순위 = 전역 정렬 순위 — 레인이 달라도 세로 위치가 시간순을 지킨다.
-  const rank = new Map<string, number>();
+  // 같은 달·같은 레인 안 순번 — 가로로 흩어 겹침을 없앤다.
+  const slot = new Map<string, number>();
   const per = new Map<string, number>();
   for (const n of dated) {
-    const m = n.ts!.slice(0, 7);
-    const k = per.get(m) || 0;
-    rank.set(n.id, k);
-    per.set(m, k + 1);
+    const k = `${n.ts!.slice(0, 7)}|${laneKey(n)}`;
+    const i = per.get(k) || 0;
+    slot.set(n.id, i);
+    per.set(k, i + 1);
   }
   const label = COPY.ui.atlasx.timelineChart(dated.length, lanes.length);
-  const LANE_W = 190;
-  /** 월 밴드 최소 높이(성긴 달의 기존 인상 유지)와 항목 1건이 요구하는 세로 슬롯.
-   *  SLOT_H 는 라벨 디클러터 최소 간격(13)과 같은 값이어야 한다 — 밴드가 그보다
-   *  촘촘하면 점은 들어가도 라벨이 전부 밀려 지시선만 남는다. */
-  const BAND_MIN = 96, SLOT_H = 13;
+  const LANE_H = 92;          // 레인 하나의 세로 두께(라벨 + 마크 + 숨 쉴 틈)
+  const LEFT = 118;           // 레인 이름이 앉는 왼쪽 여백
+  const MONTH_MIN = 96;       // 성긴 달도 이만큼은 차지한다
+  const SLOT_W = 26;          // 한 달 안에서 항목 하나가 요구하는 가로 폭
 
   function draw(w: number, h: number): string {
-    const W = Math.max(w, 120 + lanes.length * LANE_W);
-    const top = 74, bot = 26;
-    // D46-S: 밴드 높이는 **그 달의 항목 수에 비례**한다. 고정 96px 시절엔 한 달에
-    // 40건이 들어오면 간격이 2.4px 로 눌려(마크 반지름 5.2px) 서로 겹쳤다 —
-    // L0 가 전량이 되면서 흔한 상황이 됐다. 넘치는 높이는 .pl-wrap 이 스크롤한다.
-    const rawH = months.map((m) => Math.max(BAND_MIN, (per.get(m) || 1) * SLOT_H));
-    const rawSum = rawH.reduce((a, v) => a + v, 0);
-    const H = Math.max(h, top + bot + rawSum);
-    // 컨테이너가 더 크면 남는 높이를 비례 배분한다(빈 아래 여백 대신 숨 쉬는 밴드).
-    const k = Math.max(1, (H - top - bot) / Math.max(rawSum, 1));
-    const bandH = rawH.map((v) => v * k);
-    const bandTop: number[] = [];
-    bandH.reduce((y, v, i) => { bandTop[i] = y; return y + v; }, top);
-    const laneX = (d: string) =>
-      110 + ((laneAt.get(d) || 0) + 0.5) * ((W - 130) / Math.max(lanes.length, 1));
-    const yOf = (n: { id: string; ts?: string }) => {
+    const top = 30, bot = 44;
+    // 달 폭은 그 달의 **가장 붐비는 레인**이 요구하는 만큼(비례). 넘치면 가로 스크롤.
+    const need = months.map((m) => {
+      const maxPer = Math.max(1, ...lanes.map((d) => per.get(`${m}|${d}`) || 0));
+      return Math.max(MONTH_MIN, maxPer * SLOT_W);
+    });
+    const sum = need.reduce((a, v) => a + v, 0);
+    const W = Math.max(w, LEFT + sum + 24);
+    const k = Math.max(1, (W - LEFT - 24) / Math.max(sum, 1));
+    const colW = need.map((v) => v * k);
+    const colX: number[] = [];
+    colW.reduce((x, v, i) => { colX[i] = x; return x + v; }, LEFT);
+    const H = Math.max(h, top + bot + lanes.length * LANE_H);
+    const laneH = Math.max(LANE_H, (H - top - bot) / Math.max(lanes.length, 1));
+    const laneY = (d: string) => top + ((laneAt.get(d) || 0) + 0.5) * laneH;
+    const xOf = (n: { id: string; ts?: string; domain: string }) => {
       const i = monthAt.get(n.ts!.slice(0, 7)) || 0;
-      const m = n.ts!.slice(0, 7);
-      return bandTop[i] + (bandH[i] * (rank.get(n.id)! + 0.5)) / Math.max(per.get(m) || 1, 1);
+      const m = `${n.ts!.slice(0, 7)}|${laneKey(n)}`;
+      const cnt = Math.max(per.get(m) || 1, 1);
+      return colX[i] + (colW[i] * (slot.get(n.id)! + 0.5)) / cnt;
     };
 
-    // 월 거터 — 홀짝 밴드 + 좌측 눈금. 밴드는 muted 면이라 색이 아니라 면이 구분한다.
-    // onMonth 지정 시 밴드 전폭에 투명 히트 rect(data-month) — lanes 보다 먼저
-    // 그려 노드 밑에 깔린다(점 클릭이 우선, 빈 밴드 클릭만 기간 선택).
+    // 월 거터 — 홀수 달만 옅은 띠(격자선 억제). 클릭 표적은 전 높이 투명 rect 라
+    // 빈 곳을 눌러도 그 달이 열린다(점 클릭이 우선 — 마크가 DOM 상 뒤에 온다).
     const bands = months.map((m, i) =>
       (i % 2 === 1
-        ? `<rect class="pl-band" x="34" y="${num(bandTop[i])}" width="${num(W - 46)}" height="${num(bandH[i])}"/>`
-        : "")
+        ? `<rect class="pl-band" x="${num(colX[i])}" y="${num(top - 8)}"
+             width="${num(colW[i])}" height="${num(H - top - bot + 8)}"/>` : "")
       + (o.onMonth
-        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="34" y="${num(bandTop[i])}"`
-          + ` width="${num(W - 46)}" height="${num(bandH[i])}" fill="transparent" style="cursor:pointer"/>`
-        : "")
-      + `<text class="pl-cap pl-num" x="38" y="${num(bandTop[i] + 13)}">${esc(m)}</text>`)
-      .join("");
+        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="${num(colX[i])}" y="${num(top - 8)}"`
+          + ` width="${num(colW[i])}" height="${num(H - top - bot + 8)}" fill="transparent"`
+          + ` style="cursor:pointer"/>` : "")
+      + `<text class="pl-cap pl-num" x="${num(colX[i] + colW[i] / 2)}" y="${num(H - bot + 22)}"
+           text-anchor="middle">${esc(m)}</text>`).join("");
 
     const laneGs = lanes.map((d) => {
-      const list = dated.filter((n) => (n.domain || "") === d);
-      const xs = laneX(d);
-      const ys = list.map(yOf);
-      const y0 = Math.min(...ys) - 14, y1 = Math.max(...ys) + 14;
-      // 레인 굵기 = 밀도(개수). 굵기이지 색이 아니다.
+      const list = dated.filter((n) => laneKey(n) === d);
+      const y = laneY(d);
+      const xs = list.map(xOf);
+      // 레인 선 굵기 = 밀도(개수). 굵기이지 색이 아니다.
       const sw = list.length >= 8 ? 2.4 : list.length >= 4 ? 1.8 : 1.2;
-      const line = `<path class="pl-lane-line" stroke-width="${sw}" d="M${num(xs)} ${num(y0)} L${num(xs)} ${num(y1)}"/>`;
-      const head = `<text class="pl-sub" x="${num(xs)}" y="${num(top - 22)}" text-anchor="middle">${esc(cut(d, 18))}</text>`
-        + `<text class="pl-cap pl-num" x="${num(xs)}" y="${num(top - 9)}" text-anchor="middle">${list.length}</text>`;
-      const ly = declutter(ys, 13);
+      const line = `<path class="pl-lane-line" stroke-width="${sw}"
+        d="M${num(LEFT - 6)} ${num(y)} L${num(W - 14)} ${num(y)}"/>`;
+      const head = `<text class="pl-sub" x="${num(LEFT - 14)}" y="${num(y - 4)}"
+          text-anchor="end">${esc(cut(laneName(d), 16))}</text>`
+        + `<text class="pl-cap pl-num" x="${num(LEFT - 14)}" y="${num(y + 11)}"
+          text-anchor="end">${list.length}</text>`;
+      // 라벨은 마크 위쪽에 눕히고, 가로로 겹치면 밀어낸다(디클러터의 가로판).
+      // ⚠ 밀도가 임계를 넘으면 **아예 달지 않는다**: 40개가 한 달 칸에 들어오면
+      // 밀어내기로는 풀리지 않아 글자가 서로를 먹는다(실측). 그때는 점만 남기고
+      // 이름은 hover 툴팁이 답한다 — 겹친 글자보다 없는 글자가 정직하다.
+      const gap = xs.length > 1
+        ? (Math.max(...xs) - Math.min(...xs)) / (xs.length - 1) : Infinity;
+      const showLabels = o.labels && gap >= 58;
+      const lx = declutter(xs, 74);
       const marks = list.map((n, i) => {
-        const y = ys[i], lyi = ly[i];
+        const x = xs[i], lxi = lx[i];
         const doc = DOC_KINDS.includes(n.kind || "");
         const mark = doc
-          ? `<polygon class="pl-mark pl-soft" points="${hexPts(xs, y, 5)}"/>`
-          : `<circle class="pl-mark" cx="${num(xs)}" cy="${num(y)}" r="5.2"/>`;
-        // 라벨이 밀렸으면 지시선으로 원래 자리를 되돌려 준다(디클러터의 짝).
-        const lead = Math.abs(lyi - y) > 1.5
-          ? `<path class="pl-ax" d="M${num(xs + 6)} ${num(y)} L${num(xs + 11)} ${num(lyi)}"/>` : "";
-        const text = o.labels
-          ? `<text class="pl-lab" x="${num(xs + 13)}" y="${num(lyi + 4)}">${esc(cut(n.label, 20))}</text>` : "";
+          ? `<polygon class="pl-mark pl-soft" points="${hexPts(x, y, 5)}"/>`
+          : `<circle class="pl-mark" cx="${num(x)}" cy="${num(y)}" r="5.2"/>`;
+        const lead = showLabels && Math.abs(lxi - x) > 1.5
+          ? `<path class="pl-ax" d="M${num(x)} ${num(y - 7)} L${num(lxi)} ${num(y - 15)}"/>` : "";
+        const text = showLabels
+          ? `<text class="pl-lab" x="${num(lxi)}" y="${num(y - 19)}"
+              text-anchor="middle">${esc(cut(n.label, 16))}</text>` : "";
         return `<g class="pl-node" data-id="${esc(n.id)}" data-tip="${esc(n.label)} ${esc(n.ts || "")}">`
           + `${mark}${lead}${text}</g>`;
       }).join("");
@@ -252,7 +272,7 @@ export function mountTimeline(el: HTMLElement,
       + `${bands}${laneGs}</svg>`;
   }
 
-  const domOf = new Map(dated.map((n) => [n.id, n.domain || ""]));
+  const domOf = new Map(dated.map((n) => [n.id, laneKey(n)]));
   let laneEls: SVGElement[] = [];
   let nodeEls: SVGElement[] = [];
   const collect = () => {
@@ -307,7 +327,11 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
        onOpen: (domain: string) => void;
        /** 리본 클릭 → 그 (도메인, mark) 의 개념 목록 드릴다운(D45-V2 3단계).
         *  구 누적 막대의 구간 클릭과 계약이 같다 — 리본이 곧 그 구간이다. */
-       onSeg?: (domain: string, mark: string) => void }): PlanarHandle {
+       onSeg?: (domain: string, mark: string) => void;
+       /** 행의 알갱이(D52·D59) — "domain" 이면 한 행이 주제, "concept" 이면 개념
+        *  하나다. 캡션의 단위가 이 값으로 갈린다(개념 40개를 "주제 40개"라 부르던
+        *  단위 거짓말을 끝낸다, U5). */
+       grain?: "domain" | "concept" }): PlanarHandle {
   const val = (r: LedgerRow, k: string) => Math.max(0, Number((r as unknown as Record<string, unknown>)[k]) || 0);
   // 주제(2열) — 두 축 합이 다르면(구버전·집계 결함) 큰 쪽을 노드 높이로 삼아
   // 리본이 노드를 넘치지 않게만 방어한다. 정상 데이터에선 둘이 같다.
@@ -325,7 +349,8 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
   // 1열·3열 노드 값 = 주제를 가로지른 합(주변합).
   const originTot = ORIGINS.map((_, i) => data.reduce((a, r) => a + r.origin[i], 0));
   const stateTot = STATES.map((_, i) => data.reduce((a, r) => a + r.state[i], 0));
-  const label = COPY.ui.atlasx.totalsChart(data.length, grand);
+  const label = (o.grain === "concept"
+    ? COPY.ui.atlasx.totalsChartConcepts : COPY.ui.atlasx.totalsChart)(data.length, grand);
   const segName = (k: string) => COPY.ui.atlasx.seg[k as keyof typeof COPY.ui.atlasx.seg];
   const segTip = (k: string, v: number) => COPY.ui.atlasx.segTip(segName(k), v);
   /** 첫 그림에만 진입 안무를 얹는다 — 리사이즈 재그리기마다 다시 자라면 소음이다. */
@@ -468,7 +493,8 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
 
     // 총계 — 세 열의 합이 같음을 눈으로 확인시킨다(보존 불변의 화면판).
     const foot = `<text class="pl-sub pl-num" x="${num(W / 2)}" y="${num(H - 12)}"`
-      + ` text-anchor="middle">${esc(COPY.ui.atlasx.totalsFoot(grand))}</text>`;
+      + ` text-anchor="middle">${esc((o.grain === "concept"
+        ? COPY.ui.atlasx.totalsFootConcepts : COPY.ui.atlasx.totalsFoot)(grand))}</text>`;
 
     return `<svg class="pl-svg pl-sankey" aria-label="${esc(label)}"`
       + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`

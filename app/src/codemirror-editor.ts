@@ -6,7 +6,7 @@
 //
 // 의존성은 npm 번들 인라인(CSP 정합, CDN 없음). 스타일은 CSS/데코레이션 클래스로
 // 완전 제어(모노크롬 Ink & Paper — 색조 없이 굵기·크기·명도만).
-import { EditorState, Compartment, RangeSetBuilder } from "@codemirror/state";
+import { EditorState, Compartment, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import {
   EditorView, keymap, Decoration, ViewPlugin, WidgetType,
   type DecorationSet, type ViewUpdate,
@@ -23,6 +23,13 @@ export type CmHandle = {
   setValue: (text: string) => void;
   focus: () => void;
   destroy: () => void;
+  /** 읽기/편집 전환 — **같은 렌더를 그대로 두고** 편집 가능 여부만 바꾼다.
+   *  Reader(문서 보기)와 편집기가 한 표면인 이유: 보던 글자가 그 자리에서
+   *  고쳐진다(모드 점프도, 원문 마크다운 노출도 없다). */
+  setEditable: (on: boolean) => void;
+  /** 개념 언급 위치(밑줄) 갱신 + 첫 위치로 스크롤. char 오프셋은 백엔드 계산값. */
+  setHighlights: (ranges: { char_start: number; char_end: number }[]) => void;
+  scrollToHighlight: () => void;
 };
 
 // 인라인 문법 토큰 — 짝 기호를 숨기고(replace) 안쪽을 서식(mark). 순서 주의:
@@ -111,7 +118,11 @@ function buildDecorationsUnsafe(view: EditorView): DecorationSet {
   const parts: { from: number; to: number; deco: Decoration }[] = [];
   const sel = view.state.selection;
   const activeLines = new Set<number>();
-  for (const r of sel.ranges) {
+  // 읽기 모드에는 "활성 줄"이 없다 — 커서가 없으니 소스를 보일 이유도 없다.
+  // (이게 없으면 문서를 열자마자 1행이 `# 제목` 처럼 원문으로 보였다 — 선택이
+  //  기본 0 이라 1행이 활성으로 잡혔다.)
+  const editable = view.state.facet(EditorView.editable);
+  if (editable) for (const r of sel.ranges) {
     let l = view.state.doc.lineAt(r.from).number;
     const last = view.state.doc.lineAt(r.to).number;
     for (; l <= last; l++) activeLines.add(l);
@@ -132,6 +143,32 @@ function buildDecorationsUnsafe(view: EditorView): DecorationSet {
   for (const p of parts) builder.add(p.from, p.to, p.deco);
   return builder.finish();
 }
+
+// ── 개념 언급 밑줄(D45-V2) — 렌더 위에 얹는 별도 데코 층 ────────────────────
+// 라이브 프리뷰와 **다른 세트**라 겹쳐도 안전하다(CM6 가 세트끼리 병합한다).
+// 문서가 편집되면 CM6 의 매핑이 범위를 따라 옮겨 주므로, 타이핑 중에도 밑줄이
+// 글자를 놓치지 않는다(구 Reader 의 정적 문자열 삽입은 편집이 불가능했다).
+const setHl = StateEffect.define<{ from: number; to: number }[]>();
+const hlMark = Decoration.mark({ class: "cm-r-hl" });
+const highlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setHl)) continue;
+      const b = new RangeSetBuilder<Decoration>();
+      const len = tr.state.doc.length;
+      for (const r of e.value.slice().sort((x, y) => x.from - y.from)) {
+        const from = Math.max(0, Math.min(r.from, len));
+        const to = Math.max(from, Math.min(r.to, len));
+        if (to > from) b.add(from, to, hlMark);
+      }
+      deco = b.finish();
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 const livePreview = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
@@ -200,6 +237,9 @@ class SlashMenu {
 export function mountEditor(el: HTMLElement, opts: {
   initial: string; onChange: (text: string) => void; onSave: () => void;
   slash?: SlashItem[];
+  /** 시작 상태. Reader 진입은 읽기 전용이지만 **렌더는 완전히 같다** — 편집을 켜도
+   *  화면이 다시 그려지지 않고 커서만 생긴다. */
+  readOnly?: boolean;
 }): CmHandle {
   const editable = new Compartment();
   let slash: SlashMenu | null = null;
@@ -222,7 +262,8 @@ export function mountEditor(el: HTMLElement, opts: {
         ]),
         markdown(),
         livePreview,
-        editable.of(EditorView.editable.of(true)),
+        highlightField,
+        editable.of(EditorView.editable.of(!opts.readOnly)),
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) opts.onChange(view.state.doc.toString());
@@ -248,15 +289,34 @@ export function mountEditor(el: HTMLElement, opts: {
           ".cm-r-quote": { opacity: "0.72", borderLeft: "2px solid hsl(var(--border))", paddingLeft: "8px" },
           ".cm-r-bullet": { opacity: "0.6" },
           ".cm-r-hr": { display: "inline-block", width: "100%", borderTop: "1px solid hsl(var(--border))", verticalAlign: "middle" },
+          // 밑줄은 색이 아니라 선으로(모노크롬) — 초점색은 화면당 1의미 예약이다.
+          ".cm-r-hl": { textDecoration: "underline", textUnderlineOffset: "2px", textDecorationThickness: "1px" },
+          // 읽기 모드에서도 글자는 고를 수 있어야 한다(인용·복사).
+          "&:not(.cm-focused) .cm-cursor": { display: "none" },
         }),
       ],
     }),
   });
   if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
+  let hl: { char_start: number; char_end: number }[] = [];
   return {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
     focus: () => view.focus(),
     destroy: () => { slash?.destroy(); view.destroy(); },
+    setEditable: (on) => {
+      view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(on)) });
+      if (on) view.focus();
+    },
+    setHighlights: (ranges) => {
+      hl = ranges;
+      view.dispatch({ effects: setHl.of(ranges.map((r) => ({ from: r.char_start, to: r.char_end }))) });
+    },
+    scrollToHighlight: () => {
+      const first = hl.slice().sort((a, b) => a.char_start - b.char_start)[0];
+      if (!first) return;
+      const pos = Math.min(first.char_start, view.state.doc.length);
+      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    },
   };
 }

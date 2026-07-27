@@ -1502,8 +1502,15 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        정본"을 준다. 확장 미가용이면 조용히 빈 발췌(arm='none', 실패 아님 —
        발췌는 증강이지 상세 패널의 성립 조건이 아니다).
 
+    4) 연결 요약 + 관계 목록(``links``) — 상세 레일이 쓰는 **수치 정본**. 여태
+       프론트가 "마지막으로 그린 그래프의 엣지 집합"(스테일 잔상)에서 세고, 드릴다운
+       경로로 열면 degree 를 0 으로 박아 "연결 0개 · → 3 나감"처럼 자기모순을 냈다.
+       세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
+
     반환: {executed, node, node_kind, title, one_liner,
-           excerpts: [{doc_id, doc_title, section, excerpt, method}], arm}"""
+           excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
+           links: {degree, out, in, attached,
+                   items: [{id, title, domain, type, dir, evidence, confidence}]}}"""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,
                   "one_liner": "", "excerpts": [], "arm": "none"}
@@ -1575,6 +1582,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "method": r.get("method") or "",
         } for r in ment]
         base["arm"] = arm
+        base["links"] = _node_links(store, node, owner=owner)
         return base
     except Exception as exc:
         base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
@@ -1582,6 +1590,84 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     finally:
         if owns:
             store.close()
+
+
+# 상세 레일 관계 목록 상한 — 허브(차수 30+)에서 레일이 끝없이 길어지지 않게.
+# 잘렸는지는 `truncated` 로 밝힌다(조용한 축소 금지).
+_NODE_LINKS_CAP = 24
+
+
+def _node_links(store, node: str, *, owner: str) -> dict:
+    """개념의 연결 요약 + 관계 목록(:func:`node_context` ④). 조회 전용.
+
+    개념↔개념(방향 3종 + RELATED_TO)은 양방향으로 세고, 부착(Bridge 매개·Episode
+    ABOUT·Record ATTACHES_TO)은 따로 센다 — 화면이 "연결 N · → 나감 · ← 들어옴"과
+    "부착 N"을 다른 줄에 싣기 때문이다.
+
+    SEC-1: 양 끝을 owner 로 건다. Bridge 만 과도기 술어(:func:`_bridge_owner_pred`).
+    실패는 조용히 빈 요약으로 강등한다 — 관계 목록은 증강이고, 미마이그레이션
+    스토어(E-G6 열 부재)에서 상세 패널 자체가 죽으면 안 된다."""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+             "truncated": False, "executed": False}
+    rows: list[dict] = []
+    try:
+        rows = store.run(
+            # 개념↔개념 — 무라벨 `-[r]->` 가 바인딩할 수 있는 rel 은 CC 4종뿐이고
+            # 전부 E-G6 열을 가져 evidence/confidence 투영이 안전하다(graph_plan 주석).
+            "MATCH (c:Concept)-[r]->(o:Concept) "
+            "WHERE c.concept_id = $id AND c.owner_id = $owner AND o.owner_id = $owner "
+            "RETURN o.concept_id AS id, o.title AS title, o.domain AS domain, "
+            "label(r) AS type, 'out' AS dir, r.evidence AS ev, r.confidence AS conf "
+            "UNION ALL "
+            "MATCH (o:Concept)-[r]->(c:Concept) "
+            "WHERE c.concept_id = $id AND c.owner_id = $owner AND o.owner_id = $owner "
+            "RETURN o.concept_id AS id, o.title AS title, o.domain AS domain, "
+            "label(r) AS type, 'in' AS dir, r.evidence AS ev, r.confidence AS conf",
+            {"id": node, "owner": owner}) or []
+    except Exception:
+        return empty
+    attached: list[dict] = []
+    try:
+        attached = store.run(
+            # 부착 3종 — 각 rel 테이블의 열이 달라 evidence/confidence 는 ABOUT 만
+            # 투영하고 나머지는 상수로 맞춘다(UNION ALL 은 컬럼 형태가 같아야 한다).
+            "MATCH (b:Bridge)-[:CONNECTS]->(c:Concept) "
+            f"WHERE c.concept_id = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
+            "RETURN b.bridge_id AS id, b.title AS title, b.source_domain AS domain, "
+            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf "
+            "UNION ALL "
+            "MATCH (e:Episode)-[r:ABOUT]->(c:Concept) "
+            "WHERE c.concept_id = $id AND c.owner_id = $owner AND e.owner_id = $owner "
+            "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
+            "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf "
+            "UNION ALL "
+            "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
+            "WHERE c.concept_id = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
+            "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
+            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf",
+            {"id": node, "owner": owner}) or []
+    except Exception:
+        attached = []   # 부착 축만 강등 — 개념 관계는 이미 얻었다
+    out_n = sum(1 for r in rows if r.get("dir") == "out")
+    in_n = len(rows) - out_n
+    items = []
+    # 나감 먼저, 그다음 들어옴, 마지막 부착 — 화면이 읽는 순서 그대로 결정론 정렬.
+    order = {"out": 0, "in": 1, "att": 2}
+    for r in sorted(rows + attached,
+                    key=lambda r: (order.get(r.get("dir") or "", 9),
+                                   str(r.get("type") or ""), str(r.get("title") or ""),
+                                   str(r.get("id") or ""))):
+        items.append({
+            "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+            "domain": r.get("domain") or "", "type": r.get("type") or "",
+            "dir": r.get("dir") or "",
+            # 근거는 **있는지 없는지**가 화면의 관심사다(문장 전문은 edge-context 가 준다).
+            "evidence": bool((r.get("ev") or "").strip()),
+            "confidence": float(r.get("conf") or 0.0),
+        })
+    return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
+            "items": items[:_NODE_LINKS_CAP],
+            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
 
 
 # edge_context 허용 관계 — E-G6 evidence/confidence 보유 5종만. etype 은 Cypher 에
@@ -1667,16 +1753,25 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
     """기간(날짜 범위) 항목 질의 — 타임라인 기간 브러시(D45-V2 4단계). 조회 전용.
 
     타임라인이 그리는 점은 **날짜를 가진 Episode·Concept** 다. 브러시로 [start,end]
-    (ISO, 반개구간 [start, end])를 선택하면 그 구간 항목을 돌려준다. 1차 근거는
-    Episode.date·Concept.created(사용자가 부여한 사건/생성 시점) — **_DocMeta.
-    updated_at 은 편집시각이라 내용 시점이 아니므로 쓰지 않는다**(보고서 캐비앳).
-    ISO 문자열은 사전순 = 시간순이라 문자열 비교로 안전하게 거른다(타임라인
-    ts.slice 규약과 동형). ``domain`` 렌즈 선택. SEC-1 owner 스코프.
+    (ISO, 반개구간 [start, end])를 선택하면 그 구간 항목을 돌려준다.
 
-    반환: {executed, start, end, items:[{id, kind, title, ts, domain}], total}."""
+    ⚠ 시간 기준은 **차트와 글자 그대로 같아야 한다**(`coalesce(date|created,
+    updated_at)` — :func:`graph_plan` 의 ts 투영). 여기만 `date`/`created` 단독을
+    보던 시절, 팩으로 들어온 개념은 `created` 가 비어 차트는 점 42개를 그리는데
+    같은 밴드를 누르면 "0개"가 떴다(실측). 모집단이 어긋나면 화면이 자기를 반박한다
+    — D52 가 원장에서 고친 것과 같은 병이다. `updated_at` 이 내용 시점이 아니라는
+    캐비앳은 유효하지만, 그건 **양쪽 모두**에 적용되는 한계이지 한쪽만 엄격해야 할
+    이유가 아니다. 응답에 ``basis`` 를 에코해 화면이 무엇을 셌는지 밝힐 수 있게 한다.
+
+    ISO 문자열은 사전순 = 시간순이라 문자열 비교로 안전하게 거른다(타임라인
+    ts.slice 규약과 동형). 빈 값은 ``'' >= $s`` 가 거짓이라 자동 제외된다.
+    ``domain`` 렌즈 선택. SEC-1 owner 스코프.
+
+    반환: {executed, start, end, basis, items:[{id, kind, title, ts, domain}], total}."""
     cfg = cfg or load_config()
     base: dict = {"kind": "docs-in-range", "executed": False,
-                  "start": start, "end": end, "items": []}
+                  "start": start, "end": end, "items": [],
+                  "basis": "authored-or-updated"}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -1691,15 +1786,17 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
         if domain:
             params["domain"] = domain
         rows = store.run(
-            "MATCH (e:Episode) WHERE e.owner_id = $owner AND e.date >= $s "
-            f"AND e.date < $e AND e.date <> ''{dclause} "
+            "MATCH (e:Episode) WHERE e.owner_id = $owner "
+            "AND coalesce(e.date, e.updated_at, '') >= $s "
+            f"AND coalesce(e.date, e.updated_at, '') < $e{dclause} "
             "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
-            "e.date AS ts, e.domain AS domain "
+            "coalesce(e.date, e.updated_at, '') AS ts, e.domain AS domain "
             "UNION ALL "
-            "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.created >= $s "
-            f"AND c.created < $e AND c.created <> ''{cclause} "
+            "MATCH (c:Concept) WHERE c.owner_id = $owner "
+            "AND coalesce(c.created, c.updated_at, '') >= $s "
+            f"AND coalesce(c.created, c.updated_at, '') < $e{cclause} "
             "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
-            "c.created AS ts, c.domain AS domain", params) or []
+            "coalesce(c.created, c.updated_at, '') AS ts, c.domain AS domain", params) or []
         rows.sort(key=lambda r: (r.get("ts") or "", r.get("id") or ""))
         items = [{"id": r["id"], "kind": r.get("kind") or "", "title": r.get("title") or r["id"],
                   "ts": r.get("ts") or "", "domain": r.get("domain") or ""}

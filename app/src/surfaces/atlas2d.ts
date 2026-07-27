@@ -26,7 +26,8 @@ import type { AtlasPrefs } from "../atlas-prefs";
  *  승격했다. 배지·지표바는 캔버스 위 DOM 오버레이라 툴팁(tooltip.ts)과 같은 층에
  *  산다. 색은 Signal 팔레트만 읽는다(hex 하드코딩 금지). */
 
-export type Handle2d = { dispose(): void };
+/** fit: 카메라를 그래프 전체에 맞춘다(`f` 키 — 정본 §2). */
+export type Handle2d = { dispose(): void; fit(): void };
 
 /** 방향 3종 — 화살촉이 붙는 관계(atlas-planar 의 DIRECTED 와 같은 정의). */
 const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
@@ -58,7 +59,7 @@ function mix(fg: string, bg: string, t: number): string {
 }
 
 export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
-  o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode) => void;
+  o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode, ev: MouseEvent) => void;
        /** 선 클릭 → 관계 근거 패널(D45-V). 흐름 관점이 폐기되면서(D53) 이 진입점이
         *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
        onEdge?: (e: GraphEdge) => void; seed?: string },
@@ -66,10 +67,10 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   const bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
     <div class="a2-badges"></div>
-    <div class="a2-metrics"></div>`;
+    <canvas class="a2-minimap" width="180" height="120" hidden></canvas>`;
   const stage = el.querySelector<HTMLElement>(".a2-stage")!;
   const badgeBox = el.querySelector<HTMLElement>(".a2-badges")!;
-  const metrics = el.querySelector<HTMLElement>(".a2-metrics")!;
+  const mini = el.querySelector<HTMLCanvasElement>(".a2-minimap")!;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const shown = prefs.unlinked === "hide"
@@ -135,13 +136,18 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
     if (g.hasEdge(e.source, e.target)) continue;
     const dir = DIRECTED.includes(e.type);
+    // 정본 §1.2 는 관계를 **선의 형태**로 가른다(실선·파선·점선·이중선). sigma 는
+    // 파선 프로그램이 없어 형태 대신 **굵기·농도 계단**으로 같은 서열을 만든다:
+    // 방향(뼈대) > 같은 주제 무방향(살) > 주제를 넘는 연결(배경 쪽) > 다리 매개.
+    // 범례도 이 서열을 그대로 설명한다(선 4종). 진짜 파선은 후속(커스텀 프로그램).
+    const bridged = e.type === "CONNECTS";
     const key = g.addEdge(e.source, e.target, {
       // 화살촉은 열린 층(prefs.arrows)이 켜져 있고 방향 관계일 때만.
       type: dir && prefs.arrows ? "arrow" : "line",
-      // 뼈대는 잉크에 가깝게, 살은 배경 쪽으로 섞어 눕힌다. `line()`(테두리색)은
-      // 뼈대로 쓰기엔 너무 옅어 방향 관계가 배경에 묻혔다(실측).
-      size: dir ? 1.8 : e.cross_domain ? 0.6 : 0.9,
-      color: dir ? inkMute() : mix(line(), bg, 0.35),
+      size: dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9,
+      color: dir ? inkMute()
+        : bridged ? mix(line(), bg, 0.22)
+        : e.cross_domain ? mix(line(), bg, 0.28) : mix(line(), bg, 0.35),
       directed: dir,
     });
     edgeOf.set(key, e);
@@ -214,19 +220,73 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   }
   sigma.on("afterRender", placeBadges);
 
-  // 지표 4종 — 추가 조회 없이 지금 그린 그래프에서 바로 센다(레퍼런스 하단 바).
-  const total = shown.length;
-  const linked = shown.filter((n) => (n.degree || 0) > 0).length;
-  const orphan = total - linked;
-  const rate = total ? Math.round((linked / total) * 100) : 0;
-  const latest = shown.map((n) => n.ts || "").filter(Boolean).sort().pop() || "";
-  const cell = (label: string, value: string) =>
-    `<span class="a2-metric"><b class="pl-num">${value}</b>${label}</span>`;
-  metrics.innerHTML =
-    cell(COPY.ui.atlasx.mDocs, String(total))
-    + cell(COPY.ui.atlasx.mLinked, `${rate}%`)
-    + cell(COPY.ui.atlasx.mOrphan, String(orphan))
-    + (latest ? cell(COPY.ui.atlasx.mLatest, latest.slice(0, 10)) : "");
+  // 지표 4종은 표면 공용 하단 바가 그린다(atlas.ts drawMetrics) — 관점마다
+  // 다른 자리에 다른 수치가 뜨지 않게 한 곳에서만 센다.
+
+  // ── 미니맵(정본 §2) — **줌인했을 때만** 뜬다 ────────────────────────────
+  // 전체가 이미 화면에 들어와 있을 때(기본 auto-fit) 미니맵은 같은 그림을 한 번 더
+  // 그리는 소음일 뿐이다. 카메라 ratio 가 1 보다 작아진(=파고든) 순간에만 나타나
+  // "지금 보는 곳이 전체의 어디인가"에 답한다. 클릭 = 그 자리로 점프.
+  const mctx = mini.getContext("2d")!;
+  const pts = shown.map((n) => ({ x: (n.x ?? 0) * prefs.spread, y: (n.y ?? 0) * prefs.spread }));
+  const bx0 = Math.min(...pts.map((p) => p.x), 0), bx1 = Math.max(...pts.map((p) => p.x), 0);
+  const by0 = Math.min(...pts.map((p) => p.y), 0), by1 = Math.max(...pts.map((p) => p.y), 0);
+  const mw = mini.width, mh = mini.height, mpad = 8;
+  const mx = (x: number) => mpad + ((x - bx0) / Math.max(bx1 - bx0, 1e-6)) * (mw - mpad * 2);
+  const my = (y: number) => mpad + ((y - by0) / Math.max(by1 - by0, 1e-6)) * (mh - mpad * 2);
+  function drawMini() {
+    const cam = sigma.getCamera();
+    // ratio >= 1 이면 전체가 보인다 = 미니맵이 답할 질문이 없다.
+    if (cam.ratio >= 0.98) { mini.hidden = true; return; }
+    mini.hidden = false;
+    mctx.clearRect(0, 0, mw, mh);
+    mctx.fillStyle = mix(ink(), bg, 0.5);
+    for (const p of pts) { mctx.beginPath(); mctx.arc(mx(p.x), my(p.y), 1.3, 0, 6.284); mctx.fill(); }
+    // 현재 뷰포트 사각형 — 카메라 중심(그래프 좌표)과 배율에서 역산한다.
+    const tl = sigma.viewportToGraph({ x: 0, y: 0 });
+    const br = sigma.viewportToGraph({ x: stage.clientWidth, y: stage.clientHeight });
+    mctx.strokeStyle = point();
+    mctx.lineWidth = 1.2;
+    mctx.strokeRect(mx(tl.x), my(tl.y), mx(br.x) - mx(tl.x), my(br.y) - my(tl.y));
+  }
+  sigma.on("afterRender", drawMini);
+  mini.addEventListener("click", (e) => {
+    const r = mini.getBoundingClientRect();
+    const gx = bx0 + ((e.clientX - r.left - mpad) / (mw - mpad * 2)) * (bx1 - bx0);
+    const gy = by0 + ((e.clientY - r.top - mpad) / (mh - mpad * 2)) * (by1 - by0);
+    const v = sigma.graphToViewport({ x: gx, y: gy });
+    const c = sigma.viewportToFramedGraph(v);
+    sigma.getCamera().animate({ x: c.x, y: c.y }, { duration: 260 });
+  });
+
+  // ── 노드 드래그 = 자리 옮기기 + 핀(정본 §2) ──────────────────────────────
+  // 좌표 정본은 사이드카(D17)라 여기서 옮긴 자리는 **이 세션에서만** 산다.
+  // 그래서 옮긴 노드에는 핀 표기를 달아 "내가 손댄 자리"임을 화면이 밝힌다 —
+  // 새로고침하면 원래 배치로 돌아간다는 사실을 숨기지 않는다.
+  let dragging: string | null = null;
+  const pinned = new Set<string>();
+  sigma.on("downNode", ({ node, event }) => {
+    dragging = node;
+    sigma.getCamera().disable();
+    event.preventSigmaDefault();
+  });
+  stage.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const r = stage.getBoundingClientRect();
+    const p = sigma.viewportToGraph({ x: e.clientX - r.left, y: e.clientY - r.top });
+    g.setNodeAttribute(dragging, "x", p.x);
+    g.setNodeAttribute(dragging, "y", p.y);
+  });
+  const endDrag = () => {
+    if (!dragging) return;
+    pinned.add(dragging);
+    g.setNodeAttribute(dragging, "type", "circle");
+    dragging = null;
+    sigma.getCamera().enable();
+    placeBadges();
+  };
+  stage.addEventListener("mouseup", endDrag);
+  stage.addEventListener("mouseleave", endDrag);
 
   // ── 입력 ────────────────────────────────────────────────────────────────
   sigma.on("enterNode", ({ node }) => { focus = node; sigma.refresh(); });
@@ -241,7 +301,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     event.preventSigmaDefault();
     event.original.preventDefault();
     const n = byId.get(node);
-    if (n && o.onRightClick) o.onRightClick(n);
+    if (n && o.onRightClick) o.onRightClick(n, event.original as MouseEvent);
   });
 
   return {
@@ -249,6 +309,10 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";
+    },
+    fit() {
+      // sigma 의 기본 카메라 상태 = auto-fit 결과. 되돌리면 곧 "전체 맞춤"이다.
+      sigma.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 300 });
     },
   };
 }

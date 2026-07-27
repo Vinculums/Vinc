@@ -157,6 +157,9 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
 class EmbeddedBackend:
     """LadybugDB/Kùzu 어댑터. `GraphStore` 구현(§4-2)."""
 
+    #: 마지막 open 실패 사유(진단용). 성공하면 빈 문자열.
+    last_open_error: str = ""
+
     def __init__(self, db, conn, driver_name: str, cfg: StoreConfig):
         self._db = db
         self._conn = conn
@@ -170,13 +173,26 @@ class EmbeddedBackend:
         if drv is None:
             return None
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
+        # 드라이버 자원 상한 — 지정된 것만 넘긴다(미지정 = 드라이버 기본값 유지).
+        # 왜 필요한가: Database 하나가 가상주소 8 TiB 를 예약해, Windows 에서는 한
+        # 프로세스가 14~15개까지만 연다(그 다음은 MemoryError: bad allocation).
+        # 앱은 하나만 열지만 테스트는 수십 개를 연다 — StoreConfig 참조.
+        kwargs: dict = {}
+        if getattr(cfg, "max_db_size", 0):
+            kwargs["max_db_size"] = int(cfg.max_db_size)
+        if getattr(cfg, "buffer_pool_mb", 0):
+            kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
         try:
-            db = drv.Database(data_dir)
+            db = drv.Database(data_dir, **kwargs)
             conn = drv.Connection(db)
-        except Exception:
-            # 스토어 열기 실패(락·손상·드라이버 초기화) → None 강등(§3-4).
-            # 호출부(execute)는 executed=False 로 처리.
+        except Exception as exc:
+            # 스토어 열기 실패(락·손상·자원 고갈) → None 강등(§3-4). 호출부는
+            # executed=False 로 처리한다. ⚠ 이유를 **삼키지 않는다**: 여태 None 만
+            # 돌려줘 "no reachable store" 한 줄로 뭉개졌고, 자원 고갈(MemoryError)이
+            # 스코프 격리 실패처럼 보이는 오진을 낳았다(로컬 Windows 10건의 정체).
+            cls.last_open_error = f"{type(exc).__name__}: {exc}"
             return None
+        cls.last_open_error = ""
         return cls(db, conn, name, cfg)
 
     @contextmanager
@@ -419,7 +435,13 @@ class EmbeddedBackend:
 
         복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — Kùzu 계보는 close
         시점에 체크포인트하므로, 열린 스토어를 그대로 복사하면 미반영(빈 테이블)
-        사본이 나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행."""
+        사본이 나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행.
+
+        ⚠ Windows: 열려 있는 DB 파일에는 **바이트 범위 락**이 걸려 있어 복사가
+        `WinError 33` 으로 실패한다(읽기조차 막힌다 — 실측). 리눅스는 같은 코드가
+        그냥 되므로 여태 드러나지 않았다. 그래서 복사 직전에 드라이버 핸들을 닫고,
+        복사 후 **같은 경로로 다시 연다** — 온디스크 형식이 그대로라 복원 경로
+        (`IMPORT` 아님, 폴더 교체)도 그대로다. 재오픈까지가 이 메서드의 계약이다."""
         import os
         import shutil
         try:
@@ -430,13 +452,63 @@ class EmbeddedBackend:
         os.makedirs(dest_dir, exist_ok=True)
         base = os.path.basename(src.rstrip("/")) or "store"
         dest = os.path.join(dest_dir, base)
-        if os.path.isdir(src):
-            shutil.copytree(src, dest, dirs_exist_ok=True)
-        elif os.path.exists(src):
-            shutil.copy2(src, dest)
+
+        def _copy() -> None:
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+            elif os.path.exists(src):
+                shutil.copy2(src, dest)
+                # WAL 도 함께 — 본 파일만 복사하면 체크포인트 이후 쓰기를 잃는다.
+                wal = src + ".wal"
+                if os.path.exists(wal):
+                    shutil.copy2(wal, dest + ".wal")
+
+        try:
+            _copy()
+            return dest
+        except (PermissionError, OSError):
+            pass   # 락으로 막혔다 — 아래에서 닫고 다시 시도한다
+
+        drv, _name = _import_driver()
+        for obj in (self._conn, self._db):
+            try:
+                closer = getattr(obj, "close", None)
+                if callable(closer):
+                    closer()
+            except Exception:
+                pass
+        self._conn = None
+        self._db = None
+        try:
+            _copy()
+        finally:
+            # 무슨 일이 있어도 스토어를 다시 연다 — 스냅샷 실패가 서비스를 죽이지 않게.
+            if drv is not None:
+                kwargs: dict = {}
+                if getattr(self._cfg, "max_db_size", 0):
+                    kwargs["max_db_size"] = int(self._cfg.max_db_size)
+                if getattr(self._cfg, "buffer_pool_mb", 0):
+                    kwargs["buffer_pool_size"] = int(self._cfg.buffer_pool_mb) * 1024 * 1024
+                self._db = drv.Database(src, **kwargs)
+                self._conn = drv.Connection(self._db)
         return dest
 
     def close(self) -> None:
-        # ladybug Connection/Database 는 GC 로 정리 — 명시 close 없음.
+        """커넥션·데이터베이스를 **명시적으로** 닫는다.
+
+        ⚠ 여태 참조만 끊고(`= None`) GC 에 맡겼는데, 드라이버는 Database 소멸 시점에
+        데이터 디렉토리의 **프로세스 락**을 푼다. GC 가 즉시 돌지 않는 Windows 에서는
+        락이 남아, 같은 경로를 다시 열면 `IO exception: Could not set lock on file` 로
+        실패한다 — 그러면 `open()` 이 None 을 돌려주고 호출부는 "스토어 도달 불가"로
+        강등돼, **쓴 데이터가 안 보이는** 증상이 된다(로컬 Windows 테스트 10건의
+        정체이자, 닫았다 여는 조회 경로의 잠재 사고). 드라이버가 close() 를 제공하므로
+        그것을 부른다. 이미 닫혔거나 미지원이면 조용히 참조만 끊는다(하위호환)."""
+        for obj in (self._conn, self._db):
+            try:
+                closer = getattr(obj, "close", None)
+                if callable(closer):
+                    closer()
+            except Exception:
+                pass   # 닫기 실패가 호출부를 깨뜨리지 않는다 — 참조는 아래에서 끊는다
         self._conn = None
         self._db = None

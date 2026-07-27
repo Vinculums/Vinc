@@ -100,20 +100,39 @@ export function renderSearch(el: HTMLElement) {
         if (!groups.has(d)) groups.set(d, []);
         groups.get(d)!.push(r);
       }
+      const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+        c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
       const row = (r: any) => {
         const marks = (r.arms || []).map((a: string) => MARK[a] || "").join("");
         const score = r.rrf_score ? ` data-tip="RRF ${r.rrf_score.toFixed(4)}"` : "";
+        // 착지 대상 — 노드 히트는 그 노드로, 청크 히트는 그 청크가 언급하는 개념이
+        // 없으므로 문서 자체로 보낸다(현재는 노드 히트만 Atlas 착지가 성립한다).
+        const target = r._node ? String(r.id || "") : "";
+        // 왜 맞았는지를 한 줄 더 보여준다(D24 §4.2) — 제목만으로는 고를 수 없다.
+        const snip = r.one_liner || r.snippet || r.text || r.section_title || "";
         return `
-          <div class="list-row">
-            <span class="title">${r.title || r.section_title || r.id}</span>
+          <div class="list-row" ${target ? `data-go="${esc(target)}"` : ""}
+               style="display:grid;grid-template-columns:1.4rem 1fr auto;gap:.6rem;align-items:baseline${target ? ";cursor:pointer" : ""}">
             <span class="meta"${score}>${marks || "≡"}</span>
-            <span class="actions"><button onclick="location.hash='#atlas'">${COPY.search.actions.atlas}</button></span>
+            <span style="min-width:0">
+              <span class="title">${esc(r.title || r.section_title || r.id)}</span>
+              ${snip ? `<span class="hint" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${
+                esc(String(snip).slice(0, 140))}</span>` : ""}
+            </span>
+            <span class="meta">${esc(r.domain || "")}</span>
           </div>`;
       };
       body.innerHTML = `<p class="hint">${COPY.search.matches(rows.length)}</p>` +
         [...groups.entries()].map(([d, rs]) =>
-          (d ? `<h3>${d} <span class="hint">${rs.length}</span></h3>` : "") +
+          (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +
           rs.map(row).join("")).join("");
+      // V2 — 여태 이 버튼은 `location.hash='#atlas'` 였다: 찾은 노드가 아니라 L0
+      // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
+      // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.
+      body.querySelectorAll<HTMLElement>("[data-go]").forEach((r) =>
+        r.addEventListener("click", () => {
+          location.hash = `#atlas/trace/${encodeURIComponent(r.dataset.go!)}`;
+        }));
     } catch {
       body.innerHTML = `<div class="error-banner">${COPY.search.error}</div>`;
     }

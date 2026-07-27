@@ -36,6 +36,16 @@ class StoreConfig:
     core_days: int = 30
     archival_days: int = 90
     tenant_id: str | None = None         # 단일 사용자: 상수 tenant:local (§3-3)
+    # ── 드라이버 자원 상한(Windows 다중 오픈 대응) ─────────────────────────────
+    # LadybugDB(Kùzu 계보)는 **Database 하나마다 가상주소 8 TiB 를 예약**한다
+    # (실측: `VirtualAlloc for size 8796093022208 failed`). 리눅스는 오버커밋으로
+    # 넘어가지만 Windows 는 커밋 한도가 있어 한 프로세스에서 14~15개까지만 열리고,
+    # 그 다음 오픈부터 `MemoryError: bad allocation` 이 난다. 앱은 스토어를 하나만
+    # 열어 무관하지만, **테스트 스위트는 수십 개를 연다** — 그래서 로컬 Windows 에서만
+    # 10여 건이 무너져 왔다(스코프 격리 실패처럼 보였지만 실제로는 오픈 실패였다).
+    # 0/None = 드라이버 기본값(무제한 예약). 값을 주면 그만큼만 예약한다.
+    max_db_size: int = 0                 # bytes. VINC_MAX_DB_SIZE
+    buffer_pool_mb: int = 0              # MB.    VINC_BUFFER_POOL_MB
     extra: dict = field(default_factory=dict)
 
     @property
@@ -63,6 +73,8 @@ def load_config(overrides: dict | None = None) -> StoreConfig:
         embedding_model=pick("embedding_model", "MEMORY_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
         tenant_id=overrides.get("tenant_id"),
     )
+    cfg.max_db_size = int(pick("max_db_size", "VINC_MAX_DB_SIZE", 0) or 0)
+    cfg.buffer_pool_mb = int(pick("buffer_pool_mb", "VINC_BUFFER_POOL_MB", 0) or 0)
     cfg.core_days = int(pick("core_days", "MEMORY_CORE_DAYS", 30))
     cfg.archival_days = int(pick("archival_days", "MEMORY_ARCHIVAL_DAYS", 90))
     return cfg

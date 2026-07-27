@@ -49,7 +49,12 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
     cypher = (
         f"MATCH (c:Concept) WHERE {' AND '.join(where)} "
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
-        "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, c.props AS props"
+        "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, c.props AS props, "
+        # created 를 싣지 않던 시절, 받는 쪽은 팩 개념의 시간을 **임포트 시각**으로만
+        # 알 수 있었다 — 스타터팩 하나를 넣으면 개념 수십 개가 같은 순간에 몰려
+        # 타임라인이 밴드 하나짜리 세로 목록이 됐다(실측). 가산 필드라 구 임포터는
+        # 그냥 무시한다.
+        "c.created AS created"
     )
     return q.QueryPlan("share_concepts", cypher, params, note="share projection (no preference)")
 
@@ -158,6 +163,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     for c in concepts:
         n = {"id": c["id"], "type": "concept", "title": c.get("title") or c["id"],
              "domain": c.get("domain") or "", "tags": c.get("tags") or []}
+        if c.get("created"):
+            n["created"] = c["created"]
         props = {}
         if c.get("topic"):
             props["topic"] = c["topic"]

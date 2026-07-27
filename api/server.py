@@ -507,6 +507,18 @@ class VincApp:
             apply=bool(body.get("apply")), candidates=body.get("candidates")))
         return 200, res
 
+    def write_evidence_backfill(self, body):
+        # U2 — 관계 근거(E-G6)의 **생산자**. 스키마에 열만 있고 채우는 곳이 없어
+        # 관계 패널이 언제나 "근거 없음"이었다. 정본 청크에서 두 개념이 같은 문장에
+        # 함께 나온 자리를 결정론으로 찾아 채운다(LLM 없음). 이미 근거가 있는
+        # 엣지는 건드리지 않으므로 반복 실행이 안전하다.
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 근거 저작은 소유 스코프(SEC-1)"}
+        res = self.jobs.run_sync("evidence.backfill", lambda: docstore.backfill_evidence(
+            self.store, owner=owner, doc_id=body.get("doc_id") or None))
+        return 200, res
+
     def write_domain_rename(self, body):
         # S2 — 도메인 일괄 변경/재배치. new='' 는 미분류로 내림(체감상 "도메인 삭제").
         # 전역 Domain 노드는 불변 — owner 노드의 domain 문자열만 바뀐다(query 주석).
@@ -918,6 +930,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
+            "/evidence/backfill": app.write_evidence_backfill,   # 관계 근거 저작(U2)
             "/embed/apply": app.write_embed_apply,   # 자체호스팅 임베딩 워커(B, 내부)
             "/domain/rename": app.write_domain_rename,   # 도메인 일괄 변경(S2)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,

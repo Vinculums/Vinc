@@ -1,50 +1,49 @@
-/** Share / Import sheets (Phase B — spec vinc.d.atlas-visual-language §5).
- *  The share sheet is the final editor: it shows everything that will leave
- *  (with per-node exclusion) and everything that won't (preference notice). */
+/** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
+ *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
+ *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
 import { api, cfg } from "./api";
 import { toBytes } from "./packfile";
 import { COPY } from "./copy";
+import { openSheet, sheetActions } from "./components";
 
-function overlay(): HTMLElement {
-  let el = document.getElementById("sheet-overlay");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "sheet-overlay";
-    el.style.cssText = "position:fixed;inset:0;z-index:60;background:hsl(var(--foreground)/.18);display:grid;place-items:start center;padding-top:8vh;overflow:auto";
-    document.body.appendChild(el);
-  }
-  el.hidden = false;
-  el.onclick = (e) => { if (e.target === el) el!.hidden = true; };
-  return el;
-}
+const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 export async function openShareSheet(scope: { ids?: string[]; seed?: string; domain?: string; depth?: number }) {
-  const el = overlay();
-  el.innerHTML = `<div class="palette-card" style="width:42rem"><p class="hint">${COPY.ui.sheet.preparing}</p></div>`;
+  const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
+                            subtitle: COPY.ui.sheet.shareSub, width: "40rem" });
+  sheet.body.innerHTML = `<p class="hint">${COPY.ui.sheet.preparing}</p>`;
   try {
     const pack = await api.share(cfg.owner, {
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
     });
     const nodes: any[] = pack.fragment?.nodes || [];
     const c = pack.manifest?.counts || {};
-    el.innerHTML = `
-      <div class="palette-card" style="width:42rem" role="dialog" aria-label="Share this slice">
-        <h2 style="margin:.2rem 0">${COPY.ui.sheet.shareTitle}</h2>
-        <p class="hint">${COPY.ui.sheet.counts(c.concepts ?? 0, c.edges ?? 0, c.records ?? 0)}</p>
-        <div style="max-height:16rem;overflow:auto;border:1px solid hsl(var(--border));border-radius:var(--radius);padding:.25rem .75rem;margin:.5rem 0">
-          ${nodes.map((n, i) => `
-            <label class="list-row" style="cursor:pointer">
-              <input type="checkbox" checked data-i="${i}" />
-              <span class="title">${n.title}</span><span class="meta">${n.domain || n.type}</span>
-            </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
-        </div>
-        <p class="hint">${COPY.ui.sheet.keepNote}</p>
-        <p><button class="btn btn-primary" id="sheet-save">${COPY.ui.sheet.save}</button>
-           <button class="btn" id="sheet-cancel">${COPY.ui.common.cancel}</button></p>
-      </div>`;
-    el.querySelector("#sheet-cancel")!.addEventListener("click", () => { el.hidden = true; });
-    el.querySelector("#sheet-save")!.addEventListener("click", () => {
-      const excluded = new Set([...el.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
+    sheet.body.innerHTML = `
+      <div class="sheet-spec">
+        <div><span class="hint">${COPY.ui.sheet.specScope}</span><b>${esc(
+          scope.seed ? COPY.ui.sheet.scopeSeed(scope.depth ?? 2)
+          : scope.domain ? scope.domain
+          : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
+          : COPY.ui.sheet.scopeAll)}</b></div>
+        <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? 0}</b></div>
+        <div><span class="hint">${COPY.ui.sheet.specLinks}</span><b>${c.edges ?? 0}</b></div>
+        <div><span class="hint">${COPY.ui.sheet.specFormat}</span><b>.vincpack</b></div>
+      </div>
+      <div class="sheet-list">
+        ${nodes.map((n, i) => `
+          <label class="list-row" style="cursor:pointer">
+            <input type="checkbox" checked data-i="${i}" />
+            <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
+          </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
+      </div>
+      <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "sheet-save", label: COPY.ui.sheet.save },
+      { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+    sheet.foot.querySelector("#sheet-save")!.addEventListener("click", () => {
+      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
         .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
       const keep = nodes.filter((n) => !excluded.has(n.id));
       const keepIds = new Set(keep.map((n) => n.id));
@@ -60,40 +59,73 @@ export async function openShareSheet(scope: { ids?: string[]; seed?: string; dom
         a.href = URL.createObjectURL(blob);
         a.download = `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`;
         a.click(); URL.revokeObjectURL(a.href);
-        el.hidden = true;
+        sheet.close();
       });
     });
   } catch {
-    el.innerHTML = `<div class="palette-card"><div class="error-banner">${COPY.packs.error}</div></div>`;
+    sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
   }
 }
 
 export function openImportSheet(pack: any, onDone?: (res: any) => void) {
-  const el = overlay();
   const m = pack?.manifest || {}; const c = m.counts || {};
   const n = (pack?.fragment?.nodes || []).length;
-  el.innerHTML = `
-    <div class="palette-card" style="width:36rem" role="dialog" aria-label="Import a pack">
-      <h2 style="margin:.2rem 0">${COPY.ui.sheet.importTitle}</h2>
-      <p class="hint">${COPY.ui.sheet.createdScope(m.created || "?", JSON.stringify(m.scope || {}))}</p>
-      <p>${COPY.ui.sheet.updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0)}</p>
-      <p><button class="btn btn-primary" id="sheet-import">${COPY.ui.sheet.importMine}</button>
-         <button class="btn" id="sheet-cancel">${COPY.ui.common.cancel}</button></p>
-      <div id="sheet-result" role="status"></div>
-    </div>`;
-  el.querySelector("#sheet-cancel")!.addEventListener("click", () => { el.hidden = true; });
-  el.querySelector("#sheet-import")!.addEventListener("click", async () => {
-    const out = el.querySelector<HTMLElement>("#sheet-result")!;
+  const sheet = openSheet({ title: COPY.ui.sheet.importTitle,
+                            subtitle: COPY.ui.sheet.importSub, width: "34rem" });
+  sheet.body.innerHTML = `
+    <div class="sheet-spec">
+      <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(String(m.created || "?").slice(0, 10))}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? n}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specLinks}</span><b>${c.edges ?? 0}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specDocs}</span><b>${(pack?.documents || []).length}</b></div>
+    </div>
+    <p>${COPY.ui.sheet.updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0)}</p>
+    <div id="sheet-result" role="status"></div>`;
+  sheet.foot.innerHTML = sheetActions(
+    { id: "sheet-import", label: COPY.ui.sheet.importMine },
+    { id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  sheet.foot.querySelector("#sheet-import")!.addEventListener("click", async () => {
+    const out = sheet.body.querySelector<HTMLElement>("#sheet-result")!;
     out.innerHTML = `<p class="hint">${COPY.packs.importing}</p>`;
     try {
       const res = await api.importPack(pack, cfg.owner);
       if (res.executed === false) throw new Error(res.error);
       const mm = res.merged?.nodes || {};
-      out.innerHTML = `<p>${COPY.packs.imported(mm.created ?? 0, mm.matched ?? 0)}</p>
-        <a class="btn" href="#atlas" onclick="document.getElementById('sheet-overlay').hidden=true">${COPY.ui.sheet.viewAtlas}</a>`;
+      out.innerHTML = `<p>${COPY.packs.imported(mm.created ?? 0, mm.matched ?? 0)}</p>`;
+      sheet.foot.innerHTML = sheetActions(
+        { id: "sheet-go", label: COPY.ui.sheet.viewAtlas });
+      sheet.foot.querySelector("#sheet-go")!.addEventListener("click", () => {
+        sheet.close();
+        location.hash = "#atlas";
+        location.reload();   // 그래프가 통째로 바뀌었다 — 현재 층을 새로 세운다
+      });
       onDone?.(res);
     } catch {
       out.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
     }
   });
+}
+
+/** 파일에서 팩을 골라 가져오기 시트를 연다(상단 바 `가져오기`의 실체).
+ *  파일 입력은 만들었다 버리는 일회용 — 셸에 숨은 input 을 남기지 않는다. */
+export function pickAndImport(onDone?: (res: any) => void) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".vincpack,.json,application/json,application/zip";
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.addEventListener("change", async () => {
+    const f = input.files?.[0];
+    input.remove();
+    if (!f) return;
+    try {
+      const { readPackFile } = await import("./packfile");
+      openImportSheet(await readPackFile(f), onDone);
+    } catch {
+      const sheet = openSheet({ title: COPY.ui.sheet.importTitle });
+      sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
+    }
+  });
+  input.click();
 }

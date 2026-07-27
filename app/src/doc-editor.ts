@@ -52,6 +52,15 @@ export function renderMarkdown(src: string): string {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
+/** 마운트 핸들 — 읽기/편집 전환이 **같은 렌더 위에서** 일어난다(D45-E 개정).
+ *  구조상 Reader 라는 별도 화면이 없어졌다: 문서는 언제나 렌더된 모습이고,
+ *  편집을 켜면 그 자리에 커서가 생길 뿐이다. */
+export type DocEditorHandle = {
+  dispose: () => void;
+  setEditable: (on: boolean) => void;
+  isEditable: () => boolean;
+};
+
 export type DocEditorOpts = {
   owner: string;
   docId?: string;         // 없으면 신규(첫 저장 시 생성 → 반환 id 로 이후 편집)
@@ -60,11 +69,17 @@ export type DocEditorOpts = {
   contentHash?: string;   // 로드 시점 해시(충돌 감지 기준)
   onSaved?: (docId: string, title: string) => void;
   onClose?: () => void;
+  /** 읽기로 시작(문서 보기). 편집은 호출부가 setEditable(true) 로 켠다. */
+  readOnly?: boolean;
+  /** 이 개념이 언급된 위치(백엔드 계산 char 오프셋) — 렌더 위에 밑줄. */
+  highlights?: { char_start: number; char_end: number }[];
+  /** 제목 줄을 숨긴다(레일처럼 바깥에 이미 제목이 있는 자리). */
+  hideTitle?: boolean;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
  *  버튼 제공). 반환 = dispose. */
-export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Promise<() => void> {
+export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Promise<DocEditorHandle> {
   let docId = opts.docId;
   let title = opts.title || "";
   let initial = opts.initial ?? "";
@@ -75,13 +90,13 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     const doc = await api.docGet(opts.owner, docId);
     if (!doc.executed || doc.text === undefined) {
       host.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerFail}</p>`;
-      return () => {};
+      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
   }
 
   host.innerHTML = `
-    <div class="doc-ed-bar" style="display:flex;gap:.5rem;align-items:center">
+    <div class="doc-ed-bar" ${opts.hideTitle ? "hidden" : ""} style="display:flex;gap:.5rem;align-items:center">
       <input id="ed-title" placeholder="${esc(COPY.ui.atlasx.edTitlePlaceholder)}"
         value="${esc(title)}" style="flex:1;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
@@ -133,14 +148,23 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   try {
     const mod = await import("./codemirror-editor");
     const cmHost = document.createElement("div");
-    cmHost.style.cssText = "border:1px solid hsl(var(--border));border-radius:6px;"
-      + "padding:.25rem;margin-top:.4rem;max-height:52vh;overflow:auto";
+    cmHost.style.cssText = opts.hideTitle
+      // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
+      ? "margin-top:.2rem"
+      : "border:1px solid hsl(var(--border));border-radius:6px;"
+        + "padding:.25rem;margin-top:.4rem;max-height:52vh;overflow:auto";
     src.replaceWith(cmHost);
     prev.remove();
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),
-      slash: slashItems });
+      slash: slashItems, readOnly: opts.readOnly });
+    if (opts.highlights?.length) {
+      cm.setHighlights(opts.highlights);
+      // 첫 언급으로 스크롤 — 레이아웃이 앉은 뒤라야 좌표가 맞는다.
+      requestAnimationFrame(() => cm?.scrollToHighlight());
+    }
   } catch {
     src.value = initial;
+    src.readOnly = !!opts.readOnly;
     prev.innerHTML = renderMarkdown(initial);
     src.addEventListener("input", onEdited);
     src.addEventListener("keydown", (e) => {
@@ -241,8 +265,21 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     } catch { extractBox.innerHTML = ""; }
   }
 
-  (cm ? { focus: () => cm!.focus() } : src).focus();
-  return () => { if (timer) window.clearTimeout(timer); if (cm) cm.destroy(); };
+  // 읽기로 시작하면 포커스를 뺏지 않는다(레일이 열리자마자 커서가 깜빡이지 않게).
+  if (!opts.readOnly) (cm ? { focus: () => cm!.focus() } : src).focus();
+  let editable = !opts.readOnly;
+  return {
+    dispose: () => { if (timer) window.clearTimeout(timer); if (cm) cm.destroy(); },
+    setEditable: (on: boolean) => {
+      editable = on;
+      const bar = host.querySelector<HTMLElement>(".doc-ed-bar");
+      if (bar && !opts.hideTitle) bar.hidden = false;
+      if (cm) cm.setEditable(on); else src.readOnly = !on;
+      // 편집을 끄면 마지막 상태를 즉시 확정한다(디바운스를 기다리지 않는다).
+      if (!on) void save();
+    },
+    isEditable: () => editable,
+  };
 }
 
 /** 오버레이 시트로 편집기를 연다(Records/Intake 진입점). 저장은 편집기 내부에서
@@ -250,48 +287,36 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 export async function openDocSheet(opts: {
   owner: string; docId?: string; onSaved?: (docId: string, title: string) => void;
 }): Promise<void> {
-  let el = document.getElementById("doc-ed-overlay");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "doc-ed-overlay";
-    el.style.cssText = "position:fixed;inset:0;z-index:60;background:hsl(var(--foreground)/.18);"
-      + "display:grid;place-items:start center;padding-top:6vh;overflow:auto";
-    document.body.appendChild(el);
-  }
-  el.hidden = false;
-  const card = document.createElement("div");
-  card.className = "palette-card";
-  card.style.cssText = "width:min(52rem,92vw)";
-  // 삭제는 **기존 문서에만** 보인다(신규 미저장 문서는 지울 게 없다).
-  card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:.5rem">
-    <span>${opts.docId ? `<button class="btn" id="ed-del">${COPY.ui.atlasx.del}</button>` : ""}</span>
-    <button class="btn" id="ed-close">${COPY.ui.atlasx.edDone}</button></div>
-    <div id="ed-host"></div>`;
-  el.innerHTML = "";
-  el.appendChild(card);
-  const overlayEl = el;
-  const dispose = await mountDocEditor(card.querySelector<HTMLElement>("#ed-host")!, {
+  const { openSheet, sheetActions, confirmDestructive: confirmD } = await import("./components");
+  let handle: DocEditorHandle | null = null;
+  const sheet = openSheet({
+    title: opts.docId ? COPY.ui.atlasx.readerTitle : COPY.ui.atlasx.edNew,
+    bare: true, width: "52rem",
+    onClose: () => handle?.dispose(),
+  });
+  sheet.body.innerHTML = `<div id="ed-host"></div>`;
+  handle = await mountDocEditor(sheet.body.querySelector<HTMLElement>("#ed-host")!, {
     owner: opts.owner, docId: opts.docId, onSaved: opts.onSaved,
   });
-  const close = () => { dispose(); overlayEl.hidden = true; };
-  card.querySelector("#ed-close")!.addEventListener("click", close);
-  overlayEl.onclick = (e) => { if (e.target === overlayEl) close(); };
-  // S1 — 문서 삭제(기존 문서에만). 확인 후 실행하고, 성공하면 시트를 닫고
-  // 호출부 목록을 갱신한다(onSaved 재사용 — "목록 새로고침" 신호로 동작).
-  const delBtn = card.querySelector<HTMLElement>("#ed-del");
-  delBtn?.addEventListener("click", async () => {
-    const title = card.querySelector<HTMLInputElement>("#ed-title")?.value
+  // 발: 삭제(부, 왼쪽) · 완료(주, 오른쪽). 시트 규격 그대로 — 주 액션은 늘 오른쪽 끝.
+  sheet.foot.innerHTML = sheetActions(
+    { id: "ed-close", label: COPY.ui.atlasx.edDone },
+    undefined,
+    opts.docId ? { id: "ed-del", label: COPY.ui.atlasx.del } : undefined);
+  sheet.foot.querySelector("#ed-close")!.addEventListener("click", sheet.close);
+  sheet.foot.querySelector("#ed-del")?.addEventListener("click", async () => {
+    const title = sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value
       || COPY.ui.atlasx.edTitlePlaceholder;
-    const ok = await confirmDestructive(COPY.ui.atlasx.delDocAsk(title),
-      COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel);
-    if (!ok) return;
+    if (!await confirmD(COPY.ui.atlasx.delDocAsk(title),
+                        COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel)) return;
     try {
       const res = await api.docDelete(opts.owner, opts.docId!);
       if (!res.executed) throw new Error(res.error || "delete failed");
-      close();
+      sheet.close();
       opts.onSaved?.(opts.docId!, "");
     } catch {
-      delBtn.textContent = COPY.ui.atlasx.delFail;
+      const b = sheet.foot.querySelector<HTMLElement>("#ed-del");
+      if (b) b.textContent = COPY.ui.atlasx.delFail;
     }
   });
 }

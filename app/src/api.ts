@@ -147,6 +147,18 @@ export type GraphEdge = {
   confidence?: number;  // D43 — 0..1. 상류 미저작이면 키 자체가 없다
   evidence?: string;    // D43 — 근거 문장. 툴팁 전용
 };
+/** 상세 레일의 연결 요약 + 관계 목록(node-context ④). 세는 자리가 노드 자신이라
+ *  어느 동선(그래프 클릭 · 드릴다운 · 기간 목록 · 검색 착지)으로 열어도 같은 값이다. */
+export type NodeLink = {
+  id: string; title: string; domain: string; type: string;
+  dir: "out" | "in" | "att";
+  evidence: boolean;      // 근거 문장이 기록돼 있는가(문장 전문은 edge-context)
+  confidence: number;
+};
+export type NodeLinks = {
+  degree: number; out: number; in: number; attached: number;
+  items: NodeLink[]; truncated: boolean; executed: boolean;
+};
 export type LedgerRow = {
   // D52 by=concept: `domain` 은 개념 id, `label` 은 제목, `topic` 은 그 개념의 주제.
   // by=domain(기본)에서는 `domain` 이 곧 주제이고 label/topic 은 없다.
@@ -185,10 +197,13 @@ export const api = {
   suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
   // D45-V — 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
   // arm: 'mentions'(언급 링크) | 'fts'(제목 일치 폴백) | 'none'(발췌 없음 — 무해).
+  // links(신설): 상세 레일 수치의 정본. 구 사이드카 응답엔 키 자체가 없다 —
+  // 프론트는 그 부재로 구버전을 판별해 그래프 잔상 집계로 우아하게 강등한다.
   nodeContext: (owner: string, node: string, limit = 4): Promise<{
     executed: boolean; title?: string; one_liner?: string; arm?: string;
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
+    links?: NodeLinks;
   }> => call("/node-context", { owner, node, limit }),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
   docGet: (owner: string, id: string): Promise<{
@@ -205,6 +220,10 @@ export const api = {
   }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}), ...(title ? { title } : {}) }),
   docReembed: (owner: string, id: string): Promise<{ executed: boolean; docs?: number }> =>
     call("/doc/reembed", undefined, { owner, id }),
+  // U2 — 관계 근거 저작(정본 청크에서 결정론 추출). 반복 실행 안전(있는 근거는 보존).
+  evidenceBackfill: (owner: string, docId?: string): Promise<{
+    executed: boolean; filled?: number; scanned?: number;
+  }> => call("/evidence/backfill", undefined, { owner, ...(docId ? { doc_id: docId } : {}) }),
   docExtract: (owner: string, id: string, apply = false): Promise<{
     executed: boolean; candidates?: { title: string }[];
     applied?: { created: number; matched: number }; mentions?: number;

@@ -5,10 +5,16 @@ import { version } from "./package.json";
 // same-origin, so no CORS surface is added to the sidecar. The Tauri shell
 // (P4) replaces this with its own origin policy.
 const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
-const PATHS = ["/health", "/atlas", "/graph", "/recall", "/search", "/domains",
-  "/learner", "/decide", "/activate", "/backup", "/pin", "/tag", "/touch",
-  "/ingest", "/jobs", "/plan", "/share", "/coupling", "/suggest-ties",
-  "/sync", "/connect"];
+// ⚠ 이 목록은 **드리프트 원천**이다: 사이드카에 라우트를 더하고 여기 등재를 잊으면
+// 브라우저 dev 에서 그 요청만 index.html(200)을 받아, 앱은 "사이드카가 꺼졌다"고
+// 오진한다(실측: /ledger·/doc·/node-context 12종이 빠져 Sankey·Reader 가 통째로
+// 죽어 있었다). 개별 열거 대신 **접두 정규식 하나**로 바꿔 새 라우트가 자동으로
+// 실린다 — 앱이 부르는 경로는 전부 아래 접두 중 하나로 시작한다.
+// (앱 자산은 /, /src, /@vite, /node_modules 로 오므로 충돌하지 않는다.)
+const API_RE = new RegExp("^/(health|atlas|graph|ledger|recall|search|domains|learner"
+  + "|decide|activate|backup|pin|tag|touch|ingest|jobs|plan|share|coupling"
+  + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node-context|edge-context"
+  + "|ledger-drilldown|delete|delete-edge|merge-nodes|promote-candidates|domain|evidence)(/|$|\\?)");
 
 export default defineConfig({
   // base: 셸/브라우저 dev 는 루트("/"). 웹 Vinc 는 vincs.app/app/ 로 서빙하므로
@@ -20,6 +26,6 @@ export default defineConfig({
   // "어느 버전에서 났는지" 혼동을 원천 차단한다(macOS v0.1.6 리포트 대응).
   define: { __APP_VERSION__: JSON.stringify(version) },
   server: {
-    proxy: Object.fromEntries(PATHS.map((p) => [p, { target: SIDECAR, changeOrigin: true }])),
+    proxy: { [API_RE.source]: { target: SIDECAR, changeOrigin: true } },
   },
 });

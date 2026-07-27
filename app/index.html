@@ -21,8 +21,13 @@
     </div>
     <!-- 공홈 GNB는 웹 빌드(data-skin=web)에서만 main.ts가 공유 /assets/gnb.js 를 런타임 주입한다.
          데스크탑 셸에선 미주입 → 앱 크롬(좌측 레일)만. (단일 소스: Vinc-homepage/site/assets/gnb.js) -->
+    <!-- D56 — 셸은 상단 바 하나다(좌측 LNB 폐지). 그 자리를 차지하던 것들의 새 집:
+         표면 전환 = 크럼 + Ctrl/Cmd+K 팔레트 · DOMAINS 목록 = Atlas L0 주제 표
+         (거기서 이름 변경까지) · 공유 = 상단 버튼(올가미는 지름길로 존치).
+         근거: 구 레일은 폭 208px 를 상시 먹으면서 DOMAINS 행이 클릭조차 되지 않는
+         장식이었다(실측). -->
     <div id="shell">
-      <nav id="rail" aria-label="Surfaces">
+      <header id="topbar">
         <div id="brand" title="Vinc">
           <svg class="brand-logo" viewBox="1.9 0 66.4 63" role="img" aria-label="Vinc">
             <defs>
@@ -35,22 +40,33 @@
             <path fill="url(#vinc-brand-tip)" d="M3.86041 7.35091C2.56731 4.8785 1.92075 3.6423 2.04804 2.69691C2.16092 1.85854 2.59746 1.13737 3.28792 0.64862C4.06651 0.097477 5.44973 0.0971137 8.21617 0.0963872L14.291 0.0947918C15.1057 0.0945778 15.513 0.0944709 15.5751 0.0970306C15.852 0.108439 15.6292 0.0869573 15.9032 0.128671C15.9647 0.13803 16.109 0.166174 16.3977 0.22246C16.5558 0.253299 16.5036 0.548182 16.3487 0.592308C9.52905 2.53495 8.30154 9.5045 9.79969 15.8897C10.1438 17.3277 10.6202 18.7291 11.2226 20.0751C12.215 22.3256 13.4312 24.5429 14.5848 26.7124L18.5321 34.1941L21.834 40.4412C23.6168 43.8629 24.9579 46.7259 27.8544 49.3657C34.5318 55.4509 41.8297 52.0686 46.0951 44.9843C46.1322 44.9227 46.2156 44.9074 46.2712 44.9529C46.3134 44.9873 46.3265 45.0461 46.3024 45.095C45.7979 46.1186 45.0331 47.3751 44.4811 48.4279C42.7332 51.8159 40.9544 55.1872 39.1448 58.541C37.9771 60.7226 37.3932 61.8134 36.7769 62.2292C35.7365 62.931 34.4528 62.9292 33.4144 62.2244C32.7993 61.8069 32.2244 60.7257 31.0747 58.5631L12.3646 23.3702C9.79425 18.4665 7.19672 13.5777 4.57219 8.70416C4.33567 8.25768 4.09842 7.80597 3.86041 7.35091Z"/>
             <path fill="url(#vinc-brand-tip)" d="M58.4066 0.025589C59.3877 0.046639 60.6496 0.0130453 61.5999 0.0607452C61.8525 0.0585323 62.1051 0.0576938 62.3577 0.0558624C63.6175 0.04673 64.5644 0.0399937 65.2943 0.104691C66.0242 0.169399 66.5413 0.305844 66.9398 0.586136C67.6198 1.0645 68.09 1.84095 68.1985 2.66524C68.2621 3.1483 68.1436 3.67035 67.8626 4.34688C67.5816 5.02323 67.136 5.8578 66.5443 6.96895C65.7597 8.44203 64.9704 9.91322 64.1829 11.3801L61.8343 15.7668L54.5306 29.634C54.4879 29.7143 54.3781 29.7264 54.3187 29.6574C54.2837 29.6168 54.2768 29.5591 54.3021 29.5119C55.6688 26.9687 56.9708 24.3768 58.3294 21.8283C59.689 19.2778 61.5373 14.8671 62.2064 10.6447C62.8758 6.41976 62.3625 2.39746 59.0159 0.601761C58.6938 0.428894 58.3159 0.349251 57.9485 0.323441C57.6799 0.304563 57.3916 0.283391 57.2659 0.277542C57.2391 0.276295 57.2133 0.266555 57.1927 0.249222C57.1624 0.223694 57.1486 0.186693 57.1536 0.152542C57.1589 0.117599 57.1843 0.0878384 57.2249 0.0783234C57.3771 0.042775 57.6145 0.0305941 57.8411 0.0265656C57.9548 0.0245464 58.0665 0.0252499 58.1644 0.025589C58.2626 0.0259299 58.3479 0.0264659 58.4066 0.025589Z"/>
           </svg>
-          <span class="rail-label">Vinc</span>
         </div>
-        <div class="rail-nav">
-          <a href="#atlas" data-surface="atlas" data-icon="graph"><span class="rail-label">Atlas</span></a>
-          <a href="#search" data-surface="search" data-icon="search"><span class="rail-label">Search</span></a>
-          <a href="#packs" data-surface="packs" data-icon="recall"><span class="rail-label">Packs</span></a>
+
+        <!-- 크럼 = 1급 시민. 캔버스 위에 뜬 저대비 텍스트가 아니라 바에 고정된다.
+             내용은 활성 표면이 채운다(Atlas 는 trail, 나머지는 표면 이름). -->
+        <nav id="tb-crumb" aria-label="Location"></nav>
+
+        <!-- 상시 검색(D57) — 조회는 그래프를 훑는 일이 아니라 이름을 대는 일이다.
+             Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#atlas/trace/<id>). -->
+        <div id="tb-search">
+          <span class="tb-sicon" aria-hidden="true"></span>
+          <input id="tb-q" type="search" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" aria-controls="tb-results" />
+          <span class="tb-kbd" id="tb-kbd"></span>
+          <div id="tb-results" role="listbox" hidden></div>
         </div>
-        <div class="rail-section" id="rail-domains-wrap" hidden>
-          <div class="rail-section-label">DOMAINS</div>
-          <div id="rail-domains"></div>
+
+        <div id="tb-actions">
+          <!-- 팩 가져오기 = 상시 진입점. 폐지한 LNB 에 있던 Packs 링크가 사라지면서
+               그래프가 비지 않은 뒤로는 **가져올 길이 없었다**(빈 상태 CTA 와 팔레트
+               뿐). 들여오기와 내보내기는 짝이라 나란히 둔다. -->
+          <button class="btn" id="tb-import"></button>
+          <button class="btn" id="tb-share" hidden></button>
+          <button class="tb-icon" id="settings-btn" data-icon="settings"
+                  aria-haspopup="dialog"></button>
+          <span class="rail-sync"><span class="sync-dot"></span><span id="sync-status"></span></span>
         </div>
-        <div class="rail-foot">
-          <button id="settings-btn" data-icon="settings" aria-haspopup="dialog"><span class="rail-label">Settings</span></button>
-          <div class="rail-sync"><span class="sync-dot"></span><span id="sync-status" class="rail-label">Local</span></div>
-        </div>
-      </nav>
+      </header>
       <main id="surface" aria-live="polite"></main>
       <div id="settings-scrim" hidden></div>
       <div id="settings-popover" role="dialog" aria-label="Settings" aria-modal="true" hidden></div>

@@ -273,8 +273,15 @@ export async function renderSettings(el: HTMLElement) {
 
   // ── Data 탭 ───────────────────────────────────────────────────────────────
   function renderData(body: HTMLElement) {
+    // Packs 표면(전체 백업·커뮤니티 게시)은 상단 바에 가져오기·공유가 올라온 뒤
+    // 보이는 진입점이 없어졌다. 데이터 관리의 맥락인 여기서 열 수 있게 둔다.
     body.innerHTML = `
-      <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>`;
+      <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
+      <p><button class="btn" id="s-packs">${COPY.ui.packsUi.openPacks}</button></p>`;
+    body.querySelector("#s-packs")!.addEventListener("click", () => {
+      (document.getElementById("settings-btn") as HTMLElement).click();   // 팝오버 닫기
+      location.hash = "#packs";
+    });
   }
 
   // ── Advanced 탭 (셸 전용) ─────────────────────────────────────────────────
