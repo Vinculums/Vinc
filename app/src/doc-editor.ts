@@ -291,7 +291,7 @@ export async function openDocSheet(opts: {
   let handle: DocEditorHandle | null = null;
   const sheet = openSheet({
     title: opts.docId ? COPY.ui.atlasx.readerTitle : COPY.ui.atlasx.edNew,
-    bare: true, width: "52rem",
+    bare: true, size: "write",
     onClose: () => handle?.dispose(),
   });
   sheet.body.innerHTML = `<div id="ed-host"></div>`;

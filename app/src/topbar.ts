@@ -14,8 +14,8 @@ import { icon } from "./icons";
  *  (보이는 손잡이는 반드시 무언가를 한다는 규율, VIEW_ROWS 와 같은 태도).
  *
  *  검색 드롭다운은 **노드 히트만** 싣는다: 청크(문서 조각) 히트는 Atlas 에 착지할
- *  대상이 없어 "눌렀는데 아무 데도 안 가는 줄"이 된다. 문서까지 훑는 전체 검색은
- *  Search 표면이 계속 담당하고, 여기서 Enter 를 두 번(빈 결과) 누르면 그리로 보낸다. */
+ *  대상이 없어 "눌렀는데 아무 데도 안 가는 줄"이 된다. 문서 전체를 훑는 일은
+ *  `모든 문서` 시트가 맡는다(표면 이동 아님 — 닫으면 하던 자리로 돌아온다). */
 
 export type AtlasHooks = {
   /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 Atlas 가 정한다). */
@@ -71,17 +71,17 @@ export function mountTopbar() {
   // 가져오기 — 표면과 무관하게 언제나 눌린다(Atlas 훅에 매이지 않는다).
   const imp = $("tb-import");
   if (imp) {
-    imp.innerHTML = icon("upload", 15) + `<span>${COPY.ui.sheet.importCta}</span>`;
+    imp.innerHTML = icon("pack-in", 15) + `<span>${COPY.ui.sheet.importCta}</span>`;
     imp.setAttribute("data-tip", COPY.ui.sheet.importTip);
     imp.addEventListener("click", async () => {
-      const { pickAndImport } = await import("./sheets");
-      pickAndImport();
+      const { openIntakeSheet } = await import("./sheets");
+      openIntakeSheet();
     });
   }
 
   const share = $("tb-share");
   if (share) {
-    share.innerHTML = icon("pack-export", 15) + `<span>${COPY.ui.topbar.share}</span>`;
+    share.innerHTML = icon("share-nodes", 15) + `<span>${COPY.ui.topbar.share}</span>`;
     share.setAttribute("data-tip", COPY.ui.topbar.shareTip);
     share.addEventListener("click", () => hooks?.share());
   }
@@ -136,13 +136,28 @@ export function mountTopbar() {
     open();
   }
 
-  /** 전체 문서 브라우즈로 가는 유일한 상시 진입점. 표면 목록(구 LNB)을 없애면서
-   *  Search 표면이 키보드로만 닿는 곳이 됐다 — 팩 가져오기와 같은 병이었다. */
+  /** 전체 문서 목록 — **시트로 연다**(표면 이동 아님).
+   *
+   *  검색 중에 목록을 보려고 화면을 통째로 갈아타면 보고 있던 지도와 스코프를
+   *  잃는다(돌아오려면 크럼을 다시 밟아야 한다). 목록은 "지금 하던 일을 잠깐 멈추고
+   *  훑는 것"이라 시트가 맞다 — 닫으면 있던 자리로 그대로 돌아온다.
+   *
+   *  두 플랫폼 공통 경로다: 웹앱은 별도 OS 창을 못 열고, 데스크탑도 지금 셸은
+   *  단일 창(tauri.conf `windows:[main]`, capability `windows:["main"]`)이라
+   *  창 분리는 권한 추가가 선행돼야 한다 — 그건 데스크탑 릴리스에 실리는 별건. */
+  async function openAllDocs() {
+    close(); q.blur();
+    const [{ openSheet }, { renderBrowse }] = await Promise.all([
+      import("./components"), import("./surfaces/records"),
+    ]);
+    const sheet = openSheet({ title: COPY.ui.topbar.browseAll, size: "browse" });
+    void renderBrowse(sheet.body);
+  }
+
   function wireAll() {
     box.querySelector("#tb-all")?.addEventListener("mousedown", (e) => {
       e.preventDefault();
-      close(); q.blur();
-      location.hash = "#search";
+      void openAllDocs();
     });
   }
 
@@ -171,7 +186,11 @@ export function mountTopbar() {
     } catch {
       if (mine !== seq) return;
       hits = [];
-      box.innerHTML = `<p class="hint tb-rnote">${COPY.search.error}</p>`;
+      // 실패해도 막다른 골목을 만들지 않는다 — 목록으로 가는 길은 남긴다
+      // (검색이 죽었다고 문서에 닿을 방법까지 사라지면 안 된다).
+      box.innerHTML = `<p class="hint tb-rnote">${COPY.search.error}</p>`
+        + `<button class="tb-all" id="tb-all">${COPY.ui.topbar.browseAll}</button>`;
+      wireAll();
       open();
     }
   }
@@ -188,9 +207,10 @@ export function mountTopbar() {
     if (e.key === "Escape") { close(); q.blur(); return; }
     if (e.key !== "Enter") return;
     e.preventDefault();
-    // 결과가 있으면 첫 줄로 착지, 없으면 전체 검색 표면으로 넘긴다(막다른 골목 금지).
+    // 결과가 있으면 첫 줄로 착지, 없으면 전체 목록을 연다(막다른 골목 금지).
+    // 여기도 표면 이동이 아니라 시트다 — 드롭다운의 `모든 문서` 와 같은 자리로 간다.
     if (hits.length) go(hits[0]);
-    else if (q.value.trim()) location.hash = "#search";
+    else if (q.value.trim()) void openAllDocs();
   });
 
   // Ctrl/Cmd+K 는 팔레트가 이미 쓰는 키다 — 여기서는 **검색 필드 포커스**로 통일한다

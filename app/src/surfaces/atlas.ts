@@ -5,8 +5,8 @@ import { api, cfg, type GraphEdge, type GraphNode, type LedgerRes, type LedgerRo
 import { COPY } from "../copy";
 import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d";
 import { mount2d, type Handle2d } from "./atlas2d";
-import { mountTimeline, mountTotals, timelinePool,
-         type PlanarHandle } from "./atlas-planar";
+import { foldLedgerPaths, mountTimeline, mountTotals, timelinePool,
+         type PlanarHandle, type TotalsPath } from "./atlas-planar";
 import { openShareSheet } from "../sheets";
 import { openContextMenu, confirmDestructive } from "../components";
 
@@ -1530,6 +1530,7 @@ export async function renderAtlas(el: HTMLElement) {
       setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
       let res: LedgerRes;
       let rows: LedgerRow[] = [];
+      let paths: TotalsPath[] | undefined;   // D63 — 경로 보존 튜플(주제 알갱이 전용)
       try {
         // l2 는 ego 롤업(씨앗 주변 — L2 서브그래프와 같은 depth 2 순회)을 요청한다.
         // domain 은 **구버전 폴백 힌트**로 함께 싣는다: 구 사이드카는 seed 를 조용히
@@ -1540,9 +1541,14 @@ export async function renderAtlas(el: HTMLElement) {
         // 돌려주므로, 응답의 `by` 에코로 판별해 라벨만 주제로 떨어뜨린다.
         const grain: "domain" | "concept" =
           seed === undefined && domain !== undefined ? "concept" : "domain";
+        // D63 — 주제 알갱이 화면(L0·l2)도 **개념 행**으로 받는다: 경로 보존 리본은
+        // (출처×주제×상태) 교차표가 필요한데 도메인 롤업은 주변합만 준다. 노드 행은
+        // 클라이언트에서 접는다(foldLedgerPaths — 사이드카 롤업과 같은 규칙). 구
+        // 사이드카는 by 를 조용히 무시하고 도메인 롤업을 돌려주므로(res.by 부재)
+        // 접기·튜플 없이 종전 인접 교차로 자연 강등된다.
         res = await api.ledger(cfg.owner,
-          seed !== undefined ? { seed, depth: 2, ...(domain ? { domain } : {}) }
-          : domain ? { domain, by: grain } : {});
+          seed !== undefined ? { seed, depth: 2, by: "concept", ...(domain ? { domain } : {}) }
+          : domain ? { domain, by: grain } : { by: "concept" });
         // 딥링크(#atlas/trace/<id>/as/totals)만 주제를 모른 채 도착한다. 신 사이드카는
         // seed 만으로 ego 를 집계하고 scope 를 에코하므로 선조회가 필요 없다 — scope
         // 부재(=seed 가 무시된 구버전)인데 domain 힌트도 못 실었을 때만, 주제를 한 번
@@ -1563,6 +1569,13 @@ export async function renderAtlas(el: HTMLElement) {
         // 거짓 조언을 하게 된다 — 404/네트워크 실패와 같은 문구로 내린다.
         if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.totalsOff}</p></div>`); return; }
         rows = res.rows || [];
+        // D63 — 주제 알갱이 화면인데 개념 행이 왔다(신 사이드카): 노드 행으로 접고
+        // 경로 튜플을 뽑는다. 구 사이드카(by 무시 → res.by 부재)는 이 분기를 안 탄다.
+        if (grain === "domain" && res.by === "concept") {
+          const folded = foldLedgerPaths(rows);
+          rows = folded.rows;
+          paths = folded.paths;
+        }
       } catch {
         setMsg(`<div class="empty"><p>${COPY.ui.atlasx.totalsOff}</p></div>`);
         return;
@@ -1581,7 +1594,9 @@ export async function renderAtlas(el: HTMLElement) {
       const drillSeed = level.kind === "l2" ? level.seed : undefined;
       // 개념 알갱이면(D52) 가운데 열이 개념이다 — 누르면 주제가 아니라 **그 개념**으로
       // 들어가고, 리본을 눌러도 드릴다운(=1건 목록)이 아니라 같은 곳으로 간다.
-      const byConcept = res.by === "concept";
+      // D63 이후 L0·l2 도 by=concept 로 **받지만** 화면 알갱이는 주제다(위에서 접었다)
+      // — 표시 판정은 요청 의도(grain)와 에코가 둘 다 개념일 때만 참이어야 한다.
+      const byConcept = seed === undefined && domain !== undefined && res.by === "concept";
       const openConcept = (id: string) => {
         const row = rows.find((r) => r.domain === id);
         trail.push({ kind: "l2", seed: id, domain: row?.topic });
@@ -1589,6 +1604,7 @@ export async function renderAtlas(el: HTMLElement) {
       };
       planar = mountTotals(canvas, rows, {
         grain: byConcept ? "concept" : "domain",
+        paths,   // D63 — 경로 보존 리본(주제 알갱이 + 신 사이드카에서만 채워진다)
         onOpen: (id) => {
           if (!byConcept) { openTopic(id); return; }
           openConcept(id);

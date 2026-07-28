@@ -20,12 +20,17 @@ import lock from "./icons/lock.svg?raw";
 import sparkle from "./icons/sparkle.svg?raw";
 import x from "./icons/x.svg?raw";
 import upload from "./icons/upload.svg?raw";
+// 들여오기·공유 전용(D67) — 구 upload(위 화살표)는 **들여오기인데 내보내기처럼**
+// 읽혔고, pack-export 와 나란히 두면 둘 다 화살표라 실루엣으로 구분되지 않았다.
+// 안으로 = 트레이로 내려오는 화살표 · 공유 = 갈라져 나가는 노드(형태 자체가 다름).
+import packIn from "./icons/pack-in.svg?raw";
+import shareNodes from "./icons/share-nodes.svg?raw";
 
 const REG: Record<string, string> = {
   ingest, recall, graph, search, "pack-export": packExport, settings,
   dot, "half-disc": halfDisc, ring, pin, alert, check,
   "chevron-left": chevronLeft, "dot-grid": dotGrid, domains, decide,
-  lock, sparkle, x, upload,
+  lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes,
 };
 
 /** Inline an icon. Size in px (default 20). */

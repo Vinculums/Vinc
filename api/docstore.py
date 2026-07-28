@@ -404,7 +404,15 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
 
 
 def list_docs(store, *, owner: str | None = None) -> dict:
-    """문서 목록(_DocMeta). owner 지정 시 소유 스코프."""
+    """문서 목록(_DocMeta) + **주제 파생**. owner 지정 시 소유 스코프.
+
+    ⚠ 문서 자체에는 주제(domain) 열이 없다 — `_DocMeta` 는 정체성·변경감지 메타만
+    갖는다(D45). 그래서 주제는 **문서가 언급하는 개념에서 유도**한다:
+    `(Chunk)-[:MENTIONS]->(Concept)` 를 타고 그 개념들의 domain 을 세어, 가장 많이
+    걸린 주제를 그 문서의 주제로 삼는다. 링크가 아직 없는 문서는 주제가 없다(빈 문자열)
+    — 억지로 배정하지 않는다(D45-V "없으면 없다고 말한다").
+
+    반환 doc 에 `topic`(대표 주제)과 `topics`(걸린 주제 전부, 많은 순)를 싣는다."""
     where = "WHERE d.owner_id = $o " if owner else ""
     rows = store.run(
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
@@ -412,6 +420,35 @@ def list_docs(store, *, owner: str | None = None) -> dict:
         "d.needs_embed AS needs_embed "
         "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))} for r in (rows or [])]
+
+    # 주제 파생 — 한 번의 집계 쿼리로 전 문서를 덮는다(문서마다 조회하지 않는다).
+    tally: dict[str, dict[str, int]] = {}
+    # ⚠ try 는 **쿼리에만** 건다. 집계 루프까지 감싸면 프로그래밍 오류가 "구스토어
+    # 강등"으로 위장돼 조용히 사라진다(실제로 그렇게 한 번 당했다 — 아래 주석 참조).
+    try:
+        mrows = store.run(
+            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+            + ("WHERE c.owner_id = $o AND (ch.owner_id = $o OR ch.owner_id = '') " if owner else "")
+            + "RETURN ch.doc_id AS doc_id, c.domain AS domain, count(*) AS n",
+            {"o": owner} if owner else None) or []
+    except Exception:
+        mrows = []   # MENTIONS 미구축·구스토어 — 주제 없이 목록만(강등, 실패 아님)
+    for r in mrows:
+        dom = (r.get("domain") or "").strip()
+        did = r.get("doc_id") or ""
+        if not dom or not did:
+            continue
+        # ⚠ `tally.setdefault(d, {})[k] = tally[d].get(k, 0) + n` 로 쓰지 말 것:
+        # 파이썬은 대입문의 **오른쪽을 먼저** 평가하므로 첫 등장에서 KeyError 가 난다.
+        bucket = tally.setdefault(did, {})
+        bucket[dom] = bucket.get(dom, 0) + int(r.get("n") or 0)
+
+    for d in docs:
+        t = tally.get(d["doc_id"]) or {}
+        # 많은 순, 동률이면 이름순(결정론 — 같은 데이터는 늘 같은 대표 주제).
+        ordered = [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
+        d["topics"] = ordered
+        d["topic"] = ordered[0] if ordered else ""
     return {"kind": "doc.list", "executed": True, "docs": docs, "count": len(docs)}
 
 

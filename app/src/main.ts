@@ -135,7 +135,7 @@ const cheatsheet = document.getElementById("cheatsheet")!;
 async function openCheatsheet() {
   // 단축키 표도 시트 규격을 쓴다(D63) — 화면 위에 뜨는 것은 전부 같은 구조·같은 닫힘.
   const { openSheet } = await import("./components");
-  const sheet = openSheet({ title: COPY.ui.palette.keyboard, width: "28rem" });
+  const sheet = openSheet({ title: COPY.ui.palette.keyboard });
   sheet.body.innerHTML =
     [["1–3", COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
      ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],

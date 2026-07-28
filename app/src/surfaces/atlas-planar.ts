@@ -1,5 +1,9 @@
 import type { LedgerRow } from "../api";
 import { COPY } from "../copy";
+import {
+  aggGaps, bucketOthers, lodeOffsets, orderLodes, renderPlan, OTHERS_KEY,
+  type Lode,
+} from "./atlas-lodes";
 
 /** Atlas 평면 뷰 (D43) — Timeline · Sankey.
  *
@@ -317,25 +321,78 @@ export function mountTimeline(el: HTMLElement,
  *  (정본 §5 검증기 FAIL)에 걸려 채택하지 않고, 위계는 굵기와 농도만 나른다. */
 const ORIGINS = ["episodic", "record", "unsourced"] as const;
 const STATES = ["connected", "gateway", "orphan"] as const;
+const val = (r: LedgerRow, k: string) => Math.max(0, Number((r as unknown as Record<string, unknown>)[k]) || 0);
+
+/** 경로 보존 튜플(D63) — 개념 하나의 (출처, 주제, 상태) 조합과 그 조합의 개념 수.
+ *  인접 교차 리본은 2열에서 출처 정보를 섞어 버려 "대화에서 온 X 주제 개념이
+ *  고아인가"를 추적할 수 없었다 — 이 튜플이 리본을 끝까지 가른다. */
+export type TotalsPath = { origin: string; domain: string; state: string; n: number };
+
+/** 개념 알갱이 원장 행(by=concept, 마크 0/1)을 주제 알갱이 행 + 경로 튜플로 접는다.
+ *  행 접기는 사이드카의 by=domain 롤업과 같은 규칙(주제별 합산, concepts 내림차순 ·
+ *  이름 오름차순) — 노드 값은 종전과 같고 리본만 교차표를 얻는다. 각 축에서 마크가
+ *  정확히 하나 1 인 배타 분할(query._concept_in_mark)이 전제라, 접은 행의 축 합과
+ *  튜플 합이 모두 개념 수로 보존된다(보존 불변 유지). */
+export function foldLedgerPaths(rows: LedgerRow[]): { rows: LedgerRow[]; paths: TotalsPath[] } {
+  const agg = new Map<string, LedgerRow>();
+  const tup = new Map<string, TotalsPath>();
+  for (const r of rows) {
+    const topic = r.topic || "";
+    if (!topic) continue;                    // 주제 없는 행은 롤업 키가 없다(백엔드 동형)
+    const origin = ORIGINS.find((k) => val(r, k) > 0) || "unsourced";
+    const state = STATES.find((k) => val(r, k) > 0) || "orphan";
+    const a = agg.get(topic) || {
+      domain: topic, concepts: 0, episodic: 0, record: 0, unsourced: 0,
+      connected: 0, gateway: 0, orphan: 0,
+    } as LedgerRow;
+    a.concepts += 1;
+    (a as unknown as Record<string, number>)[origin] += 1;
+    (a as unknown as Record<string, number>)[state] += 1;
+    agg.set(topic, a);
+    const key = `${origin}|${topic}|${state}`;
+    const t = tup.get(key) || { origin, domain: topic, state, n: 0 };
+    t.n += 1;
+    tup.set(key, t);
+  }
+  const folded = [...agg.values()]
+    .sort((a, b) => (b.concepts - a.concepts) || (a.domain < b.domain ? -1 : 1));
+  return { rows: folded, paths: [...tup.values()] };
+}
 /** 생키 치수 — bklit 규격(nodeWidth 16 · nodePadding 24 · lineCap 4)을 그대로 쓴다. */
 const NODE_W = 16, NODE_PAD = 24, NODE_CAP = 4;
 /** 가장 작은 노드도 이만큼은 보인다(스케일 하한 → 넘치면 H 가 자라고 스크롤). */
 const NODE_MIN = 5;
+/** 가장 얇은 가닥도 이만큼은 보인다(D68) — 노드 하한과 같은 방식으로 H 를 키워
+ *  얻는다(스케일이 전역 선형이라 비례·보존이 유지된다). 단 절대 캡 안에서만:
+ *  캡을 넘기는 요구는 renderPlan 이 갭 집계로 강등해 해소하고, 그래도 남는
+ *  초과는 종전 1px clamp 가 받친다(현행과 같은 ≤1px 초과 묘화). */
+const RIB_MIN = 2;
+/** RIB_MIN 이 요구할 수 있는 캔버스 높이의 절대 상한(px). 컨테이너 높이의
+ *  배수로 잡으면 강등 판정이 리사이즈의 함수가 되어 창을 늘릴 때 모드가 튄다 —
+ *  절대값이라 데이터만이 모드를 정한다. */
+const H_RIB_CAP = 2200;
+/** 열 머리글·총계 띠 높이 — w·h 와 무관해 mount 시점 계산(needNode·needRib)도
+ *  쓴다. draw 안에 두면 배치 파이프라인이 값을 못 본다. */
+const TOP = 48, BOT = 34;
 
 export function mountTotals(el: HTMLElement, rows: LedgerRow[],
   o: { current?: string;
        onOpen: (domain: string) => void;
        /** 리본 클릭 → 그 (도메인, mark) 의 개념 목록 드릴다운(D45-V2 3단계).
-        *  구 누적 막대의 구간 클릭과 계약이 같다 — 리본이 곧 그 구간이다. */
+        *  구 누적 막대의 구간 클릭과 계약이 같다 — 리본이 곧 그 구간이다.
+        *  경로 보존 가닥도 data-dom·data-seg 를 그대로 실어 계약이 안 바뀐다. */
        onSeg?: (domain: string, mark: string) => void;
        /** 행의 알갱이(D52·D59) — "domain" 이면 한 행이 주제, "concept" 이면 개념
         *  하나다. 캡션의 단위가 이 값으로 갈린다(개념 40개를 "주제 40개"라 부르던
         *  단위 거짓말을 끝낸다, U5). */
-       grain?: "domain" | "concept" }): PlanarHandle {
-  const val = (r: LedgerRow, k: string) => Math.max(0, Number((r as unknown as Record<string, unknown>)[k]) || 0);
+       grain?: "domain" | "concept";
+       /** 경로 보존 튜플(D63, :func:`foldLedgerPaths`) — 있으면 리본을 인접 교차
+        *  대신 (출처×주제×상태) 조합별 가닥으로 그린다. 없으면(구 사이드카 강등 ·
+        *  개념 알갱이) 종전 인접 교차 그대로. */
+       paths?: TotalsPath[] }): PlanarHandle {
   // 주제(2열) — 두 축 합이 다르면(구버전·집계 결함) 큰 쪽을 노드 높이로 삼아
   // 리본이 노드를 넘치지 않게만 방어한다. 정상 데이터에선 둘이 같다.
-  const data = rows.map((r) => {
+  let data = rows.map((r) => {
     const origin = ORIGINS.map((k) => val(r, k));
     const state = STATES.map((k) => val(r, k));
     const oSum = origin.reduce((a, b) => a + b, 0);
@@ -345,31 +402,117 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     return { domain: r.domain, label: r.label || r.domain,
              origin, state, total: Math.max(oSum, sSum) };
   }).filter((r) => r.total > 0);
+  // 개념 알갱이 흐름 정렬(D68) — 행마다 개념 하나(lode 각 1개)라 stratum 안
+  // 재정렬이 무의미하고, 행 순서 자체가 갭 교차를 전부 결정한다. 종전 알파벳순은
+  // 갭 양끝(출처·상태) 순서와 무관해 교차를 양산했다 — (출처, 상태, 제목)으로
+  // 묶으면 같은 흐름끼리 모여 교차가 실제로 준다(발주자 채택 2026-07-28).
+  // 이름 탐색은 검색·목록 표면의 몫이라 여기서 잃는 것이 없다.
+  if (o.grain === "concept") {
+    const mark = (xs: number[]) => { const i = xs.findIndex((v) => v > 0); return i < 0 ? xs.length : i; };
+    const low = (s: string) => s.toLowerCase();
+    data = [...data].sort((a, b) => mark(a.origin) - mark(b.origin)
+      || mark(a.state) - mark(b.state)
+      || (low(a.label) < low(b.label) ? -1 : low(a.label) > low(b.label) ? 1 : 0)
+      || (a.domain < b.domain ? -1 : a.domain > b.domain ? 1 : 0));
+  }
+  const topicCount = data.length;   // 기타 병합 전 — aria 라벨은 실제 주제 수를 밝힌다
   const grand = data.reduce((a, r) => a + r.total, 0);
-  // 1열·3열 노드 값 = 주제를 가로지른 합(주변합).
+  // 경로 보존 튜플(D63) — 화면에 없는 주제(total 0 필터)로 가는 튜플은 버린다.
+  // 인덱스로 바꿔 두면 정렬·오프셋 누적이 전부 정수 비교다.
+  const dAt = new Map(data.map((r, i) => [r.domain, i]));
+  let tuples: Lode[] = (o.paths || [])
+    .map((p) => ({ oi: ORIGINS.indexOf(p.origin as typeof ORIGINS[number]),
+                   di: dAt.get(p.domain) ?? -1,
+                   si: STATES.indexOf(p.state as typeof STATES[number]), n: p.n }))
+    .filter((t) => t.oi >= 0 && t.di >= 0 && t.si >= 0 && t.n > 0);
+  // 기타 병합(D68 Stage 1) — 작은 주제를 말미 stratum 하나로 통병합한다. 주제
+  // 알갱이에서만: 개념 알갱이는 전 행이 크기 1 이라 몫 임계가 무의미하고, 병합은
+  // 개념 드릴다운의 존재 이유를 부순다. 주제 단위 통병합이라 주변합·보존 불변은
+  // 저절로 유지된다(bucketOthers 계약).
+  let othersMerged = 0;
+  if (o.grain !== "concept") {
+    const b = bucketOthers(data, tuples, grand);
+    if (b.mergedTopics) {
+      data = b.data;
+      tuples = b.tuples;
+      othersMerged = b.mergedTopics;
+      data[data.length - 1].label = COPY.ui.atlasx.othersLabel(b.mergedTopics);
+    }
+  }
+  // 1열·3열 노드 값 = 주제를 가로지른 합(주변합). 기타 병합 뒤에 세지만 값은
+  // 병합 전과 같다(주제 통병합은 주변합을 바꾸지 않는다).
   const originTot = ORIGINS.map((_, i) => data.reduce((a, r) => a + r.origin[i], 0));
   const stateTot = STATES.map((_, i) => data.reduce((a, r) => a + r.state[i], 0));
   const label = (o.grain === "concept"
-    ? COPY.ui.atlasx.totalsChartConcepts : COPY.ui.atlasx.totalsChart)(data.length, grand);
+    ? COPY.ui.atlasx.totalsChartConcepts : COPY.ui.atlasx.totalsChart)(topicCount, grand);
   const segName = (k: string) => COPY.ui.atlasx.seg[k as keyof typeof COPY.ui.atlasx.seg];
   const segTip = (k: string, v: number) => COPY.ui.atlasx.segTip(segName(k), v);
+
+  // ── 배치 파이프라인(D68) — 전부 데이터의 순수 함수라 mount 에서 1회만 계산하고
+  // draw(w,h) 는 소비만 한다. 픽셀(h)에 묶으면 리사이즈가 순서·모드를 재셔플한다.
+  const counts = [ORIGINS.length, data.length, STATES.length];
+  const maxCount = Math.max(...counts);
+  const pads = (maxCount - 1) * NODE_PAD;
+  const vals = [...originTot, ...data.map((r) => r.total), ...stateTot].filter((v) => v > 0);
+  const minVal = vals.length ? Math.min(...vals) : 1;
+  const minTup = tuples.length ? Math.min(...tuples.map((t) => t.n)) : 1;
+  // 강등 판정(D68 Stage 2) — 경로 가닥이 상한(가닥 수 40)을 넘거나 절대 캡 안에서
+  // 전 가닥 RIB_MIN 이 불가능하면 갭 집계로 물러난다. 판정 입력이 전부 데이터라
+  // 결과도 데이터의 함수다.
+  const plan = tuples.length
+    ? renderPlan(tuples.length, TOP + BOT + pads + (grand * RIB_MIN) / minTup, H_RIB_CAP)
+    : { mode: "path" as const, reason: "" as const };
+  const gaps = plan.mode === "agg"
+    ? aggGaps(tuples)
+    : { left: [] as { oi: number; di: number; n: number }[],
+        right: [] as { di: number; si: number; n: number }[] };
+  // lode 배치(경로 모드) — 정렬이 곧 레이아웃이므로 자리는 여기서 확정된다.
+  const ord = plan.mode === "path" && tuples.length
+    ? orderLodes(tuples, ORIGINS.length, data.length, STATES.length)
+    : null;
+  const offs = ord ? lodeOffsets(tuples, ord) : null;
+  /** 방출 순서 — 종전 의미 정렬 그대로(왼쪽 (출처,주제,상태) · 오른쪽 (주제,출처,
+   *  상태)). y 는 배치표가 정하고 방출은 data-e·--i(진입 안무 지연)·DOM 겹침
+   *  순서만 정한다 — 배치가 바뀌어도 안무·겹침의 diff 가 나지 않는다. */
+  const emitL = tuples.map((_, i) => i).sort((a, b) =>
+    tuples[a].oi - tuples[b].oi || tuples[a].di - tuples[b].di || tuples[a].si - tuples[b].si);
+  const emitR = tuples.map((_, i) => i).sort((a, b) =>
+    tuples[a].di - tuples[b].di || tuples[a].oi - tuples[b].oi || tuples[a].si - tuples[b].si);
+  /** H 하한 둘 — 노드 하한(종전 그대로)과 가닥 하한(D68, 캡 안에서만). 실제 그릴
+   *  가닥의 최솟값이 분모다: 경로=튜플 · 집계=갭 합 · 종전=주변 셀. */
+  const cellMin = (xs: number[]) => {
+    const p = xs.filter((v) => v > 0);
+    return p.length ? Math.min(...p) : 1;
+  };
+  const minRib = plan.mode === "agg"
+    ? cellMin([...gaps.left.map((g) => g.n), ...gaps.right.map((g) => g.n)])
+    : tuples.length ? minTup
+    : cellMin(data.flatMap((r) => [...r.origin, ...r.state]));
+  const bot = BOT + (plan.mode === "agg" ? 14 : 0);   // 강등 캡션 한 줄 자리
+  const needNode = TOP + bot + pads + (grand * NODE_MIN) / minVal;
+  const needRib = TOP + bot + pads + (grand * RIB_MIN) / minRib;
+  // 집계 hover 조인(D68) — 갭 키 ↔ 튜플로 닿는 반대편 갭 키. 집계 리본은 정적
+  // 정체성을 잃는 대신 이 표가 hover 때 끝에서 끝을 복원한다.
+  const gkJoin = new Map<string, Set<string>>();
+  if (plan.mode === "agg") for (const t of tuples) {
+    const l = `0:${t.oi}:${t.di}`, r = `1:${t.di}:${t.si}`;
+    if (!gkJoin.has(l)) gkJoin.set(l, new Set());
+    if (!gkJoin.has(r)) gkJoin.set(r, new Set());
+    gkJoin.get(l)!.add(r);
+    gkJoin.get(r)!.add(l);
+  }
   /** 첫 그림에만 진입 안무를 얹는다 — 리사이즈 재그리기마다 다시 자라면 소음이다. */
   let first = true;
 
   function draw(w: number, h: number): string {
     const W = Math.max(w, 620);
     const labW = 136;                       // 좌우 라벨 여백(bklit margin 180 의 축약)
-    const TOP = 48, BOT = 34;               // 열 머리글 / 총계
-    // 스케일 — 노드가 가장 많은 열이 기준이고, 가장 작은 노드도 NODE_MIN 은 되게
-    // 높이를 키운다(넘치면 .pl-wrap 이 세로 스크롤). 전부 입력의 순수 함수.
-    const counts = [ORIGINS.length, data.length, STATES.length];
-    const maxCount = Math.max(...counts);
-    const vals = [...originTot, ...data.map((r) => r.total), ...stateTot].filter((v) => v > 0);
-    const minVal = vals.length ? Math.min(...vals) : 1;
-    const need = TOP + BOT + (grand * NODE_MIN) / minVal + (maxCount - 1) * NODE_PAD;
-    const H = Math.max(h, need);
-    const availH = H - TOP - BOT;
-    const scale = (availH - (maxCount - 1) * NODE_PAD) / Math.max(grand, 1);
+    // 높이 — 가장 작은 노드가 NODE_MIN, 가장 얇은 가닥이 RIB_MIN(절대 캡 안에서)은
+    // 되게 키운다(넘치면 .pl-wrap 이 세로 스크롤). needNode·needRib 는 mount 의
+    // 배치 파이프라인에서 왔다 — 캡이 눌러 둔 초과는 ribbon 의 1px clamp 가 받친다.
+    const H = Math.max(h, needNode, Math.min(needRib, H_RIB_CAP));
+    const availH = H - TOP - bot;
+    const scale = (availH - pads) / Math.max(grand, 1);
     const xs = [labW, (W - NODE_W) / 2, W - labW - NODE_W];
 
     /** 열 하나를 세로 중앙에 쌓는다 — 값 순서는 입력 순서 그대로(결정론). */
@@ -383,9 +526,8 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     const dBox = stack(data.map((r) => r.total));
     const sBox = stack(stateTot);
 
-    // 리본 — 노드 안에서 값 순서대로 쌓아 교차를 줄인다. 들어오는 쪽 순서는
-    // 나가는 쪽이 정한 순서와 같아야 리본이 꼬이지 않는다(1열 순서 = ORIGINS,
-    // 3열 순서 = data 순서).
+    // 리본 쌓기 오프셋 — 집계·종전 모드가 방출 순서대로 누적한다. 경로 보존
+    // 모드는 쓰지 않는다: 자리가 mount 의 배치표(offs)에서 온다(D68).
     const oOff = originTot.map(() => 0);
     const dInOff = data.map(() => 0);
     const dOutOff = data.map(() => 0);
@@ -395,7 +537,12 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     // 농도 정규화 기준은 **리본 최댓값**이다. 예전엔 노드 최솟값×4 로 나눴는데,
     // 그 분모가 실제 리본 값 범위보다 커서 값이 6배 달라져도 농도가 0.32~0.50
     // 안에서만 움직였다 — 농도 채널이 사실상 아무것도 나르지 않았다(실측).
-    const ribMax = Math.max(1, ...data.flatMap((r) => [...r.origin, ...r.state]));
+    // 경로 보존 모드에선 가닥이 더 잘게 쪼개지므로 기준도 튜플 최댓값이다.
+    const ribMax = Math.max(1, ...(plan.mode === "agg"
+      ? [...gaps.left.map((g) => g.n), ...gaps.right.map((g) => g.n)]
+      : tuples.length
+      ? tuples.map((t) => t.n)
+      : data.flatMap((r) => [...r.origin, ...r.state])));
     const opOf = (v: number) => 0.16 + 0.5 * (v / ribMax);
     /** 채움 밴드 — 소스 상단 → 타깃 상단으로 흐르고 두께 t 만큼 되돌아와 닫는다.
      *  선(stroke) 리본이 아니라 면(fill)이라 **테두리를 줄 수 있다** — 겹친 리본이
@@ -407,7 +554,7 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
         + ` L${num(x2)} ${num(y2b)} C${num(mx)} ${num(y2b)} ${num(mx)} ${num(y1b)} ${num(x1)} ${num(y1b)} Z`;
     };
     const ribbon = (x1: number, yTop1: number, x2: number, yTop2: number, v: number,
-                    dom: string, mark: string, from: string, to: string) => {
+                    dom: string, mark: string, tip: string, path = "", gk = "") => {
       const t = Math.max(v * scale, 1);
       // 값 비례 농도 — 색조는 건드리지 않는다. 굵기가 값의 정본이고 농도는 읽기
       // 보조다(정본 §5: 변별은 위치·두께·형태·직접 라벨).
@@ -417,35 +564,95 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       const ol = t >= 3 ? 0.75 : 0;
       // data-dom·data-seg 는 **항상** 싣는다 — 드릴다운의 표적이자 hover 초점
       // 계산의 열쇠라, onSeg 유무로 빠지면 hover 문법까지 같이 죽는다.
-      const cls = `pl-ribbon${o.onSeg ? " pl-drill" : ""}${first ? " pl-in" : ""}`;
+      // data-path(D63) 는 경로 보존 가닥의 튜플 키 — 같은 키의 좌·우 가닥이 hover 에서
+      // 한 물줄기로 밝아진다. data-gk(D68) 는 집계 가닥의 갭 키 — gkJoin 조인이
+      // hover 때 반대편 갭까지 잇는다. 기타(OTHERS_KEY) 리본은 드릴다운 표적이
+      // 없어 pl-drill(포인터 커서)을 받지 않는다.
+      const drill = o.onSeg && dom !== OTHERS_KEY;
+      const cls = `pl-ribbon${drill ? " pl-drill" : ""}${first ? " pl-in" : ""}`;
       links.push(`<g class="${cls}" data-e="${li}" data-dom="${esc(dom)}"`
-        + ` data-seg="${esc(mark)}" style="--i:${li}">`
+        + ` data-seg="${esc(mark)}"${path ? ` data-path="${esc(path)}"` : ""}`
+        + `${gk ? ` data-gk="${esc(gk)}"` : ""} style="--i:${li}">`
         + `<path class="pl-flow" d="${band(x1, yTop1, x2, yTop2, t)}"`
         + ` fill-opacity="${op}" stroke-width="${ol}"`
-        + ` data-tip="${esc(COPY.ui.atlasx.ribbonTip(from, to, v))}"></path></g>`);
+        + ` data-tip="${esc(tip)}"></path></g>`);
       li++;
     };
 
-    ORIGINS.forEach((k, oi) => {
+    if (ord && offs) {
+      // ── 경로 보존(D63 → 배치 D68, alluvial) — 리본은 (출처×주제×상태) 튜플별
+      // 가닥으로 끝까지 갈리고, 자리는 orderLodes 의 배치표가 정한다. 급소였던
+      // **주제 노드 안 띠의 정합**(들어오는 쪽과 나가는 쪽이 같은 높이 띠)은 이제
+      // 정렬 규칙 둘의 우연한 일치가 아니라 자료구조가 보증한다: 밴드 오프셋
+      // (offs.offB)이 튜플당 하나뿐이라 좌·우 가닥이 같은 띠를 지날 수밖에 없다.
+      // 교차 총수는 어떤 배치로도 변하지 않는다(atlas-lodes 머리 정리) — 배치가
+      // 바꾸는 것은 교차의 양 갭 분산과 리본 기울기(방랑)다. 전부 입력 결정론.
+      const pk = (t: Lode) => `${t.oi}|${t.di}|${t.si}`;
+      const tipOf = (t: Lode) =>
+        COPY.ui.atlasx.pathTip(segName(ORIGINS[t.oi]), data[t.di].label,
+                               segName(STATES[t.si]), t.n);
+      for (const i of emitL) {
+        const t = tuples[i];
+        ribbon(xs[0] + NODE_W, oBox[t.oi].y + offs.offL[i] * scale,
+               xs[1], dBox[t.di].y + offs.offB[i] * scale, t.n,
+               data[t.di].domain, ORIGINS[t.oi], tipOf(t), pk(t));
+      }
+      for (const i of emitR) {
+        const t = tuples[i];
+        ribbon(xs[1] + NODE_W, dBox[t.di].y + offs.offB[i] * scale,
+               xs[2], sBox[t.si].y + offs.offR[i] * scale, t.n,
+               data[t.di].domain, STATES[t.si], tipOf(t), pk(t));
+      }
+    } else if (plan.mode === "agg") {
+      // ── 갭 집계(D68 Stage 2) — 경로 가닥이 상한(가닥 수·높이 캡)을 넘는 규모.
+      // 리본을 갭별 (출처×주제)·(주제×상태) 합으로 접어 정적 가닥 수를 곱이 아니라
+      // 합으로 억제한다. 이 방출·쌓기 순서는 갭별로 이미 교차 최적이다(양끝
+      // stratum 순서와 일치 — 모드 B 와 같은 논증). 잃은 끝-끝 정체성은 data-gk
+      // 조인이 hover 때 복원한다.
+      for (const l of gaps.left) {
+        const y1 = oBox[l.oi].y + oOff[l.oi];
+        const y2 = dBox[l.di].y + dInOff[l.di];
+        oOff[l.oi] += l.n * scale; dInOff[l.di] += l.n * scale;
+        ribbon(xs[0] + NODE_W, y1, xs[1], y2, l.n, data[l.di].domain, ORIGINS[l.oi],
+               COPY.ui.atlasx.ribbonTip(segName(ORIGINS[l.oi]), data[l.di].label, l.n),
+               "", `0:${l.oi}:${l.di}`);
+      }
+      for (const r of gaps.right) {
+        const y1 = dBox[r.di].y + dOutOff[r.di];
+        const y2 = sBox[r.si].y + sOff[r.si];
+        dOutOff[r.di] += r.n * scale; sOff[r.si] += r.n * scale;
+        ribbon(xs[1] + NODE_W, y1, xs[2], y2, r.n, data[r.di].domain, STATES[r.si],
+               COPY.ui.atlasx.ribbonTip(data[r.di].label, segName(STATES[r.si]), r.n),
+               "", `1:${r.di}:${r.si}`);
+      }
+    } else {
+      // ── 인접 교차(종전) — 튜플이 없을 때(구 사이드카 강등 · 개념 알갱이).
+      // 개념 알갱이에선 행 하나가 개념 하나라 가닥이 이미 튜플이다 — 행 id 를
+      // 경로 키로 실어 좌·우 가닥이 hover 에서 함께 밝아지게 한다(D63).
+      const rowPk = (r: { domain: string }) => (o.grain === "concept" ? r.domain : "");
+      ORIGINS.forEach((k, oi) => {
+        data.forEach((r, di) => {
+          const v = r.origin[oi];
+          if (v <= 0) return;
+          const y1 = oBox[oi].y + oOff[oi];
+          const y2 = dBox[di].y + dInOff[di];
+          oOff[oi] += v * scale; dInOff[di] += v * scale;
+          ribbon(xs[0] + NODE_W, y1, xs[1], y2, v, r.domain, k,
+                 COPY.ui.atlasx.ribbonTip(segName(k), r.label, v), rowPk(r));
+        });
+      });
       data.forEach((r, di) => {
-        const v = r.origin[oi];
-        if (v <= 0) return;
-        const y1 = oBox[oi].y + oOff[oi];
-        const y2 = dBox[di].y + dInOff[di];
-        oOff[oi] += v * scale; dInOff[di] += v * scale;
-        ribbon(xs[0] + NODE_W, y1, xs[1], y2, v, r.domain, k, segName(k), r.domain);
+        STATES.forEach((k, si) => {
+          const v = r.state[si];
+          if (v <= 0) return;
+          const y1 = dBox[di].y + dOutOff[di];
+          const y2 = sBox[si].y + sOff[si];
+          dOutOff[di] += v * scale; sOff[si] += v * scale;
+          ribbon(xs[1] + NODE_W, y1, xs[2], y2, v, r.domain, k,
+                 COPY.ui.atlasx.ribbonTip(r.label, segName(k), v), rowPk(r));
+        });
       });
-    });
-    data.forEach((r, di) => {
-      STATES.forEach((k, si) => {
-        const v = r.state[si];
-        if (v <= 0) return;
-        const y1 = dBox[di].y + dOutOff[di];
-        const y2 = sBox[si].y + sOff[si];
-        dOutOff[di] += v * scale; sOff[si] += v * scale;
-        ribbon(xs[1] + NODE_W, y1, xs[2], y2, v, r.domain, k, r.domain, segName(k));
-      });
-    });
+    }
 
     /** 노드 사각 + 바깥쪽 직접 라벨(1·3열). 판(plate)은 2열에만 필요하다. */
     const sideNode = (id: string, x: number, box: { y: number; h: number },
@@ -471,14 +678,20 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
     // 않는다: 여기선 자리만 잡고 마운트 후 getBBox() 실측으로 맞춘다(정본 §6
     // 실패 사례 1). 이미 그 주제를 보고 있는 행은 눌러도 갈 곳이 없어 정적이다.
     const domainNodes = data.map((r, i) => {
-      const dead = r.domain === o.current;
+      // 기타(D68)는 클릭 표적이 아니다 — 병합 stratum 이라 열 곳도 드릴다운도
+      // 없다. current 와 같은 pl-static 문법(정적·비클릭)을 재사용한다.
+      const others = r.domain === OTHERS_KEY;
+      const dead = r.domain === o.current || others;
+      const tip = others
+        ? COPY.ui.atlasx.othersTip(othersMerged, r.total)
+        : COPY.ui.atlasx.segTip(r.label, r.total);
       const ty = dBox[i].y + dBox[i].h / 2;
       const lx = xs[1] + NODE_W + 9;
       return `<g class="pl-node${dead ? " pl-static" : ""}${first ? " pl-in" : ""}"`
         + ` data-id="${esc(r.domain)}"${dead ? "" : ` data-open="${esc(r.domain)}"`} style="--i:${i}">`
         + `<rect class="pl-snode" x="${num(xs[1])}" y="${num(dBox[i].y)}" width="${NODE_W}"`
         + ` height="${num(Math.max(dBox[i].h, 1))}" rx="${NODE_CAP}"`
-        + ` data-tip="${esc(COPY.ui.atlasx.segTip(r.label, r.total))}"></rect>`
+        + ` data-tip="${esc(tip)}"></rect>`
         + `<g class="pl-plate-g">`
         + `<rect class="pl-plate" x="${num(lx - 5)}" y="${num(ty - 10)}" width="10" height="20" rx="3"/>`
         + `<text class="pl-lab" x="${num(lx)}" y="${num(ty + 4)}">${esc(cut(r.label, 18))}`
@@ -492,6 +705,12 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       + head(xs[2], "start", COPY.ui.atlasx.colState);
 
     // 총계 — 세 열의 합이 같음을 눈으로 확인시킨다(보존 불변의 화면판).
+    // 집계 강등(D68) 때는 표현이 바뀐 사실을 한 줄로 밝힌다 — 조용한 표현 변경을
+    // 만들지 않는다(capped 와 같은 규율). bot 여백이 이 줄 자리를 미리 벌려 뒀다.
+    const grouped = plan.mode === "agg"
+      ? `<text class="pl-cap" x="${num(W / 2)}" y="${num(H - 26)}"`
+        + ` text-anchor="middle">${esc(COPY.ui.atlasx.totalsGrouped)}</text>`
+      : "";
     const foot = `<text class="pl-sub pl-num" x="${num(W / 2)}" y="${num(H - 12)}"`
       + ` text-anchor="middle">${esc((o.grain === "concept"
         ? COPY.ui.atlasx.totalsFootConcepts : COPY.ui.atlasx.totalsFoot)(grand))}</text>`;
@@ -501,7 +720,7 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       // 리본은 한 겹으로 묶는다 — 겹침 블렌딩(multiply/screen)이 **리본끼리만**
       // 일어나고 배경·노드로 새지 않게 하는 격리 경계(isolation: isolate).
       + `${heads}<g class="pl-ribbons">${links.join("")}</g>`
-      + `${originNodes}${domainNodes}${stateNodes}${foot}</svg>`;
+      + `${originNodes}${domainNodes}${stateNodes}${grouped}${foot}</svg>`;
   }
 
   let nodeEls: SVGElement[] = [];
@@ -550,18 +769,77 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
   function focusNode(id: string) {
     const keepN = new Set([id]);
     const keepR = new Set<Element>();
+    const paths = new Set<string>();
+    const gks = new Set<string>();
     for (const g of ribEls) {
       const dom = g.dataset.dom || "";
       const mark = g.dataset.seg || "";
       // 주제 노드는 자기 리본 전부, 구간 노드(org:/st:)는 그 구간의 리본 전부.
       if (id !== dom && id !== sideId(mark)) continue;
       keepR.add(g);
+      if (g.dataset.path) paths.add(g.dataset.path);
+      if (g.dataset.gk) gks.add(g.dataset.gk);
       keepN.add(dom);
       keepN.add(sideId(mark));
+    }
+    // D63 — 경로 키가 있으면 닿은 튜플의 **반대편 가닥까지** 끝에서 끝으로 잇는다.
+    // 출처 노드에 올리면 그 출처의 개념들이 어느 상태로 끝났는지가 통째로 밝아진다.
+    if (paths.size) for (const g of ribEls) {
+      const p = g.dataset.path;
+      if (!p || !paths.has(p) || keepR.has(g)) continue;
+      keepR.add(g);
+      keepN.add(g.dataset.dom || "");
+      keepN.add(sideId(g.dataset.seg || ""));
+    }
+    // D68 — 집계 모드도 같은 문법: 닿은 갭 리본과 튜플을 공유하는 반대편 갭
+    // 리본까지 조인 표로 잇는다. 반대편 리본은 여러 출처(또는 상태)의 합이라
+    // 부분이 아니라 통째로 밝는다 — 툴팁 수치는 리본 자신의 정본값이라 거짓은
+    // 없고, 이 한계는 정본 문서에 기록돼 있다.
+    if (gks.size) {
+      const want = new Set<string>();
+      for (const k of gks) for (const j of gkJoin.get(k) || []) want.add(j);
+      for (const g of ribEls) {
+        const k = g.dataset.gk;
+        if (!k || !want.has(k) || keepR.has(g)) continue;
+        keepR.add(g);
+        keepN.add(g.dataset.dom || "");
+        keepN.add(sideId(g.dataset.seg || ""));
+      }
     }
     paint(keepN, keepR);
   }
   function focusRibbon(g: SVGElement) {
+    // D63 — 경로 가닥이면 같은 튜플의 좌·우 가닥을 한 물줄기로 밝힌다.
+    const p = g.dataset.path;
+    if (p) {
+      const keepN = new Set<string>();
+      const keepR = new Set<Element>();
+      for (const r of ribEls) {
+        if (r.dataset.path !== p) continue;
+        keepR.add(r);
+        keepN.add(r.dataset.dom || "");
+        keepN.add(sideId(r.dataset.seg || ""));
+      }
+      paint(keepN, keepR);
+      return;
+    }
+    // D68 — 집계 가닥이면 조인 표로 반대편 갭의 리본까지 밝힌다(경로 모드와
+    // 같은 hover 문법을 집계 규모에서도 유지한다).
+    const k = g.dataset.gk;
+    if (k) {
+      const keepN = new Set<string>([g.dataset.dom || "", sideId(g.dataset.seg || "")]);
+      const keepR = new Set<Element>([g]);
+      const want = gkJoin.get(k) || new Set<string>();
+      for (const r of ribEls) {
+        const rk = r.dataset.gk;
+        if (!rk || !want.has(rk) || keepR.has(r)) continue;
+        keepR.add(r);
+        keepN.add(r.dataset.dom || "");
+        keepN.add(sideId(r.dataset.seg || ""));
+      }
+      paint(keepN, keepR);
+      return;
+    }
     paint(new Set([g.dataset.dom || "", sideId(g.dataset.seg || "")]), new Set([g]));
   }
   function clear() {
@@ -583,8 +861,12 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
   const click = (e: Event) => {
     const t = e.target as Element;
     // 리본 클릭 = 구간 드릴다운(주제 열기보다 우선 — 더 구체적인 표적).
+    // 기타(D68) 리본은 제외 — 병합 stratum 이라 드릴다운 API 에 실체가 없다.
     const seg = t.closest?.("[data-seg]") as SVGElement | null;
-    if (seg && o.onSeg) { o.onSeg(seg.dataset.dom!, seg.dataset.seg!); return; }
+    if (seg && o.onSeg && seg.dataset.dom !== OTHERS_KEY) {
+      o.onSeg(seg.dataset.dom!, seg.dataset.seg!);
+      return;
+    }
     const open = t.closest?.("[data-open]") as SVGElement | null;
     if (open) o.onOpen(open.dataset.open!);
   };

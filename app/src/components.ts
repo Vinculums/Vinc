@@ -38,7 +38,14 @@ export type SheetHandle = {
 };
 
 export function openSheet(opts: {
-  title: string; subtitle?: string; width?: string;
+  title: string; subtitle?: string;
+  /** 크기는 **내용의 종류**를 따른다 — 시트마다 제멋대로면 열 때마다 화면이
+   *  출렁이지만, 하는 일이 다른데 같은 상자에 밀어 넣는 것도 낭비다(D63 개정).
+   *  단계는 셋뿐이고, 시트는 그중 하나를 고를 뿐 임의 폭을 쓰지 못한다:
+   *    `action`(기본) 묻고 답하는 자리 — 확인·프롬프트·공유·가져오기
+   *    `write`  글 쓰는 자리 — 문서 편집기
+   *    `browse` 훑는 자리 — 모든 문서(화면의 2/3 남짓) */
+  size?: "action" | "write" | "browse";
   /** 닫힐 때 한 번 호출(편집기 dispose 등). */
   onClose?: () => void;
   /** 라벨 없이 몸만 쓰는 시트(문서 편집기처럼) — 머리의 제목을 숨긴다. */
@@ -50,7 +57,7 @@ export function openSheet(opts: {
   el.className = "sheet-scrim";
   el.innerHTML = `
     <div class="sheet" role="dialog" aria-modal="true"
-         aria-label="${esc(opts.title)}" style="width:${opts.width || "34rem"}">
+         aria-label="${esc(opts.title)}" data-size="${opts.size || "action"}">
       <div class="sheet-head">
         <div class="sheet-titles">
           ${opts.bare ? "" : `<h2>${esc(opts.title)}</h2>`}
@@ -141,7 +148,7 @@ export function confirmDestructive(message: string, confirmLabel: string,
     const el = document.createElement("div");
     el.className = "sheet-scrim sheet-center";
     el.innerHTML = `
-      <div class="sheet" role="alertdialog" aria-modal="true" style="width:26rem">
+      <div class="sheet" role="alertdialog" aria-modal="true">
         <div class="sheet-body" style="padding-top:var(--space-4,1rem)">
           <p style="margin:0">${message}</p>
         </div>
@@ -174,7 +181,7 @@ export function promptText(title: string, initial: string, confirmLabel: string,
     const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
       c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
     el.innerHTML = `
-      <div class="sheet" role="dialog" aria-modal="true" style="width:26rem">
+      <div class="sheet" role="dialog" aria-modal="true">
         <div class="sheet-body" style="padding-top:var(--space-4,1rem)">
           <p style="margin:0 0 .6rem">${esc(title)}</p>
           <input id="pt-in" class="rail-filter" style="margin:0" value="${esc(initial)}"/>
