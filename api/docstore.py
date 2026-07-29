@@ -635,25 +635,93 @@ def _slug(s: str) -> str:
     return _SLUG_RE.sub("-", s.strip().lower()).strip("-")[:60]
 
 
-def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
-    """순수 결정론 추출(옵션1) — 마크다운 헤딩(##/###)마다 개념 후보 1개.
+_ATX_RE = re.compile(r"^(#{2,3})\s+(.+)$")
+# 밑줄식 헤딩(마크다운 setext · reStructuredText 섹션) — 한 종류의 구두점만 3자
+# 이상 반복된 줄. `*`·`+` 는 뺐다: 마크다운에서 `***` 는 구분선이고 `+ ` 는 목록
+# 이라 오탐이 실익보다 크다. 백틱도 뺐다: ``` 은 사실상 언제나 코드펜스다.
+# `=` 는 매칭은 하되 문서 제목 층으로 보고 버린다.
+_UNDERLINE_RE = re.compile(r"^([=\-~^:'\"])\1{2,}$")
+_FENCE_RE = re.compile(r"^(```|~~~)")
+_LIST_RE = re.compile(r"^([-*+]\s|\d+[.)]\s)")
+# 헤딩은 짧다 — 긴 문단 아래에 우연히 놓인 구분선이 그 문단을 통째로 개념으로
+# 만드는 일을 막는 상한(문자 수).
+_MAX_HEADING_LEN = 120
 
-    후보 = {title, one_liner(헤딩 다음 첫 비빈 줄 ≤400자 — concepts_ingest 의
-    _one_liner 관례), slug}. H1 은 문서 제목으로 보고 제외. 같은 slug 는 첫
+
+def _headings(lines: list[str]) -> list[tuple[int, int, str]]:
+    """``(제목 줄, 본문 시작 줄, 제목)`` 목록 — ATX(``##``/``###``)와 밑줄식 양쪽.
+
+    밑줄식을 받는 이유: 같은 내용을 setext(``제목\\n---``)나 RST(``제목\\n~~~``)로
+    쓴 문서가 ATX 만 보던 시절엔 후보 **0개**였다. 결정론 층의 깊이를 늘리는 가장
+    싼 방법이고 LLM 도 새 의존성도 필요 없다.
+
+    오탐을 막는 세 가드가 핵심이다:
+      · **프론트매터** — 닫는 ``---`` 가 바로 위 ``tags: [...]`` 를 제목으로 둔갑시킨다.
+      · **코드펜스** — 코드 예시 안의 ``## foo`` 나 ``---`` 는 헤딩이 아니다
+        (ATX 에도 함께 적용된다 — 원래 새던 구멍).
+      · **앞줄 성격** — 빈 줄·목록·표(``|``)·다른 밑줄·과길이는 제목이 아니다.
+    """
+    out: list[tuple[int, int, str]] = []
+    in_fence = False
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for j in range(1, len(lines)):
+            if lines[j].strip() == "---":
+                start = j + 1
+                break
+    for i in range(start, len(lines)):
+        s = lines[i].strip()
+        prev = lines[i - 1].strip() if i > start else ""
+        if in_fence:
+            if _FENCE_RE.match(s):
+                in_fence = False
+            continue
+        if _FENCE_RE.match(s):
+            # `~~~` 는 RST 섹션 밑줄과 글자가 겹친다. 펜스는 블록이라 앞이 비어
+            # 있고 밑줄은 제목 **바로 아래**에 붙는다 — 그 차이로 가른다.
+            if not (s[0] == "~" and _title_shaped(prev)):
+                in_fence = True
+                continue
+        m = _ATX_RE.match(s)
+        if m:
+            out.append((i, i + 1, m.group(2).strip().lstrip("*").strip()))
+            continue
+        if not _UNDERLINE_RE.match(s) or s[0] == "=" or not prev:
+            continue                      # `=` = 문서 제목 층(ATX 의 `#` 과 동일 취급)
+        if not _title_shaped(prev):
+            continue
+        out.append((i - 1, i + 1, prev.lstrip("*").strip()))
+    return out
+
+
+def _title_shaped(line: str) -> bool:
+    """밑줄 위에 놓였을 때 제목으로 받아줄 만한 줄인가. 빈 줄·목록·표 구분행·
+    다른 밑줄·과길이 문단은 제목이 아니다."""
+    return bool(line) and len(line) <= _MAX_HEADING_LEN and not line.startswith("#") \
+        and "|" not in line and not _LIST_RE.match(line) \
+        and not _UNDERLINE_RE.match(line) and not _FENCE_RE.match(line)
+
+
+def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
+    """순수 결정론 추출(옵션1) — 헤딩마다 개념 후보 1개.
+
+    헤딩 = 마크다운 ATX(``##``/``###``) + 밑줄식(setext·RST). 후보 =
+    {title, one_liner(헤딩 다음 첫 비빈 줄 ≤400자 — concepts_ingest 의 _one_liner
+    관례), slug}. H1(``#``·``===`` 밑줄)은 문서 제목으로 보고 제외. 같은 slug 는 첫
     등장만(멱등). LLM·네트워크·스토어 없음 — 어디서든 같은 입력 = 같은 후보."""
     out: list[dict] = []
     seen: set[str] = set()
     lines = text.splitlines()
-    for i, line in enumerate(lines):
-        m = re.match(r"^(#{2,3})\s+(.+)$", line.strip())
-        if not m:
-            continue
-        title = m.group(2).strip().lstrip("*").strip()
+    heads = _headings(lines)
+    for k, (_, body, title) in enumerate(heads):
         slug = _slug(title)
         if not slug or slug in seen:
             continue
+        # 다음 헤딩의 제목 줄에서 멈춘다 — 안 그러면 밑줄이나 다음 제목이
+        # one_liner 로 새어 들어온다.
+        stop = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
         one_liner = ""
-        for nxt in lines[i + 1:]:
+        for nxt in lines[body:stop]:
             s = nxt.strip()
             if s.startswith("#"):
                 break

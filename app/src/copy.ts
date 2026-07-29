@@ -13,8 +13,8 @@ const EN = {
   sovereigntyWeb: "This is your account graph. The same knowledge across the desktop app and your devices.",
   intake: {
     idleTitle: "Add knowledge to Vinc.",
-    idleBody: "Import a knowledge pack, a .vincpack or .json file. Drag it here, or choose a file.",
-    idleCta: "Import a pack",
+    idleBody: "Bring in a document (.md, .txt, .rst, .pdf) or a knowledge pack (.vincpack, .json). Drag it here, or choose a file.",
+    idleCta: "Choose a file",
     loading: (n: number, m: number, d: number) => `Analyzing ${n} of ${m} documents. ${d} topics so far.`,
     success: (n: number, m: number) => `${n} documents added across ${m} topics.`,
     successCta: "Open in Atlas",
@@ -314,8 +314,26 @@ const EN = {
       imported: (files: number, nodes: number, edges: number) =>
         `Imported ${files} file${files === 1 ? "" : "s"}: ${nodes} concept${nodes === 1 ? "" : "s"}, ${edges} link${edges === 1 ? "" : "s"} added.`,
       someFailed: (names: string) => `Couldn't read: ${names}.`,
-      mcpTitle: "Build from your own documents",
-      mcpBody: "Vinc stays on your device, so it never reads your files itself. Connect an AI assistant in Settings → MCP. It reads your material and writes the concepts into Vinc for you.",
+      // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
+      importedDocs: (docs: number) =>
+        `Added ${docs} document${docs === 1 ? "" : "s"}, kept whole and searchable.`,
+      tooLarge: (name: string, mb: string) =>
+        `${name} is too large for the browser (${mb}MB limit). The desktop app has no limit.`,
+      // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
+      docError: {
+        pdf_encrypted: (name: string) =>
+          `${name} is password protected, so its text can't be read.`,
+        pdf_no_text: (name: string) =>
+          `${name} has no readable text. Scanned pages need OCR first.`,
+        pdf_unreadable: (name: string) =>
+          `${name} couldn't be opened as a PDF. The file may be damaged.`,
+        pdf_support_missing: (name: string) =>
+          `This build can't read PDFs yet, so ${name} was skipped.`,
+        unsupported_format: (name: string) =>
+          `Vinc can't read ${name} yet. Documents (.md, .txt, .rst) and PDFs work.`,
+      },
+      mcpTitle: "Go deeper with an assistant",
+      mcpBody: "Vinc reads plain documents on its own and keeps them whole. For richer extraction, from code or a format Vinc doesn't read, connect an AI assistant in Settings → MCP and it writes concepts into Vinc for you.",
       trySample: "Try the sample pack",
       importingSample: "Importing the sample…",
       sampleLoaded: "Sample loaded: 6 concepts across 2 topics. You're viewing the sample space now (switch back anytime in Settings).",
@@ -416,10 +434,17 @@ const EN = {
       scopeAll: "Everything", scopeSeed: (d: number) => `This document, ${d} hops out`,
       scopeSelection: (n: number) => `${n} selected`,
       intakeTitle: "Add knowledge",
-      intakeSub: "Bring in a pack someone shared, or start writing your own.",
-      pickPack: "Choose a pack file",
+      intakeSub: "Bring in a document or a pack someone shared, or start writing your own.",
+      pickPack: "Choose a file",
       importCta: "Import",
-      importTip: "Bring a .vincpack into your graph",
+      importTip: "Bring a document (.md, .txt, .rst, .pdf) or a .vincpack into your graph",
+      // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
+      docTitle: "Import a document",
+      docSub: "Kept whole in your graph, exactly as written.",
+      docNote: (name: string) =>
+        `${name} is stored whole. Every concept drawn from it keeps a pointer back to the exact place in the text.`,
+      docDone: (title: string) => `${title} is in your graph.`,
+      docSkipped: (title: string) => `${title} is already in your graph, unchanged.`,
       preparing: "Preparing the pack…", shareTitle: "Share as a pack",
       counts: (c: number, e: number, r: number) => `${c} concepts · ${e} connections · ${r} documents`,
       nothing: "Nothing in scope.",
@@ -442,8 +467,8 @@ const KO: Deck = {
   sovereigntyWeb: "여기는 계정 그래프입니다. 데스크탑 앱·다른 기기와 같은 지식을 봅니다.",
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
-    idleBody: "지식 팩 파일(.vincpack 또는 .json)을 가져오세요. 여기에 끌어다 놓거나 파일을 선택하면 됩니다.",
-    idleCta: "팩 가져오기",
+    idleBody: "문서 파일(.md·.txt·.rst·.pdf)이나 지식 팩(.vincpack·.json)을 가져오세요. 여기에 끌어다 놓거나 파일을 선택하면 됩니다.",
+    idleCta: "파일 고르기",
     loading: (n, m, d) => `${m}개의 문서 중 ${n}개 분석 중... 지금까지 발견된 주제 ${d}개.`,
     success: (n, m) => `${m}개 주제에 걸쳐 ${n}개의 문서가 추가되었습니다.`,
     successCta: "Atlas에서 열기",
@@ -734,8 +759,23 @@ const KO: Deck = {
       imported: (files, nodes, edges) =>
         `${files}개 파일에서 개념 ${nodes}개, 연결 ${edges}개를 추가했습니다.`,
       someFailed: (names) => `읽지 못한 파일: ${names}.`,
-      mcpTitle: "내 문서로 그래프 만들기",
-      mcpBody: "Vinc는 기기 안에만 있어 파일을 직접 읽지 않습니다. Settings → MCP에서 AI 어시스턴트를 연결하세요. 어시스턴트가 당신의 자료를 읽고 개념을 Vinc에 대신 써넣습니다.",
+      // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
+      importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했습니다.`,
+      tooLarge: (name, mb) =>
+        `${name}은(는) 브라우저에서 가져오기엔 너무 큽니다(${mb}MB 제한). 데스크탑 앱에는 제한이 없습니다.`,
+      // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
+      docError: {
+        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 본문을 읽을 수 없습니다.`,
+        pdf_no_text: (name) =>
+          `${name}에서 읽을 텍스트를 찾지 못했습니다. 스캔한 문서는 먼저 OCR이 필요합니다.`,
+        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했습니다. 파일이 손상되었을 수 있습니다.`,
+        pdf_support_missing: (name) =>
+          `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었습니다.`,
+        unsupported_format: (name) =>
+          `${name}은(는) 아직 읽지 못하는 형식입니다. 문서(.md·.txt·.rst)와 PDF를 지원합니다.`,
+      },
+      mcpTitle: "어시스턴트로 더 깊이 파기",
+      mcpBody: "Vinc는 일반 문서를 직접 읽고 원문 그대로 보관합니다. 코드처럼 더 깊은 추출이 필요하거나 Vinc가 읽지 못하는 형식이라면 Settings → MCP에서 AI 어시스턴트를 연결하세요. 어시스턴트가 자료를 읽고 개념을 Vinc에 대신 써넣습니다.",
       trySample: "샘플 팩 체험하기",
       importingSample: "샘플 불러오는 중…",
       sampleLoaded: "샘플을 불러왔습니다: 2개 주제, 개념 6개. 지금은 샘플 공간을 보고 있습니다(Settings에서 언제든 되돌릴 수 있습니다).",
@@ -843,10 +883,17 @@ const KO: Deck = {
       scopeAll: "전체", scopeSeed: (d) => `이 문서 주변 ${d}단`,
       scopeSelection: (n) => `선택한 ${n}개`,
       intakeTitle: "지식 추가",
-      intakeSub: "누군가 공유한 팩을 들여오거나, 직접 씁니다.",
-      pickPack: "팩 파일 고르기",
+      intakeSub: "문서나 누군가 공유한 팩을 들여오거나, 직접 씁니다.",
+      pickPack: "파일 고르기",
       importCta: "가져오기",
-      importTip: ".vincpack 파일을 내 그래프로 가져옵니다",
+      importTip: "문서(.md·.txt·.rst·.pdf)나 .vincpack 파일을 내 그래프로 가져옵니다",
+      // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
+      docTitle: "문서 가져오기",
+      docSub: "쓰인 그대로, 원문을 통째로 보관합니다.",
+      docNote: (name) =>
+        `${name}을(를) 원문 그대로 보관합니다. 여기서 뽑은 개념에는 원문의 어느 자리에서 왔는지가 함께 남습니다.`,
+      docDone: (title) => `${title}을(를) 그래프에 담았습니다.`,
+      docSkipped: (title) => `${title}은(는) 이미 같은 내용으로 들어와 있습니다.`,
     },
   },
 };

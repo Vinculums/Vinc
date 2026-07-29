@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && rm -rf /var/lib/apt/lists/*
 
 # 드라이버 버전 핀(명칭 churn 대비, pyproject.toml 주석과 동일 근거).
-RUN pip install --no-cache-dir ladybug==0.18.0 argon2-cffi
+# pypdf — 허브도 /doc/put-file 을 프록시로 받으므로 서버측 추출기가 필요하다.
+RUN pip install --no-cache-dir ladybug==0.18.0 argon2-cffi pypdf
 
 COPY api ./api
 COPY store ./store

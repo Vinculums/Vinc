@@ -552,6 +552,116 @@ class DocRouteE2E(unittest.TestCase):
             code, gone = _req(base, f"/doc?id={did}&owner=user:a")
             self.assertIn("error", gone)
 
+    def test_doc_put_carries_origin(self):
+        """origin(파일 import 시 파일명)이 라우트를 타고 정체성·목록까지 흐른다.
+
+        origin 은 `make_doc_id` 산식에 들어가므로 같은 본문이라도 origin 이 다르면
+        다른 문서가 되고, 같으면 목록에서 그 파일을 되찾아 **갱신**할 수 있다 —
+        드롭존이 같은 파일 재드롭을 새 문서로 늘리지 않는 근거가 이것이다."""
+        with running_server(self.app) as base:
+            body = {"owner": "user:a", "text": "# 파일\n\n본문.", "title": "노트"}
+            code, a = _req(base, "/doc/put", method="POST",
+                           body={**body, "origin": "notes.md"})
+            self.assertEqual(code, 200)
+            code, b = _req(base, "/doc/put", method="POST",
+                           body={**body, "origin": "other.md"})
+            self.assertEqual(code, 200)
+            self.assertNotEqual(a["doc_id"], b["doc_id"])
+            # 목록이 origin 을 돌려줘야 클라가 파일명→doc_id 색인을 세울 수 있다.
+            code, lst = _req(base, "/docs?owner=user:a")
+            self.assertEqual(code, 200)
+            by_origin = {d["origin"]: d["doc_id"] for d in lst["docs"]}
+            self.assertEqual(by_origin.get("notes.md"), a["doc_id"])
+            # 같은 파일 재적재(무변경) → F5 스킵. 실패가 아니라 성공으로 센다.
+            code, again = _req(base, "/doc/put", method="POST",
+                               body={**body, "origin": "notes.md", "id": a["doc_id"]})
+            self.assertTrue(again["executed"] and again["skipped"])
+
+    def test_doc_put_file_route(self):
+        """`POST /doc/put-file` — 파일 바이트 입구(base64-in-JSON).
+
+        추출 실패는 500 이 아니라 executed=False + 안정 코드로 내려와야 한다:
+        프론트가 크기·형식 문제를 '읽지 못했습니다' 로 뭉개지 않고 사유별 문구를
+        줄 수 있어야 하기 때문이다."""
+        import base64 as _b64
+        with running_server(self.app) as base:
+            payload = "# 파일 입구\n\n본문 한 줄.\n".encode("utf-8")
+            code, res = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "입구.md",
+                "data_b64": _b64.b64encode(payload).decode()})
+            self.assertEqual(code, 200, res)
+            self.assertTrue(res["executed"], res)
+            self.assertEqual(res["source_format"], "text")
+            did = res["doc_id"]
+            # title·origin 은 파일명에서 채워진다(클라가 안 줘도 정체성이 선다).
+            code, lst = _req(base, "/docs?owner=user:a")
+            row = next(d for d in lst["docs"] if d["doc_id"] == did)
+            self.assertEqual((row["title"], row["origin"]), ("입구", "입구.md"))
+            code, got = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(got["text"], payload.decode("utf-8"))
+            # cp949 저장본도 살아 돌아온다(utf-8 하드코딩이던 시절의 실패 지점).
+            code, cp = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "메모.txt",
+                "data_b64": _b64.b64encode("한글 메모".encode("cp949")).decode()})
+            self.assertTrue(cp["executed"], cp)
+            code, got2 = _req(base, f"/doc?id={cp['doc_id']}&owner=user:a")
+            self.assertEqual(got2["text"], "한글 메모")
+            # 미지원 형식 → 강등(200 + 사유 코드), 문서는 만들지 않는다.
+            code, bad = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "sheet.xlsx",
+                "data_b64": _b64.b64encode(b"PK\x03\x04").decode()})
+            self.assertEqual(code, 200)
+            self.assertFalse(bad["executed"])
+            self.assertEqual(bad["error"], "unsupported_format")
+            # 깨진 PDF → pypdf 유무와 무관하게 강등(설치되면 unreadable, 없으면 missing).
+            code, pdf = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "x.pdf",
+                "data_b64": _b64.b64encode(b"%PDF-1.4\nnope").decode()})
+            self.assertFalse(pdf["executed"])
+            self.assertIn(pdf["error"], ("pdf_support_missing", "pdf_unreadable"))
+            # 무소유·깨진 base64·빈 파일은 400(계약 위반이지 강등이 아니다).
+            code, _ = _req(base, "/doc/put-file", method="POST",
+                           body={"filename": "a.md", "data_b64": "aGk="})
+            self.assertEqual(code, 400)
+            code, _ = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "a.md", "data_b64": "!!not base64!!"})
+            self.assertEqual(code, 400)
+            code, _ = _req(base, "/doc/put-file", method="POST", body={
+                "owner": "user:a", "filename": "a.md", "data_b64": ""})
+            self.assertEqual(code, 400)
+
+    def test_sync_docs_export_and_apply_routes(self):
+        """`GET /sync/docs-export` · `POST /sync/docs-apply` 회귀 게이트.
+
+        두 핸들러는 `docsync` 를 부르는데 server.py 임포트 블록에 그 모듈이 없어
+        **NameError 500** 이었다. 기존 test_docsync 는 모듈을 직접 임포트해 라우트
+        경유를 안 타므로 이 구멍을 못 봤다 — 그래서 라우트 레벨로 못 박는다."""
+        with running_server(self.app) as base:
+            code, put = _req(base, "/doc/put", method="POST",
+                             body={"owner": "user:a", "text": "동기화 본문.",
+                                   "title": "S", "origin": "s.md"})
+            self.assertEqual(code, 200)
+            did = put["doc_id"]
+            code, exp = _req(base, "/sync/docs-export?owner=user:a&since=0")
+            self.assertEqual(code, 200, exp)
+            self.assertEqual([d["doc_id"] for d in exp["docs"]], [did])
+            self.assertGreaterEqual(exp["cursor"], 1)
+            # 남의 델타는 SEC-1 로 튕긴다(로컬 문서 소유자가 다르면 적용 안 함).
+            code, other = _req(base, "/sync/docs-apply", method="POST",
+                               body={"owner": "user:b", "payload": exp})
+            self.assertEqual(code, 200, other)
+            self.assertEqual((other["applied"], other["skipped"]), (0, 1))
+            # 삭제 후 같은 델타 재적용 → 복원(수신측 재청킹 경로가 살아 있다).
+            code, _ = _req(base, "/doc/delete", method="POST",
+                           body={"id": did, "owner": "user:a"})
+            self.assertEqual(code, 200)
+            code, back = _req(base, "/sync/docs-apply", method="POST",
+                              body={"owner": "user:a", "payload": exp})
+            self.assertEqual(code, 200, back)
+            self.assertEqual(back["applied"], 1)
+            code, got = _req(base, f"/doc?id={did}&owner=user:a")
+            self.assertEqual(got["text"], "동기화 본문.")
+
 
 if __name__ == "__main__":
     unittest.main()

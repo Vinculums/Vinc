@@ -29,6 +29,22 @@ VERSION_FILE = str(ROOT / "packaging" / "version_info.txt") if sys.platform == "
 # Database open→schema→write→read 성공 확인).
 DATAS, BINARIES, DRIVER_HIDDEN = collect_all("ladybug")
 
+# PDF 추출기(D45 입력 어댑터 · api/textextract). 순수 파이썬이라 정적 분석으로도
+# 대개 잡히지만, `_codecs/*`·`_crypt_providers/*` 를 조건부·지연 import 하므로
+# ladybug 와 같은 규율로 통째 수집한다 — 여기서 아끼면 "빌드는 초록, PDF 만 조용히
+# 강등"이 된다. **미설치는 빌드 실패가 아니다**: extra 이므로 없으면 그냥 안 싣고
+# 런타임이 pdf_support_missing 으로 강등한다(텍스트 경로는 무영향).
+# ⚠ excludes 의 cryptography 제외는 그대로 둔다 — 암호화 PDF 는 지원 범위 밖이고
+# (textextract 가 pdf_encrypted 로 강등), 그거 하나 때문에 pyo3 훅 충돌을 되살릴
+# 이유가 없다.
+try:
+    PDF_DATAS, PDF_BINARIES, PDF_HIDDEN = collect_all("pypdf")
+except Exception:
+    PDF_DATAS, PDF_BINARIES, PDF_HIDDEN = [], [], []
+DATAS += PDF_DATAS
+BINARIES += PDF_BINARIES
+DRIVER_HIDDEN = list(DRIVER_HIDDEN) + list(PDF_HIDDEN)
+
 _extroot = pathlib.Path.home() / ".lbdb" / "extension"
 for _ext in ("vector", "fts", "algo"):
     _m = sorted(_extroot.glob(f"*/*/{_ext}/lib{_ext}.lbug_extension"))

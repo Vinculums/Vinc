@@ -136,13 +136,19 @@ export function openIntakeSheet(onDone?: (res: any) => void) {
 export function pickAndImport(onDone?: (res: any) => void) {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".vincpack,.json,application/json,application/zip";
+  // 드롭존(surfaces/intake.ts)과 **같은 목록**이어야 한다 — 갈라지면 진입점에 따라
+  // 열리는 파일이 달라진다(application/zip 은 .vincpack 컨테이너용으로 여기만 유지).
+  input.accept = ".vincpack,.json,.md,.markdown,.txt,.rst,.pdf," +
+                 "application/json,application/zip,text/markdown,text/plain,application/pdf";
   input.style.display = "none";
   document.body.appendChild(input);
   input.addEventListener("change", async () => {
     const f = input.files?.[0];
     input.remove();
     if (!f) return;
+    const { isDocFile } = await import("./doc-import");
+    // 원문 문서는 팩 파서를 거치지 않는다(드롭존과 같은 규칙).
+    if (isDocFile(f)) { void openDocImportSheet(f, onDone); return; }
     try {
       const { readPackFile } = await import("./packfile");
       openImportSheet(await readPackFile(f), onDone);
@@ -152,4 +158,58 @@ export function pickAndImport(onDone?: (res: any) => void) {
     }
   });
   input.click();
+}
+
+/** 원문 문서 1개 가져오기(D45) — 팩 시트와 같은 규격(머리·몸·발)으로, 적재 결과와
+ *  개념 추출 승인을 한 자리에서 끝낸다. 추출은 드롭존과 마찬가지로 **미리보기 →
+ *  승인** 2단계다(자동 반영하면 임의 문서의 헤딩이 그대로 개념이 된다). */
+export async function openDocImportSheet(f: File, onDone?: (res: any) => void) {
+  const S = COPY.ui.sheet;
+  const sheet = openSheet({ title: S.docTitle, subtitle: S.docSub });
+  const ext = (f.name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  sheet.body.innerHTML = `
+    <div class="sheet-spec">
+      <div><span class="hint">${S.specDocs}</span><b>1</b></div>
+      <div><span class="hint">${S.specFormat}</span><b>${esc(ext)}</b></div>
+    </div>
+    <p>${esc(S.docNote(f.name))}</p>
+    <div id="sheet-result" role="status"></div>`;
+  sheet.foot.innerHTML = sheetActions(
+    { id: "sheet-import", label: S.importCta },
+    { id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  sheet.foot.querySelector("#sheet-import")!.addEventListener("click", async () => {
+    const out = sheet.body.querySelector<HTMLElement>("#sheet-result")!;
+    out.innerHTML = `<p class="hint">${COPY.packs.importing}</p>`;
+    const dm = await import("./doc-import");
+    try {
+      const idx = await dm.originIndex(cfg.owner);
+      const r = await dm.importDocFile(f, cfg.owner, idx);
+      out.innerHTML = `<p>${esc(r.skipped ? S.docSkipped(r.title) : S.docDone(r.title))}</p>`;
+      sheet.foot.innerHTML = sheetActions({ id: "sheet-go", label: S.viewAtlas });
+      sheet.foot.querySelector("#sheet-go")!.addEventListener("click", () => {
+        sheet.close();
+        location.hash = "#atlas";
+        location.reload();   // 그래프가 바뀌었다 — 현재 층을 새로 세운다
+      });
+      onDone?.({ executed: true, doc_id: r.docId });
+      // 추출 제안은 결과 아래에 붙인다(승인 전까지 그래프는 그대로).
+      const n = await dm.previewExtract(cfg.owner, [r.docId]);
+      if (!n || !out.isConnected) return;
+      const offer = document.createElement("p");
+      offer.innerHTML = `<button class="btn" id="sheet-extract">${
+        COPY.ui.atlasx.edExtractOffer(n)}</button>`;
+      out.appendChild(offer);
+      offer.querySelector("#sheet-extract")!.addEventListener("click", async () => {
+        offer.innerHTML = `<span class="hint">${COPY.packs.importing}</span>`;
+        const ap = await dm.applyExtract(cfg.owner, [r.docId]);
+        if (!offer.isConnected) return;
+        offer.innerHTML = `<span class="hint">${
+          COPY.ui.atlasx.edExtractDone(ap.created, ap.mentions)}</span>`;
+      });
+    } catch (e) {
+      out.innerHTML = `<div class="error-banner">${
+        esc(dm.docImportError(e, f.name) || COPY.packs.error)}</div>`;
+    }
+  });
 }

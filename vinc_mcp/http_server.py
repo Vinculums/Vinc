@@ -72,6 +72,9 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # put=적재/편집(단일 writer 직렬화), extract=정본→개념 파생(남의 개념 불가침),
     # reembed=편집 후 벡터 재생성(허브는 자체호스팅 임베딩 워커가 채운다).
     "doc-put": ("POST", "/doc/put"),
+    # 파일 바이트 입구(텍스트·PDF) — 본문은 base64 라 4/3 로 부푼다. 아래 MAX_BODY
+    # (4MB)가 실효 상한을 결정하므로 웹에서 올릴 수 있는 원본은 대략 2.8MB 다.
+    "doc-put-file": ("POST", "/doc/put-file"),
     "doc-extract": ("POST", "/doc/extract"),
     "doc-reembed": ("POST", "/doc/reembed"),
     # 관계 근거 저작(U2) — 정본 청크에서 결정론 추출, owner 스코프.

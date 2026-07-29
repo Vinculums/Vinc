@@ -21,6 +21,7 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
@@ -41,6 +42,8 @@ from . import fragment as frag
 from . import share
 from . import sync
 from . import docstore
+from . import docsync
+from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
@@ -451,6 +454,37 @@ class VincApp:
             self.store, owner=owner, text=_req(body, "text"),
             doc_id=body.get("id") or None, title=body.get("title") or "",
             origin=body.get("origin") or ""))
+        return 200, res
+
+    def write_doc_put_file(self, body):
+        """파일 바이트 → 원문 텍스트 → 정본 적재. `/doc/put` 의 바이너리 입구다.
+
+        **왜 base64-in-JSON 인가**: 계정 프록시가 상태변경 요청에 `Content-Type:
+        application/json` 을 강제해(guards.ts) multipart 는 웹 경로에서 원천 거부되고,
+        `_body()` 도 json.loads 고정이다. 4/3 팽창을 감수하고 한 경로로 통일한다 —
+        웹은 어차피 허브 MAX_BODY(4MB)가 앞서 걸리므로 실효 상한이 결정한다.
+
+        추출 실패(미지원 형식·암호화·스캔 PDF·추출기 부재)는 500 이 아니라
+        **executed=False + 안정 코드**로 돌린다: 호출부가 읽히는 문구로 바꾼다."""
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 정본은 무소유로 두지 않는다(SEC-1)"}
+        filename = body.get("filename") or ""
+        try:
+            data = base64.b64decode(body.get("data_b64") or "", validate=True)
+        except Exception:
+            return 400, {"error": "data_b64 must be valid base64"}
+        if not data:
+            return 400, {"error": "empty file"}
+        got = textextract.extract_text(filename, data)
+        if not got.get("executed"):
+            return 200, got                       # 강등 — 사유 코드를 그대로 전달
+        title = body.get("title") or os.path.splitext(os.path.basename(filename))[0]
+        res = self.jobs.run_sync("doc.put-file", lambda: docstore.put_doc(
+            self.store, owner=owner, text=got["text"],
+            doc_id=body.get("id") or None, title=title,
+            origin=body.get("origin") or filename))
+        res["source_format"] = got.get("format") or ""
         return 200, res
 
     def write_doc_delete(self, body):
@@ -928,6 +962,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-nodes": app.write_merge,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
+            "/doc/put-file": app.write_doc_put_file,   # 파일 바이트 입구(텍스트·PDF)
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
             "/evidence/backfill": app.write_evidence_backfill,   # 관계 근거 저작(U2)

@@ -130,6 +130,33 @@ class PureChunkingTests(unittest.TestCase):
         self.assertEqual(cands, ds.extract_concepts(text))   # 결정론
         self.assertEqual(ds.extract_concepts("헤딩 없음\n그냥 본문"), [])
 
+    def test_extract_concepts_underline_headings(self):
+        """밑줄식(setext·RST) 헤딩도 받는다 — ATX 만 보던 시절엔 후보 0개였다."""
+        text = ("문서 제목\n=========\n\n서문.\n\n"
+                "경계 슬라이스\n------------\n무손실이 정의상 성립한다.\n\n"
+                "근거 문장\n~~~~~~~~~\n관계마다 출처 문장이 붙는다.\n")
+        got = ds.extract_concepts(text)
+        # `===` 밑줄은 문서 제목 층 → 제외(ATX 의 `#` 과 같은 취급).
+        self.assertEqual([c["title"] for c in got], ["경계 슬라이스", "근거 문장"])
+        # 밑줄이 one_liner 로 새지 않는다(다음 헤딩 제목 줄에서 멈춘다).
+        self.assertEqual(got[0]["one_liner"], "무손실이 정의상 성립한다.")
+        self.assertEqual(got, ds.extract_concepts(text))     # 결정론
+
+    def test_extract_concepts_rejects_lookalikes(self):
+        """구분선·프론트매터·표·코드펜스는 헤딩이 아니다 — 오탐이 그래프를 오염한다."""
+        # 프론트매터: 닫는 `---` 가 바로 위 `tags:` 를 제목으로 둔갑시키면 안 된다.
+        fm = "---\ntitle: 문서\ntags: [a, b]\n---\n\n본문.\n\n## 진짜 헤딩\n내용.\n"
+        self.assertEqual([c["title"] for c in ds.extract_concepts(fm)], ["진짜 헤딩"])
+        # 구분선(앞이 빈 줄) · 표 구분행 · 목록
+        self.assertEqual(ds.extract_concepts("문단.\n\n---\n\n다음 문단.\n"), [])
+        self.assertEqual(ds.extract_concepts("| a | b |\n|---|---|\n| 1 | 2 |\n"), [])
+        self.assertEqual(ds.extract_concepts("- 항목\n-----\n"), [])
+        # 코드펜스 안의 헤딩·밑줄은 코드다
+        fence = "```\n## 코드 속 주석\n제목처럼 보임\n-------------\n```\n\n## 밖의 헤딩\n내용.\n"
+        self.assertEqual([c["title"] for c in ds.extract_concepts(fence)], ["밖의 헤딩"])
+        # 긴 문단 아래 구분선이 그 문단을 통째로 개념으로 만들지 않는다
+        self.assertEqual(ds.extract_concepts("가" * 200 + "\n-----\n"), [])
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocstoreE2E(unittest.TestCase):

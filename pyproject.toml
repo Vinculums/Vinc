@@ -23,6 +23,12 @@ embed    = ["sentence-transformers"]  # 영어 retrieval bge-base-en 768d (§8)
 # stdlib(http.server). 이 extra 없이도 코어·조회·서버 기동은 동작하며, 온보딩·
 # 패스프레이즈 검증만 불가하다(F5: 키 없이 기동).
 server   = ["argon2-cffi"]    # argon2id 자격 해시(로컬 로그인 F4)
+# PDF 원문 적재(D45 입력 어댑터, api/textextract). **코어는 여전히 무의존**이며
+# 이것도 extra 다 — 없으면 PDF 만 executed=False 로 강등되고 텍스트 경로는 그대로
+# 동작한다. ⚠ 선언 지점이 여기 하나가 아니다: release.yml(동결 빌드 pip 목록)·
+# ci.yml·Dockerfile.hub·packaging/sidecar.spec(collect_all) 을 함께 봐야 한다 —
+# 한 곳만 빠지면 "빌드는 초록, 런타임은 사망"(v0.5.1 회귀)이 그대로 재현된다.
+pdf      = ["pypdf"]          # PDF → 텍스트(순수 파이썬, 오프라인·키 0)
 
 [tool.setuptools]
 py-modules = []

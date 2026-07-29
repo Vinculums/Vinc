@@ -1,8 +1,14 @@
-# Vinc app — 5 surfaces + Settings (D15) · Atlas semantic zoom (D16)
+# Vinc app — 상단 바 단일 셸(D56) · 표면 3 + Settings 시트
 
-데스크탑 Tauri 셸과 웹 Vinc(`vincs.app/app`)가 공유하는 프론트엔드 패키지 — v0.3.1 라이브.
+데스크탑 Tauri 셸과 웹 Vinc(`vincs.io/app`)가 공유하는 프론트엔드 패키지 — v0.6.7 라이브.
 정본 설계는 `Vinc-docs vinc/D/*`(표면 설계서)와 `vinc.d.ux-research`(연구·DEC 근거),
 카피는 D18 카피 덱(`src/copy.ts`, en/ko 이중 언어 — D42 언어 전환).
+
+> **표면 수 정정(2026-07-29):** 구 제목의 "5 surfaces + Settings (D15)"는 현행이 아니다.
+> D56(좌측 레일 폐지 → 상단 바 단일) 이후 라우팅되는 표면은 **3**이다 — `src/main.ts` 의
+> `SURFACES`/`ORDER` 가 `atlas`(사용자 표기 `Home`)·`search`·`packs` 이고, 구 표면 해시는
+> `ALIAS`(`intake→packs`·`records→search`)로 흡수된다. `src/surfaces/` 에 파일이 더 있는 것은
+> **모듈 분할**이지 표면 수가 아니다(`atlas*.ts` 만 5개). Settings 는 표면이 아니라 시트다.
 
 ```
 npm install
@@ -41,6 +47,6 @@ npm run build      # tsc --noEmit + vite build (게이트)
 - **Atlas**: L0(`GET /atlas`) → L1(`GET /graph?domain=`, 게이트웨이 = 결합 노드) →
   L2(`GET /graph?seed=&depth=`). hover = 이웃 유지·비이웃 페이드, double-click = refocus,
   breadcrumb 후퇴.
-- **Tauri 셸(제어 = IPC)** 은 v0.1.0 부터 이 프론트엔드를 감싸 패키징돼 배포 중(현 v0.3.1).
+- **Tauri 셸(제어 = IPC)** 은 v0.1.0 부터 이 프론트엔드를 감싸 패키징돼 배포 중(현 v0.6.7).
   파일 다이얼로그·창 제어·사이드카 수명이 IPC 로 가고, 본 패키지의 fetch 데이터 평면은
   셸/웹 공용으로 그대로 유지된다.

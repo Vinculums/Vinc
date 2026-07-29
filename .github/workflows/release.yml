@@ -79,8 +79,11 @@ jobs:
           python-version: "3.11"
       # ── 임베디드 드라이버 = ladybug 단일(v0.5.3, kuzu 제거) ──────────────────
       # 3중 실증 완료(앱 완전호환·G0 오프라인 확장·교차 이관 무손실, 2026-07-20).
-      - name: Install sidecar build deps (LadybugDB)
-        run: pip install ladybug pyyaml pyinstaller
+      - name: Install sidecar build deps (LadybugDB + pypdf)
+        # pypdf = PDF 원문 적재(D45 입력 어댑터). 여기 빠뜨리면 동결 바이너리에
+        # 통째로 안 실려 PDF 만 조용히 강등된다 — pyproject 의 extra 는 이 목록을
+        # 대신하지 않는다(이 워크플로는 extras 를 쓰지 않고 목록을 직접 적는다).
+        run: pip install ladybug pyyaml pyinstaller pypdf
       - name: Seed LadybugDB extensions (G0 오프라인 번들 — spec 이 datas 로 동봉)
         shell: bash
         run: python -c "import ladybug,tempfile,os; c=ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(),'s'))); [c.execute('INSTALL '+e) for e in ('vector','fts','algo')]"
@@ -118,12 +121,33 @@ jobs:
             fi
             sleep 0.5
           done
-          kill "$SIDECAR_PID" 2>/dev/null || true
           if [ -z "$ok" ]; then
+            kill "$SIDECAR_PID" 2>/dev/null || true
             echo "::error::sidecar /health never returned status=ok — store failed to open" >&2
             exit 1
           fi
           echo "sidecar /health OK — store opened for real"
+
+          # 문서 정본 파일 입구(D45) — 동결 바이너리 안에서 실제로 왕복시킨다.
+          # 두 번째 호출이 핵심이다: PDF 매직만 있고 내용은 깨진 바이트를 넣어
+          # `pdf_unreadable`(= pypdf 가 실려서 파싱을 시도했다)을 요구한다.
+          # pypdf 가 동결에서 빠졌다면 `pdf_support_missing` 이 나오고 여기서 죽는다 —
+          # ladybug 동적 import 누락(v0.5.1/v0.5.2)과 같은 사각을 PDF 쪽에도 막는 게이트.
+          H='Authorization: Bearer smoketest'
+          C='Content-Type: application/json'
+          U=http://127.0.0.1:18787/doc/put-file
+          md_b64=$(printf '# smoke\n\nbody line.\n' | base64 | tr -d '\n')
+          pdf_b64=$(printf '%%PDF-1.4\nnope' | base64 | tr -d '\n')
+          txt=$(curl -sf -H "$H" -H "$C" -X POST "$U" \
+                 -d "{\"owner\":\"user:smoke\",\"filename\":\"s.md\",\"data_b64\":\"$md_b64\"}") || true
+          pdf=$(curl -sf -H "$H" -H "$C" -X POST "$U" \
+                 -d "{\"owner\":\"user:smoke\",\"filename\":\"s.pdf\",\"data_b64\":\"$pdf_b64\"}") || true
+          kill "$SIDECAR_PID" 2>/dev/null || true
+          echo "$txt" | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('executed') and d.get('source_format')=='text' else 1)" || {
+            echo "::error::/doc/put-file text path failed in the frozen binary: $txt" >&2; exit 1; }
+          echo "$pdf" | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('error')=='pdf_unreadable' else 1)" || {
+            echo "::error::pypdf missing from the frozen binary (expected pdf_unreadable): $pdf" >&2; exit 1; }
+          echo "sidecar /doc/put-file OK — textextract + pypdf shipped"
 
       # ── 셸(Tauri) ──────────────────────────────────────────────────────
       - uses: actions/setup-node@v4

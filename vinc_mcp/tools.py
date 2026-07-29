@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-읽기 5(search·recall·graph·decide·domains) + 보조 1(suggest_ties) + 쓰기 1
-(ingest — 단일 write 표면). 핸들러는 계약 검증 후 브리지 호출뿐(스켈레톤 §4).
-owner 미지정 시 브리지 기본 owner(user:local)를 주입한다 — MCP 호스트는
-로컬 소유자 개념을 모른다.
+**18종** — 읽기 12(search·recall·graph·decide·domains·suggest_ties·neighbors·
+path·merge_candidates·diagnose·doc_get·doc_list) + 쓰기 6(ingest·delete·
+delete_edge·merge_nodes·doc_put·doc_delete). "단일 write 표면(ingest 하나)"은
+SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
+아래 TOOLS 리스트가 정본이고 이 독스트링은 그 요약일 뿐이다.
+
+주제·어휘(themes·types)는 HTTP 전용이며 MCP 도구로 노출돼 있지 않다.
+핸들러는 계약 검증 후 브리지 호출뿐(스켈레톤 §4). owner 미지정 시 브리지
+기본 owner(user:local)를 주입한다 — MCP 호스트는 로컬 소유자 개념을 모른다.
 """
 from __future__ import annotations
 

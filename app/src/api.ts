@@ -219,10 +219,25 @@ export const api = {
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
-  docPut: (owner: string, text: string, id?: string, title?: string): Promise<{
+  // origin 은 출처 표시(파일 import 시 파일명) — 서버의 doc 정체성 산식에 참여하고
+  // 재드롭 식별의 근거가 된다. 조인 키가 아니며 UI 에도 노출하지 않는다(D45).
+  docPut: (owner: string, text: string, id?: string, title?: string,
+           origin?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
     chunks?: number; needs_embed?: boolean; error?: string;
-  }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}), ...(title ? { title } : {}) }),
+  }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}),
+                                      ...(title ? { title } : {}),
+                                      ...(origin ? { origin } : {}) }),
+  // 파일 바이트 입구(D45) — 텍스트로 못 읽는 것(PDF)과 브라우저 UTF-8 디코드가
+  // 망친 것(cp949 등)을 원본 바이트로 넘겨 서버 추출기에 맡긴다. multipart 가
+  // 아니라 base64-in-JSON 인 이유는 계정 프록시가 JSON 만 통과시키기 때문.
+  docPutFile: (owner: string, filename: string, data_b64: string,
+               id?: string, title?: string): Promise<{
+    executed: boolean; skipped?: boolean; doc_id?: string; source_format?: string;
+    chunks?: number; needs_embed?: boolean; error?: string; note?: string;
+  }> => call("/doc/put-file", undefined, { owner, filename, data_b64,
+                                           ...(id ? { id } : {}),
+                                           ...(title ? { title } : {}) }),
   docReembed: (owner: string, id: string): Promise<{ executed: boolean; docs?: number }> =>
     call("/doc/reembed", undefined, { owner, id }),
   // U2 — 관계 근거 저작(정본 청크에서 결정론 추출). 반복 실행 안전(있는 근거는 보존).

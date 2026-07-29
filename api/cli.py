@@ -150,7 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
     dp.add_argument("--title", default="")
     dp.add_argument("--origin", default="", help="출처 표시(조인에 쓰지 않음 — display only)")
-    dp.add_argument("--file", default=None, help="read text from file (편의 입력 — 정본은 스토어)")
+    dp.add_argument("--file", default=None,
+                    help="read from file (.md/.txt/.rst/.pdf — 편의 입력, 정본은 스토어). "
+                         "미지정 시 --title/--origin 은 파일명에서 채운다")
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
     dg = dsub.add_parser("get", help="reconstruct a document from its chunks (+hash verify)")
     dg.add_argument("--id", required=True)
@@ -288,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "doc":
         # Chunk=SSoT(D45) doc CRUD — 파일 I/O 는 --file 편의 입력뿐, 정본은 스토어.
         from . import docstore
+        from . import textextract
         from store.config import load_config, resolve_data_dir
         from store.backend import open_store
         cfg = load_config({"data_dir": resolve_data_dir(args.data)})
@@ -298,8 +301,17 @@ def main(argv: list[str] | None = None) -> int:
             store.provision(dim=cfg.embedding_dim)   # 멱등 — v4 마이그레이션 포함
             if args.doccmd == "put":
                 if args.file:
-                    with open(args.file, encoding="utf-8") as f:
-                        text = f.read()
+                    # 파일 읽기·디코드·형식 추출은 textextract 가 전담한다(put_doc 은
+                    # 파일 I/O 없음이 계약). utf-8 하드코딩이던 시절엔 cp949 메모 하나가
+                    # UnicodeDecodeError 로 적재를 죽였고 PDF 는 아예 길이 없었다.
+                    got = textextract.read_file(args.file)
+                    if not got.get("executed"):
+                        return _emit(got)
+                    text = got["text"]
+                    if not args.origin:
+                        args.origin = os.path.basename(args.file)
+                    if not args.title:
+                        args.title = os.path.splitext(os.path.basename(args.file))[0]
                 else:
                     text = sys.stdin.read()
                 return _emit(docstore.put_doc(store, owner=args.owner, text=text,
