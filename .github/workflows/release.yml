@@ -126,7 +126,7 @@ jobs:
           echo "sidecar /health OK — store opened for real"
 
       # ── 셸(Tauri) ──────────────────────────────────────────────────────
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Install app deps
