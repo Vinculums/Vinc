@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Assert all version sites agree (and match the tag)
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # ── 사이드카(Python) ────────────────────────────────────────────────
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       # ── 임베디드 드라이버 = ladybug 단일(v0.5.3, kuzu 제거) ──────────────────
