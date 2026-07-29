@@ -28,7 +28,7 @@ jobs:
     name: core (498 tests + forbidden-terms gate)
     runs-on: ubuntu-latest      # 1x 과금 — 비공개 레포에서 macOS 는 10배다
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -82,7 +82,7 @@ jobs:
     name: app (typecheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
