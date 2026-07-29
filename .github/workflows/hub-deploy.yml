@@ -32,7 +32,40 @@ permissions:
   contents: read
 
 jobs:
+  # 배포 전 게이트 — ci.yml 과 같은 검증을 여기서 한 번 더 돌린다. ci.yml 은 push 로
+  # 병렬 실행되므로 "ci 가 빨간데 배포는 나가는" 창이 생긴다(워크플로 간 needs 는
+  # 걸 수 없다). 배포를 막는 것이 목적이므로 같은 잡 안에서 선행시킨다.
+  # ⚠ 이전에는 배포 **후** tools/list 를 확인했다 — 이미 나간 뒤라 막지 못했다.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ladybug==0.18.0 argon2-cffi pyyaml
+      - name: Seed LadybugDB extensions (G0)
+        run: |
+          python -c "import ladybug, tempfile, os; \
+            c = ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(), 's'))); \
+            [c.execute('INSTALL ' + e) for e in ('vector', 'fts', 'algo')]"
+      - name: Assert driver is importable (no silent skips)
+        run: |
+          python - <<'PY'
+          import sys
+          from store.embedded_backend import _import_driver
+          drv, _ = _import_driver()
+          sys.exit(0 if drv else 1)
+          PY
+      - name: Run test suite
+        run: |
+          set -o pipefail
+          python verify.py 2>&1 | tee verify.log
+          ran=$(grep -oE '^Ran [0-9]+ tests' verify.log | grep -oE '[0-9]+' || echo 0)
+          [ "$ran" -ge 300 ] || { echo "::error::테스트 ${ran}건만 실행됨(하한 300)" >&2; exit 1; }
+
   build-and-deploy:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

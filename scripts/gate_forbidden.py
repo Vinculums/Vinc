@@ -136,6 +136,14 @@ def scan(root: Path) -> list[Violation]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 한국어·em-dash 출력이 Windows 기본 콘솔(cp949)에서 UnicodeEncodeError 로
+    # 죽는다 — **위반 0건이어도** 결과를 찍다 크래시해 게이트를 로컬에서 못 쓴다
+    # (실측). CI(Linux, UTF-8)는 무관하지만 개발자 로컬이 막히면 게이트를 안 돌리게
+    # 되므로 출력 스트림을 UTF-8 로 고정한다.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     ap = argparse.ArgumentParser(description="반입 금지 게이트 (WO §3 F1–F7)")
     ap.add_argument("--root", default=".", help="검사 루트(기본 cwd)")
     ap.add_argument("--json", action="store_true", help="JSON 출력")

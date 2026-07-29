@@ -14,3 +14,11 @@ app/src-tauri/target/
 app/src-tauri/binaries/
 app/src-tauri/gen/
 .claude/
+# 서명·접속 키 — 커밋되면 되돌릴 수 없다. 지금 키들은 리포 **바깥**(워크스페이스
+# 루트)에 있어 커밋된 적이 없지만, 누가 안으로 옮겨도 막히도록 패턴을 박아 둔다.
+# 업데이터 개인키를 잃으면 배포된 전 사용자가 자동 업데이트에서 영구 이탈한다
+# (복구 경로 없음 — DEPLOYMENT.md §1.6 백업 절차 참조).
+*.key
+*.pem
+*.p12
+*.pfx

@@ -1,5 +1,22 @@
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import { version } from "./package.json";
+
+// 빌드 식별자 — **버전 문자열만으로는 부족하다.** 웹 Vinc 는 태그와 무관하게
+// 배포되므로(site-deploy 가 Vinc main HEAD 를 체크아웃), 데스크탑 v0.6.7 설치본과
+// 웹이 서로 다른 코드인데 `__APP_VERSION__` 은 둘 다 "0.6.7" 이 된다 — 실측으로
+// 그 상태였다(태그 이후 app/ 14파일 변경). 진단 리포트에 버전을 박아 "어느
+// 버전에서 났는지 혼동을 원천 차단"한다는 원래 취지가 웹 경로에서 무력화되므로
+// 짧은 커밋 SHA 를 함께 싣는다. CI 는 GITHUB_SHA, 로컬은 git, 둘 다 없으면 빈 값.
+const buildSha = (() => {
+  const fromCi = process.env.GITHUB_SHA;
+  if (fromCi) return fromCi.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short=7 HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+})();
 
 // Dev proxy — the scaffold serves the app and forwards sidecar endpoints
 // same-origin, so no CORS surface is added to the sidecar. The Tauri shell
@@ -24,7 +41,10 @@ export default defineConfig({
   base: process.env.VITE_BASE || "/",
   // 진단 노출용 앱 버전(빌드 시 상수 폴딩) — sidecarDiag 가 리포트에 버전을 박아
   // "어느 버전에서 났는지" 혼동을 원천 차단한다(macOS v0.1.6 리포트 대응).
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __BUILD_SHA__: JSON.stringify(buildSha),
+  },
   server: {
     proxy: { [API_RE.source]: { target: SIDECAR, changeOrigin: true } },
   },

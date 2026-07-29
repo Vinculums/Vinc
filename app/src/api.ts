@@ -50,7 +50,12 @@ export const cfg = {
  *  v0.1.7: 앱 버전 + 셸이 준 실제 포트(conn.port)를 박는다 — "base=8787 인데 어느
  *  버전인가/셸이 무슨 포트를 줬나"가 리포트만으로 판별되게(macOS 리포트 대응). */
 declare const __APP_VERSION__: string;   // vite define 주입(빌드 상수)
+declare const __BUILD_SHA__: string;     // 〃 — 짧은 커밋 SHA(웹은 태그와 무관하게
+                                         // 배포돼 버전만으로는 빌드를 특정 못 한다)
 const APP_V = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+const BUILD_SHA = typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "";
+/** 진단·리포트용 빌드 식별자 — `v0.6.7+a1b2c3d`. SHA 를 못 구하면 버전만. */
+export const buildId = BUILD_SHA ? `${APP_V}+${BUILD_SHA}` : APP_V;
 export let sidecarDiag = "(connectSidecar 미실행)";
 
 /** 셸에서 사이드카 접속정보(포트·세션 토큰)를 받아 cfg 에 주입한다. main.rs 의
@@ -72,7 +77,7 @@ export async function connectSidecar(): Promise<void> {
     const c = await invoke("sidecar_conn") as { port?: number; token?: string };
     if (c?.port) cfg.base = `http://127.0.0.1:${c.port}`;
     if (c?.token) cfg.token = c.token;
-    sidecarDiag = `v${APP_V} conn.port=${c?.port ?? "?"} base=${cfg.base} `
+    sidecarDiag = `v${buildId} conn.port=${c?.port ?? "?"} base=${cfg.base} `
       + `token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
   } catch (e: any) {
     sidecarDiag = `invoke sidecar_conn 예외: ${e?.message || e}`;

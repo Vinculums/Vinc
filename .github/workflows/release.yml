@@ -35,7 +35,30 @@ permissions:
 # `--clobber` 로 흡수한다. 중간 산출물(latest 조각)만 자산으로 잠깐 올렸다가 assemble
 # 이 병합 후 삭제한다.
 jobs:
+  # 태그와 파일의 버전이 어긋난 채 빌드되는 것을 막는다(가장 싼 게이트, 10초).
+  # 함정: `latest.json` 의 version 은 **git 태그**에서 나오고 클라이언트 자기 버전은
+  # `tauri.conf.json` 에서 온다 — 태그만 올리고 파일을 안 올리면 설치해도 버전이
+  # 그대로라 **업데이트 토스트가 영원히 반복**된다. 여기서 미리 터뜨린다.
+  # 실측 근거: `app/package-lock.json` 이 7릴리스(0.6.0→0.6.7) 방치돼 있었다
+  # (Cargo.lock 은 체크리스트에 있는데 이건 빠진 비대칭 — scripts/version_sync.py 참조).
+  version-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Assert all version sites agree (and match the tag)
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python scripts/version_sync.py --check --expect "${GITHUB_REF_NAME#v}"
+          else
+            python scripts/version_sync.py --check
+          fi
+
   build:
+    needs: version-gate
     strategy:
       fail-fast: false
       matrix:
@@ -182,13 +205,24 @@ jobs:
           # 조각(중간 산출물): { "<key>": { signature, url } }. assemble 이 병합 후 삭제.
           jq -n --arg k "$key" --arg s "$(cat "$sig")" --arg u "$url" \
             '{($k): {signature: $s, url: $u}}' > "up/latest-${key}.json"
-          # 버전 무관 고정 별칭(공홈 다운로드 링크 안정화 — 있으면 만든다).
+          # 버전 무관 고정 별칭(공홈 다운로드 링크 안정화).
+          # ⚠ 이전엔 실패해도 `|| true` 로 넘어갔다 — Tauri 번들 파일명 규칙이 바뀌면
+          # 홈페이지 다운로드 버튼이 404 가 되는데 **CI 는 초록**이었다(업데이터 서명
+          # 누락은 exit 1 로 막으면서 별칭 누락은 안 막는 비대칭). 이 OS 가 만들어야 할
+          # 별칭이 안 나오면 릴리스를 세운다.
           mk_alias() { local p="$1" t="$2" m; m=$(find up -maxdepth 1 -type f -name "$p" | head -1)
-                       [ -n "$m" ] && cp "$m" "up/$t" && echo "alias $(basename "$m") → $t" || true; }
-          mk_alias '*_x64-setup.exe'  'Vinc-x64-setup.exe'
-          mk_alias '*_aarch64.dmg'    'Vinc-aarch64.dmg'
-          mk_alias '*_amd64.AppImage' 'Vinc-amd64.AppImage'
-          mk_alias '*_amd64.deb'      'Vinc-amd64.deb'
+                       if [ -z "$m" ]; then
+                         echo "::error::고정 별칭 생성 실패 — 패턴 '$p' 에 맞는 번들이 없다(→ $t)." >&2
+                         echo "── up/ 내용 ──"; ls -la up >&2
+                         return 1
+                       fi
+                       cp "$m" "up/$t"; echo "alias $(basename "$m") → $t"; }
+          case "${{ matrix.triple }}" in
+            *windows*) mk_alias '*_x64-setup.exe'  'Vinc-x64-setup.exe' ;;
+            *darwin*)  mk_alias '*_aarch64.dmg'    'Vinc-aarch64.dmg' ;;
+            *linux*)   mk_alias '*_amd64.AppImage' 'Vinc-amd64.AppImage'
+                       mk_alias '*_amd64.deb'      'Vinc-amd64.deb' ;;
+          esac
           echo "── to upload ──"; ls -la up
           # draft 가 없으면 만든다(3개 build 잡 경쟁 — 하나만 성공, 나머지는 || true).
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 \

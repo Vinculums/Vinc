@@ -1,0 +1,98 @@
+# 품질 게이트 — 코어(파이썬 498건) + 금지어 + 프론트 타입체크.
+#
+# 배경: 이 레포엔 `tests/` 에 37파일·498건이 있는데 **어떤 CI 에도 물려 있지
+# 않았다** — 사람이 기억해서 `python verify.py` 를 칠 때만 돌았다. owner 격리
+# (SEC-1)·쓰기 테넌시(SEC-3)·동기화 병합 같은 급소가 전부 그랬다. release.yml 의
+# 사이드카 스모크는 "빌드가 실행되나"이지 기능 검증이 아니고, hub-deploy 의
+# tools/list 확인은 **배포 후**라 배포를 막지 못한다(순서가 거꾸로다).
+#
+# ⚠ 이 워크플로의 급소 — **드라이버 미설치 시 조용한 초록**:
+# tests/ 37파일 중 17개가 `@unittest.skipIf(_DRIVER is None, …)` 로 걸려 있다.
+# ladybug 를 안 깔면 그 17개가 전부 skip 되고 CI 는 초록이 된다 — "통과"가 아니라
+# "아무것도 안 돌았다"인데 구분이 안 된다. 그래서 verify 앞에 **드라이버 존재를
+# 강제하는 게이트**를 둔다(아래 assert-driver 스텝). 이게 없으면 이 워크플로는
+# 있으나 마나다.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core (498 tests + forbidden-terms gate)
+    runs-on: ubuntu-latest      # 1x 과금 — 비공개 레포에서 macOS 는 10배다
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # release.yml 과 같은 레시피 — 드라이버 버전 핀 + G0 확장 시드.
+      # argon2-cffi 는 test_auth.py 의 자격 검증 경로(미설치 시 skip)에 필요하다.
+      - name: Install deps (ladybug pinned + argon2)
+        run: pip install ladybug==0.18.0 argon2-cffi pyyaml
+
+      - name: Seed LadybugDB extensions (G0)
+        run: |
+          python -c "import ladybug, tempfile, os; \
+            c = ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(), 's'))); \
+            [c.execute('INSTALL ' + e) for e in ('vector', 'fts', 'algo')]"
+
+      # 드라이버가 실제로 열리는지 확인 — 여기서 막아야 17개 파일의 조용한 skip 을
+      # "통과"로 오독하지 않는다.
+      - name: Assert driver is importable (no silent skips)
+        run: |
+          python - <<'PY'
+          import sys
+          from store.embedded_backend import _import_driver
+          drv, name = _import_driver()
+          if drv is None:
+              print("::error::임베디드 드라이버 미설치 — 17개 테스트 파일이 조용히 skip 된다", file=sys.stderr)
+              sys.exit(1)
+          print(f"driver ok: {name}")
+          PY
+
+      # 실행 건수 하한 — 테스트 발견(discover)이 깨져 몇 건만 돌고 초록이 되는 것을
+      # 막는다. 로컬 실측 기준선은 381건(9 skip)이므로 300 을 바닥으로 둔다. 테스트가
+      # 늘면 이 숫자는 그대로 둬도 되고, 대폭 줄었다면 그건 의도한 삭제인지 확인해야
+      # 한다는 신호다.
+      - name: Run test suite (verify.py)
+        run: |
+          set -o pipefail
+          python verify.py 2>&1 | tee verify.log
+          ran=$(grep -oE '^Ran [0-9]+ tests' verify.log | grep -oE '[0-9]+' || echo 0)
+          echo "ran=$ran"
+          if [ "$ran" -lt 300 ]; then
+            echo "::error::테스트 ${ran}건만 실행됨(하한 300) — discover 가 깨졌는지 확인" >&2
+            exit 1
+          fi
+
+      # 카피 보이스 하드 룰(F1 과금 식별자 · F2 학습 프레이밍 · F7 구 명칭).
+      # 정본은 Vinc-docs vinc/A/vinc.a.terms.md §4-6, 이 스크립트가 그 실행체다.
+      - name: Forbidden-terms gate
+        run: python scripts/gate_forbidden.py
+
+  app:
+    name: app (typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install
+        working-directory: app
+        run: npm ci --no-audit --no-fund
+      # `build` 안에 접혀 있던 tsc 를 분리해 여기서 단독으로 돌린다 — 타입 오류가
+      # "빌드 실패" 로 뭉뚱그려지지 않고 그 자체로 드러난다.
+      - name: Typecheck
+        working-directory: app
+        run: npm run typecheck
