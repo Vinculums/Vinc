@@ -4,13 +4,22 @@
 #
 # 주 1회로 묶고 PR 상한을 낮게 둔다: 이 규모에서 매일 열리면 노이즈가 되고,
 # 열린 PR 이 쌓이면 아무도 안 보게 된다(알림의 목적은 "보게 만드는 것"이다).
+#
+# ⚠ **major 는 제외한다**(실측 근거): 처음 켠 직후 8개 PR 이 한꺼번에 열렸고 그중
+# typescript 5.9→7 · vite 6→8 · actions/checkout 4→7 같은 major 가 섞여 있었다.
+# major 는 깨지는 변경을 동반하므로 어차피 사람이 판단해야 하는데, 자동 PR 로
+# 쌓이면 그 소음에 묻혀 **정작 봐야 할 패치 갱신을 안 보게 된다**. major 는
+# 필요할 때 손으로 올린다.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /app
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
     groups:
       # 패치·마이너는 한 PR 로 묶는다 — 개별로 열리면 리뷰 피로만 는다.
       minor-and-patch:
@@ -20,7 +29,10 @@ updates:
     directory: /app/src-tauri
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -29,7 +41,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   # 워크플로가 쓰는 액션(actions/checkout 등)도 대상 — 태그 고정 액션은 보안
   # 갱신이 나와도 스스로 안 올라온다.
@@ -37,4 +52,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

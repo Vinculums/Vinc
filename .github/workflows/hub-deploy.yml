@@ -44,11 +44,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ladybug==0.18.0 argon2-cffi pyyaml
-      - name: Seed LadybugDB extensions (G0)
-        run: |
-          python -c "import ladybug, tempfile, os; \
-            c = ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(), 's'))); \
-            [c.execute('INSTALL ' + e) for e in ('vector', 'fts', 'algo')]"
+      # 커밋된 확장을 쓴다(네트워크 불요) — ci.yml 과 같은 이유. INSTALL 은 러너에서
+      # SSL 검증 실패로 죽는다.
+      - name: Point to bundled G0 extensions (no network)
+        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       - name: Assert driver is importable (no silent skips)
         run: |
           python - <<'PY'
