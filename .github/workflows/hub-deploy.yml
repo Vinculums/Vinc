@@ -1,0 +1,68 @@
+# 허브(사이드카+MCP, vinc-hub) CD — main 브랜치 push 시 자동 배포.
+#
+# release.yml(데스크탑 앱, PyInstaller+Tauri)과 완전히 별개 파이프라인이다 —
+# 허브는 컨테이너 이미지(Dockerfile.hub)로 서버에만 배포되고 데스크탑 릴리스와
+# 무관하게 독립적으로 나간다(DEPLOYMENT.md §4.4 의 "데스크탑과 소스는 같지만
+# 배포는 분리" 원칙을 CI 레벨에서도 유지).
+#
+# ⚠ 데이터 영속성: 허브는 Azure Files 볼륨(hub-storage)에 그래프 DB를 두므로
+# 이미지 교체(리비전 갱신)만으로는 데이터가 사라지지 않는다(실측 확인됨 — 재시작
+# 후 데이터 보존). 단, **저장 포맷이 바뀌는 변경**이면 이 워크플로만으로는
+# 안전하지 않다 — 배포 전 별도로 데이터 이관 절차가 필요하다(수동 게이트, 아래
+# workflow_dispatch 로만 그런 변경을 내보낼 것을 권장).
+name: hub-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "store/**"
+      - "engines/**"
+      - "vinc_mcp/**"
+      - "Dockerfile.hub"
+      - "packaging/docker-entrypoint.sh"
+      - "packaging/lbug_extensions/**"
+      - "pyproject.toml"
+      - ".github/workflows/hub-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build & push image (ACR Tasks)
+        run: |
+          az acr build \
+            --registry vincacr \
+            --image vinc-hub:${{ github.sha }} \
+            --image vinc-hub:latest \
+            -f Dockerfile.hub .
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name vinc-hub \
+            --resource-group vincsRG \
+            --image vincacr.azurecr.io/vinc-hub:${{ github.sha }}
+
+      - name: Verify health (MCP tools/list)
+        run: |
+          sleep 15
+          curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+            -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+            | grep -q '"tools"'

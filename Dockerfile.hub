@@ -1,0 +1,37 @@
+# Vinc 허브(사이드카+MCP) — Azure Container Apps 배포용.
+# 데스크톱 배포는 PyInstaller(packaging/sidecar.spec)를 쓰지만, 서버 컨테이너는
+# 정적분석 사각(동적 import) 문제와 무관하므로 그냥 `python -m api.cli`로 직접
+# 실행한다 — PyInstaller 프리징 자체가 불필요.
+FROM python:3.12-slim-bookworm
+
+WORKDIR /srv/vinc
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 드라이버 버전 핀(명칭 churn 대비, pyproject.toml 주석과 동일 근거).
+RUN pip install --no-cache-dir ladybug==0.18.0 argon2-cffi
+
+COPY api ./api
+COPY store ./store
+COPY engines ./engines
+COPY vinc_mcp ./vinc_mcp
+COPY pyproject.toml README.md LICENSE ./
+
+# G0 오프라인 확장 — 빌드 컨테이너 네트워크에서 extension.ladybugdb.com 다운로드가
+# SSL 검증 실패로 막혀(실측, Docker Desktop 빌드 환경 특유) 로컬에서 미리 받은
+# linux_amd64 바이너리를 직접 굽는다. store/embedded_backend.py _bundled_ext_path
+# 의 ②번 탐색 경로(VINC_LBUG_EXT_DIR env)가 "LOAD EXTENSION '<번들 경로>'" 명시
+# 로드를 타서 완전 오프라인으로 성공한다(런타임 네트워크 불요, 이미 실측 확인됨).
+COPY packaging/lbug_extensions ./lbug_extensions
+ENV VINC_LBUG_EXT_DIR=/srv/vinc/lbug_extensions
+
+COPY packaging/docker-entrypoint.sh /usr/local/bin/vinc-entrypoint.sh
+RUN chmod +x /usr/local/bin/vinc-entrypoint.sh && mkdir -p /data/db
+# root 로 실행 — G0 확장 캐시(~/.lbdb)가 빌드 타임 유저(root) 홈에 구워지므로
+# 런타임도 같은 유저여야 이름 기반 LOAD EXTENSION 이 그 캐시를 찾는다. non-root
+# 전환은 캐시 경로를 함께 옮기는 별도 작업으로 미룬다(지금은 기능 검증 우선).
+
+EXPOSE 8790
+ENTRYPOINT ["/usr/local/bin/vinc-entrypoint.sh"]
