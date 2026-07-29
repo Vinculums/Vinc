@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Stdlib-only dogfooding gate for weg-9000-memory.
+"""Dogfooding gate — runs every tests/test_*.py with the unittest loader.
 
-Runs every tests/test_*.py with the unittest loader — no pytest, no neo4j,
-no chonkie. Confirms the 6 engines import cleanly (lazy heavy deps), the store
-schema/migrations render, the query API plans, and the CP adapter satisfies the
+Confirms the 6 engines import cleanly (lazy heavy deps), the store schema/
+migrations render, the query API plans, and the CP adapter satisfies the
 platform_bridge contract.
 
     python verify.py
+
+Deps: the **runner** is stdlib unittest (no pytest runner, no neo4j, no
+chonkie), but four test modules (test_mcp_connect · test_mcp_graph_proxy ·
+test_mcp_store · test_purge) `import pytest` for its fixture/raises helpers —
+without it they fail at import time and surface as `_FailedTest`, not as
+skips. This docstring used to claim "no pytest" outright; the drift only
+showed up when CI ran on a clean machine (a local venv had it installed).
+Extras that gate whole modules: `ladybug` (embedded store e2e — 17 modules
+skip without it) and `argon2-cffi` (credential paths).
 """
 from __future__ import annotations
 

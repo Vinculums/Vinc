@@ -43,7 +43,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ladybug==0.18.0 argon2-cffi pyyaml
+      # pytest 는 tests/ 4개 모듈이 실제로 import 한다(ci.yml 주석 참조).
+      - run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest
       # 커밋된 확장을 쓴다(네트워크 불요) — ci.yml 과 같은 이유. INSTALL 은 러너에서
       # SSL 검증 실패로 죽는다.
       - name: Point to bundled G0 extensions (no network)

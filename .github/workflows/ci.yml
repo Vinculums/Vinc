@@ -34,8 +34,13 @@ jobs:
           python-version: "3.12"
 
       # argon2-cffi 는 test_auth.py 의 자격 검증 경로(미설치 시 skip)에 필요하다.
-      - name: Install deps (ladybug pinned + argon2)
-        run: pip install ladybug==0.18.0 argon2-cffi pyyaml
+      # pytest 는 verify.py 가 "stdlib 전용"이라 선언하는 것과 달리 **실제로 필요**하다:
+      # tests/ 4개 모듈(test_mcp_connect·test_mcp_graph_proxy·test_mcp_store·test_purge)이
+      # `import pytest` 로 fixture·raises 를 쓴다. unittest 러너로 수집되지만 import
+      # 단계에서 죽어 _FailedTest 로 잡힌다(실측: 로컬 venv 엔 깔려 있어 안 드러났고
+      # CI 에서 처음 드러났다 — 문서와 실제의 드리프트).
+      - name: Install deps (ladybug pinned + argon2 + pytest)
+        run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest
 
       # G0 확장은 **네트워크로 받지 않는다** — 리포에 커밋된 linux_amd64 바이너리를
       # VINC_LBUG_EXT_DIR 로 가리켜 명시 경로 로드시킨다(Dockerfile.hub 와 같은 방식).
