@@ -26,7 +26,10 @@ export type AtlasPrefs = {
   unlinked: "show" | "hide";   // orphan nodes (degree 0) — D32 orphan minimization
   layout: AtlasLayout;         // D34 preset — coords stay sidecar-computed (D17)
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
+  railW: number;               // D70 — 우측 문서 패널 폭(rem). 끌어서 조절, 기기별 지속
 };
+export const RAIL_MIN = 16;    // rem — 원문 한 줄이 읽히는 하한
+export const RAIL_MAX = 36;    // rem — 지도가 남는 상한(패널이 화면을 삼키지 않게)
 // D47 — `totalsGroup`("주제별/출처별" 묶음 토글)은 폐기했다. 합계가 3열 생키가
 // 되면서 출처와 상태를 동시에 보여주므로 고를 것이 없다. 저장된 구 값은 아래
 // loadPrefs 가 그냥 읽지 않는다(마이그레이션 불필요 — 남은 키는 무해).
@@ -36,6 +39,7 @@ const DEFAULTS: AtlasPrefs = {
   view: "3d", size: "links", labels: "hover", arrows: true, spread: 1,
   unlinked: "show", layout: "radial",
   timelineDocs: true,
+  railW: 20,
 };
 
 export function loadPrefs(): AtlasPrefs {
@@ -52,6 +56,7 @@ export function loadPrefs(): AtlasPrefs {
       unlinked: p.unlinked === "hide" ? "hide" : "show",
       layout: LAYOUTS.includes(p.layout) ? p.layout : "radial",
       timelineDocs: p.timelineDocs !== false,
+      railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)),
     };
   } catch {
     return { ...DEFAULTS };

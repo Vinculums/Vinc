@@ -28,11 +28,11 @@
     </div>
     <!-- 공홈 GNB는 웹 빌드(data-skin=web)에서만 main.ts가 공유 /assets/gnb.js 를 런타임 주입한다.
          데스크탑 셸에선 미주입 → 앱 크롬(좌측 레일)만. (단일 소스: Vinc-homepage/site/assets/gnb.js) -->
-    <!-- D56 — 셸은 상단 바 하나다(좌측 LNB 폐지). 그 자리를 차지하던 것들의 새 집:
-         표면 전환 = 크럼 + Ctrl/Cmd+K 팔레트 · DOMAINS 목록 = Atlas L0 주제 표
-         (거기서 이름 변경까지) · 공유 = 상단 버튼(올가미는 지름길로 존치).
-         근거: 구 레일은 폭 208px 를 상시 먹으면서 DOMAINS 행이 클릭조차 되지 않는
-         장식이었다(실측). -->
+    <!-- D69 — 셸은 상단 바 + 좌측 문서 트리 + 표면이다. D56 이 상단 바 하나로
+         몰아넣었던 것을 되돌리되, 좌측에 사는 것은 **표면 목록이 아니라 문서 트리**다
+         (구 레일이 장식이었던 이유가 그거다: 행을 눌러도 갈 곳이 없었다).
+         LNB 는 오버레이가 아니라 **그리드 열**이라 캔버스를 덮지 않는다 — 표면이
+         줄어들 뿐이므로 캔버스 안 absolute 크롬은 요소별 오프셋 없이 따라 좁아진다. -->
     <div id="shell">
       <header id="topbar">
         <div id="brand" title="Vinc">
@@ -49,9 +49,11 @@
           </svg>
         </div>
 
-        <!-- 크럼 = 1급 시민. 캔버스 위에 뜬 저대비 텍스트가 아니라 바에 고정된다.
-             내용은 활성 표면이 채운다(Atlas 는 trail, 나머지는 표면 이름). -->
-        <nav id="tb-crumb" aria-label="Location"></nav>
+        <!-- 지도 손잡이(D71) — 렌즈와 관점 세그가 하단 바에서 여기로 올라왔다.
+             내용은 Atlas 가 채우고 떠날 때 비운다(setAtlasHooks). 크럼은 폐지 —
+             "지금 어디"는 좌측 문서 트리가 상시로 말한다(D69). -->
+        <div id="tb-lens"></div>
+        <div id="tb-views" role="group"></div>
 
         <!-- 상시 검색(D57) — 조회는 그래프를 훑는 일이 아니라 이름을 대는 일이다.
              Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#atlas/trace/<id>). -->
@@ -74,6 +76,10 @@
           <span class="rail-sync"><span class="sync-dot"></span><span id="sync-status"></span></span>
         </div>
       </header>
+      <!-- 좌측 문서 트리(D69). 내용은 lnb.ts 가 채운다. 접히면 폭 0 이 되므로
+           다시 여는 손잡이는 사이드바 **밖**(셸 직속)에 둔다. -->
+      <aside id="lnb" aria-label="Documents"></aside>
+      <button id="lnb-reopen" type="button" class="tb-icon" aria-controls="lnb"></button>
       <main id="surface" aria-live="polite"></main>
       <div id="settings-scrim" hidden></div>
       <div id="settings-popover" role="dialog" aria-label="Settings" aria-modal="true" hidden></div>

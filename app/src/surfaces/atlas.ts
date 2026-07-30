@@ -10,9 +10,10 @@ import { foldLedgerPaths, mountTimeline, mountTotals, timelinePool,
 import { openShareSheet } from "../sheets";
 import { openContextMenu, confirmDestructive } from "../components";
 
-import { LAYOUTS, VIEWS, isPlanar, loadPrefs, savePrefs,
+import { LAYOUTS, VIEWS, RAIL_MIN, RAIL_MAX, isPlanar, loadPrefs, savePrefs,
          type AtlasLayout, type AtlasPrefs, type AtlasView } from "../atlas-prefs";
-import { crumbSlot, setAtlasHooks, refreshTopbar } from "../topbar";
+import { lensSlot, viewsSlot, setAtlasHooks, refreshTopbar } from "../topbar";
+import { setLnbActive } from "../lnb";
 import { icon } from "../icons";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
@@ -59,40 +60,54 @@ let liveGen = 0;
 export async function renderAtlas(el: HTMLElement) {
   const myGen = ++liveGen;
   el.innerHTML = `
-    <div id="atlas-crumb"></div>
     <div id="atlas-canvas"></div>
-    <!-- 지도 크롬 = 하단 바 하나(D65). 여태 렌즈는 좌하단, 관점은 패널 안, 지표는
-         우하단 알약으로 세 모서리에 흩어져 있었다(근접성 위반) — 같은 대상(지도)을
-         다루는 손잡이는 한 자리에 모으고, 지표는 떠 있는 배너가 아니라 상태 표시줄로
-         눕힌다(떠 있는 알약은 배너로 읽혀 무시된다). -->
+    <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈와 관점 세그는 상단 바 좌측으로
+         올라갔다 — 좌측을 문서 트리가 차지하면서 하단 바의 남은 일이 "지금 화면이
+         무엇을 세고 있는가" 하나가 됐기 때문이다. 지표는 여전히 떠 있는 알약이
+         아니라 상태 표시줄이다(떠 있는 알약은 배너로 읽혀 무시된다 — D65). -->
     <div id="atlas-chrome">
-      <div id="atlas-legend"></div>
-      <div id="atlas-views" role="group"></div>
       <div id="atlas-metrics"></div>
     </div>
     <div id="atlas-detail" hidden></div>
-    <div id="atlas-msg" style="position:absolute;inset:0;display:grid;place-items:center;z-index:1"></div>
-    <div id="atlas-tools" style="position:absolute;top:var(--space-4,1rem);right:var(--space-6,1.5rem);z-index:2;display:flex;gap:.5rem"></div>
-    <div id="atlas-float" style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:3" hidden></div>
-    <div id="atlas-hint" hidden style="position:absolute;left:50%;bottom:var(--space-6,1.5rem);transform:translateX(-50%);z-index:2;pointer-events:none;white-space:nowrap;font-size:.72rem;color:hsl(var(--caption-foreground));background:hsl(var(--card)/.72);border:1px solid hsl(var(--border));border-radius:999px;padding:.25rem .7rem"></div>
+    <!-- 폭 조절 그립은 패널의 **형제**다: 패널 내용은 화면마다 innerHTML 로 갈리는데
+         (상세·관계·드릴다운·기간·리더) 그 안에 두면 매번 다시 붙이고 다시 배선해야 한다. -->
+    <div id="rail-grip" role="separator" aria-orientation="vertical" hidden></div>
+    <!-- D70 — 인캔버스 크롬의 위치를 인라인 style 에서 **CSS 로 되돌린다.** 여태
+         인라인이었던 이유는 레일이 열릴 때 JS 가 같은 속성을 덮어써야 했기 때문인데
+         (클래스 규칙은 인라인을 못 이긴다), 이제 레일 폭이 CSS 변수 하나(--rail-w)라
+         비켜서는 일을 CSS 가 스스로 한다. 폭의 정의가 한 군데로 모인다. -->
+    <div id="atlas-msg"></div>
+    <div id="atlas-tools"></div>
+    <div id="atlas-float" hidden></div>
+    <div id="atlas-hint" hidden></div>
     <div id="atlas-view-panel" hidden></div>
   `;
   const canvas = el.querySelector<HTMLElement>("#atlas-canvas")!;
-  // D56 — 크럼은 상단 바에 산다. 표면 안의 `#atlas-crumb` 는 바가 없는 환경(단위
-  // 테스트·임베드)의 폴백으로만 남긴다: 그리는 코드는 한 벌이고 자리만 다르다.
-  const inSurfaceCrumb = el.querySelector<HTMLElement>("#atlas-crumb")!;
-  const crumbEl = crumbSlot() ?? inSurfaceCrumb;
-  if (crumbEl !== inSurfaceCrumb) inSurfaceCrumb.hidden = true;
   const detail = el.querySelector<HTMLElement>("#atlas-detail")!;
+  const railGrip = el.querySelector<HTMLElement>("#rail-grip")!;
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
   const tools = el.querySelector<HTMLElement>("#atlas-tools")!;
-  const legend = el.querySelector<HTMLElement>("#atlas-legend")!;
-  const viewsBar = el.querySelector<HTMLElement>("#atlas-views")!;
+  // D71 — 렌즈·관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
+  // 바가 없는 환경(임베드)에서는 표면 안에 자기 자리를 만들어 같은 코드로 그린다:
+  // 그리는 함수는 한 벌이고 자리만 다르다.
+  const chromeBar = el.querySelector<HTMLElement>("#atlas-chrome")!;
+  const fallbackSlot = (id: string) => {
+    const d = document.createElement("div");
+    d.id = id;
+    chromeBar.prepend(d);
+    return d;
+  };
+  const legend = lensSlot() ?? fallbackSlot("atlas-legend");
+  const viewsBar = viewsSlot() ?? fallbackSlot("atlas-views");
   const metricsBar = el.querySelector<HTMLElement>("#atlas-metrics")!;
   const float = el.querySelector<HTMLElement>("#atlas-float")!;
   const lassoHint = el.querySelector<HTMLElement>("#atlas-hint")!;
   lassoHint.textContent = COPY.ui.atlasx.lassoHint;
   const viewPanel = el.querySelector<HTMLElement>("#atlas-view-panel")!;
+  // 레일 폭 복원 + 닫힌 상태로 시작(크롬은 아직 비킬 것이 없다).
+  setRailWidth(loadPrefs().railW);
+  railChrome(false);
+  wireRailGrip(railGrip);
 
   // lasso(영역 선택→공유) 배선 + 발견성 힌트. L1/L2 그래프에서만 활성.
   function wireLasso() {
@@ -201,16 +216,20 @@ export async function renderAtlas(el: HTMLElement) {
    *  들어가는 문은 모든 마크에 달려 있는데 나오는 문이 크럼 하나뿐이었던 비대칭을
    *  여기서 끝낸다. 스택(상세→드릴다운→Reader→편집)은 각자 '뒤로'가 있고, ✕/Esc 는
    *  스택 전체를 접는다. */
-  /** 레일이 열리면 인캔버스 크롬(보기 칩·힌트 알약)을 레일 폭만큼 비켜 준다 —
-   *  같은 우상단 자리를 두 층이 다투면 레일의 닫기(✕)가 칩 밑에 깔린다(실측).
-   *  ⚠ 위치는 인라인 style 로 준다: 이 요소들의 top/right 가 이미 인라인이라
-   *  CSS 클래스 규칙은 특정도와 무관하게 진다(첫 시도가 무효였던 이유). */
-  const RAIL_W = "20rem";                       // #atlas-detail 과 같은 값
+  /** 레일 폭의 **단일 원천**(D70). 여태 CSS(`#atlas-detail{width:20rem}`)와 JS 상수
+   *  두 군데에 같은 숫자가 적혀 있었고, 열릴 때 비켜서는 크롬 3개는 JS 가 인라인
+   *  style 로 손수 밀었다. 이제 값은 변수 둘로만 산다:
+   *    --rail-size : 사용자가 끌어 정한 폭(패널 자신의 width)
+   *    --rail-w    : 지금 실제로 점유 중인 폭(닫히면 0) — 크롬이 이걸 보고 비킨다
+   *  덕분에 "레일이 열렸을 때 무엇이 비켜야 하는가"가 CSS 한 곳의 규칙이 된다. */
+  function setRailWidth(rem: number) {
+    const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
+    el.style.setProperty("--rail-size", `${w}rem`);
+    return w;
+  }
   function railChrome(open: boolean) {
-    tools.style.right = open ? `calc(${RAIL_W} + var(--space-6, 1.5rem))` : "var(--space-6, 1.5rem)";
-    const shift = open ? `translateX(calc(-50% - ${RAIL_W} / 2))` : "translateX(-50%)";
-    lassoHint.style.transform = shift;
-    float.style.transform = shift;
+    el.style.setProperty("--rail-w", open ? "var(--rail-size)" : "0px");
+    railGrip.hidden = !open;
   }
   function closeRail() {
     detail.hidden = true;
@@ -221,6 +240,32 @@ export async function renderAtlas(el: HTMLElement) {
   function openRail() {
     detail.hidden = false;
     railChrome(true);
+  }
+  /** 좌측 모서리 그립 — 끌어서 폭 조절. 포인터 캡처라 커서가 캔버스(WebGL) 위로
+   *  넘어가도 드래그가 끊기지 않는다. 확정 값만 프리퍼런스에 적는다(끄는 동안
+   *  매 프레임 localStorage 를 두드리지 않게). */
+  function wireRailGrip(grip: HTMLElement) {
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const startX = e.clientX;
+      const startW = detail.getBoundingClientRect().width / root;
+      let live = startW;
+      const move = (ev: PointerEvent) => {
+        live = setRailWidth(startW + (startX - ev.clientX) / root);
+      };
+      const up = () => {
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", up);
+        // ⚠ applyPrefs 를 쓰지 않는다: 그것은 "행을 내보낸 층은 다시 그린다"는 계약이라
+        // 폭만 바꿨는데 그래프가 재마운트되고 렌즈 패널까지 열린다. 폭은 렌더러가
+        // 읽는 값이 아니므로 저장만 한다.
+        savePrefs({ ...loadPrefs(), railW: live });
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+    });
   }
   // Esc 단계 후퇴(정본 §2) 1단계 — 레일이 열려 있으면 레일부터 닫는다. 보기 패널이
   // 열려 있을 땐 그쪽 핸들러가 먼저 잡으므로(패널에 포커스가 있다) 충돌하지 않는다.
@@ -291,15 +336,16 @@ export async function renderAtlas(el: HTMLElement) {
     if (lv.kind !== "l2" || lv.seed !== seed) return;
     const n = nodes.find((x) => x.id === seed);
     if (!lv.domain && n?.domain) lv.domain = n.domain;
-    // 딥링크(#atlas/trace/<id>)는 주제를 거치지 않고 노드에 바로 앉는다 — 그러면
-    // 크럼의 기본 표시(주제까지)가 `홈` 하나로 비어, 어디 있는지 아무것도 말하지
-    // 못했다(실측 `홈 1 ▾`). 주제를 알게 된 순간 그 층을 트레일에 **끼워 넣어**
-    // 직접 링크로 온 사람도 같은 크럼과 같은 뒤로가기를 얻는다.
+    // 딥링크(#atlas/trace/<id>)는 주제를 거치지 않고 노드에 바로 앉는다. 주제를
+    // 알게 된 순간 그 층을 트레일에 **끼워 넣어** 직접 링크로 온 사람도 같은
+    // 뒤로가기(Esc 후퇴·공유 스코프)를 얻게 한다.
     if (lv.domain && !trail.some((t) => t.kind === "l1" && t.domain === lv.domain))
       trail.splice(trail.length - 1, 0, { kind: "l1", domain: lv.domain });
-    // 제목도 같은 자리에서 채운다 — 크럼이 raw id 대신 사람의 말을 싣게(U3).
     if (!lv.title && n?.label && n.label !== seed) lv.title = n.label;
-    drawCrumb();   // 크럼은 show() 초입에 이미 그려졌다 — 알게 된 값으로 다시 그린다
+    // 위치 표시는 좌측 트리가 한다(D69·D71 — 크럼 폐지). 씨앗의 주제를 이제야
+    // 알았으므로 트리의 활성 표시도 여기서 따라가야 한다. 안 그러면 딥링크로
+    // 들어온 화면만 트리가 아무 데도 가리키지 않는다.
+    setLnbActive({ domain: lv.domain, nodeId: seed });
   }
 
   /** D31 + D43 — 인캔버스 View 컨트롤. view 는 이제 관점 5지선다(맵 3D/2D + 평면 3종)라
@@ -355,6 +401,14 @@ export async function renderAtlas(el: HTMLElement) {
   // 패널 열림/닫힘·aria·포커스를 한 곳에서만 만진다(드리프트 방지).
   function openPanel() {
     viewPanel.hidden = false;
+    // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
+    // 표면 기준 absolute 로는 사이드바 폭·타이틀바·웹 GNB 만큼 어긋난다. 좌표를
+    // 버튼 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
+    const r = lensBtn?.getBoundingClientRect();
+    if (r) {
+      viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
+      viewPanel.style.left = `${Math.round(Math.min(r.left, window.innerWidth - 300))}px`;
+    }
     lensBtn?.setAttribute("aria-expanded", "true");
     // 발견 힌트는 "한 번 열면" 끝난다 — 쓰는 곳도 읽는 곳도 하나씩.
     localStorage.setItem("vinc.atlas.views.seen", "1");
@@ -379,11 +433,12 @@ export async function renderAtlas(el: HTMLElement) {
    *  Grid: 미니 반경=size(nodeRadius), 카드 기본 배치=layout, 고아 제거=unlinked
    *    (filterUnlinked). 라벨·화살표·산개는 미니가 아예 그리지 않는다.
    *  Compare/Matrix: 렌더러가 프리퍼런스를 한 줄도 읽지 않는다 → 행 없음.
-   *  L0 + 3D/2D: showL0 이 자기 원환을 직접 계산한다 — 반경은 records 고정 공식
-   *    (size 무관), ties 엣지에는 type 이 없어 화살촉이 붙지 않고(arrows 무관),
-   *    filterUnlinked 도 api.graph(layout) 도 타지 않는다. 남는 것은 labels·spread.
-   *  L0 + Timeline: 주제 노드에 날짜가 없어 그릴 것이 없다 → 행 없음(빈 상태 전용).
-   *  L1/L2 + Flow·Timeline: 좌표를 쓰지 않는 평면 차트라 layout·spread·size 는 무의미
+   *  L0: **더는 특례가 아니다**(D69). 구 L0 는 자기 원환을 직접 계산해(반경=records
+   *    고정 공식, ties 엣지에 type 없음) size·arrows·layout 이 아무것도 안 바꿨고,
+   *    타임라인 L0 도 주제 노드에 날짜가 없다는 이유로 행이 비어 있었다. 지금 L0 는
+   *    L1/L2 와 같은 `/graph` 를 같은 렌더러로 그리므로 같은 행을 쓴다(타임라인 L0 의
+   *    빈 행은 D46-S 로 이미 stale 이었다 — 그때부터 전량 노드를 그려 왔다).
+   *  L1/L2 + Timeline: 좌표를 쓰지 않는 평면 차트라 layout·spread·size 는 무의미
    *    (fetch 는 layout 을 실어 보내지만 mountFlow/mountTimeline 은 좌표를 안 읽는다).
    *  Totals + 출처별: 원장 구간이 episodic·record·unsourced 라 고아 구간이 없다 →
    *    unlinked 가 아무것도 바꾸지 못한다(주제별일 때만 orphan 구간을 걷어낸다). */
@@ -397,12 +452,11 @@ export async function renderAtlas(el: HTMLElement) {
     switch (p.view) {
       case "3d":
       case "2d":
-        return lv.kind === "l0" ? ["labels", "spread"]
-          : ["size", "labels", "arrows", "unlinked", "layout", "spread"];
+        return ["size", "labels", "arrows", "unlinked", "layout", "spread"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "timeline": return lv.kind === "l0" ? [] : ["docs", "labels"];
+      case "timeline": return ["docs", "labels"];
       // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
       // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
       // atlas-planar.mountTotals 주석). 원장 뷰에 남는 선택지가 없다.
@@ -563,56 +617,6 @@ export async function renderAtlas(el: HTMLElement) {
     history.replaceState(null, "", v === "3d" ? base : `${base}/as/${v}`);
   }
 
-  /** 크럼(D61) — **기본은 주제까지만** 보인다.
-   *
-   *  ① "Atlas" 는 화면에서 사라진다: 내부 코드명일 뿐이고, 사용자에게 첫 자리는
-   *     `Home` 이다(표면 이름을 크럼이 두 번 말할 이유도 없다).
-   *  ② 주제보다 깊은 층(문서 노드·Grid·Matrix·Compare)은 **접혀 있다.** 지금 어디에
-   *     있는지는 레일 제목이 이미 말하고, 크럼이 매번 길어지면 바가 흔들린다.
-   *  ③ 접힌 깊이가 있으면 캐럿이 뜨고, 누르면 아래로 펼쳐진다(슬라이드 모션).
-   *     펼친 목록에서 어느 층으로든 바로 돌아갈 수 있다. */
-  let depthOpen = false;
-  function crumbName(lv: Level): string {
-    return lv.kind === "l0" ? COPY.ui.topbar.home
-      : lv.kind === "l1" ? lv.domain
-      : lv.kind === "l2" ? (lv.title || lv.seed.replace(/^[a-z]+:/, ""))
-      : frameName(lv);
-  }
-  function drawCrumb() {
-    // 얕은 층 = Home + 주제(있으면). 그 뒤는 전부 "깊이"로 접는다.
-    const shallowEnd = trail.reduce((last, lv, i) =>
-      (lv.kind === "l0" || lv.kind === "l1" ? i : last), 0);
-    const shallow = trail.slice(0, shallowEnd + 1);
-    const deep = trail.slice(shallowEnd + 1);
-    const chip = (lv: Level, i: number) =>
-      (i > 0 ? `<span class="crumb-sep">›</span>` : "")
-      + `<button class="crumb-item" data-i="${i}">${esc(crumbName(lv))}</button>`;
-    const caret = deep.length
-      ? `<button class="crumb-more" id="crumb-more" aria-expanded="${depthOpen}"
-                 data-tip="${esc(COPY.ui.topbar.depthTip)}"
-                 aria-label="${esc(COPY.ui.topbar.depthTip)}">${deep.length}<span
-                 class="crumb-caret">▾</span></button>` : "";
-    // 평면 관점은 "장소"가 아니라 "보는 법"이라 꼬리 칩은 클릭되지 않는다.
-    const v = shownView(trail[trail.length - 1]);
-    const tail = v && isPlanar(v) ? `<span class="crumb-view">${viewName(v)}</span>` : "";
-    const panel = deep.length
-      ? `<div class="crumb-depth" id="crumb-depth" ${depthOpen ? "" : "hidden"}>
-          ${deep.map((lv, k) => `<button class="crumb-drow" data-i="${shallowEnd + 1 + k}">
-            <span class="crumb-dnum">${k + 1}</span>${esc(crumbName(lv))}</button>`).join("")}
-        </div>` : "";
-    crumbEl.innerHTML = shallow.map(chip).join("") + caret + tail + panel;
-    crumbEl.querySelectorAll<HTMLElement>("[data-i]").forEach((b) =>
-      b.addEventListener("click", () => {
-        depthOpen = false;
-        trail.length = Number(b.dataset.i) + 1;
-        show(trail[trail.length - 1], false);
-      }));
-    crumbEl.querySelector("#crumb-more")?.addEventListener("click", () => {
-      depthOpen = !depthOpen;
-      drawCrumb();
-    });
-  }
-
   function toN3(nodes: GraphNode[], lensDomain?: string, focusId?: string): N3[] {
     return nodes.map((nd) => ({
       id: nd.id,
@@ -636,199 +640,48 @@ export async function renderAtlas(el: HTMLElement) {
     return ns.filter((n) => (n.degree || 0) > 0 || n.focus);
   }
 
-  /** L0 — 주제 층(D58). 무라벨 행성 4개 대신 **표 + 결합 미니그래프**.
+  /** 지도 마운트 공통 경로(3D) — 전체(L0)·주제(L1)·씨앗(L2)이 같은 코드를 쓴다.
    *
-   *  구 L0 는 항목 4개에 3D 씬 하나를 통째로 쓰면서 이름조차 hover 로만 알려 줬다
-   *  (실측: 캔버스의 ~85%가 빈 공간). 여기서 조망은 오른쪽 미니그래프가 담당하고,
-   *  "무엇이 얼마나 있는가"는 왼쪽 표가 글자와 숫자로 먼저 답한다. 폐지한 LNB 의
-   *  DOMAINS 목록과 그 `⋯`(이름 변경, S2)도 이 표로 이사했다 — 주제를 보고 있는
-   *  자리가 주제를 고치기에 맞는 자리다.
+   *  **L0 이 바뀌었다(D69).** 주제 표(D58)도 그 이전의 주제 원환(D16)도 폐지한다.
+   *  주제 목록은 이제 좌측 트리가 상시로 들고 있으므로 첫 화면이 다시 목록일 이유가
+   *  없고, 첫 화면은 **전체 개념 그래프**다(발주자 지시 2026-07-31). 서버는 스코프
+   *  없는 `/graph` 를 원래 지원한다 — 평면 관점의 L0 가 이미 그 경로를 쓰고 있었다
+   *  (D46-S). 즉 이 변경으로 지도 관점과 평면 관점의 L0 모집단이 **같아진다**.
    *
-   *  3D·2D 관점에서만 이 화면을 쓴다. 평면 관점(타임라인·Sankey)의 L0 는 전량
-   *  집계이므로 자기 렌더러가 그대로 그린다(D46-S 불변). */
-  async function showTopics() {
-    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-    const [l0, doms, led] = await Promise.all([
-      api.atlasL0(cfg.owner),
-      api.domains(cfg.owner).catch(() => ({ rows: [] })),
-      api.ledger(cfg.owner).catch(() => ({ executed: false } as LedgerRes)),
-    ]);
-    const atlasDomains: { domain: string; episodes: number }[] = l0.domains || [];
-    if (!l0.executed || atlasDomains.length === 0) {
-      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
-        <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`);
+   *  세 층은 스코프만 다르고 나머지(적재·지표·게이트웨이 판정·올가미)가 완전히 같아
+   *  한 함수로 접는다. 갈라 두면 셋 중 하나만 고치는 드리프트가 난다. */
+  async function showGraphScope(scope: { domain?: string; seed?: string }) {
+    const { domain, seed } = scope;
+    const whole = seed === undefined && !domain;
+    const p = curPrefs();
+    setMsg(`<p class="hint">${COPY.atlas.loading(whole ? 0 : 1)}</p>`);
+    const res = seed !== undefined
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
+      : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
+    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    const nodes: GraphNode[] = res.nodes || [];
+    if (seed !== undefined) fillSeedDomain(seed, nodes);
+    if (nodes.length === 0) {
+      // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
+      setMsg(whole
+        ? `<div class="empty"><p>${COPY.atlas.idle}</p>
+             <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`
+        : `<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
       return;
     }
     setMsg("");
-    const docRows: any[] = (doms as any).rows || [];
-    const docOf = new Map(docRows.map((r) => [r.domain, r]));
-    const ledOf = new Map((led.rows || []).map((r) => [r.domain, r]));
-    const ties: { source: string; target: string; ties: number }[] = l0.ties || [];
-
-    // 세는 것만 싣는다 — 주제별 "문서 수"는 스토어에 없다(_DocMeta 에 domain 열이
-    // 없어 문서는 주제로 갈리지 않는다). 시안의 `문서` 열 대신 우리가 실제로 아는
-    // 축을 쓴다: 개념 · 고아 · 결합. 없는 수치를 옆 칸 값으로 채우면 그게 곧 단위
-    // 거짓말이다(구 레일이 개념 수를 "문서"라 부르던 문제와 같은 뿌리).
-    type Row = { domain: string; concepts: number; orphans: number; coupling: number };
-    const rows: Row[] = atlasDomains.map((d) => {
-      const dc = docOf.get(d.domain);
-      const lg = ledOf.get(d.domain);
-      const concepts = lg?.concepts ?? dc?.concepts ?? d.episodes ?? 0;
-      // 결합 = 그 주제의 개념 중 **주제 밖으로 이어진** 비율(원장 gateway 축).
-      // 임의 정규화가 아니라 이미 세고 있는 값이라, 표와 Sankey 가 서로를 반박하지 않는다.
-      return { domain: d.domain, concepts, orphans: lg?.orphan ?? 0,
-               coupling: concepts > 0 ? (lg?.gateway ?? 0) / concepts : 0 };
-    }).sort((a, b) => b.concepts - a.concepts || (a.domain < b.domain ? -1 : 1));
-
-    const T = COPY.ui.topics;
-    const totalOrphan = rows.reduce((a, r) => a + r.orphans, 0);
-    const totalCon = rows.reduce((a, r) => a + r.concepts, 0);
-    canvas.innerHTML = `
-      <div class="l0-wrap">
-        <section class="l0-list">
-          <header class="l0-head">
-            <h1>${T.title}</h1>
-            <span class="hint">${T.summary(rows.length, totalCon, totalOrphan)}</span>
-          </header>
-          <div class="l0-cols hint">
-            <span>${T.colName}</span><span>${T.colConcepts}</span>
-            <span>${T.colOrphans}</span><span>${T.colCoupling}</span>
-          </div>
-          ${rows.map((r) => `
-            <div class="l0-row" data-open="${esc(r.domain)}" role="button" tabindex="0">
-              <span class="l0-name">${esc(r.domain)}</span>
-              <span class="l0-num">${r.concepts}</span>
-              <span class="l0-num${r.orphans ? " l0-warn" : ""}">${r.orphans}</span>
-              <span class="l0-cpl">
-                <span class="l0-bar"><i style="width:${Math.round(r.coupling * 100)}%"></i></span>
-                <span class="l0-num">${Math.round(r.coupling * 100)}%</span>
-              </span>
-              <button class="l0-edit" data-edit="${esc(r.domain)}"
-                      data-tip="${COPY.ui.domains.manage}"
-                      aria-label="${COPY.ui.domains.manage}">⋯</button>
-            </div>`).join("")}
-          <p class="hint l0-note">${T.rowHint}</p>
-        </section>
-        <section class="l0-graph">
-          <p class="hint l0-cap">${T.graphTitle}</p>
-          <div id="l0-mini"></div>
-          <p class="hint l0-note">${T.graphHint}</p>
-        </section>
-      </div>`;
-
-    canvas.querySelectorAll<HTMLElement>(".l0-row").forEach((r) => {
-      const go = () => { trail.push({ kind: "l1", domain: r.dataset.open! }); show(trail[trail.length - 1]); };
-      r.addEventListener("click", (e) => {
-        if ((e.target as HTMLElement).closest(".l0-edit")) return;   // ⋯ 는 자기 일을 한다
-        go();
-      });
-      r.addEventListener("keydown", (e) => {
-        if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") { e.preventDefault(); go(); }
-      });
-    });
-    // S2 — 주제 이름 변경 / 미분류로 내리기(폐지한 레일에서 이사). 전역 Domain 노드는
-    // 건드리지 않고 내 노드의 domain 문자열만 바뀐다(rename_domain 독스트링).
-    canvas.querySelectorAll<HTMLElement>("[data-edit]").forEach((b) =>
-      b.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const old = b.dataset.edit!;
-        const { promptText } = await import("../components");
-        const next = await promptText(COPY.ui.domains.renameAsk(old), old,
-          COPY.ui.domains.rename, COPY.ui.atlasx.delCancel, COPY.ui.domains.unassign);
-        if (next === null || next === old) return;
-        try {
-          const r: any = await api.domainRename(cfg.owner, old, next);
-          if (!r.executed) throw new Error(r.error || "rename failed");
-          await show(trail[trail.length - 1], false);
-        } catch { /* 실패는 조용히 — 목록은 그대로다(바뀐 것 없음) */ }
-      }));
-    // L0 지표 = 주제 층의 합계(개념·연결률·고아). 관점이 달라도 같은 자리에 뜬다.
-    drawMetrics(rows.map((r) => ({ degree: r.concepts - r.orphans, ts: "" })));
-    drawTopicMini(canvas.querySelector<HTMLElement>("#l0-mini")!, rows, ties);
-  }
-
-  /** 주제 사이 결합 미니그래프 — 덩어리 크기 = 개념 수(√), 선 굵기 = 넘나든 연결 수.
-   *  좌표는 원 둘레 배치(결정론) — 항목이 한 자릿수라 힘-지향이 줄 것이 없다. */
-  function drawTopicMini(host: HTMLElement, rows: { domain: string; concepts: number }[],
-                         ties: { source: string; target: string; ties: number }[]) {
-    const W = 380, H = 300, cx = W / 2, cy = H / 2 - 6, R = 96;
-    const n = Math.max(rows.length, 1);
-    const at = new Map(rows.map((r, i) => {
-      const a = (2 * Math.PI * i) / n - Math.PI / 2;
-      return [r.domain, { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a), r: r.concepts }];
-    }));
-    const maxC = Math.max(1, ...rows.map((r) => r.concepts));
-    const maxT = Math.max(1, ...ties.map((t) => t.ties));
-    const rad = (c: number) => 7 + 18 * Math.sqrt(c / maxC);
-    const num = (v: number) => String(Math.round(v * 10) / 10);
-    // 선은 마크 **표면에서** 시작하고 끝난다. 중심끼리 이으면 반투명 마크 아래로
-    // 선이 비쳐, 여러 선이 모이는 노드에 없던 삼각형이 생긴다(실측).
-    const lines = ties.filter((t) => t.source !== t.target && at.has(t.source) && at.has(t.target))
-      .map((t) => {
-        const a = at.get(t.source)!, b = at.get(t.target)!;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ra = rad(a.r) + 1.5, rb = rad(b.r) + 1.5;
-        if (len <= ra + rb) return "";                 // 겹칠 만큼 가까우면 선을 생략
-        return `<line x1="${num(a.x + (dx / len) * ra)}" y1="${num(a.y + (dy / len) * ra)}"
-          x2="${num(b.x - (dx / len) * rb)}" y2="${num(b.y - (dy / len) * rb)}"
-          stroke-width="${num(0.6 + 2.4 * (t.ties / maxT))}"/>`;
-      }).join("");
-    const marks = rows.map((r) => {
-      const p = at.get(r.domain)!;
-      const rr = rad(r.concepts);
-      // 라벨은 바깥쪽으로 — 원 중심에서 멀어지는 방향에 붙여 마크를 가리지 않는다.
-      const out = p.x >= cx;
-      return `<g class="l0-node" data-open="${esc(r.domain)}">
-        <circle cx="${num(p.x)}" cy="${num(p.y)}" r="${num(rr)}"/>
-        <text x="${num(p.x + (out ? rr + 7 : -rr - 7))}" y="${num(p.y + 4)}"
-              text-anchor="${out ? "start" : "end"}">${esc(r.domain)}</text></g>`;
-    }).join("");
-    host.innerHTML = `<svg class="l0-mini-svg" viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="${esc(COPY.ui.topics.graphTitle)}"><g class="l0-links">${lines}</g>${marks}</svg>`;
-    host.querySelectorAll<HTMLElement>(".l0-node").forEach((g) =>
-      g.addEventListener("click", () => {
-        trail.push({ kind: "l1", domain: g.dataset.open! }); show(trail[trail.length - 1]);
-      }));
-  }
-
-  async function showL0() {
-    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-    const res = await api.atlasL0(cfg.owner);
-    const domains: { domain: string; episodes: number }[] = res.domains || [];
-    const ties: { source: string; target: string; ties: number }[] = res.ties || [];
-    if (!res.executed || domains.length === 0) {
-      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
-        <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`);
-      return;
-    }
-    setMsg("");
-    const n = Math.max(domains.length, 1);
-    const flat = curPrefs().view === "2d";   // 2D 에선 원환을 화면 평면(x/y)에 그대로
-    const nodes: N3[] = domains.map((d, i) => {
-      const ang = (2 * Math.PI * i) / n;
-      return { id: d.domain, label: d.domain, kind: "domain", records: d.episodes,
-               x: Math.cos(ang), y: Math.sin(ang) * (flat ? 1 : 0.25), z: flat ? 0 : Math.sin(ang) };
-    });
-    // Bridge 전용 도메인(레코드 0 — 예: 브릿지 매트릭스의 외부 축)은 L0 노드가
-    // 없으므로 결합에서 제외 — 미지 노드 참조는 렌더러가 거부한다.
-    const known = new Set(nodes.map((d) => d.id));
-    const links: L3[] = ties
-      .filter((t) => t.source !== t.target && known.has(t.source) && known.has(t.target))
-      .map((t) => ({ source: t.source, target: t.target, cross: true, weight: t.ties }));
-    g3 = mount3d(canvas, nodes, links, {
-      onClick: (nd) => { trail.push({ kind: "l1", domain: nd.id }); show(trail[trail.length - 1]); },
-      onLinkClick: (l) => {
-        const a = typeof l.source === "object" ? l.source.id : l.source;
-        const b = typeof l.target === "object" ? l.target.id : l.target;
-        trail.push({ kind: "compare", a, b }); show(trail[trail.length - 1]);
+    curEdges = res.edges || [];
+    drawMetrics(nodes);
+    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domain, seed)), toL3(curEdges), {
+      // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
+      // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
+      onClick: (nd) => {
+        if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
+        else openDetail(nd);
       },
-    }, curPrefs());
-    // 관점 발견 힌트(1회) — L0 는 wireLasso 를 돌리지 않으므로 힌트 알약이 비어 있다.
-    if (localStorage.getItem("vinc.atlas.views.seen") !== "1") {
-      lassoHint.textContent = COPY.ui.atlasx.viewsHint;
-      lassoHint.hidden = false;
-    }
+      onRightClick: (nd, ev) => nodeMenu(nd, ev),
+    }, p);
+    wireLasso();
   }
 
   /** 노드 우클릭 = 컨텍스트 메뉴(D64). 정본 §2 의 항목 그대로 — 열기 · 여기서 추적 ·
@@ -1282,42 +1135,25 @@ export async function renderAtlas(el: HTMLElement) {
    *  않는다. (atlas3d 의 flat 분기는 Grid 미니 카드가 계속 쓴다.) */
   async function show2d(level: Level) {
     const p = curPrefs();
-    if (level.kind === "l0") {
-      setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-      const res = await api.atlasL0(cfg.owner);
-      const domains: { domain: string; episodes: number }[] = res.domains || [];
-      if (!res.executed || domains.length === 0) {
-        setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
-          <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`);
-        return;
-      }
-      setMsg("");
-      // 주제를 원 둘레에 놓는다(3D L0 의 원환을 평면으로 — 같은 배치 규칙).
-      const n = Math.max(domains.length, 1);
-      const dnodes: GraphNode[] = domains.map((d, i) => {
-        const a = (2 * Math.PI * i) / n;
-        return { id: d.domain, label: d.domain, domain: d.domain,
-                 degree: d.episodes, kind: "domain", x: Math.cos(a), y: Math.sin(a) };
-      });
-      const known = new Set(dnodes.map((d) => d.id));
-      const dedges: GraphEdge[] = (res.ties || [])
-        .filter((t: any) => t.source !== t.target && known.has(t.source) && known.has(t.target))
-        .map((t: any) => ({ source: t.source, target: t.target, type: "TIES", cross_domain: true }));
-      g2 = mount2d(canvas, dnodes, dedges, {
-        onClick: (nd) => { trail.push({ kind: "l1", domain: nd.id }); show(trail[trail.length - 1]); },
-      }, p);
-      return;
-    }
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
+    // D69 — L0 도 그냥 전체 그래프다(구 주제 원 배치 폐지). 3D 경로와 같은 모집단을
+    // 쓰므로 관점을 바꿔도 같은 것을 다르게 볼 뿐, 다른 것을 보게 되지 않는다.
     const { seed, domain } = scopeOf(level);
+    const whole = seed === undefined && !domain;
+    setMsg(`<p class="hint">${COPY.atlas.loading(whole ? 0 : 1)}</p>`);
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { domain, layout: p.layout });
+      : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     if (seed !== undefined) fillSeedDomain(seed, gnodes);
-    if (gnodes.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
+    if (gnodes.length === 0) {
+      setMsg(whole
+        ? `<div class="empty"><p>${COPY.atlas.idle}</p>
+             <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`
+        : `<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
+      return;
+    }
     setMsg("");
     drawMetrics(gnodes);
     g2 = mount2d(canvas, gnodes, curEdges, {
@@ -1329,39 +1165,8 @@ export async function renderAtlas(el: HTMLElement) {
     }, p);
   }
 
-  async function showL1(domain: string) {
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { domain, layout: loadPrefs().layout });
-    if (!res.executed || (res.nodes || []).length === 0) {
-      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return;
-    }
-    setMsg("");
-    curEdges = res.edges || [];
-    drawMetrics(res.nodes || []);
-    g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, domain)), toL3(res.edges), {
-      onClick: (nd) => {
-        if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
-        else openDetail(nd);
-      },
-      onRightClick: (nd, ev) => nodeMenu(nd, ev),
-    }, curPrefs());
-    wireLasso();
-  }
-
-  async function showL2(seed: string) {
-    setMsg(`<p class="hint">${COPY.atlas.loading(1)}</p>`);
-    const res = await api.graph(cfg.owner, { seed, depth: 2, layout: loadPrefs().layout });
-    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
-    setMsg("");
-    curEdges = res.edges || [];
-    fillSeedDomain(seed, res.nodes || []);
-    drawMetrics(res.nodes || []);
-    g3 = mount3d(canvas, filterUnlinked(toN3(res.nodes, undefined, seed)), toL3(res.edges), {
-      onClick: (nd) => openDetail(nd),
-      onRightClick: (nd, ev) => nodeMenu(nd, ev),
-    }, curPrefs());
-    wireLasso();
-  }
+  const showL1 = (domain: string) => showGraphScope({ domain });
+  const showL2 = (seed: string) => showGraphScope({ seed });
 
   /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
    *  의도적으로 평면(나란히 대조가 목적 — 3D 회전은 좌우 대응을 깨뜨림). */
@@ -1742,9 +1547,13 @@ export async function renderAtlas(el: HTMLElement) {
     if (g2) { g2.dispose(); g2 = null; }
     if (g3) { g3._destructor?.(); g3 = null; }
     canvas.innerHTML = "";
-    drawCrumb();
     drawLegend();
     drawMetrics(null);
+    // 위치 표시는 좌측 트리 담당(D71 — 크럼 폐지). 지금 층의 주제를 넘겨 준다:
+    // 씨앗 층은 fillSeedDomain 이 주제를 알게 된 뒤 한 번 더 갱신한다.
+    const here = level;
+    setLnbActive(here.kind === "l1" ? { domain: here.domain }
+      : here.kind === "l2" ? { domain: here.domain, nodeId: here.seed } : {});
     // U4 — 인앱 이동도 주소를 남긴다. 여태 관점 커밋에서만 동기화해, L2 까지 파고든
     // 뒤 새로고침하면 L1 로 튕기고 "지금 보는 곳"을 공유할 수도 없었다(화면은 L2 인데
     // 해시는 #atlas/physics). replaceState 라 hashchange 가 안 떠 라우터는 무영향이고,
@@ -1759,10 +1568,10 @@ export async function renderAtlas(el: HTMLElement) {
       else if (level.kind === "grid") await showGrid();
       else if (level.kind === "matrix") await showMatrix();
       else if (isPlanar(v)) await showPlanar(level);
-      // D58 — L0 은 지도 관점(3D·2D) 양쪽에서 같은 주제 층을 쓴다. 항목이 한 자릿수인
-      // 목록에 3D 씬이나 sigma 캔버스를 통째로 쓰는 것은 정보밀도의 낭비였다.
-      else if (level.kind === "l0") await showTopics();
       else if (v === "2d") await show2d(level);
+      // D69 — L0 도 이제 그냥 그래프다(스코프 없는 `/graph`). 주제 표는 좌측 트리로,
+      // 주제 이름 변경도 그 트리의 우클릭으로 옮겼다.
+      else if (level.kind === "l0") await showGraphScope({});
       else if (level.kind === "l1") await showL1(level.domain);
       else await showL2(level.seed);
     } catch {

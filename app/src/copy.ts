@@ -98,15 +98,6 @@ const EN = {
       installing: "Installing… the app will restart.",
       failed: "Update failed. You can keep using this version.",
     },
-    // L0 주제 층(D58) — 무라벨 행성 대신 표 + 결합 미니그래프.
-    topics: {
-      title: "Topics",
-      summary: (t: number, c: number, o: number) => `${t} topics · ${c} concepts · ${o} unlinked`,
-      colName: "Name", colConcepts: "Concepts", colOrphans: "Unlinked", colCoupling: "Coupling",
-      rowHint: "Open a row to see that topic's lens.",
-      graphTitle: "Links between topics",
-      graphHint: "Size is concept count. Line weight is how many links cross between topics.",
-    },
     // 범례(U1) — 닫힌 층을 화면이 스스로 가르친다. 형태는 정본(D35) 그대로.
     legend: {
       title: "Legend",
@@ -145,6 +136,23 @@ const EN = {
       share: "Share",
       shareTip: "Pack up what you're looking at",
       settings: "Settings",
+    },
+    // 좌측 문서 트리(D69) — 주제 → 그 주제의 문서. 표면 전환도 여기서 한다.
+    lnb: {
+      documents: "Documents",
+      open: "Open the sidebar", close: "Close the sidebar",
+      unfiled: "No topic yet",
+      unfiledTip: "These aren't linked to any concept yet, so they have no place on the map.",
+      empty: "No documents yet.",
+      emptyCta: "Add one",
+      loading: "Loading…",
+      failed: "The list is unavailable right now.",
+      retry: "Try again",
+      docCount: (n: number) => `${n} document${n === 1 ? "" : "s"}`,
+      conceptCount: (n: number) => `${n} concept${n === 1 ? "" : "s"}`,
+      depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
+      openInMap: "Open on the map",
+      editOnly: "No place on the map yet. Opens in the editor.",
     },
     panel: {
       view: "View", viewChip: (d: string) => `View · ${d}`,
@@ -554,14 +562,6 @@ const KO: Deck = {
       installing: "설치 중… 앱이 다시 시작됩니다.",
       failed: "업데이트 실패. 지금 버전을 계속 쓰셔도 됩니다.",
     },
-    topics: {
-      title: "주제",
-      summary: (t, c, o) => `주제 ${t}개 · 개념 ${c} · 연결 없음 ${o}`,
-      colName: "이름", colConcepts: "개념", colOrphans: "연결 없음", colCoupling: "결합",
-      rowHint: "행을 누르면 그 주제의 렌즈로 들어갑니다.",
-      graphTitle: "주제 사이 결합",
-      graphHint: "덩어리 크기는 개념 수, 선 굵기는 주제 사이를 넘는 연결 수입니다.",
-    },
     legend: {
       title: "범례",
       lensTip: "보기와 범례",
@@ -597,6 +597,22 @@ const KO: Deck = {
       share: "공유",
       shareTip: "지금 보고 있는 범위를 팩으로 묶습니다",
       settings: "설정",
+    },
+    lnb: {
+      documents: "문서",
+      open: "사이드바 열기", close: "사이드바 닫기",
+      unfiled: "주제 없음",
+      unfiledTip: "아직 어떤 개념과도 이어지지 않아 지도에 자리가 없습니다.",
+      empty: "아직 문서가 없습니다.",
+      emptyCta: "문서 넣기",
+      loading: "불러오는 중...",
+      failed: "지금은 목록을 볼 수 없습니다.",
+      retry: "다시 시도",
+      docCount: (n: number) => `문서 ${n}`,
+      conceptCount: (n: number) => `개념 ${n}`,
+      depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
+      openInMap: "지도에서 열기",
+      editOnly: "아직 지도에 자리가 없습니다. 편집기로 열립니다.",
     },
     panel: {
       view: "보기", viewChip: (d) => `보기 · ${d}`,

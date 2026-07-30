@@ -4,9 +4,9 @@ import { icon } from "./icons";
 
 /** 상단 바 (DEC D56·D57) — 셸의 유일한 크롬.
  *
- *  여기 사는 것: 로고 · 크럼(1급) · 상시 검색 · 공유 · 보기 · 설정.
- *  여기 살지 않는 것: 표면 목록(크럼 + Ctrl/Cmd+K 팔레트가 대신한다), DOMAINS
- *  목록(Atlas L0 주제 표가 가져갔다 — 거기가 맥락이 있는 자리다).
+ *  여기 사는 것: 로고 · 렌즈 · 관점 세그 · 상시 검색 · 가져오기 · 공유 · 설정.
+ *  여기 살지 않는 것: 표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
+ *  크럼(폐지 — "지금 어디"는 트리가 상시로 말한다), 지표(하단 상태 표시줄에 남는다).
  *
  *  **표면과의 계약은 훅 하나뿐이다.** 공유·보기 버튼은 Atlas 만 뜻이 있으므로
  *  Atlas 가 마운트될 때 자기 동작을 등록하고(setAtlasHooks), 떠날 때 지운다.
@@ -35,22 +35,18 @@ export function setAtlasHooks(h: AtlasHooks | null) {
 
 /** 버튼 라벨·표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출). */
 export function refreshTopbar() {
-  // `보기` 는 상단 바를 떠나 캔버스 좌하단의 렌즈 버튼으로 합쳐졌다(범례와 한 몸) —
-  // 지도를 보는 손잡이는 지도 위에, 문서를 다루는 손잡이는 바에 둔다.
   const share = $<HTMLButtonElement>("tb-share");
   if (share) share.hidden = !hooks;
+  // 지도 손잡이는 Atlas 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
+  // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
+  if (!hooks) { const l = lensSlot(), v = viewsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
 }
 
-/** 크럼을 그릴 자리. 표면이 이 안을 직접 채운다(내용의 주인은 표면이다). */
-export function crumbSlot(): HTMLElement | null {
-  return $("tb-crumb");
-}
+/** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */
+export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 
-/** 표면 이름만 있는 단순 크럼(Search·Packs 처럼 스코프가 없는 표면용). */
-export function setPlainCrumb(label: string) {
-  const el = crumbSlot();
-  if (el) el.innerHTML = `<button class="crumb-item" disabled>${label}</button>`;
-}
+/** 관점 세그 자리(D71). 내용은 Atlas 가 채운다(주인은 표면이다). */
+export function viewsSlot(): HTMLElement | null { return $("tb-views"); }
 
 export function mountTopbar() {
   if (wired) return;

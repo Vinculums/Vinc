@@ -63,18 +63,126 @@ body {
   line-height: var(--lh, 1.5);
 }
 
-/* ── Shell: icon rail (D26 — 56px, labels on hover/`[` expand; HIG: never
-      hidden by default). Active = surface lift + weight (Figma 5:2 grammar). */
-/* ── Signal 사이드바 (Figma 130:443) — 232px 확장 고정. 토큰=기존 Signal set. ── */
-/* D56 — 셸은 두 줄이다: 상단 바 + 표면. 좌측 레일(14.5rem 상시 점유)은 폐지. */
+/* ── Shell: 상단 바 + 좌측 문서 트리 + 표면 (D69 — Signal 사이드바 232px 준거).
+   D56 이 지운 좌측 열을 되살리되 싣는 것이 다르다: 표면 목록이 아니라 문서 트리다.
+   구 레일이 장식이었던 이유가 그거였다(행을 눌러도 갈 곳이 없었다).
+
+   LNB 는 **그리드 열**이다(오버레이 아님). 그래서 표면이 줄어들 뿐이고,
+   `#atlas-canvas`(inset:0)·`#atlas-chrome`(left:0;right:0) 같은 캔버스 안 절대배치
+   크롬은 요소별 오프셋 코드 없이 자동으로 따라 좁아진다 — 구 railChrome 이 인라인
+   스타일로 세 요소를 손으로 밀던 방식의 재발 방지. 접힘은 열 폭 0. */
 /* 트랙을 minmax(0,·) 로 못 박는다 — 그리드 아이템의 기본 min-width/min-height 는
    auto 라, 상단 바처럼 줄바꿈 없는 flex 행이 들어오면 좁은 창에서 열을 min-content
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
+:root { --lnb-w: 14.5rem; }
 #shell {
-  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: var(--lnb-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh; min-height: 0; overflow: hidden;
 }
 #shell > * { min-width: 0; min-height: 0; }
+#topbar { grid-column: 1 / -1; }
+#shell[data-lnb="closed"] { --lnb-w: 0rem; }
+
+/* ── 좌측 문서 트리 ─────────────────────────────────────────────────────── */
+#lnb {
+  grid-column: 1; grid-row: 2;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: hsl(var(--card)); border-right: 1px solid hsl(var(--border));
+}
+#shell[data-lnb="closed"] #lnb { border-right: none; }
+.lnb-head {
+  display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  padding: .55rem .35rem .55rem .85rem;
+}
+.lnb-title {
+  flex: 1 1 auto; font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground)); text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lnb-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 .35rem .75rem; }
+/* 접힌 상태에서 다시 여는 손잡이 — 사이드바가 폭 0 이 되면 그 안의 버튼도 사라지므로
+   셸 직속으로 둔다. 열려 있을 때는 사이드바 머리의 접기 버튼이 그 일을 한다. */
+#lnb-reopen { display: none; }
+#shell[data-lnb="closed"] #lnb-reopen {
+  display: grid; place-items: center;
+  grid-column: 1; grid-row: 2; align-self: start; justify-self: start;
+  position: relative; z-index: 6; margin: .5rem 0 0 .35rem;
+}
+#shell[data-lnb="closed"] #lnb-reopen svg { transform: rotate(180deg); }
+
+.lnb-nav { display: flex; flex-direction: column; gap: 1px; padding: .15rem 0 .5rem; }
+.lnb-navrow {
+  display: flex; align-items: center; gap: .55rem; min-height: 2rem;
+  padding: .3rem .5rem; border-radius: var(--radius-sm, .625rem);
+  color: hsl(var(--muted-foreground)); text-decoration: none;
+  font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
+}
+.lnb-navrow:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
+/* 활성 = 면 + 좌측 2px 바 + 굵기(Figma NavItem State=Active). 색만으로 말하지 않는다. */
+.lnb-navrow.on {
+  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
+  box-shadow: inset 2px 0 0 hsl(var(--ring));
+}
+.lnb-ico { display: inline-flex; flex: 0 0 auto; color: currentColor; }
+.lnb-ico svg { width: 15px; height: 15px; }
+
+.lnb-sec {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .5rem;
+  padding: .55rem .5rem .3rem; border-top: 1px solid hsl(var(--border));
+}
+.lnb-sec-label {
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground)); text-transform: uppercase;
+}
+.lnb-tree { display: flex; flex-direction: column; }
+.lnb-group {
+  display: flex; align-items: center; gap: .35rem; width: 100%; min-height: 1.9rem;
+  border: none; background: none; font: inherit; font-size: var(--fs-base);
+  color: hsl(var(--foreground)); cursor: pointer; text-align: left;
+  padding: .25rem .5rem; border-radius: var(--radius-sm, .625rem);
+}
+.lnb-group:hover { background: hsl(var(--ring) / .1); }
+.lnb-group.on { font-weight: 600; box-shadow: inset 2px 0 0 hsl(var(--ring)); }
+.lnb-caret {
+  display: inline-block; flex: 0 0 auto; width: .7rem; text-align: center;
+  color: hsl(var(--caption-foreground));
+  transition: transform var(--dur-fast, .15s) ease;
+}
+.lnb-caret.open { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .lnb-caret { transition: none; } }
+.lnb-gname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lnb-unfiled { color: hsl(var(--muted-foreground)); font-style: italic; }
+.lnb-gcount {
+  flex: 0 0 auto; font-family: var(--font-mono); font-size: .7rem;
+  color: hsl(var(--caption-foreground));
+}
+.lnb-docs { display: flex; flex-direction: column; }
+/* 들여쓰기 = 그 주제 안 개념 계층 깊이(선행·파생 BFS). 최근 수정순이 아니라
+   구조순이므로 층이 눈에 보여야 정렬이 읽힌다. */
+.lnb-doc {
+  display: flex; align-items: center; gap: .4rem; width: 100%; min-height: 1.75rem;
+  border: none; background: none; font: inherit; font-size: var(--fs-sm);
+  color: hsl(var(--muted-foreground)); cursor: pointer; text-align: left;
+  padding: .2rem .5rem .2rem calc(1.05rem + var(--lvl, 0) * .68rem);
+  border-radius: var(--radius-sm, .625rem);
+}
+.lnb-doc:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
+.lnb-doc.on {
+  background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
+}
+.lnb-dot {
+  flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px;
+  border: 1px solid hsl(var(--caption-foreground));
+}
+.lnb-doc.on .lnb-dot { background: hsl(var(--ring)); border-color: hsl(var(--ring)); }
+.lnb-dtitle { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lnb-none { margin: .35rem .6rem; font-size: var(--fs-sm); }
+.lnb-retry { margin: .25rem .5rem; }
+.lnb-navrow:focus-visible, .lnb-group:focus-visible, .lnb-doc:focus-visible {
+  outline: 2px solid hsl(var(--ring)); outline-offset: -2px;
+}
 
 /* ── 공홈 GNB 레이아웃(웹 빌드) ──────────────────────────────────────────
    GNB 마크업·스타일은 공유 /assets/gnb.js(단일 소스)가 web skin에서 런타임 주입한다.
@@ -120,56 +228,12 @@ body {
   width: 1.15rem; height: 1.15rem; flex: 0 0 auto;
   color: hsl(var(--foreground));   /* 본체 = 전경색, 팁 = --logo-tip 그라디언트 */
 }
-#brand .rail-label { display: none; }   /* 바에서는 마크만 — 이름은 크럼이 말한다 */
+/* 바에서는 마크만 — 이름은 좌측 트리 머리가 말한다. */
+#brand .rail-label { display: none; }
 
-/* 크럼 — 캔버스 위에 뜬 저대비 텍스트가 아니라 바에 고정된 내비게이션이다. */
-#tb-crumb {
-  display: flex; align-items: center; gap: .45rem;
-  min-width: 0; flex: 0 1 auto; position: relative;
-}
-/* 접힌 깊이 — 숫자 + 캐럿. 눌러서 내려 본다(기본 표시는 주제까지, D61). */
-.crumb-more {
-  display: inline-flex; align-items: center; gap: .2rem; min-height: 1.7rem;
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
-  background: none; color: hsl(var(--muted-foreground));
-  font: inherit; font-size: var(--fs-sm); cursor: pointer; padding: .05rem .45rem;
-}
-.crumb-more:hover { color: hsl(var(--foreground)); border-color: hsl(var(--ring)); }
-.crumb-caret { font-size: .7em; transition: transform var(--dur-fast, .15s) ease; }
-.crumb-more[aria-expanded="true"] .crumb-caret { transform: rotate(180deg); }
-.crumb-depth {
-  position: absolute; top: 2rem; left: 0; z-index: 60; min-width: 13rem;
-  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
-  border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
-  padding: .3rem; display: flex; flex-direction: column;
-  animation: depthDrop .18s cubic-bezier(.22, 1, .36, 1);
-}
-@keyframes depthDrop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .crumb-depth { animation: none; } }
-.crumb-drow {
-  display: flex; align-items: baseline; gap: .5rem; width: 100%; text-align: left;
-  border: none; background: none; font: inherit; cursor: pointer; padding: .35rem .5rem;
-  border-radius: var(--radius-sm, .625rem); color: hsl(var(--foreground));
-}
-.crumb-drow:hover { background: hsl(var(--ring) / .1); }
-.crumb-dnum { font-family: var(--font-mono); font-size: .7rem; color: hsl(var(--caption-foreground)); }
-#tb-crumb .crumb-sep { color: hsl(var(--caption-foreground)); font-size: .8em; }
-#tb-crumb .crumb-item {
-  border: none; background: none; font: inherit; font-weight: 400;
-  color: hsl(var(--muted-foreground)); cursor: pointer; padding: .35rem .5rem;
-  border-radius: var(--radius-sm, .625rem);
-  max-width: 13rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#tb-crumb .crumb-item:hover { background: hsl(var(--ring) / .14); }
-#tb-crumb .crumb-item[disabled] { cursor: default; opacity: 1; }
-/* 조상은 옅게, **지금 있는 곳만** 진하게 — 같은 스타일이면 현재 위치가 안 읽힌다. */
-#tb-crumb .crumb-item:last-of-type { font-weight: 600; color: hsl(var(--foreground)); }
-/* 관점 꼬리 — "장소"가 아니라 "보는 법"이라 눌리지 않는다(비클릭 칩). */
-#tb-crumb .crumb-view {
-  font-size: var(--fs-sm); color: hsl(var(--muted-foreground));
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
-  padding: .1rem .5rem; white-space: nowrap;
-}
+/* 지도 손잡이(D71) — 렌즈 + 관점 세그. 크럼이 있던 자리를 그대로 물려받는다. */
+#tb-lens, #tb-views { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-views:empty, #tb-lens:empty { display: none; }
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). */
 #tb-search { position: relative; flex: 1 1 auto; max-width: 40rem; margin-left: auto; }
@@ -542,15 +606,43 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 
 /* Atlas */
 #atlas-canvas { position: absolute; inset: 0; overflow: hidden; }
-#atlas-crumb {
-  position: absolute; top: var(--space-4, 1rem); left: var(--space-6, 1.5rem); z-index: 2;
-  display: flex; gap: var(--space-2, .5rem); align-items: center;
-}
-#atlas-crumb button { background: none; border: none; font: inherit; cursor: pointer; color: hsl(var(--primary)); padding: 0; }
+/* ── 우측 문서 패널(D70) ─────────────────────────────────────────────────
+   폭의 정의는 변수 둘뿐이다(atlas.ts setRailWidth·railChrome 참조):
+     --rail-size = 사용자가 끌어 정한 폭   --rail-w = 지금 점유 중인 폭(닫히면 0)
+   여기 숫자를 다시 적지 않는다 — 예전엔 CSS 와 JS 상수에 20rem 이 각각 적혀 있었다. */
 #atlas-detail {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 20rem; z-index: 2;
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 2;
+  width: var(--rail-size, 20rem);
   background: hsl(var(--card)); border-left: 1px solid hsl(var(--border));
   padding: var(--space-4, 1rem); overflow: auto;
+}
+/* 잡는 면은 6px 이되 보이는 선은 1px — 손이 닿는 넓이와 눈에 보이는 두께는 다르다. */
+#rail-grip {
+  position: absolute; top: 0; bottom: 0; z-index: 3;
+  right: calc(var(--rail-w, 0px) - 3px); width: 6px;
+  cursor: col-resize; touch-action: none;
+}
+#rail-grip:hover, #rail-grip:active { background: hsl(var(--ring) / .35); }
+
+/* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
+   두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
+   밀었는데, 이제 --rail-w 하나로 CSS 가 스스로 한다. */
+#atlas-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
+#atlas-tools {
+  position: absolute; top: var(--space-4, 1rem); z-index: 2;
+  right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
+  display: flex; gap: .5rem;
+}
+#atlas-float, #atlas-hint {
+  position: absolute; left: 50%; bottom: var(--space-6, 1.5rem);
+  transform: translateX(calc(-50% - var(--rail-w, 0px) / 2));
+}
+#atlas-float { z-index: 3; }
+#atlas-hint {
+  z-index: 2; pointer-events: none; white-space: nowrap; font-size: .72rem;
+  color: hsl(var(--caption-foreground)); background: hsl(var(--card) / .72);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
+  padding: .25rem .7rem;
 }
 /* 레일 머리 — 제목 캡션 + 닫기(✕). 닫는 수단이 없어 상세를 열면 크럼을 찾아
    눌러야만 빠져나올 수 있던 비대칭을 없앤다(Esc 도 같은 자리에서 받는다). */
@@ -613,59 +705,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
 .btn-quiet { color: hsl(var(--caption-foreground)); }
 .btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }
-/* ── L0 주제 층(D58) — 표 + 결합 미니그래프 ─────────────────────────────
-   왼쪽은 글자와 숫자가 먼저 답하고, 오른쪽이 조망을 준다. 구 L0(무라벨 행성 4개)는
-   같은 정보를 hover 로만 흘렸다. */
-.l0-wrap {
-  position: absolute; inset: 0; display: grid;
-  grid-template-columns: minmax(24rem, 1fr) minmax(19rem, .8fr);
-  gap: var(--space-6, 2rem); padding: var(--space-5, 1.5rem) var(--space-5, 1.5rem) 4.5rem;
-  overflow: auto;
-}
-.l0-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .6rem; }
-.l0-head h1 { margin: 0; font-size: var(--fs-lg); font-weight: 640; }
-.l0-cols, .l0-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) 4rem 4.5rem 7rem 2rem;
-  gap: .75rem; align-items: center;
-}
-.l0-cols {
-  padding: 0 .25rem .4rem; font-size: .62rem; letter-spacing: .075em;
-  text-transform: uppercase; border-bottom: 1px solid hsl(var(--border));
-}
-.l0-cols span + span, .l0-row .l0-num { text-align: right; font-variant-numeric: tabular-nums; }
-.l0-row {
-  padding: .65rem .25rem; border-bottom: 1px solid hsl(var(--border) / .6);
-  cursor: pointer; border-radius: var(--radius-sm, .625rem);
-}
-.l0-row:hover { background: hsl(var(--ring) / .08); }
-.l0-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
-.l0-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.l0-cpl { display: flex; align-items: center; gap: .5rem; justify-content: flex-end; }
-.l0-bar { flex: 1 1 auto; height: 3px; border-radius: 999px; background: hsl(var(--border)); overflow: hidden; }
-.l0-bar i { display: block; height: 100%; background: hsl(var(--foreground) / .55); }
-/* 고아가 있는 주제는 숫자를 살짝 세워 둔다 — 색이 아니라 무게로(모노크롬). */
-.l0-warn { color: hsl(var(--foreground)); font-weight: 600; }
-.l0-edit {
-  border: none; background: none; cursor: pointer; color: hsl(var(--caption-foreground));
-  border-radius: var(--radius-sm, .625rem); padding: .1rem .3rem; opacity: 0;
-}
-.l0-row:hover .l0-edit, .l0-edit:focus-visible { opacity: 1; }
-.l0-edit:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-.l0-note { margin: .7rem .25rem 0; font-size: var(--fs-sm); line-height: 1.5; }
-.l0-graph {
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-  background: hsl(var(--card) / .45); padding: .75rem 1rem 1rem;
-  display: flex; flex-direction: column; min-width: 0;
-}
-.l0-cap { margin: 0 0 .3rem; font-size: .62rem; letter-spacing: .075em; text-transform: uppercase; }
-.l0-mini-svg { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
-/* 모노크롬 규율 — 결합의 세기는 굵기가 나르고 색은 잉크 하나뿐이다. */
-.l0-links line { stroke: hsl(var(--foreground) / .3); }
-.l0-node circle { fill: hsl(var(--foreground) / .78); cursor: pointer; }
-.l0-node:hover circle { fill: hsl(var(--ring)); }
-.l0-node text { fill: hsl(var(--muted-foreground)); font-size: 11px; pointer-events: none; }
-.l0-node:hover text { fill: hsl(var(--foreground)); }
-
 /* 범례(U1) — 접이식. 닫힌 층(형태=타입 · 선=관계 · 초점색)을 화면이 스스로 설명한다.
    접힌 기본값은 한 줄 요약이라 지도를 가리지 않고, 펼치면 마크 사양이 전부 나온다. */
 /* ── 지도 크롬 바(D65) — 렌즈 · 관점 · 지표를 한 줄에 모은다 ────────────────
@@ -694,7 +733,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
   font-size: .7rem; color: hsl(var(--caption-foreground));
 }
-#atlas-views .seg { display: inline-flex; }
+#atlas-views .seg, #tb-views .seg { display: inline-flex; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
@@ -738,10 +777,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #atlas-msg a, #atlas-msg button { pointer-events: auto; }
 /* 렌즈 패널 — 좌하단 렌즈 버튼 **위로** 열린다(버튼이 패널을 가리지 않게).
    안에는 보기(관점·범위·옵션)와 범례가 함께 산다. */
+/* 렌즈 패널 — 좌표는 openPanel() 이 렌즈 버튼 rect 에서 실측해 박는다(D71).
+   버튼이 상단 바(표면 밖)로 올라가 표면 기준 absolute 로는 못 맞춘다. */
 #atlas-view-panel {
-  position: absolute; left: var(--space-4, 1rem);
-  bottom: 3.1rem; z-index: 6; width: 17.5rem;
-  max-height: calc(100% - 6rem); overflow: auto;
+  position: fixed; left: var(--space-4, 1rem); top: 4rem;
+  z-index: 46; width: 17.5rem;
+  max-height: calc(100vh - 8rem); overflow: auto;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius); padding: var(--space-4, 1rem);
   animation: lensRise .16s cubic-bezier(.22, 1, .36, 1);

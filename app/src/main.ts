@@ -8,9 +8,10 @@ import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg } from "./api";
 import { checkForUpdate } from "./update";
 import { installTooltip } from "./tooltip";
-import { mountTopbar, setPlainCrumb, setAtlasHooks } from "./topbar";
+import { mountTopbar, setAtlasHooks } from "./topbar";
+import { mountLnb, setLnbNavigator } from "./lnb";
 
-// LNB 통합(5→3): Atlas / Search(+Records) / Packs(+Intake).
+// 표면 3종: Atlas / Search(+Records) / Packs(+Intake).
 type Surface = "atlas" | "search" | "packs";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
   atlas: renderAtlas,
@@ -37,10 +38,8 @@ document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topb
 document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
 document.getElementById("sync-status")!.textContent = COPY.ui.common.local;
 mountTopbar();
-
-// DOMAINS 목록은 L0 주제 표로 이사했다(D56) — 거기가 맥락이 있는 자리다.
-// 도메인 이름 변경(S2)도 그 행의 `⋯` 로 따라갔다. 여기 있던 레일 목록은 행 클릭이
-// 아무 데도 가지 않는 장식이었다(실측).
+// 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
+mountLnb();
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
@@ -59,10 +58,9 @@ async function route() {
   // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
   // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
   setAtlasHooks(null);
-  // 크럼은 표면이 채운다. Atlas 는 trail 을 그리고(스코프가 있다), 나머지 둘은
-  // 이름 한 칸이다 — 여기서 미리 세워 두면 Atlas 가 자기 것으로 덮는다.
-  // 표면 이름은 사용자 말로만 — 내부 코드명(atlas)은 해시·모듈에만 남는다(D61).
-  if (s !== "atlas") setPlainCrumb(SURFACE_LABEL[s]);
+  // 좌측 트리의 착지 훅도 같이 끈다 — Atlas 가 없으면 "그 노드로 날아가기"가
+  // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
+  setLnbNavigator(null);
   await SURFACES[s](surfaceEl);
 }
 
