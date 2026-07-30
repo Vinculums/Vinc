@@ -22,3 +22,7 @@ app/src-tauri/gen/
 *.pem
 *.p12
 *.pfx
+
+# uv 캐시 락파일 — 로컬 테스트 실행(`uv run`)이 만든다. 정본 의존성은
+# pyproject.toml 이고, 이 락은 기기별 파생물이라 추적하지 않는다.
+uv.lock
