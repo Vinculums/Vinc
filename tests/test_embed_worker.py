@@ -99,6 +99,41 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(self._run(sidecar), 1)           # --once 면 1 로 종료
         self.assertEqual(sidecar.applied, [])
 
+    def test_침묵이_진단_가능해야_한다__생존_신호(self):
+        """이 워커는 idle 이면 아무것도 안 찍는다 — 그래서 **죽음과 정상 대기가
+        구분되지 않는다.** 원래 워커가 이관 때 사라졌는데 아무도 몰랐던 이유가 정확히
+        이것이다. 첫 조회 성공은 무조건 찍고, 그 뒤 idle 은 N 라운드마다 한 줄 남긴다."""
+        import contextlib
+        import io
+        import os
+
+        class _Stop(Exception):
+            pass
+
+        rounds = {"n": 0}
+
+        def fake_sleep(_s):
+            rounds["n"] += 1
+            if rounds["n"] >= 5:
+                raise _Stop()
+
+        self.mod.time.sleep = fake_sleep
+        old = os.environ.get("VINC_EMBED_HEARTBEAT_ROUNDS")
+        os.environ["VINC_EMBED_HEARTBEAT_ROUNDS"] = "2"
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), self.assertRaises(_Stop):
+                self._run(_FakeSidecar([]), argv=("--interval", "0"))
+        finally:
+            if old is None:
+                os.environ.pop("VINC_EMBED_HEARTBEAT_ROUNDS", None)
+            else:
+                os.environ["VINC_EMBED_HEARTBEAT_ROUNDS"] = old
+
+        out = buf.getvalue()
+        self.assertIn("loopback ok", out, "첫 조회 성공을 안 찍으면 기동 증명이 없다")
+        self.assertIn("alive", out, "idle 하트비트가 없으면 침묵이 진단 불가다")
+
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
         있는 동안 뒤의 전부가 영구히 굶는다(head-of-line blocking)."""

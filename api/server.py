@@ -1047,13 +1047,23 @@ def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
 def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int | None = None,
           token: str | None = None, packs_dir=None, profile_path=None,
           print_info: bool = True) -> dict:
-    """사이드카를 기동해 종료 신호까지 서비스한다(블로킹). 기동 정보(host/port/token)를
-    stdout 에 1줄 JSON 으로 내보내 셸이 읽는다. SIGTERM/SIGINT 또는 부모 사망 시 정리."""
+    """사이드카를 기동해 종료 신호까지 서비스한다(블로킹). 기동 정보(host/port/token/
+    driver)를 stdout 에 1줄 JSON 으로 내보낸다. SIGTERM/SIGINT 또는 부모 사망 시 정리.
+
+    **토큰은 `--token` 으로 받았으면 가린다.** 그 경우 호출자가 이미 값을 알고 있어
+    되돌려줄 이유가 없고, 서버 환경에서는 이 stdout 이 로그 수집기(Azure Log
+    Analytics)로 그대로 들어가 **시크릿이 조회 가능한 로그에 남는다**(실측). 반대로
+    토큰을 사이드카가 **생성**한 경우는 이 줄이 유일한 전달 경로일 수 있으므로 그대로
+    싣는다 — 구버전 소비자까지 안전한 규칙이다.
+    (현행 소비자 확인: Tauri 셸은 토큰을 자기가 만들어 `--token` 으로 넘기고
+    `sidecar_conn` 으로 반환하므로 배너를 파싱하지 않고, `vinc_mcp/bridge.py` 는
+    `stdout=DEVNULL` 로 아예 버린다.)"""
     app = VincApp.open(cfg, auth=SessionAuth(token), packs_dir=packs_dir,
                        profile_path=profile_path)
     httpd = make_server(app, host, port)
     bound_host, bound_port = httpd.server_address[:2]
-    info = {"host": bound_host, "port": bound_port, "token": app.auth.token,
+    shown = f"<supplied:{len(app.auth.token)}ch>" if token else app.auth.token
+    info = {"host": bound_host, "port": bound_port, "token": shown,
             "driver": getattr(app.store, "driver_name", None)}
     if print_info:
         sys.stdout.write(json.dumps(info, ensure_ascii=False) + "\n")

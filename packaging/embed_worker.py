@@ -44,6 +44,16 @@ import sys
 import time
 import urllib.request
 
+# Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 출력이 UnicodeEncodeError 로
+# 죽는다 — 이 워커는 한국어 오류 메시지를 찍으므로 api/cli.py 와 같은 규율을 따른다.
+# 컨테이너(UTF-8)에서는 무해하지만, 로컬 스모크·테스트에서 실제로 터져 잡았다.
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
 TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
          or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
@@ -128,6 +138,14 @@ def main() -> int:
     args = ap.parse_args()
 
     emb = _Embedder()
+    # ⚠ 생존 신호가 없으면 **워커의 죽음과 정상 대기가 구분되지 않는다.** 원래 워커가
+    # Azure 이관 때 사라졌는데 일주일 넘게 아무도 몰랐던 이유가 정확히 이것이다(조용한
+    # happy path). 그래서 ① 첫 성공 조회를 무조건 한 번 찍어 루프백이 살아있음을
+    # 증명하고 ② 그 뒤로는 idle 이 HEARTBEAT_ROUNDS 번 쌓일 때마다 한 줄 남긴다.
+    # 5분 간격 × 12 = 약 1시간에 1줄 — 로그를 더럽히지 않으면서 침묵을 진단 가능하게.
+    heartbeat_rounds = int(os.environ.get("VINC_EMBED_HEARTBEAT_ROUNDS", "12"))
+    proved = False
+    idle = 0
     while True:
         try:
             pending = _call(f"/embed/pending?limit={DOC_BATCH}").get("chunks", [])
@@ -140,11 +158,20 @@ def main() -> int:
             time.sleep(args.interval)
             continue
 
+        if not proved:
+            proved = True
+            print(f"[embed] loopback ok · pending={len(pending)} "
+                  f"(interval={args.interval:g}s)", flush=True)
+
         if not pending:
             if args.once:
                 return 0
+            idle += 1
+            if heartbeat_rounds > 0 and idle % heartbeat_rounds == 0:
+                print(f"[embed] alive · idle {idle} rounds, pending=0", flush=True)
             time.sleep(args.interval)
             continue
+        idle = 0
 
         by_doc: dict[str, list[dict]] = {}
         for c in pending:
