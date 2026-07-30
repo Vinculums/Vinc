@@ -407,11 +407,15 @@ const EN = {
       offline: "Offline-portable.",
       publishCta: "Share to community",
       publishTitle: "Share this pack with the community",
-      publishScope: (c: number, e: number) => `${c} concepts · ${e} connections will be public and downloadable.`,
+      publishScope: (c: number, e: number) => `${c} concepts · ${e} connections become public.`,
       publishName: "Pack name", publishDesc: "What's in it? (optional)",
-      publishConsent: "I understand this pack becomes public and anyone can download it.",
+      publishConsent: "I understand this pack becomes public, and any signed-in member can bring it into their own Vinc.",
       publishGo: "Publish", publishNeedConsent: "Please confirm the pack will be public.",
       publishNeedName: "Give the pack a name.",
+      // 게시는 공개 핸들이 붙는 유일한 행위라 서버가 username 을 요구한다
+      // (400 username_required). 시트를 닫지 않고 안내만 바꿔, 설정 후 바로 다시 누를 수 있게.
+      publishNeedHandle: "Pick a username first. It's the public handle shown on what you share.",
+      publishSetHandle: "Set it in your account",
       publishEmpty: "Nothing to share in that scope. Pick a topic with some concepts.",
       publishDone: "Published to the community.", publishView: "View in gallery",
       // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
@@ -848,11 +852,13 @@ const KO: Deck = {
       offline: "오프라인 휴대 가능.",
       publishCta: "커뮤니티에 공유",
       publishTitle: "이 팩을 커뮤니티에 공유",
-      publishScope: (c, e) => `concepts ${c}개 · 연결 ${e}개가 공개되어 누구나 다운로드할 수 있습니다.`,
+      publishScope: (c, e) => `concepts ${c}개 · 연결 ${e}개가 공개됩니다.`,
       publishName: "팩 이름", publishDesc: "어떤 내용인가요? (선택)",
-      publishConsent: "이 팩이 공개되어 누구나 다운로드할 수 있음을 이해합니다.",
+      publishConsent: "이 팩이 공개되어, 로그인한 회원이 자기 Vinc로 가져갈 수 있음을 이해합니다.",
       publishGo: "게시", publishNeedConsent: "공개됨에 동의해 주세요.",
       publishNeedName: "팩 이름을 입력하세요.",
+      publishNeedHandle: "먼저 사용자 이름을 정해 주세요. 공유물에 표시되는 공개 핸들이에요.",
+      publishSetHandle: "계정에서 설정하기",
       publishEmpty: "그 범위에 공유할 게 없습니다. concept 이 있는 주제를 고르세요.",
       publishDone: "커뮤니티에 게시했습니다.", publishView: "갤러리에서 보기",
       // 단일 페이지 재구성(토글 제거) — 의도별 섹션.

@@ -315,6 +315,15 @@ export const api = {
 // ── 커뮤니티 공유(웹 전용) ─────────────────────────────────────────────────
 // 그래프 프록시(/api/graph)와 별개인 계정 라우트(/api/community). 세션 쿠키 +
 // 쓰기 CSRF. 셸/브라우저 dev 에는 세션이 없어 사실상 웹모드 전용(버튼도 WEB 가드).
+/** 계정 API 오류 — `code` 를 실어 호출부가 문자열 매칭 없이 분기하게 한다.
+ *  (계정 백엔드의 오류 봉투는 `{error:{code,message,request_id}}` 고정.) */
+export class AccountError extends Error {
+  constructor(readonly status: number, readonly code: string, message: string) {
+    super(message);
+    this.name = "AccountError";
+  }
+}
+
 async function communityPost(path: string, body: unknown): Promise<any> {
   const res = await fetch(new URL(path, location.origin), {
     method: "POST",
@@ -324,7 +333,15 @@ async function communityPost(path: string, body: unknown): Promise<any> {
   });
   if (!res.ok) {
     if (res.status === 401) { location.assign("/login"); throw new Error("session expired"); }
-    throw new Error(`${res.status} ${await res.text()}`);
+    // 오류 봉투를 파싱해 code 를 살린다 — 예전엔 상태코드+본문을 통째로 message 에
+    // 밀어넣어, 호출부가 "왜 실패했는지"로 분기하려면 문자열을 뒤져야 했다.
+    const raw = await res.text();
+    let code = "", message = raw;
+    try {
+      const e = JSON.parse(raw)?.error;
+      if (e?.code) { code = String(e.code); message = String(e.message ?? raw); }
+    } catch { /* 본문이 JSON 이 아니면 원문 그대로 */ }
+    throw new AccountError(res.status, code, message);
   }
   return res.json();
 }

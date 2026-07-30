@@ -1,4 +1,4 @@
-import { api, cfg, community, WEB } from "../api";
+import { AccountError, api, cfg, community, WEB } from "../api";
 import { COPY } from "../copy";
 import { header } from "../components";
 import { openShareSheet } from "../sheets";
@@ -97,7 +97,7 @@ export function renderPacks(el: HTMLElement) {
         <h3 class="pack-h" style="margin:.1rem 0 .3rem">${U.publishTitle}</h3>
         <p class="hint">${U.publishScope(c.concepts ?? 0, c.edges ?? 0)}</p>
         <input id="pub-title" placeholder="${U.publishName}" style="width:100%;margin:.3rem 0" />
-        <textarea id="pub-desc" placeholder="${U.publishDesc}" rows="2" style="width:100%;margin:.3rem 0"></textarea>
+        <textarea id="pub-desc" placeholder="${U.publishDesc}" rows="2" maxlength="500" style="width:100%;margin:.3rem 0"></textarea>
         <label class="hint" style="display:flex;gap:.4rem;align-items:flex-start;margin:.3rem 0">
           <input type="checkbox" id="pub-consent" /> <span>${U.publishConsent}</span></label>
         <p><button class="btn btn-primary" id="pub-go">${U.publishGo}</button></p>
@@ -117,7 +117,15 @@ export function renderPacks(el: HTMLElement) {
         await community.publish(title, desc, pack);
         status.innerHTML = `<p>${U.publishDone}</p>
           <p><a class="btn btn-primary" href="/community" target="_blank" rel="noopener">${U.publishView}</a></p>`;
-      } catch {
+      } catch (e) {
+        // 게시는 공개 핸들이 붙는 유일한 행위라 서버가 username 을 요구한다.
+        // 이 경우만 갈라 안내한다 — 일반 오류로 뭉개면 "왜 안 되는지" 알 길이 없다.
+        // 시트는 그대로 두어(status 미교체) 설정 후 바로 다시 누를 수 있게 한다.
+        if (e instanceof AccountError && e.code === "username_required") {
+          msg.innerHTML = `<span class="hint">${U.publishNeedHandle}</span> `
+            + `<a href="/account/" target="_blank" rel="noopener">${U.publishSetHandle}</a>`;
+          return;
+        }
         msg.innerHTML = `<span class="error-banner">${COPY.packs.error}</span>`;
       }
     });

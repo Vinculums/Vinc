@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 파비콘 — 여태 없어서 vincs.io/app/ 탭에 브라우저 기본 지구본이 떴다(실측).
+         실체는 public/favicon.svg 이고 Vite 가 dist 루트로 복사하면서 이 절대경로에
+         base 를 접두한다: 웹 빌드(VITE_BASE=/app/) → /app/favicon.svg,
+         셸 빌드(base "/") → /favicon.svg. 두 빌드가 각자 자기 자산을 가리킨다.
+         정본은 Vinc-homepage/site/favicon.svg 와 바이트 동일(수기 동기 — 로고가
+         바뀌면 두 곳을 함께 갱신할 것). -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Vinc · Map of knowledge.</title>
   </head>
   <body>

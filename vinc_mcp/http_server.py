@@ -24,6 +24,7 @@ SSE 스트림은 제공하지 않는다(GET /mcp → 405) — 우리 도구는 �
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 import threading
@@ -87,6 +88,50 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
+
+# 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일).
+# base64 로 심는 이유는 SVG 와 같다: 사이드카/MCP 는 단일 바이너리라 외부 자산 경로가
+# 없다. 128px RGBA, 2.5KB. 로고가 바뀌면 그 PNG 에서 다시 뽑을 것:
+#   python -c "import base64;print(base64.b64encode(open(P,'rb').read()).decode())"
+_FAVICON_PNG = base64.b64decode(
+    "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"
+)
 
 # 커넥터/브라우저 아이콘(흰 바탕) — 정본: Vinc-design/assets/logo/vinc-favicon-light.svg
 # (흰 스퀘어클 + 정본 두획 V, viewBox "1.9 0 66.4 63"). 사이트의 다크 파비콘과 짝.
@@ -404,10 +449,21 @@ class _Handler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         params = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
         gate = self.app.oauth
-        # 커넥터 아이콘 — MCP 호스트(mcp.vincs.*)는 여태 파비콘을 안 줘서(404) 클라이언트가
-        # 기본 아이콘을 띄웠다. **무인증** 경로(아이콘은 공개 자산). .ico 와 .svg 둘 다
-        # 같은 SVG 를 준다(요청자가 어느 쪽을 찾든 잡히게).
-        if url.path in ("/favicon.ico", "/favicon.svg"):
+        # 커넥터 아이콘 — **무인증** 경로(아이콘은 공개 자산).
+        # ⚠ 예전엔 `.ico` 에도 SVG 를 `image/svg+xml` 로 줬다. `.ico` 를 찾는 클라이언트는
+        # 대개 래스터를 기대하므로 그 응답을 파싱하지 않고 버린다 — 아이콘을 서빙하는데도
+        # 안 뜨는 원인이 될 수 있었다. 이제 확장자별로 실제 그 형식을 준다:
+        #   /favicon.png · /favicon.ico → PNG(128px, 앱 아이콘과 동일 래스터)
+        #   /favicon.svg               → SVG(벡터, 흰 바탕 커넥터용)
+        if url.path in ("/favicon.ico", "/favicon.png"):
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(_FAVICON_PNG)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(_FAVICON_PNG)
+            return
+        if url.path == "/favicon.svg":
             raw = _FAVICON_SVG.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "image/svg+xml")

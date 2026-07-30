@@ -83,7 +83,28 @@ class Dispatcher:
             return {
                 "protocolVersion": want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "vinc", "version": __version__},
+                "serverInfo": {
+                    "name": "vinc", "version": __version__,
+                    # icons·websiteUrl 은 SEP-973(스펙 2025-11-25)이 Implementation 에 더한
+                    # **선택** 필드다. 우리는 PROTOCOL_VERSIONS 를 올리지 않는다 — 그 리비전
+                    # 전체를 준수한다고 주장할 근거가 없고, 이 두 필드는 모르는 클라이언트가
+                    # 그냥 무시하므로(구 스펙도 추가 필드를 금지하지 않는다) 지금 실어도 무해하다.
+                    #
+                    # ⚠ 지금 당장 claude.ai 커넥터 카드에 뜨지는 않는다. 그쪽이 커스텀 커넥터
+                    # 아이콘을 아직 **어디서도** 읽지 않는다(favicon·serverInfo.icons·data URI
+                    # 전부 무시 — anthropics/claude-ai-mcp#152). 지원되는 순간 바로 뜨도록
+                    # 미리 채워두는 것이고, 그때까지는 우리 쪽에 할 일이 없다.
+                    #
+                    # PNG 를 먼저 놓는 이유: 스펙상 클라이언트는 PNG·JPEG 지원이 **필수**이고
+                    # SVG 는 선택이다(SVG 는 스크립트를 품을 수 있어 소비 시 주의 대상).
+                    "icons": [
+                        {"src": "https://mcp.vincs.io/favicon.png",
+                         "mimeType": "image/png", "sizes": "128x128"},
+                        {"src": "https://mcp.vincs.io/favicon.svg",
+                         "mimeType": "image/svg+xml", "sizes": "any"},
+                    ],
+                    "websiteUrl": "https://vincs.io",
+                },
             }
         if method == "ping":
             return {}
