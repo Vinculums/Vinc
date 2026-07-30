@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
+# ══════════════════════════════════════════════════════════════════════════════
+# ⛔ 이 스크립트는 더 이상 동작하지 않는다 (2026-07-30)
+#
+# 대상 서버(가비아 VM 1.201.120.125)와 SSH 키(vinc_key.pem)가 삭제됐다. 지금 라이브는
+# Azure 이고 배포는 GitHub Actions(OIDC)가 한다 — 손으로 올리는 경로 자체가 없다:
+#   허브   .github/workflows/hub-deploy.yml
+#   계정   Vinc-homepage/.github/workflows/account-deploy.yml
+#   사이트 Vinc-homepage/.github/workflows/site-deploy.yml
+# 정본: Vinc-docs/vinc/DEPLOYMENT.md · AZURE-ARCHITECTURE.md
+#
+# 파일을 지우지 않고 남겨 둔 이유: 문서·CHANGELOG 여러 곳이 이 경로를 인용하고 있고
+# (역사 서술이라 고칠 대상이 아니다) 가비아 시절 구성을 읽을 근거로도 쓰인다.
+# 대신 실행만 막는다 — 실행 가능한 죽은 스크립트가 남아 있는 게 함정이기 때문이다.
+# ══════════════════════════════════════════════════════════════════════════════
+echo "⛔ 이 스크립트는 삭제된 가비아 VM(1.201.120.125)을 대상으로 한다 — 더 이상 동작하지 않는다." >&2
+echo "   지금 배포는 GitHub Actions 다: hub-deploy.yml / account-deploy.yml / site-deploy.yml" >&2
+echo "   정본: Vinc-docs/vinc/DEPLOYMENT.md" >&2
+exit 2
 # 허브(사이드카 + MCP 어댑터) 배포 — 로컬(Git Bash)에서 실행.
 # 배포 절차 정본: Vinc-docs vinc/DEPLOYMENT.md §4.
 #

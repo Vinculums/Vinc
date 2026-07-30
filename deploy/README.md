@@ -1,3 +1,24 @@
+> # ⛔ 이 폴더는 삭제된 인프라를 설명한다 (2026-07-30)
+>
+> 가비아 VM(`1.201.120.125`)·Caddy·systemd·관리형 MySQL 이 전부 삭제됐다. 아래 절차는
+> **적용될 서버가 없다.** 지금 라이브는 Azure 이고 배포는 GitHub Actions(OIDC)가 한다 —
+> 손으로 올리는 경로 자체가 없다:
+>
+> | 표면 | 워크플로 |
+> |---|---|
+> | 허브 | `Vinc/.github/workflows/hub-deploy.yml` |
+> | 계정 | `Vinc-homepage/.github/workflows/account-deploy.yml` |
+> | 사이트·웹앱 | `Vinc-homepage/.github/workflows/site-deploy.yml` |
+>
+> **정본**: `Vinc-docs/vinc/DEPLOYMENT.md` · `AZURE-ARCHITECTURE.md`
+>
+> 지우지 않고 남긴 이유: 문서·CHANGELOG 여러 곳이 이 경로를 인용하고 있고(역사 서술이라
+> 고칠 대상이 아니다), 가비아 시절 구성을 읽을 근거로도 쓰인다. 특히 `Caddyfile` 은
+> 지금 SWA 로 옮긴 CSP·캐시 규칙의 **출처**다(`site/staticwebapp.config.json`).
+> 실행 가능한 스크립트 두 개(`deploy-hub.sh`·`deploy-embed-worker.sh`)에는 즉시 종료
+> 가드를 넣어 두었다. `embed_worker.py` 는 `Vinc/packaging/embed_worker.py`(ONNX)로
+> 대체됐다.
+
 # deploy/ — 원격 프로파일 배포 템플릿 (P5 선행 D)
 
 [[vinc.c.p5-remote-rollout]] 서버 트랙의 적용물. **도메인만 치환하면 되는
