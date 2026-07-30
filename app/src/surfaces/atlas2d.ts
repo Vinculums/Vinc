@@ -27,7 +27,10 @@ import type { AtlasPrefs } from "../atlas-prefs";
  *  산다. 색은 Signal 팔레트만 읽는다(hex 하드코딩 금지). */
 
 /** fit: 카메라를 그래프 전체에 맞춘다(`f` 키 — 정본 §2). */
-export type Handle2d = { dispose(): void; fit(): void };
+/** `focus(id)` 는 **성공 여부를 돌려준다**(D70) — 그 노드가 지금 마운트된 집합에
+ *  없으면 false 이고, 호출측(atlas.focusNode)은 그때만 스코프를 갈아 다시 마운트한다.
+ *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
+export type Handle2d = { dispose(): void; fit(): void; focus(id: string): boolean };
 
 /** 방향 3종 — 화살촉이 붙는 관계(atlas-planar 의 DIRECTED 와 같은 정의). */
 const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
@@ -183,9 +186,16 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     (nbr.get(e.source) || nbr.set(e.source, new Set()).get(e.source)!).add(e.target);
     (nbr.get(e.target) || nbr.set(e.target, new Set()).get(e.target)!).add(e.source);
   }
-  let focus: string | null = null;
+  let hovered: string | null = null;
+  // D70 — 프로그램이 고른 초점(좌측 트리·검색 착지). hover 와 달리 포인터가 떠나도
+  // 남는다: 어디로 날아왔는지가 화면에 계속 보여야 하기 때문이다. hover 가 우선 —
+  // 손이 가리키는 것이 언제나 지금 관심사다. (아래 `pinned` 는 드래그로 자리를
+  // 옮긴 노드 집합이라 다른 개념이다 — 이름을 겹치지 않게 둔다.)
+  let landed: string | null = null;
+  const focusId = () => hovered ?? landed;
   const keepOf = (id: string) => new Set([id, ...(nbr.get(id) || [])]);
   sigma.setSetting("nodeReducer", (id, data) => {
+    const focus = focusId();
     if (!focus) return data;
     const keep = keepOf(focus);
     if (keep.has(id)) {
@@ -194,6 +204,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     return { ...data, color: mix(ink(), bg, recede("node", 0.4)), label: "" };
   });
   sigma.setSetting("edgeReducer", (id, data) => {
+    const focus = focusId();
     if (!focus) return data;
     const [s, t] = g.extremities(id);
     const on = s === focus || t === focus;
@@ -289,8 +300,8 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   stage.addEventListener("mouseleave", endDrag);
 
   // ── 입력 ────────────────────────────────────────────────────────────────
-  sigma.on("enterNode", ({ node }) => { focus = node; sigma.refresh(); });
-  sigma.on("leaveNode", () => { focus = null; sigma.refresh(); });
+  sigma.on("enterNode", ({ node }) => { hovered = node; sigma.refresh(); });
+  sigma.on("leaveNode", () => { hovered = null; sigma.refresh(); });
   sigma.on("clickNode", ({ node }) => { const n = byId.get(node); if (n) o.onClick(n); });
   // 선 클릭 → 관계 근거(D45-V). 방향 관계에만 근거가 실리므로 그때만 연다.
   sigma.on("clickEdge", ({ edge }) => {
@@ -313,6 +324,17 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     fit() {
       // sigma 의 기본 카메라 상태 = auto-fit 결과. 되돌리면 곧 "전체 맞춤"이다.
       sigma.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }, { duration: 300 });
+    },
+    focus(id) {
+      if (!g.hasNode(id)) return false;
+      landed = id;
+      // 미니맵 클릭과 같은 좌표 변환 경로 — 그래프 좌표를 카메라 좌표계로 접는다.
+      const v = sigma.graphToViewport({ x: g.getNodeAttribute(id, "x") as number,
+                                        y: g.getNodeAttribute(id, "y") as number });
+      const c = sigma.viewportToFramedGraph(v);
+      sigma.getCamera().animate({ x: c.x, y: c.y, ratio: 0.55 }, { duration: 420 });
+      sigma.refresh();
+      return true;
     },
   };
 }

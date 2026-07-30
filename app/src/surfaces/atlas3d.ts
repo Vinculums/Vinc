@@ -219,6 +219,27 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glo
   return mesh;
 }
 
+/** 카메라 fly-to (spec: 클릭 = 카메라 fly-to). 2D 평면화에서는 시축을 유지한 직진.
+ *
+ *  V4 — 거리는 **노드 반경에 비례**한다. 구 공식 `42 + degree` 는 허브(연결 33)에서
+ *  오히려 가까워져 카메라가 클러스터 내부로 파고들었다(실측: 화면이 거대 구체와
+ *  엣지 벽이 되어 공간 감각이 사라졌다). 반경의 일정 배수로 띄운다.
+ *
+ *  클릭 핸들러 안에 있던 것을 D70 에서 꺼냈다 — 좌측 트리·검색 착지도 같은 비행을
+ *  써야 하는데, 안에 있으면 수식이 두 벌이 된다. */
+export function flyTo3d(g: any, n: any, prefs: AtlasPrefs, ms = 700) {
+  if (!n) return;
+  const flat = prefs.view === "2d";
+  const d = Math.max(70, nodeRadius(n, prefs) * 9);
+  if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, ms);
+  else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, ms);
+}
+
+/** 마운트된 그래프에서 id 로 노드를 찾는다(없으면 undefined — 호출측이 강등 판단). */
+export function findNode3d(g: any, id: string): any {
+  return (g?.graphData?.().nodes || []).find((n: any) => n.id === id);
+}
+
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
@@ -341,13 +362,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   if (import.meta.env.DEV) (window as any).__g3 = g;
 
   if (handlers.onClick) g.onNodeClick((n: any) => {
-    // 클릭 = fly-to + 위임 (spec: 클릭 = 카메라 fly-to); 2D 는 시축 유지 직진.
-    // V4 — 거리는 **노드 반경에 비례**한다. 구 공식 `42 + degree` 는 허브(연결 33)
-    // 에서 오히려 가까워져 카메라가 클러스터 내부로 파고들었다(실측: 화면이 거대
-    // 구체와 엣지 벽이 되어 공간 감각이 사라졌다). 반경의 일정 배수로 띄운다.
-    const d = Math.max(70, nodeRadius(n, prefs) * 9);
-    if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, 700);
-    else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, 700);
+    flyTo3d(g, n, prefs);
     handlers.onClick!(n);
   });
   if (handlers.onRightClick)

@@ -702,6 +702,37 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .rel-dir { font-family: var(--font-mono); color: hsl(var(--caption-foreground)); }
 .rel-type { text-transform: lowercase; }
 .rel-row:hover { background: hsl(var(--ring) / .08); }
+/* 근거 줄은 행 안의 곁가지 버튼 — 행의 주된 일(그 노드로 이동)과 구분된다(D70). */
+.rel-ev {
+  display: block; margin: .1rem 0 0; padding: 0; border: none; background: none;
+  font: inherit; font-size: var(--fs-sm); color: hsl(var(--muted-foreground));
+  text-align: left; cursor: pointer; text-decoration: underline dotted;
+}
+.rel-ev:hover { color: hsl(var(--foreground)); }
+
+/* ── 맥락 카드(D70) — 노드에 딸려 뜨고, 끌어 옮길 수 있고, 닫힌다 ────────────
+   시트가 아니다: 딤도 aria-modal 도 없다(지도를 계속 만질 수 있어야 한다).
+   컨텍스트 메뉴도 아니다: 한 번 고르고 사라지는 것이 아니라 머문다. */
+.float-card {
+  position: fixed; z-index: 48; width: 19rem; max-height: 60vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-float, var(--shadow-elev-3, none));
+  animation: lensRise .16s cubic-bezier(.22, 1, .36, 1);
+}
+@media (prefers-reduced-motion: reduce) { .float-card { animation: none; } }
+.float-head {
+  display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  padding: .4rem .4rem .4rem .55rem; cursor: grab; touch-action: none;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.float-head:active { cursor: grabbing; }
+.float-grip { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto; }
+.float-title {
+  flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
 /* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
 .btn-quiet { color: hsl(var(--caption-foreground)); }
 .btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }
@@ -975,13 +1006,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
 @supports (backdrop-filter: blur(1px)) {
   @media not (prefers-reduced-transparency: reduce) {
-    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover, .tip {
+    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover, .tip, .float-card {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
       box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
     }
-    .palette-card, #atlas-view-panel, #settings-popover, .tip {
+    .palette-card, #atlas-view-panel, #settings-popover, .tip, .float-card {
       border: 1px solid hsl(var(--border) / .6);
     }
   }

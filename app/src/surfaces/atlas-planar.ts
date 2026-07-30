@@ -36,7 +36,10 @@ import {
  *  WCAG 1.4.13(dismissable·hoverable·persistent)을 하나도 만족하지 못해 전면
  *  교체했다. 실제 표시는 tooltip.ts 의 단일 오버레이가 담당한다. */
 
-export type PlanarHandle = { dispose(): void };
+/** `focus(id)` 는 hover 로만 되던 강조를 **밖에서도** 걸 수 있게 연다(D70) —
+ *  좌측 트리·검색 착지가 평면 관점에서도 같은 노드를 가리켜야 하기 때문이다.
+ *  마운트된 집합에 없으면 false 를 돌려주고 호출측이 스코프 교체를 판단한다. */
+export type PlanarHandle = { dispose(): void; focus?(id: string): boolean };
 /** 타임라인이 받는 마크 — 원래 Flow 와 공유하던 모양이라 이름이 Flow* 였다.
  *  Flow 폐기(D53) 후에도 모양은 그대로라 이름만 중립화한다. */
 export type PlanarNode = { id: string; label: string; domain: string };
@@ -297,7 +300,17 @@ export function mountTimeline(el: HTMLElement,
 
   const stopSize = trackSize(el, (w, h) => { el.innerHTML = wrap(draw(w, h)); collect(); });
   const stopFocusT = wireFocus(el, { focus, clear, open: o.onOpen, month: o.onMonth });
-  return { dispose() { stopFocusT(); stopSize(); } };
+  return {
+    dispose() { stopFocusT(); stopSize(); },
+    focus(id) {
+      if (!domOf.has(id)) return false;
+      focus(id);
+      // 가로로 긴 차트라 강조만으로는 화면 밖에 있을 수 있다 — 그 마크를 가운데로.
+      el.querySelector<SVGElement>(`.pl-node[data-id="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ inline: "center", block: "nearest" });
+      return true;
+    },
+  };
 }
 
 // ── 3. Totals — 지식은 어디서 와서 어디에 쌓이고 어떤 상태인가 ─────────────

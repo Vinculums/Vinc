@@ -3,7 +3,8 @@ import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode, type LedgerRes, type LedgerRow,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
-import { enableLasso, mount3d, mountMinis3d, type L3, type N3 } from "./atlas3d";
+import { enableLasso, flyTo3d, findNode3d, mount3d, mountMinis3d,
+         type L3, type N3 } from "./atlas3d";
 import { mount2d, type Handle2d } from "./atlas2d";
 import { foldLedgerPaths, mountTimeline, mountTotals, timelinePool,
          type PlanarHandle, type TotalsPath } from "./atlas-planar";
@@ -13,7 +14,8 @@ import { openContextMenu, confirmDestructive } from "../components";
 import { LAYOUTS, VIEWS, RAIL_MIN, RAIL_MAX, isPlanar, loadPrefs, savePrefs,
          type AtlasLayout, type AtlasPrefs, type AtlasView } from "../atlas-prefs";
 import { lensSlot, viewsSlot, setAtlasHooks, refreshTopbar } from "../topbar";
-import { setLnbActive } from "../lnb";
+import { setLnbActive, setLnbNavigator } from "../lnb";
+import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { icon } from "../icons";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
@@ -131,6 +133,10 @@ export async function renderAtlas(el: HTMLElement) {
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
+  // 지금 그린 노드들 — focusNode 가 id 만 받고도 라벨·주제를 알아야 한다(D70).
+  // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
+  // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
+  let curNodes: GraphNode[] = [];
   const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
   const trail: Level[] = [];
 
@@ -236,6 +242,8 @@ export async function renderAtlas(el: HTMLElement) {
     detail.innerHTML = "";
     lastNode = null;
     railChrome(false);
+    // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
+    closeFloatPanel();
   }
   function openRail() {
     detail.hidden = false;
@@ -279,6 +287,9 @@ export async function renderAtlas(el: HTMLElement) {
       || t.isContentEditable);
     if (typing) return;
     if (e.key === "Escape") {
+      // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
+      // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
+      if (isFloatPanelOpen()) { closeFloatPanel(); return; }
       if (!viewPanel.hidden) { closePanel(); return; }
       if (!detail.hidden) { closeRail(); return; }
       if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1], false); }
@@ -671,6 +682,7 @@ export async function renderAtlas(el: HTMLElement) {
     }
     setMsg("");
     curEdges = res.edges || [];
+    curNodes = nodes;
     drawMetrics(nodes);
     g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domain, seed)), toL3(curEdges), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
@@ -708,9 +720,75 @@ export async function renderAtlas(el: HTMLElement) {
     ]);
   }
 
+  /** 지금 마운트된 렌더러에서 그 노드로 카메라를 옮긴다. 못 찾으면 false —
+   *  호출측이 그때만 스코프를 갈아 다시 마운트한다(재조회는 비싸다). */
+  function flyToMounted(id: string): boolean {
+    if (g3) {
+      const n = findNode3d(g3, id);
+      if (!n) return false;
+      flyTo3d(g3, n, curPrefs());
+      return true;
+    }
+    if (g2) return g2.focus(id);
+    if (planar) return planar.focus?.(id) ?? false;
+    return false;
+  }
+
+  /** 노드의 화면 좌표(카드를 그 옆에 띄우기 위한 것). 렌더러마다 좌표계가 달라
+   *  구할 수 없으면 캔버스 우상단 근처로 강등한다 — 카드가 안 뜨는 것보다 낫다. */
+  function nodeScreenPos(id: string): { x: number; y: number } {
+    const r = canvas.getBoundingClientRect();
+    const n = g3 ? findNode3d(g3, id) : null;
+    const p = n && g3?.graph2ScreenCoords
+      ? g3.graph2ScreenCoords(n.x, n.y, n.z) : null;
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      return { x: r.left + p.x + 28, y: r.top + p.y - 20 };
+    return { x: r.right - 360, y: r.top + 72 };
+  }
+
+  /** 노드로 이동(D70) — 좌측 트리·검색 착지·카드 안 항목이 전부 이 문 하나로 들어온다.
+   *
+   *  화면에 이미 있으면 카메라만 옮기고, 없으면 그 노드를 씨앗으로 스코프를 간다.
+   *  끝에는 언제나 같은 둘이 열린다: 옆에 뜨는 관련 문서 카드 + 우측 문서 패널. */
+  async function focusNode(id: string) {
+    if (!flyToMounted(id)) {
+      trail.push({ kind: "l2", seed: id });
+      await show(trail[trail.length - 1]);
+      flyToMounted(id);
+    }
+    const raw = curNodes.find((n) => n.id === id);
+    // 노드 메타를 못 찾는 경우(평면 캡에 잘렸거나 스코프 밖) 최소 정보로 연다 —
+    // 제목은 곧 node-context 가 채운다.
+    const nd = raw ? toN3([raw])[0]
+      : ({ id, label: id.replace(/^[a-z]+:/, ""), degree: 0 } as N3);
+    openDetail(nd);
+    setLnbActive({ domain: nd.domain, nodeId: id });
+  }
+
+  /** 관련 문서 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있고, 항목을 누르면 그 노드로 간다. */
+  async function openRelsCard(nd: N3) {
+    const pos = nodeScreenPos(nd.id);
+    const card = openFloatPanel({
+      title: nd.label, x: pos.x, y: pos.y,
+      closeLabel: COPY.ui.atlasx.railClose,
+    });
+    card.body.innerHTML = `<p class="hint">${COPY.ui.atlasx.sourceLoading}</p>`;
+    try {
+      const res = await api.nodeContext(cfg.owner, nd.id);
+      if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
+      card.setTitle(nd.label);
+      if (!res.links?.executed) { card.body.innerHTML = `<p class="hint">${COPY.ui.atlasx.relsNone}</p>`; return; }
+      card.body.innerHTML = relsHTML(res.links);
+      wireRels(card.body, nd, res.links);
+    } catch {
+      if (card.el.isConnected) card.body.innerHTML = `<p class="hint">${COPY.ui.atlasx.relsNone}</p>`;
+    }
+  }
+
   function openDetail(nd: N3) {
     lastNode = nd;   // Reader 뒤로가기 복귀 지점
     openRail();
+    void openRelsCard(nd);
     // 수치는 여기서 세지 않는다 — loadNodeSource 가 node-context 응답(links)으로
     // 채운다. 여태 이 자리에서 `curEdges`(마지막으로 그린 그래프의 잔상)를 세고
     // 드릴다운 경로에서는 degree 를 0 으로 박아, 같은 노드가 동선마다 다른 숫자를
@@ -728,7 +806,6 @@ export async function renderAtlas(el: HTMLElement) {
         <button class="btn" id="nd-share">${COPY.ui.atlasx.shareCta}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.atlasx.del}</button>
       </p>
-      <div id="node-rels"></div>
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
@@ -909,39 +986,42 @@ export async function renderAtlas(el: HTMLElement) {
         ? COPY.ui.atlasx.statsFrom : COPY.ui.atlasx.statsFromView}</p>`;
   }
 
-  /** 관계 목록 — 방향(→/←/부착) · 상대 · 관계 타입 · 근거 유무. 근거 있는 줄을
-   *  누르면 edge-context 패널로 넘어간다(D45-V 진입점이 2D 선 클릭 하나에 갇히지
-   *  않게). 근거가 없는 관계는 "없다"고 밝힌다 — 상류가 아직 저작하지 않았을 뿐이다. */
-  function drawNodeRels(nd: N3, links?: NodeLinks) {
-    const box = detail.querySelector<HTMLElement>("#node-rels");
-    if (!box || !links?.executed) return;
-    if (links.items.length === 0) {
-      box.innerHTML = `<p class="hint">${COPY.ui.atlasx.relsNone}</p>`;
-      return;
-    }
+  /** 관계 목록 — 방향(→/←/부착) · 상대 · 관계 타입 · 근거 유무.
+   *
+   *  **자리가 바뀌었다(D70).** 여태 우측 레일에 있었는데, 레일은 이제 문서 원문
+   *  전용이고 관계는 노드 옆에 뜨는 이동 가능한 카드로 나간다. 줄을 누르면 그
+   *  노드로 **이동**한다(카드는 제자리에서 갱신 — 리마운트 없음). 근거가 있는
+   *  관계는 근거 줄이 별도 버튼이라 거기서 edge-context 로 들어간다: 목록의
+   *  주된 일은 이동이고, 근거 읽기는 그 안의 곁가지다. */
+  function relsHTML(links: NodeLinks): string {
+    if (links.items.length === 0) return `<p class="hint">${COPY.ui.atlasx.relsNone}</p>`;
     const arrow = (d: string) => (d === "out" ? "→" : d === "in" ? "←" : "·");
-    box.innerHTML = `<p class="hint rail-sec">${COPY.ui.atlasx.relsHeader}</p>`
-      + links.items.map((it, i) => `
+    return links.items.map((it, i) => `
         <div class="list-row rel-row" data-i="${i}" style="display:block;cursor:pointer">
           <span class="title" style="font-size:.9em">
             <span class="rel-dir">${arrow(it.dir)}</span> ${esc(it.title)}
             <span class="hint rel-type">${esc(it.type.toLowerCase())}</span></span>
-          <p class="hint" style="margin:.1rem 0 0">${it.evidence
-            ? COPY.ui.atlasx.relEvidence : COPY.ui.atlasx.relNoEvidence}</p>
+          ${it.evidence && it.dir !== "att"
+            ? `<button class="hint rel-ev" data-ev="${i}">${COPY.ui.atlasx.relEvidence}</button>`
+            : `<p class="hint" style="margin:.1rem 0 0">${COPY.ui.atlasx.relNoEvidence}</p>`}
         </div>`).join("")
       + (links.truncated ? `<p class="hint">${COPY.ui.atlasx.relsMore(
         links.degree + links.attached - links.items.length)}</p>` : "");
+  }
+
+  function wireRels(box: HTMLElement, nd: N3, links: NodeLinks) {
     box.querySelectorAll<HTMLElement>(".rel-row").forEach((r) =>
-      r.addEventListener("click", () => {
+      r.addEventListener("click", (e) => {
         const it = links.items[Number(r.dataset.i)];
-        // 부착(브릿지·에피소드·레코드)은 edge-context 대상이 아니다 — 그 노드를 연다.
-        if (it.dir === "att") {
-          openDetail({ id: it.id, label: it.title, domain: it.domain, degree: 0 } as N3);
+        const ev = (e.target as HTMLElement).closest<HTMLElement>(".rel-ev");
+        if (ev) {
+          e.stopPropagation();
+          void openEdgeDetail(it.dir === "out"
+            ? { source: nd.id, target: it.id, type: it.type }
+            : { source: it.id, target: nd.id, type: it.type });
           return;
         }
-        void openEdgeDetail(it.dir === "out"
-          ? { source: nd.id, target: it.id, type: it.type }
-          : { source: it.id, target: nd.id, type: it.type });
+        void focusNode(it.id);
       }));
   }
 
@@ -952,9 +1032,9 @@ export async function renderAtlas(el: HTMLElement) {
     box.innerHTML = `<p class="hint">${COPY.ui.atlasx.sourceLoading}</p>`;
     try {
       const res = await api.nodeContext(cfg.owner, nd.id);
-      // 수치·관계는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다.
+      // 수치는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다. 관계 목록은
+      // 이 패널을 떠나 노드 옆 카드로 갔다(D70).
       drawNodeStats(nd, res.links);
-      drawNodeRels(nd, res.links);
       // D32 고아 최소화 — "확실히 연결 0"일 때만 잇기 후보를 낸다. 여태 드릴다운
       // 경로가 degree 0 을 박아 33연결 허브에도 제안이 떴다.
       if (res.links?.executed && res.links.degree + res.links.attached === 0)
@@ -1146,6 +1226,7 @@ export async function renderAtlas(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
+    curNodes = gnodes;
     if (seed !== undefined) fillSeedDomain(seed, gnodes);
     if (gnodes.length === 0) {
       setMsg(whole
@@ -1457,6 +1538,7 @@ export async function renderAtlas(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
+    curNodes = gnodes;
     if (seed !== undefined) fillSeedDomain(seed, gnodes);
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
@@ -1537,6 +1619,7 @@ export async function renderAtlas(el: HTMLElement) {
     setBusy(true);
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
     detail.hidden = true;
+    closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — L1/L2 의 wireLasso 가 다시 켠다
     closePanel();
@@ -1574,6 +1657,13 @@ export async function renderAtlas(el: HTMLElement) {
       else if (level.kind === "l0") await showGraphScope({});
       else if (level.kind === "l1") await showL1(level.domain);
       else await showL2(level.seed);
+      // 씨앗 층 착지(검색 결과·딥링크·`여기서 추적`)는 전체 맞춤으로 끝나 있었다 —
+      // "그 노드로 갔다"고 해 놓고 화면은 ego 전체를 담아, 정작 씨앗이 어느 점인지
+      // 알 수 없었다. 마운트가 자리를 잡은 뒤 씨앗으로 한 번 더 날린다(D70).
+      if (level.kind === "l2") {
+        const seed = level.seed;
+        setTimeout(() => { if (myGen === liveGen) flyToMounted(seed); }, 420);
+      }
     } catch {
       setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`);
     } finally {
@@ -1615,7 +1705,11 @@ export async function renderAtlas(el: HTMLElement) {
       else if (lv.kind === "l1") openShareSheet({ domain: lv.domain });
       else openShareSheet({});                      // L0·프레임 = 전체
     },
+    openNode: (id) => void focusNode(id),
   });
+  // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
+  // 강등되므로, Atlas 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
+  setLnbNavigator((id) => void focusNode(id));
 
   await show(trail[trail.length - 1]);
   maybeCoach();

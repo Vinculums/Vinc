@@ -20,6 +20,9 @@ import { icon } from "./icons";
 export type AtlasHooks = {
   /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 Atlas 가 정한다). */
   share: () => void;
+  /** 그 노드로 이동한다(D70) — 화면에 있으면 카메라만, 없으면 스코프를 간다.
+   *  검색 착지가 이 훅을 쓰면 표면 리마운트 없이 날아간다. */
+  openNode: (id: string) => void;
 };
 
 let hooks: AtlasHooks | null = null;
@@ -31,6 +34,12 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 export function setAtlasHooks(h: AtlasHooks | null) {
   hooks = h;
   refreshTopbar();
+}
+
+/** 지금 Atlas 가 살아 있는가(+그 동작). 다른 표면·시트가 "지도로 보낼 수 있는가"를
+ *  판단하는 단일 지점이다 — 없으면 해시 착지로 강등한다. */
+export function atlasHooks(): AtlasHooks | null {
+  return hooks;
 }
 
 /** 버튼 라벨·표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출). */
@@ -147,7 +156,9 @@ export function mountTopbar() {
       import("./components"), import("./surfaces/records"),
     ]);
     const sheet = openSheet({ title: COPY.ui.topbar.browseAll, size: "browse" });
-    void renderBrowse(sheet.body);
+    // 문서를 눌러 지도로 날아가면 목록은 스스로 닫힌다(D70) — 방금 간 곳을 자기가
+    // 가리고 서 있지 않게. 편집기로 여는 경우(착지 노드 없음)는 열린 채로 둔다.
+    void renderBrowse(sheet.body, { close: sheet.close });
   }
 
   function wireAll() {
@@ -157,11 +168,14 @@ export function mountTopbar() {
     });
   }
 
+  /** 결과 착지 — Atlas 가 이미 떠 있으면 훅으로 **그 노드까지** 날아가고(리마운트
+   *  없음, 카드·문서 패널까지 열린다), 다른 표면이면 해시로 Atlas 를 띄운다. */
   function go(h: Hit | undefined) {
     if (!h) return;
     close();
     q.blur();
-    location.hash = `#atlas/trace/${encodeURIComponent(h.id)}`;
+    if (hooks) hooks.openNode(h.id);
+    else location.hash = `#atlas/trace/${encodeURIComponent(h.id)}`;
   }
 
   async function run(raw: string) {
