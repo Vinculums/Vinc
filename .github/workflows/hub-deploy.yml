@@ -25,6 +25,7 @@ on:
       - "packaging/embed_worker.py"
       - "packaging/lbug_extensions/**"
       - "pyproject.toml"
+      - "scripts/check_hub_env.py"
       - ".github/workflows/hub-deploy.yml"
   workflow_dispatch:
 
@@ -76,6 +77,16 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ⚠ 배포 **전** env 게이트. 허브 런타임 env 는 IaC 가 아니라 손으로 넣은 값이라
+      # 앱을 재생성하면 조용히 빠진다 — 실제로 `VINC_MCP_ISSUER` 하나가 빠져 커넥터가
+      # 전면 불가였는데 `/health` 는 200 이었다(2026-07-30). 빠진 채로 배포하면
+      # "기동은 되지만 기능이 죽은" 리비전이 나가므로 여기서 막는다.
+      - name: Gate — 허브 런타임 env 존재 검증
+        run: |
+          az containerapp show --name vinc-hub -g vincsRG \
+            --query "properties.template.containers[0].env" -o json \
+            | python scripts/check_hub_env.py
 
       - name: Build & push image (ACR Tasks)
         run: |
@@ -135,3 +146,28 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
             | grep -q '"tools"'
+
+      # ⚠ tools/list 200 은 **OAuth 가 살아있다는 증거가 아니다.** 정적 bearer 로 붙기
+      # 때문에 OAuth 가 통째로 꺼져도 통과한다 — 2026-07-30 사고가 정확히 그 상태였다
+      # (`/health` 200 · tools/list 200 · 그런데 커넥터는 전면 불가).
+      # 그래서 커넥터가 실제로 밟는 discovery 경로를 공개 도메인으로 확인한다.
+      # DEPLOYMENT.md §4.4.2 의 수기 점검을 CD 로 옮긴 것.
+      - name: Verify connector surface (OAuth discovery)
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            https://mcp.vincs.io/.well-known/oauth-protected-resource)
+          [ "$code" = "200" ] || {
+            echo "::error::oauth-protected-resource 가 $code — VINC_MCP_ISSUER 미설정이면 404 다" >&2
+            exit 1; }
+
+          # 미인증 POST 의 WWW-Authenticate 가 https 를 가리켜야 한다. issuer 가 없으면
+          # `http://{Host}` 로 폴백해 클라이언트가 discovery 를 포기한다.
+          hdr=$(curl -s -D - -o /dev/null -X POST https://mcp.vincs.io/mcp \
+                 -H 'Content-Type: application/json' -d '{}' \
+                 | tr -d '\r' | grep -i '^www-authenticate:' || true)
+          echo "  $hdr"
+          case "$hdr" in
+            *'resource_metadata="https://'*) echo "  connector surface OK" ;;
+            *) echo "::error::WWW-Authenticate 가 https 가 아니다: $hdr" >&2; exit 1 ;;
+          esac
