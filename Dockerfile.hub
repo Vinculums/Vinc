@@ -14,10 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 # pypdf — 허브도 /doc/put-file 을 프록시로 받으므로 서버측 추출기가 필요하다.
 RUN pip install --no-cache-dir ladybug==0.18.0 argon2-cffi pypdf
 
+# 임베딩 워커 스택 — **torch 가 아니라 ONNX** 다(packaging/embed_worker.py 주석 참조).
+# 이미지 260MB → 500MB(실측). torch 를 실으면 +2.7GB 이고 런타임 RSS 도 ~800MiB 라
+# 1GiB 한도에 붙어 OOM 이 컨테이너 전체(=MCP 포함)를 죽인다. 한도를 올리면 상시
+# 과금이 배증한다(허브는 min=max=1 이라 idle 도 24시간 청구).
+# 모델 가중치(440MB)는 이미지에 굽지 않고 런타임에 영속 볼륨으로 받는다 — 허브는
+# api/ 변경마다 배포되고 단일 writer 라 **배포 시간이 곧 다운타임**이다.
+RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
+
 COPY api ./api
 COPY store ./store
 COPY engines ./engines
 COPY vinc_mcp ./vinc_mcp
+COPY packaging/embed_worker.py ./packaging/embed_worker.py
 COPY pyproject.toml README.md LICENSE ./
 
 # G0 오프라인 확장 — 빌드 컨테이너 네트워크에서 extension.ladybugdb.com 다운로드가
@@ -29,7 +38,13 @@ COPY packaging/lbug_extensions ./lbug_extensions
 ENV VINC_LBUG_EXT_DIR=/srv/vinc/lbug_extensions
 
 COPY packaging/docker-entrypoint.sh /usr/local/bin/vinc-entrypoint.sh
-RUN chmod +x /usr/local/bin/vinc-entrypoint.sh && mkdir -p /data/db
+# ⚠ `mkdir -p /data` 이지 `/data/db` 가 아니다. `--data` 는 **DB 파일 경로**라서
+# `/data/db` 를 디렉터리로 만들어 두면 LadybugDB 가 "Database path cannot be a
+# directory" 로 죽고 `/health` 는 `driver: null` 만 보여준다 — 프로덕션에서는 Azure
+# Files 마운트가 이 디렉터리를 덮어써서 드러나지 않았지만, 볼륨 없이 이 이미지를
+# 돌리면(로컬 스모크·다른 환경) 재현된다. 실측으로 잡은 잠복 함정이고, 하필 증상이
+# 단일 writer 락 사고와 똑같아서 오진하기 쉽다.
+RUN chmod +x /usr/local/bin/vinc-entrypoint.sh && mkdir -p /data
 # root 로 실행 — G0 확장 캐시(~/.lbdb)가 빌드 타임 유저(root) 홈에 구워지므로
 # 런타임도 같은 유저여야 이름 기반 LOAD EXTENSION 이 그 캐시를 찾는다. non-root
 # 전환은 캐시 경로를 함께 옮기는 별도 작업으로 미룬다(지금은 기능 검증 우선).

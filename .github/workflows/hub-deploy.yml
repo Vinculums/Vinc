@@ -22,6 +22,7 @@ on:
       - "vinc_mcp/**"
       - "Dockerfile.hub"
       - "packaging/docker-entrypoint.sh"
+      - "packaging/embed_worker.py"
       - "packaging/lbug_extensions/**"
       - "pyproject.toml"
       - ".github/workflows/hub-deploy.yml"

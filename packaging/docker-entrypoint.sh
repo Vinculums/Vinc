@@ -32,6 +32,24 @@ if [ "$i" -ge 30 ]; then
   exit 1
 fi
 
+# 임베딩 워커 — 가비아 시절 systemd timer(5분 간격)의 컨테이너 등가물. 이게 없으면
+# 웹 편집·팩 임포트·파일 드롭으로 들어온 문서가 needs_embed=1 로 남아 FTS 만 되고
+# 벡터가 빈다(에러 없이 의미검색만 열화 — Azure 이관 때 실제로 이 상태였다).
+# 사이드카 헬스 뒤에 띄운다: 워커의 첫 동작이 루프백 GET 이므로 순서가 뒤바뀌면
+# 첫 라운드가 무의미하게 실패한다.
+# VINC_EMBED=off 로 재빌드 없이 끌 수 있게 둔다 — 배경 작업이 전경을 방해하는
+# 상황에서 env 하나로 물러설 길이 필요하다.
+EMBED_PID=""
+if [ "${VINC_EMBED:-on}" = "on" ]; then
+  VINC_SIDECAR="http://127.0.0.1:8787" \
+    python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" &
+  EMBED_PID=$!
+  echo "[entrypoint] embed worker started (pid=$EMBED_PID, interval=${VINC_EMBED_INTERVAL:-300}s)"
+  # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
+  # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
+  trap 'kill "$SIDECAR_PID" "$EMBED_PID" 2>/dev/null' TERM INT
+fi
+
 MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
 if [ -n "$VINC_MCP_TOKEN" ]; then
   MCP_ARGS="$MCP_ARGS --auth-token $VINC_MCP_TOKEN"

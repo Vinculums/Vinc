@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""허브 자체호스팅 임베딩 워커 — `needs_embed` 문서의 청크를 **로컬 모델**로 임베딩해
+사이드카에 돌려준다. 원문은 사이드카 **루프백**으로만 오가고 서버 밖으로 안 나간다
+(no cloud/telemetry 약속 — 외부 임베딩 API 미사용).
+
+배경: 사이드카 바이너리는 임베딩 스택을 번들에서 제외한다(packaging/sidecar.spec —
+2.7GB 회피). 그래서 앱 편집·팩 임포트·파일 드롭으로 들어온 문서는 `needs_embed=1` 로
+FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채운다. 데스크탑은 FTS 유지.
+
+**torch 가 아니라 ONNX 를 쓴다(2026-07-30 전환).** 가비아 시절엔 systemd timer 가
+별도 venv 의 sentence-transformers 를 돌렸다. Azure 로 오면서 그 timer 가 사라졌고
+(허브 컨테이너에 embed 가 아예 없었다 — 조용한 기능 회귀), 되살릴 때 torch 를 다시
+싣는 대신 ONNX 로 갈아탔다. 근거 셋:
+  · 허브 실측 사용량이 1024MiB 중 **115MiB** 라 여유는 있지만, torch(~800MiB RSS)를
+    올리면 한도에 붙어 OOM 이 컨테이너 전체(=MCP 포함)를 죽인다.
+  · 자원을 1.0vCPU/2GiB 로 올리면 상시 과금이 배증한다(월 $10~15 추가 추정).
+    ONNX 는 ~660MiB 로 끝나 **증설 자체가 불필요**하다.
+  · 모델은 BAAI 가 같은 리포에 올린 **공식 export**(`onnx/model.onnx`)라 가중치가
+    동일하다 — 서드파티 재양자화가 아니다.
+
+⚠ **벡터 공간 동일성이 이 전환의 전부다.** 기존 벡터는 sentence-transformers 로
+만들어졌고 새 벡터가 같은 색인에 섞인다. 어긋나면 의미검색이 **에러 없이** 열화된다.
+그래서 배포 전에 폐기 컨테이너에서 두 경로를 코사인 대조했다(전 케이스 ≥0.9999 요구).
+파이프라인을 바꿀 때 그 검증을 다시 돌릴 것 — 재현 스크립트는 커밋 메시지 참조.
+
+파이프라인(정본 근거 = 모델 리포의 `1_Pooling/config.json`):
+    tokenize(truncate 512) → onnx → last_hidden_state[:, 0]  # CLS 풀링
+    → L2 정규화                                              # normalize_embeddings=True 대응
+
+경로(전부 사이드카 루프백):
+  GET  /embed/pending?limit=N   → {chunks:[{doc_id, chunk_id, text}]}
+  POST /embed/apply {doc_id, embeddings:{chunk_id:[...]}} → 저장 + 전 청크 완료 시 needs_embed=0
+
+  VINC_SIDECAR=http://127.0.0.1:8787 VINC_SIDECAR_TOKEN=<토큰> \
+    python embed_worker.py [--once] [--interval 300]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.request
+
+SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
+TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
+         or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
+MODEL = os.environ.get("VINC_EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+DOC_BATCH = int(os.environ.get("VINC_EMBED_DOC_BATCH", "16"))
+# 모델 캐시는 **영속 볼륨**에 둔다(Azure Files /data). 이미지에 굽지 않는 이유:
+# 440MB 가 이미지에 들어가면 허브 배포마다 그만큼 pull 이 늘고, 허브는 api/ 변경마다
+# 배포된다 — 단일 writer 라 배포 시간이 곧 다운타임이다. 첫 기동에서 한 번 받고
+# 재시작에는 재사용한다.
+CACHE = os.environ.get("VINC_EMBED_CACHE", "/data/embed-model")
+MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
+
+
+def _call(path: str, body: dict | None = None) -> dict:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(
+        SIDECAR + path, data=data,
+        method="POST" if body is not None else "GET",
+        headers={"Authorization": f"Bearer {TOKEN}",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        return json.load(resp)
+
+
+class _Embedder:
+    """ONNX 세션 + 토크나이저. 지연 로드 — 일감이 있을 때만 올린다(idle RSS 절약)."""
+
+    def __init__(self) -> None:
+        self._sess = None
+        self._tok = None
+        self._names: list[str] = []
+
+    def _load(self) -> None:
+        if self._sess is not None:
+            return
+        import numpy as np  # noqa: F401  (여기서 실패하면 아래 except 가 사유를 싣는다)
+        import onnxruntime as ort
+        from huggingface_hub import hf_hub_download
+        from tokenizers import Tokenizer
+
+        os.makedirs(CACHE, exist_ok=True)
+        onnx_path = hf_hub_download(MODEL, "onnx/model.onnx", cache_dir=CACHE)
+        tok_path = hf_hub_download(MODEL, "tokenizer.json", cache_dir=CACHE)
+
+        tok = Tokenizer.from_file(tok_path)
+        tok.enable_truncation(MAX_TOKENS)
+        tok.enable_padding()
+        self._tok = tok
+        # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
+        # 전경 응답을 굶기지 않게 명시적으로 묶는다.
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        self._sess = ort.InferenceSession(
+            onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
+        self._names = [i.name for i in self._sess.get_inputs()]
+        print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE})", flush=True)
+
+    def encode(self, texts: list[str]) -> list[list[float]]:
+        self._load()
+        import numpy as np
+
+        enc = self._tok.encode_batch(texts)
+        feed = {
+            "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
+            "attention_mask": np.array([e.attention_mask for e in enc], dtype=np.int64),
+            "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
+        }
+        feed = {k: v for k, v in feed.items() if k in self._names}
+        hidden = self._sess.run(None, feed)[0]
+        cls = hidden[:, 0]                                     # CLS 풀링
+        norm = np.linalg.norm(cls, axis=1, keepdims=True)
+        norm[norm == 0] = 1.0                                  # 빈 입력 방어
+        return (cls / norm).astype(float).tolist()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--once", action="store_true", help="pending 을 한 번 비우고 종료")
+    ap.add_argument("--interval", type=float, default=300.0,
+                    help="상주 모드에서 pending 이 빌 때 대기 초")
+    args = ap.parse_args()
+
+    emb = _Embedder()
+    while True:
+        try:
+            pending = _call(f"/embed/pending?limit={DOC_BATCH}").get("chunks", [])
+        except Exception as e:
+            # 사이드카 기동 전/재시작 중일 수 있다. 워커가 죽으면 컨테이너의
+            # 다른 프로세스(MCP)까지 영향받을 이유가 없으므로 물러났다 다시 온다.
+            print(f"[embed] pending 조회 실패: {e}", file=sys.stderr, flush=True)
+            if args.once:
+                return 1
+            time.sleep(args.interval)
+            continue
+
+        if not pending:
+            if args.once:
+                return 0
+            time.sleep(args.interval)
+            continue
+
+        by_doc: dict[str, list[dict]] = {}
+        for c in pending:
+            by_doc.setdefault(c["doc_id"], []).append(c)
+
+        for doc_id, chunks in by_doc.items():
+            try:
+                vecs = emb.encode([c["text"] for c in chunks])
+                res = _call("/embed/apply", {
+                    "doc_id": doc_id,
+                    "embeddings": {c["chunk_id"]: v for c, v in zip(chunks, vecs)},
+                })
+                print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
+                      f"cleared={res.get('cleared')}", flush=True)
+            except Exception as e:
+                # 한 문서가 막혀도 나머지는 진행한다. 다음 라운드에 다시 잡힌다
+                # (needs_embed 가 안 지워졌으므로 pending 에 계속 남는다).
+                print(f"[embed] doc={doc_id} 실패: {e}", file=sys.stderr, flush=True)
+
+        if args.once and len(by_doc) < DOC_BATCH:
+            return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
