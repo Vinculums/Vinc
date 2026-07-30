@@ -1,0 +1,863 @@
+{
+  "physics/01-뉴턴역학": {
+    "kind": "concept",
+    "title_ko": "뉴턴 역학",
+    "title_en": "Newtonian Mechanics",
+    "slug": "newtonian-mechanics",
+    "needs_review": false
+  },
+  "physics/02-라그랑지안역학": {
+    "kind": "concept",
+    "title_ko": "라그랑지안 역학",
+    "title_en": "Lagrangian Mechanics",
+    "slug": "lagrangian-mechanics",
+    "needs_review": false
+  },
+  "physics/03-해밀토니안역학": {
+    "kind": "concept",
+    "title_ko": "해밀토니안 역학",
+    "title_en": "Hamiltonian Mechanics",
+    "slug": "hamiltonian-mechanics",
+    "needs_review": false
+  },
+  "physics/04-맥스웰전자기학": {
+    "kind": "concept",
+    "title_ko": "맥스웰 전자기학",
+    "title_en": "Maxwell Electromagnetism",
+    "slug": "maxwell-electromagnetism",
+    "needs_review": false
+  },
+  "physics/05-열역학4법칙": {
+    "kind": "concept",
+    "title_ko": "열역학 4법칙",
+    "title_en": "Thermodynamics",
+    "slug": "thermodynamics",
+    "needs_review": false
+  },
+  "physics/06-통계역학": {
+    "kind": "concept",
+    "title_ko": "통계역학",
+    "title_en": "Statistical Mechanics",
+    "slug": "statistical-mechanics",
+    "needs_review": false
+  },
+  "physics/07-광학": {
+    "kind": "concept",
+    "title_ko": "광학",
+    "title_en": "Optics",
+    "slug": "optics",
+    "needs_review": false
+  },
+  "physics/08-특수상대성이론": {
+    "kind": "concept",
+    "title_ko": "특수상대성이론",
+    "title_en": "Special Relativity",
+    "slug": "special-relativity",
+    "needs_review": false
+  },
+  "physics/09-일반상대성이론": {
+    "kind": "concept",
+    "title_ko": "일반상대성이론",
+    "title_en": "General Relativity",
+    "slug": "general-relativity",
+    "needs_review": false
+  },
+  "physics/10-양자역학I": {
+    "kind": "concept",
+    "title_ko": "양자역학 I",
+    "title_en": "Quantum Mechanics",
+    "slug": "quantum-mechanics",
+    "needs_review": false
+  },
+  "physics/11-양자역학II": {
+    "kind": "concept",
+    "title_ko": "양자역학 II",
+    "title_en": "Quantum Mechanics II",
+    "slug": "quantum-mechanics-ii",
+    "needs_review": false
+  },
+  "physics/12-양자장론": {
+    "kind": "concept",
+    "title_ko": "양자장론",
+    "title_en": "Quantum Field Theory",
+    "slug": "quantum-field-theory",
+    "needs_review": false
+  },
+  "physics/13-응집물질": {
+    "kind": "concept",
+    "title_ko": "응집물질·고체물리",
+    "title_en": "Condensed Matter",
+    "slug": "condensed-matter",
+    "needs_review": false
+  },
+  "physics/14-우주론": {
+    "kind": "concept",
+    "title_ko": "우주론",
+    "title_en": "Cosmology",
+    "slug": "cosmology",
+    "needs_review": false
+  },
+  "physics/15-양자정보": {
+    "kind": "concept",
+    "title_ko": "양자정보·양자컴퓨팅",
+    "title_en": "Quantum Information",
+    "slug": "quantum-information",
+    "needs_review": false
+  },
+  "physics/16-AdS-CFT": {
+    "kind": "concept",
+    "title_ko": "AdS/CFT — 홀로그래피와 게이지-중력 이중성",
+    "title_en": "AdS/CFT",
+    "slug": "ads-cft",
+    "needs_review": false
+  },
+  "physics/17-호킹복사": {
+    "kind": "concept",
+    "title_ko": "호킹 복사와 정보 역설",
+    "title_en": "Hawking radiation",
+    "slug": "hawking-radiation",
+    "needs_review": false
+  },
+  "physics/18-Page-curve": {
+    "kind": "concept",
+    "title_ko": "Page curve와 정보 회수의 정량 도출",
+    "title_en": "Page curve",
+    "slug": "page-curve",
+    "needs_review": false
+  },
+  "physics/19-Replica-wormholes": {
+    "kind": "concept",
+    "title_ko": "Replica wormholes — JT + SYK 정확 분석",
+    "title_en": "Replica wormholes",
+    "slug": "replica-wormholes",
+    "needs_review": false
+  },
+  "physics/20-끈이론": {
+    "kind": "concept",
+    "title_ko": "끈이론·M-이론·BH 미시 카운팅·풍경",
+    "title_en": "String Theory",
+    "slug": "string-theory",
+    "needs_review": false
+  },
+  "physics/21-Factorization-paradox": {
+    "kind": "concept",
+    "title_ko": "Factorization paradox",
+    "title_en": "Factorization paradox",
+    "slug": "factorization-paradox",
+    "needs_review": false
+  },
+  "physics/22-Operator-algebra": {
+    "kind": "concept",
+    "title_ko": "Operator algebra in Quantum Gravity — Type III와 modular flow",
+    "title_en": "Operator Algebras in Quantum Gravity — Type III and Modular Flow",
+    "slug": "operator-algebras-in-quantum-gravity",
+    "needs_review": false
+  },
+  "physics/23-평탄-dS-BH": {
+    "kind": "concept",
+    "title_ko": "평탄·dS BH 일반화 — 우리 우주 양자중력의 새 형식",
+    "title_en": "dS BH",
+    "slug": "ds-bh",
+    "needs_review": false
+  },
+  "physics/24-Swampland-conjecture": {
+    "kind": "concept",
+    "title_ko": "Swampland 추측 — 양자중력의 제약 원리",
+    "title_en": "Swampland",
+    "slug": "swampland",
+    "needs_review": false
+  },
+  "physics/25-Soft-hair": {
+    "kind": "concept",
+    "title_ko": "Soft hair on Black Holes — BMS algebra의 BH interior 적용",
+    "title_en": "Soft Hair on Black Holes — BMS Algebra and the BH Interior",
+    "slug": "soft-hair-on-black-holes",
+    "needs_review": false
+  },
+  "physics/26-Bulk-reconstruction-algebra": {
+    "kind": "concept",
+    "title_ko": "Bulk reconstruction algebra — 영역 통합 단계 첫 사례",
+    "title_en": "Bulk reconstruction",
+    "slug": "bulk-reconstruction",
+    "needs_review": false
+  },
+  "physics/27-Quantum-gravity-domain-integration": {
+    "kind": "concept",
+    "title_ko": "양자중력 본격 영역 9건 통합 응용 — 영역 메타 통합 단계",
+    "title_en": "meta-integration",
+    "slug": "meta-integration",
+    "needs_review": false
+  },
+  "physics/28-Static-patch-holography": {
+    "kind": "concept",
+    "title_ko": "Static patch holography — dS의 observer-dependent holography",
+    "title_en": "Static Patch Holography — Observer-Dependent Holography in dS",
+    "slug": "static-patch-holography",
+    "needs_review": false
+  },
+  "physics/29-Celestial-CFT": {
+    "kind": "concept",
+    "title_ko": "Celestial CFT 깊이 — 평탄 시공간 holography",
+    "title_en": "Celestial CFT",
+    "slug": "celestial-cft",
+    "needs_review": false
+  },
+  "physics/30-Topological-qubit-non-abelian": {
+    "kind": "concept",
+    "title_ko": "위상 큐비트 비-아벨리안 통계 — 응집물질 ↔ 양자정보 깊이",
+    "title_en": "non-Abelian anyon",
+    "slug": "non-abelian-anyon",
+    "needs_review": false
+  },
+  "physics/31-Inflaton-microscopic-identity": {
+    "kind": "concept",
+    "title_ko": "인플라톤장 미시 정체 — 끈이론·양자중력 후보 분류",
+    "title_en": "inflaton",
+    "slug": "inflaton",
+    "needs_review": false
+  },
+  "physics/32-P3-bridge-limits": {
+    "kind": "concept",
+    "title_ko": "P3 가교 한계 재방문 — 페르미 황금률·DFT·정준 양자화",
+    "title_en": "Dirac bracket",
+    "slug": "dirac-bracket",
+    "needs_review": false
+  },
+  "physics/33-LQG-CDT-alternatives": {
+    "kind": "concept",
+    "title_ko": "LQG·CDT 대안 양자중력 — 비-끈 양자중력 후보",
+    "title_en": "LQG",
+    "slug": "lqg",
+    "needs_review": false
+  },
+  "physics/34-BH-interior-reconstruction": {
+    "kind": "concept",
+    "title_ko": "Black Hole Interior reconstruction — 사건 지평선 안의 양자중력",
+    "title_en": "BH interior reconstruction",
+    "slug": "bh-interior-reconstruction",
+    "needs_review": false
+  },
+  "physics/35-Carrollian-holography": {
+    "kind": "concept",
+    "title_ko": "Carrollian holography — 평탄 holography의 대안 dual",
+    "title_en": "Carrollian holography",
+    "slug": "carrollian-holography",
+    "needs_review": false
+  },
+  "physics/36-Mathur-fuzzball-depth": {
+    "kind": "concept",
+    "title_ko": "Mathur fuzzball 깊이 — BH microstate의 끈이론 정밀화",
+    "title_en": "Mathur fuzzball",
+    "slug": "mathur-fuzzball",
+    "needs_review": false
+  },
+  "physics/37-Quantum-Carrollian-gravity": {
+    "kind": "concept",
+    "title_ko": "Quantum Carrollian Gravity — Carrollian 양자화",
+    "title_en": "Quantum Carrollian Gravity",
+    "slug": "quantum-carrollian-gravity",
+    "needs_review": false
+  },
+  "physics/38-dS-BH-Celestial-Carrollian-integration": {
+    "kind": "concept",
+    "title_ko": "dS BH interior + Celestial-Carrollian 통합 — 4건 메타 통합 본격 사례",
+    "title_en": "dS BH interior",
+    "slug": "ds-bh-interior",
+    "needs_review": false
+  },
+  "physics/39-위상물질-강상관계": {
+    "kind": "concept",
+    "title_ko": "위상물질·강상관계 — 응집물질 심화",
+    "title_en": "Topological Matter and Strongly Correlated Systems",
+    "slug": "topological-matter-and-strongly-correlated-systems",
+    "needs_review": false
+  },
+  "physics/40-비평형-통계물리": {
+    "kind": "concept",
+    "title_ko": "비평형 통계물리 — 요동 정리와 확률 열역학",
+    "title_en": "Nonequilibrium Statistical Physics",
+    "slug": "nonequilibrium-statistical-physics",
+    "needs_review": false
+  },
+  "math/01-집합론-논리-증명": {
+    "kind": "concept",
+    "title_ko": "집합론·논리·증명 — 수학의 토대",
+    "title_en": "Foundations of Mathematics",
+    "slug": "foundations-of-mathematics",
+    "needs_review": false
+  },
+  "math/02-해석학": {
+    "kind": "concept",
+    "title_ko": "해석학 — 측도·함수해석·Hilbert 공간",
+    "title_en": "Analysis",
+    "slug": "analysis",
+    "needs_review": false
+  },
+  "math/03-대수학": {
+    "kind": "concept",
+    "title_ko": "대수학 — 군·환·체·갈루아·표현론·범주론",
+    "title_en": "Algebra",
+    "slug": "algebra",
+    "needs_review": false
+  },
+  "math/04-기하-위상": {
+    "kind": "concept",
+    "title_ko": "기하·위상 — Riemann·Poincaré·de Rham·Atiyah-Singer",
+    "title_en": "Geometry",
+    "slug": "geometry",
+    "needs_review": false
+  },
+  "math/05-수론": {
+    "kind": "concept",
+    "title_ko": "수론 — 정수의 분야 통합 학문",
+    "title_en": "Number Theory",
+    "slug": "number-theory",
+    "needs_review": false
+  },
+  "math/06-확률-통계": {
+    "kind": "concept",
+    "title_ko": "확률·통계 — 불확실성의 측도 형식화",
+    "title_en": "Probability",
+    "slug": "probability",
+    "needs_review": false
+  },
+  "math/07-계산-복잡도": {
+    "kind": "concept",
+    "title_ko": "계산 가능성·복잡도 — 형식 한계의 물리적 실현",
+    "title_en": "Computability",
+    "slug": "computability",
+    "needs_review": false
+  },
+  "math/08-algebraic-geometry": {
+    "kind": "concept",
+    "title_ko": "Algebraic Geometry — 수학 본격 영역의 가장 중심적 통합 분야",
+    "title_en": "Algebraic geometry",
+    "slug": "algebraic-geometry",
+    "needs_review": false
+  },
+  "math/09-Langlands-program": {
+    "kind": "concept",
+    "title_ko": "Langlands 프로그램 — 수학 통합의 메타 프로그램",
+    "title_en": "Langlands program",
+    "slug": "langlands-program",
+    "needs_review": false
+  },
+  "math/10-Geometric-Langlands": {
+    "kind": "concept",
+    "title_ko": "Geometric Langlands — 수학과 N=4 SYM의 직접 통합",
+    "title_en": "Geometric Langlands",
+    "slug": "geometric-langlands",
+    "needs_review": false
+  },
+  "math/11-infinity-categories-HoTT": {
+    "kind": "concept",
+    "title_ko": "∞-범주·HoTT — 21세기 수학 토대 + 동형론 통합",
+    "title_en": "infinity categories",
+    "slug": "infinity-categories",
+    "needs_review": false
+  },
+  "math/12-정수론": {
+    "kind": "concept",
+    "title_ko": "현대 정수론 — 소수의 해석과 곡선의 대수가 만나는 곳",
+    "title_en": "Modern Number Theory",
+    "slug": "modern-number-theory",
+    "needs_review": false
+  },
+  "math/13-조합론": {
+    "kind": "concept",
+    "title_ko": "현대 조합론 — 유한 구조 안의 불가피한 질서",
+    "title_en": "Modern Combinatorics",
+    "slug": "modern-combinatorics",
+    "needs_review": false
+  },
+  "economics/01-미시경제-기초": {
+    "kind": "concept",
+    "title_ko": "미시경제 기초 (Microeconomics Foundations)",
+    "title_en": "microeconomics",
+    "slug": "microeconomics",
+    "needs_review": false
+  },
+  "economics/02-거시경제-기초": {
+    "kind": "concept",
+    "title_ko": "거시경제 기초 (Macroeconomics Foundations)",
+    "title_en": "macroeconomics",
+    "slug": "macroeconomics",
+    "needs_review": false
+  },
+  "economics/03-행동경제": {
+    "kind": "concept",
+    "title_ko": "행동경제 (Behavioral Economics)",
+    "title_en": "behavioral economics",
+    "slug": "behavioral-economics",
+    "needs_review": false
+  },
+  "economics/04-게임이론": {
+    "kind": "concept",
+    "title_ko": "게임이론 (Game Theory)",
+    "title_en": "game theory",
+    "slug": "game-theory",
+    "needs_review": false
+  },
+  "economics/05-경제사": {
+    "kind": "concept",
+    "title_ko": "경제사 (Economic History)",
+    "title_en": "economic history",
+    "slug": "economic-history",
+    "needs_review": false
+  },
+  "economics/06-정치경제": {
+    "kind": "concept",
+    "title_ko": "정치경제 (Political Economy)",
+    "title_en": "political economy",
+    "slug": "political-economy",
+    "needs_review": false
+  },
+  "economics/07-발전경제": {
+    "kind": "concept",
+    "title_ko": "발전경제 (Development Economics)",
+    "title_en": "development economics",
+    "slug": "development-economics",
+    "needs_review": false
+  },
+  "economics/08-환경-문화경제": {
+    "kind": "concept",
+    "title_ko": "환경·문화경제 (Environmental, Cultural & Platform Economics)",
+    "title_en": "ecological economics",
+    "slug": "ecological-economics",
+    "needs_review": false
+  },
+  "economics/09-위기-파국": {
+    "kind": "concept",
+    "title_ko": "위기·파국 (Financial Crisis & Catastrophe)",
+    "title_en": "financial crisis",
+    "slug": "financial-crisis",
+    "needs_review": false
+  },
+  "economics/10-Schumpeter-진화경제": {
+    "kind": "concept",
+    "title_ko": "Schumpeter 진화경제 (Evolutionary Economics)",
+    "title_en": "Schumpeter and Evolutionary Economics",
+    "slug": "schumpeter-evolutionary-economics",
+    "needs_review": false
+  },
+  "economics/11-기술-경제": {
+    "kind": "concept",
+    "title_ko": "기술-경제 (Technology Economics)",
+    "title_en": "technology economics",
+    "slug": "technology-economics",
+    "needs_review": false
+  },
+  "economics/12-행동경제-정밀": {
+    "kind": "concept",
+    "title_ko": "행동경제 정밀 (Behavioral Economics Advanced)",
+    "title_en": "behavioral economics advanced",
+    "slug": "behavioral-economics-advanced",
+    "needs_review": false
+  },
+  "economics/13-신경경제": {
+    "kind": "concept",
+    "title_ko": "신경경제 (Neuroeconomics)",
+    "title_en": "neuroeconomics",
+    "slug": "neuroeconomics",
+    "needs_review": false
+  },
+  "economics/14-금융공학": {
+    "kind": "concept",
+    "title_ko": "금융공학 (Financial Engineering)",
+    "title_en": "Financial Engineering",
+    "slug": "financial-engineering",
+    "needs_review": false
+  },
+  "economics/15-계량경제": {
+    "kind": "concept",
+    "title_ko": "계량경제 (Econometrics)",
+    "title_en": "Econometrics",
+    "slug": "econometrics",
+    "needs_review": false
+  },
+  "art/01-Wagner-Bauhaus-총체예술": {
+    "kind": "concept",
+    "title_ko": "Cross-Arts 01 — Wagner Gesamtkunstwerk + Bauhaus 통합 (도헌 *가장 중요* Q3 본격 답)",
+    "title_en": "gesamtkunstwerk-bauhaus",
+    "slug": "gesamtkunstwerk-bauhaus",
+    "needs_review": false
+  },
+  "art/02-cross-modal-math-deep": {
+    "kind": "concept",
+    "title_ko": "Cross-Modal Math 결합 본격 — Q3 분야 간 영향·창출 메커니즘 (도헌 가장 중요)",
+    "title_en": "cross-modal-math",
+    "slug": "cross-modal-math",
+    "needs_review": false
+  },
+  "art/03-film-VR-AI-integration": {
+    "kind": "concept",
+    "title_ko": "영화·VR·AI Multi-modal 통합 — 21세기 Gesamtkunstwerk",
+    "title_en": "film VR AI integration",
+    "slug": "film-vr-ai-integration",
+    "needs_review": false
+  },
+  "art/04-new-media-convergence": {
+    "kind": "concept",
+    "title_ko": "New Media Convergence — 21세기 매체 통합 본격",
+    "title_en": "new media convergence",
+    "slug": "new-media-convergence",
+    "needs_review": false
+  },
+  "art/01-case-applications": {
+    "kind": "concept",
+    "title_ko": "결합 도구 실제 적용 사례 — 5 심층 분석",
+    "title_en": "case applications",
+    "slug": "case-applications",
+    "needs_review": false
+  },
+  "art/02-case-applications-2": {
+    "kind": "concept",
+    "title_ko": "결합 도구 실제 적용 사례 2 — 후기 양식·경계·해체",
+    "title_en": "case applications 2",
+    "slug": "case-applications-2",
+    "needs_review": false
+  },
+  "art/03-case-applications-3": {
+    "kind": "concept",
+    "title_ko": "결합 도구 실제 적용 사례 3 — 무조·색면·미궁·신체·신비",
+    "title_en": "case applications 3",
+    "slug": "case-applications-3",
+    "needs_review": false
+  },
+  "art/04-case-applications-4": {
+    "kind": "concept",
+    "title_ko": "결합 도구 실제 적용 사례 4 — 화성 한계·빛·다층 서사·환경·관점주의",
+    "title_en": "case applications 4",
+    "slug": "case-applications-4",
+    "needs_review": false
+  },
+  "art/01-미학": {
+    "kind": "concept",
+    "title_ko": "01 — 미학 (Aesthetics): Plato → Aristotle → Kant → Hegel → Nietzsche → Adorno",
+    "title_en": "aesthetics",
+    "slug": "aesthetics",
+    "needs_review": false
+  },
+  "art/02-예술철학": {
+    "kind": "concept",
+    "title_ko": "02 — 예술철학 (Philosophy of Art): Goodman → Danto → Dickie → Wollheim → Carroll",
+    "title_en": "philosophy-of-art",
+    "slug": "philosophy-of-art",
+    "needs_review": false
+  },
+  "art/03-신경미학": {
+    "kind": "concept",
+    "title_ko": "03 — 신경미학·진화미학 (Neuroaesthetics + Evolutionary Aesthetics): Zeki → Ramachandran → Chatterjee → Vessel + Darwin → Pinker → Dutton → Dissanayake",
+    "title_en": "neuroaesthetics",
+    "slug": "neuroaesthetics",
+    "needs_review": false
+  },
+  "art/04-비교예술학·매체이론": {
+    "kind": "concept",
+    "title_ko": "04 — 비교예술학·매체이론·총체예술 (Comparative Arts + Media Theory + Gesamtkunstwerk): Lessing → Wagner → Kandinsky/Bauhaus → Diaghilev → McLuhan → Mitchell → Manovich",
+    "title_en": "comparative-arts",
+    "slug": "comparative-arts",
+    "needs_review": false
+  },
+  "art/05-예술사회학": {
+    "kind": "concept",
+    "title_ko": "05 — 예술사회학 (Sociology of Art): Greenberg → Bourdieu → Becker → Heinich → Born → Banks",
+    "title_en": "sociology-of-art",
+    "slug": "sociology-of-art",
+    "needs_review": false
+  },
+  "art/06-음악토대": {
+    "kind": "concept",
+    "title_ko": "06 — 음악 토대 (Music Foundations): 화성·리듬·악기 → 시대별 양식 → Adorno 음악사회학 → 음악인지심리학",
+    "title_en": "music-foundations",
+    "slug": "music-foundations",
+    "needs_review": false
+  },
+  "art/07-미술토대": {
+    "kind": "concept",
+    "title_ko": "07 — 미술 토대 (Visual Art Foundations): 색채·구도·매체 → 시대별 양식 → 미술사 → 시각인지·시각문화 → 디지털·NFT·생성AI",
+    "title_en": "visual-art-foundations",
+    "slug": "visual-art-foundations",
+    "needs_review": false
+  },
+  "art/08-문학토대": {
+    "kind": "concept",
+    "title_ko": "08 — 문학 토대 (Literature Foundations): 수사학·문체·서사 → 장르·시대 → 문학이론 (형식주의·구조주의·해체) → 비교문학·번역학",
+    "title_en": "literature-foundations",
+    "slug": "literature-foundations",
+    "needs_review": false
+  },
+  "art/01-Natya-Shastra-인도-총체예술": {
+    "kind": "concept",
+    "title_ko": "비-서구 01 — 인도 *Natya Shastra* 총체예술 (Bharata Muni, BC 200~AD 200)",
+    "title_en": "natya-shastra",
+    "slug": "natya-shastra",
+    "needs_review": false
+  },
+  "art/02-가부키-노-총체예술": {
+    "kind": "concept",
+    "title_ko": "비-서구 02 — 일본 노·가부키 총체예술 + Zeami 미학 (14~17세기)",
+    "title_en": "noh",
+    "slug": "noh",
+    "needs_review": false
+  },
+  "art/03-경극-판소리-동아시아-총체예술": {
+    "kind": "concept",
+    "title_ko": "비-서구 03 — 중국 경극 + 한국 판소리 + 동아시아 미학 (元 13세기 ~ 현대)",
+    "title_en": "jingju",
+    "slug": "jingju",
+    "needs_review": false
+  },
+  "art/04-아프리카-라틴-총체예술": {
+    "kind": "concept",
+    "title_ko": "비-서구 04 — 사하라 이남 아프리카 의례 + 라틴 디아스포라 총체예술",
+    "title_en": "african-aesthetics",
+    "slug": "african-aesthetics",
+    "needs_review": false
+  },
+  "art/05-동서-미학-비교": {
+    "kind": "concept",
+    "title_ko": "비-서구 05 — 동서 미학 비교 (5 문명 메타 통합)",
+    "title_en": "east-west-aesthetics-comparison",
+    "slug": "east-west-aesthetics-comparison",
+    "needs_review": false
+  },
+  "art/06-non-western-deep-integration": {
+    "kind": "concept",
+    "title_ko": "Non-Western 통합 심화 — 동서 미학 *동등 권위* 본격",
+    "title_en": "non western deep integration",
+    "slug": "non-western-deep-integration",
+    "needs_review": false
+  },
+  "art/07-africa-latin-deep": {
+    "kind": "concept",
+    "title_ko": "아프리카·라틴 미학 본격 — Senghor·Mbembe·àshẹ·García Canclini·마술적 사실주의",
+    "title_en": "Senghor Mbembe àshẹ García Canclini hybrid",
+    "slug": "senghor-mbembe-sh-garc-a-canclini-hybrid",
+    "needs_review": false
+  },
+  "art/01-meta-questions-deep": {
+    "kind": "concept",
+    "title_ko": "Art 3 메타질문 본격 심화 (도헌 가장 중요)",
+    "title_en": "why beauty",
+    "slug": "why-beauty",
+    "needs_review": false
+  },
+  "art/02-aesthetic-theories-deep": {
+    "kind": "concept",
+    "title_ko": "Art 이론 본격 심화 — 분석미학·현상학·동서 미학 통합",
+    "title_en": "aesthetic theories deep",
+    "slug": "aesthetic-theories-deep",
+    "needs_review": false
+  },
+  "art/03-criticism-theories": {
+    "kind": "concept",
+    "title_ko": "비평 이론 본격 — 비평·권력·정전·해체",
+    "title_en": "Greenberg Adorno Frankfurt Foucault Baudrillard",
+    "slug": "greenberg-adorno-frankfurt-foucault-baudrillard",
+    "needs_review": false
+  },
+  "art/04-digital-AI-aesthetics": {
+    "kind": "concept",
+    "title_ko": "디지털·AI 미학 — 생성 AI 시대·NFT·VR·저자성 도전",
+    "title_en": "digital AI aesthetics",
+    "slug": "digital-ai-aesthetics",
+    "needs_review": false
+  },
+  "art/05-additional-theories": {
+    "kind": "concept",
+    "title_ko": "추가 이론 본격 — 신유물론·affect·queer·환경·sound",
+    "title_en": "post-internet aesthetics",
+    "slug": "post-internet-aesthetics",
+    "needs_review": false
+  },
+  "art/06-spinoza-deleuze-immanence": {
+    "kind": "concept",
+    "title_ko": "Spinoza·Deleuze — 평면 내재성·차이·되기·리좀",
+    "title_en": "Spinoza-Deleuze immanence",
+    "slug": "spinoza-deleuze-immanence",
+    "needs_review": false
+  },
+  "art/Bach-J-S": {
+    "kind": "person",
+    "title_ko": "요한 제바스티안 바흐",
+    "title_en": "Johann Sebastian Bach",
+    "slug": "johann-sebastian-bach",
+    "needs_review": false
+  },
+  "art/Caravaggio": {
+    "kind": "person",
+    "title_ko": "미켈란젤로 메리시 다 카라바조",
+    "title_en": "Caravaggio",
+    "slug": "caravaggio",
+    "needs_review": false
+  },
+  "art/Chinua-Achebe": {
+    "kind": "person",
+    "title_ko": "치누아 아체베",
+    "title_en": "Chinua Achebe",
+    "slug": "chinua-achebe",
+    "needs_review": false
+  },
+  "art/Coco-Chanel": {
+    "kind": "person",
+    "title_ko": "가브리엘 \"코코\" 샤넬",
+    "title_en": "Coco Chanel",
+    "slug": "coco-chanel",
+    "needs_review": false
+  },
+  "art/Du-Fu": {
+    "kind": "person",
+    "title_ko": "두보",
+    "title_en": "Du Fu (杜甫)",
+    "slug": "du-fu",
+    "needs_review": false
+  },
+  "art/Frida-Kahlo": {
+    "kind": "person",
+    "title_ko": "프리다 칼로",
+    "title_en": "Frida Kahlo",
+    "slug": "frida-kahlo",
+    "needs_review": false
+  },
+  "art/Hildegard-von-Bingen": {
+    "kind": "person",
+    "title_ko": "힐데가르트 폰 빙엔",
+    "title_en": "Hildegard von Bingen",
+    "slug": "hildegard-von-bingen",
+    "needs_review": false
+  },
+  "art/Hokusai": {
+    "kind": "person",
+    "title_ko": "가쓰시카 호쿠사이",
+    "title_en": "Katsushika Hokusai",
+    "slug": "katsushika-hokusai",
+    "needs_review": false
+  },
+  "art/John-Cage": {
+    "kind": "person",
+    "title_ko": "존 케이지",
+    "title_en": "John Cage",
+    "slug": "john-cage",
+    "needs_review": false
+  },
+  "art/Leonardo-da-Vinci": {
+    "kind": "person",
+    "title_ko": "레오나르도 다 빈치",
+    "title_en": "Leonardo da Vinci",
+    "slug": "leonardo-da-vinci",
+    "needs_review": false
+  },
+  "art/Murasaki-Shikibu": {
+    "kind": "person",
+    "title_ko": "무라사키 시키부",
+    "title_en": "Murasaki Shikibu (紫式部)",
+    "slug": "murasaki-shikibu",
+    "needs_review": false
+  },
+  "art/Picasso": {
+    "kind": "person",
+    "title_ko": "파블로 피카소",
+    "title_en": "Pablo Ruiz Picasso",
+    "slug": "pablo-ruiz-picasso",
+    "needs_review": false
+  },
+  "art/Zaha-Hadid": {
+    "kind": "person",
+    "title_ko": "자하 하디드",
+    "title_en": "Zaha Hadid",
+    "slug": "zaha-hadid",
+    "needs_review": false
+  },
+  "math/01-functional-analysis-quantum-mechanics": {
+    "kind": "bridge",
+    "title_ko": "Functional Analysis ↔ Quantum Mechanics",
+    "title_en": "Functional Analysis ↔ Quantum Mechanics",
+    "slug": "functional-analysis-quantum-mechanics",
+    "needs_review": false
+  },
+  "math/02-differential-geometry-general-relativity": {
+    "kind": "bridge",
+    "title_ko": "Differential Geometry ↔ General Relativity",
+    "title_en": "Differential Geometry ↔ General Relativity",
+    "slug": "differential-geometry-general-relativity",
+    "needs_review": false
+  },
+  "math/03-Lie-groups-gauge-theory": {
+    "kind": "bridge",
+    "title_ko": "Lie Groups ↔ Gauge Theory",
+    "title_en": "Lie Groups ↔ Gauge Theory",
+    "slug": "lie-groups-gauge-theory",
+    "needs_review": false
+  },
+  "math/04-topology-condensed-matter": {
+    "kind": "bridge",
+    "title_ko": "Topology ↔ Condensed Matter",
+    "title_en": "Topology ↔ Condensed Matter",
+    "slug": "topology-condensed-matter",
+    "needs_review": false
+  },
+  "math/05-modular-forms-string-theory": {
+    "kind": "bridge",
+    "title_ko": "Modular Forms ↔ String Theory",
+    "title_en": "Modular Forms ↔ String Theory",
+    "slug": "modular-forms-string-theory",
+    "needs_review": false
+  },
+  "math/06-path-integral-stochastic-analysis": {
+    "kind": "bridge",
+    "title_ko": "Path Integral ↔ Stochastic Analysis",
+    "title_en": "Path Integral ↔ Stochastic Analysis",
+    "slug": "path-integral-stochastic-analysis",
+    "needs_review": false
+  },
+  "math/10-Witten-Kapustin-N4-SYM-Geometric-Langlands": {
+    "kind": "bridge",
+    "title_ko": "Witten-Kapustin 2007 — N=4 SYM ⟺ Geometric Langlands",
+    "title_en": "Witten-Kapustin 2007 — N=4 SYM ⟺ Geometric Langlands",
+    "slug": "witten-kapustin-2007-n-4-sym-geometric-langlands",
+    "needs_review": false
+  },
+  "math/01-cs-ai-bridges": {
+    "kind": "bridge",
+    "title_ko": "Math ↔ CS/AI — 도헌 직무 직접 결합",
+    "title_en": "Math ↔ CS/AI",
+    "slug": "math-cs-ai",
+    "needs_review": false
+  },
+  "math/02-econ-bridges": {
+    "kind": "bridge",
+    "title_ko": "Math ↔ Econ — 인간 의사결정의 수학화",
+    "title_en": "Math ↔ Econ",
+    "slug": "math-econ",
+    "needs_review": false
+  },
+  "math/03-art-bridges": {
+    "kind": "bridge",
+    "title_ko": "Math ↔ Art — 정답 부재 학문의 수학적 진입로 (도헌 가장 중요)",
+    "title_en": "Math ↔ Art",
+    "slug": "math-art",
+    "needs_review": false
+  },
+  "math/04-art-math-deeper": {
+    "kind": "bridge",
+    "title_ko": "Art ↔ Math 양방향 강화 — Math Meta-Bridges 토대",
+    "title_en": "art-math-deeper",
+    "slug": "art-math-deeper",
+    "needs_review": false
+  },
+  "physics/01-stat-mech-econophysics": {
+    "kind": "bridge",
+    "title_ko": "Statistical Mechanics ↔ Econophysics — 다수 행위자의 거시 법칙",
+    "title_en": "Statistical Mechanics ↔ Econophysics",
+    "slug": "stat-mech-econophysics",
+    "needs_review": false
+  },
+  "physics/02-symmetry-group-theory-music": {
+    "kind": "bridge",
+    "title_ko": "Symmetry·Group Theory ↔ Music — Bach 대위법의 변환군",
+    "title_en": "Symmetry and Group Theory ↔ Music",
+    "slug": "symmetry-group-theory-music",
+    "needs_review": false
+  }
+}

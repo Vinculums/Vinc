@@ -1,0 +1,26 @@
+[
+  {
+    "file": "vinc-pack-physics.vincpack",
+    "title": "Physics: Foundations to Frontiers",
+    "description": "A curated physics knowledge graph: Newtonian, Lagrangian, and Hamiltonian mechanics through quantum field theory, AdS/CFT, the black-hole information problem, and today's quantum-gravity frontiers. Includes condensed matter and nonequilibrium statistical physics, plus cross-domain bridges into economics (econophysics) and music (symmetry and counterpoint). Full English notes on every concept.",
+    "dominantDomain": "physics"
+  },
+  {
+    "file": "vinc-pack-math.vincpack",
+    "title": "Mathematics: Foundations to Langlands",
+    "description": "A curated mathematics knowledge graph: set theory, analysis, algebra, geometry, probability, and complexity, extended to algebraic geometry, the Langlands program, number theory, and combinatorics. Rich bridge notes connect functional analysis to quantum mechanics, modular forms to string theory, and mathematics to economics and art. Full English notes on every concept.",
+    "dominantDomain": "math"
+  },
+  {
+    "file": "vinc-pack-economics.vincpack",
+    "title": "Economics: Micro to Econometrics",
+    "description": "A curated economics knowledge graph: micro and macro foundations, game theory, behavioral and neuroeconomics, economic history, crises, financial engineering, and modern econometrics (causal inference, IV/DID/RDD). Bridged to statistical mechanics and probability for a genuinely cross-domain view. Full English notes on every concept.",
+    "dominantDomain": "economics"
+  },
+  {
+    "file": "vinc-pack-art.vincpack",
+    "title": "Art: Aesthetics, Traditions, and Artists",
+    "description": "A curated art knowledge graph: aesthetics and philosophy of art, neuroaesthetics, music, visual art and literature foundations, non-western total-art traditions (Natya Shastra, noh, jingju), and 13 artist profiles from Bach and Hokusai to Frida Kahlo and Zaha Hadid, linked by influence ties. Full English notes on every concept.",
+    "dominantDomain": "art"
+  }
+]

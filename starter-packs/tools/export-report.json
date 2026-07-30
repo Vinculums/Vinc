@@ -1,0 +1,573 @@
+{
+  "ko_fallback": [],
+  "unresolved_links": {
+    "physics/01-뉴턴역학": [
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/02-라그랑지안역학": [
+      "12-경로적분",
+      "14-표준모형",
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/03-해밀토니안역학": [
+      "14-표준모형",
+      "19-루프양자중력",
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/04-맥스웰전자기학": [
+      "14-표준모형",
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/05-열역학4법칙": [
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/06-통계역학": [
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/07-광학": [
+      "foundations-README",
+      "index",
+      "physicist"
+    ],
+    "physics/08-특수상대성이론": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/09-일반상대성이론": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/10-양자역학I": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/11-양자역학II": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/12-양자장론": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/13-응집물질": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/14-우주론": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/15-양자정보": [
+      "7, 1, 3",
+      "9, 1, 3",
+      "index",
+      "modern-README",
+      "n, k, d",
+      "physicist"
+    ],
+    "physics/16-AdS-CFT": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/17-호킹복사": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/18-Page-curve": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/19-Replica-wormholes": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/20-끈이론": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/21-Factorization-paradox": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/22-Operator-algebra": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/23-평탄-dS-BH": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/24-Swampland-conjecture": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/25-Soft-hair": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/26-Bulk-reconstruction-algebra": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/27-Quantum-gravity-domain-integration": [
+      "../../../CONTEXT/identity/user-model",
+      "../self-checks/2026-05-09-5",
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/28-Static-patch-holography": [
+      "U-17",
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/29-Celestial-CFT": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/30-Topological-qubit-non-abelian": [
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/31-Inflaton-microscopic-identity": [
+      "index"
+    ],
+    "physics/32-P3-bridge-limits": [
+      "index"
+    ],
+    "physics/33-LQG-CDT-alternatives": [
+      "index"
+    ],
+    "physics/34-BH-interior-reconstruction": [
+      "20",
+      "index"
+    ],
+    "physics/35-Carrollian-holography": [
+      "index"
+    ],
+    "physics/36-Mathur-fuzzball-depth": [
+      "index"
+    ],
+    "physics/37-Quantum-Carrollian-gravity": [
+      "24",
+      "index"
+    ],
+    "physics/38-dS-BH-Celestial-Carrollian-integration": [
+      "U-13",
+      "index"
+    ],
+    "physics/39-위상물질-강상관계": [
+      "../../math/physics-bridges/04-topology-condensed-matter",
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "physics/40-비평형-통계물리": [
+      "../../math/physics-bridges/06-path-integral-stochastic-analysis",
+      "index",
+      "modern-README",
+      "physicist"
+    ],
+    "math/01-집합론-논리-증명": [
+      "../../../CONTEXT/identity/user-model",
+      "../../../CONTEXT/learning-philosophy",
+      "index"
+    ],
+    "math/02-해석학": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/03-대수학": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/04-기하-위상": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/05-수론": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/06-확률-통계": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/07-계산-복잡도": [
+      "../../../CONTEXT/identity/user-model",
+      "index"
+    ],
+    "math/08-algebraic-geometry": [
+      "../../../CONTEXT/identity/user-model",
+      "../index"
+    ],
+    "math/09-Langlands-program": [
+      "../../../CONTEXT/identity/user-model",
+      "../index"
+    ],
+    "math/10-Geometric-Langlands": [
+      "../../../CONTEXT/identity/user-model",
+      "../index"
+    ],
+    "math/11-infinity-categories-HoTT": [
+      "../../../CONTEXT/identity/user-model",
+      "../index"
+    ],
+    "math/12-정수론": [
+      "../../../CONTEXT/identity/user-model",
+      "../index",
+      "../physics-bridges/05-modular-forms-string-theory"
+    ],
+    "math/13-조합론": [
+      "../../../CONTEXT/identity/user-model",
+      "../index"
+    ],
+    "economics/01-미시경제-기초": [
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/02-거시경제-기초": [
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/03-행동경제": [
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/04-게임이론": [
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/05-경제사": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/06-정치경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/07-발전경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/08-환경-문화경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/09-위기-파국": [
+      "03-행동",
+      "08-환경-문화-플랫폼",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/10-Schumpeter-진화경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/11-기술-경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/12-행동경제-정밀": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/13-신경경제": [
+      "03-행동",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/14-금융공학": [
+      "../../math/cross-domain-bridges/02-econ-bridges",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "economics/15-계량경제": [
+      "../../math/cross-domain-bridges/02-econ-bridges",
+      "economics-README",
+      "index",
+      "learning-philosophy"
+    ],
+    "art/01-Wagner-Bauhaus-총체예술": [
+      "index",
+      "learning-philosophy"
+    ],
+    "art/02-cross-modal-math-deep": [
+      "../../math/cross-domain-bridges/03-art-bridges",
+      "../self-checks/M-bridge-3회차"
+    ],
+    "art/03-film-VR-AI-integration": [
+      "../../math/cross-domain-bridges/01-cs-ai-bridges",
+      "../../math/cross-domain-bridges/03-art-bridges"
+    ],
+    "art/04-new-media-convergence": [
+      "../../math/cross-domain-bridges/03-art-bridges",
+      "../../math/status/2026-06-01-math-physics-integration-status"
+    ],
+    "art/01-case-applications": [
+      "../../math/cross-domain-bridges/03-art-bridges"
+    ],
+    "art/04-case-applications-4": [
+      "../../math/cross-domain-bridges/04-art-math-deeper"
+    ],
+    "art/01-미학": [
+      "05-문화사·예술사회학",
+      "index",
+      "learning-philosophy",
+      "project-rules"
+    ],
+    "art/02-예술철학": [
+      "index",
+      "learning-philosophy",
+      "project-rules"
+    ],
+    "art/03-신경미학": [
+      "04-비교예술학",
+      "index",
+      "learning-philosophy",
+      "project-rules"
+    ],
+    "art/04-비교예술학·매체이론": [
+      "index",
+      "learning-philosophy",
+      "project-rules"
+    ],
+    "art/05-예술사회학": [
+      "09-cross-arts",
+      "index",
+      "learning-philosophy"
+    ],
+    "art/06-음악토대": [
+      "07-cross-arts",
+      "index"
+    ],
+    "art/07-미술토대": [
+      "index"
+    ],
+    "art/08-문학토대": [
+      "index"
+    ],
+    "art/01-Natya-Shastra-인도-총체예술": [
+      "index",
+      "learning-philosophy"
+    ],
+    "art/02-가부키-노-총체예술": [
+      "01",
+      "03-경극-중국-총체예술",
+      "index"
+    ],
+    "art/03-경극-판소리-동아시아-총체예술": [
+      "01",
+      "02",
+      "index"
+    ],
+    "art/04-아프리카-라틴-총체예술": [
+      "01",
+      "01·02·03",
+      "02",
+      "03",
+      "03·06",
+      "05·08",
+      "06",
+      "07",
+      "index"
+    ],
+    "art/05-동서-미학-비교": [
+      "01",
+      "01·02·03·04",
+      "02",
+      "03",
+      "04",
+      "05",
+      "M14-자기점검-2회차",
+      "index"
+    ],
+    "art/06-non-western-deep-integration": [
+      "../../math/cross-domain-bridges/03-art-bridges"
+    ],
+    "art/01-meta-questions-deep": [
+      "../../math/cross-domain-bridges/03-art-bridges",
+      "../self-checks/M-bridge-3회차"
+    ],
+    "art/02-aesthetic-theories-deep": [
+      "../../math/cross-domain-bridges/03-art-bridges"
+    ],
+    "art/04-digital-AI-aesthetics": [
+      "../../math/cross-domain-bridges/01-cs-ai-bridges",
+      "../../math/cross-domain-bridges/03-art-bridges"
+    ],
+    "art/06-spinoza-deleuze-immanence": [
+      "../../math/cross-domain-bridges/04-art-math-deeper"
+    ],
+    "art/Bach-J-S": [
+      "artists/index",
+      "index"
+    ],
+    "art/Caravaggio": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "art/Chinua-Achebe": [
+      "Adichie",
+      "Toni-Morrison",
+      "artists/index",
+      "index"
+    ],
+    "art/Coco-Chanel": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "art/Du-Fu": [
+      "01",
+      "03",
+      "Li-Bai",
+      "Wang-Wei",
+      "artists/index",
+      "index"
+    ],
+    "art/Frida-Kahlo": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "art/Hildegard-von-Bingen": [
+      "artists/index",
+      "index"
+    ],
+    "art/Hokusai": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "art/John-Cage": [
+      "Reich",
+      "Yoko-Ono",
+      "artists/index",
+      "index"
+    ],
+    "art/Leonardo-da-Vinci": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "art/Murasaki-Shikibu": [
+      "01",
+      "02",
+      "Zeami",
+      "artists/index",
+      "index"
+    ],
+    "art/Picasso": [
+      "artists/index",
+      "index"
+    ],
+    "art/Zaha-Hadid": [
+      "artists/index",
+      "index",
+      "influence-graph-v1"
+    ],
+    "math/04-art-math-deeper": [
+      "art:bridge 트랙 18건 누적"
+    ]
+  },
+  "packs": {
+    "physics": {
+      "nodes": 87,
+      "concepts": 74,
+      "bridges": 9,
+      "domains": 4,
+      "edges": 707,
+      "documents": 83,
+      "closure_pulled": 34
+    },
+    "math": {
+      "nodes": 53,
+      "concepts": 38,
+      "bridges": 11,
+      "domains": 4,
+      "edges": 335,
+      "documents": 49,
+      "closure_pulled": 25
+    },
+    "economics": {
+      "nodes": 32,
+      "concepts": 27,
+      "bridges": 2,
+      "domains": 3,
+      "edges": 177,
+      "documents": 29,
+      "closure_pulled": 12
+    },
+    "art": {
+      "nodes": 60,
+      "concepts": 54,
+      "bridges": 3,
+      "domains": 3,
+      "edges": 307,
+      "documents": 57,
+      "closure_pulled": 12
+    }
+  },
+  "bytes": {
+    "physics": 568164,
+    "math": 298215,
+    "economics": 239838,
+    "art": 361661
+  }
+}

@@ -1,0 +1,10 @@
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# 포맷 전환(D55) 전 JSON 백업 — .vincpack(zip)이 정본이고 재생성 가능하다.
+# 3.9MB 라 리포에 넣을 이유가 없다.
+*.bak
+
+# 시딩용 변환 산출물 — make_seed_manifest.py 가 언제든 재생성한다.
+seed-json/

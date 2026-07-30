@@ -1,0 +1,625 @@
+{
+ "physics": [
+  {
+   "stem": "01-뉴턴역학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\01-뉴턴역학.md",
+   "lines": 72
+  },
+  {
+   "stem": "02-라그랑지안역학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\02-라그랑지안역학.md",
+   "lines": 84
+  },
+  {
+   "stem": "03-해밀토니안역학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\03-해밀토니안역학.md",
+   "lines": 95
+  },
+  {
+   "stem": "04-맥스웰전자기학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\04-맥스웰전자기학.md",
+   "lines": 87
+  },
+  {
+   "stem": "05-열역학4법칙",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\05-열역학4법칙.md",
+   "lines": 101
+  },
+  {
+   "stem": "06-통계역학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\06-통계역학.md",
+   "lines": 116
+  },
+  {
+   "stem": "07-광학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\foundations\\07-광학.md",
+   "lines": 112
+  },
+  {
+   "stem": "08-특수상대성이론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\08-특수상대성이론.md",
+   "lines": 106
+  },
+  {
+   "stem": "09-일반상대성이론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\09-일반상대성이론.md",
+   "lines": 131
+  },
+  {
+   "stem": "10-양자역학I",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\10-양자역학I.md",
+   "lines": 166
+  },
+  {
+   "stem": "11-양자역학II",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\11-양자역학II.md",
+   "lines": 185
+  },
+  {
+   "stem": "12-양자장론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\12-양자장론.md",
+   "lines": 237
+  },
+  {
+   "stem": "13-응집물질",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\13-응집물질.md",
+   "lines": 212
+  },
+  {
+   "stem": "14-우주론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\14-우주론.md",
+   "lines": 225
+  },
+  {
+   "stem": "15-양자정보",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\15-양자정보.md",
+   "lines": 230
+  },
+  {
+   "stem": "16-AdS-CFT",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\16-AdS-CFT.md",
+   "lines": 244
+  },
+  {
+   "stem": "17-호킹복사",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\17-호킹복사.md",
+   "lines": 249
+  },
+  {
+   "stem": "18-Page-curve",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\18-Page-curve.md",
+   "lines": 234
+  },
+  {
+   "stem": "19-Replica-wormholes",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\19-Replica-wormholes.md",
+   "lines": 233
+  },
+  {
+   "stem": "20-끈이론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\20-끈이론.md",
+   "lines": 254
+  },
+  {
+   "stem": "21-Factorization-paradox",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\21-Factorization-paradox.md",
+   "lines": 238
+  },
+  {
+   "stem": "22-Operator-algebra",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\22-Operator-algebra.md",
+   "lines": 287
+  },
+  {
+   "stem": "23-평탄-dS-BH",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\23-평탄-dS-BH.md",
+   "lines": 323
+  },
+  {
+   "stem": "24-Swampland-conjecture",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\24-Swampland-conjecture.md",
+   "lines": 306
+  },
+  {
+   "stem": "25-Soft-hair",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\25-Soft-hair.md",
+   "lines": 306
+  },
+  {
+   "stem": "26-Bulk-reconstruction-algebra",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\26-Bulk-reconstruction-algebra.md",
+   "lines": 368
+  },
+  {
+   "stem": "27-Quantum-gravity-domain-integration",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\27-Quantum-gravity-domain-integration.md",
+   "lines": 287
+  },
+  {
+   "stem": "28-Static-patch-holography",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\28-Static-patch-holography.md",
+   "lines": 352
+  },
+  {
+   "stem": "29-Celestial-CFT",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\29-Celestial-CFT.md",
+   "lines": 303
+  },
+  {
+   "stem": "30-Topological-qubit-non-abelian",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\30-Topological-qubit-non-abelian.md",
+   "lines": 302
+  },
+  {
+   "stem": "31-Inflaton-microscopic-identity",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\31-Inflaton-microscopic-identity.md",
+   "lines": 341
+  },
+  {
+   "stem": "32-P3-bridge-limits",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\32-P3-bridge-limits.md",
+   "lines": 344
+  },
+  {
+   "stem": "33-LQG-CDT-alternatives",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\33-LQG-CDT-alternatives.md",
+   "lines": 363
+  },
+  {
+   "stem": "34-BH-interior-reconstruction",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\34-BH-interior-reconstruction.md",
+   "lines": 318
+  },
+  {
+   "stem": "35-Carrollian-holography",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\35-Carrollian-holography.md",
+   "lines": 316
+  },
+  {
+   "stem": "36-Mathur-fuzzball-depth",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\36-Mathur-fuzzball-depth.md",
+   "lines": 306
+  },
+  {
+   "stem": "37-Quantum-Carrollian-gravity",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\37-Quantum-Carrollian-gravity.md",
+   "lines": 260
+  },
+  {
+   "stem": "38-dS-BH-Celestial-Carrollian-integration",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\38-dS-BH-Celestial-Carrollian-integration.md",
+   "lines": 292
+  },
+  {
+   "stem": "39-위상물질-강상관계",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\39-위상물질-강상관계.md",
+   "lines": 214
+  },
+  {
+   "stem": "40-비평형-통계물리",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\modern\\40-비평형-통계물리.md",
+   "lines": 220
+  },
+  {
+   "stem": "01-stat-mech-econophysics",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\cross-domain-bridges\\01-stat-mech-econophysics.md",
+   "lines": 104
+  },
+  {
+   "stem": "02-symmetry-group-theory-music",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\physics\\cross-domain-bridges\\02-symmetry-group-theory-music.md",
+   "lines": 90
+  }
+ ],
+ "math": [
+  {
+   "stem": "01-집합론-논리-증명",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\01-집합론-논리-증명.md",
+   "lines": 200
+  },
+  {
+   "stem": "02-해석학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\02-해석학.md",
+   "lines": 190
+  },
+  {
+   "stem": "03-대수학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\03-대수학.md",
+   "lines": 210
+  },
+  {
+   "stem": "04-기하-위상",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\04-기하-위상.md",
+   "lines": 222
+  },
+  {
+   "stem": "05-수론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\05-수론.md",
+   "lines": 214
+  },
+  {
+   "stem": "06-확률-통계",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\06-확률-통계.md",
+   "lines": 237
+  },
+  {
+   "stem": "07-계산-복잡도",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\foundations\\07-계산-복잡도.md",
+   "lines": 230
+  },
+  {
+   "stem": "08-algebraic-geometry",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\08-algebraic-geometry.md",
+   "lines": 241
+  },
+  {
+   "stem": "09-Langlands-program",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\09-Langlands-program.md",
+   "lines": 229
+  },
+  {
+   "stem": "10-Geometric-Langlands",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\10-Geometric-Langlands.md",
+   "lines": 223
+  },
+  {
+   "stem": "11-infinity-categories-HoTT",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\11-infinity-categories-HoTT.md",
+   "lines": 240
+  },
+  {
+   "stem": "12-정수론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\12-정수론.md",
+   "lines": 198
+  },
+  {
+   "stem": "13-조합론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\modern\\13-조합론.md",
+   "lines": 200
+  },
+  {
+   "stem": "01-functional-analysis-quantum-mechanics",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\01-functional-analysis-quantum-mechanics.md",
+   "lines": 100
+  },
+  {
+   "stem": "02-differential-geometry-general-relativity",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\02-differential-geometry-general-relativity.md",
+   "lines": 101
+  },
+  {
+   "stem": "03-Lie-groups-gauge-theory",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\03-Lie-groups-gauge-theory.md",
+   "lines": 106
+  },
+  {
+   "stem": "04-topology-condensed-matter",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\04-topology-condensed-matter.md",
+   "lines": 108
+  },
+  {
+   "stem": "05-modular-forms-string-theory",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\05-modular-forms-string-theory.md",
+   "lines": 96
+  },
+  {
+   "stem": "06-path-integral-stochastic-analysis",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\06-path-integral-stochastic-analysis.md",
+   "lines": 111
+  },
+  {
+   "stem": "10-Witten-Kapustin-N4-SYM-Geometric-Langlands",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\physics-bridges\\10-Witten-Kapustin-N4-SYM-Geometric-Langlands.md",
+   "lines": 108
+  },
+  {
+   "stem": "01-cs-ai-bridges",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\cross-domain-bridges\\01-cs-ai-bridges.md",
+   "lines": 241
+  },
+  {
+   "stem": "02-econ-bridges",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\cross-domain-bridges\\02-econ-bridges.md",
+   "lines": 259
+  },
+  {
+   "stem": "03-art-bridges",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\cross-domain-bridges\\03-art-bridges.md",
+   "lines": 292
+  },
+  {
+   "stem": "04-art-math-deeper",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\math\\cross-domain-bridges\\04-art-math-deeper.md",
+   "lines": 205
+  }
+ ],
+ "economics": [
+  {
+   "stem": "01-미시경제-기초",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\01-미시경제-기초.md",
+   "lines": 215
+  },
+  {
+   "stem": "02-거시경제-기초",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\02-거시경제-기초.md",
+   "lines": 219
+  },
+  {
+   "stem": "03-행동경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\03-행동경제.md",
+   "lines": 245
+  },
+  {
+   "stem": "04-게임이론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\04-게임이론.md",
+   "lines": 276
+  },
+  {
+   "stem": "05-경제사",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\05-경제사.md",
+   "lines": 253
+  },
+  {
+   "stem": "06-정치경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\06-정치경제.md",
+   "lines": 250
+  },
+  {
+   "stem": "07-발전경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\07-발전경제.md",
+   "lines": 254
+  },
+  {
+   "stem": "08-환경-문화경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\foundations\\08-환경-문화경제.md",
+   "lines": 268
+  },
+  {
+   "stem": "09-위기-파국",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\09-위기-파국.md",
+   "lines": 306
+  },
+  {
+   "stem": "10-Schumpeter-진화경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\10-Schumpeter-진화경제.md",
+   "lines": 279
+  },
+  {
+   "stem": "11-기술-경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\11-기술-경제.md",
+   "lines": 300
+  },
+  {
+   "stem": "12-행동경제-정밀",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\12-행동경제-정밀.md",
+   "lines": 314
+  },
+  {
+   "stem": "13-신경경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\13-신경경제.md",
+   "lines": 328
+  },
+  {
+   "stem": "14-금융공학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\14-금융공학.md",
+   "lines": 193
+  },
+  {
+   "stem": "15-계량경제",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\economics\\frontier\\15-계량경제.md",
+   "lines": 211
+  }
+ ],
+ "art": [
+  {
+   "stem": "01-Wagner-Bauhaus-총체예술",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\cross-arts\\01-Wagner-Bauhaus-총체예술.md",
+   "lines": 324
+  },
+  {
+   "stem": "02-cross-modal-math-deep",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\cross-arts\\02-cross-modal-math-deep.md",
+   "lines": 263
+  },
+  {
+   "stem": "03-film-VR-AI-integration",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\cross-arts\\03-film-VR-AI-integration.md",
+   "lines": 195
+  },
+  {
+   "stem": "04-new-media-convergence",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\cross-arts\\04-new-media-convergence.md",
+   "lines": 242
+  },
+  {
+   "stem": "01-case-applications",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\deep\\01-case-applications.md",
+   "lines": 261
+  },
+  {
+   "stem": "02-case-applications-2",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\deep\\02-case-applications-2.md",
+   "lines": 235
+  },
+  {
+   "stem": "03-case-applications-3",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\deep\\03-case-applications-3.md",
+   "lines": 263
+  },
+  {
+   "stem": "04-case-applications-4",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\deep\\04-case-applications-4.md",
+   "lines": 243
+  },
+  {
+   "stem": "01-미학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\01-미학.md",
+   "lines": 338
+  },
+  {
+   "stem": "02-예술철학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\02-예술철학.md",
+   "lines": 346
+  },
+  {
+   "stem": "03-신경미학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\03-신경미학.md",
+   "lines": 416
+  },
+  {
+   "stem": "04-비교예술학·매체이론",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\04-비교예술학·매체이론.md",
+   "lines": 439
+  },
+  {
+   "stem": "05-예술사회학",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\05-예술사회학.md",
+   "lines": 379
+  },
+  {
+   "stem": "06-음악토대",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\06-음악토대.md",
+   "lines": 280
+  },
+  {
+   "stem": "07-미술토대",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\07-미술토대.md",
+   "lines": 260
+  },
+  {
+   "stem": "08-문학토대",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\foundations\\08-문학토대.md",
+   "lines": 279
+  },
+  {
+   "stem": "01-Natya-Shastra-인도-총체예술",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\01-Natya-Shastra-인도-총체예술.md",
+   "lines": 287
+  },
+  {
+   "stem": "02-가부키-노-총체예술",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\02-가부키-노-총체예술.md",
+   "lines": 235
+  },
+  {
+   "stem": "03-경극-판소리-동아시아-총체예술",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\03-경극-판소리-동아시아-총체예술.md",
+   "lines": 234
+  },
+  {
+   "stem": "04-아프리카-라틴-총체예술",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\04-아프리카-라틴-총체예술.md",
+   "lines": 286
+  },
+  {
+   "stem": "05-동서-미학-비교",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\05-동서-미학-비교.md",
+   "lines": 242
+  },
+  {
+   "stem": "06-non-western-deep-integration",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\06-non-western-deep-integration.md",
+   "lines": 227
+  },
+  {
+   "stem": "07-africa-latin-deep",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\non-western\\07-africa-latin-deep.md",
+   "lines": 230
+  },
+  {
+   "stem": "01-meta-questions-deep",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\01-meta-questions-deep.md",
+   "lines": 228
+  },
+  {
+   "stem": "02-aesthetic-theories-deep",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\02-aesthetic-theories-deep.md",
+   "lines": 223
+  },
+  {
+   "stem": "03-criticism-theories",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\03-criticism-theories.md",
+   "lines": 176
+  },
+  {
+   "stem": "04-digital-AI-aesthetics",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\04-digital-AI-aesthetics.md",
+   "lines": 208
+  },
+  {
+   "stem": "05-additional-theories",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\05-additional-theories.md",
+   "lines": 286
+  },
+  {
+   "stem": "06-spinoza-deleuze-immanence",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\theory\\06-spinoza-deleuze-immanence.md",
+   "lines": 226
+  },
+  {
+   "stem": "Bach-J-S",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Bach-J-S.md",
+   "lines": 88
+  },
+  {
+   "stem": "Caravaggio",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Caravaggio.md",
+   "lines": 104
+  },
+  {
+   "stem": "Chinua-Achebe",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Chinua-Achebe.md",
+   "lines": 92
+  },
+  {
+   "stem": "Coco-Chanel",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Coco-Chanel.md",
+   "lines": 116
+  },
+  {
+   "stem": "Du-Fu",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Du-Fu.md",
+   "lines": 89
+  },
+  {
+   "stem": "Frida-Kahlo",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Frida-Kahlo.md",
+   "lines": 114
+  },
+  {
+   "stem": "Hildegard-von-Bingen",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Hildegard-von-Bingen.md",
+   "lines": 101
+  },
+  {
+   "stem": "Hokusai",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Hokusai.md",
+   "lines": 108
+  },
+  {
+   "stem": "John-Cage",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\John-Cage.md",
+   "lines": 102
+  },
+  {
+   "stem": "Leonardo-da-Vinci",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Leonardo-da-Vinci.md",
+   "lines": 103
+  },
+  {
+   "stem": "Murasaki-Shikibu",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Murasaki-Shikibu.md",
+   "lines": 84
+  },
+  {
+   "stem": "Picasso",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Picasso.md",
+   "lines": 92
+  },
+  {
+   "stem": "Zaha-Hadid",
+   "path": "D:\\Projects\\AIProjects\\weg-9000\\weg9000-hub\\WORKSPACES\\learning\\art\\artists\\Zaha-Hadid.md",
+   "lines": 120
+  }
+ ]
+}
