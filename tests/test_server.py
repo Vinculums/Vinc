@@ -545,6 +545,21 @@ class DocRouteE2E(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertTrue(rng["executed"])
             self.assertIn("ev1", {i["id"] for i in rng["items"]})
+            # D69 — /nav-tree: 좌측 문서 트리(주제 → 문서 + 착지 노드).
+            # 추출로 만든 개념은 domain 이 비어 있다(귀속은 사용자 몫 — docstore).
+            # 그래서 주제를 붙이기 전까지 문서는 **미분류**다. 억지 배정하지 않는다.
+            code, nav = _req(base, "/nav-tree?owner=user:a")
+            self.assertEqual(code, 200)
+            self.assertTrue(nav["executed"])
+            self.assertIn(did, {d["doc_id"] for d in nav["unfiled"]})
+            self.store.run("MATCH (c:Concept {concept_id:'concept:개념하나'}) "
+                           "SET c.domain='d'")
+            code, nav = _req(base, "/nav-tree?owner=user:a")
+            landed = {d["node_id"] for g in nav["domains"] for d in g["docs"]}
+            self.assertIn("concept:개념하나", landed)
+            # owner 없이는 400(SEC-1 — 무소유 트리는 없다)
+            code, _ = _req(base, "/nav-tree")
+            self.assertEqual(code, 400)
             # delete
             code, dele = _req(base, "/doc/delete", method="POST",
                               body={"id": did, "owner": "user:a"})

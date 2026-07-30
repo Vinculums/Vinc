@@ -446,6 +446,10 @@ class VincApp:
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
 
+    def read_nav_tree(self, p):
+        # D69 — 좌측 문서 트리: 주제 → 문서(개념 계층 깊이순) + 미분류.
+        return self._read(lambda r: q.nav_tree(owner=_req(p, "owner"), store=r))
+
     def write_doc_put(self, body):
         owner = body.get("owner") or None
         if not owner:
@@ -931,6 +935,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
+            "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/node-context": app.read_node_context,
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)

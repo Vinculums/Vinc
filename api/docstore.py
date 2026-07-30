@@ -403,8 +403,81 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     return base
 
 
+class MentionTally:
+    """문서 → 언급 개념 집계. `list_docs` 와 `query.nav_tree` 의 **공유 원천**.
+
+    두 표면(모든 문서 목록·좌측 문서 트리)이 같은 문서를 다른 주제/다른 노드에
+    걸면 사용자에게는 그냥 버그다. 그래서 집계를 한 군데서만 만든다.
+
+    - `dom[doc_id][domain]`  = 그 주제 개념들의 언급 횟수 합 → 대표 주제(`topic`)
+    - `con[doc_id][cid]`     = 개념별 언급 횟수 → 대표 개념(`primary_concept_id`)
+    - `cdom[cid]` · `ctitle[cid]` = 개념의 주제·제목
+
+    **대표 개념은 대표 주제 안에서 고른다**(전역 최다가 아니라). 문서가 주제 T 밑에
+    걸려 있는데 눌렀더니 다른 주제의 노드로 날아가면 트리가 자기를 반박한다."""
+
+    __slots__ = ("dom", "con", "cdom", "ctitle")
+
+    def __init__(self) -> None:
+        self.dom: dict[str, dict[str, int]] = {}
+        self.con: dict[str, dict[str, int]] = {}
+        self.cdom: dict[str, str] = {}
+        self.ctitle: dict[str, str] = {}
+
+    def topics(self, doc_id: str) -> list[str]:
+        """걸린 주제 전부, 많은 순(동률은 이름순 — 결정론)."""
+        t = self.dom.get(doc_id) or {}
+        return [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+    def primary(self, doc_id: str, topic: str) -> tuple[str, str]:
+        """`topic` 안에서 가장 많이 언급된 개념 `(id, title)`. 없으면 `("", "")`.
+
+        동률은 개념 id 순(결정론). `topic` 이 대표 주제인 한 후보는 반드시 하나
+        이상 존재한다 — 그 주제가 뽑힌 근거가 곧 그 주제 개념의 언급이므로."""
+        c = self.con.get(doc_id) or {}
+        best = sorted(((cid, n) for cid, n in c.items() if self.cdom.get(cid, "") == topic),
+                      key=lambda kv: (-kv[1], kv[0]))
+        return (best[0][0], self.ctitle.get(best[0][0], "")) if best else ("", "")
+
+
+def mention_tally(store, *, owner: str | None = None) -> MentionTally:
+    """`(Chunk)-[:MENTIONS]->(Concept)` 를 **한 번의 집계 쿼리로** 전 문서 분 수집.
+
+    문서마다 조회하지 않는다. MENTIONS 미구축·구스토어에서는 빈 집계로 강등한다
+    (실패가 아니다 — 주제 없는 목록은 여전히 유효하다)."""
+    tally = MentionTally()
+    # ⚠ try 는 **쿼리에만** 건다. 집계 루프까지 감싸면 프로그래밍 오류가 "구스토어
+    # 강등"으로 위장돼 조용히 사라진다(실제로 그렇게 한 번 당했다 — 아래 주석 참조).
+    try:
+        mrows = store.run(
+            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+            + ("WHERE c.owner_id = $o AND (ch.owner_id = $o OR ch.owner_id = '') " if owner else "")
+            + "RETURN ch.doc_id AS doc_id, c.concept_id AS cid, c.title AS title, "
+              "c.domain AS domain, count(*) AS n",
+            {"o": owner} if owner else None) or []
+    except Exception:
+        mrows = []   # MENTIONS 미구축·구스토어 — 주제 없이 목록만(강등, 실패 아님)
+    for r in mrows:
+        did = r.get("doc_id") or ""
+        cid = r.get("cid") or ""
+        if not did or not cid:
+            continue
+        n = int(r.get("n") or 0)
+        dom = (r.get("domain") or "").strip()
+        tally.cdom[cid] = dom
+        tally.ctitle[cid] = r.get("title") or ""
+        # ⚠ `t.setdefault(d, {})[k] = t[d].get(k, 0) + n` 로 쓰지 말 것: 파이썬은
+        # 대입문의 **오른쪽을 먼저** 평가하므로 첫 등장에서 KeyError 가 난다.
+        cbucket = tally.con.setdefault(did, {})
+        cbucket[cid] = cbucket.get(cid, 0) + n
+        if dom:   # 주제 집계는 주제 있는 개념만(무주제 개념이 대표 주제를 못 만든다)
+            dbucket = tally.dom.setdefault(did, {})
+            dbucket[dom] = dbucket.get(dom, 0) + n
+    return tally
+
+
 def list_docs(store, *, owner: str | None = None) -> dict:
-    """문서 목록(_DocMeta) + **주제 파생**. owner 지정 시 소유 스코프.
+    """문서 목록(_DocMeta) + **주제·대표 개념 파생**. owner 지정 시 소유 스코프.
 
     ⚠ 문서 자체에는 주제(domain) 열이 없다 — `_DocMeta` 는 정체성·변경감지 메타만
     갖는다(D45). 그래서 주제는 **문서가 언급하는 개념에서 유도**한다:
@@ -412,7 +485,11 @@ def list_docs(store, *, owner: str | None = None) -> dict:
     걸린 주제를 그 문서의 주제로 삼는다. 링크가 아직 없는 문서는 주제가 없다(빈 문자열)
     — 억지로 배정하지 않는다(D45-V "없으면 없다고 말한다").
 
-    반환 doc 에 `topic`(대표 주제)과 `topics`(걸린 주제 전부, 많은 순)를 싣는다."""
+    반환 doc 에 싣는 것:
+    - `topic`(대표 주제) · `topics`(걸린 주제 전부, 많은 순)
+    - `primary_concept_id`·`primary_concept_title`(D69) — 그 문서를 눌렀을 때
+      **착지할 그래프 노드**. 문서 목록·좌측 트리의 클릭이 여기로 간다. 언급이
+      없으면 빈 문자열이고, 그 문서는 착지 대상이 없다(편집기로만 열린다)."""
     where = "WHERE d.owner_id = $o " if owner else ""
     rows = store.run(
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
@@ -421,34 +498,14 @@ def list_docs(store, *, owner: str | None = None) -> dict:
         "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))} for r in (rows or [])]
 
-    # 주제 파생 — 한 번의 집계 쿼리로 전 문서를 덮는다(문서마다 조회하지 않는다).
-    tally: dict[str, dict[str, int]] = {}
-    # ⚠ try 는 **쿼리에만** 건다. 집계 루프까지 감싸면 프로그래밍 오류가 "구스토어
-    # 강등"으로 위장돼 조용히 사라진다(실제로 그렇게 한 번 당했다 — 아래 주석 참조).
-    try:
-        mrows = store.run(
-            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
-            + ("WHERE c.owner_id = $o AND (ch.owner_id = $o OR ch.owner_id = '') " if owner else "")
-            + "RETURN ch.doc_id AS doc_id, c.domain AS domain, count(*) AS n",
-            {"o": owner} if owner else None) or []
-    except Exception:
-        mrows = []   # MENTIONS 미구축·구스토어 — 주제 없이 목록만(강등, 실패 아님)
-    for r in mrows:
-        dom = (r.get("domain") or "").strip()
-        did = r.get("doc_id") or ""
-        if not dom or not did:
-            continue
-        # ⚠ `tally.setdefault(d, {})[k] = tally[d].get(k, 0) + n` 로 쓰지 말 것:
-        # 파이썬은 대입문의 **오른쪽을 먼저** 평가하므로 첫 등장에서 KeyError 가 난다.
-        bucket = tally.setdefault(did, {})
-        bucket[dom] = bucket.get(dom, 0) + int(r.get("n") or 0)
-
+    tally = mention_tally(store, owner=owner)
     for d in docs:
-        t = tally.get(d["doc_id"]) or {}
-        # 많은 순, 동률이면 이름순(결정론 — 같은 데이터는 늘 같은 대표 주제).
-        ordered = [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
+        ordered = tally.topics(d["doc_id"])
         d["topics"] = ordered
         d["topic"] = ordered[0] if ordered else ""
+        cid, ctitle = tally.primary(d["doc_id"], d["topic"])
+        d["primary_concept_id"] = cid
+        d["primary_concept_title"] = ctitle
     return {"kind": "doc.list", "executed": True, "docs": docs, "count": len(docs)}
 
 

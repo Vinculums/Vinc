@@ -1748,6 +1748,152 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             store.close()
 
 
+# ── 좌측 문서 트리(D69) ──────────────────────────────────────────────────────
+# 깊이 = "이 주제 안에서 얼마나 안쪽 개념인가". 방향 관계 2종만 쓴다:
+#   PREREQUISITE_OF(a→b) : a 를 먼저 알아야 b — a 가 **얕다**(그대로 적재)
+#   DERIVES_FROM(a→b)    : a 는 b 에서 파생 — b 가 **얕다**(뒤집어 적재)
+# 뒤집기를 빠뜨리면 트리 전체가 조용히 뒤집힌다(잎이 위로 온다) — 테스트로 못박음.
+# RELATED_TO 는 대칭이라 깊이에 관여하지 않는다.
+_DEPTH_CAP = 64          # 사이클·병리 구조의 상한. 화면이 무한 들여쓰기 되지 않게.
+
+
+def _domain_depths(concepts: dict[str, str],
+                   edges: list[tuple[str, str]]) -> dict[str, int]:
+    """도메인 내 개념 → 깊이. 순수 함수(스토어 무관·결정론).
+
+    ``concepts``: {concept_id: domain} — 한 도메인 분만 넘긴다.
+    ``edges``: (얕은 쪽, 깊은 쪽) 로 **이미 정규화된** 같은 도메인 엣지.
+
+    루트 = 들어오는 엣지가 없는 개념(엣지가 하나도 없는 개념 포함). 거기서 BFS 로
+    층을 매긴다. ⚠ Kahn 위상 정렬을 쓰지 않는 이유: 순수 사이클 성분은 진입차수가
+    0 인 노드가 없어 **영원히 안 벗겨진다**. BFS 는 visited 집합이 있어 사이클이
+    있어도 반드시 끝나고, 그러고도 안 닿은 노드(= 사이클에만 속한 개념)는 맨
+    아래 층에 id 순으로 둔다. 없는 계층을 지어내지 않으면서 목록에서 빠지지도
+    않게 하는 타협이다."""
+    out: dict[str, int] = {}
+    children: dict[str, list[str]] = {}
+    indeg: dict[str, int] = {cid: 0 for cid in concepts}
+    for shallow, deep in edges:
+        if shallow not in concepts or deep not in concepts or shallow == deep:
+            continue
+        children.setdefault(shallow, []).append(deep)
+        indeg[deep] = indeg.get(deep, 0) + 1
+    frontier = sorted(cid for cid in concepts if indeg.get(cid, 0) == 0)
+    depth = 0
+    while frontier and depth < _DEPTH_CAP:
+        nxt: set[str] = set()
+        for cid in frontier:
+            if cid in out:
+                continue
+            out[cid] = depth
+            nxt.update(children.get(cid, ()))
+        frontier = sorted(c for c in nxt if c not in out)
+        depth += 1
+    if len(out) < len(concepts):        # 사이클에만 속한 나머지 — 맨 아래 한 층에.
+        floor = min(max(out.values()) + 1 if out else 0, _DEPTH_CAP)
+        for cid in sorted(concepts):
+            out.setdefault(cid, floor)
+    return out
+
+
+def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
+    """좌측 문서 트리(D69) — 주제 → 그 주제의 문서, **개념 계층 깊이순**.
+
+    문서는 주제 열을 갖지 않으므로(`_DocMeta`, D45) 주제도 착지 노드도 전부
+    언급(`MENTIONS`)에서 유도한다 — `docstore.mention_tally` 를 그대로 쓴다.
+    `모든 문서` 목록과 트리가 같은 문서를 다른 주제에 걸지 않게 원천이 하나다.
+
+    반환::
+
+        {executed, domains: [{domain, concepts, docs: [
+            {doc_id, title, node_id, node_title, depth, updated_at}]}],
+         unfiled: [{doc_id, title, updated_at}], counts: {...}}
+
+    - 문서 정렬: `(depth, title, doc_id)` — 얕은 개념의 문서가 위.
+    - 개념은 있는데 문서가 없는 주제도 **빈 그룹으로 싣는다**(주제가 목록에서
+      사라지면 이름을 바꾸거나 문서를 붙일 방법이 없어진다).
+    - 언급이 하나도 없는 문서는 `unfiled` — 없는 주제를 지어내지 않는다(D45-V).
+    """
+    from api import docstore as _ds
+
+    cfg = cfg or load_config()
+    base: dict = {"kind": "nav-tree", "executed": False, "domains": [], "unfiled": []}
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        crows = store.run(
+            "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+            "AND c.domain <> '' RETURN c.concept_id AS id, c.domain AS domain",
+            {"owner": owner}) or []
+        by_domain: dict[str, dict[str, str]] = {}
+        cdom: dict[str, str] = {}
+        for r in crows:
+            cid, dom = r.get("id") or "", (r.get("domain") or "").strip()
+            if not cid or not dom:
+                continue
+            cdom[cid] = dom
+            by_domain.setdefault(dom, {})[cid] = dom
+
+        # 방향 엣지 2종을 한 번에. 양 끝 owner 가드(SEC-1).
+        erows = store.run(
+            "MATCH (a:Concept)-[:PREREQUISITE_OF]->(b:Concept) "
+            "WHERE a.owner_id = $owner AND b.owner_id = $owner "
+            "RETURN a.concept_id AS shallow, b.concept_id AS deep "
+            "UNION ALL "
+            "MATCH (a:Concept)-[:DERIVES_FROM]->(b:Concept) "
+            "WHERE a.owner_id = $owner AND b.owner_id = $owner "
+            "RETURN b.concept_id AS shallow, a.concept_id AS deep",   # ← 뒤집기
+            {"owner": owner}) or []
+        edges_by_domain: dict[str, list[tuple[str, str]]] = {}
+        for r in erows:
+            s, d = r.get("shallow") or "", r.get("deep") or ""
+            dom = cdom.get(s, "")
+            if not s or not d or not dom or cdom.get(d) != dom:
+                continue        # 교차 주제 엣지는 그 주제의 계층이 아니다
+            edges_by_domain.setdefault(dom, []).append((s, d))
+
+        depths: dict[str, int] = {}
+        for dom, members in by_domain.items():
+            depths.update(_domain_depths(members, edges_by_domain.get(dom, [])))
+
+        docs = _ds.list_docs(store, owner=owner).get("docs", [])
+        groups: dict[str, list[dict]] = {dom: [] for dom in by_domain}
+        unfiled: list[dict] = []
+        for d in docs:
+            topic = d.get("topic") or ""
+            node = d.get("primary_concept_id") or ""
+            row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
+                   "updated_at": d.get("updated_at") or ""}
+            if not topic or not node:
+                unfiled.append(row)
+                continue
+            groups.setdefault(topic, []).append(
+                {**row, "node_id": node, "node_title": d.get("primary_concept_title") or "",
+                 "depth": int(depths.get(node, 0))})
+
+        out = []
+        for dom in sorted(groups):
+            rows = sorted(groups[dom],
+                          key=lambda r: (r["depth"], r["title"], r["doc_id"]))
+            out.append({"domain": dom, "concepts": len(by_domain.get(dom, {})),
+                        "docs": rows})
+        out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
+        base.update(executed=True, domains=out, unfiled=unfiled,
+                    counts={"domains": len(out), "docs": len(docs),
+                            "unfiled": len(unfiled)})
+        return base
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
 def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None,
                   limit: int = 200, cfg=None, store=None) -> dict:
     """기간(날짜 범위) 항목 질의 — 타임라인 기간 브러시(D45-V2 4단계). 조회 전용.

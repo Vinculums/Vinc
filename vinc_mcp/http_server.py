@@ -61,6 +61,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
+    "nav-tree": ("GET", "/nav-tree"),   # 좌측 문서 트리(D69) — 주제→문서 깊이순
     "job": ("GET", None),   # /jobs/{id} — id 검증 후 특수 처리
     # 쓰기(POST) — SEC-3 하드닝된 owner-스코프 경로
     "pin": ("POST", "/pin"), "tag": ("POST", "/tag"), "touch": ("POST", "/touch"),

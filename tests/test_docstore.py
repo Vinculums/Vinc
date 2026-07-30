@@ -346,6 +346,59 @@ class DocstoreE2E(unittest.TestCase):
         self.assertIn("error", q.ledger_drilldown(owner="user:a", domain="phys",
                                                   mark="bogus", store=self.store))
 
+    def _seed_mention_doc(self, owner="user:a"):
+        """(phys: beta·delta) · (math: gamma) 를 언급 밀도가 다르게 문 문서 1건.
+
+        의도적으로 **전역 최다 개념(gamma, 3청크)이 대표 주제(phys, 4)에 없게** 짰다.
+        대표 개념을 전역 최다로 뽑으면 문서가 phys 밑에 걸린 채 math 노드로 날아간다
+        — 그 회귀를 여기서 잡는다."""
+        for cid, dom in (("concept:beta", "phys"), ("concept:delta", "phys"),
+                         ("concept:gamma", "math")):
+            self.store.run(
+                "MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.domain=$d, "
+                "n.owner_id=$o", {"id": cid, "t": cid.split(":")[1], "d": dom, "o": owner})
+        paras = ["beta gamma 문단 하나.", "beta gamma 문단 둘.", "delta gamma 문단 셋.",
+                 "delta 문단 넷.", "무관한 문단 다섯."]
+        text, starts, pos = "", [], 0
+        for p in paras:                       # 문단마다 청크 경계를 강제(언급 수 = 청크 수)
+            starts.append(pos)
+            block = p + "\n\n"
+            text += block
+            pos += len(block)
+        out = ds.put_doc(self.store, owner=owner, text=text, title="언급",
+                         boundaries=starts, max_chars=64)
+        self.assertEqual(out["chunks"], len(paras))
+        return out["doc_id"]
+
+    def test_list_docs_primary_concept_in_topic(self):
+        # D69 — 좌측 트리·문서 목록의 착지 노드. 대표 주제 안에서 고르고, 동률은 id 순.
+        did = self._seed_mention_doc()
+        doc = next(d for d in ds.list_docs(self.store, owner="user:a")["docs"]
+                   if d["doc_id"] == did)
+        self.assertEqual(doc["topic"], "phys")            # 4(beta 2+delta 2) > 3(gamma)
+        self.assertEqual(doc["topics"], ["phys", "math"])
+        # 전역 최다는 gamma(3)지만 대표 개념은 주제 안에서 — 동률 beta/delta 는 id 순.
+        self.assertEqual(doc["primary_concept_id"], "concept:beta")
+        self.assertEqual(doc["primary_concept_title"], "beta")
+
+    def test_list_docs_unmentioned_doc_has_no_landing(self):
+        # 언급 0 문서는 주제도 착지 노드도 없다 — 억지 배정 금지(D45-V).
+        out = ds.put_doc(self.store, owner="user:a", text="아무 개념도 안 부르는 글.",
+                         title="고아")
+        doc = next(d for d in ds.list_docs(self.store, owner="user:a")["docs"]
+                   if d["doc_id"] == out["doc_id"])
+        self.assertEqual((doc["topic"], doc["topics"]), ("", []))
+        self.assertEqual((doc["primary_concept_id"], doc["primary_concept_title"]), ("", ""))
+
+    def test_mention_tally_owner_isolated(self):
+        # SEC-1 — 남의 개념이 내 문서의 대표 주제·대표 개념을 흔들지 못한다.
+        self._seed_mention_doc(owner="user:a")
+        self.store.run("MERGE (n:Concept {concept_id:'concept:gamma-b'}) SET n.title='gamma', "
+                       "n.domain='math', n.owner_id='user:b'")
+        tally = ds.mention_tally(self.store, owner="user:a")
+        self.assertNotIn("concept:gamma-b", tally.cdom)
+        self.assertEqual(ds.mention_tally(self.store, owner="user:b").con, {})
+
     def test_needs_embed_and_reembed(self):
         # D45-E 후속3 — 임베딩 없이 저장하면 needs_embed=1, reembed 가 채우고 0 으로.
         out = ds.put_doc(self.store, owner="user:a", text="벡터 없는 편집 저장. " * 40,

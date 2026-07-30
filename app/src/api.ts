@@ -181,6 +181,22 @@ export type LedgerRes = {
   by?: "domain" | "concept";           // D52 — 롤업 알갱이 에코(구 사이드카엔 없다)
 };
 
+/** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
+ *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
+ *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
+ *  `node_id` 는 클릭 시 착지할 노드다. 언급 0 문서는 `unfiled`(착지 노드 없음). */
+export type NavDoc = {
+  doc_id: string; title: string; updated_at: string;
+  node_id: string; node_title: string; depth: number;
+};
+export type NavGroup = { domain: string; concepts: number; docs: NavDoc[] };
+export type NavTreeRes = {
+  executed: boolean; note?: string;
+  domains?: NavGroup[];
+  unfiled?: { doc_id: string; title: string; updated_at: string }[];
+  counts?: { domains: number; docs: number; unfiled: number };
+};
+
 export const api = {
   health: () => call("/health"),
   atlasL0: (owner: string) => call("/atlas", { owner }),
@@ -248,10 +264,17 @@ export const api = {
     executed: boolean; candidates?: { title: string }[];
     applied?: { created: number; matched: number }; mentions?: number;
   }> => call("/doc/extract", undefined, { owner, id, apply }),
+  // 문서 목록. `topic`/`topics` 는 언급 개념에서 유도된 주제(문서에 주제 열은 없다),
+  // `primary_concept_id` 는 **그 문서를 눌렀을 때 착지할 노드**(D69) — 대표 주제 안의
+  // 최다 언급 개념이다. 언급이 없으면 빈 문자열이고 착지 대상이 없다(편집기로만 열린다).
   docList: (owner: string): Promise<{
     executed: boolean; count?: number;
-    docs?: { doc_id: string; title: string; origin: string; chunks: number; updated_at: string }[];
+    docs?: { doc_id: string; title: string; origin: string; chunks: number;
+             updated_at: string; topic?: string; topics?: string[];
+             primary_concept_id?: string; primary_concept_title?: string }[];
   }> => call("/docs", { owner }),
+  // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
+  navTree: (owner: string): Promise<NavTreeRes> => call("/nav-tree", { owner }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
     executed: boolean; total?: number;
