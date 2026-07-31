@@ -141,6 +141,34 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertIn("loopback ok", out, "첫 조회 성공을 안 찍으면 기동 증명이 없다")
         self.assertIn("alive", out, "idle 하트비트가 없으면 침묵이 진단 불가다")
 
+    def test_세션에_들어가는_배치에_상한이_있어야_한다(self):
+        """청크 수가 아무리 많아도 **한 번에** 세션에 들어가면 안 된다.
+
+        예전엔 한 문서의 전 청크가 단일 ONNX run 이었고 상한이 없었다. 출력 텐서만
+        `배치 × 512 × 768 × fp32` 라 1500청크 문서(웹 상한 4MB)면 2.25GB 로 컨테이너
+        한도(1024MiB)를 넘긴다. 워커·사이드카·MCP 가 한 컨테이너라 그 OOM 은
+        **MCP 를 같이 죽인다** — ONNX 를 고른 이유가 바로 그거였는데 배치 축이 열려
+        있었다. 이 테스트는 그 상한이 사라지면 깨진다.
+
+        ⚠ 여기서 실제 세션을 흉내 내지 않는다(numpy 가 필요해진다). 이 파일은
+        임베딩 스택이 없는 CI 에서도 **skip 되지 않아야** 한다 — 조용한 skip 이 이
+        리포의 상습 함정이라 모듈 docstring 이 명시적으로 금지한다. 그래서 검사 대상은
+        수치가 아니라 **분할 경계**다: `encode` 가 `_encode_batch` 를 몇 개씩 부르는가.
+        """
+        seen: list[int] = []
+        emb = self.mod._Embedder()
+        emb._encode_batch = lambda texts: (seen.append(len(texts))
+                                           or [[0.0, 1.0] for _ in texts])
+
+        n_chunks = self.mod.EMBED_BATCH * 3 + 1
+        vecs = emb.encode([f"청크 {i}" for i in range(n_chunks)])
+
+        self.assertEqual(len(vecs), n_chunks, "청크 수와 벡터 수가 다르다 — 대응이 깨졌다")
+        self.assertTrue(seen, "세션이 한 번도 실행되지 않았다 — 테스트가 낡았다")
+        self.assertLessEqual(max(seen), self.mod.EMBED_BATCH,
+                             f"배치 상한을 넘겨 세션에 넣었다: {max(seen)} > {self.mod.EMBED_BATCH}")
+        self.assertEqual(sum(seen), n_chunks, "일부 청크가 누락되거나 중복 처리됐다")
+
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
         있는 동안 뒤의 전부가 영구히 굶는다(head-of-line blocking)."""

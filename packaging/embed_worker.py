@@ -65,6 +65,12 @@ DOC_BATCH = int(os.environ.get("VINC_EMBED_DOC_BATCH", "16"))
 # 재시작에는 재사용한다.
 CACHE = os.environ.get("VINC_EMBED_CACHE", "/data/embed-model")
 MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
+# 한 번의 세션 실행에 넣을 청크 수 상한. **없으면 안 된다** — 자세한 근거는
+# `_Embedder.encode` 주석. 8 인 이유: 실측상 청크는 대부분 512 토큰에 붙어 있어
+# (중앙 469 · p90 512) 배치당 출력 텐서가 8×512×768×fp32 = 12MB 로 잡히고, 어텐션
+# 중간 텐서(배치×헤드12×512²×fp32 ≈ 배치당 12.6MB)까지 더해도 100MB 대에 머문다.
+# 허브는 1024MiB 를 사이드카·MCP 와 나눠 쓰고 가중치만 이미 ~440MB 다.
+EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
 
 
 def _call(path: str, body: dict | None = None) -> dict:
@@ -113,6 +119,43 @@ class _Embedder:
         print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE})", flush=True)
 
     def encode(self, texts: list[str]) -> list[list[float]]:
+        """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다.
+
+        여기가 나뉘어 있지 않으면 큰 문서 하나가 컨테이너를 죽인다. 호출부는 한
+        문서의 **전 청크**를 통째로 넘기고(:func:`main`), 공급측 `/embed/pending` 의
+        limit 은 청크가 아니라 **문서 수**다(`api.docstore.pending_embed_chunks`).
+        즉 배치 크기 = 그 문서의 청크 수이고 아무도 그걸 제한하지 않았다.
+
+        메모리는 배치에 선형으로 늘고 상한이 없었다. 출력 텐서 `last_hidden_state`
+        하나만 해도 `배치 × 512 × 768 × fp32` 로 고정이라 ONNX 최적화로 줄일 수 없다:
+
+            청크  23 (스타터팩 최대 문서)  →   34MB
+            청크 100 (약 200KB 문서)       →  150MB
+            청크1500 (웹 상한 4MB 문서)    → 2250MB   ← 한도 1024MiB 초과
+
+        터지면 둘 중 하나인데 둘 다 나쁘다. 커널 OOM 이 컨테이너를 잡으면 **MCP 가
+        같이 죽는다**(워커·사이드카·MCP 가 한 컨테이너다 — docker-entrypoint.sh).
+        ONNX 를 고른 이유가 정확히 그 OOM 을 피하려던 것이었는데, 프레임워크만 바꾸고
+        배치 축은 열어 둔 셈이었다. Python `MemoryError` 로 잡히면 그 문서는
+        needs_embed=1 로 남아 **5분마다 영원히 재시도**하며 매번 같은 고점을 친다.
+
+        나눠도 벡터는 달라지지 않는다. 각 청크의 CLS 출력은 attention_mask 때문에
+        같은 배치의 다른 청크에 의존하지 않는다(패딩 위치는 소프트맥스에서 제외된다).
+        다만 "비트 단위로 동일"까지 주장하지는 않는다 — 배치 모양이 바뀌면 행렬곱의
+        누적 순서와 커널 선택이 달라져 fp32 최하위 비트가 흔들릴 수 있다. 검색 순위를
+        바꿀 수 있는 크기가 아니고(코사인 1 - 1e-7 수준), 벡터 공간 자체는 그대로다.
+        그래서 이 변경에 벡터 공간 동일성 재검증은 필요하지 않다.
+
+        길이순 정렬은 하지 않는다. 패딩 낭비를 줄이는 표준 기법이지만, 실측 분포가
+        중앙 469 · p90 512 라 이미 대부분 상한에 붙어 있어 얻을 게 거의 없고, 순서를
+        바꾸면 chunk_id 대응을 되돌리는 코드가 늘어 사고 여지만 커진다.
+        """
+        out: list[list[float]] = []
+        for i in range(0, len(texts), EMBED_BATCH):
+            out.extend(self._encode_batch(texts[i:i + EMBED_BATCH]))
+        return out
+
+    def _encode_batch(self, texts: list[str]) -> list[list[float]]:
         self._load()
         import numpy as np
 
