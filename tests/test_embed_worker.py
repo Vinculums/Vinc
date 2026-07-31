@@ -169,6 +169,48 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                              f"배치 상한을 넘겨 세션에 넣었다: {max(seen)} > {self.mod.EMBED_BATCH}")
         self.assertEqual(sum(seen), n_chunks, "일부 청크가 누락되거나 중복 처리됐다")
 
+    def test_인코딩_창구가_쿼리에만_접두를_붙인다(self):
+        """`serve_encode` 계약 — 사이드카가 이 창구로 쿼리 임베딩을 얻어 간다.
+
+        임베딩 모델을 든 프로세스는 이 워커뿐이라(사이드카엔 torch 가 없다) 여기가
+        막히면 벡터 검색이 통째로 죽는다. 특히 **접두 규약**이 급소다: bge 는 쿼리에만
+        지시 접두를 붙이고 passage 는 맨몸이다. passage 에도 붙이면 이미 저장된 벡터와
+        공간이 어긋나 **에러 없이 검색만 나빠진다**.
+        """
+        import json
+        import urllib.request
+
+        got: list[str] = []
+        emb = self.mod._Embedder()
+        emb.encode = lambda texts: (got.extend(texts) or [[0.0, 1.0] for _ in texts])
+
+        port = 0
+        # 실제 서버를 띄운다 — 계약(경로·본문 형태)까지 같이 검사하려면 대역이 아니라
+        # 진짜 핸들러를 통과시켜야 한다.
+        import socket
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        self.mod.serve_encode(emb, port)
+
+        def call(kind):
+            body = json.dumps({"texts": ["양자역학"], "kind": kind}).encode()
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/encode", data=body,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.load(r)
+
+        out = call("query")
+        self.assertEqual(out["vectors"], [[0.0, 1.0]], "벡터 형태가 계약과 다르다")
+        self.assertTrue(got and got[0].startswith(self.mod.QUERY_PREFIX),
+                        f"쿼리에 접두가 안 붙었다: {got!r}")
+
+        got.clear()
+        call("passage")
+        self.assertEqual(got, ["양자역학"],
+                         "passage 에 접두가 붙었다 — 저장 벡터와 공간이 어긋난다")
+
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
         있는 동안 뒤의 전부가 영구히 굶는다(head-of-line blocking)."""

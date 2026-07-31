@@ -14,8 +14,10 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -255,6 +257,125 @@ class FakeStoreDataTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertTrue(obj["executed"])
             self.assertTrue(any("SET e.pinned" in c for c, _ in store.writes))
+
+
+@contextlib.contextmanager
+def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0):
+    """워커 인코딩 창구(`packaging/embed_worker.py` `serve_encode`)와 **같은 계약**을
+    말하는 최소 대역. 모델 없이 배선만 검증하려고 둔다(실모델은 440MB 다운로드가 필요)."""
+    import json as _json
+    import threading as _th
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class _H(BaseHTTPRequestHandler):
+        def log_message(self, *_a):
+            pass
+
+        def do_POST(self):
+            if delay:
+                time.sleep(delay)
+            n = int(self.headers.get("Content-Length") or 0)
+            body = _json.loads(self.rfile.read(n) or b"{}")
+            if seen is not None:
+                seen.update(body)
+            out = _json.dumps({"vectors": [list(vector)]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    _th.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+class QueryEmbeddingWiringTests(unittest.TestCase):
+    """검색이 **쿼리 임베딩을 실제로 흘리는가** — 그리고 못 흘릴 땐 정직하게 말하는가.
+
+    2026-07-31 까지 임베딩은 **write-only** 였다. 워커가 벡터를 채웠지만 `q.search` 를
+    부르는 프로덕션 호출부 둘(`read_search`·CLI)이 `query_embedding` 을 넘기지 않아
+    `store.vector_search` 가 한 번도 실행되지 않았다. 에러가 없으니 아무도 몰랐다 —
+    이 리포의 상습 실패 양식(조용한 강등)이다.
+
+    임베더는 사이드카에 없다(torch 미번들). 그래서 워커가 여는 루프백 창구에 물어보는데,
+    그 창구는 없을 수도(데스크탑) 죽었을 수도 느릴 수도 있다. 어느 경우든 **검색은 답해야
+    하고, 무슨 일이 있었는지는 응답에 남아야 한다.**
+    """
+
+    class _Reader:
+        def __init__(self, outer): self.o = outer
+        def run(self, cypher, params=None): return []
+        def fulltext_search(self, t, k, f=None): return [{"id": "c1", "text": "본문", "score": 1.0}]
+        def vector_search(self, e, k, f=None):
+            self.o.seen_vec.append(list(e))
+            return [{"id": "c1", "text": "본문", "distance": 0.1}]
+        def close(self): pass
+
+    class _Store:
+        driver_name = "fake"
+        def __init__(self, outer): self.o = outer
+        def reader_view(self): return QueryEmbeddingWiringTests._Reader(self.o)
+        def run(self, cypher, params=None): return []
+        def close(self): pass
+
+    def setUp(self):
+        self.seen_vec = []
+        self._saved = {k: os.environ.get(k)
+                       for k in ("VINC_EMBED_ENCODE", "VINC_EMBED_ENCODE_TIMEOUT")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _search(self):
+        app = _app(store=self._Store(self))
+        try:
+            return app.read_search({"query": "양자역학", "owner": "u"})[1]
+        finally:
+            app.jobs.shutdown(drain=True)
+
+    def test_창구가_없으면_시도조차_안_하고_FTS_로_답한다(self):
+        """데스크탑의 정상 상태다. 매 검색마다 연결 실패를 기다리면 그 자체로 성능 사고."""
+        os.environ.pop("VINC_EMBED_ENCODE", None)
+        res = self._search()
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertFalse(res.get("vector_note"), "시도하지 않았는데 사유가 남았다")
+        self.assertEqual(self.seen_vec, [], "창구가 없는데 벡터 팔이 돌았다")
+
+    def test_창구가_있으면_벡터_팔이_실제로_돈다(self):
+        with _encode_stub([0.5, 0.5, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            res = self._search()
+        self.assertEqual(res.get("arms"), "fts+vector",
+                         "쿼리 임베딩이 흐르지 않는다 — write-only 회귀")
+        self.assertEqual(self.seen_vec, [[0.5, 0.5, 0.0, 0.0]],
+                         "vector_search 가 받은 벡터가 창구 응답과 다르다")
+
+    def test_창구가_죽어도_검색은_답하고_사유를_남긴다(self):
+        os.environ["VINC_EMBED_ENCODE"] = "http://127.0.0.1:9"   # discard 포트
+        os.environ["VINC_EMBED_ENCODE_TIMEOUT"] = "0.3"
+        res = self._search()
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertTrue(res.get("vector_note"), "조용히 강등됐다 — 사유가 없다")
+        self.assertEqual(self.seen_vec, [])
+
+    def test_쿼리에는_query_kind_로_요청한다(self):
+        """bge 는 **쿼리에만** 지시 접두를 붙인다. passage 로 요청하면 저장 벡터와
+        같은 공간이 되지 않는다 — 창구가 kind 를 보고 접두를 고르므로 여기가 계약이다."""
+        seen: dict = {}
+        with _encode_stub([1.0, 0.0, 0.0, 0.0], seen=seen) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            self._search()
+        self.assertEqual(seen.get("kind"), "query", f"kind 가 틀렸다: {seen}")
+        self.assertEqual(seen.get("texts"), ["양자역학"])
 
 
 class IngestRouteTests(unittest.TestCase):

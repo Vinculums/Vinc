@@ -2862,7 +2862,12 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     owns = store is None
     if owns:
         store = open_store(cfg)
-    base = {"kind": "search", "executed": False, "rows": [], "node_hits": []}
+    # 어느 팔이 돌았는지를 **결과에 남긴다**. 임베딩이 오래 write-only 였는데(호출부가
+    # query_embedding 을 안 넘겨 vector_search 가 한 번도 실행되지 않았다) 에러가 없어
+    # 아무도 몰랐다. 이 한 줄이 그 침묵을 깬다 — CLI·HTTP 양쪽이 같은 값을 본다
+    # (HTTP 계층에서만 붙이면 §11 게이트① 의 CLI↔HTTP 동등성이 깨진다).
+    base = {"kind": "search", "executed": False, "rows": [], "node_hits": [],
+            "arms": "fts+vector" if query_embedding is not None else "fts"}
     if store is None:
         base["note"] = base["error"] = "no reachable store"
         return base

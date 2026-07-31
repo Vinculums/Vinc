@@ -31,7 +31,12 @@ import inspect
 import threading
 import time
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+#: 쿼리 임베딩 대기 상한(초). 조회 요청 **안**에서 도는 호출이라 짧게 잡는다 —
+#: 워커가 배경 임베딩으로 바쁘면 기다리느니 FTS 로 답하는 편이 낫다(§11 P2 게이트).
+_QVEC_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_TIMEOUT", "1.5"))
 
 from store.config import load_config
 from store.backend import open_store
@@ -265,12 +270,46 @@ class VincApp:
         # 는 Chunk 스키마에 열이 없어 구조적으로 불가 — P4 스키마 델타로 이관(계획 §E3).
         filters = {k: v for k, v in
                    (("layer", p.get("layer")), ("doc_id", p.get("doc"))) if v}
+        query = _req(p, "query")
+        qvec, vnote = self._query_embedding(query)
         # SEC-1: owner 는 선택(로컬 단일 사용자는 미지정 = 전역). 호스티드 원격은
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
-        return self._read(lambda r: q.search(_req(p, "query"),
-                                             top_k=_int(p.get("top_k"), 5),
-                                             filters=filters or None,
-                                             owner=p.get("owner") or None, store=r))
+        code, res = self._read(lambda r: q.search(query,
+                                                  query_embedding=qvec,
+                                                  top_k=_int(p.get("top_k"), 5),
+                                                  filters=filters or None,
+                                                  owner=p.get("owner") or None, store=r))
+        # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
+        # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
+        # 실패한 경우에만** 사유를 덧붙인다 — 시도조차 안 한 경우(창구 미설정, 데스크탑의
+        # 정상 상태)에 빈 필드를 붙이면 그 동등성이 깨진다.
+        if vnote and isinstance(res, dict):
+            res["vector_note"] = vnote
+        return code, res
+
+    def _query_embedding(self, text: str):
+        """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.
+
+        임베딩 모델을 들고 있는 프로세스는 임베딩 워커뿐이다(사이드카엔 torch 가 없다).
+        그래서 워커가 여는 루프백 창구(`packaging/embed_worker.py` `serve_encode`)에
+        물어본다. `VINC_EMBED_ENCODE` 가 없으면 **시도조차 하지 않는다** — 데스크탑에는
+        워커가 없고, 매 검색마다 연결 실패를 기다리는 건 그 자체로 성능 사고다.
+
+        타임아웃이 짧은 이유: 이 호출은 **조회 요청 안**에 있다. 워커가 배경 임베딩으로
+        바쁘면 기다리느니 FTS 로 답하는 편이 낫다(§11 P2 게이트). 강등은 응답 메타에
+        남으므로 조용하지 않다."""
+        url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+        if not url or not text:
+            return None, ""
+        try:
+            body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
+            req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=_QVEC_TIMEOUT) as resp:
+                vecs = (json.load(resp) or {}).get("vectors") or []
+            return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
+        except Exception as exc:
+            return None, f"{type(exc).__name__}: {str(exc)[:120]}"
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),

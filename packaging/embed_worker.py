@@ -41,6 +41,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 
@@ -71,6 +72,10 @@ MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
 # 중간 텐서(배치×헤드12×512²×fp32 ≈ 배치당 12.6MB)까지 더해도 100MB 대에 머문다.
 # 허브는 1024MiB 를 사이드카·MCP 와 나눠 쓰고 가중치만 이미 ~440MB 다.
 EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
+# bge-*-v1.5 의 쿼리 지시 접두(저장 passage 에는 붙이지 않는다 — `_prefix` 주석).
+QUERY_PREFIX = os.environ.get(
+    "VINC_EMBED_QUERY_PREFIX",
+    "Represent this sentence for searching relevant passages: ")
 
 
 def _call(path: str, body: dict | None = None) -> dict:
@@ -173,11 +178,91 @@ class _Embedder:
         return (cls / norm).astype(float).tolist()
 
 
+def serve_encode(emb: "_Embedder", port: int) -> None:
+    """루프백 인코딩 서비스 — 사이드카가 **쿼리 임베딩**을 얻어 가는 창구.
+
+    왜 여기냐: 임베딩 모델을 들고 있는 프로세스가 이 워커뿐이다. 사이드카(데스크탑·허브
+    양쪽)에는 torch·sentence-transformers 가 없어서 `/doc/reembed` 조차 강등된다. 그래서
+    여태 `query_embedding` 을 만들 주체가 **아무 데도 없었고**, 벡터는 write-only 였다
+    (검색 호출부 둘 다 query_embedding 을 안 넘긴다).
+
+    사이드카에 모델을 또 올리는 선택지도 있었지만 1024MiB 컨테이너에 440MB 를 **두 벌**
+    올리게 된다. 여기서 열어 주면 한 벌로 끝난다.
+
+    계약: `POST /encode {"texts": [...], "kind": "query"|"passage"}` → `{"vectors": [[...]]}`
+    - **루프백 전용**(127.0.0.1 바인딩). 프록시·공개 노출 대상이 아니다 — `/embed/pending`
+      과 같은 등급의 내부 표면이라 웹 3중 등재도 하지 않는다.
+    - 인코딩은 `_lock` 으로 직렬화한다. 배경 pull 루프와 전경 쿼리가 같은 세션을 쓰는데,
+      동시에 밀어 넣으면 메모리 고점이 두 배가 되고 그건 이 컨테이너에서 OOM 이다.
+    - 이 서버가 죽어도 워커 본체는 살아야 한다(부가 기능이 본업을 죽이지 않는다).
+    """
+    import json as _json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    lock = threading.Lock()
+
+    class _H(BaseHTTPRequestHandler):
+        def log_message(self, *_a):
+            pass                      # 요청당 한 줄은 5분 루프 로그를 덮는다
+
+        def do_POST(self):
+            if self.path.rstrip("/") != "/encode":
+                self.send_error(404, "no such route")
+                return
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = _json.loads(self.rfile.read(n) or b"{}")
+                texts = [str(t) for t in (body.get("texts") or [])]
+                if not texts:
+                    raise ValueError("texts required")
+                kind = str(body.get("kind") or "passage")
+                with lock:
+                    vecs = emb.encode([_prefix(t, kind) for t in texts])
+                out = _json.dumps({"vectors": vecs}).encode("utf-8")
+            except Exception as exc:
+                # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
+                out = _json.dumps({"error": f"{type(exc).__name__}: {exc}"}).encode("utf-8")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _H)
+    t = threading.Thread(target=srv.serve_forever, daemon=True, name="vinc-embed-encode")
+    t.start()
+    print(f"[embed] encode service on 127.0.0.1:{port}", flush=True)
+
+
+def _prefix(text: str, kind: str) -> str:
+    """모델별 비대칭 검색 접두.
+
+    bge-*-v1.5 는 **쿼리에만** 지시 접두를 붙인다(저자 안내). 저장된 passage 벡터는
+    접두 없이 만들어졌으므로 여기서 passage 에 무언가를 붙이면 기존 벡터와 공간이
+    어긋난다 — 붙이지 않는 게 호환의 조건이다.
+    e5 계열로 갈아타면 규약이 `query:` / `passage:` **양쪽**으로 바뀌고, 그때는 저장
+    벡터도 전량 재생성해야 한다(모델 교체 자체가 이미 전량 재임베딩을 요구한다).
+    """
+    if kind != "query":
+        return text
+    if "e5" in MODEL.lower():
+        return f"query: {text}"
+    return f"{QUERY_PREFIX}{text}" if QUERY_PREFIX else text
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="pending 을 한 번 비우고 종료")
     ap.add_argument("--interval", type=float, default=300.0,
                     help="상주 모드에서 pending 이 빌 때 대기 초")
+    ap.add_argument("--encode-port", type=int, default=int(os.environ.get("VINC_EMBED_PORT", "0")),
+                    help="쿼리 임베딩 루프백 서비스 포트(0=끔)")
     args = ap.parse_args()
 
     emb = _Embedder()
@@ -187,6 +272,13 @@ def main() -> int:
     # 증명하고 ② 그 뒤로는 idle 이 HEARTBEAT_ROUNDS 번 쌓일 때마다 한 줄 남긴다.
     # 5분 간격 × 12 = 약 1시간에 1줄 — 로그를 더럽히지 않으면서 침묵을 진단 가능하게.
     heartbeat_rounds = int(os.environ.get("VINC_EMBED_HEARTBEAT_ROUNDS", "12"))
+    if args.encode_port:
+        # 쿼리 임베딩 창구. 실패해도 본업(배경 임베딩)은 계속 돈다 — 부가 기능이
+        # 본업을 죽이지 않는다는 이 워커의 규율 그대로다.
+        try:
+            serve_encode(emb, args.encode_port)
+        except Exception as exc:
+            print(f"[embed] encode service 기동 실패(무시): {exc}", file=sys.stderr, flush=True)
     proved = False
     idle = 0
     while True:

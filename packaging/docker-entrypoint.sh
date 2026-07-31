@@ -9,6 +9,13 @@ set -e
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
 : "${VINC_SIDECAR_TOKEN:?VINC_SIDECAR_TOKEN 필수 — 사이드카/MCP 내부 인증}"
 
+# 쿼리 임베딩 창구(루프백). 사이드카는 이 주소로 물어 벡터 검색을 켠다 — 비어 있으면
+# 시도조차 안 하고 FTS 로만 답한다(데스크탑의 정상 상태와 같다).
+EMBED_PORT="${VINC_EMBED_PORT:-8791}"
+if [ "${VINC_EMBED:-on}" = "on" ]; then
+  export VINC_EMBED_ENCODE="http://127.0.0.1:${EMBED_PORT}"
+fi
+
 python -m api.cli serve --host 127.0.0.1 --port 8787 \
   --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
 SIDECAR_PID=$!
@@ -42,9 +49,11 @@ fi
 EMBED_PID=""
 if [ "${VINC_EMBED:-on}" = "on" ]; then
   VINC_SIDECAR="http://127.0.0.1:8787" \
-    python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" &
+    python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" \
+      --encode-port "$EMBED_PORT" &
   EMBED_PID=$!
-  echo "[entrypoint] embed worker started (pid=$EMBED_PID, interval=${VINC_EMBED_INTERVAL:-300}s)"
+  echo "[entrypoint] embed worker started (pid=$EMBED_PID, interval=${VINC_EMBED_INTERVAL:-300}s,"\
+       "encode=127.0.0.1:$EMBED_PORT)"
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
   trap 'kill "$SIDECAR_PID" "$EMBED_PID" 2>/dev/null' TERM INT
