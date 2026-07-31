@@ -42,10 +42,9 @@ export function atlasHooks(): AtlasHooks | null {
   return hooks;
 }
 
-/** 버튼 라벨·표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출). */
+/** 지도 손잡이 표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출).
+ *  Tools 는 훅과 무관하게 늘 눌린다 — 문서를 쓰고 가져오는 일은 지도가 없어도 된다. */
 export function refreshTopbar() {
-  const share = $<HTMLButtonElement>("tb-share");
-  if (share) share.hidden = !hooks;
   // 지도 손잡이는 Atlas 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
   if (!hooks) { const l = lensSlot(), v = viewsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
@@ -73,22 +72,16 @@ export function mountTopbar() {
   // 표기는 플랫폼 관용구를 따른다(mac ⌘K · 그 외 Ctrl K) — 팔레트 단축키와 같은 키.
   if (kbd) kbd.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
-  // 가져오기 — 표면과 무관하게 언제나 눌린다(Atlas 훅에 매이지 않는다).
-  const imp = $("tb-import");
-  if (imp) {
-    imp.innerHTML = icon("pack-in", 15) + `<span>${COPY.ui.sheet.importCta}</span>`;
-    imp.setAttribute("data-tip", COPY.ui.sheet.importTip);
-    imp.addEventListener("click", async () => {
-      const { openIntakeSheet } = await import("./sheets");
-      openIntakeSheet();
+  // Tools — 표면과 무관하게 언제나 눌린다(Atlas 훅에 매이지 않는다). 공유는 이 안에서
+  // 범위를 고르고, `지금 보고 있는 곳`만 Atlas 훅을 쓴다.
+  const tools = $("tb-tools");
+  if (tools) {
+    tools.innerHTML = icon("pack-in", 15) + `<span>${COPY.ui.tools.title}</span>`;
+    tools.setAttribute("data-tip", COPY.ui.tools.tip);
+    tools.addEventListener("click", async () => {
+      const { openTools } = await import("./tools");
+      openTools();
     });
-  }
-
-  const share = $("tb-share");
-  if (share) {
-    share.innerHTML = icon("share-nodes", 15) + `<span>${COPY.ui.topbar.share}</span>`;
-    share.setAttribute("data-tip", COPY.ui.topbar.shareTip);
-    share.addEventListener("click", () => hooks?.share());
   }
 
   type Hit = { id: string; title: string; domain: string; mark: string; snippet: string };

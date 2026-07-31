@@ -107,32 +107,12 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
   });
 }
 
-/** 파일에서 팩을 골라 가져오기 시트를 연다(상단 바 `가져오기`의 실체).
- *  파일 입력은 만들었다 버리는 일회용 — 셸에 숨은 input 을 남기지 않는다. */
-/** 가져오기 진입 — **기존 가져오기 시트 그대로**에 `새 문서` 만 더한다(D67).
+/** 파일에서 팩·문서를 골라 해당 시트를 연다. 파일 입력은 만들었다 버리는 일회용 —
+ *  셸에 숨은 input 을 남기지 않는다.
  *
- *  두 갈래를 큰 버튼으로 벌려 놓았더니 시트마다 생김새가 달라졌다. 규격(머리·몸·발)
- *  안에서 해결한다: 몸은 무엇을 하는 자리인지 한 줄, 발은 부 액션(새 문서) 왼쪽 ·
- *  주 액션(팩 고르기) 오른쪽 — 다른 모든 시트와 같은 자리. */
-export function openIntakeSheet(onDone?: (res: any) => void) {
-  const sheet = openSheet({ title: COPY.ui.sheet.intakeTitle,
-                            subtitle: COPY.ui.sheet.intakeSub });
-  sheet.body.innerHTML = `<p class="hint">${COPY.ui.sheet.importTip}</p>`;
-  sheet.foot.innerHTML = sheetActions(
-    { id: "in-pack", label: COPY.ui.sheet.pickPack },
-    undefined,
-    { id: "in-new", label: COPY.ui.atlasx.edNew });
-  sheet.foot.querySelector("#in-pack")!.addEventListener("click", () => {
-    sheet.close();
-    pickAndImport(onDone);
-  });
-  sheet.foot.querySelector("#in-new")!.addEventListener("click", async () => {
-    sheet.close();
-    const { openDocSheet } = await import("./doc-editor");
-    void openDocSheet({ owner: cfg.owner });
-  });
-}
-
+ *  구 `openIntakeSheet`(D67 — 몸 한 줄 + `팩 고르기`/`새 문서` 두 액션)는 폐지했다:
+ *  세 문(만들기·가져오기·공유)이 Tools 모달 한 자리로 갔고(D71), `새 문서`는 거기서
+ *  `만들기` 탭으로 승격했다. 파일을 고르는 일 자체는 여기 그대로 남는다. */
 export function pickAndImport(onDone?: (res: any) => void) {
   const input = document.createElement("input");
   input.type = "file";

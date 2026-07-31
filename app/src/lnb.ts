@@ -234,7 +234,8 @@ export function mountLnb() {
       return;
     }
     if (t.closest("#lnb-retry")) { void refreshLnb(); return; }
-    if (t.closest("#lnb-add")) { void import("./sheets").then((m) => m.openIntakeSheet()); return; }
+    // 트리가 비었을 때의 CTA — 쓸지 가져올지 아직 모르므로 Tools 를 연다(D71).
+    if (t.closest("#lnb-add")) { void import("./tools").then((m) => m.openTools()); return; }
   });
   // 주제 우클릭 = 이름 변경(S2). L0 주제 표의 `⋯` 가 하던 일이 여기로 왔다 —
   // 표가 사라졌으므로 이 경로가 없으면 이름을 바꿀 길이 없어진다.

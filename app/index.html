@@ -66,11 +66,10 @@
         </div>
 
         <div id="tb-actions">
-          <!-- 팩 가져오기 = 상시 진입점. 폐지한 LNB 에 있던 Packs 링크가 사라지면서
-               그래프가 비지 않은 뒤로는 **가져올 길이 없었다**(빈 상태 CTA 와 팔레트
-               뿐). 들여오기와 내보내기는 짝이라 나란히 둔다. -->
-          <button class="btn" id="tb-import"></button>
-          <button class="btn" id="tb-share" hidden></button>
+          <!-- D71 — 지식이 드나드는 문 셋(만들기·가져오기·공유)을 버튼 하나로 모은다.
+               셋은 같은 종류의 일인데 자리가 흩어져 있어 매번 어디로 갈지 골라야 했고,
+               `새 문서`는 가져오기 시트의 부 액션으로 숨어 있었다. -->
+          <button class="btn" id="tb-tools"></button>
           <button class="tb-icon" id="settings-btn" data-icon="settings"
                   aria-haspopup="dialog"></button>
           <span class="rail-sync"><span class="sync-dot"></span><span id="sync-status"></span></span>

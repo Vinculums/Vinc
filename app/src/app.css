@@ -710,6 +710,25 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .rel-ev:hover { color: hsl(var(--foreground)); }
 
+/* ── Tools 모달(D71) — 만들기 · 가져오기 · 공유를 한 층에 눕힌 탭 ────────────
+   탭은 시트 규격(머리·몸·발) 안에 산다: 갈래를 고르는 줄 하나 + 그 갈래의 몸. */
+.tools-tabs {
+  display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  margin-bottom: var(--space-4, 1rem);
+}
+.tools-sub { flex: 1 1 auto; min-width: 0; }
+.tools-pane { display: block; }
+/* 라디오 줄 — 목록 행 문법을 그대로 쓰되 선택 컨트롤이 앞에 온다. */
+.tools-opt {
+  display: flex; align-items: center; gap: .6rem; cursor: pointer;
+}
+.tools-opt select {
+  margin-left: auto; font: inherit; font-size: var(--fs-sm);
+  padding: .2rem .4rem; border: 1px solid hsl(var(--input));
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+
 /* ── 맥락 카드(D70) — 노드에 딸려 뜨고, 끌어 옮길 수 있고, 닫힌다 ────────────
    시트가 아니다: 딤도 aria-modal 도 없다(지도를 계속 만질 수 있어야 한다).
    컨텍스트 메뉴도 아니다: 한 번 고르고 사라지는 것이 아니라 머문다. */
