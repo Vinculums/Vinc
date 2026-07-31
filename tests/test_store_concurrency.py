@@ -193,11 +193,82 @@ class StoreConcurrencyTests(unittest.TestCase):
         self.assertLess(statistics.median(lat), 200.0,
                         f"쓰기 중 조회가 막힌다 — P2 게이트 위반(중앙 {statistics.median(lat):.1f}ms)")
 
+    # ── 읽기 경로는 LOAD 하지 않는다 ───────────────────────────────────────
+    def test_search_does_not_reload_the_extension(self):
+        """검색이 `LOAD EXTENSION` 을 재발행하면 안 된다.
+
+        `LOAD` 는 **Database 스코프**라 1회면 충분한데(실측: 로드 뒤 새로 만든
+        커넥션도 자기 LOAD 없이 FTS 호출 성공), **이미 로드된 확장을 다시 LOAD 해도
+        쓰기 트랜잭션을 요구한다**. 그래서 매 검색이 LOAD 를 보내던 시절엔 라이터가
+        도는 동안 검색의 49.3% 가 실패하고 라이터 MERGE 도 26.0% 가 실패했다.
+        이 테스트는 그 재발행이 돌아오면 깨진다."""
+        self._seed_chunks(20)
+        self.app.jobs.run_sync("idx", lambda: self.store.ensure_search_indexes(dim=4),
+                               timeout=60)
+        loads = []
+        orig = self.store._load_ext
+
+        def spy(ext, **kw):
+            loads.append((ext, kw.get("reader", False)))
+            return orig(ext, **kw)
+
+        self.store._load_ext = spy
+        try:
+            rv = self.app._reader()
+            rv.fulltext_search("alpha", 3)
+            rv.close()
+        finally:
+            self.store._load_ext = orig
+        self.assertTrue(loads, "검색이 _load_ext 를 아예 안 불렀다 — 테스트가 낡았다")
+        self.assertTrue(all(is_reader for _e, is_reader in loads),
+                        "검색이 writer 로 LOAD 를 보냈다 — R4 위반")
+        # 캐시 적중이라 엔진 왕복이 없어야 한다.
+        self.assertIn("fts", self.store._exts, "부팅 선로드가 캐시를 안 채웠다")
+
+    def test_search_survives_a_busy_writer(self):
+        """라이터가 쉬지 않고 쓰는 동안 검색이 살아야 한다.
+
+        고치기 전 실측: 검색 150회 중 74회가 `Cannot start a new write transaction`
+        으로 실패(49.3%). 원인은 검색이 보내던 LOAD 였다."""
+        self._seed_chunks(40)
+        self.app.jobs.run_sync("idx", lambda: self.store.ensure_search_indexes(dim=4),
+                               timeout=60)
+        stop = threading.Event()
+
+        def busy_writer():
+            i = 0
+            while not stop.is_set():
+                try:
+                    self.app.jobs.run_sync("probe.busy", lambda i=i: (
+                        self.store.run("MERGE (c:Concept {concept_id:$i}) SET c.owner_id='u'",
+                                       {"i": f"concept:b{i}"}), {"ok": 1})[1], timeout=30)
+                except Exception:
+                    return
+                i += 1
+
+        bt = threading.Thread(target=busy_writer, daemon=True)
+        bt.start()
+        time.sleep(0.2)
+        fails = []
+        try:
+            for _ in range(40):
+                r = self.app._reader()
+                try:
+                    r.fulltext_search("alpha", 3)
+                except Exception as exc:
+                    fails.append(f"{type(exc).__name__}: {exc}")
+                finally:
+                    r.close()
+        finally:
+            stop.set()
+            bt.join(timeout=5)
+        self.assertEqual(fails, [], f"쓰기 중 검색이 실패했다({len(fails)}/40)")
+
     # ── 진단 정직성 ────────────────────────────────────────────────────────
     def test_transaction_conflict_is_not_reported_as_missing_extension(self):
         """확장 로드 실패의 **사유를 지어내지 않는다**.
 
-        다른 커넥션이 쓰기 트랜잭션을 쥐면 LOAD 가 거절되는데, 그걸 "확장 미가용 —
+        다른 커넥션이 쓰기 트랜잭션을 쥐면 LOAD 가 거절되는데, 그걸 "확장 미가용,
         오프라인 배포 시 번들 필요" 로 감싸면 운영자를 패키징 문제로 보낸다(실측으로
         실제 그 문구가 떴다)."""
         class _Conn:
@@ -206,8 +277,15 @@ class StoreConcurrencyTests(unittest.TestCase):
                     "Cannot start a new write transaction in the system. "
                     "Only one write transaction at a time is allowed")
 
-        with self.assertRaises(RuntimeError) as ctx:
-            self.store._load_ext("vector", _Conn())
+        # 캐시를 비우고 writer 커넥션을 가짜로 갈아 끼운다 — 이제 LOAD 는 writer
+        # 에서만 일어나므로 conn 인자로 주입하던 예전 방식은 쓸 수 없다.
+        saved_conn, saved_exts = self.store._conn, set(self.store._exts)
+        self.store._conn, self.store._exts = _Conn(), set()
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                self.store._load_ext("vector")
+        finally:
+            self.store._conn, self.store._exts = saved_conn, saved_exts
         msg = str(ctx.exception)
         self.assertIn("transaction", msg.lower())
         self.assertNotIn("번들", msg, "트랜잭션 충돌을 확장 부재로 오진했다")

@@ -112,8 +112,15 @@ class _Session:
 class _ReaderView:
     """단일 Database 의 별도 read Connection 뷰(R4 — 서버 조회 경로). `GraphStore` 의
     read 표면(run/fulltext_search/vector_search/close)만 노출해 `api.query.execute`·
-    `api.query.search` 에 store 로 주입된다. 쓰기(SET) 는 이 뷰로 흘리지 않는다 —
-    쓰기는 잡 워커의 writer Connection 으로만 직렬화된다(R4)."""
+    `api.query.search` 에 store 로 주입된다. 쓰기는 잡 워커의 writer Connection 으로만
+    직렬화된다(R4).
+
+    ⚠ **"쓰기"는 SET 만이 아니다.** 이 자리에 오래 `쓰기(SET) 는 이 뷰로 흘리지
+    않는다` 라고 적혀 있었고, 그 좁은 문구 때문에 두 가지가 조용히 새 나갔다 —
+    지연 인덱스 빌드(DDL)와 `LOAD EXTENSION`. 둘 다 SET 이 아니지만 **쓰기
+    트랜잭션을 요구**하고, 엔진은 그걸 하나만 허용하므로 리더가 붙드는 동안
+    라이터의 평범한 MERGE 가 거절된다(실측: 라이터 실패 26.0%). 기준은 SET 이
+    아니라 **쓰기 트랜잭션을 요구하는가**다: DML·DDL·LOAD 전부 해당한다."""
 
     def __init__(self, backend: "EmbeddedBackend", conn, build=None):
         self._b = backend
@@ -197,6 +204,11 @@ class EmbeddedBackend:
         self._conn = conn
         self.driver_name = driver_name
         self._cfg = cfg
+        #: 이 Database 에 로드된 확장 이름. `LOAD EXTENSION` 은 **Database 스코프**라
+        #: (실측: 로드 뒤 새로 만든 커넥션도 자기 LOAD 없이 FTS 호출 성공) 프로세스당
+        #: 1회면 충분하다. 이 집합이 없으면 매 검색이 LOAD 를 재발행하고, LOAD 는
+        #: 쓰기 트랜잭션을 요구하므로 라이터와 정면 충돌한다 — :meth:`_load_ext` 참조.
+        self._exts: set[str] = set()
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -305,6 +317,16 @@ class EmbeddedBackend:
         if cur < target:
             self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
                      {"v": str(target)})
+        # 검색 확장을 **여기서** 로드한다. 프로비저닝은 단일 스레드 기동 시점이라
+        # writer 커넥션 사용이 안전하고, 이 한 번으로 이후 모든 리더 커넥션이 자기
+        # LOAD 없이 검색한다(Database 스코프 — :meth:`_load_ext`). 실패는 삼킨다:
+        # 확장 부재(오프라인 미번들)가 스키마 마이그레이션 실패로 둔갑하면 안 된다.
+        # 그 경우 검색만 강등되고 이유는 검색 응답의 extension_unavailable 로 나온다.
+        for _e in ("fts", "vector"):
+            try:
+                self._load_ext(_e)
+            except Exception:
+                pass
         return {"migrated_from": cur, "migrated_to": target}
 
     def provision(self, *, dim: int) -> list[str]:
@@ -321,7 +343,7 @@ class EmbeddedBackend:
     _FTS_INDEX = "chunk_ft"
     _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
-    def _load_ext(self, ext: str, conn=None) -> None:
+    def _load_ext(self, ext: str, *, reader: bool = False) -> None:
         """벡터/FTS/algo 확장 로드(ladybug 는 확장 기능 — 정적 링크가 아님).
 
         **G0(오프라인 확장 번들) — 실증 확정(2026-07-20):** ladybug 확장은 기본 런타임
@@ -329,22 +351,51 @@ class EmbeddedBackend:
         불변식(§1)을 깬다. 실측: 캐시 부재 시 `LOAD EXTENSION <name>` 은 실패하나
         **`LOAD EXTENSION '<번들 경로>'` 는 네트워크 없이 로드 성공**(이후 CREATE_VECTOR_INDEX
         정상). → 번들된 `.lbug_extension` 을 명시 경로로 로드해 오프라인 즉시 동작을 보장한다.
-        번들 미발견(dev 등)은 이름 기반으로 강등(설치돼 있으면 로드)."""
-        c = conn or self._conn
+        번들 미발견(dev 등)은 이름 기반으로 강등(설치돼 있으면 로드).
+
+        **LOAD 는 쓰기다 — 읽기 경로에서 부르면 안 된다(2026-07-31 실측).** 여태 검색
+        3종이 **매 호출마다** 리더 커넥션으로 LOAD 를 재발행했다. 측정해 보니:
+
+        ① `LOAD` 는 **Database 스코프**다. 한 커넥션이 로드하면 그 뒤에 만든 커넥션도
+           자기 LOAD 없이 `QUERY_FTS_INDEX` 를 부른다 — 즉 재발행은 애초에 불필요했다.
+        ② 그런데 **이미 로드된 확장을 다시 LOAD 해도 쓰기 트랜잭션을 요구한다.** 라이터가
+           트랜잭션을 쥔 순간 `Cannot start a new write transaction` 로 거절된다.
+        ③ 그래서 라이터가 도는 동안 **검색의 49.3% 가 실패**했고(사용자에게 error 로
+           노출), 리더의 LOAD 가 트랜잭션을 뺏는 바람에 **라이터 MERGE 도 26.0% 실패**
+           했다. LOAD 를 생략하니 둘 다 0.0%, 검색 중앙 지연도 7.42ms → 4.68ms.
+
+        따라서 로드는 **쓰기 지점에서만** 한다(provision·잡 워커의 인덱스 연산). 읽기
+        경로(`reader=True`)는 미로드 시 **로드하지 않고 강등**한다 — 읽기가 쓰기를 하지
+        않는다는 R4 를 지키는 유일한 방법이고, 어차피 ①에 의해 정상 기동이면 항상
+        로드돼 있다. 대가: 기동 시 확장이 없었다면 프로세스 수명 동안 강등이 유지된다
+        (재시작이 복구 수단). 매 검색 재시도로 얻던 우연한 자가치유를 실패율 49% 와
+        맞바꾸지 않는다."""
+        if ext in self._exts:
+            return
+        if reader:
+            # 읽기 경로 — 여기서 LOAD 하면 쓰기 트랜잭션이 잡 큐를 우회한다(R4 위반).
+            raise RuntimeError(
+                f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
+                f"번들 필요(§9·G0). 기동 시 로드되지 않았다(재시작 후 재확인).")
+        c = self._conn
         p = _bundled_ext_path(ext)
         if p:
             try:
                 c.execute(f"LOAD EXTENSION '{p}'")
+                self._exts.add(ext)
                 return
             except Exception as exc:
                 if "already" in str(exc).lower():
+                    self._exts.add(ext)
                     return
                 # 번들 경로 로드 실패 → 아래 이름 기반 폴백(dev)
         try:
             c.execute(f"LOAD EXTENSION {ext}")
+            self._exts.add(ext)
         except Exception as exc:
             low = str(exc).lower()
             if "already" in low or "statically linked" in low:
+                self._exts.add(ext)
                 return
             # ⚠ **아는 것만 말한다**(2026-07-31 실측). LOAD 가 실패하는 이유가 확장
             # 부재만은 아니다: 다른 커넥션이 쓰기 트랜잭션을 쥐고 있으면 엔진이
@@ -385,15 +436,21 @@ class EmbeddedBackend:
         않는다 — search 경로가 '인덱스 부재'로 실패했을 때 1회만 부르는 자동 복구용
         (`api.query.search`). FTS(BM25)는 항상, 벡터(HNSW)는 `dim` 이 주어질 때만
         보장한다(쿼리 임베딩 검색이 필요할 때만 벡터 인덱스 생성). 반환 {fts, vector}
-        = 이번 호출에서 실제 생성했는지. `conn` 미지정 시 writer 커넥션 — reader 뷰는
-        자기 커넥션을 넘겨(:meth:`_ReaderView.ensure_search_indexes`) 같은 커넥션이
-        곧바로 재검색하게 한다(실측: reader 커넥션 빌드도 catalog 에 반영돼 writer 도
-        본다)."""
+        = 이번 호출에서 실제 생성했는지.
+
+        ⚠ 이 메서드는 **쓰기 지점에서만** 불린다 — reader 뷰는 잡 큐로 되돌려 보낸다
+        (:meth:`_ReaderView.ensure_search_indexes`). 예전엔 reader 가 자기 커넥션을
+        `conn` 으로 넘겨 여기서 DDL 을 돌렸는데, 그게 라이터를 막았다(2026-07-31
+        실측). `conn` 은 그 시절 잔재로 지금은 넘기는 호출부가 없다 — 남겨 두되
+        (하위호환) 새 호출부가 쓰지 않게 한다."""
         c = conn or self._conn
         built = {"fts": False, "vector": False}
 
         def _create(ext: str, call: str) -> bool:
-            self._load_ext(ext, c)
+            # 인덱스 생성은 쓰기다 — 이 경로는 잡 워커(또는 CLI 단일 스레드)에서만
+            # 돈다(`_ReaderView.ensure_search_indexes` 가 잡 큐로 되돌린다). 따라서
+            # 여기서는 writer 로 로드해도 R4 를 어기지 않는다.
+            self._load_ext(ext)
             try:
                 c.execute(call)
                 return True
@@ -410,7 +467,7 @@ class EmbeddedBackend:
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn
-        self._load_ext("vector", c)
+        self._load_ext("vector", reader=conn is not None)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)  # pre-filter 과추출(§4-2)
         params: dict = {"emb": list(embedding), "k": k}
         where = _filter_clause("node", filters, params)
@@ -424,7 +481,7 @@ class EmbeddedBackend:
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn
-        self._load_ext("fts", c)
+        self._load_ext("fts", reader=conn is not None)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)
         params: dict = {"q": text, "k": k}
         where = _filter_clause("node", filters, params)
@@ -465,7 +522,7 @@ class EmbeddedBackend:
         if metric is None:
             raise ValueError(f"unsupported graph algo: {algo!r} "
                              f"(지원: {sorted(self._ALGO_METRIC)})")
-        self._load_ext("algo", c)
+        self._load_ext("algo", reader=conn is not None)
         nt = "[" + ", ".join(f"'{t}'" for t in (node_tables or self._ALGO_NODE_TABLES)) + "]"
         rt = "[" + ", ".join(f"'{t}'" for t in (rel_tables or self._ALGO_REL_TABLES)) + "]"
 
@@ -545,6 +602,15 @@ class EmbeddedBackend:
                     kwargs["buffer_pool_size"] = int(self._cfg.buffer_pool_mb) * 1024 * 1024
                 self._db = drv.Database(src, **kwargs)
                 self._conn = drv.Connection(self._db)
+                # 새 Database 인스턴스는 확장 카탈로그가 비어 있다 — 캐시가 남아
+                # 있으면 리더가 "로드됨"으로 믿고 QUERY_FTS_INDEX 를 불러 정체
+                # 불명의 'function not defined' 를 맞는다. 무효화 후 재로드한다.
+                self._exts.clear()
+                for _e in ("fts", "vector"):
+                    try:
+                        self._load_ext(_e)
+                    except Exception:
+                        pass
         return dest
 
     def close(self) -> None:
