@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """Streamable HTTP 전송 — 원격 프로파일(D36)용 루프백 MCP 서버.
 
-바인딩은 127.0.0.1 고정 기본(F4) — 공개 노출은 Caddy 가 전담한다(deploy/
-Caddyfile). 엔드포인트:
+바인딩은 127.0.0.1 고정 기본(F4). ⚠ **허브(Azure)에서는 이 기본이 아니다** —
+컨테이너 엔트리포인트가 `--host 0.0.0.0 --port 8790` 으로 띄우고 Container Apps
+인그레스가 그대로 공개한다(`packaging/docker-entrypoint.sh`). 예전엔 Caddy 가 앞단에서
+경로를 골라 막았지만 **가비아 VM 과 함께 사라졌다** — 지금 앞단은 없다. 엔드포인트:
 
   POST   /mcp                            JSON-RPC 요청(단건) → JSON 응답
   DELETE /mcp                            세션 종료(선택 — 보내는 호스트만)
@@ -583,10 +585,15 @@ class _Handler(BaseHTTPRequestHandler):
     def _internal_purge(self):
         """`POST /internal/purge-owner` — 계정 서명 어서션 → owner 전 노드 삭제.
 
-        **이 경로는 공개 도달 금지**(deploy/Caddyfile 이 mcp.* 의 /internal/* 를 404
-        로 차단, 루프백 127.0.0.1:8790 만). 그 위에 계정 Ed25519 어서션을 필수화해
-        심층방어한다(verify-key 의 대칭 — 신뢰 방향만 반대: 계정이 서명, 우리가
-        account 공개키로 검증). owner 는 서명된 `sub` 에서만 유도 → 스코프 위조 불가."""
+        ⚠ **이 경로는 지금 공개 도달 가능하다.** 원래 설계는 이중 방어였다 — Caddy 가
+        `mcp.*` 의 `/internal/*` 를 404 로 끊고(루프백만 허용), 그 위에 계정 Ed25519
+        어서션을 얹는 심층방어. 그런데 **Caddy 는 가비아 VM 과 함께 사라졌고** Azure
+        인그레스에는 대체 규칙이 없다. 즉 남은 관문은 **서명 하나뿐**이다
+        (DEPLOYMENT.md 도 같은 사실을 기록한다). 이 서명 검증을 느슨하게 만드는 변경은
+        곧바로 인증 우회가 된다는 뜻이므로, 여기를 고칠 때는 그 전제로 볼 것.
+
+        서명은 verify-key 의 대칭이다(신뢰 방향만 반대: 계정이 서명, 우리가 account
+        공개키로 검증). owner 는 서명된 `sub` 에서만 유도 → 스코프 위조 불가."""
         if not self.app.purge_enabled():
             return self._json(503, {"error": "purge_disabled"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""

@@ -273,8 +273,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "backup":
         # 단발(오프라인) 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지).
         # ⚠ 서버 기동 중에는 임베디드 드라이버 배타 락으로 열리지 않는다 — 서비스가 떠 있으면
-        # HTTP `POST /backup`(서버 프로세스 내부 스냅샷)을 써야 무중단이다(deploy/
-        # vinc-backup.sh). 이 CLI 경로는 서비스 정지 시의 오프라인 백업용.
+        # HTTP `POST /backup`(서버 프로세스 내부 스냅샷)을 써야 무중단이다.
+        # 이 CLI 경로는 서비스 정지 시의 오프라인 백업용.
         # D43 데이터 홈 해석(serve 와 동일): --data > MEMORY_DATA_DIR > ~/.vinc/db.
         from .backup import make_backup
         from store.config import load_config, resolve_data_dir
