@@ -187,6 +187,43 @@ class DocstoreE2E(unittest.TestCase):
             "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c", {"d": doc_id})
         return int(rows[0]["c"])
 
+    def test_쓰기가_FTS_인덱스를_끊지_않는다(self):
+        """문서 저장·삭제·임베딩 적용이 도는 동안에도 **키워드 검색이 답해야** 한다.
+
+        예전엔 이 네 경로가 전부 벡터+FTS 인덱스를 통째로 드롭했다. 재빌드는 검색 경로에
+        위임돼 있어서, 배경 임베딩이 도는 동안 사용자 검색은 "인덱스 부재 → 잡 큐 재빌드
+        → 최대 60초 대기"를 밟았다. 실측하니 임베딩 60라운드 내내 FTS 성공이 **0회**였다.
+        지금 유일하게 동작하는 검색 경로가 FTS 인데 배경 작업이 그걸 끄고 있었던 것이다.
+
+        이제 벡터 인덱스만 드롭한다(그건 세그폴트 방어라 필수 — `drop_vector_index` 주석).
+        이 테스트는 FTS 드롭이 쓰기 경로로 되돌아오면 깨진다."""
+        try:
+            self.store.build_search_indexes(dim=4)
+        except Exception as exc:                       # 확장 미가용(오프라인 미번들)
+            self.skipTest(f"검색 확장 미가용: {str(exc)[:80]}")
+
+        def fts_alive(word="정본검색어"):
+            try:
+                return len(self.store.fulltext_search(word, 5)) > 0
+            except Exception:
+                return False
+
+        d1 = ds.put_doc(self.store, owner="user:a",
+                        text="정본검색어 alpha\n\n" + "본문 하나. " * 60, title="A")
+        self.assertTrue(d1["executed"])
+        self.assertTrue(fts_alive(), "문서 저장이 FTS 를 끊었다")
+
+        # 워커가 벡터를 채우는 경로 — 여기는 벡터 인덱스를 드롭하지만 FTS 는 살아야 한다.
+        ids = self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id",
+                             {"d": d1["doc_id"]})
+        ds.apply_embeddings(self.store, d1["doc_id"],
+                            {r["id"]: [0.1, 0.2, 0.3, 0.4] for r in ids})
+        self.assertTrue(fts_alive(), "임베딩 적용이 FTS 를 끊었다 — 회귀")
+
+        d2 = ds.put_doc(self.store, owner="user:a", text="버릴 문서 beta", title="B")
+        ds.delete_doc(self.store, d2["doc_id"], owner="user:a")
+        self.assertTrue(fts_alive(), "문서 삭제가 FTS 를 끊었다")
+
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
         out = ds.put_doc(self.store, owner="user:a", text=text, title="정본")

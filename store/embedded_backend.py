@@ -440,17 +440,45 @@ class EmbeddedBackend:
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
                 f"번들 필요(§9·G0). 원인: {exc}") from exc
 
-    def drop_search_indexes(self) -> None:
-        """벡터+FTS 인덱스 제거(멱등). ⚠ **적재 전 호출 필수** — 인덱스가 걸린
-        embedding 열은 수정 불가하므로, 재적재 시 먼저 drop 해야 MERGE 가 가능하다."""
+    def drop_vector_index(self) -> None:
+        """**벡터(HNSW) 인덱스만** 제거(멱등). 쓰기 경로가 불러야 하는 건 이쪽이다.
+
+        **왜 FTS 는 안 건드리나 (2026-07-31 실측).** 오랫동안 쓰기 경로가 둘 다 드롭했고
+        재빌드는 검색 경로에 위임했다. 그 결과 **임베딩이 도는 동안 키워드 검색이
+        전부 실패했다**(실측: 임베딩 60라운드 중 FTS 성공 0회). 지금 유일하게 동작하는
+        검색 경로가 FTS 인데 배경 작업이 그걸 주기적으로 끄고 있었던 셈이다.
+        FTS 는 mutable 이고(삽입·삭제가 즉시 반영) 아래 크래시 경로와도 무관하므로
+        드롭할 이유가 없다. 벡터만 드롭하면 2,000청크 적재 중 FTS 검색이 200/200 성공한다.
+
+        **왜 벡터는 여전히 드롭해야 하나.** 엔진 인덱스가 mutable 로 바뀌어 "인덱스 걸린
+        embedding 열은 수정 불가"라는 옛 전제는 문자 그대로는 거짓이다 — SET 이 성공한다.
+        그런데 **성공한 뒤 죽는다**: 벡터가 없던 자리에 벡터가 생기면(= HNSW 삽입) 수백 건
+        지점에서 **세그폴트**가 난다(실측 exit 139, 2,000청크 적재 시 문서 50~60 부근).
+        같은 행의 벡터 **값만** 바꾸는 것은 2,000회 무사하고, embedding 없는 행 삽입과
+        대량 삭제도 각각 2,000청크까지 무사하다. 즉 위험한 것은 오직 "없던 벡터가 생기는" 것.
+
+        하필 프로덕션 흐름이 정확히 그쪽이다 — `put_doc` 은 embed 콜러블이 없으면 청크를
+        벡터 없이 넣고 워커가 나중에 `apply_embeddings` 로 채운다. 세그폴트는 파이썬 예외가
+        아니라 프로세스 사망이라 `except` 로 못 막고, 허브에선 사이드카 사망 =
+        컨테이너(=MCP) 사망이다. 그래서 그 경로에서는 **드롭이 방어 장치**다.
+        (해당 지점을 지나면 `ensure_search_indexes` 가 검색 시 다시 만든다.)"""
         self._load_ext("vector")
+        try:
+            self._conn.execute(f"CALL DROP_VECTOR_INDEX('Chunk','{self._VEC_INDEX}')")
+        except Exception:
+            pass  # 미존재 — 무시(멱등)
+
+    def drop_search_indexes(self) -> None:
+        """벡터+FTS 인덱스 **둘 다** 제거(멱등). 전량 재적재·재빌드 구간 전용이다.
+
+        쓰기 경로(문서 저장·임베딩 적용)에서는 이걸 부르지 말 것 — FTS 까지 끊겨
+        그동안 키워드 검색이 죽는다. 그쪽은 :meth:`drop_vector_index` 를 쓴다."""
+        self.drop_vector_index()
         self._load_ext("fts")
-        for call in (f"CALL DROP_VECTOR_INDEX('Chunk','{self._VEC_INDEX}')",
-                     f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')"):
-            try:
-                self._conn.execute(call)
-            except Exception:
-                pass  # 미존재 — 무시(멱등)
+        try:
+            self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
+        except Exception:
+            pass  # 미존재 — 무시(멱등)
 
     def build_search_indexes(self, *, dim: int) -> None:
         """**적재 후** 벡터(HNSW)+FTS(BM25) 인덱스 생성. 재적재 시엔 사전

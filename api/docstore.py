@@ -208,18 +208,30 @@ def _clear_doc_tombstone(store, doc_id: str) -> None:
         pass
 
 
-def _drop_indexes_if_any(store) -> None:
-    # 인덱스 걸린 열(text·embedding) 변이 전 drop(멱등). 재빌드는 검색 경로의
-    # ensure_search_indexes 지연 보장(T3b)이 담당 — 여기서 재빌드하지 않는다.
-    # 확장(vector/fts) 미가용 환경에서는 로드 자체가 실패하는데, 그런 스토어엔
-    # 인덱스가 존재할 수도 없다 — **정본 쓰기를 막을 이유가 아니다**(SSoT 는
-    # 검색 확장 없이도 성립해야 한다). 삼켜지는 건 확장 로드 실패뿐, 인덱스가
-    # 실재하면 로드는 성공하고 DROP 이 정상 수행된다.
-    if hasattr(store, "drop_search_indexes"):
-        try:
-            store.drop_search_indexes()
-        except Exception:
-            pass
+def _drop_vector_index_if_any(store) -> None:
+    """**벡터가 새로 생기는 쓰기** 직전에만 부른다(멱등). 재빌드는 검색 경로의
+    ensure_search_indexes 지연 보장(T3b)이 담당 — 여기서 재빌드하지 않는다.
+
+    ⚠ 이름과 범위가 2026-07-31 에 좁아졌다. 예전엔 `_drop_indexes_if_any` 로 **FTS 까지**
+    드롭했고 문서 저장·삭제·임베딩 적용 네 경로가 전부 그걸 불렀다. 실측하니 그 설계가
+    **임베딩이 도는 동안 키워드 검색을 100% 실패시키고 있었다**(60라운드 중 FTS 성공 0회).
+    지금 유일하게 동작하는 검색이 FTS 인데 배경 작업이 주기적으로 그걸 끄고 있었다.
+
+    벡터만 드롭해야 하는 이유와, 그마저도 모든 경로에서 필요하지는 않은 이유는
+    :meth:`store.embedded_backend.EmbeddedBackend.drop_vector_index` 주석에 실측과 함께 있다.
+    요약: **"벡터가 없던 자리에 벡터가 생기는 것"만 위험하다**(HNSW 삽입 → 수백 건에서
+    세그폴트). 벡터 없는 청크 삽입·대량 삭제·기존 벡터 값 변경은 전부 안전하다(실측).
+
+    확장 미가용 환경에서는 로드가 실패하는데 그런 스토어엔 인덱스가 존재할 수도 없다 —
+    **정본 쓰기를 막을 이유가 아니다**(SSoT 는 검색 확장 없이도 성립해야 한다).
+    구 백엔드 호환: `drop_vector_index` 가 없으면 넓은 쪽으로 물러난다."""
+    fn = getattr(store, "drop_vector_index", None) or getattr(store, "drop_search_indexes", None)
+    if fn is None:
+        return
+    try:
+        fn()
+    except Exception:
+        pass
 
 
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
@@ -267,7 +279,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     stamp = updated_at or _stamp_updated_at(store)
     seq = _next_doc_seq(store, owner)
 
-    _drop_indexes_if_any(store)
+    # 벡터를 **함께 싣는 경로일 때만** 드롭한다. embed 콜러블이 없으면(허브·데스크탑
+    # 기본) 청크는 벡터 없이 들어가고, 그건 HNSW 를 건드리지 않는다 — 실측으로 2,000청크
+    # 삽입·삭제 모두 무사했다. 그때까지 FTS·벡터 인덱스를 살려 두면 저장 중에도 검색이
+    # 계속 답한다. 벡터는 나중에 워커가 apply_embeddings 로 채우고, 그쪽이 드롭을 진다.
+    if vectors is not None:
+        _drop_vector_index_if_any(store)
     # ① 구 청크 삭제(재청킹으로 개수가 줄어도 고아가 남지 않게 — 부착 MENTIONS 도
     #    DETACH 로 함께 소멸). ② 신 청크 기록. ③ 메타(해시) 기록 — 이 순서가
     # 중간 크래시 자기치유의 근거다(모듈 독스트링).
@@ -419,7 +436,9 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
                     {"d": doc_id})
     n = int(cnt[0].get("c")) if cnt else 0
     if n:
-        _drop_indexes_if_any(store)
+        # 드롭하지 않는다 — 삭제는 인덱스를 깨지 않는다(실측: 벡터를 가진 2,000청크를
+        # 인덱스가 살아 있는 채로 지워도 무사하고, 지운 행은 검색에서 곧바로 사라진다).
+        # 예전엔 여기서도 드롭해 문서 하나 지울 때마다 검색이 끊겼다.
         store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
     owner_id = (meta or {}).get("owner_id") or owner or ""
     if meta is not None:
@@ -565,7 +584,9 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
         base.update(executed=True, embedded=0)
         return base
     vectors = embed([r.get("text") or "" for r in rows])
-    _drop_indexes_if_any(store)
+    # 여기는 드롭이 **필수**다 — 벡터가 없던(또는 낡은) 청크에 벡터를 채우는 경로라
+    # HNSW 삽입이 발생하고, 그게 수백 건에서 세그폴트를 낸다(실측). FTS 는 살려 둔다.
+    _drop_vector_index_if_any(store)
     for r, v in zip(rows, vectors):
         store.run("MATCH (c:Chunk) WHERE c.chunk_id = $id SET c.embedding = $emb",
                   {"id": r["id"], "emb": list(v)})
@@ -615,7 +636,9 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, list[float]]) -> 
     if not all_ids:
         base["error"] = "unknown doc_id"
         return base
-    _drop_indexes_if_any(store)
+    # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
+    # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
+    _drop_vector_index_if_any(store)
     applied = 0
     for cid, vec in embeddings.items():
         if cid not in all_ids:
