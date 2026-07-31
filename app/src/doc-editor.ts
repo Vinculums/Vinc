@@ -261,12 +261,19 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   // 벡터 낡음(needs_embed) 처리 — 저장은 FTS 즉시, 벡터는 지연. 조용한 배지 +
   // 백그라운드 재임베딩 잡(임베딩 스택 없으면 서버가 no-op — FTS 로 서빙, 무해).
+  //
+  // ⚠ **응답이 왔다고 색인이 갱신된 것은 아니다.** 여태 fetch 가 resolve 하기만 하면
+  // "검색 색인 최신"을 띄웠는데, 서버는 임베딩 스택이 없으면 `executed:false` 로
+  // 물러난다(그때 벡터 인덱스는 그대로 낡아 있다). 그 거짓 성공 배지가 2026-07-31
+  // 쓰기 큐 사고를 **보이지 않게** 만든 장본인이다: 화면은 세 요청이 다 됐다고
+  // 말하는데 실제로는 그 요청이 잡 워커를 죽인 뒤였다. 저장 자체는 성공했으므로
+  // 강등 문구는 `저장됨` 이다(문서는 있고 FTS 로 검색된다 — 벡터만 낡았을 뿐이다).
   async function reindex(needsEmbed?: boolean): Promise<void> {
     if (!needsEmbed || !docId) return;
     setStatus(COPY.ui.atlasx.edReindexing);
     try {
-      await api.docReembed(opts.owner, docId);
-      setStatus(COPY.ui.atlasx.edReindexed);
+      const res = await api.docReembed(opts.owner, docId);
+      setStatus(res?.executed ? COPY.ui.atlasx.edReindexed : COPY.ui.atlasx.edSaved);
     } catch { setStatus(COPY.ui.atlasx.edSaved); }
   }
 
