@@ -151,6 +151,60 @@ class StoreConcurrencyTests(unittest.TestCase):
         self.assertEqual(res.get("writer"), "ok",
                          f"지연 빌드 중 쓰기가 깨졌다(회귀): {res.get('writer')}")
 
+    def test_graph_algo_is_reachable_from_the_read_path(self):
+        """구조 진단(WCC·Louvain)이 조회 경로에서 **실제로 돌아야** 한다.
+
+        `_ReaderView` 가 `graph_algo` 를 노출하지 않던 시절, `api.query._run_algo` 의
+        `getattr(store, "graph_algo", None)` 이 None 이라 서버 진단이 **상시**
+        `algo_unsupported` 로 강등됐다(실측: read_diagnose 가 executed=False,
+        components=[] — 같은 데이터에 writer 로 직접 부르면 컴포넌트 3개 정상 검출).
+        상태 화면의 "연결 안 된 섬 n개"와 suggest_ties 후보가 배포된 채 죽어 있었다.
+
+        그리고 노출만으로는 부족하다 — project_graph 는 DDL 이라 리더 커넥션에서
+        돌리면 라이터를 막는다. **잡 워커에서** 돌아야 한다(R4)."""
+        rv = self.app._reader()
+        self.assertTrue(hasattr(rv, "graph_algo"),
+                        "리더 뷰에 graph_algo 가 없다 — 진단이 상시 강등된다")
+        seen = {}
+        orig = self.store.graph_algo
+
+        def spy(*a, **kw):
+            seen["thread"] = threading.current_thread().name
+            return [{"id": "concept:x", "value": 0}]
+
+        self.store.graph_algo = spy
+        try:
+            rows = rv.graph_algo("weakly_connected_components")
+        finally:
+            self.store.graph_algo = orig
+            rv.close()
+        self.assertEqual(seen.get("thread"), "vinc-job-worker",
+                         "graph_algo 가 워커 밖에서 DDL 을 실행했다 — R4 위반")
+        # 잡 워커는 비-dict 를 {"result": ...} 로 감싼다 — 호출부가 행을 순회하므로
+        # 여기서 풀어 주지 않으면 dict 키(str)를 행으로 읽어 터진다(실측 사고).
+        self.assertEqual(rows, [{"id": "concept:x", "value": 0}],
+                         "잡 결과 포장을 풀지 않아 행 대신 다른 게 나왔다")
+
+    def test_graph_algo_failure_still_names_the_real_reason(self):
+        """확장이 없으면 그렇게 말해야 한다 — 잡 큐를 거치면서 사유가 뭉개지면
+        운영자가 "backend fallback" 같은 엉뚱한 곳을 보게 된다."""
+        import api.query as q
+        rv = self.app._reader()
+        orig = self.store.graph_algo
+
+        def boom(*a, **kw):
+            raise RuntimeError(f"임베디드 algo 확장 미가용({self.store.driver_name})")
+
+        self.store.graph_algo = boom
+        try:
+            rows, note = q._run_algo(rv, "weakly_connected_components")
+        finally:
+            self.store.graph_algo = orig
+            rv.close()
+        self.assertIsNone(rows)
+        self.assertIn("extension_unavailable", note or "",
+                      f"확장 부재가 그대로 전달되지 않았다: {note!r}")
+
     # ── §11 P2 게이트: 잡 실행 중 조회 응답성 ──────────────────────────────
     def test_reads_stay_responsive_while_writes_run(self):
         """MVCC 실측 확정 — 라이터가 쉬지 않고 써도 조회는 막히지 않는다.

@@ -122,13 +122,20 @@ class _ReaderView:
     라이터의 평범한 MERGE 가 거절된다(실측: 라이터 실패 26.0%). 기준은 SET 이
     아니라 **쓰기 트랜잭션을 요구하는가**다: DML·DDL·LOAD 전부 해당한다."""
 
-    def __init__(self, backend: "EmbeddedBackend", conn, build=None):
+    def __init__(self, backend: "EmbeddedBackend", conn, writer=None):
         self._b = backend
         self._conn = conn
-        # 지연 인덱스 빌드를 **쓰기 지점으로 돌려보내는** 통로(R4). 서버가 잡 큐에
-        # 태우는 콜러블을 주입한다. 없으면(CLI·테스트 — 동시 라이터가 없는 단일
-        # 스레드) 백엔드의 writer 커넥션으로 직접 빌드한다.
-        self._build = build
+        # 읽기 요청 중에 **불가피하게 쓰기가 필요한** 연산을 쓰기 지점으로 돌려보내는
+        # 통로(R4). 서버가 잡 큐에 태우는 `(label, fn, timeout) -> result` 를 주입한다.
+        # 없으면(CLI·테스트 — 동시 라이터가 없는 단일 스레드) 그 자리에서 실행한다.
+        # 해당 연산은 둘뿐이다: 지연 인덱스 빌드(DDL)와 그래프 알고리즘(project_graph
+        # DDL). 여기에 새 항목을 더하기 전에 정말 읽기 중에 써야 하는지 먼저 의심할 것.
+        self._writer = writer
+
+    def _at_write_point(self, label: str, fn, timeout: float):
+        if self._writer is None:
+            return fn()
+        return self._writer(label, fn, timeout)
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
         return _exec_to_dicts(self._conn, query, params or None)
@@ -155,9 +162,33 @@ class _ReaderView:
 
         읽기 경로가 쓰기를 하면 안 된다 — 그게 R4 다. 주입된 통로가 있으면 잡 큐로
         보내고, 없으면(CLI·테스트) writer 커넥션으로 직접 만든다."""
-        if self._build is not None:
-            return self._build(dim)
-        return self._b.ensure_search_indexes(dim=dim)
+        return self._at_write_point(
+            "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 60.0)
+
+    def graph_algo(self, algo: str, **kw) -> list[dict]:
+        """그래프 알고리즘(E-G3 WCC·Louvain·PageRank) — **쓰기 지점으로 보낸다**(R4).
+
+        여태 `_ReaderView` 가 이걸 아예 노출하지 않았고, `api.query._run_algo` 는
+        `getattr(store, "graph_algo", None)` 로 확인하므로 **조회 경로에서 상시
+        `algo_unsupported` 로 강등**돼 있었다(2026-07-31 실측: 서버 read_diagnose 가
+        `executed=False, components=[]`, 같은 데이터에 writer 로 직접 부르면 컴포넌트
+        3개 정상 검출). 즉 상태 화면의 "연결 안 된 섬 n개"와 suggest_ties 후보 소스가
+        배포된 채로 죽어 있었다. 게다가 사유 문구가 "store has no graph_algo (backend
+        fallback)" 라 **백엔드 탓으로 오진**돼, 확장이 번들돼 있어도 그렇게 보였다.
+
+        그냥 노출만 하면 안 된다 — `graph_algo` 는 `project_graph`/`drop_projected_graph`
+        DDL 을 돌리므로 리더 커넥션에서 실행하면 그 순간 라이터가 막힌다(이 파일이
+        방금 고친 바로 그 사고). 인덱스 빌드와 같은 통로로 잡 큐에 태운다.
+
+        대가: 진단 조회가 앞선 쓰기 잡을 기다릴 수 있다(상한 60초). 진단은 상태 화면의
+        비-핫 경로라 수용한다 — 검색 지연 빌드와 같은 판단이다.
+
+        ⚠ 잡 결과는 **dict 여야 한다**(`api.jobs` 워커가 비-dict 를 `{"result": ...}`
+        로 감싼다). 리스트를 그대로 넘기면 호출부가 dict 키(str)를 행으로 순회해
+        `'str' object has no attribute 'get'` 로 터진다 — 명시적으로 싸고 푼다."""
+        out = self._at_write_point(
+            "graph.algo", lambda: {"rows": self._b.graph_algo(algo, **kw)}, 60.0)
+        return out.get("rows") or []
 
     def close(self) -> None:
         """요청 종료 시 커넥션 해제(Database 는 서버가 계속 소유).
@@ -266,16 +297,16 @@ class EmbeddedBackend:
     # 빌드)을 실행하면 그동안 라이터의 평범한 MERGE 조차 "Cannot start a new write
     # transaction" 으로 거절된다(실측). 그래서 읽기 경로는 **쓰기를 하면 안 된다** —
     # :meth:`_ReaderView.ensure_search_indexes` 주석 참조.
-    def reader_view(self, *, build=None) -> "_ReaderView":
+    def reader_view(self, *, writer=None) -> "_ReaderView":
         """이 Database 에서 새 Connection 을 파생한 read 전용 뷰(R4). execute·search 가
-        소비하는 표면(run/fulltext_search/vector_search/close)만 제공한다. 요청 단위로
-        생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능).
+        소비하는 표면(run/fulltext_search/vector_search/graph_algo/close)만 제공한다.
+        요청 단위로 생성·close 한다(단일 사용자 — §12 R5, per-request 비용 무시 가능).
 
-        ``build``: 지연 인덱스 빌드를 쓰기 지점으로 되돌려 보내는 콜러블
-        ``(dim) -> dict``. 서버가 잡 큐 진입점을 주입한다
-        (:meth:`_ReaderView.ensure_search_indexes` 참조)."""
+        ``writer``: 읽기 요청 중 불가피한 쓰기(지연 인덱스 빌드·그래프 알고리즘의
+        project_graph)를 **쓰기 지점으로 되돌려 보내는** 콜러블
+        ``(label, fn, timeout) -> result``. 서버가 잡 큐 진입점을 주입한다."""
         drv, _ = _import_driver()
-        return _ReaderView(self, drv.Connection(self._db), build=build)
+        return _ReaderView(self, drv.Connection(self._db), writer=writer)
 
     def _exec_idem(self, stmt: str) -> None:
         """DDL 멱등 실행 — 'already' 계열(테이블/속성 이미 존재)만 흡수, 그 외 전파.
