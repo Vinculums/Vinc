@@ -139,11 +139,18 @@ async function call(path: string, params?: Record<string, string | number | unde
   return res.json();
 }
 
+/** 시간축(D72). `recorded` = 기록 시각, `content` = 문서 내용이 가리키는 시점. */
+export type TimeBasis = "recorded" | "content";
+
 export type GraphNode = {
   id: string; label: string; domain: string; degree: number;
   kind?: string;      // concept | bridge | episode | record | entity (F2 — 부착 축)
   domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
   ts?: string;        // D43 — created/date 우선, 없으면 updated_at. 빈 문자열 가능
+  // D72 — 내용 시점(그 노드가 말하는 일이 언제 있었나). 축을 `content` 로 요청하면
+  // 서버가 `ts` 를 이 값으로 갈아 끼우지만, **두 열 모두 실려 온다** — 클라이언트가
+  // 재조회 없이 축을 바꿀 수 있게. 구 사이드카에는 이 키가 아예 없다(우아 강등).
+  content_ts?: string;
   x?: number; y?: number; z?: number;
 };
 export type GraphEdge = {
@@ -230,6 +237,8 @@ export const api = {
   docGet: (owner: string, id: string): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
     content_hash?: string; error?: string;
+    // D72 — 최초 기록 시각 · 내용 시점. 구 사이드카에는 키 자체가 없다.
+    created_at?: string; content_time?: string;
   }> => call("/doc", { owner, id }),
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
@@ -237,12 +246,16 @@ export const api = {
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
   // origin 은 출처 표시(파일 import 시 파일명) — 서버의 doc 정체성 산식에 참여하고
   // 재드롭 식별의 근거가 된다. 조인 키가 아니며 UI 에도 노출하지 않는다(D45).
+  // contentTime(D72): **키가 없을 때와 빈 값일 때가 다르다.** undefined 면 보내지
+  // 않아 서버가 기존 값을 보존하고, "" 는 사용자가 지운 것이다(그래서 falsy 를
+  // 통째로 걸러내는 spread 관용구를 쓰지 않는다).
   docPut: (owner: string, text: string, id?: string, title?: string,
-           origin?: string): Promise<{
+           contentTime?: string, origin?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
-    chunks?: number; needs_embed?: boolean; error?: string;
+    chunks?: number; needs_embed?: boolean; content_time?: string; error?: string;
   }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}),
                                       ...(title ? { title } : {}),
+                                      ...(contentTime === undefined ? {} : { content_time: contentTime }),
                                       ...(origin ? { origin } : {}) }),
   // 파일 바이트 입구(D45) — 텍스트로 못 읽는 것(PDF)과 브라우저 UTF-8 디코드가
   // 망친 것(cp949 등)을 원본 바이트로 넘겨 서버 추출기에 맡긴다. multipart 가
@@ -276,10 +289,14 @@ export const api = {
   // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
   navTree: (owner: string): Promise<NavTreeRes> => call("/nav-tree", { owner }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
-  docsInRange: (owner: string, start: string, end: string, domain?: string): Promise<{
-    executed: boolean; total?: number;
+  // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
+  // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.
+  docsInRange: (owner: string, start: string, end: string, domain?: string,
+                basis?: TimeBasis): Promise<{
+    executed: boolean; total?: number; basis?: string;
     items?: { id: string; kind: string; title: string; ts: string; domain: string }[];
-  }> => call("/docs-in-range", { owner, start, end, ...(domain ? { domain } : {}) }),
+  }> => call("/docs-in-range", { owner, start, end, ...(domain ? { domain } : {}),
+                                 ...(basis ? { basis } : {}) }),
   // D45-V2 3단계 — 합계 구간 클릭: 그 (도메인, mark) 의 개념 목록(원장 수치 정합).
   ledgerDrilldown: (owner: string, domain: string, mark: string, seed?: string): Promise<{
     executed: boolean; total?: number;

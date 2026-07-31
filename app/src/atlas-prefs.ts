@@ -27,7 +27,12 @@ export type AtlasPrefs = {
   layout: AtlasLayout;         // D34 preset — coords stay sidecar-computed (D17)
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
   railW: number;               // D70 — 우측 문서 패널 폭(rem). 끌어서 조절, 기기별 지속
+  // D72 — 타임라인 시간축. `recorded` = 기록 시각(기본), `content` = 내용상 시점.
+  // 관점(view)이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른 시계로 볼 뿐이다.
+  timelineBasis: TimeBasis;
 };
+export type TimeBasis = "recorded" | "content";
+export const TIME_BASES: TimeBasis[] = ["recorded", "content"];
 export const RAIL_MIN = 16;    // rem — 원문 한 줄이 읽히는 하한
 export const RAIL_MAX = 36;    // rem — 지도가 남는 상한(패널이 화면을 삼키지 않게)
 // D47 — `totalsGroup`("주제별/출처별" 묶음 토글)은 폐기했다. 합계가 3열 생키가
@@ -40,6 +45,7 @@ const DEFAULTS: AtlasPrefs = {
   unlinked: "show", layout: "radial",
   timelineDocs: true,
   railW: 20,
+  timelineBasis: "recorded",
 };
 
 export function loadPrefs(): AtlasPrefs {
@@ -57,6 +63,7 @@ export function loadPrefs(): AtlasPrefs {
       layout: LAYOUTS.includes(p.layout) ? p.layout : "radial",
       timelineDocs: p.timelineDocs !== false,
       railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)),
+      timelineBasis: p.timelineBasis === "content" ? "content" : "recorded",
     };
   } catch {
     return { ...DEFAULTS };

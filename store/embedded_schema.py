@@ -33,7 +33,10 @@ _NODE_TABLES: dict[str, dict] = {
         ("concept_id", "STRING"), ("stem", "STRING"), ("owner_id", "STRING"),
         ("domain", "STRING"), ("topic", "STRING"), ("title", "STRING"),
         ("one_liner", "STRING"), ("status", "STRING"), ("created", "STRING"),
-        ("tags", "STRING[]"), ("source_file", "STRING"), ("props", "STRING")]},
+        ("tags", "STRING[]"), ("source_file", "STRING"), ("props", "STRING"),
+        # v7(D72) — 내용 시점. `created` 는 "이 노드가 언제 생겼나"이고 이것은
+        # "이 노드가 말하는 일이 언제 있었나"다. 둘은 다른 축이라 겹쳐 쓰지 않는다.
+        ("content_time", "STRING")]},
     # bridges_ingest (+ owner_id v2 — F5: 무소유 구조 노드였던 Bridge 를 소유
     # 스코프에 편입. '' = v2 마이그레이션 이전 레거시 행(신뢰할 소유 원천 부재 —
     # 호스티드는 다중 테넌트 혼재 — 라 백필하지 않는다; 로컬은 bridges_ingest
@@ -48,7 +51,8 @@ _NODE_TABLES: dict[str, dict] = {
     "Record": {"pk": "record_id", "cols": [
         ("record_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
         ("tenant_id", "STRING"), ("domain", "STRING"), ("tags", "STRING[]"),
-        ("created", "STRING"), ("props", "STRING")]},
+        ("created", "STRING"), ("props", "STRING"),
+        ("content_time", "STRING")]},   # v7(D72) — Concept 과 같은 축
     # skill_tracker
     "SkillExecution": {"pk": "exec_id", "cols": [
         ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
@@ -144,7 +148,15 @@ _META_TABLES: dict[str, dict] = {
         # (텍스트만 전송, embedding 은 수신측 재생성 — 벡터가 번들 한계를 잠식).
         # needs_embed(D45-E 후속3) = 1 이면 이 문서 청크가 임베딩 없이 적재됨(앱 내
         # 편집·동기화 수신 경로는 FTS 즉시·벡터 지연). 백그라운드 재임베딩 잡이 채운다.
-        ("updated_at", "STRING"), ("sync_seq", "INT64"), ("needs_embed", "INT64")]},
+        ("updated_at", "STRING"), ("sync_seq", "INT64"), ("needs_embed", "INT64"),
+        # v7(D72) — 시간축 이원화. 여태 문서에 남는 시각은 `updated_at`(수정 시각)
+        # 하나뿐이라, 문서를 고칠 때마다 "언제 만든 글인가"가 지워졌다.
+        #   created_at   : **최초 1회만** 기록하고 편집이 보존한다(HLC).
+        #   content_time : 문서 *내용*이 가리키는 시점(1905년 상대성이론 같은).
+        #                  자유 문자열이되 `YYYY[-MM[-DD]]` 접두 검증 통과분만 저장 —
+        #                  비교·버킷이 전부 문자열 사전식이라 형식이 곧 계약이다.
+        # 둘 다 '' 가 합법이다(레거시 행·미입력). 소비처는 없으면 없다고 말한다.
+        ("created_at", "STRING"), ("content_time", "STRING")]},
     # 문서 삭제 표식(P3) — _DocMeta 하드삭제만으론 상대 사본이 다음 delta 에 실려
     # 부활한다. doc 단위 동기화의 삭제 전파용. 재생성(put_doc)이 상쇄한다.
     "_DocTombstone": {"pk": "doc_id", "cols": [
@@ -169,7 +181,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -206,6 +218,13 @@ def migration_statements(from_version: int) -> list[str]:
         stmts.append("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0")
     if from_version < 6:   # v6 — 앱 내 편집 재임베딩 표식(D45-E 후속3).
         stmts.append("ALTER TABLE _DocMeta ADD needs_embed INT64 DEFAULT 0")
+    if from_version < 7:   # v7 — 시간축 이원화(D72). 기록 시각과 내용 시점을 가른다.
+        # '' = 모름. 구 행에 오늘을 찍지 않는다 — 없는 시간을 지어내면 타임라인이
+        # "전부 마이그레이션한 날"에 몰린다(팩 재-MERGE 가 냈던 병과 같은 뿌리).
+        stmts.append("ALTER TABLE Concept ADD content_time STRING DEFAULT ''")
+        stmts.append("ALTER TABLE Record ADD content_time STRING DEFAULT ''")
+        stmts.append("ALTER TABLE _DocMeta ADD created_at STRING DEFAULT ''")
+        stmts.append("ALTER TABLE _DocMeta ADD content_time STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

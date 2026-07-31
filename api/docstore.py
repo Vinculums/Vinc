@@ -146,8 +146,25 @@ def _meta(store, doc_id: str) -> dict | None:
         "MATCH (d:_DocMeta) WHERE d.doc_id = $id RETURN d.doc_id AS doc_id, "
         "d.owner_id AS owner_id, d.title AS title, d.origin AS origin, "
         "d.content_hash AS content_hash, d.chunk_count AS chunk_count, "
-        "d.updated_at AS updated_at, d.needs_embed AS needs_embed", {"id": doc_id})
+        "d.updated_at AS updated_at, d.needs_embed AS needs_embed, "
+        # v7(D72) — put_doc 이 created_at 을 보존하려면 먼저 읽어야 한다.
+        "d.created_at AS created_at, d.content_time AS content_time", {"id": doc_id})
     return rows[0] if rows else None
+
+
+# ── 내용 시점(D72) ───────────────────────────────────────────────────────────
+_CONTENT_TIME_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+
+
+def _norm_content_time(v: str | None) -> str:
+    """`YYYY` · `YYYY-MM` · `YYYY-MM-DD` 만 통과시킨다. 나머지는 빈 문자열.
+
+    형식이 곧 계약이다: 이 축의 비교·버킷은 전부 **문자열 사전식**이라(날짜 파싱을
+    도입하지 않는다 — `ts` 계약과 동형) 자릿수가 어긋나면 정렬이 조용히 무너진다.
+    `1905-6` 처럼 자리를 안 채운 값도 거부하는 이유가 그것이다. 기원전·음수 연도는
+    미지원이고, 불합격은 던지지 않고 **비운다** — 저장은 성공하되 축에서 빠진다."""
+    s = str(v or "").strip()
+    return s if _CONTENT_TIME_RE.match(s) else ""
 
 
 def _stamp_updated_at(store) -> str:
@@ -210,7 +227,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             max_chars: int = DEFAULT_MAX_CHARS,
             boundaries: list[int] | None = None,
             embed: Callable[[list[str]], list[list[float]]] | None = None,
-            link: bool = True, updated_at: str | None = None) -> dict:
+            link: bool = True, updated_at: str | None = None,
+            created_at: str | None = None, content_time: str | None = None) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
@@ -281,13 +299,23 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # needs_embed: 임베딩 없이 적재됐으면 1(앱 편집·동기화 수신 경로) — 벡터 검색이
     # 낡음을 표식하고 백그라운드 재임베딩 잡의 대상이 된다. embed 를 받은 경로(배치)는 0.
     needs_embed = 0 if vectors is not None else 1
+    # v7(D72) — created_at 은 **최초 1회**만 찍고 편집이 보존한다. 여태 문서에 남는
+    # 시각이 updated_at 하나뿐이라, 고칠 때마다 "언제 만든 글인가"가 지워졌다.
+    # 레거시 행은 원천이 없으므로 '' 로 남긴다(오늘로 채우면 그게 곧 거짓 시각이다).
+    if prev is None:
+        born = created_at or stamp          # 신규 — 지금이 곧 최초 시각
+    else:
+        born = str(prev.get("created_at") or "")   # 편집 — 있으면 보존, 없으면 ''
+    ctime = _norm_content_time(content_time) if content_time is not None \
+        else str((prev or {}).get("content_time") or "")
     store.run(
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
-        "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne",
+        "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne, "
+        "d.created_at = $born, d.content_time = $ctime",
         {"id": doc_id, "owner": owner, "title": title, "origin": origin,
          "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq,
-         "ne": needs_embed})
+         "ne": needs_embed, "born": born, "ctime": ctime})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
 
@@ -365,7 +393,10 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
                 origin=meta.get("origin") or "", owner_id=meta.get("owner_id"),
                 content_hash=meta.get("content_hash"), chunks=len(rows),
                 updated_at=meta.get("updated_at"), verified=verified,
-                needs_embed=bool(int(meta.get("needs_embed") or 0)))
+                needs_embed=bool(int(meta.get("needs_embed") or 0)),
+                # v7(D72) — 편집기가 내용 시점을 편집하려면 지금 값을 알아야 한다.
+                created_at=meta.get("created_at") or "",
+                content_time=meta.get("content_time") or "")
     if not verified:
         base["note"] = ("복원 검증 실패 — 레거시(오프셋 미기록) 또는 부분 기록. "
                         "re-put 으로 치유 가능")
@@ -494,7 +525,8 @@ def list_docs(store, *, owner: str | None = None) -> dict:
     rows = store.run(
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
         "d.origin AS origin, d.chunk_count AS chunks, d.updated_at AS updated_at, "
-        "d.needs_embed AS needs_embed "
+        "d.needs_embed AS needs_embed, "
+        "d.created_at AS created_at, d.content_time AS content_time "   # v7(D72)
         "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))} for r in (rows or [])]
 
@@ -832,24 +864,34 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     if not apply:
         return base
     created = matched = 0
+    # v7(D72) — 문서의 내용 시점을 파생 개념에 물려준다. 개념은 그 문서에서 나왔으므로
+    # 문서가 가리키는 시점이 곧 그 개념이 말하는 시점이다. **비파괴**다: 이미 값이
+    # 있는 개념은 건드리지 않는다(사용자 손질 보호 — 아래 matched 규칙과 같은 태도).
+    ctime = _norm_content_time(meta.get("content_time"))
     for c in cands:
         cid = f"concept:{c['slug']}"
         exists = store.run(
-            "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o",
-            {"id": cid})
+            "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o, "
+            "n.content_time AS ct", {"id": cid})
         if exists:
             if exists[0].get("o") not in (owner, "", None):
                 continue   # 남의 개념 — 건드리지 않는다(SEC-1)
             matched += 1
-            continue       # 내 기존 개념 — 덮어쓰기 금지(사용자 손질 보호)
+            # 내 기존 개념 — 덮어쓰기 금지. 단 **비어 있는 내용 시점만** 채운다:
+            # 문서에 시점을 뒤늦게 적었을 때 이미 뽑힌 개념이 영영 축에서 빠지지 않게.
+            if ctime and not (exists[0].get("ct") or ""):
+                store.run("MATCH (n:Concept) WHERE n.concept_id = $id "
+                          "SET n.content_time = $ct", {"id": cid, "ct": ctime})
+            continue
         store.run(
             "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = $ol, "
             "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
-            "n.stem = $slug, n.source_file = $origin, n.created = $now",
+            "n.stem = $slug, n.source_file = $origin, n.created = $now, "
+            "n.content_time = $ct",
             {"id": cid, "t": c["title"], "ol": c["one_liner"], "owner": owner,
              "slug": c["slug"], "origin": meta.get("origin") or "",
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
-             "now": _now_iso()})
+             "now": _now_iso(), "ct": ctime})
         created += 1
     linked = _relink_mentions(store, doc_id, owner=owner,
                               origin=meta.get("origin") or "")

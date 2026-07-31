@@ -346,10 +346,15 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
         "coalesce(c.created, c.updated_at, '') AS ts, "
+        # v7(D72) — 내용 시점을 **별도 열로** 나른다(ts 에 접지 않는다). 클라이언트가
+        # 둘 다 받아 두면 축 전환에 재조회가 필요 없다. Concept 만 이 열을 가지므로
+        # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
+        "coalesce(c.content_time, '') AS content_ts, "
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
-        "coalesce(d.created, d.updated_at, '') AS target_ts"
+        "coalesce(d.created, d.updated_at, '') AS target_ts, "
+        "coalesce(d.content_time, '') AS target_content_ts"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 
@@ -398,16 +403,23 @@ def shape_graph(rows: list[dict]) -> dict:
     도착한 개념이 영구히 무날짜로 굳는다."""
     nodes: dict[str, dict] = {}
 
-    def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None):
+    def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None,
+              content_ts=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
                           "kind": kind or "concept", "degree": 0,
                           "props": _props_to_obj(props), "tags": list(tags or []),
-                          "ts": ts or ""}
+                          "ts": ts or "", "content_ts": content_ts or ""}
             if domain2:
                 nodes[nid]["domain2"] = domain2
-        elif ts and not nodes[nid]["ts"]:
-            nodes[nid]["ts"] = ts          # 빈 ts 만 승격 — 나머지는 선착 우선
+        else:
+            # 빈 시간열만 나중 행이 채운다 — 나머지 필드는 선착 우선 불변.
+            # content_ts(D72)도 같은 규칙: 열이 없는 축 플랜(Bridge·Entity)에서
+            # 먼저 도착한 노드가 영구히 무시점으로 굳지 않게 한다.
+            if ts and not nodes[nid]["ts"]:
+                nodes[nid]["ts"] = ts
+            if content_ts and not nodes[nid].get("content_ts"):
+                nodes[nid]["content_ts"] = content_ts
         return nodes[nid]
 
     edges: list[dict] = []
@@ -416,7 +428,7 @@ def shape_graph(rows: list[dict]) -> dict:
         if not nid:
             continue
         _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
-              r.get("kind"), r.get("domain2"), r.get("ts"))
+              r.get("kind"), r.get("domain2"), r.get("ts"), r.get("content_ts"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
@@ -424,7 +436,7 @@ def shape_graph(rows: list[dict]) -> dict:
             # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
             _node(tgt, r.get("target_label"), r.get("target_domain"),
                   r.get("target_props"), r.get("target_tags"), r.get("target_kind"),
-                  ts=r.get("target_ts"))
+                  ts=r.get("target_ts"), content_ts=r.get("target_content_ts"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
             # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
@@ -583,10 +595,15 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
         "coalesce(c.created, c.updated_at, '') AS ts, "
+        # v7(D72) — 내용 시점을 **별도 열로** 나른다(ts 에 접지 않는다). 클라이언트가
+        # 둘 다 받아 두면 축 전환에 재조회가 필요 없다. Concept 만 이 열을 가지므로
+        # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
+        "coalesce(c.content_time, '') AS content_ts, "
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
-        "coalesce(d.created, d.updated_at, '') AS target_ts"
+        "coalesce(d.created, d.updated_at, '') AS target_ts, "
+        "coalesce(d.content_time, '') AS target_content_ts"
     )
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
@@ -681,10 +698,15 @@ def record_rows_plan(*, owner: str, domain: str | None = None,
         "RETURN rc.record_id AS id, rc.title AS label, rc.domain AS domain, "
         "rc.props AS props, coalesce(rc.tags, []) AS tags, 'record' AS kind, "
         "coalesce(rc.created, rc.updated_at, '') AS ts, "
+        # v7(D72) — Record 도 content_time 을 얻었다(Concept 과 같은 축). 여기 두 끝은
+        # Record·Concept 이라 둘 다 열이 있다. Bridge·Entity 축 플랜에는 열이 없으므로
+        # 절대 옮겨 붙이지 않는다 — 붙이면 모든 레벨의 /graph 가 Binder 로 죽는다.
+        "coalesce(rc.content_time, '') AS content_ts, "
         "'ATTACHES_TO' AS rel, r.type AS role, "
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
         "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
-        "coalesce(c.created, c.updated_at, '') AS target_ts"
+        "coalesce(c.created, c.updated_at, '') AS target_ts, "
+        "coalesce(c.content_time, '') AS target_content_ts"
     )
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
@@ -1136,8 +1158,31 @@ def layout_positions(nodes: list[dict], edges: list[dict],
     return nodes
 
 
+# 시간축(D72). `recorded` = 기록 시각(현행 ts), `content` = 문서 내용이 가리키는 시점.
+BASIS_RECORDED = "recorded"
+BASIS_CONTENT = "content"
+_BASES = (BASIS_RECORDED, BASIS_CONTENT)
+
+
+def _apply_basis(shaped: dict, basis: str) -> str:
+    """`content` 축이면 노드의 `ts` 를 `content_ts` 로 갈아 끼운다.
+
+    **Cypher 를 분기하지 않는 이유**: 시간열을 조건절에 넣는 순간 플랜 수만큼 Binder
+    함정(§4)이 늘어난다. 투영은 두 열을 항상 싣고, 어느 쪽을 쓸지는 여기서 정한다.
+    클라이언트도 두 열을 다 받으므로 축 전환에 재조회가 필요 없다.
+
+    돌려주는 값은 **실제로 적용한 축**이다 — 미지 값은 조용히 recorded 로 강등하고
+    그 사실을 응답이 에코한다(화면이 무엇을 셌는지 밝힐 수 있게)."""
+    if basis != BASIS_CONTENT:
+        return BASIS_RECORDED
+    for n in shaped.get("nodes", []):
+        n["ts"] = n.get("content_ts") or ""
+    return BASIS_CONTENT
+
+
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
-          depth: int = 2, layout: str = "radial", cfg=None, store=None) -> dict:
+          depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
+          cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
@@ -1208,7 +1253,9 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
-        return {"executed": executed, "seed": seed, "depth": depth, "found": found, **shaped}
+        used = _apply_basis(shaped, basis)
+        return {"executed": executed, "seed": seed, "depth": depth, "found": found,
+                "basis": used, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
@@ -1219,7 +1266,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
-    return {"executed": res.get("executed", False), **shaped}
+    used = _apply_basis(shaped, basis)
+    return {"executed": res.get("executed", False), "basis": used, **shaped}
 
 
 def domain_ties_plan(*, owner: str) -> QueryPlan:
@@ -1895,7 +1943,8 @@ def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
 
 
 def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None,
-                  limit: int = 200, cfg=None, store=None) -> dict:
+                  limit: int = 200, basis: str = BASIS_RECORDED,
+                  cfg=None, store=None) -> dict:
     """기간(날짜 범위) 항목 질의 — 타임라인 기간 브러시(D45-V2 4단계). 조회 전용.
 
     타임라인이 그리는 점은 **날짜를 가진 Episode·Concept** 다. 브러시로 [start,end]
@@ -1913,11 +1962,17 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
     ts.slice 규약과 동형). 빈 값은 ``'' >= $s`` 가 거짓이라 자동 제외된다.
     ``domain`` 렌즈 선택. SEC-1 owner 스코프.
 
+    ``basis``(D72) — 차트가 어느 축을 그리고 있는지 그대로 받는다. `content` 축에서는
+    **Episode 를 세지 않는다**: 에피소드에는 내용 시점 열이 없어(있지도 않은 값을
+    빈 문자열로 취급하면 전부 구간 밖) 모집단에서 정직하게 빠진다. 대신 Record 가
+    합류한다 — Concept 과 같은 열을 얻었기 때문이다.
+
     반환: {executed, start, end, basis, items:[{id, kind, title, ts, domain}], total}."""
     cfg = cfg or load_config()
+    on_content = basis == BASIS_CONTENT
     base: dict = {"kind": "docs-in-range", "executed": False,
                   "start": start, "end": end, "items": [],
-                  "basis": "authored-or-updated"}
+                  "basis": BASIS_CONTENT if on_content else "authored-or-updated"}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -1931,18 +1986,36 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
         params = {"owner": owner, "s": start, "e": end}
         if domain:
             params["domain"] = domain
-        rows = store.run(
-            "MATCH (e:Episode) WHERE e.owner_id = $owner "
-            "AND coalesce(e.date, e.updated_at, '') >= $s "
-            f"AND coalesce(e.date, e.updated_at, '') < $e{dclause} "
-            "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
-            "coalesce(e.date, e.updated_at, '') AS ts, e.domain AS domain "
-            "UNION ALL "
-            "MATCH (c:Concept) WHERE c.owner_id = $owner "
-            "AND coalesce(c.created, c.updated_at, '') >= $s "
-            f"AND coalesce(c.created, c.updated_at, '') < $e{cclause} "
-            "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
-            "coalesce(c.created, c.updated_at, '') AS ts, c.domain AS domain", params) or []
+        rclause = " AND rc.domain = $domain" if domain else ""
+        if on_content:
+            # 내용 축 — 열을 가진 라벨만(Concept·Record). 빈 값은 `'' >= $s` 가 거짓이라
+            # 자동으로 빠진다: 내용 시점을 안 적은 노드를 0 이나 오늘로 채우지 않는다.
+            cypher = (
+                "MATCH (c:Concept) WHERE c.owner_id = $owner "
+                "AND coalesce(c.content_time, '') >= $s "
+                f"AND coalesce(c.content_time, '') < $e{cclause} "
+                "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
+                "coalesce(c.content_time, '') AS ts, c.domain AS domain "
+                "UNION ALL "
+                "MATCH (rc:Record) WHERE rc.owner_id = $owner "
+                "AND coalesce(rc.content_time, '') >= $s "
+                f"AND coalesce(rc.content_time, '') < $e{rclause} "
+                "RETURN rc.record_id AS id, 'record' AS kind, rc.title AS title, "
+                "coalesce(rc.content_time, '') AS ts, rc.domain AS domain")
+        else:
+            cypher = (
+                "MATCH (e:Episode) WHERE e.owner_id = $owner "
+                "AND coalesce(e.date, e.updated_at, '') >= $s "
+                f"AND coalesce(e.date, e.updated_at, '') < $e{dclause} "
+                "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
+                "coalesce(e.date, e.updated_at, '') AS ts, e.domain AS domain "
+                "UNION ALL "
+                "MATCH (c:Concept) WHERE c.owner_id = $owner "
+                "AND coalesce(c.created, c.updated_at, '') >= $s "
+                f"AND coalesce(c.created, c.updated_at, '') < $e{cclause} "
+                "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
+                "coalesce(c.created, c.updated_at, '') AS ts, c.domain AS domain")
+        rows = store.run(cypher, params) or []
         rows.sort(key=lambda r: (r.get("ts") or "", r.get("id") or ""))
         items = [{"id": r["id"], "kind": r.get("kind") or "", "title": r.get("title") or r["id"],
                   "ts": r.get("ts") or "", "domain": r.get("domain") or ""}

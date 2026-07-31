@@ -743,7 +743,7 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "6")
+        self.assertEqual(rows[0]["v"], "7")
         # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
         store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
                   "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")

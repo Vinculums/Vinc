@@ -6,7 +6,8 @@ import { COPY } from "../copy";
 import { enableLasso, flyTo3d, findNode3d, mount3d, mountMinis3d,
          type L3, type N3 } from "./atlas3d";
 import { mount2d, type Handle2d } from "./atlas2d";
-import { foldLedgerPaths, mountTimeline, mountTotals, timelinePool,
+import { bucketRange, foldLedgerPaths, mountTimeline, mountTotals, pickGrain,
+         timelinePool, type Grain,
          type PlanarHandle, type TotalsPath } from "./atlas-planar";
 import { openShareSheet } from "../sheets";
 import { openContextMenu, confirmDestructive } from "../components";
@@ -137,6 +138,8 @@ export async function renderAtlas(el: HTMLElement) {
   // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
   // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
   let curNodes: GraphNode[] = [];
+  // 지금 타임라인이 쓰는 버킷 알갱이(D72) — 밴드 클릭이 같은 구간을 만들어야 한다.
+  let periodGrain: Grain = "month";
   const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
   const trail: Level[] = [];
 
@@ -467,7 +470,7 @@ export async function renderAtlas(el: HTMLElement) {
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "timeline": return ["docs", "labels"];
+      case "timeline": return ["basis", "docs", "labels"];
       // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
       // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
       // atlas-planar.mountTotals 주석). 원장 뷰에 남는 선택지가 없다.
@@ -517,6 +520,13 @@ export async function renderAtlas(el: HTMLElement) {
       docs: row(COPY.ui.panel.docLinks,
         chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
         + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
+      // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른
+      // 시계로 볼 뿐이라 관점 세그(3D·2D·타임라인·Sankey) 옆에 두지 않는다.
+      basis: row(COPY.ui.panel.timeBasis,
+        chip("timelineBasis", "recorded", COPY.ui.panel.basisRecorded,
+             p.timelineBasis === "recorded")
+        + chip("timelineBasis", "content", COPY.ui.panel.basisContent,
+               p.timelineBasis === "content")),
     };
 
     // 범례는 **접힘 기본**. 매번 다 펼쳐 두면 패널이 화면 높이를 덮는다(실측 1102px).
@@ -920,20 +930,21 @@ export async function renderAtlas(el: HTMLElement) {
     }
   }
 
-  /** 타임라인 월-밴드 클릭 → 그 달 항목(D45-V2 4단계). "그때 무슨 일이 있었나".
-   *  세로 밴드 타임라인이라 브러시를 월 단위로 이산화했다(자유 픽셀 드래그 아님). */
-  async function openPeriod(month: string, domain?: string) {
-    // "YYYY-MM" → 다음 달(반개구간 상한). 날짜 파싱 없이 문자열 산술.
-    const [y, mo] = month.split("-").map(Number);
-    const end = mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+  /** 타임라인 밴드 클릭 → 그 구간 항목(D45-V2 4단계). "그때 무슨 일이 있었나".
+   *  브러시는 밴드 하나 = 한 버킷으로 이산화돼 있다(자유 픽셀 드래그 아님).
+   *  ⚠ 구간과 **기준(basis)** 둘 다 차트가 쓴 것을 그대로 넘긴다(D72) — 하나라도
+   *  어긋나면 밴드가 보여 준 수와 목록의 수가 달라져 화면이 자기를 반박한다. */
+  async function openPeriod(bucket: string, domain?: string) {
+    const p = curPrefs();
+    const [start, end] = bucketRange(bucket, periodGrain);
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.periodLoading}</p>`;
     try {
-      const res = await api.docsInRange(cfg.owner, month, end, domain);
+      const res = await api.docsInRange(cfg.owner, start, end, domain, p.timelineBasis);
       if (detail.hidden) return;
       if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.atlasx.periodFail}</p>`; return; }
       const items = res.items || [];
-      const head = `<h2>${esc(COPY.ui.atlasx.periodHeader(month, res.total || 0))}</h2>`;
+      const head = `<h2>${esc(COPY.ui.atlasx.periodHeader(bucket, res.total || 0))}</h2>`;
       if (items.length === 0) {
         detail.innerHTML = head + `<p class="hint">${COPY.ui.atlasx.periodEmpty}</p>`;
         return;
@@ -1549,10 +1560,15 @@ export async function renderAtlas(el: HTMLElement) {
       return;
     }
     drawMetrics(gnodes);
+    // D72 — 시간축은 여기서 고른다. 서버가 `content` 를 요청받으면 ts 를 이미 갈아
+    // 끼워 주지만, 두 열이 다 실려 오므로 **재조회 없이** 바꿔 끼울 수 있다. 구
+    // 사이드카에는 content_ts 자체가 없어 내용 축이 빈 상태로 정직하게 강등된다.
+    const onContent = p.timelineBasis === "content";
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
-      domain: nd.domain, ts: nd.ts, kind: nd.kind || "concept",
+      domain: nd.domain, ts: onContent ? (nd.content_ts || "") : nd.ts,
+      kind: nd.kind || "concept",
     }));
     const openNode = (id: string) => {
       trail.push({ kind: "l2", seed: id, domain: gnodes.find((n) => n.id === id)?.domain });
@@ -1566,7 +1582,13 @@ export async function renderAtlas(el: HTMLElement) {
       // 걸러진 노드를 세면 "빈 캔버스에 문구 없음"이거나 undated 가 부풀어 오른다.
       const shown = timelinePool(nodes, p.timelineDocs);
       const dated = shown.filter((n) => !!(n.ts && n.ts.trim()));
-      if (dated.length === 0) { setMsg(`<div class="empty"><p>${COPY.ui.atlasx.noDates}</p></div>`); return; }
+      if (dated.length === 0) {
+        // 내용 축이 비어 있는 것과 아예 날짜가 없는 것은 다른 사정이다 — 내용 시점은
+        // 사람이 적어야 생기므로, 그 축에서는 무엇을 하면 채워지는지까지 말한다(D72).
+        setMsg(`<div class="empty"><p>${onContent
+          ? COPY.ui.panel.noContentTime : COPY.ui.atlasx.noDates}</p></div>`);
+        return;
+      }
       setMsg(solo ? `<div class="empty"><p>${COPY.ui.atlasx.soloNode}</p></div>` : "");
       // 상한 가드 — 평면은 노드마다 <g> 를 만드는 DOM 렌더라 전량(L0)에서 수천 개면
       // 무거워진다. 자르되 **조용히 자르지 않는다**: 최근 것부터 남기고 몇 개를
@@ -1582,6 +1604,9 @@ export async function renderAtlas(el: HTMLElement) {
       // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈, L2(ego)는
       // 스코프가 여러 도메인이라 렌즈 없이(그 달 전체) 연다.
       const periodDomain = level.kind === "l1" ? level.domain : undefined;
+      // 밴드 클릭이 넘길 구간을 만들려면 차트와 **같은 알갱이**를 알아야 한다 —
+      // 차트는 월, 목록은 연으로 세면 두 수가 어긋난다(D72).
+      periodGrain = pickGrain(dated.map((n) => n.ts!));
       planar = mountTimeline(canvas, feed, {
         docs: p.timelineDocs, labels: p.labels !== "none", onOpen: openNode,
         onMonth: (m) => void openPeriod(m, periodDomain),

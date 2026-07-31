@@ -109,10 +109,10 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 6)   # D45-E — 편집 재임베딩 표식
+        self.assertEqual(eschema.SCHEMA_VERSION, 7)   # D72 — 시간축 이원화
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
-        # 0→6 는 v1~v6 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed)
+        # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)
         v0 = eschema.migration_statements(0)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''", v0)
         self.assertTrue(any("ADD updated_at" in s for s in v0))
@@ -122,13 +122,19 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("ALTER TABLE Chunk ADD char_start INT64 DEFAULT -1", v0)  # v4
         self.assertIn("ALTER TABLE _DocMeta ADD sync_seq INT64 DEFAULT 0", v0)  # v5
         self.assertIn("ALTER TABLE _DocMeta ADD needs_embed INT64 DEFAULT 0", v0)  # v6
-        # v3→6 = Chunk SSoT(v4) + _DocMeta sync_seq(v5)·needs_embed(v6)
+        self.assertIn("ALTER TABLE _DocMeta ADD created_at STRING DEFAULT ''", v0)  # v7
+        self.assertIn("ALTER TABLE Concept ADD content_time STRING DEFAULT ''", v0)  # v7
+        # v3→7 = Chunk SSoT(v4) + _DocMeta sync_seq(v5)·needs_embed(v6)·시간축(v7)
         v3 = eschema.migration_statements(3)
         self.assertTrue(any("Chunk" in s for s in v3))
         self.assertTrue(any("_DocMeta" in s for s in v3))
         v5 = eschema.migration_statements(5)
-        self.assertTrue(v5 and all("needs_embed" in s for s in v5))
-        self.assertEqual(eschema.migration_statements(6), [])   # 최신은 no-op
+        self.assertTrue(any("needs_embed" in s for s in v5))
+        # v7 은 시간축 네 열만(구 행 백필 없음 — 없는 시간을 지어내지 않는다).
+        v6 = eschema.migration_statements(6)
+        self.assertEqual(len(v6), 4)
+        self.assertTrue(all("DEFAULT ''" in s for s in v6))
+        self.assertEqual(eschema.migration_statements(7), [])   # 최신은 no-op
 
     def test_docmeta_table_and_chunk_ssot_columns(self):
         # D45 — Chunk=SSoT: 신규 설치 DDL 에 소유·오프셋 열과 _DocMeta(본문 없는

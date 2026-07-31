@@ -75,6 +75,8 @@ export type DocEditorOpts = {
   highlights?: { char_start: number; char_end: number }[];
   /** 제목 줄을 숨긴다(레일처럼 바깥에 이미 제목이 있는 자리). */
   hideTitle?: boolean;
+  /** D72 — 내용 시점 초기값. docId 만 주면 로드 시 서버 값으로 채운다. */
+  contentTime?: string;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -84,6 +86,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let title = opts.title || "";
   let initial = opts.initial ?? "";
   let hash = opts.contentHash || "";
+  let contentTime = opts.contentTime || "";   // D72 — 내용 시점(빈 값 = 안 적음)
 
   if (docId && opts.initial === undefined) {
     host.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerLoading}</p>`;
@@ -93,6 +96,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
+    contentTime = doc.content_time || "";
   }
 
   host.innerHTML = `
@@ -101,6 +105,15 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         value="${esc(title)}" style="flex:1;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
         font-weight:700;font-size:1.15em;padding:.2rem 0"/>
+      <!-- D72 — 내용 시점. 제목 줄 옆에 두는 이유: 문서를 쓰는 순간이 "이게 언제
+           이야기인가"를 가장 잘 아는 때다. 형식은 YYYY[-MM[-DD]] 이고, 어긋나면
+           서버가 조용히 비운다(저장은 성공한다 — 축에서만 빠질 뿐이다). -->
+      <input id="ed-ctime" placeholder="${esc(COPY.ui.atlasx.edContentTimePh)}"
+        value="${esc(contentTime)}" inputmode="numeric" maxlength="10"
+        data-tip="${esc(COPY.ui.atlasx.edContentTimeTip)}"
+        style="width:7.5rem;background:transparent;color:inherit;
+        border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
+        font-size:.85em;padding:.2rem 0"/>
       <span class="hint" id="ed-status">${COPY.ui.atlasx.edSaved}</span>
     </div>
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:32vh;resize:vertical;
@@ -112,6 +125,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       margin-top:.4rem;padding-top:.4rem;font-size:.9em;line-height:1.5"></div>`;
 
   const titleInput = host.querySelector<HTMLInputElement>("#ed-title")!;
+  const ctimeInput = host.querySelector<HTMLInputElement>("#ed-ctime")!;
   const src = host.querySelector<HTMLTextAreaElement>("#ed-src")!;
   const prev = host.querySelector<HTMLElement>("#ed-prev")!;
   const status = host.querySelector<HTMLElement>("#ed-status")!;
@@ -120,6 +134,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   let lastSaved = initial;
   let lastTitle = title;
+  let lastCtime = contentTime;
   let timer: number | undefined;
   let saving = false;
   let cm: import("./codemirror-editor").CmHandle | null = null;
@@ -174,16 +189,19 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     });
   }
 
-  titleInput.addEventListener("input", () => {
-    setStatus(COPY.ui.atlasx.edDirty);
-    if (timer) window.clearTimeout(timer);
-    timer = window.setTimeout(() => void save(), 2000);
-  });
+  for (const el of [titleInput, ctimeInput]) {
+    el.addEventListener("input", () => {
+      setStatus(COPY.ui.atlasx.edDirty);
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void save(), 2000);
+    });
+  }
 
   async function save(force = false): Promise<void> {
     const text = getText();
     const t = titleInput.value;
-    if (saving || (!force && text === lastSaved && t === lastTitle)) return;
+    const ct = ctimeInput.value.trim();
+    if (saving || (!force && text === lastSaved && t === lastTitle && ct === lastCtime)) return;
     saving = true;
     setStatus(COPY.ui.atlasx.edSaving);
     try {
@@ -221,10 +239,16 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
           return;
         }
       }
-      const res = await api.docPut(opts.owner, text, docId, t);
+      const res = await api.docPut(opts.owner, text, docId, t, ct);
       if (!res.executed) throw new Error(res.error || "put failed");
       if (res.doc_id) docId = res.doc_id;              // 신규 → 생성된 id 확보
-      lastSaved = text; lastTitle = t; hash = res.content_hash || hash;
+      lastSaved = text; lastTitle = t; lastCtime = ct; hash = res.content_hash || hash;
+      // 서버가 형식 미달을 비웠으면 입력칸도 그 사실을 반영한다 — 화면에는 남아
+      // 있는데 저장은 안 된 값이 보이면, 다음에 열었을 때 사라져 있어 놀란다.
+      if (ct && res.content_time !== undefined && res.content_time !== ct) {
+        ctimeInput.value = res.content_time || "";
+        lastCtime = ctimeInput.value;
+      }
       setStatus(COPY.ui.atlasx.edSaved);
       opts.onSaved?.(docId || "", t);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }

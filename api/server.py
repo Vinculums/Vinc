@@ -167,10 +167,13 @@ class VincApp:
     def read_graph(self, p):
         # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
+        # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
                                             depth=_int(p.get("depth"), 2),
-                                            layout=p.get("layout") or "radial", store=r))
+                                            layout=p.get("layout") or "radial",
+                                            basis=p.get("basis") or q.BASIS_RECORDED,
+                                            store=r))
 
     def read_atlas(self, p):
         # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
@@ -439,9 +442,12 @@ class VincApp:
 
     def read_docs_in_range(self, p):
         # D45-V2 4단계 — 타임라인 기간 브러시: [start, end) 구간의 날짜 있는 항목.
+        # ⚠ basis 는 차트가 보낸 값을 그대로 받아야 한다 — 밴드를 눌러 여는 목록이
+        # 다른 시간 열로 세면 화면이 스스로를 반박한다(D72 · docs_in_range 독스트링).
         return self._read(lambda r: q.docs_in_range(
             owner=_req(p, "owner"), start=_req(p, "start"), end=_req(p, "end"),
-            domain=p.get("domain") or None, limit=_int(p.get("limit"), 200), store=r))
+            domain=p.get("domain") or None, limit=_int(p.get("limit"), 200),
+            basis=p.get("basis") or q.BASIS_RECORDED, store=r))
 
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
@@ -454,10 +460,15 @@ class VincApp:
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 정본은 무소유로 두지 않는다(SEC-1)"}
+        # content_time(D72)은 **키가 없을 때와 빈 값일 때가 다르다**: 키가 없으면
+        # 기존 값을 보존하고, 빈 문자열이면 사용자가 지운 것이다. None 으로 뭉개면
+        # 제목만 고쳐도 내용 시점이 되살아난다.
+        ctime = body.get("content_time")
         res = self.jobs.run_sync("doc.put", lambda: docstore.put_doc(
             self.store, owner=owner, text=_req(body, "text"),
             doc_id=body.get("id") or None, title=body.get("title") or "",
-            origin=body.get("origin") or ""))
+            origin=body.get("origin") or "",
+            content_time=None if ctime is None else str(ctime)))
         return 200, res
 
     def write_doc_put_file(self, body):

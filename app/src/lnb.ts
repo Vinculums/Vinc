@@ -97,17 +97,17 @@ function surfaceHash(): string {
 }
 
 function navRows(): string {
-  // 표면 이동 — 크럼이 지고 간 자리. 표면 이름은 고유명사라 번역하지 않는다(D42).
+  // **홈 하나뿐이다**(발주자 지시 2026-07-31). 검색은 상단 바가 상시로 들고 있고,
+  // 가져오기·공유는 Tools 로 갔다(D71) — 같은 문을 두 번 그리지 않는다. 남은 하나는
+  // "전체 지도로 돌아가기"라서, 크럼이 지고 간 자리를 실제로 메우는 유일한 행이다.
+  // (Search·Packs 표면 자체는 살아 있고 해시·팔레트·단축키 1~3 으로 간다.)
   const here = surfaceHash();
-  const items: [string, string, string][] = [
-    ["atlas", COPY.ui.topbar.home, "graph"],
-    ["search", "Search", "search"],
-    ["packs", "Packs", "pack-in"],
-  ];
-  return `<nav class="lnb-nav" aria-label="${esc(COPY.ui.lnb.documents)}">` + items.map(([h, label, ic]) =>
-    `<a class="lnb-navrow${h === here ? " on" : ""}" href="#${h}"${h === here ? ' aria-current="page"' : ""}>
-       <span class="lnb-ico" aria-hidden="true">${icon(ic, 15)}</span><span>${esc(label)}</span></a>`).join("")
-    + `</nav>`;
+  const on = here === "atlas";
+  return `<nav class="lnb-nav" aria-label="${esc(COPY.ui.topbar.home)}">
+      <a class="lnb-navrow${on ? " on" : ""}" href="#atlas"${on ? ' aria-current="page"' : ""}>
+        <span class="lnb-ico" aria-hidden="true">${icon("graph", 15)}</span>
+        <span>${esc(COPY.ui.topbar.home)}</span></a>
+    </nav>`;
 }
 
 function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number }): string {

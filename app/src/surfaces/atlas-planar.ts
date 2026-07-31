@@ -43,6 +43,37 @@ export type PlanarHandle = { dispose(): void; focus?(id: string): boolean };
 /** 타임라인이 받는 마크 — 원래 Flow 와 공유하던 모양이라 이름이 Flow* 였다.
  *  Flow 폐기(D53) 후에도 모양은 그대로라 이름만 중립화한다. */
 export type PlanarNode = { id: string; label: string; domain: string };
+
+/** 타임라인 버킷 알갱이(D72). 키는 전부 ts 의 접두라 사전식 정렬이 곧 시간순이다. */
+export type Grain = "month" | "year" | "decade";
+
+/** 고유 버킷 수가 화면에 담길 만큼일 때까지 알갱이를 물린다.
+ *  월 48개(4년)·연 60개(60년)가 상한 — 그 이상은 밴드가 글자보다 좁아진다. */
+export function pickGrain(list: string[]): Grain {
+  const uniq = (n: number) => new Set(list.map((t) => t.slice(0, n))).size;
+  if (uniq(7) <= 48) return "month";
+  if (uniq(4) <= 60) return "year";
+  return "decade";
+}
+
+export function bucketKey(ts: string, g: Grain): string {
+  if (g === "month") return ts.slice(0, 7);
+  if (g === "year") return ts.slice(0, 4);
+  return `${ts.slice(0, 3)}0`;      // 190x → 1900
+}
+
+/** 버킷 키 → 반개구간 [start, end). 문자열 산술뿐이다(날짜 파싱 금지 — ts 계약).
+ *  끝값은 "다음 버킷의 시작"이고, 자리수를 유지해야 사전식 비교가 성립한다. */
+export function bucketRange(key: string, g: Grain): [string, string] {
+  if (g === "month") {
+    const y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7));
+    const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+    return [key, `${String(ny).padStart(4, "0")}-${String(nm).padStart(2, "0")}`];
+  }
+  const step = g === "year" ? 1 : 10;
+  const y = Number(key);
+  return [key, String(y + step).padStart(4, "0")];
+}
 /** Timeline 에서 "문서 연결"(timelineDocs=off)로 걷어내는 부착 노드종. */
 const DOC_KINDS = ["episode", "record"];
 /** 같은 걸러내기를 호출부(빈 상태 판정·날짜 없는 수 세기)도 써야 한다 — 챠트가
@@ -169,14 +200,21 @@ function wireFocus(el: HTMLElement, h: {
 export function mountTimeline(el: HTMLElement,
   nodes: (PlanarNode & { ts?: string; kind?: string })[],
   o: { docs: boolean; labels: boolean; onOpen: (id: string) => void;
-       /** 월 칸 클릭 → 그 달("YYYY-MM") 기간 항목(D45-V2 4단계). 가로축이라
-        *  브러시는 세로 띠 하나 = 한 달이다(자유 픽셀 드래그 대신 이산). */
-       onMonth?: (month: string) => void }): PlanarHandle {
+       /** 칸 클릭 → 그 구간의 항목(D45-V2 4단계). 가로축이라 브러시는 세로 띠
+        *  하나 = 한 버킷이다(자유 픽셀 드래그 대신 이산). 넘기는 값은 버킷 키
+        *  ("2026-05" · "1905" · "1900")이고, 구간 해석은 호출부가 한다. */
+       onMonth?: (bucket: string) => void }): PlanarHandle {
   const pool = timelinePool(nodes, o.docs);
   // 날짜 없는 노드는 레인에 올리지 않는다(빈 ts 는 정상값 — 상류가 자주 비운다).
   const dated = pool.filter((n) => !!(n.ts && n.ts.trim()))
     .slice()
     .sort((a, b) => (a.ts! < b.ts! ? -1 : a.ts! > b.ts! ? 1 : a.id < b.id ? -1 : 1));
+  // **버킷 알갱이 적응(D72)** — 내용 시점 축은 범위가 세기 단위로 벌어져 월 밴드가
+  // 수백 개가 된다. 고유 버킷 수를 보고 월 → 연 → 십년으로 물러난다. 자르기가 아니라
+  // 접기라 항목은 하나도 빠지지 않는다. 키는 전부 ts 의 **접두 문자열**이라 파싱이
+  // 없고(사전식 = 시간순 계약 유지), 십년만 넷째 자리를 0 으로 눌러 만든다.
+  const grain = pickGrain(dated.map((n) => n.ts!));
+  const bucketOf = (ts: string) => bucketKey(ts, grain);
   // 주제 없는 항목(브릿지 등)도 레인 하나를 갖되 이름을 붙인다 — 무명 레인은
   // "이게 뭐지"로 끝난다(U6). 정렬은 이름순이되 미분류는 늘 마지막.
   const laneKey = (n: { domain: string }) => n.domain || "";
@@ -184,13 +222,13 @@ export function mountTimeline(el: HTMLElement,
     .sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a < b ? -1 : 1));
   const laneAt = new Map(lanes.map((d, i) => [d, i]));
   const laneName = (d: string) => (d || COPY.ui.atlasx.unfiled);
-  const months = [...new Set(dated.map((n) => n.ts!.slice(0, 7)))];   // 정렬본 → 이미 오름차순
+  const months = [...new Set(dated.map((n) => bucketOf(n.ts!)))];   // 정렬본 → 이미 오름차순
   const monthAt = new Map(months.map((m, i) => [m, i]));
-  // 같은 달·같은 레인 안 순번 — 가로로 흩어 겹침을 없앤다.
+  // 같은 버킷·같은 레인 안 순번 — 가로로 흩어 겹침을 없앤다.
   const slot = new Map<string, number>();
   const per = new Map<string, number>();
   for (const n of dated) {
-    const k = `${n.ts!.slice(0, 7)}|${laneKey(n)}`;
+    const k = `${bucketOf(n.ts!)}|${laneKey(n)}`;
     const i = per.get(k) || 0;
     slot.set(n.id, i);
     per.set(k, i + 1);
@@ -218,8 +256,8 @@ export function mountTimeline(el: HTMLElement,
     const laneH = Math.max(LANE_H, (H - top - bot) / Math.max(lanes.length, 1));
     const laneY = (d: string) => top + ((laneAt.get(d) || 0) + 0.5) * laneH;
     const xOf = (n: { id: string; ts?: string; domain: string }) => {
-      const i = monthAt.get(n.ts!.slice(0, 7)) || 0;
-      const m = `${n.ts!.slice(0, 7)}|${laneKey(n)}`;
+      const i = monthAt.get(bucketOf(n.ts!)) || 0;
+      const m = `${bucketOf(n.ts!)}|${laneKey(n)}`;
       const cnt = Math.max(per.get(m) || 1, 1);
       return colX[i] + (colW[i] * (slot.get(n.id)! + 0.5)) / cnt;
     };

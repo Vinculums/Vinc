@@ -32,6 +32,9 @@ def export_docs(store, *, owner: str, since: int = 0) -> dict:
         "MATCH (d:_DocMeta) WHERE d.owner_id = $o AND d.sync_seq > $s "
         "RETURN d.doc_id AS doc_id, d.title AS title, d.origin AS origin, "
         "d.content_hash AS content_hash, d.updated_at AS updated_at, "
+        # v7(D72) — 시간축 두 열도 함께 나른다. 안 실으면 수신 기기가 자기 시각으로
+        # created_at 을 새로 찍어, 같은 문서가 기기마다 다른 "만든 날"을 갖게 된다.
+        "d.created_at AS created_at, d.content_time AS content_time, "
         "d.sync_seq AS sync_seq ORDER BY d.sync_seq",
         {"o": owner, "s": int(since)})
     docs = []
@@ -44,6 +47,8 @@ def export_docs(store, *, owner: str, since: int = 0) -> dict:
             "doc_id": r["doc_id"], "title": r.get("title") or "",
             "origin": r.get("origin") or "", "content_hash": r.get("content_hash"),
             "updated_at": r.get("updated_at") or "", "text": got.get("text") or "",
+            "created_at": r.get("created_at") or "",
+            "content_time": r.get("content_time") or "",
         })
         cursor = max(cursor, int(r.get("sync_seq") or 0))
     trows = store.run(
@@ -92,9 +97,14 @@ def import_docs(store, *, owner: str, payload: dict,
             if not _newer(remote_ua, cur.get("updated_at") or ""):
                 skipped += 1          # 로컬이 같거나 더 새다 → LWW 로 로컬 유지
                 continue
+        # v7(D72) — 원격의 시간 두 열을 그대로 박는다. created_at 은 로컬에 없을
+        # 때만 의미가 있고(put_doc 이 기존 값을 보존한다), 구 송신자는 키가 없어
+        # None 이 되므로 로컬 규칙이 그대로 적용된다(하위호환).
         res = ds.put_doc(store, owner=owner, text=d.get("text") or "", doc_id=doc_id,
                          title=d.get("title") or "", origin=d.get("origin") or "",
-                         embed=embed, link=True, updated_at=remote_ua or None)
+                         embed=embed, link=True, updated_at=remote_ua or None,
+                         created_at=d.get("created_at") or None,
+                         content_time=d.get("content_time"))
         if res.get("executed") and not res.get("skipped"):
             if cur is None:
                 applied += 1

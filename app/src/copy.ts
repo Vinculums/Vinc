@@ -189,6 +189,10 @@ const EN = {
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
       docLinks: "Document links",
+      // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
+      timeBasis: "Time",
+      basisRecorded: "when recorded", basisContent: "when it happened",
+      noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     atlasx: {
@@ -203,6 +207,9 @@ const EN = {
       lassoHint: "⇧ Shift-drag to select an area, then share it",
       // 상세 레일 — 수치는 node-context 가 세고(연결·방향·부착), 관계 목록은 근거
       // 유무를 함께 싣는다. 어느 동선으로 열어도 같은 숫자가 나온다는 것을 밝힌다.
+      // D72 — 내용 시점 입력(문서를 쓰는 자리에서 함께 적는다).
+      edContentTimePh: "When (YYYY)",
+      edContentTimeTip: "When this is about. Year, or year-month, or a full date.",
       railTitle: "Node detail",
       railClose: "Close",
       statTopic: "Topic",
@@ -673,6 +680,9 @@ const KO: Deck = {
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       docLinks: "문서 연결",
+      timeBasis: "시간",
+      basisRecorded: "기록한 때", basisContent: "일어난 때",
+      noContentTime: "아직 내용 시점이 적힌 것이 없습니다. 문서를 쓸 때 함께 적어 두세요.",
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     atlasx: {
@@ -685,6 +695,8 @@ const KO: Deck = {
       gateway: " · 게이트웨이",
       shareSlice: (n) => `팩으로 공유 (${n})`,
       lassoHint: "⇧ Shift+드래그로 영역을 선택해 공유하세요",
+      edContentTimePh: "언제 (YYYY)",
+      edContentTimeTip: "이 글이 다루는 시점입니다. 연도, 연-월, 또는 날짜까지.",
       railTitle: "노드 상세",
       railClose: "닫기",
       statTopic: "주제",
