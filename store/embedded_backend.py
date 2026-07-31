@@ -115,9 +115,13 @@ class _ReaderView:
     `api.query.search` 에 store 로 주입된다. 쓰기(SET) 는 이 뷰로 흘리지 않는다 —
     쓰기는 잡 워커의 writer Connection 으로만 직렬화된다(R4)."""
 
-    def __init__(self, backend: "EmbeddedBackend", conn):
+    def __init__(self, backend: "EmbeddedBackend", conn, build=None):
         self._b = backend
         self._conn = conn
+        # 지연 인덱스 빌드를 **쓰기 지점으로 돌려보내는** 통로(R4). 서버가 잡 큐에
+        # 태우는 콜러블을 주입한다. 없으면(CLI·테스트 — 동시 라이터가 없는 단일
+        # 스레드) 백엔드의 writer 커넥션으로 직접 빌드한다.
+        self._build = build
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
         return _exec_to_dicts(self._conn, query, params or None)
@@ -129,12 +133,40 @@ class _ReaderView:
         return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
 
     def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
-        """검색 인덱스 지연 보장(T3b) — **reader 자기 커넥션**에서 빌드해, 지연 빌드
-        직후 같은 뷰가 곧바로 재검색하게 한다(cross-connection 가시성 문제 회피)."""
-        return self._b.ensure_search_indexes(dim=dim, conn=self._conn)
+        """검색 인덱스 지연 보장(T3b) — **쓰기 지점으로 되돌려 보낸다**(R4).
+
+        여태 이걸 **리더 자기 커넥션**에서 실행했다. 이유는 "지연 빌드 직후 같은 뷰가
+        곧바로 재검색하게(cross-connection 가시성 회피)"였는데, 2026-07-31 실측으로
+        두 전제가 다 뒤집혔다:
+
+        ① **가시성은 문제가 아니다.** 인덱스가 없을 때 연 리더 커넥션도, 라이터가
+           만든 인덱스를 곧바로 본다(실측: 기존 리더가 즉시 fulltext_search 성공).
+        ② **리더의 DDL 은 라이터를 망가뜨린다.** 엔진은 쓰기 트랜잭션을 하나만
+           허용해서, 리더가 인덱스를 만드는 ~0.5초 동안 라이터의 **평범한 MERGE 조차**
+           `Cannot start a new write transaction` 로 거절된다(실측). 즉 이건 드문
+           DDL-DDL 경합이 아니라 저장·삭제가 통째로 실패할 수 있는 상시 위험이었다.
+
+        읽기 경로가 쓰기를 하면 안 된다 — 그게 R4 다. 주입된 통로가 있으면 잡 큐로
+        보내고, 없으면(CLI·테스트) writer 커넥션으로 직접 만든다."""
+        if self._build is not None:
+            return self._build(dim)
+        return self._b.ensure_search_indexes(dim=dim)
 
     def close(self) -> None:
-        self._conn = None   # 요청 종료 시 커넥션 해제(Database 는 서버가 계속 소유)
+        """요청 종료 시 커넥션 해제(Database 는 서버가 계속 소유).
+
+        ⚠ 참조만 버리면 **해제가 아니다**(2026-07-31 실측 정정). 드라이버
+        `Connection` 에는 `close()` 가 실재하고(실측: close 뒤 execute 는
+        RuntimeError), `__del__` 은 **없다** — 즉 참조를 놓는 것만으로는 언제
+        풀릴지 알 수 없다. 요청마다 커넥션을 새로 만드는 구조라 이 누수는 부하에
+        비례해 쌓인다. 명시적으로 닫는다."""
+        c, self._conn = self._conn, None
+        if c is None:
+            return
+        try:
+            c.close()
+        except Exception:
+            pass   # 이미 닫혔거나 구 드라이버 — 참조를 놓은 것으로 충분하다
 
 
 def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
@@ -210,15 +242,28 @@ class EmbeddedBackend:
     # 사이드카(§11 P2)는 단일 Database 를 프로세스 수명 동안 소유하고, 쓰기는 잡
     # 워커의 단일 writer Connection 으로 직렬화한다(R4 쓰기 지점). 조회는 동일
     # Database 에서 파생한 **별도 reader Connection** 으로 수행해, 쓰기 잡 진행
-    # 중에도 응답성을 유지한다(§11 P2 게이트 — "잡 실행 중 조회 응답성"). Kùzu 계보는
-    # Database 당 다중 Connection + MVCC 로 writer 진행 중 reader 스냅샷 일관을
-    # 보장한다(P2 착수 시 실측 확정 — 불성립 시 reader 직렬화로 폴백).
-    def reader_view(self) -> "_ReaderView":
+    # 중에도 응답성을 유지한다(§11 P2 게이트 — "잡 실행 중 조회 응답성").
+    #
+    # **MVCC 실측 확정(2026-07-31)** — 미검증으로 남아 있던 가정을 측정했다. 라이터가
+    # 쉬지 않고 MERGE 하는 동안 리더의 조회 지연은 중앙 1.33ms · 최대 2.32ms 로,
+    # 유휴 시(중앙 1.25ms)와 사실상 같다. 즉 **읽기는 쓰기에 막히지 않는다** — 예고된
+    # 폴백("불성립 시 reader 직렬화")은 필요 없고, 도입해서도 안 된다(그게 곧 P2
+    # 게이트를 깨는 일이다).
+    #
+    # ⚠ 단 **쓰기 트랜잭션은 여전히 하나뿐이다.** 리더 커넥션이 DDL(지연 인덱스
+    # 빌드)을 실행하면 그동안 라이터의 평범한 MERGE 조차 "Cannot start a new write
+    # transaction" 으로 거절된다(실측). 그래서 읽기 경로는 **쓰기를 하면 안 된다** —
+    # :meth:`_ReaderView.ensure_search_indexes` 주석 참조.
+    def reader_view(self, *, build=None) -> "_ReaderView":
         """이 Database 에서 새 Connection 을 파생한 read 전용 뷰(R4). execute·search 가
         소비하는 표면(run/fulltext_search/vector_search/close)만 제공한다. 요청 단위로
-        생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능)."""
+        생성·close 한다(단일 사용자 규모 — §12 R5, per-request 커넥션 비용 무시 가능).
+
+        ``build``: 지연 인덱스 빌드를 쓰기 지점으로 되돌려 보내는 콜러블
+        ``(dim) -> dict``. 서버가 잡 큐 진입점을 주입한다
+        (:meth:`_ReaderView.ensure_search_indexes` 참조)."""
         drv, _ = _import_driver()
-        return _ReaderView(self, drv.Connection(self._db))
+        return _ReaderView(self, drv.Connection(self._db), build=build)
 
     def _exec_idem(self, stmt: str) -> None:
         """DDL 멱등 실행 — 'already' 계열(테이블/속성 이미 존재)만 흡수, 그 외 전파.
@@ -298,8 +343,17 @@ class EmbeddedBackend:
         try:
             c.execute(f"LOAD EXTENSION {ext}")
         except Exception as exc:
-            if "already" in str(exc).lower() or "statically linked" in str(exc).lower():
+            low = str(exc).lower()
+            if "already" in low or "statically linked" in low:
                 return
+            # ⚠ **아는 것만 말한다**(2026-07-31 실측). LOAD 가 실패하는 이유가 확장
+            # 부재만은 아니다: 다른 커넥션이 쓰기 트랜잭션을 쥐고 있으면 엔진이
+            # "Cannot start a new write transaction" 로 거절한다(실측 — 리더의 지연
+            # 인덱스 빌드와 겹칠 때). 그걸 "확장 미가용 — 오프라인 배포 시 번들 필요"
+            # 로 감싸면 운영자를 패키징 문제로 보내는 **틀린 진단**이 된다. 확장과
+            # 무관한 사유는 원문 그대로 올린다.
+            if "transaction" in low:
+                raise
             raise RuntimeError(
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
                 f"번들 필요(§9·G0). 원인: {exc}") from exc

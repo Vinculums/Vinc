@@ -27,6 +27,7 @@ import os
 import secrets
 import signal
 import sys
+import inspect
 import threading
 import time
 import urllib.parse
@@ -97,6 +98,7 @@ class VincApp:
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
+        self._reader_takes_build: bool | None = None   # 스토어가 build= 를 받는가(1회 판정)
         # 계정 연결 메일박스(디바이스 연결 플로우) — state 논스 → {expires,[key,email]}.
         # 인메모리 전용(재기동 시 소멸 — 연결 진행 중이면 다시 시작). B1 유지: 로그인·
         # 키 발급은 전부 브라우저(vincs.app)에서 일어나고, 앱은 발급된 키를 받기만 한다.
@@ -132,7 +134,30 @@ class VincApp:
         if self.store is None:
             return None
         with self._conn_lock:
+            # `reader_view` 는 **스토어 인터페이스**다 — 다른 백엔드·테스트 더블도
+            # 구현한다. 새 키워드를 강제하면 그것들이 통째로 깨지므로(실측: 더블이
+            # TypeError → 500), 지원하는 스토어에만 넘긴다.
+            if self._reader_takes_build is None:
+                self._reader_takes_build = _accepts_kw(self.store.reader_view, "build")
+            if self._reader_takes_build:
+                return self.store.reader_view(build=self._build_search_indexes)
             return self.store.reader_view()
+
+    def _build_search_indexes(self, dim):
+        """검색 인덱스 지연 빌드(T3b)를 **쓰기 지점으로 돌린다**(R4).
+
+        인덱스 생성은 DDL = 쓰기다. 읽기 스레드가 자기 리더 커넥션에서 이걸 실행하면
+        엔진의 단일 쓰기 트랜잭션을 붙들어, 그동안 잡 워커의 평범한 저장조차
+        `Cannot start a new write transaction` 로 실패한다(2026-07-31 실측).
+
+        타임아웃을 짧게 두는 이유: 이 호출은 **조회 요청 안**에 있다. 앞에 긴 적재
+        잡이 있으면 검색이 그만큼 매달리는데, 그때는 인덱스 없이 강등하는 편이 낫다
+        (호출부 `api.query.search` 가 예외를 index_build_failed 로 표면화한다).
+        실측 빌드 시간은 1초 미만이라 60초면 정상 경로엔 충분하다."""
+        return self.jobs.run_sync(
+            "search.index",
+            lambda: self.store.ensure_search_indexes(dim=dim) or {},
+            timeout=60.0)
 
     def _read(self, fn):
         """읽기 경로 공통: reader 뷰를 열어 fn(reader)->dict 실행 후 닫는다."""
@@ -818,6 +843,20 @@ def _req(p: dict, key: str):
     if val in (None, ""):
         raise _Missing(key)
     return val
+
+
+def _accepts_kw(fn, name: str) -> bool:
+    """`fn` 이 키워드 `name` 을 받는가. 시그니처를 못 읽으면 **안 받는 것으로** 본다.
+
+    스토어 인터페이스는 여러 구현이 있고(임베디드·테스트 더블·향후 백엔드) 새 키워드를
+    강제하면 그것들이 통째로 깨진다. 확실할 때만 넘긴다."""
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    if name in params:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def _int(val, default: int) -> int:

@@ -117,6 +117,12 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             if rounds["n"] >= 5:
                 raise _Stop()
 
+        # ⚠ `self.mod.time` 은 이 모듈의 지역 별칭이 아니라 **전역 `time` 모듈**이다.
+        # 여기서 sleep 을 바꾸면 프로세스 전체가 바뀌고, 복원하지 않으면 **이후 모든
+        # 테스트**의 time.sleep 이 _Stop 을 던진다(rounds 가 이미 5 를 넘겨 즉시 발동).
+        # 실제로 그렇게 새 나가 다른 파일의 동시성 테스트를 깨뜨렸다(2026-07-31).
+        # sleep 을 쓰는 테스트가 드물어 오래 잠복했다 — 반드시 되돌린다.
+        real_sleep = self.mod.time.sleep
         self.mod.time.sleep = fake_sleep
         old = os.environ.get("VINC_EMBED_HEARTBEAT_ROUNDS")
         os.environ["VINC_EMBED_HEARTBEAT_ROUNDS"] = "2"
@@ -125,6 +131,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             with contextlib.redirect_stdout(buf), self.assertRaises(_Stop):
                 self._run(_FakeSidecar([]), argv=("--interval", "0"))
         finally:
+            self.mod.time.sleep = real_sleep
             if old is None:
                 os.environ.pop("VINC_EMBED_HEARTBEAT_ROUNDS", None)
             else:
