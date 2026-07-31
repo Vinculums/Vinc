@@ -463,6 +463,38 @@ class DocRouteE2E(unittest.TestCase):
             else:
                 os.environ[k] = v
 
+    def test_reembed_without_stack_keeps_write_queue_alive(self):
+        """⚠ 실사고 회귀(2026-07-31) — 임베딩 스택 없는 기기에서 `/doc/reembed` 가
+        쓰기 큐 전체를 영구히 잠갔다.
+
+        기전: 라이브러리가 `sys.exit()` → `SystemExit`(BaseException) → 핸들러의
+        `except Exception` 도, 잡 워커의 `except Exception` 도 통과 → **워커 스레드
+        사망** → 이후 모든 쓰기가 큐에 쌓인 채 무응답(읽기는 별도 커넥션이라 정상
+        이어서 더 오진하기 쉬웠다).
+
+        이 테스트가 못박는 것: reembed 가 **정직하게 강등**되고, 그 **뒤에도** 쓰기가
+        돈다. 스택이 설치된 환경에서는 reembed 가 성공하지만, 그때도 뒷부분(쓰기
+        생존)은 그대로 유효한 검사다."""
+        with running_server(self.app) as base:
+            code, put = _req(base, "/doc/put", method="POST",
+                             body={"owner": "user:a", "text": "# 회귀\n\n본문.\n",
+                                   "title": "회귀"})
+            self.assertEqual(code, 200)
+            did = put["doc_id"]
+            # 실사고 경로 — 스택이 없으면 executed=False + note 로 내려앉는다.
+            code, re_ = _req(base, "/doc/reembed", method="POST",
+                             body={"owner": "user:a", "id": did})
+            self.assertEqual(code, 200, f"reembed 가 500 을 냈다: {re_}")
+            if not re_.get("executed"):
+                self.assertIn("note", re_, "강등이면 사유를 밝혀야 한다")
+            # **핵심**: 그 뒤에도 쓰기 큐가 산다(예전엔 여기서 영원히 멈췄다).
+            code, ex = _req(base, "/doc/extract", method="POST",
+                            body={"owner": "user:a", "id": did, "apply": False})
+            self.assertEqual(code, 200, "reembed 뒤 쓰기 큐가 죽었다(워커 사망 회귀)")
+            self.assertTrue(ex.get("executed"))
+            code, docs = _req(base, "/docs?owner=user:a")
+            self.assertEqual(code, 200)
+
     def test_doc_crud_over_http(self):
         text = "# HTTP 편집\n\n" + "정본 편집 표면 왕복. " * 60
         with running_server(self.app) as base:

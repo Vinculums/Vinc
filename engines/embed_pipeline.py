@@ -39,18 +39,33 @@ EmbeddingsRefinery = None  # type: ignore[assignment]
 CHONKIE_VERSION = "unknown"
 
 
+class EmbeddingStackMissing(RuntimeError):
+    """임베딩 스택(chonkie · sentence-transformers)이 설치돼 있지 않다.
+
+    ⚠ **이 모듈의 라이브러리 경로는 절대 `sys.exit()` 를 부르지 않는다.** 종료를
+    결정하는 것은 `main()` 뿐이다. 이유는 2026-07-31 실측 사고다: `SystemExit` 은
+    `Exception` 이 아니라 `BaseException` 이라 `except Exception` 을 **전부 통과**한다.
+    사이드카의 `POST /doc/reembed` 가 이 함수를 잡 워커 스레드에서 부르는데, 그
+    SystemExit 이 핸들러의 `except Exception` 도 잡 워커의 `except Exception` 도
+    지나쳐 **워커 스레드를 죽였다**. 워커가 하나뿐이라 그 뒤 모든 쓰기 요청이 큐에
+    쌓인 채 영구 무응답이 됐다(읽기는 별도 커넥션이라 멀쩡해서 더 오진하기 쉬웠다).
+    라이브러리가 프로세스의 생사를 결정하면 그 라이브러리를 부르는 모든 서버가
+    같은 방식으로 죽는다."""
+
+
 def _load_chonkie() -> None:
-    """Import chonkie on demand, binding module globals. Exits if missing."""
+    """Import chonkie on demand, binding module globals.
+
+    미설치면 :class:`EmbeddingStackMissing` 을 올린다(종료하지 않는다 — 위 참조)."""
     global RecursiveChunker, EmbeddingsRefinery, CHONKIE_VERSION
     if RecursiveChunker is not None:
         return
     try:
         import chonkie as _chonkie_pkg
         from chonkie import RecursiveChunker as _RC, EmbeddingsRefinery as _ER
-    except ImportError:
-        print("[chonkie 미설치]")
-        print('pip install "chonkie[tiktoken,voyageai,st]"')
-        sys.exit(1)
+    except ImportError as exc:
+        raise EmbeddingStackMissing(
+            'chonkie 미설치 — pip install "chonkie[tiktoken,voyageai,st]"') from exc
     RecursiveChunker = _RC
     EmbeddingsRefinery = _ER
     CHONKIE_VERSION = getattr(_chonkie_pkg, "__version__", "unknown")
@@ -258,19 +273,17 @@ def build_embeddings_model(model_type: str):
         try:
             from chonkie.embeddings import VoyageAIEmbeddings
             return VoyageAIEmbeddings(model=VOYAGE_MODEL, api_key=api_key)
-        except ImportError:
-            print("[ERROR] chonkie voyageai 의존성이 없습니다.", file=sys.stderr)
-            print('pip install "chonkie[voyageai]"', file=sys.stderr)
-            sys.exit(1)
+        except ImportError as exc:
+            raise EmbeddingStackMissing(
+                'chonkie voyageai 의존성 없음 — pip install "chonkie[voyageai]"') from exc
     else:
         st_name = ST_MODEL_BY_KEY.get(model_type, LOCAL_EN_MODEL)
         try:
             from chonkie.embeddings import SentenceTransformerEmbeddings
             return SentenceTransformerEmbeddings(model=st_name)
-        except ImportError:
-            print("[sentence-transformers 미설치]")
-            print('pip install "chonkie[st]"')
-            sys.exit(1)
+        except ImportError as exc:
+            raise EmbeddingStackMissing(
+                'sentence-transformers 미설치 — pip install "chonkie[st]"') from exc
 
 
 # ── 적재 ─────────────────────────────────────────────────────────────────────
@@ -347,10 +360,16 @@ def main() -> None:
         args.model, LOCAL_EN_MODEL)
     embed_fn = None
     if plan:
-        _load_chonkie()
+        # CLI 만 종료를 결정한다 — 라이브러리는 예외를 올릴 뿐이다(EmbeddingStackMissing
+        # 독스트링 참조). 여기서 종료 코드로 환원해 종전 CLI 동작을 그대로 유지한다.
+        try:
+            _load_chonkie()
+            embeddings_model = build_embeddings_model(args.model)
+        except EmbeddingStackMissing as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            sys.exit(1)
         chunker = RecursiveChunker.from_recipe(
             "markdown", lang="en", tokenizer="cl100k_base", chunk_size=CHUNK_SIZE)
-        embeddings_model = build_embeddings_model(args.model)
         refinery = EmbeddingsRefinery(embedding_model=embeddings_model)
         model_name = getattr(embeddings_model, "model", model_name)
 

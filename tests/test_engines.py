@@ -31,6 +31,56 @@ class ImportTests(unittest.TestCase):
         self.assertTrue(hasattr(mod, "_load_chonkie"))
 
 
+class LibraryNeverExitsTests(unittest.TestCase):
+    """**라이브러리 경로는 프로세스의 생사를 결정하지 않는다**(2026-07-31 실측 사고).
+
+    `sys.exit()` 가 올리는 `SystemExit` 은 `Exception` 이 아니라 `BaseException` 이라
+    `except Exception` 을 전부 통과한다. 사이드카가 이 모듈을 **잡 워커 스레드에서**
+    부르는데(`POST /doc/reembed`), 그게 워커를 죽여 쓰기 큐 전체가 영구 무응답이
+    됐다. 종료는 `main()` 만 결정한다."""
+
+    def setUp(self):
+        self.e = importlib.import_module("engines.embed_pipeline")
+
+    def test_missing_stack_raises_ordinary_exception(self):
+        # 이 테스트 환경엔 chonkie/sentence-transformers 가 없다(위 ImportTests 전제).
+        with self.assertRaises(self.e.EmbeddingStackMissing) as ctx:
+            self.e.build_embeddings_model("local-en")
+        exc = ctx.exception
+        self.assertIsInstance(exc, Exception,
+                              "라이브러리가 Exception 이 아닌 것을 던지면 서버가 죽는다")
+        self.assertNotIsInstance(exc, SystemExit)
+
+    def test_load_chonkie_raises_instead_of_exiting(self):
+        with self.assertRaises(self.e.EmbeddingStackMissing) as ctx:
+            self.e._load_chonkie()
+        self.assertIsInstance(ctx.exception, Exception)
+
+    def test_no_sys_exit_outside_main(self):
+        """소스 수준 가드 — `main()` 밖에서 sys.exit 이 다시 새어 들어오지 않게.
+
+        문자열 검색이 아니라 **AST 로 실제 호출만** 센다: 주석·독스트링에 적힌
+        `sys.exit()` 이라는 낱말까지 잡으면 이 규율을 설명하는 문장조차 못 쓴다."""
+        import ast
+        tree = ast.parse(Path(self.e.__file__).read_text(encoding="utf-8"))
+        main_fn = next((n for n in tree.body
+                        if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+        self.assertIsNotNone(main_fn, "main() 이 사라졌다 — 가드 전제가 깨졌다")
+        lo, hi = main_fn.lineno, (main_fn.end_lineno or main_fn.lineno)
+
+        offenders = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            is_exit = (isinstance(f, ast.Attribute) and f.attr == "exit"
+                       and isinstance(f.value, ast.Name) and f.value.id == "sys")
+            if is_exit and not (lo <= node.lineno <= hi):
+                offenders.append(node.lineno)
+        self.assertEqual(offenders, [],
+                         f"main() 밖 sys.exit 호출(줄 {offenders}) — 잡 워커를 죽인다")
+
+
 class EmbedModelVocabTests(unittest.TestCase):
     """embed_pipeline 의 --model 어휘·차원은 store.config(§8) 단일 출처를 따른다.
     실제 임베딩 로드(HF 다운로드) 없이 매핑만 검증(오프라인 CI)."""

@@ -49,6 +49,17 @@ class JobError(RuntimeError):
     """run_sync 대상 잡이 error 로 끝났을 때(HTTP 500 매핑용)."""
 
 
+# run_sync 기본 대기 상한. **무한 대기를 두지 않는다**(2026-07-31 실측 사고): 워커가
+# 어떤 이유로든 진행하지 못하면 그때부터 모든 쓰기 요청이 영원히 매달려, 화면은
+# "처리 중"에 굳고 사용자는 무엇이 됐는지 알 길이 없다.
+#
+# 값이 큰 이유: 여기서 **거짓 실패**를 만들면 안 된다. 큰 팩 적재처럼 정당하게 오래
+# 걸리는 잡이 상한에 걸리면, 데이터는 들어갔는데 화면은 실패라고 말한다 — 무한 대기와
+# 다른 종류의 거짓말이다. 10분은 어떤 대화형 기대치보다도 길되 유한하다. 이보다 더
+# 걸릴 수 있는 일(백업·인박스 적재·동기화)은 애초에 `submit`(비동기 202)을 쓴다.
+DEFAULT_SYNC_TIMEOUT = 600.0
+
+
 class JobQueue:
     """단일 워커 스레드가 잡을 FIFO 로 직렬 실행(R4 쓰기 지점).
 
@@ -61,8 +72,35 @@ class JobQueue:
         self._lock = threading.Lock()
         self._counter = 0
         self._stopping = threading.Event()
-        self._worker = threading.Thread(target=self._run, name="vinc-job-worker", daemon=True)
-        self._worker.start()
+        self._worker: threading.Thread | None = None
+        self._revivals = 0
+        self._ensure_worker()
+
+    # ── 워커 수명 ─────────────────────────────────────────────────────────
+    def _ensure_worker(self) -> None:
+        """워커가 살아 있게 보장한다 — 없거나 죽었으면 새로 띄운다.
+
+        **단일 워커 불변식**(R4 쓰기 지점)은 락 + `is_alive()` 검사로 지킨다: 둘이
+        동시에 돌면 임베디드 커넥션 쓰기 경합이라는 이 큐의 존재 이유가 무너진다.
+
+        되살리기가 필요한 이유는 아래 `_run` 의 방어가 뚫릴 수 있어서가 아니라,
+        **뚫렸을 때 프로세스 전체가 벽돌이 되지 않게** 하기 위해서다(2026-07-31
+        실측: 잡 하나가 SystemExit 을 던져 워커가 죽자 그 뒤 모든 쓰기가 영구
+        무응답이 됐고, 재시작 말고는 복구 수단이 없었다)."""
+        with self._lock:
+            if self._stopping.is_set():
+                return
+            if self._worker is not None and self._worker.is_alive():
+                return
+            if self._worker is not None:
+                self._revivals += 1
+            self._worker = threading.Thread(target=self._run, name="vinc-job-worker",
+                                            daemon=True)
+            self._worker.start()
+
+    def worker_alive(self) -> bool:
+        w = self._worker
+        return bool(w and w.is_alive())
 
     # ── id ────────────────────────────────────────────────────────────────
     def _next_id(self) -> str:
@@ -77,15 +115,23 @@ class JobQueue:
         with self._lock:
             self._jobs[job.id] = job
         self._q.put((job, fn))
+        self._ensure_worker()   # 앞선 잡이 워커를 무너뜨렸어도 이 잡은 돈다
         return job
 
-    def run_sync(self, kind: str, fn: Callable[[], dict], *, timeout: float | None = None) -> dict:
+    def run_sync(self, kind: str, fn: Callable[[], dict],
+                 *, timeout: float | None = DEFAULT_SYNC_TIMEOUT) -> dict:
         """잡을 넣고 완료까지 대기해 결과 dict 반환(동기, 짧은 뮤테이션). 잡이
         error 로 끝나면 :class:`JobError` 를 올린다(HTTP 500). 워커는 하나뿐이라
-        이 대기가 곧 쓰기 직렬화다."""
+        이 대기가 곧 쓰기 직렬화다.
+
+        ``timeout=None`` 이면 무한 대기다 — **기본값이 아니다**(DEFAULT_SYNC_TIMEOUT).
+        무한 대기는 한 번 막히면 화면이 영원히 "처리 중"에 굳는 실패 양식이었다."""
         job = self.submit(kind, fn)
         if not job._done.wait(timeout=timeout):
-            raise JobError(f"job {job.id} timed out")
+            # 잡은 여전히 큐/실행 중일 수 있다 — 그 사실을 숨기지 않는다.
+            raise JobError(
+                f"job {job.id}({kind}) 가 {timeout}s 안에 끝나지 않았습니다. "
+                f"작업은 계속될 수 있습니다(status={job.status}).")
         if job.status == ERROR:
             raise JobError(job.error or f"job {job.id} failed")
         return job.result if job.result is not None else {}
@@ -108,7 +154,15 @@ class JobQueue:
                 result = fn()
                 job.result = result if isinstance(result, dict) else {"result": result}
                 job.status = DONE
-            except Exception as exc:    # noqa: BLE001 — 잡 격리(한 잡 실패가 워커를 죽이지 않음)
+            # ⚠ **BaseException 이다** — `Exception` 이 아니다(2026-07-31 실측 사고).
+            # 잡 격리는 이 큐의 존재 이유이고, `except Exception` 은 그 약속을 못
+            # 지킨다: `SystemExit`·`KeyboardInterrupt` 는 BaseException 이라 그대로
+            # 빠져나가 **워커 스레드를 죽인다**. 실제로 임베딩 스택이 없는 기기에서
+            # `/doc/reembed` 잡이 라이브러리의 sys.exit() 를 밟아 워커가 죽었고, 그
+            # 뒤 모든 쓰기가 큐에 쌓인 채 영구 무응답이 됐다(읽기는 별도 커넥션이라
+            # 멀쩡해 오진하기 쉬웠다). 워커 스레드에서 SystemExit 은 프로세스를
+            # 끝내지도 못하므로, 잡 하나를 실패로 접는 것이 언제나 옳다.
+            except BaseException as exc:   # noqa: BLE001 — 잡 격리(어떤 잡도 워커를 못 죽인다)
                 job.error = f"{type(exc).__name__}: {exc}"
                 job.status = ERROR
             finally:
@@ -125,4 +179,6 @@ class JobQueue:
         if drain:
             self._q.join()              # 대기·실행 중 잡 완료까지 블록
         self._q.put(None)               # 워커 루프 종료 sentinel
-        self._worker.join(timeout=5.0)
+        w = self._worker
+        if w is not None:
+            w.join(timeout=5.0)
