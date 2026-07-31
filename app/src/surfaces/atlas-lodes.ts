@@ -187,15 +187,22 @@ export type TotalsDatum = {
  *  keepTop 가드가 "전 주제가 임계 미만" 퇴화(전부 병합 → stratum 1개)를 막고,
  *  |M| ≥ 2 일 때만 발동한다(1개 병합은 개명일 뿐 이득이 없다). */
 export function bucketOthers(data: TotalsDatum[], tuples: Lode[], grand: number,
-  opts: { maxTopics?: number; minShare?: number; keepTop?: number } = {}):
+  opts: { maxTopics?: number; minShare?: number; keepTop?: number;
+          keep?: Set<string> } = {}):
   { data: TotalsDatum[]; tuples: Lode[]; mergedTopics: number; mergedDocs: number } {
   const maxTopics = opts.maxTopics ?? 12;
   const minShare = opts.minShare ?? 0.02;
   const keepTop = opts.keepTop ?? 3;
+  const pinned = opts.keep;
   const none = { data, tuples, mergedTopics: 0, mergedDocs: 0 };
   if (grand <= 0 || data.some((r) => r.domain === OTHERS_KEY)) return none;
   const merged = new Set<number>();
   data.forEach((r, di) => {
+    // 핀(D70) — 지금 가리키고 있는 주제는 병합에서 뺀다. 좌측 트리나 검색으로
+    // 그 주제를 짚어 왔는데 화면에서는 `기타` 에 삼켜져 있으면, 가리킨 곳이
+    // 사라진 셈이다. **주제 통째로** 빼므로 열 합 보존은 그대로다(구조상 불변).
+    // 핀 하나 때문에 표시 주제가 maxTopics+1 이 될 수 있다 — 단일 핀이라 수용한다.
+    if (pinned?.has(r.domain)) return;
     if (di >= maxTopics || (di >= keepTop && r.total / grand < minShare)) merged.add(di);
   });
   if (merged.size < 2) return none;

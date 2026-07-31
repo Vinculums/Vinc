@@ -440,7 +440,10 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
        /** 경로 보존 튜플(D63, :func:`foldLedgerPaths`) — 있으면 리본을 인접 교차
         *  대신 (출처×주제×상태) 조합별 가닥으로 그린다. 없으면(구 사이드카 강등 ·
         *  개념 알갱이) 종전 인접 교차 그대로. */
-       paths?: TotalsPath[] }): PlanarHandle {
+       paths?: TotalsPath[];
+       /** 지금 가리키는 주제(D70) — `기타` 병합에서 빼고 초점 표시를 준다. 좌측
+        *  트리·검색으로 짚어 온 주제가 화면에서 삼켜져 있으면 안 되기 때문이다. */
+       pin?: string }): PlanarHandle {
   // 주제(2열) — 두 축 합이 다르면(구버전·집계 결함) 큰 쪽을 노드 높이로 삼아
   // 리본이 노드를 넘치지 않게만 방어한다. 정상 데이터에선 둘이 같다.
   let data = rows.map((r) => {
@@ -482,7 +485,9 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
   // 저절로 유지된다(bucketOthers 계약).
   let othersMerged = 0;
   if (o.grain !== "concept") {
-    const b = bucketOthers(data, tuples, grand);
+    // pin(D70) — 지금 가리키고 있는 주제는 `기타` 에 삼켜지지 않는다.
+    const b = bucketOthers(data, tuples, grand,
+      o.pin ? { keep: new Set([o.pin]) } : {});
     if (b.mergedTopics) {
       data = b.data;
       tuples = b.tuples;
@@ -943,6 +948,18 @@ export function mountTotals(el: HTMLElement, rows: LedgerRow[],
       el.removeEventListener("mouseleave", leave);
       el.removeEventListener("click", click);
       stopSize();
+    },
+    /** 밖에서 거는 초점(D70). 합계는 **개념을 그리지 않는다** — 가운데 열은 주제다
+     *  (개념 알갱이 화면일 때만 개념이 행이다). 그래서 개념 id 를 받으면 그 개념이
+     *  속한 주제를 짚고, 못 찾으면 false 를 돌려준다. 화면은 주제를, 옆 카드는
+     *  개념을 가리키게 되는데 그건 거짓이 아니라 알갱이가 다를 뿐이고, 둘을
+     *  억지로 맞추려면 없는 개념 마크를 지어내야 한다. */
+    focus(id) {
+      const el2 = el.querySelector<SVGElement>(`.pl-node[data-id="${CSS.escape(id)}"]`);
+      if (!el2) return false;
+      focusNode(id);
+      el2.scrollIntoView({ block: "nearest", inline: "center" });
+      return true;
     },
   };
 }

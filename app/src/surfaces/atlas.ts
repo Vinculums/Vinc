@@ -140,6 +140,9 @@ export async function renderAtlas(el: HTMLElement) {
   let curNodes: GraphNode[] = [];
   // 지금 타임라인이 쓰는 버킷 알갱이(D72) — 밴드 클릭이 같은 구간을 만들어야 한다.
   let periodGrain: Grain = "month";
+  // 마지막으로 짚은 곳(D70) — 합계의 `기타` 병합 핀에 쓴다. trail 과 별개다:
+  // 트리에서 문서를 눌러도 층은 그대로일 수 있는데, 그때도 그 주제는 살아 있어야 한다.
+  let lnbFocus: { domain?: string; nodeId?: string } = {};
   const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
   const trail: Level[] = [];
 
@@ -732,7 +735,7 @@ export async function renderAtlas(el: HTMLElement) {
 
   /** 지금 마운트된 렌더러에서 그 노드로 카메라를 옮긴다. 못 찾으면 false —
    *  호출측이 그때만 스코프를 갈아 다시 마운트한다(재조회는 비싸다). */
-  function flyToMounted(id: string): boolean {
+  function flyToMounted(id: string, domain?: string): boolean {
     if (g3) {
       const n = findNode3d(g3, id);
       if (!n) return false;
@@ -740,7 +743,13 @@ export async function renderAtlas(el: HTMLElement) {
       return true;
     }
     if (g2) return g2.focus(id);
-    if (planar) return planar.focus?.(id) ?? false;
+    if (planar) {
+      if (planar.focus?.(id)) return true;
+      // 합계는 개념을 그리지 않는다(가운데 열이 주제다) — 그 개념의 **주제**를
+      // 대신 짚는다. 알갱이가 다를 뿐 거짓은 아니고, 개념 자체는 옆 카드가 든다.
+      const dom = domain || curNodes.find((n) => n.id === id)?.domain;
+      return dom ? (planar.focus?.(dom) ?? false) : false;
+    }
     return false;
   }
 
@@ -760,11 +769,14 @@ export async function renderAtlas(el: HTMLElement) {
    *
    *  화면에 이미 있으면 카메라만 옮기고, 없으면 그 노드를 씨앗으로 스코프를 간다.
    *  끝에는 언제나 같은 둘이 열린다: 옆에 뜨는 관련 문서 카드 + 우측 문서 패널. */
-  async function focusNode(id: string) {
-    if (!flyToMounted(id)) {
-      trail.push({ kind: "l2", seed: id });
+  async function focusNode(id: string, domain?: string) {
+    // 주제를 밖에서 알려 주면 먼저 기억한다 — 합계 뷰는 개념 마크가 없어 그래프
+    // 노드로 되짚을 수 없고(가운데 열이 주제다), 트리는 그 값을 이미 안다.
+    if (domain) lnbFocus = { domain, nodeId: id };
+    if (!flyToMounted(id, domain)) {
+      trail.push({ kind: "l2", seed: id, domain });
       await show(trail[trail.length - 1]);
-      flyToMounted(id);
+      flyToMounted(id, domain);
     }
     const raw = curNodes.find((n) => n.id === id);
     // 노드 메타를 못 찾는 경우(평면 캡에 잘렸거나 스코프 밖) 최소 정보로 연다 —
@@ -772,7 +784,8 @@ export async function renderAtlas(el: HTMLElement) {
     const nd = raw ? toN3([raw])[0]
       : ({ id, label: id.replace(/^[a-z]+:/, ""), degree: 0 } as N3);
     openDetail(nd);
-    setLnbActive({ domain: nd.domain, nodeId: id });
+    lnbFocus = { domain: nd.domain, nodeId: id };
+    setLnbActive(lnbFocus);
   }
 
   /** 관련 문서 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있고, 항목을 누르면 그 노드로 간다. */
@@ -1515,6 +1528,10 @@ export async function renderAtlas(el: HTMLElement) {
         // 아무 일도 하지 않던 상태를 끝낸다(실측: 무동작).
         onSeg: byConcept ? (id) => openConcept(id)
           : (domain, mark) => void openDrilldown(domain, mark, drillSeed),
+        // D70 — 지금 가리키는 주제는 `기타` 에 삼켜지지 않는다. 좌측 트리·검색으로
+        // 짚어 온 주제가 화면에서 사라져 있으면 가리킨 일이 무의미해진다.
+        pin: !byConcept ? (lnbFocus.domain || (level.kind === "l1" ? level.domain : undefined))
+          : undefined,
       });
       // l2 스코프 캡션 — Timeline "날짜 없음" 알약과 같은 자리·같은 기제(mountTotals
       // 는 순수 렌더러로 남긴다). 크럼은 문서 하나를 가리키므로 차트가 무엇을 세는지
@@ -1734,7 +1751,7 @@ export async function renderAtlas(el: HTMLElement) {
   });
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, Atlas 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
-  setLnbNavigator((id) => void focusNode(id));
+  setLnbNavigator((id, dom) => void focusNode(id, dom));
 
   await show(trail[trail.length - 1]);
   maybeCoach();

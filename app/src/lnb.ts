@@ -19,7 +19,9 @@ import { icon } from "./icons";
  *  자기 `focusNode` 를 넘기고(setLnbNavigator), 떠나면 지운다. 훅이 없으면 문서
  *  클릭은 해시 착지로 강등된다 — 눌러도 아무 일 없는 줄을 만들지 않는다. */
 
-type Navigator = (nodeId: string) => void;
+/** 트리는 그 문서가 **어느 주제 밑에 있는지 이미 안다** — 그 정보를 함께 넘긴다.
+ *  받는 쪽(합계 뷰)은 개념 마크가 없어서 그래프 노드로는 주제를 되짚을 수 없다. */
+type Navigator = (nodeId: string, domain?: string) => void;
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
@@ -110,12 +112,14 @@ function navRows(): string {
     </nav>`;
 }
 
-function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number }): string {
+function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number },
+                domain = ""): string {
   const depth = Math.min(Math.max(Number(d.depth ?? 0), 0), 8);   // 들여쓰기 상한 — 8단 넘으면 글자가 사라진다
   const on = d.node_id && active.nodeId === d.node_id;
   const tip = d.node_id ? COPY.ui.lnb.depthTip(Number(d.depth ?? 0)) : COPY.ui.lnb.editOnly;
   return `<button class="lnb-doc${on ? " on" : ""}" role="treeitem" data-doc="${esc(d.doc_id)}"
-    data-node="${esc(d.node_id || "")}" style="--lvl:${depth}" data-tip="${esc(tip)}">
+    data-node="${esc(d.node_id || "")}" data-dom="${esc(domain)}"
+    style="--lvl:${depth}" data-tip="${esc(tip)}">
     <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(d.title || d.doc_id)}</span>
   </button>`;
 }
@@ -131,7 +135,7 @@ function groupRows(g: NavGroup): string {
     </button>`;
   if (!open) return head;
   const body = g.docs.length
-    ? g.docs.map(docRow).join("")
+    ? g.docs.map((d) => docRow(d, g.domain)).join("")
     // 개념만 있고 문서가 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나
     // 문서를 붙일 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
     : `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`;
@@ -169,7 +173,10 @@ function paint() {
           <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
           <span class="lnb-gname lnb-unfiled">${esc(COPY.ui.lnb.unfiled)}</span>
           <span class="lnb-gcount">${unfiled.length}</span></button>`;
-      if (open) html += `<div class="lnb-docs" role="group">${unfiled.map(docRow).join("")}</div>`;
+      // 미분류는 주제가 없다 — 빈 문자열을 명시해 map 의 index 가 두 번째 인자로
+      // 새어 들어가지 않게 한다(주제 자리에 0·1·2 가 박히는 고전적 함정).
+      if (open) html += `<div class="lnb-docs" role="group">${
+        unfiled.map((d) => docRow(d, "")).join("")}</div>`;
     }
     html += `</div>`;
   }
@@ -177,9 +184,9 @@ function paint() {
 }
 
 /** 문서 클릭 — 착지 노드가 있으면 지도로, 없으면 편집기로. */
-async function openDoc(docId: string, nodeId: string) {
+async function openDoc(docId: string, nodeId: string, domain?: string) {
   if (nodeId) {
-    if (navigate) navigate(nodeId);
+    if (navigate) navigate(nodeId, domain);
     else location.hash = `#atlas/trace/${encodeURIComponent(nodeId)}`;
     return;
   }
@@ -222,7 +229,7 @@ export function mountLnb() {
     const t = e.target as HTMLElement;
     const doc = t.closest<HTMLElement>(".lnb-doc");
     if (doc) {
-      void openDoc(doc.dataset.doc || "", doc.dataset.node || "");
+      void openDoc(doc.dataset.doc || "", doc.dataset.node || "", doc.dataset.dom || "");
       return;
     }
     const group = t.closest<HTMLElement>(".lnb-group");
