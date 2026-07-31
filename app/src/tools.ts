@@ -24,10 +24,14 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
 type DocRow = { doc_id: string; title: string; primary_concept_id?: string;
                 primary_concept_title?: string };
 
-/** 사이드카 쓰기 큐는 단일 워커라 앞선 잡이 막히면 뒤가 전부 함께 선다(실측:
- *  문서 저장 직후 쓰기 요청이 영구히 응답하지 않는 상태가 재현된다). 그때 화면이
- *  "처리 중"에 영원히 머무르면 사용자는 무엇이 됐고 무엇이 안 됐는지 알 길이 없다.
- *  기다림에 한계를 두고 **실패로 정직하게 내려** 재시도 손잡이를 준다. */
+/** 사이드카 쓰기 큐는 단일 워커라 앞선 잡이 오래 걸리면 뒤가 함께 선다. 화면이
+ *  "처리 중"에 하염없이 머무르면 사용자는 무엇이 됐고 무엇이 안 됐는지 알 길이
+ *  없으므로, 기다림에 한계를 두고 **실패로 정직하게 내려** 재시도 손잡이를 준다.
+ *
+ *  (이 가드는 원래 "문서 저장 직후 쓰기 큐가 영구히 잠기는" 결함을 덮으려고 넣었다.
+ *  그 원인은 서버에서 고쳤다 — 잡이 던진 SystemExit 이 워커 스레드를 죽이고 있었고,
+ *  이제 워커는 어떤 잡으로도 죽지 않으며 run_sync 자체가 유한 상한을 갖는다. 그래도
+ *  이 클라이언트 상한은 남긴다: 정말 오래 걸리는 잡에서도 화면이 굳지 않게 한다.) */
 const OP_TIMEOUT = 12_000;
 function withTimeout<T>(p: Promise<T>, ms = OP_TIMEOUT): Promise<T> {
   return new Promise<T>((resolve, reject) => {
