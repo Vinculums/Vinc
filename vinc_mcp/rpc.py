@@ -80,31 +80,39 @@ class Dispatcher:
                   plan: str | None = None, quota=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
+            negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
+            info: dict = {"name": "vinc", "version": __version__}
+            # icons·websiteUrl 은 SEP-973(스펙 2025-11-25)이 Implementation 에 더한 필드다.
+            # **협상된 리비전이 그 필드를 아는 경우에만** 싣는다.
+            #
+            # ⚠ 실사고(2026-07-31): 협상 버전과 무관하게 항상 실었다가 claude.ai 커넥터가
+            # "계정은 인증됐지만 연결 중 오류"로 죽었다. 근거로 삼았던 "모르는 클라이언트는
+            # 추가 필드를 그냥 무시한다"는 **스펙 문장에는 맞지만 구현에는 틀렸다** — 클라이언트가
+            # 협상된 리비전의 스키마로 엄격 검증하면 모르는 키에서 거부한다. 사양이 허용하는
+            # 것과 상대가 받아주는 것은 다르다.
+            #
+            # 우리는 PROTOCOL_VERSIONS 에 2025-11-25 를 넣지 않는다(그 리비전 전체를 준수한다고
+            # 주장할 근거가 없다). 그래서 이 두 필드는 지금 **아무에게도 안 나간다**. 나중에
+            # 그 리비전을 정식 지원할 때 목록에 추가하면 이 게이트가 저절로 열린다.
+            # 그때 상대는 2025-11-25 를 요청한 클라이언트뿐이므로 이 필드를 안다.
+            #
+            # PNG 를 먼저 놓는 이유: 스펙상 클라이언트는 PNG·JPEG 지원이 **필수**이고
+            # SVG 는 선택이다(SVG 는 스크립트를 품을 수 있어 소비 시 주의 대상).
+            #
+            # 아이콘 자체는 /favicon.{png,ico,svg} 로 계속 서빙한다 — 프로토콜 밖이라
+            # 무해하고, 브라우저 탭·수동 참조에 쓰인다.
+            if negotiated >= "2025-11-25":   # ISO 날짜라 사전식 비교가 곧 시간순
+                info["icons"] = [
+                    {"src": "https://mcp.vincs.io/favicon.png",
+                     "mimeType": "image/png", "sizes": "128x128"},
+                    {"src": "https://mcp.vincs.io/favicon.svg",
+                     "mimeType": "image/svg+xml", "sizes": "any"},
+                ]
+                info["websiteUrl"] = "https://vincs.io"
             return {
-                "protocolVersion": want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION,
+                "protocolVersion": negotiated,
                 "capabilities": {"tools": {}},
-                "serverInfo": {
-                    "name": "vinc", "version": __version__,
-                    # icons·websiteUrl 은 SEP-973(스펙 2025-11-25)이 Implementation 에 더한
-                    # **선택** 필드다. 우리는 PROTOCOL_VERSIONS 를 올리지 않는다 — 그 리비전
-                    # 전체를 준수한다고 주장할 근거가 없고, 이 두 필드는 모르는 클라이언트가
-                    # 그냥 무시하므로(구 스펙도 추가 필드를 금지하지 않는다) 지금 실어도 무해하다.
-                    #
-                    # ⚠ 지금 당장 claude.ai 커넥터 카드에 뜨지는 않는다. 그쪽이 커스텀 커넥터
-                    # 아이콘을 아직 **어디서도** 읽지 않는다(favicon·serverInfo.icons·data URI
-                    # 전부 무시 — anthropics/claude-ai-mcp#152). 지원되는 순간 바로 뜨도록
-                    # 미리 채워두는 것이고, 그때까지는 우리 쪽에 할 일이 없다.
-                    #
-                    # PNG 를 먼저 놓는 이유: 스펙상 클라이언트는 PNG·JPEG 지원이 **필수**이고
-                    # SVG 는 선택이다(SVG 는 스크립트를 품을 수 있어 소비 시 주의 대상).
-                    "icons": [
-                        {"src": "https://mcp.vincs.io/favicon.png",
-                         "mimeType": "image/png", "sizes": "128x128"},
-                        {"src": "https://mcp.vincs.io/favicon.svg",
-                         "mimeType": "image/svg+xml", "sizes": "any"},
-                    ],
-                    "websiteUrl": "https://vincs.io",
-                },
+                "serverInfo": info,
             }
         if method == "ping":
             return {}

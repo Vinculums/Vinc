@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 import threading
 import time
 import urllib.parse
@@ -648,8 +649,29 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
-    def log_message(self, fmt, *args):  # 조용히 — 로그는 systemd/journald 몫
-        pass
+    # ── 로깅 ──────────────────────────────────────────────────────────────
+    # 예전엔 여기서 전부 삼켰다("로그는 systemd/journald 몫"). **가비아 VM 시절 이야기다.**
+    # Azure Container Apps 에서는 stdout 이 곧 로그라, 삼키면 남는 게 기동 배너뿐이고
+    # 장애 때 컨테이너가 조용하다 = 아무 단서가 없다. 실제로 2026-07-31 커넥터 장애를
+    # 진단할 때 "로그가 깨끗하다"가 정상이라는 뜻인지 눈이 먼 것인지조차 알 수 없었다.
+    # (임베딩 워커가 조용히 사라졌던 것과 같은 계열의 사고 — 침묵을 성공으로 오독한다.)
+    #
+    # 그래서 **실패만** 남긴다: 2xx·3xx 는 조용히(정상 트래픽으로 로그를 채우지 않는다),
+    # 4xx·5xx 와 예외는 stdout 으로. 컨테이너 로그가 곧 장애 기록이 된다.
+    def log_message(self, fmt, *args):
+        sys.stdout.write("[http] %s %s\n" % (self.address_string(), fmt % args))
+        sys.stdout.flush()
+
+    def log_request(self, code="-", size="-"):
+        try:
+            n = int(code)
+        except (TypeError, ValueError):
+            n = 0
+        if n and n < 400:
+            return   # 정상 응답은 남기지 않는다
+        # 쿼리스트링은 잘라낸다 — /authorize 의 파라미터 등이 로그에 눌러앉지 않도록.
+        line = (self.requestline or "").split("?")[0]
+        self.log_message('"%s" %s %s', line, code, size)
 
 
 def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790) -> ThreadingHTTPServer:
