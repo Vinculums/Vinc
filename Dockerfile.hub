@@ -44,18 +44,25 @@ RUN pip install --no-cache-dir onnx \
  && python - <<'PY' \
  && pip uninstall -y onnx \
  && rm -rf /root/.cache/huggingface
+# ⚠ 이 스크립트 안에서 `from X import Y` 를 **줄 첫 칸에 쓰지 말 것**(`import X` 만 쓴다).
+# ACR Tasks 는 빌드 전에 Dockerfile 을 자체 파서로 훑는 "dependency scanning" 단계를
+# 도는데, 그 파서가 heredoc 본문을 구분하지 못해 `from ...` 을 대소문자 무시하고 `FROM`
+# 지시자로 읽는다 → `unable to understand line from huggingface_hub import ...` 로
+# **빌드가 3초 만에 죽는다**(실측 run dek, 2026-08-01). 로컬 `docker build` 는 heredoc 을
+# 제대로 다뤄 통과하므로 로컬에서는 재현되지 않는다 — 그래서 한 번 놓쳤다.
 import os
-from huggingface_hub import hf_hub_download
-from onnxruntime.quantization import QuantType, quantize_dynamic
+import shutil
+import huggingface_hub as hf
+import onnxruntime.quantization as ortq
 MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
-fp32 = hf_hub_download(MODEL, "onnx/model.onnx")
-quantize_dynamic(fp32, "/srv/vinc/models/e5-int8-rr.onnx",
-                 weight_type=QuantType.QInt8, per_channel=True,
+fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
+ortq.quantize_dynamic(fp32, "/srv/vinc/models/e5-int8-rr.onnx",
+                 weight_type=ortq.QuantType.QInt8, per_channel=True,
                  reduce_range=True,                  # ← 공식본은 False(포화 원인)
                  extra_options={"MatMulConstBOnly": True})
 # 토크나이저(17MB)도 함께 굽는다 — 런타임 네트워크 의존을 남기지 않는다.
-tok = hf_hub_download(MODEL, "tokenizer.json")
-import shutil; shutil.copy(tok, "/srv/vinc/models/tokenizer.json")
+tok = hf.hf_hub_download(MODEL, "tokenizer.json")
+shutil.copy(tok, "/srv/vinc/models/tokenizer.json")
 print("baked:", os.path.getsize("/srv/vinc/models/e5-int8-rr.onnx"))
 PY
 
