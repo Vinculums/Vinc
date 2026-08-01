@@ -22,6 +22,43 @@ RUN pip install --no-cache-dir ladybug==0.18.0 argon2-cffi pypdf
 # api/ 변경마다 배포되고 단일 writer 라 **배포 시간이 곧 다운타임**이다.
 RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
 
+# ── 임베딩 모델을 **빌드 타임에** 양자화해 굽는다 ────────────────────────────────
+# 모델 가중치를 이미지에 굽지 않는다는 기존 방침을 여기서 뒤집는다. 근거는 실측이다:
+#
+#   · 쓸 모델은 multilingual-e5-base 다(영어·한국어 병행 결정. 한국어 nDCG 0.347 →
+#     0.670). fp32 는 **1,058MB** 라 1024MiB 컨테이너에 단독으로도 안 들어간다.
+#   · 공식 int8(`model_qint8_avx512_vnni.onnx`)은 279MB 로 들어가지만
+#     U8S8+per_channel+reduce_range=False 조합이라 non-VNNI CPU 에서 포화가 나
+#     **에러 없이 품질만** 떨어진다(실측 한국어 nDCG 0.670 → 0.472).
+#   · 그래서 `reduce_range=True` 로 직접 만들어야 하는데, **런타임 양자화는 불가능하다**:
+#     e5 의 임베딩 행렬 하나가 192M float(732MB)이고 원본 모델까지 메모리에 올라가
+#     피크가 1.5GB 를 넘는다(실측 — 컨테이너보다 넉넉한 기기에서도 OOM 났다).
+#
+# 결론: 양자화는 **메모리가 넉넉한 빌드 환경**에서 한 번 하고 결과 279MB 만 싣는다.
+# 이미지가 500MB → 약 780MB 로 늘어 배포(=다운타임)가 그만큼 길어지는 것이 대가다.
+# 런타임에는 다운로드도 양자화도 없다 — 첫 검색이 즉시 정상 품질로 뜬다.
+# `onnx` 는 양자화에만 필요하므로 같은 레이어에서 지운다(이미지 비대 방지).
+ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/e5-int8-rr.onnx
+RUN pip install --no-cache-dir onnx \
+ && mkdir -p /srv/vinc/models \
+ && python - <<'PY' \
+ && pip uninstall -y onnx \
+ && rm -rf /root/.cache/huggingface
+import os
+from huggingface_hub import hf_hub_download
+from onnxruntime.quantization import QuantType, quantize_dynamic
+MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
+fp32 = hf_hub_download(MODEL, "onnx/model.onnx")
+quantize_dynamic(fp32, "/srv/vinc/models/e5-int8-rr.onnx",
+                 weight_type=QuantType.QInt8, per_channel=True,
+                 reduce_range=True,                  # ← 공식본은 False(포화 원인)
+                 extra_options={"MatMulConstBOnly": True})
+# 토크나이저(17MB)도 함께 굽는다 — 런타임 네트워크 의존을 남기지 않는다.
+tok = hf_hub_download(MODEL, "tokenizer.json")
+import shutil; shutil.copy(tok, "/srv/vinc/models/tokenizer.json")
+print("baked:", os.path.getsize("/srv/vinc/models/e5-int8-rr.onnx"))
+PY
+
 COPY api ./api
 COPY store ./store
 COPY engines ./engines

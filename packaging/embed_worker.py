@@ -174,9 +174,19 @@ def _resolve_model(model: str, cache: str) -> str:
     양자화하면 한국어가 0.669 로 **fp32 와 사실상 동일**해진다. 그래서 공식본을 쓰지 않고
     여기서 만든다 — VNNI 가 있어도 reduce_range 는 무해하므로 CPU 를 확인할 필요조차 없다.
 
-    1회 비용: fp32(약 1GB) 다운로드 + 양자화 31초. 결과 279MB 는 영속 볼륨에 남아
-    재기동에 재사용된다(기존 모델 캐시와 같은 자리). fp32 는 양자화 뒤 지운다.
-    `VINC_EMBED_QUANTIZE=off` 로 끄면 리포 제공 파일을 그대로 쓴다."""
+    🔴 **런타임 양자화는 하지 않는다 — 못 한다.** e5 의 임베딩 행렬 하나가 192M float
+    (732MB)이고 원본 모델까지 메모리에 올라가 피크가 1.5GB 를 넘는다(실측: 컨테이너보다
+    넉넉한 기기에서도 `Unable to allocate 732 MiB` 로 죽었다). 1024MiB 컨테이너에서는
+    불가능하다. 그래서 **빌드 타임에 굽고**(`Dockerfile.hub`) 여기서는 그 파일을 쓴다.
+    경로는 `VINC_EMBED_MODEL_PATH`.
+
+    구워진 파일이 없으면(로컬 개발 등) 그 자리에서 만든다 — 개발 기기는 메모리가
+    넉넉하다는 전제다. 그마저 안 되면 fp32 로 간다: 느리고 무겁지만 **정확하다**.
+    조용히 공식 int8 로 갈아타지 않는다(그쪽이 품질을 깎는다)."""
+    baked = os.environ.get("VINC_EMBED_MODEL_PATH", "").strip()
+    if baked and os.path.exists(baked):
+        return baked
+
     from huggingface_hub import hf_hub_download
     if not _is_e5(model) or os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
         return hf_hub_download(model, "onnx/model.onnx", cache_dir=cache)
@@ -188,15 +198,23 @@ def _resolve_model(model: str, cache: str) -> str:
     try:
         from onnxruntime.quantization import QuantType, quantize_dynamic
     except Exception as exc:
-        # 양자화 스택이 없으면 fp32 로 간다 — 느리고 무겁지만 **정확하다**.
-        # 조용히 공식 int8 로 갈아타지 않는다(그쪽이 품질을 깎는다).
         print(f"[embed] 양자화 불가({type(exc).__name__}) — fp32 로 진행", file=sys.stderr,
               flush=True)
         return fp32
     tmp = made + ".part"
-    print("[embed] int8 양자화(reduce_range=True) 중 — 1회만 걸린다", flush=True)
-    quantize_dynamic(fp32, tmp, weight_type=QuantType.QInt8, per_channel=True,
-                     reduce_range=True, extra_options={"MatMulConstBOnly": True})
+    print("[embed] int8 양자화(reduce_range=True) 중 — 메모리 1.5GB+ 필요", flush=True)
+    try:
+        quantize_dynamic(fp32, tmp, weight_type=QuantType.QInt8, per_channel=True,
+                         reduce_range=True, extra_options={"MatMulConstBOnly": True})
+    except (MemoryError, Exception) as exc:     # noqa: B014 — MemoryError 를 눈에 띄게
+        print(f"[embed] 양자화 실패({type(exc).__name__}) — fp32 로 진행. "
+              f"컨테이너라면 이미지에 굽는 경로(VINC_EMBED_MODEL_PATH)를 쓸 것",
+              file=sys.stderr, flush=True)
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+        return fp32
     os.replace(tmp, made)                       # 원자적 — 중간에 죽어도 반쪽이 안 남는다
     try:
         os.remove(fp32)                         # 1GB 를 영속 볼륨에 남길 이유가 없다
@@ -224,7 +242,10 @@ class _Embedder:
 
         os.makedirs(CACHE, exist_ok=True)
         onnx_path = _resolve_model(MODEL, CACHE)
-        tok_path = hf_hub_download(MODEL, "tokenizer.json", cache_dir=CACHE)
+        # 토크나이저도 구워진 것이 있으면 그걸 쓴다(런타임 네트워크 의존 제거).
+        baked_tok = os.path.join(os.path.dirname(onnx_path), "tokenizer.json")
+        tok_path = (baked_tok if os.path.exists(baked_tok)
+                    else hf_hub_download(MODEL, "tokenizer.json", cache_dir=CACHE))
 
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(MAX_TOKENS)

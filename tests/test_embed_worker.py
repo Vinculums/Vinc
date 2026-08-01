@@ -359,6 +359,39 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                          f"공식 int8 을 받으려 했다: {asked}")
         self.assertTrue(p.endswith("model.onnx"))
 
+    def test_구워진_모델이_있으면_그걸_쓴다__런타임_양자화_금지(self):
+        """🔴 런타임 양자화는 **못 한다**(1024MiB 컨테이너에서 OOM).
+
+        e5 의 임베딩 행렬 하나가 192M float(732MB)이고 원본 모델까지 메모리에 올라가
+        피크가 1.5GB 를 넘는다 — 실측으로 컨테이너보다 넉넉한 기기에서도 죽었다.
+        그래서 `Dockerfile.hub` 가 빌드 타임에 굽고 `VINC_EMBED_MODEL_PATH` 로 알린다.
+        이 테스트는 그 경로를 무시하고 런타임에 받으려 들면 깨진다."""
+        import tempfile
+        import types
+        called: list[str] = []
+        stub = types.ModuleType("huggingface_hub")
+        stub.hf_hub_download = lambda repo, path, **kw: called.append(path) or "/tmp/x"
+        old = sys.modules.get("huggingface_hub")
+        sys.modules["huggingface_hub"] = stub
+        real = os.environ.get("VINC_EMBED_MODEL_PATH")
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
+            baked = f.name
+        os.environ["VINC_EMBED_MODEL_PATH"] = baked
+        try:
+            p = self.mod._resolve_model("intfloat/multilingual-e5-base", "/tmp/c")
+        finally:
+            if old is None:
+                sys.modules.pop("huggingface_hub", None)
+            else:
+                sys.modules["huggingface_hub"] = old
+            if real is None:
+                os.environ.pop("VINC_EMBED_MODEL_PATH", None)
+            else:
+                os.environ["VINC_EMBED_MODEL_PATH"] = real
+            os.unlink(baked)
+        self.assertEqual(p, baked, "구워진 모델을 안 쓰고 다른 걸 골랐다")
+        self.assertEqual(called, [], f"런타임에 모델을 받으려 했다: {called}")
+
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
         있는 동안 뒤의 전부가 영구히 굶는다(head-of-line blocking)."""
