@@ -23,6 +23,7 @@ on:
       - "Dockerfile.hub"
       - "packaging/docker-entrypoint.sh"
       - "packaging/embed_worker.py"
+      - "packaging/bake_embed_model.py"
       - "packaging/lbug_extensions/**"
       - "pyproject.toml"
       - "scripts/check_hub_env.py"
