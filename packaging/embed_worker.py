@@ -144,12 +144,17 @@ class _Embedder:
         배치 축은 열어 둔 셈이었다. Python `MemoryError` 로 잡히면 그 문서는
         needs_embed=1 로 남아 **5분마다 영원히 재시도**하며 매번 같은 고점을 친다.
 
-        나눠도 벡터는 달라지지 않는다. 각 청크의 CLS 출력은 attention_mask 때문에
+        나눠도 벡터는 사실상 달라지지 않는다. 각 청크의 출력은 attention_mask 때문에
         같은 배치의 다른 청크에 의존하지 않는다(패딩 위치는 소프트맥스에서 제외된다).
-        다만 "비트 단위로 동일"까지 주장하지는 않는다 — 배치 모양이 바뀌면 행렬곱의
-        누적 순서와 커널 선택이 달라져 fp32 최하위 비트가 흔들릴 수 있다. 검색 순위를
-        바꿀 수 있는 크기가 아니고(코사인 1 - 1e-7 수준), 벡터 공간 자체는 그대로다.
-        그래서 이 변경에 벡터 공간 동일성 재검증은 필요하지 않다.
+        fp32 에서는 배치 모양이 바뀌어도 코사인 1 - 1e-7 수준이라 순위를 바꿀 크기가
+        아니다.
+
+        ⚠ **단 int8 양자화 모델에서는 이 논증이 약해진다**(2026-08-01 실측). 동적
+        양자화는 배치의 활성값 분포로 스케일을 잡으므로 같은 문장이라도 **어떤 문장과
+        함께 실렸는지에 따라 벡터가 달라진다** — 단독 인코딩 대 동반 배치 코사인
+        0.9912 로, fp32 의 1-1e-7 과는 자릿수가 다르다. 배치 크기를 바꾸면 저장 벡터가
+        미묘하게 흔들린다는 뜻이라, int8 모델을 채택한다면 색인 일관성을 위해
+        `EMBED_BATCH` 를 고정하고 재임베딩은 같은 값으로 돌려야 한다.
 
         길이순 정렬은 하지 않는다. 패딩 낭비를 줄이는 표준 기법이지만, 실측 분포가
         중앙 469 · p90 512 라 이미 대부분 상한에 붙어 있어 얻을 게 거의 없고, 순서를
@@ -249,10 +254,12 @@ def _prefix(text: str, kind: str) -> str:
     e5 계열로 갈아타면 규약이 `query:` / `passage:` **양쪽**으로 바뀌고, 그때는 저장
     벡터도 전량 재생성해야 한다(모델 교체 자체가 이미 전량 재임베딩을 요구한다).
     """
-    if kind != "query":
-        return text
     if "e5" in MODEL.lower():
-        return f"query: {text}"
+        # e5 는 **양쪽 모두** 필수다(모델카드 FAQ: 빠뜨리면 성능이 떨어진다).
+        # 형태는 콜론 뒤 공백 하나 — "query: " 3토큰 · "passage: " 2토큰(실측).
+        return f"{'query' if kind == 'query' else 'passage'}: {text}"
+    if kind != "query":
+        return text                      # bge passage 는 맨몸이다
     return f"{QUERY_PREFIX}{text}" if QUERY_PREFIX else text
 
 
@@ -314,7 +321,12 @@ def main() -> int:
 
         for doc_id, chunks in by_doc.items():
             try:
-                vecs = emb.encode([c["text"] for c in chunks])
+                # ⚠ **반드시 `_prefix` 를 거친다.** bge 에서는 passage 가 맨몸이라
+                # 안 거쳐도 결과가 같지만, 그 "같음"에 기대면 모델을 바꾸는 순간
+                # 조용히 틀린다 — e5 는 저장 쪽에도 "passage: " 가 **필수**이고
+                # (모델카드: 빠뜨리면 성능이 떨어진다) 그 누락은 에러를 내지 않는다.
+                # 모델별 규약은 한 곳(`_prefix`)에만 산다.
+                vecs = emb.encode([_prefix(c["text"], "passage") for c in chunks])
                 res = _call("/embed/apply", {
                     "doc_id": doc_id,
                     "embeddings": {c["chunk_id"]: v for c, v in zip(chunks, vecs)},

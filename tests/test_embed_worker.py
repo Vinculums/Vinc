@@ -211,6 +211,50 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(got, ["양자역학"],
                          "passage 에 접두가 붙었다 — 저장 벡터와 공간이 어긋난다")
 
+    def test_다국어_모델이면_저장_쪽에도_접두가_붙는다(self):
+        """모델 계열이 바뀌면 접두 규약도 바뀐다 — 그리고 그 누락은 **에러를 안 낸다**.
+
+        bge 는 쿼리에만 지시 접두를 붙이고 passage 는 맨몸이다. e5 는 모델카드가
+        `"query: "` / `"passage: "` **양쪽 모두** 필수라고 못박는다(빠뜨리면 성능 저하).
+        그래서 `VINC_EMBED_MODEL` 을 e5 로 바꾸는 순간 저장 벡터가 전부 규약 위반이
+        되는데, 검색은 그냥 조금 나빠질 뿐 아무 신호도 없다.
+
+        배경 임베딩 루프가 `_prefix` 를 우회하던 것이 실제로 그 지뢰였다(2026-08-01
+        수정). 이 테스트는 우회가 되돌아오거나 e5 분기가 passage 를 빠뜨리면 깨진다.
+        """
+        real = self.mod.MODEL
+        try:
+            self.mod.MODEL = "intfloat/multilingual-e5-base"
+            self.assertEqual(self.mod._prefix("본문", "passage"), "passage: 본문")
+            self.assertEqual(self.mod._prefix("질의", "query"), "query: 질의")
+            self.mod.MODEL = "BAAI/bge-base-en-v1.5"
+            self.assertEqual(self.mod._prefix("본문", "passage"), "본문",
+                             "bge passage 에 접두가 붙었다 — 저장 벡터 공간이 어긋난다")
+            self.assertTrue(self.mod._prefix("질의", "query").startswith(self.mod.QUERY_PREFIX))
+        finally:
+            self.mod.MODEL = real
+
+    def test_배경_임베딩이_접두_경로를_우회하지_않는다(self):
+        """저장 벡터를 만드는 실제 루프가 `_prefix` 를 **거치는지** 본다.
+
+        규약을 한 곳에 모아 놓아도 호출부가 우회하면 소용없다. 여기가 그 계약이다."""
+        seen: list[str] = []
+
+        def spy(texts):                       # `_run` 이 _Embedder.encode 로 꽂는다
+            seen.extend(texts)
+            return [[0.0, 1.0] for _ in texts]
+
+        real = self.mod.MODEL
+        try:
+            self.mod.MODEL = "intfloat/multilingual-e5-base"
+            sidecar = _FakeSidecar([[{"doc_id": "d1", "chunk_id": "c1", "text": "본문"}]])
+            self._run(sidecar, encode=spy)
+        finally:
+            self.mod.MODEL = real
+        self.assertTrue(seen, "인코딩이 호출되지 않았다 — 테스트가 낡았다")
+        self.assertTrue(all(t.startswith("passage: ") for t in seen),
+                        f"배경 루프가 접두를 건너뛰었다: {seen!r}")
+
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
         있는 동안 뒤의 전부가 영구히 굶는다(head-of-line blocking)."""
