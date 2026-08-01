@@ -101,9 +101,26 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         by_doc = {a["doc_id"]: a["embeddings"] for a in sidecar.applied}
         self.assertEqual(set(by_doc["d1"]), {"c1", "c2"})
         self.assertEqual(set(by_doc["d2"]), {"c3"})
-        # chunk_id ↔ 벡터 짝이 어긋나면 검색이 조용히 엉킨다 — 길이로 확인.
-        self.assertEqual(by_doc["d1"]["c1"][0], 2.0)
-        self.assertEqual(by_doc["d1"]["c2"][0], 3.0)
+        # v8 — 값은 **벡터 목록**이다(청크 하나에 조각 여럿). 짧은 텍스트는 조각이
+        # 하나뿐이라 목록 길이 1. chunk_id ↔ 벡터 짝이 어긋나면 검색이 조용히 엉키므로
+        # 더미 인코더가 넣은 길이값으로 대응을 확인한다.
+        self.assertEqual(by_doc["d1"]["c1"], [[2.0, 0.0]])   # "aa"
+        self.assertEqual(by_doc["d1"]["c2"], [[3.0, 0.0]])   # "bbb"
+        self.assertEqual(by_doc["d2"]["c3"], [[1.0, 0.0]])   # "c"
+
+    def test_긴_청크는_조각_여럿으로_임베딩된다(self):
+        """v8 부모-자식 — 청크는 정본이라 안 자르고, **벡터만** 쪼갠다.
+
+        청크는 2000자 단위인데 모델 입력 상한은 512토큰이라 한 벡터로는 앞부분만
+        담긴다(실측 유실: 한국어 42.6% · 영어 12.3%). 조각을 내지 않으면 그 손실이
+        그대로 남는다. 이 테스트는 조각내기가 사라지면 깨진다."""
+        long_text = "문단 하나. " * 400 + "\n\n" + "문단 둘. " * 400
+        sidecar = _FakeSidecar([[{"doc_id": "d1", "chunk_id": "c1", "text": long_text}]])
+        self.assertEqual(self._run(sidecar), 0)
+        vecs = sidecar.applied[0]["embeddings"]["c1"]
+        self.assertGreater(len(vecs), 1,
+                           f"긴 청크가 조각나지 않았다(벡터 {len(vecs)}개)")
+        self.assertTrue(all(isinstance(v, list) for v in vecs))
 
     def test_pending_조회_실패는_예외를_밖으로_던지지_않는다(self):
         """사이드카 재시작 중에 워커가 죽으면 안 된다 — 엔트리포인트가 워커

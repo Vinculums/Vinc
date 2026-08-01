@@ -338,13 +338,18 @@ class EmbeddedE2E(unittest.TestCase):
         store = open_store(cfg)
         self.assertIsNotNone(store)
         store.provision(dim=4)
+        # v8 — 벡터는 **자식(ChunkVec)** 에 산다. FTS 는 여전히 Chunk.text 다.
+        # 즉 두 인덱스가 서로 다른 테이블에 걸리고, vector_search 가 자식→부모로
+        # 되돌린다. Chunk.embedding 에 써 봐야 검색에 안 잡힌다(더 이상 안 읽는다).
         with store.session() as s:
             for cid, txt, emb in [
                 ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute", [0.9, 0.2, 0.0, 0.0])]:
-                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.embedding=$e",
-                      id=cid, t=txt, e=emb)
+                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                      "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
+                      vid=f"{cid}#000", id=cid, e=emb)
         try:
             store.build_search_indexes(dim=4)   # 적재 후 인덱스 build(HNSW)
         except RuntimeError as exc:
@@ -369,8 +374,11 @@ class EmbeddedE2E(unittest.TestCase):
                 ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute resolution", [0.9, 0.2, 0.0, 0.0])]:
-                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.embedding=$e",
-                      id=cid, t=txt, e=emb)
+                # v8 — 벡터는 자식(ChunkVec), 텍스트는 부모(Chunk).
+                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                      "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
+                      vid=f"{cid}#000", id=cid, e=emb)
         try:
             store.build_search_indexes(dim=4)
         except RuntimeError as exc:
@@ -743,7 +751,7 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "7")
+        self.assertEqual(rows[0]["v"], "8")   # v8 — 부모-자식 벡터(ChunkVec)
         # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
         store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
                   "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")

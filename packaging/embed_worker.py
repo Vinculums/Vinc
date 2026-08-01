@@ -66,6 +66,12 @@ DOC_BATCH = int(os.environ.get("VINC_EMBED_DOC_BATCH", "16"))
 # 재시작에는 재사용한다.
 CACHE = os.environ.get("VINC_EMBED_CACHE", "/data/embed-model")
 MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
+# 조각 하나에 담을 **콘텐츠** 토큰 수(v8 부모-자식 — `_split_for_embed`).
+# 상한 512 에서 빼야 할 것: 특수토큰 2개(`<s>`/`</s>`) + 접두("passage: " 2토큰 ·
+# "query: " 3토큰, 실측). 발주자 결정 500 은 그 뒤 여유가 12 라 빠듯하지만, 진짜
+# 토크나이저로 자를 때는 `chunk_doc` 의 수리 루프가 상한을 보장하고(실측 512 초과 0),
+# 토크나이저 없는 경로는 추정기의 1.3배 여유가 흡수한다.
+MAX_CONTENT = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 # 한 번의 세션 실행에 넣을 청크 수 상한. **없으면 안 된다** — 자세한 근거는
 # `_Embedder.encode` 주석. 8 인 이유: 실측상 청크는 대부분 512 토큰에 붙어 있어
 # (중앙 469 · p90 512) 배치당 출력 텐서가 8×512×768×fp32 = 12MB 로 잡히고, 어텐션
@@ -91,6 +97,39 @@ def _call(path: str, body: dict | None = None) -> dict:
 
 def _is_e5(model: str = "") -> bool:
     return "e5" in (model or MODEL).lower()
+
+
+def _split_for_embed(text: str) -> list[str]:
+    """청크 → 임베딩 조각(≤`MAX_CONTENT` 토큰). **저장 청크는 건드리지 않는다.**
+
+    청크는 정본(D45)이고 2000자 단위인데 모델 입력 상한은 512토큰이다. 한 벡터만 두면
+    앞 512토큰만 담기고 나머지는 조용히 버려진다 — 실측 유실이 한국어 42.6% · 영어
+    12.3% 다. 청크를 토큰 기준으로 다시 자르는 길도 있지만 정본을 전부 다시 쓰는 일이고
+    개념 링크를 −2.5%/−10% 깎는다. 그래서 **벡터만** 쪼갠다(v8 부모-자식).
+
+    ⚠ 조각을 만들어 **평균**하는 더 싼 안은 실측에서 기준선보다 나빴다(전체 nDCG 0.535
+    vs 0.601). 2000자 안의 서로 다른 내용이 평균에서 뭉개진다 — 조각별로 따로 둬야 한다.
+
+    자르는 일은 `api.docstore.chunk_doc` 이 이미 한다(무손실 경계 + 토큰 수리 루프).
+    사이드카가 없는 환경을 위해 임포트 실패는 통째 반환으로 강등한다."""
+    if not text:
+        return [text]
+    try:
+        from api.docstore import chunk_doc
+    except Exception:
+        return [text]
+    tok = getattr(_SPLIT, "tok", None)
+    parts = chunk_doc(text, max_tokens=MAX_CONTENT, count=tok)
+    return [p["text"] for p in parts] or [text]
+
+
+class _SplitState:
+    """조각내기용 토크나이저 핸들. 모델을 올릴 때 채워진다 — 없으면 `chunk_doc` 의
+    문자 계열 추정기로 강등한다(데스크탑 경로와 같은 폴백)."""
+    tok = None
+
+
+_SPLIT = _SplitState()
 
 
 def _pool(hidden, mask, np):
@@ -189,6 +228,12 @@ class _Embedder:
         else:
             tok.enable_padding(pad_id=pad, pad_token=tok.id_to_token(pad))
         self._tok = tok
+        # 조각내기(`_split_for_embed`)가 **진짜 토큰 수**를 쓰게 한다. 없으면 문자 계열
+        # 추정기로 강등되는데, 추정기는 여유를 크게 잡아 조각이 불필요하게 짧아진다.
+        # ⚠ truncation·padding 이 켜진 이 인스턴스를 그대로 쓰면 길이가 512 에서 잘려
+        # "항상 ≤512" 로 보인다 — 세는 용도로는 **자르지 않는 별도 인스턴스**가 필요하다.
+        counter = Tokenizer.from_file(tok_path)
+        _SPLIT.tok = lambda s: len(counter.encode(s).ids)
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
         # 전경 응답을 굶기지 않게 명시적으로 묶는다.
         opts = ort.SessionOptions()
@@ -400,16 +445,24 @@ def main() -> int:
 
         for doc_id, chunks in by_doc.items():
             try:
-                # ⚠ **반드시 `_prefix` 를 거친다.** bge 에서는 passage 가 맨몸이라
-                # 안 거쳐도 결과가 같지만, 그 "같음"에 기대면 모델을 바꾸는 순간
-                # 조용히 틀린다 — e5 는 저장 쪽에도 "passage: " 가 **필수**이고
-                # (모델카드: 빠뜨리면 성능이 떨어진다) 그 누락은 에러를 내지 않는다.
-                # 모델별 규약은 한 곳(`_prefix`)에만 산다.
-                vecs = emb.encode([_prefix(c["text"], "passage") for c in chunks])
-                res = _call("/embed/apply", {
-                    "doc_id": doc_id,
-                    "embeddings": {c["chunk_id"]: v for c, v in zip(chunks, vecs)},
-                })
+                # 청크 하나 → 벡터 **여럿**(v8 부모-자식). 저장 청크는 2000자인데 모델
+                # 입력 상한은 512토큰이라 한 벡터로는 앞부분만 담긴다(실측 유실: 한국어
+                # 42.6% · 영어 12.3%). 청크를 ≤MAX_CONTENT 토큰 조각으로 나눠 조각마다
+                # 벡터를 만들고, 스토어가 ChunkVec 자식 행으로 편다. **청크 자체는 안
+                # 건드린다** — 재청킹이 아니라서 MENTIONS·발췌·주제 유도가 그대로다.
+                #
+                # ⚠ **반드시 `_prefix` 를 거친다.** bge 에서는 passage 가 맨몸이라 안
+                # 거쳐도 결과가 같지만, 그 "같음"에 기대면 모델을 바꾸는 순간 조용히
+                # 틀린다 — e5 는 저장 쪽에도 "passage: " 가 **필수**다(모델카드). 접두는
+                # 조각을 낸 **뒤에** 붙인다. 그래야 접두 토큰이 512 예산에 정확히 든다.
+                per_chunk = [_split_for_embed(c["text"]) for c in chunks]
+                flat = [_prefix(p, "passage") for parts in per_chunk for p in parts]
+                vecs = emb.encode(flat)
+                out, at = {}, 0
+                for c, parts in zip(chunks, per_chunk):
+                    out[c["chunk_id"]] = vecs[at:at + len(parts)]
+                    at += len(parts)
+                res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
             except Exception as e:

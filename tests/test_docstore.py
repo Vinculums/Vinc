@@ -284,6 +284,91 @@ class DocstoreE2E(unittest.TestCase):
         ds.delete_doc(self.store, d2["doc_id"], owner="user:a")
         self.assertTrue(fts_alive(), "문서 삭제가 FTS 를 끊었다")
 
+    def _chunk_ids(self, doc_id):
+        return [r["id"] for r in self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id=$d RETURN c.chunk_id AS id "
+            "ORDER BY c.chunk_index", {"d": doc_id})]
+
+    def _count(self, cypher, params=None):
+        r = self.store.run(cypher, params)
+        return int(r[0][list(r[0])[0]]) if r else 0
+
+    def test_청크당_벡터를_여럿_단다__재청킹이_아니다(self):
+        """v8 부모-자식 — 저장 청크는 그대로 두고 벡터만 쪼갠다.
+
+        청크는 2000자 단위인데 모델 입력 상한은 512토큰이라 한 벡터로는 앞부분만
+        담긴다(실측 유실: 한국어 42.6% · 영어 12.3%). 토큰 기준 재청킹도 답이지만
+        정본(D45)을 전부 다시 쓰는 일이고 개념 링크를 −2.5%/−10% 깎는다.
+
+        벡터만 쪼개면 검색 품질은 재청킹과 **같고**(벡터 집합이 문자 그대로 동일 —
+        실측 nDCG 0.659) MENTIONS·발췌·주제 유도는 기준선 그대로다. 이 테스트의 핵심
+        단언은 마지막 줄이다: **청크가 안 변했다.**"""
+        text = "첫 문단. alpha\n\n둘째 문단. beta\n\n셋째. gamma\n\n넷째. delta"
+        d = ds.put_doc(self.store, owner="user:a", text=text, title="T", max_chars=25)
+        cids = self._chunk_ids(d["doc_id"])
+        self.assertGreaterEqual(len(cids), 2)
+
+        r = ds.apply_embeddings(self.store, d["doc_id"], {
+            cids[0]: [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1.0, 0]],   # 자식 3
+            cids[1]: [[0, 0, 0, 1.0]]})                                   # 자식 1
+        self.assertTrue(r["executed"])
+        self.assertEqual(r.get("vectors"), 4, "청크당 여러 벡터가 안 저장됐다")
+        self.assertEqual(
+            self._count("MATCH (v:ChunkVec) WHERE v.chunk_id=$i RETURN count(v) AS c",
+                        {"i": cids[0]}), 3)
+        self.assertEqual(self._chunk_ids(d["doc_id"]), cids,
+                         "청크가 변했다 — 이건 재청킹이 아니어야 한다")
+
+    def test_단일_벡터_형식도_받는다__하위호환(self):
+        """구 워커(벡터 하나)가 보내도 자식 1개로 정규화돼야 한다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문 하나. " * 30, title="T")
+        cids = self._chunk_ids(d["doc_id"])
+        r = ds.apply_embeddings(self.store, d["doc_id"], {cids[0]: [1.0, 0, 0, 0]})
+        self.assertTrue(r["executed"])
+        self.assertEqual(r.get("vectors"), 1)
+
+    def test_재임베딩이_옛_자식을_남기지_않는다(self):
+        """구·신 벡터가 한 색인에 섞이면 **에러 없이 검색만 나빠진다** — 이 리포가
+        모델 전환마다 경계해 온 실패 양식이다. 자식을 먼저 지우고 새로 만든다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"],
+                            {cid: [[1.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1.0, 0]]})
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[0, 0, 0, 1.0]]})
+        self.assertEqual(
+            self._count("MATCH (v:ChunkVec) WHERE v.chunk_id=$i RETURN count(v) AS c",
+                        {"i": cid}), 1, "옛 자식이 남았다 — 구·신 벡터 혼재")
+
+    def test_문서_삭제가_자식_벡터까지_지운다(self):
+        """고아 자식은 조용히 사라지지 않는다 — 인덱스에 남아 상위 k 자리를 잡아먹고
+        부모 조인에서 빈 결과가 된다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertGreater(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0)
+        ds.delete_doc(self.store, d["doc_id"], owner="user:a")
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0)
+
+    def test_벡터검색이_자식이_아니라_부모를_돌려준다(self):
+        """호출부(RRF 융합·발췌)는 청크 계약을 본다. 자식 id 가 새 나가면 그 전부가 깨진다.
+        같은 부모의 자식들이 상위 k 를 독식하지 않도록 부모 단위로 접는 것도 함께 본다."""
+        text = "첫 문단. alpha\n\n둘째. beta\n\n셋째. gamma\n\n넷째. delta"
+        d = ds.put_doc(self.store, owner="user:a", text=text, title="T", max_chars=25)
+        cids = self._chunk_ids(d["doc_id"])
+        ds.apply_embeddings(self.store, d["doc_id"], {
+            cids[0]: [[1.0, 0, 0, 0], [0.9, 0.1, 0, 0], [0.8, 0.2, 0, 0]],
+            cids[1]: [[0, 0, 0, 1.0]]})
+        try:
+            self.store.build_search_indexes(dim=4)
+        except Exception as exc:
+            self.skipTest(f"검색 확장 미가용: {str(exc)[:60]}")
+        hits = self.store.vector_search([1.0, 0, 0, 0], 5)
+        ids = [h["id"] for h in hits]
+        self.assertTrue(ids, "벡터검색이 비었다")
+        self.assertTrue(set(ids) <= set(cids), f"자식 id 가 새 나왔다: {ids}")
+        self.assertEqual(len(ids), len(set(ids)), f"부모로 접히지 않았다: {ids}")
+        self.assertTrue(all(h.get("text") for h in hits), "부모 본문이 안 실렸다")
+
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
         out = ds.put_doc(self.store, owner="user:a", text=text, title="정본")

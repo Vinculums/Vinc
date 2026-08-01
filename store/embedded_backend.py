@@ -371,6 +371,8 @@ class EmbeddedBackend:
     # 그 열을 수정할 수 없다 — 인덱스는 **적재 후 build**, 재적재 전 **drop**
     # (embed 잡이 관리, §3-1-1).
     _VEC_INDEX = "chunk_vec"
+    # 자식 과추출 배수 — 한 부모의 조각들이 상위 k 를 다 차지하지 않게(:meth:`vector_search`).
+    _CHILD_FANOUT = 4
     _FTS_INDEX = "chunk_ft"
     _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
@@ -464,7 +466,7 @@ class EmbeddedBackend:
         (해당 지점을 지나면 `ensure_search_indexes` 가 검색 시 다시 만든다.)"""
         self._load_ext("vector")
         try:
-            self._conn.execute(f"CALL DROP_VECTOR_INDEX('Chunk','{self._VEC_INDEX}')")
+            self._conn.execute(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')")
         except Exception:
             pass  # 미존재 — 무시(멱등)
 
@@ -485,7 +487,8 @@ class EmbeddedBackend:
         `drop_search_indexes()` 로 기존 인덱스를 먼저 제거해야 한다(embed 잡 순서)."""
         self._load_ext("vector")
         self._load_ext("fts")
-        self._conn.execute(f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
+        self._conn.execute(
+            f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
     def ensure_search_indexes(self, *, dim: int | None = None, conn=None) -> dict:
@@ -521,22 +524,41 @@ class EmbeddedBackend:
         built["fts"] = _create("fts", f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
         if dim is not None:
             built["vector"] = _create(
-                "vector", f"CALL CREATE_VECTOR_INDEX('Chunk','{self._VEC_INDEX}','embedding')")
+                "vector",
+                f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
         return built
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
+        """벡터 검색 — **자식(ChunkVec)에서 찾아 부모(Chunk)로 되돌린다**(v8).
+
+        인덱스가 청크가 아니라 그 조각에 걸려 있다. 청크 하나가 여러 벡터를 가지므로
+        상위 k 개 자식이 같은 부모를 여러 번 가리킬 수 있다 — **부모 단위로 접어야**
+        호출부(RRF 융합·발췌)가 지금과 같은 계약을 본다. 접을 때는 **가장 가까운 자식의
+        distance** 를 부모 점수로 쓴다(최소값). 평균이 아니라 최소인 이유: 긴 청크의
+        한 대목만 질의와 맞아도 그 청크는 답이다 — 나머지 조각이 무관하다고 점수를
+        깎으면 긴 문서가 부당하게 밀린다.
+
+        그래서 자식은 **넉넉히 뽑는다**(k × _CHILD_FANOUT). 안 그러면 한 부모의 조각들이
+        상위 k 를 다 차지해 부모 다양성이 줄어든다."""
         c = conn or self._conn
         self._load_ext("vector", reader=conn is not None)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)  # pre-filter 과추출(§4-2)
-        params: dict = {"emb": list(embedding), "k": k}
-        where = _filter_clause("node", filters, params)
+        kk = k * self._CHILD_FANOUT
+        params: dict = {"emb": list(embedding), "k": kk}
+        # 필터는 부모(Chunk)의 열을 본다 — 자식엔 layer 도 text 도 없다.
+        where = _filter_clause("p", filters, params)
         cypher = (
-            f"CALL QUERY_VECTOR_INDEX('Chunk','{self._VEC_INDEX}', $emb, $k) "
+            f"CALL QUERY_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}', $emb, $k) "
+            "MATCH (p:Chunk) WHERE p.chunk_id = node.chunk_id "
             f"{where}"
-            "RETURN node.chunk_id AS id, node.text AS text, distance "
-            "ORDER BY distance LIMIT $k"
+            "RETURN p.chunk_id AS id, p.text AS text, distance "
+            "ORDER BY distance"
         )
-        return _exec_to_dicts(c, cypher, params)[:int(top_k)]
+        rows = _exec_to_dicts(c, cypher, params)
+        best: dict[str, dict] = {}
+        for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
+            best.setdefault(r.get("id"), r)
+        return list(best.values())[:int(top_k)]
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn

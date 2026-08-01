@@ -82,6 +82,27 @@ _NODE_TABLES: dict[str, dict] = {
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
         ("embedding", "FLOAT[{dim}]"),
         ("owner_id", "STRING"), ("char_start", "INT64"), ("char_end", "INT64")]},
+    # v8 — **부모-자식 벡터**. 청크 하나에 벡터 여러 개를 단다.
+    #
+    # 왜: 저장 청크(2000자)와 모델 입력 상한(512토큰)의 단위가 다르다. 한 벡터만 두면
+    # 앞 512토큰만 임베딩되고 나머지가 조용히 버려진다(실측: 한국어 42.6% · 영어 12.3%).
+    # 청크를 토큰 기준으로 다시 자르는 길도 있지만 그건 정본(Chunk=SSoT, D45)을 전부
+    # 다시 쓰는 일이고 개념 링크(MENTIONS)를 −2.5%/−10% 깎는다.
+    #
+    # 그래서 **청크는 그대로 두고 벡터만 쪼갠다**. 검색 품질은 재청킹과 **같다**(같은
+    # 조각을 같은 모델로 인코딩하므로 벡터 집합이 문자 그대로 동일 — 실측 nDCG 0.659
+    # vs 재청킹 0.659, 현행 0.601). MENTIONS·발췌·주제 유도는 기준선 그대로다.
+    #
+    # ⚠ 임베딩할 때만 조각내 **평균**하는 더 싼 안도 재 봤는데 기준선보다 나빴다
+    # (전체 0.535 vs 0.601, 한국어 −0.092). 2000자 안의 서로 다른 내용이 평균에서
+    # 뭉개진다 — 지름길은 없다.
+    #
+    # `Chunk.embedding` 은 v8 이후 **읽지 않는다**(열은 남긴다 — 드롭이 위험하고, 남아도
+    # 해롭지 않다). 벡터 인덱스도 이 테이블로 옮긴다. FTS 는 Chunk.text 에 그대로.
+    "ChunkVec": {"pk": "vec_id", "cols": [
+        ("vec_id", "STRING"),            # f"{chunk_id}#{seq:03d}" — 위치 안정
+        ("chunk_id", "STRING"), ("doc_id", "STRING"), ("owner_id", "STRING"),
+        ("seq", "INT64"), ("embedding", "FLOAT[{dim}]")]},
     # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2 · engines/
     # fragment_ingest). 레거시 4타입(concept/domain/bridge/episode)은 전용 테이블
     # 유지; 어휘 밖 신규 타입은 여기로 exact-id MERGE 된다. `type` 은 theme 어휘가
@@ -181,7 +202,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -225,6 +246,10 @@ def migration_statements(from_version: int) -> list[str]:
         stmts.append("ALTER TABLE Record ADD content_time STRING DEFAULT ''")
         stmts.append("ALTER TABLE _DocMeta ADD created_at STRING DEFAULT ''")
         stmts.append("ALTER TABLE _DocMeta ADD content_time STRING DEFAULT ''")
+    # v8 — 부모-자식 벡터(ChunkVec). **ALTER 스텝이 없다**: 신규 노드 테이블은 매 부팅
+    # 멱등 DDL(render_node_tables)이 만든다. 기존 Chunk.embedding 은 건드리지 않는다 —
+    # 드롭이 위험하고, 남아도 읽지 않으면 해롭지 않다(ChunkVec 이 채워지기 전까지는
+    # 벡터 검색이 빌 뿐이고, 그 기간은 어차피 전량 재임베딩 구간이다).
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

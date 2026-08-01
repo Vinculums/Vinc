@@ -379,6 +379,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         cnt = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c",
                         {"d": doc_id})
         removed = int(cnt[0].get("c")) if cnt else 0
+        # 자식 벡터(v8)도 함께 — 재청킹으로 청크가 줄면 옛 자식이 없는 부모를 가리켜
+        # 고아가 된다. 새 벡터는 워커가 apply_embeddings 로 다시 만든다.
+        store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
         store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
 
     for i, c in enumerate(chunks):
@@ -525,6 +528,10 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
         # 드롭하지 않는다 — 삭제는 인덱스를 깨지 않는다(실측: 벡터를 가진 2,000청크를
         # 인덱스가 살아 있는 채로 지워도 무사하고, 지운 행은 검색에서 곧바로 사라진다).
         # 예전엔 여기서도 드롭해 문서 하나 지울 때마다 검색이 끊겼다.
+        # ⚠ 자식 벡터(v8)를 **먼저** 지운다. 남기면 검색이 없는 문서를 가리키는 고아가
+        # 되고, 그건 부모 조인이 빈 결과를 내 조용히 사라지는 게 아니라 인덱스에만
+        # 남아 상위 k 자리를 잡아먹는다.
+        store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
         store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
     owner_id = (meta or {}).get("owner_id") or owner or ""
     if meta is not None:
@@ -713,30 +720,49 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
     return out
 
 
-def apply_embeddings(store, doc_id: str, embeddings: dict[str, list[float]]) -> dict:
-    """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에
-    강건). 문서의 모든 청크가 임베딩되면 needs_embed=0. 인덱스 열 변이라 drop →
-    SET → 검색 경로 지연 재빌드. 벡터는 워커가 만들었을 뿐 원문은 스토어에만 있다."""
+def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
+    """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에 강건).
+
+    **값은 벡터 하나 또는 벡터 목록**이다(v8 — 부모-자식). 청크는 2000자 단위인데 모델
+    입력 상한은 512토큰이라 한 벡터로는 앞부분만 담긴다(실측: 한국어 42.6%·영어 12.3%
+    유실). 그래서 워커가 청크를 ≤500토큰 조각으로 나눠 조각별 벡터를 보내고, 여기서
+    `ChunkVec` 자식 행으로 편다. 청크 자체는 **손대지 않는다** — 재청킹이 아니므로
+    MENTIONS·발췌·주제 유도가 전부 기준선 그대로다.
+
+    구 형식(벡터 하나)도 받는다 — 자식 1개짜리로 정규화한다(하위호환).
+    문서의 모든 청크가 채워지면 needs_embed=0. 벡터가 새로 생기므로 인덱스 드롭 필수."""
     base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
     if not embeddings:
         base["error"] = "no embeddings"
         return base
-    ids = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id",
-                    {"d": doc_id}) or []
-    all_ids = {r["id"] for r in ids}
+    rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
+                     "RETURN c.chunk_id AS id, c.owner_id AS owner", {"d": doc_id}) or []
+    all_ids = {r["id"] for r in rows}
+    owner_of = {r["id"]: (r.get("owner") or "") for r in rows}
     if not all_ids:
         base["error"] = "unknown doc_id"
         return base
     # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
     # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
     _drop_vector_index_if_any(store)
-    applied = 0
-    for cid, vec in embeddings.items():
+    applied = vecs = 0
+    for cid, val in embeddings.items():
         if cid not in all_ids:
             continue
-        store.run("MATCH (c:Chunk) WHERE c.chunk_id = $id SET c.embedding = $emb",
-                  {"id": cid, "emb": list(vec)})
+        # 하나든 여럿이든 목록으로 정규화(첫 원소가 스칼라면 단일 벡터).
+        many = val if (val and isinstance(val[0], (list, tuple))) else [val]
+        # ⚠ 먼저 **기존 자식을 지운다**. 안 그러면 재임베딩 때 옛 조각이 남아
+        # 구·신 벡터가 한 색인에 섞인다 — 에러 없이 검색만 나빠지는 그 사고다.
+        store.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $id DETACH DELETE v", {"id": cid})
+        for seq, vec in enumerate(many):
+            store.run(
+                "MERGE (v:ChunkVec {vec_id: $vid}) SET v.chunk_id = $cid, v.doc_id = $doc, "
+                "v.owner_id = $own, v.seq = $seq, v.embedding = $emb",
+                {"vid": f"{cid}#{seq:03d}", "cid": cid, "doc": doc_id,
+                 "own": owner_of.get(cid, ""), "seq": seq, "emb": list(vec)})
+            vecs += 1
         applied += 1
+    base["vectors"] = vecs
     # 전 청크가 채워졌을 때만 needs_embed 내림(부분 배치는 다음 라운드가 마저).
     if all_ids <= set(embeddings.keys()):
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
