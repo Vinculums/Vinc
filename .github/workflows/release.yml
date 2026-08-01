@@ -83,7 +83,22 @@ jobs:
         # pypdf = PDF 원문 적재(D45 입력 어댑터). 여기 빠뜨리면 동결 바이너리에
         # 통째로 안 실려 PDF 만 조용히 강등된다 — pyproject 의 extra 는 이 목록을
         # 대신하지 않는다(이 워크플로는 extras 를 쓰지 않고 목록을 직접 적는다).
-        run: pip install ladybug pyyaml pyinstaller pypdf
+        #
+        # ⚠ `ladybug` 는 **반드시 핀한다.** 여기만 핀이 없어서 v0.7.0 릴리스가
+        # Windows 에서 깨졌다(2026-08-01). 2026-07-30 에 올라온 0.19.0 이 Windows 에서
+        # C API 공유 라이브러리를 못 찾는다:
+        #   RuntimeError: Could not find lbug C API shared library.
+        #                 Set LBUG_C_API_LIB_PATH or ... LBUG_LIB_KIND=shared
+        # 즉 0.19.0 은 공유 라이브러리를 휠에서 분리한 것으로 보인다.
+        #
+        # 나머지 세 자리(ci.yml · hub-deploy.yml · Dockerfile.hub)는 전부
+        # `ladybug==0.18.0` 이었고 **여기만 빠져 있었다** — DEPLOYMENT §1.5 가 적은
+        # `package-lock.json` 비대칭과 같은 계열의 사고다.
+        #
+        # 부수 효과로 **테스트한 것과 배포한 것이 달랐던 것도 함께 고쳐진다**:
+        # 이 자리가 핀이 없어 v0.6.7 은 그날의 최신(0.18.3)으로 빌드돼 나갔는데,
+        # ci.yml 은 0.18.0 으로 테스트하고 있었다. 이제 넷 다 0.18.0 이다.
+        run: pip install ladybug==0.18.0 pyyaml pyinstaller pypdf
       - name: Seed LadybugDB extensions (G0 오프라인 번들 — spec 이 datas 로 동봉)
         shell: bash
         run: python -c "import ladybug,tempfile,os; c=ladybug.Connection(ladybug.Database(os.path.join(tempfile.mkdtemp(),'s'))); [c.execute('INSTALL '+e) for e in ('vector','fts','algo')]"
