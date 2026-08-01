@@ -43,6 +43,8 @@ import time
 import uuid
 from typing import Any, Callable
 
+from . import graphmd
+
 # doc 단위 기본 청크 크기(문자). 검색 recall 용 세밀 분할은 임베딩 파이프라인
 # (토큰 기준)이 담당하고, 여기는 **정본 보관 단위**라 다소 커도 무방하다.
 DEFAULT_MAX_CHARS = 2000
@@ -75,27 +77,107 @@ def chunk_id_of(doc_id: str, index: int) -> str:
 
 # ── 무손실 경계 청킹(순수 — I/O·DB 없음) ─────────────────────────────────────
 
-def plan_boundaries(text: str, *, max_chars: int = DEFAULT_MAX_CHARS) -> list[int]:
+# ── 토큰 추정(토크나이저 없는 환경용) ────────────────────────────────────────
+# 데스크탑 사이드카는 PyInstaller 번들이라 토크나이저가 없다. 그래도 청킹은 거기서도
+# 일어나므로, 실제 토큰 수를 **문자 계열 가중치로 근사**한다.
+#
+# 값의 출처는 **실제 코퍼스 회귀**다(2026-08-01, 실문서 541청크를 e5 토크나이저로 세어
+# 최소자승): 한글 1.034 · CJK 1.440 · 기타 0.307 토큰/문자.
+# ⚠ 처음엔 합성 문장 하나로 잡은 값(0.70 / 1.11 / 0.21)을 썼는데 **30% 이상 낮았다** —
+# 반복 문장은 흔한 조각이 단일 토큰으로 잡혀 효율을 과대평가한다. 그대로 두면 청크
+# 84건이 512 를 넘겼다. 표본은 합성이 아니라 실제 문서여야 한다.
+#
+# 여기에 **1.3 배 여유**를 곱한다. 회귀값 그대로면 41.6% 가 과소평가되고(청크가 상한을
+# 넘겨 임베딩 때 조용히 잘린다 — 이 작업이 없애려는 바로 그 손실), ×1.3 이면 0.6% 로
+# 떨어진다. 과대평가의 대가는 청크가 조금 짧아지는 것뿐이라 훨씬 싸다. 남는 0.6% 는
+# 목표 400 과 상한 512 사이의 헤드룸(28%)이 흡수한다.
+_RE_HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣᄀ-ᇿ]")
+_RE_CJK = re.compile(r"[぀-ヿ一-鿿㐀-䶿]")
+_EST_MARGIN = 1.3
+_TOK_PER_HANGUL = 1.034 * _EST_MARGIN
+_TOK_PER_CJK = 1.440 * _EST_MARGIN
+_TOK_PER_OTHER = 0.307 * _EST_MARGIN
+
+
+def estimate_tokens(s: str) -> int:
+    """문자 계열 가중 토큰 추정 — 토크나이저가 없을 때의 폴백.
+
+    **정확하지 않다.** 혼합 언어 문서에서 특히 그렇고, 그래서 목표 토큰 수에 여유를
+    두는 것이 전제다(상한 512 에 목표 400 이면 헤드룸 108). 정확한 값이 필요하면
+    `chunk_doc(count=...)` 로 진짜 토크나이저를 주입한다."""
+    if not s:
+        return 0
+    ko = len(_RE_HANGUL.findall(s))
+    cjk = len(_RE_CJK.findall(s))
+    return int(ko * _TOK_PER_HANGUL + cjk * _TOK_PER_CJK
+               + max(0, len(s) - ko - cjk) * _TOK_PER_OTHER) + 1
+
+
+def plan_boundaries(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,
+                    max_tokens: int = 0,
+                    count: Callable[[str], int] | None = None) -> list[int]:
     """청크 시작 오프셋 목록(b0=0, 오름차순, len 미포함). **경계 슬라이스 전제**라
     어떤 입력에도 ``"".join(text[b_i:b_{i+1}]) == text`` 가 정의상 성립한다.
 
-    분할 선호: 문단 경계("\\n\\n" 런 직후) > 행 경계 > 하드 컷(max_chars).
+    분할 선호: 문단 경계("\\n\\n" 런 직후) > 행 경계 > 하드 컷.
     문단·행 경계 산출이 어그러져도 하드 컷이 상한을 보장한다(손실은 구조적 불가 —
-    경계가 어긋나면 '못생긴 분할'이지 '깨진 원문'이 아니다)."""
+    경계가 어긋나면 '못생긴 분할'이지 '깨진 원문'이 아니다).
+
+    ``max_tokens`` 를 주면 **문자가 아니라 토큰**을 기준으로 자른다. 문자 기준은
+    언어에 따라 토큰 수가 5배 이상 벌어져(실측: 같은 400토큰 창이 한국어 482자 ·
+    영어 2,660자) 어떤 단일 문자값도 두 언어를 동시에 만족시키지 못한다. 창 크기는
+    실측된 자/토큰 비로 적응시키고, 문서 안에서도 구간마다 갱신한다(혼합 언어 대응).
+
+    ``count`` 미지정 시 :func:`estimate_tokens` 폴백(데스크탑처럼 토크나이저가 없는 곳).
+    """
     n = len(text)
     if n == 0:
         return [0]
     # 후보 경계: 문단(빈 줄 런 끝) 우선, 그다음 개행 직후.
     para = {m.end() for m in re.finditer(r"\n\s*\n", text)}
     lines = {m.end() for m in re.finditer(r"\n", text)}
+
+    if max_tokens <= 0:
+        bounds = [0]
+        pos = 0
+        while n - pos > max_chars:
+            window_end = pos + max_chars
+            # 창 안 가장 뒤의 문단 경계 → 없으면 행 경계 → 없으면 하드 컷.
+            cut = max((b for b in para if pos < b <= window_end), default=0) \
+                or max((b for b in lines if pos < b <= window_end), default=0) \
+                or window_end
+            bounds.append(cut)
+            pos = cut
+        return bounds
+
+    tok = count or estimate_tokens
+    cpt = max(1.0, len(text) / max(1, tok(text[:4000] or text)))   # 초기 자/토큰
     bounds = [0]
     pos = 0
-    while n - pos > max_chars:
-        window_end = pos + max_chars
-        # 창 안 가장 뒤의 문단 경계 → 없으면 행 경계 → 없으면 하드 컷.
+    guard = 0
+    while pos < n and guard < 100_000:
+        guard += 1
+        if tok(text[pos:]) <= max_tokens:
+            break                                   # 남은 전부가 한 청크에 들어간다
+        window_end = min(n, pos + max(1, int(max_tokens * cpt)))
         cut = max((b for b in para if pos < b <= window_end), default=0) \
             or max((b for b in lines if pos < b <= window_end), default=0) \
             or window_end
+        # ⚠ **토큰 수는 부분합이 아니다** — tokenize(A+B) ≠ tokenize(A)+tokenize(B).
+        # 그래서 창 크기를 자/토큰으로 잡아 놓고 끝내면 안 되고, 실제로 세어 보고
+        # 넘치면 줄여야 한다. 이 수리 루프가 없으면 상한 초과가 그대로 새 나간다.
+        shrink = 0
+        while cut > pos + 1 and tok(text[pos:cut]) > max_tokens and shrink < 40:
+            shrink += 1
+            span = cut - pos
+            target = pos + max(1, int(span * 0.85))
+            cut = max((b for b in para if pos < b <= target), default=0) \
+                or max((b for b in lines if pos < b <= target), default=0) \
+                or target
+        if cut <= pos:                              # 진전이 없으면 하드 컷으로 탈출
+            cut = min(n, pos + max(1, int(max_tokens * cpt)))
+        piece_tok = max(1, tok(text[pos:cut]))
+        cpt = 0.7 * cpt + 0.3 * ((cut - pos) / piece_tok)   # 구간별 갱신(혼합 언어)
         bounds.append(cut)
         pos = cut
     return bounds
@@ -120,16 +202,20 @@ def _section_title(chunk: str) -> str:
 
 
 def chunk_doc(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,
-              boundaries: list[int] | None = None) -> list[dict]:
+              boundaries: list[int] | None = None,
+              max_tokens: int = 0,
+              count: Callable[[str], int] | None = None) -> list[dict]:
     """텍스트 → [{index, start, end, text, section_title}] (순수). 복원 계약의
     생산자 — start/end 는 반개구간 오프셋, 연결하면 원문과 바이트 동일.
 
     ``boundaries`` 지정 시 외부 청커의 경계를 정규화해 사용(P2 — chonkie 통합);
-    없으면 내장 문단/행/하드컷 경계(plan_boundaries)."""
+    없으면 내장 문단/행/하드컷 경계(plan_boundaries).
+    ``max_tokens`` 를 주면 문자가 아니라 **토큰** 기준으로 자른다(:func:`plan_boundaries`)."""
     if boundaries is not None:
         bounds = normalize_boundaries(text, boundaries) if text else [0]
     else:
-        bounds = plan_boundaries(text, max_chars=max_chars)
+        bounds = plan_boundaries(text, max_chars=max_chars,
+                                 max_tokens=max_tokens, count=count)
     out = []
     for i, start in enumerate(bounds):
         end = bounds[i + 1] if i + 1 < len(bounds) else len(text)
@@ -547,7 +633,12 @@ def list_docs(store, *, owner: str | None = None) -> dict:
         "d.needs_embed AS needs_embed, "
         "d.created_at AS created_at, d.content_time AS content_time "   # v7(D72)
         "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
-    docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))} for r in (rows or [])]
+    # 관례(GRAPH.md)는 자료가 아니라 **자료에 대한 규약**이다. 문서 목록·좌측 트리
+    # (nav_tree 가 이 함수를 그대로 쓴다)에서 빼서 사용자의 실제 자료 사이에 끼지 않게
+    # 한다. 전용 자리는 앱의 관례 시트이고, 어시스턴트는 vinc_conventions 로 읽는다.
+    # 정확한 id 로는 여전히 읽고 지울 수 있다(get_doc/delete_doc 은 그대로).
+    docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))}
+            for r in (rows or []) if r.get("doc_id") != graphmd.CONVENTIONS_DOC_ID]
 
     tally = mention_tally(store, owner=owner)
     for d in docs:

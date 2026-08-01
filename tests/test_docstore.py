@@ -46,6 +46,66 @@ class PureChunkingTests(unittest.TestCase):
                 self.assertEqual("".join(c["text"] for c in chunks), text,
                                  f"손실 발생: max_chars={max_chars}")
 
+    def test_토큰_기준_청킹도_무손실이다(self):
+        """토큰 모드가 D45 복원 계약을 깨면 안 된다.
+
+        문자 기준 청킹은 언어에 따라 토큰 수가 5배 이상 벌어져(실측: 같은 400토큰 창이
+        한국어 482자 · 영어 2,660자) 한국어 청크의 42~82% 가 임베딩 때 조용히 잘렸다.
+        토큰 기준으로 자르면 그 손실이 0 이 되는데, **그 대가로 복원이 깨지면 안 된다** —
+        Chunk 는 정본이다(D45). 경계 목록만 만들고 슬라이스는 손대지 않으므로 무손실은
+        구성으로 성립하지만, 그 구성이 유지되는지 검사한다."""
+        for text in _SAMPLES:
+            for mt in (20, 100, 400):
+                chunks = ds.chunk_doc(text, max_tokens=mt)
+                self.assertEqual("".join(c["text"] for c in chunks), text,
+                                 f"토큰 모드 손실: max_tokens={mt}")
+                prev = 0
+                for c in chunks:
+                    self.assertEqual(c["start"], prev)
+                    prev = c["end"]
+                self.assertEqual(prev, len(text))
+
+    def test_토큰_상한이_실제로_지켜진다(self):
+        """세어 보고 넘치면 줄이는 **수리 루프**가 있어야 한다.
+
+        ⚠ 토큰 수는 부분합이 아니다 — `tokenize(A+B) ≠ tokenize(A)+tokenize(B)`.
+        자/토큰 비로 창을 잡아 놓고 끝내면 경계가 상한을 넘길 수 있다. 여기서는 주입한
+        count 로 검사하므로 수리 루프가 빠지면 곧바로 깨진다."""
+        def count(s):                       # 결정론 대역 — 공백 단위
+            return len(s.split()) + 1
+
+        text = ("단어 " * 300 + "\n\n") * 4 + "word " * 500
+        for mt in (10, 40, 120):
+            chunks = ds.chunk_doc(text, max_tokens=mt, count=count)
+            self.assertEqual("".join(c["text"] for c in chunks), text)
+            over = [count(c["text"]) for c in chunks if count(c["text"]) > mt]
+            self.assertEqual(over, [], f"상한 초과 {len(over)}건(max_tokens={mt}): {over[:5]}")
+
+    def test_추정기가_과소평가하지_않는다(self):
+        """토크나이저 없는 데스크탑용 추정기는 **넉넉해야** 한다.
+
+        과소평가하면 청크가 상한을 넘겨 임베딩 때 잘린다 — 이 작업이 없애려는 바로 그
+        손실이다. 과대평가는 청크가 조금 짧아질 뿐이다. 그래서 실제 코퍼스 회귀값
+        (한글 1.034 · CJK 1.440 · 기타 0.307 토큰/문자)에 1.3배 여유를 곱해 뒀다.
+
+        ⚠ 처음엔 합성 문장 하나로 상수를 잡았다가 30% 넘게 빗나갔다(청크 84건이 512
+        초과). 반복 문장은 흔한 조각이 단일 토큰으로 잡혀 효율을 과대평가한다."""
+        # 한글은 영문보다 문자당 토큰이 훨씬 많다 — 그 순서가 뒤집히면 추정이 무의미하다.
+        ko = ds.estimate_tokens("양자역학의 해밀토니안 형식은 대응원리를 통해")
+        en = ds.estimate_tokens("The Hamiltonian formulation of classical mechanics")
+        self.assertGreater(ko / 26, en / 50, "한글이 영문보다 문자당 토큰이 적게 나왔다")
+        self.assertEqual(ds.estimate_tokens(""), 0)
+        self.assertGreaterEqual(ds.estimate_tokens("a"), 1)
+
+    def test_기본은_여전히_문자_기준이다(self):
+        """토큰 모드는 **옵트인**이다. max_tokens 를 안 주면 동작이 바뀌면 안 된다 —
+        기존 문서의 청크 경계가 말없이 달라지면 정본이 흔들린다."""
+        for text in _SAMPLES:
+            self.assertEqual(ds.plan_boundaries(text),
+                             ds.plan_boundaries(text, max_chars=ds.DEFAULT_MAX_CHARS))
+            self.assertEqual([c["text"] for c in ds.chunk_doc(text)],
+                             [c["text"] for c in ds.chunk_doc(text, max_tokens=0)])
+
     def test_offsets_contiguous_and_bounded(self):
         for text in _SAMPLES:
             chunks = ds.chunk_doc(text, max_chars=100)
