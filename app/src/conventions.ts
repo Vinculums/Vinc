@@ -1,0 +1,198 @@
+/** 관례 시트(GM-8) — 어시스턴트가 쓰기 전에 읽는 것을 사람이 관리하는 자리.
+ *
+ *  한 시트에 두 구역을 둔다. **사전 예방**(관례)과 **사후 교정**(재가)은 한 쌍인데
+ *  화면이 갈리면 "관례를 적었는데 왜 여전히 제안이 쌓이지"를 서로 다른 자리에서
+ *  겪게 된다.
+ *
+ *  ⚠ 생성 구역(마커 사이)은 **읽기 전용**이다. 스토어에서 옮겨 적은 사본이라 손으로
+ *  고쳐 봐야 다음 [다시 생성]이 지운다 — 고칠 수 있게 두는 것 자체가 거짓말이다.
+ *  그래서 편집기를 하나로 두지 않고 앞산문·생성구역·뒷산문 셋으로 쪼갠다.
+ *
+ *  ⚠ 재가 구역은 **셸 전용**이다. 주제 어휘(themes/types)에는 owner 차원이 없어
+ *  계정 프록시가 의도적으로 막는다(`vinc_mcp/http_server.py` _PROXY_OPS 주석) —
+ *  웹에서 열면 남의 어휘를 만지게 된다. 웹에서는 관례 구역만 보인다.
+ */
+import { api, cfg, WEB } from "./api";
+import { COPY } from "./copy";
+import { openSheet, sheetActions } from "./components";
+
+const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+
+const GEN_START = /^<!--\s*vinc:generated start\b.*-->\s*$/;
+const GEN_END = /^<!--\s*vinc:generated end\s*-->\s*$/;
+
+/** 본문을 (앞산문, 생성구역, 뒷산문)으로 가른다. 마커가 정상 쌍이 아니면 null. */
+export function splitConventions(text: string): [string, string, string] | null {
+  const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
+  const s = lines.findIndex((l) => GEN_START.test(l));
+  const e = lines.findIndex((l) => GEN_END.test(l));
+  if (s < 0 || e < 0 || e < s) return null;
+  if (lines.filter((l) => GEN_START.test(l)).length !== 1) return null;
+  return [lines.slice(0, s).join("\n"), lines.slice(s, e + 1).join("\n"),
+          lines.slice(e + 1).join("\n")];
+}
+
+/** 사람이 판정할 것만 남긴다.
+ *
+ *  주제를 만들면 내장 어휘가 `status:proposed, provenance:system_draft` 로 함께
+ *  깔린다(theme_store 독스트링). 그걸 세면 **첫 실행부터 뱃지가 11** 이 되고, 사용자가
+ *  제안한 적 없는 것 8개를 판정하라고 요구하게 된다 — 그 순간 뱃지는 신호이기를
+ *  그만둔다. 재가를 기다리는 것은 **어시스턴트가 실제로 제안한 것**(ingest_proposed)뿐이다. */
+const isPending = (t: any) => t?.provenance === "ingest_proposed";
+
+/** 상단 바 뱃지에 쓰는 제안 적체 수. 어휘를 못 읽는 환경(웹)에서는 0 이다. */
+export async function proposedCount(): Promise<number> {
+  if (WEB) return 0;
+  try {
+    const th = await api.themes();
+    const id = th?.active_theme_id;
+    if (!id) return 0;
+    const res = await api.types(id, "proposed");
+    return (res?.types || []).filter(isPending).length;
+  } catch { return 0; }
+}
+
+export async function openConventions() {
+  const C = COPY.ui.conv;
+  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "write" });
+  sheet.body.innerHTML = `<p class="hint">${C.loading}</p>`;
+
+  let themeId = "";
+  let text = "";
+
+  async function draw() {
+    const parts = splitConventions(text);
+    const broken = parts === null;
+    const [head, gen, tail] = parts || [text, "", ""];
+    sheet.body.innerHTML = `
+      <div class="conv">
+        ${broken ? `<p class="hint conv-warn">${C.broken}</p>` : ""}
+        <label class="hint" for="conv-head">${C.prose}</label>
+        <textarea id="conv-head" class="conv-ta" spellcheck="false">${esc(head)}</textarea>
+        ${broken ? "" : `
+          <p class="hint conv-genlabel">${C.generated}</p>
+          <pre class="conv-gen" aria-readonly="true">${esc(gen)}</pre>
+          <textarea id="conv-tail" class="conv-ta" spellcheck="false">${esc(tail)}</textarea>`}
+        <div id="conv-ratify"></div>
+      </div>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "conv-save", label: C.save },
+      { id: "conv-rebuild", label: C.rebuild });
+
+    sheet.foot.querySelector<HTMLElement>("#conv-save")!.addEventListener("click", save);
+    sheet.foot.querySelector<HTMLElement>("#conv-rebuild")!.addEventListener("click", rebuild);
+    await drawRatify();
+  }
+
+  function compose(): string {
+    const head = sheet.body.querySelector<HTMLTextAreaElement>("#conv-head")?.value ?? "";
+    const gen = sheet.body.querySelector<HTMLElement>(".conv-gen")?.textContent ?? "";
+    const tail = sheet.body.querySelector<HTMLTextAreaElement>("#conv-tail")?.value ?? "";
+    return gen ? `${head}\n${gen}\n${tail}`.replace(/\n{3,}/g, "\n\n") : head;
+  }
+
+  async function save() {
+    const btn = sheet.foot.querySelector<HTMLButtonElement>("#conv-save")!;
+    btn.disabled = true;
+    try {
+      const res = await api.docPut(cfg.owner, compose(), "graph.md", "GRAPH.md",
+                                   undefined, "vinc:conventions");
+      btn.textContent = res.executed ? C.saved : C.saveFailed;
+    } catch { btn.textContent = C.saveFailed; }
+    setTimeout(() => { btn.textContent = C.save; btn.disabled = false; }, 1600);
+  }
+
+  async function rebuild() {
+    const btn = sheet.foot.querySelector<HTMLButtonElement>("#conv-rebuild")!;
+    btn.disabled = true;
+    try {
+      // 먼저 편집분을 저장한다 — 안 그러면 서버가 읽는 것은 옛 산문이고,
+      // 방금 쓴 문장이 [다시 생성] 한 번에 사라진 것처럼 보인다.
+      await api.docPut(cfg.owner, compose(), "graph.md", "GRAPH.md",
+                       undefined, "vinc:conventions");
+      const res = await api.conventionsBuild(cfg.owner);
+      if (res?.executed && res.text) { text = res.text; await draw(); }
+    } catch { /* 실패는 화면을 바꾸지 않는다 — 방금 쓴 것을 지우지 않는다 */ }
+    btn.disabled = false;
+  }
+
+  async function drawRatify() {
+    const host = sheet.body.querySelector<HTMLElement>("#conv-ratify");
+    if (!host) return;
+    if (WEB) { host.innerHTML = `<p class="hint">${C.webOnly}</p>`; return; }
+    let types: any[] = [];
+    try {
+      const th = await api.themes();
+      themeId = th?.active_theme_id || "";
+      if (themeId) types = ((await api.types(themeId, "proposed"))?.types || []).filter(isPending);
+    } catch { host.innerHTML = ""; return; }
+    if (!themeId) { host.innerHTML = ""; return; }
+    host.innerHTML = `
+      <h3 class="conv-h3">${C.pending(types.length)}</h3>
+      ${types.length === 0 ? `<p class="hint">${C.noPending}</p>` : `
+        <div class="sheet-list">${types.map((t, i) => `
+          <div class="list-row" data-row="${i}">
+            <span class="title">${esc(t.name)}</span>
+            <span class="meta">${esc(t.kind === "edge" ? C.kindEdge : C.kindNode)}</span>
+            <span class="conv-acts">
+              <button class="btn" data-act="rename" data-name="${esc(t.name)}">${C.rename}</button>
+              <button class="btn" data-act="reject" data-name="${esc(t.name)}">${C.reject}</button>
+              <button class="btn btn-primary" data-act="ratify" data-name="${esc(t.name)}">${C.ratify}</button>
+            </span>
+          </div>`).join("")}</div>`}`;
+    host.querySelectorAll<HTMLElement>("[data-act]").forEach((b) =>
+      b.addEventListener("click", () => act(b.dataset.act!, b.dataset.name!, b)));
+  }
+
+  async function act(kind: string, name: string, btn: HTMLElement) {
+    if (kind === "rename") return startRename(name, btn);
+    btn.setAttribute("disabled", "true");
+    try {
+      if (kind === "ratify") await api.typeRatify(themeId, name);
+      if (kind === "reject") await api.typeReject(themeId, name);
+      await drawRatify();
+      refreshBadge();
+    } catch { btn.removeAttribute("disabled"); }
+  }
+
+  function startRename(name: string, btn: HTMLElement) {
+    const row = btn.closest(".list-row");
+    const title = row?.querySelector<HTMLElement>(".title");
+    if (!row || !title) return;
+    title.innerHTML = `<input class="conv-rename" value="${esc(name)}" />`;
+    const input = title.querySelector<HTMLInputElement>(".conv-rename")!;
+    input.focus();
+    input.select();
+    const commit = async () => {
+      const next = input.value.trim();
+      if (!next || next === name) return drawRatify();
+      try { await api.typeRename(themeId, name, next); } catch { /* 이름만 되돌린다 */ }
+      await drawRatify();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit();
+      if (e.key === "Escape") drawRatify();
+    });
+    input.addEventListener("blur", commit);
+  }
+
+  try {
+    const res = await api.conventions(cfg.owner);
+    text = res?.text || "";
+  } catch {
+    sheet.body.innerHTML = `<p class="hint">${C.loadFailed}</p>`;
+    return;
+  }
+  await draw();
+}
+
+/** 상단 바 뱃지 갱신 — 시트 안에서 재가하면 즉시 반영된다. */
+export function refreshBadge() {
+  const el = document.getElementById("tb-conv-badge");
+  if (!el) return;
+  proposedCount().then((n) => {
+    el.textContent = n > 0 ? String(n) : "";
+    el.hidden = n === 0;
+  });
+}

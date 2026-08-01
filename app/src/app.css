@@ -301,6 +301,37 @@ body {
 }
 .tb-icon:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .tb-icon svg { width: 18px; height: 18px; }
+/* 관례 뱃지(GM-8) — 재가를 기다리는 제안 수. 숫자가 0 이면 아예 안 그린다:
+   상시 0 을 달고 있으면 뱃지가 신호이기를 그만둔다. */
+.tb-conv { position: relative; }
+.tb-conv #tb-conv-badge {
+  position: absolute; top: .18rem; right: .1rem; min-width: 1rem; height: 1rem;
+  padding: 0 .22rem; border-radius: .5rem; background: hsl(var(--ring));
+  color: hsl(var(--background)); font-size: .625rem; line-height: 1rem;
+  font-weight: 650; text-align: center;
+}
+.tb-conv #tb-conv-badge[hidden] { display: none; }
+
+/* 관례 시트(GM-8) — 산문은 고쳐 쓰고, 생성 구역은 보여만 준다. */
+.conv { display: flex; flex-direction: column; gap: var(--space-2, .5rem); }
+.conv .conv-ta {
+  width: 100%; min-height: 8rem; resize: vertical; font-family: ui-monospace, monospace;
+  font-size: .8125rem; line-height: 1.6; padding: .6rem .7rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+.conv .conv-gen {
+  margin: 0; padding: .6rem .7rem; overflow-x: auto; white-space: pre;
+  font-family: ui-monospace, monospace; font-size: .8125rem; line-height: 1.6;
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted) / .5); color: hsl(var(--muted-foreground));
+}
+.conv .conv-genlabel, .conv .conv-warn { margin: .2rem 0 0; }
+.conv .conv-h3 { margin: 1.2rem 0 .4rem; font-size: .9375rem; font-weight: 650; }
+.conv .conv-acts { display: flex; gap: .35rem; }
+.conv .conv-rename { width: 100%; font: inherit; padding: .2rem .4rem;
+  border: 1px solid hsl(var(--ring)); border-radius: .4rem;
+  background: hsl(var(--background)); color: hsl(var(--foreground)); }
 .rail-sync { display: flex; align-items: center; gap: .4rem; font-size: .6875rem; color: hsl(var(--caption-foreground)); }
 .rail-sync .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--success)); flex: 0 0 auto; }
 button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }

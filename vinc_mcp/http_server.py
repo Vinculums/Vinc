@@ -65,6 +65,9 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
     "nav-tree": ("GET", "/nav-tree"),   # 좌측 문서 트리(D69) — 주제→문서 깊이순
+    # 관례(GRAPH.md) — 읽기와 재생성을 **짝으로** 연다. 웹 Vinc 도 같은 것을 봐야 한다
+    # (계정 GET_OPS/POST_OPS 와 1:1). 읽기만 열면 [다시 생성]만 404 로 죽는다.
+    "conventions": ("GET", "/conventions"),
     "job": ("GET", None),   # /jobs/{id} — id 검증 후 특수 처리
     # 쓰기(POST) — SEC-3 하드닝된 owner-스코프 경로
     "pin": ("POST", "/pin"), "tag": ("POST", "/tag"), "touch": ("POST", "/touch"),
@@ -77,6 +80,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # put=적재/편집(단일 writer 직렬화), extract=정본→개념 파생(남의 개념 불가침),
     # reembed=편집 후 벡터 재생성(허브는 자체호스팅 임베딩 워커가 채운다).
     "doc-put": ("POST", "/doc/put"),
+    "conventions-build": ("POST", "/conventions/build"),   # 관례 재생성(GM-8)
     # 파일 바이트 입구(텍스트·PDF) — 본문은 base64 라 4/3 로 부푼다. 아래 MAX_BODY
     # (4MB)가 실효 상한을 결정하므로 웹에서 올릴 수 있는 원본은 대략 2.8MB 다.
     "doc-put-file": ("POST", "/doc/put-file"),

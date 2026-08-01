@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from store.config import StoreConfig, load_config
 from store.backend import open_store
 
+from . import graphmd
+
 
 @dataclass
 class QueryPlan:
@@ -2687,6 +2689,10 @@ def _chunk_count(store) -> int:
         return 0
 
 
+#: 관례 문서의 chunk_id 접두(`docstore.chunk_id_of` 규약: `{doc_id}#{index:05d}`).
+_CONV_PREFIX = graphmd.CONVENTIONS_DOC_ID + "#"
+
+
 def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
     인덱스·확장 부재는 예외로 전파(호출부가 지연 빌드·error 표면화를 담당)."""
@@ -2701,6 +2707,11 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     for name, rows_ in zip(arm_names, arms):
         for r in rows_:
             membership.setdefault(r.get("id"), []).append(name)
+    # 관례(GRAPH.md) 청크는 검색 결과에서 뺀다 — 사용자가 찾는 것은 자기 자료지
+    # 그 자료를 어떻게 넣기로 했는지의 규약이 아니다. chunk_id 가 `{doc_id}#{n}` 이라
+    # 접두만 보면 되고(추가 질의 0), **융합 전에** 걸러야 상위 k 를 관례가 잠식하지 않는다.
+    for a in arms:
+        a[:] = [r for r in a if not str(r.get("id") or "").startswith(_CONV_PREFIX)]
     rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])

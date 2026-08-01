@@ -32,6 +32,9 @@ const API_RE = new RegExp("^/(health|atlas|graph|ledger|recall|search|domains|le
   + "|decide|activate|backup|pin|tag|touch|ingest|jobs|plan|share|coupling"
   + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node-context|edge-context"
   + "|ledger-drilldown|nav-tree|delete|delete-edge|merge-nodes|promote-candidates"
+  // 관례·어휘(GM-8) — `conventions`(관례 읽기/재생성)와 `themes`/`types`(재가 대기
+  // 목록·승인·거부·개명). 앱이 여태 어휘 라우트를 부른 적이 없어 빠져 있었다.
+  + "|conventions|themes|types"
   + "|domain|evidence)(/|$|\\?)");
 
 export default defineConfig({

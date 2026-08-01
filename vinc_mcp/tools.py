@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**18종** — 읽기 12(search·recall·graph·decide·domains·suggest_ties·neighbors·
-path·merge_candidates·diagnose·doc_get·doc_list) + 쓰기 6(ingest·delete·
+**19종** — 읽기 13(search·recall·graph·decide·domains·suggest_ties·neighbors·
+path·merge_candidates·diagnose·doc_get·doc_list·conventions) + 쓰기 6(ingest·delete·
 delete_edge·merge_nodes·doc_put·doc_delete). "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
 아래 TOOLS 리스트가 정본이고 이 독스트링은 그 요약일 뿐이다.
 
-주제·어휘(themes·types)는 HTTP 전용이며 MCP 도구로 노출돼 있지 않다.
+주제·어휘(themes·types)의 **뮤테이션**(재가·거부·개명)은 HTTP 전용이며 MCP 에 노출하지
+않는다 — 어시스턴트는 제안만 하고 자기 제안을 스스로 재가할 수 없다(의도된 비대칭).
+읽기 쪽은 `vinc_conventions` 가 관례 문서와 함께 재가된 어휘를 실어 나른다(GM-1):
+그 전까지 어시스턴트는 어휘를 **쓰고 나서** `proposed_types` 로만 알 수 있었다.
 핸들러는 계약 검증 후 브리지 호출뿐(스켈레톤 §4). owner 미지정 시 브리지
 기본 owner(user:local)를 주입한다 — MCP 호스트는 로컬 소유자 개념을 모른다.
 """
@@ -195,6 +198,12 @@ def _t_doc_put(args, bridge):
         "origin": args.get("origin")})
 
 
+def _t_conventions(args, bridge):
+    # 관례(GRAPH.md) — 쓰기 전에 읽는 채널. 사이드카가 문서본/기본본을 알아서 고른다.
+    return bridge.request("GET", "/conventions", params={
+        "owner": _owner(args, bridge), "lang": args.get("lang")})
+
+
 def _t_doc_delete(args, bridge):
     return bridge.request("POST", "/doc/delete", body={
         "id": args["doc_id"], "owner": _owner(args, bridge)})
@@ -325,6 +334,25 @@ TOOLS: list[dict] = [
         }}, "run": _t_diagnose,
     },
     {
+        "name": "vinc_conventions",
+        "description": "Read this graph's house style BEFORE your first write in a session. "
+                       "Returns the owner's GRAPH.md: node kinds, relation vocabulary and "
+                       "direction, how big one concept should be, the domains that already "
+                       "exist, the ratified type vocabulary, and what not to do. If the owner "
+                       "has not written one, a default is returned with the domain list and "
+                       "ratified vocabulary filled in from their store (source:\"default\", "
+                       "missing:true) — those two are worth following even then. This is the "
+                       "only way to see the ratified vocabulary: proposing an unlisted type is "
+                       "allowed, but it lands as proposed and waits for a human.",
+        "inputSchema": {"type": "object", "properties": {
+            "owner": {"type": "string"},
+            "lang": {"type": "string", "enum": ["en", "ko"],
+                     "description": "Language of the default template (ignored when the "
+                                    "owner has written their own)."},
+        }},
+        "run": _t_conventions,
+    },
+    {
         "name": "vinc_ingest",
         "description": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. "
                        "The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). "
@@ -338,7 +366,9 @@ TOOLS: list[dict] = [
                        "ATTACHES_TO; between two open-type nodes ANY edge type persists via the "
                        "TYPED carrier. Only malformed nodes (missing id/title) and unsupported "
                        "(from,to) pairs between legacy types are skipped — reported in warnings "
-                       "with partial:true.",
+                       "with partial:true. Call vinc_conventions once before your first write "
+                       "in a session: it carries this owner's node/relation conventions and "
+                       "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,
         "run": _t_ingest,
     },
@@ -454,6 +484,8 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_graph": {"title": "Explore the graph", "readOnlyHint": True},
     "vinc_decide": {"title": "Decision support", "readOnlyHint": True},
     "vinc_domains": {"title": "List domains", "readOnlyHint": True},
+    # 관례(GRAPH.md) — 조회 전용. 쓰기 전에 읽는 것이 이 도구의 존재 이유다.
+    "vinc_conventions": {"title": "Read the graph conventions", "readOnlyHint": True},
     "vinc_suggest_ties": {"title": "Suggest links", "readOnlyHint": True},
     # E-G3/G4/G5/G7 — 전부 조회 전용(진단·제안·관측·경로). 쓰기 아님.
     "vinc_diagnose": {"title": "Diagnose graph structure", "readOnlyHint": True},

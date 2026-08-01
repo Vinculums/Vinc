@@ -166,6 +166,30 @@ def main(argv: list[str] | None = None) -> int:
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
 
+    # ── GRAPH.md — 어시스턴트 쓰기 관례 (vinc.c.graph-md) ──────────────────────
+    from .graphmd import CONVENTIONS_DOC_ID as _GM_DOC
+    gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
+    gmsub = gm.add_subparsers(dest="gmcmd", required=True)
+    gb = gmsub.add_parser("build", help="write the generated region from the store (prose untouched)")
+    gb.add_argument("--owner", default=None, help="owner scope for the domain census")
+    gb.add_argument("--file", default=None,
+                    help="existing GRAPH.md to refresh in place; omit to print a new one")
+    gb.add_argument("--out", default=None, help="write to this path instead of stdout")
+    gb.add_argument("--doc", action="store_true",
+                    help=f"read/write the conventions document in the store "
+                         f"(doc_id {_GM_DOC}) instead of a file — needs --owner")
+    gb.add_argument("--lang", choices=("en", "ko"), default=None,
+                    help="template language for a new file (default en; refresh keeps the file's own)")
+    gb.add_argument("--data", default=None)
+    gc = gmsub.add_parser("check", help="9 shape rules (0 pass · 1 fix · 2 block)")
+    gc.add_argument("--file", default=None)
+    gc.add_argument("--doc", action="store_true",
+                    help="check the conventions document in the store instead of a file")
+    gc.add_argument("--owner", default=None)
+    gc.add_argument("--no-store", action="store_true",
+                    help="shape only — skip the rules that compare against the store")
+    gc.add_argument("--data", default=None)
+
     ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase, F4)")
     ob.add_argument("--profile", required=True, help="credential file path (auth.json)")
     ob.add_argument("--passphrase", default=None,
@@ -325,6 +349,83 @@ def main(argv: list[str] | None = None) -> int:
                 return _emit(docstore.list_docs(store, owner=args.owner))
         finally:
             store.close()
+        return 2
+    if args.cmd == "graph-md":
+        # 관례 문서(GRAPH.md)의 생성·검증. 생성 구역만 스토어에서 오고, 산문은
+        # 사람의 것이라 build 가 건드리지 않는다(graphmd.build 독스트링).
+        from . import graphmd
+        from datetime import date
+        from store.config import load_config, resolve_data_dir
+        from store.backend import open_store
+        from store.theme_store import ThemeStore
+
+        # --doc 는 스토어에서 읽고 스토어에 쓴다 — --no-store 와 함께 오면 --doc 이 이긴다
+        # (읽을 곳 자체가 스토어라 끌 수가 없다).
+        want_store = args.doc or not (args.gmcmd == "check" and args.no_store)
+        store = themes = None
+        cfg = None
+        if want_store:
+            cfg = load_config({"data_dir": resolve_data_dir(args.data, create=bool(args.doc))})
+            store = open_store(cfg)
+            if store is None:
+                # 스토어가 없으면 build 는 할 일이 없고, check 는 형상 규칙만으로 뜻이 있다.
+                if args.gmcmd == "build":
+                    return _emit({"error": "no reachable store (드라이버 미설치/락) — "
+                                           "생성 구역을 채울 수 없다"})
+            else:
+                store.provision(dim=cfg.embedding_dim)   # 멱등 — 없는 표를 읽으면 죽는다
+                themes = ThemeStore(cfg.data_dir)
+        try:
+            if args.doc and not args.owner:
+                return _emit({"error": "--doc needs --owner — 정본은 무소유로 두지 않는다(SEC-1)"})
+            if args.gmcmd == "build":
+                from . import docstore
+                existing = None
+                path = args.file
+                if args.doc:
+                    got = docstore.get_doc(store, graphmd.CONVENTIONS_DOC_ID, owner=args.owner)
+                    existing = got.get("text") if got.get("executed") else None
+                elif path and os.path.exists(path):
+                    with open(path, encoding="utf-8") as fh:
+                        existing = fh.read()
+                res = graphmd.build(store, owner=args.owner, themes=themes,
+                                    existing=existing, lang=args.lang,
+                                    day=date.today().isoformat())
+                if not res.get("executed"):
+                    return _emit(res)
+                slim = {k: v for k, v in res.items() if k != "text"}
+                if args.doc:
+                    # 스토어에 둘 때만 origin 표식을 단다 — 일반 자료와 구분하는 유일한 표시.
+                    put = docstore.put_doc(store, owner=args.owner, text=res["text"],
+                                           doc_id=graphmd.CONVENTIONS_DOC_ID,
+                                           title="GRAPH.md", origin=graphmd.CONVENTIONS_ORIGIN)
+                    return _emit(slim | {"doc": put})
+                out = args.out or (path if existing is not None else None)
+                if out:
+                    with open(out, "w", encoding="utf-8", newline="\n") as fh:
+                        fh.write(res["text"])
+                    return _emit(slim | {"out": out})
+                sys.stdout.write(res["text"])
+                return 0
+            if args.gmcmd == "check":
+                if args.doc:
+                    from . import docstore
+                    got = docstore.get_doc(store, graphmd.CONVENTIONS_DOC_ID, owner=args.owner)
+                    if not got.get("executed"):
+                        return _emit({"error": "no conventions document in this store "
+                                               "(run `graph-md build --doc` first)"})
+                    text = got.get("text") or ""
+                elif args.file:
+                    with open(args.file, encoding="utf-8") as fh:
+                        text = fh.read()
+                else:
+                    return _emit({"error": "pass --file or --doc"})
+                res = graphmd.check(text, store=store, themes=themes, owner=args.owner)
+                _emit(res)
+                return int(res["exit_code"])
+        finally:
+            if store is not None:
+                store.close()
         return 2
     if args.cmd == "mcp":
         if args.mcpcmd == "install":

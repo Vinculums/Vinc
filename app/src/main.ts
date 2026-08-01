@@ -37,6 +37,18 @@ topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
 document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topbar.settings);
 document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
 document.getElementById("sync-status")!.textContent = COPY.ui.common.local;
+
+// 관례(GM-8) — 아이콘 하나 + 제안 적체 뱃지. 시트는 눌릴 때 지연 로드한다.
+{
+  const conv = document.getElementById("tb-conv")!;
+  conv.setAttribute("aria-label", COPY.ui.conv.title);
+  conv.setAttribute("data-tip", COPY.ui.conv.tip);
+  conv.addEventListener("click", async () => {
+    const { openConventions } = await import("./conventions");
+    openConventions();
+  });
+  import("./conventions").then((m) => m.refreshBadge());
+}
 mountTopbar();
 // 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
 mountLnb();

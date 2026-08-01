@@ -39,7 +39,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
              "vinc_neighbors", "vinc_path",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
-             "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete"}
+             "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
+             # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
+             "vinc_conventions"}
 
 
 class _StubBridge(Bridge):

@@ -70,6 +70,10 @@
                셋은 같은 종류의 일인데 자리가 흩어져 있어 매번 어디로 갈지 골라야 했고,
                `새 문서`는 가져오기 시트의 부 액션으로 숨어 있었다. -->
           <button class="btn" id="tb-tools"></button>
+          <!-- 관례(GM-8) — 아이콘 하나가 두 일을 겸한다: 관례 편집 + 재가 대기.
+               뱃지가 없으면 이 자리에 있을 자격이 없다(상시 점유의 근거가 뱃지다). -->
+          <button class="tb-icon tb-conv" id="tb-conv" data-icon="check"
+                  aria-haspopup="dialog"><span id="tb-conv-badge" hidden></span></button>
           <button class="tb-icon" id="settings-btn" data-icon="settings"
                   aria-haspopup="dialog"></button>
           <span class="rail-sync"><span class="sync-dot"></span><span id="sync-status"></span></span>

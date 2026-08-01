@@ -217,6 +217,19 @@ export const api = {
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
   domains: (owner: string) => call("/domains", { owner }),
+  // 관례(GRAPH.md) — 읽기는 웹에서도 되지만(허브 _PROXY_OPS 등재), **어휘 재가는
+  // 셸 전용**이다: 주제 어휘에는 owner 차원이 없어 계정 프록시가 의도적으로 막는다.
+  conventions: (owner: string) => call("/conventions", { owner }),
+  conventionsBuild: (owner: string, lang?: string) =>
+    call("/conventions/build", undefined, { owner, lang }),
+  themes: () => call("/themes"),
+  types: (theme_id: string, status?: string) => call("/types", { theme_id, status }),
+  typeRatify: (theme_id: string, name: string) =>
+    call("/types/ratify", undefined, { theme_id, name }),
+  typeReject: (theme_id: string, name: string) =>
+    call("/types/reject", undefined, { theme_id, name }),
+  typeRename: (theme_id: string, from_name: string, to_name: string) =>
+    call("/types/rename", undefined, { theme_id, from_name, to_name }),
   activate: (owner: string, opts: Record<string, unknown> = {}) =>
     call("/activate", undefined, { owner, ...opts }),
   share: (owner: string, opts: { domain?: string; seed?: string; depth?: number; ids?: string } = {}) =>
