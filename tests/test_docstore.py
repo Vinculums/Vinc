@@ -369,6 +369,61 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)), f"부모로 접히지 않았다: {ids}")
         self.assertTrue(all(h.get("text") for h in hits), "부모 본문이 안 실렸다")
 
+    def test_모델_전환이_전량_재임베딩을_건다(self):
+        """🔴 **모델을 바꿔도 저절로는 아무 일도 일어나지 않는다.**
+
+        `needs_embed` 는 문서를 저장할 때만 켜진다. 그래서 모델만 갈아끼우면 옛 모델로
+        만든 벡터가 그대로 남아 새 쿼리 벡터와 **다른 공간에서** 비교된다 — 에러 없이
+        검색만 나빠지는, 이 리포가 반복해서 당해 온 실패 양식이다. (같은 뿌리의 다른
+        사례: 청킹 정책을 바꿔도 `content_hash` 가 그대로라 재청킹이 아예 안 일어난다.)
+
+        전환이 하는 일 셋을 전부 검사한다: 옛 벡터 제거(혼재 차단) · 전량 재큐 · 기록."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.switch_embed_model(self.store, "model-A")
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 1)
+
+        # 같은 모델 → 아무 일도 하지 않는다(멱등). 벡터가 살아 있어야 한다.
+        r = ds.switch_embed_model(self.store, "model-A")
+        self.assertFalse(r.get("changed"))
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 1,
+                         "같은 모델인데 벡터를 지웠다")
+
+        # 다른 모델 → 옛 벡터 제거 + 전량 재큐
+        r = ds.switch_embed_model(self.store, "model-B")
+        self.assertTrue(r.get("changed"))
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0,
+                         "옛 벡터가 남았다 — 구·신 모델 벡터가 한 색인에 섞인다")
+        self.assertEqual(
+            self._count("MATCH (d:_DocMeta) WHERE d.needs_embed=1 RETURN count(d) AS c"), 1,
+            "재임베딩이 큐에 안 걸렸다 — 전환이 아무 일도 안 한 것이다")
+        self.assertEqual(ds.embed_model_state(self.store)["stored"], "model-B")
+
+    def test_기록이_없으면_출처를_모르므로_지운다(self):
+        """벡터가 어느 모델로 만들어졌는지 기록이 없으면 **맞다고 가정하지 않는다.**
+        지금 배포가 정확히 그 경우다(옛 bge 벡터 + 기록 없음)."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertEqual(ds.embed_model_state(self.store)["stored"], "")
+        r = ds.switch_embed_model(self.store, "model-X")
+        self.assertTrue(r.get("changed"))
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0)
+
+    def test_이행_상태가_정직하게_보고된다(self):
+        """`migrating` 은 '기록이 있고 + 재임베딩 대기가 남았다' 일 때만 참이다.
+        서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.switch_embed_model(self.store, "model-A")
+        st = ds.embed_model_state(self.store)
+        self.assertTrue(st["migrating"] and st["pending"] == 1)
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        st = ds.embed_model_state(self.store)
+        self.assertFalse(st["migrating"], "재임베딩이 끝났는데 이행 중이라고 한다")
+        self.assertEqual(st["pending"], 0)
+
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
         out = ds.put_doc(self.store, owner="user:a", text=text, title="정본")

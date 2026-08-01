@@ -16,21 +16,32 @@ FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채
     올리면 한도에 붙어 OOM 이 컨테이너 전체(=MCP 포함)를 죽인다.
   · 자원을 1.0vCPU/2GiB 로 올리면 상시 과금이 배증한다(월 $10~15 추가 추정).
     ONNX 는 ~660MiB 로 끝나 **증설 자체가 불필요**하다.
-  · 모델은 BAAI 가 같은 리포에 올린 **공식 export**(`onnx/model.onnx`)라 가중치가
-    동일하다 — 서드파티 재양자화가 아니다.
+  · 모델 가중치는 공식 리포 것을 쓴다 — 서드파티 재배포본이 아니다.
 
-⚠ **벡터 공간 동일성이 이 전환의 전부다.** 기존 벡터는 sentence-transformers 로
-만들어졌고 새 벡터가 같은 색인에 섞인다. 어긋나면 의미검색이 **에러 없이** 열화된다.
-그래서 배포 전에 폐기 컨테이너에서 두 경로를 코사인 대조했다(전 케이스 ≥0.9999 요구).
-파이프라인을 바꿀 때 그 검증을 다시 돌릴 것 — 재현 스크립트는 커밋 메시지 참조.
+**모델은 multilingual-e5-base 다(2026-08-01 전환).** 발주자가 영어와 한국어를 함께
+쓰기로 정했고, 영어 전용 bge 는 한글 음절 토큰이 vocab 에 **0개**라(자모로 분해) 한국어
+검색이 무너져 있었다. 한영 혼합 코퍼스 실측(질의 60): 한국어 nDCG 0.347 → 0.670 으로
+**거의 두 배**, 영어는 0.669 → 0.636 으로 5% 손실. 차원은 768 그대로라 재프로비전 불요.
 
-파이프라인(정본 근거 = 모델 리포의 `1_Pooling/config.json`):
-    tokenize(truncate 512) → onnx → last_hidden_state[:, 0]  # CLS 풀링
-    → L2 정규화                                              # normalize_embeddings=True 대응
+⚠ 계열이 바뀌면 **규약도 바뀐다. 셋 중 하나만 어긋나도 에러 없이 벡터가 틀린다**:
+    풀링   bge=CLS · e5=**mean**(attention_mask 가중)   — 두 풀링의 코사인 0.87~0.91
+    접두   bge=query 만 · e5=**양쪽** query:/passage:   — 있고 없고의 코사인 0.95~0.97
+    양자화 공식 int8 은 non-VNNI 에서 포화 → **직접 reduce_range 로 만든다**
+그래서 이 파일의 규약은 `_pool`·`_prefix`·`_resolve_model` **세 곳에만** 산다.
+
+⚠ **벡터 공간 동일성**: 모델이 바뀌면 옛 벡터와 새 벡터는 아예 다른 공간이라 코사인
+대조가 성립하지 않는다. 대신 ① 같은 모델의 두 구현(참조 vs 이 코드)을 대조해 ≥0.9999 를
+확인하고 ② 색인 혼재는 `switch_embed_model` 이 **옛 벡터를 전부 지워서** 막는다.
+
+파이프라인:
+    조각내기(≤500토큰, 청크는 그대로) → 접두 → tokenize(truncate 512) → onnx
+    → 계열별 풀링 → L2 정규화
 
 경로(전부 사이드카 루프백):
-  GET  /embed/pending?limit=N   → {chunks:[{doc_id, chunk_id, text}]}
-  POST /embed/apply {doc_id, embeddings:{chunk_id:[...]}} → 저장 + 전 청크 완료 시 needs_embed=0
+  GET  /embed/pending?limit=N&model=<id> → {chunks:[{doc_id, chunk_id, text}]}
+       (model 을 실어 보내면 사이드카가 전환을 감지해 전량 재임베딩을 건다)
+  POST /embed/apply {doc_id, embeddings:{chunk_id:[[...],[...]]}} → 저장
+       (v8 — 청크당 **벡터 목록**. 전 청크 완료 시 needs_embed=0)
 
   VINC_SIDECAR=http://127.0.0.1:8787 VINC_SIDECAR_TOKEN=<토큰> \
     python embed_worker.py [--once] [--interval 300]
@@ -43,6 +54,7 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 출력이 UnicodeEncodeError 로
@@ -58,7 +70,7 @@ for _s in (sys.stdout, sys.stderr):
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
 TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
          or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
-MODEL = os.environ.get("VINC_EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
 DOC_BATCH = int(os.environ.get("VINC_EMBED_DOC_BATCH", "16"))
 # 모델 캐시는 **영속 볼륨**에 둔다(Azure Files /data). 이미지에 굽지 않는 이유:
 # 440MB 가 이미지에 들어가면 허브 배포마다 그만큼 pull 이 늘고, 허브는 api/ 변경마다
@@ -414,7 +426,11 @@ def main() -> int:
     idle = 0
     while True:
         try:
-            pending = _call(f"/embed/pending?limit={DOC_BATCH}").get("chunks", [])
+            # 어떤 모델을 들었는지 **매 라운드 알려 준다**. 사이드카가 기록된 모델과
+            # 비교해 다르면 전량 재임베딩을 건다(멱등 — 바뀐 첫 라운드만 일한다).
+            # 모델을 바꿔도 needs_embed 가 저절로 켜지지 않아서 필요한 장치다.
+            q = urllib.parse.quote(MODEL, safe="")
+            pending = _call(f"/embed/pending?limit={DOC_BATCH}&model={q}").get("chunks", [])
         except Exception as e:
             # 사이드카 기동 전/재시작 중일 수 있다. 워커가 죽으면 컨테이너의
             # 다른 프로세스(MCP)까지 영향받을 이유가 없으므로 물러났다 다시 온다.

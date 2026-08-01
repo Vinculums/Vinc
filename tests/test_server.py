@@ -367,6 +367,44 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self.assertTrue(res.get("vector_note"), "조용히 강등됐다 — 사유가 없다")
         self.assertEqual(self.seen_vec, [])
 
+    def test_모델_이행_중에는_벡터_팔을_쓰지_않는다(self):
+        """발주자 결정: 재임베딩 기간에는 **안전한 방향**으로 FTS 만.
+
+        이행 구간에는 새 모델로 채워진 문서와 아직 빈 문서가 섞여 있어, 벡터 팔이
+        "이미 처리된 문서" 쪽으로 결과를 기울인다. 커버리지가 반쪽인 채로 순위에 끼는
+        것보다 FTS 로만 답하는 편이 정직하다 — 그리고 그 사실을 응답에 남긴다."""
+        def _meta_rows(cypher):
+            if "_SchemaMeta" in cypher:
+                return [{"v": "model-A"}]
+            if "needs_embed" in cypher:
+                return [{"c": 7}]                # 아직 7건 남았다
+            return []
+
+        class _MigReader(QueryEmbeddingWiringTests._Reader):
+            # ⚠ 서버는 **리더 경로**로 상태를 읽는다(_embed_migrating → _reader()).
+            # 스토어의 run 만 바꾸면 이 검사가 통과해 버려 아무것도 검증하지 못한다.
+            def run(self, cypher, params=None):
+                return _meta_rows(cypher)
+
+        class _MigStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self):
+                return _MigReader(self.o)
+
+            def run(self, cypher, params=None):
+                return _meta_rows(cypher)
+
+        with _encode_stub([1.0, 0, 0, 0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_MigStore(self))
+            try:
+                res = app.read_search({"query": "양자역학", "owner": "u"})[1]
+            finally:
+                app.jobs.shutdown(drain=True)
+        self.assertEqual(res.get("arms"), "fts", "이행 중인데 벡터 팔이 돌았다")
+        self.assertIn("migration", res.get("vector_note") or "",
+                      "이행 때문이라는 사유가 응답에 없다 — 조용한 강등")
+        self.assertEqual(self.seen_vec, [])
+
     def test_쿼리에는_query_kind_로_요청한다(self):
         """bge 는 **쿼리에만** 지시 접두를 붙인다. passage 로 요청하면 저장 벡터와
         같은 공간이 되지 않는다 — 창구가 kind 를 보고 접두를 고르므로 여기가 계약이다."""

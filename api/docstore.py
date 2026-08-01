@@ -772,6 +772,70 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
     return base
 
 
+#: 벡터를 만든 모델의 식별자를 적어 두는 자리(`_SchemaMeta`).
+_EMBED_MODEL_KEY = "embed_model"
+
+
+def embed_model_state(store) -> dict:
+    """현재 색인이 **어느 모델로 만들어졌는가**, 그리고 이행 중인가.
+
+    반환 `{"stored": <기록된 모델>, "migrating": <bool>, "pending": <재임베딩 남은 문서수>}`.
+    `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다(구 설치·신규 설치)."""
+    out = {"stored": "", "migrating": False, "pending": 0}
+    try:
+        rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                         {"k": _EMBED_MODEL_KEY}) or []
+        out["stored"] = (rows[0].get("v") or "") if rows else ""
+        cnt = store.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c") or []
+        out["pending"] = int(cnt[0].get("c")) if cnt else 0
+    except Exception:
+        return out
+    out["migrating"] = bool(out["stored"]) and out["pending"] > 0
+    return out
+
+
+def switch_embed_model(store, model: str) -> dict:
+    """임베딩 모델이 바뀌었으면 **전량 재임베딩을 건다**(멱등).
+
+    🔴 이게 없으면 모델을 바꿔도 아무 일도 일어나지 않는다. `needs_embed` 는 문서를
+    저장할 때만 켜지므로, 모델만 갈아끼우면 옛 모델로 만든 벡터가 그대로 남아 새 쿼리
+    벡터와 **다른 공간에서** 비교된다 — 에러 없이 검색만 나빠지는, 이 리포가 반복해서
+    당해 온 실패 양식이다. (같은 뿌리의 다른 사례: 청킹 정책을 바꿔도 `content_hash`
+    가 그대로라 재청킹이 아예 일어나지 않는다.)
+
+    **기록이 없을 때(`stored == ""`)도 바뀐 것으로 친다.** 그 벡터가 어느 모델로
+    만들어졌는지 알 수 없기 때문이다 — 지금 배포가 정확히 그 경우다(옛 bge 벡터 +
+    기록 없음). 모르는 것을 맞다고 가정하느니 지우고 다시 만든다. 신규 설치는 문서가
+    없어 no-op 이고, 재기동은 기록이 남아 있어 두 번 지우지 않는다.
+
+    바뀌었을 때 하는 일 셋:
+      1. **옛 자식 벡터를 전부 지운다.** 남겨 두고 새것을 섞으면 그게 곧 혼재다.
+         지우면 그 구간의 벡터 검색은 비지만, 비는 편이 틀린 편보다 낫다(발주자 결정:
+         "안전한 방향"). FTS 는 그대로 살아 있어 검색 자체가 죽지는 않는다.
+      2. 전 문서 `needs_embed = 1` — 워커가 순차로 다시 채운다.
+      3. 새 모델 식별자를 기록 — 다음 기동에서 같은 값이면 아무 일도 하지 않는다(멱등).
+    """
+    base: dict[str, Any] = {"kind": "embed.model.switch", "executed": False, "model": model}
+    if not model:
+        base["error"] = "model is required"
+        return base
+    st = embed_model_state(store)
+    base["previous"] = st["stored"]
+    if st["stored"] == model:
+        base.update(executed=True, changed=False)
+        return base
+    # 인덱스가 걸린 채로 대량 삭제해도 안전하다(실측 2,000청크) — 다만 곧이어 워커가
+    # 벡터를 새로 만들 것이므로 어차피 드롭이 필요하다. 여기서 한 번에 처리한다.
+    _drop_vector_index_if_any(store)
+    store.run("MATCH (v:ChunkVec) DETACH DELETE v")
+    store.run("MATCH (d:_DocMeta) SET d.needs_embed = 1")
+    store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
+              {"k": _EMBED_MODEL_KEY, "v": model})
+    cnt = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
+    base.update(executed=True, changed=True, requeued=int(cnt[0].get("c")) if cnt else 0)
+    return base
+
+
 def stale_docs(store, *, owner: str | None = None, limit: int = 50) -> list[str]:
     """재임베딩이 필요한 문서 id(needs_embed=1) — 배경 잡이 순회할 대상."""
     where = "d.needs_embed = 1"

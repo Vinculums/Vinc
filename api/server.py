@@ -22,6 +22,7 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 from __future__ import annotations
 
 import base64
+import datetime as _dt
 import json
 import os
 import secrets
@@ -49,6 +50,7 @@ from . import share
 from . import sync
 from . import docstore
 from . import docsync
+from . import graphmd
 from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
@@ -104,6 +106,8 @@ class VincApp:
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
         self._reader_takes_writer: bool | None = None  # 스토어가 writer= 를 받는가(1회 판정)
+        self._mig_note = ""      # 임베딩 모델 이행 중 사유(빈 문자열 = 정상)
+        self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
         # 계정 연결 메일박스(디바이스 연결 플로우) — state 논스 → {expires,[key,email]}.
         # 인메모리 전용(재기동 시 소멸 — 연결 진행 중이면 다시 시작). B1 유지: 로그인·
         # 키 발급은 전부 브라우저(vincs.app)에서 일어나고, 앱은 발급된 키를 받기만 한다.
@@ -287,6 +291,30 @@ class VincApp:
             res["vector_note"] = vnote
         return code, res
 
+    def _embed_migrating(self) -> str:
+        """이행 중이면 사유 문구, 아니면 빈 문자열. **30초 캐시**한다.
+
+        검색마다 스토어를 한 번 더 두드리면 그 자체가 조회 비용이다. 이행은 시간
+        단위로 도는 일이라 30초 낡은 답이어도 판단이 바뀌지 않는다."""
+        now = time.time()
+        if now - self._mig_at < 30.0:
+            return self._mig_note
+        self._mig_at = now
+        self._mig_note = ""
+        try:
+            r = self._reader()
+            try:
+                st = docstore.embed_model_state(r)
+            finally:
+                if r is not None:
+                    r.close()
+            if st.get("migrating"):
+                self._mig_note = (f"embedding migration in progress "
+                                  f"({st['pending']} docs pending) — FTS only")
+        except Exception:
+            pass                      # 판단이 안 서면 막지 않는다(기본은 통과)
+        return self._mig_note
+
     def _query_embedding(self, text: str):
         """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.
 
@@ -301,6 +329,13 @@ class VincApp:
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
+        # 모델 이행 중에는 **벡터 팔을 아예 쓰지 않는다**(발주자 결정: 안전한 방향).
+        # 이행 구간에는 새 모델로 채워진 문서와 아직 빈 문서가 섞여 있어, 벡터 팔이
+        # "이미 처리된 문서" 쪽으로 결과를 기울인다. 커버리지가 반쪽인 채로 순위에
+        # 끼는 것보다 FTS 로만 답하는 편이 정직하다. 끝나면 저절로 풀린다.
+        mig = self._embed_migrating()
+        if mig:
+            return None, mig
         try:
             body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
             req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
@@ -513,6 +548,28 @@ class VincApp:
     def read_docs(self, p):
         return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
 
+    def read_conventions(self, p):
+        """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널(vinc.c.graph-md §6.2).
+
+        스토어에 관례 문서가 있으면 그 본문을, 없으면 **생성 구역만 채운 기본 템플릿**을
+        돌려준다. 사용자가 아무것도 안 해 뒀어도 도메인·재가 어휘는 전달된다 — 이 기본본이
+        없으면 '아직 안 만든 사람'에게는 이 도구가 그냥 빈손이고, 그 경우가 대다수다."""
+        owner = p.get("owner") or None
+        lang = p.get("lang") or None
+
+        def _run(r):
+            got = docstore.get_doc(r, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            if got.get("executed") and (got.get("text") or "").strip():
+                return {"kind": "conventions", "executed": True, "source": "doc",
+                        "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": got["text"],
+                        "updated_at": got.get("updated_at") or ""}
+            built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
+                                  day=_dt.date.today().isoformat())
+            return {"kind": "conventions", "executed": True, "source": "default",
+                    "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
+                    "text": built.get("text") or ""}
+        return self._read(_run)
+
     def read_nav_tree(self, p):
         # D69 — 좌측 문서 트리: 주제 → 문서(개념 계층 깊이순) + 미분류.
         return self._read(lambda r: q.nav_tree(owner=_req(p, "owner"), store=r))
@@ -531,6 +588,33 @@ class VincApp:
             origin=body.get("origin") or "",
             content_time=None if ctime is None else str(ctime)))
         return 200, res
+
+    def write_conventions_build(self, body):
+        """관례 재생성 — 앱의 [다시 생성]. **산문은 건드리지 않는다**(graphmd.build).
+
+        기존 문서가 있으면 그 생성 구역만 새로 쓰고, 없으면 템플릿을 만들어 저장한다.
+        마커가 깨진 문서는 교체하지 않고 오류로 돌린다 — 어디였는지 추측하지 않는다."""
+        owner = body.get("owner") or None
+        if not owner:
+            return 400, {"error": "owner required — 정본은 무소유로 두지 않는다(SEC-1)"}
+        lang = body.get("lang") or None
+
+        def _job():
+            got = docstore.get_doc(self.store, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            existing = got.get("text") if got.get("executed") else None
+            built = graphmd.build(self.store, owner=owner, themes=self.themes,
+                                  existing=existing, lang=lang,
+                                  day=_dt.date.today().isoformat())
+            if not built.get("executed"):
+                return built
+            put = docstore.put_doc(self.store, owner=owner, text=built["text"],
+                                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
+                                   origin=graphmd.CONVENTIONS_ORIGIN)
+            return {"kind": "conventions.build", "executed": True, "text": built["text"],
+                    "replaced": bool(built.get("replaced")), "doc": put}
+
+        res = self.jobs.run_sync("conventions.build", _job)
+        return (200, res) if res.get("executed") else (400, res)
 
     def write_doc_put_file(self, body):
         """파일 바이트 → 원문 텍스트 → 정본 적재. `/doc/put` 의 바이너리 입구다.
@@ -645,6 +729,22 @@ class VincApp:
     # 로컬 워커(sentence-transformers)가 이 두 경로로 임베딩만 채운다. **루프백 내부
     # 표면** — _PROXY_OPS 미등록·Caddy 미노출(웹/원격 클라가 못 부른다).
     def read_embed_pending(self, p):
+        """워커가 일감을 가져가는 자리. **모델 전환 감지도 여기서** 한다.
+
+        워커는 자기가 어떤 모델을 들었는지 안다(`model` 파라미터로 알려 준다). 스토어에
+        기록된 모델과 다르면 전량 재임베딩을 건다 — 그러지 않으면 모델을 바꿔도
+        `needs_embed` 가 안 켜져 **아무 일도 일어나지 않고**, 옛 모델 벡터가 새 쿼리
+        벡터와 다른 공간에서 비교된다(에러 없이 검색만 나빠지는 그 실패 양식).
+
+        전환은 쓰기라 잡 큐로 보낸다(R4). 멱등이라 매 라운드 불려도 첫 번째만 일한다."""
+        model = (p.get("model") or "").strip()
+        if model:
+            try:
+                self.jobs.run_sync(
+                    "embed.model", lambda: docstore.switch_embed_model(self.store, model),
+                    timeout=120.0)
+            except Exception as exc:      # 전환 실패가 임베딩 자체를 막지는 않는다
+                print(f"vinc-sidecar: embed model switch failed — {exc}", file=sys.stderr)
         return self._read(lambda r: {
             "kind": "embed.pending",
             "chunks": docstore.pending_embed_chunks(r, limit=_int(p.get("limit"), 256))})
@@ -1021,6 +1121,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
+            # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널(vinc.c.graph-md).
+            "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/node-context": app.read_node_context,
@@ -1053,6 +1155,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-nodes": app.write_merge,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
+            # 관례 재생성 — 생성 구역만 스토어 값으로 갈아 끼우고 저장한다.
+            "/conventions/build": app.write_conventions_build,
             "/doc/put-file": app.write_doc_put_file,   # 파일 바이트 입구(텍스트·PDF)
             "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)

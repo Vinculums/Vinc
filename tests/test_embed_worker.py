@@ -63,9 +63,21 @@ class _FakeSidecar:
 class EmbedWorkerOrchestrationTest(unittest.TestCase):
     def setUp(self):
         self.mod = _load_module()
+        self._real_model = self.mod.MODEL
 
-    def _run(self, sidecar, encode=None, argv=("--once",)):
+    def tearDown(self):
+        self.mod.MODEL = self._real_model
+
+    def _run(self, sidecar, encode=None, argv=("--once",), model=None):
+        """워커 1회전. ``model`` 을 주면 그 계열로 고정한다.
+
+        ⚠ 모델을 명시하지 않으면 **기본값에 묶인다**. 기본이 bge 에서 e5 로 바뀌자
+        접두가 붙어(`"passage: "`) 더미 인코더의 길이 기반 단언이 통째로 깨졌다 —
+        암묵적 의존이 드러난 것이다. 접두 규약이 결과에 영향을 주는 검사는 모델을
+        명시할 것."""
         self.mod._call = sidecar
+        if model is not None:
+            self.mod.MODEL = model
         if encode is None:
             def encode(texts):                            # 결정론 더미 벡터
                 return [[float(len(t)), 0.0] for t in texts]
@@ -96,7 +108,8 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             {"doc_id": "d1", "chunk_id": "c2", "text": "bbb"},
             {"doc_id": "d2", "chunk_id": "c3", "text": "c"},
         ]])
-        self.assertEqual(self._run(sidecar), 0)
+        # bge 로 고정 — 이 검사는 doc 묶음이지 접두가 아니다(e5 는 별도 테스트).
+        self.assertEqual(self._run(sidecar, model="BAAI/bge-base-en-v1.5"), 0)
         self.assertEqual(len(sidecar.applied), 2, "doc 두 개인데 apply 가 2회가 아니다")
         by_doc = {a["doc_id"]: a["embeddings"] for a in sidecar.applied}
         self.assertEqual(set(by_doc["d1"]), {"c1", "c2"})
@@ -211,6 +224,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         import urllib.request
 
         got: list[str] = []
+        self.mod.MODEL = "BAAI/bge-base-en-v1.5"   # 이 검사는 bge 규약이다(e5 는 별도)
         emb = self.mod._Embedder()
         emb.encode = lambda texts: (got.extend(texts) or [[0.0, 1.0] for _ in texts])
 
@@ -357,7 +371,8 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             {"doc_id": "bad", "chunk_id": "b1", "text": "boom"},
             {"doc_id": "good", "chunk_id": "g1", "text": "ok"},
         ]])
-        self.assertEqual(self._run(sidecar, encode=encode), 0)
+        self.assertEqual(self._run(sidecar, encode=encode,
+                                   model="BAAI/bge-base-en-v1.5"), 0)
         self.assertEqual([a["doc_id"] for a in sidecar.applied], ["good"])
 
 
