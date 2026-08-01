@@ -7,7 +7,9 @@
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import pathlib
 import unittest
 
@@ -30,28 +32,66 @@ class CheckHubEnvTest(unittest.TestCase):
         # Azure 는 secretRef 항목도 value 없이 name 만 준다 — 그 형태를 그대로 흉내낸다.
         return [{"name": n, "value": ""} for n in names]
 
+    def _check(self, env):
+        """`check()` 를 돌리되 stderr 를 **가둬서** 돌려준다.
+
+        ⚠ 가두지 않으면 CI 가 오염된다: `check()` 는 누락을 `::error::` 로 찍는데,
+        그건 GitHub Actions 의 워크플로 명령이라 **테스트가 통과해도 잡 주석에
+        "10 errors" 로 뜬다**(2026-08-01 실측 — 이 테스트가 일부러 누락을 넣어
+        돌리므로 매 실행마다 나왔다). 빨간 주석이 상시로 떠 있으면 사람이 진짜
+        오류를 무시하게 되고, 그게 이 게이트가 막으려는 사고와 정확히 같은 형태다.
+
+        덤으로 메시지 내용까지 검증할 수 있게 돌려준다 — 종료코드만 보면
+        "무엇이 빠졌는지" 잘못 말하는 회귀를 놓친다.
+        """
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            code = self.m.check(env)
+        return code, buf.getvalue()
+
     def test_전부_있으면_통과(self):
         names = list(self.m.REQUIRED) + list(self.m.EXPECTED)
-        self.assertEqual(self.m.check(self._env(names)), 0)
+        code, _ = self._check(self._env(names))
+        self.assertEqual(code, 0)
 
     def test_ISSUER_가_빠지면_반드시_실패한다(self):
         """실제 사고가 이것이다. 이 케이스가 통과하면 게이트가 무의미하다."""
         names = [n for n in self.m.REQUIRED if n != "VINC_MCP_ISSUER"]
-        self.assertEqual(self.m.check(self._env(names)), 1)
+        code, err = self._check(self._env(names))
+        self.assertEqual(code, 1)
+        # 종료코드만이 아니라 **그 키를 지목하는지**까지 본다.
+        self.assertIn("VINC_MCP_ISSUER", err)
 
     def test_필수값_각각이_독립적으로_잡힌다(self):
         """하나만 빼도 잡혀야 한다 — 특정 항목만 검사하는 구현 실수를 막는다."""
         for k in self.m.REQUIRED:
             with self.subTest(missing=k):
                 names = [n for n in self.m.REQUIRED if n != k]
-                self.assertEqual(self.m.check(self._env(names)), 1, f"{k} 누락이 안 잡혔다")
+                code, err = self._check(self._env(names))
+                self.assertEqual(code, 1, f"{k} 누락이 안 잡혔다")
+                self.assertIn(k, err, f"{k} 누락인데 메시지가 그 키를 안 지목한다")
 
     def test_권고값_누락은_경고일_뿐_배포를_막지_않는다(self):
         """VINC_QUOTA 는 없어도 기동한다 — 이걸로 배포를 막으면 게이트가 과하다."""
-        self.assertEqual(self.m.check(self._env(list(self.m.REQUIRED))), 0)
+        code, _ = self._check(self._env(list(self.m.REQUIRED)))
+        self.assertEqual(code, 0)
 
     def test_빈_배열은_실패(self):
-        self.assertEqual(self.m.check([]), 1)
+        code, _ = self._check([])
+        self.assertEqual(code, 1)
+
+    def test_게이트_출력이_CI_주석을_오염시키지_않는다(self):
+        """`::error::` 가 테스트 실행 중 실제 stderr 로 새지 않아야 한다.
+
+        위 `_check` 를 우회해 직접 부르는 테스트가 나중에 추가되면 다시 오염된다.
+        그때 이 테스트가 아니라 그 테스트가 통과해버리므로, 여기서는 최소한
+        "가두면 안 샌다"는 계약만 못 박는다.
+        """
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            self.m.check([])
+        self.assertIn("::error::", buf.getvalue())  # 메시지 자체는 나와야 하고
+
 
 
 if __name__ == "__main__":
