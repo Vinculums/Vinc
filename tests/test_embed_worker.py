@@ -14,8 +14,21 @@ onnxruntime·numpy 없이 돈다: 워커의 모듈 레벨 import 는 stdlib 뿐�
 from __future__ import annotations
 
 import importlib.util
+import os
 import pathlib
+import sys
 import unittest
+
+
+def _np_or_skip(case):
+    """numpy 가 필요한 검사에만 붙인다. 이 파일 전체는 임베딩 스택 없이도 돌아야 하고
+    (모듈 docstring), 그래서 skip 은 **이 한 함수에만** 국한한다 — 파일 단위 skip 은
+    이 리포의 상습 함정이다."""
+    try:
+        import numpy as np
+    except Exception:
+        case.skipTest("numpy 없음 — 풀링 수치 검사만 건너뛴다")
+    return np
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
 
@@ -254,6 +267,66 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertTrue(seen, "인코딩이 호출되지 않았다 — 테스트가 낡았다")
         self.assertTrue(all(t.startswith("passage: ") for t in seen),
                         f"배경 루프가 접두를 건너뛰었다: {seen!r}")
+
+    def test_풀링이_모델_계열을_따른다(self):
+        """bge 는 CLS, e5 는 mean — **틀려도 에러가 안 난다**.
+
+        각 모델 리포의 `1_Pooling/config.json` 이 정본이다(e5 는 cls=false·mean=true).
+        같은 입력에 두 풀링의 코사인은 0.87~0.91 로, ONNX 전환 때 통과 기준이 ≥0.9999
+        였던 걸 생각하면 완전히 다른 벡터다. 모델만 갈아끼우고 풀링을 그대로 두면
+        저장 벡터 전량이 조용히 어긋난다."""
+        np = _np_or_skip(self)
+        hidden = np.array([[[1.0, 0.0], [3.0, 0.0], [9.0, 9.0]]])   # (1, 3, 2)
+        mask = np.array([[1, 1, 0]])                                # 세 번째는 패딩
+
+        real = self.mod.MODEL
+        try:
+            self.mod.MODEL = "BAAI/bge-base-en-v1.5"
+            got = self.mod._pool(hidden, mask, np)
+            self.assertEqual(got.tolist(), [[1.0, 0.0]], "bge 가 CLS 를 안 썼다")
+
+            self.mod.MODEL = "intfloat/multilingual-e5-base"
+            got = self.mod._pool(hidden, mask, np)
+            # 패딩(9,9)이 빠진 (1+3)/2 = 2 여야 한다. 안 빠지면 (1+3+9)/3 = 4.33.
+            self.assertEqual(got.tolist(), [[2.0, 0.0]],
+                             "e5 가 mean 이 아니거나 패딩을 평균에 넣었다")
+        finally:
+            self.mod.MODEL = real
+
+    def test_e5_는_공식_int8_을_쓰지_않는다(self):
+        """공식 `model_qint8_avx512_vnni.onnx` 는 non-VNNI 에서 품질을 깎는다.
+
+        U8S8+per_channel+reduce_range=False 조합이라 ORT 문서가 경고하는 포화 조건에
+        정확히 해당하고, 실측으로 한국어 nDCG 가 0.670 → 0.472 로 떨어졌다. 같은 fp32 를
+        reduce_range=True 로 직접 양자화하면 0.669 로 돌아온다. 그래서 공식 int8 파일은
+        **받지 않는다** — 이 테스트는 누가 그걸 되돌리면 깨진다."""
+        asked: list[str] = []
+
+        def fake_dl(repo, path, **kw):
+            asked.append(path)
+            return f"/tmp/{path}"
+
+        import types
+        stub = types.ModuleType("huggingface_hub")
+        stub.hf_hub_download = fake_dl
+        old = sys.modules.get("huggingface_hub")
+        sys.modules["huggingface_hub"] = stub
+        real_env = os.environ.get("VINC_EMBED_QUANTIZE")
+        os.environ["VINC_EMBED_QUANTIZE"] = "off"      # 양자화는 건너뛰고 경로 선택만 본다
+        try:
+            p = self.mod._resolve_model("intfloat/multilingual-e5-base", "/tmp/cache")
+        finally:
+            if old is None:
+                sys.modules.pop("huggingface_hub", None)
+            else:
+                sys.modules["huggingface_hub"] = old
+            if real_env is None:
+                os.environ.pop("VINC_EMBED_QUANTIZE", None)
+            else:
+                os.environ["VINC_EMBED_QUANTIZE"] = real_env
+        self.assertEqual(asked, ["onnx/model.onnx"],
+                         f"공식 int8 을 받으려 했다: {asked}")
+        self.assertTrue(p.endswith("model.onnx"))
 
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에

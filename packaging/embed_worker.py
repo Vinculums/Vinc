@@ -89,6 +89,72 @@ def _call(path: str, body: dict | None = None) -> dict:
         return json.load(resp)
 
 
+def _is_e5(model: str = "") -> bool:
+    return "e5" in (model or MODEL).lower()
+
+
+def _pool(hidden, mask, np):
+    """모델 계열에 맞는 풀링 — **여기가 틀리면 에러 없이 벡터가 통째로 어긋난다.**
+
+    bge-*-v1.5 는 CLS(`hidden[:,0]`), e5 계열은 **mean** 이다. 근거는 각 모델 리포의
+    `1_Pooling/config.json` — e5 는 `pooling_mode_cls_token=false`,
+    `pooling_mode_mean_tokens=true` 다. 같은 입력에 대해 두 풀링의 코사인은 0.87~0.91 에
+    불과하다(실측). ONNX 전환 때 통과 기준이 ≥0.9999 였던 걸 생각하면 완전히 다른 벡터다.
+
+    mean 은 반드시 **attention_mask 로 가중**해야 한다. 패딩 위치를 평균에 넣으면 짧은
+    문장일수록 벡터가 0 쪽으로 끌려가고, 그 정도가 **같은 배치에 무엇이 실렸는지**에 따라
+    달라진다(패딩 길이가 배치 최장에 맞춰지므로). 즉 마스크를 빼먹으면 벡터가 배치 구성에
+    의존하게 된다 — 재현 불가능한 색인이 된다."""
+    if not _is_e5():
+        return hidden[:, 0]
+    m = mask[..., None].astype(hidden.dtype)
+    return (hidden * m).sum(axis=1) / np.clip(m.sum(axis=1), 1e-9, None)
+
+
+def _resolve_model(model: str, cache: str) -> str:
+    """모델 ONNX 경로 — 필요하면 **직접 양자화해서** 캐시에 둔다.
+
+    e5 의 공식 int8 은 `model_qint8_avx512_vnni.onnx` **한 종뿐**이고
+    U8S8 + per_channel + `reduce_range=False` 조합이다. ORT 문서가 non-VNNI CPU 에서
+    VPMADDUBSW 의 int16 누산 포화를 경고하는 바로 그 설정이라, VNNI 가 없으면 **에러 없이
+    품질만** 떨어진다. 실측(AVX2 기기, 한영 60질의): 한국어 nDCG 0.670 → 0.472.
+
+    같은 fp32 를 `reduce_range=True`(가중치 7비트 → 포화가 산술적으로 불가)로 직접
+    양자화하면 한국어가 0.669 로 **fp32 와 사실상 동일**해진다. 그래서 공식본을 쓰지 않고
+    여기서 만든다 — VNNI 가 있어도 reduce_range 는 무해하므로 CPU 를 확인할 필요조차 없다.
+
+    1회 비용: fp32(약 1GB) 다운로드 + 양자화 31초. 결과 279MB 는 영속 볼륨에 남아
+    재기동에 재사용된다(기존 모델 캐시와 같은 자리). fp32 는 양자화 뒤 지운다.
+    `VINC_EMBED_QUANTIZE=off` 로 끄면 리포 제공 파일을 그대로 쓴다."""
+    from huggingface_hub import hf_hub_download
+    if not _is_e5(model) or os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+        return hf_hub_download(model, "onnx/model.onnx", cache_dir=cache)
+
+    made = os.path.join(cache, "e5-int8-rr.onnx")
+    if os.path.exists(made):
+        return made
+    fp32 = hf_hub_download(model, "onnx/model.onnx", cache_dir=cache)
+    try:
+        from onnxruntime.quantization import QuantType, quantize_dynamic
+    except Exception as exc:
+        # 양자화 스택이 없으면 fp32 로 간다 — 느리고 무겁지만 **정확하다**.
+        # 조용히 공식 int8 로 갈아타지 않는다(그쪽이 품질을 깎는다).
+        print(f"[embed] 양자화 불가({type(exc).__name__}) — fp32 로 진행", file=sys.stderr,
+              flush=True)
+        return fp32
+    tmp = made + ".part"
+    print("[embed] int8 양자화(reduce_range=True) 중 — 1회만 걸린다", flush=True)
+    quantize_dynamic(fp32, tmp, weight_type=QuantType.QInt8, per_channel=True,
+                     reduce_range=True, extra_options={"MatMulConstBOnly": True})
+    os.replace(tmp, made)                       # 원자적 — 중간에 죽어도 반쪽이 안 남는다
+    try:
+        os.remove(fp32)                         # 1GB 를 영속 볼륨에 남길 이유가 없다
+    except Exception:
+        pass
+    print(f"[embed] 양자화 완료 → {made}", flush=True)
+    return made
+
+
 class _Embedder:
     """ONNX 세션 + 토크나이저. 지연 로드 — 일감이 있을 때만 올린다(idle RSS 절약)."""
 
@@ -106,12 +172,22 @@ class _Embedder:
         from tokenizers import Tokenizer
 
         os.makedirs(CACHE, exist_ok=True)
-        onnx_path = hf_hub_download(MODEL, "onnx/model.onnx", cache_dir=CACHE)
+        onnx_path = _resolve_model(MODEL, CACHE)
         tok_path = hf_hub_download(MODEL, "tokenizer.json", cache_dir=CACHE)
 
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(MAX_TOKENS)
-        tok.enable_padding()
+        # ⚠ `enable_padding()` 의 기본 pad_id 는 **0** 인데 그게 항상 패딩 토큰은 아니다.
+        # e5(XLM-R)에서 0 은 `<pad>` 가 아니라 `<s>`(문장 시작)이고 `<pad>` 는 1 이며
+        # `[PAD]` 는 vocab 에 아예 없다. attention_mask 가 패딩을 0 으로 표시하므로 풀링
+        # 결과는 방어되지만, 문장 시작 토큰을 꼬리에 줄줄이 붙이는 건 그냥 틀린 입력이다.
+        pad = tok.token_to_id("<pad>")
+        if pad is None:
+            pad = tok.token_to_id("[PAD]")
+        if pad is None:
+            tok.enable_padding()
+        else:
+            tok.enable_padding(pad_id=pad, pad_token=tok.id_to_token(pad))
         self._tok = tok
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
         # 전경 응답을 굶기지 않게 명시적으로 묶는다.
@@ -170,17 +246,20 @@ class _Embedder:
         import numpy as np
 
         enc = self._tok.encode_batch(texts)
+        mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
         feed = {
             "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
-            "attention_mask": np.array([e.attention_mask for e in enc], dtype=np.int64),
+            "attention_mask": mask,
             "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
         }
+        # e5(XLM-R)는 token_type_ids 를 받지 않는다(그래프 입력이 둘뿐 — 실측).
+        # 세션이 받는 것만 남긴다.
         feed = {k: v for k, v in feed.items() if k in self._names}
         hidden = self._sess.run(None, feed)[0]
-        cls = hidden[:, 0]                                     # CLS 풀링
-        norm = np.linalg.norm(cls, axis=1, keepdims=True)
+        pooled = _pool(hidden, mask, np)
+        norm = np.linalg.norm(pooled, axis=1, keepdims=True)
         norm[norm == 0] = 1.0                                  # 빈 입력 방어
-        return (cls / norm).astype(float).tolist()
+        return (pooled / norm).astype(float).tolist()
 
 
 def serve_encode(emb: "_Embedder", port: int) -> None:
