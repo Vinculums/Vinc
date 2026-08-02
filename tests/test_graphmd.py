@@ -48,6 +48,25 @@ class TemplateTests(unittest.TestCase):
             n = len(self._built(lang).rstrip().split("\n"))
             self.assertLessEqual(n, graphmd.LINE_WARN, f"{lang}: {n} lines")
 
+    def test_templates_are_line_for_line_parallel(self):
+        """EN/ko 1:1 은 규격(§4)의 요구인데 여태 관례로만 지켜졌다 — 여기서 고정한다.
+        GM-11a 가 입도 절에 두 줄을 더하며 예산(60)이 꽉 찼으므로, 한쪽만 늘어나는
+        회귀를 이 assert 가 잡는다."""
+        n_en = len(self._built("en").rstrip().split("\n"))
+        n_ko = len(self._built("ko").rstrip().split("\n"))
+        self.assertEqual(n_en, n_ko, "EN/ko 템플릿 줄 수가 어긋났다(1:1 규격 위반)")
+
+    def test_legacy_core_vinc_tags_still_validate(self):
+        """구 2분류([core]/[vinc]) 파일은 사용자 손에 이미 존재한다(GM-3: 산문은
+        사람 소유라 재생성으로 안 바뀐다). 파서가 구 어휘를 버리면 그 파일들의
+        section-order 검사가 통째로 무너진다 — 하위호환을 고정한다."""
+        old = self._built("ko")
+        for new, legacy in (("[이 그래프가 정함]", "[core]"), ("[주제마다 다름]", "[core]"),
+                            ("[스키마 고정]", "[vinc]")):
+            old = old.replace(new, legacy)
+        res = graphmd.check(old)
+        self.assertEqual(res["exit_code"], 0, res["findings"])
+
     def test_missing_header_blocks(self):
         text = self._built("en").split("\n", 2)[2]      # 헤더 마커 제거
         res = graphmd.check(text)
@@ -92,8 +111,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_section_out_of_order_blocks(self):
         lines = self._built("en").split("\n")
-        i = lines.index("## Relations [vinc]")
-        j = lines.index("## Documents [vinc]")
+        i = lines.index("## Relations [schema-fixed]")
+        j = lines.index("## Documents [schema-fixed]")
         lines[i], lines[j] = lines[j], lines[i]
         res = graphmd.check("\n".join(lines))
         self.assertIn("section-order", [f["rule"] for f in res["findings"]])
@@ -122,7 +141,7 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(out["lang"], "en")
 
     def test_build_refuses_a_file_with_broken_markers(self):
-        out = graphmd.build(None, existing="# GRAPH.md\n\n## What this is [core]\nhi\n")
+        out = graphmd.build(None, existing="# GRAPH.md\n\n## What this is [this graph decides]\nhi\n")
         self.assertFalse(out["executed"])
         self.assertIn("markers", out["error"])
 

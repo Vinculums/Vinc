@@ -31,7 +31,14 @@ CONVENTIONS_ORIGIN = "vinc:conventions"
 HEADER_RE = re.compile(r"^<!--\s*vinc-graph-md:\s*(\d+)\b(.*)-->\s*$")
 GEN_START_RE = re.compile(r"^<!--\s*vinc:generated start\b.*-->\s*$")
 GEN_END_RE = re.compile(r"^<!--\s*vinc:generated end\s*-->\s*$")
-HEADING_RE = re.compile(r"^##\s+(.*?)\s*(?:\[(core|vinc)\])?\s*$")
+# GM-11a — 태그는 **가변성** 3분류: [스키마 고정](이 파일로 못 바꾼다) ·
+# [이 그래프가 정함](이 그래프의 관례다) · [주제마다 다름](주제에 맞춰 고쳐 써라).
+# 구 2분류 [core]/[vinc] 는 **출처**(범용/바인딩)를 말해 독자가 가변성을 거꾸로
+# 읽었다([vinc] 가 오히려 못 바꾸는 것). 기존 사용자 파일이 구 태그를 달고 있으므로
+# 파서는 신·구 어휘를 모두 받는다 — 템플릿이 내보내는 것은 신 태그뿐이다.
+HEADING_RE = re.compile(
+    r"^##\s+(.*?)\s*(?:\[(core|vinc|schema-fixed|this graph decides|varies by topic|"
+    r"스키마 고정|이 그래프가 정함|주제마다 다름)\])?\s*$")
 TOOL_RE = re.compile(r"\bvinc_[a-z_]+\b")
 
 #: wire 계약의 엣지 이름(`api/fragment.py`). 재가 어휘와 별개로 항상 유효하다.
@@ -63,16 +70,16 @@ FORBIDDEN_GLYPHS = ("—",)   # em-dash
 _TPL_EN = """# GRAPH.md
 {header}
 
-## What this is [core]
+## What this is [this graph decides]
 The house style for writing into this knowledge graph. Read it before your first write
 in a session. Judging meaning is your job. This file only fixes the conventions.
 
-## Read before you write [core]
+## Read before you write [this graph decides]
 Search first (vinc_search), reuse the ids you get back, and prefer attaching to an
 existing concept over creating a near duplicate. Ids carry their type as a prefix:
 concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
 
-## Node kinds [vinc]
+## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
 - Episode: something that happened (a session, an event). It is tied to a time.
 - Record: a short note or property hanging off a concept.
@@ -81,15 +88,17 @@ concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
 Any other type still saves, as an Entity, and enters the vocabulary as proposed.
 If you cannot decide, use Concept and say so in your reply.
 
-## How big is one concept [core]
+## How big is one concept [varies by topic]
 GOOD "Optimistic concurrency control": reusable, self standing, one idea.
 GOOD "Sunk cost fallacy": same shape, different field.
 BAD "Database stuff": several ideas in a bag. Split it.
 BAD "What I read today": not a concept. That is an Episode.
 BAD "PostgreSQL" and "Postgres" as two nodes: the same thing. Keep one.
 Test: if you cannot finish the sentence "X is ..." in two sentences, it is too big.
+That test passes for people and products too, so also ask: is it a reusable idea?
+Write a thing in the world (a person, a product) as an Entity or a record, not a Concept.
 
-## Relations [vinc]
+## Relations [schema-fixed]
 - relates_to: loose association. Undirected (the reverse folds into the same edge).
 - prerequisite_of: A comes before B. The direction carries the meaning.
 - derives_from: A comes out of B. The direction carries the meaning.
@@ -98,14 +107,14 @@ Test: if you cannot finish the sentence "X is ..." in two sentences, it is too b
 - about: Episode to Concept.
 Not sure: use relates_to. Never flip a directed edge to make it fit.
 
-## Documents [vinc]
+## Documents [schema-fixed]
 Source text goes in through vinc_doc_put and the store keeps the canonical copy.
 Do not paste a whole document into a Record. Link concepts through the document,
 not through a copy of it.
 
 {generated}
 
-## Do not [vinc]
+## Do not [this graph decides]
 - Do not ratify your own proposal. A person does that.
 - Do not create a node for something you did not search for first.
 - Do not invent a domain name inline.
@@ -114,16 +123,16 @@ not through a copy of it.
 _TPL_KO = """# GRAPH.md
 {header}
 
-## 이 파일은 무엇인가 [core]
+## 이 파일은 무엇인가 [이 그래프가 정함]
 이 지식그래프에 쓸 때의 관례입니다. 세션에서 첫 쓰기를 하기 전에 읽으십시오.
 의미를 판단하는 것은 당신의 일입니다. 이 파일은 관례만 고정합니다.
 
-## 쓰기 전에 읽을 것 [core]
+## 쓰기 전에 읽을 것 [이 그래프가 정함]
 먼저 검색하고(vinc_search), 돌려받은 id 를 재사용하고, 비슷한 개념을 새로 만들기보다
 기존 개념에 붙이십시오. id 는 종류를 접두사로 답니다:
 concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
 
-## 노드 종류 [vinc]
+## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
 - Episode: 일어난 일(세션·사건). 시간에 묶입니다.
 - Record: 개념에 붙는 짧은 메모나 속성.
@@ -132,15 +141,17 @@ concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
 그 밖의 타입도 저장되며(Entity 로), 어휘에 제안 상태로 편입됩니다.
 정하지 못하겠으면 Concept 으로 넣고 그렇게 했다고 답에 적으십시오.
 
-## 개념 하나의 크기 [core]
+## 개념 하나의 크기 [주제마다 다름]
 GOOD "낙관적 동시성 제어": 재사용되고, 자립적이고, 하나의 관념입니다.
 GOOD "매몰비용 오류": 같은 모양, 다른 분야.
 BAD "데이터베이스 관련": 여러 관념을 한 자루에 담았습니다. 쪼개십시오.
 BAD "오늘 읽은 것": 개념이 아닙니다. Episode 입니다.
 BAD "PostgreSQL" 과 "Postgres" 를 각각: 같은 것입니다. 하나만 두십시오.
 기준: "X 는 ...이다" 를 두 문장으로 못 끝내면 너무 큽니다.
+이 기준은 인물·제품에도 통과합니다. 재사용되는 관념인지 함께 물으십시오.
+세상의 개체(인물·제품)는 Concept 이 아니라 Entity 나 record 로 넣으십시오.
 
-## 관계 [vinc]
+## 관계 [스키마 고정]
 - relates_to: 느슨한 연관. 무방향입니다(역방향은 같은 간선으로 접힙니다).
 - prerequisite_of: A 가 B 보다 먼저입니다. 방향이 의미입니다.
 - derives_from: A 가 B 에서 나왔습니다. 방향이 의미입니다.
@@ -149,14 +160,14 @@ BAD "PostgreSQL" 과 "Postgres" 를 각각: 같은 것입니다. 하나만 두�
 - about: Episode 에서 Concept 으로.
 확신이 없으면 relates_to. 맞추려고 방향을 뒤집지 마십시오.
 
-## 문서 [vinc]
+## 문서 [스키마 고정]
 원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다.
 문서 전문을 Record 에 붙여넣지 마십시오. 개념은 문서를 통해 연결하고,
 문서의 사본을 통해 연결하지 마십시오.
 
 {generated}
 
-## 하지 말 것 [vinc]
+## 하지 말 것 [이 그래프가 정함]
 - 자기 제안을 스스로 재가하지 마십시오. 그것은 사람이 합니다.
 - 검색해 보지 않은 것을 노드로 만들지 마십시오.
 - 도메인 이름을 즉석에서 만들지 마십시오.
