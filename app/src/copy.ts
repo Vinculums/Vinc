@@ -539,13 +539,6 @@ const EN = {
       publishDone: "Published to the community.", publishView: "View in gallery",
       // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
       secImport: "Import", secImportDesc: "Bring a pack file into your graph.",
-      // 스페이스 — 팀 그래프는 개인 그래프와 별개다. 여기서 고른 스페이스가
-      // 모든 표면에 걸린다(Atlas·Search·Records 전부 같은 스코프를 본다).
-      secSpace: "Space", secSpaceDesc: "Which graph you are working in. Everything else follows this.",
-      spacePersonal: "Personal",
-      spaceSwitchTo: "Switch",
-      spaceNowTeam: (name: string) => `You are in ${name}. Its graph is separate from your personal one.`,
-      spaceNowPersonal: "You are in your personal graph.",
       // 개인 → 팀 불러오기. 나가는 방향(팀 → 개인)은 Share 의 목적지 고르기가 맡는다.
       secPull: "Bring in your own data",
       secPullDesc: "Copy a topic from your personal graph into this team.",
@@ -1109,11 +1102,6 @@ const KO: Deck = {
       publishDone: "커뮤니티에 게시했습니다.", publishView: "갤러리에서 보기",
       // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
       secImport: "가져오기", secImportDesc: "팩 파일을 내 그래프에 병합합니다.",
-      secSpace: "스페이스", secSpaceDesc: "지금 작업 중인 그래프입니다. 다른 모든 화면이 여기를 따릅니다.",
-      spacePersonal: "개인",
-      spaceSwitchTo: "이동",
-      spaceNowTeam: (name) => `${name}에 있습니다. 이 그래프는 개인 그래프와 별개입니다.`,
-      spaceNowPersonal: "개인 그래프에 있습니다.",
       secPull: "내 데이터 불러오기",
       secPullDesc: "개인 그래프의 주제를 이 팀으로 복사합니다.",
       pullCta: "가져올 것 고르기",

@@ -16,18 +16,6 @@ export function renderPacks(el: HTMLElement) {
   el.innerHTML = `
     ${header("pack-export", "Packs", COPY.ui.meta.packs)}
 
-    ${WEB ? `
-    <section class="pack-card" id="pack-space">
-      <h3 class="pack-h">${U.secSpace}</h3>
-      <p class="hint pack-desc">${U.secSpaceDesc}</p>
-      <div class="pack-row">
-        <label class="pack-field">${U.secSpace}
-          <select id="space-pick"><option value="">${U.spacePersonal}</option></select>
-        </label>
-      </div>
-      <p class="hint pack-note" id="space-now"></p>
-    </section>` : ""}
-
     <section class="pack-card" id="pack-import">
       <h3 class="pack-h">${U.secImport}</h3>
       <p class="hint pack-desc">${U.secImportDesc}</p>
@@ -111,36 +99,21 @@ export function renderPacks(el: HTMLElement) {
   }
   void fillTopics();
 
-  // 스페이스 — 팀 목록을 채우고, 고르면 그 스코프로 전체 표면을 다시 그린다.
-  // 스페이스는 전역이라 부분 갱신이 아니라 재적재로 간다(어떤 표면이 옛 스코프의
-  // 데이터를 들고 남아 있으면 어느 그래프를 보는지 알 수 없게 된다).
+  // 스페이스 **전환**은 설정 → 계정에 있다(전역 상태라 표면 하나에 두지 않는다).
+  // 여기서는 완료 문구에 쓸 팀 이름만 확인한다 — 못 읽어도 일반 명칭으로 진행한다.
   let teamName = "";
-  async function fillSpaces() {
-    const sel = el.querySelector<HTMLSelectElement>("#space-pick");
-    const now = el.querySelector<HTMLElement>("#space-now");
-    if (!sel || !now) return;
-    const rows = await teamsApi.list();
-    // 활성 팀만 고를 수 있다 — 정지·연체 팀은 계정이 서명을 멈춰 어차피 거부된다.
-    for (const t of rows.filter((t) => t.status === "active")) {
-      const o = document.createElement("option");
-      o.value = t.id; o.textContent = t.name;
-      if (t.id === cfg.team) { o.selected = true; teamName = t.name; }
-      sel.appendChild(o);
-    }
-    now.textContent = cfg.team && teamName
-      ? U.spaceNowTeam(teamName) : U.spaceNowPersonal;
-    sel.addEventListener("change", () => {
-      cfg.team = sel.value;
-      location.reload();
+  if (cfg.team) {
+    void teamsApi.list().then((rows) => {
+      teamName = rows.find((t) => t.id === cfg.team)?.name || "";
     });
   }
-  void fillSpaces();
 
   // 개인 → 팀 불러오기. 목적지가 정해져 있으므로 목적지 고르기를 건너뛴다.
   el.querySelector("#pull-go")?.addEventListener("click", () => {
     const domain = (el.querySelector("#pull-topic") as HTMLSelectElement).value || undefined;
+    // 이름을 못 읽었으면 intoLabel 을 비워 시트가 일반 명칭("팀 스페이스")을 쓰게 둔다.
     void openShareSheet({ domain }, {
-      from: { team: null }, into: { team: cfg.team }, intoLabel: teamName || U.secSpace,
+      from: { team: null }, into: { team: cfg.team }, intoLabel: teamName || undefined,
     });
   });
 

@@ -1,4 +1,4 @@
-import { cfg, WEB } from "../api";
+import { cfg, teamsApi, WEB } from "../api";
 import { COPY } from "../copy";
 
 /** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
@@ -86,12 +86,22 @@ export async function renderSettings(el: HTMLElement) {
     // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시. 카피는 셸 편집 충돌 회피 위해 인라인.
     const ko = cfg.lang === "ko";
     const W = ko
-      ? { acct: "계정", none: "로그인되어 있지 않아요.", manage: "계정 관리", signedAs: (w: string) => "로그인: " + w }
-      : { acct: "Account", none: "Not signed in.", manage: "Manage account", signedAs: (w: string) => "Signed in as " + w };
+      ? { acct: "계정", none: "로그인되어 있지 않아요.", manage: "계정 관리", signedAs: (w: string) => "로그인: " + w,
+          space: "스페이스", spacePersonal: "개인",
+          spaceHint: "지금 작업 중인 그래프입니다. 모든 화면이 여기를 따릅니다.",
+          spaceNone: "참여 중인 활성 팀이 없습니다." }
+      : { acct: "Account", none: "Not signed in.", manage: "Manage account", signedAs: (w: string) => "Signed in as " + w,
+          space: "Space", spacePersonal: "Personal",
+          spaceHint: "Which graph you are working in. Every surface follows this.",
+          spaceNone: "You are not in an active team yet." };
     body.innerHTML = `
       ${WEB ? `
       <label>${W.acct}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
+      <label>${W.space}</label>
+      <p class="hint">${W.spaceHint}</p>
+      <p><select id="space-pick"><option value="">${W.spacePersonal}</option></select></p>
+      <div id="space-note" class="hint" style="font-size:.8rem"></div>
       <hr class="settings-sep" />` : ""}
       ${!WEB ? `
       <label>${U.account}</label>
@@ -125,6 +135,29 @@ export async function renderSettings(el: HTMLElement) {
             box.innerHTML = `${W.signedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${W.manage}</a>`;
           })
           .catch(() => { if (box) box.textContent = ""; });
+      }
+      // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
+      // 것이 Atlas·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
+      // 정지·연체 팀은 목록에 넣지 않는다 — 계정이 서명을 멈춰 어차피 거부된다.
+      const pick = body.querySelector<HTMLSelectElement>("#space-pick");
+      const note = body.querySelector<HTMLElement>("#space-note");
+      if (pick) {
+        void teamsApi.list().then((rows) => {
+          const active = rows.filter((t) => t.status === "active");
+          for (const t of active) {
+            const o = document.createElement("option");
+            o.value = t.id; o.textContent = t.name;
+            if (t.id === cfg.team) o.selected = true;
+            pick.appendChild(o);
+          }
+          if (note && !active.length) note.textContent = W.spaceNone;
+        });
+        pick.addEventListener("change", () => {
+          cfg.team = pick.value;
+          // 스페이스는 전역이라 부분 갱신하지 않는다 — 어떤 표면이 옛 스코프의
+          // 데이터를 들고 남으면 지금 어느 그래프를 보는지 알 수 없게 된다.
+          location.reload();
+        });
       }
       return;
     }
