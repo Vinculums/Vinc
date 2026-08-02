@@ -114,3 +114,47 @@ def test_persistence_across_reopen(tmp_path):
     s2 = Store(path)                        # 재기동 시뮬레이션
     assert s2.get_token("t1")["owner"] == "user:u1"   # 재인가 불필요 — 영속 확인
     s2.close()
+
+
+def test_client_registration_survives_restart(tmp_path):
+    """2026-08-03 사고 회귀 — 등록이 재기동을 넘겨야 한다.
+
+    허브가 상태 DB 를 이미지 레이어(`~/.vinc/mcp`)에 두는 바람에 배포마다 이 표가
+    비었고, 커넥터가 캐시해 둔 client_id 를 제시하면 `/authorize` 가
+    `400 {"error":"unknown client_id"}` 를 냈다. 파일이 남아 있는 한 등록도
+    남는다는 것 — 즉 사고의 원인이 스토어가 아니라 **경로**였다는 것 — 을 못 박는다.
+    """
+    path = os.path.join(tmp_path, "oauth.db")
+    s1 = Store(path)
+    s1.add_client("cid-1", ["https://claude.ai/api/mcp/auth_callback"], "Claude")
+    s1.close()
+    s2 = Store(path)
+    got = s2.get_client("cid-1")
+    assert got is not None, "재기동 후 client 가 사라졌다 — unknown client_id 재발"
+    assert got["redirect_uris"] == ["https://claude.ai/api/mcp/auth_callback"]
+    s2.close()
+
+
+def test_journal_mode_defaults_off_wal(tmp_path, monkeypatch):
+    """저널 모드 기본은 WAL 이 아니다 — 상태 DB 가 Azure Files(SMB) 위에 산다.
+
+    SQLite 의 WAL 은 `-shm` 공유 메모리를 요구해 네트워크 파일시스템에서 동작하지
+    않는다. 여기서 WAL 로 되돌아가면 영속화 수정이 오히려 기동을 깨뜨린다."""
+    monkeypatch.delenv("VINC_MCP_SQLITE_JOURNAL", raising=False)
+    s = Store(os.path.join(tmp_path, "oauth.db"))
+    assert s.journal_mode != "wal"
+    s.close()
+
+
+def test_journal_mode_env_override_and_bad_value(tmp_path, monkeypatch):
+    """되돌릴 길(env)은 열어 두되, 오타는 기본값으로 강등한다 — 상태 DB 는 기동 경로라
+    문법 오류로 번지면 서비스가 통째로 안 뜬다."""
+    monkeypatch.setenv("VINC_MCP_SQLITE_JOURNAL", "wal")
+    s1 = Store(os.path.join(tmp_path, "a.db"))
+    assert s1.journal_mode == "wal"          # 로컬 디스크에서는 실제로 올라간다
+    s1.close()
+
+    monkeypatch.setenv("VINC_MCP_SQLITE_JOURNAL", "not-a-mode")
+    s2 = Store(os.path.join(tmp_path, "b.db"))
+    assert s2.journal_mode == "delete"
+    s2.close()

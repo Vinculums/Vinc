@@ -49,6 +49,36 @@ EXPECTED: dict[str, str] = {
     "VINC_FREE_MAX_DOMAINS": "없으면 무료 주제 상한이 꺼진다 — AP-1 의 유일한 무료/유료 차별축",
 }
 
+# 값까지 보는 유일한 항목(2026-08-03). 위 규율("존재만 본다")의 의도적 예외다 —
+# 이건 시크릿이 아니라 **경로**이고, 틀린 값이 배포를 조용히 망가뜨린 전력이 있다.
+#
+# 배경: MCP OAuth 클라이언트 등록·토큰이 `$VINC_MCP_STATE_DIR/oauth.db` 에 있는데
+# 미설정이면 `~/.vinc/mcp`(컨테이너에선 /root — **이미지 레이어**)로 폴백했다.
+# 그래서 배포마다 등록이 날아가 커넥터가 `400 {"error":"unknown client_id"}` 로
+# 끊겼다. 지금은 엔트리포인트가 `/data/mcp` 를 기본값으로 주므로 **미설정이 정상**
+# 이다. 위험한 쪽은 반대다: 누군가 이 env 를 영속 볼륨 **밖** 경로로 설정하는 것.
+_STATE_DIR_KEY = "VINC_MCP_STATE_DIR"
+#: 영속 마운트 접두(Azure Files 가 /data 에 붙는다 — DEPLOYMENT.md §4.1).
+_PERSISTENT_PREFIX = "/data/"
+
+
+def _check_state_dir(env_list: list[dict]) -> list[str]:
+    """`VINC_MCP_STATE_DIR` 이 설정돼 있다면 영속 볼륨 안을 가리키는지 본다.
+    반환 = 오류 메시지 목록(빈 목록이면 통과). 미설정은 통과(엔트리포인트 기본값)."""
+    for e in env_list:
+        if not isinstance(e, dict) or e.get("name") != _STATE_DIR_KEY:
+            continue
+        val = (e.get("value") or "").strip()
+        if not val:
+            # secretRef 로 넣었거나 값이 안 보인다 — 경로를 시크릿으로 둘 이유가 없다.
+            return [f"{_STATE_DIR_KEY} 값이 비어 있다(secretRef?). 경로는 평문이어야 "
+                    f"검증할 수 있다 — {_PERSISTENT_PREFIX}… 로 직접 넣을 것"]
+        if not val.startswith(_PERSISTENT_PREFIX):
+            return [f"{_STATE_DIR_KEY}='{val}' 가 영속 볼륨({_PERSISTENT_PREFIX}) 밖이다 — "
+                    f"배포마다 OAuth 등록이 사라져 커넥터가 "
+                    f"400 unknown client_id 로 끊긴다(2026-08-03 사고)"]
+    return []
+
 
 def check(env_list: list[dict]) -> int:
     have = {e.get("name") for e in env_list if isinstance(e, dict)}
@@ -58,10 +88,19 @@ def check(env_list: list[dict]) -> int:
     for k in warn:
         print(f"::warning::허브 env 권고값 없음: {k} — {EXPECTED[k]}")
 
-    if missing:
+    bad_paths = _check_state_dir(env_list)
+    for msg in bad_paths:
+        print(f"::error::허브 env 값 오류: {msg}", file=sys.stderr)
+
+    if missing or bad_paths:
         for k in missing:
             print(f"::error::허브 env 필수값 누락: {k} — {REQUIRED[k]}", file=sys.stderr)
-        print(f"\n{len(missing)}개 누락. 배포를 중단한다 — 지금 배포하면 "
+        # 무엇 때문에 막혔는지 정확히 적는다 — "0개 누락"으로 끝나면 경로 오류로
+        # 막힌 사람이 누락을 찾아 헤맨다(게이트가 스스로 오진을 만드는 꼴).
+        reason = ", ".join(
+            p for p in (f"필수값 {len(missing)}개 누락" if missing else "",
+                        f"값 오류 {len(bad_paths)}건" if bad_paths else "") if p)
+        print(f"\n{reason}. 배포를 중단한다 — 지금 배포하면 "
               f"기동은 되지만 기능이 조용히 죽은 리비전이 나간다.", file=sys.stderr)
         return 1
 

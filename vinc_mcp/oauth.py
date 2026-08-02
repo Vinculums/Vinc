@@ -12,9 +12,12 @@
     owner=user:{public_id} 로 코드·토큰 스탬핑. authorize_member()/complete().
 키·회원경로 모두 미설정이면 인가는 거부되고 정적 토큰 모드만 남는다.
 
-상태 영속(B-A): 인메모리 dict → vinc_mcp.store.Store(SQLite/WAL). **재기동에도
+상태 영속(B-A): 인메모리 dict → vinc_mcp.store.Store(SQLite). **재기동에도
 클라이언트·토큰·쿼터가 유지**된다(재인가 불필요). 기본 store 는 인메모리
 (`:memory:`, 디스크 미오염) — 프로덕션은 cli.py 가 디스크 Store 를 주입한다.
+⚠ "재기동에도 유지"는 **상태 파일이 영속 볼륨에 있을 때만** 성립한다. 그 경로가
+컨테이너 임시 레이어로 떨어져 배포마다 등록이 날아간 것이 아래 `unknown client_id`
+사고의 원인이었다(DEPLOYMENT.md §4.6) — 경로는 엔트리포인트가 `/data/mcp` 로 고정한다.
 """
 from __future__ import annotations
 

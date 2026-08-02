@@ -9,6 +9,38 @@ set -e
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
 : "${VINC_SIDECAR_TOKEN:?VINC_SIDECAR_TOKEN 필수 — 사이드카/MCP 내부 인증}"
 
+# ── MCP OAuth 상태 경로 — **영속 볼륨에 둔다**(2026-08-03 사고 수정) ──────────────
+# `vinc_mcp/store.py` 는 미설정 시 `~/.vinc/mcp` 로 폴백하는데, 이 컨테이너는 root 로
+# 돌므로 그게 `/root/.vinc/mcp` = **이미지 레이어**다. 영속 마운트는 `/data`(Azure
+# Files) 하나뿐이라, 리비전이 바뀔 때마다(=api/ 변경마다 배포된다) OAuth 클라이언트
+# 등록·토큰이 통째로 사라졌다. 증상: 재연결한 커넥터가 캐시해 둔 client_id 를 그대로
+# 제시하는데 서버엔 기록이 없어 `/authorize` 가 `400 {"error":"unknown client_id"}`.
+# 클라이언트는 스스로 재등록하지 않으므로 한 번 어긋나면 계속 막힌다.
+#
+# 원래 의도는 영속이었다(`api/cli.py` "재기동에도 커넥터 유지", 프로덕션 경로
+# `/var/lib/vinc-mcp`). 그 경로는 **가비아 VM + systemd StateDirectory** 시절 것이고
+# Azure Container Apps 이관(2026-07-28/29) 때 대체 설정이 안 들어가 의도만 남았다.
+#
+# env 로 넣지 않고 **여기서 기본값을 준다**: 허브 런타임 env 는 손으로 넣는 값이라
+# 앱을 재생성하면 조용히 빠진다(DEPLOYMENT.md §4.4 가 경고하는 실패 모드이고,
+# VINC_MCP_ISSUER 가 실제로 그렇게 빠졌다). 기본값을 코드에 두면 그 경로가 막힌다.
+: "${VINC_MCP_STATE_DIR:=/data/mcp}"
+export VINC_MCP_STATE_DIR
+# 여기서 못 만들면 뒤에서 SQLite 가 열리다 죽는다 — `set -e` 의 말 없는 종료보다
+# 사유를 적고 죽는 편이 낫다(이 사고의 급소가 "조용함"이었다).
+mkdir -p "$VINC_MCP_STATE_DIR" || {
+  echo "[entrypoint] MCP 상태 경로를 만들 수 없다: $VINC_MCP_STATE_DIR" >&2
+  echo "[entrypoint] 볼륨 마운트를 확인할 것(DEPLOYMENT.md §4.6)." >&2
+  exit 1
+}
+# 어디에 저장하는지 로그로 남긴다 — 영속 여부는 /health 에 안 드러나므로(이 사고의
+# 급소가 그것이다) 최소한 기동 로그에서는 눈으로 확인할 수 있어야 한다.
+case "$VINC_MCP_STATE_DIR" in
+  "${DATA_DIR%/*}"/*) echo "[entrypoint] MCP OAuth state: $VINC_MCP_STATE_DIR (persistent)" ;;
+  *) echo "[entrypoint] ⚠ MCP OAuth state: $VINC_MCP_STATE_DIR — 영속 볼륨(${DATA_DIR%/*}) 밖이다." \
+          "재시작마다 커넥터 재인가가 필요해진다." >&2 ;;
+esac
+
 # 쿼리 임베딩 창구(루프백). 사이드카는 이 주소로 물어 벡터 검색을 켠다 — 비어 있으면
 # 시도조차 안 하고 FTS 로만 답한다(데스크탑의 정상 상태와 같다).
 EMBED_PORT="${VINC_EMBED_PORT:-8791}"

@@ -3,16 +3,21 @@
 
 왜(B-A): OAuthGate 의 인메모리 4-dict 는 서비스 재시작마다 전 커넥터를 재인가
 시킨다(발주자 "제일 힘든 것"의 한 갈래). 상태를 `$VINC_MCP_STATE_DIR/oauth.db`
-(WAL)로 옮겨 **재시작에도 인가·토큰·쿼터가 유지**되게 한다. stdlib sqlite3 만
-쓰므로 MCP 의 무외부의존(D36)을 지킨다.
+로 옮겨 **재시작에도 인가·토큰·쿼터가 유지**되게 한다. stdlib sqlite3 만 쓰므로
+MCP 의 무외부의존(D36)을 지킨다.
 
-프로덕션 경로: systemd `StateDirectory=vinc-mcp` → `/var/lib/vinc-mcp`
-(vinc-mcp.service). ProtectHome=read-only 라 홈에는 못 쓴다 — 그래서 env 로
-쓰기 가능한 상태 경로를 명시 주입한다. 개발 기본은 `~/.vinc/mcp`.
+경로: env `VINC_MCP_STATE_DIR` > `~/.vinc/mcp`(개발 기본).
+  · Azure Container Apps(현행): 컨테이너 엔트리포인트가 `/data/mcp` 로 기본값을
+    준다 — `/data` 가 유일한 영속 마운트(Azure Files)다. **폴백 경로(`~`)는
+    이미지 레이어라 배포마다 지워진다**: 그래서 실제로 배포할 때마다 커넥터가
+    `400 {"error":"unknown client_id"}` 로 끊겼다(2026-08-03 수정).
+  · 구 가비아 VM(참고): systemd `StateDirectory=vinc-mcp` → `/var/lib/vinc-mcp`.
+    ProtectHome=read-only 라 홈에 못 써서 env 주입이 필요했다. 이 경로는 이제
+    as-built 가 아니다(2026-07-28/29 Azure 이관).
 
 동시성: ThreadingHTTPServer 라 여러 스레드가 접근한다 → 단일 커넥션
-(check_same_thread=False) + 쓰기 Lock + WAL. 인증 빈도(커넥션당 + 60s 캐시)
-에서 경합은 무시할 수준이다.
+(check_same_thread=False) + 쓰기 Lock. 인증 빈도(커넥션당 + 60s 캐시)에서
+경합은 무시할 수준이다.
 """
 from __future__ import annotations
 
@@ -85,6 +90,24 @@ def resolve_state_dir(create: bool = True) -> str:
     return str(root)
 
 
+#: 저널 모드 기본값 — **WAL 이 아니다**(2026-08-03).
+#: 상태 DB 를 영속 볼륨(Azure Files = SMB)으로 옮기면서 바꿨다: SQLite 의 WAL 은
+#: 공유 메모리(`-shm`, mmap)를 요구하고 **네트워크 파일시스템에서 지원되지 않는다**
+#: (SQLite 문서가 명시). SMB 마운트에서 WAL 은 열기 실패하거나, 더 나쁘게는 열린 뒤
+#: 락 의미론이 어긋난다. 여기서 WAL 이 벌어 주는 것도 없다 — 커넥션 하나를 쓰기
+#: Lock 으로 직렬화하고 허브는 `min=max=1` 단일 리플리카이며 DB 는 수 KB 다.
+#: 되돌릴 길은 남긴다(env) — 로컬 디스크에서 쓰기 지연이 문제가 되면 WAL 로 올린다.
+_JOURNAL_MODES = ("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF")
+_DEFAULT_JOURNAL = "DELETE"
+
+
+def resolve_journal_mode() -> str:
+    """저널 모드: env `VINC_MCP_SQLITE_JOURNAL` > DELETE. 미지 값은 기본으로 강등한다
+    (오타가 SQLite 문법 오류로 번지지 않게 — 상태 DB 는 기동 경로다)."""
+    want = (os.environ.get("VINC_MCP_SQLITE_JOURNAL") or "").strip().upper()
+    return want if want in _JOURNAL_MODES else _DEFAULT_JOURNAL
+
+
 class Store:
     def __init__(self, path: str | None = None):
         if path is None:
@@ -94,7 +117,11 @@ class Store:
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         with self._lock:
-            self._db.execute("PRAGMA journal_mode=WAL")
+            # 실제로 적용된 모드를 되읽어 남긴다 — SQLite 는 저널 모드 전환이 막히면
+            # **에러 없이 기존 모드를 돌려준다**. 조용한 불일치를 남기지 않는다.
+            row = self._db.execute(
+                f"PRAGMA journal_mode={resolve_journal_mode()}").fetchone()
+            self.journal_mode = (row[0] if row else "").lower()
             self._db.execute("PRAGMA busy_timeout=3000")
             self._db.executescript(_SCHEMA)
             self._db.commit()
