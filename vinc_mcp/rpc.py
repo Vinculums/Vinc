@@ -154,16 +154,33 @@ _NARROW_HINT = {
     "vinc_graph": "lower `depth` (e.g. 1) or pick a more specific `seed_id`",
     "vinc_decide": "lower `depth` (e.g. 1)",
     "vinc_recall": "lower `limit`, or narrow by `domain`/`tags`",
-    "vinc_search": "lower `limit`, or use a more specific `query`",
+    "vinc_search": "lower `limit`, use detail:'summary' (the default), or continue "
+                   "with `next_cursor`",
     "vinc_domains": "this owner has an unusually large domain set",
     "vinc_suggest_ties": "lower `limit`",
 }
 
 
 def _result_text(text: str, name: str, args: dict) -> dict:
-    """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다."""
+    """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
+
+    GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search)는 거부 대신 꼬리
+    행을 덜어 예산 안의 **잘린 페이지**로 돌려준다 — 잘렸다는 사실은 has_more 와
+    next_cursor 가 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
+    미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다)."""
     if len(text) <= MAX_RESULT_CHARS:
         return {"content": [{"type": "text", "text": text}], "isError": False}
+    shrink = tools.SHRINKERS.get(name)
+    if shrink is not None:
+        try:
+            slim = shrink(json.loads(text), MAX_RESULT_CHARS)
+        except Exception:
+            slim = None
+        if slim is not None:
+            slim_text = json.dumps(slim, ensure_ascii=False)
+            if len(slim_text) <= MAX_RESULT_CHARS:
+                return {"content": [{"type": "text", "text": slim_text}],
+                        "isError": False}
     hint = _NARROW_HINT.get(name, "request a narrower slice")
     msg = (f"Result too large: {len(text):,} characters (limit {MAX_RESULT_CHARS:,}). "
            f"Nothing was changed. Narrow the request — {hint}.")

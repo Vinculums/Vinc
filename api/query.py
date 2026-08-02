@@ -8,6 +8,8 @@ callers — and tests — get a deterministic result without a live database.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from dataclasses import dataclass, field
 
@@ -148,6 +150,59 @@ def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
     for r in fused:
         r["rrf_score"] = scores[r[id_key]]
     return fused[:top_k] if top_k else fused
+
+
+# ── 검색 커서 페이지네이션 (GM-14) ──────────────────────────────────────────
+# 서버는 요청 사이 상태를 들지 않는다 — 페이지마다 같은 질의를 다시 돌리고, 안정
+# 정렬(점수 내림차순 + id 오름차순) 위의 오프셋으로 이어 읽는다. 커서는 그 오프셋에
+# 질의 지문(qh)과 기대 id(eid)를 묶은 것이다: 지문이 어긋나면 다른 질의의 커서
+# (invalid), 기대 id 가 어긋나면 결과가 그새 변한 것(stale)이다. **조용한 첫 페이지
+# 폴백 금지** — 어시스턴트가 같은 페이지를 무한히 읽게 만든다.
+#
+# 서명(HMAC)은 두지 않는다: 커서는 로컬 신뢰 경계(베어러 토큰) 안에서만 돌고,
+# owner 는 프록시가 강제 스탬핑하므로 위조 커서가 할 수 있는 최악은 자기 질의의
+# 페이지를 어긋나게 읽는 것뿐이며 그것도 qh/eid 가 잡는다.
+
+#: 페이지네이션 후보 풀 상한(암별 LIMIT 이자 total_count 의 상한). 200을 넘는
+#: 순회는 검색이 아니라 열람이다 — 그쪽은 vinc_doc_list/vinc_recall 이 담당한다.
+SEARCH_POOL_CAP = 200
+
+
+def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
+                       detail: str) -> str:
+    basis = json.dumps([query, owner or "", sorted((filters or {}).items()),
+                        detail], ensure_ascii=False)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
+
+
+def cursor_encode(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def cursor_decode(s: str) -> dict:
+    """무효 커서는 ValueError("invalid_cursor: …") — 호출부가 명시 오류로 표면화한다."""
+    try:
+        pad = "=" * (-len(s) % 4)
+        data = json.loads(base64.urlsafe_b64decode((s + pad).encode("ascii")))
+    except Exception:
+        raise ValueError("invalid_cursor: not a vinc search cursor") from None
+    if not isinstance(data, dict) or data.get("v") != 1:
+        raise ValueError("invalid_cursor: unknown cursor version")
+    return data
+
+
+def _summary_row(r: dict) -> dict:
+    """청크 행의 요약형 — 전문(text) 대신 발췌(snippet)를 싣는다(GM-14 요약·상세 분리).
+    발췌 240자·공백 정규화는 node_context 의 기존 관례(§excerpts)와 같다. 전문은
+    doc_id 로 vinc_doc_get 이 돌려준다(chunk id 규약 `{doc_id}#{n:05d}`)."""
+    flat = " ".join(str(r.get("text") or "").split())
+    out = {k: v for k, v in r.items() if k != "text"}
+    out["snippet"] = flat[:240]
+    out["truncated"] = len(flat) > 240
+    rid = str(r.get("id") or "")
+    out["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
+    return out
 
 
 def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
@@ -2936,6 +2991,7 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
 
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
+           cursor: str | None = None, detail: str = "summary",
            cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
@@ -2951,17 +3007,39 @@ def search(query: str, *, query_embedding: list[float] | None = None,
          전용(하위호환). Chunk 0개 스토어에서도 개념이 검색된다.
 
     벡터 암은 **쿼리 임베딩 주입형**(§3-1) — 미주입 시 BM25 단독.
-    ``store`` 주입(사이드카 §11 P2): read 뷰를 넘기면 재사용(열지도 닫지도 않음)."""
+    ``store`` 주입(사이드카 §11 P2): read 뷰를 넘기면 재사용(열지도 닫지도 않음).
+
+    **커서 페이지네이션(GM-14)**: ``rows`` 는 안정 정렬(점수 내림차순 + id 오름차순)
+    후보 풀(상한 :data:`SEARCH_POOL_CAP`)의 ``top_k`` 페이지다. ``total_count`` ·
+    ``has_more`` · ``next_cursor`` 가 함께 실리고, 무효/실효 커서는 조용한 폴백 없이
+    최상위 ``error``(invalid_cursor/stale_cursor) 로 답한다. 기본 ``detail="summary"``
+    는 청크 전문 대신 발췌(snippet)를 싣는다 — 전문은 vinc_doc_get(doc_id)."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
+    detail = "full" if (detail or "").strip().lower() == "full" else "summary"
     # 어느 팔이 돌았는지를 **결과에 남긴다**. 임베딩이 오래 write-only 였는데(호출부가
     # query_embedding 을 안 넘겨 vector_search 가 한 번도 실행되지 않았다) 에러가 없어
     # 아무도 몰랐다. 이 한 줄이 그 침묵을 깬다 — CLI·HTTP 양쪽이 같은 값을 본다
     # (HTTP 계층에서만 붙이면 §11 게이트① 의 CLI↔HTTP 동등성이 깨진다).
     base = {"kind": "search", "executed": False, "rows": [], "node_hits": [],
-            "arms": "fts+vector" if query_embedding is not None else "fts"}
+            "arms": "fts+vector" if query_embedding is not None else "fts",
+            "total_count": 0, "has_more": False, "next_cursor": None}
+    # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
+    qh = _query_fingerprint(query, owner, filters, detail)
+    off, want_eid = 0, None
+    if cursor:
+        try:
+            c = cursor_decode(cursor)
+            if c.get("qh") != qh:
+                raise ValueError(
+                    "invalid_cursor: cursor was issued for a different query/scope")
+            off = max(0, int(c.get("off") or 0))
+            want_eid = c.get("eid")
+        except (TypeError, ValueError) as exc:
+            base["note"] = base["error"] = str(exc)
+            return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
     if store is None:
         base["note"] = base["error"] = "no reachable store"
         return base
@@ -2976,8 +3054,11 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
+        # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
+        # 아래에서 안정 정렬 위의 오프셋으로 자른다.
+        pool: list[dict] = []
         try:
-            base["rows"] = _chunk_arms(store, query, query_embedding, top_k, filters)
+            pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP, filters)
             base["executed"] = True
         except Exception as exc:
             if _classify_chunk_error(exc) != "index_missing":
@@ -2998,13 +3079,39 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # 벡터 인덱스는 쿼리 임베딩 검색이 필요할 때만 빌드(dim 주입).
                         vdim = cfg.embedding_dim if query_embedding is not None else None
                         builder(dim=vdim)
-                        base["rows"] = _chunk_arms(store, query, query_embedding, top_k, filters)
+                        pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP, filters)
                         base["executed"] = True
                         base["note"] = "search index built on demand"
                     except Exception as exc2:
                         base["error"] = (f"index_build_failed: "
                                          f"{type(exc2).__name__}: {exc2}")
                         base["note"] = base["error"]
+
+        # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
+        # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
+        pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
+                                 str(r.get("id") or "")))
+        base["total_count"] = len(pool)
+        if cursor and (off >= len(pool)
+                       or (want_eid is not None
+                           and str(pool[off].get("id") or "") != str(want_eid))):
+            # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
+            base["note"] = base["error"] = (
+                "stale_cursor: results changed since this cursor was issued; "
+                "restart from the first page")
+            base["executed"] = False
+            return base
+        page = pool[off:off + max(1, int(top_k))]
+        next_off = off + len(page)
+        base["has_more"] = next_off < len(pool)
+        if base["has_more"]:
+            base["next_cursor"] = cursor_encode(
+                {"v": 1, "off": next_off, "qh": qh,
+                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool)})
+        base["rows"] = page if detail == "full" else [_summary_row(r) for r in page]
+        # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
+        # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
+        base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
 
         # (4) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).

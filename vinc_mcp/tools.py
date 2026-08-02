@@ -16,6 +16,9 @@ SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서
 """
 from __future__ import annotations
 
+import base64
+import json
+
 from .bridge import Bridge
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
@@ -85,8 +88,11 @@ def _owner(args: dict, bridge: Bridge) -> str:
 def _t_search(args, bridge):
     # SEC-1: owner 를 반드시 실어 보낸다. 여태 미전송이라 forced_owner 스탬핑이
     # 무의미했고 node_hits 가 남의 Concept/Record 를 그대로 돌려줬다.
+    # GM-14: cursor/detail 은 그대로 통과(None 은 Bridge 가 걸러 미전송) — 해석은
+    # 사이드카 한 곳에서만 한다(CLI·HTTP·MCP 동등성).
     return bridge.request("GET", "/search", params={
         "query": args["query"], "top_k": args.get("limit", 20),
+        "cursor": args.get("cursor"), "detail": args.get("detail"),
         "owner": _owner(args, bridge)})
 
 
@@ -218,17 +224,28 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_search",
         "description": "Hybrid full-text + vector search over the local Vinc store. "
-                       "Returns two result sets: `rows` = text-chunk matches (BM25/vector), "
-                       "and `node_hits` = Concept/Record matches on their title/one_liner/props "
-                       "(each with id, title, kind, domain, matched_in). `node_hits` is ALWAYS "
-                       "populated by a title-substring scan, so concepts and records are findable "
-                       "even in a store with zero indexed text chunks. Call this before "
-                       "vinc_ingest to find existing node ids to reuse. If the backend search "
-                       "fails, a top-level `error` string says why (e.g. index_missing vs "
-                       "extension_unavailable) instead of silently returning empty.",
+                       "Returns two result sets: `rows` = text-chunk matches (BM25/vector) "
+                       "carrying an excerpt (`snippet`, `truncated`, `doc_id`) rather than the "
+                       "full chunk text — fetch the whole document with vinc_doc_get(doc_id); "
+                       "pass detail:'full' only when you truly need raw chunk text. "
+                       "`node_hits` = Concept/Record matches on their title/one_liner/props "
+                       "(each with id, title, kind, domain, matched_in), ALWAYS populated by a "
+                       "title-substring scan, so concepts and records are findable even in a "
+                       "store with zero indexed text chunks. Responses are paginated: "
+                       "`total_count`, `has_more` and `next_cursor` describe the result window; "
+                       "pass `cursor` to continue where the last page ended (an invalid or "
+                       "expired cursor errors explicitly instead of restarting from page one). "
+                       "Call this before vinc_ingest to find existing node ids to reuse. If the "
+                       "backend search fails, a top-level `error` string says why (e.g. "
+                       "index_missing vs extension_unavailable) instead of silently returning "
+                       "empty.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
+            "cursor": {"type": "string",
+                       "description": "Opaque next_cursor from a previous page."},
+            "detail": {"type": "string", "enum": ["summary", "full"],
+                       "default": "summary"},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -545,6 +562,53 @@ def specs() -> list[dict]:
 #: 주제 상한이 걸리는 도구 — 새 주제를 만들 수 있는 쓰기 표면(AP-1 §3.3).
 #: 조회·삭제·병합은 주제를 **늘릴 수 없어** 대상이 아니다.
 CAPPED_TOOLS = ("vinc_ingest",)
+
+
+# ── 결과 크기 축소기(GM-14) ──────────────────────────────────────────────────
+# 봉투(rpc._result_text)가 상한 초과 결과를 **거부하는 대신** 여기 등록된 도구는
+# 꼬리 행을 덜어 페이지로 만든다. vinc_mcp 는 api 패키지를 임포트하지 않으므로
+# (독립 브리지 계약) 커서 코덱을 여기 미러한다 — 두 사본의 왕복 호환은
+# tests/test_search_pagination.py 의 교차 계약 테스트가 고정한다.
+
+def _cursor_encode(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _shrink_search_result(out: dict, budget: int) -> dict | None:
+    """vinc_search 결과를 예산 안으로 줄인다 — 실패(줄일 수 없음)면 None.
+
+    사이드카가 준 `page`(offset·fingerprint) 좌표로 next_cursor 를 다시 써서,
+    덜어낸 꼬리를 다음 페이지로 이어 읽을 수 있게 한다. `page` 가 없으면(구
+    사이드카) 축소를 포기하고 기존 거부 경로로 돌려보낸다."""
+    if not isinstance(out, dict):
+        return None
+    rows = out.get("rows")
+    page = out.get("page")
+    if not isinstance(rows, list) or not rows or not isinstance(page, dict):
+        return None
+    if not page.get("fingerprint"):
+        return None
+    dropped: list = []
+    while rows and len(json.dumps(out, ensure_ascii=False)) > budget:
+        dropped.insert(0, rows.pop())
+    if not rows:
+        return None                     # 행 1개조차 예산을 넘는다 — 거부가 정직하다
+    if dropped:
+        out["has_more"] = True
+        out["next_cursor"] = _cursor_encode(
+            {"v": 1, "off": int(page.get("offset") or 0) + len(rows),
+             "qh": page.get("fingerprint"),
+             "eid": str(dropped[0].get("id") or ""),
+             "tc": out.get("total_count")})
+        out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + \
+            "page shrunk to fit the result size limit; continue with next_cursor"
+    return out
+
+
+#: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
+#: (vinc_graph 등 — JSON 을 중간에서 자르면 깨진 구문이 된다).
+SHRINKERS = {"vinc_search": _shrink_search_result}
 
 
 def call(name: str, args: dict | None, bridge: Bridge,

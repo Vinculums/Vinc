@@ -145,6 +145,10 @@ class EquivalenceTests(unittest.TestCase):
         ("/graph?owner=u", ["graph", "--owner", "u"]),
         ("/decide?topic=t&depth=2", ["decide", "--topic", "t", "--depth", "2"]),
         ("/search?query=x&top_k=4", ["search", "--query", "x", "--top-k", "4"]),
+        # GM-14 — detail 은 정적 등가 케이스로. cursor 는 값이 불투명(코덱 내부)이라
+        # 정적 케이스가 불가능 — 아래 CursorRouteTests 가 동적 등가로 커버한다.
+        ("/search?query=x&top_k=4&detail=full",
+         ["search", "--query", "x", "--top-k", "4", "--detail", "full"]),
         ("/plan/recall?query=x", ["plan", "recall", "--query", "x"]),
         ("/plan/decide?topic=t", ["plan", "decide", "--topic", "t"]),
     ]
@@ -169,6 +173,53 @@ class EquivalenceTests(unittest.TestCase):
                 code, http_obj = _req(base, path, method="POST", body=body)
                 self.assertEqual(code, 200, path)
                 self.assertEqual(http_obj, _cli_json(argv), f"불일치: {path}")
+
+
+class CursorRouteTests(unittest.TestCase):
+    """GM-14 — /search 커서 라우팅: 무효 커서 400(조용한 폴백 금지) + 페이지 이어읽기."""
+
+    class _Store:
+        driver_name = "fake"
+        def __init__(self):
+            self.rows = [{"id": f"d#{i:05d}", "text": f"본문 {i}", "score": float(99 - i)}
+                         for i in range(30)]
+        def reader_view(self): return self
+        def fulltext_search(self, t, k, f=None): return [dict(r) for r in self.rows[:int(k)]]
+        def run(self, cypher, params=None): return []
+        def close(self): pass
+
+    def test_무효_커서는_400_명시_오류다(self):
+        with running_server(_app(store=self._Store())) as base:
+            code, obj = _req(base, "/search?query=x&cursor=%EC%93%B0%EB%A0%88%EA%B8%B0")
+            self.assertEqual(code, 400, "무효 커서가 200 으로 조용히 폴백했다")
+            self.assertTrue(str(obj.get("error", "")).startswith("invalid_cursor"))
+            self.assertEqual(obj.get("rows"), [])
+
+    def test_무효_커서_오류_바디는_CLI_와_같다(self):
+        """게이트① 동등성의 동적 케이스 — 커서 값이 불투명해 GET_CASES 에 못 놓는다.
+        HTTP 는 상태만 400 으로 다르고 **바디는 CLI stdout 과 동일**해야 한다
+        (오류 판정이 q.search 한 곳에서만 이뤄진다는 증거)."""
+        with running_server(_app()) as base:      # 무스토어 강등 — CLI 와 같은 조건
+            code, obj = _req(base, "/search?query=x&cursor=junk")
+            self.assertEqual(code, 400)
+            self.assertEqual(obj, _cli_json(
+                ["search", "--query", "x", "--cursor", "junk"]))
+
+    def test_next_cursor_로_이어_읽으면_누락_중복이_없다(self):
+        import urllib.parse
+        with running_server(_app(store=self._Store())) as base:
+            code, page1 = _req(base, "/search?query=x&top_k=10")
+            self.assertEqual(code, 200)
+            self.assertTrue(page1["has_more"])
+            self.assertEqual(page1["total_count"], 30)
+            cur = urllib.parse.quote(page1["next_cursor"], safe="")
+            code, page2 = _req(base, f"/search?query=x&top_k=10&cursor={cur}")
+            self.assertEqual(code, 200)
+            ids1 = {r["id"] for r in page1["rows"]}
+            ids2 = {r["id"] for r in page2["rows"]}
+            self.assertEqual(len(ids1), 10)
+            self.assertEqual(len(ids2), 10)
+            self.assertFalse(ids1 & ids2, "페이지 사이에 중복이 있다")
 
 
 class ResponsivenessTests(unittest.TestCase):

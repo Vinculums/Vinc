@@ -100,6 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("search", help="hybrid vector+BM25 search")
     s.add_argument("--query", required=True)
     s.add_argument("--top-k", type=int, default=5)
+    # GM-14 — HTTP `/search` 와 1:1(게이트① 동등성): 커서 페이지네이션 + 요약·상세.
+    s.add_argument("--cursor", default=None, help="continue from a previous page's next_cursor")
+    s.add_argument("--detail", choices=["summary", "full"], default="summary",
+                   help="summary = snippet rows (default); full = whole chunk text")
 
     d = sub.add_parser("decide", help="decision-support graph traversal")
     d.add_argument("--topic", required=True)
@@ -252,7 +256,8 @@ def main(argv: list[str] | None = None) -> int:
                                   rank=args.rank, limit=args.limit, include_model=not args.no_model,
                                   generated_at=args.now, out_dir=args.out))
     if args.cmd == "search":
-        return _emit(q.search(args.query, top_k=args.top_k))
+        return _emit(q.search(args.query, top_k=args.top_k,
+                              cursor=args.cursor, detail=args.detail))
     if args.cmd == "decide":
         return _emit(q.decide(args.topic, depth=args.depth))
     if args.cmd == "plan":

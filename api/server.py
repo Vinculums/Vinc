@@ -282,7 +282,15 @@ class VincApp:
                                                   query_embedding=qvec,
                                                   top_k=_int(p.get("top_k"), 5),
                                                   filters=filters or None,
+                                                  cursor=p.get("cursor") or None,
+                                                  detail=p.get("detail") or "summary",
                                                   owner=p.get("owner") or None, store=r))
+        # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
+        # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
+        # (Bridge 가 HTTPError 본문을 verbatim 통과시켜 MCP 도 같은 사유를 본다).
+        if isinstance(res, dict) and str(res.get("error") or "").startswith(
+                ("invalid_cursor", "stale_cursor")):
+            code = 400
         # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
         # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
         # 실패한 경우에만** 사유를 덧붙인다 — 시도조차 안 한 경우(창구 미설정, 데스크탑의
