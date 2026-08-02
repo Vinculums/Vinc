@@ -712,7 +712,10 @@ export async function renderAtlas(el: HTMLElement) {
     return off.size ? curEdges.filter((e) => !off.has(edgeKindOf(e))) : curEdges;
   }
   function toL3(edges: GraphEdge[]): L3[] {
-    return edges.map((e) => ({ source: e.source, target: e.target, type: e.type, cross: e.cross_domain }));
+    // B1 — confidence 를 함께 넘긴다. 3D 렌더러의 잉크 농도 램프가 이 값으로 갈린다
+    // (구 `weight` 는 싣는 곳이 없어 램프가 사문이었다 — D77/M4).
+    return edges.map((e) => ({ source: e.source, target: e.target, type: e.type,
+                               cross: e.cross_domain, confidence: e.confidence }));
   }
   /** D32 — Unlinked 필터(열린 층): 고아(연결 0)를 숨긴다. 초점(seed)은 항상 유지. */
   function filterUnlinked(ns: N3[]): N3[] {

@@ -11,7 +11,6 @@
  *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
 import { palette as signal, atlasScene, type ThemeMode } from "../theme";
 import { recede } from "../recede";
@@ -46,21 +45,30 @@ export type N3 = {
   x?: number; y?: number; z?: number;
   fx?: number; fy?: number; fz?: number;
 };
-export type L3 = { source: string; target: string; type?: string; cross?: boolean; weight?: number };
+// D77/M4 — `weight` 는 사문이었다: 렌더러가 농도 램프를 그 값으로 갈랐는데
+// `toL3` 가 한 번도 싣지 않아(사이드카 `shape_graph` 도 보내지 않는다) heavy/mid
+// 갈래가 **도달 불가능**했다. 삭제하는 대신 실제로 흐르는 신호로 갈아 끼운다 —
+// `confidence`(E-G6, 0~1)는 백엔드가 이미 엣지에 싣고 GraphEdge 로 앱까지 온다.
+export type L3 = { source: string; target: string; type?: string; cross?: boolean;
+                   confidence?: number };
 
-// D40 — 글래스 노드(발주자 지시): 프로스티드 유리. 완전 투명은 실루엣
-// (형태=타입)을 무너뜨리므로 프로스트 불투명도를 기본으로 두고, 클리어코트
-// 하이라이트 + 환경맵 반사가 "유리 느낌"을 만든다. 색은 모노크롬 유지.
+// D77(2026-08-03) — **그래프 노드에서 유리 은퇴.** D40 이 노드에 입힌 프로스티드
+// 유리(MeshPhysicalMaterial: clearcoat + 환경맵 반사)를 이 파일 머리말이 원래
+// 규정한 matte ink Lambert 로 되돌린다. 근거는 실측이다: 기본 테마인 다크에서
+// `nodeObject` 의 성좌 글로우 갈래가 MeshBasicMaterial 로 **조기 반환**하므로
+// 유리는 애초에 렌더되지 않는다(도메인 노드 제외). 즉 재질 체계를 둘 유지하는
+// 비용(PBR 셰이더 + PMREM 환경맵 생성)을 내면서 기본 화면에서 얻는 이득이 0이었다.
+// 물성이 판독 정확도를 높인다는 근거도 문헌에 없다(chartjunk 후속 실험).
+// 불투명도·색·형태 채널은 그대로다 — 바뀐 것은 반사와 클리어코트뿐이다.
+// ⚠ D37 Liquid Glass 는 **크롬 층에 그대로 남는다**. 거기서 물성은 데이터 채널이
+//   아니라 UI 어포던스이므로 이 기회비용 논리가 적용되지 않는다.
+// Lambert 를 고른 이유(평면 MeshBasic 이 아니라): D33 이 조명으로 만드는 "판재"
+// 명암 그라데이션이 라이트 테마의 깊이 단서다. 유리를 걷어내되 그 단서는 지킨다.
 const NODE_OP = 0.72;   // 일반 노드 프로스트
 const GATE_OP = 0.35;   // 게이트웨이 — 더 투명("여기 소속 아님")
 
 function material(color: number, opacity = 1): THREE.Material {
-  return new THREE.MeshPhysicalMaterial({
-    color, transparent: true, opacity,
-    roughness: 0.18, metalness: 0,
-    clearcoat: 1, clearcoatRoughness: 0.15,
-    envMapIntensity: 0.9,
-  });
+  return new THREE.MeshLambertMaterial({ color, transparent: true, opacity });
 }
 
 // ── 성좌 글로우(Figma 92:211, 토큰=theme.ts atlasScene) — 깊이 계층별 헤일로.
@@ -153,11 +161,9 @@ function assignTiers(nodes: N3[], links: L3[]) {
   }
 }
 
-/** 환경맵(유리 반사원) — 렌더러당 1회 생성해 씬에 심는다. */
-function applyEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-}
+// D77 — `applyEnvironment`(PMREM + RoomEnvironment 로 만든 유리 반사원)는 유리와
+// 함께 은퇴했다. scene.environment 는 PBR 재질만 읽으므로 Lambert 전환 후에는
+// 매 마운트 환경맵을 굽는 비용만 남고 화면에 나타나지 않는 순수 사문이었다.
 
 /** 상시 라벨 스프라이트 — 캔버스에 글자를 구워 카메라를 향하게 둔다(빌보드).
  *  DOM 라벨(nodeLabel)은 hover 전용이라 상시 표시에 쓸 수 없다. 색은 잉크 하나. */
@@ -358,9 +364,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   }
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
-  const scene = g.scene();
-  const r3 = (g as any).renderer?.();
-  if (r3) applyEnvironment(r3, scene);   // 유리 반사원(D40)
+  const scene = g.scene();   // D77 — 유리 반사원(환경맵) 심기는 유리와 함께 은퇴
   // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
   // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
   const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
@@ -483,9 +487,15 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
     if (hoverId && s !== hoverId && t !== hoverId) return pal.link.fade;   // 배경으로 후퇴
-    // D33 — 농도 = 가중치(굵기 개정): 가중 엣지(L0 ties)는 세기에 따라 진하게,
-    // 무가중 크로스도메인은 저농도(구 "세선"의 등가), 기본은 중간 잉크. 다크는 반전(D39).
-    if (l.weight) return l.weight >= 6 ? pal.link.heavy : l.weight >= 2 ? pal.link.mid : pal.link.base;
+    // D33 — 농도 = 관계의 세기(굵기 개정). 다크는 반전(D39).
+    // B1(2026-08-03): 그 "세기"를 **기록된 증거의 신뢰도**(E-G6 confidence)가 말한다.
+    // 여태 이 램프는 `weight` 로 갈렸는데 그 값을 싣는 곳이 없어 heavy/mid 가 죽은
+    // 갈래였다 — 데이터 모델의 우위(관계마다 evidence·confidence 보유)를 화면이
+    // 쓰지 않던 낭비의 정확한 지점이다. 임계는 3단 램프에 맞춘 균등 분할이다.
+    // 미기입(0.0)은 램프를 타지 않고 기존 크로스/기본 잉크로 떨어진다(하위호환 —
+    // 증거를 저작하지 않은 그래프의 화면은 예전과 똑같다).
+    const cf = l.confidence || 0;
+    if (cf > 0) return cf >= 0.67 ? pal.link.heavy : cf >= 0.34 ? pal.link.mid : pal.link.base;
     return l.cross ? pal.link.cross : pal.link.base;
   };
   g.linkColor(linkColorFn);
@@ -546,15 +556,13 @@ export function mountMinis3d(
     { position: "absolute", inset: "0", pointerEvents: "none" });
   container.style.position = "relative";
   container.appendChild(renderer.domElement);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // D40
+  // D77 — 미니 그리드도 유리 반사원(PMREM/RoomEnvironment) 없이 그린다.
 
   type Cell = { scene: THREE.Scene; camera: THREE.PerspectiveCamera;
                 el: HTMLElement; meshes: Map<string, THREE.Mesh>;
                 rad: number; pad: number; dir: THREE.Vector3 };
   const built: Cell[] = cells.map((c) => {
     const scene = new THREE.Scene();
-    scene.environment = envTex;   // 유리 반사원(D40)
     scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     scene.add(new THREE.HemisphereLight(0xf0f1fa, 0x565b74, 0.9));
     const dl = new THREE.DirectionalLight(0xf0f1fa, 1.5);
