@@ -418,8 +418,9 @@ body {
 .ask-src { margin-top: .45rem; padding-top: .45rem; border-top: 1px solid hsl(var(--border) / .7); }
 .ask-src-h { font-size: .65rem; letter-spacing: .05em; text-transform: uppercase;
   color: hsl(var(--caption-foreground)); }
-.ask-quote { margin: .3rem 0 0; font-size: var(--fs-sm); line-height: var(--lh-prose, 1.6);
-  padding-left: .55rem; border-left: 2px solid hsl(var(--ring) / .45); }
+/* .ask-quote 는 은퇴했다(2026-08-03): 문서 발췌가 근거 자리를 차지하던 시절의
+   인용 블록이다. 발췌는 이제 본문으로 승격했고(그래서 `.ask-body` 가 그린다)
+   근거 자리는 관련 노드 칩이 쓴다. */
 .ask-qmeta { display: block; font-size: .68rem; color: hsl(var(--caption-foreground)); }
 .ask-stat { margin-top: .4rem; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
 /* 다음 수 칩 — 그래프 집계에서 나온 것만 뜬다(없는 손잡이를 그리지 않는다). */

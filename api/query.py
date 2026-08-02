@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 
 from store.config import StoreConfig, load_config
@@ -3056,6 +3057,71 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     return rows
 
 
+# ── 질문 정규화 (A1.10) — 자연어 질문을 노드 검색이 탈 수 있는 토큰으로 ──────────
+# 배경(2026-08-03 실측): A1.9 의 **토큰 AND** 는 "이름을 댄" 질의만 통과시킨다.
+# 자연어 질문에는 조사와 의문사가 섞이는데 그것들은 어느 노드 필드에도 없으므로
+# AND 가 항상 0건이 된다 — "낙관적 동시성 제어가 뭐야?"가 `concept:optimistic-locking`
+# 을 **자기 제목으로도** 못 찾았다(토큰 '제어가'·'뭐야?' 때문). 그 결과 node_hits 가
+# 그래프 암으로만 채워져 `matched_in` 이 영원히 'graph' 였고, 묻기(ask)의 제목 확정·
+# 되묻기 분기가 통째로 죽은 채 **알파벳순 첫 후보**가 답으로 나갔다.
+#: 의문사·정중어 — 어느 노드에도 없으면서 AND 를 깨뜨리기만 하는 말들.
+_STOP_TOKENS = frozenset("""
+뭐 뭐야 뭔가 뭔데 무엇 무엇인가 뭡니까 어떻게 어떤 어찌 왜 언제 어디 어디서 누가 누구
+얼마나 몇 며칠 인가 인가요 일까 일까요 건가 건가요 하나요 되나요 하죠 알려줘 알려주세요
+설명해줘 설명해주세요 정리해줘 보여줘 궁금해 궁금합니다 해줘 해주세요 주세요 대해 대해서
+관해 관해서 무슨
+what what's whats which who whom whose when where why how is are was were do does did
+the a an of about on in to for me tell explain show give please summarize
+""".split())
+#: 한국어 조사·접미 — 명사 뒤에 붙어 토큰을 다르게 만든다(긴 것부터 벗긴다).
+_KO_SUFFIXES = ("이라는", "라는", "에서는", "에게서", "으로는", "에서", "에게", "한테", "부터",
+                "까지", "보다", "처럼", "으로", "이란", "라면", "이는", "과는", "와는", "은",
+                "는", "이", "가", "을", "를", "의", "에", "도", "만", "로", "와", "과", "란", "야")
+
+
+def _strip_ko_suffix(tok: str) -> str:
+    """토큰 끝의 조사를 한 번 벗긴다 — 남는 어간이 2자 이상일 때만.
+    '제어가'→'제어', '환불은'→'환불'. '국가'처럼 어간이 1자로 줄 것은 손대지 않는다.
+
+    형태소 분석이 아니라 접미 절단이라 '전문가'→'전문' 같은 **과잉 절단**이 난다.
+    그래도 무해한 이유: 매칭이 `CONTAINS`(부분 문자열)라 짧아진 어간은 원래 낱말을
+    여전히 포함 매치한다('전문'은 '전문가'의 부분 문자열). 즉 과잉 절단은 재현율을
+    넓히지 저격 대상을 놓치지 않는다 — 반대로 **절단 부족**이 이 함수가 생긴 이유다
+    (조사 하나 때문에 토큰 AND 가 통째로 0건이 됐다). 사전 없는 결정론을 유지한다."""
+    for suf in _KO_SUFFIXES:
+        if len(tok) > len(suf) + 1 and tok.endswith(suf):
+            return tok[: -len(suf)]
+    return tok
+
+
+def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
+    """질문 → 검색 토큰(순수·결정론). 구두점 제거 → 소문자 → 조사 절단 → 불용어 제거.
+
+    **불용어를 걷어낸 뒤 아무것도 안 남으면 걷어내기 전으로 되돌린다** — "뭐야" 한
+    마디만 물었을 때 질의가 통째로 사라져 전 노드를 삼키는 것을 막는다(빈 토큰은
+    호출부가 조기 반환한다). 조사 절단본과 원형을 **둘 다** 남기지는 않는다:
+    중복 토큰은 매치 수 집계를 왜곡한다."""
+    raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
+    stemmed = [_strip_ko_suffix(t) for t in raw]
+    kept = [t for t in stemmed if t and t not in _STOP_TOKENS]
+    if not kept:                      # 전부 불용어였다 — 원형으로 되돌린다
+        kept = [t for t in stemmed if t]
+    out: list[str] = []
+    for t in kept:                    # 순서 유지 dedup
+        if t not in out:
+            out.append(t)
+    return out[:cap]
+
+
+#: 매치 필드 강도 — 같은 토큰 수를 맞췄으면 제목이 이긴다.
+_FIELD_RANK = {"title": 0, "one_liner": 1, "props": 2, "id": 3}
+#: id 매치에서 무시할 토큰 — 노드 종류 접두사(`concept:` 등)는 모든 id 에 들어 있어
+#: 그대로 세면 질의 하나가 전 노드를 같은 점수로 맞춘다. 접두사는 신호가 아니다.
+_ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity"))
+#: 부분 매치 스캔이 처리할 최대 행. 넘으면 잘린 사실을 호출부가 로그로 남긴다.
+NODE_SCAN_CAP = 2000
+
+
 def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
@@ -3063,20 +3129,25 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
     실사용 사고의 직접 원인. 이 폴백이 그 갈래를 해소한다.
 
-    **A1.9 토큰화**(구 검색 0건 해소): 예전엔 쿼리 전체를 통짜 substring 매치해
-    "agentic automation" 처럼 단어가 여러 필드에 흩어지면 0건이었다. 이제 공백으로
-    토큰화(상한 8)해 **모든 토큰이 어느 필드(title/one_liner/props)든 포함**되면 매치한다
-    (토큰 AND). 단일 토큰이면 기존 통짜 매치와 동일(하위호환).
+    **A1.10 부분 매치 + 점수 랭킹**(자연어 질문 0건 해소, 2026-08-03). 구 A1.9 는
+    **토큰 AND** 였다 — 모든 토큰이 어느 필드엔가 있어야 매치. 이름을 그대로 댄 질의만
+    통과하고, 조사·의문사가 섞인 자연어 질문("낙관적 동시성 제어가 뭐야?")은 '제어가'·
+    '뭐야' 때문에 **자기 제목조차 못 찾아** 항상 0건이었다. 이제:
 
-    Kùzu 0.11.3 실측: `lower(coalesce(x,'')) CONTAINS $tok`(토큰은 파이썬에서 소문자화).
+      ① :func:`normalize_query_tokens` 로 구두점·조사·의문사를 걷어내고,
+      ② **토큰 OR** 로 후보를 모은 뒤,
+      ③ **파이썬에서 점수를 매긴다**(§4-2 — Cypher 안에 점수식을 두지 않는다):
+         맞은 토큰 수(주) → 제목에서 맞은 토큰 수 → 필드 강도 → id.
+
     반환 행: {id, title, kind('concept'|'record'), domain, matched_in('title'|
-    'one_liner'|'props')} — matched_in 은 **모든 토큰을 담은 최강 필드**(전부 title 이면
-    'title'). ⚠ UNION ALL 은 전체 결과 LIMIT 를 무시하므로(실측) 상한은 파이썬 슬라이스로
-    건다. 빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
-    q = (query or "").strip()
-    if not q:
-        return []
-    toks = [t for t in q.lower().split() if t][:8]
+    'one_liner'|'props'), hit_tokens, title_tokens, token_total} — 뒤 세 개가 신설이다.
+    호출부(묻기 등)가 "얼마나 확실한 매치인가"를 **임의 임계값 없이** 판정하려면 맞은
+    토큰 수가 필요하다. 구 소비처는 새 키를 무시하면 그만이다(가산 변경).
+
+    ⚠ OR 로 넓힌 대신 랭킹이 좁힌다. UNION ALL 은 LIMIT 를 무시하므로(실측) 상한은
+    파이썬 슬라이스이고, 스캔 폭주는 :data:`NODE_SCAN_CAP` 이 자른다.
+    빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
+    toks = normalize_query_tokens(query)
     if not toks:
         return []
     params: dict = {f"q{i}": t for i, t in enumerate(toks)}
@@ -3087,32 +3158,50 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         own_c, own_r = " AND c.owner_id = $owner", " AND r.owner_id = $owner"
         params["owner"] = owner
 
-    def _all(field: str) -> str:      # 모든 토큰이 이 한 필드에 (matched_in 판정용)
-        return "(" + " AND ".join(
-            f"lower(coalesce({field},'')) CONTAINS $q{i}" for i in idx) + ")"
-
-    def _any(fields: tuple[str, ...], i: int) -> str:   # 토큰 i 가 지정 필드들 중 어디든
+    def _any(fields: tuple[str, ...]) -> str:   # 토큰 하나라도, 필드 하나라도
         return "(" + " OR ".join(
-            f"lower(coalesce({f},'')) CONTAINS $q{i}" for f in fields) + ")"
+            f"lower(coalesce({f},'')) CONTAINS $q{i}" for i in idx for f in fields) + ")"
 
-    c_fields = ("c.title", "c.one_liner", "c.props")
-    r_fields = ("r.title", "r.props")
-    where_c = " AND ".join(_any(c_fields, i) for i in idx)   # 토큰 전부, 각자 어느 필드든
-    where_r = " AND ".join(_any(r_fields, i) for i in idx)
+    # id(슬러그)도 검색한다: GRAPH.md 관례가 `concept:optimistic-locking` 처럼 **뜻이
+    # 담긴 영어 슬러그**를 강제하므로, 제목이 한국어인 개념을 영어 용어로 찾는 유일한
+    # 경로다(실측: "optimistic locking" 이 자기 개념을 못 찾고 0건이었다).
+    c_fields = ("c.title", "c.one_liner", "c.props", "c.concept_id")
+    r_fields = ("r.title", "r.props", "r.record_id")
     cypher = (
-        f"MATCH (c:Concept) WHERE {where_c}{own_c} "
-        "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, c.domain AS domain, "
-        f"CASE WHEN {_all('c.title')} THEN 'title' "
-        f"WHEN {_all('c.one_liner')} THEN 'one_liner' ELSE 'props' END AS matched_in "
+        f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
+        "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
+        "c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw "
         "UNION ALL "
-        f"MATCH (r:Record) WHERE {where_r}{own_r} "
-        "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, r.domain AS domain, "
-        f"CASE WHEN {_all('r.title')} THEN 'title' ELSE 'props' END AS matched_in"
+        f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
+        "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
+        "r.domain AS domain, '' AS one_liner, r.props AS props_raw"
     )
-    rows = store.run(cypher, params)
-    # 결정론 순서: 타이틀 매치 우선(가장 강한 신호), 그 다음 id. 상한은 파이썬에서.
-    rows.sort(key=lambda r: (0 if r.get("matched_in") == "title" else 1, str(r.get("id"))))
-    return rows[:max(1, int(limit))]
+    rows = store.run(cypher, params)[:NODE_SCAN_CAP]
+    scored: list[dict] = []
+    for r in rows:
+        title = str(r.get("title") or "").lower()
+        one = str(r.get("one_liner") or "").lower()
+        props = str(r.get("props_raw") or "").lower()
+        nid = str(r.get("id") or "").lower()
+        n_title = sum(1 for t in toks if t in title)
+        n_one = sum(1 for t in toks if t in one)
+        n_props = sum(1 for t in toks if t in props)
+        n_id = sum(1 for t in toks if t not in _ID_PREFIX_TOKENS and t in nid)
+        hit = sum(1 for t in toks
+                  if t in title or t in one or t in props
+                  or (t not in _ID_PREFIX_TOKENS and t in nid))
+        if not hit:
+            continue
+        where = ("title" if n_title else "one_liner" if n_one
+                 else "props" if n_props else "id")
+        scored.append({"id": r.get("id"), "title": r.get("title"), "kind": r.get("kind"),
+                       "domain": r.get("domain") or "", "matched_in": where,
+                       "hit_tokens": hit, "title_tokens": n_title,
+                       "token_total": len(toks)})
+    # 결정론 랭킹: 맞은 토큰 수 ↓ → 제목 토큰 수 ↓ → 필드 강도 ↑ → id ↑.
+    scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
+                               _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
+    return scored[:max(1, int(limit))]
 
 
 def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
@@ -3164,8 +3253,13 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
         neigh.pop(cid, None)
     ordered = (sorted(direct.values(), key=lambda x: (x["_r"], x["id"]))
                + sorted(neigh.values(), key=lambda x: x["id"]))
+    # `hit_tokens`/`title_tokens` 를 0 으로 명시한다(A1.10): 그래프 암은 **질문 토큰이
+    # 아니라 청크 인접으로** 올라온 후보다. 소비처가 두 암을 한 줄로 정렬할 때 키가
+    # 없어 `undefined` 로 비교되면 조용히 뒤섞인다 — 0 은 "토큰으로는 안 맞았다"는
+    # 명시적 진술이고, 그래서 토큰 매치가 하나라도 있는 후보가 항상 앞선다.
     out = [{"id": x["id"], "title": x.get("title") or x["id"], "kind": "concept",
-            "domain": x.get("domain") or "", "matched_in": "graph"}
+            "domain": x.get("domain") or "", "matched_in": "graph",
+            "hit_tokens": 0, "title_tokens": 0}
            for x in ordered]
     return out[:max(1, int(limit))]
 

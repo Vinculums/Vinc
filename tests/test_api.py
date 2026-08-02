@@ -338,6 +338,42 @@ class MergeCandidatesTests(unittest.TestCase):
         self.assertNotIn("*1..", plan.cypher)
 
 
+class QueryNormalizationTests(unittest.TestCase):
+    """A1.10 — 자연어 질문을 노드 검색이 탈 수 있는 토큰으로(순수 함수)."""
+
+    def test_strips_particles_and_question_words(self):
+        # 구 토큰 AND 를 깨뜨리던 것들이 사라져야 한다: 조사('제어가')·의문사('뭐야').
+        self.assertEqual(q.normalize_query_tokens("낙관적 동시성 제어가 뭐야?"),
+                         ["낙관적", "동시성", "제어"])
+        self.assertEqual(q.normalize_query_tokens("환불은 며칠 이내에 되나요?"),
+                         ["환불", "이내"])
+
+    def test_strips_english_stopwords_and_punctuation(self):
+        self.assertEqual(q.normalize_query_tokens("What is optimistic locking?"),
+                         ["optimistic", "locking"])
+
+    def test_all_stopwords_falls_back_instead_of_emptying(self):
+        # 전부 불용어면 **비우지 않는다** — 빈 토큰은 전 노드를 삼키는 질의가 된다.
+        self.assertEqual(q.normalize_query_tokens("뭐야?"), ["뭐야"])
+        self.assertEqual(q.normalize_query_tokens("what is the"), ["what", "is", "the"])
+
+    def test_empty_query_yields_nothing(self):
+        self.assertEqual(q.normalize_query_tokens("   "), [])
+        self.assertEqual(q.normalize_query_tokens(""), [])
+
+    def test_dedup_and_cap(self):
+        self.assertEqual(q.normalize_query_tokens("kappa kappa kappa beta"),
+                         ["kappa", "beta"])
+        self.assertEqual(len(q.normalize_query_tokens(" ".join(f"t{i}" for i in range(20)))), 8)
+
+    def test_stem_never_shrinks_below_two_chars(self):
+        # 조사 절단은 어간이 2자 이상 남을 때만 — '가'·'이' 한 글자만 남기지 않는다.
+        self.assertEqual(q.normalize_query_tokens("국가"), ["국가"])      # 절단 안 함
+        self.assertEqual(q.normalize_query_tokens("결과가"), ["결과"])    # 절단
+        for tok in q.normalize_query_tokens("국가 종이 결과가 환불은 제어가"):
+            self.assertGreaterEqual(len(tok), 2)
+
+
 class WeightedPathTests(unittest.TestCase):
     """E-G8 confidence 가중 최단 경로 — 순수 함수(엔진 무관)."""
 

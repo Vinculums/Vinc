@@ -553,6 +553,57 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(plan_ids, shortest)
         self.assertEqual({"s", *plan_ids}, {"s", *trail})
 
+    def test_a110_natural_question_ranks_the_right_concept(self):
+        """A1.10 — 자연어 질문이 옳은 개념을 **1위로** 올린다(묻기 표면의 근본 회귀).
+
+        구 토큰 AND 에서는 조사·의문사 때문에 제목 매치가 0건이라 node_hits 가 그래프
+        암(=id 알파벳순)으로만 채워졌고, 묻기가 그 첫 후보를 답으로 냈다. 실측 오답:
+        "결제 실패하면 어떻게 되나요?" → `멱등 키`(i < p). 그 오답을 여기 박아 둔다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid, title, dom, summary in (
+                ("concept:payment-failure", "결제 실패 처리", "billing",
+                 "카드 승인이 거절되면 재시도하고 실패하면 유예 상태로 돌린다."),
+                ("concept:idempotency-key", "멱등 키", "billing",
+                 "같은 요청이 두 번 와도 한 번만 처리되게 하는 식별자다."),
+                ("concept:refund-policy", "환불 정책", "billing",
+                 "결제 후 7일 이내 전액 환불한다."),
+                ("concept:optimistic-locking", "낙관적 동시성 제어", "db",
+                 "커밋 시점에 버전을 검사해 어긋나면 실패시킨다."),
+            ):
+                # one_liner 는 비운다 — MCP 적재분의 실태(쓰기 경로 없음).
+                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', c.title=$t, "
+                      "c.domain=$d, c.one_liner='', c.props=$p",
+                      id=cid, t=title, d=dom, p='{"summary": "%s"}' % summary)
+
+        def top(question):
+            r = q.search(question, owner="u", top_k=10, store=store)
+            hits = r.get("node_hits") or []
+            return (hits[0]["id"] if hits else None), hits
+
+        # ① 오답 회귀 — 결제 실패를 물으면 결제 실패가 1위여야 한다.
+        first, hits = top("결제 실패하면 어떻게 되나요?")
+        self.assertEqual(first, "concept:payment-failure",
+                         f"멱등 키 오답 재발: {[(h['id'], h.get('hit_tokens')) for h in hits]}")
+        # ② 매치 근거가 수치로 나온다(묻기의 확정/되묻기 판정 재료).
+        self.assertGreaterEqual(hits[0].get("hit_tokens", 0), 1)
+        self.assertEqual(hits[0].get("matched_in"), "title")
+
+        # ③ 조사가 붙어도 제목으로 잡힌다("환불은" → "환불").
+        first, _ = top("환불은 며칠 이내에 되나요?")
+        self.assertEqual(first, "concept:refund-policy")
+
+        # ④ 제목이 한국어여도 영어 슬러그(id)로 찾힌다(구 검색은 id 를 안 봤다).
+        first, hits = top("what is optimistic locking?")
+        self.assertEqual(first, "concept:optimistic-locking")
+        self.assertEqual(hits[0].get("matched_in"), "id")
+        store.close()
+
     def test_eg3_component_diagnosis_and_communities(self):
         """E-G3: algo 확장(WCC·Louvain) 구조 진단. ladybug 오프라인 미번들이면
         강등(executed=False)이라 skip."""
