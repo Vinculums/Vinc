@@ -45,7 +45,8 @@ REQUIRED: dict[str, str] = {
 
 # 있어야 정책이 맞는 것들(없어도 기동은 한다) — 경고만.
 EXPECTED: dict[str, str] = {
-    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 '무료 15회/일'로 안내 중",
+    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 '하루 2,000회'로 안내 중",
+    "VINC_FREE_MAX_DOMAINS": "없으면 무료 주제 상한이 꺼진다 — AP-1 의 유일한 무료/유료 차별축",
 }
 
 

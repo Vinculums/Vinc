@@ -435,8 +435,34 @@ def _finalize(result: dict, warnings: list[str]) -> dict:
     return result
 
 
+def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
+                 max_domains: int) -> dict | None:
+    """주제 개수 상한. 통과면 None, 걸리면 **거부 사유 dict**.
+
+    막는 것은 **새 주제 생성뿐**이다(AP-1 §3.2). 기존 주제에 노드를 더하는 것,
+    편집, 주제 없는 노드는 언제나 통과한다 — 그래서 상한을 넘긴 채로 이미 쓰고
+    있던 사용자가 자동으로 유예된다(데이터 삭제·강제 이관 없음).
+
+    거부는 **프래그먼트 통째로** 한다. 새 주제 둘 중 하나만 받아 넣으면 사용자는
+    자기가 뭘 가졌는지 모르는 상태가 되고, 재시도가 멱등하지 않게 된다.
+    """
+    incoming = {d for d in ((n.get("domain") or "").strip() for n in fragment_nodes) if d}
+    if not incoming:
+        return None                       # 주제 없는 적재는 상한과 무관
+    from . import query                    # 국소 import — 상한이 꺼져 있으면 비용 0
+    existing = query.domain_names(owner=owner, store=store)
+    if existing is None:
+        return None                       # 스토어 미도달 = 판정 불가 → 막지 않는다
+    fresh = incoming - existing
+    if not fresh or len(existing) + len(fresh) <= max_domains:
+        return None
+    return {"error": "domain_limit_reached", "limit": max_domains,
+            "current": len(existing), "attempted": sorted(fresh)}
+
+
 def merge_fragment(fragment: dict, *, store, themes=None,
-                   stamp_edges: bool = True) -> dict:
+                   stamp_edges: bool = True,
+                   max_domains: int | None = None) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]]}``.
@@ -447,7 +473,12 @@ def merge_fragment(fragment: dict, *, store, themes=None,
 
     ``stamp_edges``: 신규 생성된 동기화 대상 엣지(CC 4종·ABOUT)의 양 끝 노드에
     revstamp(엣지 추가·재생성의 증분 동기화 전파 — _stamp_edge_endpoints 주석).
-    **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다."""
+    **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다.
+
+    ``max_domains``(선택): 무료 등급 주제 개수 상한(AP-1 §3.3). **기본 None = 무제한**
+    이라는 점이 설계의 핵심이다 — sync 복제·로컬 경로가 아무 코드 변경 없이 자동
+    면제되고, 위험이 "면제를 잊음"(상한 초과 사용자의 복제 파손)에서 "적용을
+    잊음"(상한이 안 걸림)으로 뒤집힌다. 뒤쪽이 훨씬 싼 실패다."""
     warnings: list[str] = []
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
@@ -456,6 +487,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges = list(fragment.get("edges") or [])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
+    if max_domains is not None and owner_explicit:
+        denial = _domain_gate(nodes, store=store, owner=owner, max_domains=max_domains)
+        if denial:
+            return _finalize({"merged": None, "executed": False, **denial}, warnings + [
+                f"topic limit reached ({denial['current']}/{max_domains}) — "
+                f"new topics rejected: {', '.join(denial['attempted'])}. "
+                "Existing topics keep working; Pro removes the limit."])
     fold = _ThemeFold(themes, fragment)
     for n in nodes:
         ntype = (n.get("type") or "").strip()

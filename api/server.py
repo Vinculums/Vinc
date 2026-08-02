@@ -402,9 +402,11 @@ class VincApp:
         # 개방층(D11-R2 Entity/TYPED)은 이 라이브 경로에 **포팅**되어 재활성화 —
         # revstamp·SEC-3·dedupe 를 승계한 채 theme 어휘 편입(themes 전달)이 산다.
         # engines/fragment_ingest.py 는 계보 참조용으로만 남는다(호출부 없음).
+        cap = _pop_max_domains(body)
         res = self.jobs.run_sync("ingest:fragment",
                                  lambda: frag.merge_fragment(body, store=self.store,
-                                                             themes=self.themes))
+                                                             themes=self.themes,
+                                                             max_domains=cap))
         return 200, res
 
     # ── 계정 연결(디바이스 연결 플로우 — 회원 키 복붙 종식) ─────────────────────
@@ -828,18 +830,23 @@ class VincApp:
             return 202, job.to_dict()
         if engine == "pack":
             # share pack 들여오기(D19) — 수신자 owner 재스탬핑, 잡 큐 직렬화(R4).
+            # 팩도 상한을 탄다: 새 주제의 주요 생성 경로라 빼두면 그대로 우회로가 된다.
             owner = _req(body, "owner")
+            cap = _pop_max_domains(body)
             res = self.jobs.run_sync("ingest:pack",
                                      lambda: share.import_share_pack(
-                                         body.get("pack") or {}, owner=owner, store=self.store))
+                                         body.get("pack") or {}, owner=owner, store=self.store,
+                                         max_domains=cap))
             return 200, res
         if engine == "fragment":
             # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
             # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200). themes 전달로
             # 개방층(F1) 어휘 편입 활성 — /ingest 와 동일 계약.
+            cap = _pop_max_domains(body)
             res = self.jobs.run_sync("ingest:fragment",
                                      lambda: frag.merge_fragment(body, store=self.store,
-                                                                 themes=self.themes))
+                                                                 themes=self.themes,
+                                                                 max_domains=cap))
             return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
@@ -1000,6 +1007,22 @@ def _int(val, default: int) -> int:
         return int(val) if val is not None else default
     except (TypeError, ValueError):
         return default
+
+
+def _pop_max_domains(body) -> int | None:
+    """요청 본문에서 주제 상한을 꺼낸다(있으면 제거).
+
+    등급 → 숫자 변환은 **허브가** 한다(AP-1 §3.4). 사이드카는 정책을 모르는 채
+    숫자만 받는다 — 여기서 등급을 해석하면 한도 설정이 두 곳에 살게 되고 반드시
+    어긋난다. 키가 없으면 None = 무제한이라, 로컬·직접 호출·동기화는 자동 면제다.
+    """
+    if not isinstance(body, dict):
+        return None
+    ent = body.pop("_entitlements", None)
+    if not isinstance(ent, dict):
+        return None
+    v = ent.get("max_domains")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
 
 
 def _csv(val):

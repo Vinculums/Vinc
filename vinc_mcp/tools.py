@@ -153,6 +153,11 @@ def _t_ingest(args, bridge):
                 "owner": _owner(args, bridge)}
     if args.get("theme_id"):   # F1 — 개방층 어휘 편입 대상 테마(선택)
         fragment["theme_id"] = args["theme_id"]
+    # 주제 상한(AP-1 §3.4). call() 이 서버 해석값으로 이미 덮어썼으므로 여기 있는
+    # 값은 신뢰할 수 있다. 이 핸들러가 fragment 를 **새로 조립**하기 때문에 명시로
+    # 실어야 한다 — args 를 그대로 흘려보내는 구조가 아니다.
+    if isinstance(args.get("_entitlements"), dict):
+        fragment["_entitlements"] = args["_entitlements"]
     return bridge.request("POST", "/ingest/fragment", body=fragment)
 
 
@@ -537,8 +542,14 @@ def specs() -> list[dict]:
     return out
 
 
+#: 주제 상한이 걸리는 도구 — 새 주제를 만들 수 있는 쓰기 표면(AP-1 §3.3).
+#: 조회·삭제·병합은 주제를 **늘릴 수 없어** 대상이 아니다.
+CAPPED_TOOLS = ("vinc_ingest",)
+
+
 def call(name: str, args: dict | None, bridge: Bridge,
-         forced_owner: str | None = None) -> dict:
+         forced_owner: str | None = None,
+         entitlements: dict | None = None) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
@@ -549,6 +560,11 @@ def call(name: str, args: dict | None, bridge: Bridge,
     # 봉쇄). forced_owner 없음(로컬 stdio/정적)이면 기존 단일유저 동작 유지.
     if forced_owner:
         args["owner"] = forced_owner
+    # 자격(주제 상한)도 owner 와 같은 취급 — 클라이언트가 보낸 값을 신뢰하지 않고
+    # 서버가 해석한 값으로 **덮어쓴다**. 자격이 없으면 키 자체를 지운다(위조 차단).
+    args.pop("_entitlements", None)
+    if entitlements and name in CAPPED_TOOLS:
+        args["_entitlements"] = dict(entitlements)
     for req in tool["inputSchema"].get("required", []):
         if args.get(req) in (None, ""):
             raise ValueError(f"missing required argument: {req}")

@@ -35,13 +35,17 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify
+from . import edverify, entitlement
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import Dispatcher
 
 MAX_BODY = 4 * 1024 * 1024
 MAX_SESSIONS = 256      # Mcp-Session-Id 별 Dispatcher 상한(무한 증식 차단)
+
+#: 주제 상한이 걸리는 프록시 op — 새 주제를 만들 수 있는 쓰기 경로만(AP-1 §3.3).
+#: 주제 이름 바꾸기(domain-rename)는 전량 개명이라 **개수를 늘릴 수 없어** 제외한다.
+_CAPPED_PROXY_OPS = ("ingest-fragment", "ingest-pack")
 
 # 웹 Vinc 그래프 프록시 표면(op → (method, 사이드카 경로)). 계정 세션→서명 어서션이
 # 이 op 만 요청할 수 있고, 화이트리스트 외는 거부한다. **제외**: themes/types(전역
@@ -95,6 +99,49 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "domain-rename": ("POST", "/domain/rename"),
 }
 _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+# 팀 그래프 소유자 형식(AP-1 §4.3). 계정이 서명해 보내지만 **형식은 우리가 다시 본다** —
+# 서명이 진짜여도 `team:../../etc` 같은 값이 그대로 owner 가 되면 안 된다.
+_TEAM_OWNER_RE = re.compile(
+    r"team:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+# ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
+# 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
+# 이름이 붙어 있는** op 목록을 등급으로 가른다. 판정은 여기(우회 불가 지점)에서 하고,
+# 계정 프록시가 같은 표로 선차단한다(이중 방어).
+#
+# 등급은 누적이다: viewer ⊂ editor ⊂ admin.
+_EDITOR_OPS = frozenset({
+    "pin", "tag", "touch", "activate",
+    "ingest-fragment", "ingest-pack",
+    "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
+    "evidence-backfill", "conventions-build",
+})
+_ADMIN_OPS = frozenset({
+    # 되돌릴 수 없는 것들 — 남의 작업을 지우거나 합치는 연산이다.
+    "delete", "delete-edge", "merge-nodes", "doc-delete", "domain-rename",
+})
+_TEAM_ROLES = ("viewer", "editor", "admin")
+
+
+def _role_allows(role: str, op: str) -> bool:
+    """팀 역할이 이 op 를 할 수 있는가. 모르는 역할은 **거부**(fail-closed)."""
+    if role not in _TEAM_ROLES:
+        return False
+    if op in _ADMIN_OPS:
+        return role == "admin"
+    if op in _EDITOR_OPS:
+        return role in ("editor", "admin")
+    return op in _PROXY_OPS      # 나머지는 조회 — 화이트리스트에 있으면 열람자도 가능
+
+
+def team_role_tiers() -> dict[str, frozenset[str]]:
+    """역할 표 전량(드리프트 방지 테스트가 _PROXY_OPS 와 대조한다).
+
+    새 op 를 추가하면서 역할을 안 정하면 조회로 조용히 분류된다 — 쓰기 op 가 열람자에게
+    열리는 사고가 그렇게 난다. 테스트가 그 침묵을 깨는 역할을 한다."""
+    viewer = frozenset(_PROXY_OPS) - _EDITOR_OPS - _ADMIN_OPS
+    return {"viewer": viewer, "editor": _EDITOR_OPS, "admin": _ADMIN_OPS}
 
 
 # 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일).
@@ -165,7 +212,7 @@ class MCPHTTPApp:
                  oauth: OAuthGate | None = None, verify_key=None,
                  store=None, quota_config: dict | None = None,
                  mcp_seed: bytes | None = None, account_public: bytes | None = None,
-                 connect_url: str | None = None):
+                 connect_url: str | None = None, free_max_domains: int | None = None):
         if not static_token and oauth is None and verify_key is None:
             raise ValueError("no auth configured: static token, OAuth, or verify_key")
         self.bridge = bridge
@@ -183,6 +230,9 @@ class MCPHTTPApp:
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
         self.quota_config = quota_config
+        # 무료 등급 주제 상한(AP-1 §3.4). None = 기능 꺼짐. 등급→숫자 변환이 **여기**
+        # 한 곳에서만 일어나고 사이드카는 숫자만 받는다(정책 무지 유지).
+        self.free_max_domains = free_max_domains
         # Dispatcher 는 상태가 initialized 플래그뿐 — 세션 간 공유해도 무해하지만
         # 스펙의 세션 관념에 맞춰 Mcp-Session-Id 별로 분리한다. 세션 id 는 **클라이언트
         # 가 정한다**(우리는 발급하지 않는다) → 임의 헤더로 무한 증식할 수 있으므로
@@ -199,20 +249,39 @@ class MCPHTTPApp:
         if not self.quota_config or self.store is None or not owner:
             return None                              # 미설정/로컬 = 무제한
         cfg = self.quota_config
-        limit = cfg["pro_limit"] if plan == "pro" else cfg["free_limit"]
+        paid = plan in entitlement.PAID_PLANS
+        limit = cfg["pro_limit"] if paid else cfg["free_limit"]
         r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
                                    lock_s=cfg["lock_s"])
         if r["allowed"]:
             return None
         secs = r["retry_after_s"]
         hh, mm = secs // 3600, (secs % 3600) // 60
-        tier = "Pro" if plan == "pro" else "Free"
+        tier = {"pro": "Pro", "team": "Team"}.get(plan or "", "Free")
+        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. AP-1 이후
+        # 무료 한도가 Pro 와 같아지므로(차별축이 주제 개수로 옮겨갔다), 같은 값에서
+        # "더 높은 한도로 업그레이드"는 거짓말이 된다. 그때는 주제 무제한을 근거로 든다.
+        if paid:
+            upsell = ""
+        elif cfg["free_limit"] < cfg["pro_limit"]:
+            upsell = " Upgrade for a higher limit: https://vincs.io/account"
+        else:
+            upsell = " Pro removes the topic limit: https://vincs.io/account"
         text = (f"{tier} tier limit reached ({limit} tool calls per "
                 f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
-                + ("" if plan == "pro" else " Upgrade for a higher limit: https://vincs.io/account"))
+                + upsell)
         return {"content": [{"type": "text", "text": text}], "isError": True,
                 "_meta": {"vinc_quota": {"limit": limit, "retry_after_s": secs,
                                          "upgrade_url": "https://vincs.io/account"}}}
+
+    def entitlements_for(self, plan: str | None) -> dict:
+        """등급 → 사이드카가 받을 **숫자**. 정책 해석은 여기서 끝난다(AP-1 §3.4).
+
+        유료 등급이거나 상한이 미설정이면 빈 dict = 무제한이다.
+        """
+        if self.free_max_domains is None or plan in entitlement.PAID_PLANS:
+            return {}
+        return {"max_domains": self.free_max_domains}
 
     def dispatcher(self, session_id: str) -> Dispatcher:
         with self._lock:
@@ -235,6 +304,7 @@ class MCPHTTPApp:
         - static: 정적 토큰 = 단일 테넌트 하위호환(owner=None → bridge.owner 사용).
         - apikey: `vinc_sk_*` → verify_key 루프백 → owner=user:{public_id}, plan.
         - oauth : 발급 토큰 → 코드에 스탬핑된 owner/plan(회원 경로면 채워짐).
+                  등급은 **동결돼 있으므로** `_fresh_plan` 이 주기적으로 되묻는다.
         """
         miss = {"ok": False, "owner": None, "plan": None, "source": None}
         if not header or not header.startswith("Bearer "):
@@ -251,9 +321,34 @@ class MCPHTTPApp:
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
             if rec:
-                return {"ok": True, "owner": rec.get("owner"),
-                        "plan": rec.get("plan"), "source": "oauth"}
+                owner = rec.get("owner")
+                return {"ok": True, "owner": owner,
+                        "plan": self._fresh_plan(owner, rec.get("plan")),
+                        "source": "oauth"}
         return miss
+
+    def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
+        """OAuth 토큰에 **동결된** 등급을 주기적으로 계정에 되묻는다.
+
+        승인 시점의 등급이 인가 코드 → 액세스 토큰 → 리프레시 토큰으로 복사되므로,
+        결제로 등급이 올라가도 이미 연결된 커넥터는 옛 값을 영원히 들고 있다
+        (갱신조차 옛 값을 재동결한다). `owner_plan` 표를 캐시로 쓰고 TTL 이 지나면
+        계정에 재조회한다.
+
+        실패는 **마지막으로 알던 값으로 폴백**한다(fail-open to last-known):
+        계정이 잠깐 흔들렸다고 유료 사용자를 무료로 떨어뜨리면 안 된다. 이건
+        인증이 아니라 자격이라 위험 방향이 반대다.
+        """
+        if not owner or self.store is None or not owner.startswith("user:"):
+            return frozen
+        cached, age = self.store.get_owner_plan_age(owner)
+        if cached is not None and age is not None and age < entitlement.plan_ttl():
+            return cached
+        fresh = entitlement.lookup_plan(owner[len("user:"):])
+        if fresh is None:
+            return cached if cached is not None else frozen
+        self.store.set_owner_plan(owner, fresh)
+        return fresh
 
     def authorized(self, header: str | None) -> bool:
         return self.resolve_auth(header)["ok"]
@@ -296,7 +391,7 @@ class MCPHTTPApp:
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("approval is missing a subject")
-        plan = payload.get("plan") if payload.get("plan") in ("free", "pro") else "free"
+        plan = entitlement.normalize_plan(payload.get("plan"), source="account-assertion")
         return self.oauth.complete_connect(req, owner=f"user:{sub}", plan=plan)
 
     # ── 계정 삭제 캐스케이드(§5.9) ─────────────────────────────────────────────
@@ -326,22 +421,52 @@ class MCPHTTPApp:
             raise ValueError("purge request is missing a subject")
         return self.bridge.request("POST", "/sync/purge-owner", body={"owner": f"user:{sub}"})
 
+    def purge_team_request(self, assertion: str) -> dict:
+        """팀 그래프 소거(typ=purge-team) — **팀 삭제 절차 전용**이다.
+
+        개인 purge 와 유형을 가른 이유가 안전이다. 개인 경로는 `sub` 에서 `user:` 소유자
+        **만** 유도할 수 있어, 멤버가 자기 계정을 지워도 팀 그래프를 만들 방법이
+        구조적으로 없다(AP-1 §4.6). 그 성질을 지키려면 팀 소거는 별도 문이어야 한다 —
+        개인 경로에 "팀도 가능" 분기를 더하는 순간 그 보장이 사라진다.
+
+        계정 쪽에서는 팀 삭제 플로만 이 어서션을 서명하고, 그 전에 결제사 해지를 마친다.
+        """
+        if not self.purge_enabled():
+            raise PermissionError("purge is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "purge-team" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired team purge request")
+        graph_owner = payload.get("graph_owner")
+        if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
+            raise ValueError("team purge request has an invalid graph owner")
+        return self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
+
     # ── 웹 Vinc 그래프 프록시(계정 세션 → 서명 어서션 → owner 강제 read/write) ─────
     def graph_enabled(self) -> bool:
         """계정 공개키 핀 시에만 활성 — purge 와 같은 게이트(계정→우리 신뢰 방향)."""
         return bool(self.account_public)
 
     def graph_owner_request(self, assertion: str, args: dict) -> dict:
-        """계정 서명 proxy 어서션(typ=proxy·iss=account·aud=mcp·op·≤2분)을 검증해 `sub`
-        로 owner 를 **강제**하고, op 를 사이드카 read/write 라우트로 프록시한다.
+        """계정 서명 어서션을 검증해 owner 를 **강제**하고 op 를 사이드카로 프록시한다.
 
-        owner 는 서명된 `sub` 에서만 온다 — args 의 owner 는 pop 해 버린다(클라/계정
-        바디 어느 쪽도 owner 를 못 정한다 → 교차테넌트 봉쇄, SEC-3 와 이중). op 는
-        화이트리스트(_PROXY_OPS)로만. 유효한 A 어서션을 B 스코프에 못 쓴다(sub 고정)."""
+        받는 유형 둘(AP-1 §4.3):
+          - ``typ=proxy``      개인 그래프. owner = ``user:{sub}`` (기존, 바이트 동일).
+          - ``typ=proxy-team`` 팀 그래프. owner = 서명된 ``graph_owner``, ``role`` 로 op 판정.
+
+        **팀을 별도 유형으로 가른 것이 이 함수의 핵심 안전장치다.** 기존 ``proxy`` 에
+        필드만 덧붙였다면, 구 허브 + 신 계정 조합에서 팀 작업이 조용히 **멤버의 개인
+        그래프로** 흘러갔을 것이다(팀 문서가 개인 그래프에 쌓이고 팀 화면은 빈 결과 —
+        오류가 아니라 무음 오동작이라 최악이다). 유형이 다르면 구 허브는 아래 검사에서
+        그냥 거부하므로, 배포 순서를 틀렸을 때의 결과가 "정확성 문제"에서 "팀 기능이
+        아직 안 열림"으로 강등된다.
+
+        owner 는 어느 경우에도 서명 페이로드에서만 온다 — args 의 owner 는 pop 한다."""
         if not self.graph_enabled():
             raise PermissionError("graph proxy is not configured")
         payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        if not payload or payload.get("typ") != "proxy" \
+        typ = payload.get("typ") if payload else None
+        if not payload or typ not in ("proxy", "proxy-team") \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired proxy request")
         sub = payload.get("sub")
@@ -352,7 +477,18 @@ class MCPHTTPApp:
         if route is None:
             raise ValueError(f"unsupported proxy op: {op!r}")
         method, path = route
-        owner = f"user:{sub}"
+
+        if typ == "proxy-team":
+            graph_owner = payload.get("graph_owner")
+            if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
+                raise ValueError("team proxy request has an invalid graph owner")
+            role = payload.get("role")
+            if not isinstance(role, str) or not _role_allows(role, op):
+                # 역할이 모자란 것도, 역할이 이상한 것도 같은 거부다(fail-closed).
+                raise PermissionError(f"role {role!r} may not perform {op!r}")
+            owner = graph_owner
+        else:
+            owner = f"user:{sub}"
         args = dict(args or {})
         args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
 
@@ -363,10 +499,19 @@ class MCPHTTPApp:
             return self.bridge.request("GET", f"/jobs/{jid}")
         if op == "activate":   # 클라가 호스트 임의 파일경로 지정 못 하게(활성 팩 인라인)
             args.pop("out", None)
+        args.pop("_entitlements", None)   # 바디로 들어온 자격은 신뢰하지 않는다
         if method == "GET":
             return self.bridge.request("GET", path, params={**args, "owner": owner})
+        body = {**args, "owner": owner}
+        # 주제 상한(AP-1 §3.4). **plan 클레임이 없으면 상한을 걸지 않는다** — 클레임을
+        # 안 보내는 구 계정 + 이 허브 조합에서 부재를 free 로 읽으면 유료 사용자까지
+        # 상한에 걸린다. 배포 순서가 돈 낸 기능을 뺏는 꼴이라, 모를 때는 열어둔다.
+        if op in _CAPPED_PROXY_OPS and payload.get("plan") is not None:
+            ent = self.entitlements_for(payload.get("plan"))
+            if ent:
+                body["_entitlements"] = ent
         # POST: owner 를 바디 최상위에 강제 — fragment.owner·write_* 전부 최상위 owner 를 읽음.
-        return self.bridge.request("POST", path, body={**args, "owner": owner})
+        return self.bridge.request("POST", path, body=body)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -551,9 +696,13 @@ class _Handler(BaseHTTPRequestHandler):
             # forced_owner: 원격 인증경로가 해석한 소유자 → tools 가 args.owner 를
             # 무시하고 강제 스탬핑(멀티테넌트 봉쇄, B-B2). static/None 이면 하위호환.
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
+            # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
+            # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
             reply = self.app.dispatcher(session).handle(
                 msg, forced_owner=auth["owner"], plan=auth["plan"],
-                quota=self.app.quota_check)
+                quota=self.app.quota_check,
+                entitlements=(self.app.entitlements_for(auth["plan"])
+                              if auth["owner"] else None))
             if reply is None:
                 self.send_response(202)
                 self.send_header("Content-Length", "0")
@@ -564,6 +713,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._sync(url.path)
         if url.path == "/internal/purge-owner":
             return self._internal_purge()
+        if url.path == "/internal/purge-team":
+            return self._internal_purge_team()
         if url.path == "/internal/graph-owner":
             return self._internal_graph()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
@@ -608,6 +759,25 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         except Exception as e:   # 사이드카 도달 불가 — 계정이 재시도(fail-closed)
+            return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
+        return self._json(200, out)
+
+    def _internal_purge_team(self):
+        """`POST /internal/purge-team` — 팀 그래프 소거(팀 삭제 절차 전용).
+
+        경로를 개인 purge 와 가른 것이 안전장치다: 개인 경로는 `sub` 에서 `user:` 만
+        유도할 수 있어 멤버 계정 삭제가 팀 그래프에 닿을 수 없다(AP-1 §4.6). 여기에
+        분기를 더하는 대신 문을 따로 냈다."""
+        if not self.app.purge_enabled():
+            return self._json(503, {"error": "purge_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        try:
+            out = self.app.purge_team_request(assertion)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        except Exception as e:
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
@@ -696,17 +866,21 @@ def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,
                static_token: str | None = None, oauth: OAuthGate | None = None,
                verify_key=None, quota_config: dict | None = None,
                mcp_seed: bytes | None = None, account_public: bytes | None = None,
-               connect_url: str | None = None) -> int:
+               connect_url: str | None = None, free_max_domains: int | None = None) -> int:
     app = MCPHTTPApp(bridge, static_token=static_token, oauth=oauth,
                      verify_key=verify_key, quota_config=quota_config,
                      mcp_seed=mcp_seed, account_public=account_public,
-                     connect_url=connect_url)
+                     connect_url=connect_url, free_max_domains=free_max_domains)
     httpd = make_server(app, host, port)
     modes = [m for m, on in (("static", static_token), ("oauth", oauth),
                              ("apikey", verify_key),
                              ("member", app.member_connect_enabled())) if on]
+    # 기동 로그에 한도 설정을 드러낸다 — env 를 수동으로 넣는 배포라(컨테이너 앱 갱신이
+    # env 를 반영하지 않는다) 빠뜨렸을 때 로그가 유일한 조기 신호다.
     print(json.dumps({"host": host, "port": httpd.server_address[1],
-                      "auth": "+".join(modes) or "none"}), flush=True)
+                      "auth": "+".join(modes) or "none",
+                      "quota": bool(quota_config),
+                      "free_max_domains": free_max_domains}), flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

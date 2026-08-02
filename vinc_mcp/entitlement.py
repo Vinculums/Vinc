@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -30,6 +31,41 @@ _TIMEOUT = 4.0
 
 _cache: dict[str, tuple[float, dict | None]] = {}
 _lock = threading.Lock()
+
+_log = logging.getLogger("vinc.mcp.entitlement")
+
+#: 와이어에서 허용되는 등급 값. DB 열거형(`users.plan`)은 free|pro 뿐이고 `team` 은
+#: 어서션·verify-key 응답에만 실리는 와이어 전용 값이다(vinc.c.account-policy §2.1).
+PLANS = ("free", "pro", "team")
+
+#: 유료로 취급하는 등급(한도·업셀 문구 분기의 단일 기준).
+PAID_PLANS = ("pro", "team")
+
+_PLAN_TTL_DEFAULT = 300.0
+
+
+def plan_ttl() -> float:
+    """OAuth 토큰에 동결된 등급을 계정에 되묻는 주기(초)."""
+    try:
+        return float(os.environ.get("VINC_PLAN_TTL_S") or _PLAN_TTL_DEFAULT)
+    except ValueError:
+        return _PLAN_TTL_DEFAULT
+
+
+def normalize_plan(raw: object, *, source: str) -> str:
+    """미지 등급을 free 로 강등하되 **조용히 하지 않는다**.
+
+    계정이 새 등급 문자열을 먼저 내보내고 허브가 아직 그 값을 모르면, 조용한
+    강등은 사용자에게 "결제했는데 무료로 취급된다"로 나타난다. 배포 순서가
+    어긋난 것이 유일한 원인인데 증상은 결제 버그처럼 보인다 — 로그가 그걸
+    가르는 유일한 조기 신호다.
+    """
+    if isinstance(raw, str) and raw in PLANS:
+        return raw
+    if raw is not None:
+        _log.warning("unknown plan %r from %s — treating as 'free' "
+                     "(hub older than account?)", raw, source)
+    return "free"
 
 
 def _account_url() -> str:
@@ -86,7 +122,7 @@ def verify_key(raw: str) -> dict | None:
             body = json.loads(resp.read().decode("utf-8"))
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
-            plan = body.get("plan") if body.get("plan") in ("free", "pro") else "free"
+            plan = normalize_plan(body.get("plan"), source="verify-key")
             result = {"owner": f"user:{sub}", "plan": plan}
     except urllib.error.HTTPError:
         result = None            # 404(invalid_key)·401·503 → 무효 취급
@@ -96,3 +132,35 @@ def verify_key(raw: str) -> dict | None:
     with _lock:
         _cache[ckey] = (now + (_POS_TTL if result else _NEG_TTL), result)
     return result
+
+
+def lookup_plan(sub: str) -> str | None:
+    """publicId → **지금의** 등급. 계정 `/internal/mcp/plan`(B2 동일 신뢰 방향).
+
+    실패(미설정·네트워크·HTTP 오류)면 **None** 이다. 호출자는 마지막으로 알던
+    값으로 폴백해야 한다 — 여기서 `"free"` 를 돌려주면 계정이 잠깐 흔들릴 때마다
+    유료 사용자가 통째로 무료로 떨어진다. 키 검증(fail-closed)과 달리 등급
+    조회는 **fail-open to last-known** 이 옳다. 인증이 아니라 자격이기 때문이다.
+    """
+    if not sub:
+        return None
+    seed = _seed()
+    if seed is None:
+        return None
+    try:
+        req = urllib.request.Request(
+            _account_url() + "/internal/mcp/plan",
+            data=json.dumps({"sub": sub}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-Vinc-Assertion": _sign_assertion(seed)},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+    if body.get("sub") != sub:
+        return None
+    raw = body.get("plan")
+    if not isinstance(raw, str) or not raw:
+        return None
+    return normalize_plan(raw, source="plan-lookup")

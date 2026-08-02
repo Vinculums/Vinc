@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """반입 금지 게이트 — WO-MEM-SA-001 §3 하드 룰 (F1–F7).
 
-Vinc 는 memory 데이터플레인을 흡수하되 **과금·학습 프레이밍·구 명칭**을 반입하지
-않는다. 본 게이트가 그 하드 룰의 실행체(executable SSoT)다.
+Vinc 는 memory 데이터플레인을 흡수하되 **CP 계측 코드·학습 프레이밍·구 명칭**을
+반입하지 않는다. 본 게이트가 그 하드 룰의 실행체(executable SSoT)다.
 
-- 인간 가독 명세(정본): `Vinc-docs vinc/A/vinc.a.terms.md` §4–6.
+- 인간 가독 명세(정본): 그래프 문서 `vinc.a.terms` §4–6 (`vinc_doc_get`).
+  ⚠ 파일 `Vinc-docs/vinc/A/vinc.a.terms.md` 는 **v0.1 에서 동결된 스냅샷**이라
+  F1 v0.2 개정(결제 카피 4종 해제)이 없다 — 그 파일을 정본으로 읽지 말 것.
 - 본 스크립트의 패턴 표는 그 명세의 코드 미러다 — **둘을 동기화**한다
   (vinc.a.terms 변경 시 본 표도 갱신, revamp catalog↔RULES 동기 모델과 동일).
 
@@ -56,16 +58,19 @@ class Rule:
     allow_within: re.Pattern | None = None
 
 
-# ── F1 과금·계측 (vinc.a.terms §4, v0.4 정밀화) — CP 계측 코드 식별자 0건 ──
+# ── F1 계측 코드 반입 (vinc.a.terms §4) — CP 계측 코드 식별자 0건 ──
 # v0.4 정정: 영어 단어 billing/quota 자체는 금지 아님(도메인 자유 문자열 오탐 회피),
 # plan.kind 는 정본 QueryPlan.kind 와 충돌하므로 제외. F1 은 CP 계측 '코드 식별자'를
-# 겨냥한다. 결제 UI 카피(과금·결제·구독·요금제)는 grep 토큰에서 제외 — 정책·설계 문서가
-# 그 어휘로 '금지'를 서술하며 널리 등장해 오탐이 크다. UI 카피는 코드/UI 리뷰에서 강제.
+# 겨냥한다.
+# vinc.a.terms v0.2(2026-08-02 · DEC AP-1): 결제 UI 카피 4종(과금·결제·구독·요금제)은
+# **정식으로 해제**됐다. 여기서 이미 빠져 있던 상태를 명세가 따라온 것이다 — 유료 플랜과
+# 결제 표면이 생겨 '자체 과금 표면 부재'라는 금지 근거가 소멸했다. 아래 세 식별자만이
+# F1 의 본체이고 영구 금지다.
 _F1 = [
     Rule("F1", "usage_record", re.compile(r"usage_record"),
          note="CP 사용량 계측 레코드"),
     Rule("F1", "token_margin", re.compile(r"token_margin"),
-         note="CP 토큰 마진 과금"),
+         note="CP 토큰 마진 계측"),
     Rule("F1", "UsageRecord", re.compile(r"\bUsageRecord\b"),
          note="CP 계측 클래스"),
 ]
@@ -170,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[gate_forbidden] FAIL — {len(violations)}건 위반:")
             for v in violations:
                 print(f"  [{v.gate}] {v.label}  {v.file}:{v.line}  {v.text}")
-            print("\n정본: Vinc-docs vinc/A/vinc.a.terms.md §4–6")
+            print("\n정본: 그래프 문서 vinc.a.terms §4–6 (vinc_doc_get)")
 
     return 1 if violations else 0
 

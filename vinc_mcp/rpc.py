@@ -52,8 +52,10 @@ class Dispatcher:
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
     # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
     # plan: 소유자 티어(B-D2 쿼터에서 사용) — 로컬 stdio 는 둘 다 None.
+    # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
-               plan: str | None = None, quota=None) -> dict | None:
+               plan: str | None = None, quota=None,
+               entitlements: dict | None = None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -65,7 +67,7 @@ class Dispatcher:
             return None
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
-                                    plan=plan, quota=quota)
+                                    plan=plan, quota=quota, entitlements=entitlements)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
         except (KeyError, ValueError) as e:
@@ -77,7 +79,8 @@ class Dispatcher:
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
-                  plan: str | None = None, quota=None) -> dict:
+                  plan: str | None = None, quota=None,
+                  entitlements: dict | None = None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
@@ -129,7 +132,8 @@ class Dispatcher:
                 if denial is not None:
                     return denial
             try:
-                out = tools.call(name, args, self.bridge, forced_owner=forced_owner)
+                out = tools.call(name, args, self.bridge, forced_owner=forced_owner,
+                                 entitlements=entitlements)
             except (KeyError, ValueError):
                 raise                       # 잘못된 도구/인자 = 프로토콜 오류(-32602)
             except Exception as e:          # 실행 오류 = 도구 결과로 강등(스펙)

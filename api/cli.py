@@ -464,11 +464,22 @@ def main(argv: list[str] | None = None) -> int:
             quota_cfg = None
             if os.environ.get("VINC_QUOTA") == "on":
                 quota_cfg = {
-                    "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "15")),
+                    # AP-1: 무료 한도를 Pro 급으로 올렸다 — 차별축이 호출 횟수에서
+                    # **주제 개수**로 옮겨갔기 때문이다(VINC_FREE_MAX_DOMAINS).
+                    # 기본값을 정책값으로 둬야 env 를 빠뜨렸을 때 구 정책(15회)이
+                    # 조용히 살아나지 않는다.
+                    "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
                     "pro_limit": int(os.environ.get("VINC_PRO_DAILY_LIMIT", "2000")),
                     "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
                     "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
                 }
+            # 무료 등급 주제 개수 상한(AP-1 §3.4) — 미설정이면 기능 자체가 꺼진다.
+            # 쿼터와 달리 별도 on 스위치를 두지 않는다: 값의 존재가 곧 스위치다.
+            cap_raw = os.environ.get("VINC_FREE_MAX_DOMAINS")
+            try:
+                free_cap = int(cap_raw) if cap_raw else None
+            except ValueError:
+                free_cap = None
             # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
             # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
             from vinc_mcp import edverify as _ev
@@ -479,7 +490,8 @@ def main(argv: list[str] | None = None) -> int:
                 static_token=static, oauth=gate, verify_key=vk, quota_config=quota_cfg,
                 mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
                 account_public=_ev.load_public(acct_raw) if acct_raw else None,
-                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect")
+                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
+                free_max_domains=free_cap)
         return 2
     if args.cmd == "onboard":
         from . import auth

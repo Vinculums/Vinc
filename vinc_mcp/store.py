@@ -230,6 +230,20 @@ class Store:
             "SELECT plan FROM owner_plan WHERE owner=?", (owner,)).fetchone()
         return row["plan"] if row else None
 
+    def get_owner_plan_age(self, owner: str,
+                           now: float | None = None) -> tuple[str | None, float | None]:
+        """(plan, 나이 초) — 없으면 (None, None).
+
+        나이가 필요한 이유: OAuth 토큰의 등급은 승인 시점에 동결되므로 이 표가
+        유일한 갱신 지점이고, 갱신 여부는 **얼마나 오래됐는가**로만 판단할 수 있다.
+        """
+        row = self._db.execute(
+            "SELECT plan, updated_at FROM owner_plan WHERE owner=?", (owner,)).fetchone()
+        if not row:
+            return None, None
+        age = (time.time() if now is None else now) - float(row["updated_at"])
+        return row["plan"], max(0.0, age)
+
     # ── 쿼터(owner 단위 롤링 창 + 초과 잠금) ───────────────────────────────────
     def quota_check(self, owner: str, *, limit: int, window_s: float, lock_s: float,
                     now: float | None = None) -> dict:
