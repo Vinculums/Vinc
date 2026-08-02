@@ -31,9 +31,14 @@ class _FakeStore:
 
 
 class SubgraphPlanTests(unittest.TestCase):
-    def test_seed_traversal_uses_trail_guard(self):
+    def test_seed_traversal_uses_shortest_reach_semantics(self):
+        # G1(2026-08-03): 이 플랜은 *도달 집합*을 원한다 — 경로 열거(TRAIL)가 아니라
+        # SHORTEST 로 같은 집합을 더 싸게 낸다(실측 2.5~3x). WALK 형식은 남지 않아야
+        # 한다 — 기본 WALK 는 사이클서 경로가 폭증한다(M3 §6-2 가 막던 것).
         plan = q.subgraph_ids_plan("concept:fourier", depth=2)
-        self.assertIn("TRAIL 1..2", plan.cypher)          # 엣지 무재사용 가드(M3)
+        self.assertIn("SHORTEST 1..2", plan.cypher)
+        self.assertNotIn("TRAIL", plan.cypher)
+        self.assertNotIn("*1..", plan.cypher)
         self.assertEqual(plan.params, {"seed": "concept:fourier"})
 
     def test_depth_clamped_1_to_4(self):

@@ -96,7 +96,8 @@ class BuildPackTests(unittest.TestCase):
                                       generated_at="x", store=store)
         self.assertEqual(pack["manifest"]["scope"]["seed"], "concept:a")
         self.assertEqual(pack["manifest"]["counts"]["records"], 0)   # ego 스코프 = 개념 중심
-        self.assertTrue(any("TRAIL" in cy for cy, _ in store.calls))
+        # G1 — ego 순회는 도달집합 의미론(SHORTEST). 구 TRAIL 에서 교체됐다.
+        self.assertTrue(any("SHORTEST" in cy for cy, _ in store.calls))
 
     def test_without_store_degrades(self):
         pack = share.build_share_pack(owner="user:alice", domain="math", store=None)

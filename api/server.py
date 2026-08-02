@@ -243,10 +243,11 @@ class VincApp:
             limit=_int(p.get("limit"), 50), store=r))
 
     def read_path(self, p):
-        # E-G7 최단 경로 증거 체인 — 두 개념 사이 all-shortest 경로(조회 전용).
+        # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
+        # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
         return self._read(lambda r: q.shortest_path(
             _req(p, "a"), _req(p, "b"), max_depth=_int(p.get("max_depth"), 6),
-            owner=_req(p, "owner"), store=r))
+            owner=_req(p, "owner"), weight=p.get("weight") or q.WEIGHT_HOPS, store=r))
 
     def read_merge_candidates(self, p):
         # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).

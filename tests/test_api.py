@@ -332,9 +332,76 @@ class MergeCandidatesTests(unittest.TestCase):
     def test_decide_plan_trail_guard_prevents_edge_reuse(self):
         # M3(§6-2): 기본 WALK 는 엣지 재사용 사이클 허용 → 경로 폭증. TRAIL 가드
         # (키워드가 범위 앞)로 엣지 무재사용. WALK 형식(`*1..`)은 남지 않아야 한다.
+        # ⚠ decide 는 경로 자체를 소비하므로 G1(도달집합 SHORTEST 교체) 대상이 아니다.
         plan = q.decide_plan("t", depth=3)
         self.assertIn("TRAIL 1..3", plan.cypher)
         self.assertNotIn("*1..", plan.cypher)
+
+
+class WeightedPathTests(unittest.TestCase):
+    """E-G8 confidence 가중 최단 경로 — 순수 함수(엔진 무관)."""
+
+    # 홉 최단 = a-y-z(2홉, 저신뢰) · 가중 최단 = a-b-c-z(3홉, 고신뢰)
+    EDGES = [
+        {"source": "a", "target": "b", "confidence": 0.9},
+        {"source": "b", "target": "c", "confidence": 0.9},
+        {"source": "c", "target": "z", "confidence": 0.9},
+        {"source": "a", "target": "y", "confidence": 0.2},
+        {"source": "y", "target": "z", "confidence": 0.2},
+    ]
+
+    def test_prefers_confident_chain_over_fewer_hops(self):
+        paths = q.weighted_paths(self.EDGES, "a", "z", max_hops=6)
+        self.assertEqual(paths[0]["ids"], ["a", "b", "c", "z"])
+        self.assertAlmostEqual(paths[0]["cost"], 0.3, places=6)   # 3 * (1-0.9)
+        self.assertEqual(paths[0]["length"], 3)
+
+    def test_degenerates_to_hop_shortest_without_confidence(self):
+        # 증거가 하나도 없으면 모든 엣지 비용이 1.0 → 홉 최단과 같은 답(하위호환).
+        bare = [{k: v for k, v in e.items() if k != "confidence"} for e in self.EDGES]
+        paths = q.weighted_paths(bare, "a", "z", max_hops=6)
+        self.assertEqual(paths[0]["ids"], ["a", "y", "z"])
+        self.assertEqual(paths[0]["length"], 2)
+
+    def test_hop_cap_is_honoured(self):
+        # 상한 2 면 고신뢰 3홉 체인은 후보에서 빠지고 저신뢰 2홉만 남는다.
+        paths = q.weighted_paths(self.EDGES, "a", "z", max_hops=2)
+        self.assertEqual(paths[0]["ids"], ["a", "y", "z"])
+
+    def test_undirected_and_unreachable(self):
+        self.assertEqual(q.weighted_paths(self.EDGES, "z", "a", max_hops=6)[0]["ids"],
+                         ["z", "c", "b", "a"])          # 무방향
+        self.assertEqual(q.weighted_paths(self.EDGES, "a", "nope", max_hops=6), [])
+
+    def test_ties_returned_and_deterministic(self):
+        # 동률 두 경로(비용 동일) — 둘 다 나오고 순서가 결정론이다.
+        edges = [{"source": "a", "target": "p", "confidence": 0.5},
+                 {"source": "p", "target": "z", "confidence": 0.5},
+                 {"source": "a", "target": "q", "confidence": 0.5},
+                 {"source": "q", "target": "z", "confidence": 0.5}]
+        first = q.weighted_paths(edges, "a", "z", max_hops=4)
+        self.assertEqual([p["ids"] for p in first],
+                         [["a", "p", "z"], ["a", "q", "z"]])
+        self.assertEqual(first, q.weighted_paths(edges, "a", "z", max_hops=4))
+
+    def test_multi_edge_keeps_strongest(self):
+        # 같은 쌍에 엣지가 여럿이면 가장 신뢰도 높은 것(=가장 싼 것)만 쓴다.
+        edges = [{"source": "a", "target": "z", "confidence": 0.1},
+                 {"source": "a", "target": "z", "confidence": 0.8}]
+        self.assertAlmostEqual(q.weighted_paths(edges, "a", "z")[0]["cost"], 0.2, places=6)
+
+    def test_out_of_range_confidence_clamped(self):
+        for bad, want in ((5.0, 0.0), (-3.0, 1.0), ("x", 1.0), (None, 1.0)):
+            cost = q.weighted_paths([{"source": "a", "target": "z", "confidence": bad}],
+                                    "a", "z")[0]["cost"]
+            self.assertAlmostEqual(cost, want, places=6, msg=f"confidence={bad!r}")
+
+    def test_candidates_plan_allows_depth_up_to_8(self):
+        # ego 뷰(4 클램프)와 달리 경로 상한 8까지 연다.
+        self.assertIn("SHORTEST 1..8", q.path_candidates_plan("x", depth=99).cypher)
+        self.assertIn("SHORTEST 1..1", q.path_candidates_plan("x", depth=0).cypher)
+        self.assertIn("n.owner_id = $owner",
+                      q.path_candidates_plan("x", owner="u").cypher)
 
 
 class ExecuteTests(unittest.TestCase):

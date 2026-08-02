@@ -469,6 +469,89 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertTrue(sp["found"])
         self.assertEqual(sp["length"], 3)
         self.assertEqual(sp["paths"][0]["ids"], ["a", "c", "e", "d"])
+        self.assertEqual(sp["weight"], "hops")
+
+    def test_eg8_confidence_weighted_path_diverges_from_hops(self):
+        """E-G8 가중 최단 경로 — 홉 최단과 **다른 답**을 내는지 임베디드 실행으로 확인.
+
+        홉으로는 a-y-z(2), 증거로는 a-b-c-z(3). 두 축이 갈리는 것이 이 기능의 존재
+        이유이므로, 갈린다는 사실 자체를 회귀로 고정한다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("a", "b", "c", "y", "z"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                      "n.title=$id, n.domain='m'", id=cid)
+            for x, y, conf in (("a", "b", 0.9), ("b", "c", 0.9), ("c", "z", 0.9),
+                               ("a", "y", 0.2), ("y", "z", 0.2)):
+                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                      "MERGE (p)-[r:RELATED_TO]->(t) SET r.confidence = $c",
+                      x=x, y=y, c=conf)
+
+        hops = q.shortest_path("a", "z", owner="u", store=store)
+        conf = q.shortest_path("a", "z", owner="u", weight="confidence", store=store)
+        bogus = q.shortest_path("a", "z", owner="u", weight="nonsense", store=store)
+        missing = q.shortest_path("a", "nope", owner="u", weight="confidence", store=store)
+        store.close()
+
+        self.assertTrue(hops["found"])
+        self.assertEqual(hops["paths"][0]["ids"], ["a", "y", "z"])       # 홉 최단
+
+        self.assertTrue(conf["executed"])
+        self.assertTrue(conf["found"])
+        self.assertEqual(conf["weight"], "confidence")
+        self.assertEqual(conf["paths"][0]["ids"], ["a", "b", "c", "z"])  # 증거 최선
+        self.assertEqual(conf["paths"][0]["titles"], ["a", "b", "c", "z"])
+        self.assertAlmostEqual(conf["cost"], 0.3, places=6)
+        self.assertEqual(conf["length"], 3)          # 홉으로는 더 길다 — 의도된 결과
+
+        # 미지 weight 는 조용히 hops 로 강등하고 실제 적용 축을 에코한다.
+        self.assertEqual(bogus["weight"], "hops")
+        self.assertEqual(bogus["paths"][0]["ids"], ["a", "y", "z"])
+        # 도달 불가는 executed=True + found=False (경로 부재와 같은 계약)
+        self.assertTrue(missing["executed"])
+        self.assertFalse(missing["found"])
+
+    def test_g1_shortest_reach_set_matches_trail(self):
+        """G1 — 도달집합 순회를 TRAIL→SHORTEST 로 바꿔도 **집합이 같다**(시드 제외).
+
+        교체 근거가 '결과 동일 + 더 쌈'이므로 동일성 쪽을 회귀로 고정한다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("s", "n1", "n2", "n3", "n4"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                      "n.title=$id, n.domain='m'", id=cid)
+            # 사이클 포함(시드 복귀 경로 존재) — TRAIL 이 시드를 행으로 내던 조건
+            for x, y in (("s", "n1"), ("n1", "n2"), ("n2", "s"),
+                         ("n2", "n3"), ("n3", "n4")):
+                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                      "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
+
+        def reach(sem: str) -> set:
+            cy = ("MATCH (n:Concept) WHERE n.concept_id = 's' AND n.owner_id = 'u' "
+                  f"MATCH (n)-[* {sem} 1..3]-(m:Concept) WHERE m.owner_id = 'u' "
+                  "RETURN DISTINCT m.concept_id AS id")
+            return {r["id"] for r in store.run(cy)}
+
+        trail, shortest = reach("TRAIL"), reach("SHORTEST")
+        plan_ids = {r["id"] for r in q.execute(
+            q.subgraph_ids_plan("s", depth=3, owner="u"), cfg, store=store).get("rows", [])}
+        store.close()
+
+        # 차집합은 시드 자신뿐 — 호출부가 시드를 합류시키므로 최종 결과는 동일하다.
+        self.assertEqual(trail - shortest, {"s"})
+        self.assertEqual(shortest - trail, set())
+        self.assertEqual(plan_ids, shortest)
+        self.assertEqual({"s", *plan_ids}, {"s", *trail})
 
     def test_eg3_component_diagnosis_and_communities(self):
         """E-G3: algo 확장(WCC·Louvain) 구조 진단. ladybug 오프라인 미번들이면

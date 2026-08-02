@@ -650,8 +650,20 @@ def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
 
 def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
     """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
-    MCP-SKELETON §10 공백 해소). `decide_plan` 과 동일한 TRAIL 가드(엣지 무재사용,
-    §6-2 M3)로 seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
+    MCP-SKELETON §10 공백 해소). seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
+
+    **G1(2026-08-03, ladybug 0.18.0 실측): 순회 의미론 `TRAIL` → `SHORTEST`.**
+    이 플랜이 원하는 것은 *도달 집합*(DISTINCT id)이지 경로 열거가 아니다. TRAIL 은
+    엣지 무재사용 경로를 **전부 펼친 뒤** DISTINCT 로 접으므로 조밀 ego 에서 그 일을
+    두 번 한다. SHORTEST 는 (시작,끝) 쌍당 한 경로만 확장해 같은 집합을 더 싸게 낸다.
+    실측(노드 200·평균차수 12, 같은 스토어): depth2 9.6→3.8ms · depth3 5.5→4.1ms ·
+    depth4 13.4→4.5ms. **결과 차집합은 시드 자신 하나뿐**이다(TRAIL 은 depth≥3 에서
+    사이클로 시드에 되돌아와 시드를 행으로 낸다 — 실측 차집합 `TRAIL-only=['n0']`).
+    호출부 4곳(:func:`graph` · :func:`ego_ids` · :func:`decide` 토픽 · share 팩)이
+    전부 `sorted({seed, *rows})` 로 시드를 명시 합류시키므로 **도달 집합은 동일**하고
+    순수 비용 절감이다. M3(§6-2)이 막으려던 것은 기본 WALK 의 경로 폭증인데
+    SHORTEST 는 애초에 폭증하지 않으므로 가드 목적도 그대로 유지된다.
+    ⚠ `decide_plan`(경로 자체를 소비)은 TRAIL 을 유지한다 — 거긴 열거가 목적이다.
 
     depth 의미(F2/F4 이후): 무라벨 순회는 모든 rel 테이블을 지난다 — Bridge 매개
     (CONNECTS 2홉)에 더해 ABOUT/ATTACHES_TO 도 홉이 되므로, depth-2 에서 같은
@@ -673,11 +685,11 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) ->
         params["owner"] = owner
     cypher = (
         f"MATCH (n:Concept) WHERE {n_where} "
-        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Concept){m_where} "
+        f"MATCH (n)-[* SHORTEST 1..{depth}]-(m:Concept){m_where} "
         "RETURN DISTINCT m.concept_id AS id"
     )
     return QueryPlan("subgraph_ids", cypher, params,
-                     note=f"seed+depth traversal (depth={depth})")
+                     note=f"seed+depth reach set (depth={depth}, SHORTEST)")
 
 
 def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
@@ -2567,15 +2579,203 @@ def _node_seq(ns) -> list[dict]:
     return out
 
 
+# ── 가중 최단 경로 (E-G8) — confidence 를 거리로 읽는 증거 체인 ────────────────
+# E-G7(홉 최단)의 자매. 홉 수가 같아도 증거 강도는 다르다 — "가장 짧은 연결"과
+# "가장 믿을 만한 연결"은 다른 질문이고, 여태 vinc_path 는 앞의 것만 답했다.
+# E-G6 이 엣지에 실어 둔 confidence(0~1, `docstore.backfill_evidence` 가 채운다)를
+# 거리로 환산해 다익스트라를 돌린다. 비용 = 1 - confidence:
+#   · confidence 1.0(확실) → 비용 0    = 공짜로 지나가는 엣지
+#   · confidence 0.0(미기입) → 비용 1  = 홉 하나와 정확히 같은 값
+# 후자가 핵심이다 — **증거가 하나도 없는 그래프에서 가중 모드는 홉 최단으로 정확히
+# 퇴화한다**(하위호환·설명가능). -log(c) 형(확률 곱 최대화)은 c=0 에서 발산하는데
+# 이 스키마의 기본값이 0.0 이라 미기입 엣지가 통행 불가가 된다 — 그래서 쓰지 않는다.
+#
+# ⚠ 엔진 WSHORTEST 를 쓰지 않은 이유(ladybug 0.18.0 실측 2026-08-03 — 검토 후 기각):
+#   ① 가중 인자로 **저장 컬럼만** 받는다. `WSHORTEST(1.0 - confidence)` 는 파서 거부
+#      (`Invalid input ... expected rule oC_SingleQuery`). 비용열을 새로 저장하면
+#      confidence 를 쓰는 지점마다(fragment 엣지 MERGE·evidence 백필) 동기 유지
+#      의무가 생기고, 한 곳만 빠뜨리면 조용히 틀린 경로가 나온다(파생열 드리프트).
+#   ② 패턴에 등장하는 **모든 rel 테이블**에 그 컬럼이 있어야 한다. 하나라도 없으면
+#      `RuntimeError: invalid unordered_map<K, T> key` 로 크래시한다(실측) — 무라벨
+#      순회가 불가해 라벨 열거가 강제되고, rel 테이블이 늘 때마다 질의가 깨진다.
+#   ③ 파이썬은 조회 시점에 confidence 를 읽으므로 드리프트가 **원천적으로 불가**하고,
+#      §4-2("Cypher 내 점수식 없음 — 방언 이식성")와 `ppr_scores` 전례에 정합한다.
+#   재개 임계: 후보 서브그래프 인메모리 적재가 지배 비용이 되면(owner 개념 1만+)
+#   저장 비용열 + WSHORTEST 를 재상정한다. 그때 ①의 동기 의무가 대가다.
+#   [실측 확인분] 라벨을 열거하면 WSHORTEST 는 owner 술어·홉 상한과 정상 병용된다.
+
+PATH_TIE_EPS = 1e-9      #: 부동소수 동률 판정 폭(비용 비교 전용)
+PATH_LIMIT = 25          #: 반환 경로 상한 — `shortest_path_plan` 의 LIMIT 25 와 동수
+
+
+def _edge_cost(edge: dict) -> float:
+    """엣지 통행 비용 = 1 - confidence(범위 밖·비수치·미기입은 0.0 신뢰도로 강등).
+    순수 함수 — :func:`weighted_paths` 의 유일한 비용 정의 지점."""
+    try:
+        c = float(edge.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        c = 0.0
+    return 1.0 - min(1.0, max(0.0, c))
+
+
+def weighted_paths(edges: list[dict], a_id: str, b_id: str, *, max_hops: int = 6,
+                   limit: int = PATH_LIMIT) -> list[dict]:
+    """confidence 가중 최단 경로(들) — 순수·결정론(난수·시간 무의존).
+
+    ``edges``: :func:`shape_graph` 엣지 리스트(각 ``{source,target,[confidence]}``).
+    무방향으로 읽고(관계의 증거 강도는 방향과 무관), 같은 쌍에 엣지가 여럿이면
+    **가장 싼 것**(=가장 신뢰도 높은 것)만 남긴다. 반환 ``[{ids, cost, length}]`` —
+    최소 비용 동률 전부, ``(cost, length, ids)`` 결정론 정렬, ``limit`` 상한.
+
+    홉 상한이 있으므로 (노드, 홉수) 층 위에서 다익스트라를 돈다 — 홉을 무시하고
+    최적화하면 "더 싸지만 상한을 넘는" 경로를 답으로 골라 상한 계약을 어긴다.
+    경로는 **단순 경로**(노드 무반복)로 한정한다."""
+    import heapq
+
+    adj: dict[str, dict[str, float]] = {}
+    for e in edges or []:
+        s, t = e.get("source"), e.get("target")
+        if not s or not t or s == t:
+            continue
+        w = _edge_cost(e)
+        for u, v in ((s, t), (t, s)):
+            m = adj.setdefault(u, {})
+            if v not in m or w < m[v]:
+                m[v] = w
+    if a_id not in adj or b_id not in adj:
+        return []
+    hops_cap = max(1, min(int(max_hops), 8))
+    INF = float("inf")
+    best: dict[tuple[str, int], float] = {(a_id, 0): 0.0}
+    pq: list[tuple[float, int, str]] = [(0.0, 0, a_id)]
+    while pq:
+        d, h, u = heapq.heappop(pq)
+        if d > best.get((u, h), INF) + PATH_TIE_EPS or h >= hops_cap:
+            continue
+        for v in sorted(adj.get(u, {})):
+            nd, nh = d + adj[u][v], h + 1
+            if nd + PATH_TIE_EPS < best.get((v, nh), INF):
+                best[(v, nh)] = nd
+                heapq.heappush(pq, (nd, nh, v))
+    reached = [c for (n, _h), c in best.items() if n == b_id]
+    if not reached:
+        return []
+    opt = min(reached)
+    # 최적 비용과 동률인 경로를 tight-edge 전방 DFS 로 열거한다(결정론 — 이웃 정렬
+    # 순서 고정). `best` 층이 각 접두의 최적성을 증명하므로 가지치기가 정확하다.
+    out: list[dict] = []
+    seen_paths: set[tuple[str, ...]] = set()
+
+    def _walk(u: str, h: int, c: float, path: list[str], visited: set[str]) -> None:
+        if len(out) >= limit:
+            return
+        if u == b_id and abs(c - opt) <= PATH_TIE_EPS:
+            key = tuple(path)
+            if key not in seen_paths:
+                seen_paths.add(key)
+                out.append({"ids": list(path), "cost": round(c, 6), "length": len(path) - 1})
+            return          # 단순 경로 — b 도달 후 연장하지 않는다
+        if h >= hops_cap:
+            return
+        for v in sorted(adj.get(u, {})):
+            if v in visited:
+                continue
+            nd, nh = c + adj[u][v], h + 1
+            if abs(best.get((v, nh), INF) - nd) > PATH_TIE_EPS or nd > opt + PATH_TIE_EPS:
+                continue    # 이 접두가 (v,nh) 의 최적이 아니거나 이미 최적 비용 초과
+            visited.add(v); path.append(v)
+            _walk(v, nh, nd, path, visited)
+            path.pop(); visited.discard(v)
+
+    _walk(a_id, 0, 0.0, [a_id], {a_id})
+    out.sort(key=lambda p: (p["cost"], p["length"], p["ids"]))
+    return out[:limit]
+
+
+def path_candidates_plan(seed: str, *, depth: int = 6,
+                         owner: str | None = None) -> QueryPlan:
+    """가중 경로 후보 집합 — seed 에서 ``depth`` 홉 이내 Concept id(E-G8).
+
+    :func:`subgraph_ids_plan` 과 같은 SHORTEST 도달집합 순회지만 상한이 다르다
+    (경로 상한은 8까지 열려 있고 ego 뷰의 4 클램프와 무관하다). ``a`` 에서 ``depth``
+    홉 이내에 없는 노드는 길이 ``depth`` 이하 경로에 **구조적으로** 못 오르므로
+    이 집합이 다익스트라의 완전한 탐색 공간이다."""
+    depth = max(1, min(int(depth), 8))
+    params: dict = {"seed": seed}
+    n_where, m_where = "n.concept_id = $seed", ""
+    if owner:
+        n_where += " AND n.owner_id = $owner"
+        m_where = " WHERE m.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH (n:Concept) WHERE {n_where} "
+        f"MATCH (n)-[* SHORTEST 1..{depth}]-(m:Concept){m_where} "
+        "RETURN DISTINCT m.concept_id AS id"
+    )
+    return QueryPlan("path_candidates", cypher, params,
+                     note=f"weighted-path candidate set (depth={depth})")
+
+
+#: `weight` 인자 허용값 — hops = E-G7 홉 최단(기본), confidence = E-G8 가중 최단.
+WEIGHT_HOPS = "hops"
+WEIGHT_CONFIDENCE = "confidence"
+
+
+def _weighted_shortest_path(a_id: str, b_id: str, *, max_depth: int, owner: str | None,
+                            cfg, store) -> dict:
+    """E-G8 가중 갈래 — 후보 집합 → 엣지 투영 → 파이썬 다익스트라.
+
+    엣지는 :func:`graph_rows_for_ids_plan`(이미 evidence/confidence 를 투영한다)로
+    받고 **후보 집합 안으로 여과**한다(ego 경계 유출 제거 — graph() 와 같은 정책)."""
+    base = {"kind": "shortest_path", "executed": False, "found": False,
+            "a": a_id, "b": b_id, "length": None, "paths": [], "count": 0,
+            "weight": WEIGHT_CONFIDENCE, "cost": None}
+    ids_res = execute(path_candidates_plan(a_id, depth=max_depth, owner=owner),
+                      cfg, store=store)
+    if not ids_res.get("executed"):
+        base["note"] = ids_res.get("note", "")
+        return base
+    ids = sorted({a_id, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+    base["executed"] = True
+    if b_id not in ids:
+        return base          # depth 안에서 닿지 않는다 — found=False(경로 부재와 동일 계약)
+    rows_res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
+    if not rows_res.get("executed"):
+        base["executed"] = False
+        base["note"] = rows_res.get("note", "")
+        return base
+    shaped = shape_graph(rows_res.get("rows", []))
+    keep = set(ids)
+    edges = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
+    title_of = {n["id"]: n.get("label") or n["id"] for n in shaped["nodes"]}
+    paths = weighted_paths(edges, a_id, b_id, max_hops=max_depth)
+    if not paths:
+        return base
+    base.update(found=True, count=len(paths), cost=paths[0]["cost"],
+                length=paths[0]["length"],
+                paths=[{"ids": p["ids"], "titles": [title_of.get(i, i) for i in p["ids"]],
+                        "length": p["length"], "cost": p["cost"]} for p in paths])
+    return base
+
+
 def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
-                  owner: str | None = None, cfg=None, store=None) -> dict:
-    """E-G7 — 두 개념 간 최단 경로 증거 체인(조회 전용). 반환 {executed, found,
-    a, b, length, paths:[{ids,titles}], count}. 경로 부재 시 found=False."""
+                  owner: str | None = None, weight: str = WEIGHT_HOPS,
+                  cfg=None, store=None) -> dict:
+    """E-G7/E-G8 — 두 개념 간 최단 경로 증거 체인(조회 전용). 반환 {executed, found,
+    a, b, length, paths:[{ids,titles}], count, weight}. 경로 부재 시 found=False.
+
+    ``weight``: ``"hops"``(기본, E-G7 — 엔진 ALL SHORTEST, 동률 전부) 또는
+    ``"confidence"``(E-G8 — 파이썬 다익스트라, 비용 = 1-confidence). 가중 갈래는
+    ``cost``(경로 비용 합)를 추가로 싣는다. 미지 값은 조용히 ``hops`` 로 강등하고
+    응답의 ``weight`` 가 **실제로 적용한 축**을 에코한다(`_apply_basis` 와 같은 태도)."""
+    if (weight or "").strip().lower() == WEIGHT_CONFIDENCE:
+        return _weighted_shortest_path(a_id, b_id, max_depth=max_depth, owner=owner,
+                                       cfg=cfg, store=store)
     res = execute(shortest_path_plan(a_id, b_id, max_depth=max_depth, owner=owner),
                   cfg, store=store)
     base = {"kind": "shortest_path", "executed": res.get("executed", False),
             "found": False, "a": a_id, "b": b_id, "length": None,
-            "paths": [], "count": 0}
+            "paths": [], "count": 0, "weight": WEIGHT_HOPS}
     if not res.get("executed"):
         base["note"] = res.get("note", "")
         return base

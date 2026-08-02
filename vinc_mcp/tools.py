@@ -134,10 +134,11 @@ def _t_neighbors(args, bridge):
 
 
 def _t_path(args, bridge):
-    # E-G7 최단 경로 증거 체인 — 두 개념 사이 all-shortest 경로(조회 전용).
+    # E-G7/E-G8 최단 경로 증거 체인 — 홉 최단(기본) 또는 confidence 가중(조회 전용).
     return bridge.request("GET", "/path", params={
         "owner": _owner(args, bridge), "a": args["a"], "b": args["b"],
-        "max_depth": args.get("max_depth", 6)})
+        "max_depth": args.get("max_depth", 6),
+        "weight": args.get("weight", "hops")})
 
 
 def _t_merge_candidates(args, bridge):
@@ -309,15 +310,23 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_path",
-        "description": "Find the shortest relation path(s) between two concepts (E-G7) — the densest "
-                       "physically-connected edge chain, returned as an ordered id/title sequence. "
-                       "Returns {found, length, paths:[{ids,titles,length}], count} with ALL "
-                       "shortest paths (ties included). Use this to give a model concrete evidence "
-                       "of HOW two concepts connect instead of guessing. Read-only.",
+        "description": "Find the shortest relation path(s) between two concepts — the physically "
+                       "connected edge chain, returned as an ordered id/title sequence. Use this to "
+                       "give a model concrete evidence of HOW two concepts connect instead of "
+                       "guessing. Two distance measures, chosen with `weight`: 'hops' (default, "
+                       "E-G7) counts edges and returns ALL shortest paths (ties included); "
+                       "'confidence' (E-G8) treats each edge's recorded confidence as closeness "
+                       "(cost = 1 - confidence) and returns the best-evidenced chain, which may be "
+                       "LONGER in hops but better supported — each path then also carries `cost` "
+                       "(lower is stronger). With no confidence recorded anywhere, 'confidence' "
+                       "degenerates exactly to 'hops'. Returns {found, length, weight, "
+                       "paths:[{ids,titles,length,[cost]}], count}. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "a": {"type": "string", "description": "Exact source concept id."},
             "b": {"type": "string", "description": "Exact target concept id."},
             "max_depth": {"type": "integer", "default": 6, "description": "Max path length (1–8)."},
+            "weight": {"type": "string", "enum": ["hops", "confidence"], "default": "hops",
+                       "description": "Distance measure: edge count, or evidence strength."},
             "owner": {"type": "string"},
         }, "required": ["a", "b"]}, "run": _t_path,
     },
