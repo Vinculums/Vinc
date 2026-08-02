@@ -25,6 +25,7 @@ import json
 import math
 import os
 import pathlib
+import shutil
 import sqlite3
 import threading
 import time
@@ -82,7 +83,12 @@ CREATE TABLE IF NOT EXISTS owner_plan (
 
 
 def resolve_state_dir(create: bool = True) -> str:
-    """MCP 상태 경로: env VINC_MCP_STATE_DIR > ~/.vinc/mcp(개발 기본)."""
+    """SQLite **작업본**이 사는 경로: env VINC_MCP_STATE_DIR > ~/.vinc/mcp(개발 기본).
+
+    ⚠ **여기는 반드시 로컬 파일시스템이어야 한다.** 네트워크 마운트(Azure Files=SMB)를
+    가리키면 SQLite 가 첫 쓰기에서 `database is locked` 로 죽는다 — 실측 장애
+    (2026-08-03, 프로덕션 리비전 Failed). 영속은 :func:`resolve_snapshot_path` 가
+    파일 복사로 담당한다."""
     explicit = os.environ.get("VINC_MCP_STATE_DIR")
     root = pathlib.Path(explicit) if explicit else (pathlib.Path.home() / ".vinc" / "mcp")
     if create:
@@ -90,13 +96,19 @@ def resolve_state_dir(create: bool = True) -> str:
     return str(root)
 
 
-#: 저널 모드 기본값 — **WAL 이 아니다**(2026-08-03).
-#: 상태 DB 를 영속 볼륨(Azure Files = SMB)으로 옮기면서 바꿨다: SQLite 의 WAL 은
-#: 공유 메모리(`-shm`, mmap)를 요구하고 **네트워크 파일시스템에서 지원되지 않는다**
-#: (SQLite 문서가 명시). SMB 마운트에서 WAL 은 열기 실패하거나, 더 나쁘게는 열린 뒤
-#: 락 의미론이 어긋난다. 여기서 WAL 이 벌어 주는 것도 없다 — 커넥션 하나를 쓰기
-#: Lock 으로 직렬화하고 허브는 `min=max=1` 단일 리플리카이며 DB 는 수 KB 다.
-#: 되돌릴 길은 남긴다(env) — 로컬 디스크에서 쓰기 지연이 문제가 되면 WAL 로 올린다.
+def resolve_snapshot_path() -> str | None:
+    """영속 스냅샷 파일 경로: env `VINC_MCP_STATE_SNAPSHOT`(미설정이면 스냅샷 없음).
+
+    **여기가 영속 볼륨(SMB)이다.** 이 경로에는 SQLite 를 열지 않는다 — 바이트 단위
+    **파일 복사**만 한다. 그래서 네트워크 파일시스템의 락 의미론과 무관하다."""
+    p = (os.environ.get("VINC_MCP_STATE_SNAPSHOT") or "").strip()
+    return p or None
+
+
+#: 저널 모드 기본값. 작업본이 로컬이므로 WAL 도 쓸 수 있지만 이득이 없다 — 커넥션
+#: 하나를 쓰기 Lock 으로 직렬화하고 허브는 `min=max=1` 이며 DB 는 수 KB 다. 게다가
+#: WAL 은 사이드카 파일(-wal/-shm)을 만들어 **스냅샷 한 파일로는 일관 복원이 안 된다**
+#: (그 둘까지 복사해야 한다). 롤백 저널은 커밋 후 단일 파일이라 복사가 곧 일관 스냅샷이다.
 _JOURNAL_MODES = ("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF")
 _DEFAULT_JOURNAL = "DELETE"
 
@@ -109,10 +121,39 @@ def resolve_journal_mode() -> str:
 
 
 class Store:
-    def __init__(self, path: str | None = None):
+    """OAuth·쿼터 상태. **로컬 SQLite 작업본 + 영속 볼륨 스냅샷**(2026-08-03 재설계).
+
+    왜 이 모양인가. 상태를 영속 볼륨에 직접 두려고 SQLite 를 Azure Files(SMB) 위에
+    올렸더니 첫 스키마 쓰기가 `database is locked` 로 실패해 MCP 가 기동하지 못했다
+    (프로덕션 장애). SQLite 는 바이트 범위 락에 기대는데 SMB 가 그것을 제대로 주지
+    않는다 — WAL 만의 문제가 아니라 잠금 모델 전반의 문제다.
+
+    그래서 **읽고 쓰는 곳과 남기는 곳을 분리**한다: SQLite 는 로컬 디스크에서 평소대로
+    돌고(락 정상), 영속 볼륨에는 커밋된 DB 파일을 **통째로 복사**해 둔다. 복사는 SMB 가
+    확실히 지원하는 연산이다(임베딩 모델 캐시가 같은 볼륨에서 이미 그렇게 산다).
+    기동 시 작업본이 없으면 스냅샷에서 복원한다 → 배포·재시작을 넘어 커넥터가 유지된다.
+
+    잃을 수 있는 것: 마지막 스냅샷 이후의 쓰기. 그래서 **영속이 필요한 쓰기**(클라이언트
+    등록·토큰·코드·승인요청·플랜)마다 즉시 스냅샷한다. 쿼터 카운터는 스냅샷하지 않는다 —
+    창(window) 만료로 어차피 리셋되는 연성 상태이고, 툴 호출마다 복사하면 비용만 든다.
+    """
+
+    def __init__(self, path: str | None = None, *, snapshot: str | None = None):
         if path is None:
             path = os.path.join(resolve_state_dir(), "oauth.db")
         self.path = path
+        self.snapshot_path = snapshot if snapshot is not None else resolve_snapshot_path()
+        #: 진단 두 축을 **따로** 든다 — 하나로 뭉치면 기동 끝의 저장이 복원 결과를
+        #: 덮어써서 "무엇이 일어났는지"를 잃는다(복원됐는지가 이 사고의 관심사다).
+        self.restore_state = "off" if not self.snapshot_path else "pending"
+        self.snapshot_state = "off" if not self.snapshot_path else "pending"
+        self.snapshot_error = ""
+        # 작업본 상위 디렉터리는 **여기서** 보장한다. 호출부가 만들어 주리라 믿으면
+        # `unable to open database file` 로 죽는다 — 엔트리포인트가 만들긴 하지만
+        # 그 한 줄이 빠지는 것이 바로 이 파일이 낸 사고의 계보다.
+        if path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        self._restore_snapshot()
         self._lock = threading.Lock()
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
@@ -125,6 +166,70 @@ class Store:
             self._db.execute("PRAGMA busy_timeout=3000")
             self._db.executescript(_SCHEMA)
             self._db.commit()
+        self._save_snapshot()   # 첫 기동에 스키마만이라도 남긴다(경로 쓰기 가능 확인)
+
+    # ── 영속 스냅샷 ──────────────────────────────────────────────────────────
+    # 전 구간 fail-soft 다: 스냅샷은 **증강**이지 서비스의 성립 조건이 아니다.
+    # 여기서 예외를 올리면 이 파일이 낸 바로 그 장애(상태 저장 실패 → MCP 전면 정지)를
+    # 되풀이한다. 실패는 상태 문자열로 남기고 서비스는 계속 산다.
+
+    def _restore_snapshot(self) -> None:
+        """작업본이 없고 스냅샷이 있으면 복원한다(배포 직후 경로)."""
+        snap = self.snapshot_path
+        if not snap:
+            return
+        try:
+            if os.path.exists(self.path) and os.path.getsize(self.path) > 0:
+                # 작업본이 살아 있으면 **덮지 않는다** — 오래된 스냅샷이 방금 발급한
+                # 토큰을 되돌리면 재기동이 아니라 데이터 손실이다.
+                self.restore_state = "working-copy-kept"
+                return
+            if not os.path.exists(snap) or os.path.getsize(snap) == 0:
+                self.restore_state = "no-snapshot"
+                return
+            shutil.copyfile(snap, self.path)
+            self.restore_state = "restored"
+        except Exception as exc:                     # noqa: BLE001 — fail-soft 가 요점
+            self.restore_state = "restore-failed"
+            self.snapshot_error = f"{type(exc).__name__}: {exc}"
+
+    def _save_snapshot(self) -> None:
+        """작업본을 스냅샷 경로로 복사한다 — 임시 파일에 쓰고 rename(부분 파일 금지).
+
+        rename 이 막히는 파일시스템이 있으므로(교차 장치·SMB 특이) 실패하면 직접
+        복사로 물러난다. 어느 쪽도 안 되면 상태만 남기고 넘어간다."""
+        snap = self.snapshot_path
+        if not snap:
+            return
+        tmp = f"{snap}.tmp"
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(snap)) or ".", exist_ok=True)
+            shutil.copyfile(self.path, tmp)
+            try:
+                os.replace(tmp, snap)
+            except OSError:
+                shutil.copyfile(tmp, snap)
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            self.snapshot_state = "ok"
+            self.snapshot_error = ""
+        except Exception as exc:                     # noqa: BLE001
+            self.snapshot_state = "save-failed"
+            self.snapshot_error = f"{type(exc).__name__}: {exc}"
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    def health(self) -> dict:
+        """상태 저장소 진단(‥/health 노출용). 영속이 실제로 되고 있는지가 요점이다 —
+        이 사고의 급소가 '되는 줄 알았는데 안 되고 있었다'였다."""
+        return {"path": self.path, "journal_mode": getattr(self, "journal_mode", ""),
+                "snapshot": self.snapshot_path or "", "snapshot_state": self.snapshot_state,
+                "restore_state": self.restore_state,
+                **({"snapshot_error": self.snapshot_error} if self.snapshot_error else {})}
 
     def close(self) -> None:
         with self._lock:
@@ -140,6 +245,7 @@ class Store:
                 (client_id, json.dumps(redirect_uris), name or "",
                  time.time() if now is None else now))
             self._db.commit()
+            self._save_snapshot()
 
     def get_client(self, client_id: str) -> dict | None:
         row = self._db.execute(
@@ -157,6 +263,7 @@ class Store:
                 "VALUES(?,?,?,?,?,?,?)",
                 (code, client_id, redirect_uri, challenge, owner, plan, exp))
             self._db.commit()
+            self._save_snapshot()
 
     def pop_code(self, code: str) -> dict | None:
         with self._lock:
@@ -167,6 +274,7 @@ class Store:
                 return None
             self._db.execute("DELETE FROM codes WHERE code=?", (code,))
             self._db.commit()
+            self._save_snapshot()
         return dict(row)
 
     # ── tokens ────────────────────────────────────────────────────────────────
@@ -177,6 +285,7 @@ class Store:
                 "INSERT OR REPLACE INTO tokens(token,client_id,owner,plan,exp) VALUES(?,?,?,?,?)",
                 (token, client_id, owner, plan, exp))
             self._db.commit()
+            self._save_snapshot()
 
     def get_token(self, token: str, now: float | None = None) -> dict | None:
         """유효 토큰이면 {client_id,owner,plan,exp}, 만료면 삭제 후 None."""
@@ -200,6 +309,7 @@ class Store:
                 "INSERT OR REPLACE INTO refresh(token,client_id,owner,plan) VALUES(?,?,?,?)",
                 (token, client_id, owner, plan))
             self._db.commit()
+            self._save_snapshot()
 
     def pop_refresh(self, token: str) -> dict | None:
         with self._lock:
@@ -209,6 +319,7 @@ class Store:
                 return None
             self._db.execute("DELETE FROM refresh WHERE token=?", (token,))
             self._db.commit()
+            self._save_snapshot()
         return dict(row)
 
     # ── connect_requests(회원 승인 흐름, 단일 소비) ────────────────────────────
@@ -220,6 +331,7 @@ class Store:
                 "VALUES(?,?,?,?,?,?)",
                 (req_id, client_id, redirect_uri, challenge, state, exp))
             self._db.commit()
+            self._save_snapshot()
 
     def get_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
         t = time.time() if now is None else now
@@ -242,6 +354,7 @@ class Store:
             self._db.execute(
                 "UPDATE connect_requests SET consumed=1 WHERE req_id=?", (req_id,))
             self._db.commit()
+            self._save_snapshot()
         return dict(row)
 
     # ── owner_plan(연결 플랜 스냅샷) ───────────────────────────────────────────
@@ -251,6 +364,7 @@ class Store:
                 "INSERT OR REPLACE INTO owner_plan(owner,plan,updated_at) VALUES(?,?,?)",
                 (owner, plan, time.time() if now is None else now))
             self._db.commit()
+            self._save_snapshot()
 
     def get_owner_plan(self, owner: str) -> str | None:
         row = self._db.execute(
@@ -328,4 +442,5 @@ class Store:
             n += self._db.execute(
                 "DELETE FROM connect_requests WHERE exp<? OR consumed=1", (t,)).rowcount
             self._db.commit()
+            self._save_snapshot()
         return n

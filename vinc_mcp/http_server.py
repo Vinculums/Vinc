@@ -665,7 +665,20 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(405, {"error": "SSE stream not provided; POST JSON-RPC"},
                               {"Allow": "POST, DELETE, OPTIONS"})
         if url.path == "/health":
-            return self._json(200, {"status": "ok"})
+            # 상태 저장소 진단을 함께 싣는다(2026-08-03). 이 사고의 급소가 정확히
+            # 이것이었다: OAuth 등록이 배포마다 날아가고 있었는데 /health 는 200 만
+            # 답해 **아무 데도 드러나지 않았다**. 경로·저널·스냅샷 결과를 여기 노출해
+            # "영속이 실제로 되고 있는가"를 한 번의 curl 로 확인할 수 있게 한다.
+            # 비밀은 없다 — 경로와 상태 문자열뿐이다.
+            body: dict = {"status": "ok"}
+            store = getattr(self.app.oauth, "store", None)
+            health = getattr(store, "health", None)
+            if callable(health):
+                try:
+                    body["oauth_state"] = health()
+                except Exception as exc:   # noqa: BLE001 — 진단이 헬스를 죽이지 않게
+                    body["oauth_state"] = {"error": f"{type(exc).__name__}: {exc}"}
+            return self._json(200, body)
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802

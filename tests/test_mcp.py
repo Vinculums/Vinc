@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -203,6 +204,47 @@ class _HTTPFixture(unittest.TestCase):
                 return r.status, json.loads(r.read().decode() or "{}")
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode() or "{}")
+
+
+class HealthStateTests(unittest.TestCase):
+    """/health 가 상태 저장소 진단을 싣는가(2026-08-03).
+
+    이 사고의 급소가 정확히 이것이었다: OAuth 등록이 배포마다 사라지고 있었는데
+    /health 는 200 만 답해 **어디에도 드러나지 않았다**. 사람이 기억해서 로그를
+    뒤져야 알 수 있는 상태를 만들지 않는다."""
+
+    def _serve(self, app):
+        httpd = make_server(app, "127.0.0.1", 0)
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{httpd.server_address[1]}/health", timeout=5) as r:
+            return r.status, json.loads(r.read().decode())
+
+    def test_health_reports_snapshot_state(self):
+        from vinc_mcp.store import Store
+        tmp = tempfile.mkdtemp()
+        store = Store(os.path.join(tmp, "work", "oauth.db"),
+                      snapshot=os.path.join(tmp, "persist", "oauth.db"))
+        self.addCleanup(store.close)
+        app = MCPHTTPApp(_StubBridge(), static_token="t",
+                         oauth=OAuthGate("https://mcp.test", None, store=store))
+        code, obj = self._serve(app)
+        self.assertEqual(code, 200)
+        self.assertEqual(obj["status"], "ok")
+        st = obj["oauth_state"]
+        self.assertEqual(st["snapshot_state"], "ok")      # 영속이 실제로 되고 있다
+        self.assertTrue(st["snapshot"].endswith("oauth.db"))
+        self.assertNotEqual(st["journal_mode"], "wal")
+
+    def test_health_ok_without_oauth(self):
+        """OAuth 를 안 켠 배치(정적 토큰 전용)에서도 /health 는 200 이어야 한다 —
+        진단을 얹다가 헬스 자체를 깨뜨리면 CD 검증이 통째로 막힌다."""
+        code, obj = self._serve(MCPHTTPApp(_StubBridge(), static_token="t"))
+        self.assertEqual(code, 200)
+        self.assertEqual(obj["status"], "ok")
+        self.assertNotIn("oauth_state", obj)
 
 
 class HTTPTransportTests(_HTTPFixture):

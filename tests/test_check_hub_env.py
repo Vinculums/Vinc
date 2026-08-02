@@ -86,35 +86,49 @@ class CheckHubEnvTest(unittest.TestCase):
                [{"name": name, "value": value}]
 
     def test_상태경로_미설정은_정상이다(self):
-        """엔트리포인트가 /data/mcp 를 기본값으로 주므로 env 부재가 정상이다 —
-        여기서 실패시키면 멀쩡한 배포가 막힌다."""
+        """엔트리포인트가 둘 다 기본값을 주므로 env 부재가 정상이다 — 여기서
+        실패시키면 멀쩡한 배포가 막힌다."""
         code, _ = self._check(self._env(list(self.m.REQUIRED)))
         self.assertEqual(code, 0)
 
-    def test_상태경로가_영속볼륨_안이면_통과(self):
-        code, _ = self._check(self._with("VINC_MCP_STATE_DIR", "/data/mcp"))
-        self.assertEqual(code, 0)
+    def test_작업본이_로컬이고_스냅샷이_영속볼륨이면_통과(self):
+        env = [{"name": n, "value": ""} for n in self.m.REQUIRED] + [
+            {"name": "VINC_MCP_STATE_DIR", "value": "/var/lib/vinc-mcp"},
+            {"name": "VINC_MCP_STATE_SNAPSHOT", "value": "/data/mcp/oauth.db"}]
+        code, err = self._check(env)
+        self.assertEqual(code, 0, err)
 
-    def test_상태경로가_영속볼륨_밖이면_배포를_막는다(self):
-        """이 사고의 재발 지점 — 폴백 경로(/root/.vinc/mcp)는 이미지 레이어라
-        배포마다 OAuth 등록이 사라진다."""
-        for bad in ("/root/.vinc/mcp", "/tmp/mcp", "/var/lib/vinc-mcp"):
+    def test_작업본이_영속볼륨이면_배포를_막는다(self):
+        """**사고 ② 재발 지점.** SQLite 를 SMB(/data)에 올리면 첫 쓰기가
+        `database is locked` 로 죽어 MCP 가 기동하지 못한다(허브 전면 장애)."""
+        for bad in ("/data/mcp", "/data/mcp/", "/data/state"):
             with self.subTest(path=bad):
                 code, err = self._check(self._with("VINC_MCP_STATE_DIR", bad))
                 self.assertEqual(code, 1, f"{bad} 가 통과했다")
                 self.assertIn("VINC_MCP_STATE_DIR", err)
-                self.assertIn("unknown client_id", err)   # 왜 막는지까지 말한다
+                self.assertIn("database is locked", err)   # 왜 막는지까지 말한다
 
-    def test_상태경로가_비면_막는다(self):
-        """경로를 secretRef 로 넣으면 값이 안 보여 검증이 불가능하다 — 통과시키면
-        게이트가 있으나 마나다."""
-        code, err = self._check(self._with("VINC_MCP_STATE_DIR", ""))
-        self.assertEqual(code, 1)
-        self.assertIn("VINC_MCP_STATE_DIR", err)
+    def test_스냅샷이_영속볼륨_밖이면_배포를_막는다(self):
+        """**사고 ① 재발 지점.** 스냅샷이 이미지 레이어에 있으면 배포마다 등록이
+        사라져 커넥터가 400 으로 끊긴다."""
+        for bad in ("/root/.vinc/mcp/oauth.db", "/tmp/oauth.db"):
+            with self.subTest(path=bad):
+                code, err = self._check(self._with("VINC_MCP_STATE_SNAPSHOT", bad))
+                self.assertEqual(code, 1, f"{bad} 가 통과했다")
+                self.assertIn("unknown client_id", err)
+
+    def test_경로가_비면_막는다(self):
+        """secretRef 로 넣으면 값이 안 보여 검증이 불가능하다 — 통과시키면 게이트가
+        있으나 마나다."""
+        for key in ("VINC_MCP_STATE_DIR", "VINC_MCP_STATE_SNAPSHOT"):
+            with self.subTest(key=key):
+                code, err = self._check(self._with(key, ""))
+                self.assertEqual(code, 1)
+                self.assertIn(key, err)
 
     def test_경로오류만으로_막힐_때_사유를_정확히_말한다(self):
         """'0개 누락'으로 끝나면 사람이 없는 누락을 찾아 헤맨다."""
-        _, err = self._check(self._with("VINC_MCP_STATE_DIR", "/tmp/x"))
+        _, err = self._check(self._with("VINC_MCP_STATE_DIR", "/data/x"))
         self.assertIn("값 오류 1건", err)
         self.assertNotIn("필수값 0개 누락", err)
 

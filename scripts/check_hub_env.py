@@ -49,35 +49,55 @@ EXPECTED: dict[str, str] = {
     "VINC_FREE_MAX_DOMAINS": "없으면 무료 주제 상한이 꺼진다 — AP-1 의 유일한 무료/유료 차별축",
 }
 
-# 값까지 보는 유일한 항목(2026-08-03). 위 규율("존재만 본다")의 의도적 예외다 —
-# 이건 시크릿이 아니라 **경로**이고, 틀린 값이 배포를 조용히 망가뜨린 전력이 있다.
+# 값까지 보는 항목(2026-08-03). 위 규율("존재만 본다")의 의도적 예외다 — 이건
+# 시크릿이 아니라 **경로**이고, 틀린 값이 배포를 두 번이나 망가뜨렸다.
 #
-# 배경: MCP OAuth 클라이언트 등록·토큰이 `$VINC_MCP_STATE_DIR/oauth.db` 에 있는데
-# 미설정이면 `~/.vinc/mcp`(컨테이너에선 /root — **이미지 레이어**)로 폴백했다.
-# 그래서 배포마다 등록이 날아가 커넥터가 `400 {"error":"unknown client_id"}` 로
-# 끊겼다. 지금은 엔트리포인트가 `/data/mcp` 를 기본값으로 주므로 **미설정이 정상**
-# 이다. 위험한 쪽은 반대다: 누군가 이 env 를 영속 볼륨 **밖** 경로로 설정하는 것.
+# 배경(사고 둘):
+#  ① 상태 DB 가 `~/.vinc/mcp`(컨테이너에선 /root = 이미지 레이어)로 폴백해 배포마다
+#     OAuth 등록이 날아갔다 → 커넥터가 `400 unknown client_id` 로 영구히 막혔다.
+#  ② 그래서 상태 DB 를 영속 볼륨(`/data/mcp`)으로 옮겼더니 **SQLite 가 SMB 에서
+#     `database is locked` 로 기동 실패**해 허브가 내려갔다.
+#
+# 그래서 지금 구조는 **작업본은 로컬, 스냅샷만 영속 볼륨**이다. 검사 방향이 ①때와
+# 정반대라는 점이 중요하다: `VINC_MCP_STATE_DIR`(작업본)이 `/data` 를 가리키면
+# **그게 ②를 재발시키는 값**이다.
 _STATE_DIR_KEY = "VINC_MCP_STATE_DIR"
+_SNAPSHOT_KEY = "VINC_MCP_STATE_SNAPSHOT"
 #: 영속 마운트 접두(Azure Files 가 /data 에 붙는다 — DEPLOYMENT.md §4.1).
 _PERSISTENT_PREFIX = "/data/"
 
 
-def _check_state_dir(env_list: list[dict]) -> list[str]:
-    """`VINC_MCP_STATE_DIR` 이 설정돼 있다면 영속 볼륨 안을 가리키는지 본다.
-    반환 = 오류 메시지 목록(빈 목록이면 통과). 미설정은 통과(엔트리포인트 기본값)."""
+def _value_of(env_list: list[dict], key: str) -> str | None:
+    """env 배열에서 이름으로 값을 찾는다. 미설정이면 None, 값 없음이면 ''."""
     for e in env_list:
-        if not isinstance(e, dict) or e.get("name") != _STATE_DIR_KEY:
-            continue
-        val = (e.get("value") or "").strip()
-        if not val:
-            # secretRef 로 넣었거나 값이 안 보인다 — 경로를 시크릿으로 둘 이유가 없다.
-            return [f"{_STATE_DIR_KEY} 값이 비어 있다(secretRef?). 경로는 평문이어야 "
-                    f"검증할 수 있다 — {_PERSISTENT_PREFIX}… 로 직접 넣을 것"]
-        if not val.startswith(_PERSISTENT_PREFIX):
-            return [f"{_STATE_DIR_KEY}='{val}' 가 영속 볼륨({_PERSISTENT_PREFIX}) 밖이다 — "
-                    f"배포마다 OAuth 등록이 사라져 커넥터가 "
-                    f"400 unknown client_id 로 끊긴다(2026-08-03 사고)"]
-    return []
+        if isinstance(e, dict) and e.get("name") == key:
+            return (e.get("value") or "").strip()
+    return None
+
+
+def _check_state_dir(env_list: list[dict]) -> list[str]:
+    """상태 경로 두 개의 **방향**을 본다. 반환 = 오류 메시지 목록(빈 목록이면 통과).
+
+    둘 다 미설정이 정상이다 — 엔트리포인트가 기본값을 준다."""
+    errs: list[str] = []
+    work = _value_of(env_list, _STATE_DIR_KEY)
+    if work is not None:
+        if not work:
+            errs.append(f"{_STATE_DIR_KEY} 값이 비어 있다(secretRef?). 경로는 평문이어야 "
+                        f"검증할 수 있다")
+        elif work.startswith(_PERSISTENT_PREFIX):
+            errs.append(f"{_STATE_DIR_KEY}='{work}' 가 영속 볼륨({_PERSISTENT_PREFIX})을 "
+                        f"가리킨다 — SQLite 작업본은 **로컬**이어야 한다. SMB 위에서는 "
+                        f"database is locked 로 MCP 가 기동하지 못한다(2026-08-03 장애). "
+                        f"영속은 {_SNAPSHOT_KEY}(파일 복사)가 담당한다")
+    snap = _value_of(env_list, _SNAPSHOT_KEY)
+    if snap is not None:
+        if not snap:
+            errs.append(f"{_SNAPSHOT_KEY} 값이 비어 있다(secretRef?). 경로는 평문이어야 한다")
+        elif not snap.startswith(_PERSISTENT_PREFIX):
+            errs.append(f"{_SNAPSHOT_KEY}='{snap}' 가 영속 볼륨({_PERSISTENT_PREFIX}) 밖이다 — "
+                        f"배포마다 OAuth 등록이 사라져 커넥터가 400 unknown client_id 로 끊긴다")
+    return errs
 
 
 def check(env_list: list[dict]) -> int:

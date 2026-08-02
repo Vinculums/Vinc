@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """vinc_mcp.store — SQLite OAuth·쿼터 영속 스토어 단위."""
 import os
+import shutil
+import time
 
 import pytest
 
@@ -136,13 +138,98 @@ def test_client_registration_survives_restart(tmp_path):
 
 
 def test_journal_mode_defaults_off_wal(tmp_path, monkeypatch):
-    """저널 모드 기본은 WAL 이 아니다 — 상태 DB 가 Azure Files(SMB) 위에 산다.
+    """저널 모드 기본은 WAL 이 아니다.
 
-    SQLite 의 WAL 은 `-shm` 공유 메모리를 요구해 네트워크 파일시스템에서 동작하지
-    않는다. 여기서 WAL 로 되돌아가면 영속화 수정이 오히려 기동을 깨뜨린다."""
+    작업본이 로컬이라 WAL 자체는 가능하지만, WAL 은 `-wal`/`-shm` 사이드카 파일을
+    만들어 **DB 파일 하나만 복사하는 스냅샷으로는 일관 복원이 안 된다**. 롤백 저널은
+    커밋 후 단일 파일이라 복사가 곧 스냅샷이다."""
     monkeypatch.delenv("VINC_MCP_SQLITE_JOURNAL", raising=False)
     s = Store(os.path.join(tmp_path, "oauth.db"))
     assert s.journal_mode != "wal"
+    s.close()
+
+
+# ── 영속 스냅샷 (2026-08-03 재설계) ──────────────────────────────────────────
+# SQLite 를 SMB 에 올렸다가 `database is locked` 로 허브가 내려간 뒤의 모양이다:
+# 작업본은 로컬, 영속 볼륨에는 파일 복사만. 아래가 그 계약을 고정한다.
+
+def test_snapshot_restores_registration_after_wipe(tmp_path):
+    """**사고 ① 회귀** — 작업본이 지워져도(배포=이미지 레이어 교체) 스냅샷에서
+    등록이 돌아온다. 이게 되면 커넥터가 400 unknown client_id 를 안 만난다."""
+    work = os.path.join(tmp_path, "work", "oauth.db")
+    snap = os.path.join(tmp_path, "persist", "oauth.db")
+    s1 = Store(work, snapshot=snap)
+    s1.add_client("cid-1", ["https://claude.ai/api/mcp/auth_callback"], "Claude")
+    s1.add_token("t1", "cid-1", "user:u1", "pro", exp=9e9)
+    assert s1.snapshot_state == "ok", s1.snapshot_error
+    s1.close()
+
+    shutil.rmtree(os.path.dirname(work))          # 리비전 교체 = 작업본 소멸
+    assert not os.path.exists(work)
+
+    s2 = Store(work, snapshot=snap)               # 새 리비전 기동
+    assert s2.restore_state == "restored"
+    got = s2.get_client("cid-1")
+    assert got is not None, "스냅샷 복원 실패 — unknown client_id 재발"
+    assert got["redirect_uris"] == ["https://claude.ai/api/mcp/auth_callback"]
+    assert s2.get_token("t1")["owner"] == "user:u1"
+    s2.close()
+
+
+def test_snapshot_does_not_clobber_existing_working_copy(tmp_path):
+    """작업본이 이미 있으면 스냅샷으로 덮지 않는다 — 오래된 스냅샷이 최신 상태를
+    되돌리면 방금 발급한 토큰이 사라진다(재시작 없는 재기동 경로)."""
+    work = os.path.join(tmp_path, "oauth.db")
+    snap = os.path.join(tmp_path, "snap.db")
+    s1 = Store(work, snapshot=snap)
+    s1.add_client("old", ["https://a/cb"], "")
+    s1.close()
+    s2 = Store(work, snapshot=snap)               # 작업본 살아 있음
+    assert s2.restore_state == "working-copy-kept"
+    s2.add_client("new", ["https://b/cb"], "")
+    assert s2.get_client("old") and s2.get_client("new")
+    s2.close()
+
+
+def test_snapshot_failure_is_soft(tmp_path):
+    """**사고 ② 회귀** — 스냅샷 경로가 못 쓰는 곳이어도 스토어는 산다.
+
+    영속은 증강이고 인증은 성립 조건이다. 여기서 예외가 올라가면 그날처럼 MCP 가
+    통째로 죽는다."""
+    work = os.path.join(tmp_path, "oauth.db")
+    # 파일을 디렉터리 자리에 놓아 스냅샷 쓰기를 확실히 실패시킨다.
+    blocker = os.path.join(tmp_path, "blocked")
+    with open(blocker, "w", encoding="utf-8") as f:
+        f.write("not a directory")
+    s = Store(work, snapshot=os.path.join(blocker, "oauth.db"))
+    s.add_client("c", ["https://a/cb"], "")       # 예외가 새어 나오면 안 된다
+    assert s.get_client("c") is not None          # 기능은 정상
+    assert s.snapshot_state == "save-failed"      # 실패는 조용히 숨기지 않는다
+    assert s.snapshot_error
+    assert s.health()["snapshot_state"] == "save-failed"
+    s.close()
+
+
+def test_snapshot_off_when_unset(tmp_path):
+    """스냅샷 미설정(데스크탑 기본)이면 아무것도 하지 않는다."""
+    s = Store(os.path.join(tmp_path, "oauth.db"), snapshot=None)
+    s.add_client("c", ["https://a/cb"], "")
+    assert s.snapshot_state == "off"
+    assert s.health()["snapshot"] == ""
+    s.close()
+
+
+def test_quota_writes_are_not_snapshotted(tmp_path):
+    """쿼터 카운터는 연성 상태다 — 툴 호출마다 SMB 로 복사하면 비용만 든다.
+    창 만료로 어차피 리셋되므로 잃어도 무방하다."""
+    work = os.path.join(tmp_path, "oauth.db")
+    snap = os.path.join(tmp_path, "snap.db")
+    s = Store(work, snapshot=snap)
+    before = os.path.getmtime(snap)
+    time.sleep(0.01)
+    for _ in range(3):
+        s.quota_check("user:u", limit=100, window_s=60, lock_s=60)
+    assert os.path.getmtime(snap) == before, "쿼터 쓰기가 스냅샷을 유발했다"
     s.close()
 
 

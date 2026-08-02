@@ -457,8 +457,27 @@ def main(argv: list[str] | None = None) -> int:
                 from vinc_mcp.store import Store, resolve_state_dir
                 issuer = args.issuer or f"http://{args.host}:{args.port}"
                 # 상태는 디스크 SQLite 로 영속(B-A) — 재기동에도 커넥터 유지.
-                # 경로: env VINC_MCP_STATE_DIR(프로덕션 = /var/lib/vinc-mcp) > ~/.vinc/mcp.
-                store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
+                # 작업본 경로: env VINC_MCP_STATE_DIR > ~/.vinc/mcp. **로컬이어야 한다**
+                # (SMB 위 SQLite 는 `database is locked` 로 죽는다 — 2026-08-03 장애).
+                # 영속은 VINC_MCP_STATE_SNAPSHOT 로 파일 복사(store.py 머리주석).
+                #
+                # ⚠ **fail-soft**: 상태 저장소를 못 열어도 MCP 를 죽이지 않는다. 바로 이
+                # 자리에서 올라온 예외가 프로세스를 끝내 허브 전체가 404 였다(같은 날
+                # 리비전 Failed). 영속은 편의이고 인증 서비스는 성립 조건이다 — 못 열면
+                # 인메모리로 강등해 **살아서** 답하고(재시작 시 재인가 필요) 사유를 남긴다.
+                try:
+                    store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
+                except Exception as exc:   # noqa: BLE001 — 강등이 요점
+                    print(f"[mcp] 상태 저장소를 열지 못했다 — 인메모리로 강등한다: "
+                          f"{type(exc).__name__}: {exc}", file=sys.stderr)
+                    print("[mcp] 재시작하면 커넥터 재인가가 필요하다. "
+                          "경로가 네트워크 마운트가 아닌지 확인할 것.", file=sys.stderr)
+                    store = Store(":memory:", snapshot=None)
+                st = store.health()
+                print(f"[mcp] oauth state: {st['path']} · journal={st['journal_mode']} "
+                      f"· snapshot={st['snapshot'] or '(none)'} [{st['snapshot_state']}]"
+                      + (f" — {st['snapshot_error']}" if st.get("snapshot_error") else ""),
+                      file=sys.stderr)
                 # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
                 gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
             # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
