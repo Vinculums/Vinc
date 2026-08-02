@@ -120,10 +120,12 @@ body {
   font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
 }
 .lnb-navrow:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
-/* 활성 = 면 + 좌측 2px 바 + 굵기(Figma NavItem State=Active). 색만으로 말하지 않는다. */
+/* 활성 = **채워진 알약 + 굵기**. 좌측 색띠(box-shadow inset 2px)를 쓰지 말 것.
+   각 줄 옆에 색 막대가 서면 장식이 내용보다 먼저 읽힌다(발주자 지적 2026-07-31,
+   문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 Atlas 표면에서
+   항상 활성이라, 주제를 고르는 순간 사이드바에 띠가 **두 개 동시에** 섰다. */
 .lnb-navrow.on {
   background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
-  box-shadow: inset 2px 0 0 hsl(var(--ring));
 }
 .lnb-ico { display: inline-flex; flex: 0 0 auto; color: currentColor; }
 .lnb-ico svg { width: 15px; height: 15px; }
@@ -144,7 +146,9 @@ body {
   padding: .25rem .5rem; border-radius: var(--radius-sm, .625rem);
 }
 .lnb-group:hover { background: hsl(var(--ring) / .1); }
-.lnb-group.on { font-weight: 600; box-shadow: inset 2px 0 0 hsl(var(--ring)); }
+/* 홈 행과 같은 알약. 색띠를 걷어내면서 배경을 함께 준다 — 굵기만 남기면 hover
+   배경(--ring/.1)이 활성보다 더 눈에 띄는 역전이 난다. */
+.lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .14); }
 .lnb-caret {
   display: inline-block; flex: 0 0 auto; width: .7rem; text-align: center;
   color: hsl(var(--caption-foreground));
@@ -158,24 +162,40 @@ body {
   flex: 0 0 auto; font-family: var(--font-mono); font-size: .7rem;
   color: hsl(var(--caption-foreground));
 }
-.lnb-docs { display: flex; flex-direction: column; }
-/* 들여쓰기 = 그 주제 안 개념 계층 깊이(선행·파생 BFS). 최근 수정순이 아니라
-   구조순이므로 층이 눈에 보여야 정렬이 읽힌다. */
+/* 문서 묶음 = 주제의 자식. **세로 안내선**이 그 종속을 말한다 — 들여쓰기만으로는
+   1단이 10.88px 라 주제와 첫 문서가 3.4px 밖에 안 벌어져 층이 안 읽혔다. 선은
+   캐럿 중심(.5rem 패딩 + .35rem 캐럿 절반)에 맞춰 세워 시선이 이어진다. */
+.lnb-docs {
+  display: flex; flex-direction: column;
+  margin-left: .85rem; padding-left: .45rem;
+  border-left: 1px solid hsl(var(--border));
+}
+/* 깊이는 세 갈래로 말한다: 들여쓰기(--lvl) · 잉크 3단(--ink) · 도트 차등.
+   색을 계속 흐리면 AA 하한에 닿으므로 잉크는 2단까지만 쓰고, 그 아래 깊이는
+   들여쓰기와 도트가 받는다. 폭이 232px 라 단차를 무한정 키울 수 없다. */
 .lnb-doc {
   display: flex; align-items: center; gap: .4rem; width: 100%; min-height: 1.75rem;
   border: none; background: none; font: inherit; font-size: var(--fs-sm);
-  color: hsl(var(--muted-foreground)); cursor: pointer; text-align: left;
-  padding: .2rem .5rem .2rem calc(1.05rem + var(--lvl, 0) * .68rem);
+  cursor: pointer; text-align: left;
+  color: hsl(var(--muted-foreground));
+  padding: .2rem .5rem .2rem calc(.3rem + var(--lvl, 0) * .72rem);
   border-radius: var(--radius-sm, .625rem);
 }
+.lnb-doc[style*="--ink:0"] { color: hsl(var(--foreground)); }
+.lnb-doc[style*="--ink:2"] { color: hsl(var(--caption-foreground)); }
 .lnb-doc:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
 .lnb-doc.on {
   background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
+/* 도트도 깊이를 거든다: 0단은 채워진 점(가지의 시작), 그 아래는 빈 점이 점점 작아진다. */
 .lnb-dot {
   flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px;
   border: 1px solid hsl(var(--caption-foreground));
 }
+.lnb-doc[style*="--ink:0"] .lnb-dot {
+  background: hsl(var(--muted-foreground)); border-color: hsl(var(--muted-foreground));
+}
+.lnb-doc[style*="--ink:2"] .lnb-dot { width: 4px; height: 4px; }
 .lnb-doc.on .lnb-dot { background: hsl(var(--ring)); border-color: hsl(var(--ring)); }
 .lnb-dtitle { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lnb-none { margin: .35rem .6rem; font-size: var(--fs-sm); }
@@ -235,18 +255,70 @@ body {
 #tb-lens, #tb-views { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-views:empty, #tb-lens:empty { display: none; }
 
-/* 상시 검색 — 조회 동선의 제1 진입점(D57). */
-#tb-search { position: relative; flex: 1 1 auto; max-width: 40rem; margin-left: auto; }
-#tb-search > .tb-sicon,
+/* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
+   바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
+   반투명이면 경계가 녹는다. `--input` 과 `--border` 는 두 테마 모두 같은 값이라
+   테두리만 세워서는 안 되고(실측), 대신 **떠 있는 면**으로 만든다:
+     ① 배경 = `--card`  — 라이트 98% / 다크 13% 로 둘 다 muted 상단 바보다 밝다
+                          (두 테마에서 같은 방향으로 떠 보인다)
+     ② 바깥 그림자(elev-1) — 눌린 면이 아니라 올라온 면. 드롭다운·시트가 이미
+                          쓰는 층 언어와 같은 결이다
+     ③ 모드 버튼과 입력 사이 세로 구분선 — 영역이 둘로 나뉜 컨트롤임을 형태로 말한다 */
+#tb-search { position: relative; flex: 1 1 auto; max-width: 56rem; margin-left: auto; }
 #tb-search > #tb-q,
 #tb-search > .tb-kbd { vertical-align: middle; }
 #tb-search { display: flex; align-items: center; gap: .5rem;
-  height: 2.15rem; padding: 0 .7rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
-  background: hsl(var(--background) / .8); }
-#tb-search:focus-within { border-color: hsl(var(--ring)); }
+  height: 2.35rem; padding: 0 .7rem 0 0;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius, .75rem);
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-1, none); }
+#tb-search:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: var(--shadow-elev-1, none), 0 0 0 3px hsl(var(--ring) / .16);
+}
 .tb-sicon { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto; }
 .tb-sicon svg { width: 15px; height: 15px; }
+
+/* 모드 트리거 — 아이콘 자리를 겸한다(아이콘은 그대로, 라벨·캐럿이 붙는다).
+   오른쪽 테두리가 입력과의 구분선이다. */
+.tb-mode {
+  display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  align-self: stretch; margin: 0; padding: 0 .6rem 0 .7rem;
+  border: none; border-right: 1px solid hsl(var(--border));
+  border-radius: var(--radius, .75rem) 0 0 var(--radius, .75rem);
+  background: hsl(var(--muted) / .5); color: hsl(var(--foreground));
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.tb-mode:hover { background: hsl(var(--muted)); }
+.tb-mode:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.tb-mode-label { white-space: nowrap; }
+/* 아래를 가리키는 캐럿 — 전용 자산을 늘리지 않고 chevron-left 를 돌려 쓴다. */
+.tb-caret { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto;
+  transform: rotate(-90deg); }
+.tb-caret svg { width: 12px; height: 12px; }
+#tb-search[data-mode="ask"] .tb-mode { background: hsl(var(--ring) / .14); }
+#tb-search[data-mode="ask"] .tb-sicon { color: hsl(var(--ring)); }
+
+/* 모드 메뉴 — 떠 있는 크롬(D37 글래스 층과 같은 등급). */
+.tb-modemenu {
+  position: absolute; top: 2.65rem; left: 0; width: 19rem; max-width: 92vw;
+  border: 1px solid hsl(var(--border) / .6); border-radius: var(--radius);
+  background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+  padding: .35rem; z-index: 61;
+}
+.tb-mrow {
+  display: grid; grid-template-columns: 1.1rem 1fr auto; gap: .6rem;
+  align-items: center; width: 100%; text-align: left;
+  border: none; background: none; padding: .5rem; border-radius: .5rem;
+  cursor: pointer; font: inherit; color: inherit;
+}
+.tb-mrow:hover, .tb-mrow:focus-visible { background: hsl(var(--ring) / .1); }
+.tb-mrow .icon { color: hsl(var(--caption-foreground)); }
+.tb-mrow[aria-checked="true"] .icon { color: hsl(var(--ring)); }
+.tb-mname { display: block; font-weight: 600; }
+.tb-mhint { display: block; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.tb-mtick { color: hsl(var(--ring)); font-family: var(--font-mono); }
+
 #tb-q {
   flex: 1 1 auto; min-width: 0; border: none; outline: none; background: none;
   color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-base);
@@ -287,6 +359,88 @@ body {
   color: hsl(var(--link)); border-radius: 0 0 .5rem .5rem;
 }
 .tb-all:hover { background: hsl(var(--ring) / .1); }
+
+/* ── 묻기 · 대화 패널 (D73) ───────────────────────────────────────────────
+   검색바에 매달린 떠 있는 패널이라 바와 **같은 폭**으로 선다(left:0;right:0).
+   첫 턴 전에는 hidden 이라 바가 평소 높이 그대로고, 턴이 쌓이면 로그가 자라다
+   max-height 에서 스크롤로 넘어간다 — "첫 검색 이후 화면이 늘어나는 구조". */
+#tb-chat {
+  position: absolute; top: 2.65rem; left: 0; right: 0;
+  border: 1px solid hsl(var(--border) / .6); border-radius: var(--radius);
+  background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+  z-index: 60; display: flex; flex-direction: column; overflow: hidden;
+}
+.ask-head {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .5rem .5rem .75rem; border-bottom: 1px solid hsl(var(--border) / .7);
+}
+.ask-title { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+  color: hsl(var(--caption-foreground)); margin-right: auto; }
+.ask-hbtn {
+  border: none; background: none; font: inherit; font-size: var(--fs-sm);
+  color: hsl(var(--link)); padding: .25rem .45rem; border-radius: .4rem; cursor: pointer;
+}
+.ask-hbtn:hover { background: hsl(var(--ring) / .1); }
+.ask-hbtn[disabled] { color: hsl(var(--caption-foreground)); cursor: default; background: none; }
+
+/* 로그 — 자라는 자리. 상한을 넘으면 스크롤(패널이 화면을 삼키지 않게). */
+.ask-log {
+  display: flex; flex-direction: column; gap: .55rem;
+  padding: .75rem; overflow-y: auto; max-height: min(56vh, 34rem);
+}
+.ask-turn { display: flex; max-width: 100%; }
+/* 질문 = 우측 · 답변 = 좌측. */
+.ask-turn.you { justify-content: flex-end; }
+.ask-turn.vinc { justify-content: flex-start; }
+.ask-bubble {
+  max-width: 82%; min-width: 0; padding: .5rem .7rem;
+  border-radius: var(--radius); font-size: var(--fs-base); line-height: var(--lh-normal, 1.5);
+  overflow-wrap: anywhere;
+}
+.you .ask-bubble {
+  background: hsl(var(--ring) / .16); color: hsl(var(--foreground));
+  border-bottom-right-radius: .3rem;
+}
+.vinc .ask-bubble {
+  background: hsl(var(--muted) / .7); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border) / .6); border-bottom-left-radius: .3rem;
+}
+.ask-when { display: block; font-size: .65rem; color: hsl(var(--caption-foreground));
+  margin-top: .3rem; }
+
+/* 답변 카드 — 저장된 문장을 인용하는 자리라 장식을 얹지 않는다. */
+.ask-ctitle { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .3rem; }
+.ask-ctitle b { font-weight: 600; }
+.ask-cdomain { font-size: var(--fs-sm); color: hsl(var(--caption-foreground));
+  white-space: nowrap; }
+.ask-body { margin: 0 0 .4rem; }
+.ask-body.empty { color: hsl(var(--caption-foreground)); font-style: italic; }
+.ask-src { margin-top: .45rem; padding-top: .45rem; border-top: 1px solid hsl(var(--border) / .7); }
+.ask-src-h { font-size: .65rem; letter-spacing: .05em; text-transform: uppercase;
+  color: hsl(var(--caption-foreground)); }
+.ask-quote { margin: .3rem 0 0; font-size: var(--fs-sm); line-height: var(--lh-prose, 1.6);
+  padding-left: .55rem; border-left: 2px solid hsl(var(--ring) / .45); }
+.ask-qmeta { display: block; font-size: .68rem; color: hsl(var(--caption-foreground)); }
+.ask-stat { margin-top: .4rem; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+/* 다음 수 칩 — 그래프 집계에서 나온 것만 뜬다(없는 손잡이를 그리지 않는다). */
+.ask-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+.ask-chip {
+  border: 1px solid hsl(var(--border)); background: hsl(var(--background) / .6);
+  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm);
+  padding: .25rem .55rem; border-radius: var(--radius-pill, 999px); cursor: pointer;
+}
+.ask-chip:hover { background: hsl(var(--ring) / .12); border-color: hsl(var(--ring) / .5); }
+.ask-empty { padding: 1.1rem .9rem; text-align: center; color: hsl(var(--caption-foreground));
+  font-size: var(--fs-sm); line-height: var(--lh-prose, 1.6); }
+/* 이력 시트 안의 목록(대화 이력 조회). */
+.ask-hrow {
+  display: grid; grid-template-columns: 1fr auto; gap: .6rem; align-items: baseline;
+  width: 100%; text-align: left; border: none; background: none;
+  padding: .5rem; border-radius: .5rem; cursor: pointer; font: inherit; color: inherit;
+}
+.ask-hrow:hover { background: hsl(var(--ring) / .1); }
+.ask-hday { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
+  color: hsl(var(--caption-foreground)); margin: .6rem .5rem .2rem; }
 
 #tb-actions { display: flex; align-items: center; gap: var(--space-2, .5rem); flex: 0 0 auto; }
 /* 바의 액션 버튼 — 아이콘 + 글자. 아이콘만 두면 무슨 일인지 알 수 없고, 글자만
@@ -702,22 +856,41 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    ⚠ 폰트: 한국어 로케일에서 system-ui 가 맑은 고딕으로 잡히면 백슬래시(U+005C)가
    원화(₩)로 그려진다 — 수식·경로가 들어간 문서에서 곧바로 오독이다. 라틴 우선
    페이스를 앞에 세워 그 자리만 피한다(한글은 그대로 뒤 폴백이 받는다). */
-#rdr-host .cm-editor { max-height: none; }
-#rdr-host .cm-scroller { overflow: visible; }
-#rdr-host .cm-content {
+/* 스코프는 **마운트 지점 id 가 아니라 `.doc-render` 클래스**다(doc-editor.ts 가
+   붙인다). id 스코프였을 때 레일(#rdr-host)에만 걸려 시트(#ed-host·#tl-ed)에서
+   같은 문서가 다른 타이포로 보였다. */
+.doc-render .cm-editor { max-height: none; }
+.doc-render .cm-content {
   padding: 0; font-family: "Segoe UI", var(--font-ui);
   font-size: 1rem; line-height: 1.65;
 }
-#rdr-host .cm-line { padding: 0; }
+.doc-render .cm-line { padding: 0; }
 /* 블록 사이 숨 — 마크다운의 빈 줄이 실제 문단 간격으로 읽히게. */
-#rdr-host .cm-line:not(:empty) { margin: .12rem 0; }
-#rdr-host .cm-r-h { margin: 1.15rem 0 .3rem; line-height: 1.25; letter-spacing: -.01em; }
-#rdr-host .cm-r-h1 { font-size: 1.5rem; }
-#rdr-host .cm-r-h2 { font-size: 1.22rem; }
-#rdr-host .cm-r-h3 { font-size: 1.06rem; }
-#rdr-host .cm-r-h4, #rdr-host .cm-r-h5, #rdr-host .cm-r-h6 { font-size: 1rem; }
-#rdr-host .cm-r-quote { margin: .3rem 0; }
-#rdr-host .cm-r-code { background: hsl(var(--muted)); border-radius: 4px; padding: 0 .2em; }
+.doc-render .cm-line:not(:empty) { margin: .12rem 0; }
+.doc-render .cm-r-h { margin: 1.15rem 0 .3rem; line-height: 1.25; letter-spacing: -.01em; }
+.doc-render .cm-r-h1 { font-size: 1.5rem; }
+.doc-render .cm-r-h2 { font-size: 1.22rem; }
+.doc-render .cm-r-h3 { font-size: 1.06rem; }
+.doc-render .cm-r-h4, .doc-render .cm-r-h5, .doc-render .cm-r-h6 { font-size: 1rem; }
+.doc-render .cm-r-quote { margin: .3rem 0; }
+.doc-render .cm-r-code { background: hsl(var(--muted)); border-radius: 4px; padding: 0 .2em; }
+/* 표(GFM) — 격자를 그리지 않고 **소스의 공백 정렬을 그대로 살린다**.
+   등폭 + 줄바꿈 금지가 핵심이다: 비례폰트면 열이 어긋나고, lineWrapping 이 걸려
+   있으면 긴 행이 단어 중간에서 쪼개져 표가 무너진다(레일 본문 폭이 288px 라
+   3열만 돼도 넘친다). 넘치는 폭은 스크롤러가 가로로 받는다. */
+.doc-render .cm-r-table {
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  font-size: .92em; line-height: 1.5;
+  white-space: pre;
+  margin: 0;
+}
+/* 구분행(`|---|---|`)은 replace 로 글자를 비웠다. 빈 줄이 남으면 표 한가운데가
+   벌어지므로 높이를 접고, 대신 헤더와 본문을 가르는 선을 그 자리에 그린다. */
+.doc-render .cm-r-table-delim {
+  height: 0; margin: 0; overflow: hidden;
+  border-top: 1px solid hsl(var(--border));
+}
+.doc-render .cm-scroller { overflow-x: auto; overflow-y: visible; }
 /* 레일 안 목록 필터 — 40행짜리 목록을 눈으로 훑지 않게. */
 .rail-filter {
   width: 100%; font: inherit; font-size: var(--fs-sm);
@@ -838,6 +1011,24 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .lg-mark { width: 16px; height: 16px; flex: 0 0 auto; color: hsl(var(--foreground)); fill: currentColor; }
 .lg-focus { display: flex; align-items: center; gap: .45rem; text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); }
 .lg-dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--ring)); flex: 0 0 auto; }
+/* D74 — 범례 항목이 스위치일 때. 읽는 자리와 누르는 자리가 같아야 하므로 생김새는
+   그대로 두고 **눌리는 티**(커서·호버 바탕·포커스 링)만 얹는다. 꺼진 항목은 지우지
+   않고 물러난다: 무엇을 껐는지 보여야 다시 켤 수 있다(사라진 스위치는 못 켠다). */
+.lg-sw {
+  width: 100%; margin: 0; padding: .12rem .3rem; border: 0; border-radius: var(--radius-sm, .5rem);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.lg-sw:hover { background: hsl(var(--muted) / .7); }
+.lg-sw:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.lg-sw .lg-name { flex: 1 1 auto; }
+.lg-sw .lg-n { color: hsl(var(--caption-foreground)); font-size: .68rem; }
+.lg-sw.off { opacity: .42; }
+.lg-sw.off .lg-name { text-decoration: line-through; }
+/* 캡션 옆 안내 — 항목마다 반복하면 소음이라 한 번만, 아주 작게. */
+.lg-tip {
+  margin-left: .4rem; text-transform: none; letter-spacing: 0;
+  font-size: .6rem; color: hsl(var(--caption-foreground));
+}
 /* 메시지 층은 캔버스를 통째로 덮는 오버레이(inset:0)다. 문구만 얹는 층이 그 아래
    그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
    보이는 마크가 아무 반응도 하지 않는다 → 층은 포인터를 통과시키고, 층 안의 실제
@@ -874,6 +1065,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   margin: var(--space-4, 1rem) 0 .2rem; font-size: .62rem;
   letter-spacing: .075em; text-transform: uppercase;
 }
+/* 옵션 밑에 붙는 해설 한 줄(배치가 무슨 순서로 세우는지). 위의 캡션(.hint)과 같은
+   무게로 두면 둘 다 라벨처럼 읽히므로 한 단계 더 물러난다. */
+#atlas-view-panel .hint.sub {
+  margin: -.15rem 0 .1rem; font-size: .68rem; line-height: 1.45;
+  color: hsl(var(--caption-foreground));
+}
 
 /* Atlas 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
    렌더러는 surfaces/atlas-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
@@ -897,6 +1094,32 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-arrow { fill: hsl(var(--muted-foreground)); }
 .pl-arrow-hl { fill: hsl(var(--ring)); }
 .pl-lane-line { fill: none; stroke: hsl(var(--muted-foreground)); stroke-linecap: round; opacity: .75; }
+/* 타임라인 원인·결과 선(D74). 가지(줄기)보다 **가늘고 옅게** — 이건 배경 구조가
+   아니라 겹쳐 읽는 층이라, 항상 켜 두는 가지보다 뒤로 물러나 있어야 마디가 보인다.
+   초점이 걸리면 초점색으로 올라온다(색은 여전히 한 곳뿐 — D41).
+   시간을 거스르는 기록(원인이 결과보다 나중)은 파선으로 가른다: 지우면 데이터가
+   그렇게 적혀 있다는 사실 자체가 안 보인다. */
+.pl-lin {
+  fill: none; stroke: hsl(var(--muted-foreground));
+  stroke-width: .9; opacity: .38; stroke-linecap: round;
+}
+.pl-lin-back { stroke-dasharray: 3 3; }
+.pl-lin.pl-hl { stroke: hsl(var(--ring)); stroke-width: 1.6; opacity: 1; }
+.pl-lin.pl-fade { opacity: var(--recede-line); }
+@media (prefers-reduced-motion: no-preference) {
+  .pl-lin { transition: opacity .22s ease, stroke-width .22s ease; }
+}
+
+/* 타임라인 뿌리(세로 시간축) — 시작 시점 한 점에서 가지가 갈라진다. 목(neck)은
+   가지보다 옅게 둬 "갈라짐"이 배경으로, 가지가 본문으로 읽히게 한다. */
+.pl-root { fill: hsl(var(--foreground)); stroke: none; }
+.pl-neck { opacity: .45; }
+/* 글자가 선을 가로지를 때 판(plate)을 깔지 않고 배경색 후광으로 도려낸다 —
+   판은 getBBox 실측이 필요하지만 후광은 CSS 한 줄이고 결과가 같다. */
+.pl-halo { paint-order: stroke; stroke: hsl(var(--background)); stroke-width: 3px; stroke-linejoin: round; }
+/* 세로 축에서는 마크 라벨이 오른쪽으로 눕는다 — 긴 이름이 옆 가지의 줄기를 스칠 때
+   글자가 선에 먹히지 않게 얇은 후광을 준다(가로 축에는 필요 없던 보호막). */
+.pl-timeline .pl-lab { paint-order: stroke; stroke: hsl(var(--background)); stroke-width: 2.5px; stroke-linejoin: round; }
 .pl-seg { fill: hsl(var(--foreground)); stroke: hsl(var(--background)); stroke-width: 1.5; }
 .pl-s0 { fill-opacity: .82; }
 .pl-s1 { fill-opacity: .5; }
@@ -985,9 +1208,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    최초 1회만(리사이즈 재그리기에는 .pl-in 이 붙지 않는다). 컴포지터 속성만
    건드린다: opacity 와 stroke-dashoffset(레이아웃 무유발). */
 @media (prefers-reduced-motion: no-preference) {
+  /* backwards — forwards 로 두면 안무가 끝난 뒤에도 opacity 를 애니메이션이 붙들어
+     .pl-fade 의 물러남이 최초 화면에서 통째로 무시된다(리사이즈 전까지). */
   .pl-sankey .pl-node.pl-in {
-    opacity: 0;
-    animation: pl-node-in .36s cubic-bezier(.85, 0, .15, 1) forwards;
+    animation: pl-node-in .36s cubic-bezier(.85, 0, .15, 1) backwards;
     animation-delay: calc(var(--i, 0) * 30ms);
   }
   /* 리본이 면이 되면서 stroke-dashoffset 성장은 못 쓴다(그건 선의 문법이다).
@@ -1003,6 +1227,43 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 @keyframes pl-node-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pl-flow-in { to { transform: scaleX(1) } }
+
+/* 타임라인 진입 안무 — **뿌리가 내린다**(발주자 지시 2026-08-02).
+   위(시작 시점)에서 아래(현재)로 선이 자라고, 지나간 자리에 마디가 켜진다.
+   선의 성장은 stroke-dashoffset — 모든 path 가 pathLength="100" 을 선언하므로
+   곡선 길이를 재지 않고도 100→0 이 곧 0%→100% 다(계산도 측정도 없다).
+   지연(--d)은 렌더러가 y 에 비례해 실어 보낸다 — 여기서는 읽기만 한다.
+   최초 1회만: 리사이즈 재그리기에는 .pl-grow 가 붙지 않는다.
+   ⚠ fill-mode 는 forwards 가 아니라 **backwards** 다. forwards 는 끝난 뒤에도
+   그 속성을 애니메이션이 붙들어 .pl-fade(hover 물러남)의 opacity 를 이긴다 —
+   최초 화면에서 hover 문법이 통째로 죽는다. backwards 는 지연 구간만 시작값을
+   쥐고 끝난 뒤엔 선언값으로 돌려주므로, 선언값 자체를 최종 상태로 둔다. */
+@media (prefers-reduced-motion: no-preference) {
+  .pl-timeline .pl-lane-line.pl-grow {
+    stroke-dasharray: 100;     /* pathLength 단위 — offset 0 이면 전량 가시 */
+    animation: pl-root-grow .62s cubic-bezier(.85, 0, .15, 1) backwards;
+    animation-delay: var(--d, 0s);
+  }
+  .pl-timeline .pl-root.pl-grow { animation: pl-node-in .3s ease-out backwards; }
+  .pl-timeline .pl-node.pl-grow {
+    animation: pl-node-in .34s ease-out backwards;
+    animation-delay: var(--d, 0s);
+  }
+  /* 계보 선은 **뿌리가 다 자란 뒤에** 그어진다(--d 가 0.5s 부터 시작한다) —
+     구조가 먼저 서고 그 위에 원인이 얹히는 순서라야 둘이 안 뒤엉킨다. */
+  .pl-timeline .pl-lin.pl-grow {
+    stroke-dasharray: 100;
+    animation: pl-root-grow .5s ease-out backwards;
+    animation-delay: var(--d, 0s);
+  }
+  /* 시간을 거스르는 선은 파선이 정본이라 성장 애니메이션을 주지 않는다(dasharray 가
+     충돌한다). 대신 페이드로만 들어온다. */
+  .pl-timeline .pl-lin-back.pl-grow {
+    stroke-dasharray: 3 3;
+    animation: pl-node-in .4s ease-out backwards;
+  }
+}
+@keyframes pl-root-grow { from { stroke-dashoffset: 100 } to { stroke-dashoffset: 0 } }
 
 /* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
    플로팅 글라스 문법(D37 @supports 블록이 유리화). */

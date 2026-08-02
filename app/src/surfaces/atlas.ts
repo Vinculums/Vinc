@@ -3,7 +3,7 @@ import Sigma from "sigma";
 import { api, cfg, type GraphEdge, type GraphNode, type LedgerRes, type LedgerRow,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
-import { enableLasso, flyTo3d, findNode3d, mount3d, mountMinis3d,
+import { enableLasso, flyTo3d, findNode3d, mount3d,
          type L3, type N3 } from "./atlas3d";
 import { mount2d, type Handle2d } from "./atlas2d";
 import { bucketRange, foldLedgerPaths, mountTimeline, mountTotals, pickGrain,
@@ -12,8 +12,9 @@ import { bucketRange, foldLedgerPaths, mountTimeline, mountTotals, pickGrain,
 import { openShareSheet } from "../sheets";
 import { openContextMenu, confirmDestructive } from "../components";
 
-import { LAYOUTS, VIEWS, RAIL_MIN, RAIL_MAX, isPlanar, loadPrefs, savePrefs,
-         type AtlasLayout, type AtlasPrefs, type AtlasView } from "../atlas-prefs";
+import { LAYOUTS, VIEWS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
+         EDGE_KINDS, edgeKindOf, isPlanar, loadPrefs, savePrefs,
+         type AtlasPrefs, type AtlasView, type EdgeKind } from "../atlas-prefs";
 import { lensSlot, viewsSlot, setAtlasHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
@@ -36,10 +37,12 @@ import { icon } from "../icons";
 // title: 크럼이 읽는 사람의 말. 여태 L2 크럼이 raw id(`concept:physics-ads-cft`)를
 // 그대로 실었다 — 딥링크로 들어오면 제목을 모르므로 선택 필드로 두고, 알게 되는
 // 순간(노드 클릭·그래프 응답) 채운다(domain 과 같은 규칙).
+// 2026-08-02 — **프레임 폐기(D34 개정)**. Atlas 는 스코프 3층(L0·L1·L2)뿐이고,
+// 그 위에 관점(3D·2D·타임라인·합계)이 얹힌다. Grid(도메인별 미니 카드)·Matrix
+// (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
+// 클릭이 유일한 진입점**이라 함께 내렸다. 되살리려면 새 진입점 설계가 선행된다.
 type Level = { kind: "l0" } | { kind: "l1"; domain: string }
-  | { kind: "l2"; seed: string; domain?: string; title?: string }
-  | { kind: "compare"; a: string; b: string }
-  | { kind: "grid" } | { kind: "matrix" };
+  | { kind: "l2"; seed: string; domain?: string; title?: string };
 
 // Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
 import { palette as signal, hexStr } from "../theme";
@@ -129,7 +132,6 @@ export async function renderAtlas(el: HTMLElement) {
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
-  let minis3d: { dispose(): void } | null = null;   // Grid 미니(단일 렌더러, D34)
   let planar: PlanarHandle | null = null;           // 평면 관점(Flow/Timeline/Totals, D43)
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
@@ -143,7 +145,6 @@ export async function renderAtlas(el: HTMLElement) {
   // 마지막으로 짚은 곳(D70) — 합계의 `기타` 병합 핀에 쓴다. trail 과 별개다:
   // 트리에서 문서를 눌러도 층은 그대로일 수 있는데, 그때도 그 주제는 살아 있어야 한다.
   let lnbFocus: { domain?: string; nodeId?: string } = {};
-  const cardLayout = new Map<string, AtlasLayout>();  // Grid 카드별 프리셋 오버라이드(D34)
   const trail: Level[] = [];
 
   // deep links: #atlas/<domain> · #atlas/compare/<a>/<b> · #atlas/trace/<id> · …/as/<view>
@@ -194,17 +195,63 @@ export async function renderAtlas(el: HTMLElement) {
       ${mark(`<polygon points="${hex(8, 8, 6.6)}"/>`, L.document)}
       ${mark(`<polygon points="8,1.6 14.4,8 8,14.4 1.6,8"/>`, L.bridge)}
       ${mark(`<circle cx="8" cy="8" r="3.6"/><ellipse cx="8" cy="8" rx="7.2" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/>`, L.topic)}
-      <p class="hint lg-cap">${L.lines}</p>
+      <p class="hint lg-cap">${L.lines}${lineFilterable() ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
       <!-- ⚠ 범례는 **실제로 그려지는 것만** 가르친다. 정본(§1.2)은 파선=크로스 ·
            점선=Bridge 매개 · 이중선=상속을 규정하지만, 2D(sigma)·3D(three) 어느
            렌더러도 아직 점선 계열을 그리지 않는다(D33 "후속" 명시). 그리지 않는
            문법을 범례가 가르치면 화면이 자기를 반박한다 — 지금 변별에 실제로
-           쓰이는 채널(굵기·화살촉·농도)을 그대로 싣는다. -->
-      ${line(`stroke="currentColor" stroke-width="1.8"`, L.directed)}
-      ${line(`stroke="currentColor" stroke-width="1"`, L.related)}
-      ${line(`stroke="currentColor" stroke-width=".8" opacity=".5"`, L.cross)}
+           쓰이는 채널(굵기·화살촉·농도)을 그대로 싣는다.
+           D74 — 그 항목이 이제 **스위치**다(발주자 지시 2026-08-02). "지금 이 그림에
+           무슨 선이 있는지"를 가르치던 자리가 "그중 무엇을 볼지"를 정하는 자리가
+           된다. 지금 그래프에 **실제로 있는 갈래만** 개수와 함께 낸다 — 없는 갈래의
+           스위치는 눌러도 아무 일이 없어 화면이 거짓말을 한다. -->
+      ${lineRows()}
       <p class="hint lg-cap lg-focus"><span class="lg-dot"></span>${L.focus}</p>
     </div>`;
+  }
+
+  /** 선 갈래별 개수 — 지금 층에 실제로 그려질 엣지에서 센다. */
+  function edgeKindCounts(): Map<EdgeKind, number> {
+    const m = new Map<EdgeKind, number>();
+    for (const e of curEdges) {
+      const k = edgeKindOf(e);
+      m.set(k, (m.get(k) || 0) + 1);
+    }
+    return m;
+  }
+  /** 선 필터가 뜻이 있는 관점인가 — 지도(3D·2D)만 엣지를 그린다. 타임라인·합계는
+   *  선이 관계가 아니라 흐름·계보라 이 어휘가 안 맞는다(합계 리본은 값이다). */
+  const lineFilterable = () => !isPlanar(curPrefs().view);
+  function lineRows(): string {
+    const L = COPY.ui.legend;
+    const counts = edgeKindCounts();
+    const off = new Set(curPrefs().edgeOff);
+    const style: Record<EdgeKind, string> = {
+      directed: `stroke="currentColor" stroke-width="1.8"`,
+      related: `stroke="currentColor" stroke-width="1"`,
+      cross: `stroke="currentColor" stroke-width=".8" opacity=".5"`,
+      bridge: `stroke="currentColor" stroke-width=".8" opacity=".35"`,
+    };
+    const name: Record<EdgeKind, string> = {
+      directed: L.directed, related: L.related, cross: L.cross, bridge: L.bridgeLine,
+    };
+    const rows = EDGE_KINDS.filter((k) => (counts.get(k) || 0) > 0);
+    // 선이 하나도 없으면(고립 노드만 있는 층) 스위치도 내지 않는다 — 켜고 끌 것이 없다.
+    if (!rows.length) return "";
+    if (!lineFilterable()) {
+      return rows.map((k) =>
+        `<span class="lg-item"><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true">`
+        + `<path d="M1 8h14" ${style[k]}/></svg>${name[k]}</span>`).join("");
+    }
+    return rows.map((k) => {
+      const on = !off.has(k);
+      return `<button class="lg-item lg-sw${on ? "" : " off"}" type="button"
+        data-edgekind="${k}" role="switch" aria-checked="${on}"
+        ><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true"
+          ><path d="M1 8h14" ${style[k]}/></svg
+        ><span class="lg-name">${name[k]}</span
+        ><span class="lg-n pl-num">${counts.get(k)}</span></button>`;
+    }).join("");
   }
 
   /** 렌즈 버튼 — 아이콘 하나. 누르면 위로 패널이 열리고 그 안에 `보기`(관점·범위·
@@ -316,29 +363,13 @@ export async function renderAtlas(el: HTMLElement) {
   const viewName = (v: AtlasView) =>
     v === "3d" ? "3D" : v === "2d" ? "2D"
     : v === "timeline" ? COPY.ui.atlasx.timeline : COPY.ui.atlasx.totals;
-  const frameName = (lv: Level) =>
-    lv.kind === "grid" ? COPY.ui.atlasx.grid
-    : lv.kind === "matrix" ? COPY.ui.atlasx.matrix
-    : lv.kind === "compare" ? `${lv.a} ⇄ ${lv.b}` : "";
-  /** 그 층이 그 관점을 실제로 그리는가 — 관점 커밋이 프레임에 남을지 떠날지를
-   *  판정하는 단 하나의 자리. 스코프(l0/l1/l2)는 5종을 전부 그린다. Grid 는 미니가
-   *  prefs.view 를 읽어(flat = 2d) 3D/2D 만 그리고 평면 3종은 그리지 않는다.
-   *  Compare/Matrix 는 렌더러가 프리퍼런스를 한 줄도 읽지 않아 어떤 관점도 그리지
-   *  않는다 → 거기서의 관점 커밋은 평면 커밋과 같이 프레임을 떠나야 한다(한 행에
-   *  두 가지 의미가 섞이지 않게). */
-  const rendersView = (lv: Level, v: AtlasView): boolean =>
-    isScope(lv) ? true : lv.kind === "grid" ? !isPlanar(v) : false;
+  /** 그 층이 그 관점을 실제로 그리는가. 프레임이 사라진 뒤로는 모든 층이 스코프라
+   *  항상 참이다 — 이 자리를 남겨 둔 이유는 관점 커밋 경로가 이 술어 하나만 읽기
+   *  때문이고, 층 종류가 다시 늘 때 판정을 여기 한 곳에서만 고치게 하기 위함이다. */
+  const rendersView = (_lv: Level, _v: AtlasView): boolean => true;
   /** 화면에 실제로 걸린 관점. 칩 라벨·크럼 꼬리·패널의 활성 표시·재클릭 가드가
-   *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실.
-   *  Grid: 미니는 저장값이 평면이어도 3D 컷을 그린다 → 그리는 것("3D")을 표시한다
-   *  (저장된 평면 관점은 프레임을 벗어나는 순간 그 자리에서 되살아난다).
-   *  Compare/Matrix: 자기 화면만 그리므로 걸린 관점이 없다 → null(아무 칩도 활성 아님).
-   *  가장 작은 표현을 고른 이유 — 비활성/숨김은 관점을 "못 고르는 것"으로 보이게 하고
-   *  (§3.2: 관점은 절대 비활성·숨김이 아니다), 별도 안내 문구는 새 카피를 요구한다. */
-  const shownView = (lv: Level): AtlasView | null =>
-    isScope(lv) ? curPrefs().view
-    : lv.kind === "grid" ? (curPrefs().view === "2d" ? "2d" : "3d")
-    : null;
+   *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실. */
+  const shownView = (_lv: Level): AtlasView | null => curPrefs().view;
   /** 평면 관점의 스코프는 오롯이 trail 에서 읽는다(관점은 스코프를 갖지 않는다). */
   const scopeOf = (lv: Level): { seed?: string; domain?: string } =>
     lv.kind === "l1" ? { domain: lv.domain }
@@ -369,9 +400,8 @@ export async function renderAtlas(el: HTMLElement) {
    *  칩은 현재 관점 이름을 그대로 싣는다. Grid/Matrix 는 같은 패널의 두 번째 행으로
    *  옮겨 스위처를 하나로 만든다(툴 행에 느슨한 칩을 남기지 않는다).
    *  닫힌 층(형태=타입 · 포인트색=초점 · 모노크롬)은 여전히 노출하지 않는다. */
-  /** 칩 라벨 — 프레임에 있으면 프레임 이름, 아니면 관점 이름. 그리지도 않는 관점을
-   *  칩이 주장하면(예: Grid 에서 "보기 · 흐름") 화면과 컨트롤이 서로를 반박한다. */
-  const viewLabel = () => frameName(trail[trail.length - 1]) || viewName(curPrefs().view);
+  /** 칩 라벨 — 프레임 폐기 후로는 언제나 관점 이름이다(모든 층이 관점을 그린다). */
+  const viewLabel = () => viewName(curPrefs().view);
   /** D56 — `보기`·`공유` 는 상단 바 버튼이다. 표면은 자기 동작만 등록하고, 버튼의
    *  존재·라벨은 바가 관리한다(Atlas 를 떠나면 자동으로 사라진다). */
   function viewControl() { refreshTopbar(); drawViews(); }
@@ -462,18 +492,16 @@ export async function renderAtlas(el: HTMLElement) {
   /** 평면(SVG DOM) 상한 — 노드마다 <g> 를 만드는 렌더라 전량 스코프(L0)에서
    *  무한정 그릴 수 없다. 넘치면 최근 것부터 남기고 캡션이 잘린 수를 밝힌다. */
   const PLANAR_CAP = 1200;
-  const GRID_ROWS = ["size", "unlinked", "layout"];
   function rowsFor(lv: Level, p: AtlasPrefs): string[] {
-    if (lv.kind === "grid") return GRID_ROWS;
     if (!isScope(lv)) return [];
     switch (p.view) {
       case "3d":
       case "2d":
-        return ["size", "labels", "arrows", "unlinked", "layout", "spread"];
+        return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread", "edgeWidth"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "timeline": return ["basis", "docs", "labels"];
+      case "timeline": return ["basis", "docs", "lineage", "labels"];
       // D47 — 3열 생키는 출처와 상태를 **동시에** 보여주므로 묶음 토글이 사라졌고,
       // 고아 숨김도 받지 않는다(주변합만으로 걷어내면 열 합 보존이 깨진다 —
       // atlas-planar.mountTotals 주석). 원장 뷰에 남는 선택지가 없다.
@@ -488,20 +516,11 @@ export async function renderAtlas(el: HTMLElement) {
       `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
     const row = (cap: string, chips: string) =>
       `<p class="hint">${cap}</p><p><span class="seg">${chips}</span></p>`;
-    // 활성 표시는 "지금 그려지는 것"만 따른다(shownView) — Compare/Matrix 는 어떤
-    // 관점도 그리지 않아 무표시, Grid 는 미니가 그리는 3D/2D 중 하나를 표시한다.
-    // 저장값은 프레임 안에서도 그대로 살아 있다(벗어나면 그 자리에서 되살아난다).
+    // 활성 표시는 "지금 그려지는 것"만 따른다(shownView).
     const shown = shownView(lv);
-    const fchip = (k: "grid" | "matrix", label: string) =>
-      `<button class="chip${lv.kind === k ? " active" : ""}" data-frame="${k}">${label}</button>`;
-
-    // 두 줄로 나눈 이유: 첫 줄은 "어떻게 보는가"(크럼 불변), 둘째 줄은 "어디에 있는가"
-    // (크럼이 자라고 뒤로가기가 먹는다). 한 줄 7칩은 이 차이를 지운다.
-    // 관점은 하단 바 세그먼트가 상시로 맡는다(D65) — 여기 또 두면 같은 선택지가
-    // 두 곳에 살고, 패널은 그만큼 길어진다.
-    const head = `
-      <p class="hint" style="margin-top:0">${COPY.ui.panel.allTopics}</p>
-      <p><span class="seg">${fchip("grid", COPY.ui.atlasx.grid)}${fchip("matrix", COPY.ui.atlasx.matrix)}</span></p>`;
+    // 프레임 칩(Grid·Matrix)이 있던 자리. 프레임 폐기(2026-08-02)로 비운다 —
+    // 관점은 하단 바 세그먼트가 상시로 맡는다(D65).
+    const head = "";
 
     const rows: Record<string, string> = {
       size: row(COPY.ui.panel.nodeSize,
@@ -516,13 +535,35 @@ export async function renderAtlas(el: HTMLElement) {
       unlinked: row(COPY.ui.panel.unlinkedNodes,
         chip("unlinked", "show", COPY.ui.panel.show, p.unlinked === "show")
         + chip("unlinked", "hide", COPY.ui.panel.hide, p.unlinked === "hide")),
-      layout: row(COPY.ui.panel.layout, LAYOUTS.map((l) => chip("layout", l, l, p.layout === l)).join("")),
+      // 고른 배치가 **무슨 순서로** 세우는지 한 줄로 밝힌다(발주자 지적 2026-08-02).
+      // 툴팁이 아니라 상시 노출인 이유: 좌표의 뜻은 hover 로 발견할 것이 아니라
+      // 지도를 읽는 전제다 — 모르면 배치는 장식으로 읽힌다.
+      layout: row(COPY.ui.panel.layout,
+        LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
+        + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
       spread: `<label class="hint" style="display:block">${COPY.ui.panel.spread}
         <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
+      </label>`,
+      // 크기·굵기 **배율**(발주자 지시 2026-08-02). 위 `size` 는 무엇이 크고 작은지를
+      // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다 — 인코딩은 그대로 두고
+      // 화면 밀도만 취향에 맞춘다. 엣지는 D33 대로 가중치를 농도로 계속 말한다.
+      nodeScale: `<label class="hint" style="display:block">${COPY.ui.panel.nodeScale}
+        <input id="pref-nodescale" type="range" min="${NODE_SCALE.min}" max="${NODE_SCALE.max}"
+          step="${NODE_SCALE.step}" value="${p.nodeScale}" style="width:100%">
+      </label>`,
+      edgeWidth: `<label class="hint" style="display:block">${COPY.ui.panel.edgeWidth}
+        <input id="pref-edgescale" type="range" min="${EDGE_SCALE.min}" max="${EDGE_SCALE.max}"
+          step="${EDGE_SCALE.step}" value="${p.edgeScale}" style="width:100%">
       </label>`,
       docs: row(COPY.ui.panel.docLinks,
         chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
         + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
+      // D74 — 원인·결과 겹치기. 기본은 꺼짐: 선이 있으면 늘 도움이 되는 것이 아니라
+      // 촘촘한 그래프에서는 마디를 덮는다. 켤 이유가 생겼을 때 켜는 층이다.
+      lineage: row(COPY.ui.panel.lineage,
+        chip("timelineLineage", "on", COPY.ui.panel.on, p.timelineLineage)
+        + chip("timelineLineage", "off", COPY.ui.panel.off, !p.timelineLineage))
+        + `<p class="hint sub">${esc(COPY.ui.panel.lineageHelp)}</p>`,
       // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른
       // 시계로 볼 뿐이라 관점 세그(3D·2D·타임라인·Sankey) 옆에 두지 않는다.
       basis: row(COPY.ui.panel.timeBasis,
@@ -563,16 +604,33 @@ export async function renderAtlas(el: HTMLElement) {
         const mut: Partial<AtlasPrefs> =
           k === "arrows" ? { arrows: val === "on" }
           : k === "timelineDocs" ? { timelineDocs: val === "on" }
+          : k === "timelineLineage" ? { timelineLineage: val === "on" }
           : ({ [k]: val } as Partial<AtlasPrefs>);
         applyPrefs(mut, `[data-pref="${k}"][data-val="${val}"]`);
       }));
     // 산개는 3D/2D 에만 있는 행이라 평면 관점에서는 존재하지 않는다(? 필수).
     viewPanel.querySelector<HTMLInputElement>("#pref-spread")?.addEventListener("change", (e) =>
       applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }, "#pref-spread"));
+    // 배율 둘은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
+    // 바로 반영해 손끝에 붙게 한다. spread 는 레이아웃 인자라 change 로 두는 것과
+    // 대비된다(그쪽은 사이드카 왕복이다).
+    viewPanel.querySelector<HTMLInputElement>("#pref-nodescale")?.addEventListener("input", (e) =>
+      applyPrefs({ nodeScale: Number((e.target as HTMLInputElement).value) }, "#pref-nodescale"));
+    viewPanel.querySelector<HTMLInputElement>("#pref-edgescale")?.addEventListener("input", (e) =>
+      applyPrefs({ edgeScale: Number((e.target as HTMLInputElement).value) }, "#pref-edgescale"));
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyView(b.dataset.view as AtlasView)));
-    viewPanel.querySelectorAll<HTMLElement>("[data-frame]").forEach((b) =>
-      b.addEventListener("click", () => applyFrame(b.dataset.frame as "grid" | "matrix")));
+    // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
+    // 그려진 것만 다시 그린다(배율 슬라이더와 같은 급). 마지막 한 갈래까지 끄는
+    // 것은 막지 않는다: "선 없이 노드만"은 실제로 쓰는 읽기다(군집만 보기).
+    viewPanel.querySelectorAll<HTMLElement>("[data-edgekind]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.edgekind as EdgeKind;
+        const off = new Set(curPrefs().edgeOff);
+        if (off.has(k)) off.delete(k); else off.add(k);
+        applyPrefs({ edgeOff: EDGE_KINDS.filter((x) => off.has(x)) },
+                   `[data-edgekind="${k}"]`);
+      }));
     viewPanel.onkeydown = (e) => { if ((e as KeyboardEvent).key === "Escape") closePanel(); };
   }
 
@@ -594,15 +652,6 @@ export async function renderAtlas(el: HTMLElement) {
     syncHash(v);                                  // 프레임을 떠난 뒤 = 도착지의 주소
     await show(trail[trail.length - 1], false);
     closePanel();                                 // 목적지 커밋 — 새 칩으로 포커스 복귀
-  }
-
-  async function applyFrame(kind: "grid" | "matrix") {
-    const cur = trail[trail.length - 1];
-    if (cur.kind === kind) return;
-    if (!isScope(cur)) trail.length -= 1;         // 다른 프레임에서 갈아탈 때만 교체
-    trail.push({ kind });
-    await show(trail[trail.length - 1]);
-    closePanel();
   }
 
   async function applyPrefs(mut: Partial<AtlasPrefs>, refocus?: string) {
@@ -655,6 +704,13 @@ export async function renderAtlas(el: HTMLElement) {
       x: nd.x, y: nd.y, z: nd.z,
     }));
   }
+  /** D74 — 범례 스위치로 끈 갈래를 뺀다. **그리기 필터일 뿐** 데이터 필터가 아니다:
+   *  `curEdges` 는 그대로 두므로 상세 레일의 연결 수·방향 집계는 선을 숨겨도
+   *  변하지 않는다(숨긴 선이 없던 연결이 되면 화면이 거짓을 말한다). */
+  function visibleEdges(): GraphEdge[] {
+    const off = new Set(curPrefs().edgeOff);
+    return off.size ? curEdges.filter((e) => !off.has(edgeKindOf(e))) : curEdges;
+  }
   function toL3(edges: GraphEdge[]): L3[] {
     return edges.map((e) => ({ source: e.source, target: e.target, type: e.type, cross: e.cross_domain }));
   }
@@ -697,7 +753,7 @@ export async function renderAtlas(el: HTMLElement) {
     curEdges = res.edges || [];
     curNodes = nodes;
     drawMetrics(nodes);
-    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domain, seed)), toL3(curEdges), {
+    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domain, seed)), toL3(visibleEdges()), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
@@ -1261,7 +1317,7 @@ export async function renderAtlas(el: HTMLElement) {
     }
     setMsg("");
     drawMetrics(gnodes);
-    g2 = mount2d(canvas, gnodes, curEdges, {
+    g2 = mount2d(canvas, gnodes, visibleEdges(), {
       seed,
       onClick: (nd) => openDetail(toN3([nd])[0]),
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
@@ -1286,138 +1342,6 @@ export async function renderAtlas(el: HTMLElement) {
         g.addEdge(e.source, e.target, { size: e.cross_domain ? 0.8 : 1.6,
           color: e.cross_domain ? THEME.inkMute : THEME.edge });
     }
-  }
-
-  async function showCompare(a: string, b: string) {
-    setMsg("");
-    canvas.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 22rem 1fr;height:100%">
-        <div id="cmp-a"></div>
-        <div id="cmp-rail" style="overflow:auto;border-left:1px solid ${THEME.edge};
-             border-right:1px solid ${THEME.edge};padding:0 1rem">
-          <h3 style="position:sticky;top:0;background:hsl(var(--background))">${a} ⇄ ${b}</h3>
-          <div id="cmp-pairs" class="hint">${COPY.ui.atlasx.tiesLoading}</div>
-        </div>
-        <div id="cmp-b"></div>
-      </div>`;
-    const [ga, gb, cp] = await Promise.all([
-      api.graph(cfg.owner, { domain: a }), api.graph(cfg.owner, { domain: b }),
-      api.coupling(cfg.owner, a, b),
-    ]);
-    const mk = (elm: HTMLElement, res: any) => {
-      const g = new Graph();
-      addShapedGraph(g, res.nodes || [], res.edges || []);
-      const s = new Sigma(g, elm, { allowInvalidContainer: true });
-      extraSigmas.push(s);
-      return { g, s };
-    };
-    const left = mk(canvas.querySelector("#cmp-a")!, ga);
-    const right = mk(canvas.querySelector("#cmp-b")!, gb);
-    const pairs: any[] = cp.pairs || [];
-    const railEl = canvas.querySelector<HTMLElement>("#cmp-pairs")!;
-    railEl.classList.remove("hint");
-    railEl.innerHTML = pairs.length === 0
-      ? `<p class="hint">${COPY.ui.atlasx.noTies}</p>`
-      : pairs.map((p, i) => `
-        <div class="list-row" data-i="${i}">
-          <span class="title" style="font-size:.9em">${p.a_title}
-            <span class="hint">${p.kind === "direct" ? "⇢" : "◇"}</span> ${p.b_title}</span>
-          ${p.via_title ? `<span class="meta">${COPY.ui.atlasx.via(p.via_title)}</span>` : ""}
-        </div>`).join("");
-    const highlight = (p: any | null) => {
-      for (const { s } of [left, right]) {
-        s.setSetting("nodeReducer", (node, data) => {
-          if (!p) return data;
-          const hit = node === p.a_id || node === p.b_id;
-          return hit ? { ...data, color: THEME.point, zIndex: 1, size: (data.size as number) * 1.4 }
-                     : { ...data, color: THEME.edge, label: "" };
-        });
-        s.refresh();
-      }
-    };
-    railEl.querySelectorAll(".list-row").forEach((row) => {
-      row.addEventListener("mouseenter", () => highlight(pairs[Number((row as HTMLElement).dataset.i)]));
-      row.addEventListener("mouseleave", () => highlight(null));
-    });
-  }
-
-
-  /** Multiples 그리드(Phase C1) — 도메인당 평면 미니 렌즈(좌표 재사용), hover 시
-   *  같은 id(크로스도메인 고스트)가 다른 카드에서 동시 점등(brushing&linking). */
-  async function showGrid() {
-    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-    const l0 = await api.atlasL0(cfg.owner);
-    const domains: string[] = (l0.domains || []).slice(0, 9).map((d: any) => d.domain);
-    if (domains.length === 0) { setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p></div>`); return; }
-    setMsg("");
-    const lay = (d: string) => cardLayout.get(d) || loadPrefs().layout;
-    canvas.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${Math.min(domains.length, 3)},1fr);
-      gap:.75rem;height:100%;padding:3rem 0 .5rem">${domains.map((d) => `
-      <div style="display:flex;flex-direction:column;border:1px solid ${THEME.edge};border-radius:var(--radius);overflow:hidden">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <button class="chip" data-open="${d}" style="border:none;border-radius:0;text-align:left;padding:.35rem .75rem">${d}</button>
-          <button class="chip" data-cycle="${d}" data-tip="Cycle layout (D34)"
-                  style="border:none;border-radius:0;padding:.35rem .75rem">${lay(d)} ↻</button>
-        </div>
-        <div data-mini="${d}" style="flex:1;min-height:0"></div>
-      </div>`).join("")}</div>`;
-    // 카드별 레이아웃 사이클 — 프리셋만 바꿔 그리드 재조회(좌표는 사이드카 정본)
-    canvas.querySelectorAll<HTMLElement>("[data-cycle]").forEach((b) =>
-      b.addEventListener("click", () => {
-        const d = b.dataset.cycle!;
-        cardLayout.set(d, LAYOUTS[(LAYOUTS.indexOf(lay(d)) + 1) % LAYOUTS.length]);
-        show(trail[trail.length - 1], false);
-      }));
-    // 미니 = 3D(단일 WebGL 렌더러 뷰포트 분할 — 컨텍스트 상한 회피, D34).
-    // hover 시 같은 id(크로스도메인 고스트)가 전 카드에서 포인트색 동시 점등.
-    const cells: { el: HTMLElement; nodes: N3[]; links: L3[] }[] = [];
-    for (const d of domains) {
-      const res = await api.graph(cfg.owner, { domain: d, layout: lay(d) });
-      cells.push({
-        el: canvas.querySelector(`[data-mini="${CSS.escape(d)}"]`) as HTMLElement,
-        nodes: filterUnlinked(toN3(res.nodes || [])),
-        links: toL3(res.edges || []),
-      });
-    }
-    minis3d = mountMinis3d(canvas.firstElementChild as HTMLElement, cells, curPrefs());
-    canvas.querySelectorAll("[data-open]").forEach((b) =>
-      b.addEventListener("click", () => {
-        trail.push({ kind: "l1", domain: (b as HTMLElement).dataset.open! }); show(trail[trail.length - 1]);
-      }));
-  }
-
-  /** Coupling Matrix(Phase C2) — 도메인×도메인 히트맵(잉크 농도 3단), 셀 → Compare. */
-  async function showMatrix() {
-    setMsg(`<p class="hint">${COPY.atlas.loading(0)}</p>`);
-    const l0 = await api.atlasL0(cfg.owner);
-    const domains: string[] = (l0.domains || []).map((d: any) => d.domain);
-    const ties = new Map<string, number>();
-    for (const t of l0.ties || []) {
-      ties.set(`${t.source}|${t.target}`, (ties.get(`${t.source}|${t.target}`) || 0) + t.ties);
-      ties.set(`${t.target}|${t.source}`, (ties.get(`${t.target}|${t.source}`) || 0) + t.ties);
-    }
-    setMsg("");
-    const max = Math.max(1, ...ties.values());
-    const shade = (v: number) => v === 0 ? "transparent"
-      : v < max / 3 ? "hsl(var(--muted))" : v < (2 * max) / 3 ? "hsl(var(--muted-foreground)/.45)" : "hsl(var(--foreground)/.8)";
-    canvas.innerHTML = `<div style="padding:3.5rem 1rem 1rem;overflow:auto;height:100%">
-      <table style="border-collapse:collapse">
-        <tr><th></th>${domains.map((d) => `<th style="padding:.3rem .6rem;font-weight:400" class="hint">${d}</th>`).join("")}</tr>
-        ${domains.map((a) => `<tr><th style="padding:.3rem .6rem;text-align:right;font-weight:400" class="hint">${a}</th>
-          ${domains.map((b) => {
-            const v = a === b ? 0 : (ties.get(`${a}|${b}`) || 0);
-            return `<td data-a="${a}" data-b="${b}" data-tip="${v} ties" style="width:3.2rem;height:2.4rem;
-              border:1px solid ${THEME.edge};background:${shade(v)};cursor:${v ? "pointer" : "default"};
-              text-align:center;color:${v >= (2 * max) / 3 && v > 0 ? "hsl(var(--background))" : "inherit"}">${v || ""}</td>`;
-          }).join("")}</tr>`).join("")}
-      </table></div>`;
-    canvas.querySelectorAll("td[data-a]").forEach((td) =>
-      td.addEventListener("click", () => {
-        const a = (td as HTMLElement).dataset.a!, b = (td as HTMLElement).dataset.b!;
-        if (a !== b && (td as HTMLElement).title !== "0 ties") {
-          trail.push({ kind: "compare", a, b }); show(trail[trail.length - 1]);
-        }
-      }));
   }
 
   /** D43 평면 관점(Flow · Timeline · Totals). 스코프 상태는 하나도 갖지 않고
@@ -1624,15 +1548,28 @@ export async function renderAtlas(el: HTMLElement) {
       // 밴드 클릭이 넘길 구간을 만들려면 차트와 **같은 알갱이**를 알아야 한다 —
       // 차트는 월, 목록은 연으로 세면 두 수가 어긋난다(D72).
       periodGrain = pickGrain(dated.map((n) => n.ts!));
+      // D74 — 원인·결과 겹치기. **방향 관계만** 넘긴다(RELATED_TO 는 "왜"를 말하지
+      // 않는다).
+      // ⚠ 범례의 선 스위치(`edgeOff`)와는 **엮지 않는다**. 그 스위치는 지도(3D·2D)
+      // 위에만 뜨므로, 여기서 따르면 화면에 없는 컨트롤이 이 화면을 조용히 비운다
+      // ("원인과 결과 = 켬 인데 아무것도 없음"). 관점마다 자기 선을 정하는 손잡이는
+      // 하나씩만 둔다 — 여기서는 이 토글이 그 하나다.
+      const lineage = p.timelineLineage
+        ? curEdges.filter((e) => edgeKindOf(e) === "directed")
+        : undefined;
       planar = mountTimeline(canvas, feed, {
         docs: p.timelineDocs, labels: p.labels !== "none", onOpen: openNode,
         onMonth: (m) => void openPeriod(m, periodDomain),
+        lineage,
       });
       // 차트가 못 올린 것들을 한 줄로 밝힌다: 날짜 없는 문서 + 상한에 잘린 문서.
+      // 계보를 켰는데 그릴 것이 없는 경우도 여기서 말한다 — 켠 손잡이가 아무 일도
+      // 안 한 채 조용한 것이 이 코드베이스가 되풀이해 온 실패다.
       const undated = shown.length - dated.length;
       const notes = [
         undated > 0 ? COPY.ui.atlasx.undated(undated) : "",
         over > 0 ? COPY.ui.atlasx.capped(over) : "",
+        lineage && lineage.length === 0 ? COPY.ui.atlasx.noLineage : "",
       ].filter(Boolean);
       if (!solo && notes.length) {
         lassoHint.textContent = notes.join(" · ");
@@ -1667,7 +1604,6 @@ export async function renderAtlas(el: HTMLElement) {
     closePanel();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
-    if (minis3d) { minis3d.dispose(); minis3d = null; }
     if (planar) { planar.dispose(); planar = null; }
     if (g2) { g2.dispose(); g2 = null; }
     if (g3) { g3._destructor?.(); g3 = null; }
@@ -1684,15 +1620,11 @@ export async function renderAtlas(el: HTMLElement) {
     // 해시는 #atlas/physics). replaceState 라 hashchange 가 안 떠 라우터는 무영향이고,
     // 프레임(Grid·Matrix·Compare)은 syncHash 가 가장 가까운 스코프로 접어 준다.
     syncHash();
-    // View 컨트롤은 모든 층에 — Compare/Grid/Matrix 에서도 관점으로 되돌아갈 길이 있어야 한다.
     viewControl();
     try {
       // 관점이 Level 보다 먼저다 — 평면 관점에서는 mount3d 가 아예 도달 불가능해진다.
       const v = curPrefs().view;
-      if (level.kind === "compare") await showCompare(level.a, level.b);
-      else if (level.kind === "grid") await showGrid();
-      else if (level.kind === "matrix") await showMatrix();
-      else if (isPlanar(v)) await showPlanar(level);
+      if (isPlanar(v)) await showPlanar(level);
       else if (v === "2d") await show2d(level);
       // D69 — L0 도 이제 그냥 그래프다(스코프 없는 `/graph`). 주제 표는 좌측 트리로,
       // 주제 이름 변경도 그 트리의 우클릭으로 옮겼다.
@@ -1734,8 +1666,9 @@ export async function renderAtlas(el: HTMLElement) {
   }
 
   trail.push({ kind: "l0" });
-  if (deep === "compare" && parts[2] && parts[3]) trail.push({ kind: "compare", a: parts[2], b: parts[3] });
-  else if (deep === "trace" && parts[2]) trail.push({ kind: "l2", seed: parts[2] });
+  // `#atlas/compare/a/b` 는 프레임 폐기(2026-08-02)로 사라진 딥링크다. 옛 주소를
+  // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
+  if (deep === "trace" && parts[2]) trail.push({ kind: "l2", seed: parts[2] });
   else if (deep && deep !== "as") trail.push({ kind: "l1", domain: deep });
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라

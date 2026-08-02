@@ -132,7 +132,13 @@ export async function importDocFile(
   if (text !== null) {
     const body = { owner, text, id, title, origin };
     guardJsonSize(body, f.name);
-    res = await api.docPut(owner, text, id, title, origin);
+    // ⚠ 인자 순서 주의: docPut(owner, text, id?, title?, contentTime?, origin?).
+    // D72 가 contentTime 을 5번째로 끼워 넣을 때 이 호출부만 갱신이 누락돼 origin 이
+    // content_time 자리로 들어갔다(2026-08-02 발견). 증상이 조용했다 — origin 이 안
+    // 실려 재드롭 식별(origin→doc_id 색인)이 매번 빗나가 같은 파일이 새 문서가 되고,
+    // 동시에 content_time 에 파일명이 박혀 타임라인의 내용 시점이 오염됐다.
+    // 파일 임포트는 내용 시점을 모르므로 contentTime 은 undefined 로 둔다(서버 보존).
+    res = await api.docPut(owner, text, id, title, undefined, origin);
   } else {
     const b64 = toBase64(new Uint8Array(await f.arrayBuffer()));
     guardJsonSize({ owner, filename: f.name, data_b64: b64, id, title }, f.name);

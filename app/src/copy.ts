@@ -109,9 +109,12 @@ const EN = {
       bridge: "Bridge",
       topic: "Topic",
       lines: "Line = relation",
+      // D74 — 범례 항목이 스위치다. 힌트는 캡션 옆에 작게(항목마다 반복하면 소음).
+      linesToggle: "click to hide",
       directed: "Leads to (arrow shows direction)",
       related: "Related (no direction)",
       cross: "Crosses topics (faint)",
+      bridgeLine: "Through a bridge",
       focus: "The focus color marks one thing at a time.",
     },
     // 상단 바(D56·D57) — 셸의 유일한 크롬. 검색이 조회 동선의 제1 진입점이다.
@@ -128,6 +131,14 @@ const EN = {
       home: "Home",
       depthTip: "Show where you are",
       searchPh: "Search your knowledge",
+      // 모드 2종(D73) — 왼쪽 끝 드롭다운. 이름이 기대치를 정한다: "Chat" 은 LLM
+      // 대화 상대를 기대하게 하므로 쓰지 않는다(Vinc 는 문장을 생성하지 않는다).
+      modeLabel: "Search mode",
+      modeFind: "Find",
+      modeFindHint: "Names and keywords",
+      modeAsk: "Ask",
+      modeAskHint: "Answers quoted from your own notes",
+      askPh: "Ask about your knowledge",
       browseAll: "All documents",
       results: "Results",
       enterHint: "Enter to open in Atlas",
@@ -136,6 +147,33 @@ const EN = {
       share: "Share",
       shareTip: "Pack up what you're looking at",
       settings: "Settings",
+    },
+    // 묻기(D73) — 무LLM 대화. 카피가 기대치를 정한다: 요약·추론을 약속하지 않고
+    // "인용한다"고 말한다. 못 하는 것을 유도하지 않는 것이 이 표면 설계의 절반이다.
+    // ⚠ 화면 노출 문자열에 em-dash 금지(D38) — `·`·괄호·콜론으로 대체.
+    ask: {
+      title: "Ask",
+      intro: "Ask about what you have collected. Answers quote your own notes; nothing is generated.",
+      // 되는 것만 적는다 — 아직 안 되는 질문꼴("why A leads to B")을 유도하면
+      // 그 실패가 곧 이 표면에 대한 평가가 된다.
+      forms: "What is X · Sources for X",
+      examplesHint: "Try",
+      thinking: "Looking…",
+      you: "You",
+      notFound: (q: string) => `Nothing in your knowledge matched "${q}".`,
+      notFoundHint: "Try a name that appears in your notes, or switch to Find.",
+      ambiguous: "Which one did you mean?",
+      noBody: "No description recorded for this one yet.",
+      sources: (n: number) => (n === 1 ? "1 source" : `${n} sources`),
+      stat: (deg: number, att: number) => `${deg} linked · ${att} attached`,
+      openMap: "Open in Atlas",
+      history: "History",
+      historyTitle: "Past questions",
+      historyEmpty: "No past questions yet.",
+      clear: "Clear",
+      close: "Close",
+      failed: "Could not answer right now.",
+      kept: (n: number) => `Keeping the last ${n} turns.`,
     },
     // 좌측 문서 트리(D69) — 주제 → 그 주제의 문서. 표면 전환도 여기서 한다.
     lnb: {
@@ -207,7 +245,25 @@ const EN = {
       arrows: "Direction arrows", on: "on",
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
+      // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
+      // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
+      layoutName: { hub: "by centre", rank: "by order" } as Record<string, string>,
+      // 이름만으로는 "무슨 순서인지"가 안 나온다(발주자 지적 2026-08-02). 고른 것의
+      // 규칙을 한 줄로 밝힌다 — 좌표가 무엇을 뜻하는지 모르면 배치는 장식이 된다.
+      layoutHelp: {
+        hub: "Everything spreads out from the centre: topics fly off in their own "
+          + "directions, and what belongs to a topic keeps flying that way. "
+          + "Inside a topic, the most-connected sits nearest the centre.",
+        rank: "Left comes first, right comes later (what leads to what). Within a column, "
+          + "the most-connected sits at the top, and each topic keeps its own band.",
+      } as Record<string, string>,
+      nodeScale: "Node scale", edgeWidth: "Line weight",
       docLinks: "Document links",
+      // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
+      // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
+      lineage: "Cause and effect",
+      lineageHelp: "Draws the links that say what led to what. The cause sits above, "
+        + "so a line crossing branches means another topic caused it.",
       // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
       timeBasis: "Time",
       basisRecorded: "when recorded", basisContent: "when it happened",
@@ -325,6 +381,8 @@ const EN = {
       soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
+      // D74 — 켠 손잡이가 아무 일도 안 했을 때 그 사실을 말한다(조용한 무동작 금지).
+      noLineage: "Nothing here says what led to what yet.",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
       totalsEmpty: "Nothing to total yet. Add files and the totals fill in.",
@@ -623,9 +681,11 @@ const KO: Deck = {
       bridge: "다리",
       topic: "주제",
       lines: "선 = 관계",
+      linesToggle: "눌러서 숨기기",
       directed: "이어짐 (화살표가 방향)",
       related: "관련 (방향 없음)",
       cross: "주제를 넘는 연결 (옅게)",
+      bridgeLine: "다리를 거친 연결",
       focus: "초점색은 한 번에 한 곳에만 씁니다.",
     },
     coach: {
@@ -640,6 +700,12 @@ const KO: Deck = {
       home: "홈",
       depthTip: "지금 있는 곳 보기",
       searchPh: "내 지식에서 찾기",
+      modeLabel: "검색 모드",
+      modeFind: "찾기",
+      modeFindHint: "이름과 낱말로",
+      modeAsk: "묻기",
+      modeAskHint: "내 기록에서 인용해 답합니다",
+      askPh: "내 지식에 물어보기",
       browseAll: "모든 문서",
       results: "결과",
       enterHint: "Enter · Atlas에 착지",
@@ -648,6 +714,28 @@ const KO: Deck = {
       share: "공유",
       shareTip: "지금 보고 있는 범위를 팩으로 묶습니다",
       settings: "설정",
+    },
+    ask: {
+      title: "묻기",
+      intro: "모아 둔 것에 대해 물어보세요. 답은 내 기록에서 그대로 인용합니다(생성하지 않습니다).",
+      forms: "X가 뭐야 · X 근거는",
+      examplesHint: "예시",
+      thinking: "찾는 중…",
+      you: "나",
+      notFound: (q) => `"${q}"와 맞는 것을 찾지 못했습니다.`,
+      notFoundHint: "기록에 나오는 이름으로 물어보거나, 찾기 모드로 바꿔 보세요.",
+      ambiguous: "어느 쪽입니까?",
+      noBody: "아직 이것에 대한 설명이 기록되어 있지 않습니다.",
+      sources: (n) => `근거 ${n}건`,
+      stat: (deg, att) => `연결 ${deg} · 부착 ${att}`,
+      openMap: "지도에서 보기",
+      history: "이력",
+      historyTitle: "지난 질문",
+      historyEmpty: "아직 지난 질문이 없습니다.",
+      clear: "지우기",
+      close: "닫기",
+      failed: "지금은 답할 수 없습니다.",
+      kept: (n) => `최근 ${n}턴만 보관합니다.`,
     },
     lnb: {
       documents: "문서",
@@ -715,7 +803,19 @@ const KO: Deck = {
       arrows: "방향 화살표", on: "켬",
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
+      layoutName: { hub: "중심순", rank: "순서순" } as Record<string, string>,
+      layoutHelp: {
+        hub: "가운데에서 사방으로 퍼집니다. 주제마다 자기 방향으로 뻗고, 그 주제에 "
+          + "속한 것들이 같은 방향으로 다시 퍼집니다. 한 주제 안에서는 연결이 많은 "
+          + "것이 가운데에 가깝습니다.",
+        rank: "왼쪽이 먼저, 오른쪽이 나중입니다(무엇이 무엇으로 이어지는지). "
+          + "같은 줄에서는 연결이 많은 것이 위에 오고, 주제마다 자기 띠를 지킵니다.",
+      } as Record<string, string>,
+      nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
       docLinks: "문서 연결",
+      lineage: "원인과 결과",
+      lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 위에 오므로, "
+        + "가지를 가로지르는 선은 다른 주제가 원인이라는 뜻입니다.",
       timeBasis: "시간",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 내용 시점이 적힌 것이 없습니다. 문서를 쓸 때 함께 적어 두세요.",
@@ -829,6 +929,7 @@ const KO: Deck = {
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
+      noLineage: "아직 무엇이 무엇으로 이어졌다고 적힌 것이 없습니다.",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n) => `오래된 문서 ${n}개는 그리지 않았습니다.`,
       totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 Sankey가 채워집니다.",

@@ -508,13 +508,16 @@ class CouplingTests(unittest.TestCase):
 
 
 class PinnedHubTests(unittest.TestCase):
-    def test_pinned_outranks_degree_for_hub_center(self):
-        # pin 이 허브 승격 1순위(D32) — degree 9 보다 pinned degree 1 이 중심(r=0).
+    def test_pinned_outranks_degree_inside_its_branch(self):
+        """pin 이 허브 승격 1순위(D32). D74 로 중심은 **뿌리**가 됐으므로 pin 은
+        더 이상 원점을 주지 않는다 — 자기 가지 안에서 가장 안쪽 자리를 준다."""
+        import math
         nodes = [{"id": "a", "domain": "math", "degree": 9},
                  {"id": "p", "domain": "math", "degree": 1, "pinned": True}]
         out = {n["id"]: n for n in q.layout_positions(nodes, [])}
-        self.assertEqual((out["p"]["x"], out["p"]["y"], out["p"]["z"]), (0.0, 0.0, 0.0))
-        self.assertNotEqual(out["a"]["z"], 0.0)
+        rp = math.dist((0, 0, 0), (out["p"]["x"], out["p"]["y"], out["p"]["z"]))
+        ra = math.dist((0, 0, 0), (out["a"]["x"], out["a"]["y"], out["a"]["z"]))
+        self.assertLess(rp, ra)
 
 
 class SuggestTiesTests(unittest.TestCase):
@@ -574,12 +577,13 @@ class SuggestTiesTests(unittest.TestCase):
 
 
 class LayoutPresetTests(unittest.TestCase):
-    """D34 레이아웃 프리셋 — 전부 순수 함수(결정론), 미지 값은 shell 강등."""
+    """레이아웃 프리셋 — **2종**(D34 개정 2026-08-02: hub·rank). 둘 다 순수 함수고
+    도메인 클러스터를 만들지 않는다. 폐기된 이름(radial 등)은 hub 로 접어 받는다."""
 
     def _graph(self):
         nodes = [{"id": "hub", "domain": "math", "degree": 3},
                  {"id": "a", "domain": "math", "degree": 2},
-                 {"id": "b", "domain": "math", "degree": 2},
+                 {"id": "b", "domain": "phys", "degree": 2},
                  {"id": "lone", "domain": "math", "degree": 0}]
         edges = [{"source": "hub", "target": "a", "type": "PREREQUISITE_OF"},
                  {"source": "a", "target": "b", "type": "RELATED_TO"},
@@ -592,6 +596,9 @@ class LayoutPresetTests(unittest.TestCase):
         return {n["id"]: n for n in
                 q.layout_positions(copy.deepcopy(nodes), edges, layout)}
 
+    def test_only_two_presets(self):
+        self.assertEqual(tuple(q.LAYOUTS), ("hub", "rank"))
+
     def test_all_presets_deterministic(self):
         for layout in q.LAYOUTS:
             p1, p2 = self._run(layout), self._run(layout)
@@ -599,36 +606,111 @@ class LayoutPresetTests(unittest.TestCase):
                              [(p2[k]["x"], p2[k]["y"], p2[k]["z"]) for k in sorted(p2)],
                              layout)
 
-    def test_unknown_layout_degrades_to_shell(self):
-        self.assertEqual([(n["x"], n["y"], n["z"]) for n in self._run("??").values()],
-                         [(n["x"], n["y"], n["z"]) for n in self._run("shell").values()])
+    def test_retired_names_fold_to_hub(self):
+        """저장된 프리퍼런스·딥링크가 조용히 깨지지 않아야 한다."""
+        want = [(n["x"], n["y"], n["z"]) for n in self._run("hub").values()]
+        for old in ("radial", "circle", "tree", "organic", "dendro", "shell", "??"):
+            self.assertEqual([(n["x"], n["y"], n["z"]) for n in self._run(old).values()],
+                             want, old)
 
-    def test_radial_hub_center_and_orphan_outermost(self):
+    def test_hub_keeps_centrality_inside_each_branch(self):
+        """D74 — 중심성은 **가지 안에서** 산다. math 가지 안에서 연결이 많은 것이
+        도메인 축에 가깝고 고아가 가장 멀다(가지를 가로지른 비교는 뜻이 없다)."""
         import math
-        pos = self._run("radial")
-        self.assertEqual((pos["hub"]["x"], pos["hub"]["y"]), (0.0, 0.0))  # 허브 = 중심
-        r = {k: math.hypot(v["x"], v["y"]) for k, v in pos.items()}
-        self.assertGreater(r["lone"], max(r["a"], r["b"]))   # 고아 = 최외곽 껍질
+        pos = self._run("hub")
+        r = {k: math.dist((0, 0, 0), (v["x"], v["y"], v["z"])) for k, v in pos.items()}
+        self.assertLess(r["hub"], r["a"])       # 같은 math 가지: 3연결 < 2연결
+        self.assertLess(r["a"], r["lone"])      # 〃            2연결 < 고아
 
-    def test_circle_puts_all_on_equal_radius(self):
+    def test_hub_separates_domains_into_directions(self):
+        """D74 — 도메인은 **방향**이다. 다른 도메인 노드는 다른 쪽으로 날아간다
+        (구 배치는 도메인을 무시하고 degree 로만 고리를 만들었다 — 개정)."""
         import math
-        pos = self._run("circle")
-        radii = {round(math.hypot(v["x"], v["y"]), 4) for v in pos.values()}
-        self.assertEqual(len(radii), 1)                       # 전원 동일 반경
-        self.assertTrue(all(v["z"] == 0.0 for v in pos.values()))
+        pos = self._run("hub")
+        def unit(n):
+            v = (n["x"], n["y"], n["z"])
+            L = math.dist((0, 0, 0), v) or 1.0
+            return [t / L for t in v]
+        same = sum(x * y for x, y in zip(unit(pos["hub"]), unit(pos["a"])))     # math↔math
+        cross = sum(x * y for x, y in zip(unit(pos["hub"]), unit(pos["b"])))    # math↔phys
+        self.assertGreater(same, cross)
 
-    def test_tree_layers_follow_direction(self):
-        pos = self._run("tree")
-        # hub -PREREQUISITE-> a : 루트(hub)가 위(y 큰 쪽), a 가 아래
-        self.assertGreater(pos["hub"]["y"], pos["a"]["y"])
-        # 방향 엣지에 안 걸린 lone 은 최하단
-        self.assertLess(pos["lone"]["y"], pos["a"]["y"])
+    def test_hub_reads_domain_as_a_path(self):
+        """`vinc/architecture` 는 vinc **아래** architecture 다. 공통 접두는 뿌리로
+        벗겨지므로 vinc/a 와 vinc/b 는 형제 가지가 된다(한 줄 막대가 아니라)."""
+        import copy, math
+        nodes = [{"id": f"{d}{i}", "domain": d, "degree": 1}
+                 for d in ("vinc/a", "vinc/b") for i in range(3)]
+        out = {n["id"]: n for n in q.layout_positions(copy.deepcopy(nodes), [], "hub")}
+        def unit(n):
+            v = (n["x"], n["y"], n["z"])
+            L = math.dist((0, 0, 0), v) or 1.0
+            return [t / L for t in v]
+        within = sum(x * y for x, y in zip(unit(out["vinc/a0"]), unit(out["vinc/a1"])))
+        across = sum(x * y for x, y in zip(unit(out["vinc/a0"]), unit(out["vinc/b0"])))
+        self.assertGreater(within, across)
 
-    def test_organic_pulls_connected_closer_than_unconnected(self):
-        import math
-        pos = self._run("organic")
-        d = lambda u, v: math.dist(
-            (pos[u]["x"], pos[u]["y"], pos[u]["z"]),
-            (pos[v]["x"], pos[v]["y"], pos[v]["z"]))
-        # 엣지(hub-a)가 비엣지(hub-lone)보다 가깝다 — 스프링 대 척력의 기본 성질
-        self.assertLess(d("hub", "a"), d("hub", "lone"))
+    def test_planar_coords_are_separate_and_never_collide(self):
+        """2D 는 3D 의 투영이 아니라 **독립 산출**이다(D74). z 를 눌러 접는 방식은
+        원뿔 배치에서 서로 다른 노드를 같은 점으로 만든다 — 여기서는 원리적으로
+        생기지 않아야 하고, 경계 조건은 `_dedupe_planar` 가 막는다."""
+        import copy
+        nodes = [{"id": f"n{i}", "domain": f"vinc/d{i % 7}", "degree": i % 4}
+                 for i in range(140)]
+        out = q.layout_positions(copy.deepcopy(nodes), [], "hub")
+        planar = {(n["x2"], n["y2"]) for n in out}
+        self.assertEqual(len(planar), len(out))
+        self.assertTrue(all("x2" in n and "y2" in n for n in out))
+
+    def test_planar_dedupe_survives_exact_collision(self):
+        """같은 도메인·같은 degree 인 잎이 한 무더기여도 평면 좌표는 전부 다르다."""
+        import copy
+        nodes = [{"id": f"n{i}", "domain": "vinc/one", "degree": 1} for i in range(40)]
+        out = q.layout_positions(copy.deepcopy(nodes), [], "hub")
+        self.assertEqual(len({(n["x2"], n["y2"]) for n in out}), 40)
+
+    def test_rank_orders_by_direction(self):
+        """x = 랭크. 선행이 왼쪽, 후행이 오른쪽. 평면 정본은 x·y 그대로다."""
+        pos = self._run("rank")
+        self.assertLess(pos["hub"]["x"], pos["a"]["x"])   # hub -PREREQUISITE-> a
+        self.assertTrue(all(v["x2"] == v["x"] and v["y2"] == v["y"]
+                            for v in pos.values()))
+
+    def test_rank_slabs_domains_on_z_only(self):
+        """D74 — rank 의 위계는 **z 에만** 싣는다. 층(x)은 그대로이고 2D 는 z 를
+        안 읽으므로 평면 그림은 도메인 때문에 흔들리지 않는다(원 주석의 사유:
+        계보가 도메인을 가로지르므로 클러스터로 가르면 흐름이 끊긴다)."""
+        pos = self._run("rank")
+        self.assertNotEqual(pos["b"]["z"], pos["a"]["z"])     # phys ≠ math 판
+        self.assertEqual(pos["a"]["z"], pos["hub"]["z"])      # 같은 math 판
+        self.assertEqual(pos["b"]["x2"], pos["b"]["x"])       # 평면은 z 무관
+
+    def test_rank_single_domain_stays_flat(self):
+        """도메인이 하나뿐이면 판도 하나 — z 는 0 으로 남는다(구 동작 하위호환)."""
+        import copy
+        nodes = [{"id": i, "domain": "d", "degree": 1} for i in ("a", "b", "c")]
+        out = q.layout_positions(copy.deepcopy(nodes), [], "rank")
+        self.assertTrue(all(n["z"] == 0.0 for n in out))
+
+    def test_rank_puts_most_connected_on_top(self):
+        """같은 열 안 정렬은 허브 우선이고, 그 우선순위가 **화면 위쪽**이어야 한다.
+        두 렌더러 다 +y 가 위다(three.js 는 기본, sigma 는 `(1-y)*h/2` 로 뒤집는다)
+        — 부호를 잘못 두면 "허브 우선"이 화면에서 거꾸로 읽힌다(실측 회귀)."""
+        import copy
+        nodes = [{"id": "big", "domain": "d", "degree": 9},
+                 {"id": "mid", "domain": "d", "degree": 4},
+                 {"id": "small", "domain": "d", "degree": 1}]
+        pos = {n["id"]: n for n in q.layout_positions(copy.deepcopy(nodes), [], "rank")}
+        self.assertGreater(pos["big"]["y"], pos["mid"]["y"])
+        self.assertGreater(pos["mid"]["y"], pos["small"]["y"])
+
+    def test_rank_reverses_derives_from(self):
+        """DERIVES_FROM(a→b) 은 "a 가 b 에서 나왔다" 이므로 **b 가 상류**다.
+        좌측 문서 트리(D69)는 이미 뒤집어 적재하는데 레이아웃은 안 뒤집어, 같은
+        데이터를 두 화면이 반대로 읽고 있었다(2026-08-02 정합)."""
+        import copy
+        nodes = [{"id": "orig", "domain": "d", "degree": 1},
+                 {"id": "derived", "domain": "d", "degree": 1}]
+        edges = [{"source": "derived", "target": "orig", "type": "DERIVES_FROM"}]
+        pos = {n["id"]: n for n in q.layout_positions(copy.deepcopy(nodes), edges, "rank")}
+        self.assertLess(pos["orig"]["x"], pos["derived"]["x"])   # 원본이 왼쪽

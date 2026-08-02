@@ -11,8 +11,13 @@ import type { AtlasPrefs } from "../atlas-prefs";
  *  **왜 새로 짓는가.** 예전 2D 는 3D 씬(atlas3d.ts)에 `flat` 플래그를 꽂아 z 를
  *  0 으로 만든 **투영**이었다. 그래서 세로 위치가 시간도 위계도 아닌
  *  `y + z*0.55`(3D 깊이의 잔상)였다 — 2D 인데 세로에 아무 뜻이 없었다.
- *  여기서는 사이드카가 준 **xy 평면 좌표만** 쓴다(z 는 읽지 않는다). D17 결정론
+ *  여기서는 사이드카가 준 **평면 정본(x2/y2)만** 쓴다(z 는 읽지 않는다). D17 결정론
  *  계약 그대로이고 좌표 소유권도 그대로 사이드카에 있다.
+ *
+ *  D74 — 그 평면 정본은 3D 좌표를 접은 값이 **아니다**. 사이드카가 같은 도메인
+ *  트리를 평면 문법(부채꼴)으로 다시 배치해 따로 실어 보낸다. 접어서 쓰면 3D
+ *  원뿔에서 깊이로만 갈라져 있던 노드들이 평면에서 같은 점이 되는데, 그건 노드가
+ *  하나 사라진 것이다 — 사후에 떼어내는 대신 애초에 안 생기게 한다.
  *
  *  **무엇을 2D 답게 만드는가**(레퍼런스 해부 [[vinc.d.view-redesign-research]] §5.1
  *  C안 — 축을 새로 두지 않고 네 문법만 이식):
@@ -75,6 +80,13 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   const badgeBox = el.querySelector<HTMLElement>(".a2-badges")!;
   const mini = el.querySelector<HTMLCanvasElement>(".a2-minimap")!;
 
+  /** 평면 정본(D74). 이 렌더러는 **x2/y2 를 읽는다** — z 를 눌러 접은 값이 아니라
+   *  같은 도메인 트리를 평면 문법(부채꼴)으로 다시 배치한 좌표라, 3D 의 원뿔에서
+   *  깊이로만 갈라져 있던 노드들이 여기서 같은 점이 되는 일이 없다. 구 사이드카는
+   *  이 키를 안 보내므로 x/y 로 강등한다(그때는 예전 그림 그대로). */
+  const px = (n: GraphNode) => n.x2 ?? n.x ?? 0;
+  const py = (n: GraphNode) => n.y2 ?? n.y ?? 0;
+
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const shown = prefs.unlinked === "hide"
     ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.seed)
@@ -85,7 +97,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   // 겹쳤다. 해법은 좌표가 아니라 **크기**다 — 실제 최근접 이웃 거리를 재서 그 절반을
   // 넘지 않게 상한을 건다. 재는 비용은 마운트 1회이고 큰 그래프는 표본으로 줄인다.
   const density = (() => {
-    const pts = shown.map((n) => [(n.x ?? 0), (n.y ?? 0)] as const);
+    const pts = shown.map((n) => [px(n), py(n)] as const);
     if (pts.length < 2) return Infinity;
     const w = Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0]));
     const h = Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1]));
@@ -119,14 +131,17 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     const medR = meds[Math.floor(meds.length / 2)];
     return Math.min(1, Math.max(0.35, density / (2 * medR)));
   })();
-  const sizeOf = (n: GraphNode) => baseSize(n) * shrink;
+  // 사용자 배율은 밀도 축소(shrink) **뒤에** 곱한다 — 축소는 겹침을 막는 자동 보정이고
+  // 배율은 그 위에 얹는 취향이라, 순서를 바꾸면 배율을 올려도 축소가 도로 깎는다.
+  const sizeOf = (n: GraphNode) => baseSize(n) * shrink * (prefs.nodeScale ?? 1);
 
   const g = new Graph();
   for (const n of shown) {
-    // z 는 읽지 않는다 — 그것이 이 렌더러의 존재 이유다(위 주석).
+    // z 는 읽지 않는다 — 그것이 이 렌더러의 존재 이유다(위 주석). px/py 가 평면
+    // 정본(x2/y2)을 집어 오고, 구 사이드카에서만 x/y 로 강등된다.
     g.addNode(n.id, {
       label: n.label === n.id ? n.id.replace(/^[a-z]+:/, "") : n.label,
-      x: (n.x ?? 0) * prefs.spread, y: (n.y ?? 0) * prefs.spread,
+      x: px(n) * prefs.spread, y: py(n) * prefs.spread,
       size: sizeOf(n), color: n.id === o.seed ? point() : ink(),
     });
   }
@@ -147,7 +162,10 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     const key = g.addEdge(e.source, e.target, {
       // 화살촉은 열린 층(prefs.arrows)이 켜져 있고 방향 관계일 때만.
       type: dir && prefs.arrows ? "arrow" : "line",
-      size: dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9,
+      // 굵기 차등(방향 > 일반 > 교차 > 브릿지)은 그대로 두고 전역 배율만 곱한다
+      // (2026-08-02 사용자 손잡이). 가중치 표현은 D33 대로 색 농도가 계속 맡는다.
+      size: (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9)
+            * (prefs.edgeScale ?? 1),
       color: dir ? inkMute()
         : bridged ? mix(line(), bg, 0.22)
         : e.cross_domain ? mix(line(), bg, 0.28) : mix(line(), bg, 0.35),
@@ -239,7 +257,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
   // 그리는 소음일 뿐이다. 카메라 ratio 가 1 보다 작아진(=파고든) 순간에만 나타나
   // "지금 보는 곳이 전체의 어디인가"에 답한다. 클릭 = 그 자리로 점프.
   const mctx = mini.getContext("2d")!;
-  const pts = shown.map((n) => ({ x: (n.x ?? 0) * prefs.spread, y: (n.y ?? 0) * prefs.spread }));
+  const pts = shown.map((n) => ({ x: px(n) * prefs.spread, y: py(n) * prefs.spread }));
   const bx0 = Math.min(...pts.map((p) => p.x), 0), bx1 = Math.max(...pts.map((p) => p.x), 0);
   const by0 = Math.min(...pts.map((p) => p.y), 0), by1 = Math.max(...pts.map((p) => p.y), 0);
   const mw = mini.width, mh = mini.height, mpad = 8;

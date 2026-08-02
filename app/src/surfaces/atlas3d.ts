@@ -158,7 +158,9 @@ function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   if (n.pinned) r *= 1.25;   // pin = 허브 승격(D32) — 확정된 노드는 한 급 크게
   // 2D 는 깊이 겹침 여지가 없어 조밀 — 반경을 줄여 겹침 비율 자체를 낮춘다
   if (prefs.view === "2d" && n.kind !== "domain") r *= 0.7;
-  return r;
+  // 사용자 배율(D31 열린 층) — **맨 마지막에** 곱한다. 위의 인코딩(무엇이 크고
+  // 작은가)을 건드리지 않고 전체 크기만 옮긴다.
+  return r * (prefs.nodeScale ?? 1);
 }
 
 function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glow = false): THREE.Object3D {
@@ -287,9 +289,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     })
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
       `<span style="${pal.label};border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
-    // D33 — 엣지 = 헤어라인: linkWidth 미지정(0) = 튜브 메시가 아닌 THREE.Line.
-    // 뚱뚱한 반투명 튜브를 제거하고, 가중치는 굵기 대신 잉크 농도로 옮긴다.
-    // 완만한 곡률로 겹친 선을 갈라 읽히게 한다(연결의 "부드러움").
+    // D33 — 엣지 = 헤어라인이 **기본**이다: linkWidth 0 = 튜브 메시가 아닌 THREE.Line.
+    // 가중치는 여전히 굵기가 아니라 잉크 농도가 말한다(그 구분이 D33 의 요지다).
+    // 사용자 배율(2026-08-02)은 그 위에 얹는 전역 손잡이일 뿐이다: 1 이면 헤어라인
+    // 그대로(0)이고, 올릴 때만 튜브로 굵어진다 — 기본 화면은 D33 이 정한 모습 그대로.
+    .linkWidth(() => {
+      const s = prefs.edgeScale ?? 1;
+      return s <= 1 ? 0 : (s - 1) * 0.8;
+    })
     .linkOpacity(0.85)
     .linkCurvature(0.18)
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층

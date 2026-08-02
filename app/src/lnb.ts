@@ -117,9 +117,17 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
   const depth = Math.min(Math.max(Number(d.depth ?? 0), 0), 8);   // 들여쓰기 상한 — 8단 넘으면 글자가 사라진다
   const on = d.node_id && active.nodeId === d.node_id;
   const tip = d.node_id ? COPY.ui.lnb.depthTip(Number(d.depth ?? 0)) : COPY.ui.lnb.editOnly;
-  return `<button class="lnb-doc${on ? " on" : ""}" role="treeitem" data-doc="${esc(d.doc_id)}"
+  // 깊이는 세 갈래로 말한다. 여태 들여쓰기 하나뿐이라 1단이 10.88px 밖에 안 벌어져
+  // 종속이 거의 안 보였고, 보조기술에는 8단 트리가 평평한 목록으로 들렸다.
+  //   --lvl  : 들여쓰기(폭이 232px 라 단차를 무한정 키울 수 없다)
+  //   --ink  : 잉크 3단(0=본문 · 1=흐림 · 2+=더 흐림). 색은 2단까지만 — 계속 흐리면
+  //            AA 하한에 먼저 닿는다. 그 아래는 들여쓰기와 도트가 받는다.
+  //   aria-level : 시각 밖 통로. 주제가 1단이므로 문서는 depth+2 다.
+  const ink = Math.min(depth, 2);
+  return `<button class="lnb-doc${on ? " on" : ""}" role="treeitem"
+    aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-doc="${esc(d.doc_id)}"
     data-node="${esc(d.node_id || "")}" data-dom="${esc(domain)}"
-    style="--lvl:${depth}" data-tip="${esc(tip)}">
+    style="--lvl:${depth};--ink:${ink}" data-tip="${esc(tip)}">
     <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(d.title || d.doc_id)}</span>
   </button>`;
 }
@@ -127,7 +135,11 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
 function groupRows(g: NavGroup): string {
   const open = expanded.has(g.domain);
   const on = active.domain === g.domain;
-  const head = `<button class="lnb-group${on ? " on" : ""}" data-group="${esc(g.domain)}"
+  // 주제 행도 treeitem 이다(여태 role 이 없어 트리에서 빠져 있었다). 그리고 자식
+  // group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 — 형제로 두면 보조기술이
+  // 계층으로 읽지 않는다.
+  const head = `<button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="1"
+      ${on ? 'aria-selected="true" ' : ""}data-group="${esc(g.domain)}"
       aria-expanded="${open}" data-tip="${esc(COPY.ui.lnb.conceptCount(g.concepts))}">
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
       <span class="lnb-gname">${esc(g.domain)}</span>

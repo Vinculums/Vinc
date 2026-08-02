@@ -151,7 +151,12 @@ export type GraphNode = {
   // 서버가 `ts` 를 이 값으로 갈아 끼우지만, **두 열 모두 실려 온다** — 클라이언트가
   // 재조회 없이 축을 바꿀 수 있게. 구 사이드카에는 이 키가 아예 없다(우아 강등).
   content_ts?: string;
+  // D74 — 좌표는 **두 벌**이다: x/y/z 는 3D 정본, x2/y2 는 2D 정본.
+  // 2D 는 3D 를 눌러 접은 것이 아니다(접으면 원뿔 배치에서 서로 다른 노드가 같은
+  // 점이 된다). 같은 도메인 트리를 평면 문법으로 다시 배치한 값이라 겹침이
+  // 원리적으로 생기지 않는다. 구 사이드카에는 이 키가 없다 → x/y 로 우아 강등.
   x?: number; y?: number; z?: number;
+  x2?: number; y2?: number;
 };
 export type GraphEdge = {
   source: string; target: string; type: string; cross_domain: boolean;
@@ -240,8 +245,12 @@ export const api = {
   // arm: 'mentions'(언급 링크) | 'fts'(제목 일치 폴백) | 'none'(발췌 없음 — 무해).
   // links(신설): 상세 레일 수치의 정본. 구 사이드카 응답엔 키 자체가 없다 —
   // 프론트는 그 부재로 구버전을 판별해 그래프 잔상 집계로 우아하게 강등한다.
+  // props(D73): 개념의 자유 속성. `one_liner` 는 쓰기 경로가 없어 MCP 적재분이
+  // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
+  // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
   nodeContext: (owner: string, node: string, limit = 4): Promise<{
     executed: boolean; title?: string; one_liner?: string; arm?: string;
+    props?: Record<string, unknown>;
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
     links?: NodeLinks;

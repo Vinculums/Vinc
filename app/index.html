@@ -56,13 +56,28 @@
         <div id="tb-views" role="group"></div>
 
         <!-- 상시 검색(D57) — 조회는 그래프를 훑는 일이 아니라 이름을 대는 일이다.
-             Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#atlas/trace/<id>). -->
-        <div id="tb-search">
-          <span class="tb-sicon" aria-hidden="true"></span>
+             Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#atlas/trace/<id>).
+
+             모드 2종(D73). 왼쪽 끝 버튼이 모드를 고른다 — 아이콘 자리를 드롭다운
+             트리거가 겸한다(아이콘은 그대로 남고 라벨·캐럿이 붙는다).
+               찾기 = 기존 동작(드롭다운 결과 → 착지)
+               묻기 = 무LLM 대화(질문 우측 · 답변 좌측 · 이력 보존)
+             모드는 바의 `data-mode` 로 드러나고 CSS·JS 가 그 하나만 본다. -->
+        <div id="tb-search" data-mode="find">
+          <button class="tb-mode" id="tb-mode" type="button"
+                  aria-haspopup="menu" aria-expanded="false" aria-controls="tb-modemenu">
+            <span class="tb-sicon" aria-hidden="true"></span>
+            <span class="tb-mode-label" id="tb-mode-label"></span>
+            <span class="tb-caret" aria-hidden="true"></span>
+          </button>
           <input id="tb-q" type="search" autocomplete="off" spellcheck="false"
                  role="combobox" aria-expanded="false" aria-controls="tb-results" />
           <span class="tb-kbd" id="tb-kbd"></span>
+          <div class="tb-modemenu" id="tb-modemenu" role="menu" hidden></div>
           <div id="tb-results" role="listbox" hidden></div>
+          <!-- 대화 패널 — 내용은 ask.ts 가 채운다. 첫 턴 전까지는 hidden 이라
+               바가 평소 높이 그대로다(늘어남은 첫 질문 이후에만 일어난다). -->
+          <div id="tb-chat" hidden></div>
         </div>
 
         <div id="tb-actions">

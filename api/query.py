@@ -352,6 +352,11 @@ def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
         # 둘 다 받아 두면 축 전환에 재조회가 필요 없다. Concept 만 이 열을 가지므로
         # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
         "coalesce(c.content_time, '') AS content_ts, "
+        # ⚠ `pinned` 를 여기 넣지 말 것. **Concept 테이블에 그 열이 없다**
+        # (`store/embedded_schema.py` — pinned 는 Episode 의 열이다). 넣으면 Binder
+        # 오류로 그래프 플랜 전체가 죽는다(2026-08-02 실측: 22 테스트 동시 실패).
+        # 레이아웃 정렬의 `pinned` 키가 무동작인 것은 이 때문이고, D32 의 "pin 이
+        # 허브 승격 1순위"는 개념 축에서 **아직 구현된 적이 없다**(별건).
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
@@ -807,245 +812,36 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
-# 사용자 선택 프리셋 정본(D34 + D50 rank + D51 dendro). `shell` 은 D51 에서 목록
-# 밖으로 나갔다 — 연결을 안 보고 간격이 노드 수에 적응하지 않아 겹침이 심했다
-# (실측 54%). `organic` 의 초기 배치로만 남는다. 테스트가 이 튜플을 훑는다.
-LAYOUTS = ("radial", "circle", "tree", "organic", "rank", "dendro")
+# 사용자 선택 프리셋 정본 — **2종**(발주자 지시 2026-08-02, D34 개정).
+#   hub  : 연결이 많을수록 중심, 적을수록 바깥(동심 배치). "무엇이 중심인가".
+#   rank : 전역 위상 순서를 x 에 인코딩. "무엇이 무엇보다 먼저인가".
+# 구 6종(radial·circle·tree·organic·dendro·shell)은 이 둘의 변주라 내렸다.
+# 옛 이름은 `_LAYOUT_ALIAS` 가 hub 로 접어 받는다(저장값·딥링크 무해).
+LAYOUTS = ("hub", "rank")
+_LAYOUT_ALIAS = {"radial": "hub", "circle": "hub", "tree": "hub",
+                 "organic": "hub", "dendro": "hub", "shell": "hub"}
 _DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
-
-
-def _cluster_shell(members, ids, adj, directed, math, GOLDEN):
-    """fibonacci 구면 산개 — 허브가 중심, 반경 = 0.08·√i.
-
-    ⚠ **사용자 선택 프리셋에서 제외됐다**(D51, 2026-07-26). 반경이 정렬 순위일 뿐
-    연결을 전혀 보지 않아 구조를 만들지 못했고, 무엇보다 간격이 노드 수에 적응하지
-    않아 **74노드에서 54%가 이웃과 겹쳤다**(실측). `organic` 의 초기 배치로만 남는다
-    (힘-지향의 시작점은 순수·결정론이어야 하므로 이 함수가 그 역할에 맞다)."""
-    count = len(members)
-    pos = {}
-    for i, n in enumerate(members):
-        r = 0.08 * math.sqrt(i)
-        t = i / max(count - 1, 1)
-        phi = math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * t)))   # 극각 — 구면 균등
-        theta = i * GOLDEN
-        pos[n["id"]] = (r * math.sin(phi) * math.cos(theta),
-                        r * math.sin(phi) * math.sin(theta),
-                        r * math.cos(phi))
-    return pos
-
-
-def _cluster_radial(members, ids, adj, directed, math, GOLDEN):
-    """Centralized Burst — 허브(정렬 1위)가 중심, BFS 깊이 = 동심 껍질 반경."""
-    inset = set(ids)
-    depth = {ids[0]: 0}
-    frontier = [ids[0]]
-    while frontier:
-        nxt = []
-        for u in frontier:
-            for v in sorted(adj.get(u, ())):
-                if v in inset and v not in depth:
-                    depth[v] = depth[u] + 1
-                    nxt.append(v)
-        frontier = nxt
-    stray = max(depth.values(), default=0) + 1   # 미도달(고아) — 최외곽 껍질
-    counts: dict[int, int] = {}
-    for n in members:
-        d = depth.get(n["id"], stray)
-        counts[d] = counts.get(d, 0) + 1
-    ring: dict[int, int] = {}
-    pos = {}
-    for n in members:
-        d = depth.get(n["id"], stray)
-        j = ring[d] = ring.get(d, -1) + 1
-        k = counts[d]
-        # 껍질 반경은 노드 수에 적응 — 둘레 간격이 노드 지름(≈0.17)을 넘도록
-        r = max(0.14 * d, 0.033 * k) if d else 0.0
-        theta = 2 * math.pi * j / max(k, 1) + d * 0.5   # 껍질 내 균등 + 위상 오프셋
-        pos[n["id"]] = (r * math.cos(theta), r * math.sin(theta),
-                        0.04 * d * math.sin(theta * 0.7))
-    return pos
-
-
-def _cluster_circle(members, ids, adj, directed, math, GOLDEN):
-    """Circular Ties — 원둘레 정렬(정렬 순서 유지), 엣지는 현(chord)으로 읽힌다."""
-    count = len(members)
-    R = min(0.42, 0.10 * math.sqrt(count) + 0.08)
-    pos = {}
-    for i, n in enumerate(members):
-        theta = 2 * math.pi * i / max(count, 1)
-        pos[n["id"]] = (R * math.cos(theta), R * math.sin(theta), 0.0)
-    return pos
-
-
-def _cluster_tree(members, ids, adj, directed, math, GOLDEN):
-    """Ramification — 방향 관계(prerequisite/derives/inherits)로 계층 배치.
-    루트 = 방향 유입이 없는 노드, 층 = BFS 깊이(순환은 방문 가드로 절단).
-    방향 엣지에 안 걸린 노드는 최하단 별도 층."""
-    inset = set(ids)
-    incoming = {i: 0 for i in ids}
-    for s, targets in directed.items():
-        if s not in inset:
-            continue
-        for t in targets:
-            if t in inset:
-                incoming[t] = incoming.get(t, 0) + 1
-    involved = {i for i in ids
-                if incoming.get(i, 0) or any(t in inset for t in directed.get(i, ()))}
-    roots = sorted(i for i in involved if incoming.get(i, 0) == 0) or sorted(involved)[:1]
-    layer = {r: 0 for r in roots}
-    frontier = list(roots)
-    while frontier:
-        nxt = []
-        for u in frontier:
-            for v in sorted(directed.get(u, ())):
-                if v in inset and v not in layer:
-                    layer[v] = layer[u] + 1
-                    nxt.append(v)
-        frontier = nxt
-    bottom = max(layer.values(), default=0) + 1
-    rows: dict[int, list] = {}
-    for n in members:
-        rows.setdefault(layer.get(n["id"], bottom), []).append(n["id"])
-    total = len(rows)
-    pos = {}
-    for li, (lv, row) in enumerate(sorted(rows.items())):
-        y = (total - 1) / 2 * 0.13 - li * 0.13     # 위(루트) → 아래
-        k = len(row)
-        for j, nid in enumerate(row):
-            pos[nid] = ((j - (k - 1) / 2) * 0.12, y, 0.0)
-    return pos
-
-
-def _cluster_organic(members, ids, adj, directed, math, GOLDEN):
-    """Organic Rhizome — 힘-지향을 **시드 고정 + 반복 수 고정**으로 결정론화(D17
-    유지). 초기 배치 = shell(순수), 척력 1/d² + 엣지 스프링, 60 반복 후 정규화."""
-    pos = {k: list(v) for k, v in
-           _cluster_shell(members, ids, adj, directed, math, GOLDEN).items()}
-    inset = set(ids)
-    springs = [(u, v) for u in ids for v in sorted(adj.get(u, ()))
-               if v in inset and u < v]
-    K_REP, K_SPR, REST, STEP = 0.009, 0.05, 0.34, 1.0
-    for _ in range(60):
-        force = {i: [0.0, 0.0, 0.0] for i in ids}
-        for a in range(len(ids)):
-            for b in range(a + 1, len(ids)):
-                u, v = ids[a], ids[b]
-                dx = [pos[u][c] - pos[v][c] for c in range(3)]
-                d2 = max(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2, 1e-6)
-                f = min(K_REP / d2, 0.05)
-                d = math.sqrt(d2)
-                for c in range(3):
-                    force[u][c] += f * dx[c] / d
-                    force[v][c] -= f * dx[c] / d
-        for u, v in springs:
-            dx = [pos[u][c] - pos[v][c] for c in range(3)]
-            d = max(math.sqrt(dx[0] ** 2 + dx[1] ** 2 + dx[2] ** 2), 1e-6)
-            f = K_SPR * (d - REST)
-            for c in range(3):
-                force[u][c] -= f * dx[c] / d
-                force[v][c] += f * dx[c] / d
-        for i in ids:
-            for c in range(3):
-                pos[i][c] += max(-0.04, min(0.04, force[i][c] * STEP))
-    radii = sorted(math.sqrt(sum(p[c] ** 2 for c in range(3))) for p in pos.values())
-    # 80분위 반경 기준 정규화(양방향) — 최외곽(척력에 밀린 고아)이 아니라 본체
-    # 밀도를 목표에 맞춘다. rmax 기준은 고아 하나가 본체를 상대 압축시킨다(실측).
-    r_ref = radii[int(0.8 * (len(radii) - 1))] if radii else 0.0
-    scale = 0.30 / r_ref if r_ref > 1e-6 else 1.0
-    return {i: (p[0] * scale, p[1] * scale, p[2] * scale) for i, p in pos.items()}
-
-
-# 사용자 선택 프리셋(D34 + D50 rank + D51 dendro). `shell` 은 목록에서 빠졌다 —
-# `organic` 의 초기 배치로만 쓰인다(위 독스트링). 미지 값은 `radial` 로 강등한다.
-_CLUSTER_LAYOUTS = {"radial": _cluster_radial,
-                    "circle": _cluster_circle, "tree": _cluster_tree,
-                    "organic": _cluster_organic}
-
-
-def _global_dendro(nodes: list[dict], directed: dict[str, set], math) -> None:
-    """Dendro(D51) — 좌→우 계층 나무. 발주자 참조 이미지(논문 크로노그램) 문법:
-    왼쪽 뿌리 하나에서 갈라져 나가고, **잎은 오른쪽 끝에 정렬**되며, 커넥터가
-    부채꼴로 벌어진다.
-
-    **뼈대는 방향 관계다**(무방향으로 걷되 방향 엣지만 쓴다). 전체 엣지로 BFS 하면
-    나무가 안 나온다 — 실측 평균 차수 **17.2** 라 깊이가 0·1·2 세 층에서 끝나고
-    (1홉에 39개가 걸린다) 잎이 한 열에 60개씩 쌓여 뭉갠다. 방향 엣지만 쓰면 차수
-    **3.8**, 깊이 9층으로 고르게 퍼진다. 안 쓰인 엣지도 **그려지기는 한다** — 배치만
-    나무 골격을 따를 뿐 관계를 버리지 않는다(트리화 손실 0).
-
-    x = 깊이. 단 **부모가 있는 잎은 최대 깊이로 밀어 오른쪽에 맞춘다**(덴드로그램의
-    핵심 성질). 방향 관계가 아예 없는 외톨이는 뿌리이자 잎이라 밀지 않고 왼쪽에 둔다.
-    y = 잎을 순서대로 깔고 내부 노드는 자식들의 중앙에 앉힌다(tidy tree).
-    도메인 클러스터를 만들지 않는다 — 나무는 도메인을 가로지른다. 순수 함수(D17)."""
-    ids = [n["id"] for n in nodes]
-    if not ids:
-        return
-    inset = set(ids)
-    adj: dict[str, set] = {}
-    for s, targets in directed.items():
-        if s not in inset:
-            continue
-        for t in targets:
-            if t in inset:
-                adj.setdefault(s, set()).add(t)
-                adj.setdefault(t, set()).add(s)
-    by_id = {n["id"]: n for n in nodes}
-    order = sorted(ids, key=lambda i: (-int(bool(by_id[i].get("pinned"))),
-                                       -int(by_id[i].get("degree") or 0), str(i)))
-    depth: dict[str, int] = {}
-    kids: dict[str, list[str]] = {}
-    roots: list[str] = []
-    for start in order:                      # 성분마다 뿌리 하나(허브 우선)
-        if start in depth:
-            continue
-        roots.append(start)
-        depth[start] = 0
-        frontier = [start]
-        while frontier:
-            nxt = []
-            for u in frontier:
-                for v in sorted(adj.get(u, ())):
-                    if v in inset and v not in depth:
-                        depth[v] = depth[u] + 1
-                        kids.setdefault(u, []).append(v)
-                        nxt.append(v)
-            frontier = nxt
-    maxd = max(depth.values())
-    parented = {v for ch in kids.values() for v in ch}
-    # 잎(자식 없음)은 맨 오른쪽 열로 — 덴드로그램은 잎이 한 줄에 선다. 단 **부모도
-    # 없는 외톨이**(방향 관계 0)는 밀지 않는다: 뿌리이자 잎이라 오른쪽으로 보내면
-    # "가장 깊은 후손"과 섞여 거짓말이 된다.
-    col = {i: (maxd if (not kids.get(i) and i in parented) else depth[i]) for i in ids}
-    # y: 잎을 만나는 순서대로 깔고, 내부 노드는 자식 y 의 평균(후위 순회).
-    y: dict[str, float] = {}
-    slot = [0.0]
-
-    def place(u: str) -> float:
-        ch = kids.get(u)
-        if not ch:
-            y[u] = slot[0]
-            slot[0] += 1.0
-            return y[u]
-        vals = [place(v) for v in ch]
-        y[u] = sum(vals) / len(vals)
-        return y[u]
-
-    for r in roots:
-        place(r)
-        slot[0] += 1.0                       # 성분 사이 한 칸 띄우기
-    span = max(slot[0] - 1.0, 1.0)
-    y_step = 3.0 / span                      # 세로 총 높이 3.0 고정(간격 적응)
-    for n in nodes:
-        i = n["id"]
-        n["x"] = round((col[i] - maxd / 2) * 0.55, 6)
-        n["y"] = round((y[i] - span / 2) * y_step, 6)
-        n["z"] = 0.0
+# ⚠ 방향 정합(2026-08-02 수정). `DERIVES_FROM(a→b)` 은 "a 가 b 에서 나왔다"이므로
+# **b 가 상류**다. 좌측 문서 트리(D69)는 이미 뒤집어 적재하는데(`_nav_depth` 주석:
+# "뒤집기를 빠뜨리면 트리 전체가 조용히 뒤집힌다") 레이아웃은 안 뒤집어, 같은
+# 데이터를 트리는 "원본이 위", rank 는 "파생물이 왼쪽"으로 **반대로** 읽고 있었다.
+# 여기서 트리 쪽에 맞춘다 — 그쪽에만 명시 주석과 테스트가 있었다.
+_REVERSED_RELS = ("DERIVES_FROM",)
 
 
 def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
-    """Rank(D50) — **전역** 위상 순서를 좌표에 인코딩한다. x = 랭크(선행 → 후행),
-    y = 같은 랭크 안 정렬. 다른 프리셋과 달리 도메인 클러스터를 만들지 않는다:
-    계보는 도메인을 가로지르므로 클러스터 안에서 랭크를 매기면 흐름이 끊긴다.
+    """Rank(D50 + **D74 위계**) — 전역 위상 순서를 좌표에 인코딩한다.
+    x = 랭크(선행 → 후행) · y = 열 안 정렬 · z = 도메인 슬랩(3D 전용).
+
+    **위계를 어떻게 실었는가**(발주자 "rank 도 같은 방법이 되는지 조사" 응답):
+    도메인으로 **클러스터를 만들지는 않는다** — 원 주석의 사유("계보는 도메인을
+    가로지르므로 클러스터 안에서 랭크를 매기면 흐름이 끊긴다")는 지금도 맞다.
+    대신 층(x)은 손대지 않고 **열 안 순서**만 도메인으로 묶는다. 층 읽기는 그대로
+    두고 같은 도메인이 열을 가로질러 비슷한 높이에 서므로, 도메인 안 계보는 짧은
+    가로선이 되고 도메인을 넘는 계보는 **사선으로 드러난다** — 그게 이 프리셋에서
+    보고 싶은 것이다. 3D 는 거기에 z 를 더해 도메인마다 자기 깊이의 판을 준다
+    (hub 의 원뿔이 여기서는 나란한 슬랩이 된다). 2D 는 z 를 안 읽으므로 같은
+    그림에서 깊이만 빠진다.
 
     **왜 필요한가**: 2D 관점의 좌표는 여태 아무 의미도 인코딩하지 않았다(도메인을
     원 둘레에 배치했을 뿐). 흐름 관점은 좌표에 의미가 있지만 방향 엣지 3종만 그려
@@ -1095,29 +891,53 @@ def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
     # 세로 스크롤이 된다(실측). 폭 = 0.5×열, 높이 = 3.0 고정 → 열이 늘수록 가로로 눕는다.
     tallest = max((len(r) for r in rows.values()), default=1)
     y_step = 3.0 / max(tallest - 1, 1)
+    band = _domain_order(nodes)
+    # 도메인 슬랩 간격 — 판이 하나뿐이면 0(평면으로 남는다), 여럿이면 [-0.6, 0.6].
+    slabs = max(len(set(band.values())), 1)
+    z_step = 0.0 if slabs < 2 else 1.2 / (slabs - 1)
     for lv, row in rows.items():
-        # 열 안 정렬은 (pinned, degree, id) — 다른 프리셋과 같은 허브 우선 규율(D32).
-        row.sort(key=lambda n: (-int(bool(n.get("pinned"))),
+        # 열 안 정렬 = (도메인 띠, pinned, degree, id). 도메인이 하나뿐이면 첫 키가
+        # 상수라 정렬은 예전 그대로(허브 우선, D32)로 접힌다 — 하위호환.
+        row.sort(key=lambda n: (band.get(n.get("domain") or "", 0),
+                                -int(bool(n.get("pinned"))),
                                 -int(n.get("degree") or 0), str(n.get("id"))))
         k = len(row)
         x = (lv - (cols - 1) / 2) * 0.5
         for j, n in enumerate(row):
             n["x"] = round(x, 6)
-            n["y"] = round((j - (k - 1) / 2) * y_step, 6)
-            n["z"] = 0.0
+            # ⚠ y 는 **위로 갈수록 크다**(2026-08-02 수정). 두 렌더러가 같은 규약이다:
+            # three.js 는 +y 가 위, sigma 는 클립 y 를 `(1 - y) * h / 2` 로 뒤집어
+            # 역시 +y 가 위다. 그래서 `j - (k-1)/2` 로 두면 1순위(j=0)가 **맨 아래**로
+            # 가서 "허브 우선"이 화면에서 뒤집혀 읽혔다(실측: 같은 열에서 degree
+            # 16 이 최하단, 14 가 최상단). 부호를 뒤집어 1순위를 맨 위에 세운다.
+            n["y"] = round(((k - 1) / 2 - j) * y_step, 6)
+            n["z"] = round((band.get(n.get("domain") or "", 0)
+                            - (slabs - 1) / 2) * z_step, 6)
+            # 평면 정본은 x·y 그대로 — rank 는 애초에 평면 문법이라 접을 것이 없다.
+            n["x2"], n["y2"] = n["x"], n["y"]
 
 
 def layout_positions(nodes: list[dict], edges: list[dict],
                      layout: str = "radial") -> list[dict]:
-    """결정론 3D 레이아웃(D17 + D21 개정 + D34 프리셋) — **순수 함수**, 난수·시간
-    무의존이라 같은 그래프는 항상 같은 좌표(플랜 순수성 계약과 동형). 도메인
-    클러스터 중심을 xy 단위원 둘레(z=0)에 정렬 배치하고, 클러스터 내부는 프리셋
-    (radial·circle·tree·organic — D34, 미지 값은 radial 강등)으로 편다. 예외:
-    **rank**(D50)·**dendro**(D51)는 클러스터를 만들지 않고 전역으로 배치한다.
-    내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32)."""
+    """결정론 배치(D17 + D34 프리셋 + **D74 위계 폭발**) — 순수 함수. 난수·시간
+    무의존이라 같은 그래프는 언제 그려도 같은 좌표다(플랜 순수성 계약과 동형).
+
+    **좌표를 두 벌 낸다**(D74, 발주자 지시 2026-08-02):
+      ``x``/``y``/``z`` = 3D 정본 · ``x2``/``y2`` = 2D 정본.
+    2D 는 3D 를 **투영한 것이 아니다**. z 를 눌러 평탄화하면 z 로만 갈라져 있던
+    노드들이 평면에서 같은 점이 되는데(원뿔 배치에서는 흔하다), 사후 보정으로
+    떼어내면 위치의 뜻이 흐려진다. 그래서 같은 트리를 **평면 문법으로 다시 배치**
+    한다(원뿔 → 부채꼴). 겹침은 고쳐지는 것이 아니라 **생기지 않는다** —
+    부채꼴은 서로 겹치지 않고 부채꼴 안에서는 각도 슬롯이 전부 다르다.
+    (그래도 exact 중복이 남을 수 있는 경계는 `_dedupe_planar` 가 마지막에 막는다.)
+
+    내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32).
+    ⚠ Concept 에는 `pinned` 열이 없어(embedded_schema) 개념 축에서는 무동작이다."""
     import math
     GOLDEN = 2.399963229728653
-    cluster_fn = _CLUSTER_LAYOUTS.get(layout, _cluster_radial)
+    layout = _LAYOUT_ALIAS.get(layout, layout)
+    if layout not in LAYOUTS:
+        layout = "hub"
     adj: dict[str, set] = {}
     directed: dict[str, set] = {}
     for e in edges or []:
@@ -1126,38 +946,250 @@ def layout_positions(nodes: list[dict], edges: list[dict],
             continue
         adj.setdefault(s, set()).add(t)
         adj.setdefault(t, set()).add(s)
-        if (e.get("type") or "") in _DIRECTED_RELS:
-            directed.setdefault(s, set()).add(t)
-    # rank(D50)·dendro(D51)는 도메인 클러스터를 만들지 않는다 — 계보도 나무도 도메인을
-    # 가로지르므로 클러스터 안에서 매기면 구조가 끊긴다. 전역 배치 후 즉시 반환.
+        rel = e.get("type") or ""
+        if rel in _DIRECTED_RELS:
+            # 상류 → 하류로 정규화한다(위 _REVERSED_RELS 주석 참조).
+            if rel in _REVERSED_RELS:
+                directed.setdefault(t, set()).add(s)
+            else:
+                directed.setdefault(s, set()).add(t)
     if layout == "rank":
         _global_rank(nodes, directed, math)
-        return nodes
-    if layout == "dendro":
-        _global_dendro(nodes, directed, math)
-        return nodes
-    by_domain: dict[str, list[dict]] = {}
-    for n in nodes:
-        by_domain.setdefault(n.get("domain") or "", []).append(n)
-    domains = sorted(by_domain)
-    d_count = max(len(domains), 1)
-    for di, dom in enumerate(domains):
-        if d_count == 1:
-            cx, cy = 0.0, 0.0
-        else:
-            ang = 2 * math.pi * di / d_count
-            cx, cy = math.cos(ang), math.sin(ang)
-        members = sorted(by_domain[dom],
-                         key=lambda n: (-int(bool(n.get("pinned"))),
-                                        -int(n.get("degree") or 0), str(n.get("id"))))
-        ids = [n["id"] for n in members]
-        pos = cluster_fn(members, ids, adj, directed, math, GOLDEN)
-        for n in members:
-            lx, ly, lz = pos[n["id"]]
-            n["x"] = round(cx + lx, 6)
-            n["y"] = round(cy + ly, 6)
-            n["z"] = round(lz, 6)
+    else:
+        _global_hub(nodes, math, GOLDEN)
+    _dedupe_planar(nodes)
     return nodes
+
+
+# ── 도메인 위계(D74) ──────────────────────────────────────────────────────────
+# `domain` 은 문자열이지만 **경로**다: "vinc/architecture" 는 vinc 아래 architecture.
+# 여태 코드 어디에도 이 문자열을 가르는 곳이 없어 도메인이 전부 평평한 이름이었고,
+# 그래서 "Vinc 아래 design" 과 "다른 프로젝트의 design" 이 같은 칸을 썼다.
+# 배치는 이 경로를 읽는 **첫 소비처**다(트리·범례·필터는 이 함수를 재사용한다).
+def _domain_path(dom: str) -> tuple[str, ...]:
+    """도메인 문자열 → 경로 조각. 빈 값·앞뒤 슬래시·중복 슬래시를 모두 흡수한다."""
+    return tuple(p for p in (dom or "").split("/") if p)
+
+
+def _common_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
+    """모든 도메인이 공유하는 접두 = 이 그래프의 **뿌리**.
+
+    전부 `vinc/*` 면 뿌리는 `vinc` 이고 가지는 architecture·design·… 이 된다.
+    접두를 안 벗기면 뿌리에 자식이 하나뿐이라 "한 점에서 한 점으로" 가는 헛가지가
+    생긴다(폭발이 아니라 막대). 도메인이 없는 노드는 이 계산에서 빼고(그것들은
+    어차피 뿌리에 직접 붙는다) 남은 것이 없으면 접두도 없다."""
+    real = [p for p in paths if p]
+    if not real:
+        return ()
+    out: list[str] = []
+    for i in range(min(len(p) for p in real)):
+        seg = real[0][i]
+        if all(p[i] == seg for p in real):
+            out.append(seg)
+        else:
+            break
+    # 접두가 경로 전체와 같아지면(도메인이 하나뿐) 마지막 조각은 가지로 남긴다 —
+    # 안 그러면 가지가 0개가 되어 전부 뿌리에 뭉친다.
+    if len(out) == min(len(p) for p in real):
+        out = out[:-1]
+    return tuple(out)
+
+
+class _Branch:
+    """도메인 경로 트리의 마디. 자식(하위 도메인) + 자기 몫의 노드를 든다."""
+    __slots__ = ("seg", "kids", "items", "weight")
+
+    def __init__(self, seg: str):
+        self.seg = seg
+        self.kids: dict[str, "_Branch"] = {}
+        self.items: list[dict] = []
+        self.weight = 0
+
+    def child(self, seg: str) -> "_Branch":
+        b = self.kids.get(seg)
+        if b is None:
+            b = self.kids[seg] = _Branch(seg)
+        return b
+
+
+def _build_tree(nodes: list[dict]) -> _Branch:
+    """노드들을 도메인 경로 트리에 담는다. 가지 무게 = 그 아래 노드 총수."""
+    paths = [_domain_path(n.get("domain") or "") for n in nodes]
+    base = _common_prefix(paths)
+    root = _Branch("")
+    for n, p in zip(nodes, paths):
+        cur = root
+        for seg in p[len(base):]:
+            cur = cur.child(seg)
+        cur.items.append(n)
+
+    def weigh(b: _Branch) -> int:
+        b.weight = len(b.items) + sum(weigh(k) for k in b.kids.values())
+        return b.weight
+    weigh(root)
+    return root
+
+
+def _ordered_children(b: _Branch) -> list:
+    """가지 안 순서 — **무거운 가지 먼저, 그다음 연결 많은 개념**.
+
+    무거운 것이 먼저 오면 원뿔/부채꼴에서 축에 가까운 자리를 받는다(주 분사구).
+    개념은 degree 내림차순이라 가지 안에서도 "중심순"이 그대로 산다(D32).
+    반환 원소는 (weight, kind, key, payload) — kind 로 재귀/배치를 가른다."""
+    subs = sorted(b.kids.values(), key=lambda k: (-k.weight, k.seg))
+    items = sorted(b.items, key=lambda n: (-int(bool(n.get("pinned"))),
+                                           -int(n.get("degree") or 0), str(n.get("id"))))
+    return ([(k.weight, "branch", k.seg, k) for k in subs]
+            + [(1, "node", str(n.get("id")), n) for n in items])
+
+
+def _domain_order(nodes: list[dict]) -> dict[str, int]:
+    """도메인 문자열 → 띠 번호. **hub 의 가지 순서와 같은 순서**다.
+
+    두 프리셋이 도메인을 다른 순서로 세우면 관점을 바꿀 때마다 "무엇이 먼저인가"가
+    달라 보인다. 순서의 원천을 트리 한 곳에 두고 둘 다 여기서 읽는다."""
+    root = _build_tree(nodes)
+    order: dict[str, int] = {}
+
+    def walk(b: _Branch) -> None:
+        for _w, kind, _key, payload in _ordered_children(b):
+            if kind == "branch":
+                walk(payload)
+            else:
+                dom = payload.get("domain") or ""
+                if dom not in order:
+                    order[dom] = len(order)
+    walk(root)
+    return order
+
+
+# 반경 계단 — 가지 깊이마다 한 겹씩 밖으로. 잎은 자기 가지 껍질 바깥에 흩어진다.
+_R_BRANCH = (0.0, 0.52, 0.82, 1.02)     # 뿌리 · 도메인 · 하위 · 그 아래
+_R_LEAF = 0.5                            # 잎이 가지 껍질 밖으로 더 나가는 폭
+_CONE0 = 1.15                            # 뿌리에서 도메인으로 퍼지는 반각(rad)
+
+
+def _shell(depth: int) -> float:
+    if depth < len(_R_BRANCH):
+        return _R_BRANCH[depth]
+    return _R_BRANCH[-1] + 0.16 * (depth - len(_R_BRANCH) + 1)
+
+
+def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
+    """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
+
+    뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
+    뻗고, 그 도메인이 향한 **그 방향으로** 하위 개념이 다시 퍼진다. 폭발의 잔해가
+    한 방향으로 계속 날아가는 그림이다.
+
+    구 배치는 degree 하나로 동심원을 그렸다. 그때는 도메인이 평평한 이름이라 위계가
+    없었지만 지금은 `vinc/architecture` 처럼 경로다 — 좌표가 그 구조를 안 실으면
+    "무엇이 무엇 아래인가"를 화면이 답하지 못한다. 중심성은 버리지 않는다: 가지
+    **안에서** degree 순으로 축에 가까운 자리를 준다(D32 는 이제 가지 단위로 산다).
+
+    3D: 자식 방향 = 부모 방향 주위 **원뿔** 안. 극각 θ ∝ √(누적 무게 비율)이라
+    캡 면적이 무게에 비례하고(고른 밀도), 방위각은 황금각이라 어느 개수에서도
+    겹치지 않는다. 무거운 가지가 축 가까이 = 주 분사구.
+
+    2D: 같은 트리를 **부채꼴**로 — 자식마다 무게 비례 각도 구간을 나눠 갖고 그
+    구간 안에서 다시 나눈다. 원뿔의 평면 대응물이라 3D 와 같은 이야기를 한다.
+    투영이 아니므로 z 평탄화에 따른 겹침이 **원리적으로** 생기지 않는다.
+
+    순수 함수(난수·시간 무의존, D17)."""
+    root = _build_tree(nodes)
+
+    def basis(d):
+        """d 에 수직인 정규직교 두 축 — 원뿔 안 방위각을 세울 좌표계."""
+        ax, ay, az = d
+        # d 와 가장 안 나란한 축을 골라 외적 — 축이 나란하면 0 벡터가 나온다.
+        hx, hy, hz = (1.0, 0.0, 0.0) if abs(ax) < 0.9 else (0.0, 1.0, 0.0)
+        ux, uy, uz = ay * hz - az * hy, az * hx - ax * hz, ax * hy - ay * hx
+        ul = math.sqrt(ux * ux + uy * uy + uz * uz) or 1.0
+        ux, uy, uz = ux / ul, uy / ul, uz / ul
+        vx, vy, vz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
+        return (ux, uy, uz), (vx, vy, vz)
+
+    def spray(d, theta: float, phi: float):
+        """부모 방향 d 를 축으로 극각 θ · 방위각 φ 만큼 튼 단위 벡터."""
+        (ux, uy, uz), (vx, vy, vz) = basis(d)
+        ct, st = math.cos(theta), math.sin(theta)
+        cp, sp = math.cos(phi), math.sin(phi)
+        return (d[0] * ct + (ux * cp + vx * sp) * st,
+                d[1] * ct + (uy * cp + vy * sp) * st,
+                d[2] * ct + (uz * cp + vz * sp) * st)
+
+    def sphere(mid: float, i: int):
+        """무게 비례 피보나치 구면점 — 뿌리에서만 쓴다.
+
+        뿌리의 자식(도메인)은 **사방으로** 나가야 폭발이 된다. 원뿔로 뿌리면 한쪽
+        반구에만 몰려 "부채"가 되지 한 점에서 터진 그림이 아니다. z 를 무게 비례로
+        띠 나누고 방위각을 황금각으로 돌리면 개수와 무관하게 고르게 덮인다."""
+        z = 1.0 - 2.0 * mid
+        rr = math.sqrt(max(0.0, 1.0 - z * z))
+        ang = i * GOLDEN
+        return (math.cos(ang) * rr, math.sin(ang) * rr, z)
+
+    def place(b: _Branch, depth: int, d3, a0: float, a1: float, cone: float) -> None:
+        kids = _ordered_children(b)
+        total = max(sum(w for w, *_ in kids), 1)
+        r_here = _shell(depth)
+        span = a1 - a0
+        acc = 0
+        for i, (w, kind, _key, payload) in enumerate(kids):
+            mid = (acc + w / 2) / total            # 누적 무게 비율(0~1)
+            frac = (i + 0.5) / len(kids)           # 순번 비율 — 반경 램프에 쓴다
+            # 3D — 뿌리는 구면 전체로, 그 아래는 부모 방향 주위 원뿔 안으로.
+            # (원뿔에서는 무게가 앞쪽 = 축 근처일수록 θ 가 작다 = 주 분사구.)
+            nd3 = (sphere(mid, i) if depth == 0
+                   else spray(d3, cone * math.sqrt(mid), i * GOLDEN))
+            # 2D — 부채꼴: 무게 비례로 구간을 나눠 갖는다.
+            b0 = a0 + span * (acc / total)
+            b1 = a0 + span * ((acc + w) / total)
+            ang = (b0 + b1) / 2
+            acc += w
+            if kind == "branch":
+                place(payload, depth + 1, nd3, b0, b1, cone * 0.58)
+                continue
+            n = payload
+            # 잎 — 자기 가지 껍질 **바깥**으로. 순번이 뒤일수록 더 멀리(중심순 유지).
+            rr = r_here + _R_LEAF * (0.30 + 0.70 * math.sqrt(frac))
+            n["x"] = round(nd3[0] * rr, 6)
+            n["y"] = round(nd3[1] * rr, 6)
+            n["z"] = round(nd3[2] * rr, 6)
+            n["x2"] = round(math.cos(ang) * rr, 6)
+            n["y2"] = round(math.sin(ang) * rr, 6)
+
+    # 뿌리의 3D 기준 방향은 +z 로 잡고 첫 원뿔을 거의 반구까지 연다(_CONE0).
+    # 2D 는 뿌리에서 한 바퀴(2π)를 통째로 나눠 준다.
+    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, _CONE0)
+
+
+def _dedupe_planar(nodes: list[dict]) -> None:
+    """평면 좌표의 **exact 중복**을 마지막에 막는다(D74 요구: 시스템이 회피할 것).
+
+    부채꼴 배치는 원리적으로 겹치지 않지만, 경계 조건이 남는다: 잎이 하나뿐인
+    가지가 여럿이면 각도 구간이 달라도 반경 램프가 같아 좌표가 근접하고, rank 처럼
+    격자에 앉히는 프리셋은 애초에 같은 칸이 나올 수 있다. 여기서는 **똑같은 점**만
+    본다 — 가까운 것은 정보(밀집)이지만 똑같은 것은 노드 하나가 사라진 것이다.
+
+    떼어내기는 결정론이다: 같은 좌표를 받은 것들을 id 순으로 세우고 황금각 사다리로
+    미세하게 민다(원점이면 반경으로, 아니면 그 자리의 접선 방향으로). 크기가 아주
+    작아 배치의 뜻을 바꾸지 않는다."""
+    import math
+    GOLDEN = 2.399963229728653
+    seen: dict[tuple, list[dict]] = {}
+    for n in nodes:
+        x = n.get("x2", n.get("x", 0.0)) or 0.0
+        y = n.get("y2", n.get("y", 0.0)) or 0.0
+        seen.setdefault((round(x, 6), round(y, 6)), []).append(n)
+    for (x, y), group in seen.items():
+        if len(group) < 2:
+            continue
+        for k, n in enumerate(sorted(group, key=lambda m: str(m.get("id")))[1:]):
+            eps = 0.012 * (1 + k // 8)
+            ang = (k + 1) * GOLDEN
+            n["x2"] = round(x + math.cos(ang) * eps, 6)
+            n["y2"] = round(y + math.sin(ang) * eps, 6)
 
 
 # 시간축(D72). `recorded` = 기록 시각(현행 ts), `content` = 문서 내용이 가리키는 시점.
@@ -1557,13 +1589,15 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        경로로 열면 degree 를 0 으로 박아 "연결 0개 · → 3 나감"처럼 자기모순을 냈다.
        세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
 
-    반환: {executed, node, node_kind, title, one_liner,
+    반환: {executed, node, node_kind, title, one_liner, props,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
-                   items: [{id, title, domain, type, dir, evidence, confidence}]}}"""
+                   items: [{id, title, domain, type, dir, evidence, confidence}]}}
+
+    ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다."""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,
-                  "one_liner": "", "excerpts": [], "arm": "none"}
+                  "one_liner": "", "props": {}, "excerpts": [], "arm": "none"}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -1575,11 +1609,18 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         # ① 노드 메타 — Concept 우선, 없으면 Episode(타임라인 뷰의 클릭 대상).
         rows = store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $owner "
-            "RETURN c.title AS title, c.one_liner AS ol", {"id": node, "owner": owner})
+            "RETURN c.title AS title, c.one_liner AS ol, c.props AS props",
+            {"id": node, "owner": owner})
         if rows:
+            # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
+            # (`api/fragment.py` 가 SET 하지 않는다 — MCP 적재분 전량이 빈 값) 이것만
+            # 돌려주면 상세 패널·묻기 답변이 통째로 빈다. 사람이 쓴 한두 문장 요약은
+            # 실제로는 props 에 들어와 있고(검색은 이미 본다 — matched_in:'props'),
+            # 조회만 그것을 안 주고 있었다. 호출부가 one_liner → props 순으로 고른다.
             base.update(executed=True, node_kind="concept",
                         title=rows[0].get("title") or node,
-                        one_liner=rows[0].get("ol") or "")
+                        one_liner=rows[0].get("ol") or "",
+                        props=_props_to_obj(rows[0].get("props")))
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "

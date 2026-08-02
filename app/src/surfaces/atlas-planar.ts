@@ -86,6 +86,9 @@ export const timelinePool = <T extends { kind?: string }>(nodes: T[], docs: bool
 const PAD_X = 16;      // .pl-wrap 좌우 패딩
 const PAD_TOP = 56;    // 상단 크롬(크럼 · 툴 행) 회피
 const PAD_BOT = 16;
+/** 세로 스크롤바 폭 여유 — Windows 클래식 17px 을 덮는 상한. 오버레이 스크롤바
+ *  (macOS)에서는 그냥 여백이 된다. 세로 타임라인만 쓴다(항상 세로로 넘치므로). */
+const SBAR = 18;
 
 // ── 문자열 조립 헬퍼 ───────────────────────────────────────────────────────
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
@@ -187,25 +190,39 @@ function wireFocus(el: HTMLElement, h: {
 }
 
 // ── 2. Timeline — 언제 무엇이 생겼는가 ────────────────────────────────────
-/** **가로 시간축** + 주제당 레인 하나(D62 — 세로판에서 개정).
+/** **세로 시간축 + 뿌리 은유**(발주자 지시 2026-08-02 — D62 개정).
  *
- *  왜 눕혔는가: 세로 시간축은 주제를 열로 세우는데, 주제가 두셋뿐인 실데이터에서
- *  레인이 화면 좌우 끝에 붙고 가운데 ~85%가 진공이 됐다(실측). 시간은 사람에게
- *  가로로 흐르고(참조 이미지 4점 전부 가로축), 레인을 가로로 누이면 주제 수가
- *  적을수록 오히려 각 레인이 길고 읽기 쉬워진다.
+ *  위가 시작 시점이고 아래로 갈수록 나중이다. **스크롤을 내리는 것이 곧 시간을
+ *  흐르는 것**이다. 가로는 시간이 아니라 **가지**다(주제 하나 = 가지 하나).
+ *  맨 위 한 점에서 갈라져 나온 가지들이 아래로 자라며 마디를 단다.
  *
- *  ts 는 파싱하지 않는다: ISO 는 사전순이 곧 시간순이고(자유서식 값도 같은 규칙으로
- *  안전하게 접힌다), 월 거터는 ts.slice(0,7) 로 만든다. 한 달에 몰린 항목은 그 달
- *  칸 안에서 가로로 흩고, 라벨은 최소간격 디클러터 + 지시선으로 푼다. */
+ *  왜 다시 세로인가: D62 가 가로로 눕힌 사유는 "주제가 두셋뿐이면 레인이 화면
+ *  좌우 끝에 붙고 가운데가 진공"이었다. 그 진공은 축의 방향이 아니라 **레인을
+ *  화면 가득 펴는 배치**에서 나온다. 지금은 가지 폭이 고정(BRANCH_W)이고 가지
+ *  다발이 뿌리 아래 모여 있어, 주제가 적으면 다발이 좁아질 뿐 진공이 없다.
+ *
+ *  ts 는 여전히 파싱하지 않는다: ISO 는 사전순이 곧 시간순이고 버킷 키는 접두
+ *  문자열이다(D72 알갱이 적응 — 월 → 연 → 십년). 세로 간격은 실경과에 비례하지
+ *  않는다 — 버킷의 **순서**만 뜻이 있고, 칸 높이는 그 칸의 밀도에서 온다.
+ *
+ *  **원인·결과 겹치기**(D74, `lineage` — 발주자 지시 2026-08-02). 가지는 시간에
+ *  따라 갈라지지만 갈라진 이유는 대개 **다른 가지에 있다**. 그 이유는 개념 간
+ *  방향 관계(PREREQUISITE_OF · DERIVES_FROM · INHERITS_FROM)로 이미 적혀 있으므로,
+ *  마디와 마디를 곡선으로 이어 주면 "이건 저것 때문"이 화면에 그대로 나온다.
+ *  세로축이 시간이라 **원인이 위, 결과가 아래**이고, 가지를 가로지르는 선이 곧
+ *  "다른 주제가 원인"이다. 시간을 거스르는 선(원인이 아래)은 그리되 점선으로
+ *  가른다 — 데이터가 그렇게 적혀 있는 것이지 화면이 틀린 것이 아니다. */
 export function mountTimeline(el: HTMLElement,
   nodes: (PlanarNode & { ts?: string; kind?: string })[],
   o: { docs: boolean; labels: boolean; onOpen: (id: string) => void;
-       /** 칸 클릭 → 그 구간의 항목(D45-V2 4단계). 가로축이라 브러시는 세로 띠
+       /** 칸 클릭 → 그 구간의 항목(D45-V2 4단계). 세로축이라 브러시는 가로 띠
         *  하나 = 한 버킷이다(자유 픽셀 드래그 대신 이산). 넘기는 값은 버킷 키
         *  ("2026-05" · "1905" · "1900")이고, 구간 해석은 호출부가 한다. */
-       onMonth?: (bucket: string) => void }): PlanarHandle {
+       onMonth?: (bucket: string) => void;
+       /** 계보 선을 그릴 방향 관계. 없으면 겹치기가 꺼진 것과 같다. */
+       lineage?: { source: string; target: string; type: string }[] }): PlanarHandle {
   const pool = timelinePool(nodes, o.docs);
-  // 날짜 없는 노드는 레인에 올리지 않는다(빈 ts 는 정상값 — 상류가 자주 비운다).
+  // 날짜 없는 노드는 축에 올리지 않는다(빈 ts 는 정상값 — 상류가 자주 비운다).
   const dated = pool.filter((n) => !!(n.ts && n.ts.trim()))
     .slice()
     .sort((a, b) => (a.ts! < b.ts! ? -1 : a.ts! > b.ts! ? 1 : a.id < b.id ? -1 : 1));
@@ -215,7 +232,7 @@ export function mountTimeline(el: HTMLElement,
   // 없고(사전식 = 시간순 계약 유지), 십년만 넷째 자리를 0 으로 눌러 만든다.
   const grain = pickGrain(dated.map((n) => n.ts!));
   const bucketOf = (ts: string) => bucketKey(ts, grain);
-  // 주제 없는 항목(브릿지 등)도 레인 하나를 갖되 이름을 붙인다 — 무명 레인은
+  // 주제 없는 항목(브릿지 등)도 가지 하나를 갖되 이름을 붙인다 — 무명 가지는
   // "이게 뭐지"로 끝난다(U6). 정렬은 이름순이되 미분류는 늘 마지막.
   const laneKey = (n: { domain: string }) => n.domain || "";
   const lanes = [...new Set(dated.map(laneKey))]
@@ -224,7 +241,7 @@ export function mountTimeline(el: HTMLElement,
   const laneName = (d: string) => (d || COPY.ui.atlasx.unfiled);
   const months = [...new Set(dated.map((n) => bucketOf(n.ts!)))];   // 정렬본 → 이미 오름차순
   const monthAt = new Map(months.map((m, i) => [m, i]));
-  // 같은 버킷·같은 레인 안 순번 — 가로로 흩어 겹침을 없앤다.
+  // 같은 버킷·같은 가지 안 순번 — 세로로 흩어 겹침을 없앤다.
   const slot = new Map<string, number>();
   const per = new Map<string, number>();
   for (const n of dated) {
@@ -234,118 +251,227 @@ export function mountTimeline(el: HTMLElement,
     per.set(k, i + 1);
   }
   const label = COPY.ui.atlasx.timelineChart(dated.length, lanes.length);
-  const LANE_H = 92;          // 레인 하나의 세로 두께(라벨 + 마크 + 숨 쉴 틈)
-  const LEFT = 118;           // 레인 이름이 앉는 왼쪽 여백
-  const MONTH_MIN = 96;       // 성긴 달도 이만큼은 차지한다
-  const SLOT_W = 26;          // 한 달 안에서 항목 하나가 요구하는 가로 폭
+  // 계보 선(D74) — **양 끝이 다 축에 올라와 있는 관계만** 그린다. 한쪽이 날짜가
+  // 없거나 문서 토글로 걸러졌으면 그 선은 갈 곳이 없다(허공으로 뻗는 선은 거짓이다).
+  // 자기 자신으로 도는 관계도 뺀다 — 활이 점 하나로 눌려 아무 것도 못 말한다.
+  const seen = new Map(dated.map((n) => [n.id, n]));
+  const lineage = (o.lineage || [])
+    .filter((e) => e.source !== e.target && seen.has(e.source) && seen.has(e.target));
+  // 가지 하나의 가로 폭 = 마크 + 오른쪽 라벨. 이상폭과 최소폭 사이에서 화면에
+  // 맞춰 좁아지고, 라벨 글자수가 그 실폭에서 파생된다(아래 labChars).
+  const BRANCH_W = 168;       // 이상폭 — 한글 14자 라벨이 옆 줄기를 안 넘는 선
+  const BRANCH_MIN = 112;     // 이보다 좁히면 마크와 라벨이 서로를 먹는다
+  const GUT = 78;             // 왼쪽 시간 눈금(버킷 이름)이 앉는 자리
+  const ROOT_Y = 26;          // 뿌리 머리(시작 시점 한 점)
+  const STEM = 78;            // 뿌리에서 가지가 갈라져 내려앉기까지
+  const MONTH_MIN = 84;       // 성긴 구간도 이만큼은 차지한다
+  const SLOT_H = 30;          // 한 구간 안에서 항목 하나가 요구하는 세로 폭
+  let first = true;           // 진입 안무는 최초 1회(리사이즈 재그리기는 조용히)
 
-  function draw(w: number, h: number): string {
-    const top = 30, bot = 44;
-    // 달 폭은 그 달의 **가장 붐비는 레인**이 요구하는 만큼(비례). 넘치면 가로 스크롤.
+  function draw(w0: number, h: number): string {
+    // trackSize 가 재는 것은 캔버스(el)이고 스크롤바는 그 **자식**(.pl-wrap)에 달린다
+    // — el 은 스크롤바만큼 좁아지지 않으므로 w0 를 그대로 쓰면 viewBox 가 실제 내용
+    // 상자보다 늘 스크롤바 폭만큼 넓어 가로 스크롤이 딸려 온다(실측 10px). 세로
+    // 타임라인은 **설계상 항상** 세로로 넘치므로 그 폭을 처음부터 뺀다.
+    const w = w0 - SBAR;
+    const bot = 28;
+    const headY = ROOT_Y + STEM;                    // 가지가 아래로 자라기 시작하는 y
+    // 구간 높이는 그 구간의 **가장 붐비는 가지**가 요구하는 만큼(비례).
+    // 넘치면 세로 스크롤 — 스크롤이 곧 시간이라 넘치는 것이 정상 상태다.
     const need = months.map((m) => {
       const maxPer = Math.max(1, ...lanes.map((d) => per.get(`${m}|${d}`) || 0));
-      return Math.max(MONTH_MIN, maxPer * SLOT_W);
+      return Math.max(MONTH_MIN, maxPer * SLOT_H);
     });
     const sum = need.reduce((a, v) => a + v, 0);
-    const W = Math.max(w, LEFT + sum + 24);
-    const k = Math.max(1, (W - LEFT - 24) / Math.max(sum, 1));
-    const colW = need.map((v) => v * k);
-    const colX: number[] = [];
-    colW.reduce((x, v, i) => { colX[i] = x; return x + v; }, LEFT);
-    const H = Math.max(h, top + bot + lanes.length * LANE_H);
-    const laneH = Math.max(LANE_H, (H - top - bot) / Math.max(lanes.length, 1));
-    const laneY = (d: string) => top + ((laneAt.get(d) || 0) + 0.5) * laneH;
-    const xOf = (n: { id: string; ts?: string; domain: string }) => {
+    const H = Math.max(h, headY + sum + bot);
+    const k = Math.max(1, (H - headY - bot) / Math.max(sum, 1));
+    const rowH = need.map((v) => v * k);
+    const rowY: number[] = [];
+    rowH.reduce((y, v, i) => { rowY[i] = y; return y + v; }, headY);
+    // 가로는 **맞춤 우선**이다: 가지가 여럿이면 이상폭(BRANCH_W)에서 최소폭까지
+    // 좁혀 화면에 담고, 그래도 안 담길 때만 가로 스크롤을 낸다. 세로가 시간이므로
+    // 가로 스크롤은 "시간을 보려다 실수로 옆으로 미는" 사고를 만든다 — 마지막 수단.
+    const avail = Math.max(w - GUT - 40, 240);
+    const colW = Math.max(BRANCH_MIN, Math.min(BRANCH_W, avail / Math.max(lanes.length, 1)));
+    const W = Math.max(w, GUT + colW * lanes.length + 40);
+    // 라벨 길이는 실제 칸 폭에서 나온다(고정 상수는 좁은 칸에서 옆 줄기를 넘는다).
+    // 한 글자 ≈ 10px 로 잡는다 — 한글 기준으로 살짝 낙관, 라틴 기준으론 넉넉.
+    const labChars = Math.max(6, Math.floor((colW - 26) / 10));
+    const laneX = (d: string) => GUT + ((laneAt.get(d) || 0) + 0.5) * colW;
+    // 줄기는 가지 다발의 한가운데를 지난다 — 뿌리가 한쪽으로 쏠리지 않게.
+    const rootX = GUT + (colW * lanes.length) / 2;
+    const yOf = (n: { id: string; ts?: string; domain: string }) => {
       const i = monthAt.get(bucketOf(n.ts!)) || 0;
       const m = `${bucketOf(n.ts!)}|${laneKey(n)}`;
       const cnt = Math.max(per.get(m) || 1, 1);
-      return colX[i] + (colW[i] * (slot.get(n.id)! + 0.5)) / cnt;
+      return rowY[i] + (rowH[i] * (slot.get(n.id)! + 0.5)) / cnt;
     };
+    /** 뿌리 자람 지연 — 위(과거)가 먼저, 아래(현재)가 나중. 깊이에 비례한 지연이
+     *  "뻗어 내려가는" 인상을 만든다. 상한 1.1s 를 둬 마지막 마디가 하염없이
+     *  기다리지 않게 한다(항목이 수백 개여도 안무가 1.5초 안에 끝난다). */
+    const delay = (y: number) =>
+      num(Math.min(1.1, 0.22 + ((y - headY) / Math.max(H - headY, 1)) * 1.1));
 
-    // 월 거터 — 홀수 달만 옅은 띠(격자선 억제). 클릭 표적은 전 높이 투명 rect 라
-    // 빈 곳을 눌러도 그 달이 열린다(점 클릭이 우선 — 마크가 DOM 상 뒤에 온다).
+    // 시간 눈금 — 구간마다 가로 띠(홀수만 옅게, 격자선 억제) + 왼쪽에 버킷 이름.
+    // 클릭 표적은 전 폭 투명 rect 라 빈 곳을 눌러도 그 구간이 열린다(점 클릭 우선 —
+    // 마크가 DOM 상 뒤에 온다).
     const bands = months.map((m, i) =>
       (i % 2 === 1
-        ? `<rect class="pl-band" x="${num(colX[i])}" y="${num(top - 8)}"
-             width="${num(colW[i])}" height="${num(H - top - bot + 8)}"/>` : "")
+        ? `<rect class="pl-band" x="${num(GUT - 12)}" y="${num(rowY[i])}"
+             width="${num(W - GUT - 4)}" height="${num(rowH[i])}"/>` : "")
       + (o.onMonth
-        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="${num(colX[i])}" y="${num(top - 8)}"`
-          + ` width="${num(colW[i])}" height="${num(H - top - bot + 8)}" fill="transparent"`
+        ? `<rect class="pl-band-hit" data-month="${esc(m)}" x="${num(GUT - 12)}" y="${num(rowY[i])}"`
+          + ` width="${num(W - GUT - 4)}" height="${num(rowH[i])}" fill="transparent"`
           + ` style="cursor:pointer"/>` : "")
-      + `<text class="pl-cap pl-num" x="${num(colX[i] + colW[i] / 2)}" y="${num(H - bot + 22)}"
-           text-anchor="middle">${esc(m)}</text>`).join("");
+      + `<text class="pl-cap pl-num" x="${num(GUT - 22)}" y="${num(rowY[i] + 14)}"
+           text-anchor="end">${esc(m)}</text>`).join("");
+
+    // 뿌리 머리 + 갈라지는 목. pathLength 를 100 으로 선언해 두면 dasharray/offset 이
+    // 실제 길이와 무관한 100 단위가 된다 — 곡선 길이를 재지 않고도 정확히 자란다.
+    const grow = first ? " pl-grow" : "";
+    const neck = lanes.map((d, i) => {
+      const x = laneX(d);
+      return `<path class="pl-lane-line pl-neck${grow}" pathLength="100" stroke-width="1.6"`
+        + ` style="--d:${num(0.04 * i)}s"`
+        + ` d="M${num(rootX)} ${num(ROOT_Y)} C${num(rootX)} ${num(ROOT_Y + STEM * 0.55)}`
+        + ` ${num(x)} ${num(headY - STEM * 0.55)} ${num(x)} ${num(headY)}"/>`;
+    }).join("");
+    const head = `<circle class="pl-root${grow}" cx="${num(rootX)}" cy="${num(ROOT_Y)}" r="4.5"/>`
+      + `<text class="pl-cap pl-halo" x="${num(rootX)}" y="${num(ROOT_Y - 11)}"`
+      + ` text-anchor="middle">${esc(months[0] || "")}</text>`;
 
     const laneGs = lanes.map((d) => {
       const list = dated.filter((n) => laneKey(n) === d);
-      const y = laneY(d);
-      const xs = list.map(xOf);
-      // 레인 선 굵기 = 밀도(개수). 굵기이지 색이 아니다.
+      const x = laneX(d);
+      const ys = list.map(yOf);
+      // 가지 굵기 = 밀도(개수). 굵기이지 색이 아니다.
       const sw = list.length >= 8 ? 2.4 : list.length >= 4 ? 1.8 : 1.2;
-      const line = `<path class="pl-lane-line" stroke-width="${sw}"
-        d="M${num(LEFT - 6)} ${num(y)} L${num(W - 14)} ${num(y)}"/>`;
-      const head = `<text class="pl-sub" x="${num(LEFT - 14)}" y="${num(y - 4)}"
-          text-anchor="end">${esc(cut(laneName(d), 16))}</text>`
-        + `<text class="pl-cap pl-num" x="${num(LEFT - 14)}" y="${num(y + 11)}"
-          text-anchor="end">${list.length}</text>`;
-      // 라벨은 마크 위쪽에 눕히고, 가로로 겹치면 밀어낸다(디클러터의 가로판).
-      // ⚠ 밀도가 임계를 넘으면 **아예 달지 않는다**: 40개가 한 달 칸에 들어오면
-      // 밀어내기로는 풀리지 않아 글자가 서로를 먹는다(실측). 그때는 점만 남기고
-      // 이름은 hover 툴팁이 답한다 — 겹친 글자보다 없는 글자가 정직하다.
-      const gap = xs.length > 1
-        ? (Math.max(...xs) - Math.min(...xs)) / (xs.length - 1) : Infinity;
-      const showLabels = o.labels && gap >= 58;
-      const lx = declutter(xs, 74);
+      const endY = ys.length ? Math.max(...ys) + 12 : headY;
+      const line = `<path class="pl-lane-line${grow}" pathLength="100" stroke-width="${sw}"`
+        + ` style="--d:${num(0.2)}s"`
+        + ` d="M${num(x)} ${num(headY)} L${num(x)} ${num(endY)}"/>`;
+      // 가지 이름은 목이 내려앉는 자리 바로 위에 선다. 목 곡선이 글자를 관통하므로
+      // 배경색 후광(.pl-halo)으로 도려낸다 — 판(plate)은 getBBox 실측이 필요한데
+      // 후광은 CSS 한 줄이면 되고 결과가 같다.
+      const nameY = headY - 26;
+      const headTxt = `<text class="pl-sub pl-halo" x="${num(x)}" y="${num(nameY)}"
+          text-anchor="middle">${esc(cut(laneName(d), 16))}</text>`
+        + `<text class="pl-cap pl-num pl-halo" x="${num(x)}" y="${num(nameY + 13)}"
+          text-anchor="middle">${list.length}</text>`;
+      // 라벨은 마크 오른쪽에 세우고, 세로로 겹치면 밀어낸다(디클러터의 세로판).
+      // ⚠ 밀도가 임계를 넘으면 **아예 달지 않는다**: 밀어내기로 풀리지 않는 밀집에서
+      // 글자가 서로를 먹는다(D62 실측). 그때는 점만 남기고 이름은 hover 툴팁이 답한다.
+      const gap = ys.length > 1
+        ? (Math.max(...ys) - Math.min(...ys)) / (ys.length - 1) : Infinity;
+      const showLabels = o.labels && gap >= 20;
+      const ly = declutter(ys, 14);
       const marks = list.map((n, i) => {
-        const x = xs[i], lxi = lx[i];
+        const y = ys[i], lyi = ly[i];
         const doc = DOC_KINDS.includes(n.kind || "");
         const mark = doc
           ? `<polygon class="pl-mark pl-soft" points="${hexPts(x, y, 5)}"/>`
           : `<circle class="pl-mark" cx="${num(x)}" cy="${num(y)}" r="5.2"/>`;
-        const lead = showLabels && Math.abs(lxi - x) > 1.5
-          ? `<path class="pl-ax" d="M${num(x)} ${num(y - 7)} L${num(lxi)} ${num(y - 15)}"/>` : "";
+        const lead = showLabels && Math.abs(lyi - y) > 1.5
+          ? `<path class="pl-ax" d="M${num(x + 8)} ${num(y)} L${num(x + 16)} ${num(lyi)}"/>` : "";
         const text = showLabels
-          ? `<text class="pl-lab" x="${num(lxi)}" y="${num(y - 19)}"
-              text-anchor="middle">${esc(cut(n.label, 16))}</text>` : "";
-        return `<g class="pl-node" data-id="${esc(n.id)}" data-tip="${esc(n.label)} ${esc(n.ts || "")}">`
+          ? `<text class="pl-lab" x="${num(x + 20)}" y="${num(lyi + 4)}">${esc(cut(n.label, labChars))}</text>` : "";
+        return `<g class="pl-node${grow}" style="--d:${delay(y)}s"`
+          + ` data-id="${esc(n.id)}" data-tip="${esc(n.label)} ${esc(n.ts || "")}">`
           + `${mark}${lead}${text}</g>`;
       }).join("");
-      return `<g class="pl-lane" data-lane="${esc(d)}">${line}${head}${marks}</g>`;
+      return `<g class="pl-lane" data-lane="${esc(d)}">${line}${headTxt}${marks}</g>`;
     }).join("");
 
-    return `<svg class="pl-svg" aria-label="${esc(label)}"`
+    // 원인 → 결과 선. **가지 아래**(DOM 먼저)에 깔아 마크의 hover·클릭을 안 가린다.
+    // 두 마디가 같은 가지면 그 줄기를 따라 붙는 짧은 활, 다른 가지면 옆으로 부푸는
+    // 큰 활 — 부푸는 정도가 "얼마나 멀리서 온 원인인가"를 그대로 말한다.
+    const lineGs = lineage.map((e, i) => {
+      const a = seen.get(e.source)!, b = seen.get(e.target)!;
+      const ax = laneX(laneKey(a)), ay = yOf(a);
+      const bx = laneX(laneKey(b)), by = yOf(b);
+      // 시간을 거스르는 기록(원인이 결과보다 나중)은 지우지 않고 **점선으로 가른다**.
+      const back = by < ay;
+      const dx = bx - ax, dy = by - ay;
+      // 제어점을 수직 이등분선 쪽으로 밀어 활을 만든다. 같은 가지(dx=0)면 옆으로,
+      // 다른 가지면 진행 방향에 수직으로 — 어느 쪽이든 직선 두 개가 겹치지 않는다.
+      const len = Math.hypot(dx, dy) || 1;
+      const bow = Math.min(46, 12 + len * 0.16) * (dx === 0 ? 1 : Math.sign(dx) || 1);
+      const mx = (ax + bx) / 2 - (dy / len) * bow;
+      const my = (ay + by) / 2 + (dx / len) * bow;
+      return `<path class="pl-lin${back ? " pl-lin-back" : ""}${grow ? " pl-grow" : ""}"`
+        + ` pathLength="100" style="--d:${num(0.5 + 0.006 * i)}s"`
+        + ` data-from="${esc(e.source)}" data-to="${esc(e.target)}"`
+        + ` d="M${num(ax)} ${num(ay)} Q${num(mx)} ${num(my)} ${num(bx)} ${num(by)}"/>`;
+    }).join("");
+
+    return `<svg class="pl-svg pl-timeline" aria-label="${esc(label)}"`
       + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`
-      + `${bands}${laneGs}</svg>`;
+      + `${bands}${neck}${head}`
+      + (lineGs ? `<g class="pl-lins">${lineGs}</g>` : "")
+      + `${laneGs}</svg>`;
   }
 
   const domOf = new Map(dated.map((n) => [n.id, laneKey(n)]));
+  // 계보 이웃 — 한 홉짜리 원인·결과. 초점이 걸리면 이들만 남기고 나머지가 물러난다.
+  const kin = new Map<string, Set<string>>();
+  for (const e of lineage) {
+    (kin.get(e.source) || kin.set(e.source, new Set()).get(e.source)!).add(e.target);
+    (kin.get(e.target) || kin.set(e.target, new Set()).get(e.target)!).add(e.source);
+  }
   let laneEls: SVGElement[] = [];
   let nodeEls: SVGElement[] = [];
+  let linEls: SVGElement[] = [];
   const collect = () => {
     laneEls = [...el.querySelectorAll<SVGElement>(".pl-lane")];
     nodeEls = [...el.querySelectorAll<SVGElement>(".pl-node")];
+    linEls = [...el.querySelectorAll<SVGElement>(".pl-lin")];
   };
-  // 여기서 "관련"은 같은 레인(주제) — mountTimeline 은 엣지를 받지 않는다.
+  /** 계보를 켜면 "관련"의 뜻이 바뀐다: 같은 가지(주제)가 아니라 **원인·결과로
+   *  이어진 것**이다. 그게 이 겹치기의 요점이다 — 주제가 달라도 원인이면 남는다.
+   *  계보가 없으면(꺼짐·방향 관계 0) 예전대로 같은 가지가 관련이다. */
   function focus(id: string) {
     const d = domOf.get(id);
     if (d === undefined) { clear(); return; }
+    const near = kin.get(id);
+    if (linEls.length && near) {
+      for (const g of laneEls) g.classList.remove("pl-fade");
+      for (const g of nodeEls) {
+        const nid = g.dataset.id || "";
+        g.classList.toggle("pl-hl", nid === id);
+        g.classList.toggle("pl-fade", nid !== id && !near.has(nid));
+      }
+      for (const g of linEls) {
+        const on = g.dataset.from === id || g.dataset.to === id;
+        g.classList.toggle("pl-hl", on);
+        g.classList.toggle("pl-fade", !on);
+      }
+      return;
+    }
     for (const g of laneEls) g.classList.toggle("pl-fade", g.dataset.lane !== d);
     for (const g of nodeEls) g.classList.toggle("pl-hl", g.dataset.id === id);
+    for (const g of linEls) g.classList.add("pl-fade");
   }
   function clear() {
     for (const g of laneEls) g.classList.remove("pl-fade");
-    for (const g of nodeEls) g.classList.remove("pl-hl");
+    for (const g of nodeEls) { g.classList.remove("pl-fade"); g.classList.remove("pl-hl"); }
+    for (const g of linEls) { g.classList.remove("pl-fade"); g.classList.remove("pl-hl"); }
   }
 
   const stopSize = trackSize(el, (w, h) => { el.innerHTML = wrap(draw(w, h)); collect(); });
+  // 첫 동기 그리기는 아직 레이아웃 전 크기로 나가고 곧 ResizeObserver 가 실제 크기로
+  // 다시 그린다 — `first` 를 그리기 콜백 안에서 내리면 방금 시작한 안무가 지워진다
+  // (mountTotals 에서 실측된 함정). 레이아웃이 앉는 더블 rAF 뒤에 내린다.
+  const settle = requestAnimationFrame(() =>
+    requestAnimationFrame(() => { first = false; }));
   const stopFocusT = wireFocus(el, { focus, clear, open: o.onOpen, month: o.onMonth });
   return {
-    dispose() { stopFocusT(); stopSize(); },
+    dispose() { cancelAnimationFrame(settle); stopFocusT(); stopSize(); },
     focus(id) {
       if (!domOf.has(id)) return false;
       focus(id);
-      // 가로로 긴 차트라 강조만으로는 화면 밖에 있을 수 있다 — 그 마크를 가운데로.
+      // 세로로 긴 차트라 강조만으로는 화면 밖에 있을 수 있다 — 그 마크를 가운데로.
       el.querySelector<SVGElement>(`.pl-node[data-id="${CSS.escape(id)}"]`)
-        ?.scrollIntoView({ inline: "center", block: "nearest" });
+        ?.scrollIntoView({ block: "center", inline: "nearest" });
       return true;
     },
   };

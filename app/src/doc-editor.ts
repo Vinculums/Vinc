@@ -99,6 +99,10 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     contentTime = doc.content_time || "";
   }
 
+  // 렌더 타이포는 **마운트 지점 세 곳(#rdr-host·#ed-host·#tl-ed)에 모두** 걸려야
+  // 한다. 여태 #rdr-host 에만 스코프돼 있어 같은 문서가 레일에서와 시트에서 다르게
+  // 보였다. 여기서 공통 클래스를 붙여 CSS 가 마운트 지점을 몰라도 되게 한다.
+  host.classList.add("doc-render");
   host.innerHTML = `
     <div class="doc-ed-bar" ${opts.hideTitle ? "hidden" : ""} style="display:flex;gap:.5rem;align-items:center">
       <input id="ed-title" placeholder="${esc(COPY.ui.atlasx.edTitlePlaceholder)}"

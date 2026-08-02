@@ -12,7 +12,7 @@ import {
   type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 
 /** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
  *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
@@ -47,10 +47,32 @@ const QUOTE = /^>\s?/;
 const BULLET = /^(\s*)([-*])\s+/;
 const HR = /^(-{3,}|\*{3,})\s*$/;
 
+// 표(GFM) — 줄 단위로 판별한다. 표는 다중행 블록이라 lineDecos 의 한 줄 계약으로는
+// "격자"를 그릴 수 없다. 대신 **정렬을 살리는 데 필요한 것만** 한다: 등폭 + 줄바꿈
+// 금지(가로 스크롤). 소스의 공백 정렬이 그대로 열로 보인다.
+//   TABLE_ROW  : `|` 로 시작하는 줄
+//   TABLE_DELIM: `|---|---:|` 구분행. 기호뿐이라 통째로 숨긴다.
+//     `--` 연속 2개 이상을 요구해 `| - | - |`(대시가 셀 내용인 정상 행)와 가른다.
+const TABLE_ROW = /^\s*\|/;
+const TABLE_DELIM = /^[\s|:-]+$/;
+
 // 한 줄에서 (from,to) 절대오프셋 기준 데코레이션 조각을 모은다. 활성(커서) 줄은
 // 호출 자체를 건너뛰므로 여기선 항상 "렌더" 대상이다.
 function lineDecos(text: string, base: number,
                    out: { from: number; to: number; deco: Decoration }[]): void {
+  // 표 줄은 **여기서 끝낸다** — 아래 인라인 루프를 타면 안 된다. 인라인 규칙은 줄
+  // 단위라 셀 경계를 넘어 매칭된다: `| 3*4 | 5*6 |` 에서 두 별표가 이탤릭 짝으로
+  // 잡혀 Decoration.replace 로 **화면에서 글자가 사라지고** 가운데 파이프가 기울었다.
+  if (TABLE_ROW.test(text)) {
+    if (TABLE_DELIM.test(text) && text.includes("--")) {
+      // 구분행은 기호뿐 — 통째로 숨긴다(줄 자체는 남아 행 간격을 유지).
+      out.push({ from: base, to: base + text.length, deco: Decoration.replace({}) });
+      out.push({ from: base, to: base, deco: Decoration.line({ class: "cm-r-table cm-r-table-delim" }) });
+    } else {
+      out.push({ from: base, to: base, deco: Decoration.line({ class: "cm-r-table" }) });
+    }
+    return;
+  }
   // 블록 프리픽스 — 기호를 replace 로 숨기고 줄에 스타일 클래스.
   const h = HEADING.exec(text);
   if (h) {
@@ -260,7 +282,10 @@ export function mountEditor(el: HTMLElement, opts: {
           { key: "Mod-s", preventDefault: true, run: () => { opts.onSave(); return true; } },
           ...defaultKeymap, ...historyKeymap,
         ]),
-        markdown(),
+        // GFM 기반으로 파싱한다(표·취소선·태스크리스트·자동링크). 인자 없이 부르면
+        // CommonMark 라 **표가 문법으로 인식조차 되지 않는다**. GFM 확장은 lang-markdown
+        // 이 최상단에서 무조건 import 하므로 이미 번들에 들어 있다 — 번들 증가 0.
+        markdown({ base: markdownLanguage }),
         livePreview,
         highlightField,
         editable.of(EditorView.editable.of(!opts.readOnly)),

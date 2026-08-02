@@ -56,6 +56,20 @@ export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 /** 관점 세그 자리(D71). 내용은 Atlas 가 채운다(주인은 표면이다). */
 export function viewsSlot(): HTMLElement | null { return $("tb-views"); }
 
+/** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
+ *    find = 기존 동작(드롭다운 결과 → 착지)
+ *    ask  = 무LLM 대화(질문 우측 · 답변 좌측 · 이력 보존, ask.ts)
+ *  아이콘은 **기존 것을 그대로** 쓴다: 찾기=search, 묻기=decide(마주 보는 두 표식).
+ *  sparkle 은 쓰지 않는다 — AI 를 함의해 "생성하지 않는다"는 이 표면의 약속과
+ *  정면으로 어긋난다(vinc.d.chat-research §5a.6). */
+type Mode = "find" | "ask";
+const MODE_KEY = "vinc.search.mode";
+const MODE_ICON: Record<Mode, string> = { find: "search", ask: "decide" };
+
+function storedMode(): Mode {
+  return localStorage.getItem(MODE_KEY) === "ask" ? "ask" : "find";
+}
+
 export function mountTopbar() {
   if (wired) return;
   wired = true;
@@ -65,12 +79,97 @@ export function mountTopbar() {
   const kbd = $("tb-kbd");
   if (!qEl || !boxEl) return;
   const q = qEl, box = boxEl;
+  const bar = $("tb-search");
+  const modeBtn = $<HTMLButtonElement>("tb-mode");
+  const modeLabel = $("tb-mode-label");
+  const modeMenu = $("tb-modemenu");
+  const caret = document.querySelector<HTMLElement>(".tb-caret");
+  const chatEl = $("tb-chat");
 
-  q.placeholder = COPY.ui.topbar.searchPh;
   q.setAttribute("aria-label", COPY.ui.topbar.searchPh);
-  if (sicon) sicon.innerHTML = icon("search", 15);
+  if (caret) caret.innerHTML = icon("chevron-left", 12);
   // 표기는 플랫폼 관용구를 따른다(mac ⌘K · 그 외 Ctrl K) — 팔레트 단축키와 같은 키.
   if (kbd) kbd.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
+
+  let mode: Mode = storedMode();
+
+  /** 모드를 화면에 반영한다. 아이콘·라벨·플레이스홀더·열려 있던 패널까지 한 자리에서
+   *  처리해야 모드와 화면이 어긋나지 않는다(반쪽 전환이 가장 흔한 사고다). */
+  function applyMode(m: Mode, persist = true) {
+    mode = m;
+    if (persist) localStorage.setItem(MODE_KEY, m);
+    bar?.setAttribute("data-mode", m);
+    if (sicon) sicon.innerHTML = icon(MODE_ICON[m], 15);
+    if (modeLabel)
+      modeLabel.textContent = m === "ask" ? COPY.ui.topbar.modeAsk : COPY.ui.topbar.modeFind;
+    modeBtn?.setAttribute("aria-label",
+      `${COPY.ui.topbar.modeLabel}: ${modeLabel?.textContent || ""}`);
+    q.placeholder = m === "ask" ? COPY.ui.topbar.askPh : COPY.ui.topbar.searchPh;
+    // 모드를 바꾸면 다른 모드의 패널은 반드시 닫는다 — 둘이 같은 앵커에 겹쳐 뜬다.
+    close();
+    if (m === "find") void closeChat();
+    else if (chatEl) void openChatIfAny();
+  }
+
+  // ── 모드 메뉴 ────────────────────────────────────────────────────────────
+  function drawModeMenu() {
+    if (!modeMenu) return;
+    const rows: { m: Mode; name: string; hint: string }[] = [
+      { m: "find", name: COPY.ui.topbar.modeFind, hint: COPY.ui.topbar.modeFindHint },
+      { m: "ask", name: COPY.ui.topbar.modeAsk, hint: COPY.ui.topbar.modeAskHint },
+    ];
+    modeMenu.innerHTML = rows.map((r) => `
+      <button class="tb-mrow" role="menuitemradio" data-m="${r.m}"
+              aria-checked="${r.m === mode}">
+        ${icon(MODE_ICON[r.m], 15)}
+        <span><span class="tb-mname">${r.name}</span>
+          <span class="tb-mhint">${r.hint}</span></span>
+        <span class="tb-mtick">${r.m === mode ? "✓" : ""}</span>
+      </button>`).join("");
+    modeMenu.querySelectorAll<HTMLElement>("[data-m]").forEach((b) =>
+      b.addEventListener("click", () => {
+        applyMode(b.dataset.m as Mode);
+        closeModeMenu();
+        q.focus();
+      }));
+  }
+  const closeModeMenu = () => {
+    if (modeMenu) modeMenu.hidden = true;
+    modeBtn?.setAttribute("aria-expanded", "false");
+  };
+  modeBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!modeMenu) return;
+    const willOpen = modeMenu.hidden;
+    close();                              // 결과 드롭다운과 겹치지 않게
+    drawModeMenu();
+    modeMenu.hidden = !willOpen;
+    modeBtn.setAttribute("aria-expanded", String(willOpen));
+  });
+  // 바깥 클릭으로 닫는다(메뉴 자신과 트리거 위 클릭은 제외).
+  document.addEventListener("mousedown", (e) => {
+    if (modeMenu?.hidden) return;
+    const t = e.target as Node;
+    if (modeMenu?.contains(t) || modeBtn?.contains(t)) return;
+    closeModeMenu();
+  });
+
+  // ── 대화 패널(묻기) ──────────────────────────────────────────────────────
+  // ask.ts 는 **눌릴 때 지연 로드**한다 — 찾기만 쓰는 사용자에게 대화 코드를
+  // 초기 번들로 지우지 않는다(관례 시트·Tools 와 같은 태도).
+  let askMod: typeof import("./ask") | null = null;
+  async function ask() {
+    if (!askMod && chatEl) {
+      askMod = await import("./ask");
+      askMod.initAsk(chatEl, () => { chatEl.hidden = true; });
+    }
+    return askMod;
+  }
+  async function openChatIfAny() {
+    const a = await ask();
+    if (a?.askHasTurns()) a.askOpen();     // 이력이 있으면 이어서 보인다
+  }
+  async function closeChat() { (await ask())?.askClose(); }
 
   // Tools — 표면과 무관하게 언제나 눌린다(Atlas 훅에 매이지 않는다). 공유는 이 안에서
   // 범위를 고르고, `지금 보고 있는 곳`만 Atlas 훅을 쓴다.
@@ -97,6 +196,9 @@ export function mountTopbar() {
     box.hidden = false;
     q.setAttribute("aria-expanded", "true");
   };
+
+  // 초기 모드 반영 — `close` 를 쓰므로 그 선언 **뒤에** 있어야 한다(TDZ).
+  applyMode(mode, false);
 
   function draw(loading = false) {
     const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -200,20 +302,36 @@ export function mountTopbar() {
 
   q.addEventListener("input", () => {
     window.clearTimeout(timer);
+    // 묻기는 **타자마다 묻지 않는다** — 한 턴은 사용자가 Enter 로 끝맺는 단위다
+    // (라이브 검색을 그대로 두면 미완성 문장이 대화 로그에 쌓인다).
+    if (mode === "ask") return;
     const raw = q.value.trim();
     if (raw.length < 2) { hits = []; close(); return; }
     timer = window.setTimeout(() => void run(raw), 250);
   });
-  q.addEventListener("focus", () => { if (hits.length) open(); });
-  q.addEventListener("blur", () => window.setTimeout(close, 120));
+  q.addEventListener("focus", () => { if (mode === "find" && hits.length) open(); });
+  // 묻기 패널은 blur 로 닫지 않는다 — 답을 읽으려면 입력창에서 손을 떼야 하는데,
+  // 그때 사라지면 읽을 수가 없다. 닫기는 명시적으로만(패널의 `닫기` · Esc).
+  q.addEventListener("blur", () => window.setTimeout(() => { if (mode === "find") close(); }, 120));
   q.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { close(); q.blur(); return; }
+    if (e.key === "Escape") {
+      close(); closeModeMenu();
+      if (mode === "ask") void closeChat();
+      q.blur(); return;
+    }
     if (e.key !== "Enter") return;
     e.preventDefault();
+    const raw = q.value.trim();
+    if (mode === "ask") {
+      if (!raw) return;
+      q.value = "";                       // 보낸 말은 입력창을 떠난다(대화 관용구)
+      void (async () => { (await ask())?.askSubmit(raw); })();
+      return;
+    }
     // 결과가 있으면 첫 줄로 착지, 없으면 전체 목록을 연다(막다른 골목 금지).
     // 여기도 표면 이동이 아니라 시트다 — 드롭다운의 `모든 문서` 와 같은 자리로 간다.
     if (hits.length) go(hits[0]);
-    else if (q.value.trim()) void openAllDocs();
+    else if (raw) void openAllDocs();
   });
 
   // Ctrl/Cmd+K 는 팔레트가 이미 쓰는 키다 — 여기서는 **검색 필드 포커스**로 통일한다
