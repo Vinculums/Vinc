@@ -108,6 +108,7 @@ class VincApp:
         self._reader_takes_writer: bool | None = None  # 스토어가 writer= 를 받는가(1회 판정)
         self._mig_note = ""      # 임베딩 모델 이행 중 사유(빈 문자열 = 정상)
         self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
+        self._mig_pending = 0    # 이행 중 남은 문서 수(GM-13 배지 진행도, note 와 동시 갱신)
         # 계정 연결 메일박스(디바이스 연결 플로우) — state 논스 → {expires,[key,email]}.
         # 인메모리 전용(재기동 시 소멸 — 연결 진행 중이면 다시 시작). B1 유지: 로그인·
         # 키 발급은 전부 브라우저(vincs.app)에서 일어나고, 앱은 발급된 키를 받기만 한다.
@@ -297,6 +298,10 @@ class VincApp:
         # 정상 상태)에 빈 필드를 붙이면 그 동등성이 깨진다.
         if vnote and isinstance(res, dict):
             res["vector_note"] = vnote
+            # GM-13: 이행 **중일 때만** 구조화 진행도를 가산한다 — 배지는 문자열
+            # 파싱이 아니라 이 필드를 본다(vector_note 의 영문 문장은 카피가 아니다).
+            if self._mig_pending:
+                res["embed_migration"] = {"pending": self._mig_pending}
         return code, res
 
     def _embed_migrating(self) -> str:
@@ -309,6 +314,7 @@ class VincApp:
             return self._mig_note
         self._mig_at = now
         self._mig_note = ""
+        self._mig_pending = 0
         try:
             r = self._reader()
             try:
@@ -317,8 +323,11 @@ class VincApp:
                 if r is not None:
                     r.close()
             if st.get("migrating"):
+                # 화면(GM-13 배지)은 이 영문 문장을 그대로 쓰지 않는다(em 대시 포함,
+                # D38) — 구조화 진행도는 _mig_pending 이 따로 나른다.
                 self._mig_note = (f"embedding migration in progress "
                                   f"({st['pending']} docs pending) — FTS only")
+                self._mig_pending = int(st.get("pending") or 0)
         except Exception:
             pass                      # 판단이 안 서면 막지 않는다(기본은 통과)
         return self._mig_note

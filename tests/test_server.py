@@ -454,6 +454,10 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self.assertEqual(res.get("arms"), "fts", "이행 중인데 벡터 팔이 돌았다")
         self.assertIn("migration", res.get("vector_note") or "",
                       "이행 때문이라는 사유가 응답에 없다 — 조용한 강등")
+        # GM-13 — 배지는 영문 문장(vector_note, em 대시 포함)을 파싱하지 않는다.
+        # 구조화 진행도가 함께 실려야 화면이 카피 덱 문자열로 제 문장을 쓸 수 있다.
+        self.assertEqual(res.get("embed_migration"), {"pending": 7},
+                         "이행 진행도(embed_migration.pending)가 구조화되지 않았다")
         self.assertEqual(self.seen_vec, [])
 
     def test_쿼리에는_query_kind_로_요청한다(self):

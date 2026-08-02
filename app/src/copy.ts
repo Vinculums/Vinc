@@ -52,6 +52,8 @@ const EN = {
     matches: (n: number) => `${n} results`,
     error: "Search couldn't run. Retry anytime. The index is intact.",
     searching: "Searching…",
+    // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
+    migrating: (n: number) => `Updating the meaning index: keyword results only for now (${n} documents left)`,
     actions: { atlas: "Show in Atlas", open: "Open" },
   },
   packs: {
@@ -626,6 +628,8 @@ const KO: Deck = {
     matches: (n) => `${n}개의 결과`,
     error: "검색을 실행하지 못했습니다. 언제든 다시 시도하세요. 색인은 온전합니다.",
     searching: "검색 중…",
+    // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
+    migrating: (n) => `의미 색인을 새로 만드는 중입니다. 지금은 키워드 결과만 보여드려요 (남은 문서 ${n}개)`,
     actions: { atlas: "Atlas에서 보기", open: "열기" },
   },
   packs: {
