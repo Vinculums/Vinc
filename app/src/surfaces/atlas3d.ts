@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
 import { palette as signal, atlasScene, type ThemeMode } from "../theme";
+import { recede } from "../recede";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -192,7 +193,13 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glo
     if (stroke !== undefined) {   // mid/far — 링(stroke 색)으로 어두운 fill 을 가시화
       const ringMat = new THREE.MeshBasicMaterial({ color: stroke, transparent: true, opacity: 0.95 });
       ringMat.userData.base = 0.95;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.3, Math.max(r * 0.12, 0.4), 6, 20), ringMat);
+      const tube = Math.max(r * 0.12, 0.4);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.3, tube, 6, 20), ringMat);
+      // mid/far 는 fill 이 거의 배경색이라 **가시성 전부를 이 링이 진다**. 그런데 튜브
+      // 두께가 월드 단위라 축소하면 서브픽셀로 사라지고 노드가 통째로 소멸했다
+      // (가시성 연구 C2 정정). `baseTube` 를 남겨 두면 카메라가 움직일 때
+      // syncCamera 가 화면상 최소 두께를 지키도록 링을 키운다.
+      ring.userData.baseTube = tube;
       if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
       mesh.add(ring);
     }
@@ -321,7 +328,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const scene = g.scene();
   const r3 = (g as any).renderer?.();
   if (r3) applyEnvironment(r3, scene);   // 유리 반사원(D40)
-  scene.fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);   // 원경이 배경으로 "서서히" 잦아듦
+  // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
+  // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
+  const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
+  scene.fog = fog;
   g.lights([
     new THREE.AmbientLight(0xffffff, darkTheme ? 0.9 : 1.1),
     // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
@@ -334,6 +344,42 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     controls.enableDamping = true; controls.autoRotate = false;
     controls.enableRotate = !flat;          // 2D: 팬/줌만 — 회전 잠금
   }
+  // ── fog 카메라 적응 (가시성 연구 C1·R1) ──────────────────────────────────
+  // 여태 near/far 가 씬 크기(S)에만 묶인 상수라, 기본 프레이밍의 카메라 거리(≈S·2.53)가
+  // 이미 near(S·2.6) 코앞이었다. 휠로 축소하면 전 노드가 near~far 구간에 들어가 배경색으로
+  // 소멸했다 — 발주자가 본 "축소하면 완전히 어두워짐"의 주범이다.
+  // 거리에 비례시키면 **화면에서 선명한 구간의 비율이 줌에 불변**이 된다. 계수는 심화
+  // 연구 권장 구간(k1 0.6~0.8 · k2 2.0~2.5)의 중앙값 — 타깃 앞쪽까지 선명하고(0.7<1)
+  // 씬 외곽에서만 잦아든다(2.2>1).
+  const FOG_NEAR_K = 0.7, FOG_FAR_K = 2.2;
+  //: 링의 화면상 최소 두께(px). 카토그래피의 최소 심볼 크기(약 0.6mm ≈ 2~4 CSS px)
+  //: 보다 보수적인 하한 — 이 아래로는 안티에일리어싱에 먹혀 선이 사라진다.
+  const MIN_RING_PX = 1.5;
+  //: 링이 커질 수 있는 한도. 넘기면 헤일로가 노드보다 커져 크기 인코딩을 흐린다.
+  const MAX_RING_SCALE = 4;
+  const syncCamera = () => {
+    const cam: any = g.camera();
+    const tgt = controls?.target as THREE.Vector3 | undefined;
+    const dist = tgt ? cam.position.distanceTo(tgt) : cam.position.length();
+    if (!(dist > 0)) return;
+    if (fog) { fog.near = dist * FOG_NEAR_K; fog.far = dist * FOG_FAR_K; }
+    // 링 최소 두께 — 월드 단위를 화면 픽셀로 환산해 하한을 지킨다. 스코프 전체가
+    // 대체로 같은 깊이에 있으므로 노드별 거리 대신 타깃 거리 하나로 계산한다(저비용).
+    const h = el.clientHeight || 1;
+    const fov = ((cam.fov ?? 50) * Math.PI) / 180;
+    const worldPerPx = (2 * dist * Math.tan(fov / 2)) / h;
+    if (!(worldPerPx > 0)) return;
+    const minTube = MIN_RING_PX * worldPerPx;
+    g.graphData().nodes.forEach((m: any) => {
+      (m.__threeObj as THREE.Object3D | undefined)?.traverse((c: any) => {
+        const base = c.userData?.baseTube as number | undefined;
+        if (base) c.scale.setScalar(Math.min(MAX_RING_SCALE, Math.max(1, minTube / base)));
+      });
+    });
+  };
+  syncCamera();
+  // 매 프레임이 아니라 **카메라가 실제로 움직일 때만** 갱신한다(비용 무시 가능).
+  controls?.addEventListener?.("change", syncCamera);
   if (flat) {
     // 정면 카메라 — 화면 x/y 가 곧 레이아웃 x/y
     g.cameraPosition({ x: 0, y: 0, z: S * 2.2 }, { x: 0, y: 0, z: 0 }, 0);
@@ -353,7 +399,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       requestAnimationFrame(() => settle(tries + 1)); return;
     }
     (g as any).d3ReheatSimulation?.();
-    requestAnimationFrame(() => { if (!dead) (g as any).zoomToFit?.(400, 60); });
+    requestAnimationFrame(() => {
+      if (dead) return;
+      (g as any).zoomToFit?.(400, 60);
+      // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
+      // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
+      setTimeout(() => { if (!dead) syncCamera(); }, 460);
+    });
   };
   requestAnimationFrame(() => settle(0));
   // 컨테이너 추적 리사이즈 — 창 크기 변경·스크롤바 등장에도 캔버스가 컨테이너와 일치.
@@ -363,7 +415,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   });
   ro.observe(el);
   const baseDestructor = (g as any)._destructor?.bind(g);
-  (g as any)._destructor = () => { dead = true; ro.disconnect(); baseDestructor?.(); };
+  (g as any)._destructor = () => {
+    dead = true; ro.disconnect();
+    controls?.removeEventListener?.("change", syncCamera);
+    baseDestructor?.();
+  };
   // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 메시 위치·카메라
   // 상태를 수치로 검증하는 데 쓴다(2026-07 세부 뷰 원점 뭉침 회귀 감시).
   if (import.meta.env.DEV) (window as any).__g3 = g;
@@ -410,6 +466,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   g.onNodeHover((n: any) => {
     hoverId = n ? n.id : null;
     const keep = n ? new Set([n.id, ...(neighbors.get(n.id) || [])]) : null;
+    // D32-a 정본값 — 여태 여기가 `× 0.15` 리터럴이라 정본(0.40)의 3.75 배를 물러났고,
+    // 비이웃이 배경 대비 1.15:1 로 **소멸**했다(가시성 연구 C4). 루프 밖에서 한 번 읽는다
+    // (getComputedStyle 은 레이아웃 읽기라 마크마다 부르면 안 된다).
+    const recedeNode = recede("node");
     g.graphData().nodes.forEach((m: any) => {
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
@@ -418,7 +478,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         const mat = (c as any).material as THREE.Material | undefined;
         if (mat && "opacity" in mat) {   // mesh fill·링·글로우 스프라이트 공통 — 각자 저장한 base 로 복귀
           const b = (mat.userData?.base as number | undefined) ?? (m.gateway ? GATE_OP : NODE_OP);
-          mat.transparent = true; fadeTargets.set(mat, fade ? b * 0.15 : b);
+          mat.transparent = true; fadeTargets.set(mat, fade ? b * recedeNode : b);
         }
       });
     });

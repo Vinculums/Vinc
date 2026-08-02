@@ -5,6 +5,7 @@ import type { GraphEdge, GraphNode } from "../api";
 import { COPY } from "../copy";
 import { palette as signal, hexStr } from "../theme";
 import type { AtlasPrefs } from "../atlas-prefs";
+import { recede } from "../recede";
 
 /** Atlas 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -49,13 +50,6 @@ const line = () => hexStr(pal().line);
 const point = () =>
   hexStr(document.documentElement.dataset.theme === "dark" ? pal().ring : pal().primary);
 
-/** D32-a 물러남 수치 — app.css 의 `--recede-*` 와 **같은 값**이어야 한다.
- *  sigma 는 CSS 를 타지 않는 WebGL 이라 여기서 한 번 읽어 온다(정본은 CSS 변수). */
-function recede(name: "node" | "line" | "text", fallback: number): number {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(`--recede-${name}`);
-  const n = Number.parseFloat(v);
-  return Number.isFinite(n) ? n : fallback;
-}
 /** 물러난 마크의 색 — 불투명도 대신 잉크를 배경 쪽으로 섞는다(sigma 는 노드
  *  알파를 따로 받지 않는다). 결과는 CSS 의 opacity 와 같은 인상이다. */
 function mix(fg: string, bg: string, t: number): string {
@@ -219,7 +213,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     if (keep.has(id)) {
       return id === focus ? { ...data, color: point(), zIndex: 1 } : data;
     }
-    return { ...data, color: mix(ink(), bg, recede("node", 0.4)), label: "" };
+    return { ...data, color: mix(ink(), bg, recede("node")), label: "" };
   });
   sigma.setSetting("edgeReducer", (id, data) => {
     const focus = focusId();
@@ -227,7 +221,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     const [s, t] = g.extremities(id);
     const on = s === focus || t === focus;
     return on ? { ...data, color: point(), size: (data.size as number) * 1.4 }
-              : { ...data, color: mix(line(), bg, recede("line", 0.12)) };
+              : { ...data, color: mix(line(), bg, recede("line")) };
   });
 
   // ── 수치 배지 + 지표바(캔버스 위 DOM) ─────────────────────────────────────
