@@ -80,6 +80,32 @@ function glowTexture(): THREE.Texture {
   _glowTex = new THREE.CanvasTexture(cv);
   return _glowTex;
 }
+//: 링 텍스처에서 획 두께가 차지하는 비율. 구 토러스(반경 r·1.3 + 튜브 0.12r)와
+//: 같은 인상이 되도록 맞췄다 — 0.24r(획) / 2.84r(지름) ≈ 0.085.
+const RING_STROKE_FRAC = 0.085;
+let _ringTex: THREE.Texture | null = null;
+function ringTexture(): THREE.Texture {
+  if (_ringTex) return _ringTex;
+  const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
+  const ctx = cv.getContext("2d")!;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = RING_STROKE_FRAC * s;
+  ctx.beginPath();
+  ctx.arc(s / 2, s / 2, s / 2 - ctx.lineWidth / 2 - 1, 0, Math.PI * 2);
+  ctx.stroke();
+  _ringTex = new THREE.CanvasTexture(cv);
+  return _ringTex;
+}
+/** 가시성 링 — **빌보드 스프라이트**라 시선 각도와 무관하게 항상 원으로 보인다.
+ *  구현이 토러스였을 때는 시선에 따라 납작해져(오블리크 기본 카메라에서 타원,
+ *  정측면에서 선) 가시성이 각도에 좌우됐다 — 신호로 쓸 수 없는 성질이다. */
+function ringSprite(color: number, size: number, opacity = 0.95): THREE.Sprite {
+  const mat = new THREE.SpriteMaterial({ map: ringTexture(), color, transparent: true,
+    opacity, depthWrite: false });
+  mat.userData.base = opacity;
+  const sp = new THREE.Sprite(mat); sp.scale.set(size, size, 1);
+  return sp;
+}
 function glowSprite(color: number, size: number, opacity: number): THREE.Sprite {
   const mat = new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true,
     opacity, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -112,9 +138,17 @@ function assignTiers(nodes: N3[], links: L3[]) {
       (n as any).__tier = (h === 0 ? "focus" : h === 1 ? "near" : h === 2 ? "mid" : "far") as Tier;
     }
   } else {   // 초점 없는 뷰(L0/L1) — 허브도(degree)로 깊이(성좌감 유지, 고아만 far)
+    // 절대 문턱(구 `deg >= 8`)은 그래프마다 안 맞는다. 실측(개념 162 그래프): 허브라
+    // 부를 만한 `concept:atlas` 조차 degree 4 라 near 에 못 들었고, DEC·에피소드·
+    // 레코드 대다수가 degree 1 이라 far 로 몰렸다. 분위수로 잡으면 그래프 규모와
+    // 무관하게 "상위가 near" 가 된다 — 정렬만 하므로 결정론(D17)은 그대로다.
+    const degs = nodes.map((n) => n.degree || 0).sort((a, b) => a - b);
+    const q = (p: number) => (degs.length ? degs[Math.min(degs.length - 1, Math.floor(degs.length * p))] : 0);
+    const nearAt = Math.max(2, q(0.85));            // 상위 15% 목표(최소 2 — 잎은 near 가 아니다)
+    const midAt = Math.max(1, Math.min(nearAt - 1, q(0.5)));   // 그 아래 · 고아(0)만 far
     for (const n of nodes) {
       const deg = n.degree || 0;
-      (n as any).__tier = (n.pinned || deg >= 8 ? "near" : deg >= 2 ? "mid" : "far") as Tier;
+      (n as any).__tier = (n.pinned || deg >= nearAt ? "near" : deg >= midAt ? "mid" : "far") as Tier;
     }
   }
 }
@@ -191,16 +225,15 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glo
     mat.userData.base = baseOp;
     const mesh = new THREE.Mesh(geo, mat);
     if (stroke !== undefined) {   // mid/far — 링(stroke 색)으로 어두운 fill 을 가시화
-      const ringMat = new THREE.MeshBasicMaterial({ color: stroke, transparent: true, opacity: 0.95 });
-      ringMat.userData.base = 0.95;
+      // mid/far 는 fill 이 거의 배경색이라 **가시성 전부를 이 링이 진다**(연구 C2 정정).
+      // 그래서 링에는 두 가지 보정이 붙는다: ① 축소해도 화면상 최소 두께를 지킨다
+      // (월드 단위 두께는 서브픽셀로 사라진다 — syncCamera 가 baseTube 로 계산)
+      // ② 스프라이트라 시선 각도와 무관하다(구 토러스는 각도에 따라 납작해졌다).
       const tube = Math.max(r * 0.12, 0.4);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.3, tube, 6, 20), ringMat);
-      // mid/far 는 fill 이 거의 배경색이라 **가시성 전부를 이 링이 진다**. 그런데 튜브
-      // 두께가 월드 단위라 축소하면 서브픽셀로 사라지고 노드가 통째로 소멸했다
-      // (가시성 연구 C2 정정). `baseTube` 를 남겨 두면 카메라가 움직일 때
-      // syncCamera 가 화면상 최소 두께를 지키도록 링을 키운다.
+      const size = 2 * (r * 1.3 + tube);
+      const ring = ringSprite(stroke, size);
       ring.userData.baseTube = tube;
-      if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
+      ring.userData.baseSize = size;
       mesh.add(ring);
     }
     const glowColor = stroke ?? spec.fill;
@@ -373,7 +406,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     g.graphData().nodes.forEach((m: any) => {
       (m.__threeObj as THREE.Object3D | undefined)?.traverse((c: any) => {
         const base = c.userData?.baseTube as number | undefined;
-        if (base) c.scale.setScalar(Math.min(MAX_RING_SCALE, Math.max(1, minTube / base)));
+        if (!base) return;
+        const k = Math.min(MAX_RING_SCALE, Math.max(1, minTube / base));
+        const s0 = c.userData?.baseSize as number | undefined;
+        // 스프라이트는 scale 이 곧 크기라 기준 크기에 배율을 곱한다(setScalar 는 크기를 지운다).
+        if (s0) c.scale.set(s0 * k, s0 * k, 1); else c.scale.setScalar(k);
       });
     });
   };

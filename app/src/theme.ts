@@ -17,7 +17,7 @@ export const palette = {
     primary: 0x32355C, // #32355C ← semantic.light.primary
     primaryText: 0xF2F2F0, // #F2F2F0 ← semantic.light.primary-foreground
     link: 0x4A4F8C, // #4A4F8C ← semantic.light.link
-    linkRamp: { heavy: '#17171A', mid: '#55565E', base: '#82838D', cross: '#8F96D9', fade: '#DEDEDA' },
+    linkRamp: { heavy: '#17171A', mid: '#55565E', base: '#82838D', cross: '#7E86D3', fade: '#D1D2D6' },
     labelCss: 'color:#17171A;background:#FBFBFA;border:1px solid #DEDEDA',
   },
   dark: {
@@ -32,7 +32,7 @@ export const palette = {
     primary: 0x3A4070, // #3A4070 ← semantic.dark.primary
     primaryText: 0xB9BEF0, // #B9BEF0 ← semantic.dark.primary-foreground
     link: 0x8F96D9, // #8F96D9 ← semantic.dark.link
-    linkRamp: { heavy: '#B9BEF0', mid: '#8F96D9', base: '#6E7189', cross: '#3A4070', fade: '#262A3D' },
+    linkRamp: { heavy: '#B9BEF0', mid: '#8F96D9', base: '#747790', cross: '#9496A9', fade: '#525466' },
     labelCss: 'color:#E8E7EF;background:#191C2A;border:1px solid #262A3D',
   },
 } as const;
@@ -40,15 +40,14 @@ export const palette = {
 export function hexStr(n: number): string { return '#' + n.toString(16).padStart(6, '0'); }
 
 // Atlas 성좌 씬 — 글로우는 그래프 노드 전용(발주자 규칙)
+// 소비처는 atlas3d.ts 의 다크 글로우 분기 하나뿐 — fill·stroke·glowOpacity 만 읽는다.
 export const atlasScene = {
   node: {
-    focus: { fill: 0xB9BEF0, glowRadius: 30, glowOpacity: 0.9 },
-    near: { fill: 0x8F96D9, glowRadius: 16, glowOpacity: 0.5 },
-    mid: { fill: 0x3A4070, stroke: 0x8F96D9, glowRadius: 10, glowOpacity: 0.35 },
-    far: { fill: 0x191C2A, stroke: 0x6E7189, glowRadius: 6, glowOpacity: 0.18 },
+    focus: { fill: 0xB9BEF0, glowOpacity: 0.9 },
+    near: { fill: 0x8F96D9, glowOpacity: 0.5 },
+    mid: { fill: 0x3A4070, stroke: 0x8F96D9, glowOpacity: 0.35 },
+    far: { fill: 0x191C2A, stroke: 0x9496A9, glowOpacity: 0.18 },
   },
-  edge: { color: 0x8F96D9, opacityFocus: 0.5, opacityBase: 0.28, opacityFar: 0.14 },
-  grid: { color: 0x8F96D9, opacity: 0.05 },
 } as const;
 
 export function themePalette(mode: ThemeMode) { return palette[mode]; }

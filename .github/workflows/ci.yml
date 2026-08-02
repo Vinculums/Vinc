@@ -88,6 +88,13 @@ jobs:
       - name: Forbidden-terms gate
         run: python scripts/gate_forbidden.py
 
+      # Atlas 마크 대비(WCAG 2.x AND APCA 이중). 여기 사는 이유: 프런트에는 테스트
+      # 러너가 없고 app 잡은 tsc 만 돈다. 이 게이트는 생성물 theme.ts 를 읽는 순수
+      # 파이썬이라 core 잡에서 도는 것이 맞다. 두 기준을 AND 로 거는 이유는 극성마다
+      # 엄격한 쪽이 뒤집히기 때문이다(다크=APCA · 라이트=WCAG).
+      - name: Atlas contrast gate
+        run: python scripts/gate_contrast.py
+
   app:
     name: app (typecheck)
     runs-on: ubuntu-latest

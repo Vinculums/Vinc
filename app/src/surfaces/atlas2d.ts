@@ -45,8 +45,9 @@ function pal() {
   return signal[document.documentElement.dataset.theme === "dark" ? "dark" : "light"];
 }
 const ink = () => hexStr(pal().text);
-const inkMute = () => hexStr(pal().textMute);
-const line = () => hexStr(pal().line);
+/** 엣지 색 램프 — 선 전용으로 대비를 맞춘 값(theme.ts). 3D 와 같은 원천을 쓴다.
+ *  (구 `line()`·`inkMute()` 는 보더·캡션 토큰이라 선 대비가 미달이었다 — 제거했다.) */
+const ramp = () => pal().linkRamp;
 const point = () =>
   hexStr(document.documentElement.dataset.theme === "dark" ? pal().ring : pal().primary);
 
@@ -58,6 +59,40 @@ function mix(fg: string, bg: string, t: number): string {
   const [r2, g2, b2] = hx(bg);
   const c = (a: number, b: number) => Math.round(b + (a - b) * t).toString(16).padStart(2, "0");
   return `#${c(r1, r2)}${c(g1, g2)}${c(b1, b2)}`;
+}
+
+/** APCA Lc(크기) — 섞은 색이 배경에서 사라졌는지 판정하는 데만 쓴다.
+ *  상수는 공식 0.98G-4g(게이트 `scripts/gate_contrast.py` 와 같은 식). */
+function lc(fg: string, bg: string): number {
+  const y = (h: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    return 0.2126729 * r ** 2.4 + 0.7151522 * g ** 2.4 + 0.0721750 * b ** 2.4;
+  };
+  const soft = (v: number) => (v > 0.022 ? v : v + (0.022 - v) ** 1.414);
+  const yt = soft(y(fg)), yb = soft(y(bg));
+  if (Math.abs(yb - yt) < 0.0005) return 0;
+  const s = yb > yt ? (yb ** 0.56 - yt ** 0.57) * 1.14 : (yb ** 0.65 - yt ** 0.62) * 1.14;
+  const c = yb > yt ? (s < 0.1 ? 0 : s - 0.027) : (s > -0.1 ? 0 : s + 0.027);
+  return Math.abs(c * 100);
+}
+
+//: 후퇴 채널의 불가시 하한(APCA). 이 아래는 "보이지 않는 것"이라, 물러남이 아니라 소멸이다.
+const LC_FLOOR = 15;
+
+/** 하한이 있는 mix — 배경 쪽으로 섞되 **Lc 15 아래로는 내려가지 않는다**.
+ *
+ *  구 `mix` 는 하한이 없어 다크에서 무방향 엣지가 실효 1.20:1(Lc ~0)까지 내려갔다.
+ *  WCAG 1.4.11 은 후퇴·비활성 채널에 3:1 을 강제하지 않지만, 완전 소멸은 후퇴가
+ *  아니라 삭제다. t 를 이분 탐색으로 되돌려 하한에 걸리는 지점에서 멈춘다. */
+function mixFloor(fg: string, bg: string, t: number): string {
+  const out = mix(fg, bg, t);
+  if (lc(out, bg) >= LC_FLOOR) return out;
+  let lo = t, hi = 1;                       // t 를 키울수록(=원색에 가까울수록) 대비가 오른다
+  for (let i = 0; i < 12; i++) {
+    const m = (lo + hi) / 2;
+    if (lc(mix(fg, bg, m), bg) >= LC_FLOOR) hi = m; else lo = m;
+  }
+  return mix(fg, bg, hi);
 }
 
 export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
@@ -160,9 +195,14 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
       // (2026-08-02 사용자 손잡이). 가중치 표현은 D33 대로 색 농도가 계속 맡는다.
       size: (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9)
             * (prefs.edgeScale ?? 1),
-      color: dir ? inkMute()
-        : bridged ? mix(line(), bg, 0.22)
-        : e.cross_domain ? mix(line(), bg, 0.28) : mix(line(), bg, 0.35),
+      // 기준색은 **엣지 램프**(theme.ts linkRamp)다. 여태 보더 토큰(`line`)을 섞어
+      // 썼는데 그 토큰은 다크에서 Lc 0(#262A3D)이라 아무리 섞어도 선이 배경 밑에
+      // 있었다(실효 1.20:1). 램프는 선 전용으로 대비를 맞춰 둔 값이다.
+      // 서열(방향 > 무방향 > 크로스 > 다리)은 그대로 두되, 아래 두 단은 mixFloor 가
+      // 불가시 하한(Lc 15) 위에서 멈춘다 — 물러남이지 삭제가 아니다.
+      color: dir ? ramp().mid
+        : bridged ? mixFloor(ramp().base, bg, 0.6)
+        : e.cross_domain ? mixFloor(ramp().base, bg, 0.8) : ramp().base,
       directed: dir,
     });
     edgeOf.set(key, e);
@@ -213,7 +253,7 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     if (keep.has(id)) {
       return id === focus ? { ...data, color: point(), zIndex: 1 } : data;
     }
-    return { ...data, color: mix(ink(), bg, recede("node")), label: "" };
+    return { ...data, color: mixFloor(ink(), bg, recede("node")), label: "" };
   });
   sigma.setSetting("edgeReducer", (id, data) => {
     const focus = focusId();
@@ -221,7 +261,9 @@ export function mount2d(el: HTMLElement, nodes: GraphNode[], edges: GraphEdge[],
     const [s, t] = g.extremities(id);
     const on = s === focus || t === focus;
     return on ? { ...data, color: point(), size: (data.size as number) * 1.4 }
-              : { ...data, color: mix(line(), bg, recede("line")) };
+              // 후퇴한 선은 램프의 fade 를 쓴다(3D 와 같은 색) — 보더 토큰을 섞으면
+              // 다크에서 Lc 0 이라 선이 사라진다. fade 는 하한 Lc 15 위로 잡혀 있다.
+              : { ...data, color: ramp().fade };
   });
 
   // ── 수치 배지 + 지표바(캔버스 위 DOM) ─────────────────────────────────────
