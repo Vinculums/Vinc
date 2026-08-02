@@ -1,4 +1,4 @@
-import { AccountError, api, cfg, community, WEB } from "../api";
+import { AccountError, api, cfg, community, teamsApi, WEB } from "../api";
 import { COPY } from "../copy";
 import { header } from "../components";
 import { openShareSheet } from "../sheets";
@@ -16,11 +16,35 @@ export function renderPacks(el: HTMLElement) {
   el.innerHTML = `
     ${header("pack-export", "Packs", COPY.ui.meta.packs)}
 
+    ${WEB ? `
+    <section class="pack-card" id="pack-space">
+      <h3 class="pack-h">${U.secSpace}</h3>
+      <p class="hint pack-desc">${U.secSpaceDesc}</p>
+      <div class="pack-row">
+        <label class="pack-field">${U.secSpace}
+          <select id="space-pick"><option value="">${U.spacePersonal}</option></select>
+        </label>
+      </div>
+      <p class="hint pack-note" id="space-now"></p>
+    </section>` : ""}
+
     <section class="pack-card" id="pack-import">
       <h3 class="pack-h">${U.secImport}</h3>
       <p class="hint pack-desc">${U.secImportDesc}</p>
       <div id="pack-import-host"></div>
     </section>
+
+    ${WEB && cfg.team ? `
+    <section class="pack-card" id="pack-pull">
+      <h3 class="pack-h">${U.secPull}</h3>
+      <p class="hint pack-desc">${U.secPullDesc}</p>
+      <div class="pack-row">
+        <label class="pack-field">${U.topic}
+          <select id="pull-topic"><option value="">${U.allTopics}</option></select>
+        </label>
+        <button class="btn" id="pull-go">${U.pullCta}</button>
+      </div>
+    </section>` : ""}
 
     <section class="pack-card" id="pack-share">
       <h3 class="pack-h">${U.secShare}</h3>
@@ -59,22 +83,66 @@ export function renderPacks(el: HTMLElement) {
   const status = el.querySelector<HTMLElement>("#packs-status")!;
 
   // 주제 <select> 채우기 — main.ts loadRailDomains 와 같은 방어(배열/{domains}, 실패 시 '전체'만).
+  async function topicOptions(scope?: Parameters<typeof api.domains>[1]) {
+    const res: any = await api.domains(cfg.owner, scope);
+    const rows: Array<{ domain: string }> = Array.isArray(res) ? res : (res?.domains || []);
+    return rows.map((r) => {
+      const d = String(r.domain ?? "");
+      const safe = d.replace(/[<>&"]/g, (m) => (
+        { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
+      return `<option value="${safe}">${safe}</option>`;
+    }).join("");
+  }
   async function fillTopics() {
     try {
-      const res: any = await api.domains(cfg.owner);
-      const rows: Array<{ domain: string }> = Array.isArray(res) ? res : (res?.domains || []);
-      if (!rows.length) return;
-      const opts = rows.map((r) => {
-        const d = String(r.domain ?? "");
-        const safe = d.replace(/[<>&"]/g, (m) => (
-          { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
-        return `<option value="${safe}">${safe}</option>`;
-      }).join("");
-      el.querySelectorAll<HTMLSelectElement>("#share-topic, #pub-topic").forEach((sel) =>
-        sel.insertAdjacentHTML("beforeend", opts));
+      const opts = await topicOptions();
+      if (opts) {
+        el.querySelectorAll<HTMLSelectElement>("#share-topic, #pub-topic").forEach((sel) =>
+          sel.insertAdjacentHTML("beforeend", opts));
+      }
     } catch { /* 사이드카 미가동 — '전체'만 유지 */ }
+    // 불러오기 목록은 **개인** 주제다. 현재 스페이스가 팀이므로 명시적으로 개인을 읽는다.
+    try {
+      const sel = el.querySelector<HTMLSelectElement>("#pull-topic");
+      if (!sel) return;
+      const opts = await topicOptions({ team: null });
+      if (opts) sel.insertAdjacentHTML("beforeend", opts);
+    } catch { /* 개인 주제를 못 읽으면 '전체'만 유지 */ }
   }
   void fillTopics();
+
+  // 스페이스 — 팀 목록을 채우고, 고르면 그 스코프로 전체 표면을 다시 그린다.
+  // 스페이스는 전역이라 부분 갱신이 아니라 재적재로 간다(어떤 표면이 옛 스코프의
+  // 데이터를 들고 남아 있으면 어느 그래프를 보는지 알 수 없게 된다).
+  let teamName = "";
+  async function fillSpaces() {
+    const sel = el.querySelector<HTMLSelectElement>("#space-pick");
+    const now = el.querySelector<HTMLElement>("#space-now");
+    if (!sel || !now) return;
+    const rows = await teamsApi.list();
+    // 활성 팀만 고를 수 있다 — 정지·연체 팀은 계정이 서명을 멈춰 어차피 거부된다.
+    for (const t of rows.filter((t) => t.status === "active")) {
+      const o = document.createElement("option");
+      o.value = t.id; o.textContent = t.name;
+      if (t.id === cfg.team) { o.selected = true; teamName = t.name; }
+      sel.appendChild(o);
+    }
+    now.textContent = cfg.team && teamName
+      ? U.spaceNowTeam(teamName) : U.spaceNowPersonal;
+    sel.addEventListener("change", () => {
+      cfg.team = sel.value;
+      location.reload();
+    });
+  }
+  void fillSpaces();
+
+  // 개인 → 팀 불러오기. 목적지가 정해져 있으므로 목적지 고르기를 건너뛴다.
+  el.querySelector("#pull-go")?.addEventListener("click", () => {
+    const domain = (el.querySelector("#pull-topic") as HTMLSelectElement).value || undefined;
+    void openShareSheet({ domain }, {
+      from: { team: null }, into: { team: cfg.team }, intoLabel: teamName || U.secSpace,
+    });
+  });
 
   // 공유하기 — 주제 → 미리보기·저장 시트(포함 노드 목록·개별 제외·저장).
   el.querySelector("#share-go")!.addEventListener("click", () => {
