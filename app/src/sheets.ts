@@ -1,7 +1,7 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { api, cfg } from "./api";
+import { api, cfg, community, WEB, type Scope } from "./api";
 import { toBytes } from "./packfile";
 import { COPY } from "./copy";
 import { openSheet, sheetActions } from "./components";
@@ -9,14 +9,26 @@ import { openSheet, sheetActions } from "./components";
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
-export async function openShareSheet(scope: { ids?: string[]; seed?: string; domain?: string; depth?: number }) {
+/**
+ * `opts.from` 은 팩을 **어느 스페이스에서** 뜰지, `opts.into` 는 목적지를 미리
+ * 정할지를 말한다. 둘 다 없으면 현재 스페이스에서 떠서 목적지를 물어보는
+ * 기존 동작이다.
+ *
+ * 개인 → 팀 불러오기가 이 두 옵션으로 표현된다(`from` = 개인, `into` = 팀).
+ * 미리보기·개별 제외 화면을 공유와 **똑같이** 쓰는 이유는, 나가는 것을 고르는
+ * 일과 들여오는 것을 고르는 일이 사용자에게 같은 판단이기 때문이다.
+ */
+export async function openShareSheet(
+  scope: { ids?: string[]; seed?: string; domain?: string; depth?: number },
+  opts: { from?: Scope; into?: Scope; intoLabel?: string } = {},
+) {
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub });
   sheet.body.innerHTML = `<p class="hint">${COPY.ui.sheet.preparing}</p>`;
   try {
     const pack = await api.share(cfg.owner, {
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
-    });
+    }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
     const c = pack.manifest?.counts || {};
     sheet.body.innerHTML = `
@@ -51,20 +63,153 @@ export async function openShareSheet(scope: { ids?: string[]; seed?: string; dom
       const out = { ...pack, fragment: { nodes: keep, edges },
         manifest: { ...pack.manifest, counts: { ...c, concepts: keep.filter((n) => n.type === "concept").length, edges: edges.length } } };
       delete (out as any).executed;
-      // D55 — 쓰기는 zip 컨테이너로. 원문(documents)을 실은 팩이 통짜 JSON 이면
-      // 수 MB 로 붓고 문서 하나만 꺼낼 수도 없다(실측 1.6MB → 461KB, 28%).
-      void toBytes(out).then((bytes) => {
-        const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`;
-        a.click(); URL.revokeObjectURL(a.href);
-        sheet.close();
-      });
+      // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
+      if (opts.into) {
+        const U = COPY.ui.sheet;
+        const where = opts.intoLabel || U.destTeam;
+        sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+        sheet.foot.innerHTML = "";
+        void api.importPack(out, cfg.owner, opts.into).then(
+          () => {
+            sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(keep.length, where))}</p>`;
+            sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
+            sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
+          },
+          () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
+        );
+        return;
+      }
+      void chooseDestination(sheet, out, keep.length,
+        `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`);
     });
   } catch {
     sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
   }
+}
+
+/** D55 — 쓰기는 zip 컨테이너로. 원문(documents)을 실은 팩이 통짜 JSON 이면
+ *  수 MB 로 붓고 문서 하나만 꺼낼 수도 없다(실측 1.6MB → 461KB, 28%). */
+async function downloadPack(out: Record<string, unknown>, filename: string): Promise<void> {
+  const bytes = await toBytes(out);
+  const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+type Sheet = ReturnType<typeof openSheet>;
+type Dest = { key: string; label: string; note: string; where: string; run: () => Promise<void> };
+
+/**
+ * 목적지 고르기 — 같은 팩을 스페이스·커뮤니티·파일 중 하나로 보낸다.
+ *
+ * 스페이스를 건너는 이동은 전부 **한 가지 동작**이다: 한쪽에서 팩을 만들고
+ * 다른 쪽으로 적재한다. 그래서 팀→개인 공유와 개인→팀 불러오기가 같은 코드를
+ * 쓰고, 둘 중 하나만 고쳐지는 일이 생기지 않는다.
+ *
+ * 고를 것이 하나뿐이면 묻지 않는다 — 셸 모드에는 계정이 없어 파일밖에 없고,
+ * 거기에 모달을 띄우면 선택 없는 선택지를 강요하는 꼴이 된다.
+ */
+async function chooseDestination(
+  sheet: Sheet, out: any, conceptCount: number, filename: string,
+): Promise<void> {
+  const U = COPY.ui.sheet;
+  const dests: Dest[] = [];
+  // 팀에 있을 때만 "내 스페이스"가 목적지가 된다(개인에서 개인은 무의미).
+  if (cfg.team) {
+    dests.push({
+      key: "personal", label: U.destPersonal, note: U.destPersonalNote, where: U.destPersonal,
+      run: async () => { await api.importPack(out, cfg.owner, { team: null }); },
+    });
+  }
+  // 커뮤니티는 계정 세션이 필요하다 — 셸·로컬 dev 에는 세션이 없다.
+  if (WEB) {
+    dests.push({
+      key: "community", label: U.destCommunity, note: U.destCommunityNote, where: U.destCommunity,
+      run: () => publishToCommunity(sheet, out),
+    });
+  }
+  dests.push({
+    key: "file", label: U.destFile, note: U.destFileNote, where: U.destFile,
+    run: () => downloadPack(out, filename),
+  });
+
+  if (dests.length === 1) {
+    await dests[0]!.run();
+    sheet.close();
+    return;
+  }
+
+  sheet.body.innerHTML = `
+    <p class="hint">${esc(U.destSub)}</p>
+    <div class="sheet-list">
+      ${dests.map((d) => `
+        <button type="button" class="list-row" data-dest="${d.key}" style="cursor:pointer;width:100%;text-align:left">
+          <span class="title">${esc(d.label)}</span><span class="meta">${esc(d.note)}</span>
+        </button>`).join("")}
+    </div>`;
+  sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+
+  for (const d of dests) {
+    sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
+      // 커뮤니티는 자체 폼으로 이어지므로 여기서 완료 화면을 그리지 않는다.
+      if (d.key === "community") { void d.run(); return; }
+      sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+      sheet.foot.innerHTML = "";
+      void d.run().then(
+        () => {
+          sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
+          sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
+          sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
+        },
+        () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
+      );
+    });
+  }
+}
+
+/** 커뮤니티 게시 — 이름·설명·동의를 받는다. 동의는 기본값이 꺼짐이어야 한다
+ *  (데이터가 공개되는 일이라 무심코 지나칠 수 있으면 안 된다). */
+async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
+  const P = COPY.ui.packsUi;
+  sheet.body.innerHTML = `
+    <p class="hint">${esc(P.publishTitle)}</p>
+    <label class="pack-field">${esc(P.publishName)}
+      <input id="pub-name" type="text" maxlength="80" />
+    </label>
+    <label class="pack-field">${esc(P.publishDesc)}
+      <input id="pub-desc" type="text" maxlength="200" />
+    </label>
+    <label class="list-row" style="cursor:pointer">
+      <input id="pub-consent" type="checkbox" />
+      <span class="meta">${esc(P.publishConsent)}</span>
+    </label>
+    <p class="hint" id="pub-err"></p>`;
+  sheet.foot.innerHTML = sheetActions(
+    { id: "sheet-pub", label: P.publishGo },
+    { id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  sheet.foot.querySelector("#sheet-pub")!.addEventListener("click", () => {
+    const name = (sheet.body.querySelector("#pub-name") as HTMLInputElement).value.trim();
+    const desc = (sheet.body.querySelector("#pub-desc") as HTMLInputElement).value.trim();
+    const ok = (sheet.body.querySelector("#pub-consent") as HTMLInputElement).checked;
+    const err = sheet.body.querySelector("#pub-err")!;
+    if (!name) { err.textContent = P.publishNeedName; return; }
+    if (!ok) { err.textContent = P.publishNeedConsent; return; }
+    err.textContent = COPY.ui.sheet.destWorking;
+    void community.publish(name, desc, out).then(
+      () => {
+        sheet.body.innerHTML = `<p class="hint">${esc(
+          COPY.ui.sheet.destDoneCommunity)}</p>`;
+        sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
+        sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
+      },
+      () => { err.textContent = COPY.ui.sheet.destFailed; },
+    );
+  });
 }
 
 export function openImportSheet(pack: any, onDone?: (res: any) => void) {

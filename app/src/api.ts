@@ -5,6 +5,9 @@ const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
 const OWNER_KEY = "vinc.owner";
 const LANG_KEY = "vinc.lang";
+// 현재 스페이스. 빈 문자열 = 개인. 팀이면 팀 publicId 를 담는다(계정이 이 값을
+// team:<uuid> graph_owner 로 바꿔 허브에 서명해 보낸다 — 클라는 owner 를 모른다).
+const TEAM_KEY = "vinc.team";
 
 // Tauri 셸 webview 의 origin 은 tauri://localhost(mac·linux) 또는
 // http://tauri.localhost(windows) — 사이드카가 아니다. 셸(main.rs)은 사이드카를
@@ -44,6 +47,14 @@ export const cfg = {
     return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
+  /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다
+   *  (셸은 로컬 사이드카에 붙고 팀은 계정 프록시 경유라서). 셸에서 남은 값이
+   *  조용히 따라다니지 않도록 getter 에서 WEB 을 함께 본다. */
+  get team(): string { return WEB ? localStorage.getItem(TEAM_KEY) || "" : ""; },
+  set team(v: string) {
+    if (v) localStorage.setItem(TEAM_KEY, v);
+    else localStorage.removeItem(TEAM_KEY);
+  },
 };
 
 /** 연결 셋업 진단 문자열 — 실패 시 화면에 노출해 원인을 즉시 파악(v0.1.3).
@@ -107,13 +118,23 @@ export async function connectSidecar(): Promise<void> {
   sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 
+/** 호출 하나의 스페이스를 명시적으로 못박는다. 생략하면 현재 스페이스(`cfg.team`)를
+ *  따른다. `{ team: null }` 은 "현재가 팀이어도 이번 호출은 개인" 이라는 뜻이다 —
+ *  스페이스를 건너다니는 공유/불러오기가 이걸 쓴다. */
+export type Scope = { team: string | null };
+
 async function call(path: string, params?: Record<string, string | number | undefined>,
-                    body?: unknown): Promise<any> {
+                    body?: unknown, scope?: Scope): Promise<any> {
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
   //   call("/atlas") → /api/graph/atlas · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+  // 스페이스 지정자. 계정이 이걸 읽어 팀 그래프로 서명을 바꾸고, 인자에서는 떼어낸다
+  // (넘어가면 사이드카가 op 인자로 오해한다 — 계정 graph.ts 가 구조분해로 제거).
+  // 셸 모드에는 계정이 없으므로 붙이지 않는다.
+  const team = scope ? scope.team || "" : cfg.team;
+  if (WEB && team) url.searchParams.set("team", team);
   const isWrite = body !== undefined;
   const res = await fetch(url, {
     method: isWrite ? "POST" : "GET",
@@ -221,7 +242,9 @@ export const api = {
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
-  domains: (owner: string) => call("/domains", { owner }),
+  // scope 를 주면 그 스페이스의 주제를 읽는다 — 개인 → 팀 불러오기 화면이
+  // **개인** 주제 목록을 보여야 해서(팀 것을 보여주면 고를 것이 없다).
+  domains: (owner: string, scope?: Scope) => call("/domains", { owner }, undefined, scope),
   // 관례(GRAPH.md) — 읽기는 웹에서도 되지만(허브 _PROXY_OPS 등재), **어휘 재가는
   // 셸 전용**이다: 주제 어휘에는 owner 차원이 없어 계정 프록시가 의도적으로 막는다.
   conventions: (owner: string) => call("/conventions", { owner }),
@@ -237,8 +260,11 @@ export const api = {
     call("/types/rename", undefined, { theme_id, from_name, to_name }),
   activate: (owner: string, opts: Record<string, unknown> = {}) =>
     call("/activate", undefined, { owner, ...opts }),
-  share: (owner: string, opts: { domain?: string; seed?: string; depth?: number; ids?: string } = {}) =>
-    call("/share", { owner, ...opts }),
+  // scope 를 주면 그 스페이스에서 팩을 만든다(생략 = 현재 스페이스).
+  // 팀→개인 공유는 scope 없이(=팀에서) 만들고, 개인→팀 불러오기는 {team:null} 로 만든다.
+  share: (owner: string, opts: { domain?: string; seed?: string; depth?: number; ids?: string } = {},
+          scope?: Scope) =>
+    call("/share", { owner, ...opts }, undefined, scope),
   promoteCandidates: (owner: string) => call("/promote-candidates", { owner }),
   suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
   // D45-V — 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
@@ -334,8 +360,10 @@ export const api = {
   }> => call("/edge-context", { owner, src, dst, type }),
   // fragment MERGE(D11 §5) — Bind 확정도 이 단일 쓰기 표면을 그대로 쓴다(D32)
   ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
-  importPack: (pack: unknown, owner: string) =>
-    call("/ingest/pack", undefined, { pack, owner }),
+  // scope 를 주면 그 스페이스로 적재한다(생략 = 현재 스페이스). 스페이스 간 이동은
+  // "한쪽에서 share → 다른 쪽으로 importPack" 이라는 한 가지 동작으로 통일돼 있다.
+  importPack: (pack: unknown, owner: string, scope?: Scope) =>
+    call("/ingest/pack", undefined, { pack, owner }, scope),
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
 
@@ -407,6 +435,17 @@ async function communityPost(path: string, body: unknown): Promise<any> {
   }
   return res.json();
 }
+
+/** 팀 목록 — 그래프 프록시가 아니라 계정 라우트(/api/teams). 세션 쿠키만 필요하다.
+ *  웹모드가 아니면 팀 자체가 없으므로 빈 배열로 끝낸다(호출부 분기 제거). */
+export const teamsApi = {
+  list: async (): Promise<Array<{ id: string; name: string; role: string; status: string }>> => {
+    if (!WEB) return [];
+    const res = await fetch(new URL("/api/teams", location.origin), { credentials: "include" });
+    if (!res.ok) return [];
+    return ((await res.json()) as any).teams || [];
+  },
+};
 
 export const community = {
   /** 지식 팩을 공개 갤러리에 게시. 반환 {publicId}. 데이터가 공개된다(호출부가 동의 확인). */

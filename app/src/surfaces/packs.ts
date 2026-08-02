@@ -1,4 +1,4 @@
-import { AccountError, api, cfg, community, WEB } from "../api";
+import { AccountError, api, cfg, community, teamsApi, WEB } from "../api";
 import { COPY } from "../copy";
 import { header } from "../components";
 import { openShareSheet } from "../sheets";
@@ -21,6 +21,18 @@ export function renderPacks(el: HTMLElement) {
       <p class="hint pack-desc">${U.secImportDesc}</p>
       <div id="pack-import-host"></div>
     </section>
+
+    ${WEB && cfg.team ? `
+    <section class="pack-card" id="pack-pull">
+      <h3 class="pack-h">${U.secPull}</h3>
+      <p class="hint pack-desc">${U.secPullDesc}</p>
+      <div class="pack-row">
+        <label class="pack-field">${U.topic}
+          <select id="pull-topic"><option value="">${U.allTopics}</option></select>
+        </label>
+        <button class="btn" id="pull-go">${U.pullCta}</button>
+      </div>
+    </section>` : ""}
 
     <section class="pack-card" id="pack-share">
       <h3 class="pack-h">${U.secShare}</h3>
@@ -59,22 +71,51 @@ export function renderPacks(el: HTMLElement) {
   const status = el.querySelector<HTMLElement>("#packs-status")!;
 
   // 주제 <select> 채우기 — main.ts loadRailDomains 와 같은 방어(배열/{domains}, 실패 시 '전체'만).
+  async function topicOptions(scope?: Parameters<typeof api.domains>[1]) {
+    const res: any = await api.domains(cfg.owner, scope);
+    const rows: Array<{ domain: string }> = Array.isArray(res) ? res : (res?.domains || []);
+    return rows.map((r) => {
+      const d = String(r.domain ?? "");
+      const safe = d.replace(/[<>&"]/g, (m) => (
+        { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
+      return `<option value="${safe}">${safe}</option>`;
+    }).join("");
+  }
   async function fillTopics() {
     try {
-      const res: any = await api.domains(cfg.owner);
-      const rows: Array<{ domain: string }> = Array.isArray(res) ? res : (res?.domains || []);
-      if (!rows.length) return;
-      const opts = rows.map((r) => {
-        const d = String(r.domain ?? "");
-        const safe = d.replace(/[<>&"]/g, (m) => (
-          { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
-        return `<option value="${safe}">${safe}</option>`;
-      }).join("");
-      el.querySelectorAll<HTMLSelectElement>("#share-topic, #pub-topic").forEach((sel) =>
-        sel.insertAdjacentHTML("beforeend", opts));
+      const opts = await topicOptions();
+      if (opts) {
+        el.querySelectorAll<HTMLSelectElement>("#share-topic, #pub-topic").forEach((sel) =>
+          sel.insertAdjacentHTML("beforeend", opts));
+      }
     } catch { /* 사이드카 미가동 — '전체'만 유지 */ }
+    // 불러오기 목록은 **개인** 주제다. 현재 스페이스가 팀이므로 명시적으로 개인을 읽는다.
+    try {
+      const sel = el.querySelector<HTMLSelectElement>("#pull-topic");
+      if (!sel) return;
+      const opts = await topicOptions({ team: null });
+      if (opts) sel.insertAdjacentHTML("beforeend", opts);
+    } catch { /* 개인 주제를 못 읽으면 '전체'만 유지 */ }
   }
   void fillTopics();
+
+  // 스페이스 **전환**은 설정 → 계정에 있다(전역 상태라 표면 하나에 두지 않는다).
+  // 여기서는 완료 문구에 쓸 팀 이름만 확인한다 — 못 읽어도 일반 명칭으로 진행한다.
+  let teamName = "";
+  if (cfg.team) {
+    void teamsApi.list().then((rows) => {
+      teamName = rows.find((t) => t.id === cfg.team)?.name || "";
+    });
+  }
+
+  // 개인 → 팀 불러오기. 목적지가 정해져 있으므로 목적지 고르기를 건너뛴다.
+  el.querySelector("#pull-go")?.addEventListener("click", () => {
+    const domain = (el.querySelector("#pull-topic") as HTMLSelectElement).value || undefined;
+    // 이름을 못 읽었으면 intoLabel 을 비워 시트가 일반 명칭("팀 스페이스")을 쓰게 둔다.
+    void openShareSheet({ domain }, {
+      from: { team: null }, into: { team: cfg.team }, intoLabel: teamName || undefined,
+    });
+  });
 
   // 공유하기 — 주제 → 미리보기·저장 시트(포함 노드 목록·개별 제외·저장).
   el.querySelector("#share-go")!.addEventListener("click", () => {
