@@ -224,6 +224,51 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertEqual(res["merged"]["edges"]["created"], 0)
         self.assertEqual(len(res["warnings"]), 1)
 
+    def test_edge_to_undeclared_target_names_the_fix(self):
+        # T4 — 스토어에 이미 있는 노드로 향하는 엣지: payload 에 대상이 없으면
+        # '타입 불일치'가 아니라 '미선언'이고, warning 이 조치를 말해야 한다.
+        # 종전엔 "edge 'relates_to' between concept→? 미지원" 으로 뭉개져(실측:
+        # 17개 중 6개 조용히 skip) 관례 문서의 "id 재사용" 지침만 따르면 반드시
+        # 이 함정에 걸렸다.
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
+            "edges": [{"from": "concept:a", "to": "concept:exists-in-store",
+                       "type": "relates_to"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        self.assertTrue(res.get("partial"))
+        [w] = res["warnings"]
+        self.assertIn("not declared in this call's nodes", w)
+        self.assertIn("concept:exists-in-store", w, "어느 id 가 미해석인지 말해야 한다")
+        self.assertIn("(id · type · title · domain)", w, "조치(최소 형태 동봉)가 없다")
+        self.assertNotIn("미지원", w, "미선언이 타입 불일치 문구로 뭉개졌다")
+        # 문구를 읽고 그대로 하면(대상을 nodes 에 동봉) 성공해야 한다.
+        res2 = frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "concept:exists-in-store", "type": "concept",
+                       "title": "B", "domain": "d"}],
+            "edges": [{"from": "concept:a", "to": "concept:exists-in-store",
+                       "type": "relates_to"}],
+        }, store=_FakeStore())
+        self.assertEqual(res2["merged"]["edges"]["created"], 1)
+        self.assertEqual(res2["warnings"], [])
+
+    def test_declared_pair_mismatch_keeps_the_pair_message(self):
+        # 양 끝이 선언됐는데 쌍이 rel 테이블 밖이면 여전히 '미지원'(진짜 토폴로지
+        # 한계) — 두 사유는 다른 문구여야 한다(T4 의 요지).
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "episode:e1", "type": "episode", "title": "E"},
+                      {"id": "record:r1", "type": "record", "title": "R"}],
+            "edges": [{"from": "record:r1", "to": "episode:e1", "type": "relates_to"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        [w] = res["warnings"]
+        self.assertIn("미지원", w)
+        self.assertIn("record→episode", w)
+        self.assertNotIn("not declared", w)
+
     def test_theme_fold_proposes_open_types(self):
         # F1 — 어휘 밖 타입은 proposed 편입 + default 테마 lazy 생성·활성, Entity 행에
         # theme_id 각인. proposed_types 는 비어있지 않을 때만 응답에 실린다.

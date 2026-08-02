@@ -342,6 +342,22 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             {"s": src, "d": dst, "t": etype, **op})
         return "created"
 
+    # T4 — 대상 미선언과 타입 불일치를 **구분**한다. 해석기는 이 호출의 `nodes`
+    # 배열에서만 타입을 찾는다(스토어 조회 없음 — 조회형 구조 개선은 GM-15 후보).
+    # 스토어에 이미 있는 노드로 향하는 엣지도 payload 에 id 를 함께 싣지 않으면
+    # 타입이 '' 이 되어 아래 쌍 검사가 전부 빗나가고, 종전에는 그 경우까지
+    # "concept→? 미지원" 으로 뭉개져 사용자가 조치를 알 수 없었다(실측: 17개 중
+    # 기존 노드로 향하는 6개가 조용히 skip).
+    unresolved = [n for n, t in ((src, st), (dst, dt)) if n and not t]
+    if unresolved:
+        warnings.append(
+            f"edge '{etype}' skipped — endpoint not declared in this call's nodes: "
+            f"{', '.join(unresolved)} ({st or '?'}→{dt or '?'}). The resolver only "
+            "sees node types declared in this payload, so include the target id in "
+            "`nodes` in minimal form (id · type · title · domain) even when the "
+            "node already exists in the store, then retry")
+        return None
+
     if etype not in _EDGE_TYPES:
         warnings.append(
             f"unsupported edge type '{etype}' — skipped ({src}→{dst}); {_ALLOWED_PAIRS_HINT}")
@@ -419,8 +435,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type = $t",
             {"s": src, "d": dst, "t": etype, **op})
         return "created"
+    # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
-        f"edge '{etype}' between {st or '?'}→{dt or '?'} 미지원 — skipped; "
+        f"edge '{etype}' between {st}→{dt} 미지원 — skipped; "
         f"{_ALLOWED_PAIRS_HINT}")
     return None
 
