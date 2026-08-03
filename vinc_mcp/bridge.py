@@ -68,7 +68,15 @@ class Bridge:
 
     # ── HTTP ────────────────────────────────────────────────────────────────
     def request(self, method: str, path: str, params: dict | None = None,
-                body: dict | None = None, timeout: float = 60) -> dict:
+                body: dict | None = None, timeout: float = 60,
+                retries: int = 2, retry_delay: float = 0.3) -> dict:
+        """`retries`: **연결 자체가 안 되는 경우만** 짧게 재시도한다(HTTPError 는
+        사이드카가 응답은 한 것이므로 아래에서 바로 반환 — 재시도 대상이 아니다).
+        2026-08-03 사고 대응: 그때는 사이드카가 몇 분간 죽어 있어 이걸로 못 막았을
+        테지만, 수백ms 급 순간 blip 은 이 재시도가 클라이언트(웹·MCP 툴콜 모두
+        같은 이 메서드를 탄다)에 아예 안 보이게 흡수한다. 대상 op 는 전부
+        멱등/MERGE 이거나 조회라 재시도가 이중 부작용을 안 낸다(community.ts 의
+        "멱등 MERGE" 가정과 동일선상)."""
         url = self.base + path
         if params:
             qs = urllib.parse.urlencode(
@@ -76,19 +84,27 @@ class Bridge:
             if qs:
                 url += "?" + qs
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method)
-        if self.token:
-            req.add_header("Authorization", f"Bearer {self.token}")
-        if data is not None:
-            req.add_header("Content-Type", "application/json")
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
+
+        attempt = 0
+        while True:
+            req = urllib.request.Request(url, data=data, method=method)
+            if self.token:
+                req.add_header("Authorization", f"Bearer {self.token}")
+            if data is not None:
+                req.add_header("Content-Type", "application/json")
             try:
-                return json.loads(e.read().decode("utf-8"))
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                try:
+                    return json.loads(e.read().decode("utf-8"))
+                except Exception:
+                    return {"error": f"sidecar HTTP {e.code}"}
             except Exception:
-                return {"error": f"sidecar HTTP {e.code}"}
+                attempt += 1
+                if attempt > retries:
+                    raise
+                time.sleep(retry_delay * attempt)
 
     def health(self) -> bool:
         try:

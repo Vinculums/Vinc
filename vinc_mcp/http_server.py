@@ -678,6 +678,20 @@ class _Handler(BaseHTTPRequestHandler):
                     body["oauth_state"] = health()
                 except Exception as exc:   # noqa: BLE001 — 진단이 헬스를 죽이지 않게
                     body["oauth_state"] = {"error": f"{type(exc).__name__}: {exc}"}
+            # 사이드카 도달성(2026-08-03 사고 대응) — `/internal/graph-owner`(웹
+            # 그래프 프록시)와 실제 MCP 툴콜이 전부 이 사이드카(127.0.0.1:8787)에
+            # 물려 있는데, 그게 죽어도 이 프로세스(8790, Azure 가 실제로 찌르는
+            # 포트)는 계속 200 을 준다 — 그 사고 때 curl 로 "허브가 죽었나"를 물어도
+            # /health 는 정상이라고 답했을 것이다. oauth_state 와 같은 자리에 진단만
+            # 싣는다(상태 코드는 안 바꾼다 — 이 앱엔 자동 프로브가 안 걸려 있고
+            # <Container Apps 프로브 미설정, 2026-08-04 확인>, 단일 writer 락 특성상
+            # 헬스 실패로 자동 재기동을 걸면 그 자체가 더 위험할 수 있다는
+            # hub-deploy.yml 의 교훈도 있다 — 사람이 보고 판단하는 신호로 둔다).
+            bridge = getattr(self.app, "bridge", None)
+            if bridge is not None:
+                t0 = time.time()
+                body["sidecar"] = {"reachable": bridge.health(),
+                                   "check_ms": round((time.time() - t0) * 1000)}
             return self._json(200, body)
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
@@ -811,6 +825,11 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         except Exception as e:   # 사이드카 도달 불가
+            # 계정 레이어가 이 사유를 "graph_upstream_error" 로 마스킹해 클라에는
+            # 안 보인다(의도된 설계) — 그래서 여기서 안 남기면 아무 데도 안 남는다.
+            # 2026-08-03 사고 때 access-log 한 줄(502 -)뿐이라 원인을 특정 못 했다.
+            sys.stdout.write(f"[graph-owner] sidecar unreachable: {type(e).__name__}: {e}\n")
+            sys.stdout.flush()
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 

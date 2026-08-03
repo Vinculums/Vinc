@@ -52,25 +52,42 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
   export VINC_EMBED_ENCODE="http://127.0.0.1:${EMBED_PORT}"
 fi
 
-python -m api.cli serve --host 127.0.0.1 --port 8787 \
-  --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
-SIDECAR_PID=$!
+# 사이드카 PID 는 파일로 추적한다(변수가 아니라) — 아래 워치독이 재기동시켜도
+# 이 스크립트 본 흐름(그리고 나중의 trap)이 **현재** pid 를 읽을 수 있어야 하는데,
+# 워치독은 `( ) &` 서브셸이라 거기서 바꾼 셸 변수는 부모에 안 보인다(2026-08-03
+# 사고 대응 — 그때는 사이드카가 죽으면 아무도 감시·재기동하지 않았다).
+SIDECAR_PIDFILE="/tmp/vinc-sidecar.pid"
+
+start_sidecar() {
+  python -m api.cli serve --host 127.0.0.1 --port 8787 \
+    --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
+  echo $! > "$SIDECAR_PIDFILE"
+}
+
+# $1 = 최대 대기(초, 1회/s 폴링). 준비되면 0, 타임아웃이면 1.
+wait_for_sidecar_health() {
+  i=0
+  while [ "$i" -lt "$1" ]; do
+    if curl -sf http://127.0.0.1:8787/health | grep -q '"status":[[:space:]]*"ok"'; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  return 1
+}
+
+start_sidecar
 
 # 사이드카가 죽으면 컨테이너 전체를 내린다(둘 중 하나만 죽어 반쪽 상태로
-# 떠 있는 것을 방지 — Container Apps 가 재시작을 판단할 신호가 된다).
-trap 'kill "$SIDECAR_PID" 2>/dev/null' TERM INT
+# 떠 있는 것을 방지 — Container Apps 가 재시작을 판단할 신호가 된다). pidfile 로
+# 읽으므로 아래 워치독이 재기동시킨 뒤에도 항상 **현재** 사이드카를 겨눈다.
+trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null' TERM INT
 
 echo "[entrypoint] waiting for sidecar health..."
-i=0
-while [ "$i" -lt 30 ]; do
-  if curl -sf http://127.0.0.1:8787/health | grep -q '"status":[[:space:]]*"ok"'; then
-    echo "[entrypoint] sidecar ready"
-    break
-  fi
-  i=$((i + 1))
-  sleep 1
-done
-if [ "$i" -ge 30 ]; then
+if wait_for_sidecar_health 30; then
+  echo "[entrypoint] sidecar ready"
+else
   echo "[entrypoint] sidecar health check timed out" >&2
   exit 1
 fi
@@ -92,8 +109,50 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
        "encode=127.0.0.1:$EMBED_PORT)"
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
-  trap 'kill "$SIDECAR_PID" "$EMBED_PID" 2>/dev/null' TERM INT
+  trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$EMBED_PID" 2>/dev/null' TERM INT
 fi
+
+# ── 사이드카 워치독 (2026-08-03 사고 대응) ───────────────────────────────────
+# 그 사고 때 사이드카가 몇 분간 응답 불가였는데(원인은 로그에 남지 않음 — 이번에
+# 예외 로깅을 추가했으니 다음엔 남는다) 아무도 감시·재기동하지 않았다: 컨테이너의
+# PID 1(아래 exec 로 넘어가는 MCP HTTP)은 계속 살아 `/health` 도 200 을 줬으므로
+# Container Apps 관점에서는 "정상"이었고, 사이드카가 스스로 돌아올 때까지(혹은
+# 다음 배포까지) 그래프 read/write 전부가 조용히 막혀 있었다.
+#
+# 5초마다 생사만 확인(kill -0, 가볍다) — 죽었으면 재기동 후 헬스를 다시 기다린다.
+# 5회 연속 실패하면 포기하고 워치독만 조용히 멈춘다(무한 재기동이 Azure Files 락
+# 회수를 더 어렵게 만들 수 있다 — hub-deploy.yml 의 "단일 writer" 교훈과 같은
+# 이유). 그래도 MCP HTTP 는 계속 떠 있으므로 `/health` 의 `sidecar.reachable`
+# 진단으로는 계속 드러난다 — 사람이 개입할 신호는 남는다.
+(
+  restart_count=0
+  while true; do
+    sleep 5
+    pid="$(cat "$SIDECAR_PIDFILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      restart_count=0
+      continue
+    fi
+    restart_count=$((restart_count + 1))
+    if [ "$restart_count" -gt 5 ]; then
+      echo "[entrypoint] ⚠ sidecar 재기동 5회 연속 실패 — watchdog 중단(수동 개입 필요)" >&2
+      exit 1
+    fi
+    echo "[entrypoint] ⚠ sidecar(pid=${pid:-?}) 무응답 — 재기동 시도 $restart_count/5" >&2
+    # OS 가 죽은 프로세스의 파일 핸들·락을 정리할 시간(Azure Files=SMB 는 로컬보다
+    # 늦게 반영될 수 있다 — 즉시 재기동하면 새 프로세스가 락을 또 못 잡는다).
+    sleep 2
+    start_sidecar
+    if wait_for_sidecar_health 30; then
+      echo "[entrypoint] sidecar 재기동 성공(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))"
+      restart_count=0
+    else
+      echo "[entrypoint] ⚠ sidecar 재기동 후에도 헬스 실패(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))" >&2
+    fi
+  done
+) &
+WATCHDOG_PID=$!
+trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$EMBED_PID" "$WATCHDOG_PID" 2>/dev/null' TERM INT
 
 MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
 if [ -n "$VINC_MCP_TOKEN" ]; then
