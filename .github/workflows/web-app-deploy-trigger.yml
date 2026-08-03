@@ -1,0 +1,61 @@
+# 웹 Vinc 갱신 트리거 — `v*` 태그가 붙으면 Vinc-homepage 의 site-deploy 를 호출한다.
+#
+# 왜 별도 워크플로인가. 웹 Vinc(vincs.io/app/)의 소스는 이 레포의 `app/` 인데, 빌드·배포는
+# **Vinc-homepage** 의 `site-deploy.yml` 이 한다(SWA 배포 토큰과 site/ 콘텐츠가 그쪽에 있다).
+# 그 워크플로의 트리거는 `site/**` push 뿐이라, 이 레포에 앱 변경이 들어가도 저쪽에 site
+# 변경이 없으면 웹은 옛 코드로 남았다. 실측(2026-08-03): 0.7.3 앱 변경이 10시간 동안 웹에
+# 반영되지 않다가, 릴리스 노트를 고치려고 site/ 를 건드린 push 에 **우연히** 따라 올라왔다.
+#
+# site-deploy 는 이제 최신 `v*` 태그를 골라 빌드하므로(그쪽 머리주석), 갱신이 필요한
+# 시점은 정확히 **새 태그가 붙는 순간**이다. 그 순간을 이 워크플로가 저쪽에 알린다.
+# → 불변식: "웹 Vinc 에 있는 것은 항상 어느 릴리스와 정확히 같은 코드".
+#
+# release.yml 에 합치지 않은 이유: 데스크탑 릴리스 빌드(3 OS · 수십 분)와 수명이 다르고,
+# 시크릿이 없을 때 이 잡이 붉게 실패하는 것이 **릴리스 자체를 붉게 만들면 안 된다**.
+# 실패는 조용히 넘기지 않는다 — 여기서 넘기면 "웹이 갱신 안 됐다"를 아무도 모른다.
+#
+# ⚠ 필요 시크릿: `HOMEPAGE_DISPATCH_PAT` — Vinclums/Vinc-homepage 에 대한
+#   **actions:write** 권한만 가진 전용 PAT(fine-grained 권장). 기존 PAT 재사용 금지:
+#     · VINC_REPO_PAT(Vinc-homepage 에 등록) = Vinc 를 **읽는** 용도, 방향이 반대다.
+#     · RELEASE_TOKEN = Vincs-app contents:write, 대상 레포가 다르다.
+name: web-app-deploy-trigger
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vinc-homepage site-deploy
+        env:
+          PAT: ${{ secrets.HOMEPAGE_DISPATCH_PAT }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PAT:-}" ]; then
+            echo "::error::HOMEPAGE_DISPATCH_PAT 시크릿이 없다 — 웹 Vinc 가 $TAG 로" \
+                 "갱신되지 않았다(데스크탑 릴리스 자체는 영향 없음)." >&2
+            echo "지금 반영하려면: Vinc-homepage → Actions → site-deploy → Run workflow." >&2
+            echo "영구 해결: Vinc-homepage 에 actions:write 만 가진 PAT 를 이 이름으로 등록." >&2
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $PAT" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/Vinclums/Vinc-homepage/actions/workflows/site-deploy.yml/dispatches" \
+            -d '{"ref":"main"}')
+          # 204 = 수락(본문 없음). 그 밖은 전부 실패로 본다 — 특히 404 는 시크릿 권한
+          # 부족이거나 워크플로 파일명이 바뀐 것이라 조용히 넘기면 원인을 못 찾는다.
+          if [ "$code" != "204" ]; then
+            echo "::error::site-deploy 호출 실패(HTTP $code) — 웹 Vinc 가 $TAG 로 갱신되지 않았다." >&2
+            cat /tmp/dispatch.out >&2 || true
+            exit 1
+          fi
+          echo "Vinc-homepage site-deploy 를 트리거했다 — 웹 Vinc 가 최신 태그($TAG)로 재빌드된다."
