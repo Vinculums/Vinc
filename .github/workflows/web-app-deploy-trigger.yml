@@ -35,12 +35,15 @@ jobs:
       - name: Trigger Vinc-homepage site-deploy
         env:
           PAT: ${{ secrets.HOMEPAGE_DISPATCH_PAT }}
-          TAG: ${{ github.ref_name }}
+          # 무엇이 이 실행을 일으켰는지 — 태그 push 면 그 태그, 수동이면 그렇게 적는다.
+          # `github.ref_name` 을 그냥 쓰면 수동 실행에서 "최신 태그(main)" 처럼 **틀린
+          # 문구**가 나온다(실측: run 30814822510). 로그가 거짓을 말하면 안 된다.
+          WHY: ${{ github.event_name == 'push' && format('태그 {0}', github.ref_name) || '수동 실행' }}
         run: |
           set -euo pipefail
           if [ -z "${PAT:-}" ]; then
-            echo "::error::HOMEPAGE_DISPATCH_PAT 시크릿이 없다 — 웹 Vinc 가 $TAG 로" \
-                 "갱신되지 않았다(데스크탑 릴리스 자체는 영향 없음)." >&2
+            echo "::error::HOMEPAGE_DISPATCH_PAT 시크릿이 없다 — 웹 Vinc 가 갱신되지" \
+                 "않았다($WHY · 데스크탑 릴리스 자체는 영향 없음)." >&2
             echo "지금 반영하려면: Vinc-homepage → Actions → site-deploy → Run workflow." >&2
             echo "영구 해결: Vinc-homepage 에 actions:write 만 가진 PAT 를 이 이름으로 등록." >&2
             exit 1
@@ -54,8 +57,10 @@ jobs:
           # 204 = 수락(본문 없음). 그 밖은 전부 실패로 본다 — 특히 404 는 시크릿 권한
           # 부족이거나 워크플로 파일명이 바뀐 것이라 조용히 넘기면 원인을 못 찾는다.
           if [ "$code" != "204" ]; then
-            echo "::error::site-deploy 호출 실패(HTTP $code) — 웹 Vinc 가 $TAG 로 갱신되지 않았다." >&2
+            echo "::error::site-deploy 호출 실패(HTTP $code) — 웹 Vinc 가 갱신되지 않았다($WHY)." >&2
             cat /tmp/dispatch.out >&2 || true
             exit 1
           fi
-          echo "Vinc-homepage site-deploy 를 트리거했다 — 웹 Vinc 가 최신 태그($TAG)로 재빌드된다."
+          # 어느 릴리스로 빌드되는지는 **site-deploy 가** 최신 v* 태그를 골라 정한다
+          # (그쪽 Pin 스텝). 여기서 태그를 단정하지 않는다 — 그 판단은 저쪽 몫이다.
+          echo "site-deploy 를 트리거했다($WHY) — 웹 Vinc 가 최신 v* 태그로 재빌드된다."
