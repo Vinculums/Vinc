@@ -89,6 +89,29 @@ jobs:
             --query "properties.template.containers[0].env" -o json \
             | python scripts/check_hub_env.py
 
+      # ⚠ 배포 **전** 리비전 접미사 게이트(2026-08-03 신설). 아래 배포 단계는
+      # `--revision-suffix` 를 주지 않으므로 앱 템플릿의 `revisionSuffix` 가 그대로
+      # 재사용된다. 비어 있어야 Azure 가 `vinc-hub--00000NN` 로 자동 번호를 매긴다.
+      # 손으로 `revision copy --revision-suffix <이름>` 을 쓰면 그 이름이 템플릿에
+      # **남아**, 다음 배포가 같은 이름의 리비전을 또 만들려다 실패한다(실측: 운영 중
+      # `restorecheck` 가 박혀 있었다). 비우는 것은 CLI 로 안 된다 —
+      # `--revision-suffix ""` 는 클라이언트 검증이 거부하고, ARM PATCH 로 template
+      # 전체를 보내며 빈 문자열을 넣어야 한다(DEPLOYMENT.md §4.3.1). 사후에 알아채면
+      # 비싸므로 여기서 미리 막는다.
+      - name: Gate — 리비전 접미사가 비어 있는가(자동 번호 유지)
+        run: |
+          set -euo pipefail
+          suffix=$(az containerapp show --name vinc-hub -g vincsRG \
+            --query "properties.template.revisionSuffix" -o tsv)
+          if [ -n "$suffix" ]; then
+            echo "::error::앱 템플릿에 revisionSuffix='$suffix' 가 박혀 있다 — 이대로" \
+                 "배포하면 같은 이름의 리비전을 다시 만들려다 실패한다." >&2
+            echo "복구: ARM PATCH 로 template.revisionSuffix 를 '' 로" \
+                 "되돌릴 것(DEPLOYMENT.md §4.3.1)." >&2
+            exit 1
+          fi
+          echo "revisionSuffix 비어 있음 — 자동 번호 유지"
+
       - name: Build & push image (ACR Tasks)
         run: |
           az acr build \
