@@ -28,9 +28,17 @@ class CheckHubEnvTest(unittest.TestCase):
     def setUp(self):
         self.m = _load()
 
+    #: 값까지 검사되는 키들에 줄 정상값. 나머지는 값 없이 name 만 준다 — Azure 가
+    #: secretRef 항목을 실제로 그렇게 돌려준다.
+    _OK_VALUES = {
+        "VINC_DATA_DIR": "/data/db",
+        "VINC_ACCOUNT_INTERNAL_URL": "https://api.vincs.io",
+        "VINC_CONNECT_URL": "https://vincs.io/connect",
+        "VINC_MCP_ISSUER": "https://mcp.vincs.io",
+    }
+
     def _env(self, names):
-        # Azure 는 secretRef 항목도 value 없이 name 만 준다 — 그 형태를 그대로 흉내낸다.
-        return [{"name": n, "value": ""} for n in names]
+        return [{"name": n, "value": self._OK_VALUES.get(n, "")} for n in names]
 
     def _check(self, env):
         """`check()` 를 돌리되 stderr 를 **가둬서** 돌려준다.
@@ -82,8 +90,14 @@ class CheckHubEnvTest(unittest.TestCase):
 
     # ── VINC_MCP_STATE_DIR 경로 검증(2026-08-03 unknown client_id 사고) ──────
     def _with(self, name, value):
-        return [{"name": n, "value": ""} for n in self.m.REQUIRED] + \
-               [{"name": name, "value": value}]
+        """REQUIRED 전부 + `name` 을 주어진 값으로 **덮어쓴다**.
+
+        덮어쓰기여야 한다 — `_value_of` 는 첫 항목을 집으므로 그냥 append 하면
+        REQUIRED 쪽 정상값이 이겨서 나쁜 값이 검사되지 않는다(테스트가 조용히
+        무의미해지는 형태).
+        """
+        env = [e for e in self._env(list(self.m.REQUIRED)) if e["name"] != name]
+        return env + [{"name": name, "value": value}]
 
     def test_상태경로_미설정은_정상이다(self):
         """엔트리포인트가 둘 다 기본값을 주므로 env 부재가 정상이다 — 여기서
@@ -92,7 +106,7 @@ class CheckHubEnvTest(unittest.TestCase):
         self.assertEqual(code, 0)
 
     def test_작업본이_로컬이고_스냅샷이_영속볼륨이면_통과(self):
-        env = [{"name": n, "value": ""} for n in self.m.REQUIRED] + [
+        env = self._env(list(self.m.REQUIRED)) + [
             {"name": "VINC_MCP_STATE_DIR", "value": "/var/lib/vinc-mcp"},
             {"name": "VINC_MCP_STATE_SNAPSHOT", "value": "/data/mcp/oauth.db"}]
         code, err = self._check(env)
@@ -131,6 +145,52 @@ class CheckHubEnvTest(unittest.TestCase):
         _, err = self._check(self._with("VINC_MCP_STATE_DIR", "/data/x"))
         self.assertIn("값 오류 1건", err)
         self.assertNotIn("필수값 0개 누락", err)
+
+    # ── 2026-08-04 사고 두 건 ────────────────────────────────────────────────
+    def test_ACCOUNT_INTERNAL_URL_누락이_반드시_실패한다(self):
+        """없으면 코드가 `127.0.0.1:8080`(가비아 시절 동일 호스트 값)으로 폴백해
+        회원 API 키가 전부 401 이 된다. /health 에도 로그에도 안 드러난다."""
+        names = [n for n in self.m.REQUIRED if n != "VINC_ACCOUNT_INTERNAL_URL"]
+        code, err = self._check(self._env(names))
+        self.assertEqual(code, 1)
+        self.assertIn("VINC_ACCOUNT_INTERNAL_URL", err)
+
+    def test_DATA_DIR_이_영속마운트_밖이면_막는다(self):
+        """`D:/git/data/db` 가 실제로 들어간 값이다(MSYS 경로 변환). 리눅스에서는
+        상대 경로라 기동에 성공하고, 허브가 빈 그래프를 새로 만들어 서비스한다."""
+        for bad in ("D:/git/data/db", "/var/lib/vinc/db", "data/db"):
+            with self.subTest(path=bad):
+                code, err = self._check(self._with("VINC_DATA_DIR", bad))
+                self.assertEqual(code, 1, f"{bad} 가 통과했다")
+                self.assertIn("VINC_DATA_DIR", err)
+        # 왜 막는지와 재발 방지책까지 말하는지 — 사람이 원인을 다시 찾지 않게.
+        _, err = self._check(self._with("VINC_DATA_DIR", "D:/git/data/db"))
+        self.assertIn("MSYS_NO_PATHCONV", err)
+
+    def test_정상_DATA_DIR_은_통과한다(self):
+        for ok in ("/data/db", "/data/graph/db"):
+            with self.subTest(path=ok):
+                code, err = self._check(self._with("VINC_DATA_DIR", ok))
+                self.assertEqual(code, 0, err)
+
+    def test_주소값이_죽은_도메인이면_막는다(self):
+        """`vincs.app` 은 A 가 없다. `VINC_CONNECT_URL` 이 실제로 이 상태였고
+        (§4.4.1), 같은 이유로 Resend 웹훅이 7/30 부터 죽어 자동 비활성화됐다."""
+        for key, bad in (("VINC_CONNECT_URL", "https://vincs.app/connect"),
+                         ("VINC_ACCOUNT_INTERNAL_URL", "https://vincs.app"),
+                         ("VINC_MCP_ISSUER", "https://mcp.vincs.app")):
+            with self.subTest(key=key):
+                code, err = self._check(self._with(key, bad))
+                self.assertEqual(code, 1, f"{bad} 가 통과했다")
+                self.assertIn(key, err)
+
+    def test_주소를_secretRef_로_넣으면_막는다(self):
+        """시크릿이 아니므로 평문이어야 한다 — 비면 위 검사들이 전부 무력해진다."""
+        for key in ("VINC_DATA_DIR", "VINC_ACCOUNT_INTERNAL_URL"):
+            with self.subTest(key=key):
+                code, err = self._check(self._with(key, ""))
+                self.assertEqual(code, 1)
+                self.assertIn(key, err)
 
     def test_게이트_출력이_CI_주석을_오염시키지_않는다(self):
         """`::error::` 가 테스트 실행 중 실제 stderr 로 새지 않아야 한다.

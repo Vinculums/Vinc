@@ -41,6 +41,14 @@ REQUIRED: dict[str, str] = {
     "VINC_MCP_ED25519_SEED": "CRA 서명 — 없으면 회원 승인 흐름 비활성",
     "VINC_ACCOUNT_PUBLIC_KEY": "AA 검증 — 없으면 회원 승인 흐름 비활성",
     "VINC_CONNECT_URL": "동의 화면 URL. 죽은 도메인을 가리키면 승인이 막힌다",
+    # 2026-08-04 사고. 코드 기본값이 `http://127.0.0.1:8080` 인데 그건 **가비아 VM
+    # 시절 계정과 허브가 같은 호스트에 있던 때의 값**이다. Azure 에서 둘은 서로
+    # 다른 Container App(vinc-hub:8790 / vinc-account:8080)이라 루프백에 아무것도
+    # 없다 → verify_key 가 연결 실패 → fail-closed → **모든 `vinc_sk_*` 키가 401**.
+    # /health 에도, 로그에도 원인이 안 남는다. VINC_MCP_ISSUER(§4.4.1)와 같은
+    # 균열의 두 번째 사례이고, 그때 만든 이 게이트가 이 키를 안 보고 있었다.
+    "VINC_ACCOUNT_INTERNAL_URL": "회원 API 키 검증 루프백. 없으면 127.0.0.1:8080 "
+                                 "폴백 → vinc_sk_* 키 전부 401(2026-08-04 사고)",
 }
 
 # 있어야 정책이 맞는 것들(없어도 기동은 한다) — 경고만.
@@ -66,6 +74,17 @@ _SNAPSHOT_KEY = "VINC_MCP_STATE_SNAPSHOT"
 #: 영속 마운트 접두(Azure Files 가 /data 에 붙는다 — DEPLOYMENT.md §4.1).
 _PERSISTENT_PREFIX = "/data/"
 
+#: 시크릿이 아니라 **주소**인 값들. 비어 있으면(secretRef 로 넣었으면) 검증할 수
+#: 없으므로 그것 자체를 오류로 본다 — 위 두 경로 키와 같은 규율이다.
+_PLAINTEXT_KEYS = ("VINC_DATA_DIR", "VINC_ACCOUNT_INTERNAL_URL",
+                   "VINC_CONNECT_URL", "VINC_MCP_ISSUER")
+
+#: A 레코드가 없는 죽은 존. 발신(Resend) 레코드 4종만 남아 있다 —
+#: WEB-vincs-app.md §6.1. 여기를 가리키는 URL 은 **연결 자체가 실패**한다.
+#: 전례가 둘이다: `VINC_CONNECT_URL`(§4.4.1) · Resend 웹훅 엔드포인트(2026-08-04
+#: 에 Resend 가 7/30 부터의 연속 실패로 웹훅을 자동 비활성화했다).
+_DEAD_HOSTS = ("vincs.app",)
+
 
 def _value_of(env_list: list[dict], key: str) -> str | None:
     """env 배열에서 이름으로 값을 찾는다. 미설정이면 None, 값 없음이면 ''."""
@@ -73,6 +92,57 @@ def _value_of(env_list: list[dict], key: str) -> str | None:
         if isinstance(e, dict) and e.get("name") == key:
             return (e.get("value") or "").strip()
     return None
+
+
+def _check_data_dir(env_list: list[dict]) -> list[str]:
+    """`VINC_DATA_DIR` 이 **영속 마운트 안**을 가리키는지 본다.
+
+    존재만 보던 항목에 값 검사를 붙인 이유(2026-08-04 사고): 복구 배포에서 이 값이
+    `D:/git/data/db` 로 들어갔다. Windows Git Bash 가 `az` 인자의 `/data/db` 를
+    MSYS 경로 변환으로 `D:\\git\\data\\db` 로 바꿔 심은 것이다(DEPLOYMENT.md §6 의
+    리소스 ID 함정과 같은 원인, 다른 표면). 리눅스 컨테이너에서 그 값은 `D:` 라는
+    이름의 **상대 경로**라 기동은 정상이고 `/health` 도 200 인데, 허브가 Azure
+    Files 대신 이미지 레이어에 **빈 그래프를 새로 만들어** 서비스했다. 게이트는
+    "존재함"만 보고 통과시켰다.
+    """
+    v = _value_of(env_list, "VINC_DATA_DIR")
+    if not v:
+        return []                        # 부재·공백은 필수/평문 검사가 잡는다
+    if v.startswith(_PERSISTENT_PREFIX):
+        return []
+    return [f"VINC_DATA_DIR='{v}' 가 영속 마운트({_PERSISTENT_PREFIX}) 밖이다 — 허브가 "
+            f"이미지 레이어에 빈 그래프를 만들어 서비스한다(기동·/health 는 정상이라 "
+            f"드러나지 않는다). Windows Git Bash 에서 az 에 경로를 넘겼다면 MSYS "
+            f"변환을 의심할 것(MSYS_NO_PATHCONV=1)"]
+
+
+def _host_of(value: str) -> str:
+    """URL·주소 문자열에서 호스트만 뽑는다(스킴·인증정보·포트·경로 제거)."""
+    rest = value.split("//", 1)[1] if "//" in value else value
+    return rest.split("/", 1)[0].split("@")[-1].split(":")[0].lower()
+
+
+def _check_plaintext_and_hosts(env_list: list[dict]) -> list[str]:
+    """주소 값들이 (a) 평문으로 보이는지 (b) 죽은 도메인이 아닌지.
+
+    서브도메인까지 본다 — `mcp.vincs.app` 처럼 존이 죽었으면 그 아래도 다 죽는다.
+    """
+    errs: list[str] = []
+    for key in _PLAINTEXT_KEYS:
+        v = _value_of(env_list, key)
+        if v is None:
+            continue                     # 부재는 REQUIRED 검사의 몫
+        if not v:
+            errs.append(f"{key} 값이 비어 있다(secretRef?). 주소는 시크릿이 아니고, "
+                        f"평문이어야 검증할 수 있다")
+            continue
+        vhost = _host_of(v)
+        for host in _DEAD_HOSTS:
+            if vhost == host or vhost.endswith("." + host):
+                errs.append(f"{key}='{v}' 가 죽은 도메인 {host} 를 가리킨다 — 그 존에는 "
+                            f"Resend 발신 레코드만 남아 있고 A 가 없다(연결 실패). "
+                            f"vincs.io 로 바꿀 것")
+    return errs
 
 
 def _check_state_dir(env_list: list[dict]) -> list[str]:
@@ -108,7 +178,8 @@ def check(env_list: list[dict]) -> int:
     for k in warn:
         print(f"::warning::허브 env 권고값 없음: {k} — {EXPECTED[k]}")
 
-    bad_paths = _check_state_dir(env_list)
+    bad_paths = (_check_state_dir(env_list) + _check_data_dir(env_list)
+                 + _check_plaintext_and_hosts(env_list))
     for msg in bad_paths:
         print(f"::error::허브 env 값 오류: {msg}", file=sys.stderr)
 
