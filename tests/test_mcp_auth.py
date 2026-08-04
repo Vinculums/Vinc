@@ -198,3 +198,34 @@ def test_http_apikey_owner_is_stamped_end_to_end():
             assert e.code == 401
     finally:
         srv.stop()
+
+
+# ── 비 UTF-8 본문: 503(커넥션 리셋) 이 아니라 400 ─────────────────────────────
+# 2026-08-04 라이브 허브 실사고. 호스트가 CP949 로 인코딩한 질의를 보내자 `_body()` 의
+# `.decode("utf-8")` 이 do_POST 를 관통해 죽였다 — 프록시 뒤라 클라이언트는 503 을 받고
+# 로그에는 매 요청 스택트레이스가 쌓였다. 잘못된 본문은 JSON 파싱 실패와 같은 취급이어야 한다.
+def _raw_post(port: int, body: bytes, token: str = "S"):
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/mcp", data=body,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return r.status, json.loads(r.read().decode())
+
+
+def test_http_non_utf8_body_is_400_not_a_reset():
+    srv = _Srv(MCPHTTPApp(_StubBridge(), static_token="S"))
+    try:
+        bad = b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"q":"\xb9\xab"}}'
+        try:
+            _raw_post(srv.port, bad)
+            assert False, "expected 400"
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            assert json.loads(e.read().decode())["error"] == "expected a JSON-RPC message"
+        # 서버가 죽지 않았다 — 다음 요청은 정상 처리된다
+        status, reply = _raw_post(
+            srv.port, json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping"}).encode())
+        assert status == 200 and reply["id"] == 2
+    finally:
+        srv.stop()
