@@ -257,6 +257,17 @@ class EmbeddedBackend:
             kwargs["max_db_size"] = int(cfg.max_db_size)
         if getattr(cfg, "buffer_pool_mb", 0):
             kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
+        # WAL 재생 관용(2026-08-03 사고 대응, 기본 꺼짐). 드라이버 기본은
+        # throw_on_wal_replay_failure=True — 프로세스가 쓰기 도중 죽으면(정상 close()
+        # 없이 컨테이너가 강제 종료되는 등) WAL 이 완결 안 된 채 남고, 그 뒤로는
+        # **어느 리비전이 새로 열어도** 매번 같은 예외로 open() 이 실패한다(락 경합과
+        # 증상이 같아 보이지만 다른 문제 — 리비전을 아무리 갈아도 안 풀린다). 실측:
+        # db.wal 의 mtime 이 장애 시각에 고정된 채 여러 리비전의 재시도를 다 씹었다.
+        # env 하나로 "깨진 꼬리만 버리고 나머지는 살린다"로 전환할 수 있게 둔다 —
+        # 기본은 여전히 엄격(throw=True)이라 평소엔 손상을 조용히 삼키지 않는다.
+        wal_tolerant = os.environ.get("VINC_WAL_REPLAY_TOLERANT", "").strip().lower() \
+            in ("1", "true", "on")
+        kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
         try:
             db = drv.Database(data_dir, **kwargs)
             conn = drv.Connection(db)
@@ -266,6 +277,10 @@ class EmbeddedBackend:
             # 돌려줘 "no reachable store" 한 줄로 뭉개졌고, 자원 고갈(MemoryError)이
             # 스코프 격리 실패처럼 보이는 오진을 낳았다(로컬 Windows 10건의 정체).
             cls.last_open_error = f"{type(exc).__name__}: {exc}"
+            # stdout 에도 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
+            # 예외 문구를 어디서도 못 봤다(배너의 "driver": null 한 줄뿐).
+            print(f"[embedded_backend] store open failed: {cls.last_open_error}",
+                  flush=True)
             return None
         cls.last_open_error = ""
         return cls(db, conn, name, cfg)
