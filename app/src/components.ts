@@ -1,6 +1,157 @@
 /** Shared surface chrome — Figma first-draft visual grammar (nodes 5:2/5:71/
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
 import { icon } from "./icons";
+import { popIn, popOut, fadeIn, fadeOut } from "./motion";
+
+/** ── 세그먼트 컨트롤의 물성(2026-08-05) ────────────────────────────────────
+ *
+ *  `.seg`(3D/2D/타임라인/Sankey · 테마 · 언어 · 배치)는 여태 **활성 칩의 배경색만
+ *  갈아 끼웠다.** 그래서 고를 때 선택이 "이동"하지 않고 한 칸이 꺼지고 다른 칸이
+ *  켜졌다 — 어느 것에서 어느 것으로 옮겼는지 눈이 따라갈 대상이 없다.
+ *
+ *  움직이는 알약(thumb)을 하나 넣어 그것이 미끄러진다. 배경은 thumb 이 갖고 칩은
+ *  글자만 갖는다(둘 다 배경을 가지면 이동 중에 두 개가 켜져 보인다).
+ *
+ *  **호출부를 하나도 고치지 않는다.** 세그를 그리는 곳이 여섯 군데(Atlas 관점·렌즈
+ *  패널·설정 셋·팩)인데 각자 innerHTML 로 다시 그리므로, 배선을 심으면 다시 그릴
+ *  때마다 사라진다. 그래서 문서 전체를 한 번 관찰하고(MutationObserver) 활성 칩이
+ *  바뀌거나 세그가 새로 생기면 알약을 그 자리로 옮긴다. */
+let segRaf = 0;
+
+/** 세그를 **다시 그려도** 알약이 이어지게 하는 기억(FLIP).
+ *
+ *  왜 필요한가: 세그를 그리는 곳들이 선택을 바꿀 때 컨테이너를 innerHTML 로 다시
+ *  그린다(설정의 테마는 패널 전체, Atlas 의 관점은 표면 전체). 그러면 알약도 새
+ *  요소로 태어나므로 전이할 이전 상태가 없어 **그냥 새 자리에 나타난다** — 미끄러지지
+ *  않는다. 호출부 여섯 군데를 "상태만 갱신"으로 바꾸는 것이 정공법이지만, 그건 각
+ *  화면의 렌더 계약을 건드리는 일이라 위험이 크다. 대신 마지막 자리를 기억해 두고
+ *  새 알약을 그 자리에 놓은 뒤 목표로 옮긴다(첫 프레임만 전이 없이).
+ *
+ *  키는 "어느 컨테이너의 어떤 선택지 묶음인가" — 라벨 조합이 그 세그의 정체다. */
+const segMemory = new Map<string, { t: string; w: string; h: string }>();
+
+function segKey(seg: HTMLElement): string {
+  const host = seg.closest<HTMLElement>("[id]")?.id ?? "";
+  const labels = Array.from(seg.querySelectorAll<HTMLElement>(".chip"))
+    .map((c) => c.textContent?.trim() ?? "").join("|");
+  return `${host}::${labels}`;
+}
+
+function placeSegThumb(seg: HTMLElement): void {
+  const active = seg.querySelector<HTMLElement>(".chip.active");
+  let thumb = seg.querySelector<HTMLElement>(".seg-thumb");
+  if (!active) { if (thumb) thumb.style.opacity = "0"; return; }
+  const key = segKey(seg);
+  if (!thumb) {
+    thumb = document.createElement("span");
+    thumb.className = "seg-thumb";
+    thumb.setAttribute("aria-hidden", "true");
+    seg.prepend(thumb);
+    // 새로 태어난 알약을 **기억한 자리에** 먼저 세운다(전이 없이). 그래야 바로 아래
+    // 목표 위치 지정이 "이동"으로 보인다. reflow 한 번이 그 둘을 가른다.
+    const prev = segMemory.get(key);
+    if (prev) {
+      thumb.style.transition = "none";
+      thumb.style.opacity = "1";
+      thumb.style.transform = prev.t;
+      thumb.style.width = prev.w;
+      thumb.style.height = prev.h;
+      void thumb.offsetWidth;              // 강제 reflow — 위 상태를 확정시킨다
+      thumb.style.transition = "";
+    }
+  }
+  // ⚠ `getBoundingClientRect` 를 쓰지 않는다. 세그가 **스케일 애니메이션 중인 조상**
+  // 안에 있으면(모달이 열리는 340ms 동안 전부 그렇다) 그 rect 는 축소된 좌표를 주고,
+  // 그 값이 알약의 width 로 굳어 8px 짜리 점이 된다(실측). `offset*` 은 레이아웃
+  // 값이라 변환의 영향을 받지 않는다.
+  // offsetLeft/Top 은 offsetParent(=position:relative 인 .seg)의 테두리 기준이고,
+  // 알약은 padding 상자 기준(left:0)이므로 테두리 두께만 뺀다.
+  if (!active.offsetWidth) return;         // 아직 레이아웃 전 — 다음 관찰에서 잡는다
+  thumb.style.opacity = "1";
+  thumb.style.width = `${active.offsetWidth}px`;
+  thumb.style.height = `${active.offsetHeight}px`;
+  thumb.style.transform =
+    `translate(${active.offsetLeft - seg.clientLeft}px, ${active.offsetTop - seg.clientTop}px)`;
+  segMemory.set(key, { t: thumb.style.transform, w: thumb.style.width, h: thumb.style.height });
+}
+
+function placeAllSegThumbs(): void {
+  segRaf = 0;
+  document.querySelectorAll<HTMLElement>(".seg").forEach(placeSegThumb);
+}
+
+function scheduleSegPlace(): void {
+  if (segRaf) return;                      // 한 프레임에 한 번만(관찰이 폭주해도)
+  segRaf = requestAnimationFrame(placeAllSegThumbs);
+}
+
+/** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
+ *
+ *  두 함정을 함께 막는다:
+ *   ① **스크롤바 클릭**. 요소가 스크롤되면 그 스크롤바를 잡는 것도 그 요소 위의
+ *      클릭이다 — 딤을 눌렀다고 오인해 닫혔다(실측 버그). 포인터가 client 영역
+ *      **안쪽**인지 확인한다(스크롤바는 clientWidth/Height 밖이다).
+ *   ② **안에서 시작한 드래그**. 시트 안에서 글자를 선택하다 밖에서 손을 떼면 click
+ *      은 딤에서 발생한다. 그래서 **누른 곳과 뗀 곳이 모두** 딤이어야 닫는다. */
+function inClientArea(el: HTMLElement, e: PointerEvent | MouseEvent): boolean {
+  const r = el.getBoundingClientRect();
+  return e.clientX - r.left < el.clientWidth && e.clientY - r.top < el.clientHeight;
+}
+
+/** 딤(스크림)을 눌러 닫는 배선. 대상이 딤 **자신**일 때만 닫힌다. */
+export function wireScrimDismiss(scrim: HTMLElement, close: () => void): void {
+  let armed = false;
+  scrim.addEventListener("pointerdown", (e) => {
+    armed = e.target === scrim && inClientArea(scrim, e);
+  });
+  scrim.addEventListener("click", (e) => {
+    if (armed && e.target === scrim) close();
+    armed = false;
+  });
+}
+
+/** 딤이 없는 패널(렌즈·범례처럼 지도를 계속 만질 수 있어야 하는 것)을 바깥 클릭으로
+ *  닫는다. `keep` 은 눌려도 닫지 않을 요소들(자기를 연 버튼 — 그 버튼은 스스로
+ *  토글하므로 여기서 닫으면 두 번 처리돼 다시 열린다).
+ *  반환 = 배선 해제(패널이 사라질 때 호출). */
+export function wireOutsideDismiss(panel: HTMLElement, close: () => void,
+                                   ...keep: (Element | null | undefined)[]): () => void {
+  const onDown = (e: PointerEvent) => {
+    const t = e.target as Node | null;
+    if (!t || panel.hidden) return;
+    if (panel.contains(t) || keep.some((k) => k?.contains(t))) return;
+    close();
+  };
+  // capture 로 받는다 — 캔버스(WebGL)가 자기 포인터 이벤트를 먼저 삼켜도 여기까지 온다.
+  document.addEventListener("pointerdown", onDown, true);
+  return () => document.removeEventListener("pointerdown", onDown, true);
+}
+
+/** 앱 기동 때 한 번. 이후 세그가 어디서 다시 그려지든 알약이 따라간다. */
+/** 이 변화가 세그와 **관계가 있는가**. 없으면 아무 일도 하지 않는다.
+ *
+ *  왜 필요한가(2026-08-05 실측): 관찰 범위가 `document.body` 전체라, 툴팁이 뜨고 지는
+ *  것 같은 무관한 변화에도 콜백이 돌았다. 그 콜백은 문서의 모든 `.chip` 좌표를
+ *  `offset*` 으로 읽으므로 **강제 레이아웃**이다 — 옵션 패널을 굴리면 포인터가 지나는
+ *  라벨마다 툴팁이 붙었다 떨어지고, 그때마다 전체 측정이 끼어들어 스크롤이 끊겼다. */
+function touchesSeg(recs: MutationRecord[]): boolean {
+  const isSegish = (n: Node) => n instanceof Element
+    && (n.matches(".seg, .chip, .seg-thumb") || !!n.querySelector(".seg"));
+  for (const r of recs) {
+    const t = r.target;
+    if (t instanceof Element && t.closest(".seg")) return true;
+    for (const n of r.addedNodes) if (isSegish(n)) return true;
+    for (const n of r.removedNodes) if (isSegish(n)) return true;
+  }
+  return false;
+}
+
+export function initSegMotion(): void {
+  scheduleSegPlace();
+  new MutationObserver((recs) => { if (touchesSeg(recs)) scheduleSegPlace(); })
+    .observe(document.body, { subtree: true, childList: true, attributeFilter: ["class"] });
+  window.addEventListener("resize", scheduleSegPlace);
+}
 
 /** Surface header: display title + muted meta line. (아이콘은 LNB 와 중복이라
  *  페이지에서 미표기 — iconName 은 호출부 안정성 위해 시그니처만 유지.) */
@@ -69,10 +220,24 @@ export function openSheet(opts: {
       <div class="sheet-foot"></div>
     </div>`;
   document.body.appendChild(el);
+  // 시트는 **자기를 연 버튼에서** 자라고 그 자리로 사라진다(motion.ts). 트리거를
+  // 인자로 받지 않고 추정하는 이유: openSheet 호출부가 20 곳 가까이 되는데 전부
+  // 클릭 핸들러 안이라 방금 눌린 버튼이 곧 activeElement 다. 배선을 20 곳에 퍼뜨리는
+  // 대신 한 군데서 추정하고, 못 찾으면 중립 지점(가운데 위)으로 물러선다.
+  const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
+  const trigger = document.activeElement;
+  fadeIn(el);
+  popIn(sheetEl, trigger);
+  let closed = false;
   const close = () => {
-    el.remove();
+    if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
+    closed = true;
     document.removeEventListener("keydown", onKey, true);
-    opts.onClose?.();
+    // 퇴장을 **기다린 뒤** 지운다 — 여태 닫기는 애니메이션이 아예 없어 뚝 끊겼다.
+    void Promise.all([popOut(sheetEl, trigger), fadeOut(el)]).then(() => {
+      el.remove();
+      opts.onClose?.();
+    });
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
@@ -82,7 +247,7 @@ export function openSheet(opts: {
     close();
   };
   document.addEventListener("keydown", onKey, true);
-  el.addEventListener("click", (e) => { if (e.target === el) close(); });
+  wireScrimDismiss(el, close);
   el.querySelector(".sheet-x")!.addEventListener("click", close);
   return {
     el,
@@ -139,6 +304,32 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
   el.querySelector<HTMLElement>(".ctx-item")?.focus();
 }
 
+/** 확인·입력 다이얼로그의 등퇴장 배선 — `openSheet` 와 **같은 물성**을 두 형제에게도.
+ *
+ *  왜 이 함수가 생겼나: 예전에는 `.sheet { animation: sheetRise }` 라는 CSS 한 줄이
+ *  세 다이얼로그의 등장을 다 책임졌다. 시트를 WAAPI(motion.ts)로 옮기면서 그 키프레임을
+ *  지웠는데, `.sheet` 를 직접 만드는 이 둘은 대체 배선을 못 받아 **모션을 통째로
+ *  잃었다**(등장은 사라지고 퇴장은 애초에 없었다). 게다가 스크림 배선도 옛
+ *  `e.target === el` 방식이라, 같은 릴리스에서 `wireScrimDismiss` 로 고친 결함(시트
+ *  안을 스크롤하다 스크롤바를 잡으면 닫힘)이 여기만 그대로 남아 있었다.
+ *
+ *  세 곳에 흩어 놓으면 다음에도 한 곳만 고쳐진다. 그래서 한 벌로 묶는다.
+ *  반환값은 "닫아라" — 퇴장이 끝난 뒤에 넘긴 콜백을 부른다. */
+function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => void) => void {
+  const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
+  // 이 다이얼로그를 연 버튼. 아래에서 자기 버튼으로 포커스를 옮기기 **전에** 잡는다.
+  const trigger = document.activeElement;
+  fadeIn(el);
+  popIn(sheetEl, trigger);
+  wireScrimDismiss(el, dismiss);
+  let closed = false;
+  return (then) => {
+    if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
+    closed = true;
+    void Promise.all([popOut(sheetEl, trigger), fadeOut(el)]).then(() => { el.remove(); then(); });
+  };
+}
+
 /** 파괴적 동작 확인(S1) — 삭제는 되돌릴 수 없으므로 반드시 이 게이트를 통과시킨다.
  *  overlay + palette-card(편집 시트와 동일 시각 문법). resolve(true) = 진행.
  *  기본 포커스는 취소 쪽에 두고, Esc·배경 클릭도 취소로 접는다(오조작 방지). */
@@ -159,10 +350,13 @@ export function confirmDestructive(message: string, confirmLabel: string,
         </div>
       </div>`;
     document.body.appendChild(el);
-    const done = (v: boolean) => { el.remove(); document.removeEventListener("keydown", onKey); resolve(v); };
+    const close = wireDialogMotion(el, () => done(false));
+    const done = (v: boolean) => {
+      document.removeEventListener("keydown", onKey);
+      close(() => resolve(v));
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(false); };
     document.addEventListener("keydown", onKey);
-    el.addEventListener("click", (e) => { if (e.target === el) done(false); });
     el.querySelector("#cd-no")!.addEventListener("click", () => done(false));
     el.querySelector("#cd-yes")!.addEventListener("click", () => done(true));
     (el.querySelector("#cd-no") as HTMLButtonElement).focus();
@@ -195,15 +389,16 @@ export function promptText(title: string, initial: string, confirmLabel: string,
       </div>`;
     document.body.appendChild(el);
     const input = el.querySelector<HTMLInputElement>("#pt-in")!;
+    const close = wireDialogMotion(el, () => done(null));
     const done = (v: string | null) => {
-      el.remove(); document.removeEventListener("keydown", onKey); resolve(v);
+      document.removeEventListener("keydown", onKey);
+      close(() => resolve(v));
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") done(null);
       if (e.key === "Enter" && document.activeElement === input) done(input.value.trim());
     };
     document.addEventListener("keydown", onKey);
-    el.addEventListener("click", (e) => { if (e.target === el) done(null); });
     el.querySelector("#pt-no")!.addEventListener("click", () => done(null));
     el.querySelector("#pt-x")?.addEventListener("click", () => done(""));
     el.querySelector("#pt-yes")!.addEventListener("click", () => done(input.value.trim()));

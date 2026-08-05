@@ -2,10 +2,13 @@ import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 
-/** 상단 바 (DEC D56·D57) — 셸의 유일한 크롬.
+/** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
  *
- *  여기 사는 것: 로고 · 렌즈 · 관점 세그 · 상시 검색 · 가져오기 · 공유 · 설정.
- *  여기 살지 않는 것: 표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
+ *  자리에 뜻이 있다: **왼쪽은 앱**(설정·도구·규칙), **오른쪽은 지도**(보기와 범례 ·
+ *  관점 세그), 가운데는 상시 검색이다. 예전엔 둘이 오른쪽에 함께 몰려 있어 앱을
+ *  다루는 일과 지도를 보는 방식을 고르는 일이 한 무리로 읽혔다.
+ *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
+ *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
  *  크럼(폐지 — "지금 어디"는 트리가 상시로 말한다), 지표(하단 상태 표시줄에 남는다).
  *
  *  **표면과의 계약은 훅 하나뿐이다.** 공유·보기 버튼은 Atlas 만 뜻이 있으므로
@@ -175,7 +178,10 @@ export function mountTopbar() {
   // 범위를 고르고, `지금 보고 있는 곳`만 Atlas 훅을 쓴다.
   const tools = $("tb-tools");
   if (tools) {
-    tools.innerHTML = icon("pack-in", 15) + `<span>${COPY.ui.tools.title}</span>`;
+    // 아이콘만 — 옆의 설정·GRAPH.md 와 같은 형태여야 세 손잡이가 한 리듬으로 읽힌다
+    // (발주자 지시 2026-08-05). 이름은 툴팁과 보조기술이 든다.
+    tools.innerHTML = icon("pack-in", 18);
+    tools.setAttribute("aria-label", COPY.ui.tools.title);
     tools.setAttribute("data-tip", COPY.ui.tools.tip);
     tools.addEventListener("click", async () => {
       const { openTools } = await import("./tools");

@@ -91,10 +91,17 @@ export function installTooltip(): void {
   // Esc — 포인터를 움직이지 않고 닫는다(1.4.13 dismissable). 다른 Esc 소비자
   // (패널·시트)를 막지 않도록 stopPropagation 하지 않는다.
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
-  // 스크롤·리사이즈로 앵커가 움직이면 자리만 다시 잡는다(따라다니되 재계산 1회).
-  const reflow = () => { if (anchor && box && !box.hidden) place(box, anchor); };
-  window.addEventListener("scroll", reflow, true);
-  window.addEventListener("resize", reflow);
+  // 스크롤은 **따라다니지 않고 닫는다**(2026-08-05). 여태 capture 단계에서 스크롤마다
+  // `place()` 를 불렀는데, 그건 앵커와 툴팁의 `getBoundingClientRect` 를 스크롤 프레임
+  // 마다 읽는 일이다 — 강제 레이아웃이 매 프레임 끼어들어 스크롤이 계단처럼 끊겼다
+  // (옵션 패널에서 라벨 위에 포인터를 둔 채 굴리면 그 상태다).
+  // 스크롤 중에 툴팁을 붙잡아 둘 이유도 없다: 손이 움직이면 다시 뜬다.
+  const onScroll = () => { if (anchor) hide(); };
+  window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  // 리사이즈는 프레임마다 오지 않으므로 자리만 다시 잡는다.
+  window.addEventListener("resize", () => {
+    if (anchor && box && !box.hidden) place(box, anchor);
+  });
 }
 
 /** 앵커가 DOM 에서 사라졌는데 툴팁만 남는 일을 막는다(뷰 전환·재렌더 시 호출). */

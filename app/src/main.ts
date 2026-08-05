@@ -10,6 +10,8 @@ import { checkForUpdate } from "./update";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setAtlasHooks } from "./topbar";
 import { mountLnb, setLnbNavigator } from "./lnb";
+import { popIn, popOut, fadeIn, fadeOut } from "./motion";
+import { initSegMotion, wireScrimDismiss } from "./components";
 
 // 표면 3종: Atlas / Search(+Records) / Packs(+Intake).
 type Surface = "atlas" | "search" | "packs";
@@ -29,6 +31,27 @@ const ALIAS: Record<string, Surface> = { intake: "packs", records: "search" };
 
 const surfaceEl = document.getElementById("surface")!;
 const topbar = document.getElementById("topbar")!;
+const shellEl = document.getElementById("shell")!;
+const docpaneEl = document.getElementById("docpane")!;
+const docpaneBodyEl = document.getElementById("docpane-body")!;
+
+// ── 문서 내용 열의 머리 — 접기/펴기 (셸 소유) ──────────────────────────────
+// 상태 셋을 구분한다: closed(선택 없음) · open · folded(선택은 살아 있고 열만 접힘).
+// **접힘은 저장하지 않는다.** LNB 는 접힌 상태를 기억하지만(사용자 소유) 이 열은
+// 선택에 딸린 물건이라, 기억해 두면 다음에 노드를 눌러도 화면이 그대로여서 "눌렀는데
+// 아무 일도 안 일어난다"가 된다 — 명시적인 조작의 결과는 반드시 보여야 한다.
+{
+  const fold = document.getElementById("docpane-fold")!;
+  const reopen = document.getElementById("docpane-reopen")!;
+  docpaneEl.setAttribute("aria-label", COPY.ui.lnb.paneTitle);
+  for (const [btn, tip] of [[fold, COPY.ui.lnb.paneFold], [reopen, COPY.ui.lnb.paneUnfold]] as const) {
+    btn.innerHTML = icon("chevron-left", 16);
+    btn.setAttribute("aria-label", tip);
+    btn.setAttribute("data-tip", tip);
+  }
+  fold.addEventListener("click", () => { shellEl.dataset.doc = "folded"; });
+  reopen.addEventListener("click", () => { shellEl.dataset.doc = "open"; });
+}
 
 // Notation icons into the top bar (CSS가 18px 로 클램프)
 topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
@@ -36,7 +59,6 @@ topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
 });
 document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topbar.settings);
 document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
-document.getElementById("sync-status")!.textContent = COPY.ui.common.local;
 
 // 관례(GM-8) — 아이콘 하나 + 제안 적체 뱃지. 시트는 눌릴 때 지연 로드한다.
 {
@@ -52,6 +74,9 @@ document.getElementById("sync-status")!.textContent = COPY.ui.common.local;
 mountTopbar();
 // 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
 mountLnb();
+// 세그먼트 컨트롤(관점·테마·언어·배치)의 선택이 미끄러지게 한다 — 호출부는 그대로
+// 두고 문서 전체를 한 번 관찰한다(components.ts initSegMotion).
+initSegMotion();
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
@@ -66,6 +91,14 @@ async function route() {
   if (rawHead in ALIAS) { location.hash = `#${ALIAS[rawHead]}`; return; }  // hashchange → 재진입
   const s = current();
   surfaceEl.innerHTML = "";
+  // 문서 열은 셸의 것이지만 내용은 표면이 심는다(Atlas 가 자기 상세를 옮겨 온다).
+  // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
+  // 안 된다(옮겨 심은 노드는 이미 여기 있으므로 남는다). 라우터가 닫는다.
+  // 비우는 것은 **본문뿐**이다: 머리는 셸 것이고 접기 손잡이가 거기 살고 있다.
+  docpaneBodyEl.innerHTML = "";
+  docpaneEl.querySelector("#rail-grip")?.remove();
+  docpaneEl.hidden = true;
+  shellEl.dataset.doc = "closed";
   // 상단 바의 Atlas 전용 버튼은 표면을 떠나는 즉시 사라진다 — Atlas 면 아래에서
   // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
   // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
@@ -82,14 +115,30 @@ document.title = `Vinc · ${COPY.tagline}`;
 // Settings — 우측 슬라이드오버(딤 스크림 + 우측 패널). 스크림/Esc 로 닫힘.
 const popover = document.getElementById("settings-popover")!;
 const settingsScrim = document.getElementById("settings-scrim")!;
-function openSettings() { settingsScrim.hidden = false; popover.hidden = false; void renderSettings(popover); }
-function closeSettings() { settingsScrim.hidden = true; popover.hidden = true; }
-document.getElementById("settings-btn")!.addEventListener("click", () => {
-  if (popover.hidden) openSettings(); else closeSettings();
+const settingsBtn = document.getElementById("settings-btn")!;
+// 설정은 **자기를 연 아이콘에서** 자라고 그 아이콘으로 빨려 들어간다(motion.ts).
+// 트리거를 명시로 넘긴다 — 스크림·Esc 로 닫을 때는 포커스가 그 아이콘에 없으므로
+// 추정에 맡기면 닫히는 방향이 매번 달라진다(같은 문이 열리고 닫히는 것으로 안 읽힌다).
+function openSettings() {
+  settingsScrim.hidden = false; popover.hidden = false;
+  void renderSettings(popover);
+  fadeIn(settingsScrim);
+  popIn(popover, settingsBtn);
+}
+let closing = false;
+async function closeSettings() {
+  if (closing || popover.hidden) return;
+  closing = true;
+  await Promise.all([popOut(popover, settingsBtn), fadeOut(settingsScrim)]);
+  settingsScrim.hidden = true; popover.hidden = true;
+  closing = false;
+}
+settingsBtn.addEventListener("click", () => {
+  if (popover.hidden) openSettings(); else void closeSettings();
 });
-settingsScrim.addEventListener("click", closeSettings);
+wireScrimDismiss(settingsScrim, () => void closeSettings());
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !popover.hidden) closeSettings();
+  if (e.key === "Escape" && !popover.hidden) void closeSettings();
 });
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
@@ -128,7 +177,22 @@ function openPalette() {
     return hits;
   };
   let hits = draw();
-  const close = () => { palette.hidden = true; };
+  // 팔레트는 단축키로 열리므로 나온 곳이 없다 — `null` 을 **명시로** 넘겨 추정을 끄고
+  // 중립 지점(가운데 위)에서 자라게 한다. 인자를 생략하면 그때의 포커스를 트리거로
+  // 삼아, 검색창에 커서를 둔 채 단축키를 누르면 팔레트가 검색창에서 자라나고 검색창이
+  // 튄다(motion.ts resolveTrigger — 생략과 null 은 다른 뜻이다).
+  const card = palette.querySelector<HTMLElement>(".palette-card")!;
+  fadeIn(palette);
+  popIn(card, null);
+  // 닫기도 기다린다 — 열림만 부드럽고 닫힘이 뚝 끊기는 것이 이번에 고친 그 결함이다.
+  let fading = false;
+  const close = () => {
+    if (fading) return;
+    fading = true;
+    void Promise.all([popOut(card, null), fadeOut(palette)]).then(() => {
+      palette.hidden = true; fading = false;
+    });
+  };
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") close();

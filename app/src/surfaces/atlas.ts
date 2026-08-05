@@ -18,6 +18,8 @@ import { LAYOUTS, VIEWS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
 import { lensSlot, viewsSlot, setAtlasHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
+import { popIn, popOut } from "../motion";
+import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
 
 /** Surface 3 — Atlas (spec: vinc.d.graph v0.2 · vinc.d.atlas-visual-language).
@@ -67,10 +69,11 @@ export async function renderAtlas(el: HTMLElement) {
   const myGen = ++liveGen;
   el.innerHTML = `
     <div id="atlas-canvas"></div>
-    <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈와 관점 세그는 상단 바 좌측으로
-         올라갔다 — 좌측을 문서 트리가 차지하면서 하단 바의 남은 일이 "지금 화면이
-         무엇을 세고 있는가" 하나가 됐기 때문이다. 지표는 여전히 떠 있는 알약이
-         아니라 상태 표시줄이다(떠 있는 알약은 배너로 읽혀 무시된다 — D65). -->
+    <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈와 관점 세그는 상단 바로 올라갔고,
+         지금은 그 바의 **오른쪽**에 있다(왼쪽은 설정·도구·규칙 = 앱을 다루는 일).
+         하단 바의 남은 일은 "지금 화면이 무엇을 세고 있는가" 하나다. 지표는 여전히
+         떠 있는 알약이 아니라 상태 표시줄이다(떠 있는 알약은 배너로 읽혀 무시된다
+         — D65). -->
     <div id="atlas-chrome">
       <div id="atlas-metrics"></div>
     </div>
@@ -91,6 +94,16 @@ export async function renderAtlas(el: HTMLElement) {
   const canvas = el.querySelector<HTMLElement>("#atlas-canvas")!;
   const detail = el.querySelector<HTMLElement>("#atlas-detail")!;
   const railGrip = el.querySelector<HTMLElement>("#rail-grip")!;
+  // 상세와 폭 그립은 셸의 **가운데 열**로 옮겨 심는다. 만드는 곳은 여기다(내용의
+  // 주인은 표면이므로 마크업도 표면이 갖는다) — 그러나 자리는 셸이 준다. 열은
+  // 라우터가 표면을 갈아끼울 때 비운다(main.ts route). 열이 없는 배치(임베드)에서는
+  // 옮기지 않고 표면 안에 그대로 남아 예전처럼 겹쳐 뜬다.
+  const shell = document.getElementById("shell");
+  const docpane = document.getElementById("docpane");
+  // 머리는 셸 것이므로 본문에만 심는다. 그립은 열 전체 높이에 걸쳐야 하니(머리
+  // 옆까지) 열 직속이다 — 둘의 소속이 다른 이유가 그것뿐이다.
+  document.getElementById("docpane-body")?.append(detail);
+  if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#atlas-msg")!;
   const tools = el.querySelector<HTMLElement>("#atlas-tools")!;
   // D71 — 렌즈·관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
@@ -176,8 +189,10 @@ export async function renderAtlas(el: HTMLElement) {
    *
    *  자리는 렌즈 패널 안이다: 지도를 보는 손잡이(관점·범위·옵션)와 지도를 읽는 법
    *  (범례)은 같은 물음("이 그림을 어떻게 볼까")에 답하므로 한 패널에 둔다. */
-  const LEGEND_KEY = "vinc.atlas.legend.open";
-  const OPTS_KEY = "vinc.atlas.opts.open";
+  // 옵션/범례 중 무엇을 보고 있나(2026-08-05). 옛 키 둘(legend.open·opts.open)은
+  // 접힘 토글용이라 더 쓰지 않는다 — 남겨 두면 "어느 것이 지금 상태인가"가 세 곳에
+  // 흩어진다(그 상태 분산이 옛 구조의 실제 문제였다).
+  const PANEL_TAB_KEY = "vinc.atlas.panel.tab";
   function legendHTML(): string {
     const L = COPY.ui.legend;
     const mark = (svg: string, label: string) =>
@@ -264,7 +279,7 @@ export async function renderAtlas(el: HTMLElement) {
                aria-controls="atlas-view-panel" data-tip="${esc(COPY.ui.legend.lensTip)}"
                aria-label="${esc(COPY.ui.legend.lensTip)}">${icon("dot-grid", 17)}</button>`;
     lensBtn = legend.querySelector<HTMLElement>("#atlas-lens");
-    lensBtn?.addEventListener("click", () => (viewPanel.hidden ? openPanel() : closePanel()));
+    lensBtn?.addEventListener("click", () => { if (viewPanel.hidden) openPanel(); else void closePanel(); });
   }
 
   /** 표면 공용 이스케이프 — 여태 함수마다 같은 것을 다시 선언하고 있었다(esc·esc2). */
@@ -275,19 +290,23 @@ export async function renderAtlas(el: HTMLElement) {
    *  들어가는 문은 모든 마크에 달려 있는데 나오는 문이 크럼 하나뿐이었던 비대칭을
    *  여기서 끝낸다. 스택(상세→드릴다운→Reader→편집)은 각자 '뒤로'가 있고, ✕/Esc 는
    *  스택 전체를 접는다. */
-  /** 레일 폭의 **단일 원천**(D70). 여태 CSS(`#atlas-detail{width:20rem}`)와 JS 상수
-   *  두 군데에 같은 숫자가 적혀 있었고, 열릴 때 비켜서는 크롬 3개는 JS 가 인라인
-   *  style 로 손수 밀었다. 이제 값은 변수 둘로만 산다:
-   *    --rail-size : 사용자가 끌어 정한 폭(패널 자신의 width)
-   *    --rail-w    : 지금 실제로 점유 중인 폭(닫히면 0) — 크롬이 이걸 보고 비킨다
-   *  덕분에 "레일이 열렸을 때 무엇이 비켜야 하는가"가 CSS 한 곳의 규칙이 된다. */
+  /** 문서 열 폭의 **단일 원천**(D70). 여태 CSS(`#atlas-detail{width:20rem}`)와 JS
+   *  상수 두 군데에 같은 숫자가 적혀 있었다. 지금 값은 변수 하나로만 산다:
+   *    --rail-size : 사용자가 끌어 정한 폭
+   *  이 변수를 **셸**에 얹는다(표면이 아니라) — 폭을 실제로 쓰는 것은 셸의 그리드
+   *  열(`#shell[data-doc="open"] { --doc-w: var(--rail-size) }`)이기 때문이다.
+   *  겹쳐 뜨던 시절에 필요했던 `--rail-w`(비켜설 거리)는 사라졌다: 열이 캔버스를
+   *  덮지 않으므로 비켜설 것이 없다. */
   function setRailWidth(rem: number) {
     const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
-    el.style.setProperty("--rail-size", `${w}rem`);
+    (shell ?? el).style.setProperty("--rail-size", `${w}rem`);
     return w;
   }
   function railChrome(open: boolean) {
-    el.style.setProperty("--rail-w", open ? "var(--rail-size)" : "0px");
+    // 열의 열림/닫힘은 셸이 안다(그리드 폭을 그 상태가 정한다). 열 자체를 hidden
+    // 으로도 접는다 — 폭 0 인 열에 테두리만 남아 실선 하나가 떠 있는 것을 막는다.
+    if (shell) shell.dataset.doc = open ? "open" : "closed";
+    if (docpane) docpane.hidden = !open;
     railGrip.hidden = !open;
   }
   function closeRail() {
@@ -302,9 +321,12 @@ export async function renderAtlas(el: HTMLElement) {
     detail.hidden = false;
     railChrome(true);
   }
-  /** 좌측 모서리 그립 — 끌어서 폭 조절. 포인터 캡처라 커서가 캔버스(WebGL) 위로
-   *  넘어가도 드래그가 끊기지 않는다. 확정 값만 프리퍼런스에 적는다(끄는 동안
-   *  매 프레임 localStorage 를 두드리지 않게). */
+  /** 열의 **오른쪽** 모서리 그립 — 끌어서 폭 조절. 포인터 캡처라 커서가 캔버스
+   *  (WebGL) 위로 넘어가도 드래그가 끊기지 않는다. 확정 값만 프리퍼런스에 적는다
+   *  (끄는 동안 매 프레임 localStorage 를 두드리지 않게).
+   *  방향이 뒤집혔다: 겹쳐 뜨던 시절 그립은 패널 왼쪽에 있어 **왼쪽으로** 끌면
+   *  넓어졌다. 지금은 오른쪽 모서리라 오른쪽으로 끌면 문서가 넓어진다(손이 미는
+   *  방향과 자라는 방향이 같다). */
   function wireRailGrip(grip: HTMLElement) {
     grip.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -314,7 +336,7 @@ export async function renderAtlas(el: HTMLElement) {
       const startW = detail.getBoundingClientRect().width / root;
       let live = startW;
       const move = (ev: PointerEvent) => {
-        live = setRailWidth(startW + (startX - ev.clientX) / root);
+        live = setRailWidth(startW + (ev.clientX - startX) / root);
       };
       const up = () => {
         grip.removeEventListener("pointermove", move);
@@ -343,7 +365,7 @@ export async function renderAtlas(el: HTMLElement) {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
       if (isFloatPanelOpen()) { closeFloatPanel(); return; }
-      if (!viewPanel.hidden) { closePanel(); return; }
+      if (!viewPanel.hidden) { void closePanel(); return; }
       if (!detail.hidden) { closeRail(); return; }
       if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1], false); }
       return;
@@ -446,16 +468,49 @@ export async function renderAtlas(el: HTMLElement) {
   }
 
   // 패널 열림/닫힘·aria·포커스를 한 곳에서만 만진다(드리프트 방지).
-  function openPanel() {
-    viewPanel.hidden = false;
+  //
+  // ⚠ **이미 열려 있으면 다시 "여는" 동작을 하지 않는다.** applyPrefs 가 옵션을 고를
+  // 때마다 이 함수를 부르는데(연속 조정을 위해 패널을 유지하려고), 등장 모션과 바깥
+  // 클릭 배선까지 다시 걸리면 패널이 매번 렌즈 아이콘으로 줄었다 다시 커진다 —
+  // 사용자에게는 "고르면 모달이 닫힌다"로 보인다(발주자 지적 2026-08-05).
+  /** 좁은 창(<900px)에서는 **전체폭 유리면으로 승격**한다(발주자 지시 2026-08-05).
+   *  그 폭에서 19rem 짜리 팝오버는 지도를 거의 다 덮으면서도 자기 내용은 두 줄로
+   *  접혀, 좁은 것을 좁게 쓰는 최악의 조합이 된다. 문서 패널과 같은 처분이다 —
+   *  좁으면 한 번에 하나만 보여 준다.
+   *
+   *  좌표를 **JS 가 지우는 것**이 핵심이다: 넓은 창에서 인라인으로 얹은 top/left 는
+   *  미디어쿼리(CSS)를 이기므로, 지우지 않으면 승격 규칙이 먹지 않는다. */
+  const NARROW = "(max-width: 900px)";
+  function positionPanel() {
+    if (window.matchMedia(NARROW).matches) {
+      viewPanel.style.top = "";
+      viewPanel.style.left = "";
+      return;
+    }
     // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
     // 표면 기준 absolute 로는 사이드바 폭·타이틀바·웹 GNB 만큼 어긋난다. 좌표를
     // 버튼 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
     const r = lensBtn?.getBoundingClientRect();
-    if (r) {
-      viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
-      viewPanel.style.left = `${Math.round(Math.min(r.left, window.innerWidth - 300))}px`;
-    }
+    if (!r) return;
+    viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
+    viewPanel.style.left = `${Math.round(Math.min(r.left, window.innerWidth - 300))}px`;
+  }
+  // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
+  // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
+  {
+    const onResize = () => {
+      if (myGen !== liveGen) { window.removeEventListener("resize", onResize); return; }
+      if (!viewPanel.hidden) positionPanel();
+    };
+    window.addEventListener("resize", onResize);
+  }
+
+  // 열려 있는 동안 이 함수가 하는 일은 **내용 갱신과 자리 재확정**뿐이다.
+  function openPanel() {
+    const wasOpen = !viewPanel.hidden;
+    panelSeq += 1;                         // 진행 중인 닫힘을 무효화(위 세대 주석)
+    viewPanel.hidden = false;
+    positionPanel();
     lensBtn?.setAttribute("aria-expanded", "true");
     // 발견 힌트는 "한 번 열면" 끝난다 — 쓰는 곳도 읽는 곳도 하나씩.
     localStorage.setItem("vinc.atlas.views.seen", "1");
@@ -466,8 +521,28 @@ export async function renderAtlas(el: HTMLElement) {
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.
     (viewPanel.querySelector<HTMLElement>(".seg .chip.active")
       ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus();
+    // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
+    // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
+    if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
+    popIn(viewPanel, lensBtn);
+    // 바깥을 누르면 닫힌다(발주자 지시 2026-08-05). 딤이 없는 패널이라 스크림 대신
+    // 문서 전체를 듣는다 — 렌즈 버튼은 스스로 토글하므로 예외로 둔다(안 그러면 닫고
+    // 다시 여는 두 처리가 겹친다). 배선은 닫을 때 반드시 해제한다.
+    unwirePanelDismiss?.();
+    unwirePanelDismiss = wireOutsideDismiss(viewPanel, () => void closePanel(), lensBtn);
   }
-  function closePanel() {
+  let unwirePanelDismiss: (() => void) | null = null;
+  /** 열기/닫기 세대. 닫힘은 퇴장 모션(240ms)을 기다린 뒤에 `hidden` 을 거는데, 그
+   *  사이에 다시 열리면 **늦게 도착한 닫힘이 열린 패널을 덮는다**(실측 버그: 옵션을
+   *  고르면 패널이 사라졌다). 세대가 바뀌었으면 숨기지 않는다. */
+  let panelSeq = 0;
+  async function closePanel() {
+    if (viewPanel.hidden) return;
+    const seq = ++panelSeq;
+    unwirePanelDismiss?.();
+    unwirePanelDismiss = null;
+    await popOut(viewPanel, lensBtn);      // 퇴장을 기다린 뒤 숨긴다
+    if (seq !== panelSeq) return;          // 그 사이 다시 열렸다 — 이 닫힘은 무효다
     viewPanel.hidden = true;
     const b = lensBtn;
     b?.setAttribute("aria-expanded", "false");
@@ -492,6 +567,26 @@ export async function renderAtlas(el: HTMLElement) {
   /** 평면(SVG DOM) 상한 — 노드마다 <g> 를 만드는 렌더라 전량 스코프(L0)에서
    *  무한정 그릴 수 없다. 넘치면 최근 것부터 남기고 캡션이 잘린 수를 밝힌다. */
   const PLANAR_CAP = 1200;
+  /** 옵션 묶음(2026-08-05 재구조화). 여덟 개가 한 줄로 늘어서 있어 무엇에 대한
+   *  손잡이인지 알 수 없었다 — 발주자 지시대로 셋으로 나눈다:
+   *    노드(무엇이 크게 · 배치 · 크기 배율) · 선(굵기 · 간격 · 방향) · 기타(라벨 · 연결 없음)
+   *  `spread`(간격)는 노드 사이 거리이지만 지시의 갈래를 따른다 — 라벨이 `간격`이고,
+   *  손이 찾는 자리는 결국 그 이름이 있는 곳이다. */
+  type OptGroup = { label: string; keys: string[] };
+  function groupsFor(lv: Level, p: AtlasPrefs): OptGroup[] {
+    const flat = rowsFor(lv, p);
+    if (!flat.length) return [];
+    if (p.view !== "3d" && p.view !== "2d") {
+      return [{ label: "", keys: flat }];   // 평면 관점은 행이 적어 나눌 것이 없다
+    }
+    const pick = (...ks: string[]) => ks.filter((k) => flat.includes(k));
+    return [
+      { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "nodeScale") },
+      { label: COPY.ui.panel.groupLines, keys: pick("edgeWidth", "spread", "arrows") },
+      { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked") },
+    ].filter((g) => g.keys.length > 0);
+  }
+
   function rowsFor(lv: Level, p: AtlasPrefs): string[] {
     if (!isScope(lv)) return [];
     switch (p.view) {
@@ -507,6 +602,21 @@ export async function renderAtlas(el: HTMLElement) {
       // atlas-planar.mountTotals 주석). 원장 뷰에 남는 선택지가 없다.
       case "totals": return [];
     }
+  }
+
+  /** 슬라이더 한 벌(2026-08-05 재설계). 여태 세 개가 각자 인라인 스타일로 그려진
+   *  **UA 기본 range** 였다: 트랙이 실선 한 줄, 손잡이가 작고, 무엇보다 **값이 어디에도
+   *  안 보였다**. 끌어도 숫자가 안 변하니 "클릭만 먹는다"로 읽힌다(발주자 지적).
+   *  이제 값을 옆에 적고(`output`), 끄는 동안 그 숫자가 따라 움직인다. */
+  const fmtVal = (v: number | string) => String(Math.round(Number(v) * 100) / 100);
+  function slider(id: string, label: string, min: number, max: number,
+                  step: number, value: number): string {
+    return `<div class="slider-row">
+      <label class="hint" for="${id}">${esc(label)}</label>
+      <output class="slider-val" id="${id}-val">${fmtVal(value)}</output>
+      <input class="slider" id="${id}" type="range"
+             min="${min}" max="${max}" step="${step}" value="${value}">
+    </div>`;
   }
 
   function drawViewPanel() {
@@ -541,20 +651,14 @@ export async function renderAtlas(el: HTMLElement) {
       layout: row(COPY.ui.panel.layout,
         LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
         + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
-      spread: `<label class="hint" style="display:block">${COPY.ui.panel.spread}
-        <input id="pref-spread" type="range" min="0.6" max="1.6" step="0.2" value="${p.spread}" style="width:100%">
-      </label>`,
+      spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread),
       // 크기·굵기 **배율**(발주자 지시 2026-08-02). 위 `size` 는 무엇이 크고 작은지를
       // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다 — 인코딩은 그대로 두고
       // 화면 밀도만 취향에 맞춘다. 엣지는 D33 대로 가중치를 농도로 계속 말한다.
-      nodeScale: `<label class="hint" style="display:block">${COPY.ui.panel.nodeScale}
-        <input id="pref-nodescale" type="range" min="${NODE_SCALE.min}" max="${NODE_SCALE.max}"
-          step="${NODE_SCALE.step}" value="${p.nodeScale}" style="width:100%">
-      </label>`,
-      edgeWidth: `<label class="hint" style="display:block">${COPY.ui.panel.edgeWidth}
-        <input id="pref-edgescale" type="range" min="${EDGE_SCALE.min}" max="${EDGE_SCALE.max}"
-          step="${EDGE_SCALE.step}" value="${p.edgeScale}" style="width:100%">
-      </label>`,
+      nodeScale: slider("pref-nodescale", COPY.ui.panel.nodeScale,
+        NODE_SCALE.min, NODE_SCALE.max, NODE_SCALE.step, p.nodeScale),
+      edgeWidth: slider("pref-edgescale", COPY.ui.panel.edgeWidth,
+        EDGE_SCALE.min, EDGE_SCALE.max, EDGE_SCALE.step, p.edgeScale),
       docs: row(COPY.ui.panel.docLinks,
         chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
         + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
@@ -573,28 +677,47 @@ export async function renderAtlas(el: HTMLElement) {
                p.timelineBasis === "content")),
     };
 
-    // 범례는 **접힘 기본**. 매번 다 펼쳐 두면 패널이 화면 높이를 덮는다(실측 1102px).
-    // 옵션도 **접는다**. 배치 프리셋 6종을 포함해 6개 컨트롤이 늘 펼쳐져 있어
-    // 패널이 화면 높이를 덮었다(실측 761px). 옵션은 한 번 정하면 잘 안 바꾸는
-    // 것들이라 접힘이 기본이고, 편 상태는 기억한다. 관점은 하단 세그먼트가 상시로
-    // 맡으므로 접혀 있어도 자주 쓰는 전환은 막히지 않는다.
+    // 옵션 / 범례는 **둘 중 하나를 고른다**(발주자 지시 2026-08-05, 기본 = 옵션).
+    // 여태는 접기 토글 둘(▸/▾)이었다. 그 구조의 문제:
+    //   · 둘 다 접힌 상태가 기본이라 패널을 열면 **아무 내용도 없는 목록 두 줄**이었다
+    //     (덮이는 것을 막으려 접었는데, 그래서 열자마자 할 일이 "또 펼치기"가 됐다)
+    //   · 둘 다 펼치면 패널이 화면 높이를 덮었다(실측 1102px)
+    //   · 접힘/펼침이 각자 기억돼 두 번 누르는 조합이 네 가지였다
+    // 하나만 보이면 높이가 저절로 잡히고, 무엇을 보고 있는지가 세그로 드러난다.
     const optKeys = rowsFor(lv, p);
-    const optOpen = localStorage.getItem(OPTS_KEY) === "1";
-    const lgOpen = localStorage.getItem(LEGEND_KEY) === "1";
-    const sec = (label: string, open: boolean, key: string, body: string) =>
-      `<button class="lg-sec-toggle" data-sec="${key}" aria-expanded="${open}">
-         ${label}<span class="lg-caret">${open ? "▾" : "▸"}</span></button>`
-      + (open ? body : "");
-    viewPanel.innerHTML = head
-      + (optKeys.length
-        ? sec(COPY.ui.panel.options, optOpen, OPTS_KEY, optKeys.map((k) => rows[k]).join(""))
-        : "")
-      + sec(COPY.ui.legend.title, lgOpen, LEGEND_KEY, legendHTML())
-      + `<p class="hint" style="margin:.6rem 0 0">${COPY.ui.panel.fixedNote}</p>`;
-    viewPanel.querySelectorAll<HTMLElement>("[data-sec]").forEach((b) =>
+    const hasOpts = optKeys.length > 0;
+    const tab = hasOpts
+      ? (localStorage.getItem(PANEL_TAB_KEY) === "legend" ? "legend" : "opts")
+      : "legend";                       // 관점에 옵션이 없으면 범례만 남는다
+    // 탭 형태는 **설정 모달과 같은 것**을 쓴다(발주자 지시 2026-08-05) — 같은 일
+    // (여러 면 중 하나 고르기)을 하는 컨트롤이 화면마다 다른 모습이면 그때마다 다시
+    // 배워야 한다. `.settings-tabs` 가 이미 그 규격이라 클래스를 그대로 가져온다.
+    const tabSeg = hasOpts
+      ? `<div class="settings-tabs lg-tabs" role="tablist">
+           <button class="settings-tab${tab === "opts" ? " active" : ""}" role="tab"
+             data-tab="opts" aria-selected="${tab === "opts"}">${esc(COPY.ui.panel.options)}</button>
+           <button class="settings-tab${tab === "legend" ? " active" : ""}" role="tab"
+             data-tab="legend" aria-selected="${tab === "legend"}">${esc(COPY.ui.legend.title)}</button>
+         </div>`
+      : "";
+    // 묶음을 **영역**으로 낸다(발주자 지시 2026-08-05) — 제목 한 줄만으로는 어디까지가
+    // 그 묶음인지 경계가 없어, 아래 컨트롤이 다음 제목에 붙어 읽혔다. 상자가 그 경계다.
+    const groupsHTML = groupsFor(lv, p).map((g) => g.label
+      ? `<section class="opt-sec">
+           <h3 class="opt-sec-title">${esc(g.label)}</h3>
+           ${g.keys.map((k) => rows[k]).join("")}
+         </section>`
+      : g.keys.map((k) => rows[k]).join("")).join("");
+    // 내용은 **스크롤하는 안쪽 면**에 넣는다 — 유리면 자신이 스크롤하면 프레임마다
+    // 블러를 다시 계산해 스크롤이 끊긴다(app.css #atlas-view-panel 주석).
+    viewPanel.innerHTML = `<div class="lens-scroll">`
+      + head + tabSeg
+      + (tab === "opts" ? groupsHTML : legendHTML())
+      + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
+      + `</div>`;
+    viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {
-        const k = b.dataset.sec!;
-        localStorage.setItem(k, localStorage.getItem(k) === "1" ? "0" : "1");
+        localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
         drawViewPanel();
       }));
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
@@ -608,16 +731,36 @@ export async function renderAtlas(el: HTMLElement) {
           : ({ [k]: val } as Partial<AtlasPrefs>);
         applyPrefs(mut, `[data-pref="${k}"][data-val="${val}"]`);
       }));
+    // 값 표시는 **끄는 동안**(input) 따라 움직인다 — 셋 다. 무엇이 적용되는 시점과는
+    // 별개다: 아래 spread 는 놓을 때(change) 적용되지만, 숫자는 손끝을 따라야
+    // "이 손잡이가 살아 있다"가 읽힌다(그 피드백이 없던 것이 "클릭만 먹는다"의 정체).
+    viewPanel.querySelectorAll<HTMLInputElement>("input.slider").forEach((s) => {
+      const out = viewPanel.querySelector<HTMLElement>(`#${s.id}-val`);
+      if (out) s.addEventListener("input", () => { out.textContent = fmtVal(s.value); });
+    });
     // 산개는 3D/2D 에만 있는 행이라 평면 관점에서는 존재하지 않는다(? 필수).
     viewPanel.querySelector<HTMLInputElement>("#pref-spread")?.addEventListener("change", (e) =>
       applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }, "#pref-spread"));
     // 배율 둘은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
     // 바로 반영해 손끝에 붙게 한다. spread 는 레이아웃 인자라 change 로 두는 것과
     // 대비된다(그쪽은 사이드카 왕복이다).
-    viewPanel.querySelector<HTMLInputElement>("#pref-nodescale")?.addEventListener("input", (e) =>
-      applyPrefs({ nodeScale: Number((e.target as HTMLInputElement).value) }, "#pref-nodescale"));
-    viewPanel.querySelector<HTMLInputElement>("#pref-edgescale")?.addEventListener("input", (e) =>
-      applyPrefs({ edgeScale: Number((e.target as HTMLInputElement).value) }, "#pref-edgescale"));
+    // 스텝을 0.1 → 0.02 로 잘게 나눈 만큼 input 이 다섯 배 자주 온다. 그대로 매번
+    // 다시 그리면 손끝은 부드러워지고 화면이 밀린다 — **프레임당 한 번**으로 묶는다
+    // (마지막 값만 쓰므로 중간 값을 버려도 결과가 같다).
+    const liveScale = (sel: string, key: "nodeScale" | "edgeScale") => {
+      const s = viewPanel.querySelector<HTMLInputElement>(sel);
+      if (!s) return;
+      let pending = 0;
+      s.addEventListener("input", () => {
+        if (pending) return;
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          void applyPrefs({ [key]: Number(s.value) } as Partial<AtlasPrefs>, sel);
+        });
+      });
+    };
+    liveScale("#pref-nodescale", "nodeScale");
+    liveScale("#pref-edgescale", "edgeScale");
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyView(b.dataset.view as AtlasView)));
     // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
@@ -666,8 +809,8 @@ export async function renderAtlas(el: HTMLElement) {
     const lv = trail[trail.length - 1];
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    if (rowsFor(lv, curPrefs()).length > 0) await show(lv, false);
-    openPanel();                                  // 패널 유지(연속 조정) + aria·포커스 재확정
+    if (rowsFor(lv, curPrefs()).length > 0) await show(lv, false, { keepPanel: true });
+    openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
     if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
   }
 
@@ -741,15 +884,19 @@ export async function renderAtlas(el: HTMLElement) {
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
       : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
-    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
+    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
+    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
+    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.atlas.error}</p></div>`); return; }
     const nodes: GraphNode[] = res.nodes || [];
     if (seed !== undefined) fillSeedDomain(seed, nodes);
     if (nodes.length === 0) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
-      setMsg(whole
-        ? `<div class="empty"><p>${COPY.atlas.idle}</p>
-             <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`
-        : `<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
+      // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
+      // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
+      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
+        <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`);
       return;
     }
     setMsg("");
@@ -1205,9 +1352,13 @@ export async function renderAtlas(el: HTMLElement) {
           <button class="rail-x" id="rail-close" aria-label="${COPY.ui.atlasx.railClose}"
                   data-tip="${COPY.ui.atlasx.railClose}">✕</button>
         </div>
+        <!-- "편집" 토글은 없다(발주자 지시 2026-08-05) — 문서 열은 **상시 편집**이다.
+             D45-E 가 "Reader 와 편집기는 한 표면이고 편집은 그 자리에 커서를 켤 뿐"이라
+             했는데, 그 커서를 켜는 버튼이 마지막 잔재로 남아 있었다: 고치려면 매번 두
+             번 눌러야 했다(문서 열기 → 편집). 저장은 여전히 자동(디바운스 2s)+Ctrl/Cmd+S
+             이고, 그 상태는 아래 rdr-state 가 편집기에서 받아 말한다. -->
         <p class="rail-acts">
           <button class="btn" id="rdr-back">${COPY.ui.atlasx.readerBack}</button>
-          <button class="btn" id="rdr-edit">${COPY.ui.atlasx.edEdit}</button>
           <button class="btn" id="rdr-expand">${COPY.ui.atlasx.edExpand}</button>
         </p>
         ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
@@ -1223,18 +1374,17 @@ export async function renderAtlas(el: HTMLElement) {
       // 뿐이다. 여태 둘은 다른 화면이었고, 보기 화면은 `$$…$$`·`**…**` 같은
       // 소스를 그대로 노출했다(실측).
       const { mountDocEditor, openDocSheet } = await import("../doc-editor");
+      const state = detail.querySelector<HTMLElement>("#rdr-state")!;
       const handle = await mountDocEditor(detail.querySelector<HTMLElement>("#rdr-host")!, {
         owner: cfg.owner, docId, initial: doc.text, title: doc.title,
-        contentHash: doc.content_hash, readOnly: true, hideTitle: true,
+        contentHash: doc.content_hash, hideTitle: true,
+        // 상시 편집. 커서는 켜지 않는다 — 문서 열은 지도와 나란히 서므로, 열자마자
+        // 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이 글자로 들어간다.
+        readOnly: false, autoFocus: false,
+        // 제목 줄이 숨어 있어 편집기 자신의 상태 글자도 함께 숨는다 — 저장 신호를
+        // 여기로 받아 레일 머리 옆에서 말한다.
+        onStatus: (t) => { state.textContent = t; },
         highlights: hl.ranges || [],
-      });
-      const editBtn = detail.querySelector<HTMLElement>("#rdr-edit")!;
-      const state = detail.querySelector<HTMLElement>("#rdr-state")!;
-      editBtn.addEventListener("click", () => {
-        const on = !handle.isEditable();
-        handle.setEditable(on);
-        editBtn.textContent = on ? COPY.ui.atlasx.edDone : COPY.ui.atlasx.edEdit;
-        state.textContent = on ? COPY.ui.atlasx.edLive : "";
       });
       // peek→전체폭 승격 — 좁은 레일이 답답할 때 같은 문서를 시트로 연다.
       detail.querySelector("#rdr-expand")!.addEventListener("click", () => {
@@ -1306,16 +1456,20 @@ export async function renderAtlas(el: HTMLElement) {
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
       : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
-    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
+    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
+    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
+    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.atlas.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     curNodes = gnodes;
     if (seed !== undefined) fillSeedDomain(seed, gnodes);
     if (gnodes.length === 0) {
-      setMsg(whole
-        ? `<div class="empty"><p>${COPY.atlas.idle}</p>
-             <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`
-        : `<div class="empty"><p>${COPY.atlas.idle}</p></div>`);
+      // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
+      // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
+      setMsg(`<div class="empty"><p>${COPY.atlas.idle}</p>
+        <button class="btn btn-primary" data-import>${COPY.atlas.idleCta}</button></div>`);
       return;
     }
     setMsg("");
@@ -1490,7 +1644,11 @@ export async function renderAtlas(el: HTMLElement) {
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
       : await api.graph(cfg.owner, { domain, layout: p.layout });
-    if (!res.executed) { setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`); return; }
+    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
+    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
+    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
+    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.atlas.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     curNodes = gnodes;
@@ -1597,14 +1755,18 @@ export async function renderAtlas(el: HTMLElement) {
     busyTimer = window.setTimeout(() => el.classList.add("atlas-busy"), 400);
   }
 
-  async function show(level: Level, push = true) {
+  /** `keepPanel` — 렌즈 패널을 **닫지 않는다**. 층이 바뀔 때 패널을 닫는 것은 맞지만
+   *  (가리키던 층이 사라지므로), 옵션을 고쳐 같은 층을 다시 그리는 경우는 층 전환이
+   *  아니다 — 그때 닫으면 "고르면 모달이 닫힌다"가 된다(발주자 지적 2026-08-05).
+   *  연속 조정이 이 패널의 존재 이유이므로 그 경로만 예외로 둔다. */
+  async function show(level: Level, push = true, opts?: { keepPanel?: boolean }) {
     setBusy(true);
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — L1/L2 의 wireLasso 가 다시 켠다
-    closePanel();
+    if (!opts?.keepPanel) void closePanel();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     if (planar) { planar.dispose(); planar = null; }
@@ -1642,7 +1804,9 @@ export async function renderAtlas(el: HTMLElement) {
         setTimeout(() => { if (myGen === liveGen) flyToMounted(seed); }, 420);
       }
     } catch {
-      setMsg(`<div class="error-banner">${COPY.atlas.error}</div>`);
+      // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
+      // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
+      setMsg(`<div class="empty"><p>${COPY.atlas.error}</p></div>`);
     } finally {
       setBusy(false);
     }
