@@ -587,9 +587,21 @@ class _Handler(BaseHTTPRequestHandler):
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
+            # 상한 초과는 본문을 **읽지 않고** 400 으로 끝낸다(읽으면 그게 메모리 공격
+            # 통로다). 미수신 바이트가 남지만 무해하다 — `protocol_version` 이
+            # HTTP/1.0(기본)이라 매 응답 뒤 커넥션이 닫히기 때문이다.
+            # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
+            # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
             return {}
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-        raw = self.rfile.read(n).decode("utf-8")
+        # UTF-8 이 아닌 본문은 **JSON 파싱 실패와 같은 자리로 강등**한다(아래 except 와 동일).
+        # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
+        # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
+        # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
+        try:
+            raw = self.rfile.read(n).decode("utf-8")
+        except UnicodeDecodeError:
+            return {}
         if ctype == "application/x-www-form-urlencoded":
             return {k: v[0] for k, v in urllib.parse.parse_qs(raw).items()}
         try:
