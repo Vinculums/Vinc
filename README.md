@@ -24,12 +24,12 @@
 |---|---|
 | 설계 SSoT | `weg-9000-docs/CONTEXT/reference-docs/weg/C/weg.c.memory-standalone.md` (v0.4) |
 | 흡수 절차 | `weg-9000-docs/WORK-ORDERS/WO-MEM-SA-001.md` (§3 반입 금지 = 하드 룰) |
-| 용어·금지 어휘 | `Vinclums/Vinc-docs vinc/A/vinc.a.terms.md` |
-| 아키텍처 SSoT | `Vinclums/Vinc-docs vinc/ARCHITECTURE.md`, `vinc/B/vinc.b.architecture.md` |
-| 웹·계정 as-built | `Vinclums/Vinc-docs vinc/WEB-vincs-app.md` |
-| 문서 정본(Chunk=SSoT, D45) | `Vinclums/Vinc-docs vinc/C/vinc.c.chunk-ssot.md` ([[vinc.c.chunk-ssot]]) |
-| 배포 as-built | `Vinclums/Vinc-docs vinc/DEPLOYMENT.md` (Azure, 표면 5개) |
-| 실행 계획 | `Vinclums/Vinc-docs PLAN.md` |
+| 용어·금지 어휘 | `Vinculums/Vinc-docs vinc/A/vinc.a.terms.md` |
+| 아키텍처 SSoT | `Vinculums/Vinc-docs vinc/ARCHITECTURE.md`, `vinc/B/vinc.b.architecture.md` |
+| 웹·계정 as-built | `Vinculums/Vinc-docs vinc/WEB-vincs-app.md` |
+| 문서 정본(Chunk=SSoT, D45) | `Vinculums/Vinc-docs vinc/C/vinc.c.chunk-ssot.md` ([[vinc.c.chunk-ssot]]) |
+| 배포 as-built | `Vinculums/Vinc-docs vinc/DEPLOYMENT.md` (Azure, 표면 5개) |
+| 실행 계획 | `Vinculums/Vinc-docs PLAN.md` |
 
 ## 아키텍처
 
@@ -70,7 +70,7 @@ Azure Container Apps (리소스 그룹 vincsRG, Korea Central)
 
 - **2026-07-28/29 전면 이관** — 가비아 VM(Caddy + systemd, 수동 SSH 배포)이 삭제되고
   위 3종 관리형 PaaS + GitHub Actions CD 로 재구축됐다. 배포 정본(as-built)은
-  `Vinclums/Vinc-docs vinc/DEPLOYMENT.md` — 표면 5개·CD 워크플로·교차 표면 순서
+  `Vinculums/Vinc-docs vinc/DEPLOYMENT.md` — 표면 5개·CD 워크플로·교차 표면 순서
   제약이 거기 있다. 경계 급소 둘: ① Linked Backend 를 걸면 Azure 가 계정 컨테이너에
   EasyAuth 를 자동으로 켜서 **컨테이너 FQDN 직접 호출은 401**(SWA 경유만 통과) ②
   허브는 SWA 에 링크돼 있지 않아 `mcp.vincs.io/internal/*` 가 공개 도달 가능하며
@@ -179,4 +179,4 @@ python e2e_live.py --backend embedded     # 임베디드 백엔드 e2e
   `/doc/extract` 미리보기 → 승인 시 반영. 같은 파일을 다시 떨구면 origin 색인으로
   기존 문서를 **갱신**한다(중복 문서를 만들지 않는다).
 
-마일스톤 정본은 `Vinclums/Vinc-docs PLAN.md`.
+마일스톤 정본은 `Vinculums/Vinc-docs PLAN.md`.

@@ -29,7 +29,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/Vinclums/Vincs-app/releases/latest/download/latest.json"
+        "https://github.com/Vinculums/Vincs-app/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzOTRERTQyRDUwRTBDQTkKUldTcERBN1ZRdDZVUStBa081UGZKTFlvOHRKeGROL3JBZnU1dG9sSTBwVUZkQWNFVlY4OFlMWm0K"
     }

@@ -4,10 +4,10 @@
 # ③ tauri-action으로 설치본 + **업데이터 아티팩트(서명본)**를 "빌드만" 하고
 #    (릴리스 생성 안 함) 아티팩트로 업로드.
 # ④ 단일 publish 잡이 모든 설치본·업데이터 번들을 모으고 latest.json(업데이터 매니페스트)을
-#    조립해 공개 릴리스 레포(Vinclums/Vincs-app)의 Releases 에 draft 로 발행한다.
+#    조립해 공개 릴리스 레포(Vinculums/Vincs-app)의 Releases 에 draft 로 발행한다.
 # ⑤ 발행 후 prune 잡이 최근 5개 버전의 설치본만 남기고, 더 오래된 릴리스는 다운로드
 #    자산만 제거한다(릴리스 노트·태그는 유지 = 경량 아카이브). 저장 회수 + 이력 보존.
-# 소스 레포(Vinclums/Vinc)는 비공개 → 바이너리만 공개 레포로 내보낸다.
+# 소스 레포(Vinculums/Vinc)는 비공개 → 바이너리만 공개 레포로 내보낸다.
 # 발행에는 Vincs-app 에 contents:write 권한을 가진 PAT 시크릿 RELEASE_TOKEN 을 쓴다.
 #
 # 자동 업데이트(v0.3.0~): tauri-action 이 TAURI_SIGNING_PRIVATE_KEY 로 업데이터 번들을
@@ -251,7 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ github.ref_name }}"
-          REPO="Vinclums/Vincs-app"
+          REPO="Vinculums/Vincs-app"
           bundle=app/src-tauri/target/release/bundle
           mkdir -p up
           # 사람이 받는 표준 설치본
@@ -316,7 +316,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ github.ref_name }}"; REPO="Vinclums/Vincs-app"
+          TAG="${{ github.ref_name }}"; REPO="Vinculums/Vincs-app"
           ver="${TAG#v}"                                   # v0.6.5 → 0.6.5
           mkdir -p dl
           gh release download "$TAG" --repo "$REPO" --pattern 'latest-*.json' --dir dl
@@ -355,7 +355,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          api="https://api.github.com/repos/Vinclums/Vincs-app"
+          api="https://api.github.com/repos/Vinculums/Vincs-app"
           keep=5
           hdr=(-H "Authorization: Bearer $GH_TOKEN"
                -H "Accept: application/vnd.github+json"

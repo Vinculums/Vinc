@@ -14,7 +14,7 @@
 # 시크릿이 없을 때 이 잡이 붉게 실패하는 것이 **릴리스 자체를 붉게 만들면 안 된다**.
 # 실패는 조용히 넘기지 않는다 — 여기서 넘기면 "웹이 갱신 안 됐다"를 아무도 모른다.
 #
-# ⚠ 필요 시크릿: `HOMEPAGE_DISPATCH_PAT` — Vinclums/Vinc-homepage 에 대한
+# ⚠ 필요 시크릿: `HOMEPAGE_DISPATCH_PAT` — Vinculums/Vinc-homepage 에 대한
 #   **actions:write** 권한만 가진 전용 PAT(fine-grained 권장). 기존 PAT 재사용 금지:
 #     · VINC_REPO_PAT(Vinc-homepage 에 등록) = Vinc 를 **읽는** 용도, 방향이 반대다.
 #     · RELEASE_TOKEN = Vincs-app contents:write, 대상 레포가 다르다.
@@ -52,7 +52,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $PAT" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/Vinclums/Vinc-homepage/actions/workflows/site-deploy.yml/dispatches" \
+            "https://api.github.com/repos/Vinculums/Vinc-homepage/actions/workflows/site-deploy.yml/dispatches" \
             -d '{"ref":"main"}')
           # 204 = 수락(본문 없음). 그 밖은 전부 실패로 본다 — 특히 404 는 시크릿 권한
           # 부족이거나 워크플로 파일명이 바뀐 것이라 조용히 넘기면 원인을 못 찾는다.
