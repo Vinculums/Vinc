@@ -121,7 +121,10 @@ const EN = {
     },
     // 상단 바(D56·D57) — 셸의 유일한 크롬. 검색이 조회 동선의 제1 진입점이다.
     coach: {
-      lensTitle: "Bottom left",
+      // 자리를 말하는 문구는 자리가 바뀔 때 함께 바뀌어야 한다. 이 줄은 렌즈가
+      // 하단 바에 살던 시절의 "Bottom left" 로 남아 D71(상단 바 이동) 이후 줄곧
+      // 틀린 곳을 가리키고 있었다 — 코치 문구는 틀리면 안 가르치는 것보다 나쁘다.
+      lensTitle: "Top right",
       lensBody: "switch how you look at the map, and read the legend.",
       menuTitle: "Right-click a node",
       menuBody: "open it, trace from it, or share just that part.",
@@ -207,12 +210,19 @@ const EN = {
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       openInMap: "Open on the map",
       editOnly: "No place on the map yet. Opens in the editor.",
+      // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`atlasx.railTitle`)과
+      // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
+      paneTitle: "Document",
+      paneFold: "Fold the document panel", paneUnfold: "Unfold the document panel",
     },
     // Tools(D71) — 만들기 · 가져오기 · 공유를 한 모달에서. 상단 바 버튼 둘을 대체한다.
     // 관례(GM-8) — 어시스턴트가 쓰기 전에 읽는 것. "규칙"이라 부르지 않는다:
     // 강제력을 암시해 "판단은 어시스턴트가 한다"는 원칙과 어긋난다.
     conv: {
-      title: "Conventions",
+      // 화면에서는 파일 이름 그대로 부른다(발주자 지시 2026-08-05). "Conventions"는
+      // 사람이 만드는 물건의 이름이 아니라 개념 이름이라, 정작 무엇을 여는지가
+      // 흐려졌다 — 이 손잡이가 여는 것은 `GRAPH.md` 파일 하나다.
+      title: "GRAPH.md",
       tip: "How your assistant should file things",
       sub: "Your assistant reads this before it writes.",
       loading: "Opening…",
@@ -221,7 +231,7 @@ const EN = {
       broken: "The generated markers are missing, so this is being edited as one plain file.",
       save: "Save", saved: "Saved", saveFailed: "Could not save",
       rebuild: "Rebuild",
-      loadFailed: "Could not open the conventions.",
+      loadFailed: "Could not open GRAPH.md.",
       pending: (n: number) => `Waiting for you · ${n}`,
       noPending: "Nothing waiting. Your assistant has stayed inside the vocabulary.",
       ratify: "Approve", reject: "Reject", rename: "Rename",
@@ -261,6 +271,9 @@ const EN = {
       arrows: "Direction arrows", on: "on",
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
+      // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
+      // 나눈다 — "무엇에 대한 손잡이인가"가 먼저 읽혀야 고를 수 있다.
+      groupNodes: "Nodes", groupLines: "Lines", groupOther: "Other",
       // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
       // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
       layoutName: { hub: "by centre", rank: "by order" } as Record<string, string>,
@@ -486,6 +499,8 @@ const EN = {
       tabAccount: "Account", tabConnections: "Connections", tabData: "Data", tabAdvanced: "Advanced",
       appearance: "Appearance", account: "Account",
       lock: "Lock", mcp: "MCP", data: "Data",
+      // 저장 위치 — 상단 바의 `● Local` 칩이 옮겨 온 자리(2026-08-05).
+      storage: "Where it's stored",
       workspace: "Workspace",
       workspaceHint: "The space you're viewing. Switch back after trying the sample.",
       theme: "Theme", language: "Language", advanced: "Advanced",
@@ -498,6 +513,9 @@ const EN = {
       mcpInstalling: "Connecting…",
       mcpDone: (host: string) => `Registered with ${host}. Restart it to reach Vinc.`,
       mcpFail: "Couldn't connect", mcpNoShell: "Available in the desktop app only.",
+      // 행 안에서는 호스트 이름을 옆에 이미 적으므로 버튼은 동작만 말한다
+      // ("Connect Claude Desktop" 을 행마다 반복하면 이름이 두 번 나온다).
+      mcpConnectAct: "Connect", mcpRemoveAct: "Remove",
       mcpRemoveHint: "Or remove Vinc from a host:",
       mcpRemove: (host: string) => `Remove from ${host}`,
       mcpRemoving: "Removing…",
@@ -728,7 +746,7 @@ const KO: Deck = {
       focus: "초점색은 한 번에 한 곳에만 씁니다.",
     },
     coach: {
-      lensTitle: "왼쪽 아래에서",
+      lensTitle: "오른쪽 위에서",
       lensBody: "보는 방식을 바꾸고 범례를 볼 수 있습니다.",
       menuTitle: "노드를 우클릭하면",
       menuBody: "열기·추적·그 부분만 공유가 나옵니다.",
@@ -802,9 +820,11 @@ const KO: Deck = {
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       openInMap: "지도에서 열기",
       editOnly: "아직 지도에 자리가 없습니다. 편집기로 열립니다.",
+      paneTitle: "문서 내용",
+      paneFold: "문서 패널 접기", paneUnfold: "문서 패널 펼치기",
     },
     conv: {
-      title: "관례",
+      title: "GRAPH.md",
       tip: "어시스턴트가 어떻게 정리할지",
       sub: "어시스턴트가 쓰기 전에 이것을 읽습니다.",
       loading: "여는 중…",
@@ -813,7 +833,7 @@ const KO: Deck = {
       broken: "생성 구역 표식이 없어 파일 하나로 편집합니다.",
       save: "저장", saved: "저장했습니다", saveFailed: "저장하지 못했습니다",
       rebuild: "다시 생성",
-      loadFailed: "관례를 열지 못했습니다.",
+      loadFailed: "GRAPH.md 를 열지 못했습니다.",
       pending: (n: number) => `기다리는 것 · ${n}`,
       noPending: "기다리는 것이 없습니다. 어시스턴트가 어휘 안에서 쓰고 있습니다.",
       ratify: "승인", reject: "거부", rename: "이름 바꾸기",
@@ -853,6 +873,7 @@ const KO: Deck = {
       arrows: "방향 화살표", on: "켬",
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
+      groupNodes: "노드", groupLines: "선", groupOther: "기타",
       layoutName: { hub: "중심순", rank: "순서순" } as Record<string, string>,
       layoutHelp: {
         hub: "가운데에서 사방으로 퍼집니다. 주제마다 자기 방향으로 뻗고, 그 주제에 "
@@ -1063,6 +1084,7 @@ const KO: Deck = {
       tabAccount: "계정", tabConnections: "연결", tabData: "데이터", tabAdvanced: "고급",
       appearance: "화면", account: "계정",
       lock: "잠금", mcp: "MCP", data: "데이터",
+      storage: "저장 위치",
       workspace: "작업 공간",
       workspaceHint: "지금 보고 있는 공간입니다. 샘플 체험 후 되돌리세요.",
       theme: "테마", language: "언어", advanced: "고급",
@@ -1074,6 +1096,7 @@ const KO: Deck = {
       mcpInstalling: "연결 중…",
       mcpDone: (host) => `${host}에 등록됐습니다. 재시작하면 Vinc에 접근합니다.`,
       mcpFail: "연결 실패", mcpNoShell: "데스크톱 앱에서만 가능합니다.",
+      mcpConnectAct: "연결", mcpRemoveAct: "해제",
       mcpRemoveHint: "또는 호스트에서 Vinc를 제거:",
       mcpRemove: (host) => `${host}에서 제거`,
       mcpRemoving: "제거 중…",

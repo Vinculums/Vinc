@@ -104,6 +104,13 @@ export async function renderSettings(el: HTMLElement) {
       <div id="space-note" class="hint" style="font-size:.8rem"></div>
       <hr class="settings-sep" />` : ""}
       ${!WEB ? `
+      <!-- 저장 위치 — 상단 바에 상시로 떠 있던 "● 로컬" 칩이 여기로 왔다(발주자 지시
+           2026-08-05). 바뀌지 않는 사실은 상시 점유할 자격이 없다: 궁금할 때 와서 보는
+           것으로 충분하다. 데스크탑 분기 안에만 두는 것도 의도다 — 웹 Vinc 의 데이터는
+           계정에 있으므로 그쪽에서 "로컬"은 애초에 참이 아니었다(칩은 양쪽에 다 떴다). -->
+      <label>${U.storage}</label>
+      <p class="rail-sync"><span class="sync-dot"></span><span>${COPY.ui.common.local}</span></p>
+      <hr class="settings-sep" />
       <label>${U.account}</label>
       <p class="hint">${U.syncHint}</p>
       <div id="acct-box"></div>
@@ -275,16 +282,26 @@ export async function renderSettings(el: HTMLElement) {
   const MCP_HOSTS = ["desktop", "code", "cursor", "codex"] as const;
 
   function renderConnections(body: HTMLElement) {
-    const buttons = (kind: "add" | "rm") => MCP_HOSTS.map((h) =>
-      `<button class="btn" id="mcp-${kind}-${h}">${
-        kind === "add" ? U.mcpConnect(U.mcpHosts[h]) : U.mcpRemove(U.mcpHosts[h])}</button>`).join("");
+    // 호스트 하나 = 행 하나(2026-08-05 재설계). 여태 `.seg` 안에 연결 버튼 4개,
+    // 다른 `.seg` 안에 해제 버튼 4개를 넣었다 — `.seg` 는 **여럿 중 하나를 고르는**
+    // 컨트롤이므로 독립 동작 8개를 담을 그릇이 아니었고(그래서 한 덩어리로 뭉쳐
+    // 보였다), 같은 호스트의 연결과 해제가 화면 위아래로 갈라져 있어 "Claude Desktop
+    // 을 어떻게 하지"를 두 곳에서 찾아야 했다. 행이 되면 그 둘이 한 줄에 있다.
+    const rows = MCP_HOSTS.map((h) => `
+      <li class="row">
+        <span class="row-name">${U.mcpHosts[h]}</span>
+        <span class="row-acts">
+          <button class="btn btn-quiet" id="mcp-rm-${h}"
+                  aria-label="${U.mcpRemove(U.mcpHosts[h])}">${U.mcpRemoveAct}</button>
+          <button class="btn" id="mcp-add-${h}"
+                  aria-label="${U.mcpConnect(U.mcpHosts[h])}">${U.mcpConnectAct}</button>
+        </span>
+      </li>`).join("");
     body.innerHTML = `
       <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
-      <p><span class="seg">${buttons("add")}</span></p>
-      <p class="hint" style="margin-top:.35rem">${U.mcpRemoveHint}</p>
-      <p><span class="seg">${buttons("rm")}</span></p>
-      <p class="hint" style="margin-top:.35rem">${U.mcpOtherHint}</p>
-      <div id="mcp-result" class="hint" style="font-size:.78rem;word-break:break-all"></div>`;
+      <ul class="rowlist">${rows}</ul>
+      <p class="hint hint-sm">${U.mcpOtherHint}</p>
+      <div id="mcp-result" class="hint hint-sm break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
     async function mcpAction(action: "install" | "uninstall", client: string) {
       const invoke = (window as any).__TAURI__?.core?.invoke;

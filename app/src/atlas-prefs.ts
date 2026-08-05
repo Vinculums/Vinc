@@ -78,7 +78,11 @@ export type AtlasPrefs = {
 export type TimeBasis = "recorded" | "content";
 export const TIME_BASES: TimeBasis[] = ["recorded", "content"];
 export const RAIL_MIN = 16;    // rem — 원문 한 줄이 읽히는 하한
-export const RAIL_MAX = 36;    // rem — 지도가 남는 상한(패널이 화면을 삼키지 않게)
+// 상한을 크게 둔다(발주자 지시 2026-08-05) — 문서 패널은 지도 **위에 겹치는** 글라스
+// 이므로, 끝까지 끌어 화면을 다 덮는 것이 정당한 상태다(읽는 동안 지도를 잠시 덮는
+// 것과 지도를 잃는 것은 다르다 — 접으면 그대로 돌아온다). 실제 한계는 CSS 가
+// `min(var(--rail-size), 100%)` 로 잡으므로 여기서는 화면보다 큰 값만 막는다.
+export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 클램프)
 // D47 — `totalsGroup`("주제별/출처별" 묶음 토글)은 폐기했다. 합계가 3열 생키가
 // 되면서 출처와 상태를 동시에 보여주므로 고를 것이 없다. 저장된 구 값은 아래
 // loadPrefs 가 그냥 읽지 않는다(마이그레이션 불필요 — 남은 키는 무해).
@@ -96,8 +100,12 @@ const DEFAULTS: AtlasPrefs = {
 };
 const clamp = (v: unknown, lo: number, hi: number, dflt: number) =>
   Math.min(hi, Math.max(lo, Number(v) || dflt));
-export const NODE_SCALE = { min: 0.5, max: 2.5, step: 0.1 };
-export const EDGE_SCALE = { min: 0.5, max: 3, step: 0.1 };
+// step 이 곧 **손끝의 해상도**다(2026-08-05). 0.1 이던 동안에는 0.5~2.5 구간에 정지점이
+// 20개뿐이라, 230px 짜리 트랙에서 11px 마다 한 칸씩 튀었다 — 끌면 계단처럼 움직인다.
+// 0.02 면 100칸이라 손을 따라온다. 값의 의미는 배율이므로 잘게 나눠도 무해하다
+// (표시는 소수 둘째 자리까지 — atlas.ts slider 의 fmt).
+export const NODE_SCALE = { min: 0.5, max: 2.5, step: 0.02 };
+export const EDGE_SCALE = { min: 0.5, max: 3, step: 0.02 };
 
 export function loadPrefs(): AtlasPrefs {
   try {

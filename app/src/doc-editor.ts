@@ -75,6 +75,13 @@ export type DocEditorOpts = {
   highlights?: { char_start: number; char_end: number }[];
   /** 제목 줄을 숨긴다(레일처럼 바깥에 이미 제목이 있는 자리). */
   hideTitle?: boolean;
+  /** 마운트 직후 커서를 켜지 **않는다**(기본은 켠다). 문서 열처럼 지도와 나란히
+   *  선 자리에서는 열자마자 키보드를 빼앗으면 지도 단축키가 먹지 않는다. */
+  autoFocus?: boolean;
+  /** 저장 상태를 바깥으로 내보낸다. `hideTitle` 이면 편집기의 상태 글자(`#ed-status`)
+   *  가 제목 줄과 함께 숨으므로, 그 자리에서는 이 통로가 유일한 저장 신호다 —
+   *  상시 편집에서 "저장됐나"를 알 수 없으면 사용자는 매번 Ctrl+S 를 누른다. */
+  onStatus?: (text: string) => void;
   /** D72 — 내용 시점 초기값. docId 만 주면 로드 시 서버 값으로 채운다. */
   contentTime?: string;
 };
@@ -143,7 +150,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let saving = false;
   let cm: import("./codemirror-editor").CmHandle | null = null;
 
-  const setStatus = (t: string) => { status.textContent = t; };
+  const setStatus = (t: string) => { status.textContent = t; opts.onStatus?.(t); };
   const getText = () => (cm ? cm.getValue() : src.value);
   const setText = (t: string) => { if (cm) cm.setValue(t); else { src.value = t; prev.innerHTML = renderMarkdown(t); } };
   const onEdited = () => {
@@ -300,8 +307,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     } catch { extractBox.innerHTML = ""; }
   }
 
-  // 읽기로 시작하면 포커스를 뺏지 않는다(레일이 열리자마자 커서가 깜빡이지 않게).
-  if (!opts.readOnly) (cm ? { focus: () => cm!.focus() } : src).focus();
+  // 포커스를 뺏지 않는 두 경우: 읽기로 시작할 때, 그리고 편집 가능하지만 자리가
+   // 지도 옆일 때(autoFocus:false — 열자마자 커서가 깜빡이면 지도 단축키가 죽는다).
+  if (!opts.readOnly && opts.autoFocus !== false) (cm ? { focus: () => cm!.focus() } : src).focus();
   let editable = !opts.readOnly;
   return {
     dispose: () => { if (timer) window.clearTimeout(timer); if (cm) cm.destroy(); },
