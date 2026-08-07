@@ -122,6 +122,13 @@ class _ReaderView:
     라이터의 평범한 MERGE 가 거절된다(실측: 라이터 실패 26.0%). 기준은 SET 이
     아니라 **쓰기 트랜잭션을 요구하는가**다: DML·DDL·LOAD 전부 해당한다."""
 
+    #: 청크 검색(FTS·벡터)에 `owner_id` 필터를 **실제로 적용한다**는 선언(SEC-1).
+    #: `api.query.search` 가 owner 스코프 요청에서 이 표식을 확인하고, 없으면 청크
+    #: 팔을 아예 돌리지 않는다(fail-closed). 표식을 안 다는 구현은 필터를 무시할 수도
+    #: 있고, 그 경우 "스코프를 걸었다고 믿는 무스코프 조회"가 되기 때문이다 —
+    #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`_filter_clause`.
+    scoped_chunk_search = True
+
     def __init__(self, backend: "EmbeddedBackend", conn, writer=None):
         self._b = backend
         self._conn = conn
@@ -240,6 +247,13 @@ class EmbeddedBackend:
         #: 1회면 충분하다. 이 집합이 없으면 매 검색이 LOAD 를 재발행하고, LOAD 는
         #: 쓰기 트랜잭션을 요구하므로 라이터와 정면 충돌한다 — :meth:`_load_ext` 참조.
         self._exts: set[str] = set()
+        #: 벡터 인덱스가 **지금 드롭된 상태인가**(이 프로세스가 아는 한).
+        #: 임베딩 워커는 한 라운드에 문서 16개를 각각 `apply_embeddings` 로 넣고, 그
+        #: 하나하나가 드롭을 부른다. DDL 이 라운드당 16번 나가고 그 사이 검색이 오면
+        #: 매번 재빌드를 문다(위험 감사 6.6 — "벡터 팔이 사실상 상시 꺼져 있을 수
+        #: 있다"). 드롭은 멱등이지만 **공짜가 아니다**. 이 플래그로 라운드 첫 번째만
+        #: 실제 DDL 을 내보내고 나머지는 접는다. 만든 쪽이 다시 False 로 내린다.
+        self._vec_index_dropped = False
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -385,6 +399,8 @@ class EmbeddedBackend:
     # **오프라인 배포 시 번들 필수**(§9, G0). ⚠ 인덱스가 embedding 열에 걸려 있으면
     # 그 열을 수정할 수 없다 — 인덱스는 **적재 후 build**, 재적재 전 **drop**
     # (embed 잡이 관리, §3-1-1).
+    #: SEC-1 — 청크 팔이 owner_id 필터를 적용한다(`_ReaderView.scoped_chunk_search` 주석).
+    scoped_chunk_search = True
     _VEC_INDEX = "chunk_vec"
     # 자식 과추출 배수 — 한 부모의 조각들이 상위 k 를 다 차지하지 않게(:meth:`vector_search`).
     _CHILD_FANOUT = 4
@@ -478,12 +494,21 @@ class EmbeddedBackend:
         벡터 없이 넣고 워커가 나중에 `apply_embeddings` 로 채운다. 세그폴트는 파이썬 예외가
         아니라 프로세스 사망이라 `except` 로 못 막고, 허브에선 사이드카 사망 =
         컨테이너(=MCP) 사망이다. 그래서 그 경로에서는 **드롭이 방어 장치**다.
-        (해당 지점을 지나면 `ensure_search_indexes` 가 검색 시 다시 만든다.)"""
+        (해당 지점을 지나면 `ensure_search_indexes` 가 검색 시 다시 만든다.)
+
+        **라운드당 1회로 접는다(위험 감사 6.6).** 이미 드롭해 둔 것을 아는 동안에는
+        DDL 을 다시 내보내지 않는다. 워커 한 라운드가 문서 16개를 각각 apply 하므로
+        그 접기가 없으면 5분마다 DDL 이 16번 나가고, 그 사이에 들어온 검색이 매번
+        재빌드를 물어 벡터 팔이 사실상 상시 꺼져 있게 된다. 다시 만드는 쪽
+        (:meth:`ensure_search_indexes`·:meth:`build_search_indexes`)이 플래그를 내린다."""
+        if self._vec_index_dropped:
+            return
         self._load_ext("vector")
         try:
             self._conn.execute(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')")
         except Exception:
             pass  # 미존재 — 무시(멱등)
+        self._vec_index_dropped = True
 
     def drop_search_indexes(self) -> None:
         """벡터+FTS 인덱스 **둘 다** 제거(멱등). 전량 재적재·재빌드 구간 전용이다.
@@ -504,6 +529,7 @@ class EmbeddedBackend:
         self._load_ext("fts")
         self._conn.execute(
             f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
+        self._vec_index_dropped = False
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
     def ensure_search_indexes(self, *, dim: int | None = None, conn=None) -> dict:
@@ -541,6 +567,9 @@ class EmbeddedBackend:
             built["vector"] = _create(
                 "vector",
                 f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
+            # 방금 만들었든 이미 있었든(`already exists` 흡수) 결과는 같다 — 인덱스는
+            # 존재한다. 드롭 접기 플래그를 내려 다음 쓰기가 제대로 한 번 드롭하게 한다.
+            self._vec_index_dropped = False
         return built
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:

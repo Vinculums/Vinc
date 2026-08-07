@@ -67,6 +67,19 @@ for _s in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
+# 🔴 이 파일은 `python packaging/embed_worker.py` 로 돈다(docker-entrypoint.sh). 그러면
+# `sys.path[0]` 은 **`packaging/`** 이고 리포 루트는 들어가지 않는다 — CWD 가 경로에
+# 붙는 것은 `-m` 과 대화형뿐이다(사이드카는 `python -m api.cli` 라 우연히 성립한다).
+# 그 결과 `_split_for_embed` 의 `from api.docstore import chunk_doc` 가 조용히 실패해
+# **부모-자식 조각내기(v8)가 통째로 죽는다**: 청크가 통으로 들어가 앞 512토큰만 담기고
+# 나머지는 버려진다(실측 유실 한국어 42.6% · 영어 12.3%). 에러도 안 난다 — 그 임포트는
+# `except Exception: return [text]` 로 강등되게 설계돼 있기 때문이다(데스크탑 폴백).
+# 테스트(`tests/test_embed_worker.py`)는 리포 루트에서 돌아 `api` 가 잡히므로 이 결함을
+# 재현하지 못한다. 컨테이너에서만 나는 무음 고장이라 여기서 경로를 명시적으로 세운다.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
 TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
          or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
@@ -105,6 +118,30 @@ def _call(path: str, body: dict | None = None) -> dict:
                  "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as resp:
         return json.load(resp)
+
+
+def _mb(path: str) -> int:
+    """파일 크기(MB). 진단 로그 전용이라 실패해도 0 을 돌려주고 넘어간다."""
+    try:
+        return os.path.getsize(path) >> 20
+    except Exception:
+        return 0
+
+
+def _rss_mb() -> int:
+    """이 프로세스의 RSS(MB) — 리눅스 전용, 실패하면 0.
+
+    OOM 이 의심되는 자리마다 이 값을 함께 찍는다. cgroup 킬은 흔적을 안 남기므로
+    **죽기 직전에 찍어 둔 숫자**가 유일한 증거가 된다. psutil 을 새로 싣지 않으려고
+    `/proc` 을 직접 읽는다(이 워커는 의존성 하나가 곧 이미지 크기다)."""
+    try:
+        with open("/proc/self/status", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return 0
 
 
 def _is_e5(model: str = "") -> bool:
@@ -247,6 +284,13 @@ class _Embedder:
         tok_path = (baked_tok if os.path.exists(baked_tok)
                     else hf_hub_download(MODEL, "tokenizer.json", cache_dir=CACHE))
 
+        # 🔴 여기서부터 세션 생성까지가 이 프로세스의 **메모리 고점**이다. 죽는다면
+        # 여기서 죽는다 — 그리고 cgroup OOM 은 SIGKILL 이라 파이썬이 한 줄도 못 남긴다.
+        # 그래서 단계마다 미리 찍는다. 마지막으로 찍힌 줄이 곧 사인(死因)이 된다.
+        # (2026-08-07 진단: 허브 워커가 `loopback ok` 직후 사라졌는데 예외 로그도
+        #  양자화 로그도 없어, 죽은 자리가 이 구간이라는 것까지밖에 좁히지 못했다.)
+        print(f"[embed] loading tokenizer … {tok_path} ({_mb(tok_path)}MB) "
+              f"rss={_rss_mb()}MB", flush=True)
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(MAX_TOKENS)
         # ⚠ `enable_padding()` 의 기본 pad_id 는 **0** 인데 그게 항상 패딩 토큰은 아니다.
@@ -272,10 +316,23 @@ class _Embedder:
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 1
         opts.inter_op_num_threads = 1
+        # 🔴 **메모리 고점을 깎는 두 스위치.** 이 컨테이너는 1GiB 를 사이드카·MCP 와
+        # 나눠 쓰고(실측 정상 상태 136MB) 가중치만 279MB 다. ORT 기본값은 둘 다 속도를
+        # 위해 메모리를 선점한다:
+        #   · CPU 메모리 아레나는 요청보다 크게(kNextPowerOfTwo) 잡고 **돌려주지 않는다**.
+        #   · mem_pattern 은 첫 실행의 텐서 배치를 미리 통째로 예약한다.
+        # 배치 8 · 스레드 1 인 이 워커는 둘 다 이득이 거의 없는데 고점만 키운다. 고점이
+        # 한도를 넘으면 cgroup OOM 킬러가 **가장 큰 프로세스인 이 워커를 조용히** 죽인다
+        # (SIGKILL — 파이썬 예외도 로그도 없다. 컨테이너는 멀쩡하고 /health 는 200 이다).
+        opts.enable_cpu_mem_arena = False
+        opts.enable_mem_pattern = False
+        print(f"[embed] loading onnx session … {onnx_path} ({_mb(onnx_path)}MB) "
+              f"rss={_rss_mb()}MB", flush=True)
         self._sess = ort.InferenceSession(
             onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
         self._names = [i.name for i in self._sess.get_inputs()]
-        print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE})", flush=True)
+        print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE}, "
+              f"rss={_rss_mb()}MB)", flush=True)
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다.
