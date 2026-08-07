@@ -409,5 +409,149 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual([a["doc_id"] for a in sidecar.applied], ["good"])
 
 
+class SplitEncoderTest(unittest.TestCase):
+    """모델을 별도 컨테이너로 분리한 뒤의 계약 (2026-08-07).
+
+    허브(1Gi)에서 ONNX 적재가 rss 646MB 에 닿아 커널이 워커를 **SIGKILL(137)** 했다.
+    모델을 `vinc-encode`(2Gi · minReplicas=0)로 옮기고 허브에는 모델을 안 드는 얇은
+    클라이언트만 남긴다. 그 분리가 만드는 새 실패 모드를 여기서 못 박는다 —
+    **셋 다 에러를 안 내고 벡터만 틀리거나 표면을 열어 두는 종류다.**
+    """
+
+    def setUp(self):
+        self.mod = _load_module()
+        self._saved = {k: getattr(self.mod, k) for k in
+                       ("MODEL", "REMOTE_ENCODE", "ENCODE_TOKEN", "ENCODE_BIND")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            setattr(self.mod, k, v)
+
+    @staticmethod
+    def _free_port() -> int:
+        import socket
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    def _serve(self, encode):
+        """진짜 핸들러를 통과시킨다 — 대역으로는 본문 계약이 안 잡힌다."""
+        emb = self.mod._Embedder()
+        emb.encode = encode
+        port = self._free_port()
+        self.mod.serve_encode(emb, port)
+        return f"http://127.0.0.1:{port}"
+
+    def test_원격_인코더가_접두를_두_번_붙이지_않는다(self):
+        """급소. 배치 루프는 `_prefix` 를 **이미** 거친 문자열을 넘긴다(main).
+        서버가 `kind` 를 보고 또 붙이면 `passage: passage: …` 가 되는데, 접두 유무의
+        코사인이 0.95~0.97 이라 **에러 없이 검색만 나빠진다**. 그래서 클라이언트는
+        `raw:true` 로 보내고 서버는 그 경우 손대지 않는다."""
+        seen: list[str] = []
+        base = self._serve(lambda texts: (seen.extend(texts)
+                                          or [[float(len(t))] for t in texts]))
+        self.mod.MODEL = "intfloat/multilingual-e5-base"      # 양쪽 접두 규약
+        enc = self.mod._RemoteEncoder(base)
+        out = enc.encode(["passage: 이미 붙었다"])
+        self.assertEqual(seen, ["passage: 이미 붙었다"],
+                         f"서버가 접두를 덧붙였다: {seen!r}")
+        self.assertEqual(out, [[float(len("passage: 이미 붙었다"))]])
+
+    def test_raw_가_없으면_서버가_접두를_붙인다(self):
+        """`raw` 는 옵트인이다 — 사이드카의 질의 경로는 예전 계약 그대로 온다."""
+        seen: list[str] = []
+        base = self._serve(lambda texts: (seen.extend(texts) or [[1.0] for _ in texts]))
+        self.mod.MODEL = "intfloat/multilingual-e5-base"
+        import json
+        import urllib.request
+        body = json.dumps({"texts": ["질문"], "kind": "query"}).encode()
+        req = urllib.request.Request(base + "/encode", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+        self.assertEqual(seen, ["query: 질문"], f"접두가 안 붙었다: {seen!r}")
+
+    def test_벡터_개수가_어긋나면_던진다(self):
+        """조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이다. 개수가 모자라면
+        `zip` 이 **조용히 잘라** 일부 청크가 벡터 없이 성공 처리된다(needs_embed 가
+        지워져 다시 잡히지도 않는다)."""
+        base = self._serve(lambda texts: [[1.0]])            # 둘 받고 하나만 준다
+        enc = self.mod._RemoteEncoder(base)
+        with self.assertRaises(RuntimeError) as ctx:
+            enc.encode(["a", "b"])
+        self.assertIn("어긋난다", str(ctx.exception))
+
+    def test_원격_모드에서는_모델을_올리지_않는다(self):
+        """분리의 목적 자체 — 허브 프로세스가 ONNX 를 만지면 OOM 이 그대로 돌아온다."""
+        loaded = []
+        self.mod._Embedder._load = lambda _self: loaded.append(1)
+        base = self._serve(lambda texts: [[float(len(t))] for t in texts])
+        self.mod.REMOTE_ENCODE = base
+        sidecar = _FakeSidecar([[{"doc_id": "d1", "chunk_id": "c1", "text": "본문"}]])
+        self.mod._call = sidecar
+        old = sys.argv
+        sys.argv = ["embed_worker.py", "--once"]
+        try:
+            self.assertEqual(self.mod.main(), 0)
+        finally:
+            sys.argv = old
+        self.assertEqual([a["doc_id"] for a in sidecar.applied], ["d1"])
+        self.assertEqual(loaded, [], "원격 모드인데 로컬 모델을 적재했다")
+
+    def test_루프백_밖인데_토큰이_없으면_기동을_거부한다(self):
+        """인증 없는 인코더를 **기동 시점에** 막는다. 요청이 올 때 막으면 그 사이에
+        이미 열려 있었다."""
+        self.mod.ENCODE_BIND = "0.0.0.0"
+        self.mod.ENCODE_TOKEN = ""
+        old = sys.argv
+        sys.argv = ["embed_worker.py", "--serve-only", "--encode-port",
+                    str(self._free_port())]
+        try:
+            self.assertEqual(self.mod.main(), 2)
+        finally:
+            sys.argv = old
+
+    def test_서버가_자기_자신에게_위임하지_않는다(self):
+        """`--serve-only` + `VINC_EMBED_REMOTE` 는 인코더가 자기를 부르는 고리다."""
+        self.mod.REMOTE_ENCODE = "http://elsewhere"
+        old = sys.argv
+        sys.argv = ["embed_worker.py", "--serve-only", "--encode-port", "9"]
+        try:
+            self.assertEqual(self.mod.main(), 2)
+        finally:
+            sys.argv = old
+
+    def test_토큰이_있으면_인증을_요구한다(self):
+        import json
+        import urllib.error
+        import urllib.request
+        self.mod.ENCODE_TOKEN = "s3cret"
+        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        body = json.dumps({"texts": ["x"]}).encode()
+        req = urllib.request.Request(base + "/encode", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(ctx.exception.code, 401)
+        # 토큰을 실으면 통과한다 — 그리고 클라이언트가 그걸 자동으로 싣는다.
+        self.assertEqual(self.mod._RemoteEncoder(base).encode(["x"]), [[1.0]])
+
+    def test_health_는_모델을_올리지_않는다(self):
+        """프로브가 모델 적재를 유발하면 minReplicas=0 의 의미가 사라진다 —
+        깨어날 때마다 646MB 를 올리고 프로브 타임아웃에도 걸린다."""
+        import json
+        import urllib.request
+        loaded = []
+        self.mod._Embedder._load = lambda _self: loaded.append(1)
+        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        with urllib.request.urlopen(base + "/health", timeout=5) as r:
+            out = json.load(r)
+        self.assertEqual(out["status"], "ok")
+        self.assertFalse(out["loaded"])
+        self.assertEqual(loaded, [], "/health 가 모델을 적재했다")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,20 @@ FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채
 
   VINC_SIDECAR=http://127.0.0.1:8787 VINC_SIDECAR_TOKEN=<토큰> \
     python embed_worker.py [--once] [--interval 300]
+
+두 역할 (2026-08-07 — 허브 1Gi 에서 ONNX 적재가 OOM/137 로 죽어 모델을 분리했다):
+
+  서버 `vinc-encode`  모델을 든다. 2Gi · minReplicas=0(쓸 때만 깨어난다)
+      VINC_EMBED_BIND=0.0.0.0 VINC_EMBED_PORT=8791 \
+      VINC_EMBED_ENCODE_TOKEN=<토큰> python embed_worker.py --serve-only
+
+  클라이언트 `vinc-hub`  모델을 **안 든다**. 배치 루프만 돌고 인코딩은 위임한다
+      VINC_EMBED_REMOTE=https://vinc-encode…/ VINC_EMBED_ENCODE_TOKEN=<토큰> \
+      python embed_worker.py --interval 300
+
+사이드카의 질의 임베딩(`VINC_EMBED_ENCODE`)도 같은 서버를 가리킨다. 콜드스타트가
+질의 타임아웃(1.5초)보다 길어 **첫 질의는 FTS 로 강등된다** — 다만 그 요청이 리비전을
+깨우므로 다음 질의부터는 벡터가 붙는다. 강등은 응답 메타에 남아 조용하지 않다.
 """
 from __future__ import annotations
 
@@ -107,6 +121,25 @@ EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
 QUERY_PREFIX = os.environ.get(
     "VINC_EMBED_QUERY_PREFIX",
     "Represent this sentence for searching relevant passages: ")
+
+# ── 인코딩을 다른 프로세스에 맡기는 모드 ────────────────────────────────────
+# 2026-08-07: 허브(1Gi)에서 ONNX 세션 적재가 rss 646MB 에 닿아 커널이 워커를
+# **SIGKILL(137)** 했다. 3회 재기동 전부 같은 지점 — 코드가 아니라 자원 문제다.
+# 모델을 별도 컨테이너(`vinc-encode`, 2Gi · minReplicas=0)로 옮기고, 허브에 남는
+# 워커는 **모델을 안 올리는 얇은 클라이언트**가 된다. 그러면 허브 메모리는 그대로고
+# 인코더는 쓸 때만 깨어난다.
+#
+# 이 파일 하나가 두 역할을 다 한다:
+#   서버(vinc-encode) : VINC_EMBED_BIND=0.0.0.0 · --serve-only  → 모델을 든다
+#   클라이언트(허브)   : VINC_EMBED_REMOTE=https://…            → 모델을 안 든다
+# 규약이 한 파일에 있어야 접두·풀링·양자화 세 가지가 갈라지지 않는다(파일 상단 ⚠).
+REMOTE_ENCODE = os.environ.get("VINC_EMBED_REMOTE", "").strip().rstrip("/")
+# 인코더가 루프백을 벗어나면 인증이 필요하다. 루프백 시절엔 없었다.
+ENCODE_TOKEN = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
+ENCODE_BIND = os.environ.get("VINC_EMBED_BIND", "127.0.0.1").strip() or "127.0.0.1"
+# 원격 인코딩 타임아웃. 배경 배치라 넉넉해야 한다 — 콜드스타트(0→1 리비전)가
+# 여기 포함된다. 질의 경로의 1.5초(`VINC_EMBED_ENCODE_TIMEOUT`)와는 별개다.
+REMOTE_TIMEOUT = float(os.environ.get("VINC_EMBED_REMOTE_TIMEOUT", "120"))
 
 
 def _call(path: str, body: dict | None = None) -> dict:
@@ -397,6 +430,47 @@ class _Embedder:
         return (pooled / norm).astype(float).tolist()
 
 
+class _RemoteEncoder:
+    """`_Embedder` 의 자리를 대신하는 얇은 클라이언트 — 모델을 **안 든다**.
+
+    허브에 남는 워커가 이것을 쓴다. 계약은 `_Embedder.encode` 와 같다(문자열 목록 →
+    벡터 목록). 다른 점은 계산을 `vinc-encode` 컨테이너에 맡긴다는 것뿐이다.
+
+    ⚠ **접두를 여기서 붙이지 않는다.** 배치 루프가 `_prefix(p, "passage")` 를 이미
+    거친 문자열을 넘긴다(main()). 서버가 `kind` 를 보고 또 붙이면 `passage: passage: …`
+    가 되어 **에러 없이 벡터만 틀린다**(접두 유무의 코사인이 0.95~0.97 이라 눈에 안
+    띈다). 그래서 `raw:true` 로 보내고 서버는 그 경우 접두를 건드리지 않는다.
+
+    ⚠ 재시도를 넣지 않는다. 실패한 문서는 `needs_embed` 가 안 지워져 **다음 라운드에
+    그대로 다시 잡힌다** — 여기서 또 시도하면 콜드스타트 대기가 겹쳐 라운드가 늘어질
+    뿐이다(F2 에서 브리지 재시도를 줄인 것과 같은 판단).
+    """
+
+    def __init__(self, url: str) -> None:
+        self._url = url.rstrip("/") + "/encode"
+
+    def encode(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        body = json.dumps({"texts": texts, "raw": True}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if ENCODE_TOKEN:
+            headers["Authorization"] = f"Bearer {ENCODE_TOKEN}"
+        req = urllib.request.Request(self._url, data=body, headers=headers)
+        with urllib.request.urlopen(req, timeout=REMOTE_TIMEOUT) as resp:
+            out = json.load(resp) or {}
+        vecs = out.get("vectors")
+        if not isinstance(vecs, list) or len(vecs) != len(texts):
+            # 개수가 어긋나면 아래 zip 이 **조용히 잘라** 일부 청크가 벡터 없이
+            # 성공 처리된다. 조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이라
+            # 여기서 끊는다.
+            raise RuntimeError(
+                f"encode 응답이 입력과 어긋난다: 입력 {len(texts)} · 응답 "
+                f"{len(vecs) if isinstance(vecs, list) else type(vecs).__name__}"
+                + (f" · error={out.get('error')}" if out.get("error") else ""))
+        return vecs
+
+
 def serve_encode(emb: "_Embedder", port: int) -> None:
     """루프백 인코딩 서비스 — 사이드카가 **쿼리 임베딩**을 얻어 가는 창구.
 
@@ -424,9 +498,40 @@ def serve_encode(emb: "_Embedder", port: int) -> None:
         def log_message(self, *_a):
             pass                      # 요청당 한 줄은 5분 루프 로그를 덮는다
 
+        def _reply(self, code: int, payload: dict) -> None:
+            out = _json.dumps(payload).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def _authed(self) -> bool:
+            """토큰이 설정돼 있을 때만 검사한다 — 루프백 배치(허브 안)는 무토큰이다.
+
+            ⚠ 바인드가 루프백을 벗어났는데 토큰이 없으면 **인증 없는 인코더**가 된다.
+            그 조합은 `main()` 이 기동 시점에 거부한다(여기서 막으면 이미 늦다)."""
+            if not ENCODE_TOKEN:
+                return True
+            got = (self.headers.get("Authorization") or "").strip()
+            return got == f"Bearer {ENCODE_TOKEN}"
+
+        def do_GET(self):
+            # 컨테이너 플랫폼의 프로브용. **모델을 올리지 않는다** — 프로브가 모델
+            # 적재를 유발하면 minReplicas=0 의 의미가 없어지고(깨어날 때마다 646MB)
+            # 프로브 타임아웃에도 걸린다. "프로세스가 살아 있다"만 답한다.
+            if self.path.rstrip("/") in ("/health", ""):
+                self._reply(200, {"status": "ok", "model": MODEL,
+                                  "loaded": getattr(emb, "_sess", None) is not None})
+                return
+            self.send_error(404, "no such route")
+
         def do_POST(self):
             if self.path.rstrip("/") != "/encode":
                 self.send_error(404, "no such route")
+                return
+            if not self._authed():
+                self._reply(401, {"error": "unauthorized"})
                 return
             try:
                 n = int(self.headers.get("Content-Length") or 0)
@@ -435,8 +540,13 @@ def serve_encode(emb: "_Embedder", port: int) -> None:
                 if not texts:
                     raise ValueError("texts required")
                 kind = str(body.get("kind") or "passage")
+                # `raw` = 호출부가 접두를 **이미** 붙였다(배치 루프가 그렇다).
+                # 여기서 또 붙이면 `passage: passage: …` 가 되어 에러 없이 벡터만
+                # 틀린다 — 접두 유무의 코사인이 0.95~0.97 이라 눈에 안 띈다.
+                raw = bool(body.get("raw"))
                 with lock:
-                    vecs = emb.encode([_prefix(t, kind) for t in texts])
+                    vecs = emb.encode(texts if raw
+                                      else [_prefix(t, kind) for t in texts])
                 out = _json.dumps({"vectors": vecs}).encode("utf-8")
             except Exception as exc:
                 # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
@@ -453,10 +563,11 @@ def serve_encode(emb: "_Embedder", port: int) -> None:
             self.end_headers()
             self.wfile.write(out)
 
-    srv = ThreadingHTTPServer(("127.0.0.1", port), _H)
+    srv = ThreadingHTTPServer((ENCODE_BIND, port), _H)
     t = threading.Thread(target=srv.serve_forever, daemon=True, name="vinc-embed-encode")
     t.start()
-    print(f"[embed] encode service on 127.0.0.1:{port}", flush=True)
+    print(f"[embed] encode service on {ENCODE_BIND}:{port}"
+          f"{' (token 인증)' if ENCODE_TOKEN else ''}", flush=True)
 
 
 def _prefix(text: str, kind: str) -> str:
@@ -484,9 +595,45 @@ def main() -> int:
                     help="상주 모드에서 pending 이 빌 때 대기 초")
     ap.add_argument("--encode-port", type=int, default=int(os.environ.get("VINC_EMBED_PORT", "0")),
                     help="쿼리 임베딩 루프백 서비스 포트(0=끔)")
+    ap.add_argument("--serve-only", action="store_true",
+                    help="인코딩 서비스만 띄우고 배치 루프는 돌지 않는다(vinc-encode 역할)")
     args = ap.parse_args()
 
-    emb = _Embedder()
+    # 인코딩 주체를 여기서 한 번만 고른다. 원격이면 이 프로세스는 **모델을 안 든다**
+    # — 허브에서 OOM 을 낸 646MB 가 통째로 사라진다.
+    if REMOTE_ENCODE:
+        if args.serve_only:
+            print("[embed] --serve-only 와 VINC_EMBED_REMOTE 는 함께 쓸 수 없다 "
+                  "— 서버가 자기 자신에게 위임하게 된다", file=sys.stderr, flush=True)
+            return 2
+        emb = _RemoteEncoder(REMOTE_ENCODE)
+        print(f"[embed] 원격 인코더 사용 · {REMOTE_ENCODE} "
+              f"(이 프로세스는 모델을 올리지 않는다)", flush=True)
+    else:
+        emb = _Embedder()
+
+    # ⚠ 루프백 밖으로 여는데 토큰이 없으면 **인증 없는 인코더**다. 기동 시점에 막는다
+    # — 요청이 올 때 막으면 그 사이에 이미 열려 있었다.
+    if args.encode_port and ENCODE_BIND not in ("127.0.0.1", "localhost", "::1") \
+            and not ENCODE_TOKEN:
+        print(f"[embed] VINC_EMBED_BIND={ENCODE_BIND} 인데 VINC_EMBED_ENCODE_TOKEN 이 "
+              "없다 — 인증 없는 인코더는 띄우지 않는다", file=sys.stderr, flush=True)
+        return 2
+
+    if args.serve_only:
+        if not args.encode_port:
+            print("[embed] --serve-only 에는 --encode-port(또는 VINC_EMBED_PORT)가 "
+                  "필요하다", file=sys.stderr, flush=True)
+            return 2
+        serve_encode(emb, args.encode_port)
+        print("[embed] serve-only — 배치 루프 없이 인코딩 요청만 받는다", flush=True)
+        # 모델은 **첫 요청에서** 올라간다(지연 로드). 그래야 scale-to-zero 로 깨어난
+        # 리비전이 프로브만 받고 도로 자는 동안 646MB 를 올리지 않는다.
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            return 0
     # ⚠ 생존 신호가 없으면 **워커의 죽음과 정상 대기가 구분되지 않는다.** 원래 워커가
     # Azure 이관 때 사라졌는데 일주일 넘게 아무도 몰랐던 이유가 정확히 이것이다(조용한
     # happy path). 그래서 ① 첫 성공 조회를 무조건 한 번 찍어 루프백이 살아있음을

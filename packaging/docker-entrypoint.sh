@@ -6,6 +6,27 @@
 # 하고, MCP 가 사이드카를 127.0.0.1 로 호출하는 계약(--base)이 그대로이기 때문.
 set -e
 
+# ── 역할 분기 (2026-08-07) ──────────────────────────────────────────────────
+# 같은 이미지가 두 앱으로 뜬다.
+#   VINC_ROLE=encode  →  `vinc-encode`: 모델만 든다. 2Gi · minReplicas=0
+#   (미설정)          →  `vinc-hub`   : 사이드카 + MCP + 모델을 안 드는 얇은 워커
+#
+# 왜 갈랐나: 허브(1Gi)에서 ONNX 적재가 rss 646MB 에 닿아 커널이 워커를 SIGKILL(137)
+# 했다. 3회 재기동 전부 같은 지점 — 코드가 아니라 자원 문제다. 허브를 2Gi 로 올리면
+# 상시 과금이 배증하므로, 모델만 떼어 **쓸 때만 깨는** 앱으로 보낸다.
+#
+# ⚠ encode 역할은 사이드카도 MCP 도 띄우지 않는다 — 그러니 **DATA_DIR 을 안 만진다.**
+#   임베디드 DB 는 단일 writer 라, 이 앱이 실수로 스토어를 열면 허브가 못 연다.
+if [ "${VINC_ROLE:-}" = "encode" ]; then
+  : "${VINC_EMBED_PORT:=8791}"
+  : "${VINC_EMBED_BIND:=0.0.0.0}"
+  export VINC_EMBED_PORT VINC_EMBED_BIND
+  echo "[entrypoint] role=encode — 인코딩 서비스만 (사이드카·MCP 없음)"
+  # 모델은 **첫 요청에서** 올라간다(지연 로드). 프로브만 받고 도로 자는 리비전이
+  # 646MB 를 올리지 않도록.
+  exec python packaging/embed_worker.py --serve-only --encode-port "$VINC_EMBED_PORT"
+fi
+
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
 : "${VINC_SIDECAR_TOKEN:?VINC_SIDECAR_TOKEN 필수 — 사이드카/MCP 내부 인증}"
 
@@ -45,11 +66,21 @@ case "$VINC_MCP_STATE_SNAPSHOT" in
           "배포마다 커넥터 재인가가 필요해진다." >&2 ;;
 esac
 
-# 쿼리 임베딩 창구(루프백). 사이드카는 이 주소로 물어 벡터 검색을 켠다 — 비어 있으면
+# 쿼리 임베딩 창구. 사이드카는 이 주소로 물어 벡터 검색을 켠다 — 비어 있으면
 # 시도조차 안 하고 FTS 로만 답한다(데스크탑의 정상 상태와 같다).
+#
+# `VINC_EMBED_REMOTE` 가 있으면 **모델이 이 컨테이너에 없다.** 사이드카도 워커도
+# 그쪽을 본다. 콜드스타트(0→1 리비전)가 질의 타임아웃(1.5초)보다 길어 첫 질의는
+# FTS 로 강등되지만, 그 요청이 리비전을 깨우므로 다음 질의부터 벡터가 붙는다.
+# 강등은 응답 메타에 남아 조용하지 않다.
 EMBED_PORT="${VINC_EMBED_PORT:-8791}"
 if [ "${VINC_EMBED:-on}" = "on" ]; then
-  export VINC_EMBED_ENCODE="http://127.0.0.1:${EMBED_PORT}"
+  if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
+    export VINC_EMBED_ENCODE="${VINC_EMBED_REMOTE%/}"
+    echo "[entrypoint] 임베딩 모델은 원격이다 — $VINC_EMBED_ENCODE"
+  else
+    export VINC_EMBED_ENCODE="http://127.0.0.1:${EMBED_PORT}"
+  fi
 fi
 
 # 사이드카 PID 는 파일로 추적한다(변수가 아니라) — 아래 워치독이 재기동시켜도
@@ -111,13 +142,20 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
   (
     attempt=0
     while true; do
+      # 원격 인코더가 있으면 **이 워커는 창구를 열지 않는다**(--encode-port 0).
+      # 열어 봐야 모델이 없어 500 만 돌려주고, 사이드카는 이미 원격을 본다.
+      if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
+        w_port=0; w_where="remote:${VINC_EMBED_REMOTE}"
+      else
+        w_port="$EMBED_PORT"; w_where="127.0.0.1:$EMBED_PORT"
+      fi
       VINC_SIDECAR="http://127.0.0.1:8787" \
         python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" \
-          --encode-port "$EMBED_PORT" &
+          --encode-port "$w_port" &
       cpid=$!
       echo "$cpid" > "$EMBED_PIDFILE"
       echo "[entrypoint] embed worker started (pid=$cpid, interval=${VINC_EMBED_INTERVAL:-300}s," \
-           "encode=127.0.0.1:$EMBED_PORT, attempt=$((attempt + 1)))"
+           "encode=$w_where, attempt=$((attempt + 1)))"
       # ⚠ `set -e` 아래서는 `wait` 가 비영을 돌려주는 순간 이 서브셸이 그대로 죽는다
       # (그러면 감시자가 사라져 원래 문제로 되돌아간다). `|| rc=$?` 로 감싸 상태만
       # 받아 온다 — 0 이면 대입이 일어나지 않으므로 초기값 0 이 남는다.
