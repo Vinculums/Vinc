@@ -361,6 +361,45 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(v[0]["id"], "a")                       # 최근접
         self.assertEqual({r["id"] for r in f}, {"a", "c"})      # refund 포함 청크
 
+    def test_두_팔_다_owner_필터로_실제로_돈다(self):
+        """SEC-1 의 급소는 **쿼리가 실제로 도는가**다. F2 가 청크 팔에 owner 를 넘기기
+        시작하자 벡터 팔이 `Parser exception` 으로 통째로 죽었다(2026-08-07 실측):
+        `vector_search` 는 자식→부모 되돌리기로 `WHERE` 를 이미 쓰는데 필터가 `WHERE`
+        를 또 붙여 `WHERE … WHERE …` 가 됐다.
+
+        가려져 있던 이유가 둘이다. ① 그전엔 owner 가 청크 팔에 안 가서 필터가 빈
+        문자열이었고 ② 질의 임베딩을 만들 주체가 없어 벡터 팔이 아예 안 돌았다.
+        그래서 **실엔진 · 두 소유자 · 두 팔**을 한 번에 건다 — 스텁으로는 안 잡힌다."""
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()
+        store = open_store(cfg)
+        self.assertIsNotNone(store)
+        store.provision(dim=4)
+        with store.session() as s:
+            for cid, txt, emb, own in [
+                ("u1a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u1"),
+                ("u2a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u2")]:
+                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.owner_id=$o",
+                      id=cid, t=txt, o=own)
+                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                      "v.doc_id='d', v.owner_id=$o, v.seq=0, v.embedding=$e",
+                      vid=f"{cid}#000", id=cid, o=own, e=emb)
+        try:
+            store.build_search_indexes(dim=4)
+        except RuntimeError as exc:
+            store.close()
+            self.skipTest(f"검색 확장 미가용({store.driver_name}) — §9 번들 필요: {exc}")
+        f = {"owner_id": "u1"}
+        vec = store.vector_search([1.0, 0.0, 0.0, 0.0], top_k=5, filters=f)
+        fts = store.fulltext_search("refund", top_k=5, filters=f)
+        store.close()
+        # 던지지 않는 것만으로는 부족하다 — 실제로 걸러졌는지 본다.
+        self.assertEqual({r["id"] for r in vec}, {"u1a"},
+                         f"벡터 팔 owner 필터가 깨졌다: {vec}")
+        self.assertEqual({r["id"] for r in fts}, {"u1a"},
+                         f"FTS 팔 owner 필터가 깨졌다: {fts}")
+
     def test_hybrid_search_rrf_via_api(self):
         """api.query.search 하이브리드(BM25+벡터 RRF, §4-2) — 쿼리 임베딩 주입형."""
         from store.config import load_config

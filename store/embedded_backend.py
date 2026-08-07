@@ -128,9 +128,18 @@ def _driver_error_text(exc: BaseException) -> str:
     return str(exc)
 
 
-def _filter_clause(var: str, filters: dict | None, params: dict) -> str:
-    """스코프 필터를 WHERE 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params
-    를 in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이 WHERE 로 붙인다."""
+def _filter_clause(var: str, filters: dict | None, params: dict, *,
+                   keyword: str = "WHERE") -> str:
+    """스코프 필터를 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params 를
+    in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이에 붙인다.
+
+    ⚠ `keyword` 는 **붙는 자리에 이미 WHERE 가 있는가**로 정한다. `vector_search` 는
+    자식→부모 되돌리기(`MATCH (p:Chunk) WHERE p.chunk_id = node.chunk_id`) 때문에
+    WHERE 를 이미 갖고 있어서, 기본값을 그대로 쓰면 `WHERE … WHERE …` 가 되어
+    **파서가 통째로 거부한다**. 실제로 그렇게 났다(2026-08-07): F2 가 청크 팔에
+    owner 를 넘기기 시작하자 벡터 팔이 `Parser exception` 으로 죽었다. 그전에는
+    filters 가 None 이라 이 함수가 빈 문자열을 돌려줘 결함이 가려져 있었고, 질의
+    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다."""
     if not filters:
         return ""
     preds = []
@@ -139,7 +148,7 @@ def _filter_clause(var: str, filters: dict | None, params: dict) -> str:
         if val is not None:
             preds.append(f"{var}.{key} = ${key}")
             params[key] = val
-    return ("WHERE " + " AND ".join(preds) + " ") if preds else ""
+    return (f"{keyword} " + " AND ".join(preds) + " ") if preds else ""
 
 
 class _Result:
@@ -705,7 +714,9 @@ class EmbeddedBackend:
         kk = k * self._CHILD_FANOUT
         params: dict = {"emb": list(embedding), "k": kk}
         # 필터는 부모(Chunk)의 열을 본다 — 자식엔 layer 도 text 도 없다.
-        where = _filter_clause("p", filters, params)
+        # ⚠ `AND` 다. 아래 MATCH 가 자식→부모 되돌리기로 WHERE 를 **이미** 쓰고 있어서
+        #    WHERE 를 또 붙이면 파서가 쿼리를 통째로 거부한다(실측 2026-08-07).
+        where = _filter_clause("p", filters, params, keyword="AND")
         cypher = (
             f"CALL QUERY_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}', $emb, $k) "
             "MATCH (p:Chunk) WHERE p.chunk_id = node.chunk_id "
