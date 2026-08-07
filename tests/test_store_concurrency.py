@@ -387,26 +387,40 @@ class ExtLoadDiagnosisTests(unittest.TestCase):
 
         return EmbeddedBackend(None, _Conn(), "ladybug", _Cfg())
 
+    @staticmethod
+    def _korean_windows():
+        """한국어 Windows 의 ANSI 코드페이지를 사다리에 꽂는다.
+
+        원문은 cp949 라 그 코덱이 사다리에 있어야만 복원된다. 실기(한국어 Windows)
+        에서는 로케일 칸이 이미 cp949 라 그냥 통하지만, **CI 는 Linux · UTF-8** 이고
+        `mbcs` 는 Windows 전용 별칭이라 코덱 자체가 없다. `os.name` 만 "nt" 로
+        바꿔서는 복원이 안 되고, 그러면 이 테스트가 지키려는 것("사유가 살아남는다")
+        이 CI 에서 조용히 검증되지 않는다. 플랫폼 가정을 명시적으로 주입한다."""
+        from unittest import mock
+        return mock.patch("store.embedded_backend._ANSI_FALLBACKS", ("cp949",))
+
     def test_decoder_recovers_the_original_message(self):
         """`_driver_error_text` 는 버려진 원문 바이트를 되살린다."""
         from store.embedded_backend import _driver_error_text
-        got = _driver_error_text(self._undecodable(self._REAL))
-        self.assertIn("Failed to load library", got)
-        self.assertIn("지정된 모듈을 찾을 수 없습니다", got)
-        # 감싸 올린 경우(예외 체인)도 따라간다 — 드라이버 구현이 바뀌어도 유지.
-        try:
+        with self._korean_windows():
+            got = _driver_error_text(self._undecodable(self._REAL))
+            self.assertIn("Failed to load library", got)
+            self.assertIn("지정된 모듈을 찾을 수 없습니다", got)
+            # 감싸 올린 경우(예외 체인)도 따라간다 — 드라이버 구현이 바뀌어도 유지.
             try:
-                raise self._undecodable(self._REAL)
-            except UnicodeDecodeError as inner:
-                raise RuntimeError("query failed") from inner
-        except RuntimeError as outer:
-            self.assertIn("지정된 모듈을 찾을 수 없습니다", _driver_error_text(outer))
+                try:
+                    raise self._undecodable(self._REAL)
+                except UnicodeDecodeError as inner:
+                    raise RuntimeError("query failed") from inner
+            except RuntimeError as outer:
+                self.assertIn("지정된 모듈을 찾을 수 없습니다", _driver_error_text(outer))
 
     def test_undecodable_load_failure_names_the_real_cause(self):
         """읽을 수 없는 예외가 와도 **진짜 사유**를 말한다 — 코덱 문구로 뭉개지 않는다."""
         be = self._backend(self._undecodable(self._REAL))
-        with self.assertRaises(RuntimeError) as ctx:
-            be._load_ext("vector")
+        with self._korean_windows():
+            with self.assertRaises(RuntimeError) as ctx:
+                be._load_ext("vector")
         msg = str(ctx.exception)
         self.assertIn("Failed to load library", msg,
                       f"드라이버가 버린 원문을 되살리지 못했다: {msg!r}")

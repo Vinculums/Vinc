@@ -66,14 +66,21 @@ def _bundled_ext_path(ext: str) -> str | None:
     return None
 
 
+#: 디코드 사다리의 마지막 칸 — **시스템 ANSI 코드페이지**. Windows 에서만 뜻이 있다
+#: (`mbcs` 는 Windows 전용 별칭이라 다른 OS 에는 코덱 자체가 없다. 한국어 Windows =
+#: cp949). 모듈 상수로 꺼내 둔 이유: 이 사다리는 **플랫폼 가정**이고, 테스트가 그걸
+#: 갈아 끼워야 하기 때문이다. `os.name` 만 "nt" 로 바꾸는 것으로는 부족하다 —
+#: Linux 러너에는 `mbcs` 코덱이 아예 없어 복원 경로가 조용히 죽고, 그러면 CI 는
+#: "복원했다"가 아니라 "복원할 수 없었다"를 통과시킨다.
+_ANSI_FALLBACKS: tuple[str, ...] = ("mbcs",) if os.name == "nt" else ()
+
+
 def _decode_native(raw) -> str:
     """OS/엔진이 만든 바이트열을 사람이 읽는 문자열로. UTF-8 → 로케일 → ANSI 순서."""
     if not isinstance(raw, (bytes, bytearray)):
         return str(raw)
     import locale
-    cands = ["utf-8", locale.getpreferredencoding(False)]
-    if os.name == "nt":
-        cands.append("mbcs")      # 시스템 ANSI 코드페이지(한국어 Windows = cp949)
+    cands = ["utf-8", locale.getpreferredencoding(False), *_ANSI_FALLBACKS]
     for enc in cands:
         if not enc:
             continue
