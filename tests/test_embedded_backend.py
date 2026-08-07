@@ -408,8 +408,13 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=4)
         with store.session() as s:
             # 청크: refund 를 논하지만 본문에 'gauge' 라는 단어는 없다.
+            # ⚠ owner_id 를 반드시 찍는다. 이 픽스처는 put_doc 을 우회해 손으로 심는데,
+            #    실제 쓰기 경로는 `c.owner_id = $owner` 를 항상 찍는다(api/docstore.py).
+            #    F2(SEC-1)가 청크 팔에 owner 필터를 넣은 뒤로는 owner 없는 청크가
+            #    스코프 조회에서 빠지므로, 안 찍으면 이 테스트만 현실과 어긋난 상태를
+            #    검증하게 된다 — 실패는 회귀가 아니라 픽스처가 낡았다는 신호였다.
             s.run("MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.embedding=$e, "
-                  "c.source_file='/abs/topo.md'",
+                  "c.owner_id='u', c.source_file='/abs/topo.md'",
                   t="refund policy and dispute resolution", e=[1.0, 0.1, 0.0, 0.0])
             # 개념 gauge: title 이 'gauge' 라 쿼리 'refund' 와 title 매치 안 됨.
             # 그러나 source_file basename(topo.md) 이 청크와 같아 MENTIONS 로 이어진다.
