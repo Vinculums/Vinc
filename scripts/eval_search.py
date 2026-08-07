@@ -73,11 +73,20 @@ def _mean(rows: list[dict], key: str) -> float:
     return sum(r[key] for r in rows) / len(rows) if rows else 0.0
 
 
-# ── 임베더(워커 루프백 창구) ────────────────────────────────────────────────
+# ── 임베더(워커 인코딩 창구) ────────────────────────────────────────────────
 def encode_query(text: str, url: str, timeout: float = 20.0) -> list[float] | None:
+    """`/encode` 클라이언트는 리포에 정확히 셋이다 — 워커 `_RemoteEncoder` ·
+    사이드카 `_query_embedding` · 여기. 창구가 루프백을 벗어나며 인증이 붙었을 때
+    (vinc-encode 분리, 2026-08-07) 셋 중 둘만 고쳐져 질의 임베딩이 전부 401 이었다.
+    **클라이언트를 새로 만들면 토큰부터 실을 것** — 없으면 헤더를 붙이지 않는다
+    (루프백 창구는 무토큰이라 빈 헤더가 오히려 401 사유가 된다)."""
     body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
     req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         vecs = (json.load(resp) or {}).get("vectors") or []
     return list(vecs[0]) if vecs else None
