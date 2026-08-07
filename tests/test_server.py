@@ -329,6 +329,9 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0):
             body = _json.loads(self.rfile.read(n) or b"{}")
             if seen is not None:
                 seen.update(body)
+                # 헤더도 남긴다 — 창구가 루프백을 벗어나면서 인증이 붙었고, 그걸
+                # 안 싣는 회귀가 실제로 났다(2026-08-07: 질의 임베딩 전부 401).
+                seen["_authorization"] = self.headers.get("Authorization")
             out = _json.dumps({"vectors": [list(vector)]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -383,7 +386,8 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
     def setUp(self):
         self.seen_vec = []
         self._saved = {k: os.environ.get(k)
-                       for k in ("VINC_EMBED_ENCODE", "VINC_EMBED_ENCODE_TIMEOUT")}
+                       for k in ("VINC_EMBED_ENCODE", "VINC_EMBED_ENCODE_TIMEOUT",
+                                 "VINC_EMBED_ENCODE_TOKEN")}
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -475,6 +479,29 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
             self._search()
         self.assertEqual(seen.get("kind"), "query", f"kind 가 틀렸다: {seen}")
         self.assertEqual(seen.get("texts"), ["양자역학"])
+
+    def test_창구에_토큰이_필요하면_실어_보낸다(self):
+        """실제로 난 회귀다(2026-08-07). 모델을 `vinc-encode` 로 분리하면서 창구가
+        루프백을 벗어나 인증이 붙었는데, **배치 워커만 고치고 이 경로를 빠뜨려**
+        질의 임베딩이 전부 401 이었다. 배경 적재는 정상이라 겉으로는 다 되는 것처럼
+        보였고 `vector_note` 한 줄이 유일한 신호였다."""
+        seen: dict = {}
+        with _encode_stub([1.0, 0.0, 0.0, 0.0], seen=seen) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            os.environ["VINC_EMBED_ENCODE_TOKEN"] = "s3cret"
+            self._search()
+        self.assertEqual(seen.get("_authorization"), "Bearer s3cret",
+                         f"인코더 토큰을 안 실었다: {seen.get('_authorization')!r}")
+
+    def test_토큰이_없으면_헤더를_붙이지_않는다(self):
+        """루프백 창구(데스크탑·구 허브)는 무토큰이다. 빈 헤더를 붙여 보내면 그쪽이
+        401 을 줄 이유가 생긴다."""
+        seen: dict = {}
+        with _encode_stub([1.0, 0.0, 0.0, 0.0], seen=seen) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            os.environ.pop("VINC_EMBED_ENCODE_TOKEN", None)
+            self._search()
+        self.assertIsNone(seen.get("_authorization"))
 
 
 class IngestRouteTests(unittest.TestCase):

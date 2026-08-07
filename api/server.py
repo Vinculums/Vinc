@@ -337,13 +337,18 @@ class VincApp:
         """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.
 
         임베딩 모델을 들고 있는 프로세스는 임베딩 워커뿐이다(사이드카엔 torch 가 없다).
-        그래서 워커가 여는 루프백 창구(`packaging/embed_worker.py` `serve_encode`)에
-        물어본다. `VINC_EMBED_ENCODE` 가 없으면 **시도조차 하지 않는다** — 데스크탑에는
-        워커가 없고, 매 검색마다 연결 실패를 기다리는 건 그 자체로 성능 사고다.
+        그래서 워커가 여는 창구(`packaging/embed_worker.py` `serve_encode`)에 물어본다.
+        `VINC_EMBED_ENCODE` 가 없으면 **시도조차 하지 않는다** — 데스크탑에는 워커가
+        없고, 매 검색마다 연결 실패를 기다리는 건 그 자체로 성능 사고다.
 
         타임아웃이 짧은 이유: 이 호출은 **조회 요청 안**에 있다. 워커가 배경 임베딩으로
         바쁘면 기다리느니 FTS 로 답하는 편이 낫다(§11 P2 게이트). 강등은 응답 메타에
-        남으므로 조용하지 않다."""
+        남으므로 조용하지 않다.
+
+        ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데,
+        모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
+        빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
+        되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
@@ -356,8 +361,12 @@ class VincApp:
             return None, mig
         try:
             body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+            tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
+            if tok:
+                headers["Authorization"] = f"Bearer {tok}"
             req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
-                                         headers={"Content-Type": "application/json"})
+                                         headers=headers)
             with urllib.request.urlopen(req, timeout=_QVEC_TIMEOUT) as resp:
                 vecs = (json.load(resp) or {}).get("vectors") or []
             return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
