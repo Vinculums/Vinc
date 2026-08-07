@@ -768,27 +768,48 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
                   {"id": doc_id})
         base["cleared"] = True
+    # 🔴 **워커가 마지막으로 실제 일한 시각**을 남긴다. 이게 없으면 밖에서 "백로그가
+    # 줄고 있는 중"과 "워커가 죽어 영원히 그대로"를 구분할 수 없다 — 2026-08-05~07 에
+    # 정확히 그 구분이 안 돼서 워커의 죽음을 38시간 몰랐다. `/health` 가 이 값을 싣고,
+    # pending 이 있는데 이 시각이 오래됐으면 그 자체가 알람이다.
+    store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
+              {"k": _EMBED_APPLIED_KEY, "v": _now_iso()})
     base.update(executed=True, embedded=applied)
     return base
 
 
 #: 벡터를 만든 모델의 식별자를 적어 두는 자리(`_SchemaMeta`).
 _EMBED_MODEL_KEY = "embed_model"
+#: 워커가 마지막으로 `apply_embeddings` 를 성공시킨 시각(ISO). 백로그가 **줄고 있는지**
+#: 를 밖에서 판정하는 유일한 신호다 — `/health` 가 이 값을 싣는다.
+_EMBED_APPLIED_KEY = "embed_last_applied_at"
 
 
 def embed_model_state(store) -> dict:
     """현재 색인이 **어느 모델로 만들어졌는가**, 그리고 이행 중인가.
 
-    반환 `{"stored": <기록된 모델>, "migrating": <bool>, "pending": <재임베딩 남은 문서수>}`.
-    `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다(구 설치·신규 설치)."""
-    out = {"stored": "", "migrating": False, "pending": 0}
+    반환 `{"stored", "migrating", "pending", "docs", "last_applied_at"}`.
+    `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다(구 설치·신규 설치).
+
+    ⚠ **예외를 삼키고 기본값을 돌려준다.** 그 관용이 :func:`switch_embed_model` 과
+    묶이면 위험하다 — 읽기가 조용히 실패하면 `stored` 가 영원히 빈 문자열이고, 그러면
+    전환이 매 라운드 "바뀌었다"고 판정해 전 문서를 다시 큐에 넣는다. 그래서 실패
+    사유를 버리지 않고 `error` 로 싣는다(`/health` 에 그대로 나간다)."""
+    out: dict[str, Any] = {"stored": "", "migrating": False, "pending": 0,
+                           "docs": 0, "last_applied_at": ""}
     try:
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
                          {"k": _EMBED_MODEL_KEY}) or []
         out["stored"] = (rows[0].get("v") or "") if rows else ""
+        at = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                       {"k": _EMBED_APPLIED_KEY}) or []
+        out["last_applied_at"] = (at[0].get("v") or "") if at else ""
         cnt = store.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c") or []
         out["pending"] = int(cnt[0].get("c")) if cnt else 0
-    except Exception:
+        tot = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
+        out["docs"] = int(tot[0].get("c")) if tot else 0
+    except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
+        out["error"] = f"{type(exc).__name__}: {exc}"
         return out
     out["migrating"] = bool(out["stored"]) and out["pending"] > 0
     return out

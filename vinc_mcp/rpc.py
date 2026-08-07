@@ -36,18 +36,22 @@ _DESC_OVERRIDES: dict[str, str] = {
 }
 
 
-def _tool_specs() -> list[dict]:
+def _tool_specs(allow_target: bool = True) -> list[dict]:
     """tools.specs() 위에 description override 를 얹어 반환(스키마는 그대로)."""
     return [
         {**spec, "description": _DESC_OVERRIDES.get(spec["name"], spec["description"])}
-        for spec in tools.specs()
+        for spec in tools.specs(allow_target=allow_target)
     ]
 
 
 class Dispatcher:
-    def __init__(self, bridge: Bridge):
+    def __init__(self, bridge: Bridge, *, allow_target: bool = True):
         self.bridge = bridge
         self.initialized = False
+        # `target`(로컬/원격 선택)은 **데스크탑 커넥터에만** 의미가 있다. 허브는
+        # 이미 그 '원격'이므로 자기 자신에게 다시 아웃바운드를 걸 이유가 없다
+        # (위험 감사 5.5). 기본 True 는 stdio·테스트의 현행 동작 유지.
+        self.allow_target = allow_target
 
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
     # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
@@ -120,7 +124,7 @@ class Dispatcher:
         if method == "ping":
             return {}
         if method == "tools/list":
-            return {"tools": _tool_specs()}
+            return {"tools": _tool_specs(self.allow_target)}
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
@@ -133,7 +137,8 @@ class Dispatcher:
                     return denial
             try:
                 out = tools.call(name, args, self.bridge, forced_owner=forced_owner,
-                                 entitlements=entitlements)
+                                 entitlements=entitlements,
+                                 allow_target=self.allow_target)
             except (KeyError, ValueError):
                 raise                       # 잘못된 도구/인자 = 프로토콜 오류(-32602)
             except Exception as e:          # 실행 오류 = 도구 결과로 강등(스펙)

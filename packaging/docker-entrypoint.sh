@@ -99,17 +99,61 @@ fi
 # 첫 라운드가 무의미하게 실패한다.
 # VINC_EMBED=off 로 재빌드 없이 끌 수 있게 둔다 — 배경 작업이 전경을 방해하는
 # 상황에서 env 하나로 물러설 길이 필요하다.
-EMBED_PID=""
+# ⚠ **워커는 감시해야 한다.** 2026-08-05~07 실측: 워커가 기동 직후(`loopback ok ·
+# pending=133`) 사라졌고 38시간 동안 아무도 몰랐다. 파이썬 예외였다면 워커 자신이
+# 로그를 남겼겠지만 흔적이 0줄이었다 — 즉 SIGKILL(커널 cgroup OOM) 또는 SIGSEGV 다.
+# 둘 다 죽는 프로세스가 아무것도 못 남기므로 **부모가 종료코드를 읽어 주는 수밖에 없다**.
+# 그동안 컨테이너는 Healthy · /health 는 200 · 사이드카도 정상이었다. 이 리포가 반복해
+# 겪는 그 모양(기동 정상 · 헬스 200 · 기능만 죽음)의 새 사례다.
+EMBED_PIDFILE="/tmp/vinc-embed.pid"
+EMBED_SUP_PID=""
 if [ "${VINC_EMBED:-on}" = "on" ]; then
-  VINC_SIDECAR="http://127.0.0.1:8787" \
-    python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" \
-      --encode-port "$EMBED_PORT" &
-  EMBED_PID=$!
-  echo "[entrypoint] embed worker started (pid=$EMBED_PID, interval=${VINC_EMBED_INTERVAL:-300}s,"\
-       "encode=127.0.0.1:$EMBED_PORT)"
+  (
+    attempt=0
+    while true; do
+      VINC_SIDECAR="http://127.0.0.1:8787" \
+        python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" \
+          --encode-port "$EMBED_PORT" &
+      cpid=$!
+      echo "$cpid" > "$EMBED_PIDFILE"
+      echo "[entrypoint] embed worker started (pid=$cpid, interval=${VINC_EMBED_INTERVAL:-300}s," \
+           "encode=127.0.0.1:$EMBED_PORT, attempt=$((attempt + 1)))"
+      # ⚠ `set -e` 아래서는 `wait` 가 비영을 돌려주는 순간 이 서브셸이 그대로 죽는다
+      # (그러면 감시자가 사라져 원래 문제로 되돌아간다). `|| rc=$?` 로 감싸 상태만
+      # 받아 온다 — 0 이면 대입이 일어나지 않으므로 초기값 0 이 남는다.
+      rc=0
+      wait "$cpid" || rc=$?
+      attempt=$((attempt + 1))
+      # 128+N = 신호 N 으로 죽었다는 뜻이다. 사인을 말로 옮겨 둔다 — 다음 사람이
+      # 숫자를 찾아보지 않아도 되게.
+      case "$rc" in
+        137) why="OOM(SIGKILL, 137) — 컨테이너 메모리 한도 초과로 커널이 죽였다" ;;
+        139) why="SIGSEGV(139) — 네이티브 크래시(onnxruntime·확장 의심)" ;;
+        143) why="SIGTERM(143) — 정상 종료 신호" ;;
+        0)   why="종료코드 0(루프가 스스로 끝났다 — 상주 모드에서는 비정상)" ;;
+        *)   why="종료코드 $rc" ;;
+      esac
+      echo "[entrypoint] ⚠ embed worker 종료: $why" >&2
+      # `[ ... ] && exit 0` 로 쓰면 조건이 거짓일 때 목록 전체가 비영이 되어 `set -e`
+      # 가 서브셸을 죽인다. if 로 적는다.
+      if [ "$rc" = "143" ]; then
+        exit 0
+      fi
+      if [ "$attempt" -ge "${VINC_EMBED_MAX_RESTARTS:-3}" ]; then
+        echo "[entrypoint] ⚠ embed worker 재기동 상한($attempt) 도달 — 감시 중단." \
+             "벡터 검색은 꺼진 채로 남고 /health 의 embed.pending 이 줄지 않는다." >&2
+        exit 1
+      fi
+      # 재기동 간격을 넉넉히 둔다: 사인이 OOM 이면 즉시 재시도가 같은 고점을 다시
+      # 쳐서 이번엔 사이드카나 MCP 가 대신 죽을 수 있다(킬러는 RSS 가 큰 쪽을 고른다).
+      sleep "${VINC_EMBED_RESTART_BACKOFF:-120}"
+    done
+  ) &
+  EMBED_SUP_PID=$!
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
-  trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$EMBED_PID" 2>/dev/null' TERM INT
+  trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
+        "$EMBED_SUP_PID" 2>/dev/null' TERM INT
 fi
 
 # ── 사이드카 워치독 (2026-08-03 사고 대응) ───────────────────────────────────
@@ -152,7 +196,8 @@ fi
   done
 ) &
 WATCHDOG_PID=$!
-trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$EMBED_PID" "$WATCHDOG_PID" 2>/dev/null' TERM INT
+trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
+      "$EMBED_SUP_PID" "$WATCHDOG_PID" 2>/dev/null' TERM INT
 
 MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
 if [ -n "$VINC_MCP_TOKEN" ]; then

@@ -769,6 +769,26 @@ class VincApp:
             "kind": "embed.pending",
             "chunks": docstore.pending_embed_chunks(r, limit=_int(p.get("limit"), 256))})
 
+    def embed_health(self) -> dict:
+        """`/health` 에 실을 임베딩 백로그 진단 — **정체 자체가 알람이 되게** 한다.
+
+        이 프로젝트가 반복해 겪는 실패 모양은 늘 같다: 기동 정상 · `/health` 200 ·
+        기능만 죽음. 임베딩도 그 목록에 두 번 올랐다(Azure 이관 때 워커가 통째로
+        사라진 것, 그리고 2026-08-05~07 에 워커가 기동 직후 죽어 38시간 방치된 것).
+        두 번 다 **밖에서 볼 수 있는 수치가 없어서** 늦게 발견됐다.
+
+        그래서 세 값을 낸다: `pending`(남은 문서) · `last_applied_at`(워커가 마지막으로
+        실제 일한 시각) · `stored`(색인을 만든 모델). pending 이 있는데 last_applied_at
+        이 오래됐으면 워커가 죽은 것이다 — 그 판정을 사람이나 모니터가 할 수 있다.
+
+        읽기는 **리더 뷰**로 한다. writer 커넥션을 쓰면 긴 적재 잡이 도는 동안 헬스가
+        매달리고, 엔트리포인트의 헬스 폴링(1초 간격)이 타임아웃 나 워치독이 사이드카를
+        재기동시킨다 — 진단이 장애를 만드는 모양이 된다."""
+        r = self._reader()
+        if r is None:
+            return {"error": "no reachable store"}
+        return docstore.embed_model_state(r)
+
     def write_embed_apply(self, body):
         doc_id = _req(body, "doc_id")
         embeddings = body.get("embeddings") or {}
@@ -1115,6 +1135,14 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"status": "degraded", "provision_error": self.app.provision_error}
             elif self.app.store is None:
                 body = {"status": "degraded", "error": "no reachable store"}
+            else:
+                # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
+                # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
+                # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
+                try:
+                    body["embed"] = self.app.embed_health()
+                except Exception as exc:   # noqa: BLE001
+                    body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,

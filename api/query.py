@@ -3032,6 +3032,13 @@ def _chunk_count(store) -> int:
 _CONV_PREFIX = graphmd.CONVENTIONS_DOC_ID + "#"
 
 
+class _UnscopedChunkSearch(RuntimeError):
+    """owner 스코프가 강제됐는데 백엔드가 청크 필터를 보장하지 못할 때.
+
+    일반 예외와 구분하는 이유: 이건 인덱스 부재처럼 **재시도로 풀리는 실패가 아니다.**
+    지연 빌드 후 다시 도는 경로로 새면 같은 무스코프 조회를 한 번 더 하게 된다."""
+
+
 def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
     인덱스·확장 부재는 예외로 전파(호출부가 지연 빌드·error 표면화를 담당)."""
@@ -3350,10 +3357,35 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
         # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
         # 아래에서 안정 정렬 위의 오프셋으로 자른다.
+        # 🔴 **SEC-1 청크 팔 owner 스코프**(위험 감사 1.1 · P0). 여태 owner 는
+        # `_node_fallback_search` 에만 갔고 Chunk 팔(FTS·벡터)에는 안 갔다. 그래서
+        # 호스티드에서 `rows[]` 가 **다른 회원 문서의 본문 발췌**를 실을 수 있었다.
+        # node_hits 는 막혀 있어 눈에 잘 안 띄었고, 회귀 테스트도 노드 폴백만 봤다.
+        # 막을 수단은 이미 있었다 — `Chunk.owner_id` 열이 있고(스키마 v4)
+        # `_filter_clause` 가 owner_id 를 지원한다. **안 쓴 것뿐이다.**
+        chunk_filters = dict(filters or {})
+        scoped_ok = True
+        if owner:
+            chunk_filters["owner_id"] = owner
+            # **fail-closed.** 스코프가 강제된 요청인데 백엔드가 필터를 실제로 적용하는지
+            # 알 수 없으면 청크 팔을 아예 돌리지 않는다. 필터를 무시하는 구현(구 백엔드·
+            # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
+            # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
+            # 답을 줄이고 사유를 남긴다.
+            scoped_ok = bool(getattr(store, "scoped_chunk_search", False))
         pool: list[dict] = []
         try:
-            pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP, filters)
+            if not scoped_ok:
+                raise _UnscopedChunkSearch(
+                    "owner scope requested but this store does not support "
+                    "owner-filtered chunk search")
+            pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
+                               chunk_filters or None)
             base["executed"] = True
+        except _UnscopedChunkSearch as exc:
+            # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
+            base["error"] = f"owner_scope_unsupported: {exc}"
+            base["note"] = base["error"]
         except Exception as exc:
             if _classify_chunk_error(exc) != "index_missing":
                 base["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
@@ -3373,7 +3405,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # 벡터 인덱스는 쿼리 임베딩 검색이 필요할 때만 빌드(dim 주입).
                         vdim = cfg.embedding_dim if query_embedding is not None else None
                         builder(dim=vdim)
-                        pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP, filters)
+                        pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
+                                           chunk_filters or None)
                         base["executed"] = True
                         base["note"] = "search index built on demand"
                     except Exception as exc2:

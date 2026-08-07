@@ -56,6 +56,27 @@ def _session_path() -> str | None:
         return None
 
 
+#: 요청이 사이드카에 **닿지 않은 것이 확실한** 실패. 이때만 메서드와 무관하게
+#: 재시도해도 안전하다 — 서버는 아무것도 보지 못했다.
+_NEVER_ARRIVED = (ConnectionRefusedError, socket.gaierror)
+
+
+def _retryable(exc: BaseException, method: str) -> bool:
+    """이 실패를 다시 보내도 되는가(위험 감사 5.1).
+
+    `URLError` 는 껍데기라 안에 든 `reason` 을 봐야 한다. 연결 거부·DNS 실패는
+    요청이 나가지도 못한 것이므로 재시도가 무해하다. 그 밖의 연결 계열 실패
+    (타임아웃·중간 끊김)는 **서버가 이미 받았을 수 있다** — GET 은 멱등이라
+    그래도 되지만 POST 는 안 된다."""
+    inner = getattr(exc, "reason", None)
+    if isinstance(exc, _NEVER_ARRIVED) or isinstance(inner, _NEVER_ARRIVED):
+        return True
+    if method != "GET":
+        return False
+    return isinstance(exc, (urllib.error.URLError, OSError, TimeoutError)) or \
+        isinstance(inner, (OSError, TimeoutError))
+
+
 class Bridge:
     def __init__(self, base: str | None = None, token: str | None = None,
                  owner: str | None = None):
@@ -74,9 +95,23 @@ class Bridge:
         사이드카가 응답은 한 것이므로 아래에서 바로 반환 — 재시도 대상이 아니다).
         2026-08-03 사고 대응: 그때는 사이드카가 몇 분간 죽어 있어 이걸로 못 막았을
         테지만, 수백ms 급 순간 blip 은 이 재시도가 클라이언트(웹·MCP 툴콜 모두
-        같은 이 메서드를 탄다)에 아예 안 보이게 흡수한다. 대상 op 는 전부
-        멱등/MERGE 이거나 조회라 재시도가 이중 부작용을 안 낸다(community.ts 의
-        "멱등 MERGE" 가정과 동일선상)."""
+        같은 이 메서드를 탄다)에 아예 안 보이게 흡수한다.
+
+        🔴 **그 독스트링이 코드와 달랐다**(위험 감사 5.1). 실제로는 `except Exception`
+        이라 **읽기 타임아웃까지** 재시도했다. 브리지 기본 타임아웃은 60초인데 잡
+        타임아웃은 600초다 — 큰 `doc.put`·`ingest:pack`·`sync/apply-delta` 는 사이드카가
+        아직 처리 중일 때 60초에 끊기고, 그러면 **이미 큐에 들어간 쓰기를 두 번 더**
+        보냈다. MERGE 는 멱등이지만 `_stamp_edge_endpoints` 와 `next_seq` 가 rev·seq 를
+        중복 증가시켜 동기화 에코를 만든다.
+
+        이제 판단 기준은 **요청이 서버에 닿았는가**다:
+
+          · 닿지 않은 것이 확실한 실패(연결 거부·DNS)만 재시도한다. 메서드와 무관.
+          · GET 은 그 밖의 연결 계열 실패도 재시도한다 — 조회는 멱등이라 안전하고,
+            blip 흡수라는 원래 목적이 여기서 성립한다.
+          · POST 의 타임아웃·연결 끊김은 **재시도하지 않는다.** 대신 "적용됐을 수도
+            있다"를 명시한 오류로 돌려준다. 조용히 두 번 보내느니 한 번 물어보게 한다.
+        """
         url = self.base + path
         if params:
             qs = urllib.parse.urlencode(
@@ -100,7 +135,18 @@ class Bridge:
                     return json.loads(e.read().decode("utf-8"))
                 except Exception:
                     return {"error": f"sidecar HTTP {e.code}"}
-            except Exception:
+            except Exception as exc:
+                if not _retryable(exc, method):
+                    if method != "GET":
+                        # 쓰기가 응답 없이 끊겼다. 사이드카가 **이미 적용했을 수도**
+                        # 있으므로 다시 보내지 않는다. 사유를 그대로 실어 호출자가
+                        # 확인 후 판단하게 한다(조용한 중복 쓰기보다 낫다).
+                        return {"error": f"sidecar write unconfirmed: "
+                                         f"{type(exc).__name__}: {exc}",
+                                "retryable": False,
+                                "note": ("the write may already have been applied; "
+                                         "verify before retrying")}
+                    raise
                 attempt += 1
                 if attempt > retries:
                     raise
@@ -112,6 +158,21 @@ class Bridge:
                 return r.status == 200
         except Exception:
             return False
+
+    def health_detail(self) -> dict | None:
+        """사이드카 `/health` **본문**(도달 실패면 None).
+
+        :meth:`health` 는 도달성만 bool 로 돌려주는데, 사이드카가 싣는 진단
+        (스토어 상태·임베딩 백로그)이 그 bool 안에서 통째로 버려진다. 허브의 공개
+        `/health` 가 그것을 그대로 실어 밖에서 한 번의 curl 로 볼 수 있게 한다 —
+        임베딩 정체를 38시간 몰랐던 이유가 정확히 "밖에서 보이는 수치가 없어서"였다."""
+        try:
+            with urllib.request.urlopen(self.base + "/health", timeout=3) as r:
+                if r.status != 200:
+                    return None
+                return json.loads(r.read().decode("utf-8"))
+        except Exception:
+            return None
 
     # ── 생명주기(attach/spawn) ───────────────────────────────────────────────
     def _read_session(self) -> dict | None:
