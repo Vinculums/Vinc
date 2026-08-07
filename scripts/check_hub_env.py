@@ -170,6 +170,26 @@ def _check_state_dir(env_list: list[dict]) -> list[str]:
     return errs
 
 
+def _check_remote_encoder(env_list: list[dict]) -> list[str]:
+    """원격 인코더(`vinc-encode`)를 쓴다면 토큰이 **반드시** 함께 있어야 한다.
+
+    없으면 인코딩 요청이 매번 401 로 떨어진다 — 그런데 워커는 문서 단위로 실패를
+    삼키고 다음 라운드에 다시 잡으므로 **에러 없이 벡터만 영영 안 채워진다**. 이
+    리포가 반복해 겪는 그 모양(기동 정상 · 헬스 200 · 기능만 죽음)이라 게이트로 막는다.
+    둘 다 미설정이 정상이다(= 모델이 허브 안에 있던 옛 구성)."""
+    remote = _value_of(env_list, "VINC_EMBED_REMOTE")
+    if remote is None:
+        return []
+    if not remote:
+        return ["VINC_EMBED_REMOTE 값이 비어 있다(secretRef?). 주소는 평문이어야 한다"]
+    have = {e.get("name") for e in env_list if isinstance(e, dict)}
+    if "VINC_EMBED_ENCODE_TOKEN" not in have:
+        return [f"VINC_EMBED_REMOTE='{remote}' 인데 VINC_EMBED_ENCODE_TOKEN 이 없다 — "
+                f"인코딩이 매번 401 로 떨어지고, 워커가 그 실패를 삼켜 **에러 없이 "
+                f"벡터만 안 채워진다**"]
+    return []
+
+
 def check(env_list: list[dict]) -> int:
     have = {e.get("name") for e in env_list if isinstance(e, dict)}
     missing = [k for k in REQUIRED if k not in have]
@@ -179,7 +199,8 @@ def check(env_list: list[dict]) -> int:
         print(f"::warning::허브 env 권고값 없음: {k} — {EXPECTED[k]}")
 
     bad_paths = (_check_state_dir(env_list) + _check_data_dir(env_list)
-                 + _check_plaintext_and_hosts(env_list))
+                 + _check_plaintext_and_hosts(env_list)
+                 + _check_remote_encoder(env_list))
     for msg in bad_paths:
         print(f"::error::허브 env 값 오류: {msg}", file=sys.stderr)
 
