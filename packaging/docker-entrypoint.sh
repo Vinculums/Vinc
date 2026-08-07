@@ -234,8 +234,6 @@ fi
   done
 ) &
 WATCHDOG_PID=$!
-trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
-      "$EMBED_SUP_PID" "$WATCHDOG_PID" 2>/dev/null' TERM INT
 
 MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
 if [ -n "$VINC_MCP_TOKEN" ]; then
@@ -245,5 +243,62 @@ if [ -n "$VINC_MCP_ISSUER" ]; then
   MCP_ARGS="$MCP_ARGS --oauth --issuer $VINC_MCP_ISSUER"
 fi
 
+# ⚠ **`exec` 를 쓰지 않는다**(2026-08-07 실측 사고). 예전에는 마지막 줄이
+# `exec python -m api.cli mcp serve-http` 였는데, `exec` 는 셸 프로세스를 통째로
+# 대체하므로 **그 순간 위의 trap 이 사라진다.** 그러면 컨테이너 종료 시 SIGTERM 이
+# PID 1(=MCP)에게만 가고 사이드카는 아무 신호도 못 받은 채 컨테이너와 함께
+# SIGKILL 로 죽는다.
+#
+# 그 결과가 조용한 데이터 유실이다: 사이드카가 `app.close()` 를 못 돌려 **WAL 이
+# 체크포인트되지 않고**, 다음 기동에서 `VINC_WAL_REPLAY_TOLERANT=1` 이 그 미완결
+# 꼬리를 버린다(관용 옵션은 복구가 아니라 폐기다). 실측: 임베딩 백로그를 109→0 으로
+# 다 비운 직후 배포 한 번에 **문서 66건의 needs_embed 해제가 사라졌다.** 임베딩만의
+# 문제가 아니다 — 체크포인트 전의 모든 쓰기가 대상이고, 반복된 강제 종료는 오늘 두 번
+# 겪은 FTS 인덱스 손상과도 같은 자리다.
+#
+# 사이드카 쪽은 이미 옳다(`api/server.py` `serve()`: SIGTERM → stop → finally
+# `app.close()`). 신호를 전달할 사람이 없었을 뿐이라, 고칠 곳은 여기 하나다.
 # shellcheck disable=SC2086
-exec python -m api.cli mcp serve-http $MCP_ARGS
+python -m api.cli mcp serve-http $MCP_ARGS &
+MCP_PID=$!
+
+# 순서가 의미다.
+#   ① 워치독 먼저 — 안 그러면 종료 중인 사이드카를 "죽었다"고 보고 되살린다
+#   ② MCP — 새 요청을 끊는다. 사이드카를 먼저 닫으면 처리 중인 요청이 닫힌 스토어를 만난다
+#   ③ 사이드카 — **닫을 때까지 기다린다.** 이 기다림이 이 함수의 존재 이유다
+# Container Apps 의 종료 유예는 기본 30초라 상한 20초는 그 안에 든다.
+shutdown() {
+  trap '' TERM INT                      # 두 번째 신호가 이 절차를 자르지 않게
+  kill "$WATCHDOG_PID" 2>/dev/null || true
+  kill "$EMBED_SUP_PID" 2>/dev/null || true
+  kill "$(cat "$EMBED_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+  kill "$MCP_PID" 2>/dev/null || true
+  sc=$(cat "$SIDECAR_PIDFILE" 2>/dev/null)
+  if [ -n "$sc" ]; then
+    kill "$sc" 2>/dev/null || true
+    i=0
+    while [ "$i" -lt 20 ] && kill -0 "$sc" 2>/dev/null; do
+      i=$((i + 1))
+      sleep 1
+    done
+    if kill -0 "$sc" 2>/dev/null; then
+      # 여기서 침묵하면 다음 기동의 유실 원인을 또 못 찾는다.
+      echo "[entrypoint] ⚠ 사이드카가 20초 안에 닫히지 않았다 — WAL 이 미완결로" \
+           "남을 수 있다(다음 기동에서 최근 쓰기 유실)" >&2
+    else
+      echo "[entrypoint] 사이드카 정상 종료 — 스토어 close 완료(${i}s)"
+    fi
+  fi
+  exit 0
+}
+trap shutdown TERM INT
+
+# `wait` 는 신호가 오면 트랩을 돌리고 돌아온다. MCP 가 스스로 죽은 경우(신호 없이)는
+# 그 종료코드를 그대로 물려준다 — 컨테이너 재시작 판단의 근거가 된다.
+wait "$MCP_PID"
+rc=$?
+echo "[entrypoint] MCP 종료(rc=$rc) — 사이드카 정리" >&2
+shutdown_rc=$rc
+kill "$WATCHDOG_PID" 2>/dev/null || true
+kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+exit "$shutdown_rc"
