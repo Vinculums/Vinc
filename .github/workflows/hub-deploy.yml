@@ -162,6 +162,23 @@ jobs:
           echo "::error::새 리비전이 기동하지 못했다 — 로그 확인 필요" >&2
           exit 1
 
+      # 인코더는 같은 이미지를 쓴다 — 접두·풀링·양자화 규약이 한 파일에 있고, 허브와
+      # 인코더가 다른 리비전을 들면 **에러 없이 벡터만 갈라진다**(접두 유무의 코사인이
+      # 0.95~0.97 이라 눈에 안 띈다). 그래서 같은 SHA 로 함께 올린다.
+      # 앱이 없으면 조용히 건너뛴다 — 인코더 도입 전 상태에서도 이 워크플로가 돌아야 한다.
+      # 스토어를 안 물으므로 단일 writer 순서 조정(위)이 필요 없다.
+      - name: Deploy encoder (same image, skip if absent)
+        run: |
+          set -euo pipefail
+          if ! az containerapp show -n vinc-encode -g vincsRG --output none 2>/dev/null; then
+            echo "vinc-encode 없음 — 건너뛴다"
+            exit 0
+          fi
+          az containerapp update \
+            --name vinc-encode --resource-group vincsRG \
+            --image vincacr.azurecr.io/vinc-hub:${{ github.sha }} --output none
+          echo "vinc-encode 갱신: ${{ github.sha }}"
+
       - name: Verify health (MCP tools/list)
         run: |
           sleep 15
