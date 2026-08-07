@@ -17,6 +17,12 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# 파일 로깅 — 사이드카 즉사·MCP 등록 실패 같은 "조용한 고장"을 재현 없이 사후
+# 추적하기 위한 표면. 릴리스 빌드는 windows_subsystem="windows" 라 stdout 이
+# 사라지므로 로그 파일이 유일한 증거다. `log` 는 매크로(info!/warn!)용 파사드.
+log = "0.4"
+tauri-plugin-log = "2"
+
 # 자동 업데이트(v0.3.0): 데스크탑만 대상 — updater 는 모바일 미지원이므로 target 가드.
 # process 는 설치 후 재기동(relaunch)용.
 # single-instance(v0.5.2): 중복 실행 시 기존 창 포커스 + 조기 종료 → 사이드카 중복

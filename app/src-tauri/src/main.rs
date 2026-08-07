@@ -23,6 +23,9 @@ struct SidecarLog(std::sync::Mutex<Vec<String>>);
 
 impl SidecarLog {
     fn push(&self, line: String) {
+        // 파일 로그에는 **상한 없이** 전부 남긴다 — UI 버퍼는 24줄에서 끊기므로
+        // 그 이후에 나온 진짜 사인(死因)이 조용히 사라지는 걸 막는다.
+        log::warn!(target: "sidecar", "{line}");
         let mut v = self.0.lock().unwrap();
         if v.len() < 24 {   // 상한 — 진단 문자열이 UI 를 삼키지 않게
             v.push(line);
@@ -79,9 +82,12 @@ async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Resul
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     if out.status.success() {
+        log::info!(target: "mcp", "{action} {client} ok");
         Ok(stdout)
     } else {
-        Err(if stderr.trim().is_empty() { stdout } else { stderr })
+        let err = if stderr.trim().is_empty() { stdout } else { stderr };
+        log::warn!(target: "mcp", "{action} {client} 실패: {}", err.trim());
+        Err(err)
     }
 }
 
@@ -131,9 +137,13 @@ fn session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     app.path().home_dir().ok().map(|h| h.join(".vinc").join("session.json"))
 }
 
-/// 세션 파일을 원자적으로 기록(temp → rename). 실패는 무시(진단 편의일 뿐 필수 아님).
+/// 세션 파일을 원자적으로 기록(temp → rename). 실패해도 앱은 계속 가지만(필수 아님)
+/// **MCP 브리지가 attach 못 하는 원인**이 되므로 조용히 넘기지 않고 로그로 남긴다.
 fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
-    let Some(path) = session_path(app) else { return };
+    let Some(path) = session_path(app) else {
+        log::warn!(target: "session", "home_dir 조회 실패 → session.json 미기록 (MCP 브리지 attach 불가)");
+        return;
+    };
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -141,8 +151,14 @@ fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
         "{{\"port\":{},\"token\":\"{}\",\"pid\":{},\"v\":\"0.1.9\"}}",
         port, token, std::process::id());
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, body).is_ok() {
-        let _ = std::fs::rename(&tmp, &path);
+    let wrote = std::fs::write(&tmp, body).and_then(|_| std::fs::rename(&tmp, &path));
+    match wrote {
+        Ok(()) => log::info!(target: "session", "session.json 기록 {}", path.display()),
+        Err(e) => log::warn!(
+            target: "session",
+            "session.json 기록 실패: {e} ({}) — MCP 브리지 attach 불가",
+            path.display(),
+        ),
     }
 }
 
@@ -174,6 +190,27 @@ fn main() {
             }
         }));
     }
+    // 로깅은 single-instance **다음, 나머지 플러그인보다 먼저** — 이후 플러그인 초기화와
+    // setup() 의 사이드카 spawn 이 전부 로그에 잡히게. 로그 파일 위치(identifier 기준):
+    //   Windows  %APPDATA%\app.vinc.desktop\logs\vinc.log
+    //   macOS    ~/Library/Logs/app.vinc.desktop/vinc.log
+    //   Linux    ~/.local/share/app.vinc.desktop/logs/vinc.log
+    // Webview 타깃은 쓰지 않는다 — 러스트 로그를 웹뷰 콘솔로 되쏘면 CSP·성능만 건드리고
+    // 진단 가치는 파일에 이미 다 있다.
+    builder = builder.plugin(
+        tauri_plugin_log::Builder::new()
+            .targets([
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                    file_name: Some("vinc".into()),
+                }),
+            ])
+            .level(log::LevelFilter::Info)
+            // 오프라인 데스크탑이라 로그를 수거해 갈 사람이 없다 → 무한 증식 금지.
+            .max_file_size(2 * 1024 * 1024)
+            .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+            .build(),
+    );
     let app = builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -210,7 +247,15 @@ fn main() {
                     "--parent-pid",
                     &parent_pid,
                 ]);
-            let (mut events, child) = sidecar.spawn()?;
+            let (mut events, child) = sidecar.spawn().inspect_err(|e| {
+                // spawn 자체가 실패하면 CommandEvent 조차 안 온다 → 여기서 안 남기면 증거 0.
+                log::error!(target: "sidecar", "spawn failed: {e}");
+            })?;
+            log::info!(
+                target: "sidecar",
+                "spawned v{} pid={} port={} parent={}",
+                app.package_info().version, child.pid(), port, parent_pid,
+            );
             *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
             // MCP 브리지가 이 사이드카를 찾아 붙도록 세션 파일 기록(A1.9).
             write_session(&app.handle(), port, &token);
@@ -245,6 +290,9 @@ fn main() {
         .expect("error while building Vinc");
     app.run(|app, event| {
         if let RunEvent::Exit = event {
+            // 정상 종료의 흔적 — 다음 실행의 로그가 이 줄 없이 시작하면 직전 실행은
+            // 크래시·강제종료였다는 뜻이다(고아 사이드카 조사 시 첫 단서).
+            log::info!(target: "shell", "exit — 세션 파일 제거 · 사이드카 회수");
             // 세션 파일 제거(정상 종료) — 브리지가 stale 세션에 붙지 않게. 크래시로
             // 남을 수 있어 브리지는 pid 생존 + /health 로 재검증한다(파일 존재만 신뢰 X).
             if let Some(path) = session_path(app) {
