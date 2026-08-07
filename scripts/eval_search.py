@@ -107,6 +107,41 @@ def load_queries(path: str) -> list[dict]:
     return out
 
 
+def load_evalset(path: str) -> list[dict]:
+    """정본 평가셋(`scripts/fixtures/evalset.json`) — `make_queries.py` 산출물.
+
+    JSONL(`--queries`)과 달리 생성 규칙·코퍼스·집계까지 함께 들고 있어, 어떤 조건에서
+    만든 질의인지가 파일 하나로 확인된다. 그게 이 파일이 존재하는 이유다(E1)."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return [{"query": str(q["query"]), "doc_id": str(q["doc_id"]),
+             "lang": q.get("lang")}
+            for q in (data.get("queries") or []) if q.get("query") and q.get("doc_id")]
+
+
+def assert_gold_present(store, qs: list[dict], owner: str | None) -> None:
+    """정답 문서가 **이 스토어에 실제로 있는지** 먼저 본다.
+
+    🔴 없으면 즉시 세운다. 평가셋의 doc_id 는 `seed_bilingual.py` 가 심은 코퍼스를
+    가리키므로, 다른 스토어에 대고 돌리면 전 질의가 miss 가 되어 Recall 0.000 이
+    **정상 출력처럼** 나온다. 이 리포가 반복해 당한 실패 양식(기동 정상·수치 정상 모양·
+    내용만 틀림)이 평가 도구에서 재현되는 것이라, 조용한 0 점 대신 오류로 끝낸다."""
+    want = {q["doc_id"] for q in qs}
+    where = "WHERE d.owner_id = $o " if owner else ""
+    rows = store.run(f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS id",
+                     {"o": owner} if owner else None) or []
+    have = {r["id"] for r in rows}
+    hit = want & have
+    if not hit:
+        raise SystemExit(
+            f"평가셋의 정답 문서가 이 스토어에 하나도 없다(정답 {len(want)}개, "
+            f"스토어 문서 {len(have)}개). scripts/seed_bilingual.py 로 코퍼스를 먼저 "
+            f"심거나, --owner 를 확인할 것. 이대로 돌리면 전부 miss 라 Recall 0.000 이 "
+            f"정상 결과처럼 보인다.")
+    if len(hit) < len(want):
+        print(f"⚠ 정답 문서 {len(want) - len(hit)}/{len(want)}개가 스토어에 없다 — "
+              f"그 질의는 필연적으로 miss 다(부분 시딩으로 보인다).", file=sys.stderr)
+
+
 def lang_of(text: str) -> str:
     """질의의 문자 계열. 언어별로 갈라 봐야 토큰 청킹·다국어 모델의 효과가 보인다
     (영어는 512 초과 손실이 전체 토큰의 5.7% 인데 한국어는 82% 다 — 섞어 재면 묻힌다)."""
@@ -141,7 +176,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", help="스토어 데이터 경로(미지정 시 기본 해석)")
     ap.add_argument("--owner")
-    ap.add_argument("--queries", help="사람이 쓴 질의 JSONL(권장)")
+    ap.add_argument("--queries", help="사람이 쓴 질의 JSONL")
+    ap.add_argument("--evalset", nargs="?", const=str(
+        Path(__file__).resolve().parent / "fixtures" / "evalset.json"),
+        help="정본 평가셋 JSON(권장). 값 없이 주면 scripts/fixtures/evalset.json")
     ap.add_argument("--limit", type=int, default=50, help="부트스트랩 질의 수")
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--json", action="store_true", help="결과를 JSON 으로")
@@ -153,12 +191,19 @@ def main() -> int:
         print("스토어에 도달할 수 없다", file=sys.stderr)
         return 1
 
-    qs = load_queries(args.queries) if args.queries else \
-        bootstrap_queries(store, args.owner, args.limit)
+    if args.evalset:
+        qs, src = load_evalset(args.evalset), args.evalset
+    elif args.queries:
+        qs, src = load_queries(args.queries), args.queries
+    else:
+        qs = bootstrap_queries(store, args.owner, args.limit)
+        src = f"bootstrap(title, n={len(qs)})"
     if not qs:
         print("질의가 없다 — 코퍼스가 비었거나 제목이 없다", file=sys.stderr)
         return 1
-    src = args.queries or f"bootstrap(title, n={len(qs)})"
+    # 라벨이 있는 평가셋은 정답 실존을 먼저 확인한다(조용한 0 점 금지).
+    if args.evalset or args.queries:
+        assert_gold_present(store, qs, args.owner)
 
     encode_url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
     vec_note = ""
@@ -185,6 +230,16 @@ def main() -> int:
                     vec_note = f"임베딩 실패 {failures}건 — 마지막: {type(exc).__name__}"
 
         res = q.search(text, top_k=args.top_k, owner=args.owner, cfg=cfg, store=store)
+        # 🔴 백엔드가 실패를 말했으면 **그것을 측정값으로 바꾸지 않는다.** `search` 는
+        # index_missing·extension_unavailable 같은 사유를 `error` 로 정직하게 싣는데,
+        # 그걸 무시하면 전 질의가 0 행이 되어 "Recall 0.000" 이라는 **정상 모양의 표**가
+        # 나온다. 검색이 나쁜 것과 검색이 죽은 것은 다른 사실이고, 이 리포가 반복해서
+        # 당한 실패가 정확히 그 둘을 못 가린 것이다(무음 강등 금지).
+        if res.get("error"):
+            raise SystemExit(
+                f"검색 백엔드가 실패를 보고했다 — 측정이 성립하지 않는다.\n"
+                f"  질의: {text!r}\n  사유: {res['error']}\n"
+                f"이 상태로 나온 0.000 은 품질이 아니라 고장이다. 원인을 먼저 없앨 것.")
         s = score(_docs_of(store, res.get("rows") or []), truth, args.top_k)
         per["fts"].append(s)
         by_lang[lang]["fts"].append(s)
