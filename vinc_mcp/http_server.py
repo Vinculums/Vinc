@@ -289,7 +289,9 @@ class MCPHTTPApp:
             if d is None:
                 while len(self._sessions) >= MAX_SESSIONS:
                     self._sessions.pop(next(iter(self._sessions)))
-                d = Dispatcher(self.bridge)
+                # 허브는 **이미 원격 그래프 자신**이다 — `target` 을 내보내지도,
+                # 받지도 않는다(위험 감사 5.5). 데스크탑 stdio 만 그 선택을 갖는다.
+                d = Dispatcher(self.bridge, allow_target=False)
                 self._sessions[session_id] = d
             return d
 
@@ -702,8 +704,21 @@ class _Handler(BaseHTTPRequestHandler):
             bridge = getattr(self.app, "bridge", None)
             if bridge is not None:
                 t0 = time.time()
-                body["sidecar"] = {"reachable": bridge.health(),
+                # 본문까지 받아 온다 — 도달성 bool 만 보면 사이드카가 싣는 진단이
+                # 통째로 버려진다. 그 진단 중 하나가 임베딩 백로그이고, 그게 안
+                # 보여서 워커의 죽음을 38시간 몰랐다(2026-08-05~07).
+                detail = bridge.health_detail() if hasattr(bridge, "health_detail") else None
+                body["sidecar"] = {"reachable": detail is not None,
                                    "check_ms": round((time.time() - t0) * 1000)}
+                if detail:
+                    if detail.get("status") and detail["status"] != "ok":
+                        body["sidecar"]["store"] = detail["status"]
+                        for k in ("provision_error", "error"):
+                            if detail.get(k):
+                                body["sidecar"][k] = detail[k]
+                    # 이행 진행도는 **최상위**에 둔다. 알람이 걸릴 자리라 파묻지 않는다.
+                    if isinstance(detail.get("embed"), dict):
+                        body["embed"] = detail["embed"]
             return self._json(200, body)
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 

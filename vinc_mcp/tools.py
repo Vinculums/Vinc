@@ -81,6 +81,15 @@ _FRAGMENT_SCHEMA = {
 }
 
 
+#: 쓰기·삭제 도구의 owner 파라미터 선언. 읽기 도구는 예전부터 `owner` 를 스키마에
+#: 실었는데 삭제 3종만 빠져 있었다 — 핸들러는 읽는데 계약에는 없는 상태였다
+#: (위험 감사 5.5). 원격에서는 이 값이 무시되고 키에서 해석한 owner 로 덮인다.
+_OWNER_PROP = {"owner": {
+    "type": "string",
+    "description": "Owner scope. Ignored on the hosted graph (the account key fixes it); "
+                   "locally it defaults to this machine's owner."}}
+
+
 def _owner(args: dict, bridge: Bridge) -> str:
     return args.get("owner") or bridge.owner
 
@@ -168,28 +177,33 @@ def _t_ingest(args, bridge):
     return bridge.request("POST", "/ingest/fragment", body=fragment)
 
 
+# ⚠ 삭제 3종은 오래 `args.get("owner")` 를 **직접** 읽었다. 그런데 그 `owner` 는
+# 어느 스키마에도 선언돼 있지 않았고(호스트가 넣을 방법이 없다), 로컬 stdio 에는
+# forced_owner 도 없어서 값이 항상 None 이었다 — 즉 **무스코프 삭제**였다. 계약에
+# 없는 파라미터에 스코프가 걸려 있었으니, 문서를 읽고 안전하다고 판단할 방법도
+# 없었다(위험 감사 5.5).
+#
+# 이제 읽기 도구와 **같은 규칙**을 쓴다: `_owner(args, bridge)`. 원격은 call() 이
+# forced_owner 로 덮어 멀티테넌트를 봉쇄하고, 로컬은 bridge.owner 로 스코프된다.
+# 로컬을 스코프해도 안전한 근거: 같은 로컬 스토어에서 `_t_search`·`_t_recall` 등
+# 읽기 도구가 이미 `_owner(args, bridge)` 로 **엄격 술어**(`owner_id = $owner`)를
+# 태워 정상 동작한다. 그 노드들이 그 owner 로 스탬프돼 있다는 뜻이다. 스탬프가
+# 없는 스토어라면 읽기부터 비어 있었을 것이므로, 삭제만 넓게 열어 둘 이유가 없다.
 def _t_delete(args, bridge):
-    # SEC-3: forced_owner(원격)를 body 로 실어 사이드카가 owner 스코프 삭제를 하게
-    # 한다. args["owner"] 는 call() 에서 원격이면 forced_owner 로 덮여 있고(멀티테넌트
-    # 봉쇄), 로컬 stdio 면 없음 → owner=None → 무스코프(단일유저 현행). bridge.owner
-    # 폴백을 **쓰지 않는다**: 로컬을 실수로 스코프해 자기 노드 삭제가 깨지지 않게.
     return bridge.request("POST", "/delete",
-                          body={"node": args["node_id"], "owner": args.get("owner")})
+                          body={"node": args["node_id"], "owner": _owner(args, bridge)})
 
 
 def _t_merge(args, bridge):
-    # SEC-3: 위와 동일 — owner 를 실어 남의 concept 병합·재지향·삭제를 막는다.
     return bridge.request("POST", "/merge-nodes",
                           body={"keep": args["keep_id"], "drop": args["drop_id"],
-                                "owner": args.get("owner")})
+                                "owner": _owner(args, bridge)})
 
 
 def _t_delete_edge(args, bridge):
-    # SEC-3: vinc_delete 동형 — 원격은 forced_owner 가 args["owner"] 를 덮고,
-    # 로컬 stdio 는 미전송 → 무스코프(단일유저 현행).
     return bridge.request("POST", "/delete-edge",
                           body={"from": args["from_id"], "to": args["to_id"],
-                                "type": args["type"], "owner": args.get("owner")})
+                                "type": args["type"], "owner": _owner(args, bridge)})
 
 
 # ── 문서 정본(Chunk=SSoT, D45 P4) — 편집 표면 도구 ────────────────────────────
@@ -415,6 +429,7 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
                         "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."},
+            **_OWNER_PROP,
         }, "required": ["node_id"]},
         "run": _t_delete,
     },
@@ -434,6 +449,7 @@ TOOLS: list[dict] = [
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
             "type": {"type": "string",
                      "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"},
+            **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,
     },
@@ -449,6 +465,7 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "keep_id": {"type": "string", "description": "Concept id to keep (survivor)."},
             "drop_id": {"type": "string", "description": "Concept id to merge in and delete."},
+            **_OWNER_PROP,
         }, "required": ["keep_id", "drop_id"]},
         "run": _t_merge,
     },
@@ -554,11 +571,20 @@ _TARGET_PROP = {"target": {
                    "(VINC_REMOTE_MCP_TOKEN); its owner is fixed by that key."}}
 
 
-def specs() -> list[dict]:
+def specs(*, allow_target: bool = True) -> list[dict]:
+    """도구 목록. ``allow_target=False`` 면 `target` 프로퍼티를 주입하지 않는다.
+
+    **왜 프로파일로 가르나**(위험 감사 5.5). `target` 은 데스크탑 커넥터 하나로
+    로컬·원격을 고르라고 만든 것이다(A1.9 A2). 그런데 주입이 무조건이라 **허브가
+    내보내는 목록에도** 실렸고, 허브에서 `target:"remote"` 가 오면 허브가 자기
+    자신 밖으로 아웃바운드를 시도한다 — 서버가 스스로에게 클라이언트가 되는,
+    의도한 적 없는 경로다. 허브(`vinc_mcp.http_server`)는 False 로 부른다."""
     out = []
     for t in TOOLS:
         sch = t["inputSchema"]
-        props = {**sch.get("properties", {}), **_TARGET_PROP}
+        props = {**sch.get("properties", {})}
+        if allow_target:
+            props.update(_TARGET_PROP)
         spec = {"name": t["name"], "description": t["description"],
                 "inputSchema": {**sch, "properties": props}}
         ann = _ANNOTATIONS.get(t["name"])
@@ -622,12 +648,19 @@ SHRINKERS = {"vinc_search": _shrink_search_result}
 
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
-         entitlements: dict | None = None) -> dict:
+         entitlements: dict | None = None,
+         allow_target: bool = True) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
+    # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
+    # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
+    if not allow_target and target != "local":
+        raise ValueError(
+            "target is not available on this server: this endpoint IS the remote "
+            "graph. Drop the target argument.")
     # owner 강제 스탬핑(B-B2): 원격 인증경로가 소유자를 해석했으면 클라이언트가 보낸
     # owner 를 **덮어쓴다** → 한 회원의 토큰으로 남의 스코프에 못 닿는다(멀티테넌트
     # 봉쇄). forced_owner 없음(로컬 stdio/정적)이면 기존 단일유저 동작 유지.

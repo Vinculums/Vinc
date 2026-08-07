@@ -115,6 +115,69 @@ def test_node_fallback_search_scopes_concept_and_record():
     assert "owner_id" not in seen["cypher"]
 
 
+# ── 1b) 청크 팔: FTS·벡터에 owner 필터가 실제로 내려가는가 (위험 감사 1.1 · P0) ──
+# 이 절이 **없어서** 결함이 살아 있었다. 위 `test_node_fallback_search_scopes_*` 는
+# 노드 폴백만 봤고, 그쪽은 막혀 있었다. 정작 문서 **본문 발췌**를 싣는 청크 팔에는
+# owner 가 한 번도 안 갔다 — 호스티드에서 남의 문서 본문이 rows[] 로 나갈 수 있었다.
+class _ChunkSpy:
+    """청크 팔에 넘어온 filters 를 기록하는 스토어 더블."""
+
+    scoped_chunk_search = True          # owner 필터를 실제로 적용한다는 선언
+
+    def __init__(self):
+        self.ft_filters: list = []
+        self.vec_filters: list = []
+
+    def run(self, cypher, params=None):
+        return []                       # 노드 폴백은 이 테스트의 관심사가 아니다
+
+    def fulltext_search(self, text, k, filters=None):
+        self.ft_filters.append(filters)
+        return [{"id": "d1#0", "text": "본문", "score": 1.0}]
+
+    def vector_search(self, embedding, k, filters=None):
+        self.vec_filters.append(filters)
+        return [{"id": "d1#0", "text": "본문", "distance": 0.1}]
+
+
+def test_search_pushes_owner_into_both_chunk_arms():
+    s = _ChunkSpy()
+    q.search("hello", owner=OWNER, store=s, query_embedding=[0.1] * 8)
+    assert s.ft_filters and s.ft_filters[0].get("owner_id") == OWNER, s.ft_filters
+    assert s.vec_filters and s.vec_filters[0].get("owner_id") == OWNER, s.vec_filters
+
+
+def test_search_keeps_existing_filters_alongside_owner():
+    """layer·doc_id 푸시다운(E3)과 공존해야 한다 — owner 가 덮어쓰면 안 된다."""
+    s = _ChunkSpy()
+    q.search("hello", owner=OWNER, store=s, filters={"layer": "plan"})
+    f = s.ft_filters[0]
+    assert f.get("owner_id") == OWNER and f.get("layer") == "plan", f
+
+
+def test_search_stays_global_without_owner():
+    """로컬 단일 사용자는 기존 전역 동작 유지 — owner_id 를 넣지 않는다."""
+    s = _ChunkSpy()
+    q.search("hello", store=s)
+    assert "owner_id" not in (s.ft_filters[0] or {}), s.ft_filters
+
+
+def test_search_refuses_chunk_arms_when_store_cannot_scope():
+    """fail-closed — 스코프를 보장 못 하는 스토어에는 청크 팔을 아예 안 돌린다.
+
+    조용히 무스코프로 답하는 것이 정확히 이 결함이었다. 답을 줄이고 사유를 남긴다."""
+
+    class _Unscoped(_ChunkSpy):
+        scoped_chunk_search = False
+
+    s = _Unscoped()
+    res = q.search("hello", owner=OWNER, store=s)
+    assert not s.ft_filters, "무스코프 스토어에 청크 검색을 돌렸다"
+    assert not res.get("rows"), res.get("rows")
+    assert str(res.get("error") or "").startswith("owner_scope_unsupported"), res
+    assert "node_hits" in res      # owner 로 이미 걸러진 노드 폴백은 계속 답한다
+
+
 # ── 2) 전송 층: MCP 도구가 owner 를 실어 보내는가 ────────────────────────────
 def test_every_read_tool_sends_owner_to_sidecar():
     """엔진이 옳아도 도구가 owner 를 안 보내면 스코프가 없다(실제 결함이었음)."""

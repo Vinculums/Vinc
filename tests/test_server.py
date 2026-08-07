@@ -359,6 +359,12 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
     """
 
     class _Reader:
+        # SEC-1: 실제 리더 뷰를 흉내내는 더블이므로 owner 필터 적용을 선언한다.
+        # 이 표식이 없으면 `api.query.search` 가 owner 스코프 요청에서 청크 팔을
+        # 아예 돌리지 않는다(fail-closed — 위험 감사 1.1). 이 테스트는 owner="u" 로
+        # 검색하므로 표식이 없으면 벡터 팔 자체가 안 돈다.
+        scoped_chunk_search = True
+
         def __init__(self, outer): self.o = outer
         def run(self, cypher, params=None): return []
         def fulltext_search(self, t, k, f=None): return [{"id": "c1", "text": "본문", "score": 1.0}]
