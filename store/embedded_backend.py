@@ -66,6 +66,61 @@ def _bundled_ext_path(ext: str) -> str | None:
     return None
 
 
+def _decode_native(raw) -> str:
+    """OS/엔진이 만든 바이트열을 사람이 읽는 문자열로. UTF-8 → 로케일 → ANSI 순서."""
+    if not isinstance(raw, (bytes, bytearray)):
+        return str(raw)
+    import locale
+    cands = ["utf-8", locale.getpreferredencoding(False)]
+    if os.name == "nt":
+        cands.append("mbcs")      # 시스템 ANSI 코드페이지(한국어 Windows = cp949)
+    for enc in cands:
+        if not enc:
+            continue
+        try:
+            return bytes(raw).decode(enc).strip()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return bytes(raw).decode("utf-8", "replace").strip()
+
+
+def _driver_error_text(exc: BaseException) -> str:
+    """드라이버 예외 → **사람이 읽는 사유**. 못 읽는 예외를 그대로 흘리지 않는다.
+
+    **왜 이 함수가 필요한가 (2026-08-07 실측 — ladybug 0.18.0 · win_amd64).**
+    ladybug 의 pybind 경계(`Connection.execute` → `py_connection.query`)는 엔진이
+    만든 `std::string` 을 **strict UTF-8** 로만 디코드한다. 그런데 그 문자열에는
+    엔진이 아니라 **OS 가 만든 문구**가 섞여 들어온다 — `LOAD EXTENSION` 이
+    실패할 때 Windows `LoadLibrary` 의 오류 문구가 대표적이고, 그건 UTF-8 이
+    아니라 **시스템 ANSI 코드페이지**다(한국어 Windows = cp949). 그러면 디코드가
+    터지고 드라이버는 원래 예외 **대신** `UnicodeDecodeError` 를 올린다:
+
+        UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc1 in position 165
+
+    즉 진짜 사유가 예외 하나로 통째로 증발한다. 실제로 증발한 원문은 이거였다 —
+    `IO exception: Failed to load library: <경로> which is needed by extension:
+    vector. Error: 지정된 모듈을 찾을 수 없습니다.`(= Windows 126, 확장이 링크한
+    의존 DLL 미해결). 파일은 멀쩡히 있는데 말이다.
+
+    이걸 복구하지 않으면 **호출부의 사유 분류가 전부 빗나간다**: `_load_ext` 는
+    `"transaction" in msg` 같은 부분문자열로 사유를 가르는데, 손에 들어오는
+    문자열이 코덱 얘기뿐이라 어느 갈래에도 안 걸리고 전부 마지막 갈래("확장
+    미가용 — 오프라인 배포 시 번들 필요")로 떨어진다. 그건 이 파일이 2026-07-31
+    에 하지 말자고 못 박은 **바로 그 오진**이다(운영자를 패키징 문제로 보낸다).
+
+    다행히 원문 바이트는 `UnicodeDecodeError.object` 에 그대로 남아 있다 — 여기서
+    되살린다. 예외 체인도 따라간다(드라이버가 감싸 올릴 수 있으므로)."""
+    cur: BaseException | None = exc
+    for _ in range(5):        # 체인 추적 상한 — 순환/과도 추적 방지
+        if cur is None:
+            break
+        if isinstance(cur, UnicodeDecodeError):
+            return (f"{_decode_native(cur.object)} "
+                    f"[드라이버가 {cur.encoding} 로 디코드하지 못해 버린 원문을 복원함]")
+        cur = cur.__cause__ or cur.__context__
+    return str(exc)
+
+
 def _filter_clause(var: str, filters: dict | None, params: dict) -> str:
     """스코프 필터를 WHERE 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params
     를 in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이 WHERE 로 붙인다."""
@@ -276,7 +331,11 @@ class EmbeddedBackend:
             # executed=False 로 처리한다. ⚠ 이유를 **삼키지 않는다**: 여태 None 만
             # 돌려줘 "no reachable store" 한 줄로 뭉개졌고, 자원 고갈(MemoryError)이
             # 스코프 격리 실패처럼 보이는 오진을 낳았다(로컬 Windows 10건의 정체).
-            cls.last_open_error = f"{type(exc).__name__}: {exc}"
+            # `_driver_error_text` 를 거친다 — open 실패 사유에도 OS 문구(경로·권한·
+            # WAL 재생)가 섞이고, 그게 비 UTF-8 이면 드라이버가 UnicodeDecodeError 로
+            # 바꿔 올려 여기 남는 게 코덱 문구뿐이 된다. 그럼 "이유를 삼키지 않는다"
+            # 는 이 자리의 목적이 그대로 무산된다(§ _driver_error_text).
+            cls.last_open_error = f"{type(exc).__name__}: {_driver_error_text(exc)}"
             # stdout 에도 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
             # 예외 문구를 어디서도 못 봤다(배너의 "driver": null 한 줄뿐).
             print(f"[embedded_backend] store open failed: {cls.last_open_error}",
@@ -427,13 +486,18 @@ class EmbeddedBackend:
                 f"번들 필요(§9·G0). 기동 시 로드되지 않았다(재시작 후 재확인).")
         c = self._conn
         p = _bundled_ext_path(ext)
+        bundled_err = ""
         if p:
             try:
                 c.execute(f"LOAD EXTENSION '{p}'")
                 self._exts.add(ext)
                 return
             except Exception as exc:
-                if "already" in str(exc).lower():
+                # ⚠ 사유 판별은 **반드시** `_driver_error_text` 를 거친다 — 드라이버가
+                # 원문을 못 읽고 UnicodeDecodeError 로 바꿔 올리면 `str(exc)` 는 코덱
+                # 얘기라 여기 "already" 도, 아래 "transaction" 도 영영 안 걸린다.
+                bundled_err = _driver_error_text(exc)
+                if "already" in bundled_err.lower():
                     self._exts.add(ext)
                     return
                 # 번들 경로 로드 실패 → 아래 이름 기반 폴백(dev)
@@ -441,10 +505,17 @@ class EmbeddedBackend:
             c.execute(f"LOAD EXTENSION {ext}")
             self._exts.add(ext)
         except Exception as exc:
-            low = str(exc).lower()
+            text = _driver_error_text(exc)
+            low = text.lower()
             if "already" in low or "statically linked" in low:
                 self._exts.add(ext)
                 return
+            # 두 경로가 다 실패했으면 **둘 다** 말한다. 이전엔 이름 기반 실패만
+            # 올려서, 번들 경로에서 난 진짜 사유(예: 의존 DLL 미해결)가 캐시 부재
+            # 문구에 덮여 사라졌다 — 정확히 반대 방향을 가리키는 진단이 된다.
+            detail = text
+            if bundled_err and bundled_err != text:
+                detail = f"번들 경로({p}) → {bundled_err} · 이름 기반 → {text}"
             # ⚠ **아는 것만 말한다**(2026-07-31 실측). LOAD 가 실패하는 이유가 확장
             # 부재만은 아니다: 다른 커넥션이 쓰기 트랜잭션을 쥐고 있으면 엔진이
             # "Cannot start a new write transaction" 로 거절한다(실측 — 리더의 지연
@@ -452,10 +523,47 @@ class EmbeddedBackend:
             # 로 감싸면 운영자를 패키징 문제로 보내는 **틀린 진단**이 된다. 확장과
             # 무관한 사유는 원문 그대로 올린다.
             if "transaction" in low:
+                if text != str(exc):
+                    # 원본 예외는 읽을 수 없는 형태다(코덱 문구뿐) — 복원본으로 올린다.
+                    raise RuntimeError(text) from exc
                 raise
+            # 확장 **파일은 찾았는데** 그게 링크한 라이브러리가 안 잡힌 경우(실측
+            # 2026-08-07, Windows 126). 여기서 "번들 필요" 라고 하면 이미 있는 파일을
+            # 또 넣게 만든다 — 필요한 건 의존 라이브러리다. 처방을 바꿔 말한다.
+            #
+            # ⚠ 판정은 `low`(이름 기반)가 아니라 **`detail`(두 경로 합본)**으로 한다.
+            # 번들 경로에서 의존 실패가 나고 이름 기반은 "설치 안 됨"으로 떨어지는
+            # 조합이 실재하는데(G0 테스트: 캐시를 치워 두고 번들만 준다), 이름 기반만
+            # 보면 "번들 필요" 라고 답하게 된다 — 번들은 있었고 본문에 그 실패가
+            # 그대로 찍혀 있는데도. 스스로 모순된 진단이다.
+            if "failed to load library" in detail.lower():
+                # Windows 에서 이 갈래에 떨어지는 사유는 **하나로 수렴한다**(2026-08-07
+                # 실측, ladybug 0.18.0 · win_amd64). 확장 3종(algo·fts·vector)의 PE
+                # 임포트 테이블을 전수로 읽으면 비시스템 의존 중 못 잡히는 것이
+                # `libssl-3-x64.dll`·`libcrypto-3-x64.dll` 둘뿐이고(오류 126) 나머지
+                # (MSVCP140·VCRUNTIME140·api-ms-win-crt-*)는 전부 잡힌다. 확장은 그
+                # **비변형 이름**을 요구하는데 ladybug 휠은 delvewheel 이 변형한 이름
+                # (`libssl-3-x64-<hash>.dll`)만 `ladybug.libs` 에 동봉한다. 즉 상류
+                # 바이너리의 의존 이름 불일치이고 Vinc 코드 결함이 아니다.
+                #
+                # 그래서 처방이 갈린다: 번들을 더 넣어도 안 되고, **OpenSSL 3 을 DLL
+                # 검색 경로에 올리면 그 자리에서 해소된다**(실측: PATH 에 올린 직후
+                # `LOAD EXTENSION vector` 성공). Git for Windows 가 그 이름 그대로
+                # `mingw64/bin` 에 두므로 Git Bash 에서 돌리면 우연히 통과하고
+                # PowerShell 에서는 실패한다 — 같은 리비전, 같은 머신인데 셸에 따라
+                # 결과가 갈리는 정체가 이것이다.
+                hint = ""
+                if os.name == "nt":
+                    hint = (" Windows 에서는 대개 OpenSSL 3(libssl-3-x64.dll·"
+                            "libcrypto-3-x64.dll)이 DLL 검색 경로에 없어서다 — "
+                            "그 둘이 있는 디렉터리를 PATH 에 올려라.")
+                raise RuntimeError(
+                    f"임베디드 {ext} 확장 미가용({self.driver_name}) — 확장 파일은 찾았으나 "
+                    f"그것이 요구하는 의존 라이브러리를 로드하지 못했다(번들 누락이 아니다)."
+                    f"{hint} 원인: {detail}") from exc
             raise RuntimeError(
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
-                f"번들 필요(§9·G0). 원인: {exc}") from exc
+                f"번들 필요(§9·G0). 원인: {detail}") from exc
 
     def drop_vector_index(self) -> None:
         """**벡터(HNSW) 인덱스만** 제거(멱등). 쓰기 경로가 불러야 하는 건 이쪽이다.
