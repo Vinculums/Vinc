@@ -1,6 +1,6 @@
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: 5e4f278309470f7bc09ea6e0fa6bc9e9337076b9f29baab71412b6a8a58700c6 */
+/* sync-sha256: 1c0659abde47174035f946d4bef86a7a1b04a070c16de74caf5c766bca8f57c8 */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -53,8 +53,8 @@
   --lh-normal: 1.55;
   --lh-prose: 1.7;
   --lh-tight: 1.15;
-  --font-heading: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
-  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
+  --font-heading: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
   /* Depth */

@@ -2,7 +2,7 @@
    원본: 허브 tokens.css → data-skin 스코프 재작성. */
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: c45ab82d4f0d92800f89d91ad62934c80ea3ab2a57751ab2a42d2a5277a37611 */
+/* sync-sha256: 6a8a3f77d551112a37186a14320bc2d42ca05171cdf690aef64e845921639474 */
 :root[data-skin="web"] {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -55,8 +55,8 @@
   --lh-normal: 1.55;
   --lh-prose: 1.7;
   --lh-tight: 1.15;
-  --font-heading: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
-  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
+  --font-heading: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
   /* Depth */
