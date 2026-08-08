@@ -143,7 +143,7 @@ env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests
 ```
 
 전역 `PYTHONHOME`/`PYTHONPATH` 가 시스템 파이썬을 가리켜서 그냥 부르면 venv 조차 깨진다.
-**정상은 934 passed · 4 skipped**(2026-08-09 기준. 늘어나는 값이니 중요한 건 skip=4).
+**정상은 938 passed · 4 skipped**(2026-08-09 기준. 늘어나는 값이니 중요한 건 skip=4).
 skip 이 135 면 인터프리터를 잘못 잡은 것이고, 그
 상태에서 "main 과 똑같이 실패한다"는 대조는 **무효다**(실제로 그걸 믿고 머지했다가
 CI 에서 걸렸다).
