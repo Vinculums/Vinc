@@ -41,10 +41,11 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
   --icon-size: 18px;
   --shadow-2: var(--shadow-elev-2);
   --shadow-3: var(--shadow-elev-3);
-  /* 로고 팁 그라디언트(홈페이지 정본과 동일) — 본체 currentColor→팁. 라이트 기본. */
-  --logo-tip: #32355C;
+  /* 로고 팁(--logo-tip)은 여기서 정의하지 않는다 — 토큰 정본에서 온다
+     (Vinc-design/DESIGN/design-tokens.json → tokens.desktop.css). 여기 있던
+     하드코딩 두 줄은 홈페이지·Claude Design 에도 같은 값이 복제돼 있었고,
+     정본이 없어 어느 하나를 고쳐도 나머지가 모르는 상태였다(2026-08-08 승격). */
 }
-:root[data-theme="dark"] { --logo-tip: #BDBFE3; }
 /* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
 html, body { height: 100%; margin: 0; }
 body {
