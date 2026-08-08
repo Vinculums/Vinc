@@ -95,13 +95,24 @@ jobs:
       - name: Atlas contrast gate
         run: python scripts/gate_contrast.py
 
-      # 디자인 허브(Vinc-design)가 내보낸 생성물이 이 리포에서 손으로 고쳐졌는지.
+      # 디자인 허브(design-hub/)가 내보낸 생성물이 이 리포에서 손으로 고쳐졌는지.
       # 헤더의 "Do not hand-edit" 은 강제력이 없어서, 여기서 고친 색이 다음 재생성
       # 때 조용히 되돌아가고 그 사이 배포분만 SSoT 와 달랐다. 허브를 체크아웃하지
       # 않고 각인 해시만 보므로 교차 리포 PAT 이 필요 없다. 허브가 앞서간 경우
       # (동기화 누락)는 여기서 안 보이며 허브의 sync_out.py --check 가 잡는다.
       - name: Design sync gate
         run: python scripts/gate_design_sync.py
+
+      # 허브가 같은 리포로 들어왔으므로(2026-08-08) 소비 사본이 허브 산출물과 같은지
+      # 여기서 직접 볼 수 있다 — 교차 리포 체크아웃이 필요 없어졌다. 위의 각인 게이트가
+      # "사본을 손댔나"를 보고, 이쪽이 "허브가 앞서갔나"를 본다.
+      - name: Design hub drift gate
+        run: python -X utf8 design-hub/scripts/sync_out.py --check
+
+      # ⬜ 표면 게이트(D-S01 하드코딩 색)는 **아직 안 건다** — app.css 의 닫기 버튼
+      # 호버 빨강과 atlas3d.ts 의 #ffffff·#8f96d9 3건이 남아 있어 지금 걸면 빨갛다.
+      # 셋을 토큰으로 옮긴 뒤 여기에 추가한다:
+      #   python -X utf8 design-hub/scripts/gate_surface.py app/src
 
   app:
     name: app (typecheck)

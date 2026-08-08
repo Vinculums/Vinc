@@ -49,12 +49,14 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 |---|---|---|
 | `Vinc` | 제품 코드 (앱·허브·MCP·사이드카) | 코드는 여기. 설계 산문은 그래프 |
 | `Vinc-homepage` | 사이트 + 계정 백엔드 | 코드는 여기 |
-| `Vinc-design` | **lime-design 플러그인의 Design Hub 인스턴스** | §3 참조 |
+| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전 | §3 참조 |
 | `Vinc-docs` | **구작업. 이행 중 (그래프로 이관)** | §4 참조 |
 
-## 3. Vinc-design — 파일은 빌드 입력, 정본은 그래프
+## 3. design-hub — 파일은 빌드 입력, 정본은 그래프
 
-`Vinc-design/` 은 `lime-design` 플러그인이 규정한 Design Hub 구조다
+`Vinc/design-hub/` 는 `lime-design` 플러그인이 규정한 Design Hub 구조다
+(2026-08-08 에 별도 리포 `Vinc-design` 에서 이 리포로 옮겼다 — 실질 내용이 50KB·커밋
+21개뿐이라 리포 하나를 유지할 무게가 아니었고, 산문은 이미 전부 그래프에 있다)
 (`design.profile.yml` · `DESIGN/design-tokens.json` · `tokens.css` · `imports/` ·
 `tenants/` · `dist/` · `reports/`).
 
@@ -92,9 +94,11 @@ lime-design 엔진은 **네트워크 I/O 를 하지 않는 파일 기반**이고
 ### 디자인 게이트 (실행체)
 
 ```bash
-cd ../Vinc-design
-python -X utf8 scripts/gate_surface.py ../Vinc/app/src   # 하드코딩 색 (생성물 제외)
-python -X utf8 scripts/sync_out.py --check               # 소비 사본이 허브와 같은가
+cd design-hub
+python -X utf8 scripts/gate_surface.py ../app/src              # 하드코딩 색 (생성물 제외)
+python -X utf8 scripts/gate_surface.py ../../Vinc-homepage/site
+python -X utf8 scripts/sync_out.py --check                     # 소비 사본이 허브와 같은가
+python -X utf8 scripts/push_ssot.py                            # Claude Design 으로 내보낼 것 빌드
 ```
 
 소비 리포 CI 에는 `scripts/gate_design_sync.py` 가 있다 — 허브를 체크아웃하지 않고

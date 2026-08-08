@@ -1,0 +1,89 @@
+{
+  "$meta": {
+    "source": "figma",
+    "file": "WUXLeDDNBqih2KTZOz9wCX",
+    "exported": "2026-08-08",
+    "supersedes": "figma-variables-2026-07-19.json",
+    "note": "SSoT 매핑의 근거 기록(provenance)이지 빌드 입력이 아니다 — 빌드가 읽는 값의 정본은 DESIGN/design-tokens.json 하나뿐이다. 07-19 덤프는 2026-08-06 재구축(구 컬렉션 3개 삭제)으로 구조가 통째로 바뀌어 더 이상 라이브를 설명하지 못한다.",
+    "coverage": "부분. Figma MCP 의 get_variable_defs 는 **노드가 실제로 바인딩한** 변수만 돌려주므로, 컬렉션 전체 정의를 한 번에 뜰 수 없다. 아래 semantic 값은 다크 고정 화면(Homepage 260:337)에서 실측했고, Light 모드는 이 경로로 읽을 수 없다(Homepage 페이지가 전부 다크 고정). Light 값은 DESIGN/design-tokens.json 이 정본이다."
+  },
+  "collections": {
+    "$note": "2026-08-06 Phase 1 재편 결과. 컬렉션 id 는 재구축 세션 기록(concepts/figma-2026-08-rebuild.md)에서 옮겨 적었고 이 덤프에서 재확인하지 않았다.",
+    "Primitive": {
+      "id": "VariableCollectionId:221:5",
+      "count": 30,
+      "modes": [
+        "단일"
+      ]
+    },
+    "Semantic": {
+      "id": "VariableCollectionId:222:5",
+      "count": 24,
+      "modes": [
+        "Light 222:0",
+        "Dark 222:1"
+      ]
+    },
+    "Graph": {
+      "id": "VariableCollectionId:223:5",
+      "count": 21
+    },
+    "Domain": {
+      "id": "VariableCollectionId:223:27",
+      "count": 7,
+      "modes": [
+        "Light",
+        "Dark"
+      ]
+    },
+    "Window": {
+      "id": "VariableCollectionId:223:35",
+      "count": 9,
+      "modes": [
+        "다크 상수"
+      ]
+    },
+    "Email": {
+      "id": "VariableCollectionId:223:45",
+      "count": 9,
+      "modes": [
+        "다크 상수"
+      ]
+    },
+    "Scale": {
+      "id": "VariableCollectionId:224:5",
+      "count": 20
+    }
+  },
+  "semantic_dark_verified": {
+    "$note": "2026-08-08 실측 (node 260:337, Homepage · Release / dark). DESIGN/design-tokens.json 의 dark 값과 일치함을 확인했다.",
+    "background": "#0c0d13",
+    "foreground": "#e8e7ef",
+    "muted": "#12141d",
+    "muted-foreground": "#a7a9bf",
+    "caption-foreground": "#6e7189",
+    "border": "#262a3d",
+    "success": "#8fcba8",
+    "info": "#8f96d9"
+  },
+  "text_styles_verified": {
+    "$note": "2026-08-08 실측. **Pretendard 가 설치돼 실제로 쓰이고 있다** — 재구축 기록의 'Inter 임시 · Pretendard 설치 대기'는 낡았다. 스타일 이름 체계도 기록(Display 56/64 · XL 36/41 · LG · Base · SM)과 다르다.",
+    "Display / Bold": "Pretendard Bold 44/52",
+    "H1 / Bold": "Pretendard Bold 32/38",
+    "H2 / Bold": "Pretendard Bold 24/30",
+    "Lead / Regular": "Pretendard Regular 17/26",
+    "Lead / Semibold": "Pretendard SemiBold 17/26",
+    "Body / Regular": "Pretendard Regular 15/23",
+    "Body / Medium|Semibold|Bold": "Pretendard 15/23",
+    "MD / Regular": "Pretendard Regular 14/21",
+    "SM / Regular|Medium": "Pretendard 13/20",
+    "Caption / Medium": "Pretendard Medium 11/16 (letterSpacing 1)"
+  },
+  "effects_verified": {
+    "glass/panel": "BACKGROUND_BLUR radius 14"
+  },
+  "open": [
+    "Domain 컬렉션(223:27)의 값은 이 덤프에서 못 읽었다 — 그래프 예시 프레임(187:36·192:32)이 변수를 바인딩하지 않는다. 코드 쪽 `--dom-*` 는 2026-08-08 에 **삭제**했다: 정의만 있고 var(--dom-*) 사용이 0건이었고(커뮤니티 캔버스는 --ring 에서 색상환을 돌린다) 값이 세 곳에 복제돼 있었다. Figma 의 Domain 컬렉션과 Claude Design 의 tokens/colors.css 에는 아직 남아 있으므로, 되살릴 일이 생기면 SSoT 로 승격하고 나서 쓸 것.",
+    "logo-tip 은 2026-08-08 에 SSoT 로 **승격**했다(primitive.peri_250 + semantic.{light,dark}.logo-tip). 생성기가 semantic 을 HSL 채널로만 내므로 소비처의 SVG stop-color 를 hsl(var(--logo-tip)) 로 바꿨다. HSL 왕복 반올림으로 rgb 값이 1~2/255 달라진다(라이트 92→93 · 다크 189,191→191,193) — 시스템의 다른 모든 시맨틱 토큰이 이미 겪는 같은 반올림이다."
+  ]
+}

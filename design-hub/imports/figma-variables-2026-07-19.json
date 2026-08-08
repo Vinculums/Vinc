@@ -1,0 +1,161 @@
+{
+  "$meta": {
+    "source": "figma",
+    "file": "WUXLeDDNBqih2KTZOz9wCX",
+    "exported": "2026-07-19",
+    "note": "수동 매핑 덤프 — Figma 변수 2개 컬렉션의 정의 스냅샷. SSoT 매핑의 근거 기록(provenance). 이후 변경은 Figma에서 하고 재덤프한다.",
+    "superseded_by": "figma-variables-2026-08-08.json",
+    "superseded_note": "2026-08-06 재구축으로 여기 적힌 컬렉션 3개(color 1:2 · App Deep Signal 123:168 · Home Signal 136:167)가 **삭제**됐다. 이 파일은 그때의 매핑 근거로만 남긴다 — 라이브 구조를 알려면 08-08 덤프를 볼 것."
+  },
+  "collections": {
+    "Home · Signal (draft)": {
+      "id": "VariableCollectionId:136:167",
+      "modes": {
+        "Light": "136:0",
+        "Dark": "136:1"
+      },
+      "variables": {
+        "bg/page": {
+          "light": "#F2F2F0",
+          "dark": "#0C0D13",
+          "css": "--home-bg"
+        },
+        "bg/section": {
+          "light": "#E9E9E6",
+          "dark": "#12141D",
+          "css": "--home-bg-section"
+        },
+        "bg/card": {
+          "light": "#FBFBFA",
+          "dark": "#191C2A",
+          "css": "--home-card"
+        },
+        "text/primary": {
+          "light": "#17171A",
+          "dark": "#E8E7EF",
+          "css": "--home-text"
+        },
+        "text/soft": {
+          "light": "#55565E",
+          "dark": "#A7A9BF",
+          "css": "--home-text-soft"
+        },
+        "text/mute": {
+          "light": "#82838D",
+          "dark": "#6E7189",
+          "css": "--home-text-mute"
+        },
+        "border": {
+          "light": "#DEDEDA",
+          "dark": "#262A3D",
+          "css": "--home-border"
+        },
+        "accent/cta": {
+          "light": "#32355C",
+          "dark": "#3A4070",
+          "css": "--home-cta"
+        },
+        "accent/cta-text": {
+          "light": "#F2F2F0",
+          "dark": "#B9BEF0",
+          "css": "--home-cta-text"
+        },
+        "accent/link": {
+          "light": "#4A4F8C",
+          "dark": "#8F96D9",
+          "css": "--home-link"
+        },
+        "accent/ring": {
+          "light": "#8F96D9",
+          "dark": "#8F96D9",
+          "css": "--home-ring"
+        }
+      }
+    },
+    "App · Deep Signal (draft)": {
+      "id": "VariableCollectionId:123:168",
+      "modes": {
+        "Dark": "123:1"
+      },
+      "variables": {
+        "bg/0": {
+          "dark": "#0C0D13",
+          "css": "--app-bg-0"
+        },
+        "bg/1": {
+          "dark": "#12141D",
+          "css": "--app-bg-1"
+        },
+        "bg/2": {
+          "dark": "#191C2A",
+          "css": "--app-bg-2"
+        },
+        "line": {
+          "dark": "#262A3D",
+          "css": "--app-line"
+        },
+        "text/primary": {
+          "dark": "#E8E7EF",
+          "css": "--app-text"
+        },
+        "text/soft": {
+          "dark": "#A7A9BF",
+          "css": "--app-text-soft"
+        },
+        "text/mute": {
+          "dark": "#6E7189",
+          "css": "--app-text-mute"
+        },
+        "accent/base": {
+          "dark": "#8F96D9",
+          "css": "--app-accent"
+        },
+        "accent/strong": {
+          "dark": "#B9BEF0",
+          "css": "--app-accent-strong"
+        },
+        "accent/deep": {
+          "dark": "#3A4070",
+          "css": "--app-accent-deep"
+        }
+      }
+    }
+  },
+  "atlasScene": {
+    "note": "Atlas WebGL(three.js/Sigma)용 파생 셰이드 — App/GraphNode 컴포넌트 스펙에서 추출. gen_theme_ts.py 입력.",
+    "node": {
+      "focus": {
+        "fill": "#B9BEF0",
+        "glowRadius": 30,
+        "glowOpacity": 0.9
+      },
+      "near": {
+        "fill": "#8F96D9",
+        "glowRadius": 16,
+        "glowOpacity": 0.5
+      },
+      "mid": {
+        "fill": "#3A4070",
+        "stroke": "#8F96D9",
+        "glowRadius": 10,
+        "glowOpacity": 0.35
+      },
+      "far": {
+        "fill": "#191C2A",
+        "stroke": "#6E7189",
+        "glowRadius": 6,
+        "glowOpacity": 0.18
+      }
+    },
+    "edge": {
+      "color": "#8F96D9",
+      "opacityFocus": 0.5,
+      "opacityBase": 0.28,
+      "opacityFar": 0.14
+    },
+    "grid": {
+      "color": "#8F96D9",
+      "opacity": 0.05
+    }
+  }
+}

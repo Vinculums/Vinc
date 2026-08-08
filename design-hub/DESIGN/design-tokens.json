@@ -1,0 +1,288 @@
+{
+  "$meta": {
+    "name": "vinc-design",
+    "version": "0.2.0",
+    "ssot": "Vinc-design/DESIGN",
+    "note": "Vinc 'Signal' 디자인 시스템 SSoT — base = 홈페이지/웹 Vinc 테마(Home · Signal), tenants/desktop = 데스크탑 앱(Deep Signal). 다크 우선 운영(런타임 data-theme=dark 기본; 엔진은 light-first로 :root=light를 내보내며 소비 셸이 dark를 기본 지정). 근거: imports/figma-variables-2026-07-19.json (Figma 수동 매핑). 상태 표기 언어(●◐○·≡≈)는 색과 병행 유지. 글로우는 그래프 노드 전용.",
+    "layers": "primitive → semantic",
+    "theme_mode": "light-first",
+    "format": "hsl-channels",
+    "a11y": "WCAG 2.2 AA — 본문 명암비 ≥4.5:1 검증된 토큰만 텍스트로 사용"
+  },
+  "atlasScene": {
+    "note": "Atlas 3D 마크의 깊이 티어 — 다크 글로우 분기(app/src/surfaces/atlas3d.ts) 전용. 여기가 정본이며 imports/figma-variables-*.json 은 최초 수입 기록일 뿐이다. 소비되는 키는 fill·stroke·glowOpacity 셋뿐 — glowRadius·edge·grid 는 읽는 코드가 없어 2026-08-02 에 제거했다(값을 고쳐도 화면이 안 바뀌는 죽은 손잡이였다). 검증: Vinc/scripts/gate_contrast.py",
+    "node": {
+      "focus": {
+        "fill": "#B9BEF0",
+        "glowOpacity": 0.9
+      },
+      "near": {
+        "fill": "#8F96D9",
+        "glowOpacity": 0.5
+      },
+      "mid": {
+        "fill": "#3A4070",
+        "stroke": "#8F96D9",
+        "glowOpacity": 0.35
+      },
+      "far": {
+        "fill": "#191C2A",
+        "stroke": "#9496A9",
+        "glowOpacity": 0.18
+      }
+    }
+  },
+  "primitive": {
+    "grain_50": {
+      "$value": "#FBFBFA",
+      "$type": "color",
+      "$description": "라이트 카드 표면 — 그레인 최상단"
+    },
+    "grain_100": {
+      "$value": "#F2F2F0",
+      "$type": "color",
+      "$description": "라이트 페이지 배경(로고 레퍼런스 그레인 그레이) · CTA 위 텍스트"
+    },
+    "grain_200": {
+      "$value": "#E9E9E6",
+      "$type": "color",
+      "$description": "라이트 교차 섹션 밴드·muted 면"
+    },
+    "hairline": {
+      "$value": "#DEDEDA",
+      "$type": "color",
+      "$description": "라이트 1px 보더/Separator"
+    },
+    "ink_900": {
+      "$value": "#17171A",
+      "$type": "color",
+      "$description": "쿨 니어블랙 잉크 — 본문(라이트). 순검정 금지"
+    },
+    "ink_600": {
+      "$value": "#55565E",
+      "$type": "color",
+      "$description": "보조 텍스트(라이트, AA✓)"
+    },
+    "ink_400": {
+      "$value": "#82838D",
+      "$type": "color",
+      "$description": "캡션·메타 전용(라이트) — 본문 금지(캡션층)"
+    },
+    "indigo_900": {
+      "$value": "#32355C",
+      "$type": "color",
+      "$description": "로고 tip 인디고 — 라이트 CTA 면·상수 CTA 밴드"
+    },
+    "indigo_700": {
+      "$value": "#3A4070",
+      "$type": "color",
+      "$description": "다크 CTA 면·액티브 채움(앱 accent/deep)"
+    },
+    "indigo_600": {
+      "$value": "#4A4F8C",
+      "$type": "color",
+      "$description": "라이트 링크·info(AA✓ on grain)"
+    },
+    "peri_400": {
+      "$value": "#8F96D9",
+      "$type": "color",
+      "$description": "페리윙클 — 포커스 링(양 모드)·다크 링크·그래프 글로우 원천"
+    },
+    "peri_200": {
+      "$value": "#B9BEF0",
+      "$type": "color",
+      "$description": "페리윙클 라이튼 — 다크 CTA 텍스트·활성 강조"
+    },
+    "peri_250": {
+      "$value": "#BDBFE3",
+      "$type": "color",
+      "$description": "로고 팁 그라디언트 끝(다크) — peri-200 보다 한 단 밝다. 마크 본체는 currentColor 이고 팁만 이 색으로 빠진다"
+    },
+    "ok_700": {
+      "$value": "#2F6B4E",
+      "$type": "color",
+      "$description": "라이트 success(AA✓ on grain)"
+    },
+    "ok_300": {
+      "$value": "#8FCBA8",
+      "$type": "color",
+      "$description": "다크 success(AA✓ on d_bg0)"
+    },
+    "warn_bg": {
+      "$value": "#E5DCC3",
+      "$type": "color",
+      "$description": "라이트 warning 배경/칩 전용 — 텍스트 금지"
+    },
+    "danger_700": {
+      "$value": "#A03A3A",
+      "$type": "color",
+      "$description": "라이트 danger(AA✓ on grain)"
+    },
+    "danger_300": {
+      "$value": "#E08585",
+      "$type": "color",
+      "$description": "다크 danger(AA✓ on d_bg0)"
+    },
+    "d_bg0": {
+      "$value": "#0C0D13",
+      "$type": "color",
+      "$description": "다크 페이지/앱 배경(최심부) — Deep Signal"
+    },
+    "d_bg1": {
+      "$value": "#12141D",
+      "$type": "color",
+      "$description": "다크 서피스·교차 섹션·패널 베이스"
+    },
+    "d_bg2": {
+      "$value": "#191C2A",
+      "$type": "color",
+      "$description": "다크 카드·LNB·부상 표면"
+    },
+    "d_line": {
+      "$value": "#262A3D",
+      "$type": "color",
+      "$description": "다크 1px 보더/Separator"
+    },
+    "d_text": {
+      "$value": "#E8E7EF",
+      "$type": "color",
+      "$description": "다크 본문(쿨 아이보리)"
+    },
+    "d_soft": {
+      "$value": "#A7A9BF",
+      "$type": "color",
+      "$description": "다크 보조 텍스트(AA✓)"
+    },
+    "d_mute": {
+      "$value": "#6E7189",
+      "$type": "color",
+      "$description": "다크 캡션·메타·비활성 — 본문 금지"
+    },
+    "d_warn_bg": {
+      "$value": "#4A4230",
+      "$type": "color",
+      "$description": "다크 warning 배경 전용 — 텍스트 금지"
+    },
+    "grain_300": {
+      "$value": "#D1D2D6",
+      "$type": "color",
+      "$description": "라이트 후퇴(fade) 하한 — APCA Lc 16.0. hairline(Lc 9.3)은 불가시 하한 15 아래라 그래프 선의 후퇴색으로 못 쓴다"
+    },
+    "peri_500": {
+      "$value": "#7E86D3",
+      "$type": "color",
+      "$description": "라이트 크로스도메인 엣지 — peri_400 을 WCAG 3:1(2.49→3.00)까지 어둡게. 라이트에서는 WCAG 가 APCA 보다 엄격하다"
+    },
+    "slate_400": {
+      "$value": "#9496A9",
+      "$type": "color",
+      "$description": "다크 노드 링·크로스 엣지 — APCA Lc 45.9. 가는 선은 solid(Lc 30)이 아니라 세부 기준(Lc 45)을 받는다"
+    },
+    "slate_500": {
+      "$value": "#747790",
+      "$type": "color",
+      "$description": "엣지 본선 — 다크 Lc 30.9/4.42:1 · 라이트 Lc 62.6/3.92:1 로 **양 모드에서 이중 게이트를 통과하는 중립색**"
+    },
+    "slate_700": {
+      "$value": "#525466",
+      "$type": "color",
+      "$description": "다크 후퇴(fade) 하한 — APCA 불가시 하한 Lc 15 바로 위(15.9). 후퇴 채널은 3:1 면제이나 완전 소멸은 금지"
+    }
+  },
+  "semantic": {
+    "light": {
+      "background": "{grain_100}",
+      "foreground": "{ink_900}",
+      "card": "{grain_50}",
+      "card-foreground": "{ink_900}",
+      "muted": "{grain_200}",
+      "muted-foreground": "{ink_600}",
+      "caption-foreground": "{ink_400}",
+      "border": "{hairline}",
+      "input": "{hairline}",
+      "ring": "{peri_400}",
+      "primary": "{indigo_900}",
+      "primary-foreground": "{grain_100}",
+      "accent": "{grain_200}",
+      "accent-foreground": "{ink_900}",
+      "link": "{indigo_600}",
+      "info": "{indigo_600}",
+      "info-strong": "{indigo_600}",
+      "info-foreground": "{grain_100}",
+      "success": "{ok_700}",
+      "success-foreground": "{grain_100}",
+      "warning": "{warn_bg}",
+      "warning-foreground": "{ink_900}",
+      "danger": "{danger_700}",
+      "danger-foreground": "{grain_100}",
+      "logo-tip": "{indigo_900}"
+    },
+    "dark": {
+      "background": "{d_bg0}",
+      "foreground": "{d_text}",
+      "card": "{d_bg2}",
+      "card-foreground": "{d_text}",
+      "muted": "{d_bg1}",
+      "muted-foreground": "{d_soft}",
+      "caption-foreground": "{d_mute}",
+      "border": "{d_line}",
+      "input": "{d_line}",
+      "ring": "{peri_400}",
+      "primary": "{indigo_700}",
+      "primary-foreground": "{peri_200}",
+      "accent": "{d_bg2}",
+      "accent-foreground": "{d_text}",
+      "link": "{peri_400}",
+      "info": "{peri_400}",
+      "info-strong": "{peri_400}",
+      "info-foreground": "{d_bg0}",
+      "success": "{ok_300}",
+      "success-foreground": "{d_bg0}",
+      "warning": "{d_warn_bg}",
+      "warning-foreground": "{d_text}",
+      "danger": "{danger_300}",
+      "danger-foreground": "{d_bg0}",
+      "logo-tip": "{peri_250}"
+    }
+  },
+  "radius": {
+    "DEFAULT": "0.875rem",
+    "sm": "0.625rem",
+    "lg": "1.25rem",
+    "pill": "999px"
+  },
+  "space": {
+    "1": "0.25rem",
+    "2": "0.5rem",
+    "3": "0.75rem",
+    "4": "1rem",
+    "5": "1.5rem",
+    "6": "2rem",
+    "8": "3rem"
+  },
+  "fs": {
+    "sm": "0.8125rem",
+    "base": "0.9375rem",
+    "lg": "1.0625rem",
+    "xl": "clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem)",
+    "display": "clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem)"
+  },
+  "lh": {
+    "normal": "1.55",
+    "prose": "1.7",
+    "tight": "1.15"
+  },
+  "font": {
+    "heading": "'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif",
+    "ui": "'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif",
+    "mono": "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace"
+  },
+  "shadow": {
+    "soft": "0 20px 40px -12px hsl(230 20% 6% / 0.08)",
+    "float": "0 30px 60px -16px hsl(230 20% 6% / 0.12)",
+    "elev-0": "none",
+    "elev-1": "0 1px 2px hsl(230 20% 6% / 0.07)",
+    "elev-2": "0 4px 12px hsl(230 20% 6% / 0.11)",
+    "elev-3": "0 10px 30px hsl(230 20% 6% / 0.16)"
+  }
+}

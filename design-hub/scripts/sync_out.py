@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+"""sync_out.py — 허브 dist/ 산출물을 소비 리포로 단방향 복사한다.
+
+허브(Vinc/design-hub)가 유일한 토큰 출처. 소비 리포의 동기화 파일은 전부
+AUTO-GENERATED 헤더를 달고 있으며 수기 편집 금지 — 수정은 허브에서 재생성 후 재동기화.
+
+매핑(허브 → 소비 리포):
+  dist/site/site-tokens.css      → ../Vinc-homepage/site/assets/tokens.css
+  dist/app/tokens.desktop.css    → ../Vinc/app/src/tokens.desktop.css
+  dist/app/tokens.web.css        → ../Vinc/app/src/tokens.web.css
+  dist/app/theme.ts              → ../Vinc/app/src/theme.ts
+
+usage: python -X utf8 scripts/sync_out.py [--apply]
+  기본은 dry-run(무엇이 복사될지 출력만). --apply 로 실제 복사.
+  Phase 4/5(리포 배선) 전에는 --apply 금지.
+"""
+from __future__ import annotations
+import argparse, hashlib, pathlib, re, shutil, sys
+
+HUB = pathlib.Path(__file__).resolve().parent.parent
+MAP = [
+    ("dist/site/site-tokens.css", "../../Vinc-homepage/site/assets/tokens.css"),
+    ("dist/app/tokens.desktop.css", "../app/src/tokens.desktop.css"),
+    ("dist/app/tokens.web.css", "../app/src/tokens.web.css"),
+    ("dist/app/theme.ts", "../app/src/theme.ts"),
+]
+
+#: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
+#: 판정할 수 있게 한다 — 교차 리포 체크아웃(=새 PAT 시크릿)이 필요 없다.
+#: 각인 줄 자체는 해시 계산에서 빠진다(자기 참조 불가).
+STAMP_KEY = "sync-sha256"
+_STAMP_RE = re.compile(rf"^[ \t]*(?://|/\*)[ \t]*{STAMP_KEY}:[ \t]*[0-9a-f]{{64}}.*\r?\n",
+                       re.MULTILINE)
+
+
+def body_hash(text: str) -> str:
+    """각인 줄을 뺀 본문의 sha256. 각인 전/후 어느 쪽을 넣어도 같은 값이 나온다."""
+    return hashlib.sha256(strip_stamp(text).encode("utf-8")).hexdigest()
+
+
+def strip_stamp(text: str) -> str:
+    return _STAMP_RE.sub("", text)
+
+
+def _stamp(text: str, suffix: str) -> str:
+    """헤더 바로 아래에 각인 한 줄을 끼운다. 주석 문법은 확장자로 고른다."""
+    digest = body_hash(text)
+    line = (f"// {STAMP_KEY}: {digest}\n" if suffix in (".ts", ".tsx", ".js")
+            else f"/* {STAMP_KEY}: {digest} */\n")
+    clean = strip_stamp(text)
+    lines = clean.splitlines(keepends=True)
+    # 헤더(주석 블록) 끝을 찾는다. 못 찾으면 맨 앞에 둔다 — 파일이 깨지지 않는 자리.
+    at = 0
+    for i, ln in enumerate(lines[:8]):
+        s = ln.strip()
+        if s.startswith("//") or s.startswith("/*") or s.startswith("*") or s.endswith("*/"):
+            at = i + 1
+        elif s:
+            break
+    return "".join(lines[:at]) + line + "".join(lines[at:])
+
+
+def _check() -> int:
+    """소비 리포의 사본이 허브 산출물과 **같은지** 검사한다(복사하지 않는다).
+
+    이게 없던 동안 `--apply` 는 수동이었고 어느 CI 도 사본을 보지 않았다. 그래서
+    누가 `Vinc/app/src/tokens.desktop.css` 를 직접 고쳐도(파일에 "수기 편집 금지"
+    헤더가 있어도 헤더는 강제하지 않는다) 아무 데서도 안 걸렸다. 소비 리포 CI 가
+    이걸 돌리면 드리프트가 머지 전에 잡힌다.
+
+    exit 0 = 전부 일치 · 1 = 어긋남/결손.
+    """
+    bad = 0
+    for src_rel, dst_rel in MAP:
+        src, dst = HUB / src_rel, (HUB / dst_rel).resolve()
+        if not src.exists():
+            print(f"[MISSING·허브] {src_rel} — 먼저 /ds-gen 으로 재생성하라")
+            bad += 1
+            continue
+        if not dst.exists():
+            print(f"[MISSING·소비] {dst} — sync_out.py --apply 필요")
+            bad += 1
+            continue
+        a = src.read_text(encoding="utf-8")
+        b = dst.read_text(encoding="utf-8")
+        stamped = _STAMP_RE.search(b) is not None
+        if strip_stamp(a) == strip_stamp(b):
+            if not stamped:
+                print(f"[OK·무각인] {dst_rel} — 내용은 같으나 각인이 없다 "
+                      f"(sync_out.py --apply 로 다시 내보내면 붙는다)")
+                continue
+            print(f"[OK] {dst_rel}")
+        else:
+            print(f"[DRIFT] {dst} 가 허브의 {src_rel} 와 다르다 "
+                  f"({len(a):,}자 vs {len(b):,}자) — 사본을 손으로 고쳤거나 "
+                  f"허브 재생성 후 동기화를 안 했다")
+            bad += 1
+    print(f"\n{'드리프트 없음' if not bad else f'문제 {bad}건'}")
+    return 1 if bad else 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--apply", action="store_true", help="실제 복사(기본 dry-run)")
+    ap.add_argument("--check", action="store_true",
+                    help="복사하지 않고 사본이 허브와 같은지만 검사(CI 용)")
+    a = ap.parse_args()
+    if a.check:
+        if a.apply:
+            print("--check 와 --apply 는 같이 못 쓴다", file=sys.stderr)
+            return 2
+        return _check()
+    missing = 0
+    for src_rel, dst_rel in MAP:
+        src = HUB / src_rel
+        dst = (HUB / dst_rel).resolve()
+        if not src.exists():
+            print(f"[SKIP·미생성] {src_rel}")
+            missing += 1
+            continue
+        if a.apply:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            text = _stamp(src.read_text(encoding="utf-8"), dst.suffix)
+            dst.write_text(text, encoding="utf-8", newline="")
+            print(f"[COPIED+각인] {src_rel} → {dst}")
+        else:
+            print(f"[DRY-RUN] {src_rel} → {dst}")
+    if not a.apply:
+        print("\n(dry-run — 실제 복사는 --apply. 검사만 하려면 --check)")
+    return 1 if missing else 0
+
+if __name__ == "__main__":
+    sys.exit(main())
