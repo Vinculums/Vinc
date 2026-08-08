@@ -183,6 +183,26 @@ _META_TABLES: dict[str, dict] = {
     "_DocTombstone": {"pk": "doc_id", "cols": [
         ("doc_id", "STRING"), ("owner_id", "STRING"), ("deleted_at", "STRING"),
         ("sync_seq", "INT64")]},
+    # v10(F10-b) — 병합 후보 **기각 기억**. merge_candidates 는 결정론이라, 사용자가
+    # "이 둘은 다른 것"이라고 판정해도 다음 호출에 같은 쌍을 또 올린다. 그 판정을
+    # 어딘가 적어 두지 않으면 제안 목록이 영원히 같은 오탐으로 채워진다.
+    #
+    # **왜 메타 테이블인가**: 기각은 사용자 지식이 아니라 제안 엔진에 대한 판정이다.
+    # 그래프(Concept/Record)에 넣으면 Atlas·검색·동기화·팩에 전부 새어 나가 지식을
+    # 오염시킨다. `_Tombstone`/`_EdgeTombstone`/`_DocTombstone` 이 이미 같은 성격
+    # (소유 스코프 부정 사실 · 데이터플레인 밖)이라 그 전례를 따른다.
+    #
+    #   pair_key : f"{owner}|{a}|{b}" — a,b 는 **정렬된** id 쌍이라 (a,b)·(b,a) 가
+    #              같은 한 행이 된다. owner 를 키에 넣는 이유는 SEC-1 편집증이다:
+    #              키가 (a,b) 뿐이면 다른 소유자의 MERGE 가 이 행의 owner_id 를
+    #              덮어써 남의 기각을 조용히 가져간다.
+    #   note     : 왜 기각했는지(선택). 되살릴 때 근거가 남는다.
+    # ⚠ `_META_TABLES` 는 논리 이관(node_table_specs)·동기화 대상이 아니다 — 기각은
+    # 기기 로컬 판정으로 남고 스토어 이관 시 유실된다(자문 성격이라 허용).
+    "_MergeRejection": {"pk": "pair_key", "cols": [
+        ("pair_key", "STRING"), ("owner_id", "STRING"),
+        ("a_id", "STRING"), ("b_id", "STRING"),
+        ("rejected_at", "STRING"), ("note", "STRING")]},
 }
 
 # owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
@@ -202,7 +222,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
 #: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
@@ -261,6 +281,9 @@ def migration_statements(from_version: int) -> list[str]:
     # 부터 있었고 비어 있었을 뿐이라 스키마가 아니라 **데이터**를 고쳐야 한다.
     # 그 스텝은 JSON 파싱이 필요해 Cypher 문자열로 표현할 수 없다 →
     # `embedded_backend.backfill_episode_time_fields`(EPISODE_TIME_BACKFILL_VERSION).
+    # v10 — 병합 후보 기각 기억(_MergeRejection, F10-b). **ALTER 스텝이 없다**: 신규
+    # 메타 테이블은 매 부팅 멱등 DDL(render_meta_tables)이 만든다(_DocTombstone·
+    # ChunkVec 전례). 백필할 기존 데이터도 없다 — 기각 이력은 이 버전부터 쌓인다.
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

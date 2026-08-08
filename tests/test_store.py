@@ -109,7 +109,9 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 9)   # v9 — Episode props.date 승격(F9)
+        self.assertEqual(eschema.SCHEMA_VERSION, 10)   # v10 — 병합 후보 기각 기억(F10-b)
+        # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
+        self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)

@@ -589,10 +589,20 @@ class SuggestTiesTests(unittest.TestCase):
         })
         res = q.suggest_ties(owner="user:t", node="a", store=fake)
         self.assertTrue(res["executed"])
-        got = [(s["id"], s["score"]) for s in res["suggestions"]]
-        # b: fft(2)+도메인(1)=3 · c: waves(2)=2 · e: 도메인만=1 · d: 0 → 제외
-        self.assertEqual(got, [("b", 3), ("c", 2), ("e", 1)])
-        self.assertEqual(res["suggestions"][0]["shared_tags"], ["fft"])
+        # F11 — 점수는 태그 **희소성**(IDF) + 도메인 + 2홉 근접이다. 값은 산식에서
+        # 파생되므로 여기서는 **순서와 근거**를 못박는다(리터럴 점수는 산식이 바뀔
+        # 때마다 무의미하게 깨진다). d 는 신호 0 이라 여전히 제외.
+        self.assertEqual([s["id"] for s in res["suggestions"]], ["b", "c", "e"])
+        b, c, e = res["suggestions"]
+        self.assertEqual(b["shared_tags"], ["fft"])
+        self.assertGreater(b["score"], c["score"])      # 태그+도메인 > 태그만
+        self.assertGreater(c["score"], e["score"])      # 태그만 > 도메인만
+        self.assertEqual(b["reason"], "shared_tags")
+        self.assertEqual(e["reason"], "same_domain")
+        self.assertEqual(e["shared_tags"], [])
+        self.assertEqual(b["signals"]["domain"], 1.0)
+        self.assertEqual(e["signals"]["tags"], 0.0)
+        self.assertIn("common neighbors", res["formula"])   # 산식 공개(F11)
 
     def test_already_linked_excluded(self):
         fake = _FakeStore({
