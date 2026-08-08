@@ -111,6 +111,38 @@ def _import_driver():
         return None, None
 
 
+def _driver_kwargs(cfg) -> dict:
+    """`Database()` 에 넘길 인자 — **열기 경로 전부가 이 하나를 쓴다.**
+
+    최초 open 과 스냅샷 후 재오픈이 각자 kwargs 를 짜고 있었고, 그래서 나중에 는
+    노브가 재오픈 쪽에만 빠지는 사고가 났다(2026-08-09 발견). 한 벌로 묶는다.
+
+    - ``max_db_size``/``buffer_pool_size`` — Database 하나가 가상주소 8 TiB 를
+      예약해 Windows 에서는 한 프로세스가 14~15개까지만 연다(그 다음은
+      ``MemoryError: bad allocation``). 앱은 하나만 열지만 테스트는 수십 개를 연다.
+    - ``checkpoint_threshold`` — WAL 이 이만큼 자라면 엔진이 스스로 체크포인트한다.
+      곧 **최대 손실 창**이다(StoreConfig 참조).
+    - ``throw_on_wal_replay_failure`` — 기본 엄격. 프로세스가 쓰기 도중 죽으면 WAL 이
+      완결 안 된 채 남고, 그 뒤로는 **어느 리비전이 새로 열어도** 같은 예외로 open()
+      이 실패한다(락 경합과 증상이 같아 보이지만 다른 문제다). ``VINC_WAL_REPLAY_
+      TOLERANT`` 로 "깨진 꼬리만 버리고 나머지는 살린다"로 전환한다 — 다만 그것은
+      복구가 아니라 **폐기**이므로 켜면 무엇을 잃었는지 반드시 남겨야 한다.
+
+    미지정 항목은 넣지 않는다 — 드라이버 기본값을 그대로 쓴다.
+    """
+    kwargs: dict = {}
+    if getattr(cfg, "max_db_size", 0):
+        kwargs["max_db_size"] = int(cfg.max_db_size)
+    if getattr(cfg, "buffer_pool_mb", 0):
+        kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
+    if getattr(cfg, "checkpoint_threshold_mb", 0):
+        kwargs["checkpoint_threshold"] = int(cfg.checkpoint_threshold_mb) * 1024 * 1024
+    wal_tolerant = os.environ.get("VINC_WAL_REPLAY_TOLERANT", "").strip().lower() \
+        in ("1", "true", "on")
+    kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
+    return kwargs
+
+
 def _bundled_ext_path(ext: str) -> str | None:
     """번들된 ladybug 확장(`lib<ext>.lbug_extension`) 경로 해석 — G0 오프라인 로드용.
 
@@ -406,26 +438,7 @@ class EmbeddedBackend:
         if drv is None:
             return None
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
-        # 드라이버 자원 상한 — 지정된 것만 넘긴다(미지정 = 드라이버 기본값 유지).
-        # 왜 필요한가: Database 하나가 가상주소 8 TiB 를 예약해, Windows 에서는 한
-        # 프로세스가 14~15개까지만 연다(그 다음은 MemoryError: bad allocation).
-        # 앱은 하나만 열지만 테스트는 수십 개를 연다 — StoreConfig 참조.
-        kwargs: dict = {}
-        if getattr(cfg, "max_db_size", 0):
-            kwargs["max_db_size"] = int(cfg.max_db_size)
-        if getattr(cfg, "buffer_pool_mb", 0):
-            kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
-        # WAL 재생 관용(2026-08-03 사고 대응, 기본 꺼짐). 드라이버 기본은
-        # throw_on_wal_replay_failure=True — 프로세스가 쓰기 도중 죽으면(정상 close()
-        # 없이 컨테이너가 강제 종료되는 등) WAL 이 완결 안 된 채 남고, 그 뒤로는
-        # **어느 리비전이 새로 열어도** 매번 같은 예외로 open() 이 실패한다(락 경합과
-        # 증상이 같아 보이지만 다른 문제 — 리비전을 아무리 갈아도 안 풀린다). 실측:
-        # db.wal 의 mtime 이 장애 시각에 고정된 채 여러 리비전의 재시도를 다 씹었다.
-        # env 하나로 "깨진 꼬리만 버리고 나머지는 살린다"로 전환할 수 있게 둔다 —
-        # 기본은 여전히 엄격(throw=True)이라 평소엔 손상을 조용히 삼키지 않는다.
-        wal_tolerant = os.environ.get("VINC_WAL_REPLAY_TOLERANT", "").strip().lower() \
-            in ("1", "true", "on")
-        kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
+        kwargs = _driver_kwargs(cfg)
         try:
             db = drv.Database(data_dir, **kwargs)
             conn = drv.Connection(db)
@@ -875,9 +888,17 @@ class EmbeddedBackend:
     def snapshot(self, dest_dir: str) -> str:
         """데이터 디렉토리 일관 스냅샷(§3-1-1). 쓰기 정지는 잡 큐가 보장(P2).
 
-        복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — Kùzu 계보는 close
-        시점에 체크포인트하므로, 열린 스토어를 그대로 복사하면 미반영(빈 테이블)
-        사본이 나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행.
+        복사 전 **CHECKPOINT** 로 WAL 을 본 파일에 반영한다 — 자동 체크포인트는
+        WAL 이 임계값을 넘고 활성 트랜잭션이 없을 때만 도므로, 지금 이 순간의 WAL 이
+        본 파일에 들어가 있다는 보장이 없다. 그대로 복사하면 미반영(빈 테이블) 사본이
+        나온다(P2 스냅샷 복원 왕복 실측, 2026-07-10). 미지원 방언은 무시하고 진행.
+
+        ⚠ 2026-08-08 사고의 오진을 여기 적어 둔다. 이 자리에 원래 "Kùzu 계보는 close
+        시점에 체크포인트한다"고 적혀 있었는데 **사실이 아니다**. ladybug 0.18.0 의
+        `SystemConfig` 는 `autoCheckpoint=true, checkpointThreshold=16MB` 가 기본이라
+        close 없이도 임계값에서 스스로 체크포인트한다(v0.18.0 소스·공식 문서 확인,
+        로컬 실엔진 재현). 그 틀린 주석을 근본원인으로 채택해 사고 보고서까지 갔다 —
+        주석 하나가 오진의 발원지가 된 사례다.
 
         ⚠ Windows: 열려 있는 DB 파일에는 **바이트 범위 락**이 걸려 있어 복사가
         `WinError 33` 으로 실패한다(읽기조차 막힌다 — 실측). 리눅스는 같은 코드가
@@ -926,12 +947,7 @@ class EmbeddedBackend:
         finally:
             # 무슨 일이 있어도 스토어를 다시 연다 — 스냅샷 실패가 서비스를 죽이지 않게.
             if drv is not None:
-                kwargs: dict = {}
-                if getattr(self._cfg, "max_db_size", 0):
-                    kwargs["max_db_size"] = int(self._cfg.max_db_size)
-                if getattr(self._cfg, "buffer_pool_mb", 0):
-                    kwargs["buffer_pool_size"] = int(self._cfg.buffer_pool_mb) * 1024 * 1024
-                self._db = drv.Database(src, **kwargs)
+                self._db = drv.Database(src, **_driver_kwargs(self._cfg))
                 self._conn = drv.Connection(self._db)
                 # 새 Database 인스턴스는 확장 카탈로그가 비어 있다 — 캐시가 남아
                 # 있으면 리더가 "로드됨"으로 믿고 QUERY_FTS_INDEX 를 불러 정체

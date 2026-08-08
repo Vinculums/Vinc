@@ -46,6 +46,21 @@ class StoreConfig:
     # 0/None = 드라이버 기본값(무제한 예약). 값을 주면 그만큼만 예약한다.
     max_db_size: int = 0                 # bytes. VINC_MAX_DB_SIZE
     buffer_pool_mb: int = 0              # MB.    VINC_BUFFER_POOL_MB
+
+    # WAL 이 이만큼 자라면 **엔진이 스스로** 체크포인트한다(쓰기 트랜잭션 끝에서
+    # 판정, 활성 트랜잭션이 없을 때). 드라이버 기본은 16MB.
+    #
+    # 왜 낮추나(2026-08-08 사고). 16MB 기본으로는 WAL 이 11.9MB 까지 자란 채
+    # 5시간 반을 버텼고, 그 상태에서 프로세스가 죽자 WAL 이 재생 불가여서
+    # **그 5시간 반이 통째로 사라졌다**. 임계값은 곧 **최대 손실 창**이다.
+    # 4MB 면 잃는 것이 그만큼으로 묶이고 재생 비용도 줄어든다.
+    #
+    # ⚠ 공짜가 아니다. 체크포인트는 WAL 을 본 파일에 반영하는 순간이라 **손상
+    # 노출이 최대인 연산**이다(SQLite 계열의 알려진 성질: sync 실패가 무결성을
+    # 깨는 것은 체크포인트 중뿐이고 커밋 중이면 내구성만 잃는다). 저장 계층이
+    # 미덥지 않으면 자주 하는 것이 되레 해롭다 — 그래서 이 값은 **저장 계층을
+    # 로컬로 옮기는 것과 한 벌**이고, 그것이 정본 처방이다.
+    checkpoint_threshold_mb: int = 4     # MB. VINC_CHECKPOINT_THRESHOLD_MB (0=드라이버 기본)
     extra: dict = field(default_factory=dict)
 
     @property
@@ -75,6 +90,9 @@ def load_config(overrides: dict | None = None) -> StoreConfig:
     )
     cfg.max_db_size = int(pick("max_db_size", "VINC_MAX_DB_SIZE", 0) or 0)
     cfg.buffer_pool_mb = int(pick("buffer_pool_mb", "VINC_BUFFER_POOL_MB", 0) or 0)
+    cfg.checkpoint_threshold_mb = int(
+        pick("checkpoint_threshold_mb", "VINC_CHECKPOINT_THRESHOLD_MB",
+             StoreConfig.checkpoint_threshold_mb) or 0)
     cfg.core_days = int(pick("core_days", "MEMORY_CORE_DAYS", 30))
     cfg.archival_days = int(pick("archival_days", "MEMORY_ARCHIVAL_DAYS", 90))
     return cfg
