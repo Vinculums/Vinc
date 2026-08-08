@@ -2,6 +2,7 @@
    원본: 허브 tokens.css → data-skin 스코프 재작성. */
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
+/* sync-sha256: 3b1da1d1d8f4f3caa76b6128dfeaa71f16e6bef8f88c1754a5fd3ed6f63319d8 */
 :root[data-skin="web"] {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */

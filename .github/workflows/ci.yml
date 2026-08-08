@@ -95,6 +95,14 @@ jobs:
       - name: Atlas contrast gate
         run: python scripts/gate_contrast.py
 
+      # 디자인 허브(Vinc-design)가 내보낸 생성물이 이 리포에서 손으로 고쳐졌는지.
+      # 헤더의 "Do not hand-edit" 은 강제력이 없어서, 여기서 고친 색이 다음 재생성
+      # 때 조용히 되돌아가고 그 사이 배포분만 SSoT 와 달랐다. 허브를 체크아웃하지
+      # 않고 각인 해시만 보므로 교차 리포 PAT 이 필요 없다. 허브가 앞서간 경우
+      # (동기화 누락)는 여기서 안 보이며 허브의 sync_out.py --check 가 잡는다.
+      - name: Design sync gate
+        run: python scripts/gate_design_sync.py
+
   app:
     name: app (typecheck)
     runs-on: ubuntu-latest
