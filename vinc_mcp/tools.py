@@ -172,7 +172,15 @@ def _t_merge_candidates(args, bridge):
     # E-G4 병합 후보(조회 전용) — 확정은 vinc_merge_nodes 경유(자동 병합 금지 T1).
     return bridge.request("GET", "/merge-candidates", params={
         "owner": _owner(args, bridge), "limit": args.get("limit", 20),
-        "min_score": args.get("min_score", 0.6)})
+        "min_score": args.get("min_score", 0.6),
+        "include_structural": "true" if args.get("include_structural") else None})
+
+
+def _t_merge_reject(args, bridge):
+    # F10-b 기각 기억 — 병합(비가역)과 짝을 이루는 가역 쓰기. undo 로 취소된다.
+    return bridge.request("POST", "/merge-reject", body={
+        "owner": _owner(args, bridge), "a": args["a"], "b": args["b"],
+        "note": args.get("note") or "", "undo": bool(args.get("undo"))})
 
 
 def _t_diagnose(args, bridge):
@@ -367,8 +375,15 @@ TOOLS: list[dict] = [
         "name": "vinc_suggest_ties",
         "description": "Propose which OTHER concepts this node probably should be linked to but is not yet — "
                        "computed from shared tags and domain proximity, never from a language model. Returns "
-                       "{kind, executed, node, suggestions:[{id,title,domain,shared_tags,score}]}, best score "
-                       "first, with already-linked nodes excluded. Use it to close the gaps vinc_diagnose finds "
+                       "{kind, executed, node, suggestions:[{id,title,domain,shared_tags,score,reason,signals,"
+                       "shared_neighbors}], total, truncated, formula}, best score first, with "
+                       "already-linked nodes excluded. The score is three measured signals added "
+                       "up, and `formula` states the exact expression the server used: rare "
+                       "shared tags count for more than common ones (IDF-weighted, so a tag every "
+                       "node carries adds nothing), same domain adds a flat amount, and shared "
+                       "neighbours add the most. `signals` breaks the score into those parts and "
+                       "`shared_neighbors` names the concepts both already link to — quote those "
+                       "when proposing the tie instead of asserting a bare number. Use it to close the gaps vinc_diagnose finds "
                        "(orphans and small islands), or right after writing a new concept. This tool never "
                        "writes: the suggestions are for the user to ratify, and the edge itself is created with "
                        "vinc_ingest. Read-only.",
@@ -421,15 +436,45 @@ TOOLS: list[dict] = [
                        "Deterministic title similarity (exact normalized title, token Jaccard, or "
                        "subset) — NO automatic merge, NO LLM judgement (similarity merge is "
                        "permanently forbidden; the system only proposes). Returns {candidates:"
-                       "[{a_id,a_title,b_id,b_title,score,reason,same_domain}], count}, same-domain "
-                       "pairs first. Confirm a real duplicate by calling vinc_merge_nodes with the "
-                       "chosen keep/drop ids (irreversible).",
+                       "[{a_id,a_title,b_id,b_title,score,reason,same_domain}], count, total, "
+                       "suppressed:{structural,rejected}}, same-domain pairs first. Two classes are "
+                       "excluded BY DEFAULT because they are duplicates in name only: document "
+                       "concepts against each other (concept:doc.*) and decision-vs-non-decision "
+                       "pairs, which this graph deliberately keeps apart. Decision-vs-decision stays "
+                       "in — a reused DEC number is a real duplicate. `suppressed` reports how many "
+                       "were held back so the exclusion is never silent; set include_structural to "
+                       "see them. Pairs the user has already rejected (vinc_merge_reject) are also "
+                       "excluded and counted there. Confirm a real duplicate by calling "
+                       "vinc_merge_nodes with the chosen keep/drop ids (irreversible).",
         "inputSchema": {"type": "object", "properties": {
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+            "include_structural": {"type": "boolean", "default": False,
+                                   "description": "Also return the structurally-excluded pairs "
+                                                  "(document-vs-document, decision-vs-non-decision)."},
             "min_score": {"type": "number", "default": 0.6, "minimum": 0.0, "maximum": 1.0,
                           "description": "Token-Jaccard threshold (0-1) for token_overlap pairs."},
             "owner": {"type": "string"},
         }}, "run": _t_merge_candidates,
+    },
+    {
+        "name": "vinc_merge_reject",
+        "description": "Record that two concepts are NOT duplicates, so vinc_merge_candidates "
+                       "stops proposing the pair. This is the safe half of the merge workflow: "
+                       "vinc_merge_nodes is irreversible, this is not — pass undo:true to forget "
+                       "the rejection. Use it when you review candidates and decide a pair is a "
+                       "genuine distinction; without it the same pair returns every time and the "
+                       "list never converges. Order of a/b does not matter (the pair is stored "
+                       "sorted). Returns {kind, executed, a_id, b_id, undo, pair_key, count} where "
+                       "`count` is how many rejections this owner now has. Writes.",
+        "inputSchema": {"type": "object", "properties": {
+            "a": {"type": "string", "description": "Exact id of one concept."},
+            "b": {"type": "string", "description": "Exact id of the other concept."},
+            "note": {"type": "string",
+                     "description": "Why they are distinct — kept for the next reviewer."},
+            "undo": {"type": "boolean", "default": False,
+                     "description": "Forget a previous rejection instead of recording one."},
+            **_OWNER_PROP,
+        }, "required": ["a", "b"]}, "run": _t_merge_reject,
     },
     {
         "name": "vinc_diagnose",
@@ -624,6 +669,9 @@ _ANNOTATIONS: dict[str, dict] = {
     # E-G3/G4/G5/G7 — 전부 조회 전용(진단·제안·관측·경로). 쓰기 아님.
     "vinc_diagnose": {"title": "Diagnose graph structure", "readOnlyHint": True},
     "vinc_merge_candidates": {"title": "Suggest merge candidates", "readOnlyHint": True},
+    # 기각은 쓰기지만 **가역**이다(undo). 병합과 달리 파괴적이지 않다.
+    "vinc_merge_reject": {"title": "Reject a merge pair", "readOnlyHint": False,
+                          "destructiveHint": False, "idempotentHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.

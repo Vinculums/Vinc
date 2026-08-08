@@ -2535,14 +2535,19 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
     fragment MERGE(POST /ingest/fragment) 경유로 단일 쓰기 표면(R4)을 유지한다."""
     meta = execute(concept_meta_plan(owner=owner), cfg, store=store)
     if not meta.get("executed"):
-        return {"executed": False, "node": node, "suggestions": [],
-                "note": meta.get("note", "")}
+        return {"kind": "suggest_ties", "executed": False, "node": node,
+                "suggestions": [], "total": 0, "truncated": False,
+                "formula": TIE_SCORE_FORMULA, "note": meta.get("note", "")}
     rows = meta.get("rows", [])
     me = next((r for r in rows if r.get("id") == node), None)
     if me is None:
         cands = near_nodes(store, node, owner=owner)
+        # F4 봉투 통일 — total·truncated·formula 를 **결과가 있을 때만** 싣던 것을
+        # 고친다. 계약에 적힌 필드가 상황에 따라 사라지면 호스트는 그것을 옵셔널로
+        # 취급할 수밖에 없고, 그러면 truncated 같은 안전 표식이 무의미해진다.
         return {"kind": "suggest_ties", "executed": True, "found": False,
-                "node": node, "suggestions": [],
+                "node": node, "suggestions": [], "total": 0, "truncated": False,
+                "formula": TIE_SCORE_FORMULA,
                 "note": f"unknown concept: {node}",
                 "error": f"unknown concept: {node}",
                 "hint": ("Node ids are exact and type-prefixed (e.g. `concept:atlas`). "

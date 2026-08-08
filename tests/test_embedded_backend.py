@@ -776,6 +776,12 @@ class EmbeddedE2E(unittest.TestCase):
                                                         store=store),
             "vinc_neighbors":    lambda: q.neighbors("concept:alpha", owner="u",
                                                      store=store),
+            # F10·F11 로 봉투가 바뀐 둘도 같은 가드에 넣는다 — 새 필드를 설명에
+            # 적으면서 이름을 틀리는 것이 정확히 B-2 에서 일어난 일이다.
+            "vinc_merge_candidates": lambda: q.suggest_merge_candidates(owner="u",
+                                                                        store=store),
+            "vinc_merge_reject": lambda: q.reject_merge_pair(
+                owner="u", a_id="concept:alpha", b_id="concept:beta", store=store),
         }
         def _returns_block(text):
             """`Returns {` 부터 짝이 맞는 `}` 까지. 중첩이 있어 정규식으로는 못 뜬다."""
