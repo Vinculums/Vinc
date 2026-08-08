@@ -1,0 +1,185 @@
+# -*- coding: utf-8 -*-
+"""E4 — MCP 도구 사용 평가셋의 **정답 검증기**.
+
+이 스크립트는 모델을 채점하지 않는다(그건 호스트가 한다). 하는 일은 하나다:
+`scripts/fixtures/tooluse_evalset.json` 에 적힌 정답이 **지금도 픽스처에서 그대로
+나오는지** 실호출로 확인한다.
+
+왜 이게 필요한가. E1 이 고친 함정이 정확히 이것이다 — 평가셋이 조용히 낡으면
+"측정하지 않는 측정"이 된다. 픽스처를 바꾸거나 엔진 동작이 달라지면 정답이 틀리게
+되는데, 모델 채점만 돌리면 그때는 **모델이 틀린 것으로 보인다**. 여기서 먼저
+깨져야 한다.
+
+    python -m scripts.eval_tooluse          # 정답 검증
+    python -m scripts.eval_tooluse --print  # 호스트에 줄 문항만 출력
+
+정답이 하나라도 어긋나면 종료 코드 1 이다(CI 게이트로 걸 수 있다).
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+EVALSET = ROOT / "scripts" / "fixtures" / "tooluse_evalset.json"
+
+
+def _join(node, keys: list[str]) -> str:
+    """한 dict 에서 키 여럿을 뽑아 `|` 로 잇는다. 리스트 값은 펼친다."""
+    flat: list[str] = []
+    for k in keys:
+        v = node.get(k)
+        flat.extend(str(x) for x in (v if isinstance(v, list) else [v]) if x is not None)
+    return "|".join(flat)
+
+
+def _dig(obj, path: str):
+    """경량 경로. 문법은 넷뿐이다 — `.key` · `[N]` · `[]`(펼치기) · `k1|k2`(키 여럿).
+
+    JSONPath 를 안 쓰는 이유는 의존성 하나 늘릴 값이 여기 없어서다. 마지막 구간에만
+    `|` 를 허용한다: `candidates[].a_id|b_id` → 원소마다 "a|b" 문자열의 리스트.
+    """
+    import re
+    # `paths[0].ids` 의 `[0]` 은 키에 **붙어 있다** — 점으로만 쪼개면 "paths[0]" 이
+    # 통째로 키 이름이 된다. 그래서 토큰으로 뽑는다.
+    parts = [t for t in re.findall(r"\[\d*\]|[^.\[\]]+", path) if t]
+    cur = obj
+    for part in parts:
+        if part == "[]":
+            cur = list(cur or [])
+        elif part.startswith("["):
+            cur = (cur or [])[int(part[1:-1])]
+        elif isinstance(cur, list):
+            keys = part.split("|")
+            cur = [(_join(c, keys) if len(keys) > 1 else c.get(part)) for c in cur]
+        else:
+            keys = part.split("|")
+            cur = _join(cur or {}, keys) if len(keys) > 1 else (cur or {}).get(part)
+    return cur
+
+
+def _call(q, store, owner, tool, args):
+    """평가셋의 `verify.tool` 을 실제 함수 호출로 옮긴다.
+
+    시그니처가 도구마다 달라서(위치 인자 vs 키워드, query 층 vs docstore 층) 여기서
+    한 번에 흡수한다. 이 어댑터가 틀리면 정답 검증이 통째로 거짓이 되므로, 새 도구를
+    평가셋에 넣을 때는 여기부터 본다."""
+    kw = dict(args)
+    if tool == "doc_get":                       # docstore 층 — store 가 위치 인자다
+        from api import docstore
+        return docstore.get_doc(store, kw["doc_id"], owner=owner)
+    if tool == "search":                        # owner 는 filters 로 들어간다
+        return q.search(kw.pop("query"), top_k=kw.pop("top_k", 10),
+                        filters={"owner_id": owner}, store=store, **kw)
+    fn = getattr(q, tool)
+    if tool == "shortest_path":
+        return fn(kw.pop("a"), kw.pop("b"), owner=owner, store=store, **kw)
+    for pos_key in ("topic", "node", "query"):  # 위치 인자를 받는 것들
+        if pos_key in kw and tool in ("recall", "decide", "neighbors"):
+            return fn(kw.pop(pos_key), owner=owner, store=store, **kw)
+    return fn(owner=owner, store=store, **kw)
+
+
+@contextlib.contextmanager
+def _fixture_env():
+    """픽스처 전용 스토어를 가리키는 env 를 **빌려 쓰고 되돌린다**.
+
+    되돌리지 않으면 같은 프로세스의 다음 테스트가 이 임시 스토어를 진짜 스토어로
+    본다. 실제로 그랬다 — 전역을 그냥 덮었더니 무관한 test_server 2건이 깨졌고,
+    단독 실행에서는 멀쩡해서 원인이 증상에서 안 보였다.
+    """
+    keep = {k: os.environ.get(k) for k in
+            ("MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR", "MEMORY_EMBEDDING_MODEL")}
+    os.environ["MEMORY_STORE_BACKEND"] = keep["MEMORY_STORE_BACKEND"] or "embedded"
+    os.environ["MEMORY_DATA_DIR"] = os.path.join(tempfile.mkdtemp(), "store")
+    os.environ["MEMORY_EMBEDDING_MODEL"] = keep["MEMORY_EMBEDDING_MODEL"] or "local-en"
+    try:
+        yield
+    finally:
+        for k, v in keep.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def verify(evalset: dict) -> list[str]:
+    """정답을 픽스처에서 재도출해 대조한다. 어긋난 문항의 설명을 돌려준다."""
+    with _fixture_env():
+        return _verify_inner(evalset)
+
+
+def _verify_inner(evalset: dict) -> list[str]:
+    from store.config import load_config
+    from store.backend import open_store
+    from api import query as q
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import seed_tooluse as S
+
+    cfg = load_config()
+    store = open_store(cfg)
+    store.provision(dim=cfg.embedding_dim)
+    S.seed(store)
+    S.seed_doc(store)
+
+    problems: list[str] = []
+    try:
+        for item in evalset["questions"]:
+            v = item.get("verify")
+            if not v:
+                problems.append(f"{item['id']}: verify 절이 없다 — 정답이 검증 불가")
+                continue
+            got = _dig(_call(q, store, S.OWNER, v["tool"], v.get("args") or {}), v["path"])
+            exp = item["expect"]
+            kind, want = exp["kind"], exp["value"]
+            if kind == "set":
+                ok = set(got or []) == set(want)
+            elif kind == "list":
+                ok = list(got or []) == list(want)
+            elif kind == "contains":
+                ok = want in str(got or "")
+            else:                                   # exact
+                ok = str(got) == str(want)
+            if not ok:
+                problems.append(f"{item['id']}: 기대 {want!r} · 실제 {got!r}")
+    finally:
+        store.close()
+    return problems
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="E4 도구 사용 평가셋 정답 검증")
+    ap.add_argument("--print", dest="show", action="store_true",
+                    help="채점하지 말고 호스트에 줄 문항만 출력")
+    args = ap.parse_args()
+    evalset = json.loads(EVALSET.read_text(encoding="utf-8"))
+
+    if args.show:
+        print(evalset["note"])
+        print(f"\n픽스처: {evalset['fixture']['seed']}  (owner={evalset['fixture']['owner']})\n")
+        for it in evalset["questions"]:
+            req = ", ".join(it["requires"]) or "-"
+            fb = ", ".join(it["forbidden"]) or "-"
+            print(f"{it['id']}. {it['ask']}\n    요구: {req}  금지: {fb}")
+        return 0
+
+    problems = verify(evalset)
+    n = len(evalset["questions"])
+    if problems:
+        print(f"정답 검증 실패 {len(problems)}/{n}:")
+        for p in problems:
+            print("  " + p)
+        return 1
+    print(f"정답 검증 통과 {n}/{n} — 평가셋이 픽스처와 맞다")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

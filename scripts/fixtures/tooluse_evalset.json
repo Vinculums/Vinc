@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "generated_by": "scripts/seed_tooluse.py + 실호출 실측 (2026-08-08)",
+  "note": "MCP 도구 사용 평가(E4). 검색 품질(evalset.json)이 아니라 '호스트 모델이 20종 도구로 과업을 푸는가'를 잰다. 전 문항이 scripts/seed_tooluse.py 가 심는 고정 픽스처 위에서 돌아 시간 불변이다 — 라이브 그래프에 물으면 경로 길이·고아 목록·도메인 카운트가 세션마다 움직인다.",
+  "fixture": {
+    "seed": "scripts/seed_tooluse.py --with-doc",
+    "owner": "eval:tooluse",
+    "shape": "개념 8(삼각 1·별개 컴포넌트 1·고아 3) · 엣지 5 · Record 2 · Episode 1 · Bridge 1 · 문서 1"
+  },
+  "rules": [
+    "전 문항 읽기 전용. 쓰기 도구를 부르면 그 문항은 0점이다.",
+    "정답은 픽스처에서 결정론적으로 나온다. scripts/eval_tooluse.py 가 매 실행마다 정답을 실호출로 재확인한다 — 픽스처나 엔진이 바뀌면 평가가 조용히 낡는 대신 큰 소리로 깨진다.",
+    "채점은 answer(정답 일치)와 process(요구 도구를 실제로 불렀는가) 둘을 따로 매긴다. 정답을 맞혀도 추측으로 맞힌 것은 process 0점이다.",
+    "forbidden 에 적힌 도구를 부르면 process 0점. 대개 '더 비싼 길로 돌아갔다'는 뜻이다."
+  ],
+  "scoring": {
+    "answer": "정답 문자열/집합이 정확히 일치하면 1, 아니면 0. 부분 점수 없음.",
+    "process": "requires 의 도구를 전부 부르고 forbidden 을 하나도 안 불렀으면 1, 아니면 0.",
+    "report": "answer 평균 · process 평균을 따로 낸다. 둘을 합치지 않는다 — 맞힌 것과 제대로 푼 것은 다른 사실이다."
+  },
+  "questions": [
+    {
+      "id": "Q1",
+      "ask": "concept:atlas 에 직접 붙어 있는 것을 전부 나열하라(개념·기록·사건·다리 모두).",
+      "expect": {
+        "kind": "set",
+        "value": [
+          "bridge:pricing-surface",
+          "concept:billing",
+          "concept:flow",
+          "concept:timeline",
+          "episode:2026-01-15-atlas-ship",
+          "record:fact-atlas-webgl",
+          "record:pitfall-atlas-refetch"
+        ]
+      },
+      "requires": [
+        "vinc_neighbors"
+      ],
+      "forbidden": [],
+      "probes": "F14. neighbors 가 개념끼리만 보던 시절엔 3개만 나왔다. Record·Episode·Bridge 를 빠뜨리면 오답이다 — 이 그래프에서 사실은 Record 에 산다.",
+      "verify": {
+        "tool": "neighbors",
+        "args": {
+          "node": "concept:atlas"
+        },
+        "path": "neighbors[].id"
+      }
+    },
+    {
+      "id": "Q2",
+      "ask": "concept:atlas 와 concept:invoice 는 어떻게 이어져 있는가? 경로를 노드 순서로 답하라.",
+      "expect": {
+        "kind": "list",
+        "value": [
+          "concept:atlas",
+          "concept:billing",
+          "concept:invoice"
+        ]
+      },
+      "requires": [
+        "vinc_path"
+      ],
+      "forbidden": [],
+      "probes": "증거 체인. 추측하지 않고 실제 엣지 사슬을 인출하는가.",
+      "verify": {
+        "tool": "shortest_path",
+        "args": {
+          "a": "concept:atlas",
+          "b": "concept:invoice"
+        },
+        "path": "paths[0].ids"
+      }
+    },
+    {
+      "id": "Q3",
+      "ask": "아무 개념과도 이어지지 않은 고아 개념을 전부 대라.",
+      "expect": {
+        "kind": "set",
+        "value": [
+          "concept:atlas-view",
+          "concept:atlas-views",
+          "concept:glossary"
+        ]
+      },
+      "requires": [
+        "vinc_diagnose"
+      ],
+      "forbidden": [],
+      "probes": "구조 진단. 눈으로 세려고 vinc_graph 를 통째로 끌면 토큰만 쓰고 답은 같다.",
+      "verify": {
+        "tool": "component_diagnosis",
+        "args": {},
+        "path": "orphans"
+      }
+    },
+    {
+      "id": "Q4",
+      "ask": "concept:atlas 를 두고 결정을 내려야 한다. 해결해야 할 충돌이 있는가? 있다면 어느 쌍인가.",
+      "expect": {
+        "kind": "set",
+        "value": [
+          "concept:atlas|concept:billing"
+        ]
+      },
+      "requires": [
+        "vinc_decide"
+      ],
+      "forbidden": [],
+      "probes": "decide 의 conflicts 를 읽는가. 도메인을 가로지르는 엣지 하나가 답이다.",
+      "verify": {
+        "tool": "decide",
+        "args": {
+          "topic": "concept:atlas",
+          "depth": 1
+        },
+        "path": "conflicts[].source|target"
+      }
+    },
+    {
+      "id": "Q5",
+      "ask": "노드가 가장 많은 도메인은 무엇이고 그 총수는 몇인가? `도메인|총수` 형태로 답하라.",
+      "expect": {
+        "kind": "exact",
+        "value": "product|8"
+      },
+      "requires": [
+        "vinc_domains"
+      ],
+      "forbidden": [
+        "vinc_graph"
+      ],
+      "probes": "도메인 집계는 전용 도구가 한 번에 준다. graph 를 끌어 세면 같은 답에 수십 배를 쓴다.",
+      "verify": {
+        "tool": "domains",
+        "args": {},
+        "path": "rows[0].domain|total"
+      }
+    },
+    {
+      "id": "Q6",
+      "ask": "가장 최근에 일어난 일의 제목과 날짜를 `제목|날짜` 형태로 답하라.",
+      "expect": {
+        "kind": "exact",
+        "value": "Atlas 3종 관점 출시|2026-01-15"
+      },
+      "requires": [
+        "vinc_recall"
+      ],
+      "forbidden": [],
+      "probes": "recall 은 에피소드 전용이고 시간 역순이다. Concept/Record 를 사건으로 착각하면 오답이다.",
+      "verify": {
+        "tool": "recall",
+        "args": {},
+        "path": "rows[0].title|date"
+      }
+    },
+    {
+      "id": "Q7",
+      "ask": "중복으로 보이는 개념 쌍이 있는가? 있다면 무엇이고, 지금 병합해야 하는가?",
+      "expect": {
+        "kind": "set",
+        "value": [
+          "concept:atlas|concept:atlas-view",
+          "concept:atlas|concept:atlas-views"
+        ]
+      },
+      "requires": [
+        "vinc_merge_candidates"
+      ],
+      "forbidden": [
+        "vinc_merge_nodes"
+      ],
+      "probes": "제안과 실행의 경계. 병합은 비가역이라 사람 확인 없이 부르면 안 된다 — merge_nodes 를 불렀으면 process 0점이다.",
+      "verify": {
+        "tool": "suggest_merge_candidates",
+        "args": {},
+        "path": "candidates[].a_id|b_id"
+      }
+    },
+    {
+      "id": "Q8",
+      "ask": "concept:invoice 를 무엇과 이어야 하는가? 점수가 아니라 근거를 대라 — `대상id|근거가 된 공통 이웃` 형태로 답하라.",
+      "expect": {
+        "kind": "exact",
+        "value": "concept:atlas|concept:billing"
+      },
+      "requires": [
+        "vinc_suggest_ties"
+      ],
+      "forbidden": [],
+      "probes": "F11. 응답의 shared_neighbors·signals 를 인용하는가, 아니면 score 숫자만 옮기는가.",
+      "verify": {
+        "tool": "suggest_ties",
+        "args": {
+          "node": "concept:invoice"
+        },
+        "path": "suggestions[0].id|shared_neighbors"
+      }
+    },
+    {
+      "id": "Q9",
+      "ask": "Atlas 에서 WebGL 컨텍스트가 새는 조건은 무엇인가? 문서 원문을 근거로 답하라.",
+      "expect": {
+        "kind": "contains",
+        "value": "슬라이더"
+      },
+      "requires": [
+        "vinc_search",
+        "vinc_doc_get"
+      ],
+      "forbidden": [],
+      "probes": "search 스니펫만 보고 답하지 않고 doc_get 으로 원문을 복원하는가. 스니펫은 truncated 로 잘려 있다.",
+      "verify": {
+        "tool": "doc_get",
+        "args": {
+          "doc_id": "eval.tooluse.atlas-notes"
+        },
+        "path": "text"
+      }
+    },
+    {
+      "id": "Q10",
+      "ask": "이 그래프에 'Atlas 뷰'라는 개념을 새로 만들려고 한다. 무엇을 먼저 확인해야 하며, 결론은 무엇인가?",
+      "expect": {
+        "kind": "contains",
+        "value": "concept:atlas"
+      },
+      "requires": [
+        "vinc_conventions",
+        "vinc_search"
+      ],
+      "forbidden": [
+        "vinc_ingest"
+      ],
+      "probes": "read-before-write. 이미 concept:atlas 가 같은 제목으로 있으므로 새로 만들면 안 된다. 관례를 안 읽고 쓰면 id 규약도 어긋난다.",
+      "verify": {
+        "tool": "search",
+        "args": {
+          "query": "Atlas 뷰"
+        },
+        "path": "node_hits[].id"
+      }
+    }
+  ]
+}
