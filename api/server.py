@@ -55,6 +55,7 @@ from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
+from store.persistence import SnapshotPolicy, save_snapshot
 
 
 # ── ingest 디스패치(비동기 잡) ───────────────────────────────────────────────
@@ -95,12 +96,14 @@ class VincApp:
         # "왜 조회가 다 깨지나"를 앱이 바로 알 수 있게 한다(open() 주석 참조).
         self.provision_error = provision_error
         self.auth = auth or SessionAuth()
-        # 잡 큐에 **주기 체크포인트**를 물린다. Kùzu 계보는 close 때만 WAL 을 본
-        # 파일에 반영하는데 사이드카는 장수 프로세스라 절대 close 하지 않는다 —
-        # 2026-08-08 실측: DB mtime 06:38 vs WAL mtime 11:56(11.9MB), 그 5시간
-        # 반의 쓰기가 전부 WAL 에만 있었고 사이드카가 죽자 재생 불가로 통째 유실됐다.
-        # 쓰기는 이 큐 하나로 직렬화되므로 여기가 유일하게 옳은 자리다.
-        self.jobs = jobs or JobQueue(checkpoint=self._checkpoint_store)
+        # 영속 스냅샷 정책(§ store/persistence.py). `VINC_STORE_SNAPSHOT` 미설정이면
+        # 전부 no-op 이다 — 데스크탑·로컬 개발은 영향 없다.
+        #
+        # 잡 큐에 무는 이유: 스냅샷은 드라이버를 **닫았다 다시 여는** 구간이 있어
+        # 쓰기 스레드에서만 안전하다. 쓰기는 이 큐 하나로 직렬화되므로 여기가
+        # 유일하게 옳은 자리다.
+        self._snapshots = SnapshotPolicy()
+        self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
@@ -143,21 +146,27 @@ class VincApp:
                 print(f"vinc-sidecar: provision failed — {provision_error}", file=sys.stderr)
         return cls(cfg, store=store, provision_error=provision_error, **kw)
 
-    def _checkpoint_store(self) -> None:
-        """WAL 을 본 파일에 반영한다. **잡 워커 스레드에서만** 불린다.
+    # ── 영속 스냅샷 ──────────────────────────────────────────────────────
+    def _maybe_snapshot(self, *, force: bool = False) -> str | None:
+        """때가 됐으면 작업본을 영속 볼륨으로 복사한다. **잡 워커 스레드 전용.**
 
-        쓰기와 같은 스레드라 커넥션 경합이 없다 — 이것이 JobQueue 에 물린 이유다.
-        스토어가 없거나 방언이 CHECKPOINT 를 모르면 조용히 지나간다(스토어 없는
-        테스트·강등 모드에서 잡이 실패하면 안 된다). 진짜 실패는 JobQueue 가 로그로
-        남긴다.
-        """
-        st = self.store
-        if st is None:
-            return
-        run = getattr(st, "run", None)
-        if run is None:
-            return
-        run("CHECKPOINT")
+        주기가 곧 최대 손실 창이다(기본 300초). 쓰기가 있었을 때만 뜬다 — 읽기만
+        오가는 동안 수십 MB 를 계속 미는 것은 비용만이다."""
+        if not force:
+            # 잡이 하나 끝나서 불렸다 = 쓰기가 있었을 수 있다. 잡 큐가 곧 쓰기
+            # 경로이므로 표시를 호출부에 흩뿌리지 않고 여기서 한 번에 든다.
+            self._snapshots.mark_dirty()
+            if not self._snapshots.due():
+                return None
+        state = save_snapshot(self.store)
+        self._snapshots.done(state)
+        if state.startswith("error"):
+            print(f"vinc-sidecar: store snapshot — {state}", file=sys.stderr, flush=True)
+        return state
+
+    def mark_store_dirty(self) -> None:
+        """쓰기가 있었음을 알린다 — 다음 유휴 시점에 스냅샷 대상이 된다."""
+        self._snapshots.mark_dirty()
 
     # reader 뷰: 공유 Database 에서 별도 Connection(R4). 없으면 None(각 q 함수가
     # 자체 open→None→강등). 요청 단위로 생성·close.
@@ -197,9 +206,17 @@ class VincApp:
                 r.close()
 
     def close(self):
-        """clean shutdown(E6): 워커 드레인 → 공유 스토어 close."""
+        """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
+
+        순서가 중요하다. 드레인 뒤에 해야 큐에 남은 쓰기까지 담기고, close 앞에
+        해야 스토어가 살아 있다. 이 한 번이 "정상 종료면 아무것도 안 잃는다"를
+        만든다 — 주기 스냅샷은 급사에 대비한 것이고 이건 예고된 종료용이다.
+        (SIGKILL·OOM 은 여기 못 온다. 그때 잃는 양의 상한이 스냅샷 주기다.)"""
         self.jobs.shutdown(drain=True)
         if self.store is not None:
+            state = self._maybe_snapshot(force=True)
+            if state and state != "off":
+                print(f"vinc-sidecar: final snapshot — {state}", file=sys.stderr, flush=True)
             self.store.close()
             self.store = None
 
@@ -1210,6 +1227,12 @@ class _Handler(BaseHTTPRequestHandler):
                     body["embed"] = self.app.embed_health()
                 except Exception as exc:   # noqa: BLE001
                     body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
+                # 영속 스냅샷 상태 — 꺼져 있으면 'off'. 이게 조용히 실패하면
+                # "돌고 있다고 믿는 백업이 없는" 최악의 형태가 된다(이 리포가
+                # 임베딩 워커에서 38시간 겪은 그 모양).
+                snaps = getattr(self.app, "_snapshots", None)
+                if snaps is not None:
+                    body["snapshot"] = getattr(snaps, "last_state", "unknown")
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,

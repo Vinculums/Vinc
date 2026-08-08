@@ -30,6 +30,37 @@ fi
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
 : "${VINC_SIDECAR_TOKEN:?VINC_SIDECAR_TOKEN 필수 — 사이드카/MCP 내부 인증}"
 
+# **영속 볼륨 루트** — 아래에서 DATA_DIR 이 로컬 작업본으로 바뀔 수 있으므로 여기서
+# 먼저 잡아 둔다. OAuth 스냅샷 기본값이 이걸 쓴다(안 잡아 두면 상태 DB 스냅샷이
+# 로컬을 가리켜 **영속이 아니게 된다** — 리비전마다 커넥터가 끊긴다).
+PERSIST_ROOT="${DATA_DIR%/*}"
+
+# ── 그래프 DB: 작업본 로컬 + 영속 볼륨 스냅샷 (2026-08-09) ────────────────────
+# OAuth SQLite 에 쓴 것과 **같은 처방**이다(아래 ① ② 참조). 그때 "Azure Files 는
+# SQLite 가 기대는 바이트 범위 락을 제대로 주지 않는다 — WAL 만의 문제가 아니다"
+# 라고 적어 놓고, 정작 본체인 그래프 DB 는 그대로 SMB 위에 두었다. 그 계층에서
+# 하드다운이 세 번 났다(FTS 손상 08-04·08-07, 재생 불가 WAL 08-08).
+#
+# `VINC_STORE_SNAPSHOT` 이 있으면 사이드카가 기동 시 거기서 복원하고 주기적으로
+# 되민다. **비어 있으면 예전처럼 DATA_DIR 에서 직접 돈다** — 전환은 아래 한 줄을
+# 켜는 의도적 행위다(배포 시 데이터 이관이 선행되어야 하므로 자동으로 켜지 않는다).
+#
+#   VINC_STORE_LOCAL=on  →  작업본 /var/lib/vinc/db · 영속 스냅샷 = 원래 DATA_DIR
+if [ "${VINC_STORE_LOCAL:-}" = "on" ]; then
+  : "${VINC_STORE_SNAPSHOT:=$DATA_DIR}"
+  : "${VINC_STORE_WORK_DIR:=/var/lib/vinc}"
+  mkdir -p "$VINC_STORE_WORK_DIR" 2>/dev/null \
+    || echo "[entrypoint] ⚠ 작업본 경로 생성 실패: $VINC_STORE_WORK_DIR" >&2
+  DATA_DIR="$VINC_STORE_WORK_DIR/$(basename "$VINC_STORE_SNAPSHOT")"
+  export VINC_DATA_DIR="$DATA_DIR" VINC_STORE_SNAPSHOT
+  echo "[entrypoint] 그래프 스토어: work=$DATA_DIR snapshot=$VINC_STORE_SNAPSHOT"
+  case "$VINC_STORE_SNAPSHOT" in
+    /data/*) : ;;   # 영속 볼륨 안 — 정상
+    *) echo "[entrypoint] ⚠ 스냅샷이 영속 볼륨(/data) 밖이다 —" \
+            "리비전이 바뀌면 그래프가 통째로 사라진다." >&2 ;;
+  esac
+fi
+
 # ── MCP OAuth 상태: 로컬 작업본 + 영속 볼륨 스냅샷 (2026-08-03) ──────────────────
 # 배경(사고 둘을 연달아 겪고 정착한 모양이다):
 #
@@ -50,7 +81,7 @@ DATA_DIR="${VINC_DATA_DIR:-/data/db}"
 # env 로 넣지 않고 **여기서 기본값을 주는** 이유는 그대로다: 허브 런타임 env 는 손으로
 # 넣는 값이라 앱을 재생성하면 조용히 빠진다(DEPLOYMENT.md §4.4, VINC_MCP_ISSUER 전례).
 : "${VINC_MCP_STATE_DIR:=/var/lib/vinc-mcp}"          # 작업본 — 반드시 로컬
-: "${VINC_MCP_STATE_SNAPSHOT:=${DATA_DIR%/*}/mcp/oauth.db}"   # 영속 — 파일 복사만
+: "${VINC_MCP_STATE_SNAPSHOT:=$PERSIST_ROOT/mcp/oauth.db}"   # 영속 — 파일 복사만
 export VINC_MCP_STATE_DIR VINC_MCP_STATE_SNAPSHOT
 # 둘 다 못 만들어도 **죽이지 않는다**: 상태 저장소는 편의이고 MCP 는 성립 조건이다.
 # (api/cli.py 가 열기 실패 시 인메모리로 강등한다. ②의 교훈 — 저장소 문제로 서비스
@@ -61,8 +92,8 @@ mkdir -p "$(dirname "$VINC_MCP_STATE_SNAPSHOT")" 2>/dev/null \
   || echo "[entrypoint] ⚠ 스냅샷 경로 생성 실패: $VINC_MCP_STATE_SNAPSHOT" >&2
 echo "[entrypoint] MCP OAuth state: work=$VINC_MCP_STATE_DIR snapshot=$VINC_MCP_STATE_SNAPSHOT"
 case "$VINC_MCP_STATE_SNAPSHOT" in
-  "${DATA_DIR%/*}"/*) : ;;   # 영속 볼륨 안 — 정상
-  *) echo "[entrypoint] ⚠ 스냅샷이 영속 볼륨(${DATA_DIR%/*}) 밖이다 —" \
+  "$PERSIST_ROOT"/*) : ;;   # 영속 볼륨 안 — 정상
+  *) echo "[entrypoint] ⚠ 스냅샷이 영속 볼륨($PERSIST_ROOT) 밖이다 —" \
           "배포마다 커넥터 재인가가 필요해진다." >&2 ;;
 esac
 

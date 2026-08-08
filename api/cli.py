@@ -290,8 +290,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "serve":
         from . import server
         from store.config import load_config, resolve_data_dir
+        from store import persistence
         # D43 — 설치형 기본 데이터 홈: --data > MEMORY_DATA_DIR > ~/.vinc
         data_dir = resolve_data_dir(args.data)
+        # 영속 스냅샷에서 복원(VINC_STORE_SNAPSHOT 설정 시에만). 스토어를 열기
+        # **전에** 해야 한다 — 연 뒤에 파일을 갈아치우면 드라이버가 자기 밑의
+        # 파일이 바뀐 것을 모른다. 미설정이면 'off' 로 즉시 빠진다.
+        _restore = persistence.restore_if_missing(data_dir)
+        if _restore not in ("off", "present"):
+            print(f"vinc-sidecar: store restore — {_restore}", file=sys.stderr, flush=True)
         packs = args.packs
         if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
             packs = os.path.join(os.path.dirname(data_dir), "packs")

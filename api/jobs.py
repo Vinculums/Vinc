@@ -18,7 +18,6 @@ stdlib 전용(``queue``·``threading``). 잡 id 는 결정론적 단조 카운�
 """
 from __future__ import annotations
 
-import os
 import queue
 import sys
 import threading
@@ -30,12 +29,6 @@ QUEUED = "queued"
 RUNNING = "running"
 DONE = "done"
 ERROR = "error"
-
-
-#: 몇 개 잡마다 체크포인트할지. 20 은 타협값이다 — 너무 잦으면 Azure Files 왕복이
-#: 쓰기 지연으로 보이고, 너무 드물면 사고 시 잃는 양이 커진다. env 로 조절 가능하게
-#: 두되 기본값이 안전한 쪽(자주)이다. 0 이면 끈다.
-CHECKPOINT_EVERY = int(os.environ.get("VINC_CHECKPOINT_EVERY", "20") or 0)
 
 
 @dataclass
@@ -72,9 +65,14 @@ class JobQueue:
     """단일 워커 스레드가 잡을 FIFO 로 직렬 실행(R4 쓰기 지점).
 
     잡 함수 ``fn: () -> dict`` 는 워커 스레드에서 실행된다 — 그 안의 스토어 접근은
-    자동으로 직렬화되므로 임베디드 단일 커넥션 쓰기 경합이 없다."""
+    자동으로 직렬화되므로 임베디드 단일 커넥션 쓰기 경합이 없다.
 
-    def __init__(self, *, checkpoint=None, checkpoint_every: int = CHECKPOINT_EVERY):
+    ``on_idle`` 은 잡 하나가 끝날 때마다 불린다(쓰기 스레드). 영속 스냅샷처럼
+    **드라이버를 닫았다 여는** 작업은 여기서만 안전하다 — 다른 스레드에서 하면
+    재오픈 중인 커넥션을 누군가 쓴다. 예외는 삼키되 조용히 넘기지는 않는다."""
+
+    def __init__(self, *, on_idle=None) -> None:
+        self._on_idle = on_idle
         self._q: "queue.Queue" = queue.Queue()
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
@@ -82,10 +80,6 @@ class JobQueue:
         self._stopping = threading.Event()
         self._worker: threading.Thread | None = None
         self._revivals = 0
-        #: 주기 체크포인트 — WAL 이 무한정 자라는 것을 막는다(아래 CHECKPOINT_EVERY 참조).
-        self._checkpoint = checkpoint
-        self._checkpoint_every = max(0, int(checkpoint_every))
-        self._since_checkpoint = 0
         self._ensure_worker()
 
     # ── 워커 수명 ─────────────────────────────────────────────────────────
@@ -180,35 +174,29 @@ class JobQueue:
             finally:
                 job._done.set()
                 self._q.task_done()
-            self._maybe_checkpoint()
+            self._idle_tick()
 
-    def _maybe_checkpoint(self) -> None:
-        """N개 잡마다 WAL 을 본 파일에 반영한다.
-
-        **왜 필요한가**(2026-08-08 사고). Kùzu 계보는 close 시점에만 체크포인트한다.
-        사이드카는 장수 프로세스라 절대 close 하지 않으므로 **WAL 이 무한정 자란다** —
-        실측: DB 파일 mtime 06:38 vs WAL mtime 11:56, 그 5시간 반의 모든 쓰기가
-        WAL 에만 있었고 11.9MB 였다. 그 상태에서 사이드카가 죽자 WAL 은 재생 불가
-        (네이티브 크래시 0xC0000409)였고 **그 5시간 반이 통째로 사라졌다**.
-
-        체크포인트가 있었으면 잃는 것이 마지막 N개 잡으로 줄어든다. 비용은 주기적
-        디스크 쓰기인데, Azure Files 위에서도 12MB 를 한 번에 반영하는 것보다 조금씩
-        자주 반영하는 편이 싸다.
-
-        실패는 삼킨다 — 체크포인트는 **보조**이고, 이것 때문에 잡이 실패하면 안 된다.
-        다만 조용히 넘기지는 않는다(무음 실패는 이 프로젝트가 반복해 물린 형태다).
-        """
-        if not self._checkpoint or not self._checkpoint_every:
+    def _idle_tick(self) -> None:
+        """잡 하나가 끝난 뒤, 쓰기 스레드에서 할 일(영속 스냅샷)을 부른다."""
+        if self._on_idle is None:
             return
-        self._since_checkpoint += 1
-        if self._since_checkpoint < self._checkpoint_every:
-            return
-        self._since_checkpoint = 0
         try:
-            self._checkpoint()
+            self._on_idle()
         except Exception as exc:                      # noqa: BLE001
-            print(f"[jobs] 체크포인트 실패(계속 진행): {type(exc).__name__}: {exc}",
+            print(f"[jobs] on_idle 실패(계속 진행): {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
+
+    # ── 체크포인트는 여기 없다(2026-08-09 철거) ────────────────────────────
+    # 하루 전 이 자리에 "N개 잡마다 CHECKPOINT" 가 있었다. 근거는 "엔진은 close
+    # 때만 체크포인트한다"였는데 **그 전제가 틀렸다** — ladybug 는 `checkpoint_
+    # threshold`(기본 16MB)를 넘으면 스스로 한다. 그래서 뺐고, 대신 그 임계값을
+    # `StoreConfig.checkpoint_threshold_mb` 로 내렸다(4MB).
+    #
+    # 잡 개수로 세는 것이 왜 나쁜가: **잡 개수는 WAL 바이트와 무관하다.** 잡 하나가
+    # 거대하면 20잡을 세기 전에 임계를 넘고, 잡이 잘면 쓸데없이 자주 돈다. 엔진
+    # 내장은 처음부터 바이트 기준이다. 게다가 수동 CHECKPOINT 는 활성 트랜잭션이
+    # 있으면 대기하다 타임아웃하는데 **읽기도 활성 트랜잭션**이라, 읽기가 끊이지
+    # 않는 라이브에서는 실패 로그만 쌓였을 공산이 크다.
 
     # ── 종료 ──────────────────────────────────────────────────────────────
     def shutdown(self, *, drain: bool = True) -> None:

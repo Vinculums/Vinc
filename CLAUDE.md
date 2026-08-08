@@ -141,3 +141,14 @@ CI 에서 걸렸다).
 - 허브 DB 는 Azure Files 위 단일 writer 다. FTS 인덱스가 손상되면 **재시작하는 순간**
   기동 실패한다(관용 옵션으로 안 막힌다). 복구는 `db` 를 다른 이름으로 서버측 복사
   (그 이름엔 `.wal` 이 없어 재생을 건너뛴다) 후 `VINC_DATA_DIR` 전환
+- ⚠ **하드다운 3회의 공통 원인은 SMB 위에서 임베디드 DB 를 직접 read-write 하는 것**
+  이다(FTS 손상 2 + 재생 불가 WAL 1). 이 리포는 같은 교훈을 OAuth SQLite 에서 이미
+  배워 "읽고 쓰는 곳과 남기는 곳을 가른다"를 `vinc_mcp/store.py` 에 적어 놓고, 정작
+  그래프 DB 에는 안 썼다. 2026-08-09 에 `store/persistence.py` 로 같은 처방을 붙였다
+  (`VINC_STORE_LOCAL=on` 으로 켠다 — 데이터 이관 선행 필요)
+- ⚠ **"엔진은 close 때만 체크포인트한다"는 틀린 말이다.** ladybug 0.18.0 은
+  `autoCheckpoint=true, checkpointThreshold=16MB` 가 기본이라 close 없이도 스스로
+  한다. 2026-08-08 에 코드 주석 한 줄을 믿고 이걸 근본원인으로 오진했다. 임계값은
+  `VINC_CHECKPOINT_THRESHOLD_MB`(기본 4MB)로 조절하며 **그 값이 곧 최대 손실 창**이다
+- SMB 고아 핸들이 파일을 물고 있으면 **레플리카를 0으로 내려도 안 풀리고 만료 시간도
+  없다.** `az storage share close-handle --handle-id "*" [--recursive]` 로 강제 종료할 것
