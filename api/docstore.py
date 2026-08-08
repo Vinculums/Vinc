@@ -619,8 +619,18 @@ def mention_tally(store, *, owner: str | None = None) -> MentionTally:
     return tally
 
 
-def list_docs(store, *, owner: str | None = None) -> dict:
+def list_docs(store, *, owner: str | None = None, limit: int | None = None,
+              cursor: str | None = None, detail: str = "full") -> dict:
     """문서 목록(_DocMeta) + **주제·대표 개념 파생**. owner 지정 시 소유 스코프.
+
+    ⚠ **기본값은 종전 그대로다**(`detail="full"` · 전량). `nav_tree` 가 이 함수를
+    그대로 쓰면서 `topic`·`primary_concept_id` 를 요구하기 때문이다 — 기본을 요약으로
+    바꾸면 좌측 문서 트리가 조용히 무너진다(F5 를 도구 쪽에서만 바꾸는 이유).
+
+    F5 — MCP 표면은 `detail="summary"` · `limit=30` 으로 부른다. 실측 51,537B
+    (약 12,900토큰)이 문서 120건에서 나왔고, 200건이 되면 쓸 수 없는 수준이 된다.
+    요약형은 `mention_tally` 를 **아예 계산하지 않는다** — 크기뿐 아니라 왕복도 준다.
+    커서·has_more 규약은 `vinc_search`(GM-14)와 같은 형태다.
 
     ⚠ 문서 자체에는 주제(domain) 열이 없다 — `_DocMeta` 는 정체성·변경감지 메타만
     갖는다(D45). 그래서 주제는 **문서가 언급하는 개념에서 유도**한다:
@@ -647,15 +657,44 @@ def list_docs(store, *, owner: str | None = None) -> dict:
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))}
             for r in (rows or []) if r.get("doc_id") != graphmd.CONVENTIONS_DOC_ID]
 
-    tally = mention_tally(store, owner=owner)
-    for d in docs:
-        ordered = tally.topics(d["doc_id"])
-        d["topics"] = ordered
-        d["topic"] = ordered[0] if ordered else ""
-        cid, ctitle = tally.primary(d["doc_id"], d["topic"])
-        d["primary_concept_id"] = cid
-        d["primary_concept_title"] = ctitle
-    return {"kind": "doc.list", "executed": True, "docs": docs, "count": len(docs)}
+    total = len(docs)
+    off = 0
+    if cursor:
+        # 순환 임포트 회피 — query 가 이 모듈을 이미 쓴다(nav_tree). 지연 임포트로
+        # 커서 규약을 **한 벌만** 유지한다(검색과 같은 코덱).
+        from .query import cursor_decode
+        data = cursor_decode(cursor)        # 무효면 ValueError — 호출부가 표면화
+        off = max(0, int(data.get("off") or 0))
+    page = docs[off:off + limit] if limit else docs[off:]
+
+    if detail == "summary":
+        # 요약형은 언급 집계를 **건너뛴다.** topics·primary_concept 는 전 문서의
+        # MENTIONS 를 훑어야 나오는 파생값이라, 목록을 보려고 그것까지 계산하면
+        # 크기와 시간을 함께 낸다.
+        page = [{"doc_id": d["doc_id"], "title": d.get("title") or "",
+                 "updated_at": d.get("updated_at") or "", "chunks": d.get("chunks")}
+                for d in page]
+    else:
+        tally = mention_tally(store, owner=owner)
+        for d in page:
+            ordered = tally.topics(d["doc_id"])
+            d["topics"] = ordered
+            d["topic"] = ordered[0] if ordered else ""
+            cid, ctitle = tally.primary(d["doc_id"], d["topic"])
+            d["primary_concept_id"] = cid
+            d["primary_concept_title"] = ctitle
+
+    out = {"kind": "doc.list", "executed": True, "docs": page, "count": len(page)}
+    if limit or cursor:
+        # 페이지를 자를 때만 항해 정보를 싣는다 — 전량 호출(nav_tree·CLI)의 응답
+        # 형태를 바꾸지 않기 위해서다.
+        from .query import cursor_encode
+        nxt = off + len(page)
+        out["total_count"] = total
+        out["has_more"] = nxt < total
+        out["next_cursor"] = (cursor_encode({"v": 1, "off": nxt, "tc": total})
+                              if nxt < total else None)
+    return out
 
 
 def reembed_doc(store, doc_id: str, *, owner: str | None,

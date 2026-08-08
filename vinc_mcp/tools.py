@@ -218,7 +218,14 @@ def _t_doc_get(args, bridge):
 
 
 def _t_doc_list(args, bridge):
-    return bridge.request("GET", "/docs", params={"owner": _owner(args, bridge)})
+    # F5 — 어시스턴트 표면의 기본은 **요약 30건**이다. 전량·full 은 실측 51,537B
+    # (약 12,900토큰)라 목록 한 번이 컨텍스트를 삼킨다. 전문이 필요하면 doc_id 로
+    # vinc_doc_get 을 부르는 것이 원래 계약이다.
+    return bridge.request("GET", "/docs", params={
+        "owner": _owner(args, bridge),
+        "limit": args.get("limit", 30),
+        "cursor": args.get("cursor"),
+        "detail": args.get("detail", "summary")})
 
 
 def _t_doc_put(args, bridge):
@@ -509,9 +516,17 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_doc_list",
-        "description": "List the owner's documents (doc_id, title, origin, chunk count, updated_at).",
+        "description": "List the owner's documents, newest first. Paginated: `limit` (default 30) "
+                       "with `cursor`/`has_more`/`next_cursor` to continue. `detail` defaults to "
+                       "'summary' (doc_id, title, updated_at, chunks) — pass 'full' only when you "
+                       "need the derived topics and primary concept, which cost a scan of every "
+                       "document's MENTIONS. Fetch a document's text with vinc_doc_get(doc_id).",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
+            "limit": {"type": "integer", "default": 30, "minimum": 1},
+            "cursor": {"type": "string",
+                       "description": "Opaque next_cursor from a previous page."},
+            "detail": {"type": "string", "enum": ["summary", "full"], "default": "summary"},
         }},
         "run": _t_doc_list,
     },

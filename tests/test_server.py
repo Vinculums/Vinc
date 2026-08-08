@@ -1002,3 +1002,76 @@ class DebugPlanOptInTests(unittest.TestCase):
         res = self._get("/plan/recall?query=x")
         self.assertEqual(res["kind"], "recall")
         self.assertIn("cypher", res)
+
+
+class EnvelopeAndDocListTests(unittest.TestCase):
+    """F4·F5 — 봉투 통일과 문서 목록 페이지네이션.
+
+    실측(2026-08-07, 라이브 13종): `kind` 가 9/13 에만 있었고 없는 넷이 하필
+    recall·domains·graph·suggest_ties 였다. 그리고 `vinc_doc_list` 는 문서 120건에서
+    **51,537B(약 12,900토큰)** 였다 — 목록 한 번이 컨텍스트를 삼킨다.
+    """
+
+    class _Store:
+        driver_name = "fake"
+        def __init__(self, n=0): self.n = n
+        def reader_view(self): return self
+        def run(self, cypher, params=None):
+            # ⚠ 조건에 "count" 를 쓰면 안 된다 — 이 쿼리 자체가
+            #   `d.chunk_count AS chunks` 를 담고 있어 스스로 걸린다.
+            if "MATCH (d:_DocMeta)" in cypher and "RETURN d.doc_id" in cypher:
+                return [{"doc_id": f"d{i:03d}", "title": f"문서 {i}", "origin": "o",
+                         "chunks": 3, "updated_at": f"2026-08-{(i % 28) + 1:02d}",
+                         "needs_embed": 0, "created_at": "", "content_time": ""}
+                        for i in range(self.n)]
+            return []
+        def close(self): pass
+
+    def _get(self, path, n=0):
+        with running_server(_app(store=self._Store(n))) as base:
+            return _req(base, path)[1]
+
+    def test_kind_가_모든_봉투에_있다(self):
+        """호스트가 코드로 후처리하려면 종류 표시가 **항상** 있어야 한다."""
+        cases = {
+            "/recall?query=x&owner=u": "recall",
+            "/domains?owner=u": "domains",
+            "/graph?owner=u&seed=concept:a": "graph",
+            "/suggest-ties?owner=u&node=concept:a": "suggest_ties",
+        }
+        for path, kind in cases.items():
+            res = self._get(path)
+            self.assertEqual(res.get("kind"), kind, f"{path} 봉투에 kind 가 없다: {res}")
+            self.assertIn("executed", res, f"{path} 에 executed 가 없다")
+
+    def test_문서_목록_기본은_전량이다__navtree_보호(self):
+        """`nav_tree` 가 이 경로를 그대로 쓰면서 topic·primary_concept 를 요구한다.
+        기본을 요약으로 바꾸면 **좌측 문서 트리가 조용히 무너진다.**"""
+        res = self._get("/docs?owner=u", n=40)
+        self.assertEqual(res["count"], 40)
+        self.assertNotIn("has_more", res, "전량 호출의 응답 형태가 바뀌었다")
+        self.assertIn("topics", res["docs"][0], "full 인데 파생 필드가 빠졌다")
+
+    def test_limit_을_주면_잘리고_커서가_따라온다(self):
+        res = self._get("/docs?owner=u&limit=10&detail=summary", n=40)
+        self.assertEqual(res["count"], 10)
+        self.assertEqual(res["total_count"], 40)
+        self.assertTrue(res["has_more"])
+        self.assertTrue(res["next_cursor"])
+
+    def test_커서로_다음_장을_이어_읽는다(self):
+        first = self._get("/docs?owner=u&limit=30&detail=summary", n=40)
+        nxt = self._get(
+            f"/docs?owner=u&limit=30&detail=summary&cursor={first['next_cursor']}", n=40)
+        self.assertEqual(nxt["count"], 10)
+        self.assertFalse(nxt["has_more"])
+        self.assertIsNone(nxt["next_cursor"])
+        self.assertEqual(nxt["docs"][0]["doc_id"], "d030", "장 경계가 어긋났다")
+
+    def test_요약형은_파생_필드를_아예_계산하지_않는다(self):
+        """크기만의 문제가 아니다 — topics·primary_concept 는 전 문서의 MENTIONS 를
+        훑어야 나오는 파생값이라, 목록을 보려고 그것까지 계산하면 왕복도 함께 낸다."""
+        res = self._get("/docs?owner=u&limit=5&detail=summary", n=40)
+        d = res["docs"][0]
+        self.assertEqual(set(d), {"doc_id", "title", "updated_at", "chunks"},
+                         f"요약형에 군더더기가 실렸다: {sorted(d)}")

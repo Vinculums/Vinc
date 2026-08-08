@@ -576,7 +576,14 @@ class VincApp:
             basis=p.get("basis") or q.BASIS_RECORDED, store=r))
 
     def read_docs(self, p):
-        return self._read(lambda r: docstore.list_docs(r, owner=p.get("owner") or None))
+        # F5 — limit/cursor/detail 은 그대로 통과시킨다. **기본은 종전(전량·full)**:
+        # nav_tree·CLI·앱이 이 경로를 그대로 쓰고 있어 기본을 바꾸면 조용히 깨진다.
+        # 잘라 달라고 말한 쪽(MCP)만 잘린 응답을 받는다.
+        lim = _int(p.get("limit"), 0) or None
+        return self._read(lambda r: docstore.list_docs(
+            r, owner=p.get("owner") or None, limit=lim,
+            cursor=p.get("cursor") or None,
+            detail=(p.get("detail") or "full")))
 
     def read_conventions(self, p):
         """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널(vinc.c.graph-md §6.2).

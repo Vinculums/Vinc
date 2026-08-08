@@ -254,7 +254,10 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None,
     # owner UUID 는 요청자가 이미 아는 값이라 되돌려줄 이유도 없다.
     # 필요한 자리는 이미 따로 있다: `/plan/recall`·`/plan/decide` 라우트와 CLI `plan`
     # 은 플랜 **빌더**를 직접 부르므로 이 경로를 타지 않는다 — 즉 진단 능력은 안 준다.
-    base = {"executed": False, "rows": []}
+    # F4 — 공통 봉투. `kind` 는 13종 중 9종에만 있었고(실측) 없는 넷이 하필
+    # recall·domains 처럼 자주 쓰는 것들이었다. 호스트가 응답을 코드로 후처리하려면
+    # 종류 표시가 **항상** 있어야 한다. plan 이 이미 자기 kind 를 안다.
+    base = {"kind": plan.kind, "executed": False, "rows": []}
     if debug:
         base["plan"] = plan.to_dict()
     if store is None:
@@ -1359,8 +1362,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             entity_subgraph_ids_plan(seed, depth=depth, owner=owner) if entity_seed
             else subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
         if not ids_res.get("executed"):
-            return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
-                    "note": ids_res.get("note", "")}
+            return {"kind": "graph", "executed": False, "seed": seed, "depth": depth,
+                    "nodes": [], "edges": [], "note": ids_res.get("note", "")}
         ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
         res = execute(
             entity_rows_for_ids_plan(ids, owner=owner) if entity_seed
@@ -1399,8 +1402,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             # 인(진짜 고립) 경우뿐이다.
             seed_res = execute(seed_lookup_plan(seed, owner=owner), cfg, store=store)
             if not seed_res.get("executed"):
-                return {"executed": False, "seed": seed, "depth": depth, "nodes": [], "edges": [],
-                        "note": seed_res.get("note", "")}
+                return {"kind": "graph", "executed": False, "seed": seed, "depth": depth,
+                        "nodes": [], "edges": [], "note": seed_res.get("note", "")}
             seed_row = next((r for r in seed_res.get("rows", []) if r.get("id") == seed), None)
             found = seed_row is not None
             if found:
@@ -1412,8 +1415,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         attach_ppr(shaped, [seed])
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         used = _apply_basis(shaped, basis)
-        return {"executed": executed, "seed": seed, "depth": depth, "found": found,
-                "basis": used, **shaped}
+        return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
+                "found": found, "basis": used, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
@@ -1425,7 +1428,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     shaped = shape_graph(rows)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
     used = _apply_basis(shaped, basis)
-    return {"executed": res.get("executed", False), "basis": used, **shaped}
+    return {"kind": "graph", "executed": res.get("executed", False),
+            "basis": used, **shaped}
 
 
 def domain_ties_plan(*, owner: str) -> QueryPlan:
@@ -2479,8 +2483,8 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
     rows = meta.get("rows", [])
     me = next((r for r in rows if r.get("id") == node), None)
     if me is None:
-        return {"executed": True, "node": node, "suggestions": [],
-                "note": f"unknown concept: {node}"}
+        return {"kind": "suggest_ties", "executed": True, "node": node,
+                "suggestions": [], "note": f"unknown concept: {node}"}
     g = execute(graph_plan(owner=owner), cfg, store=store)
     linked = {node}
     for r in g.get("rows", []):
@@ -2508,7 +2512,7 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
                     "domain": r.get("domain") or "", "shared_tags": shared,
                     "score": score})
     out.sort(key=lambda s: (-s["score"], s["id"]))   # 결정론 순서
-    return {"executed": True, "node": node,
+    return {"kind": "suggest_ties", "executed": True, "node": node,
             "suggestions": out[:max(1, int(limit))]}
 
 
