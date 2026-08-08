@@ -471,7 +471,7 @@ class _RemoteEncoder:
         return vecs
 
 
-def serve_encode(emb: "_Embedder", port: int) -> None:
+def serve_encode(emb: "_Embedder", port: int) -> int:
     """루프백 인코딩 서비스 — 사이드카가 **쿼리 임베딩**을 얻어 가는 창구.
 
     왜 여기냐: 임베딩 모델을 들고 있는 프로세스가 이 워커뿐이다. 사이드카(데스크탑·허브
@@ -564,10 +564,15 @@ def serve_encode(emb: "_Embedder", port: int) -> None:
             self.wfile.write(out)
 
     srv = ThreadingHTTPServer((ENCODE_BIND, port), _H)
+    bound = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True, name="vinc-embed-encode")
     t.start()
-    print(f"[embed] encode service on {ENCODE_BIND}:{port}"
+    print(f"[embed] encode service on {ENCODE_BIND}:{bound}"
           f"{' (token 인증)' if ENCODE_TOKEN else ''}", flush=True)
+    # 실제로 바인드된 포트를 돌려준다 — port=0 이면 OS 가 고른다. 호출부가 미리
+    # 빈 포트를 찾아 두고(bind→close) 다시 바인드하는 방식은 그 사이에 다른
+    # 프로세스가 채 갈 수 있어 **산발적으로만** 실패한다(실측: 전체 스위트 1회 실패).
+    return bound
 
 
 def _prefix(text: str, kind: str) -> str:

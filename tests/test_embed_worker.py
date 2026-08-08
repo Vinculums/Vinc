@@ -427,21 +427,15 @@ class SplitEncoderTest(unittest.TestCase):
         for k, v in self._saved.items():
             setattr(self.mod, k, v)
 
-    @staticmethod
-    def _free_port() -> int:
-        import socket
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        s.close()
-        return port
-
     def _serve(self, encode):
-        """진짜 핸들러를 통과시킨다 — 대역으로는 본문 계약이 안 잡힌다."""
+        """진짜 핸들러를 통과시킨다 — 대역으로는 본문 계약이 안 잡힌다.
+
+        ⚠ 포트를 미리 찾아 두지 않는다(bind→close→재bind 는 그 틈에 다른 프로세스가
+        채 갈 수 있어 **산발 실패**를 만든다 — 실제로 한 번 물렸다). 0 을 주고 OS 가
+        고른 포트를 돌려받는다."""
         emb = self.mod._Embedder()
         emb.encode = encode
-        port = self._free_port()
-        self.mod.serve_encode(emb, port)
+        port = self.mod.serve_encode(emb, 0)
         return f"http://127.0.0.1:{port}"
 
     def test_원격_인코더가_접두를_두_번_붙이지_않는다(self):
@@ -506,8 +500,7 @@ class SplitEncoderTest(unittest.TestCase):
         self.mod.ENCODE_BIND = "0.0.0.0"
         self.mod.ENCODE_TOKEN = ""
         old = sys.argv
-        sys.argv = ["embed_worker.py", "--serve-only", "--encode-port",
-                    str(self._free_port())]
+        sys.argv = ["embed_worker.py", "--serve-only", "--encode-port", "0"]
         try:
             self.assertEqual(self.mod.main(), 2)
         finally:
