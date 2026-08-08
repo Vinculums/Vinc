@@ -2542,7 +2542,10 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
 
 def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     """개념의 1-hop 이웃(무방향) — rel 타입·이웃 id/title/domain. `label(r)`(임베디드
-    타입 함수 §6-2 M4). owner 지정 시 양 끝 스코프."""
+    타입 함수 §6-2 M4). owner 지정 시 양 끝 스코프.
+
+    ⚠ 이 플랜은 **Concept↔Concept 만** 본다. 부착 축(Record·Episode·Bridge)은
+    :func:`node_attachments_plan` 이 따로 낸다 — 아래 그 함수의 주석 참조."""
     params: dict = {"node": node}
     n_where, m_where = "n.concept_id = $node", ""
     if owner:
@@ -2556,6 +2559,48 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
 
 
+def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
+    """개념에 **부착된** 1-hop 노드 — Record(ATTACHES_TO)·Episode(ABOUT)·
+    Bridge(CONNECTS). F14.
+
+    이게 왜 따로 필요한가: :func:`neighbors_plan` 의 패턴은 양 끝이 `:Concept` 라
+    다른 라벨이 **필터가 아니라 매치 모양에서** 빠진다. 그래서 `vinc_neighbors` 는
+    실측상 `concept:vinc-mcp` 의 1-hop 이웃 15개 중 7개(RELATED_TO)만 보였다.
+    빠진 8개가 하필 **사실이 사는 곳**이다 — Record(pitfall·fact) 6 · Episode 1 ·
+    Bridge 1. 도구 설명은 "graph 대신 neighbors 로 한 홉씩 걸으라"고 권하므로,
+    그 조언을 따른 모델은 Record 를 영영 못 본다. 무음 누락이다(F6 과 같은 계열).
+
+    UNION 은 열 타입이 같아야 하므로 4열(rel·id·title·domain)만 투영한다. Bridge 는
+    `domain` 열이 없어 `source_domain` 을 쓴다(축 플랜과 같은 규칙 — 라벨마다 열이
+    달라서, 다른 축의 투영을 그대로 옮겨 붙이면 Binder 로 죽는다)."""
+    params: dict = {"node": node}
+    c_scope = " AND c.owner_id = $owner" if owner else ""
+    # 부착 노드의 owner: Record·Episode 는 엄격, Bridge 는 과도기 술어(축 플랜 관례).
+    r_scope = " AND rc.owner_id = $owner" if owner else ""
+    e_scope = " AND e.owner_id = $owner" if owner else ""
+    b_scope = f" AND {_bridge_owner_pred('b')}" if owner else ""
+    if owner:
+        params["owner"] = owner
+    cypher = (
+        "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
+        f"WHERE c.concept_id = $node{c_scope}{r_scope} "
+        "RETURN 'ATTACHES_TO' AS rel, rc.record_id AS id, rc.title AS title, "
+        "rc.domain AS domain "
+        "UNION ALL "
+        "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
+        f"WHERE c.concept_id = $node{c_scope}{e_scope} "
+        "RETURN 'ABOUT' AS rel, e.episode_id AS id, e.title AS title, "
+        "e.domain AS domain "
+        "UNION ALL "
+        "MATCH (b:Bridge)-[:CONNECTS]->(c:Concept) "
+        f"WHERE c.concept_id = $node{c_scope}{b_scope} "
+        "RETURN 'CONNECTS' AS rel, b.bridge_id AS id, b.title AS title, "
+        "b.source_domain AS domain"
+    )
+    return QueryPlan("node_attachments", cypher, params,
+                     note="record/episode/bridge attachments (F14)")
+
+
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
@@ -2565,11 +2610,15 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
     if not res.get("executed"):
         return {"kind": "neighbors", "executed": False, "node": node,
                 "neighbors": [], "by_rel": {}, "count": 0, "note": res.get("note", "")}
+    # F14 — 부착 축(Record·Episode·Bridge)을 합류시킨다. 이게 없을 때 이 도구는
+    # 개념끼리의 RELATED_TO 만 보여 줬고, 사실이 사는 Record 는 통째로 안 보였다.
+    # 부착 축이 못 뜨더라도(구 스토어·확장 부재) 개념 축 결과는 그대로 낸다.
+    att = execute(node_attachments_plan(node, owner=owner), cfg, store=store)
+    rows = list(res.get("rows", [])) + (list(att.get("rows", [])) if att.get("executed") else [])
     seen: set = set()
     out: list[dict] = []
     by_rel: dict[str, int] = {}
-    for r in sorted(res.get("rows", []),
-                    key=lambda r: (str(r.get("rel")), str(r.get("id")))):
+    for r in sorted(rows, key=lambda r: (str(r.get("rel")), str(r.get("id")))):
         key = (r.get("rel"), r.get("id"))
         if not r.get("id") or key in seen:
             continue

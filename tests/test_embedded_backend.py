@@ -817,6 +817,69 @@ class EmbeddedE2E(unittest.TestCase):
         finally:
             store.close()
 
+    def test_neighbors_sees_attachments_not_just_concepts(self):
+        """F14 — `vinc_neighbors` 가 Record·Episode·Bridge 를 통째로 못 봤다.
+
+        neighbors_plan 의 패턴이 `(n:Concept)-[r]-(m:Concept)` 라 다른 라벨이
+        **필터가 아니라 매치 모양에서** 빠졌다. 라이브 실측: concept:vinc-mcp 의
+        1-hop 이웃 15개 중 7개(RELATED_TO)만 보였고, 빠진 8개가 하필 사실이 사는
+        곳(Record 6 · Episode 1 · Bridge 1)이었다. 도구 설명은 "graph 대신
+        neighbors 로 한 홉씩 걸으라"고 권하므로 그 조언을 따르면 Record 를 영영
+        못 본다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("hub", "other"):
+                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
+                      "c.title=$id, c.domain='infra'", id=cid)
+            s.run("MATCH (a:Concept{concept_id:'hub'}),(b:Concept{concept_id:'other'}) "
+                  "MERGE (a)-[:RELATED_TO]->(b)")
+            s.run("MERGE (r:Record {record_id:'record:fact-1'}) SET r.owner_id='u', "
+                  "r.title='붙은 사실', r.domain='infra'")
+            s.run("MATCH (r:Record{record_id:'record:fact-1'}),(c:Concept{concept_id:'hub'}) "
+                  "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)")
+            s.run("MERGE (e:Episode {episode_id:'episode:2026-01-01-x'}) SET e.owner_id='u', "
+                  "e.title='일어난 일', e.domain='infra', e.date='2026-01-01'")
+            s.run("MATCH (e:Episode{episode_id:'episode:2026-01-01-x'}),"
+                  "(c:Concept{concept_id:'hub'}) MERGE (e)-[:ABOUT]->(c)")
+
+        nb = q.neighbors("hub", owner="u", store=store)
+        store.close()
+        ids = {n["id"] for n in nb["neighbors"]}
+        self.assertIn("other", ids, "개념 축이 사라지면 안 된다")
+        self.assertIn("record:fact-1", ids, "Record 부착이 안 보인다(F14)")
+        self.assertIn("episode:2026-01-01-x", ids, "Episode 부착이 안 보인다(F14)")
+        self.assertEqual(nb["count"], 3)
+        self.assertEqual(nb["by_rel"].get("ATTACHES_TO"), 1)
+        self.assertEqual(nb["by_rel"].get("ABOUT"), 1)
+
+    def test_neighbors_attachments_respect_owner_scope(self):
+        """SEC-1 — 부착 축을 새로 열면서 남의 Record 가 새어 나오면 안 된다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            s.run("MERGE (c:Concept {concept_id:'shared'}) SET c.owner_id='a', "
+                  "c.title='shared', c.domain='infra'")
+            for owner, rid in (("a", "record:mine"), ("b", "record:theirs")):
+                s.run("MERGE (r:Record {record_id:$rid}) SET r.owner_id=$o, "
+                      "r.title=$rid, r.domain='infra'", rid=rid, o=owner)
+                s.run("MATCH (r:Record{record_id:$rid}),(c:Concept{concept_id:'shared'}) "
+                      "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)", rid=rid)
+
+        nb = q.neighbors("shared", owner="a", store=store)
+        store.close()
+        ids = {n["id"] for n in nb["neighbors"]}
+        self.assertIn("record:mine", ids)
+        self.assertNotIn("record:theirs", ids, "다른 소유자의 Record 가 샜다")
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config
