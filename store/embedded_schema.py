@@ -202,7 +202,14 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
+
+#: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
+#: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
+#: 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON 파싱이 필요해
+#: Cypher 로는 못 쓴다). 버전 상수를 여기 두는 이유: 스키마 버전과 그 버전이
+#: 요구하는 데이터 스텝이 떨어져 있으면 다음 bump 때 조용히 빠진다.
+EPISODE_TIME_BACKFILL_VERSION = 9
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -250,6 +257,10 @@ def migration_statements(from_version: int) -> list[str]:
     # 멱등 DDL(render_node_tables)이 만든다. 기존 Chunk.embedding 은 건드리지 않는다 —
     # 드롭이 위험하고, 남아도 읽지 않으면 해롭지 않다(ChunkVec 이 채워지기 전까지는
     # 벡터 검색이 빌 뿐이고, 그 기간은 어차피 전량 재임베딩 구간이다).
+    # v9 — Episode props.date 승격(F9). **ALTER 스텝이 없다**: 열(date/summary)은 v0
+    # 부터 있었고 비어 있었을 뿐이라 스키마가 아니라 **데이터**를 고쳐야 한다.
+    # 그 스텝은 JSON 파싱이 필요해 Cypher 문자열로 표현할 수 없다 →
+    # `embedded_backend.backfill_episode_time_fields`(EPISODE_TIME_BACKFILL_VERSION).
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

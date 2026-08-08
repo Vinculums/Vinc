@@ -20,11 +20,84 @@ _backend.py`) PyInstaller 정적 분석이 못 보고 통째로 누락 — `impo
 """
 from __future__ import annotations
 
+import json
 import os
 from contextlib import contextmanager
 
 from .config import StoreConfig
-from .embedded_schema import SCHEMA_VERSION, migration_statements, render_embedded_ddl
+from .embedded_schema import (EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
+                              migration_statements, render_embedded_ddl)
+
+
+# ── v9 데이터 마이그레이션 — Episode props.date/summary → 열 (F9) ─────────────
+#: 백필 대상 열. Episode 의 열 이름과 props 키 이름이 같다는 것이 전제다.
+_EPISODE_PROMOTED_COLS: tuple[str, ...] = ("date", "summary")
+
+
+def backfill_episode_time_fields(store) -> int:
+    """`props{}` 안에만 있던 Episode 의 date/summary 를 동명 열로 승격(멱등).
+
+    왜 필요한가: `vinc_ingest` 의 노드 계약에 `date` 가 선언돼 있지 않아 상류가
+    날짜를 `props` 에 실었고, `api/fragment` 는 top-level 만 읽었다. 그래서 `date`
+    열이 빈 에피소드가 쌓였다(실측 2026-08-08 · 호스티드 16/55). recall 이
+    `ORDER BY e.date DESC` 로 정렬하고 타임라인이 `coalesce(e.date, e.updated_at)`
+    를 시간축으로 쓰는데, 그 열이 비면 정렬이 무의미해진다.
+
+    **계약**
+    - 멱등: 열이 이미 차 있으면 건드리지 않는다. 두 번 돌려도 결과가 같다.
+    - **없는 날짜를 지어내지 않는다**: props 에 그 키가 없거나 문자열이 아니거나
+      공백뿐이면 그 행은 그대로 둔다(v7 `content_time` 백필의 원칙과 같다 — 구 행에
+      오늘을 찍으면 타임라인이 마이그레이션한 날에 몰린다).
+    - props 원본은 지우지 않는다(상류가 보낸 자유 속성의 보존 계약).
+    - **동기화 스탬프(updated_at/rev/sync_seq)를 찍지 않는다.** 이건 사용자의 편집이
+      아니라 이미 스토어에 있던 값의 파생이다. 찍으면 모든 피어의 다음 pull 에
+      "그 날 전 에피소드를 고쳤다"는 가짜 델타가 실린다(S0 의 '멱등 재적재 무스탬프'
+      규칙과 같은 이유). 대가는 안다: Episode 의 `props` 는 동기화 필드가 아니라
+      (`api.sync.SYNC_FIELDS`) props 를 못 받은 피어는 이 백필로 date 를 얻지 못하고,
+      스탬프가 없으니 delta 로도 안 실린다 — 그 행은 다음 재적재 때 `_merge_node` 의
+      승격이 정상 스탬프와 함께 고친다.
+
+    반환: 실제로 열을 채운 노드 수(백필이 아무것도 안 했으면 0).
+    """
+    try:
+        rows = store.run(
+            "MATCH (e:Episode) WHERE e.props IS NOT NULL AND e.props <> '' "
+            "RETURN e.episode_id AS id, e.props AS props, "
+            + ", ".join(f"e.{c} AS {c}" for c in _EPISODE_PROMOTED_COLS))
+    except Exception:
+        # 미프로비저닝·방언 차이로 스캔이 안 되면 마이그레이션 전체를 죽이지 않는다
+        # (스키마 ALTER 는 이미 끝났고, 백필은 다음 기동에 다시 시도되지 않는다는
+        # 점은 감수한다 — 재시도가 필요하면 schema_version 을 내리면 된다).
+        return 0
+    filled = 0
+    for r in rows or []:
+        nid = r.get("id")
+        if not nid:
+            continue
+        try:
+            props = json.loads(r.get("props") or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(props, dict):
+            continue
+        sets, params = [], {"id": nid}
+        for col in _EPISODE_PROMOTED_COLS:
+            if str(r.get(col) or "").strip():
+                continue                      # 이미 값이 있다 — 멱등·비파괴
+            cand = props.get(col)
+            if not isinstance(cand, str) or not cand.strip():
+                continue                      # 없는 값을 지어내지 않는다
+            sets.append(f"e.{col} = ${col}")
+            params[col] = cand.strip()
+        if not sets:
+            continue
+        try:
+            store.run(f"MATCH (e:Episode) WHERE e.episode_id = $id "
+                      f"SET {', '.join(sets)}", params)
+        except Exception:
+            continue                          # 행 하나 실패가 배치를 날리지 않는다
+        filled += 1
+    return filled
 
 
 def _import_driver():
@@ -449,6 +522,12 @@ class EmbeddedBackend:
         target = SCHEMA_VERSION
         for stmt in migration_statements(cur):
             self._exec_idem(stmt)
+        # 데이터 스텝(v9, F9) — DDL 로 표현할 수 없는 이관은 여기서 돈다. 열 ALTER 가
+        # 끝난 **뒤**여야 하고 버전 기록보다는 **앞**이어야 한다(중간에 죽으면 다음
+        # 기동이 다시 시도한다). 백필 자체가 멱등이라 중복 실행도 무해하다.
+        backfilled = 0
+        if cur < EPISODE_TIME_BACKFILL_VERSION:
+            backfilled = backfill_episode_time_fields(self)
         if cur < target:
             self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
                      {"v": str(target)})
@@ -462,7 +541,8 @@ class EmbeddedBackend:
                 self._load_ext(_e)
             except Exception:
                 pass
-        return {"migrated_from": cur, "migrated_to": target}
+        return {"migrated_from": cur, "migrated_to": target,
+                "episode_time_backfilled": backfilled}
 
     def provision(self, *, dim: int) -> list[str]:
         """호환 진입점 — migrate() 로 위임(기존 호출부 무변경으로 마이그레이션 획득)."""
