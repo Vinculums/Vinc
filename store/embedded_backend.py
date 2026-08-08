@@ -739,6 +739,44 @@ class EmbeddedBackend:
         except Exception:
             pass  # 미존재 — 무시(멱등)
 
+    #: 엔진이 FTS 색인 불일치를 **스스로 식별해** 던지는 문구의 판별 표지.
+    #: 실측 원문(ladybug 0.18.0, 2026-08-09 라이브·사본 양쪽):
+    #:   "FTS index 'chunk_ft' is inconsistent: document for node offset 992 is
+    #:    missing during delete. Drop and recreate the FTS index."
+    #: 문구 전체가 아니라 두 표지의 **동시 등장**으로 본다 — 오프셋·색인명은 매번 다르고,
+    #: 한쪽만 보면 무관한 오류를 물어 엉뚱하게 재빌드한다.
+    _FTS_INCONSISTENT_MARKS = ("fts index", "inconsistent")
+
+    @classmethod
+    def is_fts_inconsistent(cls, exc: BaseException) -> bool:
+        """이 예외가 **그** 불일치인가. 재빌드로 고쳐지는 조건만 참이어야 한다."""
+        m = str(exc).lower()
+        return all(k in m for k in cls._FTS_INCONSISTENT_MARKS)
+
+    def rebuild_fts_index(self) -> None:
+        """FTS 색인**만** 드롭 후 재생성(벡터는 건드리지 않는다).
+
+        왜 `drop_search_indexes()` + `build_search_indexes()` 를 쓰지 않나: 그 짝은
+        벡터까지 함께 다룬다. 여기서 벡터를 드롭하면 HNSW 재빌드가 딸려 오는데 그건
+        비교도 안 되게 비싸고, 애초에 벡터 색인은 멀쩡하다. 반대로 벡터를 드롭하지 않은
+        채 `build_search_indexes` 를 부르면 `CREATE_VECTOR_INDEX` 가 'already exists'
+        로 터진다(그 메서드는 그걸 흡수하지 않는다).
+
+        비용: 실측 **5.8초**(청크 995건, 라이브 DB 사본, linux/amd64). 재빌드하는 동안
+        키워드 검색이 잠깐 비므로 **정기 작업으로 돌리지 말 것** — 불일치를 실제로
+        만났을 때만 부른다(:func:`api.docstore._with_fts_repair`).
+
+        ⚠ 이건 엔진 결함의 **대증요법**이다. 원인(증분 유지가 문서를 잃는 것)은 엔진
+        안에 있고 우리 쪽에서 고칠 수 있는 지점이 아니다. 2026-08-09 실측: 재빌드
+        전후로 같은 데이터에서 히트가 늘었다(graph 224→225 · vinc 305→307) — 색인이
+        존재하는 행의 문서를 갖고 있지 않았다는 뜻이고, 그 행의 삭제가 터진다."""
+        self._load_ext("fts")
+        try:
+            self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
+        except Exception:
+            pass  # 미존재 — 그냥 만든다(멱등)
+        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+
     def build_search_indexes(self, *, dim: int) -> None:
         """**적재 후** 벡터(HNSW)+FTS(BM25) 인덱스 생성. 재적재 시엔 사전
         `drop_search_indexes()` 로 기존 인덱스를 먼저 제거해야 한다(embed 잡 순서)."""

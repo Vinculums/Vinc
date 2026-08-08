@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sys
 import time
 import uuid
 from typing import Any, Callable
@@ -320,6 +321,48 @@ def _drop_vector_index_if_any(store) -> None:
         pass
 
 
+def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
+    """FTS 색인 불일치로 실패하면 색인을 재빌드하고 **1회만** 재시도한다.
+
+    왜 필요한가(2026-08-09 실측). ladybug 0.18.0 의 FTS 증분 유지가 시간이 지나며
+    존재하는 행의 문서를 잃는다. 그 행을 지우려는 순간 엔진이 이렇게 던진다:
+
+        FTS index 'chunk_ft' is inconsistent: document for node offset 992 is
+        missing during delete. Drop and recreate the FTS index.
+
+    처방을 오류 문구가 직접 말해 주고, 백엔드에는 `rebuild_fts_index()` 가 있는데,
+    **라이브 허브에서 그걸 부를 길이 없었다.** 그래서 6초짜리 조작이 세 번 다 하드다운
+    + 파일 수술이 됐다(08-04 · 08-07 · 08-09). 이 함수가 그 간극이다.
+
+    설계 의도 두 가지:
+
+    - **새 표면을 만들지 않는다.** 관리용 엔드포인트나 MCP 도구를 늘리면 프록시
+      허용목록을 세 곳에 등재해야 하고(웹 패리티), 어긋나면 그 기능만 조용히 죽는다.
+      이건 쓰기 경로 안에서 끝난다.
+    - **조건을 좁게 잡는다.** 엔진이 스스로 "inconsistent" 라고 말한 경우에만 돈다
+      (:meth:`EmbeddedBackend.is_fts_inconsistent`). 아무 예외에나 재빌드를 걸면
+      진짜 결함을 5.8초짜리 재시도로 덮어 버린다.
+
+    재시도는 1회다. 재빌드 후에도 같은 오류면 그건 다른 문제이므로 그대로 올린다.
+
+    이 패턴은 새로 만든 게 아니다 — `ensure_search_indexes`(색인 **부재**를 검색
+    경로에서 지연 복구, T3b)의 형제 조건이다. 그쪽은 없는 색인을 만들고 이쪽은
+    어긋난 색인을 다시 만든다."""
+    try:
+        return fn()
+    except Exception as exc:
+        checker = getattr(store, "is_fts_inconsistent", None)
+        rebuild = getattr(store, "rebuild_fts_index", None)
+        if rebuild is None or checker is None or not checker(exc):
+            raise
+        # 조용히 고치지 않는다 — 재빌드가 돌았다는 사실이 로그에 남아야 이 결함이
+        # 얼마나 자주 나는지 셀 수 있다. 무음 자기복구는 "안 나는 것"처럼 보인다.
+        print(f"[WARN] FTS 색인 불일치 — 재빌드 후 1회 재시도: "
+              f"{str(exc).splitlines()[0][:200]}", file=sys.stderr)
+        rebuild()
+        return fn()
+
+
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             title: str = "", origin: str = "", layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
@@ -382,7 +425,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         # 자식 벡터(v8)도 함께 — 재청킹으로 청크가 줄면 옛 자식이 없는 부모를 가리켜
         # 고아가 된다. 새 벡터는 워커가 apply_embeddings 로 다시 만든다.
         store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
-        store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
+        _with_fts_repair(store, lambda: store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id}))
 
     for i, c in enumerate(chunks):
         # ⚠ 파라미터명 주의: start/end 는 Cypher 예약어 — $start/$end 는 파서가
@@ -555,14 +599,22 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
                     {"d": doc_id})
     n = int(cnt[0].get("c")) if cnt else 0
     if n:
-        # 드롭하지 않는다 — 삭제는 인덱스를 깨지 않는다(실측: 벡터를 가진 2,000청크를
-        # 인덱스가 살아 있는 채로 지워도 무사하고, 지운 행은 검색에서 곧바로 사라진다).
-        # 예전엔 여기서도 드롭해 문서 하나 지울 때마다 검색이 끊겼다.
+        # 드롭하지 않는다 — 문서 하나 지우자고 색인을 끊으면 그동안 검색이 죽는다
+        # (예전 설계가 그랬고, 임베딩이 도는 동안 키워드 검색 성공률이 0이었다).
+        #
+        # ⚠ 여기 있던 "삭제는 인덱스를 깨지 않는다(실측: 2,000청크를 인덱스 살아 있는
+        # 채로 지워도 무사)" 는 **2026-08-09 에 반증됐다.** 그 실측은 갓 만든 색인에
+        # 대한 것이었고, 오래 증분 유지된 색인은 존재하는 행의 문서를 잃는다. 그 행을
+        # 지우면 엔진이 불일치로 던진다 — 라이브에서 실제로 났고 사본으로 재현했다.
+        # 그래서 아래 삭제를 `_with_fts_repair` 로 감싼다. 낡은 실측을 근거로 남겨
+        # 두면 다음 사람이 또 "여긴 안전하다"고 읽는다.
+        #
         # ⚠ 자식 벡터(v8)를 **먼저** 지운다. 남기면 검색이 없는 문서를 가리키는 고아가
         # 되고, 그건 부모 조인이 빈 결과를 내 조용히 사라지는 게 아니라 인덱스에만
         # 남아 상위 k 자리를 잡아먹는다.
         store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
-        store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id})
+        _with_fts_repair(store, lambda: store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id}))
     owner_id = (meta or {}).get("owner_id") or owner or ""
     if meta is not None:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id DELETE d", {"id": doc_id})
