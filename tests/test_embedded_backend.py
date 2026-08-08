@@ -735,6 +735,88 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertIn("neighbors_truncated", nb)
         self.assertFalse(nb["neighbors_truncated"])
 
+    def test_tool_descriptions_do_not_lie_about_their_return_shape(self):
+        """설명의 `Returns {…}` 가 **실제 반환 키**와 맞는가.
+
+        이 가드가 없어서 실제로 틀린 문구가 들어갔다: vinc_graph 설명이
+        {nodes:[{id,type,title…}], edges:[{src,dst,rel,confidence}], counts} 라고
+        적었는데 엔진은 label/kind/source/target 을 주고 counts 는 아예 없었다.
+        설명은 주석이 아니라 계약이라, 확신에 차서 틀린 문구는 얇지만 참인 원문보다
+        나쁘다 — 모델이 없는 키를 읽으려 든다.
+
+        검사 대상은 `TOOLS` 가 아니라 **tools/list 가 실제로 내보내는 스펙**이다.
+        rpc 에 description 을 통째로 갈아치우는 override 계층이 있어서, tools.py 를
+        고쳐도 호스트에는 안 닿는 상태가 실제로 있었다.
+
+        top-level 키만 본다(중첩까지 파싱하면 테스트가 문법 검사기가 된다)."""
+        import re
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        from vinc_mcp.rpc import _tool_specs
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        with store.session() as s:
+            for cid in ("alpha", "beta"):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                      "n.title=$id, n.domain='math'", id=cid)
+            s.run("MATCH (p:Concept{concept_id:'alpha'}),(t:Concept{concept_id:'beta'}) "
+                  "MERGE (p)-[:RELATED_TO]->(t)")
+
+        calls = {
+            "vinc_domains":      lambda: q.domains(owner="u", store=store),
+            "vinc_recall":       lambda: q.recall(owner="u", store=store),
+            "vinc_graph":        lambda: q.graph(owner="u", seed="concept:alpha",
+                                                 depth=1, store=store),
+            "vinc_decide":       lambda: q.decide("concept:alpha", depth=1, owner="u",
+                                                  store=store),
+            "vinc_suggest_ties": lambda: q.suggest_ties(owner="u", node="concept:alpha",
+                                                        store=store),
+            "vinc_neighbors":    lambda: q.neighbors("concept:alpha", owner="u",
+                                                     store=store),
+        }
+        def _returns_block(text):
+            """`Returns {` 부터 짝이 맞는 `}` 까지. 중첩이 있어 정규식으로는 못 뜬다."""
+            i = text.find("Returns {")
+            if i < 0:
+                return None
+            i += len("Returns ")
+            depth = 0
+            for j in range(i, len(text)):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[i + 1:j]
+            return None
+
+        by_name = {t["name"]: t for t in _tool_specs()}
+        try:
+            for name, call in calls.items():
+                desc = by_name[name]["description"]
+                block = _returns_block(desc)
+                self.assertIsNotNone(block, f"{name}: 설명에 Returns 절이 없다")
+                # 중첩 {...} 를 걷어내고 남은 top-level 키 이름만 취한다.
+                flat = block
+                while "{" in flat:
+                    new_flat = re.sub(r"\[?\{[^{}]*\}\]?", "", flat)
+                    if new_flat == flat:
+                        break
+                    flat = new_flat
+                claimed = {k.strip().rstrip(":") for k in flat.split(",")
+                           if re.fullmatch(r"[a-z_]+:?", k.strip())}
+                self.assertTrue(claimed, f"{name}: Returns 절에서 키를 못 뽑았다")
+                got = call()
+                missing = sorted(k for k in claimed if k not in got)
+                self.assertFalse(missing,
+                                 f"{name}: 설명이 주장한 키 {missing} 가 실제 반환에 없다 "
+                                 f"(실제: {sorted(got)})")
+        finally:
+            store.close()
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

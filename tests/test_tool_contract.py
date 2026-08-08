@@ -24,7 +24,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from vinc_mcp.bridge import Bridge                   # noqa: E402
+from vinc_mcp.rpc import _tool_specs                  # noqa: E402
 from vinc_mcp.tools import TOOLS                     # noqa: E402
+
+#: 호스트가 tools/list 로 **실제로 받는** 스펙. 한때 rpc 에 description 을
+#: 통째로 갈아치우는 override 계층이 있어서 tools.py 를 고쳐도 안 닿았다 —
+#: 설명 계약은 반드시 이 경로로 검사한다.
+SERVED = {t['name']: t for t in _tool_specs()}
 
 NUMERIC = ("integer", "number")
 
@@ -77,7 +83,7 @@ def test_diagnose_exposes_member_limit():
 
 def test_diagnose_documents_the_truncation_contract():
     """모델이 size ≠ len(members) 를 버그로 읽지 않으려면 설명에 적혀 있어야 한다."""
-    desc = [t for t in TOOLS if t["name"] == "vinc_diagnose"][0]["description"]
+    desc = SERVED["vinc_diagnose"]["description"]
     assert "members_truncated" in desc
     assert "member_limit" in desc
 
@@ -120,7 +126,7 @@ THIN_BEFORE = ("vinc_graph", "vinc_suggest_ties", "vinc_domains", "vinc_recall",
 
 @pytest.mark.parametrize("name", THIN_BEFORE)
 def test_previously_thin_descriptions_now_carry_guidance(name):
-    desc = [t for t in TOOLS if t["name"] == name][0]["description"]
+    desc = SERVED[name]["description"]
     assert len(desc) >= 250, f"{name}: 설명이 {len(desc)}자 — 선택 근거가 없다"
     assert "Returns" in desc, f"{name}: 무엇이 돌아오는지 안 적혀 있다"
 
@@ -128,9 +134,18 @@ def test_previously_thin_descriptions_now_carry_guidance(name):
 @pytest.mark.parametrize("name", THIN_BEFORE)
 def test_read_only_tools_say_so(name):
     """쓰기 도구와 헷갈리면 모델이 조회에도 확인을 구하거나, 반대로 겁 없이 쓴다."""
-    assert "Read-only" in [t for t in TOOLS if t["name"] == name][0]["description"]
+    assert "Read-only" in SERVED[name]["description"]
 
 
 def test_every_tool_has_a_description():
-    missing = [t["name"] for t in TOOLS if not (t.get("description") or "").strip()]
+    missing = [n for n, t in SERVED.items() if not (t.get("description") or "").strip()]
     assert not missing, f"설명 없는 도구: {missing}"
+
+
+def test_served_descriptions_are_exactly_the_canonical_ones():
+    """tools.py 가 정본이라면, tools/list 가 내는 설명은 그것과 **글자 그대로** 같아야
+    한다. rpc 의 override 계층이 recall·domains 를 조용히 갈아치우고 있었다 — 그래서
+    tools.py 를 고쳐도 호스트는 옛 문구를 봤다."""
+    canon = {t["name"]: t["description"] for t in TOOLS}
+    drift = [n for n, d in canon.items() if SERVED[n]["description"] != d]
+    assert not drift, f"tools.py 와 tools/list 설명이 다른 도구: {drift}"

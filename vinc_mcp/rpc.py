@@ -20,28 +20,16 @@ from .bridge import Bridge
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0]
 
-# tools/list 응답의 description 보강. vinc_ingest 의 구 override(허용 행렬)는 F1
-# 개방층 포팅과 함께 원 정의(vinc_mcp/tools.py — 정본)로 이관·삭제했다: 개방
-# 캐리어(Entity/TYPED)·about·role·proposed_types 를 포함한 최신 계약은 tools.py 가
-# 단일 출처다. 남은 override 는 이 작업과 무관한 보강 2건뿐.
-_DESC_OVERRIDES: dict[str, str] = {
-    "vinc_recall": (
-        "List recent episodes in an owner scope, optionally narrowed by domain or tags. "
-        "Episodes only — for Concept or Record nodes use vinc_graph or vinc_search instead."
-    ),
-    "vinc_domains": (
-        "List the owner's domains discovered from data (open set, not a fixed list). "
-        "Per domain, returns episodes/concepts/records/total aggregate counts."
-    ),
-}
+# tools/list 는 tools.specs() 를 **그대로** 낸다. 여기 description override 계층이
+# 있었는데(recall·domains 2건), 덧붙이는 게 아니라 통째로 **교체**하는 구조라
+# tools.py 를 고쳐도 호스트에는 안 닿았다 — 바로 이 자리 주석이 "tools.py 가 단일
+# 출처"라고 적어 둔 채로. vinc_ingest override 는 F1 때 같은 이유로 이미 원 정의로
+# 되돌렸고, 남은 2건의 내용(에피소드 전용 · 도메인별 집계 카운트)도 tools.py 의
+# 설명에 흡수했으므로 계층 자체를 걷어낸다. 정본은 tools.py 하나다.
 
 
 def _tool_specs(allow_target: bool = True) -> list[dict]:
-    """tools.specs() 위에 description override 를 얹어 반환(스키마는 그대로)."""
-    return [
-        {**spec, "description": _DESC_OVERRIDES.get(spec["name"], spec["description"])}
-        for spec in tools.specs(allow_target=allow_target)
-    ]
+    return tools.specs(allow_target=allow_target)
 
 
 class Dispatcher:

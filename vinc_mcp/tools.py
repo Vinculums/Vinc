@@ -294,7 +294,14 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_recall",
-        "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. Returns {episodes:[{id,title,date,domain,tags,summary}], count}. Use it to resume context ('what was I doing here'), to check whether an event is already recorded before writing a duplicate, or to ground a decision in prior work. Narrow with `domain` or `tags`; both are AND-ed with the owner scope. This is time-ordered recall, NOT relevance search — for 'find anything about X' use vinc_search, which also covers concepts and document text. Read-only.",
+        "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. "
+                       "Returns {kind, executed, rows:[{id,title,date,domain,tags,summary,pinned,owner}]}. "
+                       "Episodes ONLY: Concept and Record nodes never appear here — use vinc_search or "
+                       "vinc_graph for those. Use it to resume context ('what was I doing here'), to check "
+                       "whether an event is already recorded before writing a duplicate, or to ground a decision "
+                       "in prior work. Narrow with `domain` or `tags`. This is time-ordered recall, NOT "
+                       "relevance search — for 'find anything about X' use vinc_search, which also covers "
+                       "concepts and document text. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "domain": {"type": "string"},
@@ -308,7 +315,15 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_graph",
-        "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within `depth` hops of the seed, plus the edges among them. Returns {nodes:[{id,type,title,domain,tags}], edges:[{src,dst,rel,confidence}], counts}. Use when you want the shape of a region at once (what surrounds this concept, and how it hangs together). If you only need the immediate ring, vinc_neighbors is far cheaper; to walk step by step, prefer neighbors and pick the next node yourself. Requires an EXACT node id — if you only have a phrase, run vinc_search first. Cost grows fast with depth, so depth 2 is the working default and 4 is the ceiling. Read-only.",
+        "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within "
+                       "`depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, "
+                       "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,ppr,…layout}], "
+                       "edges:[{source,target,type,cross_domain}]}. Nodes carry Atlas ranking and layout fields "
+                       "(ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, "
+                       "vinc_neighbors returns the same relations without them and is far cheaper; to walk step "
+                       "by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — "
+                       "if you only have a phrase, run vinc_search first. depth 2 is the working default, 4 the "
+                       "ceiling. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "seed_id": {"type": "string"},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
@@ -317,7 +332,15 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_decide",
-        "description": "Assemble the evidence around a topic for a decision: the relevant nodes, the edges among them, and — the point of the tool — the CONFLICTS, i.e. pairs standing in a contradicts/tension relation that a decision has to resolve. Returns {topic, nodes, edges, conflicts:[{a,b,rel}], counts}. Traversal is deterministic (graph structure only, no model judgement); it surfaces the material and never picks a side. Use before recording a DEC, or to check whether a proposed decision collides with one already made. `topic` may be a node id or a phrase; a phrase is resolved by search first. Read-only.",
+        "description": "Assemble the evidence around a topic for a decision: the relevant nodes, the edges among "
+                       "them, and — the point of the tool — the CONFLICTS a decision has to resolve. Returns "
+                       "{kind, executed, topic, depth, found, nodes, edges, "
+                       "conflicts:[{source,target,type,reason}]}. Traversal is deterministic (graph structure "
+                       "only, no model judgement); it surfaces the material and never picks a side. `topic` must "
+                       "match a node id or a full title EXACTLY — on a miss you get found:false with "
+                       "`candidates` and a `hint`, so run vinc_search first if you only have a phrase. Use "
+                       "before recording a DEC, or to check whether a proposed decision collides with one "
+                       "already made. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "topic": {"type": "string"},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
@@ -326,7 +349,13 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_domains",
-        "description": "List the domains actually present in this owner's graph, with how many nodes sit in each. Returns {domains:[{domain,count}], total}. The domain set is OPEN and inferred from stored data, not a fixed vocabulary — so call this before writing to reuse an existing domain string instead of coining a near-duplicate ('design' vs 'ui-design'). Also the cheapest way to see the coarse shape of a graph you have not read before. For naming and relation conventions as well, vinc_conventions returns this plus more in one call. Read-only.",
+        "description": "List the domains actually present in this owner's graph, with per-kind node counts. "
+                       "Returns {kind, executed, rows:[{domain, episodes, concepts, records, total}]}, largest "
+                       "total first. The domain set is OPEN and inferred from stored data, not a fixed "
+                       "vocabulary — so call this before writing to reuse an existing domain string instead of "
+                       "coining a near-duplicate ('vinc/design' vs 'design'). It is also the cheapest way to see "
+                       "the coarse shape of a graph you have not read before. For naming and relation "
+                       "conventions as well, vinc_conventions returns this plus more in one call. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "debug": {"type": "boolean", "default": False,
@@ -336,7 +365,13 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_suggest_ties",
-        "description": "Propose which OTHER concepts this node probably should be linked to but is not yet — computed from shared tags and domain proximity, never from a language model. Returns {candidates:[{id,title,score,shared_tags,reason}], count} ranked by score, already-linked nodes excluded. Use it to close gaps found by vinc_diagnose (orphans and small islands), or right after writing a new concept. This tool never writes: the suggestions are for the user to ratify, and the actual edge is created with vinc_ingest. Read-only.",
+        "description": "Propose which OTHER concepts this node probably should be linked to but is not yet — "
+                       "computed from shared tags and domain proximity, never from a language model. Returns "
+                       "{kind, executed, node, suggestions:[{id,title,domain,shared_tags,score}]}, best score "
+                       "first, with already-linked nodes excluded. Use it to close the gaps vinc_diagnose finds "
+                       "(orphans and small islands), or right after writing a new concept. This tool never "
+                       "writes: the suggestions are for the user to ratify, and the edge itself is created with "
+                       "vinc_ingest. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "node": {"type": "string"},
             "limit": {"type": "integer", "default": 5, "minimum": 1, "maximum": 50},
