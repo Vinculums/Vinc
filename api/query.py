@@ -2847,6 +2847,27 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
     paths = list(uniq.values())
     base.update(found=bool(paths), paths=paths, count=len(paths),
                 length=paths[0]["length"] if paths else None)
+    if not paths:
+        # F7 — 여태 `found:false` 뿐이라 **끝점이 없는 것**과 **길이 없는 것**이
+        # 구분되지 않았다. 둘은 다음 행동이 완전히 다르다: 앞은 id 를 고쳐야 하고
+        # 뒤는 depth 를 늘리거나 엣지를 이어야 한다. 어느 끝이 문제인지 짚어 준다.
+        missing = [x for x in (a_id, b_id)
+                   if not any(c["id"] == x for c in near_nodes(store, x, owner=owner))]
+        if missing:
+            base["error"] = "unknown node: " + ", ".join(missing)
+            cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
+            base["hint"] = ("Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+                            + ("Did you mean: "
+                               + ", ".join(dict.fromkeys(c["id"] for c in cands)) + "? "
+                               if cands else "")
+                            + "Use vinc_search to find the id first.")
+            if cands:
+                base["candidates"] = cands[:3]
+        else:
+            base["error"] = f"no path within max_depth={max_depth}"
+            base["hint"] = ("Both nodes exist but nothing connects them within this "
+                            "depth. Raise `max_depth`, or use vinc_neighbors on each "
+                            "end to see what they do connect to.")
     return base
 
 
