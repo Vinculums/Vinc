@@ -42,6 +42,19 @@ _FRAGMENT_SCHEMA = {
                               "description": "Required for open (non-legacy) types."},
                     "domain": {"type": "string", "description": "Free-form domain string (no fixed list). Not persisted on open-type nodes."},
                     "tags": {"type": "array", "items": {"type": "string"}},
+                    # F9 — 이 둘은 서버가 오래 top-level 로 받아 Episode 의 전용 열에
+                    # 넣고 있었는데 계약에 없었다. 그래서 상류는 날짜를 실을 자리를
+                    # props 밖에 못 찾았고, 실측상 에피소드 16/55 가 date 열이 빈 채
+                    # props.date 만 가진 상태가 됐다(정렬 기준 열이 비면 vinc_recall 의
+                    # 최신순이 무의미해진다). 승격은 서버가 하지만(api/fragment),
+                    # 애초에 제자리에 실을 수 있도록 계약에도 적는다.
+                    "date": {"type": "string",
+                             "description": "Episode only — when it happened (YYYY-MM-DD). "
+                                            "This is the column vinc_recall sorts by; "
+                                            "putting it in props instead still works but "
+                                            "relies on server-side promotion."},
+                    "summary": {"type": "string",
+                                "description": "Episode only — one-paragraph summary returned by vinc_recall."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
                 },
                 "required": ["id", "type"],

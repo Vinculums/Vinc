@@ -109,7 +109,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 8)   # v8 — 부모-자식 벡터(ChunkVec)
+        self.assertEqual(eschema.SCHEMA_VERSION, 9)   # v9 — Episode props.date 승격(F9)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)
@@ -134,7 +134,12 @@ class ProvisionTests(unittest.TestCase):
         v6 = eschema.migration_statements(6)
         self.assertEqual(len(v6), 4)
         self.assertTrue(all("DEFAULT ''" in s for s in v6))
-        self.assertEqual(eschema.migration_statements(7), [])   # 최신은 no-op
+        # v8·v9 는 **DDL 이 없다**. v8 은 신규 테이블(매 부팅 멱등 DDL 이 만든다)이고
+        # v9 는 데이터 스텝(Episode props.date → 열)이라 ALTER 로 표현되지 않는다 —
+        # 그래서 여기가 빈 것이 곧 "v9 에 할 일이 없다"는 뜻은 아니다. 그 스텝의
+        # 게이트는 EPISODE_TIME_BACKFILL_VERSION 이고 계약은 tests/test_episode_date.py.
+        self.assertEqual(eschema.migration_statements(7), [])
+        self.assertEqual(eschema.EPISODE_TIME_BACKFILL_VERSION, 9)
 
     def test_docmeta_table_and_chunk_ssot_columns(self):
         # D45 — Chunk=SSoT: 신규 설치 DDL 에 소유·오프셋 열과 _DocMeta(본문 없는

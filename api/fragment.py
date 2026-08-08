@@ -198,10 +198,36 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
-            if node.get("date") is not None:
-                _set("date", str(node["date"]))
-            if node.get("summary") is not None:
-                _set("summary", str(node["summary"]))
+            #
+            # F9 — **props.date 를 열로 승격한다.** `vinc_ingest` 의 노드 스키마에는
+            # `date`/`summary` 가 선언돼 있지 않았다(서버는 top-level 로 받는데 계약이
+            # 그걸 안 알려줬다). 그래서 상류가 날짜를 실을 수 있는 자리는 자유 속성인
+            # `props{}` 뿐이었고, 결과로 라이브 에피소드 16/55 가 `date` 열이 빈 채
+            # props 안에만 날짜를 갖게 됐다(실측 2026-08-08 — 그 16건은 props 를 가진
+            # 쪽, 나머지 39건은 top-level 로 받아 props 가 빈 쪽으로 정확히 갈린다).
+            #
+            # 그 열은 recall 의 `ORDER BY e.date DESC` · 타임라인의
+            # `coalesce(e.date, e.updated_at)` · 팩/공유/동기화 투영이 전부 읽는
+            # 자리라, 비면 정렬 자체가 무의미해진다. 승격을 **쓰기 시점**에 두는
+            # 이유가 그것이다 — recall 응답에서 coalesce 하면 그 한 응답만 고쳐지고
+            # 정렬(ORDER BY)·타임라인·공유는 그대로 빈 채 남는다.
+            #
+            # top-level 이 오면 그것이 이긴다(기존 계약 무변경 — 빈 문자열로 지우는
+            # 것까지 포함). props 폴백은 **키가 아예 없을 때만** 본다. props 원본은
+            # 지우지 않는다: 상류가 보낸 것을 그대로 보존하는 것이 props 의 계약이고,
+            # 지우면 부분 재전송이 원본을 깎는다.
+            _props = node.get("props") if isinstance(node.get("props"), dict) else {}
+            for _col in ("date", "summary"):
+                _val = node.get(_col)
+                if _val is None:
+                    # 문자열만 승격한다 — props 는 자유 형태라 dict/list 가 올 수
+                    # 있는데 그걸 str() 로 뭉개면 날짜가 아닌 것이 날짜 열에 앉는다.
+                    # 승격 못 한 값도 props 에 그대로 남으므로 유실은 아니다.
+                    _cand = _props.get(_col)
+                    if not isinstance(_cand, str) or not _cand.strip():
+                        continue
+                    _val = _cand.strip()
+                _set(_col, str(_val))
         # 시간 원천 보존 — 팩·MCP 가 실은 `created` 를 그대로 받는다. 없으면 **신규일
         # 때만** 지금으로 찍는다: 재-MERGE 가 원래 시점을 임포트 시각으로 덮으면
         # 타임라인의 시간축이 "마지막으로 만진 때"로 무너진다(updated_at 이 이미 그

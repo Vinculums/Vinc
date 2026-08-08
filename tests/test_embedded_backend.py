@@ -929,7 +929,9 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                          "RETURN m.value AS v")
-        self.assertEqual(rows[0]["v"], "8")   # v8 — 부모-자식 벡터(ChunkVec)
+        # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
+        # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
+        self.assertEqual(rows[0]["v"], "9")   # v9 — Episode props.date 승격(F9)
         # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
         store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
                   "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")
