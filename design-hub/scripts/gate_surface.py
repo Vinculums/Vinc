@@ -34,15 +34,54 @@ MARKER = "AUTO-GENERATED"
 HEADER_LINES = 5
 
 
-def _plugin_root() -> Path:
+def _plugin_root() -> Path | None:
+    """엔진(lime-design) 위치. **없으면 None** — CI 에는 안 깔려 있다."""
     env = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env:
+    if env and Path(env).exists():
         return Path(env)
     base = Path.home() / ".claude" / "plugins" / "cache" / "lime-design" / "lime-design"
     if not base.exists():
-        raise SystemExit("[gate_surface] lime-design 플러그인을 못 찾았다 — "
-                         "CLAUDE_PLUGIN_ROOT 를 지정하라")
-    return sorted(base.iterdir())[-1]                      # 최신 버전 디렉터리
+        return None
+    vers = sorted(base.iterdir())
+    return vers[-1] if vers else None
+
+
+#: 엔진의 D-S01 을 그대로 옮긴 것(`_meta/design_rules/profile.py`
+#: `refgate_hex_pattern` · `governance.surface_findings`). **왜 복제하나**: 이 게이트는
+#: CI 에서 돌아야 하는데 lime-design 은 개발 기기의 Claude Code 플러그인이라 러너에
+#: 깔 수가 없다(pip 패키지가 아니다). 플러그인이 있으면 그쪽을 쓰고, 없으면 이걸 쓴다 —
+#: **어느 쪽으로 돌았는지 항상 출력한다**(조용한 폴백은 "검사했다"는 거짓이 된다).
+_VENDOR_HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+_VENDOR_EXTS = (".tsx", ".ts", ".jsx", ".js", ".css", ".scss")
+
+
+class _Finding:
+    __slots__ = ("id", "severity", "line", "found", "fix_hint")
+
+    def __init__(self, line: int, found: str) -> None:
+        self.id, self.severity, self.line, self.found = "D-S01", "FIX", line, found
+        self.fix_hint = "토큰을 쓸 것 — hsl(var(--x))"
+
+
+def _vendor_findings(root: Path) -> list:
+    """엔진 부재 시의 D-S01 스캔. 규칙·제외를 엔진과 같게 맞춘다."""
+    out = []
+    for fp in sorted(root.rglob("*")):
+        if not fp.is_file() or fp.suffix not in _VENDOR_EXTS:
+            continue
+        if "node_modules" in fp.parts or fp.name == "tokens.css":
+            continue
+        try:
+            text = fp.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for i, line in enumerate(text.splitlines()):
+            st = line.strip()
+            if st.startswith("/*") or st.startswith("//"):
+                continue
+            if _VENDOR_HEX.search(line):
+                out.append(_Finding(i, f"{fp.name}: {line.strip()[:160]}"))
+    return out
 
 
 def _is_generated(root: Path, name: str) -> bool:
@@ -119,12 +158,19 @@ def main() -> int:
         print(f"[gate_surface] 경로 없음: {root}", file=sys.stderr)
         return 3
 
-    sys.path.insert(0, str(_plugin_root()))
-    try:
-        from _meta.design_rules.governance import surface_findings
-    except Exception as e:                                   # noqa: BLE001
-        print(f"[gate_surface] 엔진 임포트 실패: {type(e).__name__}: {e}", file=sys.stderr)
-        return 3
+    plugin = _plugin_root()
+    engine = "lime-design"
+    surface_findings = None
+    if plugin is not None:
+        sys.path.insert(0, str(plugin))
+        try:
+            from _meta.design_rules.governance import surface_findings  # type: ignore
+        except Exception as e:                               # noqa: BLE001
+            print(f"[gate_surface] 엔진 임포트 실패 — 내장 규칙으로 진행: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr)
+    if surface_findings is None:
+        engine = "내장(D-S01 복제)"
+        surface_findings = _vendor_findings
 
     raw = surface_findings(root)
     kept, skipped, suspect, waived = [], [], [], []
@@ -144,6 +190,7 @@ def main() -> int:
 
     payload = {
         "kind": "surface",
+        "engine": engine,
         "surface": str(root),
         "status": "PASS" if not kept else "FAIL",
         "violations": len(kept),
@@ -157,7 +204,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print(f"[{payload['status']}] {root}")
+        print(f"[{payload['status']}] {root}  · 엔진 {engine}")
         print(f"  위반 {len(kept)}건 · 생성물 제외 {len(skipped)}건 "
               f"({', '.join(payload['generated_files']) or '없음'})"
               + (f" · 선택자 의심 {len(suspect)}건" if suspect else "")
