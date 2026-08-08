@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.eval_tooluse import EVALSET, verify      # noqa: E402
+from scripts.eval_tooluse import EVALSET, verify, via_mcp   # noqa: E402
 
 
 def _load() -> dict:
@@ -26,6 +26,17 @@ def _load() -> dict:
 def test_every_expected_answer_still_holds_on_the_fixture():
     problems = verify(_load())
     assert not problems, "평가셋이 픽스처와 어긋났다:\n  " + "\n  ".join(problems)
+
+
+def test_the_mcp_tools_actually_deliver_those_answers():
+    """`verify` 는 api.query 를 직접 부른다 — 즉 "데이터에 답이 있다"만 증명한다.
+
+    사용자가 만나는 것은 도구다. 스키마·핸들러·브리지·HTTP 라우트 중 하나만 어긋나도
+    데이터는 멀쩡한데 도구가 답을 못 준다. 그건 사용자에게는 같은 고장이라 따로 잰다.
+    (F14 가 정확히 이 형태였다: 데이터에는 Record 가 붙어 있는데 도구가 안 보여 줬다.)
+    """
+    problems = via_mcp(_load())
+    assert not problems, "MCP 도구 층이 정답을 못 낸다:\n  " + "\n  ".join(problems)
 
 
 def test_evalset_shape_is_complete():

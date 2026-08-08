@@ -154,10 +154,97 @@ def _verify_inner(evalset: dict) -> list[str]:
     return problems
 
 
+#: 평가셋의 `requires` 도구 이름 → 그 문항의 정답을 뽑을 MCP 인자.
+#: verify 절은 `api.query` 를 직접 부르지만 이쪽은 **MCP 도구 층**을 통과한다
+#: (스키마 검증 → 핸들러 → 브리지 → HTTP → 사이드카 라우트). 둘은 다른 주장이다:
+#: 전자는 "데이터에 답이 있다", 후자는 "도구가 그 답을 실제로 내준다".
+MCP_PROBE = {
+    "Q1":  ("vinc_neighbors",        {"node": "concept:atlas"},                    "neighbors[].id"),
+    "Q2":  ("vinc_path",             {"a": "concept:atlas", "b": "concept:invoice"}, "paths[0].ids"),
+    "Q3":  ("vinc_diagnose",         {"kind": "components"},                       "orphans"),
+    "Q4":  ("vinc_decide",           {"topic": "concept:atlas", "depth": 1},       "conflicts[].source|target"),
+    "Q5":  ("vinc_domains",          {},                                           "rows[0].domain|total"),
+    "Q6":  ("vinc_recall",           {},                                           "rows[0].title|date"),
+    "Q7":  ("vinc_merge_candidates", {},                                           "candidates[].a_id|b_id"),
+    "Q8":  ("vinc_suggest_ties",     {"node": "concept:invoice"},                  "suggestions[0].id|shared_neighbors"),
+    "Q9":  ("vinc_doc_get",          {"doc_id": "eval.tooluse.atlas-notes"},       "text"),
+    "Q10": ("vinc_search",           {"query": "Atlas 뷰"},                        "node_hits[].id"),
+}
+
+
+def via_mcp(evalset: dict) -> list[str]:
+    """같은 정답을 **MCP 도구 표면**으로 다시 뽑아 대조한다.
+
+    사이드카를 인프로세스로 띄우고 `tools.call()` 로 부른다 — 도구 스키마·핸들러·
+    브리지·HTTP 라우트를 전부 지난다. `verify()` 가 통과해도 여기서 깨질 수 있고,
+    그건 "데이터엔 답이 있는데 도구가 못 준다"는 뜻이라 사용자에게는 같은 고장이다.
+    """
+    import contextlib as _c
+    import threading
+
+    with _fixture_env():
+        from store.config import load_config
+        from store.backend import open_store
+        from api.server import VincApp, make_server
+        from vinc_mcp import tools
+        from vinc_mcp.bridge import Bridge
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import seed_tooluse as S
+
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        S.seed(store)
+        S.seed_doc(store)
+
+        app = VincApp(cfg, store=store)
+        httpd = make_server(app, host="127.0.0.1", port=0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        bridge = Bridge(base=f"http://127.0.0.1:{httpd.server_address[1]}",
+                        token=getattr(app.auth, "token", None), owner=S.OWNER)
+
+        problems: list[str] = []
+        try:
+            for item in evalset["questions"]:
+                probe = MCP_PROBE.get(item["id"])
+                if probe is None:
+                    problems.append(f"{item['id']}: MCP_PROBE 미등재 — 도구 층 미검증")
+                    continue
+                name, args, path = probe
+                if name not in item["requires"]:
+                    problems.append(
+                        f"{item['id']}: probe 도구 {name} 가 requires{item['requires']} 에 없다")
+                    continue
+                try:
+                    out = tools.call(name, {**args, "owner": S.OWNER}, bridge)
+                except Exception as e:                      # noqa: BLE001
+                    problems.append(f"{item['id']}: {name} 호출 실패 — {type(e).__name__}: {e}")
+                    continue
+                got = _dig(out, path)
+                exp, kind, want = item["expect"], item["expect"]["kind"], item["expect"]["value"]
+                if kind == "set":
+                    ok = set(got or []) == set(want)
+                elif kind == "list":
+                    ok = list(got or []) == list(want)
+                elif kind == "contains":
+                    ok = want in str(got or "")
+                else:
+                    ok = str(got) == str(want)
+                if not ok:
+                    problems.append(f"{item['id']}: {name} → 기대 {want!r} · 실제 {got!r}")
+        finally:
+            with _c.suppress(Exception):
+                httpd.shutdown()
+            app.close()
+        return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="E4 도구 사용 평가셋 정답 검증")
     ap.add_argument("--print", dest="show", action="store_true",
                     help="채점하지 말고 호스트에 줄 문항만 출력")
+    ap.add_argument("--via-mcp", dest="via", action="store_true",
+                    help="api.query 대신 MCP 도구 층으로 정답을 뽑아 대조")
     args = ap.parse_args()
     evalset = json.loads(EVALSET.read_text(encoding="utf-8"))
 
@@ -170,14 +257,16 @@ def main() -> int:
             print(f"{it['id']}. {it['ask']}\n    요구: {req}  금지: {fb}")
         return 0
 
-    problems = verify(evalset)
+    label = "MCP 도구 층" if args.via else "정답"
+    problems = (via_mcp if args.via else verify)(evalset)
     n = len(evalset["questions"])
     if problems:
-        print(f"정답 검증 실패 {len(problems)}/{n}:")
+        print(f"{label} 검증 실패 {len(problems)}/{n}:")
         for p in problems:
             print("  " + p)
         return 1
-    print(f"정답 검증 통과 {n}/{n} — 평가셋이 픽스처와 맞다")
+    print(f"{label} 검증 통과 {n}/{n} — "
+          + ("도구가 실제로 답을 내준다" if args.via else "평가셋이 픽스처와 맞다"))
     return 0
 
 
