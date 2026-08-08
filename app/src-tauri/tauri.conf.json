@@ -24,7 +24,7 @@
     "security": {
       "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
     },
-    "withGlobalTauri": true
+    "withGlobalTauri": false
   },
   "plugins": {
     "updater": {

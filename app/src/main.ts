@@ -5,8 +5,9 @@ import { renderAtlas } from "./surfaces/atlas";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
-import { connectSidecar, WEB, ensureWebAuth, cfg } from "./api";
+import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
+import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setAtlasHooks } from "./topbar";
 import { mountLnb, setLnbNavigator } from "./lnb";
@@ -244,14 +245,23 @@ document.documentElement.dataset.skin =
     : WEB ? "web" : "desktop";
 
 // ── 커스텀 타이틀바 — 데스크탑 셸(tauri decorations:false)에서만 노출·배선.
-// 웹/브라우저 dev 는 __TAURI__.window 부재 → data-shell 미부여로 CSS가 숨김.
-const tauriWin = (window as any).__TAURI__?.window;
-if (!WEB && tauriWin) {
-  document.documentElement.dataset.shell = "";
-  const appWin = tauriWin.getCurrentWindow();
-  document.getElementById("tb-min")?.addEventListener("click", () => appWin.minimize());
-  document.getElementById("tb-max")?.addEventListener("click", () => appWin.toggleMaximize());
-  document.getElementById("tb-close")?.addEventListener("click", () => appWin.close());
+// 웹/브라우저 dev 는 셸이 아니므로 data-shell 미부여 → CSS가 숨긴다.
+// ⚠ 전역 `__TAURI__` 대신 모듈에서 **동적으로** 가져온다(Q2). 정적 import 는 웹
+//   번들에도 들어가고, 전역 노출은 사용자 문서를 렌더하는 페이지에 API 표면을
+//   통째로 열어 두는 것이라 끊었다.
+if (!WEB && IN_SHELL) {
+  void (async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const appWin = getCurrentWindow();
+      document.documentElement.dataset.shell = "";
+      document.getElementById("tb-min")?.addEventListener("click", () => appWin.minimize());
+      document.getElementById("tb-max")?.addEventListener("click", () => appWin.toggleMaximize());
+      document.getElementById("tb-close")?.addEventListener("click", () => appWin.close());
+    } catch {
+      // 타이틀바 배선 실패가 앱 기동을 막지 않는다 — 창 제어만 못 하게 둔다.
+    }
+  })();
 }
 
 // ── 웹 스킨: 공홈 GNB를 공유 단일 소스(/assets/gnb.js)로 런타임 주입. 데스크탑 셸은 미주입. ──
@@ -297,4 +307,7 @@ applyTheme();
   route();
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
+  // `.vincpack` 더블클릭으로 넘어온 argv 를 연다(Q1). 화면을 그린 **뒤**에
+  // 부른다 — 임포트 시트가 뜰 자리가 먼저 있어야 한다. 셸 아니면 no-op.
+  wireFileAssociations();
 })();

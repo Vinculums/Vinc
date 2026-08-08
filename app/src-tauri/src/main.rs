@@ -8,7 +8,7 @@
 // Data home defaults to ~/.vinc (D43).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
@@ -104,6 +104,88 @@ async fn mcp_uninstall(app: tauri::AppHandle, client: String) -> Result<String, 
     mcp_action(&app, "uninstall", &client).await
 }
 
+// ── `.vincpack` 파일 연결 (Q1, 2026-08-07) ──────────────────────────────────
+// `tauri.conf.json` 의 `bundle.fileAssociations` 에 `.vincpack` 이 선언돼 출하됐는데
+// **argv 를 읽는 코드가 어디에도 없었다.** single-instance 콜백 시그니처가
+// `|app, _args, _cwd|` 로 args 를 버렸고 다른 어디에도 경로 해석 분기가 없었다.
+// 즉 더블클릭하면 창만 뜨고 팩은 안 열렸다 — 선언만 있고 동작이 없는 상태.
+// 이미 이 확장자로 공유가 이루어지고 있어(커뮤니티 갤러리) 사용자에겐 "깨진 연결"이다.
+//
+// 설계: **바이트를 러스트가 읽어 프론트에 넘긴다.** 경로만 넘기면 프론트가 임의 경로를
+// 읽을 권한이 필요해지는데(fs 스코프 확대), 그럴 이유가 없다. 프론트는 받은 바이트를
+// 기존 `fromBytes()` 에 그대로 흘려 **드롭한 파일과 완전히 같은 경로**를 탄다
+// (zip·JSON 판별, 검증, 임포트 시트까지 재사용 — 새 파서를 만들지 않는다).
+//
+// ⚠ 경합이 있다: 최초 실행의 argv 는 프론트가 리스너를 걸기 **전에** 도착한다.
+// 그래서 이벤트만으로는 첫 더블클릭이 조용히 유실된다. 큐에 쌓아 두고 프론트가
+// 준비되면 `take_pending_files` 로 **가져가게** 한다(이벤트는 2회차 실행용).
+#[derive(Default)]
+struct PendingOpen(std::sync::Mutex<Vec<String>>);
+
+#[derive(serde::Serialize, Clone)]
+struct OpenedFile {
+    name: String,
+    /// 바이트를 그대로 실으면 JSON 배열이 되어 5MB 팩이 15MB 로 부푼다.
+    /// 프론트가 `atob` 로 되돌린다.
+    b64: String,
+}
+
+/// 의존을 늘리지 않으려고 표준 base64 를 직접 짠다(인코딩만 필요하다).
+fn b64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for c in bytes.chunks(3) {
+        let b = [c[0], *c.get(1).unwrap_or(&0), *c.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        out.push(T[(n >> 18 & 63) as usize] as char);
+        out.push(T[(n >> 12 & 63) as usize] as char);
+        out.push(if c.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
+        out.push(if c.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// argv 에서 **열 수 있는 파일만** 고른다. 플래그·포트 인자·존재하지 않는 경로는
+/// 버린다 — argv[0] 은 실행 파일이므로 항상 건너뛴다.
+fn openable_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<String> {
+    args.into_iter()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .filter(|a| {
+            let low = a.to_lowercase();
+            (low.ends_with(".vincpack") || low.ends_with(".json"))
+                && std::path::Path::new(a).is_file()
+        })
+        .collect()
+}
+
+/// 프론트가 준비되면 큐를 **비우면서** 가져간다(중복 임포트 방지).
+#[tauri::command]
+fn take_pending_files(state: tauri::State<'_, PendingOpen>) -> Vec<OpenedFile> {
+    let paths: Vec<String> = state.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default();
+    paths
+        .iter()
+        .filter_map(|p| match std::fs::read(p) {
+            Ok(bytes) => {
+                log::info!(target: "open", "file association: {p} ({} bytes)", bytes.len());
+                Some(OpenedFile {
+                    name: std::path::Path::new(p)
+                        .file_name()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| p.clone()),
+                    b64: b64(&bytes),
+                })
+            }
+            Err(e) => {
+                // 조용히 버리지 않는다 — 더블클릭했는데 아무 일도 안 일어나는 것이
+                // 정확히 이 버그의 증상이었다.
+                log::warn!(target: "open", "file association: {p} 읽기 실패: {e}");
+                None
+            }
+        })
+        .collect()
+}
+
 /// 로컬 세션 토큰 — 실행마다 새로 생성(F4: 자격은 세션 한정).
 /// RandomState 는 OS 엔트로피로 시드되므로 외부 crate 없이 충분하다.
 fn session_token() -> String {
@@ -183,7 +265,20 @@ fn main() {
     // 기존 창을 포커스하고 즉시 종료 → 사이드카 중복 spawn·누수 근절.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // 2회차 실행의 argv 가 여기로 온다 — `.vincpack` 더블클릭이 대표적이다.
+            // 여태 `_args` 로 버려서 창만 뜨고 팩은 안 열렸다(Q1).
+            let files = openable_from_args(args);
+            if !files.is_empty() {
+                if let Some(st) = app.try_state::<PendingOpen>() {
+                    if let Ok(mut q) = st.0.lock() {
+                        q.extend(files);
+                    }
+                }
+                // 이쪽은 프론트가 이미 살아 있으므로 이벤트로 깨운다. 페이로드는
+                // 싣지 않는다 — 본문은 `take_pending_files` 한 문으로만 나간다.
+                let _ = app.emit("vinc://open-files", ());
+            }
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.unminimize();
                 let _ = win.set_focus();
@@ -222,7 +317,12 @@ fn main() {
             port,
             token: token.clone(),
         })
-        .invoke_handler(tauri::generate_handler![sidecar_conn, sidecar_status, mcp_install, mcp_uninstall])
+        // 최초 실행의 argv 는 프론트 리스너가 걸리기 전에 도착한다 — 큐에 먼저 담는다.
+        .manage(PendingOpen(std::sync::Mutex::new(openable_from_args(
+            std::env::args().collect::<Vec<_>>(),
+        ))))
+        .invoke_handler(tauri::generate_handler![
+            sidecar_conn, sidecar_status, mcp_install, mcp_uninstall, take_pending_files])
         .setup(move |app| {
             // 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
             // RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
@@ -307,4 +407,61 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `.vincpack` 더블클릭이 사문이던 원인은 argv 를 아무도 안 읽은 것이었다(Q1).
+    /// 여기서 고정하는 계약은 "무엇을 열 것인가" 하나다 — 잘못 고르면 앱이 자기
+    /// 실행 인자(포트·플래그)를 팩으로 열려 든다.
+    #[test]
+    fn argv_에서_열_수_있는_파일만_고른다() {
+        let dir = std::env::temp_dir().join("vinc-argv-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let pack = dir.join("shared.vincpack");
+        let json = dir.join("backup.json");
+        let other = dir.join("notes.md");
+        for p in [&pack, &json, &other] {
+            std::fs::write(p, b"x").unwrap();
+        }
+        let missing = dir.join("gone.vincpack");
+        let _ = std::fs::remove_file(&missing);
+
+        let argv = vec![
+            "vinc.exe".to_string(),          // argv[0] 은 실행 파일 — 항상 건너뛴다
+            "--port".to_string(),            // 플래그
+            "8787".to_string(),              // 플래그 값(확장자 없음)
+            pack.to_string_lossy().into_owned(),
+            json.to_string_lossy().into_owned(),
+            other.to_string_lossy().into_owned(),      // 지원 확장자 아님
+            missing.to_string_lossy().into_owned(),    // 존재하지 않음
+        ];
+        let got = openable_from_args(argv);
+        assert_eq!(got.len(), 2, "고른 것: {got:?}");
+        assert!(got[0].ends_with("shared.vincpack"));
+        assert!(got[1].ends_with("backup.json"));
+    }
+
+    #[test]
+    fn argv_가_실행파일뿐이면_아무것도_안_연다() {
+        assert!(openable_from_args(vec!["vinc.exe".to_string()]).is_empty());
+    }
+
+    /// 바이트를 JSON 배열로 실으면 5MB 팩이 15MB 로 부푼다. base64 는 그래서 쓰는데,
+    /// 손으로 짠 인코더라 패딩 경계(3n·3n+1·3n+2)를 고정해 둔다 — 여기가 틀리면
+    /// 프론트의 `atob` 가 조용히 다른 바이트를 돌려준다.
+    #[test]
+    fn base64_가_패딩_경계에서_정확하다() {
+        assert_eq!(b64(b""), "");
+        assert_eq!(b64(b"f"), "Zg==");
+        assert_eq!(b64(b"fo"), "Zm8=");
+        assert_eq!(b64(b"foo"), "Zm9v");
+        assert_eq!(b64(b"foob"), "Zm9vYg==");
+        assert_eq!(b64(b"fooba"), "Zm9vYmE=");
+        assert_eq!(b64(b"foobar"), "Zm9vYmFy");
+        // zip(팩의 실제 형태)의 매직 바이트 — 비ASCII 경로도 밟는다.
+        assert_eq!(b64(&[0x50, 0x4b, 0x03, 0x04]), "UEsDBA==");
+    }
 }

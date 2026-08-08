@@ -14,7 +14,8 @@ const TEAM_KEY = "vinc.team";
 // 127.0.0.1 의 동적 포트로 띄우고 그 포트를 sidecar_conn 으로 넘기므로, 아래 8787 은
 // connectSidecar 가 실제 포트를 주입하기 전까지의 폴백 기본값일 뿐이다.
 // (127.0.0.1 은 secure-context 예외라 tauri:// 에서의 fetch 도 차단되지 않는다.)
-const IN_SHELL =
+// 셸 판정 — `location` 으로 본다(전역 주입 대기는 withGlobalTauri 를 끄면서 폐기).
+export const IN_SHELL =
   location.protocol === "tauri:" || location.hostname === "tauri.localhost";
 const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 
@@ -69,19 +70,32 @@ const BUILD_SHA = typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "";
 export const buildId = BUILD_SHA ? `${APP_V}+${BUILD_SHA}` : APP_V;
 export let sidecarDiag = "(connectSidecar 미실행)";
 
+/** 셸에서만 `invoke` 를 가져온다(웹 Vinc·브라우저 dev 는 null).
+ *  **동적 import 인 이유**: 정적으로 쓰면 이 모듈이 웹 번들에도 들어간다. */
+export async function shellInvoke():
+    Promise<(<T = unknown>(cmd: string, args?: any) => Promise<T>) | null> {
+  if (!IN_SHELL) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke as any;
+  } catch {
+    return null;
+  }
+}
+
 /** 셸에서 사이드카 접속정보(포트·세션 토큰)를 받아 cfg 에 주입한다. main.rs 의
  *  `sidecar_conn` 커맨드를 invoke 해 win.eval 타이밍 의존 없이 토큰을 확보하고(정본),
  *  이어 /health 가 응답할 때까지 잠깐 대기해 첫 상호작용 실패(기동 지연)를 막는다.
- *  브라우저(dev)에는 __TAURI__ 가 없어 no-op — same-origin vite 프록시를 그대로 쓴다. */
+ *  브라우저(dev)에는 셸이 없어 no-op — same-origin vite 프록시를 그대로 쓴다.
+ *
+ *  ⚠ 전역 `window.__TAURI__` 를 쓰지 않는다(Q2, 2026-08-07). `withGlobalTauri` 는
+ *  **전체 API 를 페이지 전역에 노출**하는데, 이 앱은 사용자 문서를 렌더하고 웹 Vinc
+ *  로도 같은 번들이 나가므로 표면을 열어 둘 이유가 없다. 대신 모듈에서 가져오되
+ *  **셸일 때만 동적 import** 한다 — 정적 import 는 웹 번들에도 들어간다. */
 export async function connectSidecar(): Promise<void> {
-  let invoke: any;
-  for (let i = 0; i < 20; i++) {                     // __TAURI__ 주입 대기 ≤ ~1s
-    invoke = (window as any).__TAURI__?.core?.invoke;
-    if (typeof invoke === "function") break;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  if (typeof invoke !== "function") {
-    sidecarDiag = "no __TAURI__ (브라우저 dev 이거나 withGlobalTauri 미적용)";
+  const invoke = await shellInvoke();
+  if (!invoke) {
+    sidecarDiag = "셸 아님(브라우저 dev · 웹 Vinc) — 사이드카 연결 생략";
     return;
   }
   try {

@@ -1,4 +1,4 @@
-import { cfg, teamsApi, WEB } from "../api";
+import { cfg, teamsApi, WEB, shellInvoke } from "../api";
 import { COPY } from "../copy";
 
 /** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
@@ -205,8 +205,9 @@ export async function renderSettings(el: HTMLElement) {
         const { state } = await api!.connectStart();
         const port = new URL(cfg.base).port || "8787";
         const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
-        const invoke = (window as any).__TAURI__?.core?.invoke;
-        if (typeof invoke === "function") await invoke("plugin:shell|open", { path: url });
+        // Q2: 전역 __TAURI__ 대신 셸일 때만 동적 import. 셸이 아니면 새 탭.
+        const invoke = await shellInvoke();
+        if (invoke) await invoke("plugin:shell|open", { path: url });
         else window.open(url, "_blank");
         acctResult.textContent = U.acctConnecting;
         connectAbort = false;
@@ -304,8 +305,8 @@ export async function renderSettings(el: HTMLElement) {
       <div id="mcp-result" class="hint hint-sm break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
     async function mcpAction(action: "install" | "uninstall", client: string) {
-      const invoke = (window as any).__TAURI__?.core?.invoke;
-      if (typeof invoke !== "function") { mcpResult.textContent = U.mcpNoShell; return; }
+      const invoke = await shellInvoke();
+      if (!invoke) { mcpResult.textContent = U.mcpNoShell; return; }
       mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
       const host = U.mcpHosts[client] || client;
       try {
