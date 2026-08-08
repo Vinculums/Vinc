@@ -57,6 +57,11 @@ COPY store ./store
 COPY engines ./engines
 COPY vinc_mcp ./vinc_mcp
 COPY packaging/embed_worker.py ./packaging/embed_worker.py
+# 검색 품질 게이트(E2)를 **허브 안에서** 돌리기 위해 싣는다. 이 게이트는 3팔(FTS·
+# 벡터·RRF)을 갈라 재려고 스토어를 in-process 로 열어야 하는데, 사이드카가 물고 있는
+# DB 는 **읽기 전용으로도 두 번째로 못 연다**(실측 2026-08-08: 허브 안에서도 실패).
+# 그래서 공유의 스냅샷 사본을 `--data` 로 지정해 돌린다. 스크립트는 전부 작은 .py 다.
+COPY scripts ./scripts
 COPY pyproject.toml README.md LICENSE ./
 
 # G0 오프라인 확장 — 빌드 컨테이너 네트워크에서 extension.ladybugdb.com 다운로드가
