@@ -825,8 +825,12 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
                   {"id": r["id"], "emb": list(v)})
     store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
               {"id": doc_id})
+    # note 가 오래 "search indexes dropped" 였는데 **드롭되는 건 벡터뿐이다**(바로 위
+    # 주석대로 FTS 는 일부러 살려 둔다). 그 부정확한 문구가 호출부에 "FTS 도 없어졌으니
+    # 다시 만들어야 한다"고 읽혔고, 실제로 `/doc/reembed` 가 그 뒤에 전량 build 를
+    # 불러 'already exists' 로 터지고 있었다(2026-08-09).
     base.update(executed=True, embedded=len(rows),
-                note="search indexes dropped — 검색 경로가 지연 재빌드")
+                note="vector index dropped — 검색 경로가 지연 재빌드 (FTS 는 유지)")
     return base
 
 

@@ -393,9 +393,13 @@ def main() -> None:
                 stored_docs += 1
                 stored_chunks += int(res.get("chunks") or 0)
             print(f"       {f.name}: {res.get('chunks')}청크 (doc {did[:8]})")
-        # 검색 인덱스 재빌드(적재 후 1회) + E-G1 :MENTIONS 결정론 링크.
-        print(f"[INFO] 검색 인덱스 build (벡터 dim={model_dim(args.model)} + FTS)...")
-        store.build_search_indexes(dim=model_dim(args.model))
+        # 검색 인덱스 보장(적재 후 1회) + E-G1 :MENTIONS 결정론 링크.
+        # ⚠ `build_search_indexes` 가 아니라 `ensure_` 다. `put_doc(embed=...)` 은
+        # **벡터만** 드롭하므로 FTS 색인은 살아 있고, build 는 'already exists' 를
+        # 흡수하지 않아 **두 번째 실행부터 터진다**(빈 스토어 첫 적재에서만 통했다).
+        # 같은 함정이 `/doc/reembed` 에도 있었다 — 2026-08-09 에 둘 다 고쳤다.
+        print(f"[INFO] 검색 인덱스 ensure (벡터 dim={model_dim(args.model)} + FTS)...")
+        store.ensure_search_indexes(dim=model_dim(args.model))
         try:
             from engines.mentions_link import link_mentions
             stats = link_mentions(store, owner=owner)

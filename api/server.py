@@ -778,7 +778,16 @@ class VincApp:
                 if r.get("executed"):
                     done += 1
             if targets:
-                self.store.build_search_indexes(dim=model_dim("local-en"))
+                # ⚠ 여기 오래 `build_search_indexes` 가 있었고 **끝까지 터졌다**.
+                # 이 경로는 `_drop_vector_index_if_any` 로 **벡터만** 드롭한다(FTS 를
+                # 쓰기마다 드롭했더니 임베딩 도는 동안 키워드 검색이 죽었다 —
+                # docstore.py:297 의 2026-07-31 실측). 그런데 `build_search_indexes`
+                # 는 'already exists' 를 흡수하지 않으므로 살아 있는 FTS 색인 위에서
+                # `Binder exception: Index chunk_ft already exists in table Chunk` 로
+                # 던진다(2026-08-09 linux/amd64 실엔진 재현).
+                # 게다가 그 예외는 CREATE_VECTOR_INDEX 가 **성공한 뒤** 나므로,
+                # 임베딩도 벡터 색인도 다 만들어 놓고 결과만 오류로 돌려주고 있었다.
+                self.store.ensure_search_indexes(dim=model_dim("local-en"))
             return {"kind": "doc.reembed", "executed": True, "docs": done,
                     "total": len(targets)}
 

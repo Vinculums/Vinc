@@ -778,8 +778,22 @@ class EmbeddedBackend:
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
     def build_search_indexes(self, *, dim: int) -> None:
-        """**적재 후** 벡터(HNSW)+FTS(BM25) 인덱스 생성. 재적재 시엔 사전
-        `drop_search_indexes()` 로 기존 인덱스를 먼저 제거해야 한다(embed 잡 순서)."""
+        """**빈 자리에** 벡터(HNSW)+FTS(BM25) 인덱스 생성. `drop_search_indexes()` 와
+        **짝으로만** 쓴다.
+
+        ⚠ **'already exists' 를 흡수하지 않는다.** 둘 중 하나라도 이미 있으면
+        `Binder exception: Index <이름> already exists in table <표>` 로 던진다
+        (2026-08-09 linux/amd64 실엔진 실측: 벡터만 드롭한 상태에서 부르면 FTS 에서,
+        아무것도 안 드롭하면 벡터에서 먼저 터진다).
+
+        ⚠ 그래서 **프로덕션 호출부는 이 메서드를 쓰지 않는다.** 한동안 두 곳이 썼는데
+        (`/doc/reembed` · `embed_pipeline`) 둘 다 벡터만 드롭하는 경로라 살아 있는 FTS
+        위에서 터지고 있었다 — 그것도 임베딩과 벡터 색인을 다 만든 **뒤에**. 지금은
+        둘 다 :meth:`ensure_search_indexes` 를 쓴다. 새로 쓸 일이 생기면 정말
+        **드롭이 선행되는가**부터 볼 것. 아니면 `ensure_` 다.
+
+        (이 메서드를 멱등하게 만들지 않은 이유: 그러면 `ensure_search_indexes` 와
+        뜻이 같아진다. 이름이 다른 같은 것 둘은 드리프트의 출발점이다.)"""
         self._load_ext("vector")
         self._load_ext("fts")
         self._conn.execute(
