@@ -95,7 +95,12 @@ class VincApp:
         # "왜 조회가 다 깨지나"를 앱이 바로 알 수 있게 한다(open() 주석 참조).
         self.provision_error = provision_error
         self.auth = auth or SessionAuth()
-        self.jobs = jobs or JobQueue()
+        # 잡 큐에 **주기 체크포인트**를 물린다. Kùzu 계보는 close 때만 WAL 을 본
+        # 파일에 반영하는데 사이드카는 장수 프로세스라 절대 close 하지 않는다 —
+        # 2026-08-08 실측: DB mtime 06:38 vs WAL mtime 11:56(11.9MB), 그 5시간
+        # 반의 쓰기가 전부 WAL 에만 있었고 사이드카가 죽자 재생 불가로 통째 유실됐다.
+        # 쓰기는 이 큐 하나로 직렬화되므로 여기가 유일하게 옳은 자리다.
+        self.jobs = jobs or JobQueue(checkpoint=self._checkpoint_store)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
@@ -137,6 +142,22 @@ class VincApp:
                 provision_error = f"{type(exc).__name__}: {exc}"
                 print(f"vinc-sidecar: provision failed — {provision_error}", file=sys.stderr)
         return cls(cfg, store=store, provision_error=provision_error, **kw)
+
+    def _checkpoint_store(self) -> None:
+        """WAL 을 본 파일에 반영한다. **잡 워커 스레드에서만** 불린다.
+
+        쓰기와 같은 스레드라 커넥션 경합이 없다 — 이것이 JobQueue 에 물린 이유다.
+        스토어가 없거나 방언이 CHECKPOINT 를 모르면 조용히 지나간다(스토어 없는
+        테스트·강등 모드에서 잡이 실패하면 안 된다). 진짜 실패는 JobQueue 가 로그로
+        남긴다.
+        """
+        st = self.store
+        if st is None:
+            return
+        run = getattr(st, "run", None)
+        if run is None:
+            return
+        run("CHECKPOINT")
 
     # reader 뷰: 공유 Database 에서 별도 Connection(R4). 없으면 None(각 q 함수가
     # 자체 open→None→강등). 요청 단위로 생성·close.

@@ -115,11 +115,32 @@ start_sidecar
 # 읽으므로 아래 워치독이 재기동시킨 뒤에도 항상 **현재** 사이드카를 겨눈다.
 trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null' TERM INT
 
-echo "[entrypoint] waiting for sidecar health..."
-if wait_for_sidecar_health 30; then
-  echo "[entrypoint] sidecar ready"
-else
-  echo "[entrypoint] sidecar health check timed out" >&2
+# 첫 기동 대기는 **길어야 한다**. 30초는 "정상 기동"에는 넉넉하지만 **WAL 재생**에는
+# 턱없이 짧다. 2026-08-08 사고: 대량 쓰기로 WAL 이 11.9MB 까지 자란 상태에서 사이드카가
+# 죽자, 재기동마다 재생이 30초를 넘겨 `exit 1` → 컨테이너 재시작 → 재생 처음부터 →
+# **영영 못 끝나는 루프**가 됐다. 크래시 자체보다 이 루프가 복구를 막았다.
+#
+# Azure Files 위에서 12MB WAL 재생은 분 단위다. 그래서 기본 300초로 두고 env 로 연다.
+# 진행 상황을 30초마다 찍는다 — 아무 말 없이 5분을 기다리면 "멈춘 것"과 "재생 중"이
+# 구분되지 않는다(이 프로젝트가 반복해 겪은 무음 고장의 형태다).
+SIDECAR_BOOT_TIMEOUT="${VINC_SIDECAR_BOOT_TIMEOUT:-300}"
+echo "[entrypoint] waiting for sidecar health (최대 ${SIDECAR_BOOT_TIMEOUT}s — WAL 재생 여유)..."
+boot_waited=0
+while [ "$boot_waited" -lt "$SIDECAR_BOOT_TIMEOUT" ]; do
+  if wait_for_sidecar_health 30; then
+    echo "[entrypoint] sidecar ready (${boot_waited}s 대기)"
+    break
+  fi
+  boot_waited=$((boot_waited + 30))
+  # 프로세스가 살아 있으면 재생 중일 수 있다 — 죽었으면 기다릴 이유가 없다.
+  if ! kill -0 "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null; then
+    echo "[entrypoint] sidecar 프로세스가 사라졌다 — 대기 중단(${boot_waited}s)" >&2
+    exit 1
+  fi
+  echo "[entrypoint] … 아직 뜨지 않음(${boot_waited}s/${SIDECAR_BOOT_TIMEOUT}s) — 프로세스는 살아 있다"
+done
+if [ "$boot_waited" -ge "$SIDECAR_BOOT_TIMEOUT" ]; then
+  echo "[entrypoint] sidecar health check timed out (${SIDECAR_BOOT_TIMEOUT}s)" >&2
   exit 1
 fi
 
