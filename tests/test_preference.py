@@ -49,10 +49,11 @@ class TouchTests(unittest.TestCase):
 
 class ExecuteTests(unittest.TestCase):
     @mock.patch("api.query.open_store", return_value=None)
-    def test_pin_without_db_returns_plan(self, _open):
+    def test_pin_without_db_degrades_without_leaking_plan(self, _open):
+        """F3 — 쓰기 경로도 같다. 강등이 곧 내부 노출이 되면 안 된다."""
         res = pref.pin("s1")
         self.assertFalse(res["executed"])
-        self.assertEqual(res["plan"]["kind"], "pin")
+        self.assertNotIn("plan", res, f"plan 이 실렸다: {res.get('plan')}")
 
 
 if __name__ == "__main__":

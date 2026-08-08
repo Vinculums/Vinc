@@ -106,10 +106,13 @@ def _t_search(args, bridge):
 
 
 def _t_recall(args, bridge):
+    # F3: `debug` 를 줘야만 내부 실행 계획(plan.cypher)이 실린다. 기본은 안 실린다 —
+    # 여태 매 응답에 Cypher 전문과 owner UUID 가 딸려 왔다(실측 17.9KB 중 상당부).
     return bridge.request("GET", "/recall", params={
         "owner": _owner(args, bridge), "domain": args.get("domain"),
         "tags": ",".join(args["tags"]) if args.get("tags") else None,
-        "limit": args.get("limit", 50)})
+        "limit": args.get("limit", 50),
+        "debug": "true" if args.get("debug") else None})
 
 
 def _t_graph(args, bridge):
@@ -126,7 +129,9 @@ def _t_decide(args, bridge):
 
 
 def _t_domains(args, bridge):
-    return bridge.request("GET", "/domains", params={"owner": _owner(args, bridge)})
+    return bridge.request("GET", "/domains", params={
+        "owner": _owner(args, bridge),
+        "debug": "true" if args.get("debug") else None})
 
 
 def _t_suggest(args, bridge):
@@ -273,6 +278,10 @@ TOOLS: list[dict] = [
             "domain": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
             "limit": {"type": "integer", "default": 50},
+            "debug": {"type": "boolean", "default": False,
+                      "description": "Include the internal query plan (Cypher + params) "
+                                     "in the response. Off by default — it is large and "
+                                     "exposes internals; turn it on only to diagnose."},
         }}, "run": _t_recall,
     },
     {
@@ -298,6 +307,9 @@ TOOLS: list[dict] = [
         "description": "List the owner's domains discovered from data (open set, not a fixed list).",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
+            "debug": {"type": "boolean", "default": False,
+                      "description": "Include the internal query plan (Cypher + params) "
+                                     "in the response. Off by default."},
         }}, "run": _t_domains,
     },
     {

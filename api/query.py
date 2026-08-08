@@ -234,7 +234,8 @@ def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
 # 드라이버 취득은 store.backend.open_store 로 일원화(설계 §4-1). 여기서는 백엔드를
 # 열고 plan.cypher 를 store.run 으로 실행할 뿐 — 드라이버를 직접 열지 않는다.
 
-def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None) -> dict:
+def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None,
+            debug: bool = False) -> dict:
     """Run a plan if a store is reachable; otherwise return the plan only.
 
     백엔드 중립(설계 §4-3): `open_store(cfg)` 가 None(도달 불가)이면 순수 플랜을
@@ -247,9 +248,20 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None) -> d
     owns = store is None
     if owns:
         store = open_store(cfg)
-    base = {"plan": plan.to_dict(), "executed": False, "rows": []}
+    # 🔴 F3 — **plan 은 기본으로 싣지 않는다.** 여태 `plan.cypher` 전문과
+    # `plan.params.owner`(회원 UUID)가 매 응답에 실렸다(실측: `vinc_recall` 17.9KB ·
+    # `vinc_domains` 1.3KB 중 상당부). 호출당 수백 토큰의 낭비이자 내부 구현 노출이고,
+    # owner UUID 는 요청자가 이미 아는 값이라 되돌려줄 이유도 없다.
+    # 필요한 자리는 이미 따로 있다: `/plan/recall`·`/plan/decide` 라우트와 CLI `plan`
+    # 은 플랜 **빌더**를 직접 부르므로 이 경로를 타지 않는다 — 즉 진단 능력은 안 준다.
+    base = {"executed": False, "rows": []}
+    if debug:
+        base["plan"] = plan.to_dict()
     if store is None:
-        base["note"] = "no reachable store (dry plan returned)"
+        # 예전엔 "dry plan returned" 였다. plan 을 안 실으면서 그 문구를 남기면
+        # 호출부가 없는 필드를 찾는다.
+        base["note"] = ("no reachable store"
+                        + (" (dry plan returned)" if debug else ""))
         return base
     try:
         rows = store.run(plan.cypher, plan.params)
@@ -271,11 +283,12 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None) -> d
 def recall(query: str = "", *, owner: str | None = None, tenant: str | None = None,
            domain: str | None = None, workspace: str | None = None,
            tags: list[str] | None = None, rank: str = "recency", limit: int = 10,
-           weights: dict | None = None, cfg=None, store=None) -> dict:
+           weights: dict | None = None, cfg=None, store=None,
+           debug: bool = False) -> dict:
     res = execute(
         recall_plan(query, owner=owner, tenant=tenant, domain=domain,
                     workspace=workspace, tags=tags, rank=rank, limit=limit, weights=weights),
-        cfg, store=store,
+        cfg, store=store, debug=debug,
     )
     # preference 랭킹은 백엔드 밖 순수 함수로(§4-2). 플랜은 후보 전량을 date DESC 로
     # 가져오고, 여기서 점수·상한을 적용한다.
@@ -377,11 +390,12 @@ def domain_names(*, owner: str | None = None, cfg=None, store=None) -> set[str] 
     return {d for d in (row.get("domain") for row in res.get("rows", [])) if d}
 
 
-def domains(*, owner: str | None = None, cfg=None, store=None) -> dict:
+def domains(*, owner: str | None = None, cfg=None, store=None,
+            debug: bool = False) -> dict:
     """도메인 목록(C2) — Episode·Concept·Record 3종을 모두 세어 `{domain, episodes,
     concepts, records, total}` 로 병합, total 내림차순 정렬. `episodes` 필드는
     하위호환으로 유지(값 = Episode 카운트만)."""
-    res = execute(domain_counts_plan(owner=owner), cfg, store=store)
+    res = execute(domain_counts_plan(owner=owner), cfg, store=store, debug=debug)
     if not res.get("executed"):
         return res
     agg: dict[str, dict] = {}

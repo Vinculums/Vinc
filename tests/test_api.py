@@ -442,12 +442,24 @@ class WeightedPathTests(unittest.TestCase):
 
 class ExecuteTests(unittest.TestCase):
     @mock.patch("api.query.open_store", return_value=None)
-    def test_execute_without_db_returns_plan(self, _open):
-        # no NEO4J_PASSWORD / no driver -> executed False, plan present
+    def test_execute_without_db_degrades_without_leaking_plan(self, _open):
+        """F3 — 스토어가 없어도 **plan 은 안 싣는다.**
+
+        여태 `plan.cypher` 전문과 `plan.params.owner`(회원 UUID)가 매 응답에 실렸다
+        (실측: `vinc_recall` 응답 17.9KB · `vinc_domains` 1.3KB). 호출당 수백 토큰의
+        낭비이자 내부 구현 노출이고, owner 는 요청자가 이미 아는 값이라 되돌려줄
+        이유가 없다. 강등 경로도 예외가 아니다 — 여기가 오히려 새기 쉬운 자리다."""
         res = q.recall("x")
         self.assertFalse(res["executed"])
-        self.assertEqual(res["plan"]["kind"], "recall")
+        self.assertNotIn("plan", res, f"plan 이 기본 응답에 실렸다: {res.get('plan')}")
         self.assertEqual(res["rows"], [])
+
+    @mock.patch("api.query.open_store", return_value=None)
+    def test_debug_는_옵트인으로_plan_을_되돌려준다(self, _open):
+        """진단 능력을 없앤 게 아니라 옵트인으로 내린 것이다 — 그 증거."""
+        res = q.recall("x", debug=True)
+        self.assertEqual(res["plan"]["kind"], "recall")
+        self.assertIn("cypher", res["plan"])
 
     def test_search_entrypoint(self):
         # search 는 store.fulltext_search + (선택)vector_search + RRF(§4-2). 인덱스

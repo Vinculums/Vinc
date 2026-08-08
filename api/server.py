@@ -188,10 +188,11 @@ class VincApp:
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
-            limit=_int(p.get("limit"), 10), store=r))
+            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug"))))
 
     def read_domains(self, p):
-        return self._read(lambda r: q.domains(owner=p.get("owner"), store=r))
+        return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
+                                              debug=_flag(p.get("debug"))))
 
     def read_learner(self, p):
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
@@ -1054,6 +1055,15 @@ def _int(val, default: int) -> int:
         return int(val) if val is not None else default
     except (TypeError, ValueError):
         return default
+
+
+def _flag(val) -> bool:
+    """쿼리스트링·JSON 양쪽에서 오는 불리언. HTTP 로 오면 문자열 `"true"` 이고
+    MCP/CLI 로 오면 진짜 bool 이라 둘 다 받아야 한다 — `bool("false")` 가 True 인
+    것이 이 자리의 함정이다(F3 의 debug 옵트인이 항상 켜져 버린다)."""
+    if isinstance(val, bool):
+        return val
+    return str(val or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _pop_max_domains(body) -> int | None:

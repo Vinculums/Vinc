@@ -959,3 +959,46 @@ class DocRouteE2E(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DebugPlanOptInTests(unittest.TestCase):
+    """F3 — 내부 실행 계획과 owner UUID 가 HTTP 응답에 기본으로 실리지 않는다.
+
+    실측(2026-08-07): `vinc_recall` 17.9KB · `vinc_domains` 1.3KB 응답에 `plan.cypher`
+    전문과 `plan.params.owner` 회원 UUID 가 매 호출 실렸다. 나머지 12개 도구는
+    이미 안 실었으므로 봉투 불일치이기도 했다.
+    """
+
+    class _Store:
+        driver_name = "fake"
+        def reader_view(self): return self
+        def run(self, cypher, params=None): return []
+        def close(self): pass
+
+    def _get(self, path):
+        with running_server(_app(store=self._Store())) as base:
+            return _req(base, path)[1]
+
+    def test_기본_응답에는_plan_이_없다(self):
+        for path in ("/recall?query=x&owner=u", "/domains?owner=u"):
+            res = self._get(path)
+            self.assertNotIn("plan", res, f"{path} 가 plan 을 실었다")
+            self.assertNotIn("u", str(res.get("plan") or ""), "owner 가 에코됐다")
+
+    def test_debug_로만_열린다(self):
+        res = self._get("/recall?query=x&owner=u&debug=true")
+        self.assertEqual(res["plan"]["kind"], "recall")
+        self.assertIn("cypher", res["plan"])
+
+    def test_문자열_false_는_켜지지_않는다(self):
+        """`bool("false")` 는 True 다 — 이 자리의 고전적 함정. 쿼리스트링으로 오는
+        값은 전부 문자열이라, 순진하게 bool() 하면 옵트인이 **항상 켜진다.**"""
+        for falsy in ("false", "0", "no", "off", ""):
+            res = self._get(f"/recall?query=x&owner=u&debug={falsy}")
+            self.assertNotIn("plan", res, f"debug={falsy!r} 인데 plan 이 실렸다")
+
+    def test_plan_전용_라우트는_그대로다(self):
+        """진단 능력을 없앤 게 아니다 — 원래 그 목적인 라우트는 불변이다."""
+        res = self._get("/plan/recall?query=x")
+        self.assertEqual(res["kind"], "recall")
+        self.assertIn("cypher", res)
