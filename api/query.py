@@ -2482,11 +2482,57 @@ def concept_meta_plan(*, owner: str) -> QueryPlan:
                      note="concept metadata for tie suggestions")
 
 
+# ── 잇기 제안 점수 산식 (F11) ────────────────────────────────────────────────
+# 옛 산식은 `2·|공유 태그| + 같은 도메인`이었다. 실측하니 **순위가 서지 않았다**:
+#   · `concept:abcd-layers` 의 후보 14개 중 13개(93%)가 같은 점수 2 로 동률
+#   · 라이브 계정 그래프의 `concept:vinc-mcp` 도 상위 6건 전부 score 2 / 태그 ["core"]
+# 원인은 태그가 **희소성과 무관하게** 같은 값(2)을 받는 것이다. `core` 처럼 개념
+# 절반에 붙은 태그 하나가 점수를 포화시키면 수십 개가 동률이 되고, 그때 limit 은
+# 사실상 **id 사전순 앞 N개**를 자른다(그래서 반환이 늘 `concept:a…` 로 시작했다).
+#
+# (계획서는 "전부 score:1, shared_tags 빈 배열"이라고 적었는데 재보니 그렇지 않았다 —
+#  태그 없는 노드 하나를 본 서술로 보인다. 결론("호스트가 순위를 매길 수 없다")은
+#  맞지만 원인은 상수 점수가 아니라 **동률 포화**다.)
+#
+# 그래서 세 신호를 쓴다. 각 항의 근거는 `signals` 로 함께 돌려준다:
+#   태그   Σ 2·ln(N/df)/ln(N)  — 표준 IDF. 나만 가진 태그는 ≈2, 전부가 가진 태그는 0.
+#   도메인 +1.0                — 옛 산식과 같다(약한 신호라 약한 가중).
+#   이웃   1.5·min(공통 이웃 수, 4) — **그래프 거리 2홉**. 후보는 이미 직접 연결이
+#          제외돼 있으므로 공통 이웃이 있다는 것은 곧 2홉 근접이다. 태그가 포화된
+#          그래프에서 동률을 실제로 깨는 것은 이 항이다.
+_TIE_TAG_MAX = 2.0
+_TIE_DOMAIN_W = 1.0
+_TIE_LINK_W = 1.5
+_TIE_LINK_CAP = 4
+TIE_SCORE_FORMULA = ("score = sum(2·ln(N/df) / ln(N) for shared tags) "
+                     "+ 1.0 (same domain) + 1.5·min(common neighbors, 4)")
+
+
+def _tag_weights(rows: list[dict]) -> dict[str, float]:
+    """태그별 희소성 가중치(IDF). ``rows`` 는 owner 의 전체 개념 메타."""
+    import math
+    n = len(rows)
+    df: dict[str, int] = {}
+    for r in rows:
+        for t in set(r.get("tags") or []):
+            df[t] = df.get(t, 0) + 1
+    if n <= 1:
+        return {t: _TIE_TAG_MAX for t in df}
+    den = math.log(n)
+    out = {}
+    for t, d in df.items():
+        # d ≥ n(전 개념이 가진 태그)이면 0 — 정보가 없다. 음수로 내려가진 않는다.
+        out[t] = max(0.0, _TIE_TAG_MAX * math.log(n / max(1, d)) / den)
+    return out
+
+
 def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None) -> dict:
     """고아(저연결) 노드의 잇기 후보 — D25(임베딩 유사도)의 **전 단계** 결정론 근사
-    (D32): 같은 도메인 +1, 태그 교집합 각 +2. 이미 연결된 노드는 제외. 조회 전용 —
-    확정(엣지 생성)은 fragment MERGE(POST /ingest/fragment) 경유로 단일 쓰기
-    표면(R4)을 유지한다."""
+    (D32). 점수는 태그 희소성 + 도메인 일치 + 그래프 거리 2홉이고, 산식은
+    :data:`TIE_SCORE_FORMULA` 로 응답에 함께 공개한다(F11). 각 후보는 산출 근거를
+    ``reason``(지배 신호 이름)·``signals``(항별 값)로 싣는다 — merge_candidates 의
+    ``reason`` 과 같은 방식이다. 이미 연결된 노드는 제외. 조회 전용 — 확정(엣지 생성)은
+    fragment MERGE(POST /ingest/fragment) 경유로 단일 쓰기 표면(R4)을 유지한다."""
     meta = execute(concept_meta_plan(owner=owner), cfg, store=store)
     if not meta.get("executed"):
         return {"executed": False, "node": node, "suggestions": [],
@@ -2506,11 +2552,20 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
                 **({"candidates": cands} if cands else {})}
     g = execute(graph_plan(owner=owner), cfg, store=store)
     linked = {node}
+    # F11 — 인접표를 **전 노드**로 만든다(예전엔 seed 의 이웃만 모았다). 후보의
+    # 이웃까지 알아야 "공통 이웃 수"(2홉 근접)를 잴 수 있다. 무방향으로 둔다 —
+    # 잇기 제안에 방향은 의미가 없다.
+    adj: dict[str, set[str]] = {}
     for r in g.get("rows", []):
-        if r.get("id") == node and r.get("target"):
-            linked.add(r["target"])
-        elif r.get("target") == node and r.get("id"):
-            linked.add(r["id"])
+        a, b = r.get("id"), r.get("target")
+        if not a or not b:
+            continue
+        adj.setdefault(a, set()).add(b)
+        adj.setdefault(b, set()).add(a)
+        if a == node:
+            linked.add(b)
+        elif b == node:
+            linked.add(a)
     # F3 — 접착제 인지: 브릿지 매개로 이미 이어진 개념도 linked 에 합류시켜 기존
     # 글루를 중복 제안하지 않는다(graph_plan 은 CC 직접 엣지만 본다).
     bn = execute(bridge_neighbors_plan(node, owner=owner), cfg, store=store)
@@ -2518,21 +2573,37 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
         linked.update(r["id"] for r in bn.get("rows", []) if r.get("id"))
     my_tags = set(me.get("tags") or [])
     my_domain = me.get("domain") or ""
+    my_nbrs = adj.get(node, set())
+    weights = _tag_weights(rows)
     out = []
     for r in rows:
         cid = r.get("id")
         if not cid or cid in linked:
             continue
         shared = sorted(my_tags & set(r.get("tags") or []))
-        score = 2 * len(shared) + (1 if my_domain and r.get("domain") == my_domain else 0)
+        tag_s = sum((weights.get(t, _TIE_TAG_MAX) for t in shared), 0.0)
+        dom_s = _TIE_DOMAIN_W if my_domain and r.get("domain") == my_domain else 0.0
+        common = sorted(my_nbrs & adj.get(cid, set()))
+        link_s = _TIE_LINK_W * min(len(common), _TIE_LINK_CAP)
+        score = tag_s + dom_s + link_s
         if score <= 0:
             continue
+        # 지배 신호 = reason. 동점이면 정보량이 큰 쪽부터(이웃 > 태그 > 도메인).
+        reason = max((("shared_neighbors", link_s), ("shared_tags", tag_s),
+                      ("same_domain", dom_s)), key=lambda kv: kv[1])[0]
         out.append({"id": cid, "title": r.get("title") or cid,
                     "domain": r.get("domain") or "", "shared_tags": shared,
-                    "score": score})
+                    "score": round(score, 4), "reason": reason,
+                    "signals": {"tags": round(tag_s, 4), "domain": dom_s,
+                                "neighbors": round(link_s, 4),
+                                "common_neighbors": len(common)},
+                    "shared_neighbors": common[:3]})
     out.sort(key=lambda s: (-s["score"], s["id"]))   # 결정론 순서
+    n = max(1, int(limit))
     return {"kind": "suggest_ties", "executed": True, "node": node,
-            "suggestions": out[:max(1, int(limit))]}
+            "suggestions": out[:n], "total": len(out),
+            # 잘렸다는 사실을 말하지 않으면 호스트는 "후보가 이게 전부"로 읽는다.
+            "truncated": len(out) > n, "formula": TIE_SCORE_FORMULA}
 
 
 # ── 단일 홉 관측 창구 (E-G5) — SoG Observe-then-Navigate 경량 프리미티브 ────────
@@ -2936,19 +3007,90 @@ _MERGE_TOKEN_RE = _re_merge.compile(r"[0-9a-z가-힣]+")
 
 
 def _norm_title(title: str) -> tuple[str, frozenset]:
-    """타이틀 정규화 → (정규 문자열, 토큰셋). 소문자·영숫자/한글 토큰(길이≥2 우선,
-    단 전부 짧으면 원형 유지). 결정론."""
+    """타이틀 정규화 → (정규 문자열, 토큰셋). 소문자·영숫자/한글 토큰. 결정론.
+
+    ⚠ 여기 **길이≥2 토큰만 유의어로 치는 필터가 있었고, 그게 F10 오탐의 최대 원인**
+    이었다(실측). 짧은 토큰이 곧 잡음이라는 가정이 거꾸로였다:
+
+      · "웹 Vinc" → `웹` 이 버려져 토큰셋이 `{vinc}` 하나가 된다. 그러면 vinc 를
+        포함한 **모든** 제목의 부분집합이라 subset 규칙이 전부 후보로 올린다.
+        22개념 표본에서 이 노드 하나가 후보쌍 20개 중 10개(50%)를 만들었고,
+        라이브 계정 그래프(개념 185)에서도 상위 30쌍 중 12건(40%)이 이 쌍이었다.
+      · "SEC-1"/"SEC-3" → 변별점인 `1`·`3` 이 버려져 두 결정이 같은 토큰이 된다.
+
+    즉 필터가 **일반어(vinc)는 남기고 변별어(웹·1·3)를 버리고** 있었다. 토큰을 전부
+    유의어로 두면 표본 후보쌍이 37 → 14(−62%)로 줄고, 진짜 양성 4종(iPaaS/ipaas ·
+    transformer ⊂ transformer architecture · chunk-ssot ⊂ D45 · LadybugDB ⊂ D14)은
+    그대로 남는다. 토큰 추가는 부분집합 관계를 **좁히기만** 하므로(더 보수적) 새
+    오탐을 만들지 않는다."""
     toks = [t for t in _MERGE_TOKEN_RE.findall((title or "").lower())]
-    sig = [t for t in toks if len(t) >= 2] or toks
-    return ("".join(toks), frozenset(sig))
+    return ("".join(toks), frozenset(toks))
 
 
-def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
-                     limit: int = 20) -> list[dict]:
-    """중복 개념 후보쌍을 결정론적으로 산출(순수 — I/O 없음). ``rows``: [{id, title,
-    domain}]. 규칙(강→약): 정규 타이틀 완전일치(exact_title, 1.0) · 토큰 자카드
-    ≥min_score(token_overlap) · 한쪽이 다른쪽의 부분집합(subset, 0.8). 반환은
-    (동일도메인 우선, 점수 내림차순, id 사전순) 정렬 리스트."""
+# ── 구조적 비중복 쌍 (F10-a) ──────────────────────────────────────────────────
+# 제목이 아무리 닮아도 **합쳐지면 안 되는** 개념 쌍이 있다. 이 리포의 GRAPH.md 관례가
+# 그렇게 갈라 놓은 두 축이다:
+#   doc.*  문서 미러 개념 — 원문 문서 하나에 하나씩 대응한다. 문서가 둘이면 개념도
+#          둘이어야 한다. `vinc.d.graph` 와 `vinc.d.graph-views` 는 서로 다른 문서고,
+#          제목이 접두 관계인 것은 **명명 규칙의 결과**이지 중복의 증거가 아니다.
+#   dec-*  결정(DEC) 대장 — 결정과 그 결정의 주제는 일부러 별개 노드로 두고 명시
+#          엣지로만 잇는다(예: `dec-d45` ↔ `chunk-ssot`). 이걸 병합하면 결정 대장이
+#          주제 안으로 녹아 사라진다. 병합은 비가역이라 되돌릴 수도 없다.
+# 이건 id 명명 **관례**지 엔진이 만드는 구조가 아니다(코드가 붙이는 접두어가 아님).
+# 그래서 (1) 관례가 없는 그래프에서는 자동으로 무동작이고, (2) 끄는 스위치를 둔다.
+# 그리고 **무음 억제 금지**: 몇 쌍을 이 규칙으로 뺐는지 응답에 숫자로 남긴다.
+_DOC_CONCEPT_PREFIX = "concept:doc."
+_DEC_CONCEPT_PREFIX = "concept:dec-"
+
+
+def _structural_role(cid: str) -> str:
+    """개념 id 의 구조 역할 — ``"doc"`` | ``"dec"`` | ``""``(보통)."""
+    if cid.startswith(_DOC_CONCEPT_PREFIX):
+        return "doc"
+    if cid.startswith(_DEC_CONCEPT_PREFIX):
+        return "dec"
+    return ""
+
+
+def _is_structural_nonduplicate(a_id: str, b_id: str) -> bool:
+    """이 쌍이 **의도된 비중복**인가 — 문서끼리, 또는 한쪽이 결정 노드."""
+    ra, rb = _structural_role(a_id), _structural_role(b_id)
+    if ra == "doc" and rb == "doc":
+        return True
+    # 결정 ↔ 비결정은 대장이 주제로 녹는 병합이라 금지. 결정 ↔ 결정은 남긴다 —
+    # 번호 이중 사용(같은 DEC 를 두 번 등록)은 실제로 있었던 중복이라 볼 수 있어야 한다.
+    return (ra == "dec") != (rb == "dec")
+
+
+def rejection_pair_key(owner: str, a_id: str, b_id: str) -> str:
+    """기각 기억의 키 — ``owner|min|max``. 정렬해 (a,b)·(b,a) 를 한 행으로 접는다."""
+    lo, hi = sorted((a_id or "", b_id or ""))
+    return f"{owner or ''}|{lo}|{hi}"
+
+
+def _rejected_set(pairs) -> set[tuple[str, str]]:
+    """기각쌍 → 정렬된 튜플 집합(순서 무관 조회용)."""
+    out: set[tuple[str, str]] = set()
+    for p in pairs or ():
+        if isinstance(p, dict):
+            a, b = p.get("a_id") or "", p.get("b_id") or ""
+        else:
+            a, b = (list(p) + ["", ""])[:2]
+        if a and b:
+            lo, hi = sorted((a, b))
+            out.add((lo, hi))
+    return out
+
+
+def merge_candidates_detail(rows: list[dict], *, min_score: float = 0.6,
+                            limit: int = 20, include_structural: bool = False,
+                            rejected=None) -> dict:
+    """:func:`merge_candidates` 의 상세형 — 억제 내역까지 돌려준다(순수, I/O 없음).
+
+    반환 ``{"candidates": […], "suppressed": {"structural": n, "rejected": m}}``.
+    억제를 **숫자로** 남기는 이유: 기본 필터가 진짜 중복을 먹었을 때 호출자가 그
+    사실을 알 방법이 없으면 그건 무음 고장이다. 숫자가 0 이 아니면 호출자는
+    ``include_structural`` 로 되열어 확인할 수 있다."""
     prepped = []
     for r in rows:
         cid = r.get("id")
@@ -2960,7 +3102,9 @@ def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
         prepped.append({"id": cid, "title": r.get("title") or cid,
                         "domain": r.get("domain") or "", "norm": norm, "toks": toks})
     prepped.sort(key=lambda x: x["id"])   # 결정론 기준 순서
+    rej = _rejected_set(rejected)
     out = []
+    n_struct = n_rej = 0
     for i in range(len(prepped)):
         a = prepped[i]
         for j in range(i + 1, len(prepped)):
@@ -2974,35 +3118,171 @@ def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
                 union = len(a["toks"] | b["toks"]) or 1
                 jac = inter / union
                 if a["toks"] <= b["toks"] or b["toks"] <= a["toks"]:
-                    score, reason = max(0.8, jac), "subset"
+                    # ⚠ 여기가 `max(0.8, jac)` 였다. 부분집합이면 겹침 정도와 무관하게
+                    # 0.8 바닥이 깔려서, 실측 20쌍 중 19쌍이 **같은 점수 0.8** 이었다.
+                    # 점수가 한 값이면 정렬은 id 사전순과 다를 게 없고 호출자는 무엇을
+                    # 먼저 볼지 고를 수 없다. 겹침에 단조인 [0.8,1.0] 로 편다.
+                    score, reason = 0.8 + 0.2 * jac, "subset"
                 elif jac >= min_score:
                     score, reason = jac, "token_overlap"
-            if reason:
-                out.append({"a_id": a["id"], "a_title": a["title"],
-                            "b_id": b["id"], "b_title": b["title"],
-                            "score": round(score, 4), "reason": reason,
-                            "same_domain": bool(a["domain"] and a["domain"] == b["domain"])})
+            if not reason:
+                continue
+            if not include_structural and _is_structural_nonduplicate(a["id"], b["id"]):
+                n_struct += 1
+                continue
+            if (a["id"], b["id"]) in rej:   # prepped 가 id 정렬이라 a<b 보장
+                n_rej += 1
+                continue
+            out.append({"a_id": a["id"], "a_title": a["title"],
+                        "b_id": b["id"], "b_title": b["title"],
+                        "score": round(score, 4), "reason": reason,
+                        "same_domain": bool(a["domain"] and a["domain"] == b["domain"])})
     out.sort(key=lambda c: (not c["same_domain"], -c["score"], c["a_id"], c["b_id"]))
-    return out[:max(1, int(limit))]
+    return {"candidates": out[:max(1, int(limit))],
+            "suppressed": {"structural": n_struct, "rejected": n_rej},
+            "total": len(out)}
+
+
+def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
+                     limit: int = 20, include_structural: bool = False,
+                     rejected=None) -> list[dict]:
+    """중복 개념 후보쌍을 결정론적으로 산출(순수 — I/O 없음). ``rows``: [{id, title,
+    domain}]. 규칙(강→약): 정규 타이틀 완전일치(exact_title, 1.0) · 부분집합
+    (subset, 0.8+0.2·자카드) · 토큰 자카드 ≥min_score(token_overlap). 반환은
+    (동일도메인 우선, 점수 내림차순, id 사전순) 정렬 리스트.
+
+    기본으로 **의도된 비중복 쌍**(문서끼리 · 결정↔비결정, :func:`_is_structural_nonduplicate`)
+    과 **기각 기억**(``rejected``)을 뺀다. ``include_structural=True`` 로 구조 필터를
+    끄면 예전 동작이다. 억제 건수가 필요하면 :func:`merge_candidates_detail`."""
+    return merge_candidates_detail(rows, min_score=min_score, limit=limit,
+                                   include_structural=include_structural,
+                                   rejected=rejected)["candidates"]
+
+
+# ── 기각 기억 (F10-b) — "이 둘은 다른 것" 판정을 적어 둔다 ────────────────────
+# merge_candidates 는 결정론이라 같은 데이터에 늘 같은 답을 낸다. 그래서 사용자가
+# 오탐 하나를 기각해도 다음 호출에 그 쌍이 또 1등으로 올라온다 — 목록이 영원히 같은
+# 잡음으로 채워진다. 판정을 저장해 그 쌍만 뺀다. **읽기 도구의 상태를 사용자가 고칠
+# 수 있게** 하는 최소 장치이고, 병합(비가역) 대신 기각(가역)을 권하는 안전판이기도 하다.
+#
+# 저장 위치는 `_MergeRejection` 메타 테이블(store/embedded_schema.py 주석에 근거).
+# owner 스코프는 **키와 열 양쪽**에 건다 — SEC-1 이 준 교훈은 한 층만 맞으면 새는
+# 것이었다([[vinc-owner-isolation-sec1]]).
+
+def _merge_rejection_rows(store, owner: str | None) -> list[dict]:
+    """owner 의 기각 목록(원시 행). 테이블이 없는 구 스토어면 빈 목록으로 강등한다 —
+    기각 기억이 없다고 후보 조회 자체가 죽으면 안 된다."""
+    if store is None:
+        return []
+    try:
+        return store.run(
+            "MATCH (r:_MergeRejection) WHERE r.owner_id = $o "
+            "RETURN r.a_id AS a_id, r.b_id AS b_id, r.rejected_at AS rejected_at, "
+            "r.note AS note ORDER BY a_id, b_id", {"o": owner or ""})
+    except Exception:
+        return []
+
+
+def list_merge_rejections(*, owner: str | None = None, cfg=None, store=None) -> dict:
+    """기각된 병합 후보쌍 목록(조회 전용). 반환 {executed, rejections:[…], count}."""
+    owns = store is None
+    if owns:
+        store = open_store(cfg or load_config())
+    try:
+        if store is None:
+            return {"kind": "merge_rejections", "executed": False, "rejections": [],
+                    "count": 0, "note": "no reachable store"}
+        rows = _merge_rejection_rows(store, owner)
+        return {"kind": "merge_rejections", "executed": True,
+                "rejections": [dict(r) for r in rows], "count": len(rows)}
+    finally:
+        if owns and store is not None:
+            store.close()
+
+
+def reject_merge_pair(*, owner: str, a_id: str, b_id: str, note: str = "",
+                      undo: bool = False, cfg=None, store=None) -> dict:
+    """병합 후보쌍을 기각(또는 ``undo=True`` 로 기각 취소). 멱등.
+
+    owner 는 **필수**다. 없이 쓰면 남의 그래프 쌍을 기각해 상대의 제안 목록을 조용히
+    비울 수 있다(SEC-3 이 쓰기 표면에서 잡았던 것과 같은 구멍)."""
+    base = {"kind": "merge_reject", "executed": False,
+            "a_id": a_id, "b_id": b_id, "undo": bool(undo)}
+    if not owner or not isinstance(owner, str):
+        base["error"] = base["note"] = "refusing to record a rejection without an owner"
+        return base
+    if not a_id or not b_id or a_id == b_id:
+        base["error"] = base["note"] = "two distinct node ids are required"
+        return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg or load_config())
+    try:
+        if store is None:
+            base["error"] = base["note"] = "no reachable store"
+            return base
+        key = rejection_pair_key(owner, a_id, b_id)
+        lo, hi = sorted((a_id, b_id))
+        if undo:
+            store.run("MATCH (r:_MergeRejection) WHERE r.pair_key = $k DELETE r", {"k": key})
+        else:
+            import datetime as _dt
+            ts = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="milliseconds")
+            store.run(
+                "MERGE (r:_MergeRejection {pair_key: $k}) SET r.owner_id = $o, "
+                "r.a_id = $a, r.b_id = $b, r.rejected_at = $ts, r.note = $n",
+                {"k": key, "o": owner, "a": lo, "b": hi, "ts": ts, "n": str(note or "")})
+        base["executed"] = True
+        base["pair_key"] = key
+        base["count"] = len(_merge_rejection_rows(store, owner))
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns and store is not None:
+            store.close()
+    return base
 
 
 def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6,
-                             limit: int = 20, cfg=None, store=None) -> dict:
+                             limit: int = 20, include_structural: bool = False,
+                             cfg=None, store=None) -> dict:
     """E-G4 — owner 개념의 중복 병합 후보(조회 전용). 확정은 vinc_merge_nodes 경유
-    (자동 병합 금지 THESIS T1). 반환 {executed, candidates:[…], count}."""
+    (자동 병합 금지 THESIS T1).
+
+    기본으로 **의도된 비중복 쌍**(문서 개념끼리 · 결정↔비결정)과 **기각 기억**을 뺀다
+    (F10). 뺀 건수는 ``suppressed`` 로 노출한다 — 필터가 진짜 중복을 먹었는지 호출자가
+    볼 수 있어야 하고, ``include_structural=True`` 로 구조 필터를 되열 수 있다.
+
+    반환 {executed, candidates:[…], count, total, suppressed:{structural, rejected}}."""
     where = "WHERE c.owner_id = $owner " if owner else ""
     params = {"owner": owner} if owner else None
     plan = QueryPlan("merge_candidates",
                      "MATCH (c:Concept) " + where +
                      "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain",
                      params or {}, note="concept dup candidates (read-only)")
-    res = execute(plan, cfg, store=store)
-    if not res.get("executed"):
-        return {"kind": "merge_candidates", "executed": False,
-                "candidates": [], "count": 0, "note": res.get("note", "")}
-    cands = merge_candidates(res.get("rows", []), min_score=min_score, limit=limit)
+    # ⚠ 스토어를 **여기서** 소유한다. `execute(store=None)` 은 자기 커넥션을 열고
+    # 닫으므로, 기각 조회에 넘길 store 가 None 으로 남아 필터가 조용히 무동작이 된다.
+    # 두 조회가 같은 커넥션을 봐야 한다.
+    owns = store is None
+    if owns:
+        store = open_store(cfg or load_config())
+    try:
+        res = execute(plan, cfg, store=store)
+        if not res.get("executed"):
+            return {"kind": "merge_candidates", "executed": False,
+                    "candidates": [], "count": 0, "total": 0,
+                    "suppressed": {"structural": 0, "rejected": 0},
+                    "note": res.get("note", "")}
+        det = merge_candidates_detail(
+            res.get("rows", []), min_score=min_score, limit=limit,
+            include_structural=include_structural,
+            rejected=_merge_rejection_rows(store, owner))
+    finally:
+        if owns and store is not None:
+            store.close()
     return {"kind": "merge_candidates", "executed": True,
-            "candidates": cands, "count": len(cands)}
+            "candidates": det["candidates"], "count": len(det["candidates"]),
+            "total": det["total"], "suppressed": det["suppressed"]}
 
 
 # ── 구조 진단 (E-G3) — algo 확장 위임(WCC·Louvain) · 조회 전용 ─────────────────
@@ -4168,9 +4448,11 @@ def _purge_labels() -> list[str]:
     중립 유지). owner_scoped_labels 는 owner_id 열 보유 라벨만 돌려주므로 여기 전부
     ``n.owner_id = $o`` 필터가 성립한다(v4 부터 Chunk 포함 — D45 Chunk=SSoT).
     `_Tombstone`·`_DocMeta`(메타)도 owner_id 를 가져 포함 — 정본 텍스트(Chunk)가
-    지워질 때 문서 정체성 레지스트리도 함께 지운다."""
+    지워질 때 문서 정체성 레지스트리도 함께 지운다. `_MergeRejection`(F10-b)도
+    회원의 노드 id 쌍을 담으므로 계정 삭제에 함께 지워져야 한다."""
     from store.embedded_schema import owner_scoped_labels
-    return owner_scoped_labels() + ["_Tombstone", "_DocMeta", "_DocTombstone"]
+    return owner_scoped_labels() + ["_Tombstone", "_DocMeta", "_DocTombstone",
+                                    "_MergeRejection"]
 
 
 def purge_owner(owner: str, *, cfg=None, store=None) -> dict:

@@ -252,9 +252,16 @@ class VincApp:
 
     def read_merge_candidates(self, p):
         # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).
+        # F10: 구조적 비중복(문서끼리·결정↔비결정)과 기각 기억은 기본 제외,
+        # include_structural=1 로 되열 수 있다(억제 건수는 suppressed 로 노출).
         return self._read(lambda r: q.suggest_merge_candidates(
             owner=_req(p, "owner"), min_score=float(p.get("min_score") or 0.6),
-            limit=_int(p.get("limit"), 20), store=r))
+            limit=_int(p.get("limit"), 20),
+            include_structural=_flag(p.get("include_structural")), store=r))
+
+    def read_merge_rejections(self, p):
+        # F10-b 기각 목록(조회 전용) — 무엇을 되살릴 수 있는지 보여 준다.
+        return self._read(lambda r: q.list_merge_rejections(owner=_req(p, "owner"), store=r))
 
     def read_diagnose(self, p):
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
@@ -532,6 +539,17 @@ class VincApp:
         owner = body.get("owner") or None
         res = self.jobs.run_sync("merge_nodes",
                                  lambda: q.merge_nodes(keep, drop, owner=owner, store=self.store))
+        return 200, res
+
+    def write_merge_reject(self, body):
+        # F10-b 기각 기억 — "이 둘은 다른 것" 판정 기록(가역: undo=true 로 취소).
+        # 병합(비가역)과 짝을 이루는 **안전한 쪽** 행동이라 같은 쓰기 큐로 직렬화한다.
+        # owner 는 query 층이 필수로 강제한다(미전달 시 executed=false + error).
+        a, b = _req(body, "a"), _req(body, "b")
+        owner = body.get("owner") or ""
+        res = self.jobs.run_sync("merge_reject", lambda: q.reject_merge_pair(
+            owner=owner, a_id=a, b_id=b, note=body.get("note") or "",
+            undo=bool(body.get("undo")), store=self.store))
         return 200, res
 
     # ── 문서 정본(Chunk=SSoT, D45 P4) — 직접 수정 표면 백엔드 ──────────────────
@@ -1212,6 +1230,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/merge-candidates": app.read_merge_candidates,
+            "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
             "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
@@ -1250,6 +1269,12 @@ class _Handler(BaseHTTPRequestHandler):
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
             "/merge-nodes": app.write_merge,
+            # F10-b 병합 후보 기각(가역) — 비가역 병합의 안전한 반대편.
+            # TODO(vinc_mcp/tools.py): 이 경로를 부르는 MCP 도구가 아직 없다.
+            #   `vinc_merge_reject {a, b, note?, undo?}` → POST /merge-reject 와
+            #   `vinc_merge_candidates` 에 `include_structural: boolean` 을 추가해야
+            #   호스트가 기각하고 되열 수 있다(스키마 변경이라 이 작업 범위 밖).
+            "/merge-reject": app.write_merge_reject,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
             # 관례 재생성 — 생성 구역만 스토어 값으로 갈아 끼우고 저장한다.
