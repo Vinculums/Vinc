@@ -178,8 +178,10 @@ def _t_merge_candidates(args, bridge):
 def _t_diagnose(args, bridge):
     # E-G3 구조 진단(조회 전용) — kind=components(WCC 고아·컴포넌트) | communities
     # (Louvain 군집). algo 확장 부재 시 사이드카가 executed=False 로 강등.
-    return bridge.request("GET", "/diagnose", params={
-        "owner": _owner(args, bridge), "kind": args.get("kind", "components")})
+    params = {"owner": _owner(args, bridge), "kind": args.get("kind", "components")}
+    if args.get("member_limit") is not None:   # F6 — 미지정이면 서버 기본(50)
+        params["member_limit"] = args["member_limit"]
+    return bridge.request("GET", "/diagnose", params=params)
 
 
 def _t_ingest(args, bridge):
@@ -281,7 +283,7 @@ TOOLS: list[dict] = [
                        "empty.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
-            "limit": {"type": "integer", "default": 20},
+            "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
             "cursor": {"type": "string",
                        "description": "Opaque next_cursor from a previous page."},
             "detail": {"type": "string", "enum": ["summary", "full"],
@@ -292,12 +294,12 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_recall",
-        "description": "List recent episodes in an owner scope, optionally narrowed by domain or tags.",
+        "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. Returns {episodes:[{id,title,date,domain,tags,summary}], count}. Use it to resume context ('what was I doing here'), to check whether an event is already recorded before writing a duplicate, or to ground a decision in prior work. Narrow with `domain` or `tags`; both are AND-ed with the owner scope. This is time-ordered recall, NOT relevance search — for 'find anything about X' use vinc_search, which also covers concepts and document text. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "domain": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
-            "limit": {"type": "integer", "default": 50},
+            "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200},
             "debug": {"type": "boolean", "default": False,
                       "description": "Include the internal query plan (Cypher + params) "
                                      "in the response. Off by default — it is large and "
@@ -306,7 +308,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_graph",
-        "description": "Subgraph around a seed node (seed + depth traversal) — nodes and edges.",
+        "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within `depth` hops of the seed, plus the edges among them. Returns {nodes:[{id,type,title,domain,tags}], edges:[{src,dst,rel,confidence}], counts}. Use when you want the shape of a region at once (what surrounds this concept, and how it hangs together). If you only need the immediate ring, vinc_neighbors is far cheaper; to walk step by step, prefer neighbors and pick the next node yourself. Requires an EXACT node id — if you only have a phrase, run vinc_search first. Cost grows fast with depth, so depth 2 is the working default and 4 is the ceiling. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "seed_id": {"type": "string"},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
@@ -315,16 +317,16 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_decide",
-        "description": "Deterministic decision-support traversal for a topic (nodes, edges, conflicts).",
+        "description": "Assemble the evidence around a topic for a decision: the relevant nodes, the edges among them, and — the point of the tool — the CONFLICTS, i.e. pairs standing in a contradicts/tension relation that a decision has to resolve. Returns {topic, nodes, edges, conflicts:[{a,b,rel}], counts}. Traversal is deterministic (graph structure only, no model judgement); it surfaces the material and never picks a side. Use before recording a DEC, or to check whether a proposed decision collides with one already made. `topic` may be a node id or a phrase; a phrase is resolved by search first. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "topic": {"type": "string"},
-            "depth": {"type": "integer", "default": 2},
+            "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
             "owner": {"type": "string"},
         }, "required": ["topic"]}, "run": _t_decide,
     },
     {
         "name": "vinc_domains",
-        "description": "List the owner's domains discovered from data (open set, not a fixed list).",
+        "description": "List the domains actually present in this owner's graph, with how many nodes sit in each. Returns {domains:[{domain,count}], total}. The domain set is OPEN and inferred from stored data, not a fixed vocabulary — so call this before writing to reuse an existing domain string instead of coining a near-duplicate ('design' vs 'ui-design'). Also the cheapest way to see the coarse shape of a graph you have not read before. For naming and relation conventions as well, vinc_conventions returns this plus more in one call. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "debug": {"type": "boolean", "default": False,
@@ -334,10 +336,10 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_suggest_ties",
-        "description": "Suggest link candidates for a node by tag/domain proximity (read-only).",
+        "description": "Propose which OTHER concepts this node probably should be linked to but is not yet — computed from shared tags and domain proximity, never from a language model. Returns {candidates:[{id,title,score,shared_tags,reason}], count} ranked by score, already-linked nodes excluded. Use it to close gaps found by vinc_diagnose (orphans and small islands), or right after writing a new concept. This tool never writes: the suggestions are for the user to ratify, and the actual edge is created with vinc_ingest. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "node": {"type": "string"},
-            "limit": {"type": "integer", "default": 5},
+            "limit": {"type": "integer", "default": 5, "minimum": 1, "maximum": 50},
             "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_suggest,
     },
@@ -350,7 +352,8 @@ TOOLS: list[dict] = [
                        "depth-2 subgraph via vinc_graph — far fewer tokens per step. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "node": {"type": "string", "description": "Exact concept id to observe (e.g. concept:duality)."},
-            "limit": {"type": "integer", "default": 50},
+            "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500,
+                      "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."},
             "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_neighbors,
     },
@@ -370,7 +373,8 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "a": {"type": "string", "description": "Exact source concept id."},
             "b": {"type": "string", "description": "Exact target concept id."},
-            "max_depth": {"type": "integer", "default": 6, "description": "Max path length (1–8)."},
+            "max_depth": {"type": "integer", "default": 6, "minimum": 1, "maximum": 8,
+                          "description": "Max path length in hops."},
             "weight": {"type": "string", "enum": ["hops", "confidence"], "default": "hops",
                        "description": "Distance measure: edge count, or evidence strength."},
             "owner": {"type": "string"},
@@ -386,8 +390,8 @@ TOOLS: list[dict] = [
                        "pairs first. Confirm a real duplicate by calling vinc_merge_nodes with the "
                        "chosen keep/drop ids (irreversible).",
         "inputSchema": {"type": "object", "properties": {
-            "limit": {"type": "integer", "default": 20},
-            "min_score": {"type": "number", "default": 0.6,
+            "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+            "min_score": {"type": "number", "default": 0.6, "minimum": 0.0, "maximum": 1.0,
                           "description": "Token-Jaccard threshold (0-1) for token_overlap pairs."},
             "owner": {"type": "string"},
         }}, "run": _t_merge_candidates,
@@ -401,12 +405,19 @@ TOOLS: list[dict] = [
                        "want linking (feeds vinc_suggest_ties). kind='communities' runs Louvain: "
                        "returns {communities:[{community,size,dominant_domain,members}]} — the "
                        "measured clusters (distinct from the domain axis), a basis for proposing "
-                       "themes (ratified by the user, never auto-written). Delegates to the native "
-                       "algo extension; executed:false with a note if the extension is unavailable "
+                       "themes (ratified by the user, never auto-written). Member id lists are "
+                       "capped by `member_limit` (default 50): `size` always reports the TRUE "
+                       "total, and a group whose list was cut carries members_truncated:true — "
+                       "raise member_limit to see the rest. Delegates to the native algo "
+                       "extension; executed:false with a note if the extension is unavailable "
                        "(offline unbundled).",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["components", "communities"],
                      "description": "components (WCC orphans/islands) | communities (Louvain clusters)."},
+            "member_limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 1000,
+                             "description": "Max member ids listed per component/community. "
+                                            "`size` is always the true total; when the list is "
+                                            "cut, that group carries members_truncated:true."},
             "owner": {"type": "string"},
         }}, "run": _t_diagnose,
     },
@@ -536,7 +547,7 @@ TOOLS: list[dict] = [
                        "document's MENTIONS. Fetch a document's text with vinc_doc_get(doc_id).",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
-            "limit": {"type": "integer", "default": 30, "minimum": 1},
+            "limit": {"type": "integer", "default": 30, "minimum": 1, "maximum": 200},
             "cursor": {"type": "string",
                        "description": "Opaque next_cursor from a previous page."},
             "detail": {"type": "string", "enum": ["summary", "full"], "default": "summary"},

@@ -685,6 +685,56 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertIn(3, sizes)
         self.assertTrue(all(c["dominant_domain"] == "math" for c in com["communities"]))
 
+    def test_eg3_member_lists_declare_truncation(self):
+        """F6 — 큰 컴포넌트의 member 목록이 **조용히** 잘리지 않는가.
+
+        구버전은 members 를 50개로 자르고 아무 표시도 안 했다. 그러면 호출자는
+        size=60 인데 members 가 50개인 것을 데이터 불일치로 읽거나, 더 나쁘게는
+        50개가 전부라고 믿는다. size 는 언제나 진짜 총수여야 하고, 잘렸으면
+        members_truncated 로 말해야 한다."""
+        from store.config import load_config
+        from store.backend import open_store
+        from api import query as q
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        n = 60                                   # 기본 상한 50 을 넘긴다
+        with store.session() as s:
+            for i in range(n):
+                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
+                      "c.title=$id, c.domain='math'", id=f"n{i}")
+            for i in range(n - 1):               # 사슬 하나 = 컴포넌트 하나
+                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                      "MERGE (p)-[:RELATED_TO]->(t)", x=f"n{i}", y=f"n{i+1}")
+
+        diag = q.component_diagnosis(owner="u", store=store)
+        if not diag["executed"]:
+            store.close()
+            self.skipTest(f"algo 확장 미가용 — §9: {diag.get('note')}")
+        big = diag["components"][0]
+        self.assertEqual(big["size"], n)                     # 총수는 진실
+        self.assertEqual(len(big["members"]), 50)            # 목록은 기본 상한
+        self.assertTrue(big["members_truncated"])            # 그리고 그렇다고 말한다
+
+        # 상한을 올리면 전부 온다 — 그리고 잘림 표시가 내려간다.
+        full = q.component_diagnosis(owner="u", store=store, member_limit=n)
+        big2 = full["components"][0]
+        self.assertEqual(len(big2["members"]), n)
+        self.assertFalse(big2["members_truncated"])
+
+        # communities 도 같은 계약을 진다.
+        com = q.communities(owner="u", store=store)
+        if com["executed"]:
+            self.assertTrue(all("members_truncated" in c for c in com["communities"]))
+            cut = [c for c in com["communities"] if c["size"] > 50]
+            self.assertTrue(all(c["members_truncated"] for c in cut))
+
+        # neighbors 도 마찬가지 — 사슬 중간 노드는 이웃 2개라 안 잘린다.
+        nb = q.neighbors(node="n1", owner="u", store=store)
+        store.close()
+        self.assertIn("neighbors_truncated", nb)
+        self.assertFalse(nb["neighbors_truncated"])
+
     def test_scope_filter_isolates_owners(self):
         """스코프 1차(§1) — owner 필터로 다른 계정 데이터 미혼입."""
         from store.config import load_config

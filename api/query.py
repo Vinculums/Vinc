@@ -2593,8 +2593,12 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
                             if cands else "")
                          + "Use vinc_search to find the id first."),
                 **({"candidates": cands} if cands and not exact else {})}
+    _lim = max(1, int(limit))
+    # F6 — `count` 가 전체 수라 비교로 알아낼 수는 있었지만, 그건 받는 쪽이 **먼저
+    # 의심해야** 성립한다. 잘렸다는 사실은 명시로 말한다.
     return {"kind": "neighbors", "executed": True, "found": True, "node": node,
-            "neighbors": out[:max(1, int(limit))], "by_rel": by_rel, "count": len(out)}
+            "neighbors": out[:_lim], "by_rel": by_rel, "count": len(out),
+            "neighbors_truncated": len(out) > _lim}
 
 
 # ── 최단 경로 증거 체인 (E-G7) — 분산 증거 단편화 해소 ─────────────────────────
@@ -2981,12 +2985,38 @@ def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
         return None, f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
 
 
-def component_diagnosis(*, owner: str | None = None, cfg=None, store=None) -> dict:
+# ── 자르면 잘렸다고 말한다 (F6) ──────────────────────────────────────────────
+# 실측(2026-08-08): `vinc_diagnose(components)` 가 `size:173` 인 컴포넌트의 members 를
+# **50개만 싣고 아무 표시도 안 했다.** 무음 절단은 이 리포가 반복해 물린 형태다 —
+# 받는 쪽은 그게 전부인 줄 알고, 그 위에서 내린 판단이 조용히 틀린다.
+#
+# 원칙: 자른 자리마다 ① 상한을 **호출자가 정할 수 있게** 하고 ② 잘렸다는 사실과
+# ③ 전체 개수를 함께 싣는다. `size` 처럼 전체 수가 이미 있으면 그것으로 갈음한다.
+MEMBER_LIMIT_DEFAULT = 50
+MEMBER_LIMIT_MAX = 1000
+
+
+def _clamp_limit(val, default: int, cap: int) -> int:
+    """호출자가 준 상한을 안전 범위로 접는다. 0·음수·비정수는 기본값."""
+    try:
+        n = int(val)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(n, cap)) if n > 0 else default
+
+
+def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
+                        member_limit: int | None = None) -> dict:
     """E-G3 WCC 구조 진단 — 연결 컴포넌트 수·크기 분포 + 고아(단일 노드) 개념 목록.
     "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
 
-    반환 {executed, components:[{group, size, members(≤50)}], orphans:[id…],
-    component_count, orphan_count}. algo 부재 시 executed=False + note."""
+    반환 {executed, components:[{group, size, members, members_truncated}],
+    orphans:[id…], component_count, orphan_count}. algo 부재 시 executed=False + note.
+
+    ``member_limit`` — 컴포넌트당 실을 구성원 수(기본 50, 상한 1000). 여태 50 으로
+    **말없이** 잘라서, `size:173` 인 컴포넌트도 50개만 보이고 그게 전부인 줄 알기
+    쉬웠다(F6). 이제 자르면 `members_truncated:true` 로 말한다 — 전체 수는 `size` 가
+    이미 나른다."""
     cfg = cfg or load_config()
     owns = store is None
     if owns:
@@ -3008,7 +3038,9 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None) -> di
             if not cid or (scope is not None and cid not in scope):
                 continue
             groups.setdefault(grp, []).append(cid)
-        comps = [{"group": g, "size": len(m), "members": sorted(m)[:50]}
+        mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        comps = [{"group": g, "size": len(m), "members": sorted(m)[:mlim],
+                  "members_truncated": len(m) > mlim}
                  for g, m in groups.items()]
         comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
         orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
@@ -3020,13 +3052,15 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None) -> di
     return base
 
 
-def communities(*, owner: str | None = None, cfg=None, store=None) -> dict:
+def communities(*, owner: str | None = None, cfg=None, store=None,
+                member_limit: int | None = None) -> dict:
     """E-G3 Louvain 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
     각 커뮤니티에 지배 도메인·크기·대표(사전순 첫 id)를 붙여 **테마 proposed 제안**의
     근거로 쓴다(재가는 사용자 — T1/T3, 여기서는 쓰기 없음). 조회 전용.
 
-    반환 {executed, communities:[{community, size, dominant_domain, members(≤50)}],
-    community_count}. Louvain 미배정(-1, 고립)은 별도 집계에서 제외. algo 부재 시
+    반환 {executed, communities:[{community, size, dominant_domain, members,
+    members_truncated}], community_count}. ``member_limit`` 은 component_diagnosis
+    와 같다(기본 50 · 상한 1000 · 자르면 말한다 — F6). Louvain 미배정(-1, 고립)은 별도 집계에서 제외. algo 부재 시
     executed=False + note."""
     cfg = cfg or load_config()
     owns = store is None
@@ -3067,8 +3101,11 @@ def communities(*, owner: str | None = None, cfg=None, store=None) -> dict:
                     dom_counts[d] = dom_counts.get(d, 0) + 1
             dominant = max(dom_counts.items(), key=lambda kv: (kv[1], kv[0]))[0] \
                 if dom_counts else ""
+            _ml = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
             out.append({"community": com, "size": len(members),
-                        "dominant_domain": dominant, "members": sorted(members)[:50]})
+                        "dominant_domain": dominant,
+                        "members": sorted(members)[:_ml],
+                        "members_truncated": len(members) > _ml})
         out.sort(key=lambda c: (-c["size"], str(c["community"])))
         base.update(executed=True, communities=out, community_count=len(out))
     finally:

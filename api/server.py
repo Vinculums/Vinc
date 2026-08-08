@@ -262,8 +262,10 @@ class VincApp:
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
         if kind == "communities":
-            return self._read(lambda r: q.communities(owner=owner, store=r))
-        return self._read(lambda r: q.component_diagnosis(owner=owner, store=r))
+            return self._read(lambda r: q.communities(
+                owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
+        return self._read(lambda r: q.component_diagnosis(
+            owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 
     def read_share(self, p):
         # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
