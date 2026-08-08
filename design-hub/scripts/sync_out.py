@@ -4,15 +4,18 @@
 허브(Vinc/design-hub)가 유일한 토큰 출처. 소비 리포의 동기화 파일은 전부
 AUTO-GENERATED 헤더를 달고 있으며 수기 편집 금지 — 수정은 허브에서 재생성 후 재동기화.
 
-매핑(허브 → 소비 리포):
-  dist/site/site-tokens.css      → ../Vinc-homepage/site/assets/tokens.css
-  dist/app/tokens.desktop.css    → ../Vinc/app/src/tokens.desktop.css
-  dist/app/tokens.web.css        → ../Vinc/app/src/tokens.web.css
-  dist/app/theme.ts              → ../Vinc/app/src/theme.ts
+매핑(허브 → 소비 리포). 허브가 Vinc 안으로 들어와(2026-08-08) 앱은 같은 리포다:
+  dist/site/site-tokens.css      → ../../Vinc-homepage/site/assets/tokens.css
+  dist/app/tokens.desktop.css    → ../app/src/tokens.desktop.css
+  dist/app/tokens.web.css        → ../app/src/tokens.web.css
+  dist/app/theme.ts              → ../app/src/theme.ts
 
-usage: python -X utf8 scripts/sync_out.py [--apply]
-  기본은 dry-run(무엇이 복사될지 출력만). --apply 로 실제 복사.
-  Phase 4/5(리포 배선) 전에는 --apply 금지.
+usage: python -X utf8 scripts/sync_out.py [--apply|--check]
+  기본은 dry-run(무엇이 복사될지 출력만). --apply 로 실제 복사, --check 는 검사만.
+
+⚠ `dist/` 는 **커밋된다**(루트 .gitignore 의 `dist/` 에 예외를 뒀다). 소비 사본이
+리포에 있는데 비교 대상이 없으면 `--check` 가 성립하지 않는다 — 2026-08-08 에 CI 가
+정확히 그 이유로 빨갰다.
 """
 from __future__ import annotations
 import argparse, hashlib, pathlib, re, shutil, sys
@@ -60,6 +63,17 @@ def _stamp(text: str, suffix: str) -> str:
     return "".join(lines[:at]) + line + "".join(lines[at:])
 
 
+def _consumer_root(dst_rel: str):
+    """소비 경로가 **다른 리포**를 가리키면 그 리포 루트를 돌려준다(아니면 None).
+
+    이 허브는 Vinc 안에 산다(2026-08-08 이전). 그래서 `../app/...` 은 같은 리포이고
+    `../../Vinc-homepage/...` 만 남의 리포다 — 그것만 부재를 허용한다."""
+    if not dst_rel.startswith("../../"):
+        return None
+    parts = dst_rel.split("/")
+    return (HUB / "/".join(parts[:3])).resolve()   # ../../<repo>
+
+
 def _check() -> int:
     """소비 리포의 사본이 허브 산출물과 **같은지** 검사한다(복사하지 않는다).
 
@@ -70,12 +84,21 @@ def _check() -> int:
 
     exit 0 = 전부 일치 · 1 = 어긋남/결손.
     """
-    bad = 0
+    bad = skipped = 0
     for src_rel, dst_rel in MAP:
         src, dst = HUB / src_rel, (HUB / dst_rel).resolve()
         if not src.exists():
             print(f"[MISSING·허브] {src_rel} — 먼저 /ds-gen 으로 재생성하라")
             bad += 1
+            continue
+        # 소비 리포가 **아예 없는** 것과 그 안의 파일이 없는 것은 다른 사실이다.
+        # CI 는 자기 리포 하나만 체크아웃하므로 다른 리포는 원리상 검사할 수 없다 —
+        # 그걸 실패로 세면 게이트가 CI 에서 영구히 빨갛고, 조용히 넘기면 "검사했다"는
+        # 거짓이 된다. 그래서 **건너뛰되 세어서 출력한다**.
+        repo_root = _consumer_root(dst_rel)
+        if repo_root is not None and not repo_root.exists():
+            print(f"[SKIP·리포 없음] {dst_rel} — {repo_root.name} 이 체크아웃돼 있지 않다")
+            skipped += 1
             continue
         if not dst.exists():
             print(f"[MISSING·소비] {dst} — sync_out.py --apply 필요")
@@ -95,7 +118,8 @@ def _check() -> int:
                   f"({len(a):,}자 vs {len(b):,}자) — 사본을 손으로 고쳤거나 "
                   f"허브 재생성 후 동기화를 안 했다")
             bad += 1
-    print(f"\n{'드리프트 없음' if not bad else f'문제 {bad}건'}")
+    tail = f" · 검사 못 함 {skipped}건(리포 부재)" if skipped else ""
+    print(f"\n{'드리프트 없음' if not bad else f'문제 {bad}건'}{tail}")
     return 1 if bad else 0
 
 

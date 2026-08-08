@@ -1,0 +1,99 @@
+/* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
+   SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
+:root {
+  /* Colors (semantic, light) — resolved from primitive references */
+  --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --card: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+  --card-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --muted: 60 6% 91%; /* #E9E9E6  ← {grain_200} */
+  --muted-foreground: 233 5% 35%; /* #55565E  ← {ink_600} */
+  --caption-foreground: 235 5% 53%; /* #82838D  ← {ink_400} */
+  --border: 60 6% 86%; /* #DEDEDA  ← {hairline} */
+  --input: 60 6% 86%; /* #DEDEDA  ← {hairline} */
+  --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --primary: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --primary-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --accent: 60 6% 91%; /* #E9E9E6  ← {grain_200} */
+  --accent-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --link: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
+  --info: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
+  --info-strong: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
+  --info-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --success: 151 39% 30%; /* #2F6B4E  ← {ok_700} */
+  --success-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --warning: 44 40% 83%; /* #E5DCC3  ← {warn_bg} */
+  --warning-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --danger: 0 47% 43%; /* #A03A3A  ← {danger_700} */
+  --danger-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+
+  /* Shape */
+  --radius: 0.875rem;
+  --radius-sm: 0.625rem;
+  --radius-lg: 1.25rem;
+  --radius-pill: 999px;
+
+  /* Spacing (customer portal baseline — generous) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* Typography */
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem);
+  --fs-display: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem);
+  --lh-normal: 1.55;
+  --lh-prose: 1.7;
+  --lh-tight: 1.15;
+  --font-heading: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Depth */
+  --shadow-soft: 0 20px 40px -12px hsl(230 20% 6% / 0.08);
+  --shadow-float: 0 30px 60px -16px hsl(230 20% 6% / 0.12);
+  --shadow-elev-0: none;
+  --shadow-elev-1: 0 1px 2px hsl(230 20% 6% / 0.07);
+  --shadow-elev-2: 0 4px 12px hsl(230 20% 6% / 0.11);
+  --shadow-elev-3: 0 10px 30px hsl(230 20% 6% / 0.16);
+}
+
+/* Dark — opt-in (light-first). Enable via <html data-theme="dark">. */
+[data-theme="dark"] {
+  --background: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
+  --card: 229 25% 13%; /* #191C2A  ← {d_bg2} */
+  --card-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
+  --muted: 229 23% 9%; /* #12141D  ← {d_bg1} */
+  --muted-foreground: 235 16% 70%; /* #A7A9BF  ← {d_soft} */
+  --caption-foreground: 233 11% 48%; /* #6E7189  ← {d_mute} */
+  --border: 230 23% 19%; /* #262A3D  ← {d_line} */
+  --input: 230 23% 19%; /* #262A3D  ← {d_line} */
+  --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --primary: 233 32% 33%; /* #3A4070  ← {indigo_700} */
+  --primary-foreground: 235 65% 83%; /* #B9BEF0  ← {peri_200} */
+  --accent: 229 25% 13%; /* #191C2A  ← {d_bg2} */
+  --accent-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
+  --link: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --info: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --info-strong: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --info-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --success: 145 37% 68%; /* #8FCBA8  ← {ok_300} */
+  --success-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --warning: 42 21% 24%; /* #4A4230  ← {d_warn_bg} */
+  --warning-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
+  --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
+  --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+}
