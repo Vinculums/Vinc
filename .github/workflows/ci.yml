@@ -109,10 +109,11 @@ jobs:
       - name: Design hub drift gate
         run: python -X utf8 design-hub/scripts/sync_out.py --check
 
-      # ⬜ 표면 게이트(D-S01 하드코딩 색)는 **아직 안 건다** — app.css 의 닫기 버튼
-      # 호버 빨강과 atlas3d.ts 의 #ffffff·#8f96d9 3건이 남아 있어 지금 걸면 빨갛다.
-      # 셋을 토큰으로 옮긴 뒤 여기에 추가한다:
-      #   python -X utf8 design-hub/scripts/gate_surface.py app/src
+      # 하드코딩 색(D-S01). 허브 생성물은 AUTO-GENERATED 헤더로 제외하고, 정당한
+      # 비-디자인 색(스프라이트 틴트 베이스 등)은 `ds-allow: <이유>` 주석으로 면제하되
+      # **건수와 이유가 항상 출력된다** — 조용한 예외를 만들지 않기 위해서다.
+      - name: Design surface gate (app)
+        run: python -X utf8 design-hub/scripts/gate_surface.py app/src
 
   app:
     name: app (typecheck)

@@ -346,7 +346,9 @@ body {
 .tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
 .tb-btn svg { width: 11px; height: 11px; }
 .tb-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-.tb-close:hover { background: hsl(0 72% 51%); color: #fff; }
+/* 닫기 버튼 호버는 OS 창 제어 관례라 브랜드 danger 와 다른 축이다(모드 불변).
+   토큰 정본은 design-hub 의 primitive.win_close — Figma Window 컬렉션과 짝이다. */
+.tb-close:hover { background: hsl(var(--titlebar-close)); color: hsl(var(--titlebar-close-foreground)); }
 .tb-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 /* ── 상단 바 (D56·D57) ─────────────────────────────────────────────────
    좌→우: **셸 손잡이**(설정·도구·규칙) · 상시 검색 · **지도 손잡이**(보기와 범례 ·

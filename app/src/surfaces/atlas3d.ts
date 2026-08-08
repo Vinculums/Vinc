@@ -96,6 +96,8 @@ function ringTexture(): THREE.Texture {
   if (_ringTex) return _ringTex;
   const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
   const ctx = cv.getContext("2d")!;
+  // ds-allow: 스프라이트 텍스처의 틴트 베이스. SpriteMaterial 의 color 가 이 위에
+  // 곱해지므로 흰색은 디자인 색이 아니라 곱셈의 항등원이다(색은 팔레트가 정한다).
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = RING_STROKE_FRAC * s;
   ctx.beginPath();
@@ -706,7 +708,9 @@ export function enableLasso(g: any, el: HTMLElement, onSelect: (ids: string[]) =
     const r = el.getBoundingClientRect();
     start = { x: e.clientX - r.left, y: e.clientY - r.top };
     box = document.createElement("div");
-    box.style.cssText = "position:absolute;border:1px dashed #8f96d9;background:rgba(143,150,217,.08);z-index:5;pointer-events:none";
+    // 선택 상자는 포커스 링과 같은 채널이다 — 하드코딩하면 테마를 안 따라간다.
+    box.style.cssText = "position:absolute;border:1px dashed hsl(var(--ring));"
+      + "background:hsl(var(--ring) / .08);z-index:5;pointer-events:none";
     el.appendChild(box);
   }, true);
   el.addEventListener("mousemove", (e) => {

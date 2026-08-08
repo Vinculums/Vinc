@@ -1,6 +1,6 @@
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: 1c0659abde47174035f946d4bef86a7a1b04a070c16de74caf5c766bca8f57c8 */
+/* sync-sha256: 69b19ffe8d11100afeed51a8fb99a8423f9fbdc33a1c48c2079831854eceab06 */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -28,6 +28,8 @@
   --danger: 0 47% 43%; /* #A03A3A  ← {danger_700} */
   --danger-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 
   /* Shape */
   --radius: 0.875rem;
@@ -93,4 +95,6 @@
   --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
   --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
   --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 }

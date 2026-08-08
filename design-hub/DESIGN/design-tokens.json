@@ -123,6 +123,11 @@
       "$type": "color",
       "$description": "다크 danger(AA✓ on d_bg0)"
     },
+    "win_close": {
+      "$value": "#DC2828",
+      "$type": "color",
+      "$description": "타이틀바 닫기 버튼 호버 — OS 관례(Windows)지 브랜드색이 아니다. 그래서 모드 불변이고 danger 와도 다른 축이다: danger 는 상태를 말하고 이건 창 제어 관례를 따른다. Figma Window 컬렉션(223:35)의 대응 항목"
+    },
     "d_bg0": {
       "$value": "#0C0D13",
       "$type": "color",
@@ -215,7 +220,9 @@
       "warning-foreground": "{ink_900}",
       "danger": "{danger_700}",
       "danger-foreground": "{grain_100}",
-      "logo-tip": "{indigo_900}"
+      "logo-tip": "{indigo_900}",
+      "titlebar-close": "{win_close}",
+      "titlebar-close-foreground": "{grain_50}"
     },
     "dark": {
       "background": "{d_bg0}",
@@ -242,7 +249,9 @@
       "warning-foreground": "{d_text}",
       "danger": "{danger_300}",
       "danger-foreground": "{d_bg0}",
-      "logo-tip": "{peri_250}"
+      "logo-tip": "{peri_250}",
+      "titlebar-close": "{win_close}",
+      "titlebar-close-foreground": "{grain_50}"
     }
   },
   "radius": {

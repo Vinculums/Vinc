@@ -27,6 +27,8 @@
   --danger: 0 47% 43%; /* #A03A3A  ← {danger_700} */
   --danger-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 
   /* Shape */
   --radius: 0.875rem;
@@ -92,4 +94,6 @@
   --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
   --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
   --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 }

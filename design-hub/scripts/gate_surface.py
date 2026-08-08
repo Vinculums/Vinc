@@ -57,11 +57,49 @@ def _is_generated(root: Path, name: str) -> bool:
     return False
 
 
+#: 정당한 비-디자인 색을 위한 **가시적 면제**. 같은 줄이나 바로 윗줄에
+#: `ds-allow: <이유>` 를 적으면 위반에서 빠지되 **건수와 이유가 보고된다**.
+#: 조용히 빼지 않는 이유: 면제가 안 보이면 다음 사람이 그게 검토된 것인지
+#: 빠뜨린 것인지 못 가른다. 실제 사례는 atlas3d.ts 의 `#ffffff` — 스프라이트
+#: 텍스처를 흰색으로 그려 두고 SpriteMaterial 의 color 로 **틴트**하므로
+#: 그 흰색은 디자인 색이 아니라 곱셈의 항등원이다.
+WAIVER = re.compile(r"ds-allow:\s*(.+?)\s*(?:\*/|$)")
+
+
 #: `#add-more` 처럼 **CSS 선택자**가 헥사로 오인되는 경우. 엔진 정규식은 `#add` 를
 #: 3자리 헥사로 읽는다(a·d·d 가 전부 헥사 숫자다). 진짜 색은 헥사 뒤에 `-` 나 글자가
 #: 오지 않는다. 이 판정은 **버리는 게 아니라 따로 세어 보고**한다 — 조용히 지우면
 #: 진짜 위반 하나를 놓쳐도 아무도 모른다.
 _SELECTOR = re.compile(r"#[0-9a-fA-F]{3,8}[-\w]")
+
+
+#: 면제를 찾아 올라갈 줄 수. 이유가 한 줄에 안 들어가는 경우가 흔해서
+#: `ds-allow:` 가 주석 블록의 **첫 줄**에 오고 설명이 아래로 이어진다. 그래서
+#: 바로 윗줄만 보면 못 잡는다(실측: atlas3d.ts 에서 두 줄 위였다).
+WAIVER_LOOKBACK = 4
+
+
+def _waiver(root: Path, name: str, line: int) -> str | None:
+    """이 위반 줄에 면제가 붙어 있으면 그 이유를 돌려준다.
+
+    같은 줄부터 위로 WAIVER_LOOKBACK 줄까지 보되, **주석이 아닌 줄을 만나면
+    멈춘다** — 위쪽 무관한 코드의 면제가 아래로 새는 것을 막는다.
+    """
+    for fp in root.rglob(name):
+        try:
+            lines = fp.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for back in range(WAIVER_LOOKBACK + 1):
+            idx = line - back                 # 엔진의 line 은 0-기반이다
+            if not (0 <= idx < len(lines)):
+                break
+            m = WAIVER.search(lines[idx])
+            if m:
+                return m.group(1)
+            if back and not lines[idx].lstrip().startswith(("//", "/*", "*")):
+                break                          # 주석 블록을 벗어났다
+    return None
 
 
 def _looks_like_selector(excerpt: str) -> bool:
@@ -89,7 +127,7 @@ def main() -> int:
         return 3
 
     raw = surface_findings(root)
-    kept, skipped, suspect = [], [], []
+    kept, skipped, suspect, waived = [], [], [], []
     gen_cache: dict[str, bool] = {}
     for f in raw:
         # Finding.found 는 "<파일명>: <발췌>" 꼴이다(엔진이 파일명만 싣는다).
@@ -101,7 +139,8 @@ def main() -> int:
         elif _looks_like_selector(str(f.found)):
             suspect.append(f)
         else:
-            kept.append(f)
+            why = _waiver(root, name, int(f.line or 0))
+            (waived if why else kept).append((f, why) if why else f)
 
     payload = {
         "kind": "surface",
@@ -111,6 +150,7 @@ def main() -> int:
         "skipped_generated": len(skipped),
         "generated_files": sorted({str(f.found).split(":", 1)[0].strip() for f in skipped}),
         "suspect_selector": [{"line": f.line, "found": f.found} for f in suspect],
+        "waived": [{"line": f.line, "found": f.found, "reason": why} for f, why in waived],
         "findings": [{"id": f.id, "severity": f.severity, "line": f.line,
                       "found": f.found, "fix_hint": f.fix_hint} for f in kept],
     }
@@ -120,10 +160,13 @@ def main() -> int:
         print(f"[{payload['status']}] {root}")
         print(f"  위반 {len(kept)}건 · 생성물 제외 {len(skipped)}건 "
               f"({', '.join(payload['generated_files']) or '없음'})"
-              + (f" · 선택자 의심 {len(suspect)}건" if suspect else ""))
+              + (f" · 선택자 의심 {len(suspect)}건" if suspect else "")
+              + (f" · 면제 {len(waived)}건" if waived else ""))
         for f in kept:
             print(f"  D-S01 {str(f.found).split(':', 1)[0].strip()}:{f.line}  "
                   f"{str(f.found).split(':', 1)[1].strip()[:96]}")
+        for f, why in waived:                   # 면제도 항상 보인다
+            print(f"  (면제) {str(f.found).split(':', 1)[0].strip()}:{f.line}  {why}")
         for f in suspect:                       # 숨기지 않는다 — 판정만 분리한다
             print(f"  (선택자 의심) {str(f.found).split(':', 1)[0].strip()}:{f.line}  "
                   f"{str(f.found).split(':', 1)[1].strip()[:96]}")
