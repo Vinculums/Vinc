@@ -107,10 +107,25 @@ python -X utf8 scripts/push_ssot.py                            # Claude Design �
 
 ## 4. Vinc-docs — 폐기 대기 (그래프가 이미 정본이다)
 
-**P5 컷오버는 2026-08-08 에 끝났다**(`_migration/STATE.md` 가 정본). 그래프가 신
-체계다 — 영어 문서 54건 · 노드 192건 제자리 재작성 · 구 문서 54건 삭제 · 되살아나
-있던 학습자료 53건 재삭제 · 잔여 doc-concept 39건 제거. **구 도메인 0**, 남은 것은
-신 7종(design·engineering·infra·governance·security·product·ai)뿐이다.
+**P5 는 2026-08-09 에 재실행 중이다**(`_migration/STATE.md` 가 정본).
+
+> ⚠ 여기 "2026-08-08 에 끝났다"고 적혀 있었는데 **거짓이 됐다.** 그날 밤 재생 불가
+> WAL 로 그래프가 통째로 되감겨 P5 결과가 전부 사라졌다. 원장과 재작성본과 스크립트가
+> 파일로 남아 있어 결정론적으로 재현된다는 것이 이 이행의 유일한 구원이었다.
+> **"끝났다"를 쓰기 전에 라이브를 조회할 것** — `vinc_domains` 한 번이면 갈린다.
+
+재실행 진행분: 노드 192건 제자리 재작성(created 0 · matched 192) · 영어 문서 54건
+적재 · 구 문서 49건 삭제. 남은 것은 학습자료 퍼지 · 도메인 재매핑 · doc-concept 정리
+· 상속 엣지 96건이다.
+
+신 도메인은 7종(design·engineering·infra·governance·security·product·ai). 원장 밖
+노드 30건이 아직 구 도메인(`vinc/mcp`·`vinc/architecture`·`vinc/web`)을 달고 있고
+`remap_domains.py` 가 그걸 옮긴다(`vinc/web` 4건은 원장에서 갈려 사람 판정 대기).
+
+급소 하나: **원장의 신·구 문서 id 가 4건에서 같다**(`vinc.ops.deployment` ·
+`vinc.ops.incident-2026-08-04-easyauth` · `vinc.ops.risk-audit-2026-08-05` ·
+`vinc.plan.code-signing`). 그것들은 제자리 재작성이므로 `olddocs` 단계가 지우면
+방금 올린 재작성본이 오류 없이 사라진다. `load_p5.py` 가 이제 걸러 낸다.
 
 - **`Vinc-docs/` 의 마크다운은 이제 스냅샷이다.** 지식을 찾을 때 여기를 읽지 마라 —
   낡았다. `vinc_search` 로 그래프를 봐라
@@ -128,7 +143,7 @@ env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests
 ```
 
 전역 `PYTHONHOME`/`PYTHONPATH` 가 시스템 파이썬을 가리켜서 그냥 부르면 venv 조차 깨진다.
-**정상은 883 passed · 4 skipped**(2026-08-08 기준. 늘어나는 값이니 중요한 건 skip=4).
+**정상은 934 passed · 4 skipped**(2026-08-09 기준. 늘어나는 값이니 중요한 건 skip=4).
 skip 이 135 면 인터프리터를 잘못 잡은 것이고, 그
 상태에서 "main 과 똑같이 실패한다"는 대조는 **무효다**(실제로 그걸 믿고 머지했다가
 CI 에서 걸렸다).
@@ -138,9 +153,19 @@ CI 에서 걸렸다).
 - `main` push 가 곧 배포다(`hub-deploy`·`site-deploy`·`release`). 브랜치에서 검증하고 머지
 - **허브 env 를 `az` 로 바꿀 때는 PowerShell 을 쓴다.** Git Bash 는 MSYS 경로 변환이
   값을 바꿔치기한다(`/data/db` → `D:\git\data\db`, 실제 사고 이력)
-- 허브 DB 는 Azure Files 위 단일 writer 다. FTS 인덱스가 손상되면 **재시작하는 순간**
-  기동 실패한다(관용 옵션으로 안 막힌다). 복구는 `db` 를 다른 이름으로 서버측 복사
-  (그 이름엔 `.wal` 이 없어 재생을 건너뛴다) 후 `VINC_DATA_DIR` 전환
+- 허브 DB 는 Azure Files 위 단일 writer 다. 파일이 SMB 로 잠겨 있어 **서버측 복사가
+  거절된다**(`FileLockConflict`). 사본이 필요하면 공유 스냅샷을 뜨고 거기서 받는다:
+  `az storage share snapshot` → `az storage file download --snapshot <ts>`
+- ⚠ **FTS 색인은 시간이 지나며 존재하는 행의 문서를 잃는다**(ladybug 0.18.0). 그 행을
+  지우면 `FTS index ... is inconsistent: document for node offset N is missing during
+  delete` 가 난다. 2026-08-09 에 세 번째로 났고, 그날 쓰기 경로에 자기복구를 달았다
+  (`api.docstore._with_fts_repair` → `rebuild_fts_index`, 5.8초). **그러니 이 오류를
+  보면 이제 저절로 낫는다** — 파일 수술이 아니라 로그를 확인할 것.
+  기각된 가설들(전부 재현으로): "색인이 정적 스냅샷이라 새 행이 안 들어간다"(들어간다)
+  · "재빌드를 안 해서 썩는다"(단순 사이클은 정상) · "WAL 을 버리는 복구가 원인"(무죄).
+  재현 절차는 그래프의 `vinc.ops.fts-index-drift` 에 있다
+- FTS 손상이 **기동을 막는** 경우의 복구(08-04·08-07 에 쓴 길): `db` 를 다른 이름으로
+  복사(그 이름엔 `.wal` 이 없어 재생을 건너뛴다) 후 `VINC_DATA_DIR` 전환
 - ⚠ **하드다운 3회의 공통 원인은 SMB 위에서 임베디드 DB 를 직접 read-write 하는 것**
   이다(FTS 손상 2 + 재생 불가 WAL 1). 이 리포는 같은 교훈을 OAuth SQLite 에서 이미
   배워 "읽고 쓰는 곳과 남기는 곳을 가른다"를 `vinc_mcp/store.py` 에 적어 놓고, 정작
