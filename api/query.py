@@ -1415,6 +1415,17 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         attach_ppr(shaped, [seed])
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         used = _apply_basis(shaped, basis)
+        if not found:
+            cands = near_nodes(store, seed, owner=owner)
+            return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
+                    "found": False, "basis": used,
+                    "error": f"unknown seed_id: {seed}",
+                    "hint": ("seed_id is an exact, type-prefixed node id "
+                             "(e.g. `concept:atlas`). "
+                             + ("Did you mean: " + ", ".join(c["id"] for c in cands)
+                                + "? " if cands else "")
+                             + "Use vinc_search to find the id first."),
+                    **({"candidates": cands} if cands else {}), **shaped}
         return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
                 "found": found, "basis": used, **shaped}
     res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
@@ -2483,8 +2494,16 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
     rows = meta.get("rows", [])
     me = next((r for r in rows if r.get("id") == node), None)
     if me is None:
-        return {"kind": "suggest_ties", "executed": True, "node": node,
-                "suggestions": [], "note": f"unknown concept: {node}"}
+        cands = near_nodes(store, node, owner=owner)
+        return {"kind": "suggest_ties", "executed": True, "found": False,
+                "node": node, "suggestions": [],
+                "note": f"unknown concept: {node}",
+                "error": f"unknown concept: {node}",
+                "hint": ("Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+                         + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
+                            if cands else "")
+                         + "Use vinc_search to find the id first."),
+                **({"candidates": cands} if cands else {})}
     g = execute(graph_plan(owner=owner), cfg, store=store)
     linked = {node}
     for r in g.get("rows", []):
@@ -2558,7 +2577,23 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
         out.append({"rel": r.get("rel"), "id": r.get("id"),
                     "title": r.get("title") or r.get("id"), "domain": r.get("domain") or ""})
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
-    return {"kind": "neighbors", "executed": True, "node": node,
+    if not out:
+        # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와
+        # **이웃이 없는 노드**가 응답으로 구분되지 않았다. 후보를 뽑아 가른다.
+        cands = near_nodes(store, node, owner=owner)
+        exact = any(c["id"] == node for c in cands)
+        return {"kind": "neighbors", "executed": True, "found": exact, "node": node,
+                "neighbors": [], "by_rel": {}, "count": 0,
+                "error": None if exact else f"unknown node: {node}",
+                "hint": ("This node exists but has no relations yet — "
+                         "vinc_suggest_ties proposes candidates, vinc_ingest adds edges."
+                         if exact else
+                         "Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+                         + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
+                            if cands else "")
+                         + "Use vinc_search to find the id first."),
+                **({"candidates": cands} if cands and not exact else {})}
+    return {"kind": "neighbors", "executed": True, "found": True, "node": node,
             "neighbors": out[:max(1, int(limit))], "by_rel": by_rel, "count": len(out)}
 
 
@@ -3147,6 +3182,46 @@ _ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity
 NODE_SCAN_CAP = 2000
 
 
+# ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
+# 실측(2026-08-07)한 실패 응답들:
+#   doc_get(오타)        → {"error": "unknown doc_id"}          후보도 다음 수도 없음
+#   decide(topic:"atlas") → {"note": "topic not found: atlas"}  왜 안 맞는지 안 알려줌
+#   graph(없는 seed)      → {"found": false}                    그뿐
+#   neighbors(없는 노드)   → {"executed": true}                  **아무 말도 없음**
+#   doc_delete(없는 문서)  → {"executed": true}                  성공과 구분 불가
+#
+# 공통 문제 하나다: **무엇이 일어났는지는 말하는데 다음에 무엇을 할지를 안 말한다.**
+# 좋은 예가 이미 리포 안에 있다 — 상한 초과 응답이 "Nothing was changed. Narrow the
+# request — lower `depth` (e.g. 1) or pick a more specific `seed_id`" 라고 말한다.
+# 그 형태를 실패 경로 전체에 퍼뜨린다: `error`(무엇) + `hint`(다음) + `candidates`(어디로).
+
+def near_nodes(store, needle: str, *, owner: str | None = None,
+               limit: int = 3) -> list[dict]:
+    """놓친 id/제목에 가까운 노드 후보 — 이미 있는 폴백 검색을 그대로 쓴다.
+
+    새 색인을 만들지 않는다. `_node_fallback_search` 가 제목·요약·props 를 토큰 OR 로
+    훑고 점수로 좁히는 일을 이미 한다. 접두사(`concept:`)는 떼고 넣는다 — 사용자가
+    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다."""
+    probe = needle.split(":", 1)[1] if ":" in needle else needle
+    if not probe.strip():
+        return []
+    try:
+        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner)
+    except Exception:                                             # noqa: BLE001
+        return []                      # 힌트를 만들다 본 응답을 죽이지 않는다
+    return [{"id": r.get("id"), "title": r.get("title") or "",
+             "domain": r.get("domain") or ""} for r in rows[:limit]]
+
+
+def miss(kind: str, *, error: str, hint: str, **extra) -> dict:
+    """실패 봉투 한 벌(F4) — `executed` 는 참이다. **조회는 돌았고 답이 없을 뿐**이라,
+    거짓으로 두면 호출부가 스토어 장애와 구분하지 못한다(그 구분이 이 리포의 계약)."""
+    out = {"kind": kind, "executed": True, "found": False,
+           "error": error, "hint": hint}
+    out.update({k: v for k, v in extra.items() if v not in (None, [], {})})
+    return out
+
+
 def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
@@ -3515,7 +3590,19 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     base["executed"] = True
     seed = next((r["id"] for r in res.get("rows", []) if r.get("id")), None)
     if not seed:
+        # F7 — `topic` 은 **정확 일치**다(concept_id · bridge_id · title). 부분 일치가
+        # 아니라서 `atlas` 는 안 맞고 `concept:atlas` 나 정확한 제목이라야 맞는다.
+        # 그 계약이 어디에도 안 적혀 있었고, 실패 응답도 그것을 말하지 않았다.
+        cands = near_nodes(store, topic, owner=owner)
         base["note"] = f"topic not found: {topic}"
+        base["error"] = f"topic not found: {topic}"
+        base["hint"] = ("`topic` matches exactly on a node id (e.g. `concept:atlas`), "
+                        "a bridge id, or a full node title — not a substring. "
+                        + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
+                           if cands else "")
+                        + "Use vinc_search to find the id first.")
+        if cands:
+            base["candidates"] = cands
         return base
     base["found"] = True
     ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)

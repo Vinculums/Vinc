@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -749,3 +750,64 @@ class DocstoreE2E(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailureHintTests(unittest.TestCase):
+    """F7 — 실패 응답이 **다음 행동**을 안내한다. 실엔진으로 건다(후보 계산이 스토어를
+    실제로 훑기 때문에 스텁으로는 계약이 안 잡힌다).
+
+    실측(2026-08-07)한 이전 상태:
+        doc_get(오타)       → {"error": "unknown doc_id"}   후보도 다음 수도 없음
+        doc_delete(없는 문서) → {"executed": true}            **성공과 구분 불가**
+    """
+
+    def setUp(self):
+        # ⚠ **데이터 디렉토리를 반드시 격리한다.** 이 파일의 다른 e2e 가 하는 그대로다.
+        #    빠뜨렸다가 공용 스토어에 문서를 남겨, "DB 가 없을 때" 를 전제하는 다른
+        #    테스트들(test_activate · DeleteEdgeRouteTests)이 스토어를 **찾아버려**
+        #    executed=False 단언이 깨졌다. 격리 없는 실엔진 테스트는 남의 검사를 바꾼다.
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        self.store = open_store(load_config())
+        if self.store is None:
+            self.skipTest("드라이버 미가용")
+        self.store.provision(dim=4)
+        ds.put_doc(self.store, owner="user:a", doc_id="vinc.design.system",
+                   text="# 디자인 시스템\n본문", title="Vinc 디자인 시스템")
+
+    def tearDown(self):
+        if getattr(self, "store", None):
+            self.store.close()
+        for k, v in getattr(self, "_env", {}).items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(getattr(self, "_tmp", ""), ignore_errors=True)
+
+    def test_없는_문서는_후보와_다음_수를_준다(self):
+        res = ds.get_doc(self.store, "vinc.design.systm", owner="user:a")   # 오타
+        self.assertFalse(res["executed"])
+        self.assertEqual(res["error"], "unknown doc_id")
+        self.assertIn("vinc_doc_list", res["hint"])
+        self.assertIn("vinc.design.system", res.get("candidates", []),
+                      f"오타 한 글자인데 후보를 못 냈다: {res.get('candidates')}")
+
+    def test_아무것도_안_지웠으면_그렇다고_말한다(self):
+        """멱등이라 오류는 아니지만, **오타로 지운 줄 알고 넘어가는 것**이 실제 피해다."""
+        res = ds.delete_doc(self.store, "vinc.design.systm", owner="user:a")
+        self.assertTrue(res["executed"])          # 멱등 — 실행은 됐다
+        self.assertFalse(res["found"])            # 그러나 아무것도 안 맞았다
+        self.assertIn("nothing was deleted", res["error"])
+        self.assertIn("vinc.design.system", res.get("candidates", []))
+
+    def test_진짜_삭제는_found_참이다(self):
+        res = ds.delete_doc(self.store, "vinc.design.system", owner="user:a")
+        self.assertTrue(res["executed"] and res["found"])
+        self.assertNotIn("error", res)

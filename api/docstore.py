@@ -470,7 +470,15 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     base: dict[str, Any] = {"kind": "doc.get", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is None:
+        # F7 — 여태 `"unknown doc_id"` 한 줄이었다. 오타 하나에 다음 수가 없었다.
         base["error"] = "unknown doc_id"
+        cands = near_docs(store, doc_id, owner=owner)
+        base["hint"] = ("doc_id must match exactly. "
+                        + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
+                        + "Use vinc_doc_list to browse, or vinc_search to find a "
+                          "document by its content.")
+        if cands:
+            base["candidates"] = cands
         return base
     if owner is not None and meta.get("owner_id") != owner:
         base["error"] = "owner mismatch — 남의 문서는 읽을 수 없다(SEC-1)"
@@ -509,6 +517,28 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     return base
 
 
+def near_docs(store, needle: str, *, owner: str | None = None,
+              limit: int = 3) -> list[str]:
+    """놓친 doc_id 에 가까운 문서 후보(F7). id 와 제목 양쪽을 본다 — 사용자는 둘 중
+    아무거나 기억하고 있다. stdlib `difflib` 뿐이라 새 색인이 필요 없다."""
+    import difflib
+    try:
+        where = "WHERE d.owner_id = $o " if owner else ""
+        rows = store.run(
+            f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title",
+            {"o": owner} if owner else None) or []
+    except Exception:                                             # noqa: BLE001
+        return []                      # 힌트를 만들다 본 응답을 죽이지 않는다
+    ids = [r.get("doc_id") for r in rows if r.get("doc_id")]
+    hits = difflib.get_close_matches(needle, ids, n=limit, cutoff=0.5)
+    if len(hits) < limit:              # id 로 못 찾으면 제목으로 한 번 더
+        by_title = {(r.get("title") or ""): r.get("doc_id") for r in rows}
+        for t in difflib.get_close_matches(needle, list(by_title), n=limit, cutoff=0.5):
+            if by_title[t] not in hits:
+                hits.append(by_title[t])
+    return hits[:limit]
+
+
 def delete_doc(store, doc_id: str, *, owner: str | None = None,
                tombstone: bool = True) -> dict:
     """doc 단위 완전 삭제 — 청크(부착 MENTIONS 포함 DETACH)와 정체성 레지스트리.
@@ -543,6 +573,20 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
             {"id": doc_id, "o": owner_id, "ts": _stamp_updated_at(store),
              "seq": _next_doc_seq(store, owner_id)})
     base.update(executed=True, deleted_chunks=n, deleted_meta=meta is not None)
+    if meta is None and not n:
+        # F7 — 여태 없는 문서를 지워도 응답이 성공과 **똑같았다**. 멱등이라 오류는
+        # 아니지만, 오타로 지운 줄 알고 넘어가는 것이 실제 피해다.
+        base["found"] = False
+        base["error"] = "unknown doc_id — nothing was deleted"
+        cands = near_docs(store, doc_id, owner=owner)
+        base["hint"] = ("The delete is idempotent, so this is not an error — but "
+                        "nothing matched. "
+                        + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
+                        + "Use vinc_doc_list to check the id.")
+        if cands:
+            base["candidates"] = cands
+    else:
+        base["found"] = True
     return base
 
 

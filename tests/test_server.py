@@ -1075,3 +1075,55 @@ class EnvelopeAndDocListTests(unittest.TestCase):
         d = res["docs"][0]
         self.assertEqual(set(d), {"doc_id", "title", "updated_at", "chunks"},
                          f"요약형에 군더더기가 실렸다: {sorted(d)}")
+
+
+class FailureEnvelopeTests(unittest.TestCase):
+    """F4 잔여 + F7 — 실패 응답도 봉투를 지키고, 다음 행동을 안내한다.
+
+    실측(2026-08-07)한 이전 상태는 제각각이었다:
+        doc_get      → error 만            neighbors → **아무 말도 없음**
+        decide       → note 만            graph     → found:false 뿐
+    같은 실패인데 호출부가 세 가지 방식으로 읽어야 했다.
+    """
+
+    class _Store:
+        driver_name = "fake"
+        def reader_view(self): return self
+        def run(self, cypher, params=None): return []
+        def close(self): pass
+
+    def _get(self, path):
+        with running_server(_app(store=self._Store())) as base:
+            return _req(base, path)[1]
+
+    def test_실패에도_kind_와_executed_가_있다(self):
+        """`executed` 는 **참**이어야 한다 — 조회는 돌았고 답이 없을 뿐이다.
+        거짓으로 두면 호출부가 스토어 장애와 구분하지 못한다."""
+        for path, kind in (("/decide?topic=%EC%97%86%EB%8A%94%EA%B2%83&owner=u", "decide"),
+                           ("/graph?owner=u&seed=concept:%EC%97%86%EB%8A%94%EA%B2%83", "graph"),
+                           ("/neighbors?owner=u&node=concept:%EC%97%86%EB%8A%94%EA%B2%83", "neighbors"),
+                           ("/suggest-ties?owner=u&node=concept:%EC%97%86%EB%8A%94%EA%B2%83", "suggest_ties")):
+            res = self._get(path)
+            self.assertEqual(res.get("kind"), kind, f"{path}: {res}")
+            self.assertTrue(res.get("executed"), f"{path} 가 실행조차 안 한 것으로 보고했다")
+            self.assertFalse(res.get("found", False), f"{path} 가 찾았다고 보고했다")
+
+    def test_실패는_다음_행동을_말한다(self):
+        """이 리포에 이미 좋은 예가 있다 — 상한 초과가 'lower depth (e.g. 1) or pick a
+        more specific seed_id' 라고 말한다. 그 형태를 실패 경로 전체에 퍼뜨린 것이다."""
+        for path in ("/decide?topic=%EC%97%86%EB%8A%94%EA%B2%83&owner=u",
+                     "/graph?owner=u&seed=concept:%EC%97%86%EB%8A%94%EA%B2%83",
+                     "/neighbors?owner=u&node=concept:%EC%97%86%EB%8A%94%EA%B2%83",
+                     "/suggest-ties?owner=u&node=concept:%EC%97%86%EB%8A%94%EA%B2%83"):
+            res = self._get(path)
+            hint = res.get("hint") or ""
+            self.assertTrue(hint, f"{path} 에 hint 가 없다")
+            self.assertIn("vinc_search", hint,
+                          f"{path} 의 hint 가 다음 수를 안 준다: {hint!r}")
+
+    def test_decide_는_정확_일치라는_것을_말한다(self):
+        """`topic` 은 concept_id·bridge_id·title 정확 일치다. 부분 일치가 아니라서
+        `atlas` 는 안 맞고 `concept:atlas` 라야 맞는데, 그 계약이 어디에도 없었다."""
+        res = self._get("/decide?topic=atlas&owner=u")
+        self.assertIn("exactly", res["hint"])
+        self.assertIn("concept:atlas", res["hint"], "예시 id 가 없다")
