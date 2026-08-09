@@ -31,9 +31,24 @@ NFS·SMB·Samba 위 read-write 를 권하지 않으며 증상으로 "spurious er
   동작 그대로다(데스크탑·로컬 개발은 영향 없음). 켜는 것은 배포의 의도적 행위다.
 - 켜면: 스토어는 ``data_dir``(로컬 디스크)에서 열리고, 영속 볼륨에는 **복사만** 한다.
 - 기동 시 작업본이 없으면 스냅샷에서 복원한다 — 리비전이 바뀌어도 데이터가 산다.
-- 전 구간 **fail-soft**. 스냅샷은 증강이지 서비스의 성립 조건이 아니다. 여기서
-  예외를 올리면 이 설계가 막으려는 바로 그 장애(저장소 문제 → 서비스 전면 정지)를
-  되풀이한다. 실패는 상태 문자열로 남기고 서비스는 계속 산다.
+- **저장 실패는 fail-soft, 복원 실패는 fail-closed.** 이 갈래가 이 모듈의 급소다.
+
+  이 자리에 오래 "전 구간 fail-soft" 라고만 적혀 있었고, 2026-08-09 에 그것이
+  **데이터 전손 경로**임이 실증됐다. 복원이 `PermissionError` 로 실패했는데 상태
+  문자열만 남기고 서비스가 떴다 → 스토어가 **빈 DB 로 새로 생성**됐다 → 다음
+  주기 스냅샷이 그 빈 DB 를 영속본 위에 덮었다(60.72MB → 0.00MB).
+
+  두 실패의 성질이 다르다:
+
+  * **저장 실패** — 작업본에는 옳은 데이터가 있다. 계속 도는 것이 가용성을 지키고
+    잃는 것은 "이번 회차 스냅샷" 뿐이다. fail-soft 가 맞다.
+  * **복원 실패** — 서비스에 데이터가 **없다.** 계속 도는 것은 가용성을 지키지
+    않는다. 빈 그래프를 서빙하면서 영속본까지 파괴한다. 여기서 멈추는 것은
+    "저장소 문제로 서비스를 내리는" 것이 아니라 **없는 데이터를 있는 척하지 않는
+    것**이다. 멈추면 사람이 보고 고치지만, 진행하면 조용히 원본이 사라진다.
+
+  판정은 :func:`restore_state_is_fatal` 하나에 있고 기동 경로가 그것을 본다
+  (``api/cli.py`` serve).
 
 잃을 수 있는 것
 --------------
@@ -106,6 +121,40 @@ def restore_if_missing(live_path: str, snapshot_path: str | None = None) -> str:
         return "restored"
     except Exception as exc:                                   # noqa: BLE001
         return f"error: {type(exc).__name__}: {exc}"
+
+
+#: 스냅샷이 아직 없는 상태(첫 기동)를 **명시적으로 허용**하는 env. 켜지 않으면
+#: `empty` 는 치명으로 본다.
+#:
+#: 왜 옵트인인가. `empty` 는 "스냅샷 파일이 안 보인다" 이지 "이 배포에 데이터가 없다"
+#: 가 아니다. 마운트가 늦게 붙거나 읽기 권한이 없어도 같은 값이 나오고, 그때 그냥
+#: 진행하면 **빈 그래프로 서빙하다가 영속본을 덮는다** — 2026-08-09 에 `error` 갈래로
+#: 실제로 당한 그 사고와 결과가 같다. 진짜 첫 기동은 인생에 한 번뿐이므로 그때만
+#: 사람이 켜 주는 편이 싸다.
+BOOTSTRAP_ENV = "VINC_STORE_ALLOW_EMPTY"
+
+
+def restore_state_is_fatal(state: str) -> str | None:
+    """복원 상태가 **기동을 막아야 하는가**. 막아야 하면 사람이 읽을 사유, 아니면 None.
+
+    진행해도 되는 것은 셋뿐이다:
+      ``off``      기능이 꺼져 있다 — 지킬 것이 없다
+      ``present``  작업본이 이미 있다 — 흔한 재시작
+      ``restored`` 복원했다
+
+    ``empty`` 는 :data:`BOOTSTRAP_ENV` 가 켜져 있을 때만 통과한다(위 주석 참조).
+    ``error: …`` 는 언제나 막는다.
+    """
+    if state in ("off", "present", "restored"):
+        return None
+    if state == "empty":
+        if (os.environ.get(BOOTSTRAP_ENV) or "").strip().lower() in ("1", "true", "on"):
+            return None
+        return (f"영속 스냅샷이 보이지 않는다({resolve_snapshot_path()}). 진짜 첫 기동이면 "
+                f"{BOOTSTRAP_ENV}=1 로 한 번만 켤 것. 그게 아니면 마운트·권한 문제이며, "
+                f"이대로 진행하면 빈 그래프로 서빙하다가 영속본을 덮는다")
+    return (f"영속 스냅샷 복원 실패 — {state}. 이대로 진행하면 빈 그래프로 서빙하면서 "
+            f"다음 스냅샷이 영속본을 덮는다(2026-08-09 실증). 스토어를 열지 않는다")
 
 
 def save_snapshot(store, snapshot_path: str | None = None) -> str:

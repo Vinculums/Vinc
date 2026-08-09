@@ -299,6 +299,17 @@ def main(argv: list[str] | None = None) -> int:
         _restore = persistence.restore_if_missing(data_dir)
         if _restore not in ("off", "present"):
             print(f"vinc-sidecar: store restore — {_restore}", file=sys.stderr, flush=True)
+        # ⚠ **복원 실패는 fail-closed 다.** 여기 오래 위의 print 만 있었고 무조건
+        # `server.serve()` 로 내려갔다. 2026-08-09 에 그 경로로 데이터를 잃었다:
+        # 복원이 PermissionError 로 실패 → 로그 한 줄 → 스토어가 **빈 DB 로 새로
+        # 생성** → 다음 주기 스냅샷이 그 빈 DB 를 영속본 위에 덮음(60.72MB → 0).
+        # 저장 실패와 복원 실패의 성질이 다르다는 근거는 `store/persistence.py`
+        # 모듈 독스트링에 있다. 여기서 멈추면 사람이 보고 고치지만, 진행하면
+        # 조용히 원본이 사라진다.
+        _fatal = persistence.restore_state_is_fatal(_restore)
+        if _fatal:
+            print(f"vinc-sidecar: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
+            return 1
         packs = args.packs
         if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
             packs = os.path.join(os.path.dirname(data_dir), "packs")
