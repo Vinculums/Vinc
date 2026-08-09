@@ -1239,9 +1239,15 @@ class _Handler(BaseHTTPRequestHandler):
                 # 영속 스냅샷 상태 — 꺼져 있으면 'off'. 이게 조용히 실패하면
                 # "돌고 있다고 믿는 백업이 없는" 최악의 형태가 된다(이 리포가
                 # 임베딩 워커에서 38시간 겪은 그 모양).
+                # 상태 문자열만으로는 "언젠가 됐다"와 "방금 됐다"가 구분되지 않는다.
+                # `age_s`(마지막 **성공** 이후 경과)가 곧 지금 잃을 수 있는 양의
+                # 하한이고, null 이면 이 프로세스가 사는 동안 한 번도 성공한 적이
+                # 없다는 뜻이다 — 그게 가장 위험한 값이다(SnapshotPolicy.detail 주석).
                 snaps = getattr(self.app, "_snapshots", None)
                 if snaps is not None:
-                    body["snapshot"] = getattr(snaps, "last_state", "unknown")
+                    det = getattr(snaps, "detail", None)
+                    body["snapshot"] = (det() if callable(det)
+                                        else getattr(snaps, "last_state", "unknown"))
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,

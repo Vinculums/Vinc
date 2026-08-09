@@ -719,6 +719,13 @@ class _Handler(BaseHTTPRequestHandler):
                     # 이행 진행도는 **최상위**에 둔다. 알람이 걸릴 자리라 파묻지 않는다.
                     if isinstance(detail.get("embed"), dict):
                         body["embed"] = detail["embed"]
+                    # 영속 스냅샷도 같은 이유로 최상위다. 사이드카는 이 진단을 예전부터
+                    # 싣고 있었는데 **여기서 버려지고 있었다** — 그래서 밖에서는
+                    # "백업이 도는가"를 볼 방법이 없었다(2026-08-09). `VINC_STORE_LOCAL`
+                    # 이 켜진 뒤로는 작업본이 컨테이너와 함께 사라지므로, 이 값이
+                    # 곧 **데이터가 남는가**의 유일한 외부 신호다.
+                    if detail.get("snapshot") is not None:
+                        body["graph_snapshot"] = detail["snapshot"]
             return self._json(200, body)
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 

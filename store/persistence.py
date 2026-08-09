@@ -65,6 +65,11 @@ import time
 #: 스냅샷 주기 기본값(초) = 최대 손실 창. env `VINC_STORE_SNAPSHOT_EVERY`.
 DEFAULT_SNAPSHOT_EVERY = 300.0
 
+#: 스냅샷 스테이징 디렉터리 접두. **영속 볼륨 안**에 만든다 — 다른 파일시스템이면
+#: `os.replace` 가 rename 이 아니라 복사로 강등돼 스테이징의 의미가 사라진다.
+#: 점으로 시작해 사람이 목록에서 데이터 파일과 구분할 수 있게 한다.
+STAGE_PREFIX = ".stage-"
+
 
 def resolve_snapshot_path() -> str | None:
     """영속 스냅샷 경로: env ``VINC_STORE_SNAPSHOT``. 미설정이면 None = 기능 꺼짐.
@@ -165,29 +170,57 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
     그래서 이 함수는 **쓰기 스레드에서 불려야 한다**(잡 워커). 다른 스레드에서
     부르면 재오픈 중인 커넥션을 다른 쪽이 쓰게 된다.
 
-    ⚠ 영속 볼륨에 **직접 쓰는 순간이 여기뿐**이고, 그것도 복사다."""
+    ⚠ 영속 볼륨에 **직접 쓰는 순간이 여기뿐**이고, 그것도 복사다.
+
+    **항상 스테이징을 거친다**(2026-08-09). 예전에는 작업본과 스냅샷의 basename 이
+    같으면 — `VINC_STORE_LOCAL=on` 의 **기본 구성이 정확히 그 경우다** —
+    `store.snapshot(dest_dir)` 이 영속본 위에 **직접** 수십 MB 를 덮어썼다. 그
+    복사 도중 프로세스가 죽으면 유일한 영속본이 찢어진다. 지금은 임시 디렉터리에
+    떨군 뒤 자리로 **옮긴다**: 옮기기 전에 죽으면 기존 영속본이 그대로 산다.
+
+    (rename 이 CIFS 에서 POSIX 수준으로 원자적이라는 보장은 없다. 다만 서버측
+    메타데이터 연산이라 **수 초짜리 바이트 복사보다 창이 비교할 수 없이 좁다.**
+    "원자적"이라고 적지 않는 이유다.)"""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
     if not snapshot_path or store is None:
         return "off"
     snap = getattr(store, "snapshot", None)
     if not callable(snap):
         return "off"     # 백엔드가 스냅샷을 모른다(테스트 스텁 등) — 조용히 지나간다
+    stage = ""
     try:
         dest_dir = os.path.dirname(os.path.abspath(snapshot_path)) or "."
         os.makedirs(dest_dir, exist_ok=True)
-        produced = snap(dest_dir)
-        # snapshot() 은 원본 basename 으로 떨군다. 스냅샷 경로의 이름이 다르면 옮긴다
-        # (작업본 이름과 영속 이름을 따로 두고 싶을 수 있다).
-        if produced and os.path.abspath(produced) != os.path.abspath(snapshot_path):
-            for src, required in _parts(produced):
-                dst = snapshot_path + src[len(produced):]
-                if os.path.exists(src):
-                    os.replace(src, dst)
-                elif required:
-                    return "error: snapshot produced nothing"
+        # 스테이징은 **같은 파일시스템 안**이어야 한다 — 그래야 os.replace 가 복사가
+        # 아니라 rename 이 된다. 그래서 dest_dir 밑에 둔다.
+        stage = os.path.join(dest_dir, STAGE_PREFIX + os.path.basename(snapshot_path))
+        shutil.rmtree(stage, ignore_errors=True)   # 앞선 급사가 남긴 찌꺼기
+        # 디렉터리는 **여기서** 만든다. 예전에는 dest_dir 이 이미 있는 영속 디렉터리라
+        # 아무도 신경 쓸 필요가 없었는데, 스테이징은 매번 새로 생긴다. 만드는 일을
+        # `snap()` 에 맡기면 그걸 하지 않는 구현에서 조용히 깨진다(기존 테스트의
+        # 페이크가 정확히 그런 구현이었고, 그래서 이 결함을 잡아 줬다).
+        os.makedirs(stage, exist_ok=True)
+        produced = snap(stage)
+        if not produced or not os.path.exists(produced):
+            return "error: snapshot produced nothing"
+        for src, required in _parts(produced):
+            dst = snapshot_path + src[len(produced):]
+            if os.path.exists(src):
+                os.replace(src, dst)
+            elif required:
+                return "error: snapshot produced nothing"
+            elif os.path.exists(dst):
+                # ⚠ 새 스냅샷에 사이드카(.wal)가 없는데 목적지의 **낡은 것**을 남기면
+                # 새 본 파일과 옛 WAL 이 짝이 되어, 다음 복원이 어긋난 재생을 한다.
+                # `_parts` 가 .wal 을 선택으로 두는 것은 "없을 수 있다"는 뜻이지
+                # "있으면 그대로 둔다"가 아니다. 예전 코드는 그걸 그대로 뒀다.
+                os.remove(dst)
         return "ok"
     except Exception as exc:                                   # noqa: BLE001
         return f"error: {type(exc).__name__}: {exc}"
+    finally:
+        if stage:
+            shutil.rmtree(stage, ignore_errors=True)
 
 
 class SnapshotPolicy:
@@ -206,6 +239,9 @@ class SnapshotPolicy:
         self._clock = clock
         self._last = clock()
         self._dirty = False
+        #: 마지막으로 **성공한** 스냅샷 시각. 시도 시각(`_last`)과 다르다 — 실패가
+        #: 반복되면 `_last` 는 계속 갱신되는데 실제로 남은 것은 옛것이기 때문이다.
+        self._last_ok: float | None = None
         self.last_state = "pending" if resolve_snapshot_path() else "off"
 
     def mark_dirty(self) -> None:
@@ -220,3 +256,22 @@ class SnapshotPolicy:
         self._last = self._clock()
         self._dirty = False
         self.last_state = state
+        if state == "ok":
+            self._last_ok = self._last
+
+    def detail(self) -> dict:
+        """밖에서 보는 진단. **"돌고 있다고 믿는 백업이 없는" 상태를 드러내는 것**이
+        이 메서드의 존재 이유다.
+
+        상태 문자열만으로는 부족하다 — `"ok"` 는 "언젠가 됐다"는 뜻이지 "방금 됐다"가
+        아니다. `age_s` 가 곧 **지금 잃을 수 있는 양의 하한**이고, `None` 이면 이
+        프로세스가 사는 동안 **한 번도 성공한 적이 없다**는 뜻이다(가장 위험한 값).
+
+        2026-08-09 에 이 값이 없어서, 스냅샷이 도는지를 파일 mtime 으로 재다가
+        20분을 헤맸다(Azure REST API 의 lastModified 와 컨테이너가 CIFS 로 보는
+        mtime 이 달라 오판까지 했다)."""
+        return {"state": self.last_state,
+                "every_s": self.every,
+                "pending_write": self._dirty,
+                "age_s": None if self._last_ok is None
+                         else round(self._clock() - self._last_ok)}
