@@ -25,7 +25,8 @@ import os
 from contextlib import contextmanager
 
 from .config import StoreConfig
-from .embedded_schema import (EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
+from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
+                              EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
                               migration_statements, render_embedded_ddl)
 
 
@@ -541,6 +542,14 @@ class EmbeddedBackend:
         backfilled = 0
         if cur < EPISODE_TIME_BACKFILL_VERSION:
             backfilled = backfill_episode_time_fields(self)
+        # 데이터 스텝(v11, E-1) — 계층 엣지는 기존 `domain` 열에서 파생되는데, 그것도
+        # Cypher DDL 로는 못 쓴다(문자열을 잘라 노드·엣지를 만들어야 한다). 여기 두는
+        # 이유는 v9 와 같다: **사이드카가 DB 락을 쥐고 있어 별도 프로세스로는 못 연다.**
+        # 유일 writer 안에서, 서비스 시작 전에, 한 번 돈다.
+        domain_links = 0
+        if cur < DOMAIN_HIERARCHY_VERSION:
+            from engines.domain_hierarchy import backfill as _dh_backfill
+            domain_links = int(_dh_backfill(self).get("linked") or 0)
         if cur < target:
             self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
                      {"v": str(target)})
@@ -555,7 +564,8 @@ class EmbeddedBackend:
             except Exception:
                 pass
         return {"migrated_from": cur, "migrated_to": target,
-                "episode_time_backfilled": backfilled}
+                "episode_time_backfilled": backfilled,
+                "domain_links_backfilled": domain_links}
 
     def provision(self, *, dim: int) -> list[str]:
         """호환 진입점 — migrate() 로 위임(기존 호출부 무변경으로 마이그레이션 획득)."""

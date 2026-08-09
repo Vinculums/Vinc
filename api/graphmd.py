@@ -117,7 +117,7 @@ not through a copy of it.
 ## Do not [this graph decides]
 - Do not ratify your own proposal. A person does that.
 - Do not create a node for something you did not search for first.
-- Do not invent a domain name inline.
+- Do not invent a domain name inline. Propose it and say why.
 """
 
 _TPL_KO = """# GRAPH.md
@@ -170,7 +170,7 @@ BAD "PostgreSQL" 과 "Postgres" 를 각각: 같은 것입니다. 하나만 두�
 ## 하지 말 것 [이 그래프가 정함]
 - 자기 제안을 스스로 재가하지 마십시오. 그것은 사람이 합니다.
 - 검색해 보지 않은 것을 노드로 만들지 마십시오.
-- 도메인 이름을 즉석에서 만들지 마십시오.
+- 도메인 이름을 즉석에서 만들지 마십시오. 제안하고 이유를 적으십시오.
 """
 
 _HEADER = {
@@ -183,14 +183,22 @@ _GEN_HEAD = {
 }
 _GEN_TAIL = "<!-- vinc:generated end -->"
 _GEN_BODY = {
+    # ⚠ 줄 예산(LINE_WARN=60)이 꽉 차 있다 — 여기 한 줄을 더하려면 어딘가에서 한 줄을
+    # 빼야 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
+    # E-1 계층 안내는 "도메인을 즉석에서 만들지 마라"가 `Do not` 절과 **중복**이라
+    # 그 자리를 썼다(그 절로 문구를 합쳤다). 줄 수 변화 0.
     "en": ("## Domains in this graph\n{domains}\n"
-           "Lowercase english. Do not invent a domain inline: propose it and say why.\n\n"
+           "Lowercase english. A slash makes a tree: 'vinc/design' files that node "
+           "under 'vinc', with nothing extra to author. "
+           "Walk it with vinc_neighbors('domain:vinc').\n\n"
            "## Ratified vocabulary\n"
            "node types: {nodes}\n"
            "edge types: {edges}\n"
            "Anything else you write is kept and marked proposed, for a person to ratify."),
     "ko": ("## 이 그래프의 도메인\n{domains}\n"
-           "소문자 영어. 도메인을 즉석에서 만들지 말고 제안하고 이유를 적으십시오.\n\n"
+           "소문자 영어. 슬래시가 계층이 됩니다: 'vinc/design' 은 그 노드를 'vinc' "
+           "아래 둡니다. 따로 저작할 것이 없습니다. "
+           "vinc_neighbors('domain:vinc') 로 걸어 내려가십시오.\n\n"
            "## 재가된 어휘\n"
            "노드 타입: {nodes}\n"
            "엣지 타입: {edges}\n"

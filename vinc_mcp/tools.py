@@ -399,9 +399,17 @@ TOOLS: list[dict] = [
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
                        "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
                        "graph one hop at a time (observe → pick next node) instead of pulling a whole "
-                       "depth-2 subgraph via vinc_graph — far fewer tokens per step. Read-only.",
+                       "depth-2 subgraph via vinc_graph — far fewer tokens per step. "
+                       "Also accepts a TOPIC address `domain:<name>` (e.g. domain:vinc), which returns "
+                       "that topic's child topics (rel PARENT_OF, ids `domain:…`) and the nodes filed "
+                       "directly under it (rel IN_DOMAIN) — same shape, so you can walk down a topic "
+                       "tree the same way. Topics come from the `domain` field on nodes: writing "
+                       "'vinc/design' files that node under 'vinc' automatically, no edges to author. "
+                       "Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "node": {"type": "string", "description": "Exact concept id to observe (e.g. concept:duality)."},
+            "node": {"type": "string", "description": "Exact concept id to observe (e.g. "
+                                                      "concept:duality), or a topic address "
+                                                      "(e.g. domain:vinc)."},
             "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500,
                       "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."},
             "owner": {"type": "string"},

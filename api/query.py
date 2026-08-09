@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from store.config import StoreConfig, load_config
 from store.backend import open_store
+from engines import domain_hierarchy
 
 from . import graphmd
 
@@ -2677,11 +2678,68 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
                      note="record/episode/bridge attachments (F14)")
 
 
+def _domain_neighbors(node: str, *, owner: str | None, limit: int,
+                      cfg=None, store=None) -> dict:
+    """`domain:` 좌표의 1-hop (E-1). :func:`neighbors` 와 **같은 반환 모양**이라
+    상류가 분기 없이 그대로 걸어 내려갈 수 있다.
+
+    ⚠ ``owner`` 없이는 **실행하지 않는다**(fail-closed). 도메인 노드에는 소유가
+    없어서, 소유 술어가 빠지면 자식 목록이 남의 하위 도메인 이름을 그대로 흘린다.
+    다른 조회는 owner=None 이 "로컬 단일 사용자"라 무해하지만 여기는 아니다."""
+    domain = domain_hierarchy.parse_id(node)
+    base = {"kind": "neighbors", "executed": False, "node": node,
+            "neighbors": [], "by_rel": {}, "count": 0}
+    if not owner:
+        base.update(executed=True, found=False,
+                    error="owner required — 도메인 좌표는 무소유 공유 구조라 "
+                          "스코프 없이 펼치면 남의 하위 도메인이 노출된다")
+        return base
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
+    try:
+        params = {"domain": domain, "owner": owner}
+        members = store.run(domain_hierarchy.members_cypher(), params) or []
+        kids = store.run(domain_hierarchy.child_domains_cypher(), params) or []
+        rows = [{"rel": "PARENT_OF", "id": domain_hierarchy.make_id(c),
+                 "title": c, "domain": domain}
+                for c in sorted({r["child"] for r in kids if r.get("child")})]
+        rows += [{"rel": "IN_DOMAIN", "id": r.get("id"),
+                  "title": r.get("title") or r.get("id"),
+                  "domain": r.get("domain") or ""}
+                 for r in members if r.get("id")]
+        rows.sort(key=lambda r: (str(r["rel"]), str(r["id"])))
+        by_rel: dict[str, int] = {}
+        for r in rows:
+            by_rel[r["rel"]] = by_rel.get(r["rel"], 0) + 1
+        out = {"kind": "neighbors", "executed": True, "found": bool(rows),
+               "node": node, "neighbors": rows[:max(1, int(limit))],
+               "by_rel": by_rel, "count": len(rows)}
+        if not rows:
+            out["hint"] = (f"No nodes of yours are under {domain!r}. Domains come "
+                           "from the `domain` field on your nodes — set it (e.g. "
+                           f"'{domain}/subtopic') and the hierarchy follows.")
+        return out
+    finally:
+        if owns:
+            store.close()
+
+
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
     neighbors:[{rel,id,title,domain}], by_rel:{rel:count}, count}. 결정론 순서
-    (rel, id). 상류 SoG 항해의 관측 표면."""
+    (rel, id). 상류 SoG 항해의 관측 표면.
+
+    ``node`` 가 ``domain:`` 접두면 **도메인 좌표**를 잡는다(E-1) — 자식 도메인
+    (`PARENT_OF`)과 거기 직접 속한 노드(`IN_DOMAIN`)를 같은 모양으로 낸다. 그래서
+    `domain:vinc` 에서 시작해 한 홉씩 아래로 걸어 내려갈 수 있다."""
+    if domain_hierarchy.parse_id(node):
+        return _domain_neighbors(node, owner=owner, limit=limit, cfg=cfg, store=store)
     res = execute(neighbors_plan(node, owner=owner), cfg, store=store)
     if not res.get("executed"):
         return {"kind": "neighbors", "executed": False, "node": node,
@@ -4073,6 +4131,11 @@ def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> di
                     "SET n.domain = $new, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
                     {"id": r["id"], "o": owner, "new": new, "ua": st["updated_at"],
                      "rev": st["rev"], "seq": st["sync_seq"]})
+                # 계층(E-1, v11)도 따라와야 한다. 안 옮기면 노드의 `domain` 열은 새
+                # 도메인인데 IN_DOMAIN 은 옛 도메인을 가리켜, 열 기준 집계(/domains)와
+                # 그래프 기준 조회가 서로 다른 답을 준다. `new` 가 비면 엣지만 지운다
+                # (= 미분류로 내림, 위 계약과 동형).
+                domain_hierarchy.link_node(store, label, r["id"], new)
                 moved += 1
             if rows:
                 per_label[label] = len(rows)
@@ -4221,6 +4284,19 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
     base = {"kind": "delete", "executed": False, "found": False, "node": node_id}
     if store is None:
         base["note"] = base["error"] = "no reachable store"
+        return base
+    # E-1 — 도메인 좌표는 **삭제할 수 있는 것이 아니다.** `Domain` 은 무소유 전역
+    # 구조라 지우면 그 이름을 쓰는 남의 노드가 좌표를 잃는다. 사용자가 원하는 것은
+    # "내 것들에서 이 도메인을 떼는 것"이고, 그건 이미 rename_domain(new='') 이다.
+    # 일반 "unknown id prefix" 로 흘리면 그 안내가 안 나간다.
+    _dom = domain_hierarchy.parse_id(node_id)
+    if _dom:
+        base["executed"] = True
+        base["note"] = (f"refused: domains are a shared coordinate, not a deletable "
+                        f"node ({node_id}). To clear it from your own nodes use "
+                        f"domain rename with an empty target (old={_dom!r}, new='').")
+        if owns:
+            store.close()
         return base
     prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
     label_pk = _SEED_TABLES.get(prefix)

@@ -6,9 +6,19 @@
 같은 스토어에 두고 실제로 확인해야 한다(SEC-1 교훈 — 스텁 초록은 증거가 아니다).
 
 설계 불변식(query.rename_domain 독스트링과 짝):
-  · 전역 `:Domain` 노드는 불변 — 무소유 공유 구조라 지우면 남의 그래프가 깨진다.
-  · 바뀌는 건 내 Concept/Episode/Record 의 `domain` 문자열뿐.
+  · 전역 `:Domain` 노드를 **지우거나 개명하지 않는다** — 무소유 공유 구조라 남의
+    그래프가 깨진다.
+  · 바뀌는 건 내 Concept/Episode/Record 의 `domain` 문자열(+ v11 부터 그 문자열의
+    그래프 표현인 IN_DOMAIN 엣지)뿐.
   · new='' = 미분류로 내림(도메인은 목록에서 사라지고 **노드는 남는다**).
+
+⚠ 이 파일은 원래 "전역 Domain 노드는 생성도 안 한다"고 적고 있었는데 그건 실제보다
+넓었다. `engines/bridges_ingest.py:224` 와 `vinc_ingest` 의 `type:"domain"` 이 이미
+Domain 노드를 MERGE 하고 있었다 — 즉 생성은 금지된 적이 없다. 그리고 v11 의
+IN_DOMAIN 은 붙일 좌표가 있어야 하므로 생성이 **필요하다**. 위험한 것은 생성이
+아니라 삭제·개명이고(남이 그 좌표를 쓰고 있다), 유출도 아니다: 원시 Domain 테이블을
+소유 스코프 없이 읽는 제품 코드는 0건이며(2026-08-09 전수), 계층 조회는
+`domain_hierarchy.subtree_scoped_cypher` 로 소유 노드에 앵커를 건다.
 """
 from __future__ import annotations
 
@@ -79,12 +89,21 @@ class DomainRenameE2E(unittest.TestCase):
         self.assertTrue(row["ua"])
         self.assertGreater(int(row["seq"] or 0), 0)
 
-    def test_global_domain_nodes_untouched(self):
-        """전역 `:Domain` 노드는 생성·삭제 모두 안 한다(다른 소유자와 공유 구조)."""
-        before = self.store.run("MATCH (d:Domain) RETURN count(d) AS n")[0]["n"]
+    def test_global_domain_nodes_are_never_removed_or_renamed(self):
+        """전역 `:Domain` 노드는 **지우지도 개명하지도** 않는다(다른 소유자와 공유).
+
+        새 좌표 생성은 허용된다 — IN_DOMAIN(v11)이 붙을 자리가 있어야 하고, 이미
+        bridges_ingest 가 같은 일을 한다. 위험한 것은 **없어지는 것**이다: B 가
+        `physics` 를 쓰고 있는데 A 의 이름변경이 그 행을 지우면 B 가 깨진다."""
+        names = lambda: {r["n"] for r in                       # noqa: E731
+                         self.store.run("MATCH (d:Domain) RETURN d.name AS n")}
+        before = names()
         q.rename_domain(owner=A, old="physics", new="astro", store=self.store)
-        after = self.store.run("MATCH (d:Domain) RETURN count(d) AS n")[0]["n"]
-        self.assertEqual(int(after), int(before))
+        after = names()
+        self.assertTrue(before <= after,
+                        f"공유 좌표가 사라졌다: {sorted(before - after)}")
+        # B 의 노드는 여전히 physics 다 — 좌표도 그대로여야 그 귀속이 성립한다.
+        self.assertEqual({"physics": 3}, self._domains(B))
 
     def test_noop_and_missing_domain_are_safe(self):
         same = q.rename_domain(owner=A, old="physics", new="physics", store=self.store)

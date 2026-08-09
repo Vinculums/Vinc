@@ -25,6 +25,7 @@ from typing import Any
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api import revstamp  # noqa: E402  (동기화 스탬핑 — S0)
+from engines import domain_hierarchy  # noqa: E402  (도메인 계층 — E-1)
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 
@@ -294,10 +295,15 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
         params["__seq"] = revstamp.next_seq(r, ep.get("owner_id") or "user:local")
         sets += ["n.updated_at = $__ua", "n.rev = $__rev", "n.sync_seq = $__seq"]
 
+    params["domain"] = domain_hierarchy.normalize(params["domain"])
     session.run(
         f"MERGE (n:Episode {{episode_id: $episode_id}}) SET {', '.join(sets)}",
         **params,
     )
+    # 도메인 계층(E-1, v11). 이 경로는 `domain` 을 **항상** 쓰므로(부분 재전송 개념이
+    # 없다) 무조건 맞춘다 — api/fragment 의 조건부와 다른 이유가 그것이다.
+    domain_hierarchy.link_node(revstamp.session_runner(session), "Episode",
+                               ep["episode_id"], params["domain"])
 
 
 # ── Archival 이관 ─────────────────────────────────────────────────────────────

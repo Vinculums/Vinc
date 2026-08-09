@@ -65,6 +65,23 @@ def main(argv: list[str] | None = None) -> int:
     dm = sub.add_parser("domains", help="list a learner's domains (discovered from data, not a fixed list)")
     dm.add_argument("--owner", default=None, help="owner_id scope (omit for all learners)")
 
+    # E-1 — v11 이행. ⚠ **평시에는 이걸 부를 일이 없다**: 파생은 부팅 데이터 스텝이
+    # 하고(store.embedded_backend.migrate, DOMAIN_HIERARCHY_VERSION) 이후는 쓰기
+    # 경로가 유지한다. 이 명령이 있는 이유는 `--rename` 뿐이다 — 평면 도메인을 계층
+    # 아래로 옮기는 것은 사람의 결정이라 부팅이 대신하면 안 된다.
+    # ⚠ 스토어가 **다른 프로세스에 잠겨 있으면 안 된다**(사이드카·앱 실행 중 금지).
+    dh_ = sub.add_parser("domain-backfill",
+                         help="move topics under a parent and re-derive the hierarchy "
+                              "(--rename design=vinc/design). Store must not be locked "
+                              "by a running sidecar or app.")
+    dh_.add_argument("--owner", default=None, help="owner_id scope (omit for every owner)")
+    dh_.add_argument("--rename", default=None, metavar="OLD=NEW",
+                     action="append",
+                     help="also move a topic, column and edges together "
+                          "(e.g. --rename design=vinc/design). Repeatable.")
+    dh_.add_argument("--dry-run", action="store_true",
+                     help="report what would change without writing")
+
     lm = sub.add_parser("learner", help="a learner's method — how they learn (LearnerPattern / U-patterns)")
     lm.add_argument("--owner", required=True, help="owner_id (the individual learner)")
 
@@ -240,6 +257,43 @@ def main(argv: list[str] | None = None) -> int:
                               rank=args.rank, limit=args.limit))
     if args.cmd == "domains":
         return _emit(q.domains(owner=args.owner))
+    if args.cmd == "domain-backfill":
+        from engines import domain_hierarchy as _dh
+        from store.backend import open_store as _open
+        from store.config import load_config as _load
+        pairs: dict[str, str] = {}
+        for spec in (args.rename or []):
+            if "=" not in spec:
+                return _emit({"kind": "domain.backfill", "executed": False,
+                              "error": f"--rename needs OLD=NEW, got {spec!r}"})
+            old, new = spec.split("=", 1)
+            pairs[old.strip()] = new.strip()
+        _st = _open(_load())
+        if _st is None:
+            return _emit({"kind": "domain.backfill", "executed": False,
+                          "error": "no reachable store"})
+        try:
+            if args.dry_run:
+                # 쓰기 없이 무엇이 바뀔지만 센다. 이행 절차상 이 출력이 먼저 나오고
+                # 사람이 보고 나서 실행하는 것이 기본이다.
+                seen: dict[str, int] = {}
+                for lbl, pk in _dh.DOMAIN_LABELS.items():
+                    w = "WHERE n.domain IS NOT NULL AND n.domain <> ''"
+                    p: dict = {}
+                    if args.owner:
+                        w += " AND n.owner_id = $owner"
+                        p["owner"] = args.owner
+                    for r in _st.run(f"MATCH (n:{lbl}) {w} RETURN n.domain AS d", p) or []:
+                        cur = r.get("d") or ""
+                        tgt = _dh.normalize(pairs.get(cur, cur))
+                        seen[f"{cur} -> {tgt}"] = seen.get(f"{cur} -> {tgt}", 0) + 1
+                return _emit({"kind": "domain.backfill", "executed": True,
+                              "dry_run": True, "would_link": sum(seen.values()),
+                              "moves": dict(sorted(seen.items()))})
+            res = _dh.backfill(_st, owner=args.owner, rename=pairs)
+            return _emit({"kind": "domain.backfill", "executed": True, **res})
+        finally:
+            _st.close()
     if args.cmd == "learner":
         return _emit(q.learner_model(owner=args.owner))
     if args.cmd == "graph":

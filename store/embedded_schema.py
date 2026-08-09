@@ -222,7 +222,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
 #: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
@@ -230,6 +230,13 @@ SCHEMA_VERSION = 10
 #: Cypher 로는 못 쓴다). 버전 상수를 여기 두는 이유: 스키마 버전과 그 버전이
 #: 요구하는 데이터 스텝이 떨어져 있으면 다음 bump 때 조용히 빠진다.
 EPISODE_TIME_BACKFILL_VERSION = 9
+
+#: v11 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
+#: 기존 노드의 `domain` 열 → Domain 노드·PARENT_OF·IN_DOMAIN 파생을 한 번 돌린다.
+#: 구현은 `engines.domain_hierarchy.backfill`(문자열을 잘라 노드·엣지를 만들어야 해서
+#: Cypher 로는 못 쓴다). 부팅에 두는 이유는 v9 와 같다: 사이드카가 DB 락을 쥐고 있어
+#: 별도 프로세스로는 스토어를 못 연다. 멱등이라 중간에 죽어도 다음 기동이 마무리한다.
+DOMAIN_HIERARCHY_VERSION = 11
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -284,6 +291,11 @@ def migration_statements(from_version: int) -> list[str]:
     # v10 — 병합 후보 기각 기억(_MergeRejection, F10-b). **ALTER 스텝이 없다**: 신규
     # 메타 테이블은 매 부팅 멱등 DDL(render_meta_tables)이 만든다(_DocTombstone·
     # ChunkVec 전례). 백필할 기존 데이터도 없다 — 기각 이력은 이 버전부터 쌓인다.
+    # v11 — 도메인 계층(E-1: PARENT_OF · IN_DOMAIN). **ALTER 스텝이 없다**: 신규 rel
+    # 테이블은 매 부팅 멱등 DDL(render_rel_tables)이 만든다. 다만 **백필은 필요하다** —
+    # 기존 노드의 `domain` 문자열에서 엣지를 만드는 것은 DDL 이 아니라 데이터 스텝이라
+    # 여기 못 쓴다(v9 Episode 백필과 같은 이유). 그 스텝은 쓰기 경로가 자연 치유하거나
+    # 일괄 백필로 돈다 — 엣지가 없는 동안은 계층 조회가 빌 뿐 기존 경로는 멀쩡하다.
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -305,8 +317,12 @@ _REL_TABLES: list[tuple] = [
     ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
     # MCP fragment 엣지(D11 §5) 지원 —
     #   inherits_from(Concept→Concept)는 1급 관계 테이블.
-    #   Record 참여 엣지는 임베디드 rel 테이블이 FROM/TO 타입 고정이므로
-    #   ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment 엣지 타입 보존).
+    #   Record 참여 엣지는 ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment
+    #   엣지 타입 보존). ⚠ 여기 "임베디드 rel 테이블이 FROM/TO 타입 고정"이라 적혀
+    #   있었는데 그건 kuzu 0.11.3 시절이고 **지금은 틀리다** — ladybug 0.18.0 은 한
+    #   테이블에 여러 FROM/TO 쌍을 받는다(2026-08-09 실엔진 확인, 아래 IN_DOMAIN 이
+    #   그 형태). ATTACHES_TO 를 이 이유로 되돌릴 필요는 없다: type 열이 이미 원
+    #   엣지 타입을 보존하고 있어 쪼개면 데이터 이관만 생긴다.
     ("INHERITS_FROM", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
     ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
@@ -323,6 +339,24 @@ _REL_TABLES: list[tuple] = [
     # 후보로 올린다(리서치 ① 다중 홉 가교 해소, HippoRAG 이부 그래프의 결정론 번역).
     # method = 링크 근거('source'|'title'|'stem') — 재적재 시 드랍-리빌드 관리.
     ("MENTIONS", "Chunk", "Concept", [("method", "STRING")]),
+    # ── 도메인 계층 (v11, E-1) ────────────────────────────────────────────
+    # 도메인은 여태 **문자열 열**로만 있었다. `vinc/design` 의 `/` 가 계층을 뜻했지만
+    # 그건 이름 규약일 뿐이라 그래프로는 못 따라갔다: `Domain` 테이블에 3행(art·math·
+    # physics, 학습자료 잔해)이 고아로 남아 있고 엣지가 **0건**이었다. 실측 2026-08-09.
+    #
+    # 두 관계는 **파생물이지 저작물이 아니다.** 사용자는 지금처럼 `domain` 필드에
+    # 문자열만 적고, 노드와 엣지는 쓰기 경로가 그 문자열에서 만든다. 그래서 GRAPH.md
+    # 의 저작 엣지 여섯 종은 그대로다 — 어휘를 늘리지 않는다.
+    #
+    # ⚠ `Domain` 은 **무소유 전역 구조**다(열이 `name` 뿐). 소유는 이 엣지의 **출발점**
+    # 노드가 진다 — `Bridge-[CROSSES]->Domain` 이 이미 그 모양이다. 그래서 소유자별
+    # 도메인 노드를 만들 필요가 없고, PK(`name`) 를 바꾸는 무거운 이관도 필요 없다.
+    ("PARENT_OF", "Domain", "Domain", []),
+    # 다중 FROM/TO 쌍을 **한 테이블**에 담는다. 위 ATTACHES_TO 주석이 "임베디드 rel
+    # 테이블은 FROM/TO 타입 고정"이라 적고 있는데 그건 kuzu 0.11.3 시절 제약이고,
+    # ladybug 0.18.0 은 다중 쌍을 받는다(2026-08-09 실엔진 확인). 그래서 라벨을
+    # 셋으로 쪼개지 않는다.
+    ("IN_DOMAIN", ("Concept", "Record", "Episode"), "Domain", []),
 ]
 
 
@@ -344,10 +378,19 @@ def render_meta_tables() -> list[str]:
 
 
 def render_rel_tables() -> list[str]:
+    """관계 테이블 DDL. ``src``·``dst`` 는 문자열 하나 또는 **여러 라벨의 튜플**이다.
+
+    여러 라벨을 주면 한 테이블이 그 조합 전부를 받는다
+    (``FROM A TO D, FROM B TO D``). ladybug 0.18.0 이 다중 쌍을 지원한다 —
+    구 주석이 말하는 "FROM/TO 고정"은 kuzu 0.11.3 시절이다(2026-08-09 실엔진 확인).
+    덕분에 `IN_DOMAIN` 을 라벨 셋으로 쪼개지 않는다."""
     out = []
     for label, src, dst, props in _REL_TABLES:
         cols = "".join(f", {p} {t}" for p, t in props)
-        out.append(f"CREATE REL TABLE {label}(FROM {src} TO {dst}{cols})")
+        srcs = (src,) if isinstance(src, str) else tuple(src)
+        dsts = (dst,) if isinstance(dst, str) else tuple(dst)
+        pairs = ", ".join(f"FROM {s} TO {d}" for s in srcs for d in dsts)
+        out.append(f"CREATE REL TABLE {label}({pairs}{cols})")
     return out
 
 
@@ -359,9 +402,23 @@ def node_table_specs() -> dict[str, dict]:
 
 
 def rel_table_specs() -> list[dict]:
-    """관계 테이블 명세(label·from·to·props 열) — 논리 이관용."""
-    return [{"label": lbl, "from": src, "to": dst, "props": [p for p, _ in props]}
-            for lbl, src, dst, props in _REL_TABLES]
+    """관계 테이블 명세(label·from·to·props 열) — 논리 이관용.
+
+    다중 FROM/TO 쌍 테이블(v11 `IN_DOMAIN`)은 **쌍마다 한 항목**으로 편다. 이관은
+    끝점 라벨을 박아 MATCH 하므로 쌍이 곧 이관 단위다.
+
+    ⚠ 그래서 `label` 은 더 이상 유일 키가 아니다. `{s["label"]: s for s in ...}` 로
+    접으면 마지막 쌍만 남고 나머지가 **조용히 사라진다**(store/migrate.py 가 리스트로
+    묶는 이유)."""
+    out: list[dict] = []
+    for lbl, src, dst, props in _REL_TABLES:
+        srcs = (src,) if isinstance(src, str) else tuple(src)
+        dsts = (dst,) if isinstance(dst, str) else tuple(dst)
+        cols = [p for p, _ in props]
+        for s in srcs:
+            for d in dsts:
+                out.append({"label": lbl, "from": s, "to": d, "props": list(cols)})
+    return out
 
 
 def render_embedded_ddl(*, dim: int) -> list[str]:

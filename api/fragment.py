@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import json
 
+from engines import domain_hierarchy
+
 from . import revstamp
 
 _NODE_MAP = {   # fragment type → (label, pk column)
@@ -191,7 +193,10 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                     f"node.domain not persisted on Bridge (id={nid}); "
                     "Bridge has source_domain/target_domain instead, not settable via fragment ingest")
             else:
-                _set("domain", str(node["domain"]))
+                # 정규화된 값을 **열에도** 넣는다 — 열과 Domain 노드 이름이 정확히
+                # 같아야 IN_DOMAIN 이 그 열의 그래프 표현일 수 있다(engines/
+                # domain_hierarchy.normalize 주석). 잘 쓴 값에는 항등이다.
+                _set("domain", domain_hierarchy.normalize(node["domain"]))
         if node.get("tags") is not None:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
@@ -266,6 +271,20 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 미지의 다른 케이스에 대한 안전망으로 존치).
         warnings.append(f"node write failed — skipped (id={nid}, label={label}): {exc}")
         return None
+
+    # 도메인 계층(E-1, v11) — `domain` 열이 설정된 노드에 Domain 노드·PARENT_OF 사슬·
+    # IN_DOMAIN 을 파생 유지한다. **열이 갱신될 때만** 돈다: 도메인을 안 실은 부분
+    # 재전송에서 엣지를 지우면 `domain` 열은 보존되는데 그래프 표현만 사라져 둘이
+    # 갈린다(title 무가드가 냈던 병과 같은 뿌리).
+    #
+    # 실패해도 노드 쓰기는 되돌리지 않는다 — 계층은 열에서 언제든 다시 파생되는
+    # 파생물이고(백필 스크립트가 그 일을 한다), 여기서 죽으면 배치 전체가 날아간다.
+    if "domain" in params and label in domain_hierarchy.DOMAIN_LABELS:
+        try:
+            domain_hierarchy.link_node(store, label, nid, params["domain"])
+        except Exception as exc:
+            warnings.append(f"domain hierarchy not updated (id={nid}): {exc}")
+
     return "matched" if matched else "created"
 
 

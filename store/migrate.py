@@ -47,8 +47,12 @@ def export_store(store) -> dict:
         except Exception:
             rows = []
         for r in rows or []:
+            # 끝점 라벨을 함께 적는다 — 다중 FROM/TO 쌍 테이블(v11 IN_DOMAIN)에서는
+            # pk 값만으로 어느 쌍인지 못 가른다. 구 덤프에는 이 열이 없어 import 가
+            # 쌍 전수 시도로 물러선다.
             edges.append({"label": label, "from": r.pop("_from"),
-                          "to": r.pop("_to"), "props": r})
+                          "to": r.pop("_to"), "from_label": src, "to_label": dst,
+                          "props": r})
     return {"dump_version": _DUMP_VERSION, "schema_version": _schema.SCHEMA_VERSION,
             "nodes": nodes, "edges": edges}
 
@@ -76,21 +80,31 @@ def import_store(store, dump: dict, *, dim: int) -> dict:
             params = {c: row.get(c) for c in cols}
             store.run(f"MERGE (n:{label} {{{pk}: ${pk}}}){setc}", params)
             n_count += 1
-    rel_by_label = {s["label"]: s for s in _schema.rel_table_specs()}
+    # label → 쌍 **리스트**. dict 로 접으면 다중 FROM/TO 쌍 테이블(v11 IN_DOMAIN)에서
+    # 마지막 쌍만 남아 나머지 쌍의 엣지가 0건 MATCH 로 조용히 유실된다.
+    rel_by_label: dict[str, list[dict]] = {}
+    for s in _schema.rel_table_specs():
+        rel_by_label.setdefault(s["label"], []).append(s)
     for edge in dump.get("edges") or []:
-        spec = rel_by_label.get(edge["label"])
-        if not spec:
+        specs = rel_by_label.get(edge["label"])
+        if not specs:
             continue
-        src, dst = spec["from"], spec["to"]
-        src_pk, dst_pk = node_specs[src]["pk"], node_specs[dst]["pk"]
+        # 덤프가 끝점 라벨을 실었으면 그 쌍만(정확). 구 덤프는 열이 없어 쌍 전수
+        # 시도로 물러선다 — 안 맞는 쌍은 MATCH 가 비어 no-op 이다.
+        want = (edge.get("from_label"), edge.get("to_label"))
+        if all(want):
+            specs = [s for s in specs if (s["from"], s["to"]) == want] or specs
         props = edge.get("props") or {}
         setr = (" SET " + ", ".join(f"r.{p} = $much_{p}" for p in props)) if props else ""
         params = {"_s": edge["from"], "_d": edge["to"]}
         params.update({f"much_{p}": v for p, v in props.items()})
-        store.run(
-            f"MATCH (a:{src}), (b:{dst}) "
-            f"WHERE a.{src_pk} = $_s AND b.{dst_pk} = $_d "
-            f"MERGE (a)-[r:{edge['label']}]->(b){setr}", params)
+        for spec in specs:
+            src, dst = spec["from"], spec["to"]
+            src_pk, dst_pk = node_specs[src]["pk"], node_specs[dst]["pk"]
+            store.run(
+                f"MATCH (a:{src}), (b:{dst}) "
+                f"WHERE a.{src_pk} = $_s AND b.{dst_pk} = $_d "
+                f"MERGE (a)-[r:{edge['label']}]->(b){setr}", params)
         e_count += 1
     return {"nodes": n_count, "edges": e_count}
 

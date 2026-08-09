@@ -103,15 +103,34 @@ class ProvisionTests(unittest.TestCase):
                       "evidence STRING, confidence DOUBLE)", ddl)
         # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
         self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
+        # v11 도메인 계층(E-1). IN_DOMAIN 은 **한 테이블에 세 쌍** — 라벨을 셋으로
+        # 쪼개지 않는다(ladybug 0.18.0 다중 FROM/TO 지원, 2026-08-09 실엔진 확인).
+        self.assertIn("CREATE REL TABLE PARENT_OF(FROM Domain TO Domain)", ddl)
+        self.assertIn("CREATE REL TABLE IN_DOMAIN(FROM Concept TO Domain, "
+                      "FROM Record TO Domain, FROM Episode TO Domain)", ddl)
+
+    def test_multi_pair_rel_specs_expand_per_pair(self):
+        """다중 쌍 테이블은 이관 명세에서 **쌍마다** 한 항목으로 펴진다.
+
+        label 이 유일 키였다면 dict 로 접히며 두 쌍이 조용히 사라진다 — 논리 이관
+        (store/migrate.py)이 그 라벨의 엣지를 0건 MATCH 로 유실하는 형태다."""
+        specs = eschema.rel_table_specs()
+        pairs = {(s["from"], s["to"]) for s in specs if s["label"] == "IN_DOMAIN"}
+        self.assertEqual(pairs, {("Concept", "Domain"), ("Record", "Domain"),
+                                 ("Episode", "Domain")})
+        # 단일 쌍 라벨은 그대로 한 항목
+        self.assertEqual(1, len([s for s in specs if s["label"] == "CROSSES"]))
 
     def test_bridge_owner_column_and_v2_migration(self):
         # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 10)   # v10 — 병합 후보 기각 기억(F10-b)
+        self.assertEqual(eschema.SCHEMA_VERSION, 11)   # v11 — 도메인 계층(E-1)
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
+        # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
+        self.assertEqual([], [s for s in eschema.migration_statements(10)])
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)
