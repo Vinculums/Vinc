@@ -153,7 +153,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 12)   # v12 — 결정(Decision) 타입
+        self.assertEqual(eschema.SCHEMA_VERSION, 13)   # v13 — 결정을 주제 계층에
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
@@ -166,8 +166,12 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("ALTER TABLE IN_DOMAIN ADD FROM Decision TO Domain", v12)
         self.assertTrue(all("Decision" in s for s in v12),
                         "v12 스텝에 결정과 무관한 문이 섞였다")
-        # 최신 버전에서 올라올 것은 없다.
+        # v13 은 DDL 스텝이 없다 — 쌍은 v12 가 이미 열었고, 이 버전이 하는 일은
+        # DOMAIN_HIERARCHY_VERSION 을 넘겨 **계층 백필을 다시 돌리는 것**이다.
+        # 그래서 그 상수가 SCHEMA_VERSION 을 따라와야 의미가 있다(안 따라오면
+        # 결정이 `domain` 열만 갖고 엣지를 못 가진 채 남는다 — 실제로 그랬다).
         self.assertEqual([], eschema.migration_statements(12))
+        self.assertEqual(eschema.DOMAIN_HIERARCHY_VERSION, eschema.SCHEMA_VERSION)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)

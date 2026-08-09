@@ -345,7 +345,8 @@ class BackfillTests(unittest.TestCase):
         # v11 **이전** 상태를 만든다: 열만 쓰고 엣지는 안 만든다(쓰기 경로 우회).
         for lbl, pk, i in (("Concept", "concept_id", "c1"),
                            ("Record", "record_id", "r1"),
-                           ("Episode", "episode_id", "e1")):
+                           ("Episode", "episode_id", "e1"),
+                           ("Decision", "decision_id", "dec1")):   # v13
             self._store.run(f"MERGE (n:{lbl} {{{pk}: $i}}) "
                             "SET n.domain = 'design', n.owner_id = 'u1'", {"i": i})
         self._store.run("MERGE (n:Concept {concept_id:'c2'}) "
@@ -361,20 +362,31 @@ class BackfillTests(unittest.TestCase):
     def test_backfill_links_existing_nodes(self):
         self.assertEqual(0, self._edges())
         res = dh.backfill(self._store)
-        self.assertEqual(3, res["linked"])
-        self.assertEqual(3, self._edges())
+        self.assertEqual(4, res["linked"])
+        self.assertEqual(4, self._edges())
         self.assertEqual(0, res["renamed"])
         # 빈 도메인은 세지 않는다 — 미분류는 좌표가 없는 것이 맞다.
-        self.assertEqual(3, res["scanned"])
+        self.assertEqual(4, res["scanned"])
+
+    def test_every_semantic_layer_is_in_the_hierarchy(self):
+        """의미층이 하나 늘 때 이 표에 안 넣으면 그 층은 `domain` **열**만 갖고
+        **엣지**를 못 가진다 — `vinc_domains`(열 집계)와 `vinc_neighbors`(그래프
+        조회)가 서로 다른 답을 주는 상태다. v12 의 Decision 이 실제로 그렇게 배포됐다.
+
+        스키마 쪽 쌍(IN_DOMAIN 의 FROM 목록)과 이 표가 어긋나지 않는지 대조한다."""
+        from store import embedded_schema as es
+        pairs = {s["from"] for s in es.rel_table_specs() if s["label"] == "IN_DOMAIN"}
+        self.assertEqual(pairs, set(dh.DOMAIN_LABELS),
+                         "IN_DOMAIN 의 끝점과 백필 라벨 표가 어긋났다")
 
     def test_backfill_is_idempotent(self):
         dh.backfill(self._store)
         dh.backfill(self._store)
-        self.assertEqual(3, self._edges())
+        self.assertEqual(4, self._edges())
 
     def test_rename_moves_column_and_edge_together(self):
         res = dh.backfill(self._store, rename={"design": "vinc/design"})
-        self.assertEqual(3, res["renamed"])
+        self.assertEqual(4, res["renamed"])
         col = {r["d"] for r in self._store.run(
             "MATCH (n:Concept {concept_id:'c1'}) RETURN n.domain AS d")}
         self.assertEqual({"vinc/design"}, col)
@@ -392,11 +404,39 @@ class BackfillTests(unittest.TestCase):
         self._store.run("MATCH ()-[r:IN_DOMAIN]->() DELETE r")
         self.assertEqual(0, self._edges())
         res = self._store.migrate(dim=self._cfg.embedding_dim)
-        self.assertEqual(3, res["domain_links_backfilled"])
-        self.assertEqual(3, self._edges())
+        self.assertEqual(4, res["domain_links_backfilled"])
+        self.assertEqual(4, self._edges())
         # 두 번째 기동은 다시 돌지 않는다(버전이 기록됐다).
         res2 = self._store.migrate(dim=self._cfg.embedding_dim)
         self.assertEqual(0, res2["domain_links_backfilled"])
+
+    def test_about_only_node_is_not_reported_as_orphan(self):
+        """`ABOUT` 하나로 이어진 결정을 고아라 부르면 안 된다.
+
+        진단의 성분 분석이 걷는 관계 목록에서 `ABOUT` 이 빠져 있어, v12 이관 직후
+        결정 67건 중 43건이 고아로 보고됐다 — 전부 거짓이었다(`decision:d68` 은
+        ABOUT 이웃을 갖고도 고아로 떴다, 2026-08-09 라이브 실측). 층이 늘 때마다
+        **투영에는 들어오는데 그 층의 엣지는 안 걷는** 비대칭이 재발할 수 있다."""
+        st = self._store
+        st.run("MERGE (:Concept {concept_id:'c-target', domain:'d', owner_id:'u1'})")
+        st.run("MERGE (:Decision {decision_id:'dec-linked', domain:'d', owner_id:'u1'})")
+        st.run("MATCH (a:Decision {decision_id:'dec-linked'}), "
+               "(b:Concept {concept_id:'c-target'}) MERGE (a)-[:ABOUT]->(b)")
+        # graph_algo 는 {id, value} 로 돌려준다(value = 성분 번호).
+        groups: dict = {}
+        for r in st.graph_algo("weakly_connected_components") or []:
+            if r.get("id"):
+                groups.setdefault(r.get("value"), []).append(r["id"])
+        # ⚠ 먼저 **분석이 실제로 돌았는지** 확인한다. 이 두 줄이 없으면 알고리즘이
+        # 빈 결과를 줘도 아래 assertNotIn 이 그냥 통과해 테스트가 공허해진다
+        # (처음 쓴 형태가 그랬고, 수정을 되돌려도 초록이었다).
+        seen = {n for m in groups.values() for n in m}
+        self.assertIn("dec-linked", seen, "결정이 투영에 아예 안 들어왔다")
+        self.assertIn("c-target", seen)
+        # 그리고 **같은 성분**이어야 한다 — ABOUT 을 안 걷으면 각자 1인 성분이 된다.
+        gid = next(g for g, m in groups.items() if "dec-linked" in m)
+        self.assertIn("c-target", groups[gid],
+                      "ABOUT 로 이어진 결정이 개념과 다른 성분에 있다(고아 오판)")
 
     def test_backfill_does_not_restamp(self):
         """366 노드에 스탬프를 찍으면 모든 기기가 전량을 다시 받는다. 이행은 내용

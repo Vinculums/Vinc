@@ -1132,7 +1132,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "12")   # v12 — 결정(Decision) 타입
+        self.assertEqual(rows[0]["v"], "13")   # v13 — 결정을 주제 계층에(E-1 보정)
         # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
         # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
         store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "

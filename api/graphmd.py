@@ -78,6 +78,7 @@ in a session. Judging meaning is your job. This file only fixes the conventions.
 Search first (vinc_search), reuse the ids you get back, and prefer attaching to an
 existing concept over creating a near duplicate. Ids carry their type as a prefix:
 concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
+Write in English, titles and bodies alike, whatever language you are thinking in.
 
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
@@ -95,8 +96,7 @@ BAD "Database stuff": several ideas in a bag. Split it.
 BAD "What I read today": not a concept. That is an Episode.
 BAD "PostgreSQL" and "Postgres" as two nodes: the same thing. Keep one.
 Test: if you cannot finish the sentence "X is ..." in two sentences, it is too big.
-That test passes for people and products too, so also ask: is it a reusable idea?
-Write a thing in the world (a person, a product) as an Entity or a record, not a Concept.
+People and products pass that test but are not ideas: write them as an Entity or record.
 
 ## Relations [schema-fixed]
 - relates_to: loose association. Undirected (the reverse folds into the same edge).
@@ -131,6 +131,7 @@ _TPL_KO = """# GRAPH.md
 먼저 검색하고(vinc_search), 돌려받은 id 를 재사용하고, 비슷한 개념을 새로 만들기보다
 기존 개념에 붙이십시오. id 는 종류를 접두사로 답니다:
 concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
+제목도 본문도 **영어로** 쓰십시오. 당신이 어떤 언어로 생각하든 그렇습니다.
 
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
@@ -148,8 +149,7 @@ BAD "데이터베이스 관련": 여러 관념을 한 자루에 담았습니다.
 BAD "오늘 읽은 것": 개념이 아닙니다. Episode 입니다.
 BAD "PostgreSQL" 과 "Postgres" 를 각각: 같은 것입니다. 하나만 두십시오.
 기준: "X 는 ...이다" 를 두 문장으로 못 끝내면 너무 큽니다.
-이 기준은 인물·제품에도 통과합니다. 재사용되는 관념인지 함께 물으십시오.
-세상의 개체(인물·제품)는 Concept 이 아니라 Entity 나 record 로 넣으십시오.
+인물·제품은 이 기준을 통과하지만 관념이 아닙니다: Entity 나 record 로 넣으십시오.
 
 ## 관계 [스키마 고정]
 - relates_to: 느슨한 연관. 무방향입니다(역방향은 같은 간선으로 접힙니다).

@@ -237,7 +237,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
 #: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
@@ -251,7 +251,12 @@ EPISODE_TIME_BACKFILL_VERSION = 9
 #: 구현은 `engines.domain_hierarchy.backfill`(문자열을 잘라 노드·엣지를 만들어야 해서
 #: Cypher 로는 못 쓴다). 부팅에 두는 이유는 v9 와 같다: 사이드카가 DB 락을 쥐고 있어
 #: 별도 프로세스로는 스토어를 못 연다. 멱등이라 중간에 죽어도 다음 기동이 마무리한다.
-DOMAIN_HIERARCHY_VERSION = 11
+#: ⚠ v12 에서 13 으로 올린다. v12 가 의미층(Decision)을 하나 늘렸는데 계층 백필의
+#: 라벨 표(engines.domain_hierarchy.DOMAIN_LABELS)에는 안 들어가서, 결정 67건이
+#: `domain` 열은 갖고 엣지는 못 가진 채 배포됐다. 이 상수를 올려야 이미 v12 인
+#: 스토어에서 백필이 **다시** 돈다. 멱등이고 도메인 단위 집합 연산이라 재실행 비용은
+#: 0.1초대다(5000노드 0.14s 실측) — 의미층이 늘 때마다 여기를 올리는 것이 맞다.
+DOMAIN_HIERARCHY_VERSION = 13
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -328,6 +333,10 @@ def migration_statements(from_version: int) -> list[str]:
                 for d in dsts:
                     if "Decision" in (s, d):
                         stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
+    # v13 — 결정을 주제 계층에 넣는다. **DDL 스텝이 없다**: 끝점 쌍은 위 v12 루프가
+    # 이미 열었고(`IN_DOMAIN ADD FROM Decision TO Domain`), 빠져 있던 것은 백필의
+    # 라벨 표뿐이었다. 그래서 이 버전이 하는 일은 DOMAIN_HIERARCHY_VERSION 을 넘겨
+    # **백필을 다시 돌리는 것**이다(위 상수 주석).
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

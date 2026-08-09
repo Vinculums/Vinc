@@ -910,9 +910,24 @@ class EmbeddedBackend:
         "louvain": "louvain_id",
         "page_rank": "rank",
     }
-    # 기본 프로젝션 = 의미층 관계 4종(방향 무관 구조 연결성). **노드 테이블은 여기
-    # 안 적는다** — 아래 _algo_projection 이 이 rel 들의 끝점에서 파생한다.
-    _ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
+    # 기본 프로젝션 = 의미층을 **실제로 잇는** 관계들(방향 무관 구조 연결성).
+    # **노드 테이블은 여기 안 적는다** — 아래 _algo_projection 이 끝점에서 파생한다.
+    #
+    # ⚠ ABOUT·ATTACHES_TO 가 원래 빠져 있었고, v12 가 의미층을 늘리자 그것이
+    # **고아 오판**으로 드러났다: 결정 67건 중 43건이 `vinc_diagnose` 의 orphans 에
+    # 올라왔는데, 이관이 결정→개념을 `ABOUT` 으로 이었으므로 전부 거짓이었다
+    # (`decision:d68` 은 ABOUT 이웃 1건을 갖고도 고아로 보고됐다, 2026-08-09 실측).
+    #
+    # 4종이던 시절에는 이 누락이 안 보였다 — ABOUT 의 끝점 Episode 와 ATTACHES_TO 의
+    # Record 는 투영에 아예 없었으니 "고아로 잘못 뜨는" 일 자체가 없었다. 층이 늘면서
+    # **투영에는 들어오는데 그 층의 엣지는 안 걷는** 비대칭이 생긴 것이 원인이다.
+    # 그래서 "의미층 관계 4종"이 아니라 "의미층을 잇는 관계 전부"로 규칙을 바꾼다.
+    #
+    # 부수효과(의도한 것): Episode·Record 도 진단에 들어온다. `ABOUT`/`ATTACHES_TO`
+    # 가 없는 사건·기록은 실제로 지식그래프에서 떨어져 있으므로 고아로 보고되는 것이
+    # 맞다. 커뮤니티(louvain)는 이 기본값을 안 쓴다 — 호출부가 RELATED_TO 만 넘긴다.
+    _ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM",
+                        "INHERITS_FROM", "ABOUT", "ATTACHES_TO")
 
     @staticmethod
     def _algo_projection(rel_tables: tuple) -> tuple[tuple[str, ...], str]:

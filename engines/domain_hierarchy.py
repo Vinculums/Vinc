@@ -40,6 +40,11 @@ DOMAIN_LABELS: dict[str, str] = {
     "Concept": "concept_id",
     "Record": "record_id",
     "Episode": "episode_id",
+    # v12 에서 의미층이 하나 늘었다. 이 표에 안 넣으면 결정은 `domain` **열**은 갖는데
+    # **엣지**를 못 가져서, `vinc_domains`(열 집계)와 `vinc_neighbors`(그래프 조회)가
+    # 서로 다른 답을 준다 — 실제로 그 상태로 배포됐다(governance 42 vs 23, 2026-08-09).
+    # 스키마 쪽 쌍(_REL_TABLES·v12 ALTER)은 이미 열려 있었고 여기만 빠져 있었다.
+    "Decision": "decision_id",
 }
 
 
