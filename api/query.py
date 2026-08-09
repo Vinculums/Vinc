@@ -332,11 +332,13 @@ def domain_counts_plan(*, owner: str | None = None) -> QueryPlan:
         where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
         where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
         where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
+        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
         params: dict = {"owner": owner}
     else:
         where_e = "WHERE e.domain IS NOT NULL"
         where_c = "WHERE c.domain IS NOT NULL"
         where_r = "WHERE r.domain IS NOT NULL"
+        where_d = "WHERE d.domain IS NOT NULL"
         params = {}
     cypher = (
         f"MATCH (e:Episode) {where_e} "
@@ -346,7 +348,12 @@ def domain_counts_plan(*, owner: str | None = None) -> QueryPlan:
         "RETURN c.domain AS domain, count(*) AS n, 'concepts' AS kind "
         "UNION ALL "
         f"MATCH (r:Record) {where_r} "
-        "RETURN r.domain AS domain, count(*) AS n, 'records' AS kind"
+        "RETURN r.domain AS domain, count(*) AS n, 'records' AS kind "
+        "UNION ALL "
+        # v12 — 결정을 세지 않으면 이관 직후 `concepts` 가 68 줄어든 채 결정이
+        # 어디에도 안 나온다. 그 화면은 데이터 손실과 구분되지 않는다.
+        f"MATCH (d:Decision) {where_d} "
+        "RETURN d.domain AS domain, count(*) AS n, 'decisions' AS kind"
     )
     return QueryPlan("domains", cypher, params,
                      note="Episode+Concept+Record 집계 (open-domain discovery, data-driven)")
@@ -358,25 +365,29 @@ def domain_names_plan(*, owner: str | None = None) -> QueryPlan:
     :func:`domain_counts_plan` 과 같은 3개 라벨을 보되 카운트를 세지 않는다 —
     무료 등급 주제 상한이 **매 적재마다** 도는 경로라 집계·정렬이 순수 낭비다.
 
-    라벨 집합을 `domains()` 와 **일부러 일치**시켰다(Episode·Concept·Record).
+    라벨 집합을 `domains()` 와 **일부러 일치**시켰다(Episode·Concept·Record·Decision).
     상한이 다른 집합을 세면 사용자가 `vinc_domains` 로 4개를 보면서 "5개 상한에
     걸렸다"는 말을 듣게 된다 — 그 불일치가 곧 지원 문의가 된다."""
     if owner:
         where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
         where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
         where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
+        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
         params: dict = {"owner": owner}
     else:
         where_e = "WHERE e.domain IS NOT NULL"
         where_c = "WHERE c.domain IS NOT NULL"
         where_r = "WHERE r.domain IS NOT NULL"
+        where_d = "WHERE d.domain IS NOT NULL"
         params = {}
     cypher = (
         f"MATCH (e:Episode) {where_e} RETURN DISTINCT e.domain AS domain "
         "UNION ALL "
         f"MATCH (c:Concept) {where_c} RETURN DISTINCT c.domain AS domain "
         "UNION ALL "
-        f"MATCH (r:Record) {where_r} RETURN DISTINCT r.domain AS domain"
+        f"MATCH (r:Record) {where_r} RETURN DISTINCT r.domain AS domain "
+        "UNION ALL "
+        f"MATCH (d:Decision) {where_d} RETURN DISTINCT d.domain AS domain"
     )
     return QueryPlan("domain_names", cypher, params,
                      note="주제 이름 집합 (상한 검사용 — 집계 없음)")
@@ -396,8 +407,8 @@ def domain_names(*, owner: str | None = None, cfg=None, store=None) -> set[str] 
 
 def domains(*, owner: str | None = None, cfg=None, store=None,
             debug: bool = False) -> dict:
-    """도메인 목록(C2) — Episode·Concept·Record 3종을 모두 세어 `{domain, episodes,
-    concepts, records, total}` 로 병합, total 내림차순 정렬. `episodes` 필드는
+    """도메인 목록(C2) — Episode·Concept·Record·Decision 4종을 모두 세어 `{domain,
+    episodes, concepts, records, decisions, total}` 로 병합, total 내림차순 정렬. `episodes` 필드는
     하위호환으로 유지(값 = Episode 카운트만)."""
     res = execute(domain_counts_plan(owner=owner), cfg, store=store, debug=debug)
     if not res.get("executed"):
@@ -407,13 +418,16 @@ def domains(*, owner: str | None = None, cfg=None, store=None,
         dom = row.get("domain")
         if not dom:
             continue
-        bucket = agg.setdefault(dom, {"domain": dom, "episodes": 0, "concepts": 0, "records": 0})
+        # v12 — `decisions` 를 버킷에 넣지 않으면 아래 `if kind in bucket` 이 그 행을
+        # **조용히 버린다**(플랜은 세는데 응답에는 안 나온다).
+        bucket = agg.setdefault(dom, {"domain": dom, "episodes": 0, "concepts": 0,
+                                      "records": 0, "decisions": 0})
         kind = row.get("kind")
         if kind in bucket:
             bucket[kind] += int(row.get("n") or 0)
     rows = list(agg.values())
     for r in rows:
-        r["total"] = r["episodes"] + r["concepts"] + r["records"]
+        r["total"] = r["episodes"] + r["concepts"] + r["records"] + r["decisions"]
     rows.sort(key=lambda r: (-r["total"], r["domain"]))
     res["rows"] = rows
     return res
@@ -932,6 +946,11 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
     )
     return QueryPlan("entity_graph", cypher, params, note="entity rows for id set (TYPED)")
 
+
+#: 의미층 라벨 → PK. 관측·부착 플랜이 "상대편으로 올 수 있는 것"을 여기서 편다.
+#: (store.embedded_schema._SEMANTIC_LABELS 와 같은 집합 — 그쪽은 스키마, 여기는 조회.)
+_SEMANTIC_PK: dict[str, str] = {"Concept": "concept_id", "Decision": "decision_id"}
+_SEMANTIC_LABELS = frozenset(_SEMANTIC_PK)
 
 _SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용 (+ entity, F1)
     "concept": ("Concept", "concept_id"),
@@ -1784,10 +1803,19 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         return base
     try:
         lim = max(1, min(int(limit), 12))
-        # ① 노드 메타 — Concept 우선, 없으면 Episode(타임라인 뷰의 클릭 대상).
+        # ① 노드 메타 — 의미층(개념·결정) 우선, 없으면 Episode(타임라인 클릭 대상).
+        #
+        # v12 — 라벨을 id 접두사에서 꺼낸다. 여기 Concept 이 박혀 있으면 결정을
+        # 클릭했을 때 `executed:False` + "unknown node" 가 나온다(라이브 탐침에서
+        # 실제로 그랬다). Decision 에는 one_liner 열이 없어 그 자리는 '' 로 둔다 —
+        # props 폴백은 아래 주석대로 호출부가 한다.
+        meta_label, meta_pk = _seed_table(node)
+        if meta_label not in _SEMANTIC_LABELS:
+            meta_label, meta_pk = "Concept", "concept_id"
+        ol_expr = "c.one_liner" if meta_label == "Concept" else "''"
         rows = store.run(
-            "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $owner "
-            "RETURN c.title AS title, c.one_liner AS ol, c.props AS props",
+            f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+            f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props",
             {"id": node, "owner": owner})
         if rows:
             # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
@@ -1795,7 +1823,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             # 돌려주면 상세 패널·묻기 답변이 통째로 빈다. 사람이 쓴 한두 문장 요약은
             # 실제로는 props 에 들어와 있고(검색은 이미 본다 — matched_in:'props'),
             # 조회만 그것을 안 주고 있었다. 호출부가 one_liner → props 순으로 고른다.
-            base.update(executed=True, node_kind="concept",
+            base.update(executed=True,
+                        node_kind="decision" if meta_label == "Decision" else "concept",
                         title=rows[0].get("title") or node,
                         one_liner=rows[0].get("ol") or "",
                         props=_props_to_obj(rows[0].get("props")))
@@ -1812,8 +1841,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             return base   # Episode 는 MENTIONS 대상이 아니다 — 요약이 곧 설명.
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
-            "MATCH (ch:Chunk)-[m:MENTIONS]->(c:Concept) "
-            "WHERE c.concept_id = $id AND c.owner_id = $owner "
+            f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
+            f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
             "AND (ch.owner_id = $owner OR ch.owner_id = '') "
             "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
             "ch.section_title AS section, ch.text AS text, m.method AS method "
@@ -1878,40 +1907,46 @@ def _node_links(store, node: str, *, owner: str) -> dict:
     스토어(E-G6 열 부재)에서 상세 패널 자체가 죽으면 안 된다."""
     empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
              "truncated": False, "executed": False}
+    # v12 — 시드 라벨을 접두사에서 꺼낸다. 상대편(o)은 의미층 둘을 다 본다.
+    # 박아 두면 결정의 상세 패널이 "연결 0"으로 뜬다(관계는 있는데 안 보인다).
+    _sl, _spk = _seed_table(node)
+    if _sl not in _SEMANTIC_LABELS:
+        _sl, _spk = "Concept", "concept_id"
     rows: list[dict] = []
     try:
-        rows = store.run(
-            # 개념↔개념 — 무라벨 `-[r]->` 가 바인딩할 수 있는 rel 은 CC 4종뿐이고
-            # 전부 E-G6 열을 가져 evidence/confidence 투영이 안전하다(graph_plan 주석).
-            "MATCH (c:Concept)-[r]->(o:Concept) "
-            "WHERE c.concept_id = $id AND c.owner_id = $owner AND o.owner_id = $owner "
-            "RETURN o.concept_id AS id, o.title AS title, o.domain AS domain, "
-            "label(r) AS type, 'out' AS dir, r.evidence AS ev, r.confidence AS conf "
-            "UNION ALL "
-            "MATCH (o:Concept)-[r]->(c:Concept) "
-            "WHERE c.concept_id = $id AND c.owner_id = $owner AND o.owner_id = $owner "
-            "RETURN o.concept_id AS id, o.title AS title, o.domain AS domain, "
-            "label(r) AS type, 'in' AS dir, r.evidence AS ev, r.confidence AS conf",
-            {"id": node, "owner": owner}) or []
+        cc = " UNION ALL ".join(
+            f"MATCH (c:{_sl})-[r]->(o:{ol}) "
+            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "label(r) AS type, 'out' AS dir, r.evidence AS ev, r.confidence AS conf"
+            for ol, opk in _SEMANTIC_PK.items())
+        cc += " UNION ALL " + " UNION ALL ".join(
+            f"MATCH (o:{ol})-[r]->(c:{_sl}) "
+            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "label(r) AS type, 'in' AS dir, r.evidence AS ev, r.confidence AS conf"
+            for ol, opk in _SEMANTIC_PK.items())
+        rows = store.run(cc, {"id": node, "owner": owner}) or []
     except Exception:
         return empty
+
     attached: list[dict] = []
     try:
         attached = store.run(
             # 부착 3종 — 각 rel 테이블의 열이 달라 evidence/confidence 는 ABOUT 만
             # 투영하고 나머지는 상수로 맞춘다(UNION ALL 은 컬럼 형태가 같아야 한다).
-            "MATCH (b:Bridge)-[:CONNECTS]->(c:Concept) "
-            f"WHERE c.concept_id = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
+            f"MATCH (b:Bridge)-[:CONNECTS]->(c:{_sl}) "
+            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
             "RETURN b.bridge_id AS id, b.title AS title, b.source_domain AS domain, "
             "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf "
             "UNION ALL "
-            "MATCH (e:Episode)-[r:ABOUT]->(c:Concept) "
-            "WHERE c.concept_id = $id AND c.owner_id = $owner AND e.owner_id = $owner "
+            f"MATCH (e:Episode)-[r:ABOUT]->(c:{_sl}) "
+            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND e.owner_id = $owner "
             "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
             "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf "
             "UNION ALL "
-            "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
-            "WHERE c.concept_id = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
+            f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{_sl}) "
+            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
             "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
             "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf",
             {"id": node, "owner": owner}) or []
@@ -2094,9 +2129,13 @@ def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
         base["note"] = "no reachable store"
         return base
     try:
+        # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
+        # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
         crows = store.run(
-            "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-            "AND c.domain <> '' RETURN c.concept_id AS id, c.domain AS domain",
+            " UNION ALL ".join(
+                f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+                f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain"
+                for lbl, pk in _SEMANTIC_PK.items()),
             {"owner": owner}) or []
         by_domain: dict[str, dict[str, str]] = {}
         cdom: dict[str, str] = {}
@@ -2659,18 +2698,25 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     """개념의 1-hop 이웃(무방향) — rel 타입·이웃 id/title/domain. `label(r)`(임베디드
     타입 함수 §6-2 M4). owner 지정 시 양 끝 스코프.
 
-    ⚠ 이 플랜은 **Concept↔Concept 만** 본다. 부착 축(Record·Episode·Bridge)은
-    :func:`node_attachments_plan` 이 따로 낸다 — 아래 그 함수의 주석 참조."""
+    ⚠ 이 플랜은 **의미층끼리만** 본다(개념·결정). 부착 축(Record·Episode·Bridge)은
+    :func:`node_attachments_plan` 이 따로 낸다 — 아래 그 함수의 주석 참조.
+
+    v12 — 시드 라벨은 id 접두사에서 꺼내고(`_seed_table`), 상대편은 개념·결정을 모두
+    본다. 라벨을 문자열로 박아 두면 결정에서 출발한 관측이 **빈 결과**가 되고, 그건
+    "이웃이 없다"와 구분되지 않는다."""
     params: dict = {"node": node}
-    n_where, m_where = "n.concept_id = $node", ""
+    s_label, s_pk = _seed_table(node)
+    if s_label not in _SEMANTIC_LABELS:
+        s_label, s_pk = "Concept", "concept_id"   # 하위호환: 접두사 없는 id 는 개념
+    n_where, m_where = f"n.{s_pk} = $node", ""
     if owner:
         n_where += " AND n.owner_id = $owner"
         m_where = " AND m.owner_id = $owner"
         params["owner"] = owner
-    cypher = (
-        f"MATCH (n:Concept)-[r]-(m:Concept) WHERE {n_where}{m_where} "
-        "RETURN label(r) AS rel, m.concept_id AS id, m.title AS title, m.domain AS domain"
-    )
+    cypher = " UNION ALL ".join(
+        f"MATCH (n:{s_label})-[r]-(m:{m_label}) WHERE {n_where}{m_where} "
+        f"RETURN label(r) AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain"
+        for m_label, m_pk in _SEMANTIC_PK.items())
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
 
 
@@ -2689,6 +2735,11 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     `domain` 열이 없어 `source_domain` 을 쓴다(축 플랜과 같은 규칙 — 라벨마다 열이
     달라서, 다른 축의 투영을 그대로 옮겨 붙이면 Binder 로 죽는다)."""
     params: dict = {"node": node}
+    # v12 — 부착 **대상**도 의미층 둘 중 하나다(결정에도 기록·사건·다리가 붙는다).
+    # 라벨을 박아 두면 결정의 부착이 통째로 안 보인다 — 라이브 실측 20건이 그 자리다.
+    c_label, c_pk = _seed_table(node)
+    if c_label not in _SEMANTIC_LABELS:
+        c_label, c_pk = "Concept", "concept_id"
     c_scope = " AND c.owner_id = $owner" if owner else ""
     # 부착 노드의 owner: Record·Episode 는 엄격, Bridge 는 과도기 술어(축 플랜 관례).
     r_scope = " AND rc.owner_id = $owner" if owner else ""
@@ -2697,18 +2748,18 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     if owner:
         params["owner"] = owner
     cypher = (
-        "MATCH (rc:Record)-[:ATTACHES_TO]->(c:Concept) "
-        f"WHERE c.concept_id = $node{c_scope}{r_scope} "
+        f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{c_label}) "
+        f"WHERE c.{c_pk} = $node{c_scope}{r_scope} "
         "RETURN 'ATTACHES_TO' AS rel, rc.record_id AS id, rc.title AS title, "
         "rc.domain AS domain "
         "UNION ALL "
-        "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
-        f"WHERE c.concept_id = $node{c_scope}{e_scope} "
+        f"MATCH (e:Episode)-[:ABOUT]->(c:{c_label}) "
+        f"WHERE c.{c_pk} = $node{c_scope}{e_scope} "
         "RETURN 'ABOUT' AS rel, e.episode_id AS id, e.title AS title, "
         "e.domain AS domain "
         "UNION ALL "
-        "MATCH (b:Bridge)-[:CONNECTS]->(c:Concept) "
-        f"WHERE c.concept_id = $node{c_scope}{b_scope} "
+        f"MATCH (b:Bridge)-[:CONNECTS]->(c:{c_label}) "
+        f"WHERE c.{c_pk} = $node{c_scope}{b_scope} "
         "RETURN 'CONNECTS' AS rel, b.bridge_id AS id, b.title AS title, "
         "b.source_domain AS domain"
     )
@@ -3745,9 +3796,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     params: dict = {f"q{i}": t for i, t in enumerate(toks)}
     idx = range(len(toks))
     # SEC-1: 소유자 스코프. 없으면(로컬 단일 사용자) 기존 전역 검색.
-    own_c = own_r = ""
+    own_c = own_r = own_d = ""
     if owner:
         own_c, own_r = " AND c.owner_id = $owner", " AND r.owner_id = $owner"
+        own_d = " AND d.owner_id = $owner"
         params["owner"] = owner
 
     def _any(fields: tuple[str, ...]) -> str:   # 토큰 하나라도, 필드 하나라도
@@ -3759,6 +3811,11 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 경로다(실측: "optimistic locking" 이 자기 개념을 못 찾고 0건이었다).
     c_fields = ("c.title", "c.one_liner", "c.props", "c.concept_id")
     r_fields = ("r.title", "r.props", "r.record_id")
+    # v12 — Decision 을 같은 폴백에 넣는다. 빠뜨리면 **결정이 검색으로 도달 불가**가
+    # 된다(D57: 검색이 제1 진입점). 그리고 이 함수는 `near_nodes` 도 쓰므로, 여기
+    # 없으면 `vinc_neighbors` 가 실재하는 결정을 "unknown node" 라고 답한다 — 실제로
+    # 라이브에서 그렇게 나왔다(2026-08-09 이관 직전 탐침).
+    d_fields = ("d.title", "d.props", "d.decision_id")
     cypher = (
         f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
@@ -3766,7 +3823,11 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         "UNION ALL "
         f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
         "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
-        "r.domain AS domain, '' AS one_liner, r.props AS props_raw"
+        "r.domain AS domain, '' AS one_liner, r.props AS props_raw "
+        "UNION ALL "
+        f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
+        "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
+        "d.domain AS domain, '' AS one_liner, d.props AS props_raw"
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []

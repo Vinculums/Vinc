@@ -224,6 +224,53 @@ class DecisionEndToEnd(unittest.TestCase):
         self.assertTrue(res["executed"] and res["found"], res)
         self.assertEqual(res["deleted"]["node"], 1)
 
+    def test_사용자_도구_전부가_결정을_본다(self):
+        """읽기 경로 전수 — 이 목록이 **이관 직전에 라이브에서** 만들어졌다.
+
+        스키마·쓰기를 다 고치고 배포까지 한 뒤에 탐침을 하나 심어 보니
+        `vinc_neighbors` 가 실재하는 결정을 "unknown node" 라고 답했다. 세어 보니
+        조회 경로 다섯이 같은 이유로 죽어 있었다 — 결정이 Concept 이던 동안에는
+        전부 동작하던 것들이라, 라벨을 옮기는 순간 **한꺼번에** 멈춘다.
+
+        그래서 도구 단위로 잰다. 함수 하나를 고쳤는지가 아니라, 사용자가 쓰는
+        표면에서 결정이 실제로 나오는지가 계약이다."""
+        D = "decision:d45"
+        checks = {
+            "search": lambda: q.search("document canon chunks", owner=OWNER,
+                                       store=self.store),
+            "neighbors(결정에서)": lambda: q.neighbors(D, owner=OWNER, store=self.store),
+            "neighbors(개념에서)": lambda: q.neighbors("concept:chunk-ssot", owner=OWNER,
+                                                  store=self.store),
+            "graph(결정 시드)": lambda: q.graph(seed=D, owner=OWNER, depth=2,
+                                            store=self.store),
+            "shortest_path": lambda: q.shortest_path("concept:offline", D, owner=OWNER,
+                                                     store=self.store),
+            "node_context": lambda: q.node_context(owner=OWNER, node=D, store=self.store),
+            "suggest_ties": lambda: q.suggest_ties(owner=OWNER, node=D, store=self.store),
+        }
+        missing = []
+        for name, fn in checks.items():
+            try:
+                out = str(fn())
+            except Exception as exc:                      # noqa: BLE001
+                missing.append(f"{name}: {type(exc).__name__}: {exc}")
+                continue
+            # 결정 id 나 그 제목 중 하나는 나와야 한다(도구마다 투영이 다르다).
+            if D not in out and "Store the document canon" not in out:
+                missing.append(f"{name}: 결정이 응답에 없다 — {out[:120]}")
+        self.assertEqual(missing, [], "결정이 안 보이는 도구:\n  " + "\n  ".join(missing))
+
+        # 주제 집계 — 결정을 안 세면 이관 직후 `concepts` 만 68 줄어든 화면이 되고,
+        # 그건 데이터 손실과 구분되지 않는다.
+        doms = q.domains(owner=OWNER, store=self.store)
+        rows = {r["domain"]: r for r in doms["rows"]}
+        self.assertEqual(rows["vinc/engineering"]["decisions"], 1, doms)
+        self.assertEqual(rows["vinc/product"]["decisions"], 1, doms)
+        self.assertIn("decisions", rows["vinc/engineering"])
+        # 주제 상한(AP-1)이 세는 집합도 같아야 한다 — 다르면 사용자가 `vinc_domains`
+        # 로 N 개를 보면서 "N 개 상한에 걸렸다"는 말을 듣는다.
+        self.assertIn("vinc/product", q.domain_names(owner=OWNER, store=self.store))
+
     def test_문서가_결정을_언급하면_링크가_생긴다(self):
         """MENTIONS 는 링커가 유일한 생성 경로다. 결정이 Concept 을 떠나면
         "값 → 문서 → 결정" 의 마지막 한 칸이 조용히 끊긴다."""
