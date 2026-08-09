@@ -120,6 +120,33 @@ vinc_doc_list        → total_count 일치하는가
 store open failed / driver: null / store restore — error:
 ```
 
+### 4-1. `min-replicas` 를 되돌릴 때 (배수했다면)
+
+⚠ **`az containerapp update --min-replicas N` 은 비활성화해 둔 리비전을 되살린다.**
+2026-08-09 실측: 58을 deactivate 한 뒤 이 명령을 쓰자 58이 `Activating` 으로
+돌아오고 새 리비전 59와 락을 다퉜다. 배수해 놓은 상태가 무효가 된다.
+
+그래서 순서가 이렇다:
+
+```bash
+az containerapp update -n vinc-hub -g vincsRG --min-replicas 1   # 새 리비전 N+1 생성
+az containerapp revision deactivate -n vinc-hub -g vincsRG --revision <되살아난 구 리비전>
+az containerapp revision restart -n vinc-hub -g vincsRG --revision <N+1>
+```
+
+마지막 줄이 필요한 이유: **사이드카는 락을 기동 시 한 번만 시도하고 재시도하지
+않는다.** 구 리비전이 사라져 락이 풀려도 이미 대기에 들어간 리비전은 300초를
+채우고 `exit 1` → 컨테이너 재시작을 거쳐야 열린다. 락이 풀린 것을 확인했으면
+`revision restart` 로 그 5분을 건너뛴다.
+
+락이 실제로 풀렸는지 확인:
+
+```bash
+az containerapp replica list -n vinc-hub -g vincsRG --revision <구 리비전>   # 비어야 한다
+az storage share list-handle --name hub-data --account-name vincstorage01 \
+  --account-key "$K" --recursive -o table                                    # 0건이어야 한다
+```
+
 ### 5. 실패하면 — 롤백 한 줄
 
 ```bash
