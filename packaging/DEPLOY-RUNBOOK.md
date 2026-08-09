@@ -48,11 +48,16 @@ az containerapp revision deactivate -n vinc-hub -g vincsRG --revision <현재 �
 az containerapp revision list -n vinc-hub -g vincsRG --query "[?properties.active].name" -o tsv
 ```
 
-**로그에서 정상 종료를 확인한다** — 이게 없으면 다음 단계로 가지 않는다:
+**로그에서 두 줄을 확인한다** — 이게 없으면 다음 단계로 가지 않는다:
 
 ```
+vinc-sidecar: final snapshot — ok                    ← 순서상 먼저
 [entrypoint] 사이드카 정상 종료 — 스토어 close 완료(Ns)
 ```
+
+`VINC_STORE_LOCAL=on` 에서 작업본은 **컨테이너 임시 디스크**에 있다. 종료 시 강제
+스냅샷이 먼저 돌아야 영속 볼륨에 남는다(`App.close`: 큐 드레인 → 강제 스냅샷 →
+store close). 첫 줄이 `ok` 가 아니면 **그 시점 이후 쓰기가 사라진다** — 멈출 것.
 
 과거 구간은 라이브 tail 로 안 보인다. Azure MCP 로 조회할 것(§부록).
 
@@ -110,9 +115,25 @@ git push origin main      # hub-deploy: gate(테스트) → acr build → update
 
 ```
 /health              → status ok · sidecar.reachable · docs 수
+                       **graph_snapshot** → state·age_s (아래)
 vinc_domains         → 0단계 합계와 일치하는가
 vinc_doc_list        → total_count 일치하는가
 ```
+
+`graph_snapshot` 이 "백업이 실제로 도는가"의 유일한 외부 신호다:
+
+| 값 | 뜻 |
+|---|---|
+| `state: "ok"` · `age_s` 가 작다 | 정상 |
+| `age_s: null` | **이 프로세스가 사는 동안 한 번도 성공한 적 없다.** 가장 위험 |
+| `state: "error: …"` | 스냅샷이 실패하고 있다 — 작업본은 임시 디스크다 |
+| `state: "off"` | `VINC_STORE_SNAPSHOT` 미설정 = 전환이 안 켜져 있다 |
+| `pending_write: true` 가 오래 | 쓰기는 쌓이는데 안 뜨고 있다 |
+
+⚠ **스냅샷 여부를 파일 mtime 으로 재지 말 것.** Azure REST API 의 `lastModified` 와
+컨테이너가 CIFS 로 보는 mtime 이 다르다(2026-08-09 실측: 05:46 vs 05:50). 그 차이로
+"스냅샷이 안 뜬다"고 20분 오판했다. `graph_snapshot` 을 보거나, 확실히 하려면
+스냅샷을 받아 **내용**으로 확인할 것.
 
 컨테이너 로그에 이것이 **없어야** 한다:
 
