@@ -39,7 +39,7 @@ function themePalette(): Palette {
 
 export type N3 = {
   id: string; label: string; domain?: string; degree?: number;
-  kind?: string;              // concept | episode | record | bridge | domain
+  kind?: string;              // concept | decision | episode | record | bridge | domain
   gateway?: boolean; focus?: boolean; records?: number;
   pinned?: boolean;           // D32 — pin 은 허브 승격(크기 가중; 레이아웃은 사이드카)
   x?: number; y?: number; z?: number;

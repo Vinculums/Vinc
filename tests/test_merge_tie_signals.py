@@ -64,20 +64,50 @@ class MergeCandidateStructureTests(unittest.TestCase):
         back = q.merge_candidates(rows, include_structural=True)
         self.assertEqual(len(back), 1)
 
-    def test_결정_노드는_주제_개념과_병합_후보가_아니다(self):
-        """`dec-d45`(결정)와 `chunk-ssot`(그 결정의 주제)를 합치면 결정 대장이 주제
-        안으로 녹아 사라진다. 병합은 비가역이라 되돌릴 수도 없다."""
-        rows = [{"id": "concept:dec-d45", "title": "D45 문서 정본(Chunk=SSoT)", "domain": "d"},
-                {"id": "concept:chunk-ssot", "title": "Chunk=SSoT 문서 정본", "domain": "d"}]
-        det = q.merge_candidates_detail(rows)
-        self.assertEqual(det["candidates"], [])
-        self.assertEqual(det["suppressed"]["structural"], 1)
+    def test_결정은_후보_소스에_아예_들어오지_않는다(self):
+        """v12 — 결정이 병합 후보에서 빠지는 근거가 **타입**으로 바뀌었다.
 
-    def test_결정끼리는_남긴다(self):
-        """과잉 필터 방지 — DEC 번호 이중 사용은 실제로 있었던 중복이라 보여야 한다."""
-        rows = [{"id": "concept:dec-d43", "title": "D43 데이터 홈", "domain": "d"},
-                {"id": "concept:dec-d43-b", "title": "D43 데이터 홈", "domain": "d"}]
-        self.assertEqual(len(q.merge_candidates(rows)), 1)
+        여태는 `concept:dec-*` 라는 id 접두 관례를 순수층이 알아보고 억제했다. 그건
+        타입이 없어서 관례가 타입 노릇을 하던 대역이고, 그래서 `concept:dec-` 로
+        시작하는 것만 걸리고 다른 이름을 쓰면 새는 규칙이었다.
+
+        지금 결정은 `Decision` 라벨이고 후보 조회는 `MATCH (c:Concept)` 다 — 결정은
+        **애초에 행으로 들어오지 않는다**. 억제 규칙이 아니라 조회 범위가 답이므로,
+        이 테스트도 순수층이 아니라 그 조회를 잰다."""
+        import os
+        import tempfile
+        from store.config import load_config
+        from store.backend import open_store
+        # env 를 **빌려 쓰고 되돌린다**. 그냥 덮으면 같은 프로세스의 다음 테스트가 이
+        # 임시 스토어를 진짜 스토어로 본다(scripts/eval_tooluse._fixture_env 가 적어
+        # 둔 함정 — 단독 실행에서는 멀쩡해 증상이 원인을 안 가리킨다).
+        keys = ("MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR", "MEMORY_EMBEDDING_MODEL")
+        keep = {k: os.environ.get(k) for k in keys}
+        os.environ["MEMORY_STORE_BACKEND"] = "embedded"
+        os.environ["MEMORY_DATA_DIR"] = os.path.join(tempfile.mkdtemp(), "store")
+        os.environ["MEMORY_EMBEDDING_MODEL"] = "local-en"
+        cfg = load_config()
+        store = open_store(cfg)
+        store.provision(dim=cfg.embedding_dim)
+        try:
+            # 제목이 거의 같은 결정·개념 쌍 — 관례가 없어도 걸려선 안 된다.
+            store.run("MERGE (d:Decision {decision_id:'decision:d45'}) SET "
+                      "d.owner_id='u', d.title='Document canon (Chunk=SSoT)', d.domain='d'")
+            store.run("MERGE (c:Concept {concept_id:'concept:chunk-ssot'}) SET "
+                      "c.owner_id='u', c.title='Document canon (Chunk=SSoT)', c.domain='d'")
+            out = q.suggest_merge_candidates(owner="u", store=store)
+            self.assertTrue(out["executed"], out)
+            self.assertEqual(out["candidates"], [],
+                             "결정이 개념 병합 후보로 올라왔다 — 조회가 라벨을 안 가렸다")
+            # 억제 카운터로 숨긴 것이 아니라 **애초에 안 들어온** 것이어야 한다.
+            self.assertEqual(out["suppressed"]["structural"], 0)
+        finally:
+            store.close()
+            for k, v in keep.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     def test_부분집합_점수가_겹침에_따라_갈린다(self):
         """`max(0.8, jaccard)` 는 겹침과 무관하게 0.8 바닥을 깔아 실측 20쌍 중 19쌍을

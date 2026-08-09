@@ -179,7 +179,7 @@ export type TimeBasis = "recorded" | "content";
 
 export type GraphNode = {
   id: string; label: string; domain: string; degree: number;
-  kind?: string;      // concept | bridge | episode | record | entity (F2 — 부착 축)
+  kind?: string;      // concept | decision | bridge | episode | record | entity (F2 — 부착 축)
   domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
   ts?: string;        // D43 — created/date 우선, 없으면 updated_at. 빈 문자열 가능
   // D72 — 내용 시점(그 노드가 말하는 일이 언제 있었나). 축을 `content` 로 요청하면

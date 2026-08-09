@@ -77,16 +77,16 @@ in a session. Judging meaning is your job. This file only fixes the conventions.
 ## Read before you write [this graph decides]
 Search first (vinc_search), reuse the ids you get back, and prefer attaching to an
 existing concept over creating a near duplicate. Ids carry their type as a prefix:
-concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
+concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
 - Episode: something that happened (a session, an event). It is tied to a time.
 - Record: a short note or property hanging off a concept.
+- Decision: what you chose at a point in time, and why. Tie it with `about`.
 - Bridge: a junction that ties domains together.
-- Entity: anything you author that is none of the four above.
-Any other type still saves, as an Entity, and enters the vocabulary as proposed.
-If you cannot decide, use Concept and say so in your reply.
+- Entity: anything else you author. Unknown types save here and enter the
+  vocabulary as proposed. If you cannot decide, use Concept and say so.
 
 ## How big is one concept [varies by topic]
 GOOD "Optimistic concurrency control": reusable, self standing, one idea.
@@ -130,16 +130,16 @@ _TPL_KO = """# GRAPH.md
 ## 쓰기 전에 읽을 것 [이 그래프가 정함]
 먼저 검색하고(vinc_search), 돌려받은 id 를 재사용하고, 비슷한 개념을 새로 만들기보다
 기존 개념에 붙이십시오. id 는 종류를 접두사로 답니다:
-concept:optimistic-locking, episode:2026-08-01-review, record:pricing-note.
+concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
 - Episode: 일어난 일(세션·사건). 시간에 묶입니다.
 - Record: 개념에 붙는 짧은 메모나 속성.
+- Decision: 그때 무엇을 골랐고 왜 그랬는지. `about` 으로 그 대상에 이으십시오.
 - Bridge: 도메인을 가로질러 묶는 매듭.
-- Entity: 위 넷 중 어느 것도 아닌, 당신이 만든 노드.
-그 밖의 타입도 저장되며(Entity 로), 어휘에 제안 상태로 편입됩니다.
-정하지 못하겠으면 Concept 으로 넣고 그렇게 했다고 답에 적으십시오.
+- Entity: 그 밖의 것. 미지 타입도 여기 저장되어 어휘에 제안으로 편입됩니다.
+  정하지 못하겠으면 Concept 으로 넣고 그렇게 했다고 답에 적으십시오.
 
 ## 개념 하나의 크기 [주제마다 다름]
 GOOD "낙관적 동시성 제어": 재사용되고, 자립적이고, 하나의 관념입니다.

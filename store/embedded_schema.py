@@ -37,6 +37,20 @@ _NODE_TABLES: dict[str, dict] = {
         # v7(D72) — 내용 시점. `created` 는 "이 노드가 언제 생겼나"이고 이것은
         # "이 노드가 말하는 일이 언제 있었나"다. 둘은 다른 축이라 겹쳐 쓰지 않는다.
         ("content_time", "STRING")]},
+    # v12 — **결정(Decision)**. "그때 내린 판단"은 개념이 아니다: 개념은 지금도 참인
+    # 것을 말하고, 결정은 그 시점에 고른 것을 말한다. 여태 이것은 `concept:dec-*` 라는
+    # **id 접두 관례**로만 표현됐고, 그 관례를 코드가 알아야 해서 병합 후보 탐지에
+    # 구조 가드(query._DEC_CONCEPT_PREFIX)가 박혀 있었다 — 관례가 타입 노릇을 하고
+    # 있었다는 뜻이다. 타입을 만들면 그 가드가 필요 없어진다.
+    #
+    # 열은 라이브 68건 **실측**으로 정했다(2026-08-09): title·domain·tags·props·
+    # created 가 68/68, status·stem·topic·one_liner·source_file·content_time 은 0/68.
+    # 빈 열은 만들지 않는다(모듈 docstring: 투기적 열 금지). `tenant_id` 도 뺀다 —
+    # Record 에 있지만 쓰기 경로가 'tenant:local' 상수를 박을 뿐이라 값이 없다.
+    "Decision": {"pk": "decision_id", "cols": [
+        ("decision_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
+        ("domain", "STRING"), ("tags", "STRING[]"), ("created", "STRING"),
+        ("props", "STRING")]},
     # bridges_ingest (+ owner_id v2 — F5: 무소유 구조 노드였던 Bridge 를 소유
     # 스코프에 편입. '' = v2 마이그레이션 이전 레거시 행(신뢰할 소유 원천 부재 —
     # 호스티드는 다중 테넌트 혼재 — 라 백필하지 않는다; 로컬은 bridges_ingest
@@ -129,7 +143,8 @@ _TRACK_COLS: list[tuple[str, str, str]] = [   # (col, type, default-literal)
 # ⚠ D45 로 Chunk 가 SSoT(정본 텍스트)가 되면서 **동기화 편입이 예정**돼 있다(P3 —
 # 텍스트만 동기화, embedding 은 기기별 재생성: 벡터가 번들 3MB 한계를 잠식하므로).
 # 그때 _TRACKED_LABELS 에 "Chunk" 추가 + 마이그레이션 스텝으로 추적열 백필.
-_TRACKED_LABELS: tuple[str, ...] = ("Concept", "Episode", "Record", "Bridge", "Entity")
+_TRACKED_LABELS: tuple[str, ...] = ("Concept", "Episode", "Record", "Bridge", "Entity",
+                                    "Decision")   # v12
 
 for _lbl in _TRACKED_LABELS:
     _NODE_TABLES[_lbl]["cols"] = _NODE_TABLES[_lbl]["cols"] + [(c, t) for c, t, _ in _TRACK_COLS]
@@ -222,7 +237,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
 #: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
@@ -296,6 +311,23 @@ def migration_statements(from_version: int) -> list[str]:
     # 기존 노드의 `domain` 문자열에서 엣지를 만드는 것은 DDL 이 아니라 데이터 스텝이라
     # 여기 못 쓴다(v9 Episode 백필과 같은 이유). 그 스텝은 쓰기 경로가 자연 치유하거나
     # 일괄 백필로 돈다 — 엣지가 없는 동안은 계층 조회가 빌 뿐 기존 경로는 멀쩡하다.
+    if from_version < 12:  # v12 — 결정(Decision) 타입.
+        # 노드 테이블은 매 부팅 멱등 DDL 이 만든다(ChunkVec·_MergeRejection 전례).
+        # **관계는 다르다**: 이미 있는 rel 테이블에 끝점 쌍을 여는 것은 CREATE 가
+        # 아니라 ALTER 이고, 신규 설치의 CREATE 문(render_rel_tables)은 구 설치에
+        # 'already exists' 로 흡수돼 **쌍을 열어 주지 않는다**. 그래서 여기서 편다.
+        # (ladybug 0.18.0 이 ALTER ADD FROM/TO 를 지원하며 기존 행·속성을 보존한다 —
+        # 2026-08-09 실엔진 확인.)
+        #
+        # 목록을 손으로 적지 않고 _REL_TABLES 에서 파생한다: 쌍을 하나 더 열 때
+        # 여기를 같이 고쳐야 한다는 것을 기억에 의존하면 언젠가 빠진다.
+        for lbl, src, dst, _p in _REL_TABLES:
+            srcs = (src,) if isinstance(src, str) else tuple(src)
+            dsts = (dst,) if isinstance(dst, str) else tuple(dst)
+            for s in srcs:
+                for d in dsts:
+                    if "Decision" in (s, d):
+                        stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -309,12 +341,41 @@ def migration_statements(from_version: int) -> list[str]:
 # 0.11.3 rel 테이블 ALTER ADD+DEFAULT 지원).
 _EDGE_EVIDENCE_COLS: list[tuple[str, str]] = [("evidence", "STRING"), ("confidence", "DOUBLE")]
 
+# v12 — **결정은 개념과 같은 층이다.** 그래서 개념이 끝점일 수 있는 자리마다 결정도
+# 끝점일 수 있다. 규칙을 하나로 두는 이유: 특례를 만들면 "결정에는 왜 inherits_from 이
+# 안 되나" 같은 것을 사용자가 실행해 보고서야 알게 된다(쓰기 경로는 미선언 쌍에서
+# 경고가 아니라 엔진 예외로 죽는다). 라이브 실측으로 실제 쓰이는 쌍은 이보다 좁지만
+# (RELATED_TO·DERIVES_FROM·PREREQUISITE_OF·ABOUT·ATTACHES_TO·CONNECTS·MENTIONS),
+# 어휘를 균일하게 두는 편이 표를 외우게 하는 것보다 싸다.
+_SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
+
+#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** 엔진 제약이다(실측 2026-08-09):
+#:
+#:     Runtime exception: Louvain only supports operations on one node table.
+#:
+#: `api.query.communities` 는 RELATED_TO **단일 투영**으로 Louvain 을 돌린다. 그리고
+#: `project_graph` 는 투영한 rel 의 끝점 테이블을 전부 투영하라고 요구하므로, 이
+#: 테이블에 Decision 을 붙이는 순간 노드 테이블이 둘이 되어 **커뮤니티 기능이
+#: 통째로 죽는다**. 우회로를 찾아봤지만 없다: 필터 dict 형식도 끝점 요구를 그대로
+#: 받고(`Decision is connected to RELATED_TO but not projected`), 부분그래프를 만드는
+#: `project_graph_cypher` 로 만든 그래프는 WCC 조차 `Binder exception: AA` 로 거절한다.
+#:
+#: 다행히 이 예외는 의미상으로도 옳다. 결정이 개념과 맺는 관계는 막연한 "관련"이
+#: 아니라 **`about`(무엇에 관한 결정인가)**이고, 결정끼리는 **계보**(derives_from ·
+#: prerequisite_of)다. 라이브 실측이 그것을 뒷받침한다 — 여태 RELATED_TO 로 적혀 있던
+#: 결정→개념 51건은 전부 "그 개념을 두고 내린 결정"이라 이관이 ABOUT 으로 옮긴다.
+#: 즉 결정에게 relates_to 는 애초에 필요 없던 자리다.
+#:
+#: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 함께 봐야 한다. 그 불변식은
+#: tests/test_store.py 의 단일 노드테이블 가드가 지킨다.
+_LOUVAIN_PROJECTED_REL = "RELATED_TO"
+
 _REL_TABLES: list[tuple] = [
-    ("PREREQUISITE_OF", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
-    ("DERIVES_FROM", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
-    ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
+    ("PREREQUISITE_OF", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("DERIVES_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),   # ↑ 예외 사유
     ("CROSSES", "Bridge", "Domain", []),
-    ("CONNECTS", "Bridge", "Concept", [("role", "STRING")]),
+    ("CONNECTS", "Bridge", _SEMANTIC_LABELS, [("role", "STRING")]),
     # MCP fragment 엣지(D11 §5) 지원 —
     #   inherits_from(Concept→Concept)는 1급 관계 테이블.
     #   Record 참여 엣지는 ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment
@@ -323,12 +384,15 @@ _REL_TABLES: list[tuple] = [
     #   테이블에 여러 FROM/TO 쌍을 받는다(2026-08-09 실엔진 확인, 아래 IN_DOMAIN 이
     #   그 형태). ATTACHES_TO 를 이 이유로 되돌릴 필요는 없다: type 열이 이미 원
     #   엣지 타입을 보존하고 있어 쪼개면 데이터 이관만 생긴다.
-    ("INHERITS_FROM", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
-    ("ATTACHES_TO", "Record", "Concept", [("type", "STRING")]),
+    ("INHERITS_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("ATTACHES_TO", "Record", _SEMANTIC_LABELS, [("type", "STRING")]),
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
     # `about`(api/fragment._EC_EDGES)이 유일 쓰기 경로. 신규 rel 테이블은 매 부팅
     # 멱등 DDL 재실행이 자동 생성하므로 마이그레이션 스텝 불요.
-    ("ABOUT", "Episode", "Concept", list(_EDGE_EVIDENCE_COLS)),
+    # v12 — 출발점에 Decision 이 붙는다. ABOUT 은 "X 는 Y 에 관한 것"이고, 결정이
+    # 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다(라이브 51건이 여태 RELATED_TO
+    # 로 그 뜻을 흉내내고 있었다 — 이관이 그것을 ABOUT 으로 옮긴다).
+    ("ABOUT", ("Episode", "Decision"), _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),
@@ -338,7 +402,7 @@ _REL_TABLES: list[tuple] = [
     # 검색이 "질문과 유사한 청크"만이 아니라 "그 청크가 언급하는 개념의 이웃"까지
     # 후보로 올린다(리서치 ① 다중 홉 가교 해소, HippoRAG 이부 그래프의 결정론 번역).
     # method = 링크 근거('source'|'title'|'stem') — 재적재 시 드랍-리빌드 관리.
-    ("MENTIONS", "Chunk", "Concept", [("method", "STRING")]),
+    ("MENTIONS", "Chunk", _SEMANTIC_LABELS, [("method", "STRING")]),
     # ── 도메인 계층 (v11, E-1) ────────────────────────────────────────────
     # 도메인은 여태 **문자열 열**로만 있었다. `vinc/design` 의 `/` 가 계층을 뜻했지만
     # 그건 이름 규약일 뿐이라 그래프로는 못 따라갔다: `Domain` 테이블에 3행(art·math·
@@ -356,7 +420,7 @@ _REL_TABLES: list[tuple] = [
     # 테이블은 FROM/TO 타입 고정"이라 적고 있는데 그건 kuzu 0.11.3 시절 제약이고,
     # ladybug 0.18.0 은 다중 쌍을 받는다(2026-08-09 실엔진 확인). 그래서 라벨을
     # 셋으로 쪼개지 않는다.
-    ("IN_DOMAIN", ("Concept", "Record", "Episode"), "Domain", []),
+    ("IN_DOMAIN", ("Concept", "Record", "Episode", "Decision"), "Domain", []),
 ]
 
 

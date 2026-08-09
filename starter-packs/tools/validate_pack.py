@@ -4,7 +4,7 @@
 
 Checks per pack:
   P1  vinc_pack == 1, kind == "share", manifest/fragment present
-  P2  node types ∈ {record,concept,domain,bridge,episode}; non-empty ids; no dup ids
+  P2  node types ∈ {record,concept,domain,bridge,episode,decision}; non-empty ids; no dup ids
   P3  id prefix convention: concept:* / bridge:* ; domain ids are bare names
   P4  non-domain nodes have title; domain nodes have NO props (import warning otherwise)
   P5  bridge nodes have no tags/domain keys (Bridge table lacks those columns)
@@ -27,7 +27,7 @@ from pathlib import Path
 
 CC = {"relates_to", "prerequisite_of", "derives_from", "inherits_from"}
 EDGE_TYPES = CC | {"connects_via"}
-NODE_TYPES = {"record", "concept", "domain", "bridge", "episode"}
+NODE_TYPES = {"record", "concept", "domain", "bridge", "episode", "decision"}
 HANGUL = re.compile(r"[가-힣]")
 
 

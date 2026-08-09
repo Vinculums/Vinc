@@ -28,6 +28,8 @@ TRACKED: dict[str, tuple[str, ...]] = {
     "Record": ("title", "domain", "tags", "props"),
     "Bridge": ("title", "status", "source_domain", "target_domain", "props"),
     "Entity": ("type", "title", "tags", "theme_id"),
+    # v12 — 결정. 열이 Record 와 같은 집합이다(제목·주제·태그·자유 속성).
+    "Decision": ("title", "domain", "tags", "props"),
 }
 
 

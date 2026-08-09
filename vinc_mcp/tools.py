@@ -22,7 +22,7 @@ import json
 from .bridge import Bridge
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
-# 영속한다(5종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
+# 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
 # 개방층을 호스트에서 차단하는 오류였다. 라우팅 행렬은 description 으로 안내.
 _FRAGMENT_SCHEMA = {
     "type": "object",
@@ -35,7 +35,7 @@ _FRAGMENT_SCHEMA = {
                 "properties": {
                     "id": {"type": "string", "description": "Canonical MERGE key, type-prefixed (e.g. concept:margiela)."},
                     "type": {"type": "string",
-                             "description": "record|concept|domain|bridge|episode route to dedicated "
+                             "description": "record|concept|domain|bridge|episode|decision route to dedicated "
                                             "tables; ANY other type persists to the open Entity carrier "
                                             "and is folded into the theme vocabulary as proposed."},
                     "title": {"type": "string",
@@ -552,7 +552,8 @@ TOOLS: list[dict] = [
         "name": "vinc_delete",
         "description": "Irreversibly delete ONE node and all its attached edges by exact id "
                        "(DETACH DELETE). node_id must be an exact, type-prefixed id "
-                       "(e.g. concept:ipaas, record:memo, episode:s1, bridge:b1); the prefix "
+                       "(e.g. concept:ipaas, decision:d45, record:memo, episode:s1, bridge:b1); "
+                       "the prefix "
                        "selects the table. Unknown prefixes return found:false (no-op). Use to "
                        "remove polluted or duplicate shell nodes. This is irreversible — confirm "
                        "the exact id via vinc_search/vinc_graph first. Returns "
