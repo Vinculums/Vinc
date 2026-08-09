@@ -97,13 +97,51 @@ def _fetch_chunks(store) -> list[dict]:
     return rows or []
 
 
+#: 링크 대상 라벨 → (PK 열, stem 열 유무). v12 — 결정도 문서가 언급하는 대상이다.
+#: 안 넣으면 `Chunk→Decision` MENTIONS 가 **재생성되지 않는다**: 이 링커가 유일한
+#: 생성 경로라, 결정이 Concept 을 떠나는 순간 "이 값이 왜 이런가 → 문서 → 결정" 의
+#: 마지막 한 칸이 조용히 끊긴다(기존 엣지는 남아 있어 한동안 티도 안 난다).
+_LINK_TARGETS: tuple[tuple[str, str, bool], ...] = (
+    ("Concept", "concept_id", True),
+    ("Decision", "decision_id", False),   # Decision 에는 stem·source_file 열이 없다
+)
+
+
 def _fetch_concepts(store, owner: str | None) -> list[dict]:
+    """링크 대상 노드(개념·결정)를 한 목록으로. 키 이름은 `concept_id` 를 유지한다 —
+    순수 계산부(compute_links)와 MERGE 가 그 키로 짜여 있고, 여기서 이름을 바꾸면
+    링크 규칙까지 손대야 한다. 실제 라벨은 `label` 로 함께 나른다."""
     where = "WHERE c.owner_id = $owner " if owner else ""
     params = {"owner": owner} if owner else None
-    rows = store.run("MATCH (c:Concept) " + where +
-                     "RETURN c.concept_id AS concept_id, c.title AS title, "
-                     "c.stem AS stem, c.source_file AS source_file", params)
-    return rows or []
+    rows: list[dict] = []
+    for label, pk, has_stem in _LINK_TARGETS:
+        proj = f"c.{pk} AS concept_id, c.title AS title, "
+        proj += ("c.stem AS stem, c.source_file AS source_file"
+                 if has_stem else "'' AS stem, '' AS source_file")
+        got = store.run(f"MATCH (c:{label}) " + where + "RETURN " + proj, params)
+        for r in got or []:
+            rows.append({**r, "label": label})
+    return rows
+
+
+def merge_links(store, links: list[dict], concepts: list[dict]) -> int:
+    """계산된 링크를 :MENTIONS 로 MERGE(멱등). 대상 **라벨**은 concepts 행이 정한다.
+
+    쓰기를 여기 한 벌로 두는 이유: 이 MERGE 가 `api.docstore._relink_mentions` 에도
+    복제돼 있었고 거기에는 `(co:Concept)` 이 박혀 있었다. 그러면 결정으로 향하는
+    링크가 **오류 없이 0건**이 된다(그 함수는 예외를 삼키기까지 한다). 규칙만이
+    아니라 쓰기도 SSoT 하나여야 그 형태가 안 생긴다."""
+    label_of = {c["concept_id"]: (c.get("label") or "Concept") for c in concepts}
+    pk_of = {lbl: pk for lbl, pk, _ in _LINK_TARGETS}
+    n = 0
+    for lk in links:
+        lbl = label_of.get(lk["concept_id"], "Concept")
+        store.run(
+            f"MATCH (ch:Chunk {{chunk_id: $cid}}), (co:{lbl} {{{pk_of[lbl]}: $koid}}) "
+            "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
+            {"cid": lk["chunk_id"], "koid": lk["concept_id"], "method": lk["method"]})
+        n += 1
+    return n
 
 
 def link_mentions(store, *, owner: str | None = None, dry_run: bool = False) -> dict:
@@ -116,12 +154,7 @@ def link_mentions(store, *, owner: str | None = None, dry_run: bool = False) -> 
     for lk in links:
         by_method[lk["method"]] = by_method.get(lk["method"], 0) + 1
     if not dry_run:
-        for lk in links:
-            store.run(
-                "MATCH (ch:Chunk {chunk_id: $cid}), (co:Concept {concept_id: $koid}) "
-                "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
-                {"cid": lk["chunk_id"], "koid": lk["concept_id"], "method": lk["method"]},
-            )
+        merge_links(store, links, concepts)
     return {"chunks": len(chunks), "concepts": len(concepts),
             "links": len(links), "by_method": by_method}
 

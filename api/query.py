@@ -846,7 +846,43 @@ def record_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
 
-_GRAPH_AXIS_PLANS = (bridge_rows_plan, episode_rows_plan, record_rows_plan)
+def decision_rows_plan(*, owner: str, domain: str | None = None,
+                       ids: list[str] | None = None) -> QueryPlan:
+    """Decision 노드 + ABOUT 팔(v12). 결정이 **무엇을 두고** 내려졌는지가 그 팔이다.
+
+    Episode 축과 같은 형태다(둘 다 ABOUT 으로 개념에 붙는다). L1 소속도 같은 이유로
+    OR — 렌즈 밖 결정이 렌즈 안 개념을 두고 내려진 경우가 정확히 F2 가 숨기던 연결이다.
+
+    ⚠ `content_ts` 를 **투영하지 않는다**. Decision 에는 그 열이 없다(라이브 실측에서
+    68/68 이 비어 있어 만들지 않았다). 열 없는 라벨에 옮겨 붙이면 모든 레벨의 /graph
+    가 Binder 로 죽는다 — Record 축 주석이 경고하는 바로 그 자리다. 도착점(Concept)
+    쪽은 열이 있으므로 target_content_ts 는 싣는다."""
+    assert not (domain and ids), "domain and ids are mutually exclusive"
+    where = ["d.owner_id = $owner", "c.owner_id = $owner"]
+    params: dict = {"owner": owner}
+    if domain:
+        where.append("(d.domain = $domain OR c.domain = $domain)")
+        params["domain"] = domain
+    if ids:
+        where.append("(c.concept_id IN $ids OR d.decision_id IN $ids)")
+        params["ids"] = ids
+    cypher = (
+        "MATCH (d:Decision)-[r:ABOUT]->(c:Concept) "
+        f"WHERE {' AND '.join(where)} "
+        "RETURN d.decision_id AS id, d.title AS label, d.domain AS domain, "
+        "d.props AS props, coalesce(d.tags, []) AS tags, 'decision' AS kind, "
+        "coalesce(d.created, d.updated_at, '') AS ts, "
+        "'ABOUT' AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
+        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
+        "coalesce(c.created, c.updated_at, '') AS target_ts, "
+        "coalesce(c.content_time, '') AS target_content_ts"
+    )
+    return QueryPlan("graph_axis_decision", cypher, params, note="decision axis rows (v12)")
+
+
+_GRAPH_AXIS_PLANS = (bridge_rows_plan, episode_rows_plan, record_rows_plan,
+                     decision_rows_plan)
 
 
 # ── entity-시드 L2(F1) — TYPED 는 Entity↔Entity 폐쇄 성분 ────────────────────
@@ -903,6 +939,8 @@ _SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용 
     "record": ("Record", "record_id"),
     "bridge": ("Bridge", "bridge_id"),
     "entity": ("Entity", "entity_id"),
+    "decision": ("Decision", "decision_id"),   # v12 — 없으면 아래 폴백이 Entity 로
+    # 보내 시드·삭제·이웃 조회가 **조용히 빈 결과**를 낸다(미지 접두사 = 개방층).
 }
 
 
@@ -3096,33 +3134,28 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 #   doc.*  문서 미러 개념 — 원문 문서 하나에 하나씩 대응한다. 문서가 둘이면 개념도
 #          둘이어야 한다. `vinc.d.graph` 와 `vinc.d.graph-views` 는 서로 다른 문서고,
 #          제목이 접두 관계인 것은 **명명 규칙의 결과**이지 중복의 증거가 아니다.
-#   dec-*  결정(DEC) 대장 — 결정과 그 결정의 주제는 일부러 별개 노드로 두고 명시
-#          엣지로만 잇는다(예: `dec-d45` ↔ `chunk-ssot`). 이걸 병합하면 결정 대장이
-#          주제 안으로 녹아 사라진다. 병합은 비가역이라 되돌릴 수도 없다.
 # 이건 id 명명 **관례**지 엔진이 만드는 구조가 아니다(코드가 붙이는 접두어가 아님).
 # 그래서 (1) 관례가 없는 그래프에서는 자동으로 무동작이고, (2) 끄는 스위치를 둔다.
 # 그리고 **무음 억제 금지**: 몇 쌍을 이 규칙으로 뺐는지 응답에 숫자로 남긴다.
+#
+# ⚠ v12 에서 **결정 규칙(`dec-*`)을 걷어냈다.** 여기 원래 "결정과 그 결정의 주제는
+# 일부러 별개 노드로 두므로 결정↔비결정 병합을 막는다"는 규칙이 있었는데, 그것은
+# 결정이 `concept:dec-*` 라는 **id 접두 관례**로만 존재하던 시절의 대역이었다.
+# 지금 결정은 `Decision` 이라는 별도 라벨이고, 병합 후보 조회는 `MATCH (c:Concept)`
+# 이라 결정을 애초에 긁어오지 않는다 — 규칙이 막을 것이 구조적으로 없다.
+# 남겨 두면 `concept:dec-` 로 시작하는 **개념**(이관 후에는 있어서는 안 되는 것)만
+# 걸리는 함정이 된다. 타입이 생겼으면 관례는 물러난다.
 _DOC_CONCEPT_PREFIX = "concept:doc."
-_DEC_CONCEPT_PREFIX = "concept:dec-"
 
 
 def _structural_role(cid: str) -> str:
-    """개념 id 의 구조 역할 — ``"doc"`` | ``"dec"`` | ``""``(보통)."""
-    if cid.startswith(_DOC_CONCEPT_PREFIX):
-        return "doc"
-    if cid.startswith(_DEC_CONCEPT_PREFIX):
-        return "dec"
-    return ""
+    """개념 id 의 구조 역할 — ``"doc"`` | ``""``(보통)."""
+    return "doc" if cid.startswith(_DOC_CONCEPT_PREFIX) else ""
 
 
 def _is_structural_nonduplicate(a_id: str, b_id: str) -> bool:
-    """이 쌍이 **의도된 비중복**인가 — 문서끼리, 또는 한쪽이 결정 노드."""
-    ra, rb = _structural_role(a_id), _structural_role(b_id)
-    if ra == "doc" and rb == "doc":
-        return True
-    # 결정 ↔ 비결정은 대장이 주제로 녹는 병합이라 금지. 결정 ↔ 결정은 남긴다 —
-    # 번호 이중 사용(같은 DEC 를 두 번 등록)은 실제로 있었던 중복이라 볼 수 있어야 한다.
-    return (ra == "dec") != (rb == "dec")
+    """이 쌍이 **의도된 비중복**인가 — 문서 미러 개념끼리."""
+    return _structural_role(a_id) == "doc" and _structural_role(b_id) == "doc"
 
 
 def rejection_pair_key(owner: str, a_id: str, b_id: str) -> str:
@@ -3356,12 +3389,20 @@ def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6
 # 컴포넌트/커뮤니티는 owner-clean).
 
 def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
-    """owner 의 Concept id 집합(스코프 교차용). owner=None(로컬)이면 None(전체)."""
+    """owner 의 **의미층** 노드 id 집합(스코프 교차용). owner=None(로컬)이면 None(전체).
+
+    v12 — Decision 을 함께 센다. 알고리즘 프로젝션이 의미층 관계 4종의 끝점을 전부
+    투영하므로(store.embedded_backend._algo_projection) 결과 행에 결정이 섞여 오는데,
+    이 집합이 개념만 담으면 그 행들이 **말없이** 스코프 밖으로 떨어진다 — 결정은
+    컴포넌트에도 고아 목록에도 영영 안 나오고, 그 사실을 알릴 자리도 없다."""
     if not owner:
         return None
     rows = store.run("MATCH (c:Concept) WHERE c.owner_id = $owner "
                      "RETURN c.concept_id AS id", {"owner": owner})
-    return {r["id"] for r in rows if r.get("id")}
+    ids = {r["id"] for r in rows if r.get("id")}
+    drows = store.run("MATCH (d:Decision) WHERE d.owner_id = $owner "
+                      "RETURN d.decision_id AS id", {"owner": owner})
+    return ids | {r["id"] for r in drows if r.get("id")}
 
 
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
@@ -3627,7 +3668,8 @@ def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
 _FIELD_RANK = {"title": 0, "one_liner": 1, "props": 2, "id": 3}
 #: id 매치에서 무시할 토큰 — 노드 종류 접두사(`concept:` 등)는 모든 id 에 들어 있어
 #: 그대로 세면 질의 하나가 전 노드를 같은 점수로 맞춘다. 접두사는 신호가 아니다.
-_ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity"))
+_ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity",
+                               "decision"))   # v12
 #: 부분 매치 스캔이 처리할 최대 행. 넘으면 잘린 사실을 호출부가 로그로 남긴다.
 NODE_SCAN_CAP = 2000
 
@@ -4078,9 +4120,9 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
 # ⚠ 여기 없으면 delete 가 "refused"로 거부된다 — Bridge(v2)·Entity(F1)가 소유
 # 스탬프를 얻은 뒤에도 이 집합이 3종에 머물러 있어 앱에서 브릿지를 못 지웠다(S1
 # 실측). 확장 시 _NODE_PK(툼스톤)도 같이 넓혀야 KeyError 가 안 난다.
-_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record", "Bridge", "Entity"}
+_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record", "Bridge", "Entity", "Decision"}
 _NODE_PK = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_id",
-            "Bridge": "bridge_id", "Entity": "entity_id"}
+            "Bridge": "bridge_id", "Entity": "entity_id", "Decision": "decision_id"}
 
 
 def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> dict:
@@ -4170,16 +4212,29 @@ def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None
                "seq": revstamp.next_seq(store, own)})
 _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
 
-# 동기화 대상 엣지 rel → (src 라벨, src PK, dst 라벨, dst PK). 엣지 삭제 표면
-# (delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment 타입명
-# (relates_to·about…)도 여기로 정규화된다.
-SYNC_EDGE_RELS: dict[str, tuple[str, str, str, str]] = {
-    "RELATED_TO": ("Concept", "concept_id", "Concept", "concept_id"),
-    "PREREQUISITE_OF": ("Concept", "concept_id", "Concept", "concept_id"),
-    "DERIVES_FROM": ("Concept", "concept_id", "Concept", "concept_id"),
-    "INHERITS_FROM": ("Concept", "concept_id", "Concept", "concept_id"),
-    "ABOUT": ("Episode", "episode_id", "Concept", "concept_id"),
-}
+# 동기화 대상 엣지 rel → **끝점 (src 라벨, src PK, dst 라벨, dst PK) 후보들**. 엣지
+# 삭제 표면(delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment
+# 타입명(relates_to·about…)도 여기로 정규화된다.
+#
+# ⚠ v12 전에는 rel 하나에 쌍 **하나**였고 값이 손으로 적혀 있었다. 결정 타입이
+# 들어오면서 DERIVES_FROM 하나가 Concept↔Decision 네 조합을 갖게 돼 그 전제가 깨졌다.
+# 손으로 적힌 채로 뒀다면 `decision:*` 끝점의 엣지 삭제가 **오류 없이 0건 매치**로
+# 끝났을 것이다(툼스톤은 남고 엣지는 그대로 — 기기마다 다른 그래프). 그래서 스키마
+# 에서 파생한다: rel 테이블에 쌍을 열면 여기가 자동으로 따라온다.
+def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]:
+    from store import embedded_schema as _es
+    pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
+    out: dict[str, list[tuple[str, str, str, str]]] = {}
+    for spec in _es.rel_table_specs():
+        rel, src, dst = spec["label"], spec["from"], spec["to"]
+        if rel not in _SYNCED_EDGE_RELS or src not in pks or dst not in pks:
+            continue
+        out.setdefault(rel, []).append((src, pks[src], dst, pks[dst]))
+    return {k: tuple(v) for k, v in out.items()}
+
+
+_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT",)
+SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
     "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",
@@ -4192,12 +4247,18 @@ def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None
     (src, rel, dst) 키와 삭제 시각(HLC)·sync_seq 만 기록. owner 는 src 노드의
     소유를 승계(무스코프 삭제 시)한다 — 노드 툼스톤과 같은 규칙."""
     from . import revstamp
-    sl, sp, _, _ = SYNC_EDGE_RELS[rel]
     own = owner
     if not own:
-        rows = store.run(f"MATCH (n:{sl}) WHERE n.{sp} = $id RETURN n.owner_id AS o",
-                         {"id": src})
-        own = (rows[0].get("o") if rows else None) or "user:local"
+        # 끝점 후보를 훑어 **id 가 실제로 있는 라벨**에서 소유를 읽는다. 라벨을 하나로
+        # 가정하면 결정 끝점에서 소유가 'user:local' 로 떨어져 남의 그래프에 툼스톤이
+        # 앉는다.
+        for sl, sp, _dl, _dp in SYNC_EDGE_RELS[rel]:
+            rows = store.run(f"MATCH (n:{sl}) WHERE n.{sp} = $id RETURN n.owner_id AS o",
+                             {"id": src})
+            if rows:
+                own = rows[0].get("o")
+                break
+        own = own or "user:local"
     store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
               "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
               "t.origin = 'local'",
@@ -4230,7 +4291,6 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         base["note"] = (f"unsupported edge type {edge_type!r} — deletable: "
                         f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
         return base
-    sl, sp, dl, dp = SYNC_EDGE_RELS[rel]
     scope_a = scope_b = ""
     params: dict = {"s": src, "d": dst}
     if owner:
@@ -4241,17 +4301,19 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         if rel == "RELATED_TO":   # 무방향 의미 — 역방향 물리 엣지도 대상
             pairs.append((dst, src))
         deleted = 0
-        for s_, d_ in pairs:
-            p = {**params, "s": s_, "d": d_}
-            cnt = store.run(
-                f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} "
-                "RETURN count(r) AS c", p)
-            if cnt and int(cnt[0].get("c") or 0):
-                store.run(
+        # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
+        for sl, sp, dl, dp in SYNC_EDGE_RELS[rel]:
+            for s_, d_ in pairs:
+                p = {**params, "s": s_, "d": d_}
+                cnt = store.run(
                     f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} DELETE r", p)
-                deleted += int(cnt[0].get("c") or 0)
+                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} "
+                    "RETURN count(r) AS c", p)
+                if cnt and int(cnt[0].get("c") or 0):
+                    store.run(
+                        f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                        f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} DELETE r", p)
+                    deleted += int(cnt[0].get("c") or 0)
         base["executed"] = True
         if not deleted:
             base["note"] = "edge not found"

@@ -54,12 +54,17 @@ def test_about_edges_covered_by_rel_map_and_plan():
     graph_rows_for_ids_plan 이 못 본다)의 스코프 술어."""
     assert sync._REL_TO_FRAGMENT["ABOUT"] == "about"
     assert sync._REL_TO_FRAGMENT["RELATED_TO"] == "relates_to"   # 기존 역맵 불변
-    p = sync._episode_about_plan(["episode:e1", "concept:c1"], owner=OWNER)
-    assert "MATCH (e:Episode)-[:ABOUT]->(c:Concept)" in p.cypher
-    assert "e.episode_id IN $ids" in p.cypher
-    assert "c.concept_id IN $ids" in p.cypher
-    assert "e.owner_id = $owner" in p.cypher
-    assert "c.owner_id = $owner" in p.cypher
+    p = sync._extra_edges_plan(["episode:e1", "concept:c1"], owner=OWNER,
+                               pair=("Episode", "episode_id", "Concept", "concept_id"))
+    assert "MATCH (a:Episode)-[r]->(b:Concept)" in p.cypher
+    assert "a.episode_id IN $ids" in p.cypher
+    assert "b.concept_id IN $ids" in p.cypher
+    assert "a.owner_id = $owner" in p.cypher
+    assert "b.owner_id = $owner" in p.cypher
+    # v12 — 결정이 낀 조합도 커버돼야 한다. 빠지면 그 엣지가 **오류 없이** 기기
+    # 간에 사라진다(Concept 소스 전용 플랜이 못 보는 자리라 아무도 안 알려 준다).
+    assert ("Decision", "decision_id", "Concept", "concept_id") in sync._EXTRA_EDGE_PAIRS
+    assert ("Concept", "concept_id", "Decision", "decision_id") in sync._EXTRA_EDGE_PAIRS
 
 
 def test_export_carries_about_edges_when_both_endpoints_in_bundle():
@@ -80,7 +85,8 @@ def test_export_carries_about_edges_when_both_endpoints_in_bundle():
             {"id": "concept:c1", "title": "C1", "domain": "d", "sync_seq": 1}],
         "MATCH (e:Episode) WHERE": [
             {"id": "episode:e1", "title": "E1", "domain": "d", "sync_seq": 2}],
-        "-[:ABOUT]->": [
+        # v12 — 전용 플랜이 rel 을 좁히지 않고 label(r) 로 뽑는다(끝점 조합별 1플랜).
+        "MATCH (a:Episode)-[r]->(b:Concept)": [
             {"id": "episode:e1", "rel": "ABOUT", "target": "concept:c1"},
             # 번들 밖 끝점 — 실리면 안 된다(수신측 fragment 가 타입 해석 불가)
             {"id": "episode:ghost", "rel": "ABOUT", "target": "concept:c1"}],
@@ -219,7 +225,10 @@ def test_chunking_carries_tombstones():
 def test_tombstone_plan_scopes_owner_and_synced_labels():
     p = sync._tombstones_delta_plan(owner="user:a", since=0)
     assert "t.owner_id = $owner" in p.cypher
-    assert "t.label IN ['Concept', 'Episode']" in p.cypher   # 동기화 라벨만
+    # 동기화 라벨만. 목록은 _SYNC_TYPES 에서 파생하므로 파라미터로 실린다 —
+    # 라벨을 손으로 두 벌 적으면 어긋난다(v12 Decision 이 그 자리였다).
+    assert "t.label IN $labels" in p.cypher
+    assert p.params["labels"] == ["Concept", "Episode", "Decision"]
     assert "sync_seq >" not in p.cypher                       # since=0 = 전량
     p1 = sync._tombstones_delta_plan(owner="user:a", since=7)
     assert "t.sync_seq > $since" in p1.cypher and p1.params["since"] == 7

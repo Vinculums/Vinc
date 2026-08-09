@@ -5,12 +5,17 @@
 MERGE 한다 — 유사도·의미 판단은 하지 않는다(하이브리드 c 백스톱, D11 §3).
 
 지원(스키마 §5-2 확장 + F1 개방층 포팅, 2026-07-19):
-- 노드 5종: record | concept | domain | bridge | episode  (+ 자유 props{} → JSON 문자열 열)
-- 엣지: Concept→Concept 4종(relates_to·prerequisite_of·derives_from·inherits_from),
-  connects_via(Bridge→Concept → CONNECTS, 선택 role), about(Episode→Concept → ABOUT),
-  Record→Concept 는 ATTACHES_TO{type}로 원 타입을 보존해 수용(임베디드 rel 테이블의
-  FROM/TO 고정 제약 우회).
-- **개방층(D11-R2 포팅, F1)**: 위 5종 밖 노드 타입은 *스킵되지 않고* 범용
+- 노드 6종: record | concept | domain | bridge | episode | decision
+  (+ 자유 props{} → JSON 문자열 열)
+- **의미층 = concept | decision**(v12). 둘은 다른 종류지만(지금도 참인 것 / 그때 고른
+  것) 그래프에서 서는 자리가 같아, 아래 엣지 규칙에서 서로 바꿔 쓸 수 있다.
+  **예외 하나**: `relates_to` 는 개념↔개념에만 남는다(엔진 제약 + 의미 —
+  store.embedded_schema._LOUVAIN_PROJECTED_REL 주석). 결정에는 `about` 이나 계보를 쓴다.
+- 엣지: 의미층 4종(relates_to·prerequisite_of·derives_from·inherits_from),
+  connects_via(Bridge→의미층 → CONNECTS, 선택 role),
+  about(Episode|Decision→의미층 → ABOUT),
+  Record→의미층 은 ATTACHES_TO{type}로 원 타입을 보존해 수용.
+- **개방층(D11-R2 포팅, F1)**: 위 6종 밖 노드 타입은 *스킵되지 않고* 범용
   `Entity{entity_id,type,title,owner_id,theme_id,tags}` 캐리어로, 양 끝이 개방 타입인
   엣지는 `TYPED{type}`(exact (from,type,to) 매칭) 캐리어로 MERGE 된다 — 정보 손실 0
   (THESIS T1). 어휘 밖 타입은 주제 어휘에 proposed 로 편입되고 응답 `proposed_types`
@@ -44,7 +49,17 @@ _NODE_MAP = {   # fragment type → (label, pk column)
     "domain": ("Domain", "name"),
     "bridge": ("Bridge", "bridge_id"),
     "episode": ("Episode", "episode_id"),
+    "decision": ("Decision", "decision_id"),   # v12
 }
+
+# 끝점 (라벨, PK) 두 쌍 — 엣지 경로가 해석한 결과를 들고 다니는 형태.
+_Ends = tuple[tuple[str, str], tuple[str, str]]
+
+# v12 — **의미층**: 지금도 참인 것(concept)과 그때 고른 것(decision). 둘은 다른
+# 종류지만 그래프에서 서는 자리가 같다 — 어느 쪽도 개념 엣지의 끝점일 수 있고,
+# 기록·사건·다리·청크가 가리키는 대상일 수 있다. 그래서 라우팅에서 이 집합에
+# 속하는지만 보고 라벨은 _NODE_MAP 에서 꺼낸다(타입마다 분기를 늘리지 않는다).
+_SEMANTIC_TYPES = ("concept", "decision")
 
 _CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
     "relates_to": "RELATED_TO",
@@ -64,7 +79,7 @@ DEFAULT_OWNER = "tenant:local"
 
 
 def _is_open(ntype: str) -> bool:
-    """개방층 타입 판별 — 비어있지 않고 레거시 5종 밖이면 Entity 캐리어 대상."""
+    """개방층 타입 판별 — 비어있지 않고 레거시 6종 밖이면 Entity 캐리어 대상."""
     return bool(ntype) and ntype not in _NODE_MAP
 
 
@@ -118,7 +133,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     재-MERGE 가 기존 노드의 소유를 기본값으로 조용히 덮어쓰면 스코프 필터(§1 불변)가
     깨진다.
 
-    개방층(F1): 레거시 5종 밖 타입은 스킵이 아니라 Entity 캐리어로 라우팅된다 —
+    개방층(F1): 레거시 6종 밖 타입은 스킵이 아니라 Entity 캐리어로 라우팅된다 —
     스킵은 형태 오류(id 부재, Entity 는 title 부재)뿐. ``theme_id`` 는 Entity 행에
     각인되는 주제 귀속(THEME-DEEP §6) — 호출부(_ThemeFold)가 해석해 넘긴다."""
     ntype = (node.get("type") or "").strip()
@@ -135,7 +150,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         return None
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
-    owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity")
+    owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",
+                             "Decision")
 
     # 존재확인 + (추적 라벨이면) 현재 추적필드값도 함께 조회 — 변경감지 스탬핑(S0).
     # SEC-3: owner-스코프 라벨이면 기존 owner_id 도 조회해 교차테넌트 충돌을 판별한다.
@@ -237,12 +253,13 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 때만** 지금으로 찍는다: 재-MERGE 가 원래 시점을 임포트 시각으로 덮으면
         # 타임라인의 시간축이 "마지막으로 만진 때"로 무너진다(updated_at 이 이미 그
         # 역할을 한다). Concept/Record 둘 다 created 열을 가진다.
-        if label in ("Concept", "Record"):
+        if label in ("Concept", "Record", "Decision"):
             if node.get("created"):
                 _set("created", str(node["created"]))
             elif not matched:
                 _set("created", revstamp.hlc_now(store))
-        if label in ("Record", "Concept", "Episode", "Bridge") and (owner_explicit or not matched):
+        if label in ("Record", "Concept", "Episode", "Bridge", "Decision") \
+                and (owner_explicit or not matched):
             _set("owner_id", owner)
         if label == "Record":
             _set("tenant_id", "tenant:local")
@@ -294,36 +311,39 @@ def _node_types(fragment_nodes: list[dict]) -> dict[str, str]:
 
 
 _ALLOWED_PAIRS_HINT = (
-    "allowed pairs: relates_to|prerequisite_of|derives_from|inherits_from = "
-    "concept→concept or record→concept; connects_via = bridge→concept; "
-    "about = episode→concept; any-type = open-entity→open-entity (TYPED carrier)"
+    "allowed pairs (concept and decision are interchangeable endpoints, "
+    "except relates_to which stays concept→concept): "
+    "relates_to = concept→concept; "
+    "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "record → concept|decision for any of those four; "
+    "connects_via = bridge → concept|decision; "
+    "about = episode|decision → concept|decision; "
+    "any-type = open-entity→open-entity (TYPED carrier)"
 )
 
 
-# 동기화 대상 엣지 rel → 끝점 (라벨, PK) — 신규 생성 시 끝점 스탬프의 라우팅 표.
-_SYNC_EDGE_ENDPOINTS: dict[str, tuple[tuple[str, str], tuple[str, str]]] = {
-    **{rel: (("Concept", "concept_id"), ("Concept", "concept_id"))
-       for rel in _CC_EDGES.values()},
-    "ABOUT": (("Episode", "episode_id"), ("Concept", "concept_id")),
-}
-
-
-def _edge_exists(store, rel: str, src: str, dst: str) -> bool:
-    (sl, sp), (dl, dp) = _SYNC_EDGE_ENDPOINTS[rel]
+def _edge_exists(store, rel: str, ends: _Ends, src: str, dst: str) -> bool:
+    (sl, sp), (dl, dp) = ends
     r = store.run(f"MATCH (a:{sl})-[:{rel}]->(b:{dl}) "
                   f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(*) AS c",
                   {"s": src, "d": dst})
     return bool(r and r[0].get("c"))
 
 
-def _stamp_edge_endpoints(store, rel: str, src: str, dst: str, owner: str) -> None:
+def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
+                          owner: str) -> None:
     """엣지 **신규 생성** 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
     끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
     실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
     끝점 활동으로 간주한다 — 부수 효과로 '편집이 삭제를 이긴다' 가드에서도 엣지
     활동이 노드 편집처럼 취급된다(의도된 의미론). 동시에 같은 (src,rel,dst) 의
-    로컬 엣지 툼스톤을 상쇄한다(재생성이 낡은 삭제 표식을 이긴다)."""
-    for (label, pk), nid in zip(_SYNC_EDGE_ENDPOINTS[rel], (src, dst)):
+    로컬 엣지 툼스톤을 상쇄한다(재생성이 낡은 삭제 표식을 이긴다).
+
+    ``ends`` 는 호출부가 해석한 끝점 (라벨, PK) 쌍이다. v12 전에는 rel 라벨만 받아
+    표에서 끌어왔는데, 그 표가 성립하려면 **rel 하나에 끝점 라벨 조합이 하나**여야
+    한다. 결정 타입이 들어오면서 RELATED_TO 하나가 Concept↔Decision 네 조합을 갖게
+    돼 그 전제가 깨졌다. 호출부는 이미 타입을 알고 있으므로 내려받는 편이 맞다."""
+    for (label, pk), nid in zip(ends, (src, dst)):
         rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN n.rev AS rev",
                          {"id": nid})
         if not rows:
@@ -348,10 +368,10 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     주입 차단). Bridge 는 v2 에서 owner_id 를 얻어 스코프에 편입(구 'Concept 쪽만'
     주석 폐기). 로컬(owner_explicit=False)은 현행.
 
-    개방층(F1): 양 끝이 모두 개방 타입(레거시 5종 밖)이면 엣지 타입 무관하게
+    개방층(F1): 양 끝이 모두 개방 타입(레거시 6종 밖)이면 엣지 타입 무관하게
     TYPED{type} 캐리어로 exact (from,type,to) MERGE — rel 속성이 매칭 키에 참여해
     같은 쌍에 type 이 다른 엣지가 공존한다. 미지 타입 skip 은 레거시 끝점 조합에만
-    남는다(rel 테이블 FROM/TO 고정 — 조합 폭발 회피, 스킵 아닌 토폴로지 한계)."""
+    남는다(선언된 FROM/TO 쌍 밖 — 스킵이 아니라 토폴로지 한계)."""
     etype = (edge.get("type") or "").strip()
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     st, dt = types.get(src, ""), types.get(dst, "")
@@ -408,75 +428,98 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"unsupported edge type '{etype}' — skipped ({src}→{dst}); {_ALLOWED_PAIRS_HINT}")
         return None
 
+    # v12 — 끝점 라벨·PK 를 타입에서 꺼낸다. 아래 분기들이 라벨을 문자열로 박고
+    # 있었는데, 결정이 개념과 같은 자리에 서면서 조합이 늘어 그대로는 분기가
+    # 배로 불어난다. 자리(어느 층인가)만 보고 라벨은 표에서 꺼내면 분기는 그대로다.
+    def _end(ntype: str) -> tuple[str, str]:
+        return _NODE_MAP[ntype]
+
     if etype == "connects_via":
-        if (st, dt) != ("bridge", "concept"):
+        if st != "bridge" or dt not in _SEMANTIC_TYPES:
             warnings.append(
-                f"connects_via expects bridge→concept — skipped ({st or '?'}→{dt or '?'}); "
-                f"{_ALLOWED_PAIRS_HINT}")
+                f"connects_via expects bridge→concept|decision — skipped "
+                f"({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
             return None
+        (dl, dp) = _end(dt)
         # F9: 선택 role — 있으면 MERGE 패턴에 참여(bridges_ingest 의미론 동형: 같은
         # role 멱등, 다른 role 병렬 엣지). 없으면 bare MERGE(기존 role 엣지에 no-op).
         # role 기본값 조작 금지 — `{dom}_input` 관례는 bridges_ingest 전속.
         role = (edge.get("role") or "").strip()
         if role:
             store.run(
-                "MATCH (a:Bridge), (b:Concept) "
-                f"WHERE a.bridge_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+                f"MATCH (a:Bridge), (b:{dl}) "
+                f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
                 "MERGE (a)-[:CONNECTS {role: $role}]->(b)",
                 {"s": src, "d": dst, "role": role, **op})
         else:
             store.run(
-                "MATCH (a:Bridge), (b:Concept) "
-                f"WHERE a.bridge_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+                f"MATCH (a:Bridge), (b:{dl}) "
+                f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
                 "MERGE (a)-[:CONNECTS]->(b)", {"s": src, "d": dst, **op})
         return "created"
     if etype in _EC_EDGES:
-        # F4 — episodic↔semantic 다리. 비대칭 쌍(Episode→Concept)이라 역방향 dedupe
-        # 불요(ATTACHES_TO 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — query.delete_edge)
-        # 이 담당한다.
-        if (st, dt) != ("episode", "concept"):
+        # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
+        # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — query.delete_edge)이 담당한다.
+        #
+        # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
+        # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
+        if st not in ("episode", "decision") or dt not in _SEMANTIC_TYPES:
             warnings.append(
-                f"about expects episode→concept — skipped ({st or '?'}→{dt or '?'}); "
-                f"{_ALLOWED_PAIRS_HINT}")
+                f"about expects episode|decision→concept|decision — skipped "
+                f"({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
             return None
         rel = _EC_EDGES[etype]
-        was = _edge_exists(store, rel, src, dst)
+        (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
+        was = _edge_exists(store, rel, ends, src, dst)
         ev_set, ev_p = _ev_set("r")
         store.run(
-            "MATCH (a:Episode), (b:Concept) "
-            f"WHERE a.episode_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+            f"MATCH (a:{sl}), (b:{dl}) "
+            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
+            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER)
         return "created"
-    if (st, dt) == ("concept", "concept"):
+    if st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES:
+        if etype == "relates_to" and "decision" in (st, dt):
+            # relates_to 만 개념↔개념에 남는다(embedded_schema._LOUVAIN_PROJECTED_REL).
+            # 엔진 제약이자 의미상 옳은 자리다 — 결정은 개념에 **관한** 것이고
+            # (about), 결정끼리는 **계보**(derives_from · prerequisite_of)다.
+            # 조용히 다른 타입으로 바꿔 쓰지 않는다: 사용자가 적은 관계를 서버가
+            # 재해석하면 그래프가 사용자가 믿는 것과 달라진다.
+            warnings.append(
+                f"relates_to is concept→concept only — skipped ({st}→{dt}); "
+                "for a decision use `about` (decision→concept) or "
+                "`derives_from`/`prerequisite_of` (decision lineage)")
+            return None
+        (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
         if etype == "relates_to":
-            # RELATED_TO 는 의미상 무방향(개념↔개념) — 역방향 (b)-[:RELATED_TO]->(a) 가
-            # 이미 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
+            # RELATED_TO 는 의미상 무방향 — 역방향 (b)-[:RELATED_TO]->(a) 가 이미
+            # 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
             rev = store.run(
-                "MATCH (b:Concept)-[:RELATED_TO]->(a:Concept) "
-                f"WHERE b.concept_id = $d AND a.concept_id = $s{_o('b')}{_o('a')} "
+                f"MATCH (b:{dl})-[:RELATED_TO]->(a:{sl}) "
+                f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')} "
                 "RETURN count(*) AS c",
                 {"s": src, "d": dst, **op})
             if rev and rev[0].get("c"):
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
-        was = _edge_exists(store, rel, src, dst)
+        was = _edge_exists(store, rel, ends, src, dst)
         ev_set, ev_p = _ev_set("r")
         store.run(
-            "MATCH (a:Concept), (b:Concept) "
-            f"WHERE a.concept_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+            f"MATCH (a:{sl}), (b:{dl}) "
+            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, src, dst, owner or DEFAULT_OWNER)
+            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER)
         return "created"
-    if (st, dt) == ("record", "concept"):
+    if st == "record" and dt in _SEMANTIC_TYPES:
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
         # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
+        (dl, dp) = _end(dt)
         store.run(
-            "MATCH (a:Record), (b:Concept) "
-            f"WHERE a.record_id = $s AND b.concept_id = $d{_o('a')}{_o('b')} "
+            f"MATCH (a:Record), (b:{dl}) "
+            f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type = $t",
             {"s": src, "d": dst, "t": etype, **op})
         return "created"

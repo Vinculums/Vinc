@@ -486,7 +486,7 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
     구 링크는 put_doc 의 DETACH DELETE 가 이미 지웠다. 실패는 적재를 무효화하지
     않는다(증강 — embed_pipeline 의 링크 단계와 동일한 태도)."""
     try:
-        from engines.mentions_link import compute_links, _fetch_concepts
+        from engines.mentions_link import compute_links, merge_links, _fetch_concepts
         rows = store.run(
             "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS chunk_id, "
             "c.text AS text", {"d": doc_id})
@@ -494,13 +494,9 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
                    "text": r.get("text") or ""} for r in rows or []]
         concepts = _fetch_concepts(store, owner=owner)
         links = compute_links(chunks, concepts)
-        for lk in links:
-            store.run(
-                "MATCH (ch:Chunk {chunk_id: $cid}), (co:Concept {concept_id: $koid}) "
-                "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
-                {"cid": lk["chunk_id"], "koid": lk["concept_id"],
-                 "method": lk["method"]})
-        return len(links)
+        # 쓰기도 링커의 것을 쓴다 — 여기 MERGE 를 복제하고 있었고, 그 사본에
+        # `(co:Concept)` 이 박혀 있어 결정으로 향하는 링크가 조용히 0건이 됐다.
+        return merge_links(store, links, concepts)
     except Exception:
         return 0
 

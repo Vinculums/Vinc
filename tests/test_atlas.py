@@ -441,7 +441,11 @@ class DeleteEdgeTests(unittest.TestCase):
     """S4 확장 — 엣지 삭제 표면: 동기화 rel 5종만, 툼스톤 기록, owner 스코프."""
 
     def test_deletes_and_writes_tombstone(self):
-        fake = _FakeStore({"RETURN count(r) AS c": [{"c": 1}]})
+        # v12 — rel 하나에 끝점 라벨 조합이 여럿(Concept↔Decision)이라 삭제 경로가
+        # 조합을 전수 시도한다. 실 스토어에서는 안 맞는 조합이 0건이므로, 더블도
+        # **맞는 조합에만** 답해야 개수가 의미를 갖는다.
+        fake = _FakeStore({"MATCH (a:Concept)-[r:PREREQUISITE_OF]->(b:Concept)":
+                           [{"c": 1}]})
         res = q.delete_edge("concept:a", "prerequisite_of", "concept:b",
                             owner="user:t", store=fake)
         self.assertTrue(res["executed"] and res["found"])

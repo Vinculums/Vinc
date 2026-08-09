@@ -41,11 +41,19 @@ _SEL_KEY = "selected_domains"
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
+    # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
+    # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
+    # (오류도 경고도 없이 — 다른 기기에서 결정이 통째로 사라진 것처럼 보인다).
+    "Decision": ("title", "domain", "tags", "props"),
 }
 # fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 제외는 이제 왕복 결함이
 # 아니라 **스코프 결정**(F1 포팅으로 Entity 필드는 왕복 가능; Bridge 구조 필드
-# source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제. Concept/Episode 만.
-_SYNC_TYPES = {"concept": "Concept", "episode": "Episode"}
+# source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제.
+_SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision"}
+#: 노드 툼스톤 전파 대상 라벨 — 동기화 라벨과 같아야 한다(따로 적으면 어긋난다).
+_SYNC_LABELS = tuple(_SYNC_TYPES.values())
+#: 라벨 → PK 열. fragment 의 타입 표에서 파생한다(중복 정의 회피).
+_SYNC_PK = {lbl: frag._NODE_MAP[t][1] for t, lbl in _SYNC_TYPES.items()}
 
 
 def _snapshot(label: str, node: dict) -> dict:
@@ -145,9 +153,9 @@ def _edge_tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
 
 def _tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
     """owner 의 tombstone 중 sync_seq > since(최초 sync 면 since=0 전량). 동기화 라벨만
-    (Concept/Episode) — 그 외 라벨 삭제는 전파할 곳이 없다."""
-    where = ["t.owner_id = $owner", "t.label IN ['Concept', 'Episode']"]
-    params: dict = {"owner": owner}
+    (_SYNC_LABELS) — 그 외 라벨 삭제는 전파할 곳이 없다."""
+    where = ["t.owner_id = $owner", "t.label IN $labels"]
+    params: dict = {"owner": owner, "labels": list(_SYNC_LABELS)}
     if since > 0:
         where.append("t.sync_seq > $since")
         params["since"] = since
@@ -240,6 +248,22 @@ def _episodes_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
     return q.QueryPlan("sync_episodes", cypher, params, note="owner+domain scoped delta")
 
 
+def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+    """선택 도메인 안에서 `sync_seq > since` 인 Decision(v12). Concept 플랜과 동형."""
+    where = ["d.owner_id = $owner", "d.domain IN $domains"]
+    params: dict = {"owner": owner, "domains": domains}
+    if since > 0:
+        where.append("d.sync_seq > $since")
+        params["since"] = since
+    cypher = (
+        f"MATCH (d:Decision) WHERE {' AND '.join(where)} "
+        "RETURN d.decision_id AS id, d.title AS title, d.domain AS domain, "
+        "d.tags AS tags, d.props AS props, d.updated_at AS updated_at, "
+        "d.rev AS rev, d.sync_seq AS sync_seq ORDER BY d.sync_seq"
+    )
+    return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
+
+
 def _node_from_concept(r: dict) -> dict:
     # sync 는 **raw props** 만 나른다(topic/one_liner 는 fragment 왕복 불가라 폴딩 안 함).
     props = {}
@@ -249,6 +273,20 @@ def _node_from_concept(r: dict) -> dict:
         except (TypeError, ValueError):
             props = {}
     return {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
+            "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
+            "props": props,
+            "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_seq": int(r.get("sync_seq") or 0)}
+
+
+def _node_from_decision(r: dict) -> dict:
+    props = {}
+    if r.get("props"):
+        try:
+            props = json.loads(r["props"]) or {}
+        except (TypeError, ValueError):
+            props = {}
+    return {"id": r["id"], "type": "decision", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
@@ -286,10 +324,15 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
         return base
     e_res = q.execute(_episodes_delta_plan(owner=owner, domains=sel, since=since),
                       cfg, store=store)
+    d_res = q.execute(_decisions_delta_plan(owner=owner, domains=sel, since=since),
+                      cfg, store=store)
 
     c_rows = c_res.get("rows", [])
     e_rows = e_res.get("rows", []) if e_res.get("executed") else []
-    nodes = [_node_from_concept(r) for r in c_rows] + [_node_from_episode(r) for r in e_rows]
+    d_rows = d_res.get("rows", []) if d_res.get("executed") else []
+    nodes = ([_node_from_concept(r) for r in c_rows]
+             + [_node_from_episode(r) for r in e_rows]
+             + [_node_from_decision(r) for r in d_rows])
 
     # 엣지: **양끝이 이번 번들 안에 있는 것만**. fragment 는 같은 payload 의 노드로만
     # (from,to) 타입을 해석하므로(fragment.py `_node_types`), 끝점이 빠진 엣지는
@@ -299,13 +342,17 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
     if ids:
         rel_res = q.execute(q.graph_rows_for_ids_plan(sorted(ids), owner=owner),
                             cfg, store=store)
-        # F4 — Episode 소스 엣지(ABOUT)는 graph_rows_for_ids_plan(Concept 소스 전용)이
-        # 못 본다 → 전용 플랜으로 별도 조회. apply 측은 무변경(fragment `about` 분기).
-        about_res = q.execute(_episode_about_plan(sorted(ids), owner=owner),
-                              cfg, store=store)
-        about_rows = about_res.get("rows", []) if about_res.get("executed") else []
+        # graph_rows_for_ids_plan 은 Concept→Concept 만 본다 → 나머지 조합은 전용
+        # 플랜으로 별도 조회(F4 의 Episode ABOUT, v12 의 결정 엣지). apply 측은
+        # 무변경 — merge_fragment 가 타입에서 라우팅한다.
+        extra_rows: list[dict] = []
+        for pair in _EXTRA_EDGE_PAIRS:
+            res = q.execute(_extra_edges_plan(sorted(ids), owner=owner, pair=pair),
+                            cfg, store=store)
+            if res.get("executed"):
+                extra_rows.extend(res.get("rows", []))
         seen = set()
-        for r in [*rel_res.get("rows", []), *about_rows]:
+        for r in [*rel_res.get("rows", []), *extra_rows]:
             ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")
             tgt = r.get("target")
             if not ftype or not tgt or tgt not in ids or r["id"] not in ids:
@@ -351,18 +398,34 @@ _REL_TO_FRAGMENT = {rel: ft for ft, rel in frag._CC_EDGES.items()}
 _REL_TO_FRAGMENT.update({rel: ft for ft, rel in frag._EC_EDGES.items()})
 
 
-def _episode_about_plan(ids: list[str], *, owner: str) -> "q.QueryPlan":
-    """번들 내 Episode→Concept ABOUT 엣지(F4) — graph_rows_for_ids_plan 이 Concept
-    소스만 순회하므로 Episode 소스 엣지는 여기서 별도로 뽑는다. 양끝 모두 번들 id
-    집합 + owner 스코프. 삭제 전파는 엣지 툼스톤(_EdgeTombstone, S4 확장)이 담당."""
+#: `graph_rows_for_ids_plan` 이 **못 보는** 끝점 조합 — 그 플랜은 `(c:Concept)-[r]->
+#: (d:Concept)` 라 소스가 Concept 이 아니거나 도착이 Concept 이 아니면 안 걸린다.
+#: 여기 빠진 조합의 엣지는 번들에 안 실리고, **오류 없이** 기기 간에 사라진다
+#: (F4 가 Episode→Concept 에서 겪은 결함이고, v12 의 결정 엣지가 같은 자리다).
+_EXTRA_EDGE_PAIRS: tuple[tuple[str, str, str, str], ...] = (
+    ("Episode", "episode_id", "Concept", "concept_id"),      # F4
+    ("Episode", "episode_id", "Decision", "decision_id"),    # v12
+    ("Decision", "decision_id", "Concept", "concept_id"),
+    ("Decision", "decision_id", "Decision", "decision_id"),
+    ("Concept", "concept_id", "Decision", "decision_id"),
+)
+
+
+def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
+    """번들 내 비-(Concept→Concept) 엣지. 양끝 모두 번들 id 집합 + owner 스코프.
+
+    rel 라벨을 좁히지 않고 `label(r)` 로 뽑는다 — 동기화 대상 여부는 호출부의
+    `_REL_TO_FRAGMENT` 가 가린다(IN_DOMAIN 처럼 매핑 없는 것은 거기서 떨어진다).
+    삭제 전파는 엣지 툼스톤(_EdgeTombstone, S4 확장)이 담당."""
+    sl, sp, dl, dp = pair
     cypher = (
-        "MATCH (e:Episode)-[:ABOUT]->(c:Concept) "
-        "WHERE e.episode_id IN $ids AND c.concept_id IN $ids "
-        "AND e.owner_id = $owner AND c.owner_id = $owner "
-        "RETURN e.episode_id AS id, 'ABOUT' AS rel, c.concept_id AS target"
+        f"MATCH (a:{sl})-[r]->(b:{dl}) "
+        f"WHERE a.{sp} IN $ids AND b.{dp} IN $ids "
+        "AND a.owner_id = $owner AND b.owner_id = $owner "
+        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target"
     )
-    return q.QueryPlan("sync_about_edges", cypher, {"ids": ids, "owner": owner},
-                       note="episode ABOUT edges for sync bundle (F4)")
+    return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher, {"ids": ids, "owner": owner},
+                       note=f"{sl}->{dl} edges for sync bundle")
 
 
 # ── 청킹 ──────────────────────────────────────────────────────────────────────
@@ -536,7 +599,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     for t in bundle.get("tombstones") or []:
         tid, tlabel = t.get("node_id"), t.get("label")
         t_da = t.get("deleted_at") or ""
-        pk = {"Concept": "concept_id", "Episode": "episode_id"}.get(tlabel or "")
+        # 라벨→PK 를 손으로 적지 않는다 — 동기화 라벨이 늘 때 여기가 빠지면 그
+        # 라벨의 삭제가 조용히 전파되지 않는다(v12 Decision 이 그 자리였다).
+        pk = _SYNC_PK.get(tlabel or "")
         if not tid or not pk:
             continue
         cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id RETURN x.updated_at AS ua",
@@ -559,19 +624,20 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         ep = q.SYNC_EDGE_RELS.get(rel or "")
         if not ep or not src or not dst:
             continue
-        sl, sp, dl, dp = ep
         pairs = [(src, dst)]
         if rel == "RELATED_TO":   # 무방향 의미 — 물리 역방향도 함께(delete_edge 동형)
             pairs.append((dst, src))
-        for s_, d_ in pairs:
-            cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                            f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(r) AS c",
-                            {"s": s_, "d": d_})
-            if cnt and int(cnt[0].get("c") or 0):
-                store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                          f"WHERE a.{sp} = $s AND b.{dp} = $d DELETE r",
-                          {"s": s_, "d": d_})
-                out["edges_deleted"] = out.get("edges_deleted", 0) + 1
+        # 끝점 라벨 조합 전수(v12 — rel 하나에 조합이 여럿). delete_edge 와 동형.
+        for sl, sp, dl, dp in ep:
+            for s_, d_ in pairs:
+                cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                                f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(r) AS c",
+                                {"s": s_, "d": d_})
+                if cnt and int(cnt[0].get("c") or 0):
+                    store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                              f"WHERE a.{sp} = $s AND b.{dp} = $d DELETE r",
+                              {"s": s_, "d": d_})
+                    out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
 

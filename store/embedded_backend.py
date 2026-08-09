@@ -910,27 +910,74 @@ class EmbeddedBackend:
         "louvain": "louvain_id",
         "page_rank": "rank",
     }
-    # 기본 프로젝션 = Concept + 개념-개념 관계 4종(방향 무관 구조 연결성).
-    _ALGO_NODE_TABLES = ("Concept",)
+    # 기본 프로젝션 = 의미층 관계 4종(방향 무관 구조 연결성). **노드 테이블은 여기
+    # 안 적는다** — 아래 _algo_projection 이 이 rel 들의 끝점에서 파생한다.
     _ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
 
+    @staticmethod
+    def _algo_projection(rel_tables: tuple) -> tuple[tuple[str, ...], str]:
+        """투영할 노드 테이블과 id 식을 **스키마에서 파생**한다. 반환 (라벨들, id식).
+
+        ⚠ 여기 원래 `_ALGO_NODE_TABLES = ("Concept",)` 상수가 있었고, 그것이
+        2026-08-09 에 진단을 통째로 죽였다. `project_graph` 는 **투영한 rel 테이블의
+        끝점 노드 테이블이 전부 투영돼 있기를 요구한다**:
+
+            Binder exception: Decision is connected to RELATED_TO but not projected.
+
+        즉 rel 테이블에 끝점을 하나 더 여는 순간(v12 의 Decision) 이 상수가 낡고,
+        `vinc_diagnose` 가 **결정과 무관한 고아 조회까지** 전부 `executed=False` 로
+        강등된다. 상수와 스키마가 따로 관리되는 한 같은 일이 또 난다. 그래서 파생한다.
+
+        id 식도 같은 이유로 파생한다. 노드 테이블마다 PK 이름이 달라 `node.concept_id`
+        하나로 뽑으면 Decision 행의 id 가 `None` 이 되고, 호출부의 `if not cid:
+        continue` 가 그것을 **조용히** 버린다(실측: 투영은 성공하고 결과만 빈다)."""
+        from . import embedded_schema as _schema
+        want = set(rel_tables)
+        labels: list[str] = []
+        for spec in _schema.rel_table_specs():
+            if spec["label"] not in want:
+                continue
+            for lbl in (spec["from"], spec["to"]):
+                if lbl not in labels:
+                    labels.append(lbl)
+        node_specs = _schema.node_table_specs()
+        pks: list[str] = []
+        for lbl in labels:
+            pk = node_specs.get(lbl, {}).get("pk")
+            if pk and pk not in pks:
+                pks.append(pk)
+        if not pks:
+            return tuple(labels), "node.concept_id"
+        expr = (f"node.{pks[0]}" if len(pks) == 1
+                else "coalesce(" + ", ".join(f"node.{p}" for p in pks) + ")")
+        return tuple(labels), expr
+
     def graph_algo(self, algo: str, *, node_tables: tuple | None = None,
-                   rel_tables: tuple | None = None, id_col: str = "concept_id",
+                   rel_tables: tuple | None = None, id_col: str | None = None,
                    graph_name: str = "_vinc_algo", conn=None) -> list[dict]:
-        """algo 확장 그래프 알고리즘 실행(E-G3). 반환 ``[{id, value}]`` — id 는
-        ``node.<id_col>``, value 는 알고리즘 지표(group_id/louvain_id/rank). 확장
-        미가용(오프라인 미번들) 시 :meth:`_load_ext` 가 RuntimeError 로 강등한다
-        (호출부가 executed=False 로 표면화). project_graph 는 전체 테이블을 투영하므로
-        (owner 필터 불가) 소유자 스코프는 **호출부가 결과를 owner 개념 집합과 교차**
-        해 적용한다(교차소유자 엣지 부재 → 컴포넌트/커뮤니티는 owner-clean)."""
+        """algo 확장 그래프 알고리즘 실행(E-G3). 반환 ``[{id, value}]`` — id 는 투영된
+        노드 테이블들의 PK(여럿이면 coalesce), value 는 알고리즘 지표(group_id/
+        louvain_id/rank). 확장 미가용(오프라인 미번들) 시 :meth:`_load_ext` 가
+        RuntimeError 로 강등한다(호출부가 executed=False 로 표면화). project_graph 는
+        전체 테이블을 투영하므로 (owner 필터 불가) 소유자 스코프는 **호출부가 결과를
+        owner 개념 집합과 교차** 해 적용한다(교차소유자 엣지 부재 → 컴포넌트/커뮤니티는
+        owner-clean).
+
+        ``node_tables``·``id_col`` 은 명시 override 다. 미지정이 정상 경로이고, 그때
+        둘 다 :meth:`_algo_projection` 이 스키마에서 파생한다."""
         c = conn or self._conn
         metric = self._ALGO_METRIC.get(algo)
         if metric is None:
             raise ValueError(f"unsupported graph algo: {algo!r} "
                              f"(지원: {sorted(self._ALGO_METRIC)})")
         self._load_ext("algo", reader=conn is not None)
-        nt = "[" + ", ".join(f"'{t}'" for t in (node_tables or self._ALGO_NODE_TABLES)) + "]"
-        rt = "[" + ", ".join(f"'{t}'" for t in (rel_tables or self._ALGO_REL_TABLES)) + "]"
+        rels = tuple(rel_tables or self._ALGO_REL_TABLES)
+        derived, id_expr = self._algo_projection(rels)
+        if id_col:
+            id_expr = f"node.{id_col}"
+        nt = "[" + ", ".join(f"'{t}'" for t in (tuple(node_tables) if node_tables
+                                                else derived)) + "]"
+        rt = "[" + ", ".join(f"'{t}'" for t in rels) + "]"
 
         def _drop():
             try:
@@ -943,7 +990,7 @@ class EmbeddedBackend:
         try:
             return _exec_to_dicts(
                 c, f"CALL {algo}('{graph_name}') "
-                   f"RETURN node.{id_col} AS id, {metric} AS value", None)
+                   f"RETURN {id_expr} AS id, {metric} AS value", None)
         finally:
             _drop()   # 실행 후 프로젝션 정리(카탈로그 누수 방지)
 

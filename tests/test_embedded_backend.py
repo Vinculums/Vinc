@@ -1132,7 +1132,24 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "11")   # v11 — 도메인 계층(E-1)
+        self.assertEqual(rows[0]["v"], "12")   # v12 — 결정(Decision) 타입
+        # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
+        # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
+        store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "
+                  "SET d.owner_id='user:x', d.title='T', d.domain='vinc/design'")
+        store.run("MERGE (c:Concept {concept_id:'concept:t1'}) SET c.owner_id='user:x'")
+        store.run("MATCH (a:Decision{decision_id:'decision:t1'}), "
+                  "(b:Concept{concept_id:'concept:t1'}) "
+                  "MERGE (a)-[r:ABOUT]->(b) SET r.evidence='왜 이 값인가'")
+        ab = store.run("MATCH (:Decision)-[r:ABOUT]->(:Concept) RETURN r.evidence AS e")
+        self.assertEqual(ab[0]["e"], "왜 이 값인가",
+                         "Decision→Concept ABOUT 쌍이 안 열렸다 — v12 ALTER 누락")
+        store.run("MERGE (d2:Decision {decision_id:'decision:t2'}) SET d2.owner_id='user:x'")
+        store.run("MATCH (a:Decision{decision_id:'decision:t1'}), "
+                  "(b:Decision{decision_id:'decision:t2'}) "
+                  "MERGE (a)-[:DERIVES_FROM]->(b)")
+        lin = store.run("MATCH (:Decision)-[:DERIVES_FROM]->(:Decision) RETURN count(*) AS c")
+        self.assertEqual(int(lin[0]["c"]), 1, "결정 계보(Decision→Decision) 쌍 누락")
         # v4 — Chunk 소유·오프셋 열 + _DocMeta 레지스트리가 실동작한다.
         store.run("MERGE (c:Chunk {chunk_id:'k0'}) SET c.owner_id='user:x', "
                   "c.char_start=0, c.char_end=5, c.text='hello', c.doc_id='d0'")

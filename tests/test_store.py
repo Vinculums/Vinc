@@ -94,20 +94,29 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         # concepts(Concept↔Concept 3종) · bridges(CROSSES/CONNECTS)
         # E-G6 — CC 4종 + ABOUT 에 evidence/confidence 선택 열 부여(관계 출처 추적).
+        # v12 — 의미층(Concept|Decision)이 서로 바꿔 설 수 있어 쌍이 4개로 편다.
         self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept, "
+                      "FROM Concept TO Decision, FROM Decision TO Concept, "
+                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE)", ddl)
+        # …단 RELATED_TO 는 예외로 개념↔개념 — Louvain 이 단일 노드 테이블만 받는다.
+        self.assertIn("CREATE REL TABLE RELATED_TO(FROM Concept TO Concept, "
                       "evidence STRING, confidence DOUBLE)", ddl)
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
-        self.assertIn("CONNECTS(FROM Bridge TO Concept, role STRING)", ddl)
-        # F4 — episodic↔semantic 다리(+ E-G6 증거·신뢰도)
+        self.assertIn("CONNECTS(FROM Bridge TO Concept, FROM Bridge TO Decision, "
+                      "role STRING)", ddl)
+        # F4 — episodic↔semantic 다리(+ E-G6 증거·신뢰도). v12 로 출발점에 Decision 추가.
         self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept, "
-                      "evidence STRING, confidence DOUBLE)", ddl)
+                      "FROM Episode TO Decision, FROM Decision TO Concept, "
+                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE)", ddl)
+        self.assertIn("CREATE NODE TABLE Decision(decision_id STRING", ddl)
         # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
         self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
         # v11 도메인 계층(E-1). IN_DOMAIN 은 **한 테이블에 세 쌍** — 라벨을 셋으로
         # 쪼개지 않는다(ladybug 0.18.0 다중 FROM/TO 지원, 2026-08-09 실엔진 확인).
         self.assertIn("CREATE REL TABLE PARENT_OF(FROM Domain TO Domain)", ddl)
         self.assertIn("CREATE REL TABLE IN_DOMAIN(FROM Concept TO Domain, "
-                      "FROM Record TO Domain, FROM Episode TO Domain)", ddl)
+                      "FROM Record TO Domain, FROM Episode TO Domain, "
+                      "FROM Decision TO Domain)", ddl)
 
     def test_multi_pair_rel_specs_expand_per_pair(self):
         """다중 쌍 테이블은 이관 명세에서 **쌍마다** 한 항목으로 펴진다.
@@ -117,20 +126,48 @@ class ProvisionTests(unittest.TestCase):
         specs = eschema.rel_table_specs()
         pairs = {(s["from"], s["to"]) for s in specs if s["label"] == "IN_DOMAIN"}
         self.assertEqual(pairs, {("Concept", "Domain"), ("Record", "Domain"),
-                                 ("Episode", "Domain")})
+                                 ("Episode", "Domain"), ("Decision", "Domain")})
         # 단일 쌍 라벨은 그대로 한 항목
         self.assertEqual(1, len([s for s in specs if s["label"] == "CROSSES"]))
+
+    def test_louvain_projected_rel_stays_on_one_node_table(self):
+        """`communities()` 가 투영하는 rel 은 **노드 테이블 하나**에만 걸쳐야 한다.
+
+        엔진이 그렇게 요구한다(실측 2026-08-09):
+            Runtime exception: Louvain only supports operations on one node table.
+        그리고 `project_graph` 는 투영한 rel 의 끝점 테이블을 전부 투영하라고 하므로,
+        이 rel 에 끝점 라벨을 하나만 더 붙여도 **커뮤니티 기능이 통째로 죽는다**.
+        v12 작업 중 실제로 그렇게 죽였다가 되돌렸다 — 그래서 여기 가드를 둔다.
+
+        우회로는 없다(전부 실측 기각): 필터 dict 형식도 끝점 요구를 그대로 받고,
+        `project_graph_cypher` 로 만든 그래프는 WCC 조차 Binder 로 거절한다."""
+        rel = eschema._LOUVAIN_PROJECTED_REL
+        labels = {lbl for s in eschema.rel_table_specs() if s["label"] == rel
+                  for lbl in (s["from"], s["to"])}
+        self.assertEqual(labels, {"Concept"},
+                         f"{rel} 이 노드 테이블 {sorted(labels)} 에 걸쳐 있다 — "
+                         "Louvain 이 죽으므로 communities 투영을 함께 고쳐야 한다")
 
     def test_bridge_owner_column_and_v2_migration(self):
         # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 11)   # v11 — 도메인 계층(E-1)
+        self.assertEqual(eschema.SCHEMA_VERSION, 12)   # v12 — 결정(Decision) 타입
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
-        self.assertEqual([], [s for s in eschema.migration_statements(10)])
+        # v12 는 **다르다**: 기존 rel 테이블에 끝점 쌍을 여는 것이라 ALTER 가 필요하다.
+        # 부팅 DDL 의 CREATE 는 구 설치에서 'already exists' 로 흡수돼 쌍을 안 열어 준다
+        # — 그래서 여기가 비면 구 스토어에서 결정 엣지가 전부 Binder 로 죽는다.
+        v12 = eschema.migration_statements(11)
+        self.assertIn("ALTER TABLE ABOUT ADD FROM Decision TO Concept", v12)
+        self.assertIn("ALTER TABLE MENTIONS ADD FROM Chunk TO Decision", v12)
+        self.assertIn("ALTER TABLE IN_DOMAIN ADD FROM Decision TO Domain", v12)
+        self.assertTrue(all("Decision" in s for s in v12),
+                        "v12 스텝에 결정과 무관한 문이 섞였다")
+        # 최신 버전에서 올라올 것은 없다.
+        self.assertEqual([], eschema.migration_statements(12))
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)
@@ -152,14 +189,19 @@ class ProvisionTests(unittest.TestCase):
         v5 = eschema.migration_statements(5)
         self.assertTrue(any("needs_embed" in s for s in v5))
         # v7 은 시간축 네 열만(구 행 백필 없음 — 없는 시간을 지어내지 않는다).
-        v6 = eschema.migration_statements(6)
-        self.assertEqual(len(v6), 4)
-        self.assertTrue(all("DEFAULT ''" in s for s in v6))
+        # v7 단독 스텝만 세려면 그 다음 버전을 빼야 한다 — 그냥 len(v6) 을 박으면
+        # 버전을 올릴 때마다(v12 가 19개를 더했다) 무관하게 깨진다.
+        v7_only = [s for s in eschema.migration_statements(6)
+                   if s not in set(eschema.migration_statements(7))]
+        self.assertEqual(len(v7_only), 4)
+        self.assertTrue(all("DEFAULT ''" in s for s in v7_only))
         # v8·v9 는 **DDL 이 없다**. v8 은 신규 테이블(매 부팅 멱등 DDL 이 만든다)이고
         # v9 는 데이터 스텝(Episode props.date → 열)이라 ALTER 로 표현되지 않는다 —
         # 그래서 여기가 빈 것이 곧 "v9 에 할 일이 없다"는 뜻은 아니다. 그 스텝의
         # 게이트는 EPISODE_TIME_BACKFILL_VERSION 이고 계약은 tests/test_episode_date.py.
-        self.assertEqual(eschema.migration_statements(7), [])
+        # (v6 스텝과 같은 이유로 **그 구간만** 뺀다 — 뒤 버전이 늘어도 안 깨지게.)
+        self.assertEqual([s for s in eschema.migration_statements(7)
+                          if s not in set(eschema.migration_statements(9))], [])
         self.assertEqual(eschema.EPISODE_TIME_BACKFILL_VERSION, 9)
 
     def test_docmeta_table_and_chunk_ssot_columns(self):
