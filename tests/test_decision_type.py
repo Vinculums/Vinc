@@ -224,6 +224,43 @@ class DecisionEndToEnd(unittest.TestCase):
         self.assertTrue(res["executed"] and res["found"], res)
         self.assertEqual(res["deleted"]["node"], 1)
 
+    def test_스텁_재전송이_제목을_파괴하지_않는다(self):
+        """2026-08-10 사고 회귀 — 이관 중 **107개 노드의 제목이 id 로 덮였다**.
+
+        원인은 `title` 만 다른 필드와 규칙이 달랐던 것이다: domain·tags·props 는
+        `is not None` 가드가 있는데 title 은 `node.get("title") or nid` 로 **무조건
+        SET** 이었다. 그래서 엣지 해석용 스텁(id+type)을 보내는 순간 제목이 사라진다.
+
+        스텁은 피할 수 있는 것이 아니다 — 엣지 끝점은 **같은 payload 안에서만**
+        해석되므로 기존 노드도 반드시 동봉해야 한다. 즉 계약이 요구하는 호출이
+        데이터를 부수고 있었다."""
+        before = self.store.run(
+            "MATCH (d:Decision) WHERE d.decision_id = 'decision:d45' RETURN d.title AS t"
+        )[0]["t"]
+        self.assertTrue(before and not before.startswith("decision:"), before)
+        # 엣지를 하나 더 다는, 실제 이관과 같은 모양의 호출
+        res = frag.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "decision:d45", "type": "decision"},
+            {"id": "concept:offline", "type": "concept"},
+        ], "edges": [{"from": "decision:d45", "to": "concept:offline",
+                      "type": "about"}]}, store=self.store)
+        self.assertTrue(res.get("executed"), res)
+        after = self.store.run(
+            "MATCH (d:Decision) WHERE d.decision_id = 'decision:d45' RETURN d.title AS t"
+        )[0]["t"]
+        self.assertEqual(after, before, "스텁 재전송이 제목을 덮어썼다")
+        c_after = self.store.run(
+            "MATCH (c:Concept) WHERE c.concept_id = 'concept:offline' RETURN c.title AS t"
+        )[0]["t"]
+        self.assertEqual(c_after, "Offline first", "개념 제목도 같은 경로로 부서진다")
+        # 신규 노드는 제목이 없으면 여전히 id 로 채운다(제목 없는 노드 금지).
+        frag.merge_fragment({"owner": OWNER,
+                             "nodes": [{"id": "decision:brand-new", "type": "decision"}]},
+                            store=self.store)
+        fresh = self.store.run("MATCH (d:Decision) WHERE d.decision_id = 'decision:brand-new' "
+                               "RETURN d.title AS t")[0]["t"]
+        self.assertEqual(fresh, "decision:brand-new")
+
     def test_사용자_도구_전부가_결정을_본다(self):
         """읽기 경로 전수 — 이 목록이 **이관 직전에 라이브에서** 만들어졌다.
 

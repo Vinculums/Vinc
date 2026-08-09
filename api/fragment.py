@@ -199,7 +199,22 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if owner_explicit or not matched:
             _set("owner_id", owner)
     elif label != "Domain":
-        _set("title", node.get("title") or nid)
+        # ⚠ `title` 은 오래도록 **무조건 SET** 이었다(`node.get("title") or nid`).
+        # 그래서 id 만 실은 부분 재전송이 제목을 **id 로 바꿔치기**했다 — 보존이
+        # 아니라 파괴다. domain·tags·props 는 `is not None` 가드가 있는데 title 만
+        # 없었고, 그 비대칭이 함정의 전부다(CLAUDE.md 가 급소로 적어 둔 자리).
+        #
+        # 2026-08-10 에 실제로 물렸다: 결정 이관에서 엣지 해석용 스텁(id+type)을
+        # 보냈더니 그 페이로드에 담긴 **107개 노드의 제목이 전부 id 로 덮였다**.
+        # 스텁은 엣지 계약상 반드시 보내야 하므로(끝점은 같은 payload 안에서만
+        # 해석된다) 호출자가 피할 수 있는 함정이 아니었다.
+        #
+        # 이제 다른 세 필드와 같은 규칙이다: 주면 쓰고, 안 주면 보존한다. 단
+        # **신규일 때만** id 로 채운다 — 제목 없는 노드가 생기지 않게.
+        if node.get("title") is not None:
+            _set("title", str(node["title"]) or nid)
+        elif not matched:
+            _set("title", nid)
         if node.get("domain") is not None:
             if label == "Bridge":
                 # Bridge 는 domain 열이 없다(source_domain/target_domain 대신) — SET
