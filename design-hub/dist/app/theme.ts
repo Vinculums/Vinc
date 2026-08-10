@@ -1,6 +1,6 @@
-// AUTO-GENERATED — Vinc-design/scripts/gen_theme_ts.py. Do not hand-edit.
-// SSoT: Vinc-design/DESIGN/design-tokens.json + imports atlasScene.
-// WebGL(three.js/Sigma)용 팔레트 — CSS 변수와 동일 원천에서 생성.
+// AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.
+// SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports atlasScene.
+// Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.
 
 export type ThemeMode = 'light' | 'dark';
 

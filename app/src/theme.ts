@@ -1,7 +1,7 @@
-// AUTO-GENERATED — Vinc-design/scripts/gen_theme_ts.py. Do not hand-edit.
-// SSoT: Vinc-design/DESIGN/design-tokens.json + imports atlasScene.
-// WebGL(three.js/Sigma)용 팔레트 — CSS 변수와 동일 원천에서 생성.
-// sync-sha256: 5b4af8944a26dcc9af2bddd0cdba997ea1db67c0bff353db63853f2e6e388228
+// AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.
+// SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports atlasScene.
+// Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.
+// sync-sha256: fa0df2926ee10be082d94bde86c54815b07726ba76ddfa415a71239de8460443
 
 export type ThemeMode = 'light' | 'dark';
 

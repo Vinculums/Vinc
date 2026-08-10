@@ -2,15 +2,15 @@
   "$meta": {
     "name": "vinc-design",
     "version": "0.2.0",
-    "ssot": "Vinc-design/DESIGN",
-    "note": "Vinc 'Signal' 디자인 시스템 SSoT — base = 홈페이지/웹 Vinc 테마(Home · Signal), tenants/desktop = 데스크탑 앱(Deep Signal). 다크 우선 운영(런타임 data-theme=dark 기본; 엔진은 light-first로 :root=light를 내보내며 소비 셸이 dark를 기본 지정). 근거: imports/figma-variables-2026-07-19.json (Figma 수동 매핑). 상태 표기 언어(●◐○·≡≈)는 색과 병행 유지. 글로우는 그래프 노드 전용.",
+    "ssot": "Vinc/design-hub/DESIGN",
+    "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
     "layers": "primitive → semantic",
     "theme_mode": "light-first",
     "format": "hsl-channels",
-    "a11y": "WCAG 2.2 AA — 본문 명암비 ≥4.5:1 검증된 토큰만 텍스트로 사용"
+    "a11y": "WCAG 2.2 AA. Only tokens verified at a body contrast of 4.5:1 or better may be used as text."
   },
   "atlasScene": {
-    "note": "Atlas 3D 마크의 깊이 티어 — 다크 글로우 분기(app/src/surfaces/atlas3d.ts) 전용. 여기가 정본이며 imports/figma-variables-*.json 은 최초 수입 기록일 뿐이다. 소비되는 키는 fill·stroke·glowOpacity 셋뿐 — glowRadius·edge·grid 는 읽는 코드가 없어 2026-08-02 에 제거했다(값을 고쳐도 화면이 안 바뀌는 죽은 손잡이였다). 검증: Vinc/scripts/gate_contrast.py",
+    "note": "Depth tiers for the Atlas 3D mark, used only by the dark glow branch (app/src/surfaces/atlas3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
     "node": {
       "focus": {
         "fill": "#B9BEF0",
@@ -36,162 +36,162 @@
     "grain_50": {
       "$value": "#FBFBFA",
       "$type": "color",
-      "$description": "라이트 카드 표면 — 그레인 최상단"
+      "$description": "Light card surface, the top of the grain ramp"
     },
     "grain_100": {
       "$value": "#F2F2F0",
       "$type": "color",
-      "$description": "라이트 페이지 배경(로고 레퍼런스 그레인 그레이) · CTA 위 텍스트"
+      "$description": "Light page background (the grain grey of the logo reference) · text on a CTA"
     },
     "grain_200": {
       "$value": "#E9E9E6",
       "$type": "color",
-      "$description": "라이트 교차 섹션 밴드·muted 면"
+      "$description": "Light alternating section band · muted surface"
     },
     "hairline": {
       "$value": "#DEDEDA",
       "$type": "color",
-      "$description": "라이트 1px 보더/Separator"
+      "$description": "Light 1px border and separator"
     },
     "ink_900": {
       "$value": "#17171A",
       "$type": "color",
-      "$description": "쿨 니어블랙 잉크 — 본문(라이트). 순검정 금지"
+      "$description": "Cool near-black ink, body text in light mode. Pure black is forbidden"
     },
     "ink_600": {
       "$value": "#55565E",
       "$type": "color",
-      "$description": "보조 텍스트(라이트, AA✓)"
+      "$description": "Secondary text (light, AA ✓)"
     },
     "ink_400": {
       "$value": "#82838D",
       "$type": "color",
-      "$description": "캡션·메타 전용(라이트) — 본문 금지(캡션층)"
+      "$description": "Captions and meta only (light). Forbidden for body text (the caption layer)"
     },
     "indigo_900": {
       "$value": "#32355C",
       "$type": "color",
-      "$description": "로고 tip 인디고 — 라이트 CTA 면·상수 CTA 밴드"
+      "$description": "The indigo of the logo tip. Light CTA surface · the constant CTA band"
     },
     "indigo_700": {
       "$value": "#3A4070",
       "$type": "color",
-      "$description": "다크 CTA 면·액티브 채움(앱 accent/deep)"
+      "$description": "Dark CTA surface · active fill (the application's accent/deep)"
     },
     "indigo_600": {
       "$value": "#4A4F8C",
       "$type": "color",
-      "$description": "라이트 링크·info(AA✓ on grain)"
+      "$description": "Light link and info (AA ✓ on grain)"
     },
     "peri_400": {
       "$value": "#8F96D9",
       "$type": "color",
-      "$description": "페리윙클 — 포커스 링(양 모드)·다크 링크·그래프 글로우 원천"
+      "$description": "Periwinkle. The focus ring in both modes · dark link · the source colour of the graph glow"
     },
     "peri_200": {
       "$value": "#B9BEF0",
       "$type": "color",
-      "$description": "페리윙클 라이튼 — 다크 CTA 텍스트·활성 강조"
+      "$description": "Periwinkle, lightened. Dark CTA text · active emphasis"
     },
     "peri_250": {
       "$value": "#BDBFE3",
       "$type": "color",
-      "$description": "로고 팁 그라디언트 끝(다크) — peri-200 보다 한 단 밝다. 마크 본체는 currentColor 이고 팁만 이 색으로 빠진다"
+      "$description": "The end of the logo tip gradient (dark), one step brighter than peri_200. The body of the mark is currentColor and only the tip falls to this colour"
     },
     "ok_700": {
       "$value": "#2F6B4E",
       "$type": "color",
-      "$description": "라이트 success(AA✓ on grain)"
+      "$description": "Light success (AA ✓ on grain)"
     },
     "ok_300": {
       "$value": "#8FCBA8",
       "$type": "color",
-      "$description": "다크 success(AA✓ on d_bg0)"
+      "$description": "Dark success (AA ✓ on d_bg0)"
     },
     "warn_bg": {
       "$value": "#E5DCC3",
       "$type": "color",
-      "$description": "라이트 warning 배경/칩 전용 — 텍스트 금지"
+      "$description": "Light warning background and chip only. Forbidden as text"
     },
     "danger_700": {
       "$value": "#A03A3A",
       "$type": "color",
-      "$description": "라이트 danger(AA✓ on grain)"
+      "$description": "Light danger (AA ✓ on grain)"
     },
     "danger_300": {
       "$value": "#E08585",
       "$type": "color",
-      "$description": "다크 danger(AA✓ on d_bg0)"
+      "$description": "Dark danger (AA ✓ on d_bg0)"
     },
     "win_close": {
       "$value": "#DC2828",
       "$type": "color",
-      "$description": "타이틀바 닫기 버튼 호버 — OS 관례(Windows)지 브랜드색이 아니다. 그래서 모드 불변이고 danger 와도 다른 축이다: danger 는 상태를 말하고 이건 창 제어 관례를 따른다. Figma Window 컬렉션(223:35)의 대응 항목"
+      "$description": "Hover on the titlebar close button. This is an operating-system convention (Windows), not a brand colour, so it does not change with the mode and sits on a different axis from danger: danger states a condition, this follows a window-control convention. The counterpart of the Figma Window collection (223:35)"
     },
     "d_bg0": {
       "$value": "#0C0D13",
       "$type": "color",
-      "$description": "다크 페이지/앱 배경(최심부) — Deep Signal"
+      "$description": "Dark page and application background, the deepest layer (Deep Signal)"
     },
     "d_bg1": {
       "$value": "#12141D",
       "$type": "color",
-      "$description": "다크 서피스·교차 섹션·패널 베이스"
+      "$description": "Dark surface · alternating section · panel base"
     },
     "d_bg2": {
       "$value": "#191C2A",
       "$type": "color",
-      "$description": "다크 카드·LNB·부상 표면"
+      "$description": "Dark card · left navigation · raised surface"
     },
     "d_line": {
       "$value": "#262A3D",
       "$type": "color",
-      "$description": "다크 1px 보더/Separator"
+      "$description": "Dark 1px border and separator"
     },
     "d_text": {
       "$value": "#E8E7EF",
       "$type": "color",
-      "$description": "다크 본문(쿨 아이보리)"
+      "$description": "Dark body text (cool ivory)"
     },
     "d_soft": {
       "$value": "#A7A9BF",
       "$type": "color",
-      "$description": "다크 보조 텍스트(AA✓)"
+      "$description": "Dark secondary text (AA ✓)"
     },
     "d_mute": {
       "$value": "#6E7189",
       "$type": "color",
-      "$description": "다크 캡션·메타·비활성 — 본문 금지"
+      "$description": "Dark caption · meta · disabled. Forbidden for body text"
     },
     "d_warn_bg": {
       "$value": "#4A4230",
       "$type": "color",
-      "$description": "다크 warning 배경 전용 — 텍스트 금지"
+      "$description": "Dark warning background only. Forbidden as text"
     },
     "grain_300": {
       "$value": "#D1D2D6",
       "$type": "color",
-      "$description": "라이트 후퇴(fade) 하한 — APCA Lc 16.0. hairline(Lc 9.3)은 불가시 하한 15 아래라 그래프 선의 후퇴색으로 못 쓴다"
+      "$description": "The floor for the light fade channel, APCA Lc 16.0. hairline (Lc 9.3) falls below the invisibility floor of 15, so it cannot be the faded colour of a graph line"
     },
     "peri_500": {
       "$value": "#7E86D3",
       "$type": "color",
-      "$description": "라이트 크로스도메인 엣지 — peri_400 을 WCAG 3:1(2.49→3.00)까지 어둡게. 라이트에서는 WCAG 가 APCA 보다 엄격하다"
+      "$description": "Cross-domain edge in light mode: peri_400 darkened until it reaches WCAG 3:1 (2.49 → 3.00). In light mode WCAG is the stricter of the two measures"
     },
     "slate_400": {
       "$value": "#9496A9",
       "$type": "color",
-      "$description": "다크 노드 링·크로스 엣지 — APCA Lc 45.9. 가는 선은 solid(Lc 30)이 아니라 세부 기준(Lc 45)을 받는다"
+      "$description": "Dark node ring and cross edge, APCA Lc 45.9. A thin line is held to the fine-detail threshold (Lc 45), not the solid one (Lc 30)"
     },
     "slate_500": {
       "$value": "#747790",
       "$type": "color",
-      "$description": "엣지 본선 — 다크 Lc 30.9/4.42:1 · 라이트 Lc 62.6/3.92:1 로 **양 모드에서 이중 게이트를 통과하는 중립색**"
+      "$description": "The main edge line. Dark Lc 30.9 / 4.42:1 · light Lc 62.6 / 3.92:1, the **neutral that passes both gates in both modes**"
     },
     "slate_700": {
       "$value": "#525466",
       "$type": "color",
-      "$description": "다크 후퇴(fade) 하한 — APCA 불가시 하한 Lc 15 바로 위(15.9). 후퇴 채널은 3:1 면제이나 완전 소멸은 금지"
+      "$description": "The floor for the dark fade channel, just above the APCA invisibility floor of Lc 15 (15.9). The fade channel is exempt from 3:1 but must never disappear entirely"
     }
   },
   "semantic": {

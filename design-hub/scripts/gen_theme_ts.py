@@ -57,9 +57,9 @@ def label_css(tokens: dict, mode: str) -> str:
 
 def emit(tokens: dict, scene: dict) -> str:
     L = []
-    L.append("// AUTO-GENERATED — Vinc-design/scripts/gen_theme_ts.py. Do not hand-edit.")
-    L.append("// SSoT: Vinc-design/DESIGN/design-tokens.json + imports atlasScene.")
-    L.append("// WebGL(three.js/Sigma)용 팔레트 — CSS 변수와 동일 원천에서 생성.")
+    L.append("// AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.")
+    L.append("// SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports atlasScene.")
+    L.append("// Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.")
     L.append("")
     L.append("export type ThemeMode = 'light' | 'dark';")
     L.append("")
