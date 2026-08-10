@@ -1,60 +1,74 @@
-# 홈페이지 시안 — Home · Signal (v1.1, 2026-07-19)
+# Homepage draft: Home · Signal (v1.1, 2026-07-19)
 
-홈페이지(+웹 Vinc가 따를) 새 디자인. **다크 우선(발주자 확정)** — 기본 = Dark 모드(Deep Signal 혈통,
-bg `#0C0D13` 계열 + 페리윙클 액센트). Light 모드는 로고 레퍼런스(그레인 그레이 위 잉크 ▽ + 인디고 tip)에서
-도출한 "그레인 그레이 + 잉크 + 인디고"로, **테마 토글용 보조 모드**. 로고→홈→데스크탑 앱이 한 핏줄.
+The new design for the homepage, and for the web build of Vinc that will follow it.
+**Dark first, settled by the owner**: the default is Dark mode in the Deep Signal lineage,
+a `#0C0D13` family background with a periwinkle accent. Light mode is derived from the logo
+reference (ink on grain grey with an indigo tip) as "grain grey, ink, indigo" and is the
+**secondary mode for the theme toggle**. Logo, homepage and desktop application are one
+bloodline.
 
-Figma 화면 7종은 전부 화면 레벨 색까지 변수로 재바인딩(166 노드)하고 프레임에
-`setExplicitVariableModeForCollection(Dark)` 적용 — 모드만 바꾸면 라이트 시안도 즉시 볼 수 있다.
-상수 예외(모드 무관): 앱 목업(항상 다크), 최종 CTA 밴드(항상 인디고), Guide 미니 비주얼(항상 다크).
+All seven Figma screens rebind colour to variables down to the screen level (166 nodes), and
+the frames carry `setExplicitVariableModeForCollection(Dark)`, so switching the mode alone
+shows the light draft immediately. The constants that ignore the mode are the application
+mockup (always dark), the final CTA band (always indigo) and the Guide mini visuals (always
+dark).
 
-구 Ink&Paper 자산은 `Homepage (Design system)` 페이지에서 **완전 삭제**(Foundations 스와치·Notation 아이콘
-쇼케이스·구 로고 탐색). 보존: 발주자 로고 정본(78:164), `Logo / Mark` 컴포넌트(91:164), 다크 샘플.
-Notation 아이콘 **메인 컴포넌트**(9:88 등)는 캔버스 밖에 살아 있어 앱 사이드바 참조는 안전.
+The old Ink and Paper assets were **deleted entirely** from the `Homepage (Design system)`
+page: the Foundations swatches, the Notation icon showcase and the old logo exploration.
+Preserved: the owner's canonical logo (78:164), the `Logo / Mark` component (91:164) and the
+dark sample. The Notation icon **main components** (9:88 and others) live off canvas, so the
+application sidebar references are safe.
 
-## Figma 변수 — 컬렉션 `Home · Signal (draft)` (Light/Dark 2모드)
+## Figma variables, the `Home · Signal (draft)` collection (Light and Dark modes)
 
-| 토큰 | Light | Dark | 용도 |
+| Token | Light | Dark | Use |
 |---|---|---|---|
-| bg/page | `#F2F2F0` | `#0C0D13` | 페이지 배경 |
-| bg/section | `#E9E9E6` | `#12141D` | 교차 섹션 밴드 |
-| bg/card | `#FBFBFA` | `#191C2A` | 카드 |
-| text/primary | `#17171A` | `#E8E7EF` | 본문 |
-| text/soft | `#55565E` | `#A7A9BF` | 보조 |
-| text/mute | `#82838D` | `#6E7189` | 캡션 |
-| border | `#DEDEDA` | `#262A3D` | 헤어라인 |
-| accent/cta | `#32355C` | `#3A4070` | CTA 면(=로고 tip 인디고) |
-| accent/cta-text | `#F2F2F0` | `#B9BEF0` | CTA 텍스트 |
-| accent/link | `#4A4F8C` | `#8F96D9` | 링크·포인트 |
-| accent/ring | `#8F96D9` | `#8F96D9` | 포커스 링 |
+| bg/page | `#F2F2F0` | `#0C0D13` | page background |
+| bg/section | `#E9E9E6` | `#12141D` | alternating section band |
+| bg/card | `#FBFBFA` | `#191C2A` | card |
+| text/primary | `#17171A` | `#E8E7EF` | body |
+| text/soft | `#55565E` | `#A7A9BF` | secondary |
+| text/mute | `#82838D` | `#6E7189` | caption |
+| border | `#DEDEDA` | `#262A3D` | hairline |
+| accent/cta | `#32355C` | `#3A4070` | CTA surface, the logo's tip indigo |
+| accent/cta-text | `#F2F2F0` | `#B9BEF0` | CTA text |
+| accent/link | `#4A4F8C` | `#8F96D9` | links and points |
+| accent/ring | `#8F96D9` | `#8F96D9` | focus ring |
 
-코드 신택스 `var(--home-*)`. 스코프 지정 완료. 웹 다크모드 = `data-theme="dark"`에서 Dark 모드 값.
+The code syntax is `var(--home-*)` and scoping is done. Web dark mode reads the Dark values
+under `data-theme="dark"`.
 
-## 컴포넌트 (`Homepage (Design system)` 페이지, 전부 변수 바인딩)
+## Components (the `Homepage (Design system)` page, all bound to variables)
 
-| 컴포넌트 | 변형/프로퍼티 |
+| Component | Variants and properties |
 |---|---|
-| `Home / Button` | Kind=Primary/Quiet · label TEXT |
-| `Home / Badge` | label TEXT (dot+pill) |
-| `Home / Card` | title/desc TEXT + 로고 마크 아이콘 |
-| `Home / Header` | 로고+워드마크 / 링크 5 / 로그인 버튼 — 전 화면 인스턴스 |
-| `Home / Footer` | 브랜드 / © / 링크 4 — 전 화면 인스턴스 |
+| `Home / Button` | Kind = Primary or Quiet, label TEXT |
+| `Home / Badge` | label TEXT (dot plus pill) |
+| `Home / Card` | title and desc TEXT plus the logo mark icon |
+| `Home / Header` | logo and wordmark, five links, a sign-in button; an instance on every screen |
+| `Home / Footer` | brand, copyright, four links; an instance on every screen |
 
-## 화면 (`Homepage (실제 화면)` 페이지 — **오토레이아웃 섹션 구조**)
+## Screens (the `Homepage (real screens)` page, **auto-layout section structure**)
 
-| 화면 | 구성 |
+| Screen | Composition |
 |---|---|
-| Home · Desktop (41:4) | Header → 히어로(배지·56px 헤드라인·CTA 2종·**다크 Deep Signal 목업**(GraphNode 인스턴스 성좌)) → 사용법 3단계 밴드 → 기능 카드 6(2×3) → 세 가지 서약 밴드 → 인디고 최종 CTA → Footer |
-| Download (41:8) | OS 카드 3종("현재 OS" 하이라이트) + 체크섬 노트 |
-| Release (41:12) | 체인지로그 카드 3(v0.3.1 현재 강조) + 로드맵(●◐○ 표기) |
-| Guide (41:16) | 4단계 블록 — 각각 다크 미니 비주얼(성좌/채팅 버블/sync 다이어그램) |
-| Login (152:174) | 센터 인증 카드(로고·매직링크) — 신규 "Account & Community" 섹션 |
-| Account (153:199) | 프로필·MCP 키·뉴스레터 토글·계정삭제 존 |
-| Community (154:221) | 팩 갤러리 2×3(도메인 분포 바 = 인디고 3단계) |
+| Home · Desktop (41:4) | Header, hero (badge, 56px headline, two CTAs, a **dark Deep Signal mockup** with a constellation of GraphNode instances), a three-step how-it-works band, six feature cards in a 2 by 3 grid, a three-promises band, the indigo final CTA, Footer |
+| Download (41:8) | three OS cards with the current OS highlighted, plus a checksum note |
+| Release (41:12) | three changelog cards with v0.3.1 emphasized as current, plus a roadmap in the filled, half and empty circle notation |
+| Guide (41:16) | four step blocks, each with a dark mini visual (constellation, chat bubble, sync diagram) |
+| Login (152:174) | a centred authentication card (logo, magic link), part of the new Account and Community section |
+| Account (153:199) | profile, MCP keys, a newsletter toggle and an account deletion zone |
+| Community (154:221) | a 2 by 3 pack gallery, with the topic distribution bar in three indigo steps |
 
-## 규칙
+## Rules
 
-- **홈에는 글로우 없음** — 글로우는 앱 목업 안의 그래프 노드(GraphNode 인스턴스)에만 존재.
-- 앱 목업은 라이트 페이지 위에서도 **항상 다크**(데스크탑 앱 광고) — 구 `--w-*` 관행 계승, 단 컴포넌트 인스턴스로.
-- 상태 표기 언어(●◐○) 유지.
-- ⚠️ Figma 함정: 프레임이 **오토레이아웃이면 자식 x/y는 무시**(41:4가 원래 V 오토레이아웃이라 초기 빌드가 스택됨 → 섹션 구조로 재편). `resize()`는 sizing 모드를 FIXED로 리셋 — **AUTO는 resize 후에** 설정.
+- **No glow on the homepage.** Glow exists only on graph nodes inside the application mockup
+  (the GraphNode instances).
+- The application mockup is **always dark**, even over a light page, because it advertises
+  the desktop application. This inherits the old `--w-*` practice, but as a component
+  instance.
+- Keep the status notation language (filled, half and empty circles).
+- ⚠ A Figma trap: **when a frame is auto-layout, the children's x and y are ignored**. 41:4
+  was originally a vertical auto-layout, so the first build stacked everything, and it was
+  reorganized into a section structure. `resize()` resets the sizing mode to FIXED, so set
+  AUTO **after** resizing.

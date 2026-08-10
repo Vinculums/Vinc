@@ -1,35 +1,42 @@
-# Vinc 로고
+# The Vinc logo
 
-**최종 확정 (2026-07-19, 발주자 직접 제작).** 레퍼런스 사진(그레인 위 블랙 ▽)을 발주자가
-벡터라이즈·편집한 **두 획의 캘리그래픽 V**: 왼쪽 긴 스윕(아래 꼭지의 커브 포함) + 오른쪽 짧은
-블레이드. 상단 연결선 없음, 닫힌 삼각형 아님. 각 획에 **tip 인디고 그라디언트**(위 62%는 잉크,
-아래 끝으로 갈수록 인디고 #32355C가 은은하게 스밈).
+**Final, 2026-07-19, made by the owner.** From a reference photograph (a black inverted
+triangle over grain) that the owner vectorized and edited: a **two-stroke calligraphic V**,
+a long sweep on the left including the curve at the bottom vertex, and a short blade on the
+right. There is no connecting line across the top and it is not a closed triangle. Each
+stroke carries a **tip indigo gradient**: the upper 62% is ink, and indigo `#32355C` seeps in
+faintly towards the lower end.
 
-## 파일
+## Files
 
-| 파일 | 용도 |
+| File | Use |
 |---|---|
-| `vinc-mark.svg` | 마스터(라이트) — 잉크 `#161618` → tip 인디고 `#32355C` 그라디언트 |
-| `vinc-mark-dark.svg` | 다크 배경용 — 아이보리 `#EAE5DD` → tip 페리윙클 `#BDBFE3` |
-| `vinc-mark-mono.svg` | 단색 `currentColor` — UI 인라인·파비콘·소형(그라디언트 무의미한 크기) |
+| `vinc-mark.svg` | master (light), ink `#161618` to tip indigo `#32355C` gradient |
+| `vinc-mark-dark.svg` | for dark backgrounds, ivory `#EAE5DD` to tip periwinkle `#BDBFE3` |
+| `vinc-mark-mono.svg` | single colour `currentColor`, for inline UI, the favicon and small sizes where a gradient means nothing |
 
-viewBox는 아트 바운딩박스 타이트(`1.9 0 66.4 63`). 그라디언트는 획별
-objectBoundingBox 수직 — Figma 원본과 동일한 per-stroke 적용.
+The viewBox is tight to the art bounding box (`1.9 0 66.4 63`). The gradients are vertical in
+objectBoundingBox per stroke, applied the same way as the Figma original.
 
-## 규격
+## Specification
 
-- **클리어스페이스**: 마크 사방에 마크 폭의 최소 25%.
-- **소형(≤24px)**: 획이 가늘어 그라디언트가 안 읽힘 — `vinc-mark-mono.svg` 사용.
-  파비콘은 실사이즈 렌더 확인 후 필요시 획 보강 변형 추가 예정.
-- **색**: 정의된 3종(라이트/다크/모노)만. 임의 색·선명한 원색·강한 그라디언트 금지.
-- **금지**: 회전, 종횡비 왜곡, 외곽선 추가, 상단 연결선 복원, 획 분리 이동.
+- **Clear space**: at least 25% of the mark's width on every side.
+- **Small sizes (24px and under)**: the strokes are thin and the gradient does not read, so
+  use `vinc-mark-mono.svg`. For the favicon, check a real-size render and add a
+  stroke-reinforced variant if it turns out to be needed.
+- **Colour**: only the three defined variants, light, dark and mono. No arbitrary colours, no
+  vivid primaries, no strong gradients.
+- **Forbidden**: rotation, distorting the aspect ratio, adding an outline, restoring the top
+  connecting line, moving the strokes apart.
 
-## 워드마크
+## Wordmark
 
-미정 — 브랜드 폰트 확정 후 마크+"Vinc" 락업 아웃라인을 여기 추가.
+Undecided. Add the mark plus "Vinc" lockup outline here once the brand font is settled.
 
-## 출처(SSoT)
+## Source of truth
 
-- **Figma 정본**: 파일 `WUXLeDDNBqih2KTZOz9wCX` → `Homepage (Design system)` 페이지
-  → `Logo` 프레임(78:164, 발주자 최종본) · `Logo / Mark` 컴포넌트(91:164) · `Logo · dark sample`(91:169).
-- 이 SVG들은 Figma 벡터 경로를 그대로 추출한 것 — 형태 수정은 Figma에서 하고 여기로 재추출한다.
+- **Canonical in Figma**: file `WUXLeDDNBqih2KTZOz9wCX`, the `Homepage (Design system)` page,
+  the `Logo` frame (78:164, the owner's final), the `Logo / Mark` component (91:164) and
+  `Logo · dark sample` (91:169).
+- These SVGs are the Figma vector paths extracted as they are. Change the shape in Figma and
+  re-extract here.
