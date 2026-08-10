@@ -290,7 +290,7 @@ class VincApp:
 
     def read_merge_candidates(self, p):
         # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).
-        # F10: 구조적 비중복(문서끼리·결정↔비결정)과 기각 기억은 기본 제외,
+        # F10: 구조적 비중복(한쪽이라도 문서 개념 — 문서끼리·문서↔주제)과 기각 기억은 기본 제외,
         # include_structural=1 로 되열 수 있다(억제 건수는 suppressed 로 노출).
         return self._read(lambda r: q.suggest_merge_candidates(
             owner=_req(p, "owner"), min_score=float(p.get("min_score") or 0.6),

@@ -445,11 +445,13 @@ TOOLS: list[dict] = [
                        "subset) — NO automatic merge, NO LLM judgement (similarity merge is "
                        "permanently forbidden; the system only proposes). Returns {candidates:"
                        "[{a_id,a_title,b_id,b_title,score,reason,same_domain}], count, total, "
-                       "suppressed:{structural,rejected}}, same-domain pairs first. Two classes are "
-                       "excluded BY DEFAULT because they are duplicates in name only: document "
-                       "concepts against each other (concept:doc.*) and decision-vs-non-decision "
-                       "pairs, which this graph deliberately keeps apart. Decision-vs-decision stays "
-                       "in — a reused DEC number is a real duplicate. `suppressed` reports how many "
+                       "suppressed:{structural,rejected}}, same-domain pairs first. Pairs where "
+                       "EITHER side is a document mirror concept (concept:doc.*) are excluded BY "
+                       "DEFAULT, because they are duplicates in name only: a document concept and "
+                       "the topical concept it mirrors are two layers, not two copies (the topical "
+                       "one carries ABOUT/ATTACHES_TO/RELATED_TO, the document one carries "
+                       "INHERITS_FROM to other documents), and two documents are two concepts even "
+                       "when their titles nest. `suppressed` reports how many "
                        "were held back so the exclusion is never silent; set include_structural to "
                        "see them. Pairs the user has already rejected (vinc_merge_reject) are also "
                        "excluded and counted there. Confirm a real duplicate by calling "
@@ -458,7 +460,7 @@ TOOLS: list[dict] = [
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
             "include_structural": {"type": "boolean", "default": False,
                                    "description": "Also return the structurally-excluded pairs "
-                                                  "(document-vs-document, decision-vs-non-decision)."},
+                                                  "(any pair touching a concept:doc.* mirror)."},
             "min_score": {"type": "number", "default": 0.6, "minimum": 0.0, "maximum": 1.0,
                           "description": "Token-Jaccard threshold (0-1) for token_overlap pairs."},
             "owner": {"type": "string"},

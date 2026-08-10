@@ -3187,6 +3187,24 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 #          제목이 접두 관계인 것은 **명명 규칙의 결과**이지 중복의 증거가 아니다.
 # 이건 id 명명 **관례**지 엔진이 만드는 구조가 아니다(코드가 붙이는 접두어가 아님).
 # 그래서 (1) 관례가 없는 그래프에서는 자동으로 무동작이고, (2) 끄는 스위치를 둔다.
+#
+# ⚠ v13 에서 **doc↔주제 쌍까지 넓혔다.** 원래는 doc 끼리만 막았는데, 그 규칙이 실제
+# 잡음의 대부분을 놓치고 있었다 — 라이브 계정 그래프 실측(2026-08-10)에서 후보 10쌍
+# 중 **8쌍이 doc↔주제**였다(`concept:atlas` ↔ `concept:doc.vinc.spec.surface-atlas`
+# 처럼 제목이 글자까지 같다). 신호 대 잡음이 2:8 이면 사람이 볼 수 있는 목록이 아니다.
+#
+# doc 미러와 그것이 비추는 주제 개념은 **사본 둘이 아니라 층 둘**이다. 1-hop 을 재
+# 보면 어휘가 아예 갈린다:
+#     concept:atlas                     ABOUT 13 · ATTACHES_TO 5 · RELATED_TO 6 · INHERITS_FROM 0
+#     concept:doc.vinc.spec.surface-atlas   INHERITS_FROM 4(전부 다른 doc 개념) · 나머지 0
+# 주제 개념은 결정·사건·사실이 매달리는 의미 그래프의 노드고, doc 개념은 frontmatter
+# 의 `inherits_from` 을 미러링하는 문서 상속 격자의 노드다. 합치면 격자가 의미 그래프
+# 안으로 무너진다 — 제목이 같아진 것은 doc 미러가 문서 제목을 그대로 물려받았기
+# 때문이지 같은 것을 두 번 적었기 때문이 아니다.
+#
+# 그래서 규칙은 "한쪽이라도 doc 이면 뺀다"로 접힌다. doc 이 진짜로 두 벌 생긴 경우는
+# doc↔doc 이라 이 규칙이 이미 잡고, 여기서 새로 막는 것은 층이 다른 쌍뿐이다.
+# 억제는 여전히 숫자로 남고 `include_structural` 로 되열린다(무음 억제 금지).
 # 그리고 **무음 억제 금지**: 몇 쌍을 이 규칙으로 뺐는지 응답에 숫자로 남긴다.
 #
 # ⚠ v12 에서 **결정 규칙(`dec-*`)을 걷어냈다.** 여기 원래 "결정과 그 결정의 주제는
@@ -3205,8 +3223,11 @@ def _structural_role(cid: str) -> str:
 
 
 def _is_structural_nonduplicate(a_id: str, b_id: str) -> bool:
-    """이 쌍이 **의도된 비중복**인가 — 문서 미러 개념끼리."""
-    return _structural_role(a_id) == "doc" and _structural_role(b_id) == "doc"
+    """이 쌍이 **의도된 비중복**인가 — 한쪽이라도 문서 미러 개념이면 그렇다.
+
+    doc↔doc(문서가 둘이면 개념도 둘)과 doc↔주제(층이 둘)를 같은 규칙으로 뺀다.
+    근거는 위 주석 — 두 경우 모두 제목이 닮은 것이 명명 규칙의 결과다."""
+    return "doc" in (_structural_role(a_id), _structural_role(b_id))
 
 
 def rejection_pair_key(owner: str, a_id: str, b_id: str) -> str:
@@ -3298,9 +3319,10 @@ def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
     (subset, 0.8+0.2·자카드) · 토큰 자카드 ≥min_score(token_overlap). 반환은
     (동일도메인 우선, 점수 내림차순, id 사전순) 정렬 리스트.
 
-    기본으로 **의도된 비중복 쌍**(문서끼리 · 결정↔비결정, :func:`_is_structural_nonduplicate`)
-    과 **기각 기억**(``rejected``)을 뺀다. ``include_structural=True`` 로 구조 필터를
-    끄면 예전 동작이다. 억제 건수가 필요하면 :func:`merge_candidates_detail`."""
+    기본으로 **의도된 비중복 쌍**(한쪽이라도 `concept:doc.*` — 문서끼리 · 문서↔주제,
+    :func:`_is_structural_nonduplicate`)과 **기각 기억**(``rejected``)을 뺀다.
+    ``include_structural=True`` 로 구조 필터를 끄면 예전 동작이다. 억제 건수가
+    필요하면 :func:`merge_candidates_detail`."""
     return merge_candidates_detail(rows, min_score=min_score, limit=limit,
                                    include_structural=include_structural,
                                    rejected=rejected)["candidates"]
@@ -3396,9 +3418,10 @@ def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6
     """E-G4 — owner 개념의 중복 병합 후보(조회 전용). 확정은 vinc_merge_nodes 경유
     (자동 병합 금지 THESIS T1).
 
-    기본으로 **의도된 비중복 쌍**(문서 개념끼리 · 결정↔비결정)과 **기각 기억**을 뺀다
-    (F10). 뺀 건수는 ``suppressed`` 로 노출한다 — 필터가 진짜 중복을 먹었는지 호출자가
-    볼 수 있어야 하고, ``include_structural=True`` 로 구조 필터를 되열 수 있다.
+    기본으로 **의도된 비중복 쌍**(한쪽이라도 문서 개념 — 문서끼리 · 문서↔주제)과
+    **기각 기억**을 뺀다(F10). 뺀 건수는 ``suppressed`` 로 노출한다 — 필터가 진짜
+    중복을 먹었는지 호출자가 볼 수 있어야 하고, ``include_structural=True`` 로 구조
+    필터를 되열 수 있다.
 
     반환 {executed, candidates:[…], count, total, suppressed:{structural, rejected}}."""
     where = "WHERE c.owner_id = $owner " if owner else ""

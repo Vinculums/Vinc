@@ -64,6 +64,39 @@ class MergeCandidateStructureTests(unittest.TestCase):
         back = q.merge_candidates(rows, include_structural=True)
         self.assertEqual(len(back), 1)
 
+    def test_문서_개념과_그것이_비추는_주제_개념은_병합_후보가_아니다(self):
+        """v13 — 규칙이 doc↔doc 만 막고 **doc↔주제**를 놓치고 있었다.
+
+        라이브 계정 그래프 실측(2026-08-10): 후보 10쌍 중 **8쌍이 이 모양**이었다.
+        `concept:atlas` 와 `concept:doc.vinc.spec.surface-atlas` 는 제목이 글자까지
+        같은데, 그건 doc 미러가 문서 제목을 그대로 물려받기 때문이지 같은 것을 두 번
+        적었기 때문이 아니다. 1-hop 을 재면 어휘가 갈린다 — 주제 쪽은 ABOUT 13 ·
+        ATTACHES_TO 5 · RELATED_TO 6 이고 INHERITS_FROM 0, 문서 쪽은 INHERITS_FROM 4
+        뿐이고 나머지 0. 사본 둘이 아니라 **층 둘**이라 합치면 문서 상속 격자가 의미
+        그래프 안으로 무너진다.
+
+        신호 대 잡음이 2:8 이면 사람이 볼 수 있는 목록이 아니다 — 그래서 기본 제외다."""
+        rows = [{"id": "concept:atlas", "title": "Atlas, the map surface", "domain": "vinc/design"},
+                {"id": "concept:doc.vinc.spec.surface-atlas",
+                 "title": "Atlas, the map surface", "domain": "vinc/design"}]
+        det = q.merge_candidates_detail(rows)
+        self.assertEqual(det["candidates"], [],
+                         "문서 미러가 주제 개념의 병합 후보로 올라왔다")
+        self.assertEqual(det["suppressed"]["structural"], 1)
+        # 무음 억제 금지 — 되열면 그대로 보여야 한다(제목이 같으니 exact_title).
+        back = q.merge_candidates(rows, include_structural=True)
+        self.assertEqual(len(back), 1)
+        self.assertEqual(back[0]["reason"], "exact_title")
+
+    def test_주제_개념끼리는_계속_후보로_남는다(self):
+        """확장이 **너무 넓지 않은지**를 반대편에서 못박는다. doc 이 한쪽도 없으면
+        규칙은 무동작이어야 한다 — 안 그러면 이 도구가 잡을 것이 없어진다."""
+        rows = [{"id": "concept:ipaas", "title": "iPaaS", "domain": "d"},
+                {"id": "concept:ipaas-2", "title": "iPaaS", "domain": "d"}]
+        det = q.merge_candidates_detail(rows)
+        self.assertEqual(len(det["candidates"]), 1, det)
+        self.assertEqual(det["suppressed"]["structural"], 0)
+
     def test_결정은_후보_소스에_아예_들어오지_않는다(self):
         """v12 — 결정이 병합 후보에서 빠지는 근거가 **타입**으로 바뀌었다.
 
