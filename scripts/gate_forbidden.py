@@ -5,9 +5,10 @@
 Vinc 는 memory 데이터플레인을 흡수하되 **CP 계측 코드·학습 프레이밍·구 명칭**을
 반입하지 않는다. 본 게이트가 그 하드 룰의 실행체(executable SSoT)다.
 
-- 인간 가독 명세(정본): 그래프 문서 `vinc.a.terms` §4–6 (`vinc_doc_get`).
-  ⚠ 파일 `Vinc-docs/vinc/A/vinc.a.terms.md` 는 **v0.1 에서 동결된 스냅샷**이라
-  F1 v0.2 개정(결제 카피 4종 해제)이 없다 — 그 파일을 정본으로 읽지 말 것.
+- 인간 가독 명세(정본): 그래프 문서 `vinc.canon.terminology` (`vinc_doc_get`).
+  ⚠ 파일 사본을 정본으로 읽지 말 것. `_migration/` 안의 `vinc.canon.terminology.md`
+  와 `export/vinc.a.terms.md` 는 이행 시점의 스냅샷이고, 후자는 v0.1 에서 동결돼
+  F1 v0.2 개정(결제 카피 4종 해제)조차 없다.
 - 본 스크립트의 패턴 표는 그 명세의 코드 미러다 — **둘을 동기화**한다
   (vinc.a.terms 변경 시 본 표도 갱신, revamp catalog↔RULES 동기 모델과 동일).
 
@@ -34,14 +35,24 @@ _TEXT_EXT = {
 _EXCLUDE_DIRS = {
     ".git", "node_modules", "dist", "build", "target", "__pycache__",
     ".venv", "venv", "models",  # models/ = 임베딩 캐시(바이너리)
+    # `_migration/` = Vinc-docs 폐기(2026-08-11) 때 들여온 이행 원장·재작성본·잔여
+    # 자산이다. **제품 표면이 아니라 이력**이라 이 게이트의 관할 밖이다. 그리고
+    # 여기엔 금지 어휘 정본 자체가 들어 있어서 — 금지하려면 그 단어를 적어야 하므로 —
+    # 검사하면 반드시 실패한다(실측: 16건, 그중 12건이 terminology 문서 한 벌).
+    # 파일별 allowlist 로 막지 않는 이유: 이 디렉터리는 불변 아카이브이고, 목록을
+    # 유지하는 순간 아래 `vinc.a.terms.md` 가 그랬듯 파일명이 바뀌면 조용히 샌다.
+    "_migration",
 }
 
 # 자기 자신·정책/계획 문서는 금지어를 '정의·인용'하므로 제외(오탐 회피).
-# 이들은 Vinc-docs(별도 레포)에 있어 기본 트리에 없지만, 레포 동거 시 대비.
+# ⚠ `vinc.a.terms.md` 는 **이행 전 파일명**이고 재작성본은 `vinc.canon.terminology.md`
+# 다. 이름이 갈린 채로 두면 같은 문서가 새 이름으로 트리에 들어왔을 때 게이트가
+# 터진다 — 실제로 2026-08-11 에 그렇게 터졌다. 둘 다 싣는다(구본은 아카이브에 남아 있다).
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
     "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
-    "vinc.a.terms.md",               # 금지 어휘 정본
+    "vinc.a.terms.md",               # 금지 어휘 정본 (구 파일명)
+    "vinc.canon.terminology.md",     # 금지 어휘 정본 (재작성본)
     "UI_INVENTORY_AUDIT.md",         # 흡수 매트릭스가 금지 카피를 예시 인용
     "PLAN.md",                       # 실행 계획이 F1/F7 토큰을 규칙으로 명명
 )
