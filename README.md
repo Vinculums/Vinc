@@ -20,16 +20,34 @@
 
 ## 정본 (SSoT)
 
-| | |
+**정본은 계정 그래프다.** 아래는 파일 경로가 아니라 `doc_id` 이고, `vinc_doc_get`
+(MCP) 또는 `vinc_search` 로 읽는다. Vinc 는 자기 지식을 자기 제품에 담는다.
+
+| 무엇 | doc_id |
 |---|---|
-| 설계 SSoT | `weg-9000-docs/CONTEXT/reference-docs/weg/C/weg.c.memory-standalone.md` (v0.4) |
-| 흡수 절차 | `weg-9000-docs/WORK-ORDERS/WO-MEM-SA-001.md` (§3 반입 금지 = 하드 룰) |
-| 용어·금지 어휘 | `Vinculums/Vinc-docs vinc/A/vinc.a.terms.md` |
-| 아키텍처 SSoT | `Vinculums/Vinc-docs vinc/ARCHITECTURE.md`, `vinc/B/vinc.b.architecture.md` |
-| 웹·계정 as-built | `Vinculums/Vinc-docs vinc/WEB-vincs-app.md` |
-| 문서 정본(Chunk=SSoT, D45) | `Vinculums/Vinc-docs vinc/C/vinc.c.chunk-ssot.md` ([[vinc.c.chunk-ssot]]) |
-| 배포 as-built | `Vinculums/Vinc-docs vinc/DEPLOYMENT.md` (Azure, 표면 5개) |
-| 실행 계획 | `Vinculums/Vinc-docs PLAN.md` |
+| 용어·표기·금지 어휘 | `vinc.canon.terminology` |
+| 아키텍처 불변식 · 임베디드 백엔드 계약 | `vinc.canon.principles` |
+| 아키텍처 as-built(두 빌드, 한 계약) | `vinc.spec.architecture` |
+| 웹·계정 as-built | `vinc.spec.web-system` |
+| 문서 정본(Chunk=SSoT, D45) | `vinc.canon.chunk-ssot` |
+| MCP 인터페이스·도구 계약 | `vinc.canon.mcp-contract` |
+| 그래프 쓰기 관례(GRAPH.md) | `vinc.canon.graph-conventions` |
+| 결정 등기 | `vinc.canon.decisions` |
+| 배포 as-built | `vinc.ops.deployment` |
+| 제품 개요·코퍼스 색인 | `vinc.spec.product-overview` |
+
+> 이 표는 2026-08-11 에 다시 썼다. 전에는 여덟 행이 전부 **이 리포 바깥의 파일**을
+> 가리켰는데(`weg-9000-docs/...` 와 `Vinculums/Vinc-docs ...`), 그 시점에 **여덟 행
+> 모두 실재하지 않았다** — `weg-9000-docs` 는 그런 이름의 리포가 없고, `Vinc-docs` 는
+> 폐기 대상이라 세션 규율이 "읽지 마라"고 금지한 리포였다. 제품 README 가 프로젝트
+> 자신의 정본 규칙을 어기고 있었다. 같은 날 `Vinc-docs` 를 아카이브하면서 정리했다.
+
+**반입 금지(F1~F7)는 문서가 아니라 실행체다** — `scripts/gate_forbidden.py` 가 유일한
+정본이고 0건을 요구한다. 근거와 경계는 `vinc.canon.principles` 에 있다. 발원 문서였던
+`weg-9000-docs/WORK-ORDERS/WO-MEM-SA-001.md` 는 이 워크스페이스에 없다.
+
+이행 이전의 구 마크다운(`Vinc-docs`)은 `_migration/` 에 원장과 함께 보존돼 있다.
+지식 조회처가 아니라 이력이다 — 찾을 것은 그래프에서 찾는다.
 
 ## 아키텍처
 
@@ -70,7 +88,7 @@ Azure Container Apps (리소스 그룹 vincsRG, Korea Central)
 
 - **2026-07-28/29 전면 이관** — 가비아 VM(Caddy + systemd, 수동 SSH 배포)이 삭제되고
   위 3종 관리형 PaaS + GitHub Actions CD 로 재구축됐다. 배포 정본(as-built)은
-  `Vinculums/Vinc-docs vinc/DEPLOYMENT.md` — 표면 5개·CD 워크플로·교차 표면 순서
+  그래프의 `vinc.ops.deployment` — 표면 5개·CD 워크플로·교차 표면 순서
   제약이 거기 있다. 경계 급소 둘: ① Linked Backend 를 걸면 Azure 가 계정 컨테이너에
   EasyAuth 를 자동으로 켜서 **컨테이너 FQDN 직접 호출은 401**(SWA 경유만 통과) ②
   허브는 SWA 에 링크돼 있지 않아 `mcp.vincs.io/internal/*` 가 공개 도달 가능하며
@@ -179,4 +197,10 @@ python e2e_live.py --backend embedded     # 임베디드 백엔드 e2e
   `/doc/extract` 미리보기 → 승인 시 반영. 같은 파일을 다시 떨구면 origin 색인으로
   기존 문서를 **갱신**한다(중복 문서를 만들지 않는다).
 
-마일스톤 정본은 `Vinculums/Vinc-docs PLAN.md`.
+출하된 것의 정본은 [CHANGELOG.md](CHANGELOG.md) 와 그래프의 `vinc.release.changelog`
+(릴리스를 어떻게 끊는지 포함)다. 코퍼스 색인은 `vinc.spec.product-overview`.
+
+⚠ **앞으로 할 것을 담은 마일스톤 정본은 지금 없다.** 여기 `Vinc-docs PLAN.md` 라고
+적혀 있었는데 그 리포는 2026-08-11 에 아카이브됐고, 그 파일은 이력으로
+`_migration/legacy/PLAN.md` 에 남겼을 뿐 갱신되지 않는다. 살아 있는 계획을 다시
+세우려면 그래프에 `vinc.plan.*` 로 만든다 — 없는 정본을 가리키느니 없다고 적는다.
