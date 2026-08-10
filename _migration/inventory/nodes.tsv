@@ -1,0 +1,311 @@
+id	kind	title	domain	tags	extra
+concept:abcd-layers	concept	A/B/C/D 문서 레이어	vinc/governance
+concept:account-backend	concept	계정 백엔드(vinc-account)	vinc/web
+concept:acr-tasks	concept	ACR Tasks 빌드	vinc/infra
+concept:answer-material	concept	답변 재료	vinc/architecture	core
+concept:art-chinua-achebe	concept	Chinua Achebe		art;artists;literature;africa;nigeria;postcolonial;igbo;english-african;person	orphan=true;topic=artists;source_file=WORKSPACES/learning/art/artists/Chinua-Achebe.md
+concept:art-coco-chanel	concept	Coco Chanel		art;artists;fashion;modern;france;minimalism;functionalism;women;wwii-controversy;person	orphan=true;topic=artists;source_file=WORKSPACES/learning/art/artists/Coco-Chanel.md
+concept:art-east-west-aesthetics-comparison	concept	east-west-aesthetics-comparison		art;non-western;comparison;civilization;east-west;doheon-q3-meta-answer	orphan=true;topic=non-western;source_file=WORKSPACES/learning/art/non-western/05-동서-미학-비교.md
+concept:art-frida-kahlo	concept	Frida Kahlo		art;artists;painting;modern;mexico;mexicanidad;self-portrait;feminism;women;disability;person	orphan=true;topic=artists;source_file=WORKSPACES/learning/art/artists/Frida-Kahlo.md
+concept:art-john-cage	concept	John Cage		art;artists;music;total-art;chance;zen;mushroom;fluxus;post-war;person	orphan=true;topic=artists;source_file=WORKSPACES/learning/art/artists/John-Cage.md
+concept:ask-mode	concept	묻기 · 무LLM 대화	vinc/design	core
+concept:atlas	concept	Atlas 그래프 표면	vinc/design	core
+concept:azure-infra	concept	Azure 인프라(vincsRG)	vinc/infra	current
+concept:billing-provider	concept	결제사 추상화(Paddle·Toss)	vinc/web	billing;paddle;toss;subscription
+concept:cd-oidc	concept	GitHub Actions OIDC CD	vinc/infra
+concept:chunk-ssot	concept	Chunk=SSoT 문서 정본	vinc/architecture	core
+concept:community-packs	concept	커뮤니티 팩 갤러리	vinc/web
+concept:copy-canon	concept	카피 카논	vinc/design
+concept:dec-ap-1	concept	계정 정책 AP-1(개인·팀 2계층)	vinc/governance	dec
+concept:dec-b1	concept	B1 리포 물리 분리	vinc/security	dec
+concept:dec-b2	concept	B2 공개키만 핀	vinc/security	dec
+concept:dec-d-vis-0	concept	D-vis-0 렌더 파이프라인 점검	vinc/design	dec
+concept:dec-d-vis-a	concept	D-vis-a recede 준수와 fog 적응	vinc/design	dec
+concept:dec-d-vis-b	concept	D-vis-b 마크·엣지 사다리 재보정과 이중 게이트	vinc/design	dec
+concept:dec-d-vis-c	concept	D-vis-c 라벨 가독성과 사용자 조절권	vinc/design	dec
+concept:dec-d-vis-d	concept	D-vis-d 준의미 줌·형태·집계	vinc/design	dec
+concept:dec-d11	concept	D11 MCP 도구 계약 · 어휘 그래프 밖(R2)	vinc/mcp	dec
+concept:dec-d14	concept	D14 임베디드 드라이버 LadybugDB 단일	vinc/architecture	dec
+concept:dec-d15	concept	D15 표면 트리 5표면+Settings	vinc/design	dec
+concept:dec-d16	concept	D16 Atlas 3-레벨 시맨틱 줌	vinc/design	dec	decided=2026-07-10
+concept:dec-d17	concept	D17 그래프 레이아웃 사전 계산	vinc/design	dec
+concept:dec-d18	concept	D18 영어 카피 시스템 verb-first	vinc/design	dec
+concept:dec-d19	concept	D19 Share Pack	vinc/architecture	dec
+concept:dec-d26	concept	D26 아이콘 레일 LNB	vinc/design	dec
+concept:dec-d31	concept	D31 Atlas 표현 강도 2층 정책	vinc/design	dec
+concept:dec-d32	concept	D32 MOC 구조 규율	vinc/design	dec
+concept:dec-d35	concept	D35 프리미티브 재배정	vinc/design	dec
+concept:dec-d36	concept	D36 원격 MCP 프로파일(옵트인)	vinc/mcp	dec
+concept:dec-d37	concept	D37 Liquid Glass 층 분리	vinc/design	dec
+concept:dec-d38	concept	D38 기본 다크 + 개발자 정보 은닉	vinc/design	dec
+concept:dec-d4	concept	D4 pack.json 신호 완전 수록	vinc/governance	dec
+concept:dec-d42	concept	D42 표면 언어 en/ko 단일 배포	vinc/design	dec
+concept:dec-d43	concept	D43 (이중 사용: 데이터 홈 ~/.vinc·P4 / Atlas 평면 관점 3종)	vinc/governance	dec;collision	number-collision=true
+concept:dec-d44	concept	D44 코드서명 $0 경로(대체됨)	vinc/infra	dec;superseded	decided=2026-07-13
+concept:dec-d45	concept	D45 문서 정본(Chunk=SSoT)	vinc/architecture	dec	decided=2026-07-24
+concept:dec-d46	concept	D46 2D 독립 렌더러(sigma)	vinc/design	dec	decided=2026-07-25
+concept:dec-d47	concept	D47 합계 3열 생키	vinc/design	dec	decided=2026-07-25
+concept:dec-d48-t	concept	D48-T 자체 툴팁(WCAG 1.4.13)	vinc/design	dec
+concept:dec-d53	concept	D53 흐름 관점 폐기	vinc/design	dec	decided=2026-07-27
+concept:dec-d54	concept	D54 원장 출처 열	vinc/design	dec
+concept:dec-d55	concept	D55 팩 zip 컨테이너	vinc/architecture	dec
+concept:dec-d56	concept	D56 상단 바 단일 셸	vinc/design	dec
+concept:dec-d57	concept	D57 검색 = 조회 제1 진입점	vinc/design	dec
+concept:dec-d6	concept	D6 pack export include_model=False 기본	vinc/governance	dec
+concept:dec-d63	concept	D63 (이중 사용: 오버레이 규격 / 경로 튜플)	vinc/governance	dec	number-collision=true
+concept:dec-d68	concept	D68 Sankey alluvial barycenter	vinc/design	dec	decided=2026-07-28
+concept:dec-d69	concept	D69 LNB 문서 트리 재도입	vinc/design	dec
+concept:dec-d7	concept	D7 무암호 단일 프로필 기본	vinc/design	dec
+concept:dec-d70	concept	D70 포커스 = 관련문서 카드	vinc/design	dec
+concept:dec-d71	concept	D71 Tools 모달 · 크롬 재배치	vinc/design	dec
+concept:dec-d72	concept	D72 시간축 이원화	vinc/design	dec	decided=2026-07-31
+concept:dec-d73	concept	D73 검색바 2모드(묻기)	vinc/design	dec
+concept:dec-d74	concept	D74 좌표에 위계를 싣는다 · 폭발 배치	vinc/design	dec	decided=2026-08-02
+concept:dec-d75	concept	D75 Atlas 소멸 정지	vinc/design	dec;proposed;atlas;visibility	status=proposed;release=0.7.2;commit=Vinc@06cc898
+concept:dec-d76	concept	D76 Atlas 대비 이중 게이트	vinc/design	dec;proposed;atlas;visibility;a11y	status=proposed;release=0.7.3
+concept:dec-d77	concept	D77 유리 은퇴와 사문 채널 정리	vinc/design	dec;atlas;material;cleanup;candidate	status=proposed
+concept:dec-d78	concept	D78 타입=색 닫힌 5색	vinc/design	dec;atlas;color;monochrome;invariant;candidate	status=candidate
+concept:dec-d79	concept	D79 선 폭 복원(Line2)	vinc/design	dec;atlas;edge;line2;candidate	status=proposed
+concept:dec-d80	concept	D80 국소 그래프 기본 진입	vinc/design	dec;atlas;navigation;local-graph;candidate	status=proposed
+concept:dec-gm-1	concept	GM-1 GRAPH.md 채택	vinc/governance	dec	decided=2026-08-01
+concept:dec-gm-10	concept	GM-10 frontmatter 크롬 승격	vinc/governance	dec
+concept:dec-gm-11	concept	GM-11 GRAPH.md 주제화	vinc/governance	dec
+concept:dec-gm-12	concept	GM-12 도메인 분리 Atlas L0	vinc/governance	dec
+concept:dec-gm-13	concept	GM-13 재임베딩 이행 확인과 상태 배지	vinc/governance	dec
+concept:dec-gm-14	concept	GM-14 vinc_search 커서 페이지네이션	vinc/governance	dec
+concept:dec-gm-15	concept	GM-15 엣지 해석기 스토어 조회	vinc/governance	dec
+concept:dec-gm-2	concept	GM-2 배치 = 파일·스토어·읽기 도구	vinc/governance	dec
+concept:dec-gm-3	concept	GM-3 구역별 정본	vinc/governance	dec
+concept:dec-gm-4	concept	GM-4 graph-md build/check	vinc/governance	dec
+concept:dec-gm-5	concept	GM-5 문서 사이트 독립 섹션 4쪽	vinc/governance	dec
+concept:dec-gm-7	concept	GM-7 관례 문서 노출 제외	vinc/governance	dec
+concept:dec-gm-8	concept	GM-8 통제 시트	vinc/governance	dec
+concept:dec-gm-9	concept	GM-9 자식 벡터 토큰 예산	vinc/governance	dec
+concept:dec-registry	concept	DEC 결정 대장	vinc/governance	core
+concept:dec-sec-1	concept	SEC-1 owner 격리(읽기)	vinc/security	dec;incident	decided=2026-07-17
+concept:dec-sec-3	concept	SEC-3 쓰기 owner 격리	vinc/security	dec
+concept:deploy-surfaces	concept	배포 표면 5개	vinc/infra	core
+concept:desktop-release	concept	데스크탑 릴리스 파이프라인	vinc/infra
+concept:doc.vinc.a.terms	concept	vinc.a.terms	vinc/governance	doc;ssot	canonical_id=VINC-A-001;path=Vinc-docs/vinc/A/vinc.a.terms.md
+concept:doc.vinc.a.ui-copy	concept	vinc.a.ui-copy	vinc/governance	doc;ssot
+concept:doc.vinc.arch	concept	vinc.arch	vinc/architecture	doc;ssot	canonical_id=VINC-C-002;path=Vinc-docs/vinc/ARCHITECTURE.md
+concept:doc.vinc.b.architecture	concept	vinc.b.architecture	vinc/architecture	doc;ssot	canonical_id=VINC-B-001;path=Vinc-docs/vinc/B/vinc.b.architecture.md
+concept:doc.vinc.b.theme	concept	vinc.b.theme	vinc/architecture	doc;ssot
+concept:doc.vinc.c.account-policy	concept	vinc.c.account-policy	vinc/governance	doc;C;account;policy	graph-native=true
+concept:doc.vinc.c.chunk-ssot	concept	vinc.c.chunk-ssot	vinc/architecture	doc;ssot	canonical_id=VINC-C-010;path=Vinc-docs/vinc/C/vinc.c.chunk-ssot.md
+concept:doc.vinc.c.dataplane	concept	vinc.c.dataplane	vinc/architecture	doc;ssot
+concept:doc.vinc.c.graph-md	concept	vinc.c.graph-md	vinc/governance	doc;ssot	canonical_id=VINC-C-011;path=Vinc-docs/vinc/C/vinc.c.graph-md.md
+concept:doc.vinc.c.p3-execution	concept	vinc.c.p3-execution	vinc/design	doc;ssot	canonical_id=VINC-C-007;path=Vinc-docs/vinc/C/vinc.c.p3-execution.md
+concept:doc.vinc.c.p5-remote-rollout	concept	vinc.c.p5-remote-rollout	vinc/infra	doc;ssot	canonical_id=VINC-C-008;path=Vinc-docs/vinc/C/vinc.c.p5-remote-rollout.md
+concept:doc.vinc.c.sharepack	concept	vinc.c.sharepack	vinc/architecture	doc;ssot
+concept:doc.vinc.c.web-vincs-app	concept	vinc.c.web-vincs-app	vinc/web	doc;ssot	canonical_id=VINC-C-009;path=Vinc-docs/vinc/WEB-vincs-app.md
+concept:doc.vinc.d.alluvial-research	concept	vinc.d.alluvial-research	vinc/design	doc;research-input	path=Vinc-docs/vinc/D/vinc.d.alluvial-research.md
+concept:doc.vinc.d.atlas-mark-redesign	concept	vinc.d.atlas-mark-redesign	vinc/design		graph-native=true
+concept:doc.vinc.d.atlas-mark-verdict	concept	vinc.d.atlas-mark-verdict	vinc/design	vinc;D;atlas;benchmark;competitive;research-input;dec-candidate	graph-native=true
+concept:doc.vinc.d.atlas-visibility-research	concept	vinc.d.atlas-visibility-research	vinc/design	doc;research-input	graph-native=true
+concept:doc.vinc.d.atlas-visibility-verification	concept	vinc.d.atlas-visibility-verification	vinc/design	vinc;D;atlas;visibility;contrast;apca;research-input;dec-candidate	graph-native=true
+concept:doc.vinc.d.atlas-visual-language	concept	vinc.d.atlas-visual-language	vinc/design	doc;ssot	canonical_id=VINC-D-009;path=Vinc-docs/vinc/D/vinc.d.atlas-visual-language.md
+concept:doc.vinc.d.chat-research	concept	vinc.d.chat-research	vinc/design	doc;research-input	canonical_id=vinc.d.chat-research;graph-native=true
+concept:doc.vinc.d.desktop-shell	concept	vinc.d.desktop-shell	vinc/design	doc;research-input	canonical_id=VINC-D-010;path=Vinc-docs/vinc/D/vinc.d.desktop-shell.md
+concept:doc.vinc.d.glass-language	concept	vinc.d.glass-language	vinc/design	doc;ssot	canonical_id=VINC-D-012;path=Vinc-docs/vinc/D/vinc.d.glass-language.md
+concept:doc.vinc.d.graph	concept	vinc.d.graph	vinc/design	doc;ssot	canonical_id=VINC-D-002;path=Vinc-docs/vinc/D/vinc.d.graph.md
+concept:doc.vinc.d.graph-structure-analysis	concept	vinc.d.graph-structure-analysis	vinc/design	doc;research-input	canonical_id=VINC-D-013;path=Vinc-docs/vinc/D/vinc.d.graph-structure-analysis.md
+concept:doc.vinc.d.graph-views	concept	vinc.d.graph-views	vinc/design	doc;ssot	path=Vinc-docs/vinc/D/vinc.d.graph-views.md
+concept:doc.vinc.d.index	concept	vinc.d.index	vinc/design	doc;ssot	canonical_id=VINC-D-001;path=Vinc-docs/vinc/D/vinc.d.index.md
+concept:doc.vinc.d.ingest	concept	vinc.d.ingest	vinc/design	doc;ssot	canonical_id=VINC-D-003;path=Vinc-docs/vinc/D/vinc.d.ingest.md
+concept:doc.vinc.d.motion-research	concept	vinc.d.motion-research	vinc/design	doc;research-input	path=Vinc-docs/vinc/D/vinc.d.motion-research.md
+concept:doc.vinc.d.packs	concept	vinc.d.packs	vinc/design	doc;ssot
+concept:doc.vinc.d.records	concept	vinc.d.records	vinc/design	doc;ssot	canonical_id=VINC-D-005;path=Vinc-docs/vinc/D/vinc.d.records.md
+concept:doc.vinc.d.remote-profile	concept	vinc.d.remote-profile	vinc/design	doc;ssot	canonical_id=VINC-D-011;path=Vinc-docs/vinc/D/vinc.d.remote-profile.md
+concept:doc.vinc.d.search	concept	vinc.d.search	vinc/design	doc;ssot	canonical_id=VINC-D-006;path=Vinc-docs/vinc/D/vinc.d.search.md
+concept:doc.vinc.d.settings	concept	vinc.d.settings	vinc/design	doc;ssot	canonical_id=VINC-D-008;path=Vinc-docs/vinc/D/vinc.d.settings.md
+concept:doc.vinc.d.ux-research	concept	vinc.d.ux-research	vinc/design	doc;research-input	canonical_id=VINC-D-004;path=Vinc-docs/vinc/D/vinc.d.ux-research.md
+concept:doc.vinc.d.view-redesign-research	concept	vinc.d.view-redesign-research	vinc/design	doc;research-input	path=Vinc-docs/vinc/D/vinc.d.view-redesign-research.md
+concept:doc.vinc.mcp	concept	vinc.mcp	vinc/mcp	doc;ssot	canonical_id=VINC-C-003;path=Vinc-docs/vinc/MCP-INTERFACE.md
+concept:doc.vinc.mcp.skeleton	concept	vinc.mcp.skeleton	vinc/mcp	doc;ssot
+concept:doc.vinc.next-session	concept	vinc.next-session	vinc/governance	doc	graph-native=true
+concept:doc.vinc.ops.deployment	concept	vinc.ops.deployment			domain-empty=true;graph-native=true
+concept:doc.vinc.ops.incident-2026-08-04-easyauth	concept	vinc.ops.incident-2026-08-04-easyauth	vinc/infra	incident	graph-native=true
+concept:doc.vinc.ops.release-0-7-2	concept	vinc.ops.release-0-7-2	vinc/infra	doc	graph-native=true
+concept:doc.vinc.ops.risk-audit-2026-08-05	concept	vinc.ops.risk-audit-2026-08-05	vinc/security	doc;risk;audit	graph-native=true
+concept:doc.vinc.plan.methodology-redesign	concept	vinc.plan.methodology-redesign	vinc/governance	doc	graph-native=true
+concept:doc.weg.c.memory-standalone	concept	weg.c.memory-standalone	vinc/governance	doc	non-vinc-namespace=true
+concept:domain-cap	concept	주제 개수 상한(Free 5개)	vinc/mcp
+concept:e5-model	concept	multilingual-e5-base	vinc/infra
+concept:easyauth-swa-backend	concept	EasyAuth 플랫폼 인증(SWA 연동 백엔드)	vinc/infra	pitfall
+concept:ed25519-trust	concept	Ed25519 상호 신뢰(B2)	vinc/security
+concept:embedding-worker	concept	임베딩 워커(ONNX)	vinc/infra
+concept:fail-open-degradation	concept	fail-open 강등	vinc/security	pattern;pitfall
+concept:fragment-merge	concept	fragment MERGE	vinc/architecture	write-surface
+concept:gabia-infra	concept	가비아 인프라(폐지)	vinc/infra	superseded;gabia-era
+concept:graph-md	concept	GRAPH.md 관례 파일	vinc/governance	core
+concept:hub	concept	허브(vinc-hub)	vinc/infra	core
+concept:hybrid-search	concept	하이브리드 검색(FTS+벡터)	vinc/architecture
+concept:inprocess-state	concept	인프로세스 상태	vinc/web	pattern;pitfall
+concept:internal-block	concept	/internal 공개 차단	vinc/security	superseded
+concept:ladybugdb	concept	LadybugDB	vinc/architecture
+concept:lnb-tree	concept	좌측 문서 트리(LNB)	vinc/design
+concept:mcp-oauth	concept	MCP OAuth 게이트	vinc/mcp
+concept:member-key	concept	회원 API 키 vinc_sk	vinc/mcp
+concept:mentions-link	concept	MENTIONS 자동 연결	vinc/architecture
+concept:newsletter	concept	뉴스레터 발송	vinc/web
+concept:observability-gap	concept	관측 공백	vinc/infra	pattern;pitfall
+concept:open-entity	concept	개방층 Entity	vinc/architecture
+concept:owner-isolation	concept	owner 격리	vinc/security	core
+concept:parent-child-vectors	concept	부모-자식 벡터	vinc/architecture
+concept:plan-entitlement	concept	플랜 엔타이틀먼트(free·pro·team)	vinc/web	plan;entitlement;account
+concept:proxy-allowlist	concept	프록시 허용목록 3곳	vinc/web	pitfall
+concept:purge-owner	concept	계정 삭제 purge	vinc/security
+concept:purpose-confusion	concept	토큰 목적 혼동	vinc/security	pattern;pitfall
+concept:quota	concept	쿼터	vinc/mcp
+concept:release-0-7-2	concept	v0.7.2 릴리스 묶음(스트림 3개)	vinc/infra	release;0.7.2;handoff
+concept:sankey-view	concept	합계 Sankey 뷰	vinc/design
+concept:schema-version	concept	스토어 스키마 버전	vinc/architecture
+concept:signal-design	concept	Signal 디자인 시스템	vinc/design
+concept:silent-config-failure	concept	무음 설정 고장(기동 정상·헬스 200·기능만 죽음)	vinc/infra	pitfall
+concept:single-writer	concept	단일 writer	vinc/architecture
+concept:surface-tree	concept	5표면+Settings	vinc/design
+concept:sync-3way	concept	필드 3-way 동기화	vinc/architecture
+concept:team-graph	concept	팀 공유 그래프(team:{uuid})	vinc/security
+concept:team-role	concept	팀 역할(열람자·편집자·관리자)	vinc/security
+concept:theme-vocab	concept	테마 어휘(재가 모델)	vinc/architecture
+concept:time-axes	concept	시간축 이원화	vinc/design
+concept:updater-signing	concept	업데이터 서명키	vinc/security
+concept:version-pin	concept	버전 핀 규율	vinc/infra
+concept:vinc-connector	concept	커넥터(회원 승인)	vinc/mcp
+concept:vinc-mcp	concept	Vinc MCP 서버	vinc/mcp	core
+concept:vincpack	concept	vincpack 공유 팩	vinc/architecture
+concept:vincs-io	concept	vincs.io 도메인	vinc/web
+concept:web-vinc	concept	웹 Vinc	vinc/web	core
+bridge:deploy-pipeline	bridge	배포 파이프라인 접점			domain-empty=true;connects=hub;deploy-surfaces;cd-oidc;desktop-release
+bridge:domain-migration	bridge	도메인 이전 접점			domain-empty=true;connects=account-backend;azure-infra;vincs-io
+bridge:embedding	bridge	임베딩 파이프라인 접점			domain-empty=true;connects=hub;embedding-worker;e5-model
+bridge:graph-md	bridge	GRAPH.md 접점			domain-empty=true;connects=chunk-ssot;graph-md;vinc-mcp;dec-registry
+bridge:member-key	bridge	회원 키 접점			domain-empty=true;connects=member-key;quota;mcp-oauth;account-backend
+bridge:proxy-allowlist	bridge	프록시 허용목록 접점			domain-empty=true;connects=web-vinc;hub;owner-isolation;proxy-allowlist
+episode:2026-07-14-gabia-first-deploy	episode	계정 백엔드 가비아 첫 배포	vinc/timeline		date=2026-07-14
+episode:2026-07-17-sec1-incident	episode	SEC-1 교차 소유자 읽기 사고	vinc/timeline		date=2026-07-17
+episode:2026-07-17-v020-release	episode	v0.2.0 릴리스 · 회원 커넥터·쿼터	vinc/timeline		date=2026-07-17
+episode:2026-07-18-community-live	episode	커뮤니티 공유 배포	vinc/timeline		date=2026-07-18
+episode:2026-07-18-purge-cascade	episode	계정 삭제 그래프 purge 구현	vinc/timeline		date=2026-07-18
+episode:2026-07-18-sec3-closed	episode	SEC-3 쓰기 격리 구멍 봉쇄	vinc/timeline		date=2026-07-18
+episode:2026-07-18-v030-sync	episode	v0.3.0 양방향 동기화	vinc/timeline		date=2026-07-18
+episode:2026-07-18-v031-autoupdate	episode	v0.3.1 자동 업데이트	vinc/timeline		date=2026-07-18
+episode:2026-07-18-web-vinc-live	episode	웹 Vinc 전 표면 라이브	vinc/timeline		date=2026-07-18
+episode:2026-07-19-copy-canon-incident	episode	카피 카논 사고 · 원문 복원	vinc/timeline		date=2026-07-19
+episode:2026-07-19-v040-release	episode	v0.4.0 그래프 수리 · 개방층 역전	vinc/timeline		date=2026-07-19
+episode:2026-07-20-ladybug-proven	episode	LadybugDB 전환 3중 실증	vinc/timeline		date=2026-07-20
+episode:2026-07-20-v051-critical	episode	v0.5.1 CRITICAL 스토어 미기동	vinc/timeline		date=2026-07-20
+episode:2026-07-21-deployment-canon	episode	DEPLOYMENT.md 정본 작성	vinc/timeline		date=2026-07-21
+episode:2026-07-21-sync-pull-critical	episode	허브 sync pull CRITICAL 수정	vinc/timeline		date=2026-07-21
+episode:2026-07-21-v053-kuzu-removed	episode	v0.5.3 collect_all 수정 · kuzu 완전 제거	vinc/timeline		date=2026-07-21
+episode:2026-07-22-emdash-ban	episode	em-dash 화면 금지 지시	vinc/timeline		date=2026-07-22
+episode:2026-07-24-pack-documents	episode	vincpack 원문 포함	vinc/timeline		date=2026-07-24
+episode:2026-07-24-v060-planar	episode	v0.6.0 평면 관점 3종	vinc/timeline		date=2026-07-24
+episode:2026-07-24-v065-chunk-ssot	episode	v0.6.5 Chunk=SSoT 출하	vinc/timeline		date=2026-07-24
+episode:2026-07-25-totals-web-dead	episode	합계 뷰 웹 사망 · 허용목록 드리프트	vinc/timeline		date=2026-07-25
+episode:2026-07-25-v066-redesign	episode	v0.6.6 2D·Sankey 재설계	vinc/timeline		date=2026-07-25
+episode:2026-07-27-v067-topbar	episode	v0.6.7 상단 바 단일 셸	vinc/timeline		date=2026-07-27
+episode:2026-07-27-windows-bugs-fixed	episode	Windows 임베디드 결함 확정·수정	vinc/timeline		date=2026-07-27
+episode:2026-07-28-azure-migration	episode	가비아에서 Azure 로 전면 이관	vinc/timeline		date=2026-07-28
+episode:2026-07-29-domain-migration	episode	vincs.app 에서 vincs.io 이전 완료	vinc/timeline		date=2026-07-29
+episode:2026-07-29-file-import	episode	원문 파일 가져오기 배선	vinc/timeline		date=2026-07-29
+episode:2026-07-30-embed-worker-lost	episode	임베딩 워커 소실 발견·복구	vinc/timeline		date=2026-07-30
+episode:2026-07-30-issuer-outage	episode	VINC_MCP_ISSUER 누락 · 커넥터 전면 불가	vinc/timeline		date=2026-07-30
+episode:2026-07-30-key-rotation	episode	서명키 secretRef 이관·회전	vinc/timeline		date=2026-07-30
+episode:2026-07-30-starter-packs-lost	episode	공식 스타터팩 소실·재시딩	vinc/timeline		date=2026-07-30
+episode:2026-07-31-docs-consolidation	episode	문서 사이트 /docs 통합	vinc/timeline		date=2026-07-31
+episode:2026-08-01-acr-heredoc-bugs	episode	ACR heredoc 결함 2종 발견·수정	vinc/timeline		date=2026-08-01
+episode:2026-08-01-e5-hub-deploy	episode	허브 e5 전환 배포	vinc/timeline		date=2026-08-01
+episode:2026-08-01-graphmd-deploy	episode	GRAPH.md 전 표면 배포	vinc/timeline		date=2026-08-01
+episode:2026-08-01-ladybug-pin-asymmetry	episode	ladybug 핀 비대칭 · 릴리스 연쇄 실패	vinc/timeline		date=2026-08-01
+episode:2026-08-01-v070-release	episode	v0.7.0 릴리스 · 화면 개편·의미검색·GRAPH.md	vinc/timeline		date=2026-08-01
+episode:2026-08-02-account-policy-decision	episode	계정 정책 개편 결정(AP-1)	vinc/timeline	dec;account;plan;team;billing	date-null=true
+episode:2026-08-02-ap1-p0-p2-landed	episode	AP-1 P0~P2 코드 착지(미배포)	vinc/timeline	ap-1;billing;quota;domain-cap;paddle	date=2026-08-02;date-column-null=true
+episode:2026-08-02-ap1-p3-teams-landed	episode	AP-1 P3 팀 코드 착지(미배포)	vinc/timeline	ap-1;team;invite;role	date-null=true
+episode:2026-08-02-atlas-visibility-verification	episode	Atlas 가시성 심화 검증 적재	vinc/timeline	research;verification;atlas;visibility	date=2026-08-02;date-column-null=true
+episode:2026-08-02-homepage-lag	episode	공홈이 두 릴리스 뒤처져 있었다	vinc/timeline		date=2026-08-02
+episode:2026-08-02-methodology-redesign-research	episode	방법론 재구성 리서치 적재	vinc/timeline	research;ingest;graph-md;atlas	date-null=true
+episode:2026-08-02-release-0-7-2-planned	episode	v0.7.2 묶음 결정·핸드오프 작성	vinc/timeline	release;0.7.2;handoff	date=2026-08-02;date-column-null=true
+episode:2026-08-02-v071-release	episode	v0.7.1 릴리스 · 묻기 · 폭발 배치	vinc/timeline		date=2026-08-02
+episode:2026-08-03-mark-redesign-benchmark	episode	마크 언어 판정과 경쟁 비교 적재	vinc/timeline	research;benchmark;atlas;dec	date=2026-08-03;date-column-null=true
+episode:2026-08-04-easyauth-blocks-member-keys	episode	EasyAuth 가 회원 키 검증을 막아 vinc_sk 전부 401	vinc/timeline	incident;silent-failure	date=2026-08-04;date-column-null=true
+episode:2026-08-05-risk-audit	episode	전면 위험 감사 · 교차테넌트 두 건과 계정 탈취 경로를 찾았다	vinc/timeline	audit;security	date=2026-08-05;date-column-null=true
+record:apca-measurement-basis	record	다크 대비 측정 기준은 WCAG 단독으로 부족하다	vinc/design	fact;atlas;contrast;apca;wcag	attach=concept:doc.vinc.d.atlas-visibility-verification
+record:dec-numbering-fork	record	DEC 번호 체계 분열	vinc/governance	pitfall;governance;dec;numbering	attach=concept:dec-d76;concept:dec-d75
+record:fact-0-7-2-surface-split	record	태그는 데스크탑만 내보낸다 · 계정·허브는 main push 로 먼저 나간다	vinc/infra	fact;release;deploy	attach=concept:release-0-7-2
+record:fact-0-7-2-unknown-streams	record	v0.7.2 스트림 B·C 내용은 문서를 쓴 세션이 모른다	vinc/infra	pitfall;release;handoff	attach=concept:release-0-7-2
+record:fact-acr-heredoc	record	ACR heredoc 함정 2종	vinc/infra	pitfall	attach=concept:acr-tasks
+record:fact-allowlist-check	record	허용목록 라이브 판별법	vinc/web	fact	attach=concept:proxy-allowlist
+record:fact-ap1-free-limit-default	record	무료 일일 한도 기본값을 15에서 2000으로 바꿨다	vinc/mcp	fact;quota	attach=concept:plan-entitlement
+record:fact-ap1-webhook-path	record	결제 웹훅 경로는 /api/billing/webhook 이다	vinc/web	fact;billing	attach=concept:billing-provider
+record:fact-atlas-edge-channels-empty	record	3D 엣지는 폭도 농도도 데이터를 안 나른다	vinc/design	fact;pitfall;atlas	attach=concept:atlas
+record:fact-atlas-glass-not-in-dark	record	D40 유리 노드는 기본 테마(다크)에 렌더되지 않는다	vinc/design	fact;pitfall;atlas	attach=concept:atlas
+record:fact-atlas-layout-presets	record	배치 프리셋은 2종이다 · 구 5~6종 서술은 폐기	vinc/design	fact;supersession	attach=concept:dec-d74;concept:atlas
+record:fact-atlas-tier-ring	record	mid/far 노드의 가시성은 fill 이 아니라 링이 진다	vinc/design	fact;pitfall;atlas	attach=concept:atlas
+record:fact-body-4mb	record	요청 본문 4MB 상한	vinc/mcp	fact	attach=concept:vinc-mcp
+record:fact-chunk-2000	record	청크 상한 2000자	vinc/architecture	fact	attach=concept:chunk-ssot
+record:fact-conventions-doc	record	관례 문서 저장 규약	vinc/governance	fact	attach=concept:graph-md
+record:fact-d44-superseded	record	D44 대체 경위	vinc/infra	supersession	attach=concept:dec-d44
+record:fact-dec-not-filed-on-release	record	v0.7.1 은 DEC 정본을 갱신하지 않았다	vinc/governance	pitfall	attach=concept:graph-md;concept:dec-d74
+record:fact-deploy-order	record	교차 표면 배포 순서	vinc/infra	fact	attach=concept:deploy-surfaces
+record:fact-dns-6	record	vincs.io DNS 6레코드	vinc/web	fact	attach=concept:vincs-io
+record:fact-e5-ndcg	record	e5 전환 실측	vinc/infra	fact	attach=concept:e5-model
+record:fact-edge-evidence-sparse	record	엣지 근거 문장은 거의 비어 있다	vinc/architecture	fact	attach=concept:answer-material
+record:fact-embed-onnx	record	ONNX 선택 근거	vinc/infra	fact	attach=concept:embedding-worker
+record:fact-empty-401-means-ingress	record	빈 본문 401 은 앱이 아니라 인그레스가 끊은 것이다	vinc/infra	fact;diagnostic	attach=concept:easyauth-swa-backend
+record:fact-endpoint-mcp	record	MCP 엔드포인트	vinc/mcp	fact	attach=concept:vinc-mcp
+record:fact-f1-gate-drift	record	F1 금지 어휘는 정본 문서와 실행 게이트가 이미 어긋나 있다	vinc/governance	pitfall;governance;gate	attach=concept:doc.vinc.a.terms
+record:fact-gabia-deleted	record	가비아 전량 삭제	vinc/infra	supersession	attach=concept:gabia-infra
+record:fact-graph-doc-id-is-canonical	record	그래프 전용 문서는 doc_id 가 곧 식별자다	vinc/governance	fact;convention	attach=concept:graph-md
+record:fact-graph-repair-f	record	v0.4.0 그래프 수리 F1~F9	vinc/architecture	fact	attach=concept:open-entity
+record:fact-graphmd-shape	record	GRAPH.md 형상 규칙	vinc/governance	fact	attach=concept:graph-md
+record:fact-hub-env-8	record	허브 필수 env 8종	vinc/infra	fact	attach=concept:hub
+record:fact-hub-non-utf8-503	record	라이브 허브는 비 UTF-8 본문에 503 을 준다(수정 커밋·미배포)	vinc/mcp	fact;bug	attach=concept:hub
+record:fact-hub-single-writer-revision	record	허브는 단일 라이터라 리비전 롤링 전환이 안 된다	vinc/infra	fact;pitfall	attach=concept:hub
+record:fact-internal-guarded-by-assertion-only	record	계정 /internal 두 경로는 공개 도달하고 어서션 한 겹만 막는다	vinc/security	fact;supersession	attach=concept:internal-block
+record:fact-issuer-outage	record	VINC_MCP_ISSUER 급소	vinc/mcp	pitfall	attach=concept:mcp-oauth;concept:silent-config-failure
+record:fact-ladybug-pin	record	ladybug==0.18.0 4자리 핀	vinc/infra	fact	attach=concept:version-pin
+record:fact-mentions-rule	record	MENTIONS 연결 규칙	vinc/architecture	fact	attach=concept:mentions-link
+record:fact-msys-mangles-az-args	record	Git Bash 가 az 의 슬래시 인자를 Windows 경로로 바꿔친다	vinc/infra	fact;pitfall	attach=concept:azure-infra
+record:fact-mysql-manual	record	DB 마이그레이션 수동	vinc/infra	fact	attach=concept:deploy-surfaces
+record:fact-newsletter-2	record	뉴스레터 토큰 2곳 정합	vinc/web	pitfall	attach=concept:newsletter
+record:fact-oauth-plan-frozen	record	OAuth 커넥터의 등급은 승인 시점에 토큰으로 동결된다	vinc/mcp	pitfall;billing;oauth	attach=concept:plan-entitlement
+record:fact-one-liner-unwritten	record	one_liner 는 쓰기 경로가 없다	vinc/architecture	fact;pitfall	attach=concept:answer-material
+record:fact-psp-korea	record	한국 판매자가 쓸 수 있는 수납 경로는 제한적이다	vinc/web	fact;billing;korea	attach=concept:billing-provider
+record:fact-quota-limits	record	쿼터 한도	vinc/mcp	fact	attach=concept:quota
+record:fact-quota-lock-code	record	잠금이 한도보다 선행	vinc/mcp	pitfall	attach=concept:quota
+record:fact-resend-4	record	vincs.app 잔존 4레코드	vinc/web	pitfall	attach=concept:vincs-io
+record:fact-secret-needs-new-revision	record	시크릿 값을 바꿔도 도는 컨테이너는 안 바뀐다	vinc/infra	pitfall	attach=concept:deploy-surfaces
+record:fact-signing-key	record	서명키 위험 모델	vinc/security	pitfall	attach=concept:updater-signing
+record:fact-site-deploy-cross-repo	record	site-deploy 는 app 변경으로 안 걸린다	vinc/infra	pitfall	attach=concept:deploy-surfaces
+record:fact-vector-space	record	벡터 공간 동일성 검증	vinc/infra	pitfall	attach=concept:embedding-worker
+record:fact-version-10	record	버전 자리 10곳	vinc/infra	fact	attach=concept:desktop-release
+record:fact-vinc-vs-obsidian-typed-graph	record	옵시디언이 못 가진 것을 Vinc 는 가졌고 화면은 그걸 안 쓴다	vinc/design	fact;atlas	attach=concept:doc.vinc.d.atlas-mark-redesign
+record:line2-three-addon	record	Line2 는 three 내장 애드온이다	vinc/design	fact;three;line2;invariant	attach=concept:dec-d79
+record:node-type-distribution-3	record	상시 노드 타입은 3종뿐이다	vinc/design	fact;atlas;data-distribution	attach=concept:doc.vinc.d.atlas-mark-verdict;concept:dec-d78
+record:risk-bridge-oskill-windows	record	MCP 브리지가 Windows 에서 데스크탑 앱을 죽인다	vinc/mcp	pitfall;p1;verified-2026-08-05	attach=concept:vinc-mcp
+record:risk-bridge-retry-nonidempotent	record	브리지 재시도가 타임아웃된 쓰기를 중복 전송한다	vinc/mcp	pitfall;p1	attach=concept:sync-3way;concept:vinc-mcp
+record:risk-csrf-not-slid	record	CSRF 쿠키가 세션과 함께 슬라이딩되지 않는다	vinc/web	pitfall;p0;verified-2026-08-05	attach=concept:account-backend
+record:risk-doc-sync-unwired	record	문서 정본이 동기화되지 않는다	vinc/architecture	pitfall;p1	attach=concept:sync-3way
+record:risk-embed-apply-oom	record	임베딩 결과 축적이 배치 상한을 우회해 OOM 을 만든다	vinc/infra	pitfall;p1	attach=concept:embedding-worker
+record:risk-graphmd-shared-docid	record	관례 문서 graph.md 가 전 테넌트 공유 단일 doc_id 다	vinc/security	pitfall;p1	attach=concept:owner-isolation
+record:risk-health-lies-sidecar	record	사이드카가 죽어도 허브는 200 을 준다	vinc/infra	pitfall;p0	attach=concept:hub;concept:silent-config-failure
+record:risk-hub-internal-public	record	허브 /internal 이 공개 도달하고 관문이 서명 하나뿐이다	vinc/security	pitfall;p2;verified-2026-08-05	attach=concept:internal-block
+record:risk-invite-revoke-noop	record	취소된 초대 링크로도 팀에 들어온다	vinc/security	pitfall;p1;verified-2026-08-05	attach=concept:account-backend
+record:risk-jobs-not-owner-scoped	record	잡 id 가 단조 정수고 owner 에 안 묶여 있다	vinc/security	pitfall;p1	attach=concept:owner-isolation
+record:risk-key-plaintext-two-places	record	회원 키가 localStorage 와 MCP 설정에 평문으로 있다	vinc/security	pitfall;p1;verified-2026-08-05	attach=concept:member-key
+record:risk-no-hub-backup	record	허브 그래프 DB 에 백업이 없다	vinc/infra	pitfall;p0	attach=concept:hub;concept:azure-infra
+record:risk-no-uptime-monitoring	record	가용성 알림이 하나도 없다	vinc/infra	pitfall;p0	attach=concept:observability-gap
+record:risk-quota-web-exempt	record	쿼터가 웹 경로에 안 걸린다	vinc/mcp	pitfall;p2	attach=concept:fail-open-degradation
+record:risk-search-chunk-unscoped	record	검색 청크 팔에 owner 필터가 없다	vinc/security	pitfall;p0;verified-2026-08-05	attach=concept:owner-isolation
+record:risk-sweep-expired-uncalled	record	결제 스윕이 호출되지 않아 체험·유예가 끝나지 않는다	vinc/web	pitfall;p1;verified-2026-08-05	attach=concept:account-backend
+record:risk-sync-stamp-unscoped	record	SEC-3 으로 스킵된 노드를 그 뒤 SET 이 갱신한다	vinc/security	pitfall;p0;verified-2026-08-05	attach=concept:sync-3way
+record:risk-sync-tombstone-unscoped	record	동기화 툼스톤 적용이 남의 노드와 엣지를 지운다	vinc/security	pitfall;p0;verified-2026-08-05	attach=concept:owner-isolation;concept:sync-3way
+record:risk-syncbase-no-owner	record	_SyncBase 와 동기화 메타키에 owner 차원이 없다	vinc/architecture	pitfall;p1	attach=concept:sync-3way
+record:risk-team-plan-bleeds	record	팀 좌석 하나가 개인 그래프를 Pro 로 만든다	vinc/web	pitfall;p1	attach=concept:account-backend
+record:risk-themes-global	record	주제·타입 어휘가 프로세스 전역 파일이다	vinc/security	pitfall;p1	attach=concept:owner-isolation
+record:risk-token-purpose-unchecked	record	초대·삭제 링크로 로그인 세션을 받을 수 있다	vinc/security	pitfall;p0;verified-2026-08-05	attach=concept:account-backend;concept:purpose-confusion
+record:risk-vector-index-drop-global	record	벡터 인덱스 드롭이 전역이라 벡터 팔이 상시 꺼져 있을 수 있다	vinc/infra	pitfall;p2	attach=concept:embedding-worker
+record:risk-xff-spoof	record	X-Forwarded-For 무검증으로 레이트리밋이 전면 우회된다	vinc/security	pitfall;p1	attach=concept:account-backend
+record:vinc-ingest-edge-target-resolution	record	vinc_ingest 엣지 대상 타입 미해석	vinc/mcp	fact;pitfall	attach=concept:doc.vinc.mcp

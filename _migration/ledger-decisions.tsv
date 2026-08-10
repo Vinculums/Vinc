@@ -1,0 +1,69 @@
+old_id	new_id	domain	title_en	note_en
+concept:dec-ap-1	decision:ap-1	vinc/governance	Account policy AP-1: two tiers, personal and team	Personal Free and Pro, plus a separate team tier. Free is capped by topic count (5), not by call volume. Paddle is the only payment provider.
+concept:dec-b1	decision:b1	vinc/security	Keep the site and the app in separate repositories	The homepage (site plus the account backend, private) and the app repository stay physically apart. This is an invariant, not a convenience.
+concept:dec-b2	decision:b2	vinc/security	Pin public keys only, never share secrets	The account service and the MCP server share no secret and no database. They pin each other's Ed25519 public key instead.
+concept:dec-d-vis-0	decision:d-vis-0	vinc/design	D-vis-0: audit the render pipeline before tuning it	Measure what the pipeline actually draws before changing any visual constant.
+concept:dec-d-vis-a	decision:d-vis-a	vinc/design	D-vis-a: honour recede, and let fog adapt	Depth cues must recede consistently; fog follows the scene rather than a fixed constant.
+concept:dec-d-vis-b	decision:d-vis-b	vinc/design	D-vis-b: recalibrate the mark and edge ladder behind two gates	Marks and edges get a re-derived size ladder, admitted only through two independent contrast gates.
+concept:dec-d-vis-c	decision:d-vis-c	vinc/design	D-vis-c: label legibility, with the user holding the dial	Labels must stay readable, and the reader keeps a control over density.
+concept:dec-d-vis-d	decision:d-vis-d	vinc/design	D-vis-d: semantic zoom drives shape and aggregation	Zoom level decides mark shape and how nodes aggregate, not just scale.
+concept:dec-d11	decision:d11	vinc/engineering	D11: the MCP tool contract, with the type vocabulary outside the graph	The MCP interface contract. R2 moved the type vocabulary out of the graph into themes.json.
+concept:dec-d14	decision:d14	vinc/engineering	D14: LadybugDB as the single embedded driver	Reversed and now current (v0.5.3): kuzu removed entirely, the dual-driver path retired. The clearest case of the R1 replacement insurance actually being claimed.
+concept:dec-d15	decision:d15	vinc/design	D15: five surfaces plus Settings	Revises the eight-screen plan (D8). Intake, Records, Atlas, Search, Packs.
+concept:dec-d16	decision:d16	vinc/design	D16: three levels of semantic zoom in Atlas	L0 is the domain map, L1 the domain lens, L2 the node focus.
+concept:dec-d17	decision:d17	vinc/design	D17: precompute the graph layout	The sidecar produces deterministic coordinates; the UI only consumes them.
+concept:dec-d18	decision:d18	vinc/design	D18: verb-first English copy system	A voice guide that forbids narration (F2), plus a four-state copy deck.
+concept:dec-d19	decision:d19	vinc/engineering	D19: Share Pack	A pack for moving data between accounts. Same shape as an MCP fragment; the receiver restamps ownership.
+concept:dec-d26	decision:d26	vinc/design	D26: an icon rail for the left navigation	Overturned twice since: D56 removed the rail, D69 brought a document tree back.
+concept:dec-d31	decision:d31	vinc/design	D31: two layers of expressive intensity in Atlas	The open layer belongs to the user (localStorage); the closed layer belongs to the spec (monochrome and the like).
+concept:dec-d32	decision:d32	vinc/design	D32: structural discipline for maps of content	Hub promotion follows a fixed order (pin over degree), and orphans are minimised through tie suggestions.
+concept:dec-d35	decision:d35	vinc/design	D35: reassign the primitives	Concept is a sphere, Domain a ringed body, Episode and Record hexagonal prisms, Bridge an octahedron.
+concept:dec-d36	decision:d36	vinc/engineering	D36: an opt-in remote MCP profile	A cloud-hosted MCP server living alongside the static homepage. Local stays the default, unchanged.
+concept:dec-d37	decision:d37	vinc/design	D37: keep Liquid Glass to the floating layer	Only floating chrome uses glass; the content plane stays flat.
+concept:dec-d38	decision:d38	vinc/design	D38: dark by default, and hide the developer surface	Surface copy drops endpoints, CLI names, and internal vocabulary.
+concept:dec-d4	decision:d4	vinc/governance	D4: pack.json carries every signal	Preference and learner signals are recorded in full. This is a precondition for migration.
+concept:dec-d42	decision:d42	vinc/design	D42: ship English and Korean surfaces in one build	The copy deck is doubled and the OS locale picks the default.
+concept:dec-d43	decision:d43	vinc/governance	D43: two decisions share this number (data home, and the three flat views)	Number used twice: (1) the default data home at ~/.vinc plus the P4 release pipeline, 2026-07-11; (2) the three flat Atlas views, flow, timeline and totals, approved 2026-07-24. New numbers must be grepped from the code and taken as max plus one.
+concept:dec-d44	decision:d44	vinc/infra	D44: a zero-cost code signing path (superseded)	Going public to reach free SignPath signing. The premise did not hold: the repository is private. Superseded on 2026-07-30 by the decision to ship unsigned until v1.0.0.
+concept:dec-d45	decision:d45	vinc/engineering	D45: the document canon lives in chunks	Source text becomes internal to the graph as Chunk rows. This is the third path by which knowledge enters. Shipped in v0.6.5.
+concept:dec-d46	decision:d46	vinc/design	D46: an independent 2D renderer	Uses only the xy coordinates from the sidecar. The flat view carries the whole of L0 (D46-S).
+concept:dec-d47	decision:d47	vinc/design	D47: the totals view is a three-column Sankey	Marginal sums alone are enough to build it. This restores the spec rather than adding a feature.
+concept:dec-d48-t	decision:d48-t	vinc/design	D48-T: own the tooltip (WCAG 1.4.13)	A single data-tip attribute; the native title attribute is removed everywhere.
+concept:dec-d53	decision:d53	vinc/design	D53: retire the flow view	Five views become four. The entry point to the relationship evidence panel moves to clicking a line in 2D.
+concept:dec-d54	decision:d54	vinc/design	D54: show the provenance column in the ledger	Only the web fills it in, so there is a version skew against the desktop release.
+concept:dec-d55	decision:d55	vinc/engineering	D55: zip is the pack container	Two formats can be read (zip and JSON); only zip is written.
+concept:dec-d56	decision:d56	vinc/design	D56: a single shell with one top bar	The left navigation is removed and the top bar unified (v0.6.7). Overturned again by D69.
+concept:dec-d57	decision:d57	vinc/design	D57: search is the first way in	Clicking a result lands on that node.
+concept:dec-d6	decision:d6	vinc/governance	D6: pack export defaults to include_model=False	The learner section is not exposed. True only for a lossless transfer.
+concept:dec-d63	decision:d63	vinc/governance	D63: two decisions share this number (overlay spec, and path tuples)	One unified spec for elements drawn over the canvas (v0.6.7) coexists in the code with an unrelated use of the same number. A worked example of the numbering backlog.
+concept:dec-d68	decision:d68	vinc/design	D68: barycentre placement for the alluvial Sankey	Lode placement, an other bucket, and gaps demoted to an aggregate. Total crossings are invariant; the wander metric belongs to L2.
+concept:dec-d69	decision:d69	vinc/design	D69: bring the document tree back to the left column	A 232px domain-to-document tree ordered by concept depth. The first screen is the whole graph. This reverses both D26 and D56.
+concept:dec-d7	decision:d7	vinc/design	D7: one profile, no password, by default	Sign-in is not the first screen; it is an opt-in lock under Settings.
+concept:dec-d70	decision:d70	vinc/design	D70: focus means a card of related documents	Focusing a node offers cards for the documents you can move to. The right panel is for source text only and its width is adjustable.
+concept:dec-d71	decision:d71	vinc/design	D71: one Tools modal, and chrome rearranged	Import and share collapse into a single Tools entry: create, import, share.
+concept:dec-d72	decision:d72	vinc/design	D72: split the time axis in two	Recorded time against content time (schema v7). Old rows must not be backfilled.
+concept:dec-d73	decision:d73	vinc/design	D73: two modes in the search bar, and asking without a language model	The top search bar splits into find and ask. A dropdown at the left end doubles as the icon slot. Still a candidate: neither the name (chat against ask) nor the placement (its own surface against a Search mode) is settled. Summarising and synthesis are excluded permanently.
+concept:dec-d74	decision:d74	vinc/design	D74: put the hierarchy into the coordinates, and explode the layout	The domain string is read as a path so that root, topic and concept hierarchy lands in the coordinates themselves. Ordering by centrality becomes an exploded layout, and centrality moves inside each branch. Two coordinate sets are emitted (x/y/z is canonical for 3D, x2/y2 for 2D); 2D is not a flattened 3D. Flattening z would collapse distinct nodes onto one point and lose them. Old sidecars have no x2/y2 and degrade gracefully to x/y.
+concept:dec-d75	decision:d75	vinc/design	D75: stop the vanishing in Atlas
+concept:dec-d76	decision:d76	vinc/design	D76: two contrast gates for Atlas
+concept:dec-d77	decision:d77	vinc/design	D77: retire the glass, and clear the dead channels
+concept:dec-d78	decision:d78	vinc/design	D78: type is colour, and the palette is closed at five
+concept:dec-d79	decision:d79	vinc/design	D79: restore line width (Line2)
+concept:dec-d80	decision:d80	vinc/design	D80: open on the local graph by default
+concept:dec-gm-1	decision:gm-1	vinc/governance	GM-1: adopt GRAPH.md
+concept:dec-gm-10	decision:gm-10	vinc/governance	GM-10: promote frontmatter into the chrome
+concept:dec-gm-11	decision:gm-11	vinc/governance	GM-11: give GRAPH.md a topic of its own
+concept:dec-gm-12	decision:gm-12	vinc/governance	GM-12: separate domains at Atlas L0
+concept:dec-gm-13	decision:gm-13	vinc/governance	GM-13: confirm the re-embedding migration, and show a status badge
+concept:dec-gm-14	decision:gm-14	vinc/governance	GM-14: cursor pagination for vinc_search
+concept:dec-gm-15	decision:gm-15	vinc/governance	GM-15: let the edge resolver query the store
+concept:dec-gm-2	decision:gm-2	vinc/governance	GM-2: place the conventions in the file, the store, and a read tool	Repository file, then store document, then vinc_conventions. MCP resources are on hold.
+concept:dec-gm-3	decision:gm-3	vinc/governance	GM-3: canon per region of the file	The generated region belongs to the store, the prose to the file. Regeneration never overwrites what a person wrote.
+concept:dec-gm-4	decision:gm-4	vinc/governance	GM-4: build and check for graph-md	Nine shape rules, exit codes 0, 1 and 2. It does not inspect meaning.
+concept:dec-gm-5	decision:gm-5	vinc/governance	GM-5: four pages for graph-md on the docs site	/docs/graph-md/{,build,spec,check}
+concept:dec-gm-7	decision:gm-7	vinc/governance	GM-7: keep the conventions document out of the listings	Excluded from search, the document list, and the left tree. It is a rule, not content.
+concept:dec-gm-8	decision:gm-8	vinc/governance	GM-8: a control sheet	A top-bar icon, a proposal badge, and approve, reject or rename.
+concept:dec-gm-9	decision:gm-9	vinc/governance	GM-9: a token budget for child vectors
+concept:dec-sec-1	decision:sec-1	vinc/security	SEC-1: owner isolation on reads	A probe run right after deploy found nodes from another owner exposed. Fixed in two layers, stamping and query.
+concept:dec-sec-3	decision:sec-3	vinc/security	SEC-3: owner isolation on writes	Closes the live cross-tenant write holes in delete, merge and ingest. The threat premise is that content-derived ids are guessable.
+concept:dec-registry	DROP	vinc/governance	(deleted: the type replaces the registry)	This node existed only to say that decisions exist as a class. That is what the Decision type now says. The two facts worth keeping (the number-reuse backlog for D43 and D63) already live in those two decisions' own notes.

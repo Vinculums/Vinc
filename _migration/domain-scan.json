@@ -1,0 +1,1812 @@
+{
+ "concept:doc.weg.c.memory-standalone": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "weg.c.memory-standalone"
+ },
+ "concept:abcd-layers": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "Document layer scheme, A through D"
+ },
+ "concept:dec-registry": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "DEC 결정 대장"
+ },
+ "bridge:graph-md": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "GRAPH.md junction"
+ },
+ "concept:azure-infra": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Cloud infrastructure, one resource group"
+ },
+ "concept:web-vinc": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "Web Vinc, the browser build"
+ },
+ "concept:account-backend": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "The account backend"
+ },
+ "concept:newsletter": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "Newsletter subscription and delivery"
+ },
+ "concept:dec-b1": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "B1 리포 물리 분리"
+ },
+ "concept:billing-provider": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "Payment processor abstraction"
+ },
+ "concept:easyauth-swa-backend": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Platform authentication on the linked backend"
+ },
+ "concept:doc.vinc.ops.risk-audit-2026-08-05": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "vinc.ops.risk-audit-2026-08-05"
+ },
+ "concept:purpose-confusion": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Token purpose confusion"
+ },
+ "concept:inprocess-state": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "In-process state on the account backend"
+ },
+ "bridge:domain-migration": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "Domain migration junction"
+ },
+ "bridge:proxy-allowlist": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "Proxy allowlist junction"
+ },
+ "bridge:member-key": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "Member key junction"
+ },
+ "episode:2026-07-14-gabia-first-deploy": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "First deployment of the account backend on the previous provider"
+ },
+ "episode:2026-07-18-web-vinc-live": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "Web Vinc live at full write parity"
+ },
+ "episode:2026-07-28-azure-migration": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "Hosting moved to managed cloud services"
+ },
+ "episode:2026-08-02-homepage-lag": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "The site was found two releases behind the application"
+ },
+ "episode:2026-08-02-ap1-p0-p2-landed": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The first account policy phases landed in code, undeployed"
+ },
+ "episode:2026-08-04-easyauth-blocks-member-keys": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "Platform authentication made every member key unauthorized"
+ },
+ "episode:2026-08-05-risk-audit": {
+  "domain": "vinc/security",
+  "kind": "episode",
+  "label": "A full risk audit read against the code"
+ },
+ "record:fact-newsletter-2": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The newsletter token must match in two places"
+ },
+ "record:fact-psp-korea": {
+  "domain": "vinc/product",
+  "kind": "record",
+  "label": "What a Korean seller can actually collect payment through"
+ },
+ "record:fact-ap1-webhook-path": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The payment webhook lives under the billing mount"
+ },
+ "record:fact-empty-401-means-ingress": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "An empty 401 came from the ingress, not the app"
+ },
+ "record:fact-msys-mangles-az-args": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Git Bash rewrites slash arguments into Windows paths"
+ },
+ "record:risk-token-purpose-unchecked": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "An invitation link can be redeemed for a sign-in session"
+ },
+ "record:risk-csrf-not-slid": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The CSRF cookie does not slide with the session"
+ },
+ "record:risk-invite-revoke-noop": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "A revoked invitation still lets someone into the team"
+ },
+ "record:risk-sweep-expired-uncalled": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The subscription sweep is never called"
+ },
+ "record:risk-team-plan-bleeds": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "One team seat makes a personal graph paid"
+ },
+ "record:risk-xff-spoof": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The forwarded-for header is trusted without checking"
+ },
+ "record:risk-no-hub-backup": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The hub's graph database has no backup"
+ },
+ "concept:cd-oidc": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Continuous delivery on federated credentials"
+ },
+ "concept:acr-tasks": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Registry-side image builds"
+ },
+ "bridge:deploy-pipeline": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "Delivery pipeline junction"
+ },
+ "episode:2026-08-01-acr-heredoc-bugs": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "Two heredoc traps in the registry build service"
+ },
+ "record:fact-acr-heredoc": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Two heredoc traps in registry-side builds"
+ },
+ "concept:ask-mode": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "Ask, a conversational surface with no language model"
+ },
+ "concept:answer-material": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Answer material"
+ },
+ "concept:doc.vinc.d.chat-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.chat-research"
+ },
+ "episode:2026-08-02-v071-release": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.7.1, hierarchy in the coordinates and Ask"
+ },
+ "record:fact-one-liner-unwritten": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Nothing writes the one-liner column"
+ },
+ "record:fact-edge-evidence-sparse": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Edges almost never carry their evidence"
+ },
+ "concept:doc.vinc.d.search": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.search"
+ },
+ "concept:atlas": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "Atlas, the map surface"
+ },
+ "concept:dec-d73": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D73 검색바 2모드 · 무LLM 묻기"
+ },
+ "episode:2026-07-24-v060-planar": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.6.0, three flat views beside the map"
+ },
+ "episode:2026-07-25-v066-redesign": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.6.6, the flat view and the totals view rebuilt"
+ },
+ "record:fact-atlas-layout-presets": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "Two layout presets, not five"
+ },
+ "record:fact-atlas-tier-ring": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "The ring carries mid and far visibility, not the fill"
+ },
+ "record:fact-atlas-glass-not-in-dark": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "The glass node never renders in the default theme"
+ },
+ "record:fact-atlas-edge-channels-empty": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "Edges in the 3D view carry neither width nor weight"
+ },
+ "concept:doc.vinc.d.atlas-visual-language": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.atlas-visual-language"
+ },
+ "concept:doc.vinc.d.graph": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.graph"
+ },
+ "concept:doc.vinc.d.graph-structure-analysis": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.graph-structure-analysis"
+ },
+ "concept:surface-tree": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "The surface tree"
+ },
+ "concept:signal-design": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "The Signal design system"
+ },
+ "concept:sankey-view": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "The totals view, a three-column Sankey"
+ },
+ "concept:time-axes": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "Two time bases: recorded and content"
+ },
+ "concept:dec-d16": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D16 Atlas 3-레벨 시맨틱 줌"
+ },
+ "concept:dec-d17": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D17 그래프 레이아웃 사전 계산"
+ },
+ "concept:dec-d31": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D31 Atlas 표현 강도 2층 정책"
+ },
+ "concept:dec-d32": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D32 MOC 구조 규율"
+ },
+ "concept:dec-d35": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D35 프리미티브 재배정"
+ },
+ "concept:dec-d43": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "D43 (이중 사용: 데이터 홈 ~/.vinc·P4 / Atlas 평면 관점 3종)"
+ },
+ "concept:dec-d46": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D46 2D 독립 렌더러(sigma)"
+ },
+ "concept:dec-d48-t": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D48-T 자체 툴팁(WCAG 1.4.13)"
+ },
+ "concept:dec-d74": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D74 좌표에 위계를 싣는다 · 폭발 배치"
+ },
+ "concept:doc.vinc.d.atlas-visibility-verification": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.atlas-visibility-verification"
+ },
+ "concept:dec-d75": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D75 Atlas 소멸 정지"
+ },
+ "concept:dec-d76": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D76 Atlas 대비 이중 게이트"
+ },
+ "concept:doc.vinc.d.atlas-mark-verdict": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.atlas-mark-verdict"
+ },
+ "concept:design-tokens": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "디자인 토큰 정본(DTCG)"
+ },
+ "episode:2026-07-27-v067-topbar": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.6.7, the shell collapsed into one top bar"
+ },
+ "episode:2026-08-02-atlas-visibility-verification": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "The visibility diagnosis verified and its standard overturned"
+ },
+ "episode:2026-08-03-mark-redesign-benchmark": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "The mark language adjudicated against eleven comparable tools"
+ },
+ "episode:2026-08-07-design-hub-ingest": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "Vinc-design 을 그래프로 — 디자인 정본이 리포 경계에서 끊기던 것"
+ },
+ "record:fact-dec-not-filed-on-release": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "A release shipped without filing its decision"
+ },
+ "record:apca-measurement-basis": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "Dark contrast needs a second measure beyond WCAG"
+ },
+ "record:node-type-distribution-3": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "Only three node types occurred when the marks were judged"
+ },
+ "record:dec-numbering-fork": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "The decision numbering had forked before the redesign"
+ },
+ "record:fact-tokens-css-is-generated": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "tokens.css 와 dist/ 는 손으로 고치지 않는다"
+ },
+ "concept:doc.vinc.c.p5-remote-rollout": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "vinc.c.p5-remote-rollout"
+ },
+ "concept:gabia-infra": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The previous provider's infrastructure, deleted"
+ },
+ "concept:hub": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The hub, the hosted data plane"
+ },
+ "concept:vincs-io": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The vincs.io domain"
+ },
+ "bridge:embedding": {
+  "domain": "",
+  "kind": "bridge",
+  "label": "Embedding pipeline junction"
+ },
+ "episode:2026-07-21-sync-pull-critical": {
+  "domain": "vinc/engineering",
+  "kind": "episode",
+  "label": "Every member's synchronization pull returned nothing"
+ },
+ "episode:2026-07-29-domain-migration": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "The canonical domain moved to vincs.io"
+ },
+ "episode:2026-07-31-docs-consolidation": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The documentation folded into one tree"
+ },
+ "record:fact-dns-6": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The six DNS records for the live domain"
+ },
+ "record:fact-gabia-deleted": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The previous provider was deleted outright"
+ },
+ "record:fact-hub-env-8": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The hub needs eight environment variables"
+ },
+ "record:fact-resend-4": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Four records keep the old domain alive for mail"
+ },
+ "record:fact-hub-single-writer-revision": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The hub is a single writer, so revisions cannot roll"
+ },
+ "record:fact-hub-non-utf8-503": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "A non UTF-8 body makes the hub answer 503"
+ },
+ "record:risk-health-lies-sidecar": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Health stays 200 after the sidecar dies"
+ },
+ "concept:dec-ap-1": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "계정 정책 AP-1(개인·팀 2계층)"
+ },
+ "concept:plan-entitlement": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "Plan entitlement: free, pro, and team"
+ },
+ "episode:2026-08-02-account-policy-decision": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The account policy settled on two layers"
+ },
+ "episode:2026-08-02-ap1-p3-teams-landed": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The team phase landed in code, undeployed"
+ },
+ "record:fact-oauth-plan-frozen": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "A connector's plan is frozen at approval"
+ },
+ "record:fact-ap1-free-limit-default": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The free daily ceiling was moved into the code default"
+ },
+ "concept:deploy-surfaces": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Five delivery surfaces"
+ },
+ "episode:2026-07-21-deployment-canon": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "The deployment runbook written down as one record"
+ },
+ "record:fact-deploy-order": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Cross surface deployment order"
+ },
+ "record:fact-mysql-manual": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Database migration is a manual step"
+ },
+ "record:fact-site-deploy-cross-repo": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The site deployment cannot see the app repository"
+ },
+ "record:fact-secret-needs-new-revision": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Changing a secret does not change the running container"
+ },
+ "concept:doc.vinc.arch": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.arch"
+ },
+ "concept:chunk-ssot": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Chunk is the source of truth for document text"
+ },
+ "concept:doc.vinc.c.chunk-ssot": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.c.chunk-ssot"
+ },
+ "concept:doc.vinc.d.ingest": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.ingest"
+ },
+ "concept:fragment-merge": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Fragment merge, the one write path"
+ },
+ "concept:mentions-link": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The mention linker"
+ },
+ "concept:parent-child-vectors": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Parent and child vectors"
+ },
+ "concept:vincpack": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Share Pack, the vincpack format"
+ },
+ "concept:graph-md": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GRAPH.md, the assistant writing conventions contract"
+ },
+ "concept:dec-d45": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "D45 문서 정본(Chunk=SSoT)"
+ },
+ "episode:2026-07-24-pack-documents": {
+  "domain": "vinc/engineering",
+  "kind": "episode",
+  "label": "The pack format began carrying source text"
+ },
+ "episode:2026-07-24-v065-chunk-ssot": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.6.5, source text became canonical inside the graph"
+ },
+ "episode:2026-07-29-file-import": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "The drop zone began accepting source files"
+ },
+ "episode:2026-08-01-graphmd-deploy": {
+  "domain": "vinc/governance",
+  "kind": "episode",
+  "label": "The conventions contract deployed across every surface"
+ },
+ "episode:2026-08-01-v070-release": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.7.0, screen restructure, Korean semantic search and the conventions file"
+ },
+ "episode:2026-08-07-ssot-discipline": {
+  "domain": "vinc/governance",
+  "kind": "episode",
+  "label": "정본 규율을 CLAUDE.md 로 옮겼다 — 규칙은 있었지만 닿지 않았다"
+ },
+ "episode:2026-08-07-graceful-shutdown-fix": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "exec 가 trap 을 지워 배포마다 최근 쓰기를 잃고 있었다 — 종료 경로 수리"
+ },
+ "episode:2026-08-07-doc-recovery-from-transcripts": {
+  "domain": "vinc/governance",
+  "kind": "episode",
+  "label": "유실 문서 3건을 세션 트랜스크립트에서 복구했다"
+ },
+ "record:fact-chunk-2000": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The chunk ceiling is 2000 characters"
+ },
+ "record:fact-conventions-doc": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "How the conventions document is stored"
+ },
+ "record:fact-graphmd-shape": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "The shape rules of the conventions document"
+ },
+ "record:fact-mentions-rule": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "How document mentions become links"
+ },
+ "record:fact-graph-doc-id-is-canonical": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "A graph-born document is identified by its doc_id"
+ },
+ "concept:community-packs": {
+  "domain": "vinc/product",
+  "kind": "concept",
+  "label": "The community pack gallery"
+ },
+ "episode:2026-07-18-community-live": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The community pack gallery went live"
+ },
+ "episode:2026-07-30-starter-packs-lost": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The official packs vanished with the database rebuild"
+ },
+ "record:fact-starter-seed": {
+  "domain": "vinc/web",
+  "kind": "record",
+  "label": "스타터팩 시딩 함정"
+ },
+ "record:risk-community-download-open": {
+  "domain": "vinc/web",
+  "kind": "record",
+  "label": "커뮤니티 팩 다운로드가 무인증·무제한이다"
+ },
+ "record:risk-starter-seed-manual": {
+  "domain": "vinc/web",
+  "kind": "record",
+  "label": "스타터팩 시딩이 마이그레이션이 아니라 수동 단계다"
+ },
+ "concept:doc.vinc.a.terms": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.a.terms"
+ },
+ "concept:copy-canon": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "The copy deck is canonical"
+ },
+ "concept:doc.vinc.a.ui-copy": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.a.ui-copy"
+ },
+ "concept:dec-d18": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D18 영어 카피 시스템 verb-first"
+ },
+ "concept:dec-d38": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D38 기본 다크 + 개발자 정보 은닉"
+ },
+ "concept:dec-d42": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D42 표면 언어 en/ko 단일 배포"
+ },
+ "episode:2026-07-19-copy-canon-incident": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "Copy replaced in design work, and the decks restored"
+ },
+ "episode:2026-07-22-emdash-ban": {
+  "domain": "vinc/governance",
+  "kind": "episode",
+  "label": "The em dash banned from every user-visible string"
+ },
+ "record:fact-emdash": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "em-dash 화면 금지"
+ },
+ "record:fact-f1-gate-drift": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "The forbidden vocabulary document had drifted from its gate"
+ },
+ "concept:domain-cap": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The topic ceiling on the free tier"
+ },
+ "concept:team-graph": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "A team graph is one owner string"
+ },
+ "concept:doc.vinc.c.account-policy": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.c.account-policy"
+ },
+ "concept:release-0-7-2": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "v0.7.2, a bundle of three planned streams"
+ },
+ "episode:2026-08-02-release-0-7-2-planned": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "The v0.7.2 bundle decided and handed off"
+ },
+ "record:fact-team-assertion-typ": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "팀 어서션은 기존 유형에 필드를 더하지 말고 새 유형으로 분리해야 한다"
+ },
+ "record:fact-domain-cap-chokepoint": {
+  "domain": "vinc/architecture",
+  "kind": "record",
+  "label": "주제 상한의 관문은 merge_fragment 하나이고 기본값은 무제한이어야 한다"
+ },
+ "record:fact-ap1-missing-plan-claim": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "프록시 어서션에 plan 클레임이 없으면 상한을 걸지 않는다"
+ },
+ "record:fact-ap1-team-purge-separate-door": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "팀 그래프 소거는 경로와 유형을 모두 분리했다"
+ },
+ "record:fact-team-invite-search-policy": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "팀 초대 검색은 핸들로만 하고 이메일로는 안 한다"
+ },
+ "record:fact-0-7-2-surface-split": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "A version tag ships the desktop only"
+ },
+ "concept:ed25519-trust": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Mutual trust on public keys alone"
+ },
+ "concept:dec-b2": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "B2 공개키만 핀"
+ },
+ "episode:2026-07-30-key-rotation": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "Signing material moved into the platform secret store"
+ },
+ "record:fact-internal-guarded-by-assertion-only": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "Two internal account routes are public with one guard"
+ },
+ "concept:dec-d-vis-0": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D-vis-0 렌더 파이프라인 점검"
+ },
+ "concept:dec-d-vis-a": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D-vis-a recede 준수와 fog 적응"
+ },
+ "concept:doc.vinc.d.atlas-visibility-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.atlas-visibility-research"
+ },
+ "concept:dec-d-vis-b": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D-vis-b 마크·엣지 사다리 재보정과 이중 게이트"
+ },
+ "record:fact-atlas-render-pipeline-ok": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "Atlas 흑화는 색공간·톤매핑 탓이 아니다"
+ },
+ "record:fact-sigma-node-programs": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "sigma 코어만으로 2D 노드 형태를 만들 수 있다"
+ },
+ "concept:dec-d-vis-d": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D-vis-d 준의미 줌·형태·집계"
+ },
+ "concept:dec-d-vis-c": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D-vis-c 라벨 가독성과 사용자 조절권"
+ },
+ "concept:theme-vocab": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The user-authored type vocabulary"
+ },
+ "concept:vinc-mcp": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The Vinc MCP server"
+ },
+ "concept:dec-d11": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "D11 MCP 도구 계약 · 어휘 그래프 밖(R2)"
+ },
+ "episode:2026-08-08-mcp-hardening-f6-f8-f12": {
+  "domain": "vinc/mcp",
+  "kind": "episode",
+  "label": "MCP 도구 계약 정비 — 무음 절단·인자 범위·설명 증보 (F6·F8·F12)"
+ },
+ "record:fact-body-4mb": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Request body and result ceilings"
+ },
+ "record:fact-endpoint-mcp": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Where the hosted endpoints are"
+ },
+ "record:risk-bridge-oskill-windows": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The bridge liveness probe kills the app on Windows"
+ },
+ "record:risk-bridge-retry-nonidempotent": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Bridge retries resend writes that only timed out"
+ },
+ "record:pitfall-mcp-desc-override": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "tools/list override 가 정본 설명을 통째로 갈아치웠다"
+ },
+ "record:pitfall-tool-desc-guessed-shape": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "도구 설명의 반환 shape 은 호출해 보고 적어야 한다"
+ },
+ "record:fact-mcp-tool-contract-invariants": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "MCP 도구 계약 불변식 3종"
+ },
+ "record:dec-f13-deferred": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "F13 outputSchema 보류 판정"
+ },
+ "concept:ladybugdb": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "LadybugDB, the embedded driver"
+ },
+ "concept:dec-d14": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "D14 임베디드 드라이버 LadybugDB 단일"
+ },
+ "episode:2026-07-20-ladybug-proven": {
+  "domain": "vinc/engineering",
+  "kind": "episode",
+  "label": "The embedded driver switch cleared by three measurements"
+ },
+ "episode:2026-07-20-v051-critical": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.5.1 shipped a sidecar that could not open the store"
+ },
+ "episode:2026-07-21-v053-kuzu-removed": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.5.3, the store failure traced and the second driver removed"
+ },
+ "episode:2026-07-27-windows-bugs-fixed": {
+  "domain": "vinc/engineering",
+  "kind": "episode",
+  "label": "Eleven Windows failures were defects, not the environment"
+ },
+ "concept:dec-d15": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D15 표면 트리 5표면+Settings"
+ },
+ "concept:dec-d19": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "D19 Share Pack"
+ },
+ "concept:lnb-tree": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "The document tree in the left column"
+ },
+ "concept:dec-d26": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D26 아이콘 레일 LNB"
+ },
+ "concept:dec-d56": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D56 상단 바 단일 셸"
+ },
+ "concept:doc.vinc.d.atlas-mark-redesign": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.atlas-mark-redesign"
+ },
+ "concept:dec-d78": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D78 타입=색 닫힌 5색"
+ },
+ "record:fact-vinc-vs-obsidian-typed-graph": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "The typed graph advantage is spent on the weakest channel"
+ },
+ "concept:dec-d36": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "D36 원격 MCP 프로파일(옵트인)"
+ },
+ "concept:dec-d37": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D37 Liquid Glass 층 분리"
+ },
+ "concept:dec-d4": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "D4 pack.json 신호 완전 수록"
+ },
+ "concept:desktop-release": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The desktop release pipeline"
+ },
+ "concept:dec-d53": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D53 흐름 관점 폐기"
+ },
+ "episode:2026-07-18-v031-autoupdate": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.3.1, the installed application updates itself"
+ },
+ "record:fact-version-10": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The version string lives in ten places"
+ },
+ "concept:dec-d44": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "D44 코드서명 $0 경로(대체됨)"
+ },
+ "record:fact-d44-superseded": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Why the free signing route was abandoned"
+ },
+ "concept:dec-d47": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D47 합계 3열 생키"
+ },
+ "concept:dec-d54": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D54 원장 출처 열"
+ },
+ "concept:dec-d55": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "D55 팩 zip 컨테이너"
+ },
+ "concept:dec-d69": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D69 LNB 문서 트리 재도입"
+ },
+ "concept:hybrid-search": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Hybrid retrieval, keyword and vector"
+ },
+ "concept:dec-d57": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D57 검색 = 조회 제1 진입점"
+ },
+ "concept:dec-d6": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "D6 pack export include_model=False 기본"
+ },
+ "concept:dec-d63": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "D63 (이중 사용: 오버레이 규격 / 경로 튜플)"
+ },
+ "concept:dec-d68": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D68 Sankey alluvial barycenter"
+ },
+ "concept:dec-d7": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D7 무암호 단일 프로필 기본"
+ },
+ "concept:dec-d70": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D70 포커스 = 관련문서 카드"
+ },
+ "concept:dec-d71": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D71 Tools 모달 · 크롬 재배치"
+ },
+ "concept:dec-d72": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D72 시간축 이원화"
+ },
+ "concept:dec-d77": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D77 유리 은퇴와 사문 채널 정리"
+ },
+ "concept:dec-d79": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D79 선 폭 복원(Line2)"
+ },
+ "record:line2-three-addon": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "The wide-line class is a bundled addon, not a dependency"
+ },
+ "concept:dec-d80": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "D80 국소 그래프 기본 진입"
+ },
+ "concept:dec-gm-1": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-1 GRAPH.md 채택"
+ },
+ "concept:dec-gm-11": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-11 GRAPH.md 주제화"
+ },
+ "episode:2026-08-02-methodology-redesign-research": {
+  "domain": "vinc/governance",
+  "kind": "episode",
+  "label": "A four-axis methodology proposal loaded as research"
+ },
+ "record:release-0-7-2-scope": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "v0.7.2 릴리스 범위"
+ },
+ "concept:doc.vinc.plan.methodology-redesign": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.plan.methodology-redesign"
+ },
+ "concept:dec-gm-10": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-10 frontmatter 크롬 승격"
+ },
+ "concept:dec-gm-12": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-12 도메인 분리 Atlas L0"
+ },
+ "concept:dec-gm-9": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-9 자식 벡터 토큰 예산"
+ },
+ "concept:dec-gm-13": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-13 재임베딩 이행 확인과 상태 배지"
+ },
+ "concept:doc.vinc.mcp": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "vinc.mcp"
+ },
+ "concept:dec-gm-14": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-14 vinc_search 커서 페이지네이션"
+ },
+ "record:vinc-ingest-edge-target-resolution": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Edge endpoints resolve only within the same payload"
+ },
+ "concept:dec-gm-15": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-15 엣지 해석기 스토어 조회"
+ },
+ "concept:dec-gm-2": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-2 배치 = 파일·스토어·읽기 도구"
+ },
+ "concept:dec-gm-3": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-3 구역별 정본"
+ },
+ "concept:dec-gm-4": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-4 graph-md build/check"
+ },
+ "concept:dec-gm-5": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-5 문서 사이트 독립 섹션 4쪽"
+ },
+ "concept:dec-gm-7": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-7 관례 문서 노출 제외"
+ },
+ "concept:dec-gm-8": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "GM-8 통제 시트"
+ },
+ "concept:doc.vinc.next-session": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.next-session"
+ },
+ "concept:doc.vinc.b.architecture": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.b.architecture"
+ },
+ "concept:owner-isolation": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Owner isolation"
+ },
+ "concept:dec-sec-1": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "SEC-1 owner 격리(읽기)"
+ },
+ "concept:dec-sec-3": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "SEC-3 쓰기 owner 격리"
+ },
+ "episode:2026-07-17-sec1-incident": {
+  "domain": "vinc/security",
+  "kind": "episode",
+  "label": "Cross-owner reads on the hosted graph"
+ },
+ "episode:2026-07-18-sec3-closed": {
+  "domain": "vinc/security",
+  "kind": "episode",
+  "label": "The write path closed to cross-tenant writes"
+ },
+ "record:risk-search-chunk-unscoped": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The chunk arm of search has no owner filter"
+ },
+ "record:risk-sync-tombstone-unscoped": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "Tombstone application deletes another member's nodes"
+ },
+ "record:risk-jobs-not-owner-scoped": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "Job identifiers are a counter and are not owner scoped"
+ },
+ "record:risk-graphmd-shared-docid": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The conventions document is one shared identifier for everyone"
+ },
+ "record:risk-themes-global": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The vocabulary store is one file for the whole process"
+ },
+ "concept:design-hub": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "Vinc Design Hub"
+ },
+ "concept:lime-design": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "lime-design 엔진"
+ },
+ "concept:doc.vinc.design.system": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.system"
+ },
+ "concept:doc.vinc.design.tokens": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.tokens"
+ },
+ "concept:doc.vinc.design.hub-notes": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.hub-notes"
+ },
+ "concept:doc.vinc.design.profile": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.profile"
+ },
+ "concept:doc.vinc.design.concept-home-signal": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.concept-home-signal"
+ },
+ "concept:doc.vinc.design.concept-app-deep-signal": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.concept-app-deep-signal"
+ },
+ "concept:doc.vinc.design.figma-rebuild-2026-08": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.figma-rebuild-2026-08"
+ },
+ "concept:doc.vinc.design.logo": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.logo"
+ },
+ "concept:doc.vinc.design.tenant-desktop": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.design.tenant-desktop"
+ },
+ "record:fact-design-files-are-build-input": {
+  "domain": "vinc/design",
+  "kind": "record",
+  "label": "DESIGN/* 는 빌드 입력이고 정본은 그래프다"
+ },
+ "record:fact-hub-static-token-is-user-local": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "허브 정적 MCP 토큰의 owner 는 user:local 이다"
+ },
+ "concept:version-pin": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Version pin discipline"
+ },
+ "concept:updater-signing": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "The updater signing key"
+ },
+ "episode:2026-08-01-ladybug-pin-asymmetry": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "The driver pin was missing from the release workflow alone"
+ },
+ "record:fact-ladybug-pin": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The engine pin has to match in four places"
+ },
+ "record:fact-signing-key": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The update signing key exists in two copies"
+ },
+ "concept:doc.vinc.b.theme": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.b.theme"
+ },
+ "concept:doc.vinc.d.ux-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.ux-research"
+ },
+ "concept:doc.vinc.d.index": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.index"
+ },
+ "concept:doc.vinc.mcp.skeleton": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "vinc.mcp.skeleton"
+ },
+ "concept:doc.vinc.c.web-vincs-app": {
+  "domain": "vinc/web",
+  "kind": "concept",
+  "label": "vinc.c.web-vincs-app"
+ },
+ "concept:doc.vinc.c.dataplane": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.c.dataplane"
+ },
+ "concept:doc.vinc.d.remote-profile": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.remote-profile"
+ },
+ "concept:doc.vinc.ops.release-0-7-2": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "vinc.ops.release-0-7-2"
+ },
+ "concept:doc.vinc.ops.incident-2026-08-04-easyauth": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "vinc.ops.incident-2026-08-04-easyauth"
+ },
+ "concept:fail-open-degradation": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Fail-open degradation"
+ },
+ "record:risk-quota-web-exempt": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The web path is exempt from the call ceiling"
+ },
+ "concept:doc.vinc.c.graph-md": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.c.graph-md"
+ },
+ "concept:schema-version": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The store schema version"
+ },
+ "concept:doc.vinc.c.sharepack": {
+  "domain": "vinc/architecture",
+  "kind": "concept",
+  "label": "vinc.c.sharepack"
+ },
+ "record:fact-schema-v8": {
+  "domain": "vinc/architecture",
+  "kind": "record",
+  "label": "스키마 v8 내용"
+ },
+ "concept:doc.vinc.c.p3-execution": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.c.p3-execution"
+ },
+ "concept:doc.vinc.d.desktop-shell": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.desktop-shell"
+ },
+ "concept:doc.vinc.d.alluvial-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.alluvial-research"
+ },
+ "concept:doc.vinc.d.graph-views": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.graph-views"
+ },
+ "concept:doc.vinc.d.view-redesign-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.view-redesign-research"
+ },
+ "concept:doc.vinc.d.glass-language": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.glass-language"
+ },
+ "concept:doc.vinc.d.motion-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.motion-research"
+ },
+ "concept:doc.vinc.d.packs": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.packs"
+ },
+ "concept:doc.vinc.d.records": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.records"
+ },
+ "concept:doc.vinc.d.settings": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.settings"
+ },
+ "concept:doc.vinc.d.tauri-shell-research": {
+  "domain": "vinc/design",
+  "kind": "concept",
+  "label": "vinc.d.tauri-shell-research"
+ },
+ "episode:2026-08-07-tauri-q1-q4": {
+  "domain": "vinc/design",
+  "kind": "episode",
+  "label": "Tauri 셀 열린 결정 4건 확정 (Q1~Q4)"
+ },
+ "concept:doc.vinc.ops.deployment": {
+  "domain": "",
+  "kind": "concept",
+  "label": "vinc.ops.deployment"
+ },
+ "concept:silent-config-failure": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "Silent configuration failure"
+ },
+ "record:fact-issuer-outage": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "A missing issuer takes OAuth down while health stays green"
+ },
+ "concept:doc.vinc.plan.mcp-hardening": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "vinc.plan.mcp-hardening"
+ },
+ "concept:doc.vinc.ops.mcp-hardening-eval": {
+  "domain": "vinc/mcp",
+  "kind": "concept",
+  "label": "vinc.ops.mcp-hardening-eval"
+ },
+ "episode:2026-08-08-mcp-hardening-f3-f7": {
+  "domain": "vinc/mcp",
+  "kind": "episode",
+  "label": "MCP 고도화 1차 — F3·F4·F5·F7 라이브 반영"
+ },
+ "episode:2026-08-08-e2-gate-first-run": {
+  "domain": "vinc/ai",
+  "kind": "episode",
+  "label": "검색 품질 게이트를 처음으로 돌렸다 (E2)"
+ },
+ "record:fact-measure-before-fixing": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "고치기 전에 라이브를 전수로 잰다"
+ },
+ "concept:observability-gap": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The observability gap"
+ },
+ "record:risk-no-uptime-monitoring": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Nothing watches whether the service is up"
+ },
+ "concept:doc.vinc.ops.ssot-discipline": {
+  "domain": "vinc/governance",
+  "kind": "concept",
+  "label": "vinc.ops.ssot-discipline"
+ },
+ "record:fact-claude-md-is-the-only-instruction-surface": {
+  "domain": "vinc/governance",
+  "kind": "record",
+  "label": "세션 지시가 읽히는 자리는 CLAUDE.md 하나다"
+ },
+ "record:fact-open-type-nodes-drop-props": {
+  "domain": "vinc/mcp",
+  "kind": "record",
+  "label": "오픈 타입 노드는 props 와 domain 이 저장되지 않는다"
+ },
+ "concept:embedding-worker": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The embedding worker"
+ },
+ "concept:e5-model": {
+  "domain": "vinc/infra",
+  "kind": "concept",
+  "label": "The multilingual embedding model"
+ },
+ "episode:2026-07-30-embed-worker-lost": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "The embedding worker was found missing and put back"
+ },
+ "episode:2026-08-01-e5-hub-deploy": {
+  "domain": "vinc/ai",
+  "kind": "episode",
+  "label": "The hub switched to the multilingual embedding model"
+ },
+ "episode:2026-08-07-encode-service-split": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "임베딩 모델을 vinc-encode 로 분리 — 1Gi 안에서는 안 올라간다"
+ },
+ "record:fact-e5-ndcg": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "What the multilingual model bought"
+ },
+ "record:fact-embed-onnx": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Why the embedding runtime is ONNX and not torch"
+ },
+ "record:fact-vector-space": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Verifying that two embedding runs share a vector space"
+ },
+ "record:risk-embed-apply-oom": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "Accumulated vectors get around the batch ceiling"
+ },
+ "record:risk-vector-index-drop-global": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "The vector index drop is table wide"
+ },
+ "record:fact-encode-app-holds-no-volume": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "vinc-encode 는 볼륨을 물지 않는다 — 단일 writer 보호"
+ },
+ "record:fact-encoder-image-must-match-hub": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "인코더와 허브는 같은 이미지여야 한다"
+ },
+ "record:fact-encode-clients-are-exactly-three": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "/encode 클라이언트는 정확히 셋이다 — 인증 바꾸면 셋 다"
+ },
+ "record:fact-search-eval-cannot-run-outside-hub": {
+  "domain": "vinc/ai",
+  "kind": "record",
+  "label": "검색 품질 eval 은 허브 밖에서 돌릴 수 없다"
+ },
+ "record:fact-vector-arm-works-quality-unmeasured": {
+  "domain": "vinc/ai",
+  "kind": "record",
+  "label": "벡터 팔은 동작한다 — 품질 수치는 아직 없다"
+ },
+ "record:fact-evalset-is-for-synthetic-corpus": {
+  "domain": "vinc/ai",
+  "kind": "record",
+  "label": "고정 평가셋은 이 코퍼스의 것이 아니다"
+ },
+ "record:fact-store-cannot-be-opened-twice": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "사이드카가 문 DB 는 읽기 전용으로도 두 번째로 안 열린다"
+ },
+ "concept:mcp-oauth": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The authorization gate for the remote profile"
+ },
+ "concept:purge-owner": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Owner purge on account deletion"
+ },
+ "episode:2026-07-18-purge-cascade": {
+  "domain": "vinc/security",
+  "kind": "episode",
+  "label": "Account deletion made to purge the hosted graph"
+ },
+ "episode:2026-07-30-issuer-outage": {
+  "domain": "vinc/infra",
+  "kind": "episode",
+  "label": "One missing variable switched the authorization layer off"
+ },
+ "concept:member-key": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Member API keys"
+ },
+ "record:risk-key-plaintext-two-places": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The member key sits in plaintext in two places"
+ },
+ "concept:single-writer": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Single writer"
+ },
+ "concept:internal-block": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Blocking the internal paths at the edge"
+ },
+ "record:fact-single-writer-deploy": {
+  "domain": "vinc/infra",
+  "kind": "record",
+  "label": "허브 배포 순서 강제"
+ },
+ "record:risk-hub-internal-public": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The hub's internal routes are publicly reachable"
+ },
+ "concept:vinc-connector": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Connector approval"
+ },
+ "concept:quota": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The call quota"
+ },
+ "episode:2026-07-17-v020-release": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.2.0, member connector onboarding and tier quotas"
+ },
+ "record:fact-quota-limits": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The call ceiling and what counts against it"
+ },
+ "record:fact-quota-lock-code": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The lock is checked before the ceiling"
+ },
+ "concept:open-entity": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The open layer, carried by Entity and TYPED"
+ },
+ "episode:2026-07-19-v040-release": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.4.0, nine graph structure repairs"
+ },
+ "record:fact-graph-repair-f": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The v0.4.0 graph repairs"
+ },
+ "concept:sync-3way": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "Three-way field merge on synchronization"
+ },
+ "episode:2026-07-18-v030-sync": {
+  "domain": "vinc/product",
+  "kind": "episode",
+  "label": "v0.3.0, bidirectional account synchronization"
+ },
+ "record:risk-sync-stamp-unscoped": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "The synchronisation stamp loop runs outside the owner guard"
+ },
+ "record:risk-syncbase-no-owner": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "The synchronisation base has no owner dimension"
+ },
+ "record:risk-doc-sync-unwired": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Document text never travels through synchronisation"
+ },
+ "concept:proxy-allowlist": {
+  "domain": "vinc/engineering",
+  "kind": "concept",
+  "label": "The graph proxy allowlist, registered in three places"
+ },
+ "episode:2026-07-25-totals-web-dead": {
+  "domain": "vinc/engineering",
+  "kind": "episode",
+  "label": "The totals view died on the web alone through allowlist drift"
+ },
+ "record:fact-allowlist-check": {
+  "domain": "vinc/engineering",
+  "kind": "record",
+  "label": "Telling a listed proxy operation from an unlisted one"
+ },
+ "concept:team-role": {
+  "domain": "vinc/security",
+  "kind": "concept",
+  "label": "Team roles: viewer, editor, admin"
+ },
+ "record:fact-ap1-role-table-mirror": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "역할 op 표가 허브와 계정 두 곳에 있고 테스트가 대조한다"
+ },
+ "record:fact-team-invite-bound-to-user": {
+  "domain": "vinc/security",
+  "kind": "record",
+  "label": "핸들 초대는 user_id 에 묶여 가로채기가 성립하지 않는다"
+ }
+}

@@ -1,0 +1,55 @@
+doc_id	inherits_from	derives_from	basis
+vinc.canon.terminology			root. 이름과 표기의 뿌리라 기댈 곳이 없다
+vinc.canon.principles	vinc.canon.terminology		불변식 서술이 명명 바인딩을 쓴다
+vinc.canon.decisions	vinc.canon.terminology		adr-{domain}-{NNN} 문법이 표기 규칙을 따른다
+vinc.canon.vocabulary-model	vinc.canon.principles,vinc.canon.terminology		구 선언 이관
+vinc.canon.chunk-ssot	vinc.canon.principles		A 끊음: 쓰기 순서가 기대는 것은 불변식이지 구현이 아니다
+vinc.canon.share-pack	vinc.canon.mcp-contract		A 끊음: spec.dataplane 제거
+vinc.canon.mcp-contract	vinc.canon.terminology		A 끊음: spec.architecture 제거
+vinc.canon.graph-conventions	vinc.canon.chunk-ssot,vinc.canon.mcp-contract		구 선언 이관
+vinc.canon.account-policy	vinc.canon.share-pack,vinc.canon.terminology		A 끊음: 계약이 구현에 기대면 계약이 아니다. spec.web-system·spec.dataplane 제거
+vinc.spec.architecture	vinc.canon.principles		구 선언 이관
+vinc.spec.dataplane	vinc.canon.principles		구 선언 이관 (코퍼스 밖 1건 버림)
+vinc.spec.mcp-server	vinc.canon.mcp-contract,vinc.spec.architecture		구 선언 이관
+vinc.spec.web-system	vinc.canon.principles		구 선언 이관
+vinc.spec.email-subsystem	vinc.canon.account-policy		신규 판단: 무암호 인증과 발송은 계정 정책을 구현한다
+vinc.spec.azure-infrastructure	vinc.spec.architecture		신규 판단: 무엇이 돌고 왜 그 모양인지는 아키텍처에 기댄다
+vinc.spec.remote-profile	vinc.canon.principles	vinc.research.desktop-shell	B 이동
+vinc.spec.surface-tree	vinc.canon.terminology		구 선언 이관
+vinc.spec.surface-atlas	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.surface-intake	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.surface-records	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.surface-search	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.surface-packs	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.settings	vinc.spec.surface-tree		구 선언 이관
+vinc.spec.atlas-visual-language	vinc.spec.surface-atlas,vinc.canon.terminology	vinc.research.ux-restructure	B 이동: 연구는 출처지 의존이 아니다
+vinc.spec.atlas-views	vinc.spec.surface-atlas,vinc.spec.atlas-visual-language		구 선언 이관
+vinc.spec.glass-language	vinc.spec.atlas-visual-language	vinc.research.ux-restructure,vinc.research.desktop-shell	B 이동
+vinc.spec.ui-copy	vinc.canon.terminology		구 선언 이관
+vinc.spec.product-overview	vinc.canon.terminology		신규 판단: 코퍼스 색인이라 어휘에만 기댄다
+vinc.research.ux-restructure	vinc.spec.surface-tree,vinc.canon.terminology		구 선언 이관
+vinc.research.desktop-shell	vinc.spec.surface-tree,vinc.research.ux-restructure,vinc.spec.atlas-visual-language		구 선언 이관
+vinc.research.motion	vinc.spec.atlas-visual-language,vinc.spec.atlas-views,vinc.spec.glass-language,vinc.spec.surface-tree		구 선언 이관
+vinc.research.graph-structure	vinc.spec.atlas-visual-language,vinc.spec.surface-atlas,vinc.spec.dataplane,vinc.canon.vocabulary-model,vinc.canon.terminology		구 선언 이관
+vinc.research.atlas-visibility	vinc.spec.atlas-visual-language,vinc.research.graph-structure		구 선언 이관
+vinc.research.atlas-visibility-verification	vinc.research.atlas-visibility,vinc.spec.atlas-visual-language		구 선언 이관
+vinc.research.atlas-mark	vinc.spec.atlas-visual-language,vinc.research.atlas-visibility		구 선언 이관
+vinc.research.atlas-mark-verdict	vinc.research.atlas-mark,vinc.research.atlas-visibility-verification		구 선언 이관
+vinc.research.sankey-alluvial	vinc.spec.atlas-views,vinc.spec.atlas-visual-language,vinc.research.view-redesign		구 선언 이관
+vinc.research.view-redesign	vinc.spec.atlas-views,vinc.spec.atlas-visual-language,vinc.research.motion,vinc.spec.glass-language		구 선언 이관
+vinc.research.no-llm-chat	vinc.research.view-redesign,vinc.spec.surface-search,vinc.canon.mcp-contract,vinc.canon.chunk-ssot		구 선언 이관
+vinc.research.deploy-pipeline	vinc.ops.deployment		신규 판단: 본문이 스스로 그 문서를 정본으로 지목한다
+vinc.research.methodology	vinc.canon.graph-conventions		신규 판단: 방법론 제안의 대상이 쓰기 관례다
+vinc.ops.deployment	vinc.spec.azure-infrastructure		신규 판단: 절차는 무엇이 돌고 있는지에 기댄다
+vinc.ops.cost-management	vinc.spec.azure-infrastructure		신규 판단: 비용은 그 구성이 만든다
+vinc.ops.risk-audit-2026-08-05	vinc.ops.deployment,vinc.spec.dataplane,vinc.spec.web-system,vinc.ops.cost-management		구 선언 이관
+vinc.ops.incident-2026-08-04-easyauth	vinc.ops.deployment,vinc.canon.account-policy		구 선언 이관
+vinc.ops.incident-2026-07-16-macos-sidecar	vinc.spec.architecture		신규 판단: 사이드카가 무엇인지에 기댄다
+vinc.plan.code-signing	vinc.ops.deployment		신규 판단: 서명은 릴리스 파이프라인의 일부다
+vinc.plan.embedding-pipeline	vinc.canon.chunk-ssot,vinc.spec.dataplane		신규 판단: 무엇을 벡터로 만드는지와 어디 두는지에 기댄다
+vinc.plan.figma-build	vinc.spec.surface-tree,vinc.spec.atlas-visual-language		신규 판단: 한 파일이 출하 표면 전부를 미러한다
+vinc.plan.graph-conventions	vinc.canon.graph-conventions		신규 판단: 그 규격을 만든 작업의 기록이다
+vinc.plan.p3-execution	vinc.spec.atlas-visual-language,vinc.research.desktop-shell,vinc.canon.share-pack		구 선언 이관
+vinc.plan.p5-remote-rollout	vinc.spec.remote-profile,vinc.research.desktop-shell,vinc.plan.p3-execution		구 선언 이관
+vinc.release.changelog	vinc.ops.deployment		신규 판단: 릴리스 절차에 기댄다
+vinc.release.0-7-2	vinc.ops.deployment,vinc.canon.account-policy		구 선언 이관

@@ -1,0 +1,71 @@
+old_id	new_id	domain	label	disposition	note
+dec-d4	adr-engineering-004	engineering	D4	rename	pack.json 신호 완전 수록. 팩 포맷 계약이라 governance 가 아니라 engineering
+dec-d6	adr-engineering-006	engineering	D6	rename	pack export include_model=False 기본
+dec-d7	adr-design-007	design	D7	rename	무암호 단일 프로필 기본
+dec-d11	adr-engineering-011	engineering	D11	rename	MCP 도구 계약·어휘 그래프. 구 도메인 mcp 는 신 체계에서 engineering 으로 흡수
+dec-d14	adr-engineering-014	engineering	D14	rename	임베디드 드라이버 LadybugDB 단일
+dec-d15	adr-design-015	design	D15	rename	표면 트리 5표면+Settings
+dec-d16	adr-design-016	design	D16	rename	Atlas 3-레벨 시맨틱 줌
+dec-d17	adr-design-017	design	D17	rename	그래프 레이아웃 사전 계산
+dec-d18	adr-design-018	design	D18	rename	영어 카피 시스템 verb-first
+dec-d19	adr-engineering-019	engineering	D19	rename	Share Pack
+dec-d26	adr-design-026	design	D26	rename	아이콘 레일 LNB
+dec-d31	adr-design-031	design	D31	rename	Atlas 표현 강도 2층 정책
+dec-d32	adr-design-032	design	D32	rename	MOC 구조 규율
+dec-d35	adr-design-035	design	D35	rename	프리미티브 재배정
+dec-d36	adr-infra-036	infra	D36	rename	원격 MCP 프로파일(옵트인). 클라우드 배포 결정이라 infra
+dec-d37	adr-design-037	design	D37	rename	Liquid Glass 층 분리
+dec-d38	adr-design-038	design	D38	rename	기본 다크 + 개발자 정보 은닉
+dec-d42	adr-design-042	design	D42	rename	표면 언어 en/ko 단일 배포
+dec-d43	adr-engineering-043	engineering	D43	split-a	분할 1/2: 기본 데이터 홈 ~/.vinc + 릴리스 파이프라인. 도메인이 design 과 갈리므로 번호 보존
+dec-d43	adr-design-043	design	D43	split-b	분할 2/2: Atlas 평면 관점. 같은 번호를 쓰되 도메인이 다르므로 충돌 없음
+dec-d44	adr-infra-044	infra	D44	rename	코드서명 $0 경로. 본문에 SUPERSEDED 표기 있음 → props.status=superseded
+dec-d45	adr-engineering-045	engineering	D45	rename	문서 정본 Chunk=SSoT. 인용 최다(리포 문서만 53회)
+dec-d46	adr-design-046	design	D46	rename	2D 독립 렌더러(sigma)
+dec-d47	adr-design-047	design	D47	rename	합계 3열 생키
+dec-d48-t	adr-design-048	design	D48-T	rename	⚠ 1회성 접미사 -t 를 버린다. 같은 번호의 다른 결정이 없어 안전
+dec-d53	adr-design-053	design	D53	rename	흐름 관점 폐기
+dec-d54	adr-design-054	design	D54	rename	원장 출처 열
+dec-d55	adr-engineering-055	engineering	D55	rename	팩 zip 컨테이너
+dec-d56	adr-design-056	design	D56	rename	상단 바 단일 셸
+dec-d57	adr-design-057	design	D57	rename	검색 = 조회 제1 진입점
+dec-d63	adr-design-063	design	D63	split-a	분할 1/2: 화면 위에 뜨는 것의 규격(시트). 번호 보존
+dec-d63	adr-design-084	design	D63	split-b	분할 2/2: 경로 보존 리본. 둘 다 design 이라 번호 보존 불가 → design 최고번호(083) 다음. ⚠ P4 에서 두 결정의 본문을 확인해 어느 쪽이 원 D63 인지 확정할 것
+dec-d68	adr-design-068	design	D68	rename	Sankey alluvial barycenter
+dec-d69	adr-design-069	design	D69	rename	LNB 문서 트리 재도입
+dec-d70	adr-design-070	design	D70	rename	포커스 = 관련문서 카드
+dec-d71	adr-design-071	design	D71	rename	Tools 모달·크롬 재배치
+dec-d72	adr-design-072	design	D72	rename	시간축 이원화
+dec-d73	adr-ai-073	ai	D73	rename	검색바 2모드(묻기). 무LLM 답변 생성이라 신설 도메인 ai
+dec-d74	adr-design-074	design	D74	rename	좌표에 위계를 싣는다·폭발 배치
+dec-d75	adr-design-075	design	D75	merge-target	⚠ 이중 등록. dec-d-vis-a 와 같은 결정 → 하나로 병합
+dec-d76	adr-design-076	design	D76	merge-target	⚠ 이중 등록. dec-d-vis-b 와 같은 결정 → 하나로 병합
+dec-d77	adr-design-077	design	D77	rename	유리 은퇴와 사문 채널 정리
+dec-d78	adr-design-078	design	D78	rename	타입=색 닫힌 5색
+dec-d79	adr-design-079	design	D79	rename	선 폭 복원(Line2)
+dec-d80	adr-design-080	design	D80	rename	국소 그래프 기본 진입
+dec-d-vis-0	adr-design-081	design	D-vis-0	renumber	정수 번호 없던 것. design 최고번호(080) 다음부터 부여
+dec-d-vis-a	MERGE-INTO:adr-design-075	design	D-vis-a	merge	dec-d75 와 동일 결정의 이중 등록. 병합하고 이 id 는 소멸
+dec-d-vis-b	MERGE-INTO:adr-design-076	design	D-vis-b	merge	dec-d76 과 동일 결정의 이중 등록. 병합하고 이 id 는 소멸
+dec-d-vis-c	adr-design-082	design	D-vis-c	renumber	정수 번호 없던 것
+dec-d-vis-d	adr-design-083	design	D-vis-d	renumber	정수 번호 없던 것
+dec-gm-1	adr-governance-001	governance	GM-1	rename	GRAPH.md 채택
+dec-gm-2	adr-governance-002	governance	GM-2	rename	배치 = 파일·스토어·읽기 도구
+dec-gm-3	adr-governance-003	governance	GM-3	rename	구역별 정본
+dec-gm-4	adr-governance-004	governance	GM-4	rename	graph-md build/check
+dec-gm-5	adr-governance-005	governance	GM-5	rename	문서 사이트 독립 섹션 4쪽
+dec-gm-7	adr-governance-007	governance	GM-7	rename	관례 문서 노출 제외. GM-6 은 결번 — 번호를 당기지 않고 비워 둔다
+dec-gm-8	adr-governance-008	governance	GM-8	rename	통제 시트
+dec-gm-9	adr-governance-009	governance	GM-9	rename	자식 벡터 토큰 예산
+dec-gm-10	adr-governance-010	governance	GM-10	rename	frontmatter 크롬 승격
+dec-gm-11	adr-governance-011	governance	GM-11	rename	GRAPH.md 주제화
+dec-gm-12	adr-governance-012	governance	GM-12	rename	도메인 분리 Atlas L0
+dec-gm-13	adr-governance-013	governance	GM-13	rename	재임베딩 이행 확인과 상태 배지
+dec-gm-14	adr-governance-014	governance	GM-14	rename	vinc_search 커서 페이지네이션
+dec-gm-15	adr-governance-015	governance	GM-15	rename	엣지 해석기 스토어 조회
+dec-sec-1	adr-security-001	security	SEC-1	rename	owner 격리(읽기)
+dec-sec-3	adr-security-003	security	SEC-3	rename	쓰기 owner 격리. SEC-2 결번 — 비워 둔다
+dec-b1	adr-security-101	security	B1	renumber	리포 물리 분리. B 시리즈는 SEC 와 번호가 겹치므로 101 부터 시작
+dec-b2	adr-security-102	security	B2	renumber	공개키만 핀
+dec-ap-1	adr-product-001	product	AP-1	rename	계정 정책 개인·팀 2계층. 신설 도메인 product 의 첫 결정
+dec-registry	concept:decision-registry	governance	-	move-out	⚠ 결정이 아니라 결정 대장이다. adr 네임스페이스 밖으로 옮긴다

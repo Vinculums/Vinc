@@ -1,0 +1,55 @@
+doc_id	layer	domain	status	authority	version	inherits_from	fm_title	body_h1
+d2b6633ee1151a272								Vinc
+vinc.a.terms	A	terms	draft	SSoT	v0.2	[weg.c.memory-standalone]	Vinc 용어·표기·금지 어휘 규칙 (정본)	Vinc 용어·표기·금지 어휘 규칙 (정본)
+vinc.a.ui-copy	A	ui-copy	draft	inventory	v0.5	[vinc.a.terms]	Vinc 앱 UI 카피 전수 인벤토리 (실사용 용어·문장 수집)	Vinc 앱 UI 카피 전수 인벤토리
+vinc.arch	C	architecture	draft	SSoT	v0.3	[vinc.b.architecture]	Vinc 아키텍처 · 유저 플로우 다이어그램	Vinc 아키텍처 · 유저 플로우
+vinc.b.architecture	B	architecture	draft	SSoT	v0.2	[weg.c.memory-standalone]	Vinc 아키텍처 불변 원칙·확정 결정 (정본)	Vinc 아키텍처 불변 원칙·확정 결정 (정본)
+vinc.b.theme	B	theme	draft	SSoT	v0.2	[vinc.b.architecture, vinc.a.terms]	주제·타입 어휘 모델 (사용자 저작 타입 — D11-R2)	주제·타입 어휘 모델
+vinc.c.account-policy	C	account-policy	draft	SSoT	v0.1	[vinc.c.web-vincs-app, vinc.c.dataplane, vinc.c.sharepack]	계정 정책 — 개인·팀 티어, 도메인 한도, 팀 협업, 결제 (DEC AP-1)	계정 정책 — 개인·팀 티어, 도메인 한도, 팀 협업, 결제
+vinc.c.chunk-ssot	C	chunk-ssot	draft	SSoT	v0.2	[vinc.c.dataplane, vinc.arch]	Chunk=SSoT — 문서 정본 계약 (DEC D45)	Chunk=SSoT — 문서 정본 계약
+vinc.c.dataplane	C	dataplane	draft	Delta	v0.5	[weg.c.memory-standalone, vinc.b.architecture]	Vinc 데이터플레인 참조 — P1 as-built (store·engines·api·search·migration·sync)	Vinc 데이터플레인 참조 — P1 as-built
+vinc.c.graph-md	C	graph-md	draft	SSoT	v0.2	[vinc.c.chunk-ssot, vinc.mcp]	GRAPH.md — 어시스턴트 쓰기 관례 계약 (DEC GM-1)	GRAPH.md — 어시스턴트 쓰기 관례 계약
+vinc.c.p3-execution	C	p3-execution	draft	SSoT	v0.1	[vinc.d.atlas-visual-language, vinc.d.desktop-shell, vinc.c.sharepack]	P3 실행 계획 — 코드 고도화 → Figma 역동기화 (Vinc 단독 트랙)	P3 실행 계획 — 코드 고도화 → Figma 역동기화
+vinc.c.p5-remote-rollout	C	p5-remote-rollout	draft	SSoT	v0.1	[vinc.d.remote-profile, vinc.d.desktop-shell, vinc.c.p3-execution]	P5 실행 계획 — 원격 프로파일 롤아웃 (도메인·VM 확보 이후)	P5 실행 계획 — 원격 프로파일 롤아웃
+vinc.c.sharepack	C	sharepack	draft	SSoT	v0.1	[vinc.c.dataplane, vinc.mcp]	Vinc Share Pack — 계정 간 데이터 전달 계약 (DEC D19)	Vinc Share Pack — 계정 간 데이터 전달 계약
+vinc.c.web-vincs-app	C	web-vincs-app	draft	SSoT (as-built)	v0.3	[vinc.b.architecture]	vincs.app 웹 시스템 종합 (as-built) — 홈페이지 + 계정/이메일 + 웹 Vinc + 커뮤니티	vincs.app 웹 시스템 — 종합 문서 (as-built)
+vinc.changelog								Changelog
+vinc.d.alluvial-research	D	graph	draft	research-input	v0.1	[vinc.d.graph-views, vinc.d.atlas-visual-language, vinc.d.view-redesign-research]	Vinc 합계(Sankey) 뷰 × Alluvial 다이어그램 — 레이아웃·정렬·모노크롬 설계 연구	Vinc 합계(Sankey) 뷰 × Alluvial 다이어그램 적용 연구
+vinc.d.atlas-mark-redesign	D	atlas-visibility	draft	research-input	v0.1	[vinc.d.atlas-visual-language, vinc.d.atlas-visibility-research]	Atlas 마크 언어 재검토 — 유리 구·헤어라인이 이 데이터 뷰에 맞는가	Atlas 마크 언어 재검토
+vinc.d.atlas-mark-verdict	D	atlas-visibility	draft	research-input	v0.1	[vinc.d.atlas-mark-redesign, vinc.d.atlas-visibility-verification]	Atlas 마크 언어 판정과 경쟁 비교 · D77~D80 · GM-15 · 내부 충돌 정리	Atlas 마크 언어 판정과 경쟁 비교
+vinc.d.atlas-visibility-research	D	atlas-visibility	draft	research-input	v0.1	[vinc.d.atlas-visual-language, vinc.d.graph-structure-analysis]	Atlas 3D/2D 가시성 재설계 연구 — 축소 흑화·대비 붕괴·형태 변별 진단과 제안	Atlas 3D/2D 가시성 재설계 연구
+vinc.d.atlas-visibility-verification	D	atlas-visibility	draft	research-input	v0.1	[vinc.d.atlas-visibility-research, vinc.d.atlas-visual-language]	Atlas 가시성 연구 심화 검증 · WCAG와 APCA 이중 계산, 임의 숫자 교체, R9~R12 확장	Atlas 가시성 연구 심화 검증
+vinc.d.atlas-visual-language	D	atlas-visual-language	draft	SSoT	v0.3	[vinc.d.graph, vinc.d.ux-research, vinc.a.terms]	Atlas 상세 설계 — 시각 언어·조작 문법·멀티 도메인/결합 뷰·검색·공유 노출	Atlas 상세 설계 — 시각 언어·조작·멀티뷰·검색·공유
+vinc.d.chat-research	D	chat	draft	research-input	v0.2	[vinc.d.view-redesign-research, vinc.d.search, vinc.mcp, vinc.c.chunk-ssot]	무LLM 채팅 실현 가능성 분석 — 답변 재료 실측 + 의도 매핑 층 설계	무LLM 채팅 실현 가능성 분석
+vinc.d.desktop-shell	D	desktop-shell	draft	research-input	v0.1	[vinc.d.index, vinc.d.ux-research, vinc.d.atlas-visual-language]	설치형 셸 연구 — 내비게이션(LNB 판정)·데스크톱 구조·필수 기능·첫 실행 (D26–D30 · D38 · D41–D44)	설치형 셸 연구 — Figma 재개 전 판정
+vinc.d.glass-language	D	glass-language	draft	SSoT	v0.1	[vinc.d.ux-research, vinc.d.atlas-visual-language, vinc.d.desktop-shell]	Liquid Glass 재검토 — 크롬=글래스 / 콘텐츠=Ink & Paper 하이브리드 (D37)	Liquid Glass 재검토 (D37)
+vinc.d.graph-structure-analysis	D	graph-structure-analysis	draft	research-input	v0.2	[vinc.d.atlas-visual-language, vinc.d.graph, vinc.c.dataplane, vinc.b.theme, vinc.a.terms]	Atlas 그래프 구조 분석 — 구(球) 형태·연결 형식·개념 연결 구조·연결 다양성 정량	Atlas 그래프 구조 분석 — 구(球) 형태·연결 형식·연결 다양성 정량
+vinc.d.graph-views	D	graph	draft	SSoT	v0.6	[vinc.d.graph, vinc.d.atlas-visual-language]	Atlas 확장 뷰 — 흐름(Flow) · 타임라인(Timeline) · 합계(Totals)	Atlas 확장 뷰 — 흐름 · 타임라인 · 합계
+vinc.d.graph	D	graph	draft	SSoT	v0.3	[vinc.d.index]	Vinc 표면 3 — Atlas (3-레벨 시맨틱 줌, 전면 3D · 3d-force-graph)	표면 3. Atlas
+vinc.d.index	D	index	draft	SSoT	v0.2	[vinc.a.terms]	Vinc 화면설계 — 전체 표면 트리 (5표면 + Settings) + 공통 규약	Vinc 화면설계 — 전체 표면 트리 (5표면 + Settings)
+vinc.d.ingest	D	ingest	draft	SSoT	v0.3	[vinc.d.index]	Vinc 표면 1 — Intake (적재 + 첫 실행 셋업)	표면 1. Intake
+vinc.d.motion-research	D	motion	draft	research-input	v0.1	[vinc.d.atlas-visual-language, vinc.d.graph-views, vinc.d.glass-language, vinc.d.index]	Vinc × Motion / bklit 적용 분석 — 모션 시스템·차트 인터랙션 도입 연구	Vinc × Motion / bklit 적용 분석
+vinc.d.packs	D	packs	draft	SSoT	v0.2	[vinc.d.index]	Vinc 표면 5 — Packs (팩 내보내기)	표면 5. Packs
+vinc.d.records	D	records	draft	SSoT	v0.2	[vinc.d.index]	Vinc 표면 2 — Records (레코드 목록·열람)	표면 2. Records
+vinc.d.remote-profile	D	remote-profile	draft	SSoT	v0.3	[vinc.b.architecture, vinc.d.desktop-shell]	원격 MCP 프로파일 — 클라우드 VM 배포·커넥터·공식 홈페이지 동거 (D36)	원격 MCP 프로파일 — 클라우드 VM 배포 (D36)
+vinc.d.search	D	search	draft	SSoT	v0.2	[vinc.d.index]	Vinc 표면 4 — Search (하이브리드 검색)	표면 4. Search
+vinc.d.settings	D	settings	draft	SSoT	v0.2	[vinc.d.index]	Vinc Settings 팝오버 — 옵트인 잠금·MCP 관찰·데이터·작업공간·테마·언어·고급	Settings (팝오버 — 표면 아님)
+vinc.d.ux-research	D	ux-research	draft	research-input	v0.1	[vinc.d.index, vinc.a.terms]	Vinc UI/UX 재구조화 연구 — 표면 감사·Atlas 그래프 설계·영어 카피 시스템	Vinc UI/UX 재구조화 연구
+vinc.d.view-redesign-research	D	view-redesign	draft	research-input	v0.1	[vinc.d.graph-views, vinc.d.atlas-visual-language, vinc.d.motion-research, vinc.d.glass-language]	2D 관점·합계 생키 재설계 가능성 분석 — 레퍼런스(Control AI Policy Platform) 해부 + as-built 대조	2D 관점·합계 생키 재설계 가능성 분석
+vinc.emails.architecture								Vinc Web-Account & Email Subsystem — Architecture & Security Spec
+vinc.mcp	C	mcp-interface	draft	SSoT	v0.4	[vinc.arch, vinc.a.terms]	Vinc MCP 인터페이스 · 도구 계약 (DEC D11)	Vinc MCP 인터페이스 · 도구 계약
+vinc.mcp.skeleton	C	mcp-skeleton	draft	SSoT	v0.3	[vinc.mcp, vinc.arch]	Vinc MCP 서버 · Push MVP 스켈레톤 설계 (how)	Vinc MCP 서버 · Push MVP 스켈레톤 설계
+vinc.next-session	C	handoff	draft	SSoT	v0.3	[vinc.arch, vinc.mcp, vinc.c.dataplane]	Vinc 다음-세션 핸드오프 (P0–P2 + MCP Push MVP 완료 → P3 UI 착수)	Vinc 다음-세션 핸드오프
+vinc.ops.azure-architecture								AZURE-ARCHITECTURE — Vinc Azure 인프라 구성 (as-built)
+vinc.ops.azure-cost								AZURE-COST-MANAGEMENT — 비용 관리 · 요금 폭탄 위험 (as-built)
+vinc.ops.deploy-pipeline-research								DEPLOY-PIPELINE-RESEARCH — 배포 파이프라인 고도화 연구
+vinc.ops.deployment								DEPLOYMENT — Vinc 배포 정책 (as-built, Azure)
+vinc.ops.diagnostics-macos								macOS 사이드카 기동 조사 — 2026-07-16
+vinc.ops.incident-2026-08-04-easyauth	ops	incident	final	SSoT	v1.0	[vinc.ops.deployment, vinc.c.account-policy]	사고 기록 · EasyAuth 가 회원 키 검증을 막았다 (2026-08-04)	요약
+vinc.ops.release-0-7-2	ops	release	draft	SSoT (계획)	v0.2	[vinc.ops.deployment, vinc.c.account-policy]	v0.7.2 릴리스 묶음 — 스트림 3개와 핸드오프	v0.7.2 릴리스 묶음
+vinc.ops.risk-audit-2026-08-05	ops	risk	final	SSoT	v1.0	[vinc.ops.deployment, vinc.c.dataplane, vinc.c.web-vincs-app, vinc.ops.azure-cost]	전면 위험 감사 (2026-08-05) · 장애·보안·운영·비용·계정간	요약
+vinc.plan.code-signing								코드 서명·공증 실행 계획서 (P4 잔여)
+vinc.plan.embedding-retrieval								검색·임베딩 파이프라인 작업 계획 (2026-07-31)
+vinc.plan.figma-design-resume								Figma 디자인 빌드 재개 계획서
+vinc.plan.graph-md								GRAPH.md 설계·문서화 작업 계획 (2026-07-31)
+vinc.plan.methodology-redesign								방법론 재구성 제안: 실측 스냅샷 기반 4축 통합 설계

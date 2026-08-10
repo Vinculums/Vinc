@@ -1,0 +1,5 @@
+concept:art-chinua-achebe
+concept:art-coco-chanel
+concept:art-east-west-aesthetics-comparison
+concept:art-frida-kahlo
+concept:art-john-cage

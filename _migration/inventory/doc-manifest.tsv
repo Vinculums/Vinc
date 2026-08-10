@@ -1,0 +1,108 @@
+doc_id	title	origin	chunks	updated_at	topic	primary_concept_id	classify
+vinc.ops.risk-audit-2026-08-05	전면 위험 감사 (2026-08-05) · 장애·보안·운영·비용·계정간	graph-native@2026-08-05 · 코드 3리포 + Azure as-built 실측	10	2026-08-04T18:27:37.154Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.ops.incident-2026-08-04-easyauth	사고 기록 · EasyAuth 가 회원 키 검증을 막았다 (2026-08-04)	graph-native	2	2026-08-04T18:06:09.881Z	vinc/mcp	concept:doc.vinc.mcp	vinc
+vinc.d.atlas-mark-verdict	Atlas 마크 언어 판정과 경쟁 비교 · D77~D80 · GM-15 · 내부 충돌 정리	chat:advanced-research@2026-08-03	9	2026-08-02T16:13:06.280Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.d.atlas-mark-redesign	Atlas 마크 언어 재검토 — 유리 구·헤어라인이 이 데이터 뷰에 맞는가	Vinc-docs/vinc/D/vinc.d.atlas-mark-redesign.md@8204281	5	2026-08-02T15:22:01.425Z	vinc/design	concept:doc.vinc.d.atlas-mark-redesign	vinc
+vinc.d.atlas-visibility-verification	Atlas 가시성 연구 심화 검증 · WCAG와 APCA 이중 계산, 임의 숫자 교체, R9~R12 확장	chat:advanced-research@2026-08-02	8	2026-08-02T14:10:41.875Z	vinc/web	concept:web-vinc	vinc
+vinc.d.graph-structure-analysis	Atlas 그래프 구조 분석 — 구(球) 형태·연결 형식·연결 다양성 정량	Vinc-docs/vinc/D/vinc.d.graph-structure-analysis.md@f9884f8	10	2026-08-02T13:24:56.071Z	vinc/architecture	concept:doc.vinc.c.dataplane	vinc
+vinc.d.atlas-visual-language	Atlas 상세 설계 — 시각 언어·조작·멀티뷰·검색·공유	Vinc-docs/vinc/D/vinc.d.atlas-visual-language.md@f9884f8	15	2026-08-02T13:22:02.230Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.d.atlas-visibility-research	Atlas 3D/2D 가시성 재설계 연구 — 축소 흑화·대비 붕괴·형태 변별 진단과 제안	mcp:session-authored@2026-08-02 · 리포 사본 Vinc-docs/vinc/D/vinc.d.atlas-visibility-research.md	6	2026-08-02T13:17:08.285Z	vinc/design	concept:doc.vinc.d.atlas-visual-language	vinc
+vinc.d.graph-views	Atlas 확장 뷰 — 흐름 · 타임라인 · 합계	Vinc-docs/vinc/D/vinc.d.graph-views.md@f9884f8	15	2026-08-02T13:16:54.859Z	vinc/design	concept:doc.vinc.d.atlas-visual-language	vinc
+vinc.a.ui-copy	Vinc 앱 UI 카피 전수 인벤토리	Vinc-docs/vinc/A/vinc.a.ui-copy.md@615e9e0	11	2026-08-02T12:10:49.900Z	vinc/design	concept:doc.vinc.d.search	vinc
+vinc.ops.release-0-7-2	v0.7.2 릴리스 묶음 — 스트림 3개와 핸드오프	graph-native@2026-08-02	4	2026-08-02T12:07:23.322Z	vinc/design	concept:doc.vinc.d.ingest	vinc
+vinc.c.graph-md	vinc.c.graph-md	Vinc-docs/vinc/C/vinc.c.graph-md.md@f83663d	9	2026-08-02T11:53:37.551Z	vinc/governance	concept:doc.vinc.c.graph-md	vinc
+vinc.plan.methodology-redesign	방법론 재구성 제안: 실측 스냅샷 기반 4축 통합 설계 (2026-08-02)	chat:advanced-research@2026-08-02	7	2026-08-02T10:07:27.870Z	vinc/design	concept:doc.vinc.d.graph	vinc
+d86a7ed0644a9410e	Condensed Matter	WORKSPACES/learning/physics/modern/13-응집물질.md	9	2026-08-02T07:01:02.029Z			learning
+d1d0391404ec2e1df	Probability	WORKSPACES/learning/math/foundations/06-확률-통계.md	10	2026-08-02T07:01:01.021Z			learning
+d002029e6378a59e4	infinity categories	WORKSPACES/learning/math/modern/11-infinity-categories-HoTT.md	11	2026-08-02T07:01:00.269Z			learning
+d897a19f3fa4253c2	Geometry	WORKSPACES/learning/math/foundations/04-기하-위상.md	11	2026-08-02T07:00:59.364Z			learning
+db2f519577ade6492	Foundations of Mathematics	WORKSPACES/learning/math/foundations/01-집합론-논리-증명.md	11	2026-08-02T07:00:58.882Z			learning
+dbc927822416ab1b0	Computability	WORKSPACES/learning/math/foundations/07-계산-복잡도.md	11	2026-08-02T07:00:58.330Z			learning
+db36c05c221e01bed	Analysis	WORKSPACES/learning/math/foundations/02-해석학.md	10	2026-08-02T07:00:57.495Z			learning
+dad0f939f7b2d947a	Algebra	WORKSPACES/learning/math/foundations/03-대수학.md	10	2026-08-02T07:00:56.755Z			learning
+df5cb46f20373a2c7	Zaha Hadid	WORKSPACES/learning/art/artists/Zaha-Hadid.md	10	2026-08-02T07:00:56.327Z			learning
+d104788d78e0bbf3a	why beauty	WORKSPACES/learning/art/theory/01-meta-questions-deep.md	9	2026-08-02T07:00:55.758Z			learning
+d201471a0dcb2e8fb	visual-art-foundations	WORKSPACES/learning/art/foundations/07-미술토대.md	10	2026-08-02T07:00:55.025Z			learning
+d2ef91a146b3414d2	Spinoza-Deleuze immanence	WORKSPACES/learning/art/theory/06-spinoza-deleuze-immanence.md	5	2026-08-02T07:00:54.367Z			learning
+d06bb213fb4a14371	sociology-of-art	WORKSPACES/learning/art/foundations/05-예술사회학.md	14	2026-08-02T07:00:53.362Z			learning
+dea4efda8bc816153	Senghor Mbembe àshẹ García Canclini hybrid	WORKSPACES/learning/art/non-western/07-africa-latin-deep.md	6	2026-08-02T07:00:52.461Z		concept:art-east-west-aesthetics-comparison	learning
+d697b6131dd1975b1	post-internet aesthetics	WORKSPACES/learning/art/theory/05-additional-theories.md	6	2026-08-02T07:00:51.856Z			learning
+da8b4d690ad649397	philosophy-of-art	WORKSPACES/learning/art/foundations/02-예술철학.md	14	2026-08-02T07:00:50.715Z			learning
+d539eb7be3c9a9130	Pablo Ruiz Picasso	WORKSPACES/learning/art/artists/Picasso.md	4	2026-08-02T07:00:50.368Z		concept:art-coco-chanel	learning
+d4a4072e2e7dd2364	non western deep integration	WORKSPACES/learning/art/non-western/06-non-western-deep-integration.md	8	2026-08-02T07:00:49.667Z		concept:art-east-west-aesthetics-comparison	learning
+df960d11f36e9c519	noh	WORKSPACES/learning/art/non-western/02-가부키-노-총체예술.md	9	2026-08-02T07:00:48.900Z		concept:art-east-west-aesthetics-comparison	learning
+dfa58edce955960a2	new media convergence	WORKSPACES/learning/art/cross-arts/04-new-media-convergence.md	6	2026-08-02T07:00:48.346Z			learning
+d706f19d6f83fd947	neuroaesthetics	WORKSPACES/learning/art/foundations/03-신경미학.md	17	2026-08-02T07:00:46.906Z			learning
+da5885d28f36bd5c2	natya-shastra	WORKSPACES/learning/art/non-western/01-Natya-Shastra-인도-총체예술.md	12	2026-08-02T07:00:46.147Z		concept:art-john-cage	learning
+d0f665c857818fa33	music-foundations	WORKSPACES/learning/art/foundations/06-음악토대.md	11	2026-08-02T07:00:45.385Z			learning
+d8e4f9908a17e89b2	Murasaki Shikibu (紫式部)	WORKSPACES/learning/art/artists/Murasaki-Shikibu.md	4	2026-08-02T07:00:45.099Z			learning
+d482857080f185330	literature-foundations	WORKSPACES/learning/art/foundations/08-문학토대.md	11	2026-08-02T07:00:44.555Z			learning
+df9f5df9c75ef89e1	Leonardo da Vinci	WORKSPACES/learning/art/artists/Leonardo-da-Vinci.md	8	2026-08-02T07:00:44.098Z			learning
+d5e7954ecc9f5b934	Katsushika Hokusai	WORKSPACES/learning/art/artists/Hokusai.md	8	2026-08-02T07:00:43.572Z		concept:art-east-west-aesthetics-comparison	learning
+db099838b969a02ce	John Cage	WORKSPACES/learning/art/artists/John-Cage.md	4	2026-08-02T07:00:43.190Z		concept:art-john-cage	learning
+d700ae4f01ae56960	Johann Sebastian Bach	WORKSPACES/learning/art/artists/Bach-J-S.md	4	2026-08-02T07:00:42.932Z		concept:art-john-cage	learning
+d9414415b8bcfb807	jingju	WORKSPACES/learning/art/non-western/03-경극-판소리-동아시아-총체예술.md	9	2026-08-02T07:00:42.403Z		concept:art-east-west-aesthetics-comparison	learning
+d915e4785e5ee5d9e	Hildegard von Bingen	WORKSPACES/learning/art/artists/Hildegard-von-Bingen.md	4	2026-08-02T07:00:42.219Z			learning
+de74a9d198b03091e	Greenberg Adorno Frankfurt Foucault Baudrillard	WORKSPACES/learning/art/theory/03-criticism-theories.md	5	2026-08-02T07:00:41.715Z			learning
+dc35522c5548d5bf3	gesamtkunstwerk-bauhaus	WORKSPACES/learning/art/cross-arts/01-Wagner-Bauhaus-총체예술.md	12	2026-08-02T07:00:40.470Z			learning
+d2e6181f616d20f6c	Frida Kahlo	WORKSPACES/learning/art/artists/Frida-Kahlo.md	8	2026-08-02T07:00:40.099Z		concept:art-frida-kahlo	learning
+d100445bd12f58a20	film VR AI integration	WORKSPACES/learning/art/cross-arts/03-film-VR-AI-integration.md	5	2026-08-02T07:00:39.517Z			learning
+ddc4c92d01c6d1488	east-west-aesthetics-comparison	WORKSPACES/learning/art/non-western/05-동서-미학-비교.md	9	2026-08-02T07:00:38.791Z		concept:art-east-west-aesthetics-comparison	learning
+dfbf79cbe176fab4d	Du Fu (杜甫)	WORKSPACES/learning/art/artists/Du-Fu.md	4	2026-08-02T07:00:38.530Z			learning
+d59611a6445e2e435	digital AI aesthetics	WORKSPACES/learning/art/theory/04-digital-AI-aesthetics.md	5	2026-08-02T07:00:38.066Z			learning
+d915fe2d93d59dcb8	cross-modal-math	WORKSPACES/learning/art/cross-arts/02-cross-modal-math-deep.md	7	2026-08-02T07:00:37.553Z			learning
+dec3914c832a45632	comparative-arts	WORKSPACES/learning/art/foundations/04-비교예술학·매체이론.md	23	2026-08-02T07:00:35.612Z		concept:art-east-west-aesthetics-comparison	learning
+d26c391d69e2b2636	Coco Chanel	WORKSPACES/learning/art/artists/Coco-Chanel.md	10	2026-08-02T07:00:35.204Z		concept:art-coco-chanel	learning
+d2fcf68b9b48306e8	Chinua Achebe	WORKSPACES/learning/art/artists/Chinua-Achebe.md	4	2026-08-02T07:00:34.976Z		concept:art-chinua-achebe	learning
+de0fa286a39a5d182	case applications 4	WORKSPACES/learning/art/deep/04-case-applications-4.md	6	2026-08-02T07:00:34.177Z			learning
+d6992c77e03025fd9	case applications 3	WORKSPACES/learning/art/deep/03-case-applications-3.md	6	2026-08-02T07:00:33.439Z			learning
+d4bea36faf957a160	case applications 2	WORKSPACES/learning/art/deep/02-case-applications-2.md	6	2026-08-02T07:00:32.665Z			learning
+d0b515e4fe3bed7ab	case applications	WORKSPACES/learning/art/deep/01-case-applications.md	7	2026-08-02T07:00:32.045Z			learning
+ded618923b0cd0fc4	Caravaggio	WORKSPACES/learning/art/artists/Caravaggio.md	8	2026-08-02T07:00:31.569Z			learning
+dc37db4777702931a	african-aesthetics	WORKSPACES/learning/art/non-western/04-아프리카-라틴-총체예술.md	11	2026-08-02T07:00:30.776Z		concept:art-chinua-achebe	learning
+d8e46834cad9e31eb	aesthetics	WORKSPACES/learning/art/foundations/01-미학.md	15	2026-08-02T07:00:29.574Z			learning
+db4292e5cc15d6fa9	aesthetic theories deep	WORKSPACES/learning/art/theory/02-aesthetic-theories-deep.md	7	2026-08-02T07:00:28.991Z		concept:art-east-west-aesthetics-comparison	learning
+d2f2d9aa95fffabba	Symmetry and Group Theory ↔ Music	WORKSPACES/learning/physics/cross-domain-bridges/02-symmetry-group-theory-music.md	6	2026-08-02T07:00:28.519Z			learning
+dc304295a68121f6d	Math ↔ Art	WORKSPACES/learning/math/cross-domain-bridges/03-art-bridges.md	13	2026-08-02T07:00:27.363Z			learning
+d1e79e9086d33bc4a	art-math-deeper	WORKSPACES/learning/math/cross-domain-bridges/04-art-math-deeper.md	7	2026-08-02T07:00:26.768Z			learning
+vinc.a.terms	Vinc 용어·표기·금지 어휘 규칙 (정본)	graph-native@2026-08-02 · 구 파일 스냅샷 Vinc-docs/vinc/A/vinc.a.terms.md@5090690(v0.1)	5	2026-08-02T06:26:04.181Z	vinc/governance	concept:doc.vinc.c.account-policy	vinc
+vinc.c.account-policy	계정 정책 — 개인·팀 티어, 도메인 한도, 팀 협업, 결제 (DEC AP-1)	graph-native@2026-08-02	13	2026-08-02T06:12:31.270Z	vinc/web	concept:web-vinc	vinc
+vinc.d.chat-research	무LLM 채팅 실현 가능성 분석 · 답변 재료 실측 + 의도 매핑 층 설계 (D73)	mcp:session-authored@2026-08-02	12	2026-08-02T06:08:14.312Z	vinc/design	concept:doc.vinc.d.search	vinc
+vinc.plan.code-signing	코드 서명·공증 실행 계획서 (P4 잔여)	Vinc-docs/plans/PLAN-code-signing-notarization.md@5090690	7	2026-08-01T16:20:53.376Z	vinc/web	concept:web-vinc	vinc
+vinc.plan.figma-design-resume	Figma 디자인 빌드 재개 계획서	Vinc-docs/plans/PLAN-figma-design-resume.md@5090690	9	2026-08-01T16:20:52.185Z	vinc/design	concept:doc.vinc.d.index	vinc
+vinc.plan.embedding-retrieval	검색·임베딩 파이프라인 작업 계획 (2026-07-31)	Vinc-docs/plans/PLAN-embedding-retrieval.md@5090690	10	2026-08-01T16:20:51.585Z	vinc/architecture	concept:parent-child-vectors	vinc
+vinc.plan.graph-md	GRAPH.md 설계·문서화 작업 계획 (2026-07-31)	Vinc-docs/plans/PLAN-graph-md.md@5090690	13	2026-08-01T16:20:49.232Z	vinc/governance	concept:doc.vinc.c.graph-md	vinc
+vinc.emails.architecture	Vinc Web-Account & Email Subsystem — Architecture & Security Spec	Vinc/emails/ARCHITECTURE.md@a63b064	26	2026-08-01T16:20:47.973Z	vinc/web	concept:web-vinc	vinc
+vinc.changelog	Changelog	Vinc/CHANGELOG.md@a63b064	20	2026-08-01T16:20:44.891Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.ops.diagnostics-macos	macOS 사이드카 기동 조사 — 2026-07-16	Vinc-docs/vinc/DIAGNOSTICS-macos-2026-07.md@5090690	3	2026-08-01T16:20:44.594Z	vinc/web	concept:web-vinc	vinc
+vinc.ops.deploy-pipeline-research	DEPLOY-PIPELINE-RESEARCH — 배포 파이프라인 고도화 연구	Vinc-docs/vinc/DEPLOY-PIPELINE-RESEARCH.md@5090690	6	2026-08-01T16:20:44.158Z	vinc/web	concept:web-vinc	vinc
+vinc.ops.azure-cost	AZURE-COST-MANAGEMENT — 비용 관리 · 요금 폭탄 위험 (as-built)	Vinc-docs/vinc/AZURE-COST-MANAGEMENT.md@5090690	3	2026-08-01T16:20:43.853Z	vinc/web	concept:web-vinc	vinc
+vinc.ops.azure-architecture	AZURE-ARCHITECTURE — Vinc Azure 인프라 구성 (as-built)	Vinc-docs/vinc/AZURE-ARCHITECTURE.md@5090690	4	2026-08-01T16:20:43.329Z	vinc/web	concept:web-vinc	vinc
+vinc.ops.deployment	DEPLOYMENT — Vinc 배포 정책 (as-built, Azure)	Vinc-docs/vinc/DEPLOYMENT.md@5090690	15	2026-08-01T16:20:41.780Z	vinc/web	concept:web-vinc	vinc
+vinc.d.view-redesign-research	2D 관점·합계 생키 재설계 가능성 분석	Vinc-docs/vinc/D/vinc.d.view-redesign-research.md@5090690	8	2026-08-01T16:20:40.997Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.d.ux-research	Vinc UI/UX 재구조화 연구	Vinc-docs/vinc/D/vinc.d.ux-research.md@5090690	7	2026-08-01T16:20:39.731Z	vinc/design	concept:atlas	vinc
+vinc.d.settings	Settings (팝오버 — 표면 아님)	Vinc-docs/vinc/D/vinc.d.settings.md@5090690	1	2026-08-01T16:20:39.439Z	vinc/design	concept:dec-d38	vinc
+vinc.d.search	표면 4. Search	Vinc-docs/vinc/D/vinc.d.search.md@5090690	1	2026-08-01T16:20:39.238Z	vinc/design	concept:doc.vinc.d.index	vinc
+vinc.d.remote-profile	원격 MCP 프로파일 — 클라우드 VM 배포 (D36)	Vinc-docs/vinc/D/vinc.d.remote-profile.md@5090690	3	2026-08-01T16:20:38.603Z	vinc/mcp	concept:doc.vinc.mcp	vinc
+vinc.d.records	표면 2. Records	Vinc-docs/vinc/D/vinc.d.records.md@5090690	1	2026-08-01T16:20:38.334Z	vinc/design	concept:doc.vinc.d.index	vinc
+vinc.d.packs	표면 5. Packs	Vinc-docs/vinc/D/vinc.d.packs.md@5090690	1	2026-08-01T16:20:38.040Z	vinc/design	concept:doc.vinc.d.index	vinc
+vinc.d.motion-research	Vinc × Motion / bklit 적용 분석	Vinc-docs/vinc/D/vinc.d.motion-research.md@5090690	12	2026-08-01T16:20:37.160Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.d.ingest	표면 1. Intake	Vinc-docs/vinc/D/vinc.d.ingest.md@5090690	4	2026-08-01T16:20:36.337Z	vinc/architecture	concept:doc.vinc.c.chunk-ssot	vinc
+vinc.d.index	Vinc 화면설계 — 전체 표면 트리 (5표면 + Settings)	Vinc-docs/vinc/D/vinc.d.index.md@5090690	2	2026-08-01T16:20:35.518Z	vinc/design	concept:dec-d15	vinc
+vinc.d.graph	표면 3. Atlas	Vinc-docs/vinc/D/vinc.d.graph.md@5090690	3	2026-08-01T16:20:35.065Z	vinc/design	concept:doc.vinc.d.ux-research	vinc
+vinc.d.glass-language	Liquid Glass 재검토 (D37)	Vinc-docs/vinc/D/vinc.d.glass-language.md@5090690	2	2026-08-01T16:20:32.569Z	vinc/design	concept:dec-d37	vinc
+vinc.d.desktop-shell	설치형 셸 연구 — Figma 재개 전 판정	Vinc-docs/vinc/D/vinc.d.desktop-shell.md@5090690	6	2026-08-01T16:20:31.559Z	vinc/design	concept:doc.vinc.d.atlas-visual-language	vinc
+vinc.d.alluvial-research	Vinc 합계(Sankey) 뷰 × Alluvial 다이어그램 적용 연구	Vinc-docs/vinc/D/vinc.d.alluvial-research.md@5090690	11	2026-08-01T16:20:29.411Z	vinc/design	concept:dec-d68	vinc
+vinc.c.sharepack	Vinc Share Pack — 계정 간 데이터 전달 계약	Vinc-docs/vinc/C/vinc.c.sharepack.md@5090690	3	2026-08-01T16:20:28.893Z	vinc/architecture	concept:fragment-merge	vinc
+vinc.c.p5-remote-rollout	P5 실행 계획 — 원격 프로파일 롤아웃	Vinc-docs/vinc/C/vinc.c.p5-remote-rollout.md@5090690	5	2026-08-01T16:20:28.145Z	vinc/mcp	concept:doc.vinc.mcp	vinc
+vinc.c.p3-execution	P3 실행 계획 — 코드 고도화 → Figma 역동기화	Vinc-docs/vinc/C/vinc.c.p3-execution.md@5090690	5	2026-08-01T16:20:27.101Z	vinc/design	concept:surface-tree	vinc
+vinc.c.dataplane	Vinc 데이터플레인 참조 — P1 as-built	Vinc-docs/vinc/C/vinc.c.dataplane.md@5090690	11	2026-08-01T16:20:23.640Z	vinc/architecture	concept:doc.vinc.b.architecture	vinc
+vinc.c.chunk-ssot	Chunk=SSoT — 문서 정본 계약	Vinc-docs/vinc/C/vinc.c.chunk-ssot.md@5090690	12	2026-08-01T16:20:22.303Z	vinc/architecture	concept:chunk-ssot	vinc
+vinc.b.theme	주제·타입 어휘 모델	Vinc-docs/vinc/B/vinc.b.theme.md@5090690	4	2026-08-01T16:20:21.699Z	vinc/architecture	concept:doc.vinc.b.theme	vinc
+vinc.b.architecture	Vinc 아키텍처 불변 원칙·확정 결정 (정본)	Vinc-docs/vinc/B/vinc.b.architecture.md@5090690	9	2026-08-01T16:20:19.888Z	vinc/design	concept:doc.vinc.d.atlas-visual-language	vinc
+vinc.c.web-vincs-app	vincs.app 웹 시스템 — 종합 문서 (as-built)	Vinc-docs/vinc/WEB-vincs-app.md@5090690	17	2026-08-01T16:20:15.717Z	vinc/web	concept:web-vinc	vinc
+vinc.next-session	Vinc 다음-세션 핸드오프	Vinc-docs/vinc/NEXT-SESSION.md@5090690	4	2026-08-01T16:20:14.863Z	vinc/architecture	concept:doc.vinc.c.dataplane	vinc
+vinc.mcp.skeleton	Vinc MCP 서버 · Push MVP 스켈레톤 설계	Vinc-docs/vinc/MCP-SKELETON.md@5090690	10	2026-08-01T16:20:13.306Z	vinc/architecture	concept:fragment-merge	vinc
+vinc.mcp	Vinc MCP 인터페이스 · 도구 계약	Vinc-docs/vinc/MCP-INTERFACE.md@5090690	9	2026-08-01T16:20:11.817Z	vinc/design	concept:doc.vinc.d.graph	vinc
+vinc.arch	Vinc 아키텍처 · 유저 플로우	Vinc-docs/vinc/ARCHITECTURE.md@5090690	6	2026-08-01T16:20:10.040Z	vinc/design	concept:doc.vinc.d.graph	vinc
+d2b6633ee1151a272	Vinc 제품 개요 · SSoT 인덱스 · MCP 도구	Vinc/README.md@a63b064	5	2026-08-01T08:21:56.904Z			vinc

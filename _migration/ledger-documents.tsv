@@ -1,0 +1,56 @@
+old_doc_id	new_doc_id	layer	domain	authority	disposition	note
+vinc.a.terms	vinc.canon.terminology	canon	governance	canon	rewrite	용어·표기·금지 어휘. em-dash 금지 규칙의 정본이라 신 체계에서도 canon
+vinc.b.architecture	vinc.canon.principles	canon	engineering	canon	split	⚠ 1→2 분할. 불변 원칙·임베디드 계약·방언·스키마 타입만 남긴다. §2 의 DEC 표 42건은 그래프의 ADR 노드와 같은 사실의 두 번째 사본이었고, 그 탓에 불변 문서가 무관한 결정마다 개정됐다 → vinc.canon.decisions 로 분리
+-	vinc.canon.decisions	canon	governance	canon	new	신설. ADR 68건의 대장(색인). 구 concept:dec-registry 가 앵커였으나 그것을 서술하는 문서가 없었다. 근거 본문은 각 주제 문서에 남고 여기는 색인이다
+vinc.c.graph-md	vinc.canon.graph-conventions	canon	governance	canon	rewrite	GRAPH.md 쓰기 관례 계약. 그래프 안의 graph.md 문서와 짝을 이룬다
+vinc.b.theme	vinc.canon.vocabulary-model	canon	governance	canon	rewrite	주제·타입 어휘 모델. 본문에 이미 "구현 안 된 도구 7종" 정정이 있어 as-built 와 계약이 섞여 있다 — 계약만 남기고 실측은 spec 으로 뺄 것
+vinc.c.chunk-ssot	vinc.canon.chunk-ssot	canon	engineering	canon	rewrite	문서 정본 계약(D45 → adr-engineering-045)
+vinc.c.sharepack	vinc.canon.share-pack	canon	engineering	canon	rewrite	계정 간 데이터 전달 계약(D19 → adr-engineering-019)
+vinc.mcp	vinc.canon.mcp-contract	canon	engineering	canon	rewrite	MCP 인터페이스·도구 계약(D11). ⚠ Episode date/summary 누락 등 비문서화 계약을 여기서 정정할 것
+vinc.c.account-policy	vinc.canon.account-policy	canon	product	canon	rewrite	계정 정책 AP-1 → adr-product-001. 신설 도메인 product 의 뿌리 문서
+vinc.arch	vinc.spec.architecture	spec	engineering	spec	rewrite	아키텍처·유저 플로우 개요
+vinc.c.dataplane	vinc.spec.dataplane	spec	engineering	spec	rewrite	P1 as-built. authority 가 Delta 였던 유일 문서 — 닫힌 어휘로 흡수
+vinc.mcp.skeleton	vinc.spec.mcp-server	spec	engineering	spec	rewrite	MCP 서버 구현(how). canon.mcp-contract 가 계약, 이쪽이 구현
+vinc.c.web-vincs-app	vinc.spec.web-system	spec	product	spec	rewrite	웹 시스템 종합. doc_id 의 vincs.app 은 역사적 이름 — 신 id 에서 도메인명을 뺀다
+vinc.emails.architecture	vinc.spec.email-subsystem	spec	product	spec	rewrite	계정·이메일 서브시스템. 프론트매터 없음 → 신설 부여
+vinc.ops.azure-architecture	vinc.spec.azure-infrastructure	spec	infra	spec	rewrite	Azure 리소스 인벤토리(as-built). ops 가 아니라 spec 이다 — 절차가 아니라 구성 서술
+vinc.d.remote-profile	vinc.spec.remote-profile	spec	infra	spec	rewrite	원격 MCP 프로파일(D36 → adr-infra-036)
+vinc.d.index	vinc.spec.surface-tree	spec	design	spec	rewrite	전체 표면 트리(D15)
+vinc.d.graph	vinc.spec.surface-atlas	spec	design	spec	rewrite	표면 3 Atlas
+vinc.d.ingest	vinc.spec.surface-intake	spec	design	spec	rewrite	표면 1 Intake
+vinc.d.records	vinc.spec.surface-records	spec	design	spec	rewrite	표면 2 Records
+vinc.d.search	vinc.spec.surface-search	spec	design	spec	rewrite	표면 4 Search
+vinc.d.packs	vinc.spec.surface-packs	spec	design	spec	rewrite	표면 5 Packs
+vinc.d.settings	vinc.spec.settings	spec	design	spec	rewrite	Settings 팝오버(표면 아님)
+vinc.d.atlas-visual-language	vinc.spec.atlas-visual-language	spec	design	spec	rewrite	Atlas 시각 언어·조작 문법
+vinc.d.graph-views	vinc.spec.atlas-views	spec	design	spec	rewrite	Atlas 확장 뷰(흐름·타임라인·합계). D53 이 흐름을 폐기했으므로 본문과 결정의 정합을 재작성에서 맞출 것
+vinc.d.glass-language	vinc.spec.glass-language	spec	design	spec	rewrite	Liquid Glass 층 분리(→ adr-design-037). ⚠ 내 초기 노트가 틀렸다 — adr-design-077 은 D037 을 뒤집은 것이 아니라 **콘텐츠 평면으로 새어 나간 노드 유리**를 걷어내 D037 을 복원한 것이다. 크롬 유리는 명시적으로 존치. 서브에이전트가 원본에서 근거를 찾아 정정
+vinc.a.ui-copy	vinc.spec.ui-copy	spec	design	spec	rewrite	UI 카피 전수 인벤토리. authority 가 inventory 였던 유일 문서
+d2b6633ee1151a272	vinc.spec.product-overview	spec	product	spec	rewrite	⚠ 해시 ID 로 적재된 Vinc/README.md. 54건 중 유일하게 vinc.* 체계 밖 — 정식 ID 부여
+vinc.d.ux-research	vinc.research.ux-restructure	research	design	research	rewrite	UI/UX 재구조화 연구
+vinc.d.desktop-shell	vinc.research.desktop-shell	research	design	research	rewrite	설치형 셸 연구
+vinc.d.motion-research	vinc.research.motion	research	design	research	rewrite	모션 적용 분석. v0.7.4 에서 실제 구현됐으므로 spec 승격 후보 — P4 에서 판정
+vinc.d.graph-structure-analysis	vinc.research.graph-structure	research	design	research	rewrite	Atlas 그래프 구조 정량 분석
+vinc.d.atlas-visibility-research	vinc.research.atlas-visibility	research	design	research	rewrite	가시성 재설계 연구
+vinc.d.atlas-visibility-verification	vinc.research.atlas-visibility-verification	research	design	research	rewrite	가시성 심화 검증(WCAG·APCA)
+vinc.d.atlas-mark-redesign	vinc.research.atlas-mark	research	design	research	rewrite	마크 언어 재검토
+vinc.d.atlas-mark-verdict	vinc.research.atlas-mark-verdict	research	design	research	rewrite	마크 언어 판정·경쟁 비교(D77~D80)
+vinc.d.alluvial-research	vinc.research.sankey-alluvial	research	design	research	rewrite	합계 뷰 Alluvial 적용 연구(D68)
+vinc.d.view-redesign-research	vinc.research.view-redesign	research	design	research	rewrite	2D 관점·생키 재설계 가능성
+vinc.d.chat-research	vinc.research.no-llm-chat	research	ai	research	rewrite	무LLM 채팅 실현 가능성(D73 → adr-ai-073). 신설 도메인 ai 의 뿌리 문서
+vinc.ops.deploy-pipeline-research	vinc.research.deploy-pipeline	research	infra	research	rewrite	배포 파이프라인 고도화 연구. ops 가 아니라 research 다 — 절차가 아니라 검토
+vinc.plan.methodology-redesign	vinc.research.methodology	research	governance	research	rewrite	방법론 재구성 제안. plan 이 아니라 제안이다. origin 이 파일이 아니라 chat: 대화 산출물
+vinc.ops.deployment	vinc.ops.deployment	ops	infra	spec	rewrite	⚠ 배포 런북. **리포 파일이 정본이고 그래프는 검색용 사본**인 예외(§6.1 사고 기록 포함). 이 예외를 신 체계에서도 유지할지 P4 에서 판정
+vinc.ops.azure-cost	vinc.ops.cost-management	ops	infra	spec	rewrite	비용 관리·요금 폭탄 위험
+vinc.ops.risk-audit-2026-08-05	vinc.ops.risk-audit-2026-08-05	ops	security	record	keep-rewrite	전면 위험 감사. 날짜가 id 에 박힌 기록물이라 id 유지. 미수정 P0 3종을 담고 있어 내용 갱신 필요
+vinc.ops.incident-2026-08-04-easyauth	vinc.ops.incident-2026-08-04-easyauth	ops	infra	record	keep-rewrite	EasyAuth 사고. 날짜 박힌 기록물이라 id 유지
+vinc.ops.diagnostics-macos	vinc.ops.incident-2026-07-16-macos-sidecar	ops	infra	record	rewrite	macOS 사이드카 기동 조사. 사고 기록이므로 incident 명명으로 통일(날짜 박기)
+vinc.plan.code-signing	vinc.plan.code-signing	plan	infra	record	keep-rewrite	⚠ 본문 머리에 SUPERSEDED(D44 로 뒤집힘) 표기. 폐기된 계획이므로 authority=record(역사)
+vinc.plan.embedding-retrieval	vinc.plan.embedding-pipeline	plan	ai	spec	rewrite	검색·임베딩 파이프라인. ⚠ 임베딩 워커가 지금 안 도는 상태라 as-built 와 계획이 어긋난다 — P4 에서 실측 반영
+vinc.plan.figma-design-resume	vinc.plan.figma-build	plan	design	spec	rewrite	Figma 빌드 재개
+vinc.plan.graph-md	vinc.plan.graph-conventions	plan	governance	record	rewrite	GRAPH.md 설계 작업 계획. 이미 완료된 계획이라 역사
+vinc.c.p3-execution	vinc.plan.p3-execution	plan	design	record	rewrite	P3 실행 계획(완료). C 계층에 있던 계획서를 plan 으로 이동
+vinc.c.p5-remote-rollout	vinc.plan.p5-remote-rollout	plan	infra	record	rewrite	P5 실행 계획(완료). 원격 프로파일은 라이브
+vinc.changelog	vinc.release.changelog	release	product	record	rewrite	릴리스 기록. Vinc/CHANGELOG.md 미러 — 리포가 정본인 예외 후보
+vinc.ops.release-0-7-2	vinc.release.0-7-2	release	product	record	rewrite	v0.7.2 묶음. authority 가 "SSoT (계획)" 이었던 유일 문서
+vinc.next-session	DROP	-	-	-	drop	⚠ P0–P2 시절 핸드오프. 그 단계는 오래 전에 끝났고 내용이 전부 낡았다. 역사는 git 과 Episode 가 보유하므로 신 코퍼스에 옮기지 않는다. 삭제 전 P4 에서 살릴 사실이 있는지 1회 확인
