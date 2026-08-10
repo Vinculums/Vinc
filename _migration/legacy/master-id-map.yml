@@ -1,0 +1,44 @@
+# master-id-map — 정본 ID ↔ doc_stem (PREFIX: vinc)
+# RE REFERENCE-DOCS.md 계약 준수 인스턴스. doc_id = vinc.{a|b|c|d}.{domain}
+# 정본 ID 형식: VINC-{LAYER}-{SEQ} 또는 VINC-C-{CODE}-{SEQ} (weg 동형)
+#
+# 상위 정본(참조만 — 관리 대상 아님):
+#   설계 SSoT      weg-9000-docs/CONTEXT/reference-docs/weg/C/weg.c.memory-standalone.md
+#   흡수 절차 SSoT  weg-9000-docs/WORK-ORDERS/WO-MEM-SA-001.md
+
+# A — 용어·표기·금지 어휘 SSoT
+VINC-A-001: vinc.a.terms
+VINC-A-002: vinc.a.ui-copy           # 앱 UI 카피 전수 인벤토리 (코드 정본 = app/src/copy.ts 의 검수 뷰)
+
+# B — 불변 원칙 Delta (SSoT 루트)
+VINC-B-001: vinc.b.architecture
+VINC-B-002: vinc.b.theme             # 주제·타입 어휘 모델 (THESIS T3·T9 · D11-R2)
+
+# C — 제품 Delta ([[weg.c.memory-standalone]] 상속, 재기재 금지)
+VINC-C-001: vinc.c.dataplane        # P1 as-built 데이터플레인 참조
+VINC-C-002: vinc.arch               # 아키텍처·유저플로우 다이어그램
+VINC-C-003: vinc.mcp                # MCP 인터페이스·도구 계약 (DEC D11)
+VINC-C-004: vinc.mcp.skeleton       # MCP Push MVP 스켈레톤 설계
+VINC-C-005: vinc.next-session       # 다음-세션 핸드오프
+VINC-C-006: vinc.c.sharepack        # 계정 간 데이터 전달 팩 계약 (DEC D19)
+VINC-C-007: vinc.c.p3-execution     # P3 실행 계획 — 코드 고도화→Figma 미러 (Vinc 단독)
+VINC-C-008: vinc.c.p5-remote-rollout # P5 원격 롤아웃 — 도메인·VM 확보 이후 실행 계획 (D36 전개)
+VINC-C-009: vinc.c.web-vincs-app     # vincs.app 웹/계정/이메일 as-built (앱과 물리 분리, WEB-vincs-app.md)
+VINC-C-010: vinc.c.chunk-ssot        # 문서 정본 계약 — Chunk=SSoT (DEC D45, as-built v0.6.5)
+VINC-C-011: vinc.c.graph-md          # 어시스턴트 쓰기 관례 계약 — GRAPH.md (DEC GM-1)
+VINC-C-012: vinc.c.account-policy    # 계정 정책 — 개인·팀 티어·주제 한도·팀 협업·결제 (DEC AP-1)
+
+# D — 화면설계서 (5표면 + Settings = DEC D15, 이전 8화면 D8 대체)
+VINC-D-001: vinc.d.index            # 5표면 트리 + 4-State 공통 규약 (v0.2)
+VINC-D-002: vinc.d.graph            # 표면 3 Atlas — 3-레벨 시맨틱 줌 (v0.2, D16)
+VINC-D-003: vinc.d.ingest           # 표면 1 Intake — 적재+첫 실행 셋업 (v0.2)
+VINC-D-004: vinc.d.ux-research      # UI/UX 재구조화 연구 (D15–D18 근거, 승인 2026-07-10)
+VINC-D-005: vinc.d.records          # 표면 2 Records
+VINC-D-006: vinc.d.search           # 표면 4 Search
+VINC-D-007: vinc.d.packs            # 표면 5 Packs
+VINC-D-008: vinc.d.settings         # Settings 팝오버 (잠금 옵트인·MCP 관찰)
+VINC-D-009: vinc.d.atlas-visual-language  # Atlas 시각 언어·조작·멀티뷰·검색·공유 노출 (D20–D25·D31–D35·D39–D40)
+VINC-D-010: vinc.d.desktop-shell          # 설치형 셸 — 레일 내비·구조·필수 기능·첫 실행·서명 (D26–D30·D38·D41–D44)
+VINC-D-011: vinc.d.remote-profile         # 원격 MCP 프로파일 — 클라우드 VM·커넥터·홈페이지 동거 (D36)
+VINC-D-012: vinc.d.glass-language         # Liquid Glass 층 분리 수용 — 크롬=글래스/콘텐츠=Ink&Paper (D37)
+VINC-D-013: vinc.d.graph-structure-analysis  # Atlas 그래프 구조 분석 — 구 형태·연결 형식·연결 다양성 정량 (research-input, as-built)

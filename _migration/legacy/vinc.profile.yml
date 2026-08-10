@@ -1,0 +1,46 @@
+# revamp STAGE 1 프로파일 — PREFIX vinc (Vinc 정책 SSoT 인스턴스)
+# revamp 기본 프로파일(가비아 정책 도메인)을 vinc 문서 체계로 오버레이한다.
+# weg.profile.yml(weg-9000-docs)과 동형 — self-documentation 테넌트.
+# YAML 에 등장하는 키만 DEFAULT_PROFILE 위에 덮어쓴다.
+#
+# 사용: python scripts/validate_stage1.py --file <Vinc-docs>/vinc/A/vinc.a.terms.md \
+#          --profile <Vinc-docs>/vinc.profile.yml
+# (RE 레이아웃 {prefix}/{layer}/{doc_id}.md 은 --file 모드로 검증 — weg 와 동일)
+
+name: vinc
+
+# doc_id: vinc.{a|b|c|d}.{domain}
+# weg 포함: vinc-C 가 weg-C 설계 SSoT([[weg.c.memory-standalone]])를 상속·참조하므로
+# weg 를 크로스 prefix 위키링크 허용 대상으로 등재한다(Vinc-docs → weg-9000-docs).
+supported_prefixes: [vinc, weg]
+doc_id_layers: "a|b|c|d"
+
+# vinc A/B/C/D frontmatter 의무 필드 (RE 계약 — 가비아 전용 필드 제외)
+required_frontmatter_fields:
+  - doc_id
+  - layer
+  - domain
+  - title
+  - status
+  - version
+  - owner
+
+# 스파인: vinc 문서는 가변 섹션(무손실)이며 "## 1." 존재만 강제
+policy_spine:
+  - ["## 1.", "(?m)^##\\s+1\\."]
+
+requirements_spine:
+  - ["## 1.", "(?m)^##\\s+1\\."]
+
+# S1-F04(Confluence 권위 프론트매터)은 마이그레이션 산출물 전제 룰. vinc 문서는
+# 코드 1차 출처 primary SSoT(Confluence provenance 없음)이므로 제외.
+f04_layers: "zz"
+
+# 발행안전룰(참조 섹션 의무·가격 SSoT 직기재 등)은 Confluence 발행 전제. vinc 는
+# 인라인 [[링크]] + master-id-map 을 참조 규약으로 쓰며 Confluence 미발행 → 끈다.
+publish_safety_default: false
+
+# forbidden_vocab 은 오버라이드하지 않는다(기본 표기 위생 룰 유지).
+# Vinc 도메인 금지 어휘(F1 과금 / F2 학습 카피 / F7 구 명칭)는 revamp 가 아니라
+# Vinc/scripts/gate_forbidden.py(코드 레포 스코프)로 강제한다 —
+# 금지어를 '정의'하는 vinc.a.terms 문서 자신의 오탐을 피하기 위함(vinc.a.terms §7·§9).

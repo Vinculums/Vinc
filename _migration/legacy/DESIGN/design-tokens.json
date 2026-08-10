@@ -1,0 +1,144 @@
+{
+  "$meta": {
+    "name": "vinc",
+    "version": "0.1.0",
+    "ssot": "Vinc-docs/DESIGN",
+    "note": "Vinc 디자인 토큰 단일 출처(SSoT). 3계층(primitive→semantic→component, DTCG 참조형). tokens.css 는 weg-9000-design/scripts/gen_tokens.py 산출물(수기 수정 금지). 팔레트 = 'Ink & Paper / Notation' — 모노크롬 + 단일 포인트(레퍼런스: Blue Note Re:imagined 2020, 웜 종이 + 밀도 잉크). 상태는 무채색 + 표기 아이콘으로 변별하고 포인트색은 primary CTA·포커스 전용. 구조·컴포넌트·스케일은 weg-9000 base 를 승계. 모든 토큰의 $description 규칙 — AI 생성 시 반드시 읽고 준수(순검정·선명 블루·그라데이션 회귀 금지).",
+    "layers": "primitive → semantic → component",
+    "theme_mode": "light-first",
+    "format": "hsl-channels",
+    "a11y": "WCAG 2.2 AA — 본문 명암비 ≥4.5:1 검증된 토큰만 텍스트로 사용"
+  },
+
+  "primitive": {
+    "ink":          { "$value": "#14110D", "$type": "color", "$description": "웜 니어블랙 잉크 — 텍스트(라이트)·실루엣·error 강조. 순검정(#000) 금지(레퍼런스 블랙 인상은 유지)" },
+    "ink_soft":     { "$value": "#47423A", "$type": "color", "$description": "잉크 소프트 — 무채 상태 솔리드(success/info)·강조 텍스트" },
+    "ink_mute":     { "$value": "#6A6252", "$type": "color", "$description": "잉크 뮤트 — 보조 텍스트(캡션·메타·placeholder, on-paper AA 검증)" },
+    "paper":        { "$value": "#EFEAE1", "$type": "color", "$description": "웜 크림 종이 — 앱 배경(라이트). 순백 회귀 금지(레퍼런스 종이 톤)" },
+    "paper_raised": { "$value": "#F7F4EF", "$type": "color", "$description": "부유 표면(카드/모달) — 종이보다 한 단계 밝게" },
+    "sand":         { "$value": "#E7E1D6", "$type": "color", "$description": "muted 면(샌드 틴트) — Skeleton·Progress 트랙·비활성 배경" },
+    "fog":          { "$value": "#E1DBD0", "$type": "color", "$description": "포그 — secondary 칩/태그/hover 배경(무채 웜)" },
+    "hairline":     { "$value": "#DED8CC", "$type": "color", "$description": "1px 보더/Separator(샌드 틴트)" },
+    "point":        { "$value": "#3E4C63", "$type": "color", "$description": "단일 포인트(딥 잉크블루, Blue Note 오마주) — primary CTA·:focus 링 전용. 선명 블루(#3B82F6류) 금지, 무채 근접" },
+    "warn_bg":      { "$value": "#D9D0BF", "$type": "color", "$description": "warning 배경/칩 전용(웜 그레이) — 배경 전용, 텍스트 금지" },
+
+    "d_bg":         { "$value": "#16130F", "$type": "color", "$description": "다크 배경 — 딥 웜 차콜(다크블루·순검정 금지)" },
+    "d_surface":    { "$value": "#211E18", "$type": "color", "$description": "다크 카드 표면(배경 위 한 단계)" },
+    "d_text":       { "$value": "#EAE5DD", "$type": "color", "$description": "다크 텍스트 — 웜 아이보리(순백 금지)" },
+    "d_text_soft":  { "$value": "#C7C0B2", "$type": "color", "$description": "다크 무채 상태 솔리드·강조 텍스트" },
+    "d_mutedfg":    { "$value": "#A39A8A", "$type": "color", "$description": "다크 보조 텍스트(AA✓ on 다크 bg)" },
+    "d_muted":      { "$value": "#262218", "$type": "color", "$description": "다크 muted 면" },
+    "d_fog":        { "$value": "#2C2820", "$type": "color", "$description": "다크 accent/칩(딥 웜)" },
+    "d_border":     { "$value": "#39332B", "$type": "color", "$description": "다크 보더/Separator" },
+    "d_point":      { "$value": "#8FA3C4", "$type": "color", "$description": "다크 라이튼 잉크블루 — 포커스 링·네이티브 컨트롤(accent) 전용(가시성). CTA 면은 {point} 유지(C안). 선명 블루 금지선 유지" },
+    "d_warn_bg":    { "$value": "#4A4230", "$type": "color", "$description": "다크 warning 배경(배경 전용)" }
+  },
+
+  "semantic": {
+    "light": {
+      "background":         { "$value": "{paper}", "$type": "color", "$description": "앱 배경(라이트) — 웜 크림 종이. 순백·무채 회색 배경 회귀 금지(Ink&Paper 방향)" },
+      "foreground":         { "$value": "{ink}", "$type": "color", "$description": "본문 텍스트 기본(AA✓) — 순검정(#000) 금지, 항상 웜 잉크" },
+      "card":               { "$value": "{paper_raised}", "$type": "color", "$description": "카드·모달 표면 — '떠 있어야 할 것'에만. 기본 표현은 평문 섹션 + 헤어라인" },
+      "card-foreground":    { "$value": "{ink}", "$type": "color", "$description": "card 표면 위 본문 텍스트(AA✓)" },
+      "muted":              { "$value": "{sand}", "$type": "color", "$description": "보조 면 — Skeleton 펄스·Progress 트랙·비활성 배경. 넓은 영역 구분엔 틴트 ≤8% 우선" },
+      "muted-foreground":   { "$value": "{ink_mute}", "$type": "color", "$description": "보조 텍스트(캡션·메타·placeholder·EmptyState, AA✓) — 본문 대체 금지" },
+      "border":             { "$value": "{hairline}", "$type": "color", "$description": "1px 헤어라인 보더·Separator 정본 — 표면 분리는 elev(음영)로, 색 보더는 상태·포커스 전용" },
+      "input":              { "$value": "{hairline}", "$type": "color", "$description": "입력 필드(Input·Select) 보더 — border 와 동일 헤어라인" },
+      "ring":               { "$value": "{point}", "$type": "color", "$description": ":focus-visible 2px 포커스 링 전용 — 모든 인터랙션 요소 필수(WCAG 2.2)" },
+      "primary":            { "$value": "{point}", "$type": "color", "$description": "메인 버튼/활성 CTA(딥 잉크블루, AA✓) — 한 화면 primary CTA 1개. 선명 파란 기본 버튼 회귀 금지" },
+      "primary-foreground": { "$value": "{paper}", "$type": "color", "$description": "primary 솔리드 위 텍스트(AA✓)" },
+      "primary-soft":       { "$value": "{fog}", "$type": "color", "$description": "(deprecated → accent) primary 소프트 변형 — 배경/칩 전용(무채 포그)" },
+      "accent":             { "$value": "{fog}", "$type": "color", "$description": "secondary 칩·태그·hover 배경 — 보조 행동엔 primary 대신 이것(무채)" },
+      "accent-foreground":  { "$value": "{ink}", "$type": "color", "$description": "accent 배경 위 텍스트(AA✓)" },
+      "info":               { "$value": "{ink_soft}", "$type": "color", "$description": "정보 배경/칩·스피너·2px 바 + 텍스트 — 무채 잉크소프트(모노크롬: info 를 색이 아닌 표기 아이콘으로 변별)" },
+      "info-strong":        { "$value": "{ink_soft}", "$type": "color", "$description": "info 텍스트(AA✓) — 무채 잉크소프트" },
+      "info-foreground":    { "$value": "{paper}", "$type": "color", "$description": "info 솔리드 위 텍스트(AA✓)" },
+      "success":            { "$value": "{ink_soft}", "$type": "color", "$description": "성공 상태 — 무채 잉크소프트(모노크롬: 색이 아닌 check 표기로 성공 변별). 장식용 사용 금지" },
+      "success-foreground": { "$value": "{paper}", "$type": "color", "$description": "success 솔리드 위 텍스트(AA✓)" },
+      "warning":            { "$value": "{warn_bg}", "$type": "color", "$description": "경고 배경/칩 전용(웜 그레이) — 텍스트 금지. 경고 글자는 warning-foreground(ink-on-warn)" },
+      "warning-foreground": { "$value": "{ink}", "$type": "color", "$description": "warning 배경 위 텍스트(AA✓) — 경고를 글자로 쓸 땐 항상 이것" },
+      "danger":             { "$value": "{ink}", "$type": "color", "$description": "에러/삭제·파괴적 액션 — 굵은 잉크 + alert 표기(모노크롬: 선명 red 없음). ErrorBanner·destructive 버튼" },
+      "danger-foreground":  { "$value": "{paper}", "$type": "color", "$description": "danger 솔리드 위 텍스트(AA✓)" }
+    },
+    "dark": {
+      "background":         { "$value": "{d_bg}", "$type": "color", "$description": "앱 배경(다크) — 딥 웜 차콜. 다크블루·순검정 배경 금지" },
+      "foreground":         { "$value": "{d_text}", "$type": "color", "$description": "다크 본문 텍스트 — 웜 아이보리" },
+      "card":               { "$value": "{d_surface}", "$type": "color", "$description": "다크 카드·모달 표면 — 배경보다 한 단계 밝은 웜 면(표면 대비로 위계)" },
+      "card-foreground":    { "$value": "{d_text}", "$type": "color", "$description": "다크 card 표면 위 본문 텍스트" },
+      "muted":              { "$value": "{d_muted}", "$type": "color", "$description": "다크 보조 면 — Skeleton·Progress 트랙·비활성 배경" },
+      "muted-foreground":   { "$value": "{d_mutedfg}", "$type": "color", "$description": "다크 보조 텍스트(캡션·메타, AA✓) — 본문 대체 금지" },
+      "border":             { "$value": "{d_border}", "$type": "color", "$description": "다크 1px 헤어라인 보더·Separator" },
+      "input":              { "$value": "{d_border}", "$type": "color", "$description": "다크 입력 필드 보더" },
+      "ring":               { "$value": "{d_point}", "$type": "color", "$description": "다크 :focus-visible 2px 포커스 링 전용" },
+      "primary":            { "$value": "{point}", "$type": "color", "$description": "다크 CTA 면 = 라이트와 동일 딥 잉크블루(발주자 확정 C안 2026-07-10 — 라이튼 면은 파스텔로 뜸). 텍스트는 d_text" },
+      "primary-foreground": { "$value": "{d_text}", "$type": "color", "$description": "다크 CTA 텍스트 — 딥 잉크블루 면 위 밝은 텍스트(C안)" },
+      "primary-soft":       { "$value": "{d_fog}", "$type": "color", "$description": "(deprecated → accent) 다크 primary 소프트 변형" },
+      "accent":             { "$value": "{d_fog}", "$type": "color", "$description": "다크 secondary 칩·태그·hover 배경(딥 웜)" },
+      "accent-foreground":  { "$value": "{d_text}", "$type": "color", "$description": "다크 accent 배경 위 텍스트" },
+      "info":               { "$value": "{d_text_soft}", "$type": "color", "$description": "다크 정보 — 무채 라이튼(색이 아닌 표기로 변별)" },
+      "info-strong":        { "$value": "{d_text_soft}", "$type": "color", "$description": "다크 info 텍스트(라이튼, 다크 bg 위 AA)" },
+      "info-foreground":    { "$value": "{d_bg}", "$type": "color", "$description": "다크 info 솔리드 위 텍스트" },
+      "success":            { "$value": "{d_text_soft}", "$type": "color", "$description": "다크 성공 — 무채 라이튼(check 표기로 변별), 장식 금지" },
+      "success-foreground": { "$value": "{d_bg}", "$type": "color", "$description": "다크 success 위 텍스트" },
+      "warning":            { "$value": "{d_warn_bg}", "$type": "color", "$description": "다크 경고 배경/칩 전용 — 텍스트 금지 동일" },
+      "warning-foreground": { "$value": "{d_text}", "$type": "color", "$description": "다크 warning 배경 위 텍스트" },
+      "danger":             { "$value": "{d_text}", "$type": "color", "$description": "다크 에러/삭제 — 밝은 잉크 + alert 표기. ErrorBanner·destructive" },
+      "danger-foreground":  { "$value": "{d_bg}", "$type": "color", "$description": "다크 danger 솔리드 위 텍스트" }
+    }
+  },
+
+  "component": {
+    "button": {
+      "primary-bg":   { "$value": "{semantic.primary}", "$type": "color", "$description": "Primary 버튼 배경 — 전환/핵심 행동엔 이것, 화면당 1개. 콘텐츠 폭(hug)만 — 풀폭 CTA 바 금지" },
+      "primary-fg":   { "$value": "{semantic.primary-foreground}", "$type": "color", "$description": "Primary 버튼 텍스트(AA✓)" },
+      "secondary-bg": { "$value": "{semantic.accent}", "$type": "color", "$description": "Secondary 버튼 배경 — 보조 행동엔 이것(primary 남용 금지)" },
+      "secondary-fg": { "$value": "{semantic.accent-foreground}", "$type": "color", "$description": "Secondary 버튼 텍스트" },
+      "radius":       { "$value": "{radius.sm}", "$type": "dimension", "$description": "버튼 라운드 = sm(8px) — 과한 라운드 회귀 금지(레퍼런스 각진 인상)" }
+    },
+    "card": {
+      "bg":     { "$value": "{semantic.card}", "$type": "color", "$description": "카드 표면 — '떠 있어야 할 것'에만. 동일 폭 카드 적층 금지, 기본은 평문 섹션" },
+      "border": { "$value": "{semantic.border}", "$type": "color", "$description": "카드 1px 헤어라인 — 색 보더로 띄우지 말 것(분리는 elev 음영)" },
+      "shadow": { "$value": "{shadow.elev-1}", "$type": "shadow", "$description": "카드 기본 음영 = elev-1 고정 — 단계 건너뛰기 금지. 순검정 그림자 금지" },
+      "radius": { "$value": "{radius.DEFAULT}", "$type": "dimension", "$description": "카드 라운드 = 기본" }
+    },
+    "badge": {
+      "tint-alpha": { "$value": "12%", "$type": "dimension", "$description": "틴트 뱃지 배경 = 상태색 12% 틴트 + 동일 톤 텍스트 — 솔리드 상태 뱃지 금지" },
+      "info-text":  { "$value": "{semantic.info-strong}", "$type": "color", "$description": "info 뱃지 텍스트 — 무채 잉크소프트(AA)" }
+    },
+    "tab": {
+      "active-bg": { "$value": "{semantic.card}", "$type": "color", "$description": "활성 탭 배경 — muted 트랙 위 card 승격. 솔리드 색 활성 탭 금지, 활성 표시는 표면 승격 + 텍스트 무게로" },
+      "active-fg": { "$value": "{semantic.foreground}", "$type": "color", "$description": "활성 탭 텍스트 — 본문 잉크(비활성은 muted-foreground)" }
+    },
+    "tooltip": {
+      "bg":     { "$value": "{semantic.card}", "$type": "color", "$description": "툴팁/팝오버 표면 — 순검정 툴팁 금지, 웜 card 표면 + elev-2 부유. 명령 원문 표기 용도" },
+      "shadow": { "$value": "{shadow.elev-2}", "$type": "shadow", "$description": "툴팁 음영 = elev-2(부유 패널·팝오버 단)" }
+    },
+    "listrow": {
+      "hover-bg":         { "$value": "{semantic.accent}", "$type": "color", "$description": "리스트 행 hover 색 원천 — 반드시 hover-tint-alpha(≤8%) 틴트로만. 평문 리스트 행이 기본, 행마다 카드 금지" },
+      "hover-tint-alpha": { "$value": "8%", "$type": "dimension", "$description": "행 hover·영역 배경 차등 틴트 상한 8% — 솔리드 hover·풀폭 색 띠 금지" }
+    },
+    "plancard": {
+      "accent-line":       { "$value": "{semantic.primary}", "$type": "color", "$description": "선택 카드 좌측 액센트 라인 색 — 강조는 좌측 2px 라인만, 면 전체 톤 바 금지" },
+      "accent-line-width": { "$value": "2px", "$type": "dimension", "$description": "좌측 액센트 라인 두께 = 2px 고정" },
+      "shadow":            { "$value": "{shadow.elev-2}", "$type": "shadow", "$description": "선택/플랜 부유 패널 음영 = elev-2 — 일반 카드(elev-1)보다 한 단계만 위" }
+    }
+  },
+
+  "radius": { "DEFAULT": "0.75rem", "sm": "0.5rem", "lg": "1.5rem", "pill": "999px" },
+  "space": { "1": "0.25rem", "2": "0.5rem", "3": "0.75rem", "4": "1rem", "5": "1.5rem", "6": "2rem", "8": "3rem" },
+  "fs": { "sm": "0.8125rem", "base": "0.9375rem", "lg": "1.0625rem", "xl": "clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem)", "display": "clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem)" },
+  "lh": { "normal": "1.55", "prose": "1.7", "tight": "1.1" },
+  "font": {
+    "heading": "'Space Grotesk', 'Satoshi', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif",
+    "ui": "'Satoshi', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif",
+    "mono": "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace"
+  },
+  "shadow": {
+    "soft": "0 20px 40px -12px hsl(38 12% 10% / 0.06)",
+    "float": "0 30px 60px -16px hsl(38 12% 10% / 0.10)",
+    "elev-0": "none",
+    "elev-1": "0 1px 2px hsl(38 12% 10% / 0.06)",
+    "elev-2": "0 4px 12px hsl(38 12% 10% / 0.10)",
+    "elev-3": "0 8px 24px hsl(38 12% 10% / 0.14)"
+  }
+}
