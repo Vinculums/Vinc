@@ -333,11 +333,6 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     return "matched" if matched else "created"
 
 
-def _node_types(fragment_nodes: list[dict]) -> dict[str, str]:
-    return {(n.get("id") or "").strip(): (n.get("type") or "").strip()
-            for n in fragment_nodes}
-
-
 _ALLOWED_PAIRS_HINT = (
     "allowed pairs (concept and decision are interchangeable endpoints, "
     "except relates_to which stays concept→concept): "
@@ -349,17 +344,71 @@ _ALLOWED_PAIRS_HINT = (
     "any-type = open-entity→open-entity (TYPED carrier)"
 )
 
+#: 반복되는 엣지 경고의 이유별 설명. **엣지마다 한 줄씩 내면 안 된다** —
+#: `rpc._result_text` 의 봉투 상한(MAX_RESULT_CHARS = 72,000자)을 넘기면 결과 전체가
+#: "Result too large … Nothing was changed" 로 강등되는데, 그건 거짓말이다: MERGE 는
+#: 이미 돌았고 노드는 들어가 있다. 아래 두 문구는 각각 250자·400자대라 각각 290개·
+#: 180개면 상한을 넘긴다. 그래서 이유당 한 줄로 접는다.
+#: 끝점 미해석은 **두 경우**이고 조치가 다르다 — 아예 안 실렸으면 실으면 되고,
+#: 실었는데 스킵됐으면 그 노드를 고쳐야 한다. 한 덩이로 뭉개면 후자에서
+#: "id 를 실어라"라는 이미 한 일을 다시 하라는 안내가 나간다.
+_EDGE_WARN_REASONS = {
+    "undeclared_endpoint":
+        "endpoint not declared in this call's nodes. The resolver only sees node types "
+        "declared in this payload, so include the target id in `nodes` in minimal form "
+        "(id · type · title · domain) even when the node already exists in the store, "
+        "then retry",
+    "skipped_endpoint":
+        "endpoint was declared but did not merge — it was skipped earlier in this same "
+        "call, so its edges went down with it. Fix the node first: the reason is in the "
+        "node warnings above (missing title, id owned by another tenant, and so on)",
+    "unsupported_type": f"unsupported edge type; {_ALLOWED_PAIRS_HINT}",
+}
 
-def _edge_exists(store, rel: str, ends: _Ends, src: str, dst: str) -> bool:
+#: 접힌 경고에 실을 예시 개수. 전부 실으면 접은 의미가 없고, 하나도 안 실으면
+#: 어느 엣지인지 못 찾는다.
+_EDGE_WARN_SAMPLE = 8
+
+
+def _warn_edge(warnings: list[str], rollup: dict[str, list[str]] | None,
+               reason: str, label: str, full: str) -> None:
+    """엣지 경고 하나. ``rollup`` 이 있으면 접어 두고(호출부가 flush), 없으면
+    종전대로 한 줄 낸다 — `_merge_edge` 를 직접 부르는 쪽의 동작을 바꾸지 않는다."""
+    if rollup is None:
+        warnings.append(full)
+    else:
+        rollup.setdefault(reason, []).append(label)
+
+
+def _flush_edge_warnings(rollup: dict[str, list[str]], warnings: list[str]) -> None:
+    """이유별로 접어 둔 엣지 경고를 한 줄씩 낸다(위 표 주석 참조)."""
+    for reason, labels in rollup.items():
+        head = labels[:_EDGE_WARN_SAMPLE]
+        rest = len(labels) - len(head)
+        warnings.append(
+            f"{len(labels)} edge(s) skipped — {_EDGE_WARN_REASONS[reason]}: "
+            f"{', '.join(head)}" + (f" (+{rest} more)" if rest > 0 else ""))
+
+
+def _edge_exists(store, rel: str, ends: _Ends, src: str, dst: str,
+                 *, owner: str | None = None, osc: bool = False) -> bool:
+    """이 엣지가 **이미 있었나**. 반환값은 `was` 로 쓰여 스탬프 여부를 가른다.
+
+    SEC-3: owner 강제 경로(osc)에서 owner 를 안 걸면 **남의 엣지**를 "이미 있다"로
+    읽어 스탬프를 건너뛴다. 그러면 내 엣지는 새로 생겼는데 증분 동기화에 안 실려
+    다른 기기에 영영 안 넘어간다(오류도 경고도 없다). `_merge_edge` 의 MERGE 는
+    이미 같은 조건으로 스코프돼 있으므로 여기만 빠져 있던 것이다."""
     (sl, sp), (dl, dp) = ends
+    own = f" AND a.owner_id = $owner AND b.owner_id = $owner" if osc else ""
     r = store.run(f"MATCH (a:{sl})-[:{rel}]->(b:{dl}) "
-                  f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(*) AS c",
-                  {"s": src, "d": dst})
+                  f"WHERE a.{sp} = $s AND b.{dp} = $d{own} RETURN count(*) AS c",
+                  {"s": src, "d": dst, **({"owner": owner} if osc else {})})
     return bool(r and r[0].get("c"))
 
 
 def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
-                          owner: str) -> None:
+                          owner: str, *, osc: bool = False,
+                          warnings: list[str] | None = None) -> None:
     """엣지 **신규 생성** 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
     끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
     실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
@@ -370,24 +419,46 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     ``ends`` 는 호출부가 해석한 끝점 (라벨, PK) 쌍이다. v12 전에는 rel 라벨만 받아
     표에서 끌어왔는데, 그 표가 성립하려면 **rel 하나에 끝점 라벨 조합이 하나**여야
     한다. 결정 타입이 들어오면서 RELATED_TO 하나가 Concept↔Decision 네 조합을 갖게
-    돼 그 전제가 깨졌다. 호출부는 이미 타입을 알고 있으므로 내려받는 편이 맞다."""
+    돼 그 전제가 깨졌다. 호출부는 이미 타입을 알고 있으므로 내려받는 편이 맞다.
+
+    SEC-3(``osc``): owner 강제 경로에서는 **owner 를 걸어야 한다.** 안 걸면 남의
+    노드에 rev/sync_seq 를 올려 그 사람의 다음 동기화에 유령 변경을 실어 보내고,
+    더 나쁜 것은 아래 `_EdgeTombstone` DELETE 가 **남이 지운 엣지의 삭제 표식을
+    지워** 그 엣지를 되살린다(삭제가 조용히 취소된다). 무조건 걸면 안 되는 이유는
+    `_merge_edge` 와 같다 — owner 를 안 실은 로컬·서버 호출부(`api/server.py` 의
+    POST 바디에 owner 가 없는 경우 등)가 자기 노드를 못 찾게 된다. 그래서 호출부의
+    ``osc``(= owner_explicit and owner)를 그대로 물려받는다."""
+    own = " AND n.owner_id = $owner" if osc else ""
+    op = {"owner": owner} if osc else {}
     for (label, pk), nid in zip(ends, (src, dst)):
-        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN n.rev AS rev",
-                         {"id": nid})
+        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} RETURN n.rev AS rev",
+                         {"id": nid, **op})
         if not rows:
+            if osc and warnings is not None:
+                warnings.append(
+                    f"edge endpoint not stamped — {nid} is not yours, so its revision "
+                    "was left alone (the edge itself merged). Cross-owner edges do not "
+                    "propagate: the other side never sees it")
             continue
-        store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
+        store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} "
                   "SET n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
                   {"id": nid, "ua": revstamp.hlc_now(store),
                    "rev": int(rows[0].get("rev") or 0) + 1,
-                   "seq": revstamp.next_seq(store, owner)})
-    store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k DELETE t",
-              {"k": f"{src}|{rel}|{dst}"})
+                   "seq": revstamp.next_seq(store, owner), **op})
+    # 루프 **밖**이다(끝점 하나가 남의 것이어도 내 툼스톤은 상쇄돼야 한다).
+    # `_EdgeTombstone` 은 owner_id 열을 갖는다(store/embedded_schema.py:170-173) —
+    # 예측자는 api/sync.py:140 에 이미 프로덕션으로 있다. `t.rev` 는 없다(그 열은
+    # `_Tombstone` 전용).
+    store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k"
+              + (" AND t.owner_id = $owner" if osc else "") + " DELETE t",
+              {"k": f"{src}|{rel}|{dst}", **op})
 
 
 def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 *, owner: str | None = None, owner_explicit: bool = False,
-                stamp_edges: bool = True) -> str | None:
+                stamp_edges: bool = True,
+                rollup: dict[str, list[str]] | None = None,
+                declared: set[str] | None = None) -> str | None:
     """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
 
     SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
@@ -443,17 +514,19 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # 기존 노드로 향하는 6개가 조용히 skip).
     unresolved = [n for n, t in ((src, st), (dst, dt)) if n and not t]
     if unresolved:
-        warnings.append(
-            f"edge '{etype}' skipped — endpoint not declared in this call's nodes: "
-            f"{', '.join(unresolved)} ({st or '?'}→{dt or '?'}). The resolver only "
-            "sees node types declared in this payload, so include the target id in "
-            "`nodes` in minimal form (id · type · title · domain) even when the "
-            "node already exists in the store, then retry")
+        # 하나라도 '선언은 됐는데 스킵된' 것이면 그쪽을 알린다 — 그게 고칠 자리다.
+        reason = ("skipped_endpoint"
+                  if declared and any(n in declared for n in unresolved)
+                  else "undeclared_endpoint")
+        _warn_edge(warnings, rollup, reason, ", ".join(unresolved),
+                   f"edge '{etype}' skipped — {', '.join(unresolved)} "
+                   f"({st or '?'}→{dt or '?'}): {_EDGE_WARN_REASONS[reason]}")
         return None
 
     if etype not in _EDGE_TYPES:
-        warnings.append(
-            f"unsupported edge type '{etype}' — skipped ({src}→{dst}); {_ALLOWED_PAIRS_HINT}")
+        _warn_edge(warnings, rollup, "unsupported_type", f"{src}→{dst} ({etype})",
+                   f"unsupported edge type '{etype}' — skipped ({src}→{dst}); "
+                   f"{_ALLOWED_PAIRS_HINT}")
         return None
 
     # v12 — 끝점 라벨·PK 를 타입에서 꺼낸다. 아래 분기들이 라벨을 문자열로 박고
@@ -498,14 +571,15 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        was = _edge_exists(store, rel, ends, src, dst)
+        was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER)
+            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
+                                  osc=osc, warnings=warnings)
         return "created"
     if st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES:
         if etype == "relates_to" and "decision" in (st, dt):
@@ -531,14 +605,15 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             if rev and rev[0].get("c"):
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
-        was = _edge_exists(store, rel, ends, src, dst)
+        was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER)
+            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
+                                  osc=osc, warnings=warnings)
         return "created"
     if st == "record" and dt in _SEMANTIC_TYPES:
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
@@ -628,6 +703,19 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                 f"new topics rejected: {', '.join(denial['attempted'])}. "
                 "Existing topics keep working; Pro removes the limit."])
     fold = _ThemeFold(themes, fragment)
+    # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다. 전에는 원본 payload 전체로
+    # 지어서, `_merge_node` 의 스킵(타입·id 부재 · Entity title 부재 · SEC-3 교차테넌트
+    # 충돌)으로 들어가지도 않은 노드가 살아있는 끝점으로 등록됐다. 그러면 그 노드로
+    # 향하는 엣지가 MATCH 에서 조용히 0행을 만나고도 "created" 로 세어져,
+    # `edges.created` 가 실제보다 크게 보고됐다. 휴면 엔진
+    # (engines/fragment_ingest.py:202-213)은 처음부터 이 모양이었다.
+    #
+    # ⚠ 판정은 **`r is not None`** 이다. "경고가 없었나"로 재면 안 된다 — 경고를
+    # 내면서도 정상 MERGE 되는 자리가 실재한다(Bridge 에 domain 을 주면 그 필드만
+    # 빼고 생성되며 경고가 남는다: 위 `_merge_node` · tests/test_embedded_backend.py
+    # 의 "배치 계속 진행" 케이스). 그걸로 재면 그 테스트가 빨개지고 수정 자체가 틀린다.
+    types: dict[str, str] = {}
+    declared = {(n.get("id") or "").strip() for n in nodes}
     for n in nodes:
         ntype = (n.get("type") or "").strip()
         if _is_open(ntype):
@@ -636,16 +724,20 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                         theme_id=fold.theme_id or "")
         created += (r == "created")
         matched += (r == "matched")
-    types = _node_types(nodes)
+        if r is not None:
+            types[(n.get("id") or "").strip()] = ntype
+    edge_rollup: dict[str, list[str]] = {}
     for e in edges:
         st, dt = types.get((e.get("from") or "").strip(), ""), types.get((e.get("to") or "").strip(), "")
         etype = (e.get("type") or "").strip()
         if etype and _is_open(st) and _is_open(dt):
             fold.fold("edge", etype)   # TYPED 캐리어행 엣지 타입만 어휘 편입
         r = _merge_edge(store, e, types, warnings, owner=owner,
-                        owner_explicit=owner_explicit, stamp_edges=stamp_edges)
+                        owner_explicit=owner_explicit, stamp_edges=stamp_edges,
+                        rollup=edge_rollup, declared=declared)
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
+    _flush_edge_warnings(edge_rollup, warnings)
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup
