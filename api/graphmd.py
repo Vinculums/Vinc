@@ -103,14 +103,14 @@ People and products pass that test but are not ideas: write them as an Entity or
 - prerequisite_of: A comes before B. The direction carries the meaning.
 - derives_from: A comes out of B. The direction carries the meaning.
 - inherits_from: A inherits from B. The direction carries the meaning.
-- connects_via: Bridge to Concept.
-- about: Episode to Concept.
+- connects_via: Bridge to Concept or Decision.
+- about: Episode or Decision to Concept or Decision.
+Record to either: any of the first four. Those edges and about must carry `evidence`.
 Not sure: use relates_to. Never flip a directed edge to make it fit.
 
 ## Documents [schema-fixed]
-Source text goes in through vinc_doc_put and the store keeps the canonical copy.
-Do not paste a whole document into a Record. Link concepts through the document,
-not through a copy of it.
+Source text goes in through vinc_doc_put and the store keeps the canonical copy. Do
+not paste a whole document into a Record; link concepts through the document, not a copy.
 
 {generated}
 
@@ -156,14 +156,14 @@ BAD "PostgreSQL" 과 "Postgres" 를 각각: 같은 것입니다. 하나만 두�
 - prerequisite_of: A 가 B 보다 먼저입니다. 방향이 의미입니다.
 - derives_from: A 가 B 에서 나왔습니다. 방향이 의미입니다.
 - inherits_from: A 가 B 를 상속합니다. 방향이 의미입니다.
-- connects_via: Bridge 에서 Concept 으로.
-- about: Episode 에서 Concept 으로.
+- connects_via: Bridge 에서 Concept 이나 Decision 으로.
+- about: Episode 나 Decision 에서 Concept 이나 Decision 으로.
+Record 에서 둘 중 어디로든 위 넷 중 아무거나. 그 엣지들과 about 은 `evidence` 를 답니다.
 확신이 없으면 relates_to. 맞추려고 방향을 뒤집지 마십시오.
 
 ## 문서 [스키마 고정]
-원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다.
-문서 전문을 Record 에 붙여넣지 마십시오. 개념은 문서를 통해 연결하고,
-문서의 사본을 통해 연결하지 마십시오.
+원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다. 문서 전문을 Record 에
+붙여넣지 마십시오. 개념은 문서를 통해 연결하고, 사본을 통해 연결하지 마십시오.
 
 {generated}
 
@@ -206,9 +206,9 @@ _GEN_BODY = {
 }
 _EMPTY = {
     "en": {"domains": "No domains yet. Your first import creates them.",
-           "nodes": "none beyond the five above", "edges": "none beyond the six above"},
+           "nodes": "none beyond the six above", "edges": "none beyond the six above"},
     "ko": {"domains": "아직 도메인이 없습니다. 첫 적재가 도메인을 만듭니다.",
-           "nodes": "위 다섯 외에 없음", "edges": "위 여섯 외에 없음"},
+           "nodes": "위 여섯 외에 없음", "edges": "위 여섯 외에 없음"},
 }
 _MORE = {"en": "and {n} more", "ko": "외 {n}개"}
 

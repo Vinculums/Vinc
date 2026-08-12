@@ -81,7 +81,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_unknown_edge_blocks(self):
         text = self._built("en").replace(
-            "- about: Episode to Concept.", "- refutes: Concept to Concept.")
+            "- about: Episode or Decision to Concept or Decision.",
+            "- refutes: Concept to Concept.")
         res = graphmd.check(text)
         rules = [f["rule"] for f in res["findings"]]
         self.assertIn("unknown-edge", rules)
