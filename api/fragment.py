@@ -232,6 +232,19 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
             _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
+        if label == "Concept":
+            # no-llm-chat 연구 §3.2/§9, Decision Q5(2026-08-11) — fragment 경로가
+            # one_liner 를 SET 하지 않아 MCP 로 적재한 개념은 늘 빈 값이었다(문서에서
+            # 파생된 개념만 채워짐 — door 에 따라 채움이 갈리는 상태). date/summary
+            # 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이 이기고, 없으면
+            # props.one_liner 또는 props.note 를 승격한다(키가 아예 없을 때만).
+            _props = node.get("props") if isinstance(node.get("props"), dict) else {}
+            if node.get("one_liner") is not None:
+                _set("one_liner", str(node["one_liner"]))
+            elif "one_liner" not in node:
+                cand = _props.get("one_liner") or _props.get("note")
+                if isinstance(cand, str) and cand.strip():
+                    _set("one_liner", cand.strip())
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
             #
