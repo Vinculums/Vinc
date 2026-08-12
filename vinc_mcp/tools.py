@@ -55,6 +55,12 @@ _FRAGMENT_SCHEMA = {
                                             "relies on server-side promotion."},
                     "summary": {"type": "string",
                                 "description": "Episode only — one-paragraph summary returned by vinc_recall."},
+                    "one_liner": {"type": "string",
+                                  "description": "Concept only — the one or two sentences node_context "
+                                                 "and Ask quote as the concept's description. Putting it "
+                                                 "in props.one_liner or props.note instead still works "
+                                                 "(server-side promotion) but only when this field and "
+                                                 "props.one_liner are both absent."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
                 },
                 "required": ["id", "type"],
@@ -85,10 +91,16 @@ _FRAGMENT_SCHEMA = {
                 "required": ["from", "to", "type"],
             },
         },
-        "owner": {"type": "string", "description": "Owner scope to stamp (defaults to the local owner)."},
+        # ⚠ `_OWNER_PROP`(아래)와 **같은 문구를 써야 한다.**
+        "owner": {"type": "string",
+                  "description": "Owner scope to stamp. Ignored on the hosted graph (the account "
+                                 "key fixes it); locally it defaults to this machine's owner."},
         "theme_id": {"type": "string",
                      "description": "Theme to fold open-type names into (optional — defaults to the "
-                                    "active theme, creating 'default' lazily)."},
+                                    "active theme, creating 'default' lazily). Themes are GLOBAL, "
+                                    "not per-owner, so naming someone else's theme folds your "
+                                    "proposed types into their vocabulary. Omit it unless you know "
+                                    "the theme is yours."},
     },
     "required": ["nodes"],
 }
@@ -542,9 +554,12 @@ TOOLS: list[dict] = [
                        "dedupes the reverse direction); connects_via = bridge→concept (optional "
                        "role); about = episode→concept; record→concept preserves the type on "
                        "ATTACHES_TO; between two open-type nodes ANY edge type persists via the "
-                       "TYPED carrier. Only malformed nodes (missing id/title) and unsupported "
-                       "(from,to) pairs between legacy types are skipped — reported in warnings "
-                       "with partial:true. Call vinc_conventions once before your first write "
+                       "TYPED carrier. Nodes are skipped when malformed (no id, no type, an Entity "
+                       "with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the "
+                       "hosted graph; edges are skipped on an unsupported (from,to) pair AND when "
+                       "an endpoint node was itself skipped, since an edge cannot outlive its "
+                       "endpoint. Everything skipped is reported in warnings with partial:true, "
+                       "so read them — `merged` counts only what actually landed. Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,
