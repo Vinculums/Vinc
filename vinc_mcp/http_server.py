@@ -493,6 +493,18 @@ class MCPHTTPApp:
             owner = f"user:{sub}"
         args = dict(args or {})
         args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
+        # 어휘(theme)는 **전역**이다 — `store/theme_store.py` 에 owner 가 0건이다.
+        # 그래서 남의 theme_id 를 실어 보내면 그 사람의 어휘에 내 타입이 제안으로
+        # 꽂힌다. 여기서 떨구는 이유는 이 평면이 **파일에서 온 조각을 그대로 펼치기**
+        # 때문이다(`app/src/surfaces/intake.ts` 의 `{...obj.fragment, owner}`) — 즉
+        # 사용자가 연 팩 파일 안의 theme_id 가 아무 확인 없이 여기까지 온다.
+        #
+        # ⚠ **이것으로 닫히는 것은 웹 평면뿐이다.** 진짜 주입 경로인 호스티드 MCP
+        # (`POST /mcp` → Dispatcher.handle → tools.call → _t_ingest → bridge.request)
+        # 는 이 함수를 **아예 지나지 않으므로** 그대로 열려 있다. 제대로 닫으려면
+        # ThemeStore 에 owner 차원을 넣어야 하고 그건 별도 작업이다. 여기 한 줄을
+        # 근거로 "테넌시 막았다"고 적지 말 것.
+        args.pop("theme_id", None)
 
         if op == "job":   # /jobs/{id} 폴링 — id 는 토큰꼴만(경로주입·타 라우트 차단)
             jid = str(args.get("id") or "")
