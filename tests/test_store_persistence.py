@@ -143,3 +143,76 @@ class Policy(_Enabled):
         p = persistence.SnapshotPolicy(every=0)
         p.mark_dirty()
         self.assertFalse(p.due())
+
+
+class GenerationSwap(_Enabled):
+    """교체 도중 죽어도 **온전한 세대가 최소 하나** 공유에 남는가.
+
+    2026-08-12 에 이것이 없어서 허브의 영속본이 통째로 사라졌다. 스테이징은 이미
+    있었지만 마지막 `os.replace(stage, dest)` 가 SMB 에서 "목적지를 지우고 rename"
+    으로 구현되면 그 사이에 죽었을 때 남는 것이 없다. 사흘치를 트랜스크립트에서
+    되살려야 했다 — 그 사고를 코드로 고정한다.
+    """
+
+    def _save(self, payload: bytes) -> str:
+        Path(self.live).write_bytes(payload)
+        return persistence.save_snapshot(_FakeStore(self.live))
+
+    def test_previous_generation_is_kept_after_a_swap(self):
+        self.assertEqual(self._save(b"GEN1"), "ok")
+        self.assertFalse(os.path.exists(self.snap + persistence.PREV_SUFFIX),
+                         "첫 세대에는 물릴 이전 세대가 없다")
+        self.assertEqual(self._save(b"GEN2"), "ok")
+        self.assertEqual(Path(self.snap).read_bytes(), b"GEN2")
+        self.assertEqual(Path(self.snap + persistence.PREV_SUFFIX).read_bytes(), b"GEN1",
+                         "직전 세대가 남아 있어야 교체 중 급사를 견딘다")
+
+    def test_only_one_previous_generation_is_kept(self):
+        for p in (b"GEN1", b"GEN2", b"GEN3"):
+            self.assertEqual(self._save(p), "ok")
+        self.assertEqual(Path(self.snap).read_bytes(), b"GEN3")
+        self.assertEqual(Path(self.snap + persistence.PREV_SUFFIX).read_bytes(), b"GEN2",
+                         "한 세대만 든다 — 공유가 무한히 자라면 안 된다")
+
+    def test_crash_between_retire_and_move_still_restores(self):
+        """세대 교대(rename) 직후, 새 세대가 자리에 앉기 **전에** 죽은 상태."""
+        self.assertEqual(self._save(b"GOOD"), "ok")
+        persistence._retire_generation(self.snap)          # ← 여기서 프로세스가 죽었다
+        self.assertFalse(os.path.exists(self.snap), "자리는 비어 있다(그게 이 상태다)")
+
+        state = persistence.restore_if_missing(self.live + "2")
+        self.assertEqual(state, "restored-previous", state)
+        self.assertEqual(Path(self.live + "2").read_bytes(), b"GOOD",
+                         "직전 세대에서 되살아나야 한다")
+        self.assertIsNone(persistence.restore_state_is_fatal(state),
+                          "이 상태는 기동을 막으면 안 된다 — 데이터는 온전하다")
+
+    def test_a_failed_snapshot_does_not_disturb_the_live_generation(self):
+        self.assertEqual(self._save(b"GOOD"), "ok")
+        state = persistence.save_snapshot(_BoomStore())
+        self.assertTrue(state.startswith("error"), state)
+        self.assertEqual(Path(self.snap).read_bytes(), b"GOOD",
+                         "실패한 스냅샷이 멀쩡한 영속본을 밀어내면 안 된다")
+
+    def test_prev_carries_no_orphan_wal(self):
+        """`.prev` 는 체크포인트 본만 든다 — 짝 없는 WAL 이 다음 세대와 엮이면
+        복원이 어긋난 재생을 한다(2026-08-04·08-07·08-09 에 쓴 복구 수법의 근거)."""
+        Path(self.live).write_bytes(b"GEN1")
+        Path(self.live + ".wal").write_bytes(b"WAL1")
+        self.assertEqual(persistence.save_snapshot(_FakeStore(self.live)), "ok")
+        self.assertTrue(os.path.exists(self.snap + ".wal"))
+
+        Path(self.live).write_bytes(b"GEN2")
+        os.remove(self.live + ".wal")                      # 체크포인트로 WAL 이 사라진 상태
+        self.assertEqual(persistence.save_snapshot(_FakeStore(self.live)), "ok")
+        self.assertFalse(os.path.exists(self.snap + ".wal"), "낡은 WAL 이 자리에 남았다")
+        self.assertFalse(os.path.exists(self.snap + persistence.PREV_SUFFIX + ".wal"),
+                         ".prev 는 WAL 을 물지 않는다")
+        self.assertEqual(Path(self.snap + persistence.PREV_SUFFIX).read_bytes(), b"GEN1")
+
+    def test_restore_prefers_the_current_generation(self):
+        self.assertEqual(self._save(b"GEN1"), "ok")
+        self.assertEqual(self._save(b"GEN2"), "ok")
+        self.assertEqual(persistence.restore_if_missing(self.live + "3"), "restored")
+        self.assertEqual(Path(self.live + "3").read_bytes(), b"GEN2",
+                         "자리에 온전한 세대가 있으면 그것을 쓴다")

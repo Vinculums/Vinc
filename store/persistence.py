@@ -70,6 +70,18 @@ DEFAULT_SNAPSHOT_EVERY = 300.0
 #: 점으로 시작해 사람이 목록에서 데이터 파일과 구분할 수 있게 한다.
 STAGE_PREFIX = ".stage-"
 
+#: 직전 세대를 물려 두는 접미. **이것이 있어야 스냅샷 교체가 안전하다.**
+#:
+#: 스테이징만으로는 부족했다(2026-08-12 실증). 바이트 복사는 스테이징에서 끝나지만,
+#: 마지막 `os.replace(stage, dest)` 는 SMB 에서 "목적지를 지우고 rename" 으로 구현될
+#: 수 있고 그 사이에 프로세스가 죽으면 **영속본이 통째로 사라진다**. 그날 허브가 딱
+#: 그렇게 됐다: 15:47 에 멀쩡히 복원되던 `/data/db.recovered5` 가 리비전 종료 직후
+#: 16:27 에 흔적도 없었고, 사흘치를 트랜스크립트에서 되살려야 했다.
+#:
+#: 그래서 교체를 **두 단계**로 가른다. 먼저 옛 세대를 rename 으로 `.prev` 에 물리고,
+#: 그다음 새 세대를 자리에 옮긴다. 어느 지점에서 죽어도 둘 중 하나는 온전하다.
+PREV_SUFFIX = ".prev"
+
 
 def resolve_snapshot_path() -> str | None:
     """영속 스냅샷 경로: env ``VINC_STORE_SNAPSHOT``. 미설정이면 None = 기능 꺼짐.
@@ -110,20 +122,27 @@ def restore_if_missing(live_path: str, snapshot_path: str | None = None) -> str:
     try:
         if os.path.exists(live_path):
             return "present"
+        # 자리에 온전한 세대가 없으면 **직전 세대**(.prev)를 본다. 교체 도중 죽으면
+        # 자리는 비고 `.prev` 만 남는 순간이 있는데, 여기 폴백이 없으면 그 순간이
+        # 그대로 `empty` 로 읽혀 기동이 막힌다(그리고 사람은 데이터가 사라진 줄 안다).
+        source, state = snapshot_path, "restored"
         if not os.path.exists(snapshot_path):
-            return "empty"
+            prev = snapshot_path + PREV_SUFFIX
+            if not os.path.exists(prev):
+                return "empty"
+            source, state = prev, "restored-previous"
         os.makedirs(os.path.dirname(os.path.abspath(live_path)) or ".", exist_ok=True)
-        if os.path.isdir(snapshot_path):
-            shutil.copytree(snapshot_path, live_path, dirs_exist_ok=True)
+        if os.path.isdir(source):
+            shutil.copytree(source, live_path, dirs_exist_ok=True)
         else:
-            for src, required in _parts(snapshot_path):
+            for src, required in _parts(source):
                 if not os.path.exists(src):
                     if required:
                         return "empty"
                     continue
-                dst = live_path + src[len(snapshot_path):]
+                dst = live_path + src[len(source):]
                 shutil.copy2(src, dst)
-        return "restored"
+        return state
     except Exception as exc:                                   # noqa: BLE001
         return f"error: {type(exc).__name__}: {exc}"
 
@@ -142,15 +161,18 @@ BOOTSTRAP_ENV = "VINC_STORE_ALLOW_EMPTY"
 def restore_state_is_fatal(state: str) -> str | None:
     """복원 상태가 **기동을 막아야 하는가**. 막아야 하면 사람이 읽을 사유, 아니면 None.
 
-    진행해도 되는 것은 셋뿐이다:
-      ``off``      기능이 꺼져 있다 — 지킬 것이 없다
-      ``present``  작업본이 이미 있다 — 흔한 재시작
-      ``restored`` 복원했다
+    진행해도 되는 것은 넷뿐이다:
+      ``off``                기능이 꺼져 있다 — 지킬 것이 없다
+      ``present``            작업본이 이미 있다 — 흔한 재시작
+      ``restored``           복원했다
+      ``restored-previous``  자리가 비어 **직전 세대**에서 복원했다 — 교체 도중 죽은
+                             흔적이다. 데이터는 온전하지만 마지막 스냅샷 주기만큼
+                             뒤처져 있으므로 로그에서 눈에 띄어야 한다
 
     ``empty`` 는 :data:`BOOTSTRAP_ENV` 가 켜져 있을 때만 통과한다(위 주석 참조).
     ``error: …`` 는 언제나 막는다.
     """
-    if state in ("off", "present", "restored"):
+    if state in ("off", "present", "restored", "restored-previous"):
         return None
     if state == "empty":
         if (os.environ.get(BOOTSTRAP_ENV) or "").strip().lower() in ("1", "true", "on"):
@@ -160,6 +182,35 @@ def restore_state_is_fatal(state: str) -> str | None:
                 f"이대로 진행하면 빈 그래프로 서빙하다가 영속본을 덮는다")
     return (f"영속 스냅샷 복원 실패 — {state}. 이대로 진행하면 빈 그래프로 서빙하면서 "
             f"다음 스냅샷이 영속본을 덮는다(2026-08-09 실증). 스토어를 열지 않는다")
+
+
+def _rm(path: str) -> None:
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _retire_generation(snapshot_path: str) -> None:
+    """자리에 있는 세대를 :data:`PREV_SUFFIX` 로 물린다 — **rename 이지 복사가 아니다**.
+
+    필수 파트를 옮기는 그 한 번의 rename 이 세대 교대 지점이다: 그 전에 죽으면 자리에
+    옛 세대가 온전히 있고, 그 후에 죽으면 `.prev` 에 온전히 있다.
+
+    ``.prev`` 에는 **체크포인트 본만** 남기고 WAL 사이드카는 버린다. 옛 WAL 을 함께
+    물려 두면 나중에 그것이 다른 세대의 본 파일과 짝이 될 여지가 생기는데, 이 프로젝트가
+    사고 때마다 실제로 쓴 복구 수법이 정확히 그 반대다 — "WAL 없는 본 파일로 열면
+    마지막 체크포인트 상태로 정상 기동한다"(2026-08-04·08-07·08-09). 그러니 `.prev` 는
+    처음부터 그 모양으로 둔다."""
+    if not os.path.exists(snapshot_path):
+        return                       # 첫 스냅샷 — 물릴 세대가 없다
+    prev = snapshot_path + PREV_SUFFIX
+    for stale, _required in _parts(prev):
+        _rm(stale)                   # 전전 세대는 여기서 버린다(한 세대만 든다)
+    os.replace(snapshot_path, prev)  # ← 이 한 줄이 세대 교대다
+    for src, required in _parts(snapshot_path):
+        if not required:
+            _rm(src)                 # 짝 없는 WAL 이 남지 않게
 
 
 def save_snapshot(store, snapshot_path: str | None = None) -> str:
@@ -180,7 +231,21 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
 
     (rename 이 CIFS 에서 POSIX 수준으로 원자적이라는 보장은 없다. 다만 서버측
     메타데이터 연산이라 **수 초짜리 바이트 복사보다 창이 비교할 수 없이 좁다.**
-    "원자적"이라고 적지 않는 이유다.)"""
+    "원자적"이라고 적지 않는 이유다.)
+
+    **그리고 그 좁은 창에 실제로 물렸다**(2026-08-12). 스테이징만으로는 부족하다:
+    마지막 `os.replace(stage, dest)` 가 SMB 에서 "목적지를 지우고 rename" 으로
+    구현되면, 그 사이에 죽었을 때 **영속본이 통째로 사라진다**. 그날 허브가 그렇게
+    됐고 사흘치를 트랜스크립트에서 되살렸다.
+
+    그래서 교체를 두 단계로 가른다:
+
+      1. 옛 세대를 rename 으로 :data:`PREV_SUFFIX` 에 물린다(바이트 복사 아님)
+      2. 새 세대를 자리로 옮긴다 — **선택 파트 먼저, 필수 파트를 마지막에**
+
+    필수 파트의 존재가 곧 "이 세대는 온전하다"는 표식이고, `restore_if_missing` 은
+    그것만 보고 판단해 없으면 `.prev` 로 물러선다. 어느 지점에서 죽어도 둘 중
+    하나는 온전하다 — 이것이 지키려는 유일한 불변식이다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
     if not snapshot_path or store is None:
         return "off"
@@ -203,12 +268,19 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
         produced = snap(stage)
         if not produced or not os.path.exists(produced):
             return "error: snapshot produced nothing"
-        for src, required in _parts(produced):
-            dst = snapshot_path + src[len(produced):]
+        # 옛 세대를 물리기 **전에** 새 세대가 쓸 만한지 본다 — 아니면 아무것도
+        # 건드리지 않는다(멀쩡한 영속본을 헛되이 .prev 로 미루지 않는다).
+        parts = [(src, req, snapshot_path + src[len(produced):])
+                 for src, req in _parts(produced)]
+        if not all(os.path.exists(s) for s, req, _ in parts if req):
+            return "error: snapshot produced nothing"
+
+        _retire_generation(snapshot_path)
+
+        # 선택 파트 먼저(False < True), **필수 파트를 마지막에**. 그 존재가 완료 표식이다.
+        for src, required, dst in sorted(parts, key=lambda p: p[1]):
             if os.path.exists(src):
                 os.replace(src, dst)
-            elif required:
-                return "error: snapshot produced nothing"
             elif os.path.exists(dst):
                 # ⚠ 새 스냅샷에 사이드카(.wal)가 없는데 목적지의 **낡은 것**을 남기면
                 # 새 본 파일과 옛 WAL 이 짝이 되어, 다음 복원이 어긋난 재생을 한다.
