@@ -120,7 +120,13 @@ export type ViewPrefs = {
   edgeOff: EdgeKind[];
   /** D74 — 타임라인 원인·결과 겹치기. 방향 관계를 마디 사이 곡선으로 잇는다. */
   timelineLineage: boolean;
-  /** 번들 — 선이 묶이는 단. 기본은 1(도메인끼리): 처음부터 전개하지 않고 상위부터 본다. */
+  /** 짜임 — 선이 묶이는 단.
+   *
+   *  기본이 1(주제끼리)이었는데 **실제 데이터에서 거의 항상 빈 화면이 됐다**. 주제
+   *  안쪽 연결은 계층 경로가 한 점이라 그릴 수 없어 버려지는데, 이 코퍼스의 연결은
+   *  대부분 같은 주제 안쪽이다(실측 2026-08-16: 노드 204·연결 260 에서 단 1 은
+   *  255개를 버리고 선 0개를 그렸다). 기본은 버리는 것이 없는 3(노드끼리)이다.
+   *  대신 선이 많아져 밀도가 올라가는데, 그건 겹침으로 읽히는 정보다. */
   bundleDepth: BundleDepth;
   /** 번들 — 끈 관계 타입. `edgeOff` 와 같은 이유로 **끈 목록**으로 저장한다:
    *  나중에 타입이 늘어도 저장된 값이 새 타입을 조용히 숨기지 않는다. */
@@ -159,7 +165,7 @@ const DEFAULTS: ViewPrefs = {
   timelineBasis: "recorded",
   edgeOff: [],
   timelineLineage: false,
-  bundleDepth: 1,
+  bundleDepth: 3,
   bundleOff: [],
   domainTint: false,
 };

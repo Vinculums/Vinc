@@ -93,9 +93,9 @@ export const timelinePool = <T extends { kind?: string }>(nodes: T[], docs: bool
 
 // 실측 여백 — app.css 의 .pl-wrap padding 과 같은 값을 유지해야 한다(둘이 어긋나면
 // viewBox 가 컨테이너보다 커져 스크롤이 생긴다).
-const PAD_X = 16;      // .pl-wrap 좌우 패딩
-const PAD_TOP = 56;    // 상단 크롬(크럼 · 툴 행) 회피
-const PAD_BOT = 16;
+export const PAD_X = 16;      // .pl-wrap 좌우 패딩
+export const PAD_TOP = 56;    // 상단 크롬(크럼 · 툴 행) 회피
+export const PAD_BOT = 16;
 /** 세로 스크롤바 폭 여유 — Windows 클래식 17px 을 덮는 상한. 오버레이 스크롤바
  *  (macOS)에서는 그냥 여백이 된다. 세로 타임라인만 쓴다(항상 세로로 넘치므로). */
 const SBAR = 18;
