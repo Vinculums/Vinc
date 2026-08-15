@@ -113,6 +113,14 @@ _JOURNAL_MODES = ("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF")
 _DEFAULT_JOURNAL = "DELETE"
 
 
+#: `clients` 표의 상한(env `VINC_MCP_MAX_CLIENTS`). RFC 7591 동적 등록은 무인증이라
+#: 상한이 없으면 누구나 표를 늘릴 수 있고, 등록 하나가 곧 DB 전체 복사 하나다
+#: (:meth:`Store.add_client` 참조). 500 은 실사용(커넥터 수십)보다 넉넉하면서
+#: 파일을 수십 KB 로 묶는 값이다 — 정확한 값이 중요한 자리가 아니라, 상한이
+#: **있다는 것**이 중요한 자리다.
+MAX_CLIENTS = max(1, int(os.environ.get("VINC_MCP_MAX_CLIENTS") or 500))
+
+
 def resolve_journal_mode() -> str:
     """저널 모드: env `VINC_MCP_SQLITE_JOURNAL` > DELETE. 미지 값은 기본으로 강등한다
     (오타가 SQLite 문법 오류로 번지지 않게 — 상태 DB 는 기동 경로다)."""
@@ -238,12 +246,28 @@ class Store:
     # ── clients ─────────────────────────────────────────────────────────────
     def add_client(self, client_id: str, redirect_uris: list[str], name: str,
                    now: float | None = None) -> None:
+        """RFC 7591 동적 등록. **무인증 `POST /register` 에서 도달한다** — 그래서
+        여기서 파일 크기를 묶는다.
+
+        왜 여기냐: 영속이 필요한 쓰기마다 DB 를 **통째로 복사**하는데(위 클래스
+        독스트링 참조 — SMB 락을 피하려는 옳은 설계다), 만료 청소를 아무도 부르지
+        않고 `clients` 에 상한도 없어서 파일이 단조 증가했다. 그러면 복사 비용이
+        요청 수에 대해 초선형으로 자란다. 앞단에 레이트리밋도 없고, 그 파일시스템이
+        하드다운 4회의 공통 조건이다. 비용 분석은 인증된 고빈도 경로(쿼터 카운터를
+        스냅샷에서 뺀 판단)에는 적용됐는데 무인증 경로에는 적용된 적이 없었다.
+
+        스냅샷을 디바운스하지 않는 이유: 그건 이 설계가 막으려던 손실 창을 다시
+        연다. 파일을 작게 유지하는 쪽이 안전하다."""
+        t = time.time() if now is None else now
         with self._lock:
+            self._purge_expired_locked(t)
             self._db.execute(
                 "INSERT OR REPLACE INTO clients(client_id,redirect_uris,name,created_at) "
                 "VALUES(?,?,?,?)",
-                (client_id, json.dumps(redirect_uris), name or "",
-                 time.time() if now is None else now))
+                (client_id, json.dumps(redirect_uris), name or "", t))
+            # 프루닝은 INSERT **뒤에** — 방금 등록한 클라이언트가 집계에 들어가고,
+            # created_at 이 가장 커서 살아남는다.
+            self._prune_clients_locked()
             self._db.commit()
             self._save_snapshot()
 
@@ -279,8 +303,16 @@ class Store:
 
     # ── tokens ────────────────────────────────────────────────────────────────
     def add_token(self, token: str, client_id: str, owner: str | None,
-                  plan: str | None, exp: float) -> None:
+                  plan: str | None, exp: float, now: float | None = None) -> None:
         with self._lock:
+            # 만료 토큰은 get_token 이 **읽힐 때만** 지운다 — 아무도 다시 안 부르는
+            # 토큰은 영영 남는다. 발급 시점이 그걸 쓸어 담기 좋은 자리다(같은 락,
+            # 같은 스냅샷 한 번). 커넥터가 고정된 허브는 재등록 없이 갱신만 도는데,
+            # 그 경우 표를 늘리는 경로가 바로 여기다.
+            # ⚠ **INSERT 앞에서** 지운다. 뒤에서 지우면 이미 만료된 exp 로 발급한
+            # 토큰을 방금 쓰고 곧바로 지워, 호출자에게는 쓰기가 조용히 실패한 것처럼
+            # 보인다.
+            self._purge_expired_locked(time.time() if now is None else now)
             self._db.execute(
                 "INSERT OR REPLACE INTO tokens(token,client_id,owner,plan,exp) VALUES(?,?,?,?,?)",
                 (token, client_id, owner, plan, exp))
@@ -432,15 +464,50 @@ class Store:
             return {"allowed": True, "limit": limit, "count": count,
                     "remaining": max(0, limit - count)}
 
-    # ── 유지보수(만료 청소, 선택) ──────────────────────────────────────────────
+    # ── 유지보수(만료 청소) ────────────────────────────────────────────────────
+    def _purge_expired_locked(self, t: float) -> int:
+        """만료 행을 지운다 — **락을 이미 쥔 채** 부르고, 커밋·스냅샷은 하지 않는다.
+
+        ⚠ `self._lock` 은 `threading.Lock` 이라 **재진입이 안 된다.** 쓰기 경로에서
+        공개 `purge_expired()` 를 그대로 부르면 자기 락을 기다리며 교착한다. 그래서
+        알맹이를 여기 떼어 두고 커밋·스냅샷은 부르는 쪽이 자기 것 한 번으로 겸한다
+        (안 그러면 쓰기 하나가 전체 파일 복사를 **두 번** 한다)."""
+        n = self._db.execute("DELETE FROM codes WHERE exp<?", (t,)).rowcount
+        n += self._db.execute("DELETE FROM tokens WHERE exp<?", (t,)).rowcount
+        n += self._db.execute(
+            "DELETE FROM connect_requests WHERE exp<? OR consumed=1", (t,)).rowcount
+        return n
+
+    def _prune_clients_locked(self) -> int:
+        """`clients` 를 :data:`MAX_CLIENTS` 로 묶는다(락 보유 전제, 커밋 안 함).
+
+        **살아 있는 커넥터는 지우지 않는다** — 토큰·리프레시·미소비 코드·승인요청
+        중 하나라도 그 `client_id` 를 참조하면 후보에서 뺀다. 남은 것 중 오래된
+        순으로 초과분만 지운다. 방금 INSERT 한 클라이언트는 `created_at` 이 가장
+        커서 살아남는다.
+
+        한계를 분명히: 상한이 **절대적이지 않다.** 모든 클라이언트가 유효 토큰을
+        들고 있으면 0건을 지우고 표는 상한을 넘는다. 그래도 막으려는 것은 정확히
+        막힌다 — 무인증 `/register` 로 들어온 등록은 정의상 토큰이 없어서 언제나
+        후보다. 인증된 커넥터가 수백 개 쌓이는 것은 다른 문제이고, 그때는 지우는
+        것이 답이 아니다."""
+        total = self._db.execute("SELECT count(*) FROM clients").fetchone()[0]
+        excess = int(total) - MAX_CLIENTS
+        if excess <= 0:
+            return 0
+        return self._db.execute(
+            "DELETE FROM clients WHERE client_id IN ("
+            "  SELECT client_id FROM clients"
+            "   WHERE client_id NOT IN (SELECT client_id FROM tokens)"
+            "     AND client_id NOT IN (SELECT client_id FROM refresh)"
+            "     AND client_id NOT IN (SELECT client_id FROM codes)"
+            "     AND client_id NOT IN (SELECT client_id FROM connect_requests)"
+            "   ORDER BY created_at ASC LIMIT ?)", (excess,)).rowcount
+
     def purge_expired(self, now: float | None = None) -> int:
         t = time.time() if now is None else now
         with self._lock:
-            cur = self._db.execute("DELETE FROM codes WHERE exp<?", (t,))
-            n = cur.rowcount
-            n += self._db.execute("DELETE FROM tokens WHERE exp<?", (t,)).rowcount
-            n += self._db.execute(
-                "DELETE FROM connect_requests WHERE exp<? OR consumed=1", (t,)).rowcount
+            n = self._purge_expired_locked(t)
             self._db.commit()
             self._save_snapshot()
         return n
