@@ -19,7 +19,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator } from "../lnb";
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
@@ -46,8 +46,20 @@ import { icon } from "../icons";
 // 그 위에 관점(3D·2D·타임라인·합계)이 얹힌다. Grid(도메인별 미니 카드)·Matrix
 // (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
 // 클릭이 유일한 진입점**이라 함께 내렸다. 되살리려면 새 진입점 설계가 선행된다.
-type Level = { kind: "l0" } | { kind: "l1"; domain: string }
+/** L1 은 **주제 하나가 아니라 목록**이다(2026-08-15). 고른 주제 몇 개를 한 화면에
+ *  놓는 것이 요구였고, 그건 강조가 아니라 **스코프**라 trail 이 쥔다 — 크럼에 뜨고
+ *  주소에 남아 공유·딥링크가 같은 그림을 연다(정본 §1 "스코프의 주인은 trail").
+ *  목록 하나짜리가 곧 예전의 L1 이므로 별도 층을 만들지 않았다. */
+type Level = { kind: "l0" } | { kind: "l1"; domains: string[] }
   | { kind: "l2"; seed: string; domain?: string; title?: string };
+
+/** 그 층이 걸고 있는 주제들. L2 는 씨앗의 주제 하나를 (있으면) 낸다. */
+const lvDomains = (lv: Level): string[] =>
+  lv.kind === "l1" ? lv.domains : lv.kind === "l2" && lv.domain ? [lv.domain] : [];
+/** 주제 **하나**만 받는 자리를 위한 대표값(공유 시트 · 드릴다운 · 기간 열기).
+ *  여럿을 고른 상태에서 그 자리들이 무엇을 뜻해야 하는지는 아직 답이 없다 —
+ *  첫 번째를 쓰고, 답이 생기면 여기 한 곳만 고치면 된다. */
+const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
 
 // Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
@@ -398,8 +410,8 @@ export async function renderView(el: HTMLElement) {
    *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실. */
   const shownViewpoint = (_lv: Level): Viewpoint | null => curPrefs().view;
   /** 평면 관점의 스코프는 오롯이 trail 에서 읽는다(관점은 스코프를 갖지 않는다). */
-  const scopeOf = (lv: Level): { seed?: string; domain?: string } =>
-    lv.kind === "l1" ? { domain: lv.domain }
+  const scopeOf = (lv: Level): { seed?: string; domain?: string; domains?: string[] } =>
+    lv.kind === "l1" ? { domains: lv.domains }
     : lv.kind === "l2" ? { seed: lv.seed, domain: lv.domain }
     : {};
   /** 딥링크(#view/trace/<id>)만 주제를 모른 채 들어온다 — 앱 안에서 미는 l2 는
@@ -414,8 +426,9 @@ export async function renderView(el: HTMLElement) {
     // 딥링크(#view/trace/<id>)는 주제를 거치지 않고 노드에 바로 앉는다. 주제를
     // 알게 된 순간 그 층을 트레일에 **끼워 넣어** 직접 링크로 온 사람도 같은
     // 뒤로가기(Esc 후퇴·공유 스코프)를 얻게 한다.
-    if (lv.domain && !trail.some((t) => t.kind === "l1" && t.domain === lv.domain))
-      trail.splice(trail.length - 1, 0, { kind: "l1", domain: lv.domain });
+    if (lv.domain && !trail.some((t) => t.kind === "l1"
+                                     && t.domains.length === 1 && t.domains[0] === lv.domain))
+      trail.splice(trail.length - 1, 0, { kind: "l1", domains: [lv.domain] });
     if (!lv.title && n?.label && n.label !== seed) lv.title = n.label;
     // 위치 표시는 좌측 트리가 한다(D69·D71 — 크럼 폐지). 씨앗의 주제를 이제야
     // 알았으므로 트리의 활성 표시도 여기서 따라가야 한다. 안 그러면 딥링크로
@@ -466,7 +479,7 @@ export async function renderView(el: HTMLElement) {
       + (latest ? cell(COPY.ui.viewx.mLatest, latest.slice(0, 10)) : "");
     const openOrphans = () => {
       const lv = trail[trail.length - 1];
-      void openDrilldown(lv.kind === "l1" ? lv.domain : "", "orphan",
+      void openDrilldown(lvDomain(lv), "orphan",
         lv.kind === "l2" ? lv.seed : undefined);
     };
     metricsBar.querySelector<HTMLElement>("[data-orphans]")?.addEventListener("click", openOrphans);
@@ -883,7 +896,7 @@ export async function renderView(el: HTMLElement) {
     const lv = trail[i];
     const enc = encodeURIComponent;
     const base =
-      lv.kind === "l1" ? `#view/${enc(lv.domain)}`
+      lv.kind === "l1" ? `#view/${lv.domains.map(enc).join(",")}`
       : lv.kind === "l2" ? `#view/trace/${enc(lv.seed)}`
       : "#view";
     history.replaceState(null, "", v === "3d" ? base : `${base}/as/${v}`);
@@ -897,16 +910,21 @@ export async function renderView(el: HTMLElement) {
    *  없었다 — 렌더러 세 곳이 `gateway` 를 읽는 코드를 가진 채 값을 못 받고 있었다
    *  (2026-08-15 실측). 같은 노드가 화면마다 다른 모양이면 형태에 뜻을 실은 것이
    *  무너지므로, 렌더러에 넘기는 자리마다 이 함수를 통과시킨다. */
-  const isGateway = (nd: { domain?: string; kind?: string }, lens?: string) =>
-    lens !== undefined && nd.domain !== lens && (nd.kind || "concept") !== "bridge";
+  /** 렌즈 안인가 — **하위 트리 포함**이다(api/query.domain_subtree_where 와 같은 규칙).
+   *  두 곳이 어긋나면 스코프가 들여보낸 노드를 화면이 "밖"이라 그린다. 접두에
+   *  슬래시를 붙이는 것까지 같다: `vinc` 가 `vincent` 를 삼키면 안 된다. */
+  const inLens = (dom: string | undefined, lens: string[]) =>
+    lens.some((d) => dom === d || (dom || "").startsWith(d.replace(/\/+$/, "") + "/"));
+  const isGateway = (nd: { domain?: string; kind?: string }, lens: string[]) =>
+    lens.length > 0 && !inLens(nd.domain, lens) && (nd.kind || "concept") !== "bridge";
 
-  function toN3(nodes: GraphNode[], lensDomain?: string, focusId?: string): N3[] {
+  function toN3(nodes: GraphNode[], lens: string[] = [], focusId?: string): N3[] {
     return nodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
       domain: nd.domain, degree: nd.degree,
       kind: nd.kind || "concept",
-      gateway: isGateway(nd, lensDomain),
+      gateway: isGateway(nd, lens),
       focus: focusId !== undefined && nd.id === focusId,
       x: nd.x, y: nd.y, z: nd.z,
     }));
@@ -940,14 +958,15 @@ export async function renderView(el: HTMLElement) {
    *
    *  세 층은 스코프만 다르고 나머지(적재·지표·게이트웨이 판정·올가미)가 완전히 같아
    *  한 함수로 접는다. 갈라 두면 셋 중 하나만 고치는 드리프트가 난다. */
-  async function showGraphScope(scope: { domain?: string; seed?: string }) {
-    const { domain, seed } = scope;
-    const whole = seed === undefined && !domain;
+  async function showGraphScope(scope: { domains?: string[]; seed?: string }) {
+    const { seed } = scope;
+    const domains = scope.domains || [];
+    const whole = seed === undefined && !domains.length;
     const p = curPrefs();
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -967,11 +986,11 @@ export async function renderView(el: HTMLElement) {
     curEdges = res.edges || [];
     curNodes = nodes;
     drawMetrics(nodes);
-    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domain, seed)), toL3(visibleEdges()), {
+    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domains, seed)), toL3(visibleEdges()), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
-        if (nd.gateway) { trail.push({ kind: "l1", domain: nd.domain! }); show(trail[trail.length - 1]); }
+        if (nd.gateway) { trail.push({ kind: "l1", domains: [nd.domain!] }); show(trail[trail.length - 1]); }
         else openDetail(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
@@ -1514,12 +1533,13 @@ export async function renderView(el: HTMLElement) {
     const p = curPrefs();
     // D69 — L0 도 그냥 전체 그래프다(구 주제 원 배치 폐지). 3D 경로와 같은 모집단을
     // 쓰므로 관점을 바꿔도 같은 것을 다르게 볼 뿐, 다른 것을 보게 되지 않는다.
-    const { seed, domain } = scopeOf(level);
-    const whole = seed === undefined && !domain;
+    const { seed } = scopeOf(level);
+    const domains = lvDomains(level);
+    const whole = seed === undefined && !domains.length;
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domain ? { domain } : {}), layout: p.layout });
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -1538,7 +1558,7 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     drawMetrics(gnodes);
-    g2 = mount2d(canvas, gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domain) })),
+    g2 = mount2d(canvas, gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) })),
       visibleEdges(), {
       seed,
       onClick: (nd) => openDetail(toN3([nd])[0]),
@@ -1548,7 +1568,7 @@ export async function renderView(el: HTMLElement) {
     }, p);
   }
 
-  const showL1 = (domain: string) => showGraphScope({ domain });
+  const showL1 = (domains: string[]) => showGraphScope({ domains });
   const showL2 = (seed: string) => showGraphScope({ seed });
 
   /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
@@ -1571,13 +1591,14 @@ export async function renderView(el: HTMLElement) {
    *  관점은 선택된 채로 두고(비활성·숨김 없음) 캔버스에 두 절짜리 빈 상태를 그린다. */
   async function showPlanar(level: Level) {
     const p = curPrefs();
-    const { seed, domain } = scopeOf(level);
+    const { seed } = scopeOf(level);
+    const domains = lvDomains(level);
     // 이미 그 주제만 보고 있으면 무동작 — L1 원장은 그 주제 한 줄뿐이라, 그 줄을
     // 누르면 같은 이름이 크럼에 한 칸씩 쌓였다(physics › physics › physics).
     const openTopic = (d: string) => {
       const lv = trail[trail.length - 1];
-      if (lv.kind === "l1" && lv.domain === d) return;
-      trail.push({ kind: "l1", domain: d }); show(trail[trail.length - 1]);
+      if (lv.kind === "l1" && lv.domains.length === 1 && lv.domains[0] === d) return;
+      trail.push({ kind: "l1", domains: [d] }); show(trail[trail.length - 1]);
     };
 
     // L0/L1/L2 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
@@ -1592,7 +1613,7 @@ export async function renderView(el: HTMLElement) {
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
     const res = seed !== undefined
       ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { domain, layout: p.layout });
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -1621,7 +1642,7 @@ export async function renderView(el: HTMLElement) {
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
       domain: nd.domain, ts: onContent ? (nd.content_ts || "") : nd.ts,
       kind: nd.kind || "concept",
-      gateway: isGateway(nd, domain),
+      gateway: isGateway(nd, domains),
       //: 주제 틴트(열린 층). 꺼져 있으면 undefined 라 CSS 의 잉크가 그대로 쓰인다.
       tint: planarTints?.get((nd.domain || "").trim()),
       // 기둥 타임라인의 점 크기 = 연결 수, 0 이면 속 빈 점(고아). 이미 실려 오는
@@ -1661,7 +1682,7 @@ export async function renderView(el: HTMLElement) {
       }
       // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈, L2(ego)는
       // 스코프가 여러 도메인이라 렌즈 없이(그 달 전체) 연다.
-      const periodDomain = level.kind === "l1" ? level.domain : undefined;
+      const periodDomain = level.kind === "l1" ? lvDomain(level) || undefined : undefined;
       // 밴드 클릭이 넘길 구간을 만들려면 차트와 **같은 알갱이**를 알아야 한다 —
       // 차트는 월, 목록은 연으로 세면 두 수가 어긋난다(D72).
       periodGrain = pickGrain(dated.map((n) => n.ts!));
@@ -1786,7 +1807,7 @@ export async function renderView(el: HTMLElement) {
     // 위치 표시는 좌측 트리 담당(D71 — 크럼 폐지). 지금 층의 주제를 넘겨 준다:
     // 씨앗 층은 fillSeedDomain 이 주제를 알게 된 뒤 한 번 더 갱신한다.
     const here = level;
-    setLnbActive(here.kind === "l1" ? { domain: here.domain }
+    setLnbActive(here.kind === "l1" ? { domains: here.domains }
       : here.kind === "l2" ? { domain: here.domain, nodeId: here.seed } : {});
     // U4 — 인앱 이동도 주소를 남긴다. 여태 관점 커밋에서만 동기화해, L2 까지 파고든
     // 뒤 새로고침하면 L1 로 튕기고 "지금 보는 곳"을 공유할 수도 없었다(화면은 L2 인데
@@ -1802,7 +1823,7 @@ export async function renderView(el: HTMLElement) {
       // D69 — L0 도 이제 그냥 그래프다(스코프 없는 `/graph`). 주제 표는 좌측 트리로,
       // 주제 이름 변경도 그 트리의 우클릭으로 옮겼다.
       else if (level.kind === "l0") await showGraphScope({});
-      else if (level.kind === "l1") await showL1(level.domain);
+      else if (level.kind === "l1") await showL1(level.domains);
       else await showL2(level.seed);
       // 씨앗 층 착지(검색 결과·딥링크·`여기서 추적`)는 전체 맞춤으로 끝나 있었다 —
       // "그 노드로 갔다"고 해 놓고 화면은 ego 전체를 담아, 정작 씨앗이 어느 점인지
@@ -1844,7 +1865,10 @@ export async function renderView(el: HTMLElement) {
   // `#view/compare/a/b` 는 프레임 폐기(2026-08-02)로 사라진 딥링크다. 옛 주소를
   // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
   if (deep === "trace" && parts[2]) trail.push({ kind: "l2", seed: parts[2] });
-  else if (deep && deep !== "as") trail.push({ kind: "l1", domain: deep });
+  // 주제 여럿은 쉼표로 잇는다(`#view/a,b`) — 주제 이름에 쉼표가 없다는 관례가 전제고,
+  // 백엔드의 `domains=a,b` 파라미터와 같은 문법이라 주소와 질의가 한 모양이다.
+  else if (deep && deep !== "as")
+    trail.push({ kind: "l1", domains: deep.split(",").map(decodeURIComponent).filter(Boolean) });
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라
   // 발견되지 않았고, 우클릭 메뉴는 아직 없다.
@@ -1852,7 +1876,7 @@ export async function renderView(el: HTMLElement) {
     share: () => {
       const lv = trail[trail.length - 1];
       if (lv.kind === "l2") openShareSheet({ seed: lv.seed, depth: 2 });
-      else if (lv.kind === "l1") openShareSheet({ domain: lv.domain });
+      else if (lv.kind === "l1") openShareSheet({ domain: lvDomain(lv) });
       else openShareSheet({});                      // L0·프레임 = 전체
     },
     openNode: (id) => void focusNode(id),
@@ -1860,6 +1884,22 @@ export async function renderView(el: HTMLElement) {
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
   setLnbNavigator((id, dom) => void focusNode(id, dom));
+  // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
+  // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
+  setLnbTopicPicker((path, add) => {
+    const lv = trail[trail.length - 1];
+    const cur = lv.kind === "l1" ? lv.domains : [];
+    // 이미 고른 것을 다시 누르면 **뺀다** — 더하는 길만 있고 빼는 길이 없으면
+    // 되돌리려고 홈까지 갔다 와야 한다.
+    const next = add
+      ? (cur.includes(path) ? cur.filter((d) => d !== path) : [...cur, path])
+      : (cur.length === 1 && cur[0] === path ? [] : [path]);
+    // 전부 빼면 그것은 L0(전체)다 — 빈 L1 은 "아무것도 안 보이는 주제 화면"이라
+    // 상태로서 뜻이 없다.
+    if (lv.kind === "l1") trail.pop();
+    if (next.length) trail.push({ kind: "l1", domains: next });
+    void show(trail[trail.length - 1]);
+  });
 
   await show(trail[trail.length - 1]);
   maybeCoach();

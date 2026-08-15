@@ -552,6 +552,34 @@ class ViewViewpointsBackend(unittest.TestCase):
         self.assertEqual(scoped["population"], 1)
         self.assertEqual([r["domain"] for r in scoped["rows"]], ["math"])
 
+    def test_graph_route_parses_comma_joined_topics(self):
+        """라우트 계약 — `/graph?domains=a,b` 가 쉼표 결합을 목록으로 풀어 넘긴다.
+
+        프런트(api.ts)가 만드는 문자열과 서버가 푸는 문법이 한 벌이어야 하는 이음매다.
+        여기가 어긋나면 스코프가 조용히 전체로 넓어진다 — 오류가 아니라 **더 많이
+        보이는** 고장이라 화면만 봐서는 안 걸린다."""
+        from api.server import VincApp
+
+        store = self._fresh_store()
+        with store.session() as s:
+            for cid, dom in (("p", "vinc"), ("q", "vinc/design"),
+                             ("z", "neo4j/storage"), ("w", "other")):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
+                      "n.owner_id='u', n.domain=$dom", id=cid, dom=dom)
+        app = VincApp(store=store)
+
+        def ids(params):
+            code, out = app.read_graph({"owner": "u", **params})
+            self.assertEqual(code, 200, out)
+            # 주제 마크(`domain:*` 초노드)는 배치가 얹는 것이라 모집단이 아니다.
+            return {n["id"] for n in out.get("nodes", []) if n["id"] in {"p", "q", "z", "w"}}
+
+        self.assertEqual(ids({"domains": "vinc"}), {"p", "q"})          # 하위 포함
+        self.assertEqual(ids({"domains": "vinc,neo4j/storage"}), {"p", "q", "z"})
+        self.assertEqual(ids({"domains": " vinc , , "}), {"p", "q"})    # 공백·빈 칸 정리
+        self.assertEqual(ids({}), {"p", "q", "z", "w"})                 # 미지정 = 전량
+        store.close()
+
     def test_ledger_route_forwards_seed_and_depth(self):
         """라우트 계약 — `/ledger` 가 seed·depth 를 전달한다(depth 는 문자열 파싱,
         `read_graph` 관례). seed 부재 시 기존 경로 그대로(scope="all")."""

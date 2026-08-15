@@ -235,8 +235,14 @@ export type NavTreeRes = {
 export const api = {
   health: () => call("/health"),
   viewL0: (owner: string) => call("/view", { owner }),
-  graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
-    call("/graph", { owner, ...opts }),
+  //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
+  //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).
+  graph: (owner: string, opts: { domain?: string; domains?: string[]; seed?: string;
+                                 depth?: number; layout?: string } = {}) => {
+    const { domains, ...rest } = opts;
+    return call("/graph", { owner, ...rest,
+                            ...(domains?.length ? { domains: domains.join(",") } : {}) });
+  },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),

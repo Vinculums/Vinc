@@ -22,15 +22,21 @@ import { icon } from "./icons";
 /** 트리는 그 문서가 **어느 주제 밑에 있는지 이미 안다** — 그 정보를 함께 넘긴다.
  *  받는 쪽(합계 뷰)은 개념 마크가 없어서 그래프 노드로는 주제를 되짚을 수 없다. */
 type Navigator = (nodeId: string, domain?: string) => void;
+/** 주제를 고른다. `add` 면 지금 고른 것에 **더한다**(Ctrl·⌘ 클릭).
+ *  화면이 즉시 따라간다 — 고르는 것과 보는 것이 어긋나는 중간 상태를 두지 않는다. */
+type TopicPicker = (path: string, add: boolean) => void;
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
 
 let navigate: Navigator | null = null;
+let pickTopic: TopicPicker | null = null;
 let tree: NavTreeRes | null = null;
 let loading = false;
 let failed = false;
 let active: { domain?: string; nodeId?: string } = {};
+/** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
+let picked = new Set<string>();
 let expanded = new Set<string>();
 let wired = false;
 
@@ -66,6 +72,8 @@ function saveExpanded() {
 }
 
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
+export function setLnbTopicPicker(fn: TopicPicker | null) { pickTopic = fn; }
+
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
 }
@@ -74,12 +82,16 @@ export function setLnbNavigator(fn: Navigator | null) {
 /** 뿌리 자동 펼침을 한 번만 하기 위한 표시(paint 안 주석 참조). */
 let autoExpanded = false;
 
-export function setLnbActive(sel: { domain?: string; nodeId?: string }) {
-  active = { ...sel };
-  if (sel.domain) {
+export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?: string }) {
+  // 주제는 이제 **여럿**일 수 있다(스코프가 목록이 됐다). 첫 번째를 대표로 두고
+  // 나머지는 선택 표시로만 쓴다 — 조상 펼치기는 대표 하나면 충분하다.
+  const doms = sel.domains?.length ? sel.domains : sel.domain ? [sel.domain] : [];
+  active = { ...sel, domain: doms[0] };
+  picked = new Set(doms);
+  if (doms[0]) {
     // 지금 있는 주제는 접혀 있으면 안 된다 — 그리고 중첩이 생겼으므로 **조상까지**
     // 함께 편다. 자기만 펴면 부모가 닫힌 채라 화면에 나타나지 않는다.
-    const segs = sel.domain.split("/").filter(Boolean);
+    const segs = doms[0].split("/").filter(Boolean);
     let grew = false;
     segs.forEach((_s, i) => {
       const path = segs.slice(0, i + 1).join("/");
@@ -175,7 +187,7 @@ const subConcepts = (n: DomNode): number =>
 
 function groupRows(n: DomNode, level = 1): string {
   const open = expanded.has(n.path);
-  const on = active.domain === n.path;
+  const on = picked.has(n.path);
   // 주제 행도 treeitem 이다(여태 role 이 없어 트리에서 빠져 있었다). 그리고 자식
   // group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 — 형제로 두면 보조기술이
   // 계층으로 읽지 않는다.
@@ -297,6 +309,14 @@ export function mountLnb() {
     const group = t.closest<HTMLElement>(".lnb-group");
     if (group) {
       const key = group.dataset.group ?? "";
+      // 캐럿은 **접고 펴기**, 이름은 **주제 고르기**다. 여태 어디를 눌러도 접고
+      // 펴기뿐이라, 주제 트리가 지도를 좁힐 것처럼 생겨서는 아무것도 안 했다.
+      // 미분류 묶음(빈 key)은 실재하는 주제가 아니라 고를 수 없다 — 접고 펴기만.
+      const onCaret = !!t.closest(".lnb-caret");
+      if (!onCaret && key && pickTopic) {
+        pickTopic(key, e.ctrlKey || e.metaKey);
+        return;
+      }
       if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
       saveExpanded();
       paint();
