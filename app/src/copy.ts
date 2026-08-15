@@ -337,8 +337,12 @@ const EN = {
     viewx: {
       grid: "Grid", matrix: "Matrix", traceCta: "Trace from here", shareCta: "Share",
       timeline: "Timeline",
-      // 방사형 계층 번들(Sankey 대체). 둘레에 모든 항목, 가운데로 이어진 것만 선.
-      bundle: "Bundle",
+      // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
+      // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
+      // 이름이라 독자가 보는 것을 말하지 않았고, 차트 장르 이름은 화면에서 배제한다.
+      // 한국어 "번들" 은 사실상 묶음 상품이라 더 멀었다. 둘레에 모든 항목, 가운데로
+      // 이어진 것만 선 — 그 엮임이 이름이 됐다.
+      bundle: "Weave",
       bundleUnfiled: "(unfiled)",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
@@ -447,7 +451,7 @@ const EN = {
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "Timeline and Bundle are under Viewpoint.",
+      viewpointsHint: "Timeline and Weave are under Viewpoint.",
       soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
@@ -958,7 +962,7 @@ const KO: Deck = {
     viewx: {
       grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적", shareCta: "공유",
       timeline: "타임라인",
-      bundle: "번들",
+      bundle: "짜임",
       bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
@@ -1062,7 +1066,7 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "타임라인 · 번들은 관점 전환 안에 있습니다.",
+      viewpointsHint: "타임라인 · 짜임은 관점 전환 안에 있습니다.",
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
