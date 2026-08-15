@@ -4,7 +4,7 @@ import { header } from "../components";
 import { stateDot } from "../icons";
 import { renderBrowse } from "./records";
 
-/** Surface 4 — Search (spec: vinc.d.atlas-visual-language §4, DEC D24).
+/** Surface 4 — Search (spec: vinc.d.view-visual-language §4, DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
  *  domain; match notation ≡ (keyword arm) / ≈ (semantic arm) shows *why* a row
  *  matched — scores stay in the tooltip. */
@@ -102,7 +102,7 @@ export function renderSearch(el: HTMLElement) {
         : "";
       if (rows.length === 0) {
         body.innerHTML = `${migBadge}<div class="empty"><p>${COPY.search.empty(raw)}</p>
-          <a class="btn" href="#atlas">${COPY.search.emptyCta}</a></div>`;
+          <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`;
         return;
       }
       // 도메인별 그루핑(D24) — 단일 도메인 필터 시 플랫
@@ -118,7 +118,7 @@ export function renderSearch(el: HTMLElement) {
         const marks = (r.arms || []).map((a: string) => MARK[a] || "").join("");
         const score = r.rrf_score ? ` data-tip="RRF ${r.rrf_score.toFixed(4)}"` : "";
         // 착지 대상 — 노드 히트는 그 노드로, 청크 히트는 그 청크가 언급하는 개념이
-        // 없으므로 문서 자체로 보낸다(현재는 노드 히트만 Atlas 착지가 성립한다).
+        // 없으므로 문서 자체로 보낸다(현재는 노드 히트만 View 착지가 성립한다).
         const target = r._node ? String(r.id || "") : "";
         // 왜 맞았는지를 한 줄 더 보여준다(D24 §4.2) — 제목만으로는 고를 수 없다.
         const snip = r.one_liner || r.snippet || r.text || r.section_title || "";
@@ -139,12 +139,12 @@ export function renderSearch(el: HTMLElement) {
         [...groups.entries()].map(([d, rs]) =>
           (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +
           rs.map(row).join("")).join("");
-      // V2 — 여태 이 버튼은 `location.hash='#atlas'` 였다: 찾은 노드가 아니라 L0
+      // V2 — 여태 이 버튼은 `location.hash='#view'` 였다: 찾은 노드가 아니라 L0
       // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
       // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.
       body.querySelectorAll<HTMLElement>("[data-go]").forEach((r) =>
         r.addEventListener("click", () => {
-          location.hash = `#atlas/trace/${encodeURIComponent(r.dataset.go!)}`;
+          location.hash = `#view/trace/${encodeURIComponent(r.dataset.go!)}`;
         }));
     } catch {
       body.innerHTML = `<div class="error-banner">${COPY.search.error}</div>`;

@@ -553,6 +553,30 @@ class DocstoreE2E(unittest.TestCase):
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
 
+    def test_node_context_projects_record_note(self):
+        # no-llm-chat 연구 §3.3/§9 — Record ATTACHES_TO 부착은 id/title/domain 만
+        # 주고 카드 본문(note)을 버렸다(I6 미개통 원인). note 우선, 없으면 one_liner.
+        import json
+        from api import query as q
+        self.store.run("MERGE (c:Concept {concept_id:'concept:x'}) "
+                       "SET c.title='X', c.owner_id='user:a'")
+        self.store.run(
+            "MERGE (r:Record {record_id:'rec:1'}) "
+            "SET r.title='카드1', r.owner_id='user:a', r.props=$p",
+            {"p": json.dumps({"note": "이건 주의할 점이다."}, ensure_ascii=False)})
+        self.store.run(
+            "MERGE (r:Record {record_id:'rec:2'}) "
+            "SET r.title='카드2', r.owner_id='user:a', r.props=$p",
+            {"p": json.dumps({"one_liner": "one_liner 로만 실린 경우."}, ensure_ascii=False)})
+        for rid in ("rec:1", "rec:2"):
+            self.store.run(
+                "MATCH (r:Record {record_id:$r}), (c:Concept {concept_id:'concept:x'}) "
+                "MERGE (r)-[:ATTACHES_TO]->(c)", {"r": rid})
+        ctx = q.node_context(owner="user:a", node="concept:x", store=self.store)
+        notes = {i["id"]: i["note"] for i in ctx["links"]["items"] if i["type"] == "ATTACHES_TO"}
+        self.assertEqual(notes["rec:1"], "이건 주의할 점이다.")
+        self.assertEqual(notes["rec:2"], "one_liner 로만 실린 경우.")
+
     def test_ledger_drilldown_matches_aggregate(self):
         # D45-V2 3단계 — 드릴다운 개념 목록 수 == 원장 셀 값(공유 분류 보장).
         from api import query as q

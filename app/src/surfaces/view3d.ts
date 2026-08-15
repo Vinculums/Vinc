@@ -1,6 +1,6 @@
-/** Atlas 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
+/** View 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
  *
- *  Monochrome 3D discipline (spec: vinc.d.atlas-visual-language §1.1):
+ *  Monochrome 3D discipline (spec: vinc.d.view-visual-language §1.1):
  *  depth comes from shading and atmosphere, never hue — matte ink Lambert
  *  materials (ink/ink_soft/ink_mute), paper background + fog, one neutral
  *  directional light. The single point color marks "the current focus" only.
@@ -11,27 +11,50 @@
  *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
-import { loadPrefs, type AtlasPrefs } from "../atlas-prefs";
-import { palette as signal, atlasScene, type ThemeMode } from "../theme";
+import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
+import { palette as signal, viewScene, type ThemeMode } from "../theme";
+import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
+
+/** 입자 흐름(2026-08-14) — 선을 지우고 그 궤적 위로 **입자만** 흘린다.
+ *
+ *  헤어볼의 정체는 관계가 아니라 교차하는 **선**이다. 선을 지우면 교차가 안 쌓이고,
+ *  흐르는 방향이 곧 엣지 방향이라 화살촉 없이도 방향이 읽힌다.
+ *
+ *  급소 둘(둘 다 실측으로 확인한 라이브러리 계약이다):
+ *   ① `linkVisibility(false)` 로 선을 끄면 **입자도 함께 사라진다** — three-forcegraph 는
+ *      photon 을 `visibleLinks` 위에서만 digest 한다. 그래서 선은 **색의 알파**로 지운다:
+ *      선 재질의 불투명도는 `linkOpacity × colorAlpha(color)` 인데 입자는
+ *      `linkOpacity × 3` 이라 색 알파를 안 탄다. 알파 0 이 선만 지우고 입자는 남긴다.
+ *   ② 입자는 source→target 으로만 흐른다. 그래서 **방향 3종에만** 단다 —
+ *      무방향(RELATED_TO·CONNECTS)에 달면 없는 방향을 있다고 말하게 된다. */
+const ALPHA0 = "00";                      // #RRGGBB + 알파 → tinycolor 가 8자리 hex 로 읽는다
+const PARTICLES_PER_LINK = 2;
+const PARTICLE_SPEED = 0.006;             // 링크 길이 대비 프레임당 이동분
+const PARTICLE_WIDTH = 1.1;
+const isDirectedLink = (l: { type?: string }) => DIRECTED_RELS.includes(l.type || "");
 
 /** Signal 팔레트 — 토큰과 같은 원천(Vinc-design 허브 gen_theme_ts 생성물).
  *  다크(기본) = Deep Signal: 딥 차콜 위 페리윙클 포커스. 라이트 = 그레인+잉크.
  *  themePalette()가 유일한 런타임 seam — 하드코딩 hex 금지. */
 type Palette = {
-  ink: number; inkMute: number; point: number; fog: number;
+  ink: number; inkMute: number; point: number; fog: number; primary: number;
   link: { heavy: string; mid: string; base: string; cross: string; fade: string };
   label: string;
 };
+const themeMode = (): ThemeMode =>
+  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 function themePalette(): Palette {
-  const mode: ThemeMode =
-    document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const mode = themeMode();
   const p = signal[mode];
   return {
-    ink: p.text, inkMute: p.textMute,
-    point: mode === "dark" ? p.ring : p.primary,   // 다크는 페리윙클(가시성), 라이트는 로고 인디고
+    ink: p.text, inkMute: p.textMute, primary: p.primary,
+    // 초점색은 이제 **토큰**이다(`semantic.*.focus`). 값은 그대로(다크 페리윙클 ·
+    // 라이트 로고 인디고)지만, 여기서 모드 분기를 손으로 쓰던 동안 같은 초점이
+    // 타임라인에서는 `--ring`(양 모드 페리윙클)이라 라이트에서 두 색이었다.
+    point: p.focus,
     fog: p.background,
     link: p.linkRamp, label: p.labelCss,
   };
@@ -67,62 +90,69 @@ export type L3 = { source: string; target: string; type?: string; cross?: boolea
 const NODE_OP = 0.72;   // 일반 노드 프로스트
 const GATE_OP = 0.35;   // 게이트웨이 — 더 투명("여기 소속 아님")
 
-function material(color: number, opacity = 1): THREE.Material {
-  return new THREE.MeshLambertMaterial({ color, transparent: true, opacity });
+/** 발광 패널 4장 + PMREM — 이미지 없이 굽는 스튜디오 환경(시안 §3, 외부 요청 0).
+ *  반무광 재질의 clearcoat·sheen 이 반사할 것이 있어야 조형이 판재로 읽힌다. */
+let _envTex: THREE.Texture | null = null;
+function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette): THREE.Texture {
+  if (_envTex) return _envTex;
+  const sc = new THREE.Scene();
+  const panel = (w: number, h: number, d: number, color: number, k: number,
+                 pos: [number, number, number], rot?: [number, number, number]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) }));
+    m.position.set(...pos); if (rot) m.rotation.set(...rot); sc.add(m);
+  };
+  panel(12, 12, .1, pal.point, 3.2, [0, 6.5, -3], [Math.PI / 2.6, 0, 0]);
+  panel(9, 9, .1, 0xFFFFFF, 1.5, [-6, 2, 4], [0, Math.PI / 2.4, 0]);
+  panel(9, 9, .1, pal.ink, 1.1, [6.5, 1, 3], [0, -Math.PI / 2.4, 0]);
+  panel(16, .1, 16, pal.fog, 2.6, [0, -2.6, 0]);
+  panel(10, 10, .1, 0xFFFFFF, .55, [0, -1.2, 5], [Math.PI / 2.6, 0, 0]);
+  const pm = new THREE.PMREMGenerator(renderer);
+  pm.compileEquirectangularShader();
+  _envTex = pm.fromScene(sc, .04).texture;
+  pm.dispose();
+  return _envTex;
 }
 
-// ── 성좌 글로우(Figma 92:211, 토큰=theme.ts atlasScene) — 깊이 계층별 헤일로.
-//    다크(박물관 다크뷰) 전용: focus 글로우 최대 → near → mid(링) → far 페이드.
-//    계층 = 초점(seed)으로부터의 홉 거리(초점 없는 층은 허브도 degree 근사). ──
+/** 앱 재질 = 시안 §3 의 **반무광 한 벌**(유광은 히어로 전용).
+ *
+ *  D77 이 은퇴시킨 MeshPhysical 을 되살린다 — 발주자 결정 2026-08-15. D77 의 근거는
+ *  "다크에서 글로우 분기가 MeshBasic 으로 조기 반환해 물성이 애초에 렌더되지
+ *  않는다"였는데, 같은 결정으로 **그 글로우 분기 자체가 사라졌다.** 근거가 없어졌으니
+ *  판정도 뒤집힌다. 환경맵도 같은 이유로 함께 돌아온다. */
+function skinFor(pal: Palette, kind: "body" | "core" | "shell", focus: boolean,
+                 tint?: string | null): THREE.Material {
+  // 기본 잉크는 **`ink`** 다. 여기가 `primary`(인디고) 이던 동안 3D 본체만 다른
+  // 잉크를 썼고, 다크에서는 알베도 대비가 APCA Lc 9.6 이었다 — 이 리포가 스스로
+  // 적어 둔 불가시 하한(Lc 16)보다 낮다. 조명이 얹혀 겨우 보이던 것이지 색이
+  // 보이던 것이 아니다. 2D · 타임라인 · 번들 셋이 이미 쓰던 값으로 맞춘다.
+  //
+  // 코어(Domain 속)도 잉크다. 초점색이던 자리인데, 초점색은 "지금 초점" 하나만
+  // 뜻하고 타입에는 안 쓴다(정본 §2.5). 초점은 보색이 아니라 초점 토큰이다.
+  // 주제 틴트(열린 층)는 **초점이 아닐 때만** 얹는다 — 초점색은 "지금 초점" 하나만
+  // 뜻하므로 주제가 덮으면 안 된다.
+  const base = focus ? pal.point : tint ? parseInt(tint.slice(1), 16) : pal.ink;
+  const m = new THREE.MeshPhysicalMaterial({
+    color: base, roughness: kind === "shell" ? .20 : .52, metalness: .08,
+    clearcoat: .25, clearcoatRoughness: .3,
+    sheen: .2, sheenColor: new THREE.Color(pal.point), sheenRoughness: .6,
+    envMapIntensity: .85, transparent: true, opacity: 1,
+  });
+  if (kind === "core") { m.emissive = new THREE.Color(base); m.emissiveIntensity = .3; }
+  if (kind === "shell") { m.opacity = .28; m.depthWrite = false; }
+  m.userData.base = m.opacity;
+  return m;
+}
+
+//: 초점으로부터의 홉 거리 계층. 조형에는 더 이상 안 쓰이지만 계산은 남는다(아래).
 type Tier = "focus" | "near" | "mid" | "far";
-let _glowTex: THREE.Texture | null = null;
-function glowTexture(): THREE.Texture {
-  if (_glowTex) return _glowTex;
-  const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
-  const ctx = cv.getContext("2d")!;
-  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.22, "rgba(255,255,255,0.55)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
-  _glowTex = new THREE.CanvasTexture(cv);
-  return _glowTex;
-}
-//: 링 텍스처에서 획 두께가 차지하는 비율. 구 토러스(반경 r·1.3 + 튜브 0.12r)와
-//: 같은 인상이 되도록 맞췄다 — 0.24r(획) / 2.84r(지름) ≈ 0.085.
-const RING_STROKE_FRAC = 0.085;
-let _ringTex: THREE.Texture | null = null;
-function ringTexture(): THREE.Texture {
-  if (_ringTex) return _ringTex;
-  const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
-  const ctx = cv.getContext("2d")!;
-  // ds-allow: 스프라이트 텍스처의 틴트 베이스. SpriteMaterial 의 color 가 이 위에
-  // 곱해지므로 흰색은 디자인 색이 아니라 곱셈의 항등원이다(색은 팔레트가 정한다).
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = RING_STROKE_FRAC * s;
-  ctx.beginPath();
-  ctx.arc(s / 2, s / 2, s / 2 - ctx.lineWidth / 2 - 1, 0, Math.PI * 2);
-  ctx.stroke();
-  _ringTex = new THREE.CanvasTexture(cv);
-  return _ringTex;
-}
-/** 가시성 링 — **빌보드 스프라이트**라 시선 각도와 무관하게 항상 원으로 보인다.
- *  구현이 토러스였을 때는 시선에 따라 납작해져(오블리크 기본 카메라에서 타원,
- *  정측면에서 선) 가시성이 각도에 좌우됐다 — 신호로 쓸 수 없는 성질이다. */
-function ringSprite(color: number, size: number, opacity = 0.95): THREE.Sprite {
-  const mat = new THREE.SpriteMaterial({ map: ringTexture(), color, transparent: true,
-    opacity, depthWrite: false });
-  mat.userData.base = opacity;
-  const sp = new THREE.Sprite(mat); sp.scale.set(size, size, 1);
-  return sp;
-}
-function glowSprite(color: number, size: number, opacity: number): THREE.Sprite {
-  const mat = new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true,
-    opacity, depthWrite: false, blending: THREE.AdditiveBlending });
-  mat.userData.base = opacity;
-  const sp = new THREE.Sprite(mat); sp.scale.set(size, size, 1);
-  return sp;
-}
+
+// 성좌 글로우와 가시성 링은 **폐기됐다**(발주자 지시 2026-08-15). 강조는 빛이 아니라
+// 색 하나로 한다 — 그래서 글로우 텍스처·링 스프라이트·최소 두께 보정이 함께 사라졌다.
+// (그 색은 한때 초점색의 **보색**이었다. 같은 날 뒤에 초점색을 전 뷰 한 벌로 모으기로
+// 하면서 보색 유도는 폐기됐다 — 초점이 뷰마다 다른 색이던 것이 고치려던 문제였다.)
+// 계층(assignTiers 의 __tier)은 남는다: 조형에는 안 쓰지만 초점으로부터의 홉 거리
+// 자체는 다른 곳이 읽는다.
 function assignTiers(nodes: N3[], links: L3[]) {
   const idOf = (x: any) => (typeof x === "object" ? x.id : x);
   const nbr = new Map<string, Set<string>>();
@@ -149,7 +179,7 @@ function assignTiers(nodes: N3[], links: L3[]) {
     }
   } else {   // 초점 없는 뷰(L0/L1) — 허브도(degree)로 깊이(성좌감 유지, 고아만 far)
     // 절대 문턱(구 `deg >= 8`)은 그래프마다 안 맞는다. 실측(개념 162 그래프): 허브라
-    // 부를 만한 `concept:atlas` 조차 degree 4 라 near 에 못 들었고, DEC·에피소드·
+    // 부를 만한 `concept:view` 조차 degree 4 라 near 에 못 들었고, DEC·에피소드·
     // 레코드 대다수가 degree 1 이라 far 로 몰렸다. 분위수로 잡으면 그래프 규모와
     // 무관하게 "상위가 near" 가 된다 — 정렬만 하므로 결정론(D17)은 그대로다.
     const degs = nodes.map((n) => n.degree || 0).sort((a, b) => a - b);
@@ -192,7 +222,7 @@ function labelSprite(text: string, pal: Palette): THREE.Sprite {
 }
 
 /** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
-function nodeRadius(n: N3, prefs: AtlasPrefs): number {
+function nodeRadius(n: N3, prefs: ViewPrefs): number {
   // D31 열린 층 — 크기 스케일만 사용자 선택(√연결수 ↔ 균일); 형태=타입은 닫힌 층.
   let r = n.kind === "domain"
     ? 6 + 2.2 * Math.sqrt(n.records || 1)
@@ -206,66 +236,75 @@ function nodeRadius(n: N3, prefs: AtlasPrefs): number {
   return r * (prefs.nodeScale ?? 1);
 }
 
-function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glow = false): THREE.Object3D {
-  const dark = document.documentElement.dataset.theme === "dark";
+/** 조형 = 노드종(D35 개정 — 정본은 디자인 시안 `Vinc Node Kit 3D`, 2026-08-15).
+ *
+ *  바뀐 것은 셋이다.
+ *   · 문서류(episode·record·entity)가 정육각기둥 → **정사면체**. 같은 r 에서 화면
+ *     점유가 구의 54% 라 더 작게 읽히고, Bridge(정팔면체)와는 면 수 4:8 · 실루엣
+ *     삼각:마름모로 갈려 회전 중에도 안 헷갈린다
+ *   · Domain 이 구+적도링 → **겹껍질**(외피 이코사 1.18r + 코어 .52r). 담는 그릇이
+ *     라는 뜻을 형태가 직접 말한다. 링을 뗀 자리는 코어가 크기를 읽히게 한다
+ *   · Gateway 가 반투명 채움 → **윤곽선**. 면이 없다 = 실체가 없다. 겹칠 때 배후를
+ *     가리지 않는 것이 부수 효과가 아니라 이 형태를 고른 이유다
+ *
+ *  ⚠ 시안의 재질표(MeshPhysical 반무광 + PMREM 발광패널 환경)는 **적용하지 않았다**.
+ *  그건 D77 이 실측으로 은퇴시킨 것을 되살리는 결정이라 조형 변경과 같은 무게가
+ *  아니다. 시안 자신도 "tier fill·glowOpacity 는 조형과 무관하다"고 적어 두었다. */
+function kindGeometry(kind: string | undefined, r: number): THREE.BufferGeometry {
+  switch (kind) {
+    case "concept": case "decision": case "domain":
+      return new THREE.SphereGeometry(r, 20, 14);
+    case "bridge":
+      return new THREE.OctahedronGeometry(r * 1.06);
+    default:
+      return new THREE.TetrahedronGeometry(r * 1.22);
+  }
+}
+//: 정사면체의 고정 자세. 앱 노드는 자전하지 않으므로 이 각도가 곧 실루엣이다 —
+//: face·view dot 0.76 / 0.21 로 두 면의 음영이 갈려 입체로 읽힌다(시안 §2).
+const DOC_ROT: [number, number, number] = [-0.5, 0.6, 0.2];
+
+/** Gateway = 자기 종의 **윤곽선**. 구는 에지가 격자로 뭉개지므로 이코사 detail 1 로
+ *  대체한다(시안 §2). 색은 팔레트의 mute — 하드코딩 hex 금지(게이트가 잡는다). */
+function gatewayWire(kind: string | undefined, r: number, pal: Palette): THREE.LineSegments {
+  const src = (kind === "concept" || kind === "decision" || kind === "domain")
+    ? new THREE.IcosahedronGeometry(r, 1) : kindGeometry(kind, r);
+  const mat = new THREE.LineBasicMaterial({ color: pal.inkMute, transparent: true, opacity: 0.5 });
+  mat.userData.base = 0.5;
+  const seg = new THREE.LineSegments(new THREE.EdgesGeometry(src), mat);
+  if (kind !== "concept" && kind !== "decision" && kind !== "domain" && kind !== "bridge")
+    seg.rotation.set(...DOC_ROT);
+  if (kind === "bridge") seg.rotation.y = 0.5;
+  return seg;
+}
+
+/** Domain 겹껍질 — 외피(반투명, depthWrite 끔)와 코어. `skin` 이 두 재질을 만든다.
+ *  외피가 depthWrite 를 쓰면 그 안의 코어와 뒤 노드가 함께 지워진다. */
+function domainShell(r: number, skin: (o: number) => THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const shellMat = skin(0.28);
+  (shellMat as any).depthWrite = false;
+  g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(r * 1.18, 3), shellMat));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 0.52, 24, 16), skin(1)));
+  return g;
+}
+
+function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette(),
+                    _glow = false): THREE.Object3D {
   const r = nodeRadius(n, prefs);
-  let geo: THREE.BufferGeometry;
-  switch (n.kind) {
-    case "domain":   // 구 + 적도 링(D35 개정 — 이중육각 계보는 기록물로 이관)
-    case "concept":  // 구 — 최다 노드종에 최소 잉크 형태(시각 비대 완화, D35)
-      geo = new THREE.SphereGeometry(r, 20, 14); break;
-    case "bridge":   // 정팔면체(마름모의 입체화)
-      geo = new THREE.OctahedronGeometry(r); break;
-    default: {       // episode/record/entity — 작은 정육각기둥(변 = 높이, D35).
-      const s = r * 0.75;
-      geo = new THREE.CylinderGeometry(s, s, s, 6); break;
-    }
-  }
-
-  // ── 성좌 글로우(Figma 92:211) — 다크 전용, domain 제외. 계층 fill + 링 + 헤일로. ──
-  if (dark && glow && n.kind !== "domain") {
-    const tier = ((n as any).__tier || "near") as Tier;
-    const spec: any = atlasScene.node[tier];
-    const stroke: number | undefined = spec.stroke;
-    const fill = n.gateway ? pal.inkMute : (n.focus ? atlasScene.node.focus.fill : spec.fill);
-    const baseOp = n.gateway ? GATE_OP : 1;
-    const mat = new THREE.MeshBasicMaterial({ color: fill, transparent: true, opacity: baseOp });
-    mat.userData.base = baseOp;
-    const mesh = new THREE.Mesh(geo, mat);
-    if (stroke !== undefined) {   // mid/far — 링(stroke 색)으로 어두운 fill 을 가시화
-      // mid/far 는 fill 이 거의 배경색이라 **가시성 전부를 이 링이 진다**(연구 C2 정정).
-      // 그래서 링에는 두 가지 보정이 붙는다: ① 축소해도 화면상 최소 두께를 지킨다
-      // (월드 단위 두께는 서브픽셀로 사라진다 — syncCamera 가 baseTube 로 계산)
-      // ② 스프라이트라 시선 각도와 무관하다(구 토러스는 각도에 따라 납작해졌다).
-      const tube = Math.max(r * 0.12, 0.4);
-      const size = 2 * (r * 1.3 + tube);
-      const ring = ringSprite(stroke, size);
-      ring.userData.baseTube = tube;
-      ring.userData.baseSize = size;
-      mesh.add(ring);
-    }
-    const glowColor = stroke ?? spec.fill;
-    const k = tier === "focus" ? 6 : tier === "near" ? 4.5 : tier === "mid" ? 3.5 : 3;
-    mesh.add(glowSprite(glowColor, r * k, spec.glowOpacity));
-    if (prefs.view === "2d" && n.kind !== "concept" && n.kind !== "bridge") mesh.rotation.x = Math.PI / 2;
-    return mesh;
-  }
-
-  // ── 기본(라이트 or 글로우 미적용: 미니 그리드) — 글래스 잉크(D40). ──
-  const opacity = n.gateway ? GATE_OP : NODE_OP;
-  const color = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
-  const mat = material(color, opacity);
-  mat.userData.base = opacity;
-  const mesh = new THREE.Mesh(geo, mat);
-  if (n.kind === "domain") {
-    const ringMat = material(pal.inkMute, 0.85); ringMat.userData.base = 0.85;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, r * 0.06, 8, 24), ringMat);
-    if (prefs.view !== "2d") ring.rotation.x = Math.PI / 2;
-    mesh.add(ring);
-  }
-  // 2D 모드: 기둥류(기록물)를 카메라 쪽으로 눕혀 육각 "면"이 정면을 보게(D31 §1.5).
-  if (prefs.view === "2d" && n.kind !== "domain" && n.kind !== "concept" && n.kind !== "bridge")
-    mesh.rotation.x = Math.PI / 2;
+  //: 주제 틴트 — 꺼져 있으면(기본) undefined 라 잉크 그대로다. 표는 마운트가 만들어
+  //: 노드에 실어 준다(`__tint`): 노드마다 전체 주제 목록을 다시 훑을 수 없기 때문이다.
+  const tint = prefs.domainTint ? (n as { __tint?: string }).__tint : undefined;
+  //: 강조는 **보색 하나**로 한다(발주자 지시 2026-08-15). 빛나는 형태 — 글로우
+  //: 스프라이트와 가시성 링 — 은 전부 폐기됐다. D75·D76 이 링에 지웠던 짐(먼
+  //: 거리에서의 가시성)은 이제 재질과 환경맵이 진다. 계층(__tier)은 조형에
+  //: 관여하지 않는다. 갈래가 하나로 줄어든 것이 이 변경의 부수 이득이다.
+  if (n.gateway) return gatewayWire(n.kind, r, pal);
+  if (n.kind === "domain")
+    return domainShell(r, (o) => skinFor(pal, o < 1 ? "shell" : "core", !!n.focus, tint));
+  const mesh = new THREE.Mesh(kindGeometry(n.kind, r), skinFor(pal, "body", !!n.focus, tint));
+  if (n.kind === "bridge") mesh.rotation.y = 0.5;
+  else if (n.kind !== "concept" && n.kind !== "decision") mesh.rotation.set(...DOC_ROT);
   return mesh;
 }
 
@@ -277,7 +316,7 @@ function nodeObject(n: N3, prefs: AtlasPrefs, pal: Palette = themePalette(), glo
  *
  *  클릭 핸들러 안에 있던 것을 D70 에서 꺼냈다 — 좌측 트리·검색 착지도 같은 비행을
  *  써야 하는데, 안에 있으면 수식이 두 벌이 된다. */
-export function flyTo3d(g: any, n: any, prefs: AtlasPrefs, ms = 700) {
+export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
   if (!n) return;
   const flat = prefs.view === "2d";
   const d = Math.max(70, nodeRadius(n, prefs) * 9);
@@ -293,7 +332,7 @@ export function findNode3d(g: any, id: string): any {
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
-}, prefs: AtlasPrefs = loadPrefs()): ForceGraph3DInstance {
+}, prefs: ViewPrefs = loadPrefs()): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
   const S = SCALE * prefs.spread;
   for (const n of nodes) {   // pin deterministic sidecar coords (D17)
@@ -315,10 +354,23 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
   const pal = themePalette();
+  // 입자는 **상시 애니메이션**이다. 모션 감도를 밝힌 사용자에게는 켜지 않고 선으로
+  // 되돌린다 — 이 모드의 이득(덜 붐빔)이 그 비용을 정당화하지 못하는 유일한 경우다.
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const particlesOn = prefs.edges === "particles" && !reduceMotion;
+  //: Bring & Go — 선을 안 그리고 짚으면 이웃을 데려온다(아래 planFly3d).
+  const bringOn = prefs.edges === "bring";
   // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
     .slice(0, 8).filter((n) => (n.degree || 0) > 0).map((n) => n.id));
+  // 주제 틴트(열린 층) — 마운트당 한 번 표를 만들어 노드에 실어 둔다. 각도가
+  // 화면에 있는 주제들 위에서 배정되므로(view-tint.ts) 노드 하나만 보고는
+  // 계산할 수 없다.
+  if (prefs.domainTint) {
+    const tints = tintMap(nodes.map((n) => n.domain), themeMode());
+    for (const n of nodes) (n as { __tint?: string }).__tint = tints.get((n.domain || "").trim());
+  }
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
@@ -348,8 +400,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .linkOpacity(0.85)
     .linkCurvature(0.18)
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
-    .linkDirectionalArrowLength((l: any) => prefs.arrows &&
-      ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(l.type || "") ? 2.6 : 0)
+    .linkDirectionalArrowLength((l: any) =>
+      prefs.arrows && !particlesOn && !bringOn && isDirectedLink(l) ? 2.6 : 0)
+    // 입자 모드 — 방향 3종에만(위 상수 주석 ②). 흐름이 방향을 말하므로 화살촉은 끈다.
+    .linkDirectionalParticles((l: any) => particlesOn && isDirectedLink(l)
+      ? PARTICLES_PER_LINK : 0)
+    .linkDirectionalParticleWidth(PARTICLE_WIDTH)
+    .linkDirectionalParticleSpeed(PARTICLE_SPEED)
+    .linkDirectionalParticleColor(() => pal.link.heavy)
     // 화살촉을 도착 노드 "표면 바로 밖"에 띄운다(D33) — 고정 94% 는 큰 노드
     // (허브)에서 메시 안에 파묻힌다. 좌표는 핀 고정이라 선분 길이가 결정론.
     .linkDirectionalArrowRelPos((l: any) => {
@@ -366,7 +424,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   }
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
-  const scene = g.scene();   // D77 — 유리 반사원(환경맵) 심기는 유리와 함께 은퇴
+  const scene = g.scene();
+  // 환경맵이 돌아왔다(발주자 결정 2026-08-15). D77 이 유리와 함께 은퇴시켰던 것인데,
+  // 반무광 재질의 clearcoat·sheen 이 반사할 것이 없으면 조형이 평면으로 죽는다.
+  scene.environment = studioEnv(g.renderer(), pal);
+  g.renderer().toneMapping = THREE.ACESFilmicToneMapping;
+  g.renderer().toneMappingExposure = 1.06;
   // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
   // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
   const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
@@ -391,34 +454,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 연구 권장 구간(k1 0.6~0.8 · k2 2.0~2.5)의 중앙값 — 타깃 앞쪽까지 선명하고(0.7<1)
   // 씬 외곽에서만 잦아든다(2.2>1).
   const FOG_NEAR_K = 0.7, FOG_FAR_K = 2.2;
-  //: 링의 화면상 최소 두께(px). 카토그래피의 최소 심볼 크기(약 0.6mm ≈ 2~4 CSS px)
-  //: 보다 보수적인 하한 — 이 아래로는 안티에일리어싱에 먹혀 선이 사라진다.
-  const MIN_RING_PX = 1.5;
-  //: 링이 커질 수 있는 한도. 넘기면 헤일로가 노드보다 커져 크기 인코딩을 흐린다.
-  const MAX_RING_SCALE = 4;
+  // 링 최소 두께 보정은 **함께 폐기됐다**(2026-08-15). 링이 없으니 지킬 두께가 없다.
+  // 남은 것은 fog 뿐이고, 그건 깊이 단서라 카메라를 계속 따라간다.
   const syncCamera = () => {
     const cam: any = g.camera();
     const tgt = controls?.target as THREE.Vector3 | undefined;
     const dist = tgt ? cam.position.distanceTo(tgt) : cam.position.length();
     if (!(dist > 0)) return;
     if (fog) { fog.near = dist * FOG_NEAR_K; fog.far = dist * FOG_FAR_K; }
-    // 링 최소 두께 — 월드 단위를 화면 픽셀로 환산해 하한을 지킨다. 스코프 전체가
-    // 대체로 같은 깊이에 있으므로 노드별 거리 대신 타깃 거리 하나로 계산한다(저비용).
-    const h = el.clientHeight || 1;
-    const fov = ((cam.fov ?? 50) * Math.PI) / 180;
-    const worldPerPx = (2 * dist * Math.tan(fov / 2)) / h;
-    if (!(worldPerPx > 0)) return;
-    const minTube = MIN_RING_PX * worldPerPx;
-    g.graphData().nodes.forEach((m: any) => {
-      (m.__threeObj as THREE.Object3D | undefined)?.traverse((c: any) => {
-        const base = c.userData?.baseTube as number | undefined;
-        if (!base) return;
-        const k = Math.min(MAX_RING_SCALE, Math.max(1, minTube / base));
-        const s0 = c.userData?.baseSize as number | undefined;
-        // 스프라이트는 scale 이 곧 크기라 기준 크기에 배율을 곱한다(setScalar 는 크기를 지운다).
-        if (s0) c.scale.set(s0 * k, s0 * k, 1); else c.scale.setScalar(k);
-      });
-    });
   };
   syncCamera();
   // 매 프레임이 아니라 **카메라가 실제로 움직일 때만** 갱신한다(비용 무시 가능).
@@ -467,9 +510,15 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 상태를 수치로 검증하는 데 쓴다(2026-07 세부 뷰 원점 뭉침 회귀 감시).
   if (import.meta.env.DEV) (window as any).__g3 = g;
 
-  if (handlers.onClick) g.onNodeClick((n: any) => {
-    flyTo3d(g, n, prefs);
-    handlers.onClick!(n);
+  g.onNodeClick((n: any) => {
+    // 고르는 행위가 곧 모으는 행위다. 같은 것을 다시 누르면 풀린다.
+    if (bringOn) {
+      gathered = gathered === n.id ? null : n.id;
+      planFly3d(gathered);
+    } else {
+      flyTo3d(g, n, prefs);      // 모으지 않는 모드에서는 여태처럼 카메라가 간다
+    }
+    handlers.onClick?.(n);
   });
   if (handlers.onRightClick)
     g.onNodeRightClick((n: any, ev: MouseEvent) => handlers.onRightClick!(n, ev));
@@ -488,7 +537,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const linkColorFn = (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
-    if (hoverId && s !== hoverId && t !== hoverId) return pal.link.fade;   // 배경으로 후퇴
+    // 데려오는 방식엔 선이 없다 — 고리 자체가 이웃을 말하므로 hover 복귀도 없다.
+    if (bringOn) return pal.link.base + ALPHA0;
+    const near = !hoverId || s === hoverId || t === hoverId;
+    // 입자 모드 — 선은 알파 0 으로 지운다(상수 주석 ①). 방향 3종은 입자가 대신
+    // 말하고, 무방향은 **짚었을 때만** 선으로 잠깐 돌아온다. 그래서 지워도 잃지 않는다:
+    // 관계는 그대로 있고, 늘 그려져 있지 않을 뿐이다.
+    if (particlesOn) {
+      if (isDirectedLink(l)) return pal.link.heavy + ALPHA0;
+      return hoverId && near ? pal.link.fade : pal.link.base + ALPHA0;
+    }
+    if (hoverId && !near) return pal.link.fade;   // 배경으로 후퇴
     // D33 — 농도 = 관계의 세기(굵기 개정). 다크는 반전(D39).
     // B1(2026-08-03): 그 "세기"를 **기록된 증거의 신뢰도**(E-G6 confidence)가 말한다.
     // 여태 이 램프는 `weight` 로 갈렸는데 그 값을 싣는 곳이 없어 heavy/mid 가 죽은
@@ -513,6 +572,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     raf = live ? requestAnimationFrame(tween) : 0;
   };
   g.onNodeHover((n: any) => {
+    // hover 는 **어둡게만** 한다. 모으는 것은 클릭이다(2D 와 같은 규칙, 발주자 지시
+    // 2026-08-15) — 지나가기만 해도 씬이 재배열되면 눈이 쉴 곳이 없다. 고리가 서
+    // 있는 동안 그 구성원 위를 지나도 흐림 기준은 흔들리지 않는다.
+    if (bringOn && gathered && n && ring.has(n.id)) return;
     hoverId = n ? n.id : null;
     const keep = n ? new Set([n.id, ...(neighbors.get(n.id) || [])]) : null;
     // D32-a 정본값 — 여태 여기가 `× 0.15` 리터럴이라 정본(0.40)의 3.75 배를 물러났고,
@@ -535,6 +598,149 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     g.linkColor(linkColorFn);   // 접근자 재적용 → 링크색 재평가
     el.style.cursor = n ? "pointer" : "";
   });
+
+  // ── Bring & Go — 3D 판 ────────────────────────────────────────────────────
+  //
+  //  2D 와 같은 문법이되 두 가지가 다르다.
+  //   ① 고리를 **카메라를 향한 평면**에 세운다. 월드 축에 세우면 보는 각도에 따라
+  //      고리가 납작한 선으로 눌린다 — 2D 에는 없는 3D 고유의 함정이다.
+  //   ② 옮기는 것은 노드 좌표가 아니라 **메시**다. 엔진이 `cooldownTicks(0)` 으로
+  //      멈춰 있어 x/y/z 를 고쳐도 씬이 안 따라오고, 반대로 좌표를 그대로 두면
+  //      집으로 돌아갈 정본(fx/fy/fz — 사이드카 D17)이 흔들리지 않는다.
+  //
+  //  이름은 hover 때 스프라이트를 달았다 뗀다. 전부 미리 달면 큰 그래프에서 텍스처가
+  //  노드 수만큼 살아 있게 된다(허브 8개만 상시로 다는 이유와 같다).
+  const flyTarget = new Map<string, THREE.Vector3>();
+  const ringSprites = new Map<string, THREE.Sprite>();
+  /** 지금 고리에 서 있는 것들(초점 포함) — 위 hover 배선이 이걸로 진동을 막는다. */
+  let ring = new Set<string>();
+  /** 모아 놓은 초점 — 클릭으로만 선다(위 onNodeHover 주석). */
+  let gathered: string | null = null;
+  let flyRaf = 0;
+  const jumpFly = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const homeOf = (m: any) =>
+    new THREE.Vector3(m.fx ?? m.x ?? 0, m.fy ?? m.y ?? 0, m.fz ?? m.z ?? 0);
+  // 방향 3종만 방향을 갖는다. 고리에서 각도가 그것을 말한다(2D 와 같은 규칙).
+  const inbound = new Map<string, Set<string>>();
+  const outbound = new Map<string, Set<string>>();
+  for (const l of links) {
+    if (!isDirectedLink(l as any)) continue;
+    const s = typeof l.source === "object" ? (l.source as any).id : l.source;
+    const t = typeof l.target === "object" ? (l.target as any).id : l.target;
+    (outbound.get(s) || outbound.set(s, new Set()).get(s)!).add(t);
+    (inbound.get(t) || inbound.set(t, new Set()).get(t)!).add(s);
+  }
+  function arcAngles(count: number, center: number, width: number): number[] {
+    if (count <= 0) return [];
+    if (count === 1) return [center];
+    const step = width / count;
+    return Array.from({ length: count }, (_, i) => center - width / 2 + step * (i + 0.5));
+  }
+  /** 고리 자리 = 방향. 위 = 들어옴 · 아래 = 나감 · 좌우 = 무방향, 폭은 갈래 크기에
+   *  비례한다. 왜 폭을 고정하지 않는지(그리고 순서만 주면 왜 안 되는지)는
+   *  view2d.ts 의 같은 이름 함수에 적혀 있다 — 규칙이 갈라지면 두 관점이 다른
+   *  말을 하므로 식은 글자 그대로 같게 둔다. 여기서도 sin 이 양수일 때 위다
+   *  (카메라 up 벡터를 쓰므로 정의상 그렇다). */
+  function ringSlots(id: string, list: string[]): { id: string; a: number }[] {
+    const inn = inbound.get(id), out = outbound.get(id);
+    const isIn = (x: string) => !!inn?.has(x);
+    const isOut = (x: string) => !inn?.has(x) && !!out?.has(x);
+    const up = list.filter(isIn);
+    const down = list.filter(isOut);
+    const side = list.filter((x) => !isIn(x) && !isOut(x));
+    const n = list.length || 1;
+    const wUp = (up.length / n) * Math.PI * 2;
+    const wDown = (down.length / n) * Math.PI * 2;
+    const wSide = Math.PI - (wUp + wDown) / 2;
+    const half = Math.ceil(side.length / 2);
+    const R = side.slice(0, half), L = side.slice(half);
+    return [
+      ...R.map((x, i) => ({ id: x, a: arcAngles(R.length, 0, wSide)[i] })),
+      ...up.map((x, i) => ({ id: x, a: arcAngles(up.length, Math.PI / 2, wUp)[i] })),
+      ...L.map((x, i) => ({ id: x, a: arcAngles(L.length, Math.PI, wSide)[i] })),
+      ...down.map((x, i) => ({ id: x, a: arcAngles(down.length, -Math.PI / 2, wDown)[i] })),
+    ];
+  }
+
+  function dropSprites() {
+    ringSprites.forEach((sp) => {
+      sp.parent?.remove(sp);
+      (sp.material as THREE.SpriteMaterial).map?.dispose();
+      sp.material.dispose();
+    });
+    ringSprites.clear();
+  }
+  function planFly3d(id: string | null) {
+    flyTarget.clear();
+    dropSprites();
+    ring = new Set(id ? [id] : []);
+    const data = g.graphData().nodes as any[];
+    const byId = new Map<string, any>(data.map((m) => [m.id, m]));
+    const hub = id ? byId.get(id) : null;
+    if (hub) {
+      const c = homeOf(hub);
+      const cam: any = g.camera();
+      const right = new THREE.Vector3(), up = new THREE.Vector3(), fwd = new THREE.Vector3();
+      cam.matrixWorld.extractBasis(right, up, fwd);
+      const slots = ringSlots(id!, [...(neighbors.get(id!) || [])].filter((x) => byId.has(x)));
+      // 반지름은 씬 규모(S)에 매다. 화면 픽셀로 환산하는 2D 와 달리 3D 는 노드마다
+      // 카메라 거리가 달라 "화면에서 몇 px" 이 한 값으로 정해지지 않는다.
+      const r0 = S * (0.3 + Math.min(slots.length, 24) / 60);
+      slots.forEach((s, i) => {
+        const nid = s.id;
+        const r = slots.length > 8 && i % 2 ? r0 * 1.6 : r0;   // 두 겹(2D 와 같은 이유)
+        flyTarget.set(nid, c.clone()
+          .add(right.clone().multiplyScalar(Math.cos(s.a) * r))
+          .add(up.clone().multiplyScalar(Math.sin(s.a) * r)));
+        ring.add(nid);
+        const m = byId.get(nid);
+        const obj = m?.__threeObj as THREE.Object3D | undefined;
+        if (obj && !hubIds.has(nid) && prefs.labels !== "none") {
+          const sp = labelSprite(m.label, pal);
+          obj.add(sp);
+          ringSprites.set(nid, sp);
+        }
+      });
+    }
+    for (const m of data) if (!flyTarget.has(m.id)) flyTarget.set(m.id, homeOf(m));
+    if (jumpFly) { stepFly3d(1); return; }
+    if (!flyRaf) flyRaf = requestAnimationFrame(tickFly3d);
+  }
+  /** 한 프레임 전진. 도착 판정은 씬 단위(S=140)에서 0.1 이면 화면에서 같은 픽셀이다. */
+  function stepFly3d(t: number): boolean {
+    let live = false;
+    for (const m of g.graphData().nodes as any[]) {
+      const to = flyTarget.get(m.id);
+      const obj = m.__threeObj as THREE.Object3D | undefined;
+      if (!to || !obj) continue;
+      if (obj.position.distanceToSquared(to) < 0.01) { obj.position.copy(to); continue; }
+      obj.position.lerp(to, t);
+      live = true;
+    }
+    return live;
+  }
+  function tickFly3d() { flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
+
+  // 해체는 호출부가 `_destructor()` 로 한다(view.ts). 그 자리에 정리를 얹는다 —
+  // 안 하면 관점을 바꾼 뒤에도 rAF 가 죽은 씬을 계속 돌린다.
+  // 고리는 지도 밖으로 나갈 때 풀린다(노드에서 벗어나는 것만으로는 안 풀린다).
+  const leaveMap = () => {
+    if (!bringOn || !ring.size) return;
+    hoverId = null; gathered = null; planFly3d(null);
+  };
+  el.addEventListener("mouseleave", leaveMap);
+
+  const dropped = (g as any)._destructor?.bind(g);
+  (g as any)._destructor = () => {
+    el.removeEventListener("mouseleave", leaveMap);
+    if (flyRaf) cancelAnimationFrame(flyRaf);
+    flyRaf = 0;
+    // ⚠ 여기서 planFly3d(null) 를 부르면 안 된다 — 그 함수는 집으로 돌아가는 rAF 를
+    // **다시 띄운다**. 해체 중에 되살아나면 죽은 씬을 계속 돌린다.
+    dropSprites();
+    flyTarget.clear();
+    dropped?.();
+  };
   return g;
 }
 
@@ -546,7 +752,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
 export function mountMinis3d(
   container: HTMLElement,
   cells: { el: HTMLElement; nodes: N3[]; links: L3[] }[],
-  prefs: AtlasPrefs = loadPrefs(),
+  prefs: ViewPrefs = loadPrefs(),
 ): { highlight: (id: string | null) => void; dispose: () => void } {
   const flat = prefs.view === "2d";
   const pal = themePalette();
@@ -578,6 +784,11 @@ export function mountMinis3d(
     const cz = flat ? 0 : c.nodes.reduce((a, n) => a + (n.z || 0), 0) / n0;
     const pos = new Map<string, THREE.Vector3>();
     const meshes = new Map<string, THREE.Mesh>();
+    //: 미니 그리드도 같은 표를 쓴다 — 셀마다 만들되 셀 안에서는 한 번이다.
+    if (prefs.domainTint) {
+      const t = tintMap(c.nodes.map((n) => n.domain), themeMode());
+      for (const n of c.nodes) (n as { __tint?: string }).__tint = t.get((n.domain || "").trim());
+    }
     let rad = 1;
     let maxMeshR = 0;   // 노드 중심 반경에 더할 메시 반경 마진(미니 스케일 0.5 반영)
     for (const n of c.nodes) {
@@ -590,7 +801,12 @@ export function mountMinis3d(
       m.scale.setScalar(0.5);            // 미니 마크는 절반 크기
       m.position.copy(p);
       (m as any).userData.nid = n.id;
-      (m as any).userData.base = n.focus ? pal.point : n.gateway ? pal.inkMute : pal.ink;
+      // 미니 경로도 같은 잉크 규율을 탄다 — 여기만 다른 색이면 Compare 와 지도가
+      // 어긋난다(그것이 색을 한 벌로 모으는 이번 작업의 출발점이었다).
+      const miniTint = prefs.domainTint ? (n as { __tint?: string }).__tint : undefined;
+      (m as any).userData.base = n.focus ? pal.point
+        : n.gateway ? pal.inkMute
+        : miniTint ? parseInt(miniTint.slice(1), 16) : pal.ink;
       meshes.set(n.id, m);
       scene.add(m);
     }

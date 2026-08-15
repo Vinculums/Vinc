@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Atlas(D16·D17)·fragment(D11 §5) 계약 테스트 — 무 DB(플랜 순수성) + FakeStore."""
+"""View(D16·D17)·fragment(D11 §5) 계약 테스트 — 무 DB(플랜 순수성) + FakeStore."""
 from __future__ import annotations
 
 import sys
@@ -138,7 +138,7 @@ class LayoutTests(unittest.TestCase):
         self.assertNotEqual(math_center, art_center)
 
 
-class AtlasL0Tests(unittest.TestCase):
+class ViewL0Tests(unittest.TestCase):
     def test_ties_plan_counts_cross_domain_pairs(self):
         plan = q.domain_ties_plan(owner="user:t")
         self.assertIn("a.domain <> b.domain", plan.cypher)
@@ -151,14 +151,14 @@ class AtlasL0Tests(unittest.TestCase):
         self.assertEqual(plan.params, {"owner": "user:t"})
         self.assertNotIn("$owner", q.bridge_ties_plan().cypher)
 
-    def test_atlas_l0_combines_domains_and_ties(self):
+    def test_view_l0_combines_domains_and_ties(self):
         fake = _FakeStore({
             "count(*) AS episodes": [{"domain": "math", "episodes": 3}],
             "a.domain <> b.domain": [{"source": "math", "target": "art", "ties": 2}],
             # Bridge 축(실데이터에서 크로스도메인은 :Bridge 가 1급 — 합산돼야 함)
             "MATCH (b:Bridge)": [{"source": "math", "target": "physics", "ties": 5}],
         })
-        res = q.atlas_l0(owner="user:t", store=fake)
+        res = q.view_l0(owner="user:t", store=fake)
         self.assertTrue(res["executed"])
         self.assertEqual(res["domains"][0]["domain"], "math")
         self.assertEqual(res["ties"],

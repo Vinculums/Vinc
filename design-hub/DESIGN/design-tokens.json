@@ -9,8 +9,8 @@
     "format": "hsl-channels",
     "a11y": "WCAG 2.2 AA. Only tokens verified at a body contrast of 4.5:1 or better may be used as text."
   },
-  "atlasScene": {
-    "note": "Depth tiers for the Atlas 3D mark, used only by the dark glow branch (app/src/surfaces/atlas3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
+  "viewScene": {
+    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
     "node": {
       "focus": {
         "fill": "#B9BEF0",
@@ -33,7 +33,7 @@
     }
   },
   "domainTint": {
-    "note": "Open-layer domain tint for the Atlas marks (off by default). This is emphasis, not encoding: it is a user toggle in AtlasPrefs, so it must never be the only way to tell two nodes apart. The hue comes from a hash of the topic string, so a topic keeps its hue no matter which other topics are on screen, and collisions are possible and tolerated. Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness is chosen to sit near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/atlas-tint.ts.",
+    "note": "Open-layer domain tint for the View marks (off by default). This is emphasis, not encoding: it is a user toggle in ViewPrefs, so it must never be the only way to tell two nodes apart. The hue comes from a hash of the topic string, so a topic keeps its hue no matter which other topics are on screen, and collisions are possible and tolerated. Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness is chosen to sit near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/view-tint.ts.",
     "light": {
       "s": 0.44,
       "l": 0.34

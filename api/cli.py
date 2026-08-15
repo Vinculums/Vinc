@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--owner", required=True, help="origin owner scope (whose data to pack)")
     sh.add_argument("--domain", default=None, help="scope: one dataset partition")
     sh.add_argument("--tags", default=None, help="scope: comma-separated tag filter (any-overlap)")
-    sh.add_argument("--seed", default=None, help="scope: pack only the seed's neighborhood (Atlas L2)")
+    sh.add_argument("--seed", default=None, help="scope: pack only the seed's neighborhood (View L2)")
     sh.add_argument("--depth", type=int, default=2, help="seed neighborhood depth 1–4 (default 2)")
     sh.add_argument("--no-records", action="store_true", help="concepts/edges only (skip Episode records)")
     sh.add_argument("--out", required=True, help="pack file to write (JSON)")

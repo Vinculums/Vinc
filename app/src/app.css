@@ -69,7 +69,7 @@ body {
    구 레일이 장식이었던 이유가 그거였다(행을 눌러도 갈 곳이 없었다).
 
    LNB 는 **그리드 열**이다(오버레이 아님). 그래서 표면이 줄어들 뿐이고,
-   `#atlas-canvas`(inset:0)·`#atlas-chrome`(left:0;right:0) 같은 캔버스 안 절대배치
+   `#view-canvas`(inset:0)·`#view-chrome`(left:0;right:0) 같은 캔버스 안 절대배치
    크롬은 요소별 오프셋 코드 없이 자동으로 따라 좁아진다 — 구 railChrome 이 인라인
    스타일로 세 요소를 손으로 밀던 방식의 재발 방지. 접힘은 열 폭 0. */
 /* 트랙을 minmax(0,·) 로 못 박는다 — 그리드 아이템의 기본 min-width/min-height 는
@@ -141,7 +141,7 @@ body {
 #shell[data-lnb="closed"] #lnb-reopen svg { transform: rotate(180deg); }
 
 /* ── 문서 내용 열 ────────────────────────────────────────────────────────
-   표면이 자기 상세 패널을 여기로 옮겨 심는다(Atlas → #atlas-detail). 닫히면
+   표면이 자기 상세 패널을 여기로 옮겨 심는다(View → #view-detail). 닫히면
    폭 0 이라 안의 것도 함께 사라지므로 여기엔 다시 여는 손잡이를 두지 않는다 —
    여는 수단은 문서를 고르는 일 자체이고, 닫는 수단은 패널 머리의 ✕ 다. */
 /* 표면과 **같은 칸**에 놓는다 — 그리드가 둘을 겹쳐 쌓으므로 좌표 계산이 필요 없고,
@@ -238,7 +238,7 @@ body {
 .lnb-navrow:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
 /* 활성 = **채워진 알약 + 굵기**. 좌측 색띠(box-shadow inset 2px)를 쓰지 말 것.
    각 줄 옆에 색 막대가 서면 장식이 내용보다 먼저 읽힌다(발주자 지적 2026-07-31,
-   문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 Atlas 표면에서
+   문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 View 표면에서
    항상 활성이라, 주제를 고르는 순간 사이드바에 띠가 **두 개 동시에** 섰다. */
 .lnb-navrow.on {
   background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
@@ -368,9 +368,9 @@ body {
 }
 /* 지도 손잡이(D71) — 렌즈 + 관점 세그. 검색 오른쪽에 선다. 바의 gap 이 0 이므로
    둘 사이 간격은 렌즈가 자기 여백으로 갖는다. */
-#tb-lens, #tb-views { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-lens, #tb-viewpoints { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-lens:not(:empty) { margin-right: var(--space-2, .5rem); }
-#tb-views:empty, #tb-lens:empty { display: none; }
+#tb-viewpoints:empty, #tb-lens:empty { display: none; }
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
    바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
@@ -934,14 +934,14 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .chip.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
 
-/* Atlas */
-#atlas-canvas { position: absolute; inset: 0; overflow: hidden; }
+/* View */
+#view-canvas { position: absolute; inset: 0; overflow: hidden; }
 /* ── 문서 내용 패널 ──────────────────────────────────────────────────────
    D70 에서는 캔버스 위에 겹쳐 뜨는 우측 레일이었고, 지금은 셸의 가운데 열
    (#docpane) 안에 산다. 그래서 좌표도 자기 폭도 스스로 정하지 않는다 — 폭은 열이
    갖고(--doc-w ← --rail-size), 패널은 그 열을 채운다.
-   폭의 단일 원천은 여전히 atlas.ts setRailWidth 하나다(여기 숫자를 적지 않는다). */
-#atlas-detail {
+   폭의 단일 원천은 여전히 view.ts setRailWidth 하나다(여기 숫자를 적지 않는다). */
+#view-detail {
   flex: 1 1 auto; min-height: 0; overflow: auto;
   padding: var(--space-4, 1rem);
 
@@ -955,7 +955,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   cursor: col-resize; touch-action: none;
 }
 /* 캔버스 안 크롬은 이제 비켜설 이유가 없다 — 패널이 겹치지 않고 표면 자체가 줄어든다.
-   변수를 0 으로 눌러 두면 아래 오프셋 규칙들(atlas-tools·float·hint)을 손대지 않고도
+   변수를 0 으로 눌러 두면 아래 오프셋 규칙들(view-tools·float·hint)을 손대지 않고도
    효력이 사라진다: 규칙은 남아 있으므로 임베드처럼 열이 없는 배치에서 그대로 쓰인다. */
 #surface { --rail-w: 0px; }
 #rail-grip:hover, #rail-grip:active { background: hsl(var(--ring) / .35); }
@@ -963,18 +963,18 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
    두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
    밀었는데, 이제 --rail-w 하나로 CSS 가 스스로 한다. */
-#atlas-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
-#atlas-tools {
+#view-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
+#view-tools {
   position: absolute; top: var(--space-4, 1rem); z-index: 2;
   right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
   display: flex; gap: .5rem;
 }
-#atlas-float, #atlas-hint {
+#view-float, #view-hint {
   position: absolute; left: 50%; bottom: var(--space-6, 1.5rem);
   transform: translateX(calc(-50% - var(--rail-w, 0px) / 2));
 }
-#atlas-float { z-index: 3; }
-#atlas-hint {
+#view-float { z-index: 3; }
+#view-hint {
   z-index: 2; pointer-events: none; white-space: nowrap; font-size: .72rem;
   color: hsl(var(--caption-foreground)); background: hsl(var(--card) / .72);
   border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
@@ -1041,6 +1041,37 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   height: 0; margin: 0; overflow: hidden;
   border-top: 1px solid hsl(var(--border));
 }
+/* 진짜 격자(커서가 표 밖일 때). 위 `.cm-r-table` 은 커서가 표 안에 들어왔을 때의
+   **원문 모드**라 둘 다 필요하다 — 등폭 정렬은 소스를 고치는 동안에만 쓸모 있다.
+   가로 스크롤은 이 상자가 진다: 본문 스크롤러에 맡기면 좁은 레일에서 문서 전체가
+   옆으로 밀린다. */
+.doc-render .cm-r-tablewrap { overflow-x: auto; margin: .5rem 0; }
+.doc-render .cm-r-tbl {
+  border-collapse: collapse; width: 100%;
+  font-size: .92em; line-height: 1.45;
+}
+.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td {
+  border: 1px solid hsl(var(--border));
+  padding: .25rem .45rem; text-align: left; vertical-align: top;
+}
+.doc-render .cm-r-tbl th { font-weight: 600; background: hsl(var(--muted)); }
+/* 프론트매터 접이 줄 — 문서가 가진 값이지 문서의 글이 아니다. 산문 타이포에서
+   떼어 내 상단에 한 줄로 세우고, 눌러야 원문 YAML 이 펼쳐진다. */
+.doc-render .cm-r-fm {
+  display: flex; gap: .5rem; align-items: baseline;
+  margin: 0 0 .5rem; padding: .3rem .5rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted)); cursor: pointer;
+  font-size: var(--fs-sm, .85rem); line-height: 1.4;
+}
+.doc-render .cm-r-fm:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.doc-render .cm-r-fm-cap { flex: none; font-weight: 600; opacity: .8; }
+/* 요약은 한 줄로 자른다 — 프론트매터가 길다고 문서가 아래로 밀리면 접은 의미가 없다. */
+.doc-render .cm-r-fm-sum {
+  flex: 1; min-width: 0; opacity: .7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-render .cm-r-fm-open { margin-bottom: .2rem; }
 .doc-render .cm-scroller { overflow-x: auto; overflow-y: visible; }
 /* 레일 안 목록 필터 — 40행짜리 목록을 눈으로 훑지 않게. */
 .rail-filter {
@@ -1131,23 +1162,23 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .coach-line { margin: 0 0 .45rem; font-size: var(--fs-sm); line-height: 1.5; color: hsl(var(--muted-foreground)); }
 .coach-line b { color: hsl(var(--foreground)); }
 .coach-ok { margin-top: .2rem; }
-#atlas-chrome {
+#view-chrome {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
   display: flex; align-items: center; gap: var(--space-3, .75rem);
   padding: .4rem var(--space-4, 1rem);
   background: linear-gradient(hsl(var(--background) / 0), hsl(var(--background) / .82) 45%);
   pointer-events: none;
 }
-#atlas-chrome > * { pointer-events: auto; }
-#atlas-metrics {
+#view-chrome > * { pointer-events: auto; }
+#view-metrics {
   margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
   font-size: .7rem; color: hsl(var(--caption-foreground));
 }
-#atlas-views .seg, #tb-views .seg { display: inline-flex; }
+#view-viewpoints .seg, #tb-viewpoints .seg { display: inline-flex; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
-#atlas-legend { flex: 0 0 auto; }
+#view-legend { flex: 0 0 auto; }
 /* 렌즈 = 아이콘 하나. 지도 위 크롬은 최소 잉크로 — 이름표는 툴팁이 맡는다. */
 .lens-btn {
   display: grid; place-items: center; width: 2.15rem; height: 2.15rem;
@@ -1189,10 +1220,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
    보이는 마크가 아무 반응도 하지 않는다 → 층은 포인터를 통과시키고, 층 안의 실제
    컨트롤만 되살린다(빈 상태의 CTA 링크·에러 상태의 재시도 버튼은 그대로 눌린다). */
-#atlas-msg { pointer-events: none; }
+#view-msg { pointer-events: none; }
 /* 전환 중(>400ms) — 캔버스를 살짝 물리고 상단에 진행 막대. 내용을 가리지 않는다. */
-.atlas-busy #atlas-canvas { opacity: .5; transition: opacity .12s ease; }
-.atlas-busy::after {
+.view-busy #view-canvas { opacity: .5; transition: opacity .12s ease; }
+.view-busy::after {
   content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 8;
   background: linear-gradient(90deg, transparent, hsl(var(--ring)), transparent);
   background-size: 40% 100%; background-repeat: no-repeat;
@@ -1200,20 +1231,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 @keyframes busySweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .atlas-busy::after { animation: none; background-position: 0 0; background-size: 100% 100%; opacity: .5; }
+  .view-busy::after { animation: none; background-position: 0 0; background-size: 100% 100%; opacity: .5; }
 }
-#atlas-msg a, #atlas-msg button { pointer-events: auto; }
+#view-msg a, #view-msg button { pointer-events: auto; }
 /* 렌즈 패널 — 좌하단 렌즈 버튼 **위로** 열린다(버튼이 패널을 가리지 않게).
    안에는 보기(관점·범위·옵션)와 범례가 함께 산다. */
 /* 렌즈 패널 — 좌표는 openPanel() 이 렌즈 버튼 rect 에서 실측해 박는다(D71).
    버튼이 상단 바(표면 밖)로 올라가 표면 기준 absolute 로는 못 맞춘다. */
 /* 범례·옵션 패널 — 문서 패널과 **같은 유리 언어**를 쓴다(2026-08-05). 지도 위에
    뜨는 두 면이 하나는 불투명, 하나는 유리면이면 같은 층에 있다는 사실이 안 읽힌다.
-   좌표는 JS 가 렌즈 버튼 rect 에서 뽑아 인라인으로 얹는다(atlas.ts openPanel) —
+   좌표는 JS 가 렌즈 버튼 rect 에서 뽑아 인라인으로 얹는다(view.ts openPanel) —
    버튼이 상단 바 오른쪽으로 옮겨 갔으므로 패널도 자동으로 그쪽에 선다.
    아래 left/top 은 그 값이 오기 전 한 프레임의 기본값일 뿐이다.
    등장·퇴장 모션은 motion.ts 가 준다(렌즈 버튼에서 자라나고 그리로 빨려 든다). */
-#atlas-view-panel {
+#view-lens-panel {
   position: fixed; left: var(--space-4, 1rem); top: 4rem;
   /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다. */
   z-index: 46; width: 19.5rem;
@@ -1229,7 +1260,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   box-shadow: 0 1.5rem 3rem hsl(0 0% 0% / .32);
 }
 /* 유리 층 — 내용과 **남매**다(조상이 아니다). 스크롤은 이 층을 건드리지 않는다. */
-#atlas-view-panel::before {
+#view-lens-panel::before {
   content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit;
   background: hsl(var(--card) / .78);
   backdrop-filter: blur(18px) saturate(150%);
@@ -1251,9 +1282,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    그 폭에서 19.5rem 짜리 팝오버는 지도를 거의 다 덮으면서 자기 내용은 두 줄로
    접힌다 — 좁은 것을 좁게 쓰는 최악의 조합이다. 문서 패널과 같은 처분을 한다:
    좁으면 한 번에 하나만 보여 준다. 좌표(inline top/left)는 JS 가 지운다
-   (atlas.ts positionPanel — 인라인은 미디어쿼리를 이긴다). */
+   (view.ts positionPanel — 인라인은 미디어쿼리를 이긴다). */
 @media (max-width: 900px) {
-  #atlas-view-panel {
+  #view-lens-panel {
     top: 3.25rem; left: 0; right: 0; bottom: 0;
     width: auto; max-height: none;
     border-radius: 0; border-left: none; border-right: none; border-bottom: none;
@@ -1261,11 +1292,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   }
   /* 상단 바 위에 무엇이 더 있는지가 스킨마다 다르다 — 데스크탑은 타이틀바,
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
-  [data-shell] #atlas-view-panel { top: calc(3.25rem + var(--titlebar-h)); }
-  [data-skin="web"] #atlas-view-panel { top: 6.5rem; }
+  [data-shell] #view-lens-panel { top: calc(3.25rem + var(--titlebar-h)); }
+  [data-skin="web"] #view-lens-panel { top: 6.5rem; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #atlas-view-panel::before { background: hsl(var(--card)); }
+  #view-lens-panel::before { background: hsl(var(--card)); }
 }
 .lg-sec {
   margin: var(--space-4, 1rem) 0 .2rem; font-size: .62rem;
@@ -1292,17 +1323,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .lg-tabs { margin: 0 0 .2rem; }
 /* 옵션 밑에 붙는 해설 한 줄(배치가 무슨 순서로 세우는지). 위의 캡션(.hint)과 같은
    무게로 두면 둘 다 라벨처럼 읽히므로 한 단계 더 물러난다. */
-#atlas-view-panel .hint.sub {
+#view-lens-panel .hint.sub {
   margin: -.15rem 0 .1rem; font-size: .68rem; line-height: 1.45;
   color: hsl(var(--caption-foreground));
 }
 
-/* Atlas 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
-   렌더러는 surfaces/atlas-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
+/* View 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
+   렌더러는 surfaces/view-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
    (템플릿 문자열 안에 숨은 두 번째 스타일시트를 만들지 않는다 — 디자인 시스템·
    모노크롬 게이트가 훑는 자리가 곧 규칙이 사는 자리다).
    전부 모노크롬: 의미는 형태 · 농도 · 굵기가 나르고 색은 초점(--ring)뿐(D41).
-   .pl-wrap 패딩은 atlas-planar.ts 의 PAD_TOP/PAD_X/PAD_BOT 과 같은 값이어야 한다. */
+   .pl-wrap 패딩은 view-planar.ts 의 PAD_TOP/PAD_X/PAD_BOT 과 같은 값이어야 한다. */
 .pl-wrap { height: 100%; overflow: auto; padding: 56px 16px 16px; }
 .pl-svg { display: block; }
 .pl-svg text { font-family: inherit; }
@@ -1311,14 +1342,60 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-band { fill: hsl(var(--muted)); opacity: .5; }
 .pl-cap { fill: hsl(var(--caption-foreground)); font-size: 10px; }
 .pl-sub { fill: hsl(var(--muted-foreground)); font-size: 10.5px; }
-.pl-lab { fill: hsl(var(--foreground)); font-size: 11px; }
 .pl-mark { fill: hsl(var(--card)); stroke: hsl(var(--foreground)); stroke-width: 1.4; }
+/* 기둥 타임라인(pl-cols) — 점이 작아 1.4px 테두리가 속을 다 먹는다. 채운 점은 잉크,
+   **속 빈 점은 연결이 없는 것**(고아)이라 그 대비가 곧 정보다. */
+/* 초점 선 — 짚은 점에서 이어진 곳으로만 긋는다(상시 아님). 마크보다 옅고 가늘게:
+   이건 배경 구조가 아니라 "지금 이것과 이어져 있다"만 말하는 한 겹이다. */
+.pl-hovline {
+  fill: none; stroke: hsl(var(--ring)); stroke-width: 1.1;
+  opacity: .5; stroke-linecap: round; pointer-events: none;
+}
+.pl-cols .pl-mark { stroke-width: 1; }
+.pl-cols .pl-mark.pl-solid { fill: hsl(var(--foreground)); }
+.pl-cols .pl-mark.pl-soft.pl-solid { fill: hsl(var(--muted-foreground)); }
 .pl-mark.pl-soft { stroke: hsl(var(--muted-foreground)); }
-.pl-mark.pl-focus { stroke: hsl(var(--ring)); stroke-width: 2; }
+/* 초점은 `--focus` 다(`--ring` 이 아니라). 둘은 다크에서 같은 값이지만 라이트에서
+   갈린다 — `--ring` 은 양 모드 페리윙클이고, 지도의 초점색은 라이트에서 인디고다.
+   여기가 `--ring` 이던 동안 같은 초점이 지도와 타임라인에서 다른 색이었다. */
+.pl-mark.pl-focus { stroke: hsl(var(--focus)); stroke-width: 2; }
+/* 고정 고리 — 클릭으로 잡아 둔 마크를 둘러싼다(짚은 것과 잡아 둔 것의 구분).
+   마크에서 떨어져 있어 형태=종을 안 건드리고, 초점색이라 "지금 초점"이라는 뜻도
+   그대로다. 얇게 두는 이유: 이건 상태 표시지 마크가 아니다. */
+.pl-pinring { fill: none; stroke: hsl(var(--focus)); stroke-width: 1.1; opacity: .85; }
+@media (prefers-reduced-motion: no-preference) {
+  /* 조여드는 인상 — 고리가 밖에서 마크 쪽으로 붙는다. `r` 대신 transform 을 쓰는
+     이유는 스케일이 합성 단계라 경로를 다시 만들지 않아서다(`transform-box: fill-box`
+     가 없으면 원점이 SVG 좌표계 0,0 이라 고리가 화면 밖으로 날아간다). */
+  .pl-pinring { transform-box: fill-box; transform-origin: center;
+                animation: pl-pin-in .2s ease-out; }
+}
+@keyframes pl-pin-in { from { opacity: 0; transform: scale(1.5); } }
+/* 노드종 마크(디자인 시안 `Vinc Node Kit 3D` §4). 3D 조형의 축약이라 색은 기존
+   잉크 그대로이고 **채움과 파선만** 종을 말한다.
+     · shell = Domain 외피(옅은 채움) + core(크기를 읽히게 하는 속)
+     · gate  = Gateway 윤곽선(채움 없음). 면이 없다 = 실체가 없다 */
+.pl-mark.pl-shell { fill: hsl(var(--foreground)); }
+/* 코어는 **잉크**다. 초점색을 쓰던 자리인데, 초점색은 "지금 초점" 하나만 뜻하고
+   타입에는 안 쓴다(정본 §2.5) — Domain 이라는 종을 초점색으로 말하고 있었다. */
+.pl-mark.pl-core { fill: hsl(var(--foreground)); stroke: none; }
+.pl-mark.pl-gate { fill: none; }
+/* 주제 틴트(열린 층) — 켜져 있을 때만 `--ink` 가 실린다(view-tint.ts). 채도·명도는
+   토큰이라 잉크와 같은 무게로 읽히고, 갈리는 것은 색조뿐이다. 초점(.pl-focus)은
+   아래 우선순위로 덮으므로 틴트가 초점색을 가리지 않는다. */
+.pl-tint .pl-mark { stroke: var(--ink); }
+.pl-tint .pl-mark.pl-solid,
+.pl-tint .pl-mark.pl-shell,
+.pl-tint .pl-mark.pl-core { fill: var(--ink); }
+.pl-tint .pl-mark.pl-focus { stroke: hsl(var(--focus)); }
+.pl-bd-dot.pl-shell { fill-opacity: .18; }
+.pl-bd-dot.pl-gate { fill: none; }
 .pl-edge { fill: none; stroke: hsl(var(--muted-foreground)); }
 .pl-arrow { fill: hsl(var(--muted-foreground)); }
-.pl-arrow-hl { fill: hsl(var(--ring)); }
-.pl-lane-line { fill: none; stroke: hsl(var(--muted-foreground)); stroke-linecap: round; opacity: .75; }
+.pl-arrow-hl { fill: hsl(var(--focus)); }
+/* 가지 줄기 — 굵기가 구간마다 변하므로 **선이 아니라 면**이다(view-planar.ts vband).
+   굵기가 값의 정본이고 색은 건드리지 않는다(합계 뷰와 같은 규율). 목(neck)은 여전히
+   선이라 위 `.pl-lane-line` 이 그대로 쓰인다 — 둘의 잉크를 맞춰 이어 보이게 한다. */
 /* 타임라인 원인·결과 선(D74). 가지(줄기)보다 **가늘고 옅게** — 이건 배경 구조가
    아니라 겹쳐 읽는 층이라, 항상 켜 두는 가지보다 뒤로 물러나 있어야 마디가 보인다.
    초점이 걸리면 초점색으로 올라온다(색은 여전히 한 곳뿐 — D41).
@@ -1329,7 +1406,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   stroke-width: .9; opacity: .38; stroke-linecap: round;
 }
 .pl-lin-back { stroke-dasharray: 3 3; }
-.pl-lin.pl-hl { stroke: hsl(var(--ring)); stroke-width: 1.6; opacity: 1; }
+.pl-lin.pl-hl { stroke: hsl(var(--focus)); stroke-width: 1.6; opacity: 1; }
 .pl-lin.pl-fade { opacity: var(--recede-line); }
 @media (prefers-reduced-motion: no-preference) {
   .pl-lin { transition: opacity .22s ease, stroke-width .22s ease; }
@@ -1338,28 +1415,25 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 타임라인 뿌리(세로 시간축) — 시작 시점 한 점에서 가지가 갈라진다. 목(neck)은
    가지보다 옅게 둬 "갈라짐"이 배경으로, 가지가 본문으로 읽히게 한다. */
 .pl-root { fill: hsl(var(--foreground)); stroke: none; }
-.pl-neck { opacity: .45; }
 /* 글자가 선을 가로지를 때 판(plate)을 깔지 않고 배경색 후광으로 도려낸다 —
    판은 getBBox 실측이 필요하지만 후광은 CSS 한 줄이고 결과가 같다. */
 .pl-halo { paint-order: stroke; stroke: hsl(var(--background)); stroke-width: 3px; stroke-linejoin: round; }
 /* 세로 축에서는 마크 라벨이 오른쪽으로 눕는다 — 긴 이름이 옆 가지의 줄기를 스칠 때
    글자가 선에 먹히지 않게 얇은 후광을 준다(가로 축에는 필요 없던 보호막). */
-.pl-timeline .pl-lab { paint-order: stroke; stroke: hsl(var(--background)); stroke-width: 2.5px; stroke-linejoin: round; }
-.pl-seg { fill: hsl(var(--foreground)); stroke: hsl(var(--background)); stroke-width: 1.5; }
 .pl-s0 { fill-opacity: .82; }
 .pl-s1 { fill-opacity: .5; }
 .pl-s2 { fill-opacity: .26; }
-.pl-track { fill: hsl(var(--muted)); opacity: .55; }
 .pl-node, .pl-row { cursor: pointer; }
 /* 눌러도 갈 곳이 없는 행(지금 보고 있는 그 주제)은 손가락 커서를 내린다 — 보이는
    손가락은 반드시 어딘가로 데려가야 한다. data-id 제거로 클릭 위임에서도 빠진다. */
 .pl-row.pl-static, .pl-node.pl-static { cursor: default; }
-.pl-hl .pl-mark, .pl-hl .pl-edge, .pl-hl .pl-lane-line { stroke: hsl(var(--ring)); }
+.pl-hl .pl-mark, .pl-hl .pl-edge, .pl-hl .pl-lane-line { stroke: hsl(var(--focus)); }
+.pl-hl .pl-lane-band { fill: hsl(var(--focus)); }
 .pl-hl .pl-mark { stroke-width: 2; }
-.pl-hl .pl-lab { fill: hsl(var(--ring)); font-weight: 600; }
-.pl-hl .pl-seg { stroke: hsl(var(--ring)); }
+.pl-hl .pl-lab { fill: hsl(var(--focus)); font-weight: 600; }
+.pl-hl .pl-seg { stroke: hsl(var(--focus)); }
 
-/* 물러남(recede) — DEC D32-a 확정값(vinc.d.atlas-visual-language §1.6 표).
+/* 물러남(recede) — DEC D32-a 확정값(vinc.d.view-visual-language §1.6 표).
    노드 .40 / 선 .12 / 텍스트 .35, 전 관점·전 표면 공통. 뷰 코드에 숫자 리터럴을
    두지 않기 위해 여기 한 곳에서만 정의한다(모션 토큰 계층의 선행 자리).
    초점 자신과 그 이웃은 감쇠 없음(1.0) — .pl-fade 가 안 붙는다. */
@@ -1375,6 +1449,65 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   .pl-node, .pl-link, .pl-ribbon, .pl-row, .pl-lane { transition: opacity .22s ease; }
 }
 
+/* 방사형 계층 번들(Sankey 대체) — surfaces/view-bundle.ts.
+   선은 계층을 타고 다발이 되므로 굵기가 아니라 **겹침**이 밀도를 말한다. 그래서
+   한 가닥은 얇고 투명하게 두고(겹치면 저절로 진해진다), 집약 단에서만 `--n`(합쳐진
+   개수)으로 살짝 굵힌다. */
+.pl-bd { display: block; margin: 0 auto; overflow: visible; }
+.pl-bd-link {
+  fill: none;
+  stroke: hsl(var(--link));
+  stroke-width: clamp(.5px, calc(.5px * var(--n, 1)), 3px);
+  stroke-opacity: .38;
+  stroke-linecap: round;
+  /* `pathLength="1"` 로 정규화돼 있어 대시 하나가 곧 경로 전체다 — 즉 평소에는
+     실선이고, 아래 모션이 offset 을 1 에서 0 으로 줄이며 **그려 나간다**. */
+  stroke-dasharray: 1;
+}
+/* 선이 이어지는 모션 — 단·관계를 바꿀 때만 붙는다(리사이즈에는 안 붙인다).
+   물성은 motion.ts 와 같다: 강한 감속 `cubic-bezier(.16,1,.3,1)`.
+   스태거는 굵은 다발(먼저 그려짐)에서 가는 선 순으로 퍼져 "무엇이 중심인가"가
+   시간축에도 실린다. `backwards` 가 있어야 지연 중인 선이 완성된 모습으로
+   한 프레임 번쩍이지 않는다. */
+@media (prefers-reduced-motion: no-preference) {
+  .pl-bd-anim .pl-bd-link {
+    animation: pl-bd-draw 520ms cubic-bezier(.16, 1, .3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 2.2ms);
+  }
+}
+@keyframes pl-bd-draw {
+  from { stroke-dashoffset: 1; stroke-opacity: 0; }
+  to   { stroke-dashoffset: 0; }
+}
+/* 선이 많을 때의 강등본 — 그려 나가는 대신 밝아지기만 한다(view-bundle.ts 의
+   LINE_DRAW_MAX). 같은 타이밍·같은 스태거라 리듬은 그대로고 비용만 내려간다. */
+.pl-bd-anim.pl-bd-lite .pl-bd-link { animation-name: pl-bd-fade; }
+@keyframes pl-bd-fade { from { stroke-opacity: 0; } }
+/* 회전 겹 — 클릭한 노드를 3시로 보낸다. transform-origin 은 뷰박스가 원점 중심이라
+   0 0 이 곧 링의 중심이다. 인라인 transition 은 spinTo 가 건다(회전할 때만). */
+.pl-bd-spin { transform-origin: 0 0; }
+.pl-bd-dot { fill: hsl(var(--muted-foreground)); }
+.pl-bd-label {
+  font-size: 8.5px; fill: hsl(var(--muted-foreground));
+  dominant-baseline: middle; pointer-events: none;
+}
+/* 그룹(큰 도메인) 구분 — ⚠ **잠정**이다. 허브 토큰에 카테고리 팔레트가 없어
+   (primitive 는 indigo/peri 모노크롬 + 기능색뿐) 링크 토큰의 색상환을 돌려 가른다.
+   하드코딩 색이 아니므로 게이트는 통과하고, 팔레트가 생기면 이 블록만 바뀐다. */
+.pl-bd-link[data-g="1"], .pl-bd-leaf[data-g="1"] { filter: hue-rotate(50deg); }
+.pl-bd-link[data-g="2"], .pl-bd-leaf[data-g="2"] { filter: hue-rotate(100deg); }
+.pl-bd-link[data-g="3"], .pl-bd-leaf[data-g="3"] { filter: hue-rotate(150deg); }
+.pl-bd-link[data-g="4"], .pl-bd-leaf[data-g="4"] { filter: hue-rotate(200deg); }
+.pl-bd-link[data-g="5"], .pl-bd-leaf[data-g="5"] { filter: hue-rotate(250deg); }
+.pl-bd-link[data-g="6"], .pl-bd-leaf[data-g="6"] { filter: hue-rotate(300deg); }
+.pl-bd-link[data-g="7"], .pl-bd-leaf[data-g="7"] { filter: hue-rotate(330deg); }
+/* 초점 — 선택된 잎만 진해지고 글자가 커진다. 나머지를 흐리는 일은 hover 문법
+   (.pl-fade)이 이미 하므로 여기서 되풀이하지 않는다. */
+.pl-bd-leaf.on .pl-bd-dot { fill: hsl(var(--foreground)); r: 3.5; }
+.pl-bd-leaf.on .pl-bd-label { fill: hsl(var(--foreground)); font-size: 10px; font-weight: 600; }
+.pl-bd-leaf { cursor: pointer; }
+.pl-bd-leaf:hover .pl-bd-label { fill: hsl(var(--foreground)); }
+
 /* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).
    오버레이는 포인터를 받지 않는다(캔버스의 hover·클릭을 가로채면 안 된다).
    배지만 예외로 포인터를 받아 자체 툴팁을 띄운다. */
@@ -1388,6 +1521,25 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font-size: .62rem; line-height: 1.05rem; text-align: center;
   font-variant-numeric: tabular-nums;
 }
+/* 고정 앵커 — 끌어서 옮긴 노드에 붙는다(더블클릭으로 해제, view2d.ts).
+   배지와 같은 층·같은 모양 언어를 쓰되 자리가 갈린다(배지는 오른쪽 위, 앵커는 왼쪽
+   아래). 초점색을 쓰는 이유: 잡아 둔 것은 지금 관심사이고, 그것이 초점색의 뜻이다. */
+.a2-anchor {
+  position: absolute; top: 0; left: 0; pointer-events: auto;
+  display: grid; place-items: center; width: 1.05rem; height: 1.05rem; padding: 0;
+  border-radius: 999px; cursor: pointer;
+  border: 1px solid hsl(var(--focus) / .5); background: hsl(var(--card) / .92);
+  color: hsl(var(--focus));
+}
+.a2-anchor:hover { border-color: hsl(var(--focus)); background: hsl(var(--card)); }
+.a2-anchor:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .a2-anchor { animation: a2-anchor-in .18s ease-out; }
+}
+/* ⚠ 불투명도만 건드린다. 자리는 JS 가 인라인 `transform: translate(...)` 로 잡으므로
+   키프레임이 transform 을 만지면 앵커가 좌상단으로 튄다(같은 속성을 둘이 쓴다). */
+@keyframes a2-anchor-in { from { opacity: 0; } }
+
 /* 미니맵 — 줌인했을 때만 뜬다(전체가 보이면 답할 질문이 없다). 크롬 바 위. */
 .a2-minimap {
   position: absolute; right: var(--space-4, 1rem); bottom: 2.9rem; z-index: 3;
@@ -1403,30 +1555,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    bklit 의 소스→타깃 그라디언트는 모노크롬 규율상 쓰지 않는다(정본 §5).
    노드 테두리 = 배경색 헤어라인(D68) — 리본과 같은 "틈" 문법으로 stratum 블록을
    리본 다발에서 도려내 alluvial 의 축 인상을 세운다(모노크롬 안의 유일한 분리 수단). */
-.pl-snode {
-  fill: hsl(var(--foreground));
-  fill-opacity: .82;
-  stroke: hsl(var(--background));
-  stroke-width: .75;
-}
 /* 리본은 선이 아니라 **면**이다 — 그래야 테두리를 줄 수 있고, 겹친 리본이 한
    덩어리로 뭉개지지 않는다(색으로 가를 수 없는 모노크롬에서 유일한 분리 수단).
    테두리 색 = 배경이라 리본 사이에 얇은 틈이 생긴 것처럼 읽힌다. */
-.pl-flow { fill: hsl(var(--foreground)); stroke: hsl(var(--background)); stroke-linejoin: round; }
-.pl-ribbon.pl-drill { cursor: pointer; }
-.pl-hl .pl-snode { fill: hsl(var(--ring)); fill-opacity: 1; }
-.pl-hl .pl-flow { fill: hsl(var(--ring)); }
+.pl-hl .pl-snode { fill: hsl(var(--focus)); fill-opacity: 1; }
+.pl-hl .pl-flow { fill: hsl(var(--focus)); }
 /* 겹침을 "뭉개짐"이 아니라 "층이 쌓인 것"으로 읽히게 한다. 라이트는 곱하기(겹칠수록
    짙어짐), 다크는 스크린(겹칠수록 밝아짐) — 잉크 방향이 뒤집히므로(D39) 함께 뒤집는다.
-   .pl-ribbons 의 isolation 이 블렌딩을 리본 층 안에 가둔다(배경·노드로 새지 않게). */
-.pl-ribbons { isolation: isolate; }
-.pl-ribbon { mix-blend-mode: multiply; }
-[data-theme="dark"] .pl-ribbon { mix-blend-mode: screen; }
 /* 초점 리본은 블렌딩에서 빼 초점색이 섞이지 않게 한다(색은 딱 한 곳뿐이므로 선명해야). */
 .pl-ribbon.pl-hl { mix-blend-mode: normal; }
 /* 주제 라벨은 리본 위를 지난다 — 판을 깔아 글자를 읽히게 한다. 판의 실제 폭은
    마운트 후 getBBox() 실측으로 정해진다(추정 금지, 정본 §6 실패 1). */
-.pl-plate { fill: hsl(var(--background)); fill-opacity: .82; }
 .pl-hl .pl-plate { fill-opacity: .95; }
 
 /* 진입 안무(bklit 타임라인의 압축판) — 노드 0~360ms, 리본 160~700ms.
@@ -1442,16 +1581,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   /* 리본이 면이 되면서 stroke-dashoffset 성장은 못 쓴다(그건 선의 문법이다).
      대신 자기 왼쪽 끝(= 출발 노드 쪽)을 축으로 가로로 자란다 — transform 이라
      레이아웃을 유발하지 않는다. fill-box 라 리본마다 자기 시작점이 축이 된다. */
-  .pl-sankey .pl-ribbon.pl-in .pl-flow {
-    transform: scaleX(0);
-    transform-box: fill-box;
-    transform-origin: left center;
-    animation: pl-flow-in .54s cubic-bezier(.85, 0, .15, 1) forwards;
-    animation-delay: calc(160ms + var(--i, 0) * 8ms);
-  }
 }
 @keyframes pl-node-in { from { opacity: 0 } to { opacity: 1 } }
-@keyframes pl-flow-in { to { transform: scaleX(1) } }
 
 /* 타임라인 진입 안무 — **뿌리가 내린다**(발주자 지시 2026-08-02).
    위(시작 시점)에서 아래(현재)로 선이 자라고, 지나간 자리에 마디가 켜진다.
@@ -1464,11 +1595,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    최초 화면에서 hover 문법이 통째로 죽는다. backwards 는 지연 구간만 시작값을
    쥐고 끝난 뒤엔 선언값으로 돌려주므로, 선언값 자체를 최종 상태로 둔다. */
 @media (prefers-reduced-motion: no-preference) {
-  .pl-timeline .pl-lane-line.pl-grow {
-    stroke-dasharray: 100;     /* pathLength 단위 — offset 0 이면 전량 가시 */
-    animation: pl-root-grow .62s cubic-bezier(.85, 0, .15, 1) backwards;
-    animation-delay: var(--d, 0s);
-  }
+  /* 줄기는 면이라 stroke-dashoffset 이 안 먹는다(그건 선의 문법이다). 같은 인상을
+     clip-path 로 낸다: 아래를 전부 잘라 둔 채 시작해 잘린 만큼을 걷어 낸다 —
+     결과가 "위에서 아래로 자란다"로 같고, 합성만 하므로 리페인트도 없다. */
   .pl-timeline .pl-root.pl-grow { animation: pl-node-in .3s ease-out backwards; }
   .pl-timeline .pl-node.pl-grow {
     animation: pl-node-in .34s ease-out backwards;
@@ -1488,7 +1617,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
     animation: pl-node-in .4s ease-out backwards;
   }
 }
-@keyframes pl-root-grow { from { stroke-dashoffset: 100 } to { stroke-dashoffset: 0 } }
 
 /* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
    플로팅 글라스 문법(D37 @supports 블록이 유리화). */
@@ -1549,13 +1677,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
 @supports (backdrop-filter: blur(1px)) {
   @media not (prefers-reduced-transparency: reduce) {
-    .palette-card, #atlas-view-panel, #atlas-detail, #settings-popover, .tip, .float-card {
+    .palette-card, #view-lens-panel, #view-detail, #settings-popover, .tip, .float-card {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
       box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
     }
-    .palette-card, #atlas-view-panel, #settings-popover, .tip, .float-card {
+    .palette-card, #view-lens-panel, #settings-popover, .tip, .float-card {
       border: 1px solid hsl(var(--border) / .6);
     }
   }

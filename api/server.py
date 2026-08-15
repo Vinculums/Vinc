@@ -236,7 +236,7 @@ class VincApp:
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
     def read_graph(self, p):
-        # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
+        # seed 지정 시 seed+depth ego 서브그래프(View L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
@@ -246,9 +246,9 @@ class VincApp:
                                             basis=p.get("basis") or q.BASIS_RECORDED,
                                             store=r))
 
-    def read_atlas(self, p):
-        # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
-        return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
+    def read_view(self, p):
+        # View L0(D16) — 도메인 분포 + 결합 행렬.
+        return self._read(lambda r: q.view_l0(owner=_req(p, "owner"), store=r))
 
     def read_ledger(self, p):
         # 원장(출처 × 주제 × 연결상태) 롤업 — 조회 전용. 쓰기 큐를 타지 않는다(R4).
@@ -303,9 +303,14 @@ class VincApp:
 
     def read_diagnose(self, p):
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
-        # components(기본) | communities. algo 확장 부재 시 executed=False 강등.
+        # components(기본) | communities | community_context(단일 시드의 군집 +
+        # 대표 발췌 — unified-kg-rag-comparison §4). algo 확장 부재 시 executed=False 강등.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
+        if kind == "community_context":
+            return self._read(lambda r: q.community_context(
+                owner=owner, node=_req(p, "node"), store=r,
+                member_limit=_int(p.get("member_limit"), 0) or None))
         if kind == "communities":
             return self._read(lambda r: q.communities(
                 owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
@@ -1228,6 +1233,19 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"status": "degraded", "provision_error": self.app.provision_error}
             elif self.app.store is None:
                 body = {"status": "degraded", "error": "no reachable store"}
+                # ⚠ **사유를 여기까지 들고 온다.** `EmbeddedBackend.open` 은 실패
+                # 사유를 `last_open_error` 에 담고 stdout 에도 찍지만, 여태 그걸
+                # **읽는 곳이 코드 어디에도 없었다** — /health 는 "no reachable
+                # store" 한 줄뿐이라 앱은 "지도를 불러오지 못했습니다" 밖에 말할
+                # 수 없었다. 그 화면은 **빈 그래프와 구분되지 않는다.** 실제로
+                # 2026-08-14 에 확장 경로 문제로 스토어가 안 열렸는데, 사이드카
+                # stdout 을 직접 보기 전까지 정체를 알 수 없었다.
+                try:
+                    from store.embedded_backend import EmbeddedBackend
+                    if EmbeddedBackend.last_open_error:
+                        body["open_error"] = EmbeddedBackend.last_open_error
+                except Exception:   # noqa: BLE001 — 진단이 헬스를 죽이지 않는다
+                    pass
             else:
                 # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
                 # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
@@ -1285,7 +1303,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
-            "/atlas": app.read_atlas, "/ledger": app.read_ledger, "/share": app.read_share,
+            "/view": app.read_view, "/ledger": app.read_ledger, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/merge-candidates": app.read_merge_candidates,

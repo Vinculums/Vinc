@@ -42,10 +42,15 @@ export const cfg = {
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
   set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
   // D42 — 표면 언어. 무설정 = OS 로케일 추종(ko-* → 한국어), 그 외 영어.
+  // KO 비활성(2026-08-15): EN 카피 재작성이 끝날 때까지 영어만 노출한다(홈페이지와
+  // 동일 조치, Vinc-homepage/site/assets/gnb.js 참조). 재활성화: 아래 return 을 지우면
+  // 원래 판정(저장값 → OS 로케일)이 살아난다. KO 덱(copy.ts)은 재작성 원본으로 보존.
   get lang(): "en" | "ko" {
-    const v = localStorage.getItem(LANG_KEY);
-    if (v === "ko" || v === "en") return v;
-    return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+    return "en";
+    // 재활성화 시 위 return 을 지우고 아래 원래 판정을 살릴 것:
+    // const v = localStorage.getItem(LANG_KEY);
+    // if (v === "ko" || v === "en") return v;
+    // return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
   /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다
@@ -140,7 +145,7 @@ export type Scope = { team: string | null };
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown, scope?: Scope): Promise<any> {
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
-  //   call("/atlas") → /api/graph/atlas · call("/ingest/fragment") → /api/graph/ingest/fragment
+  //   call("/view") → /api/graph/view · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
@@ -211,23 +216,6 @@ export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
   items: NodeLink[]; truncated: boolean; executed: boolean;
 };
-export type LedgerRow = {
-  // D52 by=concept: `domain` 은 개념 id, `label` 은 제목, `topic` 은 그 개념의 주제.
-  // by=domain(기본)에서는 `domain` 이 곧 주제이고 label/topic 은 없다.
-  domain: string; label?: string; topic?: string; concepts: number;
-  episodic: number; record: number; unsourced: number;
-  connected: number; gateway: number; orphan: number;
-};
-// D43 ego — /ledger 응답에서 UI 가 읽는 것만. scope·population 은 신형 사이드카의
-// 추가 필드다(구버전 응답엔 키 자체가 없다). seed 를 보냈는데 scope 가 없으면 구
-// 사이드카가 seed 를 무시하고 주제/전체 롤업을 돌려준 것 — UI 가 캡션으로 밝힌다.
-export type LedgerRes = {
-  executed: boolean; rows?: LedgerRow[]; note?: string;
-  scope?: "seed" | "domain" | "all";   // 무엇을 모집단으로 집계했는가(에코)
-  population?: number;                 // scope="seed" 일 때 ego 구성원 수
-  by?: "domain" | "concept";           // D52 — 롤업 알갱이 에코(구 사이드카엔 없다)
-};
-
 /** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
  *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
@@ -246,13 +234,9 @@ export type NavTreeRes = {
 
 export const api = {
   health: () => call("/health"),
-  atlasL0: (owner: string) => call("/atlas", { owner }),
+  viewL0: (owner: string) => call("/view", { owner }),
   graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
     call("/graph", { owner, ...opts }),
-  ledger: (owner: string,
-           opts: { domain?: string; seed?: string; depth?: number;
-                   by?: "domain" | "concept" } = {}): Promise<LedgerRes> =>
-    call("/ledger", { owner, ...opts }),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),

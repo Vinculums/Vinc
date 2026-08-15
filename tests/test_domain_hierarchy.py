@@ -394,6 +394,34 @@ class BackfillTests(unittest.TestCase):
                                {"domain": "vinc", "owner": "u1"})
         self.assertEqual(["c1"], [r["id"] for r in rows])
 
+    def test_query_rename_domain_moves_every_semantic_layer(self):
+        """`api.query.rename_domain` 은 라벨 표를 **손으로** 들고 있어서 Decision 을
+        통째로 빠뜨렸다 — 도메인을 개명하면 결정만 `domain` 열도 IN_DOMAIN 엣지도
+        옛 도메인에 남았다. v13 이 백필 표(dh.DOMAIN_LABELS)는 고쳤지만 이 표는
+        못 봤다: 위 test_rename_moves_column_and_edge_together 가 재는 것은
+        `dh.backfill(rename=)` 이지 사용자가 실제로 부르는 `/domain/rename` 이
+        아니어서, 같은 실패가 테스트를 통과한 채 남아 있었다.
+
+        그래서 여기서는 **사용자가 부르는 표면**을 잰다(네 층 전부)."""
+        from api import query as q
+        res = q.rename_domain(owner="u1", old="design", new="vinc/design",
+                              store=self._store, cfg=self._cfg)
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(4, res["moved"], f"의미층 하나가 안 따라왔다: {res}")
+        for lbl, pk, i in (("Concept", "concept_id", "c1"),
+                           ("Record", "record_id", "r1"),
+                           ("Episode", "episode_id", "e1"),
+                           ("Decision", "decision_id", "dec1")):
+            col = self._store.run(
+                f"MATCH (n:{lbl}) WHERE n.{pk} = $i RETURN n.domain AS d", {"i": i})[0]["d"]
+            self.assertEqual("vinc/design", col, f"{lbl} 의 domain 열이 안 따라왔다")
+        # 열만 옮기고 엣지를 두면 /domains(열 집계)와 vinc_neighbors(그래프)가
+        # 서로 다른 답을 준다 — v12 가 실제로 그 상태로 배포됐다.
+        rows = self._store.run(dh.subtree_scoped_cypher("Decision"),
+                               {"domain": "vinc", "owner": "u1"})
+        self.assertEqual(["dec1"], [r["id"] for r in rows],
+                         "Decision 의 IN_DOMAIN 이 새 도메인으로 안 옮겨졌다")
+
     def test_boot_migration_runs_the_backfill(self):
         """부팅 데이터 스텝(v11)이 실제로 돈다 — 여기가 라이브의 유일한 실행 경로다.
         사이드카가 락을 쥐고 있어 CLI 로는 못 열기 때문에, 이게 안 돌면 기존 그래프는

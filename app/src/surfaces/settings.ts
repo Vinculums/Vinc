@@ -62,16 +62,14 @@ export async function renderSettings(el: HTMLElement) {
   const themeSeg = () => ["dark", "light", "auto"].map((t) =>
     `<button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t ? " active" : ""}"
       data-theme-opt="${t}">${t}</button>`).join("");
-  const langSeg = () => (["en", "ko"] as const).map((l) =>
-    `<button class="chip${cfg.lang === l ? " active" : ""}"
-      data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("");
+  // KO 비활성(2026-08-15): 언어 토글 UI 통째로 숨김(호출부 제거, api.ts cfg.lang 참조).
+  // const langSeg = () => (["en", "ko"] as const).map((l) =>
+  //   `<button class="chip${cfg.lang === l ? " active" : ""}"
+  //     data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("");
 
   function wireThemeLang(body: HTMLElement) {
-    body.querySelectorAll<HTMLElement>("[data-lang-opt]").forEach((b) =>
-      b.addEventListener("click", () => {   // D42 — 언어 전환은 전 표면 재렌더 필요 → reload
-        cfg.lang = b.dataset.langOpt as "en" | "ko";
-        location.reload();
-      }));
+    // KO 비활성(2026-08-15): 언어 토글 자체를 숨겼으므로(langSeg 미사용) 배선도 죽여 둔다.
+    // 재활성화 시 langSeg()/이 블록의 주석을 함께 풀 것.
     body.querySelectorAll<HTMLElement>("[data-theme-opt]").forEach((b) =>
       b.addEventListener("click", async () => {
         localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
@@ -122,8 +120,6 @@ export async function renderSettings(el: HTMLElement) {
       <label>${U.appearance}</label>
       <label>${U.theme}</label>
       <p><span class="seg">${themeSeg()}</span></p>
-      <label>${U.language}</label>
-      <p><span class="seg">${langSeg()}</span></p>
       <hr class="settings-sep" />
       <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>`;
     wireThemeLang(body);
@@ -144,7 +140,7 @@ export async function renderSettings(el: HTMLElement) {
           .catch(() => { if (box) box.textContent = ""; });
       }
       // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
-      // 것이 Atlas·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
+      // 것이 View·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
       // 정지·연체 팀은 목록에 넣지 않는다 — 계정이 서명을 멈춰 어차피 거부된다.
       const pick = body.querySelector<HTMLSelectElement>("#space-pick");
       const note = body.querySelector<HTMLElement>("#space-note");

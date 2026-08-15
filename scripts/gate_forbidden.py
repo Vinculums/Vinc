@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""반입 금지 게이트 — WO-MEM-SA-001 §3 하드 룰 (F1–F7).
+"""반입 금지 게이트 — WO-MEM-SA-001 §3 하드 룰 (F1–F8).
 
 Vinc 는 memory 데이터플레인을 흡수하되 **CP 계측 코드·학습 프레이밍·구 명칭**을
 반입하지 않는다. 본 게이트가 그 하드 룰의 실행체(executable SSoT)다.
@@ -42,12 +42,27 @@ _EXCLUDE_DIRS = {
     # 파일별 allowlist 로 막지 않는 이유: 이 디렉터리는 불변 아카이브이고, 목록을
     # 유지하는 순간 아래 `vinc.a.terms.md` 가 그랬듯 파일명이 바뀌면 조용히 샌다.
     "_migration",
+    # `.claude/worktrees/*` = 격리 에이전트 세션이 남긴 구 git worktree 체크아웃
+    # (app/·tests/ 를 그대로 복제해 들고 있다). 같은 이유로 제품 표면이 아니라
+    # 부산물이다 — F8 추가 후 실측 1655건이 전부 여기 한 곳이었다(2026-08-15).
+    "worktrees",
+    # `vinc.egg-info/` = setuptools 가 빌드 때 자동 생성하는 매니페스트(SOURCES.txt
+    # 등). dist/build 와 같은 신분 — 소스 파일 이름이 바뀌면 다음 빌드에서 저절로
+    # 갱신되므로 손으로 맞출 대상이 아니다.
+    "vinc.egg-info",
 }
 
 # 자기 자신·정책/계획 문서는 금지어를 '정의·인용'하므로 제외(오탐 회피).
 # ⚠ `vinc.a.terms.md` 는 **이행 전 파일명**이고 재작성본은 `vinc.canon.terminology.md`
 # 다. 이름이 갈린 채로 두면 같은 문서가 새 이름으로 트리에 들어왔을 때 게이트가
 # 터진다 — 실제로 2026-08-11 에 그렇게 터졌다. 둘 다 싣는다(구본은 아카이브에 남아 있다).
+#
+# F8 추가분 — 이 넷은 '정의·인용'이 아니라 다른 이유로 뺀다:
+#   · CHANGELOG.md·README.md 는 그때 그 이름으로 실제로 출시된 이력이다(과거 커밋
+#     메시지와 같은 신분 — F7-d Vinclums 예외와 동일 논리). 다시 쓰지 않는다.
+#   · starter-packs 세 파일은 제품 표면이 아니라 예시 지식 콘텐츠이고, 거기 나오는
+#     "atlas" 는 전부 무관한 일반명사(책 제목 "Atlas of AI", "a time atlas" 등 —
+#     실측 2026-08-15, 셋 다 확인함). 서피스명과 우연히 겹치는 영어 단어일 뿐이다.
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
     "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
@@ -55,6 +70,12 @@ _ALLOWLIST_SUFFIXES = (
     "vinc.canon.terminology.md",     # 금지 어휘 정본 (재작성본)
     "UI_INVENTORY_AUDIT.md",         # 흡수 매트릭스가 금지 카피를 예시 인용
     "PLAN.md",                       # 실행 계획이 F1/F7 토큰을 규칙으로 명명
+    "CHANGELOG.md",
+    "README.md",
+    "CLAUDE.md",                     # F8 를 '정의·인용'한다 — 위 vinc.a.terms.md 와 동일 사유
+    "starter-packs/work/art/04-digital-AI-aesthetics.md",
+    "starter-packs/work/art/02-case-applications-2.md",
+    "starter-packs/work/art/01-case-applications.md",
 )
 
 
@@ -102,8 +123,26 @@ _F7 = [
          note="구 데이터 디렉토리·패키지 명칭 → vinc 로 대체"),
 ]
 
+# ── F8 구 서피스명 atlas (vinc.canon.terminology §7) — 현재 코드·UI·라우트·문서 0건 ──
+# 지도 서피스(구명 Atlas)를 View 로 개명(발주자 지시 2026-08-15). 대소문자 무관
+# 부분일치로 잡는다(단어경계를 걸면 AtlasView·atlasScene·atlas3d 같은 파생
+# 식별자를 못 잡는다 — 실제 위반의 대부분이 이 형태다). 한글 음역은 별도 규칙.
+# CHANGELOG.md·README.md 의 과거 릴리스 기록, starter-packs 의 무관한 일반명사
+# 용례는 파일 단위로 허용목록에서 뺀다(위 _ALLOWLIST_SUFFIXES 참조).
+# main.ts 의 ALIAS 항목(`atlas: "view"`)은 예외다 — weg-9000-memory 와 같은 신분:
+# 구 해시 북마크를 새 표면으로 되돌리는 하위호환 표가 그 옛 이름을 실제로 담고
+# 있어야 작동한다(surface-tree §3, "이 항목들은 무기한 유지된다"). 백틱으로 감싼
+# 인라인 코드 인용(`atlas`·`#atlas/...`)과 그 표 항목 자체만 허용한다.
+_ATLAS_ALIAS_OK = re.compile(r"`#?atlas[^`]*`|\batlas:\s*\"view\"")
+_F8 = [
+    Rule("F8", "atlas", re.compile(r"atlas", re.IGNORECASE),
+         note="구 지도 서피스명 → view", allow_within=_ATLAS_ALIAS_OK),
+    Rule("F8", "아틀라스", re.compile(r"아틀라스"),
+         note="구 지도 서피스명(한글 음역) → 뷰"),
+]
 
-ALL_RULES = _F1 + _F2 + _F7
+
+ALL_RULES = _F1 + _F2 + _F7 + _F8
 
 
 @dataclass
@@ -186,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[gate_forbidden] FAIL — {len(violations)}건 위반:")
             for v in violations:
                 print(f"  [{v.gate}] {v.label}  {v.file}:{v.line}  {v.text}")
-            print("\n정본: 그래프 문서 vinc.a.terms §4–6 (vinc_doc_get)")
+            print("\n정본: 그래프 문서 vinc.canon.terminology §4–7 (vinc_doc_get)")
 
     return 1 if violations else 0
 

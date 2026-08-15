@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Atlas 평면 관점(D43) 백엔드 계약 — 실엔진 바인딩 + 원장 롤업.
+"""View 평면 관점(D43) 백엔드 계약 — 실엔진 바인딩 + 원장 롤업.
 
 **왜 실엔진인가**: 이 변경의 유일한 실질 위험은 Kùzu **Binder 오류**다. 관계 열
 (`r.evidence`/`r.confidence`)을 그 열이 없는 rel 테이블(CONNECTS·ATTACHES_TO·
 TYPED)이 바인딩 후보인 플랜에 붙이면 바인드 시점에 터지고, 그러면 `/graph` 가
-새 관점뿐 아니라 **모든 Atlas 레벨에서** 죽는다. 순수 플랜 문자열 비교로는 절대
+새 관점뿐 아니라 **모든 View 레벨에서** 죽는다. 순수 플랜 문자열 비교로는 절대
 못 잡는 층이라 갓 프로비저닝한 임베디드 스키마에 실제로 실행해 본다
 ([[vinc-owner-isolation-sec1]] 의 "스텁 말고 실엔진" 과 같은 태도).
 
@@ -27,7 +27,7 @@ _DRIVER, _NAME = _import_driver()
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
-class AtlasViewsBackend(unittest.TestCase):
+class ViewViewpointsBackend(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
         self._env = {}
@@ -163,7 +163,11 @@ class AtlasViewsBackend(unittest.TestCase):
         g = q.graph(owner="user:alice", store=store)
         store.close()
         self.assertTrue(g["executed"], g.get("note"))
-        self.assertEqual([n["id"] for n in g["nodes"]], ["ca"], "bob 노드 노출 — SEC-1 위반")
+        # 주제 마크(`domain:*`)는 이 검사의 대상이 아니다 — 배치가 내는 구조 마크이지
+        # 소유자 데이터가 아니다(2026-08-14 부터 `/graph` 가 함께 낸다). 검사의 주어는
+        # "bob 의 개념이 alice 의 응답에 실리는가"이므로 개념만 남겨 비교한다.
+        concepts = [n["id"] for n in g["nodes"] if not n["id"].startswith("domain:")]
+        self.assertEqual(concepts, ["ca"], "bob 노드 노출 — SEC-1 위반")
         self.assertEqual(g["edges"], [], "교차 소유자 엣지 노출 — SEC-1 위반")
         blob = json.dumps(g, ensure_ascii=False)
         for leak in ("밥의 비밀 근거", "Bob Secret", "2026-07-02"):
@@ -171,7 +175,7 @@ class AtlasViewsBackend(unittest.TestCase):
 
     def test_episode_seeded_l2_keeps_concept_dates(self):
         """축 플랜으로만 도착하는 개념도 ``ts`` 를 갖는다 — episode 시드 L2
-        (`#atlas/trace/episode:…`)에서 개념이 전부 무날짜가 되면 Timeline 이 실제로는
+        (`#view/trace/episode:…`)에서 개념이 전부 무날짜가 되면 Timeline 이 실제로는
         전량 날짜가 있는데도 '날짜 없음' 빈 상태로 강등된다."""
         from api import query as q
 
@@ -553,7 +557,7 @@ class _HalfBrokenStore:
         raise AssertionError("주입 스토어를 execute 가 닫았다")
 
 
-class AtlasViewsPureContracts(unittest.TestCase):
+class ViewViewpointsPureContracts(unittest.TestCase):
     """실엔진 없이 성립해야 하는 순수 계약(셰이핑·강등)."""
 
     def test_ledger_degrades_when_the_link_plan_fails(self):

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from vinc_mcp import tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
-from vinc_mcp.http_server import MAX_SESSIONS, MCPHTTPApp, make_server  # noqa: E402
+from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
 from vinc_mcp.install import (  # noqa: E402
     CLIENTS, client_label, install_desktop, install_json, manual_entry,
     uninstall_desktop, uninstall_json,
@@ -43,6 +43,12 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_neighbors", "vinc_path",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
+             # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를
+             # 쓸 수는 있는데 그것을 그래프에 합류시키지 못한다(워크플로 절반이
+             # 웹 전용이었다).
+             "vinc_doc_extract",
+             # F10-b 의 읽는 쪽. 쓸 수만 있고 읽을 수 없던 짝 결손.
+             "vinc_merge_rejections",
              # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
              "vinc_conventions"}
 
@@ -81,8 +87,12 @@ class ToolContractTests(unittest.TestCase):
                     "text": "x", "doc_id": "d0"}          # D45 P4 문서 정본 필수 인자
             tools.call(t["name"], args, b)
         writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
-        self.assertEqual(writes, ["/delete", "/delete-edge", "/doc/delete", "/doc/put",
-                                  "/ingest/fragment", "/merge-nodes", "/merge-reject"])
+        # `/doc/extract` 는 apply=false 면 아무것도 안 쓰지만 **쓸 수 있는** 표면이라
+        # 여기 든다. 이 목록의 값은 "무엇이 POST 냐"가 아니라 "무엇이 쓸 수 있느냐"를
+        # 사람이 한 번 더 확인하는 데 있다 — 조회 도구가 몰래 늘어나면 여기서 걸린다.
+        self.assertEqual(writes, ["/delete", "/delete-edge", "/doc/delete", "/doc/extract",
+                                  "/doc/put", "/ingest/fragment", "/merge-nodes",
+                                  "/merge-reject"])
 
     def test_owner_default_injected(self):
         b = _StubBridge()
@@ -303,14 +313,74 @@ class HTTPTransportTests(_HTTPFixture):
     def test_delete_requires_auth(self):
         self.assertEqual(self._delete(), 401)
 
-    def test_session_table_is_bounded(self):
-        """세션 id 는 클라이언트가 정한다 — 임의 헤더로 무한 증식하면 안 된다."""
-        for i in range(MAX_SESSIONS + 20):
-            self.app.dispatcher(f"s{i}")
-        self.assertLessEqual(len(self.app._sessions), MAX_SESSIONS)
-        # 최근 것은 남고 가장 오래된 것부터 밀려난다(FIFO).
-        self.assertIn(f"s{MAX_SESSIONS + 19}", self.app._sessions)
-        self.assertNotIn("s0", self.app._sessions)
+    def test_arbitrary_session_ids_allocate_nothing(self):
+        """세션 표 자체가 없어졌다 — 임의 헤더로 증식시킬 상태가 존재하지 않는다.
+
+        전에는 상한 256 + FIFO 축출로 증식을 막았는데, 그 표가 지키던 것이 아무도
+        안 읽는 불리언 하나뿐이라 표째 걷어냈다(MCPHTTPApp.__init__). 상한을 재는
+        테스트를 '상한이 필요 없다'를 재는 테스트로 바꾼다."""
+        first = self.app.dispatcher()
+        for _ in range(50):
+            self.assertIs(self.app.dispatcher(), first, "Dispatcher 가 공유가 아니다")
+        self.assertFalse(hasattr(self.app, "_sessions"),
+                         "세션 표가 되살아났다 — 레플리카 간 불일치가 함께 돌아온다")
+
+    def test_batch_request_gets_an_array_back(self):
+        """`PROTOCOL_VERSIONS` 가 2025-03-26 을 광고하고 그 리비전은 배치를 지원한다.
+        전에는 dict 가 아니면 400 이라 광고한 리비전으로 협상한 클라이언트가 막혔다."""
+        code, obj = self._post("/mcp", [{"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                                        {"jsonrpc": "2.0", "id": 2, "method": "ping"}],
+                               token=self.static)
+        self.assertEqual(code, 200)
+        self.assertIsInstance(obj, list)
+        self.assertEqual([r["id"] for r in obj], [1, 2])
+
+    def test_batch_of_only_notifications_gets_202(self):
+        """응답할 것이 없으면 배치도 본문 없이 202 다(스펙)."""
+        req = urllib.request.Request(
+            self.base + "/mcp",
+            data=json.dumps([{"jsonrpc": "2.0", "method": "notifications/initialized"}]).encode(),
+            method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Authorization", f"Bearer {self.static}")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            self.assertEqual(r.status, 202)
+
+    def test_empty_batch_is_rejected(self):
+        code, _ = self._post("/mcp", [], token=self.static)
+        self.assertEqual(code, 400)
+
+    def _post_with_headers(self, body, headers):
+        req = urllib.request.Request(self.base + "/mcp",
+                                     data=json.dumps(body).encode(), method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Authorization", f"Bearer {self.static}")
+        for k, v in headers.items():
+            req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_protocol_version_header_is_validated(self):
+        """2025-06-18 스펙: 지원하지 않는 리비전 헤더에는 400. 전에는 이 헤더 이름이
+        CORS 허용목록 문자열에만 있고 코드가 읽지 않았다."""
+        ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+        self.assertEqual(self._post_with_headers(ping, {}), 200)               # 없으면 통과
+        self.assertEqual(
+            self._post_with_headers(ping, {"MCP-Protocol-Version": "2025-06-18"}), 200)
+        self.assertEqual(
+            self._post_with_headers(ping, {"MCP-Protocol-Version": "1999-01-01"}), 400)
+
+    def test_browser_origin_outside_the_allowlist_is_refused(self):
+        """CORS 는 응답을 **읽지** 못하게 할 뿐 요청 도달을 막지 않는다. 스펙이
+        요구하는 Origin 게이트가 없어서 DNS 리바인딩 표면이 열려 있었다."""
+        ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+        self.assertEqual(self._post_with_headers(ping, {"Origin": "https://evil.example"}), 403)
+        self.assertEqual(self._post_with_headers(ping, {"Origin": "https://claude.ai"}), 200)
+        # Origin 이 없는 요청(서버측 커넥터·데스크탑 앱)은 절대 막지 않는다.
+        self.assertEqual(self._post_with_headers(ping, {}), 200)
 
     def test_cors_reflects_known_browser_hosts_only(self):
         """브라우저에서 도는 호스트만 반사 — 와일드카드 금지(남의 오리진 차단)."""

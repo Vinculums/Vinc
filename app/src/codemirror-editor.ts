@@ -6,13 +6,16 @@
 //
 // 의존성은 npm 번들 인라인(CSP 정합, CDN 없음). 스타일은 CSS/데코레이션 클래스로
 // 완전 제어(모노크롬 Ink & Paper — 색조 없이 굵기·크기·명도만).
-import { EditorState, Compartment, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import {
+  EditorState, Compartment, Facet, RangeSetBuilder, StateEffect, StateField,
+} from "@codemirror/state";
 import {
   EditorView, keymap, Decoration, ViewPlugin, WidgetType,
   type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { syntaxTree } from "@codemirror/language";
 
 /** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
  *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
@@ -55,6 +58,209 @@ const HR = /^(-{3,}|\*{3,})\s*$/;
 //     `--` 연속 2개 이상을 요구해 `| - | - |`(대시가 셀 내용인 정상 행)와 가른다.
 const TABLE_ROW = /^\s*\|/;
 const TABLE_DELIM = /^[\s|:-]+$/;
+
+const escHtml = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+
+// ── 프론트매터(YAML) — 문서가 **가진 값**이지 문서의 산문이 아니다 ────────────
+// 정본에는 그대로 두고 화면에서만 접는다(소스=정본 계약: 저장은 여전히 바이트
+// 동일). 접히면 요약 한 줄, 펼치면 원문 YAML 이 그 자리에 나와 바로 고쳐진다.
+//
+// ⚠ 접든 펼치든 이 구간에는 lineDecos 를 태우지 않는다. 태우면 여는 `---` 가 HR
+// 규칙에 걸려 가로줄이 되고, 값 속의 `*` 가 이탤릭 짝으로 잡혀 글자가 사라진다.
+const FM_MAX_LINES = 100;   // 1행이 `---` 인데 닫는 줄이 없는 문서에서 전수 스캔 방지
+
+/** 접기 라벨. 편집기는 카피를 직접 들지 않는다(슬래시 항목과 같은 규율) — 호출부가 준다. */
+const fmLabel = Facet.define<string, string>({ combine: (v) => v[0] ?? "Properties" });
+
+const fmToggle = StateEffect.define<boolean>();
+const fmOpen = StateField.define<boolean>({
+  create: () => false,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(fmToggle)) return e.value;
+    return v;
+  },
+});
+
+/** 첫 줄이 `---` 이고 뒤에 닫는 줄이 있으면 그 범위. 아니면 null. */
+function frontmatterRange(state: EditorState): { from: number; to: number; body: string } | null {
+  if (state.doc.lines < 2 || state.doc.line(1).text.trim() !== "---") return null;
+  const first = state.doc.line(1);
+  const last = Math.min(state.doc.lines, FM_MAX_LINES);
+  for (let n = 2; n <= last; n++) {
+    const line = state.doc.line(n);
+    const t = line.text.trim();
+    if (t === "---" || t === "...")
+      return { from: first.from, to: line.to,
+               body: state.doc.sliceString(first.to + 1, line.from) };
+  }
+  return null;
+}
+
+/** 접힌 줄 요약 — `키: 값` 을 가운뎃점으로 잇는다. 넘치는 폭은 CSS 가 자른다. */
+function fmSummary(body: string): string {
+  const out: string[] = [];
+  for (const line of body.split("\n")) {
+    const m = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
+    if (m && m[2].trim()) out.push(`${m[1]}: ${m[2].trim()}`);
+  }
+  return out.join(" · ");
+}
+
+class FmWidget extends WidgetType {
+  constructor(readonly label: string, readonly summary: string, readonly open: boolean) { super(); }
+  eq(o: FmWidget) {
+    return o.label === this.label && o.summary === this.summary && o.open === this.open;
+  }
+  toDOM(view: EditorView) {
+    const el = document.createElement("div");
+    el.className = `cm-r-fm${this.open ? " cm-r-fm-open" : ""}`;
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-expanded", this.open ? "true" : "false");
+    el.tabIndex = 0;
+    el.innerHTML =
+      `<span class="cm-r-fm-cap">${this.open ? "▾" : "▸"} ${escHtml(this.label)}</span>`
+      + (this.open ? "" : `<span class="cm-r-fm-sum">${escHtml(this.summary)}</span>`);
+    const toggle = (e: Event) => {
+      e.preventDefault();
+      view.dispatch({ effects: fmToggle.of(!this.open) });
+    };
+    el.addEventListener("mousedown", toggle);
+    el.addEventListener("keydown", (e) => {
+      const k = (e as KeyboardEvent).key;
+      if (k === "Enter" || k === " ") toggle(e);
+    });
+    return el;
+  }
+  ignoreEvent() { return false; }
+}
+
+// ── 표(GFM) — 진짜 격자로 그린다 ──────────────────────────────────────────────
+// 전에는 lineDecos 의 한 줄 계약 때문에 격자를 못 그리고 등폭 정렬로 흉내 냈다
+// (파이프가 그대로 보여 "표가 아니라 그림"이었다). GFM 파서가 이미 `Table` 노드를
+// 만들어 두므로 그 범위를 통째로 블록 위젯으로 바꾼다. 셀 단위로 렌더하니 셀
+// 경계를 넘는 인라인 오매칭(lineDecos 의 표 early return 이 존재하는 이유)이
+// 구조적으로 불가능해지고, 그래서 셀 안 **강조**·`코드` 가 비로소 산다.
+// 커서가 표 안에 있으면 위젯을 걷고 원문을 보인다(활성 줄 = 소스 규율 그대로).
+
+/** `|` 로 셀을 가른다. 이스케이프된 `\|` 는 셀 내용이지 경계가 아니다. */
+function splitCells(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
+}
+
+/** 셀 안 인라인. **이스케이프가 먼저**다 — 아래 치환이 innerHTML 로 들어간다. */
+function cellHtml(raw: string): string {
+  return escHtml(raw)
+    .replace(/`([^`]+)`/g, '<code class="cm-r-code">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<u>$1</u>");
+}
+
+const cellAlign = (spec: string): string =>
+  /^:-+:$/.test(spec) ? "center" : /^-+:$/.test(spec) ? "right"
+    : /^:-+$/.test(spec) ? "left" : "";
+
+function tableHtml(src: string): string {
+  const rows = src.split("\n").filter((l) => l.trim());
+  if (!rows.length) return "";
+  let align: string[] = [];
+  let bodyFrom = 1;
+  if (rows[1] && TABLE_DELIM.test(rows[1]) && rows[1].includes("--")) {
+    align = splitCells(rows[1]).map((c) => cellAlign(c.replace(/\s/g, "")));
+    bodyFrom = 2;
+  }
+  const cell = (t: string, i: number, tag: "th" | "td") =>
+    `<${tag}${align[i] ? ` style="text-align:${align[i]}"` : ""}>${cellHtml(t)}</${tag}>`;
+  const head = splitCells(rows[0]).map((c, i) => cell(c, i, "th")).join("");
+  const body = rows.slice(bodyFrom)
+    .map((r) => `<tr>${splitCells(r).map((c, i) => cell(c, i, "td")).join("")}</tr>`)
+    .join("");
+  return `<table class="cm-r-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+class TableWidget extends WidgetType {
+  constructor(readonly src: string) { super(); }
+  eq(o: TableWidget) { return o.src === this.src; }
+  toDOM() {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-r-tablewrap";
+    wrap.innerHTML = tableHtml(this.src);
+    return wrap;
+  }
+  // 이벤트를 삼키지 않는다 — 편집 중에 표를 클릭하면 커서가 그 범위에 들어가고,
+  // 그 순간 위젯이 걷히며 원문이 나온다(클릭 = 고치기). 읽기 모드에서는 활성 줄이
+  // 없으므로 클릭해도 표인 채로 남는다.
+  ignoreEvent() { return false; }
+}
+
+// ── 블록 층 — **StateField 여야 한다** ────────────────────────────────────────
+// CM6 은 블록 데코레이션을 ViewPlugin 에서 받지 않는다("Block decorations may not
+// be specified via plugins"): 블록은 줄 높이를 바꾸므로 뷰포트를 계산하기 **전에**
+// 알아야 하고, 플러그인은 그 뒤에 돈다. 그래서 프론트매터·표(블록)는 여기 필드에
+// 살고, 인라인·줄 데코는 그대로 livePreview 플러그인에 남는다. 두 세트는 CM6 가
+// 병합한다. 이 구분을 지우면 편집기가 마운트에서 즉사한다(실측).
+//
+// ponytail: 문서가 바뀔 때마다 트리를 **전수** 훑는다(필드에는 뷰포트가 없다).
+// 표 탐색은 이미 만들어진 구문 트리를 읽을 뿐이라 실측 문제 없으면 그대로 둔다 —
+// 아주 긴 문서에서 타이핑이 무거워지면 변경 구간 주변만 다시 세는 쪽으로 좁힌다.
+type Blocks = { deco: DecorationSet; ranges: { from: number; to: number }[] };
+
+function buildBlocks(state: EditorState): Blocks {
+  const parts: { from: number; to: number; deco: Decoration }[] = [];
+  const ranges: { from: number; to: number }[] = [];
+  const editable = state.facet(EditorView.editable);
+  const sel = state.selection;
+
+  const fm = frontmatterRange(state);
+  if (fm) {
+    ranges.push({ from: fm.from, to: fm.to });
+    const open = state.field(fmOpen, false) ?? false;
+    const w = new FmWidget(state.facet(fmLabel), fmSummary(fm.body), open);
+    // 펼침은 머리만 얹고 원문 YAML 을 그대로 보인다(그 자리에서 고친다).
+    // 접힘은 구간을 통째로 요약 한 줄로 대체한다.
+    parts.push(open
+      ? { from: fm.from, to: fm.from,
+          deco: Decoration.widget({ widget: w, side: -1, block: true }) }
+      : { from: fm.from, to: fm.to,
+          deco: Decoration.replace({ widget: w, block: true }) });
+  }
+
+  // GFM `Table` 노드. 파서가 판정하므로 코드펜스 안의 파이프 줄을 표로 오인하지
+  // 않는다(줄 정규식 판별에 남아 있던 구멍).
+  syntaxTree(state).iterate({ enter: (n) => {
+    if (n.name !== "Table") return undefined;
+    const t = { from: n.from, to: n.to };
+    if (fm && t.from < fm.to) return false;                 // 프론트매터 안이면 표가 아니다
+    // 커서가 표 안에 있으면 위젯을 걷고 원문을 보인다(활성 줄 = 소스 규율 그대로).
+    if (editable && sel.ranges.some((r) => r.from <= t.to && t.from <= r.to)) return false;
+    ranges.push(t);
+    parts.push({ from: t.from, to: t.to, deco: Decoration.replace({
+      widget: new TableWidget(state.doc.sliceString(t.from, t.to)), block: true }) });
+    return false;
+  } });
+
+  parts.sort((a, b) => a.from - b.from || a.to - b.to);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const p of parts) builder.add(p.from, p.to, p.deco);
+  return { deco: builder.finish(), ranges };
+}
+
+const blockLayer = StateField.define<Blocks>({
+  create: (state) => buildBlocks(state),
+  update(v, tr) {
+    const editableChanged =
+      tr.startState.facet(EditorView.editable) !== tr.state.facet(EditorView.editable);
+    const selChanged = !tr.startState.selection.eq(tr.state.selection);
+    const toggled = tr.effects.some((e) => e.is(fmToggle));
+    if (!tr.docChanged && !selChanged && !toggled && !editableChanged) return v;
+    return buildBlocks(tr.state);
+  },
+  provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+});
 
 // 한 줄에서 (from,to) 절대오프셋 기준 데코레이션 조각을 모은다. 활성(커서) 줄은
 // 호출 자체를 건너뛰므로 여기선 항상 "렌더" 대상이다.
@@ -138,22 +344,31 @@ function buildDecorations(view: EditorView): DecorationSet {
 
 function buildDecorationsUnsafe(view: EditorView): DecorationSet {
   const parts: { from: number; to: number; deco: Decoration }[] = [];
-  const sel = view.state.selection;
+  const state = view.state;
+  const sel = state.selection;
   const activeLines = new Set<number>();
   // 읽기 모드에는 "활성 줄"이 없다 — 커서가 없으니 소스를 보일 이유도 없다.
   // (이게 없으면 문서를 열자마자 1행이 `# 제목` 처럼 원문으로 보였다 — 선택이
   //  기본 0 이라 1행이 활성으로 잡혔다.)
-  const editable = view.state.facet(EditorView.editable);
+  const editable = state.facet(EditorView.editable);
   if (editable) for (const r of sel.ranges) {
-    let l = view.state.doc.lineAt(r.from).number;
-    const last = view.state.doc.lineAt(r.to).number;
+    let l = state.doc.lineAt(r.from).number;
+    const last = state.doc.lineAt(r.to).number;
     for (; l <= last; l++) activeLines.add(l);
   }
+
+  // 블록 층(프론트매터·표)이 이미 대체한 구간에는 **줄 데코를 태우지 않는다** —
+  // 겹치면 RangeSetBuilder 가 던지고, 그러면 안전망이 라이브 프리뷰를 통째로 끈다.
+  // 범위는 필드가 만들면서 함께 돌려준 것을 읽는다(같은 계산을 두 번 하지 않는다).
+  const blocks = state.field(blockLayer, false)?.ranges ?? [];
+  const covered = (from: number, to: number) =>
+    blocks.some((b) => from < b.to && b.from < to);
+
   for (const { from, to } of view.visibleRanges) {
     let pos = from;
     while (pos <= to) {
-      const line = view.state.doc.lineAt(pos);
-      if (!activeLines.has(line.number) && line.length > 0)
+      const line = state.doc.lineAt(pos);
+      if (!activeLines.has(line.number) && line.length > 0 && !covered(line.from, line.to))
         lineDecos(line.text, line.from, parts);
       pos = line.to + 1;
     }
@@ -196,7 +411,10 @@ const livePreview = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) { this.decorations = buildDecorations(view); }
   update(u: ViewUpdate) {
-    if (u.docChanged || u.selectionSet || u.viewportChanged)
+    // 프론트매터 접기/펼치기는 문서도 선택도 뷰포트도 바꾸지 않는다 — 이 항이
+    // 없으면 눌러도 화면이 그대로다(다음 타이핑에서야 뒤늦게 반영된다).
+    const toggled = u.transactions.some((t) => t.effects.some((e) => e.is(fmToggle)));
+    if (u.docChanged || u.selectionSet || u.viewportChanged || toggled)
       this.decorations = buildDecorations(u.view);
   }
 }, { decorations: (v) => v.decorations });
@@ -262,6 +480,8 @@ export function mountEditor(el: HTMLElement, opts: {
   /** 시작 상태. Reader 진입은 읽기 전용이지만 **렌더는 완전히 같다** — 편집을 켜도
    *  화면이 다시 그려지지 않고 커서만 생긴다. */
   readOnly?: boolean;
+  /** 접힌 프론트매터 줄의 라벨(카피는 호출부가 준다 — slash 항목과 같은 규율). */
+  fmLabel?: string;
 }): CmHandle {
   const editable = new Compartment();
   let slash: SlashMenu | null = null;
@@ -286,6 +506,10 @@ export function mountEditor(el: HTMLElement, opts: {
         // CommonMark 라 **표가 문법으로 인식조차 되지 않는다**. GFM 확장은 lang-markdown
         // 이 최상단에서 무조건 import 하므로 이미 번들에 들어 있다 — 번들 증가 0.
         markdown({ base: markdownLanguage }),
+        // 순서가 곧 초기화 순서다: blockLayer 가 fmOpen·fmLabel 을 읽으므로 뒤에 온다.
+        fmOpen,
+        fmLabel.of(opts.fmLabel ?? "Properties"),
+        blockLayer,
         livePreview,
         highlightField,
         editable.of(EditorView.editable.of(!opts.readOnly)),

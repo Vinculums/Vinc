@@ -11,53 +11,53 @@ import { icon } from "./icons";
  *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
  *  크럼(폐지 — "지금 어디"는 트리가 상시로 말한다), 지표(하단 상태 표시줄에 남는다).
  *
- *  **표면과의 계약은 훅 하나뿐이다.** 공유·보기 버튼은 Atlas 만 뜻이 있으므로
- *  Atlas 가 마운트될 때 자기 동작을 등록하고(setAtlasHooks), 떠날 때 지운다.
+ *  **표면과의 계약은 훅 하나뿐이다.** 공유·보기 버튼은 View 만 뜻이 있으므로
+ *  View 가 마운트될 때 자기 동작을 등록하고(setViewHooks), 떠날 때 지운다.
  *  등록이 없으면 버튼은 숨는다 — 눌러도 아무 일 없는 컨트롤을 내놓지 않는다
  *  (보이는 손잡이는 반드시 무언가를 한다는 규율, VIEW_ROWS 와 같은 태도).
  *
- *  검색 드롭다운은 **노드 히트만** 싣는다: 청크(문서 조각) 히트는 Atlas 에 착지할
+ *  검색 드롭다운은 **노드 히트만** 싣는다: 청크(문서 조각) 히트는 View 에 착지할
  *  대상이 없어 "눌렀는데 아무 데도 안 가는 줄"이 된다. 문서 전체를 훑는 일은
  *  `모든 문서` 시트가 맡는다(표면 이동 아님 — 닫으면 하던 자리로 돌아온다). */
 
-export type AtlasHooks = {
-  /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 Atlas 가 정한다). */
+export type ViewHooks = {
+  /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 View 가 정한다). */
   share: () => void;
   /** 그 노드로 이동한다(D70) — 화면에 있으면 카메라만, 없으면 스코프를 간다.
    *  검색 착지가 이 훅을 쓰면 표면 리마운트 없이 날아간다. */
   openNode: (id: string) => void;
 };
 
-let hooks: AtlasHooks | null = null;
+let hooks: ViewHooks | null = null;
 let wired = false;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
-/** Atlas 가 마운트/언마운트하며 자기 동작을 넘긴다. null 이면 버튼이 숨는다. */
-export function setAtlasHooks(h: AtlasHooks | null) {
+/** View 가 마운트/언마운트하며 자기 동작을 넘긴다. null 이면 버튼이 숨는다. */
+export function setViewHooks(h: ViewHooks | null) {
   hooks = h;
   refreshTopbar();
 }
 
-/** 지금 Atlas 가 살아 있는가(+그 동작). 다른 표면·시트가 "지도로 보낼 수 있는가"를
+/** 지금 View 가 살아 있는가(+그 동작). 다른 표면·시트가 "지도로 보낼 수 있는가"를
  *  판단하는 단일 지점이다 — 없으면 해시 착지로 강등한다. */
-export function atlasHooks(): AtlasHooks | null {
+export function viewHooks(): ViewHooks | null {
   return hooks;
 }
 
 /** 지도 손잡이 표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출).
  *  Tools 는 훅과 무관하게 늘 눌린다 — 문서를 쓰고 가져오는 일은 지도가 없어도 된다. */
 export function refreshTopbar() {
-  // 지도 손잡이는 Atlas 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
+  // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  if (!hooks) { const l = lensSlot(), v = viewsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
+  if (!hooks) { const l = lensSlot(), v = viewpointsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
 }
 
 /** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */
 export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 
-/** 관점 세그 자리(D71). 내용은 Atlas 가 채운다(주인은 표면이다). */
-export function viewsSlot(): HTMLElement | null { return $("tb-views"); }
+/** 관점 세그 자리(D71). 내용은 View 가 채운다(주인은 표면이다). */
+export function viewpointsSlot(): HTMLElement | null { return $("tb-viewpoints"); }
 
 /** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
  *    find = 기존 동작(드롭다운 결과 → 착지)
@@ -174,8 +174,8 @@ export function mountTopbar() {
   }
   async function closeChat() { (await ask())?.askClose(); }
 
-  // Tools — 표면과 무관하게 언제나 눌린다(Atlas 훅에 매이지 않는다). 공유는 이 안에서
-  // 범위를 고르고, `지금 보고 있는 곳`만 Atlas 훅을 쓴다.
+  // Tools — 표면과 무관하게 언제나 눌린다(View 훅에 매이지 않는다). 공유는 이 안에서
+  // 범위를 고르고, `지금 보고 있는 곳`만 View 훅을 쓴다.
   const tools = $("tb-tools");
   if (tools) {
     // 아이콘만 — 옆의 설정·GRAPH.md 와 같은 형태여야 세 손잡이가 한 리듬으로 읽힌다
@@ -269,14 +269,14 @@ export function mountTopbar() {
     });
   }
 
-  /** 결과 착지 — Atlas 가 이미 떠 있으면 훅으로 **그 노드까지** 날아가고(리마운트
-   *  없음, 카드·문서 패널까지 열린다), 다른 표면이면 해시로 Atlas 를 띄운다. */
+  /** 결과 착지 — View 가 이미 떠 있으면 훅으로 **그 노드까지** 날아가고(리마운트
+   *  없음, 카드·문서 패널까지 열린다), 다른 표면이면 해시로 View 를 띄운다. */
   function go(h: Hit | undefined) {
     if (!h) return;
     close();
     q.blur();
     if (hooks) hooks.openNode(h.id);
-    else location.hash = `#atlas/trace/${encodeURIComponent(h.id)}`;
+    else location.hash = `#view/trace/${encodeURIComponent(h.id)}`;
   }
 
   async function run(raw: string) {
