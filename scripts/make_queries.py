@@ -114,45 +114,44 @@ def _body_without_frontmatter(text: str) -> str:
     return text
 
 
+def candidates_in_text(text: str, doc_id: str, label: str, source: str) -> list[dict]:
+    """본문 하나에서 (질의, 정답) 후보를 뽑는다(규칙 1·2). 문서 출처(파일이냐 스토어냐)와
+    무관 — `collect`(파일)와 `make_queries_from_store.py`(스토어)가 함께 쓴다."""
+    body = _body_without_frontmatter(text)
+    # 규칙 2 — 본문이 판정 기준이다. 파일명/doc_id 는 언어의 증거가 아니다(영어 팩의
+    # 파일명은 한국어이고, 한국어 정본의 파일명은 ASCII 다).
+    doc_lang = lang_of(body, _DOC_KO_THRESHOLD)
+    out: list[dict] = []
+    for _, raw in _HEADING.findall(body):
+        q = _strip(raw)
+        if len(q) < 6 or q.casefold() in _BOILERPLATE:   # 규칙 4
+            continue
+        if lang_of(q) != doc_lang:                       # 규칙 2
+            continue
+        out.append({"query": q, "doc_id": doc_id, "lang": doc_lang,
+                    "corpus": label, "source": source})
+    return out
+
+
 def collect(root: Path, label: str) -> list[dict]:
-    """한 코퍼스 루트에서 (문서, 소제목) 후보를 모은다. 규칙 1·2 적용."""
+    """한 코퍼스 루트(파일트리)에서 (문서, 소제목) 후보를 모은다."""
     out: list[dict] = []
     for path in sorted(root.rglob("*.md")):
         try:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        body = _body_without_frontmatter(text)
-        # 규칙 2 — 본문이 판정 기준이다. 파일명은 언어의 증거가 아니다(영어 팩의
-        # 파일명은 한국어이고, 한국어 정본의 파일명은 ASCII 다).
-        doc_lang = lang_of(body, _DOC_KO_THRESHOLD)
+        doc_lang = lang_of(_body_without_frontmatter(text), _DOC_KO_THRESHOLD)
         rel = path.relative_to(root).as_posix()
         doc_id = f"eval/{doc_lang}/{root.name}/{rel}"
-        for _, raw in _HEADING.findall(body):
-            q = _strip(raw)
-            if len(q) < 6 or q.casefold() in _BOILERPLATE:   # 규칙 4
-                continue
-            if lang_of(q) != doc_lang:                       # 규칙 2
-                continue
-            out.append({"query": q, "doc_id": doc_id, "lang": doc_lang,
-                        "corpus": label, "source": f"{root.name}/{rel}"})
+        out.extend(candidates_in_text(text, doc_id, label, f"{root.name}/{rel}"))
     return out
 
 
-def build(per_lang: int) -> dict:
-    cands: list[dict] = []
-    corpus_meta = []
-    for label, rel in _CORPORA:
-        root = _ROOT / rel
-        if not root.exists():
-            print(f"⚠ 코퍼스 없음, 건너뜀: {root}", file=sys.stderr)
-            continue
-        got = collect(root, label)
-        cands.extend(got)
-        corpus_meta.append({"path": rel, "expected_lang": label,
-                            "docs": len({c['doc_id'] for c in got}),
-                            "heading_candidates": len(got)})
-
+def select(cands: list[dict], per_lang: int, corpus_meta: list[dict],
+          generated_by: str = "scripts/make_queries.py") -> dict:
+    """후보 목록 → 평가셋(규칙 3 dedup·문서당 상한·언어별 상한·출력 형태). 후보의
+    출처(파일트리 또는 스토어)와 무관 — 여기서부터는 순수 함수다."""
     # 규칙 3 — 두 문서 이상에 나오는 소제목은 정답이 모호하다. 버린다.
     seen: dict[str, set[str]] = {}
     for c in cands:
@@ -179,7 +178,7 @@ def build(per_lang: int) -> dict:
 
     return {
         "version": 1,
-        "generated_by": "scripts/make_queries.py",
+        "generated_by": generated_by,
         "note": ("소제목 질의는 본문 어휘와 겹쳐 FTS 에 유리하다 — 벡터를 과소평가하는 "
                  "보수적 편향이다. 절대 점수가 아니라 조건 간 차이를 읽는 용도다."),
         "rules": [
@@ -200,6 +199,23 @@ def build(per_lang: int) -> dict:
         },
         "queries": queries,
     }
+
+
+def build(per_lang: int) -> dict:
+    """파일트리 코퍼스(`_CORPORA`) 전용 진입점 — collect + select."""
+    cands: list[dict] = []
+    corpus_meta = []
+    for label, rel in _CORPORA:
+        root = _ROOT / rel
+        if not root.exists():
+            print(f"⚠ 코퍼스 없음, 건너뜀: {root}", file=sys.stderr)
+            continue
+        got = collect(root, label)
+        cands.extend(got)
+        corpus_meta.append({"path": rel, "expected_lang": label,
+                            "docs": len({c['doc_id'] for c in got}),
+                            "heading_candidates": len(got)})
+    return select(cands, per_lang, corpus_meta)
 
 
 def main() -> int:
