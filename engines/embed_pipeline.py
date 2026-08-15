@@ -28,7 +28,10 @@ from store.config import (  # noqa: E402
     load_config,
 )
 from api import docstore as ds  # noqa: E402  — 정본 쓰기 단일 지점(D45 P2)
-from engines.concepts_ingest import _default_owner  # noqa: E402  — owner 기본값 공유
+
+
+def _default_owner() -> str:
+    return os.environ.get("MEMORY_DEFAULT_OWNER", "tenant:shared")
 
 # ── Chonkie 임포트 ────────────────────────────────────────────────────────────
 # Chonkie is loaded lazily (see _load_chonkie) so this module imports cleanly
