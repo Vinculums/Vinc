@@ -241,6 +241,9 @@ class VincApp:
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
+                                            # 주제 여럿(쉼표 결합). 스코프는 하위
+                                            # 트리 포함이다 — query.normalize_domains.
+                                            domains=_domains(p.get("domains")),
                                             depth=_int(p.get("depth"), 2),
                                             layout=p.get("layout") or "radial",
                                             basis=p.get("basis") or q.BASIS_RECORDED,
@@ -1127,6 +1130,16 @@ def _accepts_kw(fn, name: str) -> bool:
     if name in params:
         return True
     return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def _domains(val) -> list[str] | None:
+    """``domains=a,b`` 를 목록으로. 주제 이름에 쉼표가 없다는 것이 전제이고, 그것은
+    이 코퍼스의 관례다(소문자 영문 + 슬래시 계층 — GRAPH.md). 빈 값은 ``None`` 이라
+    호출측이 "주제 지정 없음"과 "빈 목록"을 구분하지 않아도 된다."""
+    if not val:
+        return None
+    out = [d.strip() for d in str(val).split(",")]
+    return [d for d in out if d] or None
 
 
 def _int(val, default: int) -> int:

@@ -173,6 +173,37 @@ class ViewViewpointsBackend(unittest.TestCase):
         for leak in ("밥의 비밀 근거", "Bob Secret", "2026-07-02"):
             self.assertNotIn(leak, blob, f"bob 의 데이터({leak})가 alice 응답에 실림")
 
+    def test_topic_scope_includes_the_subtree_and_takes_several(self):
+        """주제 스코프는 하위 트리다. 그리고 여러 주제를 한 번에 받는다.
+
+        정확일치 하나만 보던 동안 상위 주제를 고르면 **0 노드**가 나왔다 — 계층은
+        경로의 `/` 로 이미 있었고 배치와 좌측 트리가 그걸 읽는데 조회만 안 읽었다.
+        접두는 `d + "/"` 여야 한다: `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다."""
+        from api import query as q
+
+        store = self._fresh_store()
+        with store.session() as s:
+            for cid, dom in (("a", "vinc"), ("b", "vinc/design"),
+                             ("c", "vinc/design/tokens"), ("d", "vincent"),
+                             ("e", "neo4j/storage")):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
+                      "n.owner_id='u', n.domain=$dom", id=cid, dom=dom)
+
+        def ids(**kw):
+            return {n["id"] for n in q.graph(owner="u", store=store, **kw)["nodes"]
+                    if n["id"] in {"a", "b", "c", "d", "e"}}
+
+        # 상위 하나 → 자기 + 하위 전부. 형제 접두(`vincent`)는 안 딸려 온다.
+        self.assertEqual(ids(domain="vinc"), {"a", "b", "c"})
+        # 중간 마디 → 그 아래만.
+        self.assertEqual(ids(domain="vinc/design"), {"b", "c"})
+        # 잎 → 자기만.
+        self.assertEqual(ids(domain="vinc/design/tokens"), {"c"})
+        # 여럿 → 합집합. 순서와 무관하고 겹쳐도 한 번씩만 센다.
+        self.assertEqual(ids(domains=["vinc/design", "neo4j/storage"]), {"b", "c", "e"})
+        self.assertEqual(ids(domains=["vinc", "vinc/design"]), {"a", "b", "c"})
+        store.close()
+
     def test_episode_seeded_l2_keeps_concept_dates(self):
         """축 플랜으로만 도착하는 개념도 ``ts`` 를 갖는다 — episode 시드 L2
         (`#view/trace/episode:…`)에서 개념이 전부 무날짜가 되면 Timeline 이 실제로는

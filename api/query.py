@@ -451,16 +451,52 @@ def learner_model(*, owner: str, cfg=None, store=None) -> dict:
     return execute(learner_model_plan(owner=owner), cfg, store=store)
 
 
-def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
+#: 주제 스코프 = **하위 트리**다. 정확일치 하나만 보던 동안 상위 주제를 고르면
+#: 0 노드가 나왔다(실측 2026-08-15: `domain=vinc` → 0, `domain=vinc/design` → 12).
+#: 계층은 이미 있었다 — 경로의 `/` 가 트리를 만들고 hub 배치와 좌측 트리가 그걸
+#: 읽는데, **조회만 안 읽고 있었다**.
+#:
+#: 접두에 `/` 를 붙이는 것이 요지다. `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다.
+#: 그래서 정확일치와 `d + "/"` 접두의 OR 로 쓴다.
+#:
+#: 다섯 플랜(개념·다리·사건·기록·결정)이 각자 도메인을 걸러서, 한 곳만 고치면
+#: 축끼리 모집단이 어긋난다. 그래서 판정을 여기 한 벌만 둔다.
+def domain_subtree_where(cols: list[str], domains: list[str], params: dict,
+                         *, key: str = "dom") -> str:
+    """``cols`` 중 하나가 ``domains`` 중 하나의 하위 트리에 드는가."""
+    ors: list[str] = []
+    for i, d in enumerate(domains):
+        params[f"{key}{i}"] = d
+        params[f"{key}p{i}"] = d.rstrip("/") + "/"
+        for col in cols:
+            ors.append(f"({col} = ${key}{i} OR {col} STARTS WITH ${key}p{i})")
+    return "(" + " OR ".join(ors) + ")"
+
+
+#: `domain`(단수, 하위호환)과 `domains`(복수)를 하나의 목록으로 접는다. 빈 문자열과
+#: 중복은 떨어뜨리되 **순서는 유지**한다 — 응답이 스코프를 에코할 때 흔들리지 않게.
+def normalize_domains(domain: str | None = None,
+                      domains: list[str] | None = None) -> list[str]:
+    raw = list(domains or ([] if domain is None else [domain]))
+    out: list[str] = []
+    for d in raw:
+        d = (d or "").strip()
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
+def graph_plan(*, owner: str, domain: str | None = None,
+               domains: list[str] | None = None) -> QueryPlan:
     """The learning knowledge-graph for an owner: Concept nodes + their relations
     (a row per concept, plus a row per outgoing Concept→Concept edge). ``domain``
     (free/open) optionally narrows to one domain. Shaped into nodes/edges by
     :func:`shape_graph`."""
     where = ["c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("c.domain = $domain")
-        params["domain"] = domain
+    doms = normalize_domains(domain, domains)
+    if doms:
+        where.append(domain_subtree_where(["c.domain"], doms, params))
     clause = "WHERE " + " AND ".join(where)
     # 관계 타입 함수는 `label(r)` — 임베디드(Kùzu 계보)에 `type()` 부재(§6-2 M4,
     # P1-0 실측 확정). Neo4j 는 label()도 지원하므로 백엔드 중립.
@@ -767,18 +803,19 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
 # 매치 — concept 시드에선 팔이 kept 개념에 닿을 때(접착제), episode:/record:/
 # bridge: 시드에선 자기 부착이 나온다(고립 폴백 대신 depth-1 이웃 렌더).
 
-def bridge_rows_plan(*, owner: str, domain: str | None = None,
+def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """Bridge 노드 + CONNECTS 팔(F2). 노드 domain = source_domain(단일 결정값),
     target_domain 은 domain2 로 병기(상세 레일용). L1 소속은 선언 필드(source/
     target_domain)를 신뢰 — 실 CONNECTS 끝점과 어긋난 브릿지는 렌즈에서 빠질 수
     있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + Concept 엄격."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = [_bridge_owner_pred("b"), "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(b.source_domain = $domain OR b.target_domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(
+            ["b.source_domain", "b.target_domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR b.bridge_id IN $ids)")
         params["ids"] = ids
@@ -796,17 +833,17 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
 
 
-def episode_rows_plan(*, owner: str, domain: str | None = None,
+def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                       ids: list[str] | None = None) -> QueryPlan:
     """Episode 노드 + ABOUT 팔(F2/F4). L1 소속은 (자기 domain OR 부착 개념 domain)
     — 렌즈 밖 에피소드가 렌즈 안 개념에 부착된 경우가 정확히 F2 가 숨기던 연결이라
     OR 가 의도다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["e.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(e.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["e.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR e.episode_id IN $ids)")
         params["ids"] = ids
@@ -828,16 +865,16 @@ def episode_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
 
 
-def record_rows_plan(*, owner: str, domain: str | None = None,
+def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """Record 노드 + ATTACHES_TO 팔(F2). 엣지 질화자 r.type 은 role 슬롯으로 투영
     (CONNECTS.role 과 단일 선택 열 공유 — shape_graph 계약)."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["rc.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(rc.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["rc.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR rc.record_id IN $ids)")
         params["ids"] = ids
@@ -860,7 +897,7 @@ def record_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
 
-def decision_rows_plan(*, owner: str, domain: str | None = None,
+def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
     """Decision 노드 + ABOUT 팔(v12). 결정이 **무엇을 두고** 내려졌는지가 그 팔이다.
 
@@ -871,12 +908,12 @@ def decision_rows_plan(*, owner: str, domain: str | None = None,
     68/68 이 비어 있어 만들지 않았다). 열 없는 라벨에 옮겨 붙이면 모든 레벨의 /graph
     가 Binder 로 죽는다 — Record 축 주석이 경고하는 바로 그 자리다. 도착점(Concept)
     쪽은 열이 있으므로 target_content_ts 는 싣는다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["d.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(d.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["d.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR d.decision_id IN $ids)")
         params["ids"] = ids
@@ -1543,7 +1580,7 @@ def _apply_basis(shaped: dict, basis: str) -> str:
 
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
           depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
-          cfg=None, store=None) -> dict:
+          domains: list[str] | None = None, cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(View L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(View L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
@@ -1631,12 +1668,13 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                     **({"candidates": cands} if cands else {}), **shaped}
         return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
                 "found": found, "basis": used, **shaped}
-    res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
+    doms = normalize_domains(domain, domains)
+    res = execute(graph_plan(owner=owner, domains=doms), cfg, store=store)
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
     # 의 선착 우선이 Concept 투영을 이기게(결정론).
     for plan_fn in _GRAPH_AXIS_PLANS:
-        ax = execute(plan_fn(owner=owner, domain=domain), cfg, store=store)
+        ax = execute(plan_fn(owner=owner, domains=doms), cfg, store=store)
         if ax.get("executed"):
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
@@ -1792,7 +1830,7 @@ def view_l0(*, owner: str, cfg=None, store=None) -> dict:
 # 의도다 — algo 는 오프라인 번들에서 executed=False 로 강등되는데, 원장은 항상
 # 그려져야 한다.
 
-def ledger_origin_plan(*, owner: str, domain: str | None = None,
+def ledger_origin_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
     """원장 출처 축 — 개념 전량('all') + 에피소드 부착('episodic') + 문서 부착
     ('record': 구 Record ATTACHES_TO **또는** D45 문서의 Chunk MENTIONS) 표식 행. 한 개념이 여러 에피소드에 부착되면 같은 표식이 여러 번
@@ -1807,12 +1845,14 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None,
     ``ids``(D43 ego 원장): 개념 c 를 시드 주변 집합으로 제한한다 — ``domain`` 렌즈와
     상호 배제(축 플랜 관례). 부착 주체(Episode/Record)는 집합으로 제한하지 않는다 —
     부착은 전역 사실이라 ego 밖 에피소드가 ego 개념에 부착돼도 출처다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     params: dict = {"owner": owner}
     and_scope = ""
-    if domain:
-        and_scope = " AND c.domain = $domain"
-        params["domain"] = domain
+    if doms:
+        # 원장은 지도와 **같은 모집단**을 세야 한다 — 지표바가 지도와 다른 수를
+        # 말하면 화면이 스스로를 반박한다. 그래서 같은 하위 트리 판정을 쓴다.
+        and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
         params["ids"] = ids
@@ -1841,7 +1881,7 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("ledger", cypher, params, note="ledger origin axis (concept × source)")
 
 
-def ledger_link_plan(*, owner: str, domain: str | None = None,
+def ledger_link_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """원장 연결 축 — 개념 대 개념 직접 엣지('cc') + Bridge 매개 팔('bridge') 행.
     각 행이 차수 1 을 뜻하고, ``domain``/``other`` 가 다르면 그 개념은 관문
@@ -1856,12 +1896,14 @@ def ledger_link_plan(*, owner: str, domain: str | None = None,
     유지하고 ego 로 좁히지 않는다(전역 차수·관문: 엣지가 ego 를 떠나도 그 구성원의
     연결이다). domain 렌즈가 o 를 안 건드리는 기존 태도와 동형이라 SEC-1 양끝
     스코프는 그대로다. ``domain`` 과 상호 배제, 모든 UNION 분기에 절을 붙인다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     params: dict = {"owner": owner}
     and_scope = ""
-    if domain:
-        and_scope = " AND c.domain = $domain"
-        params["domain"] = domain
+    if doms:
+        # 원장은 지도와 **같은 모집단**을 세야 한다 — 지표바가 지도와 다른 수를
+        # 말하면 화면이 스스로를 반박한다. 그래서 같은 하위 트리 판정을 쓴다.
+        and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
         params["ids"] = ids
@@ -2447,7 +2489,8 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
 
 
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
-           depth: int = 2, by: str = "domain", cfg=None, store=None) -> dict:
+           depth: int = 2, by: str = "domain",
+           domains: list[str] | None = None, cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.
 
     ``by="concept"``(D52) — **한 행이 개념 하나**가 되는 세밀 모드. 도메인을 눌러
@@ -2483,7 +2526,8 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
     전부 0 이라 모든 개념이 고아로 보고되는데, ``executed: true`` 를 달고 나가면
     소비처가 그 거짓을 참으로 그린다. ego 순회 강등도 같은 태도다."""
     by_id, scope, degraded = _ledger_classify(
-        owner=owner, domain=domain, seed=seed, depth=depth, cfg=cfg, store=store)
+        owner=owner, domain=domain, domains=domains, seed=seed, depth=depth,
+        cfg=cfg, store=store)
     if degraded is not None:
         return degraded
     if not by_id:      # 빈 ego(개념 구성원 없음) — DB 왕복 없이 빈 롤업
@@ -2555,7 +2599,7 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
 
 
 def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,
-                     depth: int, cfg, store):
+                     depth: int, cfg, store, domains: list[str] | None = None):
     """원장 개념별 분류(by_id) — :func:`ledger` 집계와 :func:`ledger_drilldown`
     드릴다운이 **공유**한다(둘의 수치 정합을 구조로 보장 — 보고서 정정 2 대응:
     드릴다운 항목 수 == 원장 셀 값). 반환 ``(by_id, scope, degraded)``:
@@ -2570,10 +2614,12 @@ def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,
         scope, ids, domain = "seed", ego["ids"], None
         if not ids:
             return {}, "seed", None
-    o = execute(ledger_origin_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    o = execute(ledger_origin_plan(owner=owner, domains=normalize_domains(domain, domains),
+                                   ids=ids), cfg, store=store)
     if not o.get("executed"):
         return None, scope, o
-    lk = execute(ledger_link_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    lk = execute(ledger_link_plan(owner=owner, domains=normalize_domains(domain, domains),
+                                  ids=ids), cfg, store=store)
     if not lk.get("executed"):
         return None, scope, lk
     by_id: dict[str, dict] = {}
