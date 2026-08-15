@@ -193,7 +193,8 @@ function groupRows(n: DomNode, level = 1): string {
   // 계층으로 읽지 않는다.
   const head = `<button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}"
       ${on ? 'aria-selected="true" ' : ""}data-group="${esc(n.path)}"
-      aria-expanded="${open}" data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))}">
+      aria-expanded="${open}" aria-pressed="${on}"
+      data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))} · ${esc(COPY.ui.lnb.topicTip)}">
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
       <span class="lnb-gname">${esc(n.seg)}</span>
       <span class="lnb-gcount">${subDocs(n) || "·"}</span>
@@ -226,10 +227,18 @@ function paint() {
   }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
-  const docs = tree?.counts?.docs ?? 0;
+  const topicCount = (tree?.domains || []).length;
   let html = navRows();
   html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
-    <span class="hint">${docs ? esc(COPY.ui.lnb.docCount(docs)) : "·"}</span></div>`;
+    <span class="hint">${topicCount || "·"}</span></div>`;
+  // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
+  //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
+  if (picked.size) {
+    html += `<div class="lnb-scope">
+      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
+      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
+    </div>`;
+  }
   if (!groups.length && !unfiled.length) {
     html += `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`
       + `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
@@ -279,7 +288,10 @@ export function mountLnb() {
 
   root.innerHTML = `
     <div class="lnb-head">
-      <span class="lnb-title">${esc(COPY.ui.lnb.documents)}</span>
+      <!-- 패널 제목은 비워 둔다. 바로 아래 절 제목이 같은 말을 하고 있었고(Home 을
+           사이에 두고 두 번), 이 줄의 일은 접기 버튼을 담는 것이다. 버튼은 자기
+           aria-label 을 가지므로 접근성에서 잃는 것이 없다. -->
+      <span class="lnb-title" aria-hidden="true"></span>
       <button class="tb-icon lnb-x" id="lnb-toggle" type="button" aria-controls="lnb-body">
         ${icon("chevron-left", 16)}
       </button>
@@ -320,6 +332,13 @@ export function mountLnb() {
       if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
       saveExpanded();
       paint();
+      return;
+    }
+    if (t.closest(".lnb-scope-clear")) {
+      // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
+      // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
+      // 홈 해시로 간다 — 그것이 이 앱에서 "전체"의 정본 주소다.
+      location.hash = "#view";
       return;
     }
     if (t.closest("#lnb-retry")) { void refreshLnb(); return; }

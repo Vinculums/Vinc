@@ -196,7 +196,14 @@ const EN = {
     },
     // 좌측 문서 트리(D69) — 주제 → 그 주제의 문서. 표면 전환도 여기서 한다.
     lnb: {
-      documents: "Documents",
+      // 이 절은 **주제 트리**다. 문서는 주제 아래에 매달릴 뿐이라, 제목이
+      // "Documents" 이던 동안 줄들이 문서 목록으로 읽혔다 — 실제로는 그 줄을
+      // 누르면 지도가 그 주제로 좁혀지는데도. 문서 총계는 지도 아래 지표바가 이미
+      // 말하므로 여기서 두 번 세지 않는다.
+      documents: "Topics",
+      topicTip: "Show only this topic. Ctrl or Cmd click to add another.",
+      scoped: (n: number) => n === 1 ? "Showing 1 topic" : `Showing ${n} topics`,
+      scopedClear: "Show all",
       open: "Open the sidebar", close: "Close the sidebar",
       unfiled: "No topic yet",
       unfiledTip: "These aren't linked to any concept yet, so they have no place on the map.",
@@ -845,7 +852,10 @@ const KO: Deck = {
       kept: (n) => `최근 ${n}턴만 보관합니다.`,
     },
     lnb: {
-      documents: "문서",
+      documents: "주제",
+      topicTip: "이 주제만 봅니다. Ctrl · Cmd 클릭으로 더할 수 있습니다.",
+      scoped: (n: number) => `주제 ${n}개만 보는 중`,
+      scopedClear: "전체 보기",
       open: "사이드바 열기", close: "사이드바 닫기",
       unfiled: "주제 없음",
       unfiledTip: "아직 어떤 개념과도 이어지지 않아 지도에 자리가 없습니다.",
