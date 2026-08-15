@@ -1,7 +1,7 @@
 /** Mark-spec visual fixture — one node per primitive (D20–D22), edge grammar,
  *  and D31 prefs applied. Not part of the app shell; open at /dev/marks.html
  *  with `npm run dev` for design QA of the 3D mark spec. */
-import { mount3d, type L3, type N3 } from "../src/surfaces/atlas3d";
+import { mount3d, type L3, type N3 } from "../src/surfaces/view3d";
 
 const nodes: N3[] = [
   { id: "d", label: "Domain — math", kind: "domain", records: 9, x: -0.5, y: 0, z: 0 },

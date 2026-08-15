@@ -7,7 +7,7 @@
    들여오기가 `api/fragment.merge_fragment`(id 정확 매칭 MERGE·멱등) 재사용 하나로
    끝난다 — 별도 import 기계 없음.
 2. **커스텀 스코프**. 도메인 전체가 아니라 "이 영역까지만"을 지원한다:
-   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(Atlas L2 와 동일한
+   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(View L2 와 동일한
    ego 서브그래프 — 그래프에서 고른 영역 그대로 패키징).
 3. **preference 신호 미포함**. pinned/access_count/last_access 는 원 계정의 개인
    신호라 공유 팩에 싣지 않는다(투영에서 제외 — 스크럽 단계 불요). 수신자는
@@ -135,7 +135,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     concepts = _tag_filter(c_res.get("rows", []), tags)
     id_set = {c["id"] for c in concepts}
 
-    # 2) 스코프 내 엣지 — Atlas 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
+    # 2) 스코프 내 엣지 — View 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
     edges: list[dict] = []
     if id_set:
         e_res = q.execute(q.graph_rows_for_ids_plan(sorted(id_set), owner=owner),

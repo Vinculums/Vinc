@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Atlas 마크 대비 게이트 — WCAG 2.x 와 APCA 를 **둘 다** 통과해야 한다.
+"""View 마크 대비 게이트 — WCAG 2.x 와 APCA 를 **둘 다** 통과해야 한다.
 
 왜 둘 다인가. 두 기준은 극성에 따라 서로 다른 쪽이 더 엄격하다(실측):
 
@@ -16,7 +16,7 @@
 
 무엇을 재는가:
 
-  * `atlasScene.node.<tier>` — 티어마다 **채널 하나 이상**이 통과하면 된다.
+  * `viewScene.node.<tier>` — 티어마다 **채널 하나 이상**이 통과하면 된다.
     fill 이 어두운 것은 깊이 인상이라 그 자체가 결함이 아니고, 그 경우 링
     (stroke)이 가시성을 진다. 다만 **링은 가는 선**이라 APCA 세부 기준(Lc 45)을
     적용한다. 다크 전용 분기이므로 다크 배경으로만 잰다.
@@ -113,10 +113,10 @@ def _link_ramp(block: str) -> dict[str, str]:
     return {k: v for k, v in re.findall(rf"(\w+):\s*'({_HEX6})'", m.group(1))}
 
 
-def _atlas_scene(src: str) -> dict[str, dict[str, str]]:
-    m = re.search(r"export const atlasScene = \{(.*?)\n\} as const;", src, re.S)
+def _view_scene(src: str) -> dict[str, dict[str, str]]:
+    m = re.search(r"export const viewScene = \{(.*?)\n\} as const;", src, re.S)
     if not m:
-        raise ValueError("atlasScene 을 못 찾았다")
+        raise ValueError("viewScene 을 못 찾았다")
     out: dict[str, dict[str, str]] = {}
     for tier, body in re.findall(r"(focus|near|mid|far):\s*\{([^}]*)\}", m.group(1)):
         chans = {k: "#" + v for k, v in
@@ -168,24 +168,24 @@ def run(theme_path: Path) -> tuple[int, list[Finding]]:
         _check(f"[{mode}] text", _hex_of(blk, "text"), bgs[mode],
                wcag_min=WCAG_TEXT, lc_min=LC_SOLID, out=findings)
 
-    # atlasScene — 다크 전용 분기(atlas3d 의 glow 브랜치)라 다크로만 잰다.
+    # viewScene — 다크 전용 분기(view3d 의 glow 브랜치)라 다크로만 잰다.
     dark_bg = bgs["dark"]
-    for tier, chans in _atlas_scene(src).items():
+    for tier, chans in _view_scene(src).items():
         if not chans:
-            findings.append(Finding(f"[dark] atlasScene.node.{tier}: 채널이 없다"))
+            findings.append(Finding(f"[dark] viewScene.node.{tier}: 채널이 없다"))
             continue
         # 티어마다 **하나 이상**이 통과하면 된다. 링(stroke)은 가는 선이라 Lc 45.
         ok, tried = False, []
         for chan, hexv in chans.items():
             lc_min = LC_THIN if chan == "stroke" else LC_SOLID
             sub: list[Finding] = []
-            if _check(f"[dark] atlasScene.node.{tier}.{chan}", hexv, dark_bg,
+            if _check(f"[dark] viewScene.node.{tier}.{chan}", hexv, dark_bg,
                       wcag_min=WCAG_NONTEXT, lc_min=lc_min, out=sub):
                 ok = True
             tried += sub
         if not ok:
             findings.append(Finding(
-                f"[dark] atlasScene.node.{tier}: 통과 채널이 하나도 없다 — "
+                f"[dark] viewScene.node.{tier}: 통과 채널이 하나도 없다 — "
                 + " / ".join(str(t).split(" — ", 1)[-1] for t in tried)))
     return (1 if findings else 0), findings
 
@@ -195,17 +195,17 @@ _RECEDE_LITERAL = re.compile(r"\*\s*0?\.(15|12|35|40?)\b")
 #: 물러남 맥락에서만 잡는다 — 기하 계수(`r * 0.12` 튜브 반경, 곡률 `* 0.12`)는
 #: 같은 숫자여도 물러남이 아니다. 불투명도를 만지는 줄에만 규율을 건다.
 _RECEDE_CTX = re.compile(r"\b(opacity|fade)\b|userData\.base", re.I)
-_ATLAS_FILES = ("atlas3d.ts", "atlas2d.ts", "atlas-planar.ts")
+_VIEW_FILES = ("view3d.ts", "view2d.ts", "view-planar.ts")
 
 
 def run_recede(app_src: Path) -> list[Finding]:
     """물러남 수치를 뷰 코드에 리터럴로 다시 심는 회귀를 잡는다.
 
     정본은 `app.css` 의 `--recede-*` 하나이고 읽기는 `recede.ts` 하나다. 실제로
-    atlas3d 가 `base * 0.15` 로 정본(0.40)의 3.75 배를 물러나 비이웃이 소멸한
+    view3d 가 `base * 0.15` 로 정본(0.40)의 3.75 배를 물러나 비이웃이 소멸한
     적이 있다(가시성 연구 C4)."""
     out: list[Finding] = []
-    for name in _ATLAS_FILES:
+    for name in _VIEW_FILES:
         p = app_src / "surfaces" / name
         if not p.exists():
             continue
@@ -219,7 +219,7 @@ def run_recede(app_src: Path) -> list[Finding]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Atlas 대비 게이트(WCAG + APCA 이중)")
+    ap = argparse.ArgumentParser(description="View 대비 게이트(WCAG + APCA 이중)")
     ap.add_argument("--theme", default="app/src/theme.ts")
     ap.add_argument("--app-src", default="app/src")
     args = ap.parse_args(argv)

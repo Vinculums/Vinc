@@ -50,7 +50,7 @@ Constraints confirmed by testing `_meta/design_rules/token_gen.py::render_css` d
    - `--icon-size` (there is no arbitrary group; work around it by putting an `"icon"` key in
      `space` to get `--space-icon`, or post-process)
    - the community `--dom-*` category palette
-   - the Atlas WebGL scene shades (heavy, mid, base, cross, fade and so on)
+   - the View WebGL scene shades (heavy, mid, base, cross, fade and so on)
    - the homepage application mockup `--w-*`
    - web and desktop skin scoping (`:root[data-skin="web"]`), through `scope_tokens.py`
    - the hex integer module for three.js and Sigma, through `gen_theme_ts.py`
@@ -92,13 +92,13 @@ The six canonical pages:
 | 0 | **Design System (Homepage)** | `0:1` | the policy frame (306:30), the logo section (157:15, Logo/Mark 91:164), 48 icons (226:5), 14 Home components (231:5) |
 | 1 | **Design System (App)** | `53:247` | 21 App components (243:27, pinned to Semantic Dark) |
 | 2 | **Homepage** | `40:2` | 44 real-screen frames in five labelled rows (MARKETING, ACCOUNT, AUTH and STATES, DOCS, LIGHT and MOBILE) |
-| 3 | **App (Desktop)** | `40:3` | 24 application screen and overlay frames (Atlas, Search and Ask, Packs and Intake, Settings, Overlays, Web skin) |
+| 3 | **App (Desktop)** | `40:3` | 24 application screen and overlay frames (View, Search and Ask, Packs and Intake, Settings, Overlays, Web skin) |
 | 4 | **Node** | `184:2076` | five graph examples: 3D dark (299:30), 3D light (300:30), 2D (301:30), Timeline (302:30), Sankey (303:30) |
 | 5 | **Email** | `219:5` | the email design system (251:27) plus 14 templates (7 kinds in English and Korean) |
 
 Seven variable collections, all new, with the old three deleted: Primitive (221:5), Semantic
 (222:5, Light and Dark, matching the source-of-truth semantic names), Graph (223:5, linkRamp
-plus atlasScene), Domain (223:27), Window (223:35), Email (223:45) and Scale (224:5, with icon
+plus viewScene), Domain (223:27), Window (223:35), Email (223:45) and Scale (224:5, with icon
 18 and 24 newly added).
 
 The font is **settled as Pretendard**; Inter stands in until it is installed, after which the

@@ -46,12 +46,10 @@ retention:
 # ── 적재 엔진 (마크다운 → 임베디드 스토어) ────────────────────────────────────
 # 파일명은 engines/<name>.py. graph_to_neo4j(PM 정책 그래프)는 weg-9000 레포
 # 소관으로 Vinc 범위 밖이라 여기에 없다.
+# concepts_ingest·bridges_ingest·learner_ingest·skill_tracker·pack_ingest 는
+# 2026-08-12 삭제됨 — v1(weg-9000, Neo4j) 일회성 이관 도구, 제품 호출부 0건
+# (agent-wiki-comparison §8; record:fact-orphan-engines-deleted).
 engines:
   enabled:
     - embed_pipeline    # chunk + 로컬 임베딩 + parquet 체크포인트(증분)
     - recall_ingest     # 3-tier episodic memory (:Episode)
-    - concepts_ingest   # distilled Concept 그래프 (도메인 자동 발견)
-    - bridges_ingest    # cross-domain Bridge 링크
-    - learner_ingest    # user-model 패턴 (:LearnerPattern)
-    - skill_tracker     # SkillExecution 분석
-    - pack_ingest       # pack.json preference 오버레이(마이그레이션)

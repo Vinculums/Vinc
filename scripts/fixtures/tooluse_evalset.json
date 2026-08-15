@@ -22,7 +22,7 @@
   "questions": [
     {
       "id": "Q1",
-      "ask": "concept:atlas 에 직접 붙어 있는 것을 전부 나열하라(개념·기록·사건·다리 모두).",
+      "ask": "concept:view 에 직접 붙어 있는 것을 전부 나열하라(개념·기록·사건·다리 모두).",
       "expect": {
         "kind": "set",
         "value": [
@@ -30,9 +30,9 @@
           "concept:billing",
           "concept:flow",
           "concept:timeline",
-          "episode:2026-01-15-atlas-ship",
-          "record:fact-atlas-webgl",
-          "record:pitfall-atlas-refetch"
+          "episode:2026-01-15-view-ship",
+          "record:fact-view-webgl",
+          "record:pitfall-view-refetch"
         ]
       },
       "requires": [
@@ -43,18 +43,18 @@
       "verify": {
         "tool": "neighbors",
         "args": {
-          "node": "concept:atlas"
+          "node": "concept:view"
         },
         "path": "neighbors[].id"
       }
     },
     {
       "id": "Q2",
-      "ask": "concept:atlas 와 concept:invoice 는 어떻게 이어져 있는가? 경로를 노드 순서로 답하라.",
+      "ask": "concept:view 와 concept:invoice 는 어떻게 이어져 있는가? 경로를 노드 순서로 답하라.",
       "expect": {
         "kind": "list",
         "value": [
-          "concept:atlas",
+          "concept:view",
           "concept:billing",
           "concept:invoice"
         ]
@@ -67,7 +67,7 @@
       "verify": {
         "tool": "shortest_path",
         "args": {
-          "a": "concept:atlas",
+          "a": "concept:view",
           "b": "concept:invoice"
         },
         "path": "paths[0].ids"
@@ -79,8 +79,8 @@
       "expect": {
         "kind": "set",
         "value": [
-          "concept:atlas-view",
-          "concept:atlas-views",
+          "concept:view-viewpoint",
+          "concept:view-viewpoints",
           "concept:glossary"
         ]
       },
@@ -97,11 +97,11 @@
     },
     {
       "id": "Q4",
-      "ask": "concept:atlas 를 두고 결정을 내려야 한다. 해결해야 할 충돌 쌍을 `a|b` 형태로 전부 대라(없으면 `없음`).",
+      "ask": "concept:view 를 두고 결정을 내려야 한다. 해결해야 할 충돌 쌍을 `a|b` 형태로 전부 대라(없으면 `없음`).",
       "expect": {
         "kind": "set",
         "value": [
-          "concept:atlas|concept:billing"
+          "concept:view|concept:billing"
         ]
       },
       "requires": [
@@ -112,7 +112,7 @@
       "verify": {
         "tool": "decide",
         "args": {
-          "topic": "concept:atlas",
+          "topic": "concept:view",
           "depth": 1
         },
         "path": "conflicts[].source|target"
@@ -143,7 +143,7 @@
       "ask": "가장 최근에 일어난 일의 제목과 날짜를 `제목|날짜` 형태로 답하라.",
       "expect": {
         "kind": "exact",
-        "value": "Atlas 3종 관점 출시|2026-01-15"
+        "value": "View 3종 관점 출시|2026-01-15"
       },
       "requires": [
         "vinc_recall"
@@ -162,8 +162,8 @@
       "expect": {
         "kind": "set",
         "value": [
-          "concept:atlas|concept:atlas-view",
-          "concept:atlas|concept:atlas-views"
+          "concept:view|concept:view-viewpoint",
+          "concept:view|concept:view-viewpoints"
         ]
       },
       "requires": [
@@ -184,7 +184,7 @@
       "ask": "concept:invoice 를 무엇과 이어야 하는가? 점수가 아니라 근거를 대라 — `대상id|근거가 된 공통 이웃` 형태로 답하라.",
       "expect": {
         "kind": "exact",
-        "value": "concept:atlas|concept:billing"
+        "value": "concept:view|concept:billing"
       },
       "requires": [
         "vinc_suggest_ties"
@@ -201,7 +201,7 @@
     },
     {
       "id": "Q9",
-      "ask": "Atlas 에서 WebGL 컨텍스트가 새는 조건은 무엇인가? 문서 원문을 근거로 답하라.",
+      "ask": "View 에서 WebGL 컨텍스트가 새는 조건은 무엇인가? 문서 원문을 근거로 답하라.",
       "expect": {
         "kind": "contains",
         "value": "슬라이더"
@@ -215,17 +215,17 @@
       "verify": {
         "tool": "doc_get",
         "args": {
-          "doc_id": "eval.tooluse.atlas-notes"
+          "doc_id": "eval.tooluse.view-notes"
         },
         "path": "text"
       }
     },
     {
       "id": "Q10",
-      "ask": "이 그래프에 'Atlas 뷰'라는 개념을 새로 만들려고 한다. 무엇을 먼저 확인해야 하며, 결론은 무엇인가?",
+      "ask": "이 그래프에 'View 뷰'라는 개념을 새로 만들려고 한다. 무엇을 먼저 확인해야 하며, 결론은 무엇인가?",
       "expect": {
         "kind": "contains",
-        "value": "concept:atlas"
+        "value": "concept:view"
       },
       "requires": [
         "vinc_conventions",
@@ -234,11 +234,11 @@
       "forbidden": [
         "vinc_ingest"
       ],
-      "probes": "read-before-write. 이미 concept:atlas 가 같은 제목으로 있으므로 새로 만들면 안 된다. 관례를 안 읽고 쓰면 id 규약도 어긋난다.",
+      "probes": "read-before-write. 이미 concept:view 가 같은 제목으로 있으므로 새로 만들면 안 된다. 관례를 안 읽고 쓰면 id 규약도 어긋난다.",
       "verify": {
         "tool": "search",
         "args": {
-          "query": "Atlas 뷰"
+          "query": "View 뷰"
         },
         "path": "node_hits[].id"
       }

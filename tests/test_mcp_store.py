@@ -101,7 +101,10 @@ def test_quota_resets_after_window(store):
 
 def test_purge_expired(store):
     store.add_code("c", "c1", "u", "ch", None, None, exp=100)
-    store.add_token("t", "c1", None, None, exp=100)
+    # `now=50` 은 픽스처가 아니라 계약이다: add_token 이 발급 **전에** 만료 행을
+    # 쓸어 가므로(파일 크기 억제), 시계를 안 고정하면 실제 벽시계로 위 코드가 먼저
+    # 지워져 아래 집계가 3 이 아닌 2 가 된다.
+    store.add_token("t", "c1", None, None, exp=100, now=50)
     store.add_connect_request("r", "c1", "u", "ch", None, exp=100)
     n = store.purge_expired(now=200)
     assert n >= 3
@@ -245,3 +248,64 @@ def test_journal_mode_env_override_and_bad_value(tmp_path, monkeypatch):
     s2 = Store(os.path.join(tmp_path, "b.db"))
     assert s2.journal_mode == "delete"
     s2.close()
+
+
+# ── clients 상한 · 기회주의 만료 청소 ────────────────────────────────────────
+# 영속이 필요한 쓰기마다 DB 를 통째로 복사하는데, purge_expired 의 호출부가
+# 프로덕션에 0건이고 clients 에 상한이 없어서 파일이 단조 증가했다 — 무인증
+# /register 하나가 복사 하나이므로 비용이 초선형으로 자란다.
+
+def test_add_client_purges_expired_rows(store):
+    """무인증 등록 경로가 만료 행을 쓸어 간다 — 파일이 커지지 않게."""
+    store.add_code("old", "c1", "https://a/cb", "chal", None, None, exp=100)
+    store.add_token("stale", "c1", "user:u1", "free", exp=100, now=50)
+    store.add_client("c2", ["https://b/cb"], "later", now=9000)
+    assert store.pop_code("old") is None, "만료 코드가 남았다"
+    assert store.get_token("stale", now=9000) is None, "만료 토큰이 남았다"
+
+
+def test_add_client_keeps_live_rows(store):
+    """청소가 살아 있는 것까지 지우면 커넥터가 끊긴다."""
+    store.add_code("live", "c1", "https://a/cb", "chal", "user:u1", "pro", exp=9e9)
+    store.add_token("good", "c1", "user:u1", "free", exp=9e9)
+    store.add_client("c2", ["https://b/cb"], "later")
+    assert store.get_token("good")["owner"] == "user:u1"
+    assert store.pop_code("live")["plan"] == "pro"
+
+
+def test_clients_table_is_capped(store, monkeypatch):
+    from vinc_mcp import store as store_mod
+    monkeypatch.setattr(store_mod, "MAX_CLIENTS", 3)
+    for i in range(10):
+        store.add_client(f"c{i}", ["https://a/cb"], f"n{i}", now=1000 + i)
+    n = store._db.execute("SELECT count(*) FROM clients").fetchone()[0]
+    assert n == 3, f"상한이 안 걸렸다: {n}"
+    # 가장 최근 것들이 남는다(방금 등록한 것이 잘려 나가면 등록이 무의미해진다).
+    assert store.get_client("c9") is not None
+    assert store.get_client("c0") is None
+
+
+def test_cap_never_evicts_a_live_connector(store, monkeypatch):
+    """상한이 **인증된 커넥터를 끊으면** 치료가 병보다 나쁘다. 토큰을 든
+    client_id 는 오래됐어도 후보에서 빠진다."""
+    from vinc_mcp import store as store_mod
+    monkeypatch.setattr(store_mod, "MAX_CLIENTS", 2)
+    store.add_client("old-but-live", ["https://a/cb"], "keep", now=1)
+    store.add_token("tok", "old-but-live", "user:u1", "free", exp=9e9)
+    for i in range(6):
+        store.add_client(f"junk{i}", ["https://a/cb"], "junk", now=100 + i)
+    assert store.get_client("old-but-live") is not None, "살아 있는 커넥터가 잘렸다"
+
+
+def test_add_token_purges_before_insert(store):
+    """INSERT 뒤에 지우면 이미 만료된 exp 로 발급한 토큰이 곧바로 사라져,
+    호출자에게는 쓰기가 조용히 실패한 것처럼 보인다."""
+    store.add_token("t1", "c1", "user:u1", "free", exp=1000, now=9000)
+    row = store._db.execute("SELECT owner FROM tokens WHERE token='t1'").fetchone()
+    assert row is not None and row["owner"] == "user:u1"
+
+
+def test_purge_expired_still_works_standalone(store):
+    """공개 메서드는 그대로다 — 락을 스스로 쥐고 스냅샷까지 한다(교착 없이)."""
+    store.add_code("c", "c1", "https://a/cb", "chal", None, None, exp=100)
+    assert store.purge_expired(now=200) >= 1

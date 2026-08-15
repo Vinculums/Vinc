@@ -98,6 +98,36 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(obj["status"], "degraded")
             self.assertIn("store", obj.get("error", ""))
 
+    def test_no_store_carries_the_open_error(self):
+        """강등이면 **왜** 도 함께 준다 — `EmbeddedBackend.last_open_error`.
+
+        2026-08-14: 확장 경로 문제로 스토어가 안 열렸는데 /health 는 "no reachable
+        store" 한 줄뿐이라 앱이 "지도를 불러오지 못했습니다" 밖에 말할 수 없었다.
+        그 화면은 **빈 그래프와 구분되지 않는다.** 사유는 이미 `last_open_error` 에
+        담겨 stdout 에도 찍히고 있었는데 **읽는 곳이 없었다**."""
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = "RuntimeError: IO exception: Failed to load library"
+        try:
+            with running_server(_app(store=None)) as base:
+                code, obj = _req(base, "/health", token=None)
+                self.assertEqual(code, 200)
+                self.assertEqual(obj["status"], "degraded")
+                self.assertIn("Failed to load library", obj["open_error"])
+        finally:
+            EmbeddedBackend.last_open_error = old
+
+    def test_no_store_without_open_error_stays_quiet(self):
+        # 사유가 없으면 키를 만들지 않는다 — 빈 문자열로 "뭔가 있다"고 오해시키지 않는다.
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = ""
+        try:
+            with running_server(_app(store=None)) as base:
+                self.assertNotIn("open_error", _req(base, "/health", token=None)[1])
+        finally:
+            EmbeddedBackend.last_open_error = old
+
     def test_provision_error_surfaced(self):
         app = VincApp(store=None, auth=SessionAuth(_TOKEN),
                       provision_error="RuntimeError: boom")
@@ -507,11 +537,11 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
 class IngestRouteTests(unittest.TestCase):
     """POST /ingest — 적재 단일화(2026-07-11): 레거시 fragment 경로(Record/props,
     api/fragment.merge_fragment)로 수렴. 테마 적재(Entity/TYPED)는 휴면. MERGE
-    create/match 판별·상세 계약은 tests/test_atlas.py 가 커버(여기선 HTTP 왕복)."""
+    create/match 판별·상세 계약은 tests/test_view.py 가 커버(여기선 HTTP 왕복)."""
 
     class _Store:
         """레거시 merge_fragment 는 store.run(cypher, params)->list 를 쓴다(count 는
-        빈 리스트=신규). test_atlas 의 더블과 동형 — HTTP 왕복만 검증한다."""
+        빈 리스트=신규). test_view 의 더블과 동형 — HTTP 왕복만 검증한다."""
         driver_name = "fake"
         def run(self, cypher, params=None):
             return []
@@ -1123,7 +1153,7 @@ class FailureEnvelopeTests(unittest.TestCase):
 
     def test_decide_는_정확_일치라는_것을_말한다(self):
         """`topic` 은 concept_id·bridge_id·title 정확 일치다. 부분 일치가 아니라서
-        `atlas` 는 안 맞고 `concept:atlas` 라야 맞는데, 그 계약이 어디에도 없었다."""
-        res = self._get("/decide?topic=atlas&owner=u")
+        `view` 는 안 맞고 `concept:view` 라야 맞는데, 그 계약이 어디에도 없었다."""
+        res = self._get("/decide?topic=view&owner=u")
         self.assertIn("exactly", res["hint"])
-        self.assertIn("concept:atlas", res["hint"], "예시 id 가 없다")
+        self.assertIn("concept:view", res["hint"], "예시 id 가 없다")

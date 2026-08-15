@@ -307,7 +307,7 @@ def domains_plan(*, owner: str | None = None) -> QueryPlan:
     find out *what* someone has learned by asking the graph, not a config enum.
     Optionally scoped to one ``owner``. Returns ``{domain, episodes}`` rows.
 
-    Episode 전용 — Atlas L0(:func:`atlas_l0`)가 Concept 축과 별도로 이 플랜을 그대로
+    Episode 전용 — View L0(:func:`view_l0`)가 Concept 축과 별도로 이 플랜을 그대로
     재사용하므로(§ concept_domains_plan 병행) 여기서는 손대지 않는다. 도메인 목록
     화면의 Episode 편향 해소는 :func:`domain_counts_plan`/:func:`domains` 가 맡는다."""
     where = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL" if owner else "WHERE e.domain IS NOT NULL"
@@ -451,16 +451,52 @@ def learner_model(*, owner: str, cfg=None, store=None) -> dict:
     return execute(learner_model_plan(owner=owner), cfg, store=store)
 
 
-def graph_plan(*, owner: str, domain: str | None = None) -> QueryPlan:
+#: 주제 스코프 = **하위 트리**다. 정확일치 하나만 보던 동안 상위 주제를 고르면
+#: 0 노드가 나왔다(실측 2026-08-15: `domain=vinc` → 0, `domain=vinc/design` → 12).
+#: 계층은 이미 있었다 — 경로의 `/` 가 트리를 만들고 hub 배치와 좌측 트리가 그걸
+#: 읽는데, **조회만 안 읽고 있었다**.
+#:
+#: 접두에 `/` 를 붙이는 것이 요지다. `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다.
+#: 그래서 정확일치와 `d + "/"` 접두의 OR 로 쓴다.
+#:
+#: 다섯 플랜(개념·다리·사건·기록·결정)이 각자 도메인을 걸러서, 한 곳만 고치면
+#: 축끼리 모집단이 어긋난다. 그래서 판정을 여기 한 벌만 둔다.
+def domain_subtree_where(cols: list[str], domains: list[str], params: dict,
+                         *, key: str = "dom") -> str:
+    """``cols`` 중 하나가 ``domains`` 중 하나의 하위 트리에 드는가."""
+    ors: list[str] = []
+    for i, d in enumerate(domains):
+        params[f"{key}{i}"] = d
+        params[f"{key}p{i}"] = d.rstrip("/") + "/"
+        for col in cols:
+            ors.append(f"({col} = ${key}{i} OR {col} STARTS WITH ${key}p{i})")
+    return "(" + " OR ".join(ors) + ")"
+
+
+#: `domain`(단수, 하위호환)과 `domains`(복수)를 하나의 목록으로 접는다. 빈 문자열과
+#: 중복은 떨어뜨리되 **순서는 유지**한다 — 응답이 스코프를 에코할 때 흔들리지 않게.
+def normalize_domains(domain: str | None = None,
+                      domains: list[str] | None = None) -> list[str]:
+    raw = list(domains or ([] if domain is None else [domain]))
+    out: list[str] = []
+    for d in raw:
+        d = (d or "").strip()
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
+def graph_plan(*, owner: str, domain: str | None = None,
+               domains: list[str] | None = None) -> QueryPlan:
     """The learning knowledge-graph for an owner: Concept nodes + their relations
     (a row per concept, plus a row per outgoing Concept→Concept edge). ``domain``
     (free/open) optionally narrows to one domain. Shaped into nodes/edges by
     :func:`shape_graph`."""
     where = ["c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("c.domain = $domain")
-        params["domain"] = domain
+    doms = normalize_domains(domain, domains)
+    if doms:
+        where.append(domain_subtree_where(["c.domain"], doms, params))
     clause = "WHERE " + " AND ".join(where)
     # 관계 타입 함수는 `label(r)` — 임베디드(Kùzu 계보)에 `type()` 부재(§6-2 M4,
     # P1-0 실측 확정). Neo4j 는 label()도 지원하므로 백엔드 중립.
@@ -682,7 +718,7 @@ def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
 
 
 def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
-    """Seed+depth 순회 — Atlas L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
+    """Seed+depth 순회 — View L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
     MCP-SKELETON §10 공백 해소). seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
 
     **G1(2026-08-03, ladybug 0.18.0 실측): 순회 의미론 `TRAIL` → `SHORTEST`.**
@@ -757,28 +793,29 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
 
-# ── Atlas 축 플랜(F2 — Concept 단일 축 해소) ─────────────────────────────────
+# ── View 축 플랜(F2 — Concept 단일 축 해소) ─────────────────────────────────
 # 부착 축 3종(Bridge·Episode·Record)을 별도 순수 플랜으로 두고 파이썬 셰이핑에서
 # 합류한다(UNION ALL 메가플랜 대신 — 이종 투영의 NULL 패딩 회피 + 플랜별 강등:
 # 미마이그레이션 스토어에서 새 축만 조용히 빈 행이 되고 Concept 축은 산다).
-# 공통 계약: **비-OPTIONAL 매치** — 부착 없는 항목은 렌더 대상이 아니다(Atlas =
+# 공통 계약: **비-OPTIONAL 매치** — 부착 없는 항목은 렌더 대상이 아니다(View =
 # 연결 뷰; 미부착 Episode/Record 의 표면은 Records/L0 집계). domain(L1 렌즈)과
 # ids(L2 ego 후조회)는 상호 배제. ids 모드는 **어느 한쪽 끝점**이 집합에 들면
 # 매치 — concept 시드에선 팔이 kept 개념에 닿을 때(접착제), episode:/record:/
 # bridge: 시드에선 자기 부착이 나온다(고립 폴백 대신 depth-1 이웃 렌더).
 
-def bridge_rows_plan(*, owner: str, domain: str | None = None,
+def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """Bridge 노드 + CONNECTS 팔(F2). 노드 domain = source_domain(단일 결정값),
     target_domain 은 domain2 로 병기(상세 레일용). L1 소속은 선언 필드(source/
     target_domain)를 신뢰 — 실 CONNECTS 끝점과 어긋난 브릿지는 렌즈에서 빠질 수
     있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + Concept 엄격."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = [_bridge_owner_pred("b"), "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(b.source_domain = $domain OR b.target_domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(
+            ["b.source_domain", "b.target_domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR b.bridge_id IN $ids)")
         params["ids"] = ids
@@ -796,17 +833,17 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
 
 
-def episode_rows_plan(*, owner: str, domain: str | None = None,
+def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                       ids: list[str] | None = None) -> QueryPlan:
     """Episode 노드 + ABOUT 팔(F2/F4). L1 소속은 (자기 domain OR 부착 개념 domain)
     — 렌즈 밖 에피소드가 렌즈 안 개념에 부착된 경우가 정확히 F2 가 숨기던 연결이라
     OR 가 의도다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["e.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(e.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["e.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR e.episode_id IN $ids)")
         params["ids"] = ids
@@ -828,16 +865,16 @@ def episode_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
 
 
-def record_rows_plan(*, owner: str, domain: str | None = None,
+def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """Record 노드 + ATTACHES_TO 팔(F2). 엣지 질화자 r.type 은 role 슬롯으로 투영
     (CONNECTS.role 과 단일 선택 열 공유 — shape_graph 계약)."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["rc.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(rc.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["rc.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR rc.record_id IN $ids)")
         params["ids"] = ids
@@ -860,7 +897,7 @@ def record_rows_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
 
-def decision_rows_plan(*, owner: str, domain: str | None = None,
+def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
     """Decision 노드 + ABOUT 팔(v12). 결정이 **무엇을 두고** 내려졌는지가 그 팔이다.
 
@@ -871,12 +908,12 @@ def decision_rows_plan(*, owner: str, domain: str | None = None,
     68/68 이 비어 있어 만들지 않았다). 열 없는 라벨에 옮겨 붙이면 모든 레벨의 /graph
     가 Binder 로 죽는다 — Record 축 주석이 경고하는 바로 그 자리다. 도착점(Concept)
     쪽은 열이 있으므로 target_content_ts 는 싣는다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["d.owner_id = $owner", "c.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
-        where.append("(d.domain = $domain OR c.domain = $domain)")
-        params["domain"] = domain
+    if doms:
+        where.append(domain_subtree_where(["d.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR d.decision_id IN $ids)")
         params["ids"] = ids
@@ -1103,7 +1140,7 @@ def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
 
 
 def layout_positions(nodes: list[dict], edges: list[dict],
-                     layout: str = "radial") -> list[dict]:
+                     layout: str = "radial", topic_marks: bool = False) -> list[dict]:
     """결정론 배치(D17 + D34 프리셋 + **D74 위계 폭발**) — 순수 함수. 난수·시간
     무의존이라 같은 그래프는 언제 그려도 같은 좌표다(플랜 순수성 계약과 동형).
 
@@ -1117,7 +1154,13 @@ def layout_positions(nodes: list[dict], edges: list[dict],
     (그래도 exact 중복이 남을 수 있는 경계는 `_dedupe_planar` 가 마지막에 막는다.)
 
     내부 정렬은 (pinned DESC, degree DESC, id) — pin 이 허브 승격 1순위(D32).
-    ⚠ Concept 에는 `pinned` 열이 없어(embedded_schema) 개념 축에서는 무동작이다."""
+    ⚠ Concept 에는 `pinned` 열이 없어(embedded_schema) 개념 축에서는 무동작이다.
+
+    ``topic_marks``: **주제 자신을 마크로 낸다**(hub 전용, 2026-08-14). 기본은 꺼짐
+    이고 그것이 요지다 — 이 함수의 계약은 "준 노드를 배치한다"이지 "노드를 만든다"
+    가 아니라서, 켜는 것은 지도 payload 를 조립하는 호출부의 결정이어야 한다.
+    (테스트가 이 경계를 잡아 줬다: 기본으로 켰더니 배치 계약을 검사하는 네 건이
+    입력보다 많은 노드를 받고 깨졌다.)"""
     import math
     GOLDEN = 2.399963229728653
     layout = _LAYOUT_ALIAS.get(layout, layout)
@@ -1139,9 +1182,12 @@ def layout_positions(nodes: list[dict], edges: list[dict],
             else:
                 directed.setdefault(s, set()).add(t)
     if layout == "rank":
+        # 순서 프리셋에는 주제 마크를 안 낸다. rank 의 좌표는 "무엇이 무엇보다
+        # 먼저인가"를 말하는데 주제에는 그 자리가 없다 — 억지로 앉히면 없는 뜻을
+        # 지어내는 것이 된다. 담는 관계는 hub 가 답한다.
         _global_rank(nodes, directed, math)
     else:
-        _global_hub(nodes, math, GOLDEN)
+        _global_hub(nodes, math, GOLDEN, topic_marks)
     _dedupe_planar(nodes)
     return nodes
 
@@ -1254,13 +1300,89 @@ _R_LEAF = 0.5                            # 잎이 가지 껍질 밖으로 더 �
 _CONE0 = 1.15                            # 뿌리에서 도메인으로 퍼지는 반각(rad)
 
 
+def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> list:
+    """무리 안 배치 — **규칙적 동심 고리 + 크기에 비례한 간격**. (dx, dy) 목록을 돌려준다.
+
+    두 번 고쳐서 여기까지 왔다(둘 다 발주자 지적).
+      ① 황금각 필로택시스는 고르지만 **규칙적으로 보이지 않는다**(2026-08-15). 눈이
+         잡을 격자가 없어 잘 흩어진 무작위로 읽힌다. 동심 고리는 고르기를 유지하면서
+         "고리"와 "등각"이라는 두 규칙을 눈에 보이게 만든다.
+      ② 등각만으로는 **큰 노드가 뭉쳐 보인다**(2026-08-15). 마크 반지름은 √연결수에
+         비례하는데(D32) 자리는 균등하니, 연결 많은 것끼리 이웃하면 그 둘만 붙는다.
+
+    ②의 처방이 이 함수의 요지다. 절대 px 는 서버가 모르지만 **상대 비율**은 화면과
+    같으므로(둘 다 √연결수), 이웃 두 마크의 평균 크기에 비례해 각 간격을 나눈다.
+    큰 것 옆은 더 벌어지고 작은 것끼리는 촘촘해진다. 고리 반경도 같은 요구량으로
+    정한다 — 큰 것이 많이 앉은 고리는 그만큼 바깥으로 밀린다.
+
+    ⚠ **중심 자리는 비운다.** 거기에는 이미 그 주제의 마크가 서 있다(D86) — 잎을
+    하나 앉히면 마크와 정확히 겹치고, 하필 연결이 가장 많은 것이 거기 가므로 가장
+    큰 마크 둘이 포개진다. 처음에 7개 이상일 때 중심을 쓰게 짰다가 실측에서 이걸
+    봤다. 대신 마크의 크기(`center_w`)를 첫 고리의 요구량에 더해, 마크가 클수록
+    첫 고리가 바깥으로 밀리게 한다.
+
+    순수 함수라 결정론이다(D17)."""
+    n = len(items)
+    if n == 0:
+        return []
+    if n == 1:
+        return [(0.0, 0.0)]
+    #: 화면 크기 축과 같은 것 — 반지름 ∝ √연결수. 1.0 은 고립 노드의 바닥 크기.
+    w = [1.0 + math.sqrt(max(0.0, float(it.get("degree") or 0))) for it in items]
+    out: list = [(0.0, 0.0)] * n
+    rest = n
+    rings = 1
+    while 3 * rings * (rings + 1) < rest:
+        rings += 1
+    tot = rings * (rings + 1) // 2
+    # 1단계 — 고리 멤버와 각 고리의 **요구량**(간격 합). 반경은 이걸로 정한다.
+    plan, start, demand = [], 0, []
+    for k in range(1, rings + 1):
+        cnt = rest * (k * (k + 1) // 2) // tot - start
+        if cnt <= 0:
+            continue
+        mem = list(range(start, start + cnt))
+        gaps = [(w[mem[j]] + w[mem[(j + 1) % cnt]]) / 2 for j in range(cnt)]
+        plan.append((mem, gaps))
+        # 첫 고리만 마크 크기를 함께 진다(위 ⚠ 주석).
+        demand.append((sum(gaps) or 1.0) + (1.0 + math.sqrt(max(0.0, center_w))
+                                            if not plan[:-1] else 0.0))
+        start += cnt
+    # 2단계 — 고리 반경은 **두 요구 중 큰 쪽**이다.
+    #   · 각(angular): 그 고리의 간격 합을 둘레로 담으려면 최소 이만큼 필요하다
+    #   · 지름(radial): 앞 고리와 마크 크기만큼은 떨어져야 한다
+    # 누적 비율만 쓰던 판이 여기서 틀렸다(실측): 큰 것이 앉은 안쪽 고리가 짧아,
+    # 가장 큰 마크들이 오히려 가장 좁게 붙었다. 이제 묶이는 것은 **고리 사이 거리**다.
+    radii, prev_r, prev_w = [], 0.0, 1.0 + math.sqrt(max(0.0, center_w))
+    for mem, gaps in plan:
+        mw = max(w[m] for m in mem)
+        angular = (sum(gaps) or 1.0) / (2 * math.pi)
+        radial = prev_r + 0.55 * (prev_w + mw) / 2
+        rr = max(angular, radial)
+        radii.append(rr)
+        prev_r, prev_w = rr, mw
+    scale = radius / (radii[-1] or 1.0)
+    for ring_i, ((mem, gaps), rr0) in enumerate(zip(plan, radii)):
+        rr = rr0 * scale
+        gsum = sum(gaps) or 1.0
+        # 고리마다 반 칸 돌린다. 안 돌리면 모든 고리의 첫 자리가 θ=0 에 서서
+        # 중심을 지나는 **한 줄**이 생긴다(실측: 한 덩어리의 세 마크가 y 가 같았다).
+        off = math.pi / len(mem) if len(mem) > 1 else 0.0
+        acc = 0.0
+        for j, m in enumerate(mem):
+            th = off * (ring_i % 2) + 2 * math.pi * acc / gsum
+            acc += gaps[j]
+            out[m] = (rr * math.cos(th), rr * math.sin(th))
+    return out
+
+
 def _shell(depth: int) -> float:
     if depth < len(_R_BRANCH):
         return _R_BRANCH[depth]
     return _R_BRANCH[-1] + 0.16 * (depth - len(_R_BRANCH) + 1)
 
 
-def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
+def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False) -> None:
     """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
 
     뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
@@ -1282,6 +1404,9 @@ def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
 
     순수 함수(난수·시간 무의존, D17)."""
     root = _build_tree(nodes)
+    #: 이번 배치에서 낼 주제 마크. 다 돌고 나서 한 번에 붙인다 — 도는 중에 넣으면
+    #: 트리를 만든 그 목록이 순회 중에 자란다.
+    marks: list[dict] = []
 
     def basis(d):
         """d 에 수직인 정규직교 두 축 — 원뿔 안 방위각을 세울 좌표계."""
@@ -1314,12 +1439,43 @@ def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
         ang = i * GOLDEN
         return (math.cos(ang) * rr, math.sin(ang) * rr, z)
 
-    def place(b: _Branch, depth: int, d3, a0: float, a1: float, cone: float) -> None:
+    def place(b: _Branch, depth: int, d3, a0: float, a1: float, cone: float,
+              path: tuple = ()) -> None:
+        # 주제 자신을 **마크로 낸다**(2026-08-14). 여태 가지는 좌표 계산에만 쓰이고
+        # 화면에는 잎만 나갔다 — 그래서 "vinc 아래 design" 이라는 구조가 지도에서
+        # 위치로만 암시되고 짚을 것이 없었다. id 는 저장소의 진짜 주제 노드와 같은
+        # `domain:<경로>` 라 클릭·추적이 그대로 해석된다(GM-12 · D16 의 L0→L1).
+        # 반경은 이 가지 자신의 껍질이고 뿌리는 _shell(0)=0 이라 정확히 원점이다.
+        if path and topic_marks:
+            mark = {
+                "id": "domain:" + "/".join(path),
+                "label": path[-1],
+                "domain": "/".join(path[:-1]),
+                "kind": "domain",
+                "degree": b.weight,      # 아래에 달린 총수 = 크기 인코딩(√연결수와 같은 축)
+                "props": {}, "tags": [], "ts": "",
+            }
+            rb = _shell(depth)
+            mark["x"] = round(d3[0] * rb, 6)
+            mark["y"] = round(d3[1] * rb, 6)
+            mark["z"] = round(d3[2] * rb, 6)
+            mark["x2"] = round(math.cos((a0 + a1) / 2) * rb, 6)
+            mark["y2"] = round(math.sin((a0 + a1) / 2) * rb, 6)
+            marks.append(mark)
         kids = _ordered_children(b)
         total = max(sum(w for w, *_ in kids), 1)
         r_here = _shell(depth)
         span = a1 - a0
         acc = 0
+        # 2D — 이 가지 자신의 자리. 잎은 **그 점 둘레에 뭉친다**(아래 주석).
+        bx2 = math.cos((a0 + a1) / 2) * r_here
+        by2 = math.sin((a0 + a1) / 2) * r_here
+        # 이 가지의 잎을 **한 번에** 배치한다 — 간격이 이웃 크기에 달려 있어
+        # (_cluster) 하나씩 독립으로는 정할 수 없다.
+        leafnodes = [p2 for _w, k, _k2, p2 in kids if k == "node"]
+        disc = min(_R_LEAF * 0.85, 0.28 * max(r_here, 0.3) * span)
+        spots = _cluster(leafnodes, disc, math, float(b.weight))
+        leaf_i = 0
         for i, (w, kind, _key, payload) in enumerate(kids):
             mid = (acc + w / 2) / total            # 누적 무게 비율(0~1)
             frac = (i + 0.5) / len(kids)           # 순번 비율 — 반경 램프에 쓴다
@@ -1333,7 +1489,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
             ang = (b0 + b1) / 2
             acc += w
             if kind == "branch":
-                place(payload, depth + 1, nd3, b0, b1, cone * 0.58)
+                place(payload, depth + 1, nd3, b0, b1, cone * 0.58, path + (payload.seg,))
                 continue
             n = payload
             # 잎 — 자기 가지 껍질 **바깥**으로. 순번이 뒤일수록 더 멀리(중심순 유지).
@@ -1341,12 +1497,35 @@ def _global_hub(nodes: list[dict], math, GOLDEN) -> None:
             n["x"] = round(nd3[0] * rr, 6)
             n["y"] = round(nd3[1] * rr, 6)
             n["z"] = round(nd3[2] * rr, 6)
-            n["x2"] = round(math.cos(ang) * rr, 6)
-            n["y2"] = round(math.sin(ang) * rr, 6)
+            # 2D 는 3D 와 다르게 접는다(2026-08-14). 잎을 각도 슬라이스 안에서 반경만
+            # 늘려 세우면 가지마다 **나선 팔**이 하나씩 생기고, 그 팔들이 모여 회오리로
+            # 읽힌다 — 무엇이 무엇 아래인지가 아니라 소용돌이가 보인다. 대신 잎을 자기
+            # 가지의 점 둘레에 **뭉치면** 도메인이 덩어리로 읽히고, 그게 좌측 트리의
+            # 계층과 같은 그림이 된다. 3D 는 깊이가 이미 가지를 갈라 주므로 안 건드린다.
+            #   · 원반 안 배치는 황금각 필로택시스 — 개수와 무관하게 고르고 결정론이다
+            #   · 반경 √ 램프라 면적이 개수에 비례한다(가운데만 빽빽해지지 않는다)
+            #   · 중심순(D32)은 그대로다: 순번이 앞선 것이 덩어리 가운데에 가깝다
+            # 원반 크기는 **이 가지가 가진 각도 폭에 맞춘다.** 상수로 두면 도메인이
+            # 늘어날수록 이웃 덩어리와 겹쳐 다시 한 덩어리로 읽힌다(4개에서 이미
+            # 겹쳤다 — 실측). 자기 쐐기 안에 들어가는 크기로 잡으면 개수와 무관하게
+            # 갈라지고, 화면에서의 밀도는 클라이언트의 밀도 적응 축소가 받는다.
+            # 원반 계수 0.28 은 실측이다(위 spots): 0.42 면 이웃 덩어리와 **간신히**
+            # 안 닿아 화면에서는 하나의 흩뿌림으로 읽혔다. 덩어리로 읽히려면 사이가
+            # 비어야 한다.
+            dx, dy = spots[leaf_i]
+            leaf_i += 1
+            n["x2"] = round(bx2 + dx, 6)
+            n["y2"] = round(by2 + dy, 6)
 
     # 뿌리의 3D 기준 방향은 +z 로 잡고 첫 원뿔을 거의 반구까지 연다(_CONE0).
     # 2D 는 뿌리에서 한 바퀴(2π)를 통째로 나눠 준다.
-    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, _CONE0)
+    #
+    # 뿌리의 경로는 벗겨 낸 **공통 접두**다(_common_prefix). 전부 `vinc/*` 면 `vinc`
+    # 하나가 원점에 서고, 주제가 둘 이상 갈리면(예: `vinc/*` 와 `neo4j/*`) 접두가
+    # 비어 뿌리 마크가 없다 — 그때는 이름 붙일 하나의 뿌리가 실제로 없기 때문이다.
+    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, _CONE0, _common_prefix(
+        [_domain_path(n.get("domain") or "") for n in nodes]))
+    nodes.extend(marks)      # 배치가 끝난 뒤 한 번에(marks 선언부 주석)
 
 
 def _dedupe_planar(nodes: list[dict]) -> None:
@@ -1401,9 +1580,9 @@ def _apply_basis(shaped: dict, basis: str) -> str:
 
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
           depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
-          cfg=None, store=None) -> dict:
-    """지식 그래프 — 기본은 owner(±domain) 스코프 전체(Atlas L1), ``seed`` 지정 시
-    seed+depth ego 서브그래프(Atlas L2 = MCP `vinc_graph` 동일 경로). 노드에는
+          domains: list[str] | None = None, cfg=None, store=None) -> dict:
+    """지식 그래프 — 기본은 owner(±domain) 스코프 전체(View L1), ``seed`` 지정 시
+    seed+depth ego 서브그래프(View L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
     (radial·circle·tree·organic·rank·dendro, 미지 값 radial 강등).
 
@@ -1471,6 +1650,9 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                                     "props": {}, "tags": [], "ts": ""}]   # A4 형태 정합
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
+        # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
+        # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
+        # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
         used = _apply_basis(shaped, basis)
         if not found:
@@ -1479,30 +1661,32 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                     "found": False, "basis": used,
                     "error": f"unknown seed_id: {seed}",
                     "hint": ("seed_id is an exact, type-prefixed node id "
-                             "(e.g. `concept:atlas`). "
+                             "(e.g. `concept:view`). "
                              + ("Did you mean: " + ", ".join(c["id"] for c in cands)
                                 + "? " if cands else "")
                              + "Use vinc_search to find the id first."),
                     **({"candidates": cands} if cands else {}), **shaped}
         return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
                 "found": found, "basis": used, **shaped}
-    res = execute(graph_plan(owner=owner, domain=domain), cfg, store=store)
+    doms = normalize_domains(domain, domains)
+    res = execute(graph_plan(owner=owner, domains=doms), cfg, store=store)
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
     # 의 선착 우선이 Concept 투영을 이기게(결정론).
     for plan_fn in _GRAPH_AXIS_PLANS:
-        ax = execute(plan_fn(owner=owner, domain=domain), cfg, store=store)
+        ax = execute(plan_fn(owner=owner, domains=doms), cfg, store=store)
         if ax.get("executed"):
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
-    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
+    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
+                                       topic_marks=True)
     used = _apply_basis(shaped, basis)
     return {"kind": "graph", "executed": res.get("executed", False),
             "basis": used, **shaped}
 
 
 def domain_ties_plan(*, owner: str) -> QueryPlan:
-    """Atlas L0 결합 행렬(D16) — 도메인이 다른 Concept 간 직접 엣지를 도메인 쌍으로 집계."""
+    """View L0 결합 행렬(D16) — 도메인이 다른 Concept 간 직접 엣지를 도메인 쌍으로 집계."""
     cypher = (
         "MATCH (a:Concept)-[r]->(b:Concept) "
         "WHERE a.owner_id = $owner AND b.owner_id = $owner AND a.domain <> b.domain "
@@ -1612,8 +1796,8 @@ def concept_domains_plan(*, owner: str) -> QueryPlan:
     return QueryPlan("concept_domains", cypher, {"owner": owner}, note="concept counts per domain (L0)")
 
 
-def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
-    """Atlas L0 Domain Atlas 데이터(D16) — 도메인별 레코드 수(Episode ∪ Concept
+def view_l0(*, owner: str, cfg=None, store=None) -> dict:
+    """View L0 Domain View 데이터(D16) — 도메인별 레코드 수(Episode ∪ Concept
     합산) + 도메인 간 결합 행렬(Concept 직접 엣지 + Bridge 합산). UI 는 이 응답만으로
     L0 를 그린다(그래프 로직 UI 반입 금지)."""
     d = execute(domains_plan(owner=owner), cfg, store=store)
@@ -1639,14 +1823,14 @@ def atlas_l0(*, owner: str, cfg=None, store=None) -> dict:
 
 
 # ── 원장 롤업(D43) — 출처 × 주제 × 연결상태 ──────────────────────────────────
-# Atlas Totals 관점의 데이터 원천. 두 플랜(출처 축·연결 축)을 각각 UNION ALL 로
+# View Totals 관점의 데이터 원천. 두 플랜(출처 축·연결 축)을 각각 UNION ALL 로
 # 가져와 **순수 파이썬에서 접는다**(`domain_counts_plan` → `domains` 와 동형) —
 # Cypher 안에서 EXISTS{}·서브쿼리로 영리하게 굴지 않는다(임베디드 방언 이식성).
 # 고아 판정을 `component_diagnosis`(native algo 확장 위임)에 맡기지 않는 것도
 # 의도다 — algo 는 오프라인 번들에서 executed=False 로 강등되는데, 원장은 항상
 # 그려져야 한다.
 
-def ledger_origin_plan(*, owner: str, domain: str | None = None,
+def ledger_origin_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
     """원장 출처 축 — 개념 전량('all') + 에피소드 부착('episodic') + 문서 부착
     ('record': 구 Record ATTACHES_TO **또는** D45 문서의 Chunk MENTIONS) 표식 행. 한 개념이 여러 에피소드에 부착되면 같은 표식이 여러 번
@@ -1661,12 +1845,14 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None,
     ``ids``(D43 ego 원장): 개념 c 를 시드 주변 집합으로 제한한다 — ``domain`` 렌즈와
     상호 배제(축 플랜 관례). 부착 주체(Episode/Record)는 집합으로 제한하지 않는다 —
     부착은 전역 사실이라 ego 밖 에피소드가 ego 개념에 부착돼도 출처다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     params: dict = {"owner": owner}
     and_scope = ""
-    if domain:
-        and_scope = " AND c.domain = $domain"
-        params["domain"] = domain
+    if doms:
+        # 원장은 지도와 **같은 모집단**을 세야 한다 — 지표바가 지도와 다른 수를
+        # 말하면 화면이 스스로를 반박한다. 그래서 같은 하위 트리 판정을 쓴다.
+        and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
         params["ids"] = ids
@@ -1695,7 +1881,7 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None,
     return QueryPlan("ledger", cypher, params, note="ledger origin axis (concept × source)")
 
 
-def ledger_link_plan(*, owner: str, domain: str | None = None,
+def ledger_link_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """원장 연결 축 — 개념 대 개념 직접 엣지('cc') + Bridge 매개 팔('bridge') 행.
     각 행이 차수 1 을 뜻하고, ``domain``/``other`` 가 다르면 그 개념은 관문
@@ -1710,12 +1896,14 @@ def ledger_link_plan(*, owner: str, domain: str | None = None,
     유지하고 ego 로 좁히지 않는다(전역 차수·관문: 엣지가 ego 를 떠나도 그 구성원의
     연결이다). domain 렌즈가 o 를 안 건드리는 기존 태도와 동형이라 SEC-1 양끝
     스코프는 그대로다. ``domain`` 과 상호 배제, 모든 UNION 분기에 절을 붙인다."""
-    assert not (domain and ids), "domain and ids are mutually exclusive"
+    doms = normalize_domains(domain, domains)
+    assert not (doms and ids), "domain and ids are mutually exclusive"
     params: dict = {"owner": owner}
     and_scope = ""
-    if domain:
-        and_scope = " AND c.domain = $domain"
-        params["domain"] = domain
+    if doms:
+        # 원장은 지도와 **같은 모집단**을 세야 한다 — 지표바가 지도와 다른 수를
+        # 말하면 화면이 스스로를 반박한다. 그래서 같은 하위 트리 판정을 쓴다.
+        and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
         params["ids"] = ids
@@ -1789,7 +1977,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     반환: {executed, node, node_kind, title, one_liner, props,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
-                   items: [{id, title, domain, type, dir, evidence, confidence}]}}
+                   items: [{id, title, domain, type, dir, evidence, confidence, note}]}}
+           ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
+           관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
 
     ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다."""
     cfg = cfg or load_config()
@@ -1935,20 +2125,24 @@ def _node_links(store, node: str, *, owner: str) -> dict:
         attached = store.run(
             # 부착 3종 — 각 rel 테이블의 열이 달라 evidence/confidence 는 ABOUT 만
             # 투영하고 나머지는 상수로 맞춘다(UNION ALL 은 컬럼 형태가 같아야 한다).
+            # raw_props: Record 카드의 본문(props.note 또는 props.one_liner)이 여기
+            # 있다 — 여태 id/title/domain 만 주고 그 문장은 버렸다(no-llm-chat 연구
+            # §3.3, I6 미개통 원인). 나머지 둘은 빈 문자열로 맞춘다.
             f"MATCH (b:Bridge)-[:CONNECTS]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
             "RETURN b.bridge_id AS id, b.title AS title, b.source_domain AS domain, "
-            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf "
+            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, '' AS raw_props "
             "UNION ALL "
             f"MATCH (e:Episode)-[r:ABOUT]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND e.owner_id = $owner "
             "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
-            "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf "
+            "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf, "
+            "'' AS raw_props "
             "UNION ALL "
             f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
             "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
-            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf",
+            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, rc.props AS raw_props",
             {"id": node, "owner": owner}) or []
     except Exception:
         attached = []   # 부착 축만 강등 — 개념 관계는 이미 얻었다
@@ -1961,6 +2155,8 @@ def _node_links(store, node: str, *, owner: str) -> dict:
                     key=lambda r: (order.get(r.get("dir") or "", 9),
                                    str(r.get("type") or ""), str(r.get("title") or ""),
                                    str(r.get("id") or ""))):
+        # Record 카드 본문 — note 우선, 없으면 one_liner(두 이름이 실제로 쓰인다).
+        props = _props_to_obj(r.get("raw_props")) if r.get("raw_props") else {}
         items.append({
             "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
             "domain": r.get("domain") or "", "type": r.get("type") or "",
@@ -1968,6 +2164,7 @@ def _node_links(store, node: str, *, owner: str) -> dict:
             # 근거는 **있는지 없는지**가 화면의 관심사다(문장 전문은 edge-context 가 준다).
             "evidence": bool((r.get("ev") or "").strip()),
             "confidence": float(r.get("conf") or 0.0),
+            "note": props.get("note") or props.get("one_liner") or "",
         })
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "items": items[:_NODE_LINKS_CAP],
@@ -2292,7 +2489,8 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
 
 
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
-           depth: int = 2, by: str = "domain", cfg=None, store=None) -> dict:
+           depth: int = 2, by: str = "domain",
+           domains: list[str] | None = None, cfg=None, store=None) -> dict:
     """원장(D43) — 도메인별 `{출처, 연결상태}` 롤업. 조회 전용.
 
     ``by="concept"``(D52) — **한 행이 개념 하나**가 되는 세밀 모드. 도메인을 눌러
@@ -2328,7 +2526,8 @@ def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
     전부 0 이라 모든 개념이 고아로 보고되는데, ``executed: true`` 를 달고 나가면
     소비처가 그 거짓을 참으로 그린다. ego 순회 강등도 같은 태도다."""
     by_id, scope, degraded = _ledger_classify(
-        owner=owner, domain=domain, seed=seed, depth=depth, cfg=cfg, store=store)
+        owner=owner, domain=domain, domains=domains, seed=seed, depth=depth,
+        cfg=cfg, store=store)
     if degraded is not None:
         return degraded
     if not by_id:      # 빈 ego(개념 구성원 없음) — DB 왕복 없이 빈 롤업
@@ -2400,7 +2599,7 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
 
 
 def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,
-                     depth: int, cfg, store):
+                     depth: int, cfg, store, domains: list[str] | None = None):
     """원장 개념별 분류(by_id) — :func:`ledger` 집계와 :func:`ledger_drilldown`
     드릴다운이 **공유**한다(둘의 수치 정합을 구조로 보장 — 보고서 정정 2 대응:
     드릴다운 항목 수 == 원장 셀 값). 반환 ``(by_id, scope, degraded)``:
@@ -2415,10 +2614,12 @@ def _ledger_classify(*, owner: str, domain: str | None, seed: str | None,
         scope, ids, domain = "seed", ego["ids"], None
         if not ids:
             return {}, "seed", None
-    o = execute(ledger_origin_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    o = execute(ledger_origin_plan(owner=owner, domains=normalize_domains(domain, domains),
+                                   ids=ids), cfg, store=store)
     if not o.get("executed"):
         return None, scope, o
-    lk = execute(ledger_link_plan(owner=owner, domain=domain, ids=ids), cfg, store=store)
+    lk = execute(ledger_link_plan(owner=owner, domains=normalize_domains(domain, domains),
+                                  ids=ids), cfg, store=store)
     if not lk.get("executed"):
         return None, scope, lk
     by_id: dict[str, dict] = {}
@@ -2628,7 +2829,7 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
                 "formula": TIE_SCORE_FORMULA,
                 "note": f"unknown concept: {node}",
                 "error": f"unknown concept: {node}",
-                "hint": ("Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+                "hint": ("Node ids are exact and type-prefixed (e.g. `concept:view`). "
                          + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
                             if cands else "")
                          + "Use vinc_search to find the id first."),
@@ -2860,7 +3061,7 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
                 "hint": ("This node exists but has no relations yet — "
                          "vinc_suggest_ties proposes candidates, vinc_ingest adds edges."
                          if exact else
-                         "Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+                         "Node ids are exact and type-prefixed (e.g. `concept:view`). "
                          + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
                             if cands else "")
                          + "Use vinc_search to find the id first."),
@@ -3132,7 +3333,7 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         if missing:
             base["error"] = "unknown node: " + ", ".join(missing)
             cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
-            base["hint"] = ("Node ids are exact and type-prefixed (e.g. `concept:atlas`). "
+            base["hint"] = ("Node ids are exact and type-prefixed (e.g. `concept:view`). "
                             + ("Did you mean: "
                                + ", ".join(dict.fromkeys(c["id"] for c in cands)) + "? "
                                if cands else "")
@@ -3190,13 +3391,13 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 #
 # ⚠ v13 에서 **doc↔주제 쌍까지 넓혔다.** 원래는 doc 끼리만 막았는데, 그 규칙이 실제
 # 잡음의 대부분을 놓치고 있었다 — 라이브 계정 그래프 실측(2026-08-10)에서 후보 10쌍
-# 중 **8쌍이 doc↔주제**였다(`concept:atlas` ↔ `concept:doc.vinc.spec.surface-atlas`
+# 중 **8쌍이 doc↔주제**였다(`concept:view` ↔ `concept:doc.vinc.spec.surface-view`
 # 처럼 제목이 글자까지 같다). 신호 대 잡음이 2:8 이면 사람이 볼 수 있는 목록이 아니다.
 #
 # doc 미러와 그것이 비추는 주제 개념은 **사본 둘이 아니라 층 둘**이다. 1-hop 을 재
 # 보면 어휘가 아예 갈린다:
-#     concept:atlas                     ABOUT 13 · ATTACHES_TO 5 · RELATED_TO 6 · INHERITS_FROM 0
-#     concept:doc.vinc.spec.surface-atlas   INHERITS_FROM 4(전부 다른 doc 개념) · 나머지 0
+#     concept:view                     ABOUT 13 · ATTACHES_TO 5 · RELATED_TO 6 · INHERITS_FROM 0
+#     concept:doc.vinc.spec.surface-view   INHERITS_FROM 4(전부 다른 doc 개념) · 나머지 0
 # 주제 개념은 결정·사건·사실이 매달리는 의미 그래프의 노드고, doc 개념은 frontmatter
 # 의 `inherits_from` 을 미러링하는 문서 상속 격자의 노드다. 합치면 격자가 의미 그래프
 # 안으로 무너진다 — 제목이 같아진 것은 doc 미러가 문서 제목을 그대로 물려받았기
@@ -3621,6 +3822,102 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
     return base
 
 
+#: community_context 의 대표(발췌 동봉) 상한 — 커뮤니티가 크면 전원에게 발췌를
+#: 붙이는 비용이 MENTIONS 조회 N회로 뛴다. "대표"라는 말 자체가 전량이 아니라는
+#: 뜻이라, 작게 못박는다(사용자가 조를 필요는 없다 — no-llm-chat 연구 §4처럼
+#: '모델 없이' 답하는 broad 질문의 답은 소수의 근거면 된다).
+COMMUNITY_REPRESENTATIVE_CAP = 5
+
+
+def community_context(*, owner: str | None = None, node: str, cfg=None, store=None,
+                      member_limit: int | None = None) -> dict:
+    """E-G3 Louvain 커뮤니티 → **하나의 시드가 속한 군집**의 답변 재료(unified-kg-rag
+    비교 §4 — "wire Louvain into retrieval", 모델 없는 `global` 전략의 절반). 조회
+    전용, 문장을 생성하지 않는다.
+
+    `communities()`(전체 커뮤니티 목록, id만)와 달리 **시드 하나가 속한 커뮤니티 하나**
+    를 골라 그 구성원에 title·one_liner·발췌를 붙인다 — "이 영역엔 뭐가 있나" 같은
+    넓은 질문에 node_context 가 못 주는 답을 준다. 대표(``representatives``, 최대
+    :data:`COMMUNITY_REPRESENTATIVE_CAP`)만 발췌를 동봉한다 — MENTIONS 언급 수가
+    가장 많은 순(문서화가 가장 잘 된 노드가 그 영역을 대표한다는 결정론적 기준).
+    나머지 구성원은 id·title만 ``members``에 실린다(``member_limit`` — component_
+    diagnosis/communities 와 같은 규약, 잘리면 ``members_truncated``).
+
+    반환 {executed, node, community, size, dominant_domain,
+    representatives:[{id, title, one_liner, excerpt}],
+    members:[{id, title}], members_truncated}. 시드가 없거나 고립(-1)이면
+    executed=False + note. algo 부재 시도 마찬가지."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "community-context", "executed": False, "node": node,
+            "community": None, "size": 0, "dominant_domain": "",
+            "representatives": [], "members": [], "members_truncated": False}
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        rows, note = _run_algo(store, "louvain", rel_tables=("RELATED_TO",))
+        if rows is None:
+            base["note"] = note
+            return base
+        scope = _owner_concept_ids(store, owner)
+        assign = {r["id"]: r["value"] for r in rows if r.get("id")}
+        com = assign.get(node)
+        if com is None or com == -1 or (scope is not None and node not in scope):
+            base["note"] = f"unknown or isolated node: {node}"
+            return base
+        members = [cid for cid, c in assign.items()
+                  if c == com and (scope is None or cid in scope)]
+
+        dwhere = "WHERE c.owner_id = $owner " if owner else ""
+        dparams = {"owner": owner} if owner else None
+        drows = store.run("MATCH (c:Concept) " + dwhere +
+                          "RETURN c.concept_id AS id, c.title AS title, "
+                          "c.domain AS domain, c.owner_id AS owner_id", dparams) or []
+        title_of = {r["id"]: (r.get("title") or r["id"]) for r in drows}
+        domain_of = {r["id"]: (r.get("domain") or "") for r in drows}
+        # node_context 는 owner=None(비스코프)을 안 받는다 — 시드별 실제 owner_id 로
+        # 부른다(unscoped 로컬 모드에서도 발췌가 나오게. 통상 단일 소유자 스토어라
+        # 전원이 같은 값이지만, 명시 owner 가 있으면 그 값이 항상 이긴다).
+        owner_of = {r["id"]: (r.get("owner_id") or "") for r in drows}
+        dom_counts: dict = {}
+        for cid in members:
+            d = domain_of.get(cid, "")
+            if d:
+                dom_counts[d] = dom_counts.get(d, 0) + 1
+        dominant = max(dom_counts.items(), key=lambda kv: (kv[1], kv[0]))[0] \
+            if dom_counts else ""
+
+        mrows = store.run(
+            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) WHERE c.concept_id IN $ids "
+            "RETURN c.concept_id AS id, count(ch) AS n", {"ids": members}) or []
+        mentions = {r["id"]: int(r.get("n") or 0) for r in mrows}
+        ranked = sorted(members, key=lambda cid: (-mentions.get(cid, 0), cid))
+
+        reps = []
+        for cid in ranked[:COMMUNITY_REPRESENTATIVE_CAP]:
+            ctx = node_context(owner=owner or owner_of.get(cid, ""), node=cid,
+                               cfg=cfg, store=store)
+            excerpt = (ctx.get("excerpts") or [{}])[0].get("excerpt", "")
+            reps.append({"id": cid, "title": title_of.get(cid, cid),
+                        "one_liner": ctx.get("one_liner") or "", "excerpt": excerpt})
+
+        mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        rest = ranked[COMMUNITY_REPRESENTATIVE_CAP:]
+        member_list = [{"id": cid, "title": title_of.get(cid, cid)}
+                       for cid in sorted(rest)[:max(0, mlim - len(reps))]]
+        base.update(executed=True, community=com, size=len(members),
+                    dominant_domain=dominant, representatives=reps,
+                    members=member_list,
+                    members_truncated=len(members) > len(reps) + len(member_list))
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
 def _classify_chunk_error(exc: Exception) -> str:
     """Chunk 검색 실패 사유 분류(T3b-1 — '실패 침묵' 제거의 근거). '인덱스 부재'와
     '확장 미가용'과 '미프로비저닝'을 구분해 응답 error 에 접두로 담는다(실측 문구):
@@ -3751,7 +4048,7 @@ NODE_SCAN_CAP = 2000
 # ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
 # 실측(2026-08-07)한 실패 응답들:
 #   doc_get(오타)        → {"error": "unknown doc_id"}          후보도 다음 수도 없음
-#   decide(topic:"atlas") → {"note": "topic not found: atlas"}  왜 안 맞는지 안 알려줌
+#   decide(topic:"view") → {"note": "topic not found: view"}  왜 안 맞는지 안 알려줌
 #   graph(없는 seed)      → {"found": false}                    그뿐
 #   neighbors(없는 노드)   → {"executed": true}                  **아무 말도 없음**
 #   doc_delete(없는 문서)  → {"executed": true}                  성공과 구분 불가
@@ -4167,12 +4464,12 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     seed = next((r["id"] for r in res.get("rows", []) if r.get("id")), None)
     if not seed:
         # F7 — `topic` 은 **정확 일치**다(concept_id · bridge_id · title). 부분 일치가
-        # 아니라서 `atlas` 는 안 맞고 `concept:atlas` 나 정확한 제목이라야 맞는다.
+        # 아니라서 `view` 는 안 맞고 `concept:view` 나 정확한 제목이라야 맞는다.
         # 그 계약이 어디에도 안 적혀 있었고, 실패 응답도 그것을 말하지 않았다.
         cands = near_nodes(store, topic, owner=owner)
         base["note"] = f"topic not found: {topic}"
         base["error"] = f"topic not found: {topic}"
-        base["hint"] = ("`topic` matches exactly on a node id (e.g. `concept:atlas`), "
+        base["hint"] = ("`topic` matches exactly on a node id (e.g. `concept:view`), "
                         "a bridge id, or a full node title — not a substring. "
                         + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
                            if cands else "")
@@ -4245,8 +4542,11 @@ def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> di
     try:
         moved = 0
         per_label: dict[str, int] = {}
-        for label, pk in (("Concept", "concept_id"), ("Episode", "episode_id"),
-                          ("Record", "record_id")):
+        # ⚠ 리터럴 표를 두지 말 것. v12 가 Decision 을 늘렸을 때 여기만 빠져서, 도메인을
+        # 개명하면 결정은 `domain` 열도 IN_DOMAIN 엣지도 옛 도메인에 남았다(v13 이
+        # 백필 표는 고쳤지만 이 표는 못 봤다). DOMAIN_LABELS 가 `domain` 열을 가진
+        # 라벨의 정본이므로 그것을 돈다 — 다음 의미층은 저절로 따라온다.
+        for label, pk in domain_hierarchy.DOMAIN_LABELS.items():
             rows = store.run(
                 f"MATCH (n:{label}) WHERE n.owner_id = $o AND n.domain = $old "
                 f"RETURN n.{pk} AS id, n.rev AS rev", {"o": owner, "old": old}) or []

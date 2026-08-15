@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**19종** — 읽기 13(search·recall·graph·decide·domains·suggest_ties·neighbors·
-path·merge_candidates·diagnose·doc_get·doc_list·conventions) + 쓰기 6(ingest·delete·
-delete_edge·merge_nodes·doc_put·doc_delete). "단일 write 표면(ingest 하나)"은
+**22종** — 읽기 14(search·recall·graph·decide·domains·suggest_ties·neighbors·
+path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions) + 쓰기 8
+(ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
+"단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
 아래 TOOLS 리스트가 정본이고 이 독스트링은 그 요약일 뿐이다.
+⚠ 이 숫자는 F10-b 로 merge_reject 가 늘었을 때 19 인 채로 남아 어느 집계에도 안
+들어갔다("TOOLS 가 정본"이라는 방어 문장을 단 채로 틀렸다). 그래서 이제
+tests/test_tool_contract.py 가 이 독스트링의 수와 len(TOOLS) 를 대조한다.
 
 주제·어휘(themes·types)의 **뮤테이션**(재가·거부·개명)은 HTTP 전용이며 MCP 에 노출하지
 않는다 — 어시스턴트는 제안만 하고 자기 제안을 스스로 재가할 수 없다(의도된 비대칭).
@@ -20,6 +24,26 @@ import base64
 import json
 
 from .bridge import Bridge
+
+# vinc_mcp 는 api 를 임포트하지 않으므로(독립 브리지 계약) 허용 쌍 문장을 여기
+# 미러한다. 정본은 `api/fragment.py` 의 `_ALLOWED_PAIRS_HINT` 이고, 서버가 거부할 때
+# warnings 에 싣는 것도 그 문장이다. 두 사본의 일치는 tests/test_tool_contract.py 의
+# 교차 계약 테스트가 고정한다 — 커서 코덱 미러(아래 _cursor_encode)와 같은 방식.
+#
+# ⚠ 손으로 요약하지 말 것. v12 가 Decision 을 끝점으로 늘렸을 때 이 자리들이 전부
+# "concept→concept" 인 채로 남아, 어시스턴트가 결정 엣지를 relates_to 로 쓰고
+# partial:true 로 조용히 반쯤 성공하는 상태가 됐다. 계약이 대안을 말하지 않으니
+# 스스로 고칠 근거도 없었다.
+_ALLOWED_PAIRS_HINT = (
+    "allowed pairs (concept and decision are interchangeable endpoints, "
+    "except relates_to which stays concept→concept): "
+    "relates_to = concept→concept; "
+    "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "record → concept|decision for any of those four; "
+    "connects_via = bridge → concept|decision; "
+    "about = episode|decision → concept|decision; "
+    "any-type = open-entity→open-entity (TYPED carrier)"
+)
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
 # 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
@@ -40,7 +64,14 @@ _FRAGMENT_SCHEMA = {
                                             "and is folded into the theme vocabulary as proposed."},
                     "title": {"type": "string",
                               "description": "Required for open (non-legacy) types."},
-                    "domain": {"type": "string", "description": "Free-form domain string (no fixed list). Not persisted on open-type nodes."},
+                    "domain": {"type": "string",
+                               "description": "Free-form domain string (no fixed list). Not persisted "
+                                              "on open-type nodes. SLASHES BUILD THE TOPIC HIERARCHY: "
+                                              "'vinc/design' files this node under 'vinc' and creates "
+                                              "the chain automatically (max depth 8) — no edges to "
+                                              "author. CASE IS NOT FOLDED, so 'Design/Tokens' and "
+                                              "'design/tokens' become two separate topic trees; reuse "
+                                              "an existing string from vinc_domains verbatim."},
                     "tags": {"type": "array", "items": {"type": "string"}},
                     # F9 — 이 둘은 서버가 오래 top-level 로 받아 Episode 의 전용 열에
                     # 넣고 있었는데 계약에 없었다. 그래서 상류는 날짜를 실을 자리를
@@ -74,11 +105,9 @@ _FRAGMENT_SCHEMA = {
                     "from": {"type": "string"},
                     "to": {"type": "string"},
                     "type": {"type": "string",
-                             "description": "relates_to|prerequisite_of|derives_from|inherits_from = "
-                                            "concept→concept; connects_via = bridge→concept; "
-                                            "about = episode→concept; record→concept preserves the "
-                                            "type on ATTACHES_TO; between two open-type nodes ANY "
-                                            "type persists via the TYPED carrier."},
+                             "description": _ALLOWED_PAIRS_HINT + ". A record edge preserves its "
+                                            "type on ATTACHES_TO. An unsupported (from,to) pair is "
+                                            "skipped with a warning and partial:true, not an error."},
                     "role": {"type": "string",
                              "description": "Optional CONNECTS role (connects_via only) — participates "
                                             "in the merge key; different roles create parallel edges."},
@@ -91,7 +120,8 @@ _FRAGMENT_SCHEMA = {
                 "required": ["from", "to", "type"],
             },
         },
-        # ⚠ `_OWNER_PROP`(아래)와 **같은 문구를 써야 한다.**
+        # ⚠ `_OWNER_PROP`(아래)와 **같은 문구를 써야 한다.** 여기만 "defaults to the
+        # local owner" 로 끝나 있어서, 호스티드에서 owner 를 실으면 먹힌다고 읽혔다.
         "owner": {"type": "string",
                   "description": "Owner scope to stamp. Ignored on the hosted graph (the account "
                                  "key fixes it); locally it defaults to this machine's owner."},
@@ -195,12 +225,29 @@ def _t_merge_reject(args, bridge):
         "note": args.get("note") or "", "undo": bool(args.get("undo"))})
 
 
+def _t_merge_rejections(args, bridge):
+    # F10-b 기각 **목록**(조회 전용). vinc_merge_reject 로 쓸 수는 있는데 읽을 수가
+    # 없어서, 어시스턴트가 이미 기각된 쌍을 다시 제안하는 짝 결손이 있었다.
+    return bridge.request("GET", "/merge-rejections", params={"owner": _owner(args, bridge)})
+
+
+def _t_doc_extract(args, bridge):
+    # D45-V 정본→개념 파생. 웹 전용이라 문서 워크플로의 절반이 어시스턴트에게
+    # 닫혀 있었다(문서는 쓸 수 있는데 거기서 개념을 못 뽑는다).
+    return bridge.request("POST", "/doc/extract", body={
+        "owner": _owner(args, bridge), "id": args["doc_id"],
+        "apply": bool(args.get("apply")), "candidates": args.get("candidates")})
+
+
 def _t_diagnose(args, bridge):
     # E-G3 구조 진단(조회 전용) — kind=components(WCC 고아·컴포넌트) | communities
-    # (Louvain 군집). algo 확장 부재 시 사이드카가 executed=False 로 강등.
+    # (Louvain 군집) | community_context(시드 하나의 군집 + 대표 발췌). algo 확장
+    # 부재 시 사이드카가 executed=False 로 강등.
     params = {"owner": _owner(args, bridge), "kind": args.get("kind", "components")}
     if args.get("member_limit") is not None:   # F6 — 미지정이면 서버 기본(50)
         params["member_limit"] = args["member_limit"]
+    if args.get("node"):   # community_context 전용 — 다른 kind 는 무시(핸들러가 안 읽는다)
+        params["node"] = args["node"]
     return bridge.request("GET", "/diagnose", params=params)
 
 
@@ -338,7 +385,7 @@ TOOLS: list[dict] = [
         "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within "
                        "`depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, "
                        "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,ppr,…layout}], "
-                       "edges:[{source,target,type,cross_domain}]}. Nodes carry Atlas ranking and layout fields "
+                       "edges:[{source,target,type,cross_domain}]}. Nodes carry View ranking and layout fields "
                        "(ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, "
                        "vinc_neighbors returns the same relations without them and is far cheaper; to walk step "
                        "by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — "
@@ -370,10 +417,14 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_domains",
         "description": "List the domains actually present in this owner's graph, with per-kind node counts. "
-                       "Returns {kind, executed, rows:[{domain, episodes, concepts, records, total}]}, largest "
-                       "total first. The domain set is OPEN and inferred from stored data, not a fixed "
-                       "vocabulary — so call this before writing to reuse an existing domain string instead of "
-                       "coining a near-duplicate ('vinc/design' vs 'design'). It is also the cheapest way to see "
+                       "Returns {kind, executed, rows:[{domain, episodes, concepts, records, decisions, "
+                       "total}]}, largest total first. This list is FLAT: it aggregates the `domain` string "
+                       "column, so 'vinc' and 'vinc/design' appear as two separate rows even though they are "
+                       "parent and child in the topic hierarchy — walk the hierarchy itself with "
+                       "vinc_neighbors('domain:<name>'). The domain set is OPEN and inferred from stored "
+                       "data, not a fixed vocabulary — so call this before writing to reuse an existing "
+                       "domain string instead of coining a near-duplicate ('vinc/design' vs 'vinc/Design', "
+                       "which case sensitivity makes two different topics). It is also the cheapest way to see "
                        "the coarse shape of a graph you have not read before. For naming and relation "
                        "conventions as well, vinc_conventions returns this plus more in one call. Read-only.",
         "inputSchema": {"type": "object", "properties": {
@@ -499,6 +550,20 @@ TOOLS: list[dict] = [
         }, "required": ["a", "b"]}, "run": _t_merge_reject,
     },
     {
+        "name": "vinc_merge_rejections",
+        "description": "List the concept pairs this owner has already rejected as non-duplicates "
+                       "(read-only, the read half of vinc_merge_reject). Returns {kind, executed, "
+                       "rejections:[{a_id, b_id, note, rejected_at}], count}. Call it before "
+                       "reviewing vinc_merge_candidates to see what was already decided and why — "
+                       "vinc_merge_candidates suppresses these pairs silently and only reports how "
+                       "MANY it held back, so this is the only way to see WHICH pairs and read the "
+                       "reasoning left for the next reviewer. Also the way to find a pair to undo: "
+                       "call vinc_merge_reject with undo:true and the ids from here. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "owner": {"type": "string"},
+        }}, "run": _t_merge_rejections,
+    },
+    {
         "name": "vinc_diagnose",
         "description": "Structural diagnosis of the owner's concept graph (read-only, E-G3). "
                        "kind='components' (default) runs weakly-connected-components: returns "
@@ -507,15 +572,27 @@ TOOLS: list[dict] = [
                        "want linking (feeds vinc_suggest_ties). kind='communities' runs Louvain: "
                        "returns {communities:[{community,size,dominant_domain,members}]} — the "
                        "measured clusters (distinct from the domain axis), a basis for proposing "
-                       "themes (ratified by the user, never auto-written). Member id lists are "
-                       "capped by `member_limit` (default 50): `size` always reports the TRUE "
-                       "total, and a group whose list was cut carries members_truncated:true — "
-                       "raise member_limit to see the rest. Delegates to the native algo "
-                       "extension; executed:false with a note if the extension is unavailable "
-                       "(offline unbundled).",
+                       "themes (ratified by the user, never auto-written). kind='community_context' "
+                       "(requires `node`) answers a broad 'what is over in this area' question with "
+                       "no generation: takes ONE seed concept id, finds the Louvain community it "
+                       "belongs to, and returns {community, size, dominant_domain, "
+                       "representatives:[{id,title,one_liner,excerpt}], members:[{id,title}], "
+                       "members_truncated} — up to 5 representatives (ranked by how many chunks "
+                       "mention them) carry a quoted source excerpt, the rest are id/title only. "
+                       "executed:false with a note if the seed is unknown or isolated (Louvain -1). "
+                       "Member id lists are capped by `member_limit` (default 50): `size` always "
+                       "reports the TRUE total, and a group whose list was cut carries "
+                       "members_truncated:true — raise member_limit to see the rest. Delegates to "
+                       "the native algo extension; executed:false with a note if the extension is "
+                       "unavailable (offline unbundled).",
         "inputSchema": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["components", "communities"],
-                     "description": "components (WCC orphans/islands) | communities (Louvain clusters)."},
+            "kind": {"type": "string", "enum": ["components", "communities", "community_context"],
+                     "description": "components (WCC orphans/islands) | communities (Louvain "
+                                    "clusters) | community_context (one seed's cluster + "
+                                    "representative excerpts, requires `node`)."},
+            "node": {"type": "string",
+                     "description": "Seed concept id — required, and only used, when "
+                                    "kind='community_context'."},
             "member_limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 1000,
                              "description": "Max member ids listed per component/community. "
                                             "`size` is always the true total; when the list is "
@@ -547,19 +624,18 @@ TOOLS: list[dict] = [
         "description": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. "
                        "The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). "
                        "Reuse existing ids (read-before-write). Node types record|concept|domain|"
-                       "bridge|episode route to dedicated tables; ANY other node type persists to "
-                       "the open Entity carrier and is folded into the theme vocabulary as proposed "
-                       "(returned in proposed_types for ratification). Edges: relates_to|"
-                       "prerequisite_of|derives_from|inherits_from = concept→concept (relates_to "
-                       "dedupes the reverse direction); connects_via = bridge→concept (optional "
-                       "role); about = episode→concept; record→concept preserves the type on "
-                       "ATTACHES_TO; between two open-type nodes ANY edge type persists via the "
-                       "TYPED carrier. Nodes are skipped when malformed (no id, no type, an Entity "
-                       "with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the "
-                       "hosted graph; edges are skipped on an unsupported (from,to) pair AND when "
-                       "an endpoint node was itself skipped, since an edge cannot outlive its "
-                       "endpoint. Everything skipped is reported in warnings with partial:true, "
-                       "so read them — `merged` counts only what actually landed. Call vinc_conventions once before your first write "
+                       "bridge|episode|decision route to dedicated tables; ANY other node type "
+                       "persists to the open Entity carrier and is folded into the theme vocabulary "
+                       "as proposed (returned in proposed_types for ratification). Edges — "
+                       + _ALLOWED_PAIRS_HINT +
+                       ". relates_to dedupes the reverse direction; connects_via takes an optional "
+                       "role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped "
+                       "when malformed (no id, no type, an Entity with no title) or when the id "
+                       "is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped "
+                       "on an unsupported (from,to) pair AND when an endpoint node was itself "
+                       "skipped, since an edge cannot outlive its endpoint. Everything skipped is "
+                       "reported in warnings with partial:true, so read them — `merged` counts "
+                       "only what actually landed. Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,
@@ -585,9 +661,14 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_delete_edge",
         "description": "Delete ONE relationship between two nodes (the nodes stay). "
-                       "Covers the synced relation types: relates_to | prerequisite_of | "
-                       "derives_from | inherits_from between concepts, and about "
-                       "(episode→concept). relates_to is undirected — both physical "
+                       "Covers the SYNCED relation types only: relates_to | prerequisite_of | "
+                       "derives_from | inherits_from | about. CONNECTS (connects_via), "
+                       "ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT "
+                       "deletable here — they are outside the sync set. Endpoints follow the "
+                       "same rule as vinc_ingest: concept and decision are interchangeable "
+                       "(so derives_from covers all four concept/decision combinations, and "
+                       "about is episode|decision → concept|decision), except relates_to which "
+                       "stays concept→concept. relates_to is undirected — both physical "
                        "directions are removed. The deletion is recorded with an edge "
                        "tombstone so it propagates to synced devices instead of "
                        "resurrecting. Irreversible (re-create via vinc_ingest if needed). "
@@ -633,6 +714,38 @@ TOOLS: list[dict] = [
             "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
         }, "required": ["text"]},
         "run": _t_doc_put,
+    },
+    {
+        "name": "vinc_doc_extract",
+        "description": "Derive concept nodes FROM a stored document's canonical text (D45-V). This "
+                       "is the second half of the document workflow: vinc_doc_put stores the text, "
+                       "this turns it into concepts bound to it by MENTIONS, so the document joins "
+                       "the search and view graph instead of sitting as inert text. "
+                       "apply:false (the DEFAULT) only proposes: it returns the candidates and "
+                       "writes NOTHING, which is the call to make first. apply:true writes them: "
+                       "each candidate is MERGEd as concept:{slug} with status='proposed' and an "
+                       "empty domain (topic assignment is a later edit), and this document's "
+                       "MENTIONS are relinked. Existing concepts are matched, never overwritten — "
+                       "a title or one_liner you already refined is safe. "
+                       "Pass `candidates` to apply a list you curated instead of the deterministic "
+                       "heading-based extraction; only title and one_liner are trusted and the id "
+                       "is always re-derived server-side. Returns {executed, doc_id, candidates, "
+                       "applied:{created, matched}, mentions}. Writes only when apply:true.",
+        "inputSchema": {"type": "object", "properties": {
+            "doc_id": {"type": "string", "description": "Exact id of a document you own."},
+            "apply": {"type": "boolean", "default": False,
+                      "description": "false (default) proposes and writes nothing; true writes "
+                                     "the concepts and relinks MENTIONS."},
+            "candidates": {"type": "array", "description":
+                           "Optional curated candidates to apply instead of the deterministic "
+                           "extraction. Only title and one_liner are read; ids are re-derived.",
+                           "items": {"type": "object", "properties": {
+                               "title": {"type": "string"},
+                               "one_liner": {"type": "string"},
+                           }, "required": ["title"]}},
+            **_OWNER_PROP,
+        }, "required": ["doc_id"]},
+        "run": _t_doc_extract,
     },
     {
         "name": "vinc_doc_get",
@@ -698,6 +811,7 @@ _ANNOTATIONS: dict[str, dict] = {
     # 기각은 쓰기지만 **가역**이다(undo). 병합과 달리 파괴적이지 않다.
     "vinc_merge_reject": {"title": "Reject a merge pair", "readOnlyHint": False,
                           "destructiveHint": False, "idempotentHint": True},
+    "vinc_merge_rejections": {"title": "List rejected merge pairs", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
@@ -718,6 +832,11 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_doc_list": {"title": "List documents", "readOnlyHint": True},
     "vinc_doc_put": {"title": "Save or edit a document", "readOnlyHint": False,
                      "destructiveHint": False, "idempotentHint": True},
+    # apply=false 는 읽기지만 apply=true 는 쓰기다. 주석은 **도구 단위**라 더 강한
+    # 쪽으로 선언한다 — 호스트가 쓰기를 읽기로 오인하는 것이 그 반대보다 나쁘다.
+    # 가산적이고 멱등이다(기존 개념은 matched 로 보존, 같은 문서 재실행은 같은 결과).
+    "vinc_doc_extract": {"title": "Derive concepts from a document", "readOnlyHint": False,
+                         "destructiveHint": False, "idempotentHint": True},
     "vinc_doc_delete": {"title": "Delete a document (irreversible)", "readOnlyHint": False,
                         "destructiveHint": True, "idempotentHint": True},
 }

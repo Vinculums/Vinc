@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """엣지 경로의 두 구멍 — **실 엔진**으로 잰다.
 
-기존 `_stamp_edge_endpoints` 테스트 셋(tests/test_atlas.py:395·413·426)은 `_FakeStore`
+기존 `_stamp_edge_endpoints` 테스트 셋(tests/test_view.py:395·413·426)은 `_FakeStore`
 를 쓴다. 스텁은 owner 예측자를 무시하므로 owner 스코프가 빠져 있어도 초록이다
 (SEC-1 에서 이미 배운 교훈 — 스텁 초록은 격리의 증거가 아니다). 그래서 여기는
 `test_decision_type._fresh_store()` 와 같은 실 엔진 스토어를 쓴다.

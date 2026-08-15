@@ -241,7 +241,7 @@ def build_episode(file_path: Path, dir_date: date) -> dict[str, Any]:
         # domain = the learning domain, a free user-defined string. Never enforced
         # against a list; frontmatter `domain:` wins, else `workspace:`. Real hub
         # sessions sometimes carry a list form `domain: [math, art]` — the first
-        # entry is the primary domain (multi-domain 표기는 MIGRATION.md 참조).
+        # entry is the primary domain.
         "domain": _primary_domain(fm.get("domain") or fm.get("workspace", "")),
         "workspace": fm.get("workspace", ""),
         "mode": fm.get("mode", ""),

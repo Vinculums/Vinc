@@ -4,7 +4,7 @@
  *  2026-07-12 개선: 개발자 직역 용어를 사용자 언어로 재작성(vinc.a.ui-copy §17):
  *    record→document/문서 · domain→topic/주제 · corpus→data/데이터 ·
  *    mine/ingest→analyze,add/분석,추가 · source→file/파일 · tie→link/연결.
- *  표면 고유명사(Intake·Records·Atlas·Search·Packs)는 미번역 유지. */
+ *  표면 고유명사(Intake·Records·View·Search·Packs)는 미번역 유지. */
 import { cfg } from "./api";
 
 const EN = {
@@ -17,7 +17,7 @@ const EN = {
     idleCta: "Choose a file",
     loading: (n: number, m: number, d: number) => `Analyzing ${n} of ${m} documents. ${d} topics so far.`,
     success: (n: number, m: number) => `${n} documents added across ${m} topics.`,
-    successCta: "Open in Atlas",
+    successCta: "Open in View",
     error: (src: string) => `Couldn't read ${src}. Check the file and try again. Everything already added is safe.`,
     retryCta: "Try again",
   },
@@ -33,9 +33,9 @@ const EN = {
     noTopic: "No topic yet",
     noMatch: "Nothing matches that.",
     error: "Documents couldn't load. Retry anytime. Nothing was changed.",
-    actions: { atlas: "Show in Atlas", pin: "Pin", tag: "Tag" },
+    actions: { view: "Show in View", pin: "Pin", tag: "Tag" },
   },
-  atlas: {
+  view: {
     idle: "No knowledge map yet. Add files or run a search, and the map builds itself from your documents.",
     idleCta: "Import files",
     loading: (d: number) => `Arranging ${d} topics…`,
@@ -47,14 +47,14 @@ const EN = {
   },
   search: {
     idle: "Search all your documents, by meaning or by keyword.",
-    empty: (q: string) => `No results for '${q}'. Try a different term, or open the Atlas instead.`,
-    emptyCta: "Open Atlas",
+    empty: (q: string) => `No results for '${q}'. Try a different term, or open View instead.`,
+    emptyCta: "Open View",
     matches: (n: number) => `${n} results`,
     error: "Search couldn't run. Retry anytime. The index is intact.",
     searching: "Searching…",
     // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
     migrating: (n: number) => `Updating the meaning index: keyword results only for now (${n} documents left)`,
-    actions: { atlas: "Show in Atlas", open: "Open" },
+    actions: { view: "Show in View", open: "Open" },
   },
   packs: {
     idle: "Bundle your knowledge into a portable pack, or share it safely with someone else.",
@@ -132,7 +132,7 @@ const EN = {
     },
     menu: { open: "Open", shareHere: "Share from here", pinHere: "Pin here", unpin: "Unpin" },
     topbar: {
-      // 첫 자리는 Home 이다 — "Atlas" 는 내부 코드명이라 화면에 노출하지 않는다(D61).
+      // 첫 자리는 Home 이다 — "View" 는 내부 코드명이라 화면에 노출하지 않는다(D61).
       home: "Home",
       depthTip: "Show where you are",
       searchPh: "Search your knowledge",
@@ -146,7 +146,7 @@ const EN = {
       askPh: "Ask about your knowledge",
       browseAll: "All documents",
       results: "Results",
-      enterHint: "Enter to open in Atlas",
+      enterHint: "Enter to open in View",
       noResults: "Nothing matched. Try another word.",
       firstSlow: "The first search builds the index and takes a few seconds. After that it's instant.",
       share: "Share",
@@ -185,7 +185,7 @@ const EN = {
         "ATTACHES_TO:att": "note",
       } as Record<string, string>,
       stat: (deg: number, att: number) => `${deg} linked · ${att} attached`,
-      openMap: "Open in Atlas",
+      openMap: "Open in View",
       history: "History",
       historyTitle: "Past questions",
       historyEmpty: "No past questions yet.",
@@ -196,7 +196,14 @@ const EN = {
     },
     // 좌측 문서 트리(D69) — 주제 → 그 주제의 문서. 표면 전환도 여기서 한다.
     lnb: {
-      documents: "Documents",
+      // 이 절은 **주제 트리**다. 문서는 주제 아래에 매달릴 뿐이라, 제목이
+      // "Documents" 이던 동안 줄들이 문서 목록으로 읽혔다 — 실제로는 그 줄을
+      // 누르면 지도가 그 주제로 좁혀지는데도. 문서 총계는 지도 아래 지표바가 이미
+      // 말하므로 여기서 두 번 세지 않는다.
+      documents: "Topics",
+      topicTip: "Show only this topic. Ctrl or Cmd click to add another.",
+      scoped: (n: number) => n === 1 ? "Showing 1 topic" : `Showing ${n} topics`,
+      scopedClear: "Show all",
       open: "Open the sidebar", close: "Close the sidebar",
       unfiled: "No topic yet",
       unfiledTip: "These aren't linked to any concept yet, so they have no place on the map.",
@@ -210,7 +217,7 @@ const EN = {
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       openInMap: "Open on the map",
       editOnly: "No place on the map yet. Opens in the editor.",
-      // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`atlasx.railTitle`)과
+      // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
       paneFold: "Fold the document panel", paneUnfold: "Unfold the document panel",
@@ -263,12 +270,25 @@ const EN = {
       go: "Continue",
     },
     panel: {
-      view: "View", viewChip: (d: string) => `View · ${d}`,
       options: "Options",
       allTopics: "All topics",
       nodeSize: "Node size", byConnections: "by connections", uniform: "uniform",
       labels: "Labels", onHover: "on hover", off: "off",
       arrows: "Direction arrows", on: "on",
+      edgeShow: "Show lines",
+      edgeShowName: {
+        always: "always", focus: "on focus", particles: "particles", bring: "bring &amp; go",
+      } as Record<string, string>,
+      edgeShowHelp: {
+        always: "",
+        focus: "The map stays clear and only the lines of the node you point at "
+          + "appear, arrowheads and all.",
+        bring: "No lines at all. Point at a node and its neighbours fly in around "
+          + "it in a ring, named as they land. Let go and they return home.",
+        particles: "Lines go away and particles flow along them instead. The flow "
+          + "direction is the relation's direction, so arrowheads switch off. "
+          + "Undirected relations come back as lines while you point at a node.",
+      } as Record<string, string>,
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
       // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
@@ -286,6 +306,23 @@ const EN = {
         rank: "Left comes first, right comes later (what leads to what). Within a column, "
           + "the most-connected sits at the top, and each topic keeps its own band.",
       } as Record<string, string>,
+      // 번들 — 손잡이 이름은 **무엇이 바뀌는지**로 짓는다. 여기서 바뀌는 것은
+      // 목록이 아니라 선이므로, 도움말이 그 사실을 먼저 말한다(모든 항목은 늘 있다).
+      bundleDepth: "Bundling",
+      bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
+      bundleDepthHelp: {
+        1: "Lines join topic to topic. Every item stays on the ring.",
+        2: "Lines join kind to kind inside each topic. Every item stays on the ring.",
+        3: "Lines join item to item, fully opened up.",
+      } as Record<string, string>,
+      bundleRels: "Relations",
+      relName: {
+        PREREQUISITE_OF: "Prerequisite", DERIVES_FROM: "Derives", INHERITS_FROM: "Inherits",
+        RELATED_TO: "Related", CONNECTS: "Bridge", ABOUT: "About", ATTACHES_TO: "Attached",
+      } as Record<string, string>,
+      /** 집약 단에서 그릴 수 없는 자기연결(같은 도메인 안끼리)을 밝힌다.
+       *  조용히 버리면 화면이 "연결이 없다"고 거짓말한다. */
+      bundleSelf: (n: number) => `${n} inside a group, not drawn at this level`,
       nodeScale: "Node scale", edgeWidth: "Line weight",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
@@ -294,14 +331,26 @@ const EN = {
       lineageHelp: "Draws the links that say what led to what. The cause sits above, "
         + "so a line crossing branches means another topic caused it.",
       // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
+      // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
+      // 아니라 "주제를 색으로 볼까"다. 도움말이 끄고도 아무것도 잃지 않음을 밝힌다.
+      domainTint: "Tint by topic",
+      domainTintHelp: "Gives each topic its own hue. It is emphasis only: "
+        + "turn it off and nothing is lost, because place already tells you the topic.",
       timeBasis: "Time",
       basisRecorded: "when recorded", basisContent: "when it happened",
       noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
-    atlasx: {
+    viewx: {
       grid: "Grid", matrix: "Matrix", traceCta: "Trace from here", shareCta: "Share",
-      timeline: "Timeline", totals: "Sankey",
+      timeline: "Timeline",
+      // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
+      // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
+      // 이름이라 독자가 보는 것을 말하지 않았고, 차트 장르 이름은 화면에서 배제한다.
+      // 한국어 "번들" 은 사실상 묶음 상품이라 더 멀었다. 둘레에 모든 항목, 가운데로
+      // 이어진 것만 선 — 그 엮임이 이름이 됐다.
+      bundle: "Weave",
+      bundleUnfiled: "(unfiled)",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
       outIn: (o: number, i: number) => ` · → ${o} out · ← ${i} in`,
@@ -314,6 +363,9 @@ const EN = {
       // D72 — 내용 시점 입력(문서를 쓰는 자리에서 함께 적는다).
       edContentTimePh: "When (YYYY)",
       edContentTimeTip: "When this is about. Year, or year-month, or a full date.",
+      // 문서 맨 위 YAML 프론트매터를 접어 두는 줄의 라벨. 문서가 가진 값이지
+      // 문서의 글이 아니라서 본문에서 떼어 낸다.
+      edFmLabel: "Properties",
       railTitle: "Node detail",
       railClose: "Close",
       statTopic: "Topic",
@@ -406,7 +458,7 @@ const EN = {
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "Timeline and Sankey are in View.",
+      viewpointsHint: "Timeline and Weave are under Viewpoint.",
       soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
@@ -414,18 +466,12 @@ const EN = {
       noLineage: "Nothing here says what led to what yet.",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
-      totalsEmpty: "Nothing to total yet. Add files and the totals fill in.",
-      totalsOff: "The Sankey is unavailable right now. Try again in a moment.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
-      totalsAround: (n: number) => `Based on ${n} document${n === 1 ? "" : "s"} around this one.`,
-      totalsTopic: "Based on this document's whole topic.",
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
       timelineChart: (n: number, m: number) => `Timeline: ${n} documents across ${m} topics`,
-      totalsChart: (n: number, m: number) => `Sankey: ${n} topics, ${m} concepts`,
-      totalsChartConcepts: (n: number, m: number) => `Sankey: ${n} concepts`,
       seg: {
         episodic: "from a conversation", record: "from a file", unsourced: "no origin yet",
         connected: "linked", gateway: "links other topics", orphan: "not linked yet",
@@ -444,12 +490,12 @@ const EN = {
       // 물러났을 때 hover 가 경로를 복원한다는 한 줄(조용한 표현 변경 금지).
       othersLabel: (k: number) => `${k} more topics`,
       othersTip: (k: number, n: number) => `${k} smaller topics: ${n} documents`,
-      totalsGrouped: "Hover a band to trace its full path.",
-      totalsFootConcepts: (n: number) => `${n} concepts, all three columns count the same set`,
-      totalsFoot: (n: number) => `${n} documents, counted the same way in all three columns`,
       // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
       // 없이 지금 그린 그래프에서 바로 센다.
       badgeTip: (label: string, n: number) => `${label}: ${n} link${n === 1 ? "" : "s"}`,
+      //: 앵커 — 끌어서 옮긴 노드에 붙는다. 푸는 법을 툴팁이 말해야 한다:
+      //: 더블클릭은 발견되는 제스처가 아니라 알려 줘야 하는 제스처다.
+      anchorTip: "Held in place. Double-click to let it go back.",
       mDocs: "documents",
       mLinked: "linked",
       mOrphan: "not linked",
@@ -490,7 +536,7 @@ const EN = {
       stDone: "Done",
       stFailed: "Couldn't read",
       // Success panel (Figma 42:7).
-      successBody: "Newly linked concepts are now in your Atlas.",
+      successBody: "Newly linked concepts are now in your View.",
       addMore: "Add more",
     },
     settingsUi: {
@@ -522,7 +568,7 @@ const EN = {
       mcpRemoved: (host: string) => `Removed from ${host}. Restart it to drop Vinc. (A backup of the config was saved.)`,
       mcpOtherHint: "Another MCP host (Kimi CLI, VS Code, Zed)? Run `vinc mcp manual` in a terminal for a config snippet to paste.",
       sync: "Account",
-      syncHint: "Optional. Connect your vincs.io account to sync the domains you pick to the web and your other devices. Everything else stays only on this machine.",
+      syncHint: "Optional. Connect your vincs.io account to sync the topics you pick to the web and your other devices. Everything else stays only on this machine.",
       acctConnect: "Connect account",
       acctConnecting: "Waiting for approval in your browser…",
       acctConnectHint: "Opens your browser to sign in and approve. Nothing to copy or paste.",
@@ -534,8 +580,8 @@ const EN = {
       acctNoShell: "Available in the desktop app only.",
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
-      syncDomains: "Domains to sync",
-      syncNoDomains: "No domains yet. Add some knowledge first.",
+      syncDomains: "Topics to sync",
+      syncNoDomains: "No topics yet. Add some knowledge first.",
       syncNow: "Sync now", syncing: "Syncing…",
       syncNeedKey: "Connect your account first.",
       syncDone: (up: number, down: number) => `Synced. ${up} sent, ${down} received.`,
@@ -546,7 +592,7 @@ const EN = {
       goTo: (s: string) => `Go to ${s}`,
       ingest: "Add data", share: "Share a pack", settings: "Open Settings",
       keyboard: "Keyboard", goSurface: "Go to screen", cmdPalette: "Command palette",
-      railToggle: "Open/close the sidebar", fit: "Fit selection (Atlas)",
+      railToggle: "Open/close the sidebar", fit: "Fit selection (View)",
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
@@ -579,7 +625,7 @@ const EN = {
       secCommunity: "Publish to community", secCommunityDesc: "Make a topic public in the gallery.",
       topic: "Topic", allTopics: "All topics",
       previewSave: "Preview & save",
-      shareAreaHint: "Want a specific area? Select it visually in Atlas →",
+      shareAreaHint: "Want a specific area? Select it visually in View →",
       backupLink: "Create a full backup pack",
       // 화면 노출 문자열에 em-dash 금지(발주자 지시) — 가운뎃점·괄호·콜론으로 대체.
       backupDesc: "Export everything: for migrating to a new device or an MCP client.",
@@ -630,7 +676,7 @@ const EN = {
       createdScope: (created: string, scope: string) => `Created ${created} · scope ${scope}`,
       updateNote: (c: number, e: number, r: number) =>
         `${c} concepts · ${e} connections · ${r} documents. Safe update: anything already here is refreshed in place, never duplicated.`,
-      importMine: "Import as mine", viewAtlas: "View the map",
+      importMine: "Import as mine", viewMap: "View the map",
     },
   },
 };
@@ -647,7 +693,7 @@ const KO: Deck = {
     idleCta: "파일 고르기",
     loading: (n, m, d) => `${m}개의 문서 중 ${n}개 분석 중... 지금까지 발견된 주제 ${d}개.`,
     success: (n, m) => `${m}개 주제에 걸쳐 ${n}개의 문서가 추가되었습니다.`,
-    successCta: "Atlas에서 열기",
+    successCta: "View에서 열기",
     error: (src) => `${src}을(를) 읽지 못했습니다. 파일을 확인하고 다시 시도하세요. 이미 추가된 문서는 안전합니다.`,
     retryCta: "다시 시도",
   },
@@ -663,9 +709,9 @@ const KO: Deck = {
     noTopic: "주제 없음",
     noMatch: "해당하는 것이 없습니다.",
     error: "문서를 불러오지 못했습니다. 언제든 다시 시도하세요. 바뀐 것은 없습니다.",
-    actions: { atlas: "Atlas에서 보기", pin: "고정", tag: "태그" },
+    actions: { view: "View에서 보기", pin: "고정", tag: "태그" },
   },
-  atlas: {
+  view: {
     idle: "아직 지식 지도가 없습니다. 파일을 추가하거나 검색을 실행해 보세요. 추가된 문서를 바탕으로 지도가 자동으로 생성됩니다.",
     idleCta: "파일 가져오기",
     loading: (d) => `${d}개의 주제 구성 중...`,
@@ -676,14 +722,14 @@ const KO: Deck = {
   },
   search: {
     idle: "추가한 모든 문서를 의미와 키워드로 검색해 보세요.",
-    empty: (q) => `'${q}'에 대한 검색 결과가 없습니다. 다른 검색어를 입력하거나 Atlas(지식 지도)를 확인해 보세요.`,
-    emptyCta: "Atlas 열기",
+    empty: (q) => `'${q}'에 대한 검색 결과가 없습니다. 다른 검색어를 입력하거나 View(지식 지도)를 확인해 보세요.`,
+    emptyCta: "View 열기",
     matches: (n) => `${n}개의 결과`,
     error: "검색을 실행하지 못했습니다. 언제든 다시 시도하세요. 색인은 온전합니다.",
     searching: "검색 중…",
     // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
     migrating: (n) => `의미 색인을 새로 만드는 중입니다. 지금은 키워드 결과만 보여드려요 (남은 문서 ${n}개)`,
-    actions: { atlas: "Atlas에서 보기", open: "열기" },
+    actions: { view: "View에서 보기", open: "열기" },
   },
   packs: {
     idle: "내 지식을 패키지로 묶어 휴대하거나, 다른 사람에게 안전하게 공유하세요.",
@@ -765,7 +811,7 @@ const KO: Deck = {
       askPh: "내 지식에 물어보기",
       browseAll: "모든 문서",
       results: "결과",
-      enterHint: "Enter · Atlas에 착지",
+      enterHint: "Enter · View에 착지",
       noResults: "찾은 것이 없습니다. 다른 낱말로 찾아보세요.",
       firstSlow: "첫 검색은 색인을 만드는 데 몇 초 걸립니다. 그 다음부터는 바로 나옵니다.",
       share: "공유",
@@ -806,7 +852,10 @@ const KO: Deck = {
       kept: (n) => `최근 ${n}턴만 보관합니다.`,
     },
     lnb: {
-      documents: "문서",
+      documents: "주제",
+      topicTip: "이 주제만 봅니다. Ctrl · Cmd 클릭으로 더할 수 있습니다.",
+      scoped: (n: number) => `주제 ${n}개만 보는 중`,
+      scopedClear: "전체 보기",
       open: "사이드바 열기", close: "사이드바 닫기",
       unfiled: "주제 없음",
       unfiledTip: "아직 어떤 개념과도 이어지지 않아 지도에 자리가 없습니다.",
@@ -865,12 +914,24 @@ const KO: Deck = {
       go: "계속",
     },
     panel: {
-      view: "보기", viewChip: (d) => `보기 · ${d}`,
       options: "옵션",
       allTopics: "모든 주제",
       nodeSize: "노드 크기", byConnections: "연결수 비례", uniform: "균일",
       labels: "라벨", onHover: "호버 시", off: "끔",
       arrows: "방향 화살표", on: "켬",
+      edgeShow: "선 보이기",
+      edgeShowName: {
+        always: "항상", focus: "짚을 때만", particles: "입자", bring: "불러오기",
+      } as Record<string, string>,
+      edgeShowHelp: {
+        always: "",
+        focus: "지도가 깨끗해지고, 가리킨 노드에 걸린 선만 화살촉까지 그대로 뜹니다.",
+        bring: "선을 아예 그리지 않습니다. 노드를 짚으면 이웃이 그 둘레로 날아와 "
+          + "고리로 서고 이름이 함께 뜹니다. 손을 떼면 제자리로 돌아갑니다.",
+        particles: "선이 사라지고 그 자리를 입자가 흐릅니다. 흐르는 방향이 곧 관계의 "
+          + "방향이라 화살촉은 꺼집니다. 방향 없는 관계는 노드를 짚는 동안 선으로 "
+          + "돌아옵니다.",
+      } as Record<string, string>,
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       groupNodes: "노드", groupLines: "선", groupOther: "기타",
@@ -882,19 +943,37 @@ const KO: Deck = {
         rank: "왼쪽이 먼저, 오른쪽이 나중입니다(무엇이 무엇으로 이어지는지). "
           + "같은 줄에서는 연결이 많은 것이 위에 오고, 주제마다 자기 띠를 지킵니다.",
       } as Record<string, string>,
+      bundleDepth: "선 묶기",
+      bundleDepthName: { 1: "주제", 2: "종류", 3: "개별" } as Record<string, string>,
+      bundleDepthHelp: {
+        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
+        2: "선이 주제 안의 종류끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
+        3: "선이 항목끼리 하나하나 이어집니다.",
+      } as Record<string, string>,
+      bundleRels: "관계",
+      relName: {
+        PREREQUISITE_OF: "선행", DERIVES_FROM: "파생", INHERITS_FROM: "상속",
+        RELATED_TO: "연관", CONNECTS: "다리", ABOUT: "관하여", ATTACHES_TO: "부착",
+      } as Record<string, string>,
+      bundleSelf: (n) => `묶음 안쪽 ${n}개는 이 단에서 그리지 않습니다`,
       nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
       lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 위에 오므로, "
         + "가지를 가로지르는 선은 다른 주제가 원인이라는 뜻입니다.",
+      domainTint: "주제별 색조",
+      domainTintHelp: "주제마다 다른 색조를 입힙니다. 강조일 뿐이라 꺼도 잃는 것이 "
+        + "없습니다. 주제는 이미 자리가 말하고 있습니다.",
       timeBasis: "시간",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 내용 시점이 적힌 것이 없습니다. 문서를 쓸 때 함께 적어 두세요.",
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
-    atlasx: {
+    viewx: {
       grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적", shareCta: "공유",
-      timeline: "타임라인", totals: "Sankey",
+      timeline: "타임라인",
+      bundle: "짜임",
+      bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
       outIn: (o, i) => ` · → 나감 ${o} · ← 들어옴 ${i}`,
@@ -904,6 +983,7 @@ const KO: Deck = {
       lassoHint: "⇧ Shift+드래그로 영역을 선택해 공유하세요",
       edContentTimePh: "언제 (YYYY)",
       edContentTimeTip: "이 글이 다루는 시점입니다. 연도, 연-월, 또는 날짜까지.",
+      edFmLabel: "속성",
       railTitle: "노드 상세",
       railClose: "닫기",
       statTopic: "주제",
@@ -996,25 +1076,19 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewsHint: "타임라인 · Sankey는 보기 안에 있습니다.",
+      viewpointsHint: "타임라인 · 짜임은 관점 전환 안에 있습니다.",
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       noLineage: "아직 무엇이 무엇으로 이어졌다고 적힌 것이 없습니다.",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n) => `오래된 문서 ${n}개는 그리지 않았습니다.`,
-      totalsEmpty: "아직 집계할 것이 없습니다. 파일을 추가하면 Sankey가 채워집니다.",
-      totalsOff: "지금은 Sankey를 불러올 수 없습니다. 잠시 후 다시 시도하세요.",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
-      totalsAround: (n) => `이 문서 주변 문서 ${n}개 기준.`,
-      totalsTopic: "이 문서가 속한 주제 전체 기준.",
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
       timelineChart: (n, m) => `타임라인: 주제 ${m}개에 걸친 문서 ${n}개`,
-      totalsChart: (n, m) => `Sankey: 주제 ${n}개, 개념 ${m}개`,
-      totalsChartConcepts: (n) => `Sankey: 개념 ${n}개`,
       seg: {
         episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
@@ -1032,12 +1106,10 @@ const KO: Deck = {
       // 물러났을 때 hover 가 경로를 복원한다는 한 줄(조용한 표현 변경 금지).
       othersLabel: (k) => `그 외 주제 ${k}개`,
       othersTip: (k, n) => `작은 주제 ${k}개: 문서 ${n}개`,
-      totalsGrouped: "리본에 올리면 전체 경로가 밝아집니다.",
-      totalsFootConcepts: (n) => `개념 ${n}개, 세 열 모두 같은 기준으로 셉니다`,
-      totalsFoot: (n) => `문서 ${n}개, 세 열 모두 같은 기준으로 셉니다`,
       // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
       // 없이 지금 그린 그래프에서 바로 센다.
       badgeTip: (label, n) => `${label}: 연결 ${n}개`,
+      anchorTip: "이 자리에 잡아 뒀습니다. 두 번 누르면 제자리로 돌아갑니다.",
       mDocs: "문서",
       mLinked: "연결됨",
       mOrphan: "연결 없음",
@@ -1075,7 +1147,7 @@ const KO: Deck = {
       stDone: "완료",
       stFailed: "읽지 못함",
       // Success 패널 (Figma 42:7).
-      successBody: "새로 연결된 개념이 Atlas에 반영되었습니다.",
+      successBody: "새로 연결된 개념이 View에 반영되었습니다.",
       addMore: "계속 추가",
     },
     settingsUi: {
@@ -1103,7 +1175,7 @@ const KO: Deck = {
       mcpRemoved: (host) => `${host}에서 제거됐습니다. 재시작하면 Vinc가 사라집니다. (설정 백업이 저장됐습니다.)`,
       mcpOtherHint: "다른 MCP 호스트(Kimi CLI, VS Code, Zed)를 쓰시나요? 터미널에서 `vinc mcp manual` 을 실행하면 붙여넣을 설정 조각이 나옵니다.",
       sync: "계정",
-      syncHint: "선택 사항입니다. vincs.io 계정을 연결하면 고른 도메인을 웹과 다른 기기에 동기화합니다. 나머지는 이 기기에만 남습니다.",
+      syncHint: "선택 사항입니다. vincs.io 계정을 연결하면 고른 주제를 웹과 다른 기기에 동기화합니다. 나머지는 이 기기에만 남습니다.",
       acctConnect: "계정 연결",
       acctConnecting: "브라우저에서 승인을 기다리는 중…",
       acctConnectHint: "브라우저가 열려 로그인·승인만 하면 됩니다. 복사·붙여넣기가 없습니다.",
@@ -1115,8 +1187,8 @@ const KO: Deck = {
       acctNoShell: "데스크톱 앱에서만 가능합니다.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "폴백: vincs.io/account에서 발급해 여기 붙여넣으세요. 이 기기에만 저장됩니다.",
-      syncDomains: "동기화할 도메인",
-      syncNoDomains: "아직 도메인이 없습니다. 먼저 지식을 추가하세요.",
+      syncDomains: "동기화할 주제",
+      syncNoDomains: "아직 주제가 없습니다. 먼저 지식을 추가하세요.",
       syncNow: "지금 동기화", syncing: "동기화 중…",
       syncNeedKey: "계정을 먼저 연결하세요.",
       syncDone: (up, down) => `동기화 완료. ${up}개 보냄, ${down}개 받음.`,
@@ -1127,7 +1199,7 @@ const KO: Deck = {
       goTo: (s) => `${s} 열기`,
       ingest: "데이터 추가하기", share: "팩 공유하기", settings: "설정 열기",
       keyboard: "키보드", goSurface: "화면 이동", cmdPalette: "커맨드 팔레트",
-      railToggle: "사이드바 열기/닫기", fit: "선택 맞춤 (Atlas)",
+      railToggle: "사이드바 열기/닫기", fit: "선택 맞춤 (View)",
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
@@ -1157,7 +1229,7 @@ const KO: Deck = {
       secCommunity: "커뮤니티에 게시", secCommunityDesc: "주제를 갤러리에 공개합니다.",
       topic: "주제", allTopics: "전체 주제",
       previewSave: "미리보기·저장",
-      shareAreaHint: "특정 영역만? Atlas에서 시각적으로 선택하세요 →",
+      shareAreaHint: "특정 영역만? View에서 시각적으로 선택하세요 →",
       backupLink: "전체 백업 팩 만들기",
       backupDesc: "전체를 내보냅니다 · 새 기기 이관이나 MCP 클라이언트용.",
     },
@@ -1186,7 +1258,7 @@ const KO: Deck = {
       importTitle: "팩 불러오기",
       createdScope: (created, scope) => `작성 ${created} · 범위 ${scope}`,
       updateNote: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개. 안전한 업데이트: 이미 있는 문서는 중복되지 않고 최신 내용으로만 갱신됩니다.`,
-      importMine: "내 지식으로 가져오기", viewAtlas: "지도에서 보기",
+      importMine: "내 지식으로 가져오기", viewMap: "지도에서 보기",
       shareSub: "아래에 있는 것만 팩으로 나갑니다. 그 밖에는 아무것도 나가지 않습니다.",
       importSub: "내 그래프에 합쳐집니다. 이미 있는 것은 그 자리에서 갱신됩니다.",
       specScope: "범위", specConcepts: "개념", specLinks: "연결",

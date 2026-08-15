@@ -15,22 +15,28 @@ import { icon } from "./icons";
  *  위, 깊은 개념(파생)의 문서가 아래로 들여쓰기된다. 최근 수정순이 아닌 이유: 목록의
  *  일이 "무엇이 새로운가"가 아니라 "이 주제가 어떻게 짜여 있는가"이기 때문이다.
  *
- *  **표면과의 계약은 훅 하나뿐이다**(상단 바와 같은 태도). Atlas 가 마운트되면
+ *  **표면과의 계약은 훅 하나뿐이다**(상단 바와 같은 태도). View 가 마운트되면
  *  자기 `focusNode` 를 넘기고(setLnbNavigator), 떠나면 지운다. 훅이 없으면 문서
  *  클릭은 해시 착지로 강등된다 — 눌러도 아무 일 없는 줄을 만들지 않는다. */
 
 /** 트리는 그 문서가 **어느 주제 밑에 있는지 이미 안다** — 그 정보를 함께 넘긴다.
  *  받는 쪽(합계 뷰)은 개념 마크가 없어서 그래프 노드로는 주제를 되짚을 수 없다. */
 type Navigator = (nodeId: string, domain?: string) => void;
+/** 주제를 고른다. `add` 면 지금 고른 것에 **더한다**(Ctrl·⌘ 클릭).
+ *  화면이 즉시 따라간다 — 고르는 것과 보는 것이 어긋나는 중간 상태를 두지 않는다. */
+type TopicPicker = (path: string, add: boolean) => void;
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
 
 let navigate: Navigator | null = null;
+let pickTopic: TopicPicker | null = null;
 let tree: NavTreeRes | null = null;
 let loading = false;
 let failed = false;
 let active: { domain?: string; nodeId?: string } = {};
+/** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
+let picked = new Set<string>();
 let expanded = new Set<string>();
 let wired = false;
 
@@ -65,17 +71,33 @@ function saveExpanded() {
   try { localStorage.setItem(KEY_EXPANDED, JSON.stringify([...expanded])); } catch { /* 용량 초과 무시 */ }
 }
 
-/** Atlas 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
+/** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
+export function setLnbTopicPicker(fn: TopicPicker | null) { pickTopic = fn; }
+
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
 }
 
 /** 지금 어디를 보고 있는지 트리에 표시한다(크럼이 하던 일 — D71 로 여기 왔다). */
-export function setLnbActive(sel: { domain?: string; nodeId?: string }) {
-  active = { ...sel };
-  if (sel.domain && !expanded.has(sel.domain)) {
-    expanded.add(sel.domain);     // 지금 있는 주제는 접혀 있으면 안 된다
-    saveExpanded();
+/** 뿌리 자동 펼침을 한 번만 하기 위한 표시(paint 안 주석 참조). */
+let autoExpanded = false;
+
+export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?: string }) {
+  // 주제는 이제 **여럿**일 수 있다(스코프가 목록이 됐다). 첫 번째를 대표로 두고
+  // 나머지는 선택 표시로만 쓴다 — 조상 펼치기는 대표 하나면 충분하다.
+  const doms = sel.domains?.length ? sel.domains : sel.domain ? [sel.domain] : [];
+  active = { ...sel, domain: doms[0] };
+  picked = new Set(doms);
+  if (doms[0]) {
+    // 지금 있는 주제는 접혀 있으면 안 된다 — 그리고 중첩이 생겼으므로 **조상까지**
+    // 함께 편다. 자기만 펴면 부모가 닫힌 채라 화면에 나타나지 않는다.
+    const segs = doms[0].split("/").filter(Boolean);
+    let grew = false;
+    segs.forEach((_s, i) => {
+      const path = segs.slice(0, i + 1).join("/");
+      if (!expanded.has(path)) { expanded.add(path); grew = true; }
+    });
+    if (grew) saveExpanded();
   }
   paint();
 }
@@ -95,7 +117,7 @@ export async function refreshLnb(): Promise<void> {
 }
 
 function surfaceHash(): string {
-  return location.hash.replace(/^#/, "").split("/")[0] || "atlas";
+  return location.hash.replace(/^#/, "").split("/")[0] || "view";
 }
 
 function navRows(): string {
@@ -104,9 +126,9 @@ function navRows(): string {
   // "전체 지도로 돌아가기"라서, 크럼이 지고 간 자리를 실제로 메우는 유일한 행이다.
   // (Search·Packs 표면 자체는 살아 있고 해시·팔레트·단축키 1~3 으로 간다.)
   const here = surfaceHash();
-  const on = here === "atlas";
+  const on = here === "view";
   return `<nav class="lnb-nav" aria-label="${esc(COPY.ui.topbar.home)}">
-      <a class="lnb-navrow${on ? " on" : ""}" href="#atlas"${on ? ' aria-current="page"' : ""}>
+      <a class="lnb-navrow${on ? " on" : ""}" href="#view"${on ? ' aria-current="page"' : ""}>
         <span class="lnb-ico" aria-hidden="true">${icon("graph", 15)}</span>
         <span>${esc(COPY.ui.topbar.home)}</span></a>
     </nav>`;
@@ -132,26 +154,62 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
   </button>`;
 }
 
-function groupRows(g: NavGroup): string {
-  const open = expanded.has(g.domain);
-  const on = active.domain === g.domain;
+/** 주제 트리의 한 마디. `path` 가 `/nav-tree` 의 주제 문자열 통짜와 같은 값이라
+ *  선택·활성 키는 그대로다 — 중첩은 **화면의 일**이고 계약은 안 바뀐다. */
+type DomNode = { seg: string; path: string; group?: NavGroup; kids: DomNode[] };
+
+/** 슬래시가 곧 계층이다(GRAPH.md: `vinc/design` 은 `vinc` 아래에 선다). 저장소는
+ *  그 계층을 이미 노드로 갖고 있는데(`domain:vinc` -PARENT_OF-> `domain:vinc/design`)
+ *  좌측 트리만 문자열을 통짜로 묶어 평평하게 보여 주고 있었다. 서버가 주는 것은
+ *  그대로 두고 여기서 쪼갠다 — 계약을 안 건드리는 것이 이 방식의 값이다.
+ *
+ *  중간 마디(`vinc`)는 그 자체로 주제일 수도 있고 아닐 수도 있다. 아니면 `group`
+ *  이 없어 문서를 안 갖고 자식만 갖는다 — 그래도 행은 낸다(그 이름이 계층이다). */
+function nestGroups(groups: NavGroup[]): DomNode[] {
+  const root: DomNode = { seg: "", path: "", kids: [] };
+  for (const g of groups) {
+    const segs = g.domain.split("/").filter(Boolean);
+    let cur = root;
+    segs.forEach((seg, i) => {
+      const path = segs.slice(0, i + 1).join("/");
+      let next = cur.kids.find((k) => k.path === path);
+      if (!next) { next = { seg, path, kids: [] }; cur.kids.push(next); }
+      cur = next;
+    });
+    cur.group = g;
+  }
+  return root.kids;
+}
+const subDocs = (n: DomNode): number =>
+  (n.group?.docs.length || 0) + n.kids.reduce((s, k) => s + subDocs(k), 0);
+const subConcepts = (n: DomNode): number =>
+  (n.group?.concepts || 0) + n.kids.reduce((s, k) => s + subConcepts(k), 0);
+
+function groupRows(n: DomNode, level = 1): string {
+  const open = expanded.has(n.path);
+  const on = picked.has(n.path);
   // 주제 행도 treeitem 이다(여태 role 이 없어 트리에서 빠져 있었다). 그리고 자식
   // group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 — 형제로 두면 보조기술이
   // 계층으로 읽지 않는다.
-  const head = `<button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="1"
-      ${on ? 'aria-selected="true" ' : ""}data-group="${esc(g.domain)}"
-      aria-expanded="${open}" data-tip="${esc(COPY.ui.lnb.conceptCount(g.concepts))}">
+  const head = `<button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}"
+      ${on ? 'aria-selected="true" ' : ""}data-group="${esc(n.path)}"
+      aria-expanded="${open}" aria-pressed="${on}"
+      data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))} · ${esc(COPY.ui.lnb.topicTip)}">
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
-      <span class="lnb-gname">${esc(g.domain)}</span>
-      <span class="lnb-gcount">${g.docs.length || "·"}</span>
+      <span class="lnb-gname">${esc(n.seg)}</span>
+      <span class="lnb-gcount">${subDocs(n) || "·"}</span>
     </button>`;
   if (!open) return head;
-  const body = g.docs.length
-    ? g.docs.map((d) => docRow(d, g.domain)).join("")
+  // 자식 가지가 먼저, 그다음 이 주제 자신의 문서. 순서를 뒤집으면 문서 목록 끝에
+  // 가지가 붙어 "문서인 줄 알았던 것"이 사실 폴더인 상황이 된다.
+  const kids = n.kids.map((k) => groupRows(k, level + 1)).join("");
+  const own = n.group?.docs.length
+    ? n.group.docs.map((d) => docRow(d, n.path)).join("")
     // 개념만 있고 문서가 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나
     // 문서를 붙일 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
-    : `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`;
-  return head + `<div class="lnb-docs" role="group">${body}</div>`;
+    // (자식 가지가 있으면 비어 보이지 않으므로 그 문구를 내지 않는다.)
+    : (n.kids.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`);
+  return head + `<div class="lnb-docs" role="group">${kids}${own}</div>`;
 }
 
 function paint() {
@@ -169,15 +227,28 @@ function paint() {
   }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
-  const docs = tree?.counts?.docs ?? 0;
+  const topicCount = (tree?.domains || []).length;
   let html = navRows();
   html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
-    <span class="hint">${docs ? esc(COPY.ui.lnb.docCount(docs)) : "·"}</span></div>`;
+    <span class="hint">${topicCount || "·"}</span></div>`;
+  // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
+  //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
+  if (picked.size) {
+    html += `<div class="lnb-scope">
+      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
+      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
+    </div>`;
+  }
   if (!groups.length && !unfiled.length) {
     html += `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`
       + `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
   } else {
-    html += `<div class="lnb-tree" role="tree">${groups.map(groupRows).join("")}`;
+    const tops = nestGroups(groups);
+    // 뿌리가 하나뿐이면(지금은 전부 `vinc/*` 다) 한 번은 펼쳐 둔다 — 안 그러면
+    // 중첩이 정보를 더하는 대신 모든 것을 클릭 한 번 뒤로 밀기만 한다. 최초 1회만
+    // 이라 접어 둔 사용자의 선택과 싸우지 않는다.
+    if (!autoExpanded && tops.length === 1) { autoExpanded = true; expanded.add(tops[0].path); }
+    html += `<div class="lnb-tree" role="tree">${tops.map((n) => groupRows(n)).join("")}`;
     if (unfiled.length) {
       const open = expanded.has("");
       html += `<button class="lnb-group" data-group="" aria-expanded="${open}"
@@ -199,7 +270,7 @@ function paint() {
 async function openDoc(docId: string, nodeId: string, domain?: string) {
   if (nodeId) {
     if (navigate) navigate(nodeId, domain);
-    else location.hash = `#atlas/trace/${encodeURIComponent(nodeId)}`;
+    else location.hash = `#view/trace/${encodeURIComponent(nodeId)}`;
     return;
   }
   // 개념과 아직 이어지지 않은 문서는 지도에 자리가 없다 — 없는 자리를 지어내는 대신
@@ -217,7 +288,10 @@ export function mountLnb() {
 
   root.innerHTML = `
     <div class="lnb-head">
-      <span class="lnb-title">${esc(COPY.ui.lnb.documents)}</span>
+      <!-- 패널 제목은 비워 둔다. 바로 아래 절 제목이 같은 말을 하고 있었고(Home 을
+           사이에 두고 두 번), 이 줄의 일은 접기 버튼을 담는 것이다. 버튼은 자기
+           aria-label 을 가지므로 접근성에서 잃는 것이 없다. -->
+      <span class="lnb-title" aria-hidden="true"></span>
       <button class="tb-icon lnb-x" id="lnb-toggle" type="button" aria-controls="lnb-body">
         ${icon("chevron-left", 16)}
       </button>
@@ -247,9 +321,24 @@ export function mountLnb() {
     const group = t.closest<HTMLElement>(".lnb-group");
     if (group) {
       const key = group.dataset.group ?? "";
+      // 캐럿은 **접고 펴기**, 이름은 **주제 고르기**다. 여태 어디를 눌러도 접고
+      // 펴기뿐이라, 주제 트리가 지도를 좁힐 것처럼 생겨서는 아무것도 안 했다.
+      // 미분류 묶음(빈 key)은 실재하는 주제가 아니라 고를 수 없다 — 접고 펴기만.
+      const onCaret = !!t.closest(".lnb-caret");
+      if (!onCaret && key && pickTopic) {
+        pickTopic(key, e.ctrlKey || e.metaKey);
+        return;
+      }
       if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
       saveExpanded();
       paint();
+      return;
+    }
+    if (t.closest(".lnb-scope-clear")) {
+      // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
+      // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
+      // 홈 해시로 간다 — 그것이 이 앱에서 "전체"의 정본 주소다.
+      location.hash = "#view";
       return;
     }
     if (t.closest("#lnb-retry")) { void refreshLnb(); return; }
@@ -279,7 +368,7 @@ async function domainMenu(domain: string, ev: MouseEvent) {
     label: COPY.ui.domains.rename,
     run: () => void (async () => {
       const next = await promptText(COPY.ui.domains.renameAsk(domain), domain,
-        COPY.ui.domains.rename, COPY.ui.atlasx.delCancel, COPY.ui.domains.unassign);
+        COPY.ui.domains.rename, COPY.ui.viewx.delCancel, COPY.ui.domains.unassign);
       if (next === null || next === domain) return;
       try {
         const r: any = await api.domainRename(cfg.owner, domain, next);

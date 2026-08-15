@@ -12,6 +12,7 @@
   --border: 60 6% 86%; /* #DEDEDA  ← {hairline} */
   --input: 60 6% 86%; /* #DEDEDA  ← {hairline} */
   --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --focus: 236 30% 28%; /* #32355C  ← {indigo_900} */
   --primary: 236 30% 28%; /* #32355C  ← {indigo_900} */
   --primary-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --accent: 60 6% 91%; /* #E9E9E6  ← {grain_200} */
@@ -26,6 +27,9 @@
   --warning-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
   --danger: 0 47% 43%; /* #A03A3A  ← {danger_700} */
   --danger-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
+  --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 
   /* Shape */
   --radius: 0.875rem;
@@ -51,8 +55,8 @@
   --lh-normal: 1.55;
   --lh-prose: 1.7;
   --lh-tight: 1.15;
-  --font-heading: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
-  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Noto Sans KR', sans-serif;
+  --font-heading: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
   /* Depth */
@@ -76,6 +80,7 @@
   --border: 230 23% 19%; /* #262A3D  ← {d_line} */
   --input: 230 23% 19%; /* #262A3D  ← {d_line} */
   --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --focus: 234 49% 71%; /* #8F96D9  ← {peri_400} */
   --primary: 233 32% 33%; /* #3A4070  ← {indigo_700} */
   --primary-foreground: 235 65% 83%; /* #B9BEF0  ← {peri_200} */
   --accent: 229 25% 13%; /* #191C2A  ← {d_bg2} */
@@ -90,4 +95,7 @@
   --warning-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
   --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
   --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
+  --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
+  --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
 }

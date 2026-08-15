@@ -1,7 +1,7 @@
 import "./app.css";
 import { COPY } from "./copy";
 import { icon } from "./icons";
-import { renderAtlas } from "./surfaces/atlas";
+import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
 import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
@@ -9,26 +9,27 @@ import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
-import { mountTopbar, setAtlasHooks } from "./topbar";
+import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { initSegMotion, wireScrimDismiss } from "./components";
 
-// 표면 3종: Atlas / Search(+Records) / Packs(+Intake).
-type Surface = "atlas" | "search" | "packs";
+// 표면 3종: View / Search(+Records) / Packs(+Intake).
+type Surface = "view" | "search" | "packs";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
-  atlas: renderAtlas,
+  view: renderView,
   search: renderSearch,
   packs: renderPacks,
 };
-const ORDER: Surface[] = ["atlas", "search", "packs"];
-// 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `atlas`(해시·딥링크·모듈)
+const ORDER: Surface[] = ["view", "search", "packs"];
+// 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
 // 이지만 사용자에게는 `Home` 이다 — 발주자 지시 2026-07-27.
 const SURFACE_LABEL: Record<Surface, string> = {
-  atlas: COPY.ui.topbar.home, search: "Search", packs: "Packs",
+  view: COPY.ui.topbar.home, search: "Search", packs: "Packs",
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
-const ALIAS: Record<string, Surface> = { intake: "packs", records: "search" };
+// `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15) — 무기한 유지.
+const ALIAS: Record<string, Surface> = { intake: "packs", records: "search", atlas: "view" };
 
 const surfaceEl = document.getElementById("surface")!;
 const topbar = document.getElementById("topbar")!;
@@ -83,16 +84,23 @@ function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
   if (h in SURFACES) return h as Surface;
   if (h in ALIAS) return ALIAS[h];
-  return "atlas";   // 기본 첫 화면 = Atlas(최상단)
+  return "view";   // 기본 첫 화면 = View(최상단)
 }
 
 async function route() {
   // 구 표면 해시로 진입 시 정본 해시로 정규화(활성 하이라이트·딥링크 일치).
   const rawHead = location.hash.replace(/^#/, "").split("/")[0];
-  if (rawHead in ALIAS) { location.hash = `#${ALIAS[rawHead]}`; return; }  // hashchange → 재진입
+  if (rawHead in ALIAS) {
+    // 뒤따르는 경로는 보존한다 — `#atlas/trace/<id>` 같은 구 딥링크가 `#view` 로
+    // 뭉개지면 특정 노드를 가리키던 링크가 조용히 기본 화면으로 떨어진다(버그로
+    // 읽힌다). intake·records 는 하위경로가 없던 별칭이라 이 차이가 드러나지 않았다.
+    const rest = location.hash.replace(/^#[^/]*/, "");
+    location.hash = `#${ALIAS[rawHead]}${rest}`;
+    return;                                                          // hashchange → 재진입
+  }
   const s = current();
   surfaceEl.innerHTML = "";
-  // 문서 열은 셸의 것이지만 내용은 표면이 심는다(Atlas 가 자기 상세를 옮겨 온다).
+  // 문서 열은 셸의 것이지만 내용은 표면이 심는다(View 가 자기 상세를 옮겨 온다).
   // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
   // 안 된다(옮겨 심은 노드는 이미 여기 있으므로 남는다). 라우터가 닫는다.
   // 비우는 것은 **본문뿐**이다: 머리는 셸 것이고 접기 손잡이가 거기 살고 있다.
@@ -100,11 +108,11 @@ async function route() {
   docpaneEl.querySelector("#rail-grip")?.remove();
   docpaneEl.hidden = true;
   shellEl.dataset.doc = "closed";
-  // 상단 바의 Atlas 전용 버튼은 표면을 떠나는 즉시 사라진다 — Atlas 면 아래에서
+  // 상단 바의 View 전용 버튼은 표면을 떠나는 즉시 사라진다 — View 면 아래에서
   // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
   // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
-  setAtlasHooks(null);
-  // 좌측 트리의 착지 훅도 같이 끈다 — Atlas 가 없으면 "그 노드로 날아가기"가
+  setViewHooks(null);
+  // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
   // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
   setLnbNavigator(null);
   await SURFACES[s](surfaceEl);

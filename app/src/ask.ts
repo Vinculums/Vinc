@@ -1,7 +1,7 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { openSheet } from "./components";
-import { atlasHooks } from "./topbar";
+import { viewHooks } from "./topbar";
 
 /** 묻기 — 앱 안의 **무LLM 대화**(D73).
  *
@@ -331,14 +331,14 @@ function wire() {
     turns = []; save(); render();
   });
   panel.querySelector("#ask-hist")?.addEventListener("click", () => openHistory());
-  // 지도 착지 — Atlas 가 떠 있으면 훅으로 그 노드까지, 아니면 해시로 띄운다
+  // 지도 착지 — View 가 떠 있으면 훅으로 그 노드까지, 아니면 해시로 띄운다
   // (topbar 의 결과 착지와 같은 규약).
   panel.querySelectorAll<HTMLElement>("[data-go]").forEach((b) =>
     b.addEventListener("click", () => {
       const id = b.dataset.go!;
-      const h = atlasHooks();
+      const h = viewHooks();
       if (h) h.openNode(id);
-      else location.hash = `#atlas/trace/${encodeURIComponent(id)}`;
+      else location.hash = `#view/trace/${encodeURIComponent(id)}`;
     }));
   // 되묻기 칩 — **id 를 들고 있으므로** 다음 턴에 애매성이 없다(대명사 해소 불요).
   panel.querySelectorAll<HTMLElement>("[data-pick]").forEach((b) =>

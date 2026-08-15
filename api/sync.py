@@ -583,12 +583,15 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         out["executed"] = True
 
     # merge_fragment 가 방금 로컬 스탬프를 찍었으므로, 결정된 스탬프로 덮어쓴다.
+    # owner 술어 필수(risk-audit 2026-08-05 §3.2): merge_fragment 의 SEC-3 가드가
+    # 교차테넌트 노드를 건너뛰어도 이 루프가 owner 없이 id 로만 MATCH 하면 그 노드의
+    # rev/sync_seq 를 그대로 찍어 버려 피해자의 3-way 병합 기준을 조용히 오염시킨다.
     for w in writes:
         node = w["node"]
         label, pk = frag._NODE_MAP[node["type"]]
-        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
+        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                   "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
-                  {"id": node["id"], "ua": w["ua"], "rev": int(w["rev"]),
+                  {"id": node["id"], "owner": owner, "ua": w["ua"], "rev": int(w["rev"]),
                    "seq": revstamp.next_seq(store, owner)})
     for nid, label, fields, rev, ua in base_updates:
         set_base(store, nid, label, fields, rev, ua)
@@ -596,20 +599,26 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
     # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
     # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다.
+    # owner 술어 필수(risk-audit §3.2): 없으면 유효한 멤버 키 하나로 남의 concept 을
+    # 지울 수 있다. deleted_at 은 clamp — 인바운드 값이라 공격자가 미래로 조작해
+    # 어떤 재편집도 이기게 만들 수 있으니 서버 클록을 넘지 못하게 한다.
     for t in bundle.get("tombstones") or []:
         tid, tlabel = t.get("node_id"), t.get("label")
         t_da = t.get("deleted_at") or ""
+        if t_da:
+            t_da = min(t_da, revstamp.hlc_now(store))
         # 라벨→PK 를 손으로 적지 않는다 — 동기화 라벨이 늘 때 여기가 빠지면 그
         # 라벨의 삭제가 조용히 전파되지 않는다(v12 Decision 이 그 자리였다).
         pk = _SYNC_PK.get(tlabel or "")
         if not tid or not pk:
             continue
-        cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id RETURN x.updated_at AS ua",
-                        {"id": tid})
+        cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+                        "RETURN x.updated_at AS ua", {"id": tid, "owner": owner})
         if cur and (cur[0].get("ua") or "") > t_da:
             continue                          # 삭제 이후 재편집됨 → 삭제 무시
         if cur:
-            store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id DETACH DELETE x", {"id": tid})
+            store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+                      "DETACH DELETE x", {"id": tid, "owner": owner})
             out["deleted"] += 1
         del_base(store, tid)
         put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
@@ -619,6 +628,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     # 삭제를 무조건 적용한다. '재생성이 삭제를 이긴다'는 별도 경로로 성립:
     # 재생성 기기가 끝점을 스탬프(fragment._stamp_edge_endpoints — 로컬 엣지 툼스톤
     # 상쇄 포함)해 다음 delta 에 엣지가 실려 되돌아온다.
+    # owner 술어 필수(risk-audit §3.2): 양 끝 모두 owner 스코프 — 안 그러면 남의
+    # 관계를 지울 수 있다. _extra_edges_plan 과 같은 술어 패턴.
     for t in bundle.get("edge_tombstones") or []:
         src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
         ep = q.SYNC_EDGE_RELS.get(rel or "")
@@ -631,12 +642,15 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         for sl, sp, dl, dp in ep:
             for s_, d_ in pairs:
                 cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                                f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(r) AS c",
-                                {"s": s_, "d": d_})
+                                f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                                "RETURN count(r) AS c",
+                                {"s": s_, "d": d_, "owner": owner})
                 if cnt and int(cnt[0].get("c") or 0):
                     store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                              f"WHERE a.{sp} = $s AND b.{dp} = $d DELETE r",
-                              {"s": s_, "d": d_})
+                              f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                              "AND a.owner_id = $owner AND b.owner_id = $owner DELETE r",
+                              {"s": s_, "d": d_, "owner": owner})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
         revstamp.observe_hlc(store, t.get("deleted_at") or "")

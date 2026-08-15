@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""gen_theme_ts.py — SSoT + atlasScene → app/src/theme.ts (three.js/Sigma용 hex).
+"""gen_theme_ts.py — SSoT + viewScene → app/src/theme.ts (three.js/Sigma용 hex).
 
 WebGL은 CSS 변수를 못 읽으므로, 같은 토큰 트리에서 스킨×모드별 숫자 hex 모듈을
-생성해 atlas3d.ts/atlas.ts의 하드코딩 팔레트를 대체한다(Deep Signal 스펙).
+생성해 view3d.ts/view.ts의 하드코딩 팔레트를 대체한다(Deep Signal 스펙).
 
 usage: python -X utf8 scripts/gen_theme_ts.py \
          --tokens DESIGN/design-tokens.json \
@@ -15,7 +15,7 @@ import argparse, json, pathlib, sys
 SEMANTIC_KEYS = [
     ("background", "background"), ("surface", "muted"), ("card", "card"),
     ("line", "border"), ("text", "foreground"), ("textSoft", "muted-foreground"),
-    ("textMute", "caption-foreground"), ("ring", "ring"),
+    ("textMute", "caption-foreground"), ("ring", "ring"), ("focus", "focus"),
     ("primary", "primary"), ("primaryText", "primary-foreground"), ("link", "link"),
 ]
 
@@ -32,7 +32,7 @@ def prim(tokens: dict, name: str) -> str:
     return tokens["primitive"][name]["$value"]
 
 def link_ramp(tokens: dict, mode: str) -> dict:
-    """Atlas 링크 농도 램프 — heavy→fade. 파생 셰이드(SSoT 프리미티브에서 유도).
+    """View 링크 농도 램프 — heavy→fade. 파생 셰이드(SSoT 프리미티브에서 유도).
 
     ⚠ 여기는 **텍스트 토큰을 재사용하면 안 된다**. 구판은 base=d_mute·cross=
     indigo_700·fade=d_line 처럼 캡션·CTA·보더 토큰을 빌려 썼는데, 그 토큰들은
@@ -58,7 +58,7 @@ def label_css(tokens: dict, mode: str) -> str:
 def emit(tokens: dict, scene: dict) -> str:
     L = []
     L.append("// AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.")
-    L.append("// SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports atlasScene.")
+    L.append("// SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports viewScene.")
     L.append("// Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.")
     L.append("")
     L.append("export type ThemeMode = 'light' | 'dark';")
@@ -78,13 +78,13 @@ def emit(tokens: dict, scene: dict) -> str:
     L.append("")
     L.append("export function hexStr(n: number): string { return '#' + n.toString(16).padStart(6, '0'); }")
     L.append("")
-    # atlasScene 은 **SSoT(design-tokens.json)가 정본**이다. 예전에는 imports 의
+    # viewScene 은 **SSoT(design-tokens.json)가 정본**이다. 예전에는 imports 의
     # Figma 덤프에서만 읽었는데, 설계 결정으로 값을 바꾸면서 "2026-07-19 수동 수입"
     # 이라 적힌 파일에 쓰는 것은 출처를 속이는 일이다. 덤프는 폴백으로만 남긴다.
-    sc = tokens.get("atlasScene") or scene["atlasScene"]
-    L.append("// Atlas 성좌 씬 — 글로우는 그래프 노드 전용(발주자 규칙)")
-    L.append("// 소비처는 atlas3d.ts 의 다크 글로우 분기 하나뿐 — fill·stroke·glowOpacity 만 읽는다.")
-    L.append("export const atlasScene = {")
+    sc = tokens.get("viewScene") or scene["viewScene"]
+    L.append("// View 성좌 씬 — 글로우는 그래프 노드 전용(발주자 규칙)")
+    L.append("// 소비처는 view3d.ts 의 다크 글로우 분기 하나뿐 — fill·stroke·glowOpacity 만 읽는다.")
+    L.append("export const viewScene = {")
     L.append("  node: {")
     for tier, spec in sc["node"].items():
         stroke = f", stroke: {ts_hex(spec['stroke'])}" if "stroke" in spec else ""
@@ -92,6 +92,17 @@ def emit(tokens: dict, scene: dict) -> str:
     L.append("  },")
     L.append("} as const;")
     L.append("")
+    # domainTint — 열린 층(사용자 토글)이라 뜻을 나르지 않는다. 그래도 s·l 은 토큰에
+    # 둔다: 이 두 값이 틴트의 대비 바닥이라 앱 코드의 리터럴로 두면 게이트 밖으로 샌다.
+    dt = tokens.get("domainTint")
+    if dt:
+        L.append("// 도메인 틴트(열린 층) — 색상환 각도는 주제 문자열 해시, 채도·명도는 여기 고정.")
+        L.append("// 소비처는 app/src/view-tint.ts 하나뿐.")
+        L.append("export const domainTint = {")
+        for mode in ("light", "dark"):
+            L.append(f"  {mode}: {{ s: {dt[mode]['s']}, l: {dt[mode]['l']} }},")
+        L.append("} as const;")
+        L.append("")
     L.append("export function themePalette(mode: ThemeMode) { return palette[mode]; }")
     return "\n".join(L) + "\n"
 

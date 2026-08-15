@@ -160,6 +160,60 @@ def test_apply_deletes_edge_and_repropagates():
     assert et[0][1]["da"] == "2026-07-19T00:00:00.000Z"       # 원 삭제 시각 보존
 
 
+# ── risk-audit 2026-08-05 §3.2: sync apply owner 스코프 ──────────────────────
+def test_apply_edge_tombstone_scopes_owner():
+    """엣지 툼스톤 적용 — 양 끝 owner 술어 없으면 유효 멤버 키 하나로 남의
+    관계를 지울 수 있다(vinc.plan.reinforcement-points §1)."""
+    fake = _SubFake({"RETURN count(r) AS c": [{"c": 1}]})
+    sync.apply_delta(owner=OWNER, bundle={
+        "nodes": [], "edges": [],
+        "edge_tombstones": [{"src": "concept:a", "rel": "RELATED_TO",
+                             "dst": "concept:b", "deleted_at": "2026-07-19T00:00:00.000Z"}],
+    }, store=fake)
+    reads = [(c, p) for c, p in fake.calls if "RETURN count(r)" in c]
+    deletes = [(c, p) for c, p in fake.calls if "DELETE r" in c]
+    assert reads and deletes
+    for cypher, params in reads + deletes:
+        assert "a.owner_id = $owner" in cypher and "b.owner_id = $owner" in cypher
+        assert params["owner"] == OWNER
+
+
+def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at():
+    """노드 툼스톤 적용 — owner 술어 없으면 남의 concept 을 지울 수 있고, deleted_at
+    을 clamp 하지 않으면 공격자가 미래 시각을 넣어 어떤 재편집도 이기게 만든다."""
+    fake = _SubFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
+    out = sync.apply_delta(owner=OWNER, bundle={
+        "nodes": [], "edges": [],
+        "tombstones": [{"node_id": "concept:victim", "label": "Concept",
+                        "deleted_at": "2099-01-01T00:00:00.000Z"}],
+    }, store=fake)
+    assert out["deleted"] == 1
+    checks = [(c, p) for c, p in fake.calls if "RETURN x.updated_at AS ua" in c]
+    deletes = [(c, p) for c, p in fake.calls if "DETACH DELETE x" in c]
+    assert checks and deletes
+    for cypher, params in checks + deletes:
+        assert "x.owner_id = $owner" in cypher
+        assert params["owner"] == OWNER
+    tomb = [(c, p) for c, p in fake.calls if "MERGE (t:_Tombstone" in c]
+    assert tomb, "재전파용 자기 tombstone 이 기록돼야 한다"
+    assert tomb[0][1]["da"] < "2099", "미래로 조작된 deleted_at 이 서버 클록으로 clamp 돼야 한다"
+
+
+def test_apply_stamp_loop_scopes_owner():
+    """merge_fragment 뒤 결정된 스탬프를 덮어쓰는 루프 — owner 없이 id 로만 MATCH
+    하면 교차테넌트로 건너뛴 노드도 rev/sync_seq 가 찍혀 피해자 병합기준이 오염된다."""
+    fake = _SubFake()
+    sync.apply_delta(owner=OWNER, bundle={
+        "nodes": [_node(0)], "edges": [],
+    }, store=fake)
+    stamps = [(c, p) for c, p in fake.calls
+              if "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq" in c]
+    assert stamps, "노드가 있으면 스탬프 루프가 최소 한 번 돌아야 한다"
+    for cypher, params in stamps:
+        assert "AND x.owner_id = $owner" in cypher
+        assert params["owner"] == OWNER
+
+
 # ── LWW / 에코 차단 ───────────────────────────────────────────────────────────
 def _n(ua: str, rev: int) -> dict:
     return {"id": "concept:x", "type": "concept", "_updated_at": ua, "_rev": rev}

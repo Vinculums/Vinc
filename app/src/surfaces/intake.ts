@@ -34,7 +34,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
           <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
           <div class="dz-actions">
             <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
-            <button class="btn" id="new-doc">${COPY.ui.atlasx.edNew}</button>
+            <button class="btn" id="new-doc">${COPY.ui.viewx.edNew}</button>
             ${WEB ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
           </div>
         </div>
@@ -206,7 +206,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
           ${r.failed.length ? `<p class="hint success-failed">${esc(ui.someFailed(r.failed.join(", ")))}</p>` : ""}
           <div class="concept-chips" id="concept-chips" hidden></div>
           <div class="success-actions">
-            <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>
+            <a class="btn btn-primary" href="#view">${COPY.intake.successCta}</a>
             <span id="extract-offer"></span>
             <button class="btn" id="add-more">${ui.addMore}</button>
           </div>
@@ -227,12 +227,12 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
     const n = await previewExtract(USER_OWNER, docIds);
     // 미리보기 중에 '계속 추가'로 화면이 갈렸을 수 있다 — 죽은 노드에 쓰지 않는다.
     if (!n || !el.contains(box)) return;
-    box.innerHTML = `<button class="btn" id="do-extract">${COPY.ui.atlasx.edExtractOffer(n)}</button>`;
+    box.innerHTML = `<button class="btn" id="do-extract">${COPY.ui.viewx.edExtractOffer(n)}</button>`;
     box.querySelector("#do-extract")!.addEventListener("click", async () => {
       box.innerHTML = `<span class="hint">${ui.importing}</span>`;
       const ap = await applyExtract(USER_OWNER, docIds);
       if (!el.contains(box)) return;
-      box.innerHTML = `<span class="hint">${COPY.ui.atlasx.edExtractDone(ap.created, ap.mentions)}</span>`;
+      box.innerHTML = `<span class="hint">${COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}</span>`;
       void loadConceptChips();   // 새 개념이 칩에 반영되도록 다시 읽는다
     });
   }
@@ -275,7 +275,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
   }
 
   // D30 — 설치 직후 60초 가치: 동봉 샘플 팩을 sample:demo 스코프로 수입하고
-  // 그 스코프로 전환해 Atlas 를 바로 체험. (Settings 의 Owner scope 로 본인 복귀.)
+  // 그 스코프로 전환해 View 를 바로 체험. (Settings 의 Owner scope 로 본인 복귀.)
   async function trySample() {
     el.innerHTML = `
       ${chrome}
@@ -295,7 +295,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
             <span class="success-check">${icon("check", 30)}</span>
             <h2>${ui.sampleLoaded}</h2>
             <div class="success-actions">
-              <a class="btn btn-primary" href="#atlas">${COPY.intake.successCta}</a>
+              <a class="btn btn-primary" href="#view">${COPY.intake.successCta}</a>
             </div>
           </div>
         </div>`;
