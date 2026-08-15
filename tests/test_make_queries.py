@@ -24,7 +24,19 @@ def _load():
     return mod
 
 
-@unittest.skipUnless(_FIXTURE.exists(), "코퍼스(Vinc/starter-packs, Vinc-docs)가 로컬에 없다")
+#: 커밋된 평가셋은 **두 코퍼스가 전부 있는 기계**에서 만들어졌다. `build()` 는 없는
+#: 코퍼스를 조용히 건너뛰므로, 하나라도 빠지면 재생산본이 더 적어져 바이트 대조가
+#: 실패한다. 여태 이 가드가 fixture 존재를 봤는데 fixture 는 커밋돼 있어 **언제나
+#: 참**이었다 — 자기 문구는 "코퍼스가 없으면 건너뛴다"인데 코퍼스를 안 보고 있었다.
+#: 로컬(폐기된 Vinc-docs 체크아웃이 남아 있는 기계)에서는 통과하고 CI 에서만 터졌다.
+def _corpora_present() -> bool:
+    m = _load()
+    root = pathlib.Path(__file__).resolve().parents[2]
+    return all((root / rel).exists() for _, rel in m._CORPORA)
+
+
+@unittest.skipUnless(_FIXTURE.exists() and _corpora_present(),
+                     "코퍼스(Vinc/starter-packs, Vinc-docs)가 로컬에 없다")
 class RegenerationTests(unittest.TestCase):
     def test_리팩터_후에도_커밋된_평가셋과_바이트단위로_같다(self):
         m = _load()
