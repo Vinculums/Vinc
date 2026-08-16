@@ -133,6 +133,16 @@ export async function renderView(el: HTMLElement) {
     return d;
   };
   const legend = lensSlot() ?? fallbackSlot("view-legend");
+  // ⚠ 이 폴백은 **상단 바가 없는 배치(임베드)** 를 위한 것이다. 상단 바는 있는데
+  // 슬롯만 못 찾으면 그건 임베드가 아니라 **이름이 어긋난 것**이고, 폴백이 그것을
+  // 조용히 삼켜 손잡이가 다른 자리로 옮겨 간다. 실제로 그렇게 됐다: F8 리네임이
+  // topbar.ts 와 app.css 는 `tb-viewpoints` 로 고쳤는데 index.html 만 `tb-views` 로
+  // 남아, 관점 세그가 상단 바에서 하단 크롬으로 내려앉았다(2026-08-16 규명).
+  // 아무것도 오류를 내지 않아 화면만 보고는 결정으로 읽힌다 — 그래서 말하게 한다.
+  if (lensSlot() && !viewpointsSlot()) {
+    console.warn("[view] 상단 바는 있는데 #tb-viewpoints 슬롯이 없다 — "
+      + "마크업과 조회 이름이 어긋났다. 관점 세그가 하단으로 떨어진다.");
+  }
   const viewpointsBar = viewpointsSlot() ?? fallbackSlot("view-viewpoints");
   const metricsBar = el.querySelector<HTMLElement>("#view-metrics")!;
   const float = el.querySelector<HTMLElement>("#view-float")!;
