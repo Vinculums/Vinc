@@ -257,7 +257,10 @@ export const api = {
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
   //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).
   graph: (owner: string, opts: { domain?: string; domains?: string[]; seed?: string;
-                                 depth?: number; layout?: string } = {}) => {
+                                 depth?: number; layout?: string;
+                                 //: 원뿔 반각 배율(hub 3D). 1 이 기본이라 그때는 안 싣는다 —
+                                 //: 안 싣는 요청이 여태와 같은 URL 이어야 캐시가 갈리지 않는다.
+                                 cone?: number } = {}) => {
     const { domains, ...rest } = opts;
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });

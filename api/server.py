@@ -288,6 +288,10 @@ class VincApp:
                                             domains=_domains(p.get("domains")),
                                             depth=_int(p.get("depth"), 2),
                                             layout=p.get("layout") or "radial",
+                                            # 원뿔 반각 배율(1.0 = 기본). 범위 클램프는
+                                            # query 가 한다 — 상한의 근거가 기하라서
+                                            # 계산하는 쪽에 두어야 한 곳에서만 산다.
+                                            cone=_float(p.get("cone"), 1.0),
                                             basis=p.get("basis") or q.BASIS_RECORDED,
                                             store=r))
 
@@ -1182,6 +1186,15 @@ def _domains(val) -> list[str] | None:
         return None
     out = [d.strip() for d in str(val).split(",")]
     return [d for d in out if d] or None
+
+
+def _float(val, default: float) -> float:
+    """숫자 아닌 값은 조용히 기본으로 — 배치 인자는 화면 손잡이라, 잘못된 값에
+    500 을 내는 것보다 여태의 그림을 내는 편이 낫다(범위는 query 가 잡는다)."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
 
 
 def _int(val, default: int) -> int:

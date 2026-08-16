@@ -116,6 +116,10 @@ export type ViewPrefs = {
   //     가중치 표현은 **여전히 농도**다. 이 값은 전역 배율일 뿐 가중치를 굵기로
   //     되돌리는 것이 아니다(그 구분이 무너지면 D33 이 무의미해진다).
   nodeScale: number;           // 0.5–2.5
+  /** 가지가 퍼지는 각도(hub · 3D). **서버가 읽는 두 번째 값**이다 — layout 과 함께
+   *  좌표를 다시 받아야 하므로, 이것이 바뀌면 재조회가 필요하다(다른 손잡이는
+   *  이미 받은 좌표의 표현만 바꾼다). 2D 는 부채꼴이라 이 값과 무관하다. */
+  cone: number;                // 0.3–1.4
   edgeScale: number;           // 0.5–3
   labels: "hover" | "none";
   arrows: boolean;             // directional arrowheads (prerequisite/derives/inherits)
@@ -176,7 +180,7 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 const KEY = "vinc.view.prefs";
 const DEFAULTS: ViewPrefs = {
   view: "3d", size: "links", nodeScale: 1, edgeScale: 1,
-  labels: "hover", arrows: true, edges: "focus", spread: 1,
+  labels: "hover", arrows: true, edges: "focus", spread: 1, cone: 1,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
   railW: 20,
@@ -194,6 +198,11 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) =>
 // 0.02 면 100칸이라 손을 따라온다. 값의 의미는 배율이므로 잘게 나눠도 무해하다
 // (표시는 소수 둘째 자리까지 — view.ts slider 의 fmt).
 export const NODE_SCALE = { min: 0.5, max: 2.5, step: 0.02 };
+/** 가지가 퍼지는 각도의 배율(hub · 3D 전용). 1 = 여태의 그림.
+ *  범위는 사이드카의 `_CONE_MIN`/`_CONE_MAX` 와 같은 값이어야 한다 — 클램프는
+ *  서버가 하지만, 슬라이더가 서버가 안 받는 구간까지 열려 있으면 끝에서 아무 일도
+ *  안 일어나 "손잡이가 죽었다"로 읽힌다. */
+export const CONE_SCALE = { min: 0.3, max: 1.4, step: 0.02 };
 export const EDGE_SCALE = { min: 0.5, max: 3, step: 0.02 };
 
 export function loadPrefs(): ViewPrefs {
@@ -223,6 +232,7 @@ export function loadPrefs(): ViewPrefs {
       // 저장값이 문자열로 돌아올 수 있어(구 버전·수기 편집) Number 로 접어 받는다.
       bundleDepth: BUNDLE_DEPTHS.includes(Number(p.bundleDepth) as BundleDepth)
         ? (Number(p.bundleDepth) as BundleDepth) : DEFAULTS.bundleDepth,
+      cone: clamp(p.cone, CONE_SCALE.min, CONE_SCALE.max, 1),
       bundleOff: Array.isArray(p.bundleOff)
         ? p.bundleOff.filter((k: unknown) => BUNDLE_RELS.includes(String(k))) : [],
       domainTint: p.domainTint === true,

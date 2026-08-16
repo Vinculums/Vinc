@@ -13,7 +13,7 @@ import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { openContextMenu, confirmDestructive } from "../components";
 
-import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
+import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
@@ -623,7 +623,7 @@ export async function renderView(el: HTMLElement) {
     }
     const pick = (...ks: string[]) => ks.filter((k) => flat.includes(k));
     return [
-      { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "nodeScale") },
+      { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "cone", "nodeScale") },
       { label: COPY.ui.panel.groupLines, keys: pick("edgeShow", "edgeWidth", "spread", "arrows") },
       { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked", "domainTint") },
     ].filter((g) => g.keys.length > 0);
@@ -634,7 +634,12 @@ export async function renderView(el: HTMLElement) {
     switch (p.view) {
       // `선 보이기`(edgeShow)는 둘 다에 있지만 **고를 수 있는 값이 다르다**
       // (edgeShowsFor) — 3D 는 입자, 2D 는 짚을 때만. sigma 에 입자가 없어서다.
+      // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
+      // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
+      // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
       case "3d":
+        return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
+                "spread", "edgeWidth", "edgeShow", "domainTint"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
                 "edgeWidth", "edgeShow", "domainTint"];
@@ -716,6 +721,9 @@ export async function renderView(el: HTMLElement) {
         LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
         + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread),
+      cone: slider("pref-cone", COPY.ui.panel.cone,
+        CONE_SCALE.min, CONE_SCALE.max, CONE_SCALE.step, p.cone)
+        + `<p class="hint sub">${esc(COPY.ui.panel.coneHelp)}</p>`,
       // 크기·굵기 **배율**(발주자 지시 2026-08-02). 위 `size` 는 무엇이 크고 작은지를
       // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다 — 인코딩은 그대로 두고
       // 화면 밀도만 취향에 맞춘다. 엣지는 D33 대로 가중치를 농도로 계속 말한다.
@@ -827,6 +835,10 @@ export async function renderView(el: HTMLElement) {
     // 산개는 3D/2D 에만 있는 행이라 평면 관점에서는 존재하지 않는다(? 필수).
     viewPanel.querySelector<HTMLInputElement>("#pref-spread")?.addEventListener("change", (e) =>
       applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }, "#pref-spread"));
+    // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
+    // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
+    viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
+      applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
     // 배율 둘은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
     // 바로 반영해 손끝에 붙게 한다. spread 는 레이아웃 인자라 change 로 두는 것과
     // 대비된다(그쪽은 사이드카 왕복이다).
@@ -996,8 +1008,10 @@ export async function renderView(el: HTMLElement) {
     const p = curPrefs();
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
     const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -1569,8 +1583,10 @@ export async function renderView(el: HTMLElement) {
     const whole = seed === undefined && !domains.length;
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
     const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -1643,8 +1659,10 @@ export async function renderView(el: HTMLElement) {
     // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
     const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다

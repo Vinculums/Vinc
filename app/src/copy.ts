@@ -339,6 +339,12 @@ const EN = {
        *  조용히 버리면 화면이 "연결이 없다"고 거짓말한다. */
       bundleSelf: (n: number) => `${n} inside a group, not drawn at this level`,
       nodeScale: "Node scale", edgeWidth: "Line weight",
+      // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
+      // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
+      cone: "Branch spread",
+      coneHelp: "How wide a topic's branch fans out from the centre. Narrow gathers "
+        + "each topic into a stalk; wide opens it into a fan. The flat map is unaffected: "
+        + "it lays the same tree out as sectors, which have no angle to widen.",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
@@ -979,6 +985,10 @@ const KO: Deck = {
       } as Record<string, string>,
       bundleSelf: (n) => `묶음 안쪽 ${n}개는 이 단에서 그리지 않습니다`,
       nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
+      cone: "가지 벌어짐",
+      coneHelp: "주제의 가지가 중심에서 얼마나 벌어질지를 정합니다. 좁히면 주제마다 "
+        + "한 줄기로 모이고, 넓히면 부채처럼 펼쳐집니다. 평면 지도는 같은 트리를 "
+        + "부채꼴로 눕히기 때문에 이 값과 무관합니다.",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
       lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 위에 오므로, "
