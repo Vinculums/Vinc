@@ -292,7 +292,9 @@ export function mountColumns(el: HTMLElement,
     .filter((e) => e.source !== e.target && seen.has(e.source) && seen.has(e.target));
   const label = COPY.ui.viewx.timelineChart(dated.length, lanes.length);
 
-  const PAD_L = 42, PAD_R = 22, TOP = 44, BOT = 26;
+  // TOP 은 44 였다. 연도 줄(2026-08-16)이 눈금 위에 한 단 더 서면서 14px 을 더 준다 —
+// 연도 22 · 밑줄 28 · 날짜 38 · 눈금 44~51 순으로 쌓인다.
+const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
   const COL_MIN = 15, COL_MAX = 46;   // 기둥 간격. 좁아지면 가로 스크롤이 받는다
   const SLOT = 12;                    // 점 하나가 세로로 차지하는 몫
   const R_MIN = 1.9, R_MAX = 5.2;
@@ -344,6 +346,34 @@ export function mountColumns(el: HTMLElement,
     // 눈금·띠·클릭 표적은 **줄이 아니라 구간** 단위다. 접힌 줄들이 한 덩어리로 읽혀야
     // "이 하루가 이만큼"이 유지된다 — 줄마다 이름을 달면 같은 날짜가 세 번 나온다.
     const step = Math.max(1, Math.ceil(38 / colW));
+    /** 기둥 이름은 **연도를 뗀 나머지**다. 여태 `2026-07-11` 을 통째로 찍어, 같은
+     *  연도가 기둥마다 반복되면서 정작 달과 날이 그 뒤에 묻혔다(발주자 지적
+     *  2026-08-16). 연도는 위 단이 한 번만 말한다. 연·십년 단에서는 키 자체가
+     *  연도라 뗄 것이 없다. */
+    const colName = (key: string) =>
+      grain === "day" || grain === "month" ? key.slice(5) : key;
+
+    /** 연도 묶음 — 이웃한 기둥들이 같은 해면 한 덩어리다. 연도는 그 덩어리 가운데에
+     *  한 번 서고, 밑줄이 어디까지가 그 해인지를 말한다. 눈금 이름과 달리 **건너뛰지
+     *  않는다**: 연도가 빠지면 그 구간이 어느 해인지 알 길이 없다. */
+    const yearSpans = (() => {
+      if (grain !== "day" && grain !== "month") return [];
+      const out: { y: string; from: number; n: number }[] = [];
+      for (const sp of span) {
+        const y = sp.m.slice(0, 4);
+        const last = out[out.length - 1];
+        if (last && last.y === y) last.n += sp.n;
+        else out.push({ y, from: sp.from, n: sp.n });
+      }
+      return out;
+    })();
+    const years = yearSpans.map((g) => {
+      const x0 = PAD_L + g.from * colW, wSpan = colW * g.n;
+      return `<path class="pl-ax pl-yr-rule" d="M${num(x0 + 1)} ${num(TOP - 30)}`
+        + ` L${num(x0 + wSpan - 1)} ${num(TOP - 30)}"/>`
+        + `<text class="pl-cap pl-num pl-yr" x="${num(x0 + wSpan / 2)}" y="${num(TOP - 36)}"`
+        + ` text-anchor="middle">${esc(g.y)}</text>`;
+    }).join("");
     const axis = span.map((s, i) => {
       const x0 = PAD_L + s.from * colW;
       const wSpan = colW * s.n;
@@ -352,7 +382,7 @@ export function mountColumns(el: HTMLElement,
       const tick = `<path class="pl-ax" d="M${num(cx)} ${num(TOP - 14)} L${num(cx)} ${num(TOP - 7)}"/>`;
       const name = i % step === 0
         ? `<text class="pl-cap pl-num" x="${num(cx)}" y="${num(TOP - 20)}"`
-          + ` text-anchor="middle">${esc(s.m)}</text>` : "";
+          + ` text-anchor="middle">${esc(colName(s.m))}</text>` : "";
       const hit = o.onMonth
         ? `<rect class="pl-band-hit" data-month="${esc(s.m)}" x="${num(x0)}" y="${num(y)}"`
           + ` width="${num(wSpan)}" height="${num(hh)}" fill="transparent"`
@@ -411,7 +441,7 @@ export function mountColumns(el: HTMLElement,
     // 점 **아래**에 두어 선이 마크의 hover·클릭을 가리지 않게 한다.
     return `<svg class="pl-svg pl-timeline pl-cols" aria-label="${esc(label)}"`
       + ` viewBox="0 0 ${num(W)} ${num(H)}" width="${num(W)}" height="${num(H)}">`
-      + `${axis}`
+      + `${years}${axis}`
       + (lineGs ? `<g class="pl-lins">${lineGs}</g>` : "")
       + `<g class="pl-hov"></g>${laneGs}</svg>`;
   }
