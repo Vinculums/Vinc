@@ -131,7 +131,11 @@ export type ViewPrefs = {
   /** 번들 — 끈 관계 타입. `edgeOff` 와 같은 이유로 **끈 목록**으로 저장한다:
    *  나중에 타입이 늘어도 저장된 값이 새 타입을 조용히 숨기지 않는다. */
   bundleOff: string[];
-  /** 주제 틴트 — 노드 잉크에 주제별 색조를 얹는다. **기본은 끔**(모노크롬).
+  /** 주제 틴트 — 노드 잉크에 주제별 색조를 얹는다. **기본은 켬**(발주자 지시
+   *  2026-08-16). 원래 끔이었는데, 그 기본이 실제 화면에서 뜻한 것은 "색이 없다"가
+   *  아니라 **"이 기능이 있는 줄 모른다"** 였다. 토글은 옵션 패널 안쪽에 있고,
+   *  Weave 에서 선이 전부 한 색으로 보이는 것을 고장으로 읽는 일이 실제로 있었다.
+   *  꺼도 아무 정보가 사라지지 않는다는 성질은 그대로다 — 끄는 쪽이 언제나 안전하다.
    *
    *  이것이 열린 층에 있는 이유: 색은 원래 닫힌 층이고(팩을 받은 쪽이 색을 다시
    *  매핑하면 보낸 사람과 다른 그래프를 보는데 아무도 오류를 안 낸다), 그래서
@@ -167,7 +171,7 @@ const DEFAULTS: ViewPrefs = {
   timelineLineage: false,
   bundleDepth: 3,
   bundleOff: [],
-  domainTint: false,
+  domainTint: true,
 };
 const clamp = (v: unknown, lo: number, hi: number, dflt: number) =>
   Math.min(hi, Math.max(lo, Number(v) || dflt));
