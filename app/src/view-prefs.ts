@@ -86,12 +86,26 @@ export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKin
  *  날아와 고리로 선다. 연결을 그림이 아니라 **움직임**으로 말한다. 3D 는 그 고리를
  *  카메라를 향한 평면에 세운다(월드 축에 세우면 각도에 따라 선으로 눌린다).
  *
- *  렌더러가 모르는 값을 받으면 그 렌더러의 기본 동작(`always`)으로 떨어진다 —
- *  관점을 옮겼다고 선이 조용히 사라지지 않게. */
+ *  렌더러가 모르는 값을 받으면 **그 렌더러의 가까운 등가물**로 간다(2026-08-16).
+ *  전에는 무조건 `always` 였는데, 그러면 `focus` 를 고른 사람이 3D 로 옮기는 순간
+ *  "상시 전량"으로 되돌아간다 — 고른 것과 정반대다. `focus` 와 `particles` 는 서로
+ *  다른 기능이 아니라 **같은 뜻의 두 표현**이다: 둘 다 "상시 전량 그리기를 그만둔다"
+ *  이고, 어느 쪽으로 그만두는지가 렌더러 사정으로 갈릴 뿐이다(sigma 에 입자가 없다).
+ *  그래서 그 둘 사이만 오간다. `bring` 은 양쪽이 다 알아들으므로 손댈 것이 없고,
+ *  정말 모르는 값(구버전 저장값 등)만 `always` 로 떨어진다 — 선이 조용히 사라지는
+ *  일은 여전히 없다. */
 export type EdgeShow = "always" | "focus" | "particles" | "bring";
 /** 관점마다 고를 수 있는 것이 다르다 — 보이는 손잡이는 반드시 무언가를 해야 한다. */
 export const edgeShowsFor = (view: Viewpoint): EdgeShow[] =>
   view === "3d" ? ["always", "particles", "bring"] : ["always", "focus", "bring"];
+
+/** 저장된 값을 **이 관점이 실제로 하는 것**으로 해석한다. 화면과 패널이 같은 함수를
+ *  거치므로, 3D 에서 `focus` 가 입자로 그려지는데 패널의 활성 칩만 아무것도 없는
+ *  상태가 되지 않는다(그 어긋남이 "손잡이가 안 먹는다"로 읽힌다). */
+export const edgeShowFor = (view: Viewpoint, v: EdgeShow): EdgeShow =>
+  edgeShowsFor(view).includes(v) ? v
+    : v === "focus" || v === "particles" ? (view === "3d" ? "particles" : "focus")
+    : "always";
 
 export type ViewPrefs = {
   view: Viewpoint;             // D43 — 관점 단일화(차원 토글을 흡수). 스코프는 trail 이 쥔다
@@ -162,7 +176,7 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 const KEY = "vinc.view.prefs";
 const DEFAULTS: ViewPrefs = {
   view: "3d", size: "links", nodeScale: 1, edgeScale: 1,
-  labels: "hover", arrows: true, edges: "always", spread: 1,
+  labels: "hover", arrows: true, edges: "focus", spread: 1,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
   railW: 20,

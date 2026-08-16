@@ -14,7 +14,7 @@ import { tintMap } from "../view-tint";
 import { openContextMenu, confirmDestructive } from "../components";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
-         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowsFor, isPlanar,
+         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
@@ -184,7 +184,14 @@ export async function renderView(el: HTMLElement) {
   const asAt = parts.indexOf("as");
   let hashViewpoint: Viewpoint | null =
     asAt > 0 && VIEWPOINTS.includes(parts[asAt + 1] as Viewpoint) ? (parts[asAt + 1] as Viewpoint) : null;
-  const curPrefs = (): ViewPrefs => (hashViewpoint ? { ...loadPrefs(), view: hashViewpoint } : loadPrefs());
+  /** 저장된 프리퍼런스를 **지금 관점이 실제로 하는 것**으로 해석해 내려보낸다.
+   *  해석을 여기 한 곳에 두는 이유: 패널의 활성 칩과 렌더러가 같은 값을 봐야 한다.
+   *  저장값 자체는 건드리지 않는다 — 사용자가 고른 뜻은 그대로 남고, 관점을 옮기면
+   *  그 관점의 표현으로 다시 해석될 뿐이다. */
+  const curPrefs = (): ViewPrefs => {
+    const p = hashViewpoint ? { ...loadPrefs(), view: hashViewpoint } : loadPrefs();
+    return { ...p, edges: edgeShowFor(p.view, p.edges) };
+  };
 
   function setMsg(html: string) {
     msg.innerHTML = html;
