@@ -1501,7 +1501,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 회전 겹 — 클릭한 노드를 3시로 보낸다. transform-origin 은 뷰박스가 원점 중심이라
    0 0 이 곧 링의 중심이다. 인라인 transition 은 spinTo 가 건다(회전할 때만). */
 .pl-bd-spin { transform-origin: 0 0; }
-.pl-bd-dot { fill: hsl(var(--muted-foreground)); }
+/* 주제 틴트가 켜져 있으면 그 색, 아니면 한 잉크. 관점 공통 규칙이다. */
+.pl-bd-dot { fill: var(--tint, hsl(var(--muted-foreground))); }
 .pl-bd-label {
   font-size: 8.5px; fill: hsl(var(--muted-foreground));
   dominant-baseline: middle; pointer-events: none;
@@ -1509,13 +1510,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 그룹(큰 도메인) 구분 — ⚠ **잠정**이다. 허브 토큰에 카테고리 팔레트가 없어
    (primitive 는 indigo/peri 모노크롬 + 기능색뿐) 링크 토큰의 색상환을 돌려 가른다.
    하드코딩 색이 아니므로 게이트는 통과하고, 팔레트가 생기면 이 블록만 바뀐다. */
-.pl-bd-link[data-g="1"], .pl-bd-leaf[data-g="1"] { filter: hue-rotate(50deg); }
-.pl-bd-link[data-g="2"], .pl-bd-leaf[data-g="2"] { filter: hue-rotate(100deg); }
-.pl-bd-link[data-g="3"], .pl-bd-leaf[data-g="3"] { filter: hue-rotate(150deg); }
-.pl-bd-link[data-g="4"], .pl-bd-leaf[data-g="4"] { filter: hue-rotate(200deg); }
-.pl-bd-link[data-g="5"], .pl-bd-leaf[data-g="5"] { filter: hue-rotate(250deg); }
-.pl-bd-link[data-g="6"], .pl-bd-leaf[data-g="6"] { filter: hue-rotate(300deg); }
-.pl-bd-link[data-g="7"], .pl-bd-leaf[data-g="7"] { filter: hue-rotate(330deg); }
 /* 초점 — 선택된 잎만 진해지고 글자가 커진다. 나머지를 흐리는 일은 hover 문법
    (.pl-fade)이 이미 하므로 여기서 되풀이하지 않는다. */
 .pl-bd-leaf.on .pl-bd-dot { fill: hsl(var(--foreground)); r: 3.5; }

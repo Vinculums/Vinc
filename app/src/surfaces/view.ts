@@ -1746,7 +1746,7 @@ export async function renderView(el: HTMLElement) {
         feed = nodes.filter((n) => keep.has(n.id));
       }
       planar = mountBundle(canvas, feed, curEdges, {
-        depth: p.bundleDepth, off: p.bundleOff, labels: p.labels !== "none",
+        depth: p.bundleDepth, off: p.bundleOff, labels: p.labels !== "none", tint: planarTints,
         // ⚠ 다른 평면 관점과 달리 클릭이 **스코프를 바꾸지 않는다**(l2 로 파고들지
         // 않는다). 이 관점의 값은 링 전체가 한 화면에 있다는 것인데, 파고들면 그
         // 링이 사라져 방금 돌린 회전도 함께 없어진다. 그래서 클릭 = 회전 + 상세
