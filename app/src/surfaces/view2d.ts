@@ -191,8 +191,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     return { b1: 0, b2: 0 };                                                // 채운 원 — 개념 · 결정
   };
 
-  /** 노드 잉크. 주제 틴트가 꺼져 있으면(기본) 모노크롬 잉크 그대로다. 초점은 틴트를
-   *  타지 않는다 — 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮으면 안 된다. */
+  /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
+   *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
+   *  뜻하므로 주제가 덮으면 안 된다. */
   const tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
   const inkOf = (n: GraphNode) => {
     if (n.id === o.seed) return point();
