@@ -174,9 +174,28 @@ async function call(path: string, params?: Record<string, string | number | unde
       location.assign("/login");
       throw new Error("session expired");
     }
+    // 503 = 사이드카는 살아 있는데 **스토어를 못 읽는다**(락 충돌·손상·확장 경로).
+    // 이 하나만 특별히 뜯는 이유: 나머지 실패와 달리 화면이 "데이터가 없다"로
+    // 오독되기 쉬운 유일한 상태이고, 그 오독이 곧 데이터 유실처럼 보인다.
+    // 사이드카가 사유(open_error)를 바디에 실어 주므로 여기서 꺼내 얹는다 —
+    // 안 그러면 호출부는 `503 {…json…}` 문자열만 받아 사람에게 못 보여 준다.
+    if (res.status === 503) {
+      const b = await res.json().catch(() => ({} as any));
+      const err: any = new Error(b?.open_error || b?.error || "no reachable store");
+      err.storeDown = true;
+      err.reason = String(b?.open_error || "");
+      throw err;
+    }
     throw new Error(`${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+/** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
+ *  나머지 실패는 다시 시도하면 되지만, 이건 **빈 결과와 구분되지 않아서** 위험하다. */
+export function storeDownReason(e: unknown): string | null {
+  const err = e as any;
+  return err?.storeDown ? (err.reason || "") : null;
 }
 
 /** 시간축(D72). `recorded` = 기록 시각, `content` = 문서 내용이 가리키는 시점. */

@@ -3,7 +3,7 @@
 // textarea 폴백. 무손실 규율: 저장은 편집기 문자열을 어떤 변형도 없이 /doc/put
 // 로 보낸다(verified 바이트 동일). 저장 = 디바운스 자동저장 + Ctrl/Cmd+S, 무음
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
-import { api, cfg } from "./api";
+import { api, cfg, storeDownReason } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
 
@@ -97,9 +97,23 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   if (docId && opts.initial === undefined) {
     host.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
-    const doc = await api.docGet(opts.owner, docId);
-    if (!doc.executed || doc.text === undefined) {
-      host.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
+    // 이 await 는 오래 try 밖에 있었다. `call()` 은 비 2xx 를 전부 던지므로
+    // (죽은 사이드카·500·그리고 2026-08-16 부터 스토어 미개방의 503) 예외가
+    // mountDocEditor 밖으로 새어 나가고, 호출부는 "문서를 여는 중"에서 굳는다.
+    // 여기서 받아 아래 실패 상자로 합류시킨다.
+    let doc: any = null;
+    let storeDown: string | null = null;
+    try {
+      doc = await api.docGet(opts.owner, docId);
+    } catch (e) {
+      storeDown = storeDownReason(e);      // 스토어 미개방이 아니면 null
+    }
+    if (!doc?.executed || doc.text === undefined) {
+      // 스토어를 못 읽는 것은 **문서 하나가 상한 것과 다른 사건**이다. 기본 문구는
+      // "잠시 후 다시 시도하세요"인데, 다른 Vinc 가 스토어를 물고 있는 동안에는
+      // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
+      host.innerHTML = `<p class="hint">${storeDown === null
+        ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
       return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";

@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, type GraphEdge, type GraphNode,
+import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { enableLasso, flyTo3d, findNode3d, mount3d,
@@ -1832,10 +1832,24 @@ export async function renderView(el: HTMLElement) {
         const seed = level.seed;
         setTimeout(() => { if (myGen === liveGen) flyToMounted(seed); }, 420);
       }
-    } catch {
+    } catch (e) {
       // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
-      setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
+      //
+      // 단 **스토어를 못 읽는 경우만은 다른 말**을 한다(2026-08-16). 그 상태에서
+      // 사이드카는 503 을 주고, 여기 "못 불러왔다"로 뭉개면 화면은 빈 지도와
+      // 구분되지 않는다 — 사용자가 보는 것은 "내 지식이 사라졌다"이다. 사유
+      // (락 충돌·손상)는 사람이 읽을 문장이 아니라서 접어 두고 열게 한다.
+      const why = storeDownReason(e);
+      if (why === null) {
+        setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
+      } else {
+        setMsg(`<div class="empty"><p>${COPY.view.storeDown}</p>${
+          why ? `<details><summary>${COPY.view.storeDownWhy}</summary><pre></pre></details>` : ""}</div>`);
+        // 사유는 드라이버·OS 가 만든 문자열(경로 포함)이라 마크업으로 붙이지 않는다.
+        const pre = msg.querySelector("pre");
+        if (pre) pre.textContent = why;
+      }
     } finally {
       setBusy(false);
     }

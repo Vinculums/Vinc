@@ -43,6 +43,11 @@ const EN = {
       `${dom}: ${n} documents · ${k} links to other topics. Click to see more.`,
     gatewayTip: (dom: string) => `Crosses into ${dom}. Click to follow.`,
     error: "The map couldn't load. Retry anytime. Your documents are untouched.",
+    // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
+    // 사이드카가 읽지 못하는 것을 빈 지도로 그리면 데이터 유실과 구분되지 않는다.
+    // 사유(락 충돌·손상)는 사람이 쓸 수 없는 문장이라 접어 두고 [자세히]로 연다.
+    storeDown: "Vinc can't read your knowledge store right now. Nothing is lost: this is a read problem, not missing data. Restart Vinc, and check that another copy isn't already running.",
+    storeDownWhy: "Details",
     retryCta: "Retry",
   },
   search: {
@@ -718,6 +723,8 @@ const KO: Deck = {
     domainTip: (dom, n, k) => `${dom}: 문서 ${n}개 · 다른 주제와 연결 ${k}개. 클릭하여 자세히 보기.`,
     gatewayTip: (dom) => `'${dom}' 주제로 이어집니다. 클릭해서 이동하세요.`,
     error: "지도를 불러오지 못했습니다. 언제든 다시 시도하세요. 문서는 그대로입니다.",
+    storeDown: "지금 지식 저장소를 읽지 못하고 있습니다. 내용이 사라진 것은 아니고 읽기가 막힌 상태입니다. Vinc를 다시 시작하고, 다른 창이 이미 실행 중이지 않은지 확인해 주세요.",
+    storeDownWhy: "자세히",
     retryCta: "다시 시도",
   },
   search: {
