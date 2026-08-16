@@ -832,22 +832,34 @@ export async function renderView(el: HTMLElement) {
       const out = viewPanel.querySelector<HTMLElement>(`#${s.id}-val`);
       if (out) s.addEventListener("input", () => { out.textContent = fmtVal(s.value); });
     });
-    // 산개는 3D/2D 에만 있는 행이라 평면 관점에서는 존재하지 않는다(? 필수).
-    viewPanel.querySelector<HTMLInputElement>("#pref-spread")?.addEventListener("change", (e) =>
-      applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }, "#pref-spread"));
+
     // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
     // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
     viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
       applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
-    // 배율 둘은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
-    // 바로 반영해 손끝에 붙게 한다. spread 는 레이아웃 인자라 change 로 두는 것과
-    // 대비된다(그쪽은 사이드카 왕복이다).
+    // 이 셋은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
+    // 바로 반영해 손끝에 붙게 한다.
+    //
+    // ⚠ `spread` 는 2026-08-16 까지 놓을 때(change)만 적용됐고, 그 옆 주석은 이유를
+    // "레이아웃 인자라 사이드카 왕복"이라고 적어 두었다. **틀린 말이었다.** 소비처를
+    // 전부 읽으면 spread 는 서버로 가지 않는다 — view3d 는 `SCALE * prefs.spread`,
+    // view2d 는 `px(n) * prefs.spread` 로 **받은 좌표에 곱할 뿐**이고, `/graph` 요청
+    // 어디에도 실리지 않는다. 왕복이 아닌 것을 왕복이라 믿어 손끝에서 떼어 놓았고,
+    // 그것이 "끊긴다"로 읽혔다(발주자 지적).
+    //
+    // 진짜 왕복은 `layout` 과 `cone` 둘뿐이다. 그 둘만 change 로 남는다.
     // 스텝을 0.1 → 0.02 로 잘게 나눈 만큼 input 이 다섯 배 자주 온다. 그대로 매번
     // 다시 그리면 손끝은 부드러워지고 화면이 밀린다 — **프레임당 한 번**으로 묶는다
     // (마지막 값만 쓰므로 중간 값을 버려도 결과가 같다).
-    const liveScale = (sel: string, key: "nodeScale" | "edgeScale") => {
+    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread") => {
       const s = viewPanel.querySelector<HTMLInputElement>(sel);
-      if (!s) return;
+      // 조용히 돌아가면 그 손잡이는 **아무 일도 안 하는 슬라이더**가 된다 — 끌리기는
+      // 하고 숫자도 움직이는데(값 표시는 별도 배선) 화면만 안 바뀐다. 행 목록과 이
+      // 배선이 어긋나는 순간 생기는 일이고, 어긋나도 아무것도 오류를 내지 않는다.
+      if (!s) {
+        console.warn(`[view] ${sel} 슬라이더가 패널에 없다 — 행 목록과 배선이 어긋났다.`);
+        return;
+      }
       let pending = 0;
       s.addEventListener("input", () => {
         if (pending) return;
@@ -859,6 +871,7 @@ export async function renderView(el: HTMLElement) {
     };
     liveScale("#pref-nodescale", "nodeScale");
     liveScale("#pref-edgescale", "edgeScale");
+    liveScale("#pref-spread", "spread");
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyViewpoint(b.dataset.view as Viewpoint)));
     // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
