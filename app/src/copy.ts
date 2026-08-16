@@ -115,6 +115,9 @@ const EN = {
       document: "Document",
       bridge: "Bridge",
       topic: "Topic",
+      // 관문은 화면에 그려지는 다섯째 마크인데 범례에 없었다. 범례가 가르치지 않는
+      // 형태가 화면에 서면, 읽는 사람은 그것을 고장이나 다른 종으로 읽는다.
+      gateway: "Elsewhere (not in this topic)",
       lines: "Line = relation",
       // D74 — 범례 항목이 스위치다. 힌트는 캡션 옆에 작게(항목마다 반복하면 소음).
       linesToggle: "click to hide",
@@ -316,10 +319,17 @@ const EN = {
       bundleDepth: "Bundling",
       bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
       bundleDepthHelp: {
-        1: "Lines join topic to topic. Every item stays on the ring.",
-        2: "Lines join kind to kind inside each topic. Every item stays on the ring.",
-        3: "Lines join item to item, fully opened up.",
+        1: "Lines join topic to topic. Every item stays on the ring, but a link "
+          + "inside one topic has nowhere to go and is dropped, which the caption counts.",
+        2: "Lines join kind to kind inside each topic. Every item stays on the ring, "
+          + "and links inside one kind are dropped, which the caption counts.",
+        3: "Lines join item to item. Nothing is dropped.",
       } as Record<string, string>,
+      // Weave 의 라벨은 지도와 뜻이 다르다. 지도는 짚어야 뜨지만 여기서는 **둘레에
+      // 들어갈 만큼** 상시로 뜬다(2026-08-16). 같은 이름에 같은 값을 쓰면 화면이
+      // 하지 않는 약속을 하게 된다.
+      labelsFit: "shown", labelsFitHelp: "As many as the ring has room for, the "
+        + "best-connected first. The rest answer on hover.",
       bundleRels: "Relations",
       relName: {
         PREREQUISITE_OF: "Prerequisite", DERIVES_FROM: "Derives", INHERITS_FROM: "Inherits",
@@ -790,6 +800,7 @@ const KO: Deck = {
       document: "문서",
       bridge: "다리",
       topic: "주제",
+      gateway: "여기 밖 (이 주제에 없음)",
       lines: "선 = 관계",
       linesToggle: "눌러서 숨기기",
       directed: "이어짐 (화살표가 방향)",
@@ -953,10 +964,14 @@ const KO: Deck = {
       bundleDepth: "선 묶기",
       bundleDepthName: { 1: "주제", 2: "종류", 3: "개별" } as Record<string, string>,
       bundleDepthHelp: {
-        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
-        2: "선이 주제 안의 종류끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
-        3: "선이 항목끼리 하나하나 이어집니다.",
+        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 있지만, 한 주제 안쪽의 "
+          + "연결은 갈 곳이 없어 버려집니다(버린 수는 아래에 적습니다).",
+        2: "선이 주제 안의 종류끼리 이어집니다. 한 종류 안쪽의 연결은 버려집니다"
+          + "(버린 수는 아래에 적습니다).",
+        3: "선이 항목끼리 하나하나 이어집니다. 버리는 것이 없습니다.",
       } as Record<string, string>,
+      labelsFit: "보임", labelsFitHelp: "둘레에 들어갈 만큼만 뜹니다. 연결이 많은 "
+        + "것부터이고, 나머지는 짚으면 답합니다.",
       bundleRels: "관계",
       relName: {
         PREREQUISITE_OF: "선행", DERIVES_FROM: "파생", INHERITS_FROM: "상속",

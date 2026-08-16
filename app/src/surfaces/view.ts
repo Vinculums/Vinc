@@ -223,9 +223,16 @@ export async function renderView(el: HTMLElement) {
     return `<div class="lg-body">
       <p class="hint lg-cap">${L.shapes}</p>
       ${mark(`<circle cx="8" cy="8" r="4.4"/>`, L.concept)}
-      ${mark(`<polygon points="${hex(8, 8, 6.6)}"/>`, L.document)}
+      <!-- ⚠ 육각이었다. 어느 렌더러도 육각을 그리지 않는다 — 3D 는 정사면체,
+           평면은 그 정면인 삼각, 2D 는 굵은 링이다(2026-08-15 Node Kit).
+           범례가 그리지 않는 형태를 가르치고 있었고, 그건 바로 위 주석이
+           금지한 그것이다. markSvg 와 같은 구성으로 맞춘다: 꼭짓점 각
+           -90·30·150, 외접원 1.08r(원과 시각 무게가 같은 비율). -->
+      ${mark(`<polygon points="8,3.25 12.11,10.38 3.89,10.38"/>`, L.document)}
       ${mark(`<polygon points="8,1.6 14.4,8 8,14.4 1.6,8"/>`, L.bridge)}
       ${mark(`<circle cx="8" cy="8" r="3.6"/><ellipse cx="8" cy="8" rx="7.2" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/>`, L.topic)}
+      <!-- 관문 = 자기 종의 윤곽선. 파선 비율은 markSvg 와 같다(.68r / .56r). -->
+      ${mark(`<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2.5"/>`, L.gateway)}
       <p class="hint lg-cap">${L.lines}${lineFilterable() ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
       <!-- ⚠ 범례는 **실제로 그려지는 것만** 가르친다. 정본(§1.2)은 파선=크로스 ·
            점선=Bridge 매개 · 이중선=상속을 규정하지만, 2D(sigma)·3D(three) 어느
@@ -618,7 +625,8 @@ export async function renderView(el: HTMLElement) {
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
       case "timeline": return ["basis", "docs", "lineage", "domainTint"];
-      // 번들 — 손잡이는 둘뿐이다. `단`은 선이 어느 계층에서 묶이는지(라벨은 안 줄어든다),
+      // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
+      // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
       case "bundle": return ["bundleDepth", "bundleRels", "labels", "domainTint"];
     }
@@ -656,9 +664,15 @@ export async function renderView(el: HTMLElement) {
       size: row(COPY.ui.panel.nodeSize,
         chip("size", "links", COPY.ui.panel.byConnections, p.size === "links")
         + chip("size", "uniform", COPY.ui.panel.uniform, p.size === "uniform")),
+      // ⚠ 같은 손잡이가 관점마다 다른 것을 뜻한다. 지도에서는 짚어야 뜨지만
+      // Weave 에서는 둘레에 들어갈 만큼 상시로 뜬다 — 그래서 값 이름도 갈린다.
+      // 한 이름으로 묶어 두면 화면이 하지 않는 약속("호버 시")을 하게 된다.
       labels: row(COPY.ui.panel.labels,
-        chip("labels", "hover", COPY.ui.panel.onHover, p.labels === "hover")
-        + chip("labels", "none", COPY.ui.panel.off, p.labels === "none")),
+        chip("labels", "hover",
+          p.view === "bundle" ? COPY.ui.panel.labelsFit : COPY.ui.panel.onHover,
+          p.labels === "hover")
+        + chip("labels", "none", COPY.ui.panel.off, p.labels === "none"))
+        + (p.view === "bundle" ? `<p class="hint sub">${esc(COPY.ui.panel.labelsFitHelp)}</p>` : ""),
       arrows: row(COPY.ui.panel.arrows,
         chip("arrows", "on", COPY.ui.panel.on, p.arrows)
         + chip("arrows", "off", COPY.ui.panel.off, !p.arrows)),
