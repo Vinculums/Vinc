@@ -243,6 +243,30 @@ def test_writes_and_conventions_carry_the_target_back():
     assert out["owner"] == "user:from-server"
 
 
+def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
+    """허브 프로파일(`allow_target=False`)에서는 `target` 을 **안 찍는다**.
+
+    라이브에서 물린 자리다(2026-08-17 배포 직후): 허브도 같은 깔때기를 도는데 거기서
+    target 은 언제나 "local" 이라, **원격으로 간 호출이 `"local"` 을 받아 왔다.**
+    그 값을 "remote" 로 덮는 것은 새 클라이언트뿐이고 데스크탑 업데이트는 사용자
+    클릭이라, 구 클라이언트에게는 계속 거짓이었다. 계정 그래프에 썼는지 확인하려고
+    이 필드를 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다 — 이 에코가 막으려던
+    바로 그 고장이다. 호출자의 local/remote 개념은 호출자만 아니까 안 답하는 것이 맞다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "owner": "user:hosted"}
+
+    out = T.call("vinc_ingest", {"nodes": []}, _FakeBridge(), allow_target=False)
+    assert "target" not in out, "자기가 곧 원격인 서버가 target 을 답했다"
+    assert out["owner"] == "user:hosted"       # owner 는 그대로 실린다
+    # 로컬 프로파일에서는 계속 찍는다(회귀 가드)
+    assert T.call("vinc_ingest", {"nodes": []}, _FakeBridge())["target"] == "local"
+
+
 def test_identity_stamp_stays_off_the_read_tools():
     """조회 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다."""
     from vinc_mcp import tools as T
