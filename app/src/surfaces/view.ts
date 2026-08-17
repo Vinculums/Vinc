@@ -63,6 +63,10 @@ const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
  *  상단 바)이라 값이 흩어져 있으면 어디서 보냈느냐에 따라 받는 쪽 그림이 달라진다. */
 const SHARE_DEPTH = 2;
 
+/** 리더 머리에 세울 개념 칩 수. 나머지는 "+N" 으로 센다 — 좁은 열에서 칩이 줄을
+ *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
+const READER_CHIPS = 6;
+
 // Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
 const curMode = (): ThemeMode =>
@@ -1595,14 +1599,22 @@ export async function renderView(el: HTMLElement) {
    *  신설 없이 View 안에 머문다(D15). 뒤로 = 노드 상세로 복귀. 밑줄 범위는
    *  백엔드 /doc/highlights(토큰 매칭 계산, 정확한 char offset)로 받아 첫 범위로
    *  스크롤한다. verified 배지로 "정본" 신뢰를 시각화. */
-  async function openReader(docId: string, conceptId: string) {
+  async function openReader(docId: string, conceptId?: string, offset?: number) {
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
     try {
-      const [doc, hl] = await Promise.all([
+      // 셋을 나란히 부른다. 밑줄과 머리는 **증강**이라 실패해도 문서는 열려야 한다 —
+      // Promise.all 은 하나만 거절돼도 전부를 버리므로 각자 강등본을 준비한다.
+      // (개념 없이 열면 밑줄 그을 대상 자체가 없어 부르지도 않는다.)
+      const [doc, hl, ctx] = await Promise.all([
         api.docGet(cfg.owner, docId),
-        api.docHighlights(cfg.owner, docId, conceptId),
-      ]);
+        conceptId
+          ? api.docHighlights(cfg.owner, docId, conceptId).catch(() => ({ executed: false }))
+          : Promise.resolve({ executed: false }),
+        api.docContext(cfg.owner, docId).catch(() => ({ executed: false })),
+      ]) as [Awaited<ReturnType<typeof api.docGet>>,
+             Partial<Awaited<ReturnType<typeof api.docHighlights>>>,
+             Partial<Awaited<ReturnType<typeof api.docContext>>>];
       if (detail.hidden) return;
       if (!doc.executed || doc.text === undefined) {
         detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
@@ -1616,6 +1628,28 @@ export async function renderView(el: HTMLElement) {
       const badge = doc.verified
         ? `<span class="badge">${COPY.ui.viewx.readerVerified}</span>`
         : `<span class="hint">${COPY.ui.viewx.readerUnverified}</span>`;
+      // 문서→노드. 여태 없던 방향이다 — 문서를 열어 놓고 "이건 무엇에 걸려 있나"를
+      // 물을 수 없었다. 0건이면 줄 자체를 안 그린다(빈 자리를 남기지 않는다).
+      const cons = ctx.concepts || [];
+      const chips = cons.slice(0, READER_CHIPS);
+      const mentionsHTML = cons.length === 0 ? "" : `
+        <p class="rdr-chips">
+          <span class="hint">${COPY.ui.viewx.readerMentions}</span>
+          ${chips.map((c) => `<button class="chip" data-go="${esc(c.id)}"
+             data-dom="${esc(c.domain)}">${esc(c.title || c.id)}</button>`).join("")}
+          ${cons.length > chips.length
+            ? `<span class="hint">${COPY.ui.viewx.relsMore(cons.length - chips.length)}</span>` : ""}
+        </p>`;
+      // 목차 — 리더 안의 지도. 접어 두는 이유는 이것이 본문이 아니라 길잡이라서다.
+      // 깊이는 들여쓰기로만 말한다(글자 크기를 건드리면 목차가 제목 행세를 한다).
+      const secs = ctx.sections || [];
+      const tocHTML = secs.length < 2 ? "" : `
+        <details class="rdr-toc">
+          <summary class="hint">${COPY.ui.viewx.readerOutline(secs.length)}</summary>
+          ${secs.map((s) => `<button class="rdr-sec" data-at="${s.char_start}"
+             style="padding-left:${Math.min(Math.max(s.level - 1, 0), 5) * 0.85}rem"
+             >${esc(s.title)}</button>`).join("")}
+        </details>`;
       detail.innerHTML = `
         <div class="rail-head">
           <span class="hint">${COPY.ui.viewx.readerTitle}</span>
@@ -1633,8 +1667,15 @@ export async function renderView(el: HTMLElement) {
         </p>
         ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
+        ${mentionsHTML}
+        ${tocHTML}
         <div id="rdr-host"></div>`;
       detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+      // 칩을 누르면 그 노드로 간다 — D70 의 약속("문서를 고르면 지도 어디인지 안다")을
+      // 문서 쪽에서도 지키는 문이다. 스코프가 바뀌면 레일은 노드 상세로 갈린다.
+      detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
+        b.addEventListener("click", () =>
+          void focusNode(b.dataset.go!, b.dataset.dom || undefined)));
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
         void handle?.dispose();
         if (lastNode) openDetail(lastNode); else closeRail();
@@ -1656,6 +1697,12 @@ export async function renderView(el: HTMLElement) {
         onStatus: (t) => { state.textContent = t; },
         highlights: hl.ranges || [],
       });
+      // 목차 클릭·청크 히트 착지 — 편집기가 이미 오프셋으로 스크롤할 줄 안다
+      // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.
+      detail.querySelectorAll<HTMLElement>(".rdr-sec").forEach((b) =>
+        b.addEventListener("click", () => handle.scrollToOffset(Number(b.dataset.at) || 0)));
+      if (offset !== undefined && offset > 0)
+        requestAnimationFrame(() => handle.scrollToOffset(offset));
       // peek→전체폭 승격 — 좁은 레일이 답답할 때 같은 문서를 시트로 연다.
       detail.querySelector("#rdr-expand")!.addEventListener("click", () => {
         handle.dispose();

@@ -1016,6 +1016,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .stat-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
 .stat-note { margin: var(--space-2, .5rem) 0 0; }
 .rail-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
+/* ── 리더 머리 — 본문 **앞에** 서는 두 줄: 이 문서가 무엇에 걸려 있고(칩) 어떤
+   모양인가(목차). 둘 다 길잡이지 본문이 아니므로 글자를 키우지 않는다. 목차의
+   깊이는 **들여쓰기로만** 말한다 — 크기로 말하면 목차가 제목 행세를 한다. */
+.rdr-chips { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; align-items: baseline;
+  margin: var(--space-2, .5rem) 0 0; }
+.rdr-chips .chip { cursor: pointer; font-size: .78rem; }
+.rdr-toc { margin: var(--space-2, .5rem) 0 0; }
+.rdr-toc > summary { cursor: pointer; }
+.rdr-sec {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  color: inherit; font: inherit; font-size: .82rem; cursor: pointer;
+  padding: .15rem 0; opacity: .8;
+}
+.rdr-sec:hover, .rdr-sec:focus-visible { opacity: 1; text-decoration: underline; }
 /* ── 문서 표면 — 렌더된 글이지 코드 상자가 아니다 ─────────────────────────
    스크롤은 **레일 하나만** 진다(문서는 자기 높이를 다 차지한다) — 중첩 스크롤은
    막대 두 개를 나란히 세우고 휠이 어디로 갈지도 예측 불가로 만든다.

@@ -434,6 +434,9 @@ const EN = {
       edLive: "Editing. Changes save as you type.",
       readerVerified: "Verified original",
       readerUnverified: "Reconstructed (not verified)",
+      // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
+      readerMentions: "Mentions",
+      readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "Edit",
       edNew: "New document",
@@ -1069,6 +1072,8 @@ const KO: Deck = {
       edLive: "편집 중. 입력하는 대로 저장됩니다.",
       readerVerified: "검증된 원본",
       readerUnverified: "복원본 (검증 안 됨)",
+      readerMentions: "언급",
+      readerOutline: (n) => `목차 · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "편집",
       edNew: "새 문서",

@@ -59,6 +59,9 @@ export type DocEditorHandle = {
   dispose: () => void;
   setEditable: (on: boolean) => void;
   isEditable: () => boolean;
+  /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
+   *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
+  scrollToOffset: (pos: number) => void;
 };
 
 export type DocEditorOpts = {
@@ -114,7 +117,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
       host.innerHTML = `<p class="hint">${storeDown === null
         ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
-      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
+      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false,
+               scrollToOffset: () => {} };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
@@ -336,6 +340,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       if (!on) void save();
     },
     isEditable: () => editable,
+    scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
   };
 }
 

@@ -33,6 +33,9 @@ export type CmHandle = {
   /** 개념 언급 위치(밑줄) 갱신 + 첫 위치로 스크롤. char 오프셋은 백엔드 계산값. */
   setHighlights: (ranges: { char_start: number; char_end: number }[]) => void;
   scrollToHighlight: () => void;
+  /** 임의 오프셋으로 스크롤 — 목차 클릭과 검색의 청크 히트 착지가 쓴다.
+   *  범위를 넘는 값은 문서 끝으로 잘린다(재청킹으로 오프셋이 어긋나도 튀지 않는다). */
+  scrollToOffset: (pos: number) => void;
 };
 
 // 인라인 문법 토큰 — 짝 기호를 숨기고(replace) 안쪽을 서식(mark). 순서 주의:
@@ -548,6 +551,12 @@ export function mountEditor(el: HTMLElement, opts: {
   });
   if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
   let hl: { char_start: number; char_end: number }[] = [];
+  /** 오프셋 하나로 스크롤. 문서 길이로 자르는 이유: 청크 오프셋은 저장 시점의
+   *  것이라 그 뒤 편집으로 짧아졌을 수 있다 — 넘는 값을 그대로 넣으면 던진다. */
+  const scrollTo = (pos: number) => {
+    const at = Math.max(0, Math.min(pos, view.state.doc.length));
+    view.dispatch({ effects: EditorView.scrollIntoView(at, { y: "center" }) });
+  };
   return {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
@@ -563,9 +572,8 @@ export function mountEditor(el: HTMLElement, opts: {
     },
     scrollToHighlight: () => {
       const first = hl.slice().sort((a, b) => a.char_start - b.char_start)[0];
-      if (!first) return;
-      const pos = Math.min(first.char_start, view.state.doc.length);
-      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+      if (first) scrollTo(first.char_start);
     },
+    scrollToOffset: scrollTo,
   };
 }
