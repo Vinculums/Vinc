@@ -129,9 +129,26 @@ export type ViewPrefs = {
   layout: ViewLayout;         // D34 preset — coords stay sidecar-computed (D17)
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
   railW: number;               // D70 — 우측 문서 패널 폭(rem). 끌어서 조절, 기기별 지속
-  // D72 — 타임라인 시간축. `recorded` = 기록 시각(기본), `content` = 내용상 시점.
+  // D72 — 시간축. `recorded` = 기록 시각(기본), `content` = 내용상 시점.
   // 관점(view)이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른 시계로 볼 뿐이다.
-  timelineBasis: TimeBasis;
+  //
+  // ⚠ 이름이 `timelineBasis` 였다(2026-08-17 개명). 타임라인 전용이던 시절의 이름인데
+  // 이제 지도의 시간 커서(`when`)가 같은 값을 읽는다 — **두 번째 시간 어휘를 만들지
+  // 않는다**가 그 결정의 일부였다(decision:time-is-a-control-not-a-viewpoint). 이름이
+  // 소유자를 잘못 말하면 다음 사람이 지도에서 축을 바꿔 놓고 타임라인만 바뀐 줄 안다.
+  timeBasis: TimeBasis;
+  /** **시간 커서**(2026-08-17 발주자 결정) — 0..1, 1 = 끔(전부 보임).
+   *
+   *  시간은 투영과 직교하므로 뷰포인트가 아니라 **세 번째 상태 축**이다: 3D 와 2D 가
+   *  이 하나를 공유한다. 값이 분수인 이유는 시각이 고르게 퍼져 있지 않아서다 —
+   *  절대 날짜를 자르면 아무 일도 안 일어나는 구간이 길게 생긴다. 실제 값들의
+   *  **분위수**로 읽으면 어느 위치에서도 무언가가 갈린다(`timeCutoff`).
+   *
+   *  타임라인·번들에는 이 손잡이를 안 낸다. 타임라인은 시간을 **축으로 펴 보이는**
+   *  곳이라 커서가 하는 일을 이미 스크롤이 한다 — 내놓으면 같은 말을 두 벌 하는
+   *  손잡이가 된다(폐기된 flow·totals 가 그렇게 걷혔다). 값은 남으므로 3D·2D 로
+   *  돌아오면 그대로 적용된다. */
+  when: number;
   /** D74 — 지금 그리는 연결선 갈래. 범례 항목을 눌러 끈다. 빈 배열이 아니라
    *  **없는 갈래 목록**으로 저장한다: 나중에 갈래가 늘어도 저장된 값이 새 갈래를
    *  조용히 숨기지 않는다(모르는 갈래는 켜짐이 기본). */
@@ -184,15 +201,22 @@ const DEFAULTS: ViewPrefs = {
   unlinked: "show", layout: "hub",
   timelineDocs: true,
   railW: 20,
-  timelineBasis: "recorded",
+  timeBasis: "recorded",
+  when: 1,
   edgeOff: [],
   timelineLineage: false,
   bundleDepth: 3,
   bundleOff: [],
   domainTint: true,
 };
-const clamp = (v: unknown, lo: number, hi: number, dflt: number) =>
-  Math.min(hi, Math.max(lo, Number(v) || dflt));
+// ⚠ `Number(v) || dflt` 였다(2026-08-17 수정). **0 을 없는 값으로 읽는다** — 시간
+// 커서가 0(가장 이른 시점)일 때 저장값이 기본 1(끔)로 조용히 뒤집혔다. 이 리포가
+// 불리언에서 이미 두 번 물린 것과 같은 뿌리다(`p.domainTint !== false`,
+// `p.edges == null`). 유한한 수면 그 값을 쓰고, 아닐 때만 기본으로 간다.
+const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+};
 // step 이 곧 **손끝의 해상도**다(2026-08-05). 0.1 이던 동안에는 0.5~2.5 구간에 정지점이
 // 20개뿐이라, 230px 짜리 트랙에서 11px 마다 한 칸씩 튀었다 — 끌면 계단처럼 움직인다.
 // 0.02 면 100칸이라 손을 따라온다. 값의 의미는 배율이므로 잘게 나눠도 무해하다
@@ -204,6 +228,34 @@ export const NODE_SCALE = { min: 0.5, max: 2.5, step: 0.02 };
  *  안 일어나 "손잡이가 죽었다"로 읽힌다. */
 export const CONE_SCALE = { min: 0.3, max: 1.4, step: 0.02 };
 export const EDGE_SCALE = { min: 0.5, max: 3, step: 0.02 };
+/** 시간 커서. step 이 잘아도 무해하다 — 위치는 분위수로 읽히므로 정지점이 값의
+ *  개수를 넘어서면 같은 컷오프가 반복될 뿐이다. */
+export const WHEN_SCALE = { min: 0, max: 1, step: 0.005 };
+
+/** 이 축에서 노드가 말하는 시각. 없으면 "" = **모름**(지어내지 않는다).
+ *  두 열은 페이로드에 **둘 다** 실려 온다(api.GraphNode) — 그래서 축 전환도, 커서도
+ *  재조회가 없다. */
+export const nodeTimeOn = (n: { ts?: string; content_ts?: string }, basis: TimeBasis): string =>
+  (basis === "content" ? n.content_ts : n.ts) || "";
+
+/** 커서 위치(0..1) → 잘라 낼 시각. 1 이면 "" 를 돌려준다 = 끔.
+ *
+ *  **분위수**인 이유: 기록 시각은 뭉쳐 있다(한 번의 적재가 수십 개를 같은 순간에
+ *  만든다). 최소~최대를 선형으로 자르면 슬라이더의 대부분 구간에서 아무 일도 안
+ *  일어나고, 사람은 그것을 고장으로 읽는다. 값들 위에서 세면 어느 위치에서도 갈린다. */
+export function timeCutoff(times: string[], when: number): string {
+  if (when >= 1) return "";
+  const s = [...new Set(times.filter(Boolean))].sort();
+  if (!s.length) return "";
+  const i = Math.max(0, Math.min(s.length - 1, Math.round(when * (s.length - 1))));
+  return s[i];
+}
+
+/** 이 컷오프에서 보이는가. **시각을 모르는 노드는 언제나 보인다** — 개념에는 사건
+ *  날짜가 없고 그것은 결손이 아니라 사실이다(개념은 무시간이다). 모른다고 숨기면
+ *  화면이 없는 사실을 지어낸다. 비교는 사전식이고, 그래서 형식이 곧 계약이다
+ *  (`YYYY[-MM[-DD]]` · ISO 밀리초 — 둘 다 고정폭이라 사전순 = 시간순). */
+export const visibleAt = (t: string, cutoff: string): boolean => !cutoff || !t || t <= cutoff;
 
 export function loadPrefs(): ViewPrefs {
   try {
@@ -228,7 +280,10 @@ export function loadPrefs(): ViewPrefs {
       layout: normalizeLayout(p.layout),
       timelineDocs: p.timelineDocs !== false,
       railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)),
-      timelineBasis: p.timelineBasis === "content" ? "content" : "recorded",
+      // 구 키(`timelineBasis`)도 읽는다 — 개명이 저장값을 조용히 기본으로
+      // 되돌리면 축을 content 로 두고 쓰던 사람이 이유 없이 recorded 로 돌아간다.
+      timeBasis: (p.timeBasis ?? p.timelineBasis) === "content" ? "content" : "recorded",
+      when: clamp(p.when, WHEN_SCALE.min, WHEN_SCALE.max, 1),
       // 모르는 이름은 버린다 — 갈래가 폐기돼도 저장값이 유령 스위치를 남기지 않게.
       edgeOff: Array.isArray(p.edgeOff)
         ? p.edgeOff.filter((k: unknown) => EDGE_KINDS.includes(k as EdgeKind)) : [],

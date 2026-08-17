@@ -341,6 +341,12 @@ const EN = {
       nodeScale: "Node scale", edgeWidth: "Line weight",
       // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
+      when: "Time cursor",
+      whenAll: "All",
+      whenHelp: "Shows only what existed at that point, on the clock chosen below. "
+        + "Items with no time of their own stay visible: a concept has no event date, "
+        + "and that is a fact rather than a gap.",
+      groupTime: "Time",
       cone: "Branch spread",
       coneHelp: "How wide a topic's branch fans out from the centre. Narrow gathers "
         + "each topic into a stalk; wide opens it into a fan. The flat map is unaffected: "
@@ -987,6 +993,12 @@ const KO: Deck = {
       } as Record<string, string>,
       bundleSelf: (n) => `묶음 안쪽 ${n}개는 이 단에서 그리지 않습니다`,
       nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
+      when: "시간 커서",
+      whenAll: "전부",
+      whenHelp: "그 시점에 있던 것만 보여 줍니다. 어느 시계로 자를지는 아래에서 고릅니다. "
+        + "자기 시각이 없는 것은 계속 보입니다 · 개념에는 사건 날짜가 없고 그것은 "
+        + "빠진 것이 아니라 사실입니다.",
+      groupTime: "시간",
       cone: "가지 벌어짐",
       coneHelp: "주제의 가지가 중심에서 얼마나 벌어질지를 정합니다. 좁히면 주제마다 "
         + "한 줄기로 모이고, 넓히면 부채처럼 펼쳐집니다. 평면 지도는 같은 트리를 "

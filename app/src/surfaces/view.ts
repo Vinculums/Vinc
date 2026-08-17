@@ -14,6 +14,7 @@ import { tintMap } from "../view-tint";
 import { openContextMenu, confirmDestructive } from "../components";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+         WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
@@ -603,6 +604,10 @@ export async function renderView(el: HTMLElement) {
       { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "cone", "nodeScale") },
       { label: COPY.ui.panel.groupLines, keys: pick("edgeShow", "edgeWidth", "spread", "arrows") },
       { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked", "domainTint") },
+      // 시간은 **자기 묶음**을 갖는다 — 투영(3D·2D)과 직교하는 축이라 "그 밖"에
+      // 섞어 두면 다른 손잡이들과 같은 급으로 읽힌다. 축(basis)과 커서(when)는
+      // 한 쌍이다: 커서는 어느 시계를 자르는지 말하지 않으면 뜻이 없다.
+      { label: COPY.ui.panel.groupTime, keys: pick("when", "basis") },
     ].filter((g) => g.keys.length > 0);
   }
 
@@ -615,10 +620,10 @@ export async function renderView(el: HTMLElement) {
       // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
       case "3d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
-                "spread", "edgeWidth", "edgeShow", "domainTint"];
+                "spread", "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
-                "edgeWidth", "edgeShow", "domainTint"];
+                "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
@@ -636,13 +641,27 @@ export async function renderView(el: HTMLElement) {
    *  이제 값을 옆에 적고(`output`), 끄는 동안 그 숫자가 따라 움직인다. */
   const fmtVal = (v: number | string) => String(Math.round(Number(v) * 100) / 100);
   function slider(id: string, label: string, min: number, max: number,
-                  step: number, value: number): string {
+                  step: number, value: number, text?: string): string {
+    // `text` 를 준 손잡이는 값 표시가 숫자가 아니다(시간 커서 — 0.62 는 뜻이 없고
+    // 사람이 읽을 것은 잘린 날짜다). 끄는 동안의 갱신도 같은 규칙을 따라야 해서
+    // `data-fmt` 로 표시해 둔다(아래 input.slider 배선).
     return `<div class="slider-row">
       <label class="hint" for="${id}">${esc(label)}</label>
-      <output class="slider-val" id="${id}-val">${fmtVal(value)}</output>
-      <input class="slider" id="${id}" type="range"
+      <output class="slider-val" id="${id}-val">${esc(text ?? fmtVal(value))}</output>
+      <input class="slider" id="${id}" type="range"${text != null ? ' data-fmt="when"' : ""}
              min="${min}" max="${max}" step="${step}" value="${value}">
     </div>`;
+  }
+
+  /** 커서 위치를 사람이 읽는 시각으로. 끔이면 "전부". 지금 실린 노드들 위에서
+   *  세므로 스코프가 바뀌면 같은 위치라도 다른 날짜가 된다 — 그것이 분위수의 뜻이다. */
+  function whenLabel(when: number): string {
+    if (when >= 1) return COPY.ui.panel.whenAll;
+    const p = curPrefs();
+    const cut = timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), when);
+    // 기록 시각은 ISO 밀리초라 그대로 내면 길다 — 날짜까지만 자른다. 내용 시점은
+    // 이미 `YYYY[-MM[-DD]]` 라 자를 것이 없다.
+    return cut ? cut.slice(0, 10) : COPY.ui.panel.whenAll;
   }
 
   function drawViewPanel() {
@@ -697,6 +716,12 @@ export async function renderView(el: HTMLElement) {
         LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
         + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread),
+      // 시간 커서 — 값 표시는 분수가 아니라 **컷오프 자신**이다(0.62 는 아무 뜻도
+      // 없다). 끔은 "전부"로 적는다.
+      when: slider("pref-when", COPY.ui.panel.when,
+                   WHEN_SCALE.min, WHEN_SCALE.max, WHEN_SCALE.step, p.when,
+                   whenLabel(p.when))
+        + `<p class="hint sub">${esc(COPY.ui.panel.whenHelp)}</p>`,
       cone: slider("pref-cone", COPY.ui.panel.cone,
         CONE_SCALE.min, CONE_SCALE.max, CONE_SCALE.step, p.cone)
         + `<p class="hint sub">${esc(COPY.ui.panel.coneHelp)}</p>`,
@@ -719,10 +744,10 @@ export async function renderView(el: HTMLElement) {
       // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른
       // 시계로 볼 뿐이라 관점 세그(3D·2D·타임라인·Sankey) 옆에 두지 않는다.
       basis: row(COPY.ui.panel.timeBasis,
-        chip("timelineBasis", "recorded", COPY.ui.panel.basisRecorded,
-             p.timelineBasis === "recorded")
-        + chip("timelineBasis", "content", COPY.ui.panel.basisContent,
-               p.timelineBasis === "content")),
+        chip("timeBasis", "recorded", COPY.ui.panel.basisRecorded,
+             p.timeBasis === "recorded")
+        + chip("timeBasis", "content", COPY.ui.panel.basisContent,
+               p.timeBasis === "content")),
       // 번들 — 이 손잡이가 줄이는 것은 **선**이지 목록이 아니다. 도움말이 매 단마다
       // 그 사실을 되풀이하는 이유가 그것이다(줄었다고 항목이 사라진 줄 알면 오독이다).
       bundleDepth: row(COPY.ui.panel.bundleDepth,
@@ -811,13 +836,25 @@ export async function renderView(el: HTMLElement) {
     // "이 손잡이가 살아 있다"가 읽힌다(그 피드백이 없던 것이 "클릭만 먹는다"의 정체).
     viewPanel.querySelectorAll<HTMLInputElement>("input.slider").forEach((s) => {
       const out = viewPanel.querySelector<HTMLElement>(`#${s.id}-val`);
-      if (out) s.addEventListener("input", () => { out.textContent = fmtVal(s.value); });
+      if (out) s.addEventListener("input", () => {
+        out.textContent = s.dataset.fmt === "when"
+          ? whenLabel(Number(s.value)) : fmtVal(s.value);
+      });
     });
 
     // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
     // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
     viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
       applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
+    // 시간 커서도 **놓을 때** 적용한다. 서버는 안 부르지만(좌표는 그대로) 보이는
+    // 노드 집합이 바뀌므로 제자리 반영이 안 되고 재마운트가 필요하다 — 드래그마다
+    // 재마운트하면 손끝보다 화면이 느려진다. 숫자(=잘린 날짜)는 끄는 동안 따라
+    // 움직이므로 손잡이가 죽어 보이지는 않는다.
+    // ponytail: 놓을 때만 반영. 진짜 스크럽(끄는 내내 장면이 따라옴)은 렌더러가
+    // 노드를 제자리에서 숨길 수 있어야 한다(3D 는 nodeVisibility, 2D 는 필터) —
+    // 그 배선이 생기면 __update 화이트리스트에 `when` 을 넣고 input 으로 옮긴다.
+    viewPanel.querySelector<HTMLInputElement>("#pref-when")?.addEventListener("change", (e) =>
+      applyPrefs({ when: Number((e.target as HTMLInputElement).value) }, "#pref-when"));
     // 이 셋은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
     // 바로 반영해 손끝에 붙게 한다.
     //
@@ -994,6 +1031,33 @@ export async function renderView(el: HTMLElement) {
     return edges.map((e) => ({ source: e.source, target: e.target, type: e.type,
                                cross: e.cross_domain, confidence: e.confidence }));
   }
+  /** 시간 커서(2026-08-17 발주자 결정 — 시간은 뷰포인트가 아니라 **세 번째 상태 축**).
+   *
+   *  전부 클라이언트에서 한다. 페이로드가 노드마다 `ts` 와 `content_ts` 를 **둘 다**
+   *  싣고 오므로(api.GraphNode · `_apply_basis` 가 있는 이유가 그것이다) 커서는 서버
+   *  왕복이 0 이다. 재조회하는 커서는 애초에 쓸 수 없다 — 지금도 옵션 하나에 전량
+   *  재조회가 붙는다([[vinc.research.view-interaction-audit]]).
+   *
+   *  ⚠ **엣지는 끝점을 따라간다.** 노드를 숨기면 그 노드로 가는 선은 갈 곳이 없다.
+   *  여태 이 가지치기가 없어도 됐던 이유는 `filterUnlinked` 가 연결 0 인 노드만
+   *  숨겼기 때문이다(정의상 엣지가 없다) — 커서는 다르다. */
+  function timeCut(): string {
+    const p = curPrefs();
+    if (p.when >= 1) return "";
+    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), p.when);
+  }
+  function atTime<T extends { ts?: string; content_ts?: string }>(ns: T[]): T[] {
+    const cut = timeCut();
+    if (!cut) return ns;
+    const basis = curPrefs().timeBasis;
+    return ns.filter((n) => visibleAt(nodeTimeOn(n, basis), cut));
+  }
+  function pruneEdges(es: GraphEdge[], ns: { id: string }[]): GraphEdge[] {
+    if (!timeCut()) return es;
+    const live = new Set(ns.map((n) => n.id));
+    return es.filter((e) => live.has(e.source) && live.has(e.target));
+  }
+
   /** D32 — Unlinked 필터(열린 층): 고아(연결 0)를 숨긴다. 초점(seed)은 항상 유지. */
   function filterUnlinked(ns: N3[]): N3[] {
     if (loadPrefs().unlinked !== "hide") return ns;
@@ -1059,11 +1123,17 @@ export async function renderView(el: HTMLElement) {
     setMsg("");
     curEdges = res.edges || [];
     curNodes = nodes;
-    drawMetrics(nodes);
+    // 지표는 **커서가 고른 모집단**을 센다. 시간을 잘라 놓고 수는 전량을 말하면
+    // 그 줄이 화면을 거짓으로 서술한다. 다만 `unlinked` 는 반영하지 않는다 — 고아
+    // 칸이 곧 그것을 되돌리는 컨트롤이라, 숨긴 순간 0 이 되면 돌아올 길이 사라진다.
+    // 커서는 "이 읽기에 무엇이 존재하는가"이고 unlinked 는 "그중 무엇을 그리는가"다.
+    drawMetrics(atTime(nodes));
     // 초점 마크(닫힌 층의 단일 초점색)는 이제 **지금 짚고 있는 노드**가 든다. 예전엔
     // L2 씨앗이 그 자리였는데 층이 사라졌고, 스코프를 넓혀 데려온 노드가 어느 점인지
     // 말해 주는 일은 남아야 한다 — 카메라만 옮기면 "어디로 갔는지"가 안 남는다.
-    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId)), toL3(visibleEdges()), {
+    // 시간 필터는 **toN3 앞**이다 — N3 는 렌더 전용 형태라 시간 열을 안 들고 간다.
+    const shown3 = filterUnlinked(toN3(atTime(nodes), domains, lnbFocus.nodeId));
+    g3 = mount3d(canvas, shown3, toL3(pruneEdges(visibleEdges(), shown3)), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
@@ -1359,7 +1429,7 @@ export async function renderView(el: HTMLElement) {
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodLoading}</p>`;
     try {
-      const res = await api.docsInRange(cfg.owner, start, end, domain, p.timelineBasis);
+      const res = await api.docsInRange(cfg.owner, start, end, domain, p.timeBasis);
       if (detail.hidden) return;
       if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodFail}</p>`; return; }
       const items = res.items || [];
@@ -1666,9 +1736,9 @@ export async function renderView(el: HTMLElement) {
       return;
     }
     setMsg("");
-    drawMetrics(gnodes);
-    g2 = mount2d(canvas, gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) })),
-      visibleEdges(), {
+    drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
+    const shown2 = atTime(gnodes).map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
+    g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
       markId: lnbFocus.nodeId,
       onClick: (nd) => openDetail(toN3([nd])[0]),
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
@@ -1728,7 +1798,7 @@ export async function renderView(el: HTMLElement) {
     // D72 — 시간축은 여기서 고른다. 서버가 `content` 를 요청받으면 ts 를 이미 갈아
     // 끼워 주지만, 두 열이 다 실려 오므로 **재조회 없이** 바꿔 끼울 수 있다. 구
     // 사이드카에는 content_ts 자체가 없어 내용 축이 빈 상태로 정직하게 강등된다.
-    const onContent = p.timelineBasis === "content";
+    const onContent = p.timeBasis === "content";
     const planarTints = p.domainTint ? tintMap(gnodes.map((n) => n.domain), curMode()) : null;
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
