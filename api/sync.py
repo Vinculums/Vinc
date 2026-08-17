@@ -38,8 +38,14 @@ _SEL_KEY = "selected_domains"
 # 경로(_merge_node)가 쓰는 필드만 왕복 가능하다 — Concept 의 topic/one_liner/status/
 # stem, Episode 의 pinned 은 fragment 가 안 써서(엔진·preference 소관) 동기화하면
 # 유실된다. 그래서 sync 는 왕복 가능한 필드만 나른다(그 외는 기기 로컬로 남는다).
+# `content_time`(D72)은 **저작된 값**이라 여기 든다 — 사용자가 고칠 수 있으므로 두 기기가
+# 정당하게 다를 수 있고, 그러면 노드 타이브레이크가 판단할 일이다(제목·도메인과 같다).
+# 열이 있는 라벨에만 넣는다: Concept 뿐이다(Decision·Episode 에는 열이 없다 — 2026-08-17
+# 실엔진 확인. 넣으면 `_local_snapshot` 의 SELECT 가 Binder 로 죽는다).
+# ⚠ `created`(출생)는 **여기 넣지 않는다.** 편집이 아니라 3-way 병합의 대상이 아니고,
+# 규칙이 다르다(아래 `_reconcile_birth` — 가장 이른 값이 이긴다).
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
-    "Concept": ("title", "domain", "tags", "props"),
+    "Concept": ("title", "domain", "tags", "props", "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
     # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
     # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
@@ -227,6 +233,10 @@ def _concepts_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
         "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, "
         "c.props AS props, c.updated_at AS updated_at, c.rev AS rev, "
+        # D72 두 시간열. 안 실으면 수신 기기가 자기 시각으로 출생을 새로 찍어 같은
+        # 노드가 기기마다 다른 생일을 갖는다(2026-08-17 두 스토어 실측: 1초 차이).
+        # 문서 경로(api/docsync)는 이미 같은 이유로 둘을 싣고 있었다 — 노드만 빠져 있었다.
+        "c.created AS created, c.content_time AS content_time, "
         "c.sync_seq AS sync_seq ORDER BY c.sync_seq"
     )
     return q.QueryPlan("sync_concepts", cypher, params, note="owner+domain scoped delta")
@@ -259,6 +269,9 @@ def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Qu
         f"MATCH (d:Decision) WHERE {' AND '.join(where)} "
         "RETURN d.decision_id AS id, d.title AS title, d.domain AS domain, "
         "d.tags AS tags, d.props AS props, d.updated_at AS updated_at, "
+        # `created` 만 — Decision 에는 `content_time` 열이 **없다**(v12 가 라이브 68건
+        # 실측으로 빈 열을 안 만들었다; 2026-08-17 재확인). 실으면 Binder 로 죽는다.
+        "d.created AS created, "
         "d.rev AS rev, d.sync_seq AS sync_seq ORDER BY d.sync_seq"
     )
     return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
@@ -275,7 +288,11 @@ def _node_from_concept(r: dict) -> dict:
     return {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
+            # 내용 시점은 **본문**으로(3-way 병합 대상), 출생은 **스탬프**로(_ 접두 —
+            # 병합하지 않고 `_reconcile_birth` 가 따로 처리한다).
+            "content_time": r.get("content_time") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
@@ -290,6 +307,7 @@ def _node_from_decision(r: dict) -> dict:
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
@@ -495,6 +513,37 @@ def _local_snapshot(store, label: str, pk: str, nid: str) -> dict | None:
     return snap
 
 
+#: 출생(`created`) 열을 가진 동기화 라벨. Episode 에는 그 열이 **없다**(2026-08-17
+#: 실엔진 확인) — 넣으면 아래 문장이 Binder 로 죽는다.
+_BIRTH_LABELS = ("Concept", "Decision")
+
+
+def _reconcile_birth(store, label: str, pk: str, nid: str, born: str, owner: str) -> None:
+    """노드 출생 시각을 **가장 이른 값으로** 수렴시킨다.
+
+    왜 3-way 병합이 아닌가: 출생은 편집이 아니라서 "충돌"이 뜻을 갖지 않는다. min 은
+    교환·결합·멱등이라 어느 순서로 동기화하든 모든 기기가 같은 값에 닿고 타이브레이크가
+    필요 없다. 뜻도 정직하다 — 어느 기기든 이 노드를 **처음 본 시각**이 그 노드가 이
+    공간에 들어온 때의 최선 추정이다. 빈 값은 이기지 못하므로, 출생을 모르는 기기는
+    들은 값을 받아들인다.
+
+    **모든 인바운드 노드에** 부른다(쓰기가 일어난 것만이 아니라). 병합 결과가 로컬과
+    같으면(`skipped_stale`) 쓰기 자체가 없는데, 그때 건너뛰면 이미 갈라진 출생이 영영
+    만나지 못한다.
+
+    ⚠ `IS NULL` 은 방어적 군더더기가 아니다: 문서 추출 경로가 추적열을 안 찍던 시절의
+    행이 NULL 을 갖고 있다(af7a973 이전). owner 술어도 필수다 — merge_fragment 의
+    SEC-3 가드가 교차테넌트 노드를 건너뛰어도 여기서 id 로만 MATCH 하면 남의 행을
+    고친다(risk-audit 2026-08-05 §3.2, 위 스탬프 루프와 같은 이유)."""
+    if not born or label not in _BIRTH_LABELS:
+        return
+    store.run(
+        f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+        "AND (x.created IS NULL OR x.created = '' OR x.created > $born) "
+        "SET x.created = $born",
+        {"id": nid, "owner": owner, "born": born})
+
+
 def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dict:
     """병합 결과(snapshot)를 merge_fragment 가 쓸 수 있는 노드로. props=dict, tags=list."""
     node = {"id": nid, "type": ntype}
@@ -519,6 +568,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
 
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
+    births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
         label = _SYNC_TYPES.get(ntype or "")
@@ -539,6 +589,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                 continue
             del_tombstone(store, nid)
             out["resurrected"] += 1
+
+        # 삭제가 이긴 노드는 위에서 이미 continue 했다 — 지운 노드의 열을 되살리지
+        # 않으려고 여기서 모은다(부활한 경우는 살아났으므로 포함이 맞다).
+        births.append((label, pk, nid, n.get("_created") or ""))
 
         local = _local_snapshot(store, label, pk, nid)
 
@@ -593,6 +647,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                   "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
                   {"id": node["id"], "owner": owner, "ua": w["ua"], "rev": int(w["rev"]),
                    "seq": revstamp.next_seq(store, owner)})
+    # 출생 화해는 **스탬프 루프 뒤**다: 신규 노드는 방금 merge_fragment 가 수신측
+    # 시각으로 `created` 를 찍었으므로(fragment `_merge_node`), 그 위에 min 을 얹어야
+    # 원본의 출생이 남는다.
+    for label, pk, nid, born in births:
+        _reconcile_birth(store, label, pk, nid, born, owner)
     for nid, label, fields, rev, ua in base_updates:
         set_base(store, nid, label, fields, rev, ua)
 
