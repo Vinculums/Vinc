@@ -34,6 +34,38 @@ import { COPY } from "../copy";
  *  WCAG 1.4.13(dismissable·hoverable·persistent)을 하나도 만족하지 못해 전면
  *  교체했다. 실제 표시는 tooltip.ts 의 단일 오버레이가 담당한다. */
 
+/** 종별 마크를 **텍스처 한 장**으로 굽는다 — 2D(sigma)가 쓸 것.
+ *
+ *  왜 여기 있나: 굽는 원본이 `markSvg` 그 자체다. 2D 가 자기 어휘를 따로 들면
+ *  같은 노드가 화면마다 다른 종으로 읽힌다(정본 §3.1 이 금지한 것). 여태 2D 는
+ *  동심 띠로 원 계열만 그려 삼각형·마름모·파선을 링으로 **다시 매핑**하고 있었다.
+ *  같은 함수를 구우면 일치가 규율이 아니라 **구조**로 보장된다.
+ *
+ *  흰 실루엣으로 굽는 이유: sigma 의 이미지 프로그램을 `drawingMode:"color"` 로
+ *  쓰면 이 그림을 **마스크**로 삼아 노드의 `color` 로 칠한다. 그래서 잉크·주제
+ *  틴트·초점·물러남이 여태처럼 색 하나만 갈아 끼우면 되고, 이 파일은 형태만 안다.
+ *
+ *  ⚠ 결과가 `data:` URI 다. 그림이 안 보이면 먼저 CSP 의 `img-src` 를 볼 것 —
+ *  `default-src 'self'` 로 폴백되면 조용히 차단된다(2026-08-17 홈페이지에서 그 고장으로
+ *  하루를 썼다. 앱·사이트 양쪽 CSP 에 `data:` 를 열어 두었다). */
+const TEX = 64, TEX_R = 24;          // 넉넉한 여백 — 파선 링과 삼각형 꼭짓점이 잘리지 않게
+const texCache = new Map<string, string>();
+export function markTexture(kind: string | undefined, gateway: boolean): string {
+  const key = `${kind || "concept"}|${gateway ? 1 : 0}`;
+  const hit = texCache.get(key);
+  if (hit) return hit;
+  // 흰 실루엣. 채움은 상속시키고, 인라인 `fill="none"`(관문)은 그대로 이긴다.
+  // stroke-width 는 평면 마크의 CSS 값(1.4)을 반경 비율로 옮긴 값이다.
+  const body = markSvg(kind, gateway, TEX / 2, TEX / 2, TEX_R, "");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TEX} ${TEX}" width="${TEX}" height="${TEX}">`
+    // ds-allow: 마스크의 흰색은 디자인 색이 아니라 곱셈의 항등원이다 — sigma 가
+    // `drawingMode:"color"` 로 이 그림에 노드 color 를 곱해 칠한다(view3d.ts 스프라이트와 같은 사유).
+    + `<g fill="#fff" stroke="#fff" stroke-width="${(1.4 * TEX_R) / 5.2}">${body}</g></svg>`;
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  texCache.set(key, url);
+  return url;
+}
+
 /** `focus(id)` 는 hover 로만 되던 강조를 **밖에서도** 걸 수 있게 연다(D70) —
  *  좌측 트리·검색 착지가 평면 관점에서도 같은 노드를 가리켜야 하기 때문이다.
  *  마운트된 집합에 없으면 false 를 돌려주고 호출측이 스코프 교체를 판단한다. */

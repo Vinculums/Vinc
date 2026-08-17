@@ -350,8 +350,10 @@ const EN = {
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
       lineage: "Cause and effect",
-      lineageHelp: "Draws the links that say what led to what. The cause sits above, "
-        + "so a line crossing branches means another topic caused it.",
+      // 시간축이 가로가 된 뒤(기둥 문법 2026-08-14) 원인은 왼쪽이다. "위"라고 적혀
+      // 있던 것을 2026-08-17 에 고쳤다.
+      lineageHelp: "Draws the links that say what led to what. The cause sits to the left, "
+        + "so a line that leaps far to the right names a late effect.",
       // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다. 도움말이 끄고도 아무것도 잃지 않음을 밝힌다.
@@ -479,8 +481,8 @@ const EN = {
         RELATED_TO: (a: string, b: string) => `${a} and ${b} are related.`,
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
-      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "Timeline and Weave are under Viewpoint.",
+      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동). 관점 발견 힌트는
+      // 세그먼트가 상단 바로 간 뒤 띄우는 코드가 없어 2026-08-17 에 지웠다.
       soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
@@ -993,8 +995,8 @@ const KO: Deck = {
         + "손을 놓을 때 적용됩니다.",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
-      lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 위에 오므로, "
-        + "가지를 가로지르는 선은 다른 주제가 원인이라는 뜻입니다.",
+      lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 왼쪽에 오므로, "
+        + "오른쪽으로 멀리 뻗은 선은 한참 뒤에 나온 결과라는 뜻입니다.",
       domainTint: "주제별 색조",
       domainTintHelp: "주제마다 다른 색조를 입힙니다. 강조일 뿐이라 꺼도 잃는 것이 "
         + "없습니다. 주제는 이미 자리가 말하고 있습니다.",
@@ -1109,8 +1111,7 @@ const KO: Deck = {
         RELATED_TO: (a, b) => `${a}과(와) ${b}은(는) 서로 관련되어 있습니다.`,
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
-      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "타임라인 · 짜임은 관점 전환 안에 있습니다.",
+      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,

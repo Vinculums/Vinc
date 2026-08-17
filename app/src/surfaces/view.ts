@@ -3,8 +3,8 @@ import Sigma from "sigma";
 import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
-import { enableLasso, flyTo3d, findNode3d, mount3d,
-         type L3, type N3 } from "./view3d";
+import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d,
+         type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { bucketRange, mountColumns, pickGrain, timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
@@ -170,6 +170,9 @@ export async function renderView(el: HTMLElement) {
   }
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
+  /** 옵션 재마운트에 넘길 카메라(view3d.Cam3). show(…, {keepCamera}) 가 채우고
+   *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
+  let keepCam: Cam3 | null = null;
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
   let planar: PlanarHandle | null = null;           // 평면 관점(타임라인 · 번들)
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
@@ -248,8 +251,11 @@ export async function renderView(el: HTMLElement) {
       ${mark(`<polygon points="8,3.25 12.11,10.38 3.89,10.38"/>`, L.document)}
       ${mark(`<polygon points="8,1.6 14.4,8 8,14.4 1.6,8"/>`, L.bridge)}
       ${mark(`<circle cx="8" cy="8" r="3.6"/><ellipse cx="8" cy="8" rx="7.2" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/>`, L.topic)}
-      <!-- 관문 = 자기 종의 윤곽선. 파선 비율은 markSvg 와 같다(.68r / .56r). -->
-      ${mark(`<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2.5"/>`, L.gateway)}
+      <!-- 관문 = 자기 종의 윤곽선. 파선 비율은 markSvg 와 같다(.68r / .56r).
+           Weave 는 관문 윤곽을 안 그리므로(view-bundle markSvg(gateway=false)) 거기선
+           이 행을 빼는 것이 "그리지 않는 것은 가르치지 않는다"는 위 규칙이다. -->
+      ${curPrefs().view === "bundle" ? "" :
+        mark(`<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2.5"/>`, L.gateway)}
       <p class="hint lg-cap">${L.lines}${lineFilterable() ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
       <!-- ⚠ 범례는 **실제로 그려지는 것만** 가르친다. 정본(§1.2)은 파선=크로스 ·
            점선=Bridge 매개 · 이중선=상속을 규정하지만, 2D(sigma)·3D(three) 어느
@@ -554,9 +560,8 @@ export async function renderView(el: HTMLElement) {
     viewPanel.hidden = false;
     positionPanel();
     lensBtn?.setAttribute("aria-expanded", "true");
-    // 발견 힌트는 "한 번 열면" 끝난다 — 쓰는 곳도 읽는 곳도 하나씩.
-    localStorage.setItem("vinc.view.viewpoints.seen", "1");
-    if (lassoHint.textContent === COPY.ui.viewx.viewpointsHint) lassoHint.hidden = true;
+    // (관점 발견 힌트와 그 seen 플래그는 2026-08-17 에 걷어냈다 — 세그먼트가 상단 바로
+    //  올라간 뒤 힌트를 띄우는 코드가 없어 쓰는 곳 없이 지우는 곳만 남아 있었다.)
     drawViewPanel();
     // 활성 칩이 없는 프레임(Compare — 관점도 프레임도 활성이 아니다)에서도 포커스는
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
@@ -934,7 +939,10 @@ export async function renderView(el: HTMLElement) {
     const lv = trail[trail.length - 1];
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    if (rowsFor(lv, curPrefs()).length > 0) await show(lv, false, { keepPanel: true });
+    // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 카메라를 잇는다.
+    const relayout = "layout" in mut || "cone" in mut;
+    if (rowsFor(lv, curPrefs()).length > 0)
+      await show(lv, false, { keepPanel: true, keepCamera: !relayout });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
     if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
   }
@@ -1052,7 +1060,8 @@ export async function renderView(el: HTMLElement) {
         else openDetail(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
-    }, p);
+    }, p, keepCam);
+    keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     wireLasso();
   }
 
@@ -1850,8 +1859,12 @@ export async function renderView(el: HTMLElement) {
    *  (가리키던 층이 사라지므로), 옵션을 고쳐 같은 층을 다시 그리는 경우는 층 전환이
    *  아니다 — 그때 닫으면 "고르면 모달이 닫힌다"가 된다(발주자 지적 2026-08-05).
    *  연속 조정이 이 패널의 존재 이유이므로 그 경로만 예외로 둔다. */
-  async function show(level: Level, push = true, opts?: { keepPanel?: boolean }) {
+  async function show(level: Level, push = true,
+                      opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
     setBusy(true);
+    // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
+    // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
+    keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다

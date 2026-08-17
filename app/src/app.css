@@ -1507,9 +1507,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-bd-spin { transform-origin: 0 0; }
 /* 주제 틴트가 켜져 있으면 그 색, 아니면 한 잉크. 관점 공통 규칙이다. */
 .pl-bd-dot { fill: var(--tint, hsl(var(--muted-foreground))); }
+/* 라벨도 클릭 대상이다 — pointer-events 를 끄면 잎의 히트 영역이 반지름 2 의 점 하나로
+   줄어든다(실측 2026-08-17: 5px). 읽는 곳이 곧 누르는 곳이어야 한다. */
 .pl-bd-label {
   font-size: 8.5px; fill: hsl(var(--muted-foreground));
-  dominant-baseline: middle; pointer-events: none;
+  dominant-baseline: middle;
 }
 /* 그룹(큰 도메인) 구분 — ⚠ **잠정**이다. 허브 토큰에 카테고리 팔레트가 없어
    (primitive 는 indigo/peri 모노크롬 + 기능색뿐) 링크 토큰의 색상환을 돌려 가른다.

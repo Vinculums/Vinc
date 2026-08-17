@@ -1,7 +1,7 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
-import { createNodeBorderProgram } from "@sigma/node-border";
+import { createNodeImageProgram } from "@sigma/node-image";
 import type { GraphEdge, GraphNode } from "../api";
 import { COPY } from "../copy";
 import { icon } from "../icons";
@@ -9,6 +9,7 @@ import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { recede } from "../recede";
+import { markTexture } from "./view-planar";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -182,14 +183,19 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  **테두리로 옮긴 축약**이라 정확한 1:1 은 아니다. 테두리는 각을 못 만들어
    *  정사면체와 정팔면체가 둘 다 원 계열로 떨어지고, 파선도 못 그린다. 대신 갈리는
    *  것은 채움 · 비움 · 겹의 셋이고, 6px 마크에서 실제로 읽히는 것은 거기까지다. */
-  const markOf = (n: Node2d): { b1: number; b2: number } => {
-    if (n.gateway) return { b1: 0.12, b2: 0.88 };                           // 얇은 링 — 면이 없다
-    if (n.kind === "domain") return { b1: 0.10, b2: 0.48 };                  // 외피 + 코어(겹껍질)
-    if (n.kind === "bridge") return { b1: 0.24, b2: 0.24 };                  // 링 + 코어(매개)
-    if (n.kind && n.kind !== "concept" && n.kind !== "decision")
-      return { b1: 0.30, b2: 0.70 };                                        // 굵은 링 — 문서류
-    return { b1: 0, b2: 0 };                                                // 채운 원 — 개념 · 결정
-  };
+  /** 마크 = 노드종. **다른 관점과 같은 그림**을 쓴다 — `markSvg` 를 구운 텍스처다
+   *  (`markTexture`). 여태 이 자리는 동심 띠 둘로 원 계열만 만들어, 삼각형(문서류)과
+   *  마름모(다리)와 파선(관문)을 전부 링으로 **다시 매핑**하고 있었다. 정본 §3.1 이
+   *  "관점은 그릴 수 있는 만큼만 고를 수 있지만 다시 매핑할 수는 없다"고 금지한
+   *  바로 그것이다(발주자 지적 2026-08-17). 6px 마크의 한계라고 적어 두었던 것은
+   *  구현 한계를 사양으로 승격시킨 것이었다.
+   *
+   *  색은 여기서 안 정한다. 이미지 프로그램이 이 그림을 마스크로 삼아 노드의
+   *  `color` 로 칠하므로(`drawingMode:"color"`), 잉크·틴트·초점·물러남은 색 하나만
+   *  갈아 끼우면 된다 — 형태가 그대로 유지되는 성질도 그대로다. */
+  const markOf = (n: Node2d): { image: string } => ({
+    image: markTexture(n.kind, !!n.gateway),
+  });
 
   /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
    *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
@@ -254,6 +260,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
 
   const sigma = new Sigma(g, stage, {
     allowInvalidContainer: true,
+    // 아래 `clickEdge` 가 뜨려면 켜야 한다 — sigma 3 기본이 false 라 핸들러가 붙어
+    // 있어도 선 클릭이 한 번도 안 왔다(2026-08-17). 값은 엣지 피킹 패스 하나.
+    enableEdgeEvents: true,
     // 화살촉 프로그램은 기본 등록이 아니다 — 켜 두지 않으면 type:"arrow" 가 무시된다.
     edgeProgramClasses: { arrow: EdgeArrowProgram },
     // 종별 마크는 `@sigma/node-border` 가 그린다(위 markOf). 셰이더를 직접 쓰지 않는
@@ -263,15 +272,13 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     // defaultNodeType 이 "circle" 이라, 새 이름을 만들면 프로그램이 두 벌이 되고
     // 타입이 빠진 노드가 기본 원으로 함께 그려진다(2026-08-15 실측). 키를 덮으면 한 벌뿐.
     nodeProgramClasses: {
-      circle: createNodeBorderProgram({
-        borders: [
-          //: 바깥 띠 — 잉크(= 노드 색). 물러남·초점이 이 색 하나만 갈아 끼운다.
-          { color: { attribute: "color" }, size: { attribute: "b1", defaultValue: 0 } },
-          //: 가운데 띠 — 배경색. 두께가 0 이면 앞 띠 색을 물려받아 조용히 사라진다.
-          { color: { value: bg }, size: { attribute: "b2", defaultValue: 0 } },
-          //: 남는 안쪽 — 다시 잉크. b1+b2 가 1 이면 두께 0 이라 안 그려진다.
-          { color: { attribute: "color" }, size: { fill: true } },
-        ],
+      //: 그림을 **마스크**로 쓰고 노드 색으로 칠한다(`drawingMode:"color"`).
+      //: `keepWithinCircle:false` 라야 삼각형 꼭짓점과 마름모 모서리가 원에 안 잘린다.
+      circle: createNodeImageProgram({
+        drawingMode: "color",
+        keepWithinCircle: false,
+        correctCentering: true,
+        padding: 0,
       }),
     },
     renderLabels: prefs.labels !== "none",

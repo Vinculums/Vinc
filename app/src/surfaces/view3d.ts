@@ -329,10 +329,22 @@ export function findNode3d(g: any, id: string): any {
   return (g?.graphData?.().nodes || []).find((n: any) => n.id === id);
 }
 
+/** 재마운트 사이에 넘겨 주는 카메라 자리. 옵션 하나를 고칠 때마다 씬을 새로 만드는데,
+ *  그때마다 전체 맞춤으로 되감기면 보던 곳을 잃는다(실측 2026-08-17). 좌표가 그대로인
+ *  재마운트(layout·cone 이 아닌 옵션)만 이 값을 실어 보낸다 — 좌표가 바뀌면 옛 카메라는
+ *  아무것도 안 보는 자리일 수 있다. */
+export type Cam3 = { pos: { x: number; y: number; z: number }; tgt: { x: number; y: number; z: number } };
+export function camera3d(g: ForceGraph3DInstance): Cam3 | null {
+  const c: any = g.controls();
+  const p: any = (g as any).cameraPosition?.();
+  if (!c?.target || !p) return null;
+  return { pos: { x: p.x, y: p.y, z: p.z }, tgt: { x: c.target.x, y: c.target.y, z: c.target.z } };
+}
+
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
-}, prefs: ViewPrefs = loadPrefs()): ForceGraph3DInstance {
+}, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
   const S = SCALE * prefs.spread;
   for (const n of nodes) {   // pin deterministic sidecar coords (D17)
@@ -419,9 +431,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       return Math.max(0.5, 1 - (nodeRadius(t, prefs) + 2.5) / len);
     })
     .graphData({ nodes, links });
-  if (el.clientWidth > 1 && el.clientHeight > 1) {
-    g.width(el.clientWidth).height(el.clientHeight);
-  }
+  // ⚠ 크기를 바꾼 뒤엔 컨트롤에도 알려야 한다. TrackballControls 는 생성 시점의 요소
+  // 사각형을 `screen` 에 캐시하고 `handleResize()` 를 불러야만 갱신한다. 안 부르면
+  // 레이아웃 전 크기(실측 240×120)로 포인터를 환산해 캔버스(1568×1073)와의 비율만큼
+  // 회전·이동이 과민해진다 — 180px 끌어 92~98°, 갱신 후 15~20°(2026-08-17).
+  // `g.width()` 는 다음 digest 에서야 캔버스에 닿으므로 여기서 바로 handleResize 를
+  // 불러도 옛 크기를 읽는다(실측: 창 크기 1800×1125 가 그대로 남았다). 그래서 **캔버스
+  // 자체**를 관찰해, 실제로 크기가 바뀐 뒤에 컨트롤을 맞춘다(아래 ResizeObserver).
+  const sizeTo = () => {
+    if (el.clientWidth > 1 && el.clientHeight > 1) g.width(el.clientWidth).height(el.clientHeight);
+  };
+  sizeTo();
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
@@ -466,7 +486,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   syncCamera();
   // 매 프레임이 아니라 **카메라가 실제로 움직일 때만** 갱신한다(비용 무시 가능).
   controls?.addEventListener?.("change", syncCamera);
-  if (flat) {
+  if (keepCam) {
+    // 옵션 재마운트 — 보던 자리 그대로. 전체 맞춤은 첫 마운트만 한다(아래 settle).
+    g.cameraPosition(keepCam.pos, keepCam.tgt, 0);
+  } else if (flat) {
     // 정면 카메라 — 화면 x/y 가 곧 레이아웃 x/y
     g.cameraPosition({ x: 0, y: 0, z: S * 2.2 }, { x: 0, y: 0, z: 0 }, 0);
   } else {
@@ -487,7 +510,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (g as any).d3ReheatSimulation?.();
     requestAnimationFrame(() => {
       if (dead) return;
-      (g as any).zoomToFit?.(400, 60);
+      if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
       setTimeout(() => { if (!dead) syncCamera(); }, 460);
@@ -496,10 +519,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   requestAnimationFrame(() => settle(0));
   // 컨테이너 추적 리사이즈 — 창 크기 변경·스크롤바 등장에도 캔버스가 컨테이너와 일치.
   const ro = new ResizeObserver(() => {
-    if (!dead && el.clientWidth > 1 && el.clientHeight > 1)
-      g.width(el.clientWidth).height(el.clientHeight);
+    if (dead) return;
+    sizeTo();                                    // 컨테이너가 변했으면 캔버스를 맞추고
+    (g.controls() as any)?.handleResize?.();     // 캔버스가 변했으면 컨트롤을 맞춘다
   });
   ro.observe(el);
+  ro.observe(g.renderer().domElement);           // 캔버스 변화는 digest 뒤에 온다(위 주석)
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();

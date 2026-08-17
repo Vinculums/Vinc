@@ -217,7 +217,11 @@ export function loadPrefs(): ViewPrefs {
       edgeScale: clamp(p.edgeScale, EDGE_SCALE.min, EDGE_SCALE.max, 1),
       labels: p.labels === "none" ? "none" : "hover",
       arrows: p.arrows !== false,
-      edges: ["focus", "particles", "bring"].includes(p.edges) ? p.edges : "always",
+      // 키가 없으면(구버전 저장값) **기본값**이다 — 여태 always 로 떨어져 기본 focus 가
+      // 저장 파일 하나로 조용히 뒤집혔다(2026-08-17). 아는 값은 그대로, 정말 모르는
+      // 값만 always(위 EdgeShow 주석의 규율).
+      edges: p.edges == null ? DEFAULTS.edges
+        : ["always", "focus", "particles", "bring"].includes(p.edges) ? p.edges : "always",
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
       unlinked: p.unlinked === "hide" ? "hide" : "show",
       // 폐기된 프리셋(radial 등)이 저장돼 있어도 조용히 hub 로 접는다.
@@ -235,7 +239,9 @@ export function loadPrefs(): ViewPrefs {
       cone: clamp(p.cone, CONE_SCALE.min, CONE_SCALE.max, 1),
       bundleOff: Array.isArray(p.bundleOff)
         ? p.bundleOff.filter((k: unknown) => BUNDLE_RELS.includes(String(k))) : [],
-      domainTint: p.domainTint === true,
+      // `=== true` 는 키가 없는 저장값을 끔으로 읽어 "기본은 켬"을 무효화했다. 다른
+      // 불리언과 같은 관용구로.
+      domainTint: p.domainTint !== false,
     };
   } catch {
     return { ...DEFAULTS };
