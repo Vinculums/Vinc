@@ -1640,9 +1640,11 @@ export async function renderView(el: HTMLElement) {
       const firstLine = (doc.text.split("\n").find((l) => l.trim()) || "").trim();
       const dupTitle = !!doc.title
         && firstLine.replace(/^#{1,6}\s+/, "").trim().toLowerCase() === doc.title.trim().toLowerCase();
+      // 배지는 **깨졌을 때만** 뜬다. 저장 무결성은 정상이 기본값이라, 문서를 열
+      // 때마다 "검증된 원본"이라고 말하면 읽으러 온 사람에게 매번 남의 일을 알린다.
+      // 사람이 알아야 하는 것은 실패한 경우뿐이다.
       const badge = doc.verified
-        ? `<span class="badge">${COPY.ui.viewx.readerVerified}</span>`
-        : `<span class="hint">${COPY.ui.viewx.readerUnverified}</span>`;
+        ? "" : `<span class="hint">${COPY.ui.viewx.readerUnverified}</span>`;
       // 문서→노드. 여태 없던 방향이다 — 문서를 열어 놓고 "이건 무엇에 걸려 있나"를
       // 물을 수 없었다. 0건이면 줄 자체를 안 그린다(빈 자리를 남기지 않는다).
       const cons = ctx.concepts || [];
@@ -1711,6 +1713,10 @@ export async function renderView(el: HTMLElement) {
         // 여기로 받아 레일 머리 옆에서 말한다.
         onStatus: (t) => { state.textContent = t; },
         highlights: hl.ranges || [],
+        // 본문의 `[[doc_id]]` 가 같은 레일에서 그 문서로 갈린다. 지도 착지는 하지
+        // 않는다 — 문서 안의 참조는 "저 문서를 마저 읽자"이지 "저 노드로 가자"가
+        // 아니고, 노드로 갈 문은 바로 위 칩이 이미 들고 있다.
+        onDocLink: (id) => void openReader(id),
       });
       // 목차 클릭·청크 히트 착지 — 편집기가 이미 오프셋으로 스크롤할 줄 안다
       // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.

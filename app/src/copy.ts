@@ -432,7 +432,6 @@ const EN = {
       readerFail: "Couldn't open this document. Try again in a moment.",
       readerTitle: "Document",
       edLive: "Editing. Changes save as you type.",
-      readerVerified: "Verified original",
       readerUnverified: "Reconstructed (not verified)",
       // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
       readerMentions: "Mentions",
@@ -1070,7 +1069,6 @@ const KO: Deck = {
       readerFail: "문서를 열지 못했습니다. 잠시 후 다시 시도하세요.",
       readerTitle: "문서",
       edLive: "편집 중. 입력하는 대로 저장됩니다.",
-      readerVerified: "검증된 원본",
       readerUnverified: "복원본 (검증 안 됨)",
       readerMentions: "언급",
       readerOutline: (n) => `목차 · ${n}`,
