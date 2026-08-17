@@ -799,9 +799,43 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
 
 
+#: 일회성 전량 왕복 표식. 다음에 또 한 번이 필요하면 **키 이름을 올린다**(v2) —
+#: 이력이 남고, 이미 돈 기기가 다시 돌지 않는다.
+_ONESHOT_KEY = "oneshot:birth-resync-v1"
+
+
+def ensure_birth_resync(store) -> bool:
+    """이 스토어에서 **딱 한 번**, 커서 둘을 0 으로 되돌린다. 되돌렸으면 True.
+
+    왜 필요한가: `_reconcile_birth` 는 새 발산을 막을 뿐, **이미 갈라진 행은 못 고친다**
+    — delta 는 커서 이후 변경분만 나르는데 그 노드들은 안 변했다. 그래서 한 번은
+    전량을 오가게 해야 한다.
+
+    왜 커서 리셋인가(전용 '출생 교환' 프로토콜 대신): 전량 왕복은 **최초 동기화가
+    이미 하는 일**이라 코드도 배선도 새로 필요 없다. 값이 실제로 바뀌는 노드가 없으면
+    apply 는 3-way 에서 `skipped_stale` 로 흘러가고 쓰기는 `_reconcile_birth` 뿐이다.
+
+    왜 **둘 다** 0 인가: 수렴이 양방향이라야 한다. pull 만 0 이면 이 기기가 허브의
+    이른 출생을 받아들이지만, 이 기기가 가진 더 이른 출생은 허브로 안 간다(push 는
+    안 변한 노드를 안 싣는다). `run` 이 pull → push 순이므로 한 세션에 둘 다 돈다:
+    허브 것을 받아 min 을 취하고, 그 결과를 도로 올린다.
+
+    표식은 **세션이 끝난 뒤** 찍는다(`run`). 중간에 죽으면 커서가 0 인 채 남아 다음
+    세션이 그대로 다시 한다 — 멱등이라 재실행이 해롭지 않다."""
+    if revstamp._meta_get(store, _ONESHOT_KEY, "") == "done":
+        return False
+    set_cursor(store, "push", 0)
+    set_cursor(store, "pull", 0)
+    return True
+
+
 def run(store, cfg, *, owner: str, remote) -> dict:
     """한 동기화 세션: **pull 먼저**(원격 최신을 받아 병합 후 push — lost-update 창
     최소, 플랜 §6-1) → push. 잡 워커에서 돌아 로컬 쓰기가 단일 writer 로 직렬화된다."""
+    resynced = ensure_birth_resync(store)
     pu = pull_apply(store, cfg, owner=owner, remote=remote)
     ph = push_local(store, cfg, owner=owner, remote=remote)
-    return {"executed": True, "pull": pu, "push": ph}
+    if resynced:
+        # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
+        revstamp._meta_set(store, _ONESHOT_KEY, "done")
+    return {"executed": True, "pull": pu, "push": ph, "birth_resync": resynced}

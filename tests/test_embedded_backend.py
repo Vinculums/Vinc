@@ -1357,3 +1357,70 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
         self.assertEqual(out["merged"], 0, "이 시나리오는 필드 변화가 없어야 한다")
         self.assertEqual(self._row(self.b, "concept:same")["created"],
                          self._row(self.a, "concept:same")["created"])
+
+    # ── §4 이미 갈라진 출생의 일회성 화해 ────────────────────────────────────
+    class _InProcessHub:
+        """상대 스토어를 허브처럼 쓰는 remote 어댑터(HTTP 없이 같은 코드 경로)."""
+
+        def __init__(self, store, owner, domains):
+            self.store, self.owner, self.domains = store, owner, domains
+
+        def pull(self, since):
+            from api import sync
+            return sync.export_delta(owner=self.owner, since=since,
+                                     domains=self.domains, store=self.store)
+
+        def push(self, chunks):
+            from api import sync
+            for c in chunks:
+                sync.apply_delta(owner=self.owner, bundle=c, store=self.store)
+            return {"ok": True}
+
+    def _diverged_pair(self, a_born, b_born):
+        """수정 이전 상태를 만든다 — 같은 노드, 기기마다 다른 생일."""
+        from api import fragment as frag
+        for st in (self.a, self.b):
+            frag.merge_fragment({"owner": self.OWNER, "nodes": [
+                {"id": "concept:old", "type": "concept", "title": "Old", "domain": "phys"}]},
+                store=st)
+            from api import sync
+            sync.set_selected_domains(st, ["phys"])
+        self.a.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
+                   {"v": a_born})
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
+                   {"v": b_born})
+
+    def test_oneshot_resync_converges_a_birth_that_diverged_before_the_fix(self):
+        """delta 는 안 변한 노드를 안 나른다 — 그래서 한 번은 전량이 오가야 한다.
+
+        A 가 **더 이른** 값을 갖는 방향으로 짠다: pull 만 되감아서는 안 되고 push 까지
+        돌아야 허브가 그것을 듣는다는 것을 이 방향만이 드러낸다."""
+        from api import sync
+        self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
+        # 이미 한참 동기화한 기기를 흉내 낸다(커서가 앞서 있다).
+        sync.set_cursor(self.a, "push", 999)
+        sync.set_cursor(self.a, "pull", 999)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertTrue(out["birth_resync"], "일회성 되감기가 안 돌았다")
+        self.assertEqual(self._row(self.a, "concept:old")["created"],
+                         "2019-01-01T00:00:00.000Z")
+        self.assertEqual(self._row(self.b, "concept:old")["created"],
+                         "2019-01-01T00:00:00.000Z", "허브가 더 이른 출생을 못 들었다")
+
+    def test_without_the_oneshot_the_divergence_survives(self):
+        """§4 가 왜 필요한지의 대우 — 표식이 이미 찍힌 기기는 delta 만 돌고,
+        안 변한 노드는 실리지 않으므로 갈라진 채 남는다."""
+        from api import sync
+        from api import revstamp
+        self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
+        revstamp._meta_set(self.a, sync._ONESHOT_KEY, "done")
+        sync.set_cursor(self.a, "push", 999)
+        sync.set_cursor(self.a, "pull", 999)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertFalse(out["birth_resync"])
+        self.assertEqual(self._row(self.b, "concept:old")["created"],
+                         "2099-01-01T00:00:00.000Z")
