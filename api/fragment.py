@@ -310,15 +310,22 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                         continue
                     _val = _cand.strip()
                 _set(_col, str(_val))
-        # 시간 원천 보존 — 팩·MCP 가 실은 `created` 를 그대로 받는다. 없으면 **신규일
-        # 때만** 지금으로 찍는다: 재-MERGE 가 원래 시점을 임포트 시각으로 덮으면
-        # 타임라인의 시간축이 "마지막으로 만진 때"로 무너진다(updated_at 이 이미 그
-        # 역할을 한다). Concept/Record 둘 다 created 열을 가진다.
-        if label in ("Concept", "Record", "Decision"):
-            if node.get("created"):
-                _set("created", str(node["created"]))
-            elif not matched:
-                _set("created", revstamp.hlc_now(store))
+        # 출생(`created`) — 뜻은 **"이 노드가 어느 공간에서든 처음 기록된 때"**다
+        # (발주자 결정 2026-08-17). 그래서 규칙이 둘로 갈린다:
+        #
+        #   신규  : 상류가 실은 값을 받는다. 없으면 지금(HLC). 팩이 원본의 기록
+        #           시각을 나르는 이유가 이것이다 — 안 실으면 스타터팩 하나에 개념
+        #           수십 개가 임포트 순간에 몰려 타임라인이 밴드 하나가 된다(실측).
+        #   기존  : **절대 안 덮는다.** 여태는 무조건 덮어서, 팩을 다시 넣으면
+        #           내가 직접 쓴 개념의 생일까지 남의 값으로 바뀌고 반복하면 계속
+        #           뒤로 갔다(id 가 slug 기반이라 충돌은 흔하다).
+        #
+        # 동기화의 min(가장 이른 값 승)과 **다른 이유**: 같은 계정의 두 기기는 한
+        # 공간이라 서로를 믿지만, 팩은 미신뢰 외부 입력이다. 그래서 거기서는 min
+        # 대신 쓰기 자체를 안 한다. 동기화 쪽 규칙은 api/sync._reconcile_birth.
+        if label in ("Concept", "Record", "Decision") and not matched:
+            _set("created", str(node["created"]) if node.get("created")
+                 else revstamp.hlc_now(store))
         if label in ("Record", "Concept", "Episode", "Bridge", "Decision") \
                 and (owner_explicit or not matched):
             _set("owner_id", owner)

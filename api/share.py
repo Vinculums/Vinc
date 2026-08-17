@@ -54,7 +54,12 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         # 알 수 있었다 — 스타터팩 하나를 넣으면 개념 수십 개가 같은 순간에 몰려
         # 타임라인이 밴드 하나짜리 세로 목록이 됐다(실측). 가산 필드라 구 임포터는
         # 그냥 무시한다.
-        "c.created AS created"
+        "c.created AS created, "
+        # content_time(D72)은 **더 실려야 할 쪽**이다. created 는 공간에 속한 시계인데
+        # 이것은 지시체에 속해서(1905 는 어느 그래프에서 읽든 1905다) 공간을 건너도
+        # 참이다. 그런데 여태 팩은 공간의 시계만 나르고 이것을 버렸다 — 팩을 건너면
+        # 세계 시간이 통째로 사라졌다(2026-08-17 실측).
+        "c.content_time AS content_time"
     )
     return q.QueryPlan("share_concepts", cypher, params, note="share projection (no preference)")
 
@@ -106,6 +111,11 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
             "doc_id": did, "title": got.get("title") or "",
             "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
             "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
+            # 개념과 같은 이유로 **내용 시점만** 싣는다(2026-08-17). `created_at` 은
+            # 안 싣는다: 임포트는 수신 owner 로 doc_id 를 새로 파생하므로 받는 쪽에서
+            # 그것은 **다른 문서**이고, 그 문서가 이 공간에 생긴 때는 정말로 지금이다.
+            # 노드는 id 를 그대로 물려받아 같은 객체이므로 규칙이 갈린다.
+            "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
         })
     return docs
 
@@ -165,6 +175,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
              "domain": c.get("domain") or "", "tags": c.get("tags") or []}
         if c.get("created"):
             n["created"] = c["created"]
+        if c.get("content_time"):
+            n["content_time"] = c["content_time"]
         props = {}
         if c.get("topic"):
             props["topic"] = c["topic"]
@@ -250,7 +262,10 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None,
             for d in documents:
                 r = ds.put_doc(store, owner=owner, text=d.get("text") or "",
                                doc_id=None, title=d.get("title") or "",
-                               origin=d.get("origin") or "")
+                               origin=d.get("origin") or "",
+                               # 내용 시점은 지시체의 것이라 공간을 건너도 참이다.
+                               # created_at 은 넘기지 않는다 — 위 export 주석 참조.
+                               content_time=d.get("content_time") or None)
                 if r.get("executed") and r.get("skipped"):
                     dskipped += 1
                 elif r.get("executed"):
