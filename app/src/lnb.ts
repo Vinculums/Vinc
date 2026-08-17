@@ -21,7 +21,7 @@ import { icon } from "./icons";
 
 /** 트리는 그 문서가 **어느 주제 밑에 있는지 이미 안다** — 그 정보를 함께 넘긴다.
  *  받는 쪽(합계 뷰)은 개념 마크가 없어서 그래프 노드로는 주제를 되짚을 수 없다. */
-type Navigator = (nodeId: string, domain?: string) => void;
+type Navigator = (nodeId: string, domain?: string, docId?: string) => void;
 /** 주제를 고른다. `add` 면 지금 고른 것에 **더한다**(Ctrl·⌘ 클릭).
  *  화면이 즉시 따라간다 — 고르는 것과 보는 것이 어긋나는 중간 상태를 두지 않는다. */
 type TopicPicker = (path: string, add: boolean) => void;
@@ -266,10 +266,13 @@ function paint() {
   body.innerHTML = html;
 }
 
-/** 문서 클릭 — 착지 노드가 있으면 지도로, 없으면 편집기로. */
+/** 문서 클릭 — **지도로 가고 문서를 연다**(둘 다, 한 클릭에). 여태 노드로만
+ *  날아가서, 목록에서 문서를 골라도 본문은 두 번째 클릭이 있어야 나왔고 그 두 번째
+ *  클릭조차 "그 노드의 발췌가 마침 이 문서일 때"만 성립했다. 착지 노드가 없는
+ *  문서는 지도에 자리가 없으므로 본문만 연다. */
 async function openDoc(docId: string, nodeId: string, domain?: string) {
   if (nodeId) {
-    if (navigate) navigate(nodeId, domain);
+    if (navigate) navigate(nodeId, domain, docId);
     else location.hash = `#view/trace/${encodeURIComponent(nodeId)}`;
     return;
   }

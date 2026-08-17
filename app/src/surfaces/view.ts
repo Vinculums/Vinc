@@ -1599,7 +1599,22 @@ export async function renderView(el: HTMLElement) {
    *  신설 없이 View 안에 머문다(D15). 뒤로 = 노드 상세로 복귀. 밑줄 범위는
    *  백엔드 /doc/highlights(토큰 매칭 계산, 정확한 char offset)로 받아 첫 범위로
    *  스크롤한다. verified 배지로 "정본" 신뢰를 시각화. */
-  async function openReader(docId: string, conceptId?: string, offset?: number) {
+  /** 문서를 연다 — **지도 착지와 본문 열기를 한 클릭에.** 좌측 트리·문서 목록·검색이
+   *  전부 이 문으로 들어온다.
+   *
+   *  순서가 계약이다: `focusNode` 는 끝에서 노드 상세로 레일을 덮으므로 리더를
+   *  **뒤에** 연다. 그래야 리더의 `뒤로`가 그 노드 상세로 돌아간다(lastNode 가
+   *  거기서 세워진다) — 반대로 하면 문서를 열자마자 상세가 덮어써 본문이 사라진다. */
+  async function openDocAt(docId: string, nodeId?: string,
+                           domain?: string, chunkIndex?: number) {
+    if (nodeId) await focusNode(nodeId, domain);
+    await openReader(docId, nodeId, chunkIndex);
+  }
+
+  /** `chunkIndex` 는 오프셋이 아니라 **청크 번호**다. 오프셋은 아래에서 부르는
+   *  `/doc/context` 가 이미 실어 오므로, 검색이 그것을 알아내려 한 번 더 왕복할
+   *  이유가 없다(청크 id `<doc>#00007` 의 뒷자리가 곧 번호다). */
+  async function openReader(docId: string, conceptId?: string, chunkIndex?: number) {
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
     try {
@@ -1701,8 +1716,11 @@ export async function renderView(el: HTMLElement) {
       // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.
       detail.querySelectorAll<HTMLElement>(".rdr-sec").forEach((b) =>
         b.addEventListener("click", () => handle.scrollToOffset(Number(b.dataset.at) || 0)));
-      if (offset !== undefined && offset > 0)
-        requestAnimationFrame(() => handle.scrollToOffset(offset));
+      // 청크 히트 착지 — 그 대목으로 앉힌다. 번호를 못 찾으면(재청킹으로 어긋났거나
+      // 오프셋을 잃은 레거시 행) 문서 맨 위로 남는다: 조용한 강등이지 오류가 아니다.
+      const at = chunkIndex === undefined ? undefined
+        : (ctx.chunks || []).find((c) => c.index === chunkIndex)?.char_start;
+      if (at) requestAnimationFrame(() => handle.scrollToOffset(at));
       // peek→전체폭 승격 — 좁은 레일이 답답할 때 같은 문서를 시트로 연다.
       detail.querySelector("#rdr-expand")!.addEventListener("click", () => {
         handle.dispose();
@@ -2110,11 +2128,13 @@ export async function renderView(el: HTMLElement) {
       if (lv.kind === "l1") openShareSheet({ domain: lvDomain(lv) });
       else openShareSheet({});                      // L0 = 전체
     },
-    openNode: (id) => void focusNode(id),
+    openNode: (id, dom) => void focusNode(id, dom),
+    openDoc: (docId, nodeId, dom, chunkIndex) => void openDocAt(docId, nodeId, dom, chunkIndex),
   });
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
-  setLnbNavigator((id, dom) => void focusNode(id, dom));
+  setLnbNavigator((id, dom, docId) =>
+    void (docId ? openDocAt(docId, id, dom) : focusNode(id, dom)));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
   setLnbTopicPicker((path, add) => {
