@@ -714,13 +714,18 @@ class VincApp:
 
         def _run(r):
             got = docstore.get_doc(r, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
+            # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
+            # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
             if got.get("executed") and (got.get("text") or "").strip():
                 return {"kind": "conventions", "executed": True, "source": "doc",
+                        "owner": owner or "",
                         "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": got["text"],
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
+                    "owner": owner or "",
                     "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
                     "text": built.get("text") or ""}
         return self._read(_run)

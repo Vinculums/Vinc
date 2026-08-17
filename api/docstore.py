@@ -403,7 +403,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     검색 청크로 사용(없으면 내장 경계). ``layer``: 검색 pre-filter 태그(파일 배치
     이관 시 원 레이어 보존). ``updated_at`` (P3): 동기화 적용 시 원격 HLC 를 그대로
     박기 위한 주입점(로컬 쓰기는 None → 스토어 HLC 스탬프)."""
-    base: dict[str, Any] = {"kind": "doc.put", "executed": False}
+    # 어느 소유자로 썼는지 밝힌다(fragment.merge_fragment 의 같은 주석 참조 —
+    # 문서 정본도 owner 스코프이고 오배치가 조용하기는 마찬가지다).
+    base: dict[str, Any] = {"kind": "doc.put", "executed": False, "owner": owner}
     if not owner or not isinstance(owner, str):
         base["error"] = "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)"
         return base

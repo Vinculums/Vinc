@@ -814,8 +814,18 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup
+    # **어느 소유자로 썼는지 밝힌다**(2026-08-18). 여태 이 응답은 몇 개가 들어갔는지만
+    # 말하고 어디에 들어갔는지는 안 말했다. 그 침묵으로 실제 사고가 났다: 대량 적재에서
+    # owner 를 빠뜨려 전부 `user:local` 로 들어갔는데, **그 tenant 안에서는 읽기도
+    # 성공해서 검증이 통과했다**(2026-08-07). 부를 생각을 못 한 사람에게 whoami 는
+    # 소용이 없다 — 모르는 실수는 물어봐야 아는 도구로 안 잡힌다. 매 쓰기가 스스로
+    # 밝히면 `"owner": "user:local"` 한 줄이 그 자리에서 말한다.
+    #
+    # 값의 출처는 **쓴 쪽**이라야 한다. 클라이언트가 보낸 인자를 되울리면 호스티드에서
+    # 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다) — 자기 실수에
+    # 동의해 주는 답이 제일 나쁘다.
     result = {"merged": {"nodes": {"created": created, "matched": matched}, "edges": edges_out},
-              "executed": True}
+              "executed": True, "owner": owner}
     if fold.proposed:
         result["proposed_types"] = fold.proposed
     return _finalize(result, warnings)

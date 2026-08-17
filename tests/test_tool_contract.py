@@ -212,3 +212,46 @@ def test_docstring_tool_count_matches_the_list():
     assert m, "독스트링에서 도구 수를 못 찾았다"
     assert int(m.group(1)) == len(TOOLS) == len(SERVED), (
         f"독스트링 {m.group(1)}종 vs TOOLS {len(TOOLS)}개 vs 서빙 {len(SERVED)}개")
+
+
+# ── 정체 각인(2026-08-18) — "어느 그래프에 썼는가"가 응답에 있는가 ──────────────
+# 이것이 있는 이유는 실제 사고다: 대량 적재에서 owner 를 빠뜨려 전량이 `user:local`
+# 로 들어갔는데, **그 tenant 안에서는 읽기도 성공해서** 검증이 통과했다(2026-08-07).
+# 별도 `whoami` 를 만들지 않은 판단도 같은 자리에서 나왔다 — 부를 생각을 못 한 사람
+# 에게 물어봐야 아는 도구는 소용이 없으므로, 정체를 **첫 문과 쓰기 응답**에 실었다.
+def test_writes_and_conventions_carry_the_target_back():
+    """`call()` 이 정체 도구 셋에 `target` 을 얹는가. 얹지 않으면 원격에 쓴 것과
+    로컬에 쓴 것이 응답만 봐서 구분되지 않는다."""
+    from vinc_mcp import tools as T
+
+    seen: dict = {}
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            seen["called"] = True
+            return {"executed": True, "owner": "user:from-server"}
+
+    for name in ("vinc_conventions", "vinc_ingest", "vinc_doc_put"):
+        assert name in T._IDENTITY_TOOLS, f"{name} 이 정체 도구 목록에서 빠졌다"
+
+    out = T.call("vinc_conventions", {}, _FakeBridge())
+    assert out["target"] == "local"
+    # **서버가 실은 owner 를 덮지 않는다.** 클라이언트가 아는 값으로 되울리면
+    # 호스티드에서 거짓말이 된다(키가 owner 를 고정하고 인자는 무시되는 자리다).
+    assert out["owner"] == "user:from-server"
+
+
+def test_identity_stamp_stays_off_the_read_tools():
+    """조회 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "rows": []}
+
+    out = T.call("vinc_search", {"query": "x"}, _FakeBridge())
+    assert "target" not in out

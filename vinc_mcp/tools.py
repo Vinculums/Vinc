@@ -966,5 +966,31 @@ def call(name: str, args: dict | None, bridge: Bridge,
             raise ValueError(f"missing required argument: {req}")
     if target == "remote":
         from . import remote                    # 지연 import — 로컬 경로엔 부담 0
-        return remote.call(name, args)
-    return tool["run"](args, bridge)
+        out = remote.call(name, args)
+    else:
+        out = tool["run"](args, bridge)
+    return _stamp_identity(name, out, target)
+
+
+#: 정체(어느 그래프에 썼는가)를 응답에 싣는 도구. **전부에 달지 않는다** — 조회
+#: 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다.
+#:
+#: 이 셋인 이유: `vinc_conventions` 는 규율상 **세션 첫 쓰기 전에** 부르는 자리라
+#: 정체가 필요한 순간에 따로 묻지 않아도 도착하고, 나머지 둘은 **쓰기**다 —
+#: 오배치가 조용한 곳이 정확히 거기다(2026-08-07: owner 누락으로 전량 `user:local`
+#: 로 들어갔는데 그 tenant 안에서는 읽기도 성공해 검증이 통과했다).
+#:
+#: 별도 `whoami` 를 만들지 않은 이유도 같다: 부를 생각을 못 한 사람에게 물어봐야
+#: 아는 도구는 소용이 없다. 이름 붙은 도구가 슬롯을 얻는 것은 호스트 UI 가 그래프
+#: 호출 없이 "X 로 연결됨"을 띄워야 할 때이고, 그건 제품 신호지 이 결손이 아니다.
+_IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
+
+
+def _stamp_identity(name: str, out: dict, target: str) -> dict:
+    """응답에 `target` 을 얹는다. `owner` 는 **손대지 않는다** — 쓴 쪽(사이드카·허브)이
+    자기가 실제로 스탬핑한 값을 이미 싣고 오고, 여기서 클라이언트가 아는 값으로
+    덮으면 호스티드에서 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다).
+    자기 실수에 동의해 주는 답이 제일 나쁘다."""
+    if name in _IDENTITY_TOOLS and isinstance(out, dict):
+        out["target"] = target
+    return out
