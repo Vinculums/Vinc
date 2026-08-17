@@ -40,7 +40,12 @@ import { markTexture } from "./view-planar";
 /** `focus(id)` 는 **성공 여부를 돌려준다**(D70) — 그 노드가 지금 마운트된 집합에
  *  없으면 false 이고, 호출측(view.focusNode)은 그때만 스코프를 갈아 다시 마운트한다.
  *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
-export type Handle2d = { dispose(): void; fit(): void; focus(id: string): boolean };
+export type Handle2d = {
+  dispose(): void; fit(): void; focus(id: string): boolean;
+  /** 옵션을 **제자리에서** 반영한다. 못 하는 변경(선 모드·연결 없음·범례 필터처럼
+   *  노드·엣지 집합이 바뀌는 것)은 false 를 돌려 주고, 호출측이 다시 마운트한다. */
+  update(p: ViewPrefs): boolean;
+};
 
 /** 방향 3종 — 화살촉이 붙는 관계(view-planar 의 DIRECTED 와 같은 정의). */
 const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
@@ -56,6 +61,42 @@ const ink = () => hexStr(pal().text);
 const ramp = () => pal().linkRamp;
 /** 초점색 — 토큰 하나(`semantic.*.focus`). 라이트는 로고 인디고, 다크는 페리윙클. */
 const point = () => hexStr(pal().focus);
+
+/** hover 배경판. sigma 의 기본 `drawDiscNodeHover` 는 이 판을 **`#FFF` 로 박아
+ *  둔다** — 다크 테마에서는 흰 덩어리가 마크를 덮고 그 위에 흰 잉크로 이름을 써서
+ *  아무것도 안 읽혔다(2026-08-17 제보). 색만 토큰으로 갈면 되는데 sigma 에 그 설정이
+ *  없어서 기하만 그대로 옮겨 왔다(원본: `drawDiscNodeHover`, 원 + 라벨 상자의 합집합).
+ *  글자는 `settings.defaultDrawNodeLabel` 에 그대로 넘긴다 — 라벨 색·글꼴 규칙이
+ *  hover 에서만 갈라지지 않게. */
+function drawHover(ctx: CanvasRenderingContext2D,
+  data: { x: number; y: number; size: number; label: string | null },
+  settings: { labelSize: number; labelFont: string; labelWeight: string;
+              defaultDrawNodeLabel: (c: CanvasRenderingContext2D, d: typeof data, s: never) => void }): void {
+  const size = settings.labelSize, PAD = 2;
+  ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+  ctx.fillStyle = hexStr(pal().surface);
+  ctx.strokeStyle = hexStr(pal().line);
+  ctx.lineWidth = 1;
+  const radius = Math.max(data.size, size / 2) + PAD;
+  ctx.beginPath();
+  if (typeof data.label === "string") {
+    const boxW = Math.round(ctx.measureText(data.label).width + 5);
+    const boxH = Math.round(size + 2 * PAD);
+    const a = Math.asin(boxH / 2 / radius);
+    const dx = Math.sqrt(Math.abs(radius ** 2 - (boxH / 2) ** 2));
+    ctx.moveTo(data.x + dx, data.y + boxH / 2);
+    ctx.lineTo(data.x + radius + boxW, data.y + boxH / 2);
+    ctx.lineTo(data.x + radius + boxW, data.y - boxH / 2);
+    ctx.lineTo(data.x + dx, data.y - boxH / 2);
+    ctx.arc(data.x, data.y, radius, a, -a);
+  } else {
+    ctx.arc(data.x, data.y, radius, 0, Math.PI * 2);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  settings.defaultDrawNodeLabel(ctx, data, settings as never);
+}
 
 /** 물러난 마크의 색 — 불투명도 대신 잉크를 배경 쪽으로 섞는다(sigma 는 노드
  *  알파를 따로 받지 않는다). 결과는 CSS 의 opacity 와 같은 인상이다. */
@@ -200,7 +241,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
    *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
    *  뜻하므로 주제가 덮으면 안 된다. */
-  const tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+  let tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
   const inkOf = (n: GraphNode) => {
     if (n.id === o.seed) return point();
     return tints?.get((n.domain || "").trim()) ?? ink();
@@ -265,7 +306,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     enableEdgeEvents: true,
     // 화살촉 프로그램은 기본 등록이 아니다 — 켜 두지 않으면 type:"arrow" 가 무시된다.
     edgeProgramClasses: { arrow: EdgeArrowProgram },
-    // 종별 마크는 `@sigma/node-border` 가 그린다(위 markOf). 셰이더를 직접 쓰지 않는
+    // 종별 마크는 `@sigma/node-image` 가 그린다(위 markOf → markTexture). 셰이더를 직접 쓰지 않는
     // 이유: 2026-08-15 에 커스텀 SDF 프로그램을 썼다가 마크 위에 덮개 삼각형이 겹치는
     // 고장을 못 잡고 걷어냈다. 이건 sigma 팀이 유지하는 프로그램이라 그 층을 안 짊어진다.
     // ⚠ `circle` 키를 **덮어쓴다**. sigma 는 nodeProgramClasses 를 기본값과 **합치고**
@@ -287,6 +328,8 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     // (size=uniform 이면 전부 6px 이라 상시 라벨이 없다 — 위계를 끈 선택의 결과.)
     labelRenderedSizeThreshold: prefs.labels === "none" ? 1e9 : 8,
     labelColor: { color: ink() },
+    // sigma 기본 hover 판이 `#FFF` 박제라 다크에서 흰 덩어리가 된다(위 drawHover).
+    defaultDrawNodeHover: drawHover as never,
     // 라벨은 노드 오른쪽으로 뻗는데 rank 프리셋의 열 간격이 라벨보다 좁아 옆 열까지
     // 침범한다. 격자당 하나만 남겨(밀도 제한) 겹침을 줄인다 — 나머지는 hover 로 뜬다.
     labelGridCellSize: 140,
@@ -792,6 +835,38 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";
+    },
+    /** 제자리 반영(2026-08-17). 노드 집합·엣지 집합이 그대로인 변경만 받는다:
+     *  크기 인코딩·배율·선 굵기·화살촉·라벨·주제 틴트·간격. 값은 그래프 속성에 다시
+     *  쓰고 `refresh()` 한 번 — 마운트를 새로 하면 카메라·컨텍스트·패널이 전부
+     *  흔들리는데, 이 손잡이들은 그림의 **표현**만 바꾼다. */
+    update(np) {
+      const prev = prefs;
+      const changed = (Object.keys(np) as (keyof ViewPrefs)[])
+        .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
+      const ok = new Set<keyof ViewPrefs>(
+        ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
+      if (!changed.every((k) => ok.has(k))) return false;
+      prefs = np;
+      tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+      for (const n of shown) {
+        if (!g.hasNode(n.id)) continue;
+        g.setNodeAttribute(n.id, "size", sizeOf(n));
+        g.setNodeAttribute(n.id, "color", inkOf(n));
+      }
+      // 간격은 2D 에서 화면을 안 바꾼다(auto-fit) — 좌표는 손대지 않는다.
+      edgeOf.forEach((e, key) => {
+        if (!g.hasEdge(key)) return;
+        const dir = DIRECTED.includes(e.type);
+        const bridged = e.type === "CONNECTS";
+        g.setEdgeAttribute(key, "type", dir && prefs.arrows ? "arrow" : "line");
+        g.setEdgeAttribute(key, "size",
+          (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9) * (prefs.edgeScale ?? 1));
+      });
+      sigma.setSetting("renderLabels", prefs.labels !== "none");
+      sigma.setSetting("labelRenderedSizeThreshold", prefs.labels === "none" ? 1e9 : 8);
+      sigma.refresh();
+      return true;
     },
     fit() {
       // sigma 의 기본 카메라 상태 = auto-fit 결과. 되돌리면 곧 "전체 맞춤"이다.

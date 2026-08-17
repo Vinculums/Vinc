@@ -803,11 +803,16 @@ export async function renderView(el: HTMLElement) {
       : g.keys.map((k) => rows[k]).join("")).join("");
     // 내용은 **스크롤하는 안쪽 면**에 넣는다 — 유리면 자신이 스크롤하면 프레임마다
     // 블러를 다시 계산해 스크롤이 끊긴다(app.css #view-lens-panel 주석).
+    // 다시 그려도 **보던 자리**는 남긴다 — innerHTML 로 면이 새 노드가 되면 scrollTop
+    // 이 0 으로 돌아가, 내려가서 누른 손잡이가 누르는 순간 화면 밖으로 사라졌다
+    // (실측 2026-08-17: 400→0→448). 값을 읽어 두고 새 면에 되돌린다.
+    const keepScroll = viewPanel.querySelector<HTMLElement>(".lens-scroll")?.scrollTop ?? 0;
     viewPanel.innerHTML = `<div class="lens-scroll">`
       + head + tabSeg
       + (tab === "opts" ? groupsHTML : legendHTML())
       + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
       + `</div>`;
+    if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
     viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {
         localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
@@ -937,11 +942,28 @@ export async function renderView(el: HTMLElement) {
       return;
     }
     const lv = trail[trail.length - 1];
+    // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 (1) 서버는 안 부르고
+    // (2) 카메라를 잇고 (3) 렌더러가 제자리에서 소화할 수 있으면 다시 그리지도 않는다.
+    // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
+    // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
+    // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
+    const relayout = "layout" in mut || "cone" in mut;
+    const np = curPrefs();
+    const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
+      ?? g2?.update;
+    if (!relayout && live && live(np)) {
+      // 제자리 반영 성공. 슬라이더(input 마다 한 번)는 패널을 다시 그리지 않는다 —
+      // 숫자 표시는 자기 배선으로 이미 따라 움직이고, 다시 그리면 끌던 손잡이가
+      // 새 노드로 바뀌어 드래그가 끊긴다. 칩은 활성 상태가 바뀌므로 다시 그린다.
+      const sliderOnly = (Object.keys(mut) as string[]).every(
+        (k) => k === "nodeScale" || k === "edgeScale" || k === "spread");
+      if (!sliderOnly) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus(); }
+      return;
+    }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 카메라를 잇는다.
-    const relayout = "layout" in mut || "cone" in mut;
-    if (rowsFor(lv, curPrefs()).length > 0)
+    reuseGraph = !relayout;                       // fetchGraph 가 읽고 바로 끈다
+    if (rowsFor(lv, np).length > 0)
       await show(lv, false, { keepPanel: true, keepCamera: !relayout });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
     if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
@@ -1022,17 +1044,43 @@ export async function renderView(el: HTMLElement) {
    *
    *  세 층은 스코프만 다르고 나머지(적재·지표·게이트웨이 판정·올가미)가 완전히 같아
    *  한 함수로 접는다. 갈라 두면 셋 중 하나만 고치는 드리프트가 난다. */
+  /** 세 관점 경로가 같은 `/graph` 를 같은 인자로 부른다 — 한 함수로 접는다.
+   *
+   *  두 가지를 여기서 처리한다(2026-08-17, [[vinc.research.view-interaction-audit]]):
+   *  · **재사용**: 옵션 변경으로 다시 그릴 때는 서버가 필요 없다(좌표를 바꾸는 것은
+   *    layout·cone 뿐이고 그건 applyPrefs 가 `reuseGraph` 를 안 켠다). `layout_positions`
+   *    는 순수 함수라 같은 요청은 같은 응답이었고, 그 왕복(73~155ms)이 옵션 클릭 지연의
+   *    절반이었다.
+   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
+   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
+  let reuseGraph = false;
+  async function fetchGraph(p: ViewPrefs, scope: { domains?: string[]; seed?: string }):
+      Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] }> {
+    if (reuseGraph && curNodes.length) {
+      reuseGraph = false;
+      return { executed: true, nodes: curNodes, edges: curEdges };
+    }
+    reuseGraph = false;
+    const mySeq = showSeq;
+    const { seed } = scope;
+    const domains = scope.domains || [];
+    const res = seed !== undefined
+      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
+      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
+                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
+    if (mySeq !== showSeq) return { executed: false, stale: true };
+    return res;
+  }
+
   async function showGraphScope(scope: { domains?: string[]; seed?: string }) {
     const { seed } = scope;
     const domains = scope.domains || [];
     const whole = seed === undefined && !domains.length;
     const p = curPrefs();
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
+    const res = await fetchGraph(p, scope);
+    if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -1144,6 +1192,16 @@ export async function renderView(el: HTMLElement) {
     setLnbActive(lnbFocus);
   }
 
+  /** 노드 맥락(`/node-context`) 한 번만 — 레일과 카드가 같은 노드에 같은 요청을 각자
+   *  보내고 있었다(실측 2026-08-17: 클릭 한 번에 두 번, 63ms·100ms). 마지막 노드의
+   *  약속을 기억해 둘이 나눠 쓴다. 층이 바뀌거나(show) 그래프를 고치면(삭제·연결)
+   *  버린다 — 오래 들고 있으면 "방금 이은 연결이 안 보인다"가 된다. */
+  let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
+  const nodeContextOnce = (id: string) => {
+    if (ctxCache?.id !== id) ctxCache = { id, p: api.nodeContext(cfg.owner, id) };
+    return ctxCache.p;
+  };
+
   /** 관련 문서 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있고, 항목을 누르면 그 노드로 간다. */
   async function openRelsCard(nd: N3) {
     const pos = nodeScreenPos(nd.id);
@@ -1153,7 +1211,7 @@ export async function renderView(el: HTMLElement) {
     });
     card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
     try {
-      const res = await api.nodeContext(cfg.owner, nd.id);
+      const res = await nodeContextOnce(nd.id);
       if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
       card.setTitle(nd.label);
       if (!res.links?.executed) { card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.relsNone}</p>`; return; }
@@ -1411,7 +1469,7 @@ export async function renderView(el: HTMLElement) {
     if (!box) return;
     box.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
     try {
-      const res = await api.nodeContext(cfg.owner, nd.id);
+      const res = await nodeContextOnce(nd.id);
       // 수치는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다. 관계 목록은
       // 이 패널을 떠나 노드 옆 카드로 갔다(D70).
       drawNodeStats(nd, res.links);
@@ -1604,15 +1662,8 @@ export async function renderView(el: HTMLElement) {
     const domains = lvDomains(level);
     const whole = seed === undefined && !domains.length;
     setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
-    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
-    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
-    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
-    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    const res = await fetchGraph(p, { seed, domains });
+    if (res.stale) return;
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
@@ -1680,15 +1731,8 @@ export async function renderView(el: HTMLElement) {
     // (query.py `graph()` "기본은 owner(±domain) 스코프 전체"). call() 이 undefined
     // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout,
-                                     ...(p.cone === 1 ? {} : { cone: p.cone }) });
-    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
-    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
-    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
-    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    const res = await fetchGraph(p, { seed, domains });
+    if (res.stale) return;
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
@@ -1859,13 +1903,19 @@ export async function renderView(el: HTMLElement) {
    *  (가리키던 층이 사라지므로), 옵션을 고쳐 같은 층을 다시 그리는 경우는 층 전환이
    *  아니다 — 그때 닫으면 "고르면 모달이 닫힌다"가 된다(발주자 지적 2026-08-05).
    *  연속 조정이 이 패널의 존재 이유이므로 그 경로만 예외로 둔다. */
+  /** show() 세대. 연달아 두 번 부르면 앞의 것이 fetch 에서 돌아왔을 때 이 값이 이미
+   *  넘어가 있다 — fetchGraph 가 그걸 보고 `stale` 로 접는다(옛 응답이 새 그림을 덮던
+   *  것, 그리고 옛 마운트가 새 캔버스 위에 한 번 더 붙던 것을 막는다). */
+  let showSeq = 0;
   async function show(level: Level, push = true,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
+    const seq = ++showSeq;
     setBusy(true);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
     if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
+    ctxCache = null;                              // 층이 바뀌면 노드 맥락 메모도 버린다
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
@@ -1908,6 +1958,7 @@ export async function renderView(el: HTMLElement) {
         setTimeout(() => { if (myGen === liveGen) flyToMounted(seed); }, 420);
       }
     } catch (e) {
+      if (seq !== showSeq) return;              // 옛 세대의 실패는 새 화면에 적지 않는다
       // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
       //
@@ -1926,7 +1977,7 @@ export async function renderView(el: HTMLElement) {
         if (pre) pre.textContent = why;
       }
     } finally {
-      setBusy(false);
+      if (seq === showSeq) setBusy(false);       // 새 세대가 돌고 있으면 그쪽이 끈다
     }
   }
 
