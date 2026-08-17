@@ -1161,7 +1161,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "13")   # v13 — 결정을 주제 계층에(E-1 보정)
+        self.assertEqual(rows[0]["v"], "14")   # v14 — 결정을 주제 계층에(E-1 보정)
         # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
         # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
         store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "
@@ -1245,3 +1245,319 @@ class EmbeddedE2E(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class TwoStoreTimeRoundtrip(unittest.TestCase):
+    """기기 둘이 **같은 노드의 출생과 내용 시점에 합의하는가**(D72 · 2026-08-17).
+
+    이 클래스가 스텁이 아니라 실엔진 두 벌인 이유: 이 결함은 플랜 층에서 안 보였다.
+    export 가 열을 안 싣는다는 사실은 cypher 문자열을 봐야 보이고, 그 결과(수신측이
+    자기 시각으로 출생을 다시 찍음)는 **두 스토어를 실제로 왕복시켜야** 드러난다.
+    수정 전 실측: 같은 노드가 A 에서 …44.334Z · B 에서 …45.296Z(호출 사이 벽시계 차).
+    """
+
+    OWNER = "user:alice"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        # ⚠ `MEMORY_DATA_DIR` 도 **반드시** 여기 든다: `_store()` 가 매번 덮어쓰는데
+        # 복원 목록에서 빠지면, 이 클래스가 끝난 뒤 그 변수가 지워진 임시 경로를
+        # 가리킨 채 남아 **뒤에 도는 다른 파일의 테스트가 깨진다**(실측 — 단독으로는
+        # 통과하고 전체 스위트에서만 test_server 둘이 죽었다).
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_EMBEDDING_MODEL": "local-en",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "a")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        self.a = self._store("a")
+        self.b = self._store("b")
+
+    def _store(self, tag):
+        from store.config import load_config
+        from store.backend import open_store
+        os.environ["MEMORY_DATA_DIR"] = os.path.join(self._tmp, tag)
+        cfg = load_config()
+        st = open_store(cfg)
+        st.provision(dim=cfg.embedding_dim)
+        return st
+
+    def tearDown(self):
+        for st in (self.a, self.b):
+            try:
+                st.close()
+            except Exception:
+                pass
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _row(self, store, cid):
+        rows = store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                         "RETURN c.created AS created, c.content_time AS ct", {"i": cid})
+        return rows[0] if rows else {}
+
+    def test_both_devices_agree_on_birth_and_content_time(self):
+        from api import fragment as frag
+        from api import sync
+
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:relativity", "type": "concept", "title": "Relativity",
+             "domain": "phys", "content_time": "1905"}]}, store=self.a)
+        bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"],
+                                   store=self.a)
+        res = sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
+        self.assertTrue(res["executed"], res)
+
+        a, b = self._row(self.a, "concept:relativity"), self._row(self.b, "concept:relativity")
+        self.assertTrue(a["created"], "A 에 출생이 있어야 한다")
+        self.assertEqual(b["created"], a["created"], "같은 노드가 기기마다 다른 생일을 가진다")
+        self.assertEqual(b["ct"], "1905", "내용 시점이 기기를 못 건넜다")
+
+    def test_birth_takes_the_earliest_even_when_the_local_row_is_older(self):
+        """min 규칙 — 수신측이 더 이른 출생을 갖고 있으면 그것을 지킨다(역방향)."""
+        from api import fragment as frag
+        from api import sync
+
+        for st in (self.a, self.b):
+            frag.merge_fragment({"owner": self.OWNER, "nodes": [
+                {"id": "concept:c", "type": "concept", "title": "C", "domain": "phys"}]},
+                store=st)
+        # B 가 훨씬 이른 출생을 갖게 만든다(다른 경로로 먼저 알았던 노드).
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:c' "
+                   "SET c.created = '2019-01-01T00:00:00.000Z'")
+        # A 에서 내용을 고쳐 delta 를 만든다.
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:c", "type": "concept", "title": "C 고침", "domain": "phys"}]},
+            store=self.a)
+        bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"], store=self.a)
+        sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
+        self.assertEqual(self._row(self.b, "concept:c")["created"],
+                         "2019-01-01T00:00:00.000Z",
+                         "늦은 원격 출생이 이른 로컬 출생을 덮었다")
+
+    def test_birth_converges_even_when_the_merge_changes_nothing(self):
+        """필드 변화가 없어 쓰기가 안 일어나는 경로(`skipped_stale`)에서도 화해한다.
+
+        여기서 건너뛰면 이미 갈라진 출생이 영영 만나지 못한다 — 이 결함의 잔존 형태다."""
+        from api import fragment as frag
+        from api import sync
+
+        for st in (self.a, self.b):
+            frag.merge_fragment({"owner": self.OWNER, "nodes": [
+                {"id": "concept:same", "type": "concept", "title": "S", "domain": "phys"}]},
+                store=st)
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:same' "
+                   "SET c.created = '2099-01-01T00:00:00.000Z'")   # 갈라진 상태
+        bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"], store=self.a)
+        out = sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
+        self.assertEqual(out["merged"], 0, "이 시나리오는 필드 변화가 없어야 한다")
+        self.assertEqual(self._row(self.b, "concept:same")["created"],
+                         self._row(self.a, "concept:same")["created"])
+
+    # ── §4 이미 갈라진 출생의 일회성 화해 ────────────────────────────────────
+    class _InProcessHub:
+        """상대 스토어를 허브처럼 쓰는 remote 어댑터(HTTP 없이 같은 코드 경로)."""
+
+        def __init__(self, store, owner, domains):
+            self.store, self.owner, self.domains = store, owner, domains
+
+        def pull(self, since):
+            from api import sync
+            return sync.export_delta(owner=self.owner, since=since,
+                                     domains=self.domains, store=self.store)
+
+        def push(self, chunks):
+            from api import sync
+            for c in chunks:
+                sync.apply_delta(owner=self.owner, bundle=c, store=self.store)
+            return {"ok": True}
+
+    def _diverged_pair(self, a_born, b_born):
+        """수정 이전 상태를 만든다 — 같은 노드, 기기마다 다른 생일."""
+        from api import fragment as frag
+        for st in (self.a, self.b):
+            frag.merge_fragment({"owner": self.OWNER, "nodes": [
+                {"id": "concept:old", "type": "concept", "title": "Old", "domain": "phys"}]},
+                store=st)
+            from api import sync
+            sync.set_selected_domains(st, ["phys"])
+        self.a.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
+                   {"v": a_born})
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
+                   {"v": b_born})
+
+    def test_oneshot_resync_converges_a_birth_that_diverged_before_the_fix(self):
+        """delta 는 안 변한 노드를 안 나른다 — 그래서 한 번은 전량이 오가야 한다.
+
+        A 가 **더 이른** 값을 갖는 방향으로 짠다: pull 만 되감아서는 안 되고 push 까지
+        돌아야 허브가 그것을 듣는다는 것을 이 방향만이 드러낸다."""
+        from api import sync
+        self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
+        # 이미 한참 동기화한 기기를 흉내 낸다(커서가 앞서 있다).
+        sync.set_cursor(self.a, "push", 999)
+        sync.set_cursor(self.a, "pull", 999)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertTrue(out["birth_resync"], "일회성 되감기가 안 돌았다")
+        self.assertEqual(self._row(self.a, "concept:old")["created"],
+                         "2019-01-01T00:00:00.000Z")
+        self.assertEqual(self._row(self.b, "concept:old")["created"],
+                         "2019-01-01T00:00:00.000Z", "허브가 더 이른 출생을 못 들었다")
+
+    def test_without_the_oneshot_the_divergence_survives(self):
+        """§4 가 왜 필요한지의 대우 — 표식이 이미 찍힌 기기는 delta 만 돌고,
+        안 변한 노드는 실리지 않으므로 갈라진 채 남는다."""
+        from api import sync
+        from api import revstamp
+        self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
+        revstamp._meta_set(self.a, sync._ONESHOT_KEY, "done")
+        sync.set_cursor(self.a, "push", 999)
+        sync.set_cursor(self.a, "pull", 999)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertFalse(out["birth_resync"])
+        self.assertEqual(self._row(self.b, "concept:old")["created"],
+                         "2099-01-01T00:00:00.000Z")
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class EdgeBirth(unittest.TestCase):
+    """v14 — 관계에도 출생이 있는가(세계선 M2 의 전제).
+
+    실엔진인 이유: `ON CREATE SET` 의 의미(재-MERGE 에서 안 뜀)는 엔진이 정하는 것이라
+    스텁으로는 검사할 수 없다. 그리고 다섯 갈래(TYPED·CONNECTS·ABOUT·CC·ATTACHES_TO)가
+    **전부** 찍는지는 실제로 넣어 봐야 안다 — 하나라도 빠지면 재생이 절름발이가 된다.
+    """
+
+    OWNER = "user:a"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_EMBEDDING_MODEL": "local-en",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()
+        self.store = open_store(cfg)
+        self.store.provision(dim=cfg.embedding_dim)
+
+    def tearDown(self):
+        try:
+            self.store.close()
+        except Exception:
+            pass
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    _NODES = [
+        {"id": "concept:a", "type": "concept", "title": "A", "domain": "d"},
+        {"id": "concept:b", "type": "concept", "title": "B", "domain": "d"},
+        {"id": "decision:d1", "type": "decision", "title": "D", "domain": "d"},
+        {"id": "record:r1", "type": "record", "title": "R", "domain": "d"},
+        {"id": "bridge:br", "type": "bridge", "title": "BR"},
+        {"id": "theory:t1", "type": "theory", "title": "T1"},
+        {"id": "theory:t2", "type": "theory", "title": "T2"},
+    ]
+    _EDGES = [
+        {"from": "concept:a", "to": "concept:b", "type": "relates_to"},
+        {"from": "decision:d1", "to": "concept:a", "type": "about"},
+        {"from": "record:r1", "to": "concept:a", "type": "derives_from"},
+        {"from": "bridge:br", "to": "concept:a", "type": "connects_via", "role": "x"},
+        {"from": "theory:t1", "to": "theory:t2", "type": "implies"},
+    ]
+
+    def _births(self, rel):
+        return [r["c"] for r in
+                self.store.run(f"MATCH ()-[r:{rel}]->() RETURN r.created AS c")]
+
+    def test_every_authored_relation_gets_a_birth(self):
+        from api import fragment as frag
+        res = frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES,
+                                   "edges": self._EDGES}, store=self.store)
+        self.assertEqual(res["merged"]["edges"]["created"], 5, res.get("warnings"))
+        for rel in ("RELATED_TO", "ABOUT", "ATTACHES_TO", "CONNECTS", "TYPED"):
+            got = self._births(rel)
+            self.assertTrue(got and all(got), f"{rel} 에 출생이 안 찍혔다: {got}")
+        # 한 배치는 **한 순간**이다 — 엣지마다 HLC 를 새로 뽑으면 한 번의 적재가
+        # 시간축에 흩어져 보이고 메타 왕복도 엣지 수만큼 는다.
+        all_births = {b for rel in ("RELATED_TO", "ABOUT", "ATTACHES_TO", "CONNECTS", "TYPED")
+                      for b in self._births(rel)}
+        self.assertEqual(len(all_births), 1, f"한 배치가 여러 시각을 썼다: {all_births}")
+
+    def test_remerge_never_moves_an_edge_birth(self):
+        """`ON CREATE SET` 의 의미가 이것이다 — 출생은 처음 이어진 때다."""
+        from api import fragment as frag
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES,
+                             "edges": self._EDGES}, store=self.store)
+        first = self._births("RELATED_TO")[0]
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES,
+                             "edges": self._EDGES}, store=self.store)
+        self.assertEqual(self._births("RELATED_TO")[0], first)
+        # 상류가 다른 값을 실어 다시 보내도(팩 재-import) 안 바뀐다
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES,
+                             "edges": [dict(self._EDGES[0],
+                                            created="1999-01-01T00:00:00.000Z")]},
+                            store=self.store)
+        self.assertEqual(self._births("RELATED_TO")[0], first)
+
+    def test_a_supplied_birth_is_taken_on_a_new_edge(self):
+        """동기화·팩이 원본의 출생을 나른다 — 신규일 때는 그것을 쓴다."""
+        from api import fragment as frag
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES[:2],
+                             "edges": [{"from": "concept:a", "to": "concept:b",
+                                        "type": "relates_to",
+                                        "created": "2019-05-05T00:00:00.000Z"}]},
+                            store=self.store)
+        self.assertEqual(self._births("RELATED_TO"), ["2019-05-05T00:00:00.000Z"])
+
+    def test_legacy_edges_are_not_backfilled(self):
+        """구 엣지는 '' 로 남는다. 모르는 시간을 지어내면 모든 옛 관계가 오늘 태어난
+        것이 되고, 그 순간 시간축은 '마이그레이션한 날' 밴드 하나가 된다(v7 과 같은 규율)."""
+        from api import fragment as frag
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES[:2],
+                             "edges": [self._EDGES[0]]}, store=self.store)
+        self.store.run("MATCH ()-[r:RELATED_TO]->() SET r.created = ''")   # 구 행 흉내
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES[:2],
+                             "edges": [self._EDGES[0]]}, store=self.store)
+        self.assertEqual(self._births("RELATED_TO"), [""])
+
+    def test_edge_birth_survives_a_sync_hop(self):
+        """수신 기기에서 엣지가 **그 기기 시각으로 다시 태어나면** 안 된다 —
+        노드에서 방금 고친 것과 같은 병이다(e489186)."""
+        from api import fragment as frag
+        from api import sync
+        frag.merge_fragment({"owner": self.OWNER, "nodes": self._NODES[:2],
+                             "edges": [self._EDGES[0]]}, store=self.store)
+        born = self._births("RELATED_TO")[0]
+        bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["d"],
+                                   store=self.store)
+        self.assertTrue(bundle["edges"], "번들에 엣지가 없다")
+        self.assertEqual(bundle["edges"][0].get("created"), born,
+                         "번들이 엣지 출생을 안 실었다")
+
+        os.environ["MEMORY_DATA_DIR"] = os.path.join(self._tmp, "b")
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()
+        b = open_store(cfg)
+        b.provision(dim=cfg.embedding_dim)
+        try:
+            sync.apply_delta(owner=self.OWNER, bundle=bundle, store=b)
+            got = [r["c"] for r in
+                   b.run("MATCH ()-[r:RELATED_TO]->() RETURN r.created AS c")]
+            self.assertEqual(got, [born], "수신 기기에서 엣지가 다시 태어났다")
+        finally:
+            b.close()

@@ -1016,6 +1016,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .stat-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
 .stat-note { margin: var(--space-2, .5rem) 0 0; }
 .rail-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
+/* ── 리더 머리 — 본문 **앞에** 서는 두 줄: 이 문서가 무엇에 걸려 있고(칩) 어떤
+   모양인가(목차). 둘 다 길잡이지 본문이 아니므로 글자를 키우지 않는다. 목차의
+   깊이는 **들여쓰기로만** 말한다 — 크기로 말하면 목차가 제목 행세를 한다. */
+.rdr-chips { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; align-items: baseline;
+  margin: var(--space-2, .5rem) 0 0; }
+.rdr-chips .chip { cursor: pointer; font-size: .78rem; }
+.rdr-toc { margin: var(--space-2, .5rem) 0 0; }
+.rdr-toc > summary { cursor: pointer; }
+.rdr-sec {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  color: inherit; font: inherit; font-size: .82rem; cursor: pointer;
+  padding: .15rem 0; opacity: .8;
+}
+.rdr-sec:hover, .rdr-sec:focus-visible { opacity: 1; text-decoration: underline; }
 /* ── 문서 표면 — 렌더된 글이지 코드 상자가 아니다 ─────────────────────────
    스크롤은 **레일 하나만** 진다(문서는 자기 높이를 다 차지한다) — 중첩 스크롤은
    막대 두 개를 나란히 세우고 휠이 어디로 갈지도 예측 불가로 만든다.
@@ -1278,9 +1292,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #view-lens-panel::before {
   content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit;
   background: hsl(var(--card) / .78);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  /* 18px → 12px(F7, 2026-08-17). backdrop-filter 는 뒤의 캔버스를 **매 프레임** 다시
+     샘플링한다 — 반경이 곧 비용이라, 패널이 열려만 있어도 GPU 가 두 배로 일했다
+     (그래프 문서 `vinc.research.view-interaction-perf` §2 C7). 12px 는 유리 인상이
+     남는 하한 근처다. */
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   pointer-events: none;
+}
+/* 투명도를 줄여 달라는 사용자에겐 불투명 카드로 — 블러 자체를 안 한다. */
+@media (prefers-reduced-transparency: reduce) {
+  #view-lens-panel::before {
+    background: hsl(var(--card));
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
 }
 /* 스크롤하는 안쪽 면. 여백을 여기에 두는 이유: 스크롤바가 패널 모서리에 붙어야
    내용과 겹치지 않는다(패널에 패딩을 두면 스크롤바가 그 안으로 들어온다). */
@@ -1692,13 +1717,16 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
 @supports (backdrop-filter: blur(1px)) {
   @media not (prefers-reduced-transparency: reduce) {
-    .palette-card, #view-lens-panel, #view-detail, #settings-popover, .tip, .float-card {
+    /* #view-lens-panel 은 여기서 뺐다(2026-08-17): 그 패널의 유리는 ::before 형제 층이
+       맡는다(위 #view-lens-panel 주석 — 조상 블러는 스크롤을 끊는다). 여기 남겨 두면
+       패널 자신에게 블러가 한 번 더 걸려 같은 화면을 두 겹 블러하고 있었다. */
+    .palette-card, #view-detail, #settings-popover, .tip, .float-card {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
       box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
     }
-    .palette-card, #view-lens-panel, #settings-popover, .tip, .float-card {
+    .palette-card, #settings-popover, .tip, .float-card {
       border: 1px solid hsl(var(--border) / .6);
     }
   }

@@ -3,7 +3,7 @@
 // textarea 폴백. 무손실 규율: 저장은 편집기 문자열을 어떤 변형도 없이 /doc/put
 // 로 보낸다(verified 바이트 동일). 저장 = 디바운스 자동저장 + Ctrl/Cmd+S, 무음
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
-import { api, cfg, storeDownReason } from "./api";
+import { api, cfg, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
 
@@ -30,7 +30,10 @@ export function renderMarkdown(src: string): string {
       out.push(`<pre style="overflow-x:auto"><code>${esc(buf.join("\n"))}</code></pre>`); continue;
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(t);
-    if (h) { closeList(); const lv = Math.min(h[1].length + 1, 6);
+    // 깊이는 소스 그대로다. 여태 한 단계 내려 찍어(`## X` → `<h3>`) 같은 문서가
+    // 편집기(`cm-r-h2`)와 폴백에서 다른 크기로 보였다 — 렌더러가 둘이라는 사실이
+    // 화면에 드러나면 안 된다.
+    if (h) { closeList(); const lv = Math.min(h[1].length, 6);
       out.push(`<h${lv}>${inline(esc(h[2]))}</h${lv}>`); i++; continue; }
     if (/^(-{3,}|\*{3,})$/.test(t)) { closeList(); out.push("<hr/>"); i++; continue; }
     if (t.startsWith("> ")) { closeList();
@@ -59,6 +62,9 @@ export type DocEditorHandle = {
   dispose: () => void;
   setEditable: (on: boolean) => void;
   isEditable: () => boolean;
+  /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
+   *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
+  scrollToOffset: (pos: number) => void;
 };
 
 export type DocEditorOpts = {
@@ -84,6 +90,9 @@ export type DocEditorOpts = {
   onStatus?: (text: string) => void;
   /** D72 — 내용 시점 초기값. docId 만 주면 로드 시 서버 값으로 채운다. */
   contentTime?: string;
+  /** 본문의 `[[doc_id]]` 를 눌렀다. 주면 그 링크가 살아나고, 안 주면 종전대로
+   *  밑줄만 그어진 글자로 남는다(시트·Tools 처럼 갈 곳이 없는 자리). */
+  onDocLink?: (docId: string) => void;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -114,7 +123,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
       host.innerHTML = `<p class="hint">${storeDown === null
         ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
-      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
+      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false,
+               scrollToOffset: () => {} };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
@@ -196,7 +206,15 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     src.replaceWith(cmHost);
     prev.remove();
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),
-      slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel });
+      slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
+      onDocLink: opts.onDocLink,
+      // 바깥 링크는 셸이면 OS 브라우저로, 웹이면 새 탭으로 — 계정 연결이 이미
+      // 쓰는 길과 같다(shell:allow-open 은 그 자리에서 이미 열려 있다).
+      onUrl: (url) => void (async () => {
+        const invoke = await shellInvoke();
+        if (invoke) await invoke("plugin:shell|open", { path: url });
+        else window.open(url, "_blank", "noopener");
+      })() });
     if (opts.highlights?.length) {
       cm.setHighlights(opts.highlights);
       // 첫 언급으로 스크롤 — 레이아웃이 앉은 뒤라야 좌표가 맞는다.
@@ -336,6 +354,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       if (!on) void save();
     },
     isEditable: () => editable,
+    scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
   };
 }
 

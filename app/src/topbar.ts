@@ -23,9 +23,16 @@ import { icon } from "./icons";
 export type ViewHooks = {
   /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 View 가 정한다). */
   share: () => void;
-  /** 그 노드로 이동한다(D70) — 화면에 있으면 카메라만, 없으면 스코프를 간다.
-   *  검색 착지가 이 훅을 쓰면 표면 리마운트 없이 날아간다. */
-  openNode: (id: string) => void;
+  /** 그 노드로 이동한다(D70) — 화면에 있으면 카메라만, 없으면 스코프를 넓혀
+   *  데려온다. 검색 착지가 이 훅을 쓰면 표면 리마운트 없이 날아간다.
+   *  `domain` 을 아는 자리(검색 히트·트리 행)는 함께 준다: 알면 그 주제 하나로,
+   *  모르면 전량으로 넓힌다. */
+  openNode: (id: string, domain?: string) => void;
+  /** 문서를 연다 — **지도 착지와 본문 열기를 한 클릭에** 한다. 여태 문서 행을
+   *  눌러도 문서가 안 열리고 노드로만 날아갔다(D70 은 지도에 대해 옳았고, 본문을
+   *  가져갔다). `nodeId` 가 없는 문서(개념 언급 0)는 지도에 자리가 없으므로 본문만
+   *  연다. `chunkIndex` 는 검색의 청크 히트가 그 대목에 앉는 자리다. */
+  openDoc: (docId: string, nodeId?: string, domain?: string, chunkIndex?: number) => void;
 };
 
 let hooks: ViewHooks | null = null;

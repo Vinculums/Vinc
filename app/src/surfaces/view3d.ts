@@ -318,6 +318,7 @@ function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette(),
  *  써야 하는데, 안에 있으면 수식이 두 벌이 된다. */
 export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
   if (!n) return;
+  g.__wake?.(ms + 200);                          // 카메라 트윈은 렌더 루프 안에서 돈다 — 깨워야 움직인다
   const flat = prefs.view === "2d";
   const d = Math.max(70, nodeRadius(n, prefs) * 9);
   if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, ms);
@@ -535,6 +536,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (g as any).d3ReheatSimulation?.();
     requestAnimationFrame(() => {
       if (dead) return;
+      wake(700);
       if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
@@ -550,10 +552,36 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   });
   ro.observe(el);
   ro.observe(g.renderer().domElement);           // 캔버스 변화는 digest 뒤에 온다(위 주석)
+
+  // ── 필요할 때만 그린다(F6, 2026-08-17) ───────────────────────────────────
+  // 좌표는 핀 고정이라 아무 일도 없을 때 화면은 한 픽셀도 안 바뀌는데, three-render-
+  // objects 의 틱은 매 프레임 render() 를 부른다(실측: 유휴 3D 가 59fps 로 GPU 를 태운다).
+  // "움직일 이유"가 있는 동안만 깨어 있는다: 포인터·휠·카메라 변화·hover 페이드·비행·
+  // 옵션 반영은 각자 wake(ms) 를 부르고, 마감이 지나면 pauseAnimation(). 입자 모드는
+  // 상시 애니메이션이라 재우지 않는다. resumeAnimation 은 첫 프레임을 곧장 그린다.
+  let awakeUntil = performance.now() + 2500;      // 마운트·프레이밍이 끝날 때까지
+  let napping = false;
+  const wake = (ms = 300) => {
+    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
+    if (napping) { napping = false; (g as any).resumeAnimation?.(); }
+  };
+  const napTimer = window.setInterval(() => {
+    if (dead || particlesOn || napping) return;
+    if (performance.now() > awakeUntil) { napping = true; (g as any).pauseAnimation?.(); }
+  }, 200);
+  const onWakeEvent = () => wake(300);
+  for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
+    el.addEventListener(ev, onWakeEvent, { passive: true });
+  controls?.addEventListener?.("change", onWakeEvent);
+  (g as any).__wake = wake;                       // 바깥(f 키·flyToMounted)에서도 깨운다
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();
     controls?.removeEventListener?.("change", syncCamera);
+    window.clearInterval(napTimer);
+    controls?.removeEventListener?.("change", onWakeEvent);
+    for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
+      el.removeEventListener(ev, onWakeEvent);
     baseDestructor?.();
     // dispose() 만으로는 WebGL 컨텍스트가 GC 때까지 살아 있다 — 옵션 클릭 16번에
     // "Too many active WebGL contexts" 가 났다(2026-08-17). 명시적으로 잃게 한다.
@@ -592,6 +620,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     if (changed.includes("edgeScale")) g.linkWidth(linkWidthFn());
     if (changed.includes("arrows")) g.linkDirectionalArrowLength(arrowLenFn());
+    wake(600);                                     // 바뀐 것을 그릴 프레임
     return true;
   };
 
@@ -654,6 +683,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (Math.abs(d) > 0.01) { mat.opacity += d * 0.25; live = true; }
       else mat.opacity = target;
     });
+    wake(200);                                     // 페이드가 도는 동안은 그려야 보인다
     raf = live ? requestAnimationFrame(tween) : 0;
   };
   g.onNodeHover((n: any) => {
@@ -804,7 +834,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     return live;
   }
-  function tickFly3d() { flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
+  function tickFly3d() { wake(200); flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
 
   // 해체는 호출부가 `_destructor()` 로 한다(view.ts). 그 자리에 정리를 얹는다 —
   // 안 하면 관점을 바꾼 뒤에도 rAF 가 죽은 씬을 계속 돌린다.

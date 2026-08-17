@@ -341,6 +341,12 @@ const EN = {
       nodeScale: "Node scale", edgeWidth: "Line weight",
       // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
+      when: "Time cursor",
+      whenAll: "All",
+      whenHelp: "Shows only what existed at that point, on the clock chosen below. "
+        + "Items with no time of their own stay visible: a concept has no event date, "
+        + "and that is a fact rather than a gap.",
+      groupTime: "Time",
       cone: "Branch spread",
       coneHelp: "How wide a topic's branch fans out from the centre. Narrow gathers "
         + "each topic into a stalk; wide opens it into a fan. The flat map is unaffected: "
@@ -366,7 +372,7 @@ const EN = {
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     viewx: {
-      grid: "Grid", matrix: "Matrix", traceCta: "Trace from here", shareCta: "Share",
+      shareCta: "Share",
       timeline: "Timeline",
       // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
       // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
@@ -426,8 +432,10 @@ const EN = {
       readerFail: "Couldn't open this document. Try again in a moment.",
       readerTitle: "Document",
       edLive: "Editing. Changes save as you type.",
-      readerVerified: "Verified original",
       readerUnverified: "Reconstructed (not verified)",
+      // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
+      readerMentions: "Mentions",
+      readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "Edit",
       edNew: "New document",
@@ -483,7 +491,6 @@ const EN = {
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동). 관점 발견 힌트는
       // 세그먼트가 상단 바로 간 뒤 띄우는 코드가 없어 2026-08-17 에 지웠다.
-      soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
       // D74 — 켠 손잡이가 아무 일도 안 했을 때 그 사실을 말한다(조용한 무동작 금지).
@@ -988,6 +995,12 @@ const KO: Deck = {
       } as Record<string, string>,
       bundleSelf: (n) => `묶음 안쪽 ${n}개는 이 단에서 그리지 않습니다`,
       nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
+      when: "시간 커서",
+      whenAll: "전부",
+      whenHelp: "그 시점에 있던 것만 보여 줍니다. 어느 시계로 자를지는 아래에서 고릅니다. "
+        + "자기 시각이 없는 것은 계속 보입니다 · 개념에는 사건 날짜가 없고 그것은 "
+        + "빠진 것이 아니라 사실입니다.",
+      groupTime: "시간",
       cone: "가지 벌어짐",
       coneHelp: "주제의 가지가 중심에서 얼마나 벌어질지를 정합니다. 좁히면 주제마다 "
         + "한 줄기로 모이고, 넓히면 부채처럼 펼쳐집니다. 평면 지도는 같은 트리를 "
@@ -1006,7 +1019,7 @@ const KO: Deck = {
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     viewx: {
-      grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적", shareCta: "공유",
+      shareCta: "공유",
       timeline: "타임라인",
       bundle: "짜임",
       bundleUnfiled: "(미분류)",
@@ -1056,8 +1069,9 @@ const KO: Deck = {
       readerFail: "문서를 열지 못했습니다. 잠시 후 다시 시도하세요.",
       readerTitle: "문서",
       edLive: "편집 중. 입력하는 대로 저장됩니다.",
-      readerVerified: "검증된 원본",
       readerUnverified: "복원본 (검증 안 됨)",
+      readerMentions: "언급",
+      readerOutline: (n) => `목차 · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "편집",
       edNew: "새 문서",
@@ -1112,7 +1126,6 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       noLineage: "아직 무엇이 무엇으로 이어졌다고 적힌 것이 없습니다.",

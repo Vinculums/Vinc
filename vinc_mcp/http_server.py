@@ -63,6 +63,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # 노드/엣지 클릭 상세·Reader 밑줄·합계 드릴다운·타임라인 기간·문서 리스트/복원.
     "doc": ("GET", "/doc"), "docs": ("GET", "/docs"),
     "doc-highlights": ("GET", "/doc/highlights"),
+    "doc-context": ("GET", "/doc/context"),   # 리더 머리(개념 칩·목차·청크 오프셋)
     "node-context": ("GET", "/node-context"),
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),

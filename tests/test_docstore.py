@@ -553,6 +553,37 @@ class DocstoreE2E(unittest.TestCase):
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
 
+    def test_extracted_concept_enters_the_next_delta(self):
+        """추출로 태어난 개념이 **다음 delta 에 실리는가**(2026-08-17 실측 결함).
+
+        이 경로는 fragment 를 안 거치고 직접 MERGE 하는데 추적열을 안 찍었다. 열
+        기본값이 없어 `sync_seq` 가 NULL 이 되고 `c.sync_seq > $since` 가 NULL 을
+        배제하므로, 최초 전량 push 이후에 만들어진 개념은 **어느 기기에도 못 갔다**.
+        전량 push(`since=0`)는 술어 자체가 없어 통과하니, 회귀를 잡으려면 커서를
+        올린 **뒤**를 봐야 한다 — 그래서 이 테스트는 두 번 뽑는다."""
+        from api import sync
+        text = "# 노트\n\n## entropy\n\n무질서의 척도.\n\n본문에서 entropy 를 또 다룬다.\n"
+        did = ds.put_doc(self.store, owner="user:a", text=text, title="노트")["doc_id"]
+        # 1회차 전량 push — 커서를 올려 delta 국면으로 넘긴다.
+        first = sync.export_delta(owner="user:a", since=0, domains=[""], store=self.store)
+        cursor = first["next_cursor"]
+
+        ap = ds.extract_doc(self.store, did, owner="user:a", apply=True)
+        self.assertEqual(ap["applied"]["created"], 1)
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:entropy' "
+                             "RETURN c.sync_seq AS seq, c.rev AS rev, c.created AS cr, "
+                             "c.updated_at AS ua")[0]
+        self.assertIsNotNone(row["seq"], "추적열 미기록 — delta 가 이 개념을 영영 못 본다")
+        self.assertGreater(int(row["seq"]), cursor)
+        self.assertEqual(int(row["rev"]), 1)
+        # 출생 시각은 스탬프와 같은 HLC 다 — 기기 간 화해가 사전식 비교라 형식이 계약.
+        self.assertEqual(row["cr"], row["ua"])
+
+        # 도메인은 ''(추출 개념의 기본) — 선택 도메인에 그대로 실어 뽑는다.
+        got = sync.export_delta(owner="user:a", since=cursor, domains=[""],
+                                store=self.store)
+        self.assertIn("concept:entropy", [n["id"] for n in got["nodes"]])
+
     def test_node_context_projects_record_note(self):
         # no-llm-chat 연구 §3.3/§9 — Record ATTACHES_TO 부착은 id/title/domain 만
         # 주고 카드 본문(note)을 버렸다(I6 미개통 원인). note 우선, 없으면 one_liner.
@@ -660,6 +691,51 @@ class DocstoreE2E(unittest.TestCase):
         tally = ds.mention_tally(self.store, owner="user:a")
         self.assertNotIn("concept:gamma-b", tally.cdom)
         self.assertEqual(ds.mention_tally(self.store, owner="user:b").con, {})
+
+    def test_doc_context_gives_concepts_sections_and_chunks(self):
+        # 리더 머리 — 문서→노드(여태 없던 방향) + 목차 + 청크 착지 오프셋.
+        did = self._seed_mention_doc()
+        ctx = ds.doc_context(self.store, did, owner="user:a")
+        self.assertTrue(ctx["executed"])
+        # 언급 많은 것부터. gamma 는 3청크, beta·delta 는 2청크(_seed_mention_doc).
+        self.assertEqual(ctx["concepts"][0]["id"], "concept:gamma")
+        self.assertEqual({c["id"] for c in ctx["concepts"]},
+                         {"concept:beta", "concept:delta", "concept:gamma"})
+        self.assertEqual(ctx["concepts"][0]["count"], 3)
+        # 청크 오프셋은 문단 경계와 같아야 한다 — 검색의 청크 히트가 여기로 착지한다.
+        text = ds.get_doc(self.store, did)["text"]
+        self.assertEqual(len(ctx["chunks"]), 5)
+        self.assertEqual([c["index"] for c in ctx["chunks"]], [0, 1, 2, 3, 4])
+        self.assertTrue(text[ctx["chunks"][2]["char_start"]:].startswith("delta gamma 문단 셋."))
+        self.assertEqual(ctx["sections"], [])   # 헤딩 없는 문서는 목차도 없다
+
+    def test_doc_context_outline_reads_every_depth_with_the_guards(self):
+        # 목차는 H1~H6 전부 본다(개념 추출의 H2/H3 컷은 추출 쪽 사정이다). 프론트매터와
+        # 코드펜스 가드는 `_headings` 것을 그대로 쓰므로 여기서도 서야 한다.
+        text = ("---\ntags: [a]\n---\n\n# 제목\n\n본문\n\n## 절\n\n"
+                "```\n## 펜스 안은 제목이 아니다\n```\n\n#### 깊은 절\n\n끝\n")
+        did = ds.put_doc(self.store, owner="user:a", text=text, title="목차")["doc_id"]
+        ctx = ds.doc_context(self.store, did, owner="user:a")
+        self.assertEqual([(s["title"], s["level"]) for s in ctx["sections"]],
+                         [("제목", 1), ("절", 2), ("깊은 절", 4)])
+        for s in ctx["sections"]:
+            self.assertTrue(text[s["char_start"]:].startswith("#"), s)
+
+    def test_doc_context_counts_decisions_not_only_concepts(self):
+        # 결정도 MENTIONS 대상이다(engines.mentions_link._LINK_TARGETS). `Concept` 만
+        # 세면 결정만 언급한 문서가 빈손이 된다 — 같은 함정이 링커의 MERGE 사본에서
+        # 이미 한 번 났고 그때는 결정 링크가 통째로 0건이었다.
+        self.store.run("MERGE (n:Decision {decision_id:'decision:gamma-call'}) "
+                       "SET n.title='gamma', n.domain='phys', n.owner_id='user:a'")
+        did = self._seed_mention_doc()
+        ctx = ds.doc_context(self.store, did, owner="user:a")
+        self.assertIn("decision:gamma-call", [c["id"] for c in ctx["concepts"]])
+
+    def test_doc_context_owner_guard(self):
+        # SEC-1 — 남의 문서는 못 읽고, 없는 문서는 실패로 답한다(빈 성공 금지).
+        did = self._seed_mention_doc(owner="user:a")
+        self.assertFalse(ds.doc_context(self.store, did, owner="user:b")["executed"])
+        self.assertFalse(ds.doc_context(self.store, "d-nope", owner="user:a")["executed"])
 
     def test_needs_embed_and_reembed(self):
         # D45-E 후속3 — 임베딩 없이 저장하면 needs_embed=1, reembed 가 채우고 0 으로.

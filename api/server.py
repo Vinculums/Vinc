@@ -666,6 +666,12 @@ class VincApp:
             r, _req(p, "doc_id"), _req(p, "concept_id"),
             owner=p.get("owner") or None))
 
+    def read_doc_context(self, p):
+        # 리더가 본문 **앞에** 내놓는 것: 이 문서가 무엇에 걸려 있고(개념 칩) 어떤
+        # 모양인가(목차), 그리고 검색의 청크 히트가 착지할 오프셋.
+        return self._read(lambda r: docstore.doc_context(
+            r, _req(p, "doc_id"), owner=p.get("owner") or None))
+
     def read_edge_context(self, p):
         # D45-V 1단계 — 흐름 뷰 선 클릭: 관계의 evidence·confidence + 양끝 발췌.
         return self._read(lambda r: q.edge_context(
@@ -708,13 +714,18 @@ class VincApp:
 
         def _run(r):
             got = docstore.get_doc(r, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
+            # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
+            # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
             if got.get("executed") and (got.get("text") or "").strip():
                 return {"kind": "conventions", "executed": True, "source": "doc",
+                        "owner": owner or "",
                         "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": got["text"],
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
+                    "owner": owner or "",
                     "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
                     "text": built.get("text") or ""}
         return self._read(_run)
@@ -1383,6 +1394,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
+            "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
