@@ -418,6 +418,7 @@ export async function renderView(el: HTMLElement) {
     }
     if (e.key === "f" || e.key === "F") {
       // 3D 는 전체 맞춤, 2D 는 sigma 카메라 리셋 — 둘 다 "지금 층을 화면에".
+      (g3 as any)?.__wake?.(700);                // 유휴 정지 중이면 깨워야 트윈이 돈다(F6)
       (g3 as any)?.zoomToFit?.(400, 60);
       g2?.fit?.();
     }
@@ -567,7 +568,7 @@ export async function renderView(el: HTMLElement) {
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.
     (viewPanel.querySelector<HTMLElement>(".seg .chip.active")
-      ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus();
+      ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus({ preventScroll: wasOpen });
     // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
     // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
     if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
@@ -923,7 +924,7 @@ export async function renderView(el: HTMLElement) {
     // 이미 활성인 옵션을 다시 누르면 무동작이다(applyViewpoint·applyFrame 과 같은 계약).
     // 없으면 3D 는 카메라 프레이밍이, 평면 뷰는 스크롤 위치가 재마운트로 되감긴다.
     if ((Object.keys(mut) as (keyof ViewPrefs)[]).every((k) => cur[k] === mut[k])) {
-      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
     savePrefs({ ...cur, ...mut });
@@ -938,7 +939,7 @@ export async function renderView(el: HTMLElement) {
       const np = curPrefs();
       bh.update({ depth: np.bundleDepth, off: np.bundleOff, labels: np.labels !== "none" });
       openPanel();
-      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
     const lv = trail[trail.length - 1];
@@ -957,7 +958,7 @@ export async function renderView(el: HTMLElement) {
       // 새 노드로 바뀌어 드래그가 끊긴다. 칩은 활성 상태가 바뀌므로 다시 그린다.
       const sliderOnly = (Object.keys(mut) as string[]).every(
         (k) => k === "nodeScale" || k === "edgeScale" || k === "spread");
-      if (!sliderOnly) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus(); }
+      if (!sliderOnly) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true }); }
       return;
     }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
@@ -966,7 +967,7 @@ export async function renderView(el: HTMLElement) {
     if (rowsFor(lv, np).length > 0)
       await show(lv, false, { keepPanel: true, keepCamera: !relayout });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
-    if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+    if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
   }
 
   /** 주소창을 "관점이 실제로 걸리는 곳 + 그 관점"으로 맞춘다. base 를 location.hash
@@ -1893,10 +1894,14 @@ export async function renderView(el: HTMLElement) {
    *  400ms 타이머를 걸어 그 이후에만 표시를 켠다: 그보다 빠른 전환에 표시를 켜면
    *  깜빡임만 늘어난다(느껴지지 않는 지연에 스피너를 붙이면 더 느려 보인다). */
   let busyTimer: number | undefined;
-  function setBusy(on: boolean) {
+  /** `delay` — 옵션 경로는 120ms(F8, 2026-08-17). 옵션 클릭은 사용자가 방금 손을 댄
+   *  자리라 400ms 의 무표시가 "먹지 않았다"로 읽힌다(층 전환은 그대로 400). 지금은
+   *  옵션 대부분이 show() 에 오지도 않으므로(제자리 반영) 이 지연을 보는 것은 캐시
+   *  재마운트뿐이다. */
+  function setBusy(on: boolean, delay = 400) {
     window.clearTimeout(busyTimer);
     if (!on) { el.classList.remove("view-busy"); return; }
-    busyTimer = window.setTimeout(() => el.classList.add("view-busy"), 400);
+    busyTimer = window.setTimeout(() => el.classList.add("view-busy"), delay);
   }
 
   /** `keepPanel` — 렌즈 패널을 **닫지 않는다**. 층이 바뀔 때 패널을 닫는 것은 맞지만
@@ -1910,7 +1915,7 @@ export async function renderView(el: HTMLElement) {
   async function show(level: Level, push = true,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
     const seq = ++showSeq;
-    setBusy(true);
+    setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
