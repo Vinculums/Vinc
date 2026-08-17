@@ -150,7 +150,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode, ev: MouseEvent) => void;
        /** 선 클릭 → 관계 근거 패널(D45-V). 흐름 관점이 폐기되면서(D53) 이 진입점이
         *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
-       onEdge?: (e: GraphEdge) => void; seed?: string },
+       onEdge?: (e: GraphEdge) => void; markId?: string },
   prefs: ViewPrefs): Handle2d {
   const bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
@@ -169,7 +169,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const shown = prefs.unlinked === "hide"
-    ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.seed)
+    ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.markId)
     : nodes;
   // 밀도 적응 크기(D51) — sigma 는 그래프를 캔버스에 **맞춰 넣는데(auto-fit)** 노드
   // 크기는 절대 px 다. 그래서 좌표를 아무리 키워도(=`spread`) 화면은 그대로이고,
@@ -243,7 +243,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  뜻하므로 주제가 덮으면 안 된다. */
   let tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
   const inkOf = (n: GraphNode) => {
-    if (n.id === o.seed) return point();
+    if (n.id === o.markId) return point();
     return tints?.get((n.domain || "").trim()) ?? ink();
   };
 

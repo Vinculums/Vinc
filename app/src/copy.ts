@@ -366,7 +366,7 @@ const EN = {
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     viewx: {
-      grid: "Grid", matrix: "Matrix", traceCta: "Trace from here", shareCta: "Share",
+      shareCta: "Share",
       timeline: "Timeline",
       // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
       // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
@@ -483,7 +483,6 @@ const EN = {
       } as Record<string, (a: string, b: string) => string>,
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동). 관점 발견 힌트는
       // 세그먼트가 상단 바로 간 뒤 띄우는 코드가 없어 2026-08-17 에 지웠다.
-      soloNode: "This document stands alone. Link it to another to place it in time.",
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
       // D74 — 켠 손잡이가 아무 일도 안 했을 때 그 사실을 말한다(조용한 무동작 금지).
@@ -1006,7 +1005,7 @@ const KO: Deck = {
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     viewx: {
-      grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적", shareCta: "공유",
+      shareCta: "공유",
       timeline: "타임라인",
       bundle: "짜임",
       bundleUnfiled: "(미분류)",
@@ -1112,7 +1111,6 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       noLineage: "아직 무엇이 무엇으로 이어졌다고 적힌 것이 없습니다.",

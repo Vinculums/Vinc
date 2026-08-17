@@ -1280,7 +1280,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   background: hsl(var(--card) / .78);
   /* 18px → 12px(F7, 2026-08-17). backdrop-filter 는 뒤의 캔버스를 **매 프레임** 다시
      샘플링한다 — 반경이 곧 비용이라, 패널이 열려만 있어도 GPU 가 두 배로 일했다
-     (렌즈 패널 반응성 연구, 원인 7). 12px 는 유리 인상이 남는 하한 근처다. */
+     (그래프 문서 `vinc.research.view-interaction-perf` §2 C7). 12px 는 유리 인상이
+     남는 하한 근처다. */
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
   pointer-events: none;
