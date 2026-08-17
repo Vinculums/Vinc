@@ -232,6 +232,7 @@ class StoreUnavailableReadTests(unittest.TestCase):
         "/graph?owner=u&layout=none", "/search?query=x", "/decide?topic=t",
         "/doc?id=d1", "/docs?owner=u", "/conventions?owner=u", "/nav-tree?owner=u",
         "/doc/highlights?doc_id=d1&concept_id=concept:a",
+        "/doc/context?owner=u&doc_id=d1",
         "/node-context?owner=u&node=concept:a",
         "/edge-context?owner=u&src=concept:a&dst=concept:b&type=RELATED_TO",
         "/ledger-drilldown?owner=u&domain=d&mark=m",

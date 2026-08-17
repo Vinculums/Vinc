@@ -317,6 +317,15 @@ export const api = {
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // 리더 머리 — 이 문서가 **무엇에 걸려 있고**(개념 칩: 문서→노드, 여태 없던 방향)
+  // **어떤 모양인가**(목차), 그리고 검색의 청크 히트가 착지할 오프셋. 세 필드가 전부
+  // 옵셔널인 것은 구 사이드카 강등 규약 — 없으면 그 줄을 안 그린다.
+  docContext: (owner: string, doc_id: string): Promise<{
+    executed: boolean;
+    concepts?: { id: string; title: string; domain: string; count: number }[];
+    sections?: { title: string; level: number; char_start: number }[];
+    chunks?: { index: number; char_start: number }[];
+  }> => call("/doc/context", { owner, doc_id }),
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
   // origin 은 출처 표시(파일 import 시 파일명) — 서버의 doc 정체성 산식에 참여하고
   // 재드롭 식별의 근거가 된다. 조인 키가 아니며 UI 에도 노출하지 않는다(D45).
