@@ -274,6 +274,28 @@ def _next_doc_seq(store, owner: str) -> int:
         return 0
 
 
+def _node_stamp(store, owner: str, rev: int = 0) -> dict:
+    """노드 추적열 {updated_at, rev, sync_seq} — 이 모듈이 **생 Cypher 로** 쓰는
+    Concept 에 붙인다(위 `_stamp_updated_at` 의 노드판).
+
+    왜 필요한가(실측 2026-08-17): `extract_doc` 은 개념을 fragment 를 거치지 않고
+    직접 MERGE 하면서 이 셋을 안 찍었다. `CREATE NODE TABLE` 은 열 기본값을 안 내므로
+    값은 0 이 아니라 **NULL** 이 되고, delta 술어 `c.sync_seq > $since` 는 NULL 을
+    배제한다 — 그래서 최초 전량 push(`since=0`) 이후에 문서가 만든 개념은 **어느 기기
+    에도 영영 가지 않았다**(오류도 경고도 없이 노드 통째로). 재현: 전량 push 로 커서를
+    1 로 올린 뒤 추출로 개념을 만들고 `since=1` 을 뽑으면 그 개념만 빠진다.
+
+    fragment 로 라우팅해 재사용하는 편이 깔끔하지만 그쪽은 `status`·`stem`·
+    `source_file` 을 못 써서(이 경로가 쓰는 열들) 못 옮긴다. 그래서 열 셋만 여기서 붙인다.
+
+    revstamp 미가용(경량 스토어)이면 `_stamp_updated_at` 과 같은 태도로 강등한다."""
+    try:
+        from . import revstamp
+        return revstamp.make_stamp(store, {"owner": owner, "rev": rev})
+    except Exception:
+        return {"updated_at": _now_iso(), "rev": int(rev or 0) + 1, "sync_seq": 0}
+
+
 def doc_id_for_origin(owner: str, origin: str) -> str:
     """origin(파일 경로 등 **안정 외부 식별자**) 기반 결정론 doc_id(P2). 같은
     파일의 재적재가 같은 doc 로 수렴한다(내용 해시 기반 make_doc_id 와 달리 편집에도
@@ -1337,26 +1359,39 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         cid = f"concept:{c['slug']}"
         exists = store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o, "
-            "n.content_time AS ct", {"id": cid})
+            "n.content_time AS ct, n.rev AS rev", {"id": cid})
         if exists:
             if exists[0].get("o") not in (owner, "", None):
                 continue   # 남의 개념 — 건드리지 않는다(SEC-1)
             matched += 1
             # 내 기존 개념 — 덮어쓰기 금지. 단 **비어 있는 내용 시점만** 채운다:
             # 문서에 시점을 뒤늦게 적었을 때 이미 뽑힌 개념이 영영 축에서 빠지지 않게.
+            # 이것도 **변경이므로 스탬프한다** — 안 찍으면 채운 값이 이 기기 밖으로
+            # 나가지 못한다(다음 delta 가 이 노드를 안 본다).
             if ctime and not (exists[0].get("ct") or ""):
+                st = _node_stamp(store, owner, int(exists[0].get("rev") or 0))
                 store.run("MATCH (n:Concept) WHERE n.concept_id = $id "
-                          "SET n.content_time = $ct", {"id": cid, "ct": ctime})
+                          "SET n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, "
+                          "n.sync_seq = $seq",
+                          {"id": cid, "ct": ctime, "ua": st["updated_at"],
+                           "rev": st["rev"], "seq": st["sync_seq"]})
             continue
+        # 추적열(updated_at·rev·sync_seq)을 함께 찍는다 — 없으면 이 개념은 delta 에
+        # 안 실려 다른 기기로 못 간다(:func:`_node_stamp` 주석의 실측).
+        st = _node_stamp(store, owner)
         store.run(
             "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = $ol, "
             "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
             "n.stem = $slug, n.source_file = $origin, n.created = $now, "
-            "n.content_time = $ct",
+            "n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
             {"id": cid, "t": c["title"], "ol": c["one_liner"], "owner": owner,
              "slug": c["slug"], "origin": meta.get("origin") or "",
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
-             "now": _now_iso(), "ct": ctime})
+             # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교
+             # (`x.created > $born`)로 화해되는데 그 비교가 사전식이라, 초 단위
+             # `_now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
+             "now": st["updated_at"], "ct": ctime,
+             "ua": st["updated_at"], "rev": st["rev"], "seq": st["sync_seq"]})
         created += 1
     linked = _relink_mentions(store, doc_id, owner=owner,
                               origin=meta.get("origin") or "")

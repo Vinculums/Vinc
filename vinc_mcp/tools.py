@@ -92,6 +92,17 @@ _FRAGMENT_SCHEMA = {
                                                  "in props.one_liner or props.note instead still works "
                                                  "(server-side promotion) but only when this field and "
                                                  "props.one_liner are both absent."},
+                    # D72 — 두 시간축의 저작 가능한 쪽. `date` 와 같은 이유로 계약에
+                    # 적는다: 서버는 이제 받는데 계약이 안 알려 주면 상류는 props 에
+                    # 넣고, 그 자리는 정렬·필터가 안 읽는다.
+                    "content_time": {"type": "string",
+                                     "description": "Concept and record only — when the thing this node "
+                                                    "describes happened (the 1905 of a note about "
+                                                    "relativity), as opposed to when you wrote it down. "
+                                                    "Free text but only a YYYY[-MM[-DD]] prefix is stored, "
+                                                    "because comparison and bucketing are lexicographic; "
+                                                    "anything else is refused with a warning and the "
+                                                    "stored value is kept. Empty string clears it."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
                 },
                 "required": ["id", "type"],

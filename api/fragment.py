@@ -245,6 +245,39 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 cand = _props.get("one_liner") or _props.get("note")
                 if isinstance(cand, str) and cand.strip():
                     _set("one_liner", cand.strip())
+        if label in ("Concept", "Record"):
+            # v7(D72) — **내용 시점**(`content_time`). 이 경로는 여태 이 필드를 아예
+            # 안 읽었다(2026-08-17 실측). 열은 Concept·Record 에만 있고 문서 추출이
+            # 채우는데, MCP 로 적재하는 쪽에는 채울 길이 **없었다** — 같은 축이 문으로만
+            # 갈리는 상태였다(one_liner 가 앞서 겪은 것과 같은 병).
+            #
+            # 규칙은 앞의 셋과 같다: top-level 이 오면 그것이 이기고, 키가 **아예 없을
+            # 때만** props 를 승격한다(F9 — 계약에 없던 시절 상류가 넣어 둔 자리).
+            # 미기재는 보존이다(domain·tags·props 와 같은 가드).
+            #
+            # ⚠ 형식 위반은 **쓰지 않고 경고한다.** `_norm_content_time` 은 규격 밖
+            # 값에 ''를 돌려주는데, 그대로 SET 하면 "yesterday" 같은 오타 한 번이
+            # 저장된 멀쩡한 시점을 조용히 지운다. 빈 문자열은 명시적 지우기로 존중한다.
+            #
+            # 이것은 문서 경로(`put_doc`)와 **의도적으로 다르다** — 거기서는 위반값이
+            # ''로 내려앉는다(test_content_time 이 그 계약을 못박고 있다). 두 표면의
+            # 성격이 달라서다: `put_doc` 은 문서 전량을 매번 다시 쓰는 자리라 실린 값이
+            # 곧 전부지만, 여기는 **부분 재전송이 정상인 MERGE 표면**이라 미기재가
+            # 보존이다. 그 표면에서 오타는 '지우기'보다 '미기재'에 가깝다.
+            from . import docstore as _ds      # 지연 import(순환 없음) — 검증기 1벌 유지
+            _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
+            _raw = node.get("content_time")
+            if _raw is None and "content_time" not in node:
+                _cand = _cp.get("content_time")
+                _raw = _cand if isinstance(_cand, str) else None
+            if _raw is not None:
+                _norm = _ds._norm_content_time(str(_raw))
+                if _norm or not str(_raw).strip():
+                    _set("content_time", _norm)
+                else:
+                    warnings.append(
+                        f"content_time '{_raw}' is not YYYY[-MM[-DD]] — kept the stored "
+                        f"value (id={nid})")
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
             #

@@ -128,6 +128,70 @@ class TimeAxisE2E(unittest.TestCase):
                              "RETURN c.content_time AS ct")
         self.assertEqual(row[0]["ct"], "1916")
 
+    # ── 정상 쓰기 표면(vinc_ingest)에서의 content_time ────────────────────────
+    # 2026-08-17 까지 `_merge_node` 는 이 필드를 **아예 안 읽었다**. 열은 Concept·
+    # Record 에 있고 문서 추출만 채웠으니, 같은 축이 들어온 문에 따라 갈렸다.
+    def _ingest(self, node):
+        from api import fragment as frag
+        return frag.merge_fragment({"owner": self.OWNER, "nodes": [node]}, store=self.store)
+
+    def _ct(self, label, pk, nid):
+        rows = self.store.run(f"MATCH (n:{label}) WHERE n.{pk} = $i "
+                              "RETURN n.content_time AS ct, n.sync_seq AS seq", {"i": nid})
+        return rows[0] if rows else {}
+
+    def test_fragment_writes_content_time_on_concept_and_record(self):
+        self._ingest({"id": "concept:c1", "type": "concept", "title": "C",
+                      "content_time": "1905-06"})
+        self._ingest({"id": "record:r1", "type": "record", "title": "R",
+                      "content_time": "1916"})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c1")["ct"], "1905-06")
+        self.assertEqual(self._ct("Record", "record_id", "record:r1")["ct"], "1916")
+
+    def test_fragment_preserves_content_time_on_partial_resend(self):
+        # 부분 재전송(제목만)이 시점을 깎으면 안 된다 — domain·tags·props 와 같은 가드.
+        self._ingest({"id": "concept:c2", "type": "concept", "title": "C",
+                      "content_time": "1905"})
+        self._ingest({"id": "concept:c2", "type": "concept", "title": "C 고침"})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c2")["ct"], "1905")
+        # 빈 문자열은 **명시적 지우기** — 미기재와 구분된다
+        self._ingest({"id": "concept:c2", "type": "concept", "content_time": ""})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c2")["ct"], "")
+
+    def test_fragment_refuses_a_malformed_content_time_and_says_so(self):
+        # ⚠ 문서 경로(put_doc)는 위반값을 ''로 내려앉히지만 여기는 **보존 + 경고**다.
+        # 부분 재전송이 정상인 표면이라 오타는 '지우기'보다 '미기재'에 가깝다.
+        self._ingest({"id": "concept:c3", "type": "concept", "title": "C",
+                      "content_time": "1905"})
+        res = self._ingest({"id": "concept:c3", "type": "concept",
+                            "content_time": "yesterday"})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c3")["ct"], "1905")
+        self.assertTrue(any("content_time" in w for w in res.get("warnings") or []),
+                        f"조용한 유실 금지 — 경고가 있어야 한다: {res.get('warnings')}")
+
+    def test_fragment_promotes_content_time_from_props(self):
+        # F9 와 같은 규칙 — 계약에 없던 시절 상류가 props 에 넣어 둔 값을 제자리로.
+        # 키가 **아예 없을 때만** 본다(top-level 이 오면 그것이 이긴다).
+        self._ingest({"id": "concept:c4", "type": "concept", "title": "C",
+                      "props": {"content_time": "1687"}})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c4")["ct"], "1687")
+        self._ingest({"id": "concept:c5", "type": "concept", "title": "C",
+                      "content_time": "1905", "props": {"content_time": "1687"}})
+        self.assertEqual(self._ct("Concept", "concept_id", "concept:c5")["ct"], "1905")
+
+    def test_editing_only_content_time_bumps_the_sync_cursor(self):
+        # TRACKED 에 없으면 이 편집은 sync_seq 를 못 올리고, 그러면 **이 기기를 못
+        # 떠난다**(다음 delta 가 이 노드를 안 본다). 그것이 이 필드를 추적하는 이유다.
+        self._ingest({"id": "concept:c6", "type": "concept", "title": "C",
+                      "content_time": "1905"})
+        before = int(self._ct("Concept", "concept_id", "concept:c6")["seq"])
+        self._ingest({"id": "concept:c6", "type": "concept", "content_time": "1916"})
+        after = int(self._ct("Concept", "concept_id", "concept:c6")["seq"])
+        self.assertGreater(after, before)
+        # 멱등 재전송은 반대로 **안** 올린다(가짜 충돌 방지 — 기존 계약).
+        self._ingest({"id": "concept:c6", "type": "concept", "content_time": "1916"})
+        self.assertEqual(int(self._ct("Concept", "concept_id", "concept:c6")["seq"]), after)
+
     def _concept(self, cid, *, domain="phys", created="2026-01-01", content=""):
         self.store.run(
             "MERGE (c:Concept {concept_id:$id}) SET c.title=$t, c.domain=$d, "
