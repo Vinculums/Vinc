@@ -160,7 +160,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             if key in seen:
                 continue
             seen.add(key)
-            edges.append({"from": r["id"], "to": tgt, "type": ftype})
+            e = {"from": r["id"], "to": tgt, "type": ftype}
+            # v14 — 엣지 출생도 함께. `created` 의 뜻이 "어느 공간에서든 처음
+            # 이어진 때"라 공간을 건너도 참이고, 받는 쪽에서 신규일 때만 쓰인다
+            # (ON CREATE SET — 기존 엣지는 안 덮는다).
+            if r.get("edge_created"):
+                e["created"] = r["edge_created"]
+            edges.append(e)
 
     # 3) 레코드(Episode) — 도메인/태그 스코프에서만(ids/ego 스코프는 개념 중심).
     episodes: list[dict] = []

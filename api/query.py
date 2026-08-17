@@ -524,6 +524,9 @@ def graph_plan(*, owner: str, domain: str | None = None,
         # 레이아웃 정렬의 `pinned` 키가 무동작인 것은 이 때문이고, D32 의 "pin 이
         # 허브 승격 1순위"는 개념 축에서 **아직 구현된 적이 없다**(별건).
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
+        # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
+        "r.created AS edge_created, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "
@@ -785,6 +788,9 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
         "coalesce(c.content_time, '') AS content_ts, "
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
+        # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
+        "r.created AS edge_created, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "

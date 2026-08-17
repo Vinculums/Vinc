@@ -379,7 +379,10 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             if key in seen:
                 continue
             seen.add(key)
-            edges.append({"from": r["id"], "to": tgt, "type": ftype})
+            e = {"from": r["id"], "to": tgt, "type": ftype}
+            if r.get("edge_created"):
+                e["created"] = r["edge_created"]
+            edges.append(e)
 
     # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된
     # 노드의 도메인을 알 수 없으니 owner 전체). 수신측이 부활 가드로 안전 적용.
@@ -440,7 +443,10 @@ def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPla
         f"MATCH (a:{sl})-[r]->(b:{dl}) "
         f"WHERE a.{sp} IN $ids AND b.{dp} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
-        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target"
+        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target, "
+        # v14 — 엣지 출생도 나른다. 안 실으면 수신측에서 그 엣지는 신규라
+        # **그 기기 시각으로 다시 태어난다** — 노드에서 방금 고친 것과 같은 병이다.
+        "r.created AS edge_created"
     )
     return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher, {"ids": ids, "owner": owner},
                        note=f"{sl}->{dl} edges for sync bundle")

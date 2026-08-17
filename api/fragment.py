@@ -498,7 +498,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 *, owner: str | None = None, owner_explicit: bool = False,
                 stamp_edges: bool = True,
                 rollup: dict[str, list[str]] | None = None,
-                declared: set[str] | None = None) -> str | None:
+                declared: set[str] | None = None,
+                born=None) -> str | None:
     """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
 
     SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
@@ -515,9 +516,23 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     st, dt = types.get(src, ""), types.get(dst, "")
     osc = bool(owner_explicit and owner)
+    #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
+    #: 메타 읽기·쓰기가 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
+    born = born or (lambda: revstamp.hlc_now(store))
     def _o(var: str) -> str:
         return f" AND {var}.owner_id = $owner" if osc else ""
     op = {"owner": owner} if osc else {}
+
+    # v14 — **엣지 출생**. `ON CREATE SET` 이라 재-MERGE 는 안 덮는다(노드의 팩 규칙과
+    # 같은 뜻: 출생은 처음 이어진 때다). 상류가 실은 값이 있으면 그것을(동기화·팩이
+    # 원본의 출생을 나른다), 없으면 이 배치의 시각을 쓴다.
+    #
+    # ⚠ 구 엣지는 여기 안 걸린다 — 이미 있으므로 ON CREATE 가 안 뛰고 `created` 는
+    # '' 로 남는다. **그것이 맞다**: 언제 이어졌는지 우리는 모르고, 지금을 찍으면
+    # 모든 옛 관계가 오늘 태어난 것이 된다.
+    def _birth_set(rel_var: str) -> tuple[str, dict]:
+        return (f" ON CREATE SET {rel_var}.created = $ecreated",
+                {"ecreated": str(edge.get("created") or "") or born()})
 
     # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여(CC 4종 + about 만 —
     # 그 rel 테이블만 열을 가진다). 미제공이면 열은 스키마 기본값('', 0.0) 유지.
@@ -539,11 +554,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         if not etype:
             warnings.append(f"edge without type — skipped ({src}→{dst})")
             return None
+        b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{_ENTITY_LABEL}), (b:{_ENTITY_LABEL}) "
             f"WHERE a.{_ENTITY_ID} = $s AND b.{_ENTITY_ID} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[:{_TYPED_REL} {{type: $t}}]->(b)",
-            {"s": src, "d": dst, "t": etype, **op})
+            f"MERGE (a)-[r:{_TYPED_REL} {{type: $t}}]->(b){b_set}",
+            {"s": src, "d": dst, "t": etype, **op, **b_p})
         return "created"
 
     # T4 — 대상 미선언과 타입 불일치를 **구분**한다. 해석기는 이 호출의 `nodes`
@@ -586,17 +602,19 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # role 멱등, 다른 role 병렬 엣지). 없으면 bare MERGE(기존 role 엣지에 no-op).
         # role 기본값 조작 금지 — `{dom}_input` 관례는 bridges_ingest 전속.
         role = (edge.get("role") or "").strip()
+        b_set, b_p = _birth_set("r")
         if role:
             store.run(
                 f"MATCH (a:Bridge), (b:{dl}) "
                 f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-                "MERGE (a)-[:CONNECTS {role: $role}]->(b)",
-                {"s": src, "d": dst, "role": role, **op})
+                f"MERGE (a)-[r:CONNECTS {{role: $role}}]->(b){b_set}",
+                {"s": src, "d": dst, "role": role, **op, **b_p})
         else:
             store.run(
                 f"MATCH (a:Bridge), (b:{dl}) "
                 f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-                "MERGE (a)-[:CONNECTS]->(b)", {"s": src, "d": dst, **op})
+                f"MERGE (a)-[r:CONNECTS]->(b){b_set}",
+                {"s": src, "d": dst, **op, **b_p})
         return "created"
     if etype in _EC_EDGES:
         # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
@@ -613,10 +631,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
         was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
+        b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
+            f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
+            {"s": src, "d": dst, **op, **ev_p, **b_p})
         if not was and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
                                   osc=osc, warnings=warnings)
@@ -647,10 +667,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         rel = _CC_EDGES[etype]
         was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
+        b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{rel}]->(b){ev_set}", {"s": src, "d": dst, **op, **ev_p})
+            f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
+            {"s": src, "d": dst, **op, **ev_p, **b_p})
         if not was and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
                                   osc=osc, warnings=warnings)
@@ -660,11 +682,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         (dl, dp) = _end(dt)
+        b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:Record), (b:{dl}) "
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type = $t",
-            {"s": src, "d": dst, "t": etype, **op})
+            f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t",
+            {"s": src, "d": dst, "t": etype, **op, **b_p})
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
@@ -767,6 +790,16 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         if r is not None:
             types[(n.get("id") or "").strip()] = ntype
     edge_rollup: dict[str, list[str]] = {}
+    # 이 배치의 엣지 출생 시각(v14) — **한 번만** 뽑아 전부가 나눠 쓴다. 엣지마다
+    # 새로 뽑으면 메타 왕복이 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
+    # 엣지가 없으면 아예 안 뽑는다(lambda 가 지연).
+    _born_cache: list[str] = []
+
+    def _born() -> str:
+        if not _born_cache:
+            _born_cache.append(revstamp.hlc_now(store))
+        return _born_cache[0]
+
     for e in edges:
         st, dt = types.get((e.get("from") or "").strip(), ""), types.get((e.get("to") or "").strip(), "")
         etype = (e.get("type") or "").strip()
@@ -774,7 +807,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
             fold.fold("edge", etype)   # TYPED 캐리어행 엣지 타입만 어휘 편입
         r = _merge_edge(store, e, types, warnings, owner=owner,
                         owner_explicit=owner_explicit, stamp_edges=stamp_edges,
-                        rollup=edge_rollup, declared=declared)
+                        rollup=edge_rollup, declared=declared, born=_born)
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)
