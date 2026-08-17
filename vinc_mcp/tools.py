@@ -969,7 +969,7 @@ def call(name: str, args: dict | None, bridge: Bridge,
         out = remote.call(name, args)
     else:
         out = tool["run"](args, bridge)
-    return _stamp_identity(name, out, target)
+    return _stamp_identity(name, out, target, allow_target)
 
 
 #: 정체(어느 그래프에 썼는가)를 응답에 싣는 도구. **전부에 달지 않는다** — 조회
@@ -986,11 +986,22 @@ def call(name: str, args: dict | None, bridge: Bridge,
 _IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
 
 
-def _stamp_identity(name: str, out: dict, target: str) -> dict:
+def _stamp_identity(name: str, out: dict, target: str, allow_target: bool = True) -> dict:
     """응답에 `target` 을 얹는다. `owner` 는 **손대지 않는다** — 쓴 쪽(사이드카·허브)이
     자기가 실제로 스탬핑한 값을 이미 싣고 오고, 여기서 클라이언트가 아는 값으로
     덮으면 호스티드에서 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다).
-    자기 실수에 동의해 주는 답이 제일 나쁘다."""
-    if name in _IDENTITY_TOOLS and isinstance(out, dict):
+    자기 실수에 동의해 주는 답이 제일 나쁘다.
+
+    ⚠ **자기가 곧 원격인 서버는 이 필드를 안 찍는다**(`allow_target=False` — 허브
+    프로파일). 라이브에서 물린 자리다(2026-08-17 배포 직후 실측): 허브도 이 깔때기를
+    도는데 거기서 target 은 언제나 "local" 이라, 원격으로 간 호출이 `"target":
+    "local"` 을 받아 왔다. 그 값을 "remote" 로 덮는 것은 **새 클라이언트**뿐이고,
+    데스크탑 업데이트는 사용자 클릭이라 구 클라이언트 창이 한동안 간다.
+
+    위 독스트링이 경계하던 바로 그 고장을 이 필드가 만들고 있었다 — 계정 그래프에
+    썼는지 확인하려고 target 을 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다.
+    고침의 방향은 더 정확한 값을 지어내는 것이 아니라 **아예 답하지 않는 것**이다:
+    호출자의 local/remote 개념은 호출자만 안다."""
+    if allow_target and name in _IDENTITY_TOOLS and isinstance(out, dict):
         out["target"] = target
     return out
