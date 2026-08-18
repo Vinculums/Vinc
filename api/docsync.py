@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """문서 정본(SSoT) 동기화 — doc 단위 last-writer-wins (D45 P3).
 
-Chunk 가 정본이 되며 다기기 동기화가 필요해졌다([[vinc.c.chunk-ssot]] §5-P3).
+Chunk 가 정본이 되며 다기기 동기화가 필요해졌다([[vinc.canon.chunk-ssot]] §5-P3).
 그런데 노드 동기화(api/sync)는 **fragment 노드**(Concept/Episode/…) 중심의
 필드 3-way 병합이라, Chunk 를 그 레일에 억지로 태우면 (a) 재청킹으로 chunk_id
 집합이 통째 바뀌고 (b) embedding 이 delta 번들(3MB 한계)을 잠식한다.
@@ -42,7 +42,7 @@ def export_docs(store, *, owner: str, since: int = 0) -> dict:
     cursor = int(since)
     for r in rows or []:
         # 관례 문서(GRAPH.md)는 동기화하지 않는다 — **각 그래프는 자기 관례를 갖는다**가
-        # 불변식이다(vinc.c.graph-md §6.3). 이 문서의 생성 구역은 그 스토어의 도메인·재가
+        # 불변식이다([[vinc.canon.graph-conventions]] §6.3). 이 문서의 생성 구역은 그 스토어의 도메인·재가
         # 어휘를 서술하므로, 기기와 계정 사이를 오가면 도착하는 쪽에서 즉시 거짓이 된다.
         # 커서는 그대로 전진시킨다(건너뛴 seq 를 다음 pull 이 다시 집어오지 않게).
         if r["doc_id"] == graphmd.CONVENTIONS_DOC_ID:

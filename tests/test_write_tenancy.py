@@ -4,8 +4,8 @@
 여기 있는 건 **배선/계약 층**(Windows 포함 어디서든 실행): 강제 owner 경로가
 생성하는 Cypher 에 `owner_id = $owner` 술어가 실제로 박히는가, PK 충돌 소유권
 탈취가 거부되는가를 캡처-목 스토어로 본다. 실엔진 2-owner 왕복(A 가 B 의 노드를
-정말 못 지우는가)은 서버측 e2e/CI 가 담당한다 — Windows 임베디드 kùzu 부재
-([[windows-embedded-test-fails]]). SEC-1 교훈: 스텁이 초록이어도 엔진이 다르게
+정말 못 지우는가)은 서버측 e2e/CI 와 실엔진 테스트가 담당한다
+([[record:vinc-tests-need-a-clean-interpreter-on-windows]]). SEC-1 교훈: 스텁이 초록이어도 엔진이 다르게
 굴 수 있으니 **계약(스코프 술어)을 직접** 검사한다.
 """
 from __future__ import annotations

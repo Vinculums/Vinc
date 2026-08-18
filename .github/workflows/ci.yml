@@ -20,13 +20,23 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 같은 브랜치/PR 에 빠르게 연달아 push 하면 앞선 실행을 취소한다(Actions 분 절약).
+# 테스트 게이트라 중간 취소는 안전하다 — 어차피 최신 커밋만 검증하면 된다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   core:
     name: core (498 tests + forbidden-terms gate)
-    runs-on: ubuntu-latest      # 1x 과금 — 비공개 레포에서 macOS 는 10배다
+    # 셀프호스티드(WSL 우분투, 이 조직의 `vinc-local`) — GitHub 분을 0 소모한다.
+    # 호스티드 분이 소진된 상태에서도 이쪽 잡은 정상으로 돈다(2026-08-19 실측: 같은
+    # 리포에서 호스티드 잡은 "시작조차 안 됨"으로 죽고 셀프호스티드 잡은 7초에 성공).
+    # ⚠ 러너가 꺼져 있으면 잡은 **실패가 아니라 큐에 남는다** — 그게 이 선택의 대가다.
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -88,6 +98,13 @@ jobs:
       - name: Forbidden-terms gate
         run: python scripts/gate_forbidden.py
 
+      # 코드가 `[[...]]` 로 가리키는 그래프 문서·노드가 실재하는가. 오프라인이다 —
+      # 대조 대상은 커밋된 scripts/graph-refs.json 이고 CI 에 그래프 키는 없다.
+      # 매니페스트 갱신은 scripts/refresh_graph_refs.py 가 로컬에서 한다.
+      # 이 게이트가 없던 동안 인용 24건 중 19건이 조용히 끊어져 있었다(2026-08-18).
+      - name: Graph citation gate
+        run: python -X utf8 scripts/gate_graph_refs.py
+
       # View 마크 대비(WCAG 2.x AND APCA 이중). 여기 사는 이유: 프런트에는 테스트
       # 러너가 없고 app 잡은 tsc 만 돈다. 이 게이트는 생성물 theme.ts 를 읽는 순수
       # 파이썬이라 core 잡에서 도는 것이 맞다. 두 기준을 AND 로 거는 이유는 극성마다
@@ -117,7 +134,7 @@ jobs:
 
   app:
     name: app (typecheck)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

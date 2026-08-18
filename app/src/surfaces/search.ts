@@ -5,7 +5,7 @@ import { stateDot } from "../icons";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 
-/** Surface 4 — Search (spec: vinc.d.view-visual-language §4, DEC D24).
+/** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
  *  domain; match notation ≡ (keyword arm) / ≈ (semantic arm) shows *why* a row
  *  matched — scores stay in the tooltip. */

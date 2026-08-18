@@ -33,7 +33,7 @@
     }
   },
   "domainTint": {
-    "note": "Open-layer domain tint for the View marks (off by default). This is emphasis, not encoding: it is a user toggle in ViewPrefs, so it must never be the only way to tell two nodes apart. The hue comes from a hash of the topic string, so a topic keeps its hue no matter which other topics are on screen, and collisions are possible and tolerated. Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness is chosen to sit near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/view-tint.ts.",
+    "note": "Open-layer domain tint for the View marks (on by default since 2026-08-16; it shipped off and a hidden default read as a screen with a broken feature, see decision:topic-tint-ships-on). This is emphasis, not encoding: it is a user toggle in ViewPrefs, so it must never be the only way to tell two nodes apart. The hue is assigned by golden angle over the topics present on screen, so a topic does not keep its hue when the scope or the topic set changes; that instability is accepted because two topics landing on the same hue makes the feature do nothing, and a hash gave exactly that (measured: two pairs within 6 to 8 degrees across eight topics). Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness sits near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/view-tint.ts.",
     "light": {
       "s": 0.44,
       "l": 0.34

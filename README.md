@@ -138,7 +138,7 @@ Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇
 - 타입은 고정 전역 enum 이 아니라 **주제별 사용자 저작 어휘**(D11-R2)다. 어휘 밖
   타입은 스킵되지 않고 `status:"proposed"` 로 편입돼(개방층 Entity/TYPED 캐리어)
   응답의 `proposed_types` 로 재가를 요청한다. `theme_id` 는 명시 → 활성 → default
-  순으로 lazy 해결된다. 상세는 [[vinc.b.theme]].
+  순으로 lazy 해결된다. 상세는 [[vinc.canon.vocabulary-model]].
 - 도구 `target`(local|remote)으로 로컬 스토어 또는 호스티드 계정 그래프로 라우팅
   (`vinc_mcp/remote.py`, `VINC_REMOTE_MCP_TOKEN`).
 - 원격 디렉토리 제출용 하드닝: 도구 안전 주석(readOnly/destructive Hint), 브라우저
@@ -185,7 +185,7 @@ python e2e_live.py --backend embedded     # 임베디드 백엔드 e2e
 - **v0.6.5** **문서 정본(Chunk=SSoT, D45)** — 원문을 Chunk 에 무손실 저장(외부 파일
   비의존), 문서 CRUD(HTTP `/doc/*` · MCP `vinc_doc_*` · CLI `doc`), 뷰별 원문 표면,
   앱 내 편집기(CodeMirror 6 라이브 프리뷰 + 개념 후보 원클릭 반영). 정본은
-  [[vinc.c.chunk-ssot]].
+  [[vinc.canon.chunk-ssot]].
 - **v0.6.0** Atlas 평면 관점(D43). 현행 관점은 **4종**(3D·2D·타임라인·합계) —
   흐름은 D53 에서 폐기됐다.
 - **v0.5.x** 그래프 RAG 고도화(E-G1~G7 — MENTIONS 이부 그래프·ego-PPR·WCC/Louvain

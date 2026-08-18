@@ -233,22 +233,12 @@ class MCPHTTPApp:
         # 무료 등급 주제 상한(AP-1 §3.4). None = 기능 꺼짐. 등급→숫자 변환이 **여기**
         # 한 곳에서만 일어나고 사이드카는 숫자만 받는다(정책 무지 유지).
         self.free_max_domains = free_max_domains
-        # Dispatcher 하나를 공유한다. 전에는 `Mcp-Session-Id` 별 dict + 락 + 상한 256
-        # + FIFO 축출 + drop_session 이 있었는데, **그 기계가 지키던 상태는
-        # `Dispatcher.initialized` 불리언 하나였고 그 값을 읽는 프로덕션 코드가
-        # 0건이었다**(읽는 것은 테스트 하나뿐). 즉 stateful 의 비용을 다 내고 이득이
-        # 0이었다. 세션을 **살릴** 유일한 명분은 협상된 프로토콜 리비전을 담아
-        # 후속 요청과 대조하는 것이었는데, 스펙이 실제로 요구하는 검증은 헤더가
-        # **지원 목록에 있는가**이지 이 세션이 무엇으로 협상했는가가 아니다
-        # (`_check_protocol_version`). 그건 무상태라 세션이 필요 없다.
-        #
-        # 덤으로 사라진 위험: `_sessions` 는 프로세스 로컬이라 Container Apps 레플리카가
-        # 둘 이상이면 같은 세션 id 가 레플리카를 넘나들며 재생성됐다. 담긴 게 없어
-        # 무해했지만, 무언가 담기로 결정하는 순간 즉시 버그가 되는 자리였다.
-        #
-        # Dispatcher 는 `bridge`·`allow_target`·미사용 불리언뿐이라 사실상 불변이고
-        # 스레드 안전하다. 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도
-        # 받지도 않는다(위험 감사 5.5) — 데스크탑 stdio 만 그 선택을 갖는다.
+        # Dispatcher 하나를 공유한다(세션별 dict·락·FIFO 축출은 걷어냈다 — 지키던
+        # 상태를 읽는 프로덕션 코드가 0건이었고, 스펙이 요구하는 프로토콜 검증은
+        # **무상태**다: `_check_protocol_version`). ⚠ 세션 저장소를 되살리려거든 먼저
+        # 레플리카가 둘 이상이라는 것을 볼 것 — 프로세스 로컬이라 같은 세션 id 가
+        # 레플리카를 넘나든다([[vinc.plan.mcp-second-pass]]).
+        # 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도 받지도 않는다.
         self._dispatcher = Dispatcher(self.bridge, allow_target=False)
 
     def quota_check(self, owner: str, plan: str | None) -> dict | None:
@@ -490,17 +480,11 @@ class MCPHTTPApp:
             owner = f"user:{sub}"
         args = dict(args or {})
         args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
-        # 어휘(theme)는 **전역**이다 — `store/theme_store.py` 에 owner 가 0건이다.
-        # 그래서 남의 theme_id 를 실어 보내면 그 사람의 어휘에 내 타입이 제안으로
-        # 꽂힌다. 여기서 떨구는 이유는 이 평면이 **파일에서 온 조각을 그대로 펼치기**
-        # 때문이다(`app/src/surfaces/intake.ts` 의 `{...obj.fragment, owner}`) — 즉
-        # 사용자가 연 팩 파일 안의 theme_id 가 아무 확인 없이 여기까지 온다.
-        #
-        # ⚠ **이것으로 닫히는 것은 웹 평면뿐이다.** 진짜 주입 경로인 호스티드 MCP
-        # (`POST /mcp` → Dispatcher.handle → tools.call → _t_ingest → bridge.request)
-        # 는 이 함수를 **아예 지나지 않으므로** 그대로 열려 있다. 제대로 닫으려면
-        # ThemeStore 에 owner 차원을 넣어야 하고 그건 별도 작업이다. 여기 한 줄을
-        # 근거로 "테넌시 막았다"고 적지 말 것.
+        # 어휘(theme)는 **전역**이라 남의 theme_id 를 실어 보내면 그 사람 어휘에 내
+        # 타입이 꽂힌다([[record:risk-themes-global]]). 이 평면은 파일에서 온 조각을
+        # 그대로 펼치므로 여기서 떨군다.
+        # ⚠ **이것으로 닫히는 것은 웹 평면뿐이다** — 호스티드 MCP 는 이 함수를 아예
+        # 지나지 않는다. 여기 한 줄을 근거로 "테넌시 막았다"고 적지 말 것.
         args.pop("theme_id", None)
 
         if op == "job":   # /jobs/{id} 폴링 — id 는 토큰꼴만(경로주입·타 라우트 차단)
@@ -732,15 +716,11 @@ class _Handler(BaseHTTPRequestHandler):
                     body["oauth_state"] = health()
                 except Exception as exc:   # noqa: BLE001 — 진단이 헬스를 죽이지 않게
                     body["oauth_state"] = {"error": f"{type(exc).__name__}: {exc}"}
-            # 사이드카 도달성(2026-08-03 사고 대응) — `/internal/graph-owner`(웹
-            # 그래프 프록시)와 실제 MCP 툴콜이 전부 이 사이드카(127.0.0.1:8787)에
-            # 물려 있는데, 그게 죽어도 이 프로세스(8790, Azure 가 실제로 찌르는
-            # 포트)는 계속 200 을 준다 — 그 사고 때 curl 로 "허브가 죽었나"를 물어도
-            # /health 는 정상이라고 답했을 것이다. oauth_state 와 같은 자리에 진단만
-            # 싣는다(상태 코드는 안 바꾼다 — 이 앱엔 자동 프로브가 안 걸려 있고
-            # <Container Apps 프로브 미설정, 2026-08-04 확인>, 단일 writer 락 특성상
-            # 헬스 실패로 자동 재기동을 걸면 그 자체가 더 위험할 수 있다는
-            # hub-deploy.yml 의 교훈도 있다 — 사람이 보고 판단하는 신호로 둔다).
+            # 사이드카 도달성 — 툴콜과 웹 프록시가 전부 그것에 물려 있는데 그게 죽어도
+            # 이 프로세스는 200 을 준다. **진단만** 싣고 상태 코드는 안 바꾼다(자동
+            # 프로브가 없고, 단일 writer 락 특성상 헬스 실패로 재기동을 걸면 그게 더
+            # 위험할 수 있다 — 사람이 보고 판단하는 신호다):
+            # [[record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process]].
             bridge = getattr(self.app, "bridge", None)
             if bridge is not None:
                 t0 = time.time()
@@ -962,14 +942,9 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(200, out)
 
     # ── 로깅 ──────────────────────────────────────────────────────────────
-    # 예전엔 여기서 전부 삼켰다("로그는 systemd/journald 몫"). **가비아 VM 시절 이야기다.**
-    # Azure Container Apps 에서는 stdout 이 곧 로그라, 삼키면 남는 게 기동 배너뿐이고
-    # 장애 때 컨테이너가 조용하다 = 아무 단서가 없다. 실제로 2026-07-31 커넥터 장애를
-    # 진단할 때 "로그가 깨끗하다"가 정상이라는 뜻인지 눈이 먼 것인지조차 알 수 없었다.
-    # (임베딩 워커가 조용히 사라졌던 것과 같은 계열의 사고 — 침묵을 성공으로 오독한다.)
-    #
-    # 그래서 **실패만** 남긴다: 2xx·3xx 는 조용히(정상 트래픽으로 로그를 채우지 않는다),
-    # 4xx·5xx 와 예외는 stdout 으로. 컨테이너 로그가 곧 장애 기록이 된다.
+    # **실패만** 남긴다: 2xx·3xx 는 조용히, 4xx·5xx 와 예외는 stdout 으로. 컨테이너에서
+    # stdout 은 곧 로그라 삼키면 장애 때 단서가 0 이 된다
+    # ([[record:in-a-container-a-swallowed-log-is-no-log]]).
     def log_message(self, fmt, *args):
         sys.stdout.write("[http] %s %s\n" % (self.address_string(), fmt % args))
         sys.stdout.flush()

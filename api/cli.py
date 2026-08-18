@@ -65,11 +65,10 @@ def main(argv: list[str] | None = None) -> int:
     dm = sub.add_parser("domains", help="list a learner's domains (discovered from data, not a fixed list)")
     dm.add_argument("--owner", default=None, help="owner_id scope (omit for all learners)")
 
-    # E-1 — v11 이행. ⚠ **평시에는 이걸 부를 일이 없다**: 파생은 부팅 데이터 스텝이
-    # 하고(store.embedded_backend.migrate, DOMAIN_HIERARCHY_VERSION) 이후는 쓰기
-    # 경로가 유지한다. 이 명령이 있는 이유는 `--rename` 뿐이다 — 평면 도메인을 계층
-    # 아래로 옮기는 것은 사람의 결정이라 부팅이 대신하면 안 된다.
-    # ⚠ 스토어가 **다른 프로세스에 잠겨 있으면 안 된다**(사이드카·앱 실행 중 금지).
+    # ⚠ **평시에는 부를 일이 없다** — 파생은 부팅 데이터 스텝이 하고 이후는 쓰기 경로가
+    # 유지한다([[vinc.spec.dataplane §7]]). 이 명령의 존재 이유는 `--rename` 뿐이다:
+    # 평면 도메인을 계층 아래로 옮기는 것은 사람의 결정이라 부팅이 대신하면 안 된다.
+    # ⚠ 스토어가 다른 프로세스에 잠겨 있으면 안 된다(사이드카·앱 실행 중 금지).
     dh_ = sub.add_parser("domain-backfill",
                          help="move topics under a parent and re-derive the hierarchy "
                               "(--rename design=vinc/design). Store must not be locked "
@@ -187,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
 
-    # ── GRAPH.md — 어시스턴트 쓰기 관례 (vinc.c.graph-md) ──────────────────────
+    # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     from .graphmd import CONVENTIONS_DOC_ID as _GM_DOC
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)
@@ -353,13 +352,9 @@ def main(argv: list[str] | None = None) -> int:
         _restore = persistence.restore_if_missing(data_dir)
         if _restore not in ("off", "present"):
             print(f"vinc-sidecar: store restore — {_restore}", file=sys.stderr, flush=True)
-        # ⚠ **복원 실패는 fail-closed 다.** 여기 오래 위의 print 만 있었고 무조건
-        # `server.serve()` 로 내려갔다. 2026-08-09 에 그 경로로 데이터를 잃었다:
-        # 복원이 PermissionError 로 실패 → 로그 한 줄 → 스토어가 **빈 DB 로 새로
-        # 생성** → 다음 주기 스냅샷이 그 빈 DB 를 영속본 위에 덮음(60.72MB → 0).
-        # 저장 실패와 복원 실패의 성질이 다르다는 근거는 `store/persistence.py`
-        # 모듈 독스트링에 있다. 여기서 멈추면 사람이 보고 고치지만, 진행하면
-        # 조용히 원본이 사라진다.
+        # ⚠ **복원 실패는 fail-closed 다.** 여기서 멈추면 사람이 보고 고치지만, 진행하면
+        # 빈 DB 가 생기고 다음 스냅샷이 영속본을 덮는다:
+        # [[record:a-failed-restore-must-stop-the-process]].
         _fatal = persistence.restore_state_is_fatal(_restore)
         if _fatal:
             print(f"vinc-sidecar: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
@@ -372,11 +367,9 @@ def main(argv: list[str] | None = None) -> int:
                      token=args.token, packs_dir=packs, profile_path=args.profile)
         return 0
     if args.cmd == "backup":
-        # 단발(오프라인) 백업: 서버 없이 단일 스레드(동시 쓰기 없음 — 자연 정지).
-        # ⚠ 서버 기동 중에는 임베디드 드라이버 배타 락으로 열리지 않는다 — 서비스가 떠 있으면
-        # HTTP `POST /backup`(서버 프로세스 내부 스냅샷)을 써야 무중단이다.
-        # 이 CLI 경로는 서비스 정지 시의 오프라인 백업용.
-        # D43 데이터 홈 해석(serve 와 동일): --data > MEMORY_DATA_DIR > ~/.vinc/db.
+        # 단발(오프라인) 백업. ⚠ 서버 기동 중에는 임베디드 드라이버 배타 락으로 열리지
+        # 않는다 — 떠 있으면 HTTP `POST /backup`(프로세스 내부 스냅샷)을 써야 한다.
+        # 데이터 홈 해석은 serve 와 같다: --data > MEMORY_DATA_DIR > ~/.vinc/db.
         from .backup import make_backup
         from store.config import load_config, resolve_data_dir
         from store.backend import open_store
@@ -528,15 +521,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.oauth:
                 from vinc_mcp.store import Store, resolve_state_dir
                 issuer = args.issuer or f"http://{args.host}:{args.port}"
-                # 상태는 디스크 SQLite 로 영속(B-A) — 재기동에도 커넥터 유지.
-                # 작업본 경로: env VINC_MCP_STATE_DIR > ~/.vinc/mcp. **로컬이어야 한다**
-                # (SMB 위 SQLite 는 `database is locked` 로 죽는다 — 2026-08-03 장애).
-                # 영속은 VINC_MCP_STATE_SNAPSHOT 로 파일 복사(store.py 머리주석).
-                #
-                # ⚠ **fail-soft**: 상태 저장소를 못 열어도 MCP 를 죽이지 않는다. 바로 이
-                # 자리에서 올라온 예외가 프로세스를 끝내 허브 전체가 404 였다(같은 날
-                # 리비전 Failed). 영속은 편의이고 인증 서비스는 성립 조건이다 — 못 열면
-                # 인메모리로 강등해 **살아서** 답하고(재시작 시 재인가 필요) 사유를 남긴다.
+                # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
+                # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은
+                # VINC_MCP_STATE_SNAPSHOT 파일 복사다.
+                # ⚠ **fail-soft** — 못 열면 인메모리로 강등해 살아서 답한다(재시작 시
+                # 재인가). 죽이면 허브 전체가 404 다:
+                # [[record:mcp-state-store-is-fail-soft-and-must-be-local]].
                 try:
                     store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
                 except Exception as exc:   # noqa: BLE001 — 강등이 요점

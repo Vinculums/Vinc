@@ -1,6 +1,6 @@
 /** View 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
  *
- *  Monochrome 3D discipline (spec: vinc.d.view-visual-language §1.1):
+ *  Monochrome 3D discipline (as-built: [[vinc.reference.view-controls]]):
  *  depth comes from shading and atmosphere, never hue — matte ink Lambert
  *  materials (ink/ink_soft/ink_mute), paper background + fog, one neutral
  *  directional light. The single point color marks "the current focus" only.
@@ -236,20 +236,13 @@ function nodeRadius(n: N3, prefs: ViewPrefs): number {
   return r * (prefs.nodeScale ?? 1);
 }
 
-/** 조형 = 노드종(D35 개정 — 정본은 디자인 시안 `Vinc Node Kit 3D`, 2026-08-15).
+/** 조형 = 노드종. 형태가 뜻을 나른다 — 문서류는 정사면체(구보다 작게 읽히고 Bridge
+ *  의 정팔면체와 실루엣이 삼각:마름모로 갈린다), Domain 은 겹껍질(담는 그릇), Gateway
+ *  는 윤곽선(면이 없다 = 실체가 없다. 배후를 안 가리는 것이 이 형태를 고른 이유다).
+ *  as-built: [[vinc.reference.view-controls]].
  *
- *  바뀐 것은 셋이다.
- *   · 문서류(episode·record·entity)가 정육각기둥 → **정사면체**. 같은 r 에서 화면
- *     점유가 구의 54% 라 더 작게 읽히고, Bridge(정팔면체)와는 면 수 4:8 · 실루엣
- *     삼각:마름모로 갈려 회전 중에도 안 헷갈린다
- *   · Domain 이 구+적도링 → **겹껍질**(외피 이코사 1.18r + 코어 .52r). 담는 그릇이
- *     라는 뜻을 형태가 직접 말한다. 링을 뗀 자리는 코어가 크기를 읽히게 한다
- *   · Gateway 가 반투명 채움 → **윤곽선**. 면이 없다 = 실체가 없다. 겹칠 때 배후를
- *     가리지 않는 것이 부수 효과가 아니라 이 형태를 고른 이유다
- *
- *  ⚠ 시안의 재질표(MeshPhysical 반무광 + PMREM 발광패널 환경)는 **적용하지 않았다**.
- *  그건 D77 이 실측으로 은퇴시킨 것을 되살리는 결정이라 조형 변경과 같은 무게가
- *  아니다. 시안 자신도 "tier fill·glowOpacity 는 조형과 무관하다"고 적어 두었다. */
+ *  ⚠ 시안의 재질표(반무광 + 발광패널 환경)는 **적용하지 않았다** — 실측으로 은퇴시킨
+ *  것을 되살리는 결정이라 조형 변경과 같은 무게가 아니다. */
 function kindGeometry(kind: string | undefined, r: number): THREE.BufferGeometry {
   switch (kind) {
     case "concept": case "decision": case "domain":

@@ -1,7 +1,7 @@
-/** Copy decks (DEC D18 · D42) — SSoT: Vinc-docs vinc/A/vinc.a.ui-copy.md + vinc.d 표면 spec.
+/** Copy decks (DEC D18 · D42) — SSoT: [[vinc.spec.ui-copy]] + the surface specs.
  *  EN voice: precise, warm, craftsmanlike. Verb-first CTAs. No learning/memory
  *  narrative (F2). KO voice(D42): 번역이 아닌 저작 — 자연스러운 SaaS UX 라이팅.
- *  2026-07-12 개선: 개발자 직역 용어를 사용자 언어로 재작성(vinc.a.ui-copy §17):
+ *  2026-07-12 개선: 개발자 직역 용어를 사용자 언어로 재작성([[vinc.spec.ui-copy]] §17):
  *    record→document/문서 · domain→topic/주제 · corpus→data/데이터 ·
  *    mine/ingest→analyze,add/분석,추가 · source→file/파일 · tie→link/연결.
  *  표면 고유명사(Intake·Records·View·Search·Packs)는 미번역 유지. */

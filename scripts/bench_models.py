@@ -5,7 +5,7 @@
 `eval_search.py` 와 무엇이 다른가: 저쪽은 **프로덕션 경로**(FTS·HNSW 근사·RRF)를 재고
 이쪽은 **모델 자체**를 잰다. 모델을 비교할 때 HNSW 근사를 섞으면 인덱스 차이가 모델
 차이로 섞여 들어온다. 그래서 여기서는 인덱스를 쓰지 않고 전 청크와 정확 코사인을 잰다
-([[vinc.plan.embedding-retrieval]] 부록 B §5).
+([[vinc.plan.embedding-pipeline]] 부록 B §5).
 
 입력은 `fixtures/evalset.json`(질의·정답)과 코퍼스 텍스트다. 스토어가 없어도 돈다 —
 코퍼스를 파일에서 직접 읽는다.

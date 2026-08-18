@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """한영 혼합 평가 코퍼스를 **스크래치 스토어**에 심는다 — 모델·검색 비교의 전제.
 
-[[vinc.plan.embedding-retrieval]] Step 4 의 실측(bge vs e5, 한국어 nDCG 0.347 →
+[[vinc.plan.embedding-pipeline]] Step 4 의 실측(bge vs e5, 한국어 nDCG 0.347 →
 0.670)은 "영어 스타터팩 25문서 + 한국어 Vinc-docs 25문서" 코퍼스 위에서 잰 것인데,
 그 코퍼스를 만든 스크립트가 세션과 함께 사라졌다. 이 파일이 그것을 되살린다.
 

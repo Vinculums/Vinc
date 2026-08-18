@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """vinc_sync S2 — 오케스트레이션 글루(커서·순서·루프).
 
-실 엔진 2-스토어 왕복은 서버측에서 검증한다(Windows 로컬 임베디드 불가,
-[[windows-embedded-test-fails]]). 여기서는 export/apply 를 스텁으로 갈아 **글루
+실 엔진 2-스토어 왕복은 test_embedded_backend.py 와 서버측이 검증한다
+([[record:vinc-tests-need-a-clean-interpreter-on-windows]]). 여기서는 export/apply 를 스텁으로 갈아 **글루
 로직**만 본다: pull 먼저인가, 커서가 성공 후에만 전진하는가, 페이지 루프가 끝나는가.
 """
 from __future__ import annotations

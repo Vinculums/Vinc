@@ -249,15 +249,11 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None,
     owns = store is None
     if owns:
         store = open_store(cfg)
-    # 🔴 F3 — **plan 은 기본으로 싣지 않는다.** 여태 `plan.cypher` 전문과
-    # `plan.params.owner`(회원 UUID)가 매 응답에 실렸다(실측: `vinc_recall` 17.9KB ·
-    # `vinc_domains` 1.3KB 중 상당부). 호출당 수백 토큰의 낭비이자 내부 구현 노출이고,
-    # owner UUID 는 요청자가 이미 아는 값이라 되돌려줄 이유도 없다.
-    # 필요한 자리는 이미 따로 있다: `/plan/recall`·`/plan/decide` 라우트와 CLI `plan`
-    # 은 플랜 **빌더**를 직접 부르므로 이 경로를 타지 않는다 — 즉 진단 능력은 안 준다.
-    # F4 — 공통 봉투. `kind` 는 13종 중 9종에만 있었고(실측) 없는 넷이 하필
-    # recall·domains 처럼 자주 쓰는 것들이었다. 호스트가 응답을 코드로 후처리하려면
-    # 종류 표시가 **항상** 있어야 한다. plan 이 이미 자기 kind 를 안다.
+    # 🔴 F3 — **plan 은 기본으로 싣지 않는다**(cypher 전문 + owner UUID = 토큰 낭비이자
+    # 내부 노출). 진단이 필요한 자리는 따로 있다 — `/plan/*` 라우트와 CLI `plan` 은
+    # 빌더를 직접 부르므로 이 경로를 안 탄다.
+    # F4 — `kind` 는 **항상** 실린다. 호스트가 응답을 코드로 다루려면 종류 표시가 늘
+    # 있어야 한다([[vinc.plan.mcp-hardening]]).
     base = {"kind": plan.kind, "executed": False, "rows": []}
     if debug:
         base["plan"] = plan.to_dict()
@@ -451,16 +447,11 @@ def learner_model(*, owner: str, cfg=None, store=None) -> dict:
     return execute(learner_model_plan(owner=owner), cfg, store=store)
 
 
-#: 주제 스코프 = **하위 트리**다. 정확일치 하나만 보던 동안 상위 주제를 고르면
-#: 0 노드가 나왔다(실측 2026-08-15: `domain=vinc` → 0, `domain=vinc/design` → 12).
-#: 계층은 이미 있었다 — 경로의 `/` 가 트리를 만들고 hub 배치와 좌측 트리가 그걸
-#: 읽는데, **조회만 안 읽고 있었다**.
-#:
-#: 접두에 `/` 를 붙이는 것이 요지다. `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다.
-#: 그래서 정확일치와 `d + "/"` 접두의 OR 로 쓴다.
-#:
-#: 다섯 플랜(개념·다리·사건·기록·결정)이 각자 도메인을 걸러서, 한 곳만 고치면
-#: 축끼리 모집단이 어긋난다. 그래서 판정을 여기 한 벌만 둔다.
+#: 주제 스코프 = **하위 트리**다(정확일치 OR `d + "/"` 접두 — 슬래시가 요점이다:
+#: `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다). 다섯 플랜이 각자 도메인을 걸러서
+#: 판정은 여기 **한 벌**만 둔다 — 한 곳만 고치면 축끼리 모집단이 어긋난다.
+#: 왜 이게 없어서 상위 주제가 0건이었는지:
+#: [[record:query-scope-ignored-the-topic-tree-it-was-standing-on]].
 def domain_subtree_where(cols: list[str], domains: list[str], params: dict,
                          *, key: str = "dom") -> str:
     """``cols`` 중 하나가 ``domains`` 중 하나의 하위 트리에 드는가."""
@@ -498,16 +489,11 @@ def graph_plan(*, owner: str, domain: str | None = None,
     if doms:
         where.append(domain_subtree_where(["c.domain"], doms, params))
     clause = "WHERE " + " AND ".join(where)
-    # 관계 타입 함수는 `label(r)` — 임베디드(Kùzu 계보)에 `type()` 부재(§6-2 M4,
-    # P1-0 실측 확정). Neo4j 는 label()도 지원하므로 백엔드 중립.
-    # D43: ts(라벨별 시간열 단일화) + 엣지 evidence/confidence. Concept→Concept 무라벨
-    # `-[r]->` 이 바인딩할 수 있는 rel 테이블은 CC 4종뿐이고 전부 E-G6 열을 가져
-    # (store.embedded_schema._EVIDENCE_RELS) 바인더가 통과한다 — CONNECTS/ATTACHES_TO/
-    # TYPED 가 후보인 플랜(bridge/record/entity 축)에 같은 열을 붙이면 Binder 오류다.
-    # ⚠ owner 필수성(SEC-1): 시작점 c 만 스코프하면 **엣지 대상 d 는 무방비**다 —
-    # `graph_rows_for_ids_plan` 과 동일 규칙으로 먼 끝점도 제한한다. 특히 D43 이
-    # r.evidence/r.confidence/target_ts 를 투영하면서 남의 증거 문장·신뢰도·시간이
-    # 클라이언트(Flow 툴팁)까지 도달할 수 있게 됐다.
+    # 관계 타입은 `label(r)` — 임베디드에 `type()` 이 없다(Neo4j 도 label 을 받아
+    # 백엔드 중립). ⚠ evidence/confidence 투영은 **CC 4종이 후보인 플랜에서만** 된다 —
+    # CONNECTS/ATTACHES_TO/TYPED 가 후보인 축에 붙이면 Binder 오류다.
+    # ⚠ owner 는 **먼 끝점에도** 건다 — 시작점만 스코프하면 남의 증거 문장이
+    # 클라이언트까지 간다: [[record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns]].
     cypher = (
         f"MATCH (c:Concept) {clause} "
         "OPTIONAL MATCH (c)-[r]->(d:Concept) WHERE d.owner_id = $owner "
@@ -1018,9 +1004,29 @@ def _seed_table(seed: str) -> tuple[str, str]:
     return _SEED_TABLES.get(prefix, ("Entity", "entity_id"))
 
 
+# 고립 시드가 실어 오는 열 — 라벨마다 **있는 것만** 고른다. 없는 열을 RETURN 하면
+# Binder 예외로 조회가 통째로 죽는다(Bridge 에 `domain` 이 없는 것과 같은 자리).
+# ts 표현은 각 축 플랜의 coalesce 와 같은 것을 쓴다 — 같은 노드가 연결 유무에 따라
+# 다른 시간을 말하면 안 된다.
+_SEED_FIELDS: dict[str, dict[str, str]] = {
+    "Concept": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                "ts": "coalesce(n.created, n.updated_at, '')",
+                "content_ts": "coalesce(n.content_time, '')"},
+    "Record": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+               "ts": "coalesce(n.created, n.updated_at, '')",
+               "content_ts": "coalesce(n.content_time, '')"},
+    "Decision": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                 "ts": "coalesce(n.created, n.updated_at, '')"},
+    "Episode": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                "ts": "coalesce(n.date, n.updated_at, '')"},
+    "Bridge": {"props": "n.props", "ts": "coalesce(n.created, n.updated_at, '')"},
+    "Entity": {"tags": "n.tags", "ts": "coalesce(n.updated_at, '')"},
+}
+
+
 def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     """seed 노드 존재 선조회(C4) — '노드 없음'과 '노드는 있으나 연결 0(고립)'을
-    구분하기 위한 최소 조회(id·title 만). id 접두사(`concept:`·`episode:`·
+    구분하기 위한 조회. id 접두사(`concept:`·`episode:`·
     `record:`·`bridge:`·`entity:`)로 테이블을 판별하고, 접두사가 없거나 미지의
     접두사면 Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을
     쓴다 — 순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다.
@@ -1036,7 +1042,15 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
         where += (f" AND {_bridge_owner_pred('n')}" if label == "Bridge"
                   else " AND n.owner_id = $owner")
         params["owner"] = owner
-    cypher = f"MATCH (n:{label}) WHERE {where} RETURN n.{pk} AS id, n.title AS title"
+    # ⚠ id·title 만 싣던 시절, 고립 노드는 `vinc_graph` 에서 **domain·tags·props·ts 가
+    # 전부 빈** 모습으로 답했다 — 아래 graph() 가 없는 값을 빈 값으로 지어냈기 때문이다.
+    # 값이 실제로 저장돼 있어도 그렇게 보이므로, 방금 쓴 노드를 읽어 확인하는 절차가
+    # (그래프에 근거를 옮길 때 쓰는 그 절차가) "쓰기가 실패했다"는 오진을 낳았다.
+    # 2026-08-18 에 실제로 두 번 그렇게 오진했다. 이제 있는 열은 실어 온다.
+    extra = _SEED_FIELDS.get(label, {})
+    cols = ", ".join([f"n.{pk} AS id", "n.title AS title"]
+                     + [f"{expr} AS {alias}" for alias, expr in extra.items()])
+    cypher = f"MATCH (n:{label}) WHERE {where} RETURN {cols}"
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
@@ -1514,21 +1528,12 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
             n["x"] = round(nd3[0] * rr, 6)
             n["y"] = round(nd3[1] * rr, 6)
             n["z"] = round(nd3[2] * rr, 6)
-            # 2D 는 3D 와 다르게 접는다(2026-08-14). 잎을 각도 슬라이스 안에서 반경만
-            # 늘려 세우면 가지마다 **나선 팔**이 하나씩 생기고, 그 팔들이 모여 회오리로
-            # 읽힌다 — 무엇이 무엇 아래인지가 아니라 소용돌이가 보인다. 대신 잎을 자기
-            # 가지의 점 둘레에 **뭉치면** 도메인이 덩어리로 읽히고, 그게 좌측 트리의
-            # 계층과 같은 그림이 된다. 3D 는 깊이가 이미 가지를 갈라 주므로 안 건드린다.
-            #   · 원반 안 배치는 황금각 필로택시스 — 개수와 무관하게 고르고 결정론이다
-            #   · 반경 √ 램프라 면적이 개수에 비례한다(가운데만 빽빽해지지 않는다)
-            #   · 중심순(D32)은 그대로다: 순번이 앞선 것이 덩어리 가운데에 가깝다
-            # 원반 크기는 **이 가지가 가진 각도 폭에 맞춘다.** 상수로 두면 도메인이
-            # 늘어날수록 이웃 덩어리와 겹쳐 다시 한 덩어리로 읽힌다(4개에서 이미
-            # 겹쳤다 — 실측). 자기 쐐기 안에 들어가는 크기로 잡으면 개수와 무관하게
-            # 갈라지고, 화면에서의 밀도는 클라이언트의 밀도 적응 축소가 받는다.
-            # 원반 계수 0.28 은 실측이다(위 spots): 0.42 면 이웃 덩어리와 **간신히**
-            # 안 닿아 화면에서는 하나의 흩뿌림으로 읽혔다. 덩어리로 읽히려면 사이가
-            # 비어야 한다.
+            # 2D 는 잎을 자기 가지 둘레에 **뭉친다**(3D 는 깊이가 이미 갈라 주므로
+            # 안 건드린다). 배치는 황금각 필로택시스 + √ 반경 램프라 개수와 무관하게
+            # 고르고 결정론이며, 중심순은 그대로다.
+            # ⚠ 원반 크기는 **가지의 각도 폭에 맞춘다**(상수 금지) — 그리고 계수는
+            # 넉넉해야 한다: 간신히 안 닿는 값은 화면에서 한 덩어리로 읽힌다.
+            # 근거·실측: [[record:planar-leaves-cluster-because-arms-read-as-a-vortex]].
             dx, dy = spots[leaf_i]
             leaf_i += 1
             n["x2"] = round(bx2 + dx, 6)
@@ -1664,8 +1669,12 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             if found:
                 kind = seed.split(":", 1)[0] if ":" in seed else "concept"
                 shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
-                                    "domain": "", "kind": kind, "degree": 0,
-                                    "props": {}, "tags": [], "ts": ""}]   # A4 형태 정합
+                                    "domain": seed_row.get("domain") or "",
+                                    "kind": kind, "degree": 0,
+                                    "props": _props_to_obj(seed_row.get("props")),
+                                    "tags": list(seed_row.get("tags") or []),
+                                    "ts": seed_row.get("ts") or "",
+                                    "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
@@ -2781,23 +2790,13 @@ def concept_meta_plan(*, owner: str) -> QueryPlan:
 
 
 # ── 잇기 제안 점수 산식 (F11) ────────────────────────────────────────────────
-# 옛 산식은 `2·|공유 태그| + 같은 도메인`이었다. 실측하니 **순위가 서지 않았다**:
-#   · `concept:abcd-layers` 의 후보 14개 중 13개(93%)가 같은 점수 2 로 동률
-#   · 라이브 계정 그래프의 `concept:vinc-mcp` 도 상위 6건 전부 score 2 / 태그 ["core"]
-# 원인은 태그가 **희소성과 무관하게** 같은 값(2)을 받는 것이다. `core` 처럼 개념
-# 절반에 붙은 태그 하나가 점수를 포화시키면 수십 개가 동률이 되고, 그때 limit 은
-# 사실상 **id 사전순 앞 N개**를 자른다(그래서 반환이 늘 `concept:a…` 로 시작했다).
-#
-# (계획서는 "전부 score:1, shared_tags 빈 배열"이라고 적었는데 재보니 그렇지 않았다 —
-#  태그 없는 노드 하나를 본 서술로 보인다. 결론("호스트가 순위를 매길 수 없다")은
-#  맞지만 원인은 상수 점수가 아니라 **동률 포화**다.)
-#
-# 그래서 세 신호를 쓴다. 각 항의 근거는 `signals` 로 함께 돌려준다:
-#   태그   Σ 2·ln(N/df)/ln(N)  — 표준 IDF. 나만 가진 태그는 ≈2, 전부가 가진 태그는 0.
-#   도메인 +1.0                — 옛 산식과 같다(약한 신호라 약한 가중).
-#   이웃   1.5·min(공통 이웃 수, 4) — **그래프 거리 2홉**. 후보는 이미 직접 연결이
-#          제외돼 있으므로 공통 이웃이 있다는 것은 곧 2홉 근접이다. 태그가 포화된
-#          그래프에서 동률을 실제로 깨는 것은 이 항이다.
+# 세 신호를 쓰고 각 항의 근거를 `signals` 로 함께 돌려준다:
+#   태그   Σ 2·ln(N/df)/ln(N)  — 표준 IDF. 나만 가진 태그 ≈2, 전부가 가진 태그 0.
+#   도메인 +1.0                — 약한 신호라 약한 가중.
+#   이웃   1.5·min(공통 이웃, 4) — 후보는 직접 연결이 이미 제외돼 있으므로 공통
+#          이웃 = 2홉 근접이다. **동률을 실제로 깨는 것은 이 항이다.**
+# ⚠ 태그를 희소성 없이 세는 옛 산식으로 되돌리지 말 것 — 점수가 포화돼 limit 이
+# 사실상 id 사전순으로 자른다: [[record:tie-suggestions-were-tied-not-ranked]].
 _TIE_TAG_MAX = 2.0
 _TIE_DOMAIN_W = 1.0
 _TIE_LINK_W = 1.5
@@ -3130,29 +3129,12 @@ def _node_seq(ns) -> list[dict]:
 
 
 # ── 가중 최단 경로 (E-G8) — confidence 를 거리로 읽는 증거 체인 ────────────────
-# E-G7(홉 최단)의 자매. 홉 수가 같아도 증거 강도는 다르다 — "가장 짧은 연결"과
-# "가장 믿을 만한 연결"은 다른 질문이고, 여태 vinc_path 는 앞의 것만 답했다.
-# E-G6 이 엣지에 실어 둔 confidence(0~1, `docstore.backfill_evidence` 가 채운다)를
-# 거리로 환산해 다익스트라를 돌린다. 비용 = 1 - confidence:
-#   · confidence 1.0(확실) → 비용 0    = 공짜로 지나가는 엣지
-#   · confidence 0.0(미기입) → 비용 1  = 홉 하나와 정확히 같은 값
-# 후자가 핵심이다 — **증거가 하나도 없는 그래프에서 가중 모드는 홉 최단으로 정확히
-# 퇴화한다**(하위호환·설명가능). -log(c) 형(확률 곱 최대화)은 c=0 에서 발산하는데
-# 이 스키마의 기본값이 0.0 이라 미기입 엣지가 통행 불가가 된다 — 그래서 쓰지 않는다.
-#
-# ⚠ 엔진 WSHORTEST 를 쓰지 않은 이유(ladybug 0.18.0 실측 2026-08-03 — 검토 후 기각):
-#   ① 가중 인자로 **저장 컬럼만** 받는다. `WSHORTEST(1.0 - confidence)` 는 파서 거부
-#      (`Invalid input ... expected rule oC_SingleQuery`). 비용열을 새로 저장하면
-#      confidence 를 쓰는 지점마다(fragment 엣지 MERGE·evidence 백필) 동기 유지
-#      의무가 생기고, 한 곳만 빠뜨리면 조용히 틀린 경로가 나온다(파생열 드리프트).
-#   ② 패턴에 등장하는 **모든 rel 테이블**에 그 컬럼이 있어야 한다. 하나라도 없으면
-#      `RuntimeError: invalid unordered_map<K, T> key` 로 크래시한다(실측) — 무라벨
-#      순회가 불가해 라벨 열거가 강제되고, rel 테이블이 늘 때마다 질의가 깨진다.
-#   ③ 파이썬은 조회 시점에 confidence 를 읽으므로 드리프트가 **원천적으로 불가**하고,
-#      §4-2("Cypher 내 점수식 없음 — 방언 이식성")와 `ppr_scores` 전례에 정합한다.
-#   재개 임계: 후보 서브그래프 인메모리 적재가 지배 비용이 되면(owner 개념 1만+)
-#   저장 비용열 + WSHORTEST 를 재상정한다. 그때 ①의 동기 의무가 대가다.
-#   [실측 확인분] 라벨을 열거하면 WSHORTEST 는 owner 술어·홉 상한과 정상 병용된다.
+# 비용 = 1 - confidence 로 다익스트라. 미기입(0.0)이 홉 하나와 같은 값이라
+# **증거 없는 그래프에서 홉 최단으로 정확히 퇴화한다**(하위호환·설명가능).
+# -log(c) 형은 c=0 에서 발산해 미기입 엣지를 통행 불가로 만들므로 쓰지 않는다.
+# ⚠ 엔진 WSHORTEST 로 옮기지 말 것(검토 후 기각) — 저장 컬럼만 받아 파생열 드리프트
+# 의무가 생기고, 패턴의 모든 rel 테이블에 그 열이 없으면 크래시한다:
+# [[record:weighted-path-is-computed-in-python-not-by-the-engine]].
 
 PATH_TIE_EPS = 1e-9      #: 부동소수 동률 판정 폭(비용 비교 전용)
 PATH_LIMIT = 25          #: 반환 경로 상한 — `shortest_path_plan` 의 LIMIT 25 와 동수
@@ -3400,40 +3382,14 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 
 
 # ── 구조적 비중복 쌍 (F10-a) ──────────────────────────────────────────────────
-# 제목이 아무리 닮아도 **합쳐지면 안 되는** 개념 쌍이 있다. 이 리포의 GRAPH.md 관례가
-# 그렇게 갈라 놓은 두 축이다:
-#   doc.*  문서 미러 개념 — 원문 문서 하나에 하나씩 대응한다. 문서가 둘이면 개념도
-#          둘이어야 한다. `vinc.d.graph` 와 `vinc.d.graph-views` 는 서로 다른 문서고,
-#          제목이 접두 관계인 것은 **명명 규칙의 결과**이지 중복의 증거가 아니다.
-# 이건 id 명명 **관례**지 엔진이 만드는 구조가 아니다(코드가 붙이는 접두어가 아님).
-# 그래서 (1) 관례가 없는 그래프에서는 자동으로 무동작이고, (2) 끄는 스위치를 둔다.
-#
-# ⚠ v13 에서 **doc↔주제 쌍까지 넓혔다.** 원래는 doc 끼리만 막았는데, 그 규칙이 실제
-# 잡음의 대부분을 놓치고 있었다 — 라이브 계정 그래프 실측(2026-08-10)에서 후보 10쌍
-# 중 **8쌍이 doc↔주제**였다(`concept:view` ↔ `concept:doc.vinc.spec.surface-view`
-# 처럼 제목이 글자까지 같다). 신호 대 잡음이 2:8 이면 사람이 볼 수 있는 목록이 아니다.
-#
-# doc 미러와 그것이 비추는 주제 개념은 **사본 둘이 아니라 층 둘**이다. 1-hop 을 재
-# 보면 어휘가 아예 갈린다:
-#     concept:view                     ABOUT 13 · ATTACHES_TO 5 · RELATED_TO 6 · INHERITS_FROM 0
-#     concept:doc.vinc.spec.surface-view   INHERITS_FROM 4(전부 다른 doc 개념) · 나머지 0
-# 주제 개념은 결정·사건·사실이 매달리는 의미 그래프의 노드고, doc 개념은 frontmatter
-# 의 `inherits_from` 을 미러링하는 문서 상속 격자의 노드다. 합치면 격자가 의미 그래프
-# 안으로 무너진다 — 제목이 같아진 것은 doc 미러가 문서 제목을 그대로 물려받았기
-# 때문이지 같은 것을 두 번 적었기 때문이 아니다.
-#
-# 그래서 규칙은 "한쪽이라도 doc 이면 뺀다"로 접힌다. doc 이 진짜로 두 벌 생긴 경우는
-# doc↔doc 이라 이 규칙이 이미 잡고, 여기서 새로 막는 것은 층이 다른 쌍뿐이다.
-# 억제는 여전히 숫자로 남고 `include_structural` 로 되열린다(무음 억제 금지).
-# 그리고 **무음 억제 금지**: 몇 쌍을 이 규칙으로 뺐는지 응답에 숫자로 남긴다.
-#
-# ⚠ v12 에서 **결정 규칙(`dec-*`)을 걷어냈다.** 여기 원래 "결정과 그 결정의 주제는
-# 일부러 별개 노드로 두므로 결정↔비결정 병합을 막는다"는 규칙이 있었는데, 그것은
-# 결정이 `concept:dec-*` 라는 **id 접두 관례**로만 존재하던 시절의 대역이었다.
-# 지금 결정은 `Decision` 이라는 별도 라벨이고, 병합 후보 조회는 `MATCH (c:Concept)`
-# 이라 결정을 애초에 긁어오지 않는다 — 규칙이 막을 것이 구조적으로 없다.
-# 남겨 두면 `concept:dec-` 로 시작하는 **개념**(이관 후에는 있어서는 안 되는 것)만
-# 걸리는 함정이 된다. 타입이 생겼으면 관례는 물러난다.
+# **한쪽이라도 doc 미러면 후보에서 뺀다.** doc 미러와 그것이 비추는 주제 개념은 사본
+# 둘이 아니라 **층 둘**이고, 제목이 같은 것은 미러가 문서 제목을 물려받기 때문이다.
+# 이건 id 명명 관례지 엔진 구조가 아니라, 관례가 없는 그래프에서는 자동 무동작이고
+# 끄는 스위치(`include_structural`)를 둔다. **무음 억제 금지** — 몇 쌍을 뺐는지 숫자로
+# 남긴다. 근거·실측: [[record:fact-doc-concept-is-a-layer]] ·
+# [[record:fact-merge-excludes-any-doc-pair]].
+# ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
+# `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 _DOC_CONCEPT_PREFIX = "concept:doc."
 
 
@@ -3554,9 +3510,9 @@ def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
 # 잡음으로 채워진다. 판정을 저장해 그 쌍만 뺀다. **읽기 도구의 상태를 사용자가 고칠
 # 수 있게** 하는 최소 장치이고, 병합(비가역) 대신 기각(가역)을 권하는 안전판이기도 하다.
 #
-# 저장 위치는 `_MergeRejection` 메타 테이블(store/embedded_schema.py 주석에 근거).
+# 저장 위치는 `_MergeRejection` 메타 테이블([[vinc.spec.dataplane §2.5]]).
 # owner 스코프는 **키와 열 양쪽**에 건다 — SEC-1 이 준 교훈은 한 층만 맞으면 새는
-# 것이었다([[vinc-owner-isolation-sec1]]).
+# 것이었다([[vinc.spec.dataplane §5]]).
 
 def _merge_rejection_rows(store, owner: str | None) -> list[dict]:
     """owner 의 기각 목록(원시 행). 테이블이 없는 구 스토어면 빈 목록으로 강등한다 —
@@ -3999,12 +3955,9 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
 
 
 # ── 질문 정규화 (A1.10) — 자연어 질문을 노드 검색이 탈 수 있는 토큰으로 ──────────
-# 배경(2026-08-03 실측): A1.9 의 **토큰 AND** 는 "이름을 댄" 질의만 통과시킨다.
-# 자연어 질문에는 조사와 의문사가 섞이는데 그것들은 어느 노드 필드에도 없으므로
-# AND 가 항상 0건이 된다 — "낙관적 동시성 제어가 뭐야?"가 `concept:optimistic-locking`
-# 을 **자기 제목으로도** 못 찾았다(토큰 '제어가'·'뭐야?' 때문). 그 결과 node_hits 가
-# 그래프 암으로만 채워져 `matched_in` 이 영원히 'graph' 였고, 묻기(ask)의 제목 확정·
-# 되묻기 분기가 통째로 죽은 채 **알파벳순 첫 후보**가 답으로 나갔다.
+# 토큰 AND 는 "이름을 댄" 질의만 통과시킨다. 조사·의문사는 어느 노드 필드에도 없어서
+# 정규화가 없으면 AND 가 **항상 0건**이 되고, 그러면 묻기가 알파벳순 첫 후보를 답으로
+# 내놓는다([[vinc.plan.mcp-hardening]]).
 #: 의문사·정중어 — 어느 노드에도 없으면서 AND 를 깨뜨리기만 하는 말들.
 _STOP_TOKENS = frozenset("""
 뭐 뭐야 뭔가 뭔데 무엇 무엇인가 뭡니까 어떻게 어떤 어찌 왜 언제 어디 어디서 누가 누구
@@ -4065,17 +4018,9 @@ NODE_SCAN_CAP = 2000
 
 
 # ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
-# 실측(2026-08-07)한 실패 응답들:
-#   doc_get(오타)        → {"error": "unknown doc_id"}          후보도 다음 수도 없음
-#   decide(topic:"view") → {"note": "topic not found: view"}  왜 안 맞는지 안 알려줌
-#   graph(없는 seed)      → {"found": false}                    그뿐
-#   neighbors(없는 노드)   → {"executed": true}                  **아무 말도 없음**
-#   doc_delete(없는 문서)  → {"executed": true}                  성공과 구분 불가
-#
-# 공통 문제 하나다: **무엇이 일어났는지는 말하는데 다음에 무엇을 할지를 안 말한다.**
-# 좋은 예가 이미 리포 안에 있다 — 상한 초과 응답이 "Nothing was changed. Narrow the
-# request — lower `depth` (e.g. 1) or pick a more specific `seed_id`" 라고 말한다.
-# 그 형태를 실패 경로 전체에 퍼뜨린다: `error`(무엇) + `hint`(다음) + `candidates`(어디로).
+# 실패는 **무엇**만이 아니라 **다음**을 말해야 한다: `error`(무엇) + `hint`(다음) +
+# `candidates`(어디로). 그 전에는 없는 노드 조회가 `{"executed": true}` 만 답해
+# 성공과 구분되지 않았다([[vinc.plan.mcp-hardening]]).
 
 def near_nodes(store, needle: str, *, owner: str | None = None,
                limit: int = 3) -> list[dict]:
@@ -4342,12 +4287,9 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
         # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
         # 아래에서 안정 정렬 위의 오프셋으로 자른다.
-        # 🔴 **SEC-1 청크 팔 owner 스코프**(위험 감사 1.1 · P0). 여태 owner 는
-        # `_node_fallback_search` 에만 갔고 Chunk 팔(FTS·벡터)에는 안 갔다. 그래서
-        # 호스티드에서 `rows[]` 가 **다른 회원 문서의 본문 발췌**를 실을 수 있었다.
-        # node_hits 는 막혀 있어 눈에 잘 안 띄었고, 회귀 테스트도 노드 폴백만 봤다.
-        # 막을 수단은 이미 있었다 — `Chunk.owner_id` 열이 있고(스키마 v4)
-        # `_filter_clause` 가 owner_id 를 지원한다. **안 쓴 것뿐이다.**
+        # 🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
+        # 가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
+        # 회귀 테스트도 노드 폴백만 봤다([[record:risk-search-chunk-unscoped]]).
         chunk_filters = dict(filters or {})
         scoped_ok = True
         if owner:
@@ -4619,11 +4561,10 @@ _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  #
 # 삭제 표면(delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment
 # 타입명(relates_to·about…)도 여기로 정규화된다.
 #
-# ⚠ v12 전에는 rel 하나에 쌍 **하나**였고 값이 손으로 적혀 있었다. 결정 타입이
-# 들어오면서 DERIVES_FROM 하나가 Concept↔Decision 네 조합을 갖게 돼 그 전제가 깨졌다.
-# 손으로 적힌 채로 뒀다면 `decision:*` 끝점의 엣지 삭제가 **오류 없이 0건 매치**로
-# 끝났을 것이다(툼스톤은 남고 엣지는 그대로 — 기기마다 다른 그래프). 그래서 스키마
-# 에서 파생한다: rel 테이블에 쌍을 열면 여기가 자동으로 따라온다.
+# ⚠ **손으로 적은 표를 두지 말 것.** 의미층이 늘면 rel 하나가 끝점 조합 여럿을 갖게
+# 되고, 표가 낡으면 엣지 삭제가 **오류 없이 0건 매치**로 끝난다(툼스톤은 남고 엣지는
+# 그대로 = 기기마다 다른 그래프). 스키마에서 파생한다
+# ([[record:rel-tables-take-multiple-endpoint-pairs]]).
 def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]:
     from store import embedded_schema as _es
     pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
@@ -5008,7 +4949,7 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
     전제 — 소유가 안 갈리면 남의 노드가 지워질 수 있다. 라벨별 삭제 건수를 돌려줘
     호출자(계정)가 감사할 수 있게 한다. **owner 가 비었으면 거부**(빈 술어로 전삭제
     사고 방지). Domain 은 owner_id 가 없어 소유로 못 가르는 잔여 —
-    [[vinc-owner-isolation-sec1]] 의 알려진 한계(Bridge 는 v2, Chunk 는 v4 에서
+    [[vinc.spec.dataplane §5]] 의 알려진 한계(Bridge 는 v2, Chunk 는 v4 에서
     소유 스탬프를 얻어 편입 — '' 소유 레거시 행만 잔여)."""
     cfg = cfg or load_config()
     base = {"kind": "purge", "executed": False, "owner": owner}

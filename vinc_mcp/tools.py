@@ -275,18 +275,11 @@ def _t_ingest(args, bridge):
     return bridge.request("POST", "/ingest/fragment", body=fragment)
 
 
-# ⚠ 삭제 3종은 오래 `args.get("owner")` 를 **직접** 읽었다. 그런데 그 `owner` 는
-# 어느 스키마에도 선언돼 있지 않았고(호스트가 넣을 방법이 없다), 로컬 stdio 에는
-# forced_owner 도 없어서 값이 항상 None 이었다 — 즉 **무스코프 삭제**였다. 계약에
-# 없는 파라미터에 스코프가 걸려 있었으니, 문서를 읽고 안전하다고 판단할 방법도
-# 없었다(위험 감사 5.5).
-#
-# 이제 읽기 도구와 **같은 규칙**을 쓴다: `_owner(args, bridge)`. 원격은 call() 이
-# forced_owner 로 덮어 멀티테넌트를 봉쇄하고, 로컬은 bridge.owner 로 스코프된다.
-# 로컬을 스코프해도 안전한 근거: 같은 로컬 스토어에서 `_t_search`·`_t_recall` 등
-# 읽기 도구가 이미 `_owner(args, bridge)` 로 **엄격 술어**(`owner_id = $owner`)를
-# 태워 정상 동작한다. 그 노드들이 그 owner 로 스탬프돼 있다는 뜻이다. 스탬프가
-# 없는 스토어라면 읽기부터 비어 있었을 것이므로, 삭제만 넓게 열어 둘 이유가 없다.
+# ⚠ 삭제 3종은 읽기 도구와 **같은 규칙**을 쓴다: `_owner(args, bridge)`. 스키마에 없는
+# `args["owner"]` 를 직접 읽던 시절 그 값은 항상 None 이라 **무스코프 삭제**였다
+# ([[vinc.ops.risk-audit-2026-08-05]]). 로컬을 스코프해도 안전한 근거는 같은 스토어에서
+# 읽기 도구가 이미 엄격 술어로 정상 동작한다는 것이다 — 스탬프가 없으면 읽기부터
+# 비어 있었을 테니, 삭제만 넓게 열어 둘 이유가 없다.
 def _t_delete(args, bridge):
     return bridge.request("POST", "/delete",
                           body={"node": args["node_id"], "owner": _owner(args, bridge)})
@@ -799,14 +792,10 @@ TOOLS: list[dict] = [
 _BY_NAME = {t["name"]: t for t in TOOLS}
 
 # ── 도구 안전 주석 (MCP annotations) ─────────────────────────────────────────
-# Anthropic 원격 MCP 디렉토리 제출 요건 — readOnly/destructive 표식은 **선택이 아니라
-# 필수**이며 누락 시 거부된다. 호스트가 이걸로 확인 프롬프트·자동승인 정책을 정한다.
-# ⚠ 주석은 **힌트**다(스펙 명시) — 신뢰 경계가 아니다. 실제 강제는 서버측
-# forced_owner 스탬핑·쿼터가 한다(http_server.resolve_auth).
-#
-# destructiveHint 는 스펙상 **기본값이 true** 라, 파괴적이지 않은 쓰기(ingest)는
-# 명시적으로 false 를 줘야 호스트가 과하게 겁주지 않는다.
-# openWorldHint=false: 전부 닫힌 도메인(내 로컬 스토어 또는 내 계정 그래프)만 만진다.
+# 원격 디렉토리 제출 요건이라 누락하면 거부된다. 호스트가 이걸로 확인 프롬프트를 정한다.
+# ⚠ 주석은 **힌트**지 신뢰 경계가 아니다 — 강제는 서버측 forced_owner 스탬핑이 한다
+# ([[vinc.canon.mcp-contract]]). destructiveHint 는 기본값이 true 라 파괴적이지 않은
+# 쓰기는 명시적으로 false 를 줘야 하고, openWorldHint 는 전부 false 다(닫힌 도메인).
 _ANNOTATIONS: dict[str, dict] = {
     "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},
     "vinc_recall": {"title": "Recall episodes", "readOnlyHint": True},
@@ -972,17 +961,10 @@ def call(name: str, args: dict | None, bridge: Bridge,
     return _stamp_identity(name, out, target, allow_target)
 
 
-#: 정체(어느 그래프에 썼는가)를 응답에 싣는 도구. **전부에 달지 않는다** — 조회
-#: 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다.
-#:
-#: 이 셋인 이유: `vinc_conventions` 는 규율상 **세션 첫 쓰기 전에** 부르는 자리라
-#: 정체가 필요한 순간에 따로 묻지 않아도 도착하고, 나머지 둘은 **쓰기**다 —
-#: 오배치가 조용한 곳이 정확히 거기다(2026-08-07: owner 누락으로 전량 `user:local`
-#: 로 들어갔는데 그 tenant 안에서는 읽기도 성공해 검증이 통과했다).
-#:
-#: 별도 `whoami` 를 만들지 않은 이유도 같다: 부를 생각을 못 한 사람에게 물어봐야
-#: 아는 도구는 소용이 없다. 이름 붙은 도구가 슬롯을 얻는 것은 호스트 UI 가 그래프
-#: 호출 없이 "X 로 연결됨"을 띄워야 할 때이고, 그건 제품 신호지 이 결손이 아니다.
+#: 정체(어느 그래프에 썼는가)를 싣는 도구 셋. **전부에 달지 않는다** — 조회 스무 개에
+#: 같은 두 줄이 붙으면 잡음이고 잡음은 안 읽힌다. 첫 쓰기 전에 부르는 자리 하나와
+#: 쓰기 둘이면 오배치가 조용한 곳을 덮는다:
+#: [[decision:identity-rides-on-the-first-door-not-a-whoami]].
 _IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
 
 

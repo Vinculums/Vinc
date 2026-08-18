@@ -1561,3 +1561,72 @@ class EdgeBirth(unittest.TestCase):
             self.assertEqual(got, [born], "수신 기기에서 엣지가 다시 태어났다")
         finally:
             b.close()
+
+
+class IsolatedSeedFields(unittest.TestCase):
+    """고립 노드(연결 0)를 `graph(seed=...)` 로 읽으면 실린 값이 그대로 오는가.
+
+    실엔진인 이유: 이 경로는 순회가 **빈 결과**를 냈을 때만 도는 폴백이라(C4),
+    스텁으로는 그 갈래에 도달하지 못한다.
+
+    무엇을 막는가 — 이 폴백은 값을 조회하지 않고 `domain/tags/props/ts` 를 전부
+    빈 값으로 **지어내고** 있었다. 저장은 멀쩡한데 읽기가 비어 보이니, 그래프에
+    근거를 옮긴 뒤 읽어서 확인하는 절차([[vinc.canon.code-annotation]] §5)가 거꾸로
+    "쓰기가 조용히 실패했다"는 오진을 만든다. 2026-08-18 에 실제로 두 번 그랬다.
+    """
+
+    OWNER = "user:a"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_EMBEDDING_MODEL": "local-en",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()
+        self.store = open_store(cfg)
+        self.store.provision(dim=cfg.embedding_dim)
+
+    def tearDown(self):
+        try:
+            self.store.close()
+        except Exception:
+            pass
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_isolated_record_keeps_its_fields(self):
+        from api import fragment as frag
+        from api import query as q
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:lone", "type": "record", "title": "Lone", "domain": "d",
+             "tags": ["fact"], "props": {"note": "the argument lives here"},
+             "content_time": "2026-08-18"}]}, store=self.store)
+        res = q.graph(owner=self.OWNER, seed="record:lone", store=self.store)
+        self.assertTrue(res.get("found"))
+        node = next(n for n in res["nodes"] if n["id"] == "record:lone")
+        self.assertEqual(node["degree"], 0, "연결이 없어야 이 갈래를 지난다")
+        self.assertEqual(node["domain"], "d")
+        self.assertEqual(node["tags"], ["fact"])
+        self.assertEqual(node["props"].get("note"), "the argument lives here")
+        self.assertEqual(node["content_ts"], "2026-08-18")
+
+    def test_isolated_entity_has_no_domain_column_and_does_not_crash(self):
+        """개방층은 열 구성이 다르다 — 없는 열을 물으면 Binder 예외로 조회가 죽는다."""
+        from api import fragment as frag
+        from api import query as q
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "theory:lone", "type": "theory", "title": "T", "tags": ["x"]}]},
+            store=self.store)
+        res = q.graph(owner=self.OWNER, seed="theory:lone", store=self.store)
+        self.assertTrue(res.get("found"))
+        node = next(n for n in res["nodes"] if n["id"] == "theory:lone")
+        self.assertEqual(node["tags"], ["x"])
+        self.assertEqual(node["domain"], "")

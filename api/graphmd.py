@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GRAPH.md 생성·검증 — 어시스턴트 쓰기 관례 계약 (설계정본 `vinc.c.graph-md`).
+"""GRAPH.md 생성·검증 — 어시스턴트 쓰기 관례 계약 (설계정본 [[vinc.canon.graph-conventions]]).
 
 파일 한 장이 **두 구역**으로 나뉜다:
 
@@ -183,10 +183,8 @@ _GEN_HEAD = {
 }
 _GEN_TAIL = "<!-- vinc:generated end -->"
 _GEN_BODY = {
-    # ⚠ 줄 예산(LINE_WARN=60)이 꽉 차 있다 — 여기 한 줄을 더하려면 어딘가에서 한 줄을
-    # 빼야 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
-    # E-1 계층 안내는 "도메인을 즉석에서 만들지 마라"가 `Do not` 절과 **중복**이라
-    # 그 자리를 썼다(그 절로 문구를 합쳤다). 줄 수 변화 0.
+    # ⚠ 줄 예산(LINE_WARN=60)이 꽉 차 있다 — 한 줄을 더하려면 어딘가에서 한 줄을 빼야
+    # 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
     "en": ("## Domains in this graph\n{domains}\n"
            "Lowercase english. A slash makes a tree: 'vinc/design' files that node "
            "under 'vinc', with nothing extra to author. "

@@ -35,7 +35,7 @@ _lock = threading.Lock()
 _log = logging.getLogger("vinc.mcp.entitlement")
 
 #: 와이어에서 허용되는 등급 값. DB 열거형(`users.plan`)은 free|pro 뿐이고 `team` 은
-#: 어서션·verify-key 응답에만 실리는 와이어 전용 값이다(vinc.c.account-policy §2.1).
+#: 어서션·verify-key 응답에만 실리는 와이어 전용 값이다([[vinc.canon.account-policy]] §2.1).
 PLANS = ("free", "pro", "team")
 
 #: 유료로 취급하는 등급(한도·업셀 문구 분기의 단일 기준).
