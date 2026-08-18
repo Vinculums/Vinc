@@ -14,8 +14,9 @@
 > 제품명 Vinc — 라틴어 *vinculum*(결속·연결 고리). 데이터 마이닝 도구이며
 > "기억/학습" 서사를 사용하지 않는다.
 
-**현재 v0.6.7 라이브** — GitHub Releases + [vincs.io](https://vincs.io) 다운로드
-(구 도메인 `vincs.app` 은 병행 유지 — 기존 설치본의 연결 경로가 계속 동작한다).
+**현재 v0.8.2 라이브** — GitHub Releases + [vincs.io](https://vincs.io) 다운로드
+(구 도메인 `vincs.app` 의 A 레코드는 삭제됐다 — 접속 경로는 vincs.io 하나이고,
+그 도메인에 남은 것은 발신 메일 레코드뿐이다).
 개발자용 릴리스 요약은 [CHANGELOG.md](CHANGELOG.md).
 
 ## 정본 (SSoT)
@@ -125,13 +126,16 @@ Vinc 는 그래프**와 문서 정본**을 MCP 서버로도 노출한다 — MCP
 Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇이든 붙고,
 원격은 claude.ai 커넥터와 ChatGPT 커스텀 커넥터(개발자 모드)가 같은 OAuth 요건을 쓴다.
 
-- 도구 18종(정본 = `vinc_mcp/tools.py` 의 `TOOLS`). 읽기 12 — 조회
+- 도구 22종(정본 = `vinc_mcp/tools.py` 의 `TOOLS` — 그 독스트링의 수와
+  `len(TOOLS)` 는 `tests/test_tool_contract.py` 가 대조한다). 읽기 14 — 조회
   `vinc_search`·`vinc_recall`·`vinc_graph`·`vinc_decide`·`vinc_domains`·
   `vinc_suggest_ties`, 관측·진단 `vinc_neighbors`·`vinc_path`·
-  `vinc_merge_candidates`·`vinc_diagnose`(E-G3~G7), 문서 `vinc_doc_get`·
-  `vinc_doc_list`(D45). 쓰기 6 — `vinc_ingest` + SEC-3 의 `vinc_delete`
-  [DETACH DELETE]·`vinc_delete_edge`·`vinc_merge_nodes`[concept fold] +
-  D45 의 `vinc_doc_put`·`vinc_doc_delete`. **쓰기 표면은 하나가 아니다.**
+  `vinc_merge_candidates`·`vinc_merge_rejections`·`vinc_diagnose`(E-G3~G7),
+  문서 `vinc_doc_get`·`vinc_doc_list`(D45), 관례 `vinc_conventions`(GM-1).
+  쓰기 8 — `vinc_ingest` + SEC-3 의 `vinc_delete`[DETACH DELETE]·
+  `vinc_delete_edge`·`vinc_merge_nodes`[concept fold]·`vinc_merge_reject` +
+  D45 의 `vinc_doc_put`·`vinc_doc_extract`·`vinc_doc_delete`.
+  **쓰기 표면은 하나가 아니다.**
 - **주제(theme)·어휘(type) 관리는 HTTP 전용이며 MCP 에 노출하지 않는다** — 조회
   `GET /themes`·`GET /types`, 변경 `POST /themes`·`/themes/activate`·
   `/types/ratify|reject|rename`. MCP 호스트는 재가 없이 제안만 남긴다.
@@ -173,10 +177,28 @@ python e2e_live.py --backend embedded     # 임베디드 백엔드 e2e
 
 ## 상태
 
-**v0.6.7 라이브** — 코드 이식 완료, GitHub Releases + vincs.io 에서 배포 중.
+**v0.8.2 라이브** — 코드 이식 완료, GitHub Releases + vincs.io 에서 배포 중.
 부트스트랩(M1) → 코드 이식(M2~) → 패키징(P4) → 호스티드 롤아웃(P5)까지 진행됐다.
 출하된 능력(전부 [CHANGELOG.md](CHANGELOG.md) 대조):
 
+- **v0.8.2** 문서가 자기 자리를 말한다 — `/doc/context`(개념 칩·목차·청크 오프셋),
+  코퍼스의 `[[doc_id]]` 링크 활성, 한 번 눌러 지도와 문서가 함께 열린다 · 타임라인
+  계보. **깨는 변경**: 씨앗 층 L2(`여기서 추적`) 제거 — 스코프는 전량(L0)·주제(L1)
+  둘뿐이다.
+- **v0.8.0** **`Atlas` → `View` 전면 개명**(F8 — `scripts/gate_forbidden.py` 가 강제,
+  라우트 `/atlas` → `/view`. 서피스 안의 관점 어휘는 `Viewpoint` 로 갈랐다) ·
+  넷째 관점 `Weave` · 주제 필터와 틴트.
+- **v0.7.4** 뜨는 것은 누른 자리에서 자란다(모션 한 벌 — 없던 것은 퇴장 애니메이션과
+  기준점이었다) · 문서를 지도 옆에 놓고 편집.
+- **v0.7.3** 묻기가 후보를 알파벳순으로 고르던 것 · 커넥터 상태 파일이 배포마다
+  지워지는 자리에 있던 것 — 둘 다 재현 후 수정하고 그 재현을 테스트로 박았다 ·
+  스페이스 간 팩 공유.
+- **v0.7.2** 지도 가시성(축소 시 소멸 정지 · 대비 바닥, D75·D76 — CI 가 그 측정을
+  지킨다) · 검색 잘림 수정 · 계정 정책(AP-1).
+- **v0.7.1** 도메인 문자열을 경로로 읽어 좌표에 위계를 싣는다(주제 트리) · 범례가
+  필터가 된다 · 무LLM 대화.
+- **v0.7.0** 화면 구조 개편(D69~D72) · 한국어 의미 검색 실가동 · 어시스턴트가 쓰기
+  전에 읽는 관례 파일 **GRAPH.md**(GM-1~GM-8) · 스키마 v6 → v8.
 - **v0.6.7** 상단 바 단일 셸(D56 — 좌측 레일 폐지) · 검색이 조회의 제1 진입점(D57) ·
   첫 화면 = 주제 표 + 결합 미니그래프(D58) · 스토어 close 파일락 수정(전체 493건 통과).
 - **v0.6.6** Atlas 2D 를 독립 렌더러로(D46, sigma/WebGL — 구 2D 는 3D 씬 투영이었다) ·
