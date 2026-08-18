@@ -71,7 +71,7 @@ export function viewpointsSlot(): HTMLElement | null { return $("tb-viewpoints")
  *    ask  = 무LLM 대화(질문 우측 · 답변 좌측 · 이력 보존, ask.ts)
  *  아이콘은 **기존 것을 그대로** 쓴다: 찾기=search, 묻기=decide(마주 보는 두 표식).
  *  sparkle 은 쓰지 않는다 — AI 를 함의해 "생성하지 않는다"는 이 표면의 약속과
- *  정면으로 어긋난다(vinc.d.chat-research §5a.6). */
+ *  정면으로 어긋난다([[vinc.research.no-llm-chat]] §5a.6). */
 type Mode = "find" | "ask";
 const MODE_KEY = "vinc.search.mode";
 const MODE_ICON: Record<Mode, string> = { find: "search", ask: "decide" };

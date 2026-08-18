@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""일관 스냅샷 백업(설계 [[weg.c.memory-standalone]] §11 P2·R9).
+"""일관 스냅샷 백업(설계 [[vinc.spec.architecture §5]], R9).
 
 ``vinc backup`` 은 (1) 스토어 데이터 디렉토리의 일관 스냅샷 + (2) ``packs/``(내보낸
 컨텍스트 팩)·``profile.yml``(도메인 프로필) 을 한 아카이브 디렉토리에 모은다 —

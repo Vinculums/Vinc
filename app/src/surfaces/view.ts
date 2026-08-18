@@ -26,7 +26,7 @@ import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
 
-/** Surface 3 — View (spec: vinc.d.graph v0.2 · vinc.d.view-visual-language).
+/** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
  *  Full-3D renderer (DEC D21 revised): L0 Domain View / L1 Domain Lens run on
  *  three.js (see view3d.ts — primitives = type, monochrome ink materials,
@@ -936,7 +936,7 @@ export async function renderView(el: HTMLElement) {
     savePrefs({ ...cur, ...mut });
     // 번들의 손잡이는 **이미 실린 데이터의 표현만** 바꾼다(단·관계·라벨). 아래
     // show() 로 내려가면 `/graph` 를 통째로 다시 받는데, 그것이 리서치
-    // [[vinc.d.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만
+    // [[vinc.research.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만
     // 서버가 필요한데 전부 전량 재조회 + 재마운트를 하고 있었다. 여기서만 끊는다.
     const bundleOnly = (Object.keys(mut) as string[]).every(
       (k) => k === "bundleDepth" || k === "bundleOff" || k === "labels");
@@ -1843,7 +1843,7 @@ export async function renderView(el: HTMLElement) {
     const domains = lvDomains(level);
     // L0/L1 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
     //
-    // D46-S: **L0 는 전량**이다(정본 [[vinc.d.graph-views]] §3.2 "L0=전체", §2.3.1
+    // D46-S: **L0 는 전량**이다(정본 [[vinc.spec.viewpoints]] §3.2 "L0=전체", §2.3.1
     // 표 "L0 = 전체 개념"). 예전엔 여기서 `/view`(주제 집계)만 불러 흐름은 주제
     // ties 를, 타임라인은 "주제에는 날짜가 없다" 막다른 골목을 냈다 — 합계만
     // `/ledger?owner=` 로 이미 전량이라 관점끼리 모집단이 어긋나 있었다.

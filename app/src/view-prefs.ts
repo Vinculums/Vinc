@@ -1,4 +1,4 @@
-/** View view preferences (DEC D31 — spec vinc.d.view-visual-language §1.5).
+/** View view preferences (DEC D31 — as-built [[vinc.reference.view-controls]]).
  *
  *  Two-layer policy: these are the OPEN layer only ("how strongly to show") —
  *  view dimension, size scale, label density, arrowheads, spread. The CLOSED

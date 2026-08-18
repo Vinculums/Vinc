@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GRAPH.md 생성·검증 — 어시스턴트 쓰기 관례 계약 (설계정본 `vinc.c.graph-md`).
+"""GRAPH.md 생성·검증 — 어시스턴트 쓰기 관례 계약 (설계정본 [[vinc.canon.graph-conventions]]).
 
 파일 한 장이 **두 구역**으로 나뉜다:
 

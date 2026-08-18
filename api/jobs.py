@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""JobQueue — 사이드카의 단일 워커 큐(설계 [[weg.c.memory-standalone]] §11 P2·R4).
+"""JobQueue — 사이드카의 단일 워커 큐(설계 [[vinc.spec.dataplane §4]], R4).
 
 임베디드 스토어는 인프로세스 단일 Database 다. 여러 HTTP 핸들러 스레드가 동시에
 쓰면 커넥션·트랜잭션이 경합한다. 그래서 **모든 뮤테이션을 단일 워커 스레드로

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """GraphStore abstraction — the one place a store backend is opened.
 
-설계 정본 [[weg.c.memory-standalone]] §4 (P0). v1 유산에서는 7 엔진과
+설계 정본 [[vinc.canon.principles]] (P0). v1 유산에서는 7 엔진과
 `api/query.py` 가 각자 드라이버를 열었다. 추상화 후에는 **스토어를 여는 곳이 이
 파일 1곳**뿐이다.
 

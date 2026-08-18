@@ -187,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
 
-    # ── GRAPH.md — 어시스턴트 쓰기 관례 (vinc.c.graph-md) ──────────────────────
+    # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     from .graphmd import CONVENTIONS_DOC_ID as _GM_DOC
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)

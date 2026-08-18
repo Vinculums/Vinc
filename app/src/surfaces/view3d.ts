@@ -1,6 +1,6 @@
 /** View 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
  *
- *  Monochrome 3D discipline (spec: vinc.d.view-visual-language §1.1):
+ *  Monochrome 3D discipline (as-built: [[vinc.reference.view-controls]]):
  *  depth comes from shading and atmosphere, never hue — matte ink Lambert
  *  materials (ink/ink_soft/ink_mute), paper background + fog, one neutral
  *  directional light. The single point color marks "the current focus" only.

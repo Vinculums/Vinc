@@ -88,6 +88,13 @@ jobs:
       - name: Forbidden-terms gate
         run: python scripts/gate_forbidden.py
 
+      # 코드가 `[[...]]` 로 가리키는 그래프 문서·노드가 실재하는가. 오프라인이다 —
+      # 대조 대상은 커밋된 scripts/graph-refs.json 이고 CI 에 그래프 키는 없다.
+      # 매니페스트 갱신은 scripts/refresh_graph_refs.py 가 로컬에서 한다.
+      # 이 게이트가 없던 동안 인용 24건 중 19건이 조용히 끊어져 있었다(2026-08-18).
+      - name: Graph citation gate
+        run: python -X utf8 scripts/gate_graph_refs.py
+
       # View 마크 대비(WCAG 2.x AND APCA 이중). 여기 사는 이유: 프런트에는 테스트
       # 러너가 없고 app 잡은 tsc 만 돈다. 이 게이트는 생성물 theme.ts 를 읽는 순수
       # 파이썬이라 core 잡에서 도는 것이 맞다. 두 기준을 AND 로 거는 이유는 극성마다

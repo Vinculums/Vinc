@@ -2,8 +2,8 @@
 """vinc_sync S1 — delta export 스코프·청킹·LWW 가드.
 
 여기 있는 건 **순수/플랜 층**(어디서든 실행 가능). 실엔진 2-스토어 왕복은
-서버측 e2e 가 담당한다 — Windows 로컬은 임베디드 드라이버(ladybug)가 못 돌기 때문
-([[windows-embedded-test-fails]]). 그래서 이 파일은 "스코프 술어가 실제로
+서버측 e2e 와 test_embedded_backend.py 가 담당한다(로컬에서도 돈다 —
+[[record:vinc-tests-need-a-clean-interpreter-on-windows]]). 그래서 이 파일은 "스코프 술어가 실제로
 박히는가 / 순수 로직이 맞는가"를 본다 — SEC-1 에서 배운 대로, 스텁 왕복이
 초록이어도 엔진이 다르게 굴 수 있으니 **계약을 직접** 검사한다.
 """

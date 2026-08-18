@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""사이드카 HTTP 서버 — CLI 데이터 플레인 위 얇은 루프백 레이어(설계
-[[weg.c.memory-standalone]] §11 P2·§3-1).
+"""사이드카 HTTP 서버 — CLI 데이터 플레인 위 얇은 루프백 레이어(설계 [[vinc.spec.architecture §2]]).
 
 데스크톱 셸(Tauri)이 인프로세스 데이터 플레인과 통신하는 통로다. 계약 3가지:
 
@@ -706,7 +705,7 @@ class VincApp:
             detail=(p.get("detail") or "full")))
 
     def read_conventions(self, p):
-        """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널(vinc.c.graph-md §6.2).
+        """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널([[vinc.canon.graph-conventions]] §6.2).
 
         스토어에 관례 문서가 있으면 그 본문을, 없으면 **생성 구역만 채운 기본 템플릿**을
         돌려준다. 사용자가 아무것도 안 해 뒀어도 도메인·재가 어휘는 전달된다 — 이 기본본이
@@ -1392,7 +1391,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
-            # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널(vinc.c.graph-md).
+            # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널([[vinc.canon.graph-conventions]]).
             "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)

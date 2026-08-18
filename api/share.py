@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Share pack — 한 계정이 로컬에 적재한 데이터를 **다른 사람에게 전달**하기 위한
-패키징(내보내기/들여오기). 계약 정본: Vinc-docs `vinc.c.sharepack`(DEC D19).
+패키징(내보내기/들여오기). 계약 정본: [[vinc.canon.share-pack]](DEC D19).
 
 설계 결정 3가지:
 1. **포맷 = MCP fragment 동형**(D11 §5). 팩의 본문은 `{nodes, edges}` fragment 라서

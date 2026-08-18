@@ -1018,9 +1018,29 @@ def _seed_table(seed: str) -> tuple[str, str]:
     return _SEED_TABLES.get(prefix, ("Entity", "entity_id"))
 
 
+# 고립 시드가 실어 오는 열 — 라벨마다 **있는 것만** 고른다. 없는 열을 RETURN 하면
+# Binder 예외로 조회가 통째로 죽는다(Bridge 에 `domain` 이 없는 것과 같은 자리).
+# ts 표현은 각 축 플랜의 coalesce 와 같은 것을 쓴다 — 같은 노드가 연결 유무에 따라
+# 다른 시간을 말하면 안 된다.
+_SEED_FIELDS: dict[str, dict[str, str]] = {
+    "Concept": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                "ts": "coalesce(n.created, n.updated_at, '')",
+                "content_ts": "coalesce(n.content_time, '')"},
+    "Record": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+               "ts": "coalesce(n.created, n.updated_at, '')",
+               "content_ts": "coalesce(n.content_time, '')"},
+    "Decision": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                 "ts": "coalesce(n.created, n.updated_at, '')"},
+    "Episode": {"domain": "n.domain", "tags": "n.tags", "props": "n.props",
+                "ts": "coalesce(n.date, n.updated_at, '')"},
+    "Bridge": {"props": "n.props", "ts": "coalesce(n.created, n.updated_at, '')"},
+    "Entity": {"tags": "n.tags", "ts": "coalesce(n.updated_at, '')"},
+}
+
+
 def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     """seed 노드 존재 선조회(C4) — '노드 없음'과 '노드는 있으나 연결 0(고립)'을
-    구분하기 위한 최소 조회(id·title 만). id 접두사(`concept:`·`episode:`·
+    구분하기 위한 조회. id 접두사(`concept:`·`episode:`·
     `record:`·`bridge:`·`entity:`)로 테이블을 판별하고, 접두사가 없거나 미지의
     접두사면 Concept 로 시도한다. `graph()` 는 순회 결과가 비었을 때만 이 플랜을
     쓴다 — 순회가 이미 노드를 찾았다면(=시드가 확실히 존재) 굳이 다시 묻지 않는다.
@@ -1036,7 +1056,15 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
         where += (f" AND {_bridge_owner_pred('n')}" if label == "Bridge"
                   else " AND n.owner_id = $owner")
         params["owner"] = owner
-    cypher = f"MATCH (n:{label}) WHERE {where} RETURN n.{pk} AS id, n.title AS title"
+    # ⚠ id·title 만 싣던 시절, 고립 노드는 `vinc_graph` 에서 **domain·tags·props·ts 가
+    # 전부 빈** 모습으로 답했다 — 아래 graph() 가 없는 값을 빈 값으로 지어냈기 때문이다.
+    # 값이 실제로 저장돼 있어도 그렇게 보이므로, 방금 쓴 노드를 읽어 확인하는 절차가
+    # (그래프에 근거를 옮길 때 쓰는 그 절차가) "쓰기가 실패했다"는 오진을 낳았다.
+    # 2026-08-18 에 실제로 두 번 그렇게 오진했다. 이제 있는 열은 실어 온다.
+    extra = _SEED_FIELDS.get(label, {})
+    cols = ", ".join([f"n.{pk} AS id", "n.title AS title"]
+                     + [f"{expr} AS {alias}" for alias, expr in extra.items()])
+    cypher = f"MATCH (n:{label}) WHERE {where} RETURN {cols}"
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
@@ -1664,8 +1692,12 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             if found:
                 kind = seed.split(":", 1)[0] if ":" in seed else "concept"
                 shaped["nodes"] = [{"id": seed, "label": seed_row.get("title") or seed,
-                                    "domain": "", "kind": kind, "degree": 0,
-                                    "props": {}, "tags": [], "ts": ""}]   # A4 형태 정합
+                                    "domain": seed_row.get("domain") or "",
+                                    "kind": kind, "degree": 0,
+                                    "props": _props_to_obj(seed_row.get("props")),
+                                    "tags": list(seed_row.get("tags") or []),
+                                    "ts": seed_row.get("ts") or "",
+                                    "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
@@ -3556,7 +3588,7 @@ def merge_candidates(rows: list[dict], *, min_score: float = 0.6,
 #
 # 저장 위치는 `_MergeRejection` 메타 테이블(store/embedded_schema.py 주석에 근거).
 # owner 스코프는 **키와 열 양쪽**에 건다 — SEC-1 이 준 교훈은 한 층만 맞으면 새는
-# 것이었다([[vinc-owner-isolation-sec1]]).
+# 것이었다([[vinc.spec.dataplane §5]]).
 
 def _merge_rejection_rows(store, owner: str | None) -> list[dict]:
     """owner 의 기각 목록(원시 행). 테이블이 없는 구 스토어면 빈 목록으로 강등한다 —
@@ -5008,7 +5040,7 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
     전제 — 소유가 안 갈리면 남의 노드가 지워질 수 있다. 라벨별 삭제 건수를 돌려줘
     호출자(계정)가 감사할 수 있게 한다. **owner 가 비었으면 거부**(빈 술어로 전삭제
     사고 방지). Domain 은 owner_id 가 없어 소유로 못 가르는 잔여 —
-    [[vinc-owner-isolation-sec1]] 의 알려진 한계(Bridge 는 v2, Chunk 는 v4 에서
+    [[vinc.spec.dataplane §5]] 의 알려진 한계(Bridge 는 v2, Chunk 는 v4 에서
     소유 스탬프를 얻어 편입 — '' 소유 레거시 행만 잔여)."""
     cfg = cfg or load_config()
     base = {"kind": "purge", "executed": False, "owner": owner}

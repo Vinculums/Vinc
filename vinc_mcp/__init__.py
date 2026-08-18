@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""vinc_mcp — Vinc 의 두 번째 프론트 도어(DEC D11, 스켈레톤 vinc.mcp.skeleton).
+"""vinc_mcp — Vinc 의 두 번째 프론트 도어(DEC D11, 스켈레톤 [[vinc.spec.mcp-server]]).
 
 얇은 브리지: 비즈니스 로직 0 — MCP tool 계약 검증 → 루프백 사이드카 HTTP 호출
 → 결과 반환이 전부다. 의미 판단·구조화·dedup 은 상류(Claude)와 하류(엔진)에

@@ -6,7 +6,7 @@
 모델 비교(bge vs e5, fp32 vs int8)는 **두 모델을 같은 코드로** 재야 한다. 그래서 계열을
 인자로 받는 판을 따로 둔다.
 
-🔴 **규약 셋 중 하나만 어긋나도 에러 없이 벡터가 틀린다**([[vinc.plan.embedding-retrieval]]
+🔴 **규약 셋 중 하나만 어긋나도 에러 없이 벡터가 틀린다**([[vinc.plan.embedding-pipeline]]
 부록 B). 그래서 여기 표로 박아 둔다:
 
     | | bge-base-en-v1.5 | multilingual-e5-base |
