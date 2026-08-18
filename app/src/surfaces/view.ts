@@ -25,6 +25,7 @@ import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-pane
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
+import { emptyInviteHtml } from "../empty-invite";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
@@ -221,6 +222,16 @@ export async function renderView(el: HTMLElement) {
       const { pickAndImport } = await import("../sheets");
       pickAndImport();
     });
+    // 초대 블록(빈 그래프)은 끌어다 놓기·파일 고르기·노드 만들기를 한자리에 편다.
+    // 적재나 생성이 끝나면 **지금 보고 있던 층을 그대로** 다시 그린다 — 만든 노드가
+    // 어디에도 안 보이면 만든 것 같지 않다.
+    if (msg.querySelector("[data-invite]")) {
+      void import("../empty-invite").then(({ wireEmptyInvite }) =>
+        wireEmptyInvite(msg, async (nodeId) => {
+          await show(trail[trail.length - 1]);
+          if (nodeId) void focusNode(nodeId);
+        }));
+    }
   }
 
   /** 범례 — 닫힌 층(형태=타입 · 선=관계 · 초점색 1점)을 화면이 스스로 가르친다(U1).
@@ -472,6 +483,9 @@ export async function renderView(el: HTMLElement) {
   /** 지표바 — 전 관점 공통(구 2D 전용). 떠 있는 알약이 아니라 하단 상태 표시줄이라
    *  배너로 읽혀 무시되는 자리를 벗어난다. `연결 없음` 은 **누를 수 있다** — 세어만
    *  놓고 해소할 길을 안 주면 미완의 일로 남는다(Zeigarnik). */
+  // ⚠ 세는 것은 **그래프 노드**다(파생된 주제 노드 포함) — 라벨이 "문서"였던 동안
+  // 개념 하나를 만든 첫 화면이 "문서 3"이라고 말했다(개념 1 + 주제 2). 세는 것과
+  // 부르는 이름을 갈라 두면 화면이 조용히 거짓말한다.
   function drawMetrics(nodes: { degree?: number; ts?: string }[] | null) {
     if (!nodes || nodes.length === 0) { metricsBar.innerHTML = ""; return; }
     const total = nodes.length;
@@ -1114,8 +1128,7 @@ export async function renderView(el: HTMLElement) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
-      setMsg(`<div class="empty"><p>${COPY.view.idle}</p>
-        <button class="btn btn-primary" data-import>${COPY.view.idleCta}</button></div>`);
+      setMsg(emptyInviteHtml(COPY.view.idle));
       return;
     }
     setMsg("");
@@ -1795,8 +1808,7 @@ export async function renderView(el: HTMLElement) {
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
-      setMsg(`<div class="empty"><p>${COPY.view.idle}</p>
-        <button class="btn btn-primary" data-import>${COPY.view.idleCta}</button></div>`);
+      setMsg(emptyInviteHtml(COPY.view.idle));
       return;
     }
     setMsg("");
@@ -1853,8 +1865,7 @@ export async function renderView(el: HTMLElement) {
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
       setMsg(level.kind === "l0"
-        ? `<div class="empty"><p>${COPY.view.idle}</p>
-           <button class="btn btn-primary" data-import>${COPY.view.idleCta}</button></div>`
+        ? emptyInviteHtml(COPY.view.idle)
         : `<div class="empty"><p>${COPY.view.idle}</p></div>`);
       return;
     }

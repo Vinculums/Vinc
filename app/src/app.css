@@ -812,6 +812,24 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border: 1px dashed hsl(var(--border)); border-radius: var(--radius);
   padding: var(--space-8, 2rem); text-align: center;
 }
+/* 빈 상태 = 초대(2026-08-19). `.empty` 위에 드롭 대상과 행동 두 개를 얹는다.
+   ⚠ 지도 위에서는 `#view-msg` 가 `pointer-events:none` 이라 이 블록이 드래그 이벤트를
+   못 받는다 — 블록만 되살린다(같은 파일의 `#view-msg a, button` 규칙과 같은 이유). */
+.empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
+.empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
+.empty-invite .ei-lead { margin: 0; }
+.empty-invite .ei-drop { margin: 0; }
+.empty-invite .ei-actions { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; justify-content: center; }
+/* 노드 만들기 시트 — 라벨 위, 입력 아래. 시트 폭(action)에 맞춘 한 벌. */
+.ei-field { display: grid; gap: var(--space-1, .25rem); margin-bottom: var(--space-3, .75rem); }
+.ei-field > span { font-size: .85em; color: hsl(var(--caption-foreground)); }
+.ei-field input, .ei-field select, .ei-field textarea {
+  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
+  font: inherit;
+}
+.ei-field textarea { resize: vertical; }
+
 .error-banner {
   border: 1px solid hsl(var(--danger)); border-radius: var(--radius);
   padding: var(--space-3, .75rem) var(--space-4, 1rem);
