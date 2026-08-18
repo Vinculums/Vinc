@@ -145,6 +145,83 @@ fn b64(bytes: &[u8]) -> String {
     out
 }
 
+// ── CLI 디스패치 (`vinc <동사> …`) ──────────────────────────────────────────
+// 리눅스 패키지는 **이 바이너리**를 `/usr/bin/vinc` 로 깐다(v0.8.2 deb 실측:
+// `/usr/bin/vinc` 23MB = 앱, `/usr/bin/vinc-sidecar` 37MB = 엔진). 그래서 문서가
+// 안내하던 `vinc mcp install --client desktop` 이 "명령 없음"이 아니라 **창만 띄우고
+// 끝났다** — argv 가 `openable_from_args` 에서 조용히 버려졌기 때문이다. 조용한
+// 오작동은 없는 명령보다 나쁘다.
+//
+// 그래서 shim 을 새로 깔지 않고 **이 바이너리가 디스패처가 된다.** `vinc` 라는 이름은
+// 이미 이 바이너리가 갖고 있어서, shim 을 놓으려면 데스크톱 항목·파일 연결이 가리키는
+// 이름을 옮기거나 아무도 배운 적 없는 둘째 이름을 만들어야 한다. 둘 다 더 비싸다.
+//
+// 정본은 그래프의 `vinc.plan.vinc-command-on-path`.
+
+/// 사이드카 CLI 의 최상위 하위 명령 — `api/cli.py` 의 `sub.add_parser(...)` 와 1:1.
+/// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
+/// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
+/// `--help`·`-h` 를 포함하는 이유는 argparse 가 그 자리에서 사용법을 찍어 주기 때문이다.
+const CLI_VERBS: [&str; 22] = [
+    "activate", "backup", "decide", "doc", "domain-backfill", "domains", "graph",
+    "graph-md", "import", "learner", "mcp", "onboard", "pin", "plan", "recall",
+    "search", "serve", "share", "tag", "touch", "--help", "-h",
+];
+
+/// argv 가 CLI 호출이면 사이드카에 넘길 인자를, 아니면 `None`(= 창을 연다).
+/// argv[0] 은 실행 파일이라 건너뛴다. macOS 가 GUI 실행에 붙이는 `-psn_…` 이나
+/// `.vincpack` 경로는 동사 목록에 없으므로 자연히 창으로 간다.
+fn cli_forward<I: IntoIterator<Item = String>>(args: I) -> Option<Vec<String>> {
+    let mut it = args.into_iter();
+    it.next()?;
+    let first = it.next()?;
+    if !CLI_VERBS.contains(&first.as_str()) {
+        return None;
+    }
+    let mut fwd = vec![first];
+    fwd.extend(it);
+    Some(fwd)
+}
+
+/// 번들 사이드카의 경로 — Tauri externalBin 은 **이 바이너리 옆**에 놓인다.
+/// 개발 트리에는 타깃 트리플이 붙은 이름(`vinc-sidecar-x86_64-…`)으로 있어 둘 다 본다.
+fn sidecar_binary() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?.to_path_buf();
+    let exact = dir.join(if cfg!(windows) { "vinc-sidecar.exe" } else { "vinc-sidecar" });
+    if exact.is_file() {
+        return Some(exact);
+    }
+    std::fs::read_dir(&dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.is_file()
+                && p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map_or(false, |n| n.starts_with("vinc-sidecar"))
+        })
+}
+
+/// CLI 로 불렸다 — 사이드카를 그대로 실행하고 **종료코드를 넘긴 뒤** 끝낸다.
+/// stdio 는 상속한다(파이프·리다이렉트가 셸에서 기대대로 동작하도록).
+/// ⚠ Windows 는 릴리스 빌드가 GUI 서브시스템이라 콘솔에서 부르면 자식 출력이 보이지
+/// 않는다. 그쪽은 PATH 등록 작업과 함께 실제 러너에서 검증하며 다룬다(계획 문서 §3).
+fn run_cli(fwd: Vec<String>) -> ! {
+    let Some(bin) = sidecar_binary() else {
+        eprintln!("vinc: 번들 엔진(vinc-sidecar)을 찾지 못했다 — 설치본이 온전한지 확인할 것.");
+        std::process::exit(127);
+    };
+    match std::process::Command::new(&bin).args(&fwd).status() {
+        Ok(st) => std::process::exit(st.code().unwrap_or(1)),
+        Err(e) => {
+            eprintln!("vinc: 엔진을 실행하지 못했다 ({}): {e}", bin.display());
+            std::process::exit(126);
+        }
+    }
+}
+
 /// argv 에서 **열 수 있는 파일만** 고른다. 플래그·포트 인자·존재하지 않는 경로는
 /// 버린다 — argv[0] 은 실행 파일이므로 항상 건너뛴다.
 fn openable_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<String> {
@@ -257,6 +334,10 @@ fn kill_sidecar_tree(pid: u32) {
 }
 
 fn main() {
+    // CLI 호출이면 여기서 갈린다 — Tauri 를 세우기 전에, 창을 열지 않고.
+    if let Some(fwd) = cli_forward(std::env::args()) {
+        run_cli(fwd);
+    }
     let token = session_token();
     let port = pick_free_port();
     let port_arg = port.to_string();
@@ -447,6 +528,69 @@ mod tests {
     #[test]
     fn argv_가_실행파일뿐이면_아무것도_안_연다() {
         assert!(openable_from_args(vec!["vinc.exe".to_string()]).is_empty());
+    }
+
+    /// 리눅스 패키지에서 이 바이너리의 이름은 `vinc` 다. 그래서 `vinc mcp install …`
+    /// 이 **창을 열면 안 된다** — 그게 이 디스패처를 만든 이유다.
+    #[test]
+    fn cli_동사는_사이드카로_넘어간다() {
+        let argv = vec![
+            "/usr/bin/vinc".to_string(),
+            "mcp".to_string(),
+            "install".to_string(),
+            "--client".to_string(),
+            "desktop".to_string(),
+        ];
+        let fwd = cli_forward(argv).expect("동사면 넘겨야 한다");
+        assert_eq!(fwd, vec!["mcp", "install", "--client", "desktop"]);
+    }
+
+    /// 반대쪽 절반: 창을 열어야 하는 입력은 여전히 창을 연다. 파일 연결(Q1)이
+    /// 이 디스패처 때문에 다시 사문이 되면 안 된다.
+    #[test]
+    fn 창을_열어야_하는_argv_는_넘기지_않는다() {
+        let cases: Vec<Vec<String>> = vec![
+            vec!["/usr/bin/vinc".into()],                                   // 인자 없음
+            vec!["/usr/bin/vinc".into(), "/home/u/shared.vincpack".into()], // 더블클릭
+            vec!["/usr/bin/vinc".into(), "-psn_0_12345".into()],            // macOS GUI 실행
+            vec!["/usr/bin/vinc".into(), "instal".into()],                  // 오타 = 동사 아님
+            vec!["/usr/bin/vinc".into(), "--port".into(), "8787".into()],   // 앱 플래그
+        ];
+        for argv in cases {
+            assert!(cli_forward(argv.clone()).is_none(), "창을 열어야 한다: {argv:?}");
+        }
+    }
+
+    /// 동사 뒤의 인자는 **그대로** 간다. 여기서 순서나 개수가 바뀌면 CLI 가 다른 일을 한다.
+    #[test]
+    fn 동사_뒤_인자는_변형없이_전달된다() {
+        let argv = vec![
+            "vinc".to_string(),
+            "search".to_string(),
+            "--query".to_string(),
+            "vector search".to_string(),
+            "--limit".to_string(),
+            "5".to_string(),
+        ];
+        let fwd = cli_forward(argv).unwrap();
+        assert_eq!(fwd, vec!["search", "--query", "vector search", "--limit", "5"]);
+    }
+
+    /// `--help` 는 동사 자리에서 받는다 — argparse 가 사용법을 찍는다.
+    #[test]
+    fn help_는_cli_로_간다() {
+        assert!(cli_forward(vec!["vinc".to_string(), "--help".to_string()]).is_some());
+        assert!(cli_forward(vec!["vinc".to_string(), "-h".to_string()]).is_some());
+    }
+
+    /// 동사 목록이 사이드카 CLI 와 어긋나면 그 명령만 조용히 창을 연다.
+    /// 목록 자체를 고정해 두어, `api/cli.py` 를 고칠 때 이 테스트가 같이 깨지게 한다.
+    #[test]
+    fn 동사_목록은_사이드카_cli_와_짝이다() {
+        for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard"] {
+            assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
+        }
+        assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");
     }
 
     /// 바이트를 JSON 배열로 실으면 5MB 팩이 15MB 로 부푼다. base64 는 그래서 쓰는데,
