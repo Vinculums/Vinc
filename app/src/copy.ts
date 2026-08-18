@@ -583,7 +583,7 @@ const EN = {
       theme: "Theme", language: "Language", advanced: "Advanced",
       engine: "Engine address", secret: "Connection secret",
       secretHint: "Filled in automatically by the app. Only change this if you run the engine yourself.",
-      // 호스트 표시명 — 키는 사이드카 `vinc mcp install --client` 값과 1:1.
+      // 호스트 표시명 — 키는 사이드카 `mcp install --client` 값(vinc_mcp.install.CLIENTS)과 1:1.
       mcpHosts: { desktop: "Claude Desktop", code: "Claude Code",
                   cursor: "Cursor", codex: "Codex CLI" } as Record<string, string>,
       mcpConnect: (host: string) => `Connect ${host}`,
@@ -597,7 +597,7 @@ const EN = {
       mcpRemove: (host: string) => `Remove from ${host}`,
       mcpRemoving: "Removing…",
       mcpRemoved: (host: string) => `Removed from ${host}. Restart it to drop Vinc. (A backup of the config was saved.)`,
-      mcpOtherHint: "Another MCP host (Kimi CLI, VS Code, Zed)? Run `vinc mcp manual` in a terminal for a config snippet to paste.",
+      mcpOtherHint: "Another MCP host (Kimi CLI, VS Code, Zed)? Run `vinc-sidecar mcp manual` in a terminal for a config snippet to paste. That binary ships with Vinc: on your path with the Linux packages, in the application folder on macOS and Windows.",
       sync: "Account",
       syncHint: "Optional. Connect your vincs.io account to sync the topics you pick to the web and your other devices. Everything else stays only on this machine.",
       acctConnect: "Connect account",
@@ -1221,7 +1221,7 @@ const KO: Deck = {
       mcpRemove: (host) => `${host}에서 제거`,
       mcpRemoving: "제거 중…",
       mcpRemoved: (host) => `${host}에서 제거됐습니다. 재시작하면 Vinc가 사라집니다. (설정 백업이 저장됐습니다.)`,
-      mcpOtherHint: "다른 MCP 호스트(Kimi CLI, VS Code, Zed)를 쓰시나요? 터미널에서 `vinc mcp manual` 을 실행하면 붙여넣을 설정 조각이 나옵니다.",
+      mcpOtherHint: "다른 MCP 호스트(Kimi CLI, VS Code, Zed)를 쓰시나요? 터미널에서 `vinc-sidecar mcp manual` 을 실행하면 붙여넣을 설정 조각이 나옵니다. 이 바이너리는 Vinc와 함께 나갑니다. 리눅스 패키지는 PATH에, macOS와 Windows는 앱 설치 폴더에 둡니다.",
       sync: "계정",
       syncHint: "선택 사항입니다. vincs.io 계정을 연결하면 고른 주제를 웹과 다른 기기에 동기화합니다. 나머지는 이 기기에만 남습니다.",
       acctConnect: "계정 연결",
