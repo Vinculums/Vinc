@@ -48,7 +48,7 @@ jobs:
   # 실측 근거: `app/package-lock.json` 이 7릴리스(0.6.0→0.6.7) 방치돼 있었다
   # (Cargo.lock 은 체크리스트에 있는데 이건 빠진 비대칭 — scripts/version_sync.py 참조).
   version-gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -316,7 +316,7 @@ jobs:
     needs: build
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
@@ -400,7 +400,7 @@ jobs:
   prune:
     needs: assemble
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - name: Archive old releases (keep newest 5 installers, strip the rest)
         env:
