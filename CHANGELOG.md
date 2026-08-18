@@ -3,6 +3,43 @@
 Vinc 데스크톱 앱 릴리스 기록. 사용자 노출 카피 정본은 `site/release/`(웹 릴리스 노트)이며,
 이 파일은 개발자용 요약이다.
 
+## v0.8.3 — 안내하던 명령이 실재하게 (미발행)
+
+> 아직 태그 전이다. 버전 표기 6파일 10곳은 릴리스 시점에 `scripts/version_sync.py
+> --set 0.8.3` 이 맞춘다 — 이 절은 그 전에 쌓인 것을 적어 두는 자리다.
+> ⚠ 릴리스할 때 제목의 `(미발행)` 을 지울 것. `release.yml` 의 assemble 이 이 절을
+> 그대로 릴리스 본문으로 옮기므로, 안 지우면 발행된 릴리스가 자기를 미발행이라 말한다.
+
+### 문서·문구 — 없는 명령을 안내하고 있었다
+
+홈페이지 `/docs/mcp/` · README · **앱 설정 문구**가 모두 `vinc mcp install|manual`
+을 안내했는데 그런 실행 파일이 없다. 확인한 것:
+
+- `pyproject.toml` 에 console_scripts 가 없고, 주석이 "PyPI 미배포"라고 적어 뒀다
+- 동결 산출물 이름은 `vinc-sidecar`(`packaging/sidecar.spec`)이고 Tauri
+  externalBin 으로 앱 번들에 들어간다. PATH 등록·심링크 코드는 0건
+- **v0.8.2 deb 실측**: `/usr/bin/vinc` 는 데스크톱 앱 자신(23MB)이고
+  `/usr/bin/vinc-sidecar` 가 CLI(37MB)다
+
+⚠ 그래서 리눅스에서 문서대로 치면 "명령 없음"이 아니라 **앱 창이 뜬다** —
+argv 가 `openable_from_args`(존재하는 파일 경로만 통과)에서 조용히 버려진다.
+없는 명령보다 나쁜 실패라 문구를 먼저 고쳤다.
+
+- 앱 `Settings → Connections` 의 안내 문구(`copy.ts` 의 `mcpOtherHint`, 영·한)를
+  `vinc-sidecar mcp manual` 로 고치고 그 바이너리가 어디 있는지 덧붙였다.
+- README 의 MCP 절을 실제로 되는 경로 셋(앱 버튼 · `vinc-sidecar` ·
+  체크아웃의 `python -m api.cli`)으로 고쳤다.
+- 홈페이지 쪽 정정은 `Vinc-homepage#12` 에서 따로 나갔다(사이트는 즉시 배포).
+
+`vinc` 를 실제로 PATH 에 올리는 일은 이 절에 없다 — 별도 작업이고 설계가 다르다.
+정본은 그래프의 `vinc.plan.vinc-command-on-path`.
+
+### 파이프라인
+
+- 릴리스 본문이 자리표시자(`Vinc <tag>`)로 발행되던 것 — `assemble` 이 그 태그의
+  CHANGELOG 절로 채운다. 사람이 쓴 본문은 덮지 않고, 절이 없어도 릴리스를 세우지
+  않는다(#26).
+
 ## v0.8.2 — 문서가 자기 자리를 말하고, 지도에 시간이 생긴다 (2026-08-18)
 
 > ⚠ **깨는 변경 하나**: `여기서 추적`(씨앗 층 L2)을 내렸다. 아래 첫 항목.
