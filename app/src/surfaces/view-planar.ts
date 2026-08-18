@@ -24,15 +24,15 @@ import { COPY } from "../copy";
  *  순수 렌더러이기 때문이다. 이 파일은 차트 이름과 구간 이름을 스스로 짓는 쪽이라
  *  문구를 저작하는 다른 모듈들과 같은 규칙을 따른다(각자 COPY 를 import).
  *
- *  D53 — Flow 렌더러는 관점 폐기와 함께 제거됐다. 남은 평면은 Timeline·Sankey 둘.
+ *  남은 평면은 Timeline·Sankey 둘이다(Flow 는 관점 폐기와 함께 제거 —
+ *  [[vinc.spec.viewpoints]]).
  *
- *  <svg> 에는 aria-label 만 두고 role="img" 는 두지 않는다: role="img" 는 하위
- *  트리를 통째로 접어 마크마다 달아 둔 설명을 전부 가린다. 이름은 남기고 안은
- *  열어 둔다(키보드 순회는 이 코드베이스에 없는 문법이라 새로 만들지 않는다).
+ *  <svg> 에는 aria-label 만 두고 **role="img" 는 두지 않는다** — 그것은 하위 트리를
+ *  통째로 접어 마크마다 달아 둔 설명을 전부 가린다.
  *
- *  툴팁은 `data-tip` 속성으로만 낸다(D48-T) — SVG `<title>` = 네이티브 툴팁은
- *  WCAG 1.4.13(dismissable·hoverable·persistent)을 하나도 만족하지 못해 전면
- *  교체했다. 실제 표시는 tooltip.ts 의 단일 오버레이가 담당한다. */
+ *  툴팁은 `data-tip` 속성으로만 낸다 — SVG `<title>`(네이티브 툴팁)은 WCAG 1.4.13
+ *  (dismissable·hoverable·persistent)을 하나도 만족하지 못한다. 표시는 tooltip.ts
+ *  의 단일 오버레이가 한다. */
 
 /** 종별 마크를 **텍스처 한 장**으로 굽는다 — 2D(sigma)가 쓸 것.
  *
