@@ -223,9 +223,144 @@ pub fn remove() -> Result<Status, String> {
     })
 }
 
-/// Windows 에서는 설치기가 PATH 를 다룬다(다음 단계). 화면은 이 상태를 받아
-/// 해당 행을 숨기거나 "설치기가 처리함"으로 표시한다.
-#[cfg(not(unix))]
+
+// ── Windows ────────────────────────────────────────────────────────────────
+// 여기서도 **설치기를 건드리지 않는다.** 처음 계획은 NSIS·WiX 가 PATH 를 넣는
+// 것이었는데, 이 개발 환경에서는 설치기를 한 번도 돌려 볼 수 없다. 검증 못 한
+// 설치기 변경은 실패하면 설치 자체가 깨지고, 그건 "PATH 에 없다"보다 훨씬 나쁘다.
+// 앱 안에서 하면 실패가 화면의 오류 한 줄로 끝나고, macOS·AppImage 와 조작도 같다.
+//
+// 레지스트리를 직접 만지지 않고 PowerShell 에 맡기는 이유: `SetEnvironmentVariable`
+// 의 User 스코프가 값 기록과 **변경 통지(WM_SETTINGCHANGE)** 를 함께 해 준다.
+// 레지스트리에 값만 써 넣으면 다음 로그인까지 새 셸이 그 값을 모른다.
+
+/// 사용자 PATH 문자열에서 우리 자리를 찾는다. Windows 경로는 대소문자를 가리지
+/// 않으므로 접어서 비교하고, 뒤에 붙은 역슬래시 차이도 흡수한다.
+pub fn path_contains(path_value: &str, dir: &str) -> bool {
+    let want = normalize_dir(dir);
+    path_value
+        .split(';')
+        .any(|p| !p.trim().is_empty() && normalize_dir(p) == want)
+}
+
+fn normalize_dir(p: &str) -> String {
+    p.trim().trim_end_matches(['\\', '/']).to_lowercase()
+}
+
+/// 우리 자리를 **맨 앞에** 더한 값. 이미 있으면 원본 그대로 돌려준다(멱등).
+pub fn path_with(path_value: &str, dir: &str) -> String {
+    if path_contains(path_value, dir) {
+        return path_value.to_string();
+    }
+    if path_value.trim().is_empty() {
+        return dir.to_string();
+    }
+    format!("{dir};{path_value}")
+}
+
+/// 우리 자리만 뺀 값. 남의 항목과 순서는 그대로 둔다.
+pub fn path_without(path_value: &str, dir: &str) -> String {
+    let want = normalize_dir(dir);
+    path_value
+        .split(';')
+        .filter(|p| !p.trim().is_empty())
+        .filter(|p| normalize_dir(p) != want)
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+#[cfg(windows)]
+fn app_dir() -> Option<String> {
+    Some(
+        std::env::current_exe()
+            .ok()?
+            .parent()?
+            .display()
+            .to_string(),
+    )
+}
+
+#[cfg(windows)]
+fn powershell(script: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("cannot run powershell: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+#[cfg(windows)]
+fn user_path() -> Result<String, String> {
+    powershell("[Environment]::GetEnvironmentVariable('Path','User')")
+}
+
+#[cfg(windows)]
+fn set_user_path(value: &str) -> Result<(), String> {
+    // 작은따옴표는 PowerShell 문자열 안에서 두 번 써서 이스케이프한다.
+    let escaped = value.replace('\'', "''");
+    powershell(&format!(
+        "[Environment]::SetEnvironmentVariable('Path','{escaped}','User')"
+    ))
+    .map(|_| ())
+}
+
+#[cfg(windows)]
+pub fn status() -> Status {
+    let Some(dir) = app_dir() else {
+        return Status {
+            supported: false,
+            linked: false,
+            path: String::new(),
+            target: String::new(),
+            dir: String::new(),
+            on_path: false,
+        };
+    };
+    let target = std::env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let linked = user_path().map(|v| path_contains(&v, &dir)).unwrap_or(false);
+    Status {
+        supported: true,
+        linked,
+        path: if linked { dir.clone() } else { String::new() },
+        target,
+        dir,
+        on_path: linked,
+    }
+}
+
+#[cfg(windows)]
+pub fn install() -> Result<Status, String> {
+    let dir = app_dir().ok_or_else(|| "cannot resolve this executable's path".to_string())?;
+    let current = user_path()?;
+    let next = path_with(&current, &dir);
+    if next != current {
+        set_user_path(&next)?;
+    }
+    Ok(status())
+}
+
+#[cfg(windows)]
+pub fn remove() -> Result<Status, String> {
+    let dir = app_dir().ok_or_else(|| "cannot resolve this executable's path".to_string())?;
+    let current = user_path()?;
+    let next = path_without(&current, &dir);
+    if next != current {
+        set_user_path(&next)?;
+    }
+    Ok(status())
+}
+
+/// "할 일 없음" 상태 — unix 도 windows 도 아닌 타깃에서만 쓴다.
+/// (windows 의 `status()` 도 실행 파일 경로를 못 구하면 이 모양을 쓴다.)
+#[cfg(not(any(unix, windows)))]
 pub fn unsupported() -> Status {
     Status {
         supported: false,
@@ -234,6 +369,39 @@ pub fn unsupported() -> Status {
         target: String::new(),
         dir: String::new(),
         on_path: false,
+    }
+}
+
+/// PATH 문자열 조작은 플랫폼과 무관한 순수 함수라, 리눅스에서도 그대로 검증한다.
+/// (Windows 설치기를 못 돌려 보는 환경에서 이쪽이라도 실측해 두려는 것이다.)
+#[cfg(test)]
+mod path_tests {
+    use super::{path_contains, path_with, path_without};
+
+    #[test]
+    fn 대소문자와_끝_역슬래시를_같은_것으로_본다() {
+        let p = r"C:\Windows;C:\Users\u\AppData\Local\Programs\Vinc";
+        assert!(path_contains(p, r"c:\users\u\appdata\local\programs\vinc"));
+        assert!(path_contains(p, r"C:\Users\u\AppData\Local\Programs\Vinc\"));
+        assert!(!path_contains(p, r"C:\Users\u\AppData\Local\Programs\Vinc2"));
+    }
+
+    #[test]
+    fn 더하기는_멱등이고_맨_앞에_붙는다() {
+        let dir = r"C:\Apps\Vinc";
+        let once = path_with(r"C:\Windows", dir);
+        assert_eq!(once, r"C:\Apps\Vinc;C:\Windows");
+        assert_eq!(path_with(&once, dir), once, "두 번 눌러도 하나만 있어야 한다");
+        assert_eq!(path_with("", dir), dir, "빈 PATH 에서 세미콜론이 앞에 남지 않는다");
+    }
+
+    #[test]
+    fn 빼기는_우리_것만_빼고_순서를_지킨다() {
+        let dir = r"C:\Apps\Vinc";
+        let p = r"C:\Windows;C:\Apps\Vinc;C:\Program Files\Git\cmd";
+        assert_eq!(path_without(p, dir), r"C:\Windows;C:\Program Files\Git\cmd");
+        // 없는 것을 빼도 남의 항목은 그대로다(빈 조각만 정리된다).
+        assert_eq!(path_without(r"C:\Windows;;", dir), r"C:\Windows");
     }
 }
 

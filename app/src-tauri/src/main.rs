@@ -111,11 +111,11 @@ async fn mcp_uninstall(app: tauri::AppHandle, client: String) -> Result<String, 
 /// macOS·AppImage 는 설치 훅이 없어 여기서 링크를 건다.
 #[tauri::command]
 fn cli_link_status() -> cli_link::Status {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         cli_link::status()
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         cli_link::unsupported()
     }
@@ -123,25 +123,25 @@ fn cli_link_status() -> cli_link::Status {
 
 #[tauri::command]
 fn cli_link_install() -> Result<cli_link::Status, String> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         cli_link::install()
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
-        Err("이 플랫폼에서는 설치기가 PATH 를 다룹니다.".into())
+        Err("not supported on this platform".into())
     }
 }
 
 #[tauri::command]
 fn cli_link_remove() -> Result<cli_link::Status, String> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         cli_link::remove()
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
-        Err("이 플랫폼에서는 설치기가 PATH 를 다룹니다.".into())
+        Err("not supported on this platform".into())
     }
 }
 
@@ -250,6 +250,18 @@ fn sidecar_binary() -> Option<std::path::PathBuf> {
 /// ⚠ Windows 는 릴리스 빌드가 GUI 서브시스템이라 콘솔에서 부르면 자식 출력이 보이지
 /// 않는다. 그쪽은 PATH 등록 작업과 함께 실제 러너에서 검증하며 다룬다(계획 문서 §3).
 fn run_cli(fwd: Vec<String>) -> ! {
+    // Windows 릴리스 빌드는 GUI 서브시스템이라 콘솔이 안 붙는다 — 그대로 두면 엔진
+    // 출력이 어디에도 안 보인다. 부모(셸)의 콘솔에 붙여 stdout·stderr 가 그 창으로
+    // 흐르게 한다. 실패는 무시한다(콘솔 없이 실행된 경우 = GUI 에서 부른 경우).
+    #[cfg(windows)]
+    unsafe {
+        const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn AttachConsole(dwProcessId: u32) -> i32;
+        }
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
     let Some(bin) = sidecar_binary() else {
         eprintln!("vinc: 번들 엔진(vinc-sidecar)을 찾지 못했다 — 설치본이 온전한지 확인할 것.");
         std::process::exit(127);
