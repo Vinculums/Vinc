@@ -7,7 +7,7 @@
    들여오기가 `api/fragment.merge_fragment`(id 정확 매칭 MERGE·멱등) 재사용 하나로
    끝난다 — 별도 import 기계 없음.
 2. **커스텀 스코프**. 도메인 전체가 아니라 "이 영역까지만"을 지원한다:
-   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(Atlas L2 와 동일한
+   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(View L2 와 동일한
    ego 서브그래프 — 그래프에서 고른 영역 그대로 패키징).
 3. **preference 신호 미포함**. pinned/access_count/last_access 는 원 계정의 개인
    신호라 공유 팩에 싣지 않는다(투영에서 제외 — 스크럽 단계 불요). 수신자는
@@ -54,7 +54,12 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         # 알 수 있었다 — 스타터팩 하나를 넣으면 개념 수십 개가 같은 순간에 몰려
         # 타임라인이 밴드 하나짜리 세로 목록이 됐다(실측). 가산 필드라 구 임포터는
         # 그냥 무시한다.
-        "c.created AS created"
+        "c.created AS created, "
+        # content_time(D72)은 **더 실려야 할 쪽**이다. created 는 공간에 속한 시계인데
+        # 이것은 지시체에 속해서(1905 는 어느 그래프에서 읽든 1905다) 공간을 건너도
+        # 참이다. 그런데 여태 팩은 공간의 시계만 나르고 이것을 버렸다 — 팩을 건너면
+        # 세계 시간이 통째로 사라졌다(2026-08-17 실측).
+        "c.content_time AS content_time"
     )
     return q.QueryPlan("share_concepts", cypher, params, note="share projection (no preference)")
 
@@ -106,6 +111,11 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
             "doc_id": did, "title": got.get("title") or "",
             "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
             "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
+            # 개념과 같은 이유로 **내용 시점만** 싣는다(2026-08-17). `created_at` 은
+            # 안 싣는다: 임포트는 수신 owner 로 doc_id 를 새로 파생하므로 받는 쪽에서
+            # 그것은 **다른 문서**이고, 그 문서가 이 공간에 생긴 때는 정말로 지금이다.
+            # 노드는 id 를 그대로 물려받아 같은 객체이므로 규칙이 갈린다.
+            "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
         })
     return docs
 
@@ -135,7 +145,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     concepts = _tag_filter(c_res.get("rows", []), tags)
     id_set = {c["id"] for c in concepts}
 
-    # 2) 스코프 내 엣지 — Atlas 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
+    # 2) 스코프 내 엣지 — View 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
     edges: list[dict] = []
     if id_set:
         e_res = q.execute(q.graph_rows_for_ids_plan(sorted(id_set), owner=owner),
@@ -150,7 +160,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             if key in seen:
                 continue
             seen.add(key)
-            edges.append({"from": r["id"], "to": tgt, "type": ftype})
+            e = {"from": r["id"], "to": tgt, "type": ftype}
+            # v14 — 엣지 출생도 함께. `created` 의 뜻이 "어느 공간에서든 처음
+            # 이어진 때"라 공간을 건너도 참이고, 받는 쪽에서 신규일 때만 쓰인다
+            # (ON CREATE SET — 기존 엣지는 안 덮는다).
+            if r.get("edge_created"):
+                e["created"] = r["edge_created"]
+            edges.append(e)
 
     # 3) 레코드(Episode) — 도메인/태그 스코프에서만(ids/ego 스코프는 개념 중심).
     episodes: list[dict] = []
@@ -165,6 +181,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
              "domain": c.get("domain") or "", "tags": c.get("tags") or []}
         if c.get("created"):
             n["created"] = c["created"]
+        if c.get("content_time"):
+            n["content_time"] = c["content_time"]
         props = {}
         if c.get("topic"):
             props["topic"] = c["topic"]
@@ -250,7 +268,10 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None,
             for d in documents:
                 r = ds.put_doc(store, owner=owner, text=d.get("text") or "",
                                doc_id=None, title=d.get("title") or "",
-                               origin=d.get("origin") or "")
+                               origin=d.get("origin") or "",
+                               # 내용 시점은 지시체의 것이라 공간을 건너도 참이다.
+                               # created_at 은 넘기지 않는다 — 위 export 주석 참조.
+                               content_time=d.get("content_time") or None)
                 if r.get("executed") and r.get("skipped"):
                     dskipped += 1
                 elif r.get("executed"):

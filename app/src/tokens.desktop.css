@@ -1,6 +1,6 @@
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: 69b19ffe8d11100afeed51a8fb99a8423f9fbdc33a1c48c2079831854eceab06 */
+/* sync-sha256: ac00584a28bfd74dcef6807aa1bc22931d57446f6b4b71b85a1d8a01e679377a */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -13,6 +13,7 @@
   --border: 60 6% 86%; /* #DEDEDA  ← {hairline} */
   --input: 60 6% 86%; /* #DEDEDA  ← {hairline} */
   --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --focus: 236 30% 28%; /* #32355C  ← {indigo_900} */
   --primary: 236 30% 28%; /* #32355C  ← {indigo_900} */
   --primary-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --accent: 60 6% 91%; /* #E9E9E6  ← {grain_200} */
@@ -80,6 +81,7 @@
   --border: 230 23% 19%; /* #262A3D  ← {d_line} */
   --input: 230 23% 19%; /* #262A3D  ← {d_line} */
   --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
+  --focus: 234 49% 71%; /* #8F96D9  ← {peri_400} */
   --primary: 233 32% 33%; /* #3A4070  ← {indigo_700} */
   --primary-foreground: 235 65% 83%; /* #B9BEF0  ← {peri_200} */
   --accent: 229 25% 13%; /* #191C2A  ← {d_bg2} */

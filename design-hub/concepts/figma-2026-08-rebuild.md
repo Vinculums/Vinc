@@ -130,7 +130,7 @@ Display 56/64 Bold · XL 36/41 Bold · LG/Semi Bold 17/26 · Base/Regular and Me
 - Home · 404 / dark 268:657 (x12480, new)
 - Home · Service states 268:709 (429/unavailable/signed-out, new)
 - Home · Mobile GNB drawer 268:746 (390px, new)
-- 15 Docs frames (y9500, x 0 to 21840 at a pitch of 1560): Overview 269:714 · Quickstart 269:807 · Use-cases 269:903 · Import 270:825 · Atlas 270:921 · Search 270:1017 · Packs 271:936 · Shortcuts 271:1032 (the shortcut table) · MCP Setup 271:1149 (host cards) · MCP Tools 273:1047 · CLI 273:1139 · GRAPH.md What 273:1233 · Generate 274:1158 · Spec 274:1250 · Validate 274:1338
+- 15 Docs frames (y9500, x 0 to 21840 at a pitch of 1560): Overview 269:714 · Quickstart 269:807 · Use-cases 269:903 · Import 270:825 · View 270:921 · Search 270:1017 · Packs 271:936 · Shortcuts 271:1032 (the shortcut table) · MCP Setup 271:1149 (host cards) · MCP Tools 273:1047 · CLI 273:1139 · GRAPH.md What 273:1233 · Generate 274:1158 · Spec 274:1250 · Validate 274:1338
 - ~~four representative light frames~~ (the old light landing and download were deleted along with the rebuild)
 
 ## Rebuilt against the real screens (2026-08-06, after analysing vincs.io with Playwright)
@@ -151,9 +151,9 @@ Display 56/64 Bold · XL 36/41 Bold · LG/Semi Bold 17/26 · Base/Regular and Me
 - Row5 LIGHT·MOBILE y19600: Landing-light(0) Download-light(1560) MobileGNB(3120)
 
 ## Phase 5 output: the App screens (page 40:3 App(Desktop), pinned dark, 1280x800)
-### Row1 Atlas y0
-- Atlas default 287:30 (the canonical shell: titlebar, topbar with the lens and view segmented control, 232 left navigation, canvas placeholder, metric bar, lasso hint)
-- Atlas empty 289:98 (x1560) · lens panel (Options) 289:221 (x3120) · coachmark and lasso 289:373 (x4680)
+### Row1 View y0
+- View default 287:30 (the canonical shell: titlebar, topbar with the lens and view segmented control, 232 left navigation, canvas placeholder, metric bar, lasso hint)
+- View empty 289:98 (x1560) · lens panel (Options) 289:221 (x3120) · coachmark and lasso 289:373 (x4680)
 - node detail and related 290:311 (x6240) · edge detail 290:412 (x7800) · reader 290:468 (x9360) · Web skin 297:2681 (x10920)
 ### Row2 Search·Ask y1000
 - results 291:494 · no results and reindex 291:617 (x1560) · error and browse 291:728 (x3120) · Ask answer and disambiguation 291:849 (x4680)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Atlas(D16·D17)·fragment(D11 §5) 계약 테스트 — 무 DB(플랜 순수성) + FakeStore."""
+"""View(D16·D17)·fragment(D11 §5) 계약 테스트 — 무 DB(플랜 순수성) + FakeStore."""
 from __future__ import annotations
 
 import sys
@@ -138,7 +138,7 @@ class LayoutTests(unittest.TestCase):
         self.assertNotEqual(math_center, art_center)
 
 
-class AtlasL0Tests(unittest.TestCase):
+class ViewL0Tests(unittest.TestCase):
     def test_ties_plan_counts_cross_domain_pairs(self):
         plan = q.domain_ties_plan(owner="user:t")
         self.assertIn("a.domain <> b.domain", plan.cypher)
@@ -151,14 +151,14 @@ class AtlasL0Tests(unittest.TestCase):
         self.assertEqual(plan.params, {"owner": "user:t"})
         self.assertNotIn("$owner", q.bridge_ties_plan().cypher)
 
-    def test_atlas_l0_combines_domains_and_ties(self):
+    def test_view_l0_combines_domains_and_ties(self):
         fake = _FakeStore({
             "count(*) AS episodes": [{"domain": "math", "episodes": 3}],
             "a.domain <> b.domain": [{"source": "math", "target": "art", "ties": 2}],
             # Bridge 축(실데이터에서 크로스도메인은 :Bridge 가 1급 — 합산돼야 함)
             "MATCH (b:Bridge)": [{"source": "math", "target": "physics", "ties": 5}],
         })
-        res = q.atlas_l0(owner="user:t", store=fake)
+        res = q.view_l0(owner="user:t", store=fake)
         self.assertTrue(res["executed"])
         self.assertEqual(res["domains"][0]["domain"], "math")
         self.assertEqual(res["ties"],
@@ -208,7 +208,7 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertEqual(res["warnings"], [])
         joined = "\n".join(c for c, _ in fake.calls)
         self.assertIn("MERGE (n:Entity {entity_id: $id})", joined)
-        self.assertIn("MERGE (a)-[:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
+        self.assertIn("MERGE (a)-[r:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
 
     def test_entity_without_title_skips_with_warning(self):
         # 개방층의 skip 은 형태 오류뿐 — Entity 는 title 필수(휴면 엔진 동형).
@@ -357,14 +357,14 @@ class FragmentMergeTests(unittest.TestCase):
                        "role": "math_input"}],
         }, store=fake)
         joined = "\n".join(c for c, _ in fake.calls)
-        self.assertIn("MERGE (a)-[:CONNECTS {role: $role}]->(b)", joined)
+        self.assertIn("MERGE (a)-[r:CONNECTS {role: $role}]->(b)", joined)
         fake2 = _FakeStore()
         frag.merge_fragment({
             "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"},
                       {"id": "concept:c1", "type": "concept", "title": "C"}],
             "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via"}],
         }, store=fake2)
-        self.assertIn("MERGE (a)-[:CONNECTS]->(b)", "\n".join(c for c, _ in fake2.calls))
+        self.assertIn("MERGE (a)-[r:CONNECTS]->(b)", "\n".join(c for c, _ in fake2.calls))
 
     def test_bridge_owner_stamped_and_edge_scoped(self):
         # F5 — Bridge 노드 owner 스탬프(생성/명시) + connects_via 의 Bridge 끝점 스코프.
@@ -377,7 +377,7 @@ class FragmentMergeTests(unittest.TestCase):
         }, store=fake)
         bridge_merge = [p for c, p in fake.calls if "MERGE (n:Bridge" in c]
         self.assertTrue(any(p.get("owner_id") == "user:t" for p in bridge_merge))
-        cv = [c for c, _ in fake.calls if "MERGE (a)-[:CONNECTS]->(b)" in c][0]
+        cv = [c for c, _ in fake.calls if "MERGE (a)-[r:CONNECTS]->(b)" in c][0]
         self.assertIn("a.owner_id = $owner", cv)
 
     def test_bridge_sec3_skips_foreign_owned(self):

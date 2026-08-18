@@ -10,11 +10,11 @@
 그래서 코퍼스를 코드로 고정한다. 이 스크립트가 심는 그래프는 작지만 구조가
 의도적으로 다양하다:
 
-- 개념 삼각(atlas·flow·timeline)과 별개 컴포넌트(billing·invoice)
+- 개념 삼각(view·flow·timeline)과 별개 컴포넌트(billing·invoice)
 - **고아** 하나(concept:glossary) — diagnose 가 잡아야 한다
 - 개념에 붙은 **Record 2·Episode 1·Bridge 1** — neighbors 가 개념만 보면 놓친다(F14)
 - **모순 쌍**(decide 의 conflicts) — 도메인을 가로지르는 엣지
-- **근접 중복 쌍**(concept:atlas-view / concept:atlas-views) — merge_candidates
+- **근접 중복 쌍**(concept:view-viewpoint / concept:view-viewpoints) — merge_candidates
 - 문서 1건 — search → doc_get 왕복
 
 멱등하다. 같은 스토어에 두 번 돌려도 결과가 같다(전부 MERGE).
@@ -31,47 +31,47 @@ OWNER = "eval:tooluse"
 
 #: (id, title, domain, tags)
 CONCEPTS = [
-    ("concept:atlas",       "Atlas 뷰",            "product", ["core"]),
+    ("concept:view",       "View 뷰",            "product", ["core"]),
     ("concept:flow",        "흐름 관점",           "product", ["core"]),
     ("concept:timeline",    "타임라인 관점",       "product", ["core"]),
     ("concept:billing",     "청구",                "money",   ["core"]),
     ("concept:invoice",     "인보이스",            "money",   []),
     ("concept:glossary",    "용어집",              "docs",    []),        # 고아
-    ("concept:atlas-view",  "Atlas 뷰 단수형",     "product", []),        # 근접 중복 A
-    ("concept:atlas-views", "Atlas 뷰 복수형",     "product", []),        # 근접 중복 B
+    ("concept:view-viewpoint",  "View 뷰 단수형",     "product", []),        # 근접 중복 A
+    ("concept:view-viewpoints", "View 뷰 복수형",     "product", []),        # 근접 중복 B
 ]
 
 #: (from, to) — 전부 RELATED_TO. 삼각 + 별개 컴포넌트 + 도메인 횡단 하나.
 EDGES = [
-    ("concept:atlas", "concept:flow"),
+    ("concept:view", "concept:flow"),
     ("concept:flow", "concept:timeline"),
-    ("concept:timeline", "concept:atlas"),
+    ("concept:timeline", "concept:view"),
     ("concept:billing", "concept:invoice"),
-    ("concept:atlas", "concept:billing"),      # 도메인 횡단 = decide 의 conflict
+    ("concept:view", "concept:billing"),      # 도메인 횡단 = decide 의 conflict
 ]
 
 #: (id, title, domain, tags, note, 붙는 개념)
 RECORDS = [
-    ("record:fact-atlas-webgl", "Atlas 는 WebGL 컨텍스트를 하나만 쓴다", "product",
-     ["fact"], "슬라이더 드래그로 재마운트하면 컨텍스트가 샌다.", "concept:atlas"),
-    ("record:pitfall-atlas-refetch", "옵션 8개 중 하나만 서버가 필요하다", "product",
-     ["pitfall"], "전량 재조회라 드래그마다 왕복이 생긴다.", "concept:atlas"),
+    ("record:fact-view-webgl", "View 는 WebGL 컨텍스트를 하나만 쓴다", "product",
+     ["fact"], "슬라이더 드래그로 재마운트하면 컨텍스트가 샌다.", "concept:view"),
+    ("record:pitfall-view-refetch", "옵션 8개 중 하나만 서버가 필요하다", "product",
+     ["pitfall"], "전량 재조회라 드래그마다 왕복이 생긴다.", "concept:view"),
 ]
 
 #: (id, title, date, domain, summary, 붙는 개념)
 EPISODES = [
-    ("episode:2026-01-15-atlas-ship", "Atlas 3종 관점 출시", "2026-01-15", "product",
-     "흐름·타임라인·합계 세 관점을 한 번에 냈다.", "concept:atlas"),
+    ("episode:2026-01-15-view-ship", "View 3종 관점 출시", "2026-01-15", "product",
+     "흐름·타임라인·합계 세 관점을 한 번에 냈다.", "concept:view"),
 ]
 
 #: (id, title, source_domain, target_domain, role, 붙는 개념)
 BRIDGES = [
-    ("bridge:pricing-surface", "가격 표면", "product", "money", "pricing", "concept:atlas"),
+    ("bridge:pricing-surface", "가격 표면", "product", "money", "pricing", "concept:view"),
 ]
 
-DOC_ID = "eval.tooluse.atlas-notes"
-DOC_TITLE = "Atlas 구현 노트"
-DOC_TEXT = """# Atlas 구현 노트
+DOC_ID = "eval.tooluse.view-notes"
+DOC_TITLE = "View 구현 노트"
+DOC_TEXT = """# View 구현 노트
 
 ## 렌더러
 2D 는 sigma 로 독립 렌더링한다. 3D 와 코드를 공유하지 않는다.

@@ -239,10 +239,10 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
       const mm = res.merged?.nodes || {};
       out.innerHTML = `<p>${COPY.packs.imported(mm.created ?? 0, mm.matched ?? 0)}</p>`;
       sheet.foot.innerHTML = sheetActions(
-        { id: "sheet-go", label: COPY.ui.sheet.viewAtlas });
+        { id: "sheet-go", label: COPY.ui.sheet.viewMap });
       sheet.foot.querySelector("#sheet-go")!.addEventListener("click", () => {
         sheet.close();
-        location.hash = "#atlas";
+        location.hash = "#view";
         location.reload();   // 그래프가 통째로 바뀌었다 — 현재 층을 새로 세운다
       });
       onDone?.(res);
@@ -311,10 +311,10 @@ export async function openDocImportSheet(f: File, onDone?: (res: any) => void) {
       const idx = await dm.originIndex(cfg.owner);
       const r = await dm.importDocFile(f, cfg.owner, idx);
       out.innerHTML = `<p>${esc(r.skipped ? S.docSkipped(r.title) : S.docDone(r.title))}</p>`;
-      sheet.foot.innerHTML = sheetActions({ id: "sheet-go", label: S.viewAtlas });
+      sheet.foot.innerHTML = sheetActions({ id: "sheet-go", label: S.viewMap });
       sheet.foot.querySelector("#sheet-go")!.addEventListener("click", () => {
         sheet.close();
-        location.hash = "#atlas";
+        location.hash = "#view";
         location.reload();   // 그래프가 바뀌었다 — 현재 층을 새로 세운다
       });
       onDone?.({ executed: true, doc_id: r.docId });
@@ -323,14 +323,14 @@ export async function openDocImportSheet(f: File, onDone?: (res: any) => void) {
       if (!n || !out.isConnected) return;
       const offer = document.createElement("p");
       offer.innerHTML = `<button class="btn" id="sheet-extract">${
-        COPY.ui.atlasx.edExtractOffer(n)}</button>`;
+        COPY.ui.viewx.edExtractOffer(n)}</button>`;
       out.appendChild(offer);
       offer.querySelector("#sheet-extract")!.addEventListener("click", async () => {
         offer.innerHTML = `<span class="hint">${COPY.packs.importing}</span>`;
         const ap = await dm.applyExtract(cfg.owner, [r.docId]);
         if (!offer.isConnected) return;
         offer.innerHTML = `<span class="hint">${
-          COPY.ui.atlasx.edExtractDone(ap.created, ap.mentions)}</span>`;
+          COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}</span>`;
       });
     } catch (e) {
       out.innerHTML = `<div class="error-banner">${

@@ -38,10 +38,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import edverify, entitlement
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
-from .rpc import Dispatcher
+from .rpc import PROTOCOL_VERSIONS, Dispatcher
 
 MAX_BODY = 4 * 1024 * 1024
-MAX_SESSIONS = 256      # Mcp-Session-Id 별 Dispatcher 상한(무한 증식 차단)
 
 #: 주제 상한이 걸리는 프록시 op — 새 주제를 만들 수 있는 쓰기 경로만(AP-1 §3.3).
 #: 주제 이름 바꾸기(domain-rename)는 전량 개명이라 **개수를 늘릴 수 없어** 제외한다.
@@ -53,7 +52,7 @@ _CAPPED_PROXY_OPS = ("ingest-fragment", "ingest-pack")
 # purge(전용 서명 경로). owner 는 항상 서명된 sub 에서 강제 주입된다(SEC-3 + 프록시).
 _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # 읽기(GET)
-    "atlas": ("GET", "/atlas"), "ledger": ("GET", "/ledger"), "graph": ("GET", "/graph"),
+    "view": ("GET", "/view"), "ledger": ("GET", "/ledger"), "graph": ("GET", "/graph"),
     "recall": ("GET", "/recall"), "search": ("GET", "/search"),
     "coupling": ("GET", "/coupling"), "suggest-ties": ("GET", "/suggest-ties"),
     "decide": ("GET", "/decide"), "domains": ("GET", "/domains"),
@@ -64,6 +63,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # 노드/엣지 클릭 상세·Reader 밑줄·합계 드릴다운·타임라인 기간·문서 리스트/복원.
     "doc": ("GET", "/doc"), "docs": ("GET", "/docs"),
     "doc-highlights": ("GET", "/doc/highlights"),
+    "doc-context": ("GET", "/doc/context"),   # 리더 머리(개념 칩·목차·청크 오프셋)
     "node-context": ("GET", "/node-context"),
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
@@ -233,13 +233,23 @@ class MCPHTTPApp:
         # 무료 등급 주제 상한(AP-1 §3.4). None = 기능 꺼짐. 등급→숫자 변환이 **여기**
         # 한 곳에서만 일어나고 사이드카는 숫자만 받는다(정책 무지 유지).
         self.free_max_domains = free_max_domains
-        # Dispatcher 는 상태가 initialized 플래그뿐 — 세션 간 공유해도 무해하지만
-        # 스펙의 세션 관념에 맞춰 Mcp-Session-Id 별로 분리한다. 세션 id 는 **클라이언트
-        # 가 정한다**(우리는 발급하지 않는다) → 임의 헤더로 무한 증식할 수 있으므로
-        # 상한을 두고 오래된 것부터 버린다(FIFO). Dispatcher 는 상태가 사실상 없어
-        # 축출돼도 다음 요청에서 재생성될 뿐 손실이 없다.
-        self._sessions: dict[str, Dispatcher] = {}
-        self._lock = threading.Lock()
+        # Dispatcher 하나를 공유한다. 전에는 `Mcp-Session-Id` 별 dict + 락 + 상한 256
+        # + FIFO 축출 + drop_session 이 있었는데, **그 기계가 지키던 상태는
+        # `Dispatcher.initialized` 불리언 하나였고 그 값을 읽는 프로덕션 코드가
+        # 0건이었다**(읽는 것은 테스트 하나뿐). 즉 stateful 의 비용을 다 내고 이득이
+        # 0이었다. 세션을 **살릴** 유일한 명분은 협상된 프로토콜 리비전을 담아
+        # 후속 요청과 대조하는 것이었는데, 스펙이 실제로 요구하는 검증은 헤더가
+        # **지원 목록에 있는가**이지 이 세션이 무엇으로 협상했는가가 아니다
+        # (`_check_protocol_version`). 그건 무상태라 세션이 필요 없다.
+        #
+        # 덤으로 사라진 위험: `_sessions` 는 프로세스 로컬이라 Container Apps 레플리카가
+        # 둘 이상이면 같은 세션 id 가 레플리카를 넘나들며 재생성됐다. 담긴 게 없어
+        # 무해했지만, 무언가 담기로 결정하는 순간 즉시 버그가 되는 자리였다.
+        #
+        # Dispatcher 는 `bridge`·`allow_target`·미사용 불리언뿐이라 사실상 불변이고
+        # 스레드 안전하다. 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도
+        # 받지도 않는다(위험 감사 5.5) — 데스크탑 stdio 만 그 선택을 갖는다.
+        self._dispatcher = Dispatcher(self.bridge, allow_target=False)
 
     def quota_check(self, owner: str, plan: str | None) -> dict | None:
         """소비 1회 시도. 허용이면 None, 초과·잠금이면 **tools/call 결과 dict**.
@@ -283,22 +293,9 @@ class MCPHTTPApp:
             return {}
         return {"max_domains": self.free_max_domains}
 
-    def dispatcher(self, session_id: str) -> Dispatcher:
-        with self._lock:
-            d = self._sessions.get(session_id)
-            if d is None:
-                while len(self._sessions) >= MAX_SESSIONS:
-                    self._sessions.pop(next(iter(self._sessions)))
-                # 허브는 **이미 원격 그래프 자신**이다 — `target` 을 내보내지도,
-                # 받지도 않는다(위험 감사 5.5). 데스크탑 stdio 만 그 선택을 갖는다.
-                d = Dispatcher(self.bridge, allow_target=False)
-                self._sessions[session_id] = d
-            return d
-
-    def drop_session(self, session_id: str) -> bool:
-        """세션 종료(DELETE /mcp) — 있으면 버리고 True. 멱등."""
-        with self._lock:
-            return self._sessions.pop(session_id, None) is not None
+    def dispatcher(self) -> Dispatcher:
+        """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
+        return self._dispatcher
 
     def resolve_auth(self, header: str | None) -> dict:
         """Bearer 를 해석해 {ok, owner, plan, source}. owner 강제 스탬핑의 출처.
@@ -559,6 +556,37 @@ class _Handler(BaseHTTPRequestHandler):
                 "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
                 "Access-Control-Max-Age": "86400"}
 
+    def _origin_rejected(self) -> bool:
+        """브라우저 오리진 게이트 — `Origin` 이 **있고** 허용목록 밖이면 막는다.
+
+        스펙은 로컬 HTTP 전송에 Origin 검증을 요구하고(DNS 리바인딩), 공식 SDK 도
+        `transport_security.py` 로 같은 일을 한다. 여기 없던 것은 `Origin` 이
+        `_cors_headers()` 의 반사에만 쓰였기 때문이다 — CORS 는 응답을 **읽지**
+        못하게 하지만 요청이 **도달하는** 것 자체는 막지 않는다.
+
+        `Origin` 이 없으면 통과시킨다. 서버측 커넥터·데스크탑 앱(Cursor·Codex 등)은
+        이 헤더를 아예 안 보내므로, 없다고 막으면 정상 클라이언트가 전멸한다.
+        즉 이 게이트는 **브라우저에서 온 요청에만** 걸린다."""
+        origin = self.headers.get("Origin")
+        return bool(origin) and origin not in self._CORS_ORIGINS
+
+    def _protocol_version_rejected(self) -> str | None:
+        """`MCP-Protocol-Version` 검증. 문제 없으면 None, 있으면 오류 문자열.
+
+        2025-06-18 스펙: 초기화 뒤 클라이언트는 이 헤더를 실어야 하고, 서버는 지원
+        하지 않는 값에 400 을 준다. 헤더가 없으면 2025-03-26 으로 가정한다(하위호환).
+        전에는 이 헤더 이름이 CORS 허용목록 문자열에만 있고 코드가 읽지 않았다.
+
+        ⚠ 대조 대상은 **지원 목록**이지 '이 세션이 협상한 값'이 아니다. 그래서 이
+        검증은 무상태이고, 세션 기계를 되살릴 이유가 되지 못한다(MCPHTTPApp.__init__
+        참조). 제대로 동작하는 클라이언트는 협상 결과를 그대로 실으므로 정의상 이
+        목록 안이다."""
+        want = self.headers.get("MCP-Protocol-Version")
+        if want is None or want in PROTOCOL_VERSIONS:
+            return None
+        return (f"unsupported MCP-Protocol-Version: {want!r} "
+                f"(supported: {', '.join(PROTOCOL_VERSIONS)})")
+
     def do_OPTIONS(self):  # noqa: N802
         """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
         self.send_response(204)
@@ -568,7 +596,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # ── 응답 헬퍼 ───────────────────────────────────────────────────────────
-    def _json(self, code: int, obj: dict, headers: dict | None = None) -> None:
+    def _json(self, code: int, obj: dict | list, headers: dict | None = None) -> None:
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -759,11 +787,23 @@ class _Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._json(400, {"error": "invalid_grant", "error_description": str(e)})
         if url.path == "/mcp":
+            if self._origin_rejected():
+                return self._json(403, {"error": "origin not allowed"})
+            bad = self._protocol_version_rejected()
+            if bad:
+                return self._json(400, {"error": bad})
             auth = self.app.resolve_auth(self.headers.get("Authorization"))
             if not auth["ok"]:
                 return self._unauthorized()
             msg = self._body()
-            if not isinstance(msg, dict) or not msg:
+            # JSON-RPC 배치. `PROTOCOL_VERSIONS` 가 2025-03-26 을 광고하는데 그 리비전은
+            # 배치를 지원한다(2025-06-18 에서 제거됨) — 전에는 dict 가 아니면 400 이라
+            # **광고한 리비전으로 협상한 클라이언트가 400 을 받았다.** 광고를 접는
+            # 대신 지원하는 쪽을 골랐다: 목록에서 빼면 그 리비전만 말하는 구형
+            # 클라이언트가 끊기는데, 받아 주는 쪽은 아무도 안 끊긴다.
+            batch = isinstance(msg, list)
+            msgs = msg if batch else [msg]
+            if not msgs or any(not isinstance(m, dict) or not m for m in msgs):
                 return self._json(400, {"error": "expected a JSON-RPC message"})
             session = self.headers.get("Mcp-Session-Id") or "default"
             # forced_owner: 원격 인증경로가 해석한 소유자 → tools 가 args.owner 를
@@ -771,17 +811,23 @@ class _Handler(BaseHTTPRequestHandler):
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
             # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
             # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
-            reply = self.app.dispatcher(session).handle(
-                msg, forced_owner=auth["owner"], plan=auth["plan"],
-                quota=self.app.quota_check,
-                entitlements=(self.app.entitlements_for(auth["plan"])
-                              if auth["owner"] else None))
-            if reply is None:
+            d = self.app.dispatcher()
+            ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
+            replies = [r for r in (
+                d.handle(m, forced_owner=auth["owner"], plan=auth["plan"],
+                         quota=self.app.quota_check, entitlements=ents)
+                for m in msgs) if r is not None]
+            # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
+            if not replies:
                 self.send_response(202)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return None
-            return self._json(200, reply, {"Mcp-Session-Id": session})
+            # `Mcp-Session-Id` 는 **클라이언트가 준 값을 되돌려 줄 뿐**이다. 우리는
+            # 세션을 발급하지도 추적하지도 않는다. 그래도 되돌리는 이유는 지금 붙어
+            # 있는 호스트의 관측 동작을 바꾸지 않기 위해서다 — 없앨 이득이 없다.
+            return self._json(200, replies if batch else replies[0],
+                              {"Mcp-Session-Id": session})
         if url.path in ("/sync/push", "/sync/pull"):
             return self._sync(url.path)
         if url.path == "/internal/purge-owner":
@@ -795,13 +841,19 @@ class _Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):  # noqa: N802
         """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는
         호스트(Codex·Cursor 등)가 501 을 오류로 취급하지 않도록 명시 처리한다.
-        인증은 POST 와 동일하게 요구한다 — 남의 세션을 지우게 둘 이유가 없다."""
+        인증은 POST 와 동일하게 요구한다 — 인증 없이 아무나 두드리게 둘 이유가 없다.
+
+        서버가 세션을 들지 않게 된 뒤로는(MCPHTTPApp.__init__ 참조) 버릴 것이 없어서
+        **성공을 뜻하는 204 를 돌려주는 것 말고 하는 일이 없다.** 스펙상 정당하다:
+        세션을 쓰지 않는 서버에게 종료는 no-op 이다. 라우트를 지우지 않는 이유는
+        그대로다 — 종료를 보내는 호스트가 405/501 을 오류로 취급하지 않게."""
         url = urllib.parse.urlparse(self.path)
         if url.path != "/mcp":
             return self._json(404, {"error": f"no such route: DELETE {url.path}"})
+        if self._origin_rejected():
+            return self._json(403, {"error": "origin not allowed"})
         if not self.app.authorized(self.headers.get("Authorization")):
             return self._unauthorized()
-        self.app.drop_session(self.headers.get("Mcp-Session-Id") or "default")
         self.send_response(204)
         for k, v in self._cors_headers().items():
             self.send_header(k, v)

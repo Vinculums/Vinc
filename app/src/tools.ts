@@ -1,7 +1,7 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, type SheetHandle } from "./components";
-import { atlasHooks } from "./topbar";
+import { viewHooks } from "./topbar";
 
 /** Tools (DEC D71) — 만들기 · 가져오기 · 공유가 한 모달에 산다.
  *
@@ -84,11 +84,11 @@ function renderImport(pane: HTMLElement, sheet: SheetHandle) {
 }
 
 // ── 공유 ────────────────────────────────────────────────────────────────────
-// 스코프 피커가 새로 붙는다. 여태 공유는 Atlas 훅에 매여 있어 "지금 보고 있는 곳"
+// 스코프 피커가 새로 붙는다. 여태 공유는 View 훅에 매여 있어 "지금 보고 있는 곳"
 // 하나뿐이었는데, Tools 는 어느 표면에서나 열리므로 범위를 물어야 한다.
 async function renderShare(pane: HTMLElement, sheet: SheetHandle) {
   const T = COPY.ui.tools;
-  const here = atlasHooks();
+  const here = viewHooks();
   pane.innerHTML = `<p class="hint">${COPY.ui.common.loading}</p>`;
   let domains: string[] = [];
   try {
@@ -116,7 +116,7 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle) {
   sheet.foot.querySelector("#tl-go")!.addEventListener("click", async () => {
     const pick = pane.querySelector<HTMLInputElement>("input[name=tl-scope]:checked")?.value;
     sheet.close();
-    // `지금 보고 있는 곳`은 Atlas 가 자기 스코프를 안다 — 훅이 시트를 연다.
+    // `지금 보고 있는 곳`은 View 가 자기 스코프를 안다 — 훅이 시트를 연다.
     if (pick === "here") { here?.share(); return; }
     const { openShareSheet } = await import("./sheets");
     if (pick === "topic") {

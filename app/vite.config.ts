@@ -28,7 +28,7 @@ const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 // 죽어 있었다). 개별 열거 대신 **접두 정규식 하나**로 바꿔 새 라우트가 자동으로
 // 실린다 — 앱이 부르는 경로는 전부 아래 접두 중 하나로 시작한다.
 // (앱 자산은 /, /src, /@vite, /node_modules 로 오므로 충돌하지 않는다.)
-const API_RE = new RegExp("^/(health|atlas|graph|ledger|recall|search|domains|learner"
+const API_RE = new RegExp("^/(health|view|graph|ledger|recall|search|domains|learner"
   + "|decide|activate|backup|pin|tag|touch|ingest|jobs|plan|share|coupling"
   + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node-context|edge-context"
   + "|ledger-drilldown|nav-tree|delete|delete-edge|merge-nodes|promote-candidates"

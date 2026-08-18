@@ -73,13 +73,17 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan.kind, "graph")
         self.assertIn("MATCH (c:Concept)", plan.cypher)
         self.assertIn("c.owner_id = $owner", plan.cypher)
-        self.assertIn("c.domain = $domain", plan.cypher)
+        # 주제 스코프는 **하위 트리**다(2026-08-15) — 정확일치 OR `d/` 접두.
+        self.assertIn("(c.domain = $dom0 OR c.domain STARTS WITH $domp0)", plan.cypher)
+        self.assertEqual(plan.params["dom0"], "math")
+        self.assertEqual(plan.params["domp0"], "math/")
         self.assertIn("OPTIONAL MATCH (c)-[r]->(d:Concept)", plan.cypher)
 
     def test_bridge_rows_plan_lens_and_ids_modes(self):
         # F2 축 플랜 — L1(domain)과 L2 후조회(ids)는 상호 배제, 투영에 kind/domain2/role.
         p = q.bridge_rows_plan(owner="u", domain="math")
-        self.assertIn("(b.source_domain = $domain OR b.target_domain = $domain)", p.cypher)
+        self.assertIn("b.source_domain = $dom0", p.cypher)
+        self.assertIn("b.target_domain STARTS WITH $domp0", p.cypher)
         self.assertIn("(b.owner_id = $owner OR b.owner_id = '')", p.cypher)
         self.assertIn("'bridge' AS kind", p.cypher)
         self.assertIn("b.target_domain AS domain2", p.cypher)
@@ -92,7 +96,8 @@ class PlanTests(unittest.TestCase):
     def test_episode_and_record_rows_plans(self):
         pe = q.episode_rows_plan(owner="u", domain="math")
         self.assertIn("MATCH (e:Episode)-[r:ABOUT]->(c:Concept)", pe.cypher)
-        self.assertIn("(e.domain = $domain OR c.domain = $domain)", pe.cypher)
+        self.assertIn("e.domain = $dom0", pe.cypher)
+        self.assertIn("c.domain STARTS WITH $domp0", pe.cypher)
         self.assertIn("'episode' AS kind", pe.cypher)
         pr = q.record_rows_plan(owner="u", ids=["concept:a"])
         self.assertIn("MATCH (rc:Record)-[r:ATTACHES_TO]->(c:Concept)", pr.cypher)

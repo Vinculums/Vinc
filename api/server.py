@@ -81,6 +81,22 @@ def _ingest_recall(store, body: dict) -> dict:
 DEFAULT_INGEST = {"recall": _ingest_recall}
 
 
+def store_unavailable() -> dict:
+    """스토어 도달 불가의 **사유 봉투** — `/health` 와 조회 503 이 같은 것을 말하게.
+
+    `EmbeddedBackend.open` 은 실패 사유를 `last_open_error` 에 담는다(락 충돌·손상·
+    확장 경로). 그 값을 읽는 곳이 `/health` 하나뿐이면, 조회가 거절당한 클라이언트는
+    거절만 받고 이유는 다른 엔드포인트에 가서 물어야 한다. 한 벌로 묶는다."""
+    out = {"error": "no reachable store", "note": "no reachable store"}
+    try:
+        from store.embedded_backend import EmbeddedBackend
+        if EmbeddedBackend.last_open_error:
+            out["open_error"] = EmbeddedBackend.last_open_error
+    except Exception:   # noqa: BLE001 — 진단이 응답을 죽이지 않는다
+        pass
+    return out
+
+
 # ── 앱(라우트 핸들러의 상태 컨테이너) ─────────────────────────────────────────
 
 class VincApp:
@@ -197,13 +213,39 @@ class VincApp:
         return self.jobs.run_sync(label, fn, timeout=timeout)
 
     def _read(self, fn):
-        """읽기 경로 공통: reader 뷰를 열어 fn(reader)->dict 실행 후 닫는다."""
+        """읽기 경로 공통: reader 뷰를 열어 fn(reader)->dict 실행 후 닫는다.
+
+        **스토어가 안 열렸으면 여기서 503 이다.** 여태 이 자리는 `r=None` 을 그대로
+        아래로 흘렸고, 그 아래 계약은 제각각이었다(2026-08-16 전수 실측, store 도달
+        불가 상태의 GET 31개):
+
+          - 다수(`/graph`·`/recall`·`/search` …)는 **200** + `executed:false`.
+            HTTP 만 보는 클라이언트에게는 "성공했고 데이터가 없다"로 읽힌다.
+          - `/doc`·`/docs`·`/conventions`·`/doc/highlights`·`/sync/domains`·
+            `/sync/docs-export`·`/embed/pending` 7개는 `None.run` 을 불러
+            **500 `AttributeError`** 로 터졌다(사유가 없는 500).
+          - `/sync/pull-delta` 는 **`executed:true`** + "no domains selected —
+            nothing leaves the device". 읽을 수 없는 스토어를 **빈 스토어로 보고**
+            했다. 동기화에서 이건 가장 나쁜 거짓말이다.
+
+        게다가 `q.*` 는 `store=None` 을 받으면 **자기가 스토어를 다시 연다**
+        (`query.execute`: `owns = store is None` → `open_store(cfg)`). 즉 공유
+        스토어가 락으로 못 열린 상태에서 조회마다 같은 경로를 다시 열려 시도했다.
+        여기서 끊으면 그 두 번째 열기도 함께 사라진다.
+
+        `/health` 는 이 판정을 쓰지 않는다 — 거긴 200 + `status:degraded` 가 계약이고
+        (릴리스 스모크가 그 값을 본다), 프로브가 503 이면 오케스트레이터가 살아 있는
+        사이드카를 죽인다. 진단은 답하고 데이터는 거절하는 것이 옳은 조합이다."""
         r = self._reader()
+        if r is None:
+            # 본문에 executed:false 를 함께 싣는다 — 기존 클라이언트(앱·CLI·MCP)가
+            # 이미 그 필드로 강등을 판정하고, 브리지는 HTTPError 본문을 그대로
+            # 통과시키므로 MCP 호스트도 같은 사유를 본다.
+            return 503, {"executed": False, **store_unavailable()}
         try:
             return 200, fn(r)
         finally:
-            if r is not None:
-                r.close()
+            r.close()
 
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
@@ -236,19 +278,26 @@ class VincApp:
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
     def read_graph(self, p):
-        # seed 지정 시 seed+depth ego 서브그래프(Atlas L2 = MCP vinc_graph 동일 경로).
+        # seed 지정 시 seed+depth ego 서브그래프(View L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         return self._read(lambda r: q.graph(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
+                                            # 주제 여럿(쉼표 결합). 스코프는 하위
+                                            # 트리 포함이다 — query.normalize_domains.
+                                            domains=_domains(p.get("domains")),
                                             depth=_int(p.get("depth"), 2),
                                             layout=p.get("layout") or "radial",
+                                            # 원뿔 반각 배율(1.0 = 기본). 범위 클램프는
+                                            # query 가 한다 — 상한의 근거가 기하라서
+                                            # 계산하는 쪽에 두어야 한 곳에서만 산다.
+                                            cone=_float(p.get("cone"), 1.0),
                                             basis=p.get("basis") or q.BASIS_RECORDED,
                                             store=r))
 
-    def read_atlas(self, p):
-        # Atlas L0(D16) — 도메인 분포 + 결합 행렬.
-        return self._read(lambda r: q.atlas_l0(owner=_req(p, "owner"), store=r))
+    def read_view(self, p):
+        # View L0(D16) — 도메인 분포 + 결합 행렬.
+        return self._read(lambda r: q.view_l0(owner=_req(p, "owner"), store=r))
 
     def read_ledger(self, p):
         # 원장(출처 × 주제 × 연결상태) 롤업 — 조회 전용. 쓰기 큐를 타지 않는다(R4).
@@ -303,9 +352,14 @@ class VincApp:
 
     def read_diagnose(self, p):
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
-        # components(기본) | communities. algo 확장 부재 시 executed=False 강등.
+        # components(기본) | communities | community_context(단일 시드의 군집 +
+        # 대표 발췌 — unified-kg-rag-comparison §4). algo 확장 부재 시 executed=False 강등.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
+        if kind == "community_context":
+            return self._read(lambda r: q.community_context(
+                owner=owner, node=_req(p, "node"), store=r,
+                member_limit=_int(p.get("member_limit"), 0) or None))
         if kind == "communities":
             return self._read(lambda r: q.communities(
                 owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
@@ -612,6 +666,12 @@ class VincApp:
             r, _req(p, "doc_id"), _req(p, "concept_id"),
             owner=p.get("owner") or None))
 
+    def read_doc_context(self, p):
+        # 리더가 본문 **앞에** 내놓는 것: 이 문서가 무엇에 걸려 있고(개념 칩) 어떤
+        # 모양인가(목차), 그리고 검색의 청크 히트가 착지할 오프셋.
+        return self._read(lambda r: docstore.doc_context(
+            r, _req(p, "doc_id"), owner=p.get("owner") or None))
+
     def read_edge_context(self, p):
         # D45-V 1단계 — 흐름 뷰 선 클릭: 관계의 evidence·confidence + 양끝 발췌.
         return self._read(lambda r: q.edge_context(
@@ -654,13 +714,18 @@ class VincApp:
 
         def _run(r):
             got = docstore.get_doc(r, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
+            # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
+            # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
             if got.get("executed") and (got.get("text") or "").strip():
                 return {"kind": "conventions", "executed": True, "source": "doc",
+                        "owner": owner or "",
                         "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": got["text"],
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
+                    "owner": owner or "",
                     "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
                     "text": built.get("text") or ""}
         return self._read(_run)
@@ -1124,6 +1189,25 @@ def _accepts_kw(fn, name: str) -> bool:
     return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
+def _domains(val) -> list[str] | None:
+    """``domains=a,b`` 를 목록으로. 주제 이름에 쉼표가 없다는 것이 전제이고, 그것은
+    이 코퍼스의 관례다(소문자 영문 + 슬래시 계층 — GRAPH.md). 빈 값은 ``None`` 이라
+    호출측이 "주제 지정 없음"과 "빈 목록"을 구분하지 않아도 된다."""
+    if not val:
+        return None
+    out = [d.strip() for d in str(val).split(",")]
+    return [d for d in out if d] or None
+
+
+def _float(val, default: float) -> float:
+    """숫자 아닌 값은 조용히 기본으로 — 배치 인자는 화면 손잡이라, 잘못된 값에
+    500 을 내는 것보다 여태의 그림을 내는 편이 낫다(범위는 query 가 잡는다)."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _int(val, default: int) -> int:
     try:
         return int(val) if val is not None else default
@@ -1227,7 +1311,17 @@ class _Handler(BaseHTTPRequestHandler):
             if getattr(self.app, "provision_error", None):
                 body = {"status": "degraded", "provision_error": self.app.provision_error}
             elif self.app.store is None:
-                body = {"status": "degraded", "error": "no reachable store"}
+                # ⚠ **사유를 여기까지 들고 온다.** `EmbeddedBackend.open` 은 실패
+                # 사유를 `last_open_error` 에 담고 stdout 에도 찍지만, 여태 그걸
+                # **읽는 곳이 코드 어디에도 없었다** — /health 는 "no reachable
+                # store" 한 줄뿐이라 앱은 "지도를 불러오지 못했습니다" 밖에 말할
+                # 수 없었다. 그 화면은 **빈 그래프와 구분되지 않는다.** 실제로
+                # 2026-08-14 에 확장 경로 문제로 스토어가 안 열렸는데, 사이드카
+                # stdout 을 직접 보기 전까지 정체를 알 수 없었다.
+                # 사유 조립은 `store_unavailable()` 한 벌 — 조회 503 과 같은 문장을
+                # 쓴다(둘이 갈라지면 "헬스는 이유를 알고 조회는 모르는" 상태가 된다).
+                body = {"status": "degraded", **store_unavailable()}
+                body.pop("note", None)   # note 는 조회 봉투 전용 — 헬스 계약 불변
             else:
                 # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
                 # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
@@ -1285,7 +1379,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
-            "/atlas": app.read_atlas, "/ledger": app.read_ledger, "/share": app.read_share,
+            "/view": app.read_view, "/ledger": app.read_ledger, "/share": app.read_share,
             "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
             "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
             "/merge-candidates": app.read_merge_candidates,
@@ -1300,6 +1394,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
+            "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)

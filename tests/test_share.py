@@ -1,14 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Share pack(D19) 계약 테스트 — 스코프·스크럽·버전·owner 재스탬핑 (무 DB/FakeStore)."""
+"""Share pack(D19) 계약 테스트 — 스코프·스크럽·버전·owner 재스탬핑.
+
+대부분은 무 DB(FakeStore)다. 맨 아래 `PackTimeContract` 만 실엔진인데, 시간 계약은
+스텁으로 안 보이기 때문이다 — "기존 노드를 안 덮는다"는 **이미 있는 행**이 있어야
+검사되고, 문서 왕복은 재청킹까지 돌아야 드러난다.
+"""
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import share  # noqa: E402
+from store.embedded_backend import _import_driver  # noqa: E402
+
+_DRIVER, _NAME = _import_driver()
 
 
 class _FakeStore:
@@ -261,3 +271,111 @@ class PackDocumentsE2E(unittest.TestCase):
         cross = ds.get_doc(st, doc_a, owner="user:bob")
         self.assertFalse(cross.get("executed"))
         self.assertIn("mismatch", cross.get("error") or "")
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class PackTimeContract(unittest.TestCase):
+    """팩이 나르는 시간의 계약(발주자 결정 2026-08-17).
+
+    `created` 의 뜻은 **"이 노드가 어느 공간에서든 처음 기록된 때"**다. 그래서 신규
+    노드는 원본 값을 받고(밴딩 증상 해결이 그대로 유지된다), **기존 노드는 불가침**이다
+    — 팩은 미신뢰 외부 입력이라 동기화의 min 과 달리 쓰기 자체를 안 한다.
+    그리고 공간을 건너도 참인 `content_time` 은 여태 안 실렸다(실측). 이제 싣는다.
+    """
+
+    OWNER_A, OWNER_B = "user:author", "user:reader"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_EMBEDDING_MODEL": "local-en",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        cfg = load_config()
+        self.store = open_store(cfg)
+        self.store.provision(dim=cfg.embedding_dim)
+
+    def tearDown(self):
+        try:
+            self.store.close()
+        except Exception:
+            pass
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _row(self, cid):
+        rows = self.store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                              "RETURN c.created AS created, c.content_time AS ct, "
+                              "c.owner_id AS o", {"i": cid})
+        return rows[0] if rows else {}
+
+    def test_pack_carries_both_clocks_and_import_lands_them(self):
+        from api import fragment as frag
+        from api import share
+        frag.merge_fragment({"owner": self.OWNER_A, "nodes": [
+            {"id": "concept:relativity", "type": "concept", "title": "Relativity",
+             "domain": "phys", "content_time": "1905",
+             "created": "2019-03-03T00:00:00.000Z"}]}, store=self.store)
+
+        pack = share.build_share_pack(owner=self.OWNER_A, domain="phys", store=self.store)
+        node = pack["fragment"]["nodes"][0]
+        self.assertEqual(node["created"], "2019-03-03T00:00:00.000Z")
+        self.assertEqual(node["content_time"], "1905", "세계 시간이 팩을 못 건넜다")
+
+        # 받는 쪽에는 아직 없는 상태를 만든다. DETACH 인 이유: 도메인 계층(IN_DOMAIN)이
+        # 이미 붙어 있어 그냥 DELETE 하면 엔진이 거절한다.
+        self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:relativity' "
+                       "DETACH DELETE c")
+        share.import_share_pack(pack, owner=self.OWNER_B, store=self.store)
+        got = self._row("concept:relativity")
+        self.assertEqual(got["created"], "2019-03-03T00:00:00.000Z",
+                         "신규는 원본 기록 시각을 받아야 한다(밴딩 방지)")
+        self.assertEqual(got["ct"], "1905")
+
+    def test_reimport_never_moves_an_existing_birth(self):
+        """여태의 결함: 재-MERGE 가 무조건 덮어, 내가 쓴 개념의 생일까지 남의 값이 됐다."""
+        from api import fragment as frag
+        from api import share
+        frag.merge_fragment({"owner": self.OWNER_B, "nodes": [
+            {"id": "concept:x", "type": "concept", "title": "내가 쓴 것", "domain": "phys"}]},
+            store=self.store)
+        mine = self._row("concept:x")["created"]
+        self.assertTrue(mine)
+
+        pack = {"vinc_pack": share.PACK_VERSION, "kind": "share",
+                "fragment": {"nodes": [
+                    {"id": "concept:x", "type": "concept", "title": "남의 것",
+                     "domain": "phys", "created": "1999-01-01T00:00:00.000Z"}],
+                    "edges": []}}
+        share.import_share_pack(pack, owner=self.OWNER_B, store=self.store)
+        self.assertEqual(self._row("concept:x")["created"], mine,
+                         "팩이 기존 노드의 출생을 덮었다")
+
+    def test_pack_documents_carry_content_time_but_are_reborn_locally(self):
+        """문서는 수신측에서 doc_id 가 새로 파생되므로 **다른 객체**다 — 출생은 지금이
+        맞고, 지시체의 시간(content_time)만 건너온다."""
+        from api import docstore as ds
+        from api import share
+        text = "# 노트\n\n## relativity\n\n광속 불변.\n"
+        did = ds.put_doc(self.store, owner=self.OWNER_A, text=text, title="물리",
+                         content_time="1905")["doc_id"]
+        ds.extract_doc(self.store, did, owner=self.OWNER_A, apply=True)
+        pack = share.build_share_pack(owner=self.OWNER_A, domain="", store=self.store)
+        docs = pack.get("documents") or []
+        self.assertTrue(docs, "자기완결 팩이 원문을 안 실었다")
+        self.assertEqual(docs[0]["content_time"], "1905")
+
+        share.import_share_pack(pack, owner=self.OWNER_B, store=self.store)
+        rows = self.store.run("MATCH (d:_DocMeta) WHERE d.owner_id = $o "
+                              "RETURN d.content_time AS ct, d.created_at AS born",
+                              {"o": self.OWNER_B})
+        self.assertTrue(rows, "수신측에 문서가 없다")
+        self.assertEqual(rows[0]["ct"], "1905")
+        self.assertTrue(rows[0]["born"], "수신 문서는 자기 공간의 출생을 가져야 한다")

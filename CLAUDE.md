@@ -53,6 +53,15 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   함께 실을 것.
 - 화면에 노출되는 텍스트에 **em-dash(`—`) 금지**. 대체는 `·`·괄호·콜론.
   (이 규칙은 UI 텍스트에만 해당한다. 커밋 메시지·이 문서는 무관하다.)
+- **"atlas" 절대 금지어 — 후속 명칭은 "view"다(F8, 2026-08-15 발주자 지시).** 그래프 맵
+  서피스의 구명(Atlas)을 코드·식별자·라우트·UI 카피·홈페이지 문구 전체에서 걷어냈다
+  (`Vinc/app`·`Vinc-homepage` 전체 리네임 완료). `scripts/gate_forbidden.py` 가 F8 로
+  강제하고(대소문자 무관 부분일치라 `AtlasView`·`atlasScene` 같은 파생어도 잡는다),
+  CHANGELOG·README 의 과거 릴리스 기록만 예외다. 정본과 이유는 그래프
+  `vinc.canon.terminology` §7. ⚠ 서피스 **안**에 이미 있던 "view/viewpoint" 어휘(3D·2D·
+  타임라인·번들 전환)와 이름이 겹쳐서 — `AtlasView`를 그대로 바꾸면 `ViewView`가 된다 —
+  그 어휘는 **"viewpoint"로 개명**해 분리했다(`AtlasView`→`Viewpoint`, `VIEWS`→
+  `VIEWPOINTS` 등). 새 코드에서 "atlas"를 다시 쓰지 말 것 — 게이트가 막는다.
 
 ## 2. 리포별 지위
 

@@ -1,9 +1,9 @@
-// 재사용 문서 편집기(D45-E) — Atlas Reader 패널·Records·Intake 가 공유한다.
+// 재사용 문서 편집기(D45-E) — View Reader 패널·Records·Intake 가 공유한다.
 // 편집 모델: CM6 인라인 Live Preview(소스=정본, 렌더 view-only) + 실패 시 MVP
 // textarea 폴백. 무손실 규율: 저장은 편집기 문자열을 어떤 변형도 없이 /doc/put
 // 로 보낸다(verified 바이트 동일). 저장 = 디바운스 자동저장 + Ctrl/Cmd+S, 무음
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
-import { api, cfg } from "./api";
+import { api, cfg, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
 
@@ -30,7 +30,10 @@ export function renderMarkdown(src: string): string {
       out.push(`<pre style="overflow-x:auto"><code>${esc(buf.join("\n"))}</code></pre>`); continue;
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(t);
-    if (h) { closeList(); const lv = Math.min(h[1].length + 1, 6);
+    // 깊이는 소스 그대로다. 여태 한 단계 내려 찍어(`## X` → `<h3>`) 같은 문서가
+    // 편집기(`cm-r-h2`)와 폴백에서 다른 크기로 보였다 — 렌더러가 둘이라는 사실이
+    // 화면에 드러나면 안 된다.
+    if (h) { closeList(); const lv = Math.min(h[1].length, 6);
       out.push(`<h${lv}>${inline(esc(h[2]))}</h${lv}>`); i++; continue; }
     if (/^(-{3,}|\*{3,})$/.test(t)) { closeList(); out.push("<hr/>"); i++; continue; }
     if (t.startsWith("> ")) { closeList();
@@ -59,6 +62,9 @@ export type DocEditorHandle = {
   dispose: () => void;
   setEditable: (on: boolean) => void;
   isEditable: () => boolean;
+  /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
+   *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
+  scrollToOffset: (pos: number) => void;
 };
 
 export type DocEditorOpts = {
@@ -84,6 +90,9 @@ export type DocEditorOpts = {
   onStatus?: (text: string) => void;
   /** D72 — 내용 시점 초기값. docId 만 주면 로드 시 서버 값으로 채운다. */
   contentTime?: string;
+  /** 본문의 `[[doc_id]]` 를 눌렀다. 주면 그 링크가 살아나고, 안 주면 종전대로
+   *  밑줄만 그어진 글자로 남는다(시트·Tools 처럼 갈 곳이 없는 자리). */
+  onDocLink?: (docId: string) => void;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -96,11 +105,26 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let contentTime = opts.contentTime || "";   // D72 — 내용 시점(빈 값 = 안 적음)
 
   if (docId && opts.initial === undefined) {
-    host.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerLoading}</p>`;
-    const doc = await api.docGet(opts.owner, docId);
-    if (!doc.executed || doc.text === undefined) {
-      host.innerHTML = `<p class="hint">${COPY.ui.atlasx.readerFail}</p>`;
-      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false };
+    host.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
+    // 이 await 는 오래 try 밖에 있었다. `call()` 은 비 2xx 를 전부 던지므로
+    // (죽은 사이드카·500·그리고 2026-08-16 부터 스토어 미개방의 503) 예외가
+    // mountDocEditor 밖으로 새어 나가고, 호출부는 "문서를 여는 중"에서 굳는다.
+    // 여기서 받아 아래 실패 상자로 합류시킨다.
+    let doc: any = null;
+    let storeDown: string | null = null;
+    try {
+      doc = await api.docGet(opts.owner, docId);
+    } catch (e) {
+      storeDown = storeDownReason(e);      // 스토어 미개방이 아니면 null
+    }
+    if (!doc?.executed || doc.text === undefined) {
+      // 스토어를 못 읽는 것은 **문서 하나가 상한 것과 다른 사건**이다. 기본 문구는
+      // "잠시 후 다시 시도하세요"인데, 다른 Vinc 가 스토어를 물고 있는 동안에는
+      // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
+      host.innerHTML = `<p class="hint">${storeDown === null
+        ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
+      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false,
+               scrollToOffset: () => {} };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
@@ -112,20 +136,20 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   host.classList.add("doc-render");
   host.innerHTML = `
     <div class="doc-ed-bar" ${opts.hideTitle ? "hidden" : ""} style="display:flex;gap:.5rem;align-items:center">
-      <input id="ed-title" placeholder="${esc(COPY.ui.atlasx.edTitlePlaceholder)}"
+      <input id="ed-title" placeholder="${esc(COPY.ui.viewx.edTitlePlaceholder)}"
         value="${esc(title)}" style="flex:1;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
         font-weight:700;font-size:1.15em;padding:.2rem 0"/>
       <!-- D72 — 내용 시점. 제목 줄 옆에 두는 이유: 문서를 쓰는 순간이 "이게 언제
            이야기인가"를 가장 잘 아는 때다. 형식은 YYYY[-MM[-DD]] 이고, 어긋나면
            서버가 조용히 비운다(저장은 성공한다 — 축에서만 빠질 뿐이다). -->
-      <input id="ed-ctime" placeholder="${esc(COPY.ui.atlasx.edContentTimePh)}"
+      <input id="ed-ctime" placeholder="${esc(COPY.ui.viewx.edContentTimePh)}"
         value="${esc(contentTime)}" inputmode="numeric" maxlength="10"
-        data-tip="${esc(COPY.ui.atlasx.edContentTimeTip)}"
+        data-tip="${esc(COPY.ui.viewx.edContentTimeTip)}"
         style="width:7.5rem;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
         font-size:.85em;padding:.2rem 0"/>
-      <span class="hint" id="ed-status">${COPY.ui.atlasx.edSaved}</span>
+      <span class="hint" id="ed-status">${COPY.ui.viewx.edSaved}</span>
     </div>
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:32vh;resize:vertical;
       background:transparent;color:inherit;border:1px solid hsl(var(--border));
@@ -154,7 +178,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   const getText = () => (cm ? cm.getValue() : src.value);
   const setText = (t: string) => { if (cm) cm.setValue(t); else { src.value = t; prev.innerHTML = renderMarkdown(t); } };
   const onEdited = () => {
-    setStatus(COPY.ui.atlasx.edDirty);
+    setStatus(COPY.ui.viewx.edDirty);
     if (!cm) prev.innerHTML = renderMarkdown(src.value);
     if (timer) window.clearTimeout(timer);
     timer = window.setTimeout(() => void save(), 2000);
@@ -162,7 +186,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   // 슬래시 커맨드 항목 — 결정론 블록(오프라인·무LLM). cursorBack 은 코드펜스처럼
   // 커서를 안쪽에 두어야 할 때 끝에서 되돌릴 칸수.
-  const s = COPY.ui.atlasx.slash;
+  const s = COPY.ui.viewx.slash;
   const slashItems = [
     { label: s.h1, insert: "# " }, { label: s.h2, insert: "## " },
     { label: s.bullet, insert: "- " }, { label: s.number, insert: "1. " },
@@ -182,7 +206,15 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     src.replaceWith(cmHost);
     prev.remove();
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),
-      slash: slashItems, readOnly: opts.readOnly });
+      slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
+      onDocLink: opts.onDocLink,
+      // 바깥 링크는 셸이면 OS 브라우저로, 웹이면 새 탭으로 — 계정 연결이 이미
+      // 쓰는 길과 같다(shell:allow-open 은 그 자리에서 이미 열려 있다).
+      onUrl: (url) => void (async () => {
+        const invoke = await shellInvoke();
+        if (invoke) await invoke("plugin:shell|open", { path: url });
+        else window.open(url, "_blank", "noopener");
+      })() });
     if (opts.highlights?.length) {
       cm.setHighlights(opts.highlights);
       // 첫 언급으로 스크롤 — 레이아웃이 앉은 뒤라야 좌표가 맞는다.
@@ -202,7 +234,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   for (const el of [titleInput, ctimeInput]) {
     el.addEventListener("input", () => {
-      setStatus(COPY.ui.atlasx.edDirty);
+      setStatus(COPY.ui.viewx.edDirty);
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => void save(), 2000);
     });
@@ -214,18 +246,18 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     const ct = ctimeInput.value.trim();
     if (saving || (!force && text === lastSaved && t === lastTitle && ct === lastCtime)) return;
     saving = true;
-    setStatus(COPY.ui.atlasx.edSaving);
+    setStatus(COPY.ui.viewx.edSaving);
     try {
       // 무음 LWW 금지 — 기존 문서면 저장 직전 원격 해시 비교.
       if (!force && docId) {
         const cur = await api.docGet(opts.owner, docId);
         if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
-          saving = false; setStatus(COPY.ui.atlasx.edDirty);
+          saving = false; setStatus(COPY.ui.viewx.edDirty);
           conflictBox.innerHTML = `
-            <div class="error-banner" style="margin:.4rem 0">${COPY.ui.atlasx.edConflict}
+            <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
               <div style="margin-top:.3rem">
-                <button class="btn" id="ed-ow">${COPY.ui.atlasx.edOverwrite}</button>
-                <button class="btn" id="ed-rl">${COPY.ui.atlasx.edReload}</button>
+                <button class="btn" id="ed-ow">${COPY.ui.viewx.edOverwrite}</button>
+                <button class="btn" id="ed-rl">${COPY.ui.viewx.edReload}</button>
               </div></div>`;
           conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
             conflictBox.innerHTML = "";
@@ -234,7 +266,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
             if (cur.text !== undefined && cur.text !== "") {
               try {
                 await api.docPut(opts.owner, cur.text, undefined,
-                                 COPY.ui.atlasx.edConflictCopy(cur.title || t));
+                                 COPY.ui.viewx.edConflictCopy(cur.title || t));
               } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
             }
             void save(true);
@@ -244,7 +276,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
             if (cur.text !== undefined) {
               setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
               titleInput.value = cur.title || ""; lastTitle = titleInput.value;
-              setStatus(COPY.ui.atlasx.edSaved);
+              setStatus(COPY.ui.viewx.edSaved);
             }
           });
           return;
@@ -260,11 +292,11 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         ctimeInput.value = res.content_time || "";
         lastCtime = ctimeInput.value;
       }
-      setStatus(COPY.ui.atlasx.edSaved);
+      setStatus(COPY.ui.viewx.edSaved);
       opts.onSaved?.(docId || "", t);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }
     } catch {
-      setStatus(COPY.ui.atlasx.edSaveFail);
+      setStatus(COPY.ui.viewx.edSaveFail);
     } finally {
       saving = false;
     }
@@ -281,11 +313,11 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   // 강등 문구는 `저장됨` 이다(문서는 있고 FTS 로 검색된다 — 벡터만 낡았을 뿐이다).
   async function reindex(needsEmbed?: boolean): Promise<void> {
     if (!needsEmbed || !docId) return;
-    setStatus(COPY.ui.atlasx.edReindexing);
+    setStatus(COPY.ui.viewx.edReindexing);
     try {
       const res = await api.docReembed(opts.owner, docId);
-      setStatus(res?.executed ? COPY.ui.atlasx.edReindexed : COPY.ui.atlasx.edSaved);
-    } catch { setStatus(COPY.ui.atlasx.edSaved); }
+      setStatus(res?.executed ? COPY.ui.viewx.edReindexed : COPY.ui.viewx.edSaved);
+    } catch { setStatus(COPY.ui.viewx.edSaved); }
   }
 
   async function offerExtract(): Promise<void> {
@@ -295,12 +327,12 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       const n = (res.candidates || []).length;
       if (!res.executed || n === 0) { extractBox.innerHTML = ""; return; }
       extractBox.innerHTML =
-        `<button class="btn" style="margin-top:.3rem" id="ed-ap">${COPY.ui.atlasx.edExtractOffer(n)}</button>`;
+        `<button class="btn" style="margin-top:.3rem" id="ed-ap">${COPY.ui.viewx.edExtractOffer(n)}</button>`;
       extractBox.querySelector("#ed-ap")!.addEventListener("click", async () => {
-        extractBox.innerHTML = `<p class="hint">${COPY.ui.atlasx.edSaving}</p>`;
+        extractBox.innerHTML = `<p class="hint">${COPY.ui.viewx.edSaving}</p>`;
         try {
           const ap = await api.docExtract(opts.owner, docId!, true);
-          extractBox.innerHTML = `<p class="hint">${COPY.ui.atlasx.edExtractDone(
+          extractBox.innerHTML = `<p class="hint">${COPY.ui.viewx.edExtractDone(
             ap.applied?.created || 0, ap.mentions || 0)}</p>`;
         } catch { extractBox.innerHTML = ""; }
       });
@@ -322,6 +354,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       if (!on) void save();
     },
     isEditable: () => editable,
+    scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
   };
 }
 
@@ -333,7 +366,7 @@ export async function openDocSheet(opts: {
   const { openSheet, sheetActions, confirmDestructive: confirmD } = await import("./components");
   let handle: DocEditorHandle | null = null;
   const sheet = openSheet({
-    title: opts.docId ? COPY.ui.atlasx.readerTitle : COPY.ui.atlasx.edNew,
+    title: opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew,
     bare: true, size: "write",
     onClose: () => handle?.dispose(),
   });
@@ -343,15 +376,15 @@ export async function openDocSheet(opts: {
   });
   // 발: 삭제(부, 왼쪽) · 완료(주, 오른쪽). 시트 규격 그대로 — 주 액션은 늘 오른쪽 끝.
   sheet.foot.innerHTML = sheetActions(
-    { id: "ed-close", label: COPY.ui.atlasx.edDone },
+    { id: "ed-close", label: COPY.ui.viewx.edDone },
     undefined,
-    opts.docId ? { id: "ed-del", label: COPY.ui.atlasx.del } : undefined);
+    opts.docId ? { id: "ed-del", label: COPY.ui.viewx.del } : undefined);
   sheet.foot.querySelector("#ed-close")!.addEventListener("click", sheet.close);
   sheet.foot.querySelector("#ed-del")?.addEventListener("click", async () => {
     const title = sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value
-      || COPY.ui.atlasx.edTitlePlaceholder;
-    if (!await confirmD(COPY.ui.atlasx.delDocAsk(title),
-                        COPY.ui.atlasx.delConfirm, COPY.ui.atlasx.delCancel)) return;
+      || COPY.ui.viewx.edTitlePlaceholder;
+    if (!await confirmD(COPY.ui.viewx.delDocAsk(title),
+                        COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
     try {
       const res = await api.docDelete(opts.owner, opts.docId!);
       if (!res.executed) throw new Error(res.error || "delete failed");
@@ -359,7 +392,7 @@ export async function openDocSheet(opts: {
       opts.onSaved?.(opts.docId!, "");
     } catch {
       const b = sheet.foot.querySelector<HTMLElement>("#ed-del");
-      if (b) b.textContent = COPY.ui.atlasx.delFail;
+      if (b) b.textContent = COPY.ui.viewx.delFail;
     }
   });
 }

@@ -159,16 +159,16 @@ def _verify_inner(evalset: dict) -> list[str]:
 #: (스키마 검증 → 핸들러 → 브리지 → HTTP → 사이드카 라우트). 둘은 다른 주장이다:
 #: 전자는 "데이터에 답이 있다", 후자는 "도구가 그 답을 실제로 내준다".
 MCP_PROBE = {
-    "Q1":  ("vinc_neighbors",        {"node": "concept:atlas"},                    "neighbors[].id"),
-    "Q2":  ("vinc_path",             {"a": "concept:atlas", "b": "concept:invoice"}, "paths[0].ids"),
+    "Q1":  ("vinc_neighbors",        {"node": "concept:view"},                    "neighbors[].id"),
+    "Q2":  ("vinc_path",             {"a": "concept:view", "b": "concept:invoice"}, "paths[0].ids"),
     "Q3":  ("vinc_diagnose",         {"kind": "components"},                       "orphans"),
-    "Q4":  ("vinc_decide",           {"topic": "concept:atlas", "depth": 1},       "conflicts[].source|target"),
+    "Q4":  ("vinc_decide",           {"topic": "concept:view", "depth": 1},       "conflicts[].source|target"),
     "Q5":  ("vinc_domains",          {},                                           "rows[0].domain|total"),
     "Q6":  ("vinc_recall",           {},                                           "rows[0].title|date"),
     "Q7":  ("vinc_merge_candidates", {},                                           "candidates[].a_id|b_id"),
     "Q8":  ("vinc_suggest_ties",     {"node": "concept:invoice"},                  "suggestions[0].id|shared_neighbors"),
-    "Q9":  ("vinc_doc_get",          {"doc_id": "eval.tooluse.atlas-notes"},       "text"),
-    "Q10": ("vinc_search",           {"query": "Atlas 뷰"},                        "node_hits[].id"),
+    "Q9":  ("vinc_doc_get",          {"doc_id": "eval.tooluse.view-notes"},       "text"),
+    "Q10": ("vinc_search",           {"query": "View 뷰"},                        "node_hits[].id"),
 }
 
 

@@ -121,8 +121,8 @@
       }
     }
   },
-  "atlasScene": {
-    "note": "Atlas WebGL(three.js/Sigma)용 파생 셰이드 — App/GraphNode 컴포넌트 스펙에서 추출. gen_theme_ts.py 입력.",
+  "viewScene": {
+    "note": "View WebGL(three.js/Sigma)용 파생 셰이드 — App/GraphNode 컴포넌트 스펙에서 추출. gen_theme_ts.py 입력.",
     "node": {
       "focus": {
         "fill": "#B9BEF0",

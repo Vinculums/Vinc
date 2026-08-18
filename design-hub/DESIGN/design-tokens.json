@@ -1,7 +1,7 @@
 {
   "$meta": {
     "name": "vinc-design",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "ssot": "Vinc/design-hub/DESIGN",
     "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
     "layers": "primitive → semantic",
@@ -9,8 +9,8 @@
     "format": "hsl-channels",
     "a11y": "WCAG 2.2 AA. Only tokens verified at a body contrast of 4.5:1 or better may be used as text."
   },
-  "atlasScene": {
-    "note": "Depth tiers for the Atlas 3D mark, used only by the dark glow branch (app/src/surfaces/atlas3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
+  "viewScene": {
+    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
     "node": {
       "focus": {
         "fill": "#B9BEF0",
@@ -30,6 +30,17 @@
         "stroke": "#9496A9",
         "glowOpacity": 0.18
       }
+    }
+  },
+  "domainTint": {
+    "note": "Open-layer domain tint for the View marks (off by default). This is emphasis, not encoding: it is a user toggle in ViewPrefs, so it must never be the only way to tell two nodes apart. The hue comes from a hash of the topic string, so a topic keeps its hue no matter which other topics are on screen, and collisions are possible and tolerated. Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness is chosen to sit near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/view-tint.ts.",
+    "light": {
+      "s": 0.44,
+      "l": 0.34
+    },
+    "dark": {
+      "s": 0.4,
+      "l": 0.72
     }
   },
   "primitive": {
@@ -206,6 +217,7 @@
       "border": "{hairline}",
       "input": "{hairline}",
       "ring": "{peri_400}",
+      "focus": "{indigo_900}",
       "primary": "{indigo_900}",
       "primary-foreground": "{grain_100}",
       "accent": "{grain_200}",
@@ -235,6 +247,7 @@
       "border": "{d_line}",
       "input": "{d_line}",
       "ring": "{peri_400}",
+      "focus": "{peri_400}",
       "primary": "{indigo_700}",
       "primary-foreground": "{peri_200}",
       "accent": "{d_bg2}",
@@ -293,5 +306,11 @@
     "elev-1": "0 1px 2px hsl(230 20% 6% / 0.07)",
     "elev-2": "0 4px 12px hsl(230 20% 6% / 0.11)",
     "elev-3": "0 10px 30px hsl(230 20% 6% / 0.16)"
+  },
+  "shadowDark": {
+    "elev-1": "0 1px 2px hsl(0 0% 0% / 0.35)",
+    "elev-2": "0 4px 12px hsl(0 0% 0% / 0.35)",
+    "elev-3": "0 8px 24px hsl(0 0% 0% / 0.45)",
+    "float": "0 30px 60px -16px hsl(0 0% 0% / 0.55)"
   }
 }

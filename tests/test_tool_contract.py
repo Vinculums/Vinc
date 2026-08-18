@@ -149,3 +149,133 @@ def test_served_descriptions_are_exactly_the_canonical_ones():
     canon = {t["name"]: t["description"] for t in TOOLS}
     drift = [n for n, d in canon.items() if SERVED[n]["description"] != d]
     assert not drift, f"tools.py 와 tools/list 설명이 다른 도구: {drift}"
+
+
+# ── 4. 계약이 서버 **동작**과 일치하는가 (교차 계약) ─────────────────────────
+# 위 1~3 은 설명이 **존재하고 형식이 맞는지**만 잰다. 그것으로는 v12(Decision)
+# 스키마 확장 때 네 자리가 "concept→concept" 인 채 남은 것을 못 잡았다: 문장은
+# 멀쩡히 있었고 길이도 넉넉했으며 Returns 도 적혀 있었는데, **틀렸을 뿐이다.**
+#
+# test_decision_type.py 가 남긴 교훈("함수 하나를 고쳤는지가 아니라 사용자가 쓰는
+# 표면에서 결정이 실제로 나오는지가 계약이다")은 엔진 계층에만 제도화돼 있었다 —
+# 그 파일은 api.query 를 직접 부르고 vinc_mcp 를 한 번도 임포트하지 않는다.
+# 여기가 그 교훈을 **모델이 읽는 계층**에 적용하는 자리다.
+
+def test_allowed_pairs_mirror_matches_the_server(monkeypatch=None):
+    """`vinc_mcp` 는 `api` 를 임포트하지 않으므로(독립 브리지 계약) 허용 쌍 문장이
+    두 벌 있다. 두 사본이 갈리면 어시스턴트는 서버가 거부할 엣지를 쓰고 warnings +
+    partial:true 로 조용히 반쯤 성공한다 — 계약이 대안을 말하지 않으니 스스로 고칠
+    근거도 없다. 커서 코덱 미러(test_search_pagination.py)와 같은 방식으로 고정한다."""
+    from api.fragment import _ALLOWED_PAIRS_HINT as server_hint
+    from vinc_mcp.tools import _ALLOWED_PAIRS_HINT as mcp_hint
+    assert mcp_hint == server_hint, (
+        "허용 쌍 문장이 갈렸다 — api/fragment.py 가 정본이다.\n"
+        f"  server: {server_hint!r}\n  mcp   : {mcp_hint!r}")
+
+
+@pytest.mark.parametrize("name", ["vinc_ingest"])
+def test_edge_contract_reaches_the_host(name):
+    """미러를 만들어 두고 설명에 안 쓰면 아무것도 달라지지 않는다. 호스트가 실제로
+    받는 문자열(SERVED)에 그 문장이 들어 있는지 본다."""
+    from vinc_mcp.tools import _ALLOWED_PAIRS_HINT
+    assert _ALLOWED_PAIRS_HINT in SERVED[name]["description"], \
+        f"{name}: 허용 쌍이 호스트가 받는 설명에 없다"
+
+
+@pytest.mark.parametrize("name,field", [("vinc_ingest", "type")])
+def test_fragment_edge_schema_admits_decision(name, field):
+    """`_FRAGMENT_SCHEMA` 의 엣지 `type` 설명이 결정 끝점을 말하는가. 이 자리가
+    v12 이후 가장 오래 틀려 있었다."""
+    edges = (SERVED[name]["inputSchema"]["properties"]["edges"]["items"]["properties"])
+    assert "decision" in edges[field]["description"], \
+        "엣지 type 설명이 아직 concept→concept 만 말한다"
+
+
+def test_node_type_routing_lists_every_dedicated_table():
+    """전용 테이블로 가는 타입 목록이 서버의 실제 라우팅과 같은가. 한때 `:38` 은
+    여섯을 세고 `vinc_ingest` 설명은 다섯을 세어 **같은 파일 안에서 모순**이었다."""
+    from vinc_mcp.tools import _FRAGMENT_SCHEMA
+    node_type_desc = (_FRAGMENT_SCHEMA["properties"]["nodes"]["items"]
+                      ["properties"]["type"]["description"])
+    ingest_desc = SERVED["vinc_ingest"]["description"]
+    for t in ("record", "concept", "domain", "bridge", "episode", "decision"):
+        assert t in node_type_desc, f"노드 type 설명에 {t} 가 없다"
+        assert t in ingest_desc, f"vinc_ingest 설명의 라우팅 목록에 {t} 가 없다"
+
+
+def test_docstring_tool_count_matches_the_list():
+    """숫자를 손으로 쓰면 어긋난다 — F10-b 로 merge_reject 가 늘었을 때 독스트링은
+    19 인 채로 남았고, "아래 TOOLS 가 정본"이라는 방어 문장을 단 채로 틀렸다."""
+    import re
+    from vinc_mcp import tools as _t
+    m = re.search(r"\*\*(\d+)종\*\*", _t.__doc__ or "")
+    assert m, "독스트링에서 도구 수를 못 찾았다"
+    assert int(m.group(1)) == len(TOOLS) == len(SERVED), (
+        f"독스트링 {m.group(1)}종 vs TOOLS {len(TOOLS)}개 vs 서빙 {len(SERVED)}개")
+
+
+# ── 정체 각인(2026-08-18) — "어느 그래프에 썼는가"가 응답에 있는가 ──────────────
+# 이것이 있는 이유는 실제 사고다: 대량 적재에서 owner 를 빠뜨려 전량이 `user:local`
+# 로 들어갔는데, **그 tenant 안에서는 읽기도 성공해서** 검증이 통과했다(2026-08-07).
+# 별도 `whoami` 를 만들지 않은 판단도 같은 자리에서 나왔다 — 부를 생각을 못 한 사람
+# 에게 물어봐야 아는 도구는 소용이 없으므로, 정체를 **첫 문과 쓰기 응답**에 실었다.
+def test_writes_and_conventions_carry_the_target_back():
+    """`call()` 이 정체 도구 셋에 `target` 을 얹는가. 얹지 않으면 원격에 쓴 것과
+    로컬에 쓴 것이 응답만 봐서 구분되지 않는다."""
+    from vinc_mcp import tools as T
+
+    seen: dict = {}
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            seen["called"] = True
+            return {"executed": True, "owner": "user:from-server"}
+
+    for name in ("vinc_conventions", "vinc_ingest", "vinc_doc_put"):
+        assert name in T._IDENTITY_TOOLS, f"{name} 이 정체 도구 목록에서 빠졌다"
+
+    out = T.call("vinc_conventions", {}, _FakeBridge())
+    assert out["target"] == "local"
+    # **서버가 실은 owner 를 덮지 않는다.** 클라이언트가 아는 값으로 되울리면
+    # 호스티드에서 거짓말이 된다(키가 owner 를 고정하고 인자는 무시되는 자리다).
+    assert out["owner"] == "user:from-server"
+
+
+def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
+    """허브 프로파일(`allow_target=False`)에서는 `target` 을 **안 찍는다**.
+
+    라이브에서 물린 자리다(2026-08-17 배포 직후): 허브도 같은 깔때기를 도는데 거기서
+    target 은 언제나 "local" 이라, **원격으로 간 호출이 `"local"` 을 받아 왔다.**
+    그 값을 "remote" 로 덮는 것은 새 클라이언트뿐이고 데스크탑 업데이트는 사용자
+    클릭이라, 구 클라이언트에게는 계속 거짓이었다. 계정 그래프에 썼는지 확인하려고
+    이 필드를 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다 — 이 에코가 막으려던
+    바로 그 고장이다. 호출자의 local/remote 개념은 호출자만 아니까 안 답하는 것이 맞다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "owner": "user:hosted"}
+
+    out = T.call("vinc_ingest", {"nodes": []}, _FakeBridge(), allow_target=False)
+    assert "target" not in out, "자기가 곧 원격인 서버가 target 을 답했다"
+    assert out["owner"] == "user:hosted"       # owner 는 그대로 실린다
+    # 로컬 프로파일에서는 계속 찍는다(회귀 가드)
+    assert T.call("vinc_ingest", {"nodes": []}, _FakeBridge())["target"] == "local"
+
+
+def test_identity_stamp_stays_off_the_read_tools():
+    """조회 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "rows": []}
+
+    out = T.call("vinc_search", {"query": "x"}, _FakeBridge())
+    assert "target" not in out

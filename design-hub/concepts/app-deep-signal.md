@@ -56,15 +56,15 @@ slightly curved.
 
 | Frame | Content |
 |---|---|
-| Atlas · Graph (42:15) | the representative screen: grid, constellation graph, legend, zoom, command palette, 2D and 3D segments |
-| Atlas · Node detail (42:17) | **the key interaction**: click a node and a frosted panel appears on the right (concept information, a weight bar for strong ties, actions) with a dotted connector |
+| View · Graph (42:15) | the representative screen: grid, constellation graph, legend, zoom, command palette, 2D and 3D segments |
+| View · Node detail (42:17) | **the key interaction**: click a node and a frosted panel appears on the right (concept information, a weight bar for strong ties, actions) with a dotted connector |
 | Intake · Empty (42:3) | a glowing dashed drop zone with the logo mark and a sample CTA |
 | Records · List (42:10) | filter chips, list rows keeping the filled, half and empty circle status marks, and a hover row at an 8% accent tint |
 | Search · Results (42:22) | a glowing search field with operator highlighting, and results grouped by topic with exact and semantic marks |
 | Packs · Idle (42:27) | pack cards with an accent line on the left and a glowing active card, plus a ghost new pack |
 | Settings · Default (42:32) | a left menu, form rows, a theme segment, a Synced badge and toggles |
 
-The empty-state variant frames (Intake Ingesting and Success, Records, Atlas and Search
+The empty-state variant frames (Intake Ingesting and Success, Records, View and Search
 Empty, Packs Share ready) stay skeletons and expand once the direction is settled.
 
 ## Structural patterns, settled by the owner (2026-07-19, option B throughout)
@@ -85,7 +85,7 @@ constraints on the Logo/Mark glyph and vectors, so it does not recur.
 > accent-strong bar on the left" in the table above is dropped. The reason is an owner remark,
 > first applied to the documentation site on 2026-07-31 and extended to the application:
 > "when a colour bar stands beside every line, the decoration reads before the content." In
-> the application there was also a defect where the home row is always active on the Atlas
+> the application there was also a defect where the home row is always active on the View
 > surface, so choosing a topic made **two bands stand at once**. Active state is unified as a
 > **filled pill plus weight** for home, topics and documents alike.
 > The "2px accent-strong bar on the left" on the floating panel (row three above) **stays**,
@@ -110,14 +110,14 @@ to a variable, with zero hardcoded values.
 | `App / Button` | Kind = Primary or Ghost, label TEXT | CTAs throughout |
 | `App / Chip` | State = Default or Active, label TEXT | filter and concept chips |
 | `App / ListRow` | State = Default or Hover, mark, title and meta TEXT | the Records list |
-| `App / GraphNode` | Tier = Focus, Near, Mid or Far (glow lives only here) | the Atlas constellation |
+| `App / GraphNode` | Tier = Focus, Near, Mid or Far (glow lives only here) | the View constellation |
 | `App / PackCard` | State = Default or Highlight, name, counts and meta TEXT | Packs |
 | `App / ProgressBar` | progress through a fill width override | Intake Ingesting |
 | `App / EmptyState` | title and desc TEXT with a nested Button | the three empty states |
 
 **Six new branch screens**: Intake Ingesting (a processing panel with a ProgressBar and the
-circle notation), Intake Success (a check, concept Chips and two Buttons), Records, Atlas and
-Search Empty (EmptyState instances, with a grid background for Atlas), and Packs Share ready
+circle notation), Intake Success (a check, concept Chips and two Buttons), Records, View and
+Search Empty (EmptyState instances, with a grid background for View), and Packs Share ready
 (a highlighted PackCard, a share link and a community toggle). That completes **all thirteen
 screens.**
 

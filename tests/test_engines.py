@@ -10,10 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-ENGINES = [
-    "embed_pipeline", "recall_ingest", "pack_ingest",
-    "skill_tracker", "concepts_ingest", "bridges_ingest", "mentions_link",
-]  # graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
+ENGINES = ["embed_pipeline", "recall_ingest", "mentions_link"]
+# skill_tracker/concepts_ingest/bridges_ingest/learner_ingest/pack_ingest removed
+# 2026-08-12 — v1(weg-9000, Neo4j) migration tooling with zero production callers
+# (agent-wiki-comparison §8; record:fact-orphan-engines-deleted).
+# graph_to_neo4j 제외: PM 정책 그래프 — Vinc(메모리 데이터플레인) 범위 밖
 
 
 class ImportTests(unittest.TestCase):
@@ -111,33 +112,6 @@ class EmbedModelVocabTests(unittest.TestCase):
         self.assertEqual(self.e.ST_MODEL_BY_KEY["local-en-large"], "BAAI/bge-large-en-v1.5")
 
 
-class HubRootResolutionTests(unittest.TestCase):
-    """Portability: concepts/bridges must resolve hub-root from arg/env/CWD,
-    not a hardcoded v1 monorepo path (regression for the extraction bug)."""
-
-    def test_concepts_set_hub_repoints_learning(self):
-        c = importlib.import_module("engines.concepts_ingest")
-        with tempfile.TemporaryDirectory() as d:
-            c._set_hub(d)
-            self.assertEqual(c.HUB, Path(d).resolve())
-            self.assertEqual(c.LEARNING, Path(d).resolve() / "WORKSPACES" / "learning")
-
-    def test_bridges_set_hub_rebuilds_bridge_dirs(self):
-        b = importlib.import_module("engines.bridges_ingest")
-        with tempfile.TemporaryDirectory() as d:
-            b._set_hub(d)
-            self.assertEqual(b.SOURCE_DIR,
-                             Path(d).resolve() / "WORKSPACES" / "learning" / b.SOURCE_DOMAIN)
-            # BRIDGE_DIRS rebuilt under the new hub (empty when no *-bridges dirs exist)
-            self.assertTrue(all(str(d) in str(bd[0]) for bd in b.BRIDGE_DIRS))
-
-    def test_default_hub_falls_back_to_cwd(self):
-        c = importlib.import_module("engines.concepts_ingest")
-        # with no env and no legacy hub, default resolves to a real Path (not crash)
-        self.assertIsInstance(c._default_hub(), Path)
-
-
-
 class RecallParseTests(unittest.TestCase):
     def test_primary_domain_normalizes_list_form(self):
         r = importlib.import_module("engines.recall_ingest")
@@ -189,95 +163,6 @@ class RecallParseTests(unittest.TestCase):
         self.assertEqual(ep["completed_items"], ["노트 작성", "index 갱신"])
         self.assertEqual(ep["patterns"], ["묶음 패턴"])
         self.assertNotIn("completed", ep)   # BOOL 필드 미신설
-
-
-class ConceptsParseTests(unittest.TestCase):
-    def test_h1_and_oneliner(self):
-        c = importlib.import_module("engines.concepts_ingest")
-        text = "# Entropy\n\n## 한 줄 핵심\n무질서도의 척도.\n"
-        self.assertEqual(c._h1(text), "Entropy")
-        self.assertIn("무질서", c._one_liner(text))
-
-
-class WikilinkEdgeTests(unittest.TestCase):
-    """F6 — 위키링크 보수: 방향은 frontmatter 명시만, 추론은 RELATED_TO 정준화."""
-
-    @staticmethod
-    def _concept(cid, stem, domain, text="", fm=None):
-        return {"concept_id": cid, "stem": stem, "domain": domain,
-                "_text": text, "_fm": fm or {}}
-
-    def _extract(self, concepts):
-        c = importlib.import_module("engines.concepts_ingest")
-        return c.extract_edges(concepts)
-
-    def test_keyword_lines_demoted_to_related(self):
-        # 구 휴리스틱이 PREREQUISITE_OF 로 오분류하던 "다음" 일상어 → RELATED_TO.
-        concepts = [
-            self._concept("m-a", "01-a", "math", text="다음 주제는 [[01-b]] 를 본다.\n"),
-            self._concept("m-b", "01-b", "math"),
-        ]
-        edges = self._extract(concepts)
-        self.assertEqual(edges, [("m-a", "RELATED_TO", "m-b")])
-
-    def test_frontmatter_declares_directed_edges(self):
-        concepts = [
-            self._concept("m-a", "01-a", "math",
-                          fm={"prerequisite_of": ["01-b"], "derives_from": "01-c"}),
-            self._concept("m-b", "01-b", "math"),
-            self._concept("m-c", "01-c", "math"),
-        ]
-        edges = set(self._extract(concepts))
-        self.assertIn(("m-a", "PREREQUISITE_OF", "m-b"), edges)
-        self.assertIn(("m-a", "DERIVES_FROM", "m-c"), edges)   # 스칼라도 허용
-
-    def test_mutual_wikilinks_collapse_to_one_related(self):
-        # A↔B 상호 링크 → 정준화(min,max) 1개 — degree 부풀림 방지.
-        concepts = [
-            self._concept("m-a", "01-a", "math", text="[[01-b]]\n"),
-            self._concept("m-b", "01-b", "math", text="[[01-a]]\n"),
-        ]
-        edges = self._extract(concepts)
-        self.assertEqual(edges, [("m-a", "RELATED_TO", "m-b")])
-
-    def test_related_suppressed_when_directed_exists(self):
-        # 같은 무순서쌍에 방향 엣지가 있으면 RELATED_TO 억제(이중 계상 방지).
-        concepts = [
-            self._concept("m-a", "01-a", "math", text="[[01-b]]\n",
-                          fm={"prerequisite_of": ["01-b"]}),
-            self._concept("m-b", "01-b", "math"),
-        ]
-        edges = self._extract(concepts)
-        self.assertEqual(edges, [("m-a", "PREREQUISITE_OF", "m-b")])
-
-
-class OpenDomainTests(unittest.TestCase):
-    """Domains must be discovered from the filesystem, not a hardcoded list."""
-
-    def test_concepts_has_no_hardcoded_domain_list(self):
-        c = importlib.import_module("engines.concepts_ingest")
-        self.assertFalse(hasattr(c, "DOMAINS"))  # the fixed list is gone
-
-    def test_concepts_discovers_arbitrary_domains(self):
-        c = importlib.import_module("engines.concepts_ingest")
-        with tempfile.TemporaryDirectory() as d:
-            learning = Path(d) / "WORKSPACES" / "learning"
-            # a domain nobody hardcoded — proves it's open
-            for dom in ("pottery", "linguistics", "physics"):
-                (learning / dom).mkdir(parents=True)
-            found = c.discover_domains(learning)
-            self.assertEqual(found, ["linguistics", "physics", "pottery"])
-
-    def test_bridges_source_domain_is_configurable(self):
-        b = importlib.import_module("engines.bridges_ingest")
-        # default is math (back-compat) but it's env-driven, not forced
-        self.assertIsInstance(b.SOURCE_DOMAIN, str)
-
-    def test_bridges_collect_inputs_is_domain_agnostic(self):
-        b = importlib.import_module("engines.bridges_ingest")
-        fm = {"chemistry_inputs": ["01-bonds"], "biology_inputs": ["02-cells"], "title": "x"}
-        inputs = b._collect_inputs(fm)
-        self.assertEqual(inputs, {"chemistry": ["01-bonds"], "biology": ["02-cells"]})
 
 
 class MentionsLinkTests(unittest.TestCase):

@@ -68,7 +68,7 @@ class MergeCandidateStructureTests(unittest.TestCase):
         """v13 — 규칙이 doc↔doc 만 막고 **doc↔주제**를 놓치고 있었다.
 
         라이브 계정 그래프 실측(2026-08-10): 후보 10쌍 중 **8쌍이 이 모양**이었다.
-        `concept:atlas` 와 `concept:doc.vinc.spec.surface-atlas` 는 제목이 글자까지
+        `concept:view` 와 `concept:doc.vinc.spec.surface-view` 는 제목이 글자까지
         같은데, 그건 doc 미러가 문서 제목을 그대로 물려받기 때문이지 같은 것을 두 번
         적었기 때문이 아니다. 1-hop 을 재면 어휘가 갈린다 — 주제 쪽은 ABOUT 13 ·
         ATTACHES_TO 5 · RELATED_TO 6 이고 INHERITS_FROM 0, 문서 쪽은 INHERITS_FROM 4
@@ -76,9 +76,9 @@ class MergeCandidateStructureTests(unittest.TestCase):
         그래프 안으로 무너진다.
 
         신호 대 잡음이 2:8 이면 사람이 볼 수 있는 목록이 아니다 — 그래서 기본 제외다."""
-        rows = [{"id": "concept:atlas", "title": "Atlas, the map surface", "domain": "vinc/design"},
-                {"id": "concept:doc.vinc.spec.surface-atlas",
-                 "title": "Atlas, the map surface", "domain": "vinc/design"}]
+        rows = [{"id": "concept:view", "title": "View, the map surface", "domain": "vinc/design"},
+                {"id": "concept:doc.vinc.spec.surface-view",
+                 "title": "View, the map surface", "domain": "vinc/design"}]
         det = q.merge_candidates_detail(rows)
         self.assertEqual(det["candidates"], [],
                          "문서 미러가 주제 개념의 병합 후보로 올라왔다")
@@ -370,7 +370,7 @@ class TieSignalE2E(_EngineCase):
         self.assertFalse(self._ties(limit=50)["truncated"])
 
     def test_기존_필드는_그대로다(self):
-        """앱(atlas.ts)이 읽는 네 필드 — 지우거나 이름을 바꾸면 화면이 죽는다.
+        """앱(view.ts)이 읽는 네 필드 — 지우거나 이름을 바꾸면 화면이 죽는다.
 
         (이 검사만은 수정 전 코드에서도 통과한다. 회귀를 잡는 것이 아니라 **앞으로
         지우지 못하게** 못박는 하위호환 가드다.)"""

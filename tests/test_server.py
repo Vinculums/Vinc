@@ -71,8 +71,45 @@ def _cli_json(argv):
 
 
 def _app(store=None):
-    # 잡 큐를 실제로 돌리되 스토어는 주입(기본 None → 강등).
+    # 잡 큐를 실제로 돌리되 스토어는 주입(기본 None → **조회 거절**, 아래 참조).
     return VincApp(store=store, auth=SessionAuth(_TOKEN))
+
+
+class _EmptyStore:
+    """무엇을 물어도 빈 행을 주는 스토어 — "열려는 있고 내용이 없다".
+
+    `store=None`("열리지 않았다")과 **다른 상태**다. 둘을 같은 것으로 다루던 것이
+    이 파일이 오래 갖고 있던 결함이다: 여러 테스트가 `_app()`(무스토어)로 조회
+    라우트를 때리고 200 을 기대했는데, 그게 통한 이유는 `api.query.execute` 가
+    `store=None` 을 받으면 **자기가 스토어를 다시 열어** CLI 와 같은 답을 냈기
+    때문이다. 즉 그 200 은 사이드카가 스토어를 쓴 결과가 아니라 우회로의 산물이고,
+    실제 락 충돌 상황에서는 그 우회로도 실패한다. 이제 조회는 거절되므로(503),
+    "빈 결과"를 보고 싶은 테스트는 빈 스토어를 명시로 준다."""
+
+    driver_name = "fake"
+
+    def reader_view(self): return self
+    def run(self, cypher, params=None): return []
+    def fulltext_search(self, text, top_k, filters=None): return []
+    def vector_search(self, embedding, top_k, filters=None): return []
+    def close(self): pass
+
+
+@contextlib.contextmanager
+def cli_store(store):
+    """CLI 쪽(별도 프로세스 모형)이 열 스토어를 못박는다 — 게이트① 동등성 대조용.
+
+    사이드카는 공유 스토어를 들고 있고 CLI 는 매 호출 자기가 연다. 동등성을 보려면
+    **양쪽이 같은 내용을 읽어야** 하는데, 임베디드 DB 는 단일 writer 라 실파일로는
+    동시에 못 연다. 그래서 CLI 가 여는 지점(`api.query.open_store`)을 서버에 주입한
+    것과 같은 대역으로 바꾼다."""
+    import api.query as _query
+    old = _query.open_store
+    _query.open_store = lambda *a, **k: store
+    try:
+        yield
+    finally:
+        _query.open_store = old
 
 
 class AuthTests(unittest.TestCase):
@@ -97,6 +134,36 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj["status"], "degraded")
             self.assertIn("store", obj.get("error", ""))
+
+    def test_no_store_carries_the_open_error(self):
+        """강등이면 **왜** 도 함께 준다 — `EmbeddedBackend.last_open_error`.
+
+        2026-08-14: 확장 경로 문제로 스토어가 안 열렸는데 /health 는 "no reachable
+        store" 한 줄뿐이라 앱이 "지도를 불러오지 못했습니다" 밖에 말할 수 없었다.
+        그 화면은 **빈 그래프와 구분되지 않는다.** 사유는 이미 `last_open_error` 에
+        담겨 stdout 에도 찍히고 있었는데 **읽는 곳이 없었다**."""
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = "RuntimeError: IO exception: Failed to load library"
+        try:
+            with running_server(_app(store=None)) as base:
+                code, obj = _req(base, "/health", token=None)
+                self.assertEqual(code, 200)
+                self.assertEqual(obj["status"], "degraded")
+                self.assertIn("Failed to load library", obj["open_error"])
+        finally:
+            EmbeddedBackend.last_open_error = old
+
+    def test_no_store_without_open_error_stays_quiet(self):
+        # 사유가 없으면 키를 만들지 않는다 — 빈 문자열로 "뭔가 있다"고 오해시키지 않는다.
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = ""
+        try:
+            with running_server(_app(store=None)) as base:
+                self.assertNotIn("open_error", _req(base, "/health", token=None)[1])
+        finally:
+            EmbeddedBackend.last_open_error = old
 
     def test_provision_error_surfaced(self):
         app = VincApp(store=None, auth=SessionAuth(_TOKEN),
@@ -135,8 +202,97 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(_req(base, "/nope", method="POST", body={})[0], 404)
 
 
+class StoreUnavailableReadTests(unittest.TestCase):
+    """**읽을 수 없는 스토어를 빈 스토어로 보고하지 않는다**(2026-08-16).
+
+    실측 재현: 스토어 하나에 사이드카 A 를 띄운 뒤 **같은 스토어**에 사이드카 B 를
+    다른 포트로 띄우면(임베디드 DB 는 단일 writer 라 락 충돌) B 는 기동에 성공하고
+    `/health` 는 정직하게 degraded 를 낸다. 그런데 데이터 라우트는 그러지 않았다 —
+    `GET /graph` 가 **2xx + nodes:0** 이었다. 클라이언트에게 "가진 것이 없다"와
+    "읽을 수 없다"가 같은 답으로 도착했고, 앱에서는 그것이 빈 지도로 그려졌다.
+    데이터 유실과 구분되지 않는 화면이다.
+
+    전수 실측(GET 30개, store 도달 불가)에서 세 가지 거짓말이 나왔다:
+      · 다수가 200 + `executed:false`  — HTTP 만 보면 성공
+      · 7개가 500 `AttributeError: 'NoneType' object has no attribute 'run'`
+      · `/sync/pull-delta` 는 **`executed:true`** + "nothing leaves the device"
+
+    셋 다 `VincApp._read` 한 곳에서 났고, 거기 하나를 막아 셋 다 없앤다."""
+
+    #: 그래프를 읽는 GET 전량(`_route_get` 표 기준). 그래프를 안 읽는 넷은 뺐다 —
+    #: `/themes`·`/types`(어휘 JSON) · `/connect/status`(인메모리) · `/plan/*`(순수
+    #: 플랜 빌더) · `/jobs/*`(잡 상태). 그것들은 스토어가 죽어도 답하는 게 맞다.
+    READ_ROUTES = [
+        "/recall?query=x&owner=u", "/domains?owner=u", "/view?owner=u",
+        "/ledger?owner=u", "/share?owner=u", "/coupling?owner=u&a=a&b=b",
+        "/promote-candidates?owner=u", "/suggest-ties?owner=u&node=concept:a",
+        "/diagnose?owner=u", "/merge-candidates?owner=u", "/merge-rejections?owner=u",
+        "/neighbors?owner=u&node=concept:a",
+        "/path?owner=u&a=concept:a&b=concept:b", "/learner?owner=u",
+        "/graph?owner=u&layout=none", "/search?query=x", "/decide?topic=t",
+        "/doc?id=d1", "/docs?owner=u", "/conventions?owner=u", "/nav-tree?owner=u",
+        "/doc/highlights?doc_id=d1&concept_id=concept:a",
+        "/doc/context?owner=u&doc_id=d1",
+        "/node-context?owner=u&node=concept:a",
+        "/edge-context?owner=u&src=concept:a&dst=concept:b&type=RELATED_TO",
+        "/ledger-drilldown?owner=u&domain=d&mark=m",
+        "/docs-in-range?owner=u&start=2020-01-01&end=2030-01-01",
+        "/sync/domains?owner=u", "/sync/pull-delta?owner=u",
+        "/sync/docs-export?owner=u", "/embed/pending",
+    ]
+
+    def test_read_routes_refuse_instead_of_answering_empty(self):
+        # `api.query.open_store` 도 막는다 — 안 그러면 조회가 **자기 스토어를 다시
+        # 열어** 우회한다(그게 원래 이 버그가 200 으로 보이던 이유다). 락 충돌
+        # 상황에서는 그 재열기도 실패하므로, 이 대역이 실측 상황과 같은 조건이다.
+        with cli_store(None), running_server(_app(store=None)) as base:
+            for path in self.READ_ROUTES:
+                code, obj = _req(base, path)
+                self.assertEqual(code, 503, f"{path} 가 읽을 수 없는 스토어에 {code} 로 답했다")
+                self.assertFalse(obj.get("executed", False), path)
+                self.assertEqual(obj.get("error"), "no reachable store", path)
+                # 빈 성공 페이로드를 함께 싣지 않는다 — 상태만 오류이고 바디에
+                # `nodes:[]`·`rows:[]` 가 있으면 그 필드를 읽는 쪽은 그대로 속는다.
+                for empty_field in ("nodes", "rows", "chunks", "docs", "items"):
+                    self.assertNotIn(empty_field, obj, f"{path} 가 {empty_field} 를 실었다")
+
+    def test_refusal_carries_the_open_error(self):
+        """거절만 하고 이유를 안 주면 사람은 다시 `/health` 로 물으러 가야 한다."""
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = (
+            "RuntimeError: IO exception: Could not set lock on file (Error: 33)")
+        try:
+            with cli_store(None), running_server(_app(store=None)) as base:
+                code, obj = _req(base, "/graph?owner=u&layout=none")
+                self.assertEqual(code, 503)
+                self.assertIn("Could not set lock", obj["open_error"])
+        finally:
+            EmbeddedBackend.last_open_error = old
+
+    def test_health_still_answers_200(self):
+        """조회가 503 이어도 **`/health` 는 200 이다.**
+
+        릴리스 게이트(release.yml "Smoke test sidecar")가 `/health` 의 status 를
+        본다. 여기까지 503 으로 만들면 살아 있는 사이드카가 죽은 것으로 보이고,
+        기동 프로브를 도는 셸·오케스트레이터가 멀쩡한 프로세스를 재기동시킨다.
+        진단은 답하고 데이터는 거절한다 — 그 조합이 계약이다."""
+        with cli_store(None), running_server(_app(store=None)) as base:
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "degraded")
+
+    def test_open_store_is_still_the_signal_for_a_live_store(self):
+        # 스토어가 열려 있으면 같은 라우트가 정상 200 이다 — 503 이 상시로 켜져
+        # 있으면 이 계약은 아무것도 못 막는다(거절이 기본값이 되면 신호가 아니다).
+        with running_server(_app(store=_EmptyStore())) as base:
+            code, obj = _req(base, "/graph?owner=u&layout=none")
+            self.assertEqual(code, 200)
+            self.assertTrue(obj["executed"])
+
+
 class EquivalenceTests(unittest.TestCase):
-    """게이트 ① — 강등 결정론에서 HTTP 응답 dict == CLI 산출 dict."""
+    """게이트 ① — HTTP 응답 dict == CLI 산출 dict."""
 
     GET_CASES = [
         ("/recall?query=x&owner=u&limit=3", ["recall", "--query", "x", "--owner", "u", "--limit", "3"]),
@@ -160,15 +316,20 @@ class EquivalenceTests(unittest.TestCase):
         ("/activate", {"owner": "u"}, ["activate", "--owner", "u"]),
     ]
 
+    # ⚠ 양쪽 다 **스토어가 열린** 조건에서 대조한다(`_EmptyStore` 독스트링).
+    # 전에는 둘 다 무스토어 강등으로 맞춰 봤는데, 그 조건에서 HTTP 가 CLI 와 같은
+    # 답을 낸 것은 조회 경로가 스토어를 몰래 다시 열었기 때문이었다. 그 우회로를
+    # 막은 지금은 열린 스토어에서 대조하는 것이 원래 재려던 것에 더 가깝다 —
+    # 강등 봉투가 아니라 **실행된 응답**이 같은지를 본다.
     def test_get_endpoints_match_cli(self):
-        with running_server(_app()) as base:
+        with running_server(_app(store=_EmptyStore())) as base, cli_store(_EmptyStore()):
             for path, argv in self.GET_CASES:
                 code, http_obj = _req(base, path)
                 self.assertEqual(code, 200, path)
                 self.assertEqual(http_obj, _cli_json(argv), f"불일치: {path}")
 
     def test_post_endpoints_match_cli(self):
-        with running_server(_app()) as base:
+        with running_server(_app(store=_EmptyStore())) as base, cli_store(_EmptyStore()):
             for path, body, argv in self.POST_CASES:
                 code, http_obj = _req(base, path, method="POST", body=body)
                 self.assertEqual(code, 200, path)
@@ -199,7 +360,9 @@ class CursorRouteTests(unittest.TestCase):
         """게이트① 동등성의 동적 케이스 — 커서 값이 불투명해 GET_CASES 에 못 놓는다.
         HTTP 는 상태만 400 으로 다르고 **바디는 CLI stdout 과 동일**해야 한다
         (오류 판정이 q.search 한 곳에서만 이뤄진다는 증거)."""
-        with running_server(_app()) as base:      # 무스토어 강등 — CLI 와 같은 조건
+        # 스토어는 열려 있어야 한다 — 안 열렸으면 커서를 보기도 전에 503 이다
+        # (그게 옳다: 읽을 수 없는 스토어에 커서 유효성은 물을 것이 못 된다).
+        with running_server(_app(store=self._Store())) as base, cli_store(self._Store()):
             code, obj = _req(base, "/search?query=x&cursor=junk")
             self.assertEqual(code, 400)
             self.assertEqual(obj, _cli_json(
@@ -226,7 +389,9 @@ class ResponsivenessTests(unittest.TestCase):
     """게이트 ② — 긴 잡이 워커를 점유한 동안에도 조회가 막히지 않는다."""
 
     def test_read_responds_while_job_running(self):
-        app = _app()
+        # 스토어를 실제로 준다 — 재려는 것은 "조회가 쓰기 큐에 막히지 않는가"이고,
+        # 무스토어면 큐에 닿기도 전에 503 이라 그 질문이 검사되지 않는다.
+        app = _app(store=_EmptyStore())
         release = threading.Event()
         started = threading.Event()
 
@@ -507,11 +672,11 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
 class IngestRouteTests(unittest.TestCase):
     """POST /ingest — 적재 단일화(2026-07-11): 레거시 fragment 경로(Record/props,
     api/fragment.merge_fragment)로 수렴. 테마 적재(Entity/TYPED)는 휴면. MERGE
-    create/match 판별·상세 계약은 tests/test_atlas.py 가 커버(여기선 HTTP 왕복)."""
+    create/match 판별·상세 계약은 tests/test_view.py 가 커버(여기선 HTTP 왕복)."""
 
     class _Store:
         """레거시 merge_fragment 는 store.run(cypher, params)->list 를 쓴다(count 는
-        빈 리스트=신규). test_atlas 의 더블과 동형 — HTTP 왕복만 검증한다."""
+        빈 리스트=신규). test_view 의 더블과 동형 — HTTP 왕복만 검증한다."""
         driver_name = "fake"
         def run(self, cypher, params=None):
             return []
@@ -1123,7 +1288,7 @@ class FailureEnvelopeTests(unittest.TestCase):
 
     def test_decide_는_정확_일치라는_것을_말한다(self):
         """`topic` 은 concept_id·bridge_id·title 정확 일치다. 부분 일치가 아니라서
-        `atlas` 는 안 맞고 `concept:atlas` 라야 맞는데, 그 계약이 어디에도 없었다."""
-        res = self._get("/decide?topic=atlas&owner=u")
+        `view` 는 안 맞고 `concept:view` 라야 맞는데, 그 계약이 어디에도 없었다."""
+        res = self._get("/decide?topic=view&owner=u")
         self.assertIn("exactly", res["hint"])
-        self.assertIn("concept:atlas", res["hint"], "예시 id 가 없다")
+        self.assertIn("concept:view", res["hint"], "예시 id 가 없다")

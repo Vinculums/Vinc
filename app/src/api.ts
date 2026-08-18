@@ -42,10 +42,15 @@ export const cfg = {
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
   set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
   // D42 — 표면 언어. 무설정 = OS 로케일 추종(ko-* → 한국어), 그 외 영어.
+  // KO 비활성(2026-08-15): EN 카피 재작성이 끝날 때까지 영어만 노출한다(홈페이지와
+  // 동일 조치, Vinc-homepage/site/assets/gnb.js 참조). 재활성화: 아래 return 을 지우면
+  // 원래 판정(저장값 → OS 로케일)이 살아난다. KO 덱(copy.ts)은 재작성 원본으로 보존.
   get lang(): "en" | "ko" {
-    const v = localStorage.getItem(LANG_KEY);
-    if (v === "ko" || v === "en") return v;
-    return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+    return "en";
+    // 재활성화 시 위 return 을 지우고 아래 원래 판정을 살릴 것:
+    // const v = localStorage.getItem(LANG_KEY);
+    // if (v === "ko" || v === "en") return v;
+    // return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
   /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다
@@ -140,7 +145,7 @@ export type Scope = { team: string | null };
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown, scope?: Scope): Promise<any> {
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
-  //   call("/atlas") → /api/graph/atlas · call("/ingest/fragment") → /api/graph/ingest/fragment
+  //   call("/view") → /api/graph/view · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
@@ -169,9 +174,28 @@ async function call(path: string, params?: Record<string, string | number | unde
       location.assign("/login");
       throw new Error("session expired");
     }
+    // 503 = 사이드카는 살아 있는데 **스토어를 못 읽는다**(락 충돌·손상·확장 경로).
+    // 이 하나만 특별히 뜯는 이유: 나머지 실패와 달리 화면이 "데이터가 없다"로
+    // 오독되기 쉬운 유일한 상태이고, 그 오독이 곧 데이터 유실처럼 보인다.
+    // 사이드카가 사유(open_error)를 바디에 실어 주므로 여기서 꺼내 얹는다 —
+    // 안 그러면 호출부는 `503 {…json…}` 문자열만 받아 사람에게 못 보여 준다.
+    if (res.status === 503) {
+      const b = await res.json().catch(() => ({} as any));
+      const err: any = new Error(b?.open_error || b?.error || "no reachable store");
+      err.storeDown = true;
+      err.reason = String(b?.open_error || "");
+      throw err;
+    }
     throw new Error(`${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+/** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
+ *  나머지 실패는 다시 시도하면 되지만, 이건 **빈 결과와 구분되지 않아서** 위험하다. */
+export function storeDownReason(e: unknown): string | null {
+  const err = e as any;
+  return err?.storeDown ? (err.reason || "") : null;
 }
 
 /** 시간축(D72). `recorded` = 기록 시각, `content` = 문서 내용이 가리키는 시점. */
@@ -211,23 +235,6 @@ export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
   items: NodeLink[]; truncated: boolean; executed: boolean;
 };
-export type LedgerRow = {
-  // D52 by=concept: `domain` 은 개념 id, `label` 은 제목, `topic` 은 그 개념의 주제.
-  // by=domain(기본)에서는 `domain` 이 곧 주제이고 label/topic 은 없다.
-  domain: string; label?: string; topic?: string; concepts: number;
-  episodic: number; record: number; unsourced: number;
-  connected: number; gateway: number; orphan: number;
-};
-// D43 ego — /ledger 응답에서 UI 가 읽는 것만. scope·population 은 신형 사이드카의
-// 추가 필드다(구버전 응답엔 키 자체가 없다). seed 를 보냈는데 scope 가 없으면 구
-// 사이드카가 seed 를 무시하고 주제/전체 롤업을 돌려준 것 — UI 가 캡션으로 밝힌다.
-export type LedgerRes = {
-  executed: boolean; rows?: LedgerRow[]; note?: string;
-  scope?: "seed" | "domain" | "all";   // 무엇을 모집단으로 집계했는가(에코)
-  population?: number;                 // scope="seed" 일 때 ego 구성원 수
-  by?: "domain" | "concept";           // D52 — 롤업 알갱이 에코(구 사이드카엔 없다)
-};
-
 /** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
  *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
@@ -246,13 +253,18 @@ export type NavTreeRes = {
 
 export const api = {
   health: () => call("/health"),
-  atlasL0: (owner: string) => call("/atlas", { owner }),
-  graph: (owner: string, opts: { domain?: string; seed?: string; depth?: number; layout?: string } = {}) =>
-    call("/graph", { owner, ...opts }),
-  ledger: (owner: string,
-           opts: { domain?: string; seed?: string; depth?: number;
-                   by?: "domain" | "concept" } = {}): Promise<LedgerRes> =>
-    call("/ledger", { owner, ...opts }),
+  viewL0: (owner: string) => call("/view", { owner }),
+  //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
+  //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).
+  graph: (owner: string, opts: { domain?: string; domains?: string[]; seed?: string;
+                                 depth?: number; layout?: string;
+                                 //: 원뿔 반각 배율(hub 3D). 1 이 기본이라 그때는 안 싣는다 —
+                                 //: 안 싣는 요청이 여태와 같은 URL 이어야 캐시가 갈리지 않는다.
+                                 cone?: number } = {}) => {
+    const { domains, ...rest } = opts;
+    return call("/graph", { owner, ...rest,
+                            ...(domains?.length ? { domains: domains.join(",") } : {}) });
+  },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
@@ -305,6 +317,15 @@ export const api = {
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // 리더 머리 — 이 문서가 **무엇에 걸려 있고**(개념 칩: 문서→노드, 여태 없던 방향)
+  // **어떤 모양인가**(목차), 그리고 검색의 청크 히트가 착지할 오프셋. 세 필드가 전부
+  // 옵셔널인 것은 구 사이드카 강등 규약 — 없으면 그 줄을 안 그린다.
+  docContext: (owner: string, doc_id: string): Promise<{
+    executed: boolean;
+    concepts?: { id: string; title: string; domain: string; count: number }[];
+    sections?: { title: string; level: number; char_start: number }[];
+    chunks?: { index: number; char_start: number }[];
+  }> => call("/doc/context", { owner, doc_id }),
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
   // origin 은 출처 표시(파일 import 시 파일명) — 서버의 doc 정체성 산식에 참여하고
   // 재드롭 식별의 근거가 된다. 조인 키가 아니며 UI 에도 노출하지 않는다(D45).

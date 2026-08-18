@@ -203,7 +203,7 @@ _META_TABLES: dict[str, dict] = {
     # 어딘가 적어 두지 않으면 제안 목록이 영원히 같은 오탐으로 채워진다.
     #
     # **왜 메타 테이블인가**: 기각은 사용자 지식이 아니라 제안 엔진에 대한 판정이다.
-    # 그래프(Concept/Record)에 넣으면 Atlas·검색·동기화·팩에 전부 새어 나가 지식을
+    # 그래프(Concept/Record)에 넣으면 View·검색·동기화·팩에 전부 새어 나가 지식을
     # 오염시킨다. `_Tombstone`/`_EdgeTombstone`/`_DocTombstone` 이 이미 같은 성격
     # (소유 스코프 부정 사실 · 데이터플레인 밖)이라 그 전례를 따른다.
     #
@@ -237,7 +237,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
 #: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
@@ -337,6 +337,10 @@ def migration_statements(from_version: int) -> list[str]:
     # 이미 열었고(`IN_DOMAIN ADD FROM Decision TO Domain`), 빠져 있던 것은 백필의
     # 라벨 표뿐이었다. 그래서 이 버전이 하는 일은 DOMAIN_HIERARCHY_VERSION 을 넘겨
     # **백필을 다시 돌리는 것**이다(위 상수 주석).
+    if from_version < 14:  # v14 — 엣지 출생(`_EDGE_BIRTH_COL` 주석 참조).
+        # 기존 행은 DEFAULT '' 로 채워진다 = 모름. **백필 없음**이 요지다.
+        for rel in EDGE_BIRTH_RELS:
+            stmts.append(f"ALTER TABLE {rel} ADD created STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -349,6 +353,27 @@ def migration_statements(from_version: int) -> list[str]:
 # (1/confidence)의 기반. v3 마이그레이션이 기존 rel 테이블에 ALTER ADD(실측: kuzu
 # 0.11.3 rel 테이블 ALTER ADD+DEFAULT 지원).
 _EDGE_EVIDENCE_COLS: list[tuple[str, str]] = [("evidence", "STRING"), ("confidence", "DOUBLE")]
+
+# v14 — **엣지 출생**(`created`). 노드에는 이 열이 처음부터 있었는데 관계에는 없어서,
+# "언제 이어졌는가"를 물을 자리가 아예 없었다. 그 공백의 값은 화면이 아니라 **재생**에
+# 있다: 토픽 공간에서 노드 위치는 도메인 경로와 연결 수의 함수라, 과거 어느 시점의
+# 그래프를 다시 그리는 일은 대부분 **엣지를 다시 그리는 일**이다. 노드 출생만으로는
+# 못 한다(vinc.research.fourth-dimension M2).
+#
+# **저작된 관계에만 붙인다.** CROSSES(bridge→domain)는 브릿지 정의의 구조적 일부이고,
+# IN_DOMAIN 은 `domain` 열에서 파생돼 백필이 다시 만들며, MENTIONS 는 문서 재링크가
+# 다시 만든다 — 파생물의 출생은 "마지막으로 다시 만든 때"라 뜻이 없다.
+#
+# 쓰기는 `ON CREATE SET`(2026-08-17 실엔진 확인: 지원하고, 재-MERGE 에서 안 덮으며,
+# 평범한 SET 과 한 문장에 섞인다). 그래서 "이미 있는가"를 되묻는 추가 조회가 없다.
+# 구 엣지는 **백필하지 않는다** — '' 는 모른다는 뜻이고, 오늘을 찍으면 모든 옛 관계가
+# 마이그레이션한 날에 태어난 것이 된다(v7 이 같은 이유로 안 한 것과 같은 규율).
+_EDGE_BIRTH_COL: tuple[str, str] = ("created", "STRING")
+#: 출생 열을 갖는 관계 — DDL·마이그레이션·쓰기 경로가 **이 하나**를 읽는다.
+EDGE_BIRTH_RELS: tuple[str, ...] = (
+    "PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO", "INHERITS_FROM",
+    "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED",
+)
 
 # v12 — **결정은 개념과 같은 층이다.** 그래서 개념이 끝점일 수 있는 자리마다 결정도
 # 끝점일 수 있다. 규칙을 하나로 두는 이유: 특례를 만들면 "결정에는 왜 inherits_from 이
@@ -459,6 +484,10 @@ def render_rel_tables() -> list[str]:
     덕분에 `IN_DOMAIN` 을 라벨 셋으로 쪼개지 않는다."""
     out = []
     for label, src, dst, props in _REL_TABLES:
+        # v14 — 출생 열은 표(EDGE_BIRTH_RELS)에서 파생한다. `_REL_TABLES` 의 props 에
+        # 손으로 적으면 마이그레이션 ALTER 목록과 두 벌이 되고, 언젠가 갈린다.
+        if label in EDGE_BIRTH_RELS:
+            props = list(props) + [_EDGE_BIRTH_COL]
         cols = "".join(f", {p} {t}" for p, t in props)
         srcs = (src,) if isinstance(src, str) else tuple(src)
         dsts = (dst,) if isinstance(dst, str) else tuple(dst)

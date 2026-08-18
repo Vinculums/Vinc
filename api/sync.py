@@ -38,8 +38,14 @@ _SEL_KEY = "selected_domains"
 # 경로(_merge_node)가 쓰는 필드만 왕복 가능하다 — Concept 의 topic/one_liner/status/
 # stem, Episode 의 pinned 은 fragment 가 안 써서(엔진·preference 소관) 동기화하면
 # 유실된다. 그래서 sync 는 왕복 가능한 필드만 나른다(그 외는 기기 로컬로 남는다).
+# `content_time`(D72)은 **저작된 값**이라 여기 든다 — 사용자가 고칠 수 있으므로 두 기기가
+# 정당하게 다를 수 있고, 그러면 노드 타이브레이크가 판단할 일이다(제목·도메인과 같다).
+# 열이 있는 라벨에만 넣는다: Concept 뿐이다(Decision·Episode 에는 열이 없다 — 2026-08-17
+# 실엔진 확인. 넣으면 `_local_snapshot` 의 SELECT 가 Binder 로 죽는다).
+# ⚠ `created`(출생)는 **여기 넣지 않는다.** 편집이 아니라 3-way 병합의 대상이 아니고,
+# 규칙이 다르다(아래 `_reconcile_birth` — 가장 이른 값이 이긴다).
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
-    "Concept": ("title", "domain", "tags", "props"),
+    "Concept": ("title", "domain", "tags", "props", "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
     # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
     # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
@@ -227,6 +233,10 @@ def _concepts_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
         "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, "
         "c.props AS props, c.updated_at AS updated_at, c.rev AS rev, "
+        # D72 두 시간열. 안 실으면 수신 기기가 자기 시각으로 출생을 새로 찍어 같은
+        # 노드가 기기마다 다른 생일을 갖는다(2026-08-17 두 스토어 실측: 1초 차이).
+        # 문서 경로(api/docsync)는 이미 같은 이유로 둘을 싣고 있었다 — 노드만 빠져 있었다.
+        "c.created AS created, c.content_time AS content_time, "
         "c.sync_seq AS sync_seq ORDER BY c.sync_seq"
     )
     return q.QueryPlan("sync_concepts", cypher, params, note="owner+domain scoped delta")
@@ -259,6 +269,9 @@ def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Qu
         f"MATCH (d:Decision) WHERE {' AND '.join(where)} "
         "RETURN d.decision_id AS id, d.title AS title, d.domain AS domain, "
         "d.tags AS tags, d.props AS props, d.updated_at AS updated_at, "
+        # `created` 만 — Decision 에는 `content_time` 열이 **없다**(v12 가 라이브 68건
+        # 실측으로 빈 열을 안 만들었다; 2026-08-17 재확인). 실으면 Binder 로 죽는다.
+        "d.created AS created, "
         "d.rev AS rev, d.sync_seq AS sync_seq ORDER BY d.sync_seq"
     )
     return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
@@ -275,7 +288,11 @@ def _node_from_concept(r: dict) -> dict:
     return {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
+            # 내용 시점은 **본문**으로(3-way 병합 대상), 출생은 **스탬프**로(_ 접두 —
+            # 병합하지 않고 `_reconcile_birth` 가 따로 처리한다).
+            "content_time": r.get("content_time") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
@@ -290,6 +307,7 @@ def _node_from_decision(r: dict) -> dict:
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
@@ -361,7 +379,10 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             if key in seen:
                 continue
             seen.add(key)
-            edges.append({"from": r["id"], "to": tgt, "type": ftype})
+            e = {"from": r["id"], "to": tgt, "type": ftype}
+            if r.get("edge_created"):
+                e["created"] = r["edge_created"]
+            edges.append(e)
 
     # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된
     # 노드의 도메인을 알 수 없으니 owner 전체). 수신측이 부활 가드로 안전 적용.
@@ -422,7 +443,10 @@ def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPla
         f"MATCH (a:{sl})-[r]->(b:{dl}) "
         f"WHERE a.{sp} IN $ids AND b.{dp} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
-        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target"
+        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target, "
+        # v14 — 엣지 출생도 나른다. 안 실으면 수신측에서 그 엣지는 신규라
+        # **그 기기 시각으로 다시 태어난다** — 노드에서 방금 고친 것과 같은 병이다.
+        "r.created AS edge_created"
     )
     return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher, {"ids": ids, "owner": owner},
                        note=f"{sl}->{dl} edges for sync bundle")
@@ -495,6 +519,37 @@ def _local_snapshot(store, label: str, pk: str, nid: str) -> dict | None:
     return snap
 
 
+#: 출생(`created`) 열을 가진 동기화 라벨. Episode 에는 그 열이 **없다**(2026-08-17
+#: 실엔진 확인) — 넣으면 아래 문장이 Binder 로 죽는다.
+_BIRTH_LABELS = ("Concept", "Decision")
+
+
+def _reconcile_birth(store, label: str, pk: str, nid: str, born: str, owner: str) -> None:
+    """노드 출생 시각을 **가장 이른 값으로** 수렴시킨다.
+
+    왜 3-way 병합이 아닌가: 출생은 편집이 아니라서 "충돌"이 뜻을 갖지 않는다. min 은
+    교환·결합·멱등이라 어느 순서로 동기화하든 모든 기기가 같은 값에 닿고 타이브레이크가
+    필요 없다. 뜻도 정직하다 — 어느 기기든 이 노드를 **처음 본 시각**이 그 노드가 이
+    공간에 들어온 때의 최선 추정이다. 빈 값은 이기지 못하므로, 출생을 모르는 기기는
+    들은 값을 받아들인다.
+
+    **모든 인바운드 노드에** 부른다(쓰기가 일어난 것만이 아니라). 병합 결과가 로컬과
+    같으면(`skipped_stale`) 쓰기 자체가 없는데, 그때 건너뛰면 이미 갈라진 출생이 영영
+    만나지 못한다.
+
+    ⚠ `IS NULL` 은 방어적 군더더기가 아니다: 문서 추출 경로가 추적열을 안 찍던 시절의
+    행이 NULL 을 갖고 있다(af7a973 이전). owner 술어도 필수다 — merge_fragment 의
+    SEC-3 가드가 교차테넌트 노드를 건너뛰어도 여기서 id 로만 MATCH 하면 남의 행을
+    고친다(risk-audit 2026-08-05 §3.2, 위 스탬프 루프와 같은 이유)."""
+    if not born or label not in _BIRTH_LABELS:
+        return
+    store.run(
+        f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+        "AND (x.created IS NULL OR x.created = '' OR x.created > $born) "
+        "SET x.created = $born",
+        {"id": nid, "owner": owner, "born": born})
+
+
 def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dict:
     """병합 결과(snapshot)를 merge_fragment 가 쓸 수 있는 노드로. props=dict, tags=list."""
     node = {"id": nid, "type": ntype}
@@ -519,6 +574,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
 
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
+    births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
         label = _SYNC_TYPES.get(ntype or "")
@@ -539,6 +595,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                 continue
             del_tombstone(store, nid)
             out["resurrected"] += 1
+
+        # 삭제가 이긴 노드는 위에서 이미 continue 했다 — 지운 노드의 열을 되살리지
+        # 않으려고 여기서 모은다(부활한 경우는 살아났으므로 포함이 맞다).
+        births.append((label, pk, nid, n.get("_created") or ""))
 
         local = _local_snapshot(store, label, pk, nid)
 
@@ -583,33 +643,47 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         out["executed"] = True
 
     # merge_fragment 가 방금 로컬 스탬프를 찍었으므로, 결정된 스탬프로 덮어쓴다.
+    # owner 술어 필수(risk-audit 2026-08-05 §3.2): merge_fragment 의 SEC-3 가드가
+    # 교차테넌트 노드를 건너뛰어도 이 루프가 owner 없이 id 로만 MATCH 하면 그 노드의
+    # rev/sync_seq 를 그대로 찍어 버려 피해자의 3-way 병합 기준을 조용히 오염시킨다.
     for w in writes:
         node = w["node"]
         label, pk = frag._NODE_MAP[node["type"]]
-        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
+        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                   "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
-                  {"id": node["id"], "ua": w["ua"], "rev": int(w["rev"]),
+                  {"id": node["id"], "owner": owner, "ua": w["ua"], "rev": int(w["rev"]),
                    "seq": revstamp.next_seq(store, owner)})
+    # 출생 화해는 **스탬프 루프 뒤**다: 신규 노드는 방금 merge_fragment 가 수신측
+    # 시각으로 `created` 를 찍었으므로(fragment `_merge_node`), 그 위에 min 을 얹어야
+    # 원본의 출생이 남는다.
+    for label, pk, nid, born in births:
+        _reconcile_birth(store, label, pk, nid, born, owner)
     for nid, label, fields, rev, ua in base_updates:
         set_base(store, nid, label, fields, rev, ua)
 
     # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
     # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
     # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다.
+    # owner 술어 필수(risk-audit §3.2): 없으면 유효한 멤버 키 하나로 남의 concept 을
+    # 지울 수 있다. deleted_at 은 clamp — 인바운드 값이라 공격자가 미래로 조작해
+    # 어떤 재편집도 이기게 만들 수 있으니 서버 클록을 넘지 못하게 한다.
     for t in bundle.get("tombstones") or []:
         tid, tlabel = t.get("node_id"), t.get("label")
         t_da = t.get("deleted_at") or ""
+        if t_da:
+            t_da = min(t_da, revstamp.hlc_now(store))
         # 라벨→PK 를 손으로 적지 않는다 — 동기화 라벨이 늘 때 여기가 빠지면 그
         # 라벨의 삭제가 조용히 전파되지 않는다(v12 Decision 이 그 자리였다).
         pk = _SYNC_PK.get(tlabel or "")
         if not tid or not pk:
             continue
-        cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id RETURN x.updated_at AS ua",
-                        {"id": tid})
+        cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+                        "RETURN x.updated_at AS ua", {"id": tid, "owner": owner})
         if cur and (cur[0].get("ua") or "") > t_da:
             continue                          # 삭제 이후 재편집됨 → 삭제 무시
         if cur:
-            store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id DETACH DELETE x", {"id": tid})
+            store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+                      "DETACH DELETE x", {"id": tid, "owner": owner})
             out["deleted"] += 1
         del_base(store, tid)
         put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
@@ -619,6 +693,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     # 삭제를 무조건 적용한다. '재생성이 삭제를 이긴다'는 별도 경로로 성립:
     # 재생성 기기가 끝점을 스탬프(fragment._stamp_edge_endpoints — 로컬 엣지 툼스톤
     # 상쇄 포함)해 다음 delta 에 엣지가 실려 되돌아온다.
+    # owner 술어 필수(risk-audit §3.2): 양 끝 모두 owner 스코프 — 안 그러면 남의
+    # 관계를 지울 수 있다. _extra_edges_plan 과 같은 술어 패턴.
     for t in bundle.get("edge_tombstones") or []:
         src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
         ep = q.SYNC_EDGE_RELS.get(rel or "")
@@ -631,12 +707,15 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         for sl, sp, dl, dp in ep:
             for s_, d_ in pairs:
                 cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                                f"WHERE a.{sp} = $s AND b.{dp} = $d RETURN count(r) AS c",
-                                {"s": s_, "d": d_})
+                                f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                                "RETURN count(r) AS c",
+                                {"s": s_, "d": d_, "owner": owner})
                 if cnt and int(cnt[0].get("c") or 0):
                     store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                              f"WHERE a.{sp} = $s AND b.{dp} = $d DELETE r",
-                              {"s": s_, "d": d_})
+                              f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                              "AND a.owner_id = $owner AND b.owner_id = $owner DELETE r",
+                              {"s": s_, "d": d_, "owner": owner})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
@@ -726,9 +805,43 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
 
 
+#: 일회성 전량 왕복 표식. 다음에 또 한 번이 필요하면 **키 이름을 올린다**(v2) —
+#: 이력이 남고, 이미 돈 기기가 다시 돌지 않는다.
+_ONESHOT_KEY = "oneshot:birth-resync-v1"
+
+
+def ensure_birth_resync(store) -> bool:
+    """이 스토어에서 **딱 한 번**, 커서 둘을 0 으로 되돌린다. 되돌렸으면 True.
+
+    왜 필요한가: `_reconcile_birth` 는 새 발산을 막을 뿐, **이미 갈라진 행은 못 고친다**
+    — delta 는 커서 이후 변경분만 나르는데 그 노드들은 안 변했다. 그래서 한 번은
+    전량을 오가게 해야 한다.
+
+    왜 커서 리셋인가(전용 '출생 교환' 프로토콜 대신): 전량 왕복은 **최초 동기화가
+    이미 하는 일**이라 코드도 배선도 새로 필요 없다. 값이 실제로 바뀌는 노드가 없으면
+    apply 는 3-way 에서 `skipped_stale` 로 흘러가고 쓰기는 `_reconcile_birth` 뿐이다.
+
+    왜 **둘 다** 0 인가: 수렴이 양방향이라야 한다. pull 만 0 이면 이 기기가 허브의
+    이른 출생을 받아들이지만, 이 기기가 가진 더 이른 출생은 허브로 안 간다(push 는
+    안 변한 노드를 안 싣는다). `run` 이 pull → push 순이므로 한 세션에 둘 다 돈다:
+    허브 것을 받아 min 을 취하고, 그 결과를 도로 올린다.
+
+    표식은 **세션이 끝난 뒤** 찍는다(`run`). 중간에 죽으면 커서가 0 인 채 남아 다음
+    세션이 그대로 다시 한다 — 멱등이라 재실행이 해롭지 않다."""
+    if revstamp._meta_get(store, _ONESHOT_KEY, "") == "done":
+        return False
+    set_cursor(store, "push", 0)
+    set_cursor(store, "pull", 0)
+    return True
+
+
 def run(store, cfg, *, owner: str, remote) -> dict:
     """한 동기화 세션: **pull 먼저**(원격 최신을 받아 병합 후 push — lost-update 창
     최소, 플랜 §6-1) → push. 잡 워커에서 돌아 로컬 쓰기가 단일 writer 로 직렬화된다."""
+    resynced = ensure_birth_resync(store)
     pu = pull_apply(store, cfg, owner=owner, remote=remote)
     ph = push_local(store, cfg, owner=owner, remote=remote)
-    return {"executed": True, "pull": pu, "push": ph}
+    if resynced:
+        # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
+        revstamp._meta_set(store, _ONESHOT_KEY, "done")
+    return {"executed": True, "pull": pu, "push": ph, "birth_resync": resynced}

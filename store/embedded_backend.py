@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextlib import contextmanager
 
 from .config import StoreConfig
@@ -144,30 +145,156 @@ def _driver_kwargs(cfg) -> dict:
     return kwargs
 
 
+def _stable_ext_dir() -> str:
+    """`_MEIPASS` 사본을 두는 **수명이 안정한** 디렉터리 — `~/.vinc/lbug_extensions/<ver>/`.
+
+    데이터 홈(`~/.vinc`, D43 · `store.config.resolve_data_dir`) 밑에 두는 것이 핵심이다.
+    이 경로를 기록하는 것이 **그 밑의 스토어 WAL** 이므로 둘의 수명이 같아야 한다 —
+    스토어가 살아 있는 한 경로도 살아 있고, 홈을 지우면 같이 사라진다.
+
+    드라이버 버전으로 한 칸 더 가른다. 확장 바이너리는 엔진 버전에 묶이고, 앱 업데이트
+    직후에는 **이전 버전 때 쓰인 WAL** 이 아직 남아 있을 수 있다. 그래서 옛 버전 디렉터리는
+    **지우지 않는다** — 수 MB 로 "업그레이드 직후 첫 기동이 안 됨"을 산다."""
+    import os
+    import pathlib
+    try:
+        ver = getattr(__import__("ladybug"), "__version__", "") or "unknown"
+    except Exception:   # noqa: BLE001 — 드라이버 미설치면 어차피 여기까지 안 온다
+        ver = "unknown"
+    return str(pathlib.Path.home() / ".vinc" / "lbug_extensions" / str(ver))
+
+
+def _mirror_to_stable(src: str, fname: str) -> str:
+    """`_MEIPASS` 의 확장 파일을 안정 디렉터리로 한 번 복사하고 그 경로를 준다.
+
+    **왜 이 복사가 필요한가 (2026-08-14 실증).** `LOAD EXTENSION '<절대경로>'` 는 쓰기라
+    **WAL 에 그 절대경로를 문자열 그대로 남긴다**(실측: 깨끗한 종료 후 `db` 에는 0건,
+    급사 후 `db.wal` 에는 확장 수만큼 평문으로 박혀 있다). 다음 열기의 WAL 재생이 그
+    경로로 LOAD 를 **재실행**하고, 실패하면 열기 자체가 중단된다.
+
+    PyInstaller onefile 의 `sys._MEIPASS` 는 **실행마다 바뀌는** `%TEMP%/_MEI<랜덤>` 이다.
+    즉 기동할 때마다 "다음 기동에는 없을지도 모르는 경로"를 WAL 에 심는 셈이다. 깨끗한
+    종료는 체크포인트로 그 기록을 지우지만, 급사하면 남고 — 그 뒤 `_MEI<A>` 가 사라지거나
+    (임시폴더 청소·앱 업데이트·백신 격리) 그 프로세스가 아닌 무언가가 스토어를 열면
+    (dev 파이썬 · `api.cli backup` · MCP CLI) **스토어가 안 열린다. 그리고 영구적이다** —
+    이후 모든 열기가 같은 WAL 을 재생한다. `VINC_WAL_REPLAY_TOLERANT` 는 이 실패를 덮지
+    **못한다**(실측). 남는 복구는 기록된 경로를 되살리거나 `db.wal` 을 버리는 것뿐이다.
+
+    그래서 고칠 것은 로드 방식이 아니라 **경로의 수명**이다. 이름 기반 로드(`LOAD
+    EXTENSION fts`)는 WAL 에 경로를 안 남기지만 `~/.lbdb` 캐시를 타므로 G0(오프라인
+    즉시 동작)를 깬다 — 이 함정을 그것과 맞바꾸지 않는다.
+
+    복사에 실패하면 **원본 경로를 그대로 돌려준다**: 그 편이 오늘 동작(취약하지만 로드는
+    됨)이고, 여기서 None 을 주면 확장이 통째로 강등된다. 나쁜 쪽으로 가더라도 덜 나쁜 쪽."""
+    import os
+    import shutil
+    try:
+        dstdir = _stable_ext_dir()
+        os.makedirs(dstdir, exist_ok=True)
+        dst = os.path.join(dstdir, fname)
+        # 이미 온전한 사본이 있으면 건너뛴다. 크기 비교는 앞선 복사가 중간에 끊긴
+        # 경우(0바이트·잘린 파일)를 잡는다 — 버전 디렉터리가 내용은 이미 갈라 준다.
+        if not (os.path.exists(dst) and os.path.getsize(dst) == os.path.getsize(src)):
+            # 임시로 떨군 뒤 자리로 옮긴다. 두 인스턴스가 동시에 기동해도 서로의
+            # 반쯤 쓰인 파일을 로드하지 않는다(pid 로 이름을 가른다).
+            tmp = f"{dst}.{os.getpid()}.part"
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+        return dst
+    except Exception:   # noqa: BLE001 — 읽기전용 홈·디스크 부족 등
+        return src
+
+
+#: `_volatile_wal_note` 를 이미 부른 WAL 경로. **프로세스당 한 번**만 스캔한다 —
+#: `EmbeddedBackend.open` 은 기동 시 한 번이 아니다(`api/query.py` 의 조회 함수들이
+#: store=None 이면 각자 연다). 매 요청마다 수 MB WAL 을 읽으면 진단이 비용이 된다.
+_WAL_SCANNED: set[str] = set()
+
+#: WAL 안의 휘발성 확장 경로. 앞의 `[^\x00-\x1f]` 는 길이 접두(널 바이트)에서 자연히
+#: 멈춘다 — 그래서 경로만 깔끔히 떨어진다. 고바이트를 막지 않는 이유: 사용자 이름이
+#: 한글이면 `%TEMP%` 경로가 UTF-8 멀티바이트다(ASCII 로 좁히면 그 기계에서만 못 잡는다).
+_WAL_VOLATILE_EXT_RE = re.compile(
+    rb"[^\x00-\x1f]{0,400}_MEI[^\x00-\x1f]{0,300}\.lbug_extension")
+
+
+def _volatile_wal_note(data_dir: str) -> str:
+    """WAL 이 **휘발성 `_MEI…` 확장 경로**를 물고 있으면 사람이 읽을 한 줄. 없으면 ""(빈).
+
+    `_mirror_to_stable` 은 **앞으로 심기는 것**을 막을 뿐, 이미 심긴 것은 못 뺀다.
+    2026-08-14 이전에 패키징본이 급사하며 남긴 WAL 은 여전히 `%TEMP%/_MEI<랜덤>` 을
+    가리키고, 그 디렉터리가 사라지는 순간(임시폴더 청소·앱 업데이트·백신 격리) 또는
+    그 프로세스가 아닌 무언가가 열려는 순간 스토어가 안 열린다. **그리고 영구적이다.**
+
+    그러니 아직 열리는 동안 말해 주는 것이 요점이다 — 그때가 유일하게 값싼 시점이다.
+    깨끗한 종료 한 번이면 체크포인트가 이 기록을 지우고 경고도 같이 사라진다. 이미
+    깨진 뒤에 남는 복구는 기록된 경로를 되살리거나(비손실) `db.wal` 을 버리는 것뿐이고
+    (`VINC_WAL_REPLAY_TOLERANT` 는 이 실패를 **덮지 못한다** — 실측), 후자는 체크포인트
+    안 된 쓰기를 통째로 잃는다.
+
+    진단이 기동을 막지 않는다: 무슨 일이 나도 ""(경고 없음)로 조용히 빠진다."""
+    wal = data_dir + ".wal"
+    try:
+        if not os.path.exists(wal):
+            return ""
+        with open(wal, "rb") as fh:
+            blob = fh.read()
+    except Exception:   # noqa: BLE001 — 진단이 열기를 막지 않는다
+        return ""
+    seen: list[str] = []
+    for m in _WAL_VOLATILE_EXT_RE.finditer(blob):
+        p = m.group(0).decode("utf-8", "replace")
+        if p not in seen:
+            seen.append(p)
+    if not seen:
+        return ""
+    # **존재 여부까지 본다.** "무장됐지만 아직 살아 있다"와 "이번 열기가 곧 깨진다"는
+    # 처방이 다르다 — 전자는 정상 종료 한 번이면 끝나고, 후자는 손으로 되살려야 한다.
+    # 처방은 **상태에 맞는 것 하나만** 준다. 둘 다 늘어놓으면 이미 깨진 사람에게
+    # "정상 종료하세요"를 읽히게 되는데, 그건 할 수 없는 일이다.
+    # (이 문구는 `/health` 의 open_error 로도 나가 화면에 닿을 수 있다 — em-dash 금지.)
+    gone = [p for p in seen if not os.path.exists(p)]
+    if gone:
+        head = f"WAL 이 이미 사라진 확장 경로를 가리킨다(기록 {len(seen)}건 중 유실 {len(gone)}건)"
+        fix = (f"복구: 그 경로에 확장 파일을 되살리거나(비손실), "
+               f"'{wal}' 을 지운다(체크포인트 안 된 쓰기 유실).")
+    else:
+        head = f"WAL 이 휘발성 확장 경로를 물고 있다(기록 {len(seen)}건)"
+        fix = "지금 정상 종료를 한 번 하면 체크포인트가 이 기록을 지운다."
+    return (f"{head}: {(gone or seen)[0]} · 패키징본이 급사하며 남긴 "
+            f"'_MEI<랜덤>' 경로다. {fix}")
+
+
 def _bundled_ext_path(ext: str) -> str | None:
     """번들된 ladybug 확장(`lib<ext>.lbug_extension`) 경로 해석 — G0 오프라인 로드용.
 
     탐색 순서: ① PyInstaller frozen 추출 dir(`sys._MEIPASS/lbug_extensions/`)
     ② `VINC_LBUG_EXT_DIR` env(개발/테스트 오버라이드) ③ 사이드카 실행 파일 옆
     `lbug_extensions/`(onedir·수동 배치). 미발견 시 None → 이름 기반 폴백(dev 는
-    설치본 사용). 경로는 Cypher 문자열 리터럴용으로 슬래시 정규화."""
+    설치본 사용). 경로는 Cypher 문자열 리터럴용으로 슬래시 정규화.
+
+    ⚠ ①만 **안정 디렉터리로 복사한 뒤 그 경로**를 준다 — `_MEIPASS` 는 실행마다 바뀌는데
+    이 경로가 WAL 에 남기 때문이다(사유는 `_mirror_to_stable`). ②③ 은 이미 수명이 안정한
+    경로라 손대지 않는다."""
     import os
     import sys
     fname = f"lib{ext}.lbug_extension"
-    cands: list[str] = []
+    cands: list[tuple[str, bool]] = []   # (디렉터리, 휘발성인가)
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
-        cands.append(os.path.join(meipass, "lbug_extensions"))
+        cands.append((os.path.join(meipass, "lbug_extensions"), True))
     envdir = os.environ.get("VINC_LBUG_EXT_DIR")
     if envdir:
-        cands.append(envdir)
+        cands.append((envdir, False))
     try:
-        cands.append(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "lbug_extensions"))
+        cands.append(
+            (os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "lbug_extensions"), False))
     except Exception:
         pass
-    for d in cands:
+    for d, volatile in cands:
         p = os.path.join(d, fname)
         if os.path.exists(p):
+            if volatile:
+                p = _mirror_to_stable(p, fname)
             return p.replace("\\", "/")
     return None
 
@@ -439,6 +566,13 @@ class EmbeddedBackend:
         if drv is None:
             return None
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
+        # 기동 점검 — WAL 에 남은 휘발성 `_MEI…` 확장 경로(사유는 `_volatile_wal_note`).
+        # **여는 것보다 먼저** 본다: 열기가 그것 때문에 실패하면 아래 except 가 이 문구를
+        # 사유에 덧대야 하는데, 실패한 뒤에 읽으면 드라이버가 파일을 물고 있을 수 있다.
+        wal_note = ""
+        if data_dir not in _WAL_SCANNED:
+            _WAL_SCANNED.add(data_dir)
+            wal_note = _volatile_wal_note(data_dir)
         kwargs = _driver_kwargs(cfg)
         try:
             db = drv.Database(data_dir, **kwargs)
@@ -453,12 +587,22 @@ class EmbeddedBackend:
             # 바꿔 올려 여기 남는 게 코덱 문구뿐이 된다. 그럼 "이유를 삼키지 않는다"
             # 는 이 자리의 목적이 그대로 무산된다(§ _driver_error_text).
             cls.last_open_error = f"{type(exc).__name__}: {_driver_error_text(exc)}"
+            # 이 열기가 **왜** 깨졌는지 아는 경우에는 처방까지 붙인다. 원문("Failed to
+            # load library: …/_MEI…")만으로는 번들이 빠진 것처럼 읽혀 사람을 패키징
+            # 쪽으로 보낸다 — 실제로 필요한 것은 그 경로를 되살리거나 WAL 을 버리는
+            # 것이다. `last_open_error` 에 넣으므로 `/health` 의 open_error 로도 나간다.
+            if wal_note:
+                cls.last_open_error += f" | {wal_note}"
             # stdout 에도 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
             # 예외 문구를 어디서도 못 봤다(배너의 "driver": null 한 줄뿐).
             print(f"[embedded_backend] store open failed: {cls.last_open_error}",
                   flush=True)
             return None
         cls.last_open_error = ""
+        # 열리긴 했다 — 그래도 무장돼 있으면 지금 말한다. **지금이 유일하게 값싼 시점**
+        # 이다(정상 종료 한 번이면 체크포인트가 지운다). 깨진 뒤에 말하면 이미 늦다.
+        if wal_note:
+            print(f"[embedded_backend] ⚠ {wal_note}", flush=True)
         return cls(db, conn, name, cfg)
 
     @contextmanager

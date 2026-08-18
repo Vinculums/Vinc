@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """E4 채점용 도구 셸 — 평가 픽스처 위에서 MCP 도구 하나를 부르고 결과를 낸다.
 
-    python -m scripts.tooluse_shell vinc_neighbors '{"node": "concept:atlas"}'
+    python -m scripts.tooluse_shell vinc_neighbors '{"node": "concept:view"}'
 
 호출은 **진짜 MCP 경로**를 지난다(도구 스키마 → 핸들러 → 브리지 → HTTP → 사이드카).
 픽스처는 고정 디렉터리에 멱등하게 심으므로 호출 간에 답이 변하지 않는다.
