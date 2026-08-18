@@ -69,9 +69,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          # 리눅스·Windows 는 셀프호스티드(GitHub 분 0). macOS 는 **호스티드로 남는다** —
+          # 맥이 없고, `latest.json` 의 darwin 타깃이 자동 업데이트를 물고 있어 뺄 수 없다.
+          # 릴리스 1회 청구분의 대부분이 macOS 10배라는 것도 그대로다(약 $0.64).
+          - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
-          - os: windows-latest
+          - os: [self-hosted, windows, vinc-local]
             triple: x86_64-pc-windows-msvc
           - os: macos-latest
             triple: aarch64-apple-darwin
