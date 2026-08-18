@@ -86,7 +86,13 @@
     "vinc.spec.web-system"
   ],
   "nodes": [
+    "record:decision-columns-measured-from-live-rows",
+    "record:domain-hierarchy-was-a-string-until-v11",
+    "record:edge-birth-v14",
     "record:fact-builtin-extraction-is-headings",
+    "record:isolated-seed-read-back-reported-empty-fields",
+    "record:louvain-projects-one-node-table",
+    "record:rel-tables-take-multiple-endpoint-pairs",
     "record:vinc-tests-need-a-clean-interpreter-on-windows"
   ]
 }

@@ -37,16 +37,10 @@ _NODE_TABLES: dict[str, dict] = {
         # v7(D72) — 내용 시점. `created` 는 "이 노드가 언제 생겼나"이고 이것은
         # "이 노드가 말하는 일이 언제 있었나"다. 둘은 다른 축이라 겹쳐 쓰지 않는다.
         ("content_time", "STRING")]},
-    # v12 — **결정(Decision)**. "그때 내린 판단"은 개념이 아니다: 개념은 지금도 참인
-    # 것을 말하고, 결정은 그 시점에 고른 것을 말한다. 여태 이것은 `concept:dec-*` 라는
-    # **id 접두 관례**로만 표현됐고, 그 관례를 코드가 알아야 해서 병합 후보 탐지에
-    # 구조 가드(query._DEC_CONCEPT_PREFIX)가 박혀 있었다 — 관례가 타입 노릇을 하고
-    # 있었다는 뜻이다. 타입을 만들면 그 가드가 필요 없어진다.
-    #
-    # 열은 라이브 68건 **실측**으로 정했다(2026-08-09): title·domain·tags·props·
-    # created 가 68/68, status·stem·topic·one_liner·source_file·content_time 은 0/68.
-    # 빈 열은 만들지 않는다(모듈 docstring: 투기적 열 금지). `tenant_id` 도 뺀다 —
-    # Record 에 있지만 쓰기 경로가 'tenant:local' 상수를 박을 뿐이라 값이 없다.
+    # v12 — **결정(Decision)**. 개념은 지금도 참인 것을, 결정은 그때 고른 것을 말한다.
+    # 열은 라이브 실측으로 고른 것만 둔다(투기적 열 금지) — 왜 이 여섯인지는
+    # [[record:decision-columns-measured-from-live-rows]], 의미층 규칙은
+    # [[vinc.spec.dataplane §2.4]].
     "Decision": {"pk": "decision_id", "cols": [
         ("decision_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
         ("domain", "STRING"), ("tags", "STRING[]"), ("created", "STRING"),
@@ -80,48 +74,29 @@ _NODE_TABLES: dict[str, dict] = {
         # int 로 뽑고 activate 가 `n={}` 로 표시(§5-2 감사정정: 리스트 아님).
         ("observations", "INT64")]},
     # embed_pipeline + api/docstore — 벡터 차원은 provision 시 주입({dim}).
-    # HAS_CHUNK(→PM) 제외. v4(D45 — Chunk=SSoT): Chunk 가 사용자 원문 텍스트의
-    # **정본**으로 승격됨에 따라
-    #   owner_id            : 소유 스코프 편입(SEC-1 격리 + 계정삭제 purge 캐스케이드.
-    #                         '' = docstore 이전 레거시 청크 — Bridge v2 전례와 동일,
-    #                         파일 배치 파생물이라 소유 원천이 없어 백필하지 않는다)
-    #   char_start/char_end : 문서 내 문자 오프셋(반개구간). doc_id 로 묶어
-    #                         chunk_index 순 연결 시 **무손실 복원**의 근거.
-    #                         -1 = 레거시(오프셋 미기록 — 복원 불가, 검색만).
-    # source_file 은 조인 키에서 **출처 표시(origin)로 강등** — 문서 정체성은 doc_id
-    # (_DocMeta)가 정본이다. 열 이름은 하위호환 위해 유지.
+    # v4(D45): Chunk 가 원문의 **정본**이 되며 얻은 두 열 —
+    #   owner_id            : 소유 스코프(격리 + 계정삭제 purge). '' = 레거시, 백필 안 함
+    #   char_start/char_end : 문자 오프셋(반개구간). **무손실 복원**의 근거. -1 = 레거시
+    # source_file 은 조인 키가 아니라 출처 표시다 — 문서 정체성의 정본은 `doc_id`.
+    # 계약: [[vinc.canon.chunk-ssot]] · 열의 계보는 [[vinc.spec.dataplane §7]].
     "Chunk": {"pk": "chunk_id", "cols": [
         ("chunk_id", "STRING"), ("source_file", "STRING"), ("doc_id", "STRING"),
         ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
         ("embedding", "FLOAT[{dim}]"),
         ("owner_id", "STRING"), ("char_start", "INT64"), ("char_end", "INT64")]},
-    # v8 — **부모-자식 벡터**. 청크 하나에 벡터 여러 개를 단다.
-    #
-    # 왜: 저장 청크(2000자)와 모델 입력 상한(512토큰)의 단위가 다르다. 한 벡터만 두면
-    # 앞 512토큰만 임베딩되고 나머지가 조용히 버려진다(실측: 한국어 42.6% · 영어 12.3%).
-    # 청크를 토큰 기준으로 다시 자르는 길도 있지만 그건 정본(Chunk=SSoT, D45)을 전부
-    # 다시 쓰는 일이고 개념 링크(MENTIONS)를 −2.5%/−10% 깎는다.
-    #
-    # 그래서 **청크는 그대로 두고 벡터만 쪼갠다**. 검색 품질은 재청킹과 **같다**(같은
-    # 조각을 같은 모델로 인코딩하므로 벡터 집합이 문자 그대로 동일 — 실측 nDCG 0.659
-    # vs 재청킹 0.659, 현행 0.601). MENTIONS·발췌·주제 유도는 기준선 그대로다.
-    #
-    # ⚠ 임베딩할 때만 조각내 **평균**하는 더 싼 안도 재 봤는데 기준선보다 나빴다
-    # (전체 0.535 vs 0.601, 한국어 −0.092). 2000자 안의 서로 다른 내용이 평균에서
-    # 뭉개진다 — 지름길은 없다.
-    #
-    # `Chunk.embedding` 은 v8 이후 **읽지 않는다**(열은 남긴다 — 드롭이 위험하고, 남아도
-    # 해롭지 않다). 벡터 인덱스도 이 테이블로 옮긴다. FTS 는 Chunk.text 에 그대로.
+    # v8 — **부모-자식 벡터**: 청크 하나에 벡터 여러 개. 저장 단위(청크)와 모델 입력
+    # 상한(512토큰)이 달라서, 청크는 그대로 두고 벡터만 쪼갠다. `Chunk.embedding` 은
+    # v8 이후 **읽지 않는다**(열은 남긴다 — 드롭이 위험하다). 벡터 인덱스는 이 테이블,
+    # FTS 는 Chunk.text 그대로.
+    # 왜 재청킹도 평균도 아닌지, 실측 수치: [[vinc.spec.dataplane §2]].
     "ChunkVec": {"pk": "vec_id", "cols": [
         ("vec_id", "STRING"),            # f"{chunk_id}#{seq:03d}" — 위치 안정
         ("chunk_id", "STRING"), ("doc_id", "STRING"), ("owner_id", "STRING"),
         ("seq", "INT64"), ("embedding", "FLOAT[{dim}]")]},
-    # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2 · engines/
-    # fragment_ingest). 레거시 4타입(concept/domain/bridge/episode)은 전용 테이블
-    # 유지; 어휘 밖 신규 타입은 여기로 exact-id MERGE 된다. `type` 은 theme 어휘가
-    # SSoT(여기 저장은 값). `theme_id` 는 노드 소유 = 주제 귀속(THEME-DEEP §6)을
-    # 스키마에 각인. (구 D11 §5 의 Record/props 경로는 공존 — api/fragment.py.)
+    # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2). 어휘 밖 타입은
+    # 여기로 exact-id MERGE 된다. `type` 은 값일 뿐이고 어휘의 정본은 theme 파일이다
+    # ([[vinc.canon.vocabulary-model]] · [[vinc.spec.dataplane §2.3]]).
     "Entity": {"pk": "entity_id", "cols": [
         ("entity_id", "STRING"), ("type", "STRING"), ("title", "STRING"),
         ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
@@ -132,17 +107,16 @@ _NODE_TABLES: dict[str, dict] = {
 #   updated_at: HLC 문자열(스토어 내 단조) — 같은 필드 충돌의 타이브레이크.
 #   rev       : 인과적 백업 순서(updated_at 동률 시).
 #   sync_seq  : owner별 단조 카운터 — pull delta(since) 커서.
-# default 는 ALTER 백필용(Kùzu 0.11.3 ADD+DEFAULT 로 기존 행 채움, 실측 확인).
+# default 는 ALTER 백필용. 셋이 어떻게 병합에 쓰이는지는 [[vinc.spec.dataplane §6.1]].
 _TRACK_COLS: list[tuple[str, str, str]] = [   # (col, type, default-literal)
     ("updated_at", "STRING", "''"),
     ("rev", "INT64", "0"),
     ("sync_seq", "INT64", "0"),
 ]
-# owner 스코프 + 사용자 저작 콘텐츠(=동기화 단위). Domain 은 bare 구조 노드(필드 없음),
-# Chunk/SkillExecution/LearnerPattern 은 동기화 제외(로그·파생) → 추적열 없음.
-# ⚠ D45 로 Chunk 가 SSoT(정본 텍스트)가 되면서 **동기화 편입이 예정**돼 있다(P3 —
-# 텍스트만 동기화, embedding 은 기기별 재생성: 벡터가 번들 3MB 한계를 잠식하므로).
-# 그때 _TRACKED_LABELS 에 "Chunk" 추가 + 마이그레이션 스텝으로 추적열 백필.
+# owner 스코프 + 사용자 저작 콘텐츠(=동기화 단위). Domain 은 bare 구조 노드,
+# Chunk/SkillExecution/LearnerPattern 은 추적열 없음. **Chunk 가 정본 텍스트인데도
+# 여기 없는 것은 누락이 아니다** — 문서는 doc 단위 자기 채널로 동기화한다
+# ([[vinc.spec.dataplane §2.1]] · [[vinc.canon.chunk-ssot]]).
 _TRACKED_LABELS: tuple[str, ...] = ("Concept", "Episode", "Record", "Bridge", "Entity",
                                     "Decision")   # v12
 
@@ -164,68 +138,56 @@ _META_TABLES: dict[str, dict] = {
         ("node_id", "STRING"), ("label", "STRING"), ("owner_id", "STRING"),
         ("deleted_at", "STRING"), ("rev", "INT64"), ("sync_seq", "INT64"),
         ("origin", "STRING")]},
-    # 엣지 삭제 표식(S4 확장, 2026-07-19) — 노드와 달리 엣지는 타임스탬프가 없어
-    # 하드삭제만으론 수신측에서 부활한다(상대 사본이 다음 delta 에 실려 재 MERGE).
-    # ekey = "src|REL|dst". 동기화 rel(CC 4종+ABOUT)만 기록 의미가 있다.
+    # 엣지 삭제 표식 — 엣지는 타임스탬프가 없어 하드삭제만으론 수신측에서 부활한다.
+    # ekey = "src|REL|dst", 동기화 rel(CC 4종+ABOUT)만 의미가 있다
+    # ([[vinc.spec.dataplane §6.1]]).
     "_EdgeTombstone": {"pk": "ekey", "cols": [
         ("ekey", "STRING"), ("src", "STRING"), ("rel", "STRING"), ("dst", "STRING"),
         ("owner_id", "STRING"), ("deleted_at", "STRING"), ("sync_seq", "INT64"),
         ("origin", "STRING")]},
-    # 문서 정체성 레지스트리(D45 — Chunk=SSoT). **본문은 없다** — 정본 텍스트는 오직
-    # Chunk.text(오프셋 연결)뿐이고, 여기는 doc 단위 정체성·변경감지 메타만 둔다:
+    # 문서 정체성 레지스트리(D45). **본문은 없다** — 정본 텍스트는 Chunk.text(오프셋
+    # 연결)뿐이고 여기는 doc 단위 정체성·변경감지 메타다([[vinc.canon.chunk-ssot]]):
     #   doc_id       : 내재 식별자(경로 아님) — MENTIONS·증분·묶음의 조인 키.
     #   content_hash : 정본 텍스트 sha256 — 변경감지(무변경 재적재 스킵)·복원 검증.
     #   origin       : 출처 표시(구 source_file 역할) — 조인에 쓰지 않는 참고 정보.
     "_DocMeta": {"pk": "doc_id", "cols": [
         ("doc_id", "STRING"), ("owner_id", "STRING"), ("title", "STRING"),
         ("origin", "STRING"), ("content_hash", "STRING"), ("chunk_count", "INT64"),
-        # updated_at = 단조 HLC(스토어 내), sync_seq = owner별 delta 커서(P3 — 문서
-        # 단위 동기화). Chunk 자체는 로컬 파생물로 두고 doc 단위로만 동기화한다
-        # (텍스트만 전송, embedding 은 수신측 재생성 — 벡터가 번들 한계를 잠식).
-        # needs_embed(D45-E 후속3) = 1 이면 이 문서 청크가 임베딩 없이 적재됨(앱 내
-        # 편집·동기화 수신 경로는 FTS 즉시·벡터 지연). 백그라운드 재임베딩 잡이 채운다.
+        # updated_at = 단조 HLC, sync_seq = owner별 delta 커서. **문서는 doc 단위로만
+        # 동기화된다**(텍스트만 전송, embedding 은 수신측 재생성 —
+        # [[vinc.spec.dataplane §6.2]]). needs_embed=1 이면 임베딩 없이 적재된 문서고
+        # (FTS 즉시·벡터 지연) 백그라운드 재임베딩 잡이 채운다.
         ("updated_at", "STRING"), ("sync_seq", "INT64"), ("needs_embed", "INT64"),
-        # v7(D72) — 시간축 이원화. 여태 문서에 남는 시각은 `updated_at`(수정 시각)
-        # 하나뿐이라, 문서를 고칠 때마다 "언제 만든 글인가"가 지워졌다.
+        # v7(D72) — 시간축 이원화. `updated_at` 하나뿐이던 시절엔 문서를 고칠 때마다
+        # "언제 만든 글인가"가 지워졌다.
         #   created_at   : **최초 1회만** 기록하고 편집이 보존한다(HLC).
-        #   content_time : 문서 *내용*이 가리키는 시점(1905년 상대성이론 같은).
-        #                  자유 문자열이되 `YYYY[-MM[-DD]]` 접두 검증 통과분만 저장 —
-        #                  비교·버킷이 전부 문자열 사전식이라 형식이 곧 계약이다.
-        # 둘 다 '' 가 합법이다(레거시 행·미입력). 소비처는 없으면 없다고 말한다.
+        #   content_time : 내용이 가리키는 시점. `YYYY[-MM[-DD]]` 접두 통과분만 저장 —
+        #                  비교·버킷이 문자열 사전식이라 형식이 곧 계약이다.
+        # 둘 다 '' 가 합법이다(레거시·미입력) — 없으면 없다고 말한다
+        # ([[vinc.spec.dataplane §7]]).
         ("created_at", "STRING"), ("content_time", "STRING")]},
-    # 문서 삭제 표식(P3) — _DocMeta 하드삭제만으론 상대 사본이 다음 delta 에 실려
-    # 부활한다. doc 단위 동기화의 삭제 전파용. 재생성(put_doc)이 상쇄한다.
+    # 문서 삭제 표식 — 하드삭제만으론 상대 사본이 다음 delta 에 실려 부활한다
+    # (엣지 툼스톤과 같은 병 · [[vinc.spec.dataplane §6.2]]).
     "_DocTombstone": {"pk": "doc_id", "cols": [
         ("doc_id", "STRING"), ("owner_id", "STRING"), ("deleted_at", "STRING"),
         ("sync_seq", "INT64")]},
-    # v10(F10-b) — 병합 후보 **기각 기억**. merge_candidates 는 결정론이라, 사용자가
-    # "이 둘은 다른 것"이라고 판정해도 다음 호출에 같은 쌍을 또 올린다. 그 판정을
-    # 어딘가 적어 두지 않으면 제안 목록이 영원히 같은 오탐으로 채워진다.
-    #
-    # **왜 메타 테이블인가**: 기각은 사용자 지식이 아니라 제안 엔진에 대한 판정이다.
-    # 그래프(Concept/Record)에 넣으면 View·검색·동기화·팩에 전부 새어 나가 지식을
-    # 오염시킨다. `_Tombstone`/`_EdgeTombstone`/`_DocTombstone` 이 이미 같은 성격
-    # (소유 스코프 부정 사실 · 데이터플레인 밖)이라 그 전례를 따른다.
-    #
-    #   pair_key : f"{owner}|{a}|{b}" — a,b 는 **정렬된** id 쌍이라 (a,b)·(b,a) 가
-    #              같은 한 행이 된다. owner 를 키에 넣는 이유는 SEC-1 편집증이다:
-    #              키가 (a,b) 뿐이면 다른 소유자의 MERGE 가 이 행의 owner_id 를
-    #              덮어써 남의 기각을 조용히 가져간다.
-    #   note     : 왜 기각했는지(선택). 되살릴 때 근거가 남는다.
-    # ⚠ `_META_TABLES` 는 논리 이관(node_table_specs)·동기화 대상이 아니다 — 기각은
-    # 기기 로컬 판정으로 남고 스토어 이관 시 유실된다(자문 성격이라 허용).
+    # v10(F10-b) — 병합 후보 **기각 기억**. 기각은 사용자 지식이 아니라 제안 엔진에
+    # 대한 판정이라 그래프가 아니라 메타 테이블에 둔다(툼스톤 3종과 같은 신분).
+    #   pair_key : f"{owner}|{a}|{b}" — a,b 는 **정렬**돼 (a,b)·(b,a) 가 한 행이 된다.
+    #              owner 를 키에 넣지 않으면 남의 MERGE 가 이 행의 owner_id 를 덮는다.
+    #   note     : 왜 기각했는지(선택).
+    # ⚠ 메타 테이블은 논리 이관·동기화 대상이 아니다 — 기각은 기기 로컬로 남고 스토어
+    # 이관 시 유실된다(자문 성격이라 허용). 근거: [[vinc.spec.dataplane §2.5]].
     "_MergeRejection": {"pk": "pair_key", "cols": [
         ("pair_key", "STRING"), ("owner_id", "STRING"),
         ("a_id", "STRING"), ("b_id", "STRING"),
         ("rejected_at", "STRING"), ("note", "STRING")]},
 }
 
-# owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge(계정 삭제 캐스케이드)의 SSoT.
-# _NODE_TABLES 에서 파생하므로 새 라벨에 owner_id 가 붙으면 자동 포함된다(v2 에서
-# Bridge, v4 에서 Chunk 가 소유 스탬프를 얻어 purge 가 즉시 커버 — 파생 설계의 실증).
-# Domain/SkillExecution 은 owner_id 가 없어(구조·로그 노드) 여기 안 든다 — 소유로 못
-# 가른다. Chunk 는 D45(SSoT 승격)로 편입 — 정본 텍스트가 계정삭제에 반드시 지워져야
-# 하므로 필수(레거시 '' 소유 행은 파일 파생물이라 스코프 매칭에서 자연 제외).
+# owner_id 열을 가진 노드 라벨 — 소유 스코프 삭제/purge 의 SSoT. **손으로 적은 목록이
+# 아니라 _NODE_TABLES 파생이다**: 새 라벨에 owner_id 가 붙으면 purge 가 자동으로
+# 커버한다(v2 Bridge · v4 Chunk 가 그 실증). Domain/SkillExecution 은 owner_id 가
+# 없어 소유로 못 가른다. 근거: [[vinc.spec.dataplane §2.1]] · 격리 규칙은 §5.
 def owner_scoped_labels() -> list[str]:
     """owner_id 열을 선언한 노드 라벨(선언 순서). 소유 스코프 purge 의 대상 집합."""
     return [lbl for lbl, spec in _NODE_TABLES.items()
@@ -239,23 +201,19 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
 SCHEMA_VERSION = 14
 
-#: v9 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
-#: Episode 의 `props.date`/`props.summary` → 동명 열 백필을 한 번 돌린다.
-#: 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON 파싱이 필요해
-#: Cypher 로는 못 쓴다). 버전 상수를 여기 두는 이유: 스키마 버전과 그 버전이
-#: 요구하는 데이터 스텝이 떨어져 있으면 다음 bump 때 조용히 빠진다.
+#: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
+#: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON
+#: 파싱이 필요해 Cypher 로는 못 쓴다). 상수가 스키마 버전 **옆에** 있는 이유는
+#: [[vinc.spec.dataplane §7]] — 떨어져 있으면 다음 bump 에서 조용히 빠진다.
 EPISODE_TIME_BACKFILL_VERSION = 9
 
-#: v11 — **데이터 마이그레이션**(DDL 아님). 이 버전 미만에서 올라오는 스토어에만
-#: 기존 노드의 `domain` 열 → Domain 노드·PARENT_OF·IN_DOMAIN 파생을 한 번 돌린다.
-#: 구현은 `engines.domain_hierarchy.backfill`(문자열을 잘라 노드·엣지를 만들어야 해서
-#: Cypher 로는 못 쓴다). 부팅에 두는 이유는 v9 와 같다: 사이드카가 DB 락을 쥐고 있어
-#: 별도 프로세스로는 스토어를 못 연다. 멱등이라 중간에 죽어도 다음 기동이 마무리한다.
-#: ⚠ v12 에서 13 으로 올린다. v12 가 의미층(Decision)을 하나 늘렸는데 계층 백필의
-#: 라벨 표(engines.domain_hierarchy.DOMAIN_LABELS)에는 안 들어가서, 결정 67건이
-#: `domain` 열은 갖고 엣지는 못 가진 채 배포됐다. 이 상수를 올려야 이미 v12 인
-#: 스토어에서 백필이 **다시** 돈다. 멱등이고 도메인 단위 집합 연산이라 재실행 비용은
-#: 0.1초대다(5000노드 0.14s 실측) — 의미층이 늘 때마다 여기를 올리는 것이 맞다.
+#: v11 — **데이터 마이그레이션**(DDL 아님). `domain` 열 → Domain 노드·PARENT_OF·
+#: IN_DOMAIN 파생. 구현은 `engines.domain_hierarchy.backfill`. 부팅에서 도는 이유는
+#: v9 와 같다(사이드카가 DB 락을 쥐고 있어 별도 프로세스로는 스토어를 못 연다).
+#: 멱등이라 중간에 죽어도 다음 기동이 마무리한다.
+#: ⚠ **의미층이 늘 때마다 이 상수를 올린다.** v12 가 Decision 을 늘렸는데 백필의 라벨
+#: 표에 안 들어가 결정 67건이 엣지 없이 배포됐고, 그래서 v13 이 존재한다. 재실행은
+#: 0.1초대다(5000노드 0.14s). 계보: [[vinc.spec.dataplane §7]].
 DOMAIN_HIERARCHY_VERSION = 13
 
 
@@ -317,15 +275,11 @@ def migration_statements(from_version: int) -> list[str]:
     # 여기 못 쓴다(v9 Episode 백필과 같은 이유). 그 스텝은 쓰기 경로가 자연 치유하거나
     # 일괄 백필로 돈다 — 엣지가 없는 동안은 계층 조회가 빌 뿐 기존 경로는 멀쩡하다.
     if from_version < 12:  # v12 — 결정(Decision) 타입.
-        # 노드 테이블은 매 부팅 멱등 DDL 이 만든다(ChunkVec·_MergeRejection 전례).
-        # **관계는 다르다**: 이미 있는 rel 테이블에 끝점 쌍을 여는 것은 CREATE 가
-        # 아니라 ALTER 이고, 신규 설치의 CREATE 문(render_rel_tables)은 구 설치에
-        # 'already exists' 로 흡수돼 **쌍을 열어 주지 않는다**. 그래서 여기서 편다.
-        # (ladybug 0.18.0 이 ALTER ADD FROM/TO 를 지원하며 기존 행·속성을 보존한다 —
-        # 2026-08-09 실엔진 확인.)
-        #
-        # 목록을 손으로 적지 않고 _REL_TABLES 에서 파생한다: 쌍을 하나 더 열 때
-        # 여기를 같이 고쳐야 한다는 것을 기억에 의존하면 언젠가 빠진다.
+        # 노드 테이블은 매 부팅 멱등 DDL 이 만들지만 **관계는 다르다**: 기존 rel
+        # 테이블에 끝점 쌍을 여는 것은 CREATE 가 아니라 ALTER 이고, 신규 설치용
+        # CREATE 는 구 설치에서 'already exists' 로 흡수돼 쌍을 안 열어 준다.
+        # 목록은 _REL_TABLES 파생 — 손으로 적으면 다음 쌍에서 빠진다.
+        # 근거: [[record:rel-tables-take-multiple-endpoint-pairs]].
         for lbl, src, dst, _p in _REL_TABLES:
             srcs = (src,) if isinstance(src, str) else tuple(src)
             dsts = (dst,) if isinstance(dst, str) else tuple(dst)
@@ -333,10 +287,9 @@ def migration_statements(from_version: int) -> list[str]:
                 for d in dsts:
                     if "Decision" in (s, d):
                         stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
-    # v13 — 결정을 주제 계층에 넣는다. **DDL 스텝이 없다**: 끝점 쌍은 위 v12 루프가
-    # 이미 열었고(`IN_DOMAIN ADD FROM Decision TO Domain`), 빠져 있던 것은 백필의
-    # 라벨 표뿐이었다. 그래서 이 버전이 하는 일은 DOMAIN_HIERARCHY_VERSION 을 넘겨
-    # **백필을 다시 돌리는 것**이다(위 상수 주석).
+    # v13 — 결정을 주제 계층에 넣는다. **DDL 스텝이 없다**: 하는 일은
+    # DOMAIN_HIERARCHY_VERSION 을 넘겨 백필을 다시 돌리는 것뿐이다
+    # ([[vinc.spec.dataplane §7]] — 데이터 스텝에 자기 버전 상수가 필요한 이유).
     if from_version < 14:  # v14 — 엣지 출생(`_EDGE_BIRTH_COL` 주석 참조).
         # 기존 행은 DEFAULT '' 로 채워진다 = 모름. **백필 없음**이 요지다.
         for rel in EDGE_BIRTH_RELS:
@@ -346,28 +299,16 @@ def migration_statements(from_version: int) -> list[str]:
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
 #   concepts: (Concept)-[:PREREQUISITE_OF|DERIVES_FROM|RELATED_TO]->(Concept)
 #   bridges:  (Bridge)-[:CROSSES]->(Domain) · (Bridge)-[:CONNECTS {role}]->(Concept)
-# E-G6 — 관계 증거·신뢰도(선택 속성). 리서치 Pydantic RelationshipEdge 의
-# evidence(원문 구절)·confidence(0~1)에 대응. CC 4종 + ABOUT 에 부여해 관계 출처
-# 추적을 노드(source_file)에서 엣지 수준으로 내린다. 상류가 안 보내면 기본값('',
-# 0.0)이라 저작 부담 강제 없음(하위호환). 향후 E-G2 전이 가중·E-G7 경로 가중
-# (1/confidence)의 기반. v3 마이그레이션이 기존 rel 테이블에 ALTER ADD(실측: kuzu
-# 0.11.3 rel 테이블 ALTER ADD+DEFAULT 지원).
+# E-G6 — 관계 증거·신뢰도(선택 속성). CC 4종 + ABOUT 에 부여해 관계 출처 추적을
+# 노드(source_file)에서 엣지 수준으로 내린다. 상류가 안 보내면 기본값('', 0.0)이라
+# 저작 부담을 강제하지 않는다. v3 에서 ALTER ADD([[vinc.spec.dataplane §7]]).
 _EDGE_EVIDENCE_COLS: list[tuple[str, str]] = [("evidence", "STRING"), ("confidence", "DOUBLE")]
 
-# v14 — **엣지 출생**(`created`). 노드에는 이 열이 처음부터 있었는데 관계에는 없어서,
-# "언제 이어졌는가"를 물을 자리가 아예 없었다. 그 공백의 값은 화면이 아니라 **재생**에
-# 있다: 토픽 공간에서 노드 위치는 도메인 경로와 연결 수의 함수라, 과거 어느 시점의
-# 그래프를 다시 그리는 일은 대부분 **엣지를 다시 그리는 일**이다. 노드 출생만으로는
-# 못 한다(vinc.research.fourth-dimension M2).
-#
-# **저작된 관계에만 붙인다.** CROSSES(bridge→domain)는 브릿지 정의의 구조적 일부이고,
-# IN_DOMAIN 은 `domain` 열에서 파생돼 백필이 다시 만들며, MENTIONS 는 문서 재링크가
-# 다시 만든다 — 파생물의 출생은 "마지막으로 다시 만든 때"라 뜻이 없다.
-#
-# 쓰기는 `ON CREATE SET`(2026-08-17 실엔진 확인: 지원하고, 재-MERGE 에서 안 덮으며,
-# 평범한 SET 과 한 문장에 섞인다). 그래서 "이미 있는가"를 되묻는 추가 조회가 없다.
-# 구 엣지는 **백필하지 않는다** — '' 는 모른다는 뜻이고, 오늘을 찍으면 모든 옛 관계가
-# 마이그레이션한 날에 태어난 것이 된다(v7 이 같은 이유로 안 한 것과 같은 규율).
+# v14 — **엣지 출생**(`created`). **저작된 관계에만** 붙인다: CROSSES·IN_DOMAIN·
+# MENTIONS 는 파생물이라 출생이 "마지막으로 다시 만든 때"가 되어 뜻이 없다.
+# 쓰기는 `ON CREATE SET`(재-MERGE 에서 안 덮는다) 이라 존재 확인 조회가 없고, 구
+# 엣지는 **백필하지 않는다**('' = 모름. v7 과 같은 규율).
+# 왜 이 열이 필요한지: [[record:edge-birth-v14]] · [[vinc.research.fourth-dimension]].
 _EDGE_BIRTH_COL: tuple[str, str] = ("created", "STRING")
 #: 출생 열을 갖는 관계 — DDL·마이그레이션·쓰기 경로가 **이 하나**를 읽는다.
 EDGE_BIRTH_RELS: tuple[str, ...] = (
@@ -375,33 +316,18 @@ EDGE_BIRTH_RELS: tuple[str, ...] = (
     "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED",
 )
 
-# v12 — **결정은 개념과 같은 층이다.** 그래서 개념이 끝점일 수 있는 자리마다 결정도
-# 끝점일 수 있다. 규칙을 하나로 두는 이유: 특례를 만들면 "결정에는 왜 inherits_from 이
-# 안 되나" 같은 것을 사용자가 실행해 보고서야 알게 된다(쓰기 경로는 미선언 쌍에서
-# 경고가 아니라 엔진 예외로 죽는다). 라이브 실측으로 실제 쓰이는 쌍은 이보다 좁지만
-# (RELATED_TO·DERIVES_FROM·PREREQUISITE_OF·ABOUT·ATTACHES_TO·CONNECTS·MENTIONS),
-# 어휘를 균일하게 두는 편이 표를 외우게 하는 것보다 싸다.
+# v12 — **결정은 개념과 같은 층이다.** 개념이 끝점일 수 있는 자리마다 결정도 끝점일 수
+# 있다. 특례를 만들면 미선언 쌍에서 경고가 아니라 **엔진 예외로 죽으므로** 사용자가
+# 실행해 보고서야 알게 된다 — 어휘를 균일하게 두는 편이 싸다
+# ([[vinc.spec.dataplane §2.4]]).
 _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 
-#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** 엔진 제약이다(실측 2026-08-09):
-#:
-#:     Runtime exception: Louvain only supports operations on one node table.
-#:
-#: `api.query.communities` 는 RELATED_TO **단일 투영**으로 Louvain 을 돌린다. 그리고
-#: `project_graph` 는 투영한 rel 의 끝점 테이블을 전부 투영하라고 요구하므로, 이
-#: 테이블에 Decision 을 붙이는 순간 노드 테이블이 둘이 되어 **커뮤니티 기능이
-#: 통째로 죽는다**. 우회로를 찾아봤지만 없다: 필터 dict 형식도 끝점 요구를 그대로
-#: 받고(`Decision is connected to RELATED_TO but not projected`), 부분그래프를 만드는
-#: `project_graph_cypher` 로 만든 그래프는 WCC 조차 `Binder exception: AA` 로 거절한다.
-#:
-#: 다행히 이 예외는 의미상으로도 옳다. 결정이 개념과 맺는 관계는 막연한 "관련"이
-#: 아니라 **`about`(무엇에 관한 결정인가)**이고, 결정끼리는 **계보**(derives_from ·
-#: prerequisite_of)다. 라이브 실측이 그것을 뒷받침한다 — 여태 RELATED_TO 로 적혀 있던
-#: 결정→개념 51건은 전부 "그 개념을 두고 내린 결정"이라 이관이 ABOUT 으로 옮긴다.
-#: 즉 결정에게 relates_to 는 애초에 필요 없던 자리다.
-#:
-#: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 함께 봐야 한다. 그 불변식은
+#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** 엔진 제약이다 — `api.query.communities`
+#: 가 이 rel 단일 투영으로 Louvain 을 돌리는데, Decision 을 붙이면 투영 노드 테이블이
+#: 둘이 되어 **커뮤니티 기능이 통째로 죽는다**. 우회로는 없다(전부 실측으로 기각).
+#: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 같이 봐야 한다. 불변식은
 #: tests/test_store.py 의 단일 노드테이블 가드가 지킨다.
+#: 오류 문면·기각한 우회로·의미상으로도 맞는 이유: [[record:louvain-projects-one-node-table]].
 _LOUVAIN_PROJECTED_REL = "RELATED_TO"
 
 _REL_TABLES: list[tuple] = [
@@ -413,11 +339,9 @@ _REL_TABLES: list[tuple] = [
     # MCP fragment 엣지(D11 §5) 지원 —
     #   inherits_from(Concept→Concept)는 1급 관계 테이블.
     #   Record 참여 엣지는 ATTACHES_TO{type} 하나로 수용한다(type = 원 fragment
-    #   엣지 타입 보존). ⚠ 여기 "임베디드 rel 테이블이 FROM/TO 타입 고정"이라 적혀
-    #   있었는데 그건 kuzu 0.11.3 시절이고 **지금은 틀리다** — ladybug 0.18.0 은 한
-    #   테이블에 여러 FROM/TO 쌍을 받는다(2026-08-09 실엔진 확인, 아래 IN_DOMAIN 이
-    #   그 형태). ATTACHES_TO 를 이 이유로 되돌릴 필요는 없다: type 열이 이미 원
-    #   엣지 타입을 보존하고 있어 쪼개면 데이터 이관만 생긴다.
+    #   엣지 타입 보존). ⚠ 이 통합의 근거였던 "rel 테이블은 FROM/TO 고정"은 **이제
+    #   틀리다** — 그래도 되돌리지 않는다(type 열이 이미 보존한다):
+    #   [[record:rel-tables-take-multiple-endpoint-pairs]].
     ("INHERITS_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
     ("ATTACHES_TO", "Record", _SEMANTIC_LABELS, [("type", "STRING")]),
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
@@ -438,22 +362,14 @@ _REL_TABLES: list[tuple] = [
     # method = 링크 근거('source'|'title'|'stem') — 재적재 시 드랍-리빌드 관리.
     ("MENTIONS", "Chunk", _SEMANTIC_LABELS, [("method", "STRING")]),
     # ── 도메인 계층 (v11, E-1) ────────────────────────────────────────────
-    # 도메인은 여태 **문자열 열**로만 있었다. `vinc/design` 의 `/` 가 계층을 뜻했지만
-    # 그건 이름 규약일 뿐이라 그래프로는 못 따라갔다: `Domain` 테이블에 3행(art·math·
-    # physics, 학습자료 잔해)이 고아로 남아 있고 엣지가 **0건**이었다. 실측 2026-08-09.
-    #
-    # 두 관계는 **파생물이지 저작물이 아니다.** 사용자는 지금처럼 `domain` 필드에
-    # 문자열만 적고, 노드와 엣지는 쓰기 경로가 그 문자열에서 만든다. 그래서 GRAPH.md
-    # 의 저작 엣지 여섯 종은 그대로다 — 어휘를 늘리지 않는다.
-    #
-    # ⚠ `Domain` 은 **무소유 전역 구조**다(열이 `name` 뿐). 소유는 이 엣지의 **출발점**
-    # 노드가 진다 — `Bridge-[CROSSES]->Domain` 이 이미 그 모양이다. 그래서 소유자별
-    # 도메인 노드를 만들 필요가 없고, PK(`name`) 를 바꾸는 무거운 이관도 필요 없다.
+    # 두 관계는 **파생물이지 저작물이 아니다.** 사용자는 `domain` 문자열만 적고 노드와
+    # 엣지는 쓰기 경로가 그것에서 만든다 — 그래서 GRAPH.md 의 저작 엣지 여섯 종은
+    # 그대로다. ⚠ `Domain` 은 **무소유 전역 구조**(열이 `name` 뿐)이고 소유는 엣지의
+    # 출발점 노드가 진다. 그래서 소유자별 도메인 노드도, PK 이관도 필요 없다.
+    # v11 이전의 상태(고아 3행·엣지 0건): [[record:domain-hierarchy-was-a-string-until-v11]].
     ("PARENT_OF", "Domain", "Domain", []),
-    # 다중 FROM/TO 쌍을 **한 테이블**에 담는다. 위 ATTACHES_TO 주석이 "임베디드 rel
-    # 테이블은 FROM/TO 타입 고정"이라 적고 있는데 그건 kuzu 0.11.3 시절 제약이고,
-    # ladybug 0.18.0 은 다중 쌍을 받는다(2026-08-09 실엔진 확인). 그래서 라벨을
-    # 셋으로 쪼개지 않는다.
+    # 다중 FROM/TO 쌍을 **한 테이블**에 담는다 — 라벨을 넷으로 쪼갤 이유가 없다
+    # ([[record:rel-tables-take-multiple-endpoint-pairs]]).
     ("IN_DOMAIN", ("Concept", "Record", "Episode", "Decision"), "Domain", []),
 ]
 
