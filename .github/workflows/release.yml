@@ -65,6 +65,15 @@ jobs:
 
   build:
     needs: version-gate
+    # ⚠ 셀프호스티드 Windows 러너는 **머신 전역 PYTHONHOME/PYTHONPATH 를 물려받는다.**
+    # 그러면 `setup-python` 이 받아 온 인터프리터가 남의 표준 라이브러리를 읽어
+    # `_thread has no attribute daemon_threads_allowed` 로 죽는다(2026-08-19 실측).
+    # 이 리포가 로컬 테스트를 `env -u PYTHONHOME -u PYTHONPATH` 로 돌리는 것과 같은
+    # 함정이고, 호스티드 러너에는 그 변수가 없어 여태 안 보였다.
+    # 근거: [[record:vinc-tests-need-a-clean-interpreter-on-windows]]
+    env:
+      PYTHONHOME: ""
+      PYTHONPATH: ""
     strategy:
       fail-fast: false
       matrix:
