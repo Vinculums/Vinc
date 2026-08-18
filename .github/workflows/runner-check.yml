@@ -11,11 +11,9 @@ on:
 
 jobs:
   where-am-i:
-    runs-on: [self-hosted, windows, vinc-local]
-    defaults:
-      run:
-        shell: bash        # Git Bash — 워크플로들이 bash 문법을 쓴다
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - run: |
           echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
           echo "labels 로 붙었고 여기서 돈다면 호스티드 분과 무관하다"
+          echo "shell=$SHELL · python=$(python3 --version) · docker=$(command -v docker || echo none)"
