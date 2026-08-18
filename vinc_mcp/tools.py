@@ -92,6 +92,17 @@ _FRAGMENT_SCHEMA = {
                                                  "in props.one_liner or props.note instead still works "
                                                  "(server-side promotion) but only when this field and "
                                                  "props.one_liner are both absent."},
+                    # D72 — 두 시간축의 저작 가능한 쪽. `date` 와 같은 이유로 계약에
+                    # 적는다: 서버는 이제 받는데 계약이 안 알려 주면 상류는 props 에
+                    # 넣고, 그 자리는 정렬·필터가 안 읽는다.
+                    "content_time": {"type": "string",
+                                     "description": "Concept and record only — when the thing this node "
+                                                    "describes happened (the 1905 of a note about "
+                                                    "relativity), as opposed to when you wrote it down. "
+                                                    "Free text but only a YYYY[-MM[-DD]] prefix is stored, "
+                                                    "because comparison and bucketing are lexicographic; "
+                                                    "anything else is refused with a warning and the "
+                                                    "stored value is kept. Empty string clears it."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
                 },
                 "required": ["id", "type"],
@@ -955,5 +966,42 @@ def call(name: str, args: dict | None, bridge: Bridge,
             raise ValueError(f"missing required argument: {req}")
     if target == "remote":
         from . import remote                    # 지연 import — 로컬 경로엔 부담 0
-        return remote.call(name, args)
-    return tool["run"](args, bridge)
+        out = remote.call(name, args)
+    else:
+        out = tool["run"](args, bridge)
+    return _stamp_identity(name, out, target, allow_target)
+
+
+#: 정체(어느 그래프에 썼는가)를 응답에 싣는 도구. **전부에 달지 않는다** — 조회
+#: 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다.
+#:
+#: 이 셋인 이유: `vinc_conventions` 는 규율상 **세션 첫 쓰기 전에** 부르는 자리라
+#: 정체가 필요한 순간에 따로 묻지 않아도 도착하고, 나머지 둘은 **쓰기**다 —
+#: 오배치가 조용한 곳이 정확히 거기다(2026-08-07: owner 누락으로 전량 `user:local`
+#: 로 들어갔는데 그 tenant 안에서는 읽기도 성공해 검증이 통과했다).
+#:
+#: 별도 `whoami` 를 만들지 않은 이유도 같다: 부를 생각을 못 한 사람에게 물어봐야
+#: 아는 도구는 소용이 없다. 이름 붙은 도구가 슬롯을 얻는 것은 호스트 UI 가 그래프
+#: 호출 없이 "X 로 연결됨"을 띄워야 할 때이고, 그건 제품 신호지 이 결손이 아니다.
+_IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
+
+
+def _stamp_identity(name: str, out: dict, target: str, allow_target: bool = True) -> dict:
+    """응답에 `target` 을 얹는다. `owner` 는 **손대지 않는다** — 쓴 쪽(사이드카·허브)이
+    자기가 실제로 스탬핑한 값을 이미 싣고 오고, 여기서 클라이언트가 아는 값으로
+    덮으면 호스티드에서 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다).
+    자기 실수에 동의해 주는 답이 제일 나쁘다.
+
+    ⚠ **자기가 곧 원격인 서버는 이 필드를 안 찍는다**(`allow_target=False` — 허브
+    프로파일). 라이브에서 물린 자리다(2026-08-17 배포 직후 실측): 허브도 이 깔때기를
+    도는데 거기서 target 은 언제나 "local" 이라, 원격으로 간 호출이 `"target":
+    "local"` 을 받아 왔다. 그 값을 "remote" 로 덮는 것은 **새 클라이언트**뿐이고,
+    데스크탑 업데이트는 사용자 클릭이라 구 클라이언트 창이 한동안 간다.
+
+    위 독스트링이 경계하던 바로 그 고장을 이 필드가 만들고 있었다 — 계정 그래프에
+    썼는지 확인하려고 target 을 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다.
+    고침의 방향은 더 정확한 값을 지어내는 것이 아니라 **아예 답하지 않는 것**이다:
+    호출자의 local/remote 개념은 호출자만 안다."""
+    if allow_target and name in _IDENTITY_TOOLS and isinstance(out, dict):
+        out["target"] = target
+    return out

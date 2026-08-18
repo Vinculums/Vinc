@@ -208,7 +208,7 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertEqual(res["warnings"], [])
         joined = "\n".join(c for c, _ in fake.calls)
         self.assertIn("MERGE (n:Entity {entity_id: $id})", joined)
-        self.assertIn("MERGE (a)-[:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
+        self.assertIn("MERGE (a)-[r:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
 
     def test_entity_without_title_skips_with_warning(self):
         # 개방층의 skip 은 형태 오류뿐 — Entity 는 title 필수(휴면 엔진 동형).
@@ -357,14 +357,14 @@ class FragmentMergeTests(unittest.TestCase):
                        "role": "math_input"}],
         }, store=fake)
         joined = "\n".join(c for c, _ in fake.calls)
-        self.assertIn("MERGE (a)-[:CONNECTS {role: $role}]->(b)", joined)
+        self.assertIn("MERGE (a)-[r:CONNECTS {role: $role}]->(b)", joined)
         fake2 = _FakeStore()
         frag.merge_fragment({
             "nodes": [{"id": "bridge:b1", "type": "bridge", "title": "B"},
                       {"id": "concept:c1", "type": "concept", "title": "C"}],
             "edges": [{"from": "bridge:b1", "to": "concept:c1", "type": "connects_via"}],
         }, store=fake2)
-        self.assertIn("MERGE (a)-[:CONNECTS]->(b)", "\n".join(c for c, _ in fake2.calls))
+        self.assertIn("MERGE (a)-[r:CONNECTS]->(b)", "\n".join(c for c, _ in fake2.calls))
 
     def test_bridge_owner_stamped_and_edge_scoped(self):
         # F5 — Bridge 노드 owner 스탬프(생성/명시) + connects_via 의 Bridge 끝점 스코프.
@@ -377,7 +377,7 @@ class FragmentMergeTests(unittest.TestCase):
         }, store=fake)
         bridge_merge = [p for c, p in fake.calls if "MERGE (n:Bridge" in c]
         self.assertTrue(any(p.get("owner_id") == "user:t" for p in bridge_merge))
-        cv = [c for c, _ in fake.calls if "MERGE (a)-[:CONNECTS]->(b)" in c][0]
+        cv = [c for c, _ in fake.calls if "MERGE (a)-[r:CONNECTS]->(b)" in c][0]
         self.assertIn("a.owner_id = $owner", cv)
 
     def test_bridge_sec3_skips_foreign_owned(self):

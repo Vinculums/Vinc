@@ -305,3 +305,64 @@ def test_selected_domains_roundtrip_and_normalize():
     assert sync.get_selected_domains(m) == []
     assert sync.set_selected_domains(m, ["b", "a", "a", " "]) == ["a", "b"]  # 정규화·중복제거
     assert sync.get_selected_domains(m) == ["a", "b"]
+
+
+# ── D72 두 시간열이 delta 를 건너는가 ─────────────────────────────────────────
+# 2026-08-17 실측 결함: delta 가 `created`·`content_time` 을 안 실어, 같은 계정의
+# 두 번째 기기에서 노드가 신규로 취급돼 **그 기기 시각으로 출생이 다시 찍혔다**
+# (두 스토어 왕복에서 1초 차이 확인). 문서 경로(api/docsync)는 같은 이유로 이미
+# 둘을 싣고 있었다 — 노드만 빠져 있었다.
+def test_delta_plans_carry_the_two_time_columns():
+    c = sync._concepts_delta_plan(owner=OWNER, domains=["d"], since=0)
+    assert "c.created AS created" in c.cypher
+    assert "c.content_time AS content_time" in c.cypher
+    d = sync._decisions_delta_plan(owner=OWNER, domains=["d"], since=0)
+    assert "d.created AS created" in d.cypher
+    # Decision 에는 content_time 열이 **없다** — 실으면 Binder 로 죽는다.
+    assert "content_time" not in d.cypher
+    e = sync._episodes_delta_plan(owner=OWNER, domains=["d"], since=0)
+    assert "created" not in e.cypher and "content_time" not in e.cypher
+
+
+def test_bundle_carries_birth_as_a_stamp_and_content_time_as_a_field():
+    """출생은 `_` 접두 스탬프(병합 대상 아님), 내용 시점은 본문(3-way 병합 대상)."""
+    n = sync._node_from_concept({"id": "concept:a", "title": "A", "domain": "d",
+                                 "created": "2020-01-01T00:00:00.000Z",
+                                 "content_time": "1905", "rev": 2,
+                                 "updated_at": "u", "sync_seq": 3})
+    assert n["_created"] == "2020-01-01T00:00:00.000Z"
+    assert n["content_time"] == "1905"
+    assert "created" not in n            # 본문에 두면 3-way 가 출생을 병합해 버린다
+    assert sync._node_from_decision({"id": "decision:a", "created": "x"})["_created"] == "x"
+    # 내용 시점은 sync 필드라야 _snapshot·base·three_way 가 전부 따라온다
+    assert "content_time" in sync.SYNC_FIELDS["Concept"]
+    assert "content_time" not in sync.SYNC_FIELDS["Episode"]
+    assert "content_time" not in sync.SYNC_FIELDS["Decision"]
+
+
+def test_birth_reconciles_to_the_earliest_and_never_leaves_the_owner():
+    """min 규칙 — 늦은 로컬은 이른 원격을 받아들이고, 이른 로컬은 지킨다."""
+    class _Rec:
+        def __init__(self):
+            self.stmts = []
+
+        def run(self, cypher, params=None):
+            self.stmts.append((cypher, params or {}))
+            return []
+
+    s = _Rec()
+    sync._reconcile_birth(s, "Concept", "concept_id", "concept:a", "2020-01-01", OWNER)
+    cy, pa = s.stmts[0]
+    assert "x.owner_id = $owner" in cy          # risk-audit 2026-08-05 §3.2
+    assert "x.created IS NULL" in cy            # 추출 경로가 남긴 NULL 행
+    assert "x.created > $born" in cy            # 이른 쪽이 이긴다
+    assert pa["born"] == "2020-01-01" and pa["owner"] == OWNER
+
+    # 빈 출생은 아무것도 안 한다(모르는 값이 아는 값을 이기면 안 된다)
+    s2 = _Rec()
+    sync._reconcile_birth(s2, "Concept", "concept_id", "concept:a", "", OWNER)
+    assert s2.stmts == []
+    # 열이 없는 라벨에는 문장 자체를 안 낸다(Binder 사망 방지)
+    s3 = _Rec()
+    sync._reconcile_birth(s3, "Episode", "episode_id", "episode:a", "2020-01-01", OWNER)
+    assert s3.stmts == []

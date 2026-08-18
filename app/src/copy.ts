@@ -43,6 +43,11 @@ const EN = {
       `${dom}: ${n} documents · ${k} links to other topics. Click to see more.`,
     gatewayTip: (dom: string) => `Crosses into ${dom}. Click to follow.`,
     error: "The map couldn't load. Retry anytime. Your documents are untouched.",
+    // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
+    // 사이드카가 읽지 못하는 것을 빈 지도로 그리면 데이터 유실과 구분되지 않는다.
+    // 사유(락 충돌·손상)는 사람이 쓸 수 없는 문장이라 접어 두고 [자세히]로 연다.
+    storeDown: "Vinc can't read your knowledge store right now. Nothing is lost: this is a read problem, not missing data. Restart Vinc, and check that another copy isn't already running.",
+    storeDownWhy: "Details",
     retryCta: "Retry",
   },
   search: {
@@ -110,6 +115,9 @@ const EN = {
       document: "Document",
       bridge: "Bridge",
       topic: "Topic",
+      // 관문은 화면에 그려지는 다섯째 마크인데 범례에 없었다. 범례가 가르치지 않는
+      // 형태가 화면에 서면, 읽는 사람은 그것을 고장이나 다른 종으로 읽는다.
+      gateway: "Elsewhere (not in this topic)",
       lines: "Line = relation",
       // D74 — 범례 항목이 스위치다. 힌트는 캡션 옆에 작게(항목마다 반복하면 소음).
       linesToggle: "click to hide",
@@ -311,10 +319,17 @@ const EN = {
       bundleDepth: "Bundling",
       bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
       bundleDepthHelp: {
-        1: "Lines join topic to topic. Every item stays on the ring.",
-        2: "Lines join kind to kind inside each topic. Every item stays on the ring.",
-        3: "Lines join item to item, fully opened up.",
+        1: "Lines join topic to topic. Every item stays on the ring, but a link "
+          + "inside one topic has nowhere to go and is dropped, which the caption counts.",
+        2: "Lines join kind to kind inside each topic. Every item stays on the ring, "
+          + "and links inside one kind are dropped, which the caption counts.",
+        3: "Lines join item to item. Nothing is dropped.",
       } as Record<string, string>,
+      // Weave 의 라벨은 지도와 뜻이 다르다. 지도는 짚어야 뜨지만 여기서는 **둘레에
+      // 들어갈 만큼** 상시로 뜬다(2026-08-16). 같은 이름에 같은 값을 쓰면 화면이
+      // 하지 않는 약속을 하게 된다.
+      labelsFit: "shown", labelsFitHelp: "As many as the ring has room for, the "
+        + "best-connected first. The rest answer on hover.",
       bundleRels: "Relations",
       relName: {
         PREREQUISITE_OF: "Prerequisite", DERIVES_FROM: "Derives", INHERITS_FROM: "Inherits",
@@ -324,12 +339,27 @@ const EN = {
        *  조용히 버리면 화면이 "연결이 없다"고 거짓말한다. */
       bundleSelf: (n: number) => `${n} inside a group, not drawn at this level`,
       nodeScale: "Node scale", edgeWidth: "Line weight",
+      // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
+      // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
+      when: "Time cursor",
+      whenAll: "All",
+      whenHelp: "Shows only what existed at that point, on the clock chosen below. "
+        + "Items with no time of their own stay visible: a concept has no event date, "
+        + "and that is a fact rather than a gap.",
+      groupTime: "Time",
+      cone: "Branch spread",
+      coneHelp: "How wide a topic's branch fans out from the centre. Narrow gathers "
+        + "each topic into a stalk; wide opens it into a fan. The flat map is unaffected: "
+        + "it lays the same tree out as sectors, which have no angle to widen. "
+        + "It applies when you let go, because the map is laid out again from scratch.",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
       lineage: "Cause and effect",
-      lineageHelp: "Draws the links that say what led to what. The cause sits above, "
-        + "so a line crossing branches means another topic caused it.",
+      // 시간축이 가로가 된 뒤(기둥 문법 2026-08-14) 원인은 왼쪽이다. "위"라고 적혀
+      // 있던 것을 2026-08-17 에 고쳤다.
+      lineageHelp: "Draws the links that say what led to what. The cause sits to the left, "
+        + "so a line that leaps far to the right names a late effect.",
       // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다. 도움말이 끄고도 아무것도 잃지 않음을 밝힌다.
@@ -342,7 +372,7 @@ const EN = {
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     viewx: {
-      grid: "Grid", matrix: "Matrix", traceCta: "Trace from here", shareCta: "Share",
+      shareCta: "Share",
       timeline: "Timeline",
       // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
       // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
@@ -402,8 +432,10 @@ const EN = {
       readerFail: "Couldn't open this document. Try again in a moment.",
       readerTitle: "Document",
       edLive: "Editing. Changes save as you type.",
-      readerVerified: "Verified original",
       readerUnverified: "Reconstructed (not verified)",
+      // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
+      readerMentions: "Mentions",
+      readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "Edit",
       edNew: "New document",
@@ -457,9 +489,8 @@ const EN = {
         RELATED_TO: (a: string, b: string) => `${a} and ${b} are related.`,
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
-      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "Timeline and Weave are under Viewpoint.",
-      soloNode: "This document stands alone. Link it to another to place it in time.",
+      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동). 관점 발견 힌트는
+      // 세그먼트가 상단 바로 간 뒤 띄우는 코드가 없어 2026-08-17 에 지웠다.
       noDates: "No dates on these documents yet. Open a topic to see its timeline.",
       undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
       // D74 — 켠 손잡이가 아무 일도 안 했을 때 그 사실을 말한다(조용한 무동작 금지).
@@ -718,6 +749,8 @@ const KO: Deck = {
     domainTip: (dom, n, k) => `${dom}: 문서 ${n}개 · 다른 주제와 연결 ${k}개. 클릭하여 자세히 보기.`,
     gatewayTip: (dom) => `'${dom}' 주제로 이어집니다. 클릭해서 이동하세요.`,
     error: "지도를 불러오지 못했습니다. 언제든 다시 시도하세요. 문서는 그대로입니다.",
+    storeDown: "지금 지식 저장소를 읽지 못하고 있습니다. 내용이 사라진 것은 아니고 읽기가 막힌 상태입니다. Vinc를 다시 시작하고, 다른 창이 이미 실행 중이지 않은지 확인해 주세요.",
+    storeDownWhy: "자세히",
     retryCta: "다시 시도",
   },
   search: {
@@ -783,6 +816,7 @@ const KO: Deck = {
       document: "문서",
       bridge: "다리",
       topic: "주제",
+      gateway: "여기 밖 (이 주제에 없음)",
       lines: "선 = 관계",
       linesToggle: "눌러서 숨기기",
       directed: "이어짐 (화살표가 방향)",
@@ -946,10 +980,14 @@ const KO: Deck = {
       bundleDepth: "선 묶기",
       bundleDepthName: { 1: "주제", 2: "종류", 3: "개별" } as Record<string, string>,
       bundleDepthHelp: {
-        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
-        2: "선이 주제 안의 종류끼리 이어집니다. 항목은 전부 둘레에 그대로 있습니다.",
-        3: "선이 항목끼리 하나하나 이어집니다.",
+        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 있지만, 한 주제 안쪽의 "
+          + "연결은 갈 곳이 없어 버려집니다(버린 수는 아래에 적습니다).",
+        2: "선이 주제 안의 종류끼리 이어집니다. 한 종류 안쪽의 연결은 버려집니다"
+          + "(버린 수는 아래에 적습니다).",
+        3: "선이 항목끼리 하나하나 이어집니다. 버리는 것이 없습니다.",
       } as Record<string, string>,
+      labelsFit: "보임", labelsFitHelp: "둘레에 들어갈 만큼만 뜹니다. 연결이 많은 "
+        + "것부터이고, 나머지는 짚으면 답합니다.",
       bundleRels: "관계",
       relName: {
         PREREQUISITE_OF: "선행", DERIVES_FROM: "파생", INHERITS_FROM: "상속",
@@ -957,10 +995,21 @@ const KO: Deck = {
       } as Record<string, string>,
       bundleSelf: (n) => `묶음 안쪽 ${n}개는 이 단에서 그리지 않습니다`,
       nodeScale: "노드 크기 배율", edgeWidth: "선 굵기",
+      when: "시간 커서",
+      whenAll: "전부",
+      whenHelp: "그 시점에 있던 것만 보여 줍니다. 어느 시계로 자를지는 아래에서 고릅니다. "
+        + "자기 시각이 없는 것은 계속 보입니다 · 개념에는 사건 날짜가 없고 그것은 "
+        + "빠진 것이 아니라 사실입니다.",
+      groupTime: "시간",
+      cone: "가지 벌어짐",
+      coneHelp: "주제의 가지가 중심에서 얼마나 벌어질지를 정합니다. 좁히면 주제마다 "
+        + "한 줄기로 모이고, 넓히면 부채처럼 펼쳐집니다. 평면 지도는 같은 트리를 "
+        + "부채꼴로 눕히기 때문에 이 값과 무관합니다. 배치를 처음부터 다시 잡는 값이라 "
+        + "손을 놓을 때 적용됩니다.",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
-      lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 위에 오므로, "
-        + "가지를 가로지르는 선은 다른 주제가 원인이라는 뜻입니다.",
+      lineageHelp: "무엇이 무엇으로 이어졌는지를 선으로 잇습니다. 원인이 왼쪽에 오므로, "
+        + "오른쪽으로 멀리 뻗은 선은 한참 뒤에 나온 결과라는 뜻입니다.",
       domainTint: "주제별 색조",
       domainTintHelp: "주제마다 다른 색조를 입힙니다. 강조일 뿐이라 꺼도 잃는 것이 "
         + "없습니다. 주제는 이미 자리가 말하고 있습니다.",
@@ -970,7 +1019,7 @@ const KO: Deck = {
       fixedNote: "형태와 포인트 색상은 일관되게 유지됩니다. 의미를 담고 있어, 공유한 팩이 어디서나 같은 모습으로 보입니다.",
     },
     viewx: {
-      grid: "그리드", matrix: "매트릭스", traceCta: "여기서 추적", shareCta: "공유",
+      shareCta: "공유",
       timeline: "타임라인",
       bundle: "짜임",
       bundleUnfiled: "(미분류)",
@@ -1020,8 +1069,9 @@ const KO: Deck = {
       readerFail: "문서를 열지 못했습니다. 잠시 후 다시 시도하세요.",
       readerTitle: "문서",
       edLive: "편집 중. 입력하는 대로 저장됩니다.",
-      readerVerified: "검증된 원본",
       readerUnverified: "복원본 (검증 안 됨)",
+      readerMentions: "언급",
+      readerOutline: (n) => `목차 · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edEdit: "편집",
       edNew: "새 문서",
@@ -1075,9 +1125,7 @@ const KO: Deck = {
         RELATED_TO: (a, b) => `${a}과(와) ${b}은(는) 서로 관련되어 있습니다.`,
         ABOUT: (a, b) => `${a}은(는) ${b}에 관한 기록입니다.`,
       },
-      // D43 — 관점 발견 힌트 + 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      viewpointsHint: "타임라인 · 짜임은 관점 전환 안에 있습니다.",
-      soloNode: "이 문서는 아직 혼자입니다. 다른 문서와 연결하면 시간 위에 자리를 잡습니다.",
+      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       noDates: "이 문서들에는 아직 날짜가 없습니다. 주제를 열면 타임라인이 보입니다.",
       undated: (n) => `날짜 없는 문서 ${n}개.`,
       noLineage: "아직 무엇이 무엇으로 이어졌다고 적힌 것이 없습니다.",

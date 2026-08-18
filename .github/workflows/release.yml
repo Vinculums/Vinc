@@ -311,6 +311,8 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
+      - uses: actions/checkout@v4   # 아래 릴리스 노트 스텝이 CHANGELOG 를 읽는다
+
       # 3개 build 잡이 올린 latest 조각을 릴리스에서 내려받아 latest.json 으로 병합.
       - name: Assemble updater manifest (latest.json) from release fragments
         shell: bash
@@ -336,6 +338,47 @@ jobs:
             gh release delete-asset "$TAG" "$(basename "$f")" --repo "$REPO" --yes 2>/dev/null || true
           done
           echo "발행 준비 완료(draft) — Vincs-app 에서 사람이 Publish."
+
+      # 릴리스 본문을 CHANGELOG 에서 채운다.
+      # 배경: build 잡이 draft 를 만들 때 `--notes "Vinc $TAG"` 로 **자리표시자**를 넣는데,
+      # 사람이 Publish 하면서 그걸 안 고치면 그대로 공개된다(v0.8.2 실측 — 본문이
+      # "Vinc v0.8.2" 한 줄로 발행됐다). 릴리스 페이지는 업데이터 알림과 다운로드에서
+      # 사람이 실제로 열어 보는 자리이므로, 아무도 안 고쳤을 때의 기본값을 자리표시자가
+      # 아니라 **그 릴리스의 CHANGELOG 절**로 둔다.
+      #
+      # ⚠ 사람이 이미 쓴 본문은 덮지 않는다. 자리표시자이거나 비어 있을 때만 채운다 —
+      #    이 잡은 재실행이 되고(assemble 은 멱등이 계약이다), 덮어쓰면 손으로 다듬은
+      #    카피가 재실행 한 번에 사라진다.
+      # ⚠ CHANGELOG 절이 없어도 릴리스를 세우지 않는다. v0.8.1 은 절 없이 나갔고,
+      #    노트가 없다는 이유로 빌드된 설치본을 버리는 것은 대가가 맞지 않는다.
+      - name: Fill release notes from CHANGELOG (자리표시자일 때만)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"; REPO="Vinculums/Vincs-app"
+          cur=$(gh release view "$TAG" --repo "$REPO" --json body -q .body || echo "")
+          if [ -n "$cur" ] && [ "$cur" != "Vinc $TAG" ]; then
+            echo "본문이 이미 채워져 있다 — 그대로 둔다."; exit 0
+          fi
+          # `## v0.8.2 ...` 부터 다음 `## v` 직전까지. 제목 줄은 h2 로 남긴다.
+          awk -v tag="$TAG" '
+            $0 ~ "^## " tag "( |$)" { on = 1 }
+            on && /^## / && $0 !~ "^## " tag "( |$)" { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::warning::CHANGELOG.md 에 $TAG 절이 없다 — 자리표시자 본문을 유지한다." >&2
+            exit 0
+          fi
+          {
+            echo
+            echo "---"
+            echo
+            echo "사용자용 릴리스 노트: https://vincs.io/release/"
+            echo "설치 파일은 아래 Assets 에 있다. 설치된 앱은 스스로 업데이트된다."
+          } >> notes.md
+          gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
+          echo "── 릴리스 본문 ──"; head -20 notes.md
 
   # ── 오래된 릴리스 자산 아카이브(경량 보존) ──────────────────────────────────
   # 배경: 매 릴리스마다 3-OS 설치본(dmg·setup.exe·msi·AppImage·deb·rpm …)이 공개 릴리스

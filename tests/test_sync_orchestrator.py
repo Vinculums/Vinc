@@ -99,3 +99,47 @@ def test_pull_stops_when_cursor_does_not_advance(monkeypatch):
                         lambda **k: {"applied": 1, "skipped_stale": 0, "edges": 0, "warnings": []})
     r = sync.pull_apply(s, None, owner="user:local", remote=remote)
     assert r["pages"] == 1                          # 진행 없음 → 1회로 종료
+
+
+# ── §4 일회성 전량 왕복(이미 갈라진 출생 화해) ────────────────────────────────
+def test_birth_resync_rewinds_both_cursors_exactly_once():
+    s = _MetaStore()
+    sync.set_cursor(s, "push", 42)
+    sync.set_cursor(s, "pull", 17)
+
+    assert sync.ensure_birth_resync(s) is True
+    # **둘 다** 0 이라야 한다 — 한쪽만 되감으면 수렴이 한 방향으로만 간다
+    # (pull 만 0 이면 이 기기가 받기만 하고, 자기가 가진 더 이른 출생은 안 올라간다).
+    assert sync.get_cursor(s, "push") == 0 and sync.get_cursor(s, "pull") == 0
+
+    # 표식이 찍히기 전에는 아직 '한 번'이 안 끝난 것 — 다시 물어도 True(재실행 안전)
+    assert sync.ensure_birth_resync(s) is True
+    s.kv[f"{sync._ONESHOT_KEY}"] = "done"
+    sync.set_cursor(s, "push", 9)
+    assert sync.ensure_birth_resync(s) is False
+    assert sync.get_cursor(s, "push") == 9, "표식 이후에는 커서를 건드리면 안 된다"
+
+
+def test_run_marks_the_oneshot_only_after_the_session_completes(monkeypatch):
+    """중간에 죽으면 표식을 안 찍는다 — 커서가 0 인 채 남아 다음 세션이 다시 한다."""
+    s = _MetaStore()
+    monkeypatch.setattr(sync, "pull_apply", lambda *a, **k: {"phase": "pull"})
+
+    def _boom(*a, **k):
+        raise RuntimeError("네트워크 끊김")
+
+    monkeypatch.setattr(sync, "push_local", _boom)
+    try:
+        sync.run(s, None, owner="user:local", remote=object())
+    except RuntimeError:
+        pass
+    assert s.kv.get(sync._ONESHOT_KEY, "") != "done"
+    assert sync.get_cursor(s, "pull") == 0        # 되감긴 채로 남는다
+
+    monkeypatch.setattr(sync, "push_local", lambda *a, **k: {"phase": "push"})
+    out = sync.run(s, None, owner="user:local", remote=object())
+    assert out["birth_resync"] is True
+    assert s.kv.get(sync._ONESHOT_KEY) == "done"
+    # 두 번째 세션은 평범한 delta 다
+    out2 = sync.run(s, None, owner="user:local", remote=object())
+    assert out2["birth_resync"] is False

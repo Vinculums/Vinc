@@ -212,3 +212,70 @@ def test_docstring_tool_count_matches_the_list():
     assert m, "독스트링에서 도구 수를 못 찾았다"
     assert int(m.group(1)) == len(TOOLS) == len(SERVED), (
         f"독스트링 {m.group(1)}종 vs TOOLS {len(TOOLS)}개 vs 서빙 {len(SERVED)}개")
+
+
+# ── 정체 각인(2026-08-18) — "어느 그래프에 썼는가"가 응답에 있는가 ──────────────
+# 이것이 있는 이유는 실제 사고다: 대량 적재에서 owner 를 빠뜨려 전량이 `user:local`
+# 로 들어갔는데, **그 tenant 안에서는 읽기도 성공해서** 검증이 통과했다(2026-08-07).
+# 별도 `whoami` 를 만들지 않은 판단도 같은 자리에서 나왔다 — 부를 생각을 못 한 사람
+# 에게 물어봐야 아는 도구는 소용이 없으므로, 정체를 **첫 문과 쓰기 응답**에 실었다.
+def test_writes_and_conventions_carry_the_target_back():
+    """`call()` 이 정체 도구 셋에 `target` 을 얹는가. 얹지 않으면 원격에 쓴 것과
+    로컬에 쓴 것이 응답만 봐서 구분되지 않는다."""
+    from vinc_mcp import tools as T
+
+    seen: dict = {}
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            seen["called"] = True
+            return {"executed": True, "owner": "user:from-server"}
+
+    for name in ("vinc_conventions", "vinc_ingest", "vinc_doc_put"):
+        assert name in T._IDENTITY_TOOLS, f"{name} 이 정체 도구 목록에서 빠졌다"
+
+    out = T.call("vinc_conventions", {}, _FakeBridge())
+    assert out["target"] == "local"
+    # **서버가 실은 owner 를 덮지 않는다.** 클라이언트가 아는 값으로 되울리면
+    # 호스티드에서 거짓말이 된다(키가 owner 를 고정하고 인자는 무시되는 자리다).
+    assert out["owner"] == "user:from-server"
+
+
+def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
+    """허브 프로파일(`allow_target=False`)에서는 `target` 을 **안 찍는다**.
+
+    라이브에서 물린 자리다(2026-08-17 배포 직후): 허브도 같은 깔때기를 도는데 거기서
+    target 은 언제나 "local" 이라, **원격으로 간 호출이 `"local"` 을 받아 왔다.**
+    그 값을 "remote" 로 덮는 것은 새 클라이언트뿐이고 데스크탑 업데이트는 사용자
+    클릭이라, 구 클라이언트에게는 계속 거짓이었다. 계정 그래프에 썼는지 확인하려고
+    이 필드를 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다 — 이 에코가 막으려던
+    바로 그 고장이다. 호출자의 local/remote 개념은 호출자만 아니까 안 답하는 것이 맞다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "owner": "user:hosted"}
+
+    out = T.call("vinc_ingest", {"nodes": []}, _FakeBridge(), allow_target=False)
+    assert "target" not in out, "자기가 곧 원격인 서버가 target 을 답했다"
+    assert out["owner"] == "user:hosted"       # owner 는 그대로 실린다
+    # 로컬 프로파일에서는 계속 찍는다(회귀 가드)
+    assert T.call("vinc_ingest", {"nodes": []}, _FakeBridge())["target"] == "local"
+
+
+def test_identity_stamp_stays_off_the_read_tools():
+    """조회 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다."""
+    from vinc_mcp import tools as T
+
+    class _FakeBridge:
+        owner = "user:local"
+
+        def request(self, *a, **k):
+            return {"executed": True, "rows": []}
+
+    out = T.call("vinc_search", {"query": "x"}, _FakeBridge())
+    assert "target" not in out

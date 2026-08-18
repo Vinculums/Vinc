@@ -1,8 +1,9 @@
-import { api } from "../api";
+import { api, cfg } from "../api";
 import { COPY } from "../copy";
 import { header } from "../components";
 import { stateDot } from "../icons";
 import { renderBrowse } from "./records";
+import { viewHooks } from "../topbar";
 
 /** Surface 4 — Search (spec: vinc.d.view-visual-language §4, DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -117,14 +118,23 @@ export function renderSearch(el: HTMLElement) {
       const row = (r: any) => {
         const marks = (r.arms || []).map((a: string) => MARK[a] || "").join("");
         const score = r.rrf_score ? ` data-tip="RRF ${r.rrf_score.toFixed(4)}"` : "";
-        // 착지 대상 — 노드 히트는 그 노드로, 청크 히트는 그 청크가 언급하는 개념이
-        // 없으므로 문서 자체로 보낸다(현재는 노드 히트만 View 착지가 성립한다).
+        // 착지 대상 — 노드 히트는 그 노드로, **청크 히트는 그 문서의 그 대목으로**.
+        // 여태 청크 행은 `data-go` 가 없어 눌러도 아무 일이 없었고(불활성), 노드 행과
+        // 생김새가 같아 "이 줄만 고장났나"로 읽혔다. 청크 id 는 `<doc>#00007` 이라
+        // 문서와 청크 번호를 이미 들고 있다 — 새 조회 없이 그대로 쓴다.
         const target = r._node ? String(r.id || "") : "";
+        const cid = !r._node ? String(r.id || "") : "";
+        const at = cid.lastIndexOf("#");
+        const cdoc = !r._node ? (r.doc_id || (at > 0 ? cid.slice(0, at) : "")) : "";
+        const cidx = at > 0 ? Number(cid.slice(at + 1)) : NaN;
         // 왜 맞았는지를 한 줄 더 보여준다(D24 §4.2) — 제목만으로는 고를 수 없다.
         const snip = r.one_liner || r.snippet || r.text || r.section_title || "";
+        const clickable = target || cdoc;
         return `
           <div class="list-row" ${target ? `data-go="${esc(target)}"` : ""}
-               style="display:grid;grid-template-columns:1.4rem 1fr auto;gap:.6rem;align-items:baseline${target ? ";cursor:pointer" : ""}">
+               ${cdoc ? `data-doc="${esc(cdoc)}"${Number.isFinite(cidx)
+                 ? ` data-chunk="${cidx}"` : ""}` : ""}
+               style="display:grid;grid-template-columns:1.4rem 1fr auto;gap:.6rem;align-items:baseline${clickable ? ";cursor:pointer" : ""}">
             <span class="meta"${score}>${marks || "≡"}</span>
             <span style="min-width:0">
               <span class="title">${esc(r.title || r.section_title || r.id)}</span>
@@ -142,9 +152,21 @@ export function renderSearch(el: HTMLElement) {
       // V2 — 여태 이 버튼은 `location.hash='#view'` 였다: 찾은 노드가 아니라 L0
       // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
       // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.
-      body.querySelectorAll<HTMLElement>("[data-go]").forEach((r) =>
-        r.addEventListener("click", () => {
-          location.hash = `#view/trace/${encodeURIComponent(r.dataset.go!)}`;
+      // 훅이 있으면 표면을 갈아엎지 않고 그 자리로 간다(상단 바 검색과 같은 태도).
+      // 없으면 해시 착지로 강등 — 청크 행은 착지할 노드가 없으므로 문서를 시트로 연다.
+      body.querySelectorAll<HTMLElement>("[data-go],[data-doc]").forEach((r) =>
+        r.addEventListener("click", async () => {
+          const node = r.dataset.go || "";
+          const doc = r.dataset.doc || "";
+          const chunk = r.dataset.chunk ? Number(r.dataset.chunk) : undefined;
+          const h = viewHooks();
+          if (h && doc) { h.openDoc(doc, node || undefined, undefined, chunk); return; }
+          if (h && node) { h.openNode(node); return; }
+          if (node) { location.hash = `#view/trace/${encodeURIComponent(node)}`; return; }
+          if (doc) {
+            const { openDocSheet } = await import("../doc-editor");
+            void openDocSheet({ owner: cfg.owner, docId: doc });
+          }
         }));
     } catch {
       body.innerHTML = `<div class="error-banner">${COPY.search.error}</div>`;

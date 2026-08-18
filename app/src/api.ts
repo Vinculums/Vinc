@@ -174,9 +174,28 @@ async function call(path: string, params?: Record<string, string | number | unde
       location.assign("/login");
       throw new Error("session expired");
     }
+    // 503 = 사이드카는 살아 있는데 **스토어를 못 읽는다**(락 충돌·손상·확장 경로).
+    // 이 하나만 특별히 뜯는 이유: 나머지 실패와 달리 화면이 "데이터가 없다"로
+    // 오독되기 쉬운 유일한 상태이고, 그 오독이 곧 데이터 유실처럼 보인다.
+    // 사이드카가 사유(open_error)를 바디에 실어 주므로 여기서 꺼내 얹는다 —
+    // 안 그러면 호출부는 `503 {…json…}` 문자열만 받아 사람에게 못 보여 준다.
+    if (res.status === 503) {
+      const b = await res.json().catch(() => ({} as any));
+      const err: any = new Error(b?.open_error || b?.error || "no reachable store");
+      err.storeDown = true;
+      err.reason = String(b?.open_error || "");
+      throw err;
+    }
     throw new Error(`${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+/** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
+ *  나머지 실패는 다시 시도하면 되지만, 이건 **빈 결과와 구분되지 않아서** 위험하다. */
+export function storeDownReason(e: unknown): string | null {
+  const err = e as any;
+  return err?.storeDown ? (err.reason || "") : null;
 }
 
 /** 시간축(D72). `recorded` = 기록 시각, `content` = 문서 내용이 가리키는 시점. */
@@ -238,7 +257,10 @@ export const api = {
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
   //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).
   graph: (owner: string, opts: { domain?: string; domains?: string[]; seed?: string;
-                                 depth?: number; layout?: string } = {}) => {
+                                 depth?: number; layout?: string;
+                                 //: 원뿔 반각 배율(hub 3D). 1 이 기본이라 그때는 안 싣는다 —
+                                 //: 안 싣는 요청이 여태와 같은 URL 이어야 캐시가 갈리지 않는다.
+                                 cone?: number } = {}) => {
     const { domains, ...rest } = opts;
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
@@ -295,6 +317,15 @@ export const api = {
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
+  // 리더 머리 — 이 문서가 **무엇에 걸려 있고**(개념 칩: 문서→노드, 여태 없던 방향)
+  // **어떤 모양인가**(목차), 그리고 검색의 청크 히트가 착지할 오프셋. 세 필드가 전부
+  // 옵셔널인 것은 구 사이드카 강등 규약 — 없으면 그 줄을 안 그린다.
+  docContext: (owner: string, doc_id: string): Promise<{
+    executed: boolean;
+    concepts?: { id: string; title: string; domain: string; count: number }[];
+    sections?: { title: string; level: number; char_start: number }[];
+    chunks?: { index: number; char_start: number }[];
+  }> => call("/doc/context", { owner, doc_id }),
   // D45-E — 앱 내 SSoT 편집(MVP): 저장(전체 재청킹, 재임베딩은 지연) + 개념 추출.
   // origin 은 출처 표시(파일 import 시 파일명) — 서버의 doc 정체성 산식에 참여하고
   // 재드롭 식별의 근거가 된다. 조인 키가 아니며 UI 에도 노출하지 않는다(D45).

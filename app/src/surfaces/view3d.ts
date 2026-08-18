@@ -318,6 +318,7 @@ function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette(),
  *  써야 하는데, 안에 있으면 수식이 두 벌이 된다. */
 export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
   if (!n) return;
+  g.__wake?.(ms + 200);                          // 카메라 트윈은 렌더 루프 안에서 돈다 — 깨워야 움직인다
   const flat = prefs.view === "2d";
   const d = Math.max(70, nodeRadius(n, prefs) * 9);
   if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, ms);
@@ -329,27 +330,51 @@ export function findNode3d(g: any, id: string): any {
   return (g?.graphData?.().nodes || []).find((n: any) => n.id === id);
 }
 
+/** 재마운트 사이에 넘겨 주는 카메라 자리. 옵션 하나를 고칠 때마다 씬을 새로 만드는데,
+ *  그때마다 전체 맞춤으로 되감기면 보던 곳을 잃는다(실측 2026-08-17). 좌표가 그대로인
+ *  재마운트(layout·cone 이 아닌 옵션)만 이 값을 실어 보낸다 — 좌표가 바뀌면 옛 카메라는
+ *  아무것도 안 보는 자리일 수 있다. */
+export type Cam3 = { pos: { x: number; y: number; z: number }; tgt: { x: number; y: number; z: number } };
+export function camera3d(g: ForceGraph3DInstance): Cam3 | null {
+  const c: any = g.controls();
+  const p: any = (g as any).cameraPosition?.();
+  if (!c?.target || !p) return null;
+  return { pos: { x: p.x, y: p.y, z: p.z }, tgt: { x: c.target.x, y: c.target.y, z: c.target.z } };
+}
+
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
-}, prefs: ViewPrefs = loadPrefs()): ForceGraph3DInstance {
+}, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
-  const S = SCALE * prefs.spread;
-  for (const n of nodes) {   // pin deterministic sidecar coords (D17)
-    if (n.x === undefined) continue;
-    // 2D 는 직교 투영이 아닌 경사 사영으로 접는다: z 분리를 y 에 보존해
-    // z 로만 갈라져 있던(같은 클러스터) 노드들이 평면에서도 겹치지 않는다.
-    // 좌표는 동일 사이드카 정본 — 사영 계수만 상수(결정론 유지).
-    // 렌더 좌표(x/y/z)에 직접 기록한다 — fx 핀만 두고 엔진 틱의 핀→좌표 복사에
-    // 의존하면, digest(비동기)가 메시를 원점에 재생성한 뒤 cooldown 0 으로 틱 없이
-    // 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉친다(세부 뷰 2D 미적용의 실측 원인).
-    // fx/fy/fz 는 "엔진이 돌아도 못 움직이게" 하는 핀으로 병기한다.
-    const px = n.x * S;
-    const py = (flat ? (n.y || 0) + (n.z || 0) * 0.55 : (n.y || 0)) * S;
-    const pz = flat ? 0 : (n.z || 0) * S;
-    n.x = px; n.y = py; n.z = pz;
-    n.fx = px; n.fy = py; n.fz = pz;
-  }
+  let S = SCALE * prefs.spread;
+  /** 사이드카 원좌표(단위원)를 노드에 남겨 둔다 — 아래 `place` 가 배율만 바꿔 다시
+   *  놓을 수 있게(간격 슬라이더를 제자리에서 반영, 2026-08-17). n.x 는 렌더 좌표로
+   *  덮어쓰므로 원본은 여기 말고는 없다. */
+  type Raw = { __x0?: number; __y0?: number; __z0?: number };
+  const place = () => {
+    for (const n of nodes) {
+      const r = n as N3 & Raw;
+      if (r.__x0 === undefined) {
+        if (n.x === undefined) continue;
+        r.__x0 = n.x; r.__y0 = n.y || 0; r.__z0 = n.z || 0;
+      }
+      const px = r.__x0 * S;
+      const py = (flat ? r.__y0! + r.__z0! * 0.55 : r.__y0!) * S;
+      const pz = flat ? 0 : r.__z0! * S;
+      n.x = px; n.y = py; n.z = pz;
+      n.fx = px; n.fy = py; n.fz = pz;
+    }
+  };
+  // pin deterministic sidecar coords (D17).
+  // 2D 는 직교 투영이 아닌 경사 사영으로 접는다: z 분리를 y 에 보존해
+  // z 로만 갈라져 있던(같은 클러스터) 노드들이 평면에서도 겹치지 않는다.
+  // 좌표는 동일 사이드카 정본 — 사영 계수만 상수(결정론 유지).
+  // 렌더 좌표(x/y/z)에 직접 기록한다 — fx 핀만 두고 엔진 틱의 핀→좌표 복사에
+  // 의존하면, digest(비동기)가 메시를 원점에 재생성한 뒤 cooldown 0 으로 틱 없이
+  // 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉친다(세부 뷰 2D 미적용의 실측 원인).
+  // fx/fy/fz 는 "엔진이 돌아도 못 움직이게" 하는 핀으로 병기한다.
+  place();
   // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   const darkTheme = document.documentElement.dataset.theme === "dark";
@@ -367,10 +392,34 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 주제 틴트(열린 층) — 마운트당 한 번 표를 만들어 노드에 실어 둔다. 각도가
   // 화면에 있는 주제들 위에서 배정되므로(view-tint.ts) 노드 하나만 보고는
   // 계산할 수 없다.
-  if (prefs.domainTint) {
-    const tints = tintMap(nodes.map((n) => n.domain), themeMode());
-    for (const n of nodes) (n as { __tint?: string }).__tint = tints.get((n.domain || "").trim());
-  }
+  const applyTints = () => {
+    const tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), themeMode()) : null;
+    for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
+  };
+  applyTints();
+  /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
+   *  다시 만든다 — 크기 인코딩·틴트·라벨을 제자리에서 갈아 끼우는 값싼 길이다
+   *  (씬·렌더러·컨텍스트는 그대로). 배율(nodeScale)은 여기 안 넣고 scale 로 곱한다. */
+  let builtScale = prefs.nodeScale ?? 1;         // 마지막으로 메시를 구웠을 때의 배율
+  const nodeFactory = () => (n: any) => {
+    const mesh = nodeObject(n, prefs, pal, true);
+    // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
+    // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
+    // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
+    if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(labelSprite(n.label, pal));
+    return mesh;
+  };
+  // D33 — 엣지 = 헤어라인이 **기본**이다: linkWidth 0 = 튜브 메시가 아닌 THREE.Line.
+  // 가중치는 여전히 굵기가 아니라 잉크 농도가 말한다(그 구분이 D33 의 요지다).
+  // 사용자 배율(2026-08-02)은 그 위에 얹는 전역 손잡이일 뿐이다: 1 이면 헤어라인
+  // 그대로(0)이고, 올릴 때만 튜브로 굵어진다 — 기본 화면은 D33 이 정한 모습 그대로.
+  const linkWidthFn = () => () => {
+    const s = prefs.edgeScale ?? 1;
+    return s <= 1 ? 0 : (s - 1) * 0.8;
+  };
+  // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
+  const arrowLenFn = () => (l: any) =>
+    prefs.arrows && !particlesOn && !bringOn && isDirectedLink(l) ? 2.6 : 0;
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
@@ -379,29 +428,18 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
-    .nodeThreeObject((n: any) => {
-      const mesh = nodeObject(n, prefs, pal, true);
-      // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
-      // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
-      // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
-      if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(labelSprite(n.label, pal));
-      return mesh;
-    })
+    .nodeThreeObject(nodeFactory())
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
       `<span style="${pal.label};border-radius:6px;padding:2px 8px;font-family:system-ui">${n.gateway ? (n.domain + " › ") : ""}${n.label}</span>`)
     // D33 — 엣지 = 헤어라인이 **기본**이다: linkWidth 0 = 튜브 메시가 아닌 THREE.Line.
     // 가중치는 여전히 굵기가 아니라 잉크 농도가 말한다(그 구분이 D33 의 요지다).
     // 사용자 배율(2026-08-02)은 그 위에 얹는 전역 손잡이일 뿐이다: 1 이면 헤어라인
     // 그대로(0)이고, 올릴 때만 튜브로 굵어진다 — 기본 화면은 D33 이 정한 모습 그대로.
-    .linkWidth(() => {
-      const s = prefs.edgeScale ?? 1;
-      return s <= 1 ? 0 : (s - 1) * 0.8;
-    })
+    .linkWidth(linkWidthFn())
     .linkOpacity(0.85)
     .linkCurvature(0.18)
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
-    .linkDirectionalArrowLength((l: any) =>
-      prefs.arrows && !particlesOn && !bringOn && isDirectedLink(l) ? 2.6 : 0)
+    .linkDirectionalArrowLength(arrowLenFn())
     // 입자 모드 — 방향 3종에만(위 상수 주석 ②). 흐름이 방향을 말하므로 화살촉은 끈다.
     .linkDirectionalParticles((l: any) => particlesOn && isDirectedLink(l)
       ? PARTICLES_PER_LINK : 0)
@@ -419,9 +457,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       return Math.max(0.5, 1 - (nodeRadius(t, prefs) + 2.5) / len);
     })
     .graphData({ nodes, links });
-  if (el.clientWidth > 1 && el.clientHeight > 1) {
-    g.width(el.clientWidth).height(el.clientHeight);
-  }
+  // ⚠ 크기를 바꾼 뒤엔 컨트롤에도 알려야 한다. TrackballControls 는 생성 시점의 요소
+  // 사각형을 `screen` 에 캐시하고 `handleResize()` 를 불러야만 갱신한다. 안 부르면
+  // 레이아웃 전 크기(실측 240×120)로 포인터를 환산해 캔버스(1568×1073)와의 비율만큼
+  // 회전·이동이 과민해진다 — 180px 끌어 92~98°, 갱신 후 15~20°(2026-08-17).
+  // `g.width()` 는 다음 digest 에서야 캔버스에 닿으므로 여기서 바로 handleResize 를
+  // 불러도 옛 크기를 읽는다(실측: 창 크기 1800×1125 가 그대로 남았다). 그래서 **캔버스
+  // 자체**를 관찰해, 실제로 크기가 바뀐 뒤에 컨트롤을 맞춘다(아래 ResizeObserver).
+  const sizeTo = () => {
+    if (el.clientWidth > 1 && el.clientHeight > 1) g.width(el.clientWidth).height(el.clientHeight);
+  };
+  sizeTo();
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   const scene = g.scene();
@@ -442,10 +488,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (() => { const d = new THREE.DirectionalLight(0xf0f1fa, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
-  if (controls) {
-    controls.enableDamping = true; controls.autoRotate = false;
-    controls.enableRotate = !flat;          // 2D: 팬/줌만 — 회전 잠금
-  }
+  // 컨트롤은 3d-force-graph 기본 **TrackballControls** 다 — enableDamping·autoRotate·
+  // enableRotate 는 OrbitControls 의 이름이라 여기선 아무것도 안 했다(2026-08-17 실측:
+  // 세 줄 다 무효, 평면 잠금도 안 걸렸다). 트랙볼의 이름은 `noRotate`.
+  if (controls) controls.noRotate = flat;   // 2D: 팬/줌만 — 회전 잠금
   // ── fog 카메라 적응 (가시성 연구 C1·R1) ──────────────────────────────────
   // 여태 near/far 가 씬 크기(S)에만 묶인 상수라, 기본 프레이밍의 카메라 거리(≈S·2.53)가
   // 이미 near(S·2.6) 코앞이었다. 휠로 축소하면 전 노드가 near~far 구간에 들어가 배경색으로
@@ -466,7 +512,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   syncCamera();
   // 매 프레임이 아니라 **카메라가 실제로 움직일 때만** 갱신한다(비용 무시 가능).
   controls?.addEventListener?.("change", syncCamera);
-  if (flat) {
+  if (keepCam) {
+    // 옵션 재마운트 — 보던 자리 그대로. 전체 맞춤은 첫 마운트만 한다(아래 settle).
+    g.cameraPosition(keepCam.pos, keepCam.tgt, 0);
+  } else if (flat) {
     // 정면 카메라 — 화면 x/y 가 곧 레이아웃 x/y
     g.cameraPosition({ x: 0, y: 0, z: S * 2.2 }, { x: 0, y: 0, z: 0 }, 0);
   } else {
@@ -487,7 +536,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (g as any).d3ReheatSimulation?.();
     requestAnimationFrame(() => {
       if (dead) return;
-      (g as any).zoomToFit?.(400, 60);
+      wake(700);
+      if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
       setTimeout(() => { if (!dead) syncCamera(); }, 460);
@@ -496,19 +546,83 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   requestAnimationFrame(() => settle(0));
   // 컨테이너 추적 리사이즈 — 창 크기 변경·스크롤바 등장에도 캔버스가 컨테이너와 일치.
   const ro = new ResizeObserver(() => {
-    if (!dead && el.clientWidth > 1 && el.clientHeight > 1)
-      g.width(el.clientWidth).height(el.clientHeight);
+    if (dead) return;
+    sizeTo();                                    // 컨테이너가 변했으면 캔버스를 맞추고
+    (g.controls() as any)?.handleResize?.();     // 캔버스가 변했으면 컨트롤을 맞춘다
   });
   ro.observe(el);
+  ro.observe(g.renderer().domElement);           // 캔버스 변화는 digest 뒤에 온다(위 주석)
+
+  // ── 필요할 때만 그린다(F6, 2026-08-17) ───────────────────────────────────
+  // 좌표는 핀 고정이라 아무 일도 없을 때 화면은 한 픽셀도 안 바뀌는데, three-render-
+  // objects 의 틱은 매 프레임 render() 를 부른다(실측: 유휴 3D 가 59fps 로 GPU 를 태운다).
+  // "움직일 이유"가 있는 동안만 깨어 있는다: 포인터·휠·카메라 변화·hover 페이드·비행·
+  // 옵션 반영은 각자 wake(ms) 를 부르고, 마감이 지나면 pauseAnimation(). 입자 모드는
+  // 상시 애니메이션이라 재우지 않는다. resumeAnimation 은 첫 프레임을 곧장 그린다.
+  let awakeUntil = performance.now() + 2500;      // 마운트·프레이밍이 끝날 때까지
+  let napping = false;
+  const wake = (ms = 300) => {
+    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
+    if (napping) { napping = false; (g as any).resumeAnimation?.(); }
+  };
+  const napTimer = window.setInterval(() => {
+    if (dead || particlesOn || napping) return;
+    if (performance.now() > awakeUntil) { napping = true; (g as any).pauseAnimation?.(); }
+  }, 200);
+  const onWakeEvent = () => wake(300);
+  for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
+    el.addEventListener(ev, onWakeEvent, { passive: true });
+  controls?.addEventListener?.("change", onWakeEvent);
+  (g as any).__wake = wake;                       // 바깥(f 키·flyToMounted)에서도 깨운다
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();
     controls?.removeEventListener?.("change", syncCamera);
+    window.clearInterval(napTimer);
+    controls?.removeEventListener?.("change", onWakeEvent);
+    for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
+      el.removeEventListener(ev, onWakeEvent);
     baseDestructor?.();
+    // dispose() 만으로는 WebGL 컨텍스트가 GC 때까지 살아 있다 — 옵션 클릭 16번에
+    // "Too many active WebGL contexts" 가 났다(2026-08-17). 명시적으로 잃게 한다.
+    try { g.renderer()?.forceContextLoss?.(); } catch { /* 이미 잃었으면 무시 */ }
   };
   // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 메시 위치·카메라
   // 상태를 수치로 검증하는 데 쓴다(2026-07 세부 뷰 원점 뭉침 회귀 감시).
   if (import.meta.env.DEV) (window as any).__g3 = g;
+
+  /** 옵션을 **제자리에서** 반영한다(2026-08-17). 노드·엣지 집합이 그대로인 변경만
+   *  받고, 그 밖(선 모드·연결 없음·범례 필터·layout·cone)은 false 로 돌려 호출측이
+   *  다시 마운트하게 한다. 배율은 메시 scale 로, 굵기·화살촉은 세터 재호출로, 라벨·
+   *  틴트·크기 인코딩은 노드 오브젝트 재생성으로 — 씬·렌더러·컨텍스트·카메라는 그대로다. */
+  (g as any).__update = (np: ViewPrefs): boolean => {
+    const prev = prefs;
+    const changed = (Object.keys(np) as (keyof ViewPrefs)[])
+      .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
+    const ok = new Set<keyof ViewPrefs>(
+      ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
+    if (!changed.every((k) => ok.has(k))) return false;
+    prefs = np;
+    if (changed.includes("spread")) {
+      S = SCALE * np.spread;
+      place();                                   // 핀 좌표를 새 배율로 다시 놓고
+      (g as any).d3ReheatSimulation?.();        // 위치 동기화 프레임을 1회 강제(settle 과 같은 길)
+    }
+    if (changed.some((k) => k === "labels" || k === "domainTint" || k === "size")) {
+      applyTints();
+      builtScale = np.nodeScale ?? 1;
+      g.nodeThreeObject(nodeFactory());          // 새 함수 = 노드 오브젝트 전부 다시 굽기
+    } else if (changed.includes("nodeScale")) {
+      // 반지름을 다시 굽지 않고 메시를 곱한다 — 라벨·글로우도 같이 커지지만 슬라이더
+      // 한 프레임에 175개 지오메트리를 새로 만드는 것보다 훨씬 싸다.
+      const k = (np.nodeScale ?? 1) / builtScale;
+      for (const n of g.graphData().nodes as any[]) n.__threeObj?.scale.setScalar(k);
+    }
+    if (changed.includes("edgeScale")) g.linkWidth(linkWidthFn());
+    if (changed.includes("arrows")) g.linkDirectionalArrowLength(arrowLenFn());
+    wake(600);                                     // 바뀐 것을 그릴 프레임
+    return true;
+  };
 
   g.onNodeClick((n: any) => {
     // 고르는 행위가 곧 모으는 행위다. 같은 것을 다시 누르면 풀린다.
@@ -569,6 +683,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (Math.abs(d) > 0.01) { mat.opacity += d * 0.25; live = true; }
       else mat.opacity = target;
     });
+    wake(200);                                     // 페이드가 도는 동안은 그려야 보인다
     raf = live ? requestAnimationFrame(tween) : 0;
   };
   g.onNodeHover((n: any) => {
@@ -719,7 +834,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     return live;
   }
-  function tickFly3d() { flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
+  function tickFly3d() { wake(200); flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
 
   // 해체는 호출부가 `_destructor()` 로 한다(view.ts). 그 자리에 정리를 얹는다 —
   // 안 하면 관점을 바꾼 뒤에도 rAF 가 죽은 씬을 계속 돌린다.

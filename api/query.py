@@ -524,6 +524,9 @@ def graph_plan(*, owner: str, domain: str | None = None,
         # 레이아웃 정렬의 `pinned` 키가 무동작인 것은 이 때문이고, D32 의 "pin 이
         # 허브 승격 1순위"는 개념 축에서 **아직 구현된 적이 없다**(별건).
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
+        # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
+        "r.created AS edge_created, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "
@@ -785,6 +788,9 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
         "coalesce(c.content_time, '') AS content_ts, "
         "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
+        # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
+        "r.created AS edge_created, "
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "
@@ -1140,7 +1146,8 @@ def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
 
 
 def layout_positions(nodes: list[dict], edges: list[dict],
-                     layout: str = "radial", topic_marks: bool = False) -> list[dict]:
+                     layout: str = "radial", topic_marks: bool = False,
+                     cone: float = 1.0) -> list[dict]:
     """결정론 배치(D17 + D34 프리셋 + **D74 위계 폭발**) — 순수 함수. 난수·시간
     무의존이라 같은 그래프는 언제 그려도 같은 좌표다(플랜 순수성 계약과 동형).
 
@@ -1187,7 +1194,11 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         # 지어내는 것이 된다. 담는 관계는 hub 가 답한다.
         _global_rank(nodes, directed, math)
     else:
-        _global_hub(nodes, math, GOLDEN, topic_marks)
+        # 원뿔 반각 = 기본값 × 사용자 배율. 상한이 π/2 인 이유: 반각이 90°를 넘으면
+        # 원뿔이 부모의 **뒤쪽**까지 열려 자식이 부모보다 중심에 가까워진다. 그러면
+        # "이 방향으로 계속 뻗어 나간다"는 이 배치의 문장 자체가 깨진다.
+        cone0 = min(_CONE0 * max(_CONE_MIN, min(_CONE_MAX, cone)), math.pi / 2)
+        _global_hub(nodes, math, GOLDEN, topic_marks, cone0)
     _dedupe_planar(nodes)
     return nodes
 
@@ -1298,6 +1309,11 @@ def _domain_order(nodes: list[dict]) -> dict[str, int]:
 _R_BRANCH = (0.0, 0.52, 0.82, 1.02)     # 뿌리 · 도메인 · 하위 · 그 아래
 _R_LEAF = 0.5                            # 잎이 가지 껍질 밖으로 더 나가는 폭
 _CONE0 = 1.15                            # 뿌리에서 도메인으로 퍼지는 반각(rad)
+#: 사용자 배율의 허용 범위(2026-08-16). 1.0 이 여태의 그림이다. 아래로는 0.3 —
+#: 그보다 좁으면 가지가 한 줄기로 뭉쳐 위계가 안 읽힌다. 위로는 1.4 인데 실효 상한은
+#: π/2 라(위 주석) 1.37 부터는 더 열려도 그대로다. 그 둘을 굳이 맞추지 않는 이유는
+#: 상한의 근거가 다르기 때문이다: 하나는 취향의 끝이고 하나는 기하의 끝이다.
+_CONE_MIN, _CONE_MAX = 0.3, 1.4
 
 
 def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> list:
@@ -1382,7 +1398,8 @@ def _shell(depth: int) -> float:
     return _R_BRANCH[-1] + 0.16 * (depth - len(_R_BRANCH) + 1)
 
 
-def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False) -> None:
+def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
+                cone0: float = _CONE0) -> None:
     """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
 
     뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
@@ -1523,7 +1540,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False) -> N
     # 뿌리의 경로는 벗겨 낸 **공통 접두**다(_common_prefix). 전부 `vinc/*` 면 `vinc`
     # 하나가 원점에 서고, 주제가 둘 이상 갈리면(예: `vinc/*` 와 `neo4j/*`) 접두가
     # 비어 뿌리 마크가 없다 — 그때는 이름 붙일 하나의 뿌리가 실제로 없기 때문이다.
-    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, _CONE0, _common_prefix(
+    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, cone0, _common_prefix(
         [_domain_path(n.get("domain") or "") for n in nodes]))
     nodes.extend(marks)      # 배치가 끝난 뒤 한 번에(marks 선언부 주석)
 
@@ -1580,7 +1597,8 @@ def _apply_basis(shaped: dict, basis: str) -> str:
 
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
           depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
-          domains: list[str] | None = None, cfg=None, store=None) -> dict:
+          domains: list[str] | None = None, cone: float = 1.0,
+          cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(View L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(View L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
@@ -1653,7 +1671,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
-        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout)
+        shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
+                                           cone=cone)
         used = _apply_basis(shaped, basis)
         if not found:
             cands = near_nodes(store, seed, owner=owner)
@@ -1679,7 +1698,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
-                                       topic_marks=True)
+                                       topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)
     return {"kind": "graph", "executed": res.get("executed", False),
             "basis": used, **shaped}

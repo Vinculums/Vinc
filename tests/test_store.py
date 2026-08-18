@@ -97,17 +97,26 @@ class ProvisionTests(unittest.TestCase):
         # v12 — 의미층(Concept|Decision)이 서로 바꿔 설 수 있어 쌍이 4개로 편다.
         self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept, "
                       "FROM Concept TO Decision, FROM Decision TO Concept, "
-                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE)", ddl)
+                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE, "
+                      "created STRING)", ddl)   # v14 — 엣지 출생
         # …단 RELATED_TO 는 예외로 개념↔개념 — Louvain 이 단일 노드 테이블만 받는다.
         self.assertIn("CREATE REL TABLE RELATED_TO(FROM Concept TO Concept, "
-                      "evidence STRING, confidence DOUBLE)", ddl)
+                      "evidence STRING, confidence DOUBLE, created STRING)", ddl)
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
+        # v14 — 출생은 **저작된 관계에만**. CROSSES(브릿지 정의의 구조적
+        # 일부)·IN_DOMAIN(domain 열 파생)·MENTIONS(문서 재링크 파생)는 안 받는다:
+        # 파생물의 출생은 "마지막으로 다시 만든 때"라 뜻이 없다.
+        for derived in ("CROSSES", "IN_DOMAIN", "MENTIONS", "PARENT_OF"):
+            line = next(x for x in ddl.splitlines()
+                        if x.startswith(f"CREATE REL TABLE {derived}("))
+            self.assertNotIn("created STRING", line, derived)
         self.assertIn("CONNECTS(FROM Bridge TO Concept, FROM Bridge TO Decision, "
-                      "role STRING)", ddl)
+                      "role STRING, created STRING)", ddl)
         # F4 — episodic↔semantic 다리(+ E-G6 증거·신뢰도). v12 로 출발점에 Decision 추가.
         self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept, "
                       "FROM Episode TO Decision, FROM Decision TO Concept, "
-                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE)", ddl)
+                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE, "
+                      "created STRING)", ddl)
         self.assertIn("CREATE NODE TABLE Decision(decision_id STRING", ddl)
         # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
         self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
@@ -153,14 +162,21 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 13)   # v13 — 결정을 주제 계층에
+        self.assertEqual(eschema.SCHEMA_VERSION, 14)   # v14 — 엣지 출생
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
         # v12 는 **다르다**: 기존 rel 테이블에 끝점 쌍을 여는 것이라 ALTER 가 필요하다.
         # 부팅 DDL 의 CREATE 는 구 설치에서 'already exists' 로 흡수돼 쌍을 안 열어 준다
         # — 그래서 여기가 비면 구 스토어에서 결정 엣지가 전부 Binder 로 죽는다.
-        v12 = eschema.migration_statements(11)
+        # ⚠ `migration_statements(n)` 은 n **이후 전부**를 낸다. 한 버전의 몫만 보려면
+        # 차집합을 써야 한다 — 그냥 (11)을 검사하면 뒤에 붙는 버전이 생길 때마다
+        # 이 단언이 깨진다(v14 에서 실제로 깨졌다).
+        def only(v):
+            later = set(eschema.migration_statements(v))
+            return [s for s in eschema.migration_statements(v - 1) if s not in later]
+
+        v12 = only(12)
         self.assertIn("ALTER TABLE ABOUT ADD FROM Decision TO Concept", v12)
         self.assertIn("ALTER TABLE MENTIONS ADD FROM Chunk TO Decision", v12)
         self.assertIn("ALTER TABLE IN_DOMAIN ADD FROM Decision TO Domain", v12)
@@ -170,8 +186,19 @@ class ProvisionTests(unittest.TestCase):
         # DOMAIN_HIERARCHY_VERSION 을 넘겨 **계층 백필을 다시 돌리는 것**이다.
         # 그래서 그 상수가 SCHEMA_VERSION 을 따라와야 의미가 있다(안 따라오면
         # 결정이 `domain` 열만 갖고 엣지를 못 가진 채 남는다 — 실제로 그랬다).
-        self.assertEqual([], eschema.migration_statements(12))
-        self.assertEqual(eschema.DOMAIN_HIERARCHY_VERSION, eschema.SCHEMA_VERSION)
+        self.assertEqual([], only(13))
+        # v14 — 엣지 출생. 저작된 관계 전부에 붙고 파생 관계에는 안 붙는다.
+        v14 = only(14)
+        self.assertTrue(v14 and all(s.startswith("ALTER TABLE ")
+                                    and s.endswith("ADD created STRING DEFAULT ''")
+                                    for s in v14), v14)
+        self.assertEqual({s.split()[2] for s in v14}, set(eschema.EDGE_BIRTH_RELS))
+        # ⚠ 여기 `==` 였는데 그건 v13 에 특유한 사정이었다(그 버전이 하는 일이
+        # 백필 재실행 자체였다). 계층과 무관한 스키마 변경이 오면 둘은 **갈리는 것이
+        # 맞다** — 같게 묶으면 모든 업그레이드가 계층 백필을 다시 돌린다.
+        # 진짜 불변식은 "계층 파생 규칙을 고쳤으면 이 상수를 올린다"이고, 그것은
+        # 상수 비교로 못 잡는다. 여기서는 **뒤처지지 않는지**만 본다.
+        self.assertLessEqual(eschema.DOMAIN_HIERARCHY_VERSION, eschema.SCHEMA_VERSION)
         self.assertIn("ALTER TABLE Bridge ADD owner_id STRING DEFAULT ''",
                       eschema.migration_statements(1))
         # 0→7 은 v1~v7 전 스텝 포함(…·Chunk SSoT·doc sync·needs_embed·시간축)

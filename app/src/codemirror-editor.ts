@@ -33,6 +33,9 @@ export type CmHandle = {
   /** 개념 언급 위치(밑줄) 갱신 + 첫 위치로 스크롤. char 오프셋은 백엔드 계산값. */
   setHighlights: (ranges: { char_start: number; char_end: number }[]) => void;
   scrollToHighlight: () => void;
+  /** 임의 오프셋으로 스크롤 — 목차 클릭과 검색의 청크 히트 착지가 쓴다.
+   *  범위를 넘는 값은 문서 끝으로 잘린다(재청킹으로 오프셋이 어긋나도 튀지 않는다). */
+  scrollToOffset: (pos: number) => void;
 };
 
 // 인라인 문법 토큰 — 짝 기호를 숨기고(replace) 안쪽을 서식(mark). 순서 주의:
@@ -42,8 +45,15 @@ const INLINE: Tok[] = [
   { re: /`([^`]+)`/g, cls: "cm-r-code" },
   { re: /\*\*([^*\n]+)\*\*/g, cls: "cm-r-strong" },
   { re: /(?<![*])\*([^*\n]+)\*(?![*])/g, cls: "cm-r-em" },
+  // 문서 상호참조. 코퍼스가 이미 이 글자로 서로를 가리키고 있었는데 밑줄만 그어진
+  // 죽은 글자였다 — 이 앱이 가장 많이 쓰는 링크가 유일하게 안 열리는 링크였다.
+  // 마크다운 링크보다 **먼저** 잡는다(`[[a]]` 는 `[a](…)` 가 아니라 그 자체다).
+  { re: /\[\[([^\]\n]+)\]\]/g, cls: "cm-r-doclink" },
   { re: /\[([^\]\n]+)\]\(([^)\n]+)\)/g, cls: "cm-r-link" },
 ];
+
+const WIKI_RE = /\[\[([^\]\n]+)\]\]/g;
+const MDLINK_RE = /\[([^\]\n]+)\]\(([^)\n]+)\)/g;
 
 const HEADING = /^(#{1,6})\s+/;
 const QUOTE = /^>\s?/;
@@ -482,6 +492,12 @@ export function mountEditor(el: HTMLElement, opts: {
   readOnly?: boolean;
   /** 접힌 프론트매터 줄의 라벨(카피는 호출부가 준다 — slash 항목과 같은 규율). */
   fmLabel?: string;
+  /** `[[doc_id]]` 를 눌렀다. 편집기는 문서를 여는 법을 모른다(View 를 임포트하지
+   *  않는다 — slash·fmLabel 과 같은 규율) — 호출부가 그 문을 준다. */
+  onDocLink?: (docId: string) => void;
+  /** `[text](url)` 를 Ctrl/Cmd+클릭했다. 여는 방법은 셸이냐 웹이냐로 갈리므로
+   *  역시 호출부가 안다. */
+  onUrl?: (url: string) => void;
 }): CmHandle {
   const editable = new Compartment();
   let slash: SlashMenu | null = null;
@@ -513,6 +529,47 @@ export function mountEditor(el: HTMLElement, opts: {
         livePreview,
         highlightField,
         editable.of(EditorView.editable.of(!opts.readOnly)),
+        // 링크를 따라간다. 자리를 데코레이션이 아니라 **본문에서 다시 찾는** 이유:
+        // 소스가 정본이라 offset 하나면 무엇을 눌렀는지 알 수 있고, 데코레이션에
+        // 속성을 달면 그 속성이 정본과 어긋날 자리를 하나 더 만든다.
+        //
+        // 평클릭의 임자는 **커서**다. 그래서:
+        //  · `[text](url)` 는 Ctrl/Cmd+클릭에서만 연다(그리고 http(s) 만 — 로컬
+        //    파일 스킴을 문서가 열게 두지 않는다).
+        //  · `[[doc_id]]` 는 렌더된 줄에서만 평클릭으로 연다. 커서가 놓인 줄은 원본
+        //    소스를 보이는 자리이고(라이브 프리뷰의 규율), 거기서까지 클릭을 뺏으면
+        //    그 링크는 **손으로 고칠 수 없는 글자**가 된다.
+        EditorView.domEventHandlers({
+          mousedown: (e, v) => {
+            if (e.button !== 0) return false;
+            const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+            if (pos == null) return false;
+            const line = v.state.doc.lineAt(pos);
+            const at = pos - line.from;
+            const mod = e.metaKey || e.ctrlKey;
+            const onCursorLine =
+              v.state.doc.lineAt(v.state.selection.main.head).number === line.number;
+            const hit = (re: RegExp) => {
+              re.lastIndex = 0;
+              for (let m = re.exec(line.text); m; m = re.exec(line.text))
+                if (at >= m.index && at <= m.index + m[0].length) return m;
+              return null;
+            };
+            const wiki = opts.onDocLink ? hit(WIKI_RE) : null;
+            if (wiki && (mod || !onCursorLine)) {
+              e.preventDefault();
+              opts.onDocLink!(wiki[1].trim());
+              return true;
+            }
+            if (!mod || !opts.onUrl) return false;
+            const md = hit(MDLINK_RE);
+            const url = md?.[2].trim() || "";
+            if (!/^https?:\/\//i.test(url)) return false;
+            e.preventDefault();
+            opts.onUrl(url);
+            return true;
+          },
+        }),
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) opts.onChange(view.state.doc.toString());
@@ -535,6 +592,9 @@ export function mountEditor(el: HTMLElement, opts: {
           ".cm-r-em": { fontStyle: "italic" },
           ".cm-r-code": { fontFamily: "ui-monospace, monospace", opacity: "0.85" },
           ".cm-r-link": { textDecoration: "underline" },
+          // 문서 상호참조 — 따라갈 수 있는 글자라는 것만 밑줄로 말한다(색은 안 쓴다:
+          // 초점색은 화면당 한 의미 예약이고, 여기 색을 주면 지도의 초점과 겨룬다).
+          ".cm-r-doclink": { textDecoration: "underline", cursor: "pointer" },
           ".cm-r-quote": { opacity: "0.72", borderLeft: "2px solid hsl(var(--border))", paddingLeft: "8px" },
           ".cm-r-bullet": { opacity: "0.6" },
           ".cm-r-hr": { display: "inline-block", width: "100%", borderTop: "1px solid hsl(var(--border))", verticalAlign: "middle" },
@@ -548,6 +608,12 @@ export function mountEditor(el: HTMLElement, opts: {
   });
   if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
   let hl: { char_start: number; char_end: number }[] = [];
+  /** 오프셋 하나로 스크롤. 문서 길이로 자르는 이유: 청크 오프셋은 저장 시점의
+   *  것이라 그 뒤 편집으로 짧아졌을 수 있다 — 넘는 값을 그대로 넣으면 던진다. */
+  const scrollTo = (pos: number) => {
+    const at = Math.max(0, Math.min(pos, view.state.doc.length));
+    view.dispatch({ effects: EditorView.scrollIntoView(at, { y: "center" }) });
+  };
   return {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
@@ -563,9 +629,8 @@ export function mountEditor(el: HTMLElement, opts: {
     },
     scrollToHighlight: () => {
       const first = hl.slice().sort((a, b) => a.char_start - b.char_start)[0];
-      if (!first) return;
-      const pos = Math.min(first.char_start, view.state.doc.length);
-      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+      if (first) scrollTo(first.char_start);
     },
+    scrollToOffset: scrollTo,
   };
 }

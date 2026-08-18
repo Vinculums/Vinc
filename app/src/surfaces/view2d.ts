@@ -1,7 +1,7 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
-import { createNodeBorderProgram } from "@sigma/node-border";
+import { createNodeImageProgram } from "@sigma/node-image";
 import type { GraphEdge, GraphNode } from "../api";
 import { COPY } from "../copy";
 import { icon } from "../icons";
@@ -9,6 +9,7 @@ import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { recede } from "../recede";
+import { markTexture } from "./view-planar";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -39,7 +40,12 @@ import { recede } from "../recede";
 /** `focus(id)` 는 **성공 여부를 돌려준다**(D70) — 그 노드가 지금 마운트된 집합에
  *  없으면 false 이고, 호출측(view.focusNode)은 그때만 스코프를 갈아 다시 마운트한다.
  *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
-export type Handle2d = { dispose(): void; fit(): void; focus(id: string): boolean };
+export type Handle2d = {
+  dispose(): void; fit(): void; focus(id: string): boolean;
+  /** 옵션을 **제자리에서** 반영한다. 못 하는 변경(선 모드·연결 없음·범례 필터처럼
+   *  노드·엣지 집합이 바뀌는 것)은 false 를 돌려 주고, 호출측이 다시 마운트한다. */
+  update(p: ViewPrefs): boolean;
+};
 
 /** 방향 3종 — 화살촉이 붙는 관계(view-planar 의 DIRECTED 와 같은 정의). */
 const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
@@ -55,6 +61,42 @@ const ink = () => hexStr(pal().text);
 const ramp = () => pal().linkRamp;
 /** 초점색 — 토큰 하나(`semantic.*.focus`). 라이트는 로고 인디고, 다크는 페리윙클. */
 const point = () => hexStr(pal().focus);
+
+/** hover 배경판. sigma 의 기본 `drawDiscNodeHover` 는 이 판을 **`#FFF` 로 박아
+ *  둔다** — 다크 테마에서는 흰 덩어리가 마크를 덮고 그 위에 흰 잉크로 이름을 써서
+ *  아무것도 안 읽혔다(2026-08-17 제보). 색만 토큰으로 갈면 되는데 sigma 에 그 설정이
+ *  없어서 기하만 그대로 옮겨 왔다(원본: `drawDiscNodeHover`, 원 + 라벨 상자의 합집합).
+ *  글자는 `settings.defaultDrawNodeLabel` 에 그대로 넘긴다 — 라벨 색·글꼴 규칙이
+ *  hover 에서만 갈라지지 않게. */
+function drawHover(ctx: CanvasRenderingContext2D,
+  data: { x: number; y: number; size: number; label: string | null },
+  settings: { labelSize: number; labelFont: string; labelWeight: string;
+              defaultDrawNodeLabel: (c: CanvasRenderingContext2D, d: typeof data, s: never) => void }): void {
+  const size = settings.labelSize, PAD = 2;
+  ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+  ctx.fillStyle = hexStr(pal().surface);
+  ctx.strokeStyle = hexStr(pal().line);
+  ctx.lineWidth = 1;
+  const radius = Math.max(data.size, size / 2) + PAD;
+  ctx.beginPath();
+  if (typeof data.label === "string") {
+    const boxW = Math.round(ctx.measureText(data.label).width + 5);
+    const boxH = Math.round(size + 2 * PAD);
+    const a = Math.asin(boxH / 2 / radius);
+    const dx = Math.sqrt(Math.abs(radius ** 2 - (boxH / 2) ** 2));
+    ctx.moveTo(data.x + dx, data.y + boxH / 2);
+    ctx.lineTo(data.x + radius + boxW, data.y + boxH / 2);
+    ctx.lineTo(data.x + radius + boxW, data.y - boxH / 2);
+    ctx.lineTo(data.x + dx, data.y - boxH / 2);
+    ctx.arc(data.x, data.y, radius, a, -a);
+  } else {
+    ctx.arc(data.x, data.y, radius, 0, Math.PI * 2);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  settings.defaultDrawNodeLabel(ctx, data, settings as never);
+}
 
 /** 물러난 마크의 색 — 불투명도 대신 잉크를 배경 쪽으로 섞는다(sigma 는 노드
  *  알파를 따로 받지 않는다). 결과는 CSS 의 opacity 와 같은 인상이다. */
@@ -108,7 +150,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode, ev: MouseEvent) => void;
        /** 선 클릭 → 관계 근거 패널(D45-V). 흐름 관점이 폐기되면서(D53) 이 진입점이
         *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
-       onEdge?: (e: GraphEdge) => void; seed?: string },
+       onEdge?: (e: GraphEdge) => void; markId?: string },
   prefs: ViewPrefs): Handle2d {
   const bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
@@ -127,7 +169,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const shown = prefs.unlinked === "hide"
-    ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.seed)
+    ? nodes.filter((n) => (n.degree || 0) > 0 || n.id === o.markId)
     : nodes;
   // 밀도 적응 크기(D51) — sigma 는 그래프를 캔버스에 **맞춰 넣는데(auto-fit)** 노드
   // 크기는 절대 px 다. 그래서 좌표를 아무리 키워도(=`spread`) 화면은 그대로이고,
@@ -182,20 +224,26 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  **테두리로 옮긴 축약**이라 정확한 1:1 은 아니다. 테두리는 각을 못 만들어
    *  정사면체와 정팔면체가 둘 다 원 계열로 떨어지고, 파선도 못 그린다. 대신 갈리는
    *  것은 채움 · 비움 · 겹의 셋이고, 6px 마크에서 실제로 읽히는 것은 거기까지다. */
-  const markOf = (n: Node2d): { b1: number; b2: number } => {
-    if (n.gateway) return { b1: 0.12, b2: 0.88 };                           // 얇은 링 — 면이 없다
-    if (n.kind === "domain") return { b1: 0.10, b2: 0.48 };                  // 외피 + 코어(겹껍질)
-    if (n.kind === "bridge") return { b1: 0.24, b2: 0.24 };                  // 링 + 코어(매개)
-    if (n.kind && n.kind !== "concept" && n.kind !== "decision")
-      return { b1: 0.30, b2: 0.70 };                                        // 굵은 링 — 문서류
-    return { b1: 0, b2: 0 };                                                // 채운 원 — 개념 · 결정
-  };
+  /** 마크 = 노드종. **다른 관점과 같은 그림**을 쓴다 — `markSvg` 를 구운 텍스처다
+   *  (`markTexture`). 여태 이 자리는 동심 띠 둘로 원 계열만 만들어, 삼각형(문서류)과
+   *  마름모(다리)와 파선(관문)을 전부 링으로 **다시 매핑**하고 있었다. 정본 §3.1 이
+   *  "관점은 그릴 수 있는 만큼만 고를 수 있지만 다시 매핑할 수는 없다"고 금지한
+   *  바로 그것이다(발주자 지적 2026-08-17). 6px 마크의 한계라고 적어 두었던 것은
+   *  구현 한계를 사양으로 승격시킨 것이었다.
+   *
+   *  색은 여기서 안 정한다. 이미지 프로그램이 이 그림을 마스크로 삼아 노드의
+   *  `color` 로 칠하므로(`drawingMode:"color"`), 잉크·틴트·초점·물러남은 색 하나만
+   *  갈아 끼우면 된다 — 형태가 그대로 유지되는 성질도 그대로다. */
+  const markOf = (n: Node2d): { image: string } => ({
+    image: markTexture(n.kind, !!n.gateway),
+  });
 
-  /** 노드 잉크. 주제 틴트가 꺼져 있으면(기본) 모노크롬 잉크 그대로다. 초점은 틴트를
-   *  타지 않는다 — 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮으면 안 된다. */
-  const tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+  /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
+   *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
+   *  뜻하므로 주제가 덮으면 안 된다. */
+  let tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
   const inkOf = (n: GraphNode) => {
-    if (n.id === o.seed) return point();
+    if (n.id === o.markId) return point();
     return tints?.get((n.domain || "").trim()) ?? ink();
   };
 
@@ -253,24 +301,25 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
 
   const sigma = new Sigma(g, stage, {
     allowInvalidContainer: true,
+    // 아래 `clickEdge` 가 뜨려면 켜야 한다 — sigma 3 기본이 false 라 핸들러가 붙어
+    // 있어도 선 클릭이 한 번도 안 왔다(2026-08-17). 값은 엣지 피킹 패스 하나.
+    enableEdgeEvents: true,
     // 화살촉 프로그램은 기본 등록이 아니다 — 켜 두지 않으면 type:"arrow" 가 무시된다.
     edgeProgramClasses: { arrow: EdgeArrowProgram },
-    // 종별 마크는 `@sigma/node-border` 가 그린다(위 markOf). 셰이더를 직접 쓰지 않는
+    // 종별 마크는 `@sigma/node-image` 가 그린다(위 markOf → markTexture). 셰이더를 직접 쓰지 않는
     // 이유: 2026-08-15 에 커스텀 SDF 프로그램을 썼다가 마크 위에 덮개 삼각형이 겹치는
     // 고장을 못 잡고 걷어냈다. 이건 sigma 팀이 유지하는 프로그램이라 그 층을 안 짊어진다.
     // ⚠ `circle` 키를 **덮어쓴다**. sigma 는 nodeProgramClasses 를 기본값과 **합치고**
     // defaultNodeType 이 "circle" 이라, 새 이름을 만들면 프로그램이 두 벌이 되고
     // 타입이 빠진 노드가 기본 원으로 함께 그려진다(2026-08-15 실측). 키를 덮으면 한 벌뿐.
     nodeProgramClasses: {
-      circle: createNodeBorderProgram({
-        borders: [
-          //: 바깥 띠 — 잉크(= 노드 색). 물러남·초점이 이 색 하나만 갈아 끼운다.
-          { color: { attribute: "color" }, size: { attribute: "b1", defaultValue: 0 } },
-          //: 가운데 띠 — 배경색. 두께가 0 이면 앞 띠 색을 물려받아 조용히 사라진다.
-          { color: { value: bg }, size: { attribute: "b2", defaultValue: 0 } },
-          //: 남는 안쪽 — 다시 잉크. b1+b2 가 1 이면 두께 0 이라 안 그려진다.
-          { color: { attribute: "color" }, size: { fill: true } },
-        ],
+      //: 그림을 **마스크**로 쓰고 노드 색으로 칠한다(`drawingMode:"color"`).
+      //: `keepWithinCircle:false` 라야 삼각형 꼭짓점과 마름모 모서리가 원에 안 잘린다.
+      circle: createNodeImageProgram({
+        drawingMode: "color",
+        keepWithinCircle: false,
+        correctCentering: true,
+        padding: 0,
       }),
     },
     renderLabels: prefs.labels !== "none",
@@ -279,6 +328,8 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     // (size=uniform 이면 전부 6px 이라 상시 라벨이 없다 — 위계를 끈 선택의 결과.)
     labelRenderedSizeThreshold: prefs.labels === "none" ? 1e9 : 8,
     labelColor: { color: ink() },
+    // sigma 기본 hover 판이 `#FFF` 박제라 다크에서 흰 덩어리가 된다(위 drawHover).
+    defaultDrawNodeHover: drawHover as never,
     // 라벨은 노드 오른쪽으로 뻗는데 rank 프리셋의 열 간격이 라벨보다 좁아 옆 열까지
     // 침범한다. 격자당 하나만 남겨(밀도 제한) 겹침을 줄인다 — 나머지는 hover 로 뜬다.
     labelGridCellSize: 140,
@@ -784,6 +835,38 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";
+    },
+    /** 제자리 반영(2026-08-17). 노드 집합·엣지 집합이 그대로인 변경만 받는다:
+     *  크기 인코딩·배율·선 굵기·화살촉·라벨·주제 틴트·간격. 값은 그래프 속성에 다시
+     *  쓰고 `refresh()` 한 번 — 마운트를 새로 하면 카메라·컨텍스트·패널이 전부
+     *  흔들리는데, 이 손잡이들은 그림의 **표현**만 바꾼다. */
+    update(np) {
+      const prev = prefs;
+      const changed = (Object.keys(np) as (keyof ViewPrefs)[])
+        .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
+      const ok = new Set<keyof ViewPrefs>(
+        ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
+      if (!changed.every((k) => ok.has(k))) return false;
+      prefs = np;
+      tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+      for (const n of shown) {
+        if (!g.hasNode(n.id)) continue;
+        g.setNodeAttribute(n.id, "size", sizeOf(n));
+        g.setNodeAttribute(n.id, "color", inkOf(n));
+      }
+      // 간격은 2D 에서 화면을 안 바꾼다(auto-fit) — 좌표는 손대지 않는다.
+      edgeOf.forEach((e, key) => {
+        if (!g.hasEdge(key)) return;
+        const dir = DIRECTED.includes(e.type);
+        const bridged = e.type === "CONNECTS";
+        g.setEdgeAttribute(key, "type", dir && prefs.arrows ? "arrow" : "line");
+        g.setEdgeAttribute(key, "size",
+          (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9) * (prefs.edgeScale ?? 1));
+      });
+      sigma.setSetting("renderLabels", prefs.labels !== "none");
+      sigma.setSetting("labelRenderedSizeThreshold", prefs.labels === "none" ? 1e9 : 8);
+      sigma.refresh();
+      return true;
     },
     fit() {
       // sigma 의 기본 카메라 상태 = auto-fit 결과. 되돌리면 곧 "전체 맞춤"이다.

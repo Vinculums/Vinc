@@ -1,10 +1,10 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, type GraphEdge, type GraphNode,
+import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
-import { enableLasso, flyTo3d, findNode3d, mount3d,
-         type L3, type N3 } from "./view3d";
+import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d,
+         type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { bucketRange, mountColumns, pickGrain, timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
@@ -13,8 +13,9 @@ import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { openContextMenu, confirmDestructive } from "../components";
 
-import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
-         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowsFor, isPlanar,
+import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+         WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
+         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
@@ -27,39 +28,44 @@ import { icon } from "../icons";
 
 /** Surface 3 — View (spec: vinc.d.graph v0.2 · vinc.d.view-visual-language).
  *
- *  Full-3D renderer (DEC D21 revised): L0 Domain View / L1 Domain Lens /
- *  L2 Node Focus run on three.js (see view3d.ts — primitives = type,
- *  monochrome ink materials, paper fog). Compare keeps flat Sigma lenses —
- *  side-by-side comparison is deliberately planar.
+ *  Full-3D renderer (DEC D21 revised): L0 Domain View / L1 Domain Lens run on
+ *  three.js (see view3d.ts — primitives = type, monochrome ink materials,
+ *  paper fog).
  *
- *  Navigation: L0 click = open lens · L0 link click = Compare ·
- *  L1 click = gateway→follow / node→detail · right-click = L2 refocus.
+ *  Navigation: click = gateway→follow / node→detail · right-click = menu.
  *
- *  D43 — 두 축뿐이다: "어디"는 Level(trail·크럼)이 쥐고, "어떻게"는
+ *  D43 — 두 축뿐이다: "어디"는 Level(trail)이 쥐고, "어떻게"는
  *  prefs.view(3D · 2D · 타임라인 · 번들)가 쥔다. 관점은
  *  trail 에 절대 들어가지 않으므로 둘은 구조적으로 어긋날 수 없다. */
 
-// title: 크럼이 읽는 사람의 말. 여태 L2 크럼이 raw id(`concept:physics-ads-cft`)를
-// 그대로 실었다 — 딥링크로 들어오면 제목을 모르므로 선택 필드로 두고, 알게 되는
-// 순간(노드 클릭·그래프 응답) 채운다(domain 과 같은 규칙).
-// 2026-08-02 — **프레임 폐기(D34 개정)**. View 는 스코프 3층(L0·L1·L2)뿐이고,
-// 그 위에 관점(3D·2D·타임라인·합계)이 얹힌다. Grid(도메인별 미니 카드)·Matrix
+// 2026-08-02 — **프레임 폐기(D34 개정)**. Grid(도메인별 미니 카드)·Matrix
 // (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
 // 클릭이 유일한 진입점**이라 함께 내렸다. 되살리려면 새 진입점 설계가 선행된다.
+//
+// 2026-08-17 — **씨앗 층(L2) 폐기.** 스코프는 전량(L0)과 주제(L1) 둘뿐이다. 노드
+// 하나로 좁히는 층은 재마운트 값이 비싼 데 비해 허브에서 걷어 내는 것이 적었고,
+// 그 층이 답하던 질문은 짚기(recede)·관계 카드·`데려오기`가 제자리에서 답한다.
+// 노드로 **가는** 일은 층이 아니라 focusNode 가 진다(스코프를 넓혀 데려온다).
 /** L1 은 **주제 하나가 아니라 목록**이다(2026-08-15). 고른 주제 몇 개를 한 화면에
  *  놓는 것이 요구였고, 그건 강조가 아니라 **스코프**라 trail 이 쥔다 — 크럼에 뜨고
  *  주소에 남아 공유·딥링크가 같은 그림을 연다(정본 §1 "스코프의 주인은 trail").
  *  목록 하나짜리가 곧 예전의 L1 이므로 별도 층을 만들지 않았다. */
-type Level = { kind: "l0" } | { kind: "l1"; domains: string[] }
-  | { kind: "l2"; seed: string; domain?: string; title?: string };
+type Level = { kind: "l0" } | { kind: "l1"; domains: string[] };
 
-/** 그 층이 걸고 있는 주제들. L2 는 씨앗의 주제 하나를 (있으면) 낸다. */
-const lvDomains = (lv: Level): string[] =>
-  lv.kind === "l1" ? lv.domains : lv.kind === "l2" && lv.domain ? [lv.domain] : [];
+/** 그 층이 걸고 있는 주제들. */
+const lvDomains = (lv: Level): string[] => lv.kind === "l1" ? lv.domains : [];
 /** 주제 **하나**만 받는 자리를 위한 대표값(공유 시트 · 드릴다운 · 기간 열기).
  *  여럿을 고른 상태에서 그 자리들이 무엇을 뜻해야 하는지는 아직 답이 없다 —
  *  첫 번째를 쓰고, 답이 생기면 여기 한 곳만 고치면 된다. */
 const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
+
+/** 노드 하나를 팩으로 건넬 때의 기본 반경. 진입점이 셋(우클릭 메뉴 · 상세 레일 ·
+ *  상단 바)이라 값이 흩어져 있으면 어디서 보냈느냐에 따라 받는 쪽 그림이 달라진다. */
+const SHARE_DEPTH = 2;
+
+/** 리더 머리에 세울 개념 칩 수. 나머지는 "+N" 으로 센다 — 좁은 열에서 칩이 줄을
+ *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
+const READER_CHIPS = 6;
 
 // Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
@@ -133,6 +139,16 @@ export async function renderView(el: HTMLElement) {
     return d;
   };
   const legend = lensSlot() ?? fallbackSlot("view-legend");
+  // ⚠ 이 폴백은 **상단 바가 없는 배치(임베드)** 를 위한 것이다. 상단 바는 있는데
+  // 슬롯만 못 찾으면 그건 임베드가 아니라 **이름이 어긋난 것**이고, 폴백이 그것을
+  // 조용히 삼켜 손잡이가 다른 자리로 옮겨 간다. 실제로 그렇게 됐다: F8 리네임이
+  // topbar.ts 와 app.css 는 `tb-viewpoints` 로 고쳤는데 index.html 만 `tb-views` 로
+  // 남아, 관점 세그가 상단 바에서 하단 크롬으로 내려앉았다(2026-08-16 규명).
+  // 아무것도 오류를 내지 않아 화면만 보고는 결정으로 읽힌다 — 그래서 말하게 한다.
+  if (lensSlot() && !viewpointsSlot()) {
+    console.warn("[view] 상단 바는 있는데 #tb-viewpoints 슬롯이 없다 — "
+      + "마크업과 조회 이름이 어긋났다. 관점 세그가 하단으로 떨어진다.");
+  }
   const viewpointsBar = viewpointsSlot() ?? fallbackSlot("view-viewpoints");
   const metricsBar = el.querySelector<HTMLElement>("#view-metrics")!;
   const float = el.querySelector<HTMLElement>("#view-float")!;
@@ -144,7 +160,7 @@ export async function renderView(el: HTMLElement) {
   railChrome(false);
   wireRailGrip(railGrip);
 
-  // lasso(영역 선택→공유) 배선 + 발견성 힌트. L1/L2 그래프에서만 활성.
+  // lasso(영역 선택→공유) 배선 + 발견성 힌트. 주제(L1) 그래프에서만 활성.
   function wireLasso() {
     lassoHint.textContent = COPY.ui.viewx.lassoHint;   // 다른 용도로 쓰였을 수 있다
     lassoHint.hidden = false;   // "Shift+드래그로 영역 선택" 안내(발견성)
@@ -159,7 +175,10 @@ export async function renderView(el: HTMLElement) {
     });
   }
 
-  let g3: any = null;                 // 3D 인스턴스 (L0/L1/L2)
+  let g3: any = null;                 // 3D 인스턴스 (L0/L1)
+  /** 옵션 재마운트에 넘길 카메라(view3d.Cam3). show(…, {keepCamera}) 가 채우고
+   *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
+  let keepCam: Cam3 | null = null;
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
   let planar: PlanarHandle | null = null;           // 평면 관점(타임라인 · 번들)
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
@@ -184,7 +203,14 @@ export async function renderView(el: HTMLElement) {
   const asAt = parts.indexOf("as");
   let hashViewpoint: Viewpoint | null =
     asAt > 0 && VIEWPOINTS.includes(parts[asAt + 1] as Viewpoint) ? (parts[asAt + 1] as Viewpoint) : null;
-  const curPrefs = (): ViewPrefs => (hashViewpoint ? { ...loadPrefs(), view: hashViewpoint } : loadPrefs());
+  /** 저장된 프리퍼런스를 **지금 관점이 실제로 하는 것**으로 해석해 내려보낸다.
+   *  해석을 여기 한 곳에 두는 이유: 패널의 활성 칩과 렌더러가 같은 값을 봐야 한다.
+   *  저장값 자체는 건드리지 않는다 — 사용자가 고른 뜻은 그대로 남고, 관점을 옮기면
+   *  그 관점의 표현으로 다시 해석될 뿐이다. */
+  const curPrefs = (): ViewPrefs => {
+    const p = hashViewpoint ? { ...loadPrefs(), view: hashViewpoint } : loadPrefs();
+    return { ...p, edges: edgeShowFor(p.view, p.edges) };
+  };
 
   function setMsg(html: string) {
     msg.innerHTML = html;
@@ -223,9 +249,19 @@ export async function renderView(el: HTMLElement) {
     return `<div class="lg-body">
       <p class="hint lg-cap">${L.shapes}</p>
       ${mark(`<circle cx="8" cy="8" r="4.4"/>`, L.concept)}
-      ${mark(`<polygon points="${hex(8, 8, 6.6)}"/>`, L.document)}
+      <!-- ⚠ 육각이었다. 어느 렌더러도 육각을 그리지 않는다 — 3D 는 정사면체,
+           평면은 그 정면인 삼각, 2D 는 굵은 링이다(2026-08-15 Node Kit).
+           범례가 그리지 않는 형태를 가르치고 있었고, 그건 바로 위 주석이
+           금지한 그것이다. markSvg 와 같은 구성으로 맞춘다: 꼭짓점 각
+           -90·30·150, 외접원 1.08r(원과 시각 무게가 같은 비율). -->
+      ${mark(`<polygon points="8,3.25 12.11,10.38 3.89,10.38"/>`, L.document)}
       ${mark(`<polygon points="8,1.6 14.4,8 8,14.4 1.6,8"/>`, L.bridge)}
       ${mark(`<circle cx="8" cy="8" r="3.6"/><ellipse cx="8" cy="8" rx="7.2" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/>`, L.topic)}
+      <!-- 관문 = 자기 종의 윤곽선. 파선 비율은 markSvg 와 같다(.68r / .56r).
+           Weave 는 관문 윤곽을 안 그리므로(view-bundle markSvg(gateway=false)) 거기선
+           이 행을 빼는 것이 "그리지 않는 것은 가르치지 않는다"는 위 규칙이다. -->
+      ${curPrefs().view === "bundle" ? "" :
+        mark(`<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2.5"/>`, L.gateway)}
       <p class="hint lg-cap">${L.lines}${lineFilterable() ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
       <!-- ⚠ 범례는 **실제로 그려지는 것만** 가르친다. 정본(§1.2)은 파선=크로스 ·
            점선=Bridge 매개 · 이중선=상속을 규정하지만, 2D(sigma)·3D(three) 어느
@@ -329,6 +365,7 @@ export async function renderView(el: HTMLElement) {
     detail.hidden = true;
     detail.innerHTML = "";
     lastNode = null;
+    if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
     railChrome(false);
     // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
     closeFloatPanel();
@@ -383,11 +420,12 @@ export async function renderView(el: HTMLElement) {
       if (isFloatPanelOpen()) { closeFloatPanel(); return; }
       if (!viewPanel.hidden) { void closePanel(); return; }
       if (!detail.hidden) { closeRail(); return; }
-      if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1], false); }
+      if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1]); }
       return;
     }
     if (e.key === "f" || e.key === "F") {
       // 3D 는 전체 맞춤, 2D 는 sigma 카메라 리셋 — 둘 다 "지금 층을 화면에".
+      (g3 as any)?.__wake?.(700);                // 유휴 정지 중이면 깨워야 트윈이 돈다(F6)
       (g3 as any)?.zoomToFit?.(400, 60);
       g2?.fit?.();
     }
@@ -397,44 +435,16 @@ export async function renderView(el: HTMLElement) {
   // 라우터는 #surface 의 innerHTML 만 비우고 컨테이너는 그대로 두기 때문이다(구
   // MutationObserver 판정이 영원히 참이라 리스너가 쌓였다). 마운트 세대로 가른다.
 
-  const isScope = (lv: Level) => lv.kind === "l0" || lv.kind === "l1" || lv.kind === "l2";
   const viewpointName = (v: Viewpoint) =>
     v === "3d" ? "3D" : v === "2d" ? "2D"
     : v === "timeline" ? COPY.ui.viewx.timeline
     : COPY.ui.viewx.bundle;
-  /** 그 층이 그 관점을 실제로 그리는가. 프레임이 사라진 뒤로는 모든 층이 스코프라
-   *  항상 참이다 — 이 자리를 남겨 둔 이유는 관점 커밋 경로가 이 술어 하나만 읽기
-   *  때문이고, 층 종류가 다시 늘 때 판정을 여기 한 곳에서만 고치게 하기 위함이다. */
-  const rendersViewpoint = (_lv: Level, _v: Viewpoint): boolean => true;
   /** 화면에 실제로 걸린 관점. 칩 라벨·크럼 꼬리·패널의 활성 표시·재클릭 가드가
    *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실. */
   const shownViewpoint = (_lv: Level): Viewpoint | null => curPrefs().view;
   /** 평면 관점의 스코프는 오롯이 trail 에서 읽는다(관점은 스코프를 갖지 않는다). */
-  const scopeOf = (lv: Level): { seed?: string; domain?: string; domains?: string[] } =>
-    lv.kind === "l1" ? { domains: lv.domains }
-    : lv.kind === "l2" ? { seed: lv.seed, domain: lv.domain }
-    : {};
-  /** 딥링크(#view/trace/<id>)만 주제를 모른 채 들어온다 — 앱 안에서 미는 l2 는
-   *  전부 domain 을 싣는다. 씨앗의 주제를 알게 된 순간 trail 항목 자체를 채워
-   *  스코프를 읽는 모든 곳(Totals 원장 필터 등)이 같은 값을 보게 한다. 채우지
-   *  않으면 크럼은 한 노드를 가리키는데 Totals 는 전체 롤업을 그린다. */
-  function fillSeedDomain(seed: string, nodes: GraphNode[]) {
-    const lv = trail[trail.length - 1];
-    if (lv.kind !== "l2" || lv.seed !== seed) return;
-    const n = nodes.find((x) => x.id === seed);
-    if (!lv.domain && n?.domain) lv.domain = n.domain;
-    // 딥링크(#view/trace/<id>)는 주제를 거치지 않고 노드에 바로 앉는다. 주제를
-    // 알게 된 순간 그 층을 트레일에 **끼워 넣어** 직접 링크로 온 사람도 같은
-    // 뒤로가기(Esc 후퇴·공유 스코프)를 얻게 한다.
-    if (lv.domain && !trail.some((t) => t.kind === "l1"
-                                     && t.domains.length === 1 && t.domains[0] === lv.domain))
-      trail.splice(trail.length - 1, 0, { kind: "l1", domains: [lv.domain] });
-    if (!lv.title && n?.label && n.label !== seed) lv.title = n.label;
-    // 위치 표시는 좌측 트리가 한다(D69·D71 — 크럼 폐지). 씨앗의 주제를 이제야
-    // 알았으므로 트리의 활성 표시도 여기서 따라가야 한다. 안 그러면 딥링크로
-    // 들어온 화면만 트리가 아무 데도 가리키지 않는다.
-    setLnbActive({ domain: lv.domain, nodeId: seed });
-  }
+  const scopeOf = (lv: Level): { domains?: string[] } =>
+    lv.kind === "l1" ? { domains: lv.domains } : {};
 
   /** D31 + D43 — 인캔버스 View 컨트롤. view 는 이제 관점 5지선다(맵 3D/2D + 평면 3종)라
    *  칩은 현재 관점 이름을 그대로 싣는다. Grid/Matrix 는 같은 패널의 두 번째 행으로
@@ -477,11 +487,8 @@ export async function renderView(el: HTMLElement) {
       + cell(COPY.ui.viewx.mLinked, `${rate}%`)
       + cell(COPY.ui.viewx.mOrphan, String(orphan), orphan > 0)
       + (latest ? cell(COPY.ui.viewx.mLatest, latest.slice(0, 10)) : "");
-    const openOrphans = () => {
-      const lv = trail[trail.length - 1];
-      void openDrilldown(lvDomain(lv), "orphan",
-        lv.kind === "l2" ? lv.seed : undefined);
-    };
+    const openOrphans = () =>
+      void openDrilldown(lvDomain(trail[trail.length - 1]), "orphan");
     metricsBar.querySelector<HTMLElement>("[data-orphans]")?.addEventListener("click", openOrphans);
   }
 
@@ -530,15 +537,14 @@ export async function renderView(el: HTMLElement) {
     viewPanel.hidden = false;
     positionPanel();
     lensBtn?.setAttribute("aria-expanded", "true");
-    // 발견 힌트는 "한 번 열면" 끝난다 — 쓰는 곳도 읽는 곳도 하나씩.
-    localStorage.setItem("vinc.view.viewpoints.seen", "1");
-    if (lassoHint.textContent === COPY.ui.viewx.viewpointsHint) lassoHint.hidden = true;
+    // (관점 발견 힌트와 그 seen 플래그는 2026-08-17 에 걷어냈다 — 세그먼트가 상단 바로
+    //  올라간 뒤 힌트를 띄우는 코드가 없어 쓰는 곳 없이 지우는 곳만 남아 있었다.)
     drawViewPanel();
     // 활성 칩이 없는 프레임(Compare — 관점도 프레임도 활성이 아니다)에서도 포커스는
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.
     (viewPanel.querySelector<HTMLElement>(".seg .chip.active")
-      ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus();
+      ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus({ preventScroll: wasOpen });
     // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
     // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
     if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
@@ -591,34 +597,43 @@ export async function renderView(el: HTMLElement) {
    *  `spread`(간격)는 노드 사이 거리이지만 지시의 갈래를 따른다 — 라벨이 `간격`이고,
    *  손이 찾는 자리는 결국 그 이름이 있는 곳이다. */
   type OptGroup = { label: string; keys: string[] };
-  function groupsFor(lv: Level, p: ViewPrefs): OptGroup[] {
-    const flat = rowsFor(lv, p);
+  function groupsFor(p: ViewPrefs): OptGroup[] {
+    const flat = rowsFor(p);
     if (!flat.length) return [];
     if (p.view !== "3d" && p.view !== "2d") {
       return [{ label: "", keys: flat }];   // 평면 관점은 행이 적어 나눌 것이 없다
     }
     const pick = (...ks: string[]) => ks.filter((k) => flat.includes(k));
     return [
-      { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "nodeScale") },
+      { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "cone", "nodeScale") },
       { label: COPY.ui.panel.groupLines, keys: pick("edgeShow", "edgeWidth", "spread", "arrows") },
       { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked", "domainTint") },
+      // 시간은 **자기 묶음**을 갖는다 — 투영(3D·2D)과 직교하는 축이라 "그 밖"에
+      // 섞어 두면 다른 손잡이들과 같은 급으로 읽힌다. 축(basis)과 커서(when)는
+      // 한 쌍이다: 커서는 어느 시계를 자르는지 말하지 않으면 뜻이 없다.
+      { label: COPY.ui.panel.groupTime, keys: pick("when", "basis") },
     ].filter((g) => g.keys.length > 0);
   }
 
-  function rowsFor(lv: Level, p: ViewPrefs): string[] {
-    if (!isScope(lv)) return [];
+  function rowsFor(p: ViewPrefs): string[] {
     switch (p.view) {
       // `선 보이기`(edgeShow)는 둘 다에 있지만 **고를 수 있는 값이 다르다**
       // (edgeShowsFor) — 3D 는 입자, 2D 는 짚을 때만. sigma 에 입자가 없어서다.
+      // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
+      // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
+      // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
       case "3d":
+        return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
+                "spread", "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
-                "edgeWidth", "edgeShow", "domainTint"];
+                "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
       case "timeline": return ["basis", "docs", "lineage", "domainTint"];
-      // 번들 — 손잡이는 둘뿐이다. `단`은 선이 어느 계층에서 묶이는지(라벨은 안 줄어든다),
+      // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
+      // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
       case "bundle": return ["bundleDepth", "bundleRels", "labels", "domainTint"];
     }
@@ -630,13 +645,27 @@ export async function renderView(el: HTMLElement) {
    *  이제 값을 옆에 적고(`output`), 끄는 동안 그 숫자가 따라 움직인다. */
   const fmtVal = (v: number | string) => String(Math.round(Number(v) * 100) / 100);
   function slider(id: string, label: string, min: number, max: number,
-                  step: number, value: number): string {
+                  step: number, value: number, text?: string): string {
+    // `text` 를 준 손잡이는 값 표시가 숫자가 아니다(시간 커서 — 0.62 는 뜻이 없고
+    // 사람이 읽을 것은 잘린 날짜다). 끄는 동안의 갱신도 같은 규칙을 따라야 해서
+    // `data-fmt` 로 표시해 둔다(아래 input.slider 배선).
     return `<div class="slider-row">
       <label class="hint" for="${id}">${esc(label)}</label>
-      <output class="slider-val" id="${id}-val">${fmtVal(value)}</output>
-      <input class="slider" id="${id}" type="range"
+      <output class="slider-val" id="${id}-val">${esc(text ?? fmtVal(value))}</output>
+      <input class="slider" id="${id}" type="range"${text != null ? ' data-fmt="when"' : ""}
              min="${min}" max="${max}" step="${step}" value="${value}">
     </div>`;
+  }
+
+  /** 커서 위치를 사람이 읽는 시각으로. 끔이면 "전부". 지금 실린 노드들 위에서
+   *  세므로 스코프가 바뀌면 같은 위치라도 다른 날짜가 된다 — 그것이 분위수의 뜻이다. */
+  function whenLabel(when: number): string {
+    if (when >= 1) return COPY.ui.panel.whenAll;
+    const p = curPrefs();
+    const cut = timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), when);
+    // 기록 시각은 ISO 밀리초라 그대로 내면 길다 — 날짜까지만 자른다. 내용 시점은
+    // 이미 `YYYY[-MM[-DD]]` 라 자를 것이 없다.
+    return cut ? cut.slice(0, 10) : COPY.ui.panel.whenAll;
   }
 
   function drawViewPanel() {
@@ -656,9 +685,15 @@ export async function renderView(el: HTMLElement) {
       size: row(COPY.ui.panel.nodeSize,
         chip("size", "links", COPY.ui.panel.byConnections, p.size === "links")
         + chip("size", "uniform", COPY.ui.panel.uniform, p.size === "uniform")),
+      // ⚠ 같은 손잡이가 관점마다 다른 것을 뜻한다. 지도에서는 짚어야 뜨지만
+      // Weave 에서는 둘레에 들어갈 만큼 상시로 뜬다 — 그래서 값 이름도 갈린다.
+      // 한 이름으로 묶어 두면 화면이 하지 않는 약속("호버 시")을 하게 된다.
       labels: row(COPY.ui.panel.labels,
-        chip("labels", "hover", COPY.ui.panel.onHover, p.labels === "hover")
-        + chip("labels", "none", COPY.ui.panel.off, p.labels === "none")),
+        chip("labels", "hover",
+          p.view === "bundle" ? COPY.ui.panel.labelsFit : COPY.ui.panel.onHover,
+          p.labels === "hover")
+        + chip("labels", "none", COPY.ui.panel.off, p.labels === "none"))
+        + (p.view === "bundle" ? `<p class="hint sub">${esc(COPY.ui.panel.labelsFitHelp)}</p>` : ""),
       arrows: row(COPY.ui.panel.arrows,
         chip("arrows", "on", COPY.ui.panel.on, p.arrows)
         + chip("arrows", "off", COPY.ui.panel.off, !p.arrows)),
@@ -685,6 +720,15 @@ export async function renderView(el: HTMLElement) {
         LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
         + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread),
+      // 시간 커서 — 값 표시는 분수가 아니라 **컷오프 자신**이다(0.62 는 아무 뜻도
+      // 없다). 끔은 "전부"로 적는다.
+      when: slider("pref-when", COPY.ui.panel.when,
+                   WHEN_SCALE.min, WHEN_SCALE.max, WHEN_SCALE.step, p.when,
+                   whenLabel(p.when))
+        + `<p class="hint sub">${esc(COPY.ui.panel.whenHelp)}</p>`,
+      cone: slider("pref-cone", COPY.ui.panel.cone,
+        CONE_SCALE.min, CONE_SCALE.max, CONE_SCALE.step, p.cone)
+        + `<p class="hint sub">${esc(COPY.ui.panel.coneHelp)}</p>`,
       // 크기·굵기 **배율**(발주자 지시 2026-08-02). 위 `size` 는 무엇이 크고 작은지를
       // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다 — 인코딩은 그대로 두고
       // 화면 밀도만 취향에 맞춘다. 엣지는 D33 대로 가중치를 농도로 계속 말한다.
@@ -704,10 +748,10 @@ export async function renderView(el: HTMLElement) {
       // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른
       // 시계로 볼 뿐이라 관점 세그(3D·2D·타임라인·Sankey) 옆에 두지 않는다.
       basis: row(COPY.ui.panel.timeBasis,
-        chip("timelineBasis", "recorded", COPY.ui.panel.basisRecorded,
-             p.timelineBasis === "recorded")
-        + chip("timelineBasis", "content", COPY.ui.panel.basisContent,
-               p.timelineBasis === "content")),
+        chip("timeBasis", "recorded", COPY.ui.panel.basisRecorded,
+             p.timeBasis === "recorded")
+        + chip("timeBasis", "content", COPY.ui.panel.basisContent,
+               p.timeBasis === "content")),
       // 번들 — 이 손잡이가 줄이는 것은 **선**이지 목록이 아니다. 도움말이 매 단마다
       // 그 사실을 되풀이하는 이유가 그것이다(줄었다고 항목이 사라진 줄 알면 오독이다).
       bundleDepth: row(COPY.ui.panel.bundleDepth,
@@ -733,7 +777,7 @@ export async function renderView(el: HTMLElement) {
     //   · 둘 다 펼치면 패널이 화면 높이를 덮었다(실측 1102px)
     //   · 접힘/펼침이 각자 기억돼 두 번 누르는 조합이 네 가지였다
     // 하나만 보이면 높이가 저절로 잡히고, 무엇을 보고 있는지가 세그로 드러난다.
-    const optKeys = rowsFor(lv, p);
+    const optKeys = rowsFor(p);
     const hasOpts = optKeys.length > 0;
     const tab = hasOpts
       ? (localStorage.getItem(PANEL_TAB_KEY) === "legend" ? "legend" : "opts")
@@ -751,7 +795,7 @@ export async function renderView(el: HTMLElement) {
       : "";
     // 묶음을 **영역**으로 낸다(발주자 지시 2026-08-05) — 제목 한 줄만으로는 어디까지가
     // 그 묶음인지 경계가 없어, 아래 컨트롤이 다음 제목에 붙어 읽혔다. 상자가 그 경계다.
-    const groupsHTML = groupsFor(lv, p).map((g) => g.label
+    const groupsHTML = groupsFor(p).map((g) => g.label
       ? `<section class="opt-sec">
            <h3 class="opt-sec-title">${esc(g.label)}</h3>
            ${g.keys.map((k) => rows[k]).join("")}
@@ -759,11 +803,16 @@ export async function renderView(el: HTMLElement) {
       : g.keys.map((k) => rows[k]).join("")).join("");
     // 내용은 **스크롤하는 안쪽 면**에 넣는다 — 유리면 자신이 스크롤하면 프레임마다
     // 블러를 다시 계산해 스크롤이 끊긴다(app.css #view-lens-panel 주석).
+    // 다시 그려도 **보던 자리**는 남긴다 — innerHTML 로 면이 새 노드가 되면 scrollTop
+    // 이 0 으로 돌아가, 내려가서 누른 손잡이가 누르는 순간 화면 밖으로 사라졌다
+    // (실측 2026-08-17: 400→0→448). 값을 읽어 두고 새 면에 되돌린다.
+    const keepScroll = viewPanel.querySelector<HTMLElement>(".lens-scroll")?.scrollTop ?? 0;
     viewPanel.innerHTML = `<div class="lens-scroll">`
       + head + tabSeg
       + (tab === "opts" ? groupsHTML : legendHTML())
       + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
       + `</div>`;
+    if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
     viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {
         localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
@@ -791,20 +840,48 @@ export async function renderView(el: HTMLElement) {
     // "이 손잡이가 살아 있다"가 읽힌다(그 피드백이 없던 것이 "클릭만 먹는다"의 정체).
     viewPanel.querySelectorAll<HTMLInputElement>("input.slider").forEach((s) => {
       const out = viewPanel.querySelector<HTMLElement>(`#${s.id}-val`);
-      if (out) s.addEventListener("input", () => { out.textContent = fmtVal(s.value); });
+      if (out) s.addEventListener("input", () => {
+        out.textContent = s.dataset.fmt === "when"
+          ? whenLabel(Number(s.value)) : fmtVal(s.value);
+      });
     });
-    // 산개는 3D/2D 에만 있는 행이라 평면 관점에서는 존재하지 않는다(? 필수).
-    viewPanel.querySelector<HTMLInputElement>("#pref-spread")?.addEventListener("change", (e) =>
-      applyPrefs({ spread: Number((e.target as HTMLInputElement).value) }, "#pref-spread"));
-    // 배율 둘은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
-    // 바로 반영해 손끝에 붙게 한다. spread 는 레이아웃 인자라 change 로 두는 것과
-    // 대비된다(그쪽은 사이드카 왕복이다).
+
+    // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
+    // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
+    viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
+      applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
+    // 시간 커서도 **놓을 때** 적용한다. 서버는 안 부르지만(좌표는 그대로) 보이는
+    // 노드 집합이 바뀌므로 제자리 반영이 안 되고 재마운트가 필요하다 — 드래그마다
+    // 재마운트하면 손끝보다 화면이 느려진다. 숫자(=잘린 날짜)는 끄는 동안 따라
+    // 움직이므로 손잡이가 죽어 보이지는 않는다.
+    // ponytail: 놓을 때만 반영. 진짜 스크럽(끄는 내내 장면이 따라옴)은 렌더러가
+    // 노드를 제자리에서 숨길 수 있어야 한다(3D 는 nodeVisibility, 2D 는 필터) —
+    // 그 배선이 생기면 __update 화이트리스트에 `when` 을 넣고 input 으로 옮긴다.
+    viewPanel.querySelector<HTMLInputElement>("#pref-when")?.addEventListener("change", (e) =>
+      applyPrefs({ when: Number((e.target as HTMLInputElement).value) }, "#pref-when"));
+    // 이 셋은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
+    // 바로 반영해 손끝에 붙게 한다.
+    //
+    // ⚠ `spread` 는 2026-08-16 까지 놓을 때(change)만 적용됐고, 그 옆 주석은 이유를
+    // "레이아웃 인자라 사이드카 왕복"이라고 적어 두었다. **틀린 말이었다.** 소비처를
+    // 전부 읽으면 spread 는 서버로 가지 않는다 — view3d 는 `SCALE * prefs.spread`,
+    // view2d 는 `px(n) * prefs.spread` 로 **받은 좌표에 곱할 뿐**이고, `/graph` 요청
+    // 어디에도 실리지 않는다. 왕복이 아닌 것을 왕복이라 믿어 손끝에서 떼어 놓았고,
+    // 그것이 "끊긴다"로 읽혔다(발주자 지적).
+    //
+    // 진짜 왕복은 `layout` 과 `cone` 둘뿐이다. 그 둘만 change 로 남는다.
     // 스텝을 0.1 → 0.02 로 잘게 나눈 만큼 input 이 다섯 배 자주 온다. 그대로 매번
     // 다시 그리면 손끝은 부드러워지고 화면이 밀린다 — **프레임당 한 번**으로 묶는다
     // (마지막 값만 쓰므로 중간 값을 버려도 결과가 같다).
-    const liveScale = (sel: string, key: "nodeScale" | "edgeScale") => {
+    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread") => {
       const s = viewPanel.querySelector<HTMLInputElement>(sel);
-      if (!s) return;
+      // 조용히 돌아가면 그 손잡이는 **아무 일도 안 하는 슬라이더**가 된다 — 끌리기는
+      // 하고 숫자도 움직이는데(값 표시는 별도 배선) 화면만 안 바뀐다. 행 목록과 이
+      // 배선이 어긋나는 순간 생기는 일이고, 어긋나도 아무것도 오류를 내지 않는다.
+      if (!s) {
+        console.warn(`[view] ${sel} 슬라이더가 패널에 없다 — 행 목록과 배선이 어긋났다.`);
+        return;
+      }
       let pending = 0;
       s.addEventListener("input", () => {
         if (pending) return;
@@ -816,6 +893,7 @@ export async function renderView(el: HTMLElement) {
     };
     liveScale("#pref-nodescale", "nodeScale");
     liveScale("#pref-edgescale", "edgeScale");
+    liveScale("#pref-spread", "spread");
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyViewpoint(b.dataset.view as Viewpoint)));
     // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
@@ -842,13 +920,8 @@ export async function renderView(el: HTMLElement) {
     // 저장값이 평면이어도 미니가 3D 컷을 그리므로 "3D"가 이미 활성이다: 저장값만
     // 화면에 맞춰 두고(프레임을 벗어나면 그 값이 그대로 걸린다) 다시 그리지 않는다.
     if (shown === v) { syncHash(v); closePanel(); return; }
-    // 지금 프레임이 그리지 않는 관점을 고르면 프레임을 떠난다 — 보이는 컨트롤은
-    // 언제나 화면을 바꾼다. Compare/Matrix 는 어떤 관점도 그리지 않으므로 5종 전부가
-    // 프레임을 떠나고, Grid 는 평면 3종만 떠난다(3D/2D 는 미니가 실제로 그린다).
-    if (!rendersViewpoint(cur, v))
-      while (trail.length > 1 && !isScope(trail[trail.length - 1])) trail.length -= 1;
-    syncHash(v);                                  // 프레임을 떠난 뒤 = 도착지의 주소
-    await show(trail[trail.length - 1], false);
+    syncHash(v);
+    await show(trail[trail.length - 1]);
     closePanel();                                 // 목적지 커밋 — 새 칩으로 포커스 복귀
   }
 
@@ -857,7 +930,7 @@ export async function renderView(el: HTMLElement) {
     // 이미 활성인 옵션을 다시 누르면 무동작이다(applyViewpoint·applyFrame 과 같은 계약).
     // 없으면 3D 는 카메라 프레이밍이, 평면 뷰는 스크롤 위치가 재마운트로 되감긴다.
     if ((Object.keys(mut) as (keyof ViewPrefs)[]).every((k) => cur[k] === mut[k])) {
-      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
     savePrefs({ ...cur, ...mut });
@@ -872,32 +945,52 @@ export async function renderView(el: HTMLElement) {
       const np = curPrefs();
       bh.update({ depth: np.bundleDepth, off: np.bundleOff, labels: np.labels !== "none" });
       openPanel();
-      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+      if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
     const lv = trail[trail.length - 1];
+    // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 (1) 서버는 안 부르고
+    // (2) 카메라를 잇고 (3) 렌더러가 제자리에서 소화할 수 있으면 다시 그리지도 않는다.
+    // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
+    // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
+    // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
+    const relayout = "layout" in mut || "cone" in mut;
+    const np = curPrefs();
+    const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
+      ?? g2?.update;
+    if (!relayout && live && live(np)) {
+      // 제자리 반영 성공. 슬라이더(input 마다 한 번)는 패널을 다시 그리지 않는다 —
+      // 숫자 표시는 자기 배선으로 이미 따라 움직이고, 다시 그리면 끌던 손잡이가
+      // 새 노드로 바뀌어 드래그가 끊긴다. 칩은 활성 상태가 바뀌므로 다시 그린다.
+      const sliderOnly = (Object.keys(mut) as string[]).every(
+        (k) => k === "nodeScale" || k === "edgeScale" || k === "spread");
+      if (!sliderOnly) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true }); }
+      return;
+    }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    if (rowsFor(lv, curPrefs()).length > 0) await show(lv, false, { keepPanel: true });
+    reuseGraph = !relayout;                       // fetchGraph 가 읽고 바로 끈다
+    if (rowsFor(np).length > 0)
+      await show(lv, { keepPanel: true, keepCamera: !relayout });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
-    if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus();
+    if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
   }
 
-  /** 주소창을 "관점이 실제로 걸리는 곳 + 그 관점"으로 맞춘다. base 를 location.hash
-   *  에서 뜨면 안 된다 — 인앱 이동은 해시를 갱신하지 않으므로, 다른 곳을 가리키는
-   *  주소에 관점만 찍힌다(Compare 에서 Flow → #view/compare/a/b/as/flow 인데 화면은
-   *  L0 Flow). 그래서 base 는 trail 에서 만든다. 프레임(compare/grid/matrix)은 관점을
-   *  그리지 않으므로 관점이 걸리는 곳은 언제나 가장 가까운 스코프 층 = 프레임을
-   *  닫으면 돌아갈 자리다(Grid·Matrix 에는 딥링크 문법이 아예 없다).
+  /** 지금 상세가 열려 있는 노드. **주소가 스코프보다 이것을 먼저 싣는다** — 사람이
+   *  주소창에서 복사해 건네고 싶은 것은 "무슨 주제를 보고 있었나"가 아니라 "이 노드"다.
+   *  L2 가 스코프였을 때는 그 층이 주소를 실었는데, 층이 사라져도 그 능력은 남긴다. */
+  let focusId = "";
+
+  /** 주소창을 "지금 보고 있는 곳 + 그 관점"으로 맞춘다. base 를 location.hash 에서
+   *  뜨면 안 된다 — 인앱 이동은 해시를 갱신하지 않으므로, 다른 곳을 가리키는 주소에
+   *  관점만 찍힌다. 그래서 base 는 trail 과 focusId 에서 만든다.
    *  replaceState 라 hashchange 가 뜨지 않는다(main.ts 라우터 무영향). */
   function syncHash(v: Viewpoint = shownViewpoint(trail[trail.length - 1]) ?? curPrefs().view) {
-    let i = trail.length - 1;
-    while (i > 0 && !isScope(trail[i])) i -= 1;
-    const lv = trail[i];
+    const lv = trail[trail.length - 1];
     const enc = encodeURIComponent;
     const base =
-      lv.kind === "l1" ? `#view/${lv.domains.map(enc).join(",")}`
-      : lv.kind === "l2" ? `#view/trace/${enc(lv.seed)}`
+      focusId ? `#view/trace/${enc(focusId)}`
+      : lv.kind === "l1" ? `#view/${lv.domains.map(enc).join(",")}`
       : "#view";
     history.replaceState(null, "", v === "3d" ? base : `${base}/as/${v}`);
   }
@@ -918,14 +1011,14 @@ export async function renderView(el: HTMLElement) {
   const isGateway = (nd: { domain?: string; kind?: string }, lens: string[]) =>
     lens.length > 0 && !inLens(nd.domain, lens) && (nd.kind || "concept") !== "bridge";
 
-  function toN3(nodes: GraphNode[], lens: string[] = [], focusId?: string): N3[] {
+  function toN3(nodes: GraphNode[], lens: string[] = [], markId?: string): N3[] {
     return nodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
       domain: nd.domain, degree: nd.degree,
       kind: nd.kind || "concept",
       gateway: isGateway(nd, lens),
-      focus: focusId !== undefined && nd.id === focusId,
+      focus: markId !== undefined && nd.id === markId,
       x: nd.x, y: nd.y, z: nd.z,
     }));
   }
@@ -942,13 +1035,40 @@ export async function renderView(el: HTMLElement) {
     return edges.map((e) => ({ source: e.source, target: e.target, type: e.type,
                                cross: e.cross_domain, confidence: e.confidence }));
   }
+  /** 시간 커서(2026-08-17 발주자 결정 — 시간은 뷰포인트가 아니라 **세 번째 상태 축**).
+   *
+   *  전부 클라이언트에서 한다. 페이로드가 노드마다 `ts` 와 `content_ts` 를 **둘 다**
+   *  싣고 오므로(api.GraphNode · `_apply_basis` 가 있는 이유가 그것이다) 커서는 서버
+   *  왕복이 0 이다. 재조회하는 커서는 애초에 쓸 수 없다 — 지금도 옵션 하나에 전량
+   *  재조회가 붙는다([[vinc.research.view-interaction-audit]]).
+   *
+   *  ⚠ **엣지는 끝점을 따라간다.** 노드를 숨기면 그 노드로 가는 선은 갈 곳이 없다.
+   *  여태 이 가지치기가 없어도 됐던 이유는 `filterUnlinked` 가 연결 0 인 노드만
+   *  숨겼기 때문이다(정의상 엣지가 없다) — 커서는 다르다. */
+  function timeCut(): string {
+    const p = curPrefs();
+    if (p.when >= 1) return "";
+    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), p.when);
+  }
+  function atTime<T extends { ts?: string; content_ts?: string }>(ns: T[]): T[] {
+    const cut = timeCut();
+    if (!cut) return ns;
+    const basis = curPrefs().timeBasis;
+    return ns.filter((n) => visibleAt(nodeTimeOn(n, basis), cut));
+  }
+  function pruneEdges(es: GraphEdge[], ns: { id: string }[]): GraphEdge[] {
+    if (!timeCut()) return es;
+    const live = new Set(ns.map((n) => n.id));
+    return es.filter((e) => live.has(e.source) && live.has(e.target));
+  }
+
   /** D32 — Unlinked 필터(열린 층): 고아(연결 0)를 숨긴다. 초점(seed)은 항상 유지. */
   function filterUnlinked(ns: N3[]): N3[] {
     if (loadPrefs().unlinked !== "hide") return ns;
     return ns.filter((n) => (n.degree || 0) > 0 || n.focus);
   }
 
-  /** 지도 마운트 공통 경로(3D) — 전체(L0)·주제(L1)·씨앗(L2)이 같은 코드를 쓴다.
+  /** 지도 마운트 공통 경로(3D) — 전체(L0)와 주제(L1)가 같은 코드를 쓴다.
    *
    *  **L0 이 바뀌었다(D69).** 주제 표(D58)도 그 이전의 주제 원환(D16)도 폐지한다.
    *  주제 목록은 이제 좌측 트리가 상시로 들고 있으므로 첫 화면이 다시 목록일 이유가
@@ -958,22 +1078,44 @@ export async function renderView(el: HTMLElement) {
    *
    *  세 층은 스코프만 다르고 나머지(적재·지표·게이트웨이 판정·올가미)가 완전히 같아
    *  한 함수로 접는다. 갈라 두면 셋 중 하나만 고치는 드리프트가 난다. */
-  async function showGraphScope(scope: { domains?: string[]; seed?: string }) {
-    const { seed } = scope;
+  /** 세 관점 경로가 같은 `/graph` 를 같은 인자로 부른다 — 한 함수로 접는다.
+   *
+   *  두 가지를 여기서 처리한다(2026-08-17, [[vinc.research.view-interaction-audit]]):
+   *  · **재사용**: 옵션 변경으로 다시 그릴 때는 서버가 필요 없다(좌표를 바꾸는 것은
+   *    layout·cone 뿐이고 그건 applyPrefs 가 `reuseGraph` 를 안 켠다). `layout_positions`
+   *    는 순수 함수라 같은 요청은 같은 응답이었고, 그 왕복(73~155ms)이 옵션 클릭 지연의
+   *    절반이었다.
+   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
+   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
+  let reuseGraph = false;
+  async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
+      Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] }> {
+    if (reuseGraph && curNodes.length) {
+      reuseGraph = false;
+      return { executed: true, nodes: curNodes, edges: curEdges };
+    }
+    reuseGraph = false;
+    const mySeq = showSeq;
     const domains = scope.domains || [];
-    const whole = seed === undefined && !domains.length;
+    const res = await api.graph(cfg.owner, {
+      ...(domains.length ? { domains } : {}), layout: p.layout,
+      ...(p.cone === 1 ? {} : { cone: p.cone }) });
+    if (mySeq !== showSeq) return { executed: false, stale: true };
+    return res;
+  }
+
+  async function showGraphScope(scope: { domains?: string[] }) {
+    const domains = scope.domains || [];
     const p = curPrefs();
-    setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
+    setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
+    const res = await fetchGraph(p, scope);
+    if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
     // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const nodes: GraphNode[] = res.nodes || [];
-    if (seed !== undefined) fillSeedDomain(seed, nodes);
     if (nodes.length === 0) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
@@ -985,8 +1127,17 @@ export async function renderView(el: HTMLElement) {
     setMsg("");
     curEdges = res.edges || [];
     curNodes = nodes;
-    drawMetrics(nodes);
-    g3 = mount3d(canvas, filterUnlinked(toN3(nodes, domains, seed)), toL3(visibleEdges()), {
+    // 지표는 **커서가 고른 모집단**을 센다. 시간을 잘라 놓고 수는 전량을 말하면
+    // 그 줄이 화면을 거짓으로 서술한다. 다만 `unlinked` 는 반영하지 않는다 — 고아
+    // 칸이 곧 그것을 되돌리는 컨트롤이라, 숨긴 순간 0 이 되면 돌아올 길이 사라진다.
+    // 커서는 "이 읽기에 무엇이 존재하는가"이고 unlinked 는 "그중 무엇을 그리는가"다.
+    drawMetrics(atTime(nodes));
+    // 초점 마크(닫힌 층의 단일 초점색)는 이제 **지금 짚고 있는 노드**가 든다. 예전엔
+    // L2 씨앗이 그 자리였는데 층이 사라졌고, 스코프를 넓혀 데려온 노드가 어느 점인지
+    // 말해 주는 일은 남아야 한다 — 카메라만 옮기면 "어디로 갔는지"가 안 남는다.
+    // 시간 필터는 **toN3 앞**이다 — N3 는 렌더 전용 형태라 시간 열을 안 들고 간다.
+    const shown3 = filterUnlinked(toN3(atTime(nodes), domains, lnbFocus.nodeId));
+    g3 = mount3d(canvas, shown3, toL3(pruneEdges(visibleEdges(), shown3)), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
@@ -994,21 +1145,24 @@ export async function renderView(el: HTMLElement) {
         else openDetail(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
-    }, p);
+    }, p, keepCam);
+    keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     wireLasso();
   }
 
-  /** 노드 우클릭 = 컨텍스트 메뉴(D64). 정본 §2 의 항목 그대로 — 열기 · 여기서 추적 ·
-   *  여기서 공유 · 삭제. 여태 우클릭이 곧바로 추적을 실행해 메뉴를 기대한 손이
-   *  예고 없이 화면을 갈아탔다(Jakob: 우클릭의 기대는 메뉴다). */
+  /** 노드 우클릭 = 컨텍스트 메뉴(D64) — 열기 · 여기서 공유 · 삭제. 여태 우클릭이
+   *  곧바로 추적을 실행해 메뉴를 기대한 손이 예고 없이 화면을 갈아탔다(Jakob:
+   *  우클릭의 기대는 메뉴다).
+   *
+   *  `여기서 추적`은 2026-08-17 에 내렸다. 그 제스처가 답하던 질문("이 노드 둘레에
+   *  뭐가 있나")은 이미 제자리에서 답이 난다 — 짚으면 이웃만 남기고 물러나고(recede),
+   *  관계는 옆 카드가 들고, `선 보이기: 데려오기`는 이웃을 이름째 링으로 불러온다.
+   *  대신 치르던 값은 장면 통째 재마운트 + 레일·카드·패널이 다 닫히는 것이었고,
+   *  정작 쓰고 싶어질 허브에서는 depth-2 가 그래프의 절반을 도로 담아 격리가 얇았다. */
   function nodeMenu(nd: N3, ev: MouseEvent) {
     openContextMenu(ev.clientX, ev.clientY, [
       { label: COPY.ui.menu.open, run: () => openDetail(nd) },
-      { label: COPY.ui.viewx.traceCta, run: () => {
-        trail.push({ kind: "l2", seed: nd.id, domain: nd.domain, title: nd.label });
-        void show(trail[trail.length - 1]);
-      } },
-      { label: COPY.ui.menu.shareHere, run: () => openShareSheet({ seed: nd.id, depth: 2 }) },
+      { label: COPY.ui.menu.shareHere, run: () => openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }) },
       { label: COPY.ui.viewx.del, danger: true, run: async () => {
         if (!await confirmDestructive(COPY.ui.viewx.delNodeAsk(nd.label),
               COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
@@ -1016,7 +1170,7 @@ export async function renderView(el: HTMLElement) {
           const res = await api.deleteNode(cfg.owner, nd.id);
           if (!res.executed) throw new Error(res.note || res.error || "delete failed");
           closeRail();
-          void show(trail[trail.length - 1], false);
+          void show(trail[trail.length - 1]);
         } catch { /* 실패는 조용히 — 지워진 것이 없다 */ }
       } },
     ]);
@@ -1056,19 +1210,47 @@ export async function renderView(el: HTMLElement) {
 
   /** 노드로 이동(D70) — 좌측 트리·검색 착지·카드 안 항목이 전부 이 문 하나로 들어온다.
    *
-   *  화면에 이미 있으면 카메라만 옮기고, 없으면 그 노드를 씨앗으로 스코프를 간다.
+   *  화면에 이미 있으면 카메라만 옮긴다. 없으면 **스코프를 넓혀 데려온다**: 주제를
+   *  알면 그 주제 하나로, 모르면 전량으로. 전량은 반드시 그 노드를 담으므로 막다른
+   *  길이 구조적으로 없다 — 브릿지는 주제가 비어 있고(F2) 미분류 노드도 있어서,
+   *  주제 하나로만 좁히는 사다리는 그것들을 떨어뜨린다.
+   *
+   *  예전에는 여기서 씨앗 L2(depth 2 서브그래프)를 밀었다. 사람에게 뜻이 있는 것은
+   *  주제이지 허브의 depth-2 덩어리가 아니고, 그 층은 재마운트 값도 비쌌다.
+   *
+   *  주제로 넓힐 때 trail 을 바닥까지 되감는 이유: 주제 전환은 쌓기가 아니라 **바꾸기**다
+   *  (좌측 트리의 주제 선택이 이미 그렇게 한다). 안 그러면 노드를 옮겨 다닐 때마다
+   *  Esc 로 되짚어야 할 층이 끝없이 쌓인다.
+   *
    *  끝에는 언제나 같은 둘이 열린다: 옆에 뜨는 관련 문서 카드 + 우측 문서 패널. */
   async function focusNode(id: string, domain?: string) {
     // 주제를 밖에서 알려 주면 먼저 기억한다 — 합계 뷰는 개념 마크가 없어 그래프
     // 노드로 되짚을 수 없고(가운데 열이 주제다), 트리는 그 값을 이미 안다.
-    if (domain) lnbFocus = { domain, nodeId: id };
+    // 노드 id 는 주제를 모를 때도 적어 둔다: 다시 그릴 때 그 마크를 초점색으로
+    // 그릴 근거가 이것뿐이다(예전엔 L2 씨앗이 그 일을 했다).
+    lnbFocus = domain ? { domain, nodeId: id } : { ...lnbFocus, nodeId: id };
     if (!flyToMounted(id, domain)) {
-      trail.push({ kind: "l2", seed: id, domain });
-      await show(trail[trail.length - 1]);
-      flyToMounted(id, domain);
+      const at = trail[trail.length - 1];
+      const already = domain
+        ? at.kind === "l1" && at.domains.length === 1 && at.domains[0] === domain
+        : at.kind === "l0";
+      if (!already) {
+        trail.length = 1;                       // 바닥은 언제나 l0
+        if (domain) trail.push({ kind: "l1", domains: [domain] });
+        await show(trail[trail.length - 1]);
+      }
+      // 마운트 직후에는 좌표가 아직 앉지 않아 한 번에 못 난다. 자리를 잡은 뒤 다시
+      // 한 번(D70). 넓혔든(재마운트) 아니든(딥링크로 방금 그린 화면) 사정은 같다.
+      if (!flyToMounted(id, domain))
+        setTimeout(() => { if (myGen === liveGen) flyToMounted(id, domain); }, 420);
     }
     const raw = curNodes.find((n) => n.id === id);
-    // 노드 메타를 못 찾는 경우(평면 캡에 잘렸거나 스코프 밖) 최소 정보로 연다 —
+    // 전량을 그린 화면에도 없으면 그 노드는 **없는 것**이다(오래된 딥링크가 이 경우다).
+    // 빈 상세를 열어 있는 척하지 않는다 — 화면은 전체 지도로 남는다.
+    if (!raw && trail[trail.length - 1].kind === "l0") {
+      lnbFocus = {}; setLnbActive({}); return;
+    }
+    // 못 찾았지만 스코프가 좁은 경우(평면 캡에 잘렸거나 렌즈 밖)는 최소 정보로 연다 —
     // 제목은 곧 node-context 가 채운다.
     const nd = raw ? toN3([raw])[0]
       : ({ id, label: id.replace(/^[a-z]+:/, ""), degree: 0 } as N3);
@@ -1076,6 +1258,16 @@ export async function renderView(el: HTMLElement) {
     lnbFocus = { domain: nd.domain, nodeId: id };
     setLnbActive(lnbFocus);
   }
+
+  /** 노드 맥락(`/node-context`) 한 번만 — 레일과 카드가 같은 노드에 같은 요청을 각자
+   *  보내고 있었다(실측 2026-08-17: 클릭 한 번에 두 번, 63ms·100ms). 마지막 노드의
+   *  약속을 기억해 둘이 나눠 쓴다. 층이 바뀌거나(show) 그래프를 고치면(삭제·연결)
+   *  버린다 — 오래 들고 있으면 "방금 이은 연결이 안 보인다"가 된다. */
+  let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
+  const nodeContextOnce = (id: string) => {
+    if (ctxCache?.id !== id) ctxCache = { id, p: api.nodeContext(cfg.owner, id) };
+    return ctxCache.p;
+  };
 
   /** 관련 문서 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있고, 항목을 누르면 그 노드로 간다. */
   async function openRelsCard(nd: N3) {
@@ -1086,7 +1278,7 @@ export async function renderView(el: HTMLElement) {
     });
     card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
     try {
-      const res = await api.nodeContext(cfg.owner, nd.id);
+      const res = await nodeContextOnce(nd.id);
       if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
       card.setTitle(nd.label);
       if (!res.links?.executed) { card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.relsNone}</p>`; return; }
@@ -1099,6 +1291,9 @@ export async function renderView(el: HTMLElement) {
 
   function openDetail(nd: N3) {
     lastNode = nd;   // Reader 뒤로가기 복귀 지점
+    // 주소가 이 노드를 싣는다 — 주소창에서 복사해 건네는 것이 "노드 하나"라는 성질은
+    // L2 가 스코프였을 때부터의 것이고, 층이 사라져도 남는다.
+    focusId = nd.id; syncHash();
     openRail();
     void openRelsCard(nd);
     // 수치는 여기서 세지 않는다 — loadNodeSource 가 node-context 응답(links)으로
@@ -1114,8 +1309,7 @@ export async function renderView(el: HTMLElement) {
       <h2>${esc(nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">
-        <button class="btn btn-primary" id="focus">${COPY.ui.viewx.traceCta}</button>
-        <button class="btn" id="nd-share">${COPY.ui.viewx.shareCta}</button>
+        <button class="btn btn-primary" id="nd-share">${COPY.ui.viewx.shareCta}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
       <div id="node-source"></div>
@@ -1124,10 +1318,7 @@ export async function renderView(el: HTMLElement) {
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
-      openShareSheet({ seed: nd.id, depth: 2 }));
-    detail.querySelector("#focus")!.addEventListener("click", () => {
-      trail.push({ kind: "l2", seed: nd.id, domain: nd.domain }); show(trail[trail.length - 1]);
-    });
+      openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
     // S1 — 노드 삭제(되돌릴 수 없음). 성공하면 상세를 닫고 현재 층을 다시 그려
     // 지도에서도 사라지게 한다(응답 후 재조회 — 엣지까지 지워지므로 부분 갱신 불가).
     detail.querySelector("#nd-del")!.addEventListener("click", async () => {
@@ -1242,7 +1433,7 @@ export async function renderView(el: HTMLElement) {
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodLoading}</p>`;
     try {
-      const res = await api.docsInRange(cfg.owner, start, end, domain, p.timelineBasis);
+      const res = await api.docsInRange(cfg.owner, start, end, domain, p.timeBasis);
       if (detail.hidden) return;
       if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodFail}</p>`; return; }
       const items = res.items || [];
@@ -1344,7 +1535,7 @@ export async function renderView(el: HTMLElement) {
     if (!box) return;
     box.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
     try {
-      const res = await api.nodeContext(cfg.owner, nd.id);
+      const res = await nodeContextOnce(nd.id);
       // 수치는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다. 관계 목록은
       // 이 패널을 떠나 노드 옆 카드로 갔다(D70).
       drawNodeStats(nd, res.links);
@@ -1408,14 +1599,37 @@ export async function renderView(el: HTMLElement) {
    *  신설 없이 View 안에 머문다(D15). 뒤로 = 노드 상세로 복귀. 밑줄 범위는
    *  백엔드 /doc/highlights(토큰 매칭 계산, 정확한 char offset)로 받아 첫 범위로
    *  스크롤한다. verified 배지로 "정본" 신뢰를 시각화. */
-  async function openReader(docId: string, conceptId: string) {
+  /** 문서를 연다 — **지도 착지와 본문 열기를 한 클릭에.** 좌측 트리·문서 목록·검색이
+   *  전부 이 문으로 들어온다.
+   *
+   *  순서가 계약이다: `focusNode` 는 끝에서 노드 상세로 레일을 덮으므로 리더를
+   *  **뒤에** 연다. 그래야 리더의 `뒤로`가 그 노드 상세로 돌아간다(lastNode 가
+   *  거기서 세워진다) — 반대로 하면 문서를 열자마자 상세가 덮어써 본문이 사라진다. */
+  async function openDocAt(docId: string, nodeId?: string,
+                           domain?: string, chunkIndex?: number) {
+    if (nodeId) await focusNode(nodeId, domain);
+    await openReader(docId, nodeId, chunkIndex);
+  }
+
+  /** `chunkIndex` 는 오프셋이 아니라 **청크 번호**다. 오프셋은 아래에서 부르는
+   *  `/doc/context` 가 이미 실어 오므로, 검색이 그것을 알아내려 한 번 더 왕복할
+   *  이유가 없다(청크 id `<doc>#00007` 의 뒷자리가 곧 번호다). */
+  async function openReader(docId: string, conceptId?: string, chunkIndex?: number) {
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
     try {
-      const [doc, hl] = await Promise.all([
+      // 셋을 나란히 부른다. 밑줄과 머리는 **증강**이라 실패해도 문서는 열려야 한다 —
+      // Promise.all 은 하나만 거절돼도 전부를 버리므로 각자 강등본을 준비한다.
+      // (개념 없이 열면 밑줄 그을 대상 자체가 없어 부르지도 않는다.)
+      const [doc, hl, ctx] = await Promise.all([
         api.docGet(cfg.owner, docId),
-        api.docHighlights(cfg.owner, docId, conceptId),
-      ]);
+        conceptId
+          ? api.docHighlights(cfg.owner, docId, conceptId).catch(() => ({ executed: false }))
+          : Promise.resolve({ executed: false }),
+        api.docContext(cfg.owner, docId).catch(() => ({ executed: false })),
+      ]) as [Awaited<ReturnType<typeof api.docGet>>,
+             Partial<Awaited<ReturnType<typeof api.docHighlights>>>,
+             Partial<Awaited<ReturnType<typeof api.docContext>>>];
       if (detail.hidden) return;
       if (!doc.executed || doc.text === undefined) {
         detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
@@ -1426,9 +1640,33 @@ export async function renderView(el: HTMLElement) {
       const firstLine = (doc.text.split("\n").find((l) => l.trim()) || "").trim();
       const dupTitle = !!doc.title
         && firstLine.replace(/^#{1,6}\s+/, "").trim().toLowerCase() === doc.title.trim().toLowerCase();
+      // 배지는 **깨졌을 때만** 뜬다. 저장 무결성은 정상이 기본값이라, 문서를 열
+      // 때마다 "검증된 원본"이라고 말하면 읽으러 온 사람에게 매번 남의 일을 알린다.
+      // 사람이 알아야 하는 것은 실패한 경우뿐이다.
       const badge = doc.verified
-        ? `<span class="badge">${COPY.ui.viewx.readerVerified}</span>`
-        : `<span class="hint">${COPY.ui.viewx.readerUnverified}</span>`;
+        ? "" : `<span class="hint">${COPY.ui.viewx.readerUnverified}</span>`;
+      // 문서→노드. 여태 없던 방향이다 — 문서를 열어 놓고 "이건 무엇에 걸려 있나"를
+      // 물을 수 없었다. 0건이면 줄 자체를 안 그린다(빈 자리를 남기지 않는다).
+      const cons = ctx.concepts || [];
+      const chips = cons.slice(0, READER_CHIPS);
+      const mentionsHTML = cons.length === 0 ? "" : `
+        <p class="rdr-chips">
+          <span class="hint">${COPY.ui.viewx.readerMentions}</span>
+          ${chips.map((c) => `<button class="chip" data-go="${esc(c.id)}"
+             data-dom="${esc(c.domain)}">${esc(c.title || c.id)}</button>`).join("")}
+          ${cons.length > chips.length
+            ? `<span class="hint">${COPY.ui.viewx.relsMore(cons.length - chips.length)}</span>` : ""}
+        </p>`;
+      // 목차 — 리더 안의 지도. 접어 두는 이유는 이것이 본문이 아니라 길잡이라서다.
+      // 깊이는 들여쓰기로만 말한다(글자 크기를 건드리면 목차가 제목 행세를 한다).
+      const secs = ctx.sections || [];
+      const tocHTML = secs.length < 2 ? "" : `
+        <details class="rdr-toc">
+          <summary class="hint">${COPY.ui.viewx.readerOutline(secs.length)}</summary>
+          ${secs.map((s) => `<button class="rdr-sec" data-at="${s.char_start}"
+             style="padding-left:${Math.min(Math.max(s.level - 1, 0), 5) * 0.85}rem"
+             >${esc(s.title)}</button>`).join("")}
+        </details>`;
       detail.innerHTML = `
         <div class="rail-head">
           <span class="hint">${COPY.ui.viewx.readerTitle}</span>
@@ -1446,8 +1684,15 @@ export async function renderView(el: HTMLElement) {
         </p>
         ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
+        ${mentionsHTML}
+        ${tocHTML}
         <div id="rdr-host"></div>`;
       detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+      // 칩을 누르면 그 노드로 간다 — D70 의 약속("문서를 고르면 지도 어디인지 안다")을
+      // 문서 쪽에서도 지키는 문이다. 스코프가 바뀌면 레일은 노드 상세로 갈린다.
+      detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
+        b.addEventListener("click", () =>
+          void focusNode(b.dataset.go!, b.dataset.dom || undefined)));
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
         void handle?.dispose();
         if (lastNode) openDetail(lastNode); else closeRail();
@@ -1468,7 +1713,20 @@ export async function renderView(el: HTMLElement) {
         // 여기로 받아 레일 머리 옆에서 말한다.
         onStatus: (t) => { state.textContent = t; },
         highlights: hl.ranges || [],
+        // 본문의 `[[doc_id]]` 가 같은 레일에서 그 문서로 갈린다. 지도 착지는 하지
+        // 않는다 — 문서 안의 참조는 "저 문서를 마저 읽자"이지 "저 노드로 가자"가
+        // 아니고, 노드로 갈 문은 바로 위 칩이 이미 들고 있다.
+        onDocLink: (id) => void openReader(id),
       });
+      // 목차 클릭·청크 히트 착지 — 편집기가 이미 오프셋으로 스크롤할 줄 안다
+      // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.
+      detail.querySelectorAll<HTMLElement>(".rdr-sec").forEach((b) =>
+        b.addEventListener("click", () => handle.scrollToOffset(Number(b.dataset.at) || 0)));
+      // 청크 히트 착지 — 그 대목으로 앉힌다. 번호를 못 찾으면(재청킹으로 어긋났거나
+      // 오프셋을 잃은 레거시 행) 문서 맨 위로 남는다: 조용한 강등이지 오류가 아니다.
+      const at = chunkIndex === undefined ? undefined
+        : (ctx.chunks || []).find((c) => c.index === chunkIndex)?.char_start;
+      if (at) requestAnimationFrame(() => handle.scrollToOffset(at));
       // peek→전체폭 승격 — 좁은 레일이 답답할 때 같은 문서를 시트로 연다.
       detail.querySelector("#rdr-expand")!.addEventListener("click", () => {
         handle.dispose();
@@ -1510,7 +1768,7 @@ export async function renderView(el: HTMLElement) {
                       { type: "concept", id: s.id, title: s.title }],
               edges: [{ type: "relates_to", from: nd.id, to: s.id }],
             });
-            await show(trail[trail.length - 1], false);   // 재렌더(연결 반영)
+            await show(trail[trail.length - 1]);   // 재렌더(연결 반영)
             openRail();                        // show() 가 닫으므로 확인 문구 재표시
             detail.innerHTML = `<h2>${nd.label}</h2>
               <p>${COPY.ui.viewx.bound(s.title)}</p>`;
@@ -1533,22 +1791,14 @@ export async function renderView(el: HTMLElement) {
     const p = curPrefs();
     // D69 — L0 도 그냥 전체 그래프다(구 주제 원 배치 폐지). 3D 경로와 같은 모집단을
     // 쓰므로 관점을 바꿔도 같은 것을 다르게 볼 뿐, 다른 것을 보게 되지 않는다.
-    const { seed } = scopeOf(level);
     const domains = lvDomains(level);
-    const whole = seed === undefined && !domains.length;
-    setMsg(`<p class="hint">${COPY.view.loading(whole ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
-    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
-    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
-    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
-    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
+    const res = await fetchGraph(p, { domains });
+    if (res.stale) return;
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     curNodes = gnodes;
-    if (seed !== undefined) fillSeedDomain(seed, gnodes);
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
@@ -1557,10 +1807,10 @@ export async function renderView(el: HTMLElement) {
       return;
     }
     setMsg("");
-    drawMetrics(gnodes);
-    g2 = mount2d(canvas, gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) })),
-      visibleEdges(), {
-      seed,
+    drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
+    const shown2 = atTime(gnodes).map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
+    g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
+      markId: lnbFocus.nodeId,
       onClick: (nd) => openDetail(toN3([nd])[0]),
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
@@ -1569,7 +1819,6 @@ export async function renderView(el: HTMLElement) {
   }
 
   const showL1 = (domains: string[]) => showGraphScope({ domains });
-  const showL2 = (seed: string) => showGraphScope({ seed });
 
   /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
    *  의도적으로 평면(나란히 대조가 목적 — 3D 회전은 좌우 대응을 깨뜨림). */
@@ -1591,38 +1840,23 @@ export async function renderView(el: HTMLElement) {
    *  관점은 선택된 채로 두고(비활성·숨김 없음) 캔버스에 두 절짜리 빈 상태를 그린다. */
   async function showPlanar(level: Level) {
     const p = curPrefs();
-    const { seed } = scopeOf(level);
     const domains = lvDomains(level);
-    // 이미 그 주제만 보고 있으면 무동작 — L1 원장은 그 주제 한 줄뿐이라, 그 줄을
-    // 누르면 같은 이름이 크럼에 한 칸씩 쌓였다(physics › physics › physics).
-    const openTopic = (d: string) => {
-      const lv = trail[trail.length - 1];
-      if (lv.kind === "l1" && lv.domains.length === 1 && lv.domains[0] === d) return;
-      trail.push({ kind: "l1", domains: [d] }); show(trail[trail.length - 1]);
-    };
-
-    // L0/L1/L2 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
+    // L0/L1 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
     //
     // D46-S: **L0 는 전량**이다(정본 [[vinc.d.graph-views]] §3.2 "L0=전체", §2.3.1
     // 표 "L0 = 전체 개념"). 예전엔 여기서 `/view`(주제 집계)만 불러 흐름은 주제
     // ties 를, 타임라인은 "주제에는 날짜가 없다" 막다른 골목을 냈다 — 합계만
     // `/ledger?owner=` 로 이미 전량이라 관점끼리 모집단이 어긋나 있었다.
-    // `domain`·`seed` 둘 다 없으면 사이드카는 owner 스코프 전량을 돌려준다
+    // `domains` 가 없으면 사이드카는 owner 스코프 전량을 돌려준다
     // (query.py `graph()` "기본은 owner(±domain) 스코프 전체"). call() 이 undefined
     // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
-    const res = seed !== undefined
-      ? await api.graph(cfg.owner, { seed, depth: 2, layout: p.layout })
-      : await api.graph(cfg.owner, { ...(domains.length ? { domains } : {}), layout: p.layout });
-    // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
-    // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
-    // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
-    // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
+    const res = await fetchGraph(p, { domains });
+    if (res.stale) return;
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
     curNodes = gnodes;
-    if (seed !== undefined) fillSeedDomain(seed, gnodes);
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
       setMsg(level.kind === "l0"
@@ -1635,7 +1869,7 @@ export async function renderView(el: HTMLElement) {
     // D72 — 시간축은 여기서 고른다. 서버가 `content` 를 요청받으면 ts 를 이미 갈아
     // 끼워 주지만, 두 열이 다 실려 오므로 **재조회 없이** 바꿔 끼울 수 있다. 구
     // 사이드카에는 content_ts 자체가 없어 내용 축이 빈 상태로 정직하게 강등된다.
-    const onContent = p.timelineBasis === "content";
+    const onContent = p.timeBasis === "content";
     const planarTints = p.domainTint ? tintMap(gnodes.map((n) => n.domain), curMode()) : null;
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
@@ -1649,13 +1883,6 @@ export async function renderView(el: HTMLElement) {
       // 값이라 재조회가 없다.
       degree: nd.degree || 0,
     }));
-    const openNode = (id: string) => {
-      trail.push({ kind: "l2", seed: id, domain: gnodes.find((n) => n.id === id)?.domain });
-      show(trail[trail.length - 1]);
-    };
-    // 씨앗이 혼자인 경우 — 점 하나는 그려서 "여기 있다"를 남기고 문구를 덧댄다.
-    const solo = seed !== undefined && (gnodes.find((n) => n.id === seed)?.degree || 0) === 0;
-
     if (p.view === "timeline") {
       // 판정도 차트가 실제로 그리는 집합(문서 연결 토글 적용본) 위에서 한다 —
       // 걸러진 노드를 세면 "빈 캔버스에 문구 없음"이거나 undated 가 부풀어 오른다.
@@ -1668,7 +1895,7 @@ export async function renderView(el: HTMLElement) {
           ? COPY.ui.panel.noContentTime : COPY.ui.viewx.noDates}</p></div>`);
         return;
       }
-      setMsg(solo ? `<div class="empty"><p>${COPY.ui.viewx.soloNode}</p></div>` : "");
+      setMsg("");
       // 상한 가드 — 평면은 노드마다 <g> 를 만드는 DOM 렌더라 전량(L0)에서 수천 개면
       // 무거워진다. 자르되 **조용히 자르지 않는다**: 최근 것부터 남기고 몇 개를
       // 안 그렸는지 캡션에 밝힌다(정직한 축소).
@@ -1680,8 +1907,8 @@ export async function renderView(el: HTMLElement) {
           .slice(0, PLANAR_CAP).map((n) => n.id));
         feed = nodes.filter((n) => keep.has(n.id));
       }
-      // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈, L2(ego)는
-      // 스코프가 여러 도메인이라 렌즈 없이(그 달 전체) 연다.
+      // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈를 걸고,
+      // 전체(L0)는 렌즈 없이(그 달 전체) 연다.
       const periodDomain = level.kind === "l1" ? lvDomain(level) || undefined : undefined;
       // 밴드 클릭이 넘길 구간을 만들려면 차트와 **같은 알갱이**를 알아야 한다 —
       // 차트는 월, 목록은 연으로 세면 두 수가 어긋난다(D72).
@@ -1722,7 +1949,7 @@ export async function renderView(el: HTMLElement) {
         over > 0 ? COPY.ui.viewx.capped(over) : "",
         lineage && lineage.length === 0 ? COPY.ui.viewx.noLineage : "",
       ].filter(Boolean);
-      if (!solo && notes.length) {
+      if (notes.length) {
         lassoHint.textContent = notes.join(" · ");
         lassoHint.hidden = false;
       }
@@ -1730,7 +1957,7 @@ export async function renderView(el: HTMLElement) {
     }
 
     if (p.view === "bundle") {
-      setMsg(solo ? `<div class="empty"><p>${COPY.ui.viewx.soloNode}</p></div>` : "");
+      setMsg("");
       // 상한 가드 — 둘레에 항목 하나당 <g> 하나다. 자르되 **조용히 자르지 않는다**.
       // 타임라인은 최근 것부터 남기지만 여기서는 **연결이 많은 것부터** 남긴다:
       // 이 관점이 말하는 것이 연결이라, 고립된 항목을 남기고 허브를 자르면 그림이
@@ -1746,11 +1973,10 @@ export async function renderView(el: HTMLElement) {
         feed = nodes.filter((n) => keep.has(n.id));
       }
       planar = mountBundle(canvas, feed, curEdges, {
-        depth: p.bundleDepth, off: p.bundleOff, labels: p.labels !== "none",
-        // ⚠ 다른 평면 관점과 달리 클릭이 **스코프를 바꾸지 않는다**(l2 로 파고들지
-        // 않는다). 이 관점의 값은 링 전체가 한 화면에 있다는 것인데, 파고들면 그
-        // 링이 사라져 방금 돌린 회전도 함께 없어진다. 그래서 클릭 = 회전 + 상세
-        // 레일이다. 더 들어가려면 레일의 `여기서 추적` 이 그 문이다.
+        depth: p.bundleDepth, off: p.bundleOff, labels: p.labels !== "none", tint: planarTints,
+        // 클릭 = 회전 + 상세 레일. 이 관점의 값은 링 전체가 한 화면에 있다는 것이라
+        // 스코프를 갈아 파고들면 방금 돌린 회전과 함께 그 값이 사라진다. (그 파고들기
+        // 자체가 2026-08-17 에 없어졌다 — 어느 관점도 이제 클릭으로 좁히지 않는다.)
         onOpen: (id) => {
           const nd = gnodes.find((n) => n.id === id);
           if (nd) openDetail(nd as unknown as N3);
@@ -1778,23 +2004,36 @@ export async function renderView(el: HTMLElement) {
    *  400ms 타이머를 걸어 그 이후에만 표시를 켠다: 그보다 빠른 전환에 표시를 켜면
    *  깜빡임만 늘어난다(느껴지지 않는 지연에 스피너를 붙이면 더 느려 보인다). */
   let busyTimer: number | undefined;
-  function setBusy(on: boolean) {
+  /** `delay` — 옵션 경로는 120ms(F8, 2026-08-17). 옵션 클릭은 사용자가 방금 손을 댄
+   *  자리라 400ms 의 무표시가 "먹지 않았다"로 읽힌다(층 전환은 그대로 400). 지금은
+   *  옵션 대부분이 show() 에 오지도 않으므로(제자리 반영) 이 지연을 보는 것은 캐시
+   *  재마운트뿐이다. */
+  function setBusy(on: boolean, delay = 400) {
     window.clearTimeout(busyTimer);
     if (!on) { el.classList.remove("view-busy"); return; }
-    busyTimer = window.setTimeout(() => el.classList.add("view-busy"), 400);
+    busyTimer = window.setTimeout(() => el.classList.add("view-busy"), delay);
   }
 
   /** `keepPanel` — 렌즈 패널을 **닫지 않는다**. 층이 바뀔 때 패널을 닫는 것은 맞지만
    *  (가리키던 층이 사라지므로), 옵션을 고쳐 같은 층을 다시 그리는 경우는 층 전환이
    *  아니다 — 그때 닫으면 "고르면 모달이 닫힌다"가 된다(발주자 지적 2026-08-05).
    *  연속 조정이 이 패널의 존재 이유이므로 그 경로만 예외로 둔다. */
-  async function show(level: Level, push = true, opts?: { keepPanel?: boolean }) {
-    setBusy(true);
-    if (push && trail[trail.length - 1] !== level) { /* pushed by caller */ }
+  /** show() 세대. 연달아 두 번 부르면 앞의 것이 fetch 에서 돌아왔을 때 이 값이 이미
+   *  넘어가 있다 — fetchGraph 가 그걸 보고 `stale` 로 접는다(옛 응답이 새 그림을 덮던
+   *  것, 그리고 옛 마운트가 새 캔버스 위에 한 번 더 붙던 것을 막는다). */
+  let showSeq = 0;
+  async function show(level: Level,
+                      opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
+    const seq = ++showSeq;
+    setBusy(true, opts?.keepPanel ? 120 : 400);
+    // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
+    // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
+    keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
+    ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
-    lassoHint.hidden = true;   // 기본 숨김 — L1/L2 의 wireLasso 가 다시 켠다
+    lassoHint.hidden = true;   // 기본 숨김 — wireLasso 가 다시 켠다
     if (!opts?.keepPanel) void closePanel();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
@@ -1804,15 +2043,16 @@ export async function renderView(el: HTMLElement) {
     canvas.innerHTML = "";
     drawLegend();
     drawMetrics(null);
-    // 위치 표시는 좌측 트리 담당(D71 — 크럼 폐지). 지금 층의 주제를 넘겨 준다:
-    // 씨앗 층은 fillSeedDomain 이 주제를 알게 된 뒤 한 번 더 갱신한다.
-    const here = level;
-    setLnbActive(here.kind === "l1" ? { domains: here.domains }
-      : here.kind === "l2" ? { domain: here.domain, nodeId: here.seed } : {});
-    // U4 — 인앱 이동도 주소를 남긴다. 여태 관점 커밋에서만 동기화해, L2 까지 파고든
-    // 뒤 새로고침하면 L1 로 튕기고 "지금 보는 곳"을 공유할 수도 없었다(화면은 L2 인데
-    // 해시는 #view/physics). replaceState 라 hashchange 가 안 떠 라우터는 무영향이고,
-    // 프레임(Grid·Matrix·Compare)은 syncHash 가 가장 가까운 스코프로 접어 준다.
+    // 위치 표시는 좌측 트리 담당(D71 — 크럼 폐지). 지금 층의 주제를 넘겨 준다.
+    setLnbActive(level.kind === "l1" ? { domains: level.domains } : {});
+    // U4 — 인앱 이동도 주소를 남긴다. 여태 관점 커밋에서만 동기화해, 파고든 뒤
+    // 새로고침하면 튕기고 "지금 보는 곳"을 공유할 수도 없었다. replaceState 라
+    // hashchange 가 안 떠 라우터는 무영향이다.
+    //
+    // 층이 바뀌면 열려 있던 상세는 닫힌다(바로 위에서 detail 을 숨긴다) — 주소도
+    // 그 노드를 놓아야 한다. 안 그러면 아무것도 안 열린 화면이 `#view/trace/<id>` 를
+    // 계속 주장한다.
+    focusId = "";
     syncHash();
     viewpointControl();
     try {
@@ -1823,21 +2063,30 @@ export async function renderView(el: HTMLElement) {
       // D69 — L0 도 이제 그냥 그래프다(스코프 없는 `/graph`). 주제 표는 좌측 트리로,
       // 주제 이름 변경도 그 트리의 우클릭으로 옮겼다.
       else if (level.kind === "l0") await showGraphScope({});
-      else if (level.kind === "l1") await showL1(level.domains);
-      else await showL2(level.seed);
-      // 씨앗 층 착지(검색 결과·딥링크·`여기서 추적`)는 전체 맞춤으로 끝나 있었다 —
-      // "그 노드로 갔다"고 해 놓고 화면은 ego 전체를 담아, 정작 씨앗이 어느 점인지
-      // 알 수 없었다. 마운트가 자리를 잡은 뒤 씨앗으로 한 번 더 날린다(D70).
-      if (level.kind === "l2") {
-        const seed = level.seed;
-        setTimeout(() => { if (myGen === liveGen) flyToMounted(seed); }, 420);
-      }
-    } catch {
+      else await showL1(level.domains);
+      // 노드로 데려가는 일(검색 착지·트리 클릭·딥링크)은 focusNode 가 진다 — 마운트가
+      // 자리를 잡은 뒤 한 번 더 날리는 지연도 거기 있다. 여기서는 층만 그린다.
+    } catch (e) {
+      if (seq !== showSeq) return;              // 옛 세대의 실패는 새 화면에 적지 않는다
       // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
-      setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
+      //
+      // 단 **스토어를 못 읽는 경우만은 다른 말**을 한다(2026-08-16). 그 상태에서
+      // 사이드카는 503 을 주고, 여기 "못 불러왔다"로 뭉개면 화면은 빈 지도와
+      // 구분되지 않는다 — 사용자가 보는 것은 "내 지식이 사라졌다"이다. 사유
+      // (락 충돌·손상)는 사람이 읽을 문장이 아니라서 접어 두고 열게 한다.
+      const why = storeDownReason(e);
+      if (why === null) {
+        setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
+      } else {
+        setMsg(`<div class="empty"><p>${COPY.view.storeDown}</p>${
+          why ? `<details><summary>${COPY.view.storeDownWhy}</summary><pre></pre></details>` : ""}</div>`);
+        // 사유는 드라이버·OS 가 만든 문자열(경로 포함)이라 마크업으로 붙이지 않는다.
+        const pre = msg.querySelector("pre");
+        if (pre) pre.textContent = why;
+      }
     } finally {
-      setBusy(false);
+      if (seq === showSeq) setBusy(false);       // 새 세대가 돌고 있으면 그쪽이 끈다
     }
   }
 
@@ -1864,10 +2113,15 @@ export async function renderView(el: HTMLElement) {
   trail.push({ kind: "l0" });
   // `#view/compare/a/b` 는 프레임 폐기(2026-08-02)로 사라진 딥링크다. 옛 주소를
   // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
-  if (deep === "trace" && parts[2]) trail.push({ kind: "l2", seed: parts[2] });
+  //
+  // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
+  // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
+  // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
+  const landOn = deep === "trace" ? (parts[2] || "") : "";
   // 주제 여럿은 쉼표로 잇는다(`#view/a,b`) — 주제 이름에 쉼표가 없다는 관례가 전제고,
   // 백엔드의 `domains=a,b` 파라미터와 같은 문법이라 주소와 질의가 한 모양이다.
-  else if (deep && deep !== "as")
+  // `trace` 를 여기서 빼는 이유: 씨앗 없는 `#view/trace` 가 "trace"라는 주제를 만들었다.
+  if (deep && deep !== "as" && deep !== "trace")
     trail.push({ kind: "l1", domains: deep.split(",").map(decodeURIComponent).filter(Boolean) });
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라
@@ -1875,15 +2129,18 @@ export async function renderView(el: HTMLElement) {
   setViewHooks({
     share: () => {
       const lv = trail[trail.length - 1];
-      if (lv.kind === "l2") openShareSheet({ seed: lv.seed, depth: 2 });
-      else if (lv.kind === "l1") openShareSheet({ domain: lvDomain(lv) });
-      else openShareSheet({});                      // L0·프레임 = 전체
+      // 노드 하나를 건네는 길은 그 노드의 우클릭 메뉴와 상세 레일이 든다(SHARE_DEPTH).
+      // 상단 바는 **지금 보고 있는 스코프**를 건넨다.
+      if (lv.kind === "l1") openShareSheet({ domain: lvDomain(lv) });
+      else openShareSheet({});                      // L0 = 전체
     },
-    openNode: (id) => void focusNode(id),
+    openNode: (id, dom) => void focusNode(id, dom),
+    openDoc: (docId, nodeId, dom, chunkIndex) => void openDocAt(docId, nodeId, dom, chunkIndex),
   });
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
-  setLnbNavigator((id, dom) => void focusNode(id, dom));
+  setLnbNavigator((id, dom, docId) =>
+    void (docId ? openDocAt(docId, id, dom) : focusNode(id, dom)));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
   setLnbTopicPicker((path, add) => {
@@ -1902,5 +2159,6 @@ export async function renderView(el: HTMLElement) {
   });
 
   await show(trail[trail.length - 1]);
+  if (landOn) await focusNode(landOn);
   maybeCoach();
 }
