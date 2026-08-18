@@ -88,6 +88,7 @@
   ],
   "nodes": [
     "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "decision:topic-tint-ships-on",
     "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-failed-restore-must-stop-the-process",
