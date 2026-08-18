@@ -50,15 +50,13 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         f"MATCH (c:Concept) WHERE {' AND '.join(where)} "
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
         "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, c.props AS props, "
-        # created 를 싣지 않던 시절, 받는 쪽은 팩 개념의 시간을 **임포트 시각**으로만
-        # 알 수 있었다 — 스타터팩 하나를 넣으면 개념 수십 개가 같은 순간에 몰려
-        # 타임라인이 밴드 하나짜리 세로 목록이 됐다(실측). 가산 필드라 구 임포터는
-        # 그냥 무시한다.
+        # created 를 싣는다 — 안 실으면 받는 쪽에서 팩 개념이 전부 임포트 시각으로
+        # 몰려 타임라인이 밴드 하나가 된다. 가산 필드라 구 임포터는 무시한다
+        # ([[record:sync-drops-node-created-pack-keeps-it]]).
         "c.created AS created, "
-        # content_time(D72)은 **더 실려야 할 쪽**이다. created 는 공간에 속한 시계인데
-        # 이것은 지시체에 속해서(1905 는 어느 그래프에서 읽든 1905다) 공간을 건너도
-        # 참이다. 그런데 여태 팩은 공간의 시계만 나르고 이것을 버렸다 — 팩을 건너면
-        # 세계 시간이 통째로 사라졌다(2026-08-17 실측).
+        # content_time 은 **더 실려야 할 쪽**이다 — created 는 공간의 시계지만 이것은
+        # 지시체에 속해(1905 는 어느 그래프에서든 1905다) 공간을 건너도 참이다
+        # ([[vinc.plan.sync-node-time-fields]]).
         "c.content_time AS content_time"
     )
     return q.QueryPlan("share_concepts", cypher, params, note="share projection (no preference)")
@@ -111,10 +109,9 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
             "doc_id": did, "title": got.get("title") or "",
             "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
             "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
-            # 개념과 같은 이유로 **내용 시점만** 싣는다(2026-08-17). `created_at` 은
-            # 안 싣는다: 임포트는 수신 owner 로 doc_id 를 새로 파생하므로 받는 쪽에서
-            # 그것은 **다른 문서**이고, 그 문서가 이 공간에 생긴 때는 정말로 지금이다.
-            # 노드는 id 를 그대로 물려받아 같은 객체이므로 규칙이 갈린다.
+            # **내용 시점만** 싣는다. `created_at` 은 안 싣는다 — 임포트가 doc_id 를 수신
+            # owner 로 새로 파생하므로 받는 쪽에서 그것은 다른 문서이고, 이 공간에 생긴
+            # 때는 정말로 지금이다(노드는 id 를 물려받아 같은 객체라 규칙이 갈린다).
             "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
         })
     return docs

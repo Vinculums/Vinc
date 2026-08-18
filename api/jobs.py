@@ -50,14 +50,9 @@ class JobError(RuntimeError):
     """run_sync 대상 잡이 error 로 끝났을 때(HTTP 500 매핑용)."""
 
 
-# run_sync 기본 대기 상한. **무한 대기를 두지 않는다**(2026-07-31 실측 사고): 워커가
-# 어떤 이유로든 진행하지 못하면 그때부터 모든 쓰기 요청이 영원히 매달려, 화면은
-# "처리 중"에 굳고 사용자는 무엇이 됐는지 알 길이 없다.
-#
-# 값이 큰 이유: 여기서 **거짓 실패**를 만들면 안 된다. 큰 팩 적재처럼 정당하게 오래
-# 걸리는 잡이 상한에 걸리면, 데이터는 들어갔는데 화면은 실패라고 말한다 — 무한 대기와
-# 다른 종류의 거짓말이다. 10분은 어떤 대화형 기대치보다도 길되 유한하다. 이보다 더
-# 걸릴 수 있는 일(백업·인박스 적재·동기화)은 애초에 `submit`(비동기 202)을 쓴다.
+# run_sync 기본 대기 상한. **무한 대기 금지**이되 **거짓 실패도 금지**라 값이 크다 —
+# 이보다 오래 걸릴 수 있는 일(백업·인박스 적재·동기화)은 애초에 `submit`(202)을 쓴다.
+# 두 거짓말의 대칭: [[record:a-bounded-wait-must-not-manufacture-false-failure]].
 DEFAULT_SYNC_TIMEOUT = 600.0
 
 
@@ -160,14 +155,10 @@ class JobQueue:
                 result = fn()
                 job.result = result if isinstance(result, dict) else {"result": result}
                 job.status = DONE
-            # ⚠ **BaseException 이다** — `Exception` 이 아니다(2026-07-31 실측 사고).
-            # 잡 격리는 이 큐의 존재 이유이고, `except Exception` 은 그 약속을 못
-            # 지킨다: `SystemExit`·`KeyboardInterrupt` 는 BaseException 이라 그대로
-            # 빠져나가 **워커 스레드를 죽인다**. 실제로 임베딩 스택이 없는 기기에서
-            # `/doc/reembed` 잡이 라이브러리의 sys.exit() 를 밟아 워커가 죽었고, 그
-            # 뒤 모든 쓰기가 큐에 쌓인 채 영구 무응답이 됐다(읽기는 별도 커넥션이라
-            # 멀쩡해 오진하기 쉬웠다). 워커 스레드에서 SystemExit 은 프로세스를
-            # 끝내지도 못하므로, 잡 하나를 실패로 접는 것이 언제나 옳다.
+            # ⚠ **BaseException 이다** — `Exception` 으로 좁히지 말 것. `SystemExit`·
+            # `KeyboardInterrupt` 가 빠져나가면 **워커 스레드가 죽고** 그 뒤 모든 쓰기가
+            # 영구 무응답이 된다(읽기는 멀쩡해 오진하기 쉽다):
+            # [[record:job-isolation-has-to-catch-baseexception]].
             except BaseException as exc:   # noqa: BLE001 — 잡 격리(어떤 잡도 워커를 못 죽인다)
                 job.error = f"{type(exc).__name__}: {exc}"
                 job.status = ERROR
@@ -186,17 +177,11 @@ class JobQueue:
             print(f"[jobs] on_idle 실패(계속 진행): {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
 
-    # ── 체크포인트는 여기 없다(2026-08-09 철거) ────────────────────────────
-    # 하루 전 이 자리에 "N개 잡마다 CHECKPOINT" 가 있었다. 근거는 "엔진은 close
-    # 때만 체크포인트한다"였는데 **그 전제가 틀렸다** — ladybug 는 `checkpoint_
-    # threshold`(기본 16MB)를 넘으면 스스로 한다. 그래서 뺐고, 대신 그 임계값을
-    # `StoreConfig.checkpoint_threshold_mb` 로 내렸다(4MB).
-    #
-    # 잡 개수로 세는 것이 왜 나쁜가: **잡 개수는 WAL 바이트와 무관하다.** 잡 하나가
-    # 거대하면 20잡을 세기 전에 임계를 넘고, 잡이 잘면 쓸데없이 자주 돈다. 엔진
-    # 내장은 처음부터 바이트 기준이다. 게다가 수동 CHECKPOINT 는 활성 트랜잭션이
-    # 있으면 대기하다 타임아웃하는데 **읽기도 활성 트랜잭션**이라, 읽기가 끊이지
-    # 않는 라이브에서는 실패 로그만 쌓였을 공산이 크다.
+    # ── 체크포인트는 여기 없다 ─────────────────────────────────────────────
+    # 잡 개수로 세는 체크포인트를 두지 말 것. 엔진이 WAL **바이트** 기준으로 스스로
+    # 하고(임계는 `StoreConfig.checkpoint_threshold_mb`), 수동 CHECKPOINT 는 읽기까지
+    # 포함한 활성 트랜잭션에 걸려 실패 로그만 남는다:
+    # [[record:job-count-checkpointing-was-removed]].
 
     # ── 종료 ──────────────────────────────────────────────────────────────
     def shutdown(self, *, drain: bool = True) -> None:

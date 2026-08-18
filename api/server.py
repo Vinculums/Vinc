@@ -455,10 +455,9 @@ class VincApp:
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
-        # 모델 이행 중에는 **벡터 팔을 아예 쓰지 않는다**(발주자 결정: 안전한 방향).
-        # 이행 구간에는 새 모델로 채워진 문서와 아직 빈 문서가 섞여 있어, 벡터 팔이
-        # "이미 처리된 문서" 쪽으로 결과를 기울인다. 커버리지가 반쪽인 채로 순위에
-        # 끼는 것보다 FTS 로만 답하는 편이 정직하다. 끝나면 저절로 풀린다.
+        # 모델 이행 중에는 **벡터 팔을 아예 쓰지 않는다** — 반쪽 커버리지가 순위에
+        # 끼면 "이미 처리된 문서" 쪽으로 결과가 기운다. FTS 로만 답하는 편이 정직하고,
+        # 이행이 끝나면 저절로 풀린다([[vinc.plan.embedding-pipeline]]).
         mig = self._embed_migrating()
         if mig:
             return None, mig
@@ -527,11 +526,9 @@ class VincApp:
             generated_at=body.get("now"), out_dir=body.get("out"), store=r))
 
     def write_ingest(self, body):
-        # 적재 단일화(발주자 결정 2026-07-11 → 2026-07-19 개정) — `/ingest` 는
-        # fragment 단일 경로(api/fragment.merge_fragment)로 수렴한다. 구 휴면이던
-        # 개방층(D11-R2 Entity/TYPED)은 이 라이브 경로에 **포팅**되어 재활성화 —
-        # revstamp·SEC-3·dedupe 를 승계한 채 theme 어휘 편입(themes 전달)이 산다.
-        # engines/fragment_ingest.py 는 계보 참조용으로만 남는다(호출부 없음).
+        # 적재 단일화 — `/ingest` 는 fragment 단일 경로로 수렴한다. 개방층은 그 경로에
+        # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(`engines/fragment_ingest.py` 는
+        # 계보 참조용, 호출부 없음 · [[vinc.spec.dataplane §3]]).
         cap = _pop_max_domains(body)
         res = self.jobs.run_sync("ingest:fragment",
                                  lambda: frag.merge_fragment(body, store=self.store,
@@ -646,11 +643,9 @@ class VincApp:
         return 200, res
 
     # ── 문서 정본(Chunk=SSoT, D45 P4) — 직접 수정 표면 백엔드 ──────────────────
-    # 편집 UX(웹UI·데스크탑)의 백엔드: get→편집→put 왕복. 쓰기는 잡 큐(run_sync)로
-    # 단일 writer 직렬화(재청킹·인덱스 drop 이 다른 쓰기와 경합하지 않게). SEC-1: owner
-    # 는 원격/웹에선 MCP 가 토큰에서 실어 강제, 로컬 단일 사용자는 미전송 가능.
-    # ⚠ 파생 노드(Concept) 재도출의 자동/수동 정책은 **별도 DEC**(제품 결정) — 여기선
-    # 정본 텍스트 CRUD 만 노출하고, MENTIONS 재링크는 put_doc 이 doc 단위로 수행한다.
+    # 편집 UX 의 백엔드: get→편집→put 왕복. 쓰기는 잡 큐로 단일 writer 직렬화(재청킹·
+    # 인덱스 drop 이 다른 쓰기와 경합하지 않게). ⚠ 여기는 정본 텍스트 CRUD 만 노출한다 —
+    # 파생 노드 재도출 정책은 별개다([[vinc.canon.chunk-ssot]]).
     def read_doc(self, p):
         return self._read(lambda r: docstore.get_doc(r, _req(p, "id"),
                                                      owner=p.get("owner") or None))
@@ -844,15 +839,10 @@ class VincApp:
                 if r.get("executed"):
                     done += 1
             if targets:
-                # ⚠ 여기 오래 `build_search_indexes` 가 있었고 **끝까지 터졌다**.
-                # 이 경로는 `_drop_vector_index_if_any` 로 **벡터만** 드롭한다(FTS 를
-                # 쓰기마다 드롭했더니 임베딩 도는 동안 키워드 검색이 죽었다 —
-                # docstore.py:297 의 2026-07-31 실측). 그런데 `build_search_indexes`
-                # 는 'already exists' 를 흡수하지 않으므로 살아 있는 FTS 색인 위에서
-                # `Binder exception: Index chunk_ft already exists in table Chunk` 로
-                # 던진다(2026-08-09 linux/amd64 실엔진 재현).
-                # 게다가 그 예외는 CREATE_VECTOR_INDEX 가 **성공한 뒤** 나므로,
-                # 임베딩도 벡터 색인도 다 만들어 놓고 결과만 오류로 돌려주고 있었다.
+                # ⚠ `build_search_indexes` 로 되돌리지 말 것 — 이 경로는 벡터만
+                # 드롭하는데 그 함수는 'already exists' 를 흡수하지 않아 살아 있는 FTS
+                # 위에서 던진다. 게다가 벡터 색인이 **성공한 뒤** 던져서, 다 만들어
+                # 놓고 결과만 오류가 됐다([[vinc.ops.fts-index-drift]] §3).
                 self.store.ensure_search_indexes(dim=model_dim("local-en"))
             return {"kind": "doc.reembed", "executed": True, "docs": done,
                     "total": len(targets)}
@@ -872,10 +862,9 @@ class VincApp:
         return 200, res
 
     def write_evidence_backfill(self, body):
-        # U2 — 관계 근거(E-G6)의 **생산자**. 스키마에 열만 있고 채우는 곳이 없어
-        # 관계 패널이 언제나 "근거 없음"이었다. 정본 청크에서 두 개념이 같은 문장에
-        # 함께 나온 자리를 결정론으로 찾아 채운다(LLM 없음). 이미 근거가 있는
-        # 엣지는 건드리지 않으므로 반복 실행이 안전하다.
+        # U2 — 관계 근거(E-G6)의 **생산자**. 열만 있고 채우는 곳이 없어 관계 패널이
+        # 언제나 "근거 없음"이었다. 정본 청크에서 두 개념이 같은 문장에 나온 자리를
+        # 결정론으로 찾는다(LLM 없음). 기존 근거는 안 건드려 반복 실행이 안전하다.
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 근거 저작은 소유 스코프(SEC-1)"}
@@ -1312,15 +1301,10 @@ class _Handler(BaseHTTPRequestHandler):
             if getattr(self.app, "provision_error", None):
                 body = {"status": "degraded", "provision_error": self.app.provision_error}
             elif self.app.store is None:
-                # ⚠ **사유를 여기까지 들고 온다.** `EmbeddedBackend.open` 은 실패
-                # 사유를 `last_open_error` 에 담고 stdout 에도 찍지만, 여태 그걸
-                # **읽는 곳이 코드 어디에도 없었다** — /health 는 "no reachable
-                # store" 한 줄뿐이라 앱은 "지도를 불러오지 못했습니다" 밖에 말할
-                # 수 없었다. 그 화면은 **빈 그래프와 구분되지 않는다.** 실제로
-                # 2026-08-14 에 확장 경로 문제로 스토어가 안 열렸는데, 사이드카
-                # stdout 을 직접 보기 전까지 정체를 알 수 없었다.
-                # 사유 조립은 `store_unavailable()` 한 벌 — 조회 503 과 같은 문장을
-                # 쓴다(둘이 갈라지면 "헬스는 이유를 알고 조회는 모르는" 상태가 된다).
+                # ⚠ **사유를 여기까지 들고 온다** — "no reachable store" 한 줄이면 앱
+                # 화면이 빈 그래프와 구분되지 않는다. 조립은 `store_unavailable()` 한
+                # 벌이라 조회 503 과 문장이 갈라지지 않는다:
+                # [[record:a-failure-reason-nothing-reads-is-not-an-error-message]].
                 body = {"status": "degraded", **store_unavailable()}
                 body.pop("note", None)   # note 는 조회 봉투 전용 — 헬스 계약 불변
             else:

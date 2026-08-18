@@ -34,16 +34,13 @@ CHUNK_BYTES = 3 * 1024 * 1024
 _SEL_KEY = "selected_domains"
 
 # ── 동기화 필드(=merge_fragment 가 실제로 왕복시키는 것만, S3) ─────────────────
-# 급소: 3-way 병합은 로컬·원격·base 를 **같은 표현**으로 비교해야 한다. fragment 쓰기
-# 경로(_merge_node)가 쓰는 필드만 왕복 가능하다 — Concept 의 topic/one_liner/status/
-# stem, Episode 의 pinned 은 fragment 가 안 써서(엔진·preference 소관) 동기화하면
-# 유실된다. 그래서 sync 는 왕복 가능한 필드만 나른다(그 외는 기기 로컬로 남는다).
-# `content_time`(D72)은 **저작된 값**이라 여기 든다 — 사용자가 고칠 수 있으므로 두 기기가
-# 정당하게 다를 수 있고, 그러면 노드 타이브레이크가 판단할 일이다(제목·도메인과 같다).
-# 열이 있는 라벨에만 넣는다: Concept 뿐이다(Decision·Episode 에는 열이 없다 — 2026-08-17
-# 실엔진 확인. 넣으면 `_local_snapshot` 의 SELECT 가 Binder 로 죽는다).
-# ⚠ `created`(출생)는 **여기 넣지 않는다.** 편집이 아니라 3-way 병합의 대상이 아니고,
-# 규칙이 다르다(아래 `_reconcile_birth` — 가장 이른 값이 이긴다).
+# 급소: **fragment 가 왕복시키는 필드만** 나른다 — 그 밖의 필드(Concept 의 topic·
+# one_liner·status·stem, Episode 의 pinned)는 동기화하면 유실된다
+# ([[vinc.spec.dataplane §6.1]]).
+# ⚠ 열이 있는 라벨에만 넣을 것 — 없는 라벨에 넣으면 `_local_snapshot` 의 SELECT 가
+# Binder 로 죽는다(`content_time` 은 Concept 에만 있다).
+# ⚠ `created`(출생)는 여기 넣지 않는다 — 3-way 병합 대상이 아니고 규칙이 다르다
+# (`_reconcile_birth` — 가장 이른 값이 이긴다 · [[vinc.plan.sync-node-time-fields]]).
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
