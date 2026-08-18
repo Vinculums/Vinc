@@ -8,6 +8,8 @@
 // Data home defaults to ~/.vinc (D43).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cli_link;
+
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -102,6 +104,45 @@ async fn mcp_install(app: tauri::AppHandle, client: String) -> Result<String, St
 #[tauri::command]
 async fn mcp_uninstall(app: tauri::AppHandle, client: String) -> Result<String, String> {
     mcp_action(&app, "uninstall", &client).await
+}
+
+/// Settings→Connections: 터미널에서 `vinc` 를 부를 수 있는지 본다(B 2단계).
+/// deb·rpm 은 패키지가 이미 `/usr/bin/vinc` 를 깔아 두므로 이 화면이 할 일이 없고,
+/// macOS·AppImage 는 설치 훅이 없어 여기서 링크를 건다.
+#[tauri::command]
+fn cli_link_status() -> cli_link::Status {
+    #[cfg(unix)]
+    {
+        cli_link::status()
+    }
+    #[cfg(not(unix))]
+    {
+        cli_link::unsupported()
+    }
+}
+
+#[tauri::command]
+fn cli_link_install() -> Result<cli_link::Status, String> {
+    #[cfg(unix)]
+    {
+        cli_link::install()
+    }
+    #[cfg(not(unix))]
+    {
+        Err("이 플랫폼에서는 설치기가 PATH 를 다룹니다.".into())
+    }
+}
+
+#[tauri::command]
+fn cli_link_remove() -> Result<cli_link::Status, String> {
+    #[cfg(unix)]
+    {
+        cli_link::remove()
+    }
+    #[cfg(not(unix))]
+    {
+        Err("이 플랫폼에서는 설치기가 PATH 를 다룹니다.".into())
+    }
 }
 
 // ── `.vincpack` 파일 연결 (Q1, 2026-08-07) ──────────────────────────────────
@@ -403,7 +444,8 @@ fn main() {
             std::env::args().collect::<Vec<_>>(),
         ))))
         .invoke_handler(tauri::generate_handler![
-            sidecar_conn, sidecar_status, mcp_install, mcp_uninstall, take_pending_files])
+            sidecar_conn, sidecar_status, mcp_install, mcp_uninstall, take_pending_files,
+            cli_link_status, cli_link_install, cli_link_remove])
         .setup(move |app| {
             // 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
             // RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).

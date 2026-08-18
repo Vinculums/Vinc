@@ -593,6 +593,15 @@ const EN = {
       // 행 안에서는 호스트 이름을 옆에 이미 적으므로 버튼은 동작만 말한다
       // ("Connect Claude Desktop" 을 행마다 반복하면 이름이 두 번 나온다).
       mcpConnectAct: "Connect", mcpRemoveAct: "Remove",
+      cli: "Command line",
+      cliHint: "Call Vinc from a terminal as `vinc`. The engine runs, no window opens.",
+      cliChecking: "Checking…",
+      cliMissing: "Not set up on this machine",
+      cliLinked: (path: string) => `Ready at ${path}`,
+      cliPathWarn: (dir: string) =>
+        `${dir} may not be on your shell PATH. If vinc is not found, add this to your shell profile: export PATH="${dir}:$PATH"`,
+      cliInstallAct: "Set up", cliRemoveAct: "Remove",
+      cliFail: "Couldn't set up",
       mcpRemoveHint: "Or remove Vinc from a host:",
       mcpRemove: (host: string) => `Remove from ${host}`,
       mcpRemoving: "Removing…",
@@ -1217,6 +1226,15 @@ const KO: Deck = {
       mcpDone: (host) => `${host}에 등록됐습니다. 재시작하면 Vinc에 접근합니다.`,
       mcpFail: "연결 실패", mcpNoShell: "데스크톱 앱에서만 가능합니다.",
       mcpConnectAct: "연결", mcpRemoveAct: "해제",
+      cli: "명령줄",
+      cliHint: "터미널에서 `vinc` 로 Vinc를 부릅니다. 엔진이 돌고 창은 뜨지 않습니다.",
+      cliChecking: "확인 중…",
+      cliMissing: "이 기기에는 아직 없습니다",
+      cliLinked: (path: string) => `${path} 에 준비됐습니다`,
+      cliPathWarn: (dir: string) =>
+        `${dir} 가 셸 PATH에 없을 수 있습니다. vinc를 못 찾으면 셸 설정에 export PATH="${dir}:$PATH" 를 더하세요.`,
+      cliInstallAct: "설치", cliRemoveAct: "해제",
+      cliFail: "설치 실패",
       mcpRemoveHint: "또는 호스트에서 Vinc를 제거:",
       mcpRemove: (host) => `${host}에서 제거`,
       mcpRemoving: "제거 중…",

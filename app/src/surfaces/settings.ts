@@ -298,7 +298,19 @@ export async function renderSettings(el: HTMLElement) {
       <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
       <ul class="rowlist">${rows}</ul>
       <p class="hint hint-sm">${U.mcpOtherHint}</p>
-      <div id="mcp-result" class="hint hint-sm break-all"></div>`;
+      <div id="mcp-result" class="hint hint-sm break-all"></div>
+
+      <label>${U.cli}</label><p class="hint">${U.cliHint}</p>
+      <ul class="rowlist">
+        <li class="row">
+          <span class="row-name" id="cli-state">${U.cliChecking}</span>
+          <span class="row-acts">
+            <button class="btn btn-quiet" id="cli-rm" hidden>${U.cliRemoveAct}</button>
+            <button class="btn" id="cli-add" hidden>${U.cliInstallAct}</button>
+          </span>
+        </li>
+      </ul>
+      <div id="cli-note" class="hint hint-sm break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
     async function mcpAction(action: "install" | "uninstall", client: string) {
       const invoke = await shellInvoke();
@@ -316,6 +328,39 @@ export async function renderSettings(el: HTMLElement) {
       body.querySelector(`#mcp-add-${h}`)!.addEventListener("click", () => mcpAction("install", h));
       body.querySelector(`#mcp-rm-${h}`)!.addEventListener("click", () => mcpAction("uninstall", h));
     }
+
+    // ── 터미널에서 `vinc` 부르기 ────────────────────────────────────────────
+    // 리눅스 패키지(deb·rpm)는 이미 `/usr/bin/vinc` 를 깔아 두므로 이 행이 할 일이
+    // 없고, macOS·AppImage 는 설치 훅이 없어 여기서 링크를 건다. Windows 는 설치기
+    // 몫이라 `supported:false` 로 와서 행 자체를 숨긴다.
+    const cliState = body.querySelector<HTMLElement>("#cli-state")!;
+    const cliNote = body.querySelector<HTMLElement>("#cli-note")!;
+    const cliAdd = body.querySelector<HTMLButtonElement>("#cli-add")!;
+    const cliRm = body.querySelector<HTMLButtonElement>("#cli-rm")!;
+    type CliStatus = { supported: boolean; linked: boolean; path: string; dir: string; on_path: boolean };
+    function paintCli(st: CliStatus | null, err?: string) {
+      if (err) { cliState.textContent = `${U.cliFail}: ${err}`; return; }
+      if (!st || !st.supported) {
+        // 이 플랫폼에서 할 일이 없으면 조용히 접는다 — 못 누르는 버튼을 남기지 않는다.
+        cliState.closest("li")!.hidden = true;
+        cliNote.textContent = "";
+        return;
+      }
+      cliState.textContent = st.linked ? U.cliLinked(st.path) : U.cliMissing;
+      // 안내 문장은 여기서 짓는다 — 러스트는 사실(dir·on_path)만 준다.
+      cliNote.textContent = st.linked && !st.on_path ? U.cliPathWarn(st.dir) : "";
+      cliAdd.hidden = st.linked;
+      cliRm.hidden = !st.linked;
+    }
+    async function cliAction(cmd: "cli_link_status" | "cli_link_install" | "cli_link_remove") {
+      const invoke = await shellInvoke();
+      if (!invoke) { paintCli(null); return; }   // 웹 Vinc — 행 자체가 의미 없다
+      try { paintCli(await invoke(cmd) as any); }
+      catch (e: any) { paintCli(null, (e && e.message) || String(e)); }
+    }
+    cliAdd.addEventListener("click", () => cliAction("cli_link_install"));
+    cliRm.addEventListener("click", () => cliAction("cli_link_remove"));
+    void cliAction("cli_link_status");
   }
 
   // ── Data 탭 ───────────────────────────────────────────────────────────────
