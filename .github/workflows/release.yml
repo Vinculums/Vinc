@@ -50,23 +50,6 @@ jobs:
   version-gate:
     runs-on: [self-hosted, linux, vinc-local]
     steps:
-      # ⚠ 셀프호스티드 Windows 에서 `shell: bash` 는 **WSL 의 bash 로 잡힌다**
-      # (System32 가 PATH 에서 Git 보다 앞이라 `C:\WINDOWS\system32ash.exe`).
-      # 그 bash 는 기본 배포판 안에서 `/bin/bash` 를 찾다 죽는다. 호스티드 러너는 Git
-      # Bash 가 먼저라 이 문제가 없어 여태 안 보였다. 경로를 박지 않고 **git 이 있는
-      # 자리에서 파생**해 이후 스텝의 PATH 앞에 세운다.
-      - name: Prefer Git Bash on Windows (system32 bash is WSL)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
-          $binDir  = Join-Path $gitRoot 'bin'
-          if (Test-Path (Join-Path $binDir 'bash.exe')) {
-            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-            Write-Host "prepended $binDir"
-          } else {
-            Write-Host "::warning::Git Bash 를 못 찾았다 — bash 스텝이 WSL 로 갈 수 있다"
-          }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -106,6 +89,23 @@ jobs:
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
+      # ⚠ 셀프호스티드 Windows 에서 `shell: bash` 는 **WSL 의 bash 로 잡힌다**
+      # (System32 가 PATH 에서 Git 보다 앞이라 `C:\WINDOWS\system32ash.exe`).
+      # 그 bash 는 기본 배포판 안에서 `/bin/bash` 를 찾다 죽는다. 호스티드 러너는 Git
+      # Bash 가 먼저라 이 문제가 없어 여태 안 보였다. 경로를 박지 않고 **git 이 있는
+      # 자리에서 파생**해 이후 스텝의 PATH 앞에 세운다.
+      - name: Prefer Git Bash on Windows (system32 bash is WSL)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+          $binDir  = Join-Path $gitRoot 'bin'
+          if (Test-Path (Join-Path $binDir 'bash.exe')) {
+            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            Write-Host "prepended $binDir"
+          } else {
+            Write-Host "::warning::Git Bash 를 못 찾았다 — bash 스텝이 WSL 로 갈 수 있다"
+          }
       - uses: actions/checkout@v4
 
       # ── 사이드카(Python) ────────────────────────────────────────────────
