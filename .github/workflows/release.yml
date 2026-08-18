@@ -22,6 +22,12 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# 태그별로 직렬화한다(취소 안 함) — 발행 도중 취소하면 반쯤 발행된 릴리스가 남는다.
+# 태그 발행은 드물어 취소로 아낄 분이 없다. 분 절약의 큰 지렛대는 macOS 매트릭스다(아래).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

@@ -30,6 +30,13 @@ on:
       - ".github/workflows/hub-deploy.yml"
   workflow_dispatch:
 
+# 허브 배포는 **취소하지 않고 직렬화**한다(cancel-in-progress: false). 단일 writer +
+# 포맷 변경 민감성 때문에 배포 도중 취소는 위험하다 — 이 워크플로는 path 필터·main
+# 한정이라 실행이 드물어 취소로 아낄 분도 적다. 앞 배포가 끝난 뒤 다음이 돈다.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -40,7 +47,7 @@ jobs:
   # 걸 수 없다). 배포를 막는 것이 목적이므로 같은 잡 안에서 선행시킨다.
   # ⚠ 이전에는 배포 **후** tools/list 를 확인했다 — 이미 나간 뒤라 막지 못했다.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,7 +76,7 @@ jobs:
 
   build-and-deploy:
     needs: gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
 
