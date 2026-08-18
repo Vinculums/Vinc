@@ -35,13 +35,19 @@ def _pick_free_port() -> int:
 
 def _pid_alive(pid: int) -> bool:
     """pid 생존 여부(빠른 판정 — 최종 확인은 항상 /health). 불확실하면 True 로 두어
-    앱 사이드카를 함부로 무시하지 않는다(뒤의 health 가 걸러줌)."""
+    앱 사이드카를 함부로 무시하지 않는다(뒤의 health 가 걸러줌).
+
+    🔴 여기 `os.kill(pid, 0)` 사본이 있었다. POSIX 에서는 무해한 관용구지만
+    **Windows 의 `os.kill` 은 TerminateProcess** 라, 이 함수가 조회하는 pid
+    (= session.json 에 적힌 **앱 자신**)를 조회하는 순간 죽였다. `mcp serve` 기동이
+    곧 앱 사살이었고, 2026-08-18 실기에서 앱 기동 18회 중 17회가 그렇게 사라졌다.
+    구현은 `api/procutil.py` 한 벌만 남긴다.
+    """
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        from api.procutil import pid_alive
+        return pid_alive(pid)
     except Exception:
+        # 조회 자체가 불가능하면 살아 있다고 본다 — 뒤의 /health 가 최종 판정한다.
         return True
 
 

@@ -21,6 +21,8 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 """
 from __future__ import annotations
 
+from api.procutil import pid_alive
+
 import base64
 import datetime as _dt
 import json
@@ -1475,36 +1477,11 @@ def make_server(app: VincApp, host: str = "127.0.0.1", port: int = 0) -> Threadi
 def _pid_alive(pid: int) -> bool:
     """부모 PID 생존 확인 — **조회 전용, 대상을 죽이지 않는다.**
 
-    POSIX 는 ``os.kill(pid, 0)`` 이 신호 없는 생존 확인이지만, **Windows 의 os.kill 은
-    TerminateProcess 로 매핑되는 파괴적 관용구**라 부모(셸)를 죽일 수 있다(CPython
-    버전·빌드별 거동 상이 — 실측). 그래서 Windows 에서는 ``OpenProcess(SYNCHRONIZE)``
-    + ``WaitForSingleObject(0)`` 로 **조회만** 한다: 핸들을 못 열거나(=종료·부재) 신호
-    상태(=종료)면 사망으로 본다. 오판은 fail-safe 방향(사이드카 자가종료)일 뿐 셸을
-    건드리지 않는다. 이 명시 경로가 있어 셸(``main.rs``)이 ``--parent-pid`` 를 안전히
-    넘길 수 있다."""
-    if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-        SYNCHRONIZE = 0x00100000
-        WAIT_TIMEOUT = 0x00000102   # 미신호 → 아직 실행 중
-        k32 = ctypes.windll.kernel32
-        k32.OpenProcess.restype = wintypes.HANDLE
-        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        k32.WaitForSingleObject.restype = wintypes.DWORD
-        k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        k32.CloseHandle.argtypes = [wintypes.HANDLE]
-        handle = k32.OpenProcess(SYNCHRONIZE, False, pid)
-        if not handle:
-            return False
-        try:
-            return k32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
-        finally:
-            k32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)   # POSIX: 신호 0 = 생존 확인(전송 안 함)
-        return True
-    except OSError:
-        return False
+    구현은 `api/procutil.py` 한 벌뿐이다. 여기 사본을 두지 않는 이유는 그 파일에
+    적어 뒀다 — 사본이 둘이던 시절 브리지 쪽만 `os.kill` 을 쓰다가 Windows 에서
+    앱을 죽였다(2026-08-18).
+    """
+    return pid_alive(pid)
 
 
 def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
