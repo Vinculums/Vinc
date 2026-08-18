@@ -101,6 +101,8 @@
     "record:fact-builtin-extraction-is-headings",
     "record:fact-doc-concept-is-a-layer",
     "record:fact-merge-excludes-any-doc-pair",
+    "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
+    "record:in-a-container-a-swallowed-log-is-no-log",
     "record:isolated-seed-read-back-reported-empty-fields",
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
@@ -112,12 +114,14 @@
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on",
     "record:rel-tables-take-multiple-endpoint-pairs",
     "record:risk-search-chunk-unscoped",
+    "record:risk-themes-global",
     "record:sync-drops-node-created-pack-keeps-it",
     "record:tie-suggestions-were-tied-not-ranked",
     "record:token-estimate-weights-came-from-a-real-corpus",
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",
+    "record:what-the-spec-permits-is-not-what-the-peer-accepts",
     "record:worker-heartbeat-separates-backlog-from-death"
   ]
 }
