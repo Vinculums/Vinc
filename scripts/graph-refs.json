@@ -110,6 +110,7 @@
     "record:louvain-projects-one-node-table",
     "record:mcp-state-store-is-fail-soft-and-must-be-local",
     "record:mention-targets-must-include-every-semantic-label",
+    "record:network-file-shares-break-embedded-databases-block-storage-does-not",
     "record:one-bad-node-used-to-take-the-whole-batch",
     "record:planar-leaves-cluster-because-arms-read-as-a-vortex",
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on",

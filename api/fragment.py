@@ -1,39 +1,27 @@
 # -*- coding: utf-8 -*-
-"""MCP graph fragment MERGE — `vinc_ingest` 의 서버측 계약(D11 §5 + D11-R2 포팅) 구현.
+"""MCP graph fragment MERGE — `vinc_ingest` 의 서버측 계약 구현.
 
-상류(사용자의 Claude)가 저작한 fragment(nodes+edges)를 **id 정확 매칭**으로만
-MERGE 한다 — 유사도·의미 판단은 하지 않는다(하이브리드 c 백스톱, D11 §3).
+상류가 저작한 fragment(nodes+edges)를 **id 정확 매칭**으로만 MERGE 한다 — 유사도·의미
+판단은 하지 않는다. 계약 정본은 [[vinc.canon.mcp-contract]], 이 경로가 데이터플레인에서
+서는 자리는 [[vinc.spec.dataplane §3]].
 
-지원(스키마 §5-2 확장 + F1 개방층 포팅, 2026-07-19):
-- 노드 6종: record | concept | domain | bridge | episode | decision
-  (+ 자유 props{} → JSON 문자열 열)
-- **의미층 = concept | decision**(v12). 둘은 다른 종류지만(지금도 참인 것 / 그때 고른
-  것) 그래프에서 서는 자리가 같아, 아래 엣지 규칙에서 서로 바꿔 쓸 수 있다.
-  **예외 하나**: `relates_to` 는 개념↔개념에만 남는다(엔진 제약 + 의미 —
-  store.embedded_schema._LOUVAIN_PROJECTED_REL 주석). 결정에는 `about` 이나 계보를 쓴다.
-- 엣지: 의미층 4종(relates_to·prerequisite_of·derives_from·inherits_from),
-  connects_via(Bridge→의미층 → CONNECTS, 선택 role),
-  about(Episode|Decision→의미층 → ABOUT),
-  Record→의미층 은 ATTACHES_TO{type}로 원 타입을 보존해 수용.
-- **개방층(D11-R2 포팅, F1)**: 위 6종 밖 노드 타입은 *스킵되지 않고* 범용
-  `Entity{entity_id,type,title,owner_id,theme_id,tags}` 캐리어로, 양 끝이 개방 타입인
-  엣지는 `TYPED{type}`(exact (from,type,to) 매칭) 캐리어로 MERGE 된다 — 정보 손실 0
-  (THESIS T1). 어휘 밖 타입은 주제 어휘에 proposed 로 편입되고 응답 `proposed_types`
-  로 재가를 유도한다(T3). 휴면 엔진(engines/fragment_ingest.py) 경로가 아니라 이
-  라이브 경로에 포팅한 이유: revstamp(동기화 스탬핑)·SEC-3(PK 탈취 차단)·dedupe·
-  partial 관례를 단일 쓰기 표면(R4)에서 그대로 승계하기 위함(발주자 결정 2026-07-19,
-  구 휴면 결정 2026-07-11 을 '경로 통합'으로 해소).
+- 노드 6종(record|concept|domain|bridge|episode|decision) + 자유 props{} → JSON 열.
+  **의미층 = concept | decision** 이라 엣지 규칙에서 서로 바꿔 쓸 수 있다. 예외 하나:
+  `relates_to` 는 개념↔개념에만 남는다([[record:louvain-projects-one-node-table]]).
+- 엣지: 의미층 4종 · connects_via(Bridge→) · about(Episode|Decision→) ·
+  Record→의미층은 ATTACHES_TO{type} 로 원 타입을 보존해 수용.
+- **개방층**: 6종 밖 타입은 스킵되지 않고 `Entity` 캐리어로, 양 끝이 개방 타입인 엣지는
+  `TYPED{type}` 로 MERGE 된다(정보 손실 0). 어휘 밖 타입은 proposed 로 편입되고 응답
+  `proposed_types` 로 재가를 유도한다. 휴면 엔진이 아니라 이 라이브 경로에 포팅한 이유는
+  revstamp·SEC-3·dedupe·partial 관례를 **단일 쓰기 표면**에서 승계하기 위해서다.
 
-안정성 보강(실사용 사고 대응, 2026-07-16):
-- partial 신호: warnings 가 1개 이상이면 응답에 partial:True 를 얹는다 — executed:True 만
-  보고 전량 성공으로 오인하는 것을 막는다(하위호환: warnings 없으면 필드 자체 생략).
-- RELATED_TO 무방향 dedupe: relates_to(concept→concept) MERGE 전에 역방향
-  (b)-[:RELATED_TO]->(a) 존재를 확인해 있으면 신규 생성을 skip 한다(양방향 재적재로
-  degree 가 부풀지 않도록). skip 개수는 merged.edges.skipped_duplicate 로 보고(0이면
-  필드 생략). 다른 CC 엣지(방향성 있는 prerequisite_of 등)에는 적용하지 않는다.
-  Record→Concept ATTACHES_TO 는 노드 타입이 비대칭이라(from=Record만 허용) 역방향
-  MERGE 자체가 구조적으로 불가능 — 별도 dedupe 불필요. TYPED 도 무방향 정준화를
-  하지 않는다 — 사용자 저작 타입은 방향성을 추론할 수 없다(exact 방향 dedupe 만).
+안정성 계약(고쳐 놓은 것을 되돌리지 말 것):
+- **partial**: warnings 가 하나라도 있으면 `partial:True` 를 얹는다 — `executed:True` 만
+  보고 전량 성공으로 오인하는 것을 막는다.
+- **RELATED_TO 무방향 dedupe**: 역방향이 이미 있으면 새로 만들지 않는다(양방향 재적재로
+  degree 가 부풀지 않게). 방향성 있는 엣지에는 적용하지 않고, ATTACHES_TO 는 끝점 타입이
+  비대칭이라 구조적으로 불필요하며, TYPED 는 사용자 저작 타입이라 방향을 추론할 수 없어
+  exact 방향 dedupe 만 한다.
 """
 from __future__ import annotations
 
