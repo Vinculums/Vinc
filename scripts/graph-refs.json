@@ -26,6 +26,7 @@
     "vinc.ops.branch-pr-cleanup-2026-08-18",
     "vinc.ops.cost-management",
     "vinc.ops.deployment",
+    "vinc.ops.fts-index-drift",
     "vinc.ops.incident-2026-07-16-macos-sidecar",
     "vinc.ops.incident-2026-08-04-easyauth",
     "vinc.ops.mcp-hardening-eval",
@@ -86,13 +87,23 @@
     "vinc.spec.web-system"
   ],
   "nodes": [
+    "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "record:content-time-writable-through-ingest",
     "record:decision-columns-measured-from-live-rows",
     "record:domain-hierarchy-was-a-string-until-v11",
     "record:edge-birth-v14",
+    "record:endpoint-table-must-be-built-from-merged-nodes",
+    "record:endpoint-types-resolve-only-within-one-payload",
     "record:fact-builtin-extraction-is-headings",
     "record:isolated-seed-read-back-reported-empty-fields",
     "record:louvain-projects-one-node-table",
+    "record:mention-targets-must-include-every-semantic-label",
+    "record:one-bad-node-used-to-take-the-whole-batch",
     "record:rel-tables-take-multiple-endpoint-pairs",
-    "record:vinc-tests-need-a-clean-interpreter-on-windows"
+    "record:sync-drops-node-created-pack-keeps-it",
+    "record:token-estimate-weights-came-from-a-real-corpus",
+    "record:unguarded-title-overwrote-107-nodes-with-their-ids",
+    "record:vinc-tests-need-a-clean-interpreter-on-windows",
+    "record:worker-heartbeat-separates-backlog-from-death"
   ]
 }

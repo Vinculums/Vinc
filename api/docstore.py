@@ -79,19 +79,11 @@ def chunk_id_of(doc_id: str, index: int) -> str:
 # ── 무손실 경계 청킹(순수 — I/O·DB 없음) ─────────────────────────────────────
 
 # ── 토큰 추정(토크나이저 없는 환경용) ────────────────────────────────────────
-# 데스크탑 사이드카는 PyInstaller 번들이라 토크나이저가 없다. 그래도 청킹은 거기서도
-# 일어나므로, 실제 토큰 수를 **문자 계열 가중치로 근사**한다.
-#
-# 값의 출처는 **실제 코퍼스 회귀**다(2026-08-01, 실문서 541청크를 e5 토크나이저로 세어
-# 최소자승): 한글 1.034 · CJK 1.440 · 기타 0.307 토큰/문자.
-# ⚠ 처음엔 합성 문장 하나로 잡은 값(0.70 / 1.11 / 0.21)을 썼는데 **30% 이상 낮았다** —
-# 반복 문장은 흔한 조각이 단일 토큰으로 잡혀 효율을 과대평가한다. 그대로 두면 청크
-# 84건이 512 를 넘겼다. 표본은 합성이 아니라 실제 문서여야 한다.
-#
-# 여기에 **1.3 배 여유**를 곱한다. 회귀값 그대로면 41.6% 가 과소평가되고(청크가 상한을
-# 넘겨 임베딩 때 조용히 잘린다 — 이 작업이 없애려는 바로 그 손실), ×1.3 이면 0.6% 로
-# 떨어진다. 과대평가의 대가는 청크가 조금 짧아지는 것뿐이라 훨씬 싸다. 남는 0.6% 는
-# 목표 400 과 상한 512 사이의 헤드룸(28%)이 흡수한다.
+# 데스크탑 사이드카는 토크나이저 없이도 청킹을 하므로 문자 계열 가중치로 근사한다.
+# 값은 실제 코퍼스 최소자승(한글 1.034 · CJK 1.440 · 기타 0.307)에 **1.3 배 여유**.
+# ⚠ 합성 문장으로 다시 잡지 말 것, 여유 배수를 빼지도 말 것 — 둘 다 청크가 상한을
+# 넘겨 임베딩 때 조용히 잘리는 쪽으로 간다. 수치와 유래:
+# [[record:token-estimate-weights-came-from-a-real-corpus]].
 _RE_HANGUL = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣᄀ-ᇿ]")
 _RE_CJK = re.compile(r"[぀-ヿ一-鿿㐀-䶿]")
 _EST_MARGIN = 1.3
@@ -432,10 +424,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     stamp = updated_at or _stamp_updated_at(store)
     seq = _next_doc_seq(store, owner)
 
-    # 벡터를 **함께 싣는 경로일 때만** 드롭한다. embed 콜러블이 없으면(허브·데스크탑
-    # 기본) 청크는 벡터 없이 들어가고, 그건 HNSW 를 건드리지 않는다 — 실측으로 2,000청크
-    # 삽입·삭제 모두 무사했다. 그때까지 FTS·벡터 인덱스를 살려 두면 저장 중에도 검색이
-    # 계속 답한다. 벡터는 나중에 워커가 apply_embeddings 로 채우고, 그쪽이 드롭을 진다.
+    # 벡터를 **함께 싣는 경로일 때만** 드롭한다 — 벡터 없는 삽입은 HNSW 를 안 건드리고,
+    # 인덱스를 살려 두면 저장 중에도 검색이 답한다([[vinc.ops.fts-index-drift]] §3).
     if vectors is not None:
         _drop_vector_index_if_any(store)
     # ① 구 청크 삭제(재청킹으로 개수가 줄어도 고아가 남지 않게 — 부착 MENTIONS 도
@@ -619,18 +609,10 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
                     {"d": doc_id})
     n = int(cnt[0].get("c")) if cnt else 0
     if n:
-        # 드롭하지 않는다 — 문서 하나 지우자고 색인을 끊으면 그동안 검색이 죽는다
-        # (예전 설계가 그랬고, 임베딩이 도는 동안 키워드 검색 성공률이 0이었다).
-        #
-        # ⚠ 여기 있던 "삭제는 인덱스를 깨지 않는다(실측: 2,000청크를 인덱스 살아 있는
-        # 채로 지워도 무사)" 는 **2026-08-09 에 반증됐다.** 그 실측은 갓 만든 색인에
-        # 대한 것이었고, 오래 증분 유지된 색인은 존재하는 행의 문서를 잃는다. 그 행을
-        # 지우면 엔진이 불일치로 던진다 — 라이브에서 실제로 났고 사본으로 재현했다.
-        # 그래서 아래 삭제를 `_with_fts_repair` 로 감싼다. 낡은 실측을 근거로 남겨
-        # 두면 다음 사람이 또 "여긴 안전하다"고 읽는다.
-        #
-        # ⚠ 자식 벡터(v8)를 **먼저** 지운다. 남기면 검색이 없는 문서를 가리키는 고아가
-        # 되고, 그건 부모 조인이 빈 결과를 내 조용히 사라지는 게 아니라 인덱스에만
+        # 인덱스를 드롭하지 않는다 — 문서 하나 지우자고 끊으면 그동안 검색이 죽는다.
+        # 대신 삭제를 `_with_fts_repair` 로 감싼다: 오래 증분 유지된 FTS 색인은 존재하는
+        # 행의 문서를 잃고, 그 행을 지우면 엔진이 불일치로 던진다([[vinc.ops.fts-index-drift]]).
+        # ⚠ 자식 벡터(v8)를 **먼저** 지운다 — 남으면 조용히 사라지는 게 아니라 인덱스에
         # 남아 상위 k 자리를 잡아먹는다.
         store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
         _with_fts_repair(store, lambda: store.run(
@@ -845,10 +827,8 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
                   {"id": r["id"], "emb": list(v)})
     store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
               {"id": doc_id})
-    # note 가 오래 "search indexes dropped" 였는데 **드롭되는 건 벡터뿐이다**(바로 위
-    # 주석대로 FTS 는 일부러 살려 둔다). 그 부정확한 문구가 호출부에 "FTS 도 없어졌으니
-    # 다시 만들어야 한다"고 읽혔고, 실제로 `/doc/reembed` 가 그 뒤에 전량 build 를
-    # 불러 'already exists' 로 터지고 있었다(2026-08-09).
+    # 드롭되는 건 **벡터뿐**이라고 정확히 적는다 — "search indexes dropped" 라고 적혀
+    # 있던 동안 호출부가 FTS 까지 다시 만들려다 터졌다([[vinc.ops.fts-index-drift]] §3).
     base.update(executed=True, embedded=len(rows),
                 note="vector index dropped — 검색 경로가 지연 재빌드 (FTS 는 유지)")
     return base
@@ -927,10 +907,9 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
                   {"id": doc_id})
         base["cleared"] = True
-    # 🔴 **워커가 마지막으로 실제 일한 시각**을 남긴다. 이게 없으면 밖에서 "백로그가
-    # 줄고 있는 중"과 "워커가 죽어 영원히 그대로"를 구분할 수 없다 — 2026-08-05~07 에
-    # 정확히 그 구분이 안 돼서 워커의 죽음을 38시간 몰랐다. `/health` 가 이 값을 싣고,
-    # pending 이 있는데 이 시각이 오래됐으면 그 자체가 알람이다.
+    # 🔴 **워커가 마지막으로 실제 일한 시각**. pending 이 있는데 이 값이 오래됐으면 그
+    # 자체가 알람이다 — 진행 지표만으로는 정지를 못 본다
+    # ([[record:worker-heartbeat-separates-backlog-from-death]]).
     store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
               {"k": _EMBED_APPLIED_KEY, "v": _now_iso()})
     base.update(executed=True, embedded=applied)
@@ -1107,9 +1086,8 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
 #: MENTIONS 가 향할 수 있는 라벨. 정본은 ``engines.mentions_link._LINK_TARGETS`` 이고
 #: 여기 사본을 두는 이유는 그 모듈이 없어도 **조회는 서야** 하기 때문이다(docstore 는
 #: 링커를 선택 의존으로 다룬다 — `_relink_mentions` 의 지연 임포트 참조).
-#: ⚠ ``Concept`` 만 보면 **결정만 언급한 문서가 빈손이 된다.** 같은 함정이 링커의
-#: MERGE 사본에서 이미 한 번 났고(그때는 링크가 통째로 0건이었다), 그 사본을 지운 것이
-#: `_relink_mentions` 의 주석이다.
+#: ⚠ ``Concept`` 만 보면 **결정만 언급한 문서가 빈손이 된다** — 의미층이 늘 때 이
+#: 사본도 같이 는다: [[record:mention-targets-must-include-every-semantic-label]].
 _MENTION_TARGETS = (("Concept", "concept_id"), ("Decision", "decision_id"))
 
 

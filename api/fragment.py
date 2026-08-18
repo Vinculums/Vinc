@@ -199,18 +199,10 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if owner_explicit or not matched:
             _set("owner_id", owner)
     elif label != "Domain":
-        # ⚠ `title` 은 오래도록 **무조건 SET** 이었다(`node.get("title") or nid`).
-        # 그래서 id 만 실은 부분 재전송이 제목을 **id 로 바꿔치기**했다 — 보존이
-        # 아니라 파괴다. domain·tags·props 는 `is not None` 가드가 있는데 title 만
-        # 없었고, 그 비대칭이 함정의 전부다(CLAUDE.md 가 급소로 적어 둔 자리).
-        #
-        # 2026-08-10 에 실제로 물렸다: 결정 이관에서 엣지 해석용 스텁(id+type)을
-        # 보냈더니 그 페이로드에 담긴 **107개 노드의 제목이 전부 id 로 덮였다**.
-        # 스텁은 엣지 계약상 반드시 보내야 하므로(끝점은 같은 payload 안에서만
-        # 해석된다) 호출자가 피할 수 있는 함정이 아니었다.
-        #
-        # 이제 다른 세 필드와 같은 규칙이다: 주면 쓰고, 안 주면 보존한다. 단
-        # **신규일 때만** id 로 채운다 — 제목 없는 노드가 생기지 않게.
+        # `title` 도 domain·tags·props 와 **같은 규칙**이다: 주면 쓰고, 안 주면
+        # 보존한다. **신규일 때만** id 로 채운다(제목 없는 노드 금지).
+        # ⚠ 이 가드를 걷어내지 말 것 — 없던 시절 스텁 재전송이 제목을 파괴했다:
+        # [[record:unguarded-title-overwrote-107-nodes-with-their-ids]].
         if node.get("title") is not None:
             _set("title", str(node["title"]) or nid)
         elif not matched:
@@ -233,11 +225,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if node.get("props") is not None:
             _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
         if label == "Concept":
-            # no-llm-chat 연구 §3.2/§9, Decision Q5(2026-08-11) — fragment 경로가
-            # one_liner 를 SET 하지 않아 MCP 로 적재한 개념은 늘 빈 값이었다(문서에서
-            # 파생된 개념만 채워짐 — door 에 따라 채움이 갈리는 상태). date/summary
-            # 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이 이기고, 없으면
-            # props.one_liner 또는 props.note 를 승격한다(키가 아예 없을 때만).
+            # date/summary 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이
+            # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
+            # 없을 때만). 왜 되살렸나: [[vinc.research.no-llm-chat]] Q5.
             _props = node.get("props") if isinstance(node.get("props"), dict) else {}
             if node.get("one_liner") is not None:
                 _set("one_liner", str(node["one_liner"]))
@@ -246,24 +236,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 if isinstance(cand, str) and cand.strip():
                     _set("one_liner", cand.strip())
         if label in ("Concept", "Record"):
-            # v7(D72) — **내용 시점**(`content_time`). 이 경로는 여태 이 필드를 아예
-            # 안 읽었다(2026-08-17 실측). 열은 Concept·Record 에만 있고 문서 추출이
-            # 채우는데, MCP 로 적재하는 쪽에는 채울 길이 **없었다** — 같은 축이 문으로만
-            # 갈리는 상태였다(one_liner 가 앞서 겪은 것과 같은 병).
-            #
-            # 규칙은 앞의 셋과 같다: top-level 이 오면 그것이 이기고, 키가 **아예 없을
-            # 때만** props 를 승격한다(F9 — 계약에 없던 시절 상류가 넣어 둔 자리).
-            # 미기재는 보존이다(domain·tags·props 와 같은 가드).
-            #
-            # ⚠ 형식 위반은 **쓰지 않고 경고한다.** `_norm_content_time` 은 규격 밖
-            # 값에 ''를 돌려주는데, 그대로 SET 하면 "yesterday" 같은 오타 한 번이
-            # 저장된 멀쩡한 시점을 조용히 지운다. 빈 문자열은 명시적 지우기로 존중한다.
-            #
-            # 이것은 문서 경로(`put_doc`)와 **의도적으로 다르다** — 거기서는 위반값이
-            # ''로 내려앉는다(test_content_time 이 그 계약을 못박고 있다). 두 표면의
-            # 성격이 달라서다: `put_doc` 은 문서 전량을 매번 다시 쓰는 자리라 실린 값이
-            # 곧 전부지만, 여기는 **부분 재전송이 정상인 MERGE 표면**이라 미기재가
-            # 보존이다. 그 표면에서 오타는 '지우기'보다 '미기재'에 가깝다.
+            # v7(D72) — **내용 시점**(`content_time`). 규칙은 앞의 셋과 같다:
+            # top-level 이 이기고, 키가 **아예 없을 때만** props 를 승격한다(F9).
+            # ⚠ 형식 위반은 **쓰지 않고 경고한다** — SET 하면 오타 한 번이 저장된
+            # 시점을 지운다. 빈 문자열은 명시적 지우기로 존중한다. 문서 경로
+            # (`put_doc`)가 위반값을 ''로 내려앉히는 것과 **의도적으로 다르다**:
+            # [[record:content-time-writable-through-ingest]].
             from . import docstore as _ds      # 지연 import(순환 없음) — 검증기 1벌 유지
             _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
             _raw = node.get("content_time")
@@ -281,23 +259,14 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
             #
-            # F9 — **props.date 를 열로 승격한다.** `vinc_ingest` 의 노드 스키마에는
-            # `date`/`summary` 가 선언돼 있지 않았다(서버는 top-level 로 받는데 계약이
-            # 그걸 안 알려줬다). 그래서 상류가 날짜를 실을 수 있는 자리는 자유 속성인
-            # `props{}` 뿐이었고, 결과로 라이브 에피소드 16/55 가 `date` 열이 빈 채
-            # props 안에만 날짜를 갖게 됐다(실측 2026-08-08 — 그 16건은 props 를 가진
-            # 쪽, 나머지 39건은 top-level 로 받아 props 가 빈 쪽으로 정확히 갈린다).
-            #
-            # 그 열은 recall 의 `ORDER BY e.date DESC` · 타임라인의
-            # `coalesce(e.date, e.updated_at)` · 팩/공유/동기화 투영이 전부 읽는
-            # 자리라, 비면 정렬 자체가 무의미해진다. 승격을 **쓰기 시점**에 두는
-            # 이유가 그것이다 — recall 응답에서 coalesce 하면 그 한 응답만 고쳐지고
-            # 정렬(ORDER BY)·타임라인·공유는 그대로 빈 채 남는다.
-            #
-            # top-level 이 오면 그것이 이긴다(기존 계약 무변경 — 빈 문자열로 지우는
-            # 것까지 포함). props 폴백은 **키가 아예 없을 때만** 본다. props 원본은
-            # 지우지 않는다: 상류가 보낸 것을 그대로 보존하는 것이 props 의 계약이고,
-            # 지우면 부분 재전송이 원본을 깎는다.
+            # F9 — **props.date/summary 를 열로 승격한다.** 계약이 두 필드를 선언하지
+            # 않던 시절 상류가 실을 수 있는 자리는 props 뿐이었고, 그 열은 recall 의
+            # `ORDER BY e.date DESC`·타임라인·팩/공유가 전부 읽는 자리라 비면 정렬이
+            # 무의미해진다. 승격이 **쓰기 시점**인 이유가 그것이다 — 응답에서
+            # coalesce 하면 그 응답 하나만 고쳐지고 정렬·타임라인·공유는 빈 채 남는다.
+            # top-level 이 이기고(빈 문자열로 지우는 것 포함) props 폴백은 키가 아예
+            # 없을 때만. props 원본은 지우지 않는다(부분 재전송이 원본을 깎는다).
+            # 선언 누락의 계보: [[vinc.canon.mcp-contract]] §5.1.
             _props = node.get("props") if isinstance(node.get("props"), dict) else {}
             for _col in ("date", "summary"):
                 _val = node.get(_col)
@@ -310,19 +279,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                         continue
                     _val = _cand.strip()
                 _set(_col, str(_val))
-        # 출생(`created`) — 뜻은 **"이 노드가 어느 공간에서든 처음 기록된 때"**다
-        # (발주자 결정 2026-08-17). 그래서 규칙이 둘로 갈린다:
-        #
-        #   신규  : 상류가 실은 값을 받는다. 없으면 지금(HLC). 팩이 원본의 기록
-        #           시각을 나르는 이유가 이것이다 — 안 실으면 스타터팩 하나에 개념
-        #           수십 개가 임포트 순간에 몰려 타임라인이 밴드 하나가 된다(실측).
-        #   기존  : **절대 안 덮는다.** 여태는 무조건 덮어서, 팩을 다시 넣으면
-        #           내가 직접 쓴 개념의 생일까지 남의 값으로 바뀌고 반복하면 계속
-        #           뒤로 갔다(id 가 slug 기반이라 충돌은 흔하다).
-        #
-        # 동기화의 min(가장 이른 값 승)과 **다른 이유**: 같은 계정의 두 기기는 한
-        # 공간이라 서로를 믿지만, 팩은 미신뢰 외부 입력이다. 그래서 거기서는 min
-        # 대신 쓰기 자체를 안 한다. 동기화 쪽 규칙은 api/sync._reconcile_birth.
+        # 출생(`created`) = **어느 공간에서든 처음 기록된 때**. 규칙이 둘로 갈린다 —
+        #   신규 : 상류가 실은 값, 없으면 지금(HLC).
+        #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
+        # 동기화의 min 과 다른 이유는 신뢰다: 같은 계정의 두 기기는 한 공간이지만 팩은
+        # 미신뢰 외부 입력이라 min 대신 쓰기 자체를 안 한다(동기화 쪽은
+        # api/sync._reconcile_birth · [[record:sync-drops-node-created-pack-keeps-it]]).
         if label in ("Concept", "Record", "Decision") and not matched:
             _set("created", str(node["created"]) if node.get("created")
                  else revstamp.hlc_now(store))
@@ -348,12 +310,10 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     try:
         store.run(f"MERGE (n:{label} {{{pk}: $id}}){set_clause}", params)
     except Exception as exc:
-        # 방어 심층화: 위에서 못 막은 스키마 불일치(Binder 예외 등)가 여기서 나면
-        # 이 노드 하나만 스킵 — merge_fragment 의 문서화 계약("malformed nodes...
-        # skipped, reported in warnings with partial:true")대로. 이전엔 여기가
-        # 무방비라 노드 1개 오류가 배치 전체(나머지 노드+모든 엣지)를 날렸다(실측,
-        # 2026-07-21 — bridge.domain 케이스로 발견, 위에서 그 케이스는 막았지만
-        # 미지의 다른 케이스에 대한 안전망으로 존치).
+        # 위에서 못 막은 스키마 불일치(Binder 예외 등)는 **이 노드 하나만** 스킵한다 —
+        # merge_fragment 의 계약("malformed nodes ... skipped, reported in warnings
+        # with partial:true")이 그렇게 약속한다. 미지 케이스용 안전망이라 지우지 말 것:
+        # [[record:one-bad-node-used-to-take-the-whole-batch]].
         warnings.append(f"node write failed — skipped (id={nid}, label={label}): {exc}")
         return None
 
@@ -523,13 +483,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return f" AND {var}.owner_id = $owner" if osc else ""
     op = {"owner": owner} if osc else {}
 
-    # v14 — **엣지 출생**. `ON CREATE SET` 이라 재-MERGE 는 안 덮는다(노드의 팩 규칙과
-    # 같은 뜻: 출생은 처음 이어진 때다). 상류가 실은 값이 있으면 그것을(동기화·팩이
-    # 원본의 출생을 나른다), 없으면 이 배치의 시각을 쓴다.
-    #
-    # ⚠ 구 엣지는 여기 안 걸린다 — 이미 있으므로 ON CREATE 가 안 뛰고 `created` 는
-    # '' 로 남는다. **그것이 맞다**: 언제 이어졌는지 우리는 모르고, 지금을 찍으면
-    # 모든 옛 관계가 오늘 태어난 것이 된다.
+    # v14 — **엣지 출생**. `ON CREATE SET` 이라 재-MERGE 는 안 덮는다. 상류가 실은
+    # 값이 있으면 그것을, 없으면 이 배치의 시각을 쓴다. ⚠ 구 엣지는 ON CREATE 가 안
+    # 뛰어 '' 로 남고 **그것이 맞다**([[record:edge-birth-v14]]).
     def _birth_set(rel_var: str) -> tuple[str, dict]:
         return (f" ON CREATE SET {rel_var}.created = $ecreated",
                 {"ecreated": str(edge.get("created") or "") or born()})
@@ -562,12 +518,10 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             {"s": src, "d": dst, "t": etype, **op, **b_p})
         return "created"
 
-    # T4 — 대상 미선언과 타입 불일치를 **구분**한다. 해석기는 이 호출의 `nodes`
-    # 배열에서만 타입을 찾는다(스토어 조회 없음 — 조회형 구조 개선은 GM-15 후보).
-    # 스토어에 이미 있는 노드로 향하는 엣지도 payload 에 id 를 함께 싣지 않으면
-    # 타입이 '' 이 되어 아래 쌍 검사가 전부 빗나가고, 종전에는 그 경우까지
-    # "concept→? 미지원" 으로 뭉개져 사용자가 조치를 알 수 없었다(실측: 17개 중
-    # 기존 노드로 향하는 6개가 조용히 skip).
+    # T4 — **대상 미선언**과 **타입 불일치**를 구분한다. 해석기는 이 호출의 `nodes`
+    # 배열에서만 타입을 찾으므로(스토어 조회 없음), 이미 있는 노드로 향하는 엣지도
+    # id 를 함께 싣지 않으면 타입이 '' 이 되어 쌍 검사가 전부 빗나간다. 둘을 뭉개면
+    # 저작자가 고칠 방법을 모른다: [[record:endpoint-types-resolve-only-within-one-payload]].
     unresolved = [n for n, t in ((src, st), (dst, dt)) if n and not t]
     if unresolved:
         # 하나라도 '선언은 됐는데 스킵된' 것이면 그쪽을 알린다 — 그게 고칠 자리다.
@@ -766,17 +720,11 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                 f"new topics rejected: {', '.join(denial['attempted'])}. "
                 "Existing topics keep working; Pro removes the limit."])
     fold = _ThemeFold(themes, fragment)
-    # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다. 전에는 원본 payload 전체로
-    # 지어서, `_merge_node` 의 스킵(타입·id 부재 · Entity title 부재 · SEC-3 교차테넌트
-    # 충돌)으로 들어가지도 않은 노드가 살아있는 끝점으로 등록됐다. 그러면 그 노드로
-    # 향하는 엣지가 MATCH 에서 조용히 0행을 만나고도 "created" 로 세어져,
-    # `edges.created` 가 실제보다 크게 보고됐다. 휴면 엔진
-    # (engines/fragment_ingest.py:202-213)은 처음부터 이 모양이었다.
-    #
+    # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다 — 스킵된 노드가 끝점으로
+    # 등록되면 그리로 향하는 엣지가 0행을 만나고도 created 로 세어진다.
     # ⚠ 판정은 **`r is not None`** 이다. "경고가 없었나"로 재면 안 된다 — 경고를
-    # 내면서도 정상 MERGE 되는 자리가 실재한다(Bridge 에 domain 을 주면 그 필드만
-    # 빼고 생성되며 경고가 남는다: 위 `_merge_node` · tests/test_embedded_backend.py
-    # 의 "배치 계속 진행" 케이스). 그걸로 재면 그 테스트가 빨개지고 수정 자체가 틀린다.
+    # 내면서도 정상 MERGE 되는 자리가 실재한다(Bridge 에 domain):
+    # [[record:endpoint-table-must-be-built-from-merged-nodes]].
     types: dict[str, str] = {}
     declared = {(n.get("id") or "").strip() for n in nodes}
     for n in nodes:
@@ -814,16 +762,9 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup
-    # **어느 소유자로 썼는지 밝힌다**(2026-08-18). 여태 이 응답은 몇 개가 들어갔는지만
-    # 말하고 어디에 들어갔는지는 안 말했다. 그 침묵으로 실제 사고가 났다: 대량 적재에서
-    # owner 를 빠뜨려 전부 `user:local` 로 들어갔는데, **그 tenant 안에서는 읽기도
-    # 성공해서 검증이 통과했다**(2026-08-07). 부를 생각을 못 한 사람에게 whoami 는
-    # 소용이 없다 — 모르는 실수는 물어봐야 아는 도구로 안 잡힌다. 매 쓰기가 스스로
-    # 밝히면 `"owner": "user:local"` 한 줄이 그 자리에서 말한다.
-    #
-    # 값의 출처는 **쓴 쪽**이라야 한다. 클라이언트가 보낸 인자를 되울리면 호스티드에서
-    # 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다) — 자기 실수에
-    # 동의해 주는 답이 제일 나쁘다.
+    # **어느 소유자로 썼는지 밝힌다.** 값의 출처는 반드시 **쓴 쪽**이다 — 클라이언트
+    # 인자를 되울리면 호스티드에서 거짓말이 된다(거기선 키가 owner 를 고정한다).
+    # 왜 whoami 로는 안 되는지: [[decision:identity-rides-on-the-first-door-not-a-whoami]].
     result = {"merged": {"nodes": {"created": created, "matched": matched}, "edges": edges_out},
               "executed": True, "owner": owner}
     if fold.proposed:
