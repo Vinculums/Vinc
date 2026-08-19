@@ -88,6 +88,7 @@
     "vinc.spec.web-system"
   ],
   "nodes": [
+    "decision:account-is-a-path-not-a-wall",
     "decision:escape-once-at-the-boundary",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:topic-tint-ships-on",
