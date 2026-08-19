@@ -1,4 +1,5 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
+import { accountWho, connectAccount, forgetAccount } from "../account-connect";
 import { COPY } from "../copy";
 
 /** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
@@ -26,7 +27,6 @@ export async function renderSettings(el: HTMLElement) {
     ...(!WEB ? [{ id: "advanced" as TabId, label: U.tabAdvanced }] : []),
   ];
   let activeTab: TabId = "account";
-  let connectAbort = false;   // 재렌더/해제 시 폴링 중단
 
   // ── 모달 크롬(탭바 + 닫기) ────────────────────────────────────────────────
   function shell() {
@@ -166,24 +166,19 @@ export async function renderSettings(el: HTMLElement) {
     }
     if (!api || !pollJob) return;
 
-    // 계정 연결(디바이스 플로우) — 키는 이 기기 localStorage 에만.
+    // 계정 연결(디바이스 플로우) — 흐름은 `account-connect` 한 벌을 쓴다.
+    // 여기서 하는 일은 **그리기**뿐이다: 같은 플로우를 첫 실행 카드와 원격 커넥터
+    // 행도 부르므로, 폴링을 이 탭 안에 두면 세 벌이 된다.
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
-      const key = (localStorage.getItem("vinc.sync.key") || "").trim();
-      if (key) {
-        // 공개 핸들(009) 우선 표시, 없으면 이메일, 그마저 없으면 키 앞부분.
-        const username = localStorage.getItem("vinc.sync.username") || "";
-        const email = localStorage.getItem("vinc.sync.email") || "";
-        const who = username ? `@${username}` : (email || key.slice(0, 12) + "…");
+      const who = accountWho();
+      if (who) {
         acctBox.innerHTML = `
           <p>${U.acctConnected(who)}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>`;
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
-          connectAbort = true;
-          localStorage.removeItem("vinc.sync.key");
-          localStorage.removeItem("vinc.sync.email");
-          localStorage.removeItem("vinc.sync.username");
+          forgetAccount();
           renderAccount(body);
         });
       } else {
@@ -197,34 +192,10 @@ export async function renderSettings(el: HTMLElement) {
 
     async function startConnect() {
       const acctResult = acctBox.querySelector<HTMLElement>("#acct-result")!;
-      try {
-        const { state } = await api!.connectStart();
-        const port = new URL(cfg.base).port || "8787";
-        const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
-        // Q2: 전역 __TAURI__ 대신 셸일 때만 동적 import. 셸이 아니면 새 탭.
-        const invoke = await shellInvoke();
-        if (invoke) await invoke("plugin:shell|open", { path: url });
-        else window.open(url, "_blank");
-        acctResult.textContent = U.acctConnecting;
-        connectAbort = false;
-        for (let i = 0; i < 300 && !connectAbort; i++) {   // 2s × 300 = TTL(10분)
-          await new Promise((r) => setTimeout(r, 2000));
-          const st = await api!.connectStatus(state).catch(() => null);
-          if (!st) continue;
-          if (st.status === "delivered") {
-            localStorage.setItem("vinc.sync.key", st.key);
-            if (st.email) localStorage.setItem("vinc.sync.email", st.email);
-            if (st.username) localStorage.setItem("vinc.sync.username", st.username);
-            else localStorage.removeItem("vinc.sync.username"); // 핸들 미설정 계정 → 이전 값 잔존 방지
-            renderAccount(body);
-            return;
-          }
-          if (st.status === "expired") { acctResult.textContent = U.acctExpired; return; }
-        }
-        if (!connectAbort) acctResult.textContent = U.acctFail;
-      } catch (e: any) {
-        acctResult.textContent = `${U.acctFail}: ${(e && e.message) || e}`;
-      }
+      const r = await connectAccount(() => { acctResult.textContent = U.acctConnecting; });
+      if (r === "connected") { renderAccount(body); return; }
+      if (r === "expired") { acctResult.textContent = U.acctExpired; return; }
+      if (r === "failed") acctResult.textContent = U.acctFail;
     }
     drawAcct();
 
@@ -277,6 +248,9 @@ export async function renderSettings(el: HTMLElement) {
   // 등록 가능한 호스트 — 사이드카 `vinc_mcp.install.CLIENTS` 와 짝. 여기 없는
   // 호스트도 서버는 그대로 동작한다(수동 등록 안내는 U.mcpOtherHint).
   const MCP_HOSTS = ["desktop", "code", "cursor", "codex"] as const;
+  // 원격 MCP 엔드포인트(허브). `vinc_mcp/http_server.py` 의 `/mcp` 와 짝이고, 같은
+  // 호스트가 OAuth 디스커버리(`/.well-known/*`)도 낸다 — 커넥터는 이 주소 하나만 받는다.
+  const REMOTE_MCP_URL = "https://mcp.vincs.io/mcp";
 
   function renderConnections(body: HTMLElement) {
     // 호스트 하나 = 행 하나(2026-08-05 재설계). 여태 `.seg` 안에 연결 버튼 4개,
@@ -299,6 +273,24 @@ export async function renderSettings(el: HTMLElement) {
       <ul class="rowlist">${rows}</ul>
       <p class="hint hint-sm">${U.mcpOtherHint}</p>
       <div id="mcp-result" class="hint hint-sm break-all"></div>
+
+      <!-- 원격 호스트. 위의 넷과 **다른 물건**이라 섹션을 가른다: 저것들은 이 기기의
+           루프백에 붙고 계정이 필요 없지만, 여기는 계정 그래프에 붙으므로 계정이
+           있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다). 여태 이 경로는
+           화면에 아예 없어서, 계정이 도움이 될 사람조차 존재를 몰랐다.
+           근거: [[decision:account-is-a-path-not-a-wall]] -->
+      <label>${U.mcpRemote}</label><p class="hint">${U.mcpRemoteHint}</p>
+      <ul class="rowlist">
+        <li class="row">
+          <span class="row-name">${U.mcpRemoteHosts}</span>
+          <span class="row-acts">
+            <button class="btn btn-quiet" id="mcp-remote-copy">${U.mcpRemoteCopyAct}</button>
+            <button class="btn" id="mcp-remote-acct" hidden>${U.acctConnect}</button>
+          </span>
+        </li>
+      </ul>
+      <p class="hint hint-sm break-all"><code>${REMOTE_MCP_URL}</code></p>
+      <div id="mcp-remote-state" class="hint hint-sm"></div>
 
       <label>${U.cli}</label><p class="hint">${U.cliHint}</p>
       <ul class="rowlist">
@@ -328,6 +320,28 @@ export async function renderSettings(el: HTMLElement) {
       body.querySelector(`#mcp-add-${h}`)!.addEventListener("click", () => mcpAction("install", h));
       body.querySelector(`#mcp-rm-${h}`)!.addEventListener("click", () => mcpAction("uninstall", h));
     }
+
+    // 원격 행: 여기서 할 수 있는 것은 주소 복사와 계정 연결 둘뿐이다. 커넥터 등록은
+    // 호스트 쪽 화면에서 사용자가 한다(우리가 대신 써 줄 설정 파일이 없다).
+    const remoteState = body.querySelector<HTMLElement>("#mcp-remote-state")!;
+    const remoteAcct = body.querySelector<HTMLButtonElement>("#mcp-remote-acct")!;
+    function paintRemote() {
+      const who = accountWho();
+      remoteAcct.hidden = !!who;
+      remoteState.textContent = who ? U.mcpRemoteSignedIn(who) : U.mcpRemoteNeedAccount;
+    }
+    body.querySelector("#mcp-remote-copy")!.addEventListener("click", async () => {
+      // 복사가 막혀도 주소는 위에 그대로 떠 있다 — 실패를 오류로 키우지 않는다.
+      try { await navigator.clipboard.writeText(REMOTE_MCP_URL); remoteState.textContent = U.mcpRemoteCopied; }
+      catch { remoteState.textContent = U.mcpRemoteCopyFail; }
+    });
+    remoteAcct.addEventListener("click", async () => {
+      remoteState.textContent = U.acctConnecting;
+      const r = await connectAccount();
+      if (r === "connected") paintRemote();
+      else remoteState.textContent = r === "expired" ? U.acctExpired : U.acctFail;
+    });
+    paintRemote();
 
     // ── 터미널에서 `vinc` 부르기 ────────────────────────────────────────────
     // 리눅스 패키지(deb·rpm)는 이미 `/usr/bin/vinc` 를 깔아 두므로 이 행이 할 일이

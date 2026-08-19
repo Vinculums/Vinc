@@ -318,4 +318,11 @@ applyTheme();
   // `.vincpack` 더블클릭으로 넘어온 argv 를 연다(Q1). 화면을 그린 **뒤**에
   // 부른다 — 임포트 시트가 뜰 자리가 먼저 있어야 한다. 셸 아니면 no-op.
   wireFileAssociations();
+
+  // 첫 실행에 계정을 **묻는다**(막지 않는다). 화면을 그린 뒤라 넘기면 곧바로 빈
+  // 상태 초대가 뒤에 있다. 웹 Vinc 는 이미 로그인해야 여기까지 오므로 제외한다.
+  if (!WEB) {
+    const { offerAccount } = await import("./firstrun");
+    offerAccount();
+  }
 })();

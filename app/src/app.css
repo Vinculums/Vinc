@@ -815,6 +815,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 빈 상태 = 초대(2026-08-19). `.empty` 위에 드롭 대상과 행동 두 개를 얹는다.
    ⚠ 지도 위에서는 `#view-msg` 가 `pointer-events:none` 이라 이 블록이 드래그 이벤트를
    못 받는다 — 블록만 되살린다(같은 파일의 `#view-msg a, button` 규칙과 같은 이유). */
+/* 첫 실행 카드의 이유 목록. 불릿을 지우고 여백으로만 가르는 것은 이 셋이 순서도
+   우선순위도 아니어서다(번호를 붙이면 1번이 제일 중요해 보인다). */
+.fr-why { list-style: none; margin: 0 0 var(--space-4, 1rem); padding: 0; display: grid; gap: var(--space-2, .5rem); }
+.fr-why li { color: hsl(var(--foreground)); font-size: .9rem; line-height: 1.5; }
 .empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
 .empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
 .empty-invite .ei-lead { margin: 0; }

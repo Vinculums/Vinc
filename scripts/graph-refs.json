@@ -87,6 +87,7 @@
     "vinc.spec.web-system"
   ],
   "nodes": [
+    "decision:account-is-a-path-not-a-wall",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:topic-tint-ships-on",
     "record:2d-marks-were-remapped-onto-circles",
