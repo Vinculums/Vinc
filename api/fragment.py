@@ -114,7 +114,8 @@ class _ThemeFold:
 
 
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
-                *, owner_explicit: bool = False, theme_id: str = "") -> str | None:
+                *, owner_explicit: bool = False, theme_id: str = "",
+                conflicts: list[str] | None = None) -> str | None:
     """단일 노드 MERGE. 반환 = 'created' | 'matched' | None(스킵).
 
     owner_id 스탬핑은 **생성 시 또는 fragment.owner 명시 시**에만 한다 — owner 없는
@@ -165,7 +166,20 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     if owner_scoped and owner_explicit and matched:
         existing_owner = current.get("owner_id")
         if existing_owner and existing_owner != owner:
-            warnings.append(f"id {nid} owned by another tenant — skipped")
+            # ⚠ 이 스킵은 **조용한 데이터 손실**이었다(감사 2026-08-18 H1). 저작자는
+            # owner 로 걸러진 검색을 먼저 돌려 "없음"을 보고 이 노드를 지었는데, 쓰기가
+            # 사라지고 응답은 executed:true 로 온다. 그리고 다시 시도해도 영원히 같다
+            # — 노드 PK 가 전역 네임스페이스라 그 슬러그의 물리 노드는 허브에 하나뿐이다.
+            # 그래서 이유·영속성·다음 행동을 한 문장에 싣고, 아래 `id_conflicts` 로
+            # **구조화해서** 낸다(warnings 배열은 호스트가 안 보여 주기도 한다).
+            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[d11223a9a5d109de5]].
+            if conflicts is not None:
+                conflicts.append(nid)
+            warnings.append(
+                f"id {nid} owned by another tenant — skipped. Nothing was written for "
+                f"this node, and every retry will be skipped the same way: node ids are "
+                f"one global namespace, so this slug is not available to you. Author it "
+                f"under a different id.")
             return None
 
     sets, params = [], {"id": nid}
@@ -678,7 +692,9 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                    max_domains: int | None = None) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
-    warnings:[…], executed:…, [partial:True], [proposed_types:[…]]}``.
+    warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
+    [id_conflicts:[…]]}``. ``id_conflicts`` 는 **남이 이미 가진 id** 라 영영 쓸 수
+    없는 것들이다 — 재시도가 고치지 못하는 유일한 스킵이라 따로 낸다.
 
     ``themes``(ThemeStore, 선택): 개방층 타입의 어휘 편입(D11-R2 §3)에 쓴다 —
     서버 잡 큐 경로만 전달(server.write_ingest). sync/share 호출부는 미전달 유지
@@ -715,12 +731,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     # [[record:endpoint-table-must-be-built-from-merged-nodes]].
     types: dict[str, str] = {}
     declared = {(n.get("id") or "").strip() for n in nodes}
+    id_conflicts: list[str] = []
     for n in nodes:
         ntype = (n.get("type") or "").strip()
         if _is_open(ntype):
             fold.fold("node", ntype)
         r = _merge_node(store, n, owner, warnings, owner_explicit=owner_explicit,
-                        theme_id=fold.theme_id or "")
+                        theme_id=fold.theme_id or "", conflicts=id_conflicts)
         created += (r == "created")
         matched += (r == "matched")
         if r is not None:
@@ -757,4 +774,8 @@ def merge_fragment(fragment: dict, *, store, themes=None,
               "executed": True, "owner": owner}
     if fold.proposed:
         result["proposed_types"] = fold.proposed
+    if id_conflicts:
+        # warnings 안의 산문이 아니라 **필드**로 낸다. 호스트가 warnings 를 접거나
+        # 안 보여 주면 저작자는 자기 노드가 사라진 줄도 모른다(감사 H1 의 조용한 절반).
+        result["id_conflicts"] = id_conflicts
     return _finalize(result, warnings)
