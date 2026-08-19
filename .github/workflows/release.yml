@@ -346,7 +346,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
-      - uses: actions/checkout@v4   # 아래 릴리스 노트 스텝이 CHANGELOG 를 읽는다
+      - uses: actions/checkout@v4
 
       # 3개 build 잡이 올린 latest 조각을 릴리스에서 내려받아 latest.json 으로 병합.
       - name: Assemble updater manifest (latest.json) from release fragments
@@ -374,19 +374,27 @@ jobs:
           done
           echo "발행 준비 완료(draft) — Vincs-app 에서 사람이 Publish."
 
-      # 릴리스 본문을 CHANGELOG 에서 채운다.
-      # 배경: build 잡이 draft 를 만들 때 `--notes "Vinc $TAG"` 로 **자리표시자**를 넣는데,
-      # 사람이 Publish 하면서 그걸 안 고치면 그대로 공개된다(v0.8.2 실측 — 본문이
-      # "Vinc v0.8.2" 한 줄로 발행됐다). 릴리스 페이지는 업데이터 알림과 다운로드에서
-      # 사람이 실제로 열어 보는 자리이므로, 아무도 안 고쳤을 때의 기본값을 자리표시자가
-      # 아니라 **그 릴리스의 CHANGELOG 절**로 둔다.
+      # 릴리스 본문의 **기본값**을 자리표시자가 아니게 만든다.
+      #
+      # 배경: build 잡이 draft 를 만들 때 `--notes "Vinc $TAG"` 를 넣는데, 사람이 Publish
+      # 하면서 안 고치면 그대로 공개된다(v0.8.1·v0.8.2 실측 — 본문이 한 줄이었다).
+      #
+      # ⚠ **CHANGELOG 를 쓰지 않는다.** 처음 판이 그렇게 했는데, 그 파일은 자기 머리에
+      #    "사용자 노출 카피 정본은 site/release/ 이며 이것은 개발자용 요약"이라고 적어
+      #    놓은 한국어 문서다. v0.8.3 에서 이 경로가 **처음 실제로 돌아** 확인됐다:
+      #    공개 릴리스 본문에 한국어 개발 산문 7,929자가 들어갔고, 이모지 머리글과
+      #    내부 파일·함수 이름까지 그대로 실렸다. 자리표시자를 고치려다 반대편으로
+      #    지나친 것이다. 사람이 쓴 v0.8.0 본문이 규범을 보여 준다 — 영어 사용자 산문,
+      #    New/Changed/Fixed, em-dash 0.
+      #
+      # 그래서 기본값은 **정본을 가리키는 짧은 안내**다. 어느 독자에게도 틀리지 않고,
+      # 손으로 쓴 본문이 있으면 그것이 이긴다. 진짜 노트는 사람이 쓰거나 발행 전에
+      # 드래프트를 고친다(그 자리가 발행 게이트다).
       #
       # ⚠ 사람이 이미 쓴 본문은 덮지 않는다. 자리표시자이거나 비어 있을 때만 채운다 —
       #    이 잡은 재실행이 되고(assemble 은 멱등이 계약이다), 덮어쓰면 손으로 다듬은
       #    카피가 재실행 한 번에 사라진다.
-      # ⚠ CHANGELOG 절이 없어도 릴리스를 세우지 않는다. v0.8.1 은 절 없이 나갔고,
-      #    노트가 없다는 이유로 빌드된 설치본을 버리는 것은 대가가 맞지 않는다.
-      - name: Fill release notes from CHANGELOG (자리표시자일 때만)
+      - name: Fill release notes (자리표시자일 때만 · 정본 안내로)
         shell: bash
         run: |
           set -euo pipefail
@@ -395,25 +403,18 @@ jobs:
           if [ -n "$cur" ] && [ "$cur" != "Vinc $TAG" ]; then
             echo "본문이 이미 채워져 있다 — 그대로 둔다."; exit 0
           fi
-          # `## v0.8.2 ...` 부터 다음 `## v` 직전까지. 제목 줄은 h2 로 남긴다.
-          awk -v tag="$TAG" '
-            $0 ~ "^## " tag "( |$)" { on = 1 }
-            on && /^## / && $0 !~ "^## " tag "( |$)" { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
-            echo "::warning::CHANGELOG.md 에 $TAG 절이 없다 — 자리표시자 본문을 유지한다." >&2
-            exit 0
-          fi
+          # 영어로 쓴다 — 이 페이지의 독자는 전 세계이고, 한국어 본문은 그 절반에게
+          # 읽히지 않는다. 사이트 릴리스 노트가 EN·ko 두 벌을 들고 있으므로 그쪽을
+          # 가리키면 양쪽이 다 닿는다.
           {
+            echo "Vinc ${TAG#v}."
             echo
-            echo "---"
-            echo
-            echo "사용자용 릴리스 노트: https://vincs.io/release/"
-            echo "설치 파일은 아래 Assets 에 있다. 설치된 앱은 스스로 업데이트된다."
-          } >> notes.md
+            echo "Full release note: https://vincs.io/release/"
+            echo "Installers are in the Assets below, and installed apps update themselves."
+          } > notes.md
           gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
-          echo "── 릴리스 본문 ──"; head -20 notes.md
+          echo "::notice::본문을 정본 안내로 채웠다. 발행 전에 사람이 실제 노트로 바꿀 것."
+          echo "── 릴리스 본문 ──"; cat notes.md
 
   # ── 오래된 릴리스 자산 아카이브(경량 보존) ──────────────────────────────────
   # 배경: 매 릴리스마다 3-OS 설치본(dmg·setup.exe·msi·AppImage·deb·rpm …)이 공개 릴리스
