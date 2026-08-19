@@ -22,6 +22,12 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# 태그별로 직렬화한다(취소 안 함) — 발행 도중 취소하면 반쯤 발행된 릴리스가 남는다.
+# 태그 발행은 드물어 취소로 아낄 분이 없다. 분 절약의 큰 지렛대는 macOS 매트릭스다(아래).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -42,7 +48,7 @@ jobs:
   # 실측 근거: `app/package-lock.json` 이 7릴리스(0.6.0→0.6.7) 방치돼 있었다
   # (Cargo.lock 은 체크리스트에 있는데 이건 빠진 비대칭 — scripts/version_sync.py 참조).
   version-gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,18 +65,47 @@ jobs:
 
   build:
     needs: version-gate
+    # ⚠ 셀프호스티드 Windows 러너는 **머신 전역 PYTHONHOME/PYTHONPATH 를 물려받는다.**
+    # 그러면 `setup-python` 이 받아 온 인터프리터가 남의 표준 라이브러리를 읽어
+    # `_thread has no attribute daemon_threads_allowed` 로 죽는다(2026-08-19 실측).
+    # 이 리포가 로컬 테스트를 `env -u PYTHONHOME -u PYTHONPATH` 로 돌리는 것과 같은
+    # 함정이고, 호스티드 러너에는 그 변수가 없어 여태 안 보였다.
+    # 근거: [[record:vinc-tests-need-a-clean-interpreter-on-windows]]
+    env:
+      PYTHONHOME: ""
+      PYTHONPATH: ""
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          # 리눅스·Windows 는 셀프호스티드(GitHub 분 0). macOS 는 **호스티드로 남는다** —
+          # 맥이 없고, `latest.json` 의 darwin 타깃이 자동 업데이트를 물고 있어 뺄 수 없다.
+          # 릴리스 1회 청구분의 대부분이 macOS 10배라는 것도 그대로다(약 $0.64).
+          - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
-          - os: windows-latest
+          - os: [self-hosted, windows, vinc-local]
             triple: x86_64-pc-windows-msvc
           - os: macos-latest
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
+      # ⚠ 셀프호스티드 Windows 에서 `shell: bash` 는 **WSL 의 bash 로 잡힌다**
+      # (System32 가 PATH 에서 Git 보다 앞이라 `C:\WINDOWS\system32ash.exe`).
+      # 그 bash 는 기본 배포판 안에서 `/bin/bash` 를 찾다 죽는다. 호스티드 러너는 Git
+      # Bash 가 먼저라 이 문제가 없어 여태 안 보였다. 경로를 박지 않고 **git 이 있는
+      # 자리에서 파생**해 이후 스텝의 PATH 앞에 세운다.
+      - name: Prefer Git Bash on Windows (system32 bash is WSL)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+          $binDir  = Join-Path $gitRoot 'bin'
+          if (Test-Path (Join-Path $binDir 'bash.exe')) {
+            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            Write-Host "prepended $binDir"
+          } else {
+            Write-Host "::warning::Git Bash 를 못 찾았다 — bash 스텝이 WSL 로 갈 수 있다"
+          }
       - uses: actions/checkout@v4
 
       # ── 사이드카(Python) ────────────────────────────────────────────────
@@ -307,7 +342,7 @@ jobs:
     needs: build
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
@@ -391,7 +426,7 @@ jobs:
   prune:
     needs: assemble
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     steps:
       - name: Archive old releases (keep newest 5 installers, strip the rest)
         env:
