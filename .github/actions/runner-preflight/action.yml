@@ -1,0 +1,43 @@
+name: Runner preflight
+description: 이 잡이 부르는 외부 명령이 러너에 있는가. 없으면 20분 뒤가 아니라 2초에 죽는다.
+
+# 왜 있나. 셀프호스티드로 옮긴 뒤 **같은 사고가 세 번** 났다(2026-08-19):
+#   · 리눅스에 `python` 별칭이 없어 배포 게이트가 exit 127
+#   · Windows 에 `jq` 가 없어 릴리스 업로드가 exit 127 — 빌드 19분을 태운 뒤에
+#   · 리눅스에 `gh` 가 없어 같은 자리에서 또 exit 127 — 다시 19분
+# 셋 다 코드 결함이 아니라 **호스티드 이미지에는 있고 우리 러너에는 없는 것**이었다.
+# 요구사항이 워크플로 어디에도 적혀 있지 않아서, 하나씩 긴 빌드 끝에서 발견됐다.
+#
+# ⚠ `shell: bash` 는 선택이 아니라 **필수**다. Windows 러너의 `jq` 는 Git Bash 의
+#   `/usr/bin` 에 있고 **Windows PATH 에는 없다**(실측). pwsh 나 파이썬으로 검사하면
+#   있는 것을 없다고 답한다. 쓰는 셸과 같은 셸에서 물어야 한다.
+#   그래서 Windows 잡에서는 Git Bash 를 PATH 앞에 세우는 스텝 **뒤에** 놓을 것 —
+#   그 전에는 `bash` 가 WSL 로 가서 엉뚱한 기계를 검사한다.
+
+inputs:
+  tools:
+    description: 공백으로 구분한 명령 목록(이 잡이 실제로 부르는 것만).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        set -uo pipefail
+        miss=""
+        for c in $TOOLS; do
+          command -v "$c" >/dev/null 2>&1 || miss="$miss $c"
+        done
+        if [ -n "$miss" ]; then
+          echo "::error::러너에 없는 명령:$miss"
+          echo "이 잡은 그것들을 부른다. 호스티드 이미지에는 들어 있어서 워크플로에 적혀" >&2
+          echo "있지 않았다. 러너에 설치하고 다시 돌릴 것:" >&2
+          echo "  Ubuntu : sudo apt-get install -y$miss" >&2
+          echo "  Windows: Git Bash 의 usr/bin 에 실행파일을 두거나 PATH 에 올린다" >&2
+          echo "           (D:\Git\usr\bin 처럼 — Windows PATH 가 아니라 그쪽이다)" >&2
+          exit 1
+        fi
+        echo "preflight OK — $TOOLS"

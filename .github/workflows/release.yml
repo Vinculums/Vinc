@@ -108,6 +108,12 @@ jobs:
           }
       - uses: actions/checkout@v4
 
+      # 이 잡이 부르는 외부 명령을 **빌드 앞에서** 확인한다. 없으면 19분을 태우고
+      # 업로드에서 exit 127 로 죽는다(2026-08-19 에 그렇게 두 번 잃었다).
+      - uses: ./.github/actions/runner-preflight
+        with:
+          tools: curl jq gh
+
       # ── 사이드카(Python) ────────────────────────────────────────────────
       - uses: actions/setup-python@v5
         with:
@@ -347,6 +353,9 @@ jobs:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/runner-preflight
+        with:
+          tools: curl jq gh
 
       # 3개 build 잡이 올린 latest 조각을 릴리스에서 내려받아 latest.json 으로 병합.
       - name: Assemble updater manifest (latest.json) from release fragments
