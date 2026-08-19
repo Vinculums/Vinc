@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import secrets
 import sys
@@ -513,8 +514,21 @@ class MCPHTTPApp:
         return self.bridge.request("POST", path, body=body)
 
 
+#: 한 연결이 아무것도 안 보내며 스레드를 붙들 수 있는 시간(초). `StreamRequestHandler`
+#: 가 이 값을 소켓에 건다. 없으면 연결만 열어 두는 클라이언트가 스레드를 영원히 잡고,
+#: 그것이 slowloris 다. 정상 요청은 본문 4MB 상한 안에서 이보다 훨씬 빨리 끝난다.
+READ_TIMEOUT = max(1, int(os.environ.get("VINC_MCP_READ_TIMEOUT") or 30))
+
+#: 동시에 처리할 연결 수. 넘으면 **503 을 적고 닫는다** — 조용히 끊으면 클라이언트가
+#: 재시도 폭풍을 만들고, 큐에 쌓으면 결국 같은 자원을 쓴다. 이 프로세스는 레플리카
+#: 하나로 공유 그래프 전체를 서비스하므로(단일 라이터), 스레드 무제한은 곧 메모리
+#: 무제한이고 그 끝은 OOM 이다 — 이 리포가 이미 네 번 겪은 고장의 형태다.
+MAX_CONNECTIONS = max(1, int(os.environ.get("VINC_MCP_MAX_CONNECTIONS") or 64))
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "vinc-mcp"
+    timeout = READ_TIMEOUT
 
     @property
     def app(self) -> MCPHTTPApp:
@@ -965,8 +979,47 @@ class _Handler(BaseHTTPRequestHandler):
         self.log_message('"%s" %s %s', line, code, size)
 
 
-def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790) -> ThreadingHTTPServer:
-    httpd = ThreadingHTTPServer((host, port), _Handler)
+class BoundedHTTPServer(ThreadingHTTPServer):
+    """연결 수에 천장이 있는 ThreadingHTTPServer(감사 2026-08-18 M7).
+
+    기본 구현은 연결마다 스레드를 **무제한** 만든다. 공개 엔드포인트에서 그것은
+    누구나 이 프로세스의 메모리를 늘릴 수 있다는 뜻이고, 이 프로세스는 레플리카
+    하나로 공유 그래프를 서비스한다. 앞단에 레이트리밋도 없다.
+
+    거절은 조용히 하지 않는다 — 503 을 적고 닫는다. 그래야 클라이언트가 재시도를
+    조절할 수 있다. 대기 큐를 두지 않는 것도 의도다: 큐에 쌓인 연결도 소켓과
+    버퍼를 쓰므로 천장을 옮길 뿐이다."""
+
+    daemon_threads = True
+
+    def __init__(self, *args, max_connections: int = MAX_CONNECTIONS, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._slots = threading.BoundedSemaphore(max_connections)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Content-Length: 0\r\n"
+                    b"Connection: close\r\n\r\n")
+            except OSError:
+                pass                      # 이미 끊긴 연결 — 거절이 목적이라 무시한다
+            self.shutdown_request(request)
+            return
+        # 슬롯은 아래 스레드가 반납한다. 여기서 반납하면 안 된다 — 스레드가 아직 산다.
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
+def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
+                *, max_connections: int = MAX_CONNECTIONS) -> ThreadingHTTPServer:
+    httpd = BoundedHTTPServer((host, port), _Handler, max_connections=max_connections)
     httpd.app = app  # type: ignore[attr-defined]
     return httpd
 
