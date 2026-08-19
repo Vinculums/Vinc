@@ -11,7 +11,7 @@ import { bucketRange, mountColumns, pickGrain, timelinePool, type Grain,
 import { mountBundle } from "./view-bundle";
 import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
-import { openContextMenu, confirmDestructive } from "../components";
+import { esc, openContextMenu, confirmDestructive } from "../components";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
@@ -346,8 +346,6 @@ export async function renderView(el: HTMLElement) {
   }
 
   /** 표면 공용 이스케이프 — 여태 함수마다 같은 것을 다시 선언하고 있었다(esc·esc2). */
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
   /** 레일 닫기 — 여태 상세 패널에는 닫는 수단이 **하나도 없었다**(버튼도 Esc 도).
    *  들어가는 문은 모든 마크에 달려 있는데 나오는 문이 크럼 하나뿐이었던 비대칭을
@@ -1759,8 +1757,8 @@ export async function renderView(el: HTMLElement) {
       box.innerHTML = `<p class="hint" style="margin-bottom:.3rem">${COPY.ui.viewx.suggestHeader}</p>` +
         sug.map((s, i) => `
           <div class="list-row">
-            <span class="title" style="font-size:.9em">${s.title}
-              ${s.shared_tags.length ? `<span class="hint">· ${s.shared_tags.join(", ")}</span>` : ""}</span>
+            <span class="title" style="font-size:.9em">${esc(s.title)}
+              ${s.shared_tags.length ? `<span class="hint">· ${esc(s.shared_tags.join(", "))}</span>` : ""}</span>
             <span class="actions" style="visibility:visible"><button data-bind="${i}">${COPY.ui.viewx.bind}</button></span>
           </div>`).join("");
       box.querySelectorAll<HTMLElement>("[data-bind]").forEach((b) =>
@@ -1776,8 +1774,8 @@ export async function renderView(el: HTMLElement) {
             });
             await show(trail[trail.length - 1]);   // 재렌더(연결 반영)
             openRail();                        // show() 가 닫으므로 확인 문구 재표시
-            detail.innerHTML = `<h2>${nd.label}</h2>
-              <p>${COPY.ui.viewx.bound(s.title)}</p>`;
+            detail.innerHTML = `<h2>${esc(nd.label)}</h2>
+              <p>${COPY.ui.viewx.bound(esc(s.title))}</p>`;
           } catch {
             b.textContent = "Bind";
             box.insertAdjacentHTML("beforeend",

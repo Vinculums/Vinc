@@ -188,6 +188,17 @@ export type SheetHandle = {
   close: () => void;
 };
 
+/** HTML 이스케이프 한 벌. 여태 이 네 글자짜리 함수가 세 벌 복제돼 있었고, 복제는
+ *  **빠뜨리기 좋은 형태**다 — 그래프 유래 문자열이 esc 없이 innerHTML 로 가는 자리가
+ *  다섯 곳 있었다(감사 2026-08-18 M9). 한 벌이면 빠뜨린 자리를 찾을 때 여기서 시작한다.
+ *
+ *  ⚠ `"` 까지 escape 하므로 **속성값에도 그대로 쓸 수 있다.** 실제로 뚫려 있던 것 중
+ *  하나가 `data-tip="${...}"` 속성 탈출이었다. `'` 는 escape 하지 않으니 속성은 반드시
+ *  큰따옴표로 감쌀 것.
+ *  근거: [[decision:escape-once-at-the-boundary]] */
+export const esc = (s: string): string => String(s).replace(/[&<>"]/g, (c) =>
+  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+
 export function openSheet(opts: {
   title: string; subtitle?: string;
   /** 크기는 **내용의 종류**를 따른다 — 시트마다 제멋대로면 열 때마다 화면이
@@ -202,8 +213,6 @@ export function openSheet(opts: {
   /** 라벨 없이 몸만 쓰는 시트(문서 편집기처럼) — 머리의 제목을 숨긴다. */
   bare?: boolean;
 }): SheetHandle {
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
   const el = document.createElement("div");
   el.className = "sheet-scrim";
   el.innerHTML = `
@@ -284,7 +293,7 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
   el.className = "ctx-menu";
   el.setAttribute("role", "menu");
   el.innerHTML = items.map((it, i) =>
-    `<button class="ctx-item${it.danger ? " ctx-danger" : ""}" role="menuitem" data-i="${i}">${it.label}</button>`).join("");
+    `<button class="ctx-item${it.danger ? " ctx-danger" : ""}" role="menuitem" data-i="${i}">${esc(it.label)}</button>`).join("");
   document.body.appendChild(el);
   // 화면 밖으로 넘치면 반대쪽으로 접는다(모서리에서 잘리지 않게).
   const r = el.getBoundingClientRect();
@@ -372,8 +381,6 @@ export function promptText(title: string, initial: string, confirmLabel: string,
   return new Promise((resolve) => {
     const el = document.createElement("div");
     el.className = "sheet-scrim sheet-center";
-    const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
     el.innerHTML = `
       <div class="sheet" role="dialog" aria-modal="true">
         <div class="sheet-body" style="padding-top:var(--space-4,1rem)">

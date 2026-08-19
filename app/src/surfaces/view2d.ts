@@ -1,4 +1,5 @@
 import Graph from "graphology";
+import { esc } from "../components";
 import Sigma from "sigma";
 import { EdgeArrowProgram } from "sigma/rendering";
 import { createNodeImageProgram } from "@sigma/node-image";
@@ -543,7 +544,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // ── 수치 배지 + 지표바(캔버스 위 DOM) ─────────────────────────────────────
   badgeBox.innerHTML = hubs.map((n) =>
     `<span class="a2-badge" data-id="${n.id.replace(/"/g, "&quot;")}"`
-    + ` data-tip="${COPY.ui.viewx.badgeTip(n.label, n.degree || 0)}">${n.degree || 0}</span>`).join("");
+    + ` data-tip="${esc(COPY.ui.viewx.badgeTip(n.label, n.degree || 0))}">${n.degree || 0}</span>`).join("");
   const badges = [...badgeBox.querySelectorAll<HTMLElement>(".a2-badge")];
   /** 배지를 노드 위에 얹는다 — 카메라가 움직일 때마다 좌표만 다시 계산한다. */
   function placeBadges() {
