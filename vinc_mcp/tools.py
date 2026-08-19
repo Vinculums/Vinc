@@ -639,7 +639,10 @@ TOOLS: list[dict] = [
                        "on an unsupported (from,to) pair AND when an endpoint node was itself "
                        "skipped, since an edge cannot outlive its endpoint. Everything skipped is "
                        "reported in warnings with partial:true, so read them — `merged` counts "
-                       "only what actually landed. Call vinc_conventions once before your first write "
+                       "only what actually landed. An id owned by someone else is reported "
+                       "separately in `id_conflicts`, because it is the one skip a retry cannot "
+                       "fix: node ids are a single global namespace, so that slug is not "
+                       "available to you at all. Pick a different id rather than retrying. Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,

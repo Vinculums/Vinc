@@ -200,3 +200,41 @@ def test_rename_domain_requires_owner():
     assert out["executed"] is False
     assert "owner" in (out.get("error") or "")
     assert not s.calls, "거부됐는데 쿼리가 나갔다"
+
+
+# ── H1(감사 2026-08-18): 충돌은 **구조화해서** 나가야 한다 ────────────────────
+def test_cross_tenant_collision_is_reported_as_a_field_not_just_prose():
+    """조용한 데이터 손실의 절반을 닫는다.
+
+    저작자는 owner 로 걸러진 검색에서 "없음"을 보고 노드를 짓는데, 쓰기가 사라지고
+    응답은 `executed:true` 로 온다. warnings 는 호스트가 접거나 안 보여 주기도 하므로
+    재시도로 고쳐지지 않는 이 스킵만 `id_conflicts` 필드로 따로 낸다."""
+    def responder(cypher, params):
+        if "as rev" in cypher.lower() and "concept" in cypher.lower():
+            return [{"rev": 0, "title": "b-owned", "domain": "", "tags": [],
+                     "props": "", "owner_id": B}]
+        return None
+    s = CapturingStore(responder=responder, owner_id=B)
+    out = frag.merge_fragment(
+        {"owner": A, "nodes": [{"id": "concept:x", "type": "concept", "title": "mine"}],
+         "edges": []}, store=s)
+
+    assert out["id_conflicts"] == ["concept:x"]
+    assert out["merged"]["nodes"] == {"created": 0, "matched": 0}
+    assert out["partial"] is True
+    # 재시도가 소용없다는 것을 문구가 말해야 한다 — 그게 이 스킵의 특징이다.
+    msg = " ".join(out["warnings"])
+    assert "every retry" in msg and "different id" in msg
+
+
+def test_no_conflict_field_when_nothing_collided():
+    """하위호환 — 충돌이 없으면 필드 자체가 없다(기존 응답과 같은 모양)."""
+    def responder(cypher, params):
+        if "as rev" in cypher.lower():
+            return []
+        return None
+    s = CapturingStore(responder=responder, owner_id=A)
+    out = frag.merge_fragment(
+        {"owner": A, "nodes": [{"id": "concept:fresh", "type": "concept", "title": "t"}],
+         "edges": []}, store=s)
+    assert "id_conflicts" not in out
