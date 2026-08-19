@@ -33,6 +33,20 @@ MANIFEST_NAME = "manifest.json"
 FRAGMENT_NAME = "fragment.json"
 DOC_DIR = "documents/"
 
+# 압축폭탄 방어(보안 감사 2026-08-18 H2). from_bytes 의 z.read() 는 멤버를 통째로
+# 메모리에 푼다 — 상한이 없으면 4MB 압축본이 DEFLATE ~1000:1 로 GB 로 부풀어
+# 단일라이터 허브를 OOM 으로 죽인다(사이드카 사망 = 컨테이너 사망 = 공유 그래프 전체
+# 오프라인). 두 상한을 **읽기 전에** 건다:
+#   · 선언된 비압축 총합(중앙 디렉터리 file_size 합) — 정직하게 큰 폭탄을 잡는다.
+#   · 엔트리 수 — 잔뜩 쪼갠 폭탄·파싱 오버헤드를 잡는다.
+# file_size 를 작게 속여도 위험하지 않다: zipfile 이 read 출력을 선언값으로 자르므로
+# 메모리 폭발이 없고(잘린 바이트는 json 파싱에서 실패), 크게 선언하면 합산 상한이 잡는다.
+# ponytail: file_size 합산 상한. 오버랩·중첩 zip 까지 정확히 재려면 스트리밍 카운트가
+# 필요하지만, 이 경로는 고정 멤버(manifest·fragment·documents/*)만 읽고 extractall 이
+# 없어 그 합이 곧 실제 인플레이트 천장이다.
+MAX_ENTRIES = 10_000
+MAX_UNCOMPRESSED = 64 * 1024 * 1024   # 64 MB — 전 멤버 인플레이트 천장
+
 
 def is_zip(data: bytes) -> bool:
     """zip 매직(`PK\\x03\\x04`). 빈 zip(`PK\\x05\\x06`)도 형식상 zip 이라 함께 본다."""
@@ -75,6 +89,16 @@ def from_bytes(data: bytes) -> dict:
     if not is_zip(data):
         return json.loads(data.decode("utf-8"))
     with zipfile.ZipFile(io.BytesIO(data)) as z:
+        infos = z.infolist()
+        # 압축폭탄 방어(H2) — 아무 멤버도 read 하기 전에. 이 두 줄이 없으면 크래프트된
+        # 팩 하나가 허브를 OOM 으로 내린다(위 상수 주석).
+        if len(infos) > MAX_ENTRIES:
+            raise ValueError(f"not a vinc pack: too many entries ({len(infos)} > {MAX_ENTRIES})")
+        total = sum(i.file_size for i in infos)
+        if total > MAX_UNCOMPRESSED:
+            raise ValueError(
+                f"vinc pack inflates past the {MAX_UNCOMPRESSED}-byte limit "
+                f"(declares {total} bytes uncompressed) — refused")
         names = set(z.namelist())
         if MANIFEST_NAME not in names:
             raise ValueError("not a vinc pack: manifest.json missing")

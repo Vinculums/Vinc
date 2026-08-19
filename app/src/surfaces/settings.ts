@@ -1,6 +1,7 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
 import { accountWho, connectAccount, forgetAccount } from "../account-connect";
 import { COPY } from "../copy";
+import { esc } from "../components";
 
 /** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
  *  · Account   계정 연결(디바이스 플로우) + 그래프 동기화 + Theme + Language + Lock
@@ -132,8 +133,6 @@ export async function renderSettings(el: HTMLElement) {
           .then((d) => {
             const u = d && d.user;
             if (!u) { box.textContent = W.none; return; }
-            const esc = (s: string) =>
-              String(s).replace(/[<>&"]/g, (m) => (({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }) as Record<string, string>)[m]!);
             const who = u.username ? "@" + u.username : u.email;
             box.innerHTML = `${W.signedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${W.manage}</a>`;
           })
@@ -174,7 +173,7 @@ export async function renderSettings(el: HTMLElement) {
       const who = accountWho();
       if (who) {
         acctBox.innerHTML = `
-          <p>${U.acctConnected(who)}
+          <p>${U.acctConnected(esc(who))}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>`;
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {

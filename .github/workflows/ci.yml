@@ -105,6 +105,14 @@ jobs:
       - name: Graph citation gate
         run: python -X utf8 scripts/gate_graph_refs.py
 
+      # 그래프 유래 문자열이 esc() 없이 innerHTML 로 가는가(감사 2026-08-18 M9). 팩으로
+      # 들어온 노드 제목·태그가 공격자 통제 입력이라 이것이 HTML 주입이 된다. 오늘 코드
+      # 실행이 아닌 이유는 CSP 에 script-src 가 없고 withGlobalTauri:false 라서다 — 그
+      # 두 설정이 하중을 받고 있으므로 여기서 고정한다. contrast 게이트와 같은 이유로
+      # core 잡에 산다(프런트에 테스트 러너가 없다).
+      - name: Graph-value escape gate
+        run: python -X utf8 scripts/gate_escape.py
+
       # View 마크 대비(WCAG 2.x AND APCA 이중). 여기 사는 이유: 프런트에는 테스트
       # 러너가 없고 app 잡은 tsc 만 돈다. 이 게이트는 생성물 theme.ts 를 읽는 순수
       # 파이썬이라 core 잡에서 도는 것이 맞다. 두 기준을 AND 로 거는 이유는 극성마다
