@@ -136,6 +136,27 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     if is_entity and not (node.get("title") or "").strip():
         warnings.append(f"entity node.title required: id={nid} (type={ntype})")
         return None
+    # L1(감사 2026-08-18) — 필드 크기 상한. 본문 4MB 안에서도 단일 노드에 거대
+    # 페이로드를 반복해 심어 스토어·메모리를 부풀릴 수 있다. 상한은 정상 데이터가
+    # 절대 안 닿게 넉넉히 잡고, 넘으면 **자르지 않고 이 노드만 스킵**한다(props 를
+    # 자르면 구조가 깨진다). 큰 원문은 props 가 아니라 문서(Chunk=SSoT)로 가야 한다.
+    _t = node.get("title")
+    if isinstance(_t, str) and len(_t) > 16_384:
+        warnings.append(f"node.title too large — skipped (id={nid}, {len(_t)} chars > 16384)")
+        return None
+    _tg = node.get("tags")
+    if isinstance(_tg, list) and (len(_tg) > 256
+            or any(isinstance(t, str) and len(t) > 2048 for t in _tg)):
+        warnings.append(f"node.tags too large — skipped (id={nid})")
+        return None
+    _pr = node.get("props")
+    if _pr is not None:
+        try:
+            if len(json.dumps(_pr, ensure_ascii=False)) > 512 * 1024:
+                warnings.append(f"node.props too large — skipped (id={nid}, >512KB serialized)")
+                return None
+        except (TypeError, ValueError):
+            pass   # 직렬화 불가 props 는 아래 기존 경로가 경고로 처리한다
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
     owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",

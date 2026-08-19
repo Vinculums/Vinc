@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import secrets
 import sys
 import threading
 import time
@@ -299,7 +300,7 @@ class MCPHTTPApp:
         if not header or not header.startswith("Bearer "):
             return miss
         token = header[len("Bearer "):].strip()
-        if self.static_token and token == self.static_token:
+        if self.static_token and secrets.compare_digest(token, self.static_token):
             return {"ok": True, "owner": None, "plan": None, "source": "static"}
         if token.startswith("vinc_sk_") and self.verify_key is not None:
             ent = self.verify_key(token)
@@ -373,7 +374,10 @@ class MCPHTTPApp:
         req = params.get("req") or ""
         payload = edverify.verify_assertion(self.account_public, params.get("aa") or "",
                                             max_age=120)
-        if not payload or payload.get("typ") != "aa" or payload.get("iss") != "account":
+        # aud 도 검증한다(L8). 계정은 aa 를 aud="mcp" 로 서명한다(connect.ts) — 다른
+        # 계정→허브 어서션은 전부 aud 를 보는데 여기만 빠져 있었다. 방향 혼선 방지.
+        if (not payload or payload.get("typ") != "aa" or payload.get("iss") != "account"
+                or payload.get("aud") != "mcp"):
             raise PermissionError("invalid or expired approval")
         if payload.get("req") != req or not req:
             raise PermissionError("approval does not match this request")

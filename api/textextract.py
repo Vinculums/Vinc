@@ -82,6 +82,14 @@ def decode_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+# 미신뢰 PDF DoS 상한(감사 2026-08-18 M6). PdfReader.pages 를 무제한 순회하며
+# extract_text 하면 악의적·기형 PDF(깊은 중첩·순환 페이지트리)가 CPU·메모리를 태운다.
+# 허브 경로는 본문 4MB 로 압축본이 묶이지만 작은 PDF 도 병적일 수 있고, CLI 경로는
+# 상한이 아예 없다. 페이지 수와 누적 텍스트 길이 둘 다 건다 — 넘으면 자르고 알린다.
+MAX_PDF_PAGES = 2000
+MAX_PDF_CHARS = 8 * 1024 * 1024
+
+
 def _extract_pdf(data: bytes) -> dict:
     """PDF → 텍스트. 페이지는 빈 줄로 잇는다 — `plan_boundaries` 가 문단 경계를
     1순위로 삼으므로 페이지 경계가 자연스럽게 청크 경계가 된다."""
@@ -102,9 +110,24 @@ def _extract_pdf(data: bytes) -> dict:
             except Exception:
                 return _fail("pdf", "pdf_encrypted",
                              "암호가 걸린 PDF 는 가져올 수 없습니다.")
-        pages = [(page.extract_text() or "") for page in reader.pages]
+        # len(reader.pages) 를 먼저 부르지 않는다 — 그 자체가 기형 페이지트리에서
+        # 비쌀 수 있다. 순회 카운터로 상한을 걸어 순환·거대 트리를 유한하게 만든다.
+        pages = []
+        total = 0
+        truncated = False
+        for i, page in enumerate(reader.pages):
+            if i >= MAX_PDF_PAGES or total > MAX_PDF_CHARS:
+                truncated = True
+                break
+            t = page.extract_text() or ""
+            pages.append(t)
+            total += len(t)
     except Exception as exc:
         return _fail("pdf", "pdf_unreadable", f"{type(exc).__name__}: {exc}")
+    if truncated:
+        # 조용히 자르지 않는다(RULES: no silent caps) — 잘렸음을 정본 텍스트에 남긴다.
+        pages.append(f"\n\n[truncated: PDF exceeded {MAX_PDF_PAGES} pages / "
+                     f"{MAX_PDF_CHARS} chars]")
     text = "\n\n".join(pages).strip()
     if not text:
         # 스캔 PDF(이미지만) — OCR 없이는 한 글자도 못 꺼낸다. 빈 문서를 정본으로

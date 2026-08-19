@@ -117,6 +117,9 @@ def test_forged_or_wrong_aa_rejected(app):
     # 4) typ 위조(CRA 를 AA 자리에 재사용)
     with pytest.raises(PermissionError):
         app.complete_member_connect({"req": req, "aa": _aa(req, typ="cra")})
+    # 4b) aud 위조(L8 — 계정은 aa 를 aud="mcp" 로 서명한다)
+    with pytest.raises(PermissionError):
+        app.complete_member_connect({"req": req, "aa": _aa(req, aud="account")})
     # 5) sub 없음
     with pytest.raises(ValueError):
         app.complete_member_connect({"req": req, "aa": _aa(req, sub="")})
