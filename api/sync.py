@@ -104,37 +104,75 @@ def del_base(store, node_id: str) -> None:
 
 
 # ── tombstone(삭제 전파, S4) ──────────────────────────────────────────────────
-def get_tombstone(store, node_id: str) -> dict | None:
-    rows = store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id "
-                     "RETURN t.deleted_at AS da, t.rev AS rev", {"id": node_id})
+#
+# ⚠ 이 표들의 PK 는 `node_id`·`ekey` **하나**다(`_META_TABLES`). 노드 id 가 전역
+# 네임스페이스라(감사 H1) 슬러그가 겹치는 두 소유자는 **한 행을 나눠 쓰게 된다.**
+# 그러면 마지막 쓰기가 이기고, 진 쪽의 삭제는 전파가 멈춰 다른 기기에서 노드가
+# 되살아난다. 소유자마다 자기 행을 갖는 것이 진짜 처방인데 그건 PK 를 바꾸는 일이라
+# H1 의 재구축에 태운다([[d11223a9a5d109de5]] §6).
+#
+# 그때까지 **열이 이미 있는 쪽**은 지금 닫는다: 읽기·삭제는 소유자로 걸고, 쓰기는
+# 남의 행을 덮지 않는다. 이걸로 "남의 대기 중 삭제를 취소한다"와 "남의 툼스톤을
+# 조용히 덮는다"가 사라진다. 남는 것은 겹친 슬러그에서 **둘째 소유자가 툼스톤을
+# 못 갖는다**는 것뿐인데, 그 소유자는 애초에 허브에서 그 노드를 갖지 못한다
+# (SEC-3 가 id 를 스킵한다) — 즉 지울 것이 없다.
+def get_tombstone(store, node_id: str, owner: str = "") -> dict | None:
+    where = "t.node_id = $id" + (" AND t.owner_id = $owner" if owner else "")
+    params = {"id": node_id}
+    if owner:
+        params["owner"] = owner
+    rows = store.run(f"MATCH (t:_Tombstone) WHERE {where} "
+                     "RETURN t.deleted_at AS da, t.rev AS rev", params)
     if not rows:
         return None
     return {"deleted_at": rows[0].get("da") or "", "rev": int(rows[0].get("rev") or 0)}
 
 
+def _tombstone_owner(store, node_id: str) -> str:
+    rows = store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id RETURN t.owner_id AS o",
+                     {"id": node_id})
+    return (rows[0].get("o") or "") if rows else ""
+
+
 def put_tombstone(store, node_id: str, label: str, owner: str, deleted_at: str,
-                  rev: int) -> None:
+                  rev: int) -> bool:
     """수신한 삭제를 재전파용으로 남긴다. deleted_at 은 **원래 삭제 시각 보존**(의미),
-    sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙."""
+    sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙.
+
+    반환 False = 그 자리를 **다른 소유자가 이미 쓰고 있어** 남기지 않았다(위 주석)."""
+    held = _tombstone_owner(store, node_id)
+    if held and owner and held != owner:
+        return False
     store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
               "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'remote'",
               {"id": node_id, "l": label, "o": owner, "da": deleted_at,
                "rev": int(rev), "seq": revstamp.next_seq(store, owner)})
+    return True
 
 
-def del_tombstone(store, node_id: str) -> None:
-    store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id DELETE t", {"id": node_id})
+def del_tombstone(store, node_id: str, owner: str = "") -> None:
+    where = "t.node_id = $id" + (" AND t.owner_id = $owner" if owner else "")
+    params = {"id": node_id}
+    if owner:
+        params["owner"] = owner
+    store.run(f"MATCH (t:_Tombstone) WHERE {where} DELETE t", params)
 
 
 def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
-                       deleted_at: str) -> None:
+                       deleted_at: str) -> bool:
     """수신한 엣지 삭제를 재전파용으로 남긴다(노드 put_tombstone 동형 — deleted_at
     원본 보존, sync_seq 는 수신측 자기 번호)."""
+    k = f"{src}|{rel}|{dst}"
+    held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN t.owner_id AS o",
+                     {"k": k})
+    if held and (held[0].get("o") or "") and owner and held[0].get("o") != owner:
+        return False                       # 남의 행 — 덮지 않는다(위 주석)
     store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
               "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
               "t.origin = 'remote'",
-              {"k": f"{src}|{rel}|{dst}", "s": src, "r": rel, "d": dst, "o": owner,
+              {"k": k, "s": src, "r": rel, "d": dst, "o": owner,
                "da": deleted_at, "seq": revstamp.next_seq(store, owner)})
+    return True
 
 
 def _edge_tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
@@ -585,12 +623,12 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         # 부활 가드(S4): 로컬 tombstone 이 인바운드 편집보다 **새롭거나 같으면** 삭제가
         # 이긴다 → upsert 무시(지운 노드가 옛 편집으로 되살아나지 않게). 인바운드가 더
         # 최신이면(삭제 후 재생성) tombstone 을 걷고 적용한다.
-        tomb = get_tombstone(store, nid)
+        tomb = get_tombstone(store, nid, owner)
         if tomb:
             if tomb["deleted_at"] >= r_ua:
                 out["skipped_stale"] += 1
                 continue
-            del_tombstone(store, nid)
+            del_tombstone(store, nid, owner)
             out["resurrected"] += 1
 
         # 삭제가 이긴 노드는 위에서 이미 continue 했다 — 지운 노드의 열을 되살리지
