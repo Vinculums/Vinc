@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import hashlib
 import json
 import os
 import tempfile
@@ -35,6 +36,23 @@ from typing import Any
 LEGACY_NODE_TYPES: tuple[str, ...] = ("concept", "domain", "bridge", "episode")
 LEGACY_EDGE_TYPES: tuple[str, ...] = ("relates_to", "prerequisite_of",
                                       "derives_from", "connects_via")
+
+def owner_theme_id(owner: str) -> str:
+    """이 소유자의 어휘 테마 id. 결정론이라 저장할 필요가 없다.
+
+    테마는 파일 하나에 평평하게 들어 있고 소유 열이 없다. 공유 허브에서는 그래서
+    **활성 테마 하나를 모든 테넌트가 나눠 쓴다** — 남의 theme_id 를 실어 보내면 그
+    사람 어휘에 내 타입이 꽂히고(감사 M1), 실어 보내지 않아도 제안이 한 통에 고인다.
+
+    id 를 소유자에서 파생하면 열을 늘리지 않고 그 둘이 다 닫힌다. 해시를 쓰는 것은
+    소유자 문자열이 계정 식별자라 테마 이름으로 화면·파일에 눕히지 않으려는 것이다.
+    ⚠ **로컬은 이 경로를 타지 않는다.** 기존 "default" 테마에 쌓인 어휘가 있고,
+    id 를 바꾸면 그것이 통째로 안 보이게 된다. 강제 owner(호스티드)에서만 쓴다.
+    """
+    if not owner:
+        return "default"
+    return "owner-" + hashlib.sha256(owner.encode("utf-8")).hexdigest()[:12]
+
 
 _STORE_VERSION = 1
 # 어휘 메타는 **DB 파일의 형제**(`<data_dir>.themes.json`)로 둔다. `cfg.data_dir` 는
