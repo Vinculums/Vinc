@@ -254,7 +254,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-            librsvg2-dev patchelf
+            librsvg2-dev patchelf libdbus-1-dev
 
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
       # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.

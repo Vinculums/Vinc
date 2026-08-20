@@ -202,7 +202,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev             librsvg2-dev patchelf
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev             librsvg2-dev patchelf libdbus-1-dev
       # 프런트 산출물이 없으면 tauri 빌드 스크립트가 `../dist` 를 찾다 죽는다.
       # 짓지 않고 **빈 자리만** 만들어 준다 — 여기서 보는 것은 러스트지 번들이 아니다.
       - name: Placeholder frontend dist

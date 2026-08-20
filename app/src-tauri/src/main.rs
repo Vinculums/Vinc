@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cli_link;
+mod secret;
 
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -290,6 +291,30 @@ fn openable_from_args<I: IntoIterator<Item = String>>(args: I) -> Vec<String> {
 }
 
 /// 프론트가 준비되면 큐를 **비우면서** 가져간다(중복 임포트 방지).
+// ── 계정 키 보관(감사 M8) ────────────────────────────────────────────────────
+// 이름은 프런트가 정한다(`vinc.sync.key` 등) — 러스트는 어느 값이 무엇인지 모른다.
+// ⚠ 값을 로그에 싣지 않는다. 오류 문자열만 넘긴다.
+#[tauri::command]
+fn secret_get(name: String) -> Result<Option<String>, String> {
+    secret::get(&name)
+}
+
+#[tauri::command]
+fn secret_set(name: String, value: String) -> Result<(), String> {
+    secret::set(&name, &value)
+}
+
+#[tauri::command]
+fn secret_delete(name: String) -> Result<(), String> {
+    secret::delete(&name)
+}
+
+/// 이 기기에 OS 저장소가 실제로 되는가. 프런트가 이 값으로 폴백을 정하고 화면에 적는다.
+#[tauri::command]
+fn secret_available() -> bool {
+    secret::available()
+}
+
 #[tauri::command]
 fn take_pending_files(state: tauri::State<'_, PendingOpen>) -> Vec<OpenedFile> {
     let paths: Vec<String> = state.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default();
@@ -457,7 +482,8 @@ fn main() {
         ))))
         .invoke_handler(tauri::generate_handler![
             sidecar_conn, sidecar_status, mcp_install, mcp_uninstall, take_pending_files,
-            cli_link_status, cli_link_install, cli_link_remove])
+            cli_link_status, cli_link_install, cli_link_remove,
+            secret_get, secret_set, secret_delete, secret_available])
         .setup(move |app| {
             // 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
             // RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).

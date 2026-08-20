@@ -1,5 +1,6 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
-import { accountWho, connectAccount, forgetAccount } from "../account-connect";
+import { accountKey, accountWho, connectAccount, forgetAccount, keyIsOnDisk,
+         setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc } from "../components";
 
@@ -175,7 +176,15 @@ export async function renderSettings(el: HTMLElement) {
         acctBox.innerHTML = `
           <p>${U.acctConnected(esc(who))}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
-          <p class="hint">${U.acctDisconnectHint}</p>`;
+          <p class="hint">${U.acctDisconnectHint}</p>
+          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
+        // OS 저장소 유무는 물어봐야 안다(프로브가 쓰고 지운다). 약한 상태를
+        // 기본으로 두지 않고 **화면에 적는다** — 안 적으면 사용자는 자기 키가
+        // 어디 있는지 모른다.
+        void accountKey().then(() => {
+          const n = acctBox.querySelector<HTMLElement>("#acct-ondisk");
+          if (n) n.hidden = !keyIsOnDisk();
+        });
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
           forgetAccount();
           renderAccount(body);
@@ -224,7 +233,7 @@ export async function renderSettings(el: HTMLElement) {
     void loadDomains();
 
     body.querySelector("#sync-now")!.addEventListener("click", async () => {
-      const key = (localStorage.getItem("vinc.sync.key") || "").trim();
+      const key = await accountKey();
       if (!key) { syncResult.textContent = U.syncNeedKey; return; }
       syncResult.textContent = U.syncing;
       try {
@@ -397,8 +406,7 @@ export async function renderSettings(el: HTMLElement) {
       <input id="s-owner" value="${cfg.owner}" />
       <label for="s-sync-key">${U.syncKey}</label>
       <p class="hint">${U.syncKeyHint}</p>
-      <input id="s-sync-key" type="password" placeholder="vinc_sk_…"
-             value="${(localStorage.getItem("vinc.sync.key") || "").replace(/"/g, "&quot;")}" />
+      <input id="s-sync-key" type="password" placeholder="vinc_sk_…" autocomplete="off" />
       <label for="s-base">${U.engine}</label>
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
@@ -410,11 +418,15 @@ export async function renderSettings(el: HTMLElement) {
       (cfg.token = (e.target as HTMLInputElement).value));
     body.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
       (cfg.owner = (e.target as HTMLInputElement).value));
-    // 수동 키: localStorage 만 갱신(Account 탭이 다시 열릴 때 최신 상태를 읽음).
+    // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
+    // 그것을 없애자는 것이 이 변경의 목적이다(감사 M8). 비어 있으면 "안 바꿈"이다.
     const keyInput = body.querySelector<HTMLInputElement>("#s-sync-key")!;
     keyInput.addEventListener("change", () => {
-      localStorage.setItem("vinc.sync.key", keyInput.value.trim());
+      const v = keyInput.value.trim();
+      if (!v) return;
+      void setAccountKey(v);
       localStorage.removeItem("vinc.sync.email");   // 수동 키 = 이메일 미상
+      keyInput.value = "";                          // 입력칸에도 남기지 않는다
     });
   }
 
