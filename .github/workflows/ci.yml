@@ -158,3 +158,59 @@ jobs:
       - name: Typecheck
         working-directory: app
         run: npm run typecheck
+
+  # ── 러스트 셸 ────────────────────────────────────────────────────────────────
+  # 왜 생겼나: **CI 가 러스트를 한 번도 짓지 않았다.** 그래서 컴파일 오류가 처음 드러나는
+  # 자리가 **태그 시점의 3-OS 매트릭스**였고, 그 자리의 실패는 릴리스 하나를 통째로
+  # 되감는다([[record:ci-never-builds-the-rust]]). 오늘 다른 이유로 그 자리에서 19분씩
+  # 두 번 잃고 나서, 같은 형태의 사고를 앞으로 당긴다.
+  #
+  # `cargo check` 만 돈다 — 번들링·서명은 릴리스의 몫이고 여기서는 **컴파일이 되는가**
+  # 하나만 본다. 그것이 태그 시점 실패의 거의 전부다.
+  #
+  # ⚠ 두 OS 를 다 돈다. 이 크레이트에는 `#[cfg(windows)]`·`#[cfg(unix)]` 로 갈리는
+  # 코드가 있어서(`cli_link.rs`), 한쪽만 지으면 다른 쪽의 오류를 못 본다 — 그것이
+  # 정확히 "플랫폼으로 갈린 컴파일 오류" 라는 원래 사고 형태다. macOS 는 호스티드라
+  # 여기서 안 돈다(분을 태운다) — 그쪽 갈림은 여전히 태그 시점에 드러난다.
+  rust:
+    name: rust (cargo check)
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - [self-hosted, linux, vinc-local]
+          - [self-hosted, windows, vinc-local]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Windows 는 `shell: bash` 가 WSL 로 가므로 Git Bash 를 앞에 세운다(release.yml 동형).
+      - name: Prefer Git Bash on Windows (system32 bash is WSL)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+          $binDir  = Join-Path $gitRoot 'bin'
+          if (Test-Path (Join-Path $binDir 'bash.exe')) {
+            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      # 리눅스만 필요한 시스템 헤더(webkit·appindicator). release.yml 과 같은 목록.
+      - name: Linux webkit deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev             librsvg2-dev patchelf
+      # 프런트 산출물이 없으면 tauri 빌드 스크립트가 `../dist` 를 찾다 죽는다.
+      # 짓지 않고 **빈 자리만** 만들어 준다 — 여기서 보는 것은 러스트지 번들이 아니다.
+      - name: Placeholder frontend dist
+        shell: bash
+        run: mkdir -p app/dist && [ -f app/dist/index.html ] || echo "<!doctype html>" > app/dist/index.html
+      - name: cargo check
+        working-directory: app/src-tauri
+        run: cargo check --locked --all-targets
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --locked
