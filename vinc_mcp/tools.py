@@ -138,10 +138,11 @@ _FRAGMENT_SCHEMA = {
                                  "key fixes it); locally it defaults to this machine's owner."},
         "theme_id": {"type": "string",
                      "description": "Theme to fold open-type names into (optional — defaults to the "
-                                    "active theme, creating 'default' lazily). Themes are GLOBAL, "
-                                    "not per-owner, so naming someone else's theme folds your "
-                                    "proposed types into their vocabulary. Omit it unless you know "
-                                    "the theme is yours."},
+                                    "active theme, creating 'default' lazily). On the hosted graph this field "
+                                    "is IGNORED and the server derives the theme from your account: "
+                                    "the theme file has no owner column, so a chosen theme would fold "
+                                    "your proposed types into someone else's vocabulary. It still "
+                                    "applies to a local store."},
     },
     "required": ["nodes"],
 }
@@ -948,6 +949,17 @@ def call(name: str, args: dict | None, bridge: Bridge,
     # 봉쇄). forced_owner 없음(로컬 stdio/정적)이면 기존 단일유저 동작 유지.
     if forced_owner:
         args["owner"] = forced_owner
+        # 어휘 테마도 **서버가 정한다.** 테마 파일에는 소유 열이 없어서, 클라이언트가
+        # theme_id 를 고를 수 있으면 남의 어휘에 자기 타입이 proposed 로 꽂히고(감사
+        # 2026-08-18 M1 · [[record:risk-themes-global]]), 아무도 안 고르면 전원이 활성
+        # 테마 하나에 고인다. 소유자에서 파생하면 열을 안 늘리고 둘 다 닫힌다.
+        # 웹 평면은 이미 이 값을 벗기고 있었는데, 인증된 MCP 경로가 그 자리를 안 지나서
+        # 그대로 통과했다. 여기가 두 평면이 만나는 자리다 — owner 를 강제하는 그 줄 옆.
+        # ⚠ 이 도구가 theme_id 를 받을 때만 넣는다. 안 받는 도구의 args 를 늘리면
+        #   스키마와 어긋난 값이 실려 다닌다.
+        if "theme_id" in (tool["inputSchema"].get("properties") or {}):
+            from store.theme_store import owner_theme_id
+            args["theme_id"] = owner_theme_id(forced_owner)
     # 자격(주제 상한)도 owner 와 같은 취급 — 클라이언트가 보낸 값을 신뢰하지 않고
     # 서버가 해석한 값으로 **덮어쓴다**. 자격이 없으면 키 자체를 지운다(위조 차단).
     args.pop("_entitlements", None)

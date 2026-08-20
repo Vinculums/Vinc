@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import re
 
+from store import theme_store
+
 SPEC_VERSION = 1
 
 #: 스토어에 관례를 문서로 둘 때의 고정 doc_id. 동기화에서 제외된다(`docsync`) —
@@ -235,7 +237,16 @@ def collect(store, *, owner: str | None = None, themes=None) -> dict:
     nodes: list[str] = []
     edges: list[str] = []
     if themes is not None:
-        theme_id = themes.active_theme_id()
+        # 소유자 자기 테마가 있으면 그것을, 없으면 활성 테마를 본다. 호스티드에서는
+        # 쓰기가 소유자 파생 테마로 가므로(fragment._ThemeFold) 읽기도 같은 자리를
+        # 봐야 한다 — 안 그러면 자기가 제안한 타입이 자기 GRAPH.md 에 안 보인다.
+        # 로컬은 자기 테마가 없어 활성("default")로 떨어진다: 기존 동작 그대로.
+        theme_id = ""
+        if owner:
+            mine = theme_store.owner_theme_id(owner)
+            if themes.get_theme(mine):
+                theme_id = mine
+        theme_id = theme_id or themes.active_theme_id()
         if theme_id:
             for t in themes.list_types(theme_id, status="authored"):
                 (nodes if t.get("kind") == "node" else edges).append(str(t.get("name")))
