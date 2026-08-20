@@ -1,0 +1,26 @@
+# 셀프호스티드 러너가 갖춰야 하는 것 — **한 곳에 적는 자리**.
+#
+# 왜 있나. 호스티드 이미지에서 나오면서 그 이미지의 내용물을 요구사항으로 물려받았는데
+# 목록이 어디에도 없었다. 그래서 2026-08-19 하루에 세 번, 각각 긴 빌드의 끝에서 하나씩
+# 발견됐다(`python` 별칭 · `jq` · `gh`). 논증은 그래프에:
+# [[record:a-hosted-runner-image-is-an-undeclared-dependency-and-it-bills-you-in-whole-builds]]
+#
+# 여기 적는 것은 **워크플로가 셸에서 직접 부르는 것**뿐이다. coreutils(cat·grep·awk…)는
+# 두 러너에 항상 있어서 적으면 소음이 되고, node·rust·python 런타임은 actions 가
+# 잡마다 깔아 주므로 러너 준비의 몫이 아니다.
+#
+# 형식: 한 줄에 하나. `이름` 또는 `이름 @플랫폼`(linux|windows). 플랫폼 없으면 둘 다.
+# `scripts/setup_runner.sh` 가 이 파일을 읽어 설치·검증하고,
+# `.github/actions/runner-preflight` 가 잡 앞에서 대조한다.
+
+curl
+git
+jq
+gh
+
+# 배포 잡 전용(hub-deploy 의 az acr build · env 조작). Windows 러너는 배포를 안 돈다.
+az @linux
+
+# `python` 이라는 이름으로 불린다. Ubuntu 는 python3 만 깔려 있어 별칭이 필요하다
+# (`python-is-python3`) — 이것이 첫 번째 사고였다.
+python @linux
