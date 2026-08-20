@@ -159,28 +159,47 @@ jobs:
             # 삼켰는지 아무도 모른다 — 이 단계가 존재하는 이유가 그것이다.
             az containerapp revision deactivate $APP --revision "$rev" --output none
           done
-          # 레플리카가 실제로 사라져야 최종 스냅샷이 볼륨에 떨어진 것이다
+          # ⚠ **활성 여부로 재면 안 된다.** `properties.active` 는 deactivate 즉시
+          # 뒤집히고 컨테이너 종료를 기다리지 않는다. 우리가 기다리는 것은 종료 훅이
+          # 최종 스냅샷을 볼륨에 쓰는 것이므로, 재야 하는 값은 **살아 있는 레플리카**다
           # (entrypoint: SIGTERM → close(2s) → "final snapshot ok").
-          left=1
+          gone=0
           for i in $(seq 1 20); do
-            left=$(az containerapp revision list $APP --query "[?properties.active] | length(@)" -o tsv)
-            echo "  active revisions: $left"
-            [ "$left" = "0" ] && break
+            act=$(az containerapp revision list $APP \
+                  --query "[?properties.active] | length(@)" -o tsv)
+            # 비활성 리비전의 replicas 는 null 로 오기도 한다 — 숫자만 더한다.
+            reps=$(az containerapp revision list $APP \
+                   --query "[].properties.replicas" -o tsv 2>/dev/null \
+                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
+            echo "  active=$act replicas=$reps"
+            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
             sleep 10
           done
-          if [ "$left" != "0" ]; then
-            echo "::error::구 리비전이 내려가지 않았다 — 최종 스냅샷을 기다릴 수 없다. 수동 확인 필요." >&2
+          if [ "$gone" != "1" ]; then
+            echo "::error::구 리비전의 레플리카가 사라지지 않았다 — 최종 스냅샷을 기다릴 수 없다. 수동 확인 필요." >&2
             exit 1
           fi
-          sleep 10   # 종료 훅이 볼륨에 쓰기를 끝낼 여유. close 는 2초라 넉넉하다.
-          echo "구 리비전 종료 확인 — 최종 스냅샷이 볼륨에 있다"
+          # 레플리카가 사라진 것을 실제로 봤으므로 이 여유는 **볼륨 쓰기가 API 관측보다
+          # 늦을 경우**만 덮는다(Azure Files 는 로컬 파일시스템이 아니다).
+          sleep 10
+          echo "레플리카 0 확인 — 최종 스냅샷이 볼륨에 있다"
 
       - name: Deploy to Container Apps
         run: |
           set -euo pipefail
           APP="--name vinc-hub -g vincsRG"
           IMAGE="vincacr.azurecr.io/vinc-hub:${{ github.sha }}"
-          az containerapp update $APP --image "$IMAGE" --output none
+          # ⚠ 여기서 실패하면 **허브가 내려간 채로 남는다** — 앞 단계가 구 리비전을
+          # 이미 내렸기 때문이다. `set -e` 로 그냥 죽으면 az 오류만 남고, 지금 서비스가
+          # 멈춰 있다는 사실도 되살리는 방법도 아무 데도 안 적힌다. 가장 위험한 창이라
+          # 라벨을 붙인다.
+          if ! az containerapp update $APP --image "$IMAGE" --output none; then
+            echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
+            echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2
+            echo "  az containerapp revision list --name vinc-hub -g vincsRG -o table" >&2
+            echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision <이름>" >&2
+            exit 1
+          fi
           latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "latest revision: $latest"
           for i in $(seq 1 30); do
