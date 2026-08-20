@@ -27,6 +27,7 @@ SSE 스트림은 제공하지 않는다(GET /mcp → 405) — 우리 도구는 �
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -441,7 +442,50 @@ class MCPHTTPApp:
         """계정 공개키 핀 시에만 활성 — purge 와 같은 게이트(계정→우리 신뢰 방향)."""
         return bool(self.account_public)
 
-    def graph_owner_request(self, assertion: str, args: dict) -> dict:
+    #: 이미 쓴 어서션 id → 만료 시각. **프로세스 안에만 둔다.**
+    #: 유효 창이 120초뿐이라 재시작으로 잃는 것은 그 창 하나이고, 파일에 두면 쓰기마다
+    #: DB 를 복사하는 경로(store.py)에 무인증 트래픽이 걸린다. 허브가 레플리카 하나로
+    #: 고정돼 있어서 성립한다 — 여러 개로 늘리면 이 방어가 레플리카마다 갈라진다.
+    _seen_jti: dict
+
+    def _claim_jti(self, payload: dict) -> bool:
+        """이 어서션을 처음 쓰는가. `jti` 가 없으면 True(구 계정 호환 — 아래 주석)."""
+        jti = payload.get("jti")
+        if not isinstance(jti, str) or not jti:
+            return True
+        now = time.time()
+        seen = getattr(self, "_seen_jti", None)
+        if seen is None:
+            seen = self._seen_jti = {}
+        for k, exp in [(k, e) for k, e in seen.items() if e <= now]:
+            seen.pop(k, None)
+        if jti in seen:
+            return False
+        # 창보다 조금 길게 잡는다 — 시계 어긋남으로 만료가 앞당겨지면 재생이 열린다.
+        seen[jti] = now + 180
+        return True
+
+    @staticmethod
+    def _body_matches(payload: dict, raw: bytes | None) -> bool:
+        """서명된 지문과 받은 본문이 같은가.
+
+        어서션은 owner 와 op 를 묶지만 **인자는 서명되지 않은 본문에서 읽힌다.** 그래서
+        잡은 어서션을 유효 창 안에 다른 인자로 재생할 수 있었다(감사 2026-08-18 M2).
+
+        ⚠ `bh` 가 **없으면 통과시킨다.** 계정이 이 필드를 보내기 전 버전일 수 있고,
+        여기서 막으면 배포 순서가 어긋나는 순간 웹 Vinc 가 통째로 죽는다. 느슨해 보이지만
+        아니다 — 서명을 위조할 수 없으므로 공격자는 `bh` 를 **떼어낼 수 없다.** 계정이
+        배포되고 나면 유효한 어서션은 전부 이 필드를 갖는다(구 것은 120초 뒤 만료).
+        그 뒤에 필수로 올리는 것은 별도 변경이다."""
+        want = payload.get("bh")
+        if not isinstance(want, str) or not want:
+            return True
+        got = base64.urlsafe_b64encode(
+            hashlib.sha256(raw or b"").digest()).rstrip(b"=").decode("ascii")
+        return secrets.compare_digest(got, want)
+
+    def graph_owner_request(self, assertion: str, args: dict,
+                            raw_body: bytes | None = None) -> dict:
         """계정 서명 어서션을 검증해 owner 를 **강제**하고 op 를 사이드카로 프록시한다.
 
         받는 유형 둘(AP-1 §4.3):
@@ -463,6 +507,11 @@ class MCPHTTPApp:
         if not payload or typ not in ("proxy", "proxy-team") \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired proxy request")
+        # 서명된 지문과 받은 본문이 같은가 · 이 어서션을 처음 쓰는가(감사 M2).
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        if not self._claim_jti(payload):
+            raise PermissionError("this approval was already used")
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("proxy request is missing a subject")
@@ -629,6 +678,7 @@ class _Handler(BaseHTTPRequestHandler):
         return f"http://{host}"
 
     def _body(self) -> dict:
+        self._raw_body = b""
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
             # 상한 초과는 본문을 **읽지 않고** 400 으로 끝낸다(읽으면 그게 메모리 공격
@@ -642,8 +692,12 @@ class _Handler(BaseHTTPRequestHandler):
         # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
         # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
         # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
+        rawb = self.rfile.read(n)
+        # 지문 대조는 **받은 바이트**로 한다(감사 M2). 파싱된 dict 를 다시 직렬화하면
+        # 키 순서·공백이 달라져 보낸 쪽과 다른 값이 나온다.
+        self._raw_body = rawb
         try:
-            raw = self.rfile.read(n).decode("utf-8")
+            raw = rawb.decode("utf-8")
         except UnicodeDecodeError:
             return {}
         if ctype == "application/x-www-form-urlencoded":
@@ -915,7 +969,7 @@ class _Handler(BaseHTTPRequestHandler):
         assertion = self.headers.get("X-Vinc-Assertion") or ""
         args = self._body()
         try:
-            out = self.app.graph_owner_request(assertion, args)
+            out = self.app.graph_owner_request(assertion, args, raw_body=self._raw_body)
         except PermissionError:
             return self._json(401, {"error": "unauthorized"})
         except ValueError as e:
