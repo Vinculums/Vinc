@@ -208,6 +208,21 @@ jobs:
       - name: Placeholder frontend dist
         shell: bash
         run: mkdir -p app/dist && [ -f app/dist/index.html ] || echo "<!doctype html>" > app/dist/index.html
+      # tauri-build 는 `externalBin`(얼린 파이썬 사이드카)이 **자리에 있는지**를 본다.
+      # 릴리스에서는 PyInstaller 가 먼저 만들지만 여기서는 그것을 지을 이유가 없다 —
+      # 이 잡이 보는 것은 러스트가 컴파일되는가 하나다. 그래서 자리만 채운다.
+      - name: Placeholder sidecar binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          ext=""; [ "${RUNNER_OS:-}" = "Windows" ] && ext=".exe"
+          mkdir -p app/src-tauri/binaries
+          f="app/src-tauri/binaries/vinc-sidecar-${triple}${ext}"
+          [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
+          chmod +x "$f" 2>/dev/null || true
+          echo "placed $f"
+
       - name: cargo check
         working-directory: app/src-tauri
         run: cargo check --locked --all-targets
