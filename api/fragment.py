@@ -668,9 +668,34 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
-        f"edge '{etype}' between {st}→{dt} 미지원 — skipped; "
+        f"{_ERR_DISALLOWED_PAIR}: edge '{etype}' between {st}→{dt} 미지원 — skipped; "
         f"{_ALLOWED_PAIRS_HINT}")
     return None
+
+
+def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str]) -> None:
+    """v0.8.4 axis2 item10 — `about` 없는 결정에 경고.
+
+    결정은 "그때 무엇을 골랐고 왜인가"이고, 그 **무엇**으로 가는 유일한 길이
+    `about` 이다. 없으면 노드는 멀쩡히 앉아 있는데 `vinc_decide` 가 영영 못 꺼낸다
+    — 그 도구는 주제·개념에서 출발해 걸어 나가기 때문이다. 오류도 경고도 없이
+    조용히 안 보이는 형태라, 쓰기 시점에 말해 주지 않으면 아무도 안 잡는다.
+
+    **이 호출이 실제로 MERGE 한 결정만** 본다(``types`` 는 성공한 노드로만 지어진다)
+    — 스토어의 기존 고아 전부를 세면 무관한 호출마다 같은 경고가 쏟아진다.
+    판정은 스토어 조회다: 이 호출의 엣지로 이었든 앞선 호출에서 이미 이어 뒀든
+    ABOUT 이 하나라도 있으면 고아가 아니다. 그래서 **엣지 루프 뒤**에 돈다."""
+    for nid, ntype in types.items():
+        if ntype != "decision":
+            continue
+        r = store.run("MATCH (a:Decision)-[:ABOUT]->() WHERE a.decision_id = $id "
+                      "RETURN count(*) AS c", {"id": nid})
+        if r and r[0].get("c"):
+            continue
+        warnings.append(
+            f"{nid} has no 'about' edge — it will never surface from vinc_decide, "
+            f"which starts from a concept and walks out. Add "
+            f'{{"from": "{nid}", "to": "concept:...", "type": "about"}}.')
 
 
 def _finalize(result: dict, warnings: list[str]) -> dict:
@@ -785,6 +810,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)
+    _warn_orphan_decisions(store, types, warnings)
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup

@@ -87,7 +87,11 @@ class DecisionEndToEnd(unittest.TestCase):
                 {"from": "episode:s1", "to": "decision:d45", "type": "about"},
             ],
         }, store=self.store)
-        self.assertFalse(res.get("warnings"), res.get("warnings"))
+        # decision:d19 는 여기서 일부러 `about` 없이 둔다 — 계보(derives_from)만
+        # 받는 결정의 형태를 재기 위해서다. item10 의 고아 경고가 그 한 줄을 내므로
+        # 그것만 걸러 내고 나머지는 종전대로 **경고 0** 을 요구한다.
+        self.assertEqual([w for w in res.get("warnings") or [] if "decision:d19" not in w],
+                         [], res.get("warnings"))
         self.assertEqual(res["merged"]["edges"]["created"], 5, res)
 
     def tearDown(self):
@@ -307,6 +311,45 @@ class DecisionEndToEnd(unittest.TestCase):
         # 주제 상한(AP-1)이 세는 집합도 같아야 한다 — 다르면 사용자가 `vinc_domains`
         # 로 N 개를 보면서 "N 개 상한에 걸렸다"는 말을 듣는다.
         self.assertIn("vinc/product", q.domain_names(owner=OWNER, store=self.store))
+
+    def test_about_없는_결정은_적재_시점에_경고를_받는다(self):
+        """v0.8.4 axis2 item10 — 고아 결정은 `vinc_decide` 에서 영영 안 나온다.
+
+        그 도구는 주제·개념에서 출발해 걸어 나가므로, `about` 이 없는 결정은 저장은
+        됐는데 어느 조회에도 안 걸린다 — 오류도 경고도 없이 조용히. 그래서 **쓰기
+        시점에** 말한다. 판정은 스토어 조회라 이 호출의 엣지로 이었든 앞선 호출에서
+        이미 이어 뒀든 ABOUT 이 하나라도 있으면 경고하지 않는다."""
+        def _orphans(res):
+            return [w for w in res.get("warnings") or [] if "has no 'about' edge" in w]
+
+        # ① 같은 호출에서 이으면 조용하다.
+        res = frag.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "decision:d-linked", "type": "decision", "title": "Linked"},
+            {"id": "concept:offline", "type": "concept"},
+        ], "edges": [{"from": "decision:d-linked", "to": "concept:offline",
+                      "type": "about"}]}, store=self.store)
+        self.assertEqual(_orphans(res), [], res)
+
+        # ② 이 호출에도 스토어에도 없으면 경고 + partial(별도 배선 없이 _finalize 가 얹는다).
+        res = frag.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "decision:d-orphan", "type": "decision", "title": "Orphan"},
+        ]}, store=self.store)
+        self.assertEqual(len(_orphans(res)), 1, res)
+        self.assertIn("decision:d-orphan", _orphans(res)[0])
+        self.assertIn("vinc_decide", _orphans(res)[0])
+        self.assertTrue(res.get("partial"), res)
+
+        # ③ 앞선 호출에서 이어 둔 결정은 이번 호출이 엣지를 안 실어도 조용하다 —
+        #    엣지 끝점이 payload 안에서만 해석되는 탓에 스텁 재전송은 일상이다.
+        res = frag.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "decision:d-linked", "type": "decision", "tags": ["x"]},
+        ]}, store=self.store)
+        self.assertEqual(_orphans(res), [], res)
+
+        # ④ 이 호출이 안 건드린 고아(②)까지 세면 무관한 적재마다 같은 경고가 쏟아진다.
+        res = frag.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "concept:offline", "type": "concept"}]}, store=self.store)
+        self.assertEqual(_orphans(res), [], res)
 
     def test_문서가_결정을_언급하면_링크가_생긴다(self):
         """MENTIONS 는 링커가 유일한 생성 경로다. 결정이 Concept 을 떠나면
