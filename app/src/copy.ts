@@ -19,7 +19,6 @@ const EN = {
     success: (n: number, m: number) => `${n} documents added across ${m} topics.`,
     successCta: "Open in View",
     error: (src: string) => `Couldn't read ${src}. Check the file and try again. Everything already added is safe.`,
-    retryCta: "Try again",
   },
   firstRun: {
     title: "Sign in, or stay on this machine",
@@ -61,7 +60,6 @@ const EN = {
     idle: "No documents yet.",
     idleCta: "Import files",
     header: (n: number, m: number) => `${n} documents · ${m} topics`,
-    docsHeader: (n: number) => `Documents · ${n}`,
     edited: (d: string) => `edited ${d}`,
     filterPh: "Filter by title",
     docsN: (n: number) => `${n} document${n === 1 ? "" : "s"}`,
@@ -75,16 +73,12 @@ const EN = {
     idle: "No knowledge map yet. Add files or run a search, and the map builds itself from your documents.",
     idleCta: "Import files",
     loading: (d: number) => `Arranging ${d} topics…`,
-    domainTip: (dom: string, n: number, k: number) =>
-      `${dom}: ${n} documents · ${k} links to other topics. Click to see more.`,
-    gatewayTip: (dom: string) => `Crosses into ${dom}. Click to follow.`,
     error: "The map couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 지도로 그리면 데이터 유실과 구분되지 않는다.
     // 사유(락 충돌·손상)는 사람이 쓸 수 없는 문장이라 접어 두고 [자세히]로 연다.
     storeDown: "Vinc can't read your knowledge store right now. Nothing is lost: this is a read problem, not missing data. Restart Vinc, and check that another copy isn't already running.",
     storeDownWhy: "Details",
-    retryCta: "Retry",
   },
   search: {
     idle: "Search all your documents, by meaning or by keyword.",
@@ -105,7 +99,6 @@ const EN = {
     loading: (n: number) => `Packing ${n} documents…`,
     importing: "Importing…",
     success: (n: number, size: string) => `Pack ready: ${n} documents, ${size}.`,
-    shareReady: (c: number, e: number) => `Pack ready: ${c} concepts, ${e} connections.`,
     shareNote: "The pack carries document content only. Your pins and tags are never shared.",
     imported: (created: number, matched: number) =>
       `Imported: ${created} new, ${matched} already here.`,
@@ -116,7 +109,6 @@ const EN = {
     lock: "Lock Vinc with a passphrase. Optional. Your data stays on this device either way.",
     mcp: "Tool calls from connected clients appear here, as they happen.",
     data: "Everything Vinc knows lives in this one folder.",
-    dataCta: "Back up now",
   },
   ui: {
     meta: {
@@ -174,7 +166,7 @@ const EN = {
       menuBody: "open it, trace from it, or share just that part.",
       ok: "Got it",
     },
-    menu: { open: "Open", shareHere: "Share from here", pinHere: "Pin here", unpin: "Unpin" },
+    menu: { open: "Open", shareHere: "Share from here" },
     topbar: {
       // 첫 자리는 Home 이다 — "View" 는 내부 코드명이라 화면에 노출하지 않는다(D61).
       home: "Home",
@@ -194,7 +186,6 @@ const EN = {
       noResults: "Nothing matched. Try another word.",
       firstSlow: "The first search builds the index and takes a few seconds. After that it's instant.",
       share: "Share",
-      shareTip: "Pack up what you're looking at",
       settings: "Settings",
     },
     // 묻기(D73) — 무LLM 대화. 카피가 기대치를 정한다: 요약·추론을 약속하지 않고
@@ -256,10 +247,8 @@ const EN = {
       loading: "Loading…",
       failed: "The list is unavailable right now.",
       retry: "Try again",
-      docCount: (n: number) => `${n} document${n === 1 ? "" : "s"}`,
       conceptCount: (n: number) => `${n} concept${n === 1 ? "" : "s"}`,
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
-      openInMap: "Open on the map",
       editOnly: "No place on the map yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
@@ -419,8 +408,6 @@ const EN = {
       bundleUnfiled: "(unfiled)",
       domain: (d: string) => `topic: ${d}`,
       connections: (n: number) => `${n} connections`,
-      outIn: (o: number, i: number) => ` · → ${o} out · ← ${i} in`,
-      attachments: (n: number) => ` · ${n} attachment${n === 1 ? "" : "s"}`,
       gateway: " · gateway",
       shareSlice: (n: number) => `Share as a pack (${n})`,
       lassoHint: "⇧ Shift-drag to select an area, then share it",
@@ -441,13 +428,10 @@ const EN = {
       statDir: (o: number, i: number) => `→ ${o} out · ← ${i} in`,
       statsFrom: "Counted from this node, not from the drawing.",
       statsFromView: "Counted from what's on screen. Update Vinc for exact counts.",
-      relsHeader: "Links",
       relsNone: "No links yet.",
       relsMore: (n: number) => `+${n} more`,
       relNoEvidence: "No evidence recorded",
       unfiled: "Unfiled",
-      tiesLoading: "Loading links…",
-      noTies: "No links yet between these topics.",
       via: (t: string) => `via ${t}`,
       suggestLooking: "Looking for possible links…",
       suggestNone: "Unlinked. No suggestions yet. Add a tag to surface matches.",
@@ -462,18 +446,15 @@ const EN = {
       sourceNone: "No source passages for this yet. Add documents that mention it.",
       sourceRelated: "Related passages (by title match)",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
-      readerOpen: "Open the full document",
       readerBack: "Back",
       readerLoading: "Opening the document…",
       readerFail: "Couldn't open this document. Try again in a moment.",
       readerTitle: "Document",
-      edLive: "Editing. Changes save as you type.",
       readerUnverified: "Reconstructed (not verified)",
       // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
       readerMentions: "Mentions",
       readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
-      edEdit: "Edit",
       edNew: "New document",
       edExpand: "Expand",
       edTitlePlaceholder: "Untitled",
@@ -496,7 +477,6 @@ const EN = {
       delDocAsk: (t: string) => `Delete "${t}" and its text? This can't be undone.`,
       delConfirm: "Delete",
       delCancel: "Keep",
-      delDone: "Deleted.",
       delFail: "Couldn't delete. Nothing was changed. Try again.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "Heading", h2: "Subheading", bullet: "Bulleted list",
@@ -543,20 +523,6 @@ const EN = {
         episodic: "from a conversation", record: "from a file", unsourced: "no origin yet",
         connected: "linked", gateway: "links other topics", orphan: "not linked yet",
       },
-      segTip: (name: string, n: number) => `${name}: ${n} documents`,
-      // D47 3열 생키 — 열 머리글은 각 열이 무엇을 세는지 한 마디로 밝힌다(원장 키
-      // 노출 금지). 리본 문구는 "어디서 어디로 얼마나"가 한 줄에 들어간다.
-      colOrigin: "Where it came from",
-      colTopic: "Topic",
-      colState: "How it's linked",
-      ribbonTip: (from: string, to: string, n: number) => `${from} → ${to}: ${n} documents`,
-      // D63 경로 보존 가닥 — 세 열을 가로지른 전체 경로가 한 줄에 들어간다.
-      pathTip: (from: string, topic: string, to: string, n: number) =>
-        `${from} › ${topic} › ${to}: ${n} documents`,
-      // D68 — 기타 병합 stratum(작은 주제 묶음)의 라벨·툴팁, 그리고 갭 집계로
-      // 물러났을 때 hover 가 경로를 복원한다는 한 줄(조용한 표현 변경 금지).
-      othersLabel: (k: number) => `${k} more topics`,
-      othersTip: (k: number, n: number) => `${k} smaller topics: ${n} documents`,
       // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
       // 없이 지금 그린 그래프에서 바로 센다.
       badgeTip: (label: string, n: number) => `${label}: ${n} link${n === 1 ? "" : "s"}`,
@@ -638,7 +604,6 @@ const EN = {
         `${dir} may not be on your shell PATH. If vinc is not found, add this to your shell profile: export PATH="${dir}:$PATH"`,
       cliInstallAct: "Set up", cliRemoveAct: "Remove",
       cliFail: "Couldn't set up",
-      mcpRemoveHint: "Or remove Vinc from a host:",
       mcpRemove: (host: string) => `Remove from ${host}`,
       mcpRemoving: "Removing…",
       mcpRemoved: (host: string) => `Removed from ${host}. Restart it to drop Vinc. (A backup of the config was saved.)`,
@@ -662,7 +627,6 @@ const EN = {
       acctOnDisk: "This device has no system keychain, so the key is kept in the app's own folder instead. Anything running as your user can read it there.",
       acctFail: "Connection didn't complete",
       acctExpired: "The request expired. Try again.",
-      acctNoShell: "Available in the desktop app only.",
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
       syncDomains: "Topics to sync",
@@ -677,16 +641,12 @@ const EN = {
       goTo: (s: string) => `Go to ${s}`,
       ingest: "Add data", share: "Share a pack", settings: "Open Settings",
       keyboard: "Keyboard", goSurface: "Go to screen", cmdPalette: "Command palette",
-      railToggle: "Open/close the sidebar", fit: "Fit selection (View)",
+      fit: "Fit selection (View)",
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
       openPacks: "Open Packs (backup, community)",
-      importTab: "Import", shareTab: "Share & export",
-      preview: "Preview",
-      previewHint: "Create a pack to see its details here.",
-      share: "Share", domain: "topic", startFrom: "start from", reach: "reach",
-      offline: "Offline-portable.",
+      share: "Share", domain: "topic",
       publishCta: "Share to community",
       publishTitle: "Share this pack with the community",
       publishScope: (c: number, e: number) => `${c} concepts · ${e} connections become public.`,
@@ -723,8 +683,6 @@ const EN = {
       specFormat: "Format", specCreated: "Created", specDocs: "Documents",
       scopeAll: "Everything", scopeSeed: (d: number) => `This document, ${d} hops out`,
       scopeSelection: (n: number) => `${n} selected`,
-      intakeTitle: "Add knowledge",
-      intakeSub: "Bring in a document or a pack someone shared, or start writing your own.",
       pickPack: "Choose a file",
       importCta: "Import",
       importTip: "Bring a document (.md, .txt, .rst, .pdf) or a .vincpack into your graph",
@@ -742,12 +700,10 @@ const EN = {
       // 목적지는 저장 순간이 아니라 **고르는 순간**에 정해진다. 예전엔 이 버튼이
       // 곧바로 파일을 내려받아, 파일이 유일한 출구인 것처럼 보였다.
       save: "Share",
-      destTitle: "Where should this go?",
       destSub: "Same pack, different destination. Nothing leaves until you choose.",
       destPersonal: "My space",
       destPersonalNote: "Copy into your personal graph. The team keeps its own copy.",
       destTeam: "Team space",
-      destTeamNote: "Copy into the team graph. Everyone on the team can see it.",
       destCommunity: "Community",
       destCommunityNote: "Publish to the public gallery. Any signed-in member can bring it in.",
       destFile: "Pack file",
@@ -758,7 +714,6 @@ const EN = {
       destFailed: "That didn't go through. Nothing was changed on either side.",
       destClose: "Done",
       importTitle: "Import a pack",
-      createdScope: (created: string, scope: string) => `Created ${created} · scope ${scope}`,
       updateNote: (c: number, e: number, r: number) =>
         `${c} concepts · ${e} connections · ${r} documents. Safe update: anything already here is refreshed in place, never duplicated.`,
       importMine: "Import as mine", viewMap: "View the map",
@@ -780,7 +735,6 @@ const KO: Deck = {
     success: (n, m) => `${m}개 주제에 걸쳐 ${n}개의 문서가 추가되었습니다.`,
     successCta: "View에서 열기",
     error: (src) => `${src}을(를) 읽지 못했습니다. 파일을 확인하고 다시 시도하세요. 이미 추가된 문서는 안전합니다.`,
-    retryCta: "다시 시도",
   },
   firstRun: {
     title: "로그인할까요, 아니면 이 기기에만 둘까요",
@@ -822,7 +776,6 @@ const KO: Deck = {
     idle: "아직 추가된 문서가 없습니다.",
     idleCta: "파일 가져오기",
     header: (n, m) => `문서 ${n}개 · 주제 ${m}개`,
-    docsHeader: (n) => `문서 · ${n}`,
     edited: (d) => `${d} 수정`,
     filterPh: "제목으로 좁히기",
     docsN: (n) => `문서 ${n}`,
@@ -836,12 +789,9 @@ const KO: Deck = {
     idle: "아직 지식 지도가 없습니다. 파일을 추가하거나 검색을 실행해 보세요. 추가된 문서를 바탕으로 지도가 자동으로 생성됩니다.",
     idleCta: "파일 가져오기",
     loading: (d) => `${d}개의 주제 구성 중...`,
-    domainTip: (dom, n, k) => `${dom}: 문서 ${n}개 · 다른 주제와 연결 ${k}개. 클릭하여 자세히 보기.`,
-    gatewayTip: (dom) => `'${dom}' 주제로 이어집니다. 클릭해서 이동하세요.`,
     error: "지도를 불러오지 못했습니다. 언제든 다시 시도하세요. 문서는 그대로입니다.",
     storeDown: "지금 지식 저장소를 읽지 못하고 있습니다. 내용이 사라진 것은 아니고 읽기가 막힌 상태입니다. Vinc를 다시 시작하고, 다른 창이 이미 실행 중이지 않은지 확인해 주세요.",
     storeDownWhy: "자세히",
-    retryCta: "다시 시도",
   },
   search: {
     idle: "추가한 모든 문서를 의미와 키워드로 검색해 보세요.",
@@ -862,7 +812,6 @@ const KO: Deck = {
     loading: (n) => `${n}개의 문서를 팩으로 묶는 중...`,
     importing: "불러오는 중…",
     success: (n, size) => `팩 준비 완료: 문서 ${n}개, ${size}.`,
-    shareReady: (c, e) => `팩 완성! 개념 ${c}개, 연결 ${e}개가 담겼습니다.`,
     shareNote: "팩에는 순수한 문서 내용만 담깁니다. 개인적인 고정 및 태그 정보는 공유되지 않습니다.",
     imported: (created, matched) => `불러왔습니다: 새로 ${created}개, 이미 있던 것 ${matched}개.`,
     successCta: "폴더에서 보기",
@@ -872,7 +821,6 @@ const KO: Deck = {
     lock: "암호로 Vinc를 잠급니다. 선택 사항입니다. 어느 쪽이든 데이터는 기기에 안전하게 남습니다.",
     mcp: "연결된 클라이언트의 도구 호출이 실시간으로 여기에 표시됩니다.",
     data: "Vinc의 모든 데이터가 이 폴더 하나에 저장됩니다.",
-    dataCta: "지금 백업",
   },
   ui: {
     meta: {
@@ -922,7 +870,7 @@ const KO: Deck = {
       menuBody: "열기·추적·그 부분만 공유가 나옵니다.",
       ok: "알겠습니다",
     },
-    menu: { open: "열기", shareHere: "여기서 공유", pinHere: "여기 고정", unpin: "고정 해제" },
+    menu: { open: "열기", shareHere: "여기서 공유" },
     topbar: {
       home: "홈",
       depthTip: "지금 있는 곳 보기",
@@ -939,7 +887,6 @@ const KO: Deck = {
       noResults: "찾은 것이 없습니다. 다른 낱말로 찾아보세요.",
       firstSlow: "첫 검색은 색인을 만드는 데 몇 초 걸립니다. 그 다음부터는 바로 나옵니다.",
       share: "공유",
-      shareTip: "지금 보고 있는 범위를 팩으로 묶습니다",
       settings: "설정",
     },
     ask: {
@@ -988,10 +935,8 @@ const KO: Deck = {
       loading: "불러오는 중...",
       failed: "지금은 목록을 볼 수 없습니다.",
       retry: "다시 시도",
-      docCount: (n: number) => `문서 ${n}`,
       conceptCount: (n: number) => `개념 ${n}`,
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
-      openInMap: "지도에서 열기",
       editOnly: "아직 지도에 자리가 없습니다. 편집기로 열립니다.",
       paneTitle: "문서 내용",
       paneFold: "문서 패널 접기", paneUnfold: "문서 패널 펼치기",
@@ -1115,8 +1060,6 @@ const KO: Deck = {
       bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
       connections: (n) => `연결 ${n}개`,
-      outIn: (o, i) => ` · → 나감 ${o} · ← 들어옴 ${i}`,
-      attachments: (n) => ` · 부착 ${n}개`,
       gateway: " · 게이트웨이",
       shareSlice: (n) => `팩으로 공유 (${n})`,
       lassoHint: "⇧ Shift+드래그로 영역을 선택해 공유하세요",
@@ -1132,13 +1075,10 @@ const KO: Deck = {
       statDir: (o, i) => `→ ${o} 나감 · ← ${i} 들어옴`,
       statsFrom: "그림이 아니라 이 노드에서 직접 센 수치입니다.",
       statsFromView: "지금 화면에 그려진 것에서 센 수치입니다. 정확한 값은 업데이트 후에 나옵니다.",
-      relsHeader: "관계",
       relsNone: "아직 연결이 없습니다.",
       relsMore: (n) => `+${n}개 더`,
       relNoEvidence: "근거가 기록되지 않았습니다",
       unfiled: "미분류",
-      tiesLoading: "연결 불러오는 중…",
-      noTies: "이 두 주제 사이에 아직 연결이 없습니다.",
       via: (t) => `${t} 경유`,
       suggestLooking: "연결 후보를 찾는 중…",
       suggestNone: "연결 안 됨. 아직 후보가 없습니다. 태그를 달면 후보가 나타납니다.",
@@ -1153,17 +1093,14 @@ const KO: Deck = {
       sourceNone: "아직 이 항목을 언급한 문서가 없습니다. 관련 문서를 추가하면 여기 나타납니다.",
       sourceRelated: "관련 발췌 (제목 일치)",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
-      readerOpen: "문서 전문 열기",
       readerBack: "뒤로",
       readerLoading: "문서를 여는 중…",
       readerFail: "문서를 열지 못했습니다. 잠시 후 다시 시도하세요.",
       readerTitle: "문서",
-      edLive: "편집 중. 입력하는 대로 저장됩니다.",
       readerUnverified: "복원본 (검증 안 됨)",
       readerMentions: "언급",
       readerOutline: (n) => `목차 · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
-      edEdit: "편집",
       edNew: "새 문서",
       edExpand: "확대",
       edTitlePlaceholder: "제목 없음",
@@ -1186,7 +1123,6 @@ const KO: Deck = {
       delDocAsk: (t) => `"${t}"과(와) 그 원문을 삭제할까요? 되돌릴 수 없습니다.`,
       delConfirm: "삭제",
       delCancel: "두기",
-      delDone: "삭제했습니다.",
       delFail: "삭제하지 못했습니다. 바뀐 것은 없습니다. 다시 시도하세요.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "제목", h2: "부제목", bullet: "목록",
@@ -1231,19 +1167,6 @@ const KO: Deck = {
         episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
       },
-      segTip: (name, n) => `${name}: 문서 ${n}개`,
-      // D47 3열 생키 — 열 머리글은 각 열이 무엇을 세는지 한 마디로 밝힌다(원장 키
-      // 노출 금지). 리본 문구는 "어디서 어디로 얼마나"가 한 줄에 들어간다.
-      colOrigin: "어디서 왔는가",
-      colTopic: "주제",
-      colState: "어떻게 이어졌는가",
-      ribbonTip: (from, to, n) => `${from} → ${to}: 문서 ${n}개`,
-      // D63 경로 보존 가닥 — 세 열을 가로지른 전체 경로가 한 줄에 들어간다.
-      pathTip: (from, topic, to, n) => `${from} › ${topic} › ${to}: 문서 ${n}개`,
-      // D68 — 기타 병합 stratum(작은 주제 묶음)의 라벨·툴팁, 그리고 갭 집계로
-      // 물러났을 때 hover 가 경로를 복원한다는 한 줄(조용한 표현 변경 금지).
-      othersLabel: (k) => `그 외 주제 ${k}개`,
-      othersTip: (k, n) => `작은 주제 ${k}개: 문서 ${n}개`,
       // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
       // 없이 지금 그린 그래프에서 바로 센다.
       badgeTip: (label, n) => `${label}: 연결 ${n}개`,
@@ -1316,7 +1239,6 @@ const KO: Deck = {
         `${dir} 가 셸 PATH에 없을 수 있습니다. vinc를 못 찾으면 셸 설정에 export PATH="${dir}:$PATH" 를 더하세요.`,
       cliInstallAct: "설치", cliRemoveAct: "해제",
       cliFail: "설치 실패",
-      mcpRemoveHint: "또는 호스트에서 Vinc를 제거:",
       mcpRemove: (host) => `${host}에서 제거`,
       mcpRemoving: "제거 중…",
       mcpRemoved: (host) => `${host}에서 제거됐습니다. 재시작하면 Vinc가 사라집니다. (설정 백업이 저장됐습니다.)`,
@@ -1340,7 +1262,6 @@ const KO: Deck = {
       acctOnDisk: "이 기기에는 시스템 키체인이 없어서, 키를 앱 폴더에 보관합니다. 그 자리는 같은 사용자로 실행되는 프로그램이 읽을 수 있습니다.",
       acctFail: "연결이 완료되지 않았습니다",
       acctExpired: "요청이 만료됐습니다. 다시 시도하세요.",
-      acctNoShell: "데스크톱 앱에서만 가능합니다.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "폴백: vincs.io/account에서 발급해 여기 붙여넣으세요. 이 기기에만 저장됩니다.",
       syncDomains: "동기화할 주제",
@@ -1355,16 +1276,12 @@ const KO: Deck = {
       goTo: (s) => `${s} 열기`,
       ingest: "데이터 추가하기", share: "팩 공유하기", settings: "설정 열기",
       keyboard: "키보드", goSurface: "화면 이동", cmdPalette: "커맨드 팔레트",
-      railToggle: "사이드바 열기/닫기", fit: "선택 맞춤 (View)",
+      fit: "선택 맞춤 (View)",
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
       openPacks: "팩 열기 (백업·커뮤니티)",
-      importTab: "가져오기", shareTab: "공유·내보내기",
-      preview: "미리보기",
-      previewHint: "팩을 만들면 상세 정보가 여기에 표시됩니다.",
-      share: "공유", domain: "주제", startFrom: "시작 지점", reach: "범위",
-      offline: "오프라인 휴대 가능.",
+      share: "공유", domain: "주제",
       publishCta: "커뮤니티에 공유",
       publishTitle: "이 팩을 커뮤니티에 공유",
       publishScope: (c, e) => `concepts ${c}개 · 연결 ${e}개가 공개됩니다.`,
@@ -1396,12 +1313,10 @@ const KO: Deck = {
       nothing: "범위에 아무것도 없습니다.",
       keepNote: "고정·태그와 사용 기록은 당신에게 남습니다. 팩에는 문서 내용만 담깁니다.",
       save: "공유",
-      destTitle: "어디로 보낼까요?",
       destSub: "같은 팩, 다른 목적지. 고르기 전까지는 아무것도 나가지 않습니다.",
       destPersonal: "내 스페이스",
       destPersonalNote: "개인 그래프로 복사합니다. 팀에는 그대로 남습니다.",
       destTeam: "팀 스페이스",
-      destTeamNote: "팀 그래프로 복사합니다. 팀원 모두가 볼 수 있습니다.",
       destCommunity: "커뮤니티",
       destCommunityNote: "공개 갤러리에 게시합니다. 로그인한 누구나 가져갈 수 있습니다.",
       destFile: "팩 파일",
@@ -1412,7 +1327,6 @@ const KO: Deck = {
       destFailed: "보내지 못했습니다. 양쪽 모두 그대로입니다.",
       destClose: "완료",
       importTitle: "팩 불러오기",
-      createdScope: (created, scope) => `작성 ${created} · 범위 ${scope}`,
       updateNote: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개. 안전한 업데이트: 이미 있는 문서는 중복되지 않고 최신 내용으로만 갱신됩니다.`,
       importMine: "내 지식으로 가져오기", viewMap: "지도에서 보기",
       shareSub: "아래에 있는 것만 팩으로 나갑니다. 그 밖에는 아무것도 나가지 않습니다.",
@@ -1421,8 +1335,6 @@ const KO: Deck = {
       specFormat: "형식", specCreated: "만든 날", specDocs: "문서",
       scopeAll: "전체", scopeSeed: (d) => `이 문서 주변 ${d}단`,
       scopeSelection: (n) => `선택한 ${n}개`,
-      intakeTitle: "지식 추가",
-      intakeSub: "문서나 누군가 공유한 팩을 들여오거나, 직접 씁니다.",
       pickPack: "파일 고르기",
       importCta: "가져오기",
       importTip: "문서(.md·.txt·.rst·.pdf)나 .vincpack 파일을 내 그래프로 가져옵니다",
