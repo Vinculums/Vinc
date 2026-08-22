@@ -83,24 +83,17 @@ export async function renderSettings(el: HTMLElement) {
 
   // ── Account 탭 ────────────────────────────────────────────────────────────
   function renderAccount(body: HTMLElement) {
-    // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시. 카피는 셸 편집 충돌 회피 위해 인라인.
-    const ko = cfg.lang === "ko";
-    const W = ko
-      ? { acct: "계정", none: "로그인되어 있지 않아요.", manage: "계정 관리", signedAs: (w: string) => "로그인: " + w,
-          space: "스페이스", spacePersonal: "개인",
-          spaceHint: "지금 작업 중인 그래프입니다. 모든 화면이 여기를 따릅니다.",
-          spaceNone: "참여 중인 활성 팀이 없습니다." }
-      : { acct: "Account", none: "Not signed in.", manage: "Manage account", signedAs: (w: string) => "Signed in as " + w,
-          space: "Space", spacePersonal: "Personal",
-          spaceHint: "Which graph you are working in. Every surface follows this.",
-          spaceNone: "You are not in an active team yet." };
+    // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시.
+    // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 사유는
+    // "셸 편집 충돌 회피"였는데 그 충돌은 이미 없고, 덱 밖 카피는 언어 프록시도
+    // 게이트도 타지 않는다(tests/test_copy_parity.py 가 이제 막는다).
     body.innerHTML = `
       ${WEB ? `
-      <label>${W.acct}</label>
+      <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
-      <label>${W.space}</label>
-      <p class="hint">${W.spaceHint}</p>
-      <p><select id="space-pick"><option value="">${W.spacePersonal}</option></select></p>
+      <label>${U.space}</label>
+      <p class="hint">${U.spaceHint}</p>
+      <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
       <div id="space-note" class="hint" style="font-size:.8rem"></div>
       <hr class="settings-sep" />` : ""}
       ${!WEB ? `
@@ -133,9 +126,9 @@ export async function renderSettings(el: HTMLElement) {
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
             const u = d && d.user;
-            if (!u) { box.textContent = W.none; return; }
+            if (!u) { box.textContent = U.webNotSignedIn; return; }
             const who = u.username ? "@" + u.username : u.email;
-            box.innerHTML = `${W.signedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${W.manage}</a>`;
+            box.innerHTML = `${U.webSignedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${U.webManage}</a>`;
           })
           .catch(() => { if (box) box.textContent = ""; });
       }
@@ -153,7 +146,7 @@ export async function renderSettings(el: HTMLElement) {
             if (t.id === cfg.team) o.selected = true;
             pick.appendChild(o);
           }
-          if (note && !active.length) note.textContent = W.spaceNone;
+          if (note && !active.length) note.textContent = U.spaceNone;
         });
         pick.addEventListener("change", () => {
           cfg.team = pick.value;
