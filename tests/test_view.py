@@ -881,3 +881,107 @@ class BridgeDomainTests(unittest.TestCase):
         got = {n["id"]: n["domain"] for n in shaped["nodes"] if n["kind"] == "bridge"}
         self.assertEqual(got.pop("bridge:orphan"), "")
         self.assertTrue(all(v == "vinc" for v in got.values()), got)
+
+
+class BridgeSeatTests(unittest.TestCase):
+    """axis 2 item 12 — hub 에서 Bridge 는 끝점 **가지들의 평균 방향**에 앉는다.
+    여태는 도메인이 비어 있어 전량이 "도메인 없음" 한 덩어리로 갔다."""
+
+    def _hub(self, nodes, edges):
+        import copy
+        shaped = {"nodes": copy.deepcopy(nodes), "edges": edges}
+        q._derive_bridge_domains(shaped)
+        return {n["id"]: n for n in
+                q.layout_positions(shaped["nodes"], edges, "hub", topic_marks=True)}
+
+    def test_bridge_points_between_the_branches_it_connects(self):
+        """두 가지를 잇는 브릿지의 방향은 두 가지 방향 **사이**다 — 어느 한쪽보다
+        양쪽 주제 마크에 고르게 가깝다."""
+        import math
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        b = pos["bridge:b0"]                       # design ↔ engineering
+        v = (b["x"], b["y"], b["z"])
+        da = pos["domain:vinc/design"]
+        de = pos["domain:vinc/engineering"]
+        def unit(p):
+            L = math.dist((0, 0, 0), p) or 1.0
+            return [c / L for c in p]
+        ua, ue, ub = (unit((n["x"], n["y"], n["z"])) for n in (da, de, b))
+        cos_a = sum(x * y for x, y in zip(ub, ua))
+        cos_e = sum(x * y for x, y in zip(ub, ue))
+        self.assertAlmostEqual(cos_a, cos_e, places=6)          # 정확히 사이
+        self.assertGreater(cos_a, sum(x * y for x, y in zip(ua, ue)))
+
+    def test_bridge_radius_is_the_mean_branch_shell(self):
+        """반경 = 끝점 가지 껍질들의 평균. 같은 깊이의 두 가지면 그 깊이의 껍질이고,
+        짝을 나눠 쓰는 브릿지들은 그 좌석 둘레 고리로 밀려 조금 더 나간다(같은 만큼)."""
+        import math
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        def radius(nid):
+            return math.dist((0, 0, 0), tuple(pos[nid][k] for k in "xyz"))
+        shell = radius("domain:vinc/design")
+        self.assertAlmostEqual(radius("bridge:b0"), shell, places=5)   # 짝에 혼자
+        self.assertAlmostEqual(radius("bridge:same0"), radius("bridge:same1"), places=5)
+        self.assertGreater(radius("bridge:same0"), shell)              # 고리로 밀린 만큼
+        self.assertLess(radius("bridge:same0"), shell + q._R_LEAF)
+
+    def test_bridges_on_the_same_branch_pair_are_spread_apart(self):
+        """같은 가지 짝을 잇는 둘은 겹치면 안 된다 — 겹친 둘은 하나가 사라진 것이다."""
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        a, b = pos["bridge:same0"], pos["bridge:same1"]
+        self.assertNotEqual((a["x"], a["y"], a["z"]), (b["x"], b["y"], b["z"]))
+        self.assertNotEqual((a["x2"], a["y2"]), (b["x2"], b["y2"]))
+
+    def test_no_two_bridges_share_a_coordinate(self):
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        br = [n for n in pos.values() if n.get("kind") == "bridge"]
+        self.assertEqual(len({(n["x"], n["y"], n["z"]) for n in br}), len(br))
+        self.assertEqual(len({(n["x2"], n["y2"]) for n in br}), len(br))
+
+    def test_bridges_no_longer_share_one_clump(self):
+        """회귀 — 결함 그대로의 형태: 브릿지 전량이 한 방향에 몰려 있었다."""
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        dirs = {(n["x"], n["y"], n["z"]) for n in pos.values()
+                if n.get("kind") == "bridge" and n["id"] != "bridge:orphan"}
+        self.assertGreaterEqual(len(dirs), 8)
+
+    def test_layout_stays_deterministic_and_pure(self):
+        nodes, edges = _dogfood_graph()
+        one, two = self._hub(nodes, edges), self._hub(nodes, edges)
+        self.assertEqual([(k, one[k]["x"], one[k]["y"], one[k]["z"], one[k]["x2"])
+                          for k in sorted(one)],
+                         [(k, two[k]["x"], two[k]["y"], two[k]["z"], two[k]["x2"])
+                          for k in sorted(two)])
+
+    def test_a_bridge_with_no_connects_is_not_seated(self):
+        """CONNECTS 가 없으면 지어낼 방향이 없다 — 미분류 잎으로 남는다."""
+        nodes, edges = _dogfood_graph()
+        pos = self._hub(nodes, edges)
+        self.assertEqual(pos["bridge:orphan"]["domain"], "")
+
+    def test_rank_files_bridges_by_the_derived_domain_only(self):
+        """rank 는 아무것도 더하지 않는다 — item 11 의 도메인 띠에 그대로 선다."""
+        import copy
+        nodes, edges = _dogfood_graph()
+        shaped = {"nodes": copy.deepcopy(nodes), "edges": edges}
+        q._derive_bridge_domains(shaped)
+        pos = {n["id"]: n for n in
+               q.layout_positions(shaped["nodes"], edges, "rank")}
+        band = {n["z"] for n in pos.values() if n.get("kind") == "bridge"
+                and n["id"] != "bridge:orphan"}
+        self.assertEqual(len(band), 1)               # 전부 같은 'vinc' 슬랩
+
+    def test_hub_without_edges_is_unchanged(self):
+        """엣지가 없으면 좌석 규칙도 없다 — 예전 그림 그대로여야 한다(하위호환)."""
+        import copy
+        nodes = [{"id": f"c{i}", "domain": f"vinc/d{i % 3}", "degree": i % 4}
+                 for i in range(20)]
+        a = q.layout_positions(copy.deepcopy(nodes), [], "hub")
+        b = q.layout_positions(copy.deepcopy(nodes), None, "hub")
+        self.assertEqual([(n["x"], n["y"], n["z"]) for n in a],
+                         [(n["x"], n["y"], n["z"]) for n in b])

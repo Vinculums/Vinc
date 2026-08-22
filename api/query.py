@@ -1226,6 +1226,9 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         layout = "hub"
     adj: dict[str, set] = {}
     directed: dict[str, set] = {}
+    #: Bridge 좌석의 재료(item 12) — CONNECTS 로 닿는 반대편. 방향은 늘
+    #: Bridge→Concept 이지만 양쪽에 실어 둔다(어느 투영으로 와도 같은 답).
+    connects: dict[str, set] = {}
     for e in edges or []:
         s, t = e.get("source"), e.get("target")
         if not s or not t:
@@ -1233,6 +1236,9 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         adj.setdefault(s, set()).add(t)
         adj.setdefault(t, set()).add(s)
         rel = e.get("type") or ""
+        if rel == "CONNECTS":
+            connects.setdefault(s, set()).add(t)
+            connects.setdefault(t, set()).add(s)
         if rel in _DIRECTED_RELS:
             # 상류 → 하류로 정규화한다(위 _REVERSED_RELS 주석 참조).
             if rel in _REVERSED_RELS:
@@ -1249,7 +1255,7 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         # 원뿔이 부모의 **뒤쪽**까지 열려 자식이 부모보다 중심에 가까워진다. 그러면
         # "이 방향으로 계속 뻗어 나간다"는 이 배치의 문장 자체가 깨진다.
         cone0 = min(_CONE0 * max(_CONE_MIN, min(_CONE_MAX, cone)), math.pi / 2)
-        _global_hub(nodes, math, GOLDEN, topic_marks, cone0)
+        _global_hub(nodes, math, GOLDEN, topic_marks, cone0, connects=connects)
     _dedupe_planar(nodes)
     return nodes
 
@@ -1465,7 +1471,7 @@ def _shell(depth: int) -> float:
 
 
 def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
-                cone0: float = _CONE0) -> None:
+                cone0: float = _CONE0, connects: dict | None = None) -> None:
     """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
 
     뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
@@ -1485,8 +1491,28 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
     구간 안에서 다시 나눈다. 원뿔의 평면 대응물이라 3D 와 같은 이야기를 한다.
     투영이 아니므로 z 평탄화에 따른 겹침이 **원리적으로** 생기지 않는다.
 
+    Bridge 는 이 트리의 잎이 **아니다**(item 12) — 소속이 저작되지 않고 연결로
+    정해지므로 끝점 가지들의 평균 방향에 따로 앉힌다(`seat_bridges`). 트리에서
+    빼는 이유: 잎으로 두면 가지 무게에 셈해져 다른 노드 자리를 밀어 놓고 정작 그
+    자리는 쓰지 않는다. ``connects`` 가 없으면(엣지 없는 호출) 예전 그대로다.
+
     순수 함수(난수·시간 무의존, D17)."""
-    root = _build_tree(nodes)
+    #: Bridge id → CONNECTS 반대편 중 **이 배치에 실제로 있는 것**. 비면 미분류라
+    #: 보통 잎처럼 뿌리에 남는다(지어낼 방향이 없다).
+    ends: dict[str, list[str]] = {}
+    if connects:
+        present = {n.get("id") for n in nodes}
+        for n in nodes:
+            if n.get("kind") != "bridge":
+                continue
+            arms = sorted(t for t in connects.get(n.get("id")) or () if t in present)
+            if arms:
+                ends[str(n.get("id"))] = arms
+    tree_nodes = [n for n in nodes if str(n.get("id")) not in ends]
+    root = _build_tree(tree_nodes)
+    base = _common_prefix([_domain_path(n.get("domain") or "") for n in tree_nodes])
+    #: 가지 기하 — 경로 → (3D 단위 방향, 껍질 반경, 2D 각). Bridge 좌석의 재료다.
+    seats: dict[tuple, tuple] = {}
     #: 이번 배치에서 낼 주제 마크. 다 돌고 나서 한 번에 붙인다 — 도는 중에 넣으면
     #: 트리를 만든 그 목록이 순회 중에 자란다.
     marks: list[dict] = []
@@ -1524,6 +1550,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
 
     def place(b: _Branch, depth: int, d3, a0: float, a1: float, cone: float,
               path: tuple = ()) -> None:
+        seats[path] = (d3, _shell(depth), (a0 + a1) / 2, a1 - a0)
         # 주제 자신을 **마크로 낸다**(2026-08-14). 여태 가지는 좌표 계산에만 쓰이고
         # 화면에는 잎만 나갔다 — 그래서 "vinc 아래 design" 이라는 구조가 지도에서
         # 위치로만 암시되고 짚을 것이 없었다. id 는 저장소의 진짜 주제 노드와 같은
@@ -1591,14 +1618,73 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
             n["x2"] = round(bx2 + dx, 6)
             n["y2"] = round(by2 + dy, 6)
 
+    def seat_bridges() -> None:
+        """Bridge 좌석(item 12) — 끝점이 **속한 가지**들의 평균 방향, 반경은 그
+        가지 껍질들의 평균. `vinc/security` 와 `vinc/engineering` 을 잇는 브릿지는
+        두 가지 사이를 가리키며 그 껍질 높이에 선다.
+
+        같은 가지 짝을 잇는 브릿지가 여럿이면 그 좌석 둘레에서 `_cluster` 의 고리
+        규칙으로 벌린다 — 겹친 둘은 화면에서 하나가 사라진 것과 같다. 짝 안 순서는
+        잎과 같은 (degree 내림, id)라 결정론이다(D32).
+
+        ⚠ 끝점이 **한 가지 안**에만 있는 브릿지는 좌석이 그 가지의 주제 마크와
+        같은 점이 된다(마크도 `d3 × _shell(depth)` 에 선다). 평면 쪽은
+        `_dedupe_planar` 가 마지막에 밀고, 3D 는 그대로 겹친다 — 계획이 정한 반경을
+        지키는 편을 택했다. 근거: [[record:bridge-layout-clump-2026-08-22]].
+
+        입력이 그래프뿐이라 순수 함수다(D17)."""
+        if not ends:
+            return
+        dom_of = {str(n.get("id")): n.get("domain") or "" for n in nodes}
+
+        def key_of(dom: str) -> tuple:
+            """도메인 → 실재하는 가지 경로. 트리에 없는 깊이는 위로 접어 올린다."""
+            p = _domain_path(dom)
+            while p and p not in seats:
+                p = p[:-1]
+            return p if p in seats else base
+
+        groups: dict[tuple, list[dict]] = {}
+        for n in nodes:
+            arms = ends.get(str(n.get("id")))
+            if arms:
+                groups.setdefault(
+                    tuple(sorted({key_of(dom_of.get(t, "")) for t in arms})), []).append(n)
+        for k in sorted(groups):
+            grp = sorted(groups[k], key=lambda n: (-int(n.get("degree") or 0),
+                                                   str(n.get("id"))))
+            arms3 = [seats[p] for p in k]
+            sx, sy, sz = (sum(s[0][i] for s in arms3) for i in range(3))
+            L = math.sqrt(sx * sx + sy * sy + sz * sz)
+            # 정반대로 갈라진 가지들은 합이 0 이다 — 그런 짝에는 '사이'라는 방향이
+            # 실제로 없으므로 첫 가지 방향을 쓴다(결정론이 목적).
+            d3 = (sx / L, sy / L, sz / L) if L > 1e-9 else arms3[0][0]
+            rr = sum(s[1] for s in arms3) / len(arms3)
+            cx = sum(math.cos(s[2]) for s in arms3)
+            cy = sum(math.sin(s[2]) for s in arms3)
+            # 2D 각도 평균도 **단위벡터의 평균**이다(0 과 2π 가 같은 각이라 산술평균은 틀린다).
+            ang = math.atan2(cy, cx) if cx * cx + cy * cy > 1e-18 else arms3[0][2]
+            (ux, uy, uz), (vx, vy, vz) = basis(d3)
+            # 벌림 폭은 **잎 원반과 같은 규칙**이다(`place` 의 disc) — 반경은 이
+            # 좌석의 것을, 각도 폭은 끝점 가지들의 평균을 쓴다. 상한을 그대로
+            # 쓰면(0.85) 가지 껍질만 한 폭이 되어 브릿지가 가지 밖으로 튄다(실측).
+            disc = min(_R_LEAF * 0.85,
+                       0.28 * max(rr, 0.3) * (sum(s[3] for s in arms3) / len(arms3)))
+            for n, (ox, oy) in zip(grp, _cluster(grp, disc, math)):
+                n["x"] = round(d3[0] * rr + ux * ox + vx * oy, 6)
+                n["y"] = round(d3[1] * rr + uy * ox + vy * oy, 6)
+                n["z"] = round(d3[2] * rr + uz * ox + vz * oy, 6)
+                n["x2"] = round(math.cos(ang) * rr + ox, 6)
+                n["y2"] = round(math.sin(ang) * rr + oy, 6)
+
     # 뿌리의 3D 기준 방향은 +z 로 잡고 첫 원뿔을 거의 반구까지 연다(_CONE0).
     # 2D 는 뿌리에서 한 바퀴(2π)를 통째로 나눠 준다.
     #
     # 뿌리의 경로는 벗겨 낸 **공통 접두**다(_common_prefix). 전부 `vinc/*` 면 `vinc`
     # 하나가 원점에 서고, 주제가 둘 이상 갈리면(예: `vinc/*` 와 `neo4j/*`) 접두가
     # 비어 뿌리 마크가 없다 — 그때는 이름 붙일 하나의 뿌리가 실제로 없기 때문이다.
-    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, cone0, _common_prefix(
-        [_domain_path(n.get("domain") or "") for n in nodes]))
+    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, cone0, base)
+    seat_bridges()           # 가지 기하(seats)가 다 찬 뒤라야 평균을 낼 수 있다
     nodes.extend(marks)      # 배치가 끝난 뒤 한 번에(marks 선언부 주석)
 
 
