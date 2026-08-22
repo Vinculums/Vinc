@@ -140,6 +140,75 @@ jobs:
       - name: Design surface gate (app)
         run: python -X utf8 design-hub/scripts/gate_surface.py app/src
 
+  # ── PK 네임스페이싱 플래그 ON ────────────────────────────────────────────────
+  # v0.8.4 axis 1(design A)은 `VINC_PK_NAMESPACED` 뒤에 산다. `core` 잡은 플래그가
+  # **꺼진** 모드만 돈다(로컬·데스크탑의 영구 상태이고, 계약이 "꺼져 있으면 바이트
+  # 동일"이다). 켠 모드가 CI 에 없으면 그쪽 경로는 **아무도 안 도는 코드**가 되고,
+  # 그 상태로 허브에 켜는 것이 이 릴리스의 마지막 단계다.
+  #
+  # ⚠ 지금은 **전량이 아니라 부분집합**이다. PR-B 는 쓰기 합성과 읽기 분해만 넣었고
+  # 질의 바인딩(`api/query.py`·`api/sync.py`)은 PR-C 의 몫이라, 적재→조회 왕복이 있는
+  # 파일은 켠 모드에서 아직 실패한다(실측 2026-08-22: test_decision_type 6 ·
+  # test_embedded_backend 15 · test_domain_hierarchy 5 · test_docstore 2 — 전부 조회
+  # 쪽이 논리 id 를 바인딩해서다). PR-C 가 그것들을 고치면서 **이 목록을 지우고 전량
+  # 으로 바꾼다.** 목록이 남아 있는 동안의 계약은 "여기 없는 파일은 켠 모드 미검증"이다.
+  core-pkns:
+    name: core (VINC_PK_NAMESPACED=on subset)
+    runs-on: [self-hosted, linux, vinc-local]
+    env:
+      VINC_PK_NAMESPACED: "on"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
+        run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest pypdf
+      - name: Point to bundled G0 extensions (no network)
+        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
+      # `core` 와 같은 이유로 드라이버를 강제한다 — 임베디드 왕복이 조용히 skip 되면
+      # 이 잡은 "켠 모드가 초록"이 아니라 "켠 모드를 안 돌렸다"가 된다.
+      - name: Assert driver is importable (no silent skips)
+        run: |
+          python - <<'PY'
+          import sys
+          from store.embedded_backend import _import_driver
+          drv, name = _import_driver()
+          if drv is None:
+              print("::error::임베디드 드라이버 미설치 — 켠 모드 왕복이 조용히 skip 된다", file=sys.stderr)
+              sys.exit(1)
+          print(f"driver ok: {name}")
+          PY
+      # 플래그가 실제로 켜졌는지 확인 — 안 켜졌으면 이 잡은 core 의 중복이고,
+      # 초록이 아무것도 뜻하지 않는다.
+      - name: Assert the flag is actually on
+        run: |
+          python - <<'PY'
+          import sys
+          from store import pkns
+          if not pkns.enabled():
+              print("::error::VINC_PK_NAMESPACED 미설정 — 이 잡은 core 의 중복이다",
+                    file=sys.stderr)
+              sys.exit(1)
+          print("pk namespacing: on")
+          PY
+      # 부분집합이라 `verify.py`(전량 discover) 대신 pytest 로 파일을 명시한다.
+      - name: Run the compose/strip subset with the flag on
+        run: |
+          python -m pytest -q \
+            tests/test_pk_compose_write.py \
+            tests/test_pk_namespace.py \
+            tests/test_fragment_ingest.py \
+            tests/test_fragment_caps.py \
+            tests/test_fragment_edge_tenancy.py \
+            tests/test_store.py \
+            tests/test_store_persistence.py \
+            tests/test_store_concurrency.py \
+            tests/test_write_tenancy.py \
+            tests/test_owner_isolation.py \
+            tests/test_tombstone_tenancy.py \
+            tests/test_sync.py
+
   app:
     name: app (typecheck)
     runs-on: [self-hosted, linux, vinc-local]
