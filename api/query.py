@@ -618,6 +618,43 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
+def _derive_bridge_domains(shaped: dict) -> None:
+    """Bridge 의 `domain` 은 **저작물이 아니라 파생값**이다 — CONNECTS 로 닿는 끝점
+    도메인들의 가장 깊은 공통 조상(`vinc/security` + `vinc/engineering` → `vinc`).
+
+    저장하지 않고 /graph 응답에서만 계산한다. 저장하면 연결이 바뀌는 순간 썩는데,
+    브릿지의 소속은 정의상 그 연결이 결정하기 때문이다. 여태 노드 domain 은 선언
+    필드 `source_domain` 이었고 라이브에서는 그게 **전부 비어 있어서**(v2 owner
+    백필이 건너뛰어지며 domain 도 같이 남았다) 세 관점 모두가 브릿지 전량을
+    "도메인 없음" 한 칸에 몰아넣었다. 근거: [[record:bridge-layout-clump-2026-08-22]].
+
+    CONNECTS 가 하나도 없으면 미분류(`""`)로 남는다 — 지어낼 근거가 없다.
+    도메인이 빈 끝점은 계산에서 뺀다(`_shared_prefix` 규약): 미분류 이웃 하나가
+    나머지 끝점의 공통 조상을 뿌리까지 끌어내리면 안 된다.
+
+    `domain2`(선언된 target_domain)는 상세 레일 계약이라 손대지 않는다."""
+    nodes = shaped.get("nodes") or []
+    doms = {n.get("id"): n.get("domain") or "" for n in nodes}
+    bridges = {n.get("id") for n in nodes if n.get("kind") == "bridge"}
+    if not bridges:
+        return
+    ends: dict[str, list[str]] = {}
+    for e in shaped.get("edges") or []:
+        if (e.get("type") or "") != "CONNECTS":
+            continue
+        s, t = e.get("source"), e.get("target")
+        # 방향은 늘 Bridge→Concept 이지만 양쪽을 다 본다 — 어느 축 플랜이 실어 오든
+        # 같은 답이 나오게(투영이 뒤집혀도 조용히 미분류가 되지 않게).
+        if s in bridges and t in doms:
+            ends.setdefault(s, []).append(t)
+        if t in bridges and s in doms:
+            ends.setdefault(t, []).append(s)
+    for n in nodes:
+        if n.get("id") in bridges:
+            n["domain"] = "/".join(_shared_prefix(
+                [_domain_path(doms.get(t, "")) for t in ends.get(n["id"], ())]))
+
+
 # ── ego-Personalized PageRank (E-G2) — 순수 함수 시드 편향 랭킹 ────────────────
 # 리서치(HippoRAG PPR)의 시드 편향 확산을 **백엔드 밖 결정론 순수 함수**로 옮긴다.
 # ego 서브그래프(수십~수백 노드) 위 power iteration(반복 수 고정 → 결정론, 난수·
@@ -1189,6 +1226,9 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         layout = "hub"
     adj: dict[str, set] = {}
     directed: dict[str, set] = {}
+    #: Bridge 좌석의 재료(item 12) — CONNECTS 로 닿는 반대편. 방향은 늘
+    #: Bridge→Concept 이지만 양쪽에 실어 둔다(어느 투영으로 와도 같은 답).
+    connects: dict[str, set] = {}
     for e in edges or []:
         s, t = e.get("source"), e.get("target")
         if not s or not t:
@@ -1196,6 +1236,9 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         adj.setdefault(s, set()).add(t)
         adj.setdefault(t, set()).add(s)
         rel = e.get("type") or ""
+        if rel == "CONNECTS":
+            connects.setdefault(s, set()).add(t)
+            connects.setdefault(t, set()).add(s)
         if rel in _DIRECTED_RELS:
             # 상류 → 하류로 정규화한다(위 _REVERSED_RELS 주석 참조).
             if rel in _REVERSED_RELS:
@@ -1212,7 +1255,8 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         # 원뿔이 부모의 **뒤쪽**까지 열려 자식이 부모보다 중심에 가까워진다. 그러면
         # "이 방향으로 계속 뻗어 나간다"는 이 배치의 문장 자체가 깨진다.
         cone0 = min(_CONE0 * max(_CONE_MIN, min(_CONE_MAX, cone)), math.pi / 2)
-        _global_hub(nodes, math, GOLDEN, topic_marks, cone0)
+        _global_hub(nodes, math, GOLDEN, topic_marks, cone0,
+                    connects=connects, adj=adj)
     _dedupe_planar(nodes)
     return nodes
 
@@ -1237,17 +1281,32 @@ def _common_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
     real = [p for p in paths if p]
     if not real:
         return ()
-    out: list[str] = []
-    for i in range(min(len(p) for p in real)):
-        seg = real[0][i]
-        if all(p[i] == seg for p in real):
-            out.append(seg)
-        else:
-            break
+    out = list(_shared_prefix(paths))
     # 접두가 경로 전체와 같아지면(도메인이 하나뿐) 마지막 조각은 가지로 남긴다 —
     # 안 그러면 가지가 0개가 되어 전부 뿌리에 뭉친다.
     if len(out) == min(len(p) for p in real):
         out = out[:-1]
+    return tuple(out)
+
+
+def _shared_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
+    """경로들이 공유하는 접두 = **가장 깊은 공통 조상**, 손대지 않은 그대로.
+
+    `_common_prefix` 와 갈라 둔 이유: 저쪽은 배치용이라 "접두가 경로 전체와 같으면
+    마지막 조각을 되돌려준다"는 가지 보존 규칙이 붙는다. 조상을 묻는 쪽
+    (`_derive_bridge_domains`)에는 그 규칙이 틀린 답을 준다 — `vinc/security` 하나만
+    있으면 조상은 `vinc/security` 자신이지 `vinc` 가 아니다.
+
+    빈 경로(도메인 없는 노드)는 계산에서 뺀다 — `_common_prefix` 와 같은 규약이다."""
+    real = [p for p in paths if p]
+    if not real:
+        return ()
+    out: list[str] = []
+    for i in range(min(len(p) for p in real)):
+        seg = real[0][i]
+        if not all(p[i] == seg for p in real):
+            break
+        out.append(seg)
     return tuple(out)
 
 
@@ -1330,7 +1389,26 @@ _CONE0 = 1.15                            # 뿌리에서 도메인으로 퍼지�
 _CONE_MIN, _CONE_MAX = 0.3, 1.4
 
 
-def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> list:
+def _mean_angle(angles: list[float], math):
+    """각의 평균은 **단위벡터의 평균**이다 — 0 과 2π 가 같은 각이라 산술평균은
+    0.1 과 6.2 의 중간을 3.15(정반대)로 답한다. 합이 사실상 0 이면(정확히 갈라선
+    이웃들) 선호가 없다는 뜻이라 None 을 돌려준다."""
+    if not angles:
+        return None
+    cx = sum(math.cos(a) for a in angles)
+    cy = sum(math.sin(a) for a in angles)
+    if cx * cx + cy * cy < 1e-12:
+        return None
+    return math.atan2(cy, cx)
+
+
+def _arc_gap(a: float, b: float, math) -> float:
+    """두 각 사이의 원둘레 거리(0..π). 감싸기를 넘어서도 짧은 쪽을 잰다."""
+    return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0,
+             adj: dict | None = None) -> list:
     """무리 안 배치 — **규칙적 동심 고리 + 크기에 비례한 간격**. (dx, dy) 목록을 돌려준다.
 
     두 번 고쳐서 여기까지 왔다(둘 다 발주자 지적).
@@ -1350,6 +1428,12 @@ def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> l
     큰 마크 둘이 포개진다. 처음에 7개 이상일 때 중심을 쓰게 짰다가 실측에서 이걸
     봤다. 대신 마크의 크기(`center_w`)를 첫 고리의 요구량에 더해, 마크가 클수록
     첫 고리가 바깥으로 밀리게 한다.
+
+    ``adj``(2026-08-22, item 13): 고리의 **슬롯 기하는 그대로 두고 누가 어디 앉는지만**
+    고른다. degree 순으로 앉히다가, 이미 앉은 그래프 이웃이 있으면 그 이웃들의 평균
+    각에 가장 가까운 **빈 슬롯**을 집는다. 이웃이 없으면 순서대로 앞 슬롯이므로
+    **내부 엣지가 없는 무리는 좌표가 한 톨도 안 바뀐다**. 고리 반경과 크기 비례
+    간격(2026-08-15 두 수정)은 이 앞에서 이미 정해져 있어 손대지 않는다.
 
     순수 함수라 결정론이다(D17)."""
     n = len(items)
@@ -1392,16 +1476,32 @@ def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> l
         radii.append(rr)
         prev_r, prev_w = rr, mw
     scale = radius / (radii[-1] or 1.0)
+    idx = {str(it.get("id")): i for i, it in enumerate(items)}
+    seated: dict[int, float] = {}          # 이미 앉은 항목 → 중심 기준 각
     for ring_i, ((mem, gaps), rr0) in enumerate(zip(plan, radii)):
         rr = rr0 * scale
         gsum = sum(gaps) or 1.0
         # 고리마다 반 칸 돌린다. 안 돌리면 모든 고리의 첫 자리가 θ=0 에 서서
         # 중심을 지나는 **한 줄**이 생긴다(실측: 한 덩어리의 세 마크가 y 가 같았다).
         off = math.pi / len(mem) if len(mem) > 1 else 0.0
-        acc = 0.0
-        for j, m in enumerate(mem):
-            th = off * (ring_i % 2) + 2 * math.pi * acc / gsum
-            acc += gaps[j]
+        slots, acc = [], 0.0
+        for g in gaps:
+            slots.append(off * (ring_i % 2) + 2 * math.pi * acc / gsum)
+            acc += g
+        free = list(range(len(slots)))
+        for m in mem:
+            pick = 0                       # 이웃이 없으면 앞 슬롯 = 예전 그대로
+            if adj:
+                # 이웃 id 를 정렬해 읽는다 — adj 값은 set 이라 순회 순서가
+                # 프로세스마다 다르고, 평균의 덧셈 순서까지 흔들리면 순수성이 깨진다.
+                aim = _mean_angle(
+                    [seated[idx[nb]] for nb in sorted(adj.get(str(items[m].get("id")), ()))
+                     if nb in idx and idx[nb] in seated], math)
+                if aim is not None:
+                    pick = min(range(len(free)),
+                               key=lambda k: (round(_arc_gap(slots[free[k]], aim, math), 9), k))
+            th = slots[free.pop(pick)]
+            seated[m] = th
             out[m] = (rr * math.cos(th), rr * math.sin(th))
     return out
 
@@ -1413,7 +1513,8 @@ def _shell(depth: int) -> float:
 
 
 def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
-                cone0: float = _CONE0) -> None:
+                cone0: float = _CONE0, connects: dict | None = None,
+                adj: dict | None = None) -> None:
     """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
 
     뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
@@ -1433,8 +1534,28 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
     구간 안에서 다시 나눈다. 원뿔의 평면 대응물이라 3D 와 같은 이야기를 한다.
     투영이 아니므로 z 평탄화에 따른 겹침이 **원리적으로** 생기지 않는다.
 
+    Bridge 는 이 트리의 잎이 **아니다**(item 12) — 소속이 저작되지 않고 연결로
+    정해지므로 끝점 가지들의 평균 방향에 따로 앉힌다(`seat_bridges`). 트리에서
+    빼는 이유: 잎으로 두면 가지 무게에 셈해져 다른 노드 자리를 밀어 놓고 정작 그
+    자리는 쓰지 않는다. ``connects`` 가 없으면(엣지 없는 호출) 예전 그대로다.
+
     순수 함수(난수·시간 무의존, D17)."""
-    root = _build_tree(nodes)
+    #: Bridge id → CONNECTS 반대편 중 **이 배치에 실제로 있는 것**. 비면 미분류라
+    #: 보통 잎처럼 뿌리에 남는다(지어낼 방향이 없다).
+    ends: dict[str, list[str]] = {}
+    if connects:
+        present = {n.get("id") for n in nodes}
+        for n in nodes:
+            if n.get("kind") != "bridge":
+                continue
+            arms = sorted(t for t in connects.get(n.get("id")) or () if t in present)
+            if arms:
+                ends[str(n.get("id"))] = arms
+    tree_nodes = [n for n in nodes if str(n.get("id")) not in ends]
+    root = _build_tree(tree_nodes)
+    base = _common_prefix([_domain_path(n.get("domain") or "") for n in tree_nodes])
+    #: 가지 기하 — 경로 → (3D 단위 방향, 껍질 반경, 2D 각). Bridge 좌석의 재료다.
+    seats: dict[tuple, tuple] = {}
     #: 이번 배치에서 낼 주제 마크. 다 돌고 나서 한 번에 붙인다 — 도는 중에 넣으면
     #: 트리를 만든 그 목록이 순회 중에 자란다.
     marks: list[dict] = []
@@ -1472,6 +1593,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
 
     def place(b: _Branch, depth: int, d3, a0: float, a1: float, cone: float,
               path: tuple = ()) -> None:
+        seats[path] = (d3, _shell(depth), (a0 + a1) / 2, a1 - a0)
         # 주제 자신을 **마크로 낸다**(2026-08-14). 여태 가지는 좌표 계산에만 쓰이고
         # 화면에는 잎만 나갔다 — 그래서 "vinc 아래 design" 이라는 구조가 지도에서
         # 위치로만 암시되고 짚을 것이 없었다. id 는 저장소의 진짜 주제 노드와 같은
@@ -1505,7 +1627,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
         # (_cluster) 하나씩 독립으로는 정할 수 없다.
         leafnodes = [p2 for _w, k, _k2, p2 in kids if k == "node"]
         disc = min(_R_LEAF * 0.85, 0.28 * max(r_here, 0.3) * span)
-        spots = _cluster(leafnodes, disc, math, float(b.weight))
+        spots = _cluster(leafnodes, disc, math, float(b.weight), adj=adj)
         leaf_i = 0
         for i, (w, kind, _key, payload) in enumerate(kids):
             mid = (acc + w / 2) / total            # 누적 무게 비율(0~1)
@@ -1539,14 +1661,73 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
             n["x2"] = round(bx2 + dx, 6)
             n["y2"] = round(by2 + dy, 6)
 
+    def seat_bridges() -> None:
+        """Bridge 좌석(item 12) — 끝점이 **속한 가지**들의 평균 방향, 반경은 그
+        가지 껍질들의 평균. `vinc/security` 와 `vinc/engineering` 을 잇는 브릿지는
+        두 가지 사이를 가리키며 그 껍질 높이에 선다.
+
+        같은 가지 짝을 잇는 브릿지가 여럿이면 그 좌석 둘레에서 `_cluster` 의 고리
+        규칙으로 벌린다 — 겹친 둘은 화면에서 하나가 사라진 것과 같다. 짝 안 순서는
+        잎과 같은 (degree 내림, id)라 결정론이다(D32).
+
+        ⚠ 끝점이 **한 가지 안**에만 있는 브릿지는 좌석이 그 가지의 주제 마크와
+        같은 점이 된다(마크도 `d3 × _shell(depth)` 에 선다). 평면 쪽은
+        `_dedupe_planar` 가 마지막에 밀고, 3D 는 그대로 겹친다 — 계획이 정한 반경을
+        지키는 편을 택했다. 근거: [[record:bridge-layout-clump-2026-08-22]].
+
+        입력이 그래프뿐이라 순수 함수다(D17)."""
+        if not ends:
+            return
+        dom_of = {str(n.get("id")): n.get("domain") or "" for n in nodes}
+
+        def key_of(dom: str) -> tuple:
+            """도메인 → 실재하는 가지 경로. 트리에 없는 깊이는 위로 접어 올린다."""
+            p = _domain_path(dom)
+            while p and p not in seats:
+                p = p[:-1]
+            return p if p in seats else base
+
+        groups: dict[tuple, list[dict]] = {}
+        for n in nodes:
+            arms = ends.get(str(n.get("id")))
+            if arms:
+                groups.setdefault(
+                    tuple(sorted({key_of(dom_of.get(t, "")) for t in arms})), []).append(n)
+        for k in sorted(groups):
+            grp = sorted(groups[k], key=lambda n: (-int(n.get("degree") or 0),
+                                                   str(n.get("id"))))
+            arms3 = [seats[p] for p in k]
+            sx, sy, sz = (sum(s[0][i] for s in arms3) for i in range(3))
+            L = math.sqrt(sx * sx + sy * sy + sz * sz)
+            # 정반대로 갈라진 가지들은 합이 0 이다 — 그런 짝에는 '사이'라는 방향이
+            # 실제로 없으므로 첫 가지 방향을 쓴다(결정론이 목적).
+            d3 = (sx / L, sy / L, sz / L) if L > 1e-9 else arms3[0][0]
+            rr = sum(s[1] for s in arms3) / len(arms3)
+            cx = sum(math.cos(s[2]) for s in arms3)
+            cy = sum(math.sin(s[2]) for s in arms3)
+            # 2D 각도 평균도 **단위벡터의 평균**이다(0 과 2π 가 같은 각이라 산술평균은 틀린다).
+            ang = math.atan2(cy, cx) if cx * cx + cy * cy > 1e-18 else arms3[0][2]
+            (ux, uy, uz), (vx, vy, vz) = basis(d3)
+            # 벌림 폭은 **잎 원반과 같은 규칙**이다(`place` 의 disc) — 반경은 이
+            # 좌석의 것을, 각도 폭은 끝점 가지들의 평균을 쓴다. 상한을 그대로
+            # 쓰면(0.85) 가지 껍질만 한 폭이 되어 브릿지가 가지 밖으로 튄다(실측).
+            disc = min(_R_LEAF * 0.85,
+                       0.28 * max(rr, 0.3) * (sum(s[3] for s in arms3) / len(arms3)))
+            for n, (ox, oy) in zip(grp, _cluster(grp, disc, math)):
+                n["x"] = round(d3[0] * rr + ux * ox + vx * oy, 6)
+                n["y"] = round(d3[1] * rr + uy * ox + vy * oy, 6)
+                n["z"] = round(d3[2] * rr + uz * ox + vz * oy, 6)
+                n["x2"] = round(math.cos(ang) * rr + ox, 6)
+                n["y2"] = round(math.sin(ang) * rr + oy, 6)
+
     # 뿌리의 3D 기준 방향은 +z 로 잡고 첫 원뿔을 거의 반구까지 연다(_CONE0).
     # 2D 는 뿌리에서 한 바퀴(2π)를 통째로 나눠 준다.
     #
     # 뿌리의 경로는 벗겨 낸 **공통 접두**다(_common_prefix). 전부 `vinc/*` 면 `vinc`
     # 하나가 원점에 서고, 주제가 둘 이상 갈리면(예: `vinc/*` 와 `neo4j/*`) 접두가
     # 비어 뿌리 마크가 없다 — 그때는 이름 붙일 하나의 뿌리가 실제로 없기 때문이다.
-    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, cone0, _common_prefix(
-        [_domain_path(n.get("domain") or "") for n in nodes]))
+    place(root, 0, (0.0, 0.0, 1.0), 0.0, 2 * math.pi, cone0, base)
+    seat_bridges()           # 가지 기하(seats)가 다 찬 뒤라야 평균을 낼 수 있다
     nodes.extend(marks)      # 배치가 끝난 뒤 한 번에(marks 선언부 주석)
 
 
@@ -1677,6 +1858,9 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                                     "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
+        # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
+        # 도메인을 읽는다(_derive_bridge_domains 주석).
+        _derive_bridge_domains(shaped)
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
@@ -1706,6 +1890,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         if ax.get("executed"):
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
+    _derive_bridge_domains(shaped)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)

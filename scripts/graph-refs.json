@@ -105,6 +105,7 @@
     "record:domain-hierarchy-was-a-string-until-v11",
     "record:edge-birth-v14",
     "record:endpoint-table-must-be-built-from-merged-nodes",
+    "record:bridge-layout-clump-2026-08-22",
     "record:endpoint-types-resolve-only-within-one-payload",
     "record:fact-builtin-extraction-is-headings",
     "record:fact-doc-concept-is-a-layer",
