@@ -25,6 +25,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# 주석 제거기는 한국어 카피 재고 조사와 **같은 것**을 써야 한다 — 두 벌이 되면
+# F9 가 위반이라 부르는 줄과 패리티 테스트가 위반이라 부르는 줄이 갈린다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ko_copy_inventory import strip_comments  # noqa: E402
+
 # ── 검사 대상 파일 확장자(텍스트) ─────────────────────────────────────────
 _TEXT_EXT = {
     ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".toml", ".json", ".yml",
@@ -81,13 +86,18 @@ _ALLOWLIST_SUFFIXES = (
 
 @dataclass
 class Rule:
-    gate: str            # F1 / F2 / F7
+    gate: str            # F1 / F2 / F7 / F8 / F9
     label: str
     pattern: re.Pattern
     note: str = ""
     # code-provenance 예외: 주석/문서 계보 표기에서만 허용되는 상위 토큰이 있으면
     # 그 상위 매치는 위반에서 제외한다(F7 의 weg-9000-memory 등).
     allow_within: re.Pattern | None = None
+    # 경로 한정: 이 접두사로 시작하는 파일에만 건다(빈 값이면 리포 전체).
+    scope: tuple[str, ...] = ()
+    # 주석을 걷어 낸 코드만 본다. 이 리포의 주석 언어는 한국어라(CLAUDE.md),
+    # 사용자 가시 문자열만 겨냥하는 규칙은 반드시 이 모드여야 한다.
+    code_only: bool = False
 
 
 # ── F1 계측 코드 반입 (vinc.a.terms §4) — CP 계측 코드 식별자 0건 ──
@@ -142,7 +152,36 @@ _F8 = [
 ]
 
 
-ALL_RULES = _F1 + _F2 + _F7 + _F8
+# ── F9 한국어 사용자 가시 어휘 (vinc.spec.ui-copy-ko §4) — app/src 문자열 0건 ──
+# 한국어 덱은 번역이 아니라 저작이다(adr-design-042). 여기 여덟 중 앞 넷은 2026-07-12
+# 재작성이 이미 걷어 낸 개발자 직역어이고(말뭉치→데이터 · 채굴→분석 · 표면→화면 ·
+# 레일→사이드바, vinc.spec.ui-copy §4 표), 나머지는 호칭·구명이다.
+#
+# ⚠ 이 넷(표면·레일·관문 등)은 **주석과 문서에서는 정상 어휘**다 — "제품 표면",
+# "레일은 좁다" 는 이 리포가 자기 코드를 설명하는 말이고 화면에 나가지 않는다.
+# 그래서 F9 만 `code_only` 로 주석을 걷어 내고 `scope` 로 app/src 에 가둔다.
+# 리포 전체에 거는 순간 주석 수백 건이 위반으로 뜨고, 그러면 게이트를 끄게 된다.
+#
+# `아틀라스` 는 여기 다시 적지 않는다 — F8-b 가 이미 리포 전체에서 금지하므로
+# (주석·문서 포함) 더 강하다. 같은 줄을 두 번 세지 않으려고 뺀다.
+# `온톨로지` 는 **보류**다(금지 아님). 영어 쪽 제품 명사 결정이 아직 안 났고
+# (vinc.spec.ui-copy-ko §9.2), 한국어는 그 결정을 따라간다. W8 항목 11 이후 재검토.
+_KO_SCOPE = ("app/src/",)
+_F9 = [
+    Rule("F9", w, re.compile(w), note=note, scope=_KO_SCOPE, code_only=True)
+    for w, note in (
+        ("말뭉치", "corpus 직역 → 데이터"),
+        ("채굴", "mine 직역 → 분석·추가"),
+        ("표면", "surface 직역 → 화면"),
+        ("레일", "rail 직역 → 사이드바"),
+        ("관문", "gateway 음역 → 게이트웨이"),
+        ("당신", "2인칭 금지(§3) → 내·생략"),
+        ("귀하", "2인칭 금지(§3) → 내·생략"),
+    )
+]
+
+
+ALL_RULES = _F1 + _F2 + _F7 + _F8 + _F9
 
 
 @dataclass
@@ -176,10 +215,18 @@ def scan(root: Path) -> list[Violation]:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        rules = [r for r in ALL_RULES
+                 if not r.scope or any(rel.startswith(s) for s in r.scope)]
+        if not rules:
+            continue
         lines = text.splitlines()
+        # 주석을 걷어 낸 사본은 `code_only` 규칙이 하나라도 살아 있을 때만 만든다.
+        code = ({i: c for i, c in strip_comments(text)}
+                if any(r.code_only for r in rules) else {})
         for i, line in enumerate(lines, 1):
-            for rule in ALL_RULES:
-                for m in rule.pattern.finditer(line):
+            for rule in rules:
+                subject = code.get(i, "") if rule.code_only else line
+                for m in rule.pattern.finditer(subject):
                     if rule.allow_within and rule.allow_within.search(line):
                         # 상위 허용 토큰 내부 매치인지 확인
                         if any(a.start() <= m.start() and m.end() <= a.end()
