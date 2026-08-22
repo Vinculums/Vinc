@@ -645,7 +645,7 @@ const EN = {
       webSignedAs: (w: string) => `Signed in as ${w}`,
       space: "Space",
       spacePersonal: "Personal",
-      spaceHint: "Which graph you are working in. Every surface follows this.",
+      spaceHint: "Which graph you are working in. Every screen follows this.",
       spaceNone: "You are not in an active team yet.",
     },
     palette: {
