@@ -729,12 +729,12 @@ const KO: Deck = {
   sovereigntyWeb: "여기는 계정 그래프예요. 데스크탑 앱과 다른 기기에서도 같은 지식을 봐요",
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
-    idleBody: "문서 파일(.md·.txt·.rst·.pdf)이나 지식 팩(.vincpack·.json)을 가져오세요. 여기에 끌어다 놓거나 파일을 선택하면 됩니다.",
-    idleCta: "파일 고르기",
-    loading: (n, m, d) => `${m}개의 문서 중 ${n}개 분석 중... 지금까지 발견된 주제 ${d}개.`,
-    success: (n, m) => `${m}개 주제에 걸쳐 ${n}개의 문서가 추가되었습니다.`,
+    idleBody: "문서 파일(.md·.txt·.rst·.pdf)이나 지식 팩(.vincpack·.json)을 가져올 수 있어요. 여기에 끌어다 놓거나 파일을 고르세요",
+    idleCta: "데이터 추가하기",
+    loading: (n, m, d) => `문서 ${m}개 중 ${n}개 분석 중 · 지금까지 찾은 주제 ${d}개`,
+    success: (n, m) => `주제 ${m}개에 걸쳐 문서 ${n}개를 추가했어요`,
     successCta: "View에서 열기",
-    error: (src) => `${src}을(를) 읽지 못했습니다. 파일을 확인하고 다시 시도하세요. 이미 추가된 문서는 안전합니다.`,
+    error: (src) => `${src}을(를) 읽지 못했어요. 파일을 확인하고 다시 시도해 보세요. 이미 추가한 데이터는 그대로 있어요`,
   },
   firstRun: {
     title: "로그인할까요, 아니면 이 기기에만 둘까요",
@@ -1173,38 +1173,33 @@ const KO: Deck = {
     },
     intakeUi: {
       importing: "가져오는 중…",
-      imported: (files, nodes, edges) =>
-        `${files}개 파일에서 개념 ${nodes}개, 연결 ${edges}개를 추가했습니다.`,
-      someFailed: (names) => `읽지 못한 파일: ${names}.`,
+      imported: (files, nodes, edges) => `파일 ${files}개에서 개념 ${nodes}개, 연결 ${edges}개를 추가했어요`,
+      someFailed: (names) => `읽지 못한 파일: ${names}. 파일을 확인하고 다시 추가해 보세요. 나머지는 모두 추가됐어요`,
       // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
-      importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했습니다.`,
-      tooLarge: (name, mb) =>
-        `${name}은(는) 브라우저에서 가져오기엔 너무 큽니다(${mb}MB 제한). 데스크탑 앱에는 제한이 없습니다.`,
+      importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했어요. 검색으로 언제든 찾을 수 있어요`,
+      tooLarge: (name, mb) => `${name}은(는) 너무 커서 추가하지 못했어요(브라우저 제한 ${mb}MB). 데스크탑 앱에서는 제한 없이 추가할 수 있어요. 이미 추가한 데이터는 그대로 있어요`,
       // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
       docError: {
-        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 본문을 읽을 수 없습니다.`,
-        pdf_no_text: (name) =>
-          `${name}에서 읽을 텍스트를 찾지 못했습니다. 스캔한 문서는 먼저 OCR이 필요합니다.`,
-        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했습니다. 파일이 손상되었을 수 있습니다.`,
-        pdf_support_missing: (name) =>
-          `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었습니다.`,
-        unsupported_format: (name) =>
-          `${name}은(는) 아직 읽지 못하는 형식입니다. 문서(.md·.txt·.rst)와 PDF를 지원합니다.`,
+        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 읽지 못했어요. 암호를 해제한 뒤 다시 추가해 주세요. 다른 데이터는 그대로 있어요`,
+        pdf_no_text: (name) => `${name}은(는) 읽을 수 있는 텍스트가 없어요. 스캔한 문서라면 OCR을 거친 뒤 다시 추가해 주세요. 다른 데이터는 그대로 있어요`,
+        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했어요. 파일이 손상됐을 수 있으니 원본을 확인해 주세요. 다른 데이터는 그대로 있어요`,
+        pdf_support_missing: (name) => `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었어요. 텍스트 파일로 바꿔 추가해 보세요. 다른 데이터는 그대로 있어요`,
+        unsupported_format: (name) => `${name}은(는) 아직 읽을 수 없는 형식이에요. 문서(.md·.txt·.rst)나 PDF로 바꿔 다시 추가해 보세요. 다른 데이터는 그대로 있어요`,
       },
-      mcpTitle: "어시스턴트로 더 깊이 파기",
-      mcpBody: "Vinc는 일반 문서를 직접 읽고 원문 그대로 보관합니다. 코드처럼 더 깊은 추출이 필요하거나 Vinc가 읽지 못하는 형식이라면 Settings → MCP에서 AI 어시스턴트를 연결하세요. 어시스턴트가 자료를 읽고 개념을 Vinc에 대신 써넣습니다.",
-      trySample: "샘플 팩 체험하기",
-      importingSample: "샘플 불러오는 중…",
-      sampleLoaded: "샘플을 불러왔습니다: 2개 주제, 개념 6개. 지금은 샘플 공간을 보고 있습니다(Settings에서 언제든 되돌릴 수 있습니다).",
+      mcpTitle: "어시스턴트로 더 깊이 분석하기",
+      mcpBody: "일반 문서는 Vinc가 직접 읽고 원문 그대로 보관해요. 코드나 읽지 못하는 형식은 Settings → MCP에서 AI 어시스턴트를 연결해 보세요. 연결한 어시스턴트가 내용을 읽고 개념을 Vinc에 대신 써넣어요",
+      trySample: "샘플 팩 열어 보기",
+      importingSample: "샘플을 불러오는 중…",
+      sampleLoaded: "샘플을 불러왔어요. 주제 2개, 개념 6개가 들어 있어요. 지금은 샘플 공간이에요(Settings에서 언제든 되돌릴 수 있어요)",
       // Ingesting 패널 (Figma 42:5) — 파일별 엮기, 상태는 ●◐○ + 라벨.
-      processing: (done, total) => `${done} / ${total} 처리 · 로컬에서만`,
-      stPending: "대기",
+      processing: (done, total) => `${total}개 중 ${done}개 처리 완료 · 내 기기에서만`,
+      stPending: "대기 중",
       stActive: "개념 연결 중",
       stDone: "완료",
       stFailed: "읽지 못함",
       // Success 패널 (Figma 42:7).
-      successBody: "새로 연결된 개념이 View에 반영되었습니다.",
-      addMore: "계속 추가",
+      successBody: "새로 연결된 개념을 이제 View에서 볼 수 있어요",
+      addMore: "더 추가하기",
     },
     settingsUi: {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
