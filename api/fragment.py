@@ -226,7 +226,27 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 보존한다. **신규일 때만** id 로 채운다(제목 없는 노드 금지).
         # ⚠ 이 가드를 걷어내지 말 것 — 없던 시절 스텁 재전송이 제목을 파괴했다:
         # [[record:unguarded-title-overwrote-107-nodes-with-their-ids]].
-        if node.get("title") is not None:
+        #
+        # v0.8.4 axis2 item2 — Episode·Record 는 다르다. id 를 제목 대신 쓰면
+        # 빈 제목이 영영 안 보이고 PR-0 감사 전까지 아무도 못 잡는다(id 가 이미
+        # 있으니 "제목 없음"이 안 드러난다). 그래서 이 두 라벨만 **빈 채로 두고
+        # 경고한다** — id 는 키지 이름이 아니다. Concept·Decision·Bridge 는
+        # 이 항목의 범위 밖이라 기존 대체 동작을 유지한다:
+        # [[vinc.canon.mcp-contract §5.2]].
+        if label in ("Episode", "Record"):
+            _title = node.get("title")
+            if _title is not None and str(_title).strip():
+                _set("title", str(_title))
+            elif _title is not None:
+                _set("title", "")
+                warnings.append(
+                    f"{ntype} node.title empty — left blank, not set to the id "
+                    f"(id={nid})")
+            elif not matched:
+                warnings.append(
+                    f"{ntype} node has no title — left blank, not set to the id "
+                    f"(id={nid})")
+        elif node.get("title") is not None:
             _set("title", str(node["title"]) or nid)
         elif not matched:
             _set("title", nid)
@@ -355,6 +375,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
 
     return "matched" if matched else "created"
 
+
+#: v0.8.4 axis2 item3 — 쌍 자체가 안 되는 경우(양 끝 타입은 알려져 있고 선언도
+#: 됐는데 그 조합이 rel 테이블 밖)의 타입 코드. warnings 는 여전히 문자열 배열이라
+#: 산문 앞에 이 토큰을 붙여 grep 가능하게 만든다 — "unsupported_type"(타입 이름
+#: 자체가 어휘 밖)과는 다른 사유다. 정본은 [[vinc.canon.mcp-contract §5.2]].
+_ERR_DISALLOWED_PAIR = "edge_disallowed_pair"
 
 _ALLOWED_PAIRS_HINT = (
     "allowed pairs (concept and decision are interchangeable endpoints, "
@@ -571,8 +597,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     if etype == "connects_via":
         if st != "bridge" or dt not in _SEMANTIC_TYPES:
             warnings.append(
-                f"connects_via expects bridge→concept|decision — skipped "
-                f"({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
+                f"{_ERR_DISALLOWED_PAIR}: connects_via expects bridge→concept|decision — "
+                f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
             return None
         (dl, dp) = _end(dt)
         # F9: 선택 role — 있으면 MERGE 패턴에 참여(bridges_ingest 의미론 동형: 같은
@@ -601,8 +627,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
         if st not in ("episode", "decision") or dt not in _SEMANTIC_TYPES:
             warnings.append(
-                f"about expects episode|decision→concept|decision — skipped "
-                f"({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
+                f"{_ERR_DISALLOWED_PAIR}: about expects episode|decision→concept|decision — "
+                f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
             return None
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
@@ -626,8 +652,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             # 조용히 다른 타입으로 바꿔 쓰지 않는다: 사용자가 적은 관계를 서버가
             # 재해석하면 그래프가 사용자가 믿는 것과 달라진다.
             warnings.append(
-                f"relates_to is concept→concept only — skipped ({st}→{dt}); "
-                "for a decision use `about` (decision→concept) or "
+                f"{_ERR_DISALLOWED_PAIR}: relates_to is concept→concept only — skipped "
+                f"({st}→{dt}); for a decision use `about` (decision→concept) or "
                 "`derives_from`/`prerequisite_of` (decision lineage)")
             return None
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))

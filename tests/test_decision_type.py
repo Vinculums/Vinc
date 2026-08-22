@@ -139,6 +139,8 @@ class DecisionEndToEnd(unittest.TestCase):
         joined = " ".join(res["warnings"])
         self.assertIn("relates_to is concept", joined)
         self.assertIn("about", joined)          # 대안을 알려 준다
+        # v0.8.4 axis2 item3 — grep 가능한 typed 코드도 실려야 한다.
+        self.assertIn(frag._ERR_DISALLOWED_PAIR, joined)
         self.assertEqual(
             int(self.store.run("MATCH (:Decision)-[r:RELATED_TO]->() "
                                "RETURN count(r) AS c")[0]["c"]), 0)
