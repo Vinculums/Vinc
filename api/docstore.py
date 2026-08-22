@@ -1409,9 +1409,14 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     ctime = _norm_content_time(meta.get("content_time"))
     for c in cands:
         cid = f"concept:{c['slug']}"
+        # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. 사용자 대면 id 는
+        # `cid` 그대로다. `normalize=False` 인 이유는 api/fragment._key 주석과 같다
+        # (정규화 표는 마이그레이션용이고 여기 owner 는 이미 실 계정이다).
+        # 근거: [[d11223a9a5d109de5]] §7
+        key = pkns.compose(owner, cid, normalize=False) if owner else cid
         exists = store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o, "
-            "n.content_time AS ct, n.rev AS rev", {"id": cid})
+            "n.content_time AS ct, n.rev AS rev", {"id": key})
         if exists:
             if exists[0].get("o") not in (owner, "", None):
                 continue   # 남의 개념 — 건드리지 않는다(SEC-1)
@@ -1425,7 +1430,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
                 store.run("MATCH (n:Concept) WHERE n.concept_id = $id "
                           "SET n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, "
                           "n.sync_seq = $seq",
-                          {"id": cid, "ct": ctime, "ua": st["updated_at"],
+                          {"id": key, "ct": ctime, "ua": st["updated_at"],
                            "rev": st["rev"], "seq": st["sync_seq"]})
             continue
         # 추적열(updated_at·rev·sync_seq)을 함께 찍는다 — 없으면 이 개념은 delta 에
@@ -1436,7 +1441,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
             "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
             "n.stem = $slug, n.source_file = $origin, n.created = $now, "
             "n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
-            {"id": cid, "t": c["title"], "ol": c["one_liner"], "owner": owner,
+            {"id": key, "t": c["title"], "ol": c["one_liner"], "owner": owner,
              "slug": c["slug"], "origin": meta.get("origin") or "",
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
              # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교

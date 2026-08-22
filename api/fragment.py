@@ -72,6 +72,20 @@ def _is_open(ntype: str) -> bool:
     return bool(ntype) and ntype not in _NODE_MAP
 
 
+def _key(owner: str | None, nid: str) -> str:
+    """스토어 바인딩용 **물리 키**(PK 네임스페이싱 design A). 사용자 대면 id 는
+    그대로 슬러그로 남는다 — 경고·제목·`types` 표·응답은 논리 id 를 쓰고, `$id`/`$s`/
+    `$d` 바인딩만 이 값을 쓴다.
+
+    ``normalize=False`` 인 이유: 정규화 표는 **레거시 기본 owner 세 개**를 실 owner 로
+    옮기는 마이그레이션(PR-D)용이고, 여기 오는 owner 는 이미 실 계정이다. 표를 거치면
+    정상 쓰기가 전부 ValueError 로 죽는다.
+
+    owner 가 비면 합성하지 않는다 — `_merge_edge` 를 owner 없이 직접 부르는 로컬
+    호출부가 있고, 그쪽은 플래그가 꺼진 스토어다. 근거: [[d11223a9a5d109de5]] §7"""
+    return pkns.compose(owner, nid, normalize=False) if (owner and nid) else nid
+
+
 class _ThemeFold:
     """어휘 밖 타입의 주제 어휘 편입(D11-R2 §3) — theme_id 는 **lazy 확정**.
 
@@ -171,6 +185,11 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
     owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",
                              "Decision")
+    # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. **owner-스코프 라벨만**
+    # 합성한다: `Domain` 은 열이 `name` 하나뿐이라 소유를 아예 담지 않고 전역 공유가
+    # 성립하며(engines/domain_hierarchy 의 소유 모델), 그래서 마이그레이션 대상 라벨
+    # 여섯에도 안 든다. 여기서 합성하면 남의 도메인 이름과 조용히 갈라진다.
+    key = _key(owner, nid) if owner_scoped else nid
 
     # 존재확인 + (추적 라벨이면) 현재 추적필드값도 함께 조회 — 변경감지 스탬핑(S0).
     # SEC-3: owner-스코프 라벨이면 기존 owner_id 도 조회해 교차테넌트 충돌을 판별한다.
@@ -180,12 +199,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if owner_scoped:
             cols.append("n.owner_id AS owner_id")
         cur_rows = store.run(
-            f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN {', '.join(cols)}", {"id": nid})
+            f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN {', '.join(cols)}", {"id": key})
         matched = bool(cur_rows)
         current = cur_rows[0] if cur_rows else {}
     else:
         exists = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id RETURN count(n) AS c",
-                           {"id": nid})
+                           {"id": key})
         matched = bool(exists and exists[0].get("c"))
         current = {}
 
@@ -212,7 +231,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 f"under a different id.")
             return None
 
-    sets, params = [], {"id": nid}
+    sets, params = [], {"id": key}
     def _set(col, val):
         sets.append(f"n.{col} = ${col}")
         params[col] = val
@@ -378,7 +397,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     # 파생물이고(백필 스크립트가 그 일을 한다), 여기서 죽으면 배치 전체가 날아간다.
     if "domain" in params and label in domain_hierarchy.DOMAIN_LABELS:
         try:
-            domain_hierarchy.link_node(store, label, nid, params["domain"])
+            # `link_node` 는 `$id` 를 노드 PK 로 바인딩하므로 **물리 키**를 넘긴다
+            # (Domain 쪽 이름은 논리 그대로 — 전역 공유 좌표다).
+            domain_hierarchy.link_node(store, label, key, params["domain"])
         except Exception as exc:
             warnings.append(f"domain hierarchy not updated (id={nid}): {exc}")
 
@@ -485,7 +506,11 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     지워** 그 엣지를 되살린다(삭제가 조용히 취소된다). 무조건 걸면 안 되는 이유는
     `_merge_edge` 와 같다 — owner 를 안 실은 로컬·서버 호출부(`api/server.py` 의
     POST 바디에 owner 가 없는 경우 등)가 자기 노드를 못 찾게 된다. 그래서 호출부의
-    ``osc``(= owner_explicit and owner)를 그대로 물려받는다."""
+    ``osc``(= owner_explicit and owner)를 그대로 물려받는다.
+
+    PK 네임스페이싱(design A): ``src``/``dst`` 는 호출부가 이미 합성한 **물리 키**다
+    (아래 MATCH 가 노드 PK 로 바인딩한다). 툼스톤 `ekey` 는 다르다 — `pkns.ekey` 가
+    끝점을 논리로 되돌려 `src|REL|dst` 를 짓고 그 전체를 **한 번만** 합성한다."""
     own = " AND n.owner_id = $owner" if osc else ""
     op = {"owner": owner} if osc else {}
     for (label, pk), nid in zip(ends, (src, dst)):
@@ -509,7 +534,7 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     # `_Tombstone` 전용).
     store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k"
               + (" AND t.owner_id = $owner" if osc else "") + " DELETE t",
-              {"k": f"{src}|{rel}|{dst}", **op})
+              {"k": pkns.ekey(owner, src, rel, dst), **op})
 
 
 def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
@@ -540,6 +565,17 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return None
     st, dt = types.get(src, ""), types.get(dst, "")
     osc = bool(owner_explicit and owner)
+    # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 끝점 키. 논리 `src`/`dst` 는
+    # 경고·`types` 조회·툼스톤 키에 그대로 남는다. 엣지 끝점이 될 수 있는 라벨은
+    # 전부 owner-스코프다(Domain 타입은 어느 쌍 규칙에도 안 들어 아래 미지원으로
+    # 떨어진다) — 그래서 `_merge_node` 처럼 라벨을 가릴 필요가 없다.
+    #
+    # owner 를 `DEFAULT_OWNER` 로 메우는 이유: 아래 `_stamp_edge_endpoints` 가 이미
+    # 같은 코얼레스로 owner 를 받아 툼스톤 `ekey` 를 합성한다. 여기서 안 메우면
+    # owner 없이 직접 부른 경로에서 노드 키는 논리인데 ekey 만 합성돼 삭제 표식이
+    # 상쇄되지 않는다. 근거: [[d11223a9a5d109de5]] §7
+    eowner = owner or DEFAULT_OWNER
+    ksrc, kdst = _key(eowner, src), _key(eowner, dst)
     #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
     #: 메타 읽기·쓰기가 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
     born = born or (lambda: revstamp.hlc_now(store))
@@ -579,7 +615,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"MATCH (a:{_ENTITY_LABEL}), (b:{_ENTITY_LABEL}) "
             f"WHERE a.{_ENTITY_ID} = $s AND b.{_ENTITY_ID} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{_TYPED_REL} {{type: $t}}]->(b){b_set}",
-            {"s": src, "d": dst, "t": etype, **op, **b_p})
+            {"s": ksrc, "d": kdst, "t": etype, **op, **b_p})
         return "created"
 
     # T4 — **대상 미선언**과 **타입 불일치**를 구분한다. 해석기는 이 호출의 `nodes`
@@ -626,13 +662,13 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 f"MATCH (a:Bridge), (b:{dl}) "
                 f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
                 f"MERGE (a)-[r:CONNECTS {{role: $role}}]->(b){b_set}",
-                {"s": src, "d": dst, "role": role, **op, **b_p})
+                {"s": ksrc, "d": kdst, "role": role, **op, **b_p})
         else:
             store.run(
                 f"MATCH (a:Bridge), (b:{dl}) "
                 f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
                 f"MERGE (a)-[r:CONNECTS]->(b){b_set}",
-                {"s": src, "d": dst, **op, **b_p})
+                {"s": ksrc, "d": kdst, **op, **b_p})
         return "created"
     if etype in _EC_EDGES:
         # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
@@ -647,16 +683,16 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
+        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
-            {"s": src, "d": dst, **op, **ev_p, **b_p})
+            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
+            _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
     if st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES:
@@ -679,20 +715,20 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 f"MATCH (b:{dl})-[:RELATED_TO]->(a:{sl}) "
                 f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')} "
                 "RETURN count(*) AS c",
-                {"s": src, "d": dst, **op})
+                {"s": ksrc, "d": kdst, **op})
             if rev and rev[0].get("c"):
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
-        was = _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc)
+        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r")
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
-            {"s": src, "d": dst, **op, **ev_p, **b_p})
+            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
         if not was and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, src, dst, owner or DEFAULT_OWNER,
+            _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
     if st == "record" and dt in _SEMANTIC_TYPES:
@@ -705,7 +741,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"MATCH (a:Record), (b:{dl}) "
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t",
-            {"s": src, "d": dst, "t": etype, **op, **b_p})
+            {"s": ksrc, "d": kdst, "t": etype, **op, **b_p})
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
@@ -714,7 +750,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     return None
 
 
-def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str]) -> None:
+def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
+                           *, owner: str | None = None) -> None:
     """v0.8.4 axis2 item10 — `about` 없는 결정에 경고.
 
     결정은 "그때 무엇을 골랐고 왜인가"이고, 그 **무엇**으로 가는 유일한 길이
@@ -725,12 +762,16 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str]) ->
     **이 호출이 실제로 MERGE 한 결정만** 본다(``types`` 는 성공한 노드로만 지어진다)
     — 스토어의 기존 고아 전부를 세면 무관한 호출마다 같은 경고가 쏟아진다.
     판정은 스토어 조회다: 이 호출의 엣지로 이었든 앞선 호출에서 이미 이어 뒀든
-    ABOUT 이 하나라도 있으면 고아가 아니다. 그래서 **엣지 루프 뒤**에 돈다."""
+    ABOUT 이 하나라도 있으면 고아가 아니다. 그래서 **엣지 루프 뒤**에 돈다.
+
+    ``owner``: 쓰기 경로에 있는 **조회**라 PK 네임스페이싱을 함께 태워야 한다 —
+    안 태우면 플래그가 켜진 스토어에서 이 조회가 항상 0행이라 방금 정상으로 이은
+    결정에까지 고아 경고가 붙는다([[d11223a9a5d109de5]] §7)."""
     for nid, ntype in types.items():
         if ntype != "decision":
             continue
         r = store.run("MATCH (a:Decision)-[:ABOUT]->() WHERE a.decision_id = $id "
-                      "RETURN count(*) AS c", {"id": nid})
+                      "RETURN count(*) AS c", {"id": _key(owner, nid)})
         if r and r[0].get("c"):
             continue
         warnings.append(
@@ -851,7 +892,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)
-    _warn_orphan_decisions(store, types, warnings)
+    _warn_orphan_decisions(store, types, warnings, owner=owner)
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup

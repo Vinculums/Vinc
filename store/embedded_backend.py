@@ -25,6 +25,7 @@ import os
 import re
 from contextlib import contextmanager
 
+from . import pkns
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
                               EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
@@ -546,6 +547,15 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
         while r.has_next():
             row = r.get_next()
             out.append(dict(zip(cols, row)) if cols else {"_": row})
+    # PK 네임스페이싱(design A)의 **유일한** 분해 지점. 프로젝션 64개·별칭 10개를
+    # 하나하나 고치지 않는 이유가 이것이다 — `run()`·`_Session.run`·reader 커넥션·
+    # 전문/벡터 검색이 전부 여기를 지난다. 판별자는 U+001F 존재이고, 좁히기는
+    # `pkns.looks_physical` 이 진다(문서 본문 보호). 근거: [[d11223a9a5d109de5]] §7
+    #
+    # 플래그가 꺼져 있으면 리스트를 손대지 않는다 — 로컬/데스크탑은 영구히 그쪽이고,
+    # 이 함수는 모든 읽기의 뜨거운 길이라 행마다 재귀를 도는 비용을 물릴 이유가 없다.
+    if pkns.enabled():
+        out = [pkns.strip_deep(row) for row in out]
     return out
 
 

@@ -26,6 +26,7 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api import revstamp  # noqa: E402  (동기화 스탬핑 — S0)
 from engines import domain_hierarchy  # noqa: E402  (도메인 계층 — E-1)
+from store import pkns  # noqa: E402  (PK 네임스페이싱 — design A)
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 
@@ -260,8 +261,15 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
     동기화 스탬핑(S0): 신규이거나 추적필드가 실제로 달라졌을 때만 updated_at/rev/
     sync_seq 를 찍는다 — 같은 배치 재적재가 가짜 델타를 만들지 않게. 읽기·스탬프·쓰기를
     모두 **이 session** 으로 처리해 배치 내 연속 쓰기가 서로를 본다."""
+    # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. `episode_id` 자체는 논리
+    # 슬러그로 남고 `$episode_id`/`$id`/`link_node` 바인딩만 이 값을 쓴다.
+    # `normalize=False` 인 이유는 api/fragment._key 주석과 같다(정규화 표는
+    # 마이그레이션용). 근거: [[d11223a9a5d109de5]] §7
+    _owner = ep.get("owner_id") or ""
+    key = pkns.compose(_owner, ep["episode_id"], normalize=False) if _owner \
+        else ep["episode_id"]
     params: dict[str, Any] = {
-        "episode_id": ep["episode_id"],
+        "episode_id": key,
         "title": ep["title"],
         "date": ep["date"],
         "owner_id": ep["owner_id"],
@@ -288,7 +296,7 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
                 "domain": ep["domain"], "summary": ep["summary"]}
     cur = r.run("MATCH (n:Episode) WHERE n.episode_id = $id "
                 "RETURN n.rev AS rev, n.title AS title, n.date AS date, "
-                "n.domain AS domain, n.summary AS summary", {"id": ep["episode_id"]})
+                "n.domain AS domain, n.summary AS summary", {"id": key})
     if not cur or revstamp.differs(cur[0], incoming):
         params["__ua"] = revstamp.hlc_now(r)
         params["__rev"] = int((cur[0].get("rev") if cur else 0) or 0) + 1
@@ -303,7 +311,7 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
     # 도메인 계층(E-1, v11). 이 경로는 `domain` 을 **항상** 쓰므로(부분 재전송 개념이
     # 없다) 무조건 맞춘다 — api/fragment 의 조건부와 다른 이유가 그것이다.
     domain_hierarchy.link_node(revstamp.session_runner(session), "Episode",
-                               ep["episode_id"], params["domain"])
+                               key, params["domain"])
 
 
 # ── Archival 이관 ─────────────────────────────────────────────────────────────
