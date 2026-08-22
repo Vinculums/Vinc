@@ -44,6 +44,8 @@ import time
 import uuid
 from typing import Any, Callable
 
+from store import pkns
+
 from . import graphmd
 
 # doc 단위 기본 청크 크기(문자). 검색 recall 용 세밀 분할은 임베딩 파이프라인
@@ -403,6 +405,13 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         return base
     if not isinstance(text, str):
         base["error"] = "text must be a string"
+        return base
+    # PK 네임스페이싱(design A) 판별자 U+001F 가 id·문자열 필드에 섞이면 안 된다
+    # (strip 이 이 바이트로 owner 를 잘라내므로 물리 키로 오인된다). text 는 원문
+    # 정본(D45)이라 제외 — 검열이 아니라 키 재료가 되는 필드만 본다.
+    # 근거: [[d11223a9a5d109de5]] §7
+    if pkns.has_sep((owner, doc_id, title, origin)):
+        base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
 
     content_hash = _sha(text)
