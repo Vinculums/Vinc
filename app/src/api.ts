@@ -73,7 +73,7 @@ const APP_V = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 const BUILD_SHA = typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "";
 /** 진단·리포트용 빌드 식별자 — `v0.6.7+a1b2c3d`. SHA 를 못 구하면 버전만. */
 export const buildId = BUILD_SHA ? `${APP_V}+${BUILD_SHA}` : APP_V;
-export let sidecarDiag = "(connectSidecar 미실행)";
+export let sidecarDiag = "(connectSidecar not run)";
 
 /** 셸에서만 `invoke` 를 가져온다(웹 Vinc·브라우저 dev 는 null).
  *  **동적 import 인 이유**: 정적으로 쓰면 이 모듈이 웹 번들에도 들어간다. */
@@ -100,7 +100,7 @@ export async function shellInvoke():
 export async function connectSidecar(): Promise<void> {
   const invoke = await shellInvoke();
   if (!invoke) {
-    sidecarDiag = "셸 아님(브라우저 dev · 웹 Vinc) — 사이드카 연결 생략";
+    sidecarDiag = "not in shell (browser dev, web Vinc): sidecar connect skipped";
     return;
   }
   try {
@@ -110,7 +110,7 @@ export async function connectSidecar(): Promise<void> {
     sidecarDiag = `v${buildId} conn.port=${c?.port ?? "?"} base=${cfg.base} `
       + `token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
   } catch (e: any) {
-    sidecarDiag = `invoke sidecar_conn 예외: ${e?.message || e}`;
+    sidecarDiag = `invoke sidecar_conn threw: ${e?.message || e}`;
   }
   // 사이드카 기동 대기 ≤ ~12s — PyInstaller 단일파일은 첫 실행에 압축 해제가 있어
   // (특히 macOS 콜드 스타트) 5s 로는 정상 기동도 오판할 수 있다.
@@ -133,7 +133,7 @@ export async function connectSidecar(): Promise<void> {
   // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
   // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
   let why = "";
-  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `status 조회 실패: ${e?.message || e}`; }
+  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${e?.message || e}`; }
   sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 

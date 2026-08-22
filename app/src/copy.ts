@@ -119,7 +119,6 @@ const EN = {
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯). 이름 변경은 내 노드의 도메인만 바꾼다.
     domains: {
-      manage: "Manage",
       rename: "Rename",
       unassign: "Remove from this topic",
       renameAsk: (d: string) => `Rename the topic "${d}". Everything in it moves along.`,
@@ -571,6 +570,9 @@ const EN = {
       // Success panel (Figma 42:7).
       successBody: "Newly linked concepts are now in your View.",
       addMore: "Add more",
+      // 실패 화면의 진단 줄 라벨. 뒤에 붙는 것은 원문 오류와 사이드카 상태라
+      // 번역 대상이 아니다 — 라벨만 덱이 든다.
+      diag: "Diagnostic",
     },
     settingsUi: {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
@@ -635,6 +637,16 @@ const EN = {
       syncNeedKey: "Connect your account first.",
       syncDone: (up: number, down: number) => `Synced. ${up} sent, ${down} received.`,
       syncFail: "Sync failed",
+      // 웹 Vinc 전용 계정·스페이스 줄. 예전엔 settings.ts 안에 EN/KO 사전이
+      // 통째로 인라인돼 있었다("셸 편집 충돌 회피"가 사유였는데 그 충돌은 이미
+      // 없다). 덱 밖 카피는 언어 전환도 검사도 받지 못하므로 여기로 옮긴다.
+      webNotSignedIn: "Not signed in.",
+      webManage: "Manage account",
+      webSignedAs: (w: string) => `Signed in as ${w}`,
+      space: "Space",
+      spacePersonal: "Personal",
+      spaceHint: "Which graph you are working in. Every surface follows this.",
+      spaceNone: "You are not in an active team yet.",
     },
     palette: {
       typeCommand: "Type a command…", noCommands: "No commands.",
@@ -827,7 +839,6 @@ const KO: Deck = {
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯).
     domains: {
-      manage: "관리",
       rename: "이름 바꾸기",
       unassign: "주제에서 빼기",
       renameAsk: (d) => `'${d}' 주제의 이름을 바꿔요. 안에 있는 것도 함께 옮겨져요`,
@@ -1186,6 +1197,7 @@ const KO: Deck = {
       // Success 패널 (Figma 42:7).
       successBody: "새로 연결된 개념을 이제 View에서 볼 수 있어요",
       addMore: "더 추가하기",
+      diag: "진단",
     },
     settingsUi: {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
@@ -1245,6 +1257,13 @@ const KO: Deck = {
       syncNeedKey: "먼저 계정을 연결해 주세요",
       syncDone: (up, down) => `동기화했어요. ${up}개 보내고 ${down}개 받았어요.`,
       syncFail: "동기화하지 못했어요",
+      webNotSignedIn: "로그인하지 않았어요",
+      webManage: "계정 관리",
+      webSignedAs: (w) => `로그인됨 · ${w}`,
+      space: "공간",
+      spacePersonal: "개인",
+      spaceHint: "지금 작업 중인 그래프예요. 모든 화면이 여기를 따라요",
+      spaceNone: "아직 참여 중인 팀이 없어요",
     },
     palette: {
       typeCommand: "명령 입력…", noCommands: "맞는 명령이 없어요",

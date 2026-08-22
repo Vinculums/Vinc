@@ -264,7 +264,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
       <div class="intake-stage">
         <div class="success-stage">
           <div class="error-banner">${esc(msg || COPY.intake.error(src))}</div>
-          ${msg ? "" : `<p class="hint diag">진단: ${esc(String((err && err.message) || err))} · ${esc(sidecarDiag)}</p>`}
+          ${msg ? "" : `<p class="hint diag">${ui.diag}: ${esc(String((err && err.message) || err))} · ${esc(sidecarDiag)}</p>`}
           <div class="success-actions">
             <button class="btn btn-primary" id="retry">${COPY.intake.idleCta}</button>
           </div>
