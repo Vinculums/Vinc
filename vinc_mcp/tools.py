@@ -370,7 +370,12 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_recall",
         "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. "
-                       "Returns {kind, executed, rows:[{id,title,date,domain,tags,summary,pinned,owner}]}. "
+                       "Returns {kind, executed, rows:[{id,title,date,owner,domain,tenant,workspace,summary,"
+                       "pinned,tags,access_count,last_access}]}. `tenant`/`workspace` and `access_count`/"
+                       "`last_access` are reserved columns, not settable through vinc_ingest: the first pair "
+                       "comes only from the learn-log batch import, the second only from the preference-touch "
+                       "signal (neither is an MCP tool). An episode written through vinc_ingest alone reads "
+                       "these four back empty — that is expected, not a bug. "
                        "Episodes ONLY: Concept and Record nodes never appear here — use vinc_search or "
                        "vinc_graph for those. Use it to resume context ('what was I doing here'), to check "
                        "whether an event is already recorded before writing a duplicate, or to ground a decision "

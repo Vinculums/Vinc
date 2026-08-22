@@ -267,6 +267,35 @@ def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
     assert T.call("vinc_ingest", {"nodes": []}, _FakeBridge())["target"] == "local"
 
 
+# ── v0.8.4 axis2 item9 — vinc_recall 의 예약 열 넷 ────────────────────────────
+# tenant/workspace/access_count/last_access 는 recall_plan 투영에 늘 실리지만
+# vinc_ingest 로는 절대 채워지지 않는다(각각 learn-log 배치 가져오기와 preference
+# touch 신호 전용). "값이 항상 비었다" 는 드롭 사유가 아니라 문서화 사유다 —
+# 드롭하면 그 두 실제 쓰기 경로를 쓰는 소유자의 데이터가 응답에서 사라진다.
+# 정본은 [[vinc.canon.mcp-contract §4]].
+def test_recall_row_shape_names_every_projected_field():
+    """`recall_plan` 이 실제로 내는 열 이름 전부가 vinc_recall 설명에 있어야 한다 —
+    설명이 사실보다 적게 말하면 호스트는 응답에 낯선 필드가 섞였다고 오인한다."""
+    import re
+
+    from api.query import recall_plan
+
+    fields = set(re.findall(r"AS (\w+)", recall_plan().cypher))
+    assert fields, "recall_plan 투영에서 필드를 못 뽑았다 — 정규식이 어긋났다"
+    desc = SERVED["vinc_recall"]["description"]
+    missing = [f for f in fields if f not in desc]
+    assert not missing, f"vinc_recall 설명에 없는 투영 필드: {missing}"
+
+
+def test_recall_reserved_columns_documented_as_not_vinc_ingest_settable():
+    """tenant/workspace/access_count/last_access 가 vinc_ingest 로는 안 채워진다는
+    사실이 설명에 있어야 한다 — 없으면 호스트가 값이 비는 것을 버그로 신고한다."""
+    desc = SERVED["vinc_recall"]["description"]
+    for field in ("tenant", "workspace", "access_count", "last_access"):
+        assert field in desc, f"vinc_recall 설명에 예약 필드 '{field}' 가 없다"
+    assert "vinc_ingest" in desc, "예약 필드가 vinc_ingest 로 안 채워진다는 설명이 없다"
+
+
 def test_identity_stamp_stays_off_the_read_tools():
     """조회 스무 개에 같은 두 줄이 붙으면 그건 잡음이고, 잡음은 읽히지 않는다."""
     from vinc_mcp import tools as T

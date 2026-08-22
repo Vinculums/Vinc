@@ -210,6 +210,61 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertIn("MERGE (n:Entity {entity_id: $id})", joined)
         self.assertIn("MERGE (a)-[r:TYPED {type: $t}]->(b)", joined)   # type = 매칭 키 참여
 
+    # ── v0.8.4 axis2 item2 — Episode/Record 무제목은 id 대체가 아니라 공백+경고 ──
+    def test_new_episode_without_title_is_left_blank_not_id(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment({"nodes": [{"id": "episode:e1", "type": "episode"}]},
+                                  store=fake)
+        self.assertEqual(res["merged"]["nodes"]["created"], 1)
+        self.assertTrue(res.get("partial"))
+        self.assertTrue(any("no title" in w and "episode:e1" in w for w in res["warnings"]))
+        merge_params = [p for c, p in fake.calls if c.startswith("MERGE (n:Episode")]
+        self.assertTrue(merge_params)
+        self.assertNotIn("title", merge_params[0], "title 이 조용히 id 가 되면 안 된다")
+
+    def test_new_record_with_blank_title_is_left_empty_not_id(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment(
+            {"nodes": [{"id": "record:r1", "type": "record", "title": "   "}]}, store=fake)
+        self.assertEqual(res["merged"]["nodes"]["created"], 1)
+        self.assertTrue(any("title" in w and "record:r1" in w for w in res["warnings"]))
+        merge_params = [p for c, p in fake.calls if c.startswith("MERGE (n:Record")]
+        self.assertEqual(merge_params[0].get("title"), "")
+
+    def test_new_concept_without_title_still_falls_back_to_id(self):
+        # item2 는 Episode/Record 만 다룬다 — Concept 은 이 항목의 범위 밖이라
+        # 기존 대체(빈 제목→id) 를 그대로 유지한다.
+        fake = _FakeStore()
+        res = frag.merge_fragment({"nodes": [{"id": "concept:c1", "type": "concept"}]},
+                                  store=fake)
+        self.assertEqual(res["warnings"], [])
+        merge_params = [p for c, p in fake.calls if c.startswith("MERGE (n:Concept")]
+        self.assertEqual(merge_params[0].get("title"), "concept:c1")
+
+    # ── v0.8.4 axis2 item3 — 쌍 자체가 안 되는 엣지는 typed 코드로 경고한다 ──────
+    def test_record_to_record_relates_to_gets_typed_disallowed_pair_code(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "record:r1", "type": "record", "title": "R1"},
+                      {"id": "record:r2", "type": "record", "title": "R2"}],
+            "edges": [{"from": "record:r1", "to": "record:r2", "type": "relates_to"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        [w] = res["warnings"]
+        self.assertTrue(w.startswith(f"{frag._ERR_DISALLOWED_PAIR}:"), w)
+        self.assertIn("record→record", w)
+
+    def test_connects_via_wrong_source_gets_typed_disallowed_pair_code(self):
+        fake = _FakeStore()
+        res = frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "concept:b", "type": "concept", "title": "B"}],
+            "edges": [{"from": "concept:a", "to": "concept:b", "type": "connects_via"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        [w] = res["warnings"]
+        self.assertTrue(w.startswith(f"{frag._ERR_DISALLOWED_PAIR}:"), w)
+
     def test_entity_without_title_skips_with_warning(self):
         # 개방층의 skip 은 형태 오류뿐 — Entity 는 title 필수(휴면 엔진 동형).
         fake = _FakeStore()
@@ -273,6 +328,8 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertIn("미지원", w)
         self.assertIn("record→episode", w)
         self.assertNotIn("not declared", w)
+        # v0.8.4 axis2 item3 — 진짜 토폴로지 한계도 typed 코드를 단다.
+        self.assertTrue(w.startswith(f"{frag._ERR_DISALLOWED_PAIR}:"))
 
     def test_theme_fold_proposes_open_types(self):
         # F1 — 어휘 밖 타입은 proposed 편입 + default 테마 lazy 생성·활성, Entity 행에
@@ -346,6 +403,8 @@ class FragmentMergeTests(unittest.TestCase):
         }, store=fake)
         self.assertEqual(res["merged"]["edges"]["created"], 0)
         self.assertEqual(len(res["warnings"]), 1)
+        # v0.8.4 axis2 item3 — 쌍이 안 되는 이유는 typed 코드로 grep 가능해야 한다.
+        self.assertTrue(res["warnings"][0].startswith(f"{frag._ERR_DISALLOWED_PAIR}:"))
 
     def test_connects_via_role_participates_in_merge(self):
         # F9 — role 지정 시 MERGE 패턴 참여(bridges_ingest 동형), 미지정은 bare MERGE.
