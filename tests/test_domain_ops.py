@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import fragment as frag   # noqa: E402
 from api import query as q         # noqa: E402
+from store import pkns            # noqa: E402
 from store.embedded_backend import _import_driver   # noqa: E402
 
 _DRIVER, _ = _import_driver()
@@ -79,12 +80,12 @@ class DomainRenameE2E(unittest.TestCase):
         """변경 노드마다 revstamp — 안 찍으면 다른 기기가 옛 도메인을 유지한다."""
         before = self.store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $i RETURN c.rev AS rev",
-            {"i": "concept:a1"})[0]["rev"]
+            {"i": pkns.key(A, "concept:a1")})[0]["rev"]
         q.rename_domain(owner=A, old="physics", new="astro", store=self.store)
         row = self.store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $i "
             "RETURN c.rev AS rev, c.updated_at AS ua, c.sync_seq AS seq",
-            {"i": "concept:a1"})[0]
+            {"i": pkns.key(A, "concept:a1")})[0]
         self.assertGreater(int(row["rev"]), int(before or 0))
         self.assertTrue(row["ua"])
         self.assertGreater(int(row["seq"] or 0), 0)

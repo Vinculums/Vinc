@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import fragment as frag        # noqa: E402
+from store import pkns                  # noqa: E402
 
 A = "user:alice"
 B = "user:bob"
@@ -73,10 +74,12 @@ class EdgeTenancyTests(unittest.TestCase):
         self.store.close()
         _restore(self._keep)
 
-    def _rev(self, nid: str) -> tuple[int, int]:
+    def _rev(self, nid: str, owner: str) -> tuple[int, int]:
+        # 스토어 직접 조회다 — PK 네임스페이싱이 켜지면 노드 PK 는 물리 키이므로
+        # 소유자를 받아 합성한다(논리 슬러그로 물으면 0행이 돌아온다).
         rows = self.store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id "
-            "RETURN n.rev AS rev, n.sync_seq AS seq", {"id": nid})
+            "RETURN n.rev AS rev, n.sync_seq AS seq", {"id": pkns.key(owner, nid)})
         self.assertTrue(rows, f"{nid} 가 없다")
         return int(rows[0].get("rev") or 0), int(rows[0].get("seq") or 0)
 
@@ -89,15 +92,17 @@ class EdgeTenancyTests(unittest.TestCase):
                       {"id": "concept:by", "type": "concept", "title": "BY"}],
         }, store=self.store)
         self.assertTrue(r["executed"], r)
-        before_x, before_y = self._rev("concept:bx"), self._rev("concept:by")
+        before_x = self._rev("concept:bx", B)
+        before_y = self._rev("concept:by", B)
+        # 툼스톤 ekey 는 논리 `src|REL|dst` 를 한 번 합성한 것이다(pkns.ekey).
+        bkey = pkns.ekey(B, "concept:bx", "RELATED_TO", "concept:by")
 
         # B 가 지운 엣지의 삭제 표식을 심는다(실제 삭제 경로가 남기는 그 행).
         self.store.run(
             "MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = 'RELATED_TO', "
             "t.dst = $d, t.owner_id = $o, t.deleted_at = '2026-01-01T00:00:00Z', "
             "t.sync_seq = 1, t.origin = 'local'",
-            {"k": "concept:bx|RELATED_TO|concept:by", "s": "concept:bx",
-             "d": "concept:by", "o": B})
+            {"k": bkey, "s": "concept:bx", "d": "concept:by", "o": B})
 
         # A 가 같은 (src,rel,dst) 로 엣지를 건다. A 는 이 노드들을 소유하지 않는다.
         r2 = frag.merge_fragment({
@@ -109,17 +114,23 @@ class EdgeTenancyTests(unittest.TestCase):
         self.assertTrue(r2["executed"], r2)
 
         # 노드는 SEC-3 가 이미 막는다(소유권 탈취 차단) — 그것부터 확인.
-        self.assertTrue(any("owned by another tenant" in w for w in r2.get("warnings") or []),
-                        r2.get("warnings"))
+        # ⚠ PK 네임스페이싱이 켜지면 이 경고가 **사라지는 것이 맞다**. A 의 쓰기는
+        # `Aconcept:bx` 라는 자기 행으로 가므로 B 의 행과 부딪칠 일이 없다 —
+        # 그 충돌을 없애는 것이 design A 의 목적(감사 H1)이다. 아래 두 축(B 의
+        # rev 불변 · B 의 툼스톤 존치)은 두 모드에서 똑같이 성립해야 한다.
+        if not pkns.enabled():
+            self.assertTrue(
+                any("owned by another tenant" in w for w in r2.get("warnings") or []),
+                r2.get("warnings"))
 
         # 핵심: B 의 rev/sync_seq 가 그대로다.
-        self.assertEqual(self._rev("concept:bx"), before_x, "B 의 rev/seq 가 올라갔다")
-        self.assertEqual(self._rev("concept:by"), before_y, "B 의 rev/seq 가 올라갔다")
+        self.assertEqual(self._rev("concept:bx", B), before_x, "B 의 rev/seq 가 올라갔다")
+        self.assertEqual(self._rev("concept:by", B), before_y, "B 의 rev/seq 가 올라갔다")
 
         # 그리고 B 의 삭제 표식이 살아 있다 — 지워지면 삭제가 조용히 취소된다.
         ts = self.store.run(
             "MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN count(t) AS c",
-            {"k": "concept:bx|RELATED_TO|concept:by"})
+            {"k": bkey})
         self.assertEqual(int(ts[0]["c"]), 1, "남의 엣지 툼스톤이 지워졌다(삭제 취소)")
 
     def test_same_owner_still_stamps_and_cancels_its_own_tombstone(self):
@@ -129,13 +140,13 @@ class EdgeTenancyTests(unittest.TestCase):
             "nodes": [{"id": "concept:ax", "type": "concept", "title": "AX"},
                       {"id": "concept:ay", "type": "concept", "title": "AY"}],
         }, store=self.store)
-        before = self._rev("concept:ax")
+        before = self._rev("concept:ax", A)
+        akey = pkns.ekey(A, "concept:ax", "RELATED_TO", "concept:ay")
         self.store.run(
             "MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = 'RELATED_TO', "
             "t.dst = $d, t.owner_id = $o, t.deleted_at = '2026-01-01T00:00:00Z', "
             "t.sync_seq = 1, t.origin = 'local'",
-            {"k": "concept:ax|RELATED_TO|concept:ay", "s": "concept:ax",
-             "d": "concept:ay", "o": A})
+            {"k": akey, "s": "concept:ax", "d": "concept:ay", "o": A})
 
         frag.merge_fragment({
             "owner": A,
@@ -144,10 +155,11 @@ class EdgeTenancyTests(unittest.TestCase):
             "edges": [{"from": "concept:ax", "to": "concept:ay", "type": "relates_to"}],
         }, store=self.store)
 
-        self.assertGreater(self._rev("concept:ax")[0], before[0], "자기 노드가 스탬프 안 됐다")
+        self.assertGreater(self._rev("concept:ax", A)[0], before[0],
+                           "자기 노드가 스탬프 안 됐다")
         ts = self.store.run(
             "MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN count(t) AS c",
-            {"k": "concept:ax|RELATED_TO|concept:ay"})
+            {"k": akey})
         self.assertEqual(int(ts[0]["c"]), 0, "자기 툼스톤이 상쇄되지 않았다")
 
     # ── 2. 스킵된 노드로 향하는 엣지는 created 로 세지 않는다 ────────────────
@@ -177,54 +189,73 @@ class EdgeTenancyTests(unittest.TestCase):
     # 때도 그 테스트는 초록이었다. merge_fragment 를 통과하는 교차테넌트 경로는 현재
     # 없고, 3b 는 그 층이 뚫렸을 때를 막는 두 번째 방어선이다. 방어선의 유무는
     # 함수를 직접 불러야만 잰다.
-    def _plant(self, owner: str, a: str, b: str) -> None:
-        for nid in (a, b):
+    def _plant(self, owner: str, a: str, b: str) -> tuple[str, str]:
+        """돌려주는 것은 **물리 키** 쌍이다. `_stamp_edge_endpoints` 는 이미 합성된
+        끝점을 받으므로(합성은 호출부의 몫), 그 함수를 직접 부르는 테스트는 여기서
+        받은 값을 그대로 넘겨야 한다. 툼스톤 `src`/`dst` **열**은 동기화 와이어로
+        나가는 값이라 논리로 남고, `ekey` 만 한 번 합성된다."""
+        ka, kb = pkns.key(owner, a), pkns.key(owner, b)
+        for nid, title in ((ka, a), (kb, b)):
             self.store.run(
-                "MERGE (n:Concept {concept_id: $id}) SET n.title = $id, "
+                "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, "
                 "n.owner_id = $o, n.rev = 1, n.sync_seq = 1, n.updated_at = 'x'",
-                {"id": nid, "o": owner})
+                {"id": nid, "t": title, "o": owner})
         self.store.run(
             "MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $a, t.rel = 'RELATED_TO', "
             "t.dst = $b, t.owner_id = $o, t.deleted_at = 'x', t.sync_seq = 1, "
-            "t.origin = 'local'", {"k": f"{a}|RELATED_TO|{b}", "a": a, "b": b, "o": owner})
+            "t.origin = 'local'",
+            {"k": pkns.ekey(owner, a, "RELATED_TO", b), "a": a, "b": b, "o": owner})
+        return ka, kb
 
     _ENDS = (("Concept", "concept_id"), ("Concept", "concept_id"))
 
     def test_stamp_endpoints_scoped_skips_foreign_nodes_and_tombstone(self):
         self._plant(B, "concept:fa", "concept:fb")
-        before = self._rev("concept:fa")
+        before = self._rev("concept:fa", B)
         ws: list[str] = []
+        # A 의 호출부가 합성한 끝점을 넘긴다(프로덕션에서 `_merge_edge` 가 하는 것과
+        # 같다 — 조각의 owner 로 합성한다). 플래그가 꺼져 있으면 논리 그대로다.
         frag._stamp_edge_endpoints(self.store, "RELATED_TO", self._ENDS,
-                                   "concept:fa", "concept:fb", A, osc=True, warnings=ws)
-        self.assertEqual(self._rev("concept:fa"), before, "남의 rev 를 올렸다")
+                                   pkns.key(A, "concept:fa"), pkns.key(A, "concept:fb"),
+                                   A, osc=True, warnings=ws)
+        self.assertEqual(self._rev("concept:fa", B), before, "남의 rev 를 올렸다")
         ts = self.store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN count(t) AS c",
-                            {"k": "concept:fa|RELATED_TO|concept:fb"})
+                            {"k": pkns.ekey(B, "concept:fa", "RELATED_TO", "concept:fb")})
         self.assertEqual(int(ts[0]["c"]), 1, "남의 툼스톤을 지웠다(삭제 취소)")
         self.assertTrue(any("not yours" in w for w in ws), ws)
 
     def test_stamp_endpoints_unscoped_still_stamps_everything(self):
         """osc=False(로컬·owner 미실 경로)는 종전 동작 그대로여야 한다 — 이 축이
         깨지면 owner 를 안 싣는 ~15개 호출부가 조용히 스탬프를 잃는다."""
-        self._plant(B, "concept:ua", "concept:ub")
-        before = self._rev("concept:ua")
+        ka, kb = self._plant(B, "concept:ua", "concept:ub")
+        before = self._rev("concept:ua", B)
+        # B 가 합성한 끝점을 A 의 owner 로 넘긴다 — osc=False 가 owner 술어를 **안**
+        # 거는지가 이 테스트의 축이고, 그것은 끝점 스탬프에서 재진다.
         frag._stamp_edge_endpoints(self.store, "RELATED_TO", self._ENDS,
-                                   "concept:ua", "concept:ub", A, osc=False)
-        self.assertGreater(self._rev("concept:ua")[0], before[0])
+                                   ka, kb, A, osc=False)
+        self.assertGreater(self._rev("concept:ua", B)[0], before[0])
+        # 툼스톤은 다르다. `ekey` 는 **부른 쪽의 owner** 로 합성되므로, 플래그가 켜지면
+        # A 의 키가 B 의 표식을 못 짚어 상쇄가 일어나지 않는다. 그것이 의도다 — owner
+        # 를 안 싣는 경로는 플래그가 영구히 꺼진 스토어(로컬·데스크탑)에만 있다.
         ts = self.store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN count(t) AS c",
-                            {"k": "concept:ua|RELATED_TO|concept:ub"})
-        self.assertEqual(int(ts[0]["c"]), 0)
+                            {"k": pkns.ekey(B, "concept:ua", "RELATED_TO", "concept:ub")})
+        self.assertEqual(int(ts[0]["c"]), 1 if pkns.enabled() else 0)
 
     def test_edge_exists_scoped_does_not_see_a_foreign_edge(self):
         """`was` 가 남의 엣지를 보고 True 가 되면 내 엣지가 스탬프를 건너뛰어
         증분 동기화에 영영 안 실린다."""
-        self._plant(B, "concept:ea", "concept:eb")
-        self.store.run("MATCH (a:Concept), (b:Concept) WHERE a.concept_id = 'concept:ea' "
-                       "AND b.concept_id = 'concept:eb' MERGE (a)-[:RELATED_TO]->(b)")
-        self.assertTrue(frag._edge_exists(self.store, "RELATED_TO", self._ENDS,
-                                          "concept:ea", "concept:eb"))
+        ka, kb = self._plant(B, "concept:ea", "concept:eb")
+        self.store.run("MATCH (a:Concept), (b:Concept) WHERE a.concept_id = $a "
+                       "AND b.concept_id = $b MERGE (a)-[:RELATED_TO]->(b)",
+                       {"a": ka, "b": kb})
+        # 무스코프 조회는 B 가 합성한 끝점으로 물어야 그 엣지를 본다.
+        self.assertTrue(frag._edge_exists(self.store, "RELATED_TO", self._ENDS, ka, kb))
+        # A 로 스코프를 걸면, 플래그가 켜졌을 때는 A 가 합성한 끝점으로 묻게 되므로
+        # (프로덕션의 `_merge_edge` 와 같은 모양) 남의 엣지가 보이지 않는다.
         self.assertFalse(
             frag._edge_exists(self.store, "RELATED_TO", self._ENDS,
-                              "concept:ea", "concept:eb", owner=A, osc=True),
+                              pkns.key(A, "concept:ea"), pkns.key(A, "concept:eb"),
+                              owner=A, osc=True),
             "owner 스코프인데 남의 엣지를 '이미 있다'로 읽었다")
 
     def test_skipped_endpoint_warning_is_rolled_up_not_per_edge(self):

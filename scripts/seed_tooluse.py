@@ -27,6 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from store import pkns  # noqa: E402  (PK 네임스페이싱 — sys.path 세팅 뒤)
+
 OWNER = "eval:tooluse"
 
 #: (id, title, domain, tags)
@@ -86,32 +88,41 @@ show() 에 가드가 없어 슬라이더 드래그가 WebGL 컨텍스트를 흘�
 
 
 def seed(store) -> dict:
-    """픽스처를 심고 심은 개수를 돌려준다. 전부 MERGE 라 멱등하다."""
+    """픽스처를 심고 심은 개수를 돌려준다. 전부 MERGE 라 멱등하다.
+
+    ⚠ 이 시더는 쓰기 경로(`merge_fragment`)를 우회해 스토어에 직접 심는다. PK
+    네임스페이싱(design A)이 켜지면 읽기 플랜이 owner 로 합성한 물리 키로 묻기
+    때문에, 노드 PK 는 여기서도 `_k` 로 합성해야 한다 — 안 하면 평가셋이 통째로
+    빈손이 되고, 그 실패는 "도구가 답을 못 준다"로 오독된다.
+    근거: [[d11223a9a5d109de5]] §7"""
+    def _k(nid: str) -> str:
+        return pkns.key(OWNER, nid)
+
     with store.session() as s:
         for cid, title, domain, tags in CONCEPTS:
             s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id=$o, c.title=$t, "
-                  "c.domain=$d, c.tags=$g", id=cid, o=OWNER, t=title, d=domain, g=tags)
+                  "c.domain=$d, c.tags=$g", id=_k(cid), o=OWNER, t=title, d=domain, g=tags)
         for a, b in EDGES:
             s.run("MATCH (x:Concept{concept_id:$a}),(y:Concept{concept_id:$b}) "
-                  "MERGE (x)-[:RELATED_TO]->(y)", a=a, b=b)
+                  "MERGE (x)-[:RELATED_TO]->(y)", a=_k(a), b=_k(b))
         for rid, title, domain, tags, note, target in RECORDS:
             s.run("MERGE (r:Record {record_id:$id}) SET r.owner_id=$o, r.title=$t, "
                   "r.domain=$d, r.tags=$g, r.props=$p",
-                  id=rid, o=OWNER, t=title, d=domain, g=tags, p='{"note": "%s"}' % note)
+                  id=_k(rid), o=OWNER, t=title, d=domain, g=tags, p='{"note": "%s"}' % note)
             s.run("MATCH (r:Record{record_id:$id}),(c:Concept{concept_id:$c}) "
-                  "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)", id=rid, c=target)
+                  "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)", id=_k(rid), c=_k(target))
         for eid, title, date, domain, summary, target in EPISODES:
             s.run("MERGE (e:Episode {episode_id:$id}) SET e.owner_id=$o, e.title=$t, "
                   "e.date=$dt, e.domain=$d, e.summary=$s",
-                  id=eid, o=OWNER, t=title, dt=date, d=domain, s=summary)
+                  id=_k(eid), o=OWNER, t=title, dt=date, d=domain, s=summary)
             s.run("MATCH (e:Episode{episode_id:$id}),(c:Concept{concept_id:$c}) "
-                  "MERGE (e)-[:ABOUT]->(c)", id=eid, c=target)
+                  "MERGE (e)-[:ABOUT]->(c)", id=_k(eid), c=_k(target))
         for bid, title, sd, td, role, target in BRIDGES:
             s.run("MERGE (b:Bridge {bridge_id:$id}) SET b.owner_id=$o, b.title=$t, "
                   "b.source_domain=$sd, b.target_domain=$td",
-                  id=bid, o=OWNER, t=title, sd=sd, td=td)
+                  id=_k(bid), o=OWNER, t=title, sd=sd, td=td)
             s.run("MATCH (b:Bridge{bridge_id:$id}),(c:Concept{concept_id:$c}) "
-                  "MERGE (b)-[:CONNECTS {role:$r}]->(c)", id=bid, c=target, r=role)
+                  "MERGE (b)-[:CONNECTS {role:$r}]->(c)", id=_k(bid), c=_k(target), r=role)
     return {"concepts": len(CONCEPTS), "edges": len(EDGES), "records": len(RECORDS),
             "episodes": len(EPISODES), "bridges": len(BRIDGES)}
 

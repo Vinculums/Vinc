@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from . import fragment as frag
 from . import packfile
 from . import query as q
+from store import pkns
 from . import docstore as ds
 
 PACK_VERSION = 1
@@ -42,7 +43,8 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
     where, params = ["c.owner_id = $owner"], {"owner": owner}
     if ids is not None:
         where.append("c.concept_id IN $ids")
-        params["ids"] = ids
+        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[d11223a9a5d109de5]] §7
+        params["ids"] = pkns.keys(owner, ids)
     elif domain:
         where.append("c.domain = $domain")
         params["domain"] = domain
@@ -96,7 +98,8 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
     rows = store.run(
         "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) "
         "WHERE co.concept_id IN $ids AND c.owner_id = $o "
-        "RETURN DISTINCT c.doc_id AS doc_id", {"ids": list(concept_ids), "o": owner})
+        "RETURN DISTINCT c.doc_id AS doc_id",
+        {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
     docs: list[dict] = []
     for r in rows or []:
         did = r.get("doc_id")

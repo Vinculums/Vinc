@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from engines import domain_hierarchy as dh              # noqa: E402
 from store import embedded_schema as eschema           # noqa: E402
+from store import pkns                                  # noqa: E402
 from store.backend import open_store                    # noqa: E402
 from store.config import load_config                    # noqa: E402
 from store.embedded_backend import _import_driver       # noqa: E402
@@ -185,10 +186,12 @@ class WritePathTests(unittest.TestCase):
         return merge_fragment({"nodes": nodes, "edges": [], "owner": owner},
                               store=self._store)
 
-    def _domain_of(self, node_id):
+    def _domain_of(self, node_id, owner="u1"):
+        # 쓰기는 `merge_fragment` 로 갔다 — PK 네임스페이싱이 켜지면 노드 PK 가
+        # 물리 키이므로 여기서도 합성해서 물어야 한다.
         rows = self._store.run(
             "MATCH (n:Concept {concept_id:$id})-[:IN_DOMAIN]->(d:Domain) "
-            "RETURN d.name AS d", {"id": node_id})
+            "RETURN d.name AS d", {"id": pkns.key(owner, node_id)})
         return [r["d"] for r in rows]
 
     def test_ingest_derives_hierarchy_without_authoring_edges(self):
@@ -224,8 +227,9 @@ class WritePathTests(unittest.TestCase):
         아니게 되고, 열 기준 집계(/domains)와 그래프 조회가 갈린다."""
         self._ingest([{"type": "concept", "id": "c:a", "title": "A",
                        "domain": " vinc // design "}])
-        col = self._store.run("MATCH (n:Concept {concept_id:'c:a'}) "
-                              "RETURN n.domain AS d")[0]["d"]
+        col = self._store.run("MATCH (n:Concept {concept_id:$i}) "
+                              "RETURN n.domain AS d",
+                              {"i": pkns.key("u1", "c:a")})[0]["d"]
         self.assertEqual("vinc/design", col)
         self.assertEqual([col], self._domain_of("c:a"))
 
@@ -348,9 +352,11 @@ class BackfillTests(unittest.TestCase):
                            ("Episode", "episode_id", "e1"),
                            ("Decision", "decision_id", "dec1")):   # v13
             self._store.run(f"MERGE (n:{lbl} {{{pk}: $i}}) "
-                            "SET n.domain = 'design', n.owner_id = 'u1'", {"i": i})
-        self._store.run("MERGE (n:Concept {concept_id:'c2'}) "
-                        "SET n.domain = '', n.owner_id = 'u1'")
+                            "SET n.domain = 'design', n.owner_id = 'u1'",
+                            {"i": pkns.key("u1", i)})
+        self._store.run("MERGE (n:Concept {concept_id:$i}) "
+                        "SET n.domain = '', n.owner_id = 'u1'",
+                        {"i": pkns.key("u1", "c2")})
 
     def tearDown(self):
         self._store.close()
@@ -388,7 +394,8 @@ class BackfillTests(unittest.TestCase):
         res = dh.backfill(self._store, rename={"design": "vinc/design"})
         self.assertEqual(4, res["renamed"])
         col = {r["d"] for r in self._store.run(
-            "MATCH (n:Concept {concept_id:'c1'}) RETURN n.domain AS d")}
+            "MATCH (n:Concept {concept_id:$i}) RETURN n.domain AS d",
+            {"i": pkns.key("u1", "c1")})}
         self.assertEqual({"vinc/design"}, col)
         rows = self._store.run(dh.subtree_scoped_cypher("Concept"),
                                {"domain": "vinc", "owner": "u1"})
@@ -413,7 +420,8 @@ class BackfillTests(unittest.TestCase):
                            ("Episode", "episode_id", "e1"),
                            ("Decision", "decision_id", "dec1")):
             col = self._store.run(
-                f"MATCH (n:{lbl}) WHERE n.{pk} = $i RETURN n.domain AS d", {"i": i})[0]["d"]
+                f"MATCH (n:{lbl}) WHERE n.{pk} = $i RETURN n.domain AS d",
+                {"i": pkns.key("u1", i)})[0]["d"]
             self.assertEqual("vinc/design", col, f"{lbl} 의 domain 열이 안 따라왔다")
         # 열만 옮기고 엣지를 두면 /domains(열 집계)와 vinc_neighbors(그래프)가
         # 서로 다른 답을 준다 — v12 가 실제로 그 상태로 배포됐다.
@@ -469,11 +477,12 @@ class BackfillTests(unittest.TestCase):
     def test_backfill_does_not_restamp(self):
         """366 노드에 스탬프를 찍으면 모든 기기가 전량을 다시 받는다. 이행은 내용
         변경이 아니라 표현 보정이므로 rev 를 건드리지 않는다."""
+        c1 = pkns.key("u1", "c1")
         before = self._store.run(
-            "MATCH (n:Concept {concept_id:'c1'}) RETURN n.rev AS rev")[0]["rev"]
+            "MATCH (n:Concept {concept_id:$i}) RETURN n.rev AS rev", {"i": c1})[0]["rev"]
         dh.backfill(self._store, rename={"design": "vinc/design"})
         after = self._store.run(
-            "MATCH (n:Concept {concept_id:'c1'}) RETURN n.rev AS rev")[0]["rev"]
+            "MATCH (n:Concept {concept_id:$i}) RETURN n.rev AS rev", {"i": c1})[0]["rev"]
         self.assertEqual(before, after)
 
 

@@ -88,16 +88,23 @@ def main(argv: list[str] | None = None) -> int:
     gr.add_argument("--owner", required=True)
     gr.add_argument("--domain", default=None, help="narrow to one open/user-defined domain")
 
+    # ⚠ 이 셋은 오래도록 `--owner` 가 **없었다**. SEC-1 이전 유물인데, PK
+    # 네임스페이싱이 켜지면 그것이 무음 고장이 된다: `pkns.key(None, id)` 는 논리
+    # 슬러그를 그대로 돌려주고, 그 값은 물리 키가 실린 행을 못 짚어 SET 이 0행을
+    # 맞춘다(오류 없이 아무 일도 안 일어난다). 근거: [[d11223a9a5d109de5]] §7
     pn = sub.add_parser("pin", help="pin/unpin an Episode (preference signal)")
     pn.add_argument("--episode", required=True)
+    pn.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
     pn.add_argument("--off", action="store_true", help="unpin instead of pin")
 
     tg = sub.add_parser("tag", help="add owner tags to an Episode (preference signal)")
     tg.add_argument("--episode", required=True)
+    tg.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
     tg.add_argument("--tags", required=True, help="comma-separated tags")
 
     tc = sub.add_parser("touch", help="record a recall hit (access-frequency signal)")
     tc.add_argument("--episode", required=True)
+    tc.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
     tc.add_argument("--now", default=None, help="ISO-8601 timestamp for last_access (optional)")
 
     av = sub.add_parser("activate", help="export owned memory as a portable context pack (+ MCP manifest)")
@@ -298,11 +305,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "graph":
         return _emit(q.graph(owner=args.owner, domain=args.domain))
     if args.cmd == "pin":
-        return _emit(pref.pin(args.episode, pinned=not args.off))
+        return _emit(pref.pin(args.episode, pinned=not args.off, owner=args.owner))
     if args.cmd == "tag":
-        return _emit(pref.tag(args.episode, _csv(args.tags) or []))
+        return _emit(pref.tag(args.episode, _csv(args.tags) or [], owner=args.owner))
     if args.cmd == "touch":
-        return _emit(pref.touch(args.episode, now=args.now))
+        return _emit(pref.touch(args.episode, now=args.now, owner=args.owner))
     if args.cmd == "activate":
         return _emit(act.activate(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
                                   workspace=args.workspace, tags=_csv(args.tags),

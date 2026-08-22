@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import fragment as frag  # noqa: E402
+from store import pkns  # noqa: E402
 
 _DRIVER = None
 try:
@@ -55,10 +56,15 @@ class ConceptOneLinerE2E(unittest.TestCase):
             else:
                 os.environ[k] = v
 
+    def _pk(self, nid: str) -> str:
+        """PK 네임스페이싱이 켜졌을 때의 물리 키. 이 테스트는 API 를 거치지
+        않고 스토어를 **직접** 조회하므로 물리 층의 말로 물어야 한다."""
+        return pkns.key(self.OWNER, nid)
+
     def _row(self, cid: str) -> dict:
         rows = self.store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $id "
-            "RETURN c.one_liner AS ol, c.props AS props", {"id": cid})
+            "RETURN c.one_liner AS ol, c.props AS props", {"id": self._pk(cid)})
         self.assertTrue(rows, f"{cid} 가 없다")
         return rows[0]
 

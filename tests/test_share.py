@@ -15,6 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from store import pkns  # noqa: E402
+
 from api import share  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
 
@@ -137,7 +139,9 @@ class ImportPackTests(unittest.TestCase):
                         if cy.startswith("MERGE") and "_SyncMeta" not in cy]
         self.assertTrue(all(p.get("owner_id") == "user:bob" for p in merge_params))
         # Episode 콘텐츠 필드 사상
-        ep = [p for p in merge_params if p.get("id") == "ep:1"][0]
+        # PK 네임스페이싱이 켜지면 `$id` 바인딩은 물리 키다(사용자 대면 id 는 그대로).
+        ep = [p for p in merge_params
+              if p.get("id") == pkns.key("user:bob", "ep:1")][0]
         self.assertEqual(ep.get("date"), "2026-07-01")
         self.assertEqual(ep.get("summary"), "s")
         self.assertEqual(res["manifest"], {"created": "x"})
@@ -310,10 +314,12 @@ class PackTimeContract(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def _row(self, cid):
+    def _row(self, cid, owner=None):
+        # 스토어 직접 조회 — 쓰기는 fragment/share 를 거쳤으니 물리 키로 물어야 한다.
         rows = self.store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
                               "RETURN c.created AS created, c.content_time AS ct, "
-                              "c.owner_id AS o", {"i": cid})
+                              "c.owner_id AS o",
+                              {"i": pkns.key(owner or self.OWNER_B, cid)})
         return rows[0] if rows else {}
 
     def test_pack_carries_both_clocks_and_import_lands_them(self):
@@ -331,8 +337,8 @@ class PackTimeContract(unittest.TestCase):
 
         # 받는 쪽에는 아직 없는 상태를 만든다. DETACH 인 이유: 도메인 계층(IN_DOMAIN)이
         # 이미 붙어 있어 그냥 DELETE 하면 엔진이 거절한다.
-        self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:relativity' "
-                       "DETACH DELETE c")
+        self.store.run("MATCH (c:Concept) WHERE c.concept_id=$i DETACH DELETE c",
+                       {"i": pkns.key(self.OWNER_A, "concept:relativity")})
         share.import_share_pack(pack, owner=self.OWNER_B, store=self.store)
         got = self._row("concept:relativity")
         self.assertEqual(got["created"], "2019-03-03T00:00:00.000Z",

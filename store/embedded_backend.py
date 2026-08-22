@@ -65,7 +65,10 @@ def backfill_episode_time_fields(store) -> int:
     try:
         rows = store.run(
             "MATCH (e:Episode) WHERE e.props IS NOT NULL AND e.props <> '' "
-            "RETURN e.episode_id AS id, e.props AS props, "
+            # PK 네임스페이싱 — 이 조회가 주는 id 는 읽기 훅(_exec_to_dicts)이 논리로
+            # 되돌린 슬러그다. 아래에서 **다시 바인딩**하므로 각 행의 owner 로 합성해야
+            # 한다. 그래서 owner_id 를 함께 싣는다. 근거: [[d11223a9a5d109de5]] §7
+            "RETURN e.episode_id AS id, e.props AS props, e.owner_id AS owner_id, "
             + ", ".join(f"e.{c} AS {c}" for c in _EPISODE_PROMOTED_COLS))
     except Exception:
         # 미프로비저닝·방언 차이로 스캔이 안 되면 마이그레이션 전체를 죽이지 않는다
@@ -83,7 +86,7 @@ def backfill_episode_time_fields(store) -> int:
             continue
         if not isinstance(props, dict):
             continue
-        sets, params = [], {"id": nid}
+        sets, params = [], {"id": pkns.key(r.get("owner_id") or "", nid)}
         for col in _EPISODE_PROMOTED_COLS:
             if str(r.get(col) or "").strip():
                 continue                      # 이미 값이 있다 — 멱등·비파괴

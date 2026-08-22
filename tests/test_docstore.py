@@ -20,7 +20,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import docstore as ds  # noqa: E402
+from store import pkns  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
+
+
+def _pk(nid: str, owner: str = "user:a") -> str:
+    """논리 슬러그 → 스토어 바인딩용 **물리 키**.
+
+    이 파일의 e2e 시드·검증은 `merge_fragment` 를 거치지 않고 스토어를 **직접**
+    읽고 쓴다. PK 네임스페이싱(design A)이 켜지면 API 쪽 쓰기가 owner 를 합성하므로,
+    직접 층도 같은 말을 써야 서로를 찾는다. 플래그가 꺼져 있으면 항등이다."""
+    return pkns.key(owner, nid)
 
 _DRIVER, _NAME = _import_driver()
 
@@ -532,8 +542,9 @@ class DocstoreE2E(unittest.TestCase):
         ap = ds.extract_doc(self.store, did, owner="user:a", apply=True)
         self.assertEqual(ap["applied"]["created"], 1)
         self.assertGreater(ap["mentions"], 0)
-        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:quantum' "
-                             "RETURN c.status AS s, c.one_liner AS ol")
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id=$i "
+                             "RETURN c.status AS s, c.one_liner AS ol",
+                             {"i": _pk("concept:quantum")})
         self.assertEqual(row[0]["s"], "proposed")
         self.assertEqual(row[0]["ol"], "얽힘의 핵심 정리.")
         # 재반영 = matched(덮어쓰기 금지·멱등)
@@ -570,9 +581,9 @@ class DocstoreE2E(unittest.TestCase):
 
         ap = ds.extract_doc(self.store, did, owner="user:a", apply=True)
         self.assertEqual(ap["applied"]["created"], 1)
-        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id='concept:entropy' "
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id=$i "
                              "RETURN c.sync_seq AS seq, c.rev AS rev, c.created AS cr, "
-                             "c.updated_at AS ua")[0]
+                             "c.updated_at AS ua", {"i": _pk("concept:entropy")})[0]
         self.assertIsNotNone(row["seq"], "추적열 미기록 — delta 가 이 개념을 영영 못 본다")
         self.assertGreater(int(row["seq"]), cursor)
         self.assertEqual(int(row["rev"]), 1)
@@ -589,20 +600,24 @@ class DocstoreE2E(unittest.TestCase):
         # 주고 카드 본문(note)을 버렸다(I6 미개통 원인). note 우선, 없으면 one_liner.
         import json
         from api import query as q
-        self.store.run("MERGE (c:Concept {concept_id:'concept:x'}) "
-                       "SET c.title='X', c.owner_id='user:a'")
+        self.store.run("MERGE (c:Concept {concept_id:$i}) "
+                       "SET c.title='X', c.owner_id='user:a'",
+                       {"i": _pk("concept:x")})
         self.store.run(
-            "MERGE (r:Record {record_id:'rec:1'}) "
+            "MERGE (r:Record {record_id:$i}) "
             "SET r.title='카드1', r.owner_id='user:a', r.props=$p",
-            {"p": json.dumps({"note": "이건 주의할 점이다."}, ensure_ascii=False)})
+            {"i": _pk("rec:1"),
+             "p": json.dumps({"note": "이건 주의할 점이다."}, ensure_ascii=False)})
         self.store.run(
-            "MERGE (r:Record {record_id:'rec:2'}) "
+            "MERGE (r:Record {record_id:$i}) "
             "SET r.title='카드2', r.owner_id='user:a', r.props=$p",
-            {"p": json.dumps({"one_liner": "one_liner 로만 실린 경우."}, ensure_ascii=False)})
+            {"i": _pk("rec:2"),
+             "p": json.dumps({"one_liner": "one_liner 로만 실린 경우."}, ensure_ascii=False)})
         for rid in ("rec:1", "rec:2"):
             self.store.run(
-                "MATCH (r:Record {record_id:$r}), (c:Concept {concept_id:'concept:x'}) "
-                "MERGE (r)-[:ATTACHES_TO]->(c)", {"r": rid})
+                "MATCH (r:Record {record_id:$r}), (c:Concept {concept_id:$c}) "
+                "MERGE (r)-[:ATTACHES_TO]->(c)",
+                {"r": _pk(rid), "c": _pk("concept:x")})
         ctx = q.node_context(owner="user:a", node="concept:x", store=self.store)
         notes = {i["id"]: i["note"] for i in ctx["links"]["items"] if i["type"] == "ATTACHES_TO"}
         self.assertEqual(notes["rec:1"], "이건 주의할 점이다.")
@@ -649,7 +664,8 @@ class DocstoreE2E(unittest.TestCase):
                          ("concept:gamma", "math")):
             self.store.run(
                 "MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.domain=$d, "
-                "n.owner_id=$o", {"id": cid, "t": cid.split(":")[1], "d": dom, "o": owner})
+                "n.owner_id=$o", {"id": _pk(cid, owner), "t": cid.split(":")[1],
+                                  "d": dom, "o": owner})
         paras = ["beta gamma 문단 하나.", "beta gamma 문단 둘.", "delta gamma 문단 셋.",
                  "delta 문단 넷.", "무관한 문단 다섯."]
         text, starts, pos = "", [], 0
@@ -686,8 +702,9 @@ class DocstoreE2E(unittest.TestCase):
     def test_mention_tally_owner_isolated(self):
         # SEC-1 — 남의 개념이 내 문서의 대표 주제·대표 개념을 흔들지 못한다.
         self._seed_mention_doc(owner="user:a")
-        self.store.run("MERGE (n:Concept {concept_id:'concept:gamma-b'}) SET n.title='gamma', "
-                       "n.domain='math', n.owner_id='user:b'")
+        self.store.run("MERGE (n:Concept {concept_id:$i}) SET n.title='gamma', "
+                       "n.domain='math', n.owner_id='user:b'",
+                       {"i": _pk("concept:gamma-b", "user:b")})
         tally = ds.mention_tally(self.store, owner="user:a")
         self.assertNotIn("concept:gamma-b", tally.cdom)
         self.assertEqual(ds.mention_tally(self.store, owner="user:b").con, {})
@@ -725,8 +742,9 @@ class DocstoreE2E(unittest.TestCase):
         # 결정도 MENTIONS 대상이다(engines.mentions_link._LINK_TARGETS). `Concept` 만
         # 세면 결정만 언급한 문서가 빈손이 된다 — 같은 함정이 링커의 MERGE 사본에서
         # 이미 한 번 났고 그때는 결정 링크가 통째로 0건이었다.
-        self.store.run("MERGE (n:Decision {decision_id:'decision:gamma-call'}) "
-                       "SET n.title='gamma', n.domain='phys', n.owner_id='user:a'")
+        self.store.run("MERGE (n:Decision {decision_id:$i}) "
+                       "SET n.title='gamma', n.domain='phys', n.owner_id='user:a'",
+                       {"i": _pk("decision:gamma-call")})
         did = self._seed_mention_doc()
         ctx = ds.doc_context(self.store, did, owner="user:a")
         self.assertIn("decision:gamma-call", [c["id"] for c in ctx["concepts"]])
@@ -760,8 +778,8 @@ class DocstoreE2E(unittest.TestCase):
         text = "# 노트\n\n양자 얽힘을 정리한다. 양자 상태는 공유된다.\n"
         out = ds.put_doc(self.store, owner="user:a", text=text, title="노트")
         did = out["doc_id"]
-        self.store.run("MERGE (c:Concept {concept_id:'concept:q'}) SET c.title='양자', "
-                       "c.stem='양자', c.owner_id='user:a'")
+        self.store.run("MERGE (c:Concept {concept_id:$i}) SET c.title='양자', "
+                       "c.stem='양자', c.owner_id='user:a'", {"i": _pk("concept:q")})
         hl = ds.doc_highlights(self.store, did, "concept:q", owner="user:a")
         self.assertTrue(hl["executed"])
         self.assertEqual(hl["method"], "tokens")
@@ -797,11 +815,11 @@ class DocstoreE2E(unittest.TestCase):
         for cid, t in (("concept:foo", "Foo"), ("concept:bar", "Bar")):
             self.store.run("MERGE (c:Concept {concept_id:$id}) SET c.title=$t, "
                            "c.one_liner=$ol, c.owner_id='user:a'",
-                           {"id": cid, "t": t, "ol": f"{t} 한줄"})
+                           {"id": _pk(cid), "t": t, "ol": f"{t} 한줄"})
         self.store.run(
-            "MATCH (a:Concept {concept_id:'concept:foo'}), (b:Concept {concept_id:'concept:bar'}) "
+            "MATCH (a:Concept {concept_id:$a}), (b:Concept {concept_id:$b}) "
             "MERGE (a)-[r:PREREQUISITE_OF]->(b) SET r.evidence='foo 를 먼저 알아야 bar 가 선다', "
-            "r.confidence=0.8")
+            "r.confidence=0.8", {"a": _pk("concept:foo"), "b": _pk("concept:bar")})
         # foo 를 언급하는 정본 1건 — src 발췌 소스
         ds.put_doc(self.store, owner="user:a", text="Foo 개념을 정리한 문서.", title="근거")
         ctx = q.edge_context(owner="user:a", src="concept:foo", dst="concept:bar",
@@ -815,8 +833,9 @@ class DocstoreE2E(unittest.TestCase):
         self.assertIn("Foo", ctx["src"]["excerpt"]["excerpt"])
         # 무방향 RELATED_TO — 저장 방향과 반대로 물어도 잡힌다
         self.store.run(
-            "MATCH (a:Concept {concept_id:'concept:foo'}), (b:Concept {concept_id:'concept:bar'}) "
-            "MERGE (a)-[r:RELATED_TO]->(b) SET r.evidence='', r.confidence=0.0")
+            "MATCH (a:Concept {concept_id:$a}), (b:Concept {concept_id:$b}) "
+            "MERGE (a)-[r:RELATED_TO]->(b) SET r.evidence='', r.confidence=0.0",
+            {"a": _pk("concept:foo"), "b": _pk("concept:bar")})
         rev = q.edge_context(owner="user:a", src="concept:bar", dst="concept:foo",
                              etype="RELATED_TO", store=self.store)
         self.assertTrue(rev["executed"])

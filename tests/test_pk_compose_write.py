@@ -400,6 +400,11 @@ class NamespacedRoundTripTests(unittest.TestCase):
         import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
+            # ⚠ 끝에 **pop 하지 않는다**. 여기서 지우면 켠 모드 CI 잡에서 이 파일
+            # 뒤에 도는 모든 테스트가 조용히 꺼진 채 돌고, 그 잡의 초록은 "전량이
+            # 켠 모드로 통과했다"가 아니라 "앞부분만 돌았다"가 된다(실측으로 물렸다:
+            # test_view_viewpoints 7건이 그렇게 숨어 있었다). 원래 값을 되돌린다.
+            _prev = os.environ.get("VINC_PK_NAMESPACED")
             os.environ["VINC_PK_NAMESPACED"] = "on"
             try:
                 store = self._store(Path(td) / "db")
@@ -420,7 +425,10 @@ class NamespacedRoundTripTests(unittest.TestCase):
                 self.assertEqual(list(rows[0]["bs"]), ["concept:b"])
                 store.close()
             finally:
-                os.environ.pop("VINC_PK_NAMESPACED", None)
+                if _prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = _prev
 
     def test_two_owners_hold_the_same_slug(self):
         """H1 itself: one physical node per slug across every account is what
@@ -428,6 +436,11 @@ class NamespacedRoundTripTests(unittest.TestCase):
         import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
+            # ⚠ 끝에 **pop 하지 않는다**. 여기서 지우면 켠 모드 CI 잡에서 이 파일
+            # 뒤에 도는 모든 테스트가 조용히 꺼진 채 돌고, 그 잡의 초록은 "전량이
+            # 켠 모드로 통과했다"가 아니라 "앞부분만 돌았다"가 된다(실측으로 물렸다:
+            # test_view_viewpoints 7건이 그렇게 숨어 있었다). 원래 값을 되돌린다.
+            _prev = os.environ.get("VINC_PK_NAMESPACED")
             os.environ["VINC_PK_NAMESPACED"] = "on"
             try:
                 store = self._store(Path(td) / "db")
@@ -451,4 +464,7 @@ class NamespacedRoundTripTests(unittest.TestCase):
                                  ["user:one", "user:two"])
                 store.close()
             finally:
-                os.environ.pop("VINC_PK_NAMESPACED", None)
+                if _prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = _prev

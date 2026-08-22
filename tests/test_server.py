@@ -25,6 +25,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from store import pkns  # noqa: E402
+
+
+def _pk(nid: str, owner: str = "user:a") -> str:
+    """논리 슬러그 → 스토어 바인딩용 물리 키.
+
+    이 e2e 는 HTTP 로 쓰고 스토어를 **직접** 읽고 심는다. PK 네임스페이싱이 켜지면
+    API 쪽 쓰기가 owner 를 합성하므로 직접 층도 같은 키를 써야 서로를 찾는다."""
+    return pkns.key(owner, nid)
+
 from api import cli  # noqa: E402
 from api.auth import SessionAuth  # noqa: E402
 from api.server import VincApp, make_server  # noqa: E402
@@ -959,12 +969,13 @@ class DocRouteE2E(unittest.TestCase):
             self.assertEqual(code, 400)
             # D45-V 1단계 — /edge-context: 관계 evidence·confidence + 양끝 메타
             self.store.run(
-                "MERGE (x:Concept {concept_id:'concept:x'}) SET x.title='X', "
-                "x.one_liner='엑스', x.owner_id='user:a'")
+                "MERGE (x:Concept {concept_id:$i}) SET x.title='X', "
+                "x.one_liner='엑스', x.owner_id='user:a'", {"i": _pk("concept:x")})
             self.store.run(
-                "MATCH (a:Concept {concept_id:'concept:개념하나'}), "
-                "(b:Concept {concept_id:'concept:x'}) "
-                "MERGE (a)-[r:DERIVES_FROM]->(b) SET r.evidence='근거 구절', r.confidence=0.6")
+                "MATCH (a:Concept {concept_id:$a}), (b:Concept {concept_id:$b}) "
+                "MERGE (a)-[r:DERIVES_FROM]->(b) SET r.evidence='근거 구절', "
+                "r.confidence=0.6",
+                {"a": _pk("concept:개념하나"), "b": _pk("concept:x")})
             code, ec = _req(base, "/edge-context?src=" + _up.quote("concept:개념하나")
                             + "&dst=concept:x&type=DERIVES_FROM&owner=user:a")
             self.assertEqual(code, 200)
@@ -975,16 +986,17 @@ class DocRouteE2E(unittest.TestCase):
             code, bad = _req(base, "/edge-context?src=a&dst=b&type=MENTIONS&owner=user:a")
             self.assertFalse(bad["executed"])
             # D45-V2 2단계 — /doc/highlights: 전문 내 개념 언급 char 범위
-            self.store.run("MERGE (c:Concept {concept_id:'concept:개념하나'}) "
-                           "SET c.stem='개념하나'")
+            self.store.run("MERGE (c:Concept {concept_id:$i}) "
+                           "SET c.stem='개념하나'", {"i": _pk("concept:개념하나")})
             code, hl = _req(base, "/doc/highlights?doc_id=" + did
                             + "&concept_id=" + _up.quote("concept:개념하나") + "&owner=user:a")
             self.assertEqual(code, 200)
             self.assertTrue(hl["executed"])
             self.assertEqual(hl["method"], "tokens")
             # D45-V2 4단계 — /docs-in-range: 기간 항목(Episode.date)
-            self.store.run("MERGE (e:Episode {episode_id:'ev1'}) SET e.owner_id='user:a', "
-                           "e.title='EV', e.date='2026-05-15', e.domain='d'")
+            self.store.run("MERGE (e:Episode {episode_id:$i}) SET e.owner_id='user:a', "
+                           "e.title='EV', e.date='2026-05-15', e.domain='d'",
+                           {"i": _pk("ev1")})
             code, rng = _req(base, "/docs-in-range?start=2026-05-01&end=2026-06-01&owner=user:a")
             self.assertEqual(code, 200)
             self.assertTrue(rng["executed"])
@@ -996,8 +1008,8 @@ class DocRouteE2E(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertTrue(nav["executed"])
             self.assertIn(did, {d["doc_id"] for d in nav["unfiled"]})
-            self.store.run("MATCH (c:Concept {concept_id:'concept:개념하나'}) "
-                           "SET c.domain='d'")
+            self.store.run("MATCH (c:Concept {concept_id:$i}) SET c.domain='d'",
+                           {"i": _pk("concept:개념하나")})
             code, nav = _req(base, "/nav-tree?owner=user:a")
             landed = {d["node_id"] for g in nav["domains"] for d in g["docs"]}
             self.assertIn("concept:개념하나", landed)

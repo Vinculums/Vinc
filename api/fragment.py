@@ -72,18 +72,10 @@ def _is_open(ntype: str) -> bool:
     return bool(ntype) and ntype not in _NODE_MAP
 
 
-def _key(owner: str | None, nid: str) -> str:
-    """스토어 바인딩용 **물리 키**(PK 네임스페이싱 design A). 사용자 대면 id 는
-    그대로 슬러그로 남는다 — 경고·제목·`types` 표·응답은 논리 id 를 쓰고, `$id`/`$s`/
-    `$d` 바인딩만 이 값을 쓴다.
-
-    ``normalize=False`` 인 이유: 정규화 표는 **레거시 기본 owner 세 개**를 실 owner 로
-    옮기는 마이그레이션(PR-D)용이고, 여기 오는 owner 는 이미 실 계정이다. 표를 거치면
-    정상 쓰기가 전부 ValueError 로 죽는다.
-
-    owner 가 비면 합성하지 않는다 — `_merge_edge` 를 owner 없이 직접 부르는 로컬
-    호출부가 있고, 그쪽은 플래그가 꺼진 스토어다. 근거: [[d11223a9a5d109de5]] §7"""
-    return pkns.compose(owner, nid, normalize=False) if (owner and nid) else nid
+#: 스토어 바인딩용 물리 키(PK 네임스페이싱 design A). 정의는 `store/pkns.py` 한 벌 —
+#: 이 모듈만 쓰던 것을 PR-C 에서 query·sync·share·preference·docstore 가 같이 쓰게
+#: 옮겼다. 여기 별칭을 남기는 이유는 호출부 표기를 짧게 두려는 것뿐이다.
+_key = pkns.key
 
 
 class _ThemeFold:
@@ -432,11 +424,14 @@ _ALLOWED_PAIRS_HINT = (
 #: 실었는데 스킵됐으면 그 노드를 고쳐야 한다. 한 덩이로 뭉개면 후자에서
 #: "id 를 실어라"라는 이미 한 일을 다시 하라는 안내가 나간다.
 _EDGE_WARN_REASONS = {
+    # v0.8.4 axis2 item1 — 여기 있던 "대상을 `nodes` 에 다시 선언하라"는 안내는
+    # 지웠다. 해석기가 이제 스토어를 보므로(:func:`_resolve_endpoint_type`) 이미 있는
+    # 노드로 향하는 엣지는 그냥 해석된다. 그래서 이 경고가 남는 경우는 **정말로 없는
+    # 것**(또는 내 것이 아닌 것)뿐이고, 그때 "다시 선언하라"는 틀린 처방이다.
     "undeclared_endpoint":
-        "endpoint not declared in this call's nodes. The resolver only sees node types "
-        "declared in this payload, so include the target id in `nodes` in minimal form "
-        "(id · type · title · domain) even when the node already exists in the store, "
-        "then retry",
+        "endpoint not found — it is not in this payload's `nodes`, and no node with "
+        "that id exists in the store under your ownership. Check the id (they are "
+        "exact and type-prefixed), or author the node in this same call",
     "skipped_endpoint":
         "endpoint was declared but did not merge — it was skipped earlier in this same "
         "call, so its edges went down with it. Fix the node first: the reason is in the "
@@ -537,6 +532,44 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
               {"k": pkns.ekey(owner, src, rel, dst), **op})
 
 
+def _resolve_endpoint_type(store, nid: str, *, owner: str | None,
+                           osc: bool) -> str:
+    """엣지 끝점의 fragment 타입을 **스토어에서** 찾는다(v0.8.4 axis2 item1).
+
+    여태 해석기는 이 호출의 `nodes` 배열 안만 봤다. 그래서 **이미 스토어에 있는**
+    노드로 향하는 엣지가 스킵되고, 경고는 "대상을 다시 선언하라"고 안내했다 — 저작자가
+    이미 아는 사실(그 노드는 있다)과 어긋나는 처방이었다.
+
+    라벨은 id 접두사로 하나만 고른다(`concept:` → Concept). 접두사가 없으면 Concept
+    (`api/query._seed_table` 과 같은 하위호환 규칙), 레거시 6종 밖이면 개방층 Entity 로
+    보고 그 행의 `type` 열을 그대로 돌려준다. `domain:` 은 엣지 끝점이 되는 규칙이
+    아예 없어 묻지 않는다.
+
+    SEC-3(``osc``): owner 강제 경로에서는 소유로 건다. 안 걸면 남의 노드가 **존재하는지**
+    알려 주고, 더 나쁜 것은 그 노드로 향하는 엣지를 해석해 준다. 프로브 실패(방언·
+    미프로비저닝)는 종전 동작(미선언 경고)으로 조용히 강등한다 — 해석은 증강이다.
+    근거: [[d11223a9a5d109de5]] §7"""
+    prefix = nid.split(":", 1)[0] if ":" in nid else ""
+    if prefix == "domain":
+        return ""
+    own = " AND n.owner_id = $owner" if osc else ""
+    params = {"id": _key(owner, nid), **({"owner": owner} if osc else {})}
+    try:
+        if not prefix or prefix in _NODE_MAP:
+            ntype = prefix or "concept"
+            label, pk = _NODE_MAP[ntype]
+            rows = store.run(
+                f"MATCH (n:{label}) WHERE n.{pk} = $id{own} RETURN count(n) AS c",
+                params)
+            return ntype if (rows and rows[0].get("c")) else ""
+        rows = store.run(
+            f"MATCH (n:{_ENTITY_LABEL}) WHERE n.{_ENTITY_ID} = $id{own} "
+            "RETURN n.type AS t", params)
+        return str(rows[0].get("t") or "") if rows else ""
+    except Exception:
+        return ""
+
+
 def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 *, owner: str | None = None, owner_explicit: bool = False,
                 stamp_edges: bool = True,
@@ -576,6 +609,15 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # 상쇄되지 않는다. 근거: [[d11223a9a5d109de5]] §7
     eowner = owner or DEFAULT_OWNER
     ksrc, kdst = _key(eowner, src), _key(eowner, dst)
+    # axis2 item1 — 페이로드에 안 실린 끝점은 **스토어에 물어본다**. `declared` 에
+    # 있는 것은 묻지 않는다: 그 노드는 방금 이 호출에서 스킵된 것이고(제목 없음·
+    # 남의 id 등) 스토어의 옛 행으로 되살리면 저작자가 고쳐야 할 고장이 숨는다.
+    # ``types`` 는 **건드리지 않는다** — 그 표는 "이 호출이 실제로 MERGE 한 노드"라는
+    # 뜻이고 `_warn_orphan_decisions` 가 그 뜻에 기대고 있다.
+    if src and not st and not (declared and src in declared):
+        st = _resolve_endpoint_type(store, src, owner=eowner, osc=osc)
+    if dst and not dt and not (declared and dst in declared):
+        dt = _resolve_endpoint_type(store, dst, owner=eowner, osc=osc)
     #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
     #: 메타 읽기·쓰기가 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
     born = born or (lambda: revstamp.hlc_now(store))

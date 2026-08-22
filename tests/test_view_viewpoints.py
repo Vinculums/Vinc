@@ -23,6 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from store.embedded_backend import _import_driver  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from store import pkns  # noqa: E402
+from _pkseed import _seed  # noqa: E402  (스토어 직접 시드용 — tests/_pkseed.py)
+
 _DRIVER, _NAME = _import_driver()
 
 
@@ -97,12 +101,12 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for cid, title in (("a", "A"), ("b", "B"), ("c", "C")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.owner_id='u', "
                       "n.domain='math', n.created='2026-07-01', n.updated_at='2026-07-02'",
                       id=cid, t=title)
-            s.run("MATCH (x:Concept{concept_id:'a'}),(y:Concept{concept_id:'b'}) "
+            _seed(s.run, "MATCH (x:Concept{concept_id:'a'}),(y:Concept{concept_id:'b'}) "
                   "MERGE (x)-[r:RELATED_TO]->(y) SET r.evidence='본문 근거', r.confidence=0.8")
-            s.run("MATCH (x:Concept{concept_id:'b'}),(y:Concept{concept_id:'c'}) "
+            _seed(s.run, "MATCH (x:Concept{concept_id:'b'}),(y:Concept{concept_id:'c'}) "
                   "MERGE (x)-[:PREREQUISITE_OF]->(y)")   # 미저작 관계
 
         g = q.graph(owner="u", store=store)
@@ -126,13 +130,13 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (n:Concept {concept_id:'nots'}) SET n.title='N', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'nots'}) SET n.title='N', n.owner_id='u', "
                   "n.domain='d'")
-            s.run("MERGE (n:Concept {concept_id:'upd'}) SET n.title='U', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'upd'}) SET n.title='U', n.owner_id='u', "
                   "n.domain='d', n.updated_at='2026-07-05T00:00:00.000Z'")
-            s.run("MERGE (e:Episode {episode_id:'ep'}) SET e.title='E', e.owner_id='u', "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'ep'}) SET e.title='E', e.owner_id='u', "
                   "e.domain='d', e.date='2026-07-03', e.updated_at='2026-07-09'")
-            s.run("MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'upd'}) "
+            _seed(s.run, "MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'upd'}) "
                   "MERGE (e)-[:ABOUT]->(c)")
 
         g = q.graph(owner="u", domain="d", store=store)
@@ -152,11 +156,11 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (n:Concept {concept_id:'ca'}) SET n.title='Alice A', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'ca'}) SET n.title='Alice A', "
                   "n.owner_id='user:alice', n.domain='math', n.created='2026-07-01'")
-            s.run("MERGE (n:Concept {concept_id:'cb'}) SET n.title='Bob Secret', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'cb'}) SET n.title='Bob Secret', "
                   "n.owner_id='user:bob', n.domain='math', n.created='2026-07-02'")
-            s.run("MATCH (x:Concept{concept_id:'ca'}),(y:Concept{concept_id:'cb'}) "
+            _seed(s.run, "MATCH (x:Concept{concept_id:'ca'}),(y:Concept{concept_id:'cb'}) "
                   "MERGE (x)-[r:RELATED_TO]->(y) SET r.evidence='밥의 비밀 근거', "
                   "r.confidence=0.9")
 
@@ -186,7 +190,7 @@ class ViewViewpointsBackend(unittest.TestCase):
             for cid, dom in (("a", "vinc"), ("b", "vinc/design"),
                              ("c", "vinc/design/tokens"), ("d", "vincent"),
                              ("e", "neo4j/storage")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
                       "n.owner_id='u', n.domain=$dom", id=cid, dom=dom)
 
         def ids(**kw):
@@ -212,14 +216,14 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (n:Concept {concept_id:'ca'}) SET n.title='A', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'ca'}) SET n.title='A', n.owner_id='u', "
                   "n.domain='math', n.created='2026-07-01'")
-            s.run("MERGE (n:Concept {concept_id:'cb'}) SET n.title='B', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'cb'}) SET n.title='B', n.owner_id='u', "
                   "n.domain='math', n.updated_at='2026-07-04T00:00:00.000Z'")
-            s.run("MERGE (e:Episode {episode_id:'episode:ep'}) SET e.title='E', "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'episode:ep'}) SET e.title='E', "
                   "e.owner_id='u', e.domain='math', e.date='2026-07-03'")
             for cid in ("ca", "cb"):
-                s.run("MATCH (e:Episode{episode_id:'episode:ep'}),(c:Concept{concept_id:$id}) "
+                _seed(s.run, "MATCH (e:Episode{episode_id:'episode:ep'}),(c:Concept{concept_id:$id}) "
                       "MERGE (e)-[:ABOUT]->(c)", id=cid)
 
         g = q.graph(owner="u", seed="episode:ep", store=store)
@@ -241,15 +245,15 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for cid in ("both", "epi", "rec", "none"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain='math'", id=cid)
-            s.run("MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
-            s.run("MERGE (rc:Record {record_id:'rc'}) SET rc.owner_id='u', rc.domain='math'")
+            _seed(s.run, "MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
+            _seed(s.run, "MERGE (rc:Record {record_id:'rc'}) SET rc.owner_id='u', rc.domain='math'")
             for cid in ("both", "epi"):
-                s.run("MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:$id}) "
+                _seed(s.run, "MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:$id}) "
                       "MERGE (e)-[:ABOUT]->(c)", id=cid)
             for cid in ("both", "rec"):
-                s.run("MATCH (rc:Record{record_id:'rc'}),(c:Concept{concept_id:$id}) "
+                _seed(s.run, "MATCH (rc:Record{record_id:'rc'}),(c:Concept{concept_id:$id}) "
                       "MERGE (rc)-[:ATTACHES_TO]->(c)", id=cid)
 
         res = q.ledger(owner="u", store=store)
@@ -271,19 +275,19 @@ class ViewViewpointsBackend(unittest.TestCase):
         with store.session() as s:
             # math: linked(연결) · gate(관문) · lone(고아) · rec(레코드 부착, 고아)
             for cid in ("linked", "gate", "lone", "rec"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain='math'", id=cid)
-            s.run("MERGE (n:Concept {concept_id:'far'}) SET n.title='far', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'far'}) SET n.title='far', n.owner_id='u', "
                   "n.domain='art'")
-            s.run("MATCH (a:Concept{concept_id:'linked'}),(b:Concept{concept_id:'gate'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'linked'}),(b:Concept{concept_id:'gate'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")
-            s.run("MATCH (a:Concept{concept_id:'gate'}),(b:Concept{concept_id:'far'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'gate'}),(b:Concept{concept_id:'far'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")            # 도메인 교차 → gate 는 관문
-            s.run("MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
-            s.run("MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'linked'}) "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
+            _seed(s.run, "MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'linked'}) "
                   "MERGE (e)-[:ABOUT]->(c)")
-            s.run("MERGE (rc:Record {record_id:'rc'}) SET rc.owner_id='u', rc.domain='math'")
-            s.run("MATCH (rc:Record{record_id:'rc'}),(c:Concept{concept_id:'rec'}) "
+            _seed(s.run, "MERGE (rc:Record {record_id:'rc'}) SET rc.owner_id='u', rc.domain='math'")
+            _seed(s.run, "MATCH (rc:Record{record_id:'rc'}),(c:Concept{concept_id:'rec'}) "
                   "MERGE (rc)-[:ATTACHES_TO]->(c)")
 
         res = q.ledger(owner="u", store=store)
@@ -310,19 +314,19 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for owner, cid in (("user:alice", "ca"), ("user:bob", "cb")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id=$o, "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id=$o, "
                       "n.domain='math'", id=cid, o=owner)
             # bob 의 개념에 alice 개념을 잇는 엣지(쓰기 경로가 막지만 방어층 검증)
-            s.run("MATCH (a:Concept{concept_id:'ca'}),(b:Concept{concept_id:'cb'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'ca'}),(b:Concept{concept_id:'cb'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")
             # bob 의 에피소드가 alice 개념에 부착 — 원장에 실리면 누출
-            s.run("MERGE (e:Episode {episode_id:'eb'}) SET e.owner_id='user:bob', e.domain='math'")
-            s.run("MATCH (e:Episode{episode_id:'eb'}),(c:Concept{concept_id:'ca'}) "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'eb'}) SET e.owner_id='user:bob', e.domain='math'")
+            _seed(s.run, "MATCH (e:Episode{episode_id:'eb'}),(c:Concept{concept_id:'ca'}) "
                   "MERGE (e)-[:ABOUT]->(c)")
             # 레거시 미소유 브릿지가 alice 개념에 연결
-            s.run("MERGE (b:Bridge {bridge_id:'legacy'}) SET b.owner_id='', "
+            _seed(s.run, "MERGE (b:Bridge {bridge_id:'legacy'}) SET b.owner_id='', "
                   "b.source_domain='math', b.target_domain='art'")
-            s.run("MATCH (b:Bridge{bridge_id:'legacy'}),(c:Concept{concept_id:'ca'}) "
+            _seed(s.run, "MATCH (b:Bridge{bridge_id:'legacy'}),(c:Concept{concept_id:'ca'}) "
                   "MERGE (b)-[:CONNECTS]->(c)")
 
         res = q.ledger(owner="user:alice", store=store)
@@ -382,13 +386,13 @@ class ViewViewpointsBackend(unittest.TestCase):
         with store.session() as s:
             for cid, dom in (("s", "math"), ("n1", "math"), ("n2", "art"),
                              ("deep2", "math"), ("deep3", "math")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain=$d", id=cid, d=dom)
             for a, b in (("s", "n1"), ("s", "n2"), ("n1", "deep2"), ("deep2", "deep3")):
-                s.run("MATCH (x:Concept{concept_id:$a}),(y:Concept{concept_id:$b}) "
+                _seed(s.run, "MATCH (x:Concept{concept_id:$a}),(y:Concept{concept_id:$b}) "
                       "MERGE (x)-[:RELATED_TO]->(y)", a=a, b=b)
-            s.run("MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
-            s.run("MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'s'}) "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'ep'}) SET e.owner_id='u', e.domain='math'")
+            _seed(s.run, "MATCH (e:Episode{episode_id:'ep'}),(c:Concept{concept_id:'s'}) "
                   "MERGE (e)-[:ABOUT]->(c)")
 
         res = q.ledger(owner="u", seed="s", store=store)
@@ -418,10 +422,10 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for cid, dom in (("s", "math"), ("n1", "math"), ("ext", "art")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain=$d", id=cid, d=dom)
             for a, b in (("s", "n1"), ("n1", "ext")):
-                s.run("MATCH (x:Concept{concept_id:$a}),(y:Concept{concept_id:$b}) "
+                _seed(s.run, "MATCH (x:Concept{concept_id:$a}),(y:Concept{concept_id:$b}) "
                       "MERGE (x)-[:RELATED_TO]->(y)", a=a, b=b)
 
         res = q.ledger(owner="u", seed="s", depth=1, store=store)   # ego = {s, n1}
@@ -442,16 +446,22 @@ class ViewViewpointsBackend(unittest.TestCase):
         from api import query as q
 
         store = self._fresh_store()
+        # 소유자가 둘이라 `_seed` 의 단일 owner 로는 안 된다 — 노드마다 자기 owner 로
+        # 합성한 물리 키를 직접 바인딩한다(제목은 논리 슬러그로 남긴다).
+        a_key = pkns.key("user:alice", "as")
+        b_key = pkns.key("user:bob", "bs")
+        e_key = pkns.key("user:bob", "eb")
         with store.session() as s:
-            for owner, cid in (("user:alice", "as"), ("user:bob", "bs")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id=$o, "
-                      "n.domain='math'", id=cid, o=owner)
-            s.run("MATCH (a:Concept{concept_id:'as'}),(b:Concept{concept_id:'bs'}) "
-                  "MERGE (a)-[:RELATED_TO]->(b)")
-            s.run("MERGE (e:Episode {episode_id:'eb'}) SET e.owner_id='user:bob', "
-                  "e.domain='math'")
-            s.run("MATCH (e:Episode{episode_id:'eb'}),(c:Concept{concept_id:'as'}) "
-                  "MERGE (e)-[:ABOUT]->(c)")
+            for owner, cid, key in (("user:alice", "as", a_key),
+                                    ("user:bob", "bs", b_key)):
+                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.owner_id=$o, "
+                      "n.domain='math'", id=key, t=cid, o=owner)
+            s.run("MATCH (a:Concept{concept_id:$a}),(b:Concept{concept_id:$b}) "
+                  "MERGE (a)-[:RELATED_TO]->(b)", a=a_key, b=b_key)
+            s.run("MERGE (e:Episode {episode_id:$i}) SET e.owner_id='user:bob', "
+                  "e.domain='math'", i=e_key)
+            s.run("MATCH (e:Episode{episode_id:$i}),(c:Concept{concept_id:$c}) "
+                  "MERGE (e)-[:ABOUT]->(c)", i=e_key, c=a_key)
 
         res = q.ledger(owner="user:alice", seed="as", store=store)
         store.close()
@@ -472,7 +482,7 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (n:Concept {concept_id:'lone'}) SET n.title='L', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'lone'}) SET n.title='L', n.owner_id='u', "
                   "n.domain='math'")
 
         res = q.ledger(owner="u", seed="lone", store=store)
@@ -492,12 +502,12 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for cid, dom in (("c1", "math"), ("c2", "art")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain=$d", id=cid, d=dom)
-            s.run("MERGE (e:Episode {episode_id:'episode:ep'}) SET e.title='E', "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'episode:ep'}) SET e.title='E', "
                   "e.owner_id='u', e.domain='math'")
             for cid in ("c1", "c2"):
-                s.run("MATCH (e:Episode{episode_id:'episode:ep'}),(c:Concept{concept_id:$id}) "
+                _seed(s.run, "MATCH (e:Episode{episode_id:'episode:ep'}),(c:Concept{concept_id:$id}) "
                       "MERGE (e)-[:ABOUT]->(c)", id=cid)
 
         res = q.ledger(owner="u", seed="episode:ep", store=store)
@@ -519,7 +529,7 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (e:Episode {episode_id:'episode:bare'}) SET e.owner_id='u', "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'episode:bare'}) SET e.owner_id='u', "
                   "e.domain='math'")   # 부착 0
 
         for seed in ("ghost", "episode:bare"):
@@ -538,7 +548,7 @@ class ViewViewpointsBackend(unittest.TestCase):
         store = self._fresh_store()
         with store.session() as s:
             for cid, dom in (("a", "math"), ("b", "art")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u', "
                       "n.domain=$d", id=cid, d=dom)
 
         res = q.ledger(owner="u", store=store)
@@ -564,7 +574,7 @@ class ViewViewpointsBackend(unittest.TestCase):
         with store.session() as s:
             for cid, dom in (("p", "vinc"), ("q", "vinc/design"),
                              ("z", "neo4j/storage"), ("w", "other")):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$id, "
                       "n.owner_id='u', n.domain=$dom", id=cid, dom=dom)
         app = VincApp(store=store)
 
@@ -587,7 +597,7 @@ class ViewViewpointsBackend(unittest.TestCase):
 
         store = self._fresh_store()
         with store.session() as s:
-            s.run("MERGE (n:Concept {concept_id:'rs'}) SET n.title='R', n.owner_id='u', "
+            _seed(s.run, "MERGE (n:Concept {concept_id:'rs'}) SET n.title='R', n.owner_id='u', "
                   "n.domain='math'")
         app = VincApp(store=store)
         code, out = app.read_ledger({"owner": "u", "seed": "rs", "depth": "1"})

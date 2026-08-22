@@ -284,26 +284,53 @@ class FragmentMergeTests(unittest.TestCase):
         self.assertEqual(res["merged"]["edges"]["created"], 0)
         self.assertEqual(len(res["warnings"]), 1)
 
-    def test_edge_to_undeclared_target_names_the_fix(self):
-        # T4 — 스토어에 이미 있는 노드로 향하는 엣지: payload 에 대상이 없으면
-        # '타입 불일치'가 아니라 '미선언'이고, warning 이 조치를 말해야 한다.
-        # 종전엔 "edge 'relates_to' between concept→? 미지원" 으로 뭉개져(실측:
-        # 17개 중 6개 조용히 skip) 관례 문서의 "id 재사용" 지침만 따르면 반드시
-        # 이 함정에 걸렸다.
-        fake = _FakeStore()
+    def test_edge_to_a_target_that_exists_in_the_store_resolves(self):
+        # v0.8.4 axis2 item1 — 해석기가 스토어를 본다. 페이로드에 대상을 다시 싣지
+        # 않아도, 그 노드가 스토어에 있으면 엣지는 그냥 이어진다.
+        #
+        # 이 테스트는 종전에 반대를 고정하고 있었다("대상을 `nodes` 에 최소 형태로
+        # 동봉하라"는 경고 문구). 그 안내는 저작자가 이미 아는 사실(그 노드는 있다)과
+        # 어긋나는 처방이었고, 그래서 이 릴리스에서 걷어냈다.
+        fake = _FakeStore({"RETURN count(n) AS c": [{"c": 1}]})
         res = frag.merge_fragment({
             "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
             "edges": [{"from": "concept:a", "to": "concept:exists-in-store",
                        "type": "relates_to"}],
         }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 1)
+        self.assertEqual(res["warnings"], [])
+
+    def test_edge_to_a_target_that_is_nowhere_says_not_found(self):
+        # 스토어에도 없으면 그때는 경고다 — 그리고 문구는 "다시 선언하라"가 아니라
+        # "그런 노드가 없다"여야 한다(있는 것을 다시 쓰라는 안내가 틀린 처방이었다).
+        res = frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}],
+            "edges": [{"from": "concept:a", "to": "concept:nowhere",
+                       "type": "relates_to"}],
+        }, store=_FakeStore())
         self.assertEqual(res["merged"]["edges"]["created"], 0)
         self.assertTrue(res.get("partial"))
         [w] = res["warnings"]
-        self.assertIn("not declared in this call's nodes", w)
-        self.assertIn("concept:exists-in-store", w, "어느 id 가 미해석인지 말해야 한다")
-        self.assertIn("(id · type · title · domain)", w, "조치(최소 형태 동봉)가 없다")
+        self.assertIn("endpoint not found", w)
+        self.assertIn("concept:nowhere", w, "어느 id 가 미해석인지 말해야 한다")
+        self.assertNotIn("(id · type · title · domain)", w,
+                         "걷어낸 '다시 선언하라' 처방이 되살아났다")
         self.assertNotIn("미지원", w, "미선언이 타입 불일치 문구로 뭉개졌다")
-        # 문구를 읽고 그대로 하면(대상을 nodes 에 동봉) 성공해야 한다.
+
+    def test_declared_but_skipped_endpoint_is_not_revived_from_the_store(self):
+        # 선언은 됐는데 스킵된 끝점(제목 없는 Entity 등)은 스토어에 옛 행이 있어도
+        # 해석하지 않는다 — 되살리면 저작자가 고쳐야 할 고장이 숨는다.
+        fake = _FakeStore({"RETURN count(n) AS c": [{"c": 1}]})
+        res = frag.merge_fragment({
+            "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
+                      {"id": "theory:b", "type": "theory"}],   # title 없음 → 스킵
+            "edges": [{"from": "concept:a", "to": "theory:b", "type": "relates_to"}],
+        }, store=fake)
+        self.assertEqual(res["merged"]["edges"]["created"], 0)
+        self.assertTrue(any("did not merge" in w for w in res["warnings"]),
+                        res["warnings"])
+
+    def test_declaring_the_target_still_works(self):
         res2 = frag.merge_fragment({
             "nodes": [{"id": "concept:a", "type": "concept", "title": "A"},
                       {"id": "concept:exists-in-store", "type": "concept",
