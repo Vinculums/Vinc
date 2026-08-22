@@ -288,12 +288,16 @@ def _split(text: str) -> tuple[str, str, str] | None:
 
 
 def build(store, *, owner: str | None = None, themes=None, existing: str | None = None,
-          lang: str | None = None, day: str = "") -> dict:
+          lang: str | None = None, day: str = "", restamp: bool = True) -> dict:
     """GRAPH.md 를 만들거나(신규) 생성 구역만 갈아 끼운다(갱신).
 
     **산문은 절대 건드리지 않는다.** 기존 파일을 주면 마커 사이만 교체하고 헤더의 날짜를
     갱신한다 — 사람이 쓴 입도 예시·금지 목록이 build 로 사라지면 아무도 이 명령을 두 번
     쓰지 않는다. 기존 파일의 마커가 깨져 있으면 교체하지 않고 오류로 돌린다(추측 금지).
+
+    ``restamp=False`` 는 헤더 줄을 그대로 둔다 — **저장하지 않고 읽기 위해** 생성
+    구역만 새로 계산하는 자리(`/conventions` 조회)가 쓴다. 거기서 날짜를 새로 찍으면
+    저장된 문서에 없는 날을 응답이 말하게 된다. 저장된 built 날짜는 그대로 라벨이다.
     """
     # 언어는 우리가 아는 둘뿐이다. 모르는 값은 무시한다 — HTTP 로 `?lang=fr` 이 들어와
     # KeyError 로 500 이 나면, 관례를 읽으려던 어시스턴트가 빈손으로 돌아간다.
@@ -307,7 +311,8 @@ def build(store, *, owner: str | None = None, themes=None, existing: str | None 
                     "error": "generated markers missing or unbalanced — 생성 구역을 찾지 못했다",
                     "facts": facts}
         head, _old, tail = parts
-        head = _restamp(head, use, day)
+        if restamp:
+            head = _restamp(head, use, day)
         text = head + "\n" + generated_block(facts, lang=use) + "\n" + tail
         return {"kind": "graphmd.build", "executed": True, "text": _tidy(text),
                 "lang": use, "replaced": True, "facts": facts}

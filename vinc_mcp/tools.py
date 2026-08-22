@@ -352,7 +352,10 @@ TOOLS: list[dict] = [
                        "Call this before vinc_ingest to find existing node ids to reuse. If the "
                        "backend search fails, a top-level `error` string says why (e.g. "
                        "index_missing vs extension_unavailable) instead of silently returning "
-                       "empty.",
+                       "empty. Right after a document write the vector index is being rebuilt, "
+                       "so this answers from full text alone and says so in `vector_note` with "
+                       "`arms` reading \"fts\"; the rebuild runs in the background and the call "
+                       "never waits for it, so semantic matches come back on a later search.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
@@ -407,7 +410,13 @@ TOOLS: list[dict] = [
         "description": "Assemble the evidence around a topic for a decision: the relevant nodes, the edges among "
                        "them, and — the point of the tool — the CONFLICTS a decision has to resolve. Returns "
                        "{kind, executed, topic, depth, found, nodes, edges, "
-                       "conflicts:[{source,target,type,reason}]}. Traversal is deterministic (graph structure "
+                       "conflicts:[{source,target,type,reason}], cross_domain:[{source,target,type}]}. "
+                       "A conflict is one of three things the graph states about itself: "
+                       "`decisions_on_same_subject` (two decisions ABOUT the same concept, with `subject`), "
+                       "`opposite_direction` (a directed relation runs both ways on one pair, with "
+                       "`reverse_type`), `duplicate_decision_title` (two decisions carrying the same title). "
+                       "Edges that merely cross a domain boundary are NOT conflicts and are listed separately "
+                       "in `cross_domain`. Traversal is deterministic (graph structure "
                        "only, no model judgement); it surfaces the material and never picks a side. `topic` must "
                        "match a node id or a full title EXACTLY — on a miss you get found:false with "
                        "`candidates` and a `hint`, so run vinc_search first if you only have a phrase. Use "
@@ -463,11 +472,16 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_neighbors",
-        "description": "Observe ONE concept's immediate (1-hop) relation network — a lightweight "
+        "description": "Observe ONE node's immediate (1-hop) relation network — a lightweight "
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
                        "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
                        "graph one hop at a time (observe → pick next node) instead of pulling a whole "
                        "depth-2 subgraph via vinc_graph — far fewer tokens per step. "
+                       "Every relation is visible from BOTH ends: seeding on a concept or decision "
+                       "returns the records (ATTACHES_TO), episodes (ABOUT) and bridges (CONNECTS) "
+                       "hanging off it, and seeding on a record, episode or bridge returns the "
+                       "concepts and decisions it hangs off. count:0 therefore means the node "
+                       "really has no relations yet, not that you started from the wrong end. "
                        "Also accepts a TOPIC address `domain:<name>` (e.g. domain:vinc), which returns "
                        "that topic's child topics (rel PARENT_OF, ids `domain:…`) and the nodes filed "
                        "directly under it (rel IN_DOMAIN) — same shape, so you can walk down a topic "
@@ -475,9 +489,9 @@ TOOLS: list[dict] = [
                        "'vinc/design' files that node under 'vinc' automatically, no edges to author. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "node": {"type": "string", "description": "Exact concept id to observe (e.g. "
-                                                      "concept:duality), or a topic address "
-                                                      "(e.g. domain:vinc)."},
+            "node": {"type": "string", "description": "Exact node id to observe (e.g. "
+                                                      "concept:duality, record:pricing-note), "
+                                                      "or a topic address (e.g. domain:vinc)."},
             "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500,
                       "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."},
             "owner": {"type": "string"},
@@ -613,7 +627,11 @@ TOOLS: list[dict] = [
                        "exist, the ratified type vocabulary, and what not to do. If the owner "
                        "has not written one, a default is returned with the domain list and "
                        "ratified vocabulary filled in from their store (source:\"default\", "
-                       "missing:true) — those two are worth following even then. This is the "
+                       "missing:true) — those two are worth following even then. The domain "
+                       "list and the ratified vocabulary are recomputed from the store on every "
+                       "call, so they are current even when the file itself was written months "
+                       "ago; the built date in the header is a label saying when the prose was "
+                       "last generated, not when these numbers were taken. This is the "
                        "only way to see the ratified vocabulary: proposing an unlisted type is "
                        "allowed, but it lands as proposed and waits for a human.",
         "inputSchema": {"type": "object", "properties": {
@@ -735,6 +753,13 @@ TOOLS: list[dict] = [
                        "empty domain (topic assignment is a later edit), and this document's "
                        "MENTIONS are relinked. Existing concepts are matched, never overwritten — "
                        "a title or one_liner you already refined is safe. "
+                       "The deterministic extraction cleans what it reads: a heading loses its "
+                       "section number or letter prefix (\"3.1 Identity\" becomes \"Identity\", "
+                       "which is also what the slug is derived from) and its inline markdown "
+                       "marks, and the one_liner runs on to the end of the first sentence instead "
+                       "of stopping at the line break. A heading with nothing readable under it "
+                       "yields no candidate at all, so every candidate you get back carries a "
+                       "one_liner. "
                        "Pass `candidates` to apply a list you curated instead of the deterministic "
                        "heading-based extraction; only title and one_liner are trusted and the id "
                        "is always re-derived server-side. Returns {executed, doc_id, candidates, "

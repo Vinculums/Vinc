@@ -280,7 +280,8 @@ class SearchFilterTests(unittest.TestCase):
         class Stub:
             def fulltext_search(self, *_a, **_k):
                 return [dict(r) for r in rows]
-        return q._chunk_arms(Stub(), "x", None, top_k, None)
+        # `_chunk_arms` 는 `(rows, vector_note)` 를 준다 — 여기서 보는 것은 rows 다.
+        return q._chunk_arms(Stub(), "x", None, top_k, None)[0]
 
     def test_conventions_chunks_are_dropped(self):
         out = self._arms([{"id": "graph.md#00000", "text": "conventions"},

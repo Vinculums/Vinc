@@ -476,6 +476,20 @@ class _ReaderView:
         return self._at_write_point(
             "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 60.0)
 
+    def schedule_search_indexes(self, *, dim: int | None = None) -> None:
+        """같은 빌드를 **기다리지 않고** 예약한다(:func:`api.query._schedule_vector_index`).
+
+        벡터(HNSW) 인덱스는 문서를 쓸 때마다 드롭되므로(`drop_vector_index` — 세그폴트
+        방어) 쓰기 직후의 검색이 반드시 재빌드를 문다. 위 `ensure_search_indexes` 는
+        상한 60초로 동기 대기라, 앞에 적재 잡이 있으면 **조회가 그만큼 매달렸다.**
+        검색은 그동안 FTS 로 답할 수 있다 — 기다릴 이유가 없다.
+
+        타임아웃 0 = 예약(잡만 걸고 즉시 반환)이라는 약속을 쓰기 지점이 안다
+        (`api.server.VincApp._at_write_point`). 통로가 없으면(CLI·테스트) 기다릴
+        요청 스레드도 없으므로 그 자리에서 만든다."""
+        self._at_write_point(
+            "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 0.0)
+
     def graph_algo(self, algo: str, **kw) -> list[dict]:
         """그래프 알고리즘(E-G3 WCC·Louvain·PageRank) — **쓰기 지점으로 보낸다**(R4).
 

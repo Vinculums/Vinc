@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
 import json
 import re
 from dataclasses import dataclass, field
@@ -3124,51 +3125,76 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
 
 
-def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
-    """개념에 **부착된** 1-hop 노드 — Record(ATTACHES_TO)·Episode(ABOUT)·
-    Bridge(CONNECTS). F14.
+#: 부착 축의 라벨 → (PK 열, 엣지 이름, `domain` 자리에 쓸 열).
+#: Bridge 는 `domain` 열이 없어 `source_domain` 을 쓴다 — 라벨마다 열이 달라서,
+#: 다른 축의 투영을 그대로 옮겨 붙이면 Binder 로 죽는다.
+_ATTACH_AXIS: dict[str, tuple[str, str, str]] = {
+    "Record": ("record_id", "ATTACHES_TO", "domain"),
+    "Episode": ("episode_id", "ABOUT", "domain"),
+    "Bridge": ("bridge_id", "CONNECTS", "source_domain"),
+}
 
-    이게 왜 따로 필요한가: :func:`neighbors_plan` 의 패턴은 양 끝이 `:Concept` 라
+
+def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
+    """부착 축의 1-hop — Record(ATTACHES_TO)·Episode(ABOUT)·Bridge(CONNECTS). F14.
+
+    **양방향이다.** 시드가 개념·결정이면 거기 붙은 Record·Episode·Bridge 를 내고,
+    시드가 그 셋 중 하나이면 그것이 붙어 있는 개념·결정을 낸다.
+
+    이게 왜 따로 필요한가: :func:`neighbors_plan` 의 패턴은 양 끝이 의미층이라
     다른 라벨이 **필터가 아니라 매치 모양에서** 빠진다. 그래서 `vinc_neighbors` 는
     실측상 `concept:vinc-mcp` 의 1-hop 이웃 15개 중 7개(RELATED_TO)만 보였다.
     빠진 8개가 하필 **사실이 사는 곳**이다 — Record(pitfall·fact) 6 · Episode 1 ·
     Bridge 1. 도구 설명은 "graph 대신 neighbors 로 한 홉씩 걸으라"고 권하므로,
     그 조언을 따른 모델은 Record 를 영영 못 본다. 무음 누락이다(F6 과 같은 계열).
 
-    UNION 은 열 타입이 같아야 하므로 4열(rel·id·title·domain)만 투영한다. Bridge 는
-    `domain` 열이 없어 `source_domain` 을 쓴다(축 플랜과 같은 규칙 — 라벨마다 열이
-    달라서, 다른 축의 투영을 그대로 옮겨 붙이면 Binder 로 죽는다)."""
+    역방향이 이어서 필요한 이유(2026-08-22 실측): 부착 축은 한쪽으로만 풀려 있어서
+    **Record·Episode 시드는 관계가 있는데도 이웃 0개**를 냈다 — 그러면 응답이
+    "관계 없음"과 구분되지 않고, 실제로 그 hint("아직 관계가 없다")까지 붙었다.
+    같은 무음 누락의 반대편이다(도구 계약은 [[vinc.canon.mcp-contract]]).
+
+    UNION 은 열 타입이 같아야 하므로 4열(rel·id·title·domain)만 투영한다."""
     params: dict = {"node": node}
-    # v12 — 부착 **대상**도 의미층 둘 중 하나다(결정에도 기록·사건·다리가 붙는다).
-    # 라벨을 박아 두면 결정의 부착이 통째로 안 보인다 — 라이브 실측 20건이 그 자리다.
-    c_label, c_pk = _seed_table(node)
-    if c_label not in _SEMANTIC_LABELS:
-        c_label, c_pk = "Concept", "concept_id"
-    c_scope = " AND c.owner_id = $owner" if owner else ""
-    # 부착 노드의 owner: Record·Episode 는 엄격, Bridge 는 과도기 술어(축 플랜 관례).
-    r_scope = " AND rc.owner_id = $owner" if owner else ""
-    e_scope = " AND e.owner_id = $owner" if owner else ""
-    b_scope = f" AND {_bridge_owner_pred('b')}" if owner else ""
+    s_label, _s_pk = _seed_table(node)
     if owner:
         params["owner"] = owner
-    cypher = (
-        f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{c_label}) "
-        f"WHERE c.{c_pk} = $node{c_scope}{r_scope} "
-        "RETURN 'ATTACHES_TO' AS rel, rc.record_id AS id, rc.title AS title, "
-        "rc.domain AS domain "
-        "UNION ALL "
-        f"MATCH (e:Episode)-[:ABOUT]->(c:{c_label}) "
-        f"WHERE c.{c_pk} = $node{c_scope}{e_scope} "
-        "RETURN 'ABOUT' AS rel, e.episode_id AS id, e.title AS title, "
-        "e.domain AS domain "
-        "UNION ALL "
-        f"MATCH (b:Bridge)-[:CONNECTS]->(c:{c_label}) "
-        f"WHERE c.{c_pk} = $node{c_scope}{b_scope} "
-        "RETURN 'CONNECTS' AS rel, b.bridge_id AS id, b.title AS title, "
-        "b.source_domain AS domain"
-    )
-    return QueryPlan("node_attachments", cypher, params,
+    if s_label in _ATTACH_AXIS:
+        return QueryPlan("node_attachments", _attach_reverse_cypher(s_label, owner),
+                         params, note="attachment axis, reverse (F14)")
+    # v12 — 부착 **대상**도 의미층 둘 중 하나다(결정에도 기록·사건·다리가 붙는다).
+    # 라벨을 박아 두면 결정의 부착이 통째로 안 보인다 — 라이브 실측 20건이 그 자리다.
+    c_label, c_pk = (s_label, _s_pk) if s_label in _SEMANTIC_LABELS else ("Concept", "concept_id")
+    c_scope = " AND c.owner_id = $owner" if owner else ""
+    parts = []
+    for label, (pk, rel, dom) in _ATTACH_AXIS.items():
+        # 부착 노드의 owner: Record·Episode 는 엄격, Bridge 는 과도기 술어(축 플랜 관례).
+        a_scope = ""
+        if owner:
+            a_scope = (f" AND {_bridge_owner_pred('a')}" if label == "Bridge"
+                       else " AND a.owner_id = $owner")
+        parts.append(f"MATCH (a:{label})-[:{rel}]->(c:{c_label}) "
+                     f"WHERE c.{c_pk} = $node{c_scope}{a_scope} "
+                     f"RETURN '{rel}' AS rel, a.{pk} AS id, a.title AS title, "
+                     f"a.{dom} AS domain")
+    return QueryPlan("node_attachments", " UNION ALL ".join(parts), params,
                      note="record/episode/bridge attachments (F14)")
+
+
+def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
+    """부착 노드(Record·Episode·Bridge) 시드 → 그것이 붙어 있는 개념·결정.
+
+    시드 쪽 owner 술어는 라벨 규칙 그대로(Bridge 만 과도기), 반대쪽은 엄격이다."""
+    s_pk, rel, _dom = _ATTACH_AXIS[s_label]
+    s_scope = ""
+    if owner:
+        s_scope = (f" AND {_bridge_owner_pred('a')}" if s_label == "Bridge"
+                   else " AND a.owner_id = $owner")
+    m_scope = " AND m.owner_id = $owner" if owner else ""
+    return " UNION ALL ".join(
+        f"MATCH (a:{s_label})-[:{rel}]->(m:{m_label}) "
+        f"WHERE a.{s_pk} = $node{s_scope}{m_scope} "
+        f"RETURN '{rel}' AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain"
+        for m_label, m_pk in _SEMANTIC_PK.items())
 
 
 def _domain_neighbors(node: str, *, owner: str | None, limit: int,
@@ -4114,15 +4140,34 @@ class _UnscopedChunkSearch(RuntimeError):
     지연 빌드 후 다시 도는 경로로 새면 같은 무스코프 조회를 한 번 더 하게 된다."""
 
 
-def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
+#: 벡터 인덱스가 없을 때 응답에 남기는 사유. 문구가 아니라 **이 필드의 존재**가
+#: 신호다(서버가 `vector_note` 를 붙이는 자리와 같다 — 화면은 파싱하지 않는다).
+_VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
+                      "full-text results only for now")
+
+
+def _chunk_arms(store, query, query_embedding, top_k, filters) -> tuple[list[dict], str]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
-    인덱스·확장 부재는 예외로 전파(호출부가 지연 빌드·error 표면화를 담당)."""
+    반환 ``(rows, vector_note)``. FTS·확장 부재는 예외로 전파(호출부가 지연 빌드·
+    error 표면화를 담당).
+
+    ⚠ **벡터 팔의 인덱스 부재는 예외로 올리지 않는다.** 문서를 쓰면 쓰기 경로가
+    벡터 인덱스를 드롭하므로(HNSW 삽입 세그폴트 방어 — `drop_vector_index`), 쓰기
+    직후의 검색은 이 자리를 반드시 밟는다. 여기서 통째로 던지면 **멀쩡한 키워드
+    결과까지 버리고** 호출부가 HNSW 재빌드를 요청 스레드에서 기다렸다(실측: 문서
+    쓰기 뒤 검색이 타임아웃). 키워드로 답하고 사유를 남긴다."""
     kw = store.fulltext_search(query, top_k, filters)           # BM25 암
     arms = [kw]
     arm_names = ["keyword"]
+    vnote = ""
     if query_embedding is not None:
-        arms.append(store.vector_search(query_embedding, top_k, filters))
-        arm_names.append("semantic")
+        try:
+            arms.append(store.vector_search(query_embedding, top_k, filters))
+            arm_names.append("semantic")
+        except Exception as exc:
+            if _classify_chunk_error(exc) != "index_missing":
+                raise
+            vnote = _VECTOR_REBUILDING
     # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
     membership: dict = {}
     for name, rows_ in zip(arm_names, arms):
@@ -4136,7 +4181,28 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> list[dict]:
     rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
-    return rows
+    return rows, vnote
+
+
+def _schedule_vector_index(store, dim: int | None) -> None:
+    """벡터(HNSW) 인덱스 재빌드를 **요청 스레드 밖으로** 보낸다.
+
+    이 재빌드는 조회 요청 안에서 기다릴 일이 아니다: 잡 큐로 되돌려 보내는 경로
+    (:meth:`store.embedded_backend._ReaderView.ensure_search_indexes`)가 상한 60초로
+    **동기 대기**했고, 앞에 적재 잡이 있으면 검색이 그만큼 매달렸다. 예약만 하고
+    이번 응답은 FTS 로 답한다(사유는 `vector_note`).
+
+    ``schedule_search_indexes`` 가 없는 스토어(CLI·테스트가 직접 여는 백엔드)에서는
+    기다릴 요청 스레드가 애초에 없으므로 그 자리에서 만든다 — 다음 검색부터 벡터
+    팔이 산다. 실패는 삼킨다: 예약 실패는 검색 실패가 아니고, 다음 검색이 다시 건다."""
+    fn = (getattr(store, "schedule_search_indexes", None)
+          or getattr(store, "ensure_search_indexes", None))
+    if fn is None or dim is None:
+        return
+    try:
+        fn(dim=dim)
+    except Exception:
+        pass
 
 
 # ── 질문 정규화 (A1.10) — 자연어 질문을 노드 검색이 탈 수 있는 토큰으로 ──────────
@@ -4486,13 +4552,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             # 답을 줄이고 사유를 남긴다.
             scoped_ok = bool(getattr(store, "scoped_chunk_search", False))
         pool: list[dict] = []
+        vnote = ""
         try:
             if not scoped_ok:
                 raise _UnscopedChunkSearch(
                     "owner scope requested but this store does not support "
                     "owner-filtered chunk search")
-            pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
-                               chunk_filters or None)
+            pool, vnote = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
+                                      chunk_filters or None)
             base["executed"] = True
         except _UnscopedChunkSearch as exc:
             # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
@@ -4514,17 +4581,25 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     base["note"] = base["error"]
                 else:
                     try:
-                        # 벡터 인덱스는 쿼리 임베딩 검색이 필요할 때만 빌드(dim 주입).
-                        vdim = cfg.embedding_dim if query_embedding is not None else None
-                        builder(dim=vdim)
-                        pool = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
-                                           chunk_filters or None)
+                        # **벡터 인덱스는 여기서 만들지 않는다.** FTS 만 세워 답하고
+                        # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
+                        # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
+                        builder(dim=None)
+                        pool, vnote = _chunk_arms(store, query, query_embedding,
+                                                  SEARCH_POOL_CAP, chunk_filters or None)
                         base["executed"] = True
                         base["note"] = "search index built on demand"
                     except Exception as exc2:
                         base["error"] = (f"index_build_failed: "
                                          f"{type(exc2).__name__}: {exc2}")
                         base["note"] = base["error"]
+        if vnote:
+            # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
+            # (`vector_note`)를 둘 다 남긴다. `arms` 를 안 고치면 "fts+vector" 라고
+            # 답하면서 FTS 만 돈 것이 되고, 그건 이 필드가 막으려던 침묵 그대로다.
+            base["vector_note"] = vnote
+            base["arms"] = "fts"
+            _schedule_vector_index(store, cfg.embedding_dim)
 
         # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
         # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
@@ -4596,10 +4671,12 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     (dedup·props/tags 포함). blowup 을 없애고 label=title·props 를 얻는다.
     (decide_plan 은 `/plan` 표시·테스트용으로 유지 — 순회 의도의 표현.)
 
-    ``conflicts``: 스키마에 1급 '상충' 관계가 없으므로, 결정에 유의미한 구조적 긴장 =
-    **크로스도메인 엣지**(docstring 의 'cross-domain bridges')를 투영한다(날조 없음)."""
+    ``conflicts`` 는 :func:`_decide_conflicts` 가 구조만으로 판별한다. 크로스도메인은
+    **별도 필드**(`cross_domain`)로 나갔다 — 여태 그것이 conflicts 자리를 독점해서,
+    이 도구가 "상충"이라고 부르는 것은 언제나 도메인이 다른 연결뿐이었다."""
     base = {"kind": "decide", "executed": False, "topic": topic, "depth": depth,
-            "found": False, "nodes": [], "edges": [], "conflicts": []}
+            "found": False, "nodes": [], "edges": [], "conflicts": [],
+            "cross_domain": []}
     # SEC-1: 토픽 해석·순회·행조회 전부 owner 스코프. 없으면 남의 개념을 시드로
     # 잡아 서브그래프가 통째로 노출됐다(vinc_decide 는 owner 를 보내지도 않았다).
     res = execute(decide_topic_resolve_plan(topic, owner=owner), cfg, store=store)
@@ -4632,9 +4709,103 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
     attach_ppr(shaped, [seed])   # E-G2 — 토픽(시드) 관점 개인화 랭킹
-    conflicts = [{"source": e["source"], "target": e["target"], "type": e["type"],
-                  "reason": "cross_domain"} for e in shaped["edges"] if e.get("cross_domain")]
-    return {**base, "nodes": shaped["nodes"], "edges": shaped["edges"], "conflicts": conflicts}
+    dec_res = execute(decisions_about_plan(ids, owner=owner), cfg, store=store)
+    decisions = list(dec_res.get("rows", [])) if dec_res.get("executed") else []
+    conflicts, cut = _decide_conflicts(shaped["edges"], decisions)
+    out = {**base, "nodes": shaped["nodes"], "edges": shaped["edges"],
+           "conflicts": conflicts,
+           # 크로스도메인은 상충이 아니라 **연결의 성질**이다. 자기 필드로 나간다.
+           "cross_domain": [{"source": e["source"], "target": e["target"],
+                             "type": e["type"]}
+                            for e in shaped["edges"] if e.get("cross_domain")]}
+    if cut:
+        out["conflicts_truncated"] = True
+    return out
+
+
+def decisions_about_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
+    """id 집합의 개념에 ABOUT 으로 걸린 결정 — decide 의 상충 판정이 쓰는 추가 조회.
+
+    ⚠ :func:`graph_rows_for_ids_plan` 은 Concept 전용이라 **결정은 decide 의
+    서브그래프에 한 번도 실린 적이 없다.** 그래서 "이미 내려진 결정과 부딪히는가"를
+    도구 설명이 약속하고도 구조적으로 답할 수 없었다. 결정을 nodes 에 합류시키지
+    않고 여기서 따로 읽는 이유는, decide 의 nodes/edges 계약(Concept 서브그래프)을
+    바꾸지 않고 상충만 채우기 위해서다."""
+    params: dict = {"ids": ids}
+    where = "c.concept_id IN $ids"
+    if owner:
+        where += " AND c.owner_id = $owner AND d.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (f"MATCH (d:Decision)-[:ABOUT]->(c:Concept) WHERE {where} "
+              "RETURN d.decision_id AS id, d.title AS title, c.concept_id AS subject")
+    return QueryPlan("decisions_about", cypher, params,
+                     note="decisions attached to the id set")
+
+
+#: 방향이 곧 의미인 엣지. RELATED_TO 는 무방향이라(역방향이 같은 간선으로 접힌다)
+#: 여기 없다 — 넣으면 정상 관계가 전부 모순으로 보고된다.
+_DIRECTED_RELS = frozenset({"PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"})
+#: 한 응답이 싣는 상충 상한. 넘치면 `conflicts_truncated` 로 말한다(F6 — 잘린 것을
+#: 말하지 않으면 받는 쪽은 "이게 전부"로 읽는다).
+_CONFLICT_CAP = 50
+
+
+def _decide_conflicts(edges: list[dict],
+                      decisions: list[dict]) -> tuple[list[dict], bool]:
+    """구조만으로 판별되는 상충(순수 함수 — 모델 판단 없음, 편들지 않는다).
+
+      ① ``decisions_on_same_subject`` — 같은 개념을 두고 내려진 결정이 둘 이상.
+         결정을 하나 더 쓰기 전에 읽어야 하는 바로 그것이다.
+      ② ``opposite_direction`` — 한 쌍에 방향이 반대인 유향 엣지가 둘 다 있다.
+         방향이 의미인 관계에서 이건 둘 중 하나가 틀렸다는 뜻이다.
+      ③ ``duplicate_decision_title`` — 제목이 같은 결정 둘. 같은 것을 두 번
+         결정했거나, 하나가 다른 하나를 대체하는데 그렇게 적히지 않았다.
+
+    반환 ``(conflicts, truncated)``. 순서는 결정론이다 — 같은 그래프를 두 번 물으면
+    같은 순서로 답해야 한다."""
+    out: list[dict] = []
+
+    # ① 같은 주제에 걸린 결정들.
+    by_subject: dict[str, set[str]] = {}
+    titles: dict[str, str] = {}
+    for r in decisions:
+        did, subj = str(r.get("id") or ""), str(r.get("subject") or "")
+        if not did or not subj:
+            continue
+        by_subject.setdefault(subj, set()).add(did)
+        titles[did] = str(r.get("title") or "")
+    for subj, dec_ids in sorted(by_subject.items()):
+        for a, b in itertools.combinations(sorted(dec_ids), 2):
+            out.append({"source": a, "target": b, "type": "ABOUT",
+                        "reason": "decisions_on_same_subject", "subject": subj})
+
+    # ② 같은 쌍 위의 역방향 유향 엣지. 쌍당 한 번만 낸다(정렬로 고정).
+    directed: dict[tuple[str, str], set[str]] = {}
+    for e in edges:
+        t = str(e.get("type") or "")
+        if t in _DIRECTED_RELS and e.get("source") and e.get("target"):
+            directed.setdefault((str(e["source"]), str(e["target"])), set()).add(t)
+    for (s, t), fwd in sorted(directed.items()):
+        back = directed.get((t, s))
+        if back and s < t:
+            out.append({"source": s, "target": t, "type": sorted(fwd)[0],
+                        "reason": "opposite_direction",
+                        "reverse_type": sorted(back)[0]})
+
+    # ③ 제목이 같은 결정. 공백·대소문자만 정규화한다(그 이상은 판단이다).
+    by_title: dict[str, set[str]] = {}
+    for did, title in titles.items():
+        key = " ".join(title.split()).casefold()
+        if key:
+            by_title.setdefault(key, set()).add(did)
+    for key, dec_ids in sorted(by_title.items()):
+        if len(dec_ids) < 2:
+            continue
+        for a, b in itertools.combinations(sorted(dec_ids), 2):
+            out.append({"source": a, "target": b, "type": "",
+                        "reason": "duplicate_decision_title", "title": titles[a]})
+
+    return out[:_CONFLICT_CAP], len(out) > _CONFLICT_CAP
 
 
 # ── 삭제 / 병합 (T3c C3 — 오염 정리 쓰기 표면) ────────────────────────────────

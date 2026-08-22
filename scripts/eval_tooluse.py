@@ -162,7 +162,7 @@ MCP_PROBE = {
     "Q1":  ("vinc_neighbors",        {"node": "concept:view"},                    "neighbors[].id"),
     "Q2":  ("vinc_path",             {"a": "concept:view", "b": "concept:invoice"}, "paths[0].ids"),
     "Q3":  ("vinc_diagnose",         {"kind": "components"},                       "orphans"),
-    "Q4":  ("vinc_decide",           {"topic": "concept:view", "depth": 1},       "conflicts[].source|target"),
+    "Q4":  ("vinc_decide",           {"topic": "concept:view", "depth": 1},       "cross_domain[].source|target"),
     "Q5":  ("vinc_domains",          {},                                           "rows[0].domain|total"),
     "Q6":  ("vinc_recall",           {},                                           "rows[0].title|date"),
     "Q7":  ("vinc_merge_candidates", {},                                           "candidates[].a_id|b_id"),
