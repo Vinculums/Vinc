@@ -210,7 +210,13 @@ class VincApp:
 
         타임아웃을 두는 이유: 이 호출은 **조회 요청 안**에 있다. 앞에 긴 적재 잡이
         있으면 조회가 그만큼 매달리는데, 그때는 강등하는 편이 낫다(호출부가 각각
-        index_build_failed·algo 실패 note 로 표면화한다). 실측 소요는 1초 미만."""
+        index_build_failed·algo 실패 note 로 표면화한다). 실측 소요는 1초 미만.
+
+        ``timeout=0`` 은 **예약**이다: 잡만 걸고 결과를 기다리지 않는다. 검색이 벡터
+        인덱스 재빌드를 거는 자리가 쓴다(`_ReaderView.schedule_search_indexes`) —
+        그 답은 이번 응답에 필요하지 않고, 검색은 그동안 FTS 로 답한다."""
+        if timeout is not None and timeout <= 0:
+            return self.jobs.submit(label, fn).to_dict()
         return self.jobs.run_sync(label, fn, timeout=timeout)
 
     def _read(self, fn):
@@ -704,7 +710,14 @@ class VincApp:
 
         스토어에 관례 문서가 있으면 그 본문을, 없으면 **생성 구역만 채운 기본 템플릿**을
         돌려준다. 사용자가 아무것도 안 해 뒀어도 도메인·재가 어휘는 전달된다 — 이 기본본이
-        없으면 '아직 안 만든 사람'에게는 이 도구가 그냥 빈손이고, 그 경우가 대다수다."""
+        없으면 '아직 안 만든 사람'에게는 이 도구가 그냥 빈손이고, 그 경우가 대다수다.
+
+        ⚠ **저장본의 생성 구역은 매번 다시 계산해서 내보낸다**(2026-08-22). 여태 저장된
+        본문을 글자 그대로 돌려줬는데, 생성 구역은 스토어의 사본이라 마지막 build 이후
+        도메인이 늘거나 어휘가 재가되면 그만큼 낡는다 — 실측: 2026-08-12 에 build 된
+        블록이 `vinc_domains` 대비 약 45% 어긋나 있었다. 이 도구는 **쓰기 직전에**
+        읽히는 자리라 그 낡음이 곧 잘못 쓰인 도메인이 된다. 산문과 저장된 built 날짜는
+        건드리지 않는다(날짜는 라벨이다 — 언제 사람이 이 파일을 만들었나)."""
         owner = p.get("owner") or None
         lang = p.get("lang") or None
 
@@ -714,9 +727,15 @@ class VincApp:
             # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
             # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
             if got.get("executed") and (got.get("text") or "").strip():
+                # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
+                # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
+                fresh = graphmd.build(r, owner=owner, themes=self.themes,
+                                      existing=got["text"], restamp=False)
+                text = fresh["text"] if fresh.get("executed") else got["text"]
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "",
-                        "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": got["text"],
+                        "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": text,
+                        "generated_recomputed": bool(fresh.get("executed")),
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())

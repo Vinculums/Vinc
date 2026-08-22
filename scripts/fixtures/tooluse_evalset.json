@@ -97,7 +97,7 @@
     },
     {
       "id": "Q4",
-      "ask": "concept:view 를 두고 결정을 내려야 한다. 해결해야 할 충돌 쌍을 `a|b` 형태로 전부 대라(없으면 `없음`).",
+      "ask": "concept:view 를 두고 결정을 내려야 한다. 도메인을 가로지르는 쌍을 `a|b` 형태로 전부 대라(없으면 `없음`).",
       "expect": {
         "kind": "set",
         "value": [
@@ -108,14 +108,14 @@
         "vinc_decide"
       ],
       "forbidden": [],
-      "probes": "decide 의 conflicts 를 읽는가. 도메인을 가로지르는 엣지 하나가 답이다.",
+      "probes": "decide 의 cross_domain 을 읽는가. 도메인을 가로지르는 엣지 하나가 답이다. 이 문항은 원래 conflicts 를 봤는데, 크로스도메인은 상충이 아니라 연결의 성질이라 v0.8.4 에서 제 필드로 나갔다.",
       "verify": {
         "tool": "decide",
         "args": {
           "topic": "concept:view",
           "depth": 1
         },
-        "path": "conflicts[].source|target"
+        "path": "cross_domain[].source|target"
       }
     },
     {

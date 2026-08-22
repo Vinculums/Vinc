@@ -1258,34 +1258,97 @@ def _title_shaped(line: str) -> bool:
         and not _UNDERLINE_RE.match(line) and not _FENCE_RE.match(line)
 
 
+# 번호·글머리 접두 — "1. 결정들"·"3.1 두 형식"·"A) 개요"·"(2) 그 다음".
+# 숫자 하나만으로는 벗기지 않는다: 끊어 주는 문장부호가 있거나(`1.`) 점으로 이어진
+# 절 번호(`3.1`)일 때만이다. 안 그러면 "12 factors of X" 같은 제목에서 12 를 잃는다.
+_HEAD_NUM_RE = re.compile(r"^\(?(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)])\s+")
+# 인라인 마크. `[[wiki]]`·`[텍스트](주소)` 는 텍스트만 남기고, `**`·`*`·백틱은 벗긴다.
+_MD_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]|\[([^\]]+)\]\([^)]*\)")
+_MD_EMPH_RE = re.compile(r"\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*")
+# 줄머리의 인용부호·여백. 인용문으로 시작하는 절의 one_liner 가 `> ` 를 달고 나왔다.
+_MD_PREFIX_RE = re.compile(r"^[>\s]+")
+# 문장의 끝 — 마침표·물음표·느낌표(전각 포함)와 그 뒤의 닫는 따옴표·괄호까지.
+_SENT_END_RE = re.compile(r"[.!?。？！][\"')\]]*$")
+#: one_liner 상한(종전과 같다). 툴팁 한 문단 분량.
+_ONE_LINER_MAX = 400
+
+
+def _strip_md(s: str) -> str:
+    """인라인 마크를 벗긴다(결정론). 밑줄 강조(``_x_``)는 **일부러 두지 않는다** —
+    이 코퍼스는 `doc_id`·`snake_case` 로 가득해서 벗기면 식별자를 망가뜨린다."""
+    s = _MD_LINK_RE.sub(lambda m: m.group(1) or m.group(2) or "", s)
+    for _ in range(2):        # 한 겹 중첩(``**`x`**``)까지 푼다
+        s = _MD_EMPH_RE.sub(lambda m: m.group(1) or m.group(2) or m.group(3) or "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _clean_heading(title: str) -> str:
+    """헤딩 → 개념 제목. 번호 접두를 벗기고 인라인 마크를 푼다.
+
+    ⚠ slug 가 제목에서 나오므로 **id 가 바뀐다**("1. The decisions" 는 예전에
+    `concept:1-the-decisions` 였다). 바뀌는 쪽이 옳다: 절 번호는 그 문서 안에서만
+    뜻이 있고 개념 id 는 문서 밖에서 재사용되는 이름이다."""
+    return _strip_md(_HEAD_NUM_RE.sub("", title.strip()))
+
+
+def _one_liner(lines: list[str], body: int, stop: int) -> str:
+    """헤딩 다음의 **첫 문장**. 첫 비지 않은 줄에서 시작해 문장이 끝날 때까지 잇는다.
+
+    한 줄만 잘라 오던 것이 결함이었다: 대부분의 문서는 문장 중간에서 줄을 바꾸므로
+    one_liner 가 반 문장으로 끝났다. 줄 **안**에서는 자르지 않는다 — 이미 문장부호로
+    끝나는 줄은 그 자리가 곧 경계다.
+
+    문단이 끝나거나(빈 줄) 이어지는 줄이 목록·표·펜스면 멈춘다. 그런 줄은 앞 문장의
+    계속이 아니라서, 붙이면 문장이 아니라 잡동사니가 된다."""
+    buf = ""
+    for ln in lines[body:stop]:
+        s = _MD_PREFIX_RE.sub("", ln).strip()
+        if s.startswith("#"):
+            break
+        if not s:
+            if buf:
+                break
+            continue
+        if buf and (_LIST_RE.match(s) or "|" in s or _UNDERLINE_RE.match(s)
+                    or _FENCE_RE.match(s)):
+            break
+        buf = f"{buf} {s}" if buf else s
+        if len(buf) >= _ONE_LINER_MAX or _SENT_END_RE.search(buf):
+            break
+    return _strip_md(buf)[:_ONE_LINER_MAX]
+
+
 def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
     """순수 결정론 추출(옵션1) — 헤딩마다 개념 후보 1개.
 
     헤딩 = 마크다운 ATX(``##``/``###``) + 밑줄식(setext·RST). 후보 =
-    {title, one_liner(헤딩 다음 첫 비빈 줄 ≤400자 — concepts_ingest 의 _one_liner
-    관례), slug}. H1(``#``·``===`` 밑줄)은 문서 제목으로 보고 제외. 같은 slug 는 첫
-    등장만(멱등). LLM·네트워크·스토어 없음 — 어디서든 같은 입력 = 같은 후보."""
+    {title, one_liner, slug}. H1(``#``·``===`` 밑줄)은 문서 제목으로 보고 제외.
+    같은 slug 는 첫 등장만(멱등). LLM·네트워크·스토어 없음 — 어디서든 같은 입력 =
+    같은 후보.
+
+    제목은 :func:`_clean_heading` 으로 번호 접두·인라인 마크를 벗기고, one_liner 는
+    :func:`_one_liner` 로 첫 문장까지 잇는다. **one_liner 가 빈 후보는 버린다** —
+    설명 없는 개념은 상류가 판단할 재료가 없고, Ask 는 그걸 제목만으로 내민다
+    (추출 계약은 [[vinc.canon.chunk-ssot]] §6.1)."""
     out: list[dict] = []
     seen: set[str] = set()
     lines = text.splitlines()
     heads = _headings(lines)
     for k, (_, body, title) in enumerate(heads):
-        slug = _slug(title)
+        clean = _clean_heading(title)
+        slug = _slug(clean)
         if not slug or slug in seen:
             continue
         # 다음 헤딩의 제목 줄에서 멈춘다 — 안 그러면 밑줄이나 다음 제목이
         # one_liner 로 새어 들어온다.
         stop = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
-        one_liner = ""
-        for nxt in lines[body:stop]:
-            s = nxt.strip()
-            if s.startswith("#"):
-                break
-            if s:
-                one_liner = s.lstrip("*").strip()[:400]
-                break
+        one_liner = _one_liner(lines, body, stop)
+        # 버린 후보는 `seen` 에도 넣지 않는다 — 같은 제목이 뒤에서 설명을 달고 다시
+        # 나오면 그때는 받는다. 입력이 같으면 결과도 같으므로 멱등은 그대로다.
+        if not one_liner:
+            continue
         seen.add(slug)
-        out.append({"title": title, "one_liner": one_liner, "slug": slug})
+        out.append({"title": clean, "one_liner": one_liner, "slug": slug})
         if len(out) >= max_candidates:
             break
     return out
