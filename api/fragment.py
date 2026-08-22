@@ -30,6 +30,7 @@ import json
 from engines import domain_hierarchy
 
 from . import revstamp
+from store import pkns
 
 _NODE_MAP = {   # fragment type → (label, pk column)
     "record": ("Record", "record_id"),
@@ -132,6 +133,14 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         return None
     if not nid:
         warnings.append(f"node without id — skipped (type={ntype})")
+        return None
+    if pkns.has_sep(node):
+        # PK 네임스페이싱(design A) 의 물리 키 판별자가 U+001F 존재 여부다
+        # (strip 이 이 바이트로 owner 를 잘라낸다). 사용자 입력에 이 바이트가
+        # 섞이면 나중에 물리 키로 오인되므로 지금 이 노드만 스킵한다.
+        # 근거: [[d11223a9a5d109de5]] §7
+        warnings.append(
+            f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
         return None
     is_entity = _is_open(ntype)
     if is_entity and not (node.get("title") or "").strip():
@@ -523,6 +532,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     남는다(선언된 FROM/TO 쌍 밖 — 스킵이 아니라 토폴로지 한계)."""
     etype = (edge.get("type") or "").strip()
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
+    if pkns.has_sep(edge):
+        # 노드와 같은 이유(_merge_node 주석) — U+001F 는 물리 키 판별자라 엣지
+        # 끝점/타입에 섞이면 안 된다. 근거: [[d11223a9a5d109de5]] §7
+        warnings.append(
+            f"edge contains U+001F (reserved for PK namespacing) — skipped ({src}→{dst})")
+        return None
     st, dt = types.get(src, ""), types.get(dst, "")
     osc = bool(owner_explicit and owner)
     #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
