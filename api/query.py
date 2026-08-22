@@ -618,6 +618,43 @@ def shape_graph(rows: list[dict]) -> dict:
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
+def _derive_bridge_domains(shaped: dict) -> None:
+    """Bridge 의 `domain` 은 **저작물이 아니라 파생값**이다 — CONNECTS 로 닿는 끝점
+    도메인들의 가장 깊은 공통 조상(`vinc/security` + `vinc/engineering` → `vinc`).
+
+    저장하지 않고 /graph 응답에서만 계산한다. 저장하면 연결이 바뀌는 순간 썩는데,
+    브릿지의 소속은 정의상 그 연결이 결정하기 때문이다. 여태 노드 domain 은 선언
+    필드 `source_domain` 이었고 라이브에서는 그게 **전부 비어 있어서**(v2 owner
+    백필이 건너뛰어지며 domain 도 같이 남았다) 세 관점 모두가 브릿지 전량을
+    "도메인 없음" 한 칸에 몰아넣었다. 근거: [[record:bridge-layout-clump-2026-08-22]].
+
+    CONNECTS 가 하나도 없으면 미분류(`""`)로 남는다 — 지어낼 근거가 없다.
+    도메인이 빈 끝점은 계산에서 뺀다(`_shared_prefix` 규약): 미분류 이웃 하나가
+    나머지 끝점의 공통 조상을 뿌리까지 끌어내리면 안 된다.
+
+    `domain2`(선언된 target_domain)는 상세 레일 계약이라 손대지 않는다."""
+    nodes = shaped.get("nodes") or []
+    doms = {n.get("id"): n.get("domain") or "" for n in nodes}
+    bridges = {n.get("id") for n in nodes if n.get("kind") == "bridge"}
+    if not bridges:
+        return
+    ends: dict[str, list[str]] = {}
+    for e in shaped.get("edges") or []:
+        if (e.get("type") or "") != "CONNECTS":
+            continue
+        s, t = e.get("source"), e.get("target")
+        # 방향은 늘 Bridge→Concept 이지만 양쪽을 다 본다 — 어느 축 플랜이 실어 오든
+        # 같은 답이 나오게(투영이 뒤집혀도 조용히 미분류가 되지 않게).
+        if s in bridges and t in doms:
+            ends.setdefault(s, []).append(t)
+        if t in bridges and s in doms:
+            ends.setdefault(t, []).append(s)
+    for n in nodes:
+        if n.get("id") in bridges:
+            n["domain"] = "/".join(_shared_prefix(
+                [_domain_path(doms.get(t, "")) for t in ends.get(n["id"], ())]))
+
+
 # ── ego-Personalized PageRank (E-G2) — 순수 함수 시드 편향 랭킹 ────────────────
 # 리서치(HippoRAG PPR)의 시드 편향 확산을 **백엔드 밖 결정론 순수 함수**로 옮긴다.
 # ego 서브그래프(수십~수백 노드) 위 power iteration(반복 수 고정 → 결정론, 난수·
@@ -1237,17 +1274,32 @@ def _common_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
     real = [p for p in paths if p]
     if not real:
         return ()
-    out: list[str] = []
-    for i in range(min(len(p) for p in real)):
-        seg = real[0][i]
-        if all(p[i] == seg for p in real):
-            out.append(seg)
-        else:
-            break
+    out = list(_shared_prefix(paths))
     # 접두가 경로 전체와 같아지면(도메인이 하나뿐) 마지막 조각은 가지로 남긴다 —
     # 안 그러면 가지가 0개가 되어 전부 뿌리에 뭉친다.
     if len(out) == min(len(p) for p in real):
         out = out[:-1]
+    return tuple(out)
+
+
+def _shared_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
+    """경로들이 공유하는 접두 = **가장 깊은 공통 조상**, 손대지 않은 그대로.
+
+    `_common_prefix` 와 갈라 둔 이유: 저쪽은 배치용이라 "접두가 경로 전체와 같으면
+    마지막 조각을 되돌려준다"는 가지 보존 규칙이 붙는다. 조상을 묻는 쪽
+    (`_derive_bridge_domains`)에는 그 규칙이 틀린 답을 준다 — `vinc/security` 하나만
+    있으면 조상은 `vinc/security` 자신이지 `vinc` 가 아니다.
+
+    빈 경로(도메인 없는 노드)는 계산에서 뺀다 — `_common_prefix` 와 같은 규약이다."""
+    real = [p for p in paths if p]
+    if not real:
+        return ()
+    out: list[str] = []
+    for i in range(min(len(p) for p in real)):
+        seg = real[0][i]
+        if not all(p[i] == seg for p in real):
+            break
+        out.append(seg)
     return tuple(out)
 
 
@@ -1677,6 +1729,9 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                                     "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
+        # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
+        # 도메인을 읽는다(_derive_bridge_domains 주석).
+        _derive_bridge_domains(shaped)
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
@@ -1706,6 +1761,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         if ax.get("executed"):
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
+    _derive_bridge_domains(shaped)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)

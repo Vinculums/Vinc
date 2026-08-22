@@ -778,3 +778,106 @@ class LayoutPresetTests(unittest.TestCase):
         edges = [{"source": "derived", "target": "orig", "type": "DERIVES_FROM"}]
         pos = {n["id"]: n for n in q.layout_positions(copy.deepcopy(nodes), edges, "rank")}
         self.assertLess(pos["orig"]["x"], pos["derived"]["x"])   # 원본이 왼쪽
+
+
+def _dogfood_graph():
+    """도그푸드 코퍼스를 닮은 결정론 픽스처 — 계정 그래프의 실제 형태다: 도메인이
+    전부 `vinc/*` 이고, 개념이 도메인 안에서 서로 물리며, 브릿지가 도메인을
+    가로지른다. 난수·시간에 무의존이라 스냅샷 대조가 성립한다(D17).
+
+    브릿지 세 종류를 일부러 심는다: 서로 다른 가지 짝을 잇는 것 · **같은** 가지
+    짝을 잇는 둘(겹치면 안 된다) · CONNECTS 가 하나도 없는 것(미분류로 남는다)."""
+    doms = ("design", "engineering", "infra", "governance",
+            "security", "product", "ai")
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    for d in doms:
+        ids = [f"concept:{d}-{i}" for i in range(8)]
+        nodes += [{"id": i, "domain": f"vinc/{d}", "kind": "concept", "degree": 0}
+                  for i in ids]
+        # 도메인 안 관계 — item 13 이 읽을 실제 이웃. 허브 하나 + 짝 하나.
+        edges += [{"source": ids[0], "target": t, "type": "RELATED_TO"}
+                  for t in ids[1:4]]
+        edges.append({"source": ids[4], "target": ids[5], "type": "RELATED_TO"})
+    for k, (a, b) in enumerate(zip(doms, doms[1:] + doms[:1])):
+        bid = f"bridge:b{k}"
+        nodes.append({"id": bid, "domain": "", "kind": "bridge", "degree": 0})
+        edges += [{"source": bid, "target": f"concept:{a}-0", "type": "CONNECTS"},
+                  {"source": bid, "target": f"concept:{b}-1", "type": "CONNECTS"}]
+    for k in range(2):
+        bid = f"bridge:same{k}"
+        nodes.append({"id": bid, "domain": "", "kind": "bridge", "degree": 0})
+        edges += [{"source": bid, "target": "concept:design-2", "type": "CONNECTS"},
+                  {"source": bid, "target": "concept:security-2", "type": "CONNECTS"}]
+    nodes.append({"id": "bridge:orphan", "domain": "", "kind": "bridge", "degree": 0})
+    deg: dict[str, int] = {}
+    for e in edges:
+        deg[e["source"]] = deg.get(e["source"], 0) + 1
+        deg[e["target"]] = deg.get(e["target"], 0) + 1
+    for n in nodes:
+        n["degree"] = deg.get(n["id"], 0)
+    return nodes, edges
+
+
+class BridgeDomainTests(unittest.TestCase):
+    """axis 2 item 11 — 브릿지의 `domain` 은 CONNECTS 끝점 도메인들의 **가장 깊은
+    공통 조상**이고, 저작 필드(`source_domain`)는 신뢰하지 않는다.
+    근거: [[record:bridge-layout-clump-2026-08-22]]."""
+
+    def _derived(self, ends):
+        nodes = [{"id": "bridge:x", "domain": "declared/never/trusted",
+                  "kind": "bridge", "degree": 0}]
+        edges = []
+        for i, d in enumerate(ends):
+            nodes.append({"id": f"c{i}", "domain": d, "kind": "concept", "degree": 0})
+            edges.append({"source": "bridge:x", "target": f"c{i}", "type": "CONNECTS"})
+        shaped = {"nodes": nodes, "edges": edges}
+        q._derive_bridge_domains(shaped)
+        return {n["id"]: n for n in shaped["nodes"]}["bridge:x"]["domain"]
+
+    def test_deepest_common_ancestor_of_two_branches(self):
+        self.assertEqual(self._derived(["vinc/security", "vinc/engineering"]), "vinc")
+
+    def test_siblings_keep_the_shared_parent(self):
+        self.assertEqual(self._derived(["vinc/design/a", "vinc/design/b"]), "vinc/design")
+
+    def test_single_endpoint_is_its_own_ancestor(self):
+        # `_common_prefix` 의 가지 보존 규칙을 빌려 쓰면 여기서 한 칸 얕게 답한다.
+        self.assertEqual(self._derived(["vinc/design/tokens"]), "vinc/design/tokens")
+
+    def test_unfiled_endpoint_does_not_drag_the_answer_to_the_root(self):
+        self.assertEqual(self._derived(["vinc/design/a", ""]), "vinc/design/a")
+
+    def test_no_connects_stays_unfiled(self):
+        self.assertEqual(self._derived([]), "")
+
+    def test_graph_response_derives_the_domain(self):
+        """/graph 응답에서 계산된다 — 저장하지 않으므로 연결이 바뀌면 따라 바뀐다."""
+        fake = _FakeStore({
+            "DISTINCT m.concept_id": [{"id": "b"}],
+            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+                {"id": "a", "label": "A", "domain": "vinc/security"},
+                {"id": "b", "label": "B", "domain": "vinc/engineering"},
+            ],
+            "MATCH (b:Bridge)-[r:CONNECTS]->(c:Concept)": [
+                {"id": "bridge:x", "label": "X", "domain": "", "domain2": "",
+                 "kind": "bridge", "rel": "CONNECTS",
+                 "target": "a", "target_domain": "vinc/security",
+                 "target_kind": "concept"},
+                {"id": "bridge:x", "label": "X", "domain": "", "domain2": "",
+                 "kind": "bridge", "rel": "CONNECTS",
+                 "target": "b", "target_domain": "vinc/engineering",
+                 "target_kind": "concept"},
+            ],
+        })
+        res = q.graph(owner="user:t", seed="a", depth=2, store=fake)
+        by_id = {n["id"]: n for n in res["nodes"]}
+        self.assertEqual(by_id["bridge:x"]["domain"], "vinc")
+
+    def test_every_dogfood_bridge_but_the_orphan_is_filed(self):
+        nodes, edges = _dogfood_graph()
+        shaped = {"nodes": nodes, "edges": edges}
+        q._derive_bridge_domains(shaped)
+        got = {n["id"]: n["domain"] for n in shaped["nodes"] if n["kind"] == "bridge"}
+        self.assertEqual(got.pop("bridge:orphan"), "")
+        self.assertTrue(all(v == "vinc" for v in got.values()), got)
