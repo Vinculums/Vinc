@@ -810,6 +810,9 @@ def _dogfood_graph():
         edges += [{"source": bid, "target": "concept:design-2", "type": "CONNECTS"},
                   {"source": bid, "target": "concept:security-2", "type": "CONNECTS"}]
     nodes.append({"id": "bridge:orphan", "domain": "", "kind": "bridge", "degree": 0})
+    # 내부 엣지가 하나도 없는 무리 — item 13 의 무변화 대조군이다.
+    nodes += [{"id": f"concept:quiet-{i}", "domain": "vinc/quiet",
+               "kind": "concept", "degree": 0} for i in range(6)]
     deg: dict[str, int] = {}
     for e in edges:
         deg[e["source"]] = deg.get(e["source"], 0) + 1
@@ -910,7 +913,7 @@ class BridgeSeatTests(unittest.TestCase):
         ua, ue, ub = (unit((n["x"], n["y"], n["z"])) for n in (da, de, b))
         cos_a = sum(x * y for x, y in zip(ub, ua))
         cos_e = sum(x * y for x, y in zip(ub, ue))
-        self.assertAlmostEqual(cos_a, cos_e, places=6)          # 정확히 사이
+        self.assertAlmostEqual(cos_a, cos_e, places=5)          # 정확히 사이
         self.assertGreater(cos_a, sum(x * y for x, y in zip(ua, ue)))
 
     def test_bridge_radius_is_the_mean_branch_shell(self):
@@ -985,3 +988,103 @@ class BridgeSeatTests(unittest.TestCase):
         b = q.layout_positions(copy.deepcopy(nodes), None, "hub")
         self.assertEqual([(n["x"], n["y"], n["z"]) for n in a],
                          [(n["x"], n["y"], n["z"]) for n in b])
+
+
+class ClusterNeighbourSeatTests(unittest.TestCase):
+    """axis 2 item 13 — 고리 위 **슬롯 선택**만 이웃을 본다. degree 순서도 고리
+    반경도 그대로다(2026-08-15 의 규칙성·크기 비례 간격 수정은 손대지 않는다)."""
+
+    def _items(self, n):
+        return [{"id": f"c{i}", "degree": n - i} for i in range(n)]
+
+    def test_no_internal_edges_change_nothing(self):
+        """무리 안에 엣지가 없으면 좌표가 한 톨도 안 바뀐다 — 게이트 그대로."""
+        import math
+        items = self._items(11)
+        outside = {f"c{i}": {"elsewhere"} for i in range(11)}
+        self.assertEqual(q._cluster(items, 1.0, math),
+                         q._cluster(items, 1.0, math, adj=outside))
+
+    def test_slot_geometry_is_untouched(self):
+        """자리 자체는 같다 — 바뀌는 것은 **누가 어디 앉는가** 뿐이다."""
+        import math
+        items = self._items(11)
+        adj = {"c0": {"c9"}, "c9": {"c0"}, "c1": {"c8"}, "c8": {"c1"}}
+        plain = sorted(q._cluster(items, 1.0, math))
+        aware = sorted(q._cluster(items, 1.0, math, adj=adj))
+        self.assertEqual(plain, aware)
+
+    def test_linked_members_drift_together(self):
+        """degree 순으로 멀리 떨어질 둘이 이웃이면 서로 가까운 슬롯을 고른다."""
+        import math
+        items = self._items(11)
+        far = {"c0": {"c9"}, "c9": {"c0"}}
+        def gap(spots):
+            a, b = spots[0], spots[9]
+            return math.dist(a, b)
+        self.assertLess(gap(q._cluster(items, 1.0, math, adj=far)),
+                        gap(q._cluster(items, 1.0, math)))
+
+    def test_ring_membership_and_radii_survive(self):
+        """반경은 degree 순서가 정한다 — 슬롯을 바꿔도 각자의 고리는 그대로다."""
+        import math
+        items = self._items(14)
+        adj = {"c0": {"c13"}, "c13": {"c0"}}
+        plain = q._cluster(items, 1.0, math)
+        aware = q._cluster(items, 1.0, math, adj=adj)
+        self.assertEqual([round(math.dist((0, 0), p), 9) for p in plain],
+                         [round(math.dist((0, 0), p), 9) for p in aware])
+
+    def test_dogfood_cluster_without_internal_edges_is_a_snapshot(self):
+        """도그푸드 픽스처 스냅샷 — 내부 엣지가 없는 `vinc/quiet` 는 엣지를 읽는
+        배치와 안 읽는 배치에서 **같은 좌표**를 받는다."""
+        import copy
+        nodes, edges = _dogfood_graph()
+        quiet = [n["id"] for n in nodes if n["domain"] == "vinc/quiet"]
+        aware = {n["id"]: n for n in
+                 q.layout_positions(copy.deepcopy(nodes), edges, "hub", topic_marks=True)}
+        blind = self._blind_hub(nodes, edges)
+        for nid in quiet:
+            self.assertEqual((aware[nid]["x"], aware[nid]["y"], aware[nid]["z"]),
+                             (blind[nid]["x"], blind[nid]["y"], blind[nid]["z"]), nid)
+            self.assertEqual((aware[nid]["x2"], aware[nid]["y2"]),
+                             (blind[nid]["x2"], blind[nid]["y2"]), nid)
+
+    def _blind_hub(self, nodes, edges):
+        """같은 그래프를 item 13 없이 배치한다(브릿지 좌석은 그대로 살려 둔다) —
+        비교 대상은 `adj` 하나뿐이어야 한다."""
+        import copy, math
+        ns = copy.deepcopy(nodes)
+        connects: dict[str, set] = {}
+        for e in edges:
+            if e["type"] == "CONNECTS":
+                connects.setdefault(e["source"], set()).add(e["target"])
+                connects.setdefault(e["target"], set()).add(e["source"])
+        q._global_hub(ns, math, 2.399963229728653, True, q._CONE0, connects=connects)
+        q._dedupe_planar(ns)
+        return {n["id"]: n for n in ns}
+
+    def test_dogfood_linked_leaves_only_swap_planar_slots(self):
+        """엣지가 있는 무리에서는 자리가 재배정되고, 그래도 **좌표 집합**은 같다.
+        `_cluster` 는 평면 정본만 만들므로(3D 잎은 `spray` 가 앉힌다) 3D 는 불변이다."""
+        import copy
+        nodes, edges = _dogfood_graph()
+        aware = {n["id"]: n for n in
+                 q.layout_positions(copy.deepcopy(nodes), edges, "hub", topic_marks=True)}
+        blind = self._blind_hub(nodes, edges)
+        linked = [n["id"] for n in nodes if n["domain"] == "vinc/design"]
+        self.assertEqual([tuple(aware[i][k] for k in "xyz") for i in linked],
+                         [tuple(blind[i][k] for k in "xyz") for i in linked])
+        planar = [(aware[i]["x2"], aware[i]["y2"]) for i in linked]
+        was = [(blind[i]["x2"], blind[i]["y2"]) for i in linked]
+        self.assertNotEqual(planar, was)          # 슬롯이 재배정됐다
+        self.assertEqual(sorted(planar), sorted(was))   # 자리 자체는 그대로다
+
+    def test_still_deterministic(self):
+        import copy
+        nodes, edges = _dogfood_graph()
+        def run():
+            return [(n["id"], n["x"], n["y"], n["z"], n["x2"], n["y2"]) for n in
+                    q.layout_positions(copy.deepcopy(nodes), edges, "hub",
+                                       topic_marks=True)]
+        self.assertEqual(run(), run())

@@ -1255,7 +1255,8 @@ def layout_positions(nodes: list[dict], edges: list[dict],
         # 원뿔이 부모의 **뒤쪽**까지 열려 자식이 부모보다 중심에 가까워진다. 그러면
         # "이 방향으로 계속 뻗어 나간다"는 이 배치의 문장 자체가 깨진다.
         cone0 = min(_CONE0 * max(_CONE_MIN, min(_CONE_MAX, cone)), math.pi / 2)
-        _global_hub(nodes, math, GOLDEN, topic_marks, cone0, connects=connects)
+        _global_hub(nodes, math, GOLDEN, topic_marks, cone0,
+                    connects=connects, adj=adj)
     _dedupe_planar(nodes)
     return nodes
 
@@ -1388,7 +1389,26 @@ _CONE0 = 1.15                            # 뿌리에서 도메인으로 퍼지�
 _CONE_MIN, _CONE_MAX = 0.3, 1.4
 
 
-def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> list:
+def _mean_angle(angles: list[float], math):
+    """각의 평균은 **단위벡터의 평균**이다 — 0 과 2π 가 같은 각이라 산술평균은
+    0.1 과 6.2 의 중간을 3.15(정반대)로 답한다. 합이 사실상 0 이면(정확히 갈라선
+    이웃들) 선호가 없다는 뜻이라 None 을 돌려준다."""
+    if not angles:
+        return None
+    cx = sum(math.cos(a) for a in angles)
+    cy = sum(math.sin(a) for a in angles)
+    if cx * cx + cy * cy < 1e-12:
+        return None
+    return math.atan2(cy, cx)
+
+
+def _arc_gap(a: float, b: float, math) -> float:
+    """두 각 사이의 원둘레 거리(0..π). 감싸기를 넘어서도 짧은 쪽을 잰다."""
+    return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0,
+             adj: dict | None = None) -> list:
     """무리 안 배치 — **규칙적 동심 고리 + 크기에 비례한 간격**. (dx, dy) 목록을 돌려준다.
 
     두 번 고쳐서 여기까지 왔다(둘 다 발주자 지적).
@@ -1408,6 +1428,12 @@ def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> l
     큰 마크 둘이 포개진다. 처음에 7개 이상일 때 중심을 쓰게 짰다가 실측에서 이걸
     봤다. 대신 마크의 크기(`center_w`)를 첫 고리의 요구량에 더해, 마크가 클수록
     첫 고리가 바깥으로 밀리게 한다.
+
+    ``adj``(2026-08-22, item 13): 고리의 **슬롯 기하는 그대로 두고 누가 어디 앉는지만**
+    고른다. degree 순으로 앉히다가, 이미 앉은 그래프 이웃이 있으면 그 이웃들의 평균
+    각에 가장 가까운 **빈 슬롯**을 집는다. 이웃이 없으면 순서대로 앞 슬롯이므로
+    **내부 엣지가 없는 무리는 좌표가 한 톨도 안 바뀐다**. 고리 반경과 크기 비례
+    간격(2026-08-15 두 수정)은 이 앞에서 이미 정해져 있어 손대지 않는다.
 
     순수 함수라 결정론이다(D17)."""
     n = len(items)
@@ -1450,16 +1476,32 @@ def _cluster(items: list[dict], radius: float, math, center_w: float = 0.0) -> l
         radii.append(rr)
         prev_r, prev_w = rr, mw
     scale = radius / (radii[-1] or 1.0)
+    idx = {str(it.get("id")): i for i, it in enumerate(items)}
+    seated: dict[int, float] = {}          # 이미 앉은 항목 → 중심 기준 각
     for ring_i, ((mem, gaps), rr0) in enumerate(zip(plan, radii)):
         rr = rr0 * scale
         gsum = sum(gaps) or 1.0
         # 고리마다 반 칸 돌린다. 안 돌리면 모든 고리의 첫 자리가 θ=0 에 서서
         # 중심을 지나는 **한 줄**이 생긴다(실측: 한 덩어리의 세 마크가 y 가 같았다).
         off = math.pi / len(mem) if len(mem) > 1 else 0.0
-        acc = 0.0
-        for j, m in enumerate(mem):
-            th = off * (ring_i % 2) + 2 * math.pi * acc / gsum
-            acc += gaps[j]
+        slots, acc = [], 0.0
+        for g in gaps:
+            slots.append(off * (ring_i % 2) + 2 * math.pi * acc / gsum)
+            acc += g
+        free = list(range(len(slots)))
+        for m in mem:
+            pick = 0                       # 이웃이 없으면 앞 슬롯 = 예전 그대로
+            if adj:
+                # 이웃 id 를 정렬해 읽는다 — adj 값은 set 이라 순회 순서가
+                # 프로세스마다 다르고, 평균의 덧셈 순서까지 흔들리면 순수성이 깨진다.
+                aim = _mean_angle(
+                    [seated[idx[nb]] for nb in sorted(adj.get(str(items[m].get("id")), ()))
+                     if nb in idx and idx[nb] in seated], math)
+                if aim is not None:
+                    pick = min(range(len(free)),
+                               key=lambda k: (round(_arc_gap(slots[free[k]], aim, math), 9), k))
+            th = slots[free.pop(pick)]
+            seated[m] = th
             out[m] = (rr * math.cos(th), rr * math.sin(th))
     return out
 
@@ -1471,7 +1513,8 @@ def _shell(depth: int) -> float:
 
 
 def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
-                cone0: float = _CONE0, connects: dict | None = None) -> None:
+                cone0: float = _CONE0, connects: dict | None = None,
+                adj: dict | None = None) -> None:
     """Hub — **중심에서 터져 나가는 위계**(D74, 구 동심 배치 개정).
 
     뿌리(이 그래프의 공통 도메인 = 지금은 `vinc`)가 원점이고, 도메인이 사방으로
@@ -1584,7 +1627,7 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
         # (_cluster) 하나씩 독립으로는 정할 수 없다.
         leafnodes = [p2 for _w, k, _k2, p2 in kids if k == "node"]
         disc = min(_R_LEAF * 0.85, 0.28 * max(r_here, 0.3) * span)
-        spots = _cluster(leafnodes, disc, math, float(b.weight))
+        spots = _cluster(leafnodes, disc, math, float(b.weight), adj=adj)
         leaf_i = 0
         for i, (w, kind, _key, payload) in enumerate(kids):
             mid = (acc + w / 2) / total            # 누적 무게 비율(0~1)
