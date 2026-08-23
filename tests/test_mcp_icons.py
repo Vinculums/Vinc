@@ -15,9 +15,15 @@
 """
 from __future__ import annotations
 
+import io
 import unittest
+from pathlib import Path
 
 from vinc_mcp import http_server, rpc
+
+ROOT = Path(__file__).resolve().parents[1]
+HUB_SVG = ROOT / "design-hub/assets/logo/vinc-ring-circle.svg"
+APP_PNG = ROOT / "app/src-tauri/icons/128x128.png"
 
 ICON_FIELDS = ("icons", "websiteUrl")
 
@@ -147,6 +153,56 @@ class RequestLoggingTest(unittest.TestCase):
     def test_쿼리스트링은_로그에_남지_않는다(self):
         """/authorize 파라미터 등이 컨테이너 로그에 눌러앉지 않도록 잘라낸다."""
         self.assertNotIn("SECRET", self._capture(400))
+
+
+def _hub_svg() -> str:
+    """정본 SVG 에서 동기화 각인 줄만 걷어낸 본문.
+
+    각인은 `sync_out.py` 가 소비 사본에 박는 것이라 허브 원본에는 없지만, 허브와 사본
+    어느 쪽을 받아도 같은 값이 나오도록 걸러 둔다."""
+    raw = io.open(HUB_SVG, encoding="utf-8").read()
+    return chr(10).join(ln for ln in raw.splitlines() if "sync-sha256" not in ln).strip()
+
+
+class EmbeddedIconMatchesCanon(unittest.TestCase):
+    """임베드된 아이콘이 정본과 같은가.
+
+    `http_server.py` 는 이 리포에서 **로고를 인라인해도 되는 유일한 자리**다 — 사이드카는
+    단일 바이너리라 외부 자산 경로가 없다. 그런데 인라인 사본이 정본에 닿지 않는 것이
+    바로 로고 교체를 44곳짜리 일로 만든 원인이었다(record:a-logo-ssot-that-reaches-nobody).
+
+    "로고가 바뀌면 여기도 갱신할 것"이라고 주석에 적어 두는 방식은 **이미 실패했다**:
+    구 로고의 그 주석은 2026-08-08 에 폐기된 리포를 가리킨 채 남아 있었다. 그래서
+    `sync_out.py --check` 가 파일 사본에 하는 일을, 여기서는 파이썬 문자열 안의 사본에
+    대해 한다.
+
+    깨지면 정본을 바꾸고 임베드를 안 고친 것이다. **임베드를 정본에 맞춘다**(반대가 아니다).
+    """
+
+    def test_SVG_는_허브의_원형_플레이트다(self):
+        self.assertEqual(
+            http_server._FAVICON_SVG, _hub_svg(),
+            "커넥터 SVG 가 design-hub 의 원형 플레이트와 다르다 — 정본이 바뀌었는데 "
+            "_FAVICON_SVG 를 안 고쳤다.")
+
+    def test_PNG_는_앱_아이콘과_같은_래스터다(self):
+        """따로 뽑으면 커넥터 카드의 아이콘과 작업표시줄 아이콘이 서서히 갈라진다.
+        `tauri icon` 이 만드는 128px 를 그대로 쓴다."""
+        self.assertEqual(
+            http_server._FAVICON_PNG, APP_PNG.read_bytes(),
+            "커넥터 PNG 가 app/src-tauri/icons/128x128.png 와 다르다 — 아이콘을 다시 "
+            "뽑고 base64 를 안 갈아 끼웠다.")
+
+    def test_임베드된_PNG_가_실제로_PNG_다(self):
+        """base64 를 잘못 잘라 붙이면 디코드는 되는데 이미지가 아닐 수 있다. 그 상태로도
+        서버는 200 을 주고 아이콘만 조용히 안 뜬다."""
+        self.assertEqual(http_server._FAVICON_PNG[:8], bytes([137, 80, 78, 71, 13, 10, 26, 10]))
+
+    def test_정본이_사라지면_위_대조가_공허하게_통과하지_않는다(self):
+        """파일이 없으면 빈 값끼리 비교해 통과로 보일 수 있는 구성을 막는다."""
+        self.assertTrue(HUB_SVG.is_file(), f"정본이 없다: {HUB_SVG}")
+        self.assertTrue(APP_PNG.is_file(), f"앱 아이콘이 없다: {APP_PNG}")
+        self.assertGreater(len(_hub_svg()), 200)
 
 
 if __name__ == "__main__":
