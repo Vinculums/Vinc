@@ -21,7 +21,14 @@ node_modules/
 app/src-tauri/target/
 app/src-tauri/binaries/
 app/src-tauri/gen/
-.claude/
+# .claude/ 는 기기별 설정(launch.json·ui-events.jsonl·worktrees)이라 추적하지 않는다.
+# 단 `agents/` 는 예외다 — 역할 껍데기는 그래프에서 생성한 **계약**이고,
+# `agents_sync.py --check` 가 CI 에서 대조할 대상이 리포 안에 있어야 게이트가 성립한다
+# (위 design-hub/dist 예외와 같은 사유). 부모 디렉터리가 제외되면 자식을 되살릴 수
+# 없으므로 `.claude/` 가 아니라 `.claude/*` 로 적는다 — 전자면 git 이 안으로 내려가지도
+# 않아 `!` 규칙이 사문이 된다.
+.claude/*
+!.claude/agents/
 # 서명·접속 키 — 커밋되면 되돌릴 수 없다. 지금 키들은 리포 **바깥**(워크스페이스
 # 루트)에 있어 커밋된 적이 없지만, 누가 안으로 옮겨도 막히도록 패턴을 박아 둔다.
 # 업데이터 개인키를 잃으면 배포된 전 사용자가 자동 업데이트에서 영구 이탈한다
