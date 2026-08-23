@@ -26,14 +26,32 @@ MAP = [
     ("dist/app/tokens.desktop.css", "../app/src/tokens.desktop.css"),
     ("dist/app/tokens.web.css", "../app/src/tokens.web.css"),
     ("dist/app/theme.ts", "../app/src/theme.ts"),
+    # 로고(2026-08-23). 토큰과 달리 **변환이 없어 `dist/` 를 거치지 않는다** —
+    # `/ds-gen` 이 만드는 산출물이 아니라 디자이너가 준 벡터 그대로이므로, 중간
+    # 산출물을 두면 원본과 사본 사이에 세 번째 사본이 생길 뿐이다.
+    #
+    # ⚠ 소비처가 **인라인 SVG 를 쓰지 않는 것**이 이 경로의 전제다. 예전 로고는
+    # 19개 파일에 22벌이 인라인으로 박혀 있었고, 그래서 정본이 있어도 아무 데도
+    # 닿지 않았다(로고 교체 한 번에 44곳을 손으로 고쳐야 했다). `<img src>` 로
+    # 참조하면 이 복사 하나가 전부를 갱신한다. 근거: [[record:a-logo-ssot-that-reaches-nobody]]
+    ("assets/logo/vinc-ring-circle.svg", "../app/public/favicon.svg"),
+    ("assets/logo/vinc-ring-mono.svg", "../app/public/vinc-mark-mono.svg"),
+    ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/favicon.svg"),
+    ("assets/logo/vinc-ring-indigo.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
+    ("assets/logo/vinc-ring-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
+    ("assets/logo/vinc-ring-mono.svg", "../../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
+    ("assets/logo/vinc-ring.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
 ]
 
 #: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
 #: 판정할 수 있게 한다 — 교차 리포 체크아웃(=새 PAT 시크릿)이 필요 없다.
 #: 각인 줄 자체는 해시 계산에서 빠진다(자기 참조 불가).
 STAMP_KEY = "sync-sha256"
-_STAMP_RE = re.compile(rf"^[ \t]*(?://|/\*)[ \t]*{STAMP_KEY}:[ \t]*[0-9a-f]{{64}}.*\r?\n",
-                       re.MULTILINE)
+#: ⚠ SVG 는 `//` 도 `/* */` 도 못 받는다(XML 이다). 문서 요소 **앞**의 `<!-- -->` 는
+#: 적법하므로 SVG 각인은 그 형태로 1행에 둔다.
+_STAMP_RE = re.compile(
+    rf"^[ \t]*(?://|/\*|<!--)[ \t]*{STAMP_KEY}:[ \t]*[0-9a-f]{{64}}.*\r?\n",
+    re.MULTILINE)
 
 
 def body_hash(text: str) -> str:
@@ -48,8 +66,12 @@ def strip_stamp(text: str) -> str:
 def _stamp(text: str, suffix: str) -> str:
     """헤더 바로 아래에 각인 한 줄을 끼운다. 주석 문법은 확장자로 고른다."""
     digest = body_hash(text)
-    line = (f"// {STAMP_KEY}: {digest}\n" if suffix in (".ts", ".tsx", ".js")
-            else f"/* {STAMP_KEY}: {digest} */\n")
+    if suffix in (".ts", ".tsx", ".js"):
+        line = f"// {STAMP_KEY}: {digest}\n"
+    elif suffix == ".svg":
+        line = f"<!-- {STAMP_KEY}: {digest} -->\n"
+    else:
+        line = f"/* {STAMP_KEY}: {digest} */\n"
     clean = strip_stamp(text)
     lines = clean.splitlines(keepends=True)
     # 헤더(주석 블록) 끝을 찾는다. 못 찾으면 맨 앞에 둔다 — 파일이 깨지지 않는 자리.

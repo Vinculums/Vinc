@@ -104,6 +104,7 @@
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-failed-restore-must-stop-the-process",
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",
+    "record:a-logo-ssot-that-reaches-nobody",
     "record:a-new-assertion-type-is-what-makes-a-wrong-order-safe",
     "record:a-webhook-that-logs-nothing-fails-the-same-way-every-time",
     "record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does",
