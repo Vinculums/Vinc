@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.agents_sync import RUNG_TO_MODEL, build_payload, main, render_shell
+from scripts.agents_sync import (RUNG_TO_MODEL, _manifest_docs, build_payload,
+                                 dangling_reads, main, read_snapshot, render_shell)
 
 _NODE = {
     "id": "concept:agent-example",
@@ -83,3 +84,33 @@ class RepoIsClean(unittest.TestCase):
         """CI 와 같은 검사를 로컬에서도 돌린다 — 게이트를 푸시 후에 처음 만나면 고치는
         자리가 이미 멀다."""
         self.assertEqual(main(["--check"]), 0, "역할 껍데기가 스냅샷과 어긋난다(출력 참조)")
+
+
+class Reads(unittest.TestCase):
+    """`reads` 는 이 설계의 핵심이면서 지금껏 아무도 검사하지 않는 문자열이었다.
+
+    표기가 두 형식으로 섞여 있는 것이 그것을 가렸다. P5 코퍼스는 점 표기 자체가 store
+    키이고(`vinc.spec.dataplane`), 2026-08-19 이후 문서는 해시다. 해시로 통일하는 길은
+    없다 — 앞쪽에는 해시가 존재하지 않는다. 그래서 두 형식 모두 존재를 검사한다.
+    """
+
+    def test_a_missing_document_is_reported_with_its_role(self):
+        snap = {"roles": [{"name": "agent-example",
+                           "props": {"reads": ["vinc.canon.repo-workflow", "vinc.gone.away"]}}]}
+        self.assertEqual(dangling_reads(snap, {"vinc.canon.repo-workflow"}),
+                         [("agent-example", "vinc.gone.away")])
+
+    def test_both_id_shapes_pass_when_present(self):
+        snap = {"roles": [{"name": "agent-example",
+                           "props": {"reads": ["vinc.spec.dataplane", "d8fa9efa40f1a62c7"]}}]}
+        self.assertEqual(dangling_reads(snap, {"vinc.spec.dataplane", "d8fa9efa40f1a62c7"}), [])
+
+    def test_a_role_with_no_reads_is_not_a_finding(self):
+        self.assertEqual(dangling_reads({"roles": [{"name": "a", "props": {}}]}, set()), [])
+
+    def test_every_committed_read_resolves_against_the_manifest(self):
+        """리포 정합. 매니페스트가 낡으면 여기서 먼저 빨개진다 — 그게 맞다.
+        `scripts/refresh_graph_refs.py` 를 돌려 같은 커밋에 넣으라는 신호다."""
+        docs = _manifest_docs()
+        self.assertIsNotNone(docs, "인용 매니페스트가 없다")
+        self.assertEqual(dangling_reads(read_snapshot(), docs), [])
