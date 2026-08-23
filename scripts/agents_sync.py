@@ -20,6 +20,9 @@
 
   ✅ 껍데기를 손으로 고친 것 — 재생성한 것과 바이트가 다르다
   ✅ 껍데기가 없는 것 · 스냅샷에 없는 껍데기가 남아 있는 것
+  ✅ 역할의 `reads` 가 **없는 문서**를 가리키는 것 — 인용 매니페스트
+     (`scripts/graph-refs.json`)의 문서 목록과 대조한다. 두 스냅샷은 같은 그래프를
+     보므로 함께 갱신된다.
   ❌ **그래프가 앞서간 것**(스냅샷 미갱신) — 오프라인에서는 원리적으로 안 보인다.
      `--pull` 뒤 `git diff` 가 그것을 보여주며, 그건 스튜어드의 주기 작업이지 CI
      게이트가 아니다. `gate_design_sync.py` 와 `sync_out.py --check` 가 서로 다른
@@ -102,6 +105,36 @@ def read_snapshot() -> dict:
         raise SystemExit(f"[agents] 스냅샷이 없다: {SNAPSHOT.relative_to(ROOT)} "
                          f"— 토큰 있는 곳에서 --pull 을 먼저 돌린다")
     return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+
+
+def _manifest_docs() -> set[str] | None:
+    """인용 매니페스트가 아는 문서 id 전량. 파일이 없으면 None 을 돌려 이 검사만
+    건너뛴다 — 매니페스트는 다른 게이트의 소유물이라 그 부재를 여기서 실패로 만들면
+    이 게이트가 남의 고장을 보고하게 된다."""
+    fp = ROOT / "scripts" / "graph-refs.json"
+    if not fp.exists():
+        return None
+    return set(json.loads(fp.read_text(encoding="utf-8")).get("docs") or [])
+
+
+def dangling_reads(snapshot: dict, docs: set[str]) -> list[tuple[str, str]]:
+    """`reads` 가 가리키는데 매니페스트에 없는 (역할, 문서 id) 쌍.
+
+    왜 필요한가: `reads` 는 이 설계의 핵심이면서(프롬프트 헤더를 대체하는 자리) 지금껏
+    **아무도 검사하지 않는 문자열**이었다. 표기가 두 형식으로 섞여 있는 것이 그것을
+    가린다 — P5 코퍼스는 점 표기 자체가 store 키이고(`vinc.spec.dataplane`), 2026-08-19
+    이후 문서는 해시(`d8fa9efa40f1a62c7`)다. 해시로 통일하는 길은 없다. 앞쪽 41건에는
+    해시가 아예 존재하지 않기 때문이다. 그래서 두 형식 모두 존재를 검사한다.
+
+    이것이 잡는 실제 사고: 2026-08-09 P5 개명이 문서 id 를 통째로 옮겼을 때 코드 주석의
+    인용 24건 중 19건이 **조용히** 끊어졌다([[record:code-citations-rot-silently-without-a-gate]]).
+    같은 개명이 다시 오면 점 표기 reads 가 같은 방식으로 끊어진다."""
+    out: list[tuple[str, str]] = []
+    for role in snapshot.get("roles") or []:
+        for doc_id in (role.get("props") or {}).get("reads") or []:
+            if doc_id not in docs:
+                out.append((role.get("name", "?"), doc_id))
+    return out
 
 
 # ── 껍데기 ────────────────────────────────────────────────────────────────────
@@ -266,6 +299,16 @@ def cmd_check() -> int:
                 print(f"[UNLISTED] {fp.relative_to(ROOT)} 가 스냅샷에 없다 — 역할이 그래프에서 "
                       f"사라졌으면 파일도 지우고, 아니면 --pull 로 스냅샷을 갱신하라")
                 bad += 1
+
+    docs = _manifest_docs()
+    if docs is None:
+        print("[SKIP] scripts/graph-refs.json 이 없어 reads 검사를 건너뛴다")
+    else:
+        for name, doc_id in dangling_reads(snap, docs):
+            print(f"[DANGLING] {name} 의 reads 가 매니페스트에 없는 문서를 가리킨다: "
+                  f"{doc_id} — 문서가 개명·삭제됐거나 매니페스트가 낡았다. "
+                  f"scripts/refresh_graph_refs.py 를 돌려 같은 커밋에 넣는다")
+            bad += 1
 
     print(f"\n{'역할 껍데기 이상 없음' if not bad else f'문제 {bad}건'}")
     return 1 if bad else 0
