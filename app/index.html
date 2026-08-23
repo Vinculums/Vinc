@@ -22,16 +22,15 @@
            바로 위에 있어 창 좌상단에 마크와 이름이 두 번 나왔다. 웹 빌드는 이 줄이
            없고 공홈 GNB 가 로고를 들고 있으므로, 어느 표면에서도 한 번만 나온다. -->
       <span class="tb-title" data-tauri-drag-region>
-        <!-- 원형 플레이트다. 타이틀바 마크는 .95rem(약 15px)이고, 로고 스펙은
-             24px 아래에서는 판이 붙어 보이므로 맨 마크 대신 플레이트를 쓰라고
-             한다(design-hub/assets/logo/README.md). 플레이트가 자기 바탕을
-             들고 있어 테마 전환에도 그대로다 — 구 마크가 쓰던 currentColor +
-             --logo-tip 조합이 필요 없어졌다.
+        <!-- 모노 마크를 CSS mask 로 깐다(app.css `.tb-title .brand-logo`).
+             ⚠ `<img src>` 로는 안 된다 — currentColor 가 img 경계를 못 넘어
+             주변 글자색 대신 검정으로 그려진다. mask 로 쓰면 파일은 바깥에
+             남고 색은 CSS 가 준다. 구 마크가 하던 것과 같은 동작이다.
              ⚠ **다시 인라인하지 말 것.** 인라인 사본이 정본에 닿지 않는 것이
-             로고 교체를 44곳짜리 일로 만들었다. 이 파일은 design-hub 가
-             sync_out.py 로 내보낸 public/favicon.svg 를 가리킨다.
+             로고 교체를 44곳짜리 일로 만들었다. 이 자리가 가리키는 파일은
+             design-hub 가 sync_out.py 로 내보낸 public/vinc-mark-mono.svg 다.
              근거: [[record:a-logo-ssot-that-reaches-nobody]] -->
-        <img class="brand-logo" src="/favicon.svg" alt="" width="16" height="16">
+        <span class="brand-logo" role="img" aria-label="Vinc"></span>
         <span>Vinc</span>
       </span>
       <div class="tb-controls">
