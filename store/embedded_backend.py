@@ -557,6 +557,11 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
     #
     # 플래그가 꺼져 있으면 리스트를 손대지 않는다 — 로컬/데스크탑은 영구히 그쪽이고,
     # 이 함수는 모든 읽기의 뜨거운 길이라 행마다 재귀를 도는 비용을 물릴 이유가 없다.
+    #
+    # ⚠ 이 훅은 **돌려주는 값**만 고쳐 쓴다 — Cypher **술어**는 물리 열을 그대로 본다.
+    # 그래서 `WHERE pk CONTAINS $sep` 로 이관 진척을 세는 것은 여기서 안 막힌다(PR-D 는
+    # 훅 우회 읽기 경로도 행별 표식도 필요 없다). 실측:
+    # tests/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
     if pkns.enabled():
         out = [pkns.strip_deep(row) for row in out]
     return out
