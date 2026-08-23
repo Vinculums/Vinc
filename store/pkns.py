@@ -73,6 +73,27 @@ def has_sep(value) -> bool:
     return False
 
 
+def key(owner: str | None, nid: str) -> str:
+    """스토어 바인딩용 **물리 키** 하나 — 쓰기·조회 양쪽의 노드 PK 바인딩이 이걸 쓴다.
+    사용자 대면 id 는 논리 슬러그로 남는다(응답·경고·제목).
+
+    ``normalize=False`` 인 이유: 정규화 표는 레거시 기본 owner 셋을 실 owner 로 옮기는
+    마이그레이션(PR-D)용이고, 여기 오는 owner 는 이미 실 계정이다. 표를 거치면 정상
+    읽기·쓰기가 전부 ValueError 로 죽는다.
+
+    owner 가 비면 합성하지 않는다 — owner 없이 도는 경로(로컬 단일 사용자, 무스코프
+    조회)는 플래그가 꺼진 스토어다. 근거: [[d11223a9a5d109de5]] §7"""
+    return compose(owner, nid, normalize=False) if (owner and nid) else nid
+
+
+def keys(owner: str | None, ids):
+    """``IN $ids`` 용 — 원소마다 :func:`key`. 꺼져 있거나 owner 가 없으면 **받은
+    리스트를 그대로** 돌려준다(새 리스트를 안 만든다)."""
+    if not owner or not enabled():
+        return ids
+    return [key(owner, i) for i in ids]
+
+
 def ekey(owner: str, src: str, rel: str, dst: str) -> str:
     """엣지 툼스톤·엣지 동기화 키 — **논리** ``src|REL|dst`` 를 짓고 **한 번만** 합성한다.
 

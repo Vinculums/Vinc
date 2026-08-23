@@ -26,6 +26,7 @@ from . import fragment as frag
 from . import revstamp
 from . import syncmerge
 from . import query as q
+from store import pkns
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
 # 초과 시 서버가 빈 바디로 400 을 내므로 조용히 실패한다 → 여유를 크게 둔다.
@@ -82,25 +83,31 @@ def _snapshot(label: str, node: dict) -> dict:
 
 
 # ── 3-way base(_SyncBase, 로컬 전용) ──────────────────────────────────────────
-def get_base(store, node_id: str) -> dict | None:
+def get_base(store, node_id: str, owner: str = "") -> dict | None:
+    # PK 네임스페이싱 — `_SyncBase.node_id` 는 노드 id 그 자체라, 두 소유자가 같은
+    # 슬러그를 가지면 **3-way 병합의 공통 조상 한 행을 나눠 쓴다**(감사 M3). 그러면
+    # 남의 조상으로 내 병합이 계산된다. 근거: [[d11223a9a5d109de5]] §7
     rows = store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id "
                      "RETURN b.fields AS f, b.base_rev AS rev, b.base_updated_at AS ua",
-                     {"id": node_id})
+                     {"id": pkns.key(owner, node_id)})
     if not rows:
         return None
     return {"fields": syncmerge.parse_base(rows[0].get("f")),
             "rev": int(rows[0].get("rev") or 0), "ua": rows[0].get("ua") or ""}
 
 
-def set_base(store, node_id: str, label: str, fields: dict, rev: int, ua: str) -> None:
+def set_base(store, node_id: str, label: str, fields: dict, rev: int, ua: str,
+             owner: str = "") -> None:
     store.run("MERGE (b:_SyncBase {node_id: $id}) "
               "SET b.label = $l, b.fields = $f, b.base_rev = $rev, b.base_updated_at = $ua",
-              {"id": node_id, "l": label, "f": syncmerge.dump_base(fields),
+              {"id": pkns.key(owner, node_id), "l": label,
+               "f": syncmerge.dump_base(fields),
                "rev": int(rev or 0), "ua": ua or ""})
 
 
-def del_base(store, node_id: str) -> None:
-    store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b", {"id": node_id})
+def del_base(store, node_id: str, owner: str = "") -> None:
+    store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b",
+              {"id": pkns.key(owner, node_id)})
 
 
 # ── tombstone(삭제 전파, S4) ──────────────────────────────────────────────────
@@ -118,7 +125,7 @@ def del_base(store, node_id: str) -> None:
 # (SEC-3 가 id 를 스킵한다) — 즉 지울 것이 없다.
 def get_tombstone(store, node_id: str, owner: str = "") -> dict | None:
     where = "t.node_id = $id" + (" AND t.owner_id = $owner" if owner else "")
-    params = {"id": node_id}
+    params = {"id": pkns.key(owner, node_id)}
     if owner:
         params["owner"] = owner
     rows = store.run(f"MATCH (t:_Tombstone) WHERE {where} "
@@ -128,9 +135,9 @@ def get_tombstone(store, node_id: str, owner: str = "") -> dict | None:
     return {"deleted_at": rows[0].get("da") or "", "rev": int(rows[0].get("rev") or 0)}
 
 
-def _tombstone_owner(store, node_id: str) -> str:
+def _tombstone_owner(store, node_id: str, owner: str = "") -> str:
     rows = store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id RETURN t.owner_id AS o",
-                     {"id": node_id})
+                     {"id": pkns.key(owner, node_id)})
     return (rows[0].get("o") or "") if rows else ""
 
 
@@ -140,19 +147,20 @@ def put_tombstone(store, node_id: str, label: str, owner: str, deleted_at: str,
     sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙.
 
     반환 False = 그 자리를 **다른 소유자가 이미 쓰고 있어** 남기지 않았다(위 주석)."""
-    held = _tombstone_owner(store, node_id)
+    held = _tombstone_owner(store, node_id, owner)
     if held and owner and held != owner:
         return False
     store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
               "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'remote'",
-              {"id": node_id, "l": label, "o": owner, "da": deleted_at,
+              {"id": pkns.key(owner, node_id), "l": label, "o": owner,
+               "da": deleted_at,
                "rev": int(rev), "seq": revstamp.next_seq(store, owner)})
     return True
 
 
 def del_tombstone(store, node_id: str, owner: str = "") -> None:
     where = "t.node_id = $id" + (" AND t.owner_id = $owner" if owner else "")
-    params = {"id": node_id}
+    params = {"id": pkns.key(owner, node_id)}
     if owner:
         params["owner"] = owner
     store.run(f"MATCH (t:_Tombstone) WHERE {where} DELETE t", params)
@@ -162,7 +170,9 @@ def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
                        deleted_at: str) -> bool:
     """수신한 엣지 삭제를 재전파용으로 남긴다(노드 put_tombstone 동형 — deleted_at
     원본 보존, sync_seq 는 수신측 자기 번호)."""
-    k = f"{src}|{rel}|{dst}"
+    # `ekey` 만 합성한다 — `src`/`rel`/`dst` **열**은 동기화 와이어로 그대로 나가므로
+    # 논리여야 한다(계약 테스트가 번들에 U+001F 가 없음을 고정한다).
+    k = pkns.ekey(owner, src, rel, dst)
     held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN t.owner_id AS o",
                      {"k": k})
     if held and (held[0].get("o") or "") and owner and held[0].get("o") != owner:
@@ -483,7 +493,8 @@ def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPla
         # **그 기기 시각으로 다시 태어난다** — 노드에서 방금 고친 것과 같은 병이다.
         "r.created AS edge_created"
     )
-    return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher, {"ids": ids, "owner": owner},
+    return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher,
+                       {"ids": pkns.keys(owner, ids), "owner": owner},
                        note=f"{sl}->{dl} edges for sync bundle")
 
 
@@ -540,11 +551,13 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
 
 
 # ── apply (3-way 병합, S3) ────────────────────────────────────────────────────
-def _local_snapshot(store, label: str, pk: str, nid: str) -> dict | None:
+def _local_snapshot(store, label: str, pk: str, nid: str,
+                    owner: str = "") -> dict | None:
     """로컬 노드의 sync 필드 + rev/updated_at. 없으면 None."""
     cols = ", ".join(f"x.{c} AS {c}" for c in SYNC_FIELDS[label])
     rows = store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id "
-                     f"RETURN {cols}, x.rev AS rev, x.updated_at AS updated_at", {"id": nid})
+                     f"RETURN {cols}, x.rev AS rev, x.updated_at AS updated_at",
+                     {"id": pkns.key(owner, nid)})
     if not rows:
         return None
     r = rows[0]
@@ -582,7 +595,7 @@ def _reconcile_birth(store, label: str, pk: str, nid: str, born: str, owner: str
         f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
         "AND (x.created IS NULL OR x.created = '' OR x.created > $born) "
         "SET x.created = $born",
-        {"id": nid, "owner": owner, "born": born})
+        {"id": pkns.key(owner, nid), "owner": owner, "born": born})
 
 
 def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dict:
@@ -635,7 +648,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         # 않으려고 여기서 모은다(부활한 경우는 살아났으므로 포함이 맞다).
         births.append((label, pk, nid, n.get("_created") or ""))
 
-        local = _local_snapshot(store, label, pk, nid)
+        local = _local_snapshot(store, label, pk, nid, owner)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
             writes.append({"node": _merged_fragment_node(label, nid, ntype, remote_snap),
@@ -644,7 +657,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
             continue
 
         l_rev, l_ua = local.pop("_rev"), local.pop("_ua")
-        base = get_base(store, nid)
+        base = get_base(store, nid, owner)
         # base 없음 = 공통 조상 없음(양쪽 독립 존재) → 빈 조상: 모든 필드가 '양쪽 변경'
         # 으로 취급돼 값이 다르면 필드별 LWW. dict(local) 로 두면 push 후·pull 전 로컬
         # 편집이 조상에 섞여 유실된다(그 편집이 원격과 충돌 시). 빈 조상이 안전측.
@@ -686,7 +699,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         label, pk = frag._NODE_MAP[node["type"]]
         store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                   "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
-                  {"id": node["id"], "owner": owner, "ua": w["ua"], "rev": int(w["rev"]),
+                  {"id": pkns.key(owner, node["id"]), "owner": owner,
+                   "ua": w["ua"], "rev": int(w["rev"]),
                    "seq": revstamp.next_seq(store, owner)})
     # 출생 화해는 **스탬프 루프 뒤**다: 신규 노드는 방금 merge_fragment 가 수신측
     # 시각으로 `created` 를 찍었으므로(fragment `_merge_node`), 그 위에 min 을 얹어야
@@ -694,7 +708,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     for label, pk, nid, born in births:
         _reconcile_birth(store, label, pk, nid, born, owner)
     for nid, label, fields, rev, ua in base_updates:
-        set_base(store, nid, label, fields, rev, ua)
+        set_base(store, nid, label, fields, rev, ua, owner)
 
     # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
     # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
@@ -713,14 +727,16 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         if not tid or not pk:
             continue
         cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
-                        "RETURN x.updated_at AS ua", {"id": tid, "owner": owner})
+                        "RETURN x.updated_at AS ua",
+                        {"id": pkns.key(owner, tid), "owner": owner})
         if cur and (cur[0].get("ua") or "") > t_da:
             continue                          # 삭제 이후 재편집됨 → 삭제 무시
         if cur:
             store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
-                      "DETACH DELETE x", {"id": tid, "owner": owner})
+                      "DETACH DELETE x",
+                      {"id": pkns.key(owner, tid), "owner": owner})
             out["deleted"] += 1
-        del_base(store, tid)
+        del_base(store, tid, owner)
         put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
         revstamp.observe_hlc(store, t_da)
 
@@ -745,12 +761,14 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                                 f"WHERE a.{sp} = $s AND b.{dp} = $d "
                                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                                 "RETURN count(r) AS c",
-                                {"s": s_, "d": d_, "owner": owner})
+                                {"s": pkns.key(owner, s_),
+                                 "d": pkns.key(owner, d_), "owner": owner})
                 if cnt and int(cnt[0].get("c") or 0):
                     store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
                               f"WHERE a.{sp} = $s AND b.{dp} = $d "
                               "AND a.owner_id = $owner AND b.owner_id = $owner DELETE r",
-                              {"s": s_, "d": d_, "owner": owner})
+                              {"s": pkns.key(owner, s_),
+                               "d": pkns.key(owner, d_), "owner": owner})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
         revstamp.observe_hlc(store, t.get("deleted_at") or "")

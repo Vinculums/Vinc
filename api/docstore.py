@@ -519,7 +519,7 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
         links = compute_links(chunks, concepts)
         # 쓰기도 링커의 것을 쓴다 — 여기 MERGE 를 복제하고 있었고, 그 사본에
         # `(co:Concept)` 이 박혀 있어 결정으로 향하는 링크가 조용히 0건이 됐다.
-        return merge_links(store, links, concepts)
+        return merge_links(store, links, concepts, owner)
     except Exception:
         return 0
 
@@ -1082,7 +1082,9 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
     rows = store.run(
         f"MATCH (c:Concept) WHERE c.concept_id = $id{where_owner} "
         "RETURN c.title AS title, c.stem AS stem",
-        {"id": concept_id, **({"owner": owner} if owner else {})})
+        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[d11223a9a5d109de5]] §7
+        {"id": pkns.key(owner, concept_id),
+         **({"owner": owner} if owner else {})})
     if not rows:
         base["error"] = f"unknown concept: {concept_id}"
         return base

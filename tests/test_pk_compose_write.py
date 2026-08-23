@@ -400,6 +400,11 @@ class NamespacedRoundTripTests(unittest.TestCase):
         import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
+            # ⚠ 끝에 **pop 하지 않는다**. 여기서 지우면 켠 모드 CI 잡에서 이 파일
+            # 뒤에 도는 모든 테스트가 조용히 꺼진 채 돌고, 그 잡의 초록은 "전량이
+            # 켠 모드로 통과했다"가 아니라 "앞부분만 돌았다"가 된다(실측으로 물렸다:
+            # test_view_viewpoints 7건이 그렇게 숨어 있었다). 원래 값을 되돌린다.
+            _prev = os.environ.get("VINC_PK_NAMESPACED")
             os.environ["VINC_PK_NAMESPACED"] = "on"
             try:
                 store = self._store(Path(td) / "db")
@@ -420,7 +425,10 @@ class NamespacedRoundTripTests(unittest.TestCase):
                 self.assertEqual(list(rows[0]["bs"]), ["concept:b"])
                 store.close()
             finally:
-                os.environ.pop("VINC_PK_NAMESPACED", None)
+                if _prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = _prev
 
     def test_two_owners_hold_the_same_slug(self):
         """H1 itself: one physical node per slug across every account is what
@@ -428,6 +436,11 @@ class NamespacedRoundTripTests(unittest.TestCase):
         import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
+            # ⚠ 끝에 **pop 하지 않는다**. 여기서 지우면 켠 모드 CI 잡에서 이 파일
+            # 뒤에 도는 모든 테스트가 조용히 꺼진 채 돌고, 그 잡의 초록은 "전량이
+            # 켠 모드로 통과했다"가 아니라 "앞부분만 돌았다"가 된다(실측으로 물렸다:
+            # test_view_viewpoints 7건이 그렇게 숨어 있었다). 원래 값을 되돌린다.
+            _prev = os.environ.get("VINC_PK_NAMESPACED")
             os.environ["VINC_PK_NAMESPACED"] = "on"
             try:
                 store = self._store(Path(td) / "db")
@@ -451,4 +464,47 @@ class NamespacedRoundTripTests(unittest.TestCase):
                                  ["user:one", "user:two"])
                 store.close()
             finally:
-                os.environ.pop("VINC_PK_NAMESPACED", None)
+                if _prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = _prev
+
+    def test_a_cypher_predicate_still_sees_the_separator(self):
+        """PR-D 가 기대는 불변식: **훅은 돌려주는 값만 고쳐 쓰고 술어는 못 건드린다.**
+
+        PR-B 를 읽고 "백필 완료 표식이 U+001F 인데 `_exec_to_dicts` 가 정확히 그
+        바이트를 숨기니 이관이 자기 진척을 못 본다"는 결론이 한 번 나왔다. 틀렸다 —
+        `CONTAINS` 는 엔진 안에서 물리 열을 그대로 보고, 파이썬으로 넘어오는 것은
+        스트립할 것이 없는 count 다. 그래서 PR-D 는 훅 우회 읽기 경로도, 행마다
+        붙이는 별도 표식도 필요 없다(완료 표식은 v9·v11 전례대로 `_SchemaMeta`
+        schema_version 이고, `compose` 가 멱등이라 중간에 죽어도 재실행이 안전하다).
+
+        이 테스트가 없으면 그 오해는 다음 세션에 그대로 재생산된다.
+        `scripts/measure_pk_collisions.py:separator_rows` 가 같은 술어를 쓴다."""
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            # ⚠ 끝에 **pop 하지 않는다** — 위 두 테스트와 같은 이유.
+            _prev = os.environ.get("VINC_PK_NAMESPACED")
+            os.environ["VINC_PK_NAMESPACED"] = "on"
+            try:
+                store = self._store(Path(td) / "db")
+                fragment.merge_fragment(
+                    {"owner": OWNER,
+                     "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]},
+                    store=store)
+                # 값은 논리 슬러그로 나온다(훅이 한 일).
+                rows = store.run("MATCH (n:Concept) RETURN n.concept_id AS id")
+                self.assertEqual(rows[0]["id"], "concept:a")
+                # 술어는 물리 키를 본다(훅이 못 한 일) — 이관이 진척을 세는 길.
+                done = store.run("MATCH (n:Concept) WHERE n.concept_id CONTAINS $sep "
+                                 "RETURN count(*) AS c", {"sep": pkns.SEP})
+                todo = store.run("MATCH (n:Concept) WHERE NOT n.concept_id CONTAINS $sep "
+                                 "RETURN count(*) AS c", {"sep": pkns.SEP})
+                self.assertEqual((done[0]["c"], todo[0]["c"]), (1, 0))
+                store.close()
+            finally:
+                if _prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = _prev

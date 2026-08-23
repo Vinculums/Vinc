@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import fragment as frag  # noqa: E402
+from store import pkns  # noqa: E402
 from store.embedded_backend import (_import_driver,  # noqa: E402
                                     backfill_episode_time_fields)
 
@@ -62,12 +63,17 @@ class EpisodeDateE2E(unittest.TestCase):
                 os.environ[k] = v
 
     # ── helpers ──────────────────────────────────────────────────────────
+    def _pk(self, nid: str) -> str:
+        """PK 네임스페이싱이 켜졌을 때의 물리 키. 이 테스트는 API 를 거치지
+        않고 스토어를 **직접** 조회하므로 물리 층의 말로 물어야 한다."""
+        return pkns.key(self.OWNER, nid)
+
     def _row(self, eid: str) -> dict:
         rows = self.store.run(
             "MATCH (e:Episode) WHERE e.episode_id = $id "
             "RETURN e.date AS date, e.summary AS summary, e.props AS props, "
             "e.rev AS rev, e.updated_at AS updated_at, e.sync_seq AS sync_seq",
-            {"id": eid})
+            {"id": self._pk(eid)})
         self.assertTrue(rows, f"{eid} 가 없다")
         return rows[0]
 
@@ -78,9 +84,11 @@ class EpisodeDateE2E(unittest.TestCase):
     def _seed_legacy(self, eid: str, props: dict, **cols) -> None:
         """마이그레이션 **이전** 상태를 직접 만든다 — props 만 있고 date 열은 비어 있는 행.
         승격 코드를 타지 않도록 fragment 경로를 쓰지 않고 스토어에 바로 쓴다."""
-        sets = ["e.props = $props", "e.title = $title"]
-        params = {"id": eid, "props": json.dumps(props, ensure_ascii=False),
-                  "title": eid}
+        # 물리 키로 쓰고 owner_id 도 찍는다 — 백필이 행의 owner 로 키를 합성하므로
+        # (store/embedded_backend), 둘이 어긋나면 백필이 자기 행을 못 찾는다.
+        sets = ["e.props = $props", "e.title = $title", "e.owner_id = $owner"]
+        params = {"id": self._pk(eid), "props": json.dumps(props, ensure_ascii=False),
+                  "title": eid, "owner": self.OWNER}
         for c, v in cols.items():
             sets.append(f"e.{c} = ${c}")
             params[c] = v
@@ -171,8 +179,10 @@ class EpisodeDateE2E(unittest.TestCase):
         self.assertFalse(self._row("episode:L5")["date"])
 
     def test_깨진_props_JSON_이_백필을_죽이지_않는다(self):
-        self.store.run("MERGE (e:Episode {episode_id: 'episode:L6'}) "
-                       "SET e.props = '{not json', e.title = 't'")
+        self.store.run("MERGE (e:Episode {episode_id: $id}) "
+                       "SET e.props = '{not json', e.title = 't', "
+                       "e.owner_id = $owner",
+                       {"id": self._pk("episode:L6"), "owner": self.OWNER})
         self._seed_legacy("episode:L7", {"date": "2026-08-07"})
         self.assertEqual(backfill_episode_time_fields(self.store), 1)
         self.assertEqual(self._row("episode:L7")["date"], "2026-08-07")

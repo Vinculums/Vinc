@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import docstore as ds  # noqa: E402
 from api import query as q  # noqa: E402
+from store import pkns  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
@@ -115,17 +116,19 @@ class TimeAxisE2E(unittest.TestCase):
                          content_time="1905")
         ap = ds.extract_doc(self.store, out["doc_id"], owner=self.OWNER, apply=True)
         self.assertEqual(ap["applied"]["created"], 1)
-        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id = 'concept:특수상대성' "
-                             "RETURN c.content_time AS ct")
+        # 리터럴이던 id 를 파라미터로 뺀다 — 물리 키를 바인딩해야 하므로.
+        cid = pkns.key(self.OWNER, "concept:특수상대성")
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                             "RETURN c.content_time AS ct", {"i": cid})
         self.assertEqual(row[0]["ct"], "1905")
         # 사용자가 손질한 값은 재추출이 덮지 않는다
-        self.store.run("MATCH (c:Concept) WHERE c.concept_id = 'concept:특수상대성' "
-                       "SET c.content_time = '1916'")
+        self.store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                       "SET c.content_time = '1916'", {"i": cid})
         ds.put_doc(self.store, owner=self.OWNER, text=text + "\n덧.", doc_id=out["doc_id"],
                    title="물리", content_time="1905")
         ds.extract_doc(self.store, out["doc_id"], owner=self.OWNER, apply=True)
-        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id = 'concept:특수상대성' "
-                             "RETURN c.content_time AS ct")
+        row = self.store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                             "RETURN c.content_time AS ct", {"i": cid})
         self.assertEqual(row[0]["ct"], "1916")
 
     # ── 정상 쓰기 표면(vinc_ingest)에서의 content_time ────────────────────────
@@ -136,8 +139,11 @@ class TimeAxisE2E(unittest.TestCase):
         return frag.merge_fragment({"owner": self.OWNER, "nodes": [node]}, store=self.store)
 
     def _ct(self, label, pk, nid):
+        # 쓰기는 API(`merge_fragment`)로 갔고 읽기는 스토어 직접이다. PK
+        # 네임스페이싱이 켜지면 쓰기가 합성하므로 여기도 물리 키로 물어야 한다.
         rows = self.store.run(f"MATCH (n:{label}) WHERE n.{pk} = $i "
-                              "RETURN n.content_time AS ct, n.sync_seq AS seq", {"i": nid})
+                              "RETURN n.content_time AS ct, n.sync_seq AS seq",
+                              {"i": pkns.key(self.OWNER, nid)})
         return rows[0] if rows else {}
 
     def test_fragment_writes_content_time_on_concept_and_record(self):
@@ -196,8 +202,8 @@ class TimeAxisE2E(unittest.TestCase):
         self.store.run(
             "MERGE (c:Concept {concept_id:$id}) SET c.title=$t, c.domain=$d, "
             "c.owner_id=$o, c.created=$cr, c.content_time=$ct",
-            {"id": cid, "t": cid.split(":")[-1], "d": domain, "o": self.OWNER,
-             "cr": created, "ct": content})
+            {"id": pkns.key(self.OWNER, cid), "t": cid.split(":")[-1], "d": domain,
+             "o": self.OWNER, "cr": created, "ct": content})
 
     def test_graph_basis_swaps_ts_and_echoes(self):
         self._concept("concept:relativity", created="2026-01-01", content="1905")

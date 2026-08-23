@@ -33,6 +33,7 @@ from pathlib import Path
 
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from store import pkns  # noqa: E402  (PK 네임스페이싱)
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 
@@ -124,7 +125,8 @@ def _fetch_concepts(store, owner: str | None) -> list[dict]:
     return rows
 
 
-def merge_links(store, links: list[dict], concepts: list[dict]) -> int:
+def merge_links(store, links: list[dict], concepts: list[dict],
+                owner: str | None = None) -> int:
     """계산된 링크를 :MENTIONS 로 MERGE(멱등). 대상 **라벨**은 concepts 행이 정한다.
 
     쓰기를 여기 한 벌로 두는 이유: 이 MERGE 가 `api.docstore._relink_mentions` 에도
@@ -139,7 +141,10 @@ def merge_links(store, links: list[dict], concepts: list[dict]) -> int:
         store.run(
             f"MATCH (ch:Chunk {{chunk_id: $cid}}), (co:{lbl} {{{pk_of[lbl]}: $koid}}) "
             "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
-            {"cid": lk["chunk_id"], "koid": lk["concept_id"], "method": lk["method"]})
+            # PK 네임스페이싱 — $koid 는 노드 PK 바인딩이라 물리 키다($cid 는 Chunk 로,
+            # 마이그레이션 대상 라벨이 아니라 논리 그대로). 근거: [[d11223a9a5d109de5]] §7
+            {"cid": lk["chunk_id"], "koid": pkns.key(owner, lk["concept_id"]),
+             "method": lk["method"]})
         n += 1
     return n
 
@@ -154,7 +159,7 @@ def link_mentions(store, *, owner: str | None = None, dry_run: bool = False) -> 
     for lk in links:
         by_method[lk["method"]] = by_method.get(lk["method"], 0) + 1
     if not dry_run:
-        merge_links(store, links, concepts)
+        merge_links(store, links, concepts, owner)
     return {"chunks": len(chunks), "concepts": len(concepts),
             "links": len(links), "by_method": by_method}
 

@@ -12,6 +12,7 @@ store.session() 경유로 LadybugDB 에 적재 ③ MERGE 멱등(2회→1) ④ ap
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -19,7 +20,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from store import pkns  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _pkseed import _seed  # noqa: E402  (스토어 직접 시드용 — tests/_pkseed.py)
+
 
 _DRIVER, _NAME = _import_driver()
 
@@ -72,9 +78,9 @@ class EmbeddedE2E(unittest.TestCase):
                 {"owner": owner, "nodes": [{"id": nid, "type": "concept", "title": title}],
                  "edges": []}, store=store)
 
-        def exists(nid):
+        def exists(nid, owner="user:A"):
             r = store.run("MATCH (c:Concept) WHERE c.concept_id = $id RETURN count(c) AS c",
-                          {"id": nid})
+                          {"id": pkns.key(owner, nid)})
             return bool(r and r[0]["c"])
 
         ingest("user:A", "concept:shared", "A owns")
@@ -93,11 +99,17 @@ class EmbeddedE2E(unittest.TestCase):
             {"owner": "user:A",
              "nodes": [{"id": "concept:bonly", "type": "concept", "title": "HIJACK"}], "edges": []},
             store=store)
-        row = store.run("MATCH (c:Concept) WHERE c.concept_id = 'concept:bonly' "
-                        "RETURN c.owner_id AS o, c.title AS t")[0]
+        row = store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
+                        "RETURN c.owner_id AS o, c.title AS t",
+                        {"i": pkns.key("user:B", "concept:bonly")})[0]
         self.assertEqual(row["o"], "user:B")
         self.assertNotEqual(row["t"], "HIJACK")
-        self.assertTrue(any("another tenant" in str(w) for w in (out.get("warnings") or [])))
+        # ⚠ 플래그가 켜지면 이 경고가 **없는 것이 맞다**: A 의 쓰기는 자기 물리 키로
+        # 가므로 B 의 행과 부딪치지 않는다(감사 H1 을 없애는 것이 design A 의 목적).
+        # 위 두 축(B 의 owner·title 불변)은 두 모드에서 똑같이 성립해야 한다.
+        if not pkns.enabled():
+            self.assertTrue(any("another tenant" in str(w)
+                                for w in (out.get("warnings") or [])))
 
         # merge: B 는 A 의 두 concept 를 병합 못 한다(found:False, drop 생존) / A 는 병합한다
         ingest("user:A", "concept:a1")
@@ -155,8 +167,10 @@ class EmbeddedE2E(unittest.TestCase):
                               "owner_id": "u", "domain": "d", "date": "2026-07-03"})
             merge_episode(s, {**base, "episode_id": "pinned", "title": "pinned",
                               "owner_id": "u", "domain": "d"})
-            s.run("MATCH (e:Episode {episode_id:'pinned'}) "
-                  "SET e.pinned=true, e.access_count=10")
+            # `_Session.run` 은 kwargs 다(dict 아님).
+            _seed(s.run, "MATCH (e:Episode {episode_id:$i}) "
+                  "SET e.pinned=true, e.access_count=10",
+                  i=pkns.key("u", "pinned"))
         store.close()
 
         r = q.recall(owner="u", rank="preference")
@@ -175,9 +189,9 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid, dom in [("a", "math"), ("b", "math"), ("iso", "art")]:
-                s.run(f"MERGE (n:Concept {{concept_id:'{cid}'}}) "
+                _seed(s.run, f"MERGE (n:Concept {{concept_id:'{cid}'}}) "
                       f"SET n.title='{cid}', n.owner_id='u', n.domain='{dom}'")
-            s.run("MATCH (a:Concept{concept_id:'a'}), (b:Concept{concept_id:'b'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'a'}), (b:Concept{concept_id:'b'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")
         store.close()
 
@@ -199,16 +213,16 @@ class EmbeddedE2E(unittest.TestCase):
         store = open_store(cfg)
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
-            s.run("MERGE (a:Concept {concept_id:'c1'}) SET a.title='A'")
-            s.run("MERGE (b:Concept {concept_id:'c2'}) SET b.title='B'")
+            _seed(s.run, "MERGE (a:Concept {concept_id:'c1'}) SET a.title='A'")
+            _seed(s.run, "MERGE (b:Concept {concept_id:'c2'}) SET b.title='B'")
             for rel in ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO"):
-                s.run(f"MATCH (a:Concept {{concept_id:'c1'}}), "
+                _seed(s.run, f"MATCH (a:Concept {{concept_id:'c1'}}), "
                       f"(b:Concept {{concept_id:'c2'}}) MERGE (a)-[:{rel}]->(b)")
-            s.run("MERGE (br:Bridge {bridge_id:'br1'}) SET br.title='X'")
-            s.run("MERGE (d:Domain {name:'art'})")
-            s.run("MATCH (br:Bridge {bridge_id:'br1'}), (d:Domain {name:'art'}) "
+            _seed(s.run, "MERGE (br:Bridge {bridge_id:'br1'}) SET br.title='X'")
+            _seed(s.run, "MERGE (d:Domain {name:'art'})")
+            _seed(s.run, "MATCH (br:Bridge {bridge_id:'br1'}), (d:Domain {name:'art'}) "
                   "MERGE (br)-[:CROSSES]->(d)")
-            s.run("MATCH (br:Bridge {bridge_id:'br1'}), (c:Concept {concept_id:'c1'}) "
+            _seed(s.run, "MATCH (br:Bridge {bridge_id:'br1'}), (c:Concept {concept_id:'c1'}) "
                   "MERGE (br)-[r:CONNECTS {role:'input'}]->(c)")
         rows = store.run("MATCH (a:Concept)-[r]->(b:Concept) "
                          "RETURN count(r) AS c")
@@ -234,8 +248,8 @@ class EmbeddedE2E(unittest.TestCase):
                               "completed_items": [], "patterns": [], "source_file": "f"})
         store.close()
 
-        pref.tag("t1", tags=["billing", "kr"])
-        pref.tag("t1", tags=["kr", "refund"])   # kr 중복 — 합집합, 미중복
+        pref.tag("t1", tags=["billing", "kr"], owner="u")
+        pref.tag("t1", tags=["kr", "refund"], owner="u")   # kr 중복 — 합집합, 미중복
         r = q.recall(owner="u")
         row = next(x for x in r["rows"] if x["id"] == "t1")
         self.assertEqual(set(row["tags"]), {"billing", "kr", "refund"})
@@ -254,15 +268,17 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("a", "b", "c"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.title=$id, n.owner_id='u'",
-                      id=cid)
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.title=$t, "
+                      "n.owner_id='u'", id=cid, t=cid)
             # 삼각 사이클 a→b→c→a (WALK 라면 깊은 depth 서 경로 폭증)
             for src, dst in (("a", "b"), ("b", "c"), ("c", "a")):
-                s.run("MATCH (x:Concept{concept_id:$s}),(y:Concept{concept_id:$t}) "
+                _seed(s.run, "MATCH (x:Concept{concept_id:$s}),(y:Concept{concept_id:$t}) "
                       "MERGE (x)-[:RELATED_TO]->(y)", s=src, t=dst)
         store.close()
 
-        r = q.decide("a", depth=4)
+        # owner 를 실어야 물리 키를 짚는다(PK 네임스페이싱). 프로덕션의 MCP 표면도
+        # 항상 owner 를 넘긴다.
+        r = q.decide("a", depth=4, owner="u")
         self.assertTrue(r["executed"], r.get("note"))
         # decide 계약은 {nodes, edges, conflicts}(A1.9 A5 재설계 — 경로 blowup 제거,
         # label=title·props 셰이핑). 사이클 위 노드서 서브그래프가 재구성돼야 한다.
@@ -287,8 +303,8 @@ class EmbeddedE2E(unittest.TestCase):
                 ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute", [0.9, 0.2, 0.0, 0.0])]:
-                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
-                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, e=emb)
         try:
@@ -321,9 +337,9 @@ class EmbeddedE2E(unittest.TestCase):
             for cid, txt, emb, own in [
                 ("u1a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u1"),
                 ("u2a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u2")]:
-                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.owner_id=$o",
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.owner_id=$o",
                       id=cid, t=txt, o=own)
-                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id=$o, v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, o=own, e=emb)
         try:
@@ -355,8 +371,8 @@ class EmbeddedE2E(unittest.TestCase):
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute resolution", [0.9, 0.2, 0.0, 0.0])]:
                 # v8 — 벡터는 자식(ChunkVec), 텍스트는 부모(Chunk).
-                s.run("MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
-                s.run("MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, e=emb)
         try:
@@ -393,17 +409,17 @@ class EmbeddedE2E(unittest.TestCase):
             #    F2(SEC-1)가 청크 팔에 owner 필터를 넣은 뒤로는 owner 없는 청크가
             #    스코프 조회에서 빠지므로, 안 찍으면 이 테스트만 현실과 어긋난 상태를
             #    검증하게 된다 — 실패는 회귀가 아니라 픽스처가 낡았다는 신호였다.
-            s.run("MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.embedding=$e, "
+            _seed(s.run, "MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.embedding=$e, "
                   "c.owner_id='u', c.source_file='/abs/topo.md'",
                   t="refund policy and dispute resolution", e=[1.0, 0.1, 0.0, 0.0])
             # 개념 gauge: title 이 'gauge' 라 쿼리 'refund' 와 title 매치 안 됨.
             # 그러나 source_file basename(topo.md) 이 청크와 같아 MENTIONS 로 이어진다.
-            s.run("MERGE (c:Concept {concept_id:'gauge'}) SET c.title='gauge', "
+            _seed(s.run, "MERGE (c:Concept {concept_id:'gauge'}) SET c.title='gauge', "
                   "c.owner_id='u', c.domain='physics', c.source_file='physics/topo.md'")
             # 이웃 개념 duality: gauge 와 RELATED_TO — 1-hop 확산 대상.
-            s.run("MERGE (c:Concept {concept_id:'duality'}) SET c.title='duality', "
+            _seed(s.run, "MERGE (c:Concept {concept_id:'duality'}) SET c.title='duality', "
                   "c.owner_id='u', c.domain='physics', c.source_file='physics/x.md'")
-            s.run("MATCH (a:Concept{concept_id:'gauge'}),(b:Concept{concept_id:'duality'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'gauge'}),(b:Concept{concept_id:'duality'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")
         try:
             store.build_search_indexes(dim=4)
@@ -434,11 +450,11 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("a", "b", "c", "d", "e"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='m'", id=cid)
             # a-b, a-c (a 의 이웃 2개), 경로 a..d: a-b-...-d 없음; a-c-e-d 구성
             for x, y in (("a", "b"), ("a", "c"), ("c", "e"), ("e", "d")):
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
 
         # E-G5 — a 의 1-hop 이웃 = {b, c}
@@ -469,11 +485,11 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("a", "b", "c", "y", "z"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='m'", id=cid)
             for x, y, conf in (("a", "b", 0.9), ("b", "c", 0.9), ("c", "z", 0.9),
                                ("a", "y", 0.2), ("y", "z", 0.2)):
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[r:RELATED_TO]->(t) SET r.confidence = $c",
                       x=x, y=y, c=conf)
 
@@ -513,19 +529,19 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("s", "n1", "n2", "n3", "n4"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='m'", id=cid)
             # 사이클 포함(시드 복귀 경로 존재) — TRAIL 이 시드를 행으로 내던 조건
             for x, y in (("s", "n1"), ("n1", "n2"), ("n2", "s"),
                          ("n2", "n3"), ("n3", "n4")):
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
 
         def reach(sem: str) -> set:
-            cy = ("MATCH (n:Concept) WHERE n.concept_id = 's' AND n.owner_id = 'u' "
+            cy = ("MATCH (n:Concept) WHERE n.concept_id = $s AND n.owner_id = 'u' "
                   f"MATCH (n)-[* {sem} 1..3]-(m:Concept) WHERE m.owner_id = 'u' "
                   "RETURN DISTINCT m.concept_id AS id")
-            return {r["id"] for r in store.run(cy)}
+            return {r["id"] for r in store.run(cy, {"s": pkns.key("u", "s")})}
 
         trail, shortest = reach("TRAIL"), reach("SHORTEST")
         plan_ids = {r["id"] for r in q.execute(
@@ -562,7 +578,7 @@ class EmbeddedE2E(unittest.TestCase):
                  "커밋 시점에 버전을 검사해 어긋나면 실패시킨다."),
             ):
                 # one_liner 는 비운다 — MCP 적재분의 실태(쓰기 경로 없음).
-                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', c.title=$t, "
+                _seed(s.run, "MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', c.title=$t, "
                       "c.domain=$d, c.one_liner='', c.props=$p",
                       id=cid, t=title, d=dom, p='{"summary": "%s"}' % summary)
 
@@ -600,11 +616,11 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("a", "b", "c", "d", "e", "lone"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='math'", id=cid)
             # 컴포넌트1: a-b-c 삼각, 컴포넌트2: d-e, 고아: lone
             for x, y in (("a", "b"), ("b", "c"), ("c", "a"), ("d", "e")):
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
         # algo 확장 가용성 확인(다운로드형 — 오프라인 배포 시 §9 번들 필요)
         diag = q.component_diagnosis(owner="u", store=store)
@@ -637,14 +653,14 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("a", "b", "c", "d", "e", "lone"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='math'", id=cid)
             for x, y in (("a", "b"), ("b", "c"), ("c", "a"), ("d", "e")):
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=x, y=y)
             # 'a' 를 두 번, 'b' 를 한 번 언급 — 대표 순위는 a > b > c(무언급, 사전순).
             for i, target in enumerate(("a", "a", "b")):
-                s.run("MERGE (ch:Chunk {chunk_id:$cid}) SET ch.owner_id='u', "
+                _seed(s.run, "MERGE (ch:Chunk {chunk_id:$cid}) SET ch.owner_id='u', "
                       "ch.doc_id='doc:1', ch.section_title='S', ch.text=$t "
                       "WITH ch MATCH (c:Concept{concept_id:$target}) "
                       "MERGE (ch)-[:MENTIONS {method:'fts'}]->(c)",
@@ -691,13 +707,13 @@ class EmbeddedE2E(unittest.TestCase):
         n = 6   # 대표 상한(5)을 넘기되 member_limit(기본 50)은 안 넘는 크기
         with store.session() as s:
             for i in range(n):
-                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
+                _seed(s.run, "MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
                       "c.title=$id, c.domain='math'", id=f"n{i}")
             # 완전그래프(클리크) — 사슬은 Louvain 이 모듈성 최적화로 반으로 쪼갠다
             # (실측: 8노드 사슬 → 4+4). 클리크는 내부가 최대로 밀집해 하나로 남는다.
             for i in range(n):
                 for j in range(i + 1, n):
-                    s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                    _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                           "MERGE (p)-[:RELATED_TO]->(t)", x=f"n{i}", y=f"n{j}")
 
         diag = q.component_diagnosis(owner="u", store=store)
@@ -730,10 +746,10 @@ class EmbeddedE2E(unittest.TestCase):
         n = 60                                   # 기본 상한 50 을 넘긴다
         with store.session() as s:
             for i in range(n):
-                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
+                _seed(s.run, "MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
                       "c.title=$id, c.domain='math'", id=f"n{i}")
             for i in range(n - 1):               # 사슬 하나 = 컴포넌트 하나
-                s.run("MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
+                _seed(s.run, "MATCH (p:Concept{concept_id:$x}),(t:Concept{concept_id:$y}) "
                       "MERGE (p)-[:RELATED_TO]->(t)", x=f"n{i}", y=f"n{i+1}")
 
         diag = q.component_diagnosis(owner="u", store=store)
@@ -789,9 +805,9 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("alpha", "beta"):
-                s.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
+                _seed(s.run, "MERGE (n:Concept {concept_id:$id}) SET n.owner_id='u', "
                       "n.title=$id, n.domain='math'", id=cid)
-            s.run("MATCH (p:Concept{concept_id:'alpha'}),(t:Concept{concept_id:'beta'}) "
+            _seed(s.run, "MATCH (p:Concept{concept_id:'alpha'}),(t:Concept{concept_id:'beta'}) "
                   "MERGE (p)-[:RELATED_TO]->(t)")
 
         calls = {
@@ -869,17 +885,17 @@ class EmbeddedE2E(unittest.TestCase):
         store.provision(dim=cfg.embedding_dim)
         with store.session() as s:
             for cid in ("hub", "other"):
-                s.run("MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
+                _seed(s.run, "MERGE (c:Concept {concept_id:$id}) SET c.owner_id='u', "
                       "c.title=$id, c.domain='infra'", id=cid)
-            s.run("MATCH (a:Concept{concept_id:'hub'}),(b:Concept{concept_id:'other'}) "
+            _seed(s.run, "MATCH (a:Concept{concept_id:'hub'}),(b:Concept{concept_id:'other'}) "
                   "MERGE (a)-[:RELATED_TO]->(b)")
-            s.run("MERGE (r:Record {record_id:'record:fact-1'}) SET r.owner_id='u', "
+            _seed(s.run, "MERGE (r:Record {record_id:'record:fact-1'}) SET r.owner_id='u', "
                   "r.title='붙은 사실', r.domain='infra'")
-            s.run("MATCH (r:Record{record_id:'record:fact-1'}),(c:Concept{concept_id:'hub'}) "
+            _seed(s.run, "MATCH (r:Record{record_id:'record:fact-1'}),(c:Concept{concept_id:'hub'}) "
                   "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)")
-            s.run("MERGE (e:Episode {episode_id:'episode:2026-01-01-x'}) SET e.owner_id='u', "
+            _seed(s.run, "MERGE (e:Episode {episode_id:'episode:2026-01-01-x'}) SET e.owner_id='u', "
                   "e.title='일어난 일', e.domain='infra', e.date='2026-01-01'")
-            s.run("MATCH (e:Episode{episode_id:'episode:2026-01-01-x'}),"
+            _seed(s.run, "MATCH (e:Episode{episode_id:'episode:2026-01-01-x'}),"
                   "(c:Concept{concept_id:'hub'}) MERGE (e)-[:ABOUT]->(c)")
 
         nb = q.neighbors("hub", owner="u", store=store)
@@ -900,14 +916,19 @@ class EmbeddedE2E(unittest.TestCase):
         cfg = load_config()
         store = open_store(cfg)
         store.provision(dim=cfg.embedding_dim)
+        # 이 픽스처는 소유자가 둘이라 `_seed` 의 단일 owner 로는 안 된다 — 노드마다
+        # 자기 소유자로 합성한 물리 키를 직접 바인딩한다. 제목은 논리 슬러그로 남긴다.
+        shared = pkns.key("a", "shared")
         with store.session() as s:
-            s.run("MERGE (c:Concept {concept_id:'shared'}) SET c.owner_id='a', "
-                  "c.title='shared', c.domain='infra'")
+            s.run("MERGE (c:Concept {concept_id:$i}) SET c.owner_id='a', "
+                  "c.title='shared', c.domain='infra'", i=shared)
             for owner, rid in (("a", "record:mine"), ("b", "record:theirs")):
+                key = pkns.key(owner, rid)
                 s.run("MERGE (r:Record {record_id:$rid}) SET r.owner_id=$o, "
-                      "r.title=$rid, r.domain='infra'", rid=rid, o=owner)
-                s.run("MATCH (r:Record{record_id:$rid}),(c:Concept{concept_id:'shared'}) "
-                      "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)", rid=rid)
+                      "r.title=$t, r.domain='infra'", rid=key, o=owner, t=rid)
+                s.run("MATCH (r:Record{record_id:$rid}),(c:Concept{concept_id:$c}) "
+                      "MERGE (r)-[:ATTACHES_TO {type:'relates_to'}]->(c)",
+                      rid=key, c=shared)
 
         nb = q.neighbors("shared", owner="a", store=store)
         store.close()
@@ -1014,8 +1035,9 @@ class EmbeddedE2E(unittest.TestCase):
             {"from": "policy:p1", "to": "policy:p2", "type": "enables"}]}, store=store)
         rows = store.run("MATCH (:Entity)-[r:TYPED]->(:Entity) RETURN count(r) AS c")
         self.assertEqual(int(rows[0]["c"]), 2)   # blocks(멱등) + enables(병렬)
-        rev = store.run("MATCH (n:Entity) WHERE n.entity_id = 'policy:p1' "
-                        "RETURN n.rev AS r")
+        rev = store.run("MATCH (n:Entity) WHERE n.entity_id = $i "
+                        "RETURN n.rev AS r",
+                        {"i": pkns.key("user:alice", "policy:p1")})
         self.assertEqual(int(rev[0]["r"]), 1)    # 동일 재적재 무스탬프
         store.close()
 
@@ -1047,8 +1069,9 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertTrue(any("Bridge" in w and "domain" in w for w in r["warnings"]), r["warnings"])
         # 엣지도 처리됨(배치가 노드 단계에서 죽지 않았다는 증거).
         self.assertEqual(r["merged"]["edges"]["created"], 1, r)
-        rows = store.run("MATCH (b:Bridge) WHERE b.bridge_id = 'bridge:b1' "
-                         "RETURN b.title AS title")
+        rows = store.run("MATCH (b:Bridge) WHERE b.bridge_id = $i "
+                         "RETURN b.title AS title",
+                         {"i": pkns.key("user:alice", "bridge:b1")})
         self.assertEqual(rows[0]["title"], "B1")   # 나머지 필드는 정상 반영
         store.close()
 
@@ -1094,10 +1117,13 @@ class EmbeddedE2E(unittest.TestCase):
             frag.merge_fragment({"nodes": [{"id": bid, "type": "bridge", "title": bid}],
                                  "owner": owner}, store=store)
             store.run("MATCH (b:Bridge) WHERE b.bridge_id = $id "
-                      "SET b.source_domain = 'm', b.target_domain = 'p'", {"id": bid})
+                      "SET b.source_domain = 'm', b.target_domain = 'p'",
+                      {"id": pkns.key(owner, bid)})
 
         _mk("user:alice", "bridge:a")
         _mk("user:bob", "bridge:b")
+        # ⚠ 레거시 행은 owner 가 비어 있다 — PR-D 이관 전 상태이므로 PK 도 논리
+        # 슬러그로 남는 것이 맞다(`pkns.key` 는 owner 가 비면 합성하지 않는다).
         store.run("MERGE (b:Bridge {bridge_id:'bridge:legacy'}) "
                   "SET b.source_domain='m', b.target_domain='p', b.owner_id=''")
         res = q.view_l0(owner="user:alice", store=store)
@@ -1123,8 +1149,9 @@ class EmbeddedE2E(unittest.TestCase):
             "edges": [{"from": "concept:ea", "to": "concept:eb", "type": "relates_to"}],
             "owner": "user:alice",
         }, store=store)
-        seq = store.run("MATCH (n:Concept) WHERE n.concept_id = 'concept:ea' "
-                        "RETURN n.sync_seq AS s")
+        seq = store.run("MATCH (n:Concept) WHERE n.concept_id = $i "
+                        "RETURN n.sync_seq AS s",
+                        {"i": pkns.key("user:alice", "concept:ea")})
         self.assertGreater(int(seq[0]["s"]), 0)     # 엣지 생성이 끝점을 스탬프
         res = q.delete_edge("concept:ea", "relates_to", "concept:eb",
                             owner="user:alice", store=store)
@@ -1296,8 +1323,11 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
                 os.environ[k] = v
 
     def _row(self, store, cid):
+        # 쓰기는 `merge_fragment`·`apply_delta` 로 갔고 읽기는 스토어 직접이다 —
+        # PK 네임스페이싱이 켜지면 노드 PK 가 물리 키라 여기서도 합성해야 한다.
         rows = store.run("MATCH (c:Concept) WHERE c.concept_id = $i "
-                         "RETURN c.created AS created, c.content_time AS ct", {"i": cid})
+                         "RETURN c.created AS created, c.content_time AS ct",
+                         {"i": pkns.key(self.OWNER, cid)})
         return rows[0] if rows else {}
 
     def test_both_devices_agree_on_birth_and_content_time(self):
@@ -1327,8 +1357,9 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
                 {"id": "concept:c", "type": "concept", "title": "C", "domain": "phys"}]},
                 store=st)
         # B 가 훨씬 이른 출생을 갖게 만든다(다른 경로로 먼저 알았던 노드).
-        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:c' "
-                   "SET c.created = '2019-01-01T00:00:00.000Z'")
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id=$i "
+                   "SET c.created = '2019-01-01T00:00:00.000Z'",
+                   {"i": pkns.key(self.OWNER, "concept:c")})
         # A 에서 내용을 고쳐 delta 를 만든다.
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:c", "type": "concept", "title": "C 고침", "domain": "phys"}]},
@@ -1350,8 +1381,9 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
             frag.merge_fragment({"owner": self.OWNER, "nodes": [
                 {"id": "concept:same", "type": "concept", "title": "S", "domain": "phys"}]},
                 store=st)
-        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:same' "
-                   "SET c.created = '2099-01-01T00:00:00.000Z'")   # 갈라진 상태
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id=$i "
+                   "SET c.created = '2099-01-01T00:00:00.000Z'",
+                   {"i": pkns.key(self.OWNER, "concept:same")})   # 갈라진 상태
         bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"], store=self.a)
         out = sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
         self.assertEqual(out["merged"], 0, "이 시나리오는 필드 변화가 없어야 한다")
@@ -1385,10 +1417,11 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
                 store=st)
             from api import sync
             sync.set_selected_domains(st, ["phys"])
-        self.a.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
-                   {"v": a_born})
-        self.b.run("MATCH (c:Concept) WHERE c.concept_id='concept:old' SET c.created=$v",
-                   {"v": b_born})
+        old = pkns.key(self.OWNER, "concept:old")
+        self.a.run("MATCH (c:Concept) WHERE c.concept_id=$i SET c.created=$v",
+                   {"i": old, "v": a_born})
+        self.b.run("MATCH (c:Concept) WHERE c.concept_id=$i SET c.created=$v",
+                   {"i": old, "v": b_born})
 
     def test_oneshot_resync_converges_a_birth_that_diverged_before_the_fix(self):
         """delta 는 안 변한 노드를 안 나른다 — 그래서 한 번은 전량이 오가야 한다.

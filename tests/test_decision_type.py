@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from api import fragment as frag        # noqa: E402
 from api import query as q              # noqa: E402
 from api import sync                    # noqa: E402
+from store import pkns                  # noqa: E402
 
 OWNER = "user:dec"
 
@@ -240,9 +241,11 @@ class DecisionEndToEnd(unittest.TestCase):
         스텁은 피할 수 있는 것이 아니다 — 엣지 끝점은 **같은 payload 안에서만**
         해석되므로 기존 노드도 반드시 동봉해야 한다. 즉 계약이 요구하는 호출이
         데이터를 부수고 있었다."""
+        # 아래 네 조회는 스토어를 직접 본다 — 물리 키로 물어야 API 가 쓴 행을 찾는다.
+        d45 = pkns.key(OWNER, "decision:d45")
         before = self.store.run(
-            "MATCH (d:Decision) WHERE d.decision_id = 'decision:d45' RETURN d.title AS t"
-        )[0]["t"]
+            "MATCH (d:Decision) WHERE d.decision_id = $i RETURN d.title AS t",
+            {"i": d45})[0]["t"]
         self.assertTrue(before and not before.startswith("decision:"), before)
         # 엣지를 하나 더 다는, 실제 이관과 같은 모양의 호출
         res = frag.merge_fragment({"owner": OWNER, "nodes": [
@@ -252,19 +255,20 @@ class DecisionEndToEnd(unittest.TestCase):
                       "type": "about"}]}, store=self.store)
         self.assertTrue(res.get("executed"), res)
         after = self.store.run(
-            "MATCH (d:Decision) WHERE d.decision_id = 'decision:d45' RETURN d.title AS t"
-        )[0]["t"]
+            "MATCH (d:Decision) WHERE d.decision_id = $i RETURN d.title AS t",
+            {"i": d45})[0]["t"]
         self.assertEqual(after, before, "스텁 재전송이 제목을 덮어썼다")
         c_after = self.store.run(
-            "MATCH (c:Concept) WHERE c.concept_id = 'concept:offline' RETURN c.title AS t"
-        )[0]["t"]
+            "MATCH (c:Concept) WHERE c.concept_id = $i RETURN c.title AS t",
+            {"i": pkns.key(OWNER, "concept:offline")})[0]["t"]
         self.assertEqual(c_after, "Offline first", "개념 제목도 같은 경로로 부서진다")
         # 신규 노드는 제목이 없으면 여전히 id 로 채운다(제목 없는 노드 금지).
         frag.merge_fragment({"owner": OWNER,
                              "nodes": [{"id": "decision:brand-new", "type": "decision"}]},
                             store=self.store)
-        fresh = self.store.run("MATCH (d:Decision) WHERE d.decision_id = 'decision:brand-new' "
-                               "RETURN d.title AS t")[0]["t"]
+        fresh = self.store.run("MATCH (d:Decision) WHERE d.decision_id = $i "
+                               "RETURN d.title AS t",
+                               {"i": pkns.key(OWNER, "decision:brand-new")})[0]["t"]
         self.assertEqual(fresh, "decision:brand-new")
 
     def test_사용자_도구_전부가_결정을_본다(self):

@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import docstore as ds  # noqa: E402
 from api import query as q  # noqa: E402
+from store import pkns  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
@@ -93,15 +94,21 @@ class NavTreeE2E(unittest.TestCase):
                 os.environ[k] = v
 
     def _concept(self, cid, domain, owner=None, title=None):
+        # 이 시드는 `merge_fragment` 를 거치지 않고 스토어에 **직접** 행을 만든다.
+        # PK 네임스페이싱이 켜지면 쓰기 경로가 합성하므로, 여기서도 물리 키로 써야
+        # 뒤이은 API 조회(`put_doc` 의 언급 링커 등)가 이 행을 찾는다.
+        own = owner or self.OWNER
         self.store.run(
             "MERGE (n:Concept {concept_id:$id}) SET n.title=$t, n.domain=$d, n.owner_id=$o",
-            {"id": cid, "t": title or cid.split(":")[-1], "d": domain,
-             "o": owner or self.OWNER})
+            {"id": pkns.key(own, cid), "t": title or cid.split(":")[-1], "d": domain,
+             "o": own})
 
-    def _rel(self, rel, a, b):
+    def _rel(self, rel, a, b, owner=None):
+        own = owner or self.OWNER
         self.store.run(
             f"MATCH (a:Concept {{concept_id:$a}}), (b:Concept {{concept_id:$b}}) "
-            f"MERGE (a)-[:{rel}]->(b)", {"a": a, "b": b})
+            f"MERGE (a)-[:{rel}]->(b)",
+            {"a": pkns.key(own, a), "b": pkns.key(own, b)})
 
     def _doc(self, body, title, owner=None):
         return ds.put_doc(self.store, owner=owner or self.OWNER, text=body,

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from store.config import StoreConfig, load_config
 from store.backend import open_store
+from store import pkns
 from engines import domain_hierarchy
 
 from . import graphmd
@@ -208,7 +209,7 @@ def _summary_row(r: dict) -> dict:
     return out
 
 
-def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
+def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
     """Decision support: traverse policy/concept relations around a topic to
     surface conflicts, prerequisites, and cross-domain bridges.
 
@@ -221,9 +222,12 @@ def decide_plan(topic: str, *, depth: int = 2) -> QueryPlan:
       경로 수가 폭증한다(3노드 사이클서 *1..8 시 510경로 실측). `TRAIL`(엣지 무재사용,
       키워드는 범위 **앞**)로 가드 → 동일 셋업 6경로."""
     depth = max(1, min(int(depth), 4))
-    params = {"topic": topic}
+    # PK 네임스페이싱 — `$topic` 은 **id 열과 title 열에 동시에** 쓰인다. 하나로
+    # 합성하면 제목 매치가 죽는다(제목은 논리 텍스트다). 그래서 id 열용 물리 키를
+    # `$tkey` 로 따로 싣는다. 근거: [[d11223a9a5d109de5]] §7
+    params = {"topic": topic, "tkey": pkns.key(owner, topic)}
     cypher = (
-        "MATCH (n) WHERE n.concept_id = $topic OR n.bridge_id = $topic "
+        "MATCH (n) WHERE n.concept_id = $tkey OR n.bridge_id = $tkey "
         "OR n.title = $topic "
         f"MATCH path = (n)-[* TRAIL 1..{depth}]-(m) "
         "RETURN n, relationships(path) AS rels, m "
@@ -773,7 +777,9 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) ->
     owner 스탬프를 강제하므로 교차 소유자 엣지가 생기지 않아 결과는 owner-clean 이다.
     owner=None(로컬 단일 사용자)이면 기존 동작."""
     depth = max(1, min(int(depth), 4))
-    params: dict = {"seed": seed}
+    # PK 네임스페이싱 — `$seed` 는 노드 PK 바인딩이라 물리 키다(반환 id 는 읽기 훅이
+    # 논리로 되돌린다). 근거: [[d11223a9a5d109de5]] §7
+    params: dict = {"seed": pkns.key(owner, seed)}
     n_where, m_where = "n.concept_id = $seed", ""
     if owner:
         n_where += " AND n.owner_id = $owner"
@@ -795,7 +801,7 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
     ⚠ owner 필수성(SEC-1): id 집합이 이미 owner-scoped 여도 **엣지 대상 d 는 별개**다 —
     필터가 없으면 남의 노드가 target_label/target_props 로 노출된다. 소유자를 주면
     행(c)과 엣지 대상(d)을 모두 제한한다."""
-    params: dict = {"ids": ids}
+    params: dict = {"ids": pkns.keys(owner, ids)}
     c_where, d_where = "c.concept_id IN $ids", ""
     if owner:
         c_where += " AND c.owner_id = $owner"
@@ -848,7 +854,7 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
             ["b.source_domain", "b.target_domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR b.bridge_id IN $ids)")
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         "MATCH (b:Bridge)-[r:CONNECTS]->(c:Concept) "
         f"WHERE {' AND '.join(where)} "
@@ -876,7 +882,7 @@ def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[st
         where.append(domain_subtree_where(["e.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR e.episode_id IN $ids)")
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         "MATCH (e:Episode)-[r:ABOUT]->(c:Concept) "
         f"WHERE {' AND '.join(where)} "
@@ -907,7 +913,7 @@ def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         where.append(domain_subtree_where(["rc.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR rc.record_id IN $ids)")
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         "MATCH (rc:Record)-[r:ATTACHES_TO]->(c:Concept) "
         f"WHERE {' AND '.join(where)} "
@@ -946,7 +952,7 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
         where.append(domain_subtree_where(["d.domain", "c.domain"], doms, params))
     if ids:
         where.append("(c.concept_id IN $ids OR d.decision_id IN $ids)")
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         "MATCH (d:Decision)-[r:ABOUT]->(c:Concept) "
         f"WHERE {' AND '.join(where)} "
@@ -975,7 +981,7 @@ def entity_subgraph_ids_plan(seed: str, *, depth: int = 2,
     """entity-시드 순회 — subgraph_ids_plan 과 동형(TRAIL 가드, depth 1..4 클램프).
     Entity 는 신규 테이블(레거시 '' 없음)이라 엄격 owner."""
     depth = max(1, min(int(depth), 4))
-    params: dict = {"seed": seed}
+    params: dict = {"seed": pkns.key(owner, seed)}
     n_where, m_where = "n.entity_id = $seed", ""
     if owner:
         n_where += " AND n.owner_id = $owner"
@@ -994,7 +1000,7 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
     """Entity id 집합 행 + 나가는 TYPED 엣지. rel 은 label(r)="TYPED"(무의미한 캐리어
     이름)가 아니라 **r.type(사용자 저작 타입)** 을 투영 — 그것이 의미다. domain 은
     ''(Entity 무도메인 — entity-시드 L2 는 단일 중앙 클러스터로 레이아웃)."""
-    params: dict = {"ids": ids}
+    params: dict = {"ids": pkns.keys(owner, ids)}
     e_where, d_where = "e.entity_id IN $ids", ""
     if owner:
         e_where += " AND e.owner_id = $owner"
@@ -1074,7 +1080,7 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     — 구 '필터 불가' 예외(존재 여부 노출)는 해소됐다. 미지 접두사는 Entity 로
     프로브한다(:func:`_seed_table` — 개방층 id 는 임의 접두사)."""
     label, pk = _seed_table(seed)
-    params: dict = {"seed": seed}
+    params: dict = {"seed": pkns.key(owner, seed)}
     where = f"n.{pk} = $seed"
     if owner:
         where += (f" AND {_bridge_owner_pred('n')}" if label == "Bridge"
@@ -2069,7 +2075,7 @@ def ledger_origin_plan(*, owner: str, domain: str | None = None, domains: list[s
         and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         f"MATCH (c:Concept) WHERE c.owner_id = $owner{and_scope} "
         "RETURN c.concept_id AS id, c.domain AS domain, "
@@ -2120,7 +2126,7 @@ def ledger_link_plan(*, owner: str, domain: str | None = None, domains: list[str
         and_scope = " AND " + domain_subtree_where(["c.domain"], doms, params)
     if ids:
         and_scope = " AND c.concept_id IN $ids"
-        params["ids"] = ids
+        params["ids"] = pkns.keys(owner, ids)
     cypher = (
         "MATCH (c:Concept)-[r]-(o:Concept) "
         "WHERE c.owner_id = $owner AND o.owner_id = $owner "
@@ -2220,7 +2226,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         rows = store.run(
             f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
             f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props",
-            {"id": node, "owner": owner})
+            # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
+            # 그대로다(사용자가 준 값). 근거: [[d11223a9a5d109de5]] §7
+            {"id": pkns.key(owner, node), "owner": owner})
         if rows:
             # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
             # (`api/fragment.py` 가 SET 하지 않는다 — MCP 적재분 전량이 빈 값) 이것만
@@ -2235,7 +2243,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
-                "RETURN e.title AS title, e.summary AS s", {"id": node, "owner": owner})
+                "RETURN e.title AS title, e.summary AS s",
+                {"id": pkns.key(owner, node), "owner": owner})
             if not ep:
                 base["note"] = f"unknown node: {node}"
                 return base
@@ -2251,7 +2260,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
             "ch.section_title AS section, ch.text AS text, m.method AS method "
             f"ORDER BY ch.doc_id, ch.chunk_index LIMIT {lim}",
-            {"id": node, "owner": owner}) or []
+            {"id": pkns.key(owner, node), "owner": owner}) or []
         arm = "mentions" if ment else "none"
         # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강, 실패 무해).
         if not ment and base["title"]:
@@ -2330,7 +2339,7 @@ def _node_links(store, node: str, *, owner: str) -> dict:
             f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
             "label(r) AS type, 'in' AS dir, r.evidence AS ev, r.confidence AS conf"
             for ol, opk in _SEMANTIC_PK.items())
-        rows = store.run(cc, {"id": node, "owner": owner}) or []
+        rows = store.run(cc, {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
         return empty
 
@@ -2357,7 +2366,7 @@ def _node_links(store, node: str, *, owner: str) -> dict:
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
             "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
             "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, rc.props AS raw_props",
-            {"id": node, "owner": owner}) or []
+            {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
         attached = []   # 부착 축만 강등 — 개념 관계는 이미 얻었다
     out_n = sum(1 for r in rows if r.get("dir") == "out")
@@ -2421,7 +2430,8 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                 "RETURN r.evidence AS ev, r.confidence AS cf, "
                 "a.title AS at, a.summary AS ad, b.title AS bt, b.one_liner AS bd",
-                {"s": src, "d": dst, "owner": owner}) or []
+                {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
+                 "owner": owner}) or []
         else:
             arrow = "-" if etype == "RELATED_TO" else "->"
             rows = store.run(
@@ -2430,7 +2440,8 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                 "RETURN r.evidence AS ev, r.confidence AS cf, "
                 "a.title AS at, a.one_liner AS ad, b.title AS bt, b.one_liner AS bd",
-                {"s": src, "d": dst, "owner": owner}) or []
+                {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
+                 "owner": owner}) or []
         if not rows:
             base["note"] = "unknown edge (또는 소유 스코프 밖)"
             return base
@@ -2441,7 +2452,7 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
                 "AND (ch.owner_id = $owner OR ch.owner_id = '') "
                 "RETURN ch.doc_id AS doc_id, ch.text AS text "
                 "ORDER BY ch.doc_id, ch.chunk_index LIMIT 1",
-                {"id": cid, "owner": owner}) or []
+                {"id": pkns.key(owner, cid), "owner": owner}) or []
             if not m:
                 return None
             return {"doc_id": m[0].get("doc_id") or "",
@@ -2794,7 +2805,7 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
         got = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title",
-            {"ids": ids, "owner": owner}) or []
+            {"ids": pkns.keys(owner, ids), "owner": owner}) or []
         title = {r["id"]: (r.get("title") or r["id"]) for r in got}
     finally:
         if owns and store is not None:
@@ -2916,7 +2927,7 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
         rows = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title, c.one_liner AS ol",
-            {"ids": ids, "owner": owner}) or []
+            {"ids": pkns.keys(owner, ids), "owner": owner}) or []
         title = {r["id"]: {"concept_id": r["id"], "title": r.get("title") or r["id"],
                            "one_liner": r.get("ol") or ""} for r in rows}
         items = [title.get(cid, {"concept_id": cid, "title": cid, "one_liner": ""})
@@ -2960,7 +2971,8 @@ def bridge_neighbors_plan(node: str, *, owner: str) -> QueryPlan:
         "AND y.owner_id = $owner "
         "RETURN DISTINCT y.concept_id AS id"
     )
-    return QueryPlan("bridge_neighbors", cypher, {"node": node, "owner": owner},
+    return QueryPlan("bridge_neighbors", cypher,
+                     {"node": pkns.key(owner, node), "owner": owner},
                      note="bridge-mediated neighbors (tie-suggest exclusion)")
 
 
@@ -3109,7 +3121,7 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     v12 — 시드 라벨은 id 접두사에서 꺼내고(`_seed_table`), 상대편은 개념·결정을 모두
     본다. 라벨을 문자열로 박아 두면 결정에서 출발한 관측이 **빈 결과**가 되고, 그건
     "이웃이 없다"와 구분되지 않는다."""
-    params: dict = {"node": node}
+    params: dict = {"node": pkns.key(owner, node)}
     s_label, s_pk = _seed_table(node)
     if s_label not in _SEMANTIC_LABELS:
         s_label, s_pk = "Concept", "concept_id"   # 하위호환: 접두사 없는 id 는 개념
@@ -3154,7 +3166,7 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     같은 무음 누락의 반대편이다(도구 계약은 [[vinc.canon.mcp-contract]]).
 
     UNION 은 열 타입이 같아야 하므로 4열(rel·id·title·domain)만 투영한다."""
-    params: dict = {"node": node}
+    params: dict = {"node": pkns.key(owner, node)}
     s_label, _s_pk = _seed_table(node)
     if owner:
         params["owner"] = owner
@@ -3313,7 +3325,7 @@ def shortest_path_plan(a_id: str, b_id: str, *, max_depth: int = 6,
     """두 개념 간 최단 경로(들). `* ALL SHORTEST 1..d`(엔드포인트 owner 스코프 —
     교차소유자 엣지 부재라 중간 홉 스코프 불요). nodes(p) 시퀀스 + 길이 반환."""
     depth = max(1, min(int(max_depth), 8))
-    params: dict = {"a": a_id, "b": b_id}
+    params: dict = {"a": pkns.key(owner, a_id), "b": pkns.key(owner, b_id)}
     a_where, b_where = "a.concept_id = $a", "b.concept_id = $b"
     if owner:
         a_where += " AND a.owner_id = $owner"
@@ -3444,7 +3456,7 @@ def path_candidates_plan(seed: str, *, depth: int = 6,
     홉 이내에 없는 노드는 길이 ``depth`` 이하 경로에 **구조적으로** 못 오르므로
     이 집합이 다익스트라의 완전한 탐색 공간이다."""
     depth = max(1, min(int(depth), 8))
-    params: dict = {"seed": seed}
+    params: dict = {"seed": pkns.key(owner, seed)}
     n_where, m_where = "n.concept_id = $seed", ""
     if owner:
         n_where += " AND n.owner_id = $owner"
@@ -4078,7 +4090,11 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
 
         mrows = store.run(
             "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) WHERE c.concept_id IN $ids "
-            "RETURN c.concept_id AS id, count(ch) AS n", {"ids": members}) or []
+            # 무스코프 로컬에서는 구성원마다 owner 가 다를 수 있어 **각자의 owner** 로
+            # 합성한다(바로 위 node_context 호출이 쓰는 그 규칙과 같다).
+            "RETURN c.concept_id AS id, count(ch) AS n",
+            {"ids": [pkns.key(owner or owner_of.get(cid, ""), cid)
+                     for cid in members]}) or []
         mentions = {r["id"]: int(r.get("n") or 0) for r in mrows}
         ranked = sorted(members, key=lambda cid: (-mentions.get(cid, 0), cid))
 
@@ -4337,9 +4353,20 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         own_d = " AND d.owner_id = $owner"
         params["owner"] = owner
 
+    # PK 네임스페이싱 — id 열은 물리 키(`owner슬러그`)라, **owner 문자열의
+    # 부분열인 토큰이 그 소유자의 모든 행에 걸린다**(owner 가 `user:019f…` 면 토큰
+    # "user" 하나로 전량 매치). 아래 파이썬 재필터는 읽기 훅이 되돌린 **논리** id 로
+    # 다시 재므로 결과가 틀리지는 않지만, NODE_SCAN_CAP 을 그 쓰레기로 채우면 진짜
+    # 매치가 잘린다. 그래서 **id 열에서만** 그런 토큰을 뺀다.
+    # 근거: [[d11223a9a5d109de5]] §7
+    own_low = (owner or "").lower() if pkns.enabled() else ""
+    id_idx = [i for i in idx if not (own_low and toks[i] in own_low)]
+
     def _any(fields: tuple[str, ...]) -> str:   # 토큰 하나라도, 필드 하나라도
-        return "(" + " OR ".join(
-            f"lower(coalesce({f},'')) CONTAINS $q{i}" for i in idx for f in fields) + ")"
+        parts = [f"lower(coalesce({f},'')) CONTAINS $q{i}"
+                 for f in fields
+                 for i in (id_idx if f.endswith("_id") else idx)]
+        return "(" + " OR ".join(parts) + ")" if parts else "(1 = 0)"
 
     # id(슬러그)도 검색한다: GRAPH.md 관례가 `concept:optimistic-locking` 처럼 **뜻이
     # 담긴 영어 슬러그**를 강제하므로, 제목이 한국어인 개념을 영어 용어로 찾는 유일한
@@ -4649,8 +4676,10 @@ def decide_topic_resolve_plan(topic: str, *, owner: str | None = None) -> QueryP
     ⚠ owner(SEC-1): 소유자를 주면 그 스코프 안에서만 해석한다. 없으면 남의 개념을
     시드로 잡아 서브그래프 전체를 되돌려줬다. OR 조건은 반드시 괄호로 묶는다 —
     안 그러면 owner AND 가 뒤 절에만 붙어 필터가 무력화된다."""
-    params: dict = {"topic": topic}
-    where = ("(c.concept_id = $topic "
+    # `$topic` 은 title 비교에 그대로 쓰이므로 논리로 남기고, id 열에는 물리 키를
+    # 따로 바인딩한다(decide_plan 과 같은 이유).
+    params: dict = {"topic": topic, "tkey": pkns.key(owner, topic)}
+    where = ("(c.concept_id = $tkey "
              "OR lower(coalesce(c.title,'')) = lower($topic))")
     if owner:
         where += " AND c.owner_id = $owner"
@@ -4731,7 +4760,7 @@ def decisions_about_plan(ids: list[str], *, owner: str | None = None) -> QueryPl
     도구 설명이 약속하고도 구조적으로 답할 수 없었다. 결정을 nodes 에 합류시키지
     않고 여기서 따로 읽는 이유는, decide 의 nodes/edges 계약(Concept 서브그래프)을
     바꾸지 않고 상충만 채우기 위해서다."""
-    params: dict = {"ids": ids}
+    params: dict = {"ids": pkns.keys(owner, ids)}
     where = "c.concept_id IN $ids"
     if owner:
         where += " AND c.owner_id = $owner AND d.owner_id = $owner"
@@ -4872,13 +4901,16 @@ def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> di
                 store.run(
                     f"MATCH (n:{label}) WHERE n.{pk} = $id AND n.owner_id = $o "
                     "SET n.domain = $new, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
-                    {"id": r["id"], "o": owner, "new": new, "ua": st["updated_at"],
-                     "rev": st["rev"], "seq": st["sync_seq"]})
+                    # 위 조회가 돌려준 id 는 읽기 훅이 되돌린 **논리** 슬러그다 —
+                    # 다시 바인딩할 때 합성해야 한다(PK 네임스페이싱).
+                    {"id": pkns.key(owner, r["id"]), "o": owner, "new": new,
+                     "ua": st["updated_at"], "rev": st["rev"],
+                     "seq": st["sync_seq"]})
                 # 계층(E-1, v11)도 따라와야 한다. 안 옮기면 노드의 `domain` 열은 새
                 # 도메인인데 IN_DOMAIN 은 옛 도메인을 가리켜, 열 기준 집계(/domains)와
                 # 그래프 기준 조회가 서로 다른 답을 준다. `new` 가 비면 엣지만 지운다
                 # (= 미분류로 내림, 위 계약과 동형).
-                domain_hierarchy.link_node(store, label, r["id"], new)
+                domain_hierarchy.link_node(store, label, pkns.key(owner, r["id"]), new)
                 moved += 1
             if rows:
                 per_label[label] = len(rows)
@@ -4902,13 +4934,16 @@ def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None
     pk = _NODE_PK[label]
     rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
                      "RETURN n.rev AS rev, n.updated_at AS ua, n.owner_id AS owner",
-                     {"id": node_id})
+                     {"id": pkns.key(owner, node_id)})
     if not rows:
         return
     own = owner or rows[0].get("owner") or "user:local"
+    # PK 네임스페이싱 — 툼스톤 PK 도 노드 id 라 같이 합성한다(감사 M3: 안 하면 두
+    # 계정이 같은 슬러그를 지울 때 **툼스톤 행 하나를 공유**해 진 쪽의 삭제가 전파를
+    # 멈춘다). owner 는 위에서 노드에서 승계한 값이라 무스코프 삭제에서도 맞는다.
     store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
               "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'local'",
-              {"id": node_id, "l": label, "o": own,
+              {"id": pkns.key(own, node_id), "l": label, "o": own,
                "da": revstamp.hlc_now(store), "rev": int(rows[0].get("rev") or 0),
                "seq": revstamp.next_seq(store, own)})
 _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
@@ -4954,7 +4989,7 @@ def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None
         # 앉는다.
         for sl, sp, _dl, _dp in SYNC_EDGE_RELS[rel]:
             rows = store.run(f"MATCH (n:{sl}) WHERE n.{sp} = $id RETURN n.owner_id AS o",
-                             {"id": src})
+                             {"id": pkns.key(owner, src)})
             if rows:
                 own = rows[0].get("o")
                 break
@@ -4962,7 +4997,10 @@ def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None
     store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
               "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
               "t.origin = 'local'",
-              {"k": f"{src}|{rel}|{dst}", "s": src, "r": rel, "d": dst, "o": own,
+              # `ekey` 는 논리 `src|REL|dst` 를 짓고 한 번만 합성한다(pkns.ekey).
+              # ⚠ `src`/`dst` **열**은 논리로 남긴다 — 이 행은 동기화 와이어로 그대로
+              # 나가고, 와이어에는 U+001F 가 있어서는 안 된다(계약 테스트가 고정한다).
+              {"k": pkns.ekey(own, src, rel, dst), "s": src, "r": rel, "d": dst, "o": own,
                "da": revstamp.hlc_now(store), "seq": revstamp.next_seq(store, own)})
 
 
@@ -4992,7 +5030,7 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
                         f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
         return base
     scope_a = scope_b = ""
-    params: dict = {"s": src, "d": dst}
+    params: dict = {"s": pkns.key(owner, src), "d": pkns.key(owner, dst)}
     if owner:
         scope_a, scope_b = " AND a.owner_id = $owner", " AND b.owner_id = $owner"
         params["owner"] = owner
@@ -5004,7 +5042,7 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
         for sl, sp, dl, dp in SYNC_EDGE_RELS[rel]:
             for s_, d_ in pairs:
-                p = {**params, "s": s_, "d": d_}
+                p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
                 cnt = store.run(
                     f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
                     f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} "
@@ -5069,7 +5107,8 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
             return base
         label, pk = label_pk
         scope = ""
-        params: dict = {"id": node_id}
+        # PK 네임스페이싱 — 이 dict 는 존재확인·차수·DETACH DELETE 세 곳이 나눠 쓴다.
+        params: dict = {"id": pkns.key(owner, node_id)}
         if owner and label in _OWNER_SCOPED_LABELS:
             scope = " AND n.owner_id = $owner"
             params["owner"] = owner
@@ -5146,11 +5185,17 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         bscope = (lambda var: f" AND ({var}.owner_id = $owner OR {var}.owner_id = '')"
                   ) if osc else (lambda var: "")
         op = {"owner": owner} if osc else {}   # 파라미터 스프레드(무스코프면 빈 dict)
+        # PK 네임스페이싱 — 이 함수의 모든 `$id`/`$s`/`$d`/`$r`/`$k`/`$b` 는 노드 PK
+        # 바인딩이다. 반대로 조회가 돌려주는 `other` 는 읽기 훅이 되돌린 **논리**
+        # 슬러그이므로, `keep_id`/`drop_id` 와의 비교는 논리끼리 그대로 맞는다 —
+        # 합성은 **다시 바인딩할 때만** 한다. 근거: [[d11223a9a5d109de5]] §7
+        def _k(v: str) -> str:
+            return pkns.key(owner, v)
 
         def _exists(cid: str) -> bool:
             r = store.run(
                 f"MATCH (c:Concept) WHERE c.concept_id = $id{oscope('c')} "
-                "RETURN count(c) AS c", {"id": cid, **op})
+                "RETURN count(c) AS c", {"id": _k(cid), **op})
             return bool(r and r[0].get("c"))
 
         base["executed"] = True
@@ -5167,7 +5212,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                 f"MATCH (a:Concept)-[:{rel}]->(b:Concept) "
                 f"WHERE a.concept_id = $s AND b.concept_id = $d{oscope('a')}{oscope('b')} "
                 "RETURN count(*) AS c",
-                {"s": s, "d": d, **op})
+                {"s": _k(s), "d": _k(d), **op})
             return bool(r and r[0].get("c"))
 
         def _others(rel: str, incoming: bool) -> set:
@@ -5180,7 +5225,8 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                 cy = (f"MATCH (d:Concept)-[:{rel}]->(x:Concept) "
                       f"WHERE d.concept_id = $id{oscope('d')}{oscope('x')} "
                       "RETURN DISTINCT x.concept_id AS other")
-            return {row["other"] for row in store.run(cy, {"id": drop_id, **op}) if row.get("other")}
+            return {row["other"] for row in store.run(cy, {"id": _k(drop_id), **op})
+                    if row.get("other")}
 
         for rel in _CC_RELS:
             for incoming in (False, True):
@@ -5199,7 +5245,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                     store.run(
                         "MATCH (a:Concept),(b:Concept) "
                         f"WHERE a.concept_id = $s AND b.concept_id = $d{oscope('a')}{oscope('b')} "
-                        f"MERGE (a)-[:{rel}]->(b)", {"s": s, "d": d, **op})
+                        f"MERGE (a)-[:{rel}]->(b)", {"s": _k(s), "d": _k(d), **op})
                     repointed += 1
 
         # ATTACHES_TO incoming: (rec:Record)-[a]->(drop) → (rec)-[a]->(keep), type 보존.
@@ -5207,7 +5253,8 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         for row in store.run(
                 "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) "
                 f"WHERE d.concept_id = $id{oscope('d')}{oscope('r')} "
-                "RETURN DISTINCT r.record_id AS other, a.type AS type", {"id": drop_id, **op}):
+                "RETURN DISTINCT r.record_id AS other, a.type AS type",
+                {"id": _k(drop_id), **op}):
             other = row.get("other")
             if not other:
                 continue
@@ -5215,7 +5262,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                 "MATCH (r:Record)-[:ATTACHES_TO]->(k:Concept) "
                 f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
                 "RETURN count(*) AS c",
-                {"r": other, "k": keep_id, **op})
+                {"r": _k(other), "k": _k(keep_id), **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
@@ -5224,12 +5271,13 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
                     "MERGE (r)-[e:ATTACHES_TO]->(k) SET e.type = $t",
-                    {"r": other, "k": keep_id, "t": row["type"], **op})
+                    {"r": _k(other), "k": _k(keep_id), "t": row["type"], **op})
             else:
                 store.run(
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k)", {"r": other, "k": keep_id, **op})
+                    "MERGE (r)-[e:ATTACHES_TO]->(k)",
+                    {"r": _k(other), "k": _k(keep_id), **op})
             repointed += 1
 
         # CONNECTS incoming: (br:Bridge)-[c]->(drop) → (br)-[c]->(keep), role 보존.
@@ -5238,7 +5286,8 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         for row in store.run(
                 "MATCH (b:Bridge)-[c:CONNECTS]->(d:Concept) "
                 f"WHERE d.concept_id = $id{oscope('d')}{bscope('b')} "
-                "RETURN DISTINCT b.bridge_id AS other, c.role AS role", {"id": drop_id, **op}):
+                "RETURN DISTINCT b.bridge_id AS other, c.role AS role",
+                {"id": _k(drop_id), **op}):
             other = row.get("other")
             if not other:
                 continue
@@ -5246,7 +5295,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                 "MATCH (b:Bridge)-[:CONNECTS]->(k:Concept) "
                 f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
                 "RETURN count(*) AS c",
-                {"b": other, "k": keep_id, **op})
+                {"b": _k(other), "k": _k(keep_id), **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
@@ -5255,12 +5304,13 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                     "MATCH (b:Bridge),(k:Concept) "
                     f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
                     "MERGE (b)-[e:CONNECTS]->(k) SET e.role = $role",
-                    {"b": other, "k": keep_id, "role": row["role"], **op})
+                    {"b": _k(other), "k": _k(keep_id), "role": row["role"], **op})
             else:
                 store.run(
                     "MATCH (b:Bridge),(k:Concept) "
                     f"WHERE b.bridge_id = $b AND k.concept_id = $k{oscope('k')}{bscope('b')} "
-                    "MERGE (b)-[e:CONNECTS]->(k)", {"b": other, "k": keep_id, **op})
+                    "MERGE (b)-[e:CONNECTS]->(k)",
+                    {"b": _k(other), "k": _k(keep_id), **op})
             repointed += 1
 
         # drop 삭제(부착 엣지 포함) — title/props 버림(keep 우선).
@@ -5268,7 +5318,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         # 확인됐지만, 파괴 연산은 이중 가드). owner 불일치면 아무것도 안 지운다.
         _write_tombstone(store, drop_id, "Concept", owner)   # drop 도 전파(S4)
         store.run(f"MATCH (c:Concept) WHERE c.concept_id = $id{oscope('c')} DETACH DELETE c",
-                  {"id": drop_id, **op})
+                  {"id": _k(drop_id), **op})
         base["repointed"] = repointed
         base["skipped"] = skipped
         base["dropped"] = drop_id
