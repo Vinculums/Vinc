@@ -140,6 +140,14 @@ jobs:
       - name: Design surface gate (app)
         run: python -X utf8 design-hub/scripts/gate_surface.py app/src
 
+      # 역할 껍데기(.claude/agents/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
+      # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.
+      # 오프라인이다 — 대조 대상은 커밋된 agents/roles.json 이고 CI 에 그래프 키는
+      # 없다(그래프 인용 게이트와 같은 사유). 스냅샷 갱신은 토큰 있는 곳에서
+      # scripts/agents_sync.py --pull 이 하고, 그 diff 는 사람이 읽는다.
+      - name: Agent roster gate
+        run: python -X utf8 scripts/agents_sync.py --check
+
   # ── PK 네임스페이싱 플래그 ON ────────────────────────────────────────────────
   # v0.8.4 axis 1(design A)은 `VINC_PK_NAMESPACED` 뒤에 산다. `core` 잡은 플래그가
   # **꺼진** 모드만 돈다(로컬·데스크탑의 영구 상태이고, 계약이 "꺼져 있으면 바이트
