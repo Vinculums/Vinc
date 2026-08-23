@@ -20,11 +20,24 @@ on:
   pull_request:
   workflow_dispatch:
 
-# 같은 브랜치/PR 에 빠르게 연달아 push 하면 앞선 실행을 취소한다(Actions 분 절약).
-# 테스트 게이트라 중간 취소는 안전하다 — 어차피 최신 커밋만 검증하면 된다.
+# PR 에 빠르게 연달아 push 하면 앞선 실행을 취소한다(Actions 분 절약). PR 은 최신
+# 커밋만 검증하면 되므로 중간 취소가 안전하다.
+#
+# **main 은 다르다.** main push 는 이미 머지된 커밋의 검증이고, 그 커밋은 뒤 커밋이
+# 대체하지 않는다. 취소하면 그 머지에 대한 검증이 영영 없다.
+#
+# 2026-08-23 에 그 대가를 세 번 치렀다. 머지 셋이 각각 앞 머지의 검증 런을 죽였고
+# (런 32622778350 · 32629159939 등, 전부 conclusion=cancelled), 그때마다 사라진 것은
+# 한 번 관측되고 재현되지 않는 간헐 실패(TwoStoreTimeRoundtrip)의 다음 표본이었다.
+# 재현 안 되는 실패의 표본은 분으로 다시 살 수 없다. 정본은 그래프의
+# record:writing-a-trap-down-does-not-stop-it-a-check-does.
+#
+# 대가는 정직하게 적는다: 셀프호스티드 러너가 하나라 main 런이 접히지 않고 줄을 선다.
+# rust 잡이 19~40분이므로 연달아 머지하면 줄이 는다. 러너가 늘거나 main 런이 짧아지면
+# 다시 볼 만한 결정이다.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
