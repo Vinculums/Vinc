@@ -56,7 +56,8 @@ from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
-from store.persistence import SnapshotPolicy, save_snapshot
+from store.persistence import (SnapshotPolicy, resolve_snapshot_every,
+                               resolve_snapshot_path, save_snapshot)
 
 
 # ── ingest 디스패치(비동기 잡) ───────────────────────────────────────────────
@@ -179,6 +180,13 @@ class VincApp:
         self._snapshots.done(state)
         if state.startswith("error"):
             print(f"vinc-sidecar: store snapshot — {state}", file=sys.stderr, flush=True)
+        elif not force and state != "off":
+            # **성공도 찍는다.** 여태 성공은 아무 흔적을 안 남겼고, 그래서 로그에서
+            # "마지막으로 안전해진 시각"을 알 수 없었다 — 2026-08-19 에 배포가 무엇을
+            # 삼켰는지 사후에 셀 수 없었던 이유가 이것이다([[vinc.ops.deployment]]).
+            # force 경로는 close() 가 따로 찍으므로 여기서는 주기 스냅샷만.
+            print(f"vinc-sidecar: store snapshot — {state} (every {self._snapshots.every:.0f}s)",
+                  file=sys.stderr, flush=True)
         return state
 
     def mark_store_dirty(self) -> None:
@@ -1513,8 +1521,12 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     httpd = make_server(app, host, port)
     bound_host, bound_port = httpd.server_address[:2]
     shown = f"<supplied:{len(app.auth.token)}ch>" if token else app.auth.token
+    # **스냅샷 주기가 곧 최대 손실 창인데 여태 어디에도 안 찍혔다.** 그래서 설정을
+    # 바꿔도 그것이 먹었는지 로그로 확인할 길이 없었다(2026-08-19 실측,
+    # [[vinc.ops.deployment]]). 경로와 주기를 기동 배너에 싣는다 — 값은 비밀이 아니다.
     info = {"host": bound_host, "port": bound_port, "token": shown,
-            "driver": getattr(app.store, "driver_name", None)}
+            "driver": getattr(app.store, "driver_name", None),
+            "snapshot": resolve_snapshot_path(), "snapshot_every": resolve_snapshot_every()}
     if print_info:
         sys.stdout.write(json.dumps(info, ensure_ascii=False) + "\n")
         sys.stdout.flush()

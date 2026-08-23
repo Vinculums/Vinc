@@ -144,6 +144,20 @@ class Policy(_Enabled):
         p.mark_dirty()
         self.assertFalse(p.due())
 
+    def test_interval_comes_from_env_and_bad_values_fall_back(self):
+        """주기 = **최대 손실 창**이라 이 해석이 곧 데이터 정책이다.
+
+        운영에서 실제로 돌리는 손잡이인데 여태 검증이 없었다(2026-08-19 에 배포
+        무음 유실을 줄이려 60초로 내렸다). 오타가 조용히 기본값으로 떨어지는 것도
+        의도된 동작이므로 함께 못박는다 — 예외로 기동을 죽이지 않는다."""
+        cases = [("60", 60.0), ("", 300.0), ("abc", 300.0), ("0", 0.0), ("  90 ", 90.0)]
+        for raw, want in cases:
+            with self.subTest(raw=raw):
+                os.environ["VINC_STORE_SNAPSHOT_EVERY"] = raw
+                self.assertEqual(persistence.resolve_snapshot_every(), want)
+        os.environ.pop("VINC_STORE_SNAPSHOT_EVERY", None)
+        self.assertEqual(persistence.resolve_snapshot_every(), 300.0, "미설정이면 기본값")
+
 
 class GenerationSwap(_Enabled):
     """교체 도중 죽어도 **온전한 세대가 최소 하나** 공유에 남는가.
