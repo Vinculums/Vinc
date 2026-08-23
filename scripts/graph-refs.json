@@ -125,6 +125,7 @@
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
     "record:louvain-projects-one-node-table",
+    "record:main-ci-red-before-the-roster-merge-2026-08-23",
     "record:mcp-state-store-is-fail-soft-and-must-be-local",
     "record:mention-targets-must-include-every-semantic-label",
     "record:network-file-shares-break-embedded-databases-block-storage-does-not",
