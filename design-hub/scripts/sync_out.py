@@ -34,11 +34,13 @@ MAP = [
     # 19개 파일에 22벌이 인라인으로 박혀 있었고, 그래서 정본이 있어도 아무 데도
     # 닿지 않았다(로고 교체 한 번에 44곳을 손으로 고쳐야 했다). `<img src>` 로
     # 참조하면 이 복사 하나가 전부를 갱신한다. 근거: [[record:a-logo-ssot-that-reaches-nobody]]
-    ("assets/logo/vinc-hourglass-slab-circle.svg", "../app/public/favicon.svg"),
-    ("assets/logo/vinc-hourglass-slab-circle.svg", "../../Vinc-homepage/site/favicon.svg"),
-    ("assets/logo/vinc-hourglass-slab-indigo.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
-    ("assets/logo/vinc-hourglass-slab-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
-    ("assets/logo/vinc-hourglass-slab.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
+    ("assets/logo/vinc-ring-circle.svg", "../app/public/favicon.svg"),
+    ("assets/logo/vinc-ring-mono.svg", "../app/public/vinc-mark-mono.svg"),
+    ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/favicon.svg"),
+    ("assets/logo/vinc-ring-indigo.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
+    ("assets/logo/vinc-ring-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
+    ("assets/logo/vinc-ring-mono.svg", "../../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
+    ("assets/logo/vinc-ring.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
 ]
 
 #: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
