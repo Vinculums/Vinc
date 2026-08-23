@@ -355,7 +355,9 @@ body {
 .tb-title { display: flex; align-items: center; gap: .45rem; padding-left: .75rem; font-size: .72rem; font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
 .tb-title .brand-logo {
   width: .95rem; height: .95rem; flex: 0 0 auto;
-  color: hsl(var(--foreground));   /* 본체 = 전경색, 팁 = --logo-tip 그라디언트 */
+  /* 색을 여기서 주지 않는다 — 원형 플레이트가 자기 바탕과 램프를 들고 온다.
+     구 마크는 currentColor 를 상속받아 --logo-tip 으로 팁만 물들였는데, 새 마크는
+     브랜드 램프 자체가 형태의 일부라 상속할 자리가 없다. */
 }
 .tb-controls { display: flex; }
 .tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
