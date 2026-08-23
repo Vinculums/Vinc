@@ -1330,51 +1330,40 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
                          {"i": pkns.key(self.OWNER, cid)})
         return rows[0] if rows else {}
 
+    #: A 가 실어 보내는 출생 — 못박는다(아래 docstring).
+    BORN = "2019-01-01T00:00:00.000Z"
+
     def test_both_devices_agree_on_birth_and_content_time(self):
+        """번들이 출생·내용시점을 싣고 **수신측이 자기 시각 대신 그것을 받는가**(D72).
+
+        A 의 출생을 **못박는다** — 벽시계에 기대면 안 된다. min 화해
+        (`api/sync._reconcile_birth`)는 수신측을 min(자기값, 들은값)으로 **내릴** 뿐
+        발신측을 올리지 않으므로, "둘이 같다"는 A 의 스탬프가 B 의 것보다 이를 때만
+        참인데 두 스토어의 HLC 는 그 순서를 보장하지 않는다(2026-08-23 CI 에서 14ms
+        역전 · 판정은
+        [[record:main-ci-red-before-the-roster-merge-2026-08-23]] 와 거기 걸린
+        `decision:birth-agreement-needs-a-full-session`). 양방향 수렴은
+        §4 의 일회성 되감기가 하지 이 한 방향 apply 가 아니다.
+
+        값을 못박으면 벽시계가 빠지고 검사할 질문만 남는다: 실패는 곧 B 가 자기
+        시각을 찍었다는 뜻이고 그것이 D72 의 재발이다."""
         from api import fragment as frag
         from api import sync
 
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:relativity", "type": "concept", "title": "Relativity",
-             "domain": "phys", "content_time": "1905"}]}, store=self.a)
+             "domain": "phys", "content_time": "1905", "created": self.BORN}]},
+            store=self.a)
         bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"],
                                    store=self.a)
         res = sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
         self.assertTrue(res["executed"], res)
 
         a, b = self._row(self.a, "concept:relativity"), self._row(self.b, "concept:relativity")
-        self.assertTrue(a["created"], "A 에 출생이 있어야 한다")
-        if b["created"] != a["created"]:
-            self.fail("같은 노드가 기기마다 다른 생일을 가진다" + self._diag(bundle))
+        self.assertEqual(a["created"], self.BORN, "A 가 실은 출생을 잃었다")
+        self.assertEqual(b["created"], self.BORN,
+                         "출생이 기기를 못 건넜다 — B 가 자기 시각을 찍었다")
         self.assertEqual(b["ct"], "1905", "내용 시점이 기기를 못 건넜다")
-
-    def _diag(self, bundle) -> str:
-        """실패했을 때 **어느 쪽이 움직였는지** 가릴 수 있게 상태를 편다.
-
-        여태 이 단언은 타임스탬프 두 개만 보여 줬다. 그것만으로는 보내는 쪽이 늦게
-        찍힌 것인지 받는 쪽이 min 화해를 놓친 것인지 갈리지 않는다. 갈림길은 **번들이
-        실제로 실어 보낸 `_created`** 다: 그 값이 A 와 같으면 수신측 화해가 범인이고,
-        A 와 다르면 보내는 쪽이 export 뒤에 움직였다는 뜻이다.
-
-        왜 필요한가. 2026-08-23 CI 에서 한 번 관측됐는데 **수신측이 14ms 이르렀다** —
-        min 규칙 아래서 원리적으로 나올 수 없는 방향이다. 계측으로 확인한 정상 경로는
-        출생 스탬프가 노드당 **한 번**(`api/fragment.py` `_merge_node`)이고 그 값이
-        그대로 번들에 실린다. 로컬 재현은 네 조건에서 전부 실패했다(pytest 격리·전체,
-        unittest 알파벳 순서, `verify.py`). 남은 차이는 CI 환경뿐이라 다음 발생을
-        놓치면 안 된다: [[record:main-ci-red-before-the-roster-merge-2026-08-23]].
-
-        빌드는 **실패했을 때만** 한다(`assertEqual` 의 msg 는 늘 평가된다 — 그래서
-        `fail` 로 갈랐다). 통과하는 경로에 질의 두 번을 얹지 않기 위해서다."""
-        carried = next((n.get("_created") for n in (bundle.get("nodes") or [])
-                        if n.get("id") == "concept:relativity"), None)
-
-        def rows(store):
-            return store.run("MATCH (c:Concept) RETURN c.concept_id AS id, "
-                             "c.created AS created, c.owner_id AS owner")
-
-        return (f"\n  번들이 실은 _created = {carried!r}"
-                f"\n  A rows = {rows(self.a)}"
-                f"\n  B rows = {rows(self.b)}")
 
     def test_birth_takes_the_earliest_even_when_the_local_row_is_older(self):
         """min 규칙 — 수신측이 더 이른 출생을 갖고 있으면 그것을 지킨다(역방향)."""
