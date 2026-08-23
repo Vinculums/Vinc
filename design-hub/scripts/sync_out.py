@@ -41,11 +41,24 @@ MAP = [
     ("assets/logo/vinc-ring-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
     ("assets/logo/vinc-ring.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
+    # 이메일용 래스터. **메일 클라이언트는 SVG 를 못 받는다** — Gmail 은 `<svg>` 를
+    # 통째로 걷어내고 Outlook 데스크탑도 안 그린다. 그래서 이 한 자리만 PNG 다.
+    # 소스는 흰 램프 마크(이메일 셸 배경이 #0A0B10 로 어둡다), 2배 크기(46x64).
+    # 다시 뽑는 법: npx @resvg/resvg-js-cli --fit-height 64 <svg> <png>
+    # (resvg 는 `tauri icon` 이 쓰는 엔진과 같아 앱 아이콘과 렌더가 어긋나지 않는다)
+    ("assets/logo/vinc-ring-white-email@2x.png",
+     "../../Vinc-homepage/site/assets/vinc-mark-email@2x.png"),
 ]
 
 #: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
 #: 판정할 수 있게 한다 — 교차 리포 체크아웃(=새 PAT 시크릿)이 필요 없다.
 #: 각인 줄 자체는 해시 계산에서 빠진다(자기 참조 불가).
+#: 각인을 **못 다는** 확장자. 주석 문법이 없으므로 바이트 그대로 나르고
+#: `--check` 도 바이트로 대조한다. 사본을 손으로 고쳤는지는 그것으로 충분히
+#: 갈린다 — 각인은 "본문은 같은데 각인만 없는" 중간 상태를 가리려고 있는 것이고,
+#: 바이너리에는 그런 상태가 없다.
+_BINARY_SUFFIXES = {".png", ".ico", ".icns", ".jpg", ".jpeg", ".webp", ".woff2"}
+
 STAMP_KEY = "sync-sha256"
 #: ⚠ SVG 는 `//` 도 `/* */` 도 못 받는다(XML 이다). 문서 요소 **앞**의 `<!-- -->` 는
 #: 적법하므로 SVG 각인은 그 형태로 1행에 둔다.
@@ -126,6 +139,14 @@ def _check() -> int:
             print(f"[MISSING·소비] {dst} — sync_out.py --apply 필요")
             bad += 1
             continue
+        if dst.suffix.lower() in _BINARY_SUFFIXES:
+            if src.read_bytes() == dst.read_bytes():
+                print(f"[OK·바이너리] {dst_rel}")
+            else:
+                print(f"[DRIFT] {dst} 가 허브의 {src_rel} 와 바이트가 다르다 — "
+                      f"자산을 다시 뽑고 동기화하지 않았다")
+                bad += 1
+            continue
         a = src.read_text(encoding="utf-8")
         b = dst.read_text(encoding="utf-8")
         stamped = _STAMP_RE.search(b) is not None
@@ -166,9 +187,13 @@ def main() -> int:
             continue
         if a.apply:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            text = _stamp(src.read_text(encoding="utf-8"), dst.suffix)
-            dst.write_text(text, encoding="utf-8", newline="")
-            print(f"[COPIED+각인] {src_rel} → {dst}")
+            if dst.suffix.lower() in _BINARY_SUFFIXES:
+                shutil.copyfile(src, dst)
+                print(f"[COPIED·바이너리] {src_rel} → {dst}")
+            else:
+                text = _stamp(src.read_text(encoding="utf-8"), dst.suffix)
+                dst.write_text(text, encoding="utf-8", newline="")
+                print(f"[COPIED+각인] {src_rel} → {dst}")
         else:
             print(f"[DRY-RUN] {src_rel} → {dst}")
     if not a.apply:
