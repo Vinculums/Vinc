@@ -1,42 +1,57 @@
 # The Vinc logo
 
-**Final, 2026-07-19, made by the owner.** From a reference photograph (a black inverted
-triangle over grain) that the owner vectorized and edited: a **two-stroke calligraphic V**,
-a long sweep on the left including the curve at the bottom vertex, and a short blade on the
-right. There is no connecting line across the top and it is not a closed triangle. Each
-stroke carries a **tip indigo gradient**: the upper 62% is ink, and indigo `#32355C` seeps in
-faintly towards the lower end.
+**Hourglass, stacked slabs. Final 2026-08-23, replacing the two-stroke V of 2026-07-19.**
+
+Ten slabs, five narrowing down and five narrowing up, mirrored around a sphere at the waist.
+Each slab is a disc with thickness: a trapezoid side, an elliptical top face and a rim
+crescent underneath. The rim gradient alternates direction slab by slab, which is what gives
+the stack its turn. No black anywhere, only the brand ramp.
 
 ## Files
 
 | File | Use |
 |---|---|
-| `vinc-mark.svg` | master (light), ink `#161618` to tip indigo `#32355C` gradient |
-| `vinc-mark-dark.svg` | for dark backgrounds, ivory `#EAE5DD` to tip periwinkle `#BDBFE3` |
-| `vinc-mark-mono.svg` | single colour `currentColor`, for inline UI, the favicon and small sizes where a gradient means nothing |
+| `vinc-hourglass-slab-indigo.svg` | **default mark**, transparent, indigo ramp `#4A4F8C → #32355C` with periwinkle rims |
+| `vinc-hourglass-slab-white.svg` | transparent, white faces `#FFFFFF → #C9CDDD` with indigo rims, for dark grounds |
+| `vinc-hourglass-slab.svg` | plate, 40px rounded square, **application icon** |
+| `vinc-hourglass-slab-circle.svg` | plate, circular, **favicon and avatar** |
 
-The viewBox is tight to the art bounding box (`1.9 0 66.4 63`). The gradients are vertical in
-objectBoundingBox per stroke, applied the same way as the Figma original.
+The two mark variants use `viewBox="114 34 508 1008"`, tight to the art. The two plates are
+`viewBox="0 0 180 180"` and carry the indigo ground, its radial ramp and a single screen-blend
+sheen across the upper left corner.
 
 ## Specification
 
+- **Size ladder**: 160 · 96 · 64 · 40 · 24 · 16 for the mark. Plates read as squares at 96
+  and 64, and as circles at 40 and 24.
 - **Clear space**: at least 25% of the mark's width on every side.
-- **Small sizes (24px and under)**: the strokes are thin and the gradient does not read, so
-  use `vinc-mark-mono.svg`. For the favicon, check a real-size render and add a
-  stroke-reinforced variant if it turns out to be needed.
-- **Colour**: only the three defined variants, light, dark and mono. No arbitrary colours, no
-  vivid primaries, no strong gradients.
-- **Forbidden**: rotation, distorting the aspect ratio, adding an outline, restoring the top
-  connecting line, moving the strokes apart.
+- **Small sizes**: below 24px the slab separations close up. Use a plate, not the bare mark.
+- **Colour**: the four defined variants only. The ramps are the brand's; do not recolour, do
+  not add a fifth variant without changing this file.
+- **Forbidden**: rotation, distorting the aspect ratio, changing the slab count, removing the
+  waist sphere, flattening the rims away.
 
 ## Wordmark
 
-Undecided. Add the mark plus "Vinc" lockup outline here once the brand font is settled.
+None. The 2026-08-23 decision is mark only. The logo motion ends on the mark, not on a
+lockup. Add a lockup here only if that decision changes.
 
-## Source of truth
+## Source of truth, and how it reaches anything
 
-- **Canonical in Figma**: file `WUXLeDDNBqih2KTZOz9wCX`, the `Homepage (Design system)` page,
-  the `Logo` frame (78:164, the owner's final), the `Logo / Mark` component (91:164) and
-  `Logo · dark sample` (91:169).
-- These SVGs are the Figma vector paths extracted as they are. Change the shape in Figma and
-  re-extract here.
+**Canonical**: the Claude Design project `Vinc 홈페이지`
+(`444928b4-67cb-4af6-91cd-acfb15595487`), file `Vinc Logo.dc.html` and the four SVGs under
+`logo/`. These files are those vectors as they are. Change the shape there and re-extract
+here. This replaces the Figma canon the two-stroke V used.
+
+⚠ **The old logo had exactly this README and it still reached nobody.** `sync_out.py` carried
+only `tokens.css`, so every consumer held its own inline copy: 22 across 19 site files, 14
+email templates, 2 app files, and a base64 PNG plus an inline SVG string compiled into
+`vinc_mcp/http_server.py`. Replacing the mark meant editing 44 places by hand, and the
+canon comment in the MCP server still pointed at `Vinc-design`, decommissioned on 2026-08-08.
+
+So the rule now is not "copy carefully". It is **do not inline the logo**. Consumers reference
+the asset by URL, `sync_out.py` copies the files, and `--check` fails when a copy drifts.
+The paths are in that script's `MAP`. Anything that inlines the mark again puts itself outside
+the only mechanism that keeps it current.
+
+Rationale: `record:a-logo-ssot-that-reaches-nobody`.
