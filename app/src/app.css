@@ -355,7 +355,15 @@ body {
 .tb-title { display: flex; align-items: center; gap: .45rem; padding-left: .75rem; font-size: .72rem; font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
 .tb-title .brand-logo {
   width: .95rem; height: .95rem; flex: 0 0 auto;
-  color: hsl(var(--foreground));   /* 본체 = 전경색, 팁 = --logo-tip 그라디언트 */
+  /* 모노 마크를 mask 로 깔고 색은 여기서 준다 — 구 마크가 currentColor 를 상속받던
+     것과 같은 동작이고, 파일은 바깥(public/)에 남는다. `<img>` 로 바꾸지 말 것:
+     currentColor 가 img 경계를 못 넘어 검정이 된다.
+     vite 가 CSS url() 에도 base 를 붙인다(실측: 웹 빌드에서 <base>/vinc-mark-mono.svg
+     로 고쳐 쓴다). 그래서 절대경로 그대로 두면 셸·웹 두 빌드가 각자 맞게 나간다. */
+  color: hsl(var(--foreground));
+  background-color: currentColor;
+  -webkit-mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
+  mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
 }
 .tb-controls { display: flex; }
 .tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
