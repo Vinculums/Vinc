@@ -64,6 +64,14 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ],
+        "enforcement_note": "the only role whose denylist is a real wall: without Bash and the edit tools it returns lines and cannot commit them, which is exactly its contract with the copy owner.",
         "gates": [],
         "mission": "Writes Korean product copy one surface at a time and returns it as lines for review. Writes Korean, never a translation of the English.",
         "never": [
@@ -320,6 +328,13 @@
       ],
       "props": {
         "baseline_note": "measure the baseline on origin/main in the same worktree; a suite reporting 135 skips instead of 4 was run by the wrong interpreter and every comparison from it is void.",
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
+        "enforcement_note": "the denylist removes the edit tools but Bash stays, because the gates are shell commands. So no-edit is a bar here, not a wall.",
         "gates": [
           "scripts/gate_forbidden.py",
           "scripts/gate_graph_refs.py",
@@ -419,6 +434,12 @@
       ],
       "props": {
         "delegate_rung": "strongest",
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
+        "enforcement_note": "the denylist stops file edits, not state changes: az and gh run through Bash, which this role needs to diagnose. Every state changing command stays a person's act by discipline, not by permission.",
         "gates": [],
         "mission": "Watches the three deployments, diagnoses incidents and proposes the recovery. Proposes only: every command that changes state is run by a person, one step at a time.",
         "never": [
@@ -467,13 +488,19 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Reads the release plan, assigns one package per agent at the rung its failure cost deserves, runs the packages in waves, reports to a person and stops. The only role that sees all three repositories at once.",
         "never": [
           "edit code",
           "merge a pull request",
           "move a package down a rung",
-          "start the next wave before a person answers"
+          "start the next wave before a person answers",
+          "advise or operate a merge to main without first reading the run list for a run in flight"
         ],
         "paths": [
           "read only across all three"
@@ -483,6 +510,7 @@
           "wave approval",
           "operator steps a plan marks as person operated"
         ],
+        "pre_merge_check": "gh run list --repo <org>/<repo> --branch main --limit 2. A queued or in-progress run there is the PREVIOUS merge's verification, and ci declares concurrency cancel-in-progress, so merging now kills it. Wait, or say out loud that the sample is being spent. Never assert that nothing is in flight without running this.",
         "reads": [
           "d09088bc819562c76",
           "d8fa9efa40f1a62c7",
@@ -564,6 +592,11 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Writes research and plan documents from measurement, and assembles the material a decision needs including the conflicts. Does not take the decision.",
         "never": [
@@ -608,6 +641,12 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
         "gates": [],
         "mission": "Ticks every row of a plan or audit table against the diff and names the rows with no matching change. States facts about coverage, never opinions about quality.",
         "never": [
@@ -641,6 +680,12 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
         "gates": [],
         "mission": "Reads a diff adversarially for correctness and for over-engineering, and says what should be deleted or is wrong. Does not edit.",
         "never": [
@@ -679,6 +724,11 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Re-audits tenancy, authentication, the pack path and edge stamping, grades what it finds, and hands fixes to development as packages rather than fixing in place.",
         "never": [

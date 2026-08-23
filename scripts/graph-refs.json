@@ -106,6 +106,7 @@
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",
     "record:a-new-assertion-type-is-what-makes-a-wrong-order-safe",
     "record:a-webhook-that-logs-nothing-fails-the-same-way-every-time",
+    "record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does",
     "record:an-invite-link-pointed-at-a-page-that-never-existed",
     "record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns",
     "record:bridge-layout-clump-2026-08-22",
@@ -143,6 +144,7 @@
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",
     "record:what-the-spec-permits-is-not-what-the-peer-accepts",
-    "record:worker-heartbeat-separates-backlog-from-death"
+    "record:worker-heartbeat-separates-backlog-from-death",
+    "record:writing-a-trap-down-does-not-stop-it-a-check-does"
   ]
 }
