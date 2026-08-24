@@ -282,7 +282,8 @@ def test_tombstone_plan_scopes_owner_and_synced_labels():
     # 동기화 라벨만. 목록은 _SYNC_TYPES 에서 파생하므로 파라미터로 실린다 —
     # 라벨을 손으로 두 벌 적으면 어긋난다(v12 Decision 이 그 자리였다).
     assert "t.label IN $labels" in p.cypher
-    assert p.params["labels"] == ["Concept", "Episode", "Decision"]
+    # Record 는 2026-08-24 에 편입됐다 — 목록이 파생이라 여기서 자동으로 늘었다.
+    assert p.params["labels"] == ["Concept", "Episode", "Decision", "Record"]
     assert "sync_seq >" not in p.cypher                       # since=0 = 전량
     p1 = sync._tombstones_delta_plan(owner="user:a", since=7)
     assert "t.sync_seq > $since" in p1.cypher and p1.params["since"] == 7

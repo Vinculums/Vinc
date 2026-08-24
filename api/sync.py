@@ -45,6 +45,11 @@ _SEL_KEY = "selected_domains"
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
+    # Record — 라이브 실측 277건으로 **노드 종류 중 최대**인데 여기 없어서 기기와
+    # 계정 사이를 통째로 못 오갔다. Bridge·Entity 제외는 아래 스코프 결정이지만
+    # Record 는 그 문장에도 없었다: 빠진 줄 아무도 몰랐다는 뜻이다.
+    # 열은 Concept 과 같다(content_time 은 v7 이 Concept·Record 둘 다에 붙였다).
+    "Record": ("title", "domain", "tags", "props", "content_time"),
     # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
     # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
     # (오류도 경고도 없이 — 다른 기기에서 결정이 통째로 사라진 것처럼 보인다).
@@ -53,7 +58,8 @@ SYNC_FIELDS: dict[str, tuple[str, ...]] = {
 # fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 제외는 이제 왕복 결함이
 # 아니라 **스코프 결정**(F1 포팅으로 Entity 필드는 왕복 가능; Bridge 구조 필드
 # source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제.
-_SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision"}
+_SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision",
+               "record": "Record"}
 #: 노드 툼스톤 전파 대상 라벨 — 동기화 라벨과 같아야 한다(따로 적으면 어긋난다).
 _SYNC_LABELS = tuple(_SYNC_TYPES.values())
 #: 라벨 → PK 열. fragment 의 타입 표에서 파생한다(중복 정의 회피).
@@ -322,6 +328,25 @@ def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Qu
     return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
 
 
+def _records_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+    """선택 도메인 안에서 `sync_seq > since` 인 Record. Concept 플랜과 동형이고
+    시간 두 열도 같다 — Record 는 `created` 와 `content_time` 을 **둘 다** 갖는다
+    (스키마 v7 이 Concept 과 함께 붙였다)."""
+    where = ["r.owner_id = $owner", "r.domain IN $domains"]
+    params: dict = {"owner": owner, "domains": domains}
+    if since > 0:
+        where.append("r.sync_seq > $since")
+        params["since"] = since
+    cypher = (
+        f"MATCH (r:Record) WHERE {' AND '.join(where)} "
+        "RETURN r.record_id AS id, r.title AS title, r.domain AS domain, "
+        "r.tags AS tags, r.props AS props, r.updated_at AS updated_at, "
+        "r.created AS created, r.content_time AS content_time, "
+        "r.rev AS rev, r.sync_seq AS sync_seq ORDER BY r.sync_seq"
+    )
+    return q.QueryPlan("sync_records", cypher, params, note="owner+domain scoped delta")
+
+
 def _node_from_concept(r: dict) -> dict:
     # sync 는 **raw props** 만 나른다(topic/one_liner 는 fragment 왕복 불가라 폴딩 안 함).
     props = {}
@@ -351,6 +376,22 @@ def _node_from_decision(r: dict) -> dict:
     return {"id": r["id"], "type": "decision", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
+            "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
+            "_seq": int(r.get("sync_seq") or 0)}
+
+
+def _node_from_record(r: dict) -> dict:
+    props = {}
+    if r.get("props"):
+        try:
+            props = json.loads(r["props"]) or {}
+        except (TypeError, ValueError):
+            props = {}
+    return {"id": r["id"], "type": "record", "title": r.get("title") or r["id"],
+            "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
+            "props": props,
+            "content_time": r.get("content_time") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
@@ -389,13 +430,17 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                       cfg, store=store)
     d_res = q.execute(_decisions_delta_plan(owner=owner, domains=sel, since=since),
                       cfg, store=store)
+    r_res = q.execute(_records_delta_plan(owner=owner, domains=sel, since=since),
+                      cfg, store=store)
 
     c_rows = c_res.get("rows", [])
     e_rows = e_res.get("rows", []) if e_res.get("executed") else []
     d_rows = d_res.get("rows", []) if d_res.get("executed") else []
+    r_rows = r_res.get("rows", []) if r_res.get("executed") else []
     nodes = ([_node_from_concept(r) for r in c_rows]
              + [_node_from_episode(r) for r in e_rows]
-             + [_node_from_decision(r) for r in d_rows])
+             + [_node_from_decision(r) for r in d_rows]
+             + [_node_from_record(r) for r in r_rows])
 
     # 엣지: **양끝이 이번 번들 안에 있는 것만**. fragment 는 같은 payload 의 노드로만
     # (from,to) 타입을 해석하므로(fragment.py `_node_types`), 끝점이 빠진 엣지는
@@ -414,9 +459,16 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                             cfg, store=store)
             if res.get("executed"):
                 extra_rows.extend(res.get("rows", []))
+        # Record 엣지는 타입이 라벨이 아니라 `r.type` 에 있다(_record_edges_plan).
+        # 이미 fragment 타입이므로 아래 역맵을 태우지 않고 `ftype` 으로 바로 들어간다.
+        for pair in _RECORD_EDGE_PAIRS:
+            res = q.execute(_record_edges_plan(sorted(ids), owner=owner, pair=pair),
+                            cfg, store=store)
+            if res.get("executed"):
+                extra_rows.extend(res.get("rows", []))
         seen = set()
         for r in [*rel_res.get("rows", []), *extra_rows]:
-            ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")
+            ftype = r.get("ftype") or _REL_TO_FRAGMENT.get(r.get("rel") or "")
             tgt = r.get("target")
             if not ftype or not tgt or tgt not in ids or r["id"] not in ids:
                 continue
@@ -475,6 +527,37 @@ _EXTRA_EDGE_PAIRS: tuple[tuple[str, str, str, str], ...] = (
     ("Decision", "decision_id", "Decision", "decision_id"),
     ("Concept", "concept_id", "Decision", "decision_id"),
 )
+
+
+#: Record 참여 엣지는 위 표에 넣을 수 없다. `_extra_edges_plan` 은 `label(r)` 을
+#: 뽑아 `_REL_TO_FRAGMENT` 로 되돌리는데, Record 엣지의 라벨은 언제나
+#: `ATTACHES_TO` 이고 **원래 관계 타입은 라벨이 아니라 `r.type` 에 실려 있다**
+#: (fragment `_merge_edge` 의 Record 분기). 그 표로 보내면 네 갈래가 전부
+#: ATTACHES_TO 한 이름으로 뭉개져 수신측에서 되살릴 수 없다. 그래서 전용 플랜이다.
+_RECORD_EDGE_PAIRS: tuple[tuple[str, str], ...] = (
+    ("Concept", "concept_id"),
+    ("Decision", "decision_id"),
+)
+
+
+def _record_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
+    """번들 안의 Record→(Concept|Decision) ATTACHES_TO 엣지.
+
+    `label(r)` 대신 **`r.type`** 을 fragment 타입으로 돌려준다 — 저장할 때 원 타입을
+    거기 보존했으므로 복원도 거기서 한다. 라벨을 명시(`[r:ATTACHES_TO]`)하는 이유는
+    `_extra_edges_plan` 처럼 무타입으로 열면 `r.type` 열이 없는 rel 테이블까지 걸려
+    Binder 가 죽기 때문이다."""
+    dl, dp = pair
+    cypher = (
+        f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
+        f"WHERE a.record_id IN $ids AND b.{dp} IN $ids "
+        "AND a.owner_id = $owner AND b.owner_id = $owner "
+        f"RETURN a.record_id AS id, r.type AS ftype, b.{dp} AS target, "
+        "r.created AS edge_created"
+    )
+    return q.QueryPlan(f"sync_edges_Record_{dl}", cypher,
+                       {"ids": pkns.keys(owner, ids), "owner": owner},
+                       note=f"Record->{dl} ATTACHES_TO edges for sync bundle")
 
 
 def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
@@ -569,7 +652,7 @@ def _local_snapshot(store, label: str, pk: str, nid: str,
 
 #: 출생(`created`) 열을 가진 동기화 라벨. Episode 에는 그 열이 **없다**(2026-08-17
 #: 실엔진 확인) — 넣으면 아래 문장이 Binder 로 죽는다.
-_BIRTH_LABELS = ("Concept", "Decision")
+_BIRTH_LABELS = ("Concept", "Decision", "Record")
 
 
 def _reconcile_birth(store, label: str, pk: str, nid: str, born: str, owner: str) -> None:
