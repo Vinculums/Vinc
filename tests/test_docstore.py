@@ -228,6 +228,17 @@ class PureChunkingTests(unittest.TestCase):
         # 긴 문단 아래 구분선이 그 문단을 통째로 개념으로 만들지 않는다
         self.assertEqual(ds.extract_concepts("가" * 200 + "\n-----\n"), [])
 
+    def test_extract_concepts_rejects_structure_and_clauses(self):
+        """구조어·절 문장·6단어 초과 헤딩은 후보가 아니다 — 캐논형 문서 실측에서
+        후보 11/11 이 전부 이런 헤딩이었다(근거: [[d6064cc741e9e121f]] §2)."""
+        text = ("# 문서\n\n## Method\n측정 방법.\n\n## Provenance\n출처 표.\n\n"
+                "## Overall verdict\n판정 요약.\n\n"
+                "## What is on the table precisely\n절 문장이다.\n\n"
+                "## It reintroduces both defects that were just removed\n일곱 단어 초과.\n\n"
+                "## Optimistic concurrency control\n낙관적 동시성 제어.\n")
+        got = [c["title"] for c in ds.extract_concepts(text)]
+        self.assertEqual(got, ["Optimistic concurrency control"])
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocstoreE2E(unittest.TestCase):
@@ -538,15 +549,24 @@ class DocstoreE2E(unittest.TestCase):
         prop = ds.extract_doc(self.store, did, owner="user:a")
         self.assertEqual([c["title"] for c in prop["candidates"]], ["quantum"])
         self.assertNotIn("applied", prop)
-        # 반영(apply=True) — proposed 개념 생성 + doc 재링크
+        # 주제 없는 문서(프론트매터 domain 도, 파생 주제도 없음)는 반영 거부 —
+        # 무주제 개념 양산 금지(근거: [[d6064cc741e9e121f]] §2).
+        deny = ds.extract_doc(self.store, did, owner="user:a", apply=True)
+        self.assertFalse(deny["executed"])
+        self.assertIn("no topic", deny["error"])
+        # 프론트매터로 주제를 밝히면 반영되고, 개념이 그 주제를 물려받는다.
+        ds.put_doc(self.store, owner="user:a", doc_id=did, title="노트",
+                   text="---\ndomain: physics\n---\n" + text)
         ap = ds.extract_doc(self.store, did, owner="user:a", apply=True)
         self.assertEqual(ap["applied"]["created"], 1)
+        self.assertEqual(ap["domain"], "physics")
         self.assertGreater(ap["mentions"], 0)
         row = self.store.run("MATCH (c:Concept) WHERE c.concept_id=$i "
-                             "RETURN c.status AS s, c.one_liner AS ol",
+                             "RETURN c.status AS s, c.one_liner AS ol, c.domain AS d",
                              {"i": _pk("concept:quantum")})
         self.assertEqual(row[0]["s"], "proposed")
         self.assertEqual(row[0]["ol"], "얽힘의 핵심 정리.")
+        self.assertEqual(row[0]["d"], "physics")
         # 재반영 = matched(덮어쓰기 금지·멱등)
         ap2 = ds.extract_doc(self.store, did, owner="user:a", apply=True)
         self.assertEqual(ap2["applied"], {"created": 0, "matched": 1})
@@ -564,6 +584,19 @@ class DocstoreE2E(unittest.TestCase):
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
 
+    def test_domains_census_counts_untopiced(self):
+        """무주제 노드는 "(none)" 행 — 걸러 내면 부재가 비존재로 읽혀 센서스가
+        자기가 못 세는 것을 숨긴다(근거: [[d6064cc741e9e121f]] §1.1)."""
+        from api import query as q
+        self.store.run("MERGE (c:Concept {concept_id: $i}) SET c.owner_id = 'user:a', "
+                       "c.title = 'untopiced', c.domain = ''",
+                       {"i": _pk("concept:untopiced")})
+        res = q.domains(owner="user:a", store=self.store)
+        self.assertTrue(res["executed"])
+        row = next((r for r in res["rows"] if r["domain"] == "(none)"), None)
+        self.assertIsNotNone(row, "무주제 행이 센서스에 없다")
+        self.assertGreaterEqual(row["concepts"], 1)
+
     def test_extracted_concept_enters_the_next_delta(self):
         """추출로 태어난 개념이 **다음 delta 에 실리는가**(2026-08-17 실측 결함).
 
@@ -573,7 +606,8 @@ class DocstoreE2E(unittest.TestCase):
         전량 push(`since=0`)는 술어 자체가 없어 통과하니, 회귀를 잡으려면 커서를
         올린 **뒤**를 봐야 한다 — 그래서 이 테스트는 두 번 뽑는다."""
         from api import sync
-        text = "# 노트\n\n## entropy\n\n무질서의 척도.\n\n본문에서 entropy 를 또 다룬다.\n"
+        text = ("---\ndomain: physics\n---\n"
+                "# 노트\n\n## entropy\n\n무질서의 척도.\n\n본문에서 entropy 를 또 다룬다.\n")
         did = ds.put_doc(self.store, owner="user:a", text=text, title="노트")["doc_id"]
         # 1회차 전량 push — 커서를 올려 delta 국면으로 넘긴다.
         first = sync.export_delta(owner="user:a", since=0, domains=[""], store=self.store)
@@ -590,8 +624,8 @@ class DocstoreE2E(unittest.TestCase):
         # 출생 시각은 스탬프와 같은 HLC 다 — 기기 간 화해가 사전식 비교라 형식이 계약.
         self.assertEqual(row["cr"], row["ua"])
 
-        # 도메인은 ''(추출 개념의 기본) — 선택 도메인에 그대로 실어 뽑는다.
-        got = sync.export_delta(owner="user:a", since=cursor, domains=[""],
+        # 추출 개념은 문서의 주제를 물려받는다 — 그 도메인으로 실어 뽑는다.
+        got = sync.export_delta(owner="user:a", since=cursor, domains=["physics"],
                                 store=self.store)
         self.assertIn("concept:entropy", [n["id"] for n in got["nodes"]])
 

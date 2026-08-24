@@ -216,12 +216,14 @@ class ExtractCandidates(unittest.TestCase):
     def test_절_번호와_글머리를_벗긴다(self):
         text = ("# Doc\n\n## 1. The decisions\nFirst.\n\n"
                 "## 3.1 Two id formulas\nSecond.\n\n"
-                "## A) Overview\nThird.\n")
+                # ⚠ "Overview" 였다 — 구조어 필터(_concept_shaped)가 이제 걸러 낸다.
+                # 이 테스트의 관심은 글머리(`A)`) 벗기기이므로 비구조어로 바꾼다.
+                "## A) Key invariants\nThird.\n")
         got = ds.extract_concepts(text)
         self.assertEqual([c["title"] for c in got],
-                         ["The decisions", "Two id formulas", "Overview"])
+                         ["The decisions", "Two id formulas", "Key invariants"])
         self.assertEqual([c["slug"] for c in got],
-                         ["the-decisions", "two-id-formulas", "overview"],
+                         ["the-decisions", "two-id-formulas", "key-invariants"],
                          "slug 은 정리된 제목에서 나온다 — 절 번호는 문서 안에서만 뜻이 있다")
 
     def test_숫자로_시작하는_진짜_제목은_지킨다(self):

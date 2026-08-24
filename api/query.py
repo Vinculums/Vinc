@@ -328,18 +328,20 @@ def domain_counts_plan(*, owner: str | None = None) -> QueryPlan:
     담는다 — 합산·정렬은 :func:`domains`(순수 후처리)가 맡는다.
 
     단일 Cypher(UNION ALL) — Kùzu 0.11.3 실측 지원 확인(2026-07): 서로 다른 라벨의
-    MATCH 절을 UNION ALL 로 이어도 파라미터 공유·리터럴 컬럼이 그대로 동작한다."""
+    MATCH 절을 UNION ALL 로 이어도 파라미터 공유·리터럴 컬럼이 그대로 동작한다.
+
+    무주제 노드도 **센다** — WHERE 는 owner 스코프만 건다. domain 이 NULL·'' 인
+    행은 :func:`domains` 가 "(none)" 한 줄로 합친다. 여기서 걸러 내면 무주제는
+    0이 아니라 부재로 읽혀, 센서스가 자기가 못 세는 것을 숨긴다.
+    근거: [[d6064cc741e9e121f]] §1.1"""
     if owner:
-        where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
-        where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
-        where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
-        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
+        where_e = "WHERE e.owner_id = $owner"
+        where_c = "WHERE c.owner_id = $owner"
+        where_r = "WHERE r.owner_id = $owner"
+        where_d = "WHERE d.owner_id = $owner"
         params: dict = {"owner": owner}
     else:
-        where_e = "WHERE e.domain IS NOT NULL"
-        where_c = "WHERE c.domain IS NOT NULL"
-        where_r = "WHERE r.domain IS NOT NULL"
-        where_d = "WHERE d.domain IS NOT NULL"
+        where_e = where_c = where_r = where_d = ""
         params = {}
     cypher = (
         f"MATCH (e:Episode) {where_e} "
@@ -410,15 +412,16 @@ def domains(*, owner: str | None = None, cfg=None, store=None,
             debug: bool = False) -> dict:
     """도메인 목록(C2) — Episode·Concept·Record·Decision 4종을 모두 세어 `{domain,
     episodes, concepts, records, decisions, total}` 로 병합, total 내림차순 정렬. `episodes` 필드는
-    하위호환으로 유지(값 = Episode 카운트만)."""
+    하위호환으로 유지(값 = Episode 카운트만).
+
+    무주제 노드는 "(none)" 행으로 나온다 — 버리면 부재가 비존재로 읽힌다.
+    주제 상한 검사(:func:`domain_names`)는 이 행을 세지 않는다(별도 플랜)."""
     res = execute(domain_counts_plan(owner=owner), cfg, store=store, debug=debug)
     if not res.get("executed"):
         return res
     agg: dict[str, dict] = {}
     for row in res.get("rows", []):
-        dom = row.get("domain")
-        if not dom:
-            continue
+        dom = row.get("domain") or "(none)"
         # v12 — `decisions` 를 버킷에 넣지 않으면 아래 `if kind in bucket` 이 그 행을
         # **조용히 버린다**(플랜은 세는데 응답에는 안 나온다).
         bucket = agg.setdefault(dom, {"domain": dom, "episodes": 0, "concepts": 0,

@@ -945,9 +945,12 @@ class DocRouteE2E(unittest.TestCase):
             code, got2 = _req(base, f"/doc?id={did}&owner=user:a")
             self.assertEqual(got2["text"], "짧아짐")
             # D45-V — 추출 제안(apply 없음) → 반영 → 노드 클릭 상세(정본 발췌)
+            # 프론트매터 domain — 주제 없는 문서는 추출 반영이 거부된다(2026-08-24,
+            # 근거: [[d6064cc741e9e121f]] §2). 반영 개념은 이 주제를 물려받는다.
             code, put3 = _req(base, "/doc/put", method="POST", body={
                 "owner": "user:a", "id": did, "title": "t",
-                "text": "# t\n\n## 개념하나\n\n한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
+                "text": "---\ndomain: demo\n---\n# t\n\n## 개념하나\n\n"
+                        "한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
             self.assertEqual(code, 200)
             code, prop = _req(base, "/doc/extract", method="POST",
                               body={"id": did, "owner": "user:a"})
@@ -1002,15 +1005,12 @@ class DocRouteE2E(unittest.TestCase):
             self.assertTrue(rng["executed"])
             self.assertIn("ev1", {i["id"] for i in rng["items"]})
             # D69 — /nav-tree: 좌측 문서 트리(주제 → 문서 + 착지 노드).
-            # 추출로 만든 개념은 domain 이 비어 있다(귀속은 사용자 몫 — docstore).
-            # 그래서 주제를 붙이기 전까지 문서는 **미분류**다. 억지 배정하지 않는다.
+            # 추출 개념이 문서의 주제(demo)를 물려받으므로(2026-08-24) 문서는 더는
+            # 미분류가 아니다 — 곧장 그 주제 밑에 서고 착지 노드도 잡힌다.
             code, nav = _req(base, "/nav-tree?owner=user:a")
             self.assertEqual(code, 200)
             self.assertTrue(nav["executed"])
-            self.assertIn(did, {d["doc_id"] for d in nav["unfiled"]})
-            self.store.run("MATCH (c:Concept {concept_id:$i}) SET c.domain='d'",
-                           {"i": _pk("concept:개념하나")})
-            code, nav = _req(base, "/nav-tree?owner=user:a")
+            self.assertNotIn(did, {d["doc_id"] for d in nav["unfiled"]})
             landed = {d["node_id"] for g in nav["domains"] for d in g["docs"]}
             self.assertIn("concept:개념하나", landed)
             # owner 없이는 400(SEC-1 — 무소유 트리는 없다)

@@ -111,7 +111,7 @@ class TimeAxisE2E(unittest.TestCase):
         self.assertEqual(self._meta(did)["content_time"], "")
 
     def test_extract_propagates_content_time_without_overwriting(self):
-        text = "# 문서\n\n## 특수상대성\n\n광속은 불변이다.\n"
+        text = "---\ndomain: physics\n---\n# 문서\n\n## 특수상대성\n\n광속은 불변이다.\n"
         out = ds.put_doc(self.store, owner=self.OWNER, text=text, title="물리",
                          content_time="1905")
         ap = ds.extract_doc(self.store, out["doc_id"], owner=self.OWNER, apply=True)

@@ -327,6 +327,10 @@ def _patch_extract(monkeypatch):
                                          "title": "T", "origin": "", "content_time": ""})
     monkeypatch.setattr(docstore, "_relink_mentions", lambda *a, **k: 0)
     monkeypatch.setattr(docstore, "backfill_evidence", lambda *a, **k: {})
+    # apply 는 이제 주제 상속을 위해 본문을 읽는다 — 프론트매터로 주제를 준다.
+    monkeypatch.setattr(docstore, "get_doc",
+                        lambda *a, **k: {"executed": True,
+                                         "text": "---\ndomain: x/y\n---\n본문.\n"})
 
 
 @pytest.mark.parametrize("flag,prefix", [("on", PHYS), (None, "")])
