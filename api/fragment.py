@@ -166,6 +166,79 @@ def _warn_unkept_fields(node: dict, label: str, nid: str,
             f"the value was dropped, not stored")
 
 
+#: owner_id 열을 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙
+#: 승계. **쓰기(`_merge_node`)와 되읽기(`_stored_nodes`)가 같은 목록을 봐야 한다** —
+#: 갈라지면 되읽기가 0행을 만나고, 호출부는 "방금 쓴 것이 없다"로 읽는다.
+_OWNER_SCOPED_LABELS = ("Record", "Concept", "Episode", "Bridge", "Entity", "Decision")
+
+#: 되읽기 예산(직렬화 바이트). 요청 본문 상한이 응답까지 묶어 주지는 **않는다** —
+#: 필드 하나만 고쳐 보낸 노드도 되읽기는 **저장된 props 전량**을 싣기 때문에 응답이
+#: 요청보다 커질 수 있고, 허브는 단일 라이터 컨테이너다. 넘으면 자르되 자른 수를
+#: 필드로 밝힌다(조용히 자르지 않는다 — 이 항목이 고치려는 고장이 바로 그것이다).
+_READBACK_BUDGET = 256 * 1024
+
+
+def _stored_nodes(store, types: dict[str, str], owner: str) -> tuple[list[dict], int]:
+    """MERGE 직후의 **저장형**을 되읽는다(R3) — `(nodes, 잘린 수)`.
+
+    왜 개수가 아니라 형태인가: `merged 14 created, 4 matched, warnings 0` 은 참이면서
+    동시에 필드 하나가 사라진 것을 감췄다(2026-08-24 실측). 개수는 "행이 몇 개
+    움직였나"를 말할 뿐 **무엇이 들어갔는지**는 말하지 않는다. 호출부가 같은 턴에
+    보낸 것과 대조할 수 있으려면 저장형 자체가 응답에 있어야 한다.
+
+    열 목록은 `_KEPT_FIELDS` 하나를 쓴다. 경고가 "이 라벨은 이 필드를 안 보관한다"고
+    말하는 근거와 되읽기가 뽑는 열이 **같은 표**여야, 응답에서 어떤 필드가 안 보이는
+    것이 곧 "그 종류엔 그 열이 없다"는 사실이 된다.
+
+    `Domain` 은 제외한다 — 열이 `name` 하나뿐이라 저장형이 곧 id 자신이다.
+
+    되읽기는 **증강**이다. 여기서 나는 실패가 쓰기 결과를 깨면 안 된다(쓰기는 이미
+    커밋됐다). 그래서 라벨 단위로 삼키고 넘어간다.
+
+    엣지는 아직 안 싣는다: 관계 테이블 9종에 걸쳐 열이 다르고, 노드에서와 달리
+    엣지 필드가 조용히 사라진 실측이 아직 없다. 재는 것이 먼저다."""
+    from .query import _props_to_obj      # 국소 사용 — 쓰기 경로를 읽기 모듈에 매달지 않는다
+    groups: dict[tuple[str, str], list[str]] = {}
+    for nid, ntype in types.items():
+        label, pk = (_ENTITY_LABEL, _ENTITY_ID) if _is_open(ntype) else _NODE_MAP[ntype]
+        if not _KEPT_FIELDS.get(label):
+            continue
+        groups.setdefault((label, pk), []).append(nid)
+    out: list[dict] = []
+    dropped = 0
+    budget = _READBACK_BUDGET
+    for (label, pk), ids in groups.items():
+        cols = sorted(_KEPT_FIELDS[label])
+        scoped = label in _OWNER_SCOPED_LABELS
+        # 물리 키 → 논리 id 되돌림표. 응답의 id 는 호출부가 보낸 그대로여야 한다.
+        keys = {(_key(owner, i) if scoped else i): i for i in ids}
+        proj = "".join(f", n.{c} AS {c}" for c in cols)
+        try:
+            rows = store.run(
+                f"MATCH (n:{label}) WHERE n.{pk} IN $ids"
+                + (" AND n.owner_id = $owner" if scoped else "")
+                + f" RETURN n.{pk} AS _k{proj}",
+                {"ids": list(keys), "owner": owner})
+        except Exception:
+            continue
+        for r in rows:
+            nid = keys.get(r.get("_k") or "")
+            if nid is None:
+                continue
+            node: dict = {"id": nid, "kind": types[nid]}
+            for c in cols:
+                v = r.get(c)
+                node[c] = (_props_to_obj(v) if c == "props"
+                           else list(v) if isinstance(v, list) else v or "")
+            size = len(json.dumps(node, ensure_ascii=False, default=str))
+            if size > budget:
+                dropped += 1
+                continue
+            budget -= size
+            out.append(node)
+    return out, dropped
+
+
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 conflicts: list[str] | None = None) -> str | None:
@@ -222,8 +295,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
     _warn_unkept_fields(node, label, nid, warnings)
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
-    owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",
-                             "Decision")
+    owner_scoped = label in _OWNER_SCOPED_LABELS
     # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. **owner-스코프 라벨만**
     # 합성한다: `Domain` 은 열이 `name` 하나뿐이라 소유를 아예 담지 않고 전역 공유가
     # 성립하며(engines/domain_hierarchy 의 소유 모델), 그래서 마이그레이션 대상 라벨
@@ -906,11 +978,12 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
 
 def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
-                   max_domains: int | None = None) -> dict:
+                   max_domains: int | None = None,
+                   read_back: bool = False) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
-    [id_conflicts:[…]]}``. ``id_conflicts`` 는 **남이 이미 가진 id** 라 영영 쓸 수
+    [id_conflicts:[…]], [stored:[…]], [stored_truncated:N]}``. ``id_conflicts`` 는 **남이 이미 가진 id** 라 영영 쓸 수
     없는 것들이다 — 재시도가 고치지 못하는 유일한 스킵이라 따로 낸다.
 
     ``themes``(ThemeStore, 선택): 개방층 타입의 어휘 편입(D11-R2 §3)에 쓴다 —
@@ -924,7 +997,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     ``max_domains``(선택): 무료 등급 주제 개수 상한(AP-1 §3.3). **기본 None = 무제한**
     이라는 점이 설계의 핵심이다 — sync 복제·로컬 경로가 아무 코드 변경 없이 자동
     면제되고, 위험이 "면제를 잊음"(상한 초과 사용자의 복제 파손)에서 "적용을
-    잊음"(상한이 안 걸림)으로 뒤집힌다. 뒤쪽이 훨씬 싼 실패다."""
+    잊음"(상한이 안 걸림)으로 뒤집힌다. 뒤쪽이 훨씬 싼 실패다.
+
+    ``read_back``(선택): 응답에 ``stored`` 를 싣는다 — MERGE 직후 되읽은 **저장형**
+    노드 목록(`_stored_nodes`). **ingest 라우트만 켠다**(`themes` 와 같은 이유로
+    호출부별 분기다): sync 복제·팩 가져오기는 수백 노드를 한 번에 밀어넣는데, 거기서
+    저장형 전량을 되돌리면 응답이 요청보다 커지고 아무도 그것을 읽지 않는다. 되읽기가
+    필요한 곳은 사람이 손으로 페이로드를 짜는 자리다."""
     warnings: list[str] = []
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
@@ -992,6 +1071,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
               "executed": True, "owner": owner}
     if fold.proposed:
         result["proposed_types"] = fold.proposed
+    if read_back and types:
+        # 쓰기 응답이 "몇 개 움직였나"만 말하던 자리(R3). 되읽기는 쓰기가 끝난 뒤에
+        # 하므로 여기서 실패해도 위의 커밋은 유효하다.
+        stored, truncated = _stored_nodes(store, types, owner)
+        result["stored"] = stored
+        if truncated:
+            result["stored_truncated"] = truncated
     if id_conflicts:
         # warnings 안의 산문이 아니라 **필드**로 낸다. 호스트가 warnings 를 접거나
         # 안 보여 주면 저작자는 자기 노드가 사라진 줄도 모른다(감사 H1 의 조용한 절반).

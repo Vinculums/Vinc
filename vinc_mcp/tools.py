@@ -675,7 +675,14 @@ TOOLS: list[dict] = [
                        "only what actually landed. An id owned by someone else is reported "
                        "separately in `id_conflicts`, because it is the one skip a retry cannot "
                        "fix: node ids are a single global namespace, so that slug is not "
-                       "available to you at all. Pick a different id rather than retrying. Call vinc_conventions once before your first write "
+                       "available to you at all. Pick a different id rather than retrying. "
+                       "The result also carries `stored` — each node READ BACK as it now sits in "
+                       "the graph (id, kind, and the fields that kind actually keeps). Diff it "
+                       "against what you sent instead of trusting the counts: a field a kind has "
+                       "no column for is absent from `stored`, and a domain you sent appears there "
+                       "in its normalized form. `stored_truncated` means the read-back hit its size "
+                       "budget and that many nodes were left out (they were still written). "
+                       "Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,
