@@ -524,7 +524,12 @@ def graph_plan(*, owner: str, domain: str | None = None,
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "
-        "coalesce(d.content_time, '') AS target_content_ts"
+        "coalesce(d.content_time, '') AS target_content_ts, "
+        # R2 — 쓸 수는 있는데 어떤 읽기 도구로도 못 읽던 필드. **Concept 에만**
+        # 있는 열이라(Decision·Record·Episode·Bridge 에는 없다) 여기 두 자리와
+        # 축 플랜의 개념 팔에서만 뽑는다. 다른 라벨에 옮겨 붙이면 Binder 오류다.
+        "coalesce(c.one_liner, '') AS one_liner, "
+        "coalesce(d.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 
@@ -574,12 +579,16 @@ def shape_graph(rows: list[dict]) -> dict:
     nodes: dict[str, dict] = {}
 
     def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None,
-              content_ts=None):
+              content_ts=None, one_liner=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
                           "kind": kind or "concept", "degree": 0,
                           "props": _props_to_obj(props), "tags": list(tags or []),
-                          "ts": ts or "", "content_ts": content_ts or ""}
+                          "ts": ts or "", "content_ts": content_ts or "",
+                          # R2 — 쓸 수는 있는데 어떤 읽기 도구로도 못 읽던 필드.
+                          # 열은 **Concept 에만** 있으므로 나머지 종류에서는 빈
+                          # 문자열이고, 그건 결손이 아니라 사실이다.
+                          "one_liner": one_liner or ""}
             if domain2:
                 nodes[nid]["domain2"] = domain2
         else:
@@ -590,6 +599,10 @@ def shape_graph(rows: list[dict]) -> dict:
                 nodes[nid]["ts"] = ts
             if content_ts and not nodes[nid].get("content_ts"):
                 nodes[nid]["content_ts"] = content_ts
+            # one_liner 도 같다: 개념이 축 플랜(열 없음)에서 먼저 도착하면 빈 채로
+            # 들어오는데, 뒤이어 개념 플랜의 행이 값을 들고 온다.
+            if one_liner and not nodes[nid].get("one_liner"):
+                nodes[nid]["one_liner"] = one_liner
         return nodes[nid]
 
     edges: list[dict] = []
@@ -598,7 +611,8 @@ def shape_graph(rows: list[dict]) -> dict:
         if not nid:
             continue
         _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
-              r.get("kind"), r.get("domain2"), r.get("ts"), r.get("content_ts"))
+              r.get("kind"), r.get("domain2"), r.get("ts"), r.get("content_ts"),
+              r.get("one_liner"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
@@ -606,7 +620,8 @@ def shape_graph(rows: list[dict]) -> dict:
             # `label or nid` 폴백은 title 이 정말 없을 때만 쓰여야 한다).
             _node(tgt, r.get("target_label"), r.get("target_domain"),
                   r.get("target_props"), r.get("target_tags"), r.get("target_kind"),
-                  ts=r.get("target_ts"), content_ts=r.get("target_content_ts"))
+                  ts=r.get("target_ts"), content_ts=r.get("target_content_ts"),
+                  one_liner=r.get("target_one_liner"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
             # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
@@ -827,7 +842,12 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         "d.concept_id AS target, d.domain AS target_domain, "
         "d.title AS target_label, d.props AS target_props, d.tags AS target_tags, "
         "coalesce(d.created, d.updated_at, '') AS target_ts, "
-        "coalesce(d.content_time, '') AS target_content_ts"
+        "coalesce(d.content_time, '') AS target_content_ts, "
+        # R2 — 쓸 수는 있는데 어떤 읽기 도구로도 못 읽던 필드. **Concept 에만**
+        # 있는 열이라(Decision·Record·Episode·Bridge 에는 없다) 여기 두 자리와
+        # 축 플랜의 개념 팔에서만 뽑는다. 다른 라벨에 옮겨 붙이면 Binder 오류다.
+        "coalesce(c.one_liner, '') AS one_liner, "
+        "coalesce(d.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
@@ -867,7 +887,9 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         "'CONNECTS' AS rel, r.role AS role, "
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
         "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
-        "coalesce(c.created, c.updated_at, '') AS target_ts"
+        "coalesce(c.created, c.updated_at, '') AS target_ts, "
+        # R2 — 개념 팔이라 이 열이 있다(Bridge 쪽에는 없다).
+        "coalesce(c.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
 
@@ -899,7 +921,9 @@ def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[st
         # D43: 부착 개념의 시간열도 투영한다 — 축 플랜으로만 도착하는 개념
         # (episode:/record:/bridge: 시드 L2)이 영구 무날짜가 되던 결함(Timeline 이
         # 전량을 '날짜 없음'으로 강등)의 절반. 나머지 절반은 shape_graph 의 ts 승격.
-        "coalesce(c.created, c.updated_at, '') AS target_ts"
+        "coalesce(c.created, c.updated_at, '') AS target_ts, "
+        # R2 — 같은 이유로 개념 팔의 one_liner 도 싣는다(Episode 쪽에는 열이 없다).
+        "coalesce(c.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
 
@@ -931,7 +955,10 @@ def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
         "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
         "coalesce(c.created, c.updated_at, '') AS target_ts, "
-        "coalesce(c.content_time, '') AS target_content_ts"
+        "coalesce(c.content_time, '') AS target_content_ts, "
+        # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
+        # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
+        "coalesce(c.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
@@ -966,7 +993,10 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
         "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
         "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
         "coalesce(c.created, c.updated_at, '') AS target_ts, "
-        "coalesce(c.content_time, '') AS target_content_ts"
+        "coalesce(c.content_time, '') AS target_content_ts, "
+        # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
+        # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
+        "coalesce(c.one_liner, '') AS target_one_liner"
     )
     return QueryPlan("graph_axis_decision", cypher, params, note="decision axis rows (v12)")
 
@@ -3144,9 +3174,15 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         n_where += " AND n.owner_id = $owner"
         m_where = " AND m.owner_id = $owner"
         params["owner"] = owner
+    # R2 — `one_liner` 은 **Concept 에만** 있는 열이다. UNION 의 두 팔이 같은 모양을
+    # 가져야 하므로 Decision 팔은 리터럴로 채운다: 열이 없는 라벨에 `m.one_liner` 를
+    # 쓰면 Binder 가 죽고, 그러면 이웃 조회 전체가 죽는다(이 파일이 pinned·
+    # content_time 에서 이미 두 번 겪은 자리).
     cypher = " UNION ALL ".join(
         f"MATCH (n:{s_label})-[r]-(m:{m_label}) WHERE {n_where}{m_where} "
-        f"RETURN label(r) AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain"
+        f"RETURN label(r) AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
+        + (f"coalesce(m.one_liner, '') AS one_liner"
+           if m_label == "Concept" else "'' AS one_liner")
         for m_label, m_pk in _SEMANTIC_PK.items())
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
 
@@ -3219,7 +3255,9 @@ def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
     return " UNION ALL ".join(
         f"MATCH (a:{s_label})-[:{rel}]->(m:{m_label}) "
         f"WHERE a.{s_pk} = $node{s_scope}{m_scope} "
-        f"RETURN '{rel}' AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain"
+        f"RETURN '{rel}' AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
+        + ("coalesce(m.one_liner, '') AS one_liner"
+           if m_label == "Concept" else "'' AS one_liner")
         for m_label, m_pk in _SEMANTIC_PK.items())
 
 
@@ -3277,7 +3315,7 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int,
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
-    neighbors:[{rel,id,title,domain}], by_rel:{rel:count}, count}. 결정론 순서
+    neighbors:[{rel,id,title,domain,one_liner}], by_rel:{rel:count}, count}. 결정론 순서
     (rel, id). 상류 SoG 항해의 관측 표면.
 
     ``node`` 가 ``domain:`` 접두면 **도메인 좌표**를 잡는다(E-1) — 자식 도메인
@@ -3303,7 +3341,10 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
             continue
         seen.add(key)
         out.append({"rel": r.get("rel"), "id": r.get("id"),
-                    "title": r.get("title") or r.get("id"), "domain": r.get("domain") or ""})
+                    "title": r.get("title") or r.get("id"), "domain": r.get("domain") or "",
+                    # R2 — Concept 만 이 열을 갖는다. 부착 축(Record·Episode·Bridge)은
+                    # 키 자체가 없고, 그때 빈 문자열은 결손이 아니라 사실이다.
+                    "one_liner": r.get("one_liner") or ""})
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
     if not out:
         # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와

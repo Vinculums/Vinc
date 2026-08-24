@@ -91,7 +91,10 @@ _FRAGMENT_SCHEMA = {
                                                  "and Ask quote as the concept's description. Putting it "
                                                  "in props.one_liner or props.note instead still works "
                                                  "(server-side promotion) but only when this field and "
-                                                 "props.one_liner are both absent."},
+                                                 "props.one_liner are both absent. It reads back: "
+                                                 "vinc_neighbors and vinc_graph return it, so you can "
+                                                 "check what you wrote. Only Concept has the column, so "
+                                                 "it comes back empty on every other kind."},
                     # D72 — 두 시간축의 저작 가능한 쪽. `date` 와 같은 이유로 계약에
                     # 적는다: 서버는 이제 받는데 계약이 안 알려 주면 상류는 props 에
                     # 넣고, 그 자리는 정렬·필터가 안 읽는다.
@@ -482,7 +485,10 @@ TOOLS: list[dict] = [
         "name": "vinc_neighbors",
         "description": "Observe ONE node's immediate (1-hop) relation network — a lightweight "
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
-                       "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
+                       "[{rel,id,title,domain,one_liner}], by_rel:{type:count}, count}. `one_liner` is "
+                       "the concept's own description; only Concept carries that column, so it "
+                       "is an empty string on records, episodes, bridges and decisions, and that "
+                       "emptiness is a fact rather than a gap. Use this to walk the "
                        "graph one hop at a time (observe → pick next node) instead of pulling a whole "
                        "depth-2 subgraph via vinc_graph — far fewer tokens per step. "
                        "Every relation is visible from BOTH ends: seeding on a concept or decision "
