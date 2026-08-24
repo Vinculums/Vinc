@@ -73,3 +73,22 @@ def pull(*, since: int, token: str, base: str = DEFAULT_URL,
     if not out.get("executed"):
         raise SyncError(out.get("note") or out.get("error") or "pull failed")
     return out
+
+
+def docs_pull(*, since: int, token: str, base: str = DEFAULT_URL,
+              timeout: float = TIMEOUT) -> dict:
+    """문서 정본 delta(D45 P3). docsync 응답에는 `executed` 키가 없다 — `error` 로 판정."""
+    out = _post(base, "/sync/docs-pull", token, {"since": int(since)}, timeout=timeout)
+    if out.get("error"):
+        raise SyncError(str(out["error"]))
+    return out
+
+
+def docs_push(payload: dict, *, token: str, base: str = DEFAULT_URL,
+              timeout: float = TIMEOUT) -> dict:
+    """문서 정본 delta 전송. 조각내기는 호출부(api/sync._chunk_docs) 책임 —
+    4MB 바디 상한을 넘기면 서버가 빈 바디 400 으로 **조용히** 거절한다."""
+    out = _post(base, "/sync/docs-push", token, {"payload": payload}, timeout=timeout)
+    if out.get("error"):
+        raise SyncError(str(out["error"]))
+    return out

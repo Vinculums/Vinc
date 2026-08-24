@@ -805,6 +805,14 @@ class RemoteHTTP:
         from vinc_mcp import syncclient
         return syncclient.push(chunks, token=self.token, base=self.base)
 
+    def docs_pull(self, since: int) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.docs_pull(since=since, token=self.token, base=self.base)
+
+    def docs_push(self, payload: dict) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.docs_push(payload, token=self.token, base=self.base)
+
 
 def push_local(store, cfg, *, owner: str, remote) -> dict:
     """로컬 delta 를 원격에 push. 커서는 **push 성공 후에만** 전진(중단 시 재전송).
@@ -858,6 +866,73 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
 
 
+# ── 문서 정본 동기화 국면(D45 P3 배선) ────────────────────────────────────────
+# docsync(엔진)는 완성돼 있었는데 **아무도 부르지 않았다** — sync.run 은 노드·엣지만
+# 다뤘고 허브에는 /sync/docs-* 라우트가 없어, [지금 동기화]가 문서를 한 번도 나르지
+# 않았다(에러도 없이). 커서는 노드와 **별도 키**(docs-push/docs-pull)다:
+# _DocMeta.sync_seq 는 노드와 같은 owner 카운터에서 나오므로, 노드 커서를 같이 쓰면
+# 노드 트래픽이 커서를 먼저 전진시켜 문서 행이 영영 delta 에 안 실린다(과거
+# "pull 100% 빈값" 사고와 같은 모양의 함정).
+
+
+def _chunk_docs(payload: dict, max_bytes: int = 1_500_000) -> list[dict]:
+    """docs 를 크기 기준으로 쪼갠다(허브 MAX_BODY 4MB 보호 — 초과는 빈 바디 400 으로
+    **조용히** 실패한다). 각 조각은 자기완결 LWW 라 재전송·순서 뒤바뀜에 안전하고,
+    tombstones 는 마지막 조각에 싣는다."""
+    docs = payload.get("docs") or []
+    groups: list[list[dict]] = [[]]
+    size = 0
+    for d in docs:
+        n = len((d.get("text") or "").encode("utf-8")) + 512
+        if groups[-1] and size + n > max_bytes:
+            groups.append([])
+            size = 0
+        groups[-1].append(d)
+        size += n
+    out = [{"docs": g, "tombstones": []} for g in groups]
+    out[-1]["tombstones"] = payload.get("tombstones") or []
+    return out
+
+
+def push_docs(store, cfg, *, owner: str, remote) -> dict:
+    """문서 정본 delta 를 원격에 push(doc 단위 LWW). 커서는 **전송 성공 후에만** 전진."""
+    from . import docsync
+    since = get_cursor(store, "docs-push")
+    payload = docsync.export_docs(store, owner=owner, since=since)
+    docs = payload.get("docs") or []
+    tombs = payload.get("tombstones") or []
+    if not docs and not tombs:
+        return {"phase": "docs-push", "executed": True, "sent": 0, "deletes": 0,
+                "cursor": since}
+    agg = {"applied": 0, "updated": 0, "skipped": 0, "deleted": 0}
+    for ch in _chunk_docs(payload):
+        res = remote.docs_push(ch)
+        for k in agg:
+            agg[k] += int(res.get(k) or 0)
+    cursor = int(payload.get("cursor") or since)
+    set_cursor(store, "docs-push", cursor)
+    return {"phase": "docs-push", "executed": True, "sent": len(docs),
+            "deletes": len(tombs), "remote": agg, "cursor": cursor}
+
+
+def pull_docs(store, cfg, *, owner: str, remote) -> dict:
+    """원격 문서 delta 를 받아 적용(LWW). 커서는 **적용 뒤에만** 전진.
+
+    embedding 은 여기서 재생성하지 않는다 — 허브 docs-apply 와 같은 태도다(정본
+    텍스트 정합이 우선, FTS 는 즉시·벡터는 후속 재임베딩이 채운다)."""
+    from . import docsync
+    since = get_cursor(store, "docs-pull")
+    page = remote.docs_pull(since)
+    r = docsync.import_docs(store, owner=owner, payload=page)
+    nxt = int(page.get("cursor") or since)
+    if nxt > since:
+        set_cursor(store, "docs-pull", nxt)
+    return {"phase": "docs-pull", "executed": True,
+            "applied": r.get("applied", 0), "updated": r.get("updated", 0),
+            "skipped": r.get("skipped", 0), "deleted": r.get("deleted", 0),
+            "cursor": max(nxt, since)}
+
+
 #: 일회성 전량 왕복 표식. 다음에 또 한 번이 필요하면 **키 이름을 올린다**(v2) —
 #: 이력이 남고, 이미 돈 기기가 다시 돌지 않는다.
 _ONESHOT_KEY = "oneshot:birth-resync-v1"
@@ -890,11 +965,32 @@ def ensure_birth_resync(store) -> bool:
 
 def run(store, cfg, *, owner: str, remote) -> dict:
     """한 동기화 세션: **pull 먼저**(원격 최신을 받아 병합 후 push — lost-update 창
-    최소, 플랜 §6-1) → push. 잡 워커에서 돌아 로컬 쓰기가 단일 writer 로 직렬화된다."""
+    최소, 플랜 §6-1) → push. 문서 국면은 노드 국면 **뒤**에 둔다 — put_doc 의
+    재링크(MENTIONS)가 방금 받은 개념을 볼 수 있어야 한다. 잡 워커에서 돌아 로컬
+    쓰기가 단일 writer 로 직렬화된다.
+
+    문서 국면은 **soft-fail** 이다: 구 허브(문서 라우트 없음)나 doc 전용 오류가
+    노드 동기화까지 무너뜨리면 안 된다 — 결과에 executed:False 로 남긴다."""
     resynced = ensure_birth_resync(store)
     pu = pull_apply(store, cfg, owner=owner, remote=remote)
+    docs_ok = hasattr(remote, "docs_pull") and hasattr(remote, "docs_push")
+    if docs_ok:
+        try:
+            dpu = pull_docs(store, cfg, owner=owner, remote=remote)
+        except Exception as e:
+            dpu = {"phase": "docs-pull", "executed": False, "error": str(e)}
+    else:
+        dpu = {"phase": "docs-pull", "executed": False, "note": "remote lacks doc sync"}
     ph = push_local(store, cfg, owner=owner, remote=remote)
+    if docs_ok:
+        try:
+            dph = push_docs(store, cfg, owner=owner, remote=remote)
+        except Exception as e:
+            dph = {"phase": "docs-push", "executed": False, "error": str(e)}
+    else:
+        dph = {"phase": "docs-push", "executed": False, "note": "remote lacks doc sync"}
     if resynced:
         # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
         revstamp._meta_set(store, _ONESHOT_KEY, "done")
-    return {"executed": True, "pull": pu, "push": ph, "birth_resync": resynced}
+    return {"executed": True, "pull": pu, "push": ph,
+            "docs_pull": dpu, "docs_push": dph, "birth_resync": resynced}

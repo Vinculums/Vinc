@@ -148,11 +148,46 @@ const EN = {
       lines: "Line = relation",
       // D74 — 범례 항목이 스위치다. 힌트는 캡션 옆에 작게(항목마다 반복하면 소음).
       linesToggle: "click to hide",
-      directed: "Leads to (arrow shows direction)",
+      // v2 — 갈래 행이 견본 선을 함께 그리므로 괄호 설명(화살표·옅게)은 그림이 진다.
+      directed: "Leads to",
       related: "Related (no direction)",
-      cross: "Crosses topics (faint)",
+      cross: "Crosses topics",
       bridgeLine: "Through a bridge",
       focus: "The focus color marks one thing at a time.",
+      // v2 — 마크는 렌더러가 실제로 그리는 것 그대로다. 캡션이 어느 셋인지 밝힌다.
+      drawnAs3d: "the 3D geometry itself",
+      drawnAsFlat: "shared by 2D · Timeline · Weave",
+      markNote3d: {
+        concept: "Sphere",
+        document: "Tetrahedron · it never spins, so this angle is the silhouette",
+        bridge: "Octahedron · a diamond stood upright",
+        topic: "Nested shell · a core inside a faint skin",
+        gateway: "Its own kind in outline · no faces, so nothing behind it is hidden",
+      } as Record<string, string>,
+      markNoteFlat: {
+        concept: "Filled circle",
+        document: "Filled triangle · circumradius 1.08, so it weighs the same as the circle",
+        bridge: "Filled diamond",
+        topic: "Skin at 18% + core at 0.42",
+        gateway: "Dashed ring · here it does not separate kinds",
+      } as Record<string, string>,
+      // v2 — 물러남(recede) 단계. 값은 recede.ts 가 토큰에서 읽어 채운다.
+      tiersCap: "Recede = dimming",
+      tierFocus: "Focus",
+      tierNode: (p: number) => `Nodes ${p}%`,
+      tierLine: (p: number) => `Lines ${p}%`,
+      tierText: (p: number) => `Text ${p}%`,
+      tiersHelp: "Point at something and all but it and its neighbours step back to "
+        + "these values. Canon across every view; reduced motion drops the easing, "
+        + "not the effect.",
+      // v2 — 3단 상호작용: 가리키기(밝히기) · 누르기(숨기기) · 이것만(솔로).
+      solo: "Only",
+      reset: "Show all",
+      status: (shown: number, all: number, links: number) =>
+        `${shown} of ${all} kinds shown · ${links} links`,
+      statusHover: (n: number, label: string) =>
+        `While you point, only the ${n} ${label} lines stay lit. Click to hide them.`,
+      statusPlanar: "Lines here are flow, not relations, so there is nothing to switch off.",
     },
     // 상단 바(D56·D57) — 셸의 유일한 크롬. 검색이 조회 동선의 제1 진입점이다.
     coach: {
@@ -311,16 +346,6 @@ const EN = {
       edgeShowName: {
         always: "always", focus: "on focus", particles: "particles", bring: "bring &amp; go",
       } as Record<string, string>,
-      edgeShowHelp: {
-        always: "",
-        focus: "The map stays clear and only the lines of the node you point at "
-          + "appear, arrowheads and all.",
-        bring: "No lines at all. Point at a node and its neighbours fly in around "
-          + "it in a ring, named as they land. Let go and they return home.",
-        particles: "Lines go away and particles flow along them instead. The flow "
-          + "direction is the relation's direction, so arrowheads switch off. "
-          + "Undirected relations come back as lines while you point at a node.",
-      } as Record<string, string>,
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
       // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
@@ -329,32 +354,64 @@ const EN = {
       // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
       // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
       layoutName: { hub: "by centre", rank: "by order" } as Record<string, string>,
-      // 이름만으로는 "무슨 순서인지"가 안 나온다(발주자 지적 2026-08-02). 고른 것의
-      // 규칙을 한 줄로 밝힌다 — 좌표가 무엇을 뜻하는지 모르면 배치는 장식이 된다.
-      layoutHelp: {
-        hub: "Everything spreads out from the centre: topics fly off in their own "
-          + "directions, and what belongs to a topic keeps flying that way. "
-          + "Inside a topic, the most-connected sits nearest the centre.",
-        rank: "Left comes first, right comes later (what leads to what). Within a column, "
-          + "the most-connected sits at the top, and each topic keeps its own band.",
+      // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
+      // ·bundleDepthHelp…)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
+      // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
+      // 구조로 만족). `?` 를 켜면 행마다 상시로 펼쳐진다.
+      helpTip: "Show explanations",
+      helpHint: "Point at a value and its explanation lands here.",
+      help: {
+        links: "The better connected a mark, the bigger it is. Size is centrality.",
+        uniform: "Every mark the same size. Size then means nothing at all.",
+        hover: "Only the name you point at appears, so the map is never covered in type.",
+        fit: "As many as the ring has room for, best-connected first. The rest answer on hover.",
+        none: "No names drawn. Shape and place carry everything.",
+        arrowsOn: "Directed relations get an arrowhead.",
+        arrowsOff: "Lines without arrowheads. Less ink on a dense map.",
+        always: "Every line, always. The whole relation set at once, at the cost of density.",
+        focus: "Lines stay hidden and the map stays clear. Point at a mark and its lines appear.",
+        particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
+        bring: "No lines. Point at a mark and its neighbours ring around it, then fly home.",
+        showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
+        hideU: "Unlinked marks are hidden. Only what connects remains.",
+        hub: "Everything spreads from the centre. Inside a topic, the best connected sits nearest.",
+        rank: "Left comes first, right comes later. Within a column the best connected sits on top.",
+        recorded: "Stood up by when you wrote it, so one import clusters in one place.",
+        content: "Stood up by when it happened, regardless of when it was written down.",
+        tintOn: "Each topic gets its own hue. Emphasis only: turn it off and nothing is lost.",
+        tintOff: "One ink. Place already tells you the topic.",
+        docsOn: "Documents are drawn as marks, hung off their concepts.",
+        docsOff: "Concepts only. A shorter axis and a clearer lineage.",
+        lineageOn: "Curves overlay what led to what. A long leap right names a late effect.",
+        lineageOff: "No overlay, so marks are never buried under curves.",
+        d1: "Lines join topic to topic. Links inside one topic have nowhere to go and are dropped.",
+        d2: "Lines join kind to kind inside a topic. Links inside one kind are dropped.",
+        d3: "Lines join item to item. Nothing is dropped.",
+        spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
+        nodeScale: "Keeps the size encoding and scales the whole map.",
+        edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
+        cone: "How wide a topic's branch fans from the centre. Applied when you let go.",
+        when: "Only what existed at that point. Concepts with no date of their own stay visible.",
       } as Record<string, string>,
       // 번들 — 손잡이 이름은 **무엇이 바뀌는지**로 짓는다. 여기서 바뀌는 것은
       // 목록이 아니라 선이므로, 도움말이 그 사실을 먼저 말한다(모든 항목은 늘 있다).
       bundleDepth: "Bundling",
       bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
-      bundleDepthHelp: {
-        1: "Lines join topic to topic. Every item stays on the ring, but a link "
-          + "inside one topic has nowhere to go and is dropped, which the caption counts.",
-        2: "Lines join kind to kind inside each topic. Every item stays on the ring, "
-          + "and links inside one kind are dropped, which the caption counts.",
-        3: "Lines join item to item. Nothing is dropped.",
-      } as Record<string, string>,
       // Weave 의 라벨은 지도와 뜻이 다르다. 지도는 짚어야 뜨지만 여기서는 **둘레에
       // 들어갈 만큼** 상시로 뜬다(2026-08-16). 같은 이름에 같은 값을 쓰면 화면이
       // 하지 않는 약속을 하게 된다.
-      labelsFit: "shown", labelsFitHelp: "As many as the ring has room for, the "
-        + "best-connected first. The rest answer on hover.",
+      labelsFit: "shown",
       bundleRels: "Relations",
+      // v2 — 관계 행이 **묶인 뒤의 수**를 직접 말한다(view-bundle.bundleEdges 와 동일
+      // 집계). 그림이 타입을 못 가르는 관점이라(화살촉·타입별 굵기 없음) 수가 가른다.
+      relDropped: (n: number) => `${n} dropped`,
+      relNothing: "draws nothing here",
+      relEmpty: "Drop them all and there is nothing left to bundle.",
+      relStats: (drawn: number, dropped: number) =>
+        `${drawn} lines drawn · ${dropped} self-links dropped`,
+      relHover: (label: string, drawn: number, dropped: number) => dropped
+        ? `${label} · draws ${drawn} at this level, drops ${dropped}`
+        : `${label} · draws ${drawn} at this level`,
       relName: {
         PREREQUISITE_OF: "Prerequisite", DERIVES_FROM: "Derives", INHERITS_FROM: "Inherits",
         RELATED_TO: "Related", CONNECTS: "Bridge", ABOUT: "About", ATTACHES_TO: "Attached",
@@ -367,29 +424,15 @@ const EN = {
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
       when: "Time cursor",
       whenAll: "All",
-      whenHelp: "Shows only what existed at that point, on the clock chosen below. "
-        + "Items with no time of their own stay visible: a concept has no event date, "
-        + "and that is a fact rather than a gap.",
       groupTime: "Time",
       cone: "Branch spread",
-      coneHelp: "How wide a topic's branch fans out from the centre. Narrow gathers "
-        + "each topic into a stalk; wide opens it into a fan. The flat map is unaffected: "
-        + "it lays the same tree out as sectors, which have no angle to widen. "
-        + "It applies when you let go, because the map is laid out again from scratch.",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
       lineage: "Cause and effect",
-      // 시간축이 가로가 된 뒤(기둥 문법 2026-08-14) 원인은 왼쪽이다. "위"라고 적혀
-      // 있던 것을 2026-08-17 에 고쳤다.
-      lineageHelp: "Draws the links that say what led to what. The cause sits to the left, "
-        + "so a line that leaps far to the right names a late effect.",
-      // D72 — 시간축. 기록 시점 = 언제 적었나, 내용 시점 = 언제 있었던 일인가.
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
-      // 아니라 "주제를 색으로 볼까"다. 도움말이 끄고도 아무것도 잃지 않음을 밝힌다.
+      // 아니라 "주제를 색으로 볼까"다.
       domainTint: "Tint by topic",
-      domainTintHelp: "Gives each topic its own hue. It is emphasis only: "
-        + "turn it off and nothing is lost, because place already tells you the topic.",
       timeBasis: "Time",
       basisRecorded: "when recorded", basisContent: "when it happened",
       noContentTime: "Nothing has a content date yet. Add one while writing a document.",
@@ -636,6 +679,7 @@ const EN = {
       syncNow: "Sync now", syncing: "Syncing…",
       syncNeedKey: "Connect your account first.",
       syncDone: (up: number, down: number) => `Synced. ${up} sent, ${down} received.`,
+      syncDocs: (up: number, down: number) => ` Documents: ${up} sent, ${down} received.`,
       syncFail: "Sync failed",
       // 웹 Vinc 전용 계정·스페이스 줄. 예전엔 settings.ts 안에 EN/KO 사전이
       // 통째로 인라인돼 있었다("셸 편집 충돌 회피"가 사유였는데 그 충돌은 이미
@@ -861,14 +905,41 @@ const KO: Deck = {
       document: "문서",
       bridge: "다리",
       topic: "주제",
-      gateway: "다른 주제에 있는 문서",
+      gateway: "다른 주제에 있는 마디",
       lines: "선 = 관계",
       linesToggle: "누르면 숨겨요",
-      directed: "앞뒤가 있는 연결 (화살표 방향)",
+      directed: "앞뒤가 있는 연결",
       related: "방향 없는 연결",
-      cross: "다른 주제와의 연결 (옅게)",
+      cross: "다른 주제와의 연결",
       bridgeLine: "다리로 이어진 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
+      drawnAs3d: "3D 지오메트리 그대로",
+      drawnAsFlat: "2D · 타임라인 · Weave 공용",
+      markNote3d: {
+        concept: "구",
+        document: "정사면체 · 자전하지 않으니 이 각도가 곧 실루엣이에요",
+        bridge: "정팔면체 · 세로로 세운 마름모",
+        topic: "겹껍질 · 옅은 외피 안에 코어",
+        gateway: "자기 종의 윤곽선 · 면이 없어서 뒤를 안 가려요",
+      } as Record<string, string>,
+      markNoteFlat: {
+        concept: "채운 원",
+        document: "채운 삼각 · 외접원이 1.08배라 원과 무게가 같아요",
+        bridge: "채운 마름모",
+        topic: "외피 18% + 코어 0.42배",
+        gateway: "파선 링 · 여기서는 종을 안 가려요",
+      } as Record<string, string>,
+      tiersCap: "물러남 = 흐림",
+      tierFocus: "초점",
+      tierNode: (p) => `노드 ${p}%`,
+      tierLine: (p) => `선 ${p}%`,
+      tierText: (p) => `이름 ${p}%`,
+      tiersHelp: "짚으면 초점과 이웃만 남고 나머지가 이 값으로 물러나요. 전 관점 공통이고, 모션을 줄여도 값은 그대로예요",
+      solo: "이것만",
+      reset: "전체 보기",
+      status: (shown, all, links) => `${all}개 갈래 중 ${shown}개 보임 · 연결 ${links}개`,
+      statusHover: (n, label) => `가리키는 동안 ${label} ${n}개만 밝아요. 누르면 숨겨요`,
+      statusPlanar: "이 관점은 선이 관계가 아니라 흐름이라 켜고 끄지 않아요",
     },
     coach: {
       lensTitle: "오른쪽 위에서",
@@ -998,31 +1069,57 @@ const KO: Deck = {
       edgeShowName: {
         always: "항상", focus: "가리킬 때만", particles: "흐름", bring: "모아 보기",
       } as Record<string, string>,
-      edgeShowHelp: {
-        always: "",
-        focus: "평소에는 선을 감춰서 지도가 깨끗해요. 가리킨 노드에 걸린 선만 화살표까지 함께 떠요",
-        bring: "선을 아예 그리지 않아요. 노드를 가리키면 이웃이 둘레로 모여 고리를 이루고, 이름도 함께 떠요. 손을 떼면 제자리로 돌아가요",
-        particles: "선이 사라지고 그 자리를 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살표는 꺼져요. 방향 없는 관계는 노드를 가리키는 동안 선으로 돌아와요",
-      } as Record<string, string>,
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       groupNodes: "노드", groupLines: "선", groupOther: "기타",
       layoutName: { hub: "중심에서", rank: "순서대로" } as Record<string, string>,
-      layoutHelp: {
-        hub: "가운데에서 사방으로 퍼져요. 주제마다 자기 방향으로 뻗고, 그 주제에 속한 것들도 같은 방향으로 이어져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
-        rank: "왼쪽이 먼저, 오른쪽이 나중이에요(무엇이 무엇으로 이어지는지). 같은 줄에서는 연결이 많은 것이 위에 오고, 주제마다 자기 띠를 지켜요",
+      // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
+      helpTip: "설명 펼치기",
+      helpHint: "값을 가리키면 여기에 설명이 나와요",
+      help: {
+        links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
+        uniform: "모두 같은 크기입니다. 크기가 아무 뜻도 갖지 않아요",
+        hover: "가리킨 마디의 이름만 떠요. 지도가 글자로 덮이지 않아요",
+        fit: "둘레에 들어갈 만큼만, 연결이 많은 것부터 보여요. 나머지는 가리키면 떠요",
+        none: "이름을 그리지 않아요. 형태와 자리만 남아요",
+        arrowsOn: "앞뒤가 있는 연결에 화살촉을 붙여요",
+        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 지도에서 잉크가 줄어요",
+        always: "모든 선을 늘 그려요. 관계 전체를 한눈에 보는 대신 촘촘해져요",
+        focus: "평소에는 선을 감춰서 지도가 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
+        particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
+        bring: "선을 그리지 않아요. 가리키면 이웃이 둘레로 모여 고리로 서고, 손을 떼면 돌아가요",
+        showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
+        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 지도가 조용해져요",
+        hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
+        rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
+        recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
+        content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
+        tintOn: "주제마다 다른 색을 입혀요. 강조일 뿐이라 꺼도 잃는 건 없어요",
+        tintOff: "한 색으로 그려요. 어느 주제인지는 자리가 말해요",
+        docsOn: "문서도 마디로 그려 개념에 매달아요",
+        docsOff: "개념만 남겨요. 축이 짧아지고 계보가 또렷해져요",
+        lineageOn: "무엇이 무엇으로 이어졌는지 곡선으로 겹쳐요. 오른쪽으로 멀리 뻗을수록 한참 뒤의 결과예요",
+        lineageOff: "겹치지 않아요. 마디가 선에 덮이지 않아요",
+        d1: "선이 주제끼리 이어져요. 주제 안쪽 연결은 갈 곳이 없어 버려져요",
+        d2: "선이 주제 안의 종류끼리 이어져요. 종류 안쪽 연결은 버려져요",
+        d3: "선이 항목끼리 하나하나 이어져요. 버리는 것이 없어요",
+        spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
+        nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
+        edgeWidth: "선 굵기 배율이에요. 가중치는 여전히 농도가 말해요",
+        cone: "주제의 가지가 중심에서 얼마나 벌어질지예요. 손을 놓을 때 적용돼요",
+        when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
       } as Record<string, string>,
       bundleDepth: "선 묶기",
       bundleDepthName: { 1: "주제", 2: "종류", 3: "개별" } as Record<string, string>,
-      bundleDepthHelp: {
-        1: "선이 주제끼리 이어집니다. 항목은 전부 둘레에 있지만, 한 주제 안쪽의 "
-          + "연결은 갈 곳이 없어 버려집니다(버린 수는 아래에 적습니다).",
-        2: "선이 주제 안의 종류끼리 이어집니다. 한 종류 안쪽의 연결은 버려집니다"
-          + "(버린 수는 아래에 적습니다).",
-        3: "선이 항목끼리 하나하나 이어집니다. 버리는 것이 없습니다.",
-      } as Record<string, string>,
-      labelsFit: "보임", labelsFitHelp: "둘레에 들어갈 만큼만, 연결이 많은 것부터 보여요. 나머지는 가리키면 떠요",
+      labelsFit: "보임",
       bundleRels: "관계",
+      relDropped: (n) => `${n} 버림`,
+      relNothing: "이 단에서 안 그려요",
+      relEmpty: "다 버리면 묶을 것이 없어요",
+      relStats: (drawn, dropped) => `그린 선 ${drawn} · 버린 자기연결 ${dropped}`,
+      relHover: (label, drawn, dropped) => dropped
+        ? `${label} · 이 단에서 ${drawn}선을 그리고 ${dropped}개를 버려요`
+        : `${label} · 이 단에서 ${drawn}선을 그려요`,
       relName: {
         PREREQUISITE_OF: "선행", DERIVES_FROM: "파생", INHERITS_FROM: "상속",
         RELATED_TO: "연관", CONNECTS: "다리", ABOUT: "관하여", ATTACHES_TO: "부착",
@@ -1031,15 +1128,11 @@ const KO: Deck = {
       nodeScale: "크기 배율", edgeWidth: "선 굵기",
       when: "시점",
       whenAll: "전체",
-      whenHelp: "그 시점에 있던 것만 보여요. 어느 때를 기준으로 할지는 아래에서 골라요. 개념처럼 자기 날짜가 없는 것은 계속 보여요. 날짜가 없는 건 빠진 게 아니라 원래 그래요",
       groupTime: "시간",
       cone: "가지 벌어짐",
-      coneHelp: "주제의 가지가 중심에서 얼마나 벌어질지 정해요. 좁히면 주제마다 한 줄기로 모이고, 넓히면 부채처럼 펼쳐져요. 평면 지도는 같은 트리를 부채꼴로 눕히기 때문에 이 값과 무관해요. 배치를 처음부터 다시 잡는 값이라 손을 놓을 때 적용돼요",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
-      lineageHelp: "무엇이 무엇으로 이어졌는지 선으로 그려요. 원인이 왼쪽에 오니까, 오른쪽으로 멀리 뻗은 선일수록 한참 뒤의 결과예요",
       domainTint: "주제별 색조",
-      domainTintHelp: "주제마다 다른 색을 입혀요. 강조일 뿐이라 꺼도 잃는 건 없어요. 어느 주제인지는 자리만 봐도 알 수 있어요",
       timeBasis: "기준",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 '일어난 때'가 적힌 문서가 없어요. 문서를 쓸 때 함께 적어 보세요",
@@ -1256,6 +1349,7 @@ const KO: Deck = {
       syncNow: "지금 동기화하기", syncing: "동기화 중…",
       syncNeedKey: "먼저 계정을 연결해 주세요",
       syncDone: (up, down) => `동기화했어요. ${up}개 보내고 ${down}개 받았어요.`,
+      syncDocs: (up, down) => ` 문서는 ${up}개 보내고 ${down}개 받았어요.`,
       syncFail: "동기화하지 못했어요",
       webNotSignedIn: "로그인하지 않았어요",
       webManage: "계정 관리",

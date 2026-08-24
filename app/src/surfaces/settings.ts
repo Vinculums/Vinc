@@ -237,7 +237,11 @@ export async function renderSettings(el: HTMLElement) {
         const r = done.result || {};
         const up = r?.push?.sent ?? 0;
         const down = (r?.pull?.applied ?? 0) + (r?.pull?.merged ?? 0);
-        syncResult.textContent = U.syncDone(up, down);
+        // 문서 채널(D45 P3 배선) — 오간 게 있을 때만 한 줄 덧붙인다.
+        const dUp = r?.docs_push?.sent ?? 0;
+        const dDown = (r?.docs_pull?.applied ?? 0) + (r?.docs_pull?.updated ?? 0);
+        syncResult.textContent = U.syncDone(up, down)
+          + (dUp || dDown ? U.syncDocs(dUp, dDown) : "");
         void loadDomains();
       } catch (e: any) {
         syncResult.textContent = `${U.syncFail}: ${(e && e.message) || e}`;
