@@ -1476,6 +1476,54 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
         self.assertEqual(self._row(self.b, "concept:old")["created"],
                          "2099-01-01T00:00:00.000Z")
 
+    def test_records_and_their_typed_edges_cross_to_the_other_device(self):
+        """기록(Record)이 기기 사이를 오가는가, 그리고 **원래 관계 타입이 살아남는가**.
+
+        Record 는 라이브 실측 277건으로 노드 종류 중 최대인데 `_SYNC_TYPES` 에 없어
+        통째로 안 넘어갔다. 급소는 노드가 아니라 **엣지**다: Record 참여 엣지는 전부
+        `ATTACHES_TO` 한 라벨로 저장되고 원 타입은 `r.type` 에 실린다. 라벨을 역맵에
+        태우면 네 갈래가 한 이름으로 뭉개져 수신측이 되살릴 수 없다 — 그래서
+        `_record_edges_plan` 이 `r.type` 을 fragment 타입으로 돌려준다.
+
+        `derives_from` 을 고르는 이유: `relates_to` 는 무방향이라 뭉개져도 티가 안
+        난다. 방향이 있는 갈래여야 타입이 실제로 보존됐는지 갈린다."""
+        from api import fragment as frag
+        from api import sync
+        # sync.run 은 **로컬의 선택 도메인**을 읽는다(get_selected_domains) — 안 세우면
+        # "nothing leaves the device" 로 정상 종료해 아무것도 안 나간다.
+        sync.set_selected_domains(self.a, ["phys"])
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:target", "type": "concept", "title": "T", "domain": "phys"},
+            {"id": "record:measured", "type": "record", "title": "재 봤다",
+             "domain": "phys", "content_time": "1905",
+             "props": {"note": "0.3% 아래로 유지됐다"}},
+        ], "edges": [
+            {"from": "record:measured", "to": "concept:target", "type": "derives_from",
+             "evidence": "그 값은 대상에서 나왔다"},
+        ]}, store=self.a)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertTrue(out["executed"])
+
+        rid = pkns.key(self.OWNER, "record:measured")
+        got = self.b.run("MATCH (r:Record) WHERE r.record_id = $i "
+                         "RETURN r.title AS t, r.domain AS d, r.props AS p, "
+                         "r.content_time AS ct, r.created AS born", {"i": rid})
+        self.assertTrue(got, "기록이 반대편 기기에 아예 없다")
+        self.assertEqual(got[0]["t"], "재 봤다")
+        self.assertEqual(got[0]["d"], "phys")
+        self.assertEqual(got[0]["ct"], "1905")          # Record 도 두 시간열을 갖는다
+        self.assertTrue(got[0]["born"], "출생이 안 실렸다 — _BIRTH_LABELS 확인")
+        self.assertIn("0.3%", got[0]["p"] or "")        # props 왕복
+
+        edge = self.b.run(
+            "MATCH (a:Record)-[e:ATTACHES_TO]->(b:Concept) "
+            "WHERE a.record_id = $i RETURN e.type AS t", {"i": rid})
+        self.assertTrue(edge, "엣지가 안 넘어왔다")
+        self.assertEqual(edge[0]["t"], "derives_from",
+                         "원 타입이 ATTACHES_TO 라벨로 뭉개졌다")
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class EdgeBirth(unittest.TestCase):

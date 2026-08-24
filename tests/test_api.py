@@ -72,6 +72,30 @@ class PlanTests(unittest.TestCase):
         # 선행은 정방향이다 — 뒤집으면 "먼저"가 "나중"이 된다.
         self.assertNotIn("PREREQUISITE_OF", q._REVERSED_RELS)
 
+    def test_record_is_a_synced_kind_with_both_time_columns(self):
+        """Record 가 동기화 대상인가. 라이브 277건으로 노드 최대 종류인데 빠져 있었다."""
+        from api import sync
+        self.assertEqual(sync._SYNC_TYPES.get("record"), "Record")
+        self.assertIn("Record", sync._BIRTH_LABELS)          # created 열이 있다
+        self.assertIn("content_time", sync.SYNC_FIELDS["Record"])
+        # 툼스톤 라벨은 동기화 라벨에서 파생된다 — 따로 적으면 어긋난다.
+        self.assertIn("Record", sync._SYNC_LABELS)
+        plan = sync._records_delta_plan(owner="user:doheon", domains=["d"], since=3)
+        self.assertIn("r.created AS created", plan.cypher)
+        self.assertIn("r.content_time AS content_time", plan.cypher)
+        self.assertEqual(plan.params["since"], 3)
+
+    def test_record_edges_carry_the_original_type_not_the_label(self):
+        """Record 엣지는 전부 ATTACHES_TO 로 저장되고 원 타입은 `r.type` 에 있다.
+        라벨을 역맵에 태우면 네 갈래가 한 이름으로 뭉개진다."""
+        from api import sync
+        plan = sync._record_edges_plan(["record:x"], owner="user:doheon",
+                                       pair=("Concept", "concept_id"))
+        self.assertIn("r.type AS ftype", plan.cypher)
+        self.assertIn("[r:ATTACHES_TO]", plan.cypher)   # 무타입으로 열면 Binder 가 죽는다
+        self.assertIn("a.owner_id = $owner", plan.cypher)
+        self.assertNotIn("label(r)", plan.cypher)
+
     def test_domain_census_counts_untopiced(self):
         # 센서스는 무주제도 센다 — WHERE 는 owner 스코프만. NULL·'' 도메인 행을
         # "(none)" 으로 합치는 것은 domains() 몫. 근거: [[d6064cc741e9e121f]] §1.1
