@@ -66,8 +66,11 @@ FORBIDDEN_GLYPHS = ("—",)   # em-dash
 
 
 # ── 템플릿 ────────────────────────────────────────────────────────────────────
-# 이 상수가 템플릿 정본이다. 문서 사이트(`/docs/mcp/graph-md/`)의 코드블록은 이것의
-# 사본이므로 함께 고쳐야 한다(설계정본 §4).
+# 이 상수가 템플릿 정본이다. 사본이 **Vinc-homepage 에 하나** 있으므로 함께 고친다:
+# `site/docs/graph-md/spec/index.html` — EN 은 코드블록에, ko 는 그 페이지 스크립트의
+# `tpl:` 문자열에 통째로 박혀 있다. (경로가 `/docs/mcp/graph-md/` 로 적혀 있었는데
+# 지금은 `mcp/` 가 빠진 자리다. 2026-08-25 에 그 옛 경로만 보고 "사본 없음"으로
+# 잘못 판정했다 — 그래서 실제 경로를 적어 둔다.)
 
 _TPL_EN = """# GRAPH.md
 {header}
@@ -85,7 +88,7 @@ Write in English, titles and bodies alike, whatever language you are thinking in
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
 - Episode: something that happened (a session, an event). It is tied to a time.
-- Record: a short note or property hanging off a concept.
+- Record: a note hanging off a concept, or a measurement about code: then add props.subject_path (repo-relative), measured_at, measured_ref.
 - Decision: what you chose at a point in time, and why. Tie it with `about`.
 - Bridge: a junction that ties domains together.
 - Entity: anything else you author. Unknown types save here and enter the
@@ -138,7 +141,7 @@ concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
 - Episode: 일어난 일(세션·사건). 시간에 묶입니다.
-- Record: 개념에 붙는 짧은 메모나 속성.
+- Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path(리포 기준 상대경로)·measured_at·measured_ref 를 함께 적습니다.
 - Decision: 그때 무엇을 골랐고 왜 그랬는지. `about` 으로 그 대상에 이으십시오.
 - Bridge: 도메인을 가로질러 묶는 매듭.
 - Entity: 그 밖의 것. 미지 타입도 여기 저장되어 어휘에 제안으로 편입됩니다.

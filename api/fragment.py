@@ -177,6 +177,56 @@ _OWNER_SCOPED_LABELS = ("Record", "Concept", "Episode", "Bridge", "Entity", "Dec
 #: 필드로 밝힌다(조용히 자르지 않는다 — 이 항목이 고치려는 고장이 바로 그것이다).
 _READBACK_BUDGET = 256 * 1024
 
+#: R4 — 코드에 대한 주장을 **조회 가능**하게 만드는 예약 props 셋. 산문 규약(§3:
+#: "측정으로 쓰고 경로를 적는다")은 사람이 읽어야 비교되고, 이 셋은 질의가 비교한다.
+#: `record` 만 싣는다 — 개념은 서술하고, 결정은 고르고, **측정하는 것은 기록**이다.
+#: 근거: [[d4ab94561078498e3]] §7.3 R4.
+_CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
+
+
+def _norm_subject_path(v) -> str:
+    r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
+
+    `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
+    "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
+    것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
+    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다)."""
+    s = str(v or "").strip().replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    return s.lstrip("/")
+
+
+def _claim_props(props, label: str, nid: str, warnings: list[str]):
+    """예약 주장 필드를 정규화한다. props 원본은 건드리지 않는다(부분 재전송 함정).
+
+    형식 위반은 **지우지 않고 경고한다**: props 는 자유 속성이라 서버가 값을 버리면
+    그 자리가 유일한 사본이었을 때 복구가 없다. 열(`content_time`)과 반대 방향으로
+    보이지만 이유는 같다 — 잃는 쪽을 고르지 않는다."""
+    if not isinstance(props, dict) or not any(k in props for k in _CLAIM_PROPS):
+        return props
+    out = props
+    if label != "Record":
+        for k in _CLAIM_PROPS:
+            if k in props:
+                warnings.append(
+                    f"props.{k} is a claim field carried by Record only (id={nid}) — "
+                    f"stored on {label}, but the claim review will not read it there")
+        return out
+    raw = props.get("subject_path")
+    if raw is not None:
+        norm = _norm_subject_path(raw)
+        if norm != raw:
+            out = {**props, "subject_path": norm}
+    at = props.get("measured_at")
+    if at is not None:
+        from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
+        if not _ds._norm_content_time(str(at)):
+            warnings.append(
+                f"props.measured_at '{at}' is not YYYY[-MM[-DD]] (id={nid}) — stored "
+                f"as sent, but claims cannot be ordered against it")
+    return out
+
 
 def _stored_nodes(store, types: dict[str, str], owner: str) -> tuple[list[dict], int]:
     """MERGE 직후의 **저장형**을 되읽는다(R3) — `(nodes, 잘린 수)`.
@@ -405,7 +455,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if node.get("tags") is not None:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
-            _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
+            _set("props", json.dumps(_claim_props(node["props"], label, nid, warnings),
+                                     ensure_ascii=False, sort_keys=True))
         if label == "Concept":
             # date/summary 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이
             # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
