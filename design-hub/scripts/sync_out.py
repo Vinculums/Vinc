@@ -48,6 +48,12 @@ MAP = [
     # (resvg 는 `tauri icon` 이 쓰는 엔진과 같아 앱 아이콘과 렌더가 어긋나지 않는다)
     ("assets/logo/vinc-ring-white-email@2x.png",
      "../../Vinc-homepage/site/assets/vinc-mark-email@2x.png"),
+    # 검색엔진·수집기용 래스터 파비콘. **SVG 파비콘만으로는 부족하다** — 상당수가
+    # `<link rel=icon>` 을 안 보고 루트의 `/favicon.ico` 만 집어 가고, 없으면 아이콘을
+    # 아예 못 가져가거나 옛 캐시를 계속 쓴다(실측: 검색 결과에 구 로고가 남아 있었다).
+    # .ico 는 16·32·48 PNG 를 담은 컨테이너다(scripts 주석 참조).
+    ("assets/logo/vinc-ring-favicon.ico", "../../Vinc-homepage/site/favicon.ico"),
+    ("assets/logo/vinc-ring-favicon-48.png", "../../Vinc-homepage/site/favicon-48.png"),
 ]
 
 #: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
