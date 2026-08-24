@@ -1302,6 +1302,36 @@ def _clean_heading(title: str) -> str:
     return _strip_md(_HEAD_NUM_RE.sub("", title.strip()))
 
 
+# 구조어 — 코퍼스 관례가 만드는 절 이름들(방법·출처·평결…). 문서의 뼈대라서
+# 개념이 될 수 없다. 실측: 캐논형 문서에서 후보 11/11 이 전부 이런 헤딩이었고,
+# 반영하니 무주제 문서 1개가 무주제 개념 11개가 됐다. 근거: [[d6064cc741e9e121f]] §2
+_STRUCT_SLUGS = frozenset({
+    "method", "methods", "provenance", "verdict", "overall-verdict", "summary",
+    "overview", "introduction", "background", "conclusion", "results", "discussion",
+    "notes", "caveats", "scope", "status", "references", "related-concepts",
+    "appendix", "open-questions", "next-steps", "todo", "changelog", "history",
+})
+# 절 서두어 — 이걸로 시작하는 헤딩은 이름이 아니라 문장이다("What is on the table").
+_CLAUSE_OPENERS = frozenset({
+    "what", "how", "why", "when", "where", "whether", "if", "is", "are", "was",
+    "were", "does", "do", "did", "can", "should", "it", "this", "that", "these",
+})
+# 멘션 링커의 제목 토큰 상한(engines/mentions_link 의 6)과 같은 값. 그보다 긴
+# 제목의 개념은 링커가 영영 못 맞춰 MENTIONS 가 생기지 않는다 — 주제 유도에
+# 죽은 무게라서 애초에 후보로 내지 않는다.
+_MAX_TITLE_WORDS = 6
+
+
+def _concept_shaped(clean: str, slug: str) -> bool:
+    """헤딩이 **개념 이름**으로 설 수 있는가. 구조어·절 문장·과길이 제목은 아니다."""
+    words = clean.split()
+    if not words or len(words) > _MAX_TITLE_WORDS:
+        return False
+    if slug in _STRUCT_SLUGS:
+        return False
+    return words[0].lower() not in _CLAUSE_OPENERS
+
+
 def _one_liner(lines: list[str], body: int, stop: int) -> str:
     """헤딩 다음의 **첫 문장**. 첫 비지 않은 줄에서 시작해 문장이 끝날 때까지 잇는다.
 
@@ -1340,7 +1370,8 @@ def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
     제목은 :func:`_clean_heading` 으로 번호 접두·인라인 마크를 벗기고, one_liner 는
     :func:`_one_liner` 로 첫 문장까지 잇는다. **one_liner 가 빈 후보는 버린다** —
     설명 없는 개념은 상류가 판단할 재료가 없고, Ask 는 그걸 제목만으로 내민다
-    (추출 계약은 [[vinc.canon.chunk-ssot]] §6.1)."""
+    (추출 계약은 [[vinc.canon.chunk-ssot]] §6.1). 구조어·절 문장·6단어 초과 헤딩도
+    버린다(:func:`_concept_shaped` — 근거: [[d6064cc741e9e121f]] §2)."""
     out: list[dict] = []
     seen: set[str] = set()
     lines = text.splitlines()
@@ -1349,6 +1380,9 @@ def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
         clean = _clean_heading(title)
         slug = _slug(clean)
         if not slug or slug in seen:
+            continue
+        # 구조어·절 문장·6단어 초과는 후보가 아니다(:func:`_concept_shaped`).
+        if not _concept_shaped(clean, slug):
             continue
         # 다음 헤딩의 제목 줄에서 멈춘다 — 안 그러면 밑줄이나 다음 제목이
         # one_liner 로 새어 들어온다.
@@ -1365,6 +1399,43 @@ def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
     return out
 
 
+# 프론트매터의 `domain:` 줄 — 값에 공백이 없는 도메인 문자열만 받는다(관례).
+_FM_DOMAIN_RE = re.compile(r"^domain:\s*['\"]?([^'\"\s]+)['\"]?\s*$", re.M)
+
+
+def _front_domain(text: str) -> str:
+    """프론트매터가 스스로 밝힌 주제(`domain:`). 없으면 ''.
+
+    doc_put 은 프론트매터를 해석하지 않는다 — 본문은 원문 그대로가 정본이다(D45).
+    여기서만 읽는 이유: 추출이 만드는 개념은 주제를 가져야 하는데, 문서가 주제를
+    적어 뒀다면 그것이 가장 정확한 답이라서다."""
+    if not text.startswith("---"):
+        return ""
+    end = text.find("\n---", 3)
+    if end < 0:
+        return ""
+    m = _FM_DOMAIN_RE.search(text[:end])
+    return m.group(1).strip() if m else ""
+
+
+def _doc_topic(store, doc_id: str, *, owner: str) -> str:
+    """이 문서의 파생 주제 하나 — 언급 개념의 domain 최다(동률은 이름순, 결정론).
+    :func:`mention_tally` 와 같은 규칙의 단일 문서판. MENTIONS 없으면 ''."""
+    try:
+        rows = store.run(
+            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+            "WHERE ch.doc_id = $d AND c.owner_id = $o "
+            "AND (ch.owner_id = $o OR ch.owner_id = '') "
+            "AND c.domain IS NOT NULL AND c.domain <> '' "
+            "RETURN c.domain AS domain, count(*) AS n",
+            {"d": doc_id, "o": owner}) or []
+    except Exception:
+        return ""   # MENTIONS 미구축·구스토어 — 주제 없음으로 강등(실패 아님)
+    best = sorted(((r.get("domain") or "", int(r.get("n") or 0)) for r in rows),
+                  key=lambda kv: (-kv[1], kv[0]))
+    return best[0][0] if best else ""
+
+
 def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
                 candidates: list[dict] | None = None) -> dict:
     """doc 의 개념 후보를 제안하고(apply=False), 승인되면 반영한다(apply=True).
@@ -1373,9 +1444,13 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
       (옵션2 — LLM/사용자가 다듬은 후보. [{title, one_liner?}] 만 신뢰하고 id 는
       서버가 slug 로 재파생 — 외부 id 주입 금지).
     - 반영 = Concept MERGE(concept_id = 'concept:{slug}', status='proposed',
-      domain='' — 도메인 귀속은 후속 편집/UI 몫) + 이 doc 의 MENTIONS 재링크
-      (새 개념이 즉시 뷰·검색 그래프 암에 합류). **기존 개념(matched)은 title/
-      one_liner 를 덮어쓰지 않는다** — 사용자가 다듬은 노드 보호(읽고 스킵).
+      domain = 문서의 주제) + 이 doc 의 MENTIONS 재링크(새 개념이 즉시 뷰·검색
+      그래프 암에 합류). 주제 원천은 프론트매터 `domain:` → 문서의 파생 주제 순.
+      **둘 다 없으면 반영을 거부한다** — 빈 domain 으로 만들면 무주제 문서 1개가
+      무주제 개념 N개가 되고 문서 주제는 그대로 비었다(실측 11건, 같은 날 삭제.
+      근거: [[d6064cc741e9e121f]] §2). **기존 개념(matched)은 title/one_liner 를
+      덮어쓰지 않는다** — 사용자가 다듬은 노드 보호(읽고 스킵). 단 비어 있는
+      content_time·domain 은 채운다(아래).
     - SEC-1: doc 소유 가드. 반환 {executed, doc_id, candidates, applied:{created,
       matched}, mentions}."""
     base: dict[str, Any] = {"kind": "doc.extract", "executed": False, "doc_id": doc_id}
@@ -1386,12 +1461,15 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     if meta.get("owner_id") != owner:
         base["error"] = "owner mismatch — 남의 문서에서 추출할 수 없다(SEC-1)"
         return base
-    if candidates is None:
+    text = ""
+    if candidates is None or apply:
         got = get_doc(store, doc_id, owner=owner)
         if not got.get("executed"):
             base["error"] = got.get("error", "unreadable doc")
             return base
-        cands = extract_concepts(got.get("text") or "")
+        text = got.get("text") or ""
+    if candidates is None:
+        cands = extract_concepts(text)
     else:
         cands = []
         for c in candidates:
@@ -1404,6 +1482,19 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     base.update(executed=True, candidates=cands)
     if not apply:
         return base
+    # 추출 개념은 주제를 갖고 태어난다 — 원천: 프론트매터 `domain:` → 파생 주제.
+    # 둘 다 없으면 거부: 주제 없는 반영은 문서를 낫게 하지 못하고 무주제 노드만
+    # 늘린다. 근거: [[d6064cc741e9e121f]] §2
+    dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
+    if not dom:
+        base["executed"] = False
+        base["error"] = (
+            "no topic to inherit — the document has no front-matter `domain:` line "
+            "and no derived topic yet. Give it one first (add `domain:` to its front "
+            "matter, or mention a topic-carrying concept in the body and re-put), "
+            "then apply again.")
+        return base
+    base["domain"] = dom
     created = matched = 0
     # v7(D72) — 문서의 내용 시점을 파생 개념에 물려준다. 개념은 그 문서에서 나왔으므로
     # 문서가 가리키는 시점이 곧 그 개념이 말하는 시점이다. **비파괴**다: 이미 값이
@@ -1418,33 +1509,40 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         key = pkns.compose(owner, cid, normalize=False) if owner else cid
         exists = store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o, "
-            "n.content_time AS ct, n.rev AS rev", {"id": key})
+            "n.content_time AS ct, n.domain AS dom, n.rev AS rev", {"id": key})
         if exists:
             if exists[0].get("o") not in (owner, "", None):
                 continue   # 남의 개념 — 건드리지 않는다(SEC-1)
             matched += 1
-            # 내 기존 개념 — 덮어쓰기 금지. 단 **비어 있는 내용 시점만** 채운다:
-            # 문서에 시점을 뒤늦게 적었을 때 이미 뽑힌 개념이 영영 축에서 빠지지 않게.
-            # 이것도 **변경이므로 스탬프한다** — 안 찍으면 채운 값이 이 기기 밖으로
-            # 나가지 못한다(다음 delta 가 이 노드를 안 본다).
-            if ctime and not (exists[0].get("ct") or ""):
+            # 내 기존 개념 — 덮어쓰기 금지. 단 **비어 있는 것만** 채운다: 내용 시점과
+            # 주제. 시점은 문서에 뒤늦게 적혔을 때 개념이 축에서 영영 빠지지 않게,
+            # 주제는 옛 추출이 만든 무주제 개념이 이번 반영으로 낫게(같은 문서에서
+            # 나온 개념의 주제는 그 문서의 주제다). 둘 다 **변경이므로 스탬프한다**
+            # — 안 찍으면 채운 값이 이 기기 밖으로 나가지 못한다.
+            fill_ct = bool(ctime) and not (exists[0].get("ct") or "")
+            fill_dom = not (exists[0].get("dom") or "")
+            if fill_ct or fill_dom:
                 st = _node_stamp(store, owner, int(exists[0].get("rev") or 0))
-                store.run("MATCH (n:Concept) WHERE n.concept_id = $id "
-                          "SET n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, "
-                          "n.sync_seq = $seq",
-                          {"id": key, "ct": ctime, "ua": st["updated_at"],
-                           "rev": st["rev"], "seq": st["sync_seq"]})
+                sets = ["n.updated_at = $ua", "n.rev = $rev", "n.sync_seq = $seq"]
+                prm = {"id": key, "ua": st["updated_at"],
+                       "rev": st["rev"], "seq": st["sync_seq"]}
+                if fill_ct:
+                    sets.append("n.content_time = $ct"); prm["ct"] = ctime
+                if fill_dom:
+                    sets.append("n.domain = $dom"); prm["dom"] = dom
+                store.run("MATCH (n:Concept) WHERE n.concept_id = $id SET "
+                          + ", ".join(sets), prm)
             continue
         # 추적열(updated_at·rev·sync_seq)을 함께 찍는다 — 없으면 이 개념은 delta 에
         # 안 실려 다른 기기로 못 간다(:func:`_node_stamp` 주석의 실측).
         st = _node_stamp(store, owner)
         store.run(
             "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = $ol, "
-            "n.owner_id = $owner, n.status = 'proposed', n.domain = '', "
+            "n.owner_id = $owner, n.status = 'proposed', n.domain = $dom, "
             "n.stem = $slug, n.source_file = $origin, n.created = $now, "
             "n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
             {"id": key, "t": c["title"], "ol": c["one_liner"], "owner": owner,
-             "slug": c["slug"], "origin": meta.get("origin") or "",
+             "dom": dom, "slug": c["slug"], "origin": meta.get("origin") or "",
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
              # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교
              # (`x.created > $born`)로 화해되는데 그 비교가 사전식이라, 초 단위

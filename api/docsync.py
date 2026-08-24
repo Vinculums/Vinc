@@ -11,8 +11,11 @@ Chunk 가 정본이 되며 다기기 동기화가 필요해졌다([[vinc.canon.c
   - 수신 = put_doc 로 **로컬 재청킹·재임베딩**(embedding 은 기기별 재생성).
   - 충돌 = doc 단위 LWW(updated_at HLC 비교) — 필드 병합 없음(문서는 원자 단위).
   - 삭제 = _DocTombstone 전파(하드삭제만으론 상대 delta 에 실려 부활).
-커서는 노드 sync 와 같은 revstamp 카운터(‘doc:{owner}’ 네임스페이스)라 한 스토어
-안에서 단조가 보장된다. 이 모듈은 sync.py 를 건드리지 않는 독립 채널이다.
+seq 는 노드와 **같은** owner 카운터에서 나온다(revstamp — ‘doc:’ 전용 네임스페이스는
+없다. 예전 이 줄이 있다고 적었었는데 거짓이었다). 그래서 오케스트레이터의 문서
+커서(docs-push/docs-pull, api/sync)는 노드 커서와 **키가 달라야** 한다 — 같이 쓰면
+노드 트래픽이 커서를 먼저 전진시켜 문서 행이 영영 delta 에 안 실린다.
+이 모듈은 sync.py 의 병합 규칙을 건드리지 않는 독립 채널이다(배선은 api/sync).
 """
 from __future__ import annotations
 

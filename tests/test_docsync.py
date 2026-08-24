@@ -146,6 +146,78 @@ class DocSyncE2E(unittest.TestCase):
         docsync.import_docs(self.B, owner="user:a", payload=payload)
         self.assertEqual(ds.get_doc(self.B, did)["text"], "부활본")
 
+    def test_run_carries_documents(self):
+        """sync.run 이 문서 국면을 실제로 돈다 — **엔진만 있고 배선이 없던** 결함의
+        회귀(2026-08-24 실측: 오케스트레이터가 노드·엣지만 다뤄 [지금 동기화]가
+        문서를 한 번도 나르지 않았다, 에러도 없이).
+
+        원격 = B 스토어를 감싼 인프로세스 스텁. 노드 국면은 빈 delta 로 통과시키고
+        문서 국면만 실전 경로(export/import)를 태운다."""
+        from api import sync
+        A, B = self.A, self.B
+        cfgA = self._cfg(os.path.join(self._tmp, "A"))
+
+        class Stub:
+            def pull(self, since):
+                return {"executed": True, "nodes": [], "edges": [],
+                        "tombstones": [], "edge_tombstones": [], "next_cursor": since}
+
+            def push(self, chunks):
+                return {"executed": True}
+
+            def docs_pull(self, since):
+                return docsync.export_docs(B, owner="user:a", since=since)
+
+            def docs_push(self, payload):
+                return docsync.import_docs(B, owner="user:a", payload=payload)
+
+        local_id = ds.put_doc(A, owner="user:a", text="로컬 문서", title="로컬")["doc_id"]
+        hub_id = ds.put_doc(B, owner="user:a", text="허브 문서", title="허브")["doc_id"]
+        out = sync.run(A, cfgA, owner="user:a", remote=Stub())
+        self.assertTrue(out["docs_pull"]["executed"])
+        self.assertTrue(out["docs_push"]["executed"])
+        # 양방향: 허브 문서가 로컬에, 로컬 문서가 허브에 무손실로 선다.
+        self.assertEqual(out["docs_pull"]["applied"], 1)
+        self.assertEqual(ds.get_doc(A, hub_id, owner="user:a")["text"], "허브 문서")
+        self.assertEqual(ds.get_doc(B, local_id, owner="user:a")["text"], "로컬 문서")
+        # 에코(방금 받은 문서의 재전송)는 해시 동일로 no-op 이어야 한다.
+        self.assertEqual(out["docs_push"]["remote"]["applied"], 1)
+        # 두 번째 세션: 커서 이후 변경이 없어 보낼 것이 없다(멱등).
+        out2 = sync.run(A, cfgA, owner="user:a", remote=Stub())
+        self.assertEqual(out2["docs_push"]["sent"], 0)
+        self.assertEqual(out2["docs_pull"]["applied"], 0)
+
+    def test_run_without_doc_transport_soft_fails(self):
+        """docs_pull/push 가 없는 원격(구 허브·구 스텁)이어도 노드 동기화는 돈다."""
+        from api import sync
+        cfgA = self._cfg(os.path.join(self._tmp, "A"))
+
+        class OldStub:
+            def pull(self, since):
+                return {"executed": True, "nodes": [], "edges": [],
+                        "tombstones": [], "edge_tombstones": [], "next_cursor": since}
+
+            def push(self, chunks):
+                return {"executed": True}
+
+        out = sync.run(self.A, cfgA, owner="user:a", remote=OldStub())
+        self.assertTrue(out["executed"])
+        self.assertFalse(out["docs_pull"]["executed"])
+        self.assertIn("note", out["docs_pull"])
+
+    def test_chunk_docs_respects_body_cap(self):
+        """4MB 바디 상한 보호 — 큰 문서 집합이 조각나고, tombstones 는 마지막 조각에."""
+        from api import sync
+        payload = {"docs": [{"doc_id": f"d{i}", "text": "가" * 400_000}
+                            for i in range(6)],
+                   "tombstones": [{"doc_id": "gone", "deleted_at": "2026"}]}
+        chunks = sync._chunk_docs(payload, max_bytes=1_500_000)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(sum(len(c["docs"]) for c in chunks), 6)
+        self.assertEqual(chunks[-1]["tombstones"], payload["tombstones"])
+        for c in chunks[:-1]:
+            self.assertEqual(c["tombstones"], [])
+
     def test_sec1_owner_fixed_to_caller(self):
         # payload 가 owner 를 위조해도 import 는 호출 owner 로 고정한다.
         payload = {"docs": [{"doc_id": "dX", "title": "t", "origin": "",

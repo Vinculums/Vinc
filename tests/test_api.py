@@ -61,6 +61,14 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("owner", plan.params)
         self.assertIn("e.domain IS NOT NULL", plan.cypher)
 
+    def test_domain_census_counts_untopiced(self):
+        # 센서스는 무주제도 센다 — WHERE 는 owner 스코프만. NULL·'' 도메인 행을
+        # "(none)" 으로 합치는 것은 domains() 몫. 근거: [[d6064cc741e9e121f]] §1.1
+        plan = q.domain_counts_plan(owner="user:doheon")
+        self.assertNotIn("IS NOT NULL", plan.cypher)
+        self.assertIn("e.owner_id = $owner", plan.cypher)
+        self.assertNotIn("WHERE", q.domain_counts_plan().cypher)
+
     def test_learner_model_plan_owner_scoped(self):
         plan = q.learner_model_plan(owner="user:doheon")
         self.assertEqual(plan.kind, "learner_model")

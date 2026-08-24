@@ -69,9 +69,13 @@ class DomainRenameE2E(unittest.TestCase):
         self.assertEqual(self._domains(B), {"physics": 3})   # B 불변
 
     def test_empty_new_unassigns_but_keeps_nodes(self):
-        """new='' = 미분류 — 도메인은 사라지고 노드는 남는다(삭제와 구분)."""
+        """new='' = 미분류 — 도메인은 사라지고 노드는 남는다(삭제와 구분).
+        미분류는 이제 센서스에서 부재가 아니라 "(none)" 행이다(근거:
+        [[d6064cc741e9e121f]] §1.1) — 그래서 빈 dict 가 아니라 그 행을 기대한다."""
         q.rename_domain(owner=A, old="physics", new="", store=self.store)
-        self.assertEqual(self._domains(A), {})
+        doms = self._domains(A)
+        self.assertEqual(set(doms), {"(none)"})
+        self.assertEqual(doms["(none)"], 3)        # Concept 2 + Episode 1, 전부 보존
         rows = self.store.run(
             "MATCH (c:Concept) WHERE c.owner_id = $o RETURN count(c) AS n", {"o": A})
         self.assertEqual(int(rows[0]["n"]), 2)     # 노드 보존

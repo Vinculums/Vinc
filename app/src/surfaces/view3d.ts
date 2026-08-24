@@ -15,6 +15,7 @@ import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
 import { palette as signal, viewScene, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
+import { edgeKey, type Spot } from "../spotlight";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -617,6 +618,20 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return true;
   };
 
+  /** 점등을 밖에서 건다(`__update` 와 같은 관례 — mount3d 는 라이브러리 타입을
+   *  돌려주므로 확장은 전부 `__` 접두 패치다).
+   *
+   *  ⚠ **`wake()` 가 이 함수의 존재 이유의 절반이다.** 이 렌더러는 할 일이 없으면
+   *  ~300ms 뒤 스스로 틱을 멈춘다(F6). 점등을 거는 손은 렌즈 패널 안에 있어 캔버스에
+   *  포인터 이벤트가 하나도 안 가므로, 깨우지 않으면 **계산은 맞는데 화면이 그대로**
+   *  다. 이 기능이 조용히 안 되는 가장 그럴듯한 경로가 여기다. */
+  (g as any).__spotlight = (s: Spot | null): void => {
+    spot = s;
+    if (!hoverId) applyFade(s ? s.nodes : null);
+    g.linkColor(linkColorFn);
+    wake(600);
+  };
+
   g.onNodeClick((n: any) => {
     // 고르는 행위가 곧 모으는 행위다. 같은 것을 다시 누르면 풀린다.
     if (bringOn) {
@@ -641,19 +656,30 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (neighbors.get(t) || neighbors.set(t, new Set()).get(t)!).add(s);
   }
   let hoverId: string | null = null;
+  /** 밖에서 건 점등 집합(범례 갈래 hover · 인과 원뿔). **hover 가 이긴다** — 손이
+   *  가리키는 것이 언제나 지금 관심사라, 2D 와 같은 규칙이고 우선순위 코드가 없다. */
+  let spot: Spot | null = null;
   const linkColorFn = (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
     // 데려오는 방식엔 선이 없다 — 고리 자체가 이웃을 말하므로 hover 복귀도 없다.
     if (bringOn) return pal.link.base + ALPHA0;
-    const near = !hoverId || s === hoverId || t === hoverId;
+    const near = spot && !hoverId
+      ? spot.edges.has(edgeKey({ source: s, target: t, type: l.type || "" }))
+      : !hoverId || s === hoverId || t === hoverId;
     // 입자 모드 — 선은 알파 0 으로 지운다(상수 주석 ①). 방향 3종은 입자가 대신
     // 말하고, 무방향은 **짚었을 때만** 선으로 잠깐 돌아온다. 그래서 지워도 잃지 않는다:
     // 관계는 그대로 있고, 늘 그려져 있지 않을 뿐이다.
+    //
+    // 점등은 이 모드를 **건드리지 않는다**(위 `near` 계산은 지나가되 여기서 갈린다):
+    // 선이 이미 알파 0 이라 물러날 자리가 없고, 물러남을 그리려면 없던 선을 새로
+    // 그려야 한다 — 지우려던 잉크를 점등이 도로 늘리는 셈이 된다. 이 모드에서
+    // 점등이 말하는 것은 노드 쪽이다(아래 applyFade).
     if (particlesOn) {
       if (isDirectedLink(l)) return pal.link.heavy + ALPHA0;
       return hoverId && near ? pal.link.fade : pal.link.base + ALPHA0;
     }
+    if (spot && !hoverId && !near) return pal.link.fade;
     if (hoverId && !near) return pal.link.fade;   // 배경으로 후퇴
     // D33 — 농도 = 관계의 세기(굵기 개정). 다크는 반전(D39).
     // B1(2026-08-03): 그 "세기"를 **기록된 증거의 신뢰도**(E-G6 confidence)가 말한다.
@@ -669,23 +695,24 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   g.linkColor(linkColorFn);
   const fadeTargets = new Map<THREE.Material, number>();
   let raf = 0;
+  /** 모션을 줄여 달라는 설정에서는 **이징만** 버리고 효과는 남긴다(카피가 그렇게
+   *  약속한다). 여태 이 트윈에는 가드가 없어 그 약속이 3D 에서만 지켜지지 않았다 —
+   *  비행(`jumpFly`)과 평면(app.css 미디어 쿼리)은 이미 지키고 있었다. */
+  const jumpFade = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const tween = () => {
     let live = false;
     fadeTargets.forEach((target, mat) => {
       const d = target - mat.opacity;
+      if (jumpFade) { mat.opacity = target; return; }
       if (Math.abs(d) > 0.01) { mat.opacity += d * 0.25; live = true; }
       else mat.opacity = target;
     });
     wake(200);                                     // 페이드가 도는 동안은 그려야 보인다
     raf = live ? requestAnimationFrame(tween) : 0;
   };
-  g.onNodeHover((n: any) => {
-    // hover 는 **어둡게만** 한다. 모으는 것은 클릭이다(2D 와 같은 규칙, 발주자 지시
-    // 2026-08-15) — 지나가기만 해도 씬이 재배열되면 눈이 쉴 곳이 없다. 고리가 서
-    // 있는 동안 그 구성원 위를 지나도 흐림 기준은 흔들리지 않는다.
-    if (bringOn && gathered && n && ring.has(n.id)) return;
-    hoverId = n ? n.id : null;
-    const keep = n ? new Set([n.id, ...(neighbors.get(n.id) || [])]) : null;
+  /** 남길 집합 밖을 물러나게 한다. hover 와 점등이 **같은 함수**를 쓴다 — 두 벌이면
+   *  하나가 다른 하나를 덮어쓴 채 아무도 눈치채지 못한다. `null` 이면 전부 복귀. */
+  const applyFade = (keep: Set<string> | null) => {
     // D32-a 정본값 — 여태 여기가 `× 0.15` 리터럴이라 정본(0.40)의 3.75 배를 물러났고,
     // 비이웃이 배경 대비 1.15:1 로 **소멸**했다(가시성 연구 C4). 루프 밖에서 한 번 읽는다
     // (getComputedStyle 은 레이아웃 읽기라 마크마다 부르면 안 된다).
@@ -703,6 +730,18 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       });
     });
     if (!raf) raf = requestAnimationFrame(tween);
+  };
+  g.onNodeHover((n: any) => {
+    // hover 는 **어둡게만** 한다. 모으는 것은 클릭이다(2D 와 같은 규칙, 발주자 지시
+    // 2026-08-15) — 지나가기만 해도 씬이 재배열되면 눈이 쉴 곳이 없다. 고리가 서
+    // 있는 동안 그 구성원 위를 지나도 흐림 기준은 흔들리지 않는다.
+    if (bringOn && gathered && n && ring.has(n.id)) return;
+    hoverId = n ? n.id : null;
+    // 손을 떼면 점등이 있던 자리로 **돌아간다** — 점등 중에 지도 위를 지나갔다고
+    // 걸어 둔 것이 사라지면, 밖에서 건 상태를 hover 가 조용히 지우는 셈이 된다.
+    const keep = n ? new Set([n.id, ...(neighbors.get(n.id) || [])])
+      : spot ? spot.nodes : null;
+    applyFade(keep);
     g.linkColor(linkColorFn);   // 접근자 재적용 → 링크색 재평가
     el.style.cursor = n ? "pointer" : "";
   });

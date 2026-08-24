@@ -6,16 +6,20 @@ import { COPY } from "../copy";
 import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
-import { bucketRange, mountColumns, pickGrain, timelinePool, type Grain,
+import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
-import { mountBundle } from "./view-bundle";
+import { bundleStatsByType, mountBundle, type BundleEdge,
+         type BundleNode } from "./view-bundle";
+import { recede } from "../recede";
+import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
-         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
+         EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
+         edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
@@ -182,6 +186,16 @@ export async function renderView(el: HTMLElement) {
   let keepCam: Cam3 | null = null;
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
   let planar: PlanarHandle | null = null;           // 평면 관점(타임라인 · 번들)
+  /** 지금 밝히고 있는 것(범례 갈래 hover · 인과 원뿔). **프리퍼런스가 아니다** —
+   *  일시 상태라 localStorage·주소·applyPrefs 어디에도 실리지 않는다. 평면 관점
+   *  (타임라인 · Weave)에는 걸지 않는다: 거기 선은 관계가 아니라 흐름이고, Weave 는
+   *  선 하나가 여러 관계를 묶은 것이라 엣지 정체성이 남지 않는다. */
+  let spot: Spot | null = null;
+  function setSpot(s: Spot | null) {
+    spot = s;
+    (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(s);
+    g2?.spotlight?.(s);
+  }
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
@@ -246,44 +260,107 @@ export async function renderView(el: HTMLElement) {
   // 접힘 토글용이라 더 쓰지 않는다 — 남겨 두면 "어느 것이 지금 상태인가"가 세 곳에
   // 흩어진다(그 상태 분산이 옛 구조의 실제 문제였다).
   const PANEL_TAB_KEY = "vinc.view.panel.tab";
+  /** v2 — 설명을 행마다 상시로 펼칠지("1"), 바닥 고정 줄 하나로 받을지(기본).
+   *  바닥 줄도 패널 **안의 고정 자리**라 WCAG 1.4.13(없애기·머무르기·지속)을 구조로
+   *  만족한다 — 뜨는 툴팁으로 만들면 그 셋을 손으로 지켜야 하고 터치·키보드에서
+   *  사라진다. 접는 쪽이 기본인 이유: 12줄이 1줄이 된다. */
+  const PANEL_HELP_KEY = "vinc.view.panel.help";
+
+  // ── v2 견본 art — 값이 뜻하는 **결과를 그린다**(상징이 아니라 그림). currentColor,
+  //    viewBox 0 0 28 24. 다값 행(타일)에만 쓴다 — 진짜 on/off 행은 알약이 남는다:
+  //    "끔"은 그릴 것이 없는 상태라 견본이 성립하지 않는다.
+  const AF = 'fill="currentColor"';
+  const AS = 'fill="none" stroke="currentColor"';
+  const ART: Record<string, string> = {
+    sizeLinks: `<circle cx="6" cy="12" r="5" ${AF}/><circle cx="17" cy="12" r="3.1" ${AF}/><circle cx="24" cy="12" r="1.8" ${AF}/>`,
+    sizeUniform: `<circle cx="6" cy="12" r="3.3" ${AF}/><circle cx="14" cy="12" r="3.3" ${AF}/><circle cx="22" cy="12" r="3.3" ${AF}/>`,
+    edgeAlways: `<circle cx="5" cy="12" r="2.8" ${AF}/><path d="M7.4 11 21 5M7.6 12h13.6M7.4 13 21 19" ${AS} stroke-width="1.2"/><circle cx="23" cy="5" r="1.8" ${AF}/><circle cx="23" cy="12" r="1.8" ${AF}/><circle cx="23" cy="19" r="1.8" ${AF}/>`,
+    edgeFocus: `<circle cx="5" cy="12" r="2.8" ${AF}/><path d="M7.6 12h13.6" ${AS} stroke-width="1.5"/><path d="M7.4 11 21 5M7.4 13 21 19" ${AS} stroke-width="1.1" opacity=".18"/><circle cx="23" cy="12" r="1.8" ${AF}/><circle cx="23" cy="5" r="1.8" ${AF} opacity=".25"/><circle cx="23" cy="19" r="1.8" ${AF} opacity=".25"/>`,
+    edgeParticles: `<circle cx="4" cy="12" r="2.6" ${AF}/><circle cx="10" cy="12" r="1.5" ${AF} opacity=".9"/><circle cx="14.5" cy="12" r="1.2" ${AF} opacity=".7"/><circle cx="18.5" cy="12" r="1" ${AF} opacity=".5"/><circle cx="24" cy="12" r="2.2" ${AF} opacity=".85"/>`,
+    edgeBring: `<circle cx="14" cy="12" r="3" ${AF}/><circle cx="14" cy="4.5" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="8" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="14" cy="19.5" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="8" r="1.5" ${AF} opacity=".8"/>`,
+    layoutHub: `<circle cx="14" cy="12" r="3" ${AF}/><path d="M14 12 14 4M14 12 21 7.5M14 12 21 16.5M14 12 14 20M14 12 7 16.5M14 12 7 7.5" ${AS} stroke-width=".9" opacity=".45"/><circle cx="14" cy="4" r="1.5" ${AF}/><circle cx="21" cy="7.5" r="1.5" ${AF}/><circle cx="21" cy="16.5" r="1.5" ${AF}/><circle cx="14" cy="20" r="1.5" ${AF}/><circle cx="7" cy="16.5" r="1.5" ${AF}/><circle cx="7" cy="7.5" r="1.5" ${AF}/>`,
+    layoutRank: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
+    basisRecorded: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M18 18v-4M20.5 18v-6M23 18v-3" ${AS} stroke-width="1.6"/><circle cx="18" cy="12.6" r="1.3" ${AF}/><circle cx="20.5" cy="10.6" r="1.3" ${AF}/><circle cx="23" cy="13.6" r="1.3" ${AF}/>`,
+    basisContent: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M5 18v-4M11 18v-6M17 18v-3M23 18v-5" ${AS} stroke-width="1.6"/><circle cx="5" cy="12.6" r="1.3" ${AF}/><circle cx="11" cy="10.6" r="1.3" ${AF}/><circle cx="17" cy="13.6" r="1.3" ${AF}/><circle cx="23" cy="11.6" r="1.3" ${AF}/>`,
+    depth1: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C12 13 16 13 21.6 8.4" ${AS} stroke-width="1.5"/><circle cx="6.4" cy="8.4" r="1.7" ${AF}/><circle cx="21.6" cy="8.4" r="1.7" ${AF}/><circle cx="9" cy="19" r="1.1" ${AF} opacity=".5"/><circle cx="19" cy="19" r="1.1" ${AF} opacity=".5"/>`,
+    depth2: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C11 12 13 15 9 19M21.6 8.4C17 12 15 15 19 19" ${AS} stroke-width="1.3"/><circle cx="6.4" cy="8.4" r="1.5" ${AF}/><circle cx="21.6" cy="8.4" r="1.5" ${AF}/><circle cx="9" cy="19" r="1.5" ${AF}/><circle cx="19" cy="19" r="1.5" ${AF}/>`,
+    depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4 19 19M21.6 8.4 9 19M6.4 8.4 21.6 8.4M9 19h10M6.4 8.4 9 19" ${AS} stroke-width="1"/><circle cx="6.4" cy="8.4" r="1.4" ${AF}/><circle cx="21.6" cy="8.4" r="1.4" ${AF}/><circle cx="9" cy="19" r="1.4" ${AF}/><circle cx="19" cy="19" r="1.4" ${AF}/>`,
+  };
+
+  /** v2 범례 마크 — 3D 셋은 실제 지오메트리(구 · 정사면체 DOC_ROT · 정팔면체
+   *  rot.y 0.5 · 겹껍질 · 윤곽선)를 기본 카메라에서 투영한 실루엣이다(view3d.ts
+   *  kindGeometry/nodeObject 와 짝). 평면 셋은 여기서 그리지 않는다 — 정본
+   *  `markSvg`(view-planar) 를 좌표째 불러 쓴다: 범례가 손으로 재현하다 어긋난
+   *  전력이 있다(주제 겹껍질을 토성 고리로, 다리를 1.45배로). */
+  const MARK3D: Record<string, string> = {
+    // ds-allow: 이 흰색은 팔레트가 아니라 **조명**이다 — 구 실루엣의 상단 하이라이트
+    // (램버트 음영의 밝은 면)를 30% 투명 백색으로 흉내낸다. 잉크는 currentColor 다.
+    concept: `<defs><radialGradient id="v3sph" cx="52%" cy="26%" r="72%"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><circle cx="12" cy="12" r="8.4" fill="currentColor" opacity=".92"/><circle cx="12" cy="12" r="8.4" fill="url(#v3sph)"/>`,
+    document: `<polygon points="7.39,16.96 16.31,17.88 18.39,6.51" fill="currentColor" opacity=".69"/><polygon points="5.9,6.66 7.39,16.96 18.39,6.51" fill="currentColor" opacity=".92"/>`,
+    bridge: `<polygon points="20.9,11.94 12.16,15.16 12,20.32" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12,20.32 12.16,15.16" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12.16,15.16 12,3.68" fill="currentColor" opacity=".9"/><polygon points="20.9,11.94 12,3.68 12.16,15.16" fill="currentColor" opacity=".94"/>`,
+    topic: `<circle cx="12" cy="12" r="9.4" fill="currentColor" opacity=".28"/><circle cx="12" cy="12" r="4.2" fill="currentColor"/>`,
+    gateway: `<path d="M8.09 4.59L15.32 5.62M15.32 5.62L7.72 9.43M8.09 4.59L7.72 9.43M7.72 9.43L3.62 12.21M8.09 17.95L7.72 9.43M8.09 17.95L3.62 12.21M15.32 13.88L15.32 5.62M15.32 13.88L7.72 9.43M15.32 5.62L20.38 11.79M8.09 17.95L8.68 18.38M8.09 17.95L15.91 19.41M8.09 17.95L15.32 13.88M15.91 19.41L15.32 13.88M15.32 13.88L20.38 11.79M15.91 19.41L20.38 11.79" fill="none" stroke="currentColor" stroke-width=".7" opacity=".22"/><path d="M8.09 4.59L3.62 12.21M8.68 10.12L3.62 12.21M8.09 4.59L8.68 10.12M15.91 6.05L8.68 10.12M8.09 4.59L15.91 6.05M8.68 10.12L16.28 14.57M15.91 6.05L16.28 14.57M8.68 18.38L3.62 12.21M8.68 18.38L8.68 10.12M15.91 6.05L20.38 11.79M15.91 19.41L16.28 14.57M8.68 18.38L16.28 14.57M15.91 19.41L8.68 18.38M20.38 11.79L16.28 14.57" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>`,
+  };
+  /** 선 갈래 견본(18×12) — 실제 변별 채널(굵기·화살촉·농도) 그대로. */
+  const LINE_ART: Record<EdgeKind, string> = {
+    directed: `<path d="M1 6h11" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 3.4 17 6l-6 2.6Z" fill="currentColor"/>`,
+    related: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width="1"/>`,
+    cross: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/>`,
+    bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35"/>`,
+  };
+  /** 물러남 견본(24×24) — 전후를 나란히. 수치 라벨은 recede.ts(토큰)가 채운다. */
+  const RECEDE_ART = [
+    `<circle cx="12" cy="12" r="7" fill="hsl(var(--ring))"/>`,
+    `<circle cx="6.6" cy="12" r="4.6" fill="currentColor"/><circle cx="17.4" cy="12" r="4.6" fill="currentColor" opacity=".4"/>`,
+    `<path d="M2 8.5h20" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2 15.5h20" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".12"/>`,
+    `<path d="M3 9.5h7.5M3 14h5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M13.5 9.5h7.5M13.5 14h5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".35"/>`,
+  ];
+
   function legendHTML(): string {
     const L = COPY.ui.legend;
-    const mark = (svg: string, label: string) =>
-      `<span class="lg-item"><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true">${svg}</svg>${label}</span>`;
-    const line = (attrs: string, label: string) =>
-      `<span class="lg-item"><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true">`
-      + `<path d="M1 8h14" ${attrs}/></svg>${label}</span>`;
-    const hex = (cx: number, cy: number, r: number) => Array.from({ length: 6 }, (_, i) => {
-      const a = (Math.PI / 180) * (60 * i - 30);
-      return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
-    }).join(" ");
+    const p = curPrefs();
+    const is3d = p.view === "3d";
+    const note = (is3d ? L.markNote3d : L.markNoteFlat) as Record<string, string>;
+    // 평면 셋 = 정본 markSvg 를 좌표째(중심 12·반지름 8). 손 재현 금지 — 어긋난 전력.
+    const flatMark = (kind: string, gateway = false) =>
+      `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${
+        markSvg(kind, gateway, 12, 12, 8, "")}</svg>`;
+    const m3 = (svg: string) =>
+      `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+    const shapeRow = (art: string, label: string, noteTxt: string) =>
+      `<span class="lg-shape">${art}<span class="lg-shape-t">${esc(label)}`
+      + `<span class="lg-note">${esc(noteTxt)}</span></span></span>`;
+    const shapes = [
+      shapeRow(is3d ? m3(MARK3D.concept) : flatMark("concept"), L.concept, note.concept),
+      shapeRow(is3d ? m3(MARK3D.document) : flatMark("record"), L.document, note.document),
+      shapeRow(is3d ? m3(MARK3D.bridge) : flatMark("bridge"), L.bridge, note.bridge),
+      shapeRow(is3d ? m3(MARK3D.topic) : flatMark("domain"), L.topic, note.topic),
+      // Weave 는 관문 윤곽을 안 그린다(view-bundle markSvg(gateway=false)) — 그리지
+      // 않는 것은 가르치지 않는다.
+      ...(p.view === "bundle" ? [] :
+        [shapeRow(is3d ? m3(MARK3D.gateway) : flatMark("concept", true),
+                  L.gateway, note.gateway)]),
+    ].join("");
+    // 물러남 4단 — 수치는 recede.ts 가 토큰에서 읽는다(범례는 그리는 그대로).
+    const pct = (k: "node" | "line" | "text") => Math.round(recede(k) * 100);
+    const tiers = [
+      { art: RECEDE_ART[0], label: L.tierFocus },
+      { art: RECEDE_ART[1], label: L.tierNode(pct("node")) },
+      { art: RECEDE_ART[2], label: L.tierLine(pct("line")) },
+      { art: RECEDE_ART[3], label: L.tierText(pct("text")) },
+    ].map((t) => `<span class="lg-tier"><svg viewBox="0 0 24 24" aria-hidden="true">`
+      + `${t.art}</svg><span>${esc(t.label)}</span></span>`).join("");
     return `<div class="lg-body">
-      <p class="hint lg-cap">${L.shapes}</p>
-      ${mark(`<circle cx="8" cy="8" r="4.4"/>`, L.concept)}
-      <!-- ⚠ 육각이었다. 어느 렌더러도 육각을 그리지 않는다 — 3D 는 정사면체,
-           평면은 그 정면인 삼각, 2D 는 굵은 링이다(2026-08-15 Node Kit).
-           범례가 그리지 않는 형태를 가르치고 있었고, 그건 바로 위 주석이
-           금지한 그것이다. markSvg 와 같은 구성으로 맞춘다: 꼭짓점 각
-           -90·30·150, 외접원 1.08r(원과 시각 무게가 같은 비율). -->
-      ${mark(`<polygon points="8,3.25 12.11,10.38 3.89,10.38"/>`, L.document)}
-      ${mark(`<polygon points="8,1.6 14.4,8 8,14.4 1.6,8"/>`, L.bridge)}
-      ${mark(`<circle cx="8" cy="8" r="3.6"/><ellipse cx="8" cy="8" rx="7.2" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/>`, L.topic)}
-      <!-- 관문 = 자기 종의 윤곽선. 파선 비율은 markSvg 와 같다(.68r / .56r).
-           Weave 는 관문 윤곽을 안 그리므로(view-bundle markSvg(gateway=false)) 거기선
-           이 행을 빼는 것이 "그리지 않는 것은 가르치지 않는다"는 위 규칙이다. -->
-      ${curPrefs().view === "bundle" ? "" :
-        mark(`<circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2.5"/>`, L.gateway)}
-      <p class="hint lg-cap">${L.lines}${lineFilterable() ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
-      <!-- ⚠ 범례는 **실제로 그려지는 것만** 가르친다. 정본(§1.2)은 파선=크로스 ·
-           점선=Bridge 매개 · 이중선=상속을 규정하지만, 2D(sigma)·3D(three) 어느
-           렌더러도 아직 점선 계열을 그리지 않는다(D33 "후속" 명시). 그리지 않는
-           문법을 범례가 가르치면 화면이 자기를 반박한다 — 지금 변별에 실제로
-           쓰이는 채널(굵기·화살촉·농도)을 그대로 싣는다.
-           D74 — 그 항목이 이제 **스위치**다(발주자 지시 2026-08-02). "지금 이 그림에
-           무슨 선이 있는지"를 가르치던 자리가 "그중 무엇을 볼지"를 정하는 자리가
-           된다. 지금 그래프에 **실제로 있는 갈래만** 개수와 함께 낸다 — 없는 갈래의
-           스위치는 눌러도 아무 일이 없어 화면이 거짓말을 한다. -->
+      <p class="hint lg-cap">${L.shapes}<span class="lg-tip">${
+        esc(is3d ? L.drawnAs3d : L.drawnAsFlat)}</span></p>
+      ${shapes}
+      <p class="hint lg-cap">${L.tiersCap}</p>
+      <div class="lg-tiers">${tiers}</div>
+      <p class="hint sub">${esc(L.tiersHelp)}</p>
+      <p class="hint lg-cap">${L.lines}${lineFilterable()
+        ? `<span class="lg-tip">${esc(L.linesToggle)}</span>` : ""}</p>
       ${lineRows()}
+      ${legendStatus()}
       <p class="hint lg-cap lg-focus"><span class="lg-dot"></span>${L.focus}</p>
     </div>`;
   }
@@ -300,36 +377,104 @@ export async function renderView(el: HTMLElement) {
   /** 선 필터가 뜻이 있는 관점인가 — 지도(3D·2D)만 엣지를 그린다. 타임라인·합계는
    *  선이 관계가 아니라 흐름·계보라 이 어휘가 안 맞는다(합계 리본은 값이다). */
   const lineFilterable = () => !isPlanar(curPrefs().view);
+  const edgeKindName = (): Record<EdgeKind, string> => ({
+    directed: COPY.ui.legend.directed, related: COPY.ui.legend.related,
+    cross: COPY.ui.legend.cross, bridge: COPY.ui.legend.bridgeLine,
+  });
   function lineRows(): string {
     const L = COPY.ui.legend;
     const counts = edgeKindCounts();
     const off = new Set(curPrefs().edgeOff);
-    const style: Record<EdgeKind, string> = {
-      directed: `stroke="currentColor" stroke-width="1.8"`,
-      related: `stroke="currentColor" stroke-width="1"`,
-      cross: `stroke="currentColor" stroke-width=".8" opacity=".5"`,
-      bridge: `stroke="currentColor" stroke-width=".8" opacity=".35"`,
-    };
-    const name: Record<EdgeKind, string> = {
-      directed: L.directed, related: L.related, cross: L.cross, bridge: L.bridgeLine,
-    };
+    const name = edgeKindName();
     const rows = EDGE_KINDS.filter((k) => (counts.get(k) || 0) > 0);
     // 선이 하나도 없으면(고립 노드만 있는 층) 스위치도 내지 않는다 — 켜고 끌 것이 없다.
     if (!rows.length) return "";
+    const total = rows.reduce((a, k) => a + (counts.get(k) || 0), 0) || 1;
+    const iconOf = (k: EdgeKind) =>
+      `<svg class="lg-line" viewBox="0 0 18 12" aria-hidden="true">${LINE_ART[k]}</svg>`;
     if (!lineFilterable()) {
       return rows.map((k) =>
-        `<span class="lg-item"><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true">`
-        + `<path d="M1 8h14" ${style[k]}/></svg>${name[k]}</span>`).join("");
+        `<span class="lg-item lg-row">${iconOf(k)}<span class="lg-name">${name[k]}</span>`
+        + `<span class="lg-n pl-num">${counts.get(k)}</span></span>`).join("");
     }
+    // v2 — 3단 상호작용: 가리키기(상태줄이 그 갈래를 말한다) · 누르기(숨김) ·
+    // `이것만`(솔로 — 나머지를 전부 끈다). 개수 옆 길이 막대는 갈래의 비중이다.
     return rows.map((k) => {
       const on = !off.has(k);
-      return `<button class="lg-item lg-sw${on ? "" : " off"}" type="button"
+      const w = Math.round(((counts.get(k) || 0) / total) * 100);
+      return `<span class="lg-rowwrap" data-edgerow="${k}">`
+        + `<button class="lg-item lg-sw lg-row${on ? "" : " off"}" type="button"
         data-edgekind="${k}" role="switch" aria-checked="${on}"
-        ><svg class="lg-mark" viewBox="0 0 16 16" aria-hidden="true"
-          ><path d="M1 8h14" ${style[k]}/></svg
-        ><span class="lg-name">${name[k]}</span
-        ><span class="lg-n pl-num">${counts.get(k)}</span></button>`;
+        >${iconOf(k)}<span class="lg-name">${name[k]}</span
+        ><span class="lg-bar" aria-hidden="true"><span style="width:${w}%"></span></span
+        ><span class="lg-n pl-num">${counts.get(k)}</span></button>`
+        + `<button class="lg-solo" type="button" data-edgesolo="${k}"
+             aria-label="${esc(L.solo)}">${esc(L.solo)}</button></span>`;
     }).join("");
+  }
+
+  /** 갈래 상태줄 — 몇 갈래가 보이는지·연결 총수, 끈 것이 있으면 `전체 보기`.
+   *  가리키는 동안은 그 갈래의 수를 말한다(배선은 drawViewPanel). */
+  function legendStatus(): string {
+    const L = COPY.ui.legend;
+    const counts = edgeKindCounts();
+    const rows = EDGE_KINDS.filter((k) => (counts.get(k) || 0) > 0);
+    if (!rows.length) return "";
+    if (!lineFilterable()) return `<p class="hint lg-status">${esc(L.statusPlanar)}</p>`;
+    const off = new Set(curPrefs().edgeOff);
+    const shown = rows.filter((k) => !off.has(k)).length;
+    const total = rows.reduce((a, k) => a + (counts.get(k) || 0), 0);
+    const resetBtn = curPrefs().edgeOff.length
+      ? `<button class="lg-reset" type="button" data-edgereset>${esc(L.reset)}</button>` : "";
+    return `<p class="hint lg-status"><span id="lg-status-text">${
+      esc(L.status(shown, rows.length, total))}</span>${resetBtn}</p>`;
+  }
+
+  /** Weave 관계 행(v2) — 세는 단위가 **묶인 뒤의 선**이다(view-bundle.bundleEdges 와
+   *  같은 집계 — bundleStatsByType). 같은 (양끝, 타입)은 하나로 합쳐지고 계층 경로가
+   *  한 점이 되는 자기연결은 버려진다. 두 수 모두 묶기 단이 바뀌면 달라지므로 행이
+   *  직접 말한다 — 이 관점은 타입이 그림에 안 나타나서(화살촉·타입별 굵기·색 없음,
+   *  타입은 data-t 로만 산다) 수가 곧 그 행의 견본이다.
+   *  ⚠ 상한(PLANAR_CAP) **전의 전량**으로 센다 — 1200개 초과 층에서는 그림이 조금
+   *  덜 그릴 수 있고, 잘린 수는 링 캡션이 따로 밝힌다. */
+  function relRowsHTML(p: ViewPrefs): string {
+    const P = COPY.ui.panel;
+    const L = COPY.ui.legend;
+    const present = BUNDLE_RELS.filter((r) => curEdges.some((e) => e.type === r));
+    if (!present.length) return "";
+    const bnodes: BundleNode[] = curNodes.map((n) => ({
+      id: n.id, label: n.label || n.id, domain: n.domain || "", kind: n.kind }));
+    const { byType } = bundleStatsByType(
+      bnodes, curEdges as unknown as BundleEdge[], p.bundleDepth);
+    const stat = (r: string) => byType.get(r) || { drawn: 0, dropped: 0 };
+    const maxDrawn = Math.max(1, ...present.map((r) => stat(r).drawn));
+    const rowsH = present.map((r) => {
+      const s = stat(r);
+      const on = !p.bundleOff.includes(r);
+      const w = Math.round((s.drawn / maxDrawn) * 100);
+      const mute = on && s.drawn === 0
+        ? `<span class="rel-mute">${esc(P.relNothing)}</span>` : "";
+      const drop = on && s.dropped
+        ? `<span class="rel-drop pl-num">${esc(P.relDropped(s.dropped))}</span>` : "";
+      return `<span class="lg-rowwrap" data-relrow="${esc(r)}" data-drawn="${s.drawn}"
+        data-dropped="${s.dropped}">`
+        + `<button class="lg-item lg-sw lg-row${on ? "" : " off"}" type="button"
+        data-pref="bundleOff" data-val="${esc(r)}" role="switch" aria-checked="${on}"
+        ><span class="lg-name">${esc(P.relName[r] || r)}${mute}</span
+        ><span class="lg-bar" aria-hidden="true"><span style="width:${w}%"></span></span
+        ><span class="lg-n pl-num">${s.drawn}</span>${drop}</button>`
+        + `<button class="lg-solo" type="button" data-relsolo="${esc(r)}"
+             aria-label="${esc(L.solo)}">${esc(L.solo)}</button></span>`;
+    }).join("");
+    const live = present.filter((r) => !p.bundleOff.includes(r));
+    const status = !live.length ? P.relEmpty
+      : P.relStats(live.reduce((a, r) => a + stat(r).drawn, 0),
+                   live.reduce((a, r) => a + stat(r).dropped, 0));
+    const resetBtn = p.bundleOff.length
+      ? `<button class="lg-reset" type="button" data-relreset>${esc(L.reset)}</button>` : "";
+    return `<p class="hint">${esc(P.bundleRels)}</p>` + rowsH
+      + `<p class="hint lg-status"><span id="rel-status-text">${
+        esc(status)}</span>${resetBtn}</p>`;
   }
 
   /** 렌즈 버튼 — 아이콘 하나. 누르면 위로 패널이 열리고 그 안에 `보기`(관점·범위·
@@ -374,6 +519,7 @@ export async function renderView(el: HTMLElement) {
     detail.hidden = true;
     detail.innerHTML = "";
     lastNode = null;
+    setSpot(null);        // 원뿔은 초점에 딸린 것이라 초점이 끝나면 함께 꺼진다
     if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
     railChrome(false);
     // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
@@ -654,16 +800,22 @@ export async function renderView(el: HTMLElement) {
    *  이제 값을 옆에 적고(`output`), 끄는 동안 그 숫자가 따라 움직인다. */
   const fmtVal = (v: number | string) => String(Math.round(Number(v) * 100) / 100);
   function slider(id: string, label: string, min: number, max: number,
-                  step: number, value: number, text?: string): string {
+                  step: number, value: number, text?: string, helpKey?: string): string {
     // `text` 를 준 손잡이는 값 표시가 숫자가 아니다(시간 커서 — 0.62 는 뜻이 없고
     // 사람이 읽을 것은 잘린 날짜다). 끄는 동안의 갱신도 같은 규칙을 따라야 해서
     // `data-fmt` 로 표시해 둔다(아래 input.slider 배선).
+    // `helpKey` — 값 설명(v2). 기본은 바닥 고정 줄이 hover·포커스로 받고, 설명 상시
+    // 모드(PANEL_HELP_KEY)에서만 행 밑에 펼친다.
+    const H = COPY.ui.panel.help as Record<string, string>;
+    const helpOn = localStorage.getItem(PANEL_HELP_KEY) === "1";
+    const help = helpKey ? H[helpKey] || "" : "";
     return `<div class="slider-row">
       <label class="hint" for="${id}">${esc(label)}</label>
       <output class="slider-val" id="${id}-val">${esc(text ?? fmtVal(value))}</output>
       <input class="slider" id="${id}" type="range"${text != null ? ' data-fmt="when"' : ""}
+             ${help ? `data-hname="${esc(label)}" data-help="${esc(help)}"` : ""}
              min="${min}" max="${max}" step="${step}" value="${value}">
-    </div>`;
+    </div>` + (helpOn && help ? `<p class="hint sub">${esc(help)}</p>` : "");
   }
 
   /** 커서 위치를 사람이 읽는 시각으로. 끔이면 "전부". 지금 실린 노드들 위에서
@@ -680,103 +832,126 @@ export async function renderView(el: HTMLElement) {
   function drawViewPanel() {
     const p = curPrefs();
     const lv = trail[trail.length - 1];
-    const chip = (pref: string, val: string, label: string, active: boolean) =>
-      `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}">${label}</button>`;
-    const row = (cap: string, chips: string) =>
-      `<p class="hint">${cap}</p><p><span class="seg">${chips}</span></p>`;
+    const helpOn = localStorage.getItem(PANEL_HELP_KEY) === "1";
+    const H = COPY.ui.panel.help as Record<string, string>;
+    // 값마다 이름/설명을 data 속성으로 싣는다 — 바닥 고정 줄이 위임 리스너 하나로
+    // 받아 바꾼다(hover + 키보드 포커스, drawViewPanel 끝의 배선).
+    const dh = (label: string, key: string) =>
+      ` data-hname="${esc(label)}" data-help="${esc(H[key] || "")}"`;
+    const chip = (pref: string, val: string, label: string, active: boolean,
+                  helpKey = "") =>
+      `<button class="chip${active ? " active" : ""}" data-pref="${pref}" data-val="${val}"${
+        helpKey ? dh(label, helpKey) : ""}>${label}</button>`;
+    // v2 — 다값 행은 **견본 타일**(radio): 그 값을 고르면 지도가 어떻게 되는지를 그린
+    // 축소판이다(상징이 아니라 그림). 활성 값의 **이름**은 캡션 오른쪽에 상시로 둔다:
+    // 아이콘 이해는 이전 경험에 의존하므로, 이름 없는 아이콘은 뜻이 서지 않는다.
+    const tile = (pref: string, val: string, label: string, art: string,
+                  helpKey: string, active: boolean) =>
+      `<button class="tile${active ? " active" : ""}" type="button" role="radio"
+         aria-checked="${active}" aria-label="${esc(label)}" data-pref="${pref}"
+         data-val="${val}"${dh(label, helpKey)}><svg viewBox="0 0 28 24"
+         aria-hidden="true">${art}</svg></button>`;
+    type TileDef = { val: string; label: string; art: string; help: string; active: boolean };
+    const tileRow = (cap: string, items: TileDef[], pref: string) => {
+      const act = items.find((t) => t.active) ?? items[0];
+      return `<div class="opt-caprow"><span class="hint">${esc(cap)}</span>`
+        + `<span class="tile-active">${esc(act.label)}</span></div>`
+        + `<div class="tile-grid" role="radiogroup" aria-label="${esc(cap)}">`
+        + items.map((t) => tile(pref, t.val, t.label, t.art, t.help, t.active)).join("")
+        + `</div>`
+        + (helpOn ? `<p class="hint sub">${esc(H[act.help] || "")}</p>` : "");
+    };
+    // 진짜 on/off 행 — 한쪽이 다른 쪽의 **부정**인 것들만 알약(.seg)이다. "끔"은 그릴
+    // 것이 없는 상태라 견본이 성립하지 않는다. ⚠ `연결 수에 따라/모두 같게`처럼 둘 다
+    // 적극적 선택인 행은 여기 오지 않는다 — 부정으로 말하면 거짓이 된다.
+    const swRow = (cap: string, pref: string, isOn: boolean,
+                   onLabel: string, offLabel: string, onVal: string, offVal: string,
+                   onHelp: string, offHelp: string) =>
+      `<div class="opt-swrow"><span class="hint">${esc(cap)}</span><span class="seg">`
+      + chip(pref, onVal, onLabel, isOn, onHelp)
+      + chip(pref, offVal, offLabel, !isOn, offHelp)
+      + `</span></div>`
+      + (helpOn ? `<p class="hint sub">${esc(H[isOn ? onHelp : offHelp] || "")}</p>` : "");
     // 활성 표시는 "지금 그려지는 것"만 따른다(shownViewpoint).
     const shown = shownViewpoint(lv);
     // 프레임 칩(Grid·Matrix)이 있던 자리. 프레임 폐기(2026-08-02)로 비운다 —
     // 관점은 하단 바 세그먼트가 상시로 맡는다(D65).
     const head = "";
+    // 저장값이 이 관점이 실제로 그리는 값과 다를 수 있다(edgeShowFor) — 활성 타일은
+    // 그리는 것을 따른다. 저장값 기준이면 활성이 없는 행이 생긴다.
+    const shownEdges = edgeShowFor(p.view, p.edges);
+    const showArt: Record<string, string> = {
+      always: ART.edgeAlways, focus: ART.edgeFocus,
+      particles: ART.edgeParticles, bring: ART.edgeBring,
+    };
 
     const rows: Record<string, string> = {
-      size: row(COPY.ui.panel.nodeSize,
-        chip("size", "links", COPY.ui.panel.byConnections, p.size === "links")
-        + chip("size", "uniform", COPY.ui.panel.uniform, p.size === "uniform")),
-      // ⚠ 같은 손잡이가 관점마다 다른 것을 뜻한다. 지도에서는 짚어야 뜨지만
-      // Weave 에서는 둘레에 들어갈 만큼 상시로 뜬다 — 그래서 값 이름도 갈린다.
-      // 한 이름으로 묶어 두면 화면이 하지 않는 약속("호버 시")을 하게 된다.
-      labels: row(COPY.ui.panel.labels,
-        chip("labels", "hover",
-          p.view === "bundle" ? COPY.ui.panel.labelsFit : COPY.ui.panel.onHover,
-          p.labels === "hover")
-        + chip("labels", "none", COPY.ui.panel.off, p.labels === "none"))
-        + (p.view === "bundle" ? `<p class="hint sub">${esc(COPY.ui.panel.labelsFitHelp)}</p>` : ""),
-      arrows: row(COPY.ui.panel.arrows,
-        chip("arrows", "on", COPY.ui.panel.on, p.arrows)
-        + chip("arrows", "off", COPY.ui.panel.off, !p.arrows)),
-      // 선을 **언제** 그리는가(2026-08-14). 굵기·방향 손잡이와 같은 묶음에 두되 맨
-      // 위에 온다 — "보일까"가 "얼마나 굵을까"보다 먼저 답해야 하는 질문이다.
-      edgeShow: row(COPY.ui.panel.edgeShow,
-        edgeShowsFor(p.view).map((v) =>
-          chip("edges", v, COPY.ui.panel.edgeShowName[v] || v, p.edges === v)).join(""))
-        + `<p class="hint sub">${esc(COPY.ui.panel.edgeShowHelp[p.edges] || "")}</p>`,
-      // 주제 틴트 — **열린 층**이라 여기 있다. 색은 원래 스펙 소유지만(팩 공유),
-      // 이 색은 뜻을 나르지 않으므로 꺼도 아무 정보가 사라지지 않는다. 기본은 끔:
-      // 모노크롬이 기본값이고 틴트는 켜서 얻는 것이다.
-      domainTint: row(COPY.ui.panel.domainTint,
-        chip("domainTint", "on", COPY.ui.panel.on, p.domainTint)
-        + chip("domainTint", "off", COPY.ui.panel.off, !p.domainTint))
-        + `<p class="hint sub">${esc(COPY.ui.panel.domainTintHelp)}</p>`,
-      unlinked: row(COPY.ui.panel.unlinkedNodes,
-        chip("unlinked", "show", COPY.ui.panel.show, p.unlinked === "show")
-        + chip("unlinked", "hide", COPY.ui.panel.hide, p.unlinked === "hide")),
-      // 고른 배치가 **무슨 순서로** 세우는지 한 줄로 밝힌다(발주자 지적 2026-08-02).
-      // 툴팁이 아니라 상시 노출인 이유: 좌표의 뜻은 hover 로 발견할 것이 아니라
-      // 지도를 읽는 전제다 — 모르면 배치는 장식으로 읽힌다.
-      layout: row(COPY.ui.panel.layout,
-        LAYOUTS.map((l) => chip("layout", l, COPY.ui.panel.layoutName[l], p.layout === l)).join(""))
-        + `<p class="hint sub">${esc(COPY.ui.panel.layoutHelp[p.layout] || "")}</p>`,
-      spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread),
+      size: tileRow(COPY.ui.panel.nodeSize, [
+        { val: "links", label: COPY.ui.panel.byConnections, art: ART.sizeLinks,
+          help: "links", active: p.size === "links" },
+        { val: "uniform", label: COPY.ui.panel.uniform, art: ART.sizeUniform,
+          help: "uniform", active: p.size === "uniform" },
+      ], "size"),
+      // ⚠ 같은 손잡이가 관점마다 다른 것을 뜻한다. 지도는 짚어야 뜨지만 Weave 는
+      // 둘레에 들어갈 만큼 상시로 뜬다 — 값 이름과 설명이 함께 갈린다.
+      labels: swRow(COPY.ui.panel.labels, "labels", p.labels === "hover",
+        p.view === "bundle" ? COPY.ui.panel.labelsFit : COPY.ui.panel.onHover,
+        COPY.ui.panel.off, "hover", "none",
+        p.view === "bundle" ? "fit" : "hover", "none"),
+      arrows: swRow(COPY.ui.panel.arrows, "arrows", p.arrows,
+        COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "arrowsOn", "arrowsOff"),
+      // 선을 **언제** 그리는가(2026-08-14). "보일까"가 "얼마나 굵을까"보다 먼저다.
+      edgeShow: tileRow(COPY.ui.panel.edgeShow, edgeShowsFor(p.view).map((v) => ({
+        val: v, label: COPY.ui.panel.edgeShowName[v] || v, art: showArt[v],
+        help: v, active: shownEdges === v,
+      })), "edges"),
+      domainTint: swRow(COPY.ui.panel.domainTint, "domainTint", p.domainTint,
+        COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "tintOn", "tintOff"),
+      unlinked: swRow(COPY.ui.panel.unlinkedNodes, "unlinked", p.unlinked === "show",
+        COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
+      layout: tileRow(COPY.ui.panel.layout, LAYOUTS.map((l) => ({
+        val: l, label: COPY.ui.panel.layoutName[l],
+        art: l === "hub" ? ART.layoutHub : ART.layoutRank,
+        help: l, active: p.layout === l,
+      })), "layout"),
+      spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
+                     undefined, "spread"),
       // 시간 커서 — 값 표시는 분수가 아니라 **컷오프 자신**이다(0.62 는 아무 뜻도
       // 없다). 끔은 "전부"로 적는다.
       when: slider("pref-when", COPY.ui.panel.when,
                    WHEN_SCALE.min, WHEN_SCALE.max, WHEN_SCALE.step, p.when,
-                   whenLabel(p.when))
-        + `<p class="hint sub">${esc(COPY.ui.panel.whenHelp)}</p>`,
+                   whenLabel(p.when), "when"),
       cone: slider("pref-cone", COPY.ui.panel.cone,
-        CONE_SCALE.min, CONE_SCALE.max, CONE_SCALE.step, p.cone)
-        + `<p class="hint sub">${esc(COPY.ui.panel.coneHelp)}</p>`,
+        CONE_SCALE.min, CONE_SCALE.max, CONE_SCALE.step, p.cone, undefined, "cone"),
       // 크기·굵기 **배율**(발주자 지시 2026-08-02). 위 `size` 는 무엇이 크고 작은지를
-      // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다 — 인코딩은 그대로 두고
-      // 화면 밀도만 취향에 맞춘다. 엣지는 D33 대로 가중치를 농도로 계속 말한다.
+      // 정하는 인코딩이고, 이 둘은 그 위에 곱하는 전역 배율이다.
       nodeScale: slider("pref-nodescale", COPY.ui.panel.nodeScale,
-        NODE_SCALE.min, NODE_SCALE.max, NODE_SCALE.step, p.nodeScale),
+        NODE_SCALE.min, NODE_SCALE.max, NODE_SCALE.step, p.nodeScale,
+        undefined, "nodeScale"),
       edgeWidth: slider("pref-edgescale", COPY.ui.panel.edgeWidth,
-        EDGE_SCALE.min, EDGE_SCALE.max, EDGE_SCALE.step, p.edgeScale),
-      docs: row(COPY.ui.panel.docLinks,
-        chip("timelineDocs", "on", COPY.ui.panel.on, p.timelineDocs)
-        + chip("timelineDocs", "off", COPY.ui.panel.off, !p.timelineDocs)),
-      // D74 — 원인·결과 겹치기. 기본은 꺼짐: 선이 있으면 늘 도움이 되는 것이 아니라
-      // 촘촘한 그래프에서는 마디를 덮는다. 켤 이유가 생겼을 때 켜는 층이다.
-      lineage: row(COPY.ui.panel.lineage,
-        chip("timelineLineage", "on", COPY.ui.panel.on, p.timelineLineage)
-        + chip("timelineLineage", "off", COPY.ui.panel.off, !p.timelineLineage))
-        + `<p class="hint sub">${esc(COPY.ui.panel.lineageHelp)}</p>`,
-      // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다: 같은 것을 다른
-      // 시계로 볼 뿐이라 관점 세그(3D·2D·타임라인·Sankey) 옆에 두지 않는다.
-      basis: row(COPY.ui.panel.timeBasis,
-        chip("timeBasis", "recorded", COPY.ui.panel.basisRecorded,
-             p.timeBasis === "recorded")
-        + chip("timeBasis", "content", COPY.ui.panel.basisContent,
-               p.timeBasis === "content")),
-      // 번들 — 이 손잡이가 줄이는 것은 **선**이지 목록이 아니다. 도움말이 매 단마다
-      // 그 사실을 되풀이하는 이유가 그것이다(줄었다고 항목이 사라진 줄 알면 오독이다).
-      bundleDepth: row(COPY.ui.panel.bundleDepth,
-        BUNDLE_DEPTHS.map((d) => chip("bundleDepth", String(d),
-          COPY.ui.panel.bundleDepthName[String(d)] || String(d), p.bundleDepth === d)).join(""))
-        + `<p class="hint sub">${esc(COPY.ui.panel.bundleDepthHelp[String(p.bundleDepth)] || "")}</p>`,
-      // 지금 실린 데이터에 **있는 타입만** 스위치를 낸다(D74 규율 — 보이는 손잡이는
-      // 반드시 무언가를 해야 한다). 범례가 곧 필터이므로 별도 범례를 두지 않는다.
-      bundleRels: (() => {
-        const present = new Set(curEdges.map((e) => e.type));
-        const list = BUNDLE_RELS.filter((r) => present.has(r));
-        if (!list.length) return "";
-        return row(COPY.ui.panel.bundleRels, list.map((r) =>
-          chip("bundleOff", r, COPY.ui.panel.relName[r] || r,
-               !p.bundleOff.includes(r))).join(""));
-      })(),
+        EDGE_SCALE.min, EDGE_SCALE.max, EDGE_SCALE.step, p.edgeScale,
+        undefined, "edgeWidth"),
+      docs: swRow(COPY.ui.panel.docLinks, "timelineDocs", p.timelineDocs,
+        COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "docsOn", "docsOff"),
+      // D74 — 원인·결과 겹치기. 기본은 꺼짐: 촘촘한 그래프에서는 선이 마디를 덮는다.
+      lineage: swRow(COPY.ui.panel.lineage, "timelineLineage", p.timelineLineage,
+        COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "lineageOn", "lineageOff"),
+      // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다.
+      basis: tileRow(COPY.ui.panel.timeBasis, [
+        { val: "recorded", label: COPY.ui.panel.basisRecorded, art: ART.basisRecorded,
+          help: "recorded", active: p.timeBasis === "recorded" },
+        { val: "content", label: COPY.ui.panel.basisContent, art: ART.basisContent,
+          help: "content", active: p.timeBasis === "content" },
+      ], "timeBasis"),
+      // 번들 — 이 손잡이가 줄이는 것은 **선**이지 목록이 아니다. 키를 리터럴로
+      // 늘어놓는 이유: 카피 패리티 검사(test_copy_parity)가 호출부를 문자열로 찾는다.
+      bundleDepth: tileRow(COPY.ui.panel.bundleDepth, BUNDLE_DEPTHS.map((d) => ({
+        val: String(d), label: COPY.ui.panel.bundleDepthName[String(d)] || String(d),
+        art: ART[`depth${d}`],
+        help: d === 1 ? "d1" : d === 2 ? "d2" : "d3",
+        active: p.bundleDepth === d,
+      })), "bundleDepth"),
+      bundleRels: relRowsHTML(p),
     };
 
     // 옵션 / 범례는 **둘 중 하나를 고른다**(발주자 지시 2026-08-05, 기본 = 옵션).
@@ -794,13 +969,19 @@ export async function renderView(el: HTMLElement) {
     // 탭 형태는 **설정 모달과 같은 것**을 쓴다(발주자 지시 2026-08-05) — 같은 일
     // (여러 면 중 하나 고르기)을 하는 컨트롤이 화면마다 다른 모습이면 그때마다 다시
     // 배워야 한다. `.settings-tabs` 가 이미 그 규격이라 클래스를 그대로 가져온다.
+    // v2 — `?` = 설명 상시/한 줄 전환. 탭줄 오른쪽 끝(옵션 탭에서만 뜻이 있다).
+    const qhelp = hasOpts && tab === "opts"
+      ? `<button class="lens-qhelp${helpOn ? " active" : ""}" type="button"
+           aria-pressed="${helpOn}" aria-label="${esc(COPY.ui.panel.helpTip)}"
+           data-tip="${esc(COPY.ui.panel.helpTip)}" data-qhelp>?</button>`
+      : "";
     const tabSeg = hasOpts
-      ? `<div class="settings-tabs lg-tabs" role="tablist">
+      ? `<div class="lg-tabrow"><div class="settings-tabs lg-tabs" role="tablist">
            <button class="settings-tab${tab === "opts" ? " active" : ""}" role="tab"
              data-tab="opts" aria-selected="${tab === "opts"}">${esc(COPY.ui.panel.options)}</button>
            <button class="settings-tab${tab === "legend" ? " active" : ""}" role="tab"
              data-tab="legend" aria-selected="${tab === "legend"}">${esc(COPY.ui.legend.title)}</button>
-         </div>`
+         </div>${qhelp}</div>`
       : "";
     // 묶음을 **영역**으로 낸다(발주자 지시 2026-08-05) — 제목 한 줄만으로는 어디까지가
     // 그 묶음인지 경계가 없어, 아래 컨트롤이 다음 제목에 붙어 읽혔다. 상자가 그 경계다.
@@ -816,9 +997,16 @@ export async function renderView(el: HTMLElement) {
     // 이 0 으로 돌아가, 내려가서 누른 손잡이가 누르는 순간 화면 밖으로 사라졌다
     // (실측 2026-08-17: 400→0→448). 값을 읽어 두고 새 면에 되돌린다.
     const keepScroll = viewPanel.querySelector<HTMLElement>(".lens-scroll")?.scrollTop ?? 0;
+    // v2 — 바닥 고정 설명 줄. 자리를 미리 비워 두어(min-height) 줄이 바뀌어도 아래가
+    // 밀리지 않는다. 설명 상시 모드에서는 행마다 펼쳐지므로 이 줄이 없다.
+    const helpLine = tab === "opts" && hasOpts && !helpOn
+      ? `<p class="lens-help"><b id="lens-help-name"></b><span id="lens-help-text">${
+          esc(COPY.ui.panel.helpHint)}</span></p>`
+      : "";
     viewPanel.innerHTML = `<div class="lens-scroll">`
       + head + tabSeg
       + (tab === "opts" ? groupsHTML : legendHTML())
+      + helpLine
       + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
       + `</div>`;
     if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
@@ -916,6 +1104,87 @@ export async function renderView(el: HTMLElement) {
         applyPrefs({ edgeOff: EDGE_KINDS.filter((x) => off.has(x)) },
                    `[data-edgekind="${k}"]`);
       }));
+    // v2 — 3단 상호작용의 나머지 둘: `이것만`(솔로 — 나머지 전부 끔)과 `전체 보기`.
+    // 가리키기는 상태줄이 받는다(솔로 버튼 표시는 CSS :hover/:focus-within).
+    viewPanel.querySelectorAll<HTMLElement>("[data-edgesolo]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.edgesolo as EdgeKind;
+        applyPrefs({ edgeOff: EDGE_KINDS.filter((x) => x !== k) },
+                   `[data-edgesolo="${k}"]`);
+      }));
+    viewPanel.querySelector<HTMLElement>("[data-edgereset]")?.addEventListener("click",
+      () => applyPrefs({ edgeOff: [] }, "[data-edgereset]"));
+    {
+      const st = viewPanel.querySelector<HTMLElement>("#lg-status-text");
+      if (st) {
+        const base = st.textContent || "";
+        const counts = edgeKindCounts();
+        const name = edgeKindName();
+        viewPanel.querySelectorAll<HTMLElement>("[data-edgerow]").forEach((w) => {
+          const k = w.dataset.edgerow as EdgeKind;
+          // 카피가 이미 이렇게 약속하고 있었다("가리키는 동안 그 갈래만 밝아요") —
+          // 지도만 그 약속을 안 지키고 있었다. 여기서 지킨다.
+          w.addEventListener("mouseenter", () => {
+            st.textContent = COPY.ui.legend.statusHover(counts.get(k) || 0, name[k]);
+            setSpot(spotOf(curEdges.filter((e) => edgeKindOf(e) === k)));
+          });
+          w.addEventListener("mouseleave", () => { st.textContent = base; setSpot(null); });
+        });
+      }
+    }
+    // Weave 관계 행 — 같은 3단. 토글 자체는 위 [data-pref] 공용 배선이 이미 진다.
+    viewPanel.querySelectorAll<HTMLElement>("[data-relsolo]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const r = b.dataset.relsolo!;
+        applyPrefs({ bundleOff: BUNDLE_RELS.filter((x) => x !== r) },
+                   `[data-relsolo="${r}"]`);
+      }));
+    viewPanel.querySelector<HTMLElement>("[data-relreset]")?.addEventListener("click",
+      () => applyPrefs({ bundleOff: [] }, "[data-relreset]"));
+    {
+      const st = viewPanel.querySelector<HTMLElement>("#rel-status-text");
+      if (st) {
+        const base = st.textContent || "";
+        viewPanel.querySelectorAll<HTMLElement>("[data-relrow]").forEach((w) => {
+          const r = w.dataset.relrow!;
+          w.addEventListener("mouseenter", () => {
+            st.textContent = COPY.ui.panel.relHover(COPY.ui.panel.relName[r] || r,
+              Number(w.dataset.drawn || 0), Number(w.dataset.dropped || 0));
+          });
+          w.addEventListener("mouseleave", () => { st.textContent = base; });
+        });
+      }
+    }
+    // v2 — `?` 토글: 설명 상시 ↔ 바닥 한 줄.
+    viewPanel.querySelector<HTMLElement>("[data-qhelp]")?.addEventListener("click", () => {
+      localStorage.setItem(PANEL_HELP_KEY,
+        localStorage.getItem(PANEL_HELP_KEY) === "1" ? "" : "1");
+      drawViewPanel();
+    });
+    // v2 — 바닥 설명 줄. 패널에 **한 번만** 위임을 건다(다시 그려도 리스너가 쌓이지
+    // 않게) — 줄 요소는 매 렌더마다 새로 찾는다.
+    if (!viewPanel.dataset.helpWired) {
+      viewPanel.dataset.helpWired = "1";
+      const show = (t: Element | null) => {
+        const nameEl = viewPanel.querySelector<HTMLElement>("#lens-help-name");
+        const textEl = viewPanel.querySelector<HTMLElement>("#lens-help-text");
+        if (!nameEl || !textEl) return;
+        const src = t && (t.closest("[data-help]") as HTMLElement | null);
+        if (src?.dataset.help) {
+          nameEl.textContent = src.dataset.hname || "";
+          textEl.textContent = src.dataset.help;
+        } else {
+          nameEl.textContent = "";
+          textEl.textContent = COPY.ui.panel.helpHint;
+        }
+      };
+      viewPanel.addEventListener("mouseover", (e) => show(e.target as Element));
+      viewPanel.addEventListener("focusin", (e) => show(e.target as Element));
+      // 패널을 벗어나면 설명 줄도 점등도 함께 푼다. 점등을 여기서도 푸는 이유:
+      // 갈래 행 위에 포인터가 있는 채로 패널이 다시 그려지면 그 행의 `mouseleave`
+      // 가 영영 오지 않는다(행이 새 노드로 갈린다). 이 배선은 패널당 한 번이라 살아남는다.
+      viewPanel.addEventListener("mouseleave", () => { show(null); setSpot(null); });
+    }
     viewPanel.onkeydown = (e) => { if ((e as KeyboardEvent).key === "Escape") closePanel(); };
   }
 
@@ -1298,6 +1567,16 @@ export async function renderView(el: HTMLElement) {
     // 주소가 이 노드를 싣는다 — 주소창에서 복사해 건네는 것이 "노드 하나"라는 성질은
     // L2 가 스코프였을 때부터의 것이고, 층이 사라져도 남는다.
     focusId = nd.id; syncHash();
+    // 인과 원뿔 — 이 노드를 있게 한 것(과거)과 이것이 낳은 것(미래)을 함께 밝힌다.
+    // **hover 가 아니라 초점에 매단다**: 지나가기만 해도 폐포가 켜지면 이웃 흐림과
+    // 두 문법이 같은 손짓을 놓고 다툰다. openDetail 은 모든 초점 경로가 모이는
+    // 깔때기라(클릭 · focusNode · 컨텍스트 메뉴) 한 자리로 전부 덮인다.
+    // 근거: [[dcb46a8f794dba72b]] §4 — 인과 순서가 이 그래프가 원래 가진 구조다.
+    {
+      const dir = curEdges.filter((e) => DIRECTED_RELS.includes(e.type));
+      setSpot(spotOf([...causalCone(dir, nd.id, "past"),
+                      ...causalCone(dir, nd.id, "future")], nd.id));
+    }
     openRail();
     void openRelsCard(nd);
     // 수치는 여기서 세지 않는다 — loadNodeSource 가 node-context 응답(links)으로
@@ -2032,6 +2311,7 @@ export async function renderView(el: HTMLElement) {
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
+    spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;

@@ -369,7 +369,7 @@ class PackTimeContract(unittest.TestCase):
         맞고, 지시체의 시간(content_time)만 건너온다."""
         from api import docstore as ds
         from api import share
-        text = "# 노트\n\n## relativity\n\n광속 불변.\n"
+        text = "---\ndomain: physics\n---\n# 노트\n\n## relativity\n\n광속 불변.\n"
         did = ds.put_doc(self.store, owner=self.OWNER_A, text=text, title="물리",
                          content_time="1905")["doc_id"]
         ds.extract_doc(self.store, did, owner=self.OWNER_A, apply=True)
