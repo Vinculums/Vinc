@@ -617,12 +617,24 @@ TOOLS: list[dict] = [
                        "reports the TRUE total, and a group whose list was cut carries "
                        "members_truncated:true — raise member_limit to see the rest. Delegates to "
                        "the native algo extension; executed:false with a note if the extension is "
-                       "unavailable (offline unbundled).",
+                       "unavailable (offline unbundled). kind='claims' is the exception: it uses "
+                       "no algo extension and always answers. It returns "
+                       "{conflicts:[{subject_path,newer,older}], conflict_count, "
+                       "unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, "
+                       "scanned}. `conflicts` pairs the most recent measurement of a file with "
+                       "every earlier one that carries a different measured_at, so the question "
+                       "it poses is 'does this older claim still stand'. It does NOT decide "
+                       "which side is right; open the path and look. `unanchored` lists records "
+                       "that name a file in their text but carry no props.subject_path, so they "
+                       "cannot be compared with anything: that count is meant to be driven down "
+                       "by adding the field. Both lists are capped by member_limit.",
         "inputSchema": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["components", "communities", "community_context"],
+            "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims"],
                      "description": "components (WCC orphans/islands) | communities (Louvain "
                                     "clusters) | community_context (one seed's cluster + "
-                                    "representative excerpts, requires `node`)."},
+                                    "representative excerpts, requires `node`) | claims "
+                                    "(records that disagree about one file, and records about "
+                                    "code with no file named)."},
             "node": {"type": "string",
                      "description": "Seed concept id — required, and only used, when "
                                     "kind='community_context'."},

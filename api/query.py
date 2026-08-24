@@ -4013,6 +4013,105 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     return base
 
 
+#: 경로처럼 생긴 토큰 — 슬래시가 하나 이상 있고 짧은 확장자로 끝난다. `and/or` 나
+#: 날짜를 잡지 않고 `api/sync.py` · `app/src/surfaces/view3d.ts` 를 잡는 최소 모양이다.
+#: URL 은 아래에서 먼저 지우고 찾는다(`https://vincs.io/docs/x.html` 이 경로로 보인다).
+_PATH_TOKEN = re.compile(r"(?<![\w/.-])(?:[\w.-]+/)+[\w.-]+\.[A-Za-z]{1,5}(?![\w/])")
+_URLISH = re.compile(r"\w+://\S+")
+#: 주장 진단이 훑는 텍스트 필드(props 안). 노트 이름이 두 벌 쓰인다(note·ko).
+_CLAIM_TEXT_KEYS = ("note", "ko", "state", "summary")
+
+
+def _path_hint(props: dict, title: str) -> str:
+    """이 기록이 코드를 두고 말하고 있나 — 그렇다면 처음 나온 경로 토큰."""
+    parts = [title] + [str(props.get(k) or "") for k in _CLAIM_TEXT_KEYS]
+    m = _PATH_TOKEN.search(_URLISH.sub(" ", "\n".join(parts)))
+    return m.group(0) if m else ""
+
+
+def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
+                    limit: int | None = None) -> dict:
+    """R5 — **주장 진단**: 같은 파일을 두고 어긋난 기록 짝, 그리고 코드를 말하면서
+    닻이 없는 기록. [[d4ab94561078498e3]] §7.3.
+
+    §6.1 이 "조인 키는 만들었는데 조인을 돌리는 것이 없다"고 지목한 그 러너다. R4 가
+    `props.subject_path` 를 쓰기 시점에 정규화해 두었으므로 여기서는 문자열 동치로
+    묶으면 된다 — 그 정규화가 없으면 이 함수는 **건강해 보이면서 0건**을 낸다.
+
+    반환 {executed, conflicts:[{subject_path, newer:{…}, older:{…}}], conflict_count,
+    unanchored:[{id,title,path_hint}], unanchored_count, unanchored_truncated,
+    anchored_count, scanned}.
+
+    **어느 쪽이 옳은지 판정하지 않는다.** 두 측정이 다른 날짜에 나왔다는 사실만
+    내놓는다. 판정은 경로를 열어 보는 사람의 몫이고, 그 열어 보기가 이 도구가
+    대신할 수 없는 잔여다(§7.5).
+
+    짝짓기는 **가장 최근 것 대 나머지**다(n² 가 아니다). 물어야 할 질문이 "이 옛
+    주장이 아직 서 있나"이지 "옛 주장 둘이 서로 맞나"가 아니기 때문이다.
+
+    기존 세 kind 가 그래프 **구조**(연결성·군집)를 읽는 데 반해 이것은 props **내용**을
+    읽는다. 같은 문이지만 이웃한 코드가 아니라서 `component_diagnosis` 를 넓히지 않고
+    따로 둔다."""
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
+            "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
+            "unanchored_truncated": False, "anchored_count": 0, "scanned": 0}
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        where = "WHERE r.owner_id = $owner " if owner else ""
+        rows = store.run(
+            f"MATCH (r:Record) {where}"
+            "RETURN r.record_id AS id, r.title AS title, r.props AS props",
+            {"owner": owner} if owner else {})
+        lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        by_path: dict[str, list[dict]] = {}
+        unanchored: list[dict] = []
+        for r in rows:
+            props = _props_to_obj(r.get("props"))
+            rid = pkns.strip(r.get("id") or "")
+            title = r.get("title") or rid
+            sp = str(props.get("subject_path") or "").strip()
+            if sp:
+                by_path.setdefault(sp, []).append({
+                    "id": rid, "title": title,
+                    "measured_at": str(props.get("measured_at") or ""),
+                    "measured_ref": str(props.get("measured_ref") or "")})
+                continue
+            hint = _path_hint(props, title)
+            if hint:
+                unanchored.append({"id": rid, "title": title, "path_hint": hint})
+        conflicts = []
+        for sp, items in by_path.items():
+            if len(items) < 2:
+                continue
+            # 빈 measured_at 은 정렬에서 맨 뒤다 — 시간을 못 대는 주장이 "가장 최근"
+            # 자리를 차지하면 짝의 방향이 뒤집힌다.
+            items.sort(key=lambda i: (i["measured_at"] or "", i["id"]), reverse=True)
+            newest = items[0]
+            for other in items[1:]:
+                if other["measured_at"] == newest["measured_at"]:
+                    continue          # 같은 날의 두 측정은 어긋남이 아니다
+                conflicts.append({"subject_path": sp, "newer": newest, "older": other})
+        conflicts.sort(key=lambda c: (c["newer"]["measured_at"], c["subject_path"]),
+                       reverse=True)
+        unanchored.sort(key=lambda u: (u["path_hint"], u["id"]))
+        base.update(executed=True,
+                    conflicts=conflicts[:lim], conflict_count=len(conflicts),
+                    unanchored=unanchored[:lim], unanchored_count=len(unanchored),
+                    unanchored_truncated=len(unanchored) > lim,
+                    anchored_count=sum(len(v) for v in by_path.values()),
+                    scanned=len(rows))
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
 def communities(*, owner: str | None = None, cfg=None, store=None,
                 member_limit: int | None = None) -> dict:
     """E-G3 Louvain 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
