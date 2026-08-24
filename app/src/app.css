@@ -721,7 +721,9 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   padding: var(--space-3, .75rem) var(--space-4, 1rem) var(--space-4, 1rem);
 }
 .sheet-foot:empty { display: none; }
-.sheet[data-size="write"]  { width: 52rem; }
+/* 쓰는 자리도 높이 **고정** — 시트가 내용(52vh 편집기)에 맞춰 크기를 잡던 역전을
+   끊는다. 문서는 패널에 맞춰 흐르고 스크롤은 .sheet-body 가 진다(doc-editor.ts). */
+.sheet[data-size="write"]  { width: 52rem; height: 84vh; }
 /* 훑는 자리 — 목록은 한 번에 많이 보여야 훑을 수 있다(화면의 2/3 남짓).
    높이도 **고정**이다: 주제 5줄 → 문서 44줄로 드릴할 때 상자가 같이 커지면
    방금 누른 줄이 눈앞에서 달아난다. 상자는 가만히 두고 안쪽만 스크롤한다.
@@ -1305,8 +1307,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    등장·퇴장 모션은 motion.ts 가 준다(렌즈 버튼에서 자라나고 그리로 빨려 든다). */
 #view-lens-panel {
   position: fixed; left: var(--space-4, 1rem); top: 4rem;
-  /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다. */
-  z-index: 46; width: 19.5rem;
+  /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다.
+     v2(견본 타일 + 개수 막대)에서 1rem 더: 타일 4장 + 활성값 이름이 한 줄에 선다. */
+  z-index: 46; width: 20.5rem;
   max-height: calc(100vh - 8rem);
   /* ⚠ 유리면을 스크롤 면의 **조상에서 떼어낸다**(2026-08-05 — 스크롤이 계단처럼
      끊겼다). `backdrop-filter` 가 조상에 있으면 그 안에서 스크롤할 때마다 블러가
@@ -1397,6 +1400,118 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   margin: -.15rem 0 .1rem; font-size: .68rem; line-height: 1.45;
   color: hsl(var(--caption-foreground));
 }
+
+/* ── 렌즈 패널 v2 — 옵션은 견본으로, 범례는 그리는 그대로 ─────────────────────
+   다값 행 = 결과를 그린 견본 타일(활성값 이름은 캡션 오른쪽에 상시), on/off 행 =
+   알약 한 줄. 설명은 바닥 고정 줄 하나가 받고(`?` 로 상시 펼침 전환), 범례는
+   렌더러가 실제로 그리는 마크(3D 실루엣/평면 markSvg)와 물러남 4단, 그리고 갈래
+   행의 3단 상호작용(가리키기·누르기·이것만)을 싣는다. */
+.lg-tabrow { display: flex; align-items: center; gap: .4rem; }
+.lg-tabrow .lg-tabs { flex: 1 1 auto; margin: 0; }
+.lens-qhelp {
+  flex: 0 0 auto; display: grid; place-items: center; width: 1.6rem; height: 1.6rem;
+  padding: 0; border: 1px solid hsl(var(--border)); border-radius: 50%;
+  background: hsl(var(--card) / .7); color: hsl(var(--muted-foreground));
+  font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+}
+.lens-qhelp:hover { border-color: hsl(var(--ring)); color: hsl(var(--foreground)); }
+.lens-qhelp.active { background: hsl(var(--foreground) / .16); color: hsl(var(--foreground)); }
+.opt-caprow { display: flex; align-items: baseline; gap: .4rem; margin: .5rem 0 0; }
+.opt-caprow .hint {
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tile-active {
+  flex: 0 0 auto; white-space: nowrap; font-size: .7rem; font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.tile-grid { display: flex; gap: .3rem; flex-wrap: wrap; margin: .3rem 0 0; }
+.tile {
+  display: grid; place-items: center; width: 3rem; height: 2.35rem; padding: 0;
+  border: 1px solid hsl(var(--border) / .7); border-radius: var(--radius-sm, .5rem);
+  background: hsl(var(--card) / .45); color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.tile:hover { border-color: hsl(var(--ring) / .7); color: hsl(var(--foreground)); }
+.tile:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.tile.active {
+  border-color: hsl(var(--ring)); background: hsl(var(--foreground) / .1);
+  color: hsl(var(--foreground));
+}
+.tile svg { width: 28px; height: 24px; }
+.opt-swrow { display: flex; align-items: center; gap: .5rem; margin: .5rem 0 0; }
+.opt-swrow .hint {
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.opt-swrow .seg { flex: 0 0 auto; }
+/* 바닥 고정 설명 줄 — 자리를 비워 두어(min-height) 줄이 바뀌어도 아래가 안 민다.
+   패널 안의 고정 자리라 WCAG 1.4.13 을 구조로 만족한다(뜨는 툴팁 아님). */
+.lens-help {
+  display: flex; gap: .35rem; min-height: 3em; margin: .6rem 0 0; padding: .45rem 0 0;
+  border-top: 1px solid hsl(var(--border) / .5);
+  font-size: .72rem; line-height: 1.45; color: hsl(var(--caption-foreground));
+}
+.lens-help b {
+  flex: 0 0 auto; white-space: nowrap; font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+.lens-help span { min-width: 0; }
+.lens-help b:empty { display: none; }
+/* 범례 v2 — 마크는 크게(24px), 실루엣 그대로. 파선 링은 stroke 를 여기서 준다
+   (markSvg 의 .pl-gate 는 평면 스타일시트가 채우던 속성이라 범례에서도 채운다). */
+.lg-shape {
+  display: grid; grid-template-columns: 1.6rem 1fr; gap: .1rem .55rem;
+  align-items: center; font-size: var(--fs-sm);
+}
+.lg-mark2 { width: 24px; height: 24px; color: hsl(var(--foreground)); fill: currentColor; }
+.lg-mark2 .pl-gate { stroke: currentColor; stroke-width: 1.9; fill: none; }
+.lg-shape-t { min-width: 0; }
+.lg-note {
+  display: block; font-size: .68rem; line-height: 1.45;
+  color: hsl(var(--caption-foreground));
+}
+.lg-tiers { display: flex; gap: .3rem; margin: .25rem 0 .1rem; }
+.lg-tier {
+  flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: .15rem;
+  padding: .3rem 0; border: 1px solid hsl(var(--border) / .45);
+  border-radius: var(--radius-sm, .5rem); background: hsl(var(--muted) / .3);
+  font-size: .68rem; color: hsl(var(--caption-foreground));
+}
+.lg-tier svg { width: 22px; height: 22px; color: hsl(var(--foreground)); }
+.lg-line { width: 18px; height: 12px; flex: 0 0 auto; color: hsl(var(--foreground)); }
+.lg-rowwrap { display: flex; align-items: center; gap: .3rem; }
+.lg-rowwrap .lg-sw { flex: 1 1 auto; }
+.lg-bar {
+  width: 2.4rem; height: 4px; flex: 0 0 auto; border-radius: 999px;
+  background: hsl(var(--border) / .6); overflow: hidden;
+}
+.lg-bar > span {
+  display: block; height: 100%; border-radius: 999px;
+  background: hsl(var(--ring) / .75);
+}
+/* `이것만`(솔로) — 행을 가리키거나 키보드가 그 행에 있을 때만 보인다. */
+.lg-solo {
+  flex: 0 0 auto; visibility: hidden; padding: .15rem .4rem;
+  border: 1px solid hsl(var(--border)); border-radius: .4rem;
+  background: hsl(var(--card) / .7); color: hsl(var(--muted-foreground));
+  font: inherit; font-size: .68rem; cursor: pointer;
+}
+.lg-rowwrap:hover .lg-solo, .lg-rowwrap:focus-within .lg-solo { visibility: visible; }
+.lg-solo:hover { color: hsl(var(--foreground)); border-color: hsl(var(--ring)); }
+/* 행을 가리키면 다른 행이 물러난다 — 지도의 물러남과 같은 문법(꺼진 행은 이미
+   .off 로 물러나 있어 건드리지 않는다). */
+.lens-scroll:has(.lg-rowwrap:hover) .lg-rowwrap:not(:hover) .lg-sw:not(.off) { opacity: .55; }
+.lg-status { display: flex; align-items: baseline; gap: .4rem; margin: .35rem 0 .1rem; }
+.lg-status span:first-child { flex: 1 1 auto; min-width: 0; }
+.lg-reset {
+  flex: 0 0 auto; padding: 0; border: 0; background: none; font: inherit;
+  font-size: .7rem; color: hsl(var(--link)); cursor: pointer; text-decoration: underline;
+}
+.rel-mute {
+  display: block; font-size: .65rem; line-height: 1.3;
+  color: hsl(var(--caption-foreground));
+}
+.rel-drop { flex: 0 0 auto; font-size: .65rem; color: hsl(var(--caption-foreground)); }
 
 /* View 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
    렌더러는 surfaces/view-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
