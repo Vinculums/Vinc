@@ -120,6 +120,52 @@ class _ThemeFold:
                 self.proposed.append(entry)
 
 
+#: 계약이 선언한 선택 필드 → **그 필드를 실제로 열에 쓰는 라벨**.
+#:
+#: 이 표가 없던 동안 `_merge_node` 는 자기 라벨이 안 쓰는 필드를 **말없이 버렸다**.
+#: 실측(2026-08-24): 결정 노드 셋에 `content_time` 을 실어 보냈는데 `merged` 는
+#: 성공이고 `warnings` 는 비어 있었으며 값은 어디에도 없었다. 스키마가 그렇게
+#: 생긴 것은 맞다(Decision 에는 그 열이 없다 — [[vinc.plan.sync-node-time-fields]]
+#: §6.2 인벤토리). 문제는 스키마가 아니라 **성공이라고 답한 것**이다.
+#:
+#: Entity 분기가 `domain`·`props` 에 이미 같은 경고를 내고 있었다 — 그 선례를
+#: 나머지 필드로 넓히는 것이 전부다.
+_KEPT_FIELDS: dict[str, frozenset[str]] = {
+    "Concept":  frozenset({"title", "domain", "tags", "props", "one_liner", "content_time"}),
+    "Record":   frozenset({"title", "domain", "tags", "props", "content_time"}),
+    "Decision": frozenset({"title", "domain", "tags", "props"}),
+    "Episode":  frozenset({"title", "domain", "tags", "props", "date", "summary"}),
+    "Bridge":   frozenset({"title", "tags", "props"}),
+    "Domain":   frozenset(),          # 열이 `name` 하나뿐이다
+    "Entity":   frozenset({"title", "tags"}),
+}
+#: 위 표가 판정하는 필드 전체. 여기 없는 키(오타·상류 메타)는 **묻지 않는다** —
+#: 팩 가져오기·동기화가 부가 키를 싣는 경로가 있고, 모르는 키까지 경고하면 정상
+#: 왕복이 소음으로 덮인다. 잡으려는 것은 "계약에 있는 필드를 엉뚱한 종류에 실었다"다.
+_CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
+                              "content_time", "date", "summary"})
+#: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
+_ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
+
+
+def _warn_unkept_fields(node: dict, label: str, nid: str,
+                        warnings: list[str]) -> None:
+    """이 라벨이 **보관하지 않는** 계약 필드를 실어 왔으면 말한다(조용한 유실 금지).
+
+    쓰기를 막지는 않는다. 이 경로는 ingest·sync apply·팩 가져오기가 함께 쓰므로
+    거부로 만들면 필드 하나가 동기화 전체를 세운다 — 침묵을 고치는 데 필요한 것은
+    거부가 아니라 **말**이다. `merged` 는 여전히 실제로 들어간 것만 센다."""
+    kept = _KEPT_FIELDS.get(label)
+    if kept is None:
+        return
+    for f in sorted(_CONTRACT_FIELDS - kept):
+        if node.get(f) is None or (label, f) in _ALREADY_WARNED:
+            continue
+        warnings.append(
+            f"node.{f} not persisted on {label} (id={nid}) — no such column; "
+            f"the value was dropped, not stored")
+
+
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 conflicts: list[str] | None = None) -> str | None:
@@ -174,6 +220,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         except (TypeError, ValueError):
             pass   # 직렬화 불가 props 는 아래 기존 경로가 경고로 처리한다
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
+    _warn_unkept_fields(node, label, nid, warnings)
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
     owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",
                              "Decision")
