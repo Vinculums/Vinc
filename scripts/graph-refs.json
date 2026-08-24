@@ -109,6 +109,7 @@
   "record:a-logo-ssot-that-reaches-nobody",
   "record:a-new-assertion-type-is-what-makes-a-wrong-order-safe",
   "record:a-webhook-that-logs-nothing-fails-the-same-way-every-time",
+  "record:agent-files-are-found-by-walking-up-from-cwd",
   "record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does",
   "record:an-invite-link-pointed-at-a-page-that-never-existed",
   "record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns",
