@@ -1115,7 +1115,18 @@ _DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
 # "뒤집기를 빠뜨리면 트리 전체가 조용히 뒤집힌다") 레이아웃은 안 뒤집어, 같은
 # 데이터를 트리는 "원본이 위", rank 는 "파생물이 왼쪽"으로 **반대로** 읽고 있었다.
 # 여기서 트리 쪽에 맞춘다 — 그쪽에만 명시 주석과 테스트가 있었다.
-_REVERSED_RELS = ("DERIVES_FROM",)
+#
+# ⚠ 2026-08-24 — `INHERITS_FROM` 이 빠져 있었다. 위 문장이 `DERIVES_FROM` 만 논해서
+# 그때 함께 안 옮긴 것으로 보인다. 관례가 둘을 같은 모양으로 규정한다: "A inherits
+# from B" 도 "A derives from B" 와 같이 **B 가 위**다. 빠져 있는 동안 rank 배치는
+# 상속 사슬만 거꾸로 세우고 있었고, 같은 데이터를 좌측 트리와 반대로 읽는 그
+# 2026-08-02 의 병이 한 관계에만 남아 있던 셈이다.
+#
+# ⚠ 이 표를 고치면 **기존 지도의 뜻이 바뀐다**(상속을 가진 그래프의 x 축 순서).
+# 그래서 앱의 인과 원뿔(`app/src/spotlight.ts` `UPSTREAM_REVERSED`)과 **같은 값**을
+# 유지해야 한다 — 한쪽만 옮기면 하이라이트가 배치를 반박한다.
+# 근거: [[record:inherits-from-is-absent-from-the-reversed-relation-table]]
+_REVERSED_RELS = ("DERIVES_FROM", "INHERITS_FROM")
 
 
 def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:

@@ -61,6 +61,17 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("owner", plan.params)
         self.assertIn("e.domain IS NOT NULL", plan.cypher)
 
+    def test_both_backward_pointing_relations_are_normalized(self):
+        """`derives_from` 과 `inherits_from` 은 화살표가 **시간을 거스른다**.
+
+        관례가 둘을 같은 모양으로 규정하는데(A가 B에서 나왔다 / A가 B를 상속한다,
+        둘 다 B가 위) 2026-08-02 의 방향 정합 수정이 앞의 것만 다뤄, rank 배치가
+        상속 사슬만 거꾸로 세우고 있었다. 앱의 인과 원뿔이 이 표를 미러하므로
+        (`app/src/spotlight.ts` UPSTREAM_REVERSED) 둘은 **함께** 움직여야 한다."""
+        self.assertEqual(set(q._REVERSED_RELS), {"DERIVES_FROM", "INHERITS_FROM"})
+        # 선행은 정방향이다 — 뒤집으면 "먼저"가 "나중"이 된다.
+        self.assertNotIn("PREREQUISITE_OF", q._REVERSED_RELS)
+
     def test_domain_census_counts_untopiced(self):
         # 센서스는 무주제도 센다 — WHERE 는 owner 스코프만. NULL·'' 도메인 행을
         # "(none)" 으로 합치는 것은 domains() 몫. 근거: [[d6064cc741e9e121f]] §1.1

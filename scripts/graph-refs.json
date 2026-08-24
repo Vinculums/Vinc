@@ -124,6 +124,7 @@
   "record:fact-merge-excludes-any-doc-pair",
   "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
   "record:in-a-container-a-swallowed-log-is-no-log",
+  "record:inherits-from-is-absent-from-the-reversed-relation-table",
   "record:isolated-seed-read-back-reported-empty-fields",
   "record:job-count-checkpointing-was-removed",
   "record:job-isolation-has-to-catch-baseexception",
