@@ -228,7 +228,8 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
     return out
 
 
-def _stored_nodes(store, types: dict[str, str], owner: str) -> tuple[list[dict], int]:
+def _stored_nodes(store, types: dict[str, str], owner: str,
+                  warnings: list[str]) -> tuple[list[dict], int]:
     """MERGE 직후의 **저장형**을 되읽는다(R3) — `(nodes, 잘린 수)`.
 
     왜 개수가 아니라 형태인가: `merged 14 created, 4 matched, warnings 0` 은 참이면서
@@ -260,20 +261,29 @@ def _stored_nodes(store, types: dict[str, str], owner: str) -> tuple[list[dict],
     for (label, pk), ids in groups.items():
         cols = sorted(_KEPT_FIELDS[label])
         scoped = label in _OWNER_SCOPED_LABELS
-        # 물리 키 → 논리 id 되돌림표. 응답의 id 는 호출부가 보낸 그대로여야 한다.
-        keys = {(_key(owner, i) if scoped else i): i for i in ids}
+        # `IN` 바인딩은 **물리 키**다 — 읽기 훅은 돌려주는 값만 벗기고 Cypher 술어는
+        # 물리 열을 그대로 본다(`store/embedded_backend.py` `_exec_to_dicts`).
+        bind = list(pkns.keys(owner, ids)) if scoped else list(ids)
         proj = "".join(f", n.{c} AS {c}" for c in cols)
         try:
             rows = store.run(
                 f"MATCH (n:{label}) WHERE n.{pk} IN $ids"
                 + (" AND n.owner_id = $owner" if scoped else "")
                 + f" RETURN n.{pk} AS _k{proj}",
-                {"ids": list(keys), "owner": owner})
-        except Exception:
+                {"ids": bind, "owner": owner})
+        except Exception as e:
+            # **삼키지 않는다.** 되읽기가 증강이라 쓰기를 깨지 않는 것은 맞지만,
+            # 조용히 빠지면 호출부는 "그 종류는 안 들어갔다"로 읽는다. 이 파일이
+            # 고치려는 고장이 바로 그것이다.
+            warnings.append(f"read-back failed for {label}: {type(e).__name__}")
             continue
         for r in rows:
-            nid = keys.get(r.get("_k") or "")
-            if nid is None:
+            # ⚠ **되돌림표를 물리 키로 만들면 안 된다.** 훅이 이미 벗겨서 준 값을
+            # 물리 키로 조회하게 되어 전부 빗나가고, `stored` 가 조용히 빈 목록이
+            # 된다(플래그 켠 CI 에서만 나므로 기본 스위트는 초록으로 통과한다).
+            # 바인딩한 키와 돌려받는 키가 다르다는 것이 이 층의 계약이다.
+            nid = pkns.strip(r.get("_k") or "")
+            if nid not in types:
                 continue
             node: dict = {"id": nid, "kind": types[nid]}
             for c in cols:
@@ -286,6 +296,14 @@ def _stored_nodes(store, types: dict[str, str], owner: str) -> tuple[list[dict],
                 continue
             budget -= size
             out.append(node)
+    # 병합된 것보다 적게 돌아왔으면 **말한다.** 2026-08-25 에 이 자리가 조용히 빈
+    # 목록을 냈다(물리 키로 되돌림표를 지어 전부 빗나갔다). 개수가 안 맞는다는 사실
+    # 하나면 그때 소리가 났을 것이고, 플래그 켠 CI 까지 가지 않았다.
+    expected = sum(len(v) for v in groups.values())
+    if len(out) + dropped < expected:
+        warnings.append(
+            f"read-back returned {len(out) + dropped} of {expected} merged nodes — "
+            "`stored` is incomplete, do not read it as what was written")
     return out, dropped
 
 
@@ -1125,7 +1143,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     if read_back and types:
         # 쓰기 응답이 "몇 개 움직였나"만 말하던 자리(R3). 되읽기는 쓰기가 끝난 뒤에
         # 하므로 여기서 실패해도 위의 커밋은 유효하다.
-        stored, truncated = _stored_nodes(store, types, owner)
+        stored, truncated = _stored_nodes(store, types, owner, warnings)
         result["stored"] = stored
         if truncated:
             result["stored_truncated"] = truncated

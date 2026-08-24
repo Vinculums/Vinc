@@ -146,5 +146,80 @@ class ReadBackE2E(unittest.TestCase):
         self.assertLess(len(res["stored"]), 12)
 
 
+class ReadBackNeverGoesQuiet(unittest.TestCase):
+    """되읽기가 **모자라게** 돌아오면 그 사실이 응답에 있어야 한다.
+
+    2026-08-25 에 이 자리가 조용히 빈 목록을 냈다: 되돌림표를 물리 키로 지었는데
+    읽기 훅은 값을 벗겨서 주므로 조회가 전부 빗나갔다. `merged` 는 성공을 셌고
+    `stored` 는 비었고 아무 말도 없었다 — 이 파일이 고치려는 고장 그 자체를
+    되읽기가 스스로 저질렀다. 개수가 안 맞는다는 말 한 줄이면 그때 났다.
+
+    스토어를 흉내로 두는 이유: 진짜 엔진으로 이 상태를 만들려면 층 하나를 일부러
+    부숴야 하고, 여기서 고정하려는 것은 "모자라면 말한다"이지 왜 모자랐나가 아니다."""
+
+    class _Empty:
+        def run(self, q, p):
+            return []
+
+    class _Angry:
+        def run(self, q, p):
+            raise RuntimeError("boom")
+
+    def test_병합된_것보다_적게_돌아오면_말한다(self):
+        w: list = []
+        out, dropped = frag._stored_nodes(
+            self._Empty(), {"concept:a": "concept"}, "user:a", w)
+        self.assertEqual((out, dropped), ([], 0))
+        self.assertTrue(any("incomplete" in x for x in w), w)
+
+    def test_되읽기_실패는_삼키지_않고_경고로_낸다(self):
+        w: list = []
+        frag._stored_nodes(self._Angry(), {"concept:a": "concept"}, "user:a", w)
+        self.assertTrue(any("read-back failed" in x for x in w), w)
+
+    def test_되읽을_것이_없으면_경고도_없다(self):
+        """Domain 은 열이 `name` 하나라 되읽을 값이 없다 — 없는 것은 결손이 아니다."""
+        w: list = []
+        out, _ = frag._stored_nodes(self._Empty(), {"vinc/eng": "domain"}, "user:a", w)
+        self.assertEqual((out, w), ([], []))
+
+
+#: 아래 파생 클래스가 달고 다니는 설명.
+_NS_DOC = """같은 검사 전부를 **PK 네임스페이싱을 켠 채** 다시 돈다.
+
+이 자리는 실제로 물렸다(2026-08-25 CI): 되돌림표를 물리 키로 지었는데 읽기 훅이
+돌려주는 값을 이미 벗겨서 주기 때문에 조회가 전부 빗나갔고, `stored` 가 조용히 빈
+목록이 됐다. 기본 스위트는 플래그가 꺼져 있어 초록으로 통과했다.
+
+그래서 검사를 새로 쓰지 않고 **있는 검사를 두 모드로 돌린다** — 한 모드에서만 참인
+것을 못 쓰게 하는 것이 요점이고, 새 단언을 더하는 것으로는 그 성질이 안 온다."""
+
+
+def _namespaced(base):
+    """base 의 검사 전부를 플래그 켠 채 도는 클래스로 만든다."""
+
+    class _Ns(base):
+        def setUp(self):
+            self._pk_prev = os.environ.get("VINC_PK_NAMESPACED")
+            os.environ["VINC_PK_NAMESPACED"] = "on"
+            super().setUp()
+
+        def tearDown(self):
+            try:
+                super().tearDown()
+            finally:
+                if self._pk_prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = self._pk_prev
+
+    _Ns.__name__ = _Ns.__qualname__ = base.__name__ + "UnderNamespacing"
+    _Ns.__doc__ = _NS_DOC
+    return _Ns
+
+
+ReadBackUnderNamespacing = _namespaced(ReadBackE2E)
+
+
 if __name__ == "__main__":
     unittest.main()

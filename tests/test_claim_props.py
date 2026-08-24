@@ -155,5 +155,42 @@ class ConventionsTemplateTests(unittest.TestCase):
         self.assertIn("subject_path", json.dumps(desc, ensure_ascii=False))
 
 
+#: 아래 파생 클래스가 달고 다니는 설명.
+_NS_DOC = """같은 검사 전부를 **PK 네임스페이싱을 켠 채** 다시 돈다.
+
+이 자리는 실제로 물렸다(2026-08-25 CI): 되돌림표를 물리 키로 지었는데 읽기 훅이
+돌려주는 값을 이미 벗겨서 주기 때문에 조회가 전부 빗나갔고, `stored` 가 조용히 빈
+목록이 됐다. 기본 스위트는 플래그가 꺼져 있어 초록으로 통과했다.
+
+그래서 검사를 새로 쓰지 않고 **있는 검사를 두 모드로 돌린다** — 한 모드에서만 참인
+것을 못 쓰게 하는 것이 요점이고, 새 단언을 더하는 것으로는 그 성질이 안 온다."""
+
+
+def _namespaced(base):
+    """base 의 검사 전부를 플래그 켠 채 도는 클래스로 만든다."""
+
+    class _Ns(base):
+        def setUp(self):
+            self._pk_prev = os.environ.get("VINC_PK_NAMESPACED")
+            os.environ["VINC_PK_NAMESPACED"] = "on"
+            super().setUp()
+
+        def tearDown(self):
+            try:
+                super().tearDown()
+            finally:
+                if self._pk_prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = self._pk_prev
+
+    _Ns.__name__ = _Ns.__qualname__ = base.__name__ + "UnderNamespacing"
+    _Ns.__doc__ = _NS_DOC
+    return _Ns
+
+
+ClaimPropsUnderNamespacing = _namespaced(ClaimPropsE2E)
+
+
 if __name__ == "__main__":
     unittest.main()
