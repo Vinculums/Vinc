@@ -4018,6 +4018,11 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 #: URL 은 아래에서 먼저 지우고 찾는다(`https://vincs.io/docs/x.html` 이 경로로 보인다).
 _PATH_TOKEN = re.compile(r"(?<![\w/.-])(?:[\w.-]+/)+[\w.-]+\.[A-Za-z]{1,5}(?![\w/])")
 _URLISH = re.compile(r"\w+://\S+")
+#: 주제가 될 수 없는 경로 — 가상환경·의존성·빌드 산출물. 실측(2026-08-25): 닻 없는
+#: 45건 중 하나가 `./.venv/Scripts/python.exe` 였는데 그건 **명령**이지 주장의 대상이
+#: 아니다. 이 목록은 줄이라고 있는 것이라, 줄일 수 없는 항목이 남으면 아무도 안 줄인다.
+_NOT_A_SUBJECT = re.compile(
+    r"(^|/)(\.venv|venv|node_modules|dist|build|__pycache__|\.git|target)(/|$)")
 #: 주장 진단이 훑는 텍스트 필드(props 안). 노트 이름이 두 벌 쓰인다(note·ko).
 _CLAIM_TEXT_KEYS = ("note", "ko", "state", "summary")
 
@@ -4025,8 +4030,13 @@ _CLAIM_TEXT_KEYS = ("note", "ko", "state", "summary")
 def _path_hint(props: dict, title: str) -> str:
     """이 기록이 코드를 두고 말하고 있나 — 그렇다면 처음 나온 경로 토큰."""
     parts = [title] + [str(props.get(k) or "") for k in _CLAIM_TEXT_KEYS]
-    m = _PATH_TOKEN.search(_URLISH.sub(" ", "\n".join(parts)))
-    return m.group(0) if m else ""
+    text = _URLISH.sub(" ", "\n".join(parts))
+    # 첫 매치가 아니라 **주제가 될 수 있는 첫 매치**다. 노트가 명령줄과 파일을 함께
+    # 담는 일이 흔해서, 먼저 나온 쪽이 `.venv` 이면 진짜 주제를 놓친다.
+    for m in _PATH_TOKEN.finditer(text):
+        if not _NOT_A_SUBJECT.search(m.group(0)):
+            return m.group(0)
+    return ""
 
 
 def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,

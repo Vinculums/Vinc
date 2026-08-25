@@ -86,33 +86,33 @@ class ClaimPropsE2E(unittest.TestCase):
         """되읽기(R3)로 확인한다 — 정규화가 응답에서 보이는 것이 R3 가 준 것이다."""
         res = self._ingest({
             "id": "record:claim1", "type": "record", "title": "측정",
-            "props": {"subject_path": "." + _BS + "api" + _BS + "sync.py",
+            "props": {"subject_path": "vinc:." + _BS + "api" + _BS + "sync.py",
                       "measured_at": "2026-08-24", "measured_ref": "main"}})
         p = self._props(res, "record:claim1")
-        self.assertEqual(p["subject_path"], "api/sync.py")
+        self.assertEqual(p["subject_path"], "vinc:api/sync.py")
         self.assertEqual(p["measured_at"], "2026-08-24")
         self.assertEqual(p["measured_ref"], "main")
 
     def test_다른_표기로_들어온_두_기록이_같은_키를_공유한다(self):
         """R5 가 찾을 짝이 실제로 짝이 되는지 — 이 테스트가 R4 의 인수 조건이다."""
         self._ingest({"id": "record:a", "type": "record", "title": "A",
-                      "props": {"subject_path": "api" + _BS + "sync.py"}})
+                      "props": {"subject_path": "vinc:api" + _BS + "sync.py"}})
         self._ingest({"id": "record:b", "type": "record", "title": "B",
-                      "props": {"subject_path": "./api/sync.py"}})
+                      "props": {"subject_path": "VINC:./api/sync.py"}})
         rows = self.store.run(
             "MATCH (r:Record) WHERE r.owner_id = $o RETURN r.record_id AS id, "
             "r.props AS props", {"o": self.OWNER})
         paths = {json.loads(r["props"]).get("subject_path") for r in rows}
-        self.assertEqual(paths, {"api/sync.py"})
+        self.assertEqual(paths, {"vinc:api/sync.py"})
 
     def test_props_원본을_망가뜨리지_않는다(self):
         """부분 재전송 함정 — 예약 키 하나를 접느라 나머지를 잃으면 안 된다."""
         res = self._ingest({
             "id": "record:keep", "type": "record", "title": "K",
-            "props": {"subject_path": "/api/sync.py", "note": "다른 값",
+            "props": {"subject_path": "vinc:/api/sync.py", "note": "다른 값",
                       "ko": "한국어"}})
         p = self._props(res, "record:keep")
-        self.assertEqual(p, {"subject_path": "api/sync.py", "note": "다른 값",
+        self.assertEqual(p, {"subject_path": "vinc:api/sync.py", "note": "다른 값",
                              "ko": "한국어"})
 
     def test_기록이_아닌_종류에_실으면_경고한다(self):
@@ -153,6 +153,65 @@ class ConventionsTemplateTests(unittest.TestCase):
         from vinc_mcp.tools import _FRAGMENT_SCHEMA
         desc = _FRAGMENT_SCHEMA["properties"]["nodes"]["items"]["properties"]["props"]
         self.assertIn("subject_path", json.dumps(desc, ensure_ascii=False))
+
+
+class RepoQualifierTests(unittest.TestCase):
+    """조인 키는 `repo:path` 다. 경로만으로는 부족하다.
+
+    이 그래프는 리포 셋(Vinc·Vinc-homepage·Vincs-app)에 대한 기록을 갖는다. 닻이
+    경로만 담으면 동명 파일 둘이 한 키에 묶여 **짝이 아닌 것이 짝으로** 제시되고,
+    사람이 경로를 열어 아무 문제도 못 찾는 값을 치른다. 닻이 빠진 것보다 비싸다 —
+    빠진 것은 목록에 뜨고 정직하다.
+
+    실측(2026-08-25)으로 온 요구다: 닻 없는 43건의 힌트에 이미 `billing/service.ts`
+    처럼 홈페이지 파일이 섞여 있었다."""
+
+    def test_한정자를_보존하고_리포를_소문자로_접는다(self):
+        self.assertEqual(frag._norm_subject_path("VINC:./api/sync.py"),
+                         "vinc:api/sync.py")
+        self.assertEqual(frag._norm_subject_path("vinc-homepage:./account/src/x.ts"),
+                         "vinc-homepage:account/src/x.ts")
+
+    def test_한정자가_있어도_경로부는_그대로_접힌다(self):
+        want = "vinc:api/sync.py"
+        for raw in ("vinc:" + _BS + "api" + _BS + "sync.py", "vinc:/api/sync.py",
+                    "  vinc:./api/sync.py  "):
+            self.assertEqual(frag._norm_subject_path(raw), want, raw)
+
+    def test_윈도_드라이브_문자는_한정자가_아니다(self):
+        """`D:/tmp/x.py` 를 리포 `d` 로 읽으면 경로가 통째로 다른 네임스페이스로 간다.
+        한 글자짜리는 리포가 아니다."""
+        self.assertEqual(frag._norm_subject_path("D:/tmp/x.py"), "D:/tmp/x.py")
+
+    def test_한정자를_지어내지_않는다(self):
+        """어느 리포인지는 값이 말해야 한다. 서버는 모르고, 모르는 것을 채우면
+        그 순간 조용히 틀린 닻이 된다."""
+        self.assertEqual(frag._norm_subject_path("api/sync.py"), "api/sync.py")
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class RepoQualifierWarningTests(unittest.TestCase):
+    """한정자가 빠지거나 오타 나면 **말한다.** 막지는 않는다 — 리포는 늘 수 있고
+    목록은 낡을 수 있다. 오타 난 한정자가 특히 나쁜 이유는 조용히 자기만의
+    네임스페이스를 만들면서 아무 오류도 안 내기 때문이다."""
+
+    def _warn(self, path):
+        w: list = []
+        frag._claim_props({"subject_path": path}, "Record", "record:x", w)
+        return w
+
+    def test_맨_경로는_리포가_없다고_말한다(self):
+        w = self._warn("api/sync.py")
+        self.assertTrue(any("names no repository" in x for x in w), w)
+
+    def test_모르는_리포는_말한다(self):
+        w = self._warn("vnic:api/sync.py")
+        self.assertTrue(any("not one this graph knows" in x for x in w), w)
+
+    def test_아는_리포는_조용하다(self):
+        for good in ("vinc:api/sync.py", "vinc-homepage:account/src/x.ts",
+                     "vincs-app:src/main.ts"):
+            self.assertEqual(self._warn(good), [], good)
 
 
 #: 아래 파생 클래스가 달고 다니는 설명.
