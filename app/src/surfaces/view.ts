@@ -3,6 +3,7 @@ import Sigma from "sigma";
 import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
+import { absoluteViewUrl, formatViewUrl } from "../view-url";
 import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
@@ -67,6 +68,28 @@ const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
 /** 노드 하나를 팩으로 건넬 때의 기본 반경. 진입점이 셋(우클릭 메뉴 · 상세 레일 ·
  *  상단 바)이라 값이 흩어져 있으면 어디서 보냈느냐에 따라 받는 쪽 그림이 달라진다. */
 const SHARE_DEPTH = 2;
+
+
+/** 복사 버튼 한 벌 — 레일·문서 카드·영역이 같은 처리를 쓴다.
+ *
+ *  복사가 막혀도 **오류로 키우지 않는다**: 주소는 어차피 주소창에 그대로 있고,
+ *  클립보드 권한은 사용자 환경의 일이다. settings 의 MCP 주소 복사와 같은 태도다.
+ *  버튼 라벨을 잠깐 바꾸는 것으로 끝낸다 — 알림을 띄우면 복사 한 번이 사건이 된다. */
+function bindCopyLink(btn: Element | null, make: () => string): void {
+  if (!btn) return;
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();          // 레일 머리의 클릭이 뒤로 새면 노드 선택이 바뀐다
+    const tip = COPY.ui.viewx;
+    const before = btn.getAttribute("data-tip") || "";
+    try {
+      await navigator.clipboard.writeText(make());
+      btn.setAttribute("data-tip", tip.copyLinkDone);
+    } catch {
+      btn.setAttribute("data-tip", tip.copyLinkFail);
+    }
+    setTimeout(() => btn.setAttribute("data-tip", before), 1600);
+  });
+}
 
 /** 리더 머리에 세울 개념 칩 수. 나머지는 "+N" 으로 센다 — 좁은 열에서 칩이 줄을
  *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
@@ -1265,12 +1288,15 @@ export async function renderView(el: HTMLElement) {
    *  replaceState 라 hashchange 가 뜨지 않는다(main.ts 라우터 무영향). */
   function syncHash(v: Viewpoint = shownViewpoint(trail[trail.length - 1]) ?? curPrefs().view) {
     const lv = trail[trail.length - 1];
-    const enc = encodeURIComponent;
-    const base =
-      focusId ? `#view/trace/${enc(focusId)}`
-      : lv.kind === "l1" ? `#view/${lv.domains.map(enc).join(",")}`
-      : "#view";
-    history.replaceState(null, "", v === "3d" ? base : `${base}/as/${v}`);
+    // 문법은 `view-url.ts` 한 벌이다. 여기 손으로 짜 두면 복사 버튼이 만드는 주소와
+    // 주소창에 있는 주소가 갈라지고, 그건 사용자가 복사한 것이 자기가 본 것이 아니게
+    // 된다는 뜻이다. `replaceState` 인 것은 그대로 — 여기서 location.hash 에 대입하면
+    // hashchange 라우터가 재진입해 표면을 다시 마운트한다.
+    history.replaceState(null, "", formatViewUrl(
+      focusId ? { kind: "node", id: focusId }
+      : lv.kind === "l1" ? { kind: "domains", domains: lv.domains }
+      : { kind: "all" },
+      { viewpoint: v }));
   }
 
   /** gateway = 지금 걸린 렌즈(주제) **밖**의 노드. 브릿지는 면제(F2) — 단일 domain 이
@@ -1586,6 +1612,8 @@ export async function renderView(el: HTMLElement) {
     detail.innerHTML = `
       <div class="rail-head">
         <span class="hint">${COPY.ui.viewx.railTitle}</span>
+        <button class="rail-x" id="rail-link" aria-label="${COPY.ui.viewx.copyLink}"
+                data-tip="${COPY.ui.viewx.copyLinkTip}">🔗</button>
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
@@ -1598,6 +1626,9 @@ export async function renderView(el: HTMLElement) {
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+    bindCopyLink(detail.querySelector("#rail-link"), () =>
+      absoluteViewUrl({ kind: "node", id: nd.id },
+                      { depth: SHARE_DEPTH, viewpoint: curPrefs().view }));
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
