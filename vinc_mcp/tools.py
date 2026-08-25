@@ -91,7 +91,10 @@ _FRAGMENT_SCHEMA = {
                                                  "and Ask quote as the concept's description. Putting it "
                                                  "in props.one_liner or props.note instead still works "
                                                  "(server-side promotion) but only when this field and "
-                                                 "props.one_liner are both absent."},
+                                                 "props.one_liner are both absent. It reads back: "
+                                                 "vinc_neighbors and vinc_graph return it, so you can "
+                                                 "check what you wrote. Only Concept has the column, so "
+                                                 "it comes back empty on every other kind."},
                     # D72 — 두 시간축의 저작 가능한 쪽. `date` 와 같은 이유로 계약에
                     # 적는다: 서버는 이제 받는데 계약이 안 알려 주면 상류는 props 에
                     # 넣고, 그 자리는 정렬·필터가 안 읽는다.
@@ -103,7 +106,7 @@ _FRAGMENT_SCHEMA = {
                                                     "because comparison and bucketing are lexicographic; "
                                                     "anything else is refused with a warning and the "
                                                     "stored value is kept. Empty string clears it."},
-                    "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
+                    "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (repo-relative path, the thing the claim is about), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."},
                 },
                 "required": ["id", "type"],
             },
@@ -482,7 +485,10 @@ TOOLS: list[dict] = [
         "name": "vinc_neighbors",
         "description": "Observe ONE node's immediate (1-hop) relation network — a lightweight "
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
-                       "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
+                       "[{rel,id,title,domain,one_liner}], by_rel:{type:count}, count}. `one_liner` is "
+                       "the concept's own description; only Concept carries that column, so it "
+                       "is an empty string on records, episodes, bridges and decisions, and that "
+                       "emptiness is a fact rather than a gap. Use this to walk the "
                        "graph one hop at a time (observe → pick next node) instead of pulling a whole "
                        "depth-2 subgraph via vinc_graph — far fewer tokens per step. "
                        "Every relation is visible from BOTH ends: seeding on a concept or decision "
@@ -611,12 +617,24 @@ TOOLS: list[dict] = [
                        "reports the TRUE total, and a group whose list was cut carries "
                        "members_truncated:true — raise member_limit to see the rest. Delegates to "
                        "the native algo extension; executed:false with a note if the extension is "
-                       "unavailable (offline unbundled).",
+                       "unavailable (offline unbundled). kind='claims' is the exception: it uses "
+                       "no algo extension and always answers. It returns "
+                       "{conflicts:[{subject_path,newer,older}], conflict_count, "
+                       "unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, "
+                       "scanned}. `conflicts` pairs the most recent measurement of a file with "
+                       "every earlier one that carries a different measured_at, so the question "
+                       "it poses is 'does this older claim still stand'. It does NOT decide "
+                       "which side is right; open the path and look. `unanchored` lists records "
+                       "that name a file in their text but carry no props.subject_path, so they "
+                       "cannot be compared with anything: that count is meant to be driven down "
+                       "by adding the field. Both lists are capped by member_limit.",
         "inputSchema": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["components", "communities", "community_context"],
+            "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims"],
                      "description": "components (WCC orphans/islands) | communities (Louvain "
                                     "clusters) | community_context (one seed's cluster + "
-                                    "representative excerpts, requires `node`)."},
+                                    "representative excerpts, requires `node`) | claims "
+                                    "(records that disagree about one file, and records about "
+                                    "code with no file named)."},
             "node": {"type": "string",
                      "description": "Seed concept id — required, and only used, when "
                                     "kind='community_context'."},
@@ -669,7 +687,14 @@ TOOLS: list[dict] = [
                        "only what actually landed. An id owned by someone else is reported "
                        "separately in `id_conflicts`, because it is the one skip a retry cannot "
                        "fix: node ids are a single global namespace, so that slug is not "
-                       "available to you at all. Pick a different id rather than retrying. Call vinc_conventions once before your first write "
+                       "available to you at all. Pick a different id rather than retrying. "
+                       "The result also carries `stored` — each node READ BACK as it now sits in "
+                       "the graph (id, kind, and the fields that kind actually keeps). Diff it "
+                       "against what you sent instead of trusting the counts: a field a kind has "
+                       "no column for is absent from `stored`, and a domain you sent appears there "
+                       "in its normalized form. `stored_truncated` means the read-back hit its size "
+                       "budget and that many nodes were left out (they were still written). "
+                       "Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,

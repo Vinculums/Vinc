@@ -369,15 +369,30 @@ class VincApp:
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
         # components(기본) | communities | community_context(단일 시드의 군집 +
         # 대표 발췌 — unified-kg-rag-comparison §4). algo 확장 부재 시 executed=False 강등.
+        # claims(R5)는 algo 를 안 쓴다 — 확장이 없어도 답한다.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
         if kind == "community_context":
             return self._read(lambda r: q.community_context(
                 owner=owner, node=_req(p, "node"), store=r,
                 member_limit=_int(p.get("member_limit"), 0) or None))
+        if kind == "claims":
+            # R5 — 유일하게 **구조가 아니라 props 내용**을 읽는 kind. 나머지 셋과
+            # 이웃한 코드가 아니라서 component_diagnosis 를 넓히지 않고 따로 뒀다.
+            # 근거: [[d4ab94561078498e3]] §7.3.
+            return self._read(lambda r: q.claim_diagnosis(
+                owner=owner, store=r, limit=_int(p.get("member_limit"), 0) or None))
         if kind == "communities":
             return self._read(lambda r: q.communities(
                 owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
+        if kind != "components":
+            # 모르는 kind 를 **말없이 components 로 답하지 않는다**. 여태 오타 하나가
+            # 전혀 다른 진단을 성공으로 받아 갔고, 그것이 이 PR 이 다루는 고장이다
+            # (성공이라고 답하면서 시킨 것을 안 한 것). 미지정(기본)은 그대로 통과한다.
+            return 400, {"executed": False,
+                         "note": f"unknown diagnose kind: {kind}",
+                         "kinds": ["components", "communities", "community_context",
+                                   "claims"]}
         return self._read(lambda r: q.component_diagnosis(
             owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 
@@ -547,7 +562,8 @@ class VincApp:
         res = self.jobs.run_sync("ingest:fragment",
                                  lambda: frag.merge_fragment(body, store=self.store,
                                                              themes=self.themes,
-                                                             max_domains=cap))
+                                                             max_domains=cap,
+                                                             read_back=True))
         return 200, res
 
     # ── 계정 연결(디바이스 연결 플로우 — 회원 키 복붙 종식) ─────────────────────
@@ -1050,7 +1066,8 @@ class VincApp:
             res = self.jobs.run_sync("ingest:fragment",
                                      lambda: frag.merge_fragment(body, store=self.store,
                                                                  themes=self.themes,
-                                                                 max_domains=cap))
+                                                                 max_domains=cap,
+                                                                 read_back=True))
             return 200, res
         fn = self.ingest.get(engine)
         if fn is None:

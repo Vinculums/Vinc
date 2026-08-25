@@ -223,12 +223,23 @@ def render_shell(role: dict) -> str:
     # 명령**이다. 적어 두는 것은 함정을 막지 못하고 그 자리의 검사가 막는다
     # ([[record:writing-a-trap-down-does-not-stop-it-a-check-does]]).
     for key in ("pre_merge_check", "trap_note", "engine_note", "baseline_note",
-                "claim_note", "tool_note", "enforcement_note"):
+                "claim_note", "tool_note", "enforcement_note", "session_close"):
         if props.get(key):
             body += ["", f"## {key.replace('_', ' ').capitalize()}", "", props[key]]
     if props.get("writes_graph"):
         body += ["", "## Writes to the graph", "", _bullets(props["writes_graph"])]
     body += [
+        "",
+        "## Output contract",
+        "",
+        "A sentence of the form checked, verified, confirmed, present, absent, or returns X",
+        "carries the tool call that produced it: the query as it was run and its first result,",
+        "or the call id. A statement without one is reported in the word assumed.",
+        "",
+        "This is not a style rule. A session reported a findability check as having been asked",
+        "in Korean when it had been asked in English, and nothing in the output told the two",
+        "apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the",
+        "sentence instead. Reasoning: [[d4ab94561078498e3]] section 7.4.",
         "",
         "Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not",
         "escalate; it returns the package to its author instead.",

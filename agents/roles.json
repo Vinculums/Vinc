@@ -794,7 +794,8 @@
         ],
         "paths": [
           "scripts/graph-refs.json",
-          "agents/roles.json"
+          "agents/roles.json",
+          "scripts/age_status_lines.py"
         ],
         "person_only": [
           "deletion",
@@ -812,6 +813,7 @@
           "Vinc"
         ],
         "rung": "strong",
+        "session_close": "Three passes at the end of a session, before the episode is written.\n\n1. Assertions, not only prose. List every sentence in the session's output of the form checked, verified, confirmed, present, absent, or returns X, and mark each one cited, assumed, or unmarked. Unmarked is the finding and its count goes in the episode. Run against the record that prompted this step it lists three, the ones in its own section 6.4.\n\n2. vinc_diagnose kind=claims, and read both lists. conflicts is a pair to adjudicate by opening the path, never by preferring the newer one. unanchored is a number to drive down by adding props.subject_path to records that name a file.\n\n3. For any plan document touched this session, vinc_doc_get it to a file and run: python -X utf8 scripts/age_status_lines.py <file>. A status line older than a commit the document cites is the finding. This is a steward step and not a CI gate because CI has no documents, the same reason the citation manifest is committed rather than fetched.\n\nNone of the three decides anything. They produce a list a person acts on. The steward proposes and never performs.",
         "tier": "knowledge",
         "writes_graph": [
           "record",
