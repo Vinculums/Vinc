@@ -101,6 +101,7 @@
   "decision:agent-model-ladder",
   "decision:escape-once-at-the-boundary",
   "decision:identity-rides-on-the-first-door-not-a-whoami",
+  "decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right",
   "decision:topic-tint-ships-on",
   "record:2d-marks-were-remapped-onto-circles",
   "record:a-bounded-wait-must-not-manufacture-false-failure",

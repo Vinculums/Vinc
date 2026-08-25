@@ -1056,6 +1056,39 @@ def call(name: str, args: dict | None, bridge: Bridge,
 #: 같은 두 줄이 붙으면 잡음이고 잡음은 안 읽힌다. 첫 쓰기 전에 부르는 자리 하나와
 #: 쓰기 둘이면 오배치가 조용한 곳을 덮는다:
 #: [[decision:identity-rides-on-the-first-door-not-a-whoami]].
+#: 도구 → 팀 역할 등급. **주석표에서 유도한다** — 세 번째 표를 만들지 않는다.
+#:
+#: op 표(`_EDITOR_OPS`/`_ADMIN_OPS`)로는 못 짠다: 그 표는 **프록시 op** 로 키가 잡혀
+#: 있는데 도구 22개 중 6개(neighbors·path·merge_candidates·merge_reject·
+#: merge_rejections·diagnose)는 프록시 op 가 아예 없다. 대조 실측(2026-08-25): op 로
+#: 매핑되는 16개에서 주석 유도 등급과 두 표가 **불일치 0** 이고, 유도는 고아 6개까지
+#: 덮는다.
+#:
+#: 주석이 없으면 **admin** 이다(fail-closed) — 새 도구가 등급 없이 들어와도 조용히
+#: 열리지 않는다. `tests/test_mcp_space_address.py` 가 전 도구의 주석 실재를 못 박는다.
+def tool_tier(name: str) -> str:
+    """`viewer` · `editor` · `admin`. 모르는 도구는 admin(닫힘)."""
+    a = _ANNOTATIONS.get(name)
+    if not a:
+        return "admin"
+    if a.get("destructiveHint"):
+        return "admin"
+    if a.get("readOnlyHint"):
+        return "viewer"
+    return "editor"
+
+
+#: 그 역할이 그 등급을 할 수 있나. 모르는 역할은 거부(fail-closed) — 계정의
+#: `roleAllows` 와 같은 태도이고, 거기와 어긋나면 그 op 만 조용히 갈린다.
+_TIER_ORDER = {"viewer": 0, "editor": 1, "admin": 2}
+
+
+def role_allows(role: str, tool: str) -> bool:
+    have = _TIER_ORDER.get((role or "").strip())
+    need = _TIER_ORDER[tool_tier(tool)]
+    return have is not None and have >= need
+
+
 _IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
 
 

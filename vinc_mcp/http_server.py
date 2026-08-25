@@ -38,7 +38,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify, entitlement
+from . import edverify, entitlement, tools
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -136,6 +136,29 @@ def _role_allows(role: str, op: str) -> bool:
     if op in _EDITOR_OPS:
         return role in ("editor", "admin")
     return op in _PROXY_OPS      # 나머지는 조회 — 화이트리스트에 있으면 열람자도 가능
+
+
+#: 스페이스 주소. `/t/<uuid>/mcp` 는 팀 그래프, `/mcp` 는 개인.
+#:
+#: **URL 은 의도, 자격증명은 권한.** 주소가 어느 그래프인지 말하고, 키가 들어갈 수
+#: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
+#: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
+#: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+_SPACE_PATH_RE = re.compile(
+    r"\A/t/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?\Z")
+
+
+def split_space(path: str) -> tuple[str | None, str]:
+    """`/t/<uuid>/mcp` → (uuid, "/mcp"). 스페이스가 없으면 (None, path).
+
+    ⚠ **모양이 틀린 주소는 여기서 스페이스가 아니게 되고, 뒤에서 404 가 된다.**
+    400 이 아니라 404 인 것이 요점이다 — 형식 오류와 "그런 팀 없음"이 구분되면
+    팀 id 를 추측해 조직 구조를 훑을 수 있다."""
+    m = _SPACE_PATH_RE.match(path or "")
+    if not m:
+        return None, path
+    return m.group(1).lower(), (m.group(2) or "/")
 
 
 def team_role_tiers() -> dict[str, frozenset[str]]:
@@ -381,8 +404,13 @@ class MCPHTTPApp:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
         return self._dispatcher
 
-    def resolve_auth(self, header: str | None) -> dict:
-        """Bearer 를 해석해 {ok, owner, plan, source}. owner 강제 스탬핑의 출처.
+    def resolve_auth(self, header: str | None, space: str | None = None) -> dict:
+        """Bearer 를 해석해 {ok, owner, plan, source[, role, member]}. 스탬핑의 출처.
+
+        ``space``(팀 uuid)가 오면 **키 경로만** 통과한다. OAuth 는 못 쓴다 —
+        `resource_metadata` 가 `issuer + "/mcp"` 로 하드코딩돼 있어 팀 주소에 등록된
+        커넥터가 자기와 안 맞는 resource 를 발견하게 된다(경로 인식으로 바꾸는 것은
+        별건이다). 정적 토큰은 owner 가 아예 없어 멤버십을 물을 대상이 없다.
 
         - static: 정적 토큰 = 단일 테넌트 하위호환(owner=None → bridge.owner 사용).
         - apikey: `vinc_sk_*` → verify_key 루프백 → owner=user:{public_id}, plan.
@@ -392,6 +420,17 @@ class MCPHTTPApp:
         miss = {"ok": False, "owner": None, "plan": None, "source": None}
         if not header or not header.startswith("Bearer "):
             return miss
+        if space:
+            # 팀 주소는 키 전용. 그리고 **개인으로 떨어지지 않는다** — 실패는 실패다.
+            tok = header[7:].strip()
+            if not tok.startswith("vinc_sk_") or self.verify_key is None:
+                return miss
+            ent = self.verify_key(tok, space)
+            if not ent or not str(ent.get("owner") or "").startswith("team:"):
+                return miss
+            return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                    "source": "apikey", "role": ent.get("role"),
+                    "member": ent.get("member")}
         token = header[len("Bearer "):].strip()
         if self.static_token and secrets.compare_digest(token, self.static_token):
             return {"ok": True, "owner": None, "plan": None, "source": "static"}
@@ -929,14 +968,21 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(200, gate.token(self._body()))
             except ValueError as e:
                 return self._json(400, {"error": "invalid_grant", "error_description": str(e)})
-        if url.path == "/mcp":
+        space, spath = split_space(url.path)
+        if spath == "/mcp":
             if self._origin_rejected():
                 return self._json(403, {"error": "origin not allowed"})
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, {"error": bad})
-            auth = self.app.resolve_auth(self.headers.get("Authorization"))
+            auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
             if not auth["ok"]:
+                # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
+                # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
+                # 모양 틀린 주소가 전부 같은 답을 받아야 한다.
+                if space:
+                    return self._json(404, {"error": "no such route: POST "
+                                                     + url.path})
                 return self._unauthorized()
             msg = self._body()
             # JSON-RPC 배치. `PROTOCOL_VERSIONS` 가 2025-03-26 을 광고하는데 그 리비전은
@@ -954,11 +1000,31 @@ class _Handler(BaseHTTPRequestHandler):
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
             # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
             # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
+            # 역할 게이트 — 팀 스페이스에서만. 등급은 주석표에서 유도한다(op 표는
+            # 프록시 op 로 키가 잡혀 있어 도구 6개를 못 덮는다). 거절은 브리지를
+            # **부르지 않는다** — 그게 이 게이트의 성질이지 상태코드가 아니다.
+            if space:
+                role = auth.get("role") or ""
+                blocked = [m for m in msgs
+                           if m.get("method") == "tools/call"
+                           and not tools.role_allows(
+                               role, ((m.get("params") or {}).get("name") or ""))]
+                if blocked:
+                    name = ((blocked[0].get("params") or {}).get("name") or "")
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": blocked[0].get("id"),
+                        "result": {"isError": True, "content": [{"type": "text",
+                                   "text": f"role {role!r} may not call {name}"}]}})
             d = self.app.dispatcher()
             ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
+            # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
+            # `_fresh_plan` 이 `user:` 로 시작하는 owner 만 갱신하므로 등급이 영구
+            # 동결된다(요금제를 올려도 안 풀린다).
+            counted = auth.get("member") or auth["owner"]
             replies = [r for r in (
                 d.handle(m, forced_owner=auth["owner"], plan=auth["plan"],
-                         quota=self.app.quota_check, entitlements=ents)
+                         quota=(lambda o, pl: self.app.quota_check(counted, pl)),
+                         entitlements=ents)
                 for m in msgs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
             if not replies:
