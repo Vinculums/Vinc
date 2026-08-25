@@ -88,7 +88,7 @@ Write in English, titles and bodies alike, whatever language you are thinking in
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
 - Episode: something that happened (a session, an event). It is tied to a time.
-- Record: a note hanging off a concept, or a measurement about code: then add props.subject_path (repo-relative), measured_at, measured_ref.
+- Record: a note on a concept, or a measurement about code: then add props.subject_path as repo:path (vinc:api/sync.py), measured_at, measured_ref.
 - Decision: what you chose at a point in time, and why. Tie it with `about`.
 - Bridge: a junction that ties domains together.
 - Entity: anything else you author. Unknown types save here and enter the
@@ -141,7 +141,7 @@ concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
 - Episode: 일어난 일(세션·사건). 시간에 묶입니다.
-- Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path(리포 기준 상대경로)·measured_at·measured_ref 를 함께 적습니다.
+- Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path 를 repo:path 로(vinc:api/sync.py)·measured_at·measured_ref.
 - Decision: 그때 무엇을 골랐고 왜 그랬는지. `about` 으로 그 대상에 이으십시오.
 - Bridge: 도메인을 가로질러 묶는 매듭.
 - Entity: 그 밖의 것. 미지 타입도 여기 저장되어 어휘에 제안으로 편입됩니다.

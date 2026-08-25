@@ -184,17 +184,43 @@ _READBACK_BUDGET = 256 * 1024
 _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 
 
+#: 이 그래프가 기록을 갖는 리포. 오타 난 한정자는 **조용히 새 네임스페이스를 만든다**
+#: (`vnic:` 는 어떤 것과도 안 맞고 아무 오류도 안 난다). 거부하지 않고 경고만 하는
+#: 이유는 리포가 늘 수 있고 목록이 낡을 수 있어서다 — 막는 것보다 말하는 것이 맞다.
+#: 정본은 역할 스냅샷의 `repos`(`agents/roles.json`).
+_KNOWN_REPOS = frozenset({"vinc", "vinc-homepage", "vincs-app"})
+
+
+def _split_subject(v: str) -> tuple[str, str]:
+    """`repo:path` → (repo, path). 한정자가 없으면 repo 는 빈 문자열.
+
+    윈도 드라이브 문자(`D:/x`)를 한정자로 오인하지 않는다 — 한 글자짜리는 리포가 아니다."""
+    head, sep, tail = v.partition(":")
+    if not sep or len(head) < 2 or "/" in head:
+        return "", v
+    return head.lower(), tail
+
+
 def _norm_subject_path(v) -> str:
     r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
 
     `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
     "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
     것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
-    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다)."""
-    s = str(v or "").strip().replace("\\", "/")
-    while s.startswith("./"):
-        s = s[2:]
-    return s.lstrip("/")
+    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다).
+
+    형식은 `repo:path` 다. **경로만으로는 부족하다** — 이 그래프는 리포 셋에 대한
+    기록을 갖는데 `subject_path` 가 리포를 안 담으면 동명 파일 둘이 한 키에 묶여
+    **짝이 아닌 것이 짝으로** 제시된다. 닻이 빠진 것보다 비싼 고장이다
+    ([[record:subject-path-carries-no-repository-so-two-repos-can-collide]]).
+
+    한정자가 없으면 **지어내지 않는다.** 어느 리포인지는 값이 말해야 하고, 서버는
+    모른다. 없는 채로 두고 경고한다."""
+    repo, path = _split_subject(str(v or "").strip().replace("\\", "/"))
+    while path.startswith("./"):
+        path = path[2:]
+    path = path.strip().lstrip("/")
+    return f"{repo}:{path}" if repo and path else path
 
 
 def _claim_props(props, label: str, nid: str, warnings: list[str]):
@@ -218,6 +244,16 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
         norm = _norm_subject_path(raw)
         if norm != raw:
             out = {**props, "subject_path": norm}
+        repo, path = _split_subject(norm)
+        if path and not repo:
+            warnings.append(
+                f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
+                f"but a bare path cannot be compared across repositories; "
+                f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
+        elif repo and repo not in _KNOWN_REPOS:
+            warnings.append(
+                f"props.subject_path repository '{repo}' is not one this graph knows "
+                f"(id={nid}) — stored, but a typo here makes a namespace of its own")
     at = props.get("measured_at")
     if at is not None:
         from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
