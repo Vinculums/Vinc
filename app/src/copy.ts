@@ -463,6 +463,12 @@ const EN = {
       edFmLabel: "Properties",
       railTitle: "Node detail",
       railClose: "Close",
+      // 복사 버튼 — 선택을 주소로 건넨다. 실패해도 오류로 키우지 않는다(주소는
+      // 어차피 주소창에 있다). settings 의 MCP 주소 복사와 같은 처리다.
+      copyLink: "Copy link",
+      copyLinkTip: "Copy this selection as a link you can paste to an assistant",
+      copyLinkDone: "Copied",
+      copyLinkFail: "Could not copy",
       statTopic: "Topic",
       statLinks: "Links",
       statDirection: "Direction",
@@ -1153,6 +1159,10 @@ const KO: Deck = {
       edFmLabel: "속성",
       railTitle: "노드 상세",
       railClose: "닫기",
+      copyLink: "링크 복사",
+      copyLinkTip: "지금 고른 것을 링크로 복사합니다. 어시스턴트에 붙여넣으면 같은 곳을 봅니다",
+      copyLinkDone: "복사했습니다",
+      copyLinkFail: "복사하지 못했습니다",
       statTopic: "주제",
       statLinks: "연결",
       statDirection: "방향",

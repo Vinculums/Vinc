@@ -186,9 +186,38 @@ def _t_recall(args, bridge):
 
 
 def _t_graph(args, bridge):
-    return bridge.request("GET", "/graph", params={
-        "owner": _owner(args, bridge), "seed": args["seed_id"],
-        "depth": args.get("depth", 2)})
+    # `url` — 사람이 화면에서 복사한 주소를 그대로 받는다(D: 선택이 주소가 된다).
+    # 인자로 받는 이유: 스페이스와 달리 **빠뜨리면 요청 자체가 성립하지 않아** 조용히
+    # 딴 데 가는 일이 없다. 근거: [[decision:a-selection-becomes-an-address-you-paste]]
+    seed = (args.get("seed_id") or "").strip()
+    depth = args.get("depth")
+    if not seed and args.get("url"):
+        from . import viewurl
+        got = viewurl.parse(str(args["url"]))
+        if got["kind"] == "node":
+            seed = got["seed"]
+        elif got["kind"] == "ids" and got["ids"]:
+            # 임의 선택은 시드가 여럿이다. 이 도구는 하나만 받으므로 첫 개를 쓰고
+            # **그렇게 했다고 말한다** — 조용히 고르면 나머지를 본 줄 안다.
+            seed = got["ids"][0]
+        elif got["kind"] in ("domains", "doc", "all"):
+            return {"kind": "graph", "executed": False, "seed": "",
+                    "note": f"that url selects a {got['kind']}, not one node — "
+                            f"vinc_graph needs a seed; use vinc_search or vinc_doc_get"}
+        if depth is None and got["depth"]:
+            depth = got["depth"]
+        if not seed:
+            return {"kind": "graph", "executed": False, "seed": "",
+                    "note": "could not read a node out of that url"}
+    if not seed:
+        return {"kind": "graph", "executed": False, "seed": "",
+                "note": "seed_id or url is required"}
+    out = bridge.request("GET", "/graph", params={
+        "owner": _owner(args, bridge), "seed": seed,
+        "depth": depth if depth is not None else 2})
+    if (not (args.get("seed_id") or "").strip()) and args.get("url")             and isinstance(out, dict):
+        out.setdefault("from_url", seed)
+    return out
 
 
 def _t_decide(args, bridge):
@@ -408,10 +437,20 @@ TOOLS: list[dict] = [
                        "if you only have a phrase, run vinc_search first. depth 2 is the working default, 4 the "
                        "ceiling. Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "seed_id": {"type": "string"},
+            "seed_id": {"type": "string",
+                        "description": "Exact node id. Give this OR `url`, not neither."},
+            "url": {"type": "string",
+                    "description": "A View address copied from the app, whole URL or just "
+                                   "the #view/... fragment. It carries what the person had "
+                                   "selected: a node (#view/trace/<id>), a topic lens "
+                                   "(#view/<a,b>), an explicit set (#view/ids/<a,b,c>) or a "
+                                   "document (#view/doc/<id>), with an optional /d<n> depth "
+                                   "and a trailing /as/<viewpoint> this tool ignores. When "
+                                   "both are given, seed_id wins and the url's seed is "
+                                   "ignored; `depth` given explicitly beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
             "owner": {"type": "string"},
-        }, "required": ["seed_id"]}, "run": _t_graph,
+        }}, "run": _t_graph,
     },
     {
         "name": "vinc_decide",
