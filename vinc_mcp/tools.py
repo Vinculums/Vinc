@@ -775,8 +775,15 @@ TOOLS: list[dict] = [
         "description": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to "
                        "create (the returned doc_id identifies it); pass doc_id to edit in place "
                        "(re-chunked losslessly, stale chunks removed). The store IS the source of "
-                       "truth — no external file is needed. Returns {doc_id, chunks, replaced, "
-                       "content_hash, skipped}. Unchanged text is a no-op (skipped=true).",
+                       "truth — no external file is needed. Returns {doc_id, created, chunks, "
+                       "replaced, content_hash, skipped, warnings}. Unchanged text is a no-op "
+                       "(skipped=true). READ `created`: it is the only field that separates "
+                       "editing a document from making a second one, because a fresh write and "
+                       "an unchanged re-write both report replaced 0. A document's own front "
+                       "matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; "
+                       "passing the declared value here does not edit that document, it creates "
+                       "another one with the same title. When the body declares an id different "
+                       "from the one being written to, `warnings` says so.",
         "inputSchema": {"type": "object", "properties": {
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},

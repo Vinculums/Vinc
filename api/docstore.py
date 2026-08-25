@@ -248,6 +248,43 @@ def _norm_content_time(v: str | None) -> str:
     return s if _CONTENT_TIME_RE.match(s) else ""
 
 
+#: 본문 첫머리 프런트매터가 스스로 밝히는 doc_id. **그 값은 스토어의 id 가 아니다** —
+#: 선언일 뿐이고, 실제 id 는 `put_doc` 에 준 것(또는 생략 시 합성된 해시)이다.
+_FM_DOC_ID_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.S)
+_FM_ID_LINE_RE = re.compile(r"^doc_id\s*:\s*(\S+)\s*$", re.M)
+
+
+def _declared_doc_id(text: str) -> str:
+    """본문이 선언한 doc_id(없으면 ''). **읽기만 한다 — 본문은 절대 안 고친다.**
+
+    text 는 Chunk=SSoT 의 정본이고 `get_doc` 의 `verified` 는 이 바이트의 sha256 이다.
+    여기서 한 글자만 고쳐도 그 검증이 거짓이 된다."""
+    m = _FM_DOC_ID_RE.match(text or "")
+    if not m:
+        return ""
+    line = _FM_ID_LINE_RE.search(m.group(1))
+    return (line.group(1).strip() if line else "").strip("\"'")
+
+
+def _doc_id_warnings(text: str, doc_id: str) -> list[str]:
+    """본문이 선언한 id 와 실제로 쓰는 id 가 다르면 말한다.
+
+    2026-08-25 에 이 침묵이 사본을 하나 만들었다. `d4ab94561078498e3` 의 본문은
+    `doc_id: vinc.ops.graph-claim-decay` 라고 선언하는데 그건 그 문서의 id 가 아니다.
+    그 값을 읽어 `put_doc` 에 넘겼더니 고쳐지지 않고 **제목이 같은 문서가 하나 더**
+    생겼고, 신호는 성공 응답 안의 `replaced: 0` 뿐이었다.
+
+    거부하지 않는 이유: 동기화(`api/docsync`)와 팩 가져오기가 같은 깔때기를 쓰고,
+    거기 오는 문서들은 프런트매터에 정당하게 자기 이름을 적고 있다. 막으면 복제가
+    선다. 침묵을 고치는 데 필요한 것은 거부가 아니라 말이다."""
+    declared = _declared_doc_id(text)
+    if declared and doc_id and declared != doc_id:
+        return [f"the body declares doc_id '{declared}' but this write targets "
+                f"'{doc_id}' — the body's declaration is not the store id, and "
+                f"using it as one creates a second document"]
+    return []
+
+
 def _stamp_updated_at(store) -> str:
     """정본 갱신 시각 — 스토어 내 단조 HLC(revstamp). 벽시계 스큐에도 동기화
     LWW 비교가 성립하도록. revstamp 미가용(경량 스토어)이면 벽시계로 강등."""
@@ -424,8 +461,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             base["error"] = "owner mismatch — 남의 문서에는 쓸 수 없다(SEC-1)"
             return base
         if prev.get("content_hash") == content_hash and prev.get("title") == title:
-            base.update(executed=True, skipped=True, chunks=int(prev.get("chunk_count") or 0),
-                        content_hash=content_hash)
+            base.update(executed=True, skipped=True, created=False,
+                        chunks=int(prev.get("chunk_count") or 0),
+                        content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
             return base
 
     chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
@@ -496,9 +534,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     if link:
         linked = _relink_mentions(store, doc_id, owner=owner, origin=origin)
 
-    base.update(executed=True, skipped=False, chunks=len(chunks), replaced=removed,
+    base.update(executed=True, skipped=False, created=prev is None,
+                chunks=len(chunks), replaced=removed,
                 content_hash=content_hash, mentions=linked, updated_at=stamp,
                 sync_seq=seq, needs_embed=bool(needs_embed),
+                warnings=_doc_id_warnings(text, doc_id),
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     return base
 
