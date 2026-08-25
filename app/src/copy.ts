@@ -678,6 +678,10 @@ const EN = {
       acctOnDisk: "This device has no system keychain, so the key is kept in the app's own folder instead. Anything running as your user can read it there.",
       acctFail: "Connection didn't complete",
       acctExpired: "The request expired. Try again.",
+      // 첫 실행에서 오프라인을 골랐거나 그 화면을 못 본 사람이 여기 온다. 지금
+      // 어느 상태인지 말해 주지 않으면 이 탭이 "연결하는 곳"으로만 보이고,
+      // 오프라인이 **선택된 상태**라는 것이 화면 어디에도 없다.
+      acctOffline: "This device is working offline. Your notes stay here and go nowhere.",
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
       syncDomains: "Topics to sync",
@@ -1352,6 +1356,7 @@ const KO: Deck = {
       acctOnDisk: "이 기기에는 시스템 키체인이 없어서 키를 앱 폴더에 보관해요. 같은 사용자로 실행되는 프로그램은 거기서 키를 읽을 수 있어요.",
       acctFail: "연결을 마치지 못했어요",
       acctExpired: "요청 시간이 지났어요. 다시 시도해 보세요.",
+      acctOffline: "이 기기는 오프라인으로 쓰고 있어요. 기록은 여기 남고 어디로도 나가지 않아요.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
       syncDomains: "동기화할 주제",
