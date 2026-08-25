@@ -183,7 +183,11 @@ export async function renderSettings(el: HTMLElement) {
           renderAccount(body);
         });
       } else {
+        // 지금 상태를 먼저 말한다. 첫 실행이 선택을 요구하게 되면서(firstrun) 여기가
+        // **되돌아오는 유일한 길**이 됐는데, 여태 이 자리는 연결 버튼만 있어서
+        // "오프라인"이 고른 상태가 아니라 아직 안 한 일처럼 보였다.
         acctBox.innerHTML = `
+          <p class="hint">${U.acctOffline}</p>
           <p><button class="btn" id="acct-connect">${U.acctConnect}</button></p>
           <p class="hint">${U.acctConnectHint}</p>
           <div id="acct-result" class="hint" style="font-size:.78rem"></div>`;

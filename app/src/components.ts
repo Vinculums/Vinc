@@ -212,6 +212,16 @@ export function openSheet(opts: {
   onClose?: () => void;
   /** 라벨 없이 몸만 쓰는 시트(문서 편집기처럼) — 머리의 제목을 숨긴다. */
   bare?: boolean;
+  /** **선택을 요구한다** — Esc·스크림·✕ 세 탈출구를 전부 막는다. 발의 버튼만이 문이다.
+   *
+   *  거의 안 쓴다. 쓰는 자리는 갈림길 하나뿐이다(첫 실행: 오프라인이냐 로그인이냐).
+   *  그런 자리에서 "닫기"는 답이 아니라 **답을 안 한 것**인데, 시트는 닫힌 것을
+   *  기억하므로 답 안 한 상태가 답으로 굳는다.
+   *
+   *  ⚠ 이걸 켜는 자리는 **다른 데서 되돌아올 길이 반드시 있어야 한다.** 첫 실행은
+   *  Settings → Account 가 그 길이고 계정 없이도 열린다. 그 길 없이 켜면 그 기기는
+   *  영영 못 빠져나온다. */
+  mustChoose?: boolean;
 }): SheetHandle {
   const el = document.createElement("div");
   el.className = "sheet-scrim";
@@ -255,9 +265,15 @@ export function openSheet(opts: {
     e.stopPropagation();
     close();
   };
-  document.addEventListener("keydown", onKey, true);
-  wireScrimDismiss(el, close);
-  el.querySelector(".sheet-x")!.addEventListener("click", close);
+  if (!opts.mustChoose) {
+    document.addEventListener("keydown", onKey, true);
+    wireScrimDismiss(el, close);
+    el.querySelector(".sheet-x")!.addEventListener("click", close);
+  } else {
+    // ✕ 는 숨긴다 — 남겨 두고 무반응이면 눌러 보고 고장으로 읽는다. 없는 문이
+    // 안 열리는 문보다 정직하다.
+    el.querySelector<HTMLElement>(".sheet-x")!.hidden = true;
+  }
   return {
     el,
     body: el.querySelector<HTMLElement>(".sheet-body")!,

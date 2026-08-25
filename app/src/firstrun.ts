@@ -29,6 +29,15 @@ export function offerAccount(): void {
   const sheet = openSheet({
     title: c.title,
     subtitle: c.lead,
+    // **선택을 요구한다.** 여태 이 카드는 Esc·스크림·✕ 로 답 없이 닫혔고, 그러면
+    // "한 번만 묻는다"는 규칙 때문에 **답 안 한 상태가 답으로 굳었다** — 계정이
+    // 있다는 걸 끝내 모르고 지나가는 사람이 생긴다는, 이 카드가 생긴 바로 그 문제다.
+    // 강요하는 것은 가입이 아니라 **선택**이고, 오프라인이 동등한 버튼으로 있으며
+    // 다시 묻지 않으므로 [[decision:account-is-a-path-not-a-wall]] 과 어긋나지 않는다.
+    //
+    // 되돌아올 길은 Settings → Account 다(계정 없이도 열린다). 그 길이 없으면
+    // 이걸 켜면 안 된다 — 렌더러가 죽어도 SEEN 은 이미 찍혀 있기 때문이다.
+    mustChoose: true,
     onClose: () => abortConnect(),   // 기다리는 중에 닫으면 폴링도 끝낸다
   });
   sheet.body.innerHTML = `
