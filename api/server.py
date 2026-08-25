@@ -101,6 +101,23 @@ def store_unavailable() -> dict:
 
 # ── 앱(라우트 핸들러의 상태 컨테이너) ─────────────────────────────────────────
 
+#: 팀 그래프 owner 의 접두. 정본은 `vinc_mcp/http_server._TEAM_OWNER_RE` 이고
+#: 여기 있는 것은 **사본**이다 — 사이드카는 MCP 층을 import 하지 않는다(다른 프로세스).
+#: 둘이 어긋나면 팀 그래프가 personal 로 보고되므로 교차계약 테스트가 대조한다
+#: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
+_TEAM_OWNER_PREFIX = "team:"
+
+
+def _owner_scope(owner: str | None) -> str:
+    """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `unscoped`.
+
+    `unscoped` 는 owner 없이 도는 로컬 단일 사용자 스토어다. 빈 문자열로 두면
+    호출부가 "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다."""
+    if not owner:
+        return "unscoped"
+    return "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal"
+
+
 class VincApp:
     """사이드카 상태: 설정 · 공유 스토어(단일 Database, writer) · 세션 인증 · 잡 큐 ·
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
@@ -750,6 +767,9 @@ class VincApp:
             # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
             # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
             # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
+            # `scope` 는 그 owner 가 **개인 그래프인지 팀 그래프인지**를 말한다 —
+            # owner 문자열만으로는 접두를 아는 사람만 읽을 수 있었다.
+            # 근거: [[decision:identity-rides-on-the-first-door-not-a-whoami]]
             if got.get("executed") and (got.get("text") or "").strip():
                 # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
                 # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
@@ -757,14 +777,14 @@ class VincApp:
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
                 return {"kind": "conventions", "executed": True, "source": "doc",
-                        "owner": owner or "",
+                        "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
-                    "owner": owner or "",
+                    "owner": owner or "", "scope": _owner_scope(owner),
                     "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
                     "text": built.get("text") or ""}
         return self._read(_run)

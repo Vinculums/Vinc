@@ -659,7 +659,18 @@ TOOLS: list[dict] = [
                        "ago; the built date in the header is a label saying when the prose was "
                        "last generated, not when these numbers were taken. This is the "
                        "only way to see the ratified vocabulary: proposing an unlisted type is "
-                       "allowed, but it lands as proposed and waits for a human.",
+                       "allowed, but it lands as proposed and waits for a human. "
+                       "THE RESPONSE ALSO TELLS YOU WHERE YOU ARE, which is why this tool "
+                       "carries it rather than a separate whoami: `owner` is the graph you "
+                       "are connected as, `scope` is 'personal' or 'team' (or 'unscoped' "
+                       "for a local single-user store), and `target` echoes local versus "
+                       "remote. Read them before your first write. On this hosted connector "
+                       "`scope` is always 'personal': a key is bound to one person and no "
+                       "tool takes a team argument, so a team graph can be neither written "
+                       "nor read from here. Team graphs are reachable only from the web app, "
+                       "which selects the team and has the account sign for it. If you meant "
+                       "to write to a team, stop: this surface cannot, and the write lands in "
+                       "the personal graph instead.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "lang": {"type": "string", "enum": ["en", "ko"],
