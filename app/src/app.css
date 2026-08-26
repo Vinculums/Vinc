@@ -1209,10 +1209,16 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    `MCP` 는 출처를 밝히는 라벨이고 그 옆이 무엇을 하는지 말한다. 누르는 것은 이 조각이
    아니라 **행 전체**다(아래 .card-row · .mcp-row). */
 .mcp-word {
-  font-size: .6875rem; font-weight: 600; letter-spacing: .04em;
-  color: hsl(var(--muted-foreground));
+  font-size: .8125rem; font-weight: 600; letter-spacing: .04em;
+  color: inherit;                          /* 행이 밝아질 때 같이 밝아진다 */
 }
-.mcp-copy { color: inherit; }
+/* 크기를 서로 바꿨다(발주자 지시 2026-08-27): `MCP` 가 이 행이 무엇에 대한 것인지
+   말하는 자리이므로 그것이 먼저 읽혀야 하고, 무엇을 하는지는 그다음이다.
+   ⚠ 색을 토큰으로 낮추려다 한 번 뒤집혔다 — 이 테마에서 `--muted-foreground` 는
+   `--caption-foreground` **보다 밝다**(실측 166,168,191 대 109,112,136). 그래서 큰
+   쪽이 오히려 흐렸다. 상대적으로만 낮추면 되는 자리라 불투명도로 간다: 행이 호버로
+   밝아질 때 둘이 같이 따라 오르고, 관계는 그대로 유지된다. */
+.mcp-copy { font-size: .6875rem; opacity: .72; }
 
 /* 레일에서는 제목 **위** 한 줄. 본문 아래에 두려 했으나 시선이 제목에서 출발하므로
    건넬 것이 있다는 사실은 그 앞에 서야 눈에 걸린다(발주자 지시 2026-08-27). */
