@@ -4,7 +4,7 @@ import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { absoluteViewUrl, formatViewUrl } from "../view-url";
-import { camera3d, centerOn3d, enableLasso, flyTo3d, findNode3d, mount3d,
+import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
@@ -69,6 +69,11 @@ const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
  *  상단 바)이라 값이 흩어져 있으면 어디서 보냈느냐에 따라 받는 쪽 그림이 달라진다. */
 const SHARE_DEPTH = 2;
 
+/** 줌 한 걸음의 배율. 한 번에 절반씩 오가는 정도가 손에 예측 가능하고, 여러 번 누르면
+ *  울타리(view3d.zoomBy3d)까지 계속 간다 — 한 번에 끝까지 보내면 되돌릴 눈금이 없다. */
+const ZOOM_IN = 0.55;
+const ZOOM_OUT = 1.8;
+
 
 /** 복사 버튼 한 벌 — 레일·문서 카드·영역이 같은 처리를 쓴다.
  *
@@ -86,9 +91,13 @@ const SHARE_DEPTH = 2;
  *  복사되는 것이 주소 하나가 아니라 **바로 보낼 수 있는 한 문단**인 이유: 주소만
  *  받은 사람은 그것으로 무엇을 하라는 것인지 다시 물어야 한다. Figma 가 노드 URL
  *  위에 한 줄을 얹어 주는 것과 같은 형태다. */
-function mcpLabel(): string {
+/** `MCP` 는 **누를 수 없는 라벨**이고, 과녁은 그 옆 조각 하나다(발주자 지시).
+ *  둘을 한 컨트롤로 묶었더니 라벨을 눌러도 복사돼 "무엇이 눌리는지"가 흐려졌다. */
+function mcpLabel(id: string, tip: string): string {
+  const V = COPY.ui.viewx;
   return `<span class="mcp-word">MCP</span>`
-    + `<span class="mcp-copy">${COPY.ui.viewx.copyPrompt}</span>`;
+    + `<span class="mcp-copy" id="${id}" role="button" tabindex="0"`
+    + ` aria-label="${V.copyPrompt}" data-tip="${tip}">${V.copyPrompt}</span>`;
 }
 
 /** 복사되는 값 — 한 마디 + 주소, **한 줄**로.
@@ -108,17 +117,20 @@ function bindCopyLink(btn: Element | null, make: () => string): void {
     const k = (e as KeyboardEvent).key;
     if (k === "Enter" || k === " ") { e.preventDefault(); (btn as HTMLElement).click(); }
   });
-  btn.addEventListener("click", async (e) => {
-    e.stopPropagation();          // 레일 머리의 클릭이 뒤로 새면 노드 선택이 바뀐다
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();          // 행의 다른 일로 새면 안 된다(레일에서는 노드 선택)
     const tip = COPY.ui.viewx;
-    const before = btn.getAttribute("data-tip") || "";
-    try {
-      await navigator.clipboard.writeText(make());
-      btn.setAttribute("data-tip", tip.copyLinkDone);
-    } catch {
-      btn.setAttribute("data-tip", tip.copyLinkFail);
-    }
-    setTimeout(() => btn.setAttribute("data-tip", before), 1600);
+    const el = btn as HTMLElement;
+    const label = el.textContent || "";
+    // **글귀를 그 자리에서 바꾼다.** 여태 되먹임이 툴팁(`data-tip`)뿐이었는데, 툴팁은
+    // 이미 떠 있으면 갱신되지 않고 손을 뗐다 다시 올려야 보였다 — 눌렀는데 아무 일도
+    // 안 일어난 것처럼 읽힌다. 쓰기를 기다리지 않고 **먼저** 바꾸고, 실패하면 되돌린다:
+    // 로컬 클립보드 쓰기는 사실상 즉시라 낙관적으로 보여 주는 편이 정직하다.
+    el.textContent = tip.copyLinkDone;
+    window.setTimeout(() => { el.textContent = label; }, 1400);
+    void navigator.clipboard.writeText(make()).catch(() => {
+      el.textContent = tip.copyLinkFail;
+    });
   });
 }
 
@@ -1514,18 +1526,6 @@ export async function renderView(el: HTMLElement) {
     g2?.fit?.();
   }
 
-  /** 클릭이 줬던 화면으로 되돌린다 — 카드의 줌아웃.
-   *
-   *  클릭 핸들러와 **같은 계산**(`centerOn3d`)을 다시 돌리는 것이 전부다. 카메라를
-   *  찍어 두지 않는 이유 둘: 클릭의 중심 이동은 700ms 트윈이라 언제 찍어도 반쯤 간
-   *  자리가 잡히고, 저장해 두면 그 사이 층이 바뀌었을 때 아무것도 없는 자리를 가리킨다.
-   *  평면 뷰포인트에는 이 개념이 없어 조용히 아무것도 안 한다(줌인과 같은 태도). */
-  function centerOnMounted(id: string, atRest = false): void {
-    if (!g3) return;
-    const n = findNode3d(g3, id);
-    if (n) centerOn3d(g3, n, curPrefs(), 700, atRest);
-  }
-
   function flyToMounted(id: string, domain?: string): boolean {
     if (g3) {
       const n = findNode3d(g3, id);
@@ -1656,9 +1656,8 @@ export async function renderView(el: HTMLElement) {
     // 관계는 자리만 잡아 두고 응답이 온 뒤 채운다 — 나중에 append 하면 늘 맨 끝으로 밀린다.
     const acts = `
       <div class="card-rows">
-        <div class="card-row" id="c-mcp" role="button" tabindex="0"
-             data-tip="${V.copyPromptTip}" aria-label="${V.copyPrompt}">
-          ${mcpLabel()}
+        <div class="card-row card-row--mcp">
+          ${mcpLabel("c-mcp", V.copyPromptTip)}
           <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
             ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
                 aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
@@ -1701,12 +1700,11 @@ export async function renderView(el: HTMLElement) {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
         });
       };
-      act("#c-zoom", () => flyToMounted(nd.id));
-      // 줌아웃 = **클릭이 줬던 그 화면으로**. 전체 맞춤(`f` 키의 fitAll)은 층 전체를
-      // 되감아 버려서 "방금 보던 자리"를 잃는다. 여기서는 클릭이 한 것과 똑같은
-      // 계산을 다시 돌린다 — 상태를 저장하지 않으므로 애니메이션 타이밍에 안 걸리고,
-      // 그 사이 손으로 돌려 놨더라도 같은 자리로 돌아온다.
-      act("#c-zoomout", () => centerOnMounted(nd.id, true));
+      act("#c-zoom", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
+      // 줌은 **거리만** 바꾼다. 여태 줌인은 노드 옆 고정 오프셋으로 날아가고 줌아웃은
+      // 노드 축으로 카메라를 돌려서, 두 버튼이 누를 때마다 화면을 회전시켰다.
+      // 방향을 고정하면 누른 만큼만 멀어지고 가까워지며, 여러 번 눌러 더 갈 수도 있다.
+      act("#c-zoomout", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
       act("#c-open", () => railFor(nd));
     };
     try {
@@ -1786,9 +1784,7 @@ export async function renderView(el: HTMLElement) {
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
-      <div class="mcp-row" id="rail-link" role="button" tabindex="0"
-           aria-label="${COPY.ui.viewx.copyPrompt}"
-           data-tip="${COPY.ui.viewx.railLinkTip}">${mcpLabel()}</div>
+      <div class="mcp-row">${mcpLabel("rail-link", COPY.ui.viewx.railLinkTip)}</div>
       <h2>${esc(nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">

@@ -16,7 +16,7 @@ import { palette as signal, viewScene, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
-import { aimAt, restRadius } from "../camera-aim";
+import { aimAt, restRadius, zoomStep } from "../camera-aim";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -339,6 +339,22 @@ export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700, atRest = 
   if (!aim) return;                              // 뿌리 — 이미 중심이라 옮길 것이 없다
   g.__wake?.(ms + 200);                          // 트윈은 렌더 루프 안 — 깨워야 움직인다
   g.cameraPosition(aim.pos, aim.tgt, ms);
+}
+
+/** 줌 — **회전 없이** 거리만. 방향과 시선 대상은 손대지 않는다.
+ *
+ *  울타리: 가까이는 씬 크기의 1/8, 멀리는 기본 거리의 4배. 기본 거리(restRadius)가
+ *  첫 마운트의 자리이므로 그 네 배면 "한참 물러난" 자리이고, 그보다 멀어지면 노드가
+ *  점이 되어 볼 것이 없다. */
+export function zoomBy3d(g: any, prefs: ViewPrefs, factor: number, ms = 400): void {
+  const cam = g.cameraPosition?.();
+  const tgt = g.controls?.()?.target ?? { x: 0, y: 0, z: 0 };
+  if (!cam) return;
+  const S = SCALE * prefs.spread;
+  const pos = zoomStep(cam, tgt, factor, S / 8, restRadius(S) * 4);
+  if (!pos) return;
+  g.__wake?.(ms + 200);
+  g.cameraPosition(pos, { x: tgt.x, y: tgt.y, z: tgt.z }, ms);
 }
 
 /** 마운트된 그래프에서 id 로 노드를 찾는다(없으면 undefined — 호출측이 강등 판단). */

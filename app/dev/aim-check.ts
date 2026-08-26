@@ -8,7 +8,7 @@
  *  이 검사가 있는 이유: 이 화면은 픽셀을 못 본 채로 나가는 일이 있었다(v0.8.5 계획
  *  §7 의 "map-side pixels were never seen"). 수식이 맞는지만이라도 손 없이 답한다. */
 import assert from "node:assert/strict";
-import { aimAt, camRadius, restRadius, type Vec3 } from "../src/camera-aim.ts";
+import { aimAt, camRadius, restRadius, zoomStep, type Vec3 } from "../src/camera-aim.ts";
 
 const len = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
 const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -86,5 +86,38 @@ near(camRadius({ x: 3, y: 4, z: 0 })!, 5);
 
 // 기본 거리는 첫 마운트 카메라 (1.1S, 0.9S, 2.1S) 의 원점 거리와 같아야 한다.
 near(restRadius(140), Math.hypot(140 * 1.1, 140 * 0.9, 140 * 2.1));
+
+// ── 줌: **방향은 그대로, 거리만** ───────────────────────────────────────────
+//    이것이 없어서 줌인·줌아웃이 노드 둘레를 돌았다(2026-08-27). 거리만 바뀌는지는
+//    "새 위치가 옛 위치와 같은 반직선 위에 있는가"로 판정한다.
+{
+  const tgt = { x: 0, y: 0, z: 0 };
+  const cam = { x: 100, y: -40, z: 60 };
+  const before = len(cam);
+
+  const inn = zoomStep(cam, tgt, 0.55, 10, 5000)!;
+  near(len(inn), before * 0.55);
+  assert.ok(len(cross(inn, cam)) < 1e-9, "줌인이 방향을 바꾸면 안 된다");
+  assert.ok(dot(inn, cam) > 0, "같은 쪽에 있어야 한다(뒤집히면 안 된다)");
+
+  const out = zoomStep(cam, tgt, 1.8, 10, 5000)!;
+  near(len(out), before * 1.8);
+  assert.ok(len(cross(out, cam)) < 1e-9, "줌아웃도 방향을 바꾸면 안 된다");
+
+  // 울타리: 몇 번을 눌러도 그 밖으로 못 나간다.
+  let far = cam;
+  for (let i = 0; i < 40; i++) far = zoomStep(far, tgt, 1.8, 10, 500) ?? far;
+  near(len(far), 500);
+  assert.equal(zoomStep(far, tgt, 1.8, 10, 500), null, "더 갈 곳이 없으면 null");
+
+  // 시선 대상이 원점이 아니어도 그 대상 기준으로 움직인다.
+  const t2 = { x: 10, y: 10, z: 10 };
+  const c2 = { x: 30, y: 10, z: 10 };
+  const z2 = zoomStep(c2, t2, 2, 1, 1000)!;
+  assert.deepEqual(z2, { x: 50, y: 10, z: 10 });
+}
+
+// 카메라가 시선 대상에 앉아 있으면 방향이 없다 — 0으로 나누지 않는다.
+assert.equal(zoomStep({ x: 5, y: 5, z: 5 }, { x: 5, y: 5, z: 5 }, 2, 1, 100), null);
 
 console.log("aim-check: 전부 통과");

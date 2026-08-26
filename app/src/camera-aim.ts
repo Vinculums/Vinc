@@ -60,3 +60,24 @@ export function aimAt(node: Vec3, cam: Vec3 | null | undefined, flat: boolean,
   const k = R / len;
   return { pos: { x: x * k, y: y * k, z: z * k }, tgt: { x: 0, y: 0, z: 0 } };
 }
+
+/** 줌 한 걸음 — **방향은 그대로, 거리만** 바꾼다.
+ *
+ *  이것이 없어서 줌인·줌아웃이 노드 둘레를 돌았다(실측 2026-08-27). 줌인은 노드 옆
+ *  고정 오프셋으로 날아갔고(`flyTo3d`), 줌아웃은 노드 축으로 카메라를 돌렸다(`aimAt`).
+ *  둘 다 거리와 **방향을 함께** 바꾸므로 화면이 회전한다. 고르는 것(회전해서 중심에
+ *  놓기)과 들여다보는 것(거리)은 다른 일이고, 버튼 이름이 이미 "줌"이라고 말한다.
+ *
+ *  시선 대상에서 카메라로 향하는 벡터를 `factor` 배 한다. `min`/`max` 는 씬 밖으로
+ *  튀어나가거나 노드 안으로 파고드는 것을 막는 울타리다 — 없으면 몇 번만 눌러도
+ *  화면이 아무것도 아닌 것이 된다. 더 갈 곳이 없으면 `null`(호출측이 조용히 멈춘다). */
+export function zoomStep(cam: Vec3, tgt: Vec3, factor: number,
+                         min: number, max: number): Vec3 | null {
+  const d = { x: cam.x - tgt.x, y: cam.y - tgt.y, z: cam.z - tgt.z };
+  const len = Math.hypot(d.x, d.y, d.z);
+  if (len < EPS) return null;
+  const want = Math.min(max, Math.max(min, len * factor));
+  if (Math.abs(want - len) < 0.5) return null;          // 이미 울타리에 닿았다
+  const k = want / len;
+  return { x: tgt.x + d.x * k, y: tgt.y + d.y * k, z: tgt.z + d.z * k };
+}

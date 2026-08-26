@@ -1218,17 +1218,21 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    `--caption-foreground` **보다 밝다**(실측 166,168,191 대 109,112,136). 그래서 큰
    쪽이 오히려 흐렸다. 상대적으로만 낮추면 되는 자리라 불투명도로 간다: 행이 호버로
    밝아질 때 둘이 같이 따라 오르고, 관계는 그대로 유지된다. */
-.mcp-copy { font-size: .6875rem; opacity: .72; }
+/* **여기만 눌린다.** 라벨까지 한 컨트롤로 묶었더니 무엇이 눌리는지 흐려졌다
+   (발주자 지시 2026-08-27). 과녁이 작아진 만큼 패딩으로 손 크기를 만든다. */
+.mcp-copy {
+  font-size: .6875rem; opacity: .72; cursor: pointer;
+  padding: .2rem .35rem; margin: -.2rem -.35rem;
+}
+.mcp-copy:hover, .mcp-copy:focus-visible {
+  opacity: 1; background: hsl(var(--ring) / .18); outline: none;
+}
 
 /* 레일에서는 제목 **위** 한 줄. 본문 아래에 두려 했으나 시선이 제목에서 출발하므로
    건넬 것이 있다는 사실은 그 앞에 서야 눈에 걸린다(발주자 지시 2026-08-27). */
 #view-detail .mcp-row {
-  display: flex; align-items: center; gap: .4rem; cursor: pointer;
-  padding: .3rem .4rem; margin: 0 -.4rem .2rem;
-  color: hsl(var(--caption-foreground));
-}
-#view-detail .mcp-row:hover, #view-detail .mcp-row:focus-visible {
-  background: hsl(var(--ring) / .14); color: hsl(var(--foreground));
+  display: flex; align-items: center; justify-content: center; gap: .4rem;
+  margin: 0 0 .2rem; color: hsl(var(--caption-foreground));
 }
 
 /* ── 카드 IA — 목록이지 버튼 무더기가 아니다 ────────────────────────────────
@@ -1249,6 +1253,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .card-row:hover, .card-row:focus-visible {
   background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); outline: none;
 }
+/* MCP 행만은 컨테이너가 과녁이 아니다 — 안쪽 조각 하나만 눌린다. 그래서 손 모양도
+   행 강조도 없고, 내용은 왼쪽에 붙지 않고 가운데에 선다(발주자 지시). */
+.card-row--mcp { cursor: default; justify-content: center; }
+.card-row--mcp:hover { background: none; color: hsl(var(--caption-foreground)); }
+.card-row--mcp .card-depth { margin-left: 0; }
+
 /* 시점 두 개는 한 줄을 반씩 나눈다 — 세로선이 두 과녁의 경계를 눈에 보이게 한다. */
 .card-split { display: flex; }
 .card-split > .card-row { flex: 1 1 0; }
