@@ -251,22 +251,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 경로가 여기 있는 이유: `runner.os` 는 **job 레벨 `env` 에서 못 쓴다**(러너가
-        # 배정되기 전에 평가된다). 그렇게 썼다가 워크플로가 job 을 하나도 만들지 못하고
-        # 검증에서 죽었다(run 32959205805, jobs 0). `matrix` 는 거기서 쓸 수 있다.
-        include:
-          - os: [self-hosted, linux, vinc-local]
-            target_dir: /home/runner/cargo-target/vinc
-          - os: [self-hosted, windows, vinc-local]
-            target_dir: 'C:\cargo-target\vinc'
+        os:
+          - [self-hosted, linux, vinc-local]
+          - [self-hosted, windows, vinc-local]
     runs-on: ${{ matrix.os }}
-    # 산출물을 워크스페이스 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
-    # `git clean -ffdx` 를 돌리고, `target/` 은 gitignore 대상이라 매 실행 지워졌다.
-    # 그래서 캐시 액션이 그것을 네트워크로 되사 왔다 — 복원 10분 · 저장 9분 대 컴파일 4분
-    # (실측 2026-08-26, run 32910956646). 근거: [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]
-    # ⚠ 러너가 영속이라 이 디렉터리는 **계속 자란다**. 가끔 지워 줄 것.
-    env:
-      CARGO_TARGET_DIR: ${{ matrix.target_dir }}
     steps:
       # Windows 는 `shell: bash` 가 WSL 로 가므로 Git Bash 를 앞에 세운다(release.yml 동형).
       - name: Prefer Git Bash on Windows (system32 bash is WSL)
@@ -278,6 +266,23 @@ jobs:
           if (Test-Path (Join-Path $binDir 'bash.exe')) {
             $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           }
+      # 산출물을 체크아웃 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
+      # `git clean -ffdx` 를 돌리고, `target/` 은 gitignore 대상이라 매 실행 지워졌다.
+      # 그래서 캐시 액션이 그것을 네트워크로 되사 왔다 (복원 10분 · 저장 9분 대 컴파일 4분,
+      # 실측 2026-08-26 run 32910956646).
+      # 근거: [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]
+      #
+      # 절대경로가 아니라 `$RUNNER_WORKSPACE` 인 이유가 둘이다.
+      # ① 한 기계에 러너가 여럿이면 절대경로는 **같은 디렉터리**다(둘 다 같은 계정으로
+      #    돈다). cargo 가 target 에 파일락을 걸어 뒤엣놈이 통째로 기다리므로, 늘린
+      #    러너가 조용히 무효가 된다. `$RUNNER_WORKSPACE` 는 러너마다 갈린다.
+      # ② `runner` 컨텍스트는 job 레벨 `env` 에서 못 쓴다(러너 배정 전에 평가된다).
+      #    그렇게 썼다가 job 을 0개 만들고 죽었다 (run 32959205805). 스텝 런타임에는
+      #    같은 값이 환경변수로 있다.
+      # ⚠ 러너가 영속이라 이 디렉터리는 계속 자란다. 가끔 지워 줄 것.
+      - name: Keep cargo output outside the checkout (per-runner)
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=$RUNNER_WORKSPACE/cargo-target" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       # ⚠ `swatinem/rust-cache` 를 여기서 **일부러 안 쓴다.** 그 액션은 파일시스템이
