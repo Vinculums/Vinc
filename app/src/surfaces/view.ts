@@ -4,7 +4,7 @@ import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { absoluteViewUrl, formatViewUrl } from "../view-url";
-import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d, zoomBy3d,
+import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
@@ -1526,11 +1526,18 @@ export async function renderView(el: HTMLElement) {
     g2?.fit?.();
   }
 
-  function flyToMounted(id: string, domain?: string): boolean {
+  /** 이미 그려져 있는 노드에 **도착**한다 — 중심에 놓을 뿐 거리는 안 건드린다.
+   *
+   *  관계 줄·트리·검색·딥링크가 전부 `focusNode` 를 지나 여기로 온다. 여태 이 자리가
+   *  `flyTo3d`(반경의 9배까지 파고드는 줌인)를 불러서, 관계를 한 번 따라가면 화면이
+   *  코앞까지 붙어 버렸다. 지도 클릭은 중심에만 놓는데 관계 이동은 확 들어가면 같은
+   *  "노드로 간다"가 경로마다 다르게 굴었다. 규칙 하나로 맞춘다: **도착하면 가운데,
+   *  거리는 줌 버튼이.** */
+  function centerMounted(id: string, domain?: string): boolean {
     if (g3) {
       const n = findNode3d(g3, id);
       if (!n) return false;
-      flyTo3d(g3, n, curPrefs());
+      centerOn3d(g3, n, curPrefs());
       return true;
     }
     if (g2) return g2.focus(id);
@@ -1576,7 +1583,7 @@ export async function renderView(el: HTMLElement) {
     // 노드 id 는 주제를 모를 때도 적어 둔다: 다시 그릴 때 그 마크를 초점색으로
     // 그릴 근거가 이것뿐이다(예전엔 L2 씨앗이 그 일을 했다).
     lnbFocus = domain ? { domain, nodeId: id } : { ...lnbFocus, nodeId: id };
-    if (!flyToMounted(id, domain)) {
+    if (!centerMounted(id, domain)) {
       const at = trail[trail.length - 1];
       const already = domain
         ? at.kind === "l1" && at.domains.length === 1 && at.domains[0] === domain
@@ -1588,8 +1595,8 @@ export async function renderView(el: HTMLElement) {
       }
       // 마운트 직후에는 좌표가 아직 앉지 않아 한 번에 못 난다. 자리를 잡은 뒤 다시
       // 한 번(D70). 넓혔든(재마운트) 아니든(딥링크로 방금 그린 화면) 사정은 같다.
-      if (!flyToMounted(id, domain))
-        setTimeout(() => { if (myGen === liveGen) flyToMounted(id, domain); }, 420);
+      if (!centerMounted(id, domain))
+        setTimeout(() => { if (myGen === liveGen) centerMounted(id, domain); }, 420);
     }
     const raw = curNodes.find((n) => n.id === id);
     // 전량을 그린 화면에도 없으면 그 노드는 **없는 것**이다(오래된 딥링크가 이 경우다).
@@ -1671,71 +1678,67 @@ export async function renderView(el: HTMLElement) {
           <div class="card-row" id="c-zoomout" role="button" tabindex="0">${V.cardZoomOut}</div>
         </div>
       </div>`;
-    card.body.innerHTML = acts + `<p class="hint">${V.sourceLoading}</p>`;
-    const wireActs = (degree: number) => {
-      // make() 는 클릭 시점에 cardDepth 를 읽는다 — 깊이를 바꿔도 다시 묶을 것이 없다.
-      bindCopyLink(card.body.querySelector("#c-mcp"), () =>
-        promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
-                                  { depth: cardDepth, viewpoint: curPrefs().view })));
-      const warn = card.body.querySelector<HTMLElement>("#c-warn")!;
-      const paint = () => {
-        card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
-          b.setAttribute("aria-pressed", String(Number(b.dataset.d) === cardDepth)));
-        const wide = cardDepth > 1 && degree >= WIDE_DEGREE;
-        warn.hidden = !wide;
-        if (wide) warn.textContent = V.cardWide(degree);
-      };
+    // **한 번만 그리고 그다음엔 슬롯만 채운다.** 여태 응답이 온 뒤 `acts` 를 다시
+    // 그렸는데, 그 사이 카드가 교체되면(층 이동·연달아 고르기 — 실측 로그에서 같은
+    // 노드를 세 번 조회했다) 채우는 쪽이 `isConnected` 에서 빠져나가고 **await 이전에
+    // 그려 둔 빈 슬롯만** 남았다. 관계가 통째로 사라진 채 멀쩡해 보이는 화면이 된다.
+    // 행동 줄은 응답과 무관하므로 여기서 바로 묶는다 — 기다릴 이유가 없다.
+    card.body.innerHTML = acts;
+    const slot = () => card.body.querySelector<HTMLElement>("#c-relslot");
+    const note = (s: string) => { const el = slot(); if (el) el.innerHTML = `<p class="card-note">${s}</p>`; };
+    note(V.sourceLoading);
+
+    let degree = 0;                                // 경고가 쓰는 값 — 응답이 오면 갱신된다
+    const warn = card.body.querySelector<HTMLElement>("#c-warn")!;
+    const paint = () => {
       card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
-        b.addEventListener("click", (e) => {
-          e.stopPropagation();       // 행 전체가 복사라 숫자 클릭이 거기까지 새면 안 된다
-          cardDepth = Number(b.dataset.d); paint();
-        }));
-      paint();
-      // 행마다 클릭과 Enter·Space 를 같이 단다(role=button 을 스스로 지켜야 한다).
-      const act = (id: string, run: () => void) => {
-        const el = card.body.querySelector<HTMLElement>(id);
-        if (!el) return;
-        el.addEventListener("click", run);
-        el.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
-        });
-      };
-      act("#c-zoom", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
-      // 줌은 **거리만** 바꾼다. 여태 줌인은 노드 옆 고정 오프셋으로 날아가고 줌아웃은
-      // 노드 축으로 카메라를 돌려서, 두 버튼이 누를 때마다 화면을 회전시켰다.
-      // 방향을 고정하면 누른 만큼만 멀어지고 가까워지며, 여러 번 눌러 더 갈 수도 있다.
-      act("#c-zoomout", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
-      act("#c-open", () => railFor(nd));
+        b.setAttribute("aria-pressed", String(Number(b.dataset.d) === cardDepth)));
+      const wide = cardDepth > 1 && degree >= WIDE_DEGREE;
+      warn.hidden = !wide;
+      if (wide) warn.textContent = V.cardWide(degree);
     };
+    // make() 는 클릭 시점에 cardDepth 를 읽는다 — 깊이를 바꿔도 다시 묶을 것이 없다.
+    bindCopyLink(card.body.querySelector("#c-mcp"), () =>
+      promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
+                                { depth: cardDepth, viewpoint: curPrefs().view })));
+    card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
+      b.addEventListener("click", () => { cardDepth = Number(b.dataset.d); paint(); }));
+    paint();
+    // 행마다 클릭과 Enter·Space 를 같이 단다(role=button 을 스스로 지켜야 한다).
+    const act = (id: string, run: () => void) => {
+      const el = card.body.querySelector<HTMLElement>(id);
+      if (!el) return;
+      el.addEventListener("click", run);
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
+      });
+    };
+    // 줌은 **거리만** 바꾼다. 여태 줌인은 노드 옆 고정 오프셋으로 날아가고 줌아웃은
+    // 노드 축으로 카메라를 돌려서, 두 버튼이 누를 때마다 화면을 회전시켰다.
+    act("#c-zoom", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
+    act("#c-zoomout", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
+    act("#c-open", () => railFor(nd));
+
     try {
       const res = await nodeContextOnce(nd.id);
       if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
       card.setTitle(nd.label);
       const links = res.links;
-      if (!links?.executed) {
-        card.body.innerHTML = acts;
-        card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML =
-          `<p class="hint card-row">${V.relsNone}</p>`;
-        wireActs(0);
-        return;
-      }
-      const n = links.degree + links.attached;
-      card.body.innerHTML = acts;
-      card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML = `
+      if (!links?.executed) { note(V.relsNone); return; }
+      degree = links.degree + links.attached;
+      paint();
+      const el = slot();
+      if (!el) return;
+      el.innerHTML = `
         <details class="card-rels">
-          <summary>${V.cardRels(n)}</summary>
+          <summary>${V.cardRels(degree)}</summary>
           <div id="c-rels"></div>
         </details>`;
-      const box = card.body.querySelector<HTMLElement>("#c-rels")!;
+      const box = el.querySelector<HTMLElement>("#c-rels")!;
       box.innerHTML = relsHTML(links);
       wireRels(box, nd, links);
-      wireActs(n);
     } catch {
-      if (!card.el.isConnected) return;
-      card.body.innerHTML = acts;
-      card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML =
-        `<p class="hint card-row">${V.relsNone}</p>`;
-      wireActs(0);
+      if (card.el.isConnected) note(V.relsNone);
     }
   }
 
