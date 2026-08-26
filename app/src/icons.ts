@@ -31,6 +31,12 @@ const REG: Record<string, string> = {
   dot, "half-disc": halfDisc, ring, pin, alert, check,
   "chevron-left": chevronLeft, "dot-grid": dotGrid, domains, decide,
   lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes,
+  // ⚠ **자리만 잡아 둔 이름이다.** 이 앱에는 MCP 공식 마크가 없다(디자인 허브에도
+  // 없다). 타사 상표라 가져오는 것이 사용 조건 판단을 먼저 요구하므로, 그때까지
+  // 뜻이 가장 가까운 share-nodes(갈라져 나가는 노드 = 이 노드와 이어진 것들을
+  // 건넨다)를 빌려 쓴다. 부르는 쪽은 이미 `icon("mcp")` 라고 적으므로 **교체는
+  // 여기 한 줄**이다 — `import mcp from "./icons/mcp.svg?raw"` 를 더하고 값만 바꾼다.
+  mcp: shareNodes,
 };
 
 /** Inline an icon. Size in px (default 20). */

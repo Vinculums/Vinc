@@ -16,6 +16,7 @@ import { palette as signal, viewScene, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
+import { aimAt } from "../camera-aim";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -317,6 +318,25 @@ export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
   const d = Math.max(70, nodeRadius(n, prefs) * 9);
   if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, ms);
   else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, ms);
+}
+
+/** 카메라 **회전만** — 노드를 화면 중심에 놓되 거리는 건드리지 않는다.
+ *
+ *  클릭이 `flyTo3d` 를 부르던 것을 여기로 바꿨다. 그것은 한 손짓에 **두 가지**를
+ *  했다: 시선 대상을 노드로 옮기고(중심), 거리를 반경의 9배로 만든다(줌). 고르는
+ *  것과 파고드는 것은 다른 일이라 뒤엣것은 카드의 명시적 버튼으로 내렸다.
+ *
+ *  수식은 `camera-aim.ts` 에 있다 — **import 0 이라 손 없이 돌려 볼 수 있다**
+ *  (`node --experimental-strip-types app/dev/aim-check.ts`). 여기 두면 이 파일이
+ *  렌더러를 통째로 끌고 오므로 검사할 방법이 없어진다. 이 화면은 픽셀을 못 본 채로
+ *  나간 전례가 있어서(v0.8.5 계획 §7) 그 정도는 갖춰 둔다. */
+export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
+  if (!n) return;
+  const node = { x: n.fx ?? n.x ?? 0, y: n.fy ?? n.y ?? 0, z: n.fz ?? n.z ?? 0 };
+  const aim = aimAt(node, g.cameraPosition?.(), prefs.view === "2d");
+  if (!aim) return;                              // 뿌리 — 이미 중심이라 옮길 것이 없다
+  g.__wake?.(ms + 200);                          // 트윈은 렌더 루프 안 — 깨워야 움직인다
+  g.cameraPosition(aim.pos, aim.tgt, ms);
 }
 
 /** 마운트된 그래프에서 id 로 노드를 찾는다(없으면 undefined — 호출측이 강등 판단). */
@@ -638,7 +658,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       gathered = gathered === n.id ? null : n.id;
       planFly3d(gathered);
     } else {
-      flyTo3d(g, n, prefs);      // 모으지 않는 모드에서는 여태처럼 카메라가 간다
+      // 클릭은 **중심에 놓기만** 한다(줌 없음). 파고드는 것은 카드의 줌 버튼이다 —
+      // 고르는 손짓 하나가 카메라까지 끌고 들어가면 되돌릴 방법이 손에 없었다.
+      centerOn3d(g, n, prefs);
     }
     handlers.onClick?.(n);
   });

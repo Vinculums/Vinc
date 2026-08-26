@@ -469,6 +469,17 @@ const EN = {
       copyLinkTip: "Copy this selection as a link you can paste to an assistant",
       copyLinkDone: "Copied",
       copyLinkFail: "Could not copy",
+      // 레일과 카드가 서로 다른 넓이를 준다. 레일은 이 노드와 바로 이어진 것까지,
+      // 카드는 고른 깊이까지. 문구가 그 차이를 말해야 두 버튼이 둘인 이유가 선다.
+      railLinkTip: "Copy this node and what it links to, as a link you can paste to an assistant",
+      cardDepthLabel: "How far to reach",
+      cardDepthTip: (d: number) => d === 1
+        ? "This node and what it links to"
+        : `This node and everything within ${d} steps`,
+      cardWide: (n: number) => `${n} links here, so reaching further pulls in a lot`,
+      cardZoom: "Zoom in",
+      cardOpen: "Details and source",
+      cardRels: (n: number) => `Relations (${n})`,
       statTopic: "Topic",
       statLinks: "Links",
       statDirection: "Direction",
@@ -1167,6 +1178,15 @@ const KO: Deck = {
       copyLinkTip: "지금 고른 것을 링크로 복사합니다. 어시스턴트에 붙여넣으면 같은 곳을 봅니다",
       copyLinkDone: "복사했습니다",
       copyLinkFail: "복사하지 못했습니다",
+      railLinkTip: "이 노드와 바로 이어진 것까지 링크로 복사합니다. 어시스턴트에 붙여넣으면 같은 곳을 봅니다",
+      cardDepthLabel: "어디까지 담을까",
+      cardDepthTip: (d) => d === 1
+        ? "이 노드와 바로 이어진 것"
+        : `이 노드에서 ${d}칸 안에 있는 것 전부`,
+      cardWide: (n) => `연결이 ${n}개라 여기서 더 넓히면 크게 나갑니다`,
+      cardZoom: "가까이 보기",
+      cardOpen: "상세와 원문",
+      cardRels: (n) => `관계 ${n}개`,
       statTopic: "주제",
       statLinks: "연결",
       statDirection: "방향",

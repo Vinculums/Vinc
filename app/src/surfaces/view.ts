@@ -1442,7 +1442,7 @@ export async function renderView(el: HTMLElement) {
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domains: [nd.domain!] }); show(trail[trail.length - 1]); }
-        else openDetail(nd);
+        else focusOnMap(nd);       // 레일은 카드의 버튼이 연다
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
     }, p, keepCam);
@@ -1568,34 +1568,113 @@ export async function renderView(el: HTMLElement) {
     return ctxCache.p;
   };
 
-  /** 관련 문서 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있고, 항목을 누르면 그 노드로 간다. */
+  /** 카드가 만드는 주소의 깊이 — **preference 가 아니다.** localStorage 도 URL 도 안
+   *  건드리므로 렌더러를 재마운트하지 않는다(스포트라이트와 같은 규율). 세션 안에서만
+   *  살고, 목적은 노드를 옮겨 다닐 때 매번 다시 고르게 하지 않는 것 하나다. */
+  let cardDepth = SHARE_DEPTH;
+
+  /** 1홉이 이 수를 넘으면 "여기서 넓히면 크게 나간다"고 말한다.
+   *
+   *  ⚠ **측정값이 아니라 그은 선이다.** 홉 수는 크기를 말해 주지 않는다 — 같은 "2"가
+   *  잎에서는 열몇 개고 허브에서는 그래프 절반이다. 그 절반이라는 것은 짐작이 아니라
+   *  `nodeMenu` 주석에 남은 실측이고(연결 33개짜리 허브), 잎은 보통 2~4다. 12는 그
+   *  사이다. 진짜 수를 미리 알려면 depth-2 를 통째로 조회해야 하는데, 카드에 숫자
+   *  하나 띄우자고 할 일은 아니다. 그래서 **정확한 것(1홉)은 세어서 보여주고, 그 너머는
+   *  숫자를 지어내지 않고 경고만 한다.** */
+  const WIDE_DEGREE = 12;
+
+  /** 노드 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있다.
+   *
+   *  IA 세 줄: ① 어시스턴트에게 건넬 주소(+ 깊이) ② 줌 ③ 정보·문서 열기.
+   *  관계 목록은 **접어 둔다** — 카드의 첫 일은 "이 자리를 건넨다"이고, 이웃으로
+   *  걸어가는 것은 그다음이다(우클릭 메뉴·검색이라는 다른 길도 있다).
+   *
+   *  깊이가 여기 있고 레일에 없는 이유: 레일은 "이게 뭔가"라 가장 좁은 것(d1)이면
+   *  되고, "관련된 것까지"를 생각하는 자리가 이 카드다. ⚠ d0("이 노드만")은 지금
+   *  문법으로 표현이 안 된다 — 꼬리 없는 주소는 `vinc_graph` 의 기본값 2로 떨어지고,
+   *  `#view/ids/<id>` 도 tools.py 가 **시드로** 받는다. 표현 가능한 최소가 d1 이다. */
   async function openRelsCard(nd: N3) {
     const pos = nodeScreenPos(nd.id);
+    const V = COPY.ui.viewx;
     const card = openFloatPanel({
-      title: nd.label, x: pos.x, y: pos.y,
-      closeLabel: COPY.ui.viewx.railClose,
+      title: nd.label, x: pos.x, y: pos.y, closeLabel: V.railClose,
     });
-    card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
+    const acts = `
+      <div class="card-acts">
+        <button class="btn card-mcp" id="c-mcp" data-tip="${V.copyLinkTip}"
+                aria-label="${V.copyLink}">${icon("mcp", 15)}<span>${V.copyLink}</span></button>
+        <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
+          ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
+              aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
+        </span>
+      </div>
+      <p class="hint card-warn" id="c-warn" hidden></p>
+      <div class="card-acts">
+        <button class="btn" id="c-zoom">${V.cardZoom}</button>
+        <button class="btn" id="c-open">${V.cardOpen}</button>
+      </div>`;
+    card.body.innerHTML = acts + `<p class="hint">${V.sourceLoading}</p>`;
+    const wireActs = (degree: number) => {
+      // make() 는 클릭 시점에 cardDepth 를 읽는다 — 깊이를 바꿔도 다시 묶을 것이 없다.
+      bindCopyLink(card.body.querySelector("#c-mcp"), () =>
+        absoluteViewUrl({ kind: "node", id: nd.id },
+                        { depth: cardDepth, viewpoint: curPrefs().view }));
+      const warn = card.body.querySelector<HTMLElement>("#c-warn")!;
+      const paint = () => {
+        card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
+          b.setAttribute("aria-pressed", String(Number(b.dataset.d) === cardDepth)));
+        const wide = cardDepth > 1 && degree >= WIDE_DEGREE;
+        warn.hidden = !wide;
+        if (wide) warn.textContent = V.cardWide(degree);
+      };
+      card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
+        b.addEventListener("click", () => { cardDepth = Number(b.dataset.d); paint(); }));
+      paint();
+      card.body.querySelector("#c-zoom")!.addEventListener("click", () => flyToMounted(nd.id));
+      card.body.querySelector("#c-open")!.addEventListener("click", () => railFor(nd));
+    };
     try {
       const res = await nodeContextOnce(nd.id);
       if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
       card.setTitle(nd.label);
-      if (!res.links?.executed) { card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.relsNone}</p>`; return; }
-      card.body.innerHTML = relsHTML(res.links);
-      wireRels(card.body, nd, res.links);
+      const links = res.links;
+      if (!links?.executed) {
+        card.body.innerHTML = acts + `<p class="hint">${V.relsNone}</p>`;
+        wireActs(0);
+        return;
+      }
+      const n = links.degree + links.attached;
+      card.body.innerHTML = acts + `
+        <details class="card-rels">
+          <summary>${V.cardRels(n)}</summary>
+          <div id="c-rels"></div>
+        </details>`;
+      const box = card.body.querySelector<HTMLElement>("#c-rels")!;
+      box.innerHTML = relsHTML(links);
+      wireRels(box, nd, links);
+      wireActs(n);
     } catch {
-      if (card.el.isConnected) card.body.innerHTML = `<p class="hint">${COPY.ui.viewx.relsNone}</p>`;
+      if (!card.el.isConnected) return;
+      card.body.innerHTML = acts + `<p class="hint">${V.relsNone}</p>`;
+      wireActs(0);
     }
   }
 
-  function openDetail(nd: N3) {
+  /** 지도에서 노드를 고른 것 — **레일은 열지 않는다.**
+   *
+   *  여태 클릭 한 번이 다섯 가지를 했다(카메라 비행 · 주소 · 원뿔 · 레일 · 카드).
+   *  고르는 것과 읽는 것은 다른 일이고, 레일은 문서 원문까지 끌고 오므로 지나가며
+   *  누른 노드마다 그것이 열리면 지도를 보는 일이 계속 끊긴다. 이제 클릭은 여기까지고,
+   *  레일은 카드의 버튼이 연다. 나머지 진입점(컨텍스트 메뉴 "열기" · 트리 · 검색 ·
+   *  드릴다운)은 그대로 `openDetail` 을 부르므로 거기서는 아무것도 안 달라진다. */
+  function focusOnMap(nd: N3) {
     lastNode = nd;   // Reader 뒤로가기 복귀 지점
     // 주소가 이 노드를 싣는다 — 주소창에서 복사해 건네는 것이 "노드 하나"라는 성질은
     // L2 가 스코프였을 때부터의 것이고, 층이 사라져도 남는다.
     focusId = nd.id; syncHash();
     // 인과 원뿔 — 이 노드를 있게 한 것(과거)과 이것이 낳은 것(미래)을 함께 밝힌다.
     // **hover 가 아니라 초점에 매단다**: 지나가기만 해도 폐포가 켜지면 이웃 흐림과
-    // 두 문법이 같은 손짓을 놓고 다툰다. openDetail 은 모든 초점 경로가 모이는
+    // 두 문법이 같은 손짓을 놓고 다툰다. 이 함수는 모든 초점 경로가 모이는
     // 깔때기라(클릭 · focusNode · 컨텍스트 메뉴) 한 자리로 전부 덮인다.
     // 근거: [[dcb46a8f794dba72b]] §4 — 인과 순서가 이 그래프가 원래 가진 구조다.
     {
@@ -1603,8 +1682,19 @@ export async function renderView(el: HTMLElement) {
       setSpot(spotOf([...causalCone(dir, nd.id, "past"),
                       ...causalCone(dir, nd.id, "future")], nd.id));
     }
-    openRail();
     void openRelsCard(nd);
+  }
+
+  /** 지도 밖 진입점이 쓰는 것 — 고르고(카드·원뿔·주소) **레일까지 연다**. */
+  function openDetail(nd: N3) {
+    focusOnMap(nd);
+    railFor(nd);
+  }
+
+  /** 레일만 — 카드는 손대지 않는다. 카드의 "정보 열기"가 이걸 부르는데, 거기서
+   *  `openDetail` 을 부르면 카드가 자기를 다시 그려 접어 둔 목록이 도로 펴진다. */
+  function railFor(nd: N3) {
+    openRail();
     // 수치는 여기서 세지 않는다 — loadNodeSource 가 node-context 응답(links)으로
     // 채운다. 여태 이 자리에서 `curEdges`(마지막으로 그린 그래프의 잔상)를 세고
     // 드릴다운 경로에서는 degree 를 0 으로 박아, 같은 노드가 동선마다 다른 숫자를
@@ -1612,8 +1702,9 @@ export async function renderView(el: HTMLElement) {
     detail.innerHTML = `
       <div class="rail-head">
         <span class="hint">${COPY.ui.viewx.railTitle}</span>
-        <button class="rail-x" id="rail-link" aria-label="${COPY.ui.viewx.copyLink}"
-                data-tip="${COPY.ui.viewx.copyLinkTip}">🔗</button>
+        <button class="rail-x rail-link" id="rail-link"
+                aria-label="${COPY.ui.viewx.copyLink}"
+                data-tip="${COPY.ui.viewx.railLinkTip}">${icon("mcp", 13)}</button>
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
@@ -1626,9 +1717,11 @@ export async function renderView(el: HTMLElement) {
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+    // 레일의 일은 "이게 뭔가"라 주소도 가장 좁은 것을 준다. 넓히는 것은 카드의
+    // 깊이 선택이 맡는다 — 두 버튼이 같은 주소를 만들면 하나는 없는 것과 같다.
     bindCopyLink(detail.querySelector("#rail-link"), () =>
       absoluteViewUrl({ kind: "node", id: nd.id },
-                      { depth: SHARE_DEPTH, viewpoint: curPrefs().view }));
+                      { depth: 1, viewpoint: curPrefs().view }));
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
@@ -2124,7 +2217,7 @@ export async function renderView(el: HTMLElement) {
     const shown2 = atTime(gnodes).map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
     g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
       markId: lnbFocus.nodeId,
-      onClick: (nd) => openDetail(toN3([nd])[0]),
+      onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),

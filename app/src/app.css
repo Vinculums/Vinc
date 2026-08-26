@@ -1204,6 +1204,40 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
+
+/* 노드 카드의 행동 줄 — ① 건넬 주소와 깊이 ② 가까이 보기 ③ 상세와 원문.
+   목록보다 **위**에 있는 것이 곧 우선순위다: 카드의 첫 일은 이 자리를 어시스턴트에게
+   건네는 것이고, 이웃으로 걸어가는 것은 그다음이라 접혀 있다. */
+.card-acts { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; padding: .15rem 0; }
+.card-acts .btn { padding: .3rem .55rem; font-size: .8125rem; }
+.card-mcp { display: inline-flex; align-items: center; gap: .3rem; }
+/* 깊이는 분절 컨트롤 하나 — 세 버튼이 따로 놓이면 "고르는 값 하나"로 안 읽힌다. */
+.card-depth {
+  display: inline-flex; margin-left: auto; overflow: hidden;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+}
+.depth-b {
+  background: none; border: none; cursor: pointer; font: inherit; font-size: .8125rem;
+  line-height: 1; padding: .3rem .5rem; color: hsl(var(--caption-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.depth-b + .depth-b { border-left: 1px solid hsl(var(--border)); }
+.depth-b:hover { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); }
+.depth-b[aria-pressed="true"] {
+  background: hsl(var(--ring) / .22); color: hsl(var(--foreground)); font-weight: 600;
+}
+.card-warn { margin: .15rem 0 .1rem; }
+.card-rels {
+  margin-top: .35rem; padding-top: .3rem;
+  border-top: 1px solid hsl(var(--border) / .55);
+}
+.card-rels > summary {
+  cursor: pointer; font-size: .8125rem; padding: .2rem 0;
+  color: hsl(var(--caption-foreground));
+}
+.card-rels > summary:hover { color: hsl(var(--foreground)); }
+/* 레일 머리의 복사 버튼은 닫기와 나란히 선다 — 주된 행동이 아니므로 더 작게. */
+.rail-link { padding: .15rem .25rem; }
 /* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
 .btn-quiet { color: hsl(var(--caption-foreground)); }
 .btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }
