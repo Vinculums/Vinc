@@ -313,14 +313,38 @@ export async function renderSettings(el: HTMLElement) {
       </ul>
       <div id="cli-note" class="hint hint-sm break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
+    /** ⚠ **성공했다고 말하기 전에 결과를 읽는다.**
+     *
+     *  여태 이 자리는 호출이 던지지만 않으면 "등록됐어요"라고 했다. 그런데 호스트
+     *  CLI 에 위임하는 경로(Claude Code · Codex)는 그 CLI 가 없어도 사이드카가
+     *  **0 으로 끝난다** — 실패가 예외가 아니라 결과 JSON 의 `registered:false` 로
+     *  온다(`vinc_mcp/install.py` 의 `_run_cli`, `api/cli.py` 의 `_emit`). 그래서
+     *  아무것도 등록되지 않은 채 화면만 성공을 말했다. 넷이 똑같이 생긴 행이라
+     *  어느 쪽이 그런지 구분할 방법도 없었다.
+     *
+     *  JSON 이 아니어도 안 깨진다: 못 읽으면 예전처럼 성공으로 읽되, 없는 말을
+     *  지어내지는 않는다. */
     async function mcpAction(action: "install" | "uninstall", client: string) {
       const invoke = await shellInvoke();
       if (!invoke) { mcpResult.textContent = U.mcpNoShell; return; }
       mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
       const host = U.mcpHosts[client] || client;
       try {
-        await invoke(action === "install" ? "mcp_install" : "mcp_uninstall", { client });
-        mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
+        const raw = await invoke(
+          action === "install" ? "mcp_install" : "mcp_uninstall", { client }) as unknown;
+        let res: any = null;
+        try { res = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { /* 형식 밖 */ }
+        const ok = action === "install" ? res?.registered !== false : res?.removed !== false;
+        if (!ok && res?.command) {
+          // 사람이 손으로 이을 수 있게 **실행할 줄을 그대로** 보여 준다.
+          mcpResult.textContent = `${U.mcpNeedsCli(host)} ${res.command}`;
+        } else if (!ok) {
+          mcpResult.textContent = action === "install"
+            ? `${U.mcpFail}: ${res?.note || ""}`.trim()
+            : U.mcpNothing(host);
+        } else {
+          mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
+        }
       } catch (e: any) {
         mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
       }
@@ -412,11 +436,20 @@ export async function renderSettings(el: HTMLElement) {
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
       <p class="hint">${U.secretHint}</p>
-      <input id="s-token" value="${cfg.token}" />`;
+      <input id="s-token" type="password" placeholder="••••••"
+             autocomplete="off" />`;
     body.querySelector<HTMLInputElement>("#s-base")!.addEventListener("change", (e) =>
       (cfg.base = (e.target as HTMLInputElement).value));
-    body.querySelector<HTMLInputElement>("#s-token")!.addEventListener("change", (e) =>
-      (cfg.token = (e.target as HTMLInputElement).value));
+    // 동기화 키와 **같은 규율**(감사 M8): 값을 다시 그리지 않고, 비어 있으면
+    // "안 바꿈"이다. 여태 이 칸만 `value=` 로 시크릿을 DOM 에 눕히고 있었다 —
+    // 같은 탭에서 한 칸은 감추고 옆 칸은 드러내면 규율이 아니라 우연이 된다.
+    const tokenInput = body.querySelector<HTMLInputElement>("#s-token")!;
+    tokenInput.addEventListener("change", () => {
+      const v = tokenInput.value.trim();
+      if (!v) return;
+      cfg.token = v;
+      tokenInput.value = "";
+    });
     body.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
       (cfg.owner = (e.target as HTMLInputElement).value));
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
