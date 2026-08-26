@@ -16,7 +16,7 @@ import { palette as signal, viewScene, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
-import { aimAt } from "../camera-aim";
+import { aimAt, restRadius } from "../camera-aim";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -330,10 +330,12 @@ export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
  *  (`node --experimental-strip-types app/dev/aim-check.ts`). 여기 두면 이 파일이
  *  렌더러를 통째로 끌고 오므로 검사할 방법이 없어진다. 이 화면은 픽셀을 못 본 채로
  *  나간 전례가 있어서(v0.8.5 계획 §7) 그 정도는 갖춰 둔다. */
-export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
+export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700, atRest = false) {
   if (!n) return;
   const node = { x: n.fx ?? n.x ?? 0, y: n.fy ?? n.y ?? 0, z: n.fz ?? n.z ?? 0 };
-  const aim = aimAt(node, g.cameraPosition?.(), prefs.view === "2d");
+  // `atRest` = 줌아웃. 지금 거리를 지키는 대신 **첫 마운트의 거리로** 물러난다.
+  const rest = atRest ? restRadius(SCALE * prefs.spread) : undefined;
+  const aim = aimAt(node, g.cameraPosition?.(), prefs.view === "2d", rest);
   if (!aim) return;                              // 뿌리 — 이미 중심이라 옮길 것이 없다
   g.__wake?.(ms + 200);                          // 트윈은 렌더 루프 안 — 깨워야 움직인다
   g.cameraPosition(aim.pos, aim.tgt, ms);

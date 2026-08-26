@@ -8,7 +8,7 @@
  *  이 검사가 있는 이유: 이 화면은 픽셀을 못 본 채로 나가는 일이 있었다(v0.8.5 계획
  *  §7 의 "map-side pixels were never seen"). 수식이 맞는지만이라도 손 없이 답한다. */
 import assert from "node:assert/strict";
-import { aimAt, radius, type Vec3 } from "../src/camera-aim.ts";
+import { aimAt, camRadius, restRadius, type Vec3 } from "../src/camera-aim.ts";
 
 const len = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
 const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -63,8 +63,28 @@ assert.ok(aimAt({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 90 }, true),
           "평면에서는 원점 노드도 겨눌 수 있다");
 
 // ── radius: 0 벡터는 null(호출측이 "할 게 없다"로 읽는다) ───────────────────
-assert.equal(radius({ x: 0, y: 0, z: 0 }), null);
-assert.equal(radius(null), null);
-near(radius({ x: 3, y: 4, z: 0 })!, 5);
+assert.equal(camRadius({ x: 0, y: 0, z: 0 }), null);
+assert.equal(camRadius(null), null);
+near(camRadius({ x: 3, y: 4, z: 0 })!, 5);
+
+// ── 줌아웃: 가까이 있던 카메라가 **기본 거리로 물러난다** ──────────────────
+//    이것이 없어서 줌아웃이 아무 일도 안 했다(2026-08-27). 줌인이 거리를 줄여 놓은
+//    뒤에는 "지금 거리 지키기"가 곧 "그대로 있기"였다.
+{
+  const node = { x: 30, y: -12, z: 4 };
+  const S = 140;                                 // SCALE * spread(1)
+  const near3 = { x: 31, y: -12, z: 5 };         // 줌인 직후 — 노드 코앞
+  const kept = aimAt(node, near3, false)!;       // 클릭: 지금 거리를 지킨다
+  near(len(kept.pos), len(near3));
+  const out = aimAt(node, near3, false, restRadius(S))!;   // 줌아웃: 물러난다
+  near(len(out.pos), restRadius(S));
+  assert.ok(len(out.pos) > len(kept.pos) * 5, "줌아웃이 실제로 멀어져야 한다");
+  // 물러나도 여전히 그 노드를 중심에 둔다 — 멀어지기만 하면 자리를 잃는다.
+  assert.ok(len(cross(out.pos, node)) < 1e-9, "물러난 뒤에도 시축 위에 있어야 한다");
+  assert.ok(dot(out.pos, node) > 0, "노드가 카메라 반대편이면 안 된다");
+}
+
+// 기본 거리는 첫 마운트 카메라 (1.1S, 0.9S, 2.1S) 의 원점 거리와 같아야 한다.
+near(restRadius(140), Math.hypot(140 * 1.1, 140 * 0.9, 140 * 2.1));
 
 console.log("aim-check: 전부 통과");

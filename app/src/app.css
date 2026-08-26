@@ -1205,32 +1205,52 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
 
-/* "MCP · 예시 프롬프트 복사" 행 — 레일 본문 끝과 카드에 같은 것이 선다.
-   `MCP` 는 라벨이고 누르는 것은 그 옆 글귀다. 테두리도 채움도 **라운드도** 없다:
-   지도 위에 떠 있는 카드에 둥근 버튼을 얹으면 그 자체가 또 하나의 창이 된다. */
-.mcp-row { display: inline-flex; align-items: center; gap: .4rem; }
+/* "MCP · 예시 프롬프트 복사" 라벨 — 레일 제목 위와 카드 첫 줄에 같은 것이 선다.
+   `MCP` 는 출처를 밝히는 라벨이고 그 옆이 무엇을 하는지 말한다. 누르는 것은 이 조각이
+   아니라 **행 전체**다(아래 .card-row · .mcp-row). */
 .mcp-word {
   font-size: .6875rem; font-weight: 600; letter-spacing: .04em;
   color: hsl(var(--muted-foreground));
 }
-.mcp-copy {
-  cursor: pointer; padding: .15rem .3rem; color: hsl(var(--caption-foreground));
-}
-.mcp-copy:hover, .mcp-copy:focus-visible {
-  color: hsl(var(--foreground)); background: hsl(var(--ring) / .14);
-}
-/* 레일에서는 본문 맨 아래 별도 행 — 크기는 Topic 줄과 같게 상속받는다. */
-#view-detail .mcp-row { margin-top: .6rem; }
+.mcp-copy { color: inherit; }
 
-/* 카드 IA — 발주자 지시 순서: 상세 → 관계 → MCP → 시점. 버튼이 아니라 목록처럼 선다. */
-.card-rows { display: flex; flex-direction: column; }
-.card-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .1rem 0; }
-.card-act {
-  cursor: pointer; font-size: .8125rem; padding: .2rem .3rem;
+/* 레일에서는 제목 **위** 한 줄. 본문 아래에 두려 했으나 시선이 제목에서 출발하므로
+   건넬 것이 있다는 사실은 그 앞에 서야 눈에 걸린다(발주자 지시 2026-08-27). */
+#view-detail .mcp-row {
+  display: flex; align-items: center; gap: .4rem; cursor: pointer;
+  padding: .3rem .4rem; margin: 0 -.4rem .2rem;
   color: hsl(var(--caption-foreground));
 }
-.card-act:hover, .card-act:focus-visible {
-  color: hsl(var(--foreground)); background: hsl(var(--ring) / .14);
+#view-detail .mcp-row:hover, #view-detail .mcp-row:focus-visible {
+  background: hsl(var(--ring) / .14); color: hsl(var(--foreground));
+}
+
+/* ── 카드 IA — 목록이지 버튼 무더기가 아니다 ────────────────────────────────
+   행이 카드 폭을 **꽉 채운다**: 글자만 눌리게 두면 같은 줄인데 되는 자리와 안 되는
+   자리가 생기고 손은 그 경계를 볼 수 없다. 그래서 float-body 의 안쪽 여백을 음수
+   마진으로 되돌려 가장자리까지 낸 뒤, 패딩을 행이 직접 든다.
+   사이는 실선으로 가른다 — 라운드도 테두리도 없는 대신 경계는 선이 맡는다. */
+.card-rows {
+  display: flex; flex-direction: column;
+  margin: -.35rem -.5rem -.6rem;            /* = .float-body 의 padding */
+}
+.card-rows > * + * { border-top: 1px solid hsl(var(--border) / .45); }
+.card-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .6rem; cursor: pointer; font-size: .8125rem;
+  color: hsl(var(--caption-foreground));
+}
+.card-row:hover, .card-row:focus-visible {
+  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); outline: none;
+}
+/* 시점 두 개는 한 줄을 반씩 나눈다 — 세로선이 두 과녁의 경계를 눈에 보이게 한다. */
+.card-split { display: flex; }
+.card-split > .card-row { flex: 1 1 0; }
+.card-split > .card-row + .card-row { border-left: 1px solid hsl(var(--border) / .45); }
+/* 누를 수 없는 줄(경고)은 손 모양도 강조도 없다 — 행이 전부 눌리는 곳이라 구분이 필요하다. */
+.card-note {
+  padding: .4rem .6rem; margin: 0; cursor: default;
+  font-size: .75rem; color: hsl(var(--muted-foreground));
 }
 /* 깊이는 분절 컨트롤 하나 — 세 버튼이 따로 놓이면 "고르는 값 하나"로 안 읽힌다. */
 .card-depth {
@@ -1243,17 +1263,19 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font-variant-numeric: tabular-nums;
 }
 .depth-b + .depth-b { border-left: 1px solid hsl(var(--border)); }
-.depth-b:hover { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); }
+.depth-b:hover { background: hsl(var(--ring) / .22); color: hsl(var(--foreground)); }
 .depth-b[aria-pressed="true"] {
-  background: hsl(var(--ring) / .22); color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--ring) / .3); color: hsl(var(--foreground)); font-weight: 600;
 }
-.card-warn { margin: .1rem 0; }
-.card-rels { padding: .1rem 0; }
+/* 관계는 접힌 행 — summary 가 다른 행과 같은 치수여야 목록으로 읽힌다. */
 .card-rels > summary {
-  cursor: pointer; font-size: .8125rem; padding: .2rem .3rem;
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .6rem; cursor: pointer; font-size: .8125rem;
   color: hsl(var(--caption-foreground));
 }
-.card-rels > summary:hover { color: hsl(var(--foreground)); background: hsl(var(--ring) / .14); }
+.card-rels > summary:hover { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); }
+.card-rels[open] > summary { border-bottom: 1px solid hsl(var(--border) / .45); }
+.card-rels .list-row { padding-left: .6rem; padding-right: .6rem; }
 /* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
 .btn-quiet { color: hsl(var(--caption-foreground)); }
 .btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }

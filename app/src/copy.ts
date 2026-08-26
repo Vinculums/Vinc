@@ -480,9 +480,9 @@ const EN = {
       cardZoomIn: "Zoom in",
       cardZoomOut: "Zoom out",
       copyPrompt: "Copy example prompt",
-      // 복사되는 첫 줄. 주소만 건네면 받은 쪽이 "그래서 뭘 하라는 것이냐"를
-      // 되물어야 한다 — 바로 보낼 수 있는 한 문단이 되도록 지시를 얹는다.
-      promptLead: "Open this part of my Vinc graph and tell me what is here.",
+      // 주소 **앞**에 붙는 한 마디. 줄바꿈 없이 한 줄이다(발주자 지시 2026-08-27):
+      // 붙여넣는 자리가 대부분 한 줄짜리 입력이라 줄을 나누면 거기서 잘린다.
+      promptLead: "Open this part of my Vinc graph",
       cardOpen: "Details and source",
       cardRels: (n: number) => `Relations (${n})`,
       statTopic: "Topic",
@@ -1191,7 +1191,7 @@ const KO: Deck = {
       cardZoomIn: "가까이 보기",
       cardZoomOut: "멀리 보기",
       copyPrompt: "예시 프롬프트 복사",
-      promptLead: "내 Vinc 그래프의 이 자리를 열어서 무엇이 있는지 말해 줘.",
+      promptLead: "내 Vinc 그래프의 이 자리를 열어 줘",
       cardOpen: "상세와 원문",
       cardRels: (n) => `관계 ${n}개`,
       statTopic: "주제",

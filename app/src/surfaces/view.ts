@@ -86,21 +86,18 @@ const SHARE_DEPTH = 2;
  *  복사되는 것이 주소 하나가 아니라 **바로 보낼 수 있는 한 문단**인 이유: 주소만
  *  받은 사람은 그것으로 무엇을 하라는 것인지 다시 물어야 한다. Figma 가 노드 URL
  *  위에 한 줄을 얹어 주는 것과 같은 형태다. */
-function mcpRow(id: string, tip: string): string {
-  const V = COPY.ui.viewx;
-  return `<div class="mcp-row"><span class="mcp-word">MCP</span>`
-    + `<span class="mcp-copy" id="${id}" role="button" tabindex="0"`
-    + ` aria-label="${V.copyPrompt}" data-tip="${tip}">${V.copyPrompt}</span></div>`;
+function mcpLabel(): string {
+  return `<span class="mcp-word">MCP</span>`
+    + `<span class="mcp-copy">${COPY.ui.viewx.copyPrompt}</span>`;
 }
 
-/** 복사되는 값 — 지시 한 줄 + 주소 한 줄.
+/** 복사되는 값 — 한 마디 + 주소, **한 줄**로.
  *
- *  `@` 를 안 붙인다. Figma 가 붙이는 것은 그쪽 클라이언트에서 그 토큰이 첨부를 뜻하기
- *  때문이고, 여기서는 아무 뜻이 없다. 오히려 `vinc_graph(url=…)` 인자에 그대로 실려
- *  주소를 깨뜨릴 수 있다. */
+ *  줄을 안 나눈다: 붙여넣는 자리가 대부분 한 줄짜리 입력이라 나누면 거기서 잘린다.
+ *  `@` 도 안 붙인다 — Figma 가 붙이는 것은 그쪽 클라이언트에서 그 토큰이 첨부를 뜻해서고,
+ *  여기서는 아무 뜻이 없으며 오히려 `vinc_graph(url=…)` 인자에 실려 주소를 깨뜨린다. */
 function promptFor(url: string): string {
-  return `${COPY.ui.viewx.promptLead}
-${url}`;
+  return `${COPY.ui.viewx.promptLead} ${url}`;
 }
 
 function bindCopyLink(btn: Element | null, make: () => string): void {
@@ -1523,10 +1520,10 @@ export async function renderView(el: HTMLElement) {
    *  찍어 두지 않는 이유 둘: 클릭의 중심 이동은 700ms 트윈이라 언제 찍어도 반쯤 간
    *  자리가 잡히고, 저장해 두면 그 사이 층이 바뀌었을 때 아무것도 없는 자리를 가리킨다.
    *  평면 뷰포인트에는 이 개념이 없어 조용히 아무것도 안 한다(줌인과 같은 태도). */
-  function centerOnMounted(id: string): void {
+  function centerOnMounted(id: string, atRest = false): void {
     if (!g3) return;
     const n = findNode3d(g3, id);
-    if (n) centerOn3d(g3, n, curPrefs());
+    if (n) centerOn3d(g3, n, curPrefs(), 700, atRest);
   }
 
   function flyToMounted(id: string, domain?: string): boolean {
@@ -1653,26 +1650,26 @@ export async function renderView(el: HTMLElement) {
     // 세 줄이 전부다(발주자 지시): ① 건넬 주소 ② 시점 ③ 읽기. 행은 버튼이 아니라
     // 목록처럼 서 있다가 손이 오면 드러난다 — 카드가 지도 위에 떠 있는 물건이라
     // 테두리 친 버튼 세 개를 얹으면 그 자체가 또 하나의 창이 된다.
-    // 순서가 곧 우선순위다(발주자 지시): ① 읽기 ② 이웃 ③ 건넬 주소 ④ 시점.
-    // 관계는 자리만 잡아 두고 응답이 온 뒤에 채운다 — 순서를 지키려면 골격이 먼저
-    // 서야 하고, 나중에 append 하면 관계가 늘 맨 끝으로 밀린다.
+    // 순서가 곧 우선순위다(발주자 지시): ① 건넬 주소 ② 읽기 ③ 이웃 ④ 시점.
+    // **행 전체가 과녁이다.** 글자만 눌리게 두면 같은 줄인데 되는 자리와 안 되는 자리가
+    // 생기고, 손은 그 경계를 볼 수 없다. 카드 폭을 꽉 채우고 사이를 실선으로 가른다.
+    // 관계는 자리만 잡아 두고 응답이 온 뒤 채운다 — 나중에 append 하면 늘 맨 끝으로 밀린다.
     const acts = `
       <div class="card-rows">
-        <div class="card-row">
-          <span class="card-act" id="c-open" role="button" tabindex="0">${V.cardOpen}</span>
-        </div>
-        <div id="c-relslot"></div>
-        <div class="card-row">
-          ${mcpRow("c-mcp", V.copyPromptTip)}
+        <div class="card-row" id="c-mcp" role="button" tabindex="0"
+             data-tip="${V.copyPromptTip}" aria-label="${V.copyPrompt}">
+          ${mcpLabel()}
           <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
             ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
                 aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
           </span>
         </div>
-        <p class="hint card-warn" id="c-warn" hidden></p>
-        <div class="card-row">
-          <span class="card-act" id="c-zoom" role="button" tabindex="0">${V.cardZoomIn}</span>
-          <span class="card-act" id="c-zoomout" role="button" tabindex="0">${V.cardZoomOut}</span>
+        <p class="card-note" id="c-warn" hidden></p>
+        <div class="card-row" id="c-open" role="button" tabindex="0">${V.cardOpen}</div>
+        <div id="c-relslot"></div>
+        <div class="card-split">
+          <div class="card-row" id="c-zoom" role="button" tabindex="0">${V.cardZoomIn}</div>
+          <div class="card-row" id="c-zoomout" role="button" tabindex="0">${V.cardZoomOut}</div>
         </div>
       </div>`;
     card.body.innerHTML = acts + `<p class="hint">${V.sourceLoading}</p>`;
@@ -1690,7 +1687,10 @@ export async function renderView(el: HTMLElement) {
         if (wide) warn.textContent = V.cardWide(degree);
       };
       card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
-        b.addEventListener("click", () => { cardDepth = Number(b.dataset.d); paint(); }));
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();       // 행 전체가 복사라 숫자 클릭이 거기까지 새면 안 된다
+          cardDepth = Number(b.dataset.d); paint();
+        }));
       paint();
       // 행마다 클릭과 Enter·Space 를 같이 단다(role=button 을 스스로 지켜야 한다).
       const act = (id: string, run: () => void) => {
@@ -1706,7 +1706,7 @@ export async function renderView(el: HTMLElement) {
       // 되감아 버려서 "방금 보던 자리"를 잃는다. 여기서는 클릭이 한 것과 똑같은
       // 계산을 다시 돌린다 — 상태를 저장하지 않으므로 애니메이션 타이밍에 안 걸리고,
       // 그 사이 손으로 돌려 놨더라도 같은 자리로 돌아온다.
-      act("#c-zoomout", () => centerOnMounted(nd.id));
+      act("#c-zoomout", () => centerOnMounted(nd.id, true));
       act("#c-open", () => railFor(nd));
     };
     try {
@@ -1786,6 +1786,9 @@ export async function renderView(el: HTMLElement) {
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
+      <div class="mcp-row" id="rail-link" role="button" tabindex="0"
+           aria-label="${COPY.ui.viewx.copyPrompt}"
+           data-tip="${COPY.ui.viewx.railLinkTip}">${mcpLabel()}</div>
       <h2>${esc(nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">
@@ -1793,8 +1796,7 @@ export async function renderView(el: HTMLElement) {
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
       <div id="node-source"></div>
-      <div id="ties-suggest"></div>
-      ${mcpRow("rail-link", COPY.ui.viewx.railLinkTip)}`;
+      <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
     // 레일의 일은 "이게 뭔가"라 주소도 가장 좁은 것을 준다. 넓히는 것은 카드의
     // 깊이 선택이 맡는다 — 두 버튼이 같은 주소를 만들면 하나는 없는 것과 같다.
