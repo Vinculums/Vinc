@@ -251,9 +251,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - [self-hosted, linux, vinc-local]
-          - [self-hosted, windows, vinc-local]
+        # 경로가 여기 있는 이유: `runner.os` 는 **job 레벨 `env` 에서 못 쓴다**(러너가
+        # 배정되기 전에 평가된다). 그렇게 썼다가 워크플로가 job 을 하나도 만들지 못하고
+        # 검증에서 죽었다(run 32959205805, jobs 0). `matrix` 는 거기서 쓸 수 있다.
+        include:
+          - os: [self-hosted, linux, vinc-local]
+            target_dir: /home/runner/cargo-target/vinc
+          - os: [self-hosted, windows, vinc-local]
+            target_dir: 'C:\cargo-target\vinc'
     runs-on: ${{ matrix.os }}
     # 산출물을 워크스페이스 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
     # `git clean -ffdx` 를 돌리고, `target/` 은 gitignore 대상이라 매 실행 지워졌다.
@@ -261,7 +266,7 @@ jobs:
     # (실측 2026-08-26, run 32910956646). 근거: [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]
     # ⚠ 러너가 영속이라 이 디렉터리는 **계속 자란다**. 가끔 지워 줄 것.
     env:
-      CARGO_TARGET_DIR: ${{ runner.os == 'Windows' && 'C:\cargo-target\vinc' || '/home/runner/cargo-target/vinc' }}
+      CARGO_TARGET_DIR: ${{ matrix.target_dir }}
     steps:
       # Windows 는 `shell: bash` 가 WSL 로 가므로 Git Bash 를 앞에 세운다(release.yml 동형).
       - name: Prefer Git Bash on Windows (system32 bash is WSL)
