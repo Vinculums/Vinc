@@ -1694,7 +1694,12 @@ export async function renderView(el: HTMLElement) {
 
     // 행동은 응답과 무관하므로 **지금** 묶는다. 늦게 묶으면 응답이 늦거나 카드가
     // 교체될 때 통째로 안 묶인다(실측으로 한 번 물렸다 — 관계가 통째로 비었다).
-    q("#c-open")!.addEventListener("click", () => railFor(nd));
+    // 다시 누르면 닫힌다. 여는 손짓과 닫는 손짓이 다른 자리에 있으면(레일의 ✕)
+    // 방금 연 것을 되돌리려고 눈이 화면을 가로질러야 한다.
+    q("#c-open")!.addEventListener("click", () => {
+      const openHere = !detail.hidden && lastNode?.id === nd.id;
+      if (openHere) closeRail(); else railFor(nd);
+    });
     q("#c-zoomin")!.addEventListener("click", () => zoomView(ZOOM_IN));
     q("#c-zoomout")!.addEventListener("click", () => zoomView(ZOOM_OUT));
     bindCopyLink(q("#c-copylink"), () => promptFor(url(1)));

@@ -1807,7 +1807,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    (.pl-fade)이 이미 하므로 여기서 되풀이하지 않는다. */
 .pl-bd-leaf.on .pl-bd-dot { fill: hsl(var(--foreground)); r: 3.5; }
 .pl-bd-leaf.on .pl-bd-label { fill: hsl(var(--foreground)); font-size: 10px; font-weight: 600; }
+/* 그려지지 않지만 눌린다 — Weave 의 잎은 반지름 2 라 그대로는 손이 못 짚는다.
+   `fill:none` 이면 히트가 안 잡히므로 투명 채움 + pointer-events 로 둔다. */
+.pl-bd-hit { fill: transparent; pointer-events: all; }
 .pl-bd-leaf { cursor: pointer; }
+/* 짚었다는 것이 보여야 과녁이 넓어진 값을 한다(라벨이 없는 잎도 있다). */
+.pl-bd-leaf:hover .pl-bd-dot { r: 3.5; }
 .pl-bd-leaf:hover .pl-bd-label { fill: hsl(var(--foreground)); }
 
 /* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).
