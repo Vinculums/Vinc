@@ -11,6 +11,12 @@ import os
 
 import pytest
 
+from _tmpjail import install as _install_tmp_jail
+
+# 임시 디렉터리 우리. **수집보다 먼저** 걸어야 한다 — 모듈 최상위에서
+# mkdtemp 를 부르는 파일이 있어서 픽스처로는 늦는다. 이유는 tests/_tmpjail.py.
+_install_tmp_jail()
+
 #: PK 네임스페이싱 스위치. `core-pkns` CI 잡은 이 값을 켜고 **전량**을 돈다.
 _FLAG = "VINC_PK_NAMESPACED"
 
