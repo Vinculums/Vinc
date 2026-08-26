@@ -255,6 +255,13 @@ jobs:
           - [self-hosted, linux, vinc-local]
           - [self-hosted, windows, vinc-local]
     runs-on: ${{ matrix.os }}
+    # 산출물을 워크스페이스 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
+    # `git clean -ffdx` 를 돌리고, `target/` 은 gitignore 대상이라 매 실행 지워졌다.
+    # 그래서 캐시 액션이 그것을 네트워크로 되사 왔다 — 복원 10분 · 저장 9분 대 컴파일 4분
+    # (실측 2026-08-26, run 32910956646). 근거: [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]
+    # ⚠ 러너가 영속이라 이 디렉터리는 **계속 자란다**. 가끔 지워 줄 것.
+    env:
+      CARGO_TARGET_DIR: ${{ runner.os == 'Windows' && 'C:\cargo-target\vinc' || '/home/runner/cargo-target/vinc' }}
     steps:
       # Windows 는 `shell: bash` 가 WSL 로 가므로 Git Bash 를 앞에 세운다(release.yml 동형).
       - name: Prefer Git Bash on Windows (system32 bash is WSL)
@@ -268,9 +275,10 @@ jobs:
           }
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: app/src-tauri
+      # ⚠ `swatinem/rust-cache` 를 여기서 **일부러 안 쓴다.** 그 액션은 파일시스템이
+      # 매번 파괴되는 **호스티드** 러너용이다. 이 두 잡은 영속 셀프호스티드라 디스크가
+      # 이미 들고 있고, 위의 `CARGO_TARGET_DIR` 가 `git clean` 사정권 밖에 둔다.
+      # release.yml 은 호스티드 macOS 다리가 있어 거기서는 계속 써야 한다.
       # 리눅스만 필요한 시스템 헤더(webkit·appindicator). release.yml 과 같은 목록.
       - name: Linux webkit deps
         if: runner.os == 'Linux'
