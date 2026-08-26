@@ -463,21 +463,26 @@ const EN = {
       edFmLabel: "Properties",
       railTitle: "Node detail",
       railClose: "Close",
-      // 복사 버튼 — 선택을 주소로 건넨다. 실패해도 오류로 키우지 않는다(주소는
-      // 어차피 주소창에 있다). settings 의 MCP 주소 복사와 같은 처리다.
-      copyLink: "Copy link",
-      copyLinkTip: "Copy this selection as a link you can paste to an assistant",
+      // 복사 되먹임 — 실패해도 오류로 키우지 않는다(주소는 어차피 주소창에 있다).
+      // settings 의 MCP 주소 복사와 같은 처리다.
       copyLinkDone: "Copied",
       copyLinkFail: "Could not copy",
       // 레일과 카드가 서로 다른 넓이를 준다. 레일은 이 노드와 바로 이어진 것까지,
       // 카드는 고른 깊이까지. 문구가 그 차이를 말해야 두 버튼이 둘인 이유가 선다.
-      railLinkTip: "Copy this node and what it links to, as a link you can paste to an assistant",
+      // 문구가 "링크"라고 하면 안 된다 — 복사되는 것은 지시 한 줄이 얹힌 프롬프트다.
+      railLinkTip: "Copies a ready to send prompt with this node and what it links to",
+      copyPromptTip: "Copies a ready to send prompt with this node and everything within the chosen depth",
       cardDepthLabel: "How far to reach",
       cardDepthTip: (d: number) => d === 1
         ? "This node and what it links to"
         : `This node and everything within ${d} steps`,
       cardWide: (n: number) => `${n} links here, so reaching further pulls in a lot`,
-      cardZoom: "Zoom in",
+      cardZoomIn: "Zoom in",
+      cardZoomOut: "Zoom out",
+      copyPrompt: "Copy example prompt",
+      // 복사되는 첫 줄. 주소만 건네면 받은 쪽이 "그래서 뭘 하라는 것이냐"를
+      // 되물어야 한다 — 바로 보낼 수 있는 한 문단이 되도록 지시를 얹는다.
+      promptLead: "Open this part of my Vinc graph and tell me what is here.",
       cardOpen: "Details and source",
       cardRels: (n: number) => `Relations (${n})`,
       statTopic: "Topic",
@@ -1174,17 +1179,19 @@ const KO: Deck = {
       edFmLabel: "속성",
       railTitle: "노드 상세",
       railClose: "닫기",
-      copyLink: "링크 복사",
-      copyLinkTip: "지금 고른 것을 링크로 복사합니다. 어시스턴트에 붙여넣으면 같은 곳을 봅니다",
       copyLinkDone: "복사했습니다",
       copyLinkFail: "복사하지 못했습니다",
-      railLinkTip: "이 노드와 바로 이어진 것까지 링크로 복사합니다. 어시스턴트에 붙여넣으면 같은 곳을 봅니다",
+      railLinkTip: "이 노드와 바로 이어진 것을 담아, 바로 보낼 수 있는 프롬프트로 복사합니다",
+      copyPromptTip: "이 노드와 고른 깊이 안의 것을 담아, 바로 보낼 수 있는 프롬프트로 복사합니다",
       cardDepthLabel: "어디까지 담을까",
       cardDepthTip: (d) => d === 1
         ? "이 노드와 바로 이어진 것"
         : `이 노드에서 ${d}칸 안에 있는 것 전부`,
       cardWide: (n) => `연결이 ${n}개라 여기서 더 넓히면 크게 나갑니다`,
-      cardZoom: "가까이 보기",
+      cardZoomIn: "가까이 보기",
+      cardZoomOut: "멀리 보기",
+      copyPrompt: "예시 프롬프트 복사",
+      promptLead: "내 Vinc 그래프의 이 자리를 열어서 무엇이 있는지 말해 줘.",
       cardOpen: "상세와 원문",
       cardRels: (n) => `관계 ${n}개`,
       statTopic: "주제",

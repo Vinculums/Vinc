@@ -4,7 +4,7 @@ import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { absoluteViewUrl, formatViewUrl } from "../view-url";
-import { camera3d, enableLasso, flyTo3d, findNode3d, mount3d,
+import { camera3d, centerOn3d, enableLasso, flyTo3d, findNode3d, mount3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
@@ -75,8 +75,42 @@ const SHARE_DEPTH = 2;
  *  복사가 막혀도 **오류로 키우지 않는다**: 주소는 어차피 주소창에 그대로 있고,
  *  클립보드 권한은 사용자 환경의 일이다. settings 의 MCP 주소 복사와 같은 태도다.
  *  버튼 라벨을 잠깐 바꾸는 것으로 끝낸다 — 알림을 띄우면 복사 한 번이 사건이 된다. */
+/** "MCP · 예시 프롬프트 복사" 한 행 — 레일 본문 끝과 카드에 같은 것이 선다.
+ *
+ *  `MCP` 는 **라벨**이고 누르는 것은 그 옆 글귀다. 마크를 뺀 이유: 이 자리에서
+ *  마크가 하는 일은 이미 `MCP` 라는 글자가 하고, 14px 짜리 도형을 과녁으로 두면
+ *  손이 자주 빗나간다. 테두리도 채움도 라운드도 없다 — 지도 위에 떠 있는 카드에
+ *  버튼을 얹으면 그 자체로 또 하나의 창이 되므로, 평소엔 물러나 있다가 손이 오면
+ *  드러나는 쪽으로 간다.
+ *
+ *  복사되는 것이 주소 하나가 아니라 **바로 보낼 수 있는 한 문단**인 이유: 주소만
+ *  받은 사람은 그것으로 무엇을 하라는 것인지 다시 물어야 한다. Figma 가 노드 URL
+ *  위에 한 줄을 얹어 주는 것과 같은 형태다. */
+function mcpRow(id: string, tip: string): string {
+  const V = COPY.ui.viewx;
+  return `<div class="mcp-row"><span class="mcp-word">MCP</span>`
+    + `<span class="mcp-copy" id="${id}" role="button" tabindex="0"`
+    + ` aria-label="${V.copyPrompt}" data-tip="${tip}">${V.copyPrompt}</span></div>`;
+}
+
+/** 복사되는 값 — 지시 한 줄 + 주소 한 줄.
+ *
+ *  `@` 를 안 붙인다. Figma 가 붙이는 것은 그쪽 클라이언트에서 그 토큰이 첨부를 뜻하기
+ *  때문이고, 여기서는 아무 뜻이 없다. 오히려 `vinc_graph(url=…)` 인자에 그대로 실려
+ *  주소를 깨뜨릴 수 있다. */
+function promptFor(url: string): string {
+  return `${COPY.ui.viewx.promptLead}
+${url}`;
+}
+
 function bindCopyLink(btn: Element | null, make: () => string): void {
   if (!btn) return;
+  // span 에 role=button 을 달았으므로 Enter·Space 를 직접 받아야 한다 — 진짜 button
+  // 이 공짜로 주던 것이고, 안 달면 키보드만 쓰는 사람에게는 이 기능이 없는 것과 같다.
+  btn.addEventListener("keydown", (e) => {
+    const k = (e as KeyboardEvent).key;
+    if (k === "Enter" || k === " ") { e.preventDefault(); (btn as HTMLElement).click(); }
+  });
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();          // 레일 머리의 클릭이 뒤로 새면 노드 선택이 바뀐다
     const tip = COPY.ui.viewx;
@@ -601,12 +635,7 @@ export async function renderView(el: HTMLElement) {
       if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1]); }
       return;
     }
-    if (e.key === "f" || e.key === "F") {
-      // 3D 는 전체 맞춤, 2D 는 sigma 카메라 리셋 — 둘 다 "지금 층을 화면에".
-      (g3 as any)?.__wake?.(700);                // 유휴 정지 중이면 깨워야 트윈이 돈다(F6)
-      (g3 as any)?.zoomToFit?.(400, 60);
-      g2?.fit?.();
-    }
+    if (e.key === "f" || e.key === "F") fitAll();
   };
   document.addEventListener("keydown", onKey);
   // 표면이 갈아끼워지면 전역 리스너를 걷어낸다. **컨테이너 존재로는 판별할 수 없다** —
@@ -1478,6 +1507,28 @@ export async function renderView(el: HTMLElement) {
 
   /** 지금 마운트된 렌더러에서 그 노드로 카메라를 옮긴다. 못 찾으면 false —
    *  호출측이 그때만 스코프를 갈아 다시 마운트한다(재조회는 비싸다). */
+  /** 지금 층을 통째로 화면에 — `f` 키와 카드의 줌아웃이 **같은 것**을 한다.
+   *  3D 는 전체 맞춤, 2D 는 sigma fit. 두 자리에 베껴 두면 한쪽만 고쳐지므로 한 벌이다.
+   *  `__wake` 가 먼저인 이유: 3D 는 마지막 포인터 이벤트 ~300ms 뒤 틱을 멈춰서(F6),
+   *  깨우지 않으면 카메라 트윈이 계산만 되고 화면은 그대로다. */
+  function fitAll(): void {
+    (g3 as any)?.__wake?.(700);
+    (g3 as any)?.zoomToFit?.(400, 60);
+    g2?.fit?.();
+  }
+
+  /** 클릭이 줬던 화면으로 되돌린다 — 카드의 줌아웃.
+   *
+   *  클릭 핸들러와 **같은 계산**(`centerOn3d`)을 다시 돌리는 것이 전부다. 카메라를
+   *  찍어 두지 않는 이유 둘: 클릭의 중심 이동은 700ms 트윈이라 언제 찍어도 반쯤 간
+   *  자리가 잡히고, 저장해 두면 그 사이 층이 바뀌었을 때 아무것도 없는 자리를 가리킨다.
+   *  평면 뷰포인트에는 이 개념이 없어 조용히 아무것도 안 한다(줌인과 같은 태도). */
+  function centerOnMounted(id: string): void {
+    if (!g3) return;
+    const n = findNode3d(g3, id);
+    if (n) centerOn3d(g3, n, curPrefs());
+  }
+
   function flyToMounted(id: string, domain?: string): boolean {
     if (g3) {
       const n = findNode3d(g3, id);
@@ -1599,26 +1650,37 @@ export async function renderView(el: HTMLElement) {
     const card = openFloatPanel({
       title: nd.label, x: pos.x, y: pos.y, closeLabel: V.railClose,
     });
+    // 세 줄이 전부다(발주자 지시): ① 건넬 주소 ② 시점 ③ 읽기. 행은 버튼이 아니라
+    // 목록처럼 서 있다가 손이 오면 드러난다 — 카드가 지도 위에 떠 있는 물건이라
+    // 테두리 친 버튼 세 개를 얹으면 그 자체가 또 하나의 창이 된다.
+    // 순서가 곧 우선순위다(발주자 지시): ① 읽기 ② 이웃 ③ 건넬 주소 ④ 시점.
+    // 관계는 자리만 잡아 두고 응답이 온 뒤에 채운다 — 순서를 지키려면 골격이 먼저
+    // 서야 하고, 나중에 append 하면 관계가 늘 맨 끝으로 밀린다.
     const acts = `
-      <div class="card-acts">
-        <button class="btn card-mcp" id="c-mcp" data-tip="${V.copyLinkTip}"
-                aria-label="${V.copyLink}">${icon("mcp", 15)}<span>${V.copyLink}</span></button>
-        <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
-          ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
-              aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
-        </span>
-      </div>
-      <p class="hint card-warn" id="c-warn" hidden></p>
-      <div class="card-acts">
-        <button class="btn" id="c-zoom">${V.cardZoom}</button>
-        <button class="btn" id="c-open">${V.cardOpen}</button>
+      <div class="card-rows">
+        <div class="card-row">
+          <span class="card-act" id="c-open" role="button" tabindex="0">${V.cardOpen}</span>
+        </div>
+        <div id="c-relslot"></div>
+        <div class="card-row">
+          ${mcpRow("c-mcp", V.copyPromptTip)}
+          <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
+            ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
+                aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
+          </span>
+        </div>
+        <p class="hint card-warn" id="c-warn" hidden></p>
+        <div class="card-row">
+          <span class="card-act" id="c-zoom" role="button" tabindex="0">${V.cardZoomIn}</span>
+          <span class="card-act" id="c-zoomout" role="button" tabindex="0">${V.cardZoomOut}</span>
+        </div>
       </div>`;
     card.body.innerHTML = acts + `<p class="hint">${V.sourceLoading}</p>`;
     const wireActs = (degree: number) => {
       // make() 는 클릭 시점에 cardDepth 를 읽는다 — 깊이를 바꿔도 다시 묶을 것이 없다.
       bindCopyLink(card.body.querySelector("#c-mcp"), () =>
-        absoluteViewUrl({ kind: "node", id: nd.id },
-                        { depth: cardDepth, viewpoint: curPrefs().view }));
+        promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
+                                  { depth: cardDepth, viewpoint: curPrefs().view })));
       const warn = card.body.querySelector<HTMLElement>("#c-warn")!;
       const paint = () => {
         card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
@@ -1630,8 +1692,22 @@ export async function renderView(el: HTMLElement) {
       card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
         b.addEventListener("click", () => { cardDepth = Number(b.dataset.d); paint(); }));
       paint();
-      card.body.querySelector("#c-zoom")!.addEventListener("click", () => flyToMounted(nd.id));
-      card.body.querySelector("#c-open")!.addEventListener("click", () => railFor(nd));
+      // 행마다 클릭과 Enter·Space 를 같이 단다(role=button 을 스스로 지켜야 한다).
+      const act = (id: string, run: () => void) => {
+        const el = card.body.querySelector<HTMLElement>(id);
+        if (!el) return;
+        el.addEventListener("click", run);
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
+        });
+      };
+      act("#c-zoom", () => flyToMounted(nd.id));
+      // 줌아웃 = **클릭이 줬던 그 화면으로**. 전체 맞춤(`f` 키의 fitAll)은 층 전체를
+      // 되감아 버려서 "방금 보던 자리"를 잃는다. 여기서는 클릭이 한 것과 똑같은
+      // 계산을 다시 돌린다 — 상태를 저장하지 않으므로 애니메이션 타이밍에 안 걸리고,
+      // 그 사이 손으로 돌려 놨더라도 같은 자리로 돌아온다.
+      act("#c-zoomout", () => centerOnMounted(nd.id));
+      act("#c-open", () => railFor(nd));
     };
     try {
       const res = await nodeContextOnce(nd.id);
@@ -1639,12 +1715,15 @@ export async function renderView(el: HTMLElement) {
       card.setTitle(nd.label);
       const links = res.links;
       if (!links?.executed) {
-        card.body.innerHTML = acts + `<p class="hint">${V.relsNone}</p>`;
+        card.body.innerHTML = acts;
+        card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML =
+          `<p class="hint card-row">${V.relsNone}</p>`;
         wireActs(0);
         return;
       }
       const n = links.degree + links.attached;
-      card.body.innerHTML = acts + `
+      card.body.innerHTML = acts;
+      card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML = `
         <details class="card-rels">
           <summary>${V.cardRels(n)}</summary>
           <div id="c-rels"></div>
@@ -1655,7 +1734,9 @@ export async function renderView(el: HTMLElement) {
       wireActs(n);
     } catch {
       if (!card.el.isConnected) return;
-      card.body.innerHTML = acts + `<p class="hint">${V.relsNone}</p>`;
+      card.body.innerHTML = acts;
+      card.body.querySelector<HTMLElement>("#c-relslot")!.innerHTML =
+        `<p class="hint card-row">${V.relsNone}</p>`;
       wireActs(0);
     }
   }
@@ -1702,9 +1783,6 @@ export async function renderView(el: HTMLElement) {
     detail.innerHTML = `
       <div class="rail-head">
         <span class="hint">${COPY.ui.viewx.railTitle}</span>
-        <button class="rail-x rail-link" id="rail-link"
-                aria-label="${COPY.ui.viewx.copyLink}"
-                data-tip="${COPY.ui.viewx.railLinkTip}">${icon("mcp", 13)}</button>
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
@@ -1715,13 +1793,14 @@ export async function renderView(el: HTMLElement) {
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
       <div id="node-source"></div>
-      <div id="ties-suggest"></div>`;
+      <div id="ties-suggest"></div>
+      ${mcpRow("rail-link", COPY.ui.viewx.railLinkTip)}`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
     // 레일의 일은 "이게 뭔가"라 주소도 가장 좁은 것을 준다. 넓히는 것은 카드의
     // 깊이 선택이 맡는다 — 두 버튼이 같은 주소를 만들면 하나는 없는 것과 같다.
     bindCopyLink(detail.querySelector("#rail-link"), () =>
-      absoluteViewUrl({ kind: "node", id: nd.id },
-                      { depth: 1, viewpoint: curPrefs().view }));
+      promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
+                                { depth: 1, viewpoint: curPrefs().view })));
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
