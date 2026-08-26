@@ -1623,122 +1623,182 @@ export async function renderView(el: HTMLElement) {
     return ctxCache.p;
   };
 
-  /** 카드가 만드는 주소의 깊이 — **preference 가 아니다.** localStorage 도 URL 도 안
-   *  건드리므로 렌더러를 재마운트하지 않는다(스포트라이트와 같은 규율). 세션 안에서만
-   *  살고, 목적은 노드를 옮겨 다닐 때 매번 다시 고르게 하지 않는 것 하나다. */
-  let cardDepth = SHARE_DEPTH;
-
-  /** 1홉이 이 수를 넘으면 "여기서 넓히면 크게 나간다"고 말한다.
+  /** 노드 카드 — 디자인 정본 `Vinc Node Card.dc.html` (2a Final) 그대로.
    *
-   *  ⚠ **측정값이 아니라 그은 선이다.** 홉 수는 크기를 말해 주지 않는다 — 같은 "2"가
-   *  잎에서는 열몇 개고 허브에서는 그래프 절반이다. 그 절반이라는 것은 짐작이 아니라
-   *  `nodeMenu` 주석에 남은 실측이고(연결 33개짜리 허브), 잎은 보통 2~4다. 12는 그
-   *  사이다. 진짜 수를 미리 알려면 depth-2 를 통째로 조회해야 하는데, 카드에 숫자
-   *  하나 띄우자고 할 일은 아니다. 그래서 **정확한 것(1홉)은 세어서 보여주고, 그 너머는
-   *  숫자를 지어내지 않고 경고만 한다.** */
-  const WIDE_DEGREE = 12;
-
-  /** 노드 카드 — 노드 옆에 뜨고, 끌어 옮길 수 있다.
+   *      Details and source   3 documents  >     오른쪽 캐럿 = 문서 열로 나간다
+   *      Links                -> 4 · <- 1  v     아래 캐럿 = 카드 안에서 펼친다(기본 펼침)
+   *        -> Reciprocal rank fusion  requires
+   *      Ask an assistant     [Copy prompt v]    이름 붙은 프롬프트 셋
+   *      Zoom                 [ - | + ]
+   *      Copy link  Share            Delete      조용한 유틸리티
    *
-   *  IA 세 줄: ① 어시스턴트에게 건넬 주소(+ 깊이) ② 줌 ③ 정보·문서 열기.
-   *  관계 목록은 **접어 둔다** — 카드의 첫 일은 "이 자리를 건넨다"이고, 이웃으로
-   *  걸어가는 것은 그다음이다(우클릭 메뉴·검색이라는 다른 길도 있다).
+   *  깊이 선택(1/2/3)이 사라진 자리를 **이름 붙은 프롬프트 셋**이 대신한다. 숫자는
+   *  크기를 말해 주지 않아 늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지
+   *  스스로 말한다("내 문서 안에서만" · "연결 N개, 근거 포함").
    *
-   *  깊이가 여기 있고 레일에 없는 이유: 레일은 "이게 뭔가"라 가장 좁은 것(d1)이면
-   *  되고, "관련된 것까지"를 생각하는 자리가 이 카드다. ⚠ d0("이 노드만")은 지금
-   *  문법으로 표현이 안 된다 — 꼬리 없는 주소는 `vinc_graph` 의 기본값 2로 떨어지고,
-   *  `#view/ids/<id>` 도 tools.py 가 **시드로** 받는다. 표현 가능한 최소가 d1 이다. */
+   *  인과 원뿔은 줄에서 뺐다 — 노드를 고르는 순간 `focusOnMap` 이 이미 과거·미래
+   *  폐포를 점등하므로 카드가 다시 부를 일이 아니다. */
   async function openRelsCard(nd: N3) {
     const pos = nodeScreenPos(nd.id);
     const V = COPY.ui.viewx;
     const card = openFloatPanel({
       title: nd.label, x: pos.x, y: pos.y, closeLabel: V.railClose,
     });
-    // 세 줄이 전부다(발주자 지시): ① 건넬 주소 ② 시점 ③ 읽기. 행은 버튼이 아니라
-    // 목록처럼 서 있다가 손이 오면 드러난다 — 카드가 지도 위에 떠 있는 물건이라
-    // 테두리 친 버튼 세 개를 얹으면 그 자체가 또 하나의 창이 된다.
-    // 순서가 곧 우선순위다(발주자 지시): ① 건넬 주소 ② 읽기 ③ 이웃 ④ 시점.
-    // **행 전체가 과녁이다.** 글자만 눌리게 두면 같은 줄인데 되는 자리와 안 되는 자리가
-    // 생기고, 손은 그 경계를 볼 수 없다. 카드 폭을 꽉 채우고 사이를 실선으로 가른다.
-    // 관계는 자리만 잡아 두고 응답이 온 뒤 채운다 — 나중에 append 하면 늘 맨 끝으로 밀린다.
-    const acts = `
+    // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
+    const tint = nd.domain ? tintMap([nd.domain], curMode()).get(nd.domain) : undefined;
+    card.el.querySelector(".float-title")?.insertAdjacentHTML("beforebegin",
+      `<span class="float-mark" aria-hidden="true"${
+        tint ? ` style="color:${tint}"` : ""}>${icon("dot", 11)}</span>`);
+
+    card.body.innerHTML = `
       <div class="card-rows">
-        <div class="card-row card-row--mcp">
-          ${mcpLabel("c-mcp", V.copyPromptTip)}
-          <span class="card-depth" role="group" aria-label="${V.cardDepthLabel}">
-            ${[1, 2, 3].map((d) => `<button data-d="${d}" class="depth-b"
-                aria-pressed="${d === cardDepth}" data-tip="${V.cardDepthTip(d)}">${d}</button>`).join("")}
+        <button type="button" class="card-row" id="c-open">
+          <span class="row-name">${V.cardOpen}</span>
+          <span class="row-meta" id="c-docs"></span>
+          ${chev("right")}
+        </button>
+        <div class="card-sec">
+          <button type="button" class="card-row" id="c-links" aria-expanded="true">
+            <span class="row-name row-name--strong">${V.cardLinks}</span>
+            <span class="row-meta" id="c-linkmeta"></span>
+            ${chev("down")}
+          </button>
+          <div class="card-links" id="c-rels"><p class="card-note">${V.sourceLoading}</p></div>
+        </div>
+        <div class="card-row card-row--static">
+          <span class="row-name">${V.cardAsk}</span>
+          <button type="button" class="card-ctl" id="c-prompt"
+                  aria-expanded="false" aria-haspopup="menu">${V.cardAskCopy}${chev("down")}</button>
+          <div class="card-menu" id="c-menu" role="menu" hidden></div>
+        </div>
+        <div class="card-row card-row--static">
+          <span class="row-name">${V.cardZoom}</span>
+          <span class="card-step">
+            <button type="button" id="c-zoomout" aria-label="${V.cardZoomOut}" data-tip="${V.cardZoomOut}">−</button>
+            <button type="button" id="c-zoomin" aria-label="${V.cardZoomIn}" data-tip="${V.cardZoomIn}">+</button>
           </span>
         </div>
-        <p class="card-note" id="c-warn" hidden></p>
-        <div class="card-row" id="c-open" role="button" tabindex="0">${V.cardOpen}</div>
-        <div id="c-relslot"></div>
-        <div class="card-split">
-          <div class="card-row" id="c-zoom" role="button" tabindex="0">${V.cardZoomIn}</div>
-          <div class="card-row" id="c-zoomout" role="button" tabindex="0">${V.cardZoomOut}</div>
+        <div class="card-util">
+          <button type="button" id="c-copylink">${V.cardCopyLink}</button>
+          <button type="button" id="c-share">${V.cardShare}</button>
+          <button type="button" id="c-del" class="card-util-del">${V.cardDelete}</button>
         </div>
       </div>`;
-    // **한 번만 그리고 그다음엔 슬롯만 채운다.** 여태 응답이 온 뒤 `acts` 를 다시
-    // 그렸는데, 그 사이 카드가 교체되면(층 이동·연달아 고르기 — 실측 로그에서 같은
-    // 노드를 세 번 조회했다) 채우는 쪽이 `isConnected` 에서 빠져나가고 **await 이전에
-    // 그려 둔 빈 슬롯만** 남았다. 관계가 통째로 사라진 채 멀쩡해 보이는 화면이 된다.
-    // 행동 줄은 응답과 무관하므로 여기서 바로 묶는다 — 기다릴 이유가 없다.
-    card.body.innerHTML = acts;
-    const slot = () => card.body.querySelector<HTMLElement>("#c-relslot");
-    const note = (s: string) => { const el = slot(); if (el) el.innerHTML = `<p class="card-note">${s}</p>`; };
-    note(V.sourceLoading);
 
-    let degree = 0;                                // 경고가 쓰는 값 — 응답이 오면 갱신된다
-    const warn = card.body.querySelector<HTMLElement>("#c-warn")!;
-    const paint = () => {
-      card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
-        b.setAttribute("aria-pressed", String(Number(b.dataset.d) === cardDepth)));
-      const wide = cardDepth > 1 && degree >= WIDE_DEGREE;
-      warn.hidden = !wide;
-      if (wide) warn.textContent = V.cardWide(degree);
+    const q = <T extends HTMLElement>(s: string) => card.body.querySelector<T>(s);
+    const url = (depth: number) =>
+      absoluteViewUrl({ kind: "node", id: nd.id }, { depth, viewpoint: curPrefs().view });
+
+    // 행동은 응답과 무관하므로 **지금** 묶는다. 늦게 묶으면 응답이 늦거나 카드가
+    // 교체될 때 통째로 안 묶인다(실측으로 한 번 물렸다 — 관계가 통째로 비었다).
+    q("#c-open")!.addEventListener("click", () => railFor(nd));
+    q("#c-zoomin")!.addEventListener("click", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
+    q("#c-zoomout")!.addEventListener("click", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
+    bindCopyLink(q("#c-copylink"), () => promptFor(url(1)));
+    q("#c-share")!.addEventListener("click", () =>
+      openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
+    q("#c-del")!.addEventListener("click", async () => {
+      if (!await confirmDestructive(V.delNodeAsk(nd.label), V.delConfirm, V.delCancel)) return;
+      try {
+        const res = await api.deleteNode(cfg.owner, nd.id);
+        if (!res.executed) throw new Error(res.note || res.error || "delete failed");
+        closeFloatPanel();
+        closeRail();
+        void show(trail[trail.length - 1]);
+      } catch { /* 실패는 조용히 — 지워진 것이 없다 */ }
+    });
+    // Links 는 기본 펼침. 접는 것은 카드 안의 일이라 캐럿이 아래를 본다.
+    const linksBox = q("#c-rels")!;
+    q("#c-links")!.addEventListener("click", (e) => {
+      const b = e.currentTarget as HTMLElement;
+      const open = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(open));
+      linksBox.hidden = !open;
+    });
+
+    // 프롬프트 메뉴 — 카드면 위의 카드면이다(유리 아님). 디자인 주석의 이유:
+    // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
+    // 메뉴는 **카드 밖에 띄운다.** `.float-card` 는 overflow:hidden 이고 `.float-body`
+    // 는 overflow:auto 라, 카드 안에 두면 아래 두 줄이 잘려 나간다(실측 2026-08-27:
+    // 세 항목 중 하나만 보였다). 스크롤 컨테이너 안의 팝오버는 바깥으로 빼서 고정
+    // 좌표로 놓는 것이 정석이고, 그래야 카드가 짧아도 메뉴가 온전히 선다.
+    const menu = q("#c-menu")!;
+    const trigger = q<HTMLButtonElement>("#c-prompt")!;
+    document.getElementById("c-menu-live")?.remove();   // 카드는 싱글턴 — 메뉴도 하나
+    menu.id = "c-menu-live";
+    menu.remove();
+    document.body.appendChild(menu);
+    const placeMenu = () => {
+      const r = trigger.getBoundingClientRect();
+      const w = 246, gap = 6;
+      menu.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+      // 아래가 모자라면 위로 뒤집는다 — 화면 밖으로 나가면 없는 것과 같다.
+      const below = window.innerHeight - r.bottom;
+      menu.style.top = below > 160 || r.top < 170
+        ? `${r.bottom + gap}px` : `${Math.max(8, r.top - gap - menu.offsetHeight)}px`;
     };
-    // make() 는 클릭 시점에 cardDepth 를 읽는다 — 깊이를 바꿔도 다시 묶을 것이 없다.
-    bindCopyLink(card.body.querySelector("#c-mcp"), () =>
-      promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
-                                { depth: cardDepth, viewpoint: curPrefs().view })));
-    card.body.querySelectorAll<HTMLElement>(".depth-b").forEach((b) =>
-      b.addEventListener("click", () => { cardDepth = Number(b.dataset.d); paint(); }));
-    paint();
-    // 행마다 클릭과 Enter·Space 를 같이 단다(role=button 을 스스로 지켜야 한다).
-    const act = (id: string, run: () => void) => {
-      const el = card.body.querySelector<HTMLElement>(id);
-      if (!el) return;
-      el.addEventListener("click", run);
-      el.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(); }
-      });
+    const label = (s: string) => {
+      if (trigger.firstChild) trigger.replaceChild(document.createTextNode(s), trigger.firstChild);
     };
-    // 줌은 **거리만** 바꾼다. 여태 줌인은 노드 옆 고정 오프셋으로 날아가고 줌아웃은
-    // 노드 축으로 카메라를 돌려서, 두 버튼이 누를 때마다 화면을 회전시켰다.
-    act("#c-zoom", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
-    act("#c-zoomout", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
-    act("#c-open", () => railFor(nd));
+    const closeMenu = () => {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    };
+    trigger.addEventListener("click", () => {
+      const open = menu.hidden;
+      menu.hidden = !open;
+      if (open) placeMenu();
+      trigger.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (e) => {
+      // 카드가 사라졌으면 메뉴도 데려간다 — body 에 붙여 뒀으므로 저절로 안 없어진다.
+      if (!card.el.isConnected) { menu.remove(); return; }
+      if (!(e.target as HTMLElement).closest("#c-prompt,#c-menu-live")) closeMenu();
+    });
+
+    const fillMenu = (deg: number, docs: number) => {
+      const items: [string, string, string, number][] = [
+        [V.askExplain, V.askExplainSub, V.askExplainBody, 1],
+        [V.askCompare, V.askCompareSub(deg), V.askCompareBody, SHARE_DEPTH],
+        [V.askDocs, V.askDocsSub(docs), V.askDocsBody, 1],
+      ];
+      menu.innerHTML = items.map(([name, sub], i) => `
+        <button type="button" role="menuitem" class="menu-item" data-i="${i}">
+          <span class="menu-name">${esc(name)}</span>
+          <span class="menu-sub">${esc(sub)}</span>
+        </button>`).join("");
+      menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
+        b.addEventListener("click", () => {
+          const [, , body, depth] = items[Number(b.dataset.i)];
+          // 되먹임은 **트리거 버튼**에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
+          label(V.copyLinkDone);
+          window.setTimeout(() => label(V.cardAskCopy), 1400);
+          closeMenu();
+          void navigator.clipboard.writeText(`${body} ${url(depth)}`)
+            .catch(() => label(V.copyLinkFail));
+        }));
+    };
+    fillMenu(0, 0);
 
     try {
       const res = await nodeContextOnce(nd.id);
-      if (!card.el.isConnected) return;          // 그 사이 닫혔다 — 늦은 응답 폐기
+      if (!card.el.isConnected) return;
       card.setTitle(nd.label);
+      const docs = (res.excerpts || []).length;
+      const dq = q("#c-docs");
+      if (dq && docs) dq.textContent = V.cardDocs(docs);
       const links = res.links;
-      if (!links?.executed) { note(V.relsNone); return; }
-      degree = links.degree + links.attached;
-      paint();
-      const el = slot();
-      if (!el) return;
-      el.innerHTML = `
-        <details class="card-rels">
-          <summary>${V.cardRels(degree)}</summary>
-          <div id="c-rels"></div>
-        </details>`;
-      const box = el.querySelector<HTMLElement>("#c-rels")!;
-      box.innerHTML = relsHTML(links);
-      wireRels(box, nd, links);
+      if (!links?.executed) {
+        linksBox.innerHTML = `<p class="card-note">${V.relsNone}</p>`;
+        return;
+      }
+      const mq = q("#c-linkmeta");
+      if (mq) mq.textContent = V.cardLinkMeta(links.out, links.in);
+      linksBox.innerHTML = relsHTML(links);
+      wireRels(linksBox, nd, links);
+      fillMenu(links.degree + links.attached, docs);
     } catch {
-      if (card.el.isConnected) note(V.relsNone);
+      if (card.el.isConnected) linksBox.innerHTML = `<p class="card-note">${V.relsNone}</p>`;
     }
   }
 
@@ -1977,35 +2037,44 @@ export async function renderView(el: HTMLElement) {
         ? COPY.ui.viewx.statsFrom : COPY.ui.viewx.statsFromView}</p>`;
   }
 
-  /** 관계 목록 — 방향(→/←/부착) · 상대 · 관계 타입 · 근거 유무.
+  /** 캐럿이 **목적지를 말한다**: 오른쪽 = 여기서 나간다(문서 열), 아래 = 여기서
+   *  펼친다. 디자인 정본 `Vinc Node Card.dc.html` 의 규칙이고, 그래서 같은 모양의
+   *  두 줄이 서로 다른 일을 한다는 것이 눌러 보기 전에 읽힌다. */
+  const chev = (dir: "down" | "right") =>
+    `<span class="row-chev row-chev--${dir}" aria-hidden="true">${icon("chevron-left", 12)}</span>`;
+
+  /** 연결 목록 — 방향 화살표 · 상대 이름 · 관계 이름.
    *
-   *  **자리가 바뀌었다(D70).** 여태 우측 레일에 있었는데, 레일은 이제 문서 원문
-   *  전용이고 관계는 노드 옆에 뜨는 이동 가능한 카드로 나간다. 줄을 누르면 그
-   *  노드로 **이동**한다(카드는 제자리에서 갱신 — 리마운트 없음). 근거가 있는
-   *  관계는 근거 줄이 별도 버튼이라 거기서 edge-context 로 들어간다: 목록의
-   *  주된 일은 이동이고, 근거 읽기는 그 안의 곁가지다. */
+   *  관계 이름은 `COPY.ui.ask.relTag` 가 이미 사람 말로 갖고 있다("derives from").
+   *  타입 코드를 그대로 내던 것을 바꾼 것이라 Ask 와 카드가 같은 어휘를 쓴다.
+   *  근거가 있는 관계는 **그 이름 자체가** 근거로 들어가는 자리다 — 디자인에 별도
+   *  버튼이 없고, 줄을 누르는 것은 이동이므로 둘이 과녁을 나눠 가진다. */
   function relsHTML(links: NodeLinks): string {
-    if (links.items.length === 0) return `<p class="hint">${COPY.ui.viewx.relsNone}</p>`;
+    const V = COPY.ui.viewx;
+    if (links.items.length === 0) return `<p class="card-note">${V.relsNone}</p>`;
+    const TAG = COPY.ui.ask.relTag;
     const arrow = (d: string) => (d === "out" ? "→" : d === "in" ? "←" : "·");
-    return links.items.map((it, i) => `
-        <div class="list-row rel-row" data-i="${i}" style="display:block;cursor:pointer">
-          <span class="title" style="font-size:.9em">
-            <span class="rel-dir">${arrow(it.dir)}</span> ${esc(it.title)}
-            <span class="hint rel-type">${esc(it.type.toLowerCase())}</span></span>
-          ${it.evidence && it.dir !== "att"
-            ? `<button class="hint rel-ev" data-ev="${i}">${COPY.ui.viewx.relEvidence}</button>`
-            : `<p class="hint" style="margin:.1rem 0 0">${COPY.ui.viewx.relNoEvidence}</p>`}
-        </div>`).join("")
-      + (links.truncated ? `<p class="hint">${COPY.ui.viewx.relsMore(
-        links.degree + links.attached - links.items.length)}</p>` : "");
+    const rest = links.degree + links.attached - links.items.length;
+    return links.items.map((it, i) => {
+      const ev = it.evidence && it.dir !== "att";
+      return `
+        <button type="button" class="link-row" data-i="${i}">
+          <span class="link-dir" aria-hidden="true">${arrow(it.dir)}</span>
+          <span class="link-title">${esc(it.title)}</span>
+          <span class="link-tag${ev ? " link-tag--ev" : ""}"${
+            ev ? ` data-ev="${i}" data-tip="${V.relEvidence}"` : ""}>${
+            esc(TAG[`${it.type}:${it.dir}`] || it.type.toLowerCase())}</span>
+        </button>`;
+    }).join("")
+      + (links.truncated && rest > 0
+        ? `<button type="button" class="link-more">${V.relsMore(rest)}</button>` : "");
   }
 
   function wireRels(box: HTMLElement, nd: N3, links: NodeLinks) {
-    box.querySelectorAll<HTMLElement>(".rel-row").forEach((r) =>
+    box.querySelectorAll<HTMLElement>(".link-row").forEach((r) =>
       r.addEventListener("click", (e) => {
         const it = links.items[Number(r.dataset.i)];
-        const ev = (e.target as HTMLElement).closest<HTMLElement>(".rel-ev");
-        if (ev) {
+        if ((e.target as HTMLElement).closest<HTMLElement>(".link-tag--ev")) {
           e.stopPropagation();
           void openEdgeDetail(it.dir === "out"
             ? { source: nd.id, target: it.id, type: it.type }
@@ -2014,6 +2083,8 @@ export async function renderView(el: HTMLElement) {
         }
         void focusNode(it.id);
       }));
+    // `+N more` 는 레일을 연다 — 카드는 좁고, 전부 보려면 넓은 자리가 필요하다.
+    box.querySelector(".link-more")?.addEventListener("click", () => railFor(nd));
   }
 
   async function loadNodeSource(nd: N3) {
