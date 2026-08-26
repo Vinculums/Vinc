@@ -470,7 +470,6 @@ const EN = {
       // 레일과 카드가 서로 다른 넓이를 준다. 레일은 이 노드와 바로 이어진 것까지,
       // 카드는 고른 깊이까지. 문구가 그 차이를 말해야 두 버튼이 둘인 이유가 선다.
       // 문구가 "링크"라고 하면 안 된다 — 복사되는 것은 지시 한 줄이 얹힌 프롬프트다.
-      railLinkTip: "Copies a ready to send prompt with this node and what it links to",
       // 카드 줄 이름 — 디자인 정본 `Vinc Node Card.dc.html` (2a Final).
       cardZoomIn: "Zoom in",
       cardZoomOut: "Zoom out",
@@ -483,7 +482,6 @@ const EN = {
       cardCopyLink: "Copy link",
       cardShare: "Share",
       cardDelete: "Delete",
-      copyPrompt: "Copy example prompt",
       // 주소 **앞**에 붙는 한 마디. 줄바꿈 없이 한 줄이다: 붙여넣는 자리가 대부분
       // 한 줄짜리 입력이라 줄을 나누면 거기서 잘린다.
       promptLead: "Open this part of my Vinc graph",
@@ -1194,7 +1192,6 @@ const KO: Deck = {
       railClose: "닫기",
       copyLinkDone: "복사했습니다",
       copyLinkFail: "복사하지 못했습니다",
-      railLinkTip: "이 노드와 바로 이어진 것을 담아, 바로 보낼 수 있는 프롬프트로 복사합니다",
       cardZoomIn: "가까이 보기",
       cardZoomOut: "멀리 보기",
       cardZoom: "확대",
@@ -1206,7 +1203,6 @@ const KO: Deck = {
       cardCopyLink: "링크 복사",
       cardShare: "공유",
       cardDelete: "삭제",
-      copyPrompt: "예시 프롬프트 복사",
       promptLead: "내 Vinc 그래프의 이 자리를 열어 줘",
       cardOpen: "상세와 원문",
       askExplain: "이 개념 설명",

@@ -80,25 +80,8 @@ const ZOOM_OUT = 1.8;
  *  복사가 막혀도 **오류로 키우지 않는다**: 주소는 어차피 주소창에 그대로 있고,
  *  클립보드 권한은 사용자 환경의 일이다. settings 의 MCP 주소 복사와 같은 태도다.
  *  버튼 라벨을 잠깐 바꾸는 것으로 끝낸다 — 알림을 띄우면 복사 한 번이 사건이 된다. */
-/** "MCP · 예시 프롬프트 복사" 한 행 — 레일 본문 끝과 카드에 같은 것이 선다.
- *
- *  `MCP` 는 **라벨**이고 누르는 것은 그 옆 글귀다. 마크를 뺀 이유: 이 자리에서
- *  마크가 하는 일은 이미 `MCP` 라는 글자가 하고, 14px 짜리 도형을 과녁으로 두면
- *  손이 자주 빗나간다. 테두리도 채움도 라운드도 없다 — 지도 위에 떠 있는 카드에
- *  버튼을 얹으면 그 자체로 또 하나의 창이 되므로, 평소엔 물러나 있다가 손이 오면
- *  드러나는 쪽으로 간다.
- *
- *  복사되는 것이 주소 하나가 아니라 **바로 보낼 수 있는 한 문단**인 이유: 주소만
- *  받은 사람은 그것으로 무엇을 하라는 것인지 다시 물어야 한다. Figma 가 노드 URL
- *  위에 한 줄을 얹어 주는 것과 같은 형태다. */
-/** `MCP` 는 **누를 수 없는 라벨**이고, 과녁은 그 옆 조각 하나다(발주자 지시).
- *  둘을 한 컨트롤로 묶었더니 라벨을 눌러도 복사돼 "무엇이 눌리는지"가 흐려졌다. */
-function mcpLabel(id: string, tip: string): string {
-  const V = COPY.ui.viewx;
-  return `<span class="mcp-word">MCP</span>`
-    + `<span class="mcp-copy" id="${id}" role="button" tabindex="0"`
-    + ` aria-label="${V.copyPrompt}" data-tip="${tip}">${V.copyPrompt}</span>`;
-}
+
+
 
 /** 복사되는 값 — 한 마디 + 주소, **한 줄**로.
  *
@@ -1516,6 +1499,23 @@ export async function renderView(el: HTMLElement) {
 
   /** 지금 마운트된 렌더러에서 그 노드로 카메라를 옮긴다. 못 찾으면 false —
    *  호출측이 그때만 스코프를 갈아 다시 마운트한다(재조회는 비싸다). */
+  /** 줌 — **뷰포인트마다 갈린다.** 카드의 −/+ 가 부르는 한 자리다.
+   *
+   *  ⚠ 여태 카드가 `zoomBy3d(g3, …)` 를 곧장 불렀다. 3D 가 아닌 뷰포인트에서는 `g3` 가
+   *  없으므로 **버튼이 눌리는데 아무 일도 안 일어났다**(실측 2026-08-27). 없는 기능은
+   *  없다고 말해야 하고(아래 `canZoom`), 있는 기능은 그 렌더러의 말로 불러야 한다.
+   *
+   *  · 3D: 카메라를 시선 방향으로 밀고 당긴다.
+   *  · 2D: sigma 카메라의 ratio. 배율 규약이 같아 그대로 넘긴다.
+   *  · Timeline·Weave: **줌이 없다.** 두 화면은 패널에 맞춰 그려지는 배치라 "거리"라는
+   *    것이 아예 없다(그 모듈에 zoom·scale 이 0건이다). 죽은 버튼을 두느니 줄을 숨긴다. */
+  function canZoom(): boolean { return !!(g3 || g2); }
+
+  function zoomView(factor: number): void {
+    if (g3) { zoomBy3d(g3, curPrefs(), factor); return; }
+    g2?.zoom?.(factor);
+  }
+
   /** 지금 층을 통째로 화면에 — `f` 키와 카드의 줌아웃이 **같은 것**을 한다.
    *  3D 는 전체 맞춤, 2D 는 sigma fit. 두 자리에 베껴 두면 한쪽만 고쳐지므로 한 벌이다.
    *  `__wake` 가 먼저인 이유: 3D 는 마지막 포인터 이벤트 ~300ms 뒤 틱을 멈춰서(F6),
@@ -1608,7 +1608,10 @@ export async function renderView(el: HTMLElement) {
     // 제목은 곧 node-context 가 채운다.
     const nd = raw ? toN3([raw])[0]
       : ({ id, label: id.replace(/^[a-z]+:/, ""), degree: 0 } as N3);
-    openDetail(nd);
+    // 레일은 열지 않는다 — 관계 줄·트리·검색이 전부 여기로 오는데, 그때마다 문서
+    // 원문까지 딸려 열리면 지도를 보는 일이 계속 끊긴다. 레일을 여는 것은 카드의
+    // "Details and source" 와 컨텍스트 메뉴의 "열기" 둘뿐이다(발주자 지시 2026-08-27).
+    focusOnMap(nd);
     lnbFocus = { domain: nd.domain, nodeId: id };
     setLnbActive(lnbFocus);
   }
@@ -1617,6 +1620,11 @@ export async function renderView(el: HTMLElement) {
    *  보내고 있었다(실측 2026-08-17: 클릭 한 번에 두 번, 63ms·100ms). 마지막 노드의
    *  약속을 기억해 둘이 나눠 쓴다. 층이 바뀌거나(show) 그래프를 고치면(삭제·연결)
    *  버린다 — 오래 들고 있으면 "방금 이은 연결이 안 보인다"가 된다. */
+  /** 레일의 ask 줄에 수치를 채우는 손 — node-context 가 오면 부제가 산다.
+   *  카드는 자기 응답을 직접 들고 있지만 레일은 `loadNodeSource` 가 따로 받으므로,
+   *  그 자리에서 부를 수 있도록 여기 둔다. 레일이 닫히면 다음 열기가 덮어쓴다. */
+  let railAskCounts: ((deg: number, docs: number) => void) | null = null;
+
   let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
   const nodeContextOnce = (id: string) => {
     if (ctxCache?.id !== id) ctxCache = { id, p: api.nodeContext(cfg.owner, id) };
@@ -1665,13 +1673,8 @@ export async function renderView(el: HTMLElement) {
           </button>
           <div class="card-links" id="c-rels"><p class="card-note">${V.sourceLoading}</p></div>
         </div>
-        <div class="card-row card-row--static">
-          <span class="row-name">${V.cardAsk}</span>
-          <button type="button" class="card-ctl" id="c-prompt"
-                  aria-expanded="false" aria-haspopup="menu">${V.cardAskCopy}${chev("down")}</button>
-          <div class="card-menu" id="c-menu" role="menu" hidden></div>
-        </div>
-        <div class="card-row card-row--static">
+        ${askRowHTML()}
+        <div class="card-row card-row--static"${canZoom() ? "" : " hidden"}>
           <span class="row-name">${V.cardZoom}</span>
           <span class="card-step">
             <button type="button" id="c-zoomout" aria-label="${V.cardZoomOut}" data-tip="${V.cardZoomOut}">−</button>
@@ -1692,8 +1695,8 @@ export async function renderView(el: HTMLElement) {
     // 행동은 응답과 무관하므로 **지금** 묶는다. 늦게 묶으면 응답이 늦거나 카드가
     // 교체될 때 통째로 안 묶인다(실측으로 한 번 물렸다 — 관계가 통째로 비었다).
     q("#c-open")!.addEventListener("click", () => railFor(nd));
-    q("#c-zoomin")!.addEventListener("click", () => zoomBy3d(g3, curPrefs(), ZOOM_IN));
-    q("#c-zoomout")!.addEventListener("click", () => zoomBy3d(g3, curPrefs(), ZOOM_OUT));
+    q("#c-zoomin")!.addEventListener("click", () => zoomView(ZOOM_IN));
+    q("#c-zoomout")!.addEventListener("click", () => zoomView(ZOOM_OUT));
     bindCopyLink(q("#c-copylink"), () => promptFor(url(1)));
     q("#c-share")!.addEventListener("click", () =>
       openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
@@ -1718,67 +1721,7 @@ export async function renderView(el: HTMLElement) {
 
     // 프롬프트 메뉴 — 카드면 위의 카드면이다(유리 아님). 디자인 주석의 이유:
     // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
-    // 메뉴는 **카드 밖에 띄운다.** `.float-card` 는 overflow:hidden 이고 `.float-body`
-    // 는 overflow:auto 라, 카드 안에 두면 아래 두 줄이 잘려 나간다(실측 2026-08-27:
-    // 세 항목 중 하나만 보였다). 스크롤 컨테이너 안의 팝오버는 바깥으로 빼서 고정
-    // 좌표로 놓는 것이 정석이고, 그래야 카드가 짧아도 메뉴가 온전히 선다.
-    const menu = q("#c-menu")!;
-    const trigger = q<HTMLButtonElement>("#c-prompt")!;
-    document.getElementById("c-menu-live")?.remove();   // 카드는 싱글턴 — 메뉴도 하나
-    menu.id = "c-menu-live";
-    menu.remove();
-    document.body.appendChild(menu);
-    const placeMenu = () => {
-      const r = trigger.getBoundingClientRect();
-      const w = 246, gap = 6;
-      menu.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
-      // 아래가 모자라면 위로 뒤집는다 — 화면 밖으로 나가면 없는 것과 같다.
-      const below = window.innerHeight - r.bottom;
-      menu.style.top = below > 160 || r.top < 170
-        ? `${r.bottom + gap}px` : `${Math.max(8, r.top - gap - menu.offsetHeight)}px`;
-    };
-    const label = (s: string) => {
-      if (trigger.firstChild) trigger.replaceChild(document.createTextNode(s), trigger.firstChild);
-    };
-    const closeMenu = () => {
-      menu.hidden = true;
-      trigger.setAttribute("aria-expanded", "false");
-    };
-    trigger.addEventListener("click", () => {
-      const open = menu.hidden;
-      menu.hidden = !open;
-      if (open) placeMenu();
-      trigger.setAttribute("aria-expanded", String(open));
-    });
-    document.addEventListener("click", (e) => {
-      // 카드가 사라졌으면 메뉴도 데려간다 — body 에 붙여 뒀으므로 저절로 안 없어진다.
-      if (!card.el.isConnected) { menu.remove(); return; }
-      if (!(e.target as HTMLElement).closest("#c-prompt,#c-menu-live")) closeMenu();
-    });
-
-    const fillMenu = (deg: number, docs: number) => {
-      const items: [string, string, string, number][] = [
-        [V.askExplain, V.askExplainSub, V.askExplainBody, 1],
-        [V.askCompare, V.askCompareSub(deg), V.askCompareBody, SHARE_DEPTH],
-        [V.askDocs, V.askDocsSub(docs), V.askDocsBody, 1],
-      ];
-      menu.innerHTML = items.map(([name, sub], i) => `
-        <button type="button" role="menuitem" class="menu-item" data-i="${i}">
-          <span class="menu-name">${esc(name)}</span>
-          <span class="menu-sub">${esc(sub)}</span>
-        </button>`).join("");
-      menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
-        b.addEventListener("click", () => {
-          const [, , body, depth] = items[Number(b.dataset.i)];
-          // 되먹임은 **트리거 버튼**에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
-          label(V.copyLinkDone);
-          window.setTimeout(() => label(V.cardAskCopy), 1400);
-          closeMenu();
-          void navigator.clipboard.writeText(`${body} ${url(depth)}`)
-            .catch(() => label(V.copyLinkFail));
-        }));
-    };
-    fillMenu(0, 0);
+    const setCounts = wireAsk(card.body, nd, () => card.el.isConnected);
 
     try {
       const res = await nodeContextOnce(nd.id);
@@ -1796,7 +1739,7 @@ export async function renderView(el: HTMLElement) {
       if (mq) mq.textContent = V.cardLinkMeta(links.out, links.in);
       linksBox.innerHTML = relsHTML(links);
       wireRels(linksBox, nd, links);
-      fillMenu(links.degree + links.attached, docs);
+      setCounts(links.degree + links.attached, docs);
     } catch {
       if (card.el.isConnected) linksBox.innerHTML = `<p class="card-note">${V.relsNone}</p>`;
     }
@@ -1847,7 +1790,7 @@ export async function renderView(el: HTMLElement) {
         <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
                 data-tip="${COPY.ui.viewx.railClose}">✕</button>
       </div>
-      <div class="mcp-row">${mcpLabel("rail-link", COPY.ui.viewx.railLinkTip)}</div>
+      ${askRowHTML()}
       <h2>${esc(nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">
@@ -1857,11 +1800,8 @@ export async function renderView(el: HTMLElement) {
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
-    // 레일의 일은 "이게 뭔가"라 주소도 가장 좁은 것을 준다. 넓히는 것은 카드의
-    // 깊이 선택이 맡는다 — 두 버튼이 같은 주소를 만들면 하나는 없는 것과 같다.
-    bindCopyLink(detail.querySelector("#rail-link"), () =>
-      promptFor(absoluteViewUrl({ kind: "node", id: nd.id },
-                                { depth: 1, viewpoint: curPrefs().view })));
+    // 카드와 **같은 줄**이다. 수치는 loadNodeSource 가 node-context 를 받고 채운다.
+    railAskCounts = wireAsk(detail, nd, () => !detail.hidden);
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
@@ -2043,6 +1983,89 @@ export async function renderView(el: HTMLElement) {
   const chev = (dir: "down" | "right") =>
     `<span class="row-chev row-chev--${dir}" aria-hidden="true">${icon("chevron-left", 12)}</span>`;
 
+  /** "Ask an assistant" 한 줄 — **카드와 레일이 같은 것을 쓴다.**
+   *
+   *  디자인 정본은 카드만 규정하지만, 레일에도 같은 일을 하는 자리가 있었다(구 "MCP ·
+   *  예시 프롬프트 복사"). 두 곳이 다른 모양으로 같은 일을 하면 어느 쪽이 맞는지 매번
+   *  다시 정해야 하므로 한 벌로 합쳤다. 마크업도 클래스도 같고, 놓이는 자리만 다르다. */
+  function askRowHTML(): string {
+    const V = COPY.ui.viewx;
+    return `<div class="card-row card-row--static ask-row">
+        <span class="row-name">${V.cardAsk}</span>
+        <button type="button" class="card-ctl js-ask" aria-expanded="false"
+                aria-haspopup="menu">${V.cardAskCopy}${chev("down")}</button>
+      </div>`;
+  }
+  /** 그 줄에 동작을 매단다. 반환값으로 수치를 나중에 채운다(응답이 오면 부제가 산다).
+   *
+   *  메뉴는 **스크롤 컨테이너 밖**(body)에 뜬다. 카드는 `overflow:hidden`, 그 본문은
+   *  `overflow:auto` 라 안에 두면 세 항목 중 하나만 보였다(실측 2026-08-27). 레일도
+   *  같은 사정이라 한 벌로 두는 편이 맞다. 아래가 모자라면 위로 뒤집는다.
+   *
+   *  프롬프트 셋은 번호가 아니라 **이름**이다. 숫자(깊이 1/2/3)는 크기를 말해 주지 않아
+   *  늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지 스스로 말한다.
+   *  근거: 디자인 정본 `Vinc Node Card.dc.html` (2b). */
+  function wireAsk(scope: HTMLElement, nd: N3,
+                   alive: () => boolean): (deg: number, docs: number) => void {
+    const V = COPY.ui.viewx;
+    const trigger = scope.querySelector<HTMLButtonElement>(".js-ask");
+    if (!trigger) return () => {};
+    document.getElementById("ask-menu-live")?.remove();      // 한 번에 하나만 뜬다
+    const menu = document.createElement("div");
+    menu.id = "ask-menu-live";
+    menu.className = "card-menu";
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
+    document.body.appendChild(menu);
+
+    const label = (s: string) => {
+      if (trigger.firstChild) trigger.replaceChild(document.createTextNode(s), trigger.firstChild);
+    };
+    const close = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); };
+    const place = () => {
+      const r = trigger.getBoundingClientRect();
+      const w = 246, gap = 6;
+      menu.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+      const below = window.innerHeight - r.bottom;
+      menu.style.top = below > 160 || r.top < 170
+        ? `${r.bottom + gap}px` : `${Math.max(8, r.top - gap - menu.offsetHeight)}px`;
+    };
+    trigger.addEventListener("click", () => {
+      const open = menu.hidden;
+      menu.hidden = !open;
+      if (open) place();
+      trigger.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (e) => {
+      // 붙어 있던 표면이 사라졌으면 메뉴도 데려간다 — body 에 있으니 저절로 안 없어진다.
+      if (!alive()) { menu.remove(); return; }
+      if (!(e.target as HTMLElement).closest(".js-ask,#ask-menu-live")) close();
+    });
+
+    return (deg: number, docs: number) => {
+      const items: [string, string, string, number][] = [
+        [V.askExplain, V.askExplainSub, V.askExplainBody, 1],
+        [V.askCompare, V.askCompareSub(deg), V.askCompareBody, SHARE_DEPTH],
+        [V.askDocs, V.askDocsSub(docs), V.askDocsBody, 1],
+      ];
+      menu.innerHTML = items.map(([name, sub], i) => `
+        <button type="button" role="menuitem" class="menu-item" data-i="${i}">
+          <span class="menu-name">${esc(name)}</span>
+          <span class="menu-sub">${esc(sub)}</span>
+        </button>`).join("");
+      menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
+        b.addEventListener("click", () => {
+          const [, , body, depth] = items[Number(b.dataset.i)];
+          // 되먹임은 트리거 버튼에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
+          label(V.copyLinkDone);
+          window.setTimeout(() => label(V.cardAskCopy), 1400);
+          close();
+          const url = absoluteViewUrl({ kind: "node", id: nd.id },
+                                      { depth, viewpoint: curPrefs().view });
+          void navigator.clipboard.writeText(`${body} ${url}`).catch(() => label(V.copyLinkFail));
+        }));
+    };
+  }
   /** 연결 목록 — 방향 화살표 · 상대 이름 · 관계 이름.
    *
    *  관계 이름은 `COPY.ui.ask.relTag` 가 이미 사람 말로 갖고 있다("derives from").
@@ -2097,6 +2120,9 @@ export async function renderView(el: HTMLElement) {
       // 수치는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다. 관계 목록은
       // 이 패널을 떠나 노드 옆 카드로 갔다(D70).
       drawNodeStats(nd, res.links);
+      // 카드와 같은 줄이므로 부제도 같은 수치를 말해야 한다.
+      railAskCounts?.(((res.links?.degree ?? 0) + (res.links?.attached ?? 0)),
+                      (res.excerpts || []).length);
       // D32 고아 최소화 — "확실히 연결 0"일 때만 잇기 후보를 낸다. 여태 드릴다운
       // 경로가 degree 0 을 박아 33연결 허브에도 제안이 떴다.
       if (res.links?.executed && res.links.degree + res.links.attached === 0)
@@ -2488,7 +2514,7 @@ export async function renderView(el: HTMLElement) {
         // 고정하고 상세를 연다. 번들 관점과 같은 판단이다.
         onOpen: (id) => {
           const nd = gnodes.find((n) => n.id === id);
-          if (nd) openDetail(nd as unknown as N3);
+          if (nd) focusOnMap(nd as unknown as N3);   // 3D·2D 와 같은 약속
         },
         onMonth: (m) => void openPeriod(m, periodDomain),
         lineage,
@@ -2535,7 +2561,7 @@ export async function renderView(el: HTMLElement) {
         // 자체가 2026-08-17 에 없어졌다 — 어느 관점도 이제 클릭으로 좁히지 않는다.)
         onOpen: (id) => {
           const nd = gnodes.find((n) => n.id === id);
-          if (nd) openDetail(nd as unknown as N3);
+          if (nd) focusOnMap(nd as unknown as N3);   // 3D·2D 와 같은 약속
         },
         // 집약 단에서 못 그린 자기연결과 상한에 잘린 항목을 한 줄로 밝힌다.
         onStats: (s) => {

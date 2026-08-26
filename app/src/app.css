@@ -1205,22 +1205,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
 
-/* "MCP · 예시 프롬프트 복사" — **레일 전용.** 카드는 디자인 정본이 따로 규정하므로
-   이 조각은 레일에만 남는다. `MCP` 는 라벨이고 누르는 것은 그 옆 글귀 하나다. */
-#view-detail .mcp-row {
-  display: flex; align-items: center; justify-content: center; gap: .4rem;
-  margin: 0 0 .2rem; color: hsl(var(--caption-foreground));
-}
-.mcp-word {
-  font-size: .8125rem; font-weight: 600; letter-spacing: .04em; color: inherit;
-}
-.mcp-copy {
-  font-size: .6875rem; opacity: .72; cursor: pointer;
-  padding: .2rem .35rem; margin: -.2rem -.35rem;
-}
-.mcp-copy:hover, .mcp-copy:focus-visible {
-  opacity: 1; background: hsl(var(--ring) / .18); outline: none;
-}
+/* 레일의 ask 줄 — 카드와 **같은 조각**이라 스타일도 카드 것을 그대로 쓴다.
+   놓이는 자리만 다르다: 제목 위 한 줄이므로 카드 폭 기준의 음수 마진이 필요 없다. */
+#view-detail .ask-row { padding: .35rem 0; margin: 0 0 .2rem; border-bottom: 0; }
 
 /* ── 노드 카드 ─────────────────────────────────────────────────────────────
    정본: Claude Design 프로젝트 "Vinc 홈페이지" 의 `Vinc Node Card.dc.html` (2a Final).
