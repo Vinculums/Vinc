@@ -16,6 +16,7 @@ import { palette as signal, viewScene, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
+import { aimAt, restRadius, zoomStep } from "../camera-aim";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -302,21 +303,44 @@ function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette(),
   return mesh;
 }
 
-/** 카메라 fly-to (spec: 클릭 = 카메라 fly-to). 2D 평면화에서는 시축을 유지한 직진.
+/** 카메라 **회전만** — 노드를 화면 중심에 놓되 거리는 건드리지 않는다.
  *
- *  V4 — 거리는 **노드 반경에 비례**한다. 구 공식 `42 + degree` 는 허브(연결 33)에서
- *  오히려 가까워져 카메라가 클러스터 내부로 파고들었다(실측: 화면이 거대 구체와
- *  엣지 벽이 되어 공간 감각이 사라졌다). 반경의 일정 배수로 띄운다.
+ *  옛 `flyTo3d` 가 한 손짓에 **두 가지**를 했다: 시선 대상을 노드로 옮기고(중심),
+ *  거리를 반경의 9배로 만든다(줌). 고르는 것과 파고드는 것은 다른 일이라 뒤엣것을
+ *  카드의 줌 버튼으로 내렸고, 그러자 그 함수는 부르는 곳이 없어져 사라졌다.
  *
- *  클릭 핸들러 안에 있던 것을 D70 에서 꺼냈다 — 좌측 트리·검색 착지도 같은 비행을
- *  써야 하는데, 안에 있으면 수식이 두 벌이 된다. */
-export function flyTo3d(g: any, n: any, prefs: ViewPrefs, ms = 700) {
+ *  수식은 `camera-aim.ts` 에 있다 — **import 0 이라 손 없이 돌려 볼 수 있다**
+ *  (`node --experimental-strip-types app/dev/aim-check.ts`). 여기 두면 이 파일이
+ *  렌더러를 통째로 끌고 오므로 검사할 방법이 없어진다. 이 화면은 픽셀을 못 본 채로
+ *  나간 전례가 있어서(v0.8.5 계획 §7) 그 정도는 갖춰 둔다.
+ *
+ *  `atRest` 는 지금 안 쓴다 — 줌아웃이 `zoomBy3d` 로 넘어갔다. 인자를 남긴 이유는
+ *  "기본 거리로 물러난다"가 여전히 이 수식의 한 갈래이기 때문이고, aim-check 가 그
+ *  갈래를 덮고 있다. */
+export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700, atRest = false) {
   if (!n) return;
-  g.__wake?.(ms + 200);                          // 카메라 트윈은 렌더 루프 안에서 돈다 — 깨워야 움직인다
-  const flat = prefs.view === "2d";
-  const d = Math.max(70, nodeRadius(n, prefs) * 9);
-  if (flat) g.cameraPosition({ x: n.fx, y: n.fy, z: d * 2.2 }, { x: n.fx, y: n.fy, z: 0 }, ms);
-  else g.cameraPosition({ x: n.fx + d, y: n.fy + d * 0.6, z: n.fz + d }, { x: n.fx, y: n.fy, z: n.fz }, ms);
+  const node = { x: n.fx ?? n.x ?? 0, y: n.fy ?? n.y ?? 0, z: n.fz ?? n.z ?? 0 };
+  const rest = atRest ? restRadius(SCALE * prefs.spread) : undefined;
+  const aim = aimAt(node, g.cameraPosition?.(), prefs.view === "2d", rest);
+  if (!aim) return;                              // 뿌리 — 이미 중심이라 옮길 것이 없다
+  g.__wake?.(ms + 200);                          // 트윈은 렌더 루프 안 — 깨워야 움직인다
+  g.cameraPosition(aim.pos, aim.tgt, ms);
+}
+
+/** 줌 — **회전 없이** 거리만. 방향과 시선 대상은 손대지 않는다.
+ *
+ *  울타리: 가까이는 씬 크기의 1/8, 멀리는 기본 거리의 4배. 기본 거리(restRadius)가
+ *  첫 마운트의 자리이므로 그 네 배면 "한참 물러난" 자리이고, 그보다 멀어지면 노드가
+ *  점이 되어 볼 것이 없다. */
+export function zoomBy3d(g: any, prefs: ViewPrefs, factor: number, ms = 400): void {
+  const cam = g.cameraPosition?.();
+  const tgt = g.controls?.()?.target ?? { x: 0, y: 0, z: 0 };
+  if (!cam) return;
+  const S = SCALE * prefs.spread;
+  const pos = zoomStep(cam, tgt, factor, S / 8, restRadius(S) * 4);
+  if (!pos) return;
+  g.__wake?.(ms + 200);
+  g.cameraPosition(pos, { x: tgt.x, y: tgt.y, z: tgt.z }, ms);
 }
 
 /** 마운트된 그래프에서 id 로 노드를 찾는다(없으면 undefined — 호출측이 강등 판단). */
@@ -638,7 +662,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       gathered = gathered === n.id ? null : n.id;
       planFly3d(gathered);
     } else {
-      flyTo3d(g, n, prefs);      // 모으지 않는 모드에서는 여태처럼 카메라가 간다
+      // 클릭은 **중심에 놓기만** 한다(줌 없음). 파고드는 것은 카드의 줌 버튼이다 —
+      // 고르는 손짓 하나가 카메라까지 끌고 들어가면 되돌릴 방법이 손에 없었다.
+      centerOn3d(g, n, prefs);
     }
     handlers.onClick?.(n);
   });

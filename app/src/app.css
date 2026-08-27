@@ -1204,6 +1204,123 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
+
+/* 레일의 ask 줄 — 카드와 **같은 조각**이라 스타일도 카드 것을 그대로 쓴다.
+   놓이는 자리만 다르다: 제목 위 한 줄이므로 카드 폭 기준의 음수 마진이 필요 없다. */
+#view-detail .ask-row { padding: .35rem 0; margin: 0 0 .2rem; border-bottom: 0; }
+
+/* ── 노드 카드 ─────────────────────────────────────────────────────────────
+   정본: Claude Design 프로젝트 "Vinc 홈페이지" 의 `Vinc Node Card.dc.html` (2a Final).
+   그 파일이 정한 규격 하나를 여기서도 지킨다: **카드의 모든 컨트롤은 높이 28px ·
+   모서리 .5rem · 글자 12px**. 줄은 카드 폭을 꽉 채우고 사이는 실선으로 갈린다.
+
+   ⚠ 디자인 원문은 강조색을 `hsl(234 49% 71%/.07)` 처럼 리터럴로 적는다. 여기서는
+   `--ring` 으로 바꿔 쓴다 — `gate_surface` 가 하드코딩 색을 막고, 그 토큰이 테마
+   전환을 따라가기 때문이다. 같은 자리를 가리키는 값이라 그림은 달라지지 않는다. */
+.card-rows { display: flex; flex-direction: column; margin: -.35rem -.5rem -.6rem; }
+
+/* 한 줄 — 이름 · 수치 · 캐럿. 버튼이어도 버튼처럼 안 생긴다(테두리도 채움도 없다). */
+.card-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: 0; border-bottom: 1px solid hsl(var(--border) / .6);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.card-row:hover, .card-row:focus-visible { background: hsl(var(--ring) / .07); outline: none; }
+/* 컨트롤을 든 줄은 줄 자체가 과녁이 아니다 — 안쪽 손잡이가 과녁이다. */
+.card-row--static { cursor: default; position: relative; }
+.card-row--static:hover { background: none; }
+.row-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; }
+.row-name--strong { font-weight: 600; }
+.row-meta {
+  flex: none; white-space: nowrap; font-size: 11.5px;
+  font-variant-numeric: tabular-nums; color: hsl(var(--caption-foreground));
+}
+/* 캐럿이 목적지를 말한다: 오른쪽 = 카드 밖으로, 아래 = 카드 안에서 펼침. */
+.row-chev { flex: none; display: inline-flex; color: hsl(var(--caption-foreground)); }
+.row-chev--down { transform: rotate(-90deg); }
+.row-chev--right { transform: rotate(180deg); }
+.card-row[aria-expanded="false"] .row-chev--down { transform: rotate(180deg); }
+
+.card-sec { border-bottom: 1px solid hsl(var(--border) / .6); }
+.card-sec > .card-row { border-bottom: 0; padding-bottom: 6px; }
+.card-links { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 8px; }
+.link-row {
+  display: flex; align-items: baseline; gap: 6px; width: 100%;
+  padding: 5px 6px; border: 0; border-radius: .5rem;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.link-row:hover, .link-row:focus-visible { background: hsl(var(--ring) / .08); outline: none; }
+.link-dir { flex: none; width: 11px; color: hsl(var(--caption-foreground)); }
+.link-title {
+  flex: 1; min-width: 0; font-size: 12.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.link-tag { flex: none; white-space: nowrap; font-size: 11px; color: hsl(var(--caption-foreground)); }
+/* 근거가 있는 관계는 그 이름이 곧 근거로 들어가는 자리다 — 디자인에 별도 버튼이 없다. */
+.link-tag--ev { text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+.link-tag--ev:hover { color: hsl(var(--foreground)); }
+.link-more {
+  align-self: flex-start; margin-left: 6px; padding: 2px 0;
+  border: 0; background: none; font: inherit; font-size: 11.5px;
+  color: hsl(var(--caption-foreground)); cursor: pointer;
+}
+.link-more:hover { color: hsl(var(--foreground)); }
+.card-note { margin: 0; padding: 6px 12px; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+
+/* 컨트롤 규격 한 벌 — 높이 28 · 모서리 .5rem · 글자 12. */
+.card-ctl {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+  border: 1px solid hsl(var(--border)); border-radius: .5rem; background: none;
+  font: inherit; font-size: 12px; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.card-ctl:hover, .card-ctl[aria-expanded="true"] {
+  border-color: hsl(var(--ring) / .45); background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.card-step {
+  display: inline-flex; height: 28px; overflow: hidden;
+  border: 1px solid hsl(var(--border)); border-radius: .5rem; background: hsl(var(--muted) / .7);
+}
+.card-step > button {
+  display: grid; place-items: center; width: 38px; height: 100%;
+  border: 0; background: none; font: inherit; font-size: 16px; line-height: 1;
+  color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.card-step > button + button { border-left: 1px solid hsl(var(--border)); }
+.card-step > button:hover { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+
+/* 프롬프트 메뉴 — **카드면이지 유리가 아니다.** 지도 위 카드 위에 또 유리를 얹으면
+   글자가 배경을 통과한다(디자인 2b 주석). */
+.card-menu {
+  position: fixed; z-index: 60; width: 246px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 16px 40px -12px hsl(231 40% 2% / .85));
+}
+.card-menu[hidden] { display: none; }
+.menu-item {
+  display: block; width: 100%; padding: 9px 10px;
+  border: 0; border-radius: .55rem; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: hsl(var(--ring) / .12); outline: none; }
+.menu-name { display: block; font-size: 12.5px; font-weight: 500; }
+.menu-sub { display: block; margin-top: 2px; font-size: 11px; color: hsl(var(--caption-foreground)); }
+
+/* 아래 줄은 조용한 유틸리티. 삭제는 되돌릴 수 없으므로 오른쪽 끝, 호버에서만 붉어진다. */
+.card-util { display: flex; align-items: center; gap: 4px; padding: 7px 10px; background: hsl(var(--muted) / .5); }
+.card-util > button {
+  padding: 3px 7px; border: 0; border-radius: .45rem; background: none;
+  font: inherit; font-size: 11.5px; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.card-util > button:hover { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.card-util-del { margin-left: auto; color: hsl(var(--caption-foreground)) !important; }
+.card-util-del:hover { background: hsl(var(--danger) / .14) !important; color: hsl(var(--danger)) !important; }
+
+/* 머리의 표식 — 지도가 그리는 마크 그대로, 색은 그 노드의 주제 색. */
+.float-mark { flex: none; display: inline-flex; align-items: center; }
+.card-rels[open] > summary { border-bottom: 1px solid hsl(var(--border) / .45); }
+.card-rels .list-row { padding-left: .6rem; padding-right: .6rem; }
 /* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
 .btn-quiet { color: hsl(var(--caption-foreground)); }
 .btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }
@@ -1690,7 +1807,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    (.pl-fade)이 이미 하므로 여기서 되풀이하지 않는다. */
 .pl-bd-leaf.on .pl-bd-dot { fill: hsl(var(--foreground)); r: 3.5; }
 .pl-bd-leaf.on .pl-bd-label { fill: hsl(var(--foreground)); font-size: 10px; font-weight: 600; }
+/* 그려지지 않지만 눌린다 — Weave 의 잎은 반지름 2 라 그대로는 손이 못 짚는다.
+   `fill:none` 이면 히트가 안 잡히므로 투명 채움 + pointer-events 로 둔다. */
+.pl-bd-hit { fill: transparent; pointer-events: all; }
 .pl-bd-leaf { cursor: pointer; }
+/* 짚었다는 것이 보여야 과녁이 넓어진 값을 한다(라벨이 없는 잎도 있다). */
+.pl-bd-leaf:hover .pl-bd-dot { r: 3.5; }
 .pl-bd-leaf:hover .pl-bd-label { fill: hsl(var(--foreground)); }
 
 /* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).

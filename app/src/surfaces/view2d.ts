@@ -40,6 +40,9 @@ import { markTexture } from "./view-planar";
  *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
 export type Handle2d = {
   dispose(): void; fit(): void; focus(id: string): boolean;
+  /** 줌 한 걸음. `factor < 1` 이 가까이다 — sigma 는 ratio 가 작을수록 파고든다.
+   *  3D 의 `zoomBy3d` 와 **같은 배율 규약**을 쓰도록 뒤집지 않고 그대로 곱한다. */
+  zoom(factor: number): void;
   /** 옵션을 **제자리에서** 반영한다. 못 하는 변경(선 모드·연결 없음·범례 필터처럼
    *  노드·엣지 집합이 바뀌는 것)은 false 를 돌려 주고, 호출측이 다시 마운트한다. */
   update(p: ViewPrefs): boolean;
@@ -847,6 +850,14 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";
+    },
+    /** 줌 — 카메라 ratio 만 바꾼다. 방향도 중심도 안 건드리는 것이 3D 와 같은 약속이고,
+     *  울타리가 없으면 몇 번 눌러 아무것도 아닌 화면이 된다(3D 쪽과 같은 이유). */
+    zoom(factor) {
+      const cam = sigma.getCamera();
+      const want = Math.min(4, Math.max(0.05, cam.ratio * factor));
+      if (Math.abs(want - cam.ratio) < 1e-3) return;
+      cam.animate({ ratio: want }, { duration: 260 });
     },
     spotlight(s) { spot = s; sigma.refresh(); },
     /** 제자리 반영(2026-08-17). 노드 집합·엣지 집합이 그대로인 변경만 받는다:
