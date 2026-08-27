@@ -662,7 +662,10 @@ const EN = {
       workspaceHint: "The space you're viewing. Switch back after trying the sample.",
       theme: "Theme", language: "Language", advanced: "Advanced",
       engine: "Engine address", secret: "Connection secret",
-      secretHint: "Filled in automatically by the app. Only change this if you run the engine yourself.",
+      // ⚠ **값을 화면에 그리지 않는다.** 바로 위 동기화 키가 그 규율을 지키는데
+      // (감사 M8) 이 칸만 `value=` 로 시크릿을 DOM 에 눕히고 있었다. 같은 탭에서
+      // 한 칸은 감추고 옆 칸은 드러내면 규율이 아니라 우연이 된다.
+      secretHint: "Filled in automatically by the app, and not shown here. Only type something if you run the engine yourself; leaving it empty changes nothing.",
       // 호스트 표시명 — 키는 사이드카 `mcp install --client` 값(vinc_mcp.install.CLIENTS)과 1:1.
       mcpHosts: { desktop: "Claude Desktop", code: "Claude Code",
                   cursor: "Cursor", codex: "Codex CLI" } as Record<string, string>,
@@ -670,6 +673,13 @@ const EN = {
       mcpInstalling: "Connecting…",
       mcpDone: (host: string) => `Registered with ${host}. Restart it to reach Vinc.`,
       mcpFail: "Couldn't connect", mcpNoShell: "Available in the desktop app only.",
+      // 등록이 **안 됐는데도** 화면이 성공을 말하던 자리를 메운다. 호스트 CLI 에
+      // 위임하는 경로는 그 CLI 가 없어도 사이드카가 0 으로 끝나고 결과 JSON 에만
+      // `registered:false` 를 담는다 — 그 JSON 을 읽지 않으면 거짓말이 된다.
+      mcpNeedsCli: (host: string) =>
+        `${host}'s own command line tool isn't on this machine, so nothing was registered. `
+        + "Install it, or run this line yourself once:",
+      mcpNothing: (host: string) => `${host} had no Vinc entry, so nothing was removed.`,
       // 행 안에서는 호스트 이름을 옆에 이미 적으므로 버튼은 동작만 말한다
       // ("Connect Claude Desktop" 을 행마다 반복하면 이름이 두 번 나온다).
       mcpConnectAct: "Connect", mcpRemoveAct: "Remove",
@@ -1363,13 +1373,17 @@ const KO: Deck = {
       workspaceHint: "지금 보고 있는 공간이에요. 샘플을 둘러본 뒤에는 원래대로 되돌리세요.",
       theme: "테마", language: "언어", advanced: "고급",
       engine: "엔진 주소", secret: "연결 시크릿",
-      secretHint: "앱이 자동으로 채워요. 엔진을 직접 돌릴 때만 바꾸세요.",
+      secretHint: "앱이 자동으로 채우고, 여기에는 보여 주지 않아요. 엔진을 직접 돌릴 때만 입력하세요. 비워 두면 그대로예요.",
       mcpHosts: { desktop: "Claude Desktop", code: "Claude Code",
                   cursor: "Cursor", codex: "Codex CLI" },
       mcpConnect: (host) => `${host} 연결하기`,
       mcpInstalling: "연결 중…",
       mcpDone: (host) => `${host} 설정에 등록됐어요. 다시 시작하면 Vinc에 연결돼요.`,
       mcpFail: "연결하지 못했어요", mcpNoShell: "데스크탑 앱에서만 쓸 수 있어요",
+      mcpNeedsCli: (host) =>
+        `${host} 의 명령줄 도구가 이 기기에 없어서 아무것도 등록되지 않았어요. `
+        + "그것을 설치하거나, 아래 줄을 한 번 직접 실행하세요:",
+      mcpNothing: (host) => `${host} 에는 등록된 Vinc 항목이 없어서 지울 것이 없었어요.`,
       mcpConnectAct: "연결하기", mcpRemoveAct: "해제하기",
       cli: "명령줄",
       cliHint: "터미널에서 `vinc` 명령으로 Vinc를 부를 수 있어요. 엔진만 돌고 창은 열리지 않아요.",
