@@ -76,9 +76,16 @@ async function storeKey(value: string): Promise<void> {
   if (store) {
     await store("secret_set", { name: K_KEY, value }).catch(() => null);
     localStorage.removeItem(K_KEY);
-    return;
+  } else {
+    localStorage.setItem(K_KEY, value);           // 저장소 없는 기기 — 화면이 이를 알린다
   }
-  localStorage.setItem(K_KEY, value);             // 저장소 없는 기기 — 화면이 이를 알린다
+  // 계정이 방금 붙었다. 디바이스 플로우와 수동 붙여넣기가 **둘 다 여기로** 모이므로
+  // 신호는 이 한 곳이면 된다 — 부르는 자리 셋에 각자 걸면 하나를 빠뜨린다. 이벤트인
+  // 이유는 스케줄러와의 import 순환을 피하려서다(스케줄러가 이 모듈을 읽는다).
+  //
+  // ⚠ 이른 return 을 if/else 로 편 것이 이 신호의 전제다. return 이 남아 있으면 OS
+  // 저장소가 있는 기기(=대부분)에서 이 줄에 **영영 안 닿는다.**
+  dispatchEvent(new CustomEvent("vinc:linked"));
 }
 
 /** 이 기기에 계정 키가 있는가.

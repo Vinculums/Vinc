@@ -7,6 +7,7 @@ import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
+import { mountSyncScheduler } from "./sync-scheduler";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
@@ -313,6 +314,9 @@ applyTheme();
     if (!(await ensureWebAuth())) return;
   }
   route();
+  // 자동 동기화(§8) — 화면을 그린 뒤에 건다. 조용히 돌고 실패해도 아무것도 안 알린다
+  // (오프라인은 정상이다). 웹 Vinc 는 내부에서 no-op.
+  mountSyncScheduler();
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
   // `.vincpack` 더블클릭으로 넘어온 argv 를 연다(Q1). 화면을 그린 **뒤**에
