@@ -77,8 +77,22 @@ jobs:
   build-and-deploy:
     needs: gate
     runs-on: [self-hosted, linux, vinc-local]
+    # ⚠ 러너가 셀프호스티드라 유지보수자의 대화형 셸과 **같은 기계**다. az 는 기본으로
+    # `~/.azure` 를 쓰므로 둘이 한 프로필을 공유했고, 2026-08-28 에 그것으로 배포가
+    # 죽었다: 이 잡이 도는 동안 사람이 `az login` 을 한 번 했고, 그 로그인이
+    # `azure/login@v2` 가 써 둔 프로필을 덮어써서 다음 az 호출이
+    # `does not exist in MSAL token cache` 로 실패했다(프로필 mtime 06:05:06Z,
+    # 잡 실패 06:05:05Z). 마침 그 배포는 그때 죽어 있던 허브를 되살렸을 배포였다.
+    # 잡마다 프로필을 갈라 두면 사람이 무엇을 하든 배포가 안 흔들린다.
+    # 정본: vinc.ops.incident-2026-08-28-hub-sidecar §5.
     steps:
       - uses: actions/checkout@v4
+
+      # ⚠ `runner.temp` 표현식을 job 의 `env:` 에 쓰지 않는다 — 그 컨텍스트는 거기서
+      # 못 쓰고, 쓰면 워크플로가 **jobs 0 으로 검증 실패**한다(이 리포가 이미 물린 자리).
+      # `run:` 안에서는 `RUNNER_TEMP` 환경변수로 같은 값을 얻으므로 그것으로 넣는다.
+      - name: Azure 프로필을 이 잡 전용으로 (러너가 사람과 공유하는 기계다)
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
 
       - uses: azure/login@v2
         with:
