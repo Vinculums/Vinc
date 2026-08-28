@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """age_status_lines.py — 계획 문서의 상태 줄을 **리포에 대고** 늙힌다(R6).
 
-정본과 이유: [[d4ab94561078498e3]] §7.3 R6.
+정본과 이유: [[vinc.ops.graph-claim-decay]] §7.3 R6.
 
 `vinc.plan.sync-node-time-fields` 는 머지되고 엿새 뒤에도 "not yet merged to main"
 이라고 적혀 있었다. 그 문장은 이 리포의 인용 게이트가 잡는 것과 정반대 방향이다 —

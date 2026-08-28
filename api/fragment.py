@@ -180,7 +180,7 @@ _READBACK_BUDGET = 256 * 1024
 #: R4 — 코드에 대한 주장을 **조회 가능**하게 만드는 예약 props 셋. 산문 규약(§3:
 #: "측정으로 쓰고 경로를 적는다")은 사람이 읽어야 비교되고, 이 셋은 질의가 비교한다.
 #: `record` 만 싣는다 — 개념은 서술하고, 결정은 고르고, **측정하는 것은 기록**이다.
-#: 근거: [[d4ab94561078498e3]] §7.3 R4.
+#: 근거: [[vinc.ops.graph-claim-decay]] §7.3 R4.
 _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 
 

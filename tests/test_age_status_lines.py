@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""R6 — 상태 줄을 리포에 대고 늙힌다. [[d4ab94561078498e3]] §7.3.
+"""R6 — 상태 줄을 리포에 대고 늙힌다. [[vinc.ops.graph-claim-decay]] §7.3.
 
 `vinc.plan.sync-node-time-fields` 는 머지되고 엿새 뒤에도 "not yet merged to main" 이라고
 적혀 있었고, 그 문서는 같은 기록이 **반박의 근거로 인용한** 문서였다. 즉 정정의 재료가

@@ -396,7 +396,7 @@ class VincApp:
         if kind == "claims":
             # R5 — 유일하게 **구조가 아니라 props 내용**을 읽는 kind. 나머지 셋과
             # 이웃한 코드가 아니라서 component_diagnosis 를 넓히지 않고 따로 뒀다.
-            # 근거: [[d4ab94561078498e3]] §7.3.
+            # 근거: [[vinc.ops.graph-claim-decay]] §7.3.
             return self._read(lambda r: q.claim_diagnosis(
                 owner=owner, store=r, limit=_int(p.get("member_limit"), 0) or None))
         if kind == "communities":

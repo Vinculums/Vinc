@@ -4042,7 +4042,7 @@ def _path_hint(props: dict, title: str) -> str:
 def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     limit: int | None = None) -> dict:
     """R5 — **주장 진단**: 같은 파일을 두고 어긋난 기록 짝, 그리고 코드를 말하면서
-    닻이 없는 기록. [[d4ab94561078498e3]] §7.3.
+    닻이 없는 기록. [[vinc.ops.graph-claim-decay]] §7.3.
 
     §6.1 이 "조인 키는 만들었는데 조인을 돌리는 것이 없다"고 지목한 그 러너다. R4 가
     `props.subject_path` 를 쓰기 시점에 정규화해 두었으므로 여기서는 문자열 동치로

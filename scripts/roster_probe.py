@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """roster_probe.py — 이 세션에서 역할 로스터가 **보이는가**를 답한다(R9 의 절반).
 
-정본과 이유: [[d4ab94561078498e3]] §7.4 R9, 그리고
+정본과 이유: [[vinc.ops.graph-claim-decay]] §7.4 R9, 그리고
 [[record:agent-files-are-found-by-walking-up-from-cwd]].
 
 하위 에이전트 정의는 **cwd 에서 위로 걸어 올라가며** 찾는다. 로스터는
