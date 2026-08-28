@@ -42,7 +42,7 @@ def fetch_docs() -> list[str]:
     docs: list[str] = []
     cursor = None
     while True:
-        args = {"target": "remote", "limit": 200}
+        args = {"limit": 200}
         if cursor:
             args["cursor"] = cursor
         res = remote.call("vinc_doc_list", args)
@@ -60,12 +60,20 @@ def fetch_docs() -> list[str]:
 
 def verify_nodes(ids: list[str]) -> list[str]:
     """인용된 노드가 실재하는지 한 건씩 본다. `found:false` 는 싣지 않는다 — 못 실으면
-    게이트가 그 인용을 잡는데, 그게 맞다(없는 노드를 가리키는 주석이다)."""
+    게이트가 그 인용을 잡는데, 그게 맞다(없는 노드를 가리키는 주석이다).
+
+    ⚠ **`vinc_graph` 로 물으면 안 된다.** 그쪽은 이웃 전체를 좌표·랭킹까지 실어 오므로
+    허브 노드에서 응답 상한(72KB)을 넘고, 그러면 `isError` 로 돌아온다. 그것을 부재로
+    읽으면 **중심 개념일수록 인용이 막히는** 정반대의 게이트가 된다 — 실제로
+    `concept:agent-orchestration`(이웃 31개, 170KB)이 "그래프에 없다"로 찍혔다.
+    `vinc_neighbors` 는 같은 `found` 를 주면서 `limit=1` 로 잘리므로 크기에 걸리지
+    않는다. 존재 확인에 이웃 목록은 필요 없다."""
     out: list[str] = []
     for node_id in sorted(set(ids)):
-        res = remote.call("vinc_graph", {"target": "remote", "seed_id": node_id, "depth": 1})
+        res = remote.call("vinc_neighbors", {"node": node_id, "limit": 1})
         if res.get("isError") or not res.get("found"):
-            print(f"  [miss] {node_id} — 그래프에 없다")
+            why = res.get("error") or res.get("text") or "그래프에 없다"
+            print(f"  [miss] {node_id} — {why}")
             continue
         out.append(node_id)
     return out

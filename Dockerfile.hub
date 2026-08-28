@@ -72,6 +72,19 @@ COPY pyproject.toml README.md LICENSE ./
 COPY packaging/lbug_extensions ./lbug_extensions
 ENV VINC_LBUG_EXT_DIR=/srv/vinc/lbug_extensions
 
+# ── 네이티브 중단이 무엇도 안 남기지 않게 ────────────────────────────────────────
+# 2026-08-28: 사이드카가 `munmap_chunk(): invalid pointer` **한 줄만** 남기고 죽었다.
+# glibc 가 힙 손상을 보고 abort 한 것인데, 파이썬 트레이스백이 앞뒤로 없어서 어느
+# 호출에서 났는지 끝내 못 짚었다 — 코어 덤프도 없고 재현도 안 됐다. 다음에 또 나면
+# 같은 크기로 깜깜하다.
+#
+# `faulthandler` 는 SIGSEGV·SIGABRT·SIGBUS·SIGFPE·SIGILL 에 핸들러를 걸어 죽는 순간의
+# **파이썬 스택을 stderr 로** 뱉는다. env 로 켜면 인터프리터 시작 시점부터라 import
+# 중 크래시까지 덮고, 코드를 안 건드린다. 비용은 시그널 핸들러 등록뿐이다.
+# 이 이미지의 세 프로세스(사이드카·MCP·임베딩 워커)에 모두 걸린다.
+# 정본: vinc.ops.incident-2026-08-28-hub-sidecar §2·§7.
+ENV PYTHONFAULTHANDLER=1
+
 COPY packaging/docker-entrypoint.sh /usr/local/bin/vinc-entrypoint.sh
 # ⚠ `mkdir -p /data` 이지 `/data/db` 가 아니다. `--data` 는 **DB 파일 경로**라서
 # `/data/db` 를 디렉터리로 만들어 두면 LadybugDB 가 "Database path cannot be a
