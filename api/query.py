@@ -3348,9 +3348,29 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
     if not out:
         # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와
-        # **이웃이 없는 노드**가 응답으로 구분되지 않았다. 후보를 뽑아 가른다.
-        cands = near_nodes(store, node, owner=owner)
-        exact = any(c["id"] == node for c in cands)
+        # **이웃이 없는 노드**가 응답으로 구분되지 않았다. 둘을 가른다.
+        #
+        # ⚠ 그 판정을 `near_nodes`(제목·props 유사도 검색)로 했었다. 유사도는 존재의
+        # 증거가 아니다: 슬러그 id 는 제 산문 제목 안에 글자 그대로 나타나는 일이 드물어
+        # (`episode:2026-08-07-mcp-hardening-f1-f2` 같은 것) 후보가 0이 되고, 그러면
+        # **실재하는 노드가 `unknown node` 로 보고됐다.** 부착 엣지가 하나라도 있으면
+        # 위 축 플랜이 잡아 주므로 증상은 **엣지 0인 Episode·Record·Bridge** 에만 났고,
+        # 그래서 오래 안 보였다. 정본: [[record:neighbors-unknown-node-for-edgeless-attachments-2026-08-28]].
+        #
+        # 존재는 PK 로 묻는다. `seed_lookup_plan` 이 정확히 그 조회이고 — 여섯 테이블을
+        # 접두사로 가르고, PK 네임스페이싱과 owner 스코프(Bridge 과도기 술어 포함)를
+        # 이미 처리한다 — `graph()` 는 같은 갈래에서 진작 그것을 쓰고 있었다(1895행).
+        # `neighbors()` 만 안 받았다. `near_nodes` 는 "혹시 이것을 찾으셨나요"에만 남긴다.
+        probe = execute(seed_lookup_plan(node, owner=owner), cfg, store=store)
+        if probe.get("executed"):
+            exact = any(r.get("id") == node for r in probe.get("rows", []))
+            # 없을 때만 후보를 뽑는다 — 있으면 쓸 데가 없고, 유사도 검색은 공짜가 아니다.
+            cands = [] if exact else near_nodes(store, node, owner=owner)
+        else:
+            # 프로브 자체가 못 돌았으면 **모르는 것**이지 없는 것이 아니다. 구 동작으로
+            # 물러선다 — 부정확하지만, 조회 실패를 부재로 단언하는 것보다 낫다.
+            cands = near_nodes(store, node, owner=owner)
+            exact = any(c["id"] == node for c in cands)
         return {"kind": "neighbors", "executed": True, "found": exact, "node": node,
                 "neighbors": [], "by_rel": {}, "count": 0,
                 "error": None if exact else f"unknown node: {node}",
