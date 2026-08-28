@@ -20,6 +20,7 @@ rev 가 저장본보다 낮으면 무시(늦게 도착한 옛 변경이 최신�
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from . import fragment as frag
@@ -269,6 +270,46 @@ def get_cursor(store, key: str) -> int:
 
 def set_cursor(store, key: str, value: int) -> None:
     revstamp._meta_set(store, f"cursor:{key}", int(value))
+
+
+#: 이 스토어의 커서가 **어느 계정 것인가**(키 지문 — 원문 아님).
+_ACCOUNT_KEY = "sync_account"
+#: 계정이 바뀌면 되돌릴 커서 전량. 새 국면을 추가하면 여기 넣을 것.
+_CURSOR_KEYS = ("push", "pull", "docs-push", "docs-pull")
+
+
+def _account_fingerprint(remote) -> str:
+    """원격이 어느 계정인지 가리키는 안정적인 지문. 키 원문은 저장하지 않는다."""
+    token = (getattr(remote, "token", "") or "").strip()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:32] if token else ""
+
+
+def reset_cursors_on_account_change(store, remote) -> bool:
+    """계정이 바뀌었으면 동기화 커서를 전부 0 으로 되돌린다(되돌렸으면 True).
+
+    커서는 **원격 owner 의 시퀀스 번호**라 계정마다 뜻이 다르다. A 로 쓰던 커서를
+    B 에 그대로 들이대면 B 의 그 번호 아래 있는 것이 통째로 delta 에서 빠진다 —
+    오류도 경고도 없이 안 내려온다. 화면에 [연결 해제]가 있는 이상 계정 전환은
+    일어나고, 자동 동기화는 그 일을 **아무도 안 볼 때** 한다.
+
+    같은 계정에서 키만 재발급해도 지문이 달라져 초기화된다. 그 대가는 전량 재동기화
+    한 번이고(apply 는 rev 가드 걸린 멱등 LWW), 반대쪽 실수는 무음 데이터 누락이다.
+    헷갈릴 때 초기화하는 쪽으로 기우는 이유다.
+
+    ⚠ `selected_domains` 는 건드리지 않는다 — 그것은 계정이 아니라 **이 기기에서
+    무엇을 내보낼지**에 대한 사용자의 선택이다.
+    """
+    now = _account_fingerprint(remote)
+    if not now:
+        return False                      # 키 없는 원격(테스트 스텁) — 판정 보류
+    was = revstamp._meta_get(store, _ACCOUNT_KEY, "")
+    if was == now:
+        return False
+    if was:                               # 최초 연결은 초기화할 것이 없다
+        for k in _CURSOR_KEYS:
+            set_cursor(store, k, 0)
+    revstamp._meta_set(store, _ACCOUNT_KEY, now)
+    return bool(was)
 
 
 # ── export ────────────────────────────────────────────────────────────────────
@@ -1054,6 +1095,7 @@ def run(store, cfg, *, owner: str, remote) -> dict:
 
     문서 국면은 **soft-fail** 이다: 구 허브(문서 라우트 없음)나 doc 전용 오류가
     노드 동기화까지 무너뜨리면 안 된다 — 결과에 executed:False 로 남긴다."""
+    switched = reset_cursors_on_account_change(store, remote)
     resynced = ensure_birth_resync(store)
     pu = pull_apply(store, cfg, owner=owner, remote=remote)
     docs_ok = hasattr(remote, "docs_pull") and hasattr(remote, "docs_push")
@@ -1076,4 +1118,5 @@ def run(store, cfg, *, owner: str, remote) -> dict:
         # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
         revstamp._meta_set(store, _ONESHOT_KEY, "done")
     return {"executed": True, "pull": pu, "push": ph,
-            "docs_pull": dpu, "docs_push": dph, "birth_resync": resynced}
+            "docs_pull": dpu, "docs_push": dph, "birth_resync": resynced,
+            "account_switched": switched}
