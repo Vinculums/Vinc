@@ -52,6 +52,31 @@ case "$*" in
 esac
 """
 
+# 멈춤 갈래용 짝. 사이드카는 **안 죽는다** — 계속 살아 있으면서 응답만 안 한다.
+# `curl` 은 기동 헬스에는 한 번 ok 를 주고(그래야 워치독이 뜬다) 그 뒤로는 실패한다.
+_PY_HANG = """#!/bin/sh
+OUT="{out}"
+case "$*" in
+  *"api.cli serve"*)
+      n=$(cat "$OUT/starts" 2>/dev/null || echo 0)
+      echo $((n + 1)) > "$OUT/starts"
+      trap 'exit 0' TERM
+      while true; do sleep 0.2; done ;;
+  *"mcp serve-http"*)
+      echo started > "$OUT/mcp-started"
+      trap 'exit 0' TERM
+      while true; do sleep 0.2; done ;;
+  *) exit 0 ;;
+esac
+"""
+
+_CURL_DEAD = """#!/bin/sh
+OUT="{out}"
+if [ -f "$OUT/booted" ]; then exit 7; fi
+echo booted > "$OUT/booted"
+echo '{{"status": "ok"}}'
+"""
+
 # 엔트리포인트를 띄우고 **가만히 둔다.** 아무도 신호를 보내지 않는다 — 스스로 포기하고
 # 내려가야 통과다. 그것이 계약이다.
 #
@@ -100,7 +125,7 @@ class WatchdogGivesUpTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def _run(self) -> subprocess.CompletedProcess:
+    def _run(self, extra: dict | None = None) -> subprocess.CompletedProcess:
         env = dict(os.environ)
         env.update({
             "PATH": str(self.bin) + os.pathsep + env.get("PATH", ""),
@@ -122,6 +147,7 @@ class WatchdogGivesUpTests(unittest.TestCase):
             # 작으면 떴다 죽는 것이 회복으로 세어져 구 결함이 되살아난다.
             "VINC_SIDECAR_STABLE_S": "9999",
         })
+        env.update(extra or {})
         env.pop("VINC_ROLE", None)
         driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix())
         # ⚠ 인코딩을 명시한다. `text=True` 만 주면 로케일 코덱으로 디코드하는데,
@@ -141,6 +167,29 @@ class WatchdogGivesUpTests(unittest.TestCase):
             "내려가야 새 레플리카가 스냅샷에서 복원한다.\n" + log[-2500:])
         self.assertIn("컨테이너를 내린다", log,
                       "포기 분기를 안 탔다(다른 이유로 종료했을 수 있다).\n" + log[-2500:])
+
+    def test_멈춘_사이드카도_잡는다__살아있음은_건강함이_아니다(self):
+        """2026-08-03 의 모양: 사이드카가 **죽지 않고 응답만 안 했다.** pid 만 보는
+        감시는 그 사고를 다시 만나도 침묵한다 — 이 워치독이 애초에 쓰인 계기가 그
+        사고인데도 그랬다. 여기서는 사이드카를 계속 살려 두고 헬스만 끊는다."""
+        # 사이드카는 안 죽는다. 헬스만 죽는다.
+        (self.bin / "python").write_text(_PY_HANG.format(out=self.out.as_posix()),
+                                         encoding="utf-8")
+        (self.bin / "curl").write_text(_CURL_DEAD.format(out=self.out.as_posix()),
+                                       encoding="utf-8")
+        os.chmod(self.bin / "python", 0o755)
+        os.chmod(self.bin / "curl", 0o755)
+        proc = self._run(extra={"VINC_SIDECAR_HUNG_S": "10"})
+        log = proc.stdout or ""
+        self.assertEqual(
+            proc.returncode, 0,
+            "살아 있지만 멈춘 사이드카를 워치독이 못 봤다 — pid 만 보면 그렇게 된다.\n"
+            + log[-2500:])
+        self.assertIn("무응답", log, log[-2500:])
+        self.assertNotIn("재기동 시도", log,
+                         "멈춘 사이드카를 죽이고 다시 띄우려 했다 — 단일 writer 락을 "
+                         "쥔 프로세스를 강제 종료하는 것은 이 갈래가 하려는 일이 "
+                         "아니다.\n" + log[-2500:])
 
     def test_카운터가_실제로_올라간다__1_에서_멈추지_않는다(self):
         """구 결함의 지문. 로그에 `1/N` 만 있고 `2/N` 이 없으면 카운터가 매 회

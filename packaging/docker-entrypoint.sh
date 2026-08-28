@@ -129,11 +129,17 @@ start_sidecar() {
   echo $! > "$SIDECAR_PIDFILE"
 }
 
+# 한 번만 묻는다. 워치독이 매 주기 이걸 쓰므로 대기 루프와 갈라 둔다.
+sidecar_healthy() {
+  curl -sf http://127.0.0.1:8787/health 2>/dev/null \
+    | grep -q '"status":[[:space:]]*"ok"'
+}
+
 # $1 = 최대 대기(초, 1회/s 폴링). 준비되면 0, 타임아웃이면 1.
 wait_for_sidecar_health() {
   i=0
   while [ "$i" -lt "$1" ]; do
-    if curl -sf http://127.0.0.1:8787/health | grep -q '"status":[[:space:]]*"ok"'; then
+    if sidecar_healthy; then
       return 0
     fi
     i=$((i + 1))
@@ -273,32 +279,55 @@ fi
 #
 # 무한 재기동을 피하는 원래 취지(Azure Files 락 회수)는 그대로다 — 상한에 닿으면
 # 재기동을 멈추는 것도 같다. 달라진 것은 멈춘 뒤에 **죽는다**는 것뿐이다.
+# ③ **죽는 것만 보면 멈추는 것을 못 잡는다.** 하필 이 워치독이 쓰인 계기가 그 모양이다
+#    — 2026-08-03 에 사이드카는 살아 있었고 몇 분간 응답만 안 했다. pid 만 보는 감시는
+#    그 사고를 다시 만나도 아무 말도 안 한다. 그래서 매 주기 헬스도 함께 묻는다.
+#
+#    멈춘 사이드카를 **죽여서 되살리지는 않는다.** 그것은 단일 writer 락을 쥔 채 쓰기
+#    중일 수 있는 프로세스를 강제 종료하는 새로운 의미이고, 이 리포가 그 자리에서 이미
+#    여러 번 다쳤다. 대신 재기동 상한과 **같은 escalation** 으로 보낸다: 컨테이너를
+#    내리면 `shutdown()` 이 TERM 을 보내고 최대 20초 닫히기를 기다린 뒤 플랫폼이 새
+#    레플리카를 세운다. 이미 있는 정상 종료 경로라 새 위험이 없다.
 SIDECAR_STABLE_S="${VINC_SIDECAR_STABLE_S:-300}"   # 이만큼 건강하면 회복으로 친다
 SIDECAR_MAX_RESTARTS="${VINC_SIDECAR_MAX_RESTARTS:-5}"
+SIDECAR_HUNG_S="${VINC_SIDECAR_HUNG_S:-120}"       # 살아 있는데 이만큼 무응답이면 멈춘 것
 MAIN_PID=$$                                        # 서브셸에서 이 스크립트를 겨눈다
+
+# 상한에 닿았을 때 하는 일 하나 — 죽는 갈래와 멈추는 갈래가 같은 곳으로 온다.
+give_up_and_recycle() {
+  echo "[entrypoint] ⚠ $1 — 컨테이너를 내린다. 이 안에서 다시 여는 것으로는 못 고치는" \
+       "상태이고(작업본이 로컬이라 복원이 안 걸린다), 새 레플리카만 스냅샷에서 복원한다." >&2
+  kill -TERM "$MAIN_PID" 2>/dev/null || true
+}
 (
   restart_count=0
-  healthy_at=0            # 마지막으로 헬스가 확인된 시각(0 = 아직)
+  restart_at=0            # 마지막 재기동 시각(0 = 아직 없음)
+  # 워치독은 기동 헬스가 통과한 **뒤에** 뜬다 — 그러니 지금은 건강한 것이 사실이다.
+  # 0 으로 두면 첫 폴링이 무응답일 때 기준 시각이 없어 멈춤을 영영 못 센다.
+  last_ok="$(date +%s)"
   while true; do
     sleep 5
+    now="$(date +%s)"
     pid="$(cat "$SIDECAR_PIDFILE" 2>/dev/null || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      # 살아 있다고 회복이 아니다(①). 재기동 후 충분히 오래 건강했을 때만 되돌린다.
-      if [ "$restart_count" -gt 0 ] && [ "$healthy_at" -gt 0 ] \
-         && [ "$(( $(date +%s) - healthy_at ))" -ge "$SIDECAR_STABLE_S" ]; then
-        echo "[entrypoint] sidecar 안정(${SIDECAR_STABLE_S}s) — 재기동 카운터 초기화"
-        restart_count=0
-        healthy_at=0
+      if sidecar_healthy; then
+        last_ok="$now"
+        # 살아 있다고 회복이 아니다(①). 재기동 후 충분히 오래 **건강**했을 때만 되돌린다.
+        if [ "$restart_count" -gt 0 ] && [ "$restart_at" -gt 0 ] \
+           && [ "$(( now - restart_at ))" -ge "$SIDECAR_STABLE_S" ]; then
+          echo "[entrypoint] sidecar 안정(${SIDECAR_STABLE_S}s) — 재기동 카운터 초기화"
+          restart_count=0
+          restart_at=0
+        fi
+      elif [ "$(( now - last_ok ))" -ge "$SIDECAR_HUNG_S" ]; then
+        give_up_and_recycle "sidecar 가 살아 있는데 ${SIDECAR_HUNG_S}s 무응답이다(멈춤)"
+        exit 1
       fi
       continue
     fi
-    healthy_at=0
     restart_count=$((restart_count + 1))
     if [ "$restart_count" -gt "$SIDECAR_MAX_RESTARTS" ]; then
-      echo "[entrypoint] ⚠ sidecar 재기동 ${SIDECAR_MAX_RESTARTS}회 연속 실패 —" \
-           "컨테이너를 내린다. 이 안에서 다시 여는 것으로는 못 고치는 상태이고" \
-           "(작업본이 로컬이라 복원이 안 걸린다), 새 레플리카만 스냅샷에서 복원한다." >&2
-      kill -TERM "$MAIN_PID" 2>/dev/null || true
+      give_up_and_recycle "sidecar 재기동 ${SIDECAR_MAX_RESTARTS}회 연속 실패"
       exit 1
     fi
     echo "[entrypoint] ⚠ sidecar(pid=${pid:-?}) 무응답 —" \
@@ -307,15 +336,17 @@ MAIN_PID=$$                                        # 서브셸에서 이 스크�
     # 늦게 반영될 수 있다 — 즉시 재기동하면 새 프로세스가 락을 또 못 잡는다).
     sleep 2
     start_sidecar
+    restart_at="$(date +%s)"
     if wait_for_sidecar_health 30; then
       # 여기서 카운터를 0 으로 되돌리지 **않는다** — 헬스가 한 번 통과한 것은 회복이
-      # 아니라 회복일 수도 있는 시작점이다(①). 시각만 찍어 두고, 위 루프가 이 노드가
-      # `SIDECAR_STABLE_S` 동안 살아 있는 것을 보면 그때 회복으로 친다.
-      healthy_at="$(date +%s)"
+      # 아니라 회복일 수도 있는 시작점이다(①). 시각만 찍어 두고, 위 루프가 그 뒤로
+      # `SIDECAR_STABLE_S` 동안 계속 건강한 것을 보면 그때 회복으로 친다.
+      last_ok="$(date +%s)"
       echo "[entrypoint] sidecar 재기동 후 헬스 통과(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))" \
            "— ${SIDECAR_STABLE_S}s 유지되면 회복으로 친다"
     else
-      healthy_at=0
+      # 헬스는 못 붙었지만 프로세스는 살아 있을 수 있다. `last_ok` 를 지금으로 밀지
+      # 않는다 — 그래야 위 루프의 멈춤 판정이 이 무응답 구간을 계속 센다.
       echo "[entrypoint] ⚠ sidecar 재기동 후에도 헬스 실패(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))" >&2
     fi
   done
