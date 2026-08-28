@@ -118,7 +118,10 @@ fi
 # 이 스크립트 본 흐름(그리고 나중의 trap)이 **현재** pid 를 읽을 수 있어야 하는데,
 # 워치독은 `( ) &` 서브셸이라 거기서 바꾼 셸 변수는 부모에 안 보인다(2026-08-03
 # 사고 대응 — 그때는 사이드카가 죽으면 아무도 감시·재기동하지 않았다).
-SIDECAR_PIDFILE="/tmp/vinc-sidecar.pid"
+# ⚠ 경로를 env 로 연다. 컨테이너 안에서는 한 벌뿐이라 고정 경로가 맞지만, **한 기계에서
+# 이 스크립트를 여러 번 돌리면**(검사가 그렇게 한다) 서로의 pidfile 을 덮어써서 워치독이
+# 남의 살아 있는 프로세스를 보고 "사이드카 정상"이라 판단한다. 실측으로 물렸다.
+SIDECAR_PIDFILE="${VINC_SIDECAR_PIDFILE:-/tmp/vinc-sidecar.pid}"
 
 start_sidecar() {
   python -m api.cli serve --host 127.0.0.1 --port 8787 \
@@ -188,7 +191,7 @@ fi
 # 둘 다 죽는 프로세스가 아무것도 못 남기므로 **부모가 종료코드를 읽어 주는 수밖에 없다**.
 # 그동안 컨테이너는 Healthy · /health 는 200 · 사이드카도 정상이었다. 이 리포가 반복해
 # 겪는 그 모양(기동 정상 · 헬스 200 · 기능만 죽음)의 새 사례다.
-EMBED_PIDFILE="/tmp/vinc-embed.pid"
+EMBED_PIDFILE="${VINC_EMBED_PIDFILE:-/tmp/vinc-embed.pid}"   # 사이드카 쪽과 같은 이유
 EMBED_SUP_PID=""
 if [ "${VINC_EMBED:-on}" = "on" ]; then
   (
@@ -254,33 +257,65 @@ fi
 # 다음 배포까지) 그래프 read/write 전부가 조용히 막혀 있었다.
 #
 # 5초마다 생사만 확인(kill -0, 가볍다) — 죽었으면 재기동 후 헬스를 다시 기다린다.
-# 5회 연속 실패하면 포기하고 워치독만 조용히 멈춘다(무한 재기동이 Azure Files 락
-# 회수를 더 어렵게 만들 수 있다 — hub-deploy.yml 의 "단일 writer" 교훈과 같은
-# 이유). 그래도 MCP HTTP 는 계속 떠 있으므로 `/health` 의 `sidecar.reachable`
-# 진단으로는 계속 드러난다 — 사람이 개입할 신호는 남는다.
+#
+# ⚠ **여기 두 가지가 틀려 있었고 2026-08-28 에 둘 다 물렸다**
+# ([[vinc.ops.incident-2026-08-28-hub-sidecar]] §3·§4).
+#
+# ① 포기 분기가 도달 불가였다. 루프 머리에서 pid 가 살아 있으면 카운터를 0 으로
+#    되돌렸는데, **떴다가 죽는 프로세스는 그 순간 살아 있다.** 그래서 카운터는 매 회
+#    0 으로 돌아갔고 영원히 1 에서 멈췄다 — 그날 재기동 14회가 전부 `1/5` 로 찍혔다.
+#    살아 있음은 성공이 아니다. **일정 시간 건강했을 때만** 회복으로 친다.
+# ② 포기해도 소용이 없었다. 작업본이 로컬에 있고 복원은 `restore_if_missing` 이라
+#    (있으면 복원하지 않는다), 같은 컨테이너 안에서는 **망가진 작업본을 몇 번을 다시
+#    열어도 같은 결과다.** 실제 복구는 새 레플리카뿐이었다. 그러니 포기의 올바른
+#    형태는 "워치독만 멈춤"이 아니라 **컨테이너를 내려 플랫폼이 다시 세우게 하는 것**
+#    이다. 그래야 빈 파일시스템이 스냅샷에서 복원한다.
+#
+# 무한 재기동을 피하는 원래 취지(Azure Files 락 회수)는 그대로다 — 상한에 닿으면
+# 재기동을 멈추는 것도 같다. 달라진 것은 멈춘 뒤에 **죽는다**는 것뿐이다.
+SIDECAR_STABLE_S="${VINC_SIDECAR_STABLE_S:-300}"   # 이만큼 건강하면 회복으로 친다
+SIDECAR_MAX_RESTARTS="${VINC_SIDECAR_MAX_RESTARTS:-5}"
+MAIN_PID=$$                                        # 서브셸에서 이 스크립트를 겨눈다
 (
   restart_count=0
+  healthy_at=0            # 마지막으로 헬스가 확인된 시각(0 = 아직)
   while true; do
     sleep 5
     pid="$(cat "$SIDECAR_PIDFILE" 2>/dev/null || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      restart_count=0
+      # 살아 있다고 회복이 아니다(①). 재기동 후 충분히 오래 건강했을 때만 되돌린다.
+      if [ "$restart_count" -gt 0 ] && [ "$healthy_at" -gt 0 ] \
+         && [ "$(( $(date +%s) - healthy_at ))" -ge "$SIDECAR_STABLE_S" ]; then
+        echo "[entrypoint] sidecar 안정(${SIDECAR_STABLE_S}s) — 재기동 카운터 초기화"
+        restart_count=0
+        healthy_at=0
+      fi
       continue
     fi
+    healthy_at=0
     restart_count=$((restart_count + 1))
-    if [ "$restart_count" -gt 5 ]; then
-      echo "[entrypoint] ⚠ sidecar 재기동 5회 연속 실패 — watchdog 중단(수동 개입 필요)" >&2
+    if [ "$restart_count" -gt "$SIDECAR_MAX_RESTARTS" ]; then
+      echo "[entrypoint] ⚠ sidecar 재기동 ${SIDECAR_MAX_RESTARTS}회 연속 실패 —" \
+           "컨테이너를 내린다. 이 안에서 다시 여는 것으로는 못 고치는 상태이고" \
+           "(작업본이 로컬이라 복원이 안 걸린다), 새 레플리카만 스냅샷에서 복원한다." >&2
+      kill -TERM "$MAIN_PID" 2>/dev/null || true
       exit 1
     fi
-    echo "[entrypoint] ⚠ sidecar(pid=${pid:-?}) 무응답 — 재기동 시도 $restart_count/5" >&2
+    echo "[entrypoint] ⚠ sidecar(pid=${pid:-?}) 무응답 —" \
+         "재기동 시도 $restart_count/$SIDECAR_MAX_RESTARTS" >&2
     # OS 가 죽은 프로세스의 파일 핸들·락을 정리할 시간(Azure Files=SMB 는 로컬보다
     # 늦게 반영될 수 있다 — 즉시 재기동하면 새 프로세스가 락을 또 못 잡는다).
     sleep 2
     start_sidecar
     if wait_for_sidecar_health 30; then
-      echo "[entrypoint] sidecar 재기동 성공(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))"
-      restart_count=0
+      # 여기서 카운터를 0 으로 되돌리지 **않는다** — 헬스가 한 번 통과한 것은 회복이
+      # 아니라 회복일 수도 있는 시작점이다(①). 시각만 찍어 두고, 위 루프가 이 노드가
+      # `SIDECAR_STABLE_S` 동안 살아 있는 것을 보면 그때 회복으로 친다.
+      healthy_at="$(date +%s)"
+      echo "[entrypoint] sidecar 재기동 후 헬스 통과(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))" \
+           "— ${SIDECAR_STABLE_S}s 유지되면 회복으로 친다"
     else
+      healthy_at=0
       echo "[entrypoint] ⚠ sidecar 재기동 후에도 헬스 실패(pid=$(cat "$SIDECAR_PIDFILE" 2>/dev/null))" >&2
     fi
   done
