@@ -143,3 +143,55 @@ def test_run_marks_the_oneshot_only_after_the_session_completes(monkeypatch):
     # 두 번째 세션은 평범한 delta 다
     out2 = sync.run(s, None, owner="user:local", remote=object())
     assert out2["birth_resync"] is False
+
+
+class _KeyedRemote:
+    """계정 지문만 있으면 되는 최소 원격 스텁."""
+
+    def __init__(self, token: str):
+        self.token = token
+
+
+def test_cursors_survive_the_same_account():
+    """같은 키로 다시 붙는 것은 전환이 아니다 — 매 세션 전량 재동기화가 되면 안 된다."""
+    s = _MetaStore()
+    sync.set_cursor(s, "pull", 42)
+    assert sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_a")) is False
+    assert sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_a")) is False
+    assert sync.get_cursor(s, "pull") == 42
+
+
+def test_cursors_reset_when_the_account_changes():
+    """A 의 커서를 B 에 들이대면 B 의 그 번호 아래가 통째로 안 내려온다(무음 누락)."""
+    s = _MetaStore()
+    sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_a"))
+    for k in sync._CURSOR_KEYS:
+        sync.set_cursor(s, k, 99)
+    assert sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_b")) is True
+    for k in sync._CURSOR_KEYS:
+        assert sync.get_cursor(s, k) == 0, k
+
+
+def test_selected_domains_are_not_touched_by_an_account_switch():
+    """무엇을 내보낼지는 계정이 아니라 이 기기에서의 사용자 선택이다."""
+    s = _MetaStore()
+    sync.set_selected_domains(s, ["design"])
+    sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_a"))
+    sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_b"))
+    assert sync.get_selected_domains(s) == ["design"]
+
+
+def test_first_connection_does_not_count_as_a_switch():
+    """처음 붙는 기기는 초기화할 커서가 없다 — 전량 재동기화를 유발하면 안 된다."""
+    s = _MetaStore()
+    sync.set_cursor(s, "pull", 5)
+    assert sync.reset_cursors_on_account_change(s, _KeyedRemote("vinc_sk_a")) is False
+    assert sync.get_cursor(s, "pull") == 5
+
+
+def test_tokenless_remote_holds_judgement():
+    """키를 모르는 원격(테스트 스텁)에서 커서를 날리면 스텁이 데이터를 지운다."""
+    s = _MetaStore()
+    sync.set_cursor(s, "pull", 8)
+    assert sync.reset_cursors_on_account_change(s, object()) is False
+    assert sync.get_cursor(s, "pull") == 8

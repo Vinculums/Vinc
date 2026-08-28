@@ -856,6 +856,27 @@ class ConnectFlowTests(unittest.TestCase):
             code, _ = _req(base, "/connect/status?state=x", token=None)
             self.assertEqual(code, 401)
 
+    def _preflight(self, base: str, origin: str):
+        """Chrome 이 공개 오리진 → 루프백에 보내는 preflight 를 그대로 흉내낸다."""
+        r = urllib.request.Request(base + "/connect/callback", method="OPTIONS")
+        r.add_header("Origin", origin)
+        r.add_header("Access-Control-Request-Method", "POST")
+        r.add_header("Access-Control-Request-Headers", "content-type")
+        r.add_header("Access-Control-Request-Private-Network", "true")
+        with urllib.request.urlopen(r, timeout=5) as resp:
+            return resp.headers.get("Access-Control-Allow-Private-Network")
+
+    def test_preflight_grants_private_network_to_connect_origin(self):
+        """이 헤더가 없으면 브라우저가 콜백을 아예 못 보낸다 — 연결 플로우가 매번
+        수동 키 폴백으로 떨어졌던 원인이다(응답이 200 이라 서버 로그에는 안 남는다)."""
+        with running_server(_app()) as base:
+            self.assertEqual(self._preflight(base, "https://vincs.io"), "true")
+
+    def test_preflight_denies_private_network_to_others(self):
+        """무인증 라우트(/health · /connect/callback)를 웹 전체에 열지 않는다."""
+        with running_server(_app()) as base:
+            self.assertIsNone(self._preflight(base, "https://evil.example"))
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocRouteE2E(unittest.TestCase):

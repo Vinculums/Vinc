@@ -118,6 +118,20 @@ def _owner_scope(owner: str | None) -> str:
     return "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal"
 
 
+def connect_origins() -> list[str]:
+    """계정 연결 콜백을 보낼 수 있는 웹 오리진.
+
+    도메인 이전(vincs.app→vincs.io): 두 오리진을 모두 허용한다. 기존 배포 데스크탑
+    클라이언트는 vincs.app/connect-app 를, 신규는 vincs.io 를 연다 — 병행 필수.
+    `VINC_CONNECT_ORIGINS`(콤마 구분)로 오버라이드 가능.
+
+    ⚠ 두 곳이 이 목록을 써야 한다 — `connect_callback` 의 POST 게이트와 `do_OPTIONS`
+    의 사설망 승인이다. 둘이 어긋나면 preflight 는 통과하는데 본 요청이 403 이 된다.
+    """
+    return [o.strip() for o in os.environ.get(
+        "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
+
+
 class VincApp:
     """사이드카 상태: 설정 · 공유 스토어(단일 Database, writer) · 세션 인증 · 잡 큐 ·
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
@@ -608,12 +622,7 @@ class VincApp:
         """무인증(브라우저 호출) — 인증은 state 논스가 대신한다. Origin 은 심층방어
         (브라우저 교차오리진 POST 는 항상 Origin 을 실음; curl 등 무 Origin 은 state
         게이트만으로 충분)."""
-        # 도메인 이전(vincs.app→vincs.io): 두 오리진을 모두 허용한다. 기존 배포 데스크탑
-        # 클라이언트는 vincs.app/connect-app 를, 신규는 vincs.io 를 연다 — 병행 필수.
-        # VINC_CONNECT_ORIGINS(콤마 구분)로 오버라이드 가능.
-        allowed = [o.strip() for o in os.environ.get(
-            "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
-        if origin and origin not in allowed:
+        if origin and origin not in connect_origins():
             return 403, {"error": "origin not allowed"}
         state = (body.get("state") or "").strip()
         key = (body.get("key") or "").strip()
@@ -1348,6 +1357,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "authorization, content-type")
+        # 사설망 승인(계정 연결 콜백 전용). 공개 오리진(vincs.io)에서 루프백으로 가는
+        # 요청은 CORS 를 통과해도 브라우저가 **한 겹 더** 막는다 — preflight 에
+        # `Access-Control-Request-Private-Network: true` 를 실어 보내고 같은 이름의
+        # 허용 헤더를 요구한다. 그 헤더가 없어서 `/connect/callback` 이 브라우저에서
+        # 도달 불가였고, 연결 플로우가 매번 수동 키 폴백으로 떨어졌다.
+        #
+        # `*` 로 열지 않고 콜백 오리진에만 내주는 이유: 이 서버에는 무인증 라우트가
+        # 둘 있다(`/health` · `/connect/callback`). 아무 사이트에나 사설망을 허용하면
+        # 그 둘이 웹 전체에 노출된다. 콜백은 state 논스로, 나머지는 Bearer 로 막히지만
+        # 승인 자체를 좁히는 편이 싸다.
+        if self.headers.get("Access-Control-Request-Private-Network") == "true" \
+                and self.headers.get("Origin") in connect_origins():
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "86400")
         self.send_header("Content-Length", "0")
         self.end_headers()

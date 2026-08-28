@@ -1,5 +1,5 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
-import { accountKey, accountWho, connectAccount, forgetAccount, keyIsOnDisk,
+import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc } from "../components";
@@ -164,10 +164,13 @@ export async function renderSettings(el: HTMLElement) {
     // 행도 부르므로, 폴링을 이 탭 안에 두면 세 벌이 된다.
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
+      // 연결 여부와 표시할 이름은 **다른 질문**이다. 수동으로 붙여넣은 키는 누구
+      // 것인지 알 수 없어 이름이 없고, 이름으로 갈랐더니 로그인해도 미연결 화면이
+      // 나왔다. 카피(`acctConnected`)는 빈 이름을 이미 감당한다.
       const who = accountWho();
-      if (who) {
+      if (hasAccount()) {
         acctBox.innerHTML = `
-          <p>${U.acctConnected(esc(who))}
+          <p>${U.acctConnected(who ? esc(who) : "")}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>
           <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
@@ -213,7 +216,17 @@ export async function renderSettings(el: HTMLElement) {
         const rows: Array<{ domain: string }> = res.domains || [];
         const selected = new Set<string>(res.selected || []);
         if (!rows.length) { domBox.textContent = U.syncNoDomains; return; }
-        domBox.innerHTML = rows.map((r) => {
+        // 기본 선택은 비어 있고, 비어 있으면 export 가 아무것도 안 훑는다. 그러면 계정을
+        // 붙여 놓고도 올라가는 것이 없는데 화면은 그 말을 안 했다 — 사용자가 "동기화됐다"고
+        // 믿을 근거는 [연결됨]뿐이고 그건 참이므로 오해가 안 풀린다.
+        //
+        // 대신 **골라 주지 않는다.** 안 고른 것은 이 기기에만 남는다는 것이 이 섹션의 약속
+        // (`syncHint`)이고, 대신 골라 주면 그 약속을 깨는 쪽이 기본값이 된다. 물어보는 것이
+        // 이 약속을 지키는 유일한 방법이다.
+        const wasEmpty = !selected.size;
+        const nudge = hasAccount() && wasEmpty
+          ? `<p class="hint" style="margin:.2rem 0 .5rem">${U.syncNonePicked}</p>` : "";
+        domBox.innerHTML = nudge + rows.map((r) => {
           const on = selected.has(r.domain) ? " checked" : "";
           const safe = r.domain.replace(/"/g, "&quot;");
           return `<label style="display:block;font-weight:400;margin:.15rem 0">
@@ -224,6 +237,12 @@ export async function renderSettings(el: HTMLElement) {
             const picked = [...domBox.querySelectorAll<HTMLInputElement>("[data-sync-dom]:checked")]
               .map((c) => c.dataset.syncDom!);
             try { await api!.setSyncDomains(picked); } catch { /* 사이드카 미가동 무시 */ }
+            // 안내는 "고른 것이 없다"는 **사실**이므로 그 사실이 뒤집힐 때 같이 뒤집혀야
+            // 한다 — 처음 하나를 고르면 걷히고, 마지막 하나를 풀면 돌아온다. 고르는
+            // 방향만 보면 후자에서 참인 문장이 화면에서 사라진 채 남는다(실측).
+            // 되그리기가 반복되지 않는 이유: 다시 그린 뒤에는 `wasEmpty` 가 새 상태와
+            // 같아져 조건이 거짓이 된다.
+            if (!picked.length !== wasEmpty) void loadDomains();
           }));
       } catch { domBox.textContent = U.syncNoDomains; }
     }
@@ -360,8 +379,10 @@ export async function renderSettings(el: HTMLElement) {
     const remoteAcct = body.querySelector<HTMLButtonElement>("#mcp-remote-acct")!;
     function paintRemote() {
       const who = accountWho();
-      remoteAcct.hidden = !!who;
-      remoteState.textContent = who ? U.mcpRemoteSignedIn(who) : U.mcpRemoteNeedAccount;
+      const linked = hasAccount();          // 이름 없이 연결된 경우가 있다(수동 키)
+      remoteAcct.hidden = linked;
+      remoteState.textContent = linked
+        ? U.mcpRemoteSignedIn(who || "") : U.mcpRemoteNeedAccount;
     }
     body.querySelector("#mcp-remote-copy")!.addEventListener("click", async () => {
       // 복사가 막혀도 주소는 위에 그대로 떠 있다 — 실패를 오류로 키우지 않는다.
