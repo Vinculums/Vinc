@@ -723,6 +723,9 @@ const EN = {
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
       syncDomains: "Topics to sync",
       syncNoDomains: "No topics yet. Add some knowledge first.",
+      // 고른 것이 없으면 push 가 아무것도 안 보낸다(export 가 선택 도메인만 훑는다).
+      // 그 사실을 화면이 말하지 않으면 사용자는 연결해 두고도 왜 안 올라가는지 모른다.
+      syncNonePicked: "Nothing is picked, so nothing leaves this machine. Anything you write here stays local until you choose a topic below.",
       syncNow: "Sync now", syncing: "Syncing…",
       syncNeedKey: "Connect your account first.",
       syncDone: (up: number, down: number) => `Synced. ${up} sent, ${down} received.`,
@@ -1421,6 +1424,7 @@ const KO: Deck = {
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
       syncDomains: "동기화할 주제",
       syncNoDomains: "아직 주제가 없어요. 먼저 데이터를 추가해 보세요.",
+      syncNonePicked: "고른 주제가 없어서 이 기기를 떠나는 것이 없어요. 아래에서 고르기 전까지는 여기에 쓴 것이 전부 이 기기에만 남아요.",
       syncNow: "지금 동기화하기", syncing: "동기화 중…",
       syncNeedKey: "먼저 계정을 연결해 주세요",
       syncDone: (up, down) => `동기화했어요. ${up}개 보내고 ${down}개 받았어요.`,
