@@ -41,7 +41,7 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. d4c22f23326e41c3c
+1. vinc.ops.security-audit-2026-08-18
 2. vinc.ops.risk-audit-2026-08-05
 3. vinc.canon.account-policy
 4. vinc.spec.email-subsystem

@@ -36,7 +36,7 @@ Repositories: Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. de7597bc59a1e7dbe
+1. vinc.ops.site-audit-2026-08-22
 2. vinc.spec.email-subsystem
 3. vinc.canon.terminology
 4. vinc.release.changelog

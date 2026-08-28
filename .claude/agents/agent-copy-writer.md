@@ -36,7 +36,7 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. db48ec27d7699cbf6
+1. vinc.spec.ui-copy-ko
 2. vinc.spec.ui-copy
 3. vinc.canon.terminology
 4. vinc.reference.view-controls

@@ -44,7 +44,7 @@ Repositories: Vinc
 3. vinc.canon.mcp-contract
 4. vinc.canon.chunk-ssot
 5. vinc.canon.code-annotation
-6. d4c22f23326e41c3c
+6. vinc.ops.security-audit-2026-08-18
 7. vinc.canon.repo-workflow
 
 ## Gates that must pass before the pull request

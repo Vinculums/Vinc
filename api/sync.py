@@ -92,7 +92,7 @@ def _snapshot(label: str, node: dict) -> dict:
 def get_base(store, node_id: str, owner: str = "") -> dict | None:
     # PK 네임스페이싱 — `_SyncBase.node_id` 는 노드 id 그 자체라, 두 소유자가 같은
     # 슬러그를 가지면 **3-way 병합의 공통 조상 한 행을 나눠 쓴다**(감사 M3). 그러면
-    # 남의 조상으로 내 병합이 계산된다. 근거: [[d11223a9a5d109de5]] §7
+    # 남의 조상으로 내 병합이 계산된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     rows = store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id "
                      "RETURN b.fields AS f, b.base_rev AS rev, b.base_updated_at AS ua",
                      {"id": pkns.key(owner, node_id)})
@@ -122,7 +122,7 @@ def del_base(store, node_id: str, owner: str = "") -> None:
 # 네임스페이스라(감사 H1) 슬러그가 겹치는 두 소유자는 **한 행을 나눠 쓰게 된다.**
 # 그러면 마지막 쓰기가 이기고, 진 쪽의 삭제는 전파가 멈춰 다른 기기에서 노드가
 # 되살아난다. 소유자마다 자기 행을 갖는 것이 진짜 처방인데 그건 PK 를 바꾸는 일이라
-# H1 의 재구축에 태운다([[d11223a9a5d109de5]] §6).
+# H1 의 재구축에 태운다([[vinc.plan.node-pk-namespacing]] §6).
 #
 # 그때까지 **열이 이미 있는 쪽**은 지금 닫는다: 읽기·삭제는 소유자로 걸고, 쓰기는
 # 남의 행을 덮지 않는다. 이걸로 "남의 대기 중 삭제를 취소한다"와 "남의 툼스톤을

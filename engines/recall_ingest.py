@@ -264,7 +264,7 @@ def merge_episode(session, ep: dict[str, Any]) -> None:
     # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. `episode_id` 자체는 논리
     # 슬러그로 남고 `$episode_id`/`$id`/`link_node` 바인딩만 이 값을 쓴다.
     # `normalize=False` 인 이유는 api/fragment._key 주석과 같다(정규화 표는
-    # 마이그레이션용). 근거: [[d11223a9a5d109de5]] §7
+    # 마이그레이션용). 근거: [[vinc.plan.node-pk-namespacing]] §7
     _owner = ep.get("owner_id") or ""
     key = pkns.compose(_owner, ep["episode_id"], normalize=False) if _owner \
         else ep["episode_id"]

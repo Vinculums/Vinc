@@ -230,7 +230,7 @@ class PureChunkingTests(unittest.TestCase):
 
     def test_extract_concepts_rejects_structure_and_clauses(self):
         """구조어·절 문장·6단어 초과 헤딩은 후보가 아니다 — 캐논형 문서 실측에서
-        후보 11/11 이 전부 이런 헤딩이었다(근거: [[d6064cc741e9e121f]] §2)."""
+        후보 11/11 이 전부 이런 헤딩이었다(근거: [[vinc.ops.topic-assignment-eval]] §2)."""
         text = ("# 문서\n\n## Method\n측정 방법.\n\n## Provenance\n출처 표.\n\n"
                 "## Overall verdict\n판정 요약.\n\n"
                 "## What is on the table precisely\n절 문장이다.\n\n"
@@ -550,7 +550,7 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual([c["title"] for c in prop["candidates"]], ["quantum"])
         self.assertNotIn("applied", prop)
         # 주제 없는 문서(프론트매터 domain 도, 파생 주제도 없음)는 반영 거부 —
-        # 무주제 개념 양산 금지(근거: [[d6064cc741e9e121f]] §2).
+        # 무주제 개념 양산 금지(근거: [[vinc.ops.topic-assignment-eval]] §2).
         deny = ds.extract_doc(self.store, did, owner="user:a", apply=True)
         self.assertFalse(deny["executed"])
         self.assertIn("no topic", deny["error"])
@@ -586,7 +586,7 @@ class DocstoreE2E(unittest.TestCase):
 
     def test_domains_census_counts_untopiced(self):
         """무주제 노드는 "(none)" 행 — 걸러 내면 부재가 비존재로 읽혀 센서스가
-        자기가 못 세는 것을 숨긴다(근거: [[d6064cc741e9e121f]] §1.1)."""
+        자기가 못 세는 것을 숨긴다(근거: [[vinc.ops.topic-assignment-eval]] §1.1)."""
         from api import query as q
         self.store.run("MERGE (c:Concept {concept_id: $i}) SET c.owner_id = 'user:a', "
                        "c.title = 'untopiced', c.domain = ''",

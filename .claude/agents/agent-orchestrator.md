@@ -37,8 +37,8 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 ## Read before the first edit, in this order
 
 1. vinc.plan.agent-domain
-2. d8fa9efa40f1a62c7
-3. d3d8100c2be9f2ac4
+2. vinc.release.0-8-4-agents
+3. vinc.release.0-8-4-wave1-report
 4. vinc.canon.repo-workflow
 5. vinc.canon.graph-conventions
 
