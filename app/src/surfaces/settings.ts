@@ -1,5 +1,5 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
-import { accountKey, accountWho, connectAccount, forgetAccount, keyIsOnDisk,
+import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc } from "../components";
@@ -164,10 +164,13 @@ export async function renderSettings(el: HTMLElement) {
     // 행도 부르므로, 폴링을 이 탭 안에 두면 세 벌이 된다.
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
+      // 연결 여부와 표시할 이름은 **다른 질문**이다. 수동으로 붙여넣은 키는 누구
+      // 것인지 알 수 없어 이름이 없고, 이름으로 갈랐더니 로그인해도 미연결 화면이
+      // 나왔다. 카피(`acctConnected`)는 빈 이름을 이미 감당한다.
       const who = accountWho();
-      if (who) {
+      if (hasAccount()) {
         acctBox.innerHTML = `
-          <p>${U.acctConnected(esc(who))}
+          <p>${U.acctConnected(who ? esc(who) : "")}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>
           <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
@@ -360,8 +363,10 @@ export async function renderSettings(el: HTMLElement) {
     const remoteAcct = body.querySelector<HTMLButtonElement>("#mcp-remote-acct")!;
     function paintRemote() {
       const who = accountWho();
-      remoteAcct.hidden = !!who;
-      remoteState.textContent = who ? U.mcpRemoteSignedIn(who) : U.mcpRemoteNeedAccount;
+      const linked = hasAccount();          // 이름 없이 연결된 경우가 있다(수동 키)
+      remoteAcct.hidden = linked;
+      remoteState.textContent = linked
+        ? U.mcpRemoteSignedIn(who || "") : U.mcpRemoteNeedAccount;
     }
     body.querySelector("#mcp-remote-copy")!.addEventListener("click", async () => {
       // 복사가 막혀도 주소는 위에 그대로 떠 있다 — 실패를 오류로 키우지 않는다.
