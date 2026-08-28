@@ -264,7 +264,7 @@ def cmd_pull() -> int:
     from vinc_mcp import remote
 
     res = remote.call("vinc_neighbors",
-                      {"target": "remote", "node": f"domain:{DOMAIN}", "limit": 200})
+                      {"node": f"domain:{DOMAIN}", "limit": 200})
     if res.get("isError") or not res.get("found"):
         raise SystemExit(f"[agents] 도메인 조회 실패: {res.get('error') or res}")
     ids = sorted({n["id"] for n in res.get("neighbors", [])
@@ -275,7 +275,7 @@ def cmd_pull() -> int:
 
     roles = []
     for rid in ids:
-        got = remote.call("vinc_graph", {"target": "remote", "seed_id": rid, "depth": 1})
+        got = remote.call("vinc_graph", {"seed_id": rid, "depth": 1})
         if got.get("isError") or not got.get("found"):
             raise SystemExit(f"[agents] {rid} 조회 실패: {got.get('error')}")
         node = next((n for n in got.get("nodes", []) if n.get("id") == rid), None)

@@ -7,6 +7,11 @@
   URL 은 env `VINC_REMOTE_MCP_URL`(기본 `https://mcp.vincs.io/mcp`).
 - **owner 는 전송하지 않는다** — 원격이 토큰으로 owner 를 정하는 게 권위(멀티테넌트,
   v0.2.0). 로컬 owner 를 실어 보내면 남의 스코프를 넘볼 여지가 되므로 제거한다.
+- **`target` 도 전송하지 않는다** — 그것은 "어느 스토어로 갈까"라는 **호출부의 질문**이고,
+  이 함수를 부른 시점에 이미 답이 났다. 허브에는 갈 곳이 하나뿐이라 인자를 받으면
+  거절한다(`target is not available on this server: this endpoint IS the remote graph`).
+  tools.py 는 부르기 전에 pop 해서 멀쩡했지만 스크립트 셋은 그대로 실어 보내 전부
+  막혀 있었다 — 그래서 호출부마다가 아니라 **여기서** 뗀다.
 - 원격 서버의 `_dispatch` 는 `tools/call` 을 initialize 없이 처리한다(rpc.py) → 단건 POST.
 """
 from __future__ import annotations
@@ -33,7 +38,8 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
     payload = {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": name,
-                   "arguments": {k: v for k, v in (args or {}).items() if k != "owner"}},
+                   "arguments": {k: v for k, v in (args or {}).items()
+                                 if k not in ("owner", "target")}},
     }
     req = urllib.request.Request(_endpoint(), data=json.dumps(payload).encode("utf-8"),
                                  method="POST")
