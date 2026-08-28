@@ -33,11 +33,11 @@
           "switching the language on"
         ],
         "reads": [
-          "db48ec27d7699cbf6",
+          "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
           "vinc.reference.view-controls",
-          "de7597bc59a1e7dbe"
+          "vinc.ops.site-audit-2026-08-22"
         ],
         "repos": [
           "Vinc",
@@ -89,7 +89,7 @@
           "sign off on screen"
         ],
         "reads": [
-          "db48ec27d7699cbf6",
+          "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
           "vinc.reference.view-controls"
@@ -301,7 +301,7 @@
           "vinc.canon.mcp-contract",
           "vinc.canon.chunk-ssot",
           "vinc.canon.code-annotation",
-          "d4c22f23326e41c3c",
+          "vinc.ops.security-audit-2026-08-18",
           "vinc.canon.repo-workflow"
         ],
         "repos": [
@@ -402,7 +402,7 @@
           "public promises"
         ],
         "reads": [
-          "de7597bc59a1e7dbe",
+          "vinc.ops.site-audit-2026-08-22",
           "vinc.spec.email-subsystem",
           "vinc.canon.terminology",
           "vinc.release.changelog",
@@ -513,9 +513,9 @@
         ],
         "pre_merge_check": "gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha. Read it before ANY act that lands a run on main: a merge, a push, or a workflow_dispatch. A run in progress there is the previous commit's verification and survives (ci sets cancel-in-progress only for pull_request). A run that is merely QUEUED does not survive: the group keeps one pending run and a newer arrival supersedes it. So the question is not only whether something is running, it is whether something is waiting. Filter by workflowName; several workflows share a branch and only ci matters here. Never assert that nothing is in flight without running this.\n\nAND READ THE JOBS, NOT THE RUN: gh run view <id> --json jobs. A run's status stays 'queued' until its LAST job finishes, so on a serial runner a run that is actively being worked looks identical to one nothing has picked up. Measured 2026-08-25: seven jobs behind one runner showed run=queued for over half an hour while jobs completed one after another, and hub-deploy was seen going from in_progress back to queued, which reads as a lost runner and is ordinary churn. A monitor that only emits on completion cannot tell the two apart at all.\n\nThe rule covers acts that STOP the runner as well as acts that start a run. Restarting the host lands nothing, so it falls outside a rule written in terms of triggers, and it destroys whatever is executing. Two runs were lost that way in one evening, one of them a 25 minute cold build.",
         "reads": [
-          "d09088bc819562c76",
-          "d8fa9efa40f1a62c7",
-          "d3d8100c2be9f2ac4",
+          "vinc.plan.agent-domain",
+          "vinc.release.0-8-4-agents",
+          "vinc.release.0-8-4-wave1-report",
           "vinc.canon.repo-workflow",
           "vinc.canon.graph-conventions"
         ],
@@ -751,7 +751,7 @@
           "signing key custody"
         ],
         "reads": [
-          "d4c22f23326e41c3c",
+          "vinc.ops.security-audit-2026-08-18",
           "vinc.ops.risk-audit-2026-08-05",
           "vinc.canon.account-policy",
           "vinc.spec.email-subsystem",

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""R9 의 절반 — 로스터가 이 세션에서 보이는가. [[d4ab94561078498e3]] §7.4.
+"""R9 의 절반 — 로스터가 이 세션에서 보이는가. [[vinc.ops.graph-claim-decay]] §7.4.
 
 나머지 절반(하네스가 세션 첫 줄에 스스로 찍는 것)은 이 리포가 못 낸다. 여기서 낼 수
 있는 것은 **물으면 답하는 도구**이고, 그것이 필요한 이유는 [[record:agent-files-are-found-by-walking-up-from-cwd]]

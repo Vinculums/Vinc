@@ -946,7 +946,7 @@ class DocRouteE2E(unittest.TestCase):
             self.assertEqual(got2["text"], "짧아짐")
             # D45-V — 추출 제안(apply 없음) → 반영 → 노드 클릭 상세(정본 발췌)
             # 프론트매터 domain — 주제 없는 문서는 추출 반영이 거부된다(2026-08-24,
-            # 근거: [[d6064cc741e9e121f]] §2). 반영 개념은 이 주제를 물려받는다.
+            # 근거: [[vinc.ops.topic-assignment-eval]] §2). 반영 개념은 이 주제를 물려받는다.
             code, put3 = _req(base, "/doc/put", method="POST", body={
                 "owner": "user:a", "id": did, "title": "t",
                 "text": "---\ndomain: demo\n---\n# t\n\n## 개념하나\n\n"

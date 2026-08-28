@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """PK 네임스페이싱(v0.8.4 axis 1, design A) — 물리 키는 owner 를 안고, 사용자 대면 id 는
 그대로 슬러그다. 합성은 여기 한 곳, 분해는 store/embedded_backend.py 의 한 곳
-(`_exec_to_dicts`, PR-B)뿐이다. 근거: [[d11223a9a5d109de5]] §7.
+(`_exec_to_dicts`, PR-B)뿐이다. 근거: [[vinc.plan.node-pk-namespacing]] §7.
 
 `VINC_PK_NAMESPACED` 가 꺼져 있으면(로컬 스토어는 영구히 꺼진 채) compose/strip 은
 항등함수다 — 데스크탑은 이 파일이 존재하는 것도 몰라야 한다.
@@ -82,7 +82,7 @@ def key(owner: str | None, nid: str) -> str:
     읽기·쓰기가 전부 ValueError 로 죽는다.
 
     owner 가 비면 합성하지 않는다 — owner 없이 도는 경로(로컬 단일 사용자, 무스코프
-    조회)는 플래그가 꺼진 스토어다. 근거: [[d11223a9a5d109de5]] §7"""
+    조회)는 플래그가 꺼진 스토어다. 근거: [[vinc.plan.node-pk-namespacing]] §7"""
     return compose(owner, nid, normalize=False) if (owner and nid) else nid
 
 
@@ -102,7 +102,7 @@ def ekey(owner: str, src: str, rel: str, dst: str) -> str:
     붙이면 ``owner\\x1fsrc|REL|owner\\x1fdst`` 라는 **재합성된** 키가 나와 같은 엣지가
     두 개의 서로 다른 툼스톤 키를 갖게 된다(그러면 삭제 표식이 상쇄되지 않는다).
     여기서 strip 을 먼저 하므로 어느 형태를 넘겨도 결과가 같다. 근거:
-    [[d11223a9a5d109de5]] §7"""
+    [[vinc.plan.node-pk-namespacing]] §7"""
     return compose(owner, f"{strip(src)}|{rel}|{strip(dst)}", normalize=False)
 
 

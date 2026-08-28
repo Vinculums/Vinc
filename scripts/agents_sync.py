@@ -126,9 +126,14 @@ def dangling_reads(snapshot: dict, docs: set[str]) -> list[tuple[str, str]]:
 
     왜 필요한가: `reads` 는 이 설계의 핵심이면서(프롬프트 헤더를 대체하는 자리) 지금껏
     **아무도 검사하지 않는 문자열**이었다. 표기가 두 형식으로 섞여 있는 것이 그것을
-    가린다 — P5 코퍼스는 점 표기 자체가 store 키이고(`vinc.spec.dataplane`), 2026-08-19
-    이후 문서는 해시(`d8fa9efa40f1a62c7`)다. 해시로 통일하는 길은 없다. 앞쪽 41건에는
-    해시가 아예 존재하지 않기 때문이다. 그래서 두 형식 모두 존재를 검사한다.
+    가린다 — P5 코퍼스는 점 표기 자체가 store 키이고(`vinc.spec.dataplane`), 그 뒤에
+    쓰인 문서 중 일부는 해시다(`d8dc6d55b36241dab`). 해시로 통일하는 길은 없다. 앞쪽
+    41건에는 해시가 아예 존재하지 않기 때문이다. 그래서 두 형식 모두 존재를 검사한다.
+
+    ⚠ 2026-08-28 에 해시 문서 14건을 **선언된 점 표기 id 로 재키했다**(front matter 가
+    선언한 id 와 저장 id 가 달랐던 것들). 섞임 자체는 남는다 — front matter 가 없어
+    선언 id 가 아예 없는 문서는 해시로 남았고, 그것이 위 예시다. 검사가 두 형식을 다
+    보는 이유는 그대로다.
 
     이것이 잡는 실제 사고: 2026-08-09 P5 개명이 문서 id 를 통째로 옮겼을 때 코드 주석의
     인용 24건 중 19건이 **조용히** 끊어졌다([[record:code-citations-rot-silently-without-a-gate]]).
@@ -239,7 +244,7 @@ def render_shell(role: dict) -> str:
         "This is not a style rule. A session reported a findability check as having been asked",
         "in Korean when it had been asked in English, and nothing in the output told the two",
         "apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the",
-        "sentence instead. Reasoning: [[d4ab94561078498e3]] section 7.4.",
+        "sentence instead. Reasoning: [[vinc.ops.graph-claim-decay]] section 7.4.",
         "",
         "Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not",
         "escalate; it returns the package to its author instead.",

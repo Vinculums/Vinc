@@ -67,7 +67,7 @@ def backfill_episode_time_fields(store) -> int:
             "MATCH (e:Episode) WHERE e.props IS NOT NULL AND e.props <> '' "
             # PK 네임스페이싱 — 이 조회가 주는 id 는 읽기 훅(_exec_to_dicts)이 논리로
             # 되돌린 슬러그다. 아래에서 **다시 바인딩**하므로 각 행의 owner 로 합성해야
-            # 한다. 그래서 owner_id 를 함께 싣는다. 근거: [[d11223a9a5d109de5]] §7
+            # 한다. 그래서 owner_id 를 함께 싣는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
             "RETURN e.episode_id AS id, e.props AS props, e.owner_id AS owner_id, "
             + ", ".join(f"e.{c} AS {c}" for c in _EPISODE_PROMOTED_COLS))
     except Exception:
@@ -553,7 +553,7 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
     # PK 네임스페이싱(design A)의 **유일한** 분해 지점. 프로젝션 64개·별칭 10개를
     # 하나하나 고치지 않는 이유가 이것이다 — `run()`·`_Session.run`·reader 커넥션·
     # 전문/벡터 검색이 전부 여기를 지난다. 판별자는 U+001F 존재이고, 좁히기는
-    # `pkns.looks_physical` 이 진다(문서 본문 보호). 근거: [[d11223a9a5d109de5]] §7
+    # `pkns.looks_physical` 이 진다(문서 본문 보호). 근거: [[vinc.plan.node-pk-namespacing]] §7
     #
     # 플래그가 꺼져 있으면 리스트를 손대지 않는다 — 로컬/데스크탑은 영구히 그쪽이고,
     # 이 함수는 모든 읽기의 뜨거운 길이라 행마다 재귀를 도는 비용을 물릴 이유가 없다.

@@ -224,7 +224,7 @@ def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> Quer
     depth = max(1, min(int(depth), 4))
     # PK 네임스페이싱 — `$topic` 은 **id 열과 title 열에 동시에** 쓰인다. 하나로
     # 합성하면 제목 매치가 죽는다(제목은 논리 텍스트다). 그래서 id 열용 물리 키를
-    # `$tkey` 로 따로 싣는다. 근거: [[d11223a9a5d109de5]] §7
+    # `$tkey` 로 따로 싣는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     params = {"topic": topic, "tkey": pkns.key(owner, topic)}
     cypher = (
         "MATCH (n) WHERE n.concept_id = $tkey OR n.bridge_id = $tkey "
@@ -333,7 +333,7 @@ def domain_counts_plan(*, owner: str | None = None) -> QueryPlan:
     무주제 노드도 **센다** — WHERE 는 owner 스코프만 건다. domain 이 NULL·'' 인
     행은 :func:`domains` 가 "(none)" 한 줄로 합친다. 여기서 걸러 내면 무주제는
     0이 아니라 부재로 읽혀, 센서스가 자기가 못 세는 것을 숨긴다.
-    근거: [[d6064cc741e9e121f]] §1.1"""
+    근거: [[vinc.ops.topic-assignment-eval]] §1.1"""
     if owner:
         where_e = "WHERE e.owner_id = $owner"
         where_c = "WHERE c.owner_id = $owner"
@@ -796,7 +796,7 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) ->
     owner=None(로컬 단일 사용자)이면 기존 동작."""
     depth = max(1, min(int(depth), 4))
     # PK 네임스페이싱 — `$seed` 는 노드 PK 바인딩이라 물리 키다(반환 id 는 읽기 훅이
-    # 논리로 되돌린다). 근거: [[d11223a9a5d109de5]] §7
+    # 논리로 되돌린다). 근거: [[vinc.plan.node-pk-namespacing]] §7
     params: dict = {"seed": pkns.key(owner, seed)}
     n_where, m_where = "n.concept_id = $seed", ""
     if owner:
@@ -2271,7 +2271,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
             f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props",
             # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
-            # 그대로다(사용자가 준 값). 근거: [[d11223a9a5d109de5]] §7
+            # 그대로다(사용자가 준 값). 근거: [[vinc.plan.node-pk-namespacing]] §7
             {"id": pkns.key(owner, node), "owner": owner})
         if rows:
             # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
@@ -4042,7 +4042,7 @@ def _path_hint(props: dict, title: str) -> str:
 def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     limit: int | None = None) -> dict:
     """R5 — **주장 진단**: 같은 파일을 두고 어긋난 기록 짝, 그리고 코드를 말하면서
-    닻이 없는 기록. [[d4ab94561078498e3]] §7.3.
+    닻이 없는 기록. [[vinc.ops.graph-claim-decay]] §7.3.
 
     §6.1 이 "조인 키는 만들었는데 조인을 돌리는 것이 없다"고 지목한 그 러너다. R4 가
     `props.subject_path` 를 쓰기 시점에 정규화해 두었으므로 여기서는 문자열 동치로
@@ -4522,7 +4522,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # "user" 하나로 전량 매치). 아래 파이썬 재필터는 읽기 훅이 되돌린 **논리** id 로
     # 다시 재므로 결과가 틀리지는 않지만, NODE_SCAN_CAP 을 그 쓰레기로 채우면 진짜
     # 매치가 잘린다. 그래서 **id 열에서만** 그런 토큰을 뺀다.
-    # 근거: [[d11223a9a5d109de5]] §7
+    # 근거: [[vinc.plan.node-pk-namespacing]] §7
     own_low = (owner or "").lower() if pkns.enabled() else ""
     id_idx = [i for i in idx if not (own_low and toks[i] in own_low)]
 
@@ -5352,7 +5352,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         # PK 네임스페이싱 — 이 함수의 모든 `$id`/`$s`/`$d`/`$r`/`$k`/`$b` 는 노드 PK
         # 바인딩이다. 반대로 조회가 돌려주는 `other` 는 읽기 훅이 되돌린 **논리**
         # 슬러그이므로, `keep_id`/`drop_id` 와의 비교는 논리끼리 그대로 맞는다 —
-        # 합성은 **다시 바인딩할 때만** 한다. 근거: [[d11223a9a5d109de5]] §7
+        # 합성은 **다시 바인딩할 때만** 한다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         def _k(v: str) -> str:
             return pkns.key(owner, v)
 

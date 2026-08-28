@@ -39,7 +39,7 @@ def _seed(runner, cypher: str, *, owner: str = "u", **params):
 
     리터럴을 문자열로 되붙이지 않고 **파라미터로** 빼는 이유: 값을 Cypher 문자열에
     끼워 넣는 것은 이 리포가 게이트로 막는 형태다(`scripts/gate_escape.py`).
-    근거: [[d11223a9a5d109de5]] §7"""
+    근거: [[vinc.plan.node-pk-namespacing]] §7"""
     bound: dict[str, str] = {}
 
     def _sub(m):

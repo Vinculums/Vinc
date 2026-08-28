@@ -31,7 +31,7 @@ def _flag_is_not_leaked():
     "앞부분만 돌았다"였고, 그 뒤에 숨어 있던 실패가 7건이었다(test_view_viewpoints).
 
     자기 테스트 안에서 켜고 끄는 것은 정상이다 — 여기서 재는 것은 **끝난 뒤의 값**
-    하나뿐이다. 근거: [[d11223a9a5d109de5]] §7"""
+    하나뿐이다. 근거: [[vinc.plan.node-pk-namespacing]] §7"""
     before = os.environ.get(_FLAG)
     yield
     after = os.environ.get(_FLAG)

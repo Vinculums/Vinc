@@ -180,7 +180,7 @@ _READBACK_BUDGET = 256 * 1024
 #: R4 — 코드에 대한 주장을 **조회 가능**하게 만드는 예약 props 셋. 산문 규약(§3:
 #: "측정으로 쓰고 경로를 적는다")은 사람이 읽어야 비교되고, 이 셋은 질의가 비교한다.
 #: `record` 만 싣는다 — 개념은 서술하고, 결정은 고르고, **측정하는 것은 기록**이다.
-#: 근거: [[d4ab94561078498e3]] §7.3 R4.
+#: 근거: [[vinc.ops.graph-claim-decay]] §7.3 R4.
 _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 
 
@@ -367,7 +367,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # PK 네임스페이싱(design A) 의 물리 키 판별자가 U+001F 존재 여부다
         # (strip 이 이 바이트로 owner 를 잘라낸다). 사용자 입력에 이 바이트가
         # 섞이면 나중에 물리 키로 오인되므로 지금 이 노드만 스킵한다.
-        # 근거: [[d11223a9a5d109de5]] §7
+        # 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
         return None
@@ -436,7 +436,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # — 노드 PK 가 전역 네임스페이스라 그 슬러그의 물리 노드는 허브에 하나뿐이다.
             # 그래서 이유·영속성·다음 행동을 한 문장에 싣고, 아래 `id_conflicts` 로
             # **구조화해서** 낸다(warnings 배열은 호스트가 안 보여 주기도 한다).
-            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[d11223a9a5d109de5]].
+            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[vinc.plan.node-pk-namespacing]].
             if conflicts is not None:
                 conflicts.append(nid)
             warnings.append(
@@ -772,7 +772,7 @@ def _resolve_endpoint_type(store, nid: str, *, owner: str | None,
     SEC-3(``osc``): owner 강제 경로에서는 소유로 건다. 안 걸면 남의 노드가 **존재하는지**
     알려 주고, 더 나쁜 것은 그 노드로 향하는 엣지를 해석해 준다. 프로브 실패(방언·
     미프로비저닝)는 종전 동작(미선언 경고)으로 조용히 강등한다 — 해석은 증강이다.
-    근거: [[d11223a9a5d109de5]] §7"""
+    근거: [[vinc.plan.node-pk-namespacing]] §7"""
     prefix = nid.split(":", 1)[0] if ":" in nid else ""
     if prefix == "domain":
         return ""
@@ -816,7 +816,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     if pkns.has_sep(edge):
         # 노드와 같은 이유(_merge_node 주석) — U+001F 는 물리 키 판별자라 엣지
-        # 끝점/타입에 섞이면 안 된다. 근거: [[d11223a9a5d109de5]] §7
+        # 끝점/타입에 섞이면 안 된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"edge contains U+001F (reserved for PK namespacing) — skipped ({src}→{dst})")
         return None
@@ -830,7 +830,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # owner 를 `DEFAULT_OWNER` 로 메우는 이유: 아래 `_stamp_edge_endpoints` 가 이미
     # 같은 코얼레스로 owner 를 받아 툼스톤 `ekey` 를 합성한다. 여기서 안 메우면
     # owner 없이 직접 부른 경로에서 노드 키는 논리인데 ekey 만 합성돼 삭제 표식이
-    # 상쇄되지 않는다. 근거: [[d11223a9a5d109de5]] §7
+    # 상쇄되지 않는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     eowner = owner or DEFAULT_OWNER
     ksrc, kdst = _key(eowner, src), _key(eowner, dst)
     # axis2 item1 — 페이로드에 안 실린 끝점은 **스토어에 물어본다**. `declared` 에
@@ -1032,7 +1032,7 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
 
     ``owner``: 쓰기 경로에 있는 **조회**라 PK 네임스페이싱을 함께 태워야 한다 —
     안 태우면 플래그가 켜진 스토어에서 이 조회가 항상 0행이라 방금 정상으로 이은
-    결정에까지 고아 경고가 붙는다([[d11223a9a5d109de5]] §7)."""
+    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7)."""
     for nid, ntype in types.items():
         if ntype != "decision":
             continue

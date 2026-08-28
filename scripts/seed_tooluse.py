@@ -94,7 +94,7 @@ def seed(store) -> dict:
     네임스페이싱(design A)이 켜지면 읽기 플랜이 owner 로 합성한 물리 키로 묻기
     때문에, 노드 PK 는 여기서도 `_k` 로 합성해야 한다 — 안 하면 평가셋이 통째로
     빈손이 되고, 그 실패는 "도구가 답을 못 준다"로 오독된다.
-    근거: [[d11223a9a5d109de5]] §7"""
+    근거: [[vinc.plan.node-pk-namespacing]] §7"""
     def _k(nid: str) -> str:
         return pkns.key(OWNER, nid)
 

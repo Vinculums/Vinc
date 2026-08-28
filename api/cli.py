@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     # ⚠ 이 셋은 오래도록 `--owner` 가 **없었다**. SEC-1 이전 유물인데, PK
     # 네임스페이싱이 켜지면 그것이 무음 고장이 된다: `pkns.key(None, id)` 는 논리
     # 슬러그를 그대로 돌려주고, 그 값은 물리 키가 실린 행을 못 짚어 SET 이 0행을
-    # 맞춘다(오류 없이 아무 일도 안 일어난다). 근거: [[d11223a9a5d109de5]] §7
+    # 맞춘다(오류 없이 아무 일도 안 일어난다). 근거: [[vinc.plan.node-pk-namespacing]] §7
     pn = sub.add_parser("pin", help="pin/unpin an Episode (preference signal)")
     pn.add_argument("--episode", required=True)
     pn.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")

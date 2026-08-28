@@ -142,7 +142,7 @@ def merge_links(store, links: list[dict], concepts: list[dict],
             f"MATCH (ch:Chunk {{chunk_id: $cid}}), (co:{lbl} {{{pk_of[lbl]}: $koid}}) "
             "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
             # PK 네임스페이싱 — $koid 는 노드 PK 바인딩이라 물리 키다($cid 는 Chunk 로,
-            # 마이그레이션 대상 라벨이 아니라 논리 그대로). 근거: [[d11223a9a5d109de5]] §7
+            # 마이그레이션 대상 라벨이 아니라 논리 그대로). 근거: [[vinc.plan.node-pk-namespacing]] §7
             {"cid": lk["chunk_id"], "koid": pkns.key(owner, lk["concept_id"]),
              "method": lk["method"]})
         n += 1

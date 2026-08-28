@@ -36,9 +36,9 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Read before the first edit, in this order
 
-1. d09088bc819562c76
-2. d8fa9efa40f1a62c7
-3. d3d8100c2be9f2ac4
+1. vinc.plan.agent-domain
+2. vinc.release.0-8-4-agents
+3. vinc.release.0-8-4-wave1-report
 4. vinc.canon.repo-workflow
 5. vinc.canon.graph-conventions
 
@@ -83,7 +83,7 @@ or the call id. A statement without one is reported in the word assumed.
 This is not a style rule. A session reported a findability check as having been asked
 in Korean when it had been asked in English, and nothing in the output told the two
 apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the
-sentence instead. Reasoning: [[d4ab94561078498e3]] section 7.4.
+sentence instead. Reasoning: [[vinc.ops.graph-claim-decay]] section 7.4.
 
 Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not
 escalate; it returns the package to its author instead.

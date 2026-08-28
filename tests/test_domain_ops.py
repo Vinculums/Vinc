@@ -71,7 +71,7 @@ class DomainRenameE2E(unittest.TestCase):
     def test_empty_new_unassigns_but_keeps_nodes(self):
         """new='' = 미분류 — 도메인은 사라지고 노드는 남는다(삭제와 구분).
         미분류는 이제 센서스에서 부재가 아니라 "(none)" 행이다(근거:
-        [[d6064cc741e9e121f]] §1.1) — 그래서 빈 dict 가 아니라 그 행을 기대한다."""
+        [[vinc.ops.topic-assignment-eval]] §1.1) — 그래서 빈 dict 가 아니라 그 행을 기대한다."""
         q.rename_domain(owner=A, old="physics", new="", store=self.store)
         doms = self._domains(A)
         self.assertEqual(set(doms), {"(none)"})

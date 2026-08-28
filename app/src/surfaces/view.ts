@@ -1766,7 +1766,7 @@ export async function renderView(el: HTMLElement) {
     // **hover 가 아니라 초점에 매단다**: 지나가기만 해도 폐포가 켜지면 이웃 흐림과
     // 두 문법이 같은 손짓을 놓고 다툰다. 이 함수는 모든 초점 경로가 모이는
     // 깔때기라(클릭 · focusNode · 컨텍스트 메뉴) 한 자리로 전부 덮인다.
-    // 근거: [[dcb46a8f794dba72b]] §4 — 인과 순서가 이 그래프가 원래 가진 구조다.
+    // 근거: [[vinc.research.minkowski-causal-order]] §4 — 인과 순서가 이 그래프가 원래 가진 구조다.
     {
       const dir = curEdges.filter((e) => DIRECTED_RELS.includes(e.type));
       setSpot(spotOf([...causalCone(dir, nd.id, "past"),

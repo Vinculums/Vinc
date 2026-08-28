@@ -446,7 +446,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # PK 네임스페이싱(design A) 판별자 U+001F 가 id·문자열 필드에 섞이면 안 된다
     # (strip 이 이 바이트로 owner 를 잘라내므로 물리 키로 오인된다). text 는 원문
     # 정본(D45)이라 제외 — 검열이 아니라 키 재료가 되는 필드만 본다.
-    # 근거: [[d11223a9a5d109de5]] §7
+    # 근거: [[vinc.plan.node-pk-namespacing]] §7
     if pkns.has_sep((owner, doc_id, title, origin)):
         base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
@@ -1122,7 +1122,7 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
     rows = store.run(
         f"MATCH (c:Concept) WHERE c.concept_id = $id{where_owner} "
         "RETURN c.title AS title, c.stem AS stem",
-        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[d11223a9a5d109de5]] §7
+        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         {"id": pkns.key(owner, concept_id),
          **({"owner": owner} if owner else {})})
     if not rows:
@@ -1344,7 +1344,7 @@ def _clean_heading(title: str) -> str:
 
 # 구조어 — 코퍼스 관례가 만드는 절 이름들(방법·출처·평결…). 문서의 뼈대라서
 # 개념이 될 수 없다. 실측: 캐논형 문서에서 후보 11/11 이 전부 이런 헤딩이었고,
-# 반영하니 무주제 문서 1개가 무주제 개념 11개가 됐다. 근거: [[d6064cc741e9e121f]] §2
+# 반영하니 무주제 문서 1개가 무주제 개념 11개가 됐다. 근거: [[vinc.ops.topic-assignment-eval]] §2
 _STRUCT_SLUGS = frozenset({
     "method", "methods", "provenance", "verdict", "overall-verdict", "summary",
     "overview", "introduction", "background", "conclusion", "results", "discussion",
@@ -1411,7 +1411,7 @@ def extract_concepts(text: str, *, max_candidates: int = 24) -> list[dict]:
     :func:`_one_liner` 로 첫 문장까지 잇는다. **one_liner 가 빈 후보는 버린다** —
     설명 없는 개념은 상류가 판단할 재료가 없고, Ask 는 그걸 제목만으로 내민다
     (추출 계약은 [[vinc.canon.chunk-ssot]] §6.1). 구조어·절 문장·6단어 초과 헤딩도
-    버린다(:func:`_concept_shaped` — 근거: [[d6064cc741e9e121f]] §2)."""
+    버린다(:func:`_concept_shaped` — 근거: [[vinc.ops.topic-assignment-eval]] §2)."""
     out: list[dict] = []
     seen: set[str] = set()
     lines = text.splitlines()
@@ -1488,7 +1488,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
       그래프 암에 합류). 주제 원천은 프론트매터 `domain:` → 문서의 파생 주제 순.
       **둘 다 없으면 반영을 거부한다** — 빈 domain 으로 만들면 무주제 문서 1개가
       무주제 개념 N개가 되고 문서 주제는 그대로 비었다(실측 11건, 같은 날 삭제.
-      근거: [[d6064cc741e9e121f]] §2). **기존 개념(matched)은 title/one_liner 를
+      근거: [[vinc.ops.topic-assignment-eval]] §2). **기존 개념(matched)은 title/one_liner 를
       덮어쓰지 않는다** — 사용자가 다듬은 노드 보호(읽고 스킵). 단 비어 있는
       content_time·domain 은 채운다(아래).
     - SEC-1: doc 소유 가드. 반환 {executed, doc_id, candidates, applied:{created,
@@ -1524,7 +1524,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         return base
     # 추출 개념은 주제를 갖고 태어난다 — 원천: 프론트매터 `domain:` → 파생 주제.
     # 둘 다 없으면 거부: 주제 없는 반영은 문서를 낫게 하지 못하고 무주제 노드만
-    # 늘린다. 근거: [[d6064cc741e9e121f]] §2
+    # 늘린다. 근거: [[vinc.ops.topic-assignment-eval]] §2
     dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
     if not dom:
         base["executed"] = False
@@ -1545,7 +1545,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. 사용자 대면 id 는
         # `cid` 그대로다. `normalize=False` 인 이유는 api/fragment._key 주석과 같다
         # (정규화 표는 마이그레이션용이고 여기 owner 는 이미 실 계정이다).
-        # 근거: [[d11223a9a5d109de5]] §7
+        # 근거: [[vinc.plan.node-pk-namespacing]] §7
         key = pkns.compose(owner, cid, normalize=False) if owner else cid
         exists = store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.owner_id AS o, "
