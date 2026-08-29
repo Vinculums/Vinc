@@ -79,10 +79,13 @@ class ConventionsContractTests(unittest.TestCase):
         self.assertIn("web app", d)
 
     def test_whoami_도구는_여전히_없다(self):
-        """결정이 기각한 것을 슬쩍 되살리지 않았는지 — 도구 수는 22 그대로다."""
+        """결정이 기각한 것을 슬쩍 되살리지 않았는지 — 도구 수는 23 이다.
+
+        ⚠ 이 수는 whoami 가 아니라 **의도한 추가**로만 움직인다. 23 은 W1 의
+        vinc_brief 한 건이 늘어난 값이다([[vinc.plan.mcp-agent-surface §4]])."""
         from vinc_mcp.tools import TOOLS
         self.assertEqual([t for t in TOOLS if "whoami" in t["name"]], [])
-        self.assertEqual(len(TOOLS), 22)
+        self.assertEqual(len(TOOLS), 23)
 
 
 _DRIVER = None

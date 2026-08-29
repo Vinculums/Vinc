@@ -2305,7 +2305,7 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
 
 
 def node_context(*, owner: str, node: str, limit: int = 4,
-                 cfg=None, store=None) -> dict:
+                 with_evidence: bool = False, cfg=None, store=None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
     어느 정본이 근거인가". 조회 전용.
 
@@ -2435,7 +2435,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "method": r.get("method") or "",
         } for r in ment]
         base["arm"] = arm
-        base["links"] = _node_links(store, node, owner=owner)
+        base["links"] = _node_links(store, node, owner=owner,
+                                    with_evidence=with_evidence)
         return base
     except Exception as exc:
         base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
@@ -2450,7 +2451,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
 _NODE_LINKS_CAP = 24
 
 
-def _node_links(store, node: str, *, owner: str) -> dict:
+def _node_links(store, node: str, *, owner: str,
+                with_evidence: bool = False) -> dict:
     """개념의 연결 요약 + 관계 목록(:func:`node_context` ④). 조회 전용.
 
     개념↔개념(방향 3종 + RELATED_TO)은 양방향으로 세고, 부착(Bridge 매개·Episode
@@ -2526,7 +2528,7 @@ def _node_links(store, node: str, *, owner: str) -> dict:
                                    str(r.get("id") or ""))):
         # Record 카드 본문 — note 우선, 없으면 one_liner(두 이름이 실제로 쓰인다).
         props = _props_to_obj(r.get("raw_props")) if r.get("raw_props") else {}
-        items.append({
+        item = {
             "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
             "domain": r.get("domain") or "", "type": r.get("type") or "",
             "dir": r.get("dir") or "",
@@ -2538,10 +2540,184 @@ def _node_links(store, node: str, *, owner: str) -> dict:
             # 카드에서 유효한 것과 똑같이 보이면 이 열은 없는 것과 같다.
             "valid_from": r.get("valid_from") or "",
             "valid_until": r.get("valid_until") or "",
-        })
+        }
+        if with_evidence:
+            # W1 — 에이전트는 "근거가 있다"가 아니라 **그 문장**을 인용해야 한다.
+            # 화면은 불리언만 쓰므로 키 자체를 그때만 단다: 기본 호출의 페이로드는
+            # 한 바이트도 안 변한다. 근거: [[vinc.plan.mcp-agent-surface §4]]
+            item["evidence_text"] = (r.get("ev") or "").strip()
+        items.append(item)
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "items": items[:_NODE_LINKS_CAP],
             "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+
+
+# ── vinc_brief — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기 ──────────────
+#
+# 생성은 없다. 재료가 곧 답이고, 해소 규칙은 데스크탑 Ask 흐름
+# (`app/src/ask.ts` 의 resolve·answerFor·pickBody)에서 그대로 옮겨 왔다. 임의
+# 임계값을 두지 않는 것이 요점이다 — 1위가 2위를 **엄격히** 이길 때만 확정하고,
+# 비기면 후보를 돌려주며 되묻는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
+
+_BRIEF_TOP_K = 5              # search 에 요구할 청크 수(node_hits 는 별도 팔이다)
+_BRIEF_CANDIDATES = 3         # 되묻을 때 실을 후보 수 — ask.ts 와 같다
+_BRIEF_BODY_KEYS = ("note", "summary", "one_liner", "description", "desc")
+_BRIEF_MIN_PROP_BODY = 12     # props 값을 문장으로 볼 최소 길이 — ask.ts 와 같다
+
+
+def _brief_int(v) -> int:
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _brief_norm(s) -> str:
+    return str(s or "").strip().lower()
+
+
+def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
+    """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
+
+    ⚠ 그래프 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 청크 인접은
+    "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은
+    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계)."""
+    rows = [h for h in hits if isinstance(h, dict) and h.get("id")]
+    if not rows:
+        return "none", []
+    q = _brief_norm(query)
+    for h in rows:                  # 제목이 질문과 같으면 그것 — 이름을 댄 경우다
+        if _brief_norm(h.get("title")) == q:
+            return "resolved", [h]
+    if len(rows) == 1:
+        return "resolved", [rows[0]]
+    # 안정 정렬 — 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
+    ranked = sorted(rows, key=lambda h: (-_brief_int(h.get("hit_tokens")),
+                                         -_brief_int(h.get("title_tokens"))))
+    top, second = ranked[0], ranked[1]
+    decisive = _brief_int(top.get("hit_tokens")) > 0 and (
+        _brief_int(top.get("hit_tokens")) > _brief_int(second.get("hit_tokens"))
+        or _brief_int(top.get("title_tokens")) > _brief_int(second.get("title_tokens")))
+    return ("resolved", [top]) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
+
+
+def _brief_body(ctx: dict) -> dict:
+    """본문 고르기 — one_liner → props → 정본 발췌. ask.ts pickBody 의 이식.
+
+    one_liner 만 보면 답이 통째로 빌 수 있다(그 열이 생기기 전에 쓰인 개념은 여전히
+    빈 값이다). 마지막 폴백인 발췌는 생성이 아니라 **인용**이라 출처를 함께 낸다.
+    ⚠ ask.ts 와 한 곳 다르다: 같은 길이의 props 값이 여럿일 때 ask.ts 는 객체 순서에
+    기대지만, 여기서는 키 이름으로 갈라 같은 질문이 늘 같은 답을 내게 했다."""
+    ol = str(ctx.get("one_liner") or "").strip()
+    if ol:
+        return {"text": ol, "src": "one_liner", "cite": ""}
+    props = ctx.get("props")
+    props = props if isinstance(props, dict) else {}
+    for k in _BRIEF_BODY_KEYS:
+        v = props.get(k)
+        if isinstance(v, str) and v.strip():
+            return {"text": v.strip(), "src": "props", "cite": ""}
+    rest = sorted(((k, v.strip()) for k, v in props.items()
+                   if isinstance(v, str) and len(v.strip()) > _BRIEF_MIN_PROP_BODY),
+                  key=lambda kv: (-len(kv[1]), kv[0]))
+    if rest:
+        return {"text": rest[0][1], "src": "props", "cite": ""}
+    for e in ctx.get("excerpts") or []:
+        text = str(e.get("excerpt") or "").strip()
+        if text:
+            where = str(e.get("doc_title") or e.get("doc_id") or "")
+            sec = str(e.get("section") or "")
+            return {"text": text, "src": "doc",
+                    "cite": (where + " · " + sec) if sec else where}
+    return {"text": "", "src": "none", "cite": ""}
+
+
+def _brief_grounds(node_id: str, excerpts: list[dict], items: list[dict]) -> list[str]:
+    """모든 주장이 딛고 선 id — 노드·정본 문서·관계 상대. 정렬해 결정론으로 둔다.
+
+    축소기가 발췌를 덜어내도 이 목록은 남으므로, 잘린 재료를 doc_id 로 다시 가져올
+    수 있다."""
+    out = {node_id} if node_id else set()
+    out |= {str(e.get("doc_id") or "") for e in excerpts}
+    out |= {str(i.get("id") or "") for i in items}
+    return sorted(x for x in out if x)
+
+
+def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
+          max_excerpts: int = 3, cfg=None, store=None) -> dict:
+    """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
+
+    search 로 후보를 찾아 해소하고, 확정되면 node_context 로 본문·발췌·관계를 한 번에
+    붙인다. 확정이 안 되면 status="choose" 로 후보를 돌려주지 **추측하지 않는다**.
+
+    반환: {kind, executed, query, status: resolved|choose|none, node:{id,title,
+           domain,kind}, one_liner, body_src, body_cite, excerpts:[...],
+           links:{degree,out,in,attached,items,truncated} (items 는 evidence 불리언과
+           evidence_text 문장을 함께 싣는다), candidates:[...],
+           grounds:[id...]}. 근거: [[vinc.plan.mcp-agent-surface §4]]"""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "brief", "executed": False, "query": query,
+                  "status": "none", "candidates": [], "grounds": []}
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
+                     owner=owner, store=store)
+        base["executed"] = bool(res.get("executed"))
+        for k in ("error", "note", "node_error"):
+            if res.get(k):
+                base[k] = res[k]
+        if base.get("error"):
+            return base
+        status, picked = _brief_resolve(query, res.get("node_hits") or [])
+        base["status"] = status
+        if status == "choose":
+            base["candidates"] = [{
+                "id": h.get("id") or "",
+                "title": h.get("title") or (h.get("id") or ""),
+                "domain": h.get("domain") or "", "kind": h.get("kind") or "",
+                "matched_in": h.get("matched_in") or "",
+                "hit_tokens": _brief_int(h.get("hit_tokens")),
+                "title_tokens": _brief_int(h.get("title_tokens")),
+            } for h in picked]
+            return base
+        if status == "none":
+            return base
+        hit = picked[0]
+        nid = str(hit.get("id") or "")
+        # 관계마다 근거 문장을 함께 받는다 — 에이전트는 그것을 인용해야 한다.
+        ctx = node_context(owner=owner, node=nid, limit=max_excerpts,
+                           with_evidence=True, store=store)
+        if not ctx.get("executed"):
+            # 검색이 준 id 를 상세가 못 찾는다 — 조용히 빈 답을 내지 말고 사유를 남긴다.
+            base["status"] = "none"
+            base["note"] = ctx.get("note") or ("node not found: " + nid)
+            return base
+        base["node"] = {"id": nid,
+                        "title": ctx.get("title") or hit.get("title") or nid,
+                        "domain": hit.get("domain") or "",
+                        "kind": ctx.get("node_kind") or hit.get("kind") or ""}
+        body = _brief_body(ctx)
+        base["one_liner"] = body["text"]
+        base["body_src"] = body["src"]
+        base["body_cite"] = body["cite"]
+        base["excerpts"] = list(ctx.get("excerpts") or [])
+        links = ctx.get("links") if isinstance(ctx.get("links"), dict) else {}
+        items = list(links.get("items") or [])
+        # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
+        # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
+        items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
+                                   0 if it.get("evidence") else 1))
+        base["links"] = {**links, "items": items}
+        base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
+        return base
+    finally:
+        if owns:
+            store.close()
 
 
 # edge_context 허용 관계 — E-G6 evidence/confidence 보유 5종만. etype 은 Cypher 에

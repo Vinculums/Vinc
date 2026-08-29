@@ -128,6 +128,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--detail", choices=["summary", "full"], default="summary",
                    help="summary = snippet rows (default); full = whole chunk text")
 
+    b = sub.add_parser("brief", help="one question in, joined answer material out")
+    b.add_argument("--query", required=True)
+    b.add_argument("--owner", required=True)
+    b.add_argument("--max-excerpts", type=int, default=3)
+
     d = sub.add_parser("decide", help="decision-support graph traversal")
     d.add_argument("--topic", required=True)
     d.add_argument("--depth", type=int, default=2)
@@ -318,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "search":
         return _emit(q.search(args.query, top_k=args.top_k,
                               cursor=args.cursor, detail=args.detail))
+    if args.cmd == "brief":
+        return _emit(q.brief(args.query, owner=args.owner,
+                             max_excerpts=args.max_excerpts))
     if args.cmd == "decide":
         return _emit(q.decide(args.topic, depth=args.depth))
     if args.cmd == "plan":

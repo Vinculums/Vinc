@@ -50,7 +50,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # F10-b 의 읽는 쪽. 쓸 수만 있고 읽을 수 없던 짝 결손.
              "vinc_merge_rejections",
              # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
-             "vinc_conventions"}
+             "vinc_conventions",
+             # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(조회 전용).
+             "vinc_brief"}
 
 
 class _StubBridge(Bridge):

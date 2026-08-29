@@ -243,7 +243,7 @@ class StoreUnavailableReadTests(unittest.TestCase):
         "/doc?id=d1", "/docs?owner=u", "/conventions?owner=u", "/nav-tree?owner=u",
         "/doc/highlights?doc_id=d1&concept_id=concept:a",
         "/doc/context?owner=u&doc_id=d1",
-        "/node-context?owner=u&node=concept:a",
+        "/node-context?owner=u&node=concept:a", "/brief?owner=u&query=x",
         "/edge-context?owner=u&src=concept:a&dst=concept:b&type=RELATED_TO",
         "/ledger-drilldown?owner=u&domain=d&mark=m",
         "/docs-in-range?owner=u&start=2020-01-01&end=2030-01-01",
@@ -315,6 +315,9 @@ class EquivalenceTests(unittest.TestCase):
         # 정적 케이스가 불가능 — 아래 CursorRouteTests 가 동적 등가로 커버한다.
         ("/search?query=x&top_k=4&detail=full",
          ["search", "--query", "x", "--top-k", "4", "--detail", "full"]),
+        # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(HTTP == CLI).
+        ("/brief?owner=u&query=x&max_excerpts=2",
+         ["brief", "--query", "x", "--owner", "u", "--max-excerpts", "2"]),
         ("/plan/recall?query=x", ["plan", "recall", "--query", "x"]),
         ("/plan/decide?topic=t", ["plan", "decide", "--topic", "t"]),
     ]

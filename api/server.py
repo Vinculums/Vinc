@@ -712,6 +712,21 @@ class VincApp:
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4), store=r))
 
+    def read_brief(self, p):
+        # W1 — 질문 하나로 답변 재료(본문·발췌·관계·근거 id)를 한 번에 낸다.
+        # 임베딩 창구는 `/search` 와 같은 것을 쓴다: 해소가 같은 후보 위에서 돌아야
+        # 데스크탑 Ask 와 답이 갈리지 않는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
+        query = _req(p, "query")
+        qvec, vnote = self._query_embedding(query)
+        code, res = self._read(lambda r: q.brief(
+            query, owner=_req(p, "owner"), query_embedding=qvec,
+            max_excerpts=_int(p.get("max_excerpts"), 3), store=r))
+        # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
+        # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
+        if vnote and isinstance(res, dict):
+            res["vector_note"] = vnote
+        return code, res
+
     def read_doc_highlights(self, p):
         # D45-V2 2단계 — Reader 전문/발췌 내 개념 언급 위치(밑줄 char 범위).
         return self._read(lambda r: docstore.doc_highlights(
@@ -1467,6 +1482,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,
+            "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
             "/docs-in-range": app.read_docs_in_range,   # 타임라인 기간 브러시(D45-V2 4단계)
