@@ -10,10 +10,18 @@
 """
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
 
-from scripts.agents_sync import (RUNG_TO_MODEL, _manifest_docs, build_payload,
-                                 dangling_reads, main, read_snapshot, render_shell)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# 렌더러는 `vinc_mcp/roles.py` 로 옮겼다 — `prompts/get` 이 같은 함수를 쓴다(W2).
+# 여기서 그 자리를 그대로 임포트하는 이유는, 재수출로 가리면 사본이 둘이 됐을 때도
+# 이 파일이 계속 초록이기 때문이다.
+from scripts.agents_sync import (_manifest_docs, dangling_reads, main,  # noqa: E402
+                                 read_snapshot)
+from vinc_mcp.roles import RUNG_TO_MODEL, build_payload, render_shell  # noqa: E402
 
 _NODE = {
     "id": "concept:agent-example",
