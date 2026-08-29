@@ -436,11 +436,6 @@ def price(report: dict, *, model: str, total_questions: int,
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 def cmd_run(a: argparse.Namespace) -> int:
-    os.environ.setdefault("MEMORY_STORE_BACKEND", "embedded")
-    os.environ["MEMORY_DATA_DIR"] = a.data
-    from store.config import load_config
-    from store.backend import open_store
-
     key = os.environ.get("ANTHROPIC_API_KEY")
     if a.arm == "extracted":
         # 일 다 해 놓고 마지막에 죽지 않게 **먼저** 막는다. 그리고 키가 있어도 막는다 —
@@ -453,6 +448,15 @@ def cmd_run(a: argparse.Namespace) -> int:
             "--arm extracted 는 아직 배선되지 않았다. 추출 적재는 LLM 호출당 비용이 있고"
             " 이 하네스는 그 경로를 한 번도 실행해 본 적이 없다(키 없는 세션에서 작성).\n"
             "지금 쓸 수 있는 것은 --arm docs 이고, 그것이 §3.3 의 P1 이전 기준선이다.")
+
+    # env 설정은 거절 **뒤**에 온다. 앞에 두면 거절로 끝난 호출(테스트 포함)이
+    # MEMORY_DATA_DIR 을 프로세스에 남겨, 같은 프로세스의 이후 load_config() 전부가
+    # 그 경로로 파일 기반이 된다 — 실제로 CI 에서 ThemeStore 가 ./y.themes.json 을
+    # 공유해 무관한 테마 테스트를 깨뜨렸다.
+    os.environ.setdefault("MEMORY_STORE_BACKEND", "embedded")
+    os.environ["MEMORY_DATA_DIR"] = a.data
+    from store.config import load_config
+    from store.backend import open_store
 
     rows_all = load(Path(a.dataset))
     rows = stratify(rows_all, a.n, a.seed)

@@ -169,12 +169,23 @@ class ExtractedArmRefuses(unittest.TestCase):
                                   model="claude-opus-5", full=500,
                                   rate_in=None, rate_out=None)
 
+    def _assert_env_untouched(self, before: dict) -> None:
+        # 거절로 끝난 호출이 env 를 남기면 같은 프로세스의 이후 load_config() 전부가
+        # 오염된다(실사고: ThemeStore 가 ./y.themes.json 을 공유해 먼 테마 테스트가
+        # 깨졌다). 원거리 고장 대신 여기서 죽는다.
+        import os
+        for k, v in before.items():
+            self.assertEqual(os.environ.get(k), v,
+                             f"cmd_run 거절 경로가 {k} 를 남겼다 — env 설정은 거절 뒤여야 한다")
+
     def test_refuses_without_key(self):
         import os
         keep = os.environ.pop("ANTHROPIC_API_KEY", None)
+        before = {k: os.environ.get(k) for k in ("MEMORY_DATA_DIR", "MEMORY_STORE_BACKEND")}
         try:
             with self.assertRaises(SystemExit):
                 M.cmd_run(self._args())
+            self._assert_env_untouched(before)
         finally:
             if keep is not None:
                 os.environ["ANTHROPIC_API_KEY"] = keep
@@ -183,9 +194,11 @@ class ExtractedArmRefuses(unittest.TestCase):
         import os
         keep = os.environ.get("ANTHROPIC_API_KEY")
         os.environ["ANTHROPIC_API_KEY"] = "sk-test-not-real"
+        before = {k: os.environ.get(k) for k in ("MEMORY_DATA_DIR", "MEMORY_STORE_BACKEND")}
         try:
             with self.assertRaises(SystemExit):
                 M.cmd_run(self._args())
+            self._assert_env_untouched(before)
         finally:
             if keep is None:
                 os.environ.pop("ANTHROPIC_API_KEY", None)
