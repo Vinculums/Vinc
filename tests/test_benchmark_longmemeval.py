@@ -154,6 +154,45 @@ class Price(unittest.TestCase):
                     rate_in=None, rate_out=None)
 
 
+class ExtractedArmRefuses(unittest.TestCase):
+    """`--arm extracted` 는 **키가 있어도** 거절해야 한다.
+
+    실제로 있던 결함이다: `ingest()` 가 arm 으로 분기하지 않아서, 키가 있으면 문서 경로를
+    돌려 놓고 리포트에 "extracted" 라고 적었다. 조용히 다른 것을 재는 고장이라 값이 가장
+    비싸다. 키 유무로 갈리던 가드를 무조건 거절로 바꿨고, 이 테스트가 되돌아가는 것을 막는다."""
+
+    def _args(self):
+        import argparse
+        return argparse.Namespace(arm="extracted", dataset="x", data="y", out="z",
+                                  n=1, seed=0, top_k=10, chars_per_token=4.0,
+                                  base_url="https://example.invalid", verbose=False,
+                                  model="claude-opus-5", full=500,
+                                  rate_in=None, rate_out=None)
+
+    def test_refuses_without_key(self):
+        import os
+        keep = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            with self.assertRaises(SystemExit):
+                M.cmd_run(self._args())
+        finally:
+            if keep is not None:
+                os.environ["ANTHROPIC_API_KEY"] = keep
+
+    def test_refuses_even_with_a_key(self):
+        import os
+        keep = os.environ.get("ANTHROPIC_API_KEY")
+        os.environ["ANTHROPIC_API_KEY"] = "sk-test-not-real"
+        try:
+            with self.assertRaises(SystemExit):
+                M.cmd_run(self._args())
+        finally:
+            if keep is None:
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+            else:
+                os.environ["ANTHROPIC_API_KEY"] = keep
+
+
 class LlmTransport(unittest.TestCase):
     """LLM 경로는 이 세션에서 안 돌았다(키가 없다). 그렇다고 **미검증**으로 둘 수는
     없어서 전송만 가짜로 끼워 호출 모양과 파싱을 못박는다."""
