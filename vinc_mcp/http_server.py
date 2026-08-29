@@ -1015,6 +1015,21 @@ class _Handler(BaseHTTPRequestHandler):
                         "jsonrpc": "2.0", "id": blocked[0].get("id"),
                         "result": {"isError": True, "content": [{"type": "text",
                                    "text": f"role {role!r} may not call {name}"}]}})
+                # W2 — `prompts/*` 도 같은 게이트를 지난다. 이 메서드들은 스토어를
+                # 조회하므로, "모르는 역할은 거부"라는 규칙을 메서드 하나가 비켜 가면
+                # 그 메서드가 팀 스페이스의 우회로가 된다. 등급은 세 번째 표를 만들지
+                # 않고 주석표에서 유도한다 — prompts 가 읽는 것은 vinc_neighbors 와
+                # vinc_graph 가 읽는 것이라 등급도 그것(viewer)이다.
+                # 거절 모양이 위와 다른 이유: prompts 에는 tools/call 의 결과 봉투가
+                # 없다. 그 봉투로 답하면 호스트가 프롬프트 대신 도구 결과를 읽는다.
+                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
+                        and not tools.role_allows(role, "vinc_neighbors"):
+                    first = next(m for m in msgs
+                                 if str(m.get("method") or "").startswith("prompts/"))
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": first.get("id"),
+                        "error": {"code": -32603,
+                                  "message": f"role {role!r} may not read prompts"}})
             d = self.app.dispatcher()
             ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
             # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
