@@ -184,6 +184,53 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertIn("loopback ok", out, "첫 조회 성공을 안 찍으면 기동 증명이 없다")
         self.assertIn("alive", out, "idle 하트비트가 없으면 침묵이 진단 불가다")
 
+    def test_바쁘게_실패_중이면_stall_경고를_찍는다(self):
+        """W14 — `idle` 하트비트는 pending 이 있으면 매 라운드 0 으로 돌아가서,
+        문서가 매번 실패해도(고장난 원격 인코더 등) 조용히 영원히 재시도만 한다.
+        pending 이 안 비었는데 한 라운드도 성공 못 하면(=진행이 없으면) 별도로
+        stall 경고가 찍여야 한다. 워커는 죽지도 재기동하지도 않는다 — 소리만 낸다."""
+        import contextlib
+        import io
+        import os
+
+        class _Stop(Exception):
+            pass
+
+        rounds = {"n": 0}
+
+        def fake_sleep(_s):
+            rounds["n"] += 1
+            if rounds["n"] >= 5:
+                raise _Stop()
+
+        # apply 가 매번 실패한다(사이드카 쪽 고장을 모의). pending 은 절대 안 줄어든다
+        # (같은 청크가 매 라운드 그대로 돌아온다 — needs_embed 가 안 지워지므로 실제
+        # 동작과 같다).
+        def stuck_sidecar(path, body=None):
+            if body is None:
+                return {"kind": "embed.pending",
+                        "chunks": [{"doc_id": "d1", "chunk_id": "c1", "text": "x"}]}
+            raise OSError("apply 실패(모의)")
+
+        real_sleep = self.mod.time.sleep     # 되돌리지 않으면 이후 테스트가 새 나간다
+        self.mod.time.sleep = fake_sleep
+        old = os.environ.get("VINC_EMBED_HEARTBEAT_ROUNDS")
+        os.environ["VINC_EMBED_HEARTBEAT_ROUNDS"] = "2"
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf), self.assertRaises(_Stop):
+                self._run(stuck_sidecar, argv=("--interval", "0"))
+        finally:
+            self.mod.time.sleep = real_sleep
+            if old is None:
+                os.environ.pop("VINC_EMBED_HEARTBEAT_ROUNDS", None)
+            else:
+                os.environ["VINC_EMBED_HEARTBEAT_ROUNDS"] = old
+
+        err = buf.getvalue()
+        self.assertIn("stall 경고", err, "pending 이 안 줄어드는데 stall 경고가 없다")
+        self.assertIn("doc=d1 실패", err, "개별 실패 로그가 사라졌다 — 진단 정보 손실")
+
     def test_세션에_들어가는_배치에_상한이_있어야_한다(self):
         """청크 수가 아무리 많아도 **한 번에** 세션에 들어가면 안 된다.
 
