@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**22종** — 읽기 14(search·recall·graph·decide·domains·suggest_ties·neighbors·
+**23종** — 읽기 15(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
@@ -366,6 +366,13 @@ def _t_doc_delete(args, bridge):
         "id": args["doc_id"], "owner": _owner(args, bridge)})
 
 
+def _t_brief(args, bridge):
+    # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
+    return bridge.request("GET", "/brief", params={
+        "owner": _owner(args, bridge), "query": args["query"],
+        "max_excerpts": args.get("max_excerpts", 3)})
+
+
 TOOLS: list[dict] = [
     {
         "name": "vinc_search",
@@ -398,6 +405,39 @@ TOOLS: list[dict] = [
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
+    },
+    {
+        "name": "vinc_brief",
+        "description": "One question in, joined answer material out — the deterministic read that "
+                       "replaces a vinc_search + vinc_graph + vinc_doc_get chain. It resolves the "
+                       "question to ONE node by strict ranking, then returns that node's description, "
+                       "its canonical document excerpts and its typed relations in a single call. "
+                       "Returns {kind, executed, query, status, node:{id,title,domain,kind}, one_liner, "
+                       "body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], "
+                       "links:{degree,out,in,attached,items:[{id,title,domain,type,dir,evidence,"
+                       "confidence,note}],truncated}, candidates:[...], grounds:[id...]}. "
+                       "READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/"
+                       "links are filled; 'choose' means the leading candidates TIED and nothing was "
+                       "guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the "
+                       "numbers that tied) and ask again by its exact title; 'none' means the question "
+                       "matched nothing. NOTHING IS GENERATED: `one_liner` is quoted, never written — "
+                       "`body_src` says whether it came from the one_liner column, a props key, or a "
+                       "document excerpt, and `body_cite` names the document when it is an excerpt. "
+                       "`grounds` lists every id the material rests on, so an answer built from this "
+                       "call can cite its sources; it stays complete even when the result was shrunk to "
+                       "fit the size limit. `links.items[].evidence` is a BOOLEAN (does this relation "
+                       "carry a source sentence) and `evidence_text` is that sentence when one exists, "
+                       "so a relation can be QUOTED rather than merely counted. "
+                       "Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "query": {"type": "string",
+                      "description": "The question, in natural language."},
+            "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
+                             "description": "How many canonical document excerpts to "
+                                            "attach to a resolved node."},
+            "owner": {"type": "string"},
+        }, "required": ["query"]},
+        "run": _t_brief,
     },
     {
         "name": "vinc_recall",
@@ -945,6 +985,8 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_merge_reject": {"title": "Reject a merge pair", "readOnlyHint": False,
                           "destructiveHint": False, "idempotentHint": True},
     "vinc_merge_rejections": {"title": "List rejected merge pairs", "readOnlyHint": True},
+    # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기. 조회 전용이다.
+    "vinc_brief": {"title": "Brief on a question", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
@@ -1055,7 +1097,45 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
 
 #: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
 #: (vinc_graph 등 — JSON 을 중간에서 자르면 깨진 구문이 된다).
-SHRINKERS = {"vinc_search": _shrink_search_result}
+def _shrink_brief_result(out: dict, budget: int) -> dict | None:
+    """vinc_brief 결과를 예산 안으로 줄인다 — **발췌를 먼저, 관계를 나중에** 덜어낸다.
+
+    관계는 그 노드의 근거 지도라 마지막까지 남긴다. 발췌는 `grounds` 에 doc_id 가
+    남으므로 vinc_doc_get 으로 되찾을 수 있다 — 덜어내도 길이 끊기지 않는다는 뜻이다.
+    줄일 수 없으면 None 을 돌려 기존 거부 경로로 보낸다(조용한 절단보다 거부가 정직하다).
+    근거: [[vinc.plan.mcp-agent-surface §4]]"""
+    if not isinstance(out, dict):
+        return None
+
+    def _size() -> int:
+        return len(json.dumps(out, ensure_ascii=False))
+
+    ex = out.get("excerpts")
+    links = out.get("links")
+    items = links.get("items") if isinstance(links, dict) else None
+    dropped_ex = dropped_ln = 0
+    if isinstance(ex, list):
+        while ex and _size() > budget:
+            ex.pop()
+            dropped_ex += 1
+    if isinstance(items, list):
+        while items and _size() > budget:
+            items.pop()
+            dropped_ln += 1
+    if _size() > budget:
+        return None
+    if dropped_ex or dropped_ln:
+        out["shrunk"] = {"excerpts_dropped": dropped_ex, "links_dropped": dropped_ln}
+        note = ("shrunk to fit the result size limit: dropped %d excerpt(s) then %d "
+                "link(s); `grounds` still lists every id" % (dropped_ex, dropped_ln))
+        out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
+    return out
+
+
+SHRINKERS = {"vinc_search": _shrink_search_result,
+             # W1 — brief 는 조밀한 이웃에서 예산을 넘길 수 있다. 정책으로
+             # 강등한다: 발췌부터 덜고 관계는 마지막까지 남긴다.
+             "vinc_brief": _shrink_brief_result}
 
 
 def call(name: str, args: dict | None, bridge: Bridge,

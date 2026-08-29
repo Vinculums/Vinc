@@ -1,0 +1,304 @@
+# -*- coding: utf-8 -*-
+"""W1 `vinc_brief` — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기.
+
+  1. **순수 층**(드라이버 불요): 해소 규칙(엄격한 승리만 확정·비기면 되묻기),
+     본문 고르기 폴백(one_liner → props → 발췌), 근거 id 수집, 그리고 축소기가
+     **발췌를 먼저, 관계를 나중에** 덜어내는지.
+  2. **실엔진 층**(ladybug 미설치 시 skip): 개념·부착 레코드·근거 있는 관계를 심고
+     한 번의 호출로 본문·관계·근거가 함께 오는지. 아래 파생 클래스가 같은 검사를
+     PK 네임스페이싱을 켠 채 한 번 더 돈다.
+
+근거: [[vinc.plan.mcp-agent-surface §4]]
+"""
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from api import fragment as frag  # noqa: E402
+from api import query as q  # noqa: E402
+from store.embedded_backend import _import_driver  # noqa: E402
+from vinc_mcp import tools as mcp_tools  # noqa: E402
+
+_DRIVER, _NAME = _import_driver()
+
+
+# ── 1. 순수 층 ────────────────────────────────────────────────────────────────
+
+class ResolveTests(unittest.TestCase):
+    """해소는 이 표면에서 판단이 들어가는 유일한 자리다 — 규칙이 전부 명시적이어야 한다."""
+
+    def test_빈_결과는_none(self):
+        self.assertEqual(q._brief_resolve("x", []), ("none", []))
+
+    def test_제목이_질문과_같으면_그것이다(self):
+        hits = [{"id": "concept:b", "title": "beta", "hit_tokens": 9, "title_tokens": 9},
+                {"id": "concept:a", "title": "Alpha Core", "hit_tokens": 1,
+                 "title_tokens": 1}]
+        status, picked = q._brief_resolve("  alpha core  ", hits)
+        # 이름을 댄 경우다 — 점수가 낮아도 제목 완전일치가 이긴다.
+        self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:a"))
+
+    def test_후보가_하나면_확정이다(self):
+        hits = [{"id": "concept:a", "title": "alpha", "hit_tokens": 0, "title_tokens": 0}]
+        status, picked = q._brief_resolve("무엇이든", hits)
+        self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:a"))
+
+    def test_동점이면_추측하지_않고_되묻는다(self):
+        """이 갈래가 없던 시절 이 표면은 후보를 id 알파벳순으로 집어 질문과 무관한
+        답을 냈다. 비겼다는 것은 모른다는 뜻이지 1번을 고르라는 뜻이 아니다."""
+        hits = [{"id": "concept:a", "title": "alpha core", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:b", "title": "alpha edge", "hit_tokens": 1,
+                 "title_tokens": 1}]
+        status, picked = q._brief_resolve("alpha", hits)
+        self.assertEqual(status, "choose")
+        self.assertEqual([h["id"] for h in picked], ["concept:a", "concept:b"])
+
+    def test_엄격하게_이기면_확정이다(self):
+        # 질문이 어느 제목과도 같지 않아 점수만으로 갈리는 경우다.
+        hits = [{"id": "concept:a", "title": "alpha core", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:b", "title": "alpha edge core", "hit_tokens": 2,
+                 "title_tokens": 2}]
+        status, picked = q._brief_resolve("어느 alpha core 인가", hits)
+        self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:b"))
+
+    def test_그래프_팔만_올라오면_확정하지_않는다(self):
+        """청크 인접은 "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다."""
+        hits = [{"id": "concept:a", "title": "가", "hit_tokens": 0, "title_tokens": 0},
+                {"id": "concept:b", "title": "나", "hit_tokens": 0, "title_tokens": 0}]
+        self.assertEqual(q._brief_resolve("아무 질문", hits)[0], "choose")
+
+    def test_되묻는_후보는_셋까지다(self):
+        hits = [{"id": f"concept:{i}", "title": "t", "hit_tokens": 0, "title_tokens": 0}
+                for i in range(9)]
+        self.assertEqual(len(q._brief_resolve("q", hits)[1]), 3)
+
+
+class BodyTests(unittest.TestCase):
+    """본문은 **인용**이지 생성이 아니다 — 어디서 왔는지를 늘 함께 낸다."""
+
+    def test_one_liner_가_있으면_그것이다(self):
+        b = q._brief_body({"one_liner": " 한 줄 ", "props": {"note": "무시"}})
+        self.assertEqual((b["text"], b["src"]), ("한 줄", "one_liner"))
+
+    def test_비면_props_로_내려간다(self):
+        b = q._brief_body({"one_liner": "  ", "props": {"note": "카드 본문"}})
+        self.assertEqual((b["text"], b["src"]), ("카드 본문", "props"))
+
+    def test_이름없는_props_는_가장_긴_문장을_쓴다(self):
+        b = q._brief_body({"props": {"zz": "짧다", "aa": "이것이 충분히 긴 문장이다."}})
+        self.assertEqual((b["text"], b["src"]), ("이것이 충분히 긴 문장이다.", "props"))
+
+    def test_같은_길이면_키_이름으로_갈라_결정론이다(self):
+        """ask.ts 는 객체 순서에 기댄다. 같은 질문이 늘 같은 답을 내야 하므로
+        여기서는 키 이름으로 가른다 — 이 갈래가 이식의 유일한 의도적 차이다."""
+        props = {"zz": "길이가 똑같은 문장 하나요", "aa": "길이가 똑같은 문장 하나요"}
+        self.assertEqual(q._brief_body({"props": props})["text"],
+                         q._brief_body({"props": dict(reversed(list(props.items())))})["text"])
+
+    def test_마지막_폴백은_발췌이고_출처를_단다(self):
+        b = q._brief_body({"props": {}, "excerpts": [
+            {"excerpt": "  정본에서 인용한 문장.  ", "doc_title": "문서", "section": "§2"}]})
+        self.assertEqual((b["text"], b["src"], b["cite"]),
+                         ("정본에서 인용한 문장.", "doc", "문서 · §2"))
+
+    def test_재료가_없으면_비었다고_말한다(self):
+        b = q._brief_body({"props": {}, "excerpts": []})
+        self.assertEqual((b["text"], b["src"]), ("", "none"))
+
+
+class GroundsTests(unittest.TestCase):
+    def test_노드_문서_관계_id_를_모아_정렬한다(self):
+        g = q._brief_grounds("concept:a",
+                             [{"doc_id": "d2"}, {"doc_id": "d1"}, {"doc_id": ""}],
+                             [{"id": "record:r"}, {"id": ""}])
+        self.assertEqual(g, ["concept:a", "d1", "d2", "record:r"])
+
+
+class ShrinkTests(unittest.TestCase):
+    """예산 초과는 정책으로 강등한다 — 발췌를 먼저 덜고 관계는 마지막까지 남긴다."""
+
+    def _fat(self):
+        return {"kind": "brief", "status": "resolved",
+                "excerpts": [{"doc_id": f"d{i}", "excerpt": "가" * 400} for i in range(20)],
+                "links": {"items": [{"id": f"concept:{i}", "title": "나" * 100}
+                                    for i in range(20)]},
+                "grounds": [f"d{i}" for i in range(20)]}
+
+    def test_발췌를_먼저_덜고_관계는_남긴다(self):
+        out = mcp_tools._shrink_brief_result(self._fat(), 6000)
+        self.assertIsNotNone(out)
+        self.assertLess(len(out["excerpts"]), 20, "발췌가 하나도 안 줄었다")
+        # 예산에 들어가는 순간 멈추므로 관계는 손대지 않은 채로 남아야 한다.
+        self.assertEqual(len(out["links"]["items"]), 20, "관계가 발췌보다 먼저 잘렸다")
+        self.assertIn("shrunk to fit", out["note"])
+
+    def test_발췌를_다_덜어도_모자라면_그때_관계를_던다(self):
+        out = mcp_tools._shrink_brief_result(self._fat(), 1500)
+        self.assertIsNotNone(out)
+        self.assertEqual(out["excerpts"], [])
+        self.assertLess(len(out["links"]["items"]), 20)
+
+    def test_근거_id_는_잘려도_남는다(self):
+        """발췌를 덜어도 grounds 의 doc_id 로 vinc_doc_get 이 되찾는다 — 그래서
+        덜어내는 것이 안전하다. 이 목록까지 잘리면 길이 끊긴다."""
+        out = mcp_tools._shrink_brief_result(self._fat(), 6000)
+        self.assertEqual(len(out["grounds"]), 20)
+
+    def test_한_줄도_안_들어가면_거부한다(self):
+        self.assertIsNone(mcp_tools._shrink_brief_result(self._fat(), 10))
+
+    def test_등재되어_있다(self):
+        self.assertIs(mcp_tools.SHRINKERS["vinc_brief"],
+                      mcp_tools._shrink_brief_result)
+
+
+# ── 2. 실엔진 층 ──────────────────────────────────────────────────────────────
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class BriefE2E(unittest.TestCase):
+    OWNER = "user:a"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        self.store = open_store(load_config())
+        self.store.provision(dim=4)
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:alpha-core", "type": "concept", "title": "alpha core",
+             "domain": "eng", "one_liner": "The core of alpha."},
+            {"id": "concept:alpha-edge", "type": "concept", "title": "alpha edge",
+             "domain": "eng"},
+            {"id": "record:note-card", "type": "record", "title": "A note",
+             "props": {"note": "카드 본문은 props.note 에 있다."}},
+        ], "edges": [
+            {"from": "concept:alpha-edge", "to": "concept:alpha-core",
+             "type": "relates_to", "evidence": "둘은 같은 계약을 공유한다.",
+             "confidence": 0.5},
+            {"from": "record:note-card", "to": "concept:alpha-core",
+             "type": "relates_to", "evidence": "측정으로 확인했다."},
+        ]}, store=self.store)
+
+    def tearDown(self):
+        self.store.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _brief(self, query, **kw):
+        return q.brief(query, owner=self.OWNER, store=self.store, **kw)
+
+    def test_한_번의_호출로_본문과_관계와_근거가_함께_온다(self):
+        out = self._brief("alpha core")
+        self.assertEqual(out["kind"], "brief")
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "concept:alpha-core")
+        # 본문은 생성이 아니라 그 노드의 one_liner 다.
+        self.assertEqual(out["one_liner"], "The core of alpha.")
+        self.assertEqual(out["body_src"], "one_liner")
+        ids = {i["id"] for i in out["links"]["items"]}
+        self.assertIn("concept:alpha-edge", ids)
+        self.assertIn("record:note-card", ids)
+        # 모든 주장이 딛고 선 id — 노드 자신과 관계 상대가 전부 들어 있다.
+        self.assertIn("concept:alpha-core", out["grounds"])
+        self.assertIn("record:note-card", out["grounds"])
+
+    def test_근거_있는_관계가_앞에_선다(self):
+        items = self._brief("alpha core")["links"]["items"]
+        self.assertEqual(items[0]["id"], "concept:alpha-edge")
+        self.assertTrue(items[0]["evidence"])
+
+    def test_부착_레코드의_카드_본문이_실린다(self):
+        items = self._brief("alpha core")["links"]["items"]
+        note = {i["id"]: i["note"] for i in items}["record:note-card"]
+        self.assertEqual(note, "카드 본문은 props.note 에 있다.")
+
+    def test_비기면_되묻고_노드를_고르지_않는다(self):
+        # ⚠ 레코드 id 를 `record:alpha-...` 로 두면 안 된다 — 노드 검색은 **id 도**
+        # 매치 필드라(matched_in="id") 그 레코드까지 후보로 올라와 이 검사가
+        # 재는 것이 "두 개념의 동점"이 아니게 된다.
+        out = self._brief("alpha")
+        self.assertEqual(out["status"], "choose")
+        self.assertEqual({c["id"] for c in out["candidates"]},
+                         {"concept:alpha-core", "concept:alpha-edge"})
+        self.assertNotIn("node", out)
+
+    def test_맞는_것이_없으면_없다고_말한다(self):
+        out = self._brief("존재하지않는질문어휘")
+        self.assertEqual(out["status"], "none")
+        self.assertEqual(out["candidates"], [])
+
+    def test_관계는_근거_문장까지_실어_인용할_수_있다(self):
+        """W1 의 exit test — 에이전트는 "근거가 있다"가 아니라 **그 문장**을 인용한다.
+        불리언만으로는 답에 각주를 달 수 없다."""
+        items = {i["id"]: i for i in self._brief("alpha core")["links"]["items"]}
+        self.assertEqual(items["concept:alpha-edge"]["evidence_text"],
+                         "둘은 같은 계약을 공유한다.")
+
+    def test_화면_경로의_페이로드는_그대로다(self):
+        """근거 문장은 요청할 때만 실린다 — 기본 node_context 는 키 자체가 없어야
+        하고, 그래야 앱이 받는 응답이 이 변경으로 커지지 않는다."""
+        ctx = q.node_context(owner=self.OWNER, node="concept:alpha-core",
+                             store=self.store)
+        self.assertTrue(ctx["links"]["items"], "관계가 없으면 이 검사는 공허하다")
+        for it in ctx["links"]["items"]:
+            self.assertNotIn("evidence_text", it)
+
+    def test_남의_그래프는_보이지_않는다(self):
+        """SEC-1 — owner 격리는 조인 읽기에서도 성립해야 한다."""
+        out = q.brief("alpha core", owner="user:b", store=self.store)
+        self.assertEqual(out["status"], "none")
+
+
+#: 아래 파생 클래스가 달고 다니는 설명.
+_NS_DOC = """같은 검사 전부를 **PK 네임스페이싱을 켠 채** 다시 돈다.
+
+조인 읽기는 search 가 준 id 를 node_context 에 다시 넣는다. 그 사이에서 물리 키와
+논리 id 를 헷갈리면 상세가 통째로 빈 채 status 만 resolved 로 남는다 — 기본 스위트는
+플래그가 꺼져 있어 초록으로 통과한다. 그래서 검사를 새로 쓰지 않고 있는 검사를 두
+모드로 돌린다."""
+
+
+def _namespaced(base):
+    """base 의 검사 전부를 플래그 켠 채 도는 클래스로 만든다."""
+
+    class _Ns(base):
+        def setUp(self):
+            self._pk_prev = os.environ.get("VINC_PK_NAMESPACED")
+            os.environ["VINC_PK_NAMESPACED"] = "on"
+            super().setUp()
+
+        def tearDown(self):
+            try:
+                super().tearDown()
+            finally:
+                if self._pk_prev is None:
+                    os.environ.pop("VINC_PK_NAMESPACED", None)
+                else:
+                    os.environ["VINC_PK_NAMESPACED"] = self._pk_prev
+
+    _Ns.__name__ = _Ns.__qualname__ = base.__name__ + "UnderNamespacing"
+    _Ns.__doc__ = _NS_DOC
+    return _Ns
+
+
+BriefUnderNamespacing = _namespaced(BriefE2E)
+
+
+if __name__ == "__main__":
+    unittest.main()

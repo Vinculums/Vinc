@@ -218,8 +218,12 @@ class EnvelopeIntegrationTests(unittest.TestCase):
 
     def test_비등재_도구_초과는_여전히_거부다(self):
         # tests/test_mcp_directory.py 의 vinc_graph 케이스가 정본 — 여기서는
-        # 레지스트리 자체가 vinc_search 단건임을 고정한다(임의 확장 방지).
-        self.assertEqual(set(mcp_tools.SHRINKERS), {"vinc_search"})
+        # 레지스트리에 **무엇이 있는지**를 고정한다(임의 확장 방지). 늘릴 때는
+        # 이 줄을 함께 고쳐 "왜 그 도구는 잘려도 되는가"를 답해야 한다.
+        #   vinc_search — 꼬리 행을 덜고 next_cursor 로 이어 읽는다.
+        #   vinc_brief  — 발췌를 덜어도 grounds 에 doc_id 가 남아 되찾을 수 있다
+        #                 ([[vinc.plan.mcp-agent-surface §4]]).
+        self.assertEqual(set(mcp_tools.SHRINKERS), {"vinc_search", "vinc_brief"})
 
 
 class ToolContractAdditionsTests(unittest.TestCase):
