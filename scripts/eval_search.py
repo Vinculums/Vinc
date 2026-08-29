@@ -226,7 +226,9 @@ def main() -> int:
 
     for item in qs:
         text, truth = item["query"], item["doc_id"]
-        lang = lang_of(text)
+        # 평가셋이 라벨을 실었으면 그것을 쓴다 — 교차언어 셋(ko2en: 한국어 질의·영어
+        # 정답)을 문자 계열로 재판정하면 "ko" 로 뭉개져 동일언어 ko 와 섞인다.
+        lang = item.get("lang") or lang_of(text)
         by_lang.setdefault(lang, {"fts": [], "vector": [], "rrf": []})
 
         qvec = None

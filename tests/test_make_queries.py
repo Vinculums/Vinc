@@ -30,9 +30,10 @@ def _load():
 #: 참**이었다 — 자기 문구는 "코퍼스가 없으면 건너뛴다"인데 코퍼스를 안 보고 있었다.
 #: 로컬(폐기된 Vinc-docs 체크아웃이 남아 있는 기계)에서는 통과하고 CI 에서만 터졌다.
 def _corpora_present() -> bool:
+    # 루트는 모듈 것을 그대로 쓴다 — 여기서 재계산하면 VINC_EVAL_ROOT 오버라이드
+    # (워크트리 실행)와 어긋나서, 가드는 skip 인데 build() 는 도는 식의 불일치가 난다.
     m = _load()
-    root = pathlib.Path(__file__).resolve().parents[2]
-    return all((root / rel).exists() for _, rel in m._CORPORA)
+    return all((m._ROOT / rel).exists() for _, rel in m._CORPORA)
 
 
 @unittest.skipUnless(_FIXTURE.exists() and _corpora_present(),

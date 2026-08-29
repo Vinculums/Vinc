@@ -22,8 +22,14 @@ VPMADDUBSW 의 int16 누산 포화를 경고하는 바로 그 설정이라, VNNI
 프로덕션은 빌드 타임에 굽고(`packaging/bake_embed_model.py` · `Dockerfile.hub`) 런타임은
 그 파일을 쓴다. 이 스크립트는 **실험용 로컬 빌드**다 — 굽는 쪽 정본은 그 파일이다.
 
+모델 평가 스파이크(W10)부터는 e5 계열 밖도 굽는다 — `--model` 로 e5-large·bge-m3 를
+받으면 같은 rr=True 레시피로 양자화한다. 2GB 를 넘는 fp32(e5-large·bge-m3)는 ONNX 가
+가중치를 `model.onnx_data` **별도 파일**로 내보내므로, 그래프 파일만 받으면 로드가
+터진다 — `onnx/` 밑의 동반 파일(외부 데이터·Constant 블롭)까지 함께 받는다.
+
 사용:
     python scripts/quantize_e5.py --out .cache/embed/e5-int8-rr.onnx
+    python scripts/quantize_e5.py --model BAAI/bge-m3 --out .cache/embed/m3-int8-rr.onnx
 """
 from __future__ import annotations
 
@@ -45,7 +51,7 @@ def main() -> int:
                     help="fp32 원본(약 1GB)을 지우지 않는다(fp32 대조 실험용)")
     args = ap.parse_args()
 
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import hf_hub_download, list_repo_files
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
@@ -53,8 +59,15 @@ def main() -> int:
         print(f"이미 있다 — {args.out} ({os.path.getsize(args.out)}B)")
         return 0
 
-    print(f"fp32 내려받는 중 ({args.model}, 약 1,058MB)...", flush=True)
+    print(f"fp32 내려받는 중 ({args.model})...", flush=True)
     fp32 = hf_hub_download(args.model, "onnx/model.onnx", cache_dir=args.cache)
+    # 2GB 초과 모델은 가중치가 그래프 밖 별도 파일이다(e5-large·bge-m3 의
+    # model.onnx_data, m3 의 Constant_* 블롭). 같은 스냅샷 디렉터리에 나란히 받아야
+    # onnx.load 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 토크나이저류는 제외.
+    for f in list_repo_files(args.model):
+        if (f.startswith("onnx/") and f != "onnx/model.onnx"
+                and not f.endswith((".onnx", ".json", ".model"))):
+            hf_hub_download(args.model, f, cache_dir=args.cache)
 
     tmp = args.out + ".part"
     print("int8 양자화(reduce_range=True) 중 — 메모리 1.5GB+ 필요, 약 31초", flush=True)
@@ -67,10 +80,13 @@ def main() -> int:
         print(f"FATAL: 결과가 너무 작다({size}B) — 양자화가 제대로 안 됐다", file=sys.stderr)
         return 1
     if not args.keep_fp32:
-        try:
-            os.remove(fp32)
-        except OSError:
-            pass
+        # 외부 데이터 동반 파일(model.onnx_data 등)이 그래프보다 크다 — 같이 지운다.
+        d = os.path.dirname(fp32)
+        for name in ("model.onnx", "model.onnx_data"):
+            try:
+                os.remove(os.path.join(d, name))
+            except OSError:
+                pass
     print(f"완료 → {args.out} ({size}B)")
     return 0
 

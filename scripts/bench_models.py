@@ -20,6 +20,15 @@
 ⚠ **지표는 반드시 언어별로 갈라 읽는다.** 섞어 재면 CJK 손실이 묻힌다: 512토큰 초과
 유실이 영어는 전체 토큰의 5.7% 인데 한국어는 82% 다. 1차 측정이 무효였던 이유도 여기에
 있다(라벨한 "한국어" 질의에 한글이 0자였다 — `make_queries.py` 규칙 1 참조).
+
+W10 스파이크(0.9.0 판정 1)부터 추가된 것:
+  --evalset 반복       평가셋 병합 — 교차언어 셋(fixtures/evalset_xling.json, 축 ko2en)을
+                       동일언어 셋과 한 번에 잰다. 언어 라벨은 파일 것을 그대로 쓴다
+  --latency N          단건 인코딩 지연(중앙값·p90 ms). 양자화-커널 게이트는 산출물
+                       크기가 아니라 **실기기 지연·품질**로 판정한다(§1.7) — 이 수치가
+                       그 지연이다. VINC_EVAL_THREADS=1(기본)로 잰 것만 프로덕션 대비 유효
+  --bootstrap B        첫 모델 대비 ΔnDCG 의 짝지은 부트스트랩 95% CI. "잡음 범위를 못
+                       넘으면 채택 없음" 판정 규칙의 그 잡음 범위를 수치로 만든다
 """
 from __future__ import annotations
 
@@ -27,6 +36,7 @@ import argparse
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -41,9 +51,18 @@ from make_queries import (                                  # noqa: E402
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "evalset.json"
 
 
-def load_corpus(max_chars: int = 2000) -> tuple[list[str], list[str]]:
-    """(청크 텍스트, 청크가 속한 doc_id) — doc_id 규칙은 `make_queries.py` 와 같다."""
+def load_corpus(max_chars: int = 2000, gold: set[str] | None = None,
+                per_lang_docs: int = 0) -> tuple[list[str], list[str]]:
+    """(청크 텍스트, 청크가 속한 doc_id) — doc_id 규칙은 `make_queries.py` 와 같다.
+
+    `per_lang_docs` > 0 이면 언어별 문서 수를 그 값으로 줄인다 — 판정 1 의 스파이크
+    규모가 "50문서·60질의"(§1.6)라 전 코퍼스(176문서)는 규모 초과이고, CPU 로 모델
+    일곱을 재기엔 시간이 서너 배 든다. 선별은 결정론이다: **정답 문서(gold)는 전량
+    포함**하고(빠지면 그 질의가 필연 miss — 조용한 0 점의 재발) 나머지는 정렬 순서로
+    채운다. ⚠ 코퍼스가 줄면 교란 문서가 줄어 절대 점수는 부풀지만, 모델 비교는 같은
+    코퍼스를 공유하므로 유효하다 — 절대치를 다른 측정과 비교하지 말 것."""
     texts, owners = [], []
+    picked: dict[str, int] = {}
     for _, rel in _CORPORA:
         root = _ROOT / rel
         if not root.exists():
@@ -56,6 +75,10 @@ def load_corpus(max_chars: int = 2000) -> tuple[list[str], list[str]]:
             body = _body_without_frontmatter(raw)
             lang = lang_of(body, _DOC_KO_THRESHOLD)
             doc_id = f"eval/{lang}/{root.name}/{path.relative_to(root).as_posix()}"
+            if per_lang_docs > 0 and not (gold and doc_id in gold) \
+                    and picked.get(lang, 0) >= per_lang_docs:
+                continue
+            picked[lang] = picked.get(lang, 0) + 1
             for part in chunk_doc(body, max_chars=max_chars):
                 t = (part.get("text") or "").strip()
                 if t:
@@ -70,7 +93,7 @@ def _ndcg_single(rank: int) -> float:
 
 
 def bench(model_spec: str, queries: list[dict], texts: list[str],
-          owners: list[str], top_k: int) -> dict:
+          owners: list[str], top_k: int, latency_n: int = 0) -> dict:
     import numpy as np
 
     name, _, onnx = model_spec.partition("=")
@@ -78,11 +101,31 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
     label = f"{name}{' [' + Path(onnx).name + ']' if onnx else ''}"
 
     print(f"  {label}: 청크 {len(texts)}개 인코딩 중...", flush=True)
+    t0 = time.perf_counter()
     P = np.array(enc.encode(texts, "passage"), dtype=np.float32)
+    t_corpus = time.perf_counter() - t0
+    t0 = time.perf_counter()
     Q = np.array(enc.encode([q["query"] for q in queries], "query"), dtype=np.float32)
+    t_query = time.perf_counter() - t0
     sims = Q @ P.T                       # 둘 다 L2 정규화돼 있으므로 내적 = 코사인
 
-    per_lang: dict[str, list[dict]] = {}
+    # 단건 지연 프로브 — 배치 인코딩의 청크/초는 패딩 때문에 지연의 대리가 못 된다.
+    # 커널 게이트는 "실기기에서 잰 지연"을 요구하므로(§1.7) 문장 하나짜리 호출을 잰다.
+    # ⚠ VINC_EVAL_THREADS=1 로 잰 것만 프로덕션(워커 스레드 1) 대비 유효하다.
+    lat = {}
+    if latency_n > 0:
+        samples = texts[:latency_n]
+        times = []
+        for s in samples:
+            t0 = time.perf_counter()
+            enc.encode([s], "passage")
+            times.append((time.perf_counter() - t0) * 1000.0)
+        times.sort()
+        lat = {"n": len(times),
+               "median_ms": round(times[len(times) // 2], 1),
+               "p90_ms": round(times[int(len(times) * 0.9)], 1)}
+
+    qrows: list[dict] = []               # 질의 순서 정렬 유지 — 모델 간 짝지은 비교용
     for i, q in enumerate(queries):
         order = np.argsort(-sims[i])
         seen, ranked = set(), []
@@ -94,10 +137,11 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
             if len(ranked) >= top_k:
                 break
         rank = ranked.index(q["doc_id"]) + 1 if q["doc_id"] in ranked else 0
-        per_lang.setdefault(q.get("lang") or "?", []).append({
-            "recall": 1.0 if rank else 0.0,
-            "mrr": 1.0 / rank if rank else 0.0,
-            "ndcg": _ndcg_single(rank)})
+        qrows.append({"lang": q.get("lang") or "?",
+                      "rank": rank,
+                      "recall": 1.0 if rank else 0.0,
+                      "mrr": 1.0 / rank if rank else 0.0,
+                      "ndcg": _ndcg_single(rank)})
 
     def agg(rows):
         n = len(rows) or 1
@@ -106,34 +150,84 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
                 "mrr": round(sum(r["mrr"] for r in rows) / n, 4),
                 "ndcg": round(sum(r["ndcg"] for r in rows) / n, 4)}
 
-    allrows = [r for rows in per_lang.values() for r in rows]
+    per_lang: dict[str, list[dict]] = {}
+    for r in qrows:
+        per_lang.setdefault(r["lang"], []).append(r)
     return {"model": label,
             "by_lang": {lg: agg(rows) for lg, rows in sorted(per_lang.items())},
-            "overall": agg(allrows)}
+            "overall": agg(qrows),
+            "timing": {"corpus_s": round(t_corpus, 1), "query_s": round(t_query, 1),
+                       "chunks_per_s": round(len(texts) / t_corpus, 2) if t_corpus else 0,
+                       **({"latency_single": lat} if lat else {})},
+            "qrows": qrows}
+
+
+def paired_bootstrap(results: list[dict], b: int, seed: int = 20260829) -> list[dict]:
+    """모델별 nDCG 를 **같은 질의끼리 짝지어** 기준 모델(첫 --model)과의 차이를
+    부트스트랩한다. 판정 규칙이 "잡음 범위를 못 넘으면 채택 없음"(§1.6)인데, 그
+    잡음 범위를 감으로 두면 규칙이 규칙이 아니게 된다 — 여기서 잰다. 질의를 복원
+    추출해 차이 평균의 분포를 만들고 95% CI 를 낸다. CI 가 0 을 물면 그 차이는
+    이 평가셋 크기에서 잡음과 구분되지 않는다."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    base = results[0]
+    langs = sorted({r["lang"] for r in base["qrows"]})
+    out: list[dict] = []
+    for res in results[1:]:
+        row = {"model": res["model"], "baseline": base["model"], "by_lang": {}}
+        for lg in langs + ["all"]:
+            idx = [i for i, r in enumerate(base["qrows"])
+                   if lg == "all" or r["lang"] == lg]
+            if not idx:
+                continue
+            d = np.array([res["qrows"][i]["ndcg"] - base["qrows"][i]["ndcg"]
+                          for i in idx])
+            boots = np.array([d[rng.integers(0, len(d), len(d))].mean()
+                              for _ in range(b)])
+            lo, hi = np.percentile(boots, [2.5, 97.5])
+            row["by_lang"][lg] = {
+                "n": len(d), "delta_ndcg": round(float(d.mean()), 4),
+                "ci95": [round(float(lo), 4), round(float(hi), 4)],
+                "clears_noise": bool(lo > 0 or hi < 0)}
+        out.append(row)
+    return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", action="append", required=True,
-                    help="모델 id 또는 `id=onnx경로`. 여러 번 줄 수 있다")
-    ap.add_argument("--evalset", default=str(_FIXTURE))
+                    help="모델 id 또는 `id=onnx경로`. 여러 번 줄 수 있다. "
+                         "**첫 모델이 부트스트랩의 기준선**이다")
+    ap.add_argument("--evalset", action="append",
+                    help="평가셋 JSON. 여러 번 주면 병합한다(언어 라벨은 파일 것을 "
+                         "쓴다 — 교차언어 셋은 ko2en 처럼 축 이름을 단다). "
+                         "미지정 시 fixtures/evalset.json")
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--max-chars", type=int, default=2000,
                     help="청크 크기(프로덕션 기본 2000 — 부모-자식이라 이 값이 정본이다)")
+    ap.add_argument("--per-lang-docs", type=int, default=0, metavar="N",
+                    help="언어별 코퍼스 문서 상한(0=전량). 정답 문서는 상한과 무관하게 "
+                         "전량 포함된다. 판정 1 스파이크 규모(50문서)에 맞출 때 30")
+    ap.add_argument("--latency", type=int, default=0, metavar="N",
+                    help="모델당 단건 인코딩 지연을 N개 문장으로 잰다(중앙값·p90 ms)")
+    ap.add_argument("--bootstrap", type=int, default=0, metavar="B",
+                    help="첫 모델 대비 nDCG 차이의 짝지은 부트스트랩 95%% CI (B 회)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    data = json.loads(Path(args.evalset).read_text(encoding="utf-8"))
-    queries = data.get("queries") or []
+    queries: list[dict] = []
+    for es in (args.evalset or [str(_FIXTURE)]):
+        data = json.loads(Path(es).read_text(encoding="utf-8"))
+        queries.extend(data.get("queries") or [])
     if not queries:
         print("평가셋이 비었다 — scripts/make_queries.py 를 먼저 돌릴 것", file=sys.stderr)
         return 1
-    texts, owners = load_corpus(args.max_chars)
+    gold = {q["doc_id"] for q in queries}
+    texts, owners = load_corpus(args.max_chars, gold, args.per_lang_docs)
     if not texts:
         print("코퍼스를 못 읽었다", file=sys.stderr)
         return 1
-
-    gold = {q["doc_id"] for q in queries}
     missing = gold - set(owners)
     if missing:
         print(f"🔴 정답 문서 {len(missing)}/{len(gold)}개가 코퍼스에 없다 — 평가셋과 "
@@ -142,10 +236,15 @@ def main() -> int:
         return 1
 
     print(f"질의 {len(queries)}개 · 청크 {len(texts)}개 · top_k={args.top_k}")
-    results = [bench(m, queries, texts, owners, args.top_k) for m in args.model]
+    results = [bench(m, queries, texts, owners, args.top_k, args.latency)
+               for m in args.model]
+    boots = (paired_bootstrap(results, args.bootstrap)
+             if args.bootstrap and len(results) > 1 else [])
 
     if args.json:
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        # qrows 는 원자료로 JSON 에만 싣는다(표 출력에는 과하다).
+        print(json.dumps({"results": results, "bootstrap": boots},
+                         ensure_ascii=False, indent=2))
         return 0
     langs = sorted({lg for r in results for lg in r["by_lang"]})
     head = "".join(f"{lg + ' nDCG':>12}" for lg in langs)
@@ -153,6 +252,20 @@ def main() -> int:
     for r in results:
         cells = "".join(f"{r['by_lang'].get(lg, {}).get('ndcg', 0):>12.3f}" for lg in langs)
         print(f"{r['model']:<46}{cells}{r['overall']['ndcg']:>12.3f}")
+    if any(r.get("timing") for r in results):
+        print(f"\n{'모델':<46}{'코퍼스 s':>10}{'청크/s':>8}{'단건 med ms':>12}{'p90 ms':>8}")
+        for r in results:
+            t = r.get("timing") or {}
+            single = t.get("latency_single") or {}
+            print(f"{r['model']:<46}{t.get('corpus_s', 0):>10.1f}"
+                  f"{t.get('chunks_per_s', 0):>8.2f}"
+                  f"{single.get('median_ms', 0):>12.1f}{single.get('p90_ms', 0):>8.1f}")
+    for b in boots:
+        print(f"\nΔnDCG vs {b['baseline']} — {b['model']}")
+        for lg, m in b["by_lang"].items():
+            verdict = "잡음 밖" if m["clears_noise"] else "잡음 안(채택 근거 아님)"
+            print(f"  {lg:<6} n={m['n']:>3} Δ={m['delta_ndcg']:+.4f} "
+                  f"CI95=[{m['ci95'][0]:+.4f}, {m['ci95'][1]:+.4f}] → {verdict}")
     print("\n⚠ 언어별로 읽을 것 — 섞으면 한국어 손실(전체 토큰의 82%)이 묻힌다.")
     return 0
 

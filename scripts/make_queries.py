@@ -36,12 +36,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import unicodedata
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parents[2]          # …/vinc-project
+#: 워크스페이스 루트. 기본은 이 파일 기준(…/vinc-project)인데, **워크트리에서 돌리면
+#: 그 계산이 스크래치패드를 가리켜 코퍼스가 통째로 안 보인다** — 코퍼스 둘(Vinc-docs)은
+#: 리포 밖에만 있다. 그때는 VINC_EVAL_ROOT 로 실제 워크스페이스를 가리킬 것.
+_ROOT = Path(os.environ.get("VINC_EVAL_ROOT")
+             or Path(__file__).resolve().parents[2])
 _OUT = Path(__file__).resolve().parent / "fixtures" / "evalset.json"
 
 #: 코퍼스 둘. 영어는 스타터팩 본문, 한국어는 Vinc-docs 정본이다.
