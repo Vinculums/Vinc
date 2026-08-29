@@ -502,6 +502,25 @@ def _track_cols(alias: str, prefix: str = "") -> str:
             f"coalesce({alias}.updated_at, '') AS {prefix}updated_at")
 
 
+#: 유효구간 투영 한 자리(W13) — Record 의 `valid_from`/`valid_until` 을 읽기 표면이
+#: 함께 낸다. 무효화된 주장을 무효화 표식 없이 돌려주면 읽는 쪽이 낡은 것을 참으로
+#: 쓴다 — 열만 있고 투영이 없으면 이 기능은 없는 것과 같다.
+#:
+#: ⚠ 이 두 열은 **Record 에만** 있다(one_liner 의 Concept 동형 — `store/
+#: embedded_schema.py` v15). 다른 라벨의 UNION 팔에는 `_VALIDITY_EMPTY` 리터럴로
+#: 모양을 맞춘다 — 열을 옮겨 붙이면 Binder 가 죽고 그 조회 전체가 함께 죽는다.
+#: 열 목록이 한 벌인 이유는 `_track_cols` 와 같다(`_KEPT_FIELDS` 전례).
+#: 근거: [[vinc.plan.0-9-0-open-decisions §2]].
+def _validity_cols(alias: str, prefix: str = "") -> str:
+    return (f"coalesce({alias}.valid_from, '') AS {prefix}valid_from, "
+            f"coalesce({alias}.valid_until, '') AS {prefix}valid_until")
+
+
+#: Record 아닌 UNION 팔의 자리 맞춤 — 빈 문자열은 결손이 아니라 사실이다
+#: (그 종류엔 구간이 없다).
+_VALIDITY_EMPTY = "'' AS valid_from, '' AS valid_until"
+
+
 def graph_plan(*, owner: str, domain: str | None = None,
                domains: list[str] | None = None) -> QueryPlan:
     """The learning knowledge-graph for an owner: Concept nodes + their relations
@@ -599,7 +618,8 @@ def shape_graph(rows: list[dict]) -> dict:
     nodes: dict[str, dict] = {}
 
     def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None,
-              content_ts=None, one_liner=None, rev=None, updated_at=None):
+              content_ts=None, one_liner=None, rev=None, updated_at=None,
+              valid_from=None, valid_until=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
                           "kind": kind or "concept", "degree": 0,
@@ -611,7 +631,11 @@ def shape_graph(rows: list[dict]) -> dict:
                           "one_liner": one_liner or "",
                           # W3 — 낙관적 동시성의 읽기 절반. 쓰기 쪽은 아직 이 값을
                           # 요구하지 않는다(D4: 투영만).
-                          "rev": rev or 0, "updated_at": updated_at or ""}
+                          "rev": rev or 0, "updated_at": updated_at or "",
+                          # W13 — Record 만 값을 갖는다(축 플랜 중 record 팔 전용 열).
+                          # 다른 종류의 빈 문자열은 결손이 아니라 사실이다(R2 동형).
+                          "valid_from": valid_from or "",
+                          "valid_until": valid_until or ""}
             if domain2:
                 nodes[nid]["domain2"] = domain2
         else:
@@ -632,6 +656,13 @@ def shape_graph(rows: list[dict]) -> dict:
                 nodes[nid]["rev"] = rev
             if updated_at and not nodes[nid].get("updated_at"):
                 nodes[nid]["updated_at"] = updated_at
+            # W13 — 같은 규칙. Record 는 개념 플랜의 target 으로 먼저 도착할 수
+            # 있고(record→concept 의 relates_to 는 없지만 ids 모드 합류가 있다),
+            # 그때 구간이 빈 채로 굳으면 무효화가 그 조회에서만 안 보인다.
+            if valid_from and not nodes[nid].get("valid_from"):
+                nodes[nid]["valid_from"] = valid_from
+            if valid_until and not nodes[nid].get("valid_until"):
+                nodes[nid]["valid_until"] = valid_until
         return nodes[nid]
 
     edges: list[dict] = []
@@ -641,7 +672,9 @@ def shape_graph(rows: list[dict]) -> dict:
             continue
         _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
               r.get("kind"), r.get("domain2"), r.get("ts"), r.get("content_ts"),
-              r.get("one_liner"), r.get("rev"), r.get("updated_at"))
+              r.get("one_liner"), r.get("rev"), r.get("updated_at"),
+              # W13 — 유효구간은 record 축 행만 싣는다(매개자 자리라 source 측만).
+              r.get("valid_from"), r.get("valid_until"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
@@ -1000,7 +1033,10 @@ def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         "coalesce(c.one_liner, '') AS target_one_liner, "
         # W3 — 매개자(rc)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
         # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
-        + _track_cols("rc") + ", " + _track_cols("c", "target_")
+        + _track_cols("rc") + ", " + _track_cols("c", "target_") + ", "
+        # W13 — 유효구간은 **Record 팔에서만** 뽑는다(도착점 Concept 에는 열이 없다).
+        # 이 플랜만 싣는 이유: 축 5종 중 Record 가 매개자인 곳이 여기뿐이다.
+        + _validity_cols("rc")
     )
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
@@ -2289,9 +2325,12 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     반환: {executed, node, node_kind, title, one_liner, rev, updated_at, props,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
-                   items: [{id, title, domain, type, dir, evidence, confidence, note}]}}
+                   items: [{id, title, domain, type, dir, evidence, confidence, note,
+                            valid_from, valid_until}]}}
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
+           ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
+           갖고, 값이 있으면 그 기록의 유효구간이다(반개구간·YYYY[-MM[-DD]]).
 
     ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다.
 
@@ -2456,21 +2495,25 @@ def _node_links(store, node: str, *, owner: str,
             # raw_props: Record 카드의 본문(props.note 또는 props.one_liner)이 여기
             # 있다 — 여태 id/title/domain 만 주고 그 문장은 버렸다(no-llm-chat 연구
             # §3.3, I6 미개통 원인). 나머지 둘은 빈 문자열로 맞춘다.
+            # W13 — 유효구간 둘은 Record 팔만 실열(열이 Record 전용). 다른 두 팔은
+            # 리터럴 자리 맞춤 — 한 팔이라도 빠지면 UNION 전체가 Binder 로 죽는다.
             f"MATCH (b:Bridge)-[:CONNECTS]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
             "RETURN b.bridge_id AS id, b.title AS title, b.source_domain AS domain, "
-            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, '' AS raw_props "
+            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, '' AS raw_props, "
+            + _VALIDITY_EMPTY + " "
             "UNION ALL "
             f"MATCH (e:Episode)-[r:ABOUT]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND e.owner_id = $owner "
             "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
             "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf, "
-            "'' AS raw_props "
+            "'' AS raw_props, " + _VALIDITY_EMPTY + " "
             "UNION ALL "
             f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
             "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
-            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, rc.props AS raw_props",
+            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, "
+            "rc.props AS raw_props, " + _validity_cols("rc"),
             {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
         attached = []   # 부착 축만 강등 — 개념 관계는 이미 얻었다
@@ -2493,6 +2536,10 @@ def _node_links(store, node: str, *, owner: str,
             "evidence": bool((r.get("ev") or "").strip()),
             "confidence": float(r.get("conf") or 0.0),
             "note": props.get("note") or props.get("one_liner") or "",
+            # W13 — Record 카드만 값을 갖는다(note 와 같은 신분). 무효화된 기록이
+            # 카드에서 유효한 것과 똑같이 보이면 이 열은 없는 것과 같다.
+            "valid_from": r.get("valid_from") or "",
+            "valid_until": r.get("valid_until") or "",
         }
         if with_evidence:
             # W1 — 에이전트는 "근거가 있다"가 아니라 **그 문장**을 인용해야 한다.
@@ -3452,8 +3499,10 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     "관계 없음"과 구분되지 않고, 실제로 그 hint("아직 관계가 없다")까지 붙었다.
     같은 무음 누락의 반대편이다(도구 계약은 [[vinc.canon.mcp-contract]]).
 
-    UNION 은 열 타입이 같아야 하므로 rel·id·title·domain 에 W3 의 추적열 둘을 더한
-    여섯 열만 투영한다 — Record·Episode·Bridge 는 셋 다 추적 라벨이라 모양이 맞는다."""
+    UNION 은 열 타입이 같아야 하므로 rel·id·title·domain 에 W3 의 추적열 둘,
+    W13 의 유효구간 둘을 더한 여덟 열만 투영한다 — 추적열은 셋 다 추적 라벨이라
+    모양이 맞고, 유효구간은 Record 에만 있어 나머지 두 팔을 리터럴로 맞춘다
+    (한 팔이라도 빠뜨리면 UNION 전체가 Binder 로 죽는다)."""
     params: dict = {"node": pkns.key(owner, node)}
     s_label, _s_pk = _seed_table(node)
     if owner:
@@ -3475,7 +3524,9 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         parts.append(f"MATCH (a:{label})-[:{rel}]->(c:{c_label}) "
                      f"WHERE c.{c_pk} = $node{c_scope}{a_scope} "
                      f"RETURN '{rel}' AS rel, a.{pk} AS id, a.title AS title, "
-                     f"a.{dom} AS domain, " + _track_cols("a"))
+                     f"a.{dom} AS domain, " + _track_cols("a") + ", "
+                     # W13 — 유효구간은 Record 팔만 실열, 나머지는 자리 맞춤.
+                     + (_validity_cols("a") if label == "Record" else _VALIDITY_EMPTY))
     return QueryPlan("node_attachments", " UNION ALL ".join(parts), params,
                      note="record/episode/bridge attachments (F14)")
 
@@ -3558,8 +3609,8 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int,
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
-    neighbors:[{rel,id,title,domain,one_liner,rev,updated_at}], by_rel:{rel:count},
-    count}. 결정론 순서
+    neighbors:[{rel,id,title,domain,one_liner,rev,updated_at,valid_from,valid_until}],
+    by_rel:{rel:count}, count}. 결정론 순서
     (rel, id). 상류 SoG 항해의 관측 표면.
 
     ``node`` 가 ``domain:`` 접두면 **도메인 좌표**를 잡는다(E-1) — 자식 도메인
@@ -3592,7 +3643,12 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
                     # W3 — 걸어가다 만난 노드의 버전. `domain:` 좌표 응답만 이 키가
                     # 없다(도메인은 추적 라벨이 아니다 — 위 _domain_neighbors).
                     "rev": r.get("rev") or 0,
-                    "updated_at": r.get("updated_at") or ""})
+                    "updated_at": r.get("updated_at") or "",
+                    # W13 — Record 부착만 값을 갖는다(열이 Record 전용 — 부착 축
+                    # 정방향 팔만 싣고, 의미층·역방향 행은 키가 없어 '' 로 남는다.
+                    # 그 빈 문자열은 결손이 아니라 사실이다).
+                    "valid_from": r.get("valid_from") or "",
+                    "valid_until": r.get("valid_until") or ""})
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
     if not out:
         # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와

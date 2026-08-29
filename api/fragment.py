@@ -132,7 +132,10 @@ class _ThemeFold:
 #: 나머지 필드로 넓히는 것이 전부다.
 _KEPT_FIELDS: dict[str, frozenset[str]] = {
     "Concept":  frozenset({"title", "domain", "tags", "props", "one_liner", "content_time"}),
-    "Record":   frozenset({"title", "domain", "tags", "props", "content_time"}),
+    # v15(W13) — 유효구간 둘은 **Record 에만** 있다. 다른 종류에 실으면 아래
+    # `_warn_unkept_fields` 가 말하고 값은 버려진다(조용한 유실 금지).
+    "Record":   frozenset({"title", "domain", "tags", "props", "content_time",
+                           "valid_from", "valid_until"}),
     "Decision": frozenset({"title", "domain", "tags", "props"}),
     "Episode":  frozenset({"title", "domain", "tags", "props", "date", "summary"}),
     "Bridge":   frozenset({"title", "tags", "props"}),
@@ -143,7 +146,8 @@ _KEPT_FIELDS: dict[str, frozenset[str]] = {
 #: 팩 가져오기·동기화가 부가 키를 싣는 경로가 있고, 모르는 키까지 경고하면 정상
 #: 왕복이 소음으로 덮인다. 잡으려는 것은 "계약에 있는 필드를 엉뚱한 종류에 실었다"다.
 _CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
-                              "content_time", "date", "summary"})
+                              "content_time", "date", "summary",
+                              "valid_from", "valid_until"})   # v15(W13)
 #: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
 _ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
 
@@ -543,6 +547,37 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                     warnings.append(
                         f"content_time '{_raw}' is not YYYY[-MM[-DD]] — kept the stored "
                         f"value (id={nid})")
+        if label == "Record":
+            # v15(W13) — **유효구간** [valid_from, valid_until). 규칙은 content_time
+            # 과 같다: 키가 있을 때만 쓰고(부분 재전송은 보존), 형식 위반은 쓰지 않고
+            # 경고하며, 빈 문자열은 명시적 지우기다. props 승격은 없다 — 이 두 필드는
+            # 레거시 자리가 없던 신설이라 승격할 관행 자체가 없다(YAGNI).
+            # 무효화("이 주장은 X 까지였다")는 valid_until 만 실은 부분 재전송으로
+            # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
+            # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
+            from . import docstore as _ds2      # 지연 import — 검증기 1벌 유지
+            for _vcol in ("valid_from", "valid_until"):
+                _vraw = node.get(_vcol)
+                if _vraw is None:
+                    continue
+                _vnorm = _ds2._norm_content_time(str(_vraw))
+                if _vnorm or not str(_vraw).strip():
+                    _set(_vcol, _vnorm)
+                else:
+                    warnings.append(
+                        f"{_vcol} '{_vraw}' is not YYYY[-MM[-DD]] — kept the stored "
+                        f"value (id={nid})")
+            # 뒤집힌 구간은 **저장하되 말한다** — 두 값이 각자 합법이라 거부하면
+            # 잃는 쪽을 고르는 일이 되고, 침묵하면 "T 에 유효한가" 질의가 전부
+            # 거짓이 된다. 유효값은 방금 실은 것, 없으면 저장된 것(사전식 비교 —
+            # 접두 형식이라 자릿수가 달라도 순서가 선다).
+            _vf = params.get("valid_from", current.get("valid_from") or "")
+            _vu = params.get("valid_until", current.get("valid_until") or "")
+            if _vf and _vu and _vu < _vf:
+                warnings.append(
+                    f"validity interval inverted — valid_until '{_vu}' precedes "
+                    f"valid_from '{_vf}' (id={nid}); stored as sent, but no instant "
+                    f"falls inside it")
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
             #

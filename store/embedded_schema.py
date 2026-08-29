@@ -60,7 +60,13 @@ _NODE_TABLES: dict[str, dict] = {
         ("record_id", "STRING"), ("title", "STRING"), ("owner_id", "STRING"),
         ("tenant_id", "STRING"), ("domain", "STRING"), ("tags", "STRING[]"),
         ("created", "STRING"), ("props", "STRING"),
-        ("content_time", "STRING")]},   # v7(D72) — Concept 과 같은 축
+        ("content_time", "STRING"),   # v7(D72) — Concept 과 같은 축
+        # v15(W13) — **유효구간**(반개구간 [valid_from, valid_until)). content_time 이
+        # "말하는 일이 언제 있었나"라면 이 둘은 "이 주장이 언제부터 언제까지 참인가"다.
+        # 형식은 content_time 과 같은 YYYY[-MM[-DD]] 사전식 계약, '' = 미지정(무기한/
+        # 모름 — 지어내지 않는다). **Record 에만 붙는다**: 실측된 부패는 전부 문서·
+        # 기록에서 났고 엣지 구간은 트리거 뒤다. 근거: [[vinc.plan.0-9-0-open-decisions §2]].
+        ("valid_from", "STRING"), ("valid_until", "STRING")]},
     # skill_tracker
     "SkillExecution": {"pk": "exec_id", "cols": [
         ("exec_id", "STRING"), ("skill", "STRING"), ("workspace", "STRING"),
@@ -199,7 +205,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
 #: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON
@@ -294,6 +300,11 @@ def migration_statements(from_version: int) -> list[str]:
         # 기존 행은 DEFAULT '' 로 채워진다 = 모름. **백필 없음**이 요지다.
         for rel in EDGE_BIRTH_RELS:
             stmts.append(f"ALTER TABLE {rel} ADD created STRING DEFAULT ''")
+    if from_version < 15:  # v15(W13) — Record 유효구간(노드 테이블 주석 참조).
+        # 기존 행은 '' = 미지정. v7 과 같은 규율 — 없는 구간을 지어내지 않는다
+        # (전 행에 '오늘부터 유효'를 찍으면 무효화 질의가 마이그레이션 날짜에 몰린다).
+        stmts.append("ALTER TABLE Record ADD valid_from STRING DEFAULT ''")
+        stmts.append("ALTER TABLE Record ADD valid_until STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

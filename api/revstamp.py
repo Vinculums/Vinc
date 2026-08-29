@@ -32,7 +32,10 @@ TRACKED: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "topic", "one_liner", "status", "stem",
                 "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags", "pinned"),
-    "Record": ("title", "domain", "tags", "props", "content_time"),
+    # v15(W13) — 유효구간 둘도 추적한다. content_time 과 같은 이유다: 구간만 고친
+    # 편집(무효화가 정확히 그 모양이다)도 변경이고, 안 세면 그 무효화가 기기를 못 떠난다.
+    "Record": ("title", "domain", "tags", "props", "content_time",
+               "valid_from", "valid_until"),
     "Bridge": ("title", "status", "source_domain", "target_domain", "props"),
     "Entity": ("type", "title", "tags", "theme_id"),
     # v12 — 결정. 열이 Record 와 같은 집합이다(제목·주제·태그·자유 속성).

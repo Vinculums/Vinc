@@ -162,7 +162,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 14)   # v14 — 엣지 출생
+        self.assertEqual(eschema.SCHEMA_VERSION, 15)   # v15 — Record 유효구간(W13)
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
@@ -193,6 +193,15 @@ class ProvisionTests(unittest.TestCase):
                                     and s.endswith("ADD created STRING DEFAULT ''")
                                     for s in v14), v14)
         self.assertEqual({s.split()[2] for s in v14}, set(eschema.EDGE_BIRTH_RELS))
+        # v15 — Record 유효구간(W13). ALTER 둘, Record 에만. 신규 설치는 base DDL 이
+        # 이미 두 열을 만들므로(위 bridge 검사와 같은 이중 경로) 여기 문은 흡수된다.
+        v15 = only(15)
+        self.assertEqual(v15, ["ALTER TABLE Record ADD valid_from STRING DEFAULT ''",
+                               "ALTER TABLE Record ADD valid_until STRING DEFAULT ''"])
+        record_ddl = next(s for s in ddl.splitlines()
+                          if s.startswith("CREATE NODE TABLE Record"))
+        self.assertIn("valid_from STRING", record_ddl)
+        self.assertIn("valid_until STRING", record_ddl)
         # ⚠ 여기 `==` 였는데 그건 v13 에 특유한 사정이었다(그 버전이 하는 일이
         # 백필 재실행 자체였다). 계층과 무관한 스키마 변경이 오면 둘은 **갈리는 것이
         # 맞다** — 같게 묶으면 모든 업그레이드가 계층 백필을 다시 돌린다.

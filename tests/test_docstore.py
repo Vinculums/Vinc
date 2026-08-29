@@ -446,6 +446,42 @@ class DocstoreE2E(unittest.TestCase):
         self.assertFalse(st["migrating"], "재임베딩이 끝났는데 이행 중이라고 한다")
         self.assertEqual(st["pending"], 0)
 
+    def test_한번도_적용된적_없으면_age_s가_None이고_정체가_아니다(self):
+        """W14 — 콜드스타트(모델 전환 직후 등)를 오탐하지 않는다. 잴 기준 시각이
+        아예 없을 때 stalled 를 단정하는 것은 알람 신뢰를 깎는다(docstring 의
+        명시적 선택 — ponytail: requeued_at 없이는 이 이상 정밀해질 수 없다)."""
+        ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        ds.switch_embed_model(self.store, "model-A")   # pending>0, 적용 이력은 없음
+        st = ds.embed_model_state(self.store)
+        self.assertGreater(st["pending"], 0)
+        self.assertIsNone(st["age_s"])
+        self.assertFalse(st["stalled"])
+
+    def test_정체가_길어지면_stalled가_True다(self):
+        """🔴 이 판정은 `pid` 가 아니라 store 에 영속된 `last_applied_at` 만 본다 —
+        워커 프로세스가 몇 번을 죽었다 재기동해도(허브 워치독이 2026-08-28 에
+        물린 "떴다 죽는 프로세스" 함정) 이 값은 흔들리지 않는다는 게 핵심이다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        ds.switch_embed_model(self.store, "model-A")   # 재큐 — pending 다시 1
+        # 마지막 성공 시각을 인위적으로 2시간 전으로 되돌린다(워커가 오래 멈춘 상황).
+        old_ts = ds.time.strftime("%Y-%m-%dT%H:%M:%SZ", ds.time.gmtime(ds.time.time() - 7200))
+        self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k SET m.value = $v",
+                       {"k": ds._EMBED_APPLIED_KEY, "v": old_ts})
+        st = ds.embed_model_state(self.store, stall_after_s=1800)
+        self.assertGreaterEqual(st["age_s"], 7000)
+        self.assertTrue(st["stalled"], "2시간 무진행인데 정체로 안 잡혔다")
+
+        # pending 이 없으면(밀린 일이 없으면) 아무리 age_s 가 커도 정체가 아니다.
+        cid2 = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid2: [[1.0, 0, 0, 0]]})
+        self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k SET m.value = $v",
+                       {"k": ds._EMBED_APPLIED_KEY, "v": old_ts})   # 방금 apply 가 갱신한 값을 되돌림
+        st2 = ds.embed_model_state(self.store, stall_after_s=1800)
+        self.assertEqual(st2["pending"], 0)
+        self.assertFalse(st2["stalled"], "밀린 일이 없는데 정체로 오판했다")
+
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
         out = ds.put_doc(self.store, owner="user:a", text=text, title="정본")
