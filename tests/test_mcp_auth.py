@@ -39,7 +39,8 @@ def _app(**kw):
 
 def test_resolve_auth_static():
     app = _app(static_token="S")
-    assert app.resolve_auth("Bearer S") == {"ok": True, "owner": None, "plan": None, "source": "static"}
+    assert app.resolve_auth("Bearer S") == {"ok": True, "owner": None, "plan": None,
+                                            "scope": "full", "source": "static"}
     assert app.resolve_auth("Bearer nope")["ok"] is False
     assert app.resolve_auth(None)["ok"] is False
     assert app.resolve_auth("Basic x")["ok"] is False
@@ -54,7 +55,10 @@ def test_resolve_auth_apikey_via_verify_key():
 
     app = _app(static_token="S", verify_key=vk)
     ok = app.resolve_auth("Bearer vinc_sk_good")
-    assert ok == {"ok": True, "owner": "user:u1", "plan": "pro", "source": "apikey"}
+    # scope: 스텁이 scope 를 안 실었다 = 모르는 스코프 → 'read'(fail-closed, W18).
+    # 실물 entitlement.verify_key 는 항상 싣는다(구 계정 응답의 vinc_sk 는 full 정규화).
+    assert ok == {"ok": True, "owner": "user:u1", "plan": "pro", "scope": "read",
+                  "source": "apikey"}
     assert seen["raw"] == "vinc_sk_good"
     assert app.resolve_auth("Bearer vinc_sk_bad")["ok"] is False
 
