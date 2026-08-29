@@ -106,6 +106,21 @@ _FRAGMENT_SCHEMA = {
                                                     "because comparison and bucketing are lexicographic; "
                                                     "anything else is refused with a warning and the "
                                                     "stored value is kept. Empty string clears it."},
+                    # v15(W13) — content_time 과 같은 이유로 계약에 적는다: 서버는
+                    # 받는데 계약이 침묵하면 상류는 props 에 넣고, 그 자리는 아무
+                    # 읽기도 구간으로 취급하지 않는다.
+                    "valid_from": {"type": "string",
+                                   "description": "Record only — when the claim this record makes became "
+                                                  "true. Same YYYY[-MM[-DD]] contract as content_time; "
+                                                  "empty string clears it. Omitting the field on a resend "
+                                                  "preserves the stored value."},
+                    "valid_until": {"type": "string",
+                                    "description": "Record only — when the claim stopped being true "
+                                                   "(half-open: the claim does not hold at this instant). "
+                                                   "Setting it is how a record is invalidated without "
+                                                   "deleting it — resend just {id, type, valid_until}. "
+                                                   "Same format contract as valid_from; empty string "
+                                                   "clears it (the claim holds again)."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."},
                 },
                 "required": ["id", "type"],

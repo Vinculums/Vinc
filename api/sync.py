@@ -50,7 +50,10 @@ SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     # 계정 사이를 통째로 못 오갔다. Bridge·Entity 제외는 아래 스코프 결정이지만
     # Record 는 그 문장에도 없었다: 빠진 줄 아무도 몰랐다는 뜻이다.
     # 열은 Concept 과 같다(content_time 은 v7 이 Concept·Record 둘 다에 붙였다).
-    "Record": ("title", "domain", "tags", "props", "content_time"),
+    # v15(W13) — 유효구간 둘. 여기 안 넣으면 한 기기의 무효화("X 까지였다")가
+    # 다른 기기로 안 넘어가 그쪽에서 낡은 주장이 유효한 채 남는다.
+    "Record": ("title", "domain", "tags", "props", "content_time",
+               "valid_from", "valid_until"),
     # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
     # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
     # (오류도 경고도 없이 — 다른 기기에서 결정이 통째로 사라진 것처럼 보인다).
@@ -383,6 +386,9 @@ def _records_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Quer
         "RETURN r.record_id AS id, r.title AS title, r.domain AS domain, "
         "r.tags AS tags, r.props AS props, r.updated_at AS updated_at, "
         "r.created AS created, r.content_time AS content_time, "
+        # v15(W13) — 유효구간. SYNC_FIELDS 에 있는데 여기서 안 실으면 _snapshot 이
+        # None 을 뽑아 "원격이 이 필드를 비웠다"로 읽힌다(무효화의 조용한 소실).
+        "r.valid_from AS valid_from, r.valid_until AS valid_until, "
         "r.rev AS rev, r.sync_seq AS sync_seq ORDER BY r.sync_seq"
     )
     return q.QueryPlan("sync_records", cypher, params, note="owner+domain scoped delta")
@@ -433,6 +439,10 @@ def _node_from_record(r: dict) -> dict:
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
             "content_time": r.get("content_time") or "",
+            # v15(W13) — 유효구간도 본문이다(content_time 과 같은 신분 — 3-way
+            # 병합 대상. 출생 _created 처럼 스탬프가 아니다).
+            "valid_from": r.get("valid_from") or "",
+            "valid_until": r.get("valid_until") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
