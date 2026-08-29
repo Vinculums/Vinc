@@ -405,7 +405,12 @@ class MCPHTTPApp:
         return self._dispatcher
 
     def resolve_auth(self, header: str | None, space: str | None = None) -> dict:
-        """Bearer 를 해석해 {ok, owner, plan, source[, role, member]}. 스탬핑의 출처.
+        """Bearer 를 해석해 {ok, owner, plan, scope, source[, role, member]}. 스탬핑의 출처.
+
+        `scope`(W18, [[decision:scoped-key-tier]]): 'full' 정확일치만 쓰기를 연다.
+        키 경로는 verify_key 가 실어 준 값을 그대로 쓰되 **부재는 'read'** 다
+        (fail-closed — 스코프를 모르는 채 쓰기를 여는 것이 최악의 고장이다).
+        static·oauth 는 스코프 개념 이전의 신원이라 'full'(기존 동작 무변화).
 
         ``space``(팀 uuid)가 오면 **키 경로만** 통과한다. OAuth 는 못 쓴다 —
         `resource_metadata` 가 `issuer + "/mcp"` 로 하드코딩돼 있어 팀 주소에 등록된
@@ -417,28 +422,32 @@ class MCPHTTPApp:
         - oauth : 발급 토큰 → 코드에 스탬핑된 owner/plan(회원 경로면 채워짐).
                   등급은 **동결돼 있으므로** `_fresh_plan` 이 주기적으로 되묻는다.
         """
-        miss = {"ok": False, "owner": None, "plan": None, "source": None}
+        miss = {"ok": False, "owner": None, "plan": None, "scope": None, "source": None}
         if not header or not header.startswith("Bearer "):
             return miss
         if space:
             # 팀 주소는 키 전용. 그리고 **개인으로 떨어지지 않는다** — 실패는 실패다.
             tok = header[7:].strip()
-            if not tok.startswith("vinc_sk_") or self.verify_key is None:
+            if not tok.startswith(entitlement.KEY_PREFIXES) or self.verify_key is None:
                 return miss
             ent = self.verify_key(tok, space)
             if not ent or not str(ent.get("owner") or "").startswith("team:"):
                 return miss
             return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                    "scope": ent.get("scope") or "read",
                     "source": "apikey", "role": ent.get("role"),
                     "member": ent.get("member")}
         token = header[len("Bearer "):].strip()
         if self.static_token and secrets.compare_digest(token, self.static_token):
-            return {"ok": True, "owner": None, "plan": None, "source": "static"}
-        if token.startswith("vinc_sk_") and self.verify_key is not None:
+            return {"ok": True, "owner": None, "plan": None, "scope": "full",
+                    "source": "static"}
+        if token.startswith(entitlement.KEY_PREFIXES) and self.verify_key is not None:
             ent = self.verify_key(token)
             if ent:
                 return {"ok": True, "owner": ent["owner"],
-                        "plan": ent.get("plan"), "source": "apikey"}
+                        "plan": ent.get("plan"),
+                        "scope": ent.get("scope") or "read",
+                        "source": "apikey"}
             return miss
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
@@ -446,7 +455,7 @@ class MCPHTTPApp:
                 owner = rec.get("owner")
                 return {"ok": True, "owner": owner,
                         "plan": self._fresh_plan(owner, rec.get("plan")),
-                        "source": "oauth"}
+                        "scope": "full", "source": "oauth"}
         return miss
 
     def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
@@ -1030,6 +1039,27 @@ class _Handler(BaseHTTPRequestHandler):
                         "jsonrpc": "2.0", "id": first.get("id"),
                         "error": {"code": -32603,
                                   "message": f"role {role!r} may not read prompts"}})
+            # W18 — 읽기 전용 키 게이트([[decision:scoped-key-tier]]). 등급은 팀 역할
+            # 게이트와 같은 주석표 유도(tool_tier)를 쓴다 — viewer 등급만 읽기다.
+            # 'full' 정확일치만 쓰기를 연다: scope 부재·미지 값은 전부 거부다
+            # (fail-closed — 집행되지 않는 스코프는 무음 전권이다). 미지 도구명도
+            # 여기서 막힌다(tool_tier 가 admin 을 주므로) — 뒤의 -32602 보다 먼저
+            # 닫히는 것이 안전측이다. 거절은 브리지를 부르지 않는다. prompts/* 는
+            # 조회라 통과한다(스토어 읽기 = viewer 와 같은 등급).
+            if auth.get("scope") != "full":
+                ro_blocked = [m for m in msgs
+                              if m.get("method") == "tools/call"
+                              and tools.tool_tier(
+                                  ((m.get("params") or {}).get("name") or ""))
+                              != "viewer"]
+                if ro_blocked:
+                    name = ((ro_blocked[0].get("params") or {}).get("name") or "")
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
+                        "result": {"isError": True, "content": [{"type": "text",
+                                   "text": f"this key is read-only: {name} writes "
+                                           "to the graph. Mint a full-access key "
+                                           "at https://vincs.io/account"}]}})
             d = self.app.dispatcher()
             ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
             # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
@@ -1173,6 +1203,12 @@ class _Handler(BaseHTTPRequestHandler):
         if not owner:
             return self._json(400, {"error": "sync requires a member-scoped key "
                                              "(static-token auth has no owner)"})
+        # W18 — push 는 도구 디스패치를 **우회하는** 그래프 쓰기다. /mcp 만 막고
+        # 여기를 열어 두면 읽기 전용 키가 sync 로 쓴다(무음 전권). pull 은 읽기라
+        # 통과한다. 근거: [[decision:scoped-key-tier]]
+        if path in ("/sync/push", "/sync/docs-push") and auth.get("scope") != "full":
+            return self._json(403, {"error": "this key is read-only: sync push "
+                                             "writes to the graph"})
         body = self._body()
         try:
             if path == "/sync/pull":
