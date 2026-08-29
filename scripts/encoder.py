@@ -9,13 +9,18 @@
 🔴 **규약 셋 중 하나만 어긋나도 에러 없이 벡터가 틀린다**([[vinc.plan.embedding-pipeline]]
 부록 B). 그래서 여기 표로 박아 둔다:
 
-    | | bge-base-en-v1.5 | multilingual-e5-base |
-    |---|---|---|
-    | 풀링 | `hidden[:,0]` (CLS) | **mean** — `(h*mask).sum(1)/mask.sum(1)` |
-    | 접두 | query 만 지시문 | **양쪽** `"query: "` / `"passage: "` |
-    | 정규화 | L2 | L2 |
-    | 입력 | input_ids·attention_mask·token_type_ids | input_ids·attention_mask (**둘뿐**) |
-    | 패딩 id | 0 = `[PAD]` | 0 은 `<s>` 다 — `<pad>` 는 **1** |
+    | | bge-base-en-v1.5 | multilingual-e5-base/large | bge-m3 (dense) |
+    |---|---|---|---|
+    | 풀링 | `hidden[:,0]` (CLS) | **mean** — `(h*mask).sum(1)/mask.sum(1)` | `hidden[:,0]` (CLS) |
+    | 접두 | query 만 지시문 | **양쪽** `"query: "` / `"passage: "` | **없음** (양쪽 다) |
+    | 정규화 | L2 | L2 | L2 |
+    | 입력 | input_ids·attention_mask·token_type_ids | input_ids·attention_mask (**둘뿐**) | input_ids·attention_mask |
+    | 패딩 id | 0 = `[PAD]` | 0 은 `<s>` 다 — `<pad>` 는 **1** | XLM-R 계열 — `<pad>` 는 **1** |
+
+⚠ bge-m3 는 이름이 bge 라도 **v1.5 의 쿼리 지시문을 붙이면 안 된다** — 공식 사용법이
+무지시(instruction-free)다. `prefix()` 의 m3 분기가 v1.5 분기보다 먼저 서는 이유다.
+그리고 공개 ONNX 내보내기 중에는 풀링·정규화를 그래프 안에 이미 구운 판이 있어서,
+출력이 [batch, dim] 2차원이면 풀링을 **다시 하지 않는다**(`_batch` 의 ndim 가드).
 
 두 풀링의 코사인은 같은 입력에도 0.87~0.91 에 불과하다. ONNX 전환 통과 기준이 ≥0.9999
 였던 것을 생각하면 완전히 다른 벡터다 — 즉 풀링을 틀리면 "조금 나쁜" 게 아니라 딴것이다.
@@ -41,8 +46,16 @@ def is_e5(model: str) -> bool:
     return "e5" in model.lower()
 
 
+def is_m3(model: str) -> bool:
+    return "bge-m3" in model.lower()
+
+
 def prefix(text: str, kind: str, model: str) -> str:
-    """비대칭 검색 접두. e5 는 **양쪽 필수**, bge 는 query 만."""
+    """비대칭 검색 접두. e5 는 **양쪽 필수**, bge-v1.5 는 query 만, bge-m3 는 **무접두**.
+    m3 분기가 v1.5 분기보다 먼저다 — 이름에 bge 가 들어 있어서 순서를 바꾸면
+    m3 쿼리에 v1.5 지시문이 붙는다(에러 없이 벡터만 틀리는 부류)."""
+    if is_m3(model):
+        return text
     if is_e5(model):
         return f"{'query' if kind == 'query' else 'passage'}: {text}"
     if kind != "query":
@@ -89,7 +102,11 @@ class Encoder:
         self._tok = tok
 
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = 1
+        # 기본 1 = 프로덕션(`packaging/embed_worker.py`) 동일 조건. 코퍼스 인코딩을
+        # 빨리 돌리고 싶을 때만 VINC_EVAL_THREADS 를 올린다 — 순위 지표는 스레드 수와
+        # 무관하지만 **지연 측정은 1 로 잰 것만 프로덕션과 비교 가능**하다.
+        threads = int(os.environ.get("VINC_EVAL_THREADS", "1") or "1")
+        opts.intra_op_num_threads = threads
         opts.inter_op_num_threads = 1
         self._sess = ort.InferenceSession(path, sess_options=opts,
                                           providers=["CPUExecutionProvider"])
@@ -113,11 +130,16 @@ class Encoder:
                 "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64)}
         feed = {k: v for k, v in feed.items() if k in self._names}
         hidden = self._sess.run(None, feed)[0]
-        if is_e5(self.model):
+        if hidden.ndim == 2:
+            # 공개 ONNX 중에는 풀링·정규화가 그래프에 이미 구워진 판이 있다
+            # ([batch, dim] 출력). 그 위에 다시 풀링하면 dim 축을 시퀀스 축으로
+            # 오독한다 — 그대로 쓰고 아래 L2 만 거친다(멱등).
+            pooled = hidden
+        elif is_e5(self.model):
             m = mask[..., None].astype(hidden.dtype)
             pooled = (hidden * m).sum(axis=1) / np.clip(m.sum(axis=1), 1e-9, None)
         else:
-            pooled = hidden[:, 0]
+            pooled = hidden[:, 0]         # CLS — bge-v1.5 와 bge-m3 dense 공통
         norm = np.linalg.norm(pooled, axis=1, keepdims=True)
         norm[norm == 0] = 1.0
         return (pooled / norm).astype(float).tolist()
@@ -128,7 +150,16 @@ def selfcheck(model: str) -> int:
     import numpy as np
 
     os.environ.setdefault("VINC_EMBED_MODEL", model)
-    from packaging import embed_worker as w                # noqa: PLC0415
+    # `from packaging import embed_worker` 는 안 된다 — 리포의 packaging/ 은
+    # __init__.py 가 없는 네임스페이스 패키지라, pip 의 `packaging`(정규 패키지)이
+    # 설치된 환경에서는 경로 순서와 무관하게 **그쪽이 이긴다**. 드리프트 가드가
+    # 가드해야 할 환경에서 못 도는 형태라 파일 경로로 직접 싣는다.
+    import importlib.util
+    _p = Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
+    _spec = importlib.util.spec_from_file_location("_vinc_embed_worker", _p)
+    w = importlib.util.module_from_spec(_spec)
+    assert _spec.loader is not None
+    _spec.loader.exec_module(w)
 
     samples = ["Newtonian mechanics describes motion under forces.",
                "허브는 단일 라이터라 리비전 롤링 전환이 안 된다.",
