@@ -1666,12 +1666,12 @@ export async function renderView(el: HTMLElement) {
           ${chev("right")}
         </button>
         <div class="card-sec">
-          <button type="button" class="card-row" id="c-links" aria-expanded="true">
+          <button type="button" class="card-row" id="c-links" aria-expanded="false">
             <span class="row-name row-name--strong">${V.cardLinks}</span>
             <span class="row-meta" id="c-linkmeta"></span>
             ${chev("down")}
           </button>
-          <div class="card-links" id="c-rels"><p class="card-note">${V.sourceLoading}</p></div>
+          <div class="card-links" id="c-rels" hidden><p class="card-note">${V.sourceLoading}</p></div>
         </div>
         ${askRowHTML()}
         <div class="card-row card-row--static"${canZoom() ? "" : " hidden"}>
@@ -1715,7 +1715,7 @@ export async function renderView(el: HTMLElement) {
         void show(trail[trail.length - 1]);
       } catch { /* 실패는 조용히 — 지워진 것이 없다 */ }
     });
-    // Links 는 기본 펼침. 접는 것은 카드 안의 일이라 캐럿이 아래를 본다.
+    // Links 는 기본 접힘. 펼치는 것도 접는 것도 카드 안의 일이라 캐럿이 아래를 본다.
     const linksBox = q("#c-rels")!;
     q("#c-links")!.addEventListener("click", (e) => {
       const b = e.currentTarget as HTMLElement;
