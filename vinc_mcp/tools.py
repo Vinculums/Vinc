@@ -429,13 +429,16 @@ TOOLS: list[dict] = [
         "name": "vinc_graph",
         "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within "
                        "`depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, "
-                       "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,ppr,…layout}], "
+                       "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,rev,updated_at,"
+                       "ppr,…layout}], "
                        "edges:[{source,target,type,cross_domain}]}. Nodes carry View ranking and layout fields "
                        "(ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, "
                        "vinc_neighbors returns the same relations without them and is far cheaper; to walk step "
                        "by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — "
                        "if you only have a phrase, run vinc_search first. depth 2 is the working default, 4 the "
-                       "ceiling. Read-only.",
+                       "ceiling. `rev` and `updated_at` are the node's current version, so you can hold what "
+                       "you read before you overwrite it; nothing on the write path demands them yet. "
+                       "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "seed_id": {"type": "string",
                         "description": "Exact node id. Give this OR `url`, not neither."},
@@ -524,7 +527,11 @@ TOOLS: list[dict] = [
         "name": "vinc_neighbors",
         "description": "Observe ONE node's immediate (1-hop) relation network — a lightweight "
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
-                       "[{rel,id,title,domain,one_liner}], by_rel:{type:count}, count}. `one_liner` is "
+                       "[{rel,id,title,domain,one_liner,rev,updated_at}], by_rel:{type:count}, count}. "
+                       "`rev` and `updated_at` are that neighbour's current version, carried so a walk can "
+                       "note what it read; a `domain:` coordinate answers with child domains and members "
+                       "instead, and those rows have no version because a domain is not a stored node. "
+                       "`one_liner` is "
                        "the concept's own description; only Concept carries that column, so it "
                        "is an empty string on records, episodes, bridges and decisions, and that "
                        "emptiness is a fact rather than a gap. Use this to walk the "

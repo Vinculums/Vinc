@@ -485,6 +485,23 @@ def normalize_domains(domain: str | None = None,
     return out
 
 
+#: 추적열 투영 한 자리(W3) — 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가
+#: 버전을 손에 쥐려면 읽기가 먼저 그것을 줘야 하는데, 여태 어느 읽기 경로도 주지
+#: 않았다. **투영만이고 강제는 아니다**(expected_rev 는 첫 실측 충돌이 방아쇠).
+#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
+#:
+#: ⚠ 이 두 열은 `store/embedded_schema.py` 의 `_TRACK_COLS` 가 붙는 라벨에만 있다
+#: (Concept·Episode·Record·Bridge·Entity·Decision). **Domain 에는 없다** — 도메인
+#: 좌표 투영에 옮겨 붙이면 Binder 가 죽고 그 조회 전체가 함께 죽는다(이 파일이
+#: pinned·content_time·one_liner 에서 이미 세 번 겪은 자리).
+#:
+#: 열 목록을 여기 한 벌만 두는 이유: 두 벌이 되는 순간 "저장이 안 됐다"와 "투영이
+#: 빠뜨렸다"가 구분되지 않는다(`_KEPT_FIELDS` 전례).
+def _track_cols(alias: str, prefix: str = "") -> str:
+    return (f"coalesce({alias}.rev, 0) AS {prefix}rev, "
+            f"coalesce({alias}.updated_at, '') AS {prefix}updated_at")
+
+
 def graph_plan(*, owner: str, domain: str | None = None,
                domains: list[str] | None = None) -> QueryPlan:
     """The learning knowledge-graph for an owner: Concept nodes + their relations
@@ -529,7 +546,10 @@ def graph_plan(*, owner: str, domain: str | None = None,
         # 있는 열이라(Decision·Record·Episode·Bridge 에는 없다) 여기 두 자리와
         # 축 플랜의 개념 팔에서만 뽑는다. 다른 라벨에 옮겨 붙이면 Binder 오류다.
         "coalesce(c.one_liner, '') AS one_liner, "
-        "coalesce(d.one_liner, '') AS target_one_liner"
+        "coalesce(d.one_liner, '') AS target_one_liner, "
+        # W3 — 양 끝 다 싣는다. 한쪽만 실으면 target 으로만 등장한 노드가 영구히
+        # 버전 없이 남고, 그건 "안 바뀌었다"와 구분되지 않는다.
+        + _track_cols("c") + ", " + _track_cols("d", "target_")
     )
     return QueryPlan("graph", cypher, params, note="learning knowledge-graph (concepts + relations)")
 
@@ -579,7 +599,7 @@ def shape_graph(rows: list[dict]) -> dict:
     nodes: dict[str, dict] = {}
 
     def _node(nid, label, dom, props=None, tags=None, kind=None, domain2=None, ts=None,
-              content_ts=None, one_liner=None):
+              content_ts=None, one_liner=None, rev=None, updated_at=None):
         if nid not in nodes:
             nodes[nid] = {"id": nid, "label": label or nid, "domain": dom or "",
                           "kind": kind or "concept", "degree": 0,
@@ -588,7 +608,10 @@ def shape_graph(rows: list[dict]) -> dict:
                           # R2 — 쓸 수는 있는데 어떤 읽기 도구로도 못 읽던 필드.
                           # 열은 **Concept 에만** 있으므로 나머지 종류에서는 빈
                           # 문자열이고, 그건 결손이 아니라 사실이다.
-                          "one_liner": one_liner or ""}
+                          "one_liner": one_liner or "",
+                          # W3 — 낙관적 동시성의 읽기 절반. 쓰기 쪽은 아직 이 값을
+                          # 요구하지 않는다(D4: 투영만).
+                          "rev": rev or 0, "updated_at": updated_at or ""}
             if domain2:
                 nodes[nid]["domain2"] = domain2
         else:
@@ -603,6 +626,12 @@ def shape_graph(rows: list[dict]) -> dict:
             # 들어오는데, 뒤이어 개념 플랜의 행이 값을 들고 온다.
             if one_liner and not nodes[nid].get("one_liner"):
                 nodes[nid]["one_liner"] = one_liner
+            # W3 — 같은 규칙. 투영 없는 행(있다면)이 먼저 닿아도 버전이 0/빈 채로
+            # 굳지 않는다. 진짜 rev 0 은 채울 것이 없으므로 그대로 0 이다.
+            if rev and not nodes[nid].get("rev"):
+                nodes[nid]["rev"] = rev
+            if updated_at and not nodes[nid].get("updated_at"):
+                nodes[nid]["updated_at"] = updated_at
         return nodes[nid]
 
     edges: list[dict] = []
@@ -612,7 +641,7 @@ def shape_graph(rows: list[dict]) -> dict:
             continue
         _node(nid, r.get("label"), r.get("domain"), r.get("props"), r.get("tags"),
               r.get("kind"), r.get("domain2"), r.get("ts"), r.get("content_ts"),
-              r.get("one_liner"))
+              r.get("one_liner"), r.get("rev"), r.get("updated_at"))
         tgt = r.get("target")
         if tgt:
             # C5: target 은 target_label(=title)로 만든다 — 예전엔 id 를 label 로 넘겨
@@ -621,7 +650,8 @@ def shape_graph(rows: list[dict]) -> dict:
             _node(tgt, r.get("target_label"), r.get("target_domain"),
                   r.get("target_props"), r.get("target_tags"), r.get("target_kind"),
                   ts=r.get("target_ts"), content_ts=r.get("target_content_ts"),
-                  one_liner=r.get("target_one_liner"))
+                  one_liner=r.get("target_one_liner"), rev=r.get("target_rev"),
+                  updated_at=r.get("target_updated_at"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
             # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
@@ -847,7 +877,10 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         # 있는 열이라(Decision·Record·Episode·Bridge 에는 없다) 여기 두 자리와
         # 축 플랜의 개념 팔에서만 뽑는다. 다른 라벨에 옮겨 붙이면 Binder 오류다.
         "coalesce(c.one_liner, '') AS one_liner, "
-        "coalesce(d.one_liner, '') AS target_one_liner"
+        "coalesce(d.one_liner, '') AS target_one_liner, "
+        # W3 — 양 끝 다 싣는다. 한쪽만 실으면 target 으로만 등장한 노드가 영구히
+        # 버전 없이 남고, 그건 "안 바뀌었다"와 구분되지 않는다.
+        + _track_cols("c") + ", " + _track_cols("d", "target_")
     )
     return QueryPlan("graph", cypher, params, note="subgraph rows for id set")
 
@@ -889,7 +922,10 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
         "coalesce(c.created, c.updated_at, '') AS target_ts, "
         # R2 — 개념 팔이라 이 열이 있다(Bridge 쪽에는 없다).
-        "coalesce(c.one_liner, '') AS target_one_liner"
+        "coalesce(c.one_liner, '') AS target_one_liner, "
+        # W3 — 매개자(b)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+        + _track_cols("b") + ", " + _track_cols("c", "target_")
     )
     return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
 
@@ -923,7 +959,10 @@ def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[st
         # 전량을 '날짜 없음'으로 강등)의 절반. 나머지 절반은 shape_graph 의 ts 승격.
         "coalesce(c.created, c.updated_at, '') AS target_ts, "
         # R2 — 같은 이유로 개념 팔의 one_liner 도 싣는다(Episode 쪽에는 열이 없다).
-        "coalesce(c.one_liner, '') AS target_one_liner"
+        "coalesce(c.one_liner, '') AS target_one_liner, "
+        # W3 — 매개자(e)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+        + _track_cols("e") + ", " + _track_cols("c", "target_")
     )
     return QueryPlan("graph_axis_episode", cypher, params, note="episode axis rows (F2/F4)")
 
@@ -958,7 +997,10 @@ def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         "coalesce(c.content_time, '') AS target_content_ts, "
         # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
         # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
-        "coalesce(c.one_liner, '') AS target_one_liner"
+        "coalesce(c.one_liner, '') AS target_one_liner, "
+        # W3 — 매개자(rc)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+        + _track_cols("rc") + ", " + _track_cols("c", "target_")
     )
     return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
 
@@ -996,7 +1038,10 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
         "coalesce(c.content_time, '') AS target_content_ts, "
         # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
         # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
-        "coalesce(c.one_liner, '') AS target_one_liner"
+        "coalesce(c.one_liner, '') AS target_one_liner, "
+        # W3 — 매개자(d)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+        + _track_cols("d") + ", " + _track_cols("c", "target_")
     )
     return QueryPlan("graph_axis_decision", cypher, params, note="decision axis rows (v12)")
 
@@ -1048,7 +1093,10 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
         "coalesce(e.updated_at, '') AS ts, "
         "r.type AS rel, d.entity_id AS target, '' AS target_domain, "
         "d.title AS target_label, coalesce(d.tags, []) AS target_tags, "
-        "'entity' AS target_kind"
+        "'entity' AS target_kind, "
+        # W3 — Entity 도 추적 라벨이다(`_TRACKED_LABELS`). 개방층 노드만 버전이
+        # 안 보이면 그 축에서만 쓰기 확인이 안 된다.
+        + _track_cols("e") + ", " + _track_cols("d", "target_")
     )
     return QueryPlan("entity_graph", cypher, params, note="entity rows for id set (TYPED)")
 
@@ -2238,17 +2286,23 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        경로로 열면 degree 를 0 으로 박아 "연결 0개 · → 3 나감"처럼 자기모순을 냈다.
        세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
 
-    반환: {executed, node, node_kind, title, one_liner, props,
+    반환: {executed, node, node_kind, title, one_liner, rev, updated_at, props,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
                    items: [{id, title, domain, type, dir, evidence, confidence, note}]}}
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
 
-    ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다."""
+    ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다.
+
+    ``rev``/``updated_at`` 은 그 노드의 현재 버전이다(W3, 투영만) — 고쳐 쓰기 전에
+    무엇을 읽었는지 붙들어 두라고 낸다. 쓰기 경로는 아직 이 값을 요구하지 않는다.
+    근거: [[vinc.plan.mcp-agent-surface §6]]."""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,
-                  "one_liner": "", "props": {}, "excerpts": [], "arm": "none"}
+                  "one_liner": "", "props": {}, "excerpts": [], "arm": "none",
+                  # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
+                  "rev": 0, "updated_at": ""}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -2269,7 +2323,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         ol_expr = "c.one_liner" if meta_label == "Concept" else "''"
         rows = store.run(
             f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
-            f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props",
+            f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props, "
+            + _track_cols("c"),
             # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
             # 그대로다(사용자가 준 값). 근거: [[vinc.plan.node-pk-namespacing]] §7
             {"id": pkns.key(owner, node), "owner": owner})
@@ -2283,18 +2338,22 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         node_kind="decision" if meta_label == "Decision" else "concept",
                         title=rows[0].get("title") or node,
                         one_liner=rows[0].get("ol") or "",
+                        rev=rows[0].get("rev") or 0,
+                        updated_at=rows[0].get("updated_at") or "",
                         props=_props_to_obj(rows[0].get("props")))
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
-                "RETURN e.title AS title, e.summary AS s",
+                "RETURN e.title AS title, e.summary AS s, " + _track_cols("e"),
                 {"id": pkns.key(owner, node), "owner": owner})
             if not ep:
                 base["note"] = f"unknown node: {node}"
                 return base
             base.update(executed=True, node_kind="episode",
                         title=ep[0].get("title") or node,
-                        one_liner=ep[0].get("s") or "")
+                        one_liner=ep[0].get("s") or "",
+                        rev=ep[0].get("rev") or 0,
+                        updated_at=ep[0].get("updated_at") or "")
             return base   # Episode 는 MENTIONS 대상이 아니다 — 요약이 곧 설명.
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
@@ -3183,6 +3242,8 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         f"RETURN label(r) AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
         + (f"coalesce(m.one_liner, '') AS one_liner"
            if m_label == "Concept" else "'' AS one_liner")
+        # W3 — 의미층 둘 다 추적 라벨이라 리터럴 맞춤 없이 그대로 뽑는다.
+        + ", " + _track_cols("m")
         for m_label, m_pk in _SEMANTIC_PK.items())
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
 
@@ -3215,7 +3276,8 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     "관계 없음"과 구분되지 않고, 실제로 그 hint("아직 관계가 없다")까지 붙었다.
     같은 무음 누락의 반대편이다(도구 계약은 [[vinc.canon.mcp-contract]]).
 
-    UNION 은 열 타입이 같아야 하므로 4열(rel·id·title·domain)만 투영한다."""
+    UNION 은 열 타입이 같아야 하므로 rel·id·title·domain 에 W3 의 추적열 둘을 더한
+    여섯 열만 투영한다 — Record·Episode·Bridge 는 셋 다 추적 라벨이라 모양이 맞는다."""
     params: dict = {"node": pkns.key(owner, node)}
     s_label, _s_pk = _seed_table(node)
     if owner:
@@ -3237,7 +3299,7 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         parts.append(f"MATCH (a:{label})-[:{rel}]->(c:{c_label}) "
                      f"WHERE c.{c_pk} = $node{c_scope}{a_scope} "
                      f"RETURN '{rel}' AS rel, a.{pk} AS id, a.title AS title, "
-                     f"a.{dom} AS domain")
+                     f"a.{dom} AS domain, " + _track_cols("a"))
     return QueryPlan("node_attachments", " UNION ALL ".join(parts), params,
                      note="record/episode/bridge attachments (F14)")
 
@@ -3258,6 +3320,7 @@ def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
         f"RETURN '{rel}' AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
         + ("coalesce(m.one_liner, '') AS one_liner"
            if m_label == "Concept" else "'' AS one_liner")
+        + ", " + _track_cols("m")            # W3
         for m_label, m_pk in _SEMANTIC_PK.items())
 
 
@@ -3288,6 +3351,10 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int,
         params = {"domain": domain, "owner": owner}
         members = store.run(domain_hierarchy.members_cypher(), params) or []
         kids = store.run(domain_hierarchy.child_domains_cypher(), params) or []
+        # W3 — 여기 행에는 `rev`/`updated_at` 이 없다. 도메인은 추적 라벨이 아니고
+        # (`_TRACK_COLS` 밖), 멤버 행은 `engines/domain_hierarchy.py` 의 질의에서
+        # 오므로 이 패키지의 투영 범위(api/query.py) 밖이다. 없는 것은 결손이지
+        # 사실이 아니므로 0 으로 채우지 않는다 — 지어낸 버전이 제일 나쁘다.
         rows = [{"rel": "PARENT_OF", "id": domain_hierarchy.make_id(c),
                  "title": c, "domain": domain}
                 for c in sorted({r["child"] for r in kids if r.get("child")})]
@@ -3315,7 +3382,8 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int,
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
-    neighbors:[{rel,id,title,domain,one_liner}], by_rel:{rel:count}, count}. 결정론 순서
+    neighbors:[{rel,id,title,domain,one_liner,rev,updated_at}], by_rel:{rel:count},
+    count}. 결정론 순서
     (rel, id). 상류 SoG 항해의 관측 표면.
 
     ``node`` 가 ``domain:`` 접두면 **도메인 좌표**를 잡는다(E-1) — 자식 도메인
@@ -3344,7 +3412,11 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
                     "title": r.get("title") or r.get("id"), "domain": r.get("domain") or "",
                     # R2 — Concept 만 이 열을 갖는다. 부착 축(Record·Episode·Bridge)은
                     # 키 자체가 없고, 그때 빈 문자열은 결손이 아니라 사실이다.
-                    "one_liner": r.get("one_liner") or ""})
+                    "one_liner": r.get("one_liner") or "",
+                    # W3 — 걸어가다 만난 노드의 버전. `domain:` 좌표 응답만 이 키가
+                    # 없다(도메인은 추적 라벨이 아니다 — 위 _domain_neighbors).
+                    "rev": r.get("rev") or 0,
+                    "updated_at": r.get("updated_at") or ""})
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
     if not out:
         # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와
