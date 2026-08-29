@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- W11 스파이크 UI(SEP-1865 앱). 완성도 목표 없음: 렌더 + 왕복 1회만 본다.
+     · 기본 CSP 가 `default-src 'none'; script-src 'self' 'unsafe-inline'` 이라
+       외부 자원을 하나도 못 쓴다. 그래서 전부 인라인이고 SDK 를 안 쓴다.
+     · 화면 텍스트에 em-dash 금지(워크스페이스 규율). -->
+<html>
+<head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
+<title>Vinc neighbors</title>
+<style>
+  html, body { background: transparent; }
+  body { font: 13px/1.5 system-ui, sans-serif; margin: 0; padding: 12px; }
+  li { cursor: pointer; text-decoration: underline; }
+  pre { background: rgba(128,128,128,.15); padding: 8px; white-space: pre-wrap; font-size: 11px; }
+</style>
+</head>
+<body>
+<h3>Vinc neighbors</h3>
+<p id="status">connecting to host</p>
+<ul id="list"></ul>
+<button id="go">Load neighbors of concept:vinc-mcp</button>
+<pre id="log"></pre>
+<script>
+(function () {
+  var logEl = document.getElementById("log"), statusEl = document.getElementById("status");
+  function log(m) { logEl.textContent += m + "\n"; }
+
+  // ── 앱 <-> 호스트 JSON-RPC 2.0 over postMessage ────────────────────────
+  // 스펙은 전역 객체를 **거부**했다(호스트별 주입이 필요해서). window.openai 는
+  // OpenAI 확장이지 표준이 아니다. 그래서 직접 말한다.
+  var nextId = 1, pending = {};
+  function send(msg) { window.parent.postMessage(msg, "*"); }
+  function request(method, params) {
+    return new Promise(function (resolve, reject) {
+      var id = nextId++;
+      pending[id] = { resolve: resolve, reject: reject };
+      send({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+      setTimeout(function () {
+        if (pending[id]) { delete pending[id]; reject(new Error("no host reply in 8s for " + method)); }
+      }, 8000);
+    });
+  }
+  function notify(method, params) { send({ jsonrpc: "2.0", method: method, params: params || {} }); }
+
+  window.addEventListener("message", function (e) {
+    var m = e.data || {};
+    if (m.id != null && pending[m.id]) {
+      var p = pending[m.id]; delete pending[m.id];
+      return m.error ? p.reject(new Error(JSON.stringify(m.error))) : p.resolve(m.result);
+    }
+    if (m.method === "ui/notifications/tool-result") {
+      log("host pushed ui/notifications/tool-result");
+      render(m.params);
+    }
+  });
+
+  function render(callToolResult) {
+    var r = callToolResult || {};
+    var data = r.structuredContent;
+    if (!data) {                       // 폴백: content[0].text 가 JSON 인 경우
+      try { data = JSON.parse((r.content || [])[0].text); } catch (e) { data = null; }
+    }
+    if (!data) { log("no renderable payload"); return; }
+    var ul = document.getElementById("list");
+    ul.innerHTML = "";
+    (data.neighbors || []).slice(0, 8).forEach(function (n) {
+      var li = document.createElement("li");
+      li.textContent = n.rel + " to " + (n.title || n.id);
+      li.onclick = function () { fetchFor(n.id); };
+      ul.appendChild(li);
+    });
+    statusEl.textContent = "round trip ok: " + (data.count || 0) + " neighbor(s)";
+  }
+
+  function fetchFor(id) {
+    statusEl.textContent = "calling vinc_neighbors(" + id + ")";
+    request("tools/call", { name: "vinc_neighbors", arguments: { node: id } })
+      .then(function (res) { log("tools/call returned"); render(res); })
+      .catch(function (e) { statusEl.textContent = "round trip FAILED"; log("error: " + e.message); });
+  }
+  document.getElementById("go").onclick = function () { fetchFor("concept:vinc-mcp"); };
+
+  // 핸드셰이크. appInfo·appCapabilities·protocolVersion 셋 다 필수다 — 하나라도
+  // 빠지면 -32603 이고, 결과를 안 기다리고 initialized 를 쏘면 조용히 데이터가 안 온다.
+  request("ui/initialize", {
+    appInfo: { name: "vinc-neighbors-spike", version: "0.0.1" },
+    appCapabilities: {},
+    protocolVersion: "2026-01-26"
+  }).then(function (res) {
+    log("ui/initialize ok: host=" + JSON.stringify(res && res.hostInfo));
+    notify("ui/notifications/initialized");
+    statusEl.textContent = "handshake done; press the button";
+    // 자동 발화: 합성 클릭이 샌드박스 iframe 에 안 닿는다(자동화 한계, 제품 결함 아님).
+    setTimeout(function () { fetchFor("concept:vinc-mcp"); }, 300);
+  }).catch(function (e) {
+    statusEl.textContent = "no MCP Apps host: " + e.message;
+    log("handshake failed: " + e.message);
+  });
+})();
+</script>
+</body></html>

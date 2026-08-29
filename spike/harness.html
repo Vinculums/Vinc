@@ -1,0 +1,61 @@
+<!doctype html><meta charset="utf-8"><title>W11 host harness</title>
+<body style="font:13px system-ui;padding:12px">
+<h2>W11 host harness (SEP-1865 host side)</h2>
+<div id="steps"></div>
+<iframe id="frame" sandbox="allow-scripts" style="width:560px;height:360px;border:1px solid #999"></iframe>
+<script>
+const MCP = "http://127.0.0.1:8788/mcp", TOK = "w11spike";
+const steps = document.getElementById("steps");
+const step = (k, v) => { const d = document.createElement("div"); d.textContent = k + ": " + v; steps.appendChild(d); };
+async function rpc(method, params) {
+  const r = await fetch(MCP, { method: "POST",
+    headers: { "Authorization": "Bearer " + TOK, "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }) });
+  const j = await r.json();
+  if (j.error) throw new Error(JSON.stringify(j.error));
+  return j.result;
+}
+let TEMPLATE = null;
+(async () => {
+  try {
+    // 클라이언트가 확장을 선언한다(서버는 확장 capability 를 선언하지 않는다).
+    const init = await rpc("initialize", { protocolVersion: "2025-06-18",
+      clientInfo: { name: "w11-harness", version: "0" },
+      capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } } });
+    step("initialize", "server resources cap = " + JSON.stringify(init.capabilities.resources));
+    step("ping", JSON.stringify(await rpc("ping", {})));
+    const tools = await rpc("tools/list", {});
+    const t = tools.tools.find(x => x._meta);
+    TEMPLATE = t && t._meta.ui && t._meta.ui.resourceUri;
+    step("tools/list", t ? (t.name + " -> _meta.ui.resourceUri=" + TEMPLATE) : "NO tool carries _meta");
+    const read = await rpc("resources/read", { uri: TEMPLATE });
+    const c = read.contents[0];
+    step("resources/read", c.mimeType + ", " + c.text.length + " chars");
+    if (c.mimeType !== "text/html;profile=mcp-app") step("WARN", "mimeType not the MCP Apps type");
+    document.getElementById("frame").srcdoc = c.text;
+    step("render", "iframe srcdoc set (sandbox=allow-scripts)");
+  } catch (e) { step("FAILED", e.message); }
+})();
+// 호스트 다리: 앱의 JSON-RPC 를 받아 진짜 MCP 호출로 중계한다.
+window.addEventListener("message", async (e) => {
+  const m = e.data || {};
+  const reply = (r) => e.source.postMessage(Object.assign({ jsonrpc: "2.0", id: m.id }, r), "*");
+  if (m.method === "ui/initialize") {
+    step("ui/initialize", "app=" + JSON.stringify(m.params.appInfo));
+    return reply({ result: { protocolVersion: "2026-01-26",
+      hostInfo: { name: "w11-harness", version: "0" }, hostCapabilities: { serverTools: {} }, hostContext: {} } });
+  }
+  if (m.method === "ui/notifications/initialized") return step("ui/initialized", "app ready");
+  if (m.method === "tools/call") {
+    step("bridge", "app asked for " + m.params.name);
+    try {
+      const out = await rpc("tools/call", m.params);
+      // 스펙: 호스트는 CallToolResult 를 그대로 앱에 넘긴다. structuredContent 를
+      // 채워 주는 것도 호스트가 아니라 서버 몫이라, 없으면 앱이 content 로 폴백한다.
+      step("roundtrip", "tools/call ok, structuredContent=" + (out.structuredContent ? "yes" : "NO (server sends text only)"));
+      reply({ result: out });
+      e.source.postMessage({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: out }, "*");
+    } catch (err) { step("roundtrip", "FAILED " + err.message); reply({ error: { code: -32000, message: String(err) } }); }
+  }
+});
+</script>
