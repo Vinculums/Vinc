@@ -37,6 +37,7 @@ chunk_id 는 ``{doc_id}#{index:05d}`` — 편집·재청킹에도 위치 안정(
 """
 from __future__ import annotations
 
+import calendar
 import hashlib
 import re
 import sys
@@ -61,6 +62,19 @@ def _sha(text: str) -> str:
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _age_s(iso_ts: str) -> float | None:
+    """`_now_iso()` 문자열 → 지금까지 경과 초. 비어 있거나 못 읽으면 None(모른다).
+
+    `time.gmtime()` 으로 찍은 문자열이라 되돌릴 때도 지역시간 가정이 없는
+    `calendar.timegm` 을 쓴다(`time.mktime` 은 로컬 타임존을 가정해 틀린다)."""
+    if not iso_ts:
+        return None
+    try:
+        return max(0.0, time.time() - calendar.timegm(time.strptime(iso_ts, "%Y-%m-%dT%H:%M:%SZ")))
+    except Exception:
+        return None
 
 
 def make_doc_id(owner: str, content_hash: str, title: str = "", origin: str = "") -> str:
@@ -972,18 +986,49 @@ _EMBED_MODEL_KEY = "embed_model"
 _EMBED_APPLIED_KEY = "embed_last_applied_at"
 
 
-def embed_model_state(store) -> dict:
+#: pending 이 있는데 이보다 오래 진행(=성공한 apply)이 없으면 정체(stall)로 본다.
+#: 기본 30분(워커 기본 주기 5분, `packaging/embed_worker.py` `--interval`의 6배):
+#: 콜드스타트(모델 다운로드·양자화, 수 분 걸릴 수 있다)·일시적 부하는 견디면서
+#: 죽거나 멈춘 워커는 한 시간 안에 걸린다. 이 모듈은 순수 계산이라 env 를 안
+#: 읽는다. 조정하려면 :func:`embed_model_state` 호출부(`api/server.py`)에서
+#: `stall_after_s` 를 넘긴다(W14 범위 밖, 현재 호출부는 기본값을 쓴다).
+_EMBED_STALL_DEFAULT_S = 1800.0
+
+
+def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -> dict:
     """현재 색인이 **어느 모델로 만들어졌는가**, 그리고 이행 중인가.
 
-    반환 `{"stored", "migrating", "pending", "docs", "last_applied_at"}`.
-    `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다(구 설치·신규 설치).
+    반환 `{"stored", "migrating", "pending", "docs", "last_applied_at", "age_s",
+    "stalled"}`. `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다
+    (구 설치·신규 설치).
+
+    `age_s` 는 `last_applied_at`(워커가 마지막으로 청크 임베딩을 실제로 저장에
+    성공한 시각, `apply_embeddings` 가 찍는다) 이후 경과 초, 한 번도 성공한 적
+    없으면 None. **이 값은 store 에 영속되므로 워커 프로세스가 몇 번을 죽었다
+    재기동해도 사라지지 않는다**: "떴다 죽는 프로세스는 확인 순간마다 살아
+    있어서 실패 카운터가 매번 리셋된다"는 함정(허브 워치독이 2026-08-28 에 실제로
+    물린 것과 같은 모양)이 여기서는 성립하지 않는다. `pid` 가 아니라 **진행**을
+    재는 것도 같은 이유다: 살아 있음과 건강함은 다르다
+    ([[record:worker-heartbeat-separates-backlog-from-death]]).
+
+    `stalled` 는 `pending > 0` 이고 `age_s >= stall_after_s` 일 때 True. `age_s`
+    가 None(한 번도 성공한 적 없음)이면 `stalled=False` 로 둔다: 모델 전환 직후
+    콜드스타트와 "태어날 때부터 멈춤"을 이 신호 하나로는 구분 못 하기 때문이다
+    (ponytail: 필요해지면 `switch_embed_model` 에 requeued_at 도 찍어 그때부터
+    잰다. 지금은 오탐이 알람 신뢰를 깎는 쪽이 더 나쁘다고 판단해 보류).
+
+    이 함수는 **진단만** 한다: 정체를 발견해도 워커를 죽이거나 재기동하지
+    않는다. 멈춘 프로세스가 단일 writer 락을 쥔 채일 수 있어, 그걸 죽이는 설계는
+    이 리포가 이미 여러 번 다친 자리다(`docker-entrypoint.sh` 사이드카 워치독
+    주석 참조). 알람은 `/health` 로 노출되고, 끄는 판단은 사람이 한다.
 
     ⚠ **예외를 삼키고 기본값을 돌려준다.** 그 관용이 :func:`switch_embed_model` 과
     묶이면 위험하다 — 읽기가 조용히 실패하면 `stored` 가 영원히 빈 문자열이고, 그러면
     전환이 매 라운드 "바뀌었다"고 판정해 전 문서를 다시 큐에 넣는다. 그래서 실패
     사유를 버리지 않고 `error` 로 싣는다(`/health` 에 그대로 나간다)."""
     out: dict[str, Any] = {"stored": "", "migrating": False, "pending": 0,
-                           "docs": 0, "last_applied_at": ""}
+                           "docs": 0, "last_applied_at": "", "age_s": None,
+                           "stalled": False}
     try:
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
                          {"k": _EMBED_MODEL_KEY}) or []
@@ -999,6 +1044,9 @@ def embed_model_state(store) -> dict:
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
     out["migrating"] = bool(out["stored"]) and out["pending"] > 0
+    age = _age_s(out["last_applied_at"])
+    out["age_s"] = None if age is None else round(age)
+    out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
     return out
 
 
