@@ -10,6 +10,10 @@
 2. 교차언어 셋(evalset_xling.json)은 정본 en 질의의 번역이라 정답이 전부 정본
    en 정답의 부분집합이고, 질의는 전부 실제로 한국어이며, 모호쌍 dedup 이 적용돼
    중복 번역문이 없다.
+3. 역방향 셋(evalset_xling_en2ko.json, W16)은 정본 ko 질의의 영어 번역이라 같은
+   검증을 방향만 뒤집어 받는다: 정답은 정본 ko 정답의 부분집합(전부 한국어 문서),
+   질의는 실제로 영어(한글이 남았으면 ko 동일언어 축과 섞인다 — 1의 오염이
+   반대 방향으로 재발하는 형태), dedup·counts 동일.
 """
 from __future__ import annotations
 
@@ -77,6 +81,43 @@ class XlingSetTests(unittest.TestCase):
         c = self.x["counts"]
         self.assertEqual(c["selected"], len(self.x["queries"]))
         self.assertEqual(c["source_en"] - c["dropped_ambiguous"], c["selected"])
+
+
+class En2koSetTests(unittest.TestCase):
+    """W16 역방향 셋 — XlingSetTests 의 거울상이다(en↔ko 만 바뀐다)."""
+
+    def setUp(self):
+        self.x = json.loads(
+            (_FIX / "evalset_xling_en2ko.json").read_text(encoding="utf-8"))
+        self.canon = json.loads((_FIX / "evalset.json").read_text(encoding="utf-8"))
+
+    def test_정답은_정본_ko_정답의_부분집합이다(self):
+        """역방향 축의 정의: 영어 질의의 정답은 전부 **한국어** 문서여야 한다.
+        부분집합 검사가 doc_id 의 eval/ko/ 세그먼트까지 함께 보장한다."""
+        ko_docs = {q["doc_id"] for q in self.canon["queries"] if q["lang"] == "ko"}
+        for q in self.x["queries"]:
+            self.assertIn(q["doc_id"], ko_docs)
+
+    def test_원문은_정본_ko_질의에_실재한다(self):
+        ko_qs = {q["query"] for q in self.canon["queries"] if q["lang"] == "ko"}
+        for q in self.x["queries"]:
+            self.assertIn(q["ko_query"], ko_qs)
+
+    def test_질의는_전부_영어다(self):
+        """번역이 빠지고 ko 원문이 남으면 invalid-first-eval 의 오염이 반대
+        방향으로 재발한다("영어" 질의에 한글이 그대로) — 한글 비율 전수 확인."""
+        for q in self.x["queries"]:
+            self.assertLess(_hangul_ratio(q["query"]), 0.05, q["query"])
+            self.assertEqual(q["lang"], "en2ko")
+
+    def test_중복_번역문이_없다(self):
+        texts = [q["query"].casefold() for q in self.x["queries"]]
+        self.assertEqual(len(texts), len(set(texts)))
+
+    def test_counts_가_실제와_같다(self):
+        c = self.x["counts"]
+        self.assertEqual(c["selected"], len(self.x["queries"]))
+        self.assertEqual(c["source_ko"] - c["dropped_ambiguous"], c["selected"])
 
 
 if __name__ == "__main__":

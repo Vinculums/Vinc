@@ -29,6 +29,14 @@ W10 스파이크(0.9.0 판정 1)부터 추가된 것:
                        그 지연이다. VINC_EVAL_THREADS=1(기본)로 잰 것만 프로덕션 대비 유효
   --bootstrap B        첫 모델 대비 ΔnDCG 의 짝지은 부트스트랩 95% CI. "잡음 범위를 못
                        넘으면 채택 없음" 판정 규칙의 그 잡음 범위를 수치로 만든다
+
+W16(production-load 게이트)부터 추가된 것:
+  --query-latency      평가셋 질의 전부를 **단건 query 인코딩**해 길이 구간별 p50/p95 를
+                       잰다. --latency 는 청크(≤2000자, 쓰기 경로) 지연이라 사용자가
+                       체감하는 질의(수십 자, 읽기 경로) 지연의 답이 아니다 — 질의
+                       경로에는 1.5초 예산이 있고(`api/server.py` `_QVEC_TIMEOUT`,
+                       넘기면 벡터 팔이 조용히 빠진다), 이 수치가 그 예산과 비교된다.
+                       역시 VINC_EVAL_THREADS=1 로 잰 것만 프로덕션 대비 유효
 """
 from __future__ import annotations
 
@@ -49,6 +57,10 @@ from make_queries import (                                  # noqa: E402
 )
 
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "evalset.json"
+
+#: 질의 길이 구간(문자수) — 정본+교차언어 평가셋 118건의 실측 분포에서 자른다
+#: (p25=20 · p75=42): 짧은 키워드형 / 보통 소제목형 / 긴 문장형.
+_QLEN_BUCKETS = ((0, 20, "short"), (21, 45, "mid"), (46, 10 ** 9, "long"))
 
 
 def load_corpus(max_chars: int = 2000, gold: set[str] | None = None,
@@ -92,8 +104,39 @@ def _ndcg_single(rank: int) -> float:
     return 1.0 / math.log2(rank + 1) if rank else 0.0
 
 
+def _pctl(sorted_ms: list[float], p: float) -> float:
+    """단순 순위 백분위(선형 보간 없음) — n 수십의 지연 표본에는 이거면 된다."""
+    return sorted_ms[min(len(sorted_ms) - 1, int(len(sorted_ms) * p))]
+
+
+def query_latency(enc, queries: list[dict]) -> dict:
+    """질의 전건을 단건 query 인코딩해 길이 구간별 p50/p95(ms)를 잰다.
+
+    배치가 아니라 **한 건씩** 부르는 이유: 사이드카의 질의 임베딩이 정확히 그 모양이다
+    (`_query_embedding` 은 texts 하나짜리 호출). warmup 1회는 세션 초기화 비용이라
+    표본에서 뺀다 — 콜드스타트는 별도 축이다."""
+    enc.encode([queries[0]["query"]], "query")          # warmup(표본 제외)
+    rows: list[tuple[int, float]] = []
+    for q in queries:
+        t0 = time.perf_counter()
+        enc.encode([q["query"]], "query")
+        rows.append((len(q["query"]), (time.perf_counter() - t0) * 1000.0))
+    out = {}
+    for lo, hi, name in _QLEN_BUCKETS:
+        ms = sorted(m for ln, m in rows if lo <= ln <= hi)
+        if ms:
+            out[name] = {"n": len(ms), "chars": f"{lo}-{'' if hi > 9999 else hi}",
+                         "p50_ms": round(_pctl(ms, 0.5), 1),
+                         "p95_ms": round(_pctl(ms, 0.95), 1)}
+    ms = sorted(m for _, m in rows)
+    out["all"] = {"n": len(ms), "p50_ms": round(_pctl(ms, 0.5), 1),
+                  "p95_ms": round(_pctl(ms, 0.95), 1)}
+    return out
+
+
 def bench(model_spec: str, queries: list[dict], texts: list[str],
-          owners: list[str], top_k: int, latency_n: int = 0) -> dict:
+          owners: list[str], top_k: int, latency_n: int = 0,
+          q_latency: bool = False) -> dict:
     import numpy as np
 
     name, _, onnx = model_spec.partition("=")
@@ -124,6 +167,7 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
         lat = {"n": len(times),
                "median_ms": round(times[len(times) // 2], 1),
                "p90_ms": round(times[int(len(times) * 0.9)], 1)}
+    qlat = query_latency(enc, queries) if q_latency else {}
 
     qrows: list[dict] = []               # 질의 순서 정렬 유지 — 모델 간 짝지은 비교용
     for i, q in enumerate(queries):
@@ -158,7 +202,8 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
             "overall": agg(qrows),
             "timing": {"corpus_s": round(t_corpus, 1), "query_s": round(t_query, 1),
                        "chunks_per_s": round(len(texts) / t_corpus, 2) if t_corpus else 0,
-                       **({"latency_single": lat} if lat else {})},
+                       **({"latency_single": lat} if lat else {}),
+                       **({"latency_query": qlat} if qlat else {})},
             "qrows": qrows}
 
 
@@ -211,6 +256,9 @@ def main() -> int:
                          "전량 포함된다. 판정 1 스파이크 규모(50문서)에 맞출 때 30")
     ap.add_argument("--latency", type=int, default=0, metavar="N",
                     help="모델당 단건 인코딩 지연을 N개 문장으로 잰다(중앙값·p90 ms)")
+    ap.add_argument("--query-latency", action="store_true",
+                    help="평가셋 질의 전건을 단건 query 인코딩해 길이 구간별 "
+                         "p50/p95 ms 를 잰다(읽기 경로 — 1.5초 예산과 비교되는 수치)")
     ap.add_argument("--bootstrap", type=int, default=0, metavar="B",
                     help="첫 모델 대비 nDCG 차이의 짝지은 부트스트랩 95%% CI (B 회)")
     ap.add_argument("--json", action="store_true")
@@ -236,7 +284,8 @@ def main() -> int:
         return 1
 
     print(f"질의 {len(queries)}개 · 청크 {len(texts)}개 · top_k={args.top_k}")
-    results = [bench(m, queries, texts, owners, args.top_k, args.latency)
+    results = [bench(m, queries, texts, owners, args.top_k, args.latency,
+                     args.query_latency)
                for m in args.model]
     boots = (paired_bootstrap(results, args.bootstrap)
              if args.bootstrap and len(results) > 1 else [])
@@ -260,6 +309,14 @@ def main() -> int:
             print(f"{r['model']:<46}{t.get('corpus_s', 0):>10.1f}"
                   f"{t.get('chunks_per_s', 0):>8.2f}"
                   f"{single.get('median_ms', 0):>12.1f}{single.get('p90_ms', 0):>8.1f}")
+    if any((r.get("timing") or {}).get("latency_query") for r in results):
+        print(f"\n질의 단건 지연 (p50/p95 ms · 1.5s 예산 대비)")
+        for r in results:
+            ql = (r.get("timing") or {}).get("latency_query") or {}
+            cells = "  ".join(
+                f"{name} n={m['n']}: {m['p50_ms']:.0f}/{m['p95_ms']:.0f}"
+                for name, m in ql.items())
+            print(f"  {r['model']:<46}{cells}")
     for b in boots:
         print(f"\nΔnDCG vs {b['baseline']} — {b['model']}")
         for lg, m in b["by_lang"].items():

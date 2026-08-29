@@ -164,7 +164,12 @@ def selfcheck(model: str) -> int:
     samples = ["Newtonian mechanics describes motion under forces.",
                "허브는 단일 라이터라 리비전 롤링 전환이 안 된다.",
                "mixed 문장 with both scripts 섞여 있다."]
-    mine = np.array(Encoder(model).encode(samples, "passage"))
+    # ⚠ 프로덕션이 **실제 해석한 onnx 파일**을 이쪽에도 준다. 프로덕션 `_resolve_model`
+    # 은 e5 를 int8-rr 로 구워 쓰므로, 이걸 빼면 fp32 대 int8 의 양자화 오차(실측 최악
+    # 코사인 0.98486)가 구현 차이로 읽혀 **거짓 경보**가 된다 — W16 에서 실제로 물렸다.
+    # 같은 파일이면 두 구현은 1.0 이 나온다(실측 2026-08-30).
+    resolved = w._resolve_model(w.MODEL, w.CACHE)
+    mine = np.array(Encoder(model, resolved).encode(samples, "passage"))
     theirs = np.array(w._Embedder().encode([w._prefix(s, "passage") for s in samples]))
     cos = (mine * theirs).sum(axis=1) / (
         np.linalg.norm(mine, axis=1) * np.linalg.norm(theirs, axis=1))
