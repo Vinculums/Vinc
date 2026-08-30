@@ -1,0 +1,313 @@
+# 손으로 띄우는 호스티드 검증 — `ci.yml` 이 큐에 갇혀 있을 때의 우회로.
+#
+# 왜 생겼나. 이 리포의 CI 는 전부 `vinc-local` 위에 산다. 그 러너가 유지보수자의
+# 기계라서, 기계가 꺼지면 잡은 **실패가 아니라 큐에 남는다**(`ci.yml` 주석). 실패는
+# 알림이 오지만 큐는 조용하고, 24시간 넘게 배정 안 된 잡은 GitHub 이 취소한다.
+#
+# 그 동안에도 검증 자체는 다른 곳에서 돌릴 수 있다 — 2026-08-30 에 원격 세션
+# 컨테이너에서 `core` 를 3분 40초에(러너에서 66분) 돌려 PR 셋을 초록 확인하고
+# 머지했다. 문제는 **그 사실이 리포에 남지 않는다**는 것이었다. Actions 탭에는
+# 아무것도 없고, 남은 것은 PR 코멘트에 적은 표뿐이다.
+#
+# 이 워크플로는 그 간극만 메운다: 같은 검증을 **호스티드에서 실제로 돌려** Actions
+# 런으로 남긴다. 기록을 만들어 넣는 것이 아니라 진짜로 돌린다 — 이 리포가 `ci.yml`
+# 전체에서 경계하는 "안 돌았는데 초록"을 여기서 다시 만들지 않기 위해서다. 그래서
+# 드라이버 강제·하한 300·플래그 확인 게이트를 **그대로 들고 온다**.
+#
+# ⚠ **이것은 `ci` 가 아니다.** 잡 이름에 (hosted) 를 박아 둔 이유가 그것이다. 이 런이
+# 초록이라는 것은 "여기 적힌 잡이 이 ref 에서 통과했다" 이지 "ci 가 돌았다" 가 아니다.
+# 무엇이 안 돌았는지는 마지막 summary 잡이 런 요약에 표로 적는다.
+#
+# ⚠ **GitHub 분을 쓴다.** 그래서 `workflow_dispatch` 전용이고 잡마다 스위치가 있다.
+# 자동으로 도는 경로는 없다 — 러너가 살아 있으면 `ci.yml` 이 같은 일을 0분에 한다.
+#
+# ⚠ `workflow_dispatch` 는 워크플로 파일이 **기본 브랜치에 있어야** 띄울 수 있다.
+# 이 파일이 main 에 머지되기 전에는 어느 ref 로도 못 띄운다. 머지된 뒤에는 ref 를
+# 지정해 PR 브랜치를 검증할 수 있다.
+name: verify-hosted
+
+on:
+  workflow_dispatch:
+    inputs:
+      core:
+        description: "core — verify.py + 게이트 8종"
+        type: boolean
+        default: true
+      core_pkns:
+        description: "core-pkns — VINC_PK_NAMESPACED=on 전량"
+        type: boolean
+        default: true
+      app:
+        description: "app — typecheck + dev/*-check.ts"
+        type: boolean
+        default: true
+      rust_linux:
+        description: "rust — cargo check/test (linux). 느리고 분을 쓴다"
+        type: boolean
+        default: false
+      rust_windows:
+        description: "rust — cargo check/test (windows). 분이 2배다. 이 리포가 자체로는 못 보는 #[cfg(windows)] 갈래"
+        type: boolean
+        default: false
+
+# concurrency 를 **일부러 안 건다.** 이 워크플로의 산출물은 기록이고, 기록은 뒤엣것이
+# 앞엣것을 대체하지 않는다 — `ci.yml` 의 main 런이 서로를 밀어내 검증을 잃은 것과
+# 같은 형태의 사고를 여기서 만들 이유가 없다. 손으로 띄우는 것이라 폭주할 일도 없다.
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: core (hosted, verify.py + gates)
+    if: inputs.core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # `ci.yml` 의 core 잡과 **같은 목록**이다. 갈리면 이 워크플로가 재는 것이
+      # ci 가 재는 것과 달라지고, 그러면 여기 초록이 아무것도 뜻하지 않는다.
+      - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
+        run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest pypdf
+      - name: Point to bundled G0 extensions (no network)
+        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
+      # ⚠ 이 스텝을 빼면 이 워크플로는 있으나 마나다. 드라이버가 없으면 17개 파일이
+      # 조용히 skip 되고 런은 초록이 되는데, 그때 남는 Actions 기록은 "통과했다"는
+      # **거짓 기록**이다. 손으로 띄우는 검증일수록 이 가드가 더 필요하다.
+      - name: Assert driver is importable (no silent skips)
+        run: |
+          python - <<'PY'
+          import sys
+          from store.embedded_backend import _import_driver
+          drv, name = _import_driver()
+          if drv is None:
+              print("::error::임베디드 드라이버 미설치 — 17개 테스트 파일이 조용히 skip 된다", file=sys.stderr)
+              sys.exit(1)
+          print(f"driver ok: {name}")
+          PY
+      - name: Run test suite (verify.py)
+        run: |
+          set -o pipefail
+          python verify.py 2>&1 | tee verify.log
+          ran=$(grep -oE '^Ran [0-9]+ tests' verify.log | grep -oE '[0-9]+' || echo 0)
+          echo "ran=$ran"
+          if [ "$ran" -lt 300 ]; then
+            echo "::error::테스트 ${ran}건만 실행됨(하한 300) — discover 가 깨졌는지 확인" >&2
+            exit 1
+          fi
+          # 런 요약에 건수를 남긴다 — 이 워크플로의 존재 이유가 기록이므로 숫자가
+          # 로그 안에만 있으면 안 된다.
+          echo "verify.py: **${ran}건** 실행" >> "$GITHUB_STEP_SUMMARY"
+      - name: Forbidden-terms gate
+        run: python scripts/gate_forbidden.py
+      - name: Graph citation gate
+        run: python -X utf8 scripts/gate_graph_refs.py
+      - name: Graph-value escape gate
+        run: python -X utf8 scripts/gate_escape.py
+      - name: View contrast gate
+        run: python scripts/gate_contrast.py
+      - name: Design sync gate
+        run: python scripts/gate_design_sync.py
+      - name: Design hub drift gate
+        run: python -X utf8 design-hub/scripts/sync_out.py --check
+      - name: Design surface gate (app)
+        run: python -X utf8 design-hub/scripts/gate_surface.py app/src
+      - name: Agent roster gate
+        run: python -X utf8 scripts/agents_sync.py --check
+
+  core-pkns:
+    name: core (hosted, VINC_PK_NAMESPACED=on)
+    if: inputs.core_pkns
+    runs-on: ubuntu-latest
+    env:
+      VINC_PK_NAMESPACED: "on"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
+        run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest pypdf
+      - name: Point to bundled G0 extensions (no network)
+        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
+      - name: Assert driver is importable (no silent skips)
+        run: |
+          python - <<'PY'
+          import sys
+          from store.embedded_backend import _import_driver
+          drv, name = _import_driver()
+          if drv is None:
+              print("::error::임베디드 드라이버 미설치 — 켠 모드 왕복이 조용히 skip 된다", file=sys.stderr)
+              sys.exit(1)
+          print(f"driver ok: {name}")
+          PY
+      # 플래그가 실제로 켜졌는지 — 안 켜졌으면 이 잡은 core 의 중복이고 초록이
+      # 아무것도 뜻하지 않는다(`ci.yml` 과 같은 이유).
+      - name: Assert the flag is actually on
+        run: |
+          python - <<'PY'
+          import sys
+          from store import pkns
+          if not pkns.enabled():
+              print("::error::VINC_PK_NAMESPACED 미설정 — 이 잡은 core 의 중복이다", file=sys.stderr)
+              sys.exit(1)
+          print("pk namespacing: on")
+          PY
+      - name: Run the whole suite with the flag on
+        run: python -m pytest -q tests
+
+  app:
+    name: app (hosted, typecheck + dev checks)
+    if: inputs.app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install
+        working-directory: app
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: app
+        run: npm run typecheck
+      - name: Dev checks (no browser)
+        working-directory: app
+        run: |
+          set -euo pipefail
+          for f in dev/*-check.ts; do
+            echo "── $f"
+            node --experimental-strip-types --disable-warning=ExperimentalWarning "$f"
+          done
+
+  # ── 러스트 ──────────────────────────────────────────────────────────────────
+  # 두 갈래를 따로 스위치로 둔 이유: 윈도우 러너는 분이 2배고, 리눅스 갈래는 원격
+  # 세션에서도 돌릴 수 있어 여기서 돈이 되는 것은 주로 **윈도우** 쪽이다. 리눅스
+  # 컨테이너는 `[self-hosted, windows, vinc-local]` 라벨을 영원히 못 받으므로,
+  # 러너가 꺼져 있는 동안 `#[cfg(windows)]` 갈래를 볼 수 있는 자리가 여기뿐이다.
+  #
+  # ⚠ 캐시를 안 건다. `swatinem/rust-cache` 는 호스티드용이 맞지만, 이 워크플로는
+  # 자주 도는 것이 아니라 캐시가 더워질 일이 없다. 매번 찬 컴파일이고 그 값은
+  # 정직하게 분으로 낸다. 셀프호스티드에서 캐시를 뺀 이유는 다르다(영속 디스크가
+  # 이미 들고 있다) — [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]].
+  rust-linux:
+    name: rust (hosted ubuntu, cargo check)
+    if: inputs.rust_linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # release.yml · ci.yml 과 같은 목록. 갈리면 여기서만 통과하거나 여기서만 죽는다.
+      - name: Linux webkit deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libdbus-1-dev
+      # 프런트 산출물이 없으면 tauri 빌드 스크립트가 `../dist` 를 찾다 죽는다.
+      # 짓지 않고 자리만 만든다 — 여기서 보는 것은 러스트지 번들이 아니다.
+      - name: Placeholder frontend dist
+        run: mkdir -p app/dist && [ -f app/dist/index.html ] || echo "<!doctype html>" > app/dist/index.html
+      # tauri-build 는 externalBin(얼린 사이드카)이 자리에 있는지만 본다.
+      - name: Placeholder sidecar binary
+        run: |
+          set -euo pipefail
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p app/src-tauri/binaries
+          f="app/src-tauri/binaries/vinc-sidecar-${triple}"
+          [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
+          chmod +x "$f" 2>/dev/null || true
+          echo "placed $f"
+      - name: cargo check
+        working-directory: app/src-tauri
+        run: cargo check --locked --all-targets
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --locked
+
+  rust-windows:
+    name: rust (hosted windows, cargo check)
+    if: inputs.rust_windows
+    runs-on: windows-latest
+    steps:
+      # ⚠ 호스티드 windows 에는 WSL 이 없으므로 `ci.yml` 의 Git Bash 우선 스텝이
+      # 필요 없다. 그 스텝은 셀프호스티드 기계에서 system32 의 bash 가 WSL 로 가는
+      # 것을 피하려던 것이고, 여기서는 `shell: bash` 가 이미 Git Bash 다.
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Placeholder frontend dist
+        shell: bash
+        run: mkdir -p app/dist && [ -f app/dist/index.html ] || echo "<!doctype html>" > app/dist/index.html
+      - name: Placeholder sidecar binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p app/src-tauri/binaries
+          f="app/src-tauri/binaries/vinc-sidecar-${triple}.exe"
+          [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
+          echo "placed $f"
+      - name: cargo check
+        working-directory: app/src-tauri
+        run: cargo check --locked --all-targets
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --locked
+
+  # ── 무엇이 돌았고 무엇이 안 돌았나 ──────────────────────────────────────────
+  # 이 잡이 이 워크플로의 요점이다. 스위치가 있는 워크플로에서 초록은 "전부 통과"가
+  # 아니라 "켠 것이 통과"인데, Actions 의 초록 동그라미는 그 둘을 구분해 주지 않는다.
+  # 그래서 런 요약에 **켠 것과 끈 것을 같은 표에** 적는다. 나중에 이 런을 근거로
+  # 드는 사람이 무엇이 안 재졌는지를 표에서 바로 본다.
+  summary:
+    name: what ran, and what did not
+    if: always()
+    needs: [core, core-pkns, app, rust-linux, rust-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the record
+        env:
+          # ⚠ 하이픈이 든 잡 id 는 **점 표기로 못 읽는다** — `needs.core-pkns.result` 는
+          # 표현식 파서가 `needs.core` 빼기 `pkns.result` 로 읽어 빈 값이 된다(그리고
+          # 조용히 그렇게 된다). 대괄호 표기가 유일하게 맞는 형태다.
+          R_CORE: ${{ needs.core.result }}
+          R_PKNS: ${{ needs['core-pkns'].result }}
+          R_APP: ${{ needs.app.result }}
+          R_RSL: ${{ needs['rust-linux'].result }}
+          R_RSW: ${{ needs['rust-windows'].result }}
+        run: |
+          set -euo pipefail
+          # skipped 를 "안 돌았다"로 **또렷이** 쓴다. 'skipped' 라는 낱말 하나로는
+          # 통과와 구분이 흐리다는 것이 이 표를 만든 이유다.
+          say() { case "$1" in
+            success) echo "통과" ;;
+            failure) echo "**실패**" ;;
+            cancelled) echo "취소됨" ;;
+            skipped) echo "안 돌았음 (스위치 꺼짐)" ;;
+            *) echo "$1" ;;
+          esac; }
+          {
+            echo "## verify-hosted — 이 ref 에서 실제로 돈 것"
+            echo
+            echo "ref: \`${GITHUB_REF}\` · commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "| 잡 | 결과 |"
+            echo "|---|---|"
+            echo "| core (verify.py + 게이트 8종) | $(say "$R_CORE") |"
+            echo "| core-pkns (플래그 ON) | $(say "$R_PKNS") |"
+            echo "| app (typecheck + dev checks) | $(say "$R_APP") |"
+            echo "| rust linux (cargo check/test) | $(say "$R_RSL") |"
+            echo "| rust windows (cargo check/test) | $(say "$R_RSW") |"
+            echo
+            echo "⚠ 이것은 \`ci\` 가 아니다. 위 표에 없는 것은 이 런이 재지 않았다."
+          } >> "$GITHUB_STEP_SUMMARY"
+      # 하나라도 실패했으면 이 잡도 떨어진다 — 안 그러면 런 전체가 초록으로 보인다.
+      # `needs` 만으로는 안 된다: `if: always()` 가 선행 실패를 삼키기 때문이다.
+      - name: Fail if any selected job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::선택된 잡 중 실패·취소가 있다 — 위 요약 표를 볼 것" >&2
+          exit 1
