@@ -1,0 +1,10 @@
+# state 는 평문 시크릿을 담는다. 원격 backend 가 서기 전에는 로컬에만 두고
+# 절대 커밋하지 않는다 — versions.tf 의 backend 주석 참조.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+*.tfvars
+# `plan -generate-config-out` 산출물. 읽고 다듬어 커밋할 때까지는 임시물이다.
+generated.tf
