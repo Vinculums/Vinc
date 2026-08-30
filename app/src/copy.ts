@@ -1015,7 +1015,7 @@ const KO: Deck = {
       noResults: "맞는 결과가 없어요. 다른 키워드로 찾아보세요",
       firstSlow: "첫 검색은 색인을 만드느라 몇 초 걸려요. 그다음부터는 바로 나와요",
       share: "공유",
-      settings: "Settings",
+      settings: "설정",
     },
     ask: {
       title: "묻기",

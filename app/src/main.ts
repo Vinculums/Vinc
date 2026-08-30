@@ -62,6 +62,9 @@ topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
 });
 document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topbar.settings);
 document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
+// 시트의 이름도 덱에서 온다 — index.html 의 aria-label 은 영어로 박혀 있어서, 열 때
+// 스크린리더가 버튼과 다른 언어로 읽는다. 덱이 정본이므로 여기서 덮는다.
+document.getElementById("settings-popover")!.setAttribute("aria-label", COPY.ui.topbar.settings);
 
 // 관례(GM-8) — 아이콘 하나 + 제안 적체 뱃지. 시트는 눌릴 때 지연 로드한다.
 {
