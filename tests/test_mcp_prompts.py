@@ -126,7 +126,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(b)
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 16)
+        self.assertEqual(len(got["prompts"]), 17)
 
     def test_only_role_concepts_survive_the_prefix_filter(self):
         b = _RosterBridge(roles_=[

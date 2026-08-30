@@ -368,6 +368,63 @@
       }
     },
     {
+      "id": "concept:agent-infra",
+      "name": "agent-infra",
+      "label": "Agent role: infrastructure",
+      "domain": "vinc/agent",
+      "tags": [
+        "agent",
+        "deliver",
+        "role"
+      ],
+      "props": {
+        "delegate_rung": "strongest",
+        "disallowed_tools": [],
+        "enforcement_note": "Refusing writes is no longer discipline alone. The ambient identity is vinc-agent-reader, whose computed permission at the resource group is exactly actions [*/read], so a write returns 403 rather than relying on the role remembering. One hole remains and it is named here because this role, unlike agent-ops, holds Edit, Write and Bash: if a Contributor secret is put back into the environment the enforcement silently reverts to discipline. Contributor lives only in a separate AZURE_CONFIG_DIR, reissued for the occasion. Reasoning: [[decision:the-ambient-azure-identity-is-read-only]].",
+        "gates": [
+          "cd infra && terraform validate",
+          "cd infra && terraform plan reaches a terminal plan with no unexpected change"
+        ],
+        "mission": "Declares vincsRG as code so that what is running can be diffed against what is written. Changes leave through the deploy plane, never by hand: this role writes the declaration and the check, and a person applies it.",
+        "never": [
+          "run terraform apply, or any az command that writes",
+          "widen a role assignment, or attach a credential to an identity",
+          "put a secret in a file, including a terraform state file the repository can see",
+          "import the container apps before a remote backend and a secret store exist",
+          "change an environment variable on a running container app"
+        ],
+        "paths": [
+          "infra/",
+          "scripts/check_hub_env.py",
+          ".github/workflows/hub-deploy.yml",
+          "packaging/DEPLOY-RUNBOOK.md"
+        ],
+        "person_only": [
+          "every state changing command, terraform apply included",
+          "creating or rotating any credential",
+          "the PK namespacing migration run"
+        ],
+        "reads": [
+          "vinc.spec.azure-infrastructure",
+          "vinc.ops.azure-identity-split-2026-08-30",
+          "vinc.ops.deployment",
+          "vinc.ops.cost-management"
+        ],
+        "repos": [
+          "Vinc"
+        ],
+        "rung": "strong",
+        "test_command": "cd infra && terraform validate && terraform plan -no-color",
+        "tier": "deliver",
+        "tool_note": "Azure MCP passes arguments as JSON fields and does not go through a shell, so the MSYS path rewrite and the KQL argument parser both stop being possible. Prefer it for reads; fall back to PowerShell for calls it has no tool for, never Git Bash. Trap: omitting tenant answers 200 with an empty array rather than an error.",
+        "trap_note": "terraform plan imports nine of twelve. The three it cannot reach (vinc-site, vincstorage01, vincacr) need listSecrets, listKeys and listCredentials, which are /action and not /read. Do not widen the role to close that gap: the storage account key is the credential to the graph database, and three hard-downs came through that surface. Separately, the static web app's repository link needs lifecycle ignore_changes or apply pushes the live branch and url to null, and Microsoft.Insights ids must be camel-cased for the provider while az prints them lowercase.",
+        "writes_graph": [
+          "record",
+          "episode"
+        ]
+      }
+    },
+    {
       "id": "concept:agent-marketing",
       "name": "agent-marketing",
       "label": "Agent role: marketing",
