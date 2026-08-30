@@ -265,6 +265,178 @@ class BriefE2E(unittest.TestCase):
         self.assertEqual(out["status"], "none")
 
 
+# ── 3. Record 해소와 폴스루 — 2026-08-30 재측정에서 나온 결함 ────────────────
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class BriefRecordE2E(unittest.TestCase):
+    """조인 읽기가 **Record 를 못 열던** 결함의 회귀 검사.
+
+    node_context 가 id 접두사로 라벨을 꺼낸 뒤 의미층(Concept·Decision)이 아니면
+    Concept 으로 접어 버려서, `record:` id 는 Concept 조회 0행 → Episode 탐침 0행 →
+    "unknown node" 로 답했다. brief 는 그것을 status="none" 으로 옮겨 담았는데 계약상
+    none 은 "아무것도 안 맞았다"라, **맞았는데 못 읽었다**가 안 맞은 것처럼 보고됐다.
+    2026-08-30 재측정에서 Record 표적 5건이 전부 그렇게 실패했다(Concept 6/6 ·
+    Decision 2/2 는 정상). 근거:
+    [[record:brief-returns-none-when-its-winner-is-a-record-2026-08-30]]
+
+    아래 두 시드는 그 재측정의 태스크 0·A 를 그대로 옮긴 것이다 — 이 그래프의 사실형
+    제목은 대부분 Record 에 실리므로, 가장 싸게 얻을 수 있는 답을 정확히 못 얻고
+    있었다."""
+
+    OWNER = "user:a"
+    NOTE = "6 MCP 호출 중 유용은 3, 낭비가 3이었다."
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        self.store = open_store(load_config())
+        self.store.provision(dim=4)
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:call-efficiency", "type": "concept",
+             "title": "call efficiency", "domain": "mcp",
+             "one_liner": "호출 수로 재는 효율."},
+            # 태스크 0 — 물은 것은 이 기록의 **본문**이고, 본문은 props 에 있다.
+            {"id": "record:agent-test-card", "type": "record",
+             "title": "agent test card", "domain": "mcp",
+             "props": {"note": BriefRecordE2E.NOTE}},
+            # 태스크 A — 제목 자체가 사실이라 본문 없이 제목만으로 답이 된다.
+            {"id": "record:cap-outweighs-depth", "type": "record", "domain": "ai",
+             "title": "the 24-candidate cap costs 3.2x what the depth cutoff does"},
+        ], "edges": [
+            {"from": "record:agent-test-card", "to": "concept:call-efficiency",
+             "type": "relates_to"},
+        ]}, store=self.store)
+
+    def tearDown(self):
+        self.store.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _brief(self, query, **kw):
+        return q.brief(query, owner=self.OWNER, store=self.store, **kw)
+
+    def test_기록이_해소된다(self):
+        out = self._brief("agent test card")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "record:agent-test-card")
+        self.assertEqual(out["node"]["kind"], "record")
+
+    def test_기록의_카드_본문이_답으로_온다(self):
+        """태스크 0 — Record 에는 one_liner 열이 없다. props 폴백이 안 걸리면
+        해소는 되고 본문만 빈, 더 알아채기 어려운 실패가 된다."""
+        out = self._brief("agent test card")
+        self.assertEqual(out["one_liner"], self.NOTE)
+        self.assertEqual(out["body_src"], "props")
+
+    def test_제목만으로_답이_되는_기록도_한_번에_온다(self):
+        """태스크 A — 사실형 제목은 이 그래프에서 가장 싼 답이다."""
+        out = self._brief("24-candidate cap costs what the depth cutoff does")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "record:cap-outweighs-depth")
+        self.assertIn("3.2x", out["node"]["title"])
+
+    def test_기록도_자기_부착을_보여_준다(self):
+        """vinc_neighbors 는 관계를 양쪽 끝에서 보여 준다고 계약에 적어 두었다.
+        여기서 links 를 비워 두면 부착이 있는 기록이 '연결 0'으로 답해 두 도구가
+        같은 그래프를 두고 어긋난다."""
+        out = self._brief("agent test card")
+        self.assertEqual([i["id"] for i in out["links"]["items"]],
+                         ["concept:call-efficiency"])
+        self.assertEqual(out["links"]["degree"], 1)
+        self.assertIn("concept:call-efficiency", out["grounds"])
+
+    def test_기록은_근거_없음이_사실이다(self):
+        """ATTACHES_TO 에는 evidence 열이 없다(쓰기 계약이 안 받는다). False 는
+        결측이 아니라 사실이므로 with_evidence 를 켜도 빈 문장이 온다."""
+        it = self._brief("agent test card")["links"]["items"][0]
+        self.assertFalse(it["evidence"])
+        self.assertEqual(it["evidence_text"], "")
+
+    def test_안_열리는_1위는_건너뛰고_그_사실을_밝힌다(self):
+        """폴스루. 조용히 다음 후보를 답하면 이 표면은 '질문에 맞는 노드'가 아니라
+        '열리기만 하는 노드'를 답하게 되므로, 건너뛴 것을 반드시 보고한다.
+
+        지금은 node_hits 가 Concept·Record·Decision 만 싣고 셋 다 열리므로 이 갈래는
+        경합(검색과 상세 사이의 삭제·소유권 변화)에서만 열린다. 상세를 갈아 끼워
+        그 경합을 결정론으로 재현한다."""
+        real, seen = q.node_context, []
+
+        def flaky(*, node, **kw):
+            seen.append(node)
+            if node == "record:agent-test-card":
+                return {"executed": False, "note": "unknown node: " + node}
+            return real(node=node, **kw)
+
+        q.node_context = flaky
+        try:
+            out = self._brief("agent test card call efficiency")
+        finally:
+            q.node_context = real
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertNotEqual(out["node"]["id"], "record:agent-test-card")
+        self.assertEqual([f["id"] for f in out["fell_through"]],
+                         ["record:agent-test-card"])
+        self.assertIn("unknown node", out["fell_through"][0]["note"])
+
+    def test_제목_언어가_다르면_id_로_맞아도_진다(self):
+        """⚠ 특성화 검사 — 바람직한 동작을 고정하는 것이 **아니라**, 남아 있는 결함을
+        고정한다. 2026-08-30 재측정의 태스크 C 다.
+
+        Record 를 열 수 있게 되면서 이 태스크의 실패가 `status:"none"`(시끄러운 실패)
+        에서 **자신만만한 오답**(조용한 실패)으로 바뀌었다. 원인은 해소 규칙의 동점
+        처리다: hit_tokens 가 비기면 title_tokens 로 가르는데, 질의와 제목의 언어가
+        다른 노드는 id 로 정확히 맞아도 title_tokens 가 0 이라 구조적으로 진다.
+
+        이것을 고치는 것은 랭킹 변경이라 모든 질의에 영향을 주고 자체 평가가 필요하다.
+        여기서는 판정하지 않고 수를 남긴다 — 고치는 사람이 이 검사를 뒤집게 된다.
+        근거: [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]"""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:silent-truncation", "type": "concept",
+             "title": "무음 절단", "domain": "mcp"},
+            {"id": "record:embed-dim-split", "type": "record", "domain": "eng",
+             "title": "the embedding dimension split is silent and connected to "
+                      "the namespace change"},
+        ]}, store=self.store)
+        hits = {h["id"]: h for h in q.search(
+            "What is silent truncation connected to?",
+            owner=self.OWNER, store=self.store)["node_hits"]}
+        # 두 후보가 맞은 토큰 수는 같다 — 갈리는 것은 제목 토큰뿐이다.
+        self.assertEqual(hits["concept:silent-truncation"]["hit_tokens"],
+                         hits["record:embed-dim-split"]["hit_tokens"])
+        self.assertEqual(hits["concept:silent-truncation"]["title_tokens"], 0)
+        self.assertEqual(hits["concept:silent-truncation"]["matched_in"], "id")
+
+        out = self._brief("What is silent truncation connected to?")
+        # 물은 것은 concept:silent-truncation 인데 기록이 이긴다. 조용하다 —
+        # fell_through 도 비어 있다(1위가 열렸으니 폴스루가 열릴 일이 없다).
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "record:embed-dim-split")
+        self.assertEqual(out.get("fell_through", []), [])
+
+    def test_아무것도_못_읽으면_읽지_못했다고_말한다(self):
+        """전부 실패하면 status 는 none 으로 남지만, 무엇을 못 읽었는지는 남긴다 —
+        '안 맞았다'와 '맞았는데 못 읽었다'는 다른 사건이고 호출부의 다음 수가 다르다."""
+        real = q.node_context
+        q.node_context = lambda *, node, **kw: {"executed": False,
+                                                "note": "unknown node: " + node}
+        try:
+            out = self._brief("agent test card call efficiency")
+        finally:
+            q.node_context = real
+        self.assertEqual(out["status"], "none")
+        self.assertTrue(out["unreadable"])
+        self.assertIn("unknown node", out["note"])
+
+
 #: 아래 파생 클래스가 달고 다니는 설명.
 _NS_DOC = """같은 검사 전부를 **PK 네임스페이싱을 켠 채** 다시 돈다.
 
@@ -302,3 +474,5 @@ BriefUnderNamespacing = _namespaced(BriefE2E)
 
 if __name__ == "__main__":
     unittest.main()
+
+BriefRecordUnderNamespacing = _namespaced(BriefRecordE2E)
