@@ -72,13 +72,17 @@ cd infra && terraform validate && terraform plan -no-color
 
 terraform plan imports nine of twelve. The three it cannot reach (vinc-site, vincstorage01, vincacr) need listSecrets, listKeys and listCredentials, which are /action and not /read. Do not widen the role to close that gap: the storage account key is the credential to the graph database, and three hard-downs came through that surface. Separately, the static web app's repository link needs lifecycle ignore_changes or apply pushes the live branch and url to null, and Microsoft.Insights ids must be camel-cased for the provider while az prints them lowercase.
 
+## Engine note
+
+This role cannot run everywhere the roster can be dispatched. Its gate is terraform, and terraform, the az CLI and the AZURE_* environment all live on the maintainer's Windows machine: the binary under D:\Tools\terraform, the CLI session in ~/.azure, the variables set with setx into the user environment. A cloud session container has none of the three, so a package assigned there fails at command not found rather than at a finding. Check which machine the session is on before accepting the package. This is the same shape as the defect the lifecycle plan names in its pre_merge_check section: a prop that cannot execute where the role runs is a rule that quietly does not apply.
+
 ## Tool note
 
 Azure MCP passes arguments as JSON fields and does not go through a shell, so the MSYS path rewrite and the KQL argument parser both stop being possible. Prefer it for reads; fall back to PowerShell for calls it has no tool for, never Git Bash. Trap: omitting tenant answers 200 with an empty array rather than an error.
 
 ## Enforcement note
 
-Refusing writes is no longer discipline alone. The ambient identity is vinc-agent-reader, whose computed permission at the resource group is exactly actions [*/read], so a write returns 403 rather than relying on the role remembering. One hole remains and it is named here because this role, unlike agent-ops, holds Edit, Write and Bash: if a Contributor secret is put back into the environment the enforcement silently reverts to discipline. Contributor lives only in a separate AZURE_CONFIG_DIR, reissued for the occasion. Reasoning: [[decision:the-ambient-azure-identity-is-read-only]].
+Refusing writes is no longer discipline alone, and it holds two different ways depending on where the session runs. On the maintainer's machine the ambient identity is vinc-agent-reader, whose computed permission at the resource group is exactly actions [*/read], so a write returns 403. In a cloud session container there is no az and no credential at all, so the same rule holds by absence. One hole remains and it is named here because this role, unlike agent-ops, holds Edit, Write and Bash: if a Contributor secret is put back into the environment the enforcement silently reverts to discipline. Contributor lives only in a separate AZURE_CONFIG_DIR, reissued for the occasion. Reasoning: [[decision:the-ambient-azure-identity-is-read-only]].
 
 ## Writes to the graph
 
