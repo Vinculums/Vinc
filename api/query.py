@@ -2386,6 +2386,36 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                 "RETURN e.title AS title, e.summary AS s, " + _track_cols("e"),
                 {"id": pkns.key(owner, node), "owner": owner})
             if not ep:
+                # Record — 의미층도 Episode 도 아닌 세 번째 실체. 위 ① 이 라벨을
+                # Concept 으로 접어 버려서 `record:` id 는 여기까지 흘러와
+                # "unknown node" 로 답했다. 존재하는 노드를 없다고 말하는 것이라
+                # 조인 읽기(brief)가 Record 를 통째로 못 열었다 —
+                # [[record:brief-returns-none-when-its-winner-is-a-record-2026-08-30]]
+                # 이 그래프의 사실형 제목은 대부분 Record 에 있어서, 가장 싸게
+                # 얻을 수 있는 답을 정확히 못 얻고 있었다.
+                if _seed_table(node)[0] == "Record":
+                    rc = store.run(
+                        "MATCH (r:Record) WHERE r.record_id = $id "
+                        "AND r.owner_id = $owner "
+                        "RETURN r.title AS title, r.props AS props, "
+                        + _track_cols("r"),
+                        {"id": pkns.key(owner, node), "owner": owner})
+                    if rc:
+                        # one_liner 열이 없다 — 카드 본문은 props 다(부착 목록이
+                        # `note` 를 뽑아 쓰는 그 자리와 같은 값). 호출부의
+                        # one_liner → props 폴백이 그것을 집는다.
+                        base.update(executed=True, node_kind="record",
+                                    title=rc[0].get("title") or node,
+                                    rev=rc[0].get("rev") or 0,
+                                    updated_at=rc[0].get("updated_at") or "",
+                                    props=_props_to_obj(rc[0].get("props")))
+                        # MENTIONS 는 Chunk→Concept 이라 Record 는 대상이 아니다.
+                        # 관계는 있다(ATTACHES_TO). 여기서 links 를 비워 두면
+                        # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
+                        # "연결 0"이라 답해, 두 도구가 같은 그래프를 두고 어긋난다.
+                        base["links"] = _node_links(store, node, owner=owner,
+                                                    with_evidence=with_evidence)
+                        return base
                 base["note"] = f"unknown node: {node}"
                 return base
             base.update(executed=True, node_kind="episode",
@@ -2451,6 +2481,44 @@ def node_context(*, owner: str, node: str, limit: int = 4,
 _NODE_LINKS_CAP = 24
 
 
+def _record_links(store, node: str, *, owner: str,
+                  with_evidence: bool = False) -> dict:
+    """Record 시드의 관계 목록 — 그 기록이 **붙어 있는** 개념·결정(ATTACHES_TO).
+
+    :func:`_node_links` 의 거울상이다. 저쪽은 "무엇이 이 노드에 붙어 있나"를 묻고
+    여기서는 "이 노드가 무엇에 붙어 있나"를 묻는다. 방향이 반대라 같은 쿼리를 재사용할
+    수 없다. `dir` 은 'out' 으로 낸다 — 엣지가 Record 에서 나가기 때문이고, 화면의
+    "나감" 줄과 뜻이 같다.
+
+    ATTACHES_TO 는 evidence 열이 없다(쓰기 계약이 concept↔concept 과 about 에만
+    받는다). 그래서 `evidence` 는 항상 False 이고, 그것은 결측이 아니라 사실이다 —
+    [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]].
+    실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+             "truncated": False, "executed": False}
+    try:
+        rows = store.run(" UNION ALL ".join(
+            f"MATCH (rc:Record)-[:ATTACHES_TO]->(o:{ol}) "
+            "WHERE rc.record_id = $id AND rc.owner_id = $owner "
+            "AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain "
+            for ol, opk in _SEMANTIC_PK.items()),
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+    except Exception:
+        return empty
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        "domain": r.get("domain") or "", "type": "ATTACHES_TO", "dir": "out",
+        "evidence": False, "confidence": 0.0, "note": "",
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": ""} if with_evidence else {}),
+    } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
+                                           str(r.get("id") or "")))]
+    return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
+            "items": items[:_NODE_LINKS_CAP],
+            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+
+
 def _node_links(store, node: str, *, owner: str,
                 with_evidence: bool = False) -> dict:
     """개념의 연결 요약 + 관계 목록(:func:`node_context` ④). 조회 전용.
@@ -2467,6 +2535,12 @@ def _node_links(store, node: str, *, owner: str,
     # v12 — 시드 라벨을 접두사에서 꺼낸다. 상대편(o)은 의미층 둘을 다 본다.
     # 박아 두면 결정의 상세 패널이 "연결 0"으로 뜬다(관계는 있는데 안 보인다).
     _sl, _spk = _seed_table(node)
+    if _sl == "Record":
+        # Record 시드는 반대 방향이다 — 부착은 Record→(Concept|Decision) 이라
+        # 아래 팔들(무엇이 이 노드에 붙어 있나)이 구조적으로 0행을 낸다. 그대로
+        # 두면 부착이 있는 기록이 "연결 0"으로 답해 vinc_neighbors 와 어긋난다
+        # (그쪽은 "모든 관계는 양쪽 끝에서 보인다"를 계약으로 말한다).
+        return _record_links(store, node, owner=owner, with_evidence=with_evidence)
     if _sl not in _SEMANTIC_LABELS:
         _sl, _spk = "Concept", "concept_id"
     rows: list[dict] = []
@@ -2563,6 +2637,7 @@ _BRIEF_TOP_K = 5              # search 에 요구할 청크 수(node_hits 는 �
 _BRIEF_CANDIDATES = 3         # 되묻을 때 실을 후보 수 — ask.ts 와 같다
 _BRIEF_BODY_KEYS = ("note", "summary", "one_liner", "description", "desc")
 _BRIEF_MIN_PROP_BODY = 12     # props 값을 문장으로 볼 최소 길이 — ask.ts 와 같다
+_BRIEF_FALLTHROUGH = 3        # 1위가 안 열릴 때 시도할 후보 수 상한(왕복 비용 유계)
 
 
 def _brief_int(v) -> int:
@@ -2598,7 +2673,9 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     decisive = _brief_int(top.get("hit_tokens")) > 0 and (
         _brief_int(top.get("hit_tokens")) > _brief_int(second.get("hit_tokens"))
         or _brief_int(top.get("title_tokens")) > _brief_int(second.get("title_tokens")))
-    return ("resolved", [top]) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
+    # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
+    # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
+    return ("resolved", ranked) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
 
 
 def _brief_body(ctx: dict) -> dict:
@@ -2687,16 +2764,37 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             return base
         if status == "none":
             return base
-        hit = picked[0]
-        nid = str(hit.get("id") or "")
-        # 관계마다 근거 문장을 함께 받는다 — 에이전트는 그것을 인용해야 한다.
-        ctx = node_context(owner=owner, node=nid, limit=max_excerpts,
-                           with_evidence=True, store=store)
-        if not ctx.get("executed"):
-            # 검색이 준 id 를 상세가 못 찾는다 — 조용히 빈 답을 내지 말고 사유를 남긴다.
+        # 1위가 상세에서 안 열리면 다음 후보로 넘어간다. 그 전에는 곧장
+        # status="none" 을 냈는데, 계약상 none 은 "아무것도 안 맞았다"라서 **맞았는데
+        # 못 읽었다**를 안 맞은 것처럼 보고했다. 관계마다 근거 문장을 함께 받는다 —
+        # 에이전트는 그것을 인용해야 한다.
+        #
+        # ⚠ 폴스루는 밝혀서 한다. 조용히 다음 후보를 답하면 이 표면은 "질문에 맞는
+        # 노드"가 아니라 "열리기만 하는 노드"를 답하게 되고, 그것은 이 도구가 임의
+        # 임계값을 거부하며 지키려던 성질을 정반대로 뒤집는다.
+        hit = ctx = None
+        unread: list[dict] = []
+        for cand in picked[:_BRIEF_FALLTHROUGH]:
+            cid = str(cand.get("id") or "")
+            if not cid:
+                continue
+            got = node_context(owner=owner, node=cid, limit=max_excerpts,
+                               with_evidence=True, store=store)
+            if got.get("executed"):
+                hit, ctx = cand, got
+                break
+            unread.append({"id": cid,
+                           "note": got.get("note") or ("node not found: " + cid)})
+        if ctx is None:
             base["status"] = "none"
-            base["note"] = ctx.get("note") or ("node not found: " + nid)
+            base["note"] = (unread[0]["note"] if unread
+                            else "node not found: " + str(picked[0].get("id") or ""))
+            if unread:
+                base["unreadable"] = unread
             return base
+        nid = str(hit.get("id") or "")
+        if unread:
+            base["fell_through"] = unread
         base["node"] = {"id": nid,
                         "title": ctx.get("title") or hit.get("title") or nid,
                         "domain": hit.get("domain") or "",
