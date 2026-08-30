@@ -575,22 +575,40 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
     return bound
 
 
-def _prefix(text: str, kind: str) -> str:
-    """모델별 비대칭 검색 접두.
+def prefix(text: str, kind: str, model: str) -> str:
+    """모델 계열별 비대칭 검색 접두 — **이 리포에서 접두 규약의 정본이다.**
 
     bge-*-v1.5 는 **쿼리에만** 지시 접두를 붙인다(저자 안내). 저장된 passage 벡터는
     접두 없이 만들어졌으므로 여기서 passage 에 무언가를 붙이면 기존 벡터와 공간이
     어긋난다 — 붙이지 않는 게 호환의 조건이다.
-    e5 계열로 갈아타면 규약이 `query:` / `passage:` **양쪽**으로 바뀌고, 그때는 저장
-    벡터도 전량 재생성해야 한다(모델 교체 자체가 이미 전량 재임베딩을 요구한다).
+    e5 계열은 규약이 `query:` / `passage:` **양쪽**이고, 그때는 저장 벡터도 전량
+    재생성해야 한다(모델 교체 자체가 이미 전량 재임베딩을 요구한다).
+    bge-m3 는 이름에 bge 가 들어 있어도 **양쪽 다 무접두**다(공식 사용법이 무지시).
+    그래서 m3 분기가 v1.5 분기보다 **먼저** 선다 — 순서를 바꾸면 m3 질의에 v1.5
+    지시문이 붙어 정답 벡터와 코사인 0.79~0.82 로 어긋난다(W16 실측).
+
+    ⚠ `model` 을 인자로 받는 이유: `scripts/encoder.py` 가 이 함수를 그대로 가져다
+    쓴다(같은 규약이 두 곳에 적히면 갈라진다 — 실제로 갈라졌다). 그쪽은 모델을
+    바꿔 가며 비교해야 해서 모듈 전역 MODEL 로는 안 된다.
+    근거는 그래프의 record:embed-prefix-missing-m3-branch-2026-08-30 (⚠ 이중대괄호 인용을
+    쓰지 않은 이유: 매니페스트 갱신(`scripts/refresh_graph_refs.py`)에 원격 그래프 키가
+    필요한데 이 작업 세션에는 없다. 키를 가진 쪽이 갱신하면서 인용으로 올릴 것).
     """
-    if "e5" in MODEL.lower():
+    m = model.lower()
+    if "bge-m3" in m:
+        return text                      # m3 는 질의·문서 양쪽 다 맨몸이다
+    if "e5" in m:
         # e5 는 **양쪽 모두** 필수다(모델카드 FAQ: 빠뜨리면 성능이 떨어진다).
         # 형태는 콜론 뒤 공백 하나 — "query: " 3토큰 · "passage: " 2토큰(실측).
         return f"{'query' if kind == 'query' else 'passage'}: {text}"
     if kind != "query":
-        return text                      # bge passage 는 맨몸이다
+        return text                      # bge-v1.5 passage 는 맨몸이다
     return f"{QUERY_PREFIX}{text}" if QUERY_PREFIX else text
+
+
+def _prefix(text: str, kind: str) -> str:
+    """이 프로세스가 든 모델(MODEL)에 규약을 적용한다."""
+    return prefix(text, kind, MODEL)
 
 
 def main() -> int:

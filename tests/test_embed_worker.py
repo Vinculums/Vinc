@@ -325,6 +325,43 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         finally:
             self.mod.MODEL = real
 
+    def test_bge_m3_는_질의에도_지시_접두를_붙이지_않는다(self):
+        """m3 는 이름에 bge 가 들어 있지만 **양쪽 다 맨몸**이다(공식 사용법이 무지시).
+
+        이 분기가 없으면 m3 질의가 v1.5 분기로 떨어져 "Represent this sentence..." 가
+        붙는다. 에러는 안 나고 벡터만 어긋난다 — 정답 벡터와 코사인 0.79~0.82(W16
+        실측). 분기 순서도 여기서 지킨다: m3 검사가 v1.5 검사보다 뒤로 가면 같은
+        고장이 돌아온다."""
+        real = self.mod.MODEL
+        try:
+            self.mod.MODEL = "BAAI/bge-m3"
+            self.assertEqual(self.mod._prefix("질의", "query"), "질의",
+                             "m3 질의에 v1.5 지시 접두가 붙었다 — 무음으로 벡터가 틀린다")
+            self.assertEqual(self.mod._prefix("본문", "passage"), "본문")
+        finally:
+            self.mod.MODEL = real
+
+    def test_평가_인코더가_프로덕션_접두를_그대로_쓴다(self):
+        """`scripts/encoder.py` 가 규약을 **베끼지 않고 유도**하는지 본다.
+
+        전에는 두 곳에 따로 적혀 있었고, 그래서 갈라졌다 — 평가에는 m3 분기가 있고
+        프로덕션에는 없었다. 사본이 돌아오면 이 테스트가 깨진다."""
+        import importlib.util as _ilu
+
+        src = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "encoder.py"
+        spec = _ilu.spec_from_file_location("_vinc_encoder_under_test", src)
+        enc = _ilu.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(enc)
+
+        for model in ("BAAI/bge-m3", "intfloat/multilingual-e5-base",
+                      "BAAI/bge-base-en-v1.5"):
+            for kind in ("query", "passage"):
+                self.assertEqual(
+                    enc.prefix("x", kind, model),
+                    self.mod.prefix("x", kind, model),
+                    f"{model}/{kind} 에서 평가 인코더와 프로덕션이 갈라졌다")
+
     def test_배경_임베딩이_접두_경로를_우회하지_않는다(self):
         """저장 벡터를 만드는 실제 루프가 `_prefix` 를 **거치는지** 본다.
 

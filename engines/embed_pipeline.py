@@ -25,6 +25,7 @@ from store.backend import open_store  # noqa: E402
 from store.config import (  # noqa: E402
     DEFAULT_EMBEDDING_MODEL,
     EMBEDDING_DIM_BY_MODEL,
+    EMBEDDING_MODEL_ALIASES,
     load_config,
 )
 from api import docstore as ds  # noqa: E402  — 정본 쓰기 단일 지점(D45 P2)
@@ -134,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--product", required=True,
                    help="WORKSPACES/planning/{product}/drafts/ 경로 결정")
-    p.add_argument("--model", choices=list(EMBEDDING_DIM_BY_MODEL),
+    p.add_argument("--model", choices=list(EMBEDDING_MODEL_ALIASES),
                    default=DEFAULT_EMBEDDING_MODEL,
                    help="임베딩 모델(store.config §8 단일 어휘). local-en=bge-base-en(기본·오프라인) · "
                         "local-en-large=bge-large-en · anthropic=voyage-3(API 키 필요) · "
