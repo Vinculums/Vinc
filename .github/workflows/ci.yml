@@ -35,8 +35,39 @@ on:
 # 대가는 정직하게 적는다: 셀프호스티드 러너가 하나라 main 런이 접히지 않고 줄을 선다.
 # rust 잡이 19~40분이므로 연달아 머지하면 줄이 는다. 러너가 늘거나 main 런이 짧아지면
 # 다시 볼 만한 결정이다.
+#
+# ── ⚠ 위의 `cancel-in-progress` 하나로는 그것을 막지 못했다 (2026-08-30) ─────────
+# `cancel-in-progress: false` 가 지키는 것은 **도는 중인** 런이다. 그런데 GitHub 은
+# 한 그룹에 **대기 중인 런을 하나만** 둔다 — 새 런이 대기줄에 들어오면 먼저 기다리던
+# 런은 `cancel-in-progress` 와 무관하게 취소된다. 그러니 앞의 처방은 런이 실제로 돌기
+# 시작한 경우에만 닿고, 줄에서 기다리는 동안의 유실은 그대로 열려 있었다.
+#
+# 러너가 하나라 그 조건은 예외가 아니라 상시다. 2026-08-30 에 러너가 내려간 채로 머지
+# 셋을 했더니 main 런이 이렇게 됐다:
+#
+#   31992e2 (#118) cancelled · a7f0253 (#119) cancelled · adb7554 (#122) pending
+#
+# 도는 런이 하나도 없으니 **모든** main 런이 pending 이고, 따라서 매 머지가 앞 머지의
+# 검증을 밀어낸다. 2026-08-23 에 세 번 잃은 것과 같은 손실인데, 그때는 간헐이었고
+# 지금은 규칙이다. 기존 기록: 그래프의
+# record:cancel-in-progress-false-protects-the-running-run-not-the-queued-one 이
+# 메커니즘을, decision:agent-orchestrator-read-the-run-list 가 그로부터 나온 규칙을,
+# record:one-runner-makes-the-superseded-main-run-permanent-rather-than-occasional
+# 이 2026-08-30 표본을 갖고 있다.
+#
+# 고치는 방법은 취소를 더 끄는 것이 아니라 **그룹을 가르는 것**이다. push 에서만 커밋
+# sha 를 그룹 키에 넣으면 main 런끼리 애초에 같은 그룹에 들어오지 않으므로 서로를
+# 밀어낼 수 없다. 커밋마다 검증이 하나씩 남고, 그것이 이 주석이 원래 요구하던 것이다.
+#
+# PR 쪽은 **그대로다.** `github.event_name == 'push'` 가 거짓이면 접미사가 빈 문자열이라
+# 그룹 키는 종전과 글자 그대로 같고, 따라서 PR 에 연달아 push 하면 앞 실행이 취소되는
+# 동작이 유지된다. 그것은 잃어도 되는 것이 맞다 — PR 은 최신 커밋만 참이면 된다.
+#
+# ⚠ 대가: main 런이 이제 **하나도 접히지 않는다.** 러너가 하나인 동안 연달아 머지하면
+# 줄이 그만큼 길어진다. 그것이 이 변경이 사는 대가고, 위 주석이 이미 고른 쪽이다 —
+# 재현 안 되는 실패의 표본은 분으로 다시 살 수 없지만 줄은 기다리면 빠진다.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
