@@ -816,6 +816,14 @@ const EN = {
       destFileNote: "Download a .vincpack to keep or hand to someone.",
       destWorking: "Sending…",
       destDone: (c: number, where: string) => `${c} concepts are now in ${where}.`,
+      // 아래 셋은 **안 들어간 것**을 말한다. 고른 개수로 성공을 알리던 자리를
+      // 응답 기반으로 바꾸면서 생겼다(sheets.ts landedLines).
+      destNone: (where: string) => `No concepts went into ${where}.`,
+      destSkippedIds: (n: number) =>
+        `${n} were left out: those ids already belong to another graph. Ids are one `
+        + `global namespace, so trying again lands the same way.`,
+      destSkippedOther: (n: number) => `${n} were left out.`,
+      destDoneDocs: (n: number) => `${n} source documents came across as well.`,
       destDoneCommunity: "Published. Anyone signed in can find it in the community gallery.",
       destFailed: "That didn't go through. Nothing was changed on either side.",
       destClose: "Done",
@@ -1490,6 +1498,11 @@ const KO: Deck = {
       destFileNote: ".vincpack 파일로 내려받아 보관하거나 다른 사람에게 건네요",
       destWorking: "보내는 중…",
       destDone: (c, where) => `개념 ${c}개가 이제 ${where} 안에 있어요`,
+      destNone: (where) => `${where}에 들어간 개념이 없어요`,
+      destSkippedIds: (n) => `${n}개는 들어가지 못했어요. 그 id 를 이미 다른 그래프가 `
+        + `갖고 있어요(id 는 전역이라 다시 시도해도 같아요)`,
+      destSkippedOther: (n) => `${n}개는 들어가지 못했어요`,
+      destDoneDocs: (n) => `원문 문서 ${n}개는 함께 넘어갔어요`,
       destDoneCommunity: "게시했어요. 로그인한 누구나 커뮤니티 갤러리에서 찾을 수 있어요",
       destFailed: "보내지 못했어요. 다시 시도해 보세요. 양쪽 모두 그대로예요",
       destClose: "완료",

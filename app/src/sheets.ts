@@ -70,8 +70,8 @@ export async function openShareSheet(
         sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
         sheet.foot.innerHTML = "";
         void api.importPack(out, cfg.owner, opts.into).then(
-          () => {
-            sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(keep.length, where))}</p>`;
+          (res) => {
+            sheet.body.innerHTML = landedLines(landedOf(res, keep.length), where);
             sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
             sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
           },
@@ -100,7 +100,44 @@ async function downloadPack(out: Record<string, unknown>, filename: string): Pro
 }
 
 type Sheet = ReturnType<typeof openSheet>;
-type Dest = { key: string; label: string; note: string; where: string; run: () => Promise<void> };
+type Dest = { key: string; label: string; note: string; where: string;
+              run: () => Promise<Landed | void> };
+
+/** 적재 응답에서 **실제로 착지한 것**만 추린다. */
+type Landed = { nodes: number; skipped: number; conflicts: number; docs: number };
+
+/**
+ * 완료 문구를 응답에서 만든다 — 여기가 이 파일의 급소다.
+ *
+ * 전에는 사용자가 **고른** 개수로 "N개를 넣었어요"를 찍었다. 그런데 호스티드
+ * 그래프는 노드 PK 가 전역이라, 남이(=다른 스페이스의 나 자신도 포함) 이미 가진
+ * id 는 조용히 건너뛴다. 그래서 개인 → 팀 불러오기가 노드를 0개 넣고도 성공을
+ * 알렸다(실측 2026-08-30). 서버는 `merged`·`id_conflicts` 로 진실을 이미 보내고
+ * 있었고 화면만 그것을 안 봤다.
+ *
+ * `skipped` 를 (요청 - 착지)로 재는 이유: 건너뛰는 사유는 id 충돌 말고도 있고
+ * (제목 없는 Entity 등), 그 전부가 사용자에게는 "안 들어간 것"으로 같다.
+ */
+function landedOf(res: any, requested: number): Landed {
+  const n = res?.merged?.nodes || {};
+  const nodes = (n.created || 0) + (n.matched || 0);
+  return {
+    nodes,
+    skipped: Math.max(0, requested - nodes),
+    conflicts: (res?.id_conflicts || []).length,
+    docs: res?.documents?.applied || 0,
+  };
+}
+
+/** 착지 요약 → 사람이 읽는 문장들. 하나도 안 들어갔으면 그렇게 말한다. */
+function landedLines(l: Landed, where: string): string {
+  const U = COPY.ui.sheet;
+  const out = [l.nodes > 0 ? U.destDone(l.nodes, where) : U.destNone(where)];
+  if (l.conflicts > 0) out.push(U.destSkippedIds(l.conflicts));
+  else if (l.skipped > 0) out.push(U.destSkippedOther(l.skipped));
+  if (l.docs > 0) out.push(U.destDoneDocs(l.docs));
+  return out.map((t) => `<p class="hint">${esc(t)}</p>`).join("");
+}
 
 /**
  * 목적지 고르기 — 같은 팩을 스페이스·커뮤니티·파일 중 하나로 보낸다.
@@ -121,7 +158,8 @@ async function chooseDestination(
   if (cfg.team) {
     dests.push({
       key: "personal", label: U.destPersonal, note: U.destPersonalNote, where: U.destPersonal,
-      run: async () => { await api.importPack(out, cfg.owner, { team: null }); },
+      run: async () => landedOf(await api.importPack(out, cfg.owner, { team: null }),
+                                conceptCount),
     });
   }
   // 커뮤니티는 계정 세션이 필요하다 — 셸·로컬 dev 에는 세션이 없다.
@@ -160,8 +198,11 @@ async function chooseDestination(
       sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
       sheet.foot.innerHTML = "";
       void d.run().then(
-        () => {
-          sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
+        (landed) => {
+          // 파일 저장처럼 적재가 아닌 목적지는 요약이 없다 — 고른 개수 그대로가 참이다.
+          sheet.body.innerHTML = landed
+            ? landedLines(landed, d.where)
+            : `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
           sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
           sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
         },
