@@ -232,8 +232,49 @@ def _pool(hidden, mask, np):
     return (hidden * m).sum(axis=1) / np.clip(m.sum(axis=1), 1e-9, None)
 
 
+#: 모델 → 구워 둔 int8-rr 아티팩트 **파일명**. 빌드(`packaging/bake_embed_model.py`)와
+#: 런타임(:func:`_resolve_model`)이 같은 이름을 봐야 한다 — 갈라지면 런타임이 "구운 게
+#: 없다"고 판정하고 조용히 fp32(e5 1.06GB · bge-m3 2.27GB)를 내려받는다. 그게 1024MiB
+#: 컨테이너에서는 OOM 이고, OOM 은 사이드카·MCP 까지 함께 죽인다.
+_ARTIFACT_NAMES = {
+    # 이 이름은 **바꾸지 않는다** — 이미 구워진 이미지의 VINC_EMBED_MODEL_PATH 와
+    # 영속 볼륨의 캐시가 이 파일명을 쓴다. 규칙에서 유도하면 다른 이름이 나온다.
+    "intfloat/multilingual-e5-base": "e5-int8-rr.onnx",
+}
+
+
+def _no_artifact_msg(model: str, want: str, cache: str, exc: BaseException) -> str:
+    """아티팩트를 못 얻었을 때의 **처방**. 사유만 적으면 운영자가 다음에 뭘 할지 모른다."""
+    return (f"[embed] {model} 의 int8-rr 아티팩트({want})를 얻지 못했다: "
+            f"{type(exc).__name__}: {exc}\n"
+            f"  · 이미지에 굽기: Dockerfile.hub 의 VINC_EMBED_MODEL/VINC_EMBED_MODEL_PATH\n"
+            f"  · 미리 굽기: python scripts/quantize_e5.py --model {model} "
+            f"--out {os.path.join(cache, want)}\n"
+            f"  · 의도적으로 fp32 로 갈 때만: VINC_EMBED_QUANTIZE=off "
+            f"(허브 형상에서는 OOM 이다)")
+
+
+def artifact_name(model: str) -> str:
+    """이 모델의 int8-rr 아티팩트 파일명(빌드·런타임 공용 규약).
+
+    캐시 디렉터리 하나가 모델 여러 벌을 담을 수 있어야 한다. 이름이 모델과 무관하면
+    (옛 `e5-int8-rr.onnx` 고정) 모델을 바꿔도 **옛 모델의 파일을 그대로 집는다** —
+    차원이 우연히 같으면 아무 오류 없이 딴 모델로 색인이 만들어진다."""
+    return _ARTIFACT_NAMES.get(model) or f"{model.split('/')[-1].lower()}-int8-rr.onnx"
+
+
 def _resolve_model(model: str, cache: str) -> str:
     """모델 ONNX 경로 — 필요하면 **직접 양자화해서** 캐시에 둔다.
+
+    🔴 **무음 강등 금지(2026-08-30).** 이 함수는 세 갈래로 조용히 틀릴 수 있었다:
+      ① 첫 분기가 `if not _is_e5(model) …: return fp32` 라 **e5 가 아니면 항상 fp32**
+         였다. bge-m3 를 채택해도 워커는 2.27GB fp32 를 받는다.
+      ② 구운 아티팩트 이름이 모델과 무관해서, 다른 모델을 굽고 env 만 바꾸면 **옛
+         모델의 파일**을 집는다(차원이 같으면 영원히 안 들킨다).
+      ③ 양자화가 실패하면 fp32 를 돌려줬다. "느리지만 정확하다"는 말은 메모리가
+         넉넉할 때만 참이고, 허브에서는 그 경로가 곧 OOM 이다.
+    지금은 셋 다 **예외로 끝난다**. 조용히 무거운 것을 받느니 크게 실패한다.
+    의도적인 fp32 는 `VINC_EMBED_QUANTIZE=off` 로만 — 그때는 로그를 남긴다.
 
     e5 의 공식 int8 은 `model_qint8_avx512_vnni.onnx` **한 종뿐**이고
     U8S8 + per_channel + `reduce_range=False` 조합이다. ORT 문서가 non-VNNI CPU 에서
@@ -251,40 +292,53 @@ def _resolve_model(model: str, cache: str) -> str:
     경로는 `VINC_EMBED_MODEL_PATH`.
 
     구워진 파일이 없으면(로컬 개발 등) 그 자리에서 만든다 — 개발 기기는 메모리가
-    넉넉하다는 전제다. 그마저 안 되면 fp32 로 간다: 느리고 무겁지만 **정확하다**.
-    조용히 공식 int8 로 갈아타지 않는다(그쪽이 품질을 깎는다)."""
+    넉넉하다는 전제다. 그마저 안 되면 **실패한다**(위 ③).
+    조용히 공식 int8 로 갈아타지도 않는다(그쪽이 품질을 깎는다).
+
+    ⚠ 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 별도 파일이라
+    여기의 단일 파일 다운로드로는 양자화가 성립하지 않는다. 그 모델들은 미리 구워서
+    (`scripts/quantize_e5.py --model …` 또는 이미지 빌드) 경로로 주는 것이 유일한 길이고,
+    아래 실패 메시지가 그 처방을 말한다."""
+    want = artifact_name(model)
     baked = os.environ.get("VINC_EMBED_MODEL_PATH", "").strip()
-    if baked and os.path.exists(baked):
-        return baked
+    if baked:
+        # **이름이 곧 계약이다.** 구운 것이 다른 모델의 아티팩트면 여기서 끊는다 —
+        # 그대로 쓰면 차원이 우연히 같은 조합에서 영원히 안 들키는 무음 고장이 된다.
+        if os.path.basename(baked) != want:
+            raise RuntimeError(
+                f"VINC_EMBED_MODEL_PATH={baked} 는 다른 모델의 아티팩트다 — "
+                f"VINC_EMBED_MODEL={model} 에는 {want} 가 필요하다. 이미지를 그 모델로 "
+                f"다시 굽거나(Dockerfile.hub · bake_embed_model.py) 경로를 맞출 것")
+        if os.path.exists(baked):
+            return baked
 
     from huggingface_hub import hf_hub_download
-    if not _is_e5(model) or os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+    if os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+        # 의도된 fp32(개발·대조 실험). 조용하지 않게 남긴다 — 이 줄이 없으면
+        # "왜 갑자기 메모리를 이만큼 쓰나"의 답이 로그 어디에도 없다.
+        print(f"[embed] VINC_EMBED_QUANTIZE=off — fp32 로 진행({model}). "
+              "허브 형상(1024MiB)에서는 OOM 이다", file=sys.stderr, flush=True)
         return hf_hub_download(model, "onnx/model.onnx", cache_dir=cache)
 
-    made = os.path.join(cache, "e5-int8-rr.onnx")
+    made = os.path.join(cache, want)
     if os.path.exists(made):
         return made
     fp32 = hf_hub_download(model, "onnx/model.onnx", cache_dir=cache)
     try:
         from onnxruntime.quantization import QuantType, quantize_dynamic
     except Exception as exc:
-        print(f"[embed] 양자화 불가({type(exc).__name__}) — fp32 로 진행", file=sys.stderr,
-              flush=True)
-        return fp32
+        raise RuntimeError(_no_artifact_msg(model, want, cache, exc)) from exc
     tmp = made + ".part"
     print("[embed] int8 양자화(reduce_range=True) 중 — 메모리 1.5GB+ 필요", flush=True)
     try:
         quantize_dynamic(fp32, tmp, weight_type=QuantType.QInt8, per_channel=True,
                          reduce_range=True, extra_options={"MatMulConstBOnly": True})
     except (MemoryError, Exception) as exc:     # noqa: B014 — MemoryError 를 눈에 띄게
-        print(f"[embed] 양자화 실패({type(exc).__name__}) — fp32 로 진행. "
-              f"컨테이너라면 이미지에 굽는 경로(VINC_EMBED_MODEL_PATH)를 쓸 것",
-              file=sys.stderr, flush=True)
         try:
             os.remove(tmp)
         except Exception:
             pass
-        return fp32
+        raise RuntimeError(_no_artifact_msg(model, want, cache, exc)) from exc
     os.replace(tmp, made)                       # 원자적 — 중간에 죽어도 반쪽이 안 남는다
     try:
         os.remove(fp32)                         # 1GB 를 영속 볼륨에 남길 이유가 없다
@@ -590,9 +644,7 @@ def prefix(text: str, kind: str, model: str) -> str:
     ⚠ `model` 을 인자로 받는 이유: `scripts/encoder.py` 가 이 함수를 그대로 가져다
     쓴다(같은 규약이 두 곳에 적히면 갈라진다 — 실제로 갈라졌다). 그쪽은 모델을
     바꿔 가며 비교해야 해서 모듈 전역 MODEL 로는 안 된다.
-    근거는 그래프의 record:embed-prefix-missing-m3-branch-2026-08-30 (⚠ 이중대괄호 인용을
-    쓰지 않은 이유: 매니페스트 갱신(`scripts/refresh_graph_refs.py`)에 원격 그래프 키가
-    필요한데 이 작업 세션에는 없다. 키를 가진 쪽이 갱신하면서 인용으로 올릴 것).
+    근거: [[record:embed-prefix-missing-m3-branch-2026-08-30]].
     """
     m = model.lower()
     if "bge-m3" in m:

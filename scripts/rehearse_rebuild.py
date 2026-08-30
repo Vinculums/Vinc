@@ -12,8 +12,12 @@ ChunkVec(... embedding FLOAT[768] ...)` 로 박히고, `provision()`→`migrate(
 안 한다**(실측: 열이 FLOAT[768] 그대로). 그 뒤 1024 벡터를 쓰면 그때서야
 ``Unsupported casting LIST with incorrect list entry to ARRAY. Expected: 768,
 Actual: 1024`` 가 난다 — **스토어를 이미 비운 다음에.** 그래서 차원이 바뀌는
-모델 교체에는 재구축 경로가 따로 필요하고, 이 파일의 :func:`rebuild_store` 가
-리허설용 최소 경로다.
+모델 교체에는 재구축 경로가 따로 필요하다.
+
+그 경로의 정본은 **`store.migrate.rebuild_store`** 다(제품 코드). 이 파일은 그것을
+불러서 **재기만** 한다 — 리허설이 자기만의 최소 경로를 들고 있으면 재는 대상이
+프로덕션이 아니게 되고, 실제로 그래서 메타 이관이 리허설에만 있고 제품에는 없는
+상태가 한동안 유지됐다.
 
 단계(발주자 지정):
     seed → rebuild → reindex → eval(전/후) → rollback → concurrent
@@ -47,7 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from api import docstore as ds                      # noqa: E402
 from store.backend import open_store                # noqa: E402
 from store.config import EMBEDDING_DIM_BY_MODEL, load_config   # noqa: E402
-from store.migrate import export_store, import_store  # noqa: E402
+from store.migrate import rebuild_store as migrate_rebuild  # noqa: E402
 
 #: 짧은 이름 → HF id. 리허설 인자를 짧게 쓰려는 것뿐이고 차원의 정본은 store.config 다.
 MODELS = {"e5": "intfloat/multilingual-e5-base", "m3": "BAAI/bge-m3"}
@@ -190,101 +194,37 @@ def _vec_dim(store) -> int:
 
 # ── 2단계: 실제 rebuild(차원이 바뀐다) ───────────────────────────────────────
 
-def _meta_specs() -> dict[str, dict]:
-    """메타(`_`) 테이블 명세. 스키마 SSoT 에서 가져온다 — 열이 늘면 자동 추종한다
-    (`node_table_specs()` 가 이것을 빼기 때문에 여기서 따로 든다)."""
-    from store import embedded_schema as _schema
-    return {lbl: {"pk": spec["pk"], "cols": [c for c, _ in spec["cols"]]}
-            for lbl, spec in _schema._META_TABLES.items()}
-
-
-def _dump_meta(store) -> dict[str, list[dict]]:
-    out: dict[str, list[dict]] = {}
-    for lbl, spec in _meta_specs().items():
-        proj = ", ".join(f"n.{c} AS {c}" for c in spec["cols"])
-        try:
-            out[lbl] = store.run(f"MATCH (n:{lbl}) RETURN {proj}") or []
-        except Exception:
-            out[lbl] = []
-    return out
-
-
-def _load_meta(store, meta: dict[str, list[dict]]) -> int:
-    n = 0
-    for lbl, spec in _meta_specs().items():
-        pk, cols = spec["pk"], spec["cols"]
-        sets = ", ".join(f"n.{c} = ${c}" for c in cols if c != pk)
-        for row in meta.get(lbl) or []:
-            store.run(f"MERGE (n:{lbl} {{{pk}: ${pk}}})" + (f" SET {sets}" if sets else ""),
-                      {c: row.get(c) for c in cols})
-            n += 1
-    return n
-
-
 def rebuild_store(src_dir: str, dst_dir: str, *, model: str) -> dict:
-    """스토어를 **새 차원으로 재구축**한다 — 리허설용 최소 경로.
+    """디렉터리 두 개를 열어 **제품 경로**(`store.migrate.rebuild_store`)에 맡기고 잰다.
 
-    제자리 수정이 불가능해서 export→새 스토어→import 다. 이유 셋:
-      ① `ALTER TABLE ... ALTER COLUMN` 으로 배열 길이를 못 바꾼다(엔진 미지원).
-      ② `provision(dim=새값)` 은 'already exists' 를 삼켜 **조용히 no-op** 이다.
-      ③ 제자리로 하려면 ChunkVec 을 DROP 후 재생성해야 하는데, 그건 실패 시
-         **되돌릴 원본이 없다**. 새 디렉터리로 만들면 실패해도 원본이 남는다.
+    ⚠ 이 함수는 한때 재구축을 **직접** 했다. 그게 리허설의 결함이었다 — 리허설이
+    자기만의 최소 경로를 쓰면 재는 것은 "그 최소 경로"지 프로덕션이 아니다. 실제로
+    그때 메타 이관을 여기서 손으로 하고 있었고, 제품 코드는 여전히 `_DocMeta` 를
+    잃은 채였다. 지금은 같은 함수를 부르므로 여기서 잰 수치가 곧 제품의 수치다.
 
-    🔴 **덤프에서 ChunkVec 을 반드시 빼야 한다.** export 는 옛 768 벡터를 그대로
-    싣는데 import 는 1024 열에 넣으려 하므로 그 행마다 캐스팅 예외가 난다. 어차피
-    전량 재임베딩할 벡터라 버리는 것이 맞다 — 대신 그 구간은 **재임베딩이 끝날
-    때까지 벡터 검색이 빈다**(FTS 는 산다). 이것이 사용자가 치르는 비용의 정체다.
-
-    🔴 **메타 테이블은 손으로 옮겨야 한다.** `export_store`/`import_store` 는
-    `node_table_specs()` 를 따르는데 그것이 **`_` 로 시작하는 메타 테이블을 의도적으로
-    제외**한다(데이터플레인 전용). 그래서 그대로 쓰면 `_DocMeta` 가 통째로 사라지고,
-    그러면 `switch_embed_model` 이 문서를 0건 보고 **0건을 재큐한다** — 재임베딩이
-    영영 일어나지 않는데 오류는 하나도 안 난다(실측: docs 10 → 0, requeued 0).
-    함께 잃는 것: `content_hash`(무변경 감지) · `sync_seq`/`rev`(계정 동기화 커서) ·
-    `needs_embed` 자체. 진짜 재구축 경로를 만든다면 여기가 첫 번째 필수 항목이다.
-    """
+    남는 일은 계측뿐이다: export/import/색인 구간을 갈라 재고 전후 형상을 찍는다."""
     out: dict = {"phase": "rebuild", "src": src_dir, "dst": dst_dir, "model": _hf(model)}
     t0 = time.perf_counter()
-    src_cfg = load_config({"data_dir": src_dir})
-    src = open_store(src_cfg)
-    if src is None:
-        raise SystemExit("원본 스토어를 열 수 없다")
-    before = _stats(src)
-    dump = export_store(src)
-    meta = _dump_meta(src)
-    src.close()
-    out["export_s"] = round(time.perf_counter() - t0, 2)
-    out["before"] = before
-
-    dropped = len(dump["nodes"].pop("ChunkVec", []) or [])
-    out["vectors_dropped"] = dropped
-
-    t1 = time.perf_counter()
     if os.path.exists(dst_dir):
         raise SystemExit(f"대상이 이미 있다: {dst_dir}")
+    src_cfg = load_config({"data_dir": src_dir})
+    src = open_store(src_cfg)
     dst_cfg = load_config({"data_dir": dst_dir, "embedding_model": _hf(model)})
     dst = open_store(dst_cfg)
-    if dst is None:
-        raise SystemExit("대상 스토어를 열 수 없다")
-    stats = import_store(dst, dump, dim=dst_cfg.embedding_dim)
-    meta_rows = _load_meta(dst, meta)
-    # 🔴 **여기서 색인을 세운다.** `import_store` 는 데이터만 넣고 색인은 안 만든다.
-    # 안 세우면 새 스토어는 FTS 도 없어서, 재임베딩이 끝날 때까지 검색이 "벡터만 비는"
-    # 게 아니라 **통째로 죽는다**(실측: `Table Chunk doesn't have an index with name
-    # chunk_ft`). `switch_embed_model` 의 "FTS 는 그대로 살아 있다"는 제자리 전환을
-    # 전제한 말이고, 새 스토어로 옮기는 경로에는 해당되지 않는다.
-    t_idx = time.perf_counter()
-    dst.ensure_search_indexes(dim=dst_cfg.embedding_dim)
-    out["index_s"] = round(time.perf_counter() - t_idx, 2)
-    # 새 모델을 기록하고 전 문서를 재임베딩 큐에 넣는다(= switch_embed_model 의 몫).
-    sw = ds.switch_embed_model(dst, _hf(model))
-    after = _stats(dst)
-    dst.close()
-    out.update(import_s=round(time.perf_counter() - t1, 2),
-               rows=stats, meta_rows=meta_rows,
-               requeued=sw.get("requeued"), after=after,
-               wall_s=round(time.perf_counter() - t0, 2),
+    if src is None or dst is None:
+        raise SystemExit("스토어를 열 수 없다")
+    out["before"] = _stats(src)
+    try:
+        res = migrate_rebuild(src, dst, model=_hf(model), dim=dst_cfg.embedding_dim)
+        out["after"] = _stats(dst)
+    finally:
+        src.close()
+        dst.close()
+    out.update(res, wall_s=round(time.perf_counter() - t0, 2),
                peak_rss_mb=round(peak_rss_mb(), 1))
+    if out["docs"] != out["requeued"]:
+        raise SystemExit(f"재큐가 문서 수와 다르다({out['requeued']} != {out['docs']}) "
+                         "— 재임베딩이 안 일어난다")
     return out
 
 
