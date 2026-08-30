@@ -35,6 +35,7 @@
     "vinc.design.system",
     "vinc.design.tenant-desktop",
     "vinc.design.tokens",
+    "vinc.ops.azure-identity-split-2026-08-30",
     "vinc.ops.branch-pr-cleanup-2026-08-18",
     "vinc.ops.cost-management",
     "vinc.ops.deployment",
