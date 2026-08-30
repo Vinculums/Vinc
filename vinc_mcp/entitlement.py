@@ -182,6 +182,64 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
     return result
 
 
+def verify_member(sub: str, team: str) -> dict | None:
+    """`user:{publicId}` 의 publicId + 팀 publicId → {owner, role} 또는 None.
+
+    `verify_key(raw, team)` 의 **OAuth 판**이다. 두 라우트가 따로인 이유는 자격증명의
+    모양이 다르기 때문이다 — 키 경로는 원문 키로 사람을 확인하고 같은 왕복에서
+    멤버십까지 답하는데, OAuth 토큰에는 키가 없고 허브가 아는 것은 승인 때 스탬핑된
+    publicId 뿐이다. 그래서 **신원 확인 없이 멤버십만** 묻는다(`lookup_plan` 과 같은
+    갈래다 — 어서션 게이트가 호출자를 이미 증명했다).
+
+    ⚠ **fail-closed 다.** 네트워크·타임아웃·형식 불량은 전부 None 이고, 그러면 팀
+    주소는 404 가 된다. `lookup_plan` 이 fail-open 인 것과 반대인데, 그쪽은 자격
+    조회고 이쪽은 **인가**이기 때문이다. 흔들릴 때 열어 주면 안 되는 쪽이다.
+
+    ⚠ 계정이 `graph_owner` 를 안 주거나 `team:` 이 아니면 거절한다. 개인 owner 로
+    물러서면 팀 쓰기가 조용히 개인 그래프에 쌓인다 — 키 경로가 이미 막아 둔 것과
+    같은 고장이고, 이 경로가 그것을 뒤로 열어 주면 안 된다.
+
+    캐시는 `verify_key` 와 **같은 표를 쓰되 접두로 갈라 둔다**. 안 가르면 키 해시와
+    publicId 가 같은 이름공간에 섞인다.
+    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    """
+    if not sub or not team:
+        return None
+    seed = _seed()
+    if seed is None:
+        return None
+
+    ckey = "member|" + sub + "|" + team
+    now = time.time()
+    with _lock:
+        hit = _cache.get(ckey)
+        if hit and hit[0] > now:
+            return hit[1]
+
+    result: dict | None = None
+    try:
+        req = urllib.request.Request(
+            _account_url() + "/internal/mcp/team-membership",
+            data=json.dumps({"sub": sub, "team": team}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-Vinc-Assertion": _sign_assertion(seed)},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        go, role = body.get("graph_owner"), body.get("role")
+        if (isinstance(go, str) and go.startswith("team:")
+                and isinstance(role, str) and role):
+            result = {"owner": go, "role": role, "member": f"user:{sub}"}
+    except urllib.error.HTTPError:
+        result = None            # 404(비멤버·모르는 팀)·401·503 → 거절
+    except Exception:
+        result = None            # 네트워크·타임아웃 → 거절(닫힘 실패)
+
+    with _lock:
+        _cache[ckey] = (now + (_POS_TTL if result else _NEG_TTL), result)
+    return result
+
+
 def lookup_plan(sub: str) -> str | None:
     """publicId → **지금의** 등급. 계정 `/internal/mcp/plan`(B2 동일 신뢰 방향).
 
