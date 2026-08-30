@@ -60,9 +60,9 @@
   legacy_owners   `_NORMALIZE` 표가 다루는 레거시 기본 owner(tenant:local ·
                   user:local · tenant:shared)를 단 행. 표에 없는 값이 있으면
                   `compose(normalize=True)` 경로가 raise 한다.
-  meta            이관이 함께 다시 써야 하는 메타 테이블의 행 수. **손으로 적은
-                  목록이 아니라 스키마에서 파생**한다 — 손으로 적으면 다음에 열이
-                  늘 때 조용히 빠진다(이 리포가 `EDGE_EVIDENCE_RELS` 에서 이미 고른 형태).
+  meta            메타 표별 행 수와 이관 계획(재작성할 열 · 나를 것인가 · 행이 있으면
+                  멈출 것인가). 계획은 `migrate_pk_namespacing.META_PLAN` 이 정본이고
+                  여기서는 읽기만 한다 — 표가 둘이면 점검과 이관이 다른 것을 말한다.
 
 ## 무엇을 재지 **않는가**
 
@@ -79,11 +79,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from store import pkns                          # noqa: E402
 from store import embedded_schema as schema     # noqa: E402
 from store.backend import open_store            # noqa: E402
 from store.config import load_config            # noqa: E402
+
+# 이관 계획의 정본. 점검이 이관을 읽는다(반대가 아니다) — 막을지 말지를 정하는 쪽이
+# 무엇을 어떻게 바꾸는지 아는 쪽이어야 한다.
+from migrate_pk_namespacing import META_PLAN     # noqa: E402
 
 #: `_NORMALIZE` 가 다루려던 레거시 기본 owner. 표 자체를 읽지 않고 여기 적는 이유는
 #: 표가 **비어 있는 것이 정상**이기 때문이다(측정 전에는 채우지 않는 것이 계약이다) —
@@ -141,32 +146,32 @@ def survey_nodes(store) -> dict:
 
 
 def survey_meta(store) -> dict:
-    """이관이 함께 다시 써야 하는 메타 테이블. **스키마에서 파생**한다.
+    """메타 표별 행 수와 **이관 계획**. 계획은 `migrate_pk_namespacing.META_PLAN` 에서
+    읽는다 — 여기 따로 적으면 점검과 이관이 다른 것을 말하게 된다.
 
-    무엇이 대상인가: 노드 PK 나 그것으로 지은 합성 키를 **문자열 열로** 들고 있는
-    표다. 엣지(관계 테이블)는 대상이 아니다 — 그래프 엔진이 노드 정체성으로 잇고
-    있어 PK 를 다시 쓰면 따라온다. 반면 툼스톤의 `node_id`·`ekey` 는 그냥 문자열이라
-    아무도 안 고쳐 주고, 안 고치면 **삭제 표식이 상쇄되지 않아 지운 것이 부활한다.**
+    ⚠ 이 목록을 처음 손으로 적었을 때 `_EdgeTombstone` 의 `src`·`dst` 를 재작성
+    대상에 넣었는데 **틀렸다.** 그 두 열은 동기화 와이어로 그대로 나가고 와이어에
+    U+001F 가 있어서는 안 된다(계약 테스트가 고정한다) — 합성하면 이관이 그 계약을
+    깬다. 표를 하나로 합친 이유가 이것이다.
+
+    엣지(관계 테이블)는 애초에 대상이 아니다 — 엔진이 노드 정체성으로 잇고 있어 PK 를
+    다시 쓰면 따라온다. 반면 툼스톤의 `node_id`·`ekey` 는 그냥 문자열이라 아무도 안
+    고쳐 주고, 안 고치면 **삭제 표식이 상쇄되지 않아 지운 것이 부활한다.**
     """
-    want = {
-        "_Tombstone": ("node_id",),
-        "_EdgeTombstone": ("ekey", "src", "dst"),
-        "_SyncBase": ("node_id",),
-        "_MergeRejection": ("pair_key", "a_id", "b_id"),
-    }
     out: dict[str, dict] = {}
-    for table, cols in want.items():
+    for table, plan in META_PLAN.items():
         if table not in schema._META_TABLES:
-            # 스키마에서 사라진 표를 조용히 건너뛰지 않는다 — 이관 대상 목록이
-            # 스키마를 못 따라간 것이 이 도구의 가장 나쁜 고장이다.
-            out[table] = {"error": "이 표가 스키마에 없다 — 목록을 갱신할 것"}
+            # 스키마에서 사라진 표를 조용히 건너뛰지 않는다 — 계획이 스키마를 못
+            # 따라간 것이 이 도구의 가장 나쁜 고장이다.
+            out[table] = {"error": "이 표가 스키마에 없다 — META_PLAN 을 갱신할 것"}
             continue
         try:
             n = _scalar(store, f"MATCH (t:{table}) RETURN count(t) AS c", "c")
         except Exception as e:      # noqa: BLE001 — 못 재면 못 잰 대로 말한다
             out[table] = {"error": str(e)}
             continue
-        out[table] = {"rows": n, "columns_to_rewrite": list(cols)}
+        out[table] = {"rows": n, "rewrite": list(plan["rewrite"]),
+                      "carry": plan["carry"], "refuse_if_rows": plan["refuse"]}
     return out
 
 
@@ -235,12 +240,16 @@ def main() -> int:
     for label, v in sorted(nodes.items(), key=lambda kv: -kv[1]["rows"]):
         print(f"{label:<18}{v['rows']:>8}{v['sep_in_pk']:>10}"
               f"{v.get('owners', '-'):>9}{v.get('blank_owner', '-'):>11}")
-    print("\n이관이 함께 다시 써야 하는 메타 표:")
+    print("\n메타 표 (이관 계획은 migrate_pk_namespacing.META_PLAN 이 정본):")
     for t, m in meta.items():
         if "error" in m:
             print(f"  {t:<18} ⚠ {m['error']}")
-        else:
-            print(f"  {t:<18}{m['rows']:>8}행  열: {', '.join(m['columns_to_rewrite'])}")
+            continue
+        what = (("재작성 " + ",".join(m["rewrite"])) if m["rewrite"]
+                else ("그대로 나름" if m["carry"] else "안 나름"))
+        if m["refuse_if_rows"]:
+            what += "  ⚠ 행이 있으면 이관이 멈춘다"
+        print(f"  {t:<18}{m['rows']:>8}행  {what}")
     if s["legacy_owner_rows"]:
         print(f"\n레거시 owner: {s['legacy_owner_rows']}")
     print()
