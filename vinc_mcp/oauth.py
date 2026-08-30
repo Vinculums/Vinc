@@ -48,8 +48,21 @@ class OAuthGate:
         self.store = store if store is not None else Store(":memory:")
 
     # ── 메타데이터 ──────────────────────────────────────────────────────────
-    def resource_metadata(self) -> dict:
-        return {"resource": self.issuer + "/mcp",
+    def resource_metadata(self, resource_path: str = "/mcp") -> dict:
+        """RFC 9728 보호 자원 메타데이터. **경로마다 다르다**(#120).
+
+        전에는 `issuer + "/mcp"` 하드코딩이었다. 그래서 팀 주소(`/t/<uuid>/mcp`)에
+        등록된 커넥터가 자기가 붙은 자원과 **안 맞는** `resource` 를 발견하게 되고,
+        그것이 팀 주소에서 OAuth 를 아예 막아 둔 이유였다. 자원이 여럿이면 메타데이터도
+        여럿이어야 한다 — 그것이 RFC 9728 이 자원별 문서를 두는 이유다.
+
+        ⚠ `authorization_servers` 는 **안 갈린다.** 인가 서버는 하나고(RFC 8414 의
+        issuer), 갈리는 것은 보호 자원 쪽이다. 그래서 `as_metadata()` 는 경로 인식이
+        될 이유가 없다 — 그것을 경로마다 다르게 만들면 클라이언트가 팀마다 다른 인가
+        서버를 발견하게 되고, 그건 사실이 아니다.
+        """
+        path = resource_path if resource_path.startswith("/") else "/" + resource_path
+        return {"resource": self.issuer + path,
                 "authorization_servers": [self.issuer]}
 
     def as_metadata(self) -> dict:

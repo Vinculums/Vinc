@@ -560,6 +560,10 @@ def main(argv: list[str] | None = None) -> int:
             # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
             from vinc_mcp import entitlement
             vk = entitlement.verify_key if entitlement.enabled() else None
+            # OAuth 커넥터의 팀 주소 접근(#120). 같은 어서션 시드를 쓰므로 활성 조건도
+            # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
+            # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
+            vm = entitlement.verify_member if entitlement.enabled() else None
             # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
             # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
             quota_cfg = None
@@ -588,7 +592,8 @@ def main(argv: list[str] | None = None) -> int:
             acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
             return serve_http(
                 bridge, host=args.host, port=args.port,
-                static_token=static, oauth=gate, verify_key=vk, quota_config=quota_cfg,
+                static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
+                quota_config=quota_cfg,
                 mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
                 account_public=_ev.load_public(acct_raw) if acct_raw else None,
                 connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
