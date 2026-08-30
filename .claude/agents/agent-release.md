@@ -67,5 +67,16 @@ ten version sites across six files, and the changelog is deliberately not one of
 - episode
 - record
 
+## Output contract
+
+A sentence of the form checked, verified, confirmed, present, absent, or returns X
+carries the tool call that produced it: the query as it was run and its first result,
+or the call id. A statement without one is reported in the word assumed.
+
+This is not a style rule. A session reported a findability check as having been asked
+in Korean when it had been asked in English, and nothing in the output told the two
+apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the
+sentence instead. Reasoning: [[vinc.ops.graph-claim-decay]] section 7.4.
+
 Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not
 escalate; it returns the package to its author instead.

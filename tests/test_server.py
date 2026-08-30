@@ -243,7 +243,7 @@ class StoreUnavailableReadTests(unittest.TestCase):
         "/doc?id=d1", "/docs?owner=u", "/conventions?owner=u", "/nav-tree?owner=u",
         "/doc/highlights?doc_id=d1&concept_id=concept:a",
         "/doc/context?owner=u&doc_id=d1",
-        "/node-context?owner=u&node=concept:a",
+        "/node-context?owner=u&node=concept:a", "/brief?owner=u&query=x",
         "/edge-context?owner=u&src=concept:a&dst=concept:b&type=RELATED_TO",
         "/ledger-drilldown?owner=u&domain=d&mark=m",
         "/docs-in-range?owner=u&start=2020-01-01&end=2030-01-01",
@@ -315,6 +315,9 @@ class EquivalenceTests(unittest.TestCase):
         # 정적 케이스가 불가능 — 아래 CursorRouteTests 가 동적 등가로 커버한다.
         ("/search?query=x&top_k=4&detail=full",
          ["search", "--query", "x", "--top-k", "4", "--detail", "full"]),
+        # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(HTTP == CLI).
+        ("/brief?owner=u&query=x&max_excerpts=2",
+         ["brief", "--query", "x", "--owner", "u", "--max-excerpts", "2"]),
         ("/plan/recall?query=x", ["plan", "recall", "--query", "x"]),
         ("/plan/decide?topic=t", ["plan", "decide", "--topic", "t"]),
     ]
@@ -856,6 +859,27 @@ class ConnectFlowTests(unittest.TestCase):
             code, _ = _req(base, "/connect/status?state=x", token=None)
             self.assertEqual(code, 401)
 
+    def _preflight(self, base: str, origin: str):
+        """Chrome 이 공개 오리진 → 루프백에 보내는 preflight 를 그대로 흉내낸다."""
+        r = urllib.request.Request(base + "/connect/callback", method="OPTIONS")
+        r.add_header("Origin", origin)
+        r.add_header("Access-Control-Request-Method", "POST")
+        r.add_header("Access-Control-Request-Headers", "content-type")
+        r.add_header("Access-Control-Request-Private-Network", "true")
+        with urllib.request.urlopen(r, timeout=5) as resp:
+            return resp.headers.get("Access-Control-Allow-Private-Network")
+
+    def test_preflight_grants_private_network_to_connect_origin(self):
+        """이 헤더가 없으면 브라우저가 콜백을 아예 못 보낸다 — 연결 플로우가 매번
+        수동 키 폴백으로 떨어졌던 원인이다(응답이 200 이라 서버 로그에는 안 남는다)."""
+        with running_server(_app()) as base:
+            self.assertEqual(self._preflight(base, "https://vincs.io"), "true")
+
+    def test_preflight_denies_private_network_to_others(self):
+        """무인증 라우트(/health · /connect/callback)를 웹 전체에 열지 않는다."""
+        with running_server(_app()) as base:
+            self.assertIsNone(self._preflight(base, "https://evil.example"))
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocRouteE2E(unittest.TestCase):
@@ -945,9 +969,12 @@ class DocRouteE2E(unittest.TestCase):
             code, got2 = _req(base, f"/doc?id={did}&owner=user:a")
             self.assertEqual(got2["text"], "짧아짐")
             # D45-V — 추출 제안(apply 없음) → 반영 → 노드 클릭 상세(정본 발췌)
+            # 프론트매터 domain — 주제 없는 문서는 추출 반영이 거부된다(2026-08-24,
+            # 근거: [[vinc.ops.topic-assignment-eval]] §2). 반영 개념은 이 주제를 물려받는다.
             code, put3 = _req(base, "/doc/put", method="POST", body={
                 "owner": "user:a", "id": did, "title": "t",
-                "text": "# t\n\n## 개념하나\n\n한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
+                "text": "---\ndomain: demo\n---\n# t\n\n## 개념하나\n\n"
+                        "한 줄 핵심입니다.\n본문에서 개념하나를 다룬다.\n"})
             self.assertEqual(code, 200)
             code, prop = _req(base, "/doc/extract", method="POST",
                               body={"id": did, "owner": "user:a"})
@@ -1002,15 +1029,12 @@ class DocRouteE2E(unittest.TestCase):
             self.assertTrue(rng["executed"])
             self.assertIn("ev1", {i["id"] for i in rng["items"]})
             # D69 — /nav-tree: 좌측 문서 트리(주제 → 문서 + 착지 노드).
-            # 추출로 만든 개념은 domain 이 비어 있다(귀속은 사용자 몫 — docstore).
-            # 그래서 주제를 붙이기 전까지 문서는 **미분류**다. 억지 배정하지 않는다.
+            # 추출 개념이 문서의 주제(demo)를 물려받으므로(2026-08-24) 문서는 더는
+            # 미분류가 아니다 — 곧장 그 주제 밑에 서고 착지 노드도 잡힌다.
             code, nav = _req(base, "/nav-tree?owner=user:a")
             self.assertEqual(code, 200)
             self.assertTrue(nav["executed"])
-            self.assertIn(did, {d["doc_id"] for d in nav["unfiled"]})
-            self.store.run("MATCH (c:Concept {concept_id:$i}) SET c.domain='d'",
-                           {"i": _pk("concept:개념하나")})
-            code, nav = _req(base, "/nav-tree?owner=user:a")
+            self.assertNotIn(did, {d["doc_id"] for d in nav["unfiled"]})
             landed = {d["node_id"] for g in nav["domains"] for d in g["docs"]}
             self.assertIn("concept:개념하나", landed)
             # owner 없이는 400(SEC-1 — 무소유 트리는 없다)

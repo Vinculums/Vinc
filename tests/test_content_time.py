@@ -111,7 +111,7 @@ class TimeAxisE2E(unittest.TestCase):
         self.assertEqual(self._meta(did)["content_time"], "")
 
     def test_extract_propagates_content_time_without_overwriting(self):
-        text = "# 문서\n\n## 특수상대성\n\n광속은 불변이다.\n"
+        text = "---\ndomain: physics\n---\n# 문서\n\n## 특수상대성\n\n광속은 불변이다.\n"
         out = ds.put_doc(self.store, owner=self.OWNER, text=text, title="물리",
                          content_time="1905")
         ap = ds.extract_doc(self.store, out["doc_id"], owner=self.OWNER, apply=True)
@@ -145,6 +145,35 @@ class TimeAxisE2E(unittest.TestCase):
                               "RETURN n.content_time AS ct, n.sync_seq AS seq",
                               {"i": pkns.key(self.OWNER, nid)})
         return rows[0] if rows else {}
+
+    def test_a_field_the_kind_cannot_keep_is_reported_not_dropped(self):
+        """보관 못 하는 필드를 실어 오면 **말한다**(2026-08-24 실측 회귀).
+
+        결정 노드 셋에 content_time 을 실어 보냈는데 merged 는 성공, warnings 는
+        비어 있고 값은 어디에도 없었다. 스키마가 그렇게 생긴 것은 맞다 — Decision
+        에는 그 열이 없다. 문제는 스키마가 아니라 **성공이라고 답한 것**이다.
+
+        쓰기를 막지는 않는다: 이 경로는 ingest·sync apply·팩 가져오기가 함께 쓰므로
+        거부로 만들면 필드 하나가 동기화 전체를 세운다."""
+        out = self._ingest({"id": "decision:d1", "type": "decision", "title": "D",
+                            "domain": "x", "content_time": "2026-08-24"})
+        self.assertEqual(out["merged"]["nodes"]["created"], 1, "쓰기 자체는 성공한다")
+        msg = " ".join(out.get("warnings") or [])
+        self.assertIn("content_time", msg)
+        self.assertIn("decision:d1", msg)
+        self.assertIn("Decision", msg)
+        # 그리고 값은 실제로 없다 — 경고가 실상을 말하는지까지 본다.
+        rows = self.store.run("MATCH (n:Decision) WHERE n.decision_id = $i "
+                              "RETURN n.title AS t",
+                              {"i": pkns.key(self.OWNER, "decision:d1")})
+        self.assertEqual(rows[0]["t"], "D")
+
+    def test_a_field_the_kind_does_keep_stays_quiet(self):
+        """거짓 경고 금지 — 개념의 content_time 은 정상 경로다."""
+        out = self._ingest({"id": "concept:quiet", "type": "concept", "title": "C",
+                            "content_time": "1905"})
+        self.assertEqual([w for w in (out.get("warnings") or [])
+                          if "not persisted" in w], [])
 
     def test_fragment_writes_content_time_on_concept_and_record(self):
         self._ingest({"id": "concept:c1", "type": "concept", "title": "C",

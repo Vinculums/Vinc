@@ -38,7 +38,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify, entitlement
+from . import edverify, entitlement, tools
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -138,6 +138,29 @@ def _role_allows(role: str, op: str) -> bool:
     return op in _PROXY_OPS      # 나머지는 조회 — 화이트리스트에 있으면 열람자도 가능
 
 
+#: 스페이스 주소. `/t/<uuid>/mcp` 는 팀 그래프, `/mcp` 는 개인.
+#:
+#: **URL 은 의도, 자격증명은 권한.** 주소가 어느 그래프인지 말하고, 키가 들어갈 수
+#: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
+#: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
+#: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+_SPACE_PATH_RE = re.compile(
+    r"\A/t/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?\Z")
+
+
+def split_space(path: str) -> tuple[str | None, str]:
+    """`/t/<uuid>/mcp` → (uuid, "/mcp"). 스페이스가 없으면 (None, path).
+
+    ⚠ **모양이 틀린 주소는 여기서 스페이스가 아니게 되고, 뒤에서 404 가 된다.**
+    400 이 아니라 404 인 것이 요점이다 — 형식 오류와 "그런 팀 없음"이 구분되면
+    팀 id 를 추측해 조직 구조를 훑을 수 있다."""
+    m = _SPACE_PATH_RE.match(path or "")
+    if not m:
+        return None, path
+    return m.group(1).lower(), (m.group(2) or "/")
+
+
 def team_role_tiers() -> dict[str, frozenset[str]]:
     """역할 표 전량(드리프트 방지 테스트가 _PROXY_OPS 와 대조한다).
 
@@ -147,67 +170,158 @@ def team_role_tiers() -> dict[str, frozenset[str]]:
     return {"viewer": viewer, "editor": _EDITOR_OPS, "admin": _ADMIN_OPS}
 
 
-# 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일).
+# 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일,
+# design-hub 의 링 플레이트에서 `tauri icon` 이 뽑는다).
 # base64 로 심는 이유는 SVG 와 같다: 사이드카/MCP 는 단일 바이너리라 외부 자산 경로가
-# 없다. 128px RGBA, 2.5KB. 로고가 바뀌면 그 PNG 에서 다시 뽑을 것:
-#   python -c "import base64;print(base64.b64encode(open(P,'rb').read()).decode())"
+# 없다. **이 리포에서 로고를 인라인해도 되는 유일한 자리다.**
+# ⚠ 그래서 사본이 조용히 낡는 것을 주석이 아니라 테스트가 막는다 —
+# tests/test_mcp_icons.py 의 EmbeddedIconMatchesCanon 이 이 둘을 정본과 바이트로 대조한다.
+# 다시 뽑는 법: python -c "import base64;print(base64.b64encode(open(P,'rb').read()).decode())"
 _FAVICON_PNG = base64.b64decode(
-    "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"
+    "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAkgUlEQVR42u1dedRV1XXf534P/AAHcEAGAZHZAZkERHCI"
+    "GdRo4hjj0MY2GmtW21ijTbKy2tV/spKUxGRlJVm2JkatQ9SoSbRqYlOjURBkdkLEKCCDKIIG/EC+7+2e+94d9j5nn3PP"
+    "fQNfulYu6/G9d999dzh7+u3hnF2BNmyzZn1lbjdWP1dFHFutVqfoXfv19FT7wV+24K2jI9oR/42iaEWk1NqKim5btOjb"
+    "T7f6OqpVJzph9g0X9/TgVzShj+upViu9PYBKteoRsf4//hkwRRR1a8Z4vqNDffu5Z+ff82fBANNn3nBzd0/PZb0p4XVi"
+    "K+cTqmZIj+5ve5MpNCN0VTo67ly6eP5VvcIA02fd8M3uvT3X94a0iwQXCa2K3gqyXvjBwRi9wxCxVqj06fjO0kXzv7ZP"
+    "GCC277u79z6kJX5grxLdIni+QzXy5BhqDGwOQIFh9jUzxJihs9LnnLI4QZVT99c/sHdvz7ka3KleITwjunKr9+zw1twm"
+    "ptRFn5lAgRn2LSNosIh9+nTcsnTxd65sOQNMnfHlV/d294ztDWlngE4iunIQWzWu6rBAO9SYAguYoZe0Qp9Kx9rlS747"
+    "riUMMGfO10ft2tP18r4AeT5pV6qA4KL6V80hHbQ5AB1MYTIE9rJW0EywuV/fzhMXLPjGuoYZYJ8RnxDUKe0m0S3aqjCJ"
+    "V2VE36cR0MkQlBlcWkHSIO3wFAbs12+Sjwm8CH5fEF8pU+I9hGd/PKBPsaOagsWY7Ub6Id1Tf1t7g/nXWL+3eI9KDsL6"
+    "f/p5MTk8OaaN6iCmXdeHuxfqt8NKy0O7bT5V99l7D+GVAQiUQHBV8GSqEfsvSnjyP0rWwlb7Lo2A+8gs+DBB5AjuPNhe"
+    "4qvMrtffJu9TYsefU4ZIGaF2TJ3I+W9UdmxySvab+v78BYEvZZ7bdX5y3vT+s8/kN+mxkB1DnjllXtU+xyqmpfbgfhKk"
+    "AeKQ7p493Xe3w9WzJZ2AO1Hii82BZBLEh/P5i07/zvEtMueQHeSUdtcx1vft0Qaxi9ivb9+TzTiBhQE+3NtzU3uIb4C8"
+    "RJrDCK9AieBPwAFCDkAVsr6yqawMk0+pmth0RYmmTPsfv8f8WIITGEaA9PvkWKwLRauxQUzTOICn3w5iQNEI9PxEq4s5"
+    "LUf4itt6ZRLfUvWpOUjVrK16udqFXH0TlZ2bGP5iqp2YCvs48gKV3Z90bdMUseehxxmmAajpIBoxu58WbpqpOkeMmte5"
+    "eeOC31lyELt8O7s+eL2V0p8TPEDqmZQrUKa0m+DPBH6W+m/hAKKl8LmaN9V+otuR/d4EiLJZYMe1wSTEuYOVy27sY4HA"
+    "Pd17/qWdxPdJPfuOSjwDVYKkU2m1AF/OFxzjqYIXlXquxSgwBEHSRe0FVJtwifdrA0GAWuEa6uQdBYQZA3R3Vz/XDpRP"
+    "ES5D95AjYQv5OwivmOdgInFKbAP5M4+gyAlI7gMEj8D0VExvxWfGQPAIlK0V6VhJY9iKrbuneiljgDi126q0rot76X5q"
+    "G8Hl8nnspovoYLiXFg4AFfZyMAdnigJmkBjBknhlfxcwhq0IEMXeXsYA1Z7qRW0jPlV9ls9vmgUjNlDgS5s+NyMUFKj3"
+    "Ii1AtQgIjOVjBhcjKIPhyRjQsbHGrA1MoLXAVzM3UHPEUW0jvvCw1n7HMSaYUzxZYNhGyVZK2cPwZEAK0pQyHMLEpcui"
+    "CEiug3WXUCW+IKbH6Z21/en39f9IoLkeNkal2DHp7+vuYR0QxmPdrJtY7cFja1eeMeufr92958Pv9RrxGcHtY0QvQLmI"
+    "rty1gEqVCwVbA4xWls/6jD4vgKB8A/GjdIy03/AKmmWCAfvtN6+ibf+5rSi+DCN+CBMQhhIYw1aDSqgfUG6JV8xRBCuv"
+    "h6amIVKqBzy/ViqNSEJFmAWHapKcEi553vx7qg1UIvmYSDzdX6QJmitW7caeKyqA1QmtcfUk4pfTAEzqCwivaAxZ+CwX"
+    "iShPRoyqG2TfphJYv0auCSif1ZnDZISEoJCr7swsuNQ9228yh8kEOTM0Fh2EsRX930GNl5OqAskXiOxCuAZTMO3CGEM5"
+    "ia7sqpEGS8MUKwWz7HVGbLQ+Z++J/U/DuyBJdKYbiJawmAM8miA9oAEG0HM2Ko3m+7nbIhMxmPjmfovB3IS3mcCUdKlu"
+    "wF8XzPL6uU0gat8kPhCtkByXkjY1E8QsZMROfmsBPJA0AWEewEz91y+n7Ehl4FZpqoiDEa+Y+LKqL/J5zWCIIP1M3Rve"
+    "hewyOIqCya/QIHyi0lOPIPcQQNACQAiEOcp3oPmUiJkkFzEBuV4KBBvxDLTwH1RpCvQpJYC2MOK7Vb4g9RmCV27pt0rG"
+    "lCzxqqAyBumDpsTOs3W5y5aaBUkL5Kqd4oOUIahJAIYLchzgZQJK8FSrNAgKKw0pfxGgmYCOq/0QcOgKHzsJTxhD/iwh"
+    "gAI8oGgcILHSmDMEQkZ3mh22vYQsvUslPQdu4ASB9b9gmQPImSF1BTOlQfBASVNQKa36GcGpOndIOQv/gpwLME2JKPWK"
+    "h2NBem8SXIluXxGDIyE/EACYS7XKsH6e8yflJcwE8O8y7GDUAphMAKmZAGVpB0woz0FhPvZlTEGltOpnQRmO+Pk+Hsos"
+    "Q3xL6kmCRmYCIAkcgdyW/VfeCSDZeU21TxiCagK7oAOZZuDaAJj9VkpmAqDnodohAaXMM0jASG4ewk1BpWnVb9h9ywW0"
+    "yr7KEN8kuF/6FQ8iCGXkqtCzYSE95tcTQhLXkGsBgvIRDKKbf91MANkxyfkIwQFsPNCMKaiUR/0u1Z/JIAeCVj1AGeK7"
+    "mIBLvP1eKg3P9887aRyMHHEwjNCvmCDr1m+D9RvehQUL1wIdUZYBYMBM0gLAbDUoOWoXwgQgMkbyHRDs4DIFJbwCdeyU"
+    "azFk0gYFeWZhg2n3LUDI6gHsfRbRmbTLeIBmEHmwyMYE6Xb0xKFw1ZXz4NBDDqgNTvyqViF7//Y7O+HW256G1WveMsuB"
+    "iIFAXiGESIo8MRl0JPF85H/T79nfJK6fnEbaV/8tzRek+QGSM0AUj/VWCA0eMvvfQoCfnZqVGMJMg9pYQDVE/Dz1mhdY"
+    "RCQVnL6PkmP45/h1wXnT4eqrTob+/fsadXL5+/79+sKJs8fU3r+6dqtR/aP4c1mFHIb3I0ZEc3a0gmhClrMQYwkFs8rl"
+    "FjdiApStTUXUT4+xbkDZOYOGiG9IPb8P2xxRqx4Tft7cccHo+JxPToZDDtkfbv+vhUnghSgDBSThwwvLrZAtc9/IX5DN"
+    "AYAR4wcDFFI8YNh+kEBiACCMGgd+LoaQOdLWAH7iK/FvZBwXkd/m0p9qhfjzX19+Ipw8bxyU3U6cdRRcdMH0RINEyTUj"
+    "fh+ee5KewdJmxhhYyTUX2Bbwjm/MfVtUvMaOn9hMRYkBIGWovTDis++MGTtuJlCMCU45eTyc8YljGk6XnnbqhBojcOIr"
+    "N/GVfM8QyAQ8OWZEWh3j7GMKhxccqgH8qp6n1uWbYO4fexiDCXzEB5ngJjNkhE/2H3nkIfB3WvU3u11+6Uw44ohB5HoC"
+    "Izi1QQETMFCrrLyKnBFVzjJ5FxbwaYEoIONbLP2BaojmDFyEDsMDkZPw8SPtP2A/uO5LH4VWbVf+7ZwEPEZuRnAR32AC"
+    "N2N4kmA+AVSBpqEMAyjlYoJw6bcRrxIyeiBrgEIw6NYa8evqL8yDww47wPvgG97cDguefR0W6tebb+7wHnvIwQPg0s+e"
+    "wIpEVcl7BOXSAGDkOCRT0IwW8JuBShH4a0b6LXNgSDgwd5LX8EMQcOIMFG+nnjwOTpg+yol8X1mzFX710Iu1v3QbP+4w"
+    "OOuMSTB2zKHi7yYfOwxmnjAKFj+3Lin4wBzRs6IOOygkIvesUigfyzyez/MA1ANIyxOs9yAEh4B7FlJQwIoDWGjd5/cb"
+    "0T3RRzalJvbRQbLfNqArQs0mUBw8+ED48pdOB71QkkjEXz30Atxy63Pw7rsfWKXf8b5nF62vHTdurMwEY446FFas3AS7"
+    "d+8VfXi7QEaOAdCKYltTokMLq7ZogcgH/uSybAi7oJIqd2TVb/vyfhClaACInPv6a0+HAQP6isT76a2L4dcPv0TuI0oC"
+    "RlEyDPXzPPqbV+DOu5eL5+jXrw9c8bmZBgNGlsvnxDFW6LrIFIA1za0cLZRI02IMIB1bEHIVI1PgYgJlTP4wgjtmwMdj"
+    "c1MCfOaCqXDkqIMdkv+ijvO/kfv0BMApopnS/YuXbIDHfvuKeK7hww6CT3xsIru2E5OA57kYg7swkgrTAo5kGEDxaqlR"
+    "MPgTSu2cF1Guuj3DDWRFGw5J8SHo5O8xRw+FC8+fIj7gMwte1wzwUi6thZND69rgsd+ugRde3CKe82MfnQBjNFawfH6n"
+    "J+N7RrDcQLEGUvmE07MwWoEZiMLUv/Ks2OFmCucDkbSia4DMmUPKYRIGaJfvmqvniYRav2EH3H3vSkZYYNLOX0DVun5/"
+    "972rYNOm98Vzf+bCKdok9BVVvjIYXEGIKQC3wIBn7UOLMRxawWEGojD1b1fVui4iT9JQDuk3mMCcas1UJIgBlC9q4g8+"
+    "bH+LQB988CH89GeL9d9uMVgjrg1kBJm6urrh5/etgq4E9NFt0KD+OlQ8WQxoAYDt3UimQKpvcGjOQs8MlFtbe8xAVLR6"
+    "ivIuxepTM8pK/NjSTwMZRSCJYIzk96edMg5mzhgpSuhd96zQvv77WXAot/PU9kc5iGNYIP/Nps074dcPrRavcczRQ2DG"
+    "9BGGawsCQ8iazjIBohZQ1hS4QvMcSkfKAEpBuKoJ4DAlLurjsP0AftsIdsTs8MEHwBV/NVN8qKcXvKFt/zoWHMpSxEoi"
+    "fA4AwYosKliybJN+bRSv9ckzJ8HBB/e3I5zgxzq57Jpl7MoaZKVKauhC0yxqALf9F3MDhTbGUGdWgaYSmMCQfqr6jZj5"
+    "Ddd9RHT5Yrt/189XEHDGs3PgAYKuY+NzPfTfq2Hz5j+JruHll0yzcxxKCIBZNYuGxjPHwNCeoRgNwD9ngnJEVNr+B0m+"
+    "DGKo6hNtvyANkht58YXTYLRO9kh2/+ZbFtdsN0/D5mlcLuUp+OPpXZ5Wrp9j9+4euO/+F/Tfbuu6Q4ceCKefNs7hxrm0"
+    "gP3cubbzTYJtHa3CkkEhXTiUv12LkurzREkAQ/qVBYaOO2aoRuBTxdu6Qwdw1m94z4oQmr43V/eK5fzFCGVCyM1bdsLD"
+    "j8jxgY+cNhaOGn2IAH6VoQVA1HxmObvymAGfiS67OmqDXoA/d+CbqMlX9jKZQhnSz0FRnOX7+2tkl++xx9do279OjsKx"
+    "Io7IXkUUXKVltuu5bPlmHVRaL97D+ecdB/06+4hRT9vzcYyBQISi6fCO2e/hXoCvYCDMtvjcBCWv7uGKbHh84n/44ik6"
+    "3m9n+dat366lf4U/lWwVlkR1QgMHgHLRCWeChx9do7WBjQcGDewHZ2lQ6I99FMxeVu6JLc5Sdi9W8xf8RDK53bHjYtWv"
+    "HGv1cfUXBoTygTz9tAkwa+Yo0e5/7wfPBKaSI8EjMJB/QF4//nfnXatEPDB1ynCYNPFwAfsUAGBpUqslZKrYFIBrmRwl"
+    "HhWFVA6E+pphcWNnyw/LFUqZInb5Pn/FbPHebrp5EbyzbVdYKtkI9qTJIKuix8dIyfsd7+2G+x98STYF5x4LnZ0Vi9iS"
+    "ELhtryq0wUExmoJkTyV8Pd1ALQC+FTtVwbLvsvq75DPTayFfs6o3ztzF/jlNS7uyien7EUccqANII+HYow+Fvn2jeH1E"
+    "+NPOPTru/w488+wm2LJlF1kP2JXPr+fdX179ji4oWQ+zZ41g99WpccCZurbggQdXseS9SiZ1pMUKWYY+2UeOSq7D5/1b"
+    "GX2ywzkXSPiC7opK99gJ0gIqtMrUcaV835DDYxdrvHXE2+/sgtvvXOZH2Abxzz17PPzr107ShZ7D9RyAPsSXr8C0KYPh"
+    "mqsmwylzh8tZSoen8shjr8KOHbut+5ty/PBauNg/og4bXzh+rRPYKLQuLlSlSO/cZktGwPT7Sy+eLl7yx/+xUGQmV7z9"
+    "/E9NgE+fM77wOU+eN1xPHRvmzlMIRHvgl7IpOPWUMQYIFDRhqTEK64ZZZkGcqDnKl/QZQ21f8nF/HemLwZ+5vfTyW/DS"
+    "6rcCYwsKRo0cCOd9KnwtrLmaAQYP7u+MVpoEfH3ddnjjje2iFqhjAf9zFhJWFYx1E5wQNco5quTRRb+XsMNRo+XSrPvu"
+    "XxmILerHnPXxMVB2mzH1MGFFcpfGUvDEk6+L5xky5MCgZ21GjlWpY4s0gGrWHsgHqQZu77hj5V5Hb6zbHvD7/P30aUNL"
+    "M8CYsQNL5dWkuEC8HTlqUOnBU40MeIN0i0qPTEOkhIYuc7gu8jS3Xdrvj18SOHJ1FRnQv0/py3fu1yH2I1AOYBbHBKS4"
+    "wEAdHGp2MFQbjoRmVgnr1Q3/cnOt3KJ2PSS2YCzf2mqXY8Up4AF0ije6u3qm8/k/+GBv6cvv2dPDG0NJ7YPJtWOwF/v/"
+    "5rZjR1fTg4FtZMCooXNg+ZtphG2ef2FToF2Vfp+/X7Jsc+mBWbt2R+F56TZ0yAGBeAUbGF5sDU2wgAGwkY7aDXImFjBI"
+    "/P0fX39HPNuF5082Vr9AuXFjcswjv32tNAMsWf623R7OPDdZzfvUU0aL59my5f2gZ21O7hvXEVHznCUvq+5+JizYlxN2"
+    "564P4XdPvCLW4h2tEy6cFMgbMJGlVNat3wEP/vqV4EF6+plNsHXrB3zpF6MZIDU8o7VGGn2krZVWrNyYA0PPc/r3eTpW"
+    "FxEHW4gBsPBLwRabDZa93wtr7ut3d92zVLzkNV+YLTAcWa8HKSMgPKAZ4FcPryl8zqee3gh/0AwA2Vo/0vn4/Z937iTx"
+    "XL9/8jV3B/GGxqiAURrQ5LW5gebqFObcP+9n43dsQSiWWQPe64e1hFFC353651gLxO6gWQIWA8H+2r1buWqLp78QD7Ct"
+    "XvMurFi1Ne6lCwcP6tTdtZVeJEqDxK69sGrV25pJ1sKLL23LFnWqL9KEhkbJVmSq8chZZ4zTcwnt8rTlWvqXL3+zAEeg"
+    "o/24cCxiqf7G4O18LriBKHmRKLuWaK6tq9w/yZdVYyvuZYvj8HMly6EZC/Lcfe9SPTP3yBrB6XbmJybosPBWWLp8o71q"
+    "p5DFi99s2PA+3Hbn83LrWCLljPiMCfLVwiZNPFQvKjXSylLGk0cffexludW86LW4sYWXvhgg9f6uuKkJCFQpGHB+LELO"
+    "btuXDwAyYry19U96cudC8d6uvnKWXvZtgKGyHcuz1T5Xs2XhdLOM2iv9HH/Hj3UzwcCDOnUJmKz6H/hlWjzKl5AzewQX"
+    "YqECXOXTAqEmO5LXy0f5JgvUidVPR0LqaFzHILbE/TFBYjAYz82X4gL/9I8n2Spb/FslhEfCCJgzQsoEHkaK/112yeRa"
+    "/Z+l+lds1HUCbzGtYI+DAC4tIZC0ALpaGXmIbqxraBwVif2RpBYKaNsut/uBAeoPZc5HDpDoQP7gR0/C1rd3WlcbNXKQ"
+    "rs2f4lbdBrHr76t1hqgxRdX4zqNF9PuzzxyvS8EPEIM+jzz6MmNc1/PbXov8/F71Kworyt3NAcT1EaMQT61YraDQTcul"
+    "9n0+OzIzgMgZYeeuPfDDHz8l3sEZHxsPc+eMkpmAqfdqIndIVH/6uWpoCpv406YOhTknytPR7n/w+do8QkZ4S/1jUGzB"
+    "N5aIXnl3eoxY1g30AYtiUyC3WvP77BxhA6ClBZ5/cTPc+wt5AYfLLpmq1wA+iDOBoL6pxHONwJmHniM+59Ah++upYHJR"
+    "yf8+sVYHrrYJ0p88C9oYwBdbkMfQo/qxMZcwKi39BZzl0wQpIfw+OxhaAA1zgHDPL5bpEOu7Nh7QruGVf3NCrcQrk3Dg"
+    "9p3b/Goi9VWmKVKcQM/R2dkBF15wTG0qGFip4Pc1RnmV3aPFBIWxCrK2sFfyW0crgwHQBmhe2yKAC+N4RrwQIGQEb/Kf"
+    "k4FN3v/7d39XKwmX8MAlFx9P0HyVSD5y1G+8XMfG5zrnrIkwbKidno5dvjvuWpYzFtEcucZHawyKATBaOMJHozCsZoP7"
+    "SIw9eFRMOU0g2TWXGvQEXIg2SE8bu4Y/u32xqNbmnTQaTiJ4wEb+VQMLVA2zQFxF/f2MacP0NPDh4rUefuTl2gJT2dMZ"
+    "7qgs/eg2fwLwa0Tyw0y0AwMU5r4KLkjttxsNk4GxiI8i8U1t8MSTr8JzS+VpWpdePKVWAl4/tkoIjzbhGSisst8MG7o/"
+    "fOrsieI14trEJUs3CFIvMQHaTIASALa1p0/9h8ZoMDQXEOYFuM2AjAHIwKCEiA2baCFwsLREet4f3fSH2jr/5hav7Pn5"
+    "K07Qfytc1SfegPSiQaL4FWOJiy+aLNr97du7NBhdafQIsFW//TyCqWPgF0UX2BxbUf037wWE2ZhwVYMFPrEsGUj2IxkM"
+    "FJou7NKu4Y81E0jbSI0HPnvR8Zlk54NcFV+5Da8zwmc18YcPO1A8d+yJdHV9yO6FeQ/Amz/b0USJCWzCW0vc+zRBKYzm"
+    "XChSeReFFBePlBaJpOcCI1HkS95YDSeAdB7jSZ7079s6OBSf++hJQyw+HDliYG1PfWXQ8KqJMz4+Qfv7o8Sxf/x/9Iyk"
+    "JeudXUHsWITN4LLr69OcxRo63DyHYACUQ0cY1EJF0gIo+sYoDRYxBRwA2hG61Ibfe/9ynfd/VyTpp885RhPzSA4AGRbg"
+    "+2fOGFFjAGnbtOk9+M3jq9m17XuS8hLGc1kmDh1upN3SPoQGodnjyB3lQSuOjUUcZr4XiZ+DxCKQJKl8BB7Qoeee/z3Z"
+    "NYy3z18xU4O5o8l9VLNkUO19cp44wxgHlKQtjvL97LbFRs+fqnFPRdlEF8gFx1h5xr+QFn717+wZxPL8XrXvMQF0v9Vq"
+    "lq2KYiyoWKbPDjcFMR54770u7bLJodoJ4wfXFoWOZxPXZhQDXyz68kunw2xhCjpkE1KWw9rX3hYAKdiNoDyJpGI3FwXC"
+    "O6Qf0c8E6Fb/nrJw0uIUzFZpafsyJffPISthQ9bOLOmbC2j2Y7R644n5fNoDx+i9mU++rbdg+/1Tr+qJICNrL2mbOGFw"
+    "jRFic7F+w/bavRwx/CD9GpiAdVlZxgWq9Wyk4ZJSEOfNRBpST1W/FegCB7E9mgDDPbNiDFCINHkxg2yHSDzKaeME9F+Y"
+    "0vXY3GQgb/rPp0TXkHkIIwbBSSeOhjmzR+t4wSDvsXGg586fP8eCQ1jyHi2771X9lAmARw/LSD/4pT8sGeS7OBZd3PBd"
+    "yQ271CUE5vXBEd6N7XmcNbzx+49Dq7abb3kmwRZVMWwMgXUE4MU2EmhuUvqxZDLIBQYb1QI0mMWbIaIYQMEQO2oEa1yM"
+    "8MYb2/TqIU81Tfw77lqsO4psdxNeCDIVgVgpoEXdQGb/m5J+9KcKfQwg1iX6tADy63E76TYFEqGt77zFGlWZEfS/J59a"
+    "A4/95sWGif/E71+BhYv+aGQUhRoDR9EJFJkMxALVj0IHUYOuHukvUv8BZeEhashmCp8pyIFWMRPYf6se4ptp3Prn2+9Y"
+    "qEu9Xy1N/Gc14e+7fymrFbDKxjz3JD2Dj/iIfIzkMQ9Q9Q7zC73aOhZcrWMDWqxkf9FyC31dNOjnJUvX1a4xaeJQv6bL"
+    "MnyrdKh3idOfdvYNNgI/RXjA7B9sCgqg7Am4VL0bgDfBAA01jwbwN4+GBpkAhL47ie+ZMgkkLiKQz/XM3WZYvXpzjQlo"
+    "/2A6QNu27dR5hSfgmYWv9VrzaMnuc9Xviby6GKKp7uEGsYq6hfPO4X+m7ePnxu3jD6m5gnH38Lh1/PoN2/QK42vds3dE"
+    "k2e/596MECByEZ9lEOV9eVdw8HcTR0ciCRpcHyDtc5/N56gFX+zgEKYEJf3uMSEgJhNBzH1pn3veSJn+Ja3VXC3YUo2Q"
+    "NU9WWUu1zAqSKNNTfyiaIoZG1g39+RCH1BczQUni+7CAFfXDVi8QQbtaKyNqlxM8ixAavfGUIlHCkkzAumFD2hsPhD55"
+    "kDXgyzv5QcYQKVVda+qgp3QGXXMQTSaQKn9KEJ/zmmH3BYZoBPg1xACYC1YyBSsPEfMwLpL26cnUL0XCwtnxfiagnRSz"
+    "8C/TBpQRiJRjejyC2ZFRBU6ndpVooxgfQTcTiN/5ic/xhMvuAz9edLfbsEQMJpJF4/m2KQBC6DwPAMpgDMoElGDAV9G0"
+    "tAFbYZMwQtolM9UQBkPkQ6UgpB5AKmE3gzBWUEaoCEZLCxiFNQLxEVAAgiiDPJQDbm1cI8hhCpJkT90UUFud4AeTMSgT"
+    "pDZbkXNnWsHQBimeIJoBTDwAKd7IJ6QC8R7C58F7ZjVZIW6zHlCSeqO820F8oCCOSTsYJXKNq/6GGYDZ6GSgM2KZADBl"
+    "BkIQygRUxFWaGVRJ39zkvEAzf1QLEEYwe+VyzZAzBCWwKpzkijY68JTNS7UPYh7EYAJEoxwcSa7E0hJCzoCh/vLiXIk6"
+    "ot3VnmpnaVOQeQXEfgOXaokJaK6X23+iAYhJyBkiH7ycOQi4zFzWBG/QyeoZMMzVBRZbf5Bm7NozdtDDBGCrfIH4IlO4"
+    "iG/mVUqifhYE6ojeq+hB2aPfdzZgCAgRU9raqt1kAovYKscWGcpnJgEIoidmwdQC7DtC+LSWwbGGSdDaO87ZTm7Cy0kx"
+    "tMBbaeIb50Qsu16TkQvQ24qGfon+0KVltyj3IkG/6FB/xjkp1+elYFXHZ17+zeoAg16kStjKQPqvnd0jA2gk5WuCNzoG"
+    "6AKHwu8MQNkg8VdEkYK1jXIPFjIBurnYgYJRqKunA8QZwS4Gscu/DcKmU8KBzttDa6o4O59RLm5fk99TPu/DqPAxS8IK"
+    "xwSFSJ8w5o1Kv6Z9VFEdtzaTL0cUmCH4gfh+SRJ4hIwzApOuTAJNwuezfwDoRBB7cigtULW1RtVxLYnwZtgWZMYoHBOf"
+    "5ENTxK8BQE37mnE8ftq13T1V6GjmZDy5wzOHQAtIQdjvOMbsOGI1nlLg76cDSliBvWQcQHCv7NlPIC/wIAZv0J7EUaAV"
+    "ZeI3R/2OCHpWLvt+peYGRh0dz/dUe6Y0pwkcaF5JwJAGfmiQKD0G8ohe4i6mHkaG5hO3MWcMqg4V8QgaW7PUt96BtJyd"
+    "syTbCt7IBLdy/m0kfkrzrCCk0hF9qxW1c6Jb4wB+8sMi0cSGWSCl0qk54JVARIuDbaMR0TUlUHihhTHAuAavAuKqnhLO"
+    "9VymtDsBYRuIT2me6cPJ06/rKhsPKGUOaANEl0kwvuNZXSUUfChHB03Hivsq3MPxL7hk7pI0g6kVUKykQum7oqBR09If"
+    "7V619MZ+rCSsT0d0J7RoQzEp4kDBKEgOUOm2NYKpFSTNwFYAY1PAAqSfLVJhaBAwgCiVdlPiAUjpmKDJ0OcFyWPYio3S"
+    "mslEK8Cg1EiSdQH3SDxtzWKXeimhKYRyttNRoFrQtQKcizYCgmPNI3BX6jhsvaQRxNxBC7YU/IlFoZU+feZDCzckmS3J"
+    "xknagEkNgq0RTPdQ0AymdrCXggHx5QwM0cmdSJ/Ld0/0eEmbeTQC8rFr5WbS2JKR46dft6Onp3oQtHgzawC92sB035Ry"
+    "toNxt0xX5XrsYWDHA0vSwd1YAlGeu18o9dBSlU9j/yuX3jjQWxbeWelzdqRafm0eOPHZf68dJZIIbimkUgfmWoAiHpC/"
+    "58vIgVv7gK15XPjFhwPaYe9J1K9GW4spzB0bNz6z/oiRc0doLTAN2rTxUnFbwos1glDYZXoDENJEN3i9CLuOCMFZOFIk"
+    "8fbEj/ZJfbr17Vv56XOL5/8wuM3U1BlfXru3u2dM25iAVu0qmcg2I7h6DvsZomxPraKl2FEsHBVW/nQSHoSJoW2jfbw8"
+    "/mvLl3x3LJTtMzZ1xnWb93ZXh0AbNys2UMAIXvsvOP0tUwBCcKAYBwRohXZSvkb8aMvyJTcObagiqF/ffrN7sGt1qwJE"
+    "TmyQdcqm4Vta8JkfA7TMG40qQloA5OjEUSIVAP5KMXSuyuUivDzZs31bHPCJadhUp8E5c74+quvDrmfbrQlMs2A2kVZW"
+    "2125b72CwD7GJe0/FCzGbBLUWh95H6l7Kvkx8Rcs+Ma6lrSabDcmcDICy/pJ2T0HQ4jAsME+Z+hbph2c2UNE8K/13ws2"
+    "v+GmUfEJ99NIsh0uohhAQjRy7o4EDAhBHGPxSQhOAoEVUKLr/FnBJPAnpnhCqv3jFtMmplEo8RtSjrNmfWXu7u69D7cj"
+    "WFRGK4CU5y+j8VWY7feBPnAuq7fvpJ0GeWI/f9Gibz/dnr7ExjZ91g3f7N6794ZW5g4aZgaRIdw2QJVW+1i8jmIvED2N"
+    "7cfh3aWL5n+tvY2pXYww8/qf7O2pXtZOT6EhhvAyRqm614LFM3pnixF+nNVbuvg7V+6bzuQF2wmzb7hYpxK/Wu3pOa43"
+    "tILMFK2LBPQmsam0x5U8cTHHc8/Ov6c1Udk2bDFO6MaeK3RPxrHVarVWaravMcP/9y226Vnptq7ejQs4y9r3kO3/ACtW"
+    "SVVjSx2hAAAAAElFTkSuQmCC"
 )
 
-# 커넥터/브라우저 아이콘(흰 바탕) — 정본: Vinc-design/assets/logo/vinc-favicon-light.svg
-# (흰 스퀘어클 + 정본 두획 V, viewBox "1.9 0 66.4 63"). 사이트의 다크 파비콘과 짝.
-# 여기 임베드하는 이유: 사이드카/MCP 는 단일 바이너리라 외부 자산 경로가 없다.
-_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Vinc">
-  <defs>
-    <linearGradient id="vtip" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#161618"/>
-      <stop offset="0.62" stop-color="#161618"/>
-      <stop offset="1" stop-color="#32355C"/>
-    </linearGradient>
-  </defs>
-  <rect width="100" height="100" rx="22" fill="#FFFFFF"/>
-  <svg x="21" y="23" width="58" height="53.5" viewBox="1.9 0 66.4 63">
-    <path fill="url(#vtip)" d="M3.86041 7.35091C2.56731 4.8785 1.92075 3.6423 2.04804 2.69691C2.16092 1.85854 2.59746 1.13737 3.28792 0.64862C4.06651 0.097477 5.44973 0.0971137 8.21617 0.0963872L14.291 0.0947918C15.1057 0.0945778 15.513 0.0944709 15.5751 0.0970306C15.852 0.108439 15.6292 0.0869573 15.9032 0.128671C15.9647 0.13803 16.109 0.166174 16.3977 0.22246C16.5558 0.253299 16.5036 0.548182 16.3487 0.592308C9.52905 2.53495 8.30154 9.5045 9.79969 15.8897C10.1438 17.3277 10.6202 18.7291 11.2226 20.0751C12.215 22.3256 13.4312 24.5429 14.5848 26.7124L18.5321 34.1941L21.834 40.4412C23.6168 43.8629 24.9579 46.7259 27.8544 49.3657C34.5318 55.4509 41.8297 52.0686 46.0951 44.9843C46.1322 44.9227 46.2156 44.9074 46.2712 44.9529C46.3134 44.9873 46.3265 45.0461 46.3024 45.095C45.7979 46.1186 45.0331 47.3751 44.4811 48.4279C42.7332 51.8159 40.9544 55.1872 39.1448 58.541C37.9771 60.7226 37.3932 61.8134 36.7769 62.2292C35.7365 62.931 34.4528 62.9292 33.4144 62.2244C32.7993 61.8069 32.2244 60.7257 31.0747 58.5631L12.3646 23.3702C9.79425 18.4665 7.19672 13.5777 4.57219 8.70416C4.33567 8.25768 4.09842 7.80597 3.86041 7.35091Z"/>
-    <path fill="url(#vtip)" d="M58.4066 0.025589C59.3877 0.046639 60.6496 0.0130453 61.5999 0.0607452C61.8525 0.0585323 62.1051 0.0576938 62.3577 0.0558624C63.6175 0.04673 64.5644 0.0399937 65.2943 0.104691C66.0242 0.169399 66.5413 0.305844 66.9398 0.586136C67.6198 1.0645 68.09 1.84095 68.1985 2.66524C68.2621 3.1483 68.1436 3.67035 67.8626 4.34688C67.5816 5.02323 67.136 5.8578 66.5443 6.96895C65.7597 8.44203 64.9704 9.91322 64.1829 11.3801L61.8343 15.7668L54.5306 29.634C54.4879 29.7143 54.3781 29.7264 54.3187 29.6574C54.2837 29.6168 54.2768 29.5591 54.3021 29.5119C55.6688 26.9687 56.9708 24.3768 58.3294 21.8283C59.689 19.2778 61.5373 14.8671 62.2064 10.6447C62.8758 6.41976 62.3625 2.39746 59.0159 0.601761C58.6938 0.428894 58.3159 0.349251 57.9485 0.323441C57.6799 0.304563 57.3916 0.283391 57.2659 0.277542C57.2391 0.276295 57.2133 0.266555 57.1927 0.249222C57.1624 0.223694 57.1486 0.186693 57.1536 0.152542C57.1589 0.117599 57.1843 0.0878384 57.2249 0.0783234C57.3771 0.042775 57.6145 0.0305941 57.8411 0.0265656C57.9548 0.0245464 58.0665 0.0252499 58.1644 0.025589C58.2626 0.0259299 58.3479 0.0264659 58.4066 0.025589Z"/>
-  </svg>
-</svg>"""
+# 커넥터/브라우저 아이콘 — 정본: design-hub/assets/logo/vinc-ring-circle.svg
+# (원형 플레이트. 스펙이 파비콘·아바타에 지정한 변형이고, 자기 바탕을 들고 있어
+# 커넥터 목록의 밝은 배경과 어두운 배경 어디에 놓여도 읽힌다.)
+# 임베드 이유와 드리프트 방지는 위 _FAVICON_PNG 주석과 같다.
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><defs><radialGradient id="ent" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5C63B8"></stop><stop offset="70%" stop-color="#3A3F7A"></stop><stop offset="100%" stop-color="#2C3070"></stop></radialGradient><linearGradient id="mg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#FFFFFF"></stop><stop offset="100%" stop-color="#C9CDDD"></stop></linearGradient><clipPath id="cc"><circle cx="90" cy="90" r="90"></circle></clipPath></defs><circle cx="90" cy="90" r="90" fill="#3A3F7A"></circle><circle cx="90" cy="90" r="90" fill="url(#ent)"></circle><g clip-path="url(#cc)"><rect x="-115.42" y="-43.64" width="110" height="90" transform="rotate(135 -60.42 1.36)" fill="#7478C4" opacity="0.1" style="mix-blend-mode:screen"></rect></g><g transform="translate(39.86 24.43) scale(0.19286)"><path fill-rule="evenodd" fill="url(#mg)" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="url(#mg)"></circle></g></svg>"""
 
 
 class MCPHTTPApp:
@@ -290,25 +404,50 @@ class MCPHTTPApp:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
         return self._dispatcher
 
-    def resolve_auth(self, header: str | None) -> dict:
-        """Bearer 를 해석해 {ok, owner, plan, source}. owner 강제 스탬핑의 출처.
+    def resolve_auth(self, header: str | None, space: str | None = None) -> dict:
+        """Bearer 를 해석해 {ok, owner, plan, scope, source[, role, member]}. 스탬핑의 출처.
+
+        `scope`(W18, [[decision:scoped-key-tier]]): 'full' 정확일치만 쓰기를 연다.
+        키 경로는 verify_key 가 실어 준 값을 그대로 쓰되 **부재는 'read'** 다
+        (fail-closed — 스코프를 모르는 채 쓰기를 여는 것이 최악의 고장이다).
+        static·oauth 는 스코프 개념 이전의 신원이라 'full'(기존 동작 무변화).
+
+        ``space``(팀 uuid)가 오면 **키 경로만** 통과한다. OAuth 는 못 쓴다 —
+        `resource_metadata` 가 `issuer + "/mcp"` 로 하드코딩돼 있어 팀 주소에 등록된
+        커넥터가 자기와 안 맞는 resource 를 발견하게 된다(경로 인식으로 바꾸는 것은
+        별건이다). 정적 토큰은 owner 가 아예 없어 멤버십을 물을 대상이 없다.
 
         - static: 정적 토큰 = 단일 테넌트 하위호환(owner=None → bridge.owner 사용).
         - apikey: `vinc_sk_*` → verify_key 루프백 → owner=user:{public_id}, plan.
         - oauth : 발급 토큰 → 코드에 스탬핑된 owner/plan(회원 경로면 채워짐).
                   등급은 **동결돼 있으므로** `_fresh_plan` 이 주기적으로 되묻는다.
         """
-        miss = {"ok": False, "owner": None, "plan": None, "source": None}
+        miss = {"ok": False, "owner": None, "plan": None, "scope": None, "source": None}
         if not header or not header.startswith("Bearer "):
             return miss
+        if space:
+            # 팀 주소는 키 전용. 그리고 **개인으로 떨어지지 않는다** — 실패는 실패다.
+            tok = header[7:].strip()
+            if not tok.startswith(entitlement.KEY_PREFIXES) or self.verify_key is None:
+                return miss
+            ent = self.verify_key(tok, space)
+            if not ent or not str(ent.get("owner") or "").startswith("team:"):
+                return miss
+            return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                    "scope": ent.get("scope") or "read",
+                    "source": "apikey", "role": ent.get("role"),
+                    "member": ent.get("member")}
         token = header[len("Bearer "):].strip()
         if self.static_token and secrets.compare_digest(token, self.static_token):
-            return {"ok": True, "owner": None, "plan": None, "source": "static"}
-        if token.startswith("vinc_sk_") and self.verify_key is not None:
+            return {"ok": True, "owner": None, "plan": None, "scope": "full",
+                    "source": "static"}
+        if token.startswith(entitlement.KEY_PREFIXES) and self.verify_key is not None:
             ent = self.verify_key(token)
             if ent:
                 return {"ok": True, "owner": ent["owner"],
-                        "plan": ent.get("plan"), "source": "apikey"}
+                        "plan": ent.get("plan"),
+                        "scope": ent.get("scope") or "read",
+                        "source": "apikey"}
             return miss
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
@@ -316,7 +455,7 @@ class MCPHTTPApp:
                 owner = rec.get("owner")
                 return {"ok": True, "owner": owner,
                         "plan": self._fresh_plan(owner, rec.get("plan")),
-                        "source": "oauth"}
+                        "scope": "full", "source": "oauth"}
         return miss
 
     def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
@@ -838,14 +977,21 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(200, gate.token(self._body()))
             except ValueError as e:
                 return self._json(400, {"error": "invalid_grant", "error_description": str(e)})
-        if url.path == "/mcp":
+        space, spath = split_space(url.path)
+        if spath == "/mcp":
             if self._origin_rejected():
                 return self._json(403, {"error": "origin not allowed"})
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, {"error": bad})
-            auth = self.app.resolve_auth(self.headers.get("Authorization"))
+            auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
             if not auth["ok"]:
+                # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
+                # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
+                # 모양 틀린 주소가 전부 같은 답을 받아야 한다.
+                if space:
+                    return self._json(404, {"error": "no such route: POST "
+                                                     + url.path})
                 return self._unauthorized()
             msg = self._body()
             # JSON-RPC 배치. `PROTOCOL_VERSIONS` 가 2025-03-26 을 광고하는데 그 리비전은
@@ -863,11 +1009,67 @@ class _Handler(BaseHTTPRequestHandler):
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
             # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
             # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
+            # 역할 게이트 — 팀 스페이스에서만. 등급은 주석표에서 유도한다(op 표는
+            # 프록시 op 로 키가 잡혀 있어 도구 6개를 못 덮는다). 거절은 브리지를
+            # **부르지 않는다** — 그게 이 게이트의 성질이지 상태코드가 아니다.
+            if space:
+                role = auth.get("role") or ""
+                blocked = [m for m in msgs
+                           if m.get("method") == "tools/call"
+                           and not tools.role_allows(
+                               role, ((m.get("params") or {}).get("name") or ""))]
+                if blocked:
+                    name = ((blocked[0].get("params") or {}).get("name") or "")
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": blocked[0].get("id"),
+                        "result": {"isError": True, "content": [{"type": "text",
+                                   "text": f"role {role!r} may not call {name}"}]}})
+                # W2 — `prompts/*` 도 같은 게이트를 지난다. 이 메서드들은 스토어를
+                # 조회하므로, "모르는 역할은 거부"라는 규칙을 메서드 하나가 비켜 가면
+                # 그 메서드가 팀 스페이스의 우회로가 된다. 등급은 세 번째 표를 만들지
+                # 않고 주석표에서 유도한다 — prompts 가 읽는 것은 vinc_neighbors 와
+                # vinc_graph 가 읽는 것이라 등급도 그것(viewer)이다.
+                # 거절 모양이 위와 다른 이유: prompts 에는 tools/call 의 결과 봉투가
+                # 없다. 그 봉투로 답하면 호스트가 프롬프트 대신 도구 결과를 읽는다.
+                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
+                        and not tools.role_allows(role, "vinc_neighbors"):
+                    first = next(m for m in msgs
+                                 if str(m.get("method") or "").startswith("prompts/"))
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": first.get("id"),
+                        "error": {"code": -32603,
+                                  "message": f"role {role!r} may not read prompts"}})
+            # W18 — 읽기 전용 키 게이트([[decision:scoped-key-tier]]). 등급은 팀 역할
+            # 게이트와 같은 주석표 유도(tool_tier)를 쓴다 — viewer 등급만 읽기다.
+            # 'full' 정확일치만 쓰기를 연다: scope 부재·미지 값은 전부 거부다
+            # (fail-closed — 집행되지 않는 스코프는 무음 전권이다). 미지 도구명도
+            # 여기서 막힌다(tool_tier 가 admin 을 주므로) — 뒤의 -32602 보다 먼저
+            # 닫히는 것이 안전측이다. 거절은 브리지를 부르지 않는다. prompts/* 는
+            # 조회라 통과한다(스토어 읽기 = viewer 와 같은 등급).
+            if auth.get("scope") != "full":
+                ro_blocked = [m for m in msgs
+                              if m.get("method") == "tools/call"
+                              and tools.tool_tier(
+                                  ((m.get("params") or {}).get("name") or ""))
+                              != "viewer"]
+                if ro_blocked:
+                    name = ((ro_blocked[0].get("params") or {}).get("name") or "")
+                    return self._json(200, {
+                        "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
+                        "result": {"isError": True, "content": [{"type": "text",
+                                   "text": f"this key is read-only: {name} writes "
+                                           "to the graph. Mint a full-access key "
+                                           "at https://vincs.io/account"}]}})
             d = self.app.dispatcher()
             ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
+            # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
+            # `_fresh_plan` 이 `user:` 로 시작하는 owner 만 갱신하므로 등급이 영구
+            # 동결된다(요금제를 올려도 안 풀린다).
+            counted = auth.get("member") or auth["owner"]
             replies = [r for r in (
                 d.handle(m, forced_owner=auth["owner"], plan=auth["plan"],
-                         quota=self.app.quota_check, entitlements=ents)
+                         quota=(lambda o, pl: self.app.quota_check(counted, pl)),
+                         entitlements=ents)
                 for m in msgs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
             if not replies:
@@ -880,7 +1082,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 있는 호스트의 관측 동작을 바꾸지 않기 위해서다 — 없앨 이득이 없다.
             return self._json(200, replies if batch else replies[0],
                               {"Mcp-Session-Id": session})
-        if url.path in ("/sync/push", "/sync/pull"):
+        if url.path in ("/sync/push", "/sync/pull", "/sync/docs-push", "/sync/docs-pull"):
             return self._sync(url.path)
         if url.path == "/internal/purge-owner":
             return self._internal_purge()
@@ -1001,11 +1203,24 @@ class _Handler(BaseHTTPRequestHandler):
         if not owner:
             return self._json(400, {"error": "sync requires a member-scoped key "
                                              "(static-token auth has no owner)"})
+        # W18 — push 는 도구 디스패치를 **우회하는** 그래프 쓰기다. /mcp 만 막고
+        # 여기를 열어 두면 읽기 전용 키가 sync 로 쓴다(무음 전권). pull 은 읽기라
+        # 통과한다. 근거: [[decision:scoped-key-tier]]
+        if path in ("/sync/push", "/sync/docs-push") and auth.get("scope") != "full":
+            return self._json(403, {"error": "this key is read-only: sync push "
+                                             "writes to the graph"})
         body = self._body()
         try:
             if path == "/sync/pull":
                 out = self.app.bridge.request("GET", "/sync/pull-delta", params={
                     "owner": owner, "since": int(body.get("since") or 0)})
+            elif path == "/sync/docs-pull":
+                # 문서 정본 채널(D45 P3) — 노드 delta 와 별개(레일이 다르다).
+                out = self.app.bridge.request("GET", "/sync/docs-export", params={
+                    "owner": owner, "since": int(body.get("since") or 0)})
+            elif path == "/sync/docs-push":
+                out = self.app.bridge.request("POST", "/sync/docs-apply", body={
+                    "owner": owner, "payload": body.get("payload") or {}})
             else:
                 out = self.app.bridge.request("POST", "/sync/apply-delta", body={
                     "owner": owner, "bundle": body.get("bundle") or {}})

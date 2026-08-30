@@ -101,6 +101,37 @@ def store_unavailable() -> dict:
 
 # ── 앱(라우트 핸들러의 상태 컨테이너) ─────────────────────────────────────────
 
+#: 팀 그래프 owner 의 접두. 정본은 `vinc_mcp/http_server._TEAM_OWNER_RE` 이고
+#: 여기 있는 것은 **사본**이다 — 사이드카는 MCP 층을 import 하지 않는다(다른 프로세스).
+#: 둘이 어긋나면 팀 그래프가 personal 로 보고되므로 교차계약 테스트가 대조한다
+#: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
+_TEAM_OWNER_PREFIX = "team:"
+
+
+def _owner_scope(owner: str | None) -> str:
+    """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `unscoped`.
+
+    `unscoped` 는 owner 없이 도는 로컬 단일 사용자 스토어다. 빈 문자열로 두면
+    호출부가 "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다."""
+    if not owner:
+        return "unscoped"
+    return "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal"
+
+
+def connect_origins() -> list[str]:
+    """계정 연결 콜백을 보낼 수 있는 웹 오리진.
+
+    도메인 이전(vincs.app→vincs.io): 두 오리진을 모두 허용한다. 기존 배포 데스크탑
+    클라이언트는 vincs.app/connect-app 를, 신규는 vincs.io 를 연다 — 병행 필수.
+    `VINC_CONNECT_ORIGINS`(콤마 구분)로 오버라이드 가능.
+
+    ⚠ 두 곳이 이 목록을 써야 한다 — `connect_callback` 의 POST 게이트와 `do_OPTIONS`
+    의 사설망 승인이다. 둘이 어긋나면 preflight 는 통과하는데 본 요청이 403 이 된다.
+    """
+    return [o.strip() for o in os.environ.get(
+        "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
+
+
 class VincApp:
     """사이드카 상태: 설정 · 공유 스토어(단일 Database, writer) · 세션 인증 · 잡 큐 ·
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
@@ -369,15 +400,30 @@ class VincApp:
         # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
         # components(기본) | communities | community_context(단일 시드의 군집 +
         # 대표 발췌 — unified-kg-rag-comparison §4). algo 확장 부재 시 executed=False 강등.
+        # claims(R5)는 algo 를 안 쓴다 — 확장이 없어도 답한다.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
         if kind == "community_context":
             return self._read(lambda r: q.community_context(
                 owner=owner, node=_req(p, "node"), store=r,
                 member_limit=_int(p.get("member_limit"), 0) or None))
+        if kind == "claims":
+            # R5 — 유일하게 **구조가 아니라 props 내용**을 읽는 kind. 나머지 셋과
+            # 이웃한 코드가 아니라서 component_diagnosis 를 넓히지 않고 따로 뒀다.
+            # 근거: [[vinc.ops.graph-claim-decay]] §7.3.
+            return self._read(lambda r: q.claim_diagnosis(
+                owner=owner, store=r, limit=_int(p.get("member_limit"), 0) or None))
         if kind == "communities":
             return self._read(lambda r: q.communities(
                 owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
+        if kind != "components":
+            # 모르는 kind 를 **말없이 components 로 답하지 않는다**. 여태 오타 하나가
+            # 전혀 다른 진단을 성공으로 받아 갔고, 그것이 이 PR 이 다루는 고장이다
+            # (성공이라고 답하면서 시킨 것을 안 한 것). 미지정(기본)은 그대로 통과한다.
+            return 400, {"executed": False,
+                         "note": f"unknown diagnose kind: {kind}",
+                         "kinds": ["components", "communities", "community_context",
+                                   "claims"]}
         return self._read(lambda r: q.component_diagnosis(
             owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 
@@ -547,7 +593,8 @@ class VincApp:
         res = self.jobs.run_sync("ingest:fragment",
                                  lambda: frag.merge_fragment(body, store=self.store,
                                                              themes=self.themes,
-                                                             max_domains=cap))
+                                                             max_domains=cap,
+                                                             read_back=True))
         return 200, res
 
     # ── 계정 연결(디바이스 연결 플로우 — 회원 키 복붙 종식) ─────────────────────
@@ -575,12 +622,7 @@ class VincApp:
         """무인증(브라우저 호출) — 인증은 state 논스가 대신한다. Origin 은 심층방어
         (브라우저 교차오리진 POST 는 항상 Origin 을 실음; curl 등 무 Origin 은 state
         게이트만으로 충분)."""
-        # 도메인 이전(vincs.app→vincs.io): 두 오리진을 모두 허용한다. 기존 배포 데스크탑
-        # 클라이언트는 vincs.app/connect-app 를, 신규는 vincs.io 를 연다 — 병행 필수.
-        # VINC_CONNECT_ORIGINS(콤마 구분)로 오버라이드 가능.
-        allowed = [o.strip() for o in os.environ.get(
-            "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
-        if origin and origin not in allowed:
+        if origin and origin not in connect_origins():
             return 403, {"error": "origin not allowed"}
         state = (body.get("state") or "").strip()
         key = (body.get("key") or "").strip()
@@ -670,6 +712,21 @@ class VincApp:
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4), store=r))
 
+    def read_brief(self, p):
+        # W1 — 질문 하나로 답변 재료(본문·발췌·관계·근거 id)를 한 번에 낸다.
+        # 임베딩 창구는 `/search` 와 같은 것을 쓴다: 해소가 같은 후보 위에서 돌아야
+        # 데스크탑 Ask 와 답이 갈리지 않는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
+        query = _req(p, "query")
+        qvec, vnote = self._query_embedding(query)
+        code, res = self._read(lambda r: q.brief(
+            query, owner=_req(p, "owner"), query_embedding=qvec,
+            max_excerpts=_int(p.get("max_excerpts"), 3), store=r))
+        # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
+        # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
+        if vnote and isinstance(res, dict):
+            res["vector_note"] = vnote
+        return code, res
+
     def read_doc_highlights(self, p):
         # D45-V2 2단계 — Reader 전문/발췌 내 개념 언급 위치(밑줄 char 범위).
         return self._read(lambda r: docstore.doc_highlights(
@@ -734,6 +791,9 @@ class VincApp:
             # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
             # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
             # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
+            # `scope` 는 그 owner 가 **개인 그래프인지 팀 그래프인지**를 말한다 —
+            # owner 문자열만으로는 접두를 아는 사람만 읽을 수 있었다.
+            # 근거: [[decision:identity-rides-on-the-first-door-not-a-whoami]]
             if got.get("executed") and (got.get("text") or "").strip():
                 # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
                 # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
@@ -741,14 +801,14 @@ class VincApp:
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
                 return {"kind": "conventions", "executed": True, "source": "doc",
-                        "owner": owner or "",
+                        "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
-                    "owner": owner or "",
+                    "owner": owner or "", "scope": _owner_scope(owner),
                     "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
                     "text": built.get("text") or ""}
         return self._read(_run)
@@ -1050,7 +1110,8 @@ class VincApp:
             res = self.jobs.run_sync("ingest:fragment",
                                      lambda: frag.merge_fragment(body, store=self.store,
                                                                  themes=self.themes,
-                                                                 max_domains=cap))
+                                                                 max_domains=cap,
+                                                                 read_back=True))
             return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
@@ -1311,6 +1372,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "authorization, content-type")
+        # 사설망 승인(계정 연결 콜백 전용). 공개 오리진(vincs.io)에서 루프백으로 가는
+        # 요청은 CORS 를 통과해도 브라우저가 **한 겹 더** 막는다 — preflight 에
+        # `Access-Control-Request-Private-Network: true` 를 실어 보내고 같은 이름의
+        # 허용 헤더를 요구한다. 그 헤더가 없어서 `/connect/callback` 이 브라우저에서
+        # 도달 불가였고, 연결 플로우가 매번 수동 키 폴백으로 떨어졌다.
+        #
+        # `*` 로 열지 않고 콜백 오리진에만 내주는 이유: 이 서버에는 무인증 라우트가
+        # 둘 있다(`/health` · `/connect/callback`). 아무 사이트에나 사설망을 허용하면
+        # 그 둘이 웹 전체에 노출된다. 콜백은 state 논스로, 나머지는 Bearer 로 막히지만
+        # 승인 자체를 좁히는 편이 싸다.
+        if self.headers.get("Access-Control-Request-Private-Network") == "true" \
+                and self.headers.get("Origin") in connect_origins():
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Max-Age", "86400")
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -1408,6 +1482,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,
+            "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
             "/docs-in-range": app.read_docs_in_range,   # 타임라인 기간 브러시(D45-V2 4단계)

@@ -72,6 +72,59 @@ class ConceptOneLinerE2E(unittest.TestCase):
         return frag.merge_fragment({"owner": self.OWNER, "nodes": [node]},
                                    store=self.store)
 
+    # ── R2: 쓴 것은 어떤 읽기 도구로든 읽혀야 한다 ───────────────────────────
+    # one_liner 는 쓸 수는 있는데 어떤 MCP 읽기 도구로도 안 나왔다. 그래서 쓴 값이
+    # 맞게 들어갔는지 어시스턴트가 **확인할 수 없었고**, 확인 못 하는 쓰기가 무엇을
+    # 치르는지는 이 세션이 세 번 보여 줬다. 열은 Concept 에만 있으므로 나머지
+    # 종류에서 빈 문자열인 것은 결손이 아니라 사실이다.
+    def test_neighbors_가_one_liner_를_돌려준다(self):
+        from api import query as q
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:seed", "type": "concept", "title": "S", "domain": "d",
+             "one_liner": "씨앗의 한 줄."},
+            {"id": "concept:other", "type": "concept", "title": "O", "domain": "d",
+             "one_liner": "이웃의 한 줄."}],
+            "edges": [{"from": "concept:seed", "to": "concept:other",
+                       "type": "relates_to", "evidence": "둘은 이어져 있다"}]},
+            store=self.store)
+        out = q.neighbors(owner=self.OWNER, node="concept:seed", store=self.store)
+        self.assertTrue(out["executed"] and out["neighbors"], out)
+        got = {n["id"]: n for n in out["neighbors"]}
+        self.assertIn("concept:other", got)
+        self.assertEqual(got["concept:other"]["one_liner"], "이웃의 한 줄.")
+
+    def test_graph_가_one_liner_를_돌려준다(self):
+        from api import query as q
+        self._ingest({"id": "concept:g1", "type": "concept", "title": "G",
+                      "domain": "d", "one_liner": "그래프에서 읽히는 한 줄."})
+        out = q.graph(owner=self.OWNER, seed="concept:g1", depth=1, store=self.store)
+        self.assertTrue(out["executed"], out)
+        node = next((n for n in out["nodes"] if n["id"] == "concept:g1"), None)
+        self.assertIsNotNone(node, out.get("nodes"))
+        self.assertEqual(node["one_liner"], "그래프에서 읽히는 한 줄.")
+
+    def test_열이_없는_종류는_빈_문자열이지_오류가_아니다(self):
+        """Decision·Record 에는 이 열이 없다. UNION 의 모양을 리터럴로 맞추지 않으면
+        Binder 가 죽고 이웃 조회 전체가 함께 죽는다 — 이 파일이 pinned·content_time
+        에서 이미 두 번 겪은 자리다."""
+        from api import query as q
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:anchor", "type": "concept", "title": "A", "domain": "d"},
+            {"id": "decision:d1", "type": "decision", "title": "D", "domain": "d"},
+            {"id": "record:r1", "type": "record", "title": "R", "domain": "d"}],
+            "edges": [
+                {"from": "decision:d1", "to": "concept:anchor", "type": "about",
+                 "evidence": "그 결정은 이것에 관한 것이다"},
+                {"from": "record:r1", "to": "concept:anchor", "type": "relates_to",
+                 "evidence": "그 기록은 이것에 붙는다"}]},
+            store=self.store)
+        out = q.neighbors(owner=self.OWNER, node="concept:anchor", store=self.store)
+        self.assertTrue(out["executed"], out)          # 죽지 않는다
+        for n in out["neighbors"]:
+            self.assertIn("one_liner", n)              # 모양은 균일하다
+            if n["id"] in ("decision:d1", "record:r1"):
+                self.assertEqual(n["one_liner"], "")
+
     def test_props_의_one_liner_가_열로_승격된다(self):
         self._ingest({"id": "concept:p1", "type": "concept", "title": "t",
                       "props": {"one_liner": "핵심 정리 한 줄."}})

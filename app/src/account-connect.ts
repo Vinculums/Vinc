@@ -15,6 +15,11 @@ import { cfg, shellInvoke } from "./api";
 const K_KEY = "vinc.sync.key";
 const K_MAIL = "vinc.sync.email";
 const K_USER = "vinc.sync.username";
+/** "이 기기에 키가 있다" 표식(비밀 아님). OS 저장소로 옮긴 뒤에는 `K_KEY` 가
+ *  localStorage 에서 사라지므로, 이것이 없으면 **연결 여부를 동기적으로 알 길이
+ *  없다.** 디바이스 플로우는 이메일·핸들이 남아 가려졌지만 수동 키 경로는 그 둘도
+ *  안 써서 로그인해도 화면이 영영 "미연결"이었다. */
+const K_LINKED = "vinc.sync.linked";
 
 let aborted = false;
 
@@ -63,26 +68,41 @@ export async function setAccountKey(value: string): Promise<void> {
 }
 
 async function storeKey(value: string): Promise<void> {
+  // 표식이 먼저다. 아래에서 어느 분기를 타든 "키가 있다"는 사실은 같고, OS 저장소
+  // 쓰기가 실패해도(catch 로 삼킨다) 화면은 연결됨으로 그려져야 한다 — 안 그러면
+  // 사용자는 키를 넣고도 미연결 화면을 보며 같은 일을 반복한다.
+  localStorage.setItem(K_LINKED, "1");
   const store = await secretStore();
   if (store) {
     await store("secret_set", { name: K_KEY, value }).catch(() => null);
     localStorage.removeItem(K_KEY);
-    return;
+  } else {
+    localStorage.setItem(K_KEY, value);           // 저장소 없는 기기 — 화면이 이를 알린다
   }
-  localStorage.setItem(K_KEY, value);             // 저장소 없는 기기 — 화면이 이를 알린다
+  // 계정이 방금 붙었다. 디바이스 플로우와 수동 붙여넣기가 **둘 다 여기로** 모이므로
+  // 신호는 이 한 곳이면 된다 — 부르는 자리 셋에 각자 걸면 하나를 빠뜨린다. 이벤트인
+  // 이유는 스케줄러와의 import 순환을 피하려서다(스케줄러가 이 모듈을 읽는다).
+  //
+  // ⚠ 이른 return 을 if/else 로 편 것이 이 신호의 전제다. return 이 남아 있으면 OS
+  // 저장소가 있는 기기(=대부분)에서 이 줄에 **영영 안 닿는다.**
+  dispatchEvent(new CustomEvent("vinc:linked"));
 }
 
 /** 이 기기에 계정 키가 있는가.
  *
  *  ⚠ 동기 함수라 **OS 저장소를 못 본다.** 첫 실행 카드처럼 "묻기 전에 이미 로그인돼
  *  있나"를 빠르게 가르는 자리에만 쓴다. 실제로 키가 필요한 자리는 `accountKey()` 를
- *  기다릴 것 — 표시용 이름(`accountWho`)이 저장소와 무관하게 남아 있어 성립한다. */
+ *  기다릴 것 — 표식(`K_LINKED`)이 저장소와 무관하게 남아 있어 성립한다.
+ *
+ *  **연결 여부는 이 함수로 묻는다. `accountWho()` 로 묻지 마라** — 그쪽은 이름을
+ *  모르면 null 이라, 이름 없는 연결(수동 키)을 미연결로 읽는다. */
 export function hasAccount(): boolean {
-  return !!(localStorage.getItem(K_KEY) || localStorage.getItem(K_USER)
-            || localStorage.getItem(K_MAIL) || "");
+  return !!(localStorage.getItem(K_LINKED) || localStorage.getItem(K_KEY)
+            || localStorage.getItem(K_USER) || localStorage.getItem(K_MAIL) || "");
 }
 
-/** 표시용 이름(핸들 → 이메일 → 키 앞부분). 없으면 null. */
+/** 표시용 이름(핸들 → 이메일 → 키 앞부분). **모르면 null — 미연결이라는 뜻이 아니다.**
+ *  수동으로 붙여넣은 키는 누구 것인지 알 길이 없어 여기가 null 이 된다. */
 export function accountWho(): string | null {
   // 표시용 이름은 **비밀이 아니라서** 이전 자리에 남는다. 키가 OS 저장소로 옮겨진
   // 뒤에도 화면이 "누구로 로그인했는지"를 동기적으로 그릴 수 있어야 한다.
@@ -96,6 +116,7 @@ export function accountWho(): string | null {
 /** 이 기기에서 키를 지운다(폐기는 아니다 — 계정 쪽 키 관리에서 한다). */
 export function forgetAccount(): void {
   aborted = true;
+  localStorage.removeItem(K_LINKED);
   localStorage.removeItem(K_KEY);
   localStorage.removeItem(K_MAIL);
   localStorage.removeItem(K_USER);

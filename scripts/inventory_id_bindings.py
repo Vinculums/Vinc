@@ -5,7 +5,7 @@
 Read-only static scan of api/, store/ and engines/ (no store is opened, no
 code is imported). This is the checklist PR-C works through when it composes
 owner+slug at every read/write binding site (see vinc.plan.node-pk-namespacing
-sec 7 and d275b0a42bcb8b2ac PR-C). It answers the gap the plan calls out
+sec 7 and vinc.release.0-8-4 PR-C). It answers the gap the plan calls out
 between its own count (~164 sites) and an earlier estimate (~60).
 
 Patterns, one regex sweep per line (mechanical, not an AST parse -- a match

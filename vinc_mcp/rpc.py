@@ -2,15 +2,24 @@
 """MCP JSON-RPC 디스패처 — 전송 중립(stdio·Streamable HTTP 가 공유).
 
 MCP 스펙의 서버 최소면만 구현한다: initialize / initialized / ping /
-tools/list / tools/call. 그 밖의 메서드는 -32601. 도구 실행 오류는 스펙대로
-프로토콜 오류가 아니라 result.isError=True 로 돌려준다(호스트가 재시도·수정
-가능하도록).
+tools/list / tools/call / prompts/list / prompts/get. 그 밖의 메서드는 -32601.
+도구 실행 오류는 스펙대로 프로토콜 오류가 아니라 result.isError=True 로 돌려준다
+(호스트가 재시도·수정 가능하도록).
+
+`prompts/*` 는 W2 에서 열었다(역할 열여섯을 프롬프트로 낸다 — 구현은 `roles.py`).
+**`resources/*` 는 계속 -32601 이다.** 그 비구현은 실수가 아니라 판정이라
+(`vinc_conventions`·`vinc_domains` 가 이미 같은 것을 도구로 낸다) 회귀 테스트가
+둘의 갈림을 그대로 못 박는다: prompts 열림, resources 닫힘.
+
+디스패처가 전송 중립이라 stdio 와 허브가 한 구현을 같이 쓴다 — 호스티드 노출(D3)이
+따로 배선할 것 없이 여기서 성립한다.
 """
 from __future__ import annotations
 
 import json
 
 from . import __version__
+from . import roles
 from . import tools
 from .bridge import Bridge
 
@@ -62,6 +71,11 @@ class Dispatcher:
                                     plan=plan, quota=quota, entitlements=entitlements)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
+        except _QuotaDenied as e:
+            # 쿼터 거절문은 tools/call **결과 봉투**로 만들어져 있는데 prompts 에는
+            # 그 봉투가 없다. 같은 문장을 프로토콜 오류로 낸다 — 조용히 서빙하는
+            # 것보다 낫고, 호스트가 사용자에게 보여 줄 문장은 그대로다.
+            return _err(msg_id, -32603, str(e))
         except (KeyError, ValueError) as e:
             return _err(msg_id, -32602, str(e))
         except Exception as e:              # 브리지 연결 실패 등
@@ -96,8 +110,12 @@ class Dispatcher:
                 ]
                 info["websiteUrl"] = "https://vincs.io"
             return {
+                # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
+                # 도메인이 없는 것은 고장이 아니라 상태이고(빈 목록이 정답), 능력을
+                # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
+                # `listChanged` 는 안 싣는다 — 서버→클라이언트 알림 경로가 없다.
                 "protocolVersion": negotiated,
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {}, "prompts": {}},
                 "serverInfo": info,
             }
         if method == "ping":
@@ -124,6 +142,20 @@ class Dispatcher:
                 return {"content": [{"type": "text", "text": f"{type(e).__name__}: {e}"}],
                         "isError": True}
             return _result_text(json.dumps(out, ensure_ascii=False), name, args)
+        if method in ("prompts/list", "prompts/get"):
+            # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
+            # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
+            # 조회 루프가 열린다(허브는 단일 라이터다). 로컬 stdio 는 forced_owner 가
+            # 없어 여기 안 걸린다.
+            if quota is not None and forced_owner:
+                denial = quota(forced_owner, plan)
+                if denial is not None:
+                    raise _QuotaDenied(_denial_text(denial))
+            if method == "prompts/list":
+                return roles.list_prompts(self.bridge, forced_owner=forced_owner)
+            return roles.get_prompt(params.get("name") or "",
+                                    params.get("arguments") or {},
+                                    self.bridge, forced_owner=forced_owner)
         raise _MethodNotFound(method)
 
 
@@ -140,6 +172,7 @@ _NARROW_HINT = {
     "vinc_recall": "lower `limit`, or narrow by `domain`/`tags`",
     "vinc_search": "lower `limit`, use detail:'summary' (the default), or continue "
                    "with `next_cursor`",
+    "vinc_brief": "lower `max_excerpts`, or ask a narrower question",
     "vinc_domains": "this owner has an unusually large domain set",
     "vinc_suggest_ties": "lower `limit`",
 }
@@ -148,9 +181,9 @@ _NARROW_HINT = {
 def _result_text(text: str, name: str, args: dict) -> dict:
     """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
 
-    GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search)는 거부 대신 꼬리
-    행을 덜어 예산 안의 **잘린 페이지**로 돌려준다 — 잘렸다는 사실은 has_more 와
-    next_cursor 가 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
+    GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search·vinc_brief)는 거부
+    대신 덜 중요한 조각을 덜어 예산 안의 **잘린 결과**로 돌려준다 — 잘렸다는 사실은
+    도구별 표식(has_more/next_cursor, shrunk)이 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
     미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다)."""
     if len(text) <= MAX_RESULT_CHARS:
         return {"content": [{"type": "text", "text": text}], "isError": False}
@@ -175,6 +208,18 @@ def _result_text(text: str, name: str, args: dict) -> dict:
 
 class _MethodNotFound(Exception):
     pass
+
+
+class _QuotaDenied(Exception):
+    """쿼터 거절. tools/call 은 결과 봉투로 강등하지만 prompts 에는 그 봉투가 없다."""
+
+
+def _denial_text(denial: dict) -> str:
+    """쿼터 거절 dict(= tools/call 결과 모양)에서 사람이 읽을 문장만 꺼낸다."""
+    for part in denial.get("content") or []:
+        if part.get("text"):
+            return str(part["text"])
+    return "rate limit reached"
 
 
 def _err(msg_id, code: int, message: str) -> dict | None:

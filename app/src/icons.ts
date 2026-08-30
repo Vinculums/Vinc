@@ -25,12 +25,17 @@ import upload from "./icons/upload.svg?raw";
 // 안으로 = 트레이로 내려오는 화살표 · 공유 = 갈라져 나가는 노드(형태 자체가 다름).
 import packIn from "./icons/pack-in.svg?raw";
 import shareNodes from "./icons/share-nodes.svg?raw";
+import mcp from "./icons/mcp.svg?raw";
 
 const REG: Record<string, string> = {
   ingest, recall, graph, search, "pack-export": packExport, settings,
   dot, "half-disc": halfDisc, ring, pin, alert, check,
   "chevron-left": chevronLeft, "dot-grid": dotGrid, domains, decide,
   lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes,
+  // MCP 공식 마크(발주자 지시, 2026-08-26). 이 세트에서 **유일하게 우리가 그리지 않은
+  // 도형**이라, 기하를 손대지 않는다는 조건이 파일 주석에 함께 적혀 있다. 여기 쓰는
+  // 자리는 "이 주소는 어시스턴트에게 건네는 것"이라는 표시 하나뿐이다.
+  mcp,
 };
 
 /** Inline an icon. Size in px (default 20). */

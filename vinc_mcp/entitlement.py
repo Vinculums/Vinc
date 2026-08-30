@@ -41,6 +41,10 @@ PLANS = ("free", "pro", "team")
 #: 유료로 취급하는 등급(한도·업셀 문구 분기의 단일 기준).
 PAID_PLANS = ("pro", "team")
 
+#: 회원 키 접두 — vinc_sk(전권) · vinc_ro(읽기 전용, W18). 접두는 사람 눈 구분용이고
+#: 권한의 정본은 계정 verify-key 응답의 `scope` 다. 근거: [[decision:scoped-key-tier]]
+KEY_PREFIXES = ("vinc_sk_", "vinc_ro_")
+
 _PLAN_TTL_DEFAULT = 300.0
 
 
@@ -68,6 +72,26 @@ def normalize_plan(raw: object, *, source: str) -> str:
     return "free"
 
 
+def normalize_scope(raw: object, key: str) -> str:
+    """verify-key 응답의 scope → 'full' | 'read'. 모르면 **읽기 전용**이다(fail-closed).
+
+    'full' 정확일치만 쓰기를 연다. 유일한 예외는 scope 필드가 아예 없는(구 계정 배포)
+    vinc_sk 접두 키 — 그 키들은 늘 전권으로 검증돼 왔고, 부재를 full 로 읽는 쪽은
+    계정이 아니라 여기 하나다. vinc_ro 키는 구 계정이 접두 불일치로 아예 404 를 내니
+    이 분기에 닿지 않지만, 닿아도 read 로 떨어진다. 미지 값은 read 로 좁히되
+    조용히 하지 않는다(normalize_plan 과 같은 이유 — 배포 순서 어긋남의 조기 신호).
+    근거: [[decision:scoped-key-tier]]
+    """
+    if raw == "full":
+        return "full"
+    if raw is None:
+        return "full" if key.startswith("vinc_sk_") else "read"
+    if raw != "read":
+        _log.warning("unknown key scope %r from verify-key — treating as 'read' "
+                     "(hub older than account?)", raw)
+    return "read"
+
+
 def _account_url() -> str:
     return (os.environ.get("VINC_ACCOUNT_INTERNAL_URL") or "http://127.0.0.1:8080").rstrip("/")
 
@@ -92,18 +116,30 @@ def enabled() -> bool:
     return _seed() is not None
 
 
-def verify_key(raw: str) -> dict | None:
-    """`vinc_sk_*` 원문 키 → {owner, plan} 또는 None(무효·미설정·오류).
+def verify_key(raw: str, team: str | None = None) -> dict | None:
+    """`vinc_sk_*`/`vinc_ro_*` 원문 키 → {owner, plan, scope[, role]} 또는
+    None(무효·미설정·오류).
 
-    owner 는 `user:{public_id}` 형태 — tools 계층이 그대로 스탬핑한다.
+    `scope`(W18)는 항상 실린다 — 캐시도 이 dict 통째라 스코프를 잃지 않는다
+    (잃으면 TTL 동안 무음 승격이 된다). 부재·미지 값의 해석은 normalize_scope.
+
+    `team` 없음: owner 는 `user:{public_id}`. 기존과 바이트 동일하다.
+    `team` 있음(publicId): **스페이스 스코프 질문**이다 — 이 키의 사람이 그 팀의 활성
+    멤버인가. 맞으면 owner 는 계정이 서명해 준 `team:{uuid}` 이고 `role` 이 함께 온다.
+    아니면 None 이고, **모르는 팀·비멤버·정지된 팀이 나쁜 키와 구분되지 않는다**
+    (계정이 같은 404 를 낸다 — 구분되면 팀의 존재가 샌다).
+
+    ⚠ **캐시 키에 team 이 들어간다.** 안 넣으면 개인 스코프 답이 팀 질문을 TTL 동안
+    만족시킨다 — 같은 키로 두 스페이스를 묻는 것이 정상 흐름이라 이건 이론이 아니다.
+    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
     """
-    if not raw or not raw.startswith("vinc_sk_"):
+    if not raw or not raw.startswith(KEY_PREFIXES):
         return None
     seed = _seed()
     if seed is None:
         return None
 
-    ckey = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    ckey = hashlib.sha256(raw.encode("utf-8")).hexdigest() + "|" + (team or "")
     now = time.time()
     with _lock:
         hit = _cache.get(ckey)
@@ -114,7 +150,8 @@ def verify_key(raw: str) -> dict | None:
     try:
         req = urllib.request.Request(
             _account_url() + "/internal/mcp/verify-key",
-            data=json.dumps({"key": raw}).encode("utf-8"),
+            data=json.dumps({"key": raw, **({"team": team} if team else {})})
+            .encode("utf-8"),
             headers={"Content-Type": "application/json",
                      "X-Vinc-Assertion": _sign_assertion(seed)},
             method="POST")
@@ -123,7 +160,18 @@ def verify_key(raw: str) -> dict | None:
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
             plan = normalize_plan(body.get("plan"), source="verify-key")
-            result = {"owner": f"user:{sub}", "plan": plan}
+            scope = normalize_scope(body.get("scope"), raw)
+            if team:
+                # 팀 질문에는 계정이 서명한 graph_owner 와 role 이 함께 와야 한다.
+                # 하나라도 없으면 **개인으로 떨어뜨리지 않고 거절한다** — 팀 쓰기가
+                # 조용히 개인 그래프에 쌓이는 것이 여기서 가장 나쁜 고장이다.
+                go, role = body.get("graph_owner"), body.get("role")
+                if (isinstance(go, str) and go.startswith("team:")
+                        and isinstance(role, str) and role):
+                    result = {"owner": go, "plan": plan, "scope": scope,
+                              "role": role, "member": f"user:{sub}"}
+            else:
+                result = {"owner": f"user:{sub}", "plan": plan, "scope": scope}
     except urllib.error.HTTPError:
         result = None            # 404(invalid_key)·401·503 → 무효 취급
     except Exception:

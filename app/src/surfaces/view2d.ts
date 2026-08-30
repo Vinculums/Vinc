@@ -10,6 +10,7 @@ import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { recede } from "../recede";
+import { edgeKey, type Spot } from "../spotlight";
 import { markTexture } from "./view-planar";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
@@ -39,9 +40,15 @@ import { markTexture } from "./view-planar";
  *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
 export type Handle2d = {
   dispose(): void; fit(): void; focus(id: string): boolean;
+  /** 줌 한 걸음. `factor < 1` 이 가까이다 — sigma 는 ratio 가 작을수록 파고든다.
+   *  3D 의 `zoomBy3d` 와 **같은 배율 규약**을 쓰도록 뒤집지 않고 그대로 곱한다. */
+  zoom(factor: number): void;
   /** 옵션을 **제자리에서** 반영한다. 못 하는 변경(선 모드·연결 없음·범례 필터처럼
    *  노드·엣지 집합이 바뀌는 것)은 false 를 돌려 주고, 호출측이 다시 마운트한다. */
   update(p: ViewPrefs): boolean;
+  /** 점등 집합을 **밖에서** 건다(범례 갈래 hover · 인과 원뿔). `null` 이면 hover
+   *  기본 문법으로 돌아간다. 프리퍼런스가 아니라 일시 상태라 저장되지 않는다. */
+  spotlight(s: Spot | null): void;
 };
 
 /** 방향 3종 — 화살촉이 붙는 관계(view-planar 의 DIRECTED 와 같은 정의). */
@@ -346,12 +353,18 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  두는 이유: 지나가기만 해도 지도가 재배열되면 눈이 쉴 곳이 없다. 이제 hover 는
    *  어둡게만 하고, 모으는 것은 고르는 행위(클릭)의 결과다. */
   let gathered: string | null = null;
+  /** 밖에서 건 점등 집합. **hover 가 이긴다**(바로 위 주석의 규칙 그대로: 손이
+   *  가리키는 것이 언제나 지금 관심사다) — 그래서 우선순위 코드가 따로 없다. */
+  let spot: Spot | null = null;
   const focusId = () => hovered ?? gathered ?? landed;
   const keepOf = (id: string) => new Set([id, ...(nbr.get(id) || [])]);
+  //: 물러남 값은 마운트마다 한 번만 읽는다 — `getComputedStyle` 은 레이아웃 읽기라
+  //: 리듀서(노드마다·refresh 마다 불린다) 안에서 부를 것이 아니다(recede.ts 머리말).
+  const recedeNode = recede("node");
   sigma.setSetting("nodeReducer", (id, data) => {
     const focus = focusId();
-    if (!focus) return data;
-    const keep = keepOf(focus);
+    const keep = spot && !hovered ? spot.nodes : focus ? keepOf(focus) : null;
+    if (!keep) return data;
     if (keep.has(id)) {
       // 데려온 이웃은 **이름이 붙어야** 데려온 값이 있다 — 고리에 선 점 여덟 개가
       // 무엇인지 모르면 선을 지운 대가만 치른 셈이다. 그래서 상시 라벨을 강제한다.
@@ -364,7 +377,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     }
     // 물러남은 **그 노드 자신의 색**을 배경 쪽으로 섞는다. `ink()` 를 박아 두던
     // 동안에는 초점색이나 주제 틴트를 단 노드가 물러나면서 잉크로 바뀌었다.
-    return { ...data, color: mixFloor(data.color, bg, recede("node")), label: "" };
+    return { ...data, color: mixFloor(data.color, bg, recedeNode), label: "" };
   });
   // ── Bring & Go (`edges: "bring"`) — 선을 안 그리고 이웃을 **데려온다** ──────
   //
@@ -531,6 +544,15 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   sigma.setSetting("edgeReducer", (id, data) => {
     if (bringOn()) return { ...data, hidden: true };   // 데려오는 방식엔 선이 없다
     const focus = focusId();
+    // 점등 중에는 **그 집합에 든 선만** 켜진다. 열쇠로 대조하는 이유: 이 렌더러는
+    // 같은 쌍의 평행 엣지를 하나로 접으므로(위 `g.hasEdge` 가드) 양 끝만으로는
+    // 어느 관계가 그려진 것인지 알 수 없다 — `edgeOf` 가 원본을 쥐고 있다.
+    if (spot && !hovered) {
+      const src = edgeOf.get(id);
+      const on2 = !!src && spot.edges.has(edgeKey(src));
+      if (on2) return { ...data, color: point(), size: (data.size as number) * 1.4 };
+      return focusOnly() ? { ...data, hidden: true } : { ...data, color: ramp().fade };
+    }
     if (!focus) return focusOnly() ? { ...data, hidden: true } : data;
     const [s, t] = g.extremities(id);
     const on = s === focus || t === focus;
@@ -829,6 +851,15 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.kill();
       el.innerHTML = "";
     },
+    /** 줌 — 카메라 ratio 만 바꾼다. 방향도 중심도 안 건드리는 것이 3D 와 같은 약속이고,
+     *  울타리가 없으면 몇 번 눌러 아무것도 아닌 화면이 된다(3D 쪽과 같은 이유). */
+    zoom(factor) {
+      const cam = sigma.getCamera();
+      const want = Math.min(4, Math.max(0.05, cam.ratio * factor));
+      if (Math.abs(want - cam.ratio) < 1e-3) return;
+      cam.animate({ ratio: want }, { duration: 260 });
+    },
+    spotlight(s) { spot = s; sigma.refresh(); },
     /** 제자리 반영(2026-08-17). 노드 집합·엣지 집합이 그대로인 변경만 받는다:
      *  크기 인코딩·배율·선 굵기·화살촉·라벨·주제 틴트·간격. 값은 그래프 속성에 다시
      *  쓰고 `refresh()` 한 번 — 마운트를 새로 하면 카메라·컨텍스트·패널이 전부

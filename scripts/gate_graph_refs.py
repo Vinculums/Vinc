@@ -43,6 +43,11 @@ _SKIP_FILES = {"scripts/gate_graph_refs.py", "scripts/refresh_graph_refs.py"}
 _WIKILINK = re.compile(r"\[\[([^\]\n]{1,120})\]\]")
 _DOC_ID = re.compile(r"^vinc\.[a-z0-9]+\.[a-z0-9.-]+$")
 _NODE_ID = re.compile(r"^(record|concept|decision|episode|bridge|domain):[a-z0-9._-]+$")
+#: 생성 id 로만 존재하는 문서(`make_doc_id` 의 17자리 16진수). **이것이 빠져 있었다.**
+#: `is_citation` 이 셋째 형태를 몰라서 `[[d4ab...]]` 꼴 인용 53건이 통째로 검사 밖에
+#: 있었고, 그 문서가 재키되거나 접혀도 게이트는 PASS 를 냈다. 실제로 2026-08-28 에
+#: 두 건이 그렇게 깨져 있었다. 근거: [[record:the-citation-gate-never-checked-generated-id-citations]]
+_GEN_DOC_ID = re.compile(r"^[0-9a-f]{17}$")
 
 
 def normalize(raw: str) -> str:
@@ -53,7 +58,7 @@ def normalize(raw: str) -> str:
 
 
 def is_citation(ref: str) -> bool:
-    return bool(_DOC_ID.match(ref) or _NODE_ID.match(ref))
+    return bool(_DOC_ID.match(ref) or _NODE_ID.match(ref) or _GEN_DOC_ID.match(ref))
 
 
 def scan_file(path: str) -> list[tuple[int, str]]:

@@ -20,6 +20,7 @@ rev 가 저장본보다 낮으면 무시(늦게 도착한 옛 변경이 최신�
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from . import fragment as frag
@@ -45,6 +46,14 @@ _SEL_KEY = "selected_domains"
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "content_time"),
     "Episode": ("title", "date", "domain", "summary", "tags"),
+    # Record — 라이브 실측 277건으로 **노드 종류 중 최대**인데 여기 없어서 기기와
+    # 계정 사이를 통째로 못 오갔다. Bridge·Entity 제외는 아래 스코프 결정이지만
+    # Record 는 그 문장에도 없었다: 빠진 줄 아무도 몰랐다는 뜻이다.
+    # 열은 Concept 과 같다(content_time 은 v7 이 Concept·Record 둘 다에 붙였다).
+    # v15(W13) — 유효구간 둘. 여기 안 넣으면 한 기기의 무효화("X 까지였다")가
+    # 다른 기기로 안 넘어가 그쪽에서 낡은 주장이 유효한 채 남는다.
+    "Record": ("title", "domain", "tags", "props", "content_time",
+               "valid_from", "valid_until"),
     # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
     # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
     # (오류도 경고도 없이 — 다른 기기에서 결정이 통째로 사라진 것처럼 보인다).
@@ -53,7 +62,8 @@ SYNC_FIELDS: dict[str, tuple[str, ...]] = {
 # fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 제외는 이제 왕복 결함이
 # 아니라 **스코프 결정**(F1 포팅으로 Entity 필드는 왕복 가능; Bridge 구조 필드
 # source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제.
-_SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision"}
+_SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision",
+               "record": "Record"}
 #: 노드 툼스톤 전파 대상 라벨 — 동기화 라벨과 같아야 한다(따로 적으면 어긋난다).
 _SYNC_LABELS = tuple(_SYNC_TYPES.values())
 #: 라벨 → PK 열. fragment 의 타입 표에서 파생한다(중복 정의 회피).
@@ -86,7 +96,7 @@ def _snapshot(label: str, node: dict) -> dict:
 def get_base(store, node_id: str, owner: str = "") -> dict | None:
     # PK 네임스페이싱 — `_SyncBase.node_id` 는 노드 id 그 자체라, 두 소유자가 같은
     # 슬러그를 가지면 **3-way 병합의 공통 조상 한 행을 나눠 쓴다**(감사 M3). 그러면
-    # 남의 조상으로 내 병합이 계산된다. 근거: [[d11223a9a5d109de5]] §7
+    # 남의 조상으로 내 병합이 계산된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     rows = store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id "
                      "RETURN b.fields AS f, b.base_rev AS rev, b.base_updated_at AS ua",
                      {"id": pkns.key(owner, node_id)})
@@ -116,7 +126,7 @@ def del_base(store, node_id: str, owner: str = "") -> None:
 # 네임스페이스라(감사 H1) 슬러그가 겹치는 두 소유자는 **한 행을 나눠 쓰게 된다.**
 # 그러면 마지막 쓰기가 이기고, 진 쪽의 삭제는 전파가 멈춰 다른 기기에서 노드가
 # 되살아난다. 소유자마다 자기 행을 갖는 것이 진짜 처방인데 그건 PK 를 바꾸는 일이라
-# H1 의 재구축에 태운다([[d11223a9a5d109de5]] §6).
+# H1 의 재구축에 태운다([[vinc.plan.node-pk-namespacing]] §6).
 #
 # 그때까지 **열이 이미 있는 쪽**은 지금 닫는다: 읽기·삭제는 소유자로 걸고, 쓰기는
 # 남의 행을 덮지 않는다. 이걸로 "남의 대기 중 삭제를 취소한다"와 "남의 툼스톤을
@@ -265,6 +275,46 @@ def set_cursor(store, key: str, value: int) -> None:
     revstamp._meta_set(store, f"cursor:{key}", int(value))
 
 
+#: 이 스토어의 커서가 **어느 계정 것인가**(키 지문 — 원문 아님).
+_ACCOUNT_KEY = "sync_account"
+#: 계정이 바뀌면 되돌릴 커서 전량. 새 국면을 추가하면 여기 넣을 것.
+_CURSOR_KEYS = ("push", "pull", "docs-push", "docs-pull")
+
+
+def _account_fingerprint(remote) -> str:
+    """원격이 어느 계정인지 가리키는 안정적인 지문. 키 원문은 저장하지 않는다."""
+    token = (getattr(remote, "token", "") or "").strip()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:32] if token else ""
+
+
+def reset_cursors_on_account_change(store, remote) -> bool:
+    """계정이 바뀌었으면 동기화 커서를 전부 0 으로 되돌린다(되돌렸으면 True).
+
+    커서는 **원격 owner 의 시퀀스 번호**라 계정마다 뜻이 다르다. A 로 쓰던 커서를
+    B 에 그대로 들이대면 B 의 그 번호 아래 있는 것이 통째로 delta 에서 빠진다 —
+    오류도 경고도 없이 안 내려온다. 화면에 [연결 해제]가 있는 이상 계정 전환은
+    일어나고, 자동 동기화는 그 일을 **아무도 안 볼 때** 한다.
+
+    같은 계정에서 키만 재발급해도 지문이 달라져 초기화된다. 그 대가는 전량 재동기화
+    한 번이고(apply 는 rev 가드 걸린 멱등 LWW), 반대쪽 실수는 무음 데이터 누락이다.
+    헷갈릴 때 초기화하는 쪽으로 기우는 이유다.
+
+    ⚠ `selected_domains` 는 건드리지 않는다 — 그것은 계정이 아니라 **이 기기에서
+    무엇을 내보낼지**에 대한 사용자의 선택이다.
+    """
+    now = _account_fingerprint(remote)
+    if not now:
+        return False                      # 키 없는 원격(테스트 스텁) — 판정 보류
+    was = revstamp._meta_get(store, _ACCOUNT_KEY, "")
+    if was == now:
+        return False
+    if was:                               # 최초 연결은 초기화할 것이 없다
+        for k in _CURSOR_KEYS:
+            set_cursor(store, k, 0)
+    revstamp._meta_set(store, _ACCOUNT_KEY, now)
+    return bool(was)
+
+
 # ── export ────────────────────────────────────────────────────────────────────
 def _concepts_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
     """선택 도메인 안에서 `sync_seq > since` 인 Concept. since=0 이면 전량(최초 push)."""
@@ -322,6 +372,28 @@ def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Qu
     return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
 
 
+def _records_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+    """선택 도메인 안에서 `sync_seq > since` 인 Record. Concept 플랜과 동형이고
+    시간 두 열도 같다 — Record 는 `created` 와 `content_time` 을 **둘 다** 갖는다
+    (스키마 v7 이 Concept 과 함께 붙였다)."""
+    where = ["r.owner_id = $owner", "r.domain IN $domains"]
+    params: dict = {"owner": owner, "domains": domains}
+    if since > 0:
+        where.append("r.sync_seq > $since")
+        params["since"] = since
+    cypher = (
+        f"MATCH (r:Record) WHERE {' AND '.join(where)} "
+        "RETURN r.record_id AS id, r.title AS title, r.domain AS domain, "
+        "r.tags AS tags, r.props AS props, r.updated_at AS updated_at, "
+        "r.created AS created, r.content_time AS content_time, "
+        # v15(W13) — 유효구간. SYNC_FIELDS 에 있는데 여기서 안 실으면 _snapshot 이
+        # None 을 뽑아 "원격이 이 필드를 비웠다"로 읽힌다(무효화의 조용한 소실).
+        "r.valid_from AS valid_from, r.valid_until AS valid_until, "
+        "r.rev AS rev, r.sync_seq AS sync_seq ORDER BY r.sync_seq"
+    )
+    return q.QueryPlan("sync_records", cypher, params, note="owner+domain scoped delta")
+
+
 def _node_from_concept(r: dict) -> dict:
     # sync 는 **raw props** 만 나른다(topic/one_liner 는 fragment 왕복 불가라 폴딩 안 함).
     props = {}
@@ -351,6 +423,26 @@ def _node_from_decision(r: dict) -> dict:
     return {"id": r["id"], "type": "decision", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "props": props,
+            "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
+            "_created": r.get("created") or "",
+            "_seq": int(r.get("sync_seq") or 0)}
+
+
+def _node_from_record(r: dict) -> dict:
+    props = {}
+    if r.get("props"):
+        try:
+            props = json.loads(r["props"]) or {}
+        except (TypeError, ValueError):
+            props = {}
+    return {"id": r["id"], "type": "record", "title": r.get("title") or r["id"],
+            "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
+            "props": props,
+            "content_time": r.get("content_time") or "",
+            # v15(W13) — 유효구간도 본문이다(content_time 과 같은 신분 — 3-way
+            # 병합 대상. 출생 _created 처럼 스탬프가 아니다).
+            "valid_from": r.get("valid_from") or "",
+            "valid_until": r.get("valid_until") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
@@ -389,13 +481,17 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                       cfg, store=store)
     d_res = q.execute(_decisions_delta_plan(owner=owner, domains=sel, since=since),
                       cfg, store=store)
+    r_res = q.execute(_records_delta_plan(owner=owner, domains=sel, since=since),
+                      cfg, store=store)
 
     c_rows = c_res.get("rows", [])
     e_rows = e_res.get("rows", []) if e_res.get("executed") else []
     d_rows = d_res.get("rows", []) if d_res.get("executed") else []
+    r_rows = r_res.get("rows", []) if r_res.get("executed") else []
     nodes = ([_node_from_concept(r) for r in c_rows]
              + [_node_from_episode(r) for r in e_rows]
-             + [_node_from_decision(r) for r in d_rows])
+             + [_node_from_decision(r) for r in d_rows]
+             + [_node_from_record(r) for r in r_rows])
 
     # 엣지: **양끝이 이번 번들 안에 있는 것만**. fragment 는 같은 payload 의 노드로만
     # (from,to) 타입을 해석하므로(fragment.py `_node_types`), 끝점이 빠진 엣지는
@@ -414,9 +510,16 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                             cfg, store=store)
             if res.get("executed"):
                 extra_rows.extend(res.get("rows", []))
+        # Record 엣지는 타입이 라벨이 아니라 `r.type` 에 있다(_record_edges_plan).
+        # 이미 fragment 타입이므로 아래 역맵을 태우지 않고 `ftype` 으로 바로 들어간다.
+        for pair in _RECORD_EDGE_PAIRS:
+            res = q.execute(_record_edges_plan(sorted(ids), owner=owner, pair=pair),
+                            cfg, store=store)
+            if res.get("executed"):
+                extra_rows.extend(res.get("rows", []))
         seen = set()
         for r in [*rel_res.get("rows", []), *extra_rows]:
-            ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")
+            ftype = r.get("ftype") or _REL_TO_FRAGMENT.get(r.get("rel") or "")
             tgt = r.get("target")
             if not ftype or not tgt or tgt not in ids or r["id"] not in ids:
                 continue
@@ -475,6 +578,37 @@ _EXTRA_EDGE_PAIRS: tuple[tuple[str, str, str, str], ...] = (
     ("Decision", "decision_id", "Decision", "decision_id"),
     ("Concept", "concept_id", "Decision", "decision_id"),
 )
+
+
+#: Record 참여 엣지는 위 표에 넣을 수 없다. `_extra_edges_plan` 은 `label(r)` 을
+#: 뽑아 `_REL_TO_FRAGMENT` 로 되돌리는데, Record 엣지의 라벨은 언제나
+#: `ATTACHES_TO` 이고 **원래 관계 타입은 라벨이 아니라 `r.type` 에 실려 있다**
+#: (fragment `_merge_edge` 의 Record 분기). 그 표로 보내면 네 갈래가 전부
+#: ATTACHES_TO 한 이름으로 뭉개져 수신측에서 되살릴 수 없다. 그래서 전용 플랜이다.
+_RECORD_EDGE_PAIRS: tuple[tuple[str, str], ...] = (
+    ("Concept", "concept_id"),
+    ("Decision", "decision_id"),
+)
+
+
+def _record_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
+    """번들 안의 Record→(Concept|Decision) ATTACHES_TO 엣지.
+
+    `label(r)` 대신 **`r.type`** 을 fragment 타입으로 돌려준다 — 저장할 때 원 타입을
+    거기 보존했으므로 복원도 거기서 한다. 라벨을 명시(`[r:ATTACHES_TO]`)하는 이유는
+    `_extra_edges_plan` 처럼 무타입으로 열면 `r.type` 열이 없는 rel 테이블까지 걸려
+    Binder 가 죽기 때문이다."""
+    dl, dp = pair
+    cypher = (
+        f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
+        f"WHERE a.record_id IN $ids AND b.{dp} IN $ids "
+        "AND a.owner_id = $owner AND b.owner_id = $owner "
+        f"RETURN a.record_id AS id, r.type AS ftype, b.{dp} AS target, "
+        "r.created AS edge_created"
+    )
+    return q.QueryPlan(f"sync_edges_Record_{dl}", cypher,
+                       {"ids": pkns.keys(owner, ids), "owner": owner},
+                       note=f"Record->{dl} ATTACHES_TO edges for sync bundle")
 
 
 def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
@@ -569,7 +703,7 @@ def _local_snapshot(store, label: str, pk: str, nid: str,
 
 #: 출생(`created`) 열을 가진 동기화 라벨. Episode 에는 그 열이 **없다**(2026-08-17
 #: 실엔진 확인) — 넣으면 아래 문장이 Binder 로 죽는다.
-_BIRTH_LABELS = ("Concept", "Decision")
+_BIRTH_LABELS = ("Concept", "Decision", "Record")
 
 
 def _reconcile_birth(store, label: str, pk: str, nid: str, born: str, owner: str) -> None:
@@ -805,6 +939,14 @@ class RemoteHTTP:
         from vinc_mcp import syncclient
         return syncclient.push(chunks, token=self.token, base=self.base)
 
+    def docs_pull(self, since: int) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.docs_pull(since=since, token=self.token, base=self.base)
+
+    def docs_push(self, payload: dict) -> dict:
+        from vinc_mcp import syncclient
+        return syncclient.docs_push(payload, token=self.token, base=self.base)
+
 
 def push_local(store, cfg, *, owner: str, remote) -> dict:
     """로컬 delta 를 원격에 push. 커서는 **push 성공 후에만** 전진(중단 시 재전송).
@@ -858,6 +1000,73 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
 
 
+# ── 문서 정본 동기화 국면(D45 P3 배선) ────────────────────────────────────────
+# docsync(엔진)는 완성돼 있었는데 **아무도 부르지 않았다** — sync.run 은 노드·엣지만
+# 다뤘고 허브에는 /sync/docs-* 라우트가 없어, [지금 동기화]가 문서를 한 번도 나르지
+# 않았다(에러도 없이). 커서는 노드와 **별도 키**(docs-push/docs-pull)다:
+# _DocMeta.sync_seq 는 노드와 같은 owner 카운터에서 나오므로, 노드 커서를 같이 쓰면
+# 노드 트래픽이 커서를 먼저 전진시켜 문서 행이 영영 delta 에 안 실린다(과거
+# "pull 100% 빈값" 사고와 같은 모양의 함정).
+
+
+def _chunk_docs(payload: dict, max_bytes: int = 1_500_000) -> list[dict]:
+    """docs 를 크기 기준으로 쪼갠다(허브 MAX_BODY 4MB 보호 — 초과는 빈 바디 400 으로
+    **조용히** 실패한다). 각 조각은 자기완결 LWW 라 재전송·순서 뒤바뀜에 안전하고,
+    tombstones 는 마지막 조각에 싣는다."""
+    docs = payload.get("docs") or []
+    groups: list[list[dict]] = [[]]
+    size = 0
+    for d in docs:
+        n = len((d.get("text") or "").encode("utf-8")) + 512
+        if groups[-1] and size + n > max_bytes:
+            groups.append([])
+            size = 0
+        groups[-1].append(d)
+        size += n
+    out = [{"docs": g, "tombstones": []} for g in groups]
+    out[-1]["tombstones"] = payload.get("tombstones") or []
+    return out
+
+
+def push_docs(store, cfg, *, owner: str, remote) -> dict:
+    """문서 정본 delta 를 원격에 push(doc 단위 LWW). 커서는 **전송 성공 후에만** 전진."""
+    from . import docsync
+    since = get_cursor(store, "docs-push")
+    payload = docsync.export_docs(store, owner=owner, since=since)
+    docs = payload.get("docs") or []
+    tombs = payload.get("tombstones") or []
+    if not docs and not tombs:
+        return {"phase": "docs-push", "executed": True, "sent": 0, "deletes": 0,
+                "cursor": since}
+    agg = {"applied": 0, "updated": 0, "skipped": 0, "deleted": 0}
+    for ch in _chunk_docs(payload):
+        res = remote.docs_push(ch)
+        for k in agg:
+            agg[k] += int(res.get(k) or 0)
+    cursor = int(payload.get("cursor") or since)
+    set_cursor(store, "docs-push", cursor)
+    return {"phase": "docs-push", "executed": True, "sent": len(docs),
+            "deletes": len(tombs), "remote": agg, "cursor": cursor}
+
+
+def pull_docs(store, cfg, *, owner: str, remote) -> dict:
+    """원격 문서 delta 를 받아 적용(LWW). 커서는 **적용 뒤에만** 전진.
+
+    embedding 은 여기서 재생성하지 않는다 — 허브 docs-apply 와 같은 태도다(정본
+    텍스트 정합이 우선, FTS 는 즉시·벡터는 후속 재임베딩이 채운다)."""
+    from . import docsync
+    since = get_cursor(store, "docs-pull")
+    page = remote.docs_pull(since)
+    r = docsync.import_docs(store, owner=owner, payload=page)
+    nxt = int(page.get("cursor") or since)
+    if nxt > since:
+        set_cursor(store, "docs-pull", nxt)
+    return {"phase": "docs-pull", "executed": True,
+            "applied": r.get("applied", 0), "updated": r.get("updated", 0),
+            "skipped": r.get("skipped", 0), "deleted": r.get("deleted", 0),
+            "cursor": max(nxt, since)}
+
+
 #: 일회성 전량 왕복 표식. 다음에 또 한 번이 필요하면 **키 이름을 올린다**(v2) —
 #: 이력이 남고, 이미 돈 기기가 다시 돌지 않는다.
 _ONESHOT_KEY = "oneshot:birth-resync-v1"
@@ -890,11 +1099,34 @@ def ensure_birth_resync(store) -> bool:
 
 def run(store, cfg, *, owner: str, remote) -> dict:
     """한 동기화 세션: **pull 먼저**(원격 최신을 받아 병합 후 push — lost-update 창
-    최소, 플랜 §6-1) → push. 잡 워커에서 돌아 로컬 쓰기가 단일 writer 로 직렬화된다."""
+    최소, 플랜 §6-1) → push. 문서 국면은 노드 국면 **뒤**에 둔다 — put_doc 의
+    재링크(MENTIONS)가 방금 받은 개념을 볼 수 있어야 한다. 잡 워커에서 돌아 로컬
+    쓰기가 단일 writer 로 직렬화된다.
+
+    문서 국면은 **soft-fail** 이다: 구 허브(문서 라우트 없음)나 doc 전용 오류가
+    노드 동기화까지 무너뜨리면 안 된다 — 결과에 executed:False 로 남긴다."""
+    switched = reset_cursors_on_account_change(store, remote)
     resynced = ensure_birth_resync(store)
     pu = pull_apply(store, cfg, owner=owner, remote=remote)
+    docs_ok = hasattr(remote, "docs_pull") and hasattr(remote, "docs_push")
+    if docs_ok:
+        try:
+            dpu = pull_docs(store, cfg, owner=owner, remote=remote)
+        except Exception as e:
+            dpu = {"phase": "docs-pull", "executed": False, "error": str(e)}
+    else:
+        dpu = {"phase": "docs-pull", "executed": False, "note": "remote lacks doc sync"}
     ph = push_local(store, cfg, owner=owner, remote=remote)
+    if docs_ok:
+        try:
+            dph = push_docs(store, cfg, owner=owner, remote=remote)
+        except Exception as e:
+            dph = {"phase": "docs-push", "executed": False, "error": str(e)}
+    else:
+        dph = {"phase": "docs-push", "executed": False, "note": "remote lacks doc sync"}
     if resynced:
         # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
         revstamp._meta_set(store, _ONESHOT_KEY, "done")
-    return {"executed": True, "pull": pu, "push": ph, "birth_resync": resynced}
+    return {"executed": True, "pull": pu, "push": ph,
+            "docs_pull": dpu, "docs_push": dph, "birth_resync": resynced,
+            "account_switched": switched}

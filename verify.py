@@ -28,6 +28,12 @@ sys.path.insert(0, str(ROOT))
 
 
 def main() -> int:
+    # 임시 디렉터리 우리. 이 러너에는 pytest 픽스처가 없으니 여기서 건다
+    # (본 CI 잡이 이 경로다). 이유는 tests/_tmpjail.py.
+    sys.path.insert(0, str(ROOT / "tests"))
+    from _tmpjail import install as install_tmp_jail
+    install_tmp_jail()
+
     loader = unittest.TestLoader()
     suite = loader.discover(str(ROOT / "tests"), pattern="test_*.py")
     ok = unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()

@@ -1188,7 +1188,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "14")   # v14 — 결정을 주제 계층에(E-1 보정)
+        self.assertEqual(rows[0]["v"], "15")   # v15 — Record 유효구간(W13)
         # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
         # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
         store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "
@@ -1234,6 +1234,12 @@ class EmbeddedE2E(unittest.TestCase):
                        "RETURN r.evidence AS e, r.confidence AS c")
         self.assertEqual(ev[0]["e"], "원문")
         self.assertAlmostEqual(float(ev[0]["c"]), 0.75)
+        # v15 — Record 유효구간 열이 존재해 SET/조회가 동작한다(W13).
+        store.run("MERGE (r:Record {record_id:'record:v15'}) SET r.owner_id='user:x', "
+                  "r.valid_from='2026-01', r.valid_until='2026-08'")
+        vv = store.run("MATCH (r:Record) WHERE r.record_id='record:v15' "
+                       "RETURN r.valid_from AS vf, r.valid_until AS vu")
+        self.assertEqual((vv[0]["vf"], vv[0]["vu"]), ("2026-01", "2026-08"))
         store.close()
 
     def test_hub_pull_delta_serves_data_without_local_domain_selection(self):
@@ -1330,21 +1336,39 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
                          {"i": pkns.key(self.OWNER, cid)})
         return rows[0] if rows else {}
 
+    #: A 가 실어 보내는 출생 — 못박는다(아래 docstring).
+    BORN = "2019-01-01T00:00:00.000Z"
+
     def test_both_devices_agree_on_birth_and_content_time(self):
+        """번들이 출생·내용시점을 싣고 **수신측이 자기 시각 대신 그것을 받는가**(D72).
+
+        A 의 출생을 **못박는다** — 벽시계에 기대면 안 된다. min 화해
+        (`api/sync._reconcile_birth`)는 수신측을 min(자기값, 들은값)으로 **내릴** 뿐
+        발신측을 올리지 않으므로, "둘이 같다"는 A 의 스탬프가 B 의 것보다 이를 때만
+        참인데 두 스토어의 HLC 는 그 순서를 보장하지 않는다(2026-08-23 CI 에서 14ms
+        역전 · 판정은
+        [[record:main-ci-red-before-the-roster-merge-2026-08-23]] 와 거기 걸린
+        `decision:birth-agreement-needs-a-full-session`). 양방향 수렴은
+        §4 의 일회성 되감기가 하지 이 한 방향 apply 가 아니다.
+
+        값을 못박으면 벽시계가 빠지고 검사할 질문만 남는다: 실패는 곧 B 가 자기
+        시각을 찍었다는 뜻이고 그것이 D72 의 재발이다."""
         from api import fragment as frag
         from api import sync
 
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:relativity", "type": "concept", "title": "Relativity",
-             "domain": "phys", "content_time": "1905"}]}, store=self.a)
+             "domain": "phys", "content_time": "1905", "created": self.BORN}]},
+            store=self.a)
         bundle = sync.export_delta(owner=self.OWNER, since=0, domains=["phys"],
                                    store=self.a)
         res = sync.apply_delta(owner=self.OWNER, bundle=bundle, store=self.b)
         self.assertTrue(res["executed"], res)
 
         a, b = self._row(self.a, "concept:relativity"), self._row(self.b, "concept:relativity")
-        self.assertTrue(a["created"], "A 에 출생이 있어야 한다")
-        self.assertEqual(b["created"], a["created"], "같은 노드가 기기마다 다른 생일을 가진다")
+        self.assertEqual(a["created"], self.BORN, "A 가 실은 출생을 잃었다")
+        self.assertEqual(b["created"], self.BORN,
+                         "출생이 기기를 못 건넜다 — B 가 자기 시각을 찍었다")
         self.assertEqual(b["ct"], "1905", "내용 시점이 기기를 못 건넜다")
 
     def test_birth_takes_the_earliest_even_when_the_local_row_is_older(self):
@@ -1457,6 +1481,54 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
         self.assertFalse(out["birth_resync"])
         self.assertEqual(self._row(self.b, "concept:old")["created"],
                          "2099-01-01T00:00:00.000Z")
+
+    def test_records_and_their_typed_edges_cross_to_the_other_device(self):
+        """기록(Record)이 기기 사이를 오가는가, 그리고 **원래 관계 타입이 살아남는가**.
+
+        Record 는 라이브 실측 277건으로 노드 종류 중 최대인데 `_SYNC_TYPES` 에 없어
+        통째로 안 넘어갔다. 급소는 노드가 아니라 **엣지**다: Record 참여 엣지는 전부
+        `ATTACHES_TO` 한 라벨로 저장되고 원 타입은 `r.type` 에 실린다. 라벨을 역맵에
+        태우면 네 갈래가 한 이름으로 뭉개져 수신측이 되살릴 수 없다 — 그래서
+        `_record_edges_plan` 이 `r.type` 을 fragment 타입으로 돌려준다.
+
+        `derives_from` 을 고르는 이유: `relates_to` 는 무방향이라 뭉개져도 티가 안
+        난다. 방향이 있는 갈래여야 타입이 실제로 보존됐는지 갈린다."""
+        from api import fragment as frag
+        from api import sync
+        # sync.run 은 **로컬의 선택 도메인**을 읽는다(get_selected_domains) — 안 세우면
+        # "nothing leaves the device" 로 정상 종료해 아무것도 안 나간다.
+        sync.set_selected_domains(self.a, ["phys"])
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:target", "type": "concept", "title": "T", "domain": "phys"},
+            {"id": "record:measured", "type": "record", "title": "재 봤다",
+             "domain": "phys", "content_time": "1905",
+             "props": {"note": "0.3% 아래로 유지됐다"}},
+        ], "edges": [
+            {"from": "record:measured", "to": "concept:target", "type": "derives_from",
+             "evidence": "그 값은 대상에서 나왔다"},
+        ]}, store=self.a)
+
+        out = sync.run(self.a, None, owner=self.OWNER,
+                       remote=self._InProcessHub(self.b, self.OWNER, ["phys"]))
+        self.assertTrue(out["executed"])
+
+        rid = pkns.key(self.OWNER, "record:measured")
+        got = self.b.run("MATCH (r:Record) WHERE r.record_id = $i "
+                         "RETURN r.title AS t, r.domain AS d, r.props AS p, "
+                         "r.content_time AS ct, r.created AS born", {"i": rid})
+        self.assertTrue(got, "기록이 반대편 기기에 아예 없다")
+        self.assertEqual(got[0]["t"], "재 봤다")
+        self.assertEqual(got[0]["d"], "phys")
+        self.assertEqual(got[0]["ct"], "1905")          # Record 도 두 시간열을 갖는다
+        self.assertTrue(got[0]["born"], "출생이 안 실렸다 — _BIRTH_LABELS 확인")
+        self.assertIn("0.3%", got[0]["p"] or "")        # props 왕복
+
+        edge = self.b.run(
+            "MATCH (a:Record)-[e:ATTACHES_TO]->(b:Concept) "
+            "WHERE a.record_id = $i RETURN e.type AS t", {"i": rid})
+        self.assertTrue(edge, "엣지가 안 넘어왔다")
+        self.assertEqual(edge[0]["t"], "derives_from",
+                         "원 타입이 ATTACHES_TO 라벨로 뭉개졌다")
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")

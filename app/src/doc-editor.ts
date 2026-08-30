@@ -151,12 +151,12 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         font-size:.85em;padding:.2rem 0"/>
       <span class="hint" id="ed-status">${COPY.ui.viewx.edSaved}</span>
     </div>
-    <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:32vh;resize:vertical;
+    <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:12rem;resize:vertical;
       background:transparent;color:inherit;border:1px solid hsl(var(--border));
       border-radius:6px;padding:.5rem;margin-top:.4rem;font:inherit;line-height:1.5"></textarea>
     <div id="ed-conflict"></div>
     <div id="ed-extract"></div>
-    <div id="ed-prev" style="max-height:34vh;overflow:auto;border-top:1px solid hsl(var(--border));
+    <div id="ed-prev" style="border-top:1px solid hsl(var(--border));
       margin-top:.4rem;padding-top:.4rem;font-size:.9em;line-height:1.5"></div>`;
 
   const titleInput = host.querySelector<HTMLInputElement>("#ed-title")!;
@@ -201,8 +201,11 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     cmHost.style.cssText = opts.hideTitle
       // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
       ? "margin-top:.2rem"
+      // 시트 문서도 같은 규율 — vh 상한을 걸면 문서가 패널이 아니라 창 기준으로
+      // 잘리고(52vh 사고), 스크롤이 .sheet-body 와 이중이 된다. 시트 높이는
+      // app.css `.sheet[data-size="write"]` 가 진다.
       : "border:1px solid hsl(var(--border));border-radius:6px;"
-        + "padding:.25rem;margin-top:.4rem;max-height:52vh;overflow:auto";
+        + "padding:.25rem;margin-top:.4rem";
     src.replaceWith(cmHost);
     prev.remove();
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),

@@ -1,0 +1,243 @@
+{
+  "version": 1,
+  "generated_by": "W10 embedding eval spike 2026-08-29 — 정본 en 질의의 수작업 한국어 번역",
+  "axis": "ko2en",
+  "note": "교차언어 축(한국어 질의 → 영어 코퍼스) 측정용. 정본 evalset.json 의 en 질의 30개를 한국어로 번역해 정답 문서를 그대로 물려받았다. 자연어 질문이 아니라 소제목 번역인 이유: en 동일언어 셋과 질의 스타일을 같게 묶어야 (같은 정답·같은 난도) en→en 대비 ko→en 의 차이가 언어 축만 잰다. 고유명사(바흐·라사 등)는 한국어 표기라 FTS 어휘 신호가 일부 남는다 — 실사용(한국어 문장 + 영어 술어)과 같은 방향의 편향이다.",
+  "rules": [
+    "질의는 정본 en 질의의 1:1 번역이다. 정답 doc_id·source 는 정본에서 물려받는다.",
+    "번역문이 같아지는 쌍은 정답이 모호하므로 양쪽 다 버린다(정본 규칙 3의 재적용). 실제로 'applied with caution' 과 'cautious' 는 내용이 아니라 표현 우연으로만 갈리는 준모호 쌍이라 번역에서 하나가 된다 — 2건 탈락.",
+    "원문은 en_query 로 동봉한다 — 번역 검수가 파일 하나로 끝나게."
+  ],
+  "counts": {
+    "source_en": 30,
+    "dropped_ambiguous": 2,
+    "selected": 28,
+    "docs": 15
+  },
+  "queries": [
+    {
+      "query": "고대 (기원전 1500년에서 서기 500년까지)",
+      "doc_id": "eval/en/work/art/01-Natya-Shastra-인도-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-Natya-Shastra-인도-총체예술.md",
+      "en_query": "Antiquity (1500 BC – AD 500)"
+    },
+    {
+      "query": "축 1: 인지 (라사의 인지 메커니즘)",
+      "doc_id": "eval/en/work/art/01-Natya-Shastra-인도-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-Natya-Shastra-인도-총체예술.md",
+      "en_query": "Axis 1 — Cognition (the cognitive mechanism of rasa)"
+    },
+    {
+      "query": "축 1: 인지 (장 통합의 인지)",
+      "doc_id": "eval/en/work/art/01-Wagner-Bauhaus-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-Wagner-Bauhaus-총체예술.md",
+      "en_query": "Axis 1 — Cognition (cognition of field integration)"
+    },
+    {
+      "query": "축 2: 진화 (통합 예술의 진화)",
+      "doc_id": "eval/en/work/art/01-Wagner-Bauhaus-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-Wagner-Bauhaus-총체예술.md",
+      "en_query": "Axis 2 — Evolution (evolution of integrated art)"
+    },
+    {
+      "query": "바흐의 푸가의 기법 (1742~1750): 군론·범주론·정보이론",
+      "doc_id": "eval/en/work/art/01-case-applications.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-case-applications.md",
+      "en_query": "Bach's Art of Fugue (1742–1750) — Group Theory·Category·Information Theory"
+    },
+    {
+      "query": "드뷔시의 바다 (1905): 푸리에·스펙트럼·인상주의",
+      "doc_id": "eval/en/work/art/01-case-applications.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-case-applications.md",
+      "en_query": "Debussy's La Mer (1905) — Fourier·Spectral·Impressionism"
+    },
+    {
+      "query": "미해결 문제의 행렬 (메타 질문 3개 자체)",
+      "doc_id": "eval/en/work/art/01-meta-questions-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-meta-questions-deep.md",
+      "en_query": "Matrix of open problems (the 3 meta-questions themselves)"
+    },
+    {
+      "query": "R-10, R-11, U-21, U-22, MM-13 후보의 운용 사례 검증",
+      "doc_id": "eval/en/work/art/01-meta-questions-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-meta-questions-deep.md",
+      "en_query": "Operational-case verification of the R-10, R-11, U-21, U-22, MM-13 candidates"
+    },
+    {
+      "query": "1막: 탄생 (기원전 5~4세기 그리스)",
+      "doc_id": "eval/en/work/art/01-미학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-미학.md",
+      "en_query": "Act 1 — Birth (5th–4th century BC, Greece)"
+    },
+    {
+      "query": "2막: 정식화 (1750~1831, 독일 관념론)",
+      "doc_id": "eval/en/work/art/01-미학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/01-미학.md",
+      "en_query": "Act 2 — Formalization (1750–1831, German idealism)"
+    },
+    {
+      "query": "본격적인 분석 미학",
+      "doc_id": "eval/en/work/art/02-aesthetic-theories-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-aesthetic-theories-deep.md",
+      "en_query": "Analytic aesthetics in earnest"
+    },
+    {
+      "query": "중국 미학 (유교·도교·불교의 통합)",
+      "doc_id": "eval/en/work/art/02-aesthetic-theories-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-aesthetic-theories-deep.md",
+      "en_query": "Chinese aesthetics (integration of Confucianism, Daoism, Buddhism)"
+    },
+    {
+      "query": "베토벤 후기 현악 사중주 (1825~1826)",
+      "doc_id": "eval/en/work/art/02-case-applications-2.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-case-applications-2.md",
+      "en_query": "Beethoven's Late String Quartets (1825–1826)"
+    },
+    {
+      "query": "세잔 후기 생트빅투아르산 연작 (1902~1906)",
+      "doc_id": "eval/en/work/art/02-case-applications-2.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-case-applications-2.md",
+      "en_query": "Cézanne's Late Mont Sainte-Victoire (1902–1906)"
+    },
+    {
+      "query": "바우하우스와 총체예술의 수학적 결합",
+      "doc_id": "eval/en/work/art/02-cross-modal-math-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-cross-modal-math-deep.md",
+      "en_query": "Bauhaus·Gesamtkunstwerk Mathematical Combination"
+    },
+    {
+      "query": "구체시와 시각 텍스트: 형태로서의 문자",
+      "doc_id": "eval/en/work/art/02-cross-modal-math-deep.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-cross-modal-math-deep.md",
+      "en_query": "Concrete Poetry·Visual Text — the Letter as Form"
+    },
+    {
+      "query": "축 1: 인지 (유겐·마·가타의 인지)",
+      "doc_id": "eval/en/work/art/02-가부키-노-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-가부키-노-총체예술.md",
+      "en_query": "Axis 1 — Cognition (the cognition of yūgen, ma, kata)"
+    },
+    {
+      "query": "1막: 분석 미학의 등장 (1950~1960년대)",
+      "doc_id": "eval/en/work/art/02-예술철학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-예술철학.md",
+      "en_query": "Act 1 — The emergence of analytic aesthetics (1950s–1960s)"
+    },
+    {
+      "query": "2막: 정식화 (1968~1984)",
+      "doc_id": "eval/en/work/art/02-예술철학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/02-예술철학.md",
+      "en_query": "Act 2 — Formalization (1968–1984)"
+    },
+    {
+      "query": "보르헤스: 무한·거울·도서관",
+      "doc_id": "eval/en/work/art/03-case-applications-3.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-case-applications-3.md",
+      "en_query": "Borges — Infinity·Mirrors·the Library"
+    },
+    {
+      "query": "힐마 아프 클린트: 신비주의 추상",
+      "doc_id": "eval/en/work/art/03-case-applications-3.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-case-applications-3.md",
+      "en_query": "Hilma af Klint — Mystical Abstraction"
+    },
+    {
+      "query": "정전 권력 비판",
+      "doc_id": "eval/en/work/art/03-criticism-theories.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-criticism-theories.md",
+      "en_query": "A critique of canonical power"
+    },
+    {
+      "query": "비평 이론의 수학적 대응물 시도",
+      "doc_id": "eval/en/work/art/03-criticism-theories.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-criticism-theories.md",
+      "en_query": "An attempt at the mathematical parallels of criticism theory"
+    },
+    {
+      "query": "AI 멀티모달: 모든 차원의 자동 통합",
+      "doc_id": "eval/en/work/art/03-film-VR-AI-integration.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-film-VR-AI-integration.md",
+      "en_query": "AI Multi-modal — the Automatic Integration of All Dimensions"
+    },
+    {
+      "query": "영화: 20세기 최초의 멀티모달 매체",
+      "doc_id": "eval/en/work/art/03-film-VR-AI-integration.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-film-VR-AI-integration.md",
+      "en_query": "Film — the First Multi-modal Medium of the 20th Century"
+    },
+    {
+      "query": "축 1: 인지 (기·신운·경계의 인지)",
+      "doc_id": "eval/en/work/art/03-경극-판소리-동아시아-총체예술.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-경극-판소리-동아시아-총체예술.md",
+      "en_query": "Axis 1 — Cognition (the cognition of qi, shenyun, jingjie)"
+    },
+    {
+      "query": "1막: 등장 (1871~1990년대)",
+      "doc_id": "eval/en/work/art/03-신경미학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-신경미학.md",
+      "en_query": "Act 1 — Emergence (1871–1990s)"
+    },
+    {
+      "query": "2막: 정식화 (1997~2009)",
+      "doc_id": "eval/en/work/art/03-신경미학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/03-신경미학.md",
+      "en_query": "Act 2 — Formalization (1997–2009)"
+    }
+  ]
+}

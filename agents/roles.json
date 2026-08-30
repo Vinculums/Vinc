@@ -33,11 +33,11 @@
           "switching the language on"
         ],
         "reads": [
-          "db48ec27d7699cbf6",
+          "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
           "vinc.reference.view-controls",
-          "de7597bc59a1e7dbe"
+          "vinc.ops.site-audit-2026-08-22"
         ],
         "repos": [
           "Vinc",
@@ -64,6 +64,14 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Bash",
+          "Agent"
+        ],
+        "enforcement_note": "the only role whose denylist is a real wall: without Bash and the edit tools it returns lines and cannot commit them, which is exactly its contract with the copy owner.",
         "gates": [],
         "mission": "Writes Korean product copy one surface at a time and returns it as lines for review. Writes Korean, never a translation of the English.",
         "never": [
@@ -81,7 +89,7 @@
           "sign off on screen"
         ],
         "reads": [
-          "db48ec27d7699cbf6",
+          "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
           "vinc.reference.view-controls"
@@ -293,7 +301,7 @@
           "vinc.canon.mcp-contract",
           "vinc.canon.chunk-ssot",
           "vinc.canon.code-annotation",
-          "d4c22f23326e41c3c",
+          "vinc.ops.security-audit-2026-08-18",
           "vinc.canon.repo-workflow"
         ],
         "repos": [
@@ -320,6 +328,13 @@
       ],
       "props": {
         "baseline_note": "measure the baseline on origin/main in the same worktree; a suite reporting 135 skips instead of 4 was run by the wrong interpreter and every comparison from it is void.",
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
+        "enforcement_note": "the denylist removes the edit tools but Bash stays, because the gates are shell commands. So no-edit is a bar here, not a wall.",
         "gates": [
           "scripts/gate_forbidden.py",
           "scripts/gate_graph_refs.py",
@@ -387,7 +402,7 @@
           "public promises"
         ],
         "reads": [
-          "de7597bc59a1e7dbe",
+          "vinc.ops.site-audit-2026-08-22",
           "vinc.spec.email-subsystem",
           "vinc.canon.terminology",
           "vinc.release.changelog",
@@ -419,6 +434,12 @@
       ],
       "props": {
         "delegate_rung": "strongest",
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
+        "enforcement_note": "the denylist stops file edits, not state changes: az and gh run through Bash, which this role needs to diagnose. Every state changing command stays a person's act by discipline, not by permission.",
         "gates": [],
         "mission": "Watches the three deployments, diagnoses incidents and proposes the recovery. Proposes only: every command that changes state is run by a person, one step at a time.",
         "never": [
@@ -467,13 +488,20 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Reads the release plan, assigns one package per agent at the rung its failure cost deserves, runs the packages in waves, reports to a person and stops. The only role that sees all three repositories at once.",
         "never": [
           "edit code",
           "merge a pull request",
           "move a package down a rung",
-          "start the next wave before a person answers"
+          "start the next wave before a person answers",
+          "advise or operate a merge to main without first reading the run list for a run in flight",
+          "advise or perform anything that STOPS the runner while work is in flight, including restarting Docker Desktop, restarting the runner service, or rebooting the host, without first reading the JOBS of the runs in flight"
         ],
         "paths": [
           "read only across all three"
@@ -483,10 +511,11 @@
           "wave approval",
           "operator steps a plan marks as person operated"
         ],
+        "pre_merge_check": "gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha. Read it before ANY act that lands a run on main: a merge, a push, or a workflow_dispatch. A run in progress there is the previous commit's verification and survives (ci sets cancel-in-progress only for pull_request). A run that is merely QUEUED does not survive: the group keeps one pending run and a newer arrival supersedes it. So the question is not only whether something is running, it is whether something is waiting. Filter by workflowName; several workflows share a branch and only ci matters here. Never assert that nothing is in flight without running this.\n\nAND READ THE JOBS, NOT THE RUN: gh run view <id> --json jobs. A run's status stays 'queued' until its LAST job finishes, so on a serial runner a run that is actively being worked looks identical to one nothing has picked up. Measured 2026-08-25: seven jobs behind one runner showed run=queued for over half an hour while jobs completed one after another, and hub-deploy was seen going from in_progress back to queued, which reads as a lost runner and is ordinary churn. A monitor that only emits on completion cannot tell the two apart at all.\n\nThe rule covers acts that STOP the runner as well as acts that start a run. Restarting the host lands nothing, so it falls outside a rule written in terms of triggers, and it destroys whatever is executing. Two runs were lost that way in one evening, one of them a 25 minute cold build.",
         "reads": [
-          "d09088bc819562c76",
-          "d8fa9efa40f1a62c7",
-          "d3d8100c2be9f2ac4",
+          "vinc.plan.agent-domain",
+          "vinc.release.0-8-4-agents",
+          "vinc.release.0-8-4-wave1-report",
           "vinc.canon.repo-workflow",
           "vinc.canon.graph-conventions"
         ],
@@ -564,6 +593,11 @@
         "role"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Writes research and plan documents from measurement, and assembles the material a decision needs including the conflicts. Does not take the decision.",
         "never": [
@@ -608,6 +642,12 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
         "gates": [],
         "mission": "Ticks every row of a plan or audit table against the diff and names the rows with no matching change. States facts about coverage, never opinions about quality.",
         "never": [
@@ -641,6 +681,12 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit",
+          "Agent"
+        ],
         "gates": [],
         "mission": "Reads a diff adversarially for correctness and for over-engineering, and says what should be deleted or is wrong. Does not edit.",
         "never": [
@@ -679,6 +725,11 @@
         "verify"
       ],
       "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
         "gates": [],
         "mission": "Re-audits tenancy, authentication, the pack path and edge stamping, grades what it finds, and hands fixes to development as packages rather than fixing in place.",
         "never": [
@@ -700,7 +751,7 @@
           "signing key custody"
         ],
         "reads": [
-          "d4c22f23326e41c3c",
+          "vinc.ops.security-audit-2026-08-18",
           "vinc.ops.risk-audit-2026-08-05",
           "vinc.canon.account-policy",
           "vinc.spec.email-subsystem",
@@ -744,7 +795,8 @@
         ],
         "paths": [
           "scripts/graph-refs.json",
-          "agents/roles.json"
+          "agents/roles.json",
+          "scripts/age_status_lines.py"
         ],
         "person_only": [
           "deletion",
@@ -762,6 +814,7 @@
           "Vinc"
         ],
         "rung": "strong",
+        "session_close": "Three passes at the end of a session, before the episode is written.\n\n1. Assertions, not only prose. List every sentence in the session's output of the form checked, verified, confirmed, present, absent, or returns X, and mark each one cited, assumed, or unmarked. Unmarked is the finding and its count goes in the episode. Run against the record that prompted this step it lists three, the ones in its own section 6.4.\n\n2. vinc_diagnose kind=claims, and read both lists. conflicts is a pair to adjudicate by opening the path, never by preferring the newer one. unanchored is a number to drive down by adding props.subject_path to records that name a file.\n\n3. For any plan document touched this session, vinc_doc_get it to a file and run: python -X utf8 scripts/age_status_lines.py <file>. A status line older than a commit the document cites is the finding. This is a steward step and not a CI gate because CI has no documents, the same reason the citation manifest is committed rather than fetched.\n\nNone of the three decides anything. They produce a list a person acts on. The steward proposes and never performs.",
         "tier": "knowledge",
         "writes_graph": [
           "record",

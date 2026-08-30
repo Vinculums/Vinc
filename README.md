@@ -14,7 +14,7 @@
 > 제품명 Vinc — 라틴어 *vinculum*(결속·연결 고리). 데이터 마이닝 도구이며
 > "기억/학습" 서사를 사용하지 않는다.
 
-**현재 v0.8.2 라이브** — GitHub Releases + [vincs.io](https://vincs.io) 다운로드
+**현재 v0.8.7 라이브** — GitHub Releases + [vincs.io](https://vincs.io) 다운로드
 (구 도메인 `vincs.app` 의 A 레코드는 삭제됐다 — 접속 경로는 vincs.io 하나이고,
 그 도메인에 남은 것은 발신 메일 레코드뿐이다).
 개발자용 릴리스 요약은 [CHANGELOG.md](CHANGELOG.md).
@@ -126,9 +126,9 @@ Vinc 는 그래프**와 문서 정본**을 MCP 서버로도 노출한다 — MCP
 Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇이든 붙고,
 원격은 claude.ai 커넥터와 ChatGPT 커스텀 커넥터(개발자 모드)가 같은 OAuth 요건을 쓴다.
 
-- 도구 22종(정본 = `vinc_mcp/tools.py` 의 `TOOLS` — 그 독스트링의 수와
-  `len(TOOLS)` 는 `tests/test_tool_contract.py` 가 대조한다). 읽기 14 — 조회
-  `vinc_search`·`vinc_recall`·`vinc_graph`·`vinc_decide`·`vinc_domains`·
+- 도구 23종(정본 = `vinc_mcp/tools.py` 의 `TOOLS` — 그 독스트링의 수와
+  `len(TOOLS)` 는 `tests/test_tool_contract.py` 가 대조한다). 읽기 15 — 조회
+  `vinc_search`·`vinc_brief`·`vinc_recall`·`vinc_graph`·`vinc_decide`·`vinc_domains`·
   `vinc_suggest_ties`, 관측·진단 `vinc_neighbors`·`vinc_path`·
   `vinc_merge_candidates`·`vinc_merge_rejections`·`vinc_diagnose`(E-G3~G7),
   문서 `vinc_doc_get`·`vinc_doc_list`(D45), 관례 `vinc_conventions`(GM-1).
@@ -177,10 +177,29 @@ python e2e_live.py --backend embedded     # 임베디드 백엔드 e2e
 
 ## 상태
 
-**v0.8.2 라이브** — 코드 이식 완료, GitHub Releases + vincs.io 에서 배포 중.
+**v0.8.7 라이브** — 코드 이식 완료, GitHub Releases + vincs.io 에서 배포 중.
 부트스트랩(M1) → 코드 이식(M2~) → 패키징(P4) → 호스티드 롤아웃(P5)까지 진행됐다.
 출하된 능력(전부 [CHANGELOG.md](CHANGELOG.md) 대조):
 
+- **v0.8.7** 돈다고 적혀 있던 것들이 실제로 돈다 — 계정 연결이 브라우저에서 앱까지
+  닿고(연결 페이지 CSP 가 루프백을 막고 있었다), 로그인하면 동기화가 신호 넷으로
+  알아서 돈다. 인용 게이트가 생성 id 인용을 아예 안 보고 있었고 매니페스트 생성기는
+  한 번도 성공한 적이 없었다. 허브 워치독의 "5회 실패하면 포기" 분기는 도달 불가였다.
+- **v0.8.6** 고르는 것과 들여다보는 것을 가른다 — 노드 카드가 디자인 정본을 따라
+  줄 순서로 우선순위를 말한다(Details and source → Links → Ask → Zoom). 깊이 숫자
+  1/2/3 은 크기를 말해 주지 않아 늘 경고를 달고 다녔으므로, 이름 붙은 프롬프트 셋이
+  대신한다.
+- **v0.8.5** 그래프가 자기 주장을 무효화하기 시작한다 — 문서에 적힌 주장이 조용히
+  낡는 것을 그래프 자신이 잡는 장치 아홉(R1~R9). `vinc_ingest` 가 그 종류에 열이
+  없는 필드를 조용히 버리지 않고 이름을 대며 경고하고, `vinc_diagnose(kind='claims')`
+  가 같은 파일을 두고 어긋난 기록을 짝지어 내민다.
+- **v0.8.4** 한국어가 번역투를 벗고, 감사가 지목한 자리를 닫는다 — 2026-08-18
+  재감사가 지목한 다섯 자리. 어휘 테마가 소유자에서 파생되고, 어서션에 본문 지문과
+  일회성이 붙는다.
+- **v0.8.3** 앱이 스스로를 죽이던 것을 멈추고, 빈 화면이 길을 낸다 —
+  `vinc_mcp/bridge.py` 의 `_pid_alive` 가 `os.kill(pid, 0)` 을 썼는데 **Windows 에서
+  그것은 TerminateProcess 다.** 조회하는 pid 는 `session.json` 에 적힌 앱 자신이라,
+  브리지가 "앱이 살아 있나" 묻는 행위가 곧 앱을 죽이는 행위였다.
 - **v0.8.2** 문서가 자기 자리를 말한다 — `/doc/context`(개념 칩·목차·청크 오프셋),
   코퍼스의 `[[doc_id]]` 링크 활성, 한 번 눌러 지도와 문서가 함께 열린다 · 타임라인
   계보. **깨는 변경**: 씨앗 층 L2(`여기서 추적`) 제거 — 스코프는 전량(L0)·주제(L1)

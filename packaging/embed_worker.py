@@ -654,6 +654,16 @@ def main() -> int:
             print(f"[embed] encode service 기동 실패(무시): {exc}", file=sys.stderr, flush=True)
     proved = False
     idle = 0
+    # ⚠ `idle` 만으로는 "바쁘게 실패 중"을 못 잡는다. pending 이 있으면 idle 은
+    # 매 라운드 0 으로 돌아가므로, 문서가 매번 실패해도(고장난 원격 인코더·손상된
+    # 청크 등) 조용히 영원히 재시도만 하고 이 루프는 아무 요약도 안 남긴다.
+    # 라운드마다 **하나라도 성공했는지**로 별도 카운터를 둔다. 이 값은 이
+    # 프로세스가 사는 동안만 유효하다(재기동을 넘어서는 판정은 store 에 영속되는
+    # `docstore.embed_model_state` 의 `last_applied_at`/`age_s` 가 한다: 거기가
+    # "떴다 죽는 프로세스" 함정에서 자유로운 자리다). 정체를 봐도 여기서 워커를
+    # 죽이거나 재기동하지 않는다. 소리만 낸다
+    # ([[record:worker-heartbeat-separates-backlog-from-death]]).
+    stall_rounds = 0
     while True:
         try:
             # 어떤 모델을 들었는지 **매 라운드 알려 준다**. 사이드카가 기록된 모델과
@@ -689,6 +699,7 @@ def main() -> int:
         for c in pending:
             by_doc.setdefault(c["doc_id"], []).append(c)
 
+        progressed = False
         for doc_id, chunks in by_doc.items():
             try:
                 # 청크 하나 → 벡터 **여럿**(v8 부모-자식). 저장 청크는 2000자인데 모델
@@ -711,13 +722,30 @@ def main() -> int:
                 res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
+                progressed = True
             except Exception as e:
                 # 한 문서가 막혀도 나머지는 진행한다. 다음 라운드에 다시 잡힌다
                 # (needs_embed 가 안 지워졌으므로 pending 에 계속 남는다).
                 print(f"[embed] doc={doc_id} 실패: {e}", file=sys.stderr, flush=True)
 
+        if progressed:
+            stall_rounds = 0
+        else:
+            stall_rounds += 1
+            if heartbeat_rounds > 0 and stall_rounds % heartbeat_rounds == 0:
+                print(f"[embed] stall 경고 · {stall_rounds} 라운드 연속 적용 실패 "
+                      f"(pending={len(pending)}, doc={len(by_doc)}건). 워커는 살아 "
+                      "있지만 앞으로 못 간다", file=sys.stderr, flush=True)
+
         if args.once and len(by_doc) < DOC_BATCH:
             return 0
+
+        if not progressed:
+            # 무진행 라운드는 물러났다 온다. 백오프 없이 돌면 같은 실패를 전속력으로
+            # 재시도하며 사이드카를 두들기고 stderr 를 쏟는다(정체인데 뜨거운 루프 —
+            # 실제로 스톨 테스트가 이 자리 없이는 무한 루프로 MemoryError 났다).
+            # 진행이 있으면 안 쉰다: 백로그는 전속력으로 빼는 게 맞다.
+            time.sleep(args.interval)
 
 
 if __name__ == "__main__":

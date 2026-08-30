@@ -37,11 +37,11 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. db48ec27d7699cbf6
+1. vinc.spec.ui-copy-ko
 2. vinc.spec.ui-copy
 3. vinc.canon.terminology
 4. vinc.reference.view-controls
-5. de7597bc59a1e7dbe
+5. vinc.ops.site-audit-2026-08-22
 
 ## Gates that must pass before the pull request
 
@@ -72,6 +72,17 @@ extract_copy.py pairs each English key with its Korean value and flags NOWRAP, B
 
 - episode
 - decision
+
+## Output contract
+
+A sentence of the form checked, verified, confirmed, present, absent, or returns X
+carries the tool call that produced it: the query as it was run and its first result,
+or the call id. A statement without one is reported in the word assumed.
+
+This is not a style rule. A session reported a findability check as having been asked
+in Korean when it had been asked in English, and nothing in the output told the two
+apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the
+sentence instead. Reasoning: [[vinc.ops.graph-claim-decay]] section 7.4.
 
 Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not
 escalate; it returns the package to its author instead.

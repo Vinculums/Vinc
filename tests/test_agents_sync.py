@@ -10,10 +10,18 @@
 """
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
 
-from scripts.agents_sync import (RUNG_TO_MODEL, _manifest_docs, build_payload,
-                                 dangling_reads, main, read_snapshot, render_shell)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# 렌더러는 `vinc_mcp/roles.py` 로 옮겼다 — `prompts/get` 이 같은 함수를 쓴다(W2).
+# 여기서 그 자리를 그대로 임포트하는 이유는, 재수출로 가리면 사본이 둘이 됐을 때도
+# 이 파일이 계속 초록이기 때문이다.
+from scripts.agents_sync import (_manifest_docs, dangling_reads, main,  # noqa: E402
+                                 read_snapshot)
+from vinc_mcp.roles import RUNG_TO_MODEL, build_payload, render_shell  # noqa: E402
 
 _NODE = {
     "id": "concept:agent-example",
@@ -114,3 +122,42 @@ class Reads(unittest.TestCase):
         docs = _manifest_docs()
         self.assertIsNotNone(docs, "인용 매니페스트가 없다")
         self.assertEqual(dangling_reads(read_snapshot(), docs), [])
+
+
+class Denylist(unittest.TestCase):
+    """금지는 `tools`(허용목록)가 아니라 `disallowedTools`(거부목록)로 낸다.
+
+    허용목록이면 MCP 도구를 서버 이름으로 대야 하는데 그 이름은 기기 설정이고 이 리포에
+    `.mcp.json` 이 없다. 그러면 역할이 자기 정의를 읽는 부팅 두 호출이 죽는다. 거부목록은
+    상속 풀에서 빼기만 하므로 그 결합이 없다:
+    [[record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does]]
+    """
+
+    def _front(self, props):
+        node = dict(_NODE, props=dict(_NODE["props"], **props))
+        return render_shell(build_payload([node])["roles"][0]).split("---")[1]
+
+    def test_denylist_lands_in_frontmatter_as_one_comma_line(self):
+        front = self._front({"disallowed_tools": ["Edit", "Write", "Bash"]})
+        self.assertIn("\ndisallowedTools: Edit, Write, Bash\n", front)
+
+    def test_a_role_without_one_gets_no_key_at_all(self):
+        """편집하는 역할에 빈 거부목록을 내면 안 된다 — 빈 값은 허용목록으로 오해될
+        여지를 남기고, 없는 것과 뜻이 다르다."""
+        self.assertNotIn("disallowedTools", self._front({}))
+        self.assertNotIn("disallowedTools", self._front({"disallowed_tools": []}))
+
+    def test_frontmatter_key_order_is_stable(self):
+        front = self._front({"disallowed_tools": ["Edit"]})
+        keys = [ln.split(":")[0] for ln in front.strip().splitlines()]
+        self.assertEqual(keys, ["name", "description", "model", "disallowedTools"])
+
+    def test_the_committed_roster_denies_the_edit_tools_of_every_verify_role(self):
+        """리포 정합. verify 층은 편집하지 않는 것이 그 층의 정의다."""
+        snap = read_snapshot()
+        verify = [r for r in snap["roles"] if r["props"].get("tier") == "verify"]
+        self.assertTrue(verify, "verify 역할이 스냅샷에 없다")
+        for role in verify:
+            denied = set(role["props"].get("disallowed_tools") or [])
+            self.assertTrue({"Edit", "Write", "NotebookEdit"} <= denied,
+                            f"{role['name']} 이 편집 도구를 거부하지 않는다: {sorted(denied)}")

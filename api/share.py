@@ -43,7 +43,7 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
     where, params = ["c.owner_id = $owner"], {"owner": owner}
     if ids is not None:
         where.append("c.concept_id IN $ids")
-        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[d11223a9a5d109de5]] §7
+        # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         params["ids"] = pkns.keys(owner, ids)
     elif domain:
         where.append("c.domain = $domain")

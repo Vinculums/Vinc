@@ -190,6 +190,10 @@ async function call(path: string, params?: Record<string, string | number | unde
     }
     throw new Error(`${res.status} ${await res.text()}`);
   }
+  // 자동 동기화 신호(§8) — 로컬 쓰기가 끝났다. 듣는 쪽이 없으면(웹·스케줄러 미마운트)
+  // 비용이 0이다. `/sync*`·`/connect/*` 는 뺀다 — 안 그러면 동기화가 자기를 다시 부른다.
+  if (isWrite && !WEB && !path.startsWith("/sync") && !path.startsWith("/connect/"))
+    dispatchEvent(new CustomEvent("vinc:write"));
   return res.json();
 }
 

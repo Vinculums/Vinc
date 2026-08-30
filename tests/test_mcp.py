@@ -50,7 +50,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # F10-b 의 읽는 쪽. 쓸 수만 있고 읽을 수 없던 짝 결손.
              "vinc_merge_rejections",
              # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
-             "vinc_conventions"}
+             "vinc_conventions",
+             # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(조회 전용).
+             "vinc_brief"}
 
 
 class _StubBridge(Bridge):
@@ -171,8 +173,14 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(payload["echo"], "/search")
 
     def test_unknown_method_is_32601(self):
+        """`resources/*` 비구현은 실수가 아니라 판정이다 — `vinc_conventions`·
+        `vinc_domains` 가 이미 같은 것을 도구로 낸다. W2 가 `prompts/*` 를 열었으므로
+        이 못은 이제 **갈림**을 지킨다: prompts 열림, resources 닫힘. 갈림의 반대쪽은
+        tests/test_mcp_prompts.py 가 본다(스텁 브리지가 로스터를 답해야 한다)."""
         r = self._rpc("resources/list")
         self.assertEqual(r["error"]["code"], -32601)
+        self.assertEqual(self._rpc("resources/subscribe")["error"]["code"], -32601)
+        self.assertEqual(self._rpc("completion/complete")["error"]["code"], -32601)
 
     def test_bad_arguments_is_32602(self):
         r = self._rpc("tools/call", {"name": "vinc_search", "arguments": {}})

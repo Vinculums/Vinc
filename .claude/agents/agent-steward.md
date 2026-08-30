@@ -33,6 +33,7 @@ Repositories: Vinc
 
 - scripts/graph-refs.json
 - agents/roles.json
+- scripts/age_status_lines.py
 
 ## Read before the first edit, in this order
 
@@ -61,10 +62,33 @@ Repositories: Vinc
 - merge
 - ratification
 
+## Session close
+
+Three passes at the end of a session, before the episode is written.
+
+1. Assertions, not only prose. List every sentence in the session's output of the form checked, verified, confirmed, present, absent, or returns X, and mark each one cited, assumed, or unmarked. Unmarked is the finding and its count goes in the episode. Run against the record that prompted this step it lists three, the ones in its own section 6.4.
+
+2. vinc_diagnose kind=claims, and read both lists. conflicts is a pair to adjudicate by opening the path, never by preferring the newer one. unanchored is a number to drive down by adding props.subject_path to records that name a file.
+
+3. For any plan document touched this session, vinc_doc_get it to a file and run: python -X utf8 scripts/age_status_lines.py <file>. A status line older than a commit the document cites is the finding. This is a steward step and not a CI gate because CI has no documents, the same reason the citation manifest is committed rather than fetched.
+
+None of the three decides anything. They produce a list a person acts on. The steward proposes and never performs.
+
 ## Writes to the graph
 
 - record
 - episode
+
+## Output contract
+
+A sentence of the form checked, verified, confirmed, present, absent, or returns X
+carries the tool call that produced it: the query as it was run and its first result,
+or the call id. A statement without one is reported in the word assumed.
+
+This is not a style rule. A session reported a findability check as having been asked
+in Korean when it had been asked in English, and nothing in the output told the two
+apart. Vinc cannot make an agent run a query it says it ran; this contract refuses the
+sentence instead. Reasoning: [[vinc.ops.graph-claim-decay]] section 7.4.
 
 Escalation is one rung up, per decision:agent-model-ladder. The verify tier does not
 escalate; it returns the package to its author instead.

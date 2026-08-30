@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**22종** — 읽기 14(search·recall·graph·decide·domains·suggest_ties·neighbors·
+**23종** — 읽기 15(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
@@ -91,7 +91,10 @@ _FRAGMENT_SCHEMA = {
                                                  "and Ask quote as the concept's description. Putting it "
                                                  "in props.one_liner or props.note instead still works "
                                                  "(server-side promotion) but only when this field and "
-                                                 "props.one_liner are both absent."},
+                                                 "props.one_liner are both absent. It reads back: "
+                                                 "vinc_neighbors and vinc_graph return it, so you can "
+                                                 "check what you wrote. Only Concept has the column, so "
+                                                 "it comes back empty on every other kind."},
                     # D72 — 두 시간축의 저작 가능한 쪽. `date` 와 같은 이유로 계약에
                     # 적는다: 서버는 이제 받는데 계약이 안 알려 주면 상류는 props 에
                     # 넣고, 그 자리는 정렬·필터가 안 읽는다.
@@ -103,7 +106,22 @@ _FRAGMENT_SCHEMA = {
                                                     "because comparison and bucketing are lexicographic; "
                                                     "anything else is refused with a warning and the "
                                                     "stored value is kept. Empty string clears it."},
-                    "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes)."},
+                    # v15(W13) — content_time 과 같은 이유로 계약에 적는다: 서버는
+                    # 받는데 계약이 침묵하면 상류는 props 에 넣고, 그 자리는 아무
+                    # 읽기도 구간으로 취급하지 않는다.
+                    "valid_from": {"type": "string",
+                                   "description": "Record only — when the claim this record makes became "
+                                                  "true. Same YYYY[-MM[-DD]] contract as content_time; "
+                                                  "empty string clears it. Omitting the field on a resend "
+                                                  "preserves the stored value."},
+                    "valid_until": {"type": "string",
+                                    "description": "Record only — when the claim stopped being true "
+                                                   "(half-open: the claim does not hold at this instant). "
+                                                   "Setting it is how a record is invalidated without "
+                                                   "deleting it — resend just {id, type, valid_until}. "
+                                                   "Same format contract as valid_from; empty string "
+                                                   "clears it (the claim holds again)."},
+                    "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."},
                 },
                 "required": ["id", "type"],
             },
@@ -183,9 +201,38 @@ def _t_recall(args, bridge):
 
 
 def _t_graph(args, bridge):
-    return bridge.request("GET", "/graph", params={
-        "owner": _owner(args, bridge), "seed": args["seed_id"],
-        "depth": args.get("depth", 2)})
+    # `url` — 사람이 화면에서 복사한 주소를 그대로 받는다(D: 선택이 주소가 된다).
+    # 인자로 받는 이유: 스페이스와 달리 **빠뜨리면 요청 자체가 성립하지 않아** 조용히
+    # 딴 데 가는 일이 없다. 근거: [[decision:a-selection-becomes-an-address-you-paste]]
+    seed = (args.get("seed_id") or "").strip()
+    depth = args.get("depth")
+    if not seed and args.get("url"):
+        from . import viewurl
+        got = viewurl.parse(str(args["url"]))
+        if got["kind"] == "node":
+            seed = got["seed"]
+        elif got["kind"] == "ids" and got["ids"]:
+            # 임의 선택은 시드가 여럿이다. 이 도구는 하나만 받으므로 첫 개를 쓰고
+            # **그렇게 했다고 말한다** — 조용히 고르면 나머지를 본 줄 안다.
+            seed = got["ids"][0]
+        elif got["kind"] in ("domains", "doc", "all"):
+            return {"kind": "graph", "executed": False, "seed": "",
+                    "note": f"that url selects a {got['kind']}, not one node — "
+                            f"vinc_graph needs a seed; use vinc_search or vinc_doc_get"}
+        if depth is None and got["depth"]:
+            depth = got["depth"]
+        if not seed:
+            return {"kind": "graph", "executed": False, "seed": "",
+                    "note": "could not read a node out of that url"}
+    if not seed:
+        return {"kind": "graph", "executed": False, "seed": "",
+                "note": "seed_id or url is required"}
+    out = bridge.request("GET", "/graph", params={
+        "owner": _owner(args, bridge), "seed": seed,
+        "depth": depth if depth is not None else 2})
+    if (not (args.get("seed_id") or "").strip()) and args.get("url")             and isinstance(out, dict):
+        out.setdefault("from_url", seed)
+    return out
 
 
 def _t_decide(args, bridge):
@@ -334,6 +381,13 @@ def _t_doc_delete(args, bridge):
         "id": args["doc_id"], "owner": _owner(args, bridge)})
 
 
+def _t_brief(args, bridge):
+    # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
+    return bridge.request("GET", "/brief", params={
+        "owner": _owner(args, bridge), "query": args["query"],
+        "max_excerpts": args.get("max_excerpts", 3)})
+
+
 TOOLS: list[dict] = [
     {
         "name": "vinc_search",
@@ -368,6 +422,39 @@ TOOLS: list[dict] = [
         "run": _t_search,
     },
     {
+        "name": "vinc_brief",
+        "description": "One question in, joined answer material out — the deterministic read that "
+                       "replaces a vinc_search + vinc_graph + vinc_doc_get chain. It resolves the "
+                       "question to ONE node by strict ranking, then returns that node's description, "
+                       "its canonical document excerpts and its typed relations in a single call. "
+                       "Returns {kind, executed, query, status, node:{id,title,domain,kind}, one_liner, "
+                       "body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], "
+                       "links:{degree,out,in,attached,items:[{id,title,domain,type,dir,evidence,"
+                       "confidence,note}],truncated}, candidates:[...], grounds:[id...]}. "
+                       "READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/"
+                       "links are filled; 'choose' means the leading candidates TIED and nothing was "
+                       "guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the "
+                       "numbers that tied) and ask again by its exact title; 'none' means the question "
+                       "matched nothing. NOTHING IS GENERATED: `one_liner` is quoted, never written — "
+                       "`body_src` says whether it came from the one_liner column, a props key, or a "
+                       "document excerpt, and `body_cite` names the document when it is an excerpt. "
+                       "`grounds` lists every id the material rests on, so an answer built from this "
+                       "call can cite its sources; it stays complete even when the result was shrunk to "
+                       "fit the size limit. `links.items[].evidence` is a BOOLEAN (does this relation "
+                       "carry a source sentence) and `evidence_text` is that sentence when one exists, "
+                       "so a relation can be QUOTED rather than merely counted. "
+                       "Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "query": {"type": "string",
+                      "description": "The question, in natural language."},
+            "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
+                             "description": "How many canonical document excerpts to "
+                                            "attach to a resolved node."},
+            "owner": {"type": "string"},
+        }, "required": ["query"]},
+        "run": _t_brief,
+    },
+    {
         "name": "vinc_recall",
         "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. "
                        "Returns {kind, executed, rows:[{id,title,date,owner,domain,tenant,workspace,summary,"
@@ -397,18 +484,31 @@ TOOLS: list[dict] = [
         "name": "vinc_graph",
         "description": "Pull the neighborhood around ONE known node as a whole subgraph: every node within "
                        "`depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, "
-                       "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,ppr,…layout}], "
+                       "depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,rev,updated_at,"
+                       "ppr,…layout}], "
                        "edges:[{source,target,type,cross_domain}]}. Nodes carry View ranking and layout fields "
                        "(ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, "
                        "vinc_neighbors returns the same relations without them and is far cheaper; to walk step "
                        "by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — "
                        "if you only have a phrase, run vinc_search first. depth 2 is the working default, 4 the "
-                       "ceiling. Read-only.",
+                       "ceiling. `rev` and `updated_at` are the node's current version, so you can hold what "
+                       "you read before you overwrite it; nothing on the write path demands them yet. "
+                       "Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "seed_id": {"type": "string"},
+            "seed_id": {"type": "string",
+                        "description": "Exact node id. Give this OR `url`, not neither."},
+            "url": {"type": "string",
+                    "description": "A View address copied from the app, whole URL or just "
+                                   "the #view/... fragment. It carries what the person had "
+                                   "selected: a node (#view/trace/<id>), a topic lens "
+                                   "(#view/<a,b>), an explicit set (#view/ids/<a,b,c>) or a "
+                                   "document (#view/doc/<id>), with an optional /d<n> depth "
+                                   "and a trailing /as/<viewpoint> this tool ignores. When "
+                                   "both are given, seed_id wins and the url's seed is "
+                                   "ignored; `depth` given explicitly beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
             "owner": {"type": "string"},
-        }, "required": ["seed_id"]}, "run": _t_graph,
+        }}, "run": _t_graph,
     },
     {
         "name": "vinc_decide",
@@ -437,7 +537,10 @@ TOOLS: list[dict] = [
         "name": "vinc_domains",
         "description": "List the domains actually present in this owner's graph, with per-kind node counts. "
                        "Returns {kind, executed, rows:[{domain, episodes, concepts, records, decisions, "
-                       "total}]}, largest total first. This list is FLAT: it aggregates the `domain` string "
+                       "total}]}, largest total first. Nodes with NO domain are counted too, as the single "
+                       "row '(none)' — an untopiced node is a count here, not an absence, so this is also "
+                       "how you find what still needs a topic. The free-tier topic cap does not count that "
+                       "row. This list is FLAT: it aggregates the `domain` string "
                        "column, so 'vinc' and 'vinc/design' appear as two separate rows even though they are "
                        "parent and child in the topic hierarchy — walk the hierarchy itself with "
                        "vinc_neighbors('domain:<name>'). The domain set is OPEN and inferred from stored "
@@ -479,7 +582,14 @@ TOOLS: list[dict] = [
         "name": "vinc_neighbors",
         "description": "Observe ONE node's immediate (1-hop) relation network — a lightweight "
                        "navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:"
-                       "[{rel,id,title,domain}], by_rel:{type:count}, count}. Use this to walk the "
+                       "[{rel,id,title,domain,one_liner,rev,updated_at}], by_rel:{type:count}, count}. "
+                       "`rev` and `updated_at` are that neighbour's current version, carried so a walk can "
+                       "note what it read; a `domain:` coordinate answers with child domains and members "
+                       "instead, and those rows have no version because a domain is not a stored node. "
+                       "`one_liner` is "
+                       "the concept's own description; only Concept carries that column, so it "
+                       "is an empty string on records, episodes, bridges and decisions, and that "
+                       "emptiness is a fact rather than a gap. Use this to walk the "
                        "graph one hop at a time (observe → pick next node) instead of pulling a whole "
                        "depth-2 subgraph via vinc_graph — far fewer tokens per step. "
                        "Every relation is visible from BOTH ends: seeding on a concept or decision "
@@ -608,12 +718,24 @@ TOOLS: list[dict] = [
                        "reports the TRUE total, and a group whose list was cut carries "
                        "members_truncated:true — raise member_limit to see the rest. Delegates to "
                        "the native algo extension; executed:false with a note if the extension is "
-                       "unavailable (offline unbundled).",
+                       "unavailable (offline unbundled). kind='claims' is the exception: it uses "
+                       "no algo extension and always answers. It returns "
+                       "{conflicts:[{subject_path,newer,older}], conflict_count, "
+                       "unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, "
+                       "scanned}. `conflicts` pairs the most recent measurement of a file with "
+                       "every earlier one that carries a different measured_at, so the question "
+                       "it poses is 'does this older claim still stand'. It does NOT decide "
+                       "which side is right; open the path and look. `unanchored` lists records "
+                       "that name a file in their text but carry no props.subject_path, so they "
+                       "cannot be compared with anything: that count is meant to be driven down "
+                       "by adding the field. Both lists are capped by member_limit.",
         "inputSchema": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["components", "communities", "community_context"],
+            "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims"],
                      "description": "components (WCC orphans/islands) | communities (Louvain "
                                     "clusters) | community_context (one seed's cluster + "
-                                    "representative excerpts, requires `node`)."},
+                                    "representative excerpts, requires `node`) | claims "
+                                    "(records that disagree about one file, and records about "
+                                    "code with no file named)."},
             "node": {"type": "string",
                      "description": "Seed concept id — required, and only used, when "
                                     "kind='community_context'."},
@@ -638,7 +760,18 @@ TOOLS: list[dict] = [
                        "ago; the built date in the header is a label saying when the prose was "
                        "last generated, not when these numbers were taken. This is the "
                        "only way to see the ratified vocabulary: proposing an unlisted type is "
-                       "allowed, but it lands as proposed and waits for a human.",
+                       "allowed, but it lands as proposed and waits for a human. "
+                       "THE RESPONSE ALSO TELLS YOU WHERE YOU ARE, which is why this tool "
+                       "carries it rather than a separate whoami: `owner` is the graph you "
+                       "are connected as, `scope` is 'personal' or 'team' (or 'unscoped' "
+                       "for a local single-user store), and `target` echoes local versus "
+                       "remote. Read them before your first write. On this hosted connector "
+                       "`scope` is always 'personal': a key is bound to one person and no "
+                       "tool takes a team argument, so a team graph can be neither written "
+                       "nor read from here. Team graphs are reachable only from the web app, "
+                       "which selects the team and has the account sign for it. If you meant "
+                       "to write to a team, stop: this surface cannot, and the write lands in "
+                       "the personal graph instead.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "lang": {"type": "string", "enum": ["en", "ko"],
@@ -666,7 +799,14 @@ TOOLS: list[dict] = [
                        "only what actually landed. An id owned by someone else is reported "
                        "separately in `id_conflicts`, because it is the one skip a retry cannot "
                        "fix: node ids are a single global namespace, so that slug is not "
-                       "available to you at all. Pick a different id rather than retrying. Call vinc_conventions once before your first write "
+                       "available to you at all. Pick a different id rather than retrying. "
+                       "The result also carries `stored` — each node READ BACK as it now sits in "
+                       "the graph (id, kind, and the fields that kind actually keeps). Diff it "
+                       "against what you sent instead of trusting the counts: a field a kind has "
+                       "no column for is absent from `stored`, and a domain you sent appears there "
+                       "in its normalized form. `stored_truncated` means the read-back hit its size "
+                       "budget and that many nodes were left out (they were still written). "
+                       "Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
         "inputSchema": _FRAGMENT_SCHEMA,
@@ -736,8 +876,15 @@ TOOLS: list[dict] = [
         "description": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to "
                        "create (the returned doc_id identifies it); pass doc_id to edit in place "
                        "(re-chunked losslessly, stale chunks removed). The store IS the source of "
-                       "truth — no external file is needed. Returns {doc_id, chunks, replaced, "
-                       "content_hash, skipped}. Unchanged text is a no-op (skipped=true).",
+                       "truth — no external file is needed. Returns {doc_id, created, chunks, "
+                       "replaced, content_hash, skipped, warnings}. Unchanged text is a no-op "
+                       "(skipped=true). READ `created`: it is the only field that separates "
+                       "editing a document from making a second one, because a fresh write and "
+                       "an unchanged re-write both report replaced 0. A document's own front "
+                       "matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; "
+                       "passing the declared value here does not edit that document, it creates "
+                       "another one with the same title. When the body declares an id different "
+                       "from the one being written to, `warnings` says so.",
         "inputSchema": {"type": "object", "properties": {
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
@@ -754,10 +901,17 @@ TOOLS: list[dict] = [
                        "the search and view graph instead of sitting as inert text. "
                        "apply:false (the DEFAULT) only proposes: it returns the candidates and "
                        "writes NOTHING, which is the call to make first. apply:true writes them: "
-                       "each candidate is MERGEd as concept:{slug} with status='proposed' and an "
-                       "empty domain (topic assignment is a later edit), and this document's "
-                       "MENTIONS are relinked. Existing concepts are matched, never overwritten — "
-                       "a title or one_liner you already refined is safe. "
+                       "each candidate is MERGEd as concept:{slug} with status='proposed' and the "
+                       "DOCUMENT'S OWN TOPIC as its domain (the front-matter `domain:` line if "
+                       "present, else the document's derived topic). A document with neither "
+                       "refuses apply with an error saying to give it a topic first — applying "
+                       "topic-less concepts only multiplies what has no topic. This document's "
+                       "MENTIONS are then relinked. Existing concepts are matched, never "
+                       "overwritten — a title or one_liner you already refined is safe, and an "
+                       "empty content_time or domain on a matched concept is filled in. "
+                       "Headings that are document structure words (method, provenance, verdict "
+                       "...), clause-shaped sentences, or longer than six words yield no "
+                       "candidates in the deterministic mode. "
                        "The deterministic extraction cleans what it reads: a heading loses its "
                        "section number or letter prefix (\"3.1 Identity\" becomes \"Identity\", "
                        "which is also what the slug is derived from) and its inline markdown "
@@ -846,6 +1000,8 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_merge_reject": {"title": "Reject a merge pair", "readOnlyHint": False,
                           "destructiveHint": False, "idempotentHint": True},
     "vinc_merge_rejections": {"title": "List rejected merge pairs", "readOnlyHint": True},
+    # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기. 조회 전용이다.
+    "vinc_brief": {"title": "Brief on a question", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
@@ -956,7 +1112,45 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
 
 #: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
 #: (vinc_graph 등 — JSON 을 중간에서 자르면 깨진 구문이 된다).
-SHRINKERS = {"vinc_search": _shrink_search_result}
+def _shrink_brief_result(out: dict, budget: int) -> dict | None:
+    """vinc_brief 결과를 예산 안으로 줄인다 — **발췌를 먼저, 관계를 나중에** 덜어낸다.
+
+    관계는 그 노드의 근거 지도라 마지막까지 남긴다. 발췌는 `grounds` 에 doc_id 가
+    남으므로 vinc_doc_get 으로 되찾을 수 있다 — 덜어내도 길이 끊기지 않는다는 뜻이다.
+    줄일 수 없으면 None 을 돌려 기존 거부 경로로 보낸다(조용한 절단보다 거부가 정직하다).
+    근거: [[vinc.plan.mcp-agent-surface §4]]"""
+    if not isinstance(out, dict):
+        return None
+
+    def _size() -> int:
+        return len(json.dumps(out, ensure_ascii=False))
+
+    ex = out.get("excerpts")
+    links = out.get("links")
+    items = links.get("items") if isinstance(links, dict) else None
+    dropped_ex = dropped_ln = 0
+    if isinstance(ex, list):
+        while ex and _size() > budget:
+            ex.pop()
+            dropped_ex += 1
+    if isinstance(items, list):
+        while items and _size() > budget:
+            items.pop()
+            dropped_ln += 1
+    if _size() > budget:
+        return None
+    if dropped_ex or dropped_ln:
+        out["shrunk"] = {"excerpts_dropped": dropped_ex, "links_dropped": dropped_ln}
+        note = ("shrunk to fit the result size limit: dropped %d excerpt(s) then %d "
+                "link(s); `grounds` still lists every id" % (dropped_ex, dropped_ln))
+        out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
+    return out
+
+
+SHRINKERS = {"vinc_search": _shrink_search_result,
+             # W1 — brief 는 조밀한 이웃에서 예산을 넘길 수 있다. 정책으로
+             # 강등한다: 발췌부터 덜고 관계는 마지막까지 남긴다.
+             "vinc_brief": _shrink_brief_result}
 
 
 def call(name: str, args: dict | None, bridge: Bridge,
@@ -1010,6 +1204,39 @@ def call(name: str, args: dict | None, bridge: Bridge,
 #: 같은 두 줄이 붙으면 잡음이고 잡음은 안 읽힌다. 첫 쓰기 전에 부르는 자리 하나와
 #: 쓰기 둘이면 오배치가 조용한 곳을 덮는다:
 #: [[decision:identity-rides-on-the-first-door-not-a-whoami]].
+#: 도구 → 팀 역할 등급. **주석표에서 유도한다** — 세 번째 표를 만들지 않는다.
+#:
+#: op 표(`_EDITOR_OPS`/`_ADMIN_OPS`)로는 못 짠다: 그 표는 **프록시 op** 로 키가 잡혀
+#: 있는데 도구 22개 중 6개(neighbors·path·merge_candidates·merge_reject·
+#: merge_rejections·diagnose)는 프록시 op 가 아예 없다. 대조 실측(2026-08-25): op 로
+#: 매핑되는 16개에서 주석 유도 등급과 두 표가 **불일치 0** 이고, 유도는 고아 6개까지
+#: 덮는다.
+#:
+#: 주석이 없으면 **admin** 이다(fail-closed) — 새 도구가 등급 없이 들어와도 조용히
+#: 열리지 않는다. `tests/test_mcp_space_address.py` 가 전 도구의 주석 실재를 못 박는다.
+def tool_tier(name: str) -> str:
+    """`viewer` · `editor` · `admin`. 모르는 도구는 admin(닫힘)."""
+    a = _ANNOTATIONS.get(name)
+    if not a:
+        return "admin"
+    if a.get("destructiveHint"):
+        return "admin"
+    if a.get("readOnlyHint"):
+        return "viewer"
+    return "editor"
+
+
+#: 그 역할이 그 등급을 할 수 있나. 모르는 역할은 거부(fail-closed) — 계정의
+#: `roleAllows` 와 같은 태도이고, 거기와 어긋나면 그 op 만 조용히 갈린다.
+_TIER_ORDER = {"viewer": 0, "editor": 1, "admin": 2}
+
+
+def role_allows(role: str, tool: str) -> bool:
+    have = _TIER_ORDER.get((role or "").strip())
+    need = _TIER_ORDER[tool_tier(tool)]
+    return have is not None and have >= need
+
+
 _IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
 
 

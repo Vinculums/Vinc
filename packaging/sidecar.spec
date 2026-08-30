@@ -76,6 +76,11 @@ a = Analysis(
         # store/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
         "vinc_mcp.remote", "vinc_mcp.entitlement",
         "vinc_mcp.store", "vinc_mcp.edverify",
+        # W2 — 역할 렌더러 + prompts. rpc 가 최상위로 끄므로 정적 분석이 잡지만,
+        # store/edverify 와 같은 이유로 명시해 못 박는다. 이 모듈이 빠지면 rpc 임포트
+        # 자체가 죽어 MCP 표면이 통째로 사라진다. 렌더러가 `scripts/` 가 아니라 여기
+        # 있는 이유이기도 하다 — 동결 바이너리는 `scripts/` 를 싣지 않는다.
+        "vinc_mcp.roles",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다.

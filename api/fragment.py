@@ -120,6 +120,233 @@ class _ThemeFold:
                 self.proposed.append(entry)
 
 
+#: 계약이 선언한 선택 필드 → **그 필드를 실제로 열에 쓰는 라벨**.
+#:
+#: 이 표가 없던 동안 `_merge_node` 는 자기 라벨이 안 쓰는 필드를 **말없이 버렸다**.
+#: 실측(2026-08-24): 결정 노드 셋에 `content_time` 을 실어 보냈는데 `merged` 는
+#: 성공이고 `warnings` 는 비어 있었으며 값은 어디에도 없었다. 스키마가 그렇게
+#: 생긴 것은 맞다(Decision 에는 그 열이 없다 — [[vinc.plan.sync-node-time-fields]]
+#: §6.2 인벤토리). 문제는 스키마가 아니라 **성공이라고 답한 것**이다.
+#:
+#: Entity 분기가 `domain`·`props` 에 이미 같은 경고를 내고 있었다 — 그 선례를
+#: 나머지 필드로 넓히는 것이 전부다.
+_KEPT_FIELDS: dict[str, frozenset[str]] = {
+    "Concept":  frozenset({"title", "domain", "tags", "props", "one_liner", "content_time"}),
+    # v15(W13) — 유효구간 둘은 **Record 에만** 있다. 다른 종류에 실으면 아래
+    # `_warn_unkept_fields` 가 말하고 값은 버려진다(조용한 유실 금지).
+    "Record":   frozenset({"title", "domain", "tags", "props", "content_time",
+                           "valid_from", "valid_until"}),
+    "Decision": frozenset({"title", "domain", "tags", "props"}),
+    "Episode":  frozenset({"title", "domain", "tags", "props", "date", "summary"}),
+    "Bridge":   frozenset({"title", "tags", "props"}),
+    "Domain":   frozenset(),          # 열이 `name` 하나뿐이다
+    "Entity":   frozenset({"title", "tags"}),
+}
+#: 위 표가 판정하는 필드 전체. 여기 없는 키(오타·상류 메타)는 **묻지 않는다** —
+#: 팩 가져오기·동기화가 부가 키를 싣는 경로가 있고, 모르는 키까지 경고하면 정상
+#: 왕복이 소음으로 덮인다. 잡으려는 것은 "계약에 있는 필드를 엉뚱한 종류에 실었다"다.
+_CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
+                              "content_time", "date", "summary",
+                              "valid_from", "valid_until"})   # v15(W13)
+#: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
+_ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
+
+
+def _warn_unkept_fields(node: dict, label: str, nid: str,
+                        warnings: list[str]) -> None:
+    """이 라벨이 **보관하지 않는** 계약 필드를 실어 왔으면 말한다(조용한 유실 금지).
+
+    쓰기를 막지는 않는다. 이 경로는 ingest·sync apply·팩 가져오기가 함께 쓰므로
+    거부로 만들면 필드 하나가 동기화 전체를 세운다 — 침묵을 고치는 데 필요한 것은
+    거부가 아니라 **말**이다. `merged` 는 여전히 실제로 들어간 것만 센다."""
+    kept = _KEPT_FIELDS.get(label)
+    if kept is None:
+        return
+    for f in sorted(_CONTRACT_FIELDS - kept):
+        if node.get(f) is None or (label, f) in _ALREADY_WARNED:
+            continue
+        warnings.append(
+            f"node.{f} not persisted on {label} (id={nid}) — no such column; "
+            f"the value was dropped, not stored")
+
+
+#: owner_id 열을 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙
+#: 승계. **쓰기(`_merge_node`)와 되읽기(`_stored_nodes`)가 같은 목록을 봐야 한다** —
+#: 갈라지면 되읽기가 0행을 만나고, 호출부는 "방금 쓴 것이 없다"로 읽는다.
+_OWNER_SCOPED_LABELS = ("Record", "Concept", "Episode", "Bridge", "Entity", "Decision")
+
+#: 되읽기 예산(직렬화 바이트). 요청 본문 상한이 응답까지 묶어 주지는 **않는다** —
+#: 필드 하나만 고쳐 보낸 노드도 되읽기는 **저장된 props 전량**을 싣기 때문에 응답이
+#: 요청보다 커질 수 있고, 허브는 단일 라이터 컨테이너다. 넘으면 자르되 자른 수를
+#: 필드로 밝힌다(조용히 자르지 않는다 — 이 항목이 고치려는 고장이 바로 그것이다).
+_READBACK_BUDGET = 256 * 1024
+
+#: R4 — 코드에 대한 주장을 **조회 가능**하게 만드는 예약 props 셋. 산문 규약(§3:
+#: "측정으로 쓰고 경로를 적는다")은 사람이 읽어야 비교되고, 이 셋은 질의가 비교한다.
+#: `record` 만 싣는다 — 개념은 서술하고, 결정은 고르고, **측정하는 것은 기록**이다.
+#: 근거: [[vinc.ops.graph-claim-decay]] §7.3 R4.
+_CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
+
+
+#: 이 그래프가 기록을 갖는 리포. 오타 난 한정자는 **조용히 새 네임스페이스를 만든다**
+#: (`vnic:` 는 어떤 것과도 안 맞고 아무 오류도 안 난다). 거부하지 않고 경고만 하는
+#: 이유는 리포가 늘 수 있고 목록이 낡을 수 있어서다 — 막는 것보다 말하는 것이 맞다.
+#: 정본은 역할 스냅샷의 `repos`(`agents/roles.json`).
+_KNOWN_REPOS = frozenset({"vinc", "vinc-homepage", "vincs-app"})
+
+
+def _split_subject(v: str) -> tuple[str, str]:
+    """`repo:path` → (repo, path). 한정자가 없으면 repo 는 빈 문자열.
+
+    윈도 드라이브 문자(`D:/x`)를 한정자로 오인하지 않는다 — 한 글자짜리는 리포가 아니다."""
+    head, sep, tail = v.partition(":")
+    if not sep or len(head) < 2 or "/" in head:
+        return "", v
+    return head.lower(), tail
+
+
+def _norm_subject_path(v) -> str:
+    r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
+
+    `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
+    "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
+    것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
+    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다).
+
+    형식은 `repo:path` 다. **경로만으로는 부족하다** — 이 그래프는 리포 셋에 대한
+    기록을 갖는데 `subject_path` 가 리포를 안 담으면 동명 파일 둘이 한 키에 묶여
+    **짝이 아닌 것이 짝으로** 제시된다. 닻이 빠진 것보다 비싼 고장이다
+    ([[record:subject-path-carries-no-repository-so-two-repos-can-collide]]).
+
+    한정자가 없으면 **지어내지 않는다.** 어느 리포인지는 값이 말해야 하고, 서버는
+    모른다. 없는 채로 두고 경고한다."""
+    repo, path = _split_subject(str(v or "").strip().replace("\\", "/"))
+    while path.startswith("./"):
+        path = path[2:]
+    path = path.strip().lstrip("/")
+    return f"{repo}:{path}" if repo and path else path
+
+
+def _claim_props(props, label: str, nid: str, warnings: list[str]):
+    """예약 주장 필드를 정규화한다. props 원본은 건드리지 않는다(부분 재전송 함정).
+
+    형식 위반은 **지우지 않고 경고한다**: props 는 자유 속성이라 서버가 값을 버리면
+    그 자리가 유일한 사본이었을 때 복구가 없다. 열(`content_time`)과 반대 방향으로
+    보이지만 이유는 같다 — 잃는 쪽을 고르지 않는다."""
+    if not isinstance(props, dict) or not any(k in props for k in _CLAIM_PROPS):
+        return props
+    out = props
+    if label != "Record":
+        for k in _CLAIM_PROPS:
+            if k in props:
+                warnings.append(
+                    f"props.{k} is a claim field carried by Record only (id={nid}) — "
+                    f"stored on {label}, but the claim review will not read it there")
+        return out
+    raw = props.get("subject_path")
+    if raw is not None:
+        norm = _norm_subject_path(raw)
+        if norm != raw:
+            out = {**props, "subject_path": norm}
+        repo, path = _split_subject(norm)
+        if path and not repo:
+            warnings.append(
+                f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
+                f"but a bare path cannot be compared across repositories; "
+                f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
+        elif repo and repo not in _KNOWN_REPOS:
+            warnings.append(
+                f"props.subject_path repository '{repo}' is not one this graph knows "
+                f"(id={nid}) — stored, but a typo here makes a namespace of its own")
+    at = props.get("measured_at")
+    if at is not None:
+        from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
+        if not _ds._norm_content_time(str(at)):
+            warnings.append(
+                f"props.measured_at '{at}' is not YYYY[-MM[-DD]] (id={nid}) — stored "
+                f"as sent, but claims cannot be ordered against it")
+    return out
+
+
+def _stored_nodes(store, types: dict[str, str], owner: str,
+                  warnings: list[str]) -> tuple[list[dict], int]:
+    """MERGE 직후의 **저장형**을 되읽는다(R3) — `(nodes, 잘린 수)`.
+
+    왜 개수가 아니라 형태인가: `merged 14 created, 4 matched, warnings 0` 은 참이면서
+    동시에 필드 하나가 사라진 것을 감췄다(2026-08-24 실측). 개수는 "행이 몇 개
+    움직였나"를 말할 뿐 **무엇이 들어갔는지**는 말하지 않는다. 호출부가 같은 턴에
+    보낸 것과 대조할 수 있으려면 저장형 자체가 응답에 있어야 한다.
+
+    열 목록은 `_KEPT_FIELDS` 하나를 쓴다. 경고가 "이 라벨은 이 필드를 안 보관한다"고
+    말하는 근거와 되읽기가 뽑는 열이 **같은 표**여야, 응답에서 어떤 필드가 안 보이는
+    것이 곧 "그 종류엔 그 열이 없다"는 사실이 된다.
+
+    `Domain` 은 제외한다 — 열이 `name` 하나뿐이라 저장형이 곧 id 자신이다.
+
+    되읽기는 **증강**이다. 여기서 나는 실패가 쓰기 결과를 깨면 안 된다(쓰기는 이미
+    커밋됐다). 그래서 라벨 단위로 삼키고 넘어간다.
+
+    엣지는 아직 안 싣는다: 관계 테이블 9종에 걸쳐 열이 다르고, 노드에서와 달리
+    엣지 필드가 조용히 사라진 실측이 아직 없다. 재는 것이 먼저다."""
+    from .query import _props_to_obj      # 국소 사용 — 쓰기 경로를 읽기 모듈에 매달지 않는다
+    groups: dict[tuple[str, str], list[str]] = {}
+    for nid, ntype in types.items():
+        label, pk = (_ENTITY_LABEL, _ENTITY_ID) if _is_open(ntype) else _NODE_MAP[ntype]
+        if not _KEPT_FIELDS.get(label):
+            continue
+        groups.setdefault((label, pk), []).append(nid)
+    out: list[dict] = []
+    dropped = 0
+    budget = _READBACK_BUDGET
+    for (label, pk), ids in groups.items():
+        cols = sorted(_KEPT_FIELDS[label])
+        scoped = label in _OWNER_SCOPED_LABELS
+        # `IN` 바인딩은 **물리 키**다 — 읽기 훅은 돌려주는 값만 벗기고 Cypher 술어는
+        # 물리 열을 그대로 본다(`store/embedded_backend.py` `_exec_to_dicts`).
+        bind = list(pkns.keys(owner, ids)) if scoped else list(ids)
+        proj = "".join(f", n.{c} AS {c}" for c in cols)
+        try:
+            rows = store.run(
+                f"MATCH (n:{label}) WHERE n.{pk} IN $ids"
+                + (" AND n.owner_id = $owner" if scoped else "")
+                + f" RETURN n.{pk} AS _k{proj}",
+                {"ids": bind, "owner": owner})
+        except Exception as e:
+            # **삼키지 않는다.** 되읽기가 증강이라 쓰기를 깨지 않는 것은 맞지만,
+            # 조용히 빠지면 호출부는 "그 종류는 안 들어갔다"로 읽는다. 이 파일이
+            # 고치려는 고장이 바로 그것이다.
+            warnings.append(f"read-back failed for {label}: {type(e).__name__}")
+            continue
+        for r in rows:
+            # ⚠ **되돌림표를 물리 키로 만들면 안 된다.** 훅이 이미 벗겨서 준 값을
+            # 물리 키로 조회하게 되어 전부 빗나가고, `stored` 가 조용히 빈 목록이
+            # 된다(플래그 켠 CI 에서만 나므로 기본 스위트는 초록으로 통과한다).
+            # 바인딩한 키와 돌려받는 키가 다르다는 것이 이 층의 계약이다.
+            nid = pkns.strip(r.get("_k") or "")
+            if nid not in types:
+                continue
+            node: dict = {"id": nid, "kind": types[nid]}
+            for c in cols:
+                v = r.get(c)
+                node[c] = (_props_to_obj(v) if c == "props"
+                           else list(v) if isinstance(v, list) else v or "")
+            size = len(json.dumps(node, ensure_ascii=False, default=str))
+            if size > budget:
+                dropped += 1
+                continue
+            budget -= size
+            out.append(node)
+    # 병합된 것보다 적게 돌아왔으면 **말한다.** 2026-08-25 에 이 자리가 조용히 빈
+    # 목록을 냈다(물리 키로 되돌림표를 지어 전부 빗나갔다). 개수가 안 맞는다는 사실
+    # 하나면 그때 소리가 났을 것이고, 플래그 켠 CI 까지 가지 않았다.
+    expected = sum(len(v) for v in groups.values())
+    if len(out) + dropped < expected:
+        warnings.append(
+            f"read-back returned {len(out) + dropped} of {expected} merged nodes — "
+            "`stored` is incomplete, do not read it as what was written")
+    return out, dropped
+
+
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 conflicts: list[str] | None = None) -> str | None:
@@ -144,7 +371,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # PK 네임스페이싱(design A) 의 물리 키 판별자가 U+001F 존재 여부다
         # (strip 이 이 바이트로 owner 를 잘라낸다). 사용자 입력에 이 바이트가
         # 섞이면 나중에 물리 키로 오인되므로 지금 이 노드만 스킵한다.
-        # 근거: [[d11223a9a5d109de5]] §7
+        # 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
         return None
@@ -174,9 +401,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         except (TypeError, ValueError):
             pass   # 직렬화 불가 props 는 아래 기존 경로가 경고로 처리한다
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
+    _warn_unkept_fields(node, label, nid, warnings)
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
-    owner_scoped = label in ("Record", "Concept", "Episode", "Bridge", "Entity",
-                             "Decision")
+    owner_scoped = label in _OWNER_SCOPED_LABELS
     # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. **owner-스코프 라벨만**
     # 합성한다: `Domain` 은 열이 `name` 하나뿐이라 소유를 아예 담지 않고 전역 공유가
     # 성립하며(engines/domain_hierarchy 의 소유 모델), 그래서 마이그레이션 대상 라벨
@@ -213,7 +440,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # — 노드 PK 가 전역 네임스페이스라 그 슬러그의 물리 노드는 허브에 하나뿐이다.
             # 그래서 이유·영속성·다음 행동을 한 문장에 싣고, 아래 `id_conflicts` 로
             # **구조화해서** 낸다(warnings 배열은 호스트가 안 보여 주기도 한다).
-            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[d11223a9a5d109de5]].
+            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[vinc.plan.node-pk-namespacing]].
             if conflicts is not None:
                 conflicts.append(nid)
             warnings.append(
@@ -286,7 +513,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         if node.get("tags") is not None:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
-            _set("props", json.dumps(node["props"], ensure_ascii=False, sort_keys=True))
+            _set("props", json.dumps(_claim_props(node["props"], label, nid, warnings),
+                                     ensure_ascii=False, sort_keys=True))
         if label == "Concept":
             # date/summary 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이
             # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
@@ -319,6 +547,37 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                     warnings.append(
                         f"content_time '{_raw}' is not YYYY[-MM[-DD]] — kept the stored "
                         f"value (id={nid})")
+        if label == "Record":
+            # v15(W13) — **유효구간** [valid_from, valid_until). 규칙은 content_time
+            # 과 같다: 키가 있을 때만 쓰고(부분 재전송은 보존), 형식 위반은 쓰지 않고
+            # 경고하며, 빈 문자열은 명시적 지우기다. props 승격은 없다 — 이 두 필드는
+            # 레거시 자리가 없던 신설이라 승격할 관행 자체가 없다(YAGNI).
+            # 무효화("이 주장은 X 까지였다")는 valid_until 만 실은 부분 재전송으로
+            # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
+            # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
+            from . import docstore as _ds2      # 지연 import — 검증기 1벌 유지
+            for _vcol in ("valid_from", "valid_until"):
+                _vraw = node.get(_vcol)
+                if _vraw is None:
+                    continue
+                _vnorm = _ds2._norm_content_time(str(_vraw))
+                if _vnorm or not str(_vraw).strip():
+                    _set(_vcol, _vnorm)
+                else:
+                    warnings.append(
+                        f"{_vcol} '{_vraw}' is not YYYY[-MM[-DD]] — kept the stored "
+                        f"value (id={nid})")
+            # 뒤집힌 구간은 **저장하되 말한다** — 두 값이 각자 합법이라 거부하면
+            # 잃는 쪽을 고르는 일이 되고, 침묵하면 "T 에 유효한가" 질의가 전부
+            # 거짓이 된다. 유효값은 방금 실은 것, 없으면 저장된 것(사전식 비교 —
+            # 접두 형식이라 자릿수가 달라도 순서가 선다).
+            _vf = params.get("valid_from", current.get("valid_from") or "")
+            _vu = params.get("valid_until", current.get("valid_until") or "")
+            if _vf and _vu and _vu < _vf:
+                warnings.append(
+                    f"validity interval inverted — valid_until '{_vu}' precedes "
+                    f"valid_from '{_vf}' (id={nid}); stored as sent, but no instant "
+                    f"falls inside it")
         if label == "Episode":
             # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
             #
@@ -548,7 +807,7 @@ def _resolve_endpoint_type(store, nid: str, *, owner: str | None,
     SEC-3(``osc``): owner 강제 경로에서는 소유로 건다. 안 걸면 남의 노드가 **존재하는지**
     알려 주고, 더 나쁜 것은 그 노드로 향하는 엣지를 해석해 준다. 프로브 실패(방언·
     미프로비저닝)는 종전 동작(미선언 경고)으로 조용히 강등한다 — 해석은 증강이다.
-    근거: [[d11223a9a5d109de5]] §7"""
+    근거: [[vinc.plan.node-pk-namespacing]] §7"""
     prefix = nid.split(":", 1)[0] if ":" in nid else ""
     if prefix == "domain":
         return ""
@@ -592,7 +851,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
     if pkns.has_sep(edge):
         # 노드와 같은 이유(_merge_node 주석) — U+001F 는 물리 키 판별자라 엣지
-        # 끝점/타입에 섞이면 안 된다. 근거: [[d11223a9a5d109de5]] §7
+        # 끝점/타입에 섞이면 안 된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"edge contains U+001F (reserved for PK namespacing) — skipped ({src}→{dst})")
         return None
@@ -606,7 +865,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # owner 를 `DEFAULT_OWNER` 로 메우는 이유: 아래 `_stamp_edge_endpoints` 가 이미
     # 같은 코얼레스로 owner 를 받아 툼스톤 `ekey` 를 합성한다. 여기서 안 메우면
     # owner 없이 직접 부른 경로에서 노드 키는 논리인데 ekey 만 합성돼 삭제 표식이
-    # 상쇄되지 않는다. 근거: [[d11223a9a5d109de5]] §7
+    # 상쇄되지 않는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     eowner = owner or DEFAULT_OWNER
     ksrc, kdst = _key(eowner, src), _key(eowner, dst)
     # axis2 item1 — 페이로드에 안 실린 끝점은 **스토어에 물어본다**. `declared` 에
@@ -808,7 +1067,7 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
 
     ``owner``: 쓰기 경로에 있는 **조회**라 PK 네임스페이싱을 함께 태워야 한다 —
     안 태우면 플래그가 켜진 스토어에서 이 조회가 항상 0행이라 방금 정상으로 이은
-    결정에까지 고아 경고가 붙는다([[d11223a9a5d109de5]] §7)."""
+    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7)."""
     for nid, ntype in types.items():
         if ntype != "decision":
             continue
@@ -859,11 +1118,12 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
 
 def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
-                   max_domains: int | None = None) -> dict:
+                   max_domains: int | None = None,
+                   read_back: bool = False) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
-    [id_conflicts:[…]]}``. ``id_conflicts`` 는 **남이 이미 가진 id** 라 영영 쓸 수
+    [id_conflicts:[…]], [stored:[…]], [stored_truncated:N]}``. ``id_conflicts`` 는 **남이 이미 가진 id** 라 영영 쓸 수
     없는 것들이다 — 재시도가 고치지 못하는 유일한 스킵이라 따로 낸다.
 
     ``themes``(ThemeStore, 선택): 개방층 타입의 어휘 편입(D11-R2 §3)에 쓴다 —
@@ -877,7 +1137,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     ``max_domains``(선택): 무료 등급 주제 개수 상한(AP-1 §3.3). **기본 None = 무제한**
     이라는 점이 설계의 핵심이다 — sync 복제·로컬 경로가 아무 코드 변경 없이 자동
     면제되고, 위험이 "면제를 잊음"(상한 초과 사용자의 복제 파손)에서 "적용을
-    잊음"(상한이 안 걸림)으로 뒤집힌다. 뒤쪽이 훨씬 싼 실패다."""
+    잊음"(상한이 안 걸림)으로 뒤집힌다. 뒤쪽이 훨씬 싼 실패다.
+
+    ``read_back``(선택): 응답에 ``stored`` 를 싣는다 — MERGE 직후 되읽은 **저장형**
+    노드 목록(`_stored_nodes`). **ingest 라우트만 켠다**(`themes` 와 같은 이유로
+    호출부별 분기다): sync 복제·팩 가져오기는 수백 노드를 한 번에 밀어넣는데, 거기서
+    저장형 전량을 되돌리면 응답이 요청보다 커지고 아무도 그것을 읽지 않는다. 되읽기가
+    필요한 곳은 사람이 손으로 페이로드를 짜는 자리다."""
     warnings: list[str] = []
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
@@ -945,6 +1211,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
               "executed": True, "owner": owner}
     if fold.proposed:
         result["proposed_types"] = fold.proposed
+    if read_back and types:
+        # 쓰기 응답이 "몇 개 움직였나"만 말하던 자리(R3). 되읽기는 쓰기가 끝난 뒤에
+        # 하므로 여기서 실패해도 위의 커밋은 유효하다.
+        stored, truncated = _stored_nodes(store, types, owner, warnings)
+        result["stored"] = stored
+        if truncated:
+            result["stored_truncated"] = truncated
     if id_conflicts:
         # warnings 안의 산문이 아니라 **필드**로 낸다. 호스트가 warnings 를 접거나
         # 안 보여 주면 저작자는 자기 노드가 사라진 줄도 모른다(감사 H1 의 조용한 절반).

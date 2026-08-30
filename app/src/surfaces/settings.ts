@@ -1,5 +1,5 @@
 import { cfg, teamsApi, WEB, shellInvoke } from "../api";
-import { accountKey, accountWho, connectAccount, forgetAccount, keyIsOnDisk,
+import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc } from "../components";
@@ -168,10 +168,13 @@ export async function renderSettings(el: HTMLElement) {
     // 행도 부르므로, 폴링을 이 탭 안에 두면 세 벌이 된다.
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
+      // 연결 여부와 표시할 이름은 **다른 질문**이다. 수동으로 붙여넣은 키는 누구
+      // 것인지 알 수 없어 이름이 없고, 이름으로 갈랐더니 로그인해도 미연결 화면이
+      // 나왔다. 카피(`acctConnected`)는 빈 이름을 이미 감당한다.
       const who = accountWho();
-      if (who) {
+      if (hasAccount()) {
         acctBox.innerHTML = `
-          <p>${U.acctConnected(esc(who))}
+          <p>${U.acctConnected(who ? esc(who) : "")}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>
           <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
@@ -187,7 +190,11 @@ export async function renderSettings(el: HTMLElement) {
           renderAccount(body);
         });
       } else {
+        // 지금 상태를 먼저 말한다. 첫 실행이 선택을 요구하게 되면서(firstrun) 여기가
+        // **되돌아오는 유일한 길**이 됐는데, 여태 이 자리는 연결 버튼만 있어서
+        // "오프라인"이 고른 상태가 아니라 아직 안 한 일처럼 보였다.
         acctBox.innerHTML = `
+          <p class="hint">${U.acctOffline}</p>
           <p><button class="btn" id="acct-connect">${U.acctConnect}</button></p>
           <p class="hint">${U.acctConnectHint}</p>
           <div id="acct-result" class="hint" style="font-size:.78rem"></div>`;
@@ -213,7 +220,17 @@ export async function renderSettings(el: HTMLElement) {
         const rows: Array<{ domain: string }> = res.domains || [];
         const selected = new Set<string>(res.selected || []);
         if (!rows.length) { domBox.textContent = U.syncNoDomains; return; }
-        domBox.innerHTML = rows.map((r) => {
+        // 기본 선택은 비어 있고, 비어 있으면 export 가 아무것도 안 훑는다. 그러면 계정을
+        // 붙여 놓고도 올라가는 것이 없는데 화면은 그 말을 안 했다 — 사용자가 "동기화됐다"고
+        // 믿을 근거는 [연결됨]뿐이고 그건 참이므로 오해가 안 풀린다.
+        //
+        // 대신 **골라 주지 않는다.** 안 고른 것은 이 기기에만 남는다는 것이 이 섹션의 약속
+        // (`syncHint`)이고, 대신 골라 주면 그 약속을 깨는 쪽이 기본값이 된다. 물어보는 것이
+        // 이 약속을 지키는 유일한 방법이다.
+        const wasEmpty = !selected.size;
+        const nudge = hasAccount() && wasEmpty
+          ? `<p class="hint" style="margin:.2rem 0 .5rem">${U.syncNonePicked}</p>` : "";
+        domBox.innerHTML = nudge + rows.map((r) => {
           const on = selected.has(r.domain) ? " checked" : "";
           const safe = r.domain.replace(/"/g, "&quot;");
           return `<label style="display:block;font-weight:400;margin:.15rem 0">
@@ -224,6 +241,12 @@ export async function renderSettings(el: HTMLElement) {
             const picked = [...domBox.querySelectorAll<HTMLInputElement>("[data-sync-dom]:checked")]
               .map((c) => c.dataset.syncDom!);
             try { await api!.setSyncDomains(picked); } catch { /* 사이드카 미가동 무시 */ }
+            // 안내는 "고른 것이 없다"는 **사실**이므로 그 사실이 뒤집힐 때 같이 뒤집혀야
+            // 한다 — 처음 하나를 고르면 걷히고, 마지막 하나를 풀면 돌아온다. 고르는
+            // 방향만 보면 후자에서 참인 문장이 화면에서 사라진 채 남는다(실측).
+            // 되그리기가 반복되지 않는 이유: 다시 그린 뒤에는 `wasEmpty` 가 새 상태와
+            // 같아져 조건이 거짓이 된다.
+            if (!picked.length !== wasEmpty) void loadDomains();
           }));
       } catch { domBox.textContent = U.syncNoDomains; }
     }
@@ -241,7 +264,11 @@ export async function renderSettings(el: HTMLElement) {
         const r = done.result || {};
         const up = r?.push?.sent ?? 0;
         const down = (r?.pull?.applied ?? 0) + (r?.pull?.merged ?? 0);
-        syncResult.textContent = U.syncDone(up, down);
+        // 문서 채널(D45 P3 배선) — 오간 게 있을 때만 한 줄 덧붙인다.
+        const dUp = r?.docs_push?.sent ?? 0;
+        const dDown = (r?.docs_pull?.applied ?? 0) + (r?.docs_pull?.updated ?? 0);
+        syncResult.textContent = U.syncDone(up, down)
+          + (dUp || dDown ? U.syncDocs(dUp, dDown) : "");
         void loadDomains();
       } catch (e: any) {
         syncResult.textContent = `${U.syncFail}: ${(e && e.message) || e}`;
@@ -309,14 +336,38 @@ export async function renderSettings(el: HTMLElement) {
       </ul>
       <div id="cli-note" class="hint hint-sm break-all"></div>`;
     const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
+    /** ⚠ **성공했다고 말하기 전에 결과를 읽는다.**
+     *
+     *  여태 이 자리는 호출이 던지지만 않으면 "등록됐어요"라고 했다. 그런데 호스트
+     *  CLI 에 위임하는 경로(Claude Code · Codex)는 그 CLI 가 없어도 사이드카가
+     *  **0 으로 끝난다** — 실패가 예외가 아니라 결과 JSON 의 `registered:false` 로
+     *  온다(`vinc_mcp/install.py` 의 `_run_cli`, `api/cli.py` 의 `_emit`). 그래서
+     *  아무것도 등록되지 않은 채 화면만 성공을 말했다. 넷이 똑같이 생긴 행이라
+     *  어느 쪽이 그런지 구분할 방법도 없었다.
+     *
+     *  JSON 이 아니어도 안 깨진다: 못 읽으면 예전처럼 성공으로 읽되, 없는 말을
+     *  지어내지는 않는다. */
     async function mcpAction(action: "install" | "uninstall", client: string) {
       const invoke = await shellInvoke();
       if (!invoke) { mcpResult.textContent = U.mcpNoShell; return; }
       mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
       const host = U.mcpHosts[client] || client;
       try {
-        await invoke(action === "install" ? "mcp_install" : "mcp_uninstall", { client });
-        mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
+        const raw = await invoke(
+          action === "install" ? "mcp_install" : "mcp_uninstall", { client }) as unknown;
+        let res: any = null;
+        try { res = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { /* 형식 밖 */ }
+        const ok = action === "install" ? res?.registered !== false : res?.removed !== false;
+        if (!ok && res?.command) {
+          // 사람이 손으로 이을 수 있게 **실행할 줄을 그대로** 보여 준다.
+          mcpResult.textContent = `${U.mcpNeedsCli(host)} ${res.command}`;
+        } else if (!ok) {
+          mcpResult.textContent = action === "install"
+            ? `${U.mcpFail}: ${res?.note || ""}`.trim()
+            : U.mcpNothing(host);
+        } else {
+          mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
+        }
       } catch (e: any) {
         mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
       }
@@ -332,8 +383,10 @@ export async function renderSettings(el: HTMLElement) {
     const remoteAcct = body.querySelector<HTMLButtonElement>("#mcp-remote-acct")!;
     function paintRemote() {
       const who = accountWho();
-      remoteAcct.hidden = !!who;
-      remoteState.textContent = who ? U.mcpRemoteSignedIn(who) : U.mcpRemoteNeedAccount;
+      const linked = hasAccount();          // 이름 없이 연결된 경우가 있다(수동 키)
+      remoteAcct.hidden = linked;
+      remoteState.textContent = linked
+        ? U.mcpRemoteSignedIn(who || "") : U.mcpRemoteNeedAccount;
     }
     body.querySelector("#mcp-remote-copy")!.addEventListener("click", async () => {
       // 복사가 막혀도 주소는 위에 그대로 떠 있다 — 실패를 오류로 키우지 않는다.
@@ -408,11 +461,20 @@ export async function renderSettings(el: HTMLElement) {
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
       <p class="hint">${U.secretHint}</p>
-      <input id="s-token" value="${cfg.token}" />`;
+      <input id="s-token" type="password" placeholder="••••••"
+             autocomplete="off" />`;
     body.querySelector<HTMLInputElement>("#s-base")!.addEventListener("change", (e) =>
       (cfg.base = (e.target as HTMLInputElement).value));
-    body.querySelector<HTMLInputElement>("#s-token")!.addEventListener("change", (e) =>
-      (cfg.token = (e.target as HTMLInputElement).value));
+    // 동기화 키와 **같은 규율**(감사 M8): 값을 다시 그리지 않고, 비어 있으면
+    // "안 바꿈"이다. 여태 이 칸만 `value=` 로 시크릿을 DOM 에 눕히고 있었다 —
+    // 같은 탭에서 한 칸은 감추고 옆 칸은 드러내면 규율이 아니라 우연이 된다.
+    const tokenInput = body.querySelector<HTMLInputElement>("#s-token")!;
+    tokenInput.addEventListener("change", () => {
+      const v = tokenInput.value.trim();
+      if (!v) return;
+      cfg.token = v;
+      tokenInput.value = "";
+    });
     body.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
       (cfg.owner = (e.target as HTMLInputElement).value));
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,

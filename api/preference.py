@@ -43,7 +43,7 @@ def pin_plan(episode_id: str, *, pinned: bool = True, stamp: dict | None = None,
 
     ``stamp`` 는 호출부(pin)가 **실제 변경일 때만** 만들어 넘긴다 — pinned 는 추적필드라
     동기화 대상이지만, 같은 값 재-pin 이 델타를 만들면 안 된다."""
-    # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[d11223a9a5d109de5]] §7
+    # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[vinc.plan.node-pk-namespacing]] §7
     params: dict = {"id": pkns.key(owner, episode_id), "pinned": bool(pinned)}
     scope = _ep_scope(owner, params)
     sets = ["e.pinned = $pinned"] + _stamp_sets(stamp, params)
