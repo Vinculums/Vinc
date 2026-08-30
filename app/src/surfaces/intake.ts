@@ -85,12 +85,12 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
   // ── 파일 1개 적재 — 형식 감지(원문 문서 · share pack 래퍼 · bare fragment). ──
   async function importOne(
     f: File, index?: Map<string, string>,
-  ): Promise<{ nodes: number; edges: number; docId?: string }> {
+  ): Promise<{ nodes: number; edges: number; conflicts: number; docId?: string }> {
     // 원문 문서는 팩 파서에 넘기지 않는다 — 넘기면 packfile 의 JSON.parse 가 먼저
     // 죽어서 크기·인코딩 문제까지 전부 "형식 오류"로 둔갑한다(D45 정본 경로로 직행).
     if (isDocFile(f)) {
       const r = await importDocFile(f, USER_OWNER, index);
-      return { nodes: 0, edges: 0, docId: r.docId };
+      return { nodes: 0, edges: 0, conflicts: 0, docId: r.docId };
     }
     // D55 — zip 컨테이너·구 JSON 양쪽을 받는다. `f.text()` 로 읽으면 zip 이
     // 깨지므로 바이트로 연다(판별·해제는 packfile 이 한다).
@@ -110,6 +110,10 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
     return {
       nodes: (m.nodes?.created || 0) + (m.nodes?.matched || 0),
       edges: m.edges?.created || 0,
+      // 남이 이미 가진 id 는 건너뛴다(호스티드는 노드 PK 가 전역이라 남의 팩을
+      // 가져오면 개념이 통째로 이 사유로 빠진다). 개수만 세고 사유는 아래에서
+      // 한 줄로 말한다 — 안 말하면 "개념 0개"가 원인 없는 실패로 읽힌다.
+      conflicts: (res?.id_conflicts || []).length,
     };
   }
 
@@ -131,7 +135,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
     `;
     const metaEl = el.querySelector<HTMLElement>("#proc-meta")!;
 
-    let nodes = 0, edges = 0, ok = 0;
+    let nodes = 0, edges = 0, ok = 0, conflicts = 0;
     const docIds: string[] = [];
     const failed: string[] = [];
     let lastErr: any = null;
@@ -145,7 +149,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
       setRow(i, "active");
       try {
         const r = await importOne(files[i], index);
-        nodes += r.nodes; edges += r.edges; ok++;
+        nodes += r.nodes; edges += r.edges; conflicts += r.conflicts; ok++;
         if (r.docId) docIds.push(r.docId);
         setRow(i, "done");
       } catch (e) {
@@ -158,7 +162,8 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
 
     if (ok > 0) {
       cfg.owner = USER_OWNER;   // 본인 공간으로 전환해 방금 넣은 데이터를 본다
-      showSuccess({ files: ok, nodes, edges, docs: docIds.length, docIds, failed });
+      showSuccess({ files: ok, nodes, edges, conflicts,
+                    docs: docIds.length, docIds, failed });
     } else {
       showError(failed.join(", ") || "the file", lastErr, lastMsg);
     }
@@ -187,7 +192,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
   }
 
   // ── 상태 3 — Success (42:7): check + 요약 + 개념 칩(실 도메인) + 버튼 2종. ──
-  function showSuccess(r: { files: number; nodes: number; edges: number;
+  function showSuccess(r: { files: number; nodes: number; edges: number; conflicts: number;
                             docs: number; docIds: string[]; failed: string[] }) {
     // 팩과 문서는 산출물이 다르다(팩=개념·연결 / 문서=원문 보관). 한 문장에 섞으면
     // 문서만 넣었을 때 "개념 0개, 연결 0개"로 읽혀 실패처럼 보인다 — 갈라서 센다.
@@ -204,6 +209,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
           <h2>${summary}</h2>
           <p class="hint success-body">${ui.successBody}</p>
           ${r.failed.length ? `<p class="hint success-failed">${esc(ui.someFailed(r.failed.join(", ")))}</p>` : ""}
+          ${r.conflicts ? `<p class="hint success-failed">${esc(COPY.ui.sheet.destSkippedIds(r.conflicts))}</p>` : ""}
           <div class="concept-chips" id="concept-chips" hidden></div>
           <div class="success-actions">
             <a class="btn btn-primary" href="#view">${COPY.intake.successCta}</a>
