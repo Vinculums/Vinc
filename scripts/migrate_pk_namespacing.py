@@ -42,6 +42,23 @@ Vinculums/Vinc#121 의 근본 처방(선택지 1). 발주자 결정: 2026-08-30.
   _SyncBase        owner 열이 **없어** 합성할 수 없다. 행이 있으면 **거절한다** —
                    추측해서 옮기느니 멈추는 쪽이다. 로컬 전용 표라 허브는 0 이다.
 
+## 먼저 재라 — 재는 도구는 이미 있다
+
+`scripts/measure_pk_collisions.py` 가 PR-0 때부터 이 판정에 필요한 것을 전부 잰다:
+라벨별 owner 분포 · 레거시 기본 owner · PK 나 문자열 필드의 U+001F · owner 를 나눠
+가진 슬러그 · title==id 폴백 행 · doc 미러 id 형식.
+
+    python scripts/measure_pk_collisions.py --data-dir <원본 사본>
+
+⚠ 그 스크립트의 머리주석이 **"슬러그 중복 소유 0" 을 어떻게 읽어야 하는지 이미 적어
+두었다**: 엔진이 라벨별 PK 유일성을 강제하므로 그 수는 어떤 단일 스토어에서도 늘 0이고,
+"충돌이 없었다"가 아니라 "이 스토어의 데이터에 보이지 않는다"로만 읽어야 한다. 그것이
+H1 이 **조용한** 결함인 이유이기도 하다.
+
+⚠ 이 자리에 `scripts/pkns_preflight.py` 라는 두 번째 측정 도구를 잠깐 두었다가 걷어냈다.
+같은 것을 두 번 재고 있었고, 위의 주의사항까지 "새로 발견한 것"으로 다시 적고 있었다.
+찾아보지 않고 지은 대가다. 재는 것은 저쪽 하나이고 이 파일은 옮기기만 한다.
+
 ## 쓰는 법
 
     python scripts/migrate_pk_namespacing.py --data <원본> --out <대상>          # 예행
@@ -158,6 +175,21 @@ def transform(dump: dict, meta: dict) -> tuple[dict, dict, dict]:
             o = r.get("owner_id") or ""
             if o:
                 owner_of[(label, r.get(pk) or "")] = o
+
+    # 이 이관이 **자기 자신을 지키는** 최소 검사. 전체 측정은 measure_pk_collisions.py
+    # 가 하지만, 그것을 안 돌리고 온 사람이 있을 수 있고 여기서 걸리는 두 조건은
+    # 이관을 직접 깨뜨린다: PK 에 이미 SEP 이 있으면 재합성이 멱등으로 접혀 부분
+    # 이관본이 그대로 통과하고, owner 가 비면 합성할 것이 없다.
+    for label, rows in (dump.get("nodes") or {}).items():
+        if label not in scoped:
+            continue
+        pk = specs[label]["pk"]
+        dirty = [r.get(pk) for r in rows if pkns.SEP in (r.get(pk) or "")]
+        if dirty:
+            raise SystemExit(
+                f"{label}: PK 에 U+001F 가 든 행이 {len(dirty)}건 있다(예: {dirty[0]!r}). "
+                "이미 물리 키면 부분 이관본이고, 슬러그에 섞인 것이면 이관 뒤 strip 이 "
+                "그것을 잘라낸다. scripts/measure_pk_collisions.py 로 먼저 살필 것")
 
     new_nodes: dict[str, list[dict]] = {}
     for label, rows in (dump.get("nodes") or {}).items():
