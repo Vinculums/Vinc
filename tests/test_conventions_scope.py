@@ -70,13 +70,18 @@ class ConventionsContractTests(unittest.TestCase):
         for field in ("`owner`", "`scope`", "`target`"):
             self.assertIn(field, d, field)
 
-    def test_설명이_팀은_여기서_못_닿는다고_말한다(self):
-        """발주자가 실제로 물은 것이 이것이다. owner 를 봐도 '팀 그래프가 있고
-        여기서는 주소가 안 잡힌다'는 안 나온다 — 신원이 아니라 도달 가능성이다."""
+    def test_설명이_팀에_닿는_주소를_말한다(self):
+        """발주자가 실제로 물은 것이 이것이다 — 신원이 아니라 도달 가능성이다.
+
+        ⚠ 이 검사는 한 번 **거짓을 고정하고 있었다**. 원래는 "팀은 웹앱에서만"을
+        assertIn("web app") 로 못박았는데, 그 뒤 팀 주소(`/t/<uuid>/mcp`)가 생기면서
+        설명이 틀린 말을 하게 됐다(커넥터가 팀에 붙어서도 "여기선 못 쓴다"를 읽는다).
+        그래서 지금은 **주소를 말하는가**를 보고, 옛 주장이 되살아나면 실패시킨다."""
         from vinc_mcp.tools import TOOLS
         d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
         self.assertIn("team", d)
-        self.assertIn("web app", d)
+        self.assertIn("/t/<team-uuid>/mcp", d)
+        self.assertNotIn("web app", d)
 
     def test_whoami_도구는_여전히_없다(self):
         """결정이 기각한 것을 슬쩍 되살리지 않았는지 — 도구 수는 23 이다.

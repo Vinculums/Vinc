@@ -765,13 +765,14 @@ TOOLS: list[dict] = [
                        "carries it rather than a separate whoami: `owner` is the graph you "
                        "are connected as, `scope` is 'personal' or 'team' (or 'unscoped' "
                        "for a local single-user store), and `target` echoes local versus "
-                       "remote. Read them before your first write. On this hosted connector "
-                       "`scope` is always 'personal': a key is bound to one person and no "
-                       "tool takes a team argument, so a team graph can be neither written "
-                       "nor read from here. Team graphs are reachable only from the web app, "
-                       "which selects the team and has the account sign for it. If you meant "
-                       "to write to a team, stop: this surface cannot, and the write lands in "
-                       "the personal graph instead.",
+                       "remote. Read them before your first write. On a hosted connector "
+                       "the ADDRESS decides the space: `/mcp` is the personal graph and "
+                       "`/t/<team-uuid>/mcp` is that team's shared graph (API key only — "
+                       "OAuth is not accepted at a team address, and your role there decides "
+                       "what you may write). No tool takes a team argument, so the space "
+                       "cannot be changed mid-session: if `scope` says 'personal' but you "
+                       "meant to write to a team, stop and reconnect at the team address, "
+                       "because the write lands in the personal graph instead.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "lang": {"type": "string", "enum": ["en", "ko"],
