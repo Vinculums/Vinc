@@ -384,6 +384,16 @@ _REL_TABLES: list[tuple] = [
     ("IN_DOMAIN", ("Concept", "Record", "Episode", "Decision"), "Domain", []),
 ]
 
+#: 근거 열을 갖는 관계 — `EDGE_BIRTH_RELS` 와 같은 신분이고, **쓰기 경로가 이 하나를
+#: 읽는다.** 여기 없는 rel 에 evidence/confidence 를 실어 보내면 보관할 열이 없으므로
+#: `api/fragment` 가 경고한다(그 전에는 조용히 사라졌다 —
+#: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
+#: 손으로 적지 않고 위 표에서 파생시키는 이유: 손으로 적으면 표가 둘이 되고, 스키마가
+#: 열을 늘렸을 때 "저장 안 됨"과 "경고가 표를 못 따라감"이 구분 불가가 된다.
+EDGE_EVIDENCE_RELS: tuple[str, ...] = tuple(
+    name for name, _f, _t, cols in _REL_TABLES
+    if all(c in [tuple(x) for x in cols] for c in map(tuple, _EDGE_EVIDENCE_COLS)))
+
 
 def _render_node_tables(tables: dict, *, dim: int) -> list[str]:
     out = []

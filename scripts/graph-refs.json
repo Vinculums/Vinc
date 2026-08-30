@@ -152,6 +152,7 @@
     "record:fact-doc-concept-is-a-layer",
     "record:fact-merge-excludes-any-doc-pair",
     "record:figma-shrinks-the-divergence-window-it-does-not-remove-reconciliation",
+    "record:graph-md-requires-evidence-that-ingest-refuses-to-store",
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:in-a-container-a-swallowed-log-is-no-log",
     "record:inherits-from-is-absent-from-the-reversed-relation-table",

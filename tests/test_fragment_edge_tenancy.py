@@ -83,6 +83,63 @@ class EdgeTenancyTests(unittest.TestCase):
         self.assertTrue(rows, f"{nid} 가 없다")
         return int(rows[0].get("rev") or 0), int(rows[0].get("seq") or 0)
 
+    # ── 0. 보관할 열이 없는 근거는 조용히 사라지지 않는다 ──────────────────
+    #
+    # GRAPH.md 는 record 엣지와 about 에 evidence 를 **요구**하는데 vinc_ingest 는
+    # concept↔concept 과 about 에서만 받는다. 계약이 서로 다르고, 다르다는 사실이
+    # 저작자에게 닿지 않았다: 필드는 사라지는데 warnings 는 비어 있었다. 2026-08-30 에
+    # 한 페이로드로 실측했다 — about 엣지는 문장을 보관했고 record 엣지 다섯은 전부
+    # 빈 채로 돌아왔으며 경고가 없었다. R1(미보관 필드는 버리지 말고 경고)이 노드
+    # 경로에서만 닫혀 있던 것이다.
+    # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+
+    def _ingest_edges(self, edges):
+        return frag.merge_fragment({"owner": A, "nodes": [
+            {"id": "concept:t", "type": "concept", "title": "T"},
+            {"id": "record:t", "type": "record", "title": "R"},
+            {"id": "episode:t", "type": "episode", "title": "E", "date": "2026-08-30"},
+            {"id": "bridge:t", "type": "bridge", "title": "B"},
+        ], "edges": edges}, store=self.store)
+
+    def test_evidence_on_a_relation_without_the_column_warns(self):
+        r = self._ingest_edges([{"from": "record:t", "to": "concept:t",
+                                 "type": "relates_to",
+                                 "evidence": "이 문장은 보관되지 않는다."}])
+        # 엣지 자체는 정상이다 — 버려지는 것은 필드 하나지 엣지가 아니다.
+        self.assertEqual(r["merged"]["edges"]["created"], 1, r)
+        hits = [w for w in r["warnings"] if "not stored on ATTACHES_TO" in w]
+        self.assertEqual(len(hits), 1, r["warnings"])
+        # 무엇이 어디로 갔는지까지 말해야 저작자가 다음 수를 안다.
+        self.assertIn("evidence", hits[0])
+        self.assertIn("record:t→concept:t", hits[0])
+        self.assertIn("ABOUT", hits[0])
+        # 보낸 것이 안 들어갔으면 그것이 partial 의 뜻이다.
+        self.assertTrue(r.get("partial"), r)
+
+    def test_confidence_is_named_too_and_bridge_edges_are_covered(self):
+        r = self._ingest_edges([{"from": "bridge:t", "to": "concept:t",
+                                 "type": "connects_via",
+                                 "evidence": "사라진다", "confidence": 0.5}])
+        hits = [w for w in r["warnings"] if "not stored on CONNECTS" in w]
+        self.assertEqual(len(hits), 1, r["warnings"])
+        self.assertIn("evidence and confidence", hits[0])
+
+    def test_a_relation_that_has_the_column_stays_silent_and_stores(self):
+        """경고가 뜨지 말아야 할 곳에서 안 뜨는지가 절반이다 — 전부에 대고 경고하면
+        경고는 읽히지 않는다."""
+        r = self._ingest_edges([{"from": "episode:t", "to": "concept:t",
+                                 "type": "about", "evidence": "이건 보관된다.",
+                                 "confidence": 0.9}])
+        self.assertEqual([w for w in r["warnings"] if "not stored" in w], [])
+        rows = self.store.run(
+            "MATCH (e:Episode)-[x:ABOUT]->(c:Concept) RETURN x.evidence AS ev")
+        self.assertEqual(rows[0]["ev"], "이건 보관된다.")
+
+    def test_no_warning_when_the_author_sent_nothing(self):
+        r = self._ingest_edges([{"from": "record:t", "to": "concept:t",
+                                 "type": "relates_to"}])
+        self.assertEqual([w for w in r["warnings"] if "not stored" in w], [])
+
     # ── 1. 교차테넌트 엣지가 남의 rev·툼스톤을 건드리지 않는다 ──────────────
     def test_cross_tenant_edge_leaves_victim_rev_and_tombstone_alone(self):
         # B 의 노드 둘. owner 를 실어(owner_explicit) B 소유로 못 박는다.
