@@ -31,6 +31,8 @@ from engines import domain_hierarchy
 
 from . import revstamp
 from store import pkns
+# 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
+from store.embedded_schema import EDGE_EVIDENCE_RELS
 
 _NODE_MAP = {   # fragment type → (label, pk column)
     "record": ("Record", "record_id"),
@@ -891,10 +893,27 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return (f" ON CREATE SET {rel_var}.created = $ecreated",
                 {"ecreated": str(edge.get("created") or "") or born()})
 
-    # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여(CC 4종 + about 만 —
-    # 그 rel 테이블만 열을 가진다). 미제공이면 열은 스키마 기본값('', 0.0) 유지.
-    def _ev_set(rel_var: str) -> tuple[str, dict]:
+    # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여. 열을 가진 rel 은
+    # `EDGE_EVIDENCE_RELS`(스키마에서 파생) 다섯뿐이고, **모든 엣지 분기가 이 함수를
+    # 부른다** — 열이 없는 rel 은 빈 절을 돌려받으므로 쿼리는 그대로고, 대신 상류가
+    # 실어 보낸 값이 사라진다는 사실을 경고로 밝힌다.
+    #
+    # ⚠ 여기 경고가 없던 동안 CONNECTS·ATTACHES_TO·TYPED 는 근거를 **조용히** 버렸다.
+    # GRAPH.md 는 record 엣지에 근거를 요구하는데 이 표면은 그것을 받지 않으므로,
+    # 규율을 지킨 저작자가 아무 신호도 못 받고 문장을 잃었다. R1(미보관 필드는 버리지
+    # 말고 경고)이 노드 경로에서만 닫혀 있었다:
+    # [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+    def _ev_set(rel_var: str, rel: str) -> tuple[str, dict]:
         ev, conf = edge.get("evidence"), edge.get("confidence")
+        if rel not in EDGE_EVIDENCE_RELS:
+            unkept = [n for n, v in (("evidence", ev), ("confidence", conf))
+                      if v is not None]
+            if unkept:
+                warnings.append(
+                    f"edge {' and '.join(unkept)} not stored on {rel} — that relation "
+                    f"has no such column ({src}→{dst}); kept only on "
+                    f"{', '.join(EDGE_EVIDENCE_RELS)}")
+            return "", {}
         sets, p = [], {}
         if ev is not None:
             sets.append(f"{rel_var}.evidence = $evid"); p["evid"] = str(ev)
@@ -911,6 +930,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         if not etype:
             warnings.append(f"edge without type — skipped ({src}→{dst})")
             return None
+        _ev_set("r", "TYPED")          # 열 없음 — 경고만 남기고 절은 버린다
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{_ENTITY_LABEL}), (b:{_ENTITY_LABEL}) "
@@ -957,6 +977,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # role 멱등, 다른 role 병렬 엣지). 없으면 bare MERGE(기존 role 엣지에 no-op).
         # role 기본값 조작 금지 — `{dom}_input` 관례는 bridges_ingest 전속.
         role = (edge.get("role") or "").strip()
+        _ev_set("r", "CONNECTS")       # 열 없음 — 경고만
         b_set, b_p = _birth_set("r")
         if role:
             store.run(
@@ -985,7 +1006,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
         was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
-        ev_set, ev_p = _ev_set("r")
+        ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
@@ -1021,7 +1042,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
         was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
-        ev_set, ev_p = _ev_set("r")
+        ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:{sl}), (b:{dl}) "
@@ -1037,6 +1058,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         (dl, dp) = _end(dt)
+        _ev_set("r", "ATTACHES_TO")    # 열 없음 — 경고만
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:Record), (b:{dl}) "
