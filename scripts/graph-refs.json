@@ -129,6 +129,7 @@
     "decision:agent-model-ladder",
     "decision:escape-once-at-the-boundary",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "decision:korean-deck-reopens-only-after-authored-pass",
     "decision:scoped-key-tier",
     "decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right",
     "decision:topic-tint-ships-on",

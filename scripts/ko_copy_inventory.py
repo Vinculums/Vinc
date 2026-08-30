@@ -38,8 +38,13 @@ _LINE_COMMENT = re.compile(r"(?:^|(?<=[\s;,)}\]]))//.*$")
 #   · 정규식 문자 클래스의 한글 음절 범위(`가-힣`)는 문법이지 문장이 아니다.
 #   · `console.*` 는 화면이 아니라 개발자 콘솔로 나간다. 이 리포의 주석 언어가
 #     한국어이므로(CLAUDE.md) 같은 언어로 적힌 진단문이고, 덱으로 옮길 대상이 아니다.
+#   · **언어 선택기의 언어 이름**은 그 언어로 적힌다. `한국어` 를 덱에 넣으면 영어
+#     화면에서 "Korean" 으로 바뀌는데, 그러면 영어를 못 읽는 사람이 자기 언어를 못
+#     찾는다 — 번역이 동작을 바꾸는 바로 그 경우다. 판별자는 `data-lang-opt` 으로
+#     좁힌다(그 속성을 내는 곳은 Settings 의 언어 세그 하나뿐이다).
 _SYNTAX_RANGE = re.compile(r"[가-힣]\s*-\s*[가-힣]")
 _CONSOLE = re.compile(r"\bconsole\s*\.\s*\w+\s*\(")
+_LANG_PICKER = re.compile(r"data-lang-opt")
 
 _SCAN_GLOBS = ("app/src/**/*.ts", "app/src/**/*.css")
 _SCAN_FILES = ("app/index.html",)
@@ -105,6 +110,8 @@ def strip_comments(text: str):
 def _verdict(code: str) -> str:
     if _CONSOLE.search(code):
         return "exempt: console diagnostic, never rendered"
+    if _LANG_PICKER.search(code):
+        return "exempt: language picker names each language in itself"
     if not HANGUL.search(_SYNTAX_RANGE.sub("", code)):
         return "exempt: regex character class, syntax not copy"
     return "deck-eligible"
