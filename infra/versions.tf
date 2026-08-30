@@ -32,6 +32,15 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+
+  # ⚠ 끄지 않으면 **plan 자체가 죽는다.** azurerm 은 기본으로 리소스 공급자 40여 개를
+  # `/subscriptions/<id>` 스코프에서 등록하려 드는데, `vinc-local-ops` 는 일부러
+  # vincsRG 로 좁혀 둔 신원이라 전부 403 이 난다(실측 2026-08-30).
+  #
+  # 고치는 방향은 **RBAC 을 넓히는 쪽이 아니다.** 여기 쓰는 공급자는 리소스가 이미
+  # 도는 이상 전부 등록돼 있고, 등록은 구독 관리자의 일회성 행위지 배포마다 할 일이
+  # 아니다. 좁은 신원이 이 사실을 드러낸 것이므로 신원을 넓혀 덮지 않는다.
+  resource_provider_registrations = "none"
 }
 
 variable "subscription_id" {

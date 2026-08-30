@@ -6,8 +6,15 @@
 #     terraform init
 #     terraform plan -generate-config-out=generated.tf
 #
-# 그 산출물을 읽고 다듬어 커밋하는 것이 이 디렉터리의 다음 걸음이다. 손으로 열두 벌을
-# 받아쓰면 실물과 어긋난 자리가 생기고, 그 어긋남은 `plan` 이 초록일 때까지 안 보인다.
+# 그 산출물을 다듬어 generated.tf 로 커밋했다(2026-08-30). plan 은 `12 to import,
+# 0 to add, 2 to change, 0 to destroy` 다. 남은 둘은 drift 가 아니라 **공급자가 요구하는
+# 정규화**다: log analytics 의 `local_authentication_enabled`(실물 disableLocalAuth 가
+# null = 이미 켜짐)와 metric alert 의 `metric_namespace`(공급자 필수, 실물엔 없음).
+# 둘 다 같은 값을 다시 쓰는 것이라 동작이 안 바뀐다. 0 으로 만들려면 ignore_changes 로
+# 진짜 관리해야 할 필드까지 덮어야 해서 그게 더 나쁘다.
+#
+# 손으로 열두 벌을 받아쓰면 실물과 어긋난 자리가 생기고, 그 어긋남은 `plan` 이 초록일
+# 때까지 안 보인다.
 #
 # ── 무엇을 넣지 않았나, 그리고 왜 ──────────────────────────────────────────────
 #
@@ -85,18 +92,24 @@ import {
 
 import {
   to = azurerm_monitor_action_group.vinc_alerts
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/actiongroups/vinc-alerts"
+  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/actionGroups/vinc-alerts"
 }
 
 import {
   to = azurerm_monitor_metric_alert.hub_health_down
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/metricalerts/hub-health-down"
+  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/metricAlerts/hub-health-down"
 }
 
-# ⚠ 웹테스트는 azurerm 에 두 벌이다 — 고전(`azurerm_application_insights_web_test`)과
-# 표준(`..._standard_web_test`). ARM 타입은 둘 다 `Microsoft.Insights/webtests` 라
-# 구분이 안 된다. `plan` 이 갈라 줄 것이고, 틀렸으면 여기 한 줄을 바꾼다.
+# ⚠ **Microsoft.Insights 아래 ID 는 대소문자가 계약이다.** `az resource list` 는
+# `webtests`·`actiongroups`·`metricalerts` 로 소문자를 주는데 azurerm 의 파서는
+# `webTests`·`actionGroups`·`metricAlerts` 를 요구하고, 어긋나면 "parsed Resource ID
+# was missing a value for the segment at position 6" 라는 **자리 번호로만 말하는**
+# 오류가 난다(실측 2026-08-30). az 출력을 그대로 붙여넣지 말 것.
+#
+# 웹테스트는 azurerm 에 두 벌이다 — 고전(`azurerm_application_insights_web_test`)과
+# 표준(`..._standard_web_test`). ARM 타입은 둘 다 같아서 구분이 안 되는데, 이 리소스는
+# `plan` 이 표준으로 갈랐다.
 import {
   to = azurerm_application_insights_standard_web_test.vinc_hub_health
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/webtests/vinc-hub-health"
+  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/webTests/vinc-hub-health"
 }

@@ -6,5 +6,6 @@
 .terraform.lock.hcl
 crash.log
 *.tfvars
-# `plan -generate-config-out` 산출물. 읽고 다듬어 커밋할 때까지는 임시물이다.
-generated.tf
+# ⚠ `generated.tf` 는 **여기 없다.** `-generate-config-out` 이 처음 뱉은 것은 임시물이
+# 맞지만, 다듬어 `plan` 을 통과시킨 그것은 이 디렉터리의 정본이다. 무시하면 다음 사람이
+# 열두 벌을 다시 뽑아 다시 다듬는다.
