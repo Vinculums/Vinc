@@ -315,3 +315,53 @@ jobs:
             *'resource_metadata="https://'*) echo "  connector surface OK" ;;
             *) echo "::error::WWW-Authenticate 가 https 가 아니다: $hdr" >&2; exit 1 ;;
           esac
+
+      # ── 레지스트리 정리 ─────────────────────────────────────────────────────
+      # 왜 여기 생겼나. 배포마다 `:latest` 와 `:<sha>` 두 태그를 밀고 **아무것도 안
+      # 지웠다**. 2026-09-01 실측: vincacr 가 23.51GB / 포함분 11GB = **219%**,
+      # vinc-hub 매니페스트 87개. Basic 티어라 retention policy 를 못 켠다(그 기능은
+      # Premium 전용이다 — 정책 객체가 `status: disabled` 로 남아 있는 게 그 흔적).
+      # 그래서 정리는 설정이 아니라 행위여야 하고, 태그가 생기는 자리가 그 자리다.
+      # 근거: [[record:the-registry-passed-its-included-storage-and-nothing-prunes-it]]
+      #
+      # ⚠ **검증 스텝들 뒤에 온다.** 배포가 실패하면 옛 이미지가 유일한 롤백 경로다
+      # (이 앱은 리비전을 하나만 들고 있어서 `revision activate` 로 되돌아갈 자리가
+      # 없다 — 2026-09-01 실측). 실패한 배포가 자기 탈출로를 지우면 안 된다.
+      #
+      # ⚠ 첫 실행은 밀린 것까지 한꺼번에 지우므로 오래 걸린다(87 → KEEP). 한 번뿐이다.
+      - name: Prune old image tags (the registry bills what it keeps)
+        env:
+          KEEP: "10"
+        run: |
+          set -euo pipefail
+          live=$(az containerapp show --name vinc-hub -g vincsRG \
+                   --query "properties.template.containers[0].image" -o tsv | sed 's/.*://')
+          echo "지금 도는 태그: $live (이건 절대 안 지운다)"
+
+          # 시간 역순으로 받아 앞 KEEP 개를 남긴다. `latest` 가 붙은 것과 지금 도는
+          # 것은 순위와 무관하게 건너뛴다 — 순위만 믿으면 손으로 배포한 리비전이
+          # 밀려났을 때 도는 이미지를 지운다.
+          az acr manifest list-metadata -r vincacr -n vinc-hub --orderby time_desc \
+            -o json > /tmp/m.json
+          total=$(python3 -c "import json;print(len(json.load(open('/tmp/m.json'))))")
+          echo "매니페스트 $total 개, $KEEP 개 유지"
+
+          python3 - "$live" "$KEEP" <<'PY' > /tmp/kill.txt
+          import json, sys
+          live, keep = sys.argv[1], int(sys.argv[2])
+          for m in json.load(open("/tmp/m.json"))[keep:]:
+              tags = m.get("tags") or []
+              if "latest" in tags or live in tags:
+                  continue
+              print(m["digest"])
+          PY
+
+          n=$(wc -l < /tmp/kill.txt)
+          if [ "$n" = "0" ]; then echo "지울 것 없음"; exit 0; fi
+          echo "지운다: $n 개"
+          while read -r d; do
+            az acr manifest delete -r vincacr -n "vinc-hub@$d" --yes --output none
+          done < /tmp/kill.txt
+
+          size=$(az acr show-usage -n vincacr --query "value[?name=='Size'].currentValue|[0]" -o tsv)
+          echo "정리 후 레지스트리: $(python3 -c "print(f'{$size/1e9:.2f}')") GB"
