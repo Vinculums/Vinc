@@ -15,13 +15,34 @@ from dataclasses import dataclass, field
 #   local-en = bge-base-en-v1.5 (768), local-en-large = bge-large-en-v1.5 (1024).
 #   anthropic (voyage-3, 1024) 은 API 키 필요 — 옵션(F5: 키 없이 기동 가능해야 함).
 #   "local" (legacy multilingual mpnet 768) 은 back-compat 만.
+#
+# ⚠ **이 표의 키는 이름 공간이 둘이다.** 여기 별칭("local-en")은 `MEMORY_EMBEDDING_MODEL`
+# 이 주는 것이고 **스토어 벡터 열의 차원**만 정한다. 실제로 벡터를 만드는 주체는
+# `packaging/embed_worker.py` 이고 그쪽은 `VINC_EMBED_MODEL` 로 **HF id**
+# ("intfloat/multilingual-e5-base")를 받는다. 두 값을 잇는 코드가 **없다** — 오늘
+# 둘이 맞는 것은 기본값이 우연히 둘 다 768 이기 때문이다.
+# 그래서 **양쪽 철자를 다 싣는다**: 어느 쪽 이름으로 설정해도 차원이 맞는다.
+# 근거는 그래프의 record:embed-dim-namespace-split-2026-08-30
+# (이중대괄호 인용을 안 쓴 이유는 `packaging/embed_worker.py::prefix` 주석과 같다 —
+#  매니페스트 갱신에 원격 그래프 키가 필요하다.)
 EMBEDDING_DIM_BY_MODEL = {
+    # ── 별칭(MEMORY_EMBEDDING_MODEL · profile.yml) ──────────────────────────
     "local-en": 768,          # bge-base-en-v1.5 — 기본(오프라인, design §8·D10)
     "local-en-large": 1024,   # bge-large-en-v1.5 — 품질 옵션
     "anthropic": 1024,        # voyage-3 — API 키 옵션
     "local": 768,             # legacy multilingual mpnet (back-compat)
+    # ── HF id(VINC_EMBED_MODEL · 워커가 실제로 드는 이름) ────────────────────
+    "BAAI/bge-base-en-v1.5": 768,
+    "BAAI/bge-large-en-v1.5": 1024,
+    "intfloat/multilingual-e5-base": 768,    # 허브 현행(2026-08-01~)
+    "intfloat/multilingual-e5-large": 1024,
+    "BAAI/bge-m3": 1024,                     # W10 채택 후보 — 차원이 바뀐다
 }
 DEFAULT_EMBEDDING_MODEL = "local-en"
+#: 사람이 고르는 별칭만. HF id 는 위 표에 차원 조회용으로만 실려 있다 —
+#: `embed_pipeline --model` 이 그것까지 받으면 `ST_MODEL_BY_KEY.get(...)` 폴백이
+#: 조용히 bge-base-en 을 물어 온다(차원은 맞고 모델만 딴것인 무음 고장).
+EMBEDDING_MODEL_ALIASES = ("local-en", "local-en-large", "anthropic", "local")
 
 
 @dataclass
@@ -65,7 +86,24 @@ class StoreConfig:
 
     @property
     def embedding_dim(self) -> int:
-        return EMBEDDING_DIM_BY_MODEL.get(self.embedding_model, 768)
+        """이 모델의 벡터 차원. **모르는 모델이면 죽는다.**
+
+        전에는 `.get(model, 768)` 이라 미지 모델이 조용히 768 로 떨어졌다. 그게 왜
+        나쁘냐면: 768 로 스토어를 프로비저닝해 놓고 워커가 1024 를 만들면, 그 사실은
+        **스토어를 이미 비운 뒤** 첫 쓰기에서야 `Unsupported casting ... Expected: 768,
+        Actual: 1024` 로 드러난다(실측). 설정 시점에 조용하고 실행 시점에 파괴적인
+        조합이라, 조용한 쪽을 없앤다 — 차원은 **한 번 정하면 되돌리는 데 재구축이
+        필요한** 값이라 기본값으로 때울 자리가 아니다.
+        기존 설치는 안 깨진다: 위 표가 별칭·HF id 양쪽을 다 실어서, 실제로 쓰이는
+        값은 전부 들어 있다. 남는 것은 오타·미지 모델뿐이고 그건 원래 고장이었다.
+        """
+        try:
+            return EMBEDDING_DIM_BY_MODEL[self.embedding_model]
+        except KeyError:
+            raise ValueError(
+                f"unknown embedding model {self.embedding_model!r} — vector dimension "
+                f"cannot be guessed. Known: {sorted(EMBEDDING_DIM_BY_MODEL)}"
+            ) from None
 
     def redacted(self) -> dict:
         d = self.__dict__.copy()
