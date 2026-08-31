@@ -29,6 +29,28 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfgmod.StoreConfig(embedding_model="anthropic").embedding_dim, 1024)
         self.assertEqual(cfgmod.StoreConfig(embedding_model="local-en").embedding_dim, 768)
 
+    def test_hf_id_도_같은_표에서_차원이_나온다(self):
+        """이름 공간이 둘이다 — 별칭(`MEMORY_EMBEDDING_MODEL`)과 HF id
+        (`VINC_EMBED_MODEL`, 워커가 실제로 드는 이름). 둘을 잇는 코드가 없어서, 표에
+        HF id 가 없으면 `BAAI/bge-m3` 로 설정한 스토어가 조용히 768 로 서고 워커는
+        1024 를 만든다. 그 어긋남은 스토어를 이미 비운 **뒤** 첫 쓰기에서야 드러난다."""
+        self.assertEqual(
+            cfgmod.StoreConfig(embedding_model="intfloat/multilingual-e5-base").embedding_dim, 768)
+        self.assertEqual(cfgmod.StoreConfig(embedding_model="BAAI/bge-m3").embedding_dim, 1024)
+
+    def test_미지_모델은_768_로_강등되지_않고_죽는다(self):
+        """전에는 `.get(model, 768)` 이라 오타가 조용히 768 이 됐다. 차원은 되돌리는 데
+        스토어 재구축이 드는 값이라 기본값으로 때울 자리가 아니다 — 설정 시점에
+        큰 소리로 실패한다."""
+        with self.assertRaises(ValueError):
+            cfgmod.StoreConfig(embedding_model="bge-m3-오타").embedding_dim
+
+    def test_모델_별칭_목록은_HF_id_를_품지_않는다(self):
+        """`embed_pipeline --model` 이 이 목록을 choices 로 쓴다. HF id 가 섞이면
+        `ST_MODEL_BY_KEY.get(...)` 폴백이 조용히 bge-base-en 을 물어 온다."""
+        self.assertTrue(all("/" not in a for a in cfgmod.EMBEDDING_MODEL_ALIASES))
+        self.assertIn(cfgmod.DEFAULT_EMBEDDING_MODEL, cfgmod.EMBEDDING_MODEL_ALIASES)
+
     def test_overrides_win_over_env(self):
         old = os.environ.get("MEMORY_DATA_DIR")
         os.environ["MEMORY_DATA_DIR"] = "/tmp/env-dir"
