@@ -41,6 +41,37 @@ def _tool_specs(allow_target: bool = True) -> list[dict]:
     return tools.specs(allow_target=allow_target)
 
 
+def _where_am_i(forced_owner: str | None) -> str | None:
+    """`initialize` 에 실을 한 문단. 로컬(`forced_owner` 없음)이면 None.
+
+    ⚠ **계정 조회가 실패해도 문단은 나간다.** 목록을 못 얻는 것과 기본이 개인이라는
+    사실은 다른 층이고, 후자가 더 중요하다. 목록만 빠지고 나머지는 남는다.
+    """
+    if not forced_owner:
+        return None                     # 로컬 stdio — 고를 스페이스가 없다
+    if forced_owner.startswith("team:"):
+        return ("You are connected at a team address, so every call in this session "
+                "acts on that team's shared graph (" + forced_owner + ") and the "
+                "`space` argument is ignored. Call vinc_whoami to confirm.")
+    line = ("You are connected to your personal graph (" + forced_owner + "). "
+            "Every call acts here unless you pass `space` with a team id, so a write "
+            "with no `space` lands in your personal graph even if you meant a team.")
+    try:
+        from . import entitlement
+        rows = entitlement.list_spaces(forced_owner.split(":", 1)[1])
+    except Exception:
+        rows = None
+    if rows:
+        named = ", ".join(
+            (r.get("name") or "team") + " (" + r["id"] + ", " + r["role"] + ")"
+            for r in rows)
+        line += " Teams you can reach: " + named + "."
+    elif rows is None:
+        # 빈 목록과 "못 물었다"를 가른다 — 뭉개면 "팀이 없다"로 읽힌다.
+        line += " The team list could not be fetched right now; vinc_whoami retries it."
+    return line
+
+
 class Dispatcher:
     def __init__(self, bridge: Bridge, *, allow_target: bool = True):
         self.bridge = bridge
@@ -109,7 +140,7 @@ class Dispatcher:
                      "mimeType": "image/svg+xml", "sizes": "any"},
                 ]
                 info["websiteUrl"] = "https://vincs.io"
-            return {
+            out = {
                 # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
                 # 도메인이 없는 것은 고장이 아니라 상태이고(빈 목록이 정답), 능력을
                 # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
@@ -118,6 +149,16 @@ class Dispatcher:
                 "capabilities": {"tools": {}, "prompts": {}},
                 "serverInfo": info,
             }
+            # 스페이스를 **묻기 전에** 알려 준다. `space` 인자가 생기면서 "안 실으면
+            # 개인"이 기본이 됐는데(A안), 그 기본은 조용해서 위험하다 — 팀에 쓰려던
+            # 호출이 아무 오류 없이 개인 그래프에 쌓인다. 도구로만 알 수 있게 두면
+            # **부르기로 마음먹은 세션만** 알게 되고, 읽기만 하는 세션은 영영 모른다.
+            # `instructions` 는 첫 도구 호출 전에 무조건 도착하므로 그 구멍을 덮는다.
+            # 연결당 한 번이고 스페이스는 연결 중에 안 바뀌므로 신선도 문제도 없다.
+            txt = _where_am_i(forced_owner)
+            if txt:
+                out["instructions"] = txt
+            return out
         if method == "ping":
             return {}
         if method == "tools/list":

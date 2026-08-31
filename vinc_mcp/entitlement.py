@@ -240,6 +240,66 @@ def verify_member(sub: str, team: str) -> dict | None:
     return result
 
 
+#: 스페이스 목록 캐시. `_cache` 와 **따로 둔다** — 저기는 인가 판정(dict|None)을
+#: 담는 표고 여기는 목록이라, 한 표에 섞으면 타입이 거짓말을 한다.
+_spaces_cache: dict[str, tuple[float, list | None]] = {}
+
+
+def list_spaces(sub: str) -> list[dict] | None:
+    """`user:{publicId}` 의 publicId → 그 사람이 활성 멤버인 팀 목록. 실패면 None.
+
+    ⚠ **이것은 인가가 아니라 발견이다.** 여기서 팀 하나를 빠뜨리든 없는 팀을
+    지어내든 권한은 안 변한다 — 실제 판정은 그 id 를 `space` 로 실었을 때
+    `resolve_auth` → `verify_key`/`verify_member` 가 다시 한다. 그래서
+    `verify_member` 와 달리 fail-closed 를 지킬 대상이 아니고, 실패를 **None 으로
+    구분해서** 돌려주는 것이 요점이다: 빈 목록으로 뭉개면 호출자가 "팀이 없다"로
+    읽고 사람에게 그렇게 말한다.
+
+    계정 응답을 **그대로 통과시키지 않는다.** 모양이 맞는 행만 추려 담는다 —
+    이 값은 도구 응답으로 나가고, 거기로 임의의 계정 JSON 이 흘러가면 안 된다.
+    """
+    if not sub:
+        return None
+    seed = _seed()
+    if seed is None:
+        return None
+
+    ckey = "spaces|" + sub
+    now = time.time()
+    with _lock:
+        hit = _spaces_cache.get(ckey)
+        if hit and hit[0] > now:
+            return hit[1]
+
+    rows: list[dict] | None = None
+    try:
+        req = urllib.request.Request(
+            _account_url() + "/internal/mcp/spaces",
+            data=json.dumps({"sub": sub}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-Vinc-Assertion": _sign_assertion(seed)},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        raw = body.get("spaces")
+        if isinstance(raw, list):
+            rows = []
+            for r in raw:
+                if not isinstance(r, dict):
+                    continue
+                rid, name, role = r.get("id"), r.get("name"), r.get("role")
+                if not (isinstance(rid, str) and rid and isinstance(role, str) and role):
+                    continue
+                rows.append({"id": rid, "name": name if isinstance(name, str) else "",
+                             "role": role})
+    except Exception:
+        rows = None              # 네트워크·HTTP·형식 → "못 물었다"(빈 목록 아님)
+
+    with _lock:
+        _spaces_cache[ckey] = (now + (_POS_TTL if rows is not None else _NEG_TTL), rows)
+    return rows
+
+
 def lookup_plan(sub: str) -> str | None:
     """publicId → **지금의** 등급. 계정 `/internal/mcp/plan`(B2 동일 신뢰 방향).
 
