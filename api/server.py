@@ -132,6 +132,33 @@ def connect_origins() -> list[str]:
         "VINC_CONNECT_ORIGINS", "https://vincs.app,https://vincs.io").split(",") if o.strip()]
 
 
+def _omit_absent_rows(res: dict) -> dict:
+    """recall 응답에서 **값이 없는 키를 뺀다**. 지우는 것이 아니라 생략이다.
+
+    `tenant`·`workspace`·`access_count`·`last_access` 는 MCP 로 쓸 수 없어서, MCP 로만
+    먹인 스토어에서는 모든 행에 빈 값으로 실려 나간다. 화면에 빈칸이 줄줄이 나가면
+    기능 결손처럼 읽히고, 행마다 토큰도 문다.
+
+    ⚠ **필드를 없애는 것과 다르다.** 없애면 그 값들의 읽기 경로가 사라지고, 그것은
+    [[decision:every-written-field-has-a-read-path]] 와 정면으로 부딪힌다 — 이 넷은
+    배치 임포트와 preference 신호가 채울 수 있고, 그때는 저절로 다시 나와야 한다.
+    생략은 토큰을 똑같이 줄이면서 계약을 안 바꾼다.
+
+    ⚠ **여기가 전송 경계라서 여기 있다.** 질의(`api/query.py`)는 rank 무관 전량을
+    투영하는데 그건 의도다: 이 신호는 런타임 축적분이라 원문 재수집으로 복원되지
+    않고, `api/activate.py` 가 **같은 행으로 컨텍스트 팩을 만든다**(팩이 유일한 무손실
+    이관 통로, 설계 §10·D4). 질의에서 빼면 팩이 그 신호를 잃는다.
+
+    ⚠ **0 은 값이다.** `access_count: 0` 은 "없음"이 아니라 "0회"라서 남긴다. 뺄 것은
+    `None` 뿐이다 — 부재와 0 을 뭉개면 이 함수가 판단을 하기 시작한다.
+    """
+    rows = res.get("rows")
+    if isinstance(rows, list):
+        res["rows"] = [{k: v for k, v in row.items() if v is not None}
+                       if isinstance(row, dict) else row for row in rows]
+    return res
+
+
 class VincApp:
     """사이드카 상태: 설정 · 공유 스토어(단일 Database, writer) · 세션 인증 · 잡 큐 ·
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
@@ -310,11 +337,11 @@ class VincApp:
 
     # ── 읽기 라우트(CLI 1:1) ──────────────────────────────────────────────
     def read_recall(self, p) -> tuple[int, dict]:
-        return self._read(lambda r: q.recall(
+        return self._read(lambda r: _omit_absent_rows(q.recall(
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
-            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug"))))
+            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")))))
 
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
