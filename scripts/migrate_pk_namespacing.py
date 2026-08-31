@@ -18,8 +18,9 @@ Vinculums/Vinc#121 의 근본 처방(선택지 1). 발주자 결정: 2026-08-30.
 
 ## 무엇을 다시 쓰고 무엇을 그대로 두는가
 
-이 표가 이 파일의 본체다. `scripts/pkns_preflight.py` 가 이것을 읽는다 — 표가 둘이면
-점검과 이관이 다른 것을 말하게 된다.
+이 표가 이 파일의 본체이고 **표는 여기 하나뿐이다.** 판정을 옮겨 적은 두 번째 자리를
+두면 점검과 이관이 다른 것을 말하게 된다 — 실제로 그럴 뻔한 이력이 아래 §「먼저 재라」에
+있다.
 
   노드 PK          owner_id 열이 있는 라벨만 합성한다. `Domain`(pk=name)과
                    `SkillExecution` 은 owner 열이 없어 **합성할 수 없고**, 런타임도
@@ -64,9 +65,18 @@ H1 이 **조용한** 결함인 이유이기도 하다.
     python scripts/migrate_pk_namespacing.py --data <원본> --out <대상>          # 예행
     python scripts/migrate_pk_namespacing.py --data <원본> --out <대상> --apply  # 수행
 
-⚠ **라이브 DB 를 원본으로 주지 마라.** 공유 스냅샷을 뜨고 받은 사본을 줄 것
-(`scripts/pkns_preflight.py` 독스트링의 절차). SMB 위에서 임베디드 DB 를 직접
-여는 것이 하드다운 3회의 공통 원인이었다.
+⚠ **라이브 DB 를 원본으로 주지 마라.** SMB 위에서 임베디드 DB 를 직접 여는 것이
+하드다운 3회의 공통 원인이었다(FTS 손상 2 + 재생 불가 WAL 1). 공유 스냅샷을 뜨고
+받은 사본을 줄 것:
+
+    az storage share snapshot --name <share>
+    az storage file download --snapshot <ts> --path <db 경로>
+
+라이브 파일은 SMB 로 잠겨 있어 **서버측 복사가 `FileLockConflict` 로 거절된다.** 고아
+핸들이 물고 있으면 레플리카를 0으로 내려도 안 풀리고 만료 시간도 없다 —
+`az storage share close-handle --handle-id "*" --recursive` 로 강제 종료한다.
+배포 플레인 전반의 정본은 [[vinc.ops.deployment]] 이고, 위 명령 자체는 워크스페이스
+`CLAUDE.md` §5 에 적혀 있다.
 
 ⚠ **`VINC_PK_NAMESPACED` 를 켠 채로 돌리지 마라.** 이 스크립트는 합성된 값을
 **리터럴로** 쓴다. 플래그가 켜져 있으면 읽기 경로가 그 값을 한 번 더 벗겨 낼 수 있어
@@ -90,7 +100,7 @@ from store import migrate as logical            # noqa: E402
 from store.backend import open_store            # noqa: E402
 from store.config import load_config            # noqa: E402
 
-#: 메타 표별 처리. **이 표가 정본이다** — 사전점검이 이것을 읽는다.
+#: 메타 표별 처리. **이 표가 정본이다** — 모듈 독스트링의 표는 이것의 설명이다.
 #:   rewrite : 합성해서 다시 쓸 열 (빈 튜플이면 그대로 나른다)
 #:   carry   : 나를 것인가
 #:   refuse  : 행이 있으면 이관을 멈출 것인가
@@ -204,10 +214,11 @@ def transform(dump: dict, meta: dict) -> tuple[dict, dict, dict]:
                     r[pk] = pkns.compose(o, nid, normalize=False)
                     stats["nodes_composed"] += 1
                 else:
-                    # 사전점검이 막았어야 하는 행. 여기 오면 그건 점검을 건너뛴 것이다.
+                    # 측정이 막았어야 하는 행. 여기 오면 그건 측정을 건너뛴 것이다.
                     raise SystemExit(
-                        f"{label} 의 행에 owner 가 없다(pk={nid!r}) — 사전점검을 "
-                        "먼저 돌릴 것. 합성할 owner 없이는 이관할 수 없다")
+                        f"{label} 의 행에 owner 가 없다(pk={nid!r}) — "
+                        "scripts/measure_pk_collisions.py 를 먼저 돌릴 것. "
+                        "합성할 owner 없이는 이관할 수 없다")
             else:
                 stats["nodes_left_logical"] += 1
             fresh.append(r)

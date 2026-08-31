@@ -16,7 +16,9 @@ hand-edit" 이 적혀 있지만 **헤더는 강제하지 않는다** — 실제�
   ✅ 사본을 손으로 고친 것 — 각인과 본문이 어긋난다
   ✅ 각인이 사라진 것 — 허브를 거치지 않고 파일이 만들어졌다는 뜻
   ❌ 허브가 앞서갔는데 동기화를 안 한 것 — 사본은 제 안에서 일관되므로 여기선 안
-     보인다. 그건 허브에서 `python -X utf8 scripts/sync_out.py --check` 가 잡는다.
+     보인다. 그건 허브에서 `python -X utf8 design-hub/scripts/sync_out.py --check` 가 잡는다
+     (`cd design-hub` 한 뒤라면 앞자리는 뗀다. 경로를 리포 루트 기준으로 적는 이유는,
+     여기 적힌 경로를 루트에서 찾다 못 찾는 것이 #136 이 잡은 고장이기 때문이다).
 
     python scripts/gate_design_sync.py
 
