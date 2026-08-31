@@ -104,7 +104,14 @@ export async function renderSettings(el: HTMLElement) {
            것으로 충분하다. 데스크탑 분기 안에만 두는 것도 의도다 — 웹 Vinc 의 데이터는
            계정에 있으므로 그쪽에서 "로컬"은 애초에 참이 아니었다(칩은 양쪽에 다 떴다). -->
       <label>${U.storage}</label>
-      <p class="rail-sync"><span class="sync-dot"></span><span>${COPY.ui.common.local}</span></p>
+      <p class="rail-sync"><span class="sync-dot"></span><span>${
+        // 로그인 여부로 갈린다. **"로컬"은 계정을 안 붙였을 때만 참이다** — 붙이면
+        // 고른 주제가 계정에도 올라가고(바로 아래 syncHint 가 그 약속이다), 팀
+        // 스페이스는 아예 계정에만 있다. 상시 "로컬"은 그 둘을 다 부정하는 말을
+        // 화면에 고정하는 것이라, 사용자가 자기 데이터가 어디 있는지 틀리게 안다.
+        // 연결·해제는 renderAccount 가 이 패널을 통째로 다시 그리므로 즉시 따라온다.
+        hasAccount() ? U.storageSynced : COPY.ui.common.local
+      }</span></p>
       <hr class="settings-sep" />
       <label>${U.account}</label>
       <p class="hint">${U.syncHint}</p>
