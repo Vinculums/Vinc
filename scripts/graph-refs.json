@@ -133,10 +133,12 @@
   ],
   "nodes": [
     "concept:agent-orchestration",
+    "concept:tool-response-disclosure",
     "decision:a-selection-becomes-an-address-you-paste",
     "decision:account-is-a-path-not-a-wall",
     "decision:agent-model-ladder",
     "decision:escape-once-at-the-boundary",
+    "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:korean-deck-reopens-only-after-authored-pass",
     "decision:scoped-key-tier",

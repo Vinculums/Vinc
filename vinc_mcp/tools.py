@@ -434,10 +434,16 @@ TOOLS: list[dict] = [
                        "Call this before vinc_ingest to find existing node ids to reuse. If the "
                        "backend search fails, a top-level `error` string says why (e.g. "
                        "index_missing vs extension_unavailable) instead of silently returning "
-                       "empty. Right after a document write the vector index is being rebuilt, "
-                       "so this answers from full text alone and says so in `vector_note` with "
-                       "`arms` reading \"fts\"; the rebuild runs in the background and the call "
-                       "never waits for it, so semantic matches come back on a later search.",
+                       "empty. `vector_note` appears ONLY when the semantic arm did not run, "
+                       "and its two causes must be told apart. Right after a document write the "
+                       "index is rebuilding: benign, `arms` reads \"fts\", the rebuild runs in "
+                       "the background and the call never waits for it, so semantic matches return "
+                       "on a later search and there is nothing to report. ANY OTHER VALUE IS A "
+                       "FAILURE of the semantic arm (a "
+                       "timeout, a missing index, an unavailable extension) and the rows you are "
+                       "holding were found by text matching alone. Say so when you answer: a "
+                       "degraded search and a complete one look identical from the results, so "
+                       "silence here reads as \"nothing else exists\".",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
@@ -992,9 +998,14 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_doc_get",
-        "description": "Reconstruct a document's canonical text from its chunks, with a `verified` "
-                       "flag (offset-contiguous + content-hash match). Returns {text, title, "
-                       "verified, chunks, updated_at}.",
+        "description": "Reconstruct a document's canonical text from its chunks. Returns "
+                       "{text, title, verified, chunks, updated_at}. `verified` is an INTEGRITY "
+                       "flag: true means the chunks were offset-contiguous and their content hash "
+                       "matched, so what you got back is the document that was stored. WHEN IT IS "
+                       "FALSE the text may be incomplete or reordered and it still reads as prose "
+                       "— nothing about the output looks wrong. Say so rather than answering from "
+                       "it silently: a quietly truncated document is indistinguishable from a "
+                       "short one.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},
