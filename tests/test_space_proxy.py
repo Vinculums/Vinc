@@ -53,6 +53,43 @@ class PathBoundaryTests(unittest.TestCase):
                     "view", "", "/a\\b"):
             self.assertIsNone(spaceproxy._safe_path(bad), bad)
 
+    def test_쿼리와_프래그먼트를_거절한다(self):
+        """경로에 `?`·`#` 이 섞이면 조립이 **조용히** 틀린다.
+
+        `#` 은 더 나쁘다: urllib 이 프래그먼트부터 잘라 내보내므로 뒤에 붙인
+        `team` 이 통째로 사라지고, 계정은 팀을 못 봤으니 개인 그래프로 답한다.
+        팀에 쓰려던 것이 조용히 개인 것이 되는 것이야말로 이 표면이 막으려는
+        고장이다. `?` 쪽은 `team` 이 두 번 실려 어느 쪽이 이기는지를 계정의
+        파서가 정하게 된다. 쿼리는 `params` 로 오므로 경로에 실을 자리가 없다."""
+        for bad in ("/view?team=other", "/view#frag", "/view?x=1", "/doc/put#"):
+            self.assertIsNone(spaceproxy._safe_path(bad), bad)
+
+    def test_퍼센트로_감춘_상위이동도_거절한다(self):
+        """리터럴 `..` 만 보면 `%2e%2e` 가 지나간다. 앞단 인그레스가 정규화하면
+        `/api/graph` 접두 밖으로 나가고, 접두가 하나뿐인 것이 이 모듈의 경계다."""
+        for bad in ("/%2e%2e/%2e%2e/api/teams", "/a/%2E%2E/b", "/a%5Cb"):
+            self.assertIsNone(spaceproxy._safe_path(bad), bad)
+
+    def test_팀은_정확히_한_번_실린다(self):
+        """통과한 경로로 조립했을 때 `team` 이 하나이고 살아남는가.
+
+        위 두 검사가 입구를 막지만, 막는 이유가 여기 있다 — 이것이 깨지면
+        위의 거절은 목적을 잃는다."""
+        seen = {}
+        old = spaceproxy.urllib.request.urlopen
+
+        def spy(req, *a, **k):
+            seen["selector"] = req.selector
+            return _Resp(b"{}")
+
+        spaceproxy.urllib.request.urlopen = spy
+        try:
+            spaceproxy.call(token="k", team="TEAM-1", method="GET", path="/view")
+        finally:
+            spaceproxy.urllib.request.urlopen = old
+        self.assertIn("team=TEAM-1", seen["selector"])
+        self.assertEqual(seen["selector"].count("team="), 1, seen["selector"])
+
     def test_나쁜_경로는_아예_안_나간다(self):
         called = []
         old = spaceproxy.urllib.request.urlopen

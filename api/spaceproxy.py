@@ -47,16 +47,38 @@ _TIMEOUT = 30.0
 
 
 def _safe_path(path: str) -> str | None:
-    """`/view` 처럼 슬래시로 시작하는 상대 경로만. 아니면 None.
+    """`/view` 처럼 슬래시로 시작하는 **경로 부분만**. 아니면 None.
 
-    `..` 와 스킴·호스트를 막는다. 계정이 op 를 판정하므로 여기서 화이트리스트를 들
-    이유는 없지만, **이 사이드카가 임의 호스트 포워더가 되는 것**은 막아야 한다."""
+    스킴·호스트·`..` 를 막는다. 계정이 op 를 판정하므로 여기서 화이트리스트를 들
+    이유는 없지만, **이 사이드카가 임의 호스트 포워더가 되는 것**은 막아야 한다.
+
+    ⚠ **쿼리(`?`)와 프래그먼트(`#`)도 거절한다.** 경로에 섞여 들어오면 아래 조립이
+    조용히 틀린다 — 둘 다 실측이다:
+
+      `/view#frag`         → `…/view#frag?team=T` 가 되고 urllib 이 프래그먼트부터
+                             잘라 내보내서 **`team` 이 통째로 사라진다.** 계정은 팀을
+                             못 봤으니 개인 그래프로 답한다. 팀에 쓰려던 것이 조용히
+                             개인 것이 되는, 이 표면 전체가 막으려는 그 고장이다.
+      `/view?team=X`       → `?team=X&team=T` 로 **두 번** 실린다. 어느 쪽이 이기는지는
+                             계정의 파서가 정하지 우리가 정하지 않는다.
+
+    쿼리는 `params` 로 온다. 경로에 실을 자리가 애초에 없다.
+
+    ⚠ **퍼센트 인코딩을 풀고 나서** `..` 를 본다. 리터럴만 보면 `%2e%2e` 가 지나가고,
+    앞단 인그레스가 정규화하는 순간 `/api/graph` 접두 밖으로 나간다. 접두가 하나뿐인
+    것이 이 모듈의 경계이므로, 그 경계를 문자열 검사 하나에 맡기지 않는다."""
     if not path or not path.startswith("/") or path.startswith("//"):
         return None
-    if ".." in path or "\\" in path:
+    # ⚠ `urlsplit(...).query`·`.fragment` 의 참거짓으로 보면 **빈 것을 놓친다** —
+    # `/doc/put#` 은 fragment 가 `""` 라 거짓인데 조립하면 `#` 뒤가 잘려 `team` 이
+    # 그대로 사라진다(검사가 이걸 잡았다). 문자 자체를 본다.
+    if "?" in path or "#" in path:
         return None
     parsed = urllib.parse.urlsplit(path)
     if parsed.scheme or parsed.netloc:
+        return None
+    decoded = urllib.parse.unquote(path)
+    if ".." in decoded or "\\" in decoded:
         return None
     return path
 
