@@ -329,7 +329,17 @@ jobs:
       # 없다 — 2026-09-01 실측). 실패한 배포가 자기 탈출로를 지우면 안 된다.
       #
       # ⚠ 첫 실행은 밀린 것까지 한꺼번에 지우므로 오래 걸린다(87 → KEEP). 한 번뿐이다.
+      #
+      # ⚠ **정리 실패가 배포를 실패로 만들면 안 된다.** 이 스텝은 잡의 **마지막**이고
+      # 그 앞에서 헬스·커넥터 표면 검증이 이미 통과했다 — 여기서 죽으면 실제로는
+      # 나간 배포가 빨간 런으로 남고, 그것을 본 사람이 멀쩡한 리비전을 다시 배포하러
+      # 간다. `set -e` 아래에서 죽을 자리가 여럿이다: `containerapp show` 가 실패하면
+      # `live` 를 못 구하고, `manifest delete` 하나가 실패하면 while 루프가 통째로
+      # 끊기며, 마지막 `show-usage` 가 빈 값을 주면 f-string 이 SyntaxError 를 낸다.
+      # 셋 다 청소의 실패이지 배포의 실패가 아니다. 실패는 로그에 남고 다음 배포가
+      # 다시 시도한다 — 지울 것은 도망가지 않는다.
       - name: Prune old image tags (the registry bills what it keeps)
+        continue-on-error: true
         env:
           KEEP: "10"
         run: |
