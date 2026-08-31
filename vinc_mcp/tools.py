@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**23종** — 읽기 15(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
-path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions) + 쓰기 8
+**24종** — 읽기 16(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
+path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -374,6 +374,34 @@ def _t_conventions(args, bridge):
     # 관례(GRAPH.md) — 쓰기 전에 읽는 채널. 사이드카가 문서본/기본본을 알아서 고른다.
     return bridge.request("GET", "/conventions", params={
         "owner": _owner(args, bridge), "lang": args.get("lang")})
+
+
+def _t_whoami(args, bridge):
+    """어느 그래프에 붙어 있고, 어디로 갈 수 있는가.
+
+    ⚠ `spaces` 는 **계정에 묻는다**(브리지가 아니라). 어느 팀에 속하는지는 계정의
+    사실이고 그래프에는 그 열이 없다. 못 물으면 개인 하나만 답하되 `spaces_source`
+    로 그 사실을 말한다 — 빈 목록과 "못 물었다"가 같은 모양이면 에이전트가 "팀이
+    없구나"로 읽고 사람에게 그렇게 말한다.
+
+    이 도구가 왜 생겼나(`vinc_conventions` 가 이미 신원을 싣는데도):
+    [[decision:the-space-is-an-argument-and-the-default-is-personal]]"""
+    owner = _owner(args, bridge)
+    scope = ("team" if owner.startswith("team:")
+             else "personal" if owner.startswith("user:") else "unscoped")
+    out = {"owner": owner, "scope": scope,
+           "how": "pass space:'<id>' to any tool to act in that space; omit it for "
+                  "your personal graph"}
+    if scope != "personal":
+        # 팀 주소로 붙었으면 그 팀에 고정돼 있다(인자가 무시되는 자리). 목록을 물을
+        # 사람(publicId)도 여기서는 안 보인다 — 그 세션은 이미 스페이스를 골랐다.
+        out["spaces_source"] = "not_applicable"
+        return out
+    from . import entitlement
+    rows = entitlement.list_spaces(owner.split(":", 1)[1])
+    out["spaces"] = [{"id": "personal", "name": "Personal", "role": "admin"}] + (rows or [])
+    out["spaces_source"] = "account" if rows is not None else "unavailable"
+    return out
 
 
 def _t_doc_delete(args, bridge):
@@ -761,17 +789,18 @@ TOOLS: list[dict] = [
                        "last generated, not when these numbers were taken. This is the "
                        "only way to see the ratified vocabulary: proposing an unlisted type is "
                        "allowed, but it lands as proposed and waits for a human. "
-                       "THE RESPONSE ALSO TELLS YOU WHERE YOU ARE, which is why this tool "
-                       "carries it rather than a separate whoami: `owner` is the graph you "
+                       "THE RESPONSE ALSO TELLS YOU WHERE YOU ARE: `owner` is the graph you "
                        "are connected as, `scope` is 'personal' or 'team' (or 'unscoped' "
                        "for a local single-user store), and `target` echoes local versus "
-                       "remote. Read them before your first write. On this hosted connector "
-                       "`scope` is always 'personal': a key is bound to one person and no "
-                       "tool takes a team argument, so a team graph can be neither written "
-                       "nor read from here. Team graphs are reachable only from the web app, "
-                       "which selects the team and has the account sign for it. If you meant "
-                       "to write to a team, stop: this surface cannot, and the write lands in "
-                       "the personal graph instead.",
+                       "remote. Read them before your first write. Use vinc_whoami when you "
+                       "want that answer on its own, or the list of spaces you can reach; "
+                       "this tool carries it too so the first door already tells you. "
+                       "On a hosted connector the space is your personal graph unless you "
+                       "say otherwise: pass `space` to any tool to act in a team instead "
+                       "(vinc_whoami lists the ids and your role in each). Connecting at a "
+                       "team address `/t/<team-uuid>/mcp` still works and pins every call in "
+                       "this session to that team, ignoring the argument; both API keys and "
+                       "OAuth are accepted there.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
             "lang": {"type": "string", "enum": ["en", "ko"],
@@ -779,6 +808,28 @@ TOOLS: list[dict] = [
                                     "owner has written their own)."},
         }},
         "run": _t_conventions,
+    },
+    {
+        "name": "vinc_whoami",
+        "description": "Which graph am I connected to, and which others can I reach? "
+                       "Returns {owner, scope, spaces, spaces_source}. `scope` is 'personal' "
+                       "or 'team' ('unscoped' for a local single-user store). `spaces` lists "
+                       "every space this credential can act in — 'personal' plus each team "
+                       "you are an active member of, each with the `id` you pass as `space` and "
+                       "your `role` there (viewer reads, editor writes, admin also deletes and "
+                       "merges). Omitting `space` acts on your personal graph, so a write with "
+                       "no space lands there even when you meant a team; this is how you get "
+                       "the id to say otherwise. `spaces_source` says where the list came from: "
+                       "'account' means it is complete, 'unavailable' means the team list could "
+                       "not be fetched and only personal is shown (an empty team list and a "
+                       "failed lookup are NOT the same answer), and 'not_applicable' means you "
+                       "connected at a team address, which pins this session to that team and "
+                       "ignores the `space` argument entirely. Read-only, and free of the graph "
+                       "— it asks the account, not your store.",
+        "inputSchema": {"type": "object", "properties": {
+            "owner": {"type": "string"},
+        }},
+        "run": _t_whoami,
     },
     {
         "name": "vinc_ingest",
@@ -992,6 +1043,10 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_domains": {"title": "List domains", "readOnlyHint": True},
     # 관례(GRAPH.md) — 조회 전용. 쓰기 전에 읽는 것이 이 도구의 존재 이유다.
     "vinc_conventions": {"title": "Read the graph conventions", "readOnlyHint": True},
+    # 스페이스 목록 — 조회 전용이고 **그래프를 안 읽는다**(계정에 묻는다). 등급이
+    # viewer 인 것이 중요하다: 열람자가 자기가 어디 있는지 못 물으면 그 역할은
+    # 스페이스를 고를 수 없다.
+    "vinc_whoami": {"title": "Which graph am I in", "readOnlyHint": True},
     "vinc_suggest_ties": {"title": "Suggest links", "readOnlyHint": True},
     # E-G3/G4/G5/G7 — 전부 조회 전용(진단·제안·관측·경로). 쓰기 아님.
     "vinc_diagnose": {"title": "Diagnose graph structure", "readOnlyHint": True},
@@ -1040,6 +1095,24 @@ _TARGET_PROP = {"target": {
                    "(VINC_REMOTE_MCP_TOKEN); its owner is fixed by that key."}}
 
 
+#: 호스티드 프로파일의 스페이스 선택자. 주소 대신 인자로도 스페이스를 고른다.
+#:
+#: ⚠ **안 실으면 개인이다.** 그래서 팀에 쓰려던 호출이 오류 없이 개인 그래프에
+#: 쌓일 수 있고, 그 침묵을 셋이 덮는다 — initialize 의 instructions · 쓰기 응답의
+#: 정체 스탬프(`_IDENTITY_TOOLS`) · `vinc_whoami`. 셋 중 하나를 걷어내려면 기본값을
+#: 함께 봐야 한다.
+#: 근거(왜 뒤집었나·A안을 왜 골랐나):
+#: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
+_SPACE_PROP = {"space": {
+    "type": "string",
+    "description": "Which space this call acts on: omit (or 'personal') for your personal "
+                   "graph, or a team's id for that team's shared graph. Call vinc_whoami to "
+                   "see the ids you can reach and your role in each. Your role there decides "
+                   "what you may do, and a space you are not an active member of answers the "
+                   "same way as one that does not exist. Ignored when you connected at a team "
+                   "address (/t/<team-uuid>/mcp) — there the address already fixed the space."}}
+
+
 def specs(*, allow_target: bool = True) -> list[dict]:
     """도구 목록. ``allow_target=False`` 면 `target` 프로퍼티를 주입하지 않는다.
 
@@ -1054,6 +1127,11 @@ def specs(*, allow_target: bool = True) -> list[dict]:
         props = {**sch.get("properties", {})}
         if allow_target:
             props.update(_TARGET_PROP)
+        else:
+            # `allow_target=False` 는 이 파일에서 곧 **호스티드 프로파일**이다(위
+            # 독스트링: 허브만 False 로 부른다). `space` 는 계정이 있는 곳에서만
+            # 뜻이 있으므로 같은 갈림에 얹는다 — 로컬 stdio 에는 고를 스페이스가 없다.
+            props.update(_SPACE_PROP)
         spec = {"name": t["name"], "description": t["description"],
                 "inputSchema": {**sch, "properties": props}}
         ann = _ANNOTATIONS.get(t["name"])
@@ -1162,6 +1240,15 @@ def call(name: str, args: dict | None, bridge: Bridge,
         raise KeyError(f"unknown tool: {name}")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
+    # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 판정은 이미 HTTP 층에서
+    # 끝났으므로(멤버십·역할) 여기서는 벗기기만 한다.
+    #
+    # ⚠ 새는 자리는 사이드카가 아니라 **원격 전달**이다. 사이드카 핸들러는 params 를
+    # 명시로 조립하니 모르는 키가 흘러갈 길이 없는데, `remote.call` 은 `owner`·`target`
+    # 만 빼고 **전부 넘긴다**. 안 벗기면 데스크탑에서 `target:"remote"` 로 부른 호출이
+    # 스키마에 광고하지도 않은 스페이스 선택을 허브에서 하게 된다 — 그 표면이 열려야
+    # 한다면 데스크탑 스키마에 `space` 를 싣는 것이 순서고, 여기로 몰래 들어오면 안 된다.
+    args.pop("space", None)
     # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
     # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
     if not allow_target and target != "local":

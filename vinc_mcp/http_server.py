@@ -144,9 +144,12 @@ def _role_allows(role: str, op: str) -> bool:
 #: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
 #: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
 #: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
-_SPACE_PATH_RE = re.compile(
-    r"\A/t/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?\Z")
+#: 스페이스 id 의 모양. 주소(`/t/<uuid>/mcp`)와 인자(`space`) **양쪽이 같은 것을
+#: 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
+_UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_UUID_RE = re.compile(r"\A" + _UUID + r"\Z")
+_SPACE_PATH_RE = re.compile(r"\A/t/(" + _UUID + r")(/.*)?\Z")
 
 
 def split_space(path: str) -> tuple[str | None, str]:
@@ -327,6 +330,7 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
 class MCPHTTPApp:
     def __init__(self, bridge: Bridge, *, static_token: str | None = None,
                  oauth: OAuthGate | None = None, verify_key=None,
+                 verify_member=None,
                  store=None, quota_config: dict | None = None,
                  mcp_seed: bytes | None = None, account_public: bytes | None = None,
                  connect_url: str | None = None, free_max_domains: int | None = None):
@@ -343,6 +347,11 @@ class MCPHTTPApp:
         # verify_key(raw)->{owner,plan}|None — 회원 API 키(vinc_sk_*) 검증(B-B1).
         # None 이면 키 경로 비활성. 프로덕션은 cli 가 entitlement.verify_key 를 주입.
         self.verify_key = verify_key
+        # verify_member(sub, team)->{owner,role}|None — OAuth 커넥터가 팀 주소에
+        # 붙을 때의 멤버십 질문(#120). None 이면 **OAuth 팀 경로만** 꺼지고 키 경로와
+        # 개인 OAuth 는 그대로다 — 계정이 그 라우트를 아직 안 배포한 동안에도 허브가
+        # 정상으로 도는 형태이고, 꺼진 방향이 닫힌 쪽이다(팀 주소는 404).
+        self.verify_member = verify_member
         # 쿼터(B-D2): usage 카운터는 store 에 영속. quota_config 없으면 무제한
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
@@ -412,10 +421,28 @@ class MCPHTTPApp:
         (fail-closed — 스코프를 모르는 채 쓰기를 여는 것이 최악의 고장이다).
         static·oauth 는 스코프 개념 이전의 신원이라 'full'(기존 동작 무변화).
 
-        ``space``(팀 uuid)가 오면 **키 경로만** 통과한다. OAuth 는 못 쓴다 —
-        `resource_metadata` 가 `issuer + "/mcp"` 로 하드코딩돼 있어 팀 주소에 등록된
-        커넥터가 자기와 안 맞는 resource 를 발견하게 된다(경로 인식으로 바꾸는 것은
-        별건이다). 정적 토큰은 owner 가 아예 없어 멤버십을 물을 대상이 없다.
+        ``space``(팀 uuid)가 오면 **키와 OAuth 둘 다** 통과한다(#120). 전에는 키
+        전용이었는데, 그 제약의 근거는 `resource_metadata` 가 `issuer + "/mcp"` 로
+        하드코딩돼 팀 주소의 커넥터가 자기와 안 맞는 resource 를 발견한다는 것이었다.
+        그 메타데이터가 경로 인식이 되면서(`OAuthGate.resource_metadata(path)`) 제약의
+        근거가 사라졌다.
+
+        ⚠ 이 제약을 푸는 것이 왜 중요한가: claude.ai 커스텀 커넥터는 임의 헤더를 못
+        넣는다. 키 전용이면 팀 그래프는 `--header` 를 쓸 수 있는 Claude Code 에서만
+        닿고, 그건 사실상 "팀은 개발자만 쓸 수 있다"가 된다. 그리고 그 불편이
+        "개인 커넥터에서 팀도 되게 해 달라"는 요구를 만드는데, 그 요구를 들어주면
+        스페이스가 도구 인자가 되어 팀 쓰기가 조용히 개인 그래프에 쌓인다. **주소 =
+        스페이스** 불변식을 지키면서 같은 불편을 없애는 길이 이쪽이다.
+
+        OAuth 팀 경로의 규칙은 키 경로와 **같다**:
+        - 토큰이 유효해도 그것만으로는 아무것도 아니다. `verify_member` 로 계정에
+          "이 사람이 그 팀의 활성 멤버인가"를 따로 묻는다(키 경로가 verify_key 에
+          team 을 실어 묻는 것과 같은 질문, 다른 라우트).
+        - 실패는 **개인으로 떨어지지 않는다.** 거절이다.
+        - `role` 이 함께 와야 하고, 없으면 거절이다(역할 게이트의 입력이다).
+
+        정적 토큰은 여전히 못 쓴다 — owner 가 아예 없어 멤버십을 물을 대상이 없다.
+        관리 키 부트스트랩으로 발급된 OAuth 토큰도 같다(owner=None).
 
         - static: 정적 토큰 = 단일 테넌트 하위호환(owner=None → bridge.owner 사용).
         - apikey: `vinc_sk_*` → verify_key 루프백 → owner=user:{public_id}, plan.
@@ -426,17 +453,41 @@ class MCPHTTPApp:
         if not header or not header.startswith("Bearer "):
             return miss
         if space:
-            # 팀 주소는 키 전용. 그리고 **개인으로 떨어지지 않는다** — 실패는 실패다.
+            # 팀 주소. 키와 OAuth 둘 다 받되 **개인으로 떨어지지 않는다** — 실패는 실패다.
             tok = header[7:].strip()
-            if not tok.startswith(entitlement.KEY_PREFIXES) or self.verify_key is None:
+            if tok.startswith(entitlement.KEY_PREFIXES):
+                if self.verify_key is None:
+                    return miss
+                ent = self.verify_key(tok, space)
+                if not ent or not str(ent.get("owner") or "").startswith("team:"):
+                    return miss
+                return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                        "scope": ent.get("scope") or "read",
+                        "source": "apikey", "role": ent.get("role"),
+                        "member": ent.get("member")}
+            # OAuth(#120). 토큰이 유효한 것만으로는 아무것도 아니다 — 그 토큰의 사람이
+            # 이 팀의 활성 멤버인지 계정에 **따로** 묻는다. 정적 토큰은 여기 못 온다
+            # (아래 static 분기는 space 가 없을 때만 닿는다) — owner 가 없어 물을
+            # 대상이 없기 때문이고, 관리 키로 발급된 OAuth 토큰(owner=None)도 같다.
+            if self.oauth is None or self.verify_member is None:
                 return miss
-            ent = self.verify_key(tok, space)
-            if not ent or not str(ent.get("owner") or "").startswith("team:"):
+            rec = self.oauth.resolve(tok)
+            owner = (rec or {}).get("owner") or ""
+            if not owner.startswith("user:"):
                 return miss
-            return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
-                    "scope": ent.get("scope") or "read",
-                    "source": "apikey", "role": ent.get("role"),
-                    "member": ent.get("member")}
+            mem = self.verify_member(owner.split(":", 1)[1], space)
+            if not mem or not str(mem.get("owner") or "").startswith("team:"):
+                return miss
+            if not mem.get("role"):
+                return miss   # 역할 없이 통과시키면 role_allows 가 전부 거부하거나
+                              # (조용한 고장) 빈 문자열이 표를 비켜 간다.
+            # scope 가 'full' 인 것은 OAuth 가 스코프 개념 이전의 신원이라서다(개인
+            # 경로와 같다). 팀에서 무엇을 할 수 있는지는 scope 가 아니라 **role** 이
+            # 정한다 — 그 게이트는 do_POST 에 있다.
+            return {"ok": True, "owner": mem["owner"],
+                    "plan": self._fresh_plan(owner, (rec or {}).get("plan")),
+                    "scope": "full", "source": "oauth", "role": mem["role"],
+                    "member": mem.get("member")}
         token = header[len("Bearer "):].strip()
         if self.static_token and secrets.compare_digest(token, self.static_token):
             return {"ok": True, "owner": None, "plan": None, "scope": "full",
@@ -805,8 +856,20 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         return None
 
-    def _unauthorized(self) -> None:
-        meta = f'{self._issuer()}/.well-known/oauth-protected-resource'
+    def _unauthorized(self, resource_path: str = "") -> None:
+        """401 + 이 자원의 메타데이터 주소.
+
+        RFC 9728 의 **경로 삽입형**을 쓴다: 자원이 `/t/<uuid>/mcp` 면 메타데이터는
+        `/.well-known/oauth-protected-resource/t/<uuid>/mcp` 다. 루트 형태 하나만
+        내주면 팀 주소에 붙은 클라이언트가 개인 자원의 문서를 발견한다 — 그것이 팀
+        주소에서 OAuth 를 막아 두었던 이유이고, 여기서 함께 닫는다(#120).
+
+        ⚠ 팀 주소에서는 이 함수가 **안 불린다.** 거기서는 401 이 아니라 404 여야
+        하기 때문이다(팀의 존재가 새면 안 된다). 그래도 인자를 받는 이유는 개인
+        자원의 경로가 나중에 하나 더 생겨도 이 자리가 거짓말을 안 하게 하려는 것이다.
+        """
+        base = f'{self._issuer()}/.well-known/oauth-protected-resource'
+        meta = base + (resource_path if resource_path.startswith("/") else "")
         self._json(401, {"error": "unauthorized"},
                    {"WWW-Authenticate": f'Bearer resource_metadata="{meta}"'})
 
@@ -874,10 +937,29 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
-        if url.path == "/.well-known/oauth-protected-resource":
+        # RFC 9728 은 자원 경로를 **well-known 뒤에 삽입**한다:
+        #   /mcp              → /.well-known/oauth-protected-resource/mcp
+        #   /t/<uuid>/mcp     → /.well-known/oauth-protected-resource/t/<uuid>/mcp
+        # 접두 없는 루트 형태도 계속 받는다 — 기존 커넥터가 그것으로 발견하고 있고,
+        # 그때 답은 종전과 **바이트가 같은** 개인 자원 문서다(#120 이 개인 경로를
+        # 안 건드린다는 것이 계약이다).
+        if url.path.startswith("/.well-known/oauth-protected-resource"):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
-            return self._json(200, gate.resource_metadata())
+            rest = url.path[len("/.well-known/oauth-protected-resource"):]
+            if not rest or rest == "/":
+                return self._json(200, gate.resource_metadata())
+            rspace, rpath = split_space(rest)
+            # 실재하는 자원만 문서를 준다. 아무 경로에나 답하면 이 엔드포인트가
+            # "그 주소는 있다"를 확인해 주는 탐침이 된다 — 팀 주소의 404 규칙과
+            # 같은 이유다. 팀 uuid 의 **존재 여부는 여기서 묻지 않는다**(계정에
+            # 물으면 그 자체가 유출이다): 모양이 맞으면 문서를 주고, 실제로 들어갈
+            # 수 있는지는 자격증명이 판정한다. 그것이 "주소는 의도, 자격증명은 권한"
+            # 이라는 이 설계의 갈래 그대로다.
+            if rpath != "/mcp":
+                return self._json(404, {"error": "no such resource"})
+            return self._json(200, gate.resource_metadata(
+                f"/t/{rspace}/mcp" if rspace else "/mcp"))
         if url.path == "/.well-known/oauth-authorization-server":
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
@@ -1009,21 +1091,61 @@ class _Handler(BaseHTTPRequestHandler):
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
             # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
             # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
+            # 스페이스 해석 — **메시지마다** 한다. 팀 주소로 붙었으면 주소가 이미
+            # 스페이스를 고정했으므로 인자는 무시하고 요청 단위 auth 를 그대로 쓴다.
+            # 개인 주소에서만 `space` 인자가 고르고, 안 실으면 개인이다.
+            #
+            # ⚠ 게이트가 **요청당 하나**였던 전제가 여기서 무너진다: 배치 안의 메시지가
+            # 서로 다른 스페이스를 겨눌 수 있으므로 역할·스코프도 메시지마다 갈린다.
+            # 하나로 두면 배치 첫 메시지의 역할이 나머지를 통과시킨다.
+            #
+            # 멤버십 판정은 **새로 안 짠다** — 같은 resolve_auth 를 다시 부를 뿐이라
+            # 키 경로·OAuth 경로·fail-closed 가 전부 그대로다. entitlement 캐시가
+            # 왕복을 접으므로 같은 스페이스를 겨눈 배치는 계정을 한 번만 때린다.
+            # 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
+            def _auth_for(m):
+                if space or m.get("method") != "tools/call":
+                    return auth
+                want = ((m.get("params") or {}).get("arguments") or {}).get("space")
+                want = str(want or "").strip().lower()
+                if not want or want == "personal":
+                    return auth
+                if not _UUID_RE.match(want):
+                    return None          # 모양이 틀린 것은 계정에 묻지도 않는다
+                got = self.app.resolve_auth(self.headers.get("Authorization"), want)
+                return got if got["ok"] else None
+
+            pairs = [(m, _auth_for(m)) for m in msgs]
+            # 닿을 수 없는 스페이스는 **전부 같은 답**이다 — 모르는 팀·비멤버·제명·
+            # 정지·모양 오류가 갈리면 id 를 추측해 조직을 훑을 수 있다(팀 주소가 404
+            # 하나로 답하는 것과 같은 이유). 여기서는 도구 결과 봉투라 isError 다.
+            unreachable = next((m for m, a in pairs if a is None), None)
+            if unreachable is not None:
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": unreachable.get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": "no such space. Call vinc_whoami to see the "
+                                       "spaces you can reach."}]}})
             # 역할 게이트 — 팀 스페이스에서만. 등급은 주석표에서 유도한다(op 표는
             # 프록시 op 로 키가 잡혀 있어 도구 6개를 못 덮는다). 거절은 브리지를
             # **부르지 않는다** — 그게 이 게이트의 성질이지 상태코드가 아니다.
+            # 조건이 `space`(주소)에서 **해석된 owner**로 바뀌었다: 인자로 고른 팀도
+            # 같은 게이트를 지나야 하고, 주소로 온 것만 검사하면 그게 우회로가 된다.
+            blocked = [(m, a) for m, a in pairs
+                       if m.get("method") == "tools/call"
+                       and str(a.get("owner") or "").startswith("team:")
+                       and not tools.role_allows(
+                           a.get("role") or "",
+                           ((m.get("params") or {}).get("name") or ""))]
+            if blocked:
+                bm, ba = blocked[0]
+                brole = ba.get("role") or ""
+                name = ((bm.get("params") or {}).get("name") or "")
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": bm.get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": f"role {brole!r} may not call {name}"}]}})
             if space:
-                role = auth.get("role") or ""
-                blocked = [m for m in msgs
-                           if m.get("method") == "tools/call"
-                           and not tools.role_allows(
-                               role, ((m.get("params") or {}).get("name") or ""))]
-                if blocked:
-                    name = ((blocked[0].get("params") or {}).get("name") or "")
-                    return self._json(200, {
-                        "jsonrpc": "2.0", "id": blocked[0].get("id"),
-                        "result": {"isError": True, "content": [{"type": "text",
-                                   "text": f"role {role!r} may not call {name}"}]}})
                 # W2 — `prompts/*` 도 같은 게이트를 지난다. 이 메서드들은 스토어를
                 # 조회하므로, "모르는 역할은 거부"라는 규칙을 메서드 하나가 비켜 가면
                 # 그 메서드가 팀 스페이스의 우회로가 된다. 등급은 세 번째 표를 만들지
@@ -1031,8 +1153,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # vinc_graph 가 읽는 것이라 등급도 그것(viewer)이다.
                 # 거절 모양이 위와 다른 이유: prompts 에는 tools/call 의 결과 봉투가
                 # 없다. 그 봉투로 답하면 호스트가 프롬프트 대신 도구 결과를 읽는다.
-                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
-                        and not tools.role_allows(role, "vinc_neighbors"):
+                # ⚠ 여기는 **주소 기준 그대로**다 — prompts 에는 인자가 없어서 스페이스를
+                # 고를 수단이 애초에 없고, 그래서 고를 수 있는 척하면 안 된다.
+                role = auth.get("role") or ""
+                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs)                         and not tools.role_allows(role, "vinc_neighbors"):
                     first = next(m for m in msgs
                                  if str(m.get("method") or "").startswith("prompts/"))
                     return self._json(200, {
@@ -1046,31 +1170,36 @@ class _Handler(BaseHTTPRequestHandler):
             # 여기서 막힌다(tool_tier 가 admin 을 주므로) — 뒤의 -32602 보다 먼저
             # 닫히는 것이 안전측이다. 거절은 브리지를 부르지 않는다. prompts/* 는
             # 조회라 통과한다(스토어 읽기 = viewer 와 같은 등급).
-            if auth.get("scope") != "full":
-                ro_blocked = [m for m in msgs
-                              if m.get("method") == "tools/call"
-                              and tools.tool_tier(
-                                  ((m.get("params") or {}).get("name") or ""))
-                              != "viewer"]
-                if ro_blocked:
-                    name = ((ro_blocked[0].get("params") or {}).get("name") or "")
-                    return self._json(200, {
-                        "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
-                        "result": {"isError": True, "content": [{"type": "text",
-                                   "text": f"this key is read-only: {name} writes "
-                                           "to the graph. Mint a full-access key "
-                                           "at https://vincs.io/account"}]}})
+            # 스코프도 메시지별이다 — 스페이스마다 다른 답이 올 수 있다.
+            ro_blocked = [m for m, a in pairs
+                          if m.get("method") == "tools/call"
+                          and a.get("scope") != "full"
+                          and tools.tool_tier(
+                              ((m.get("params") or {}).get("name") or "")) != "viewer"]
+            if ro_blocked:
+                name = ((ro_blocked[0].get("params") or {}).get("name") or "")
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": f"this key is read-only: {name} writes "
+                                       "to the graph. Mint a full-access key "
+                                       "at https://vincs.io/account"}]}})
             d = self.app.dispatcher()
-            ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
-            # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
-            # `_fresh_plan` 이 `user:` 로 시작하는 owner 만 갱신하므로 등급이 영구
-            # 동결된다(요금제를 올려도 안 풀린다).
-            counted = auth.get("member") or auth["owner"]
-            replies = [r for r in (
-                d.handle(m, forced_owner=auth["owner"], plan=auth["plan"],
-                         quota=(lambda o, pl: self.app.quota_check(counted, pl)),
-                         entitlements=ents)
-                for m in msgs) if r is not None]
+
+            def _run(m, a):
+                # 자격·쿼터도 **해석된 스페이스**를 따른다. 쿼터는 멤버로 센다: 팀
+                # owner 로 세면 팀 하나가 카운터를 공유하고, `_fresh_plan` 이 `user:`
+                # 로 시작하는 owner 만 갱신하므로 등급이 영구 동결된다(요금제를 올려도
+                # 안 풀린다). `c=` 기본인자로 묶는 이유는 배치 안에서 메시지마다 값이
+                # 달라서다 — 클로저로 두면 마지막 값 하나가 전부에 쓰인다.
+                ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
+                counted = a.get("member") or a["owner"]
+                return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
+                                quota=(lambda o, pl, c=counted:
+                                       self.app.quota_check(c, pl)),
+                                entitlements=ents)
+
+            replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
             if not replies:
                 self.send_response(202)
@@ -1295,11 +1424,13 @@ def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
 
 def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,
                static_token: str | None = None, oauth: OAuthGate | None = None,
-               verify_key=None, quota_config: dict | None = None,
+               verify_key=None, verify_member=None,
+               quota_config: dict | None = None,
                mcp_seed: bytes | None = None, account_public: bytes | None = None,
                connect_url: str | None = None, free_max_domains: int | None = None) -> int:
     app = MCPHTTPApp(bridge, static_token=static_token, oauth=oauth,
-                     verify_key=verify_key, quota_config=quota_config,
+                     verify_key=verify_key, verify_member=verify_member,
+                     quota_config=quota_config,
                      mcp_seed=mcp_seed, account_public=account_public,
                      connect_url=connect_url, free_max_domains=free_max_domains)
     httpd = make_server(app, host, port)

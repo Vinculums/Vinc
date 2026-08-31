@@ -64,14 +64,16 @@ export async function renderSettings(el: HTMLElement) {
   const themeSeg = () => ["dark", "light", "auto"].map((t) =>
     `<button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t ? " active" : ""}"
       data-theme-opt="${t}">${t}</button>`).join("");
-  // KO 비활성(2026-08-15): 언어 토글 UI 통째로 숨김(호출부 제거, api.ts cfg.lang 참조).
-  // const langSeg = () => (["en", "ko"] as const).map((l) =>
-  //   `<button class="chip${cfg.lang === l ? " active" : ""}"
-  //     data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("");
+  const langSeg = () => (["en", "ko"] as const).map((l) =>
+    `<button class="chip${cfg.lang === l ? " active" : ""}"
+      data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("");
 
   function wireThemeLang(body: HTMLElement) {
-    // KO 비활성(2026-08-15): 언어 토글 자체를 숨겼으므로(langSeg 미사용) 배선도 죽여 둔다.
-    // 재활성화 시 langSeg()/이 블록의 주석을 함께 풀 것.
+    body.querySelectorAll<HTMLElement>("[data-lang-opt]").forEach((b) =>
+      b.addEventListener("click", () => {   // D42 — 언어 전환은 전 표면 재렌더 필요 → reload
+        cfg.lang = b.dataset.langOpt as "en" | "ko";
+        location.reload();
+      }));
     body.querySelectorAll<HTMLElement>("[data-theme-opt]").forEach((b) =>
       b.addEventListener("click", async () => {
         localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
@@ -113,6 +115,8 @@ export async function renderSettings(el: HTMLElement) {
       <div id="sync-result" class="hint" style="font-size:.78rem"></div>
       <hr class="settings-sep" />` : ""}
       <label>${U.appearance}</label>
+      <label>${U.language}</label>
+      <p><span class="seg">${langSeg()}</span></p>
       <label>${U.theme}</label>
       <p><span class="seg">${themeSeg()}</span></p>
       <hr class="settings-sep" />

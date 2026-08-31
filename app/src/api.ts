@@ -42,15 +42,17 @@ export const cfg = {
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
   set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
   // D42 — 표면 언어. 무설정 = OS 로케일 추종(ko-* → 한국어), 그 외 영어.
-  // KO 비활성(2026-08-15): EN 카피 재작성이 끝날 때까지 영어만 노출한다(홈페이지와
-  // 동일 조치, Vinc-homepage/site/assets/gnb.js 참조). 재활성화: 아래 return 을 지우면
-  // 원래 판정(저장값 → OS 로케일)이 살아난다. KO 덱(copy.ts)은 재작성 원본으로 보존.
+  // 2026-08-23 재활성화. 잠근 이유(2026-08-15)는 카피 재작성 대기였고 v0.8.4 에서
+  // 끝났다 — 영어는 W8, 한국어 덱은 W9(#60, 화면 단위 7커밋). 사이트 쪽 네 자리는
+  // Vinc-homepage 가 함께 풀었다.
+  // ⚠ 이 자물쇠의 진짜 게이트는 카피 완성이 아니라 **사람이 도는 빌드에서 한국어
+  // 화면을 전부 읽고 승인하는 것**이다([[decision:korean-deck-reopens-only-after-authored-pass]] ·
+  // [[vinc.spec.ui-copy-ko]] §8 — "덱은 화면과 다르게 읽힌다"). 그 승인 없이 이 줄을
+  // 되돌리지 말 것.
   get lang(): "en" | "ko" {
-    return "en";
-    // 재활성화 시 위 return 을 지우고 아래 원래 판정을 살릴 것:
-    // const v = localStorage.getItem(LANG_KEY);
-    // if (v === "ko" || v === "en") return v;
-    // return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+    const v = localStorage.getItem(LANG_KEY);
+    if (v === "ko" || v === "en") return v;
+    return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
   /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다

@@ -31,6 +31,19 @@ class TestNoHangulOutsideDeck(unittest.TestCase):
         self.assertTrue(any(v.startswith("exempt:") for v in verdicts),
                         f"면제 판정이 하나도 안 났다: {verdicts}")
 
+    def test_language_picker_is_exempt_but_the_exemption_is_narrow(self):
+        """언어 선택기의 `한국어` 는 덱에 넣으면 안 된다 — 영어 화면에서 "Korean" 이
+        되면 영어를 못 읽는 사람이 자기 언어를 못 찾는다. §7 의 "번역하면 동작이
+        달라지는 것은 카피가 아니다"가 그대로 걸리는 자리다.
+
+        함께 재는 것은 이 면제가 **얼마나 좁은가**다. `data-lang-opt` 없이 같은 문자열만 있으면 면제가
+        아니어야 한다 — 안 그러면 이 면제가 한글 전체를 통과시키는 구멍이 된다."""
+        picker = ('`<button class="chip" data-lang-opt="${l}">'
+                  '${l === "en" ? "English" : "한국어"}</button>`')
+        self.assertEqual(inv._verdict(picker),
+                         "exempt: language picker names each language in itself")
+        self.assertEqual(inv._verdict('const label = "한국어";'), "deck-eligible")
+
 
 class TestNoOrphanDeckKeys(unittest.TestCase):
     def test_every_deck_key_has_a_call_site(self):

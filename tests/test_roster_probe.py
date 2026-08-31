@@ -61,12 +61,16 @@ class MainTests(unittest.TestCase):
             rc = rp.main([str(arg)])
         return rc, buf.getvalue()
 
-    def test_이_리포_안에서는_보이고_열여섯이다(self):
-        """로스터의 실제 크기. 이 수를 기록에서 'seventeen' 으로 두 번 적었고,
-        삭제 이력은 0이다 — 세는 자리를 여기 둔다."""
+    def test_이_리포_안에서는_보이고_열일곱이다(self):
+        """로스터의 실제 크기. 세는 자리를 여기 둔다.
+
+        ⚠ 이 수가 열일곱인 것과, 기록이 한때 열일곱이라 **틀렸던** 것은 다른 일이다.
+        2026-08-25 에는 실제로 열여섯인데 기록 두 곳이 열일곱이라 적어서 틀렸고,
+        2026-08-30 에 agent-infra 가 늘어 진짜로 열일곱이 됐다. 우연히 같은 수라
+        헷갈리기 쉬우므로 적어 둔다 — 옛 오류가 되돌아온 것이 아니다."""
         rc, out = self._run(_ROOT)
         self.assertEqual(rc, 0, out)
-        self.assertIn("껍데기 16개", out)
+        self.assertIn("껍데기 17개", out)
         self.assertIn("agent-steward", out)
 
     def test_부모에서는_안_보이고_그렇게_말한다(self):

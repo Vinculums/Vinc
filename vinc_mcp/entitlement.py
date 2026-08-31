@@ -182,6 +182,124 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
     return result
 
 
+def verify_member(sub: str, team: str) -> dict | None:
+    """`user:{publicId}` 의 publicId + 팀 publicId → {owner, role} 또는 None.
+
+    `verify_key(raw, team)` 의 **OAuth 판**이다. 두 라우트가 따로인 이유는 자격증명의
+    모양이 다르기 때문이다 — 키 경로는 원문 키로 사람을 확인하고 같은 왕복에서
+    멤버십까지 답하는데, OAuth 토큰에는 키가 없고 허브가 아는 것은 승인 때 스탬핑된
+    publicId 뿐이다. 그래서 **신원 확인 없이 멤버십만** 묻는다(`lookup_plan` 과 같은
+    갈래다 — 어서션 게이트가 호출자를 이미 증명했다).
+
+    ⚠ **fail-closed 다.** 네트워크·타임아웃·형식 불량은 전부 None 이고, 그러면 팀
+    주소는 404 가 된다. `lookup_plan` 이 fail-open 인 것과 반대인데, 그쪽은 자격
+    조회고 이쪽은 **인가**이기 때문이다. 흔들릴 때 열어 주면 안 되는 쪽이다.
+
+    ⚠ 계정이 `graph_owner` 를 안 주거나 `team:` 이 아니면 거절한다. 개인 owner 로
+    물러서면 팀 쓰기가 조용히 개인 그래프에 쌓인다 — 키 경로가 이미 막아 둔 것과
+    같은 고장이고, 이 경로가 그것을 뒤로 열어 주면 안 된다.
+
+    캐시는 `verify_key` 와 **같은 표를 쓰되 접두로 갈라 둔다**. 안 가르면 키 해시와
+    publicId 가 같은 이름공간에 섞인다.
+    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    """
+    if not sub or not team:
+        return None
+    seed = _seed()
+    if seed is None:
+        return None
+
+    ckey = "member|" + sub + "|" + team
+    now = time.time()
+    with _lock:
+        hit = _cache.get(ckey)
+        if hit and hit[0] > now:
+            return hit[1]
+
+    result: dict | None = None
+    try:
+        req = urllib.request.Request(
+            _account_url() + "/internal/mcp/team-membership",
+            data=json.dumps({"sub": sub, "team": team}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-Vinc-Assertion": _sign_assertion(seed)},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        go, role = body.get("graph_owner"), body.get("role")
+        if (isinstance(go, str) and go.startswith("team:")
+                and isinstance(role, str) and role):
+            result = {"owner": go, "role": role, "member": f"user:{sub}"}
+    except urllib.error.HTTPError:
+        result = None            # 404(비멤버·모르는 팀)·401·503 → 거절
+    except Exception:
+        result = None            # 네트워크·타임아웃 → 거절(닫힘 실패)
+
+    with _lock:
+        _cache[ckey] = (now + (_POS_TTL if result else _NEG_TTL), result)
+    return result
+
+
+#: 스페이스 목록 캐시. `_cache` 와 **따로 둔다** — 저기는 인가 판정(dict|None)을
+#: 담는 표고 여기는 목록이라, 한 표에 섞으면 타입이 거짓말을 한다.
+_spaces_cache: dict[str, tuple[float, list | None]] = {}
+
+
+def list_spaces(sub: str) -> list[dict] | None:
+    """`user:{publicId}` 의 publicId → 그 사람이 활성 멤버인 팀 목록. 실패면 None.
+
+    ⚠ **이것은 인가가 아니라 발견이다.** 여기서 팀 하나를 빠뜨리든 없는 팀을
+    지어내든 권한은 안 변한다 — 실제 판정은 그 id 를 `space` 로 실었을 때
+    `resolve_auth` → `verify_key`/`verify_member` 가 다시 한다. 그래서
+    `verify_member` 와 달리 fail-closed 를 지킬 대상이 아니고, 실패를 **None 으로
+    구분해서** 돌려주는 것이 요점이다: 빈 목록으로 뭉개면 호출자가 "팀이 없다"로
+    읽고 사람에게 그렇게 말한다.
+
+    계정 응답을 **그대로 통과시키지 않는다.** 모양이 맞는 행만 추려 담는다 —
+    이 값은 도구 응답으로 나가고, 거기로 임의의 계정 JSON 이 흘러가면 안 된다.
+    """
+    if not sub:
+        return None
+    seed = _seed()
+    if seed is None:
+        return None
+
+    ckey = "spaces|" + sub
+    now = time.time()
+    with _lock:
+        hit = _spaces_cache.get(ckey)
+        if hit and hit[0] > now:
+            return hit[1]
+
+    rows: list[dict] | None = None
+    try:
+        req = urllib.request.Request(
+            _account_url() + "/internal/mcp/spaces",
+            data=json.dumps({"sub": sub}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-Vinc-Assertion": _sign_assertion(seed)},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        raw = body.get("spaces")
+        if isinstance(raw, list):
+            rows = []
+            for r in raw:
+                if not isinstance(r, dict):
+                    continue
+                rid, name, role = r.get("id"), r.get("name"), r.get("role")
+                if not (isinstance(rid, str) and rid and isinstance(role, str) and role):
+                    continue
+                rows.append({"id": rid, "name": name if isinstance(name, str) else "",
+                             "role": role})
+    except Exception:
+        rows = None              # 네트워크·HTTP·형식 → "못 물었다"(빈 목록 아님)
+
+    with _lock:
+        _spaces_cache[ckey] = (now + (_POS_TTL if rows is not None else _NEG_TTL), rows)
+    return rows
+
+
 def lookup_plan(sub: str) -> str | None:
     """publicId → **지금의** 등급. 계정 `/internal/mcp/plan`(B2 동일 신뢰 방향).
 

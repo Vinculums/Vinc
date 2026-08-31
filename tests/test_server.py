@@ -292,6 +292,85 @@ class StoreUnavailableReadTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj["status"], "degraded")
 
+    #: 그래프를 쓰는 POST 전량(`_route_post` 표 기준). 그래프를 안 쓰는 여섯은 뺐다 —
+    #: `/themes`·`/themes/activate`·`/types/*`(어휘 JSON) · `/connect/start`(인메모리
+    #: 메일박스). READ_ROUTES 와 같은 갈래다.
+    WRITE_ROUTES = [
+        ("/pin", {"node": "concept:a"}), ("/tag", {"node": "concept:a", "tags": ["x"]}),
+        ("/touch", {"node": "concept:a"}), ("/activate", {"node": "concept:a"}),
+        ("/backup", {"out": "x.vincpack"}), ("/ingest", {"nodes": []}),
+        ("/delete", {"id": "concept:a"}),
+        ("/delete-edge", {"src": "concept:a", "dst": "concept:b", "type": "RELATED_TO"}),
+        ("/merge-nodes", {"a": "concept:a", "b": "concept:b"}),
+        ("/merge-reject", {"a": "concept:a", "b": "concept:b"}),
+        ("/doc/put", {"text": "x"}), ("/doc/delete", {"doc_id": "d1"}),
+        ("/conventions/build", {}), ("/doc/put-file", {"name": "a.md", "bytes_b64": ""}),
+        ("/doc/extract", {"doc_id": "d1"}), ("/doc/reembed", {"doc_id": "d1"}),
+        ("/evidence/backfill", {}), ("/embed/apply", {"items": []}),
+        ("/domain/rename", {"src": "a", "dst": "b"}),
+        ("/sync/domains", {"domains": []}), ("/sync/apply-delta", {"delta": {}}),
+        ("/sync/docs-apply", {"docs": []}), ("/sync/purge-owner", {"owner": "user:u"}),
+        ("/sync", {"token": "vinc_sk_x"}),
+        ("/ingest/recall", {"items": []}),
+    ]
+
+    def test_write_routes_refuse_instead_of_raising_attributeerror(self):
+        """쓰기가 `None.run` 으로 터지는 대신 **사유를 들고** 거절한다.
+
+        읽기는 `_read` 로 이미 그랬는데 쓰기는 아니었다. 2026-08-30 데스크탑에서
+        WAL 이 깨져 스토어가 안 열린 채 sync 를 누르니 화면에 뜬 것이 이것이다:
+        `Sync failed: AttributeError: 'NoneType' object has no attribute 'run'`.
+        같은 순간 `/health` 는 "Checksum verification failed" 를 알고 있었다."""
+        with cli_store(None), running_server(_app(store=None)) as base:
+            for path, body in self.WRITE_ROUTES:
+                code, obj = _req(base, path, method="POST", body=body)
+                self.assertEqual(code, 503,
+                                 f"{path} 가 쓸 수 없는 스토어에 {code} 로 답했다")
+                self.assertFalse(obj.get("executed", False), path)
+                self.assertEqual(obj.get("error"), "no reachable store", path)
+                # AttributeError 가 새어 나오지 않는다 — 사유가 없는 500 이 이 버그였다.
+                self.assertNotIn("NoneType", json.dumps(obj), path)
+
+    def test_write_refusal_carries_the_open_error(self):
+        """거절이 **처방으로 이어져야** 한다. WAL 손상과 락 충돌은 처방이 다르다."""
+        from store.embedded_backend import EmbeddedBackend
+        old = EmbeddedBackend.last_open_error
+        EmbeddedBackend.last_open_error = (
+            "RuntimeError: Storage exception: Checksum verification failed, "
+            "the WAL file is corrupted.")
+        try:
+            with cli_store(None), running_server(_app(store=None)) as base:
+                code, obj = _req(base, "/sync", method="POST",
+                                 body={"token": "vinc_sk_x"})
+                self.assertEqual(code, 503)
+                self.assertIn("WAL file is corrupted", obj["open_error"])
+        finally:
+            EmbeddedBackend.last_open_error = old
+
+    def test_store_free_writes_still_answer(self):
+        """어휘와 계정 연결은 그래프를 안 쓴다 — 그래프가 죽어도 막으면 회귀다.
+
+        특히 `/connect/start`: 스토어가 깨진 바로 그때가 사용자가 계정을 다시
+        연결해 보려는 때다. 거기서 503 을 주면 복구 경로 하나를 스스로 닫는다."""
+        with cli_store(None), running_server(_app(store=None)) as base:
+            for path, body in (("/themes", {"theme_id": "t1", "title": "T"}),
+                               ("/connect/start", {})):
+                code, _ = _req(base, path, method="POST", body=body)
+                self.assertNotEqual(code, 503,
+                                    f"{path} 는 스토어 없이도 답해야 한다")
+
+    def test_unknown_post_route_is_still_404_not_503(self):
+        """가드가 라우팅을 가리면 오타가 "스토어 문제"로 보인다."""
+        with cli_store(None), running_server(_app(store=None)) as base:
+            code, _ = _req(base, "/nope", method="POST", body={})
+            self.assertEqual(code, 404)
+
+    def test_writes_pass_through_when_the_store_is_open(self):
+        # 거절이 상시로 켜져 있으면 계약이 아무것도 못 막는다(READ 쪽과 같은 대조).
+        with running_server(_app(store=_EmptyStore())) as base:
+            code, _ = _req(base, "/sync/domains", method="POST", body={"domains": []})
+            self.assertNotEqual(code, 503)
+
     def test_open_store_is_still_the_signal_for_a_live_store(self):
         # 스토어가 열려 있으면 같은 라우트가 정상 200 이다 — 503 이 상시로 켜져
         # 있으면 이 계약은 아무것도 못 막는다(거절이 기본값이 되면 신호가 아니다).
@@ -428,7 +507,13 @@ class ResponsivenessTests(unittest.TestCase):
 
 class AsyncJobTests(unittest.TestCase):
     def test_ingest_returns_202_and_pollable(self):
-        with running_server(_app()) as base:
+        # 잡 배선만 본다 — 엔진은 스텁으로 갈아 끼운다. 실엔진(recall)은 에피소드
+        # 필수 필드가 열 개가 넘어서, 여기 채워 넣으면 이 테스트가 그 스키마에
+        # 묶여 관계없는 변경에 깨진다. `VincApp` 이 `ingest` 주입을 받는 이유가 이것.
+        app = VincApp(store=_EmptyStore(), auth=SessionAuth(_TOKEN), ingest={
+            "recall": lambda store, body: {"engine": "recall", "executed": True,
+                                           "ingested": len(body.get("episodes") or [])}})
+        with running_server(app) as base:
             code, obj = _req(base, "/ingest/recall", method="POST",
                              body={"episodes": [{"episode_id": "x"}]})
             self.assertEqual(code, 202)
@@ -439,15 +524,20 @@ class AsyncJobTests(unittest.TestCase):
                 if jobj["status"] in ("done", "error"):
                     break
             self.assertEqual(jobj["status"], "done", jobj)
-            self.assertFalse(jobj["result"]["executed"])   # 무 DB 강등
+            # 잡 배선을 보는 테스트다: 202 로 접수되고 폴링으로 끝을 본다.
+            # (무스토어 강등은 여기서 안 본다 — 이제 라우팅에서 503 이고,
+            #  그건 WriteRefusal 쪽이 전수로 본다.)
+            self.assertEqual(jobj["result"]["ingested"], 1)
 
     def test_unknown_ingest_engine_400(self):
-        with running_server(_app()) as base:
+        with running_server(_app(store=_EmptyStore())) as base:
             code, _ = _req(base, "/ingest/bogus", method="POST", body={})
             self.assertEqual(code, 400)
 
     def test_backup_missing_out_400(self):
-        with running_server(_app()) as base:
+        # 열린 스토어를 준다 — 이 테스트가 보는 것은 바디 검증이지 스토어가 아니다.
+        # (무스토어면 이제 라우팅 전에 503 이라 400 을 볼 수 없다.)
+        with running_server(_app(store=_EmptyStore())) as base:
             code, _ = _req(base, "/backup", method="POST", body={})
             self.assertEqual(code, 400)
 
@@ -706,13 +796,20 @@ class IngestRouteTests(unittest.TestCase):
             self.assertTrue(obj["executed"])
             self.assertEqual(obj["merged"]["nodes"], {"created": 1, "matched": 0})
 
-    def test_no_store_degrades_executed_false(self):
+    def test_no_store_refuses_instead_of_degrading(self):
+        """무스토어 적재는 **200 강등이 아니라 503 거절**이다(계약 변경).
+
+        전에는 200 + `executed:false` + `warnings:["no reachable store"]` 였다.
+        읽기 쪽이 2026-08-16 에 같은 이유로 거절로 바뀌었고, 쓰기에서는 그 거짓말이
+        더 나쁘다: `executed:false` 는 "당신 데이터가 안 써졌다"는 뜻인데 상태줄은
+        200 이라 HTTP 만 보는 호출자는 저장됐다고 읽는다. 사유는 바디에 그대로 실려
+        오므로(`error`·`open_error`) 잃는 정보는 없다."""
         with running_server(_app()) as base:
             code, obj = _req(base, "/ingest", method="POST", body={
                 "nodes": [{"id": "concept:a", "type": "concept", "title": "A"}]})
-            self.assertEqual(code, 200)
+            self.assertEqual(code, 503)
             self.assertFalse(obj["executed"])
-            self.assertEqual(obj["warnings"], ["no reachable store"])
+            self.assertEqual(obj["error"], "no reachable store")
 
     def test_ingest_and_ingest_fragment_are_the_same_path(self):
         # /ingest 와 /ingest/fragment 가 동일 레거시 경로임을 HTTP 로 확인.
@@ -763,16 +860,16 @@ class ThemeTypeRouteTests(unittest.TestCase):
 
 
 class DeleteEdgeRouteTests(unittest.TestCase):
-    def test_route_requires_fields_and_degrades(self):
-        with running_server(_app()) as base:
+    def test_route_requires_fields(self):
+        # 바디 검증만 본다 — 무스토어 거절은 WriteRefusal 쪽이 전수로 본다.
+        with running_server(_app(store=_EmptyStore())) as base:
             code, obj = _req(base, "/delete-edge", method="POST",
                              body={"from": "concept:a"})
             self.assertEqual(code, 400)                      # to/type 누락
             code, obj = _req(base, "/delete-edge", method="POST",
                              body={"from": "concept:a", "to": "concept:b",
                                    "type": "relates_to"})
-            self.assertEqual(code, 200)                      # store=None → 강등 계약
-            self.assertFalse(obj["executed"])
+            self.assertEqual(code, 200)
 
 
 class ConnectFlowTests(unittest.TestCase):

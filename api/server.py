@@ -1502,7 +1502,30 @@ class _Handler(BaseHTTPRequestHandler):
             return app.get_job(path[len("/jobs/"):])
         return 404, {"error": f"no such route: GET {path}"}
 
+    #: 스토어 없이도 **옳게** 도는 POST. 어휘(themes·types)는 그래프 밖 JSON 파일이고
+    #: (`ThemeStore`, `<data_dir>.themes.json`), 계정 연결 시작은 인메모리 메일박스다.
+    #: 그것들은 그래프가 죽어도 답하는 게 맞다 — GET 쪽 `READ_ROUTES` 주석과 같은 갈래다.
+    #: ⚠ 새 POST 라우트를 더할 때 여기 넣을지 판단할 것. 기본값은 **넣지 않는다**(가드를
+    #: 받는다) — 빠뜨려도 조용히 새지 않고 503 으로 막히므로 안전측이다.
+    _POST_WITHOUT_STORE = frozenset({
+        "/themes", "/themes/activate",
+        "/types/ratify", "/types/reject", "/types/rename",
+        "/connect/start",
+    })
+
     def _route_post(self, path: str, body: dict):
+        """POST 디스패치. **스토어가 안 열렸으면 여기서 503 이다.**
+
+        읽기 경로는 2026-08-16 에 `VincApp._read` 한 곳으로 이 거절을 모았는데 쓰기
+        경로에는 안 붙었다. 그래서 `store=None` 인 채로 핸들러가 그대로 불렸고,
+        `sync.run(self.store, ...)` 이 `'NoneType' object has no attribute 'run'` 로
+        터졌다. 2026-08-30 에 데스크탑에서 실제로 그랬다: WAL 이 깨져 스토어가 안 열린
+        상태였고 `/health` 는 **같은 순간 진짜 사유를 알고 있었는데**("Checksum
+        verification failed, the WAL file is corrupted.") 화면에 닿은 것은 파이썬
+        내부 사정뿐이라 사용자는 원인도 처방도 못 봤다.
+
+        봉투는 새로 만들지 않는다 — `store_unavailable()` 한 벌을 `_read`·`/health` 와
+        같이 쓴다. 사유를 말하는 곳이 하나여야 셋이 같은 말을 한다."""
         app = self.app
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
@@ -1543,8 +1566,12 @@ class _Handler(BaseHTTPRequestHandler):
             "/connect/start": app.write_connect_start,
         }
         if path in table:
+            if app.store is None and path not in self._POST_WITHOUT_STORE:
+                return 503, {"executed": False, **store_unavailable()}
             return table[path](body)
         if path.startswith("/ingest/"):
+            if app.store is None:
+                return 503, {"executed": False, **store_unavailable()}
             return app.submit_ingest(path[len("/ingest/"):], body)
         return 404, {"error": f"no such route: POST {path}"}
 
