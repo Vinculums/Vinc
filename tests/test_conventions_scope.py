@@ -6,8 +6,11 @@ whoami 뒤에 두지 않고 **안 물어도 오는 자리**에 뒀다(`vinc_conv
 불러야 하는 도구는 자기가 하는 줄 모르는 실수를 못 잡기 때문이다.
 
 그런데 실린 것은 `owner` 문자열뿐이었고, 그것이 개인 그래프인지 팀 그래프인지는
-**접두를 아는 사람만** 읽을 수 있었다. `scope` 는 그 한 걸음을 없앤다. 도구를 하나
-더 만들지 않는 이유는 결정 그대로다 — 22개 설명은 요청마다 무는 비용이다.
+**접두를 아는 사람만** 읽을 수 있었다. `scope` 는 그 한 걸음을 없앤다.
+
+⚠ "도구를 하나 더 만들지 않는다"는 이 파일의 옛 전제는 2026-08-31 에 발주자 지시로
+뒤집혔다(`vinc_whoami`). 뒤집힌 것은 **결론**이지 논거가 아니다 — 아래 검사가 첫 문의
+신원 적재를 계속 고정하는 이유가 그것이다. 자세한 갈림은 그 검사의 독스트링에 있다.
 
 여기서 고정하는 것 셋:
   ① 세 값이 실제로 갈린다(personal · team · unscoped).
@@ -83,14 +86,34 @@ class ConventionsContractTests(unittest.TestCase):
         self.assertIn("/t/<team-uuid>/mcp", d)
         self.assertNotIn("web app", d)
 
-    def test_whoami_도구는_여전히_없다(self):
-        """결정이 기각한 것을 슬쩍 되살리지 않았는지 — 도구 수는 23 이다.
+    def test_whoami_가_생겼고_첫_문은_여전히_말한다(self):
+        """⚠ 이 검사는 **뒤집혔다**(발주자 지시 2026-08-31). 전에는 whoami 가 없음을
+        못박았다 — 결정이 그것을 기각했기 때문이다
+        ([[decision:identity-rides-on-the-first-door-not-a-whoami]]).
 
-        ⚠ 이 수는 whoami 가 아니라 **의도한 추가**로만 움직인다. 23 은 W1 의
-        vinc_brief 한 건이 늘어난 값이다([[vinc.plan.mcp-agent-surface §4]])."""
+        기각의 근거는 "불러야 아는 도구는 부를 생각을 못 한 사람을 못 구한다"였고
+        그 논거는 **지금도 참이다**. 바뀐 것은 질문이다: 스페이스가 주소에서 인자로
+        내려오면서 "나는 누구인가" 말고 **"어디에 실을 수 있는가"** 가 새로 생겼는데,
+        그 답(팀 목록)은 관례 문서에 애초에 없고 계정에만 있다.
+
+        그래서 결정의 알맹이는 **버리지 않고 함께 고정한다**: 첫 문(`vinc_conventions`)
+        은 여전히 신원을 실어야 한다. whoami 가 생겼다고 그쪽이 조용해지면 기각된
+        고장이 그대로 돌아온다."""
         from vinc_mcp.tools import TOOLS
-        self.assertEqual([t for t in TOOLS if "whoami" in t["name"]], [])
-        self.assertEqual(len(TOOLS), 23)
+        who = [t for t in TOOLS if t["name"] == "vinc_whoami"]
+        self.assertEqual(len(who), 1, "스페이스 목록을 받을 자리가 있어야 한다")
+        conv = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
+        for field in ("`owner`", "`scope`"):
+            self.assertIn(field, conv, "첫 문이 신원을 계속 실어야 한다: " + field)
+        # 수는 **의도한 추가**로만 움직인다(23 = W1 brief, 24 = whoami).
+        self.assertEqual(len(TOOLS), 24)
+
+    def test_whoami_는_조회_전용이라_열람자도_부른다(self):
+        """등급이 viewer 여야 한다. editor 이상이면 팀 열람자가 자기가 닿을 수 있는
+        스페이스를 못 묻고, 그러면 그 역할은 `space` 를 고를 방법이 없다."""
+        from vinc_mcp.tools import tool_tier, role_allows
+        self.assertEqual(tool_tier("vinc_whoami"), "viewer")
+        self.assertTrue(role_allows("viewer", "vinc_whoami"))
 
 
 _DRIVER = None

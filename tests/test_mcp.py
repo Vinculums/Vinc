@@ -52,7 +52,10 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
              "vinc_conventions",
              # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(조회 전용).
-             "vinc_brief"}
+             "vinc_brief",
+             # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
+             # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
+             "vinc_whoami"}
 
 
 class _StubBridge(Bridge):

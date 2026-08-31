@@ -144,9 +144,12 @@ def _role_allows(role: str, op: str) -> bool:
 #: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
 #: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
 #: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
-_SPACE_PATH_RE = re.compile(
-    r"\A/t/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?\Z")
+#: 스페이스 id 의 모양. 주소(`/t/<uuid>/mcp`)와 인자(`space`) **양쪽이 같은 것을
+#: 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
+_UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_UUID_RE = re.compile(r"\A" + _UUID + r"\Z")
+_SPACE_PATH_RE = re.compile(r"\A/t/(" + _UUID + r")(/.*)?\Z")
 
 
 def split_space(path: str) -> tuple[str | None, str]:
@@ -1088,21 +1091,61 @@ class _Handler(BaseHTTPRequestHandler):
             # quota: tools/call 에서만 소비(initialize/tools_list/ping 무료, B-D2).
             # entitlements: 등급에서 해석된 숫자(주제 상한). 원격 인증경로에서만
             # 실린다 — 로컬·정적 토큰은 owner 가 없어 자격 개념 자체가 없다.
+            # 스페이스 해석 — **메시지마다** 한다. 팀 주소로 붙었으면 주소가 이미
+            # 스페이스를 고정했으므로 인자는 무시하고 요청 단위 auth 를 그대로 쓴다.
+            # 개인 주소에서만 `space` 인자가 고르고, 안 실으면 개인이다.
+            #
+            # ⚠ 게이트가 **요청당 하나**였던 전제가 여기서 무너진다: 배치 안의 메시지가
+            # 서로 다른 스페이스를 겨눌 수 있으므로 역할·스코프도 메시지마다 갈린다.
+            # 하나로 두면 배치 첫 메시지의 역할이 나머지를 통과시킨다.
+            #
+            # 멤버십 판정은 **새로 안 짠다** — 같은 resolve_auth 를 다시 부를 뿐이라
+            # 키 경로·OAuth 경로·fail-closed 가 전부 그대로다. entitlement 캐시가
+            # 왕복을 접으므로 같은 스페이스를 겨눈 배치는 계정을 한 번만 때린다.
+            # 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
+            def _auth_for(m):
+                if space or m.get("method") != "tools/call":
+                    return auth
+                want = ((m.get("params") or {}).get("arguments") or {}).get("space")
+                want = str(want or "").strip().lower()
+                if not want or want == "personal":
+                    return auth
+                if not _UUID_RE.match(want):
+                    return None          # 모양이 틀린 것은 계정에 묻지도 않는다
+                got = self.app.resolve_auth(self.headers.get("Authorization"), want)
+                return got if got["ok"] else None
+
+            pairs = [(m, _auth_for(m)) for m in msgs]
+            # 닿을 수 없는 스페이스는 **전부 같은 답**이다 — 모르는 팀·비멤버·제명·
+            # 정지·모양 오류가 갈리면 id 를 추측해 조직을 훑을 수 있다(팀 주소가 404
+            # 하나로 답하는 것과 같은 이유). 여기서는 도구 결과 봉투라 isError 다.
+            unreachable = next((m for m, a in pairs if a is None), None)
+            if unreachable is not None:
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": unreachable.get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": "no such space. Call vinc_whoami to see the "
+                                       "spaces you can reach."}]}})
             # 역할 게이트 — 팀 스페이스에서만. 등급은 주석표에서 유도한다(op 표는
             # 프록시 op 로 키가 잡혀 있어 도구 6개를 못 덮는다). 거절은 브리지를
             # **부르지 않는다** — 그게 이 게이트의 성질이지 상태코드가 아니다.
+            # 조건이 `space`(주소)에서 **해석된 owner**로 바뀌었다: 인자로 고른 팀도
+            # 같은 게이트를 지나야 하고, 주소로 온 것만 검사하면 그게 우회로가 된다.
+            blocked = [(m, a) for m, a in pairs
+                       if m.get("method") == "tools/call"
+                       and str(a.get("owner") or "").startswith("team:")
+                       and not tools.role_allows(
+                           a.get("role") or "",
+                           ((m.get("params") or {}).get("name") or ""))]
+            if blocked:
+                bm, ba = blocked[0]
+                brole = ba.get("role") or ""
+                name = ((bm.get("params") or {}).get("name") or "")
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": bm.get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": f"role {brole!r} may not call {name}"}]}})
             if space:
-                role = auth.get("role") or ""
-                blocked = [m for m in msgs
-                           if m.get("method") == "tools/call"
-                           and not tools.role_allows(
-                               role, ((m.get("params") or {}).get("name") or ""))]
-                if blocked:
-                    name = ((blocked[0].get("params") or {}).get("name") or "")
-                    return self._json(200, {
-                        "jsonrpc": "2.0", "id": blocked[0].get("id"),
-                        "result": {"isError": True, "content": [{"type": "text",
-                                   "text": f"role {role!r} may not call {name}"}]}})
                 # W2 — `prompts/*` 도 같은 게이트를 지난다. 이 메서드들은 스토어를
                 # 조회하므로, "모르는 역할은 거부"라는 규칙을 메서드 하나가 비켜 가면
                 # 그 메서드가 팀 스페이스의 우회로가 된다. 등급은 세 번째 표를 만들지
@@ -1110,8 +1153,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # vinc_graph 가 읽는 것이라 등급도 그것(viewer)이다.
                 # 거절 모양이 위와 다른 이유: prompts 에는 tools/call 의 결과 봉투가
                 # 없다. 그 봉투로 답하면 호스트가 프롬프트 대신 도구 결과를 읽는다.
-                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
-                        and not tools.role_allows(role, "vinc_neighbors"):
+                # ⚠ 여기는 **주소 기준 그대로**다 — prompts 에는 인자가 없어서 스페이스를
+                # 고를 수단이 애초에 없고, 그래서 고를 수 있는 척하면 안 된다.
+                role = auth.get("role") or ""
+                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs)                         and not tools.role_allows(role, "vinc_neighbors"):
                     first = next(m for m in msgs
                                  if str(m.get("method") or "").startswith("prompts/"))
                     return self._json(200, {
@@ -1125,31 +1170,36 @@ class _Handler(BaseHTTPRequestHandler):
             # 여기서 막힌다(tool_tier 가 admin 을 주므로) — 뒤의 -32602 보다 먼저
             # 닫히는 것이 안전측이다. 거절은 브리지를 부르지 않는다. prompts/* 는
             # 조회라 통과한다(스토어 읽기 = viewer 와 같은 등급).
-            if auth.get("scope") != "full":
-                ro_blocked = [m for m in msgs
-                              if m.get("method") == "tools/call"
-                              and tools.tool_tier(
-                                  ((m.get("params") or {}).get("name") or ""))
-                              != "viewer"]
-                if ro_blocked:
-                    name = ((ro_blocked[0].get("params") or {}).get("name") or "")
-                    return self._json(200, {
-                        "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
-                        "result": {"isError": True, "content": [{"type": "text",
-                                   "text": f"this key is read-only: {name} writes "
-                                           "to the graph. Mint a full-access key "
-                                           "at https://vincs.io/account"}]}})
+            # 스코프도 메시지별이다 — 스페이스마다 다른 답이 올 수 있다.
+            ro_blocked = [m for m, a in pairs
+                          if m.get("method") == "tools/call"
+                          and a.get("scope") != "full"
+                          and tools.tool_tier(
+                              ((m.get("params") or {}).get("name") or "")) != "viewer"]
+            if ro_blocked:
+                name = ((ro_blocked[0].get("params") or {}).get("name") or "")
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": f"this key is read-only: {name} writes "
+                                       "to the graph. Mint a full-access key "
+                                       "at https://vincs.io/account"}]}})
             d = self.app.dispatcher()
-            ents = (self.app.entitlements_for(auth["plan"]) if auth["owner"] else None)
-            # 쿼터는 **멤버**로 센다. 팀 owner 로 세면 팀 하나가 카운터를 공유하고,
-            # `_fresh_plan` 이 `user:` 로 시작하는 owner 만 갱신하므로 등급이 영구
-            # 동결된다(요금제를 올려도 안 풀린다).
-            counted = auth.get("member") or auth["owner"]
-            replies = [r for r in (
-                d.handle(m, forced_owner=auth["owner"], plan=auth["plan"],
-                         quota=(lambda o, pl: self.app.quota_check(counted, pl)),
-                         entitlements=ents)
-                for m in msgs) if r is not None]
+
+            def _run(m, a):
+                # 자격·쿼터도 **해석된 스페이스**를 따른다. 쿼터는 멤버로 센다: 팀
+                # owner 로 세면 팀 하나가 카운터를 공유하고, `_fresh_plan` 이 `user:`
+                # 로 시작하는 owner 만 갱신하므로 등급이 영구 동결된다(요금제를 올려도
+                # 안 풀린다). `c=` 기본인자로 묶는 이유는 배치 안에서 메시지마다 값이
+                # 달라서다 — 클로저로 두면 마지막 값 하나가 전부에 쓰인다.
+                ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
+                counted = a.get("member") or a["owner"]
+                return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
+                                quota=(lambda o, pl, c=counted:
+                                       self.app.quota_check(c, pl)),
+                                entitlements=ents)
+
+            replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
             if not replies:
                 self.send_response(202)
