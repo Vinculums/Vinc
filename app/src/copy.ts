@@ -658,6 +658,7 @@ const EN = {
       lock: "Lock", mcp: "MCP", data: "Data",
       // 저장 위치 — 상단 바의 `● Local` 칩이 옮겨 온 자리(2026-08-05).
       storage: "Where it's stored",
+      storageSynced: "This device and your account",
       workspace: "Workspace",
       workspaceHint: "The space you're viewing. Switch back after trying the sample.",
       theme: "Theme", language: "Language", advanced: "Advanced",
@@ -1380,6 +1381,7 @@ const KO: Deck = {
       appearance: "화면", account: "계정",
       lock: "잠금", mcp: "MCP", data: "데이터",
       storage: "저장 위치",
+      storageSynced: "이 기기와 계정",
       workspace: "작업 공간",
       workspaceHint: "지금 보고 있는 공간이에요. 샘플을 둘러본 뒤에는 원래대로 되돌리세요.",
       theme: "테마", language: "언어", advanced: "고급",
