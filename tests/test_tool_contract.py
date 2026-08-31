@@ -358,3 +358,38 @@ def test_delete_says_to_look_before_not_after():
     d = SERVED["vinc_delete"]["description"]
     assert "vinc_neighbors" in d, "지우기 전에 볼 도구를 안 가리킨다"
     assert "after the fact" in d, "사후 집계라는 것을 안 말한다"
+# ── 실패를 이름으로 부르는가 (2026-08-31) ────────────────────────────────────
+# 정본: [[decision:hide-implementation-preserve-evidence-surface-failure]] ·
+# [[concept:tool-response-disclosure]]. 규칙은 "구현은 숨기고, 근거는 남기고,
+# **상태 변화와 무결성 실패는 올린다**"다.
+#
+# 이 검사가 있는 이유: 두 필드가 이름만 설명에 있고 **실패했을 때 무슨 뜻인지**가
+# 없었다. 그러면 에이전트는 값을 보고도 조용히 넘긴다.
+#   · `vector_note` 는 "쓰기 직후 재빌드"만 적혀 있었다. 그런데 라이브에서 이 값이
+#     `TimeoutError` 로 온다 — 의미 검색이 실패한 것인데 설명대로 읽으면 정상이다.
+#   · `verified` 는 플래그 이름만 있었다. false 면 본문이 잘렸을 수 있는데, 잘린
+#     본문도 산문으로 읽혀서 화면만 봐서는 아무도 모른다.
+#
+# 둘 다 **평소에는 조용하고 나빠졌을 때만 값이 생기는** 필드다. 그래서 "내부"로
+# 분류되기 쉽고, 분류되는 순간 사용자는 열화를 영영 못 본다.
+def test_degraded_states_are_named_not_just_listed():
+    search = SERVED["vinc_search"]["description"]
+    assert "vector_note" in search
+    # 실패 원인을 예시로 들어야 "재빌드가 아닌 값"을 알아본다.
+    assert "timeout" in search.lower(), "vector_note 의 실패 갈래가 설명에 없다"
+    assert "text matching alone" in search, "열화 상태의 결과가 무엇인지 안 말한다"
+
+    doc_get = SERVED["vinc_doc_get"]["description"]
+    assert "verified" in doc_get
+    assert "FALSE" in doc_get or "false" in doc_get, "verified 가 거짓일 때를 안 말한다"
+    assert "incomplete" in doc_get, "무결성 실패의 결과(본문이 잘림)를 안 말한다"
+
+
+def test_the_silent_failure_tools_tell_the_reader_to_speak():
+    """상태가 나빠졌을 때만 값이 생기는 필드는 **말하라고** 적혀 있어야 한다.
+
+    ⚠ 이 검사를 "필드 이름이 있는가"로 쓰면 공허하다 — 여섯 필드 전부 이름은 이미
+    있었고, 그래서 통과하면서도 둘이 실패를 안 말하고 있었다(실측 2026-08-31)."""
+    for name in ("vinc_search", "vinc_doc_get"):
+        d = SERVED[name]["description"].lower()
+        assert "say so" in d, f"{name}: 사용자에게 말하라는 지시가 없다"
