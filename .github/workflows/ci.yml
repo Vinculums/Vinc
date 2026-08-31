@@ -143,6 +143,34 @@ jobs:
           # 러스트 셸. `app/src-tauri/` 밖의 변경이 컴파일을 깨뜨릴 길은 없다.
           has '^app/src-tauri/' \
             && echo "rust=true" >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
+
+      # ── 러너 이동 게이트 ────────────────────────────────────────────────────
+      # 왜 여기인가: 이 잡이 이 워크플로에서 **base..head 를 가진 유일한 자리**다
+      # (`fetch-depth: 0` 이 위에 있다). 게이트가 두 리비전의 워크플로를 비교해야
+      # 하므로 다른 잡으로는 못 옮긴다.
+      #
+      # 무엇을 보나: `cancel-in-progress: false` 로 직렬화하는 워크플로의 `runs-on`
+      # 이 이 PR 에서 바뀌는가. 바뀌면 머지 전에 그 워크플로의 큐를 비우라고 말한다 —
+      # 머지 전에 만들어진 런은 옛 라벨을 기다리므로 그 러너가 없으면 영영 시작하지
+      # 못하고 뒤를 전부 막는다(`Vinc#129` 에서 배포 넷이 그렇게 밀렸다).
+      #
+      # ⚠ 이것은 **적어 두는 대신 검사하는** 쪽을 고른 것이다. 같은 종류의 함정을
+      # 레코드·계획서·PR 본문 세 곳에 적어 두고 십팔 분 뒤에 다시 밟은 이력이 있다:
+      # [[record:writing-a-trap-down-does-not-stop-it-a-check-does]].
+      #
+      # PR 에서만 돈다. main push 에는 비교할 base 가 없고, 그때는 이미 늦었다.
+      - uses: actions/setup-python@v5
+        if: github.event_name == 'pull_request'
+        with:
+          python-version: "3.12"
+      - name: Runner-move gate (serialising workflows)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pip install --quiet --disable-pip-version-check pyyaml
+          python -X utf8 scripts/gate_runner_move.py "$BASE" "$HEAD"
           echo "── 판정"; cat "$GITHUB_OUTPUT"
 
   core:
