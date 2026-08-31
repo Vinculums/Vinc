@@ -48,6 +48,7 @@ from . import preference as pref
 from . import activate as act
 from . import fragment as frag
 from . import share
+from . import spaceproxy
 from . import sync
 from . import docstore
 from . import docsync
@@ -1201,6 +1202,26 @@ class VincApp:
             owner, cfg=self.cfg, store=self.store))
         return 200, res
 
+    def write_space_proxy(self, body):
+        """팀 스페이스 통과로 — 그래프 호출 하나를 계정으로 넘긴다(`api/spaceproxy.py`).
+
+        **로컬 스토어를 안 건드린다.** 팀 그래프는 여기 없다. 그래서 스토어가 안 열린
+        상태에서도 답해야 하고(`_POST_WITHOUT_STORE`), 쓰기 신호도 안 낸다 — 이 호출로
+        바뀌는 것은 계정 쪽 그래프라 로컬 동기화가 나를 것이 없다.
+
+        키는 **바디로만** 온다(동기화와 같은 규칙, D36). 사이드카는 키를 저장하지 않는다.
+        """
+        st, out = spaceproxy.call(
+            token=str(body.get("token") or ""),
+            team=str(body.get("team") or ""),
+            method=str(body.get("method") or "GET"),
+            path=str(body.get("path") or ""),
+            params=body.get("params") or {},
+            body=body.get("body"),
+            base=body.get("base"),
+        )
+        return st, out
+
     def submit_sync(self, body):
         """동기화 세션 트리거(S2) — pull → push 를 잡으로(202+job_id).
 
@@ -1511,6 +1532,9 @@ class _Handler(BaseHTTPRequestHandler):
         "/themes", "/themes/activate",
         "/types/ratify", "/types/reject", "/types/rename",
         "/connect/start",
+        # 팀 그래프는 로컬에 없다. 스토어가 안 열렸다고 막으면, 로컬이 깨진 기기에서
+        # **팀 스페이스까지 같이 죽는다** — 그쪽은 이 스토어와 아무 상관이 없다.
+        "/space/proxy",
     })
 
     def _route_post(self, path: str, body: dict):
@@ -1564,6 +1588,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 계정 연결(디바이스 플로우) — state 발급(인증). callback 은 _dispatch 의
             # 무인증 예외 경로(여기 표에 없음 — 표는 인증 이후에만 닿는다).
             "/connect/start": app.write_connect_start,
+            # 팀 스페이스 통과로 — 로컬 스토어가 아니라 계정으로 나간다.
+            "/space/proxy": app.write_space_proxy,
         }
         if path in table:
             if app.store is None and path not in self._POST_WITHOUT_STORE:
