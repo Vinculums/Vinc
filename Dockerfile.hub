@@ -44,6 +44,12 @@ RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
 # 종료**한다. 빌드는 초록인데 모델은 안 구워지고, 런타임에 fp32(1GB) 로 폴백해 OOM 으로
 # MCP 까지 죽는다(실측 run dem, 2026-08-01 — 이미지가 5MB 만 늘어 드러났다).
 # 그 파일 머리주석에 전말이 있다. 굽기 결과는 그 스크립트가 직접 검증하고 실패시킨다.
+# ⚠ **두 줄은 짝이다.** 파일명은 `packaging/embed_worker.py::artifact_name(모델)` 이
+# 정하고, 런타임이 basename 을 대조해 어긋나면 **기동 시점에 예외로 끊는다**(전에는
+# 모델만 바꾸면 옛 모델의 아티팩트를 그대로 집어 무음으로 딴 벡터를 만들었다).
+# 모델을 바꿀 때는 두 줄을 함께 바꿀 것 — 어긋난 조합은 `tests/test_embed_worker.py`
+# 가 CI 에서 잡는다. bge-m3 로 가려면: BAAI/bge-m3 + …/bge-m3-int8-rr.onnx.
+ENV VINC_EMBED_MODEL=intfloat/multilingual-e5-base
 ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/e5-int8-rr.onnx
 COPY packaging/bake_embed_model.py /tmp/bake_embed_model.py
 RUN pip install --no-cache-dir onnx \

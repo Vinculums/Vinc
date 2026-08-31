@@ -182,8 +182,11 @@ _META_TABLES: dict[str, dict] = {
     #   pair_key : f"{owner}|{a}|{b}" — a,b 는 **정렬**돼 (a,b)·(b,a) 가 한 행이 된다.
     #              owner 를 키에 넣지 않으면 남의 MERGE 가 이 행의 owner_id 를 덮는다.
     #   note     : 왜 기각했는지(선택).
-    # ⚠ 메타 테이블은 논리 이관·동기화 대상이 아니다 — 기각은 기기 로컬로 남고 스토어
-    # 이관 시 유실된다(자문 성격이라 허용). 근거: [[vinc.spec.dataplane §2.5]].
+    # ⚠ 메타 테이블은 **동기화** 대상이 아니다 — 기각은 기기 로컬로 남는다
+    # (자문 성격이라 허용). 근거: [[vinc.spec.dataplane §2.5]].
+    # 단 **논리 이관은 대상이다**(2026-08-30 정정): `meta_table_specs()` 참조. 이관까지
+    # 빼 두었더니 같은 기기의 재구축에서도 `_DocMeta` 가 사라져 재임베딩이 무음으로
+    # 0건이 됐다. 여기 하나를 예외로 두면 그 목록이 곧 드리프트의 출발점이라 전량 옮긴다.
     "_MergeRejection": {"pk": "pair_key", "cols": [
         ("pair_key", "STRING"), ("owner_id", "STRING"),
         ("a_id", "STRING"), ("b_id", "STRING"),
@@ -438,6 +441,24 @@ def node_table_specs() -> dict[str, dict]:
     데이터플레인만(meta `_`-테이블 제외). 스키마가 진실이라 이관이 열 추가에 자동 추종."""
     return {lbl: {"pk": spec["pk"], "cols": [c for c, _ in spec["cols"]]}
             for lbl, spec in _NODE_TABLES.items()}
+
+
+def meta_table_specs() -> dict[str, dict]:
+    """메타(`_`-접두) 테이블 명세 — 논리 이관의 **두 번째** SSoT.
+
+    `node_table_specs()` 가 데이터플레인만 내주므로 이관이 오래도록 메타를 통째로
+    빠뜨렸다. 그 대가가 조용하다는 것이 문제였다: `_DocMeta` 가 없어도 스토어는
+    정상으로 보이고 오류도 안 나는데 `switch_embed_model` 이 **문서를 0건 세어 0건을
+    재큐**한다(재임베딩이 영영 안 일어난다). 함께 잃던 것들 —
+      · `_DocMeta.content_hash`  변경감지(무변경 재적재 스킵·복원 검증)
+      · `_DocMeta.sync_seq`      계정 동기화 delta 커서
+      · `_Tombstone`/`_EdgeTombstone`/`_DocTombstone`  삭제 표식(잃으면 **부활**한다)
+      · `_SyncBase`              3-way 병합 기준본(잃으면 2-way 로 강등)
+    전부 "없어도 에러가 안 나는" 값들이라 회귀 테스트가 유일한 방어다
+    (`tests/test_migrate_driver.py`).
+    """
+    return {lbl: {"pk": spec["pk"], "cols": [c for c, _ in spec["cols"]]}
+            for lbl, spec in _META_TABLES.items()}
 
 
 def rel_table_specs() -> list[dict]:

@@ -78,6 +78,148 @@ class MigrationRoundTripTests(unittest.TestCase):
         dst.close()
 
 
+class RebuildPathTests(unittest.TestCase):
+    """M3R — 차원이 바뀌는 모델 교체의 재구축 경로(`migrate.rebuild_store`).
+
+    🔴 **여기서 지키는 값들은 사라져도 오류가 안 난다.** `_DocMeta`·`content_hash`·
+    `sync_seq`·삭제 표식은 없으면 그냥 "없는 상태"로 조용히 동작한다. 그래서 이
+    테스트가 유일한 방어다 — 리허설에서 실제로 물린 모양 그대로 못 박는다
+    (문서 10건이 왕복 뒤 0건이 되고 재큐가 0건이었다. 예외는 하나도 없었다).
+    """
+
+    def _mkstore(self, dim: int | None = None):
+        import tempfile
+        over = {"data_dir": tempfile.mkdtemp() + "/db"}
+        if dim == 1024:
+            over["embedding_model"] = "BAAI/bge-m3"       # 차원이 바뀌는 쪽
+        cfg = load_config(over)
+        st = open_store(cfg)
+        st.provision(dim=cfg.embedding_dim)
+        return st, cfg
+
+    def _seed_docs(self, store, n: int):
+        """문서 n건을 **프로덕션 경로로** 넣는다 — 손으로 MERGE 하면 `_DocMeta` 가
+        어떻게 채워지는지를 테스트가 스스로 정해 버려 회귀 가치가 없다."""
+        from api import docstore as ds
+        for i in range(n):
+            ds.put_doc(store, owner="u", doc_id=f"doc:{i}", title=f"T{i}",
+                       text=f"재구축 리허설 문서 {i}\n\nrebuild rehearsal body {i}",
+                       link=False)
+        ds.switch_embed_model(store, "intfloat/multilingual-e5-base")
+
+    def test_왕복이_문서_정체성과_커서를_보존한다(self):
+        src, _ = self._mkstore()
+        self._seed_docs(src, 3)
+        # 동기화 커서·삭제 표식을 사람이 만든 값으로 심는다(왕복에서 살아남아야 한다).
+        src.run("MATCH (d:_DocMeta) WHERE d.doc_id='doc:0' SET d.sync_seq = 41")
+        src.run("MERGE (t:_DocTombstone {doc_id:'doc:gone'}) SET t.owner_id='u', "
+                "t.deleted_at='hlc9', t.sync_seq=40")
+        src.run("MERGE (m:_SyncMeta {key:'cursor:u'}) SET m.value='42'")
+        before = src.run("MATCH (d:_DocMeta) WHERE d.doc_id='doc:0' "
+                         "RETURN d.content_hash AS h, d.sync_seq AS s")[0]
+        self.assertTrue(before["h"], "seed 가 content_hash 를 안 남겼다 — 전제 붕괴")
+
+        dump = migrate.export_store(src)
+        src.close()
+        dst, cfg2 = self._mkstore()
+        migrate.import_store(dst, dump, dim=cfg2.embedding_dim)
+
+        got = dst.run("MATCH (d:_DocMeta) WHERE d.doc_id='doc:0' "
+                      "RETURN d.content_hash AS h, d.sync_seq AS s, d.title AS t")[0]
+        self.assertEqual(got["h"], before["h"], "content_hash 유실 — 변경감지가 죽는다")
+        self.assertEqual(int(got["s"]), 41, "sync_seq 유실 — 동기화 커서가 되감긴다")
+        self.assertEqual(got["t"], "T0")
+        tomb = dst.run("MATCH (t:_DocTombstone) RETURN count(t) AS c")[0]["c"]
+        self.assertEqual(int(tomb), 1, "삭제 표식 유실 — 다음 동기화에서 부활한다")
+        cur = dst.run("MATCH (m:_SyncMeta) WHERE m.key='cursor:u' RETURN m.value AS v")
+        self.assertEqual(cur[0]["v"], "42", "_SyncMeta 커서 유실")
+        dst.close()
+
+    def test_스키마_버전은_덤프가_아니라_대상의_사실이다(self):
+        """구 덤프를 신 스토어에 부으면 버전이 되감긴다. 그건 대상의 사실이 아니다."""
+        from store import embedded_schema as es
+        src, _ = self._mkstore()
+        dump = migrate.export_store(src)
+        src.close()
+        dump["meta"]["_SchemaMeta"] = [{"key": "schema_version", "value": "3"}]
+        dst, cfg2 = self._mkstore()
+        migrate.import_store(dst, dump, dim=cfg2.embedding_dim)
+        v = dst.run("MATCH (m:_SchemaMeta) WHERE m.key='schema_version' "
+                    "RETURN m.value AS v")
+        self.assertEqual(int(v[0]["v"]), es.SCHEMA_VERSION)
+        dst.close()
+
+    def test_재구축이_전_문서를_재큐한다(self):
+        """🔴 **무음 실패의 본체.** `_DocMeta` 가 없으면 `switch_embed_model` 은 문서를
+        0건 세고 0건을 재큐한다 — 재임베딩이 영영 일어나지 않는데 오류가 없다.
+        문서 N건을 넣고 왕복시켜 N건이 재큐되는지를 본다."""
+        n = 4
+        src, _ = self._mkstore()
+        self._seed_docs(src, n)
+        dst, cfg2 = self._mkstore(dim=1024)
+        self.assertEqual(cfg2.embedding_dim, 1024, "차원이 안 바뀌면 재구축 시험이 아니다")
+        out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        src.close()
+
+        self.assertEqual(out["docs"], n)
+        self.assertEqual(out["requeued"], n, "재큐 0건 = 재임베딩이 안 일어난다")
+        pend = dst.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c")
+        self.assertEqual(int(pend[0]["c"]), n)
+        # 벡터 열이 실제로 새 차원인가(그러지 않으면 첫 쓰기에서 캐스팅 예외가 난다).
+        dims = [r for r in dst.run("CALL TABLE_INFO('ChunkVec') RETURN *")
+                if r.get("name") == "embedding"]
+        self.assertIn("1024", str(dims[0]["type"]), f"벡터 열이 안 넓어졌다: {dims}")
+        dst.close()
+
+    def test_재구축_직후_FTS_가_답한다__재임베딩_전에(self):
+        """색인 빌드는 최적화가 아니라 **필수 단계**다. import 만 하고 두면 새 스토어에
+        FTS 가 없어, 재충전 창 동안 검색이 "벡터만 비는" 게 아니라 통째로 죽는다
+        (`Table Chunk doesn't have an index with name chunk_ft`). 재임베딩은 시작도
+        안 한 상태에서 텍스트 팔이 살아 있어야 강등이 설계된 모양이 된다."""
+        src, _ = self._mkstore()
+        self._seed_docs(src, 3)
+        dst, _ = self._mkstore(dim=1024)
+        try:
+            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        except RuntimeError as exc:            # FTS 확장 미가용 환경(번들 없음)
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        finally:
+            src.close()
+        # 벡터는 비어 있다(재임베딩 전) — 그런데 검색은 살아 있어야 한다.
+        self.assertEqual(int(dst.run("MATCH (v:ChunkVec) RETURN count(v) AS c")[0]["c"]), 0)
+        hits = dst.fulltext_search("rehearsal", 5)
+        dst.close()
+        self.assertTrue(hits, "재구축 직후 FTS 가 답하지 않는다 — 재충전 창이 검색 불능")
+
+    def test_재임베딩이_중간에_끊겨도_검색이_산다(self):
+        """워커가 죽는 것은 정상 시나리오다(허브는 재기동이 잦다). 절반만 채운
+        상태에서도 텍스트 팔은 답해야 한다 — 그것이 강등의 전부다."""
+        from api import docstore as ds
+        src, _ = self._mkstore()
+        self._seed_docs(src, 4)
+        dst, _ = self._mkstore(dim=1024)
+        try:
+            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        except RuntimeError as exc:
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        finally:
+            src.close()
+        # 문서 하나만 채우고 "죽는다".
+        pend = ds.pending_embed_chunks(dst, limit=1)
+        self.assertTrue(pend, "재큐가 비어 있다 — 앞의 테스트가 먼저 깨질 것이다")
+        ds.apply_embeddings(dst, pend[0]["doc_id"],
+                            {r["chunk_id"]: [[0.0] * 1024] for r in pend})
+        left = dst.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c")
+        self.assertGreater(int(left[0]["c"]), 0, "전부 끝나 버려 중단 상황이 아니다")
+        hits = dst.fulltext_search("rehearsal", 5)
+        dst.close()
+        self.assertTrue(hits, "재임베딩 중단 상태에서 FTS 가 죽었다")
+
+
 class DialectMatrixTests(unittest.TestCase):
     """T2 — ladybug 방언 재검증(P1-0 실측 항목 회귀, Kùzu 계보 공통 방언)."""
 
