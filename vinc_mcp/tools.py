@@ -871,7 +871,10 @@ TOOLS: list[dict] = [
                        "the prefix "
                        "selects the table. Unknown prefixes return found:false (no-op). Use to "
                        "remove polluted or duplicate shell nodes. This is irreversible — confirm "
-                       "the exact id via vinc_search/vinc_graph first. Returns "
+                       "the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it "
+                       "to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the "
+                       "`deleted.edges` count in this response arrives after the fact, too late to "
+                       "inform the decision. Returns "
                        "{executed, found, deleted:{node, edges}}; found:false if the id is absent.",
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
@@ -912,7 +915,12 @@ TOOLS: list[dict] = [
                        "CONCEPT-ONLY in this version: both ids must be concept:* (other type pairs "
                        "are rejected with an error). Self-loop and already-present edges are skipped "
                        "(RELATED_TO is treated as undirected). Use to fold a duplicate concept shell "
-                       "into the canonical one. This is irreversible — confirm both exact ids first. "
+                       "into the canonical one. This is irreversible — confirm both exact ids first, "
+                       "and quote the title of drop_id back to the person before you call, because "
+                       "that title is what disappears. IF THE PAIR IS NOT A DUPLICATE, the move you "
+                       "want is vinc_merge_reject: it records the distinction, stops the pair being "
+                       "proposed again, and is reversible (undo:true). Reach for that first — this "
+                       "tool is the half of the workflow that cannot be taken back. "
                        "Returns {executed, found, repointed, skipped, dropped}.",
         "inputSchema": {"type": "object", "properties": {
             "keep_id": {"type": "string", "description": "Concept id to keep (survivor)."},
@@ -1019,8 +1027,13 @@ TOOLS: list[dict] = [
     {
         "name": "vinc_doc_delete",
         "description": "Delete a document — its chunks and identity — with deletion propagated to "
-                       "other devices on sync. Irreversible; confirm the exact doc_id first. "
-                       "Returns {executed, deleted_chunks, deleted_meta}.",
+                       "other devices on sync. The chunks ARE the canonical text (Chunk=SSoT), "
+                       "so this destroys the document itself and not a copy of it. "
+                       "Irreversible; confirm the exact doc_id with vinc_doc_list and read the "
+                       "document with vinc_doc_get before you call, so you know what is being "
+                       "destroyed. ⚠ A `doc_id:` line in the document body is NOT its store id "
+                       "— deleting by the declared value removes a different document or "
+                       "nothing at all. Returns {executed, deleted_chunks, deleted_meta}.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},
