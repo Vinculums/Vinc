@@ -17,8 +17,12 @@
     | 입력 | input_ids·attention_mask·token_type_ids | input_ids·attention_mask (**둘뿐**) | input_ids·attention_mask |
     | 패딩 id | 0 = `[PAD]` | 0 은 `<s>` 다 — `<pad>` 는 **1** | XLM-R 계열 — `<pad>` 는 **1** |
 
+⚠ **접두 열의 정본은 이 파일이 아니라 `packaging/embed_worker.py::prefix` 다.** 여기 표는
+읽으라고 있는 것이고, `prefix()` 는 그 프로덕션 함수를 그대로 불러 쓴다 — 규약을 두 곳에
+적었다가 갈라진 적이 있어서(이 파일에는 bge-m3 분기가 있었고 프로덕션에는 없었다) 값을
+유도하는 쪽으로 바꿨다. 풀링·패딩은 아직 여기 구현이 따로 있고 `--selfcheck` 가 대조한다.
 ⚠ bge-m3 는 이름이 bge 라도 **v1.5 의 쿼리 지시문을 붙이면 안 된다** — 공식 사용법이
-무지시(instruction-free)다. `prefix()` 의 m3 분기가 v1.5 분기보다 먼저 서는 이유다.
+무지시(instruction-free)다. 프로덕션 `prefix()` 의 m3 분기가 v1.5 분기보다 먼저 서는 이유다.
 그리고 공개 ONNX 내보내기 중에는 풀링·정규화를 그래프 안에 이미 구운 판이 있어서,
 출력이 [batch, dim] 2차원이면 풀링을 **다시 하지 않는다**(`_batch` 의 ndim 가드).
 
@@ -35,6 +39,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import sys
 from pathlib import Path
@@ -46,21 +51,34 @@ def is_e5(model: str) -> bool:
     return "e5" in model.lower()
 
 
-def is_m3(model: str) -> bool:
-    return "bge-m3" in model.lower()
+@functools.cache
+def _load_production_worker():
+    """`packaging/embed_worker.py` 를 **파일 경로로** 연다(한 번만 — 접두는 청크마다 부른다).
+
+    ⚠ `import packaging.embed_worker` 는 안 된다 — PyPI 배포판 `packaging` 이
+    site-packages 에 정규 패키지로 있어서, `__init__.py` 없는 리포 디렉터리(네임스페이스
+    포션)를 가린다. 실측: `ModuleNotFoundError: No module named 'packaging.embed_worker'`.
+    **접두 규약이 두 벌로 갈라져 있던 진짜 이유가 이것이다** — 가져다 쓸 수가 없으니
+    베껴 적었고, 그 사본이 bge-m3 분기를 놓쳤다.
+    `tests/test_embed_worker.py` 가 이미 같은 방식으로 연다(그 패턴을 재사용한다).
+    """
+    import importlib.util
+
+    src = Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
+    spec = importlib.util.spec_from_file_location("_vinc_embed_worker_contract", src)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def prefix(text: str, kind: str, model: str) -> str:
-    """비대칭 검색 접두. e5 는 **양쪽 필수**, bge-v1.5 는 query 만, bge-m3 는 **무접두**.
-    m3 분기가 v1.5 분기보다 먼저다 — 이름에 bge 가 들어 있어서 순서를 바꾸면
-    m3 쿼리에 v1.5 지시문이 붙는다(에러 없이 벡터만 틀리는 부류)."""
-    if is_m3(model):
-        return text
-    if is_e5(model):
-        return f"{'query' if kind == 'query' else 'passage'}: {text}"
-    if kind != "query":
-        return text                       # bge passage 는 맨몸이다
-    return ("Represent this sentence for searching relevant passages: " + text)
+    """비대칭 검색 접두 — **프로덕션 구현에서 그대로 유도한다.**
+
+    정본은 `packaging/embed_worker.py::prefix` 다. 여기서 규약을 다시 적지 않는 이유는
+    전에 그렇게 해서 갈라졌기 때문이다: 이 파일에는 bge-m3 분기가 있었고 프로덕션에는
+    없어서, 평가는 맞고 프로덕션만 틀린 상태가 남았다(W16 실측 코사인 0.79~0.82).
+    """
+    return _load_production_worker().prefix(text, kind, model)
 
 
 class Encoder:

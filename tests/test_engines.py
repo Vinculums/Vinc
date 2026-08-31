@@ -99,8 +99,17 @@ class EmbedModelVocabTests(unittest.TestCase):
         self.assertEqual(ns.model, "local-en")
 
     def test_cli_choices_match_config_vocab(self):
+        """choices 는 **별칭 목록**과 같아야 한다(파이프라인 독자 명칭 금지).
+
+        전에는 차원표 전체와 같은지를 봤다. 그런데 그 표는 이름 공간이 둘이다 —
+        사람이 고르는 별칭과, 워커가 드는 HF id. HF id 를 choices 에 넣으면
+        `ST_MODEL_BY_KEY.get(...)` 폴백이 조용히 bge-base-en 을 물어 온다. 그래서
+        여기서 보는 것은 "표 전체와 같은가"가 아니라 "별칭 전부이고 별칭뿐인가"다."""
         choices = self.e.build_parser()._option_string_actions["--model"].choices
-        self.assertEqual(set(choices), set(self.dims))  # 파이프라인 독자 명칭 금지
+        from store.config import EMBEDDING_MODEL_ALIASES
+        self.assertEqual(set(choices), set(EMBEDDING_MODEL_ALIASES))
+        self.assertTrue(set(EMBEDDING_MODEL_ALIASES) <= set(self.dims),
+                        "별칭인데 차원표에 없다 — provision 이 죽는다")
 
     def test_model_dim_delegates_to_config(self):
         for key, dim in self.dims.items():

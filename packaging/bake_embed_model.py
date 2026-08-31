@@ -28,15 +28,30 @@ import sys
 import huggingface_hub as hf
 import onnxruntime.quantization as ortq
 
-OUT = "/srv/vinc/models/e5-int8-rr.onnx"
-TOK = "/srv/vinc/models/tokenizer.json"
+# 🔴 **런타임이 찾는 바로 그 경로에 굽는다.** 굽는 이름과 찾는 이름을 각자 적으면
+# 갈라지고, 갈라진 순간 런타임은 "구운 게 없다"고 판정해 조용히 fp32(e5 1.06GB ·
+# bge-m3 2.27GB)를 내려받다가 OOM 으로 컨테이너(=MCP 포함)를 죽인다. 그래서 둘 다
+# `VINC_EMBED_MODEL_PATH` 하나를 본다 — Dockerfile.hub 의 ENV 가 유일한 정본이고,
+# 그 값이 모델과 맞는지는 `packaging/embed_worker.py::artifact_name` 규약을 대조하는
+# 테스트(tests/test_embed_worker.py)가 CI 에서 지킨다.
+OUT = os.environ.get("VINC_EMBED_MODEL_PATH", "/srv/vinc/models/e5-int8-rr.onnx")
+TOK = os.path.join(os.path.dirname(OUT), "tokenizer.json")
 MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
 
 # 공식 int8(`model_qint8_avx512_vnni.onnx`)은 U8S8+per_channel+reduce_range=False 라
 # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
 # 0.670 → 0.472). reduce_range=True 는 가중치를 7비트로 낮춰 포화를 산술적으로
 # 불가능하게 만든다 — 그래서 공식본을 쓰지 않고 직접 굽는다.
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
 fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
+# 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 등 **별도 파일**로
+# 나온다. 그래프 파일만 받으면 quantize 가 로드에서 터진다 — 같은 스냅샷 디렉터리에
+# 나란히 받아야 onnx 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 설정류는 제외.
+# (같은 규칙이 `scripts/quantize_e5.py` 에도 있다. 그쪽은 실험용 로컬 빌드다.)
+for _f in hf.list_repo_files(MODEL):
+    if (_f.startswith("onnx/") and _f != "onnx/model.onnx"
+            and not _f.endswith((".onnx", ".json", ".model"))):
+        hf.hf_hub_download(MODEL, _f)
 ortq.quantize_dynamic(
     fp32,
     OUT,

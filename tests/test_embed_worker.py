@@ -13,6 +13,7 @@ onnxruntime·numpy 없이 돈다: 워커의 모듈 레벨 import 는 stdlib 뿐�
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import pathlib
@@ -31,6 +32,44 @@ def _np_or_skip(case):
     return np
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
+
+
+@contextlib.contextmanager
+def _hf_stub(download):
+    """`huggingface_hub` 를 가짜로 갈아 끼운다 — 테스트가 네트워크를 타면 안 된다."""
+    import types
+    stub = types.ModuleType("huggingface_hub")
+    stub.hf_hub_download = download
+    stub.list_repo_files = lambda repo: ["onnx/model.onnx"]
+    old = sys.modules.get("huggingface_hub")
+    sys.modules["huggingface_hub"] = stub
+    try:
+        yield
+    finally:
+        if old is None:
+            sys.modules.pop("huggingface_hub", None)
+        else:
+            sys.modules["huggingface_hub"] = old
+
+
+@contextlib.contextmanager
+def _env(**kv):
+    """env 를 잠깐 바꾼다(None = 지운다). 복원까지가 이 헬퍼의 일이다 — 남으면 다음
+    테스트가 그 env 를 물려받아 **순서에 따라만** 깨진다."""
+    old = {k: os.environ.get(k) for k in kv}
+    try:
+        for k, v in kv.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        yield
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def _load_module():
@@ -325,6 +364,43 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         finally:
             self.mod.MODEL = real
 
+    def test_bge_m3_는_질의에도_지시_접두를_붙이지_않는다(self):
+        """m3 는 이름에 bge 가 들어 있지만 **양쪽 다 맨몸**이다(공식 사용법이 무지시).
+
+        이 분기가 없으면 m3 질의가 v1.5 분기로 떨어져 "Represent this sentence..." 가
+        붙는다. 에러는 안 나고 벡터만 어긋난다 — 정답 벡터와 코사인 0.79~0.82(W16
+        실측). 분기 순서도 여기서 지킨다: m3 검사가 v1.5 검사보다 뒤로 가면 같은
+        고장이 돌아온다."""
+        real = self.mod.MODEL
+        try:
+            self.mod.MODEL = "BAAI/bge-m3"
+            self.assertEqual(self.mod._prefix("질의", "query"), "질의",
+                             "m3 질의에 v1.5 지시 접두가 붙었다 — 무음으로 벡터가 틀린다")
+            self.assertEqual(self.mod._prefix("본문", "passage"), "본문")
+        finally:
+            self.mod.MODEL = real
+
+    def test_평가_인코더가_프로덕션_접두를_그대로_쓴다(self):
+        """`scripts/encoder.py` 가 규약을 **베끼지 않고 유도**하는지 본다.
+
+        전에는 두 곳에 따로 적혀 있었고, 그래서 갈라졌다 — 평가에는 m3 분기가 있고
+        프로덕션에는 없었다. 사본이 돌아오면 이 테스트가 깨진다."""
+        import importlib.util as _ilu
+
+        src = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "encoder.py"
+        spec = _ilu.spec_from_file_location("_vinc_encoder_under_test", src)
+        enc = _ilu.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(enc)
+
+        for model in ("BAAI/bge-m3", "intfloat/multilingual-e5-base",
+                      "BAAI/bge-base-en-v1.5"):
+            for kind in ("query", "passage"):
+                self.assertEqual(
+                    enc.prefix("x", kind, model),
+                    self.mod.prefix("x", kind, model),
+                    f"{model}/{kind} 에서 평가 인코더와 프로덕션이 갈라졌다")
+
     def test_배경_임베딩이_접두_경로를_우회하지_않는다(self):
         """저장 벡터를 만드는 실제 루프가 `_prefix` 를 **거치는지** 본다.
 
@@ -384,24 +460,10 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             asked.append(path)
             return f"/tmp/{path}"
 
-        import types
-        stub = types.ModuleType("huggingface_hub")
-        stub.hf_hub_download = fake_dl
-        old = sys.modules.get("huggingface_hub")
-        sys.modules["huggingface_hub"] = stub
-        real_env = os.environ.get("VINC_EMBED_QUANTIZE")
-        os.environ["VINC_EMBED_QUANTIZE"] = "off"      # 양자화는 건너뛰고 경로 선택만 본다
-        try:
+        # 양자화는 건너뛰고 경로 선택만 본다(=명시적 fp32 탈출구).
+        with _hf_stub(fake_dl), _env(VINC_EMBED_QUANTIZE="off",
+                                     VINC_EMBED_MODEL_PATH=None):
             p = self.mod._resolve_model("intfloat/multilingual-e5-base", "/tmp/cache")
-        finally:
-            if old is None:
-                sys.modules.pop("huggingface_hub", None)
-            else:
-                sys.modules["huggingface_hub"] = old
-            if real_env is None:
-                os.environ.pop("VINC_EMBED_QUANTIZE", None)
-            else:
-                os.environ["VINC_EMBED_QUANTIZE"] = real_env
         self.assertEqual(asked, ["onnx/model.onnx"],
                          f"공식 int8 을 받으려 했다: {asked}")
         self.assertTrue(p.endswith("model.onnx"))
@@ -414,30 +476,90 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         그래서 `Dockerfile.hub` 가 빌드 타임에 굽고 `VINC_EMBED_MODEL_PATH` 로 알린다.
         이 테스트는 그 경로를 무시하고 런타임에 받으려 들면 깨진다."""
         import tempfile
-        import types
         called: list[str] = []
-        stub = types.ModuleType("huggingface_hub")
-        stub.hf_hub_download = lambda repo, path, **kw: called.append(path) or "/tmp/x"
-        old = sys.modules.get("huggingface_hub")
-        sys.modules["huggingface_hub"] = stub
-        real = os.environ.get("VINC_EMBED_MODEL_PATH")
-        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
-            baked = f.name
-        os.environ["VINC_EMBED_MODEL_PATH"] = baked
-        try:
+        baked = os.path.join(tempfile.mkdtemp(), "e5-int8-rr.onnx")
+        open(baked, "wb").close()
+        with _hf_stub(lambda repo, path, **kw: called.append(path) or "/tmp/x"), \
+                _env(VINC_EMBED_MODEL_PATH=baked):
             p = self.mod._resolve_model("intfloat/multilingual-e5-base", "/tmp/c")
-        finally:
-            if old is None:
-                sys.modules.pop("huggingface_hub", None)
-            else:
-                sys.modules["huggingface_hub"] = old
-            if real is None:
-                os.environ.pop("VINC_EMBED_MODEL_PATH", None)
-            else:
-                os.environ["VINC_EMBED_MODEL_PATH"] = real
-            os.unlink(baked)
         self.assertEqual(p, baked, "구워진 모델을 안 쓰고 다른 걸 골랐다")
         self.assertEqual(called, [], f"런타임에 모델을 받으려 했다: {called}")
+
+    def test_e5_밖의_모델도_int8_아티팩트를_고른다(self):
+        """🔴 여기가 무음 강등의 자리였다.
+
+        옛 첫 분기가 `if not _is_e5(model) …: return fp32` 라 **e5 가 아니면 무조건
+        fp32** 였다. bge-m3 를 채택해도 워커는 2.27GB fp32 를 받는다 — 1024MiB
+        컨테이너에서 그건 OOM 이고, OOM 은 사이드카·MCP 까지 함께 죽인다.
+        아무 오류도 안 나므로 아무도 모른다. 이 테스트는 그 분기가 돌아오면 깨진다."""
+        import tempfile
+        cache = tempfile.mkdtemp()
+        made = os.path.join(cache, "bge-m3-int8-rr.onnx")
+        open(made, "wb").close()
+        called: list[str] = []
+        with _hf_stub(lambda repo, path, **kw: called.append(path) or "/tmp/x"), \
+                _env(VINC_EMBED_MODEL_PATH=None, VINC_EMBED_QUANTIZE=None):
+            p = self.mod._resolve_model("BAAI/bge-m3", cache)
+        self.assertEqual(p, made, "m3 인데 int8 아티팩트를 안 골랐다(=fp32 강등)")
+        self.assertEqual(called, [], f"fp32 를 받으려 했다: {called}")
+
+    def test_아티팩트_이름이_모델을_구분한다(self):
+        """캐시 하나에 모델 여러 벌이 산다. 이름이 모델과 무관하면(옛 고정
+        `e5-int8-rr.onnx`) 모델을 바꿔도 **옛 파일을 그대로 집는다** — 차원이 우연히
+        같으면(e5-large ↔ bge-m3, 둘 다 1024) 영원히 안 들킨다."""
+        an = self.mod.artifact_name
+        self.assertEqual(an("intfloat/multilingual-e5-base"), "e5-int8-rr.onnx",
+                         "구워진 이미지·캐시가 쓰는 이름이라 바뀌면 안 된다")
+        self.assertEqual(an("BAAI/bge-m3"), "bge-m3-int8-rr.onnx")
+        self.assertNotEqual(an("BAAI/bge-m3"), an("intfloat/multilingual-e5-large"))
+
+    def test_다른_모델의_구운_아티팩트는_거절한다(self):
+        """이미지는 e5 를 구웠는데 env 만 m3 로 바꾼 조합. 그대로 쓰면 **딴 모델로
+        색인을 만든다** — 조용히. 기동 시점에 끊는다."""
+        import tempfile
+        baked = os.path.join(tempfile.mkdtemp(), "e5-int8-rr.onnx")
+        open(baked, "wb").close()
+        with _hf_stub(lambda *a, **k: "/tmp/x"), _env(VINC_EMBED_MODEL_PATH=baked):
+            with self.assertRaises(RuntimeError) as ctx:
+                self.mod._resolve_model("BAAI/bge-m3", "/tmp/c")
+        self.assertIn("bge-m3-int8-rr.onnx", str(ctx.exception))
+
+    def test_아티팩트를_못_만들면_조용히_fp32_로_가지_않는다(self):
+        """양자화 실패가 fp32 반환이던 시절: 허브에서 그 경로는 곧 OOM 이다.
+        "느리지만 정확하다"는 메모리가 넉넉할 때만 참이다. 이제는 예외로 끝나고,
+        메시지가 다음에 할 일(굽기)을 말한다."""
+        # `sys.modules[x] = None` 은 그 이름의 import 를 ImportError 로 막는다
+        # (파이썬 3 의 차단자 관용구) — 양자화 스택이 없는 환경을 그대로 만든다.
+        real = sys.modules.get("onnxruntime.quantization")
+        sys.modules["onnxruntime.quantization"] = None
+        try:
+            with _hf_stub(lambda repo, path, **kw: "/tmp/fp32.onnx"), \
+                    _env(VINC_EMBED_MODEL_PATH=None, VINC_EMBED_QUANTIZE=None):
+                with self.assertRaises(RuntimeError) as ctx:
+                    self.mod._resolve_model("intfloat/multilingual-e5-base",
+                                            "/tmp/nonexistent-cache-xyz")
+        finally:
+            if real is None:
+                sys.modules.pop("onnxruntime.quantization", None)
+            else:
+                sys.modules["onnxruntime.quantization"] = real
+        self.assertIn("quantize_e5.py", str(ctx.exception), "처방이 없는 실패 메시지")
+
+    def test_이미지가_굽는_이름과_런타임이_찾는_이름이_같다(self):
+        """`Dockerfile.hub` 의 두 ENV 는 짝이다. 갈라지면 런타임이 "구운 게 없다"고
+        판정해 fp32 를 받는다 — 빌드는 초록인 채로. 그 조합을 CI 에서 잡는다
+        (이 리포는 같은 모양으로 이미 한 번 물렸다: heredoc 이 안 먹어 모델이
+        안 구워졌는데 빌드가 성공했고, 런타임에 fp32 로 OOM 이 났다)."""
+        text = (pathlib.Path(__file__).resolve().parents[1] / "Dockerfile.hub").read_text(
+            encoding="utf-8")
+        env = dict(line.split("=", 1) for line in
+                   (ln[4:].strip() for ln in text.splitlines() if ln.startswith("ENV "))
+                   if "=" in line)
+        model = env.get("VINC_EMBED_MODEL")
+        path = env.get("VINC_EMBED_MODEL_PATH")
+        self.assertTrue(model and path, "두 ENV 가 모두 명시돼 있어야 한다")
+        self.assertEqual(os.path.basename(path), self.mod.artifact_name(model),
+                         f"굽는 이름과 찾는 이름이 다르다: {path} vs {model}")
 
     def test_한_문서가_막혀도_나머지는_진행한다(self):
         """한 문서의 인코딩 실패가 라운드 전체를 버리면, 그 문서가 pending 선두에
