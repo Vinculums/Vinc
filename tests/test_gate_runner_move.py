@@ -81,15 +81,21 @@ class _Repo:
         subprocess.run(a, cwd=self.root, check=True, capture_output=True)
 
     def _out(self, *a):
-        return subprocess.run(a, cwd=self.root, capture_output=True, text=True).stdout
+        return subprocess.run(a, cwd=self.root, capture_output=True,
+                              text=True, encoding="utf-8").stdout
 
     def gate(self):
+        # ⚠ `encoding="utf-8"` 을 **명시**한다. `text=True` 만 주면 로케일로 디코드하고
+        # (윈도우 한국어는 cp949), 게이트가 한국어를 출력하는 순간 리더 스레드가
+        # UnicodeDecodeError 로 죽어 `stdout` 이 None 이 된다. 그 결과 **잡아내는 경우만
+        # 골라서** TypeError 로 깨진다 — 통과하는 경우는 출력이 비어 멀쩡하다.
+        # 게이트 자체는 `-X utf8` 로 돌므로 내보내는 것은 언제나 UTF-8 이다.
         r = subprocess.run(
             [sys.executable, "-X", "utf8", str(_ROOT / "scripts" / "gate_runner_move.py"),
              self.base, self.head],
-            cwd=self.root, capture_output=True, text=True,
+            cwd=self.root, capture_output=True, text=True, encoding="utf-8",
         )
-        return r.returncode, r.stdout + r.stderr
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
 
     def __enter__(self):
         return self

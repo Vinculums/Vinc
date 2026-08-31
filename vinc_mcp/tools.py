@@ -1112,6 +1112,14 @@ _SPACE_PROP = {"space": {
                    "same way as one that does not exist. Ignored when you connected at a team "
                    "address (/t/<team-uuid>/mcp) — there the address already fixed the space."}}
 
+#: 데스크탑 프로파일에서 덧붙는 한 문장. 거기에는 `target` 이 있고, 스페이스는
+#: **계정 그래프에만 존재한다** — 로컬 스토어에는 고를 것이 없다. 그래서 두 인자의
+#: 조합 중 하나는 뜻이 없고, 뜻이 없는 조합은 조용히 무시하지 말고 거절해야 한다
+#: (무시하면 팀에 쓰려던 호출이 로컬에 쌓인다).
+_SPACE_LOCAL_NOTE = (" On this desktop connector a space exists only on your account "
+                     "graph, so `space` requires target:'remote'; sending it with "
+                     "target:'local' is an error rather than a silent local write.")
+
 
 def specs(*, allow_target: bool = True) -> list[dict]:
     """도구 목록. ``allow_target=False`` 면 `target` 프로퍼티를 주입하지 않는다.
@@ -1125,12 +1133,16 @@ def specs(*, allow_target: bool = True) -> list[dict]:
     for t in TOOLS:
         sch = t["inputSchema"]
         props = {**sch.get("properties", {})}
+        # `space` 는 **양쪽 프로파일에** 싣는다. 허브에서는 주소 대신 스페이스를 고르는
+        # 인자고, 데스크탑에서는 `target:"remote"` 로 간 호출이 허브에서 같은 판정을
+        # 받게 하는 통로다. 데스크탑에만 문장 하나가 붙는다 — 거기에는 `target` 이
+        # 있어서 뜻 없는 조합(local + space)이 생기기 때문이다.
         if allow_target:
             props.update(_TARGET_PROP)
+            sp = dict(_SPACE_PROP["space"])
+            sp["description"] += _SPACE_LOCAL_NOTE
+            props["space"] = sp
         else:
-            # `allow_target=False` 는 이 파일에서 곧 **호스티드 프로파일**이다(위
-            # 독스트링: 허브만 False 로 부른다). `space` 는 계정이 있는 곳에서만
-            # 뜻이 있으므로 같은 갈림에 얹는다 — 로컬 stdio 에는 고를 스페이스가 없다.
             props.update(_SPACE_PROP)
         spec = {"name": t["name"], "description": t["description"],
                 "inputSchema": {**sch, "properties": props}}
@@ -1240,15 +1252,25 @@ def call(name: str, args: dict | None, bridge: Bridge,
         raise KeyError(f"unknown tool: {name}")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
-    # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 판정은 이미 HTTP 층에서
-    # 끝났으므로(멤버십·역할) 여기서는 벗기기만 한다.
+    # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 기본은 벗기는 것이다 —
+    # 사이드카 핸들러는 params 를 명시로 조립하니 흘러가도 무해하지만, `remote.call` 은
+    # `owner`·`target` 만 빼고 **전부 넘기므로** 벗기지 않으면 아무 데나 새어 나간다.
     #
-    # ⚠ 새는 자리는 사이드카가 아니라 **원격 전달**이다. 사이드카 핸들러는 params 를
-    # 명시로 조립하니 모르는 키가 흘러갈 길이 없는데, `remote.call` 은 `owner`·`target`
-    # 만 빼고 **전부 넘긴다**. 안 벗기면 데스크탑에서 `target:"remote"` 로 부른 호출이
-    # 스키마에 광고하지도 않은 스페이스 선택을 허브에서 하게 된다 — 그 표면이 열려야
-    # 한다면 데스크탑 스키마에 `space` 를 싣는 것이 순서고, 여기로 몰래 들어오면 안 된다.
-    args.pop("space", None)
+    # 예외는 하나. **데스크탑에서 `target:"remote"` 로 가는 호출**은 그대로 실어
+    # 보낸다(스키마가 그 조합을 광고한다). 판정은 허브가 한다 — 키가 그 팀의 멤버임을
+    # 계정에 묻고 역할로 게이트한다. 여기서 판정을 흉내 내면 두 번째 표가 생긴다.
+    #
+    # 허브 자신(`allow_target=False`)은 이 분기에 안 들어온다: 거기서 `space` 는 HTTP
+    # 층이 이미 읽어 스페이스를 정한 뒤라, 남은 값은 벗기는 것이 맞다.
+    space = args.pop("space", None)
+    if allow_target and space:
+        if target != "remote":
+            # 로컬 스토어에는 고를 스페이스가 없다. 조용히 무시하면 팀에 쓰려던 것이
+            # 로컬에 쌓인다 — 이 표면 전체가 막으려는 그 고장이다.
+            raise ValueError(
+                "space applies to your account graph: pass target:'remote' with it "
+                "(target:'local' has no spaces to choose from).")
+        args["space"] = space
     # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
     # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
     if not allow_target and target != "local":
