@@ -1,0 +1,231 @@
+# 인프라를 CI 가 적용한다 — 사람의 셸이 아니라.
+#
+# 왜 생겼나. `infra/` 는 선언만 있고 apply 가 유지보수자의 노트북에서만 가능했다.
+# 그 배치의 문제는 권한이 아니라 **기록**이다: 무엇이 언제 적용됐는지가 그 셸에만
+# 남고 사라진다. 이 리포는 같은 형태를 이미 겪었다 — 컨테이너 안에서 난 검증이
+# Actions 기록을 안 남겨서 `verify-hosted.yml` 을 만들었다. apply 는 검증보다 더
+# 남아야 하는 행위다.
+#
+# 그리고 목표가 하나 더 있다: **에이전트가 끝까지 갈 수 있는 구간을 늘린다.**
+# 에이전트가 `infra/` 를 고쳐 PR 을 열면 plan 이 그 PR 에 코멘트로 붙는다. 사람은
+# 읽고 방아쇠만 당긴다.
+#
+# ── 잡이 둘인 이유 ──────────────────────────────────────────────────────────
+# 한 잡에서 이벤트로 client-id 를 고르면 줄은 줄지만 **어느 신원이 어디서 도는지가
+# 표현식 안에 숨는다.** 이 파일에서 그건 스타일이 아니라 보안 성질이라 눈에 보여야
+# 한다. 그래서 잡을 갈랐고, 설정 스텝이 겹치는 것은 그 대가로 받는다.
+#
+#   plan   (pull_request)      vinc-github-actions-plan    Reader + Blob Data Reader
+#   apply  (workflow_dispatch) vinc-github-actions-deploy  Contributor + Blob Data Contributor
+#
+# ⚠ **기존 배포 앱에 `:pull_request` subject 를 주지 않는다.** 그 앱은 Contributor 라,
+#   주는 순간 모든 PR 이 쓰기 토큰을 받는다. 이 리포는 에이전트가 PR 을 열고 PR 에서
+#   이 파일도 고칠 수 있으므로, 그러면 "에이전트는 쓰지 않는다"가 한 줄로 무너진다.
+#   읽기 전용 앱을 따로 둔 이유가 그것이다 — 제어 평면에서 한 Reader/Contributor
+#   분리를 CI 트리거 층에서 한 번 더 세운 것이다.
+#
+# ⚠ **apply 는 새 페더레이티드 자격증명이 필요 없다.** main 에서 띄운
+#   `workflow_dispatch` 의 subject 는 `…:ref:refs/heads/main` 이라 기존 것이 그대로
+#   맞는다. 관문이 안 열려 있던 것은 PR 계열뿐이었다(AADSTS700213, 2026-09-01 실측).
+#   subject 는 이 조직에서 **숫자 id 형식**이다 — 문서에 흔한 `repo:Org/Repo:...` 로
+#   등록하면 등록은 되고 700213 은 그대로 나서 원인이 한 층 더 숨는다.
+#   근거: [[record:which-identity-reaches-what-on-this-subscription]]
+#
+# ⚠ 이 워크플로는 **main push 로 안 돈다.** 배포(hub-deploy·site-deploy)와 다른
+#   점이 여기다. 인프라 변경은 머지가 곧 적용이면 안 된다 — 되돌리기가 비싸고
+#   (하드다운 넷이 이 평면에서 났다) plan 을 사람이 읽는 단계가 그 값의 전부다.
+#
+# ⚠ **state 컨테이너를 이 워크플로가 만들지 않는다.** 처음에는 idempotent 한 한 줄로
+#   넣었다가 뺐다: 컨테이너가 사라진 상태에서 자동 생성하면 terraform 이 **빈 state
+#   로 시작해 모든 리소스를 새로 만들려 든다.** 조용히 복구하는 것이 조용히 파괴하는
+#   것이 되는 자리다. 없으면 init 에서 시끄럽게 죽는 편이 맞다. 컨테이너는 사람이
+#   한 번 만들었다(2026-09-01, `az storage container create --auth-mode login`).
+#
+# 근거: [[vinc.ops.infrastructure-risk-2026-09-01]]
+#       [[vinc.ops.azure-identity-split-2026-08-30]]
+name: infra
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "적용하려면 정확히 apply 라고 입력한다. 그 밖의 값이면 plan 만 돈다."
+        required: true
+        default: "plan"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+# 인프라 적용은 취소하지 않고 직렬화한다. state 에 잠금이 걸리므로 동시 실행은 뒤엣
+# 것이 락 대기로 죽고, 그보다는 줄 세우는 편이 읽기 쉽다. 취소하지 않는 이유는
+# hub-deploy 와 같다: 도중에 끊긴 apply 가 가장 나쁘다.
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.9.8"
+  # backend 가 계정 키 대신 Entra 신원으로 blob 에 붙는다(versions.tf 참조).
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+
+jobs:
+  # ── PR: 읽기만 한다 ────────────────────────────────────────────────────────
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # ⚠ backend 는 `ARM_*` 만 읽는다. `azure/login` 이 내보내는 `AZURE_*` 를 provider
+    # 는 폴백으로 받지만 **backend 는 안 받는다** — init 이 "a Client ID must be
+    # configured when authenticating with OIDC" 로 죽는다(2026-09-01 실측). 잡마다
+    # 명시하는 이유는 그 값이 곧 이 잡이 어느 신원인지이기 때문이다.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 읽기 전용 신원. 이 잡이 무엇을 하든 Azure 에 쓰지 못한다.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform -chdir=infra fmt -check -diff
+
+      # ⚠ `init` 도 락을 잡는다 — plan 만이 아니다. 읽기 전용 신원으로는 state blob 에
+      #   lease 를 못 걸어 `failed to lock azure state ... 403
+      #   AuthorizationPermissionMismatch` 로 죽는다(2026-09-01 실측). 이 잡은 어차피
+      #   읽기만 하므로 락이 필요 없다.
+      # ⚠ **state 가 아직 없으면 이 잡은 통과할 수 없다.** terraform 은 state blob 이
+      #   없으면 그것을 **만들려 하고**, 읽기 전용 신원은 못 만든다(`PutBlockBlob 403`
+      #   + `GetProperties 404`). `-lock=false` 로 안 풀린다 — 락이 아니라 생성이다.
+      #   부트스트랩은 쓰기 신원이 한 번 해야 하고, 그게 이 워크플로의 apply 잡이다.
+      #   2026-09-01 에 로컬에서 같은 조건으로 재현해 확인했다.
+      - name: Init
+        run: |
+          set -o pipefail
+          if terraform -chdir=infra init -no-color -input=false -lock=false 2>&1 | tee /tmp/init.txt; then
+            exit 0
+          fi
+          if grep -q 'GetProperties.*404' /tmp/init.txt; then
+            echo "::error::state 가 아직 없다. 이 잡은 읽기 전용이라 만들 수 없다 — main 에서 이 워크플로를 confirm=apply 로 한 번 띄워 state 를 세운 뒤 이 PR 을 재실행할 것." >&2
+          fi
+          exit 1
+
+      - name: Validate
+        run: terraform -chdir=infra validate -no-color
+
+      # ⚠ `-lock=false` 가 필수다. 락은 state blob 에 lease 를 잡는 **쓰기**라
+      #   Blob Data Reader 로는 못 한다. plan 은 읽기만 하므로 락 없이 안전하다.
+      - name: Plan
+        run: |
+          set -o pipefail
+          terraform -chdir=infra plan -no-color -input=false -lock=false | tee /tmp/plan.txt
+
+      - name: Comment the plan on the pull request
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let raw = '';
+            try { raw = fs.readFileSync('/tmp/plan.txt', 'utf8'); }
+            catch { raw = '(plan 산출물이 없다 — 앞 스텝이 죽었으면 런 로그를 볼 것)'; }
+            // refresh 소음을 걷는다. 사람이 읽는 것이 이 잡의 산출물이므로 읽히는
+            // 모양으로 낸다.
+            let body = raw.split('\n')
+              .filter((l) => !/^(azurerm_|data\.).*: (Refreshing|Reading|Read complete|Refresh complete)/.test(l))
+              .join('\n');
+            const LIMIT = 60000;
+            if (body.length > LIMIT) body = '…(앞부분 생략)\n' + body.slice(-LIMIT);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '## terraform plan\n\n```\n' + body + '\n```',
+            });
+
+  # ── dispatch: 유일한 쓰기 지점 ─────────────────────────────────────────────
+  apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # ⚠ backend 는 `ARM_*` 만 읽는다. `azure/login` 이 내보내는 `AZURE_*` 를 provider
+    # 는 폴백으로 받지만 **backend 는 안 받는다** — init 이 "a Client ID must be
+    # configured when authenticating with OIDC" 로 죽는다(2026-09-01 실측). 잡마다
+    # 명시하는 이유는 그 값이 곧 이 잡이 어느 신원인지이기 때문이다.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform -chdir=infra fmt -check -diff
+
+      - name: Init
+        run: terraform -chdir=infra init -no-color -input=false
+
+      - name: Validate
+        run: terraform -chdir=infra validate -no-color
+
+      # 계획을 파일로 저장하고 apply 가 **그 파일**을 쓴다. 다시 plan 해서 적용하면
+      # 그 사이에 바뀐 것이 조용히 섞인다.
+      - name: Plan
+        run: |
+          set -o pipefail
+          terraform -chdir=infra plan -no-color -input=false -out=tfplan | tee /tmp/plan.txt
+          {
+            echo '## terraform plan'
+            echo
+            echo '```'
+            grep -vE '^(azurerm_|data\.).*: (Refreshing|Reading|Read complete|Refresh complete)' /tmp/plan.txt | tail -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ⚠ 입력이 정확히 `apply` 여야 돈다. 방아쇠를 두 번 당기게 만드는 이유는
+      #   오타나 잘못 누른 버튼이 인프라를 바꾸면 안 되기 때문이다 — 이 평면의
+      #   되돌리기는 배포와 달리 비싸다.
+      - name: Apply
+        if: inputs.confirm == 'apply'
+        run: terraform -chdir=infra apply -no-color -input=false tfplan
+
+      # 적용했으면 무엇이 남았는지 말한다. plan 이 비어야 정상이다 — 안 비면 apply 가
+      # 선언한 것을 다 만들지 못했거나 drift 가 즉시 생긴 것이고, 둘 다 조용히
+      # 넘어가면 안 된다.
+      - name: Verify the plan is now empty
+        if: inputs.confirm == 'apply'
+        run: |
+          set -o pipefail
+          terraform -chdir=infra plan -no-color -input=false -detailed-exitcode && rc=0 || rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "::error::apply 뒤에도 plan 이 비어 있지 않다 — 적용되지 않은 변경이 남았거나 즉시 drift 다" >&2
+            exit 1
+          fi
+          [ "$rc" = "0" ] || exit "$rc"
+          echo "apply 후 plan 이 비었다 — 선언과 실물이 일치한다"

@@ -29,10 +29,25 @@
 #      **되돌리려 든다**. 들일 때는 `lifecycle { ignore_changes = [...] }` 가 함께 와야
 #      한다. 근거: [[vinc.ops.deployment]].
 #
+# ⚠ **vincacr · vincstorage01 · vinc-site 도 빠졌다(2026-09-01에 뺐다).** 1판에서는
+#    들어 있었는데, 그 셋이 정확히 `listCredentials`·`listKeys`·`listSecrets` 를 태우는
+#    것들이다 — 레지스트리 자격증명, 스토리지 계정 키, 배포 토큰. 로컬 state 에서도
+#    나빴고 원격 state 에서는 더 나쁘다(blob 에 눕는다).
+#
+#    빼면서 무엇을 잃는지 정직하게: 그 셋의 drift 를 이 설정이 못 본다. 대신 얻은 것이
+#    둘이고 둘 다 이 디렉터리의 목적에 직결된다.
+#      - **state 에 시크릿이 하나도 없다.** 그래서 원격 backend 를 걸 수 있고, 그래야
+#        CI 가 apply 할 수 있다.
+#      - **읽기 전용 신원으로 `plan` 이 끝까지 간다.** 1판에서는 그 셋 때문에 403 이
+#        나서 `-target` 없이는 못 돌렸다. 에이전트가 스스로 검증할 수 있게 된다.
+#
+#    다시 들이려면 Key Vault 나 그에 준하는 자리가 먼저다. 그때는 컨테이너 앱 셋도
+#    함께 볼 것 — 막힌 이유가 같다.
+#
 # ⚠ `Application Insights Smart Detection` 도 없다. 플랫폼이 스스로 만드는 작업
 #    그룹이고 이름에 공백이 있다. 사람이 만든 것이 아니므로 사람이 선언할 것도 아니다.
 #
-# 그래서 1판이 덮는 것은 **없어지면 되세울 근거가 없는데 검사도 없는 층**이다.
+# 그래서 이 설정이 덮는 것은 **없어지면 되세울 근거가 없고, 시크릿을 열지 않는 층**이다.
 
 import {
   to = azurerm_resource_group.vincs
@@ -46,10 +61,6 @@ import {
   id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.App/managedEnvironments/vinc-cae"
 }
 
-import {
-  to = azurerm_container_registry.vincacr
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.ContainerRegistry/registries/vincacr"
-}
 
 # 그래프 DB 가 아니라 **계정 DB** 다. `vinc-account` 가 DB_HOST/DB_NAME 으로 붙고
 # `vinc_account` 스키마가 여기 있다. 그래프는 Azure Files 위 임베디드 스토어다 —
@@ -61,15 +72,7 @@ import {
 
 # 허브 DB 가 사는 스토리지 계정(hub-data 파일 공유). 스냅샷·핸들 강제 종료가 전부
 # 이 계정 위에서 일어난다 — packaging/DEPLOY-RUNBOOK.md 참조.
-import {
-  to = azurerm_storage_account.vincstorage01
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Storage/storageAccounts/vincstorage01"
-}
 
-import {
-  to = azurerm_static_web_app.vinc_site
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Web/staticSites/vinc-site"
-}
 
 import {
   to = azurerm_recovery_services_vault.vincs_backup

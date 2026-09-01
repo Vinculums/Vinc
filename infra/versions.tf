@@ -10,7 +10,7 @@
 # 근거와 발급 절차: [[vinc.spec.azure-infrastructure]].
 
 terraform {
-  required_version = ">= 1.5"   # `import` 블록이 1.5 부터다. 아래 imports.tf 가 그걸 쓴다.
+  required_version = ">= 1.5" # `import` 블록이 1.5 부터다. 아래 imports.tf 가 그걸 쓴다.
 
   required_providers {
     azurerm = {
@@ -19,14 +19,32 @@ terraform {
     }
   }
 
-  # ⚠ 원격 backend 를 **아직 안 건다.** 그것 자체가 새 리소스(blob 컨테이너)를 만드는
-  # 상태 변경이고, 이 리포는 상태 변경을 사람의 행위로 묶어 뒀다. 1판은 로컬 state 로
-  # 임포트와 drift 만 본다.
+  # ── 원격 state (2026-09-01) ────────────────────────────────────────────────
+  # 로컬 state 로는 CI 가 apply 할 수 없다. 워크플로는 매번 빈 디스크로 시작하므로
+  # 상태를 들고 있을 자리가 없고, 그러면 apply 가 영원히 사람의 셸에만 살아서
+  # **무엇이 언제 적용됐는지가 어디에도 안 남는다.** 이 리포가 배포에서 이미 겪은
+  # 형태다(컨테이너 안에서 난 검증이 기록을 안 남겨 `verify-hosted` 를 만들었다).
   #
-  # ⚠ **state 는 평문 시크릿을 담는다.** 그래서 `.gitignore` 가 막고, 아래 imports.tf 가
-  # 컨테이너 앱 셋을 관리 대상에서 뺀다 — 허브 env 아홉 중 다섯이 시크릿이라
-  # (`check_hub_env.py` REQUIRED), 그것을 임포트하는 순간 state 파일이 그 다섯을
-  # 평문으로 들고 있게 된다. 원격 backend 를 걸기 전에는 들이지 않는다.
+  # ⚠ **state 에서 시크릿을 없앤 뒤에야 이걸 걸 수 있었다.** 그 전에는 세 리소스가
+  # `listKeys`·`listSecrets`·`listCredentials` 를 태워 스토리지 키·배포 토큰·레지스트리
+  # 자격증명을 state 로 끌어왔다. 원격 state 는 그것을 blob 에 눕히는 것이라 더 나쁘다.
+  # 그래서 imports.tf 가 그 셋을 관리 대상에서 뺐고, **지금 이 설정이 만지는 것 중
+  # 시크릿을 여는 것은 하나도 없다.** 컨테이너 앱 셋도 같은 이유로 계속 빠져 있다.
+  #
+  # ⚠ **계정 키를 쓰지 않는다.** `use_azuread_auth` 로 Entra 신원이 blob 에 직접 붙는다.
+  # 계정 키를 쓰면 그 키를 CI 시크릿에 넣어야 하고, 그러면 `listKeys` 를 없앤 의미가
+  # 사라진다. 대신 신원마다 데이터 평면 역할이 하나씩 필요하다(README 아닌 PR 본문 참조):
+  #   CI(OIDC)          Storage Blob Data Contributor  → apply
+  #   vinc-agent-reader Storage Blob Data Reader       → plan (`-lock=false` 로)
+  # 그 두 줄이 곧 plan 과 apply 의 경계다. 제어 평면의 Reader/Contributor 분리와 같은
+  # 모양이 데이터 평면에서 한 번 더 선다.
+  backend "azurerm" {
+    resource_group_name  = "vincsRG"
+    storage_account_name = "vincstorage01"
+    container_name       = "tfstate"
+    key                  = "vincsrg.tfstate"
+    use_azuread_auth     = true
+  }
 }
 
 provider "azurerm" {
