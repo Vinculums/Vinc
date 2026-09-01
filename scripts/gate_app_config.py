@@ -1,0 +1,162 @@
+"""컨테이너 앱 구조 설정의 드리프트 게이트 — 선언 없는 층에 기준선을 준다.
+
+Terraform(infra/)은 컨테이너 앱 셋을 의도적으로 안 든다(시크릿이 state 에 평문으로
+남고, 이미지 태그는 배포마다 바뀌어 매 배포가 drift 가 된다 — infra/imports.tf).
+그런데 실측된 인벤토리 표류는 전부 이 층에서 났다: 인벤토리에 없던 넷째 앱
+([[record:the-infrastructure-inventory-is-missing-the-encoder-app]]), "라이브 확인
+불가"로 남아 있던 컨테이너 크기들, 그리고 excludedPaths 소실이 팀 OAuth 를 하루
+넘게 죽인 08-30 — 경보도 배포도 그동안 초록이었다.
+
+그래서 **값이 아니라 구조**를 잰다: env 는 이름만(값·시크릿 값 제외), 스케일·자원·
+ingress·볼륨·auth(excludedPaths 포함). 이미지·리비전은 안 본다 — 배포마다 바뀌는
+것이 정상인 필드가 기준선에 들어가면 게이트가 매 배포마다 운다.
+
+기준선은 ``scripts/app-config-baseline.json`` 이고 graph-refs.json 과 같은 규율이다:
+의도한 변경은 ``--write`` 로 기준선을 재생성해 **같은 커밋에** 넣는다. 대조는
+hub-deploy 가 배포 직후 수행한다 — 포털 수동 변경은 다음 배포에서 걸린다. 주기
+실행이 아니라 배포 시점 실행인 이유는 az 로그인이 이미 있는 자리라서다.
+
+빨간 게이트는 **드리프트 경보이지 배포 실패가 아니다**. 배포·헬스 검증은 이 앞에서
+이미 통과했다.
+
+ponytail: 배포 사이의 드리프트 창은 못 본다. 주기 감시가 필요해지면 infra.yml 의
+Reader 신원에 main-ref 페더레이티드 자격증명을 더해 schedule 잡으로 올릴 것.
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+APPS = ("vinc-hub", "vinc-encode", "vinc-account")
+RG = "vincsRG"
+BASELINE = Path(__file__).resolve().parent / "app-config-baseline.json"
+
+
+def _az(args: list[str]) -> dict:
+    """az 호출 → stdout JSON. 확장 경고는 stderr 라 파싱을 안 더럽힌다."""
+    exe = shutil.which("az")
+    if not exe:
+        raise RuntimeError("az CLI not found")
+    r = subprocess.run([exe, *args], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        raise RuntimeError(f"az {' '.join(args[:3])} rc={r.returncode}: "
+                           f"{(r.stderr or '').strip()[:200]}")
+    return json.loads(r.stdout or "{}")
+
+
+def project_app(show: dict, auth: dict) -> dict:
+    """구조 투영 — 순수 함수. 값(env 값·시크릿 값)과 배포마다 바뀌는 필드
+    (이미지·리비전)는 여기 없어야 한다. 그것이 이 게이트의 계약이다."""
+    p = show.get("properties") or {}
+    tmpl = p.get("template") or {}
+    conf = p.get("configuration") or {}
+    conts = tmpl.get("containers") or []
+    c0 = conts[0] if conts else {}
+    ing = conf.get("ingress") or {}
+    gv = (auth or {}).get("globalValidation") or {}
+    idp = (auth or {}).get("identityProviders") or {}
+    plat = (auth or {}).get("platform") or {}
+    return {
+        "containers": [c.get("name") or "" for c in conts],
+        "env_names": sorted(e.get("name") or "" for e in (c0.get("env") or [])),
+        "resources": {k: (c0.get("resources") or {}).get(k)
+                      for k in ("cpu", "memory", "ephemeralStorage")},
+        "scale": {k: (tmpl.get("scale") or {}).get(k)
+                  for k in ("minReplicas", "maxReplicas")},
+        "ingress": {
+            "external": ing.get("external"),
+            "targetPort": ing.get("targetPort"),
+            "transport": ing.get("transport"),
+            "allowInsecure": ing.get("allowInsecure"),
+            "customDomains": sorted((d.get("name") or "")
+                                    for d in (ing.get("customDomains") or [])),
+        } if ing else None,
+        "secret_names": sorted(s.get("name") or ""
+                               for s in (conf.get("secrets") or [])),
+        "volumes": sorted(
+            [{"name": v.get("name") or "", "storageType": v.get("storageType") or "",
+              "storageName": v.get("storageName") or ""}
+             for v in (tmpl.get("volumes") or [])],
+            key=lambda v: str(v["name"])),
+        "mounts": sorted(
+            [{"volumeName": m.get("volumeName") or "",
+              "mountPath": m.get("mountPath") or ""}
+             for m in (c0.get("volumeMounts") or [])],
+            key=lambda m: str(m["mountPath"])),
+        # auth show 가 {} 를 주면(플랫폼 인증 없음) None — "설정 없음"도 상태다.
+        # excludedPaths 는 08-30 사고의 그 필드라 정렬해 통째로 든다.
+        "auth": {
+            "platformEnabled": bool(plat.get("enabled")),
+            "unauthenticatedClientAction": gv.get("unauthenticatedClientAction"),
+            "excludedPaths": sorted(gv.get("excludedPaths") or []),
+            "providers": sorted(idp.keys()),
+        } if auth else None,
+    }
+
+
+def measure(rg: str = RG, apps: tuple[str, ...] = APPS) -> dict:
+    """세 앱의 라이브 구조. 앱이 없으면 {'missing': True} — 기준선에는 이 형태가
+    없으므로 대조가 시끄럽게 실패한다(넷째-앱-누락 사고의 재발 방지가 이 줄이다)."""
+    out: dict = {}
+    for app in apps:
+        try:
+            show = _az(["containerapp", "show", "-n", app, "-g", rg, "-o", "json"])
+        except Exception as exc:      # noqa: BLE001 — 부재도 측정 결과다
+            out[app] = {"missing": True, "reason": str(exc)[:200]}
+            continue
+        try:
+            auth = _az(["containerapp", "auth", "show", "-n", app, "-g", rg,
+                        "-o", "json"])
+        except Exception:
+            auth = {}
+        out[app] = project_app(show, auth)
+    return out
+
+
+def _dump(d: dict) -> str:
+    return json.dumps(d, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--write", action="store_true",
+                    help="기준선을 라이브로 재생성한다(의도한 변경 — 같은 커밋에)")
+    ap.add_argument("--baseline", default=str(BASELINE))
+    ap.add_argument("--rg", default=RG)
+    a = ap.parse_args(argv)
+    try:
+        live = measure(a.rg)
+    except RuntimeError as exc:
+        print(f"측정 불가: {exc}", file=sys.stderr)
+        return 2
+    text = _dump(live)
+    path = Path(a.baseline)
+    if a.write:
+        path.write_text(text, encoding="utf-8", newline="\n")
+        print(f"기준선 갱신: {path}")
+        return 0
+    if not path.exists():
+        print(f"기준선이 없다: {path} — 먼저 --write 로 만든다", file=sys.stderr)
+        return 2
+    base = path.read_text(encoding="utf-8")
+    if base == text:
+        print(f"드리프트 없음 — 앱 {len(live)}개가 기준선과 일치")
+        return 0
+    print("앱 구조 드리프트 — 기준선(-)과 라이브(+)가 다르다.", file=sys.stderr)
+    print("의도한 변경이면 `python scripts/gate_app_config.py --write` 후 커밋,",
+          file=sys.stderr)
+    print("아니면 Azure 쪽이 움직인 것이다(08-30 excludedPaths 류).", file=sys.stderr)
+    sys.stderr.writelines(difflib.unified_diff(
+        base.splitlines(keepends=True), text.splitlines(keepends=True),
+        fromfile="baseline", tofile="live"))
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

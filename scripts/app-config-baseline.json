@@ -1,0 +1,169 @@
+{
+  "vinc-account": {
+    "auth": {
+      "excludedPaths": [
+        "/internal/mcp/plan",
+        "/internal/mcp/spaces",
+        "/internal/mcp/team-membership",
+        "/internal/mcp/verify-key"
+      ],
+      "platformEnabled": true,
+      "providers": [
+        "azureStaticWebApps"
+      ],
+      "unauthenticatedClientAction": "RedirectToLoginPage"
+    },
+    "containers": [
+      "vinc-account"
+    ],
+    "env_names": [
+      "ACCOUNT_ED25519_SEED",
+      "ALLOWED_ORIGINS",
+      "CSRF_SECRET",
+      "DB_HOST",
+      "DB_NAME",
+      "DB_PASSWORD",
+      "DB_PORT",
+      "DB_SSL_REJECT_UNAUTHORIZED",
+      "DB_USER",
+      "MCP_BASE_URL",
+      "MCP_PUBLIC_KEY",
+      "NEWSLETTER_ADMIN_TOKEN",
+      "RESEND_API_KEY",
+      "RESEND_ROTATED_AT",
+      "RESEND_WEBHOOK_SECRET",
+      "SERVER_PEPPER",
+      "SESSION_SECRET",
+      "SITE_BASE_URL",
+      "TEAMS_ENABLED",
+      "TRIAL_UNTIL",
+      "VINC_MCP_INTERNAL_URL"
+    ],
+    "ingress": {
+      "allowInsecure": false,
+      "customDomains": [
+        "api.vincs.io"
+      ],
+      "external": true,
+      "targetPort": 8080,
+      "transport": "Auto"
+    },
+    "mounts": [],
+    "resources": {
+      "cpu": 0.5,
+      "ephemeralStorage": "2Gi",
+      "memory": "1Gi"
+    },
+    "scale": {
+      "maxReplicas": 2,
+      "minReplicas": 1
+    },
+    "secret_names": [
+      "account-seed",
+      "csrf-secret",
+      "db-password",
+      "newsletter-admin-token",
+      "resend-api-key",
+      "resend-webhook-secret",
+      "server-pepper",
+      "session-secret",
+      "vincacrazurecrio-vincacr"
+    ],
+    "volumes": []
+  },
+  "vinc-encode": {
+    "auth": null,
+    "containers": [
+      "vinc-encode"
+    ],
+    "env_names": [
+      "VINC_EMBED_ENCODE_TOKEN",
+      "VINC_ROLE"
+    ],
+    "ingress": {
+      "allowInsecure": false,
+      "customDomains": [],
+      "external": false,
+      "targetPort": 8791,
+      "transport": "Http"
+    },
+    "mounts": [],
+    "resources": {
+      "cpu": 1.0,
+      "ephemeralStorage": "4Gi",
+      "memory": "2Gi"
+    },
+    "scale": {
+      "maxReplicas": 1,
+      "minReplicas": 0
+    },
+    "secret_names": [
+      "encode-token",
+      "vincacrazurecrio-vincacr"
+    ],
+    "volumes": []
+  },
+  "vinc-hub": {
+    "auth": null,
+    "containers": [
+      "vinc-hub"
+    ],
+    "env_names": [
+      "VINC_ACCOUNT_INTERNAL_URL",
+      "VINC_ACCOUNT_PUBLIC_KEY",
+      "VINC_CONNECT_URL",
+      "VINC_DATA_DIR",
+      "VINC_EMBED_ENCODE_TOKEN",
+      "VINC_EMBED_REMOTE",
+      "VINC_FREE_MAX_DOMAINS",
+      "VINC_MCP_ED25519_SEED",
+      "VINC_MCP_ISSUER",
+      "VINC_MCP_TOKEN",
+      "VINC_OAUTH_ADMIN_KEY",
+      "VINC_QUOTA",
+      "VINC_SIDECAR_TOKEN",
+      "VINC_STORE_LOCAL",
+      "VINC_STORE_SNAPSHOT_EVERY",
+      "VINC_WAL_REPLAY_TOLERANT"
+    ],
+    "ingress": {
+      "allowInsecure": false,
+      "customDomains": [
+        "mcp.vincs.io"
+      ],
+      "external": true,
+      "targetPort": 8790,
+      "transport": "Auto"
+    },
+    "mounts": [
+      {
+        "mountPath": "/data",
+        "volumeName": "hub-data-vol"
+      }
+    ],
+    "resources": {
+      "cpu": 1.0,
+      "ephemeralStorage": "4Gi",
+      "memory": "2Gi"
+    },
+    "scale": {
+      "maxReplicas": 1,
+      "minReplicas": 1
+    },
+    "secret_names": [
+      "acr-password",
+      "encode-token",
+      "mcp-ed25519-seed",
+      "mcp-token",
+      "oauth-admin-key",
+      "sidecar-token"
+    ],
+    "volumes": [
+      {
+        "name": "hub-data-vol",
+        "storageName": "hub-storage",
+        "storageType": "AzureFile"
+      }
+    ]
+  }
+}
