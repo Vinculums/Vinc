@@ -80,6 +80,14 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # ⚠ backend 는 `ARM_*` 만 읽는다. `azure/login` 이 내보내는 `AZURE_*` 를 provider
+    # 는 폴백으로 받지만 **backend 는 안 받는다** — init 이 "a Client ID must be
+    # configured when authenticating with OIDC" 로 죽는다(2026-09-01 실측). 잡마다
+    # 명시하는 이유는 그 값이 곧 이 잡이 어느 신원인지이기 때문이다.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_PLAN_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -138,6 +146,14 @@ jobs:
   apply:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # ⚠ backend 는 `ARM_*` 만 읽는다. `azure/login` 이 내보내는 `AZURE_*` 를 provider
+    # 는 폴백으로 받지만 **backend 는 안 받는다** — init 이 "a Client ID must be
+    # configured when authenticating with OIDC" 로 죽는다(2026-09-01 실측). 잡마다
+    # 명시하는 이유는 그 값이 곧 이 잡이 어느 신원인지이기 때문이다.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
 
