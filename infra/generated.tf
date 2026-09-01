@@ -151,10 +151,10 @@ resource "azurerm_storage_account" "vincstorage01" {
   table_encryption_key_type         = "Service"
   tags                              = {}
   blob_properties {
-    change_feed_enabled           = false
-    default_service_version       = null
-    last_access_time_enabled      = false
-    versioning_enabled            = false
+    change_feed_enabled      = false
+    default_service_version  = null
+    last_access_time_enabled = false
+    versioning_enabled       = false
   }
   network_rules {
     bypass                     = ["None"]
@@ -263,6 +263,17 @@ resource "azurerm_monitor_metric_alert" "hub_health_down" {
     operator               = "LessThan"
     skip_metric_validation = false
     threshold              = 100
+
+    # 차원이 없으면 이 경보는 이 Application Insights 구성요소의 **모든** 가용성
+    # 테스트에 대해 울린다. alerts.tf 가 프로브 셋을 더하면서 이 규칙이 그 셋에도
+    # 울리게 되고, 그러면 이름이 거짓말이 된다(허브가 멀쩡한데 hub-health-down 이
+    # 뜬다). 자기 프로브만 보게 좁힌다.
+    # ⚠ 차원 이름은 단수 Result 다 — availabilityResult/name.
+    dimension {
+      name     = "availabilityResult/name"
+      operator = "Include"
+      values   = ["vinc-hub-health"]
+    }
   }
 }
 
