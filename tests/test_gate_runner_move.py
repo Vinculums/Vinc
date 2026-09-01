@@ -165,9 +165,17 @@ class DoesNotCatch(unittest.TestCase):
 
 
 class ThisRepo(unittest.TestCase):
-    def test_직렬화하는_워크플로가_실제로_둘이다(self):
+    def test_직렬화하는_워크플로가_실제로_셋이다(self):
         """게이트가 겨누는 대상이 이 리포에 실재하는지 고정한다. 늘거나 줄면
-        이 테스트가 먼저 말한다 — 게이트가 조용히 아무것도 안 겨누게 두지 않는다."""
+        이 테스트가 먼저 말한다 — 게이트가 조용히 아무것도 안 겨누게 두지 않는다.
+
+        ⚠ **목록이 늘 때 이 테스트가 떨어지는 것은 고장이 아니라 설계다.** 새로
+        직렬화하는 워크플로는 #129 형 사고의 새 후보이므로, 그것을 더하는 PR 에서
+        사람이 한 번 보게 만든다. 늘리는 쪽이 여기 한 줄을 함께 고치면 된다.
+
+        셋이 된 경위: `infra.yml`(#147)이 terraform apply 를 직렬화한다. 앞의 둘과
+        달리 이쪽은 **상태를 바꾸는 쪽이 사람의 방아쇠 뒤에** 있어서, 큐가 막히면
+        배포가 밀리는 것이 아니라 apply 가 안 나간다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -175,7 +183,7 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["hub-deploy.yml", "release.yml"], serial)
+        self.assertEqual(serial, ["hub-deploy.yml", "infra.yml", "release.yml"], serial)
 
 
 if __name__ == "__main__":
