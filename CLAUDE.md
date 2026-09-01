@@ -226,6 +226,16 @@ CI 에서 걸렸다).
 - `main` push 가 곧 배포다(`hub-deploy`·`site-deploy`·`release`). 브랜치에서 검증하고 머지
 - **허브 env 를 `az` 로 바꿀 때는 PowerShell 을 쓴다.** Git Bash 는 MSYS 경로 변환이
   값을 바꿔치기한다(`/data/db` → `D:\git\data\db`, 실제 사고 이력)
+- **`for x in $(jq -r '.[]' ...)` 는 이 기계에서 마지막 원소만 빼고 다 깨진다.** 윈도우
+  jq 가 stdout 을 **텍스트 모드**로 써서 출력 줄끝이 CRLF 다(원본 파일이 LF 여도 그렇다
+  — 실측). `$( )` 는 끝의 개행만 걷어내므로 **마지막 값만 멀쩡하고** 앞의 값들에는
+  캐리지리턴(CR) 이 하나씩 남는다. 그 값을 URL 이나 경로에 이으면 `curl` 이 URL 형식
+  오류(rc=3)나 `000` 을 내는데, **같은 값을 단독으로 쓰면 통한다** — 그래서 일시적
+  오류처럼 보인다. 2026-09-01 에 이것으로 "넷 중 셋이 막혔다"는 **거짓 측정**을 두 번
+  보고했다. 처방은 `| tr -d` 로 그 문자를 지우거나, 애초에 셸에서 안 도는 것이다
+  (`Vinc-homepage/scripts/probe_front_door.mjs` 가 같은 판정을 Node 로 옮긴 이유가
+  이것이다 — 거기서는 `JSON.parse` 라 이 문제가 없다).
+  ⚠ 리눅스 CI 에서는 안 난다. **로컬에서만 거짓말하는 종류**라 더 위험하다
 - 허브 DB 는 Azure Files 위 단일 writer 다. 파일이 SMB 로 잠겨 있어 **서버측 복사가
   거절된다**(`FileLockConflict`). 사본이 필요하면 공유 스냅샷을 뜨고 거기서 받는다:
   `az storage share snapshot` → `az storage file download --snapshot <ts>`
