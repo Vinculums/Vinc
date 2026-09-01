@@ -106,8 +106,12 @@ jobs:
       - name: Format check
         run: terraform -chdir=infra fmt -check -diff
 
+      # ⚠ `init` 도 락을 잡는다 — plan 만이 아니다. 읽기 전용 신원으로는 state blob 에
+      #   lease 를 못 걸어 `failed to lock azure state ... 403
+      #   AuthorizationPermissionMismatch` 로 죽는다(2026-09-01 실측). 이 잡은 어차피
+      #   읽기만 하므로 락이 필요 없다.
       - name: Init
-        run: terraform -chdir=infra init -no-color -input=false
+        run: terraform -chdir=infra init -no-color -input=false -lock=false
 
       - name: Validate
         run: terraform -chdir=infra validate -no-color
