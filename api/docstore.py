@@ -970,6 +970,16 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
                   {"id": doc_id})
         base["cleared"] = True
+        # 이행 표식 내리기 — 백로그가 0 이 된 라운드에서. 여기(워커 apply, writer
+        # 경로)가 내리는 이유: `embed_model_state` 는 리더 경로의 진단 전용이라
+        # 쓰면 안 된다. 드레인 직후 크래시로 표식이 남는 창은 다음 편집 →
+        # 다음 apply 라운드가 같은 분기로 치유한다(그동안 게이트가 한 번 더
+        # 내려가 있을 뿐, 방향은 안전하다).
+        left = store.run(
+            "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c") or []
+        if not (left and int(left[0].get("c") or 0)):
+            store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k DELETE m",
+                      {"k": _EMBED_MIGRATING_KEY})
     # 🔴 **워커가 마지막으로 실제 일한 시각**. pending 이 있는데 이 값이 오래됐으면 그
     # 자체가 알람이다 — 진행 지표만으로는 정지를 못 본다
     # ([[record:worker-heartbeat-separates-backlog-from-death]]).
@@ -984,6 +994,14 @@ _EMBED_MODEL_KEY = "embed_model"
 #: 워커가 마지막으로 `apply_embeddings` 를 성공시킨 시각(ISO). 백로그가 **줄고 있는지**
 #: 를 밖에서 판정하는 유일한 신호다 — `/health` 가 이 값을 싣는다.
 _EMBED_APPLIED_KEY = "embed_last_applied_at"
+#: **모델 이행이 진행 중**이라는 표식(값 = 이행 대상 모델). `switch_embed_model` 이
+#: 전량 재큐와 함께 세우고, `apply_embeddings` 가 백로그를 다 비운 라운드에 내린다.
+#: 이것이 있어야 "pending 의 출처"가 갈린다 — 모델 이행(전량, 반쪽 커버리지가 순위를
+#: 기울임 → 벡터 팔 차단이 발주자 결정)과 일상 문서 편집(한두 건, 그 문서만 의미
+#: 검색에서 빠질 뿐 나머지 커버리지는 온전) 이 같은 needs_embed 신호를 쓰기 때문에,
+#: 표식 없이는 편집 1건이 의미 검색 전체를 끈다(실측 2026-09-02: "1 docs pending"
+#: 창마다 전역 FTS-only 강등).
+_EMBED_MIGRATING_KEY = "embed_migration_model"
 
 
 #: pending 이 있는데 이보다 오래 진행(=성공한 apply)이 없으면 정체(stall)로 본다.
@@ -998,9 +1016,17 @@ _EMBED_STALL_DEFAULT_S = 1800.0
 def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -> dict:
     """현재 색인이 **어느 모델로 만들어졌는가**, 그리고 이행 중인가.
 
-    반환 `{"stored", "migrating", "pending", "docs", "last_applied_at", "age_s",
-    "stalled"}`. `stored` 가 빈 문자열이면 아직 아무것도 기록되지 않은 상태다
-    (구 설치·신규 설치).
+    반환 `{"stored", "migrating", "migration_model", "pending", "docs",
+    "last_applied_at", "age_s", "stalled"}`. `stored` 가 빈 문자열이면 아직
+    아무것도 기록되지 않은 상태다(구 설치·신규 설치).
+
+    `migrating` 은 **모델 이행 중**(전량 재큐, `_EMBED_MIGRATING_KEY` 표식 보유)
+    에만 True 다 — 일상 문서 편집의 needs_embed 는 표식을 안 세우므로 여기 안
+    걸린다. 검색의 벡터 팔 게이트가 이 값을 본다: 편집 1건이 의미 검색 전체를
+    끄던 과잉을 이 구분이 걷어낸다(pending 자체는 그대로 보고되고, `stalled` 도
+    표식과 무관하게 pending 기준이라 워커 정체 알람은 안 무뎌진다).
+    ⚠ 이 배포 전에 시작된 이행은 표식이 없어 `migrating=False` 로 읽힌다 —
+    라이브에 진행 중 이행이 없음을 확인하고 들어간 변경이다(2026-09-02).
 
     `age_s` 는 `last_applied_at`(워커가 마지막으로 청크 임베딩을 실제로 저장에
     성공한 시각, `apply_embeddings` 가 찍는다) 이후 경과 초, 한 번도 성공한 적
@@ -1026,13 +1052,16 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     묶이면 위험하다 — 읽기가 조용히 실패하면 `stored` 가 영원히 빈 문자열이고, 그러면
     전환이 매 라운드 "바뀌었다"고 판정해 전 문서를 다시 큐에 넣는다. 그래서 실패
     사유를 버리지 않고 `error` 로 싣는다(`/health` 에 그대로 나간다)."""
-    out: dict[str, Any] = {"stored": "", "migrating": False, "pending": 0,
-                           "docs": 0, "last_applied_at": "", "age_s": None,
-                           "stalled": False}
+    out: dict[str, Any] = {"stored": "", "migrating": False, "migration_model": "",
+                           "pending": 0, "docs": 0, "last_applied_at": "",
+                           "age_s": None, "stalled": False}
     try:
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
                          {"k": _EMBED_MODEL_KEY}) or []
         out["stored"] = (rows[0].get("v") or "") if rows else ""
+        mig = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                        {"k": _EMBED_MIGRATING_KEY}) or []
+        out["migration_model"] = (mig[0].get("v") or "") if mig else ""
         at = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
                        {"k": _EMBED_APPLIED_KEY}) or []
         out["last_applied_at"] = (at[0].get("v") or "") if at else ""
@@ -1043,7 +1072,7 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
-    out["migrating"] = bool(out["stored"]) and out["pending"] > 0
+    out["migrating"] = bool(out["migration_model"]) and out["pending"] > 0
     age = _age_s(out["last_applied_at"])
     out["age_s"] = None if age is None else round(age)
     out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
@@ -1087,6 +1116,12 @@ def switch_embed_model(store, model: str) -> dict:
     store.run("MATCH (d:_DocMeta) SET d.needs_embed = 1")
     store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
               {"k": _EMBED_MODEL_KEY, "v": model})
+    # 이행 표식 — 이 pending 은 **전량 재큐**다. 검색 게이트는 이 표식이 있을 때만
+    # 벡터 팔을 내린다(발주자 결정 "재임베딩 기간 FTS만" 은 이 경우를 말한 것이고,
+    # 일상 편집의 needs_embed 는 이 표식을 안 세우므로 팔이 산다). 내리는 쪽은
+    # `apply_embeddings`(백로그 0 이 된 라운드).
+    store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
+              {"k": _EMBED_MIGRATING_KEY, "v": model})
     cnt = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
     base.update(executed=True, changed=True, requeued=int(cnt[0].get("c")) if cnt else 0)
     return base
