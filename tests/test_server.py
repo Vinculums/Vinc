@@ -738,6 +738,45 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
                          "이행 진행도(embed_migration.pending)가 구조화되지 않았다")
         self.assertEqual(self.seen_vec, [])
 
+    def test_일상_편집의_pending_은_벡터_팔을_내리지_않는다(self):
+        """편집 1건의 needs_embed 는 이행이 아니다. 이행 표식(_EMBED_MIGRATING_KEY)
+        없는 pending 에서 팔을 내리면 문서 하나 고칠 때마다 그래프 전체의 의미
+        검색이 꺼진다(실측 2026-09-02: "1 docs pending" 창마다 전역 FTS-only 강등).
+        발주자 결정("재임베딩 기간 FTS만")은 전량 재큐(모델 이행)를 말한 것이고,
+        그 경우는 표식이 지킨다 — 위 테스트가 그 계약이다."""
+        def _meta_rows(cypher, params):
+            if "_SchemaMeta" in cypher:
+                # embed_model 만 있고 이행 표식(embed_migration_model)은 없다.
+                k = (params or {}).get("k")
+                return [{"v": "model-A"}] if k == "embed_model" else []
+            if "needs_embed" in cypher:
+                return [{"c": 1}]                 # 편집 1건 대기
+            return []
+
+        class _EditReader(QueryEmbeddingWiringTests._Reader):
+            def run(self, cypher, params=None):
+                r = _meta_rows(cypher, params)
+                return r if r else super().run(cypher, params)
+
+        class _EditStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self):
+                return _EditReader(self.o)
+
+            def run(self, cypher, params=None):
+                return _meta_rows(cypher, params)
+
+        with _encode_stub([1.0, 0, 0, 0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_EditStore(self))
+            try:
+                res = app.read_search({"query": "양자역학", "owner": "u"})[1]
+            finally:
+                app.jobs.shutdown(drain=True)
+        self.assertEqual(res.get("arms"), "fts+vector",
+                         "편집 1건의 pending 이 벡터 팔을 내렸다 — 과잉 게이트")
+        self.assertFalse(res.get("vector_note"), res.get("vector_note"))
+        self.assertEqual(self.seen_vec, [[1.0, 0, 0, 0]])
+
     def test_쿼리에는_query_kind_로_요청한다(self):
         """bge 는 **쿼리에만** 지시 접두를 붙인다. passage 로 요청하면 저장 벡터와
         같은 공간이 되지 않는다 — 창구가 kind 를 보고 접두를 고르므로 여기가 계약이다."""

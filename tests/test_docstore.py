@@ -445,6 +445,31 @@ class DocstoreE2E(unittest.TestCase):
         st = ds.embed_model_state(self.store)
         self.assertFalse(st["migrating"], "재임베딩이 끝났는데 이행 중이라고 한다")
         self.assertEqual(st["pending"], 0)
+        # 백로그를 다 비운 라운드가 이행 표식도 내렸어야 한다 — 안 내리면 다음
+        # 일상 편집이 이행으로 오판된다(아래 테스트가 그 오판을 핀으로 박는다).
+        self.assertEqual(st["migration_model"], "",
+                         "드레인이 끝났는데 이행 표식이 남았다")
+
+    def test_일상_편집의_pending_은_이행이_아니다(self):
+        """편집 1건의 needs_embed 는 `migrating` 을 켜지 않는다.
+
+        구 판정(`stored && pending>0`)은 pending 의 **출처**를 못 갈라, 문서 하나
+        고칠 때마다 서버 게이트가 그래프 전체의 벡터 팔을 내렸다(실측 2026-09-02:
+        "1 docs pending" 창마다 전역 FTS-only 강등). 발주자 결정("재임베딩 기간
+        FTS만")은 전량 재큐를 말한 것이고, 그 구분을 이행 표식이 진다 — 이행은 위
+        테스트가, 일상 편집은 이 테스트가 각각 절반씩 계약이다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.switch_embed_model(self.store, "model-A")
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        # 이행 완료 후 일상 편집 — 내용이 바뀌어야 needs_embed 가 다시 켜진다.
+        d2 = ds.put_doc(self.store, owner="user:a", text="고친 본문. " * 40,
+                        title="T", doc_id=d["doc_id"])
+        st = ds.embed_model_state(self.store)
+        self.assertGreater(st["pending"], 0, f"편집이 재임베딩을 안 걸었다: {d2}")
+        self.assertFalse(st["migrating"],
+                         "편집 1건이 이행으로 오판됐다 — 벡터 팔이 전역으로 내려간다")
+        self.assertEqual(st["migration_model"], "")
 
     def test_한번도_적용된적_없으면_age_s가_None이고_정체가_아니다(self):
         """W14 — 콜드스타트(모델 전환 직후 등)를 오탐하지 않는다. 잴 기준 시각이
