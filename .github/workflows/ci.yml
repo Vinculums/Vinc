@@ -124,11 +124,45 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          # PR 이 아니면(main push · workflow_dispatch) 전부 켠다. 판정을 시도조차
-          # 하지 않는다 — 위 주석의 이유다.
+          # PR 이 아니면(main push · workflow_dispatch) `python`·`app` 은 전부 켠다.
+          # 판정을 시도조차 하지 않는다 — 위 주석의 이유다.
+          #
+          # ⚠ **`rust` 하나만 예외다(2026-09-01).** 이 예외는 위 규칙을 뒤집는 것이
+          # 아니라 그 규칙의 근거가 이 잡에는 없기 때문이다:
+          #
+          # ① 위 규칙이 지키는 것은 **재현 안 되는 실패의 표본**이다(concurrency 주석의
+          #    TwoStoreTimeRoundtrip). 그건 테스트 스위트의 성질이고, 이 잡은 테스트가
+          #    아니라 `cargo check` 다 — 같은 입력에 같은 답을 내므로 표본이랄 게 없다.
+          # ② 입력이 `app/src-tauri/` 하나뿐이라는 것은 **이 파일이 이미 PR 쪽에서
+          #    단언하고 있다**(아래 러스트 셸 줄). 그 단언이 참이면 push 에서도 참이다.
+          # ③ 대가가 컸다. 실측 2026-09-01: 호스티드 찬 캐시로 리눅스 6분 · 윈도우
+          #    11분 15초(윈도우는 분을 2배로 센다). main 커밋 373건 중 이 크레이트를
+          #    건드린 것은 **24건(6.4%)** 이었다(2026-08-02~09-01) — 나머지 93.6% 는
+          #    같은 커밋을 다시 컴파일하는 데 쓰는 분이다.
+          #
+          # 못 구하면 **켠다.** 판정이 애매할 때 이 파일이 늘 고르는 방향이다.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "not a pull_request — 전량 실행"
-            { echo "python=true"; echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
+            echo "not a pull_request — python·app 은 전량 실행"
+            { echo "python=true"; echo "app=true"; } >> "$GITHUB_OUTPUT"
+            before="${{ github.event.before }}"
+            ok=1
+            [ -n "$before" ] || ok=0
+            [ "$before" != "0000000000000000000000000000000000000000" ] || ok=0
+            if [ "$ok" = 1 ]; then
+              pushed=$(git diff --name-only "$before" "${{ github.sha }}" 2>/dev/null) || ok=0
+            fi
+            if [ "$ok" != 1 ]; then
+              echo "::warning::push 의 변경 목록을 못 구했다(before=$before) — rust 도 켠다"
+              echo "rust=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "── 변경 파일(push)"; echo "$pushed"
+            # 이 워크플로 자신이 바뀌면 켠다 — PR 쪽과 같은 이유다.
+            if echo "$pushed" | grep -qE '^app/src-tauri/|^[.]github/workflows/ci[.]yml$'; then
+              echo "rust=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "rust=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
           # diff 를 못 구하면 **전량 실행으로 붙는다**. 이 잡이 애매할 때 침묵하면
