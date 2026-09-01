@@ -367,3 +367,17 @@ def test_birth_reconciles_to_the_earliest_and_never_leaves_the_owner():
     s3 = _Rec()
     sync._reconcile_birth(s3, "Episode", "episode_id", "episode:a", "2020-01-01", OWNER)
     assert s3.stmts == []
+
+
+# ── risk-audit 2026-08-05 §4: tombstone GC (사이드카 주기 실행이 부른다) ──────
+def test_gc_tombstones_deletes_past_horizon_for_both_labels():
+    fake = _SubFake({"RETURN count(t) AS c": [{"c": 3}]})
+    n = sync.gc_tombstones(fake, keep_days=90, now_ms=1_700_000_000_000)
+    assert n == 6                                             # 노드 3 + 엣지 3
+    dels = [c for c, _ in fake.calls if "DELETE t" in c]
+    assert any("_Tombstone" in c for c in dels)
+    assert any("_EdgeTombstone" in c for c in dels)
+    # 컷오프 = now - keep_days, deleted_at 빈 문자열은 제외(미삭제 행 보호)
+    cy, pa = fake.calls[0]
+    assert "t.deleted_at <> ''" in cy
+    assert pa["c"] == sync.revstamp._fmt(1_700_000_000_000 - 90 * 86400 * 1000)

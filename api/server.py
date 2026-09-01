@@ -1657,6 +1657,23 @@ def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
             return
 
 
+def _gc_tombstones_loop(app: VincApp, stop: threading.Event, interval: float = 86400.0):
+    """tombstone 청소 루프 — 기동 직후 1회 + interval 주기. 안전 지평(90일)은
+    `sync.gc_tombstones` 가 정한다([[vinc.spec.dataplane]] GC 계약). 쓰기는 반드시
+    잡 큐를 지난다(R4 — 단일 워커가 곧 쓰기 직렬화)."""
+    while True:
+        try:
+            n = app.jobs.run_sync("gc.tombstones",
+                                  lambda: {"removed": sync.gc_tombstones(app.store)})
+            print(f"vinc-sidecar: gc tombstones — removed {n.get('removed', 0)}",
+                  file=sys.stderr, flush=True)
+        except Exception as exc:
+            print(f"vinc-sidecar: gc tombstones failed — {exc}",
+                  file=sys.stderr, flush=True)
+        if stop.wait(interval):
+            return
+
+
 def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int | None = None,
           token: str | None = None, packs_dir=None, profile_path=None,
           print_info: bool = True) -> dict:
@@ -1691,6 +1708,7 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     if parent_pid:
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
+    threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
 
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
