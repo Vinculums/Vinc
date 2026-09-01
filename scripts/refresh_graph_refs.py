@@ -79,7 +79,51 @@ def verify_nodes(ids: list[str]) -> list[str]:
     return out
 
 
+def check() -> int:
+    """라이브 대조 — 파일을 쓰지 않는다. 인용이 **라이브 그래프에** 실재하는가만 묻는다.
+
+    스냅샷 게이트(`gate_graph_refs.py`, 오프라인)는 '인용 ⊆ 매니페스트'를 지키고,
+    이 모드는 '인용 ⊆ 라이브'를 지킨다. 앞의 것이 원리적으로 못 보는 드리프트가
+    정확히 하나 있다: **매니페스트에 실린 id 가 그 뒤 그래프에서 죽는 것** — 재키잉이
+    실제로 그랬다(2026-08-28, 구 해시 id 전멸). 그때 스냅샷 게이트는 초록인 채
+    인용이 썩는다. 매니페스트 전체가 아니라 **인용된 id 만** 묻는 이유: 아무도
+    인용하지 않는 매니페스트 항목이 죽는 것은 무해하고, 문서가 늘어나는 것은
+    드리프트가 아니다 — 전량 대조는 그 둘로 매번 울어 알람 신뢰를 깎는다.
+
+    hub-deploy 가 배포 직후 이것을 돌린다(읽기 전용 키). 빨강은 "코드 주석이 없는
+    노드를 가리킨다"는 경보이지 배포 실패가 아니다."""
+    if not os.environ.get("VINC_REMOTE_MCP_TOKEN"):
+        print("[check] VINC_REMOTE_MCP_TOKEN 미설정 — 라이브 대조는 키가 필요하다",
+              file=sys.stderr)
+        return 2
+    hits = scan_repo()
+    cited = sorted({r for _, _, r in hits})
+    cited_nodes = [r for r in cited if r.startswith(_NODE_KINDS)]
+    cited_docs = [r for r in cited if not r.startswith(_NODE_KINDS)]
+    live_docs = set(fetch_docs())
+    alive_nodes = set(verify_nodes(cited_nodes))
+    dead = ([d for d in cited_docs if d not in live_docs]
+            + [n for n in cited_nodes if n not in alive_nodes])
+    if dead:
+        print(f"[check] 죽은 인용 {len(dead)}건 — 코드가 가리키는 id 가 라이브 그래프에 없다.",
+              file=sys.stderr)
+        where = {}
+        for path, lineno, ref in hits:
+            where.setdefault(ref, []).append(f"{path}:{lineno}")
+        for ref in sorted(dead):
+            print(f"  [dead] {ref} — {', '.join(where.get(ref, ['?']))}",
+                  file=sys.stderr)
+        print("  그래프 쪽이 옳으면 인용을 후속 id 로 옮기고, 코드 쪽이 옳으면 "
+              "노드를 복원한 뒤 refresh 로 매니페스트를 갱신한다.", file=sys.stderr)
+        return 1
+    print(f"[check] 인용 {len(cited)}종 전부 라이브에 실재 "
+          f"(문서 {len(cited_docs)} · 노드 {len(cited_nodes)})")
+    return 0
+
+
 def main() -> int:
+    if "--check" in sys.argv[1:]:
+        return check()
     cited = [ref for _, _, ref in scan_repo()]
     cited_nodes = [r for r in cited if r.startswith(_NODE_KINDS)]
     print(f"[refresh] 코드가 인용한 id {len(set(cited))}종 (노드 {len(set(cited_nodes))}종)")

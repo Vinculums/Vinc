@@ -340,6 +340,25 @@ jobs:
       - name: App config drift gate (구조 기준선 대조)
         run: python3 scripts/gate_app_config.py
 
+      # 인용 생존 대조(라이브) — ci 의 스냅샷 게이트는 '인용 ⊆ 매니페스트'만 본다.
+      # 매니페스트에 실린 id 가 그 뒤 그래프에서 죽으면(2026-08-28 재키잉 실측) 그
+      # 게이트는 초록인 채 인용이 썩는다. 여기서 라이브 그래프에 직접 묻는다 —
+      # 인용된 id 만, 읽기 전용으로. ⚠ 빨강은 "코드 주석이 없는 노드를 가리킨다"는
+      # 경보이지 배포 실패가 아니다(드리프트 게이트와 같은 신분).
+      #
+      # 키는 읽기 전용 계층(vinc_ro_*)을 쓴다 — 쓰기 키를 CI 에 두지 않는 것이
+      # W18 스코프 키 분리의 요지다. 시크릿 미설정이면 건너뛰되 조용하지 않게
+      # 말한다(넣는 순간 저절로 작동한다).
+      - name: Graph citation liveness (라이브 인용 대조)
+        env:
+          VINC_REMOTE_MCP_TOKEN: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+        run: |
+          if [ -z "$VINC_REMOTE_MCP_TOKEN" ]; then
+            echo "::notice::VINC_GRAPH_READONLY_KEY 시크릿 미설정 — 라이브 인용 대조를 건너뛴다. vinc_ro_* 키를 발급해 시크릿에 넣으면 이 스텝이 작동한다."
+            exit 0
+          fi
+          python3 scripts/refresh_graph_refs.py --check
+
       # ⚠ 첫 실행은 밀린 것까지 한꺼번에 지우므로 오래 걸린다(87 → KEEP). 한 번뿐이다.
       #
       # ⚠ **정리 실패가 배포를 실패로 만들면 안 된다.** 이 스텝은 잡의 **마지막**이고
