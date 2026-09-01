@@ -61,6 +61,43 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
   accent-color: hsl(var(--ring));   /* 라이트=포인트 동일, 다크=라이튼(가시성) */
 }
 
+/* ── 드롭다운 — 한 벌 ─────────────────────────────────────────────────────
+   정본은 공홈의 역할 선택(`Vinc-homepage/site/account/team`, `#ivRole`)이다:
+   카드 바탕 · hairline 테두리 · radius-sm · 손가락 커서. 발주자 지시 2026-09-01.
+
+   왜 요소 선택자인가. 여기 오기 전 이 앱의 <select> 는 **여섯**이었고, 그것을
+   칠하는 자리는 넷, 그중 규칙이 있는 것은 셋이었다(`.pack-field select` 하나가
+   packs.ts 의 세 개를 덮는다):
+
+     .ei-field select   card       / --border / --radius     / .5rem
+     .pack-field select background  / --input  / --radius     / .5rem .75rem
+     .tools-opt select  background  / --input  / --radius-sm  / .2rem .4rem
+     #space-pick        (규칙 없음 — OS 기본 드롭다운이 그대로 떴다)
+
+   넷째 줄이 요점이다. 클래스로 칠하면 **새로 생기는 <select> 는 아무것도 안 걸친
+   채 태어난다**. 실제로 그렇게 스페이스 선택기가 혼자 네이티브로 떴고, 아무 규칙도
+   깨지지 않았으므로 누구도 못 봤다. 요소에 걸면 그 구멍이 생길 자리가 없다.
+
+   아래 세 규칙에는 **배치만** 남긴다(폭·최소폭·정렬). 모양을 다시 적으면 네 번째
+   목록이 되고, 목록이 갈라지는 것이 방금 고친 그 고장이다.
+
+   ⚠ --border 와 --input 은 두 테마에서 값이 같다(hairline / d_line). 그래서 위
+   불일치는 오늘 눈에 안 보였지만, 한 가지에 이름이 둘인 상태였다. 공홈이 쓰는
+   --border 로 모은다.
+   ⚠ 이웃한 텍스트 입력(.ei-field input)은 아직 --radius(0.875rem)다. 한 폼 안에서
+   모서리가 갈리는 것이 거슬리면 고칠 곳은 드롭다운이 아니라 그 폼이다 — 여기서
+   되돌리지 말 것. */
+select {
+  font: inherit;
+  padding: .62rem .7rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+
 /* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
       불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */
 :root {
@@ -871,11 +908,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 노드 만들기 시트 — 라벨 위, 입력 아래. 시트 폭(action)에 맞춘 한 벌. */
 .ei-field { display: grid; gap: var(--space-1, .25rem); margin-bottom: var(--space-3, .75rem); }
 .ei-field > span { font-size: .85em; color: hsl(var(--caption-foreground)); }
-.ei-field input, .ei-field select, .ei-field textarea {
-  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius);
+.ei-field input, .ei-field textarea {
+  /* ⚠ radius 를 --radius(0.875rem) 에서 내렸다. 이 시트가 이 앱에서 <select> 와
+     텍스트 입력이 **나란히 서는 유일한 자리**라서다 — 드롭다운을 공홈 기준
+     (0.625rem)으로 옮기고 여기만 두면 한 폼 안에서 모서리가 갈린다.
+     앱의 radius 척도는 원래 갈려 있다(입력 네 곳 중 둘은 sm, 둘은 --radius).
+     그 전부를 여기서 통일하지는 않는다 — 붙어 서는 한 쌍만 맞춘다. */
+  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius-sm, .625rem);
   border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
   font: inherit;
 }
+.ei-field select { width: 100%; }   /* 모양은 공용 select 규칙 */
 .ei-field textarea { resize: vertical; }
 
 .error-banner {
@@ -982,11 +1025,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pack-arealink:hover { text-decoration: underline; color: hsl(var(--foreground)); }
 .pack-row { display: flex; align-items: end; gap: var(--space-3, .75rem); flex-wrap: wrap; }
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
-.pack-field select {
-  font: inherit; padding: var(--space-2, .5rem) var(--space-3, .75rem); min-width: 12rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
+.pack-field select { min-width: 12rem; }   /* 모양은 공용 select 규칙 */
 /* 가져오기 섹션 안의 드롭존: 카드 안이므로 무대 상단 여백·최대폭 제거 */
 #pack-import-host .intake-stage { margin-top: 0; max-width: none; }
 .pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
@@ -1203,12 +1242,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .tools-opt {
   display: flex; align-items: center; gap: .6rem; cursor: pointer;
 }
-.tools-opt select {
-  margin-left: auto; font: inherit; font-size: var(--fs-sm);
-  padding: .2rem .4rem; border: 1px solid hsl(var(--input));
-  border-radius: var(--radius-sm, .625rem);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
+.tools-opt select { margin-left: auto; }   /* 모양은 공용 select 규칙 */
 
 /* ── 맥락 카드(D70) — 노드에 딸려 뜨고, 끌어 옮길 수 있고, 닫힌다 ────────────
    시트가 아니다: 딤도 aria-modal 도 없다(지도를 계속 만질 수 있어야 한다).
