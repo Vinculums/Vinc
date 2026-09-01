@@ -65,7 +65,9 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
    정본은 공홈의 역할 선택(`Vinc-homepage/site/account/team`, `#ivRole`)이다:
    카드 바탕 · hairline 테두리 · radius-sm · 손가락 커서. 발주자 지시 2026-09-01.
 
-   왜 요소 선택자인가. 여기 오기 전 이 앱의 <select> 는 넷이었고 규칙은 셋이었다:
+   왜 요소 선택자인가. 여기 오기 전 이 앱의 <select> 는 **여섯**이었고, 그것을
+   칠하는 자리는 넷, 그중 규칙이 있는 것은 셋이었다(`.pack-field select` 하나가
+   packs.ts 의 세 개를 덮는다):
 
      .ei-field select   card       / --border / --radius     / .5rem
      .pack-field select background  / --input  / --radius     / .5rem .75rem
