@@ -143,6 +143,7 @@
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:korean-deck-reopens-only-after-authored-pass",
+    "decision:relax-the-evidence-producer-rule",
     "decision:scoped-key-tier",
     "decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right",
     "decision:the-space-is-an-argument-and-the-default-is-personal",

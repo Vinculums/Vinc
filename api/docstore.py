@@ -1665,14 +1665,22 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
     없었다** — 팩도 추출도 저작하지 않아, 관계 패널이 언제나 "근거 없음"이었다
     (실측: 방향 엣지 80개 중 보유 0). 여기서 그 공백을 메운다.
 
-    규칙(LLM 없음·오프라인·재현 가능):
-      한 청크가 두 개념을 **함께 언급**하면(MENTIONS 두 줄), 그 청크에서 두 제목이
-      **같은 문장** 안에 나타나는 첫 문장을 근거로 삼는다. 같은 문장이 없으면
-      근거로 치지 않는다 — 같은 문서에 있었다는 사실만으로는 관계의 근거가 아니다.
+    규칙(LLM 없음·오프라인·재현 가능) — 문장 판정 2단, 정확한 쪽 우선:
+      ① 한 청크가 두 개념을 **함께 언급**하면(MENTIONS 두 줄), 그 청크에서 두 제목이
+        **같은 문장** 안에 verbatim 으로 나타나는 문장을 근거로 삼는다.
+      ② ①이 그 문장에서 안 잡히면, 두 제목의 **유의 토큰**(각 ≤6, `engines.
+        mentions_link` 와 같은 어휘 — 규칙 분기 금지)이 모두 그 문장에 있을 때
+        근거로 삼는다. 첫 owner 전체 실행이 scanned 202 · filled 0 이었던 이유가
+        ①뿐이어서다 — 이 코퍼스의 주장형 긴 제목은 verbatim 공기가 물리적으로
+        없다. 완화는 [[decision:relax-the-evidence-producer-rule]] 로 비준됐다.
+      같은 문장이 없으면 근거로 치지 않는다 — 같은 문서에 있었다는 사실만으로는
+      관계의 근거가 아니다.
 
-    confidence 는 그 문장의 밀도로 매긴다(가까울수록 높다): 두 제목 사이 거리가
-    짧을수록 1.0 에 가깝고, 문장이 길게 벌어지면 0.5 로 수렴한다. 이미 근거가
-    있는 엣지는 건드리지 않는다(사용자·상류 저작 보호).
+    confidence 는 **출처 장부를 겸한다**(비준 조건 — backfill 산은 저작분과 구별
+    가능해야 한다): ①은 두 제목의 거리로 0.5~0.9(가까울수록 높다), ②는 고정 0.4.
+    0.5 미만이면 토큰 완화 백필이라는 뜻이고, 저작 evidence 는 저자가 준 값(또는
+    없음)을 그대로 가진다. 이미 근거가 있는 엣지는 건드리지 않는다(사용자·상류
+    저작 보호).
 
     ``doc_id`` 를 주면 그 문서가 언급하는 개념들 사이 엣지만 훑는다(편집 직후
     증분). 없으면 owner 전체. 반환 {executed, filled, scanned}."""
@@ -1711,19 +1719,31 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
                 {"aid": row["aid"], "bid": row["bid"], "owner": owner}) or []
         except Exception:
             continue
+        # ② 완화 판정용 제목 토큰 — mentions_link 의 어휘·상한을 그대로 재사용한다
+        #    (규칙 분기 금지). 토큰셋이 같으면 아무 문장이나 잡히므로 완화는 건너뛴다.
+        from engines.mentions_link import _MAX_TITLE_TOKENS, _tokens as _ml_tokens
+        ta = set(_ml_tokens(at)[:_MAX_TITLE_TOKENS])
+        tb = set(_ml_tokens(bt)[:_MAX_TITLE_TOKENS])
+        relaxable = bool(ta) and bool(tb) and ta != tb
         found: tuple[str, float] | None = None
         for ch in chunks:
             for sent in _sentences(ch.get("text") or ""):
                 low = sent.lower()
                 ia, ib = low.find(at.lower()), low.find(bt.lower())
-                if ia < 0 or ib < 0:
-                    continue
-                gap = abs(ia - ib)
-                # 가까울수록 높게, 멀어지면 0.5 로 수렴(상한 0.9 — 결정론 근사이지
-                # 사람이 확인한 근거가 아니라는 뜻을 수치가 스스로 말한다).
-                conf = round(max(0.5, 0.9 - gap / 400.0), 3)
-                found = (" ".join(sent.split())[:_EVIDENCE_MAX], conf)
-                break
+                if ia >= 0 and ib >= 0:
+                    gap = abs(ia - ib)
+                    # 가까울수록 높게, 멀어지면 0.5 로 수렴(상한 0.9 — 결정론 근사이지
+                    # 사람이 확인한 근거가 아니라는 뜻을 수치가 스스로 말한다).
+                    conf = round(max(0.5, 0.9 - gap / 400.0), 3)
+                    found = (" ".join(sent.split())[:_EVIDENCE_MAX], conf)
+                    break
+                if relaxable:
+                    stoks = set(_ml_tokens(sent))
+                    if ta <= stoks and tb <= stoks:
+                        # 고정 0.4 는 값이자 표식이다 — 0.5 미만 = 토큰 완화 백필.
+                        # 비준 조건(저작분과 구별 가능)이 이 한 값으로 성립한다.
+                        found = (" ".join(sent.split())[:_EVIDENCE_MAX], 0.4)
+                        break
             if found:
                 break
         if not found:
