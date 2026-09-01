@@ -94,7 +94,16 @@ jobs:
   # 다음 구멍이다. 이 잡은 안전망이고 안전망은 조건부가 아니다.
   changes:
     name: changes (path gate)
-    runs-on: [self-hosted, linux, vinc-local]
+    # ⚠ **이 잡이 셀프호스티드로 남으면 호스티드로 옮긴 잡들이 인질이 된다.**
+    # `core-pkns` · `app` · `rust` 가 전부 `needs: changes` 다. 러너가 안 올라오면
+    # 이 19초짜리가 큐에 남고, 그 뒤 잡들은 호스티드든 아니든 **시작조차 못 한다**
+    # (#130 이 적은 24시간 만료가 여기서 전파된다). 그래서 #146 이 core 를 옮긴 것을
+    # 실제로 성립시키려면 이것도 같이 나와야 한다.
+    #
+    # 옮겨도 잃는 것이 없다: 하는 일이 `git diff --name-only` 와 러너 이동 게이트뿐이고
+    # 둘 다 기계를 안 가린다. 실측 19초(런 33412567123)라 분도 거의 안 쓴다.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       python: ${{ steps.f.outputs.python }}
       app: ${{ steps.f.outputs.app }}
@@ -374,7 +383,10 @@ jobs:
     name: app (typecheck)
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: [self-hosted, linux, vinc-local]
+    # `changes` 와 같은 이유로 옮긴다(그 잡의 주석이 근거다). 이쪽은 `npm ci` 와 `tsc`
+    # 와 순수 노드 스크립트뿐이라 기계를 안 가린다 — 실측 1분 14초(런 33412567123).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # ⚠ 22 인 이유는 **`--experimental-strip-types` 가 22.6+ 라서**다(아래 dev 검사).
