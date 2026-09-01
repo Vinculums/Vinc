@@ -228,13 +228,15 @@ def _tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
 
 def gc_tombstones(store, *, keep_days: int = 90, now_ms: int | None = None) -> int:
     """안전 지평 지난 tombstone 청소. 보수적 90일 — 그 안에 모든 기기가 pull 했다고
-    가정. 문자열 비교(HLC ISO 고정폭)라 임계 ISO 를 만들어 그 이하를 지운다."""
+    가정. 문자열 비교(HLC ISO 고정폭)라 임계 ISO 를 만들어 그 이하를 지운다.
+    문서 표식(_DocTombstone)도 같은 지평이다 — docs-pull 델타(docsync)가 노드·엣지와
+    같은 sync_seq 커서 계약이고 deleted_at 도 같은 HLC 스탬프라 위험 모양이 동일하다."""
     import datetime
     ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000) \
         if now_ms is None else now_ms
     cutoff = revstamp._fmt(ms - keep_days * 86400 * 1000)
     n = 0
-    for label in ("_Tombstone", "_EdgeTombstone"):   # 엣지 표식도 같은 지평(S4 확장)
+    for label in ("_Tombstone", "_EdgeTombstone", "_DocTombstone"):
         cur = store.run(f"MATCH (t:{label}) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
                         "RETURN count(t) AS c", {"c": cutoff})
         k = int(cur[0].get("c") or 0) if cur else 0
