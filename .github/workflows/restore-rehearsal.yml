@@ -1,0 +1,114 @@
+# 복원 리허설 — 열어보지 않은 백업은 백업이 아니라 추측이다.
+#
+# 무엇을 하나. hub-data 공유의 스냅샷을 떠서(직접 복사는 SMB 락이
+# FileLockConflict 로 거절한다 — 그래서 스냅샷), DB 파일을 러너로 내려받아
+# **실제로 열고**(WAL 재생·확장 로드 포함) 라벨별 행 수를 센다. 판정은
+# scripts/restore_rehearsal_check.py — "파일이 있다"가 아니라 "열리고, 행이 있다".
+#
+# 왜 필요한가. `db.recovered3.bad-20260809` 는 복사가 성공했고 크기도 맞았는데
+# 열면 죽었다. 그리고 백업 잡(vincs-backup)의 성공 로그는 "그 파일이 열린다"를
+# 말해 주지 않는다. 라이브가 `db.recovered6` 위에서 돈다는 것 자체가 이 검증을
+# 미뤄 온 대가의 기록이다. 근거: [[vinc.ops.deployment]]
+#
+# 언제 돌리나. workflow_dispatch 전용 — 사람이 부른다(분기·월간 등 임의). 자동
+# 스케줄을 안 다는 이유: 이 검증의 소비자가 사람이고, 실패 시 대응도 사람이다.
+#
+# 비용. 스냅샷은 차등 과금이라 몇 센트 수준이고 **마지막 스텝이 지운다**(실패해도
+# always 로 지운다). 다운로드 egress 는 DB 크기만큼 1회. 스케일 변경 없음.
+#
+# ⚠ 로컬(수동) 우회로는 없다 — 로컬 az 신원(vinc-github-actions-plan 계열)은
+# Reader 뿐이라 스냅샷 생성·키 조회가 안 된다(2026-09-02 실측). 이 워크플로의
+# workflow_dispatch subject 만 Contributor(vinc-github-actions-deploy)를 받는다.
+name: restore-rehearsal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: restore rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RG: vincsRG
+      STORAGE: vincstorage01
+      SHARE: hub-data
+      APP: vinc-hub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # hub-deploy.yml 과 같은 이유 — 러너가 사람과 공유하는 기계일 수 있다.
+      - name: Azure 프로필을 이 잡 전용으로
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # DB 파일 이름을 하드코딩하지 않는다 — 복구 때마다 이름이 바뀌어 온 값이다
+      # (recovered6 이 그 기록이다). 라이브 env 가 정본.
+      - name: 라이브 DB 경로 해석 (VINC_DATA_DIR)
+        id: live
+        run: |
+          set -euo pipefail
+          P=$(az containerapp show -n "$APP" -g "$RG" \
+                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
+          test -n "$P"
+          echo "relpath=${P#/data/}" >> "$GITHUB_OUTPUT"
+          echo "live DB: $P"
+
+      - name: 공유 스냅샷 생성
+        id: snap
+        run: |
+          set -euo pipefail
+          TS=$(az storage share snapshot --account-name "$STORAGE" --name "$SHARE" \
+                 --query snapshot -o tsv)
+          test -n "$TS"
+          echo "ts=$TS" >> "$GITHUB_OUTPUT"
+          echo "snapshot: $TS"
+
+      - name: 스냅샷에서 DB 내려받기
+        run: |
+          set -euo pipefail
+          REL="${{ steps.live.outputs.relpath }}"
+          TS="${{ steps.snap.outputs.ts }}"
+          mkdir -p restored
+          az storage file download --account-name "$STORAGE" --share-name "$SHARE" \
+            --snapshot "$TS" -p "$REL" --dest restored/db --output none
+          # wal 은 체크포인트 직후면 없을 수 있다 — 없으면 없는 대로 연다.
+          az storage file download --account-name "$STORAGE" --share-name "$SHARE" \
+            --snapshot "$TS" -p "$REL.wal" --dest restored/db.wal --output none \
+            || echo "no wal in snapshot (checkpointed) — proceeding without it"
+          ls -la restored
+          # copyStatus:success 인데 0바이트로 온 경합이 실제로 두 번 있었다 — 크기 검증.
+          test -s restored/db
+
+      - name: 열어서 센다 (판정)
+        run: |
+          set -euo pipefail
+          pip install --quiet --disable-pip-version-check ladybug==0.18.0 argon2-cffi pyyaml
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          # 이전 런과의 대조는 사람이 한다 — 직전 런 로그의 카운트 표와 눈으로 비교.
+          python -X utf8 scripts/restore_rehearsal_check.py restored/db
+
+      # 리허설용 스냅샷은 남기지 않는다(복구 지점은 vincs-backup 볼트가 따로 쥔다).
+      # ⚠ TS 가 비면 절대 부르지 않는다 — --snapshot 없는 delete 는 라이브 공유를 지운다.
+      - name: 리허설 스냅샷 삭제 (비용 위생)
+        if: ${{ always() && steps.snap.outputs.ts != '' }}
+        run: |
+          set -euo pipefail
+          az storage share delete --account-name "$STORAGE" --name "$SHARE" \
+            --snapshot "${{ steps.snap.outputs.ts }}" --output none
