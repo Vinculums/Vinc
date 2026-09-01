@@ -32,9 +32,11 @@ on:
 # 재현 안 되는 실패의 표본은 분으로 다시 살 수 없다. 정본은 그래프의
 # record:writing-a-trap-down-does-not-stop-it-a-check-does.
 #
-# 대가는 정직하게 적는다: 셀프호스티드 러너가 하나라 main 런이 접히지 않고 줄을 선다.
-# rust 잡이 19~40분이므로 연달아 머지하면 줄이 는다. 러너가 늘거나 main 런이 짧아지면
-# 다시 볼 만한 결정이다.
+# 대가는 정직하게 적는다: main 런이 접히지 않으므로 연달아 머지하면 런이 그만큼 쌓인다.
+# ⚠ **그 대가의 모양이 2026-09-01 에 바뀌었다.** 그때까지는 셀프호스티드 러너가 하나라
+# 쌓인 런이 **한 줄로 기다렸고**, 그 줄에 24시간 만료 시계가 붙어 있었다(#130). 지금은
+# 이 워크플로의 잡이 전부 호스티드라 런끼리 서로를 기다리지 않는다 — 남은 대가는 줄이
+# 아니라 **분(minutes)** 이고, 그것은 rust 잡의 주석이 든다.
 #
 # ── ⚠ 위의 `cancel-in-progress` 하나로는 그것을 막지 못했다 (2026-08-30) ─────────
 # `cancel-in-progress: false` 가 지키는 것은 **도는 중인** 런이다. 그런데 GitHub 은
@@ -63,9 +65,10 @@ on:
 # 그룹 키는 종전과 글자 그대로 같고, 따라서 PR 에 연달아 push 하면 앞 실행이 취소되는
 # 동작이 유지된다. 그것은 잃어도 되는 것이 맞다 — PR 은 최신 커밋만 참이면 된다.
 #
-# ⚠ 대가: main 런이 이제 **하나도 접히지 않는다.** 러너가 하나인 동안 연달아 머지하면
-# 줄이 그만큼 길어진다. 그것이 이 변경이 사는 대가고, 위 주석이 이미 고른 쪽이다 —
-# 재현 안 되는 실패의 표본은 분으로 다시 살 수 없지만 줄은 기다리면 빠진다.
+# ⚠ 대가: main 런이 이제 **하나도 접히지 않는다.** 그것이 이 변경이 사는 대가고, 위
+# 주석이 이미 고른 쪽이다 — 재현 안 되는 실패의 표본은 분으로 다시 살 수 없다.
+# (2026-09-01 이전에는 여기 "러너가 하나인 동안 줄이 길어진다"고 적혀 있었다. 그
+# 줄서기는 셀프호스티드가 마지막으로 빠지면서 없어졌다 — #130 · rust 잡 주석.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -435,57 +438,66 @@ jobs:
   rust:
     name: rust (cargo check)
     needs: changes
-    # 가장 비싼 잡이고(19~40분 × 2대) 가장 좁은 입력을 가진다. 이 조건 하나가 이
-    # 변경의 대부분이다 — 2026-08-30 의 머지 셋에서 이 잡은 여섯 번 돌았고 여섯 번
-    # 다 러스트와 무관한 diff 였다.
+    # 가장 비싼 잡이고 가장 좁은 입력을 가진다. 이 조건 하나가 #123 의 대부분이었다 —
+    # 2026-08-30 의 머지 셋에서 이 잡은 여섯 번 돌았고 여섯 번 다 러스트와 무관한
+    # diff 였다. ⚠ 그 절약은 **PR 에서만** 생긴다. main push 는 `changes` 가 전량
+    # 실행으로 붙이므로(위 주석) 이 잡은 머지마다 두 대에서 돈다.
     if: needs.changes.outputs.rust == 'true'
+    # ── ⚠ 2026-09-01 에 셀프호스티드에서 호스티드로 옮겼다 (#130) ────────────────
+    # `#146`(core·core-pkns)·`#148`(changes·app) 뒤에 이 워크플로에 남은 **마지막
+    # 셀프호스티드 자리**였다. 남아 있는 동안은 #130 이 말하는 만료가 여기로 그대로
+    # 통했다: GitHub 은 러너에 배정되지 않은 잡을 **24시간 뒤 취소**하고, 그러면
+    # 머지된 커밋의 검증이 **영영 안 돈 것**이 된다. 노트북이 하루 넘게 꺼져 있으면
+    # 그 일이 난다. main push 는 뒤 커밋이 대체하지 않으므로 잃은 것을 되살 수 없다.
+    #
+    # 왜 "이 하나쯤"이 안 되나: `#123` 이 이 잡을 만든 이유가 정확히 **"컴파일 오류가
+    # 처음 드러나는 자리가 태그 시점의 3-OS 매트릭스였고, 그 자리의 실패는 릴리스
+    # 하나를 통째로 되감는다"** 였다([[record:ci-never-builds-the-rust]]). 그 사고를
+    # 앞으로 당긴 것이 이 잡이니, 만료로 조용히 안 도는 것은 잡을 지운 것과 같다.
+    #
+    # ⚠ **대가는 분(minutes)이고 윈도우는 리눅스의 2배로 센다.** 호스티드 한도가
+    # 2000분으로 풀린 것(발주자 확인, 2026-09-01)이 이 판정의 입력이다. 그 입력이
+    # 다시 좁아지면 이 워크플로에서 여기가 가장 먼저 아프다.
+    #
+    # ⚠ **여태의 실측을 그대로 옮겨 적지 말 것.** 리눅스 2분 08초 · 윈도우 59초
+    # (런 33498851871)는 **캐시가 더운 셀프호스티드** 숫자다. 호스티드는 매번 빈
+    # 디스크라 첫 런이 훨씬 길고, 그 뒤는 아래 `rust-cache` 가 정한다. 진짜 값은
+    # 이 변경의 첫 런들이 준다 — 그때 이 자리에 적을 것.
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - [self-hosted, linux, vinc-local]
-          - [self-hosted, windows, vinc-local]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # 호스티드에서는 매달린 잡이 곧 분이다. 찬 캐시로도 여기 안 닿아야 한다.
+    timeout-minutes: 30
     steps:
-      # Windows 는 `shell: bash` 가 WSL 로 가므로 Git Bash 를 앞에 세운다(release.yml 동형).
-      - name: Prefer Git Bash on Windows (system32 bash is WSL)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
-          $binDir  = Join-Path $gitRoot 'bin'
-          if (Test-Path (Join-Path $binDir 'bash.exe')) {
-            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          }
-      # 산출물을 체크아웃 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
-      # `git clean -ffdx` 를 돌리고, `target/` 은 gitignore 대상이라 매 실행 지워졌다.
-      # 그래서 캐시 액션이 그것을 네트워크로 되사 왔다 (복원 10분 · 저장 9분 대 컴파일 4분,
-      # 실측 2026-08-26 run 32910956646).
-      # 근거: [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]
-      #
-      # 절대경로가 아니라 `$RUNNER_WORKSPACE` 인 이유가 둘이다.
-      # ① 한 기계에 러너가 여럿이면 절대경로는 **같은 디렉터리**다(둘 다 같은 계정으로
-      #    돈다). cargo 가 target 에 파일락을 걸어 뒤엣놈이 통째로 기다리므로, 늘린
-      #    러너가 조용히 무효가 된다. `$RUNNER_WORKSPACE` 는 러너마다 갈린다.
-      # ② `runner` 컨텍스트는 job 레벨 `env` 에서 못 쓴다(러너 배정 전에 평가된다).
-      #    그렇게 썼다가 job 을 0개 만들고 죽었다 (run 32959205805). 스텝 런타임에는
-      #    같은 값이 환경변수로 있다.
-      # ⚠ 러너가 영속이라 이 디렉터리는 계속 자란다. 가끔 지워 줄 것.
-      - name: Keep cargo output outside the checkout (per-runner)
-        shell: bash
-        run: echo "CARGO_TARGET_DIR=$RUNNER_WORKSPACE/cargo-target" >> "$GITHUB_ENV"
+      # ⚠ 여기 있던 "Prefer Git Bash on Windows" 스텝을 걷어냈다. 그것은 **노트북
+      # 러너의 사실**이었다 — 그 기계는 System32 가 PATH 에서 Git 보다 앞이라
+      # `shell: bash` 가 WSL 의 bash 로 잡혔다. 호스티드 windows-latest 는 Git Bash 가
+      # 먼저라 그 문제가 없다(release.yml 의 같은 스텝 주석이 이미 그렇게 적고 있고,
+      # 그쪽은 셀프호스티드 다리가 남아 있어 스텝도 남는다).
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # ⚠ `swatinem/rust-cache` 를 여기서 **일부러 안 쓴다.** 그 액션은 파일시스템이
-      # 매번 파괴되는 **호스티드** 러너용이다. 이 두 잡은 영속 셀프호스티드라 디스크가
-      # 이미 들고 있고, 위의 `CARGO_TARGET_DIR` 가 `git clean` 사정권 밖에 둔다.
-      # release.yml 은 호스티드 macOS 다리가 있어 거기서는 계속 써야 한다.
+      # ⚠ 여기 있던 주석은 "`swatinem/rust-cache` 를 **일부러 안 쓴다**"였다. 그 판단은
+      # 틀리지 않았고 **전제가 뒤집혔다.** 셀프호스티드는 디스크가 영속이라
+      # `CARGO_TARGET_DIR` 를 체크아웃 밖에 두면 `git clean` 사정권 밖에서 그대로
+      # 남았고, 그 조건에서 캐시 액션은 **복원 10분 · 저장 9분 대 컴파일 4분**이었다
+      # (실측 2026-08-26 run 32910956646,
+      # [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
+      # 호스티드는 반대다: 디스크가 매번 비고 캐시는 같은 데이터센터에서 온다. 그래서
+      # `CARGO_TARGET_DIR` 트릭도 같이 걷어냈다 — 그 액션은 기본 `target/` 을 캐시하고,
+      # 러너가 하나뿐인 기계에서 target 파일락을 피하려던 이유도 함께 사라졌다.
+      # 설정은 release.yml 의 호스티드 macOS 다리와 같은 것을 쓴다.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
       # 리눅스만 필요한 시스템 헤더(webkit·appindicator). release.yml 과 같은 목록.
       - name: Linux webkit deps
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev             librsvg2-dev patchelf libdbus-1-dev
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libdbus-1-dev
       # 프런트 산출물이 없으면 tauri 빌드 스크립트가 `../dist` 를 찾다 죽는다.
       # 짓지 않고 **빈 자리만** 만들어 준다 — 여기서 보는 것은 러스트지 번들이 아니다.
       - name: Placeholder frontend dist
