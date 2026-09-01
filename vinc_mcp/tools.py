@@ -142,7 +142,8 @@ _FRAGMENT_SCHEMA = {
                                             "in the merge key; different roles create parallel edges."},
                     "evidence": {"type": "string",
                                  "description": "Optional source sentence backing this relation (E-G6) — "
-                                                "concept↔concept edges and about only."},
+                                                "kept on concept↔concept edges, about, and record edges "
+                                                "(stored on ATTACHES_TO)."},
                     "confidence": {"type": "number",
                                    "description": "Optional relation confidence 0.0–1.0 (E-G6)."},
                 },

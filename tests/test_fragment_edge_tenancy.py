@@ -86,11 +86,11 @@ class EdgeTenancyTests(unittest.TestCase):
     # ── 0. 보관할 열이 없는 근거는 조용히 사라지지 않는다 ──────────────────
     #
     # GRAPH.md 는 record 엣지와 about 에 evidence 를 **요구**하는데 vinc_ingest 는
-    # concept↔concept 과 about 에서만 받는다. 계약이 서로 다르고, 다르다는 사실이
-    # 저작자에게 닿지 않았다: 필드는 사라지는데 warnings 는 비어 있었다. 2026-08-30 에
-    # 한 페이로드로 실측했다 — about 엣지는 문장을 보관했고 record 엣지 다섯은 전부
-    # 빈 채로 돌아왔으며 경고가 없었다. R1(미보관 필드는 버리지 말고 경고)이 노드
-    # 경로에서만 닫혀 있던 것이다.
+    # 한동안 concept↔concept 과 about 에서만 받았다. 계약이 서로 다르고, 다르다는
+    # 사실이 저작자에게 닿지 않았다: 필드는 사라지는데 warnings 는 비어 있었다
+    # (2026-08-30 실측). #117 이 경고를 달았고, v16 이 ATTACHES_TO 에 열을 줘서
+    # record 엣지는 경고 대상에서 **저장 대상**으로 옮겨 갔다. 무열 rel 로 남은
+    # CONNECTS·TYPED 가 경고 경로의 증인이다.
     # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
 
     def _ingest_edges(self, edges):
@@ -101,20 +101,22 @@ class EdgeTenancyTests(unittest.TestCase):
             {"id": "bridge:t", "type": "bridge", "title": "B"},
         ], "edges": edges}, store=self.store)
 
-    def test_evidence_on_a_relation_without_the_column_warns(self):
+    def test_record_edge_evidence_is_stored_since_v16(self):
+        """record 엣지의 근거가 경고 없이 ATTACHES_TO 열에 실제로 앉는다 —
+        GRAPH.md 가 요구하던 그 필드다. type 보존과 공존해야 한다(같은 SET 절)."""
         r = self._ingest_edges([{"from": "record:t", "to": "concept:t",
                                  "type": "relates_to",
-                                 "evidence": "이 문장은 보관되지 않는다."}])
-        # 엣지 자체는 정상이다 — 버려지는 것은 필드 하나지 엣지가 아니다.
+                                 "evidence": "이 문장은 이제 보관된다.",
+                                 "confidence": 0.7}])
         self.assertEqual(r["merged"]["edges"]["created"], 1, r)
-        hits = [w for w in r["warnings"] if "not stored on ATTACHES_TO" in w]
-        self.assertEqual(len(hits), 1, r["warnings"])
-        # 무엇이 어디로 갔는지까지 말해야 저작자가 다음 수를 안다.
-        self.assertIn("evidence", hits[0])
-        self.assertIn("record:t→concept:t", hits[0])
-        self.assertIn("ABOUT", hits[0])
-        # 보낸 것이 안 들어갔으면 그것이 partial 의 뜻이다.
-        self.assertTrue(r.get("partial"), r)
+        self.assertEqual([w for w in r["warnings"] if "not stored" in w], [])
+        self.assertFalse(r.get("partial"), r)
+        rows = self.store.run(
+            "MATCH (:Record)-[x:ATTACHES_TO]->(:Concept) "
+            "RETURN x.type AS t, x.evidence AS ev, x.confidence AS cf")
+        self.assertEqual(rows[0]["t"], "relates_to")
+        self.assertEqual(rows[0]["ev"], "이 문장은 이제 보관된다.")
+        self.assertAlmostEqual(float(rows[0]["cf"]), 0.7)
 
     def test_confidence_is_named_too_and_bridge_edges_are_covered(self):
         r = self._ingest_edges([{"from": "bridge:t", "to": "concept:t",

@@ -184,7 +184,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 15)   # v15 — Record 유효구간(W13)
+        self.assertEqual(eschema.SCHEMA_VERSION, 16)   # v16 — ATTACHES_TO 근거(E-G6)
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.

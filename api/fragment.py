@@ -894,16 +894,21 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 {"ecreated": str(edge.get("created") or "") or born()})
 
     # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여. 열을 가진 rel 은
-    # `EDGE_EVIDENCE_RELS`(스키마에서 파생) 다섯뿐이고, **모든 엣지 분기가 이 함수를
-    # 부른다** — 열이 없는 rel 은 빈 절을 돌려받으므로 쿼리는 그대로고, 대신 상류가
-    # 실어 보낸 값이 사라진다는 사실을 경고로 밝힌다.
+    # `EDGE_EVIDENCE_RELS`(스키마에서 파생 — CC 4종·ABOUT·v16 부터 ATTACHES_TO)이고,
+    # **모든 엣지 분기가 이 함수를 부른다** — 열이 없는 rel 은 빈 절을 돌려받으므로
+    # 쿼리는 그대로고, 대신 상류가 실어 보낸 값이 사라진다는 사실을 경고로 밝힌다.
     #
     # ⚠ 여기 경고가 없던 동안 CONNECTS·ATTACHES_TO·TYPED 는 근거를 **조용히** 버렸다.
     # GRAPH.md 는 record 엣지에 근거를 요구하는데 이 표면은 그것을 받지 않으므로,
     # 규율을 지킨 저작자가 아무 신호도 못 받고 문장을 잃었다. R1(미보관 필드는 버리지
     # 말고 경고)이 노드 경로에서만 닫혀 있었다:
     # [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
-    def _ev_set(rel_var: str, rel: str) -> tuple[str, dict]:
+    # (record 엣지는 v16 이 열을 줘서 경고 대상에서 저장 대상으로 옮겨 갔다 —
+    # 남는 무열 rel 은 CONNECTS·TYPED 둘이다.)
+    #
+    # ``prefix``: 쿼리에 이미 SET 절이 있는 분기(ATTACHES_TO 의 `SET r.type`)는
+    # ", " 를 넘겨 그 절에 잇는다 — SET 절 두 개를 이어 붙이는 방언 도박을 피한다.
+    def _ev_set(rel_var: str, rel: str, prefix: str = " SET ") -> tuple[str, dict]:
         ev, conf = edge.get("evidence"), edge.get("confidence")
         if rel not in EDGE_EVIDENCE_RELS:
             unkept = [n for n, v in (("evidence", ev), ("confidence", conf))
@@ -922,7 +927,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 p["conf"] = float(conf); sets.append(f"{rel_var}.confidence = $conf")
             except (TypeError, ValueError):
                 warnings.append(f"edge confidence not a number — ignored ({src}→{dst})")
-        return ((" SET " + ", ".join(sets)) if sets else ""), p
+        return ((prefix + ", ".join(sets)) if sets else ""), p
 
     # 개방층 우선(F1): 양 끝이 Entity 라우팅이면 알려진 타입명(relates_to 등)이어도
     # TYPED 로 간다 — Entity 테이블 간에는 레거시 rel 테이블이 존재하지 않는다.
@@ -1058,13 +1063,15 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         (dl, dp) = _end(dt)
-        _ev_set("r", "ATTACHES_TO")    # 열 없음 — 경고만
+        # v16 — 근거·신뢰도 저장(GRAPH.md 가 record 엣지에 요구하는 그 필드).
+        # 이미 있는 `SET r.type` 절에 잇는다(prefix=", ").
+        ev_set, ev_p = _ev_set("r", "ATTACHES_TO", prefix=", ")
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:Record), (b:{dl}) "
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t",
-            {"s": ksrc, "d": kdst, "t": etype, **op, **b_p})
+            f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t{ev_set}",
+            {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
