@@ -95,7 +95,15 @@ resource "azurerm_application_insights_standard_web_test" "internal_path_reaches
   request {
     url       = "https://api.vincs.io/internal/mcp/team-membership"
     http_verb = "POST"
-    body      = "e30=" # {} 의 base64. 서명이 없으므로 앱은 401 로 답한다
+    # ⚠ 여기는 **디코드된 값**을 쓴다. provider 가 쓸 때는 이 문자열을 그대로 넘기고
+    #   읽을 때는 base64 로 디코드해서 돌려주므로, base64 를 적으면 config 와 state 가
+    #   영영 안 맞고 매 plan 이 같은 변경을 제안한다(2026-09-01 실측: apply 직후
+    #   `body = jsonencode({}) -> "e30="`). 기능은 멀쩡한데 "plan 이 비었나"가 신호로
+    #   못 쓰이게 되고, 그게 이 디렉터리에서 가장 비싼 손실이다.
+    #
+    #   Azure 에는 여전히 e30= 가 저장되고 프로브는 통과한다 — 서명이 없으므로 앱이
+    #   401 로 답하고 본문에 unauthorized 가 있어 판별자가 성립한다(4/4 Passed).
+    body = "{}"
 
     header {
       name  = "Content-Type"
