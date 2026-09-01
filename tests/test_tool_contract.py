@@ -310,6 +310,54 @@ def test_identity_stamp_stays_off_the_read_tools():
     assert "target" not in out
 
 
+# ── 되돌릴 수 없는 도구는 되돌릴 수 있는 앞단계를 가리킨다 (2026-09-01) ───────
+# 정본: `vinc.canon.tool-response-disclosure` 의 "Destructive". 규칙 넷 중 마지막이
+# **사람이 고칠 수 있는 것은 이름으로 부른다**인데, 파괴적인 도구에서 그것은 "지우기
+# 전에 볼 수 있는 것"과 "대신 할 수 있는 되돌릴 수 있는 일"이다.
+#
+# 목록을 새로 만들지 않고 **주석표에서 유도한다**(`destructiveHint`) — 파괴적 도구가
+# 늘면 이 검사가 저절로 그것을 덮는다. 세 번째 목록을 만들면 그 목록이 낡는다.
+def _destructive() -> list[str]:
+    from vinc_mcp import tools as _t
+    return sorted(n for n, a in _t._ANNOTATIONS.items() if a.get("destructiveHint"))
+
+
+def test_the_annotation_table_still_marks_destructive_tools():
+    """유도의 전제 — 표가 비면 아래 검사가 **공허하게** 통과한다."""
+    names = _destructive()
+    assert len(names) >= 3, f"파괴적 도구가 {names} 뿐이다 — 주석표를 확인할 것"
+    for n in names:
+        assert n in SERVED, n
+
+
+def test_every_destructive_tool_names_a_cheaper_move_first():
+    """지우기 전에 볼 도구나, 되돌릴 수 있는 대안을 **이름으로** 부르는가.
+
+    ⚠ "irreversible 이라고 적혀 있는가"로 쓰면 공허하다 — 셋 다 이미 그렇게 적혀
+    있었고, 그러면서도 `vinc_merge_nodes` 는 옆에 있는 되돌릴 수 있는 절반
+    (`vinc_merge_reject`)을 한 번도 안 가리켰다(실측 2026-09-01). 경고는 무엇을
+    하라고 말하지 않는다."""
+    others = {t["name"] for t in TOOLS}
+    for name in _destructive():
+        desc = SERVED[name]["description"]
+        named = {o for o in others if o != name and o in desc}
+        assert named, f"{name}: 더 싼 앞단계도 되돌릴 수 있는 대안도 안 가리킨다"
+
+
+def test_the_irreversible_merge_points_at_the_reversible_half():
+    """이 짝은 특히 못 박는다 — 병합 도구 넷 중 셋은 서로를 가리키는데 **되돌릴 수
+    없는 하나만** 고아였다. 가장 위험한 자리가 가장 안 연결돼 있었다."""
+    d = SERVED["vinc_merge_nodes"]["description"]
+    assert "vinc_merge_reject" in d
+    assert "reversible" in d.lower()
+
+
+def test_delete_says_to_look_before_not_after():
+    """`deleted.edges` 는 사후 집계다. 그 값만 있고 사전 확인 경로가 없으면, 무엇이
+    함께 사라지는지는 사라진 뒤에야 알 수 있다."""
+    d = SERVED["vinc_delete"]["description"]
+    assert "vinc_neighbors" in d, "지우기 전에 볼 도구를 안 가리킨다"
+    assert "after the fact" in d, "사후 집계라는 것을 안 말한다"
 # ── 실패를 이름으로 부르는가 (2026-08-31) ────────────────────────────────────
 # 정본: [[decision:hide-implementation-preserve-evidence-surface-failure]] ·
 # [[concept:tool-response-disclosure]]. 규칙은 "구현은 숨기고, 근거는 남기고,
