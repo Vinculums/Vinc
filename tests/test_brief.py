@@ -423,6 +423,38 @@ class BriefRecordE2E(unittest.TestCase):
         self.assertEqual(out["node"]["id"], "record:embed-dim-split")
         self.assertEqual(out.get("fell_through", []), [])
 
+    def test_질문이_id_를_담고_있으면_랭킹을_거치지_않고_그_노드다(self):
+        """재측정 태스크 C 의 **실측 질의**는 id 를 그대로 담고 있었고
+        ("What is concept:silent-truncation connected to?"), 그런데도 긴 제목의
+        기록이 랭킹을 이겨 조용한 오답이 났다. 체인 arm v1.1 규칙(묻는 쪽이 이미
+        준 id 는 검색하지 않는다)의 내재화가 이 모양을 닫는다. 랭킹 자체는
+        그대로다 — id 없는 평문 질의는 위 특성화 검사가 지키는 열린 결정."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:silent-truncation", "type": "concept",
+             "title": "무음 절단", "domain": "mcp"},
+            {"id": "record:embed-dim-split", "type": "record", "domain": "eng",
+             "title": "the embedding dimension split is silent and connected to "
+                      "the namespace change"},
+        ]}, store=self.store)
+        out = self._brief("What is concept:silent-truncation connected to?")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "concept:silent-truncation")
+        self.assertEqual(out.get("resolved_via"), "id")
+        self.assertEqual(out["node"]["kind"], "concept")
+        # 직참조도 근거는 같은 꼴로 실린다.
+        self.assertIn("concept:silent-truncation", out["grounds"])
+
+    def test_질문의_id_가_안_열리면_밝히고_랭킹으로_간다(self):
+        """준 id 가 없는 노드면 조용히 다른 노드로 갈아타지 않는다 — 랭킹이 답을
+        내더라도 fell_through 가 그 id 의 실패를 실어 나른다(대체의 공개)."""
+        out = self._brief("concept:no-such-node agent test card")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "record:agent-test-card")
+        self.assertNotIn("resolved_via", out)
+        fell = out.get("fell_through", [])
+        self.assertEqual([f["id"] for f in fell], ["concept:no-such-node"])
+        self.assertIn("unknown node", fell[0]["note"])
+
     def test_아무것도_못_읽으면_읽지_못했다고_말한다(self):
         """전부 실패하면 status 는 none 으로 남지만, 무엇을 못 읽었는지는 남긴다 —
         '안 맞았다'와 '맞았는데 못 읽었다'는 다른 사건이고 호출부의 다음 수가 다르다."""

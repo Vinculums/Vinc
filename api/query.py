@@ -2322,7 +2322,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        경로로 열면 degree 를 0 으로 박아 "연결 0개 · → 3 나감"처럼 자기모순을 냈다.
        세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
 
-    반환: {executed, node, node_kind, title, one_liner, rev, updated_at, props,
+    반환: {executed, node, node_kind, title, domain, one_liner, rev, updated_at, props,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
                    items: [{id, title, domain, type, dir, evidence, confidence, note,
@@ -2339,7 +2339,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     근거: [[vinc.plan.mcp-agent-surface §6]]."""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,
-                  "one_liner": "", "props": {}, "excerpts": [], "arm": "none",
+                  "one_liner": "", "domain": "", "props": {}, "excerpts": [],
+                  "arm": "none",
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
                   "rev": 0, "updated_at": ""}
     owns = store is None
@@ -2363,6 +2364,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         rows = store.run(
             f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
             f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props, "
+            "c.domain AS domain, "
             + _track_cols("c"),
             # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
             # 그대로다(사용자가 준 값). 근거: [[vinc.plan.node-pk-namespacing]] §7
@@ -2376,6 +2378,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             base.update(executed=True,
                         node_kind="decision" if meta_label == "Decision" else "concept",
                         title=rows[0].get("title") or node,
+                        domain=rows[0].get("domain") or "",
                         one_liner=rows[0].get("ol") or "",
                         rev=rows[0].get("rev") or 0,
                         updated_at=rows[0].get("updated_at") or "",
@@ -2383,7 +2386,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
-                "RETURN e.title AS title, e.summary AS s, " + _track_cols("e"),
+                "RETURN e.title AS title, e.summary AS s, e.domain AS domain, "
+                + _track_cols("e"),
                 {"id": pkns.key(owner, node), "owner": owner})
             if not ep:
                 # Record — 의미층도 Episode 도 아닌 세 번째 실체. 위 ① 이 라벨을
@@ -2398,6 +2402,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         "MATCH (r:Record) WHERE r.record_id = $id "
                         "AND r.owner_id = $owner "
                         "RETURN r.title AS title, r.props AS props, "
+                        "r.domain AS domain, "
                         + _track_cols("r"),
                         {"id": pkns.key(owner, node), "owner": owner})
                     if rc:
@@ -2406,6 +2411,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         # one_liner → props 폴백이 그것을 집는다.
                         base.update(executed=True, node_kind="record",
                                     title=rc[0].get("title") or node,
+                                    domain=rc[0].get("domain") or "",
                                     rev=rc[0].get("rev") or 0,
                                     updated_at=rc[0].get("updated_at") or "",
                                     props=_props_to_obj(rc[0].get("props")))
@@ -2420,6 +2426,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                 return base
             base.update(executed=True, node_kind="episode",
                         title=ep[0].get("title") or node,
+                        domain=ep[0].get("domain") or "",
                         one_liner=ep[0].get("s") or "",
                         rev=ep[0].get("rev") or 0,
                         updated_at=ep[0].get("updated_at") or "")
@@ -2643,6 +2650,49 @@ _BRIEF_MIN_PROP_BODY = 12     # props 값을 문장으로 볼 최소 길이 — 
 _BRIEF_FALLTHROUGH = 3        # 1위가 안 열릴 때 시도할 후보 수 상한(왕복 비용 유계)
 
 
+#: 질문 속 노드 id — brief 직참조의 탐지 대상. bridge 는 node_context 가 읽지
+#: 못해 넣으면 항상 실패해 fell_through 소음만 늘므로 뺀다(랭킹 경로가 받는다).
+#: 끝 문자를 영숫자로 조여 문장부호(`concept:foo.` 의 마침표)가 id 에 안 붙는다.
+_BRIEF_ID_RE = re.compile(
+    r"\b(?:concept|record|decision|episode):[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+
+
+def _brief_query_ids(query: str) -> list[str]:
+    """질문에 그대로 들어 있는 노드 id — 등장 순서, 중복 제거."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in _BRIEF_ID_RE.findall(query or ""):
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
+    """확정된 노드의 답변 재료를 base 에 채운다 — 랭킹 경로와 id 직참조 경로가
+    같은 꼴을 내도록 한 자리로 모은 꼬리. cand 는 검색 후보(랭킹 경로) 또는
+    {"id": ...} 하나(직참조 경로)다."""
+    nid = str(cand.get("id") or "")
+    base["node"] = {"id": nid,
+                    "title": ctx.get("title") or cand.get("title") or nid,
+                    "domain": cand.get("domain") or ctx.get("domain") or "",
+                    "kind": ctx.get("node_kind") or cand.get("kind") or ""}
+    body = _brief_body(ctx)
+    base["one_liner"] = body["text"]
+    base["body_src"] = body["src"]
+    base["body_cite"] = body["cite"]
+    base["excerpts"] = list(ctx.get("excerpts") or [])
+    links = ctx.get("links") if isinstance(ctx.get("links"), dict) else {}
+    items = list(links.get("items") or [])
+    # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
+    # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
+    items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
+                               0 if it.get("evidence") else 1))
+    base["links"] = {**links, "items": items}
+    base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
+    return base
+
+
 def _brief_int(v) -> int:
     try:
         return int(v or 0)
@@ -2727,14 +2777,18 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, cfg=None, store=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
-    search 로 후보를 찾아 해소하고, 확정되면 node_context 로 본문·발췌·관계를 한 번에
-    붙인다. 확정이 안 되면 status="choose" 로 후보를 돌려주지 **추측하지 않는다**.
+    질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
+    resolved_via="id"). 아니면 search 로 후보를 찾아 해소하고, 확정되면
+    node_context 로 본문·발췌·관계를 한 번에 붙인다. 확정이 안 되면
+    status="choose" 로 후보를 돌려주지 **추측하지 않는다**.
 
     반환: {kind, executed, query, status: resolved|choose|none, node:{id,title,
            domain,kind}, one_liner, body_src, body_cite, excerpts:[...],
            links:{degree,out,in,attached,items,truncated} (items 는 evidence 불리언과
-           evidence_text 문장을 함께 싣는다), candidates:[...],
-           grounds:[id...]}. 근거: [[vinc.plan.mcp-agent-surface §4]]"""
+           evidence_text 문장을 함께 싣는다), candidates:[...], grounds:[id...],
+           resolved_via("id" — 직참조로 확정된 경우에만),
+           fell_through/unreadable(안 열린 후보·질문 속 id 의 공개)}.
+    근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
                   "status": "none", "candidates": [], "grounds": []}
@@ -2745,6 +2799,26 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         base["note"] = "no reachable store"
         return base
     try:
+        # 질문이 노드 id 를 그대로 담고 있으면 검색·랭킹을 거치지 않고 그 노드를
+        # 연다 — 재측정 체인 arm 의 v1.1 수정("묻는 쪽이 이미 준 id 를 검색하는
+        # 것은 낭비")을 도구 안으로 옮긴 것. 태스크 C 가 잰 실패가 정확히 이
+        # 모양이었다: id 가 질문에 있는데 긴 제목의 기록이 랭킹을 이겨 **조용한
+        # 오답**이 났다. 랭킹 자체는 여기서 건드리지 않는다 — id 없는 질의의
+        # 동점 처리(제목 언어 갭)는 열린 결정으로 남는다:
+        # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
+        unread_ids: list[dict] = []
+        for qid in _brief_query_ids(query)[:_BRIEF_FALLTHROUGH]:
+            got = node_context(owner=owner, node=qid, limit=max_excerpts,
+                               with_evidence=True, store=store)
+            if got.get("executed"):
+                base["executed"] = True
+                base["status"] = "resolved"
+                base["resolved_via"] = "id"
+                return _brief_material(base, {"id": qid}, got)
+            # 준 id 가 안 열리면 **밝히고** 랭킹으로 간다 — 조용히 다른 노드를
+            # 답하면 직참조가 지키려는 성질(묻는 노드를 답한다)을 스스로 깬다.
+            unread_ids.append({"id": qid,
+                               "note": got.get("note") or ("node not found: " + qid)})
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store)
         base["executed"] = bool(res.get("executed"))
@@ -2755,6 +2829,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
         base["status"] = status
+        if unread_ids and status in ("choose", "none"):
+            base["unreadable"] = list(unread_ids)
         if status == "choose":
             base["candidates"] = [{
                 "id": h.get("id") or "",
@@ -2776,7 +2852,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 노드"가 아니라 "열리기만 하는 노드"를 답하게 되고, 그것은 이 도구가 임의
         # 임계값을 거부하며 지키려던 성질을 정반대로 뒤집는다.
         hit = ctx = None
-        unread: list[dict] = []
+        # 질문 속 id 가 안 열렸던 사실도 여기 실려 폴스루와 같은 대접을 받는다 —
+        # 최종 답이 나오면 fell_through 로, 전멸이면 unreadable 로.
+        unread: list[dict] = list(unread_ids)
         for cand in picked[:_BRIEF_FALLTHROUGH]:
             cid = str(cand.get("id") or "")
             if not cid:
@@ -2795,27 +2873,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             if unread:
                 base["unreadable"] = unread
             return base
-        nid = str(hit.get("id") or "")
         if unread:
             base["fell_through"] = unread
-        base["node"] = {"id": nid,
-                        "title": ctx.get("title") or hit.get("title") or nid,
-                        "domain": hit.get("domain") or "",
-                        "kind": ctx.get("node_kind") or hit.get("kind") or ""}
-        body = _brief_body(ctx)
-        base["one_liner"] = body["text"]
-        base["body_src"] = body["src"]
-        base["body_cite"] = body["cite"]
-        base["excerpts"] = list(ctx.get("excerpts") or [])
-        links = ctx.get("links") if isinstance(ctx.get("links"), dict) else {}
-        items = list(links.get("items") or [])
-        # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
-        # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
-        items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
-                                   0 if it.get("evidence") else 1))
-        base["links"] = {**links, "items": items}
-        base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
-        return base
+        return _brief_material(base, hit, ctx)
     finally:
         if owns:
             store.close()
