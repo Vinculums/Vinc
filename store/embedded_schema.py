@@ -208,7 +208,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
 #: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON
@@ -308,14 +308,21 @@ def migration_statements(from_version: int) -> list[str]:
         # (전 행에 '오늘부터 유효'를 찍으면 무효화 질의가 마이그레이션 날짜에 몰린다).
         stmts.append("ALTER TABLE Record ADD valid_from STRING DEFAULT ''")
         stmts.append("ALTER TABLE Record ADD valid_until STRING DEFAULT ''")
+    if from_version < 16:  # v16 — Record 부착 근거(E-G6 확장). GRAPH.md 는 record
+        # 엣지에 근거를 요구하는데 ATTACHES_TO 에 열이 없어, 저작된 문장이 "경고하고
+        # 버림"(#117)까지만 갔다. 다중 끝점쌍 rel 의 ALTER 는 v14 의
+        # `ATTACHES_TO ADD created` 전례 그대로다.
+        # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+        stmts.append("ALTER TABLE ATTACHES_TO ADD evidence STRING DEFAULT ''")
+        stmts.append("ALTER TABLE ATTACHES_TO ADD confidence DOUBLE DEFAULT 0.0")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
 #   concepts: (Concept)-[:PREREQUISITE_OF|DERIVES_FROM|RELATED_TO]->(Concept)
 #   bridges:  (Bridge)-[:CROSSES]->(Domain) · (Bridge)-[:CONNECTS {role}]->(Concept)
-# E-G6 — 관계 증거·신뢰도(선택 속성). CC 4종 + ABOUT 에 부여해 관계 출처 추적을
-# 노드(source_file)에서 엣지 수준으로 내린다. 상류가 안 보내면 기본값('', 0.0)이라
-# 저작 부담을 강제하지 않는다. v3 에서 ALTER ADD([[vinc.spec.dataplane §7]]).
+# E-G6 — 관계 증거·신뢰도(선택 속성). CC 4종 + ABOUT(v3) + ATTACHES_TO(v16) 에
+# 부여해 관계 출처 추적을 노드(source_file)에서 엣지 수준으로 내린다. 상류가 안
+# 보내면 기본값('', 0.0)이라 저작 부담을 강제하지 않는다.
 _EDGE_EVIDENCE_COLS: list[tuple[str, str]] = [("evidence", "STRING"), ("confidence", "DOUBLE")]
 
 # v14 — **엣지 출생**(`created`). **저작된 관계에만** 붙인다: CROSSES·IN_DOMAIN·
@@ -357,7 +364,8 @@ _REL_TABLES: list[tuple] = [
     #   틀리다** — 그래도 되돌리지 않는다(type 열이 이미 보존한다):
     #   [[record:rel-tables-take-multiple-endpoint-pairs]].
     ("INHERITS_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
-    ("ATTACHES_TO", "Record", _SEMANTIC_LABELS, [("type", "STRING")]),
+    ("ATTACHES_TO", "Record", _SEMANTIC_LABELS,
+     [("type", "STRING")] + list(_EDGE_EVIDENCE_COLS)),   # evidence 는 v16
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
     # `about`(api/fragment._EC_EDGES)이 유일 쓰기 경로. 신규 rel 테이블은 매 부팅
     # 멱등 DDL 재실행이 자동 생성하므로 마이그레이션 스텝 불요.

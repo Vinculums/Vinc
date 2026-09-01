@@ -355,8 +355,9 @@ class BriefRecordE2E(unittest.TestCase):
         self.assertIn("concept:call-efficiency", out["grounds"])
 
     def test_기록은_근거_없음이_사실이다(self):
-        """ATTACHES_TO 에는 evidence 열이 없다(쓰기 계약이 안 받는다). False 는
-        결측이 아니라 사실이므로 with_evidence 를 켜도 빈 문장이 온다."""
+        """근거가 저작되지 않은 부착은 False 로 답한다 — 결측이 아니라 사실이므로
+        with_evidence 를 켜도 빈 문장이 온다. (v16 부터 ATTACHES_TO 에 열이 있어
+        저작하면 실린다 — 그 경로는 test_fragment_edge_tenancy 가 지킨다.)"""
         it = self._brief("agent test card")["links"]["items"][0]
         self.assertFalse(it["evidence"])
         self.assertEqual(it["evidence_text"], "")

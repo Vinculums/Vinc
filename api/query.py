@@ -2490,18 +2490,19 @@ def _record_links(store, node: str, *, owner: str,
     수 없다. `dir` 은 'out' 으로 낸다 — 엣지가 Record 에서 나가기 때문이고, 화면의
     "나감" 줄과 뜻이 같다.
 
-    ATTACHES_TO 는 evidence 열이 없다(쓰기 계약이 concept↔concept 과 about 에만
-    받는다). 그래서 `evidence` 는 항상 False 이고, 그것은 결측이 아니라 사실이다 —
-    [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]].
+    evidence/confidence 는 v16 부터 ATTACHES_TO 실열이다 — 그전에는 열이 없어
+    항상 False 로 냈고 그것이 결측이 아니라 사실이었다
+    ([[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
     실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
     empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
              "truncated": False, "executed": False}
     try:
         rows = store.run(" UNION ALL ".join(
-            f"MATCH (rc:Record)-[:ATTACHES_TO]->(o:{ol}) "
+            f"MATCH (rc:Record)-[r:ATTACHES_TO]->(o:{ol}) "
             "WHERE rc.record_id = $id AND rc.owner_id = $owner "
             "AND o.owner_id = $owner "
-            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "r.evidence AS ev, r.confidence AS conf "
             for ol, opk in _SEMANTIC_PK.items()),
             {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
@@ -2509,9 +2510,10 @@ def _record_links(store, node: str, *, owner: str,
     items = [{
         "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
         "domain": r.get("domain") or "", "type": "ATTACHES_TO", "dir": "out",
-        "evidence": False, "confidence": 0.0, "note": "",
+        "evidence": bool((r.get("ev") or "").strip()),
+        "confidence": float(r.get("conf") or 0.0), "note": "",
         "valid_from": "", "valid_until": "",
-        **({"evidence_text": ""} if with_evidence else {}),
+        **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
@@ -2564,8 +2566,9 @@ def _node_links(store, node: str, *, owner: str,
     attached: list[dict] = []
     try:
         attached = store.run(
-            # 부착 3종 — 각 rel 테이블의 열이 달라 evidence/confidence 는 ABOUT 만
-            # 투영하고 나머지는 상수로 맞춘다(UNION ALL 은 컬럼 형태가 같아야 한다).
+            # 부착 3종 — 각 rel 테이블의 열이 달라 evidence/confidence 는 ABOUT ·
+            # ATTACHES_TO(v16)만 실열 투영하고 CONNECTS 는 상수로 맞춘다(UNION ALL 은
+            # 컬럼 형태가 같아야 한다).
             # raw_props: Record 카드의 본문(props.note 또는 props.one_liner)이 여기
             # 있다 — 여태 id/title/domain 만 주고 그 문장은 버렸다(no-llm-chat 연구
             # §3.3, I6 미개통 원인). 나머지 둘은 빈 문자열로 맞춘다.
@@ -2583,11 +2586,11 @@ def _node_links(store, node: str, *, owner: str,
             "'ABOUT' AS type, 'att' AS dir, r.evidence AS ev, r.confidence AS conf, "
             "'' AS raw_props, " + _VALIDITY_EMPTY + " "
             "UNION ALL "
-            f"MATCH (rc:Record)-[:ATTACHES_TO]->(c:{_sl}) "
+            f"MATCH (rc:Record)-[r2:ATTACHES_TO]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND rc.owner_id = $owner "
             "RETURN rc.record_id AS id, rc.title AS title, rc.domain AS domain, "
-            "'ATTACHES_TO' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, "
-            "rc.props AS raw_props, " + _validity_cols("rc"),
+            "'ATTACHES_TO' AS type, 'att' AS dir, r2.evidence AS ev, "
+            "r2.confidence AS conf, rc.props AS raw_props, " + _validity_cols("rc"),
             {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
         attached = []   # 부착 축만 강등 — 개념 관계는 이미 얻었다
@@ -2818,8 +2821,11 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             store.close()
 
 
-# edge_context 허용 관계 — E-G6 evidence/confidence 보유 5종만. etype 은 Cypher 에
+# edge_context 허용 관계 — 흐름 뷰가 선으로 그리는 5종. etype 은 Cypher 에
 # 보간되므로 **화이트리스트 검증이 보안 경계다**(임의 라벨 주입 차단).
+# ATTACHES_TO 도 v16 부터 evidence 열을 갖지만 여기 없는 것은 의도다 — 부착은
+# 흐름 뷰의 선이 아니라 상세 패널 카드로 그려지고, 그 근거는 node_context 의
+# links.items[].evidence_text 가 이미 나른다. 선으로 승격할 때 함께 열 것.
 _EDGE_CTX_TYPES = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM",
                    "RELATED_TO", "ABOUT")
 

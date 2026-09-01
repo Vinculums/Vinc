@@ -1188,7 +1188,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "15")   # v15 — Record 유효구간(W13)
+        self.assertEqual(rows[0]["v"], "16")   # v16 — ATTACHES_TO 근거(E-G6)
         # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
         # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
         store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "
@@ -1240,6 +1240,15 @@ class EmbeddedE2E(unittest.TestCase):
         vv = store.run("MATCH (r:Record) WHERE r.record_id='record:v15' "
                        "RETURN r.valid_from AS vf, r.valid_until AS vu")
         self.assertEqual((vv[0]["vf"], vv[0]["vu"]), ("2026-01", "2026-08"))
+        # v16 — ATTACHES_TO 근거·신뢰도 열이 존재해 SET/조회가 동작한다(E-G6 확장).
+        store.run("MATCH (r:Record {record_id:'record:v15'}), "
+                  "(c:Concept {concept_id:'x'}) "
+                  "MERGE (r)-[a:ATTACHES_TO]->(c) "
+                  "SET a.type='supports', a.evidence='근거 문장', a.confidence=0.8")
+        av = store.run("MATCH (:Record)-[a:ATTACHES_TO]->(:Concept) "
+                       "RETURN a.evidence AS e, a.confidence AS c")
+        self.assertEqual(av[0]["e"], "근거 문장")
+        self.assertAlmostEqual(float(av[0]["c"]), 0.8)
         store.close()
 
     def test_hub_pull_delta_serves_data_without_local_domain_selection(self):
