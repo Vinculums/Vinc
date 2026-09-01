@@ -29,28 +29,6 @@ resource "azurerm_application_insights" "vinc_uptime" {
 }
 
 # __generated__ by Terraform from "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.ContainerRegistry/registries/vincacr"
-resource "azurerm_container_registry" "vincacr" {
-  admin_enabled                                = true
-  anonymous_pull_enabled                       = false
-  azuread_authentication_as_arm_policy_enabled = true
-  data_endpoint_enabled                        = false
-  encryption                                   = []
-  export_policy_enabled                        = true
-  location                                     = "koreacentral"
-  name                                         = "vincacr"
-  network_rule_bypass_for_tasks_enabled        = false
-  network_rule_bypass_option                   = "AzureServices"
-  network_rule_set                             = []
-  public_network_access_enabled                = true
-  quarantine_policy_enabled                    = false
-  resource_group_name                          = "vincsRG"
-  retention_policy_in_days                     = 0
-  role_assignment_mode                         = "LegacyRegistryPermissions"
-  sku                                          = "Basic"
-  tags                                         = {}
-  trust_policy_enabled                         = false
-}
-
 # __generated__ by Terraform
 resource "azurerm_mysql_flexible_server" "vinc_mysql01" {
   administrator_login               = "vincadmin"
@@ -122,74 +100,7 @@ resource "azurerm_container_app_environment" "vinc_cae" {
 }
 
 # __generated__ by Terraform
-resource "azurerm_storage_account" "vincstorage01" {
-  access_tier                       = "Hot"
-  account_kind                      = "StorageV2"
-  account_replication_type          = "LRS"
-  account_tier                      = "Standard"
-  allow_nested_items_to_be_public   = false
-  allowed_copy_scope                = null
-  cross_tenant_replication_enabled  = false
-  default_to_oauth_authentication   = false
-  dns_endpoint_type                 = "Standard"
-  edge_zone                         = null
-  https_traffic_only_enabled        = true
-  infrastructure_encryption_enabled = false
-  is_hns_enabled                    = false
-  large_file_share_enabled          = false
-  local_user_enabled                = true
-  location                          = "koreacentral"
-  min_tls_version                   = "TLS1_0"
-  name                              = "vincstorage01"
-  nfsv3_enabled                     = false
-  provisioned_billing_model_version = null
-  public_network_access_enabled     = true
-  queue_encryption_key_type         = "Service"
-  resource_group_name               = "vincsRG"
-  sftp_enabled                      = false
-  shared_access_key_enabled         = true
-  table_encryption_key_type         = "Service"
-  tags                              = {}
-  blob_properties {
-    change_feed_enabled      = false
-    default_service_version  = null
-    last_access_time_enabled = false
-    versioning_enabled       = false
-  }
-  network_rules {
-    bypass                     = ["None"]
-    default_action             = "Allow"
-    ip_rules                   = []
-    virtual_network_subnet_ids = []
-  }
-  share_properties {
-    retention_policy {
-      days = 14
-    }
-  }
-}
-
 # __generated__ by Terraform
-resource "azurerm_static_web_app" "vinc_site" {
-  # ⚠ 지우지 말 것. 리포 연결(branch/url/token)은 셋이 함께여야 하는데 token 이
-  # 시크릿이라 설정에 못 둔다. 이 블록이 없으면 apply 가 살아 있는 GitHub 연결을
-  # null 로 밀어 **사이트 배포를 끊는다**(2026-08-30 plan 에서 실제로 그렇게 나왔다).
-  lifecycle {
-    ignore_changes = [repository_branch, repository_url, repository_token]
-  }
-
-  app_settings                       = {}
-  configuration_file_changes_enabled = true
-  location                           = "eastasia"
-  name                               = "vinc-site"
-  preview_environments_enabled       = true
-  public_network_access_enabled      = true
-  resource_group_name                = "vincsRG"
-  sku_size                           = "Standard"
-  sku_tier                           = "Standard"
-  tags                               = {}
-}
-
 # __generated__ by Terraform from "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.OperationalInsights/workspaces/workspace-vincssM9K"
 resource "azurerm_log_analytics_workspace" "vincs" {
   allow_resource_only_permissions         = true
