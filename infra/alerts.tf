@@ -221,3 +221,53 @@ resource "azurerm_monitor_metric_alert" "functional" {
     action_group_id = local.action_group_id
   }
 }
+
+# ── 되돌릴 수 없는 것 하나에만 감시가 없었다 ────────────────────────────────
+# 2026-09-02 실측: 이 리소스 그룹의 비용 벡터 중 **유일하게 되돌릴 수 없는 것**이
+# MySQL 스토리지 자동 증가인데, 그것만 경보가 없었다. 위 넷은 전부 가용성이고,
+# 가용성 사고는 고치면 원상복구된다. 이건 아니다:
+#
+#   auto-grow 는 조용히 터진다        → 알림이 없다
+#   늘어난 스토리지는 못 줄인다        → 서버를 다시 만들지 않는 한
+#   행을 지워도 요금은 안 내려간다      → 되돌리는 행위 자체가 없다
+#
+# 그래서 이 하나는 "고장을 알리는 경보"가 아니라 **되돌릴 수 없는 사건을 되돌릴 수
+# 있는 경고로 바꾸는 장치**다. 성격이 달라서 severity 도 다르다.
+#
+# 왜 60인가. 같은 날 실측한 storage_percent 7일 최대가 **3.00** 이다(20GB 중 0.64GB,
+# 여유 30배). 3에서 60까지는 지금 증가 속도로 몇 주가 걸리므로, 60은 "곧 터진다"가
+# 아니라 "이제 사람이 볼 시간이 있다"는 뜻이다. 90으로 잡으면 여유가 며칠로 줄고,
+# 30으로 잡으면 지금 당장 울린다.
+#
+# ⚠ 증가원 자체는 이미 다 잡혀 있다 — 계정 앱의 시간당 purge 크론이 세션·토큰·
+# 대기구독자·내린 팩 본문을 수거하고, 사이드카가 툼스톤을 일 1회 수거한다(라이브
+# 로그로 확인). 그러니 이것은 밀린 청소의 대체물이 아니라, 청소가 언젠가 조용히
+# 멈췄을 때 그 사실이 드러나는 자리다.
+# 근거: [[record:the-unbounded-growers-are-already-reaped-what-is-missing-is-the-tripwire]]
+#
+# severity 2 인 이유: 1은 "제품이 안 된다"에 쓴다(위 넷). 이건 지금 아무것도 안
+# 망가진 상태에서 몇 주 뒤를 경고하는 것이라 같은 급으로 울리면 안 된다 — 1이
+# 흔해지면 1이 무의미해진다.
+resource "azurerm_monitor_metric_alert" "db_storage_ratchet" {
+  name                = "db-storage-approaching-autogrow"
+  resource_group_name = var.resource_group_name
+  scopes              = [azurerm_mysql_flexible_server.vinc_mysql01.id]
+  description         = "MySQL 스토리지가 60% 를 넘었다 — auto-grow 는 되돌릴 수 없다(늘어난 용량은 서버 재생성 없이는 못 줄이고, 행을 지워도 요금이 안 내려간다). 지금 정리하면 원복 가능한 유일한 창이다."
+  severity            = 2
+  frequency           = "PT15M"
+  window_size         = "PT1H"
+  auto_mitigate       = true
+
+  criteria {
+    metric_namespace = "Microsoft.DBforMySQL/flexibleServers"
+    metric_name      = "storage_percent"
+    # Maximum 이다. Average 로 재면 하루 대부분이 낮은 값이라 스파이크를 못 본다.
+    aggregation = "Maximum"
+    operator    = "GreaterThan"
+    threshold   = 60
+  }
+
+  action {
+    action_group_id = local.action_group_id
+  }
+}
