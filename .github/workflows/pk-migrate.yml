@@ -1,0 +1,210 @@
+# PK 네임스페이싱 이관 — 노드 물리 키를 `slug` 에서 `owner\x1fslug` 로 옮긴다.
+#
+# 처방과 순서의 정본은 Vinculums/Vinc#136 과 `scripts/migrate_pk_namespacing.py`
+# 머리주석이다. 이 파일은 그 절차를 **배포 신원으로** 돌리는 자리일 뿐이고, 판정을
+# 여기 옮겨 적지 않는다 — 두 벌이 되면 둘이 다른 것을 말한다.
+#
+# 왜 워크플로인가: 이관에 필요한 세 동작(공유 스냅샷·파일 읽기쓰기·컨테이너앱 env
+# 교체)이 전부 쓰기 권한이다. 유지보수자의 로컬 `az` 는 Reader 전용(`vinc-agent-reader`)
+# 이라 어느 것도 못 한다. 쓰기를 가진 신원은 배포가 쓰는 OIDC 주체 하나뿐이다.
+#
+# ⚠ 이 워크플로는 **자동으로 돌지 않는다.** push 트리거가 없고 apply 는 확인 문자열을
+# 요구한다. 라이브 그래프 DB 를 통째로 다시 짓는 작업이다.
+name: pk-migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "measure = 재기만 한다(무중단) · apply = 이관하고 허브를 갈아탄다(중단)"
+        type: choice
+        options: [measure, apply]
+        default: measure
+      confirm:
+        description: "apply 일 때만: 정확히 MIGRATE 라고 적을 것"
+        type: string
+        default: ""
+
+# hub-deploy 와 **같은 줄에 선다.** 그룹 키가 같아야 이관 도중 배포가 끼어들지 못한다.
+# (hub-deploy 의 그룹은 github.workflow = "hub-deploy" 로 풀린다.)
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP: "--name vinc-hub -g vincsRG"
+  ACCOUNT: vincstorage01
+  SHARE: hub-data
+  SRC: db.recovered6      # 현 VINC_DATA_DIR 의 파일명
+  DST: db.pkns            # 이관본. **원본을 덮지 않는다** — 롤백이 곧 원본이다
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # apply 는 사람이 한 번 더 말해야 한다. 드롭다운만으로는 오조작이 너무 싸다.
+      - name: Guard
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.mode }}" = "apply" ] && [ "${{ inputs.confirm }}" != "MIGRATE" ]; then
+            echo "::error::apply 하려면 confirm 에 MIGRATE 를 적을 것" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # ci.yml 과 같은 목록. 여기서 빠지면 스토어를 못 연다.
+      - run: pip install ladybug==0.18.0 argon2-cffi pyyaml pypdf
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Azure Files 데이터 평면은 Entra 인증(--auth-mode login)을 받지 않는다 — 계정 키나
+      # SAS 뿐이다. 그래서 제어 평면으로 키를 꺼낸다. 이 호출이 막히면 역할이 모자란
+      # 것이고, 조용히 다른 길로 새는 것보다 여기서 이름을 대고 죽는 편이 낫다.
+      - name: Storage key
+        run: |
+          set -euo pipefail
+          if ! key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG \
+                     --query "[0].value" -o tsv 2>/dev/null) || [ -z "$key" ]; then
+            echo "::error::스토리지 계정 키를 못 읽는다 — 배포 주체에 listKeys 권한이 없다." >&2
+            echo "필요 역할: Storage Account Contributor (또는 Contributor) on vincstorage01" >&2
+            exit 1
+          fi
+          echo "::add-mask::$key"
+          echo "AZ_KEY=$key" >> "$GITHUB_ENV"
+
+      # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
+      # measure 는 이 단계를 건너뛴다(무중단). apply 가 내려야 하는 이유는 배포와
+      # 같지 않다: 배포는 최종 스냅샷을 볼륨에 앉히려고 내리지만, 여기서는 **이관 중
+      # 들어온 쓰기가 통째로 버려지기 때문**이다. 이관본은 스냅샷 시점의 사본이고
+      # 그 뒤 원본에 쌓인 것은 갈아탄 순간 안 보인다.
+      - name: Stop the hub
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
+          for rev in $actives; do
+            echo "deactivating: $rev"
+            az containerapp revision deactivate $APP --revision "$rev" --output none
+          done
+          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
+          # 활성 플래그가 아니라 **살아 있는 레플리카**를 기다린다(hub-deploy 와 같은 이유).
+          gone=0
+          for i in $(seq 1 20); do
+            act=$(az containerapp revision list $APP --query "[?properties.active] | length(@)" -o tsv)
+            reps=$(az containerapp revision list $APP --query "[].properties.replicas" -o tsv 2>/dev/null \
+                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
+            echo "  active=$act replicas=$reps"
+            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
+            sleep 10
+          done
+          [ "$gone" = "1" ] || { echo "::error::레플리카가 사라지지 않았다 — 이관을 시작하지 않는다." >&2; exit 1; }
+          sleep 10
+          echo "레플리카 0 확인"
+
+      # 스냅샷을 뜨고 거기서 받는다. 라이브 파일을 직접 열지 않는다 — SMB 위 임베디드
+      # DB 를 직접 read-write 한 것이 하드다운 4회의 공통 원인이다.
+      # (서버측 복사는 FileLockConflict 로 거절된다. 스냅샷은 그 잠금을 우회한다.)
+      - name: Snapshot and download
+        run: |
+          set -euo pipefail
+          snap=$(az storage share snapshot --name "$SHARE" \
+                 --account-name "$ACCOUNT" --account-key "$AZ_KEY" \
+                 --query snapshot -o tsv)
+          echo "snapshot: $snap"
+          mkdir -p work
+          az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
+            --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
+          # WAL 이 있으면 같이 받는다 — 없으면 재생을 건너뛸 뿐이라 실패가 아니다.
+          if az storage file download --share-name "$SHARE" --path "$SRC.wal" --dest "work/$SRC.wal" \
+             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none 2>/dev/null; then
+            echo "WAL 동봉"
+          else
+            echo "WAL 없음"
+          fi
+          ls -la work
+
+      # 재는 것이 먼저다. ⚠ "슬러그 중복 소유 0" 을 "충돌 없음"으로 읽지 말 것 —
+      # 엔진이 라벨별 PK 유일성을 강제하므로 단일 스토어에서는 늘 0이다.
+      # 판정 근거는 scripts/measure_pk_collisions.py 머리주석에 있다.
+      - name: Measure
+        run: |
+          set -euo pipefail
+          python scripts/measure_pk_collisions.py --data-dir "work/$SRC" --json | tee work/measure.json
+
+      # 예행은 apply 모드에서도 **먼저** 돈다. 검증이 실패하면 스크립트가 대상을 지우므로
+      # 반쯤 이관된 것이 남지 않는다.
+      - name: Dry run
+        run: |
+          set -euo pipefail
+          python scripts/migrate_pk_namespacing.py --data "work/$SRC" --out "work/$DST" --json \
+            | tee work/dryrun.json
+
+      - name: Apply and upload
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          rm -rf "work/$DST"          # --out 은 없는 경로여야 한다
+          python scripts/migrate_pk_namespacing.py --data "work/$SRC" --out "work/$DST" --apply --json \
+            | tee work/apply.json
+          az storage file upload --share-name "$SHARE" --source "work/$DST" --path "$DST" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
+          echo "업로드 완료: //$SHARE/$DST (원본 $SRC 는 그대로 — 롤백이 곧 그것이다)"
+
+      # 데이터 디렉터리와 플래그는 **한 리비전에서 같이 바뀌어야 한다.** 따로 바꾸면
+      # 그 사이 리비전이 이관본을 구 규약으로 읽거나 원본을 신 규약으로 읽는다.
+      - name: Switch the hub over
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          if ! az containerapp update $APP \
+               --set-env-vars "VINC_DATA_DIR=/data/$DST" "VINC_PK_NAMESPACED=on" --output none; then
+            echo "::error::env 교체 실패 — **허브는 지금 내려가 있다.**" >&2
+            echo "데이터는 안전하다(원본 $SRC 무변). 되살리려면 구 이미지로 새 리비전을 만들 것:" >&2
+            prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
+            echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
+            echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
+            exit 1
+          fi
+          latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          echo "latest revision: $latest"
+          for i in $(seq 1 30); do
+            st=$(az containerapp revision show $APP --revision "$latest" \
+                 --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
+            echo "  state: $st"
+            case "$st" in Running|RunningAtMaxScale) exit 0 ;; esac
+            sleep 15
+          done
+          echo "::error::새 리비전이 기동하지 못했다 — 허브는 내려가 있다. 되돌리려면 VINC_DATA_DIR 을 /data/$SRC 로, VINC_PK_NAMESPACED 를 off 로 되돌릴 것." >&2
+          exit 1
+
+      # 살아 있음이 아니라 기능을 본다 — 세 번의 기능 장애 때 /health 는 셋 다 200 이었다.
+      - name: Probe
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+            -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -c 400
+          echo
+          echo "⚠ 완료 판정은 이것이 아니다. 개인 주제로 팩을 만들어 팀으로 불러오고"
+          echo "  merged.nodes.created 가 0 이 아니며 id_conflicts 가 빈지 볼 것 (#136)."
+          echo "  문서 수를 세면 안 된다 — 그게 이 고장이 통과했던 이유다."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pk-migrate-${{ inputs.mode }}
+          path: work/*.json
