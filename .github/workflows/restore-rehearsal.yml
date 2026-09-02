@@ -104,6 +104,19 @@ jobs:
           # 이전 런과의 대조는 사람이 한다 — 직전 런 로그의 카운트 표와 눈으로 비교.
           python -X utf8 scripts/restore_rehearsal_check.py restored/db
 
+      # 같은 사본으로 두 번째 질문에 답한다: **이 파일은 내용만큼 큰가.**
+      # 스냅샷은 매 더러운 60초마다 스토어를 통째로 SMB 로 미므로 파일 크기가 곧
+      # 트랜잭션량이고, 그것이 3주 만에 3.5배가 됐다(16k → 105k/일, 스냅샷 1회
+      # 63MB → 167MB). 내용은 그만큼 안 컸다 — 문서 197건·청크 약 1,500개다.
+      # 논리 재구축 전후의 크기 비교만이 "죽은 공간"과 "진짜 내용"을 가른다.
+      # 여기 붙이는 이유는 재료가 이미 여기 있어서다: 스냅샷도 사본도 이 잡이 떴다.
+      # 근거: [[record:storage-transactions-are-the-snapshot-loop-and-they-tripled-in-three-weeks]]
+      - name: 부풀었나 재본다 (논리 재구축 전후 크기)
+        run: |
+          set -euo pipefail
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          python -X utf8 scripts/store_size_probe.py restored/db
+
       # 리허설용 스냅샷은 남기지 않는다(복구 지점은 vincs-backup 볼트가 따로 쥔다).
       # ⚠ TS 가 비면 절대 부르지 않는다 — --snapshot 없는 delete 는 라이브 공유를 지운다.
       - name: 리허설 스냅샷 삭제 (비용 위생)

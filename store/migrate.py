@@ -27,6 +27,42 @@ from . import embedded_schema as _schema
 _DUMP_VERSION = 2
 
 
+def _narrow_to_existing(store, table: str, wanted: list[str], probe: str) -> list[str] | None:
+    """`table` 이 실제로 가진 열만 남긴다. None 은 "테이블 자체가 없다"는 뜻이다.
+
+    전량 투영이 실패하는 이유는 둘인데 **결과가 정반대**다:
+
+      · 테이블이 아직 프로비저닝되지 않았다 → 정당히 빈 집합이다
+      · 테이블은 있는데 **열이 없다**(스토어가 코드보다 낮은 스키마다) → 그 라벨의
+        **전 행이 조용히 사라진다**
+
+    예전 코드는 둘을 `except Exception: rows = []` 로 똑같이 다뤘다. 2026-09-02 에
+    실측으로 물렸다: schema_version 14 스토어를 v16 코드로 export 하니 Record 가
+    뒤에 얻은 `valid_from`·`valid_until` 때문에 투영이 깨졌고, **Record 2행이 오류
+    하나 없이 0행으로 덤프됐다.** 이 함수를 타는 곳이 백업 복원·기기 이관·재구축
+    전부라, 낮은 스키마의 사본을 되살리면 라벨 하나가 통째로 빈다.
+
+    `probe` 는 "이 테이블이 있는가"를 묻는 질의다 — 있는데 열이 모자란 경우와
+    아예 없는 경우를 가르는 것이 이 함수의 유일한 일이다.
+    """
+    try:
+        info = store.run(f"CALL table_info('{table}') RETURN *")
+    except Exception:
+        info = None
+    if info:
+        have = {str(r.get("name", "")) for r in info}
+        return [c for c in wanted if c in have]
+    # table_info 를 못 쓰는 드라이버일 수도 있다 — 그때는 존재 여부만 따로 묻는다.
+    try:
+        store.run(probe)
+    except Exception:
+        return None          # 테이블이 없다 = 정당히 빈 집합
+    # 있는데 투영이 깨졌고 어느 열인지도 못 알아낸다 → **삼키면 손실이다.**
+    raise RuntimeError(
+        f"{table}: 전량 투영이 실패했는데 실제 열 목록을 알아낼 수 없다 — "
+        "빈 집합으로 넘기면 이 라벨의 행이 조용히 사라진다")
+
+
 def export_store(store) -> dict:
     """스토어 전량을 드라이버 무관 dict 로 덤프. 노드(라벨별 행)·엣지(라벨별 끝점+
     props). 스키마 SSoT 의 열만 조회(투기 없음)."""
@@ -38,7 +74,17 @@ def export_store(store) -> dict:
         try:
             rows = store.run(f"MATCH (n:{label}) RETURN {proj}")
         except Exception:
-            rows = []   # 미프로비저닝 라벨 — 빈 집합
+            # 빠른 길이 깨졌다. 여기서 빈 집합으로 넘기는 것이 예전의 무음 손실이었다.
+            have = _narrow_to_existing(store, label, cols,
+                                       f"MATCH (n:{label}) RETURN count(n) AS c")
+            if have is None:
+                rows = []                      # 미프로비저닝 라벨 — 정당히 빈 집합
+            elif spec["pk"] not in have:
+                # pk 가 없으면 import 가 MERGE 할 키가 없다. 조용히 넘기면 안 된다.
+                raise RuntimeError(f"{label}: pk {spec['pk']} 열이 없다 — 이관 불가")
+            else:
+                proj = ", ".join(f"n.{c} AS {c}" for c in have)
+                rows = store.run(f"MATCH (n:{label}) RETURN {proj}")
         nodes[label] = rows or []
     edges: list[dict] = []
     for spec in _schema.rel_table_specs():
@@ -51,7 +97,17 @@ def export_store(store) -> dict:
             rows = store.run(
                 f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(proj)}")
         except Exception:
-            rows = []
+            # 노드와 같은 이유로 같은 처방 — 관계 테이블도 열이 늘어난 적이 있다.
+            have = _narrow_to_existing(
+                store, label, list(props),
+                f"MATCH ()-[r:{label}]->() RETURN count(r) AS c")
+            if have is None:
+                rows = []
+            else:
+                proj = [f"a.{src_pk} AS _from", f"b.{dst_pk} AS _to"]
+                proj += [f"r.{p} AS {p}" for p in have]
+                rows = store.run(
+                    f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(proj)}")
         for r in rows or []:
             # 끝점 라벨을 함께 적는다 — 다중 FROM/TO 쌍 테이블(v11 IN_DOMAIN)에서는
             # pk 값만으로 어느 쌍인지 못 가른다. 구 덤프에는 이 열이 없어 import 가
