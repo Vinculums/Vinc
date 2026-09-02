@@ -31,10 +31,27 @@ class _FakeStore:
     script itself generates, the way _ChunkSpy/_S route in
     tests/test_owner_isolation.py. Holds exactly the three fixtures the task
     asks for: one known collision (Concept), one legacy owner (Record), one
-    Bridge with an empty domain."""
+    Bridge with an empty domain, and three _SyncBase rows of which one is an
+    orphan."""
 
     def run(self, cypher: str, params: dict | None = None) -> list[dict]:
         params = params or {}
+
+        # _SyncBase is routed FIRST on purpose: the per-label owner join emits
+        # the same "RETURN n.owner_id AS owner, count(*)" tail the plain owner
+        # distribution does, so a later branch would swallow it and the test
+        # would assert against the wrong query's fixture.
+        if "_SyncBase" in cypher:
+            if "b.label AS label" in cypher:
+                return [{"label": "Concept", "c": 2}, {"label": "Record", "c": 1}]
+            if "base_updated_at" in cypher:
+                return [{"ua": "2026-09-02T00:00:00Z"}] if "DESC" in cypher \
+                    else [{"ua": "2026-07-18T00:00:00Z"}]
+            if "n.owner_id AS owner" in cypher:
+                # Two bases resolve to a Concept owned by user:a; the Record
+                # base resolves to nothing, which is the orphan.
+                return [{"owner": "user:a", "c": 2}] if "(n:Concept)" in cypher else []
+            return [{"c": 3}]
 
         if "collect(DISTINCT" in cypher:
             if "Concept" in cypher:
@@ -99,6 +116,20 @@ def test_doc_mirror_id_format_split():
     assert out == {"hashed": 1, "unhashed": 1, "total": 2}
 
 
+def test_sync_base_resolves_owners_and_counts_orphans():
+    """The table migrate_pk_namespacing refuses on. The join answers whose NODE
+    each base is for; it deliberately does not claim to answer who wrote it."""
+    s = _FakeStore()
+    sb = mpc.sync_base(s)
+    assert sb["total"] == 3
+    assert sb["owner_distribution"] == {"user:a": 2}
+    assert sb["resolved"] == 2
+    assert sb["orphans"] == 1          # total minus what resolved to a node
+    assert sb["by_label"] == {"Concept": 2, "Record": 1}
+    assert sb["oldest_base"] == "2026-07-18T00:00:00Z"
+    assert sb["newest_base"] == "2026-09-02T00:00:00Z"
+
+
 def test_measure_assembles_all_labels_and_formats_as_text():
     s = _FakeStore()
     result = mpc.measure(s)
@@ -107,6 +138,11 @@ def test_measure_assembles_all_labels_and_formats_as_text():
     text = mpc.format_text(result)
     assert "Bridge rows with empty domain" in text
     assert "concept:doc.* mirror ids" in text
+    assert result["sync_base"]["orphans"] == 1
+    assert "_SyncBase" in text
+    # The caveat travels with the number: the distribution is about whose node
+    # the base belongs to, and reading it as authorship is the M3 mistake.
+    assert "not who wrote it" in text
 
 
 # ── inventory_id_bindings.py: a real scan over a small temp tree ───────────

@@ -145,6 +145,53 @@ def doc_mirror_id_formats(store) -> dict:
     return {"hashed": hashed, "unhashed": unhashed, "total": len(rows)}
 
 
+def sync_base(store) -> dict:
+    """_SyncBase rows, resolved to the owner of the node each base belongs to.
+
+    Why this is measured at all: `scripts/migrate_pk_namespacing.py` REFUSES to
+    migrate this table, on the stated grounds that it has no owner column and
+    that a hub snapshot should hold zero rows because the base is local-only.
+    Measured 2026-09-02 on the live hub: 823. The premise is false, so the
+    refusal fires on every real migration, and the shape of these rows is an
+    input the migration decision needs rather than a curiosity.
+
+    `node_id` is a node id, and while keys are still one global namespace every
+    id belongs to exactly one node, so the OWNER OF THE NODE is a join, not a
+    guess. What the join cannot recover is whose sync WROTE the row: with the
+    flag off every owner shares one row per slug (audit M3), so a row that
+    resolves to A may hold B's ancestor. Read `owner_distribution` as "whose
+    node each base is for", never as "who wrote it" -- that second question is
+    the one the migration refuses to answer, and this function does not answer
+    it either.
+
+    `oldest_base`/`newest_base` are what distinguish "residue inherited by the
+    recovery copy" from "the hub is still writing these", which the row count
+    alone cannot tell apart.
+    """
+    total = _count(store.run("MATCH (b:_SyncBase) RETURN count(*) AS c"))
+    by_label = {(r["label"] or ""): r["c"] for r in store.run(
+        "MATCH (b:_SyncBase) RETURN b.label AS label, count(*) AS c")}
+    dist: dict[str, int] = {}
+    for label in LABELS:
+        pk = _pk_col(label)
+        # ponytail: a join per label rather than one union — the row counts here
+        # are in the hundreds and this runs on a snapshot in CI, never in a
+        # request path. Revisit if a store ever carries millions of bases.
+        for r in store.run(f"MATCH (b:_SyncBase), (n:{label}) WHERE b.node_id = n.{pk} "
+                           "RETURN n.owner_id AS owner, count(*) AS c"):
+            o = r["owner"] or ""
+            dist[o] = dist.get(o, 0) + r["c"]
+    resolved = sum(dist.values())
+    span = []
+    for order in ("", " DESC"):
+        rows = store.run("MATCH (b:_SyncBase) RETURN b.base_updated_at AS ua "
+                         f"ORDER BY ua{order} LIMIT 1")
+        span.append((rows[0].get("ua") if rows else "") or "")
+    return {"total": total, "resolved": resolved, "orphans": total - resolved,
+            "owner_distribution": dist, "by_label": by_label,
+            "oldest_base": span[0], "newest_base": span[1]}
+
+
 def measure(store) -> dict:
     out: dict = {"labels": {}}
     for label in LABELS:
@@ -160,6 +207,7 @@ def measure(store) -> dict:
             entry["empty_domain"] = bridge_empty_domain(store)
         out["labels"][label] = entry
     out["doc_mirror_ids"] = doc_mirror_id_formats(store)
+    out["sync_base"] = sync_base(store)
     return out
 
 
@@ -190,6 +238,18 @@ def format_text(result: dict) -> str:
     d = result["doc_mirror_ids"]
     lines.append("== concept:doc.* mirror ids ==")
     lines.append(f"  total: {d['total']}  hashed: {d['hashed']}  unhashed (dotted): {d['unhashed']}")
+    sb = result.get("sync_base")
+    if sb is not None:
+        lines.append("")
+        lines.append("== _SyncBase (3-way merge base; migrate refuses while rows exist) ==")
+        lines.append(f"  rows: {sb['total']}  resolved to a node: {sb['resolved']}  "
+                     f"orphans: {sb['orphans']}")
+        lines.append(f"  base_updated_at: {sb['oldest_base'] or '(none)'} .. "
+                     f"{sb['newest_base'] or '(none)'}")
+        lines.append(f"  by label: {sb['by_label'] or '{}'}")
+        lines.append("  owner distribution (whose NODE the base is for, not who wrote it):")
+        for owner, c in sorted(sb["owner_distribution"].items(), key=lambda kv: -kv[1]):
+            lines.append(f"    {owner or '(empty)'}: {c}")
     return "\n".join(lines)
 
 
