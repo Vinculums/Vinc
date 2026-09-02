@@ -220,6 +220,58 @@ class RebuildPathTests(unittest.TestCase):
         self.assertTrue(hits, "재임베딩 중단 상태에서 FTS 가 죽었다")
 
 
+class SchemaLagExportTests(unittest.TestCase):
+    """스토어가 코드보다 낮은 스키마일 때 export 가 **행을 잃지 않는다**.
+
+    🔴 이 손실은 오류를 내지 않는다. 2026-09-02 실측: schema_version 14 스토어를
+    v16 코드로 export 하니 Record 가 뒤에 얻은 `valid_from` 때문에 전량 투영이
+    깨졌고, `except Exception: rows = []` 가 그것을 삼켜 **Record 2행이 0행으로**
+    덤프됐다. 백업 복원·기기 이관·재구축이 모두 이 함수를 타므로, 낮은 스키마의
+    사본을 되살리면 라벨 하나가 통째로 빈 채 "성공"한다.
+    """
+
+    def _mkstore(self):
+        import tempfile
+        cfg = load_config({"data_dir": tempfile.mkdtemp() + "/db"})
+        st = open_store(cfg)
+        st.provision(dim=cfg.embedding_dim)
+        return st, cfg
+
+    def test_열이_모자란_라벨도_행을_잃지_않는다(self):
+        st, _cfg = self._mkstore()
+        try:
+            with st.session() as s:
+                s.run("MERGE (n:Record {record_id:'r:1'}) SET n.title='보존', "
+                      "n.owner_id='u', n.valid_from='2026-01-01'")
+            # 낮은 스키마를 흉내낸다 — 코드는 이 열을 알고 스토어는 모르는 상태.
+            st.run("ALTER TABLE Record DROP valid_from")
+            dump = migrate.export_store(st)
+            rows = dump["nodes"].get("Record") or []
+            self.assertEqual(len(rows), 1, "열 하나가 없다고 행이 사라지면 안 된다")
+            self.assertEqual(rows[0]["record_id"], "r:1")
+            self.assertEqual(rows[0]["title"], "보존")
+            self.assertNotIn("valid_from", rows[0], "없는 열은 덤프에도 없다")
+        finally:
+            st.close()
+
+    def test_미프로비저닝_스토어는_그대로_빈_집합이다(self):
+        """좁히기가 손실만 막고 기존 동작은 안 바꾼다 — 없는 테이블은 여전히 빈 집합.
+
+        (라벨 하나만 지우는 방식은 못 쓴다: Record 는 ATTACHES_TO 가 참조해서
+        DROP TABLE 이 거절된다. 아예 프로비저닝하지 않은 스토어가 이 경우의 실물이다.)
+        """
+        import tempfile
+        cfg = load_config({"data_dir": tempfile.mkdtemp() + "/db"})
+        st = open_store(cfg)                      # provision 하지 않는다
+        try:
+            dump = migrate.export_store(st)
+            self.assertEqual(dump["nodes"].get("Record"), [])
+            self.assertEqual(dump["nodes"].get("Concept"), [])
+            self.assertEqual(dump["edges"], [])
+        finally:
+            st.close()
+
+
 class DialectMatrixTests(unittest.TestCase):
     """T2 — ladybug 방언 재검증(P1-0 실측 항목 회귀, Kùzu 계보 공통 방언)."""
 
