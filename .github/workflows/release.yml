@@ -48,7 +48,7 @@ jobs:
   # 실측 근거: `app/package-lock.json` 이 7릴리스(0.6.0→0.6.7) 방치돼 있었다
   # (Cargo.lock 은 체크리스트에 있는데 이건 빠진 비대칭 — scripts/version_sync.py 참조).
   version-gate:
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,47 +65,27 @@ jobs:
 
   build:
     needs: version-gate
-    # ⚠ 셀프호스티드 Windows 러너는 **머신 전역 PYTHONHOME/PYTHONPATH 를 물려받는다.**
-    # 그러면 `setup-python` 이 받아 온 인터프리터가 남의 표준 라이브러리를 읽어
-    # `_thread has no attribute daemon_threads_allowed` 로 죽는다(2026-08-19 실측).
-    # 이 리포가 로컬 테스트를 `env -u PYTHONHOME -u PYTHONPATH` 로 돌리는 것과 같은
-    # 함정이고, 호스티드 러너에는 그 변수가 없어 여태 안 보였다.
-    # 근거: [[record:vinc-tests-need-a-clean-interpreter-on-windows]]
-    env:
-      PYTHONHOME: ""
-      PYTHONPATH: ""
     strategy:
       fail-fast: false
       matrix:
         include:
-          # 리눅스·Windows 는 셀프호스티드(GitHub 분 0). macOS 는 **호스티드로 남는다** —
-          # 맥이 없고, `latest.json` 의 darwin 타깃이 자동 업데이트를 물고 있어 뺄 수 없다.
-          # 릴리스 1회 청구분의 대부분이 macOS 10배라는 것도 그대로다(약 $0.64).
-          - os: [self-hosted, linux, vinc-local]
+          # ⚠ **리눅스는 `ubuntu-latest` 가 아니라 `ubuntu-22.04` 다.** 여기서 지은
+          # 바이너리의 **최소 glibc 가 빌드 기계의 glibc** 이므로, `latest` 를 쓰면
+          # 러너 이미지가 올라가는 날 구형 배포판 사용자가 조용히 실행을 못 하게 된다
+          # (24.04 는 2.39, 22.04 는 2.35). CI 는 이걸 안 잡아 준다 — 사용자가 잡는다.
+          # v0.8.2 까지 이 값이었고 그대로 출하됐다.
+          - os: ubuntu-22.04
             triple: x86_64-unknown-linux-gnu
-          - os: [self-hosted, windows, vinc-local]
+          - os: windows-latest
             triple: x86_64-pc-windows-msvc
           - os: macos-latest
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      # ⚠ 셀프호스티드 Windows 에서 `shell: bash` 는 **WSL 의 bash 로 잡힌다**
-      # (System32 가 PATH 에서 Git 보다 앞이라 `C:\WINDOWS\system32ash.exe`).
-      # 그 bash 는 기본 배포판 안에서 `/bin/bash` 를 찾다 죽는다. 호스티드 러너는 Git
-      # Bash 가 먼저라 이 문제가 없어 여태 안 보였다. 경로를 박지 않고 **git 이 있는
-      # 자리에서 파생**해 이후 스텝의 PATH 앞에 세운다.
-      - name: Prefer Git Bash on Windows (system32 bash is WSL)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
-          $binDir  = Join-Path $gitRoot 'bin'
-          if (Test-Path (Join-Path $binDir 'bash.exe')) {
-            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-            Write-Host "prepended $binDir"
-          } else {
-            Write-Host "::warning::Git Bash 를 못 찾았다 — bash 스텝이 WSL 로 갈 수 있다"
-          }
+      # ⚠ 여기 있던 "Prefer Git Bash on Windows" 스텝을 걷어냈다. 그것은 노트북
+      # 러너의 사실이었다 — 그 기계는 System32 가 PATH 에서 Git 보다 앞이라
+      # `shell: bash` 가 WSL 의 bash 로 잡혔다. 호스티드 windows-latest 는 Git Bash 가
+      # 먼저라 그 문제가 없다(ci.yml 이 #151 에서 같은 이유로 같은 스텝을 지웠다).
       - uses: actions/checkout@v4
 
       # 이 잡이 부르는 외부 명령을 **빌드 앞에서** 확인한다. 없으면 19분을 태우고
@@ -348,7 +328,7 @@ jobs:
     needs: build
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
@@ -436,7 +416,7 @@ jobs:
   prune:
     needs: assemble
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     steps:
       - name: Archive old releases (keep newest 5 installers, strip the rest)
         env:
