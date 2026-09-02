@@ -165,7 +165,7 @@ class DoesNotCatch(unittest.TestCase):
 
 
 class ThisRepo(unittest.TestCase):
-    def test_직렬화하는_워크플로가_실제로_셋이다(self):
+    def test_직렬화하는_워크플로가_실제로_넷이다(self):
         """게이트가 겨누는 대상이 이 리포에 실재하는지 고정한다. 늘거나 줄면
         이 테스트가 먼저 말한다 — 게이트가 조용히 아무것도 안 겨누게 두지 않는다.
 
@@ -175,7 +175,12 @@ class ThisRepo(unittest.TestCase):
 
         셋이 된 경위: `infra.yml`(#147)이 terraform apply 를 직렬화한다. 앞의 둘과
         달리 이쪽은 **상태를 바꾸는 쪽이 사람의 방아쇠 뒤에** 있어서, 큐가 막히면
-        배포가 밀리는 것이 아니라 apply 가 안 나간다."""
+        배포가 밀리는 것이 아니라 apply 가 안 나간다.
+
+        넷이 된 경위: `pk-migrate.yml`(#136)은 자기 이름이 아니라 **`hub-deploy` 의
+        그룹 키를 빌려 쓴다** — 같은 줄에 서야 이관 도중 배포가 끼어들지 못하기
+        때문이다. 그래서 이 목록에서 유일하게 그룹 이름이 파일 이름과 다르고,
+        막히는 방식도 다르다: 큐가 막히면 이관과 배포가 **서로** 밀린다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -183,7 +188,8 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["hub-deploy.yml", "infra.yml", "release.yml"], serial)
+        self.assertEqual(serial, ["hub-deploy.yml", "infra.yml", "pk-migrate.yml",
+                                  "release.yml"], serial)
 
 
 if __name__ == "__main__":
