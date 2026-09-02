@@ -56,16 +56,43 @@ except ImportError:  # pragma: no cover - CI 는 pyyaml 을 깐다
 WORKFLOW_DIR = ".github/workflows/"
 
 
+class Unreadable(Exception):
+    """리비전 자체를 못 읽는다 — '검사했더니 없다' 와 **다른 사건**이다."""
+
+
 def _git(*args: str) -> str | None:
-    """실패를 None 으로 돌린다 — 파일이 그 리비전에 없는 경우가 정상이다."""
+    """실패를 None 으로 돌린다 — 파일이 그 리비전에 없는 경우가 정상이다.
+
+    ⚠ 이 None 은 **'그 자리에 파일이 없다'만 뜻해야 한다.** 리비전을 통째로 못 읽는
+    경우까지 같은 값으로 오면 호출부가 그것을 '변경 없음' 으로 읽고 게이트가 아무것도
+    검사하지 않은 채 통과한다. 그래서 리비전 존재 여부는 `require_revisions` 가
+    **먼저, 따로** 확인한다."""
     r = subprocess.run(["git", *args], capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else None
+
+
+def require_revisions(*revs: str) -> None:
+    """두 리비전이 이 체크아웃에 실재하는가. 없으면 **멈춘다.**
+
+    이것이 없으면 게이트는 얕은 체크아웃에서 조용히 통과한다: `git show BASE:path` 가
+    실패하고, 그 실패가 '그 리비전에 파일이 없다' 와 구분되지 않아 그냥 건너뛰어진다.
+    검사한 워크플로가 0건인데 결과는 PASS 다.
+
+    이 리포는 같은 모양을 이미 세 번 만났다 — 값이 빈 시크릿이 스킵 분기를 타고,
+    테스트가 호환 분기를 타고, 이행 검증이 앞선 거절 때문에 툼스톤 표에 닿지 못한 채
+    전부 초록이었다. 공통점은 **답할 수 없을 때 PASS 를 답한다**는 것이다. 여기서는
+    답할 수 없으면 답하지 않는다."""
+    for rev in revs:
+        if _git("rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}") is None:
+            raise Unreadable(rev)
 
 
 def changed_workflows(base: str, head: str) -> list[str]:
     out = _git("diff", "--name-only", base, head, "--", WORKFLOW_DIR)
     if out is None:
-        return []
+        # 리비전은 `require_revisions` 가 이미 봤으므로 여기 실패는 git 자체의 문제다.
+        # 빈 목록으로 강등하면 그것도 무음 통과가 된다.
+        raise Unreadable(f"diff {base}..{head}")
     return [p for p in out.splitlines() if p.strip().endswith((".yml", ".yaml"))]
 
 
@@ -103,8 +130,27 @@ def main(argv: list[str]) -> int:
         return 2
     base, head = argv
 
+    try:
+        require_revisions(base, head)
+        paths = changed_workflows(base, head)
+    except Unreadable as e:
+        print(f"::error::게이트가 리비전을 못 읽었다: {e} — 검사하지 못했으므로 통과시키지 않는다",
+              file=sys.stderr)
+        print(
+            "\n"
+            "가장 흔한 원인은 **얕은 체크아웃**이다. 이 게이트는 두 리비전의 워크플로\n"
+            "파일을 `git show` 로 읽어 비교하므로 base 커밋이 로컬에 있어야 한다.\n"
+            "  actions/checkout 에 `fetch-depth: 0` 을 준다(ci.yml 이 그렇게 한다).\n"
+            "\n"
+            "왜 통과시키지 않는가: 못 읽은 것을 '바뀐 것이 없다' 로 강등하면 게이트가\n"
+            "0건을 검사하고 PASS 를 답한다. 그러면 이 게이트가 막으려던 러너 이동이\n"
+            "그대로 지나가고, 초록이라 아무도 다시 보지 않는다.",
+            file=sys.stderr,
+        )
+        return 2
+
     findings: list[str] = []
-    for path in changed_workflows(base, head):
+    for path in paths:
         after = _load(head, path)
         before = _load(base, path)
         # 새로 생겼거나 지워진 파일은 '옮긴' 것이 아니다.
