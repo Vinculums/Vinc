@@ -40,8 +40,22 @@ Vinculums/Vinc#121 의 근본 처방(선택지 1). 발주자 결정: 2026-08-30.
   _SchemaMeta      대상 스토어 자신의 사실이라 **안 나른다**(#115 와 같은 판단).
   _MergeRejection  `pair_key`·`a_id`·`b_id` 는 전부 **논리** id 다(api/query.py
                    `rejection_pair_key`). 그대로 나른다.
-  _SyncBase        owner 열이 **없어** 합성할 수 없다. 행이 있으면 **거절한다** —
-                   추측해서 옮기느니 멈추는 쪽이다. 로컬 전용 표라 허브는 0 이다.
+  _SyncBase        owner 열이 없지만 `node_id` 는 노드 id 이고, 키가 아직 전역
+                   네임스페이스 하나이므로 **id 하나에 노드 하나**다 — 그 노드의
+                   owner 는 `label` 열로 조인하면 나온다(추측이 아니다). 그래서
+                   `node_id` 를 합성해 나른다. 노드가 없는 고아 행은 합성할 owner
+                   가 없고 논리 키로 남기면 플래그가 켜진 런타임이 영영 못 읽으므로
+                   **버리고 센다**.
+                   ⚠ 조인이 복원하지 **못하는** 것은 그 행을 누구의 동기화가
+                   **썼는가**이다. 플래그가 꺼져 있는 동안 모든 소유자가 slug 당 한
+                   행을 나눠 쓰므로(감사 M3), 소유자가 둘 이상인 스토어에서는 A 로
+                   해소되는 행이 B 의 조상을 담고 있을 수 있다. 그래서 거절을 없애지
+                   않고 **좁혔다**: 해소된 소유자가 하나뿐이면 나눠 쓴 적이 없다는
+                   뜻이므로 통과시키고, 둘 이상이면 예전처럼 멈춘다.
+                   ⚠ 여기 적혀 있던 "로컬 전용 표라 허브는 0 이다"는 **틀렸다.**
+                   실측 2026-09-02, 라이브 허브 823행(전부 소유자 1명·고아 0).
+                   `apply_delta` → `set_base` 가 `/sync/apply-delta` 로 허브에 열려
+                   있다(api/server.py). 그 전제 때문에 첫 실행이 예행에서 멈췄다.
 
 ## 먼저 재라 — 재는 도구는 이미 있다
 
@@ -113,7 +127,9 @@ META_PLAN: dict[str, dict] = {
     "_SyncMeta":       {"rewrite": (),           "carry": True,  "refuse": False},
     "_MergeRejection": {"rewrite": (),           "carry": True,  "refuse": False},
     # owner 열이 없어 합성할 수 없다. 추측하느니 멈춘다.
-    "_SyncBase":       {"rewrite": (),           "carry": False, "refuse": True},
+    # owner 는 행에 없고 `owner_of` 조인으로 온다(위 표 참조). refuse 는 이제
+    # 정적 플래그가 아니라 **해소된 소유자가 둘 이상일 때만** 발동한다.
+    "_SyncBase":       {"rewrite": ("node_id",), "carry": True,  "refuse": False},
     # 대상 스토어 자신의 사실이다.
     "_SchemaMeta":     {"rewrite": (),           "carry": False, "refuse": False},
 }
@@ -171,7 +187,8 @@ def transform(dump: dict, meta: dict) -> tuple[dict, dict, dict]:
     scoped = owner_scoped()
     specs = schema.node_table_specs()
     stats = {"nodes_composed": 0, "nodes_left_logical": 0,
-             "edges_composed": 0, "meta_rewritten": 0}
+             "edges_composed": 0, "meta_rewritten": 0,
+             "syncbase_orphans_dropped": 0}
 
     # pk → owner. 엣지 끝점을 합성하려면 **그 노드의** owner 가 필요한데 엣지 덤프에는
     # 없다. 라벨별로 나눠 담는 이유는 다른 라벨이 같은 슬러그를 가질 수 있어서다
@@ -254,10 +271,32 @@ def transform(dump: dict, meta: dict) -> tuple[dict, dict, dict]:
                 "0 이어야 한다")
         if not plan["carry"]:
             continue
+        if table == "_SyncBase" and rows:
+            # 좁힌 거절(위 표의 _SyncBase 항). 소유자가 하나뿐이면 조상 행을 나눠 쓴
+            # 적이 없으므로 조인이 안전하고, 둘 이상이면 어느 행이 누구 것인지 이
+            # 표에 안 남아 있어 남의 조상을 물려줄 수 있다.
+            seen: dict[str, int] = {}
+            for r in rows:
+                o = owner_of.get((r.get("label") or "", r.get("node_id") or ""), "")
+                if o:
+                    seen[o] = seen.get(o, 0) + 1
+            if len(seen) > 1:
+                raise SystemExit(
+                    f"_SyncBase 의 기준본이 소유자 {len(seen)}명에 걸쳐 있다({seen}). "
+                    "어느 행을 누구의 동기화가 썼는지는 이 표에 안 남아 있어 남의 조상을 "
+                    "물려줄 수 있다 — 추측해서 옮기느니 멈춘다. "
+                    "measure_pk_collisions.py 의 sync_base 절이 같은 수를 준다")
         fresh = []
         for r in rows:
             r = dict(r)
             o = r.get("owner_id") or ""
+            if not o and table == "_SyncBase":
+                o = owner_of.get((r.get("label") or "", r.get("node_id") or ""), "")
+                if not o:
+                    # 노드가 사라진 기준본. 합성할 owner 가 없고, 논리 키로 남기면
+                    # 플래그가 켜진 런타임이 영영 못 읽는다(읽기가 합성 키로 조회한다).
+                    stats["syncbase_orphans_dropped"] += 1
+                    continue
             for col in plan["rewrite"]:
                 v = r.get(col) or ""
                 if not (o and v):
@@ -272,7 +311,17 @@ def transform(dump: dict, meta: dict) -> tuple[dict, dict, dict]:
                 stats["meta_rewritten"] += 1
             fresh.append(r)
         new_meta[table] = fresh
-    return ({**dump, "nodes": new_nodes, "edges": new_edges}, new_meta, stats)
+    # ⚠ 메타를 **비워서** 내보낸다. `export_store` 의 덤프에는 `meta` 가 들어 있고
+    # (`_export_meta`), `import_store` 는 그것을 그대로 적재한다. 그런데 이 이관의
+    # 메타는 `write_meta` 가 따로 쓴다 — 둘 다 돌면 논리 키 행과 합성 키 행이 **둘 다**
+    # 남는다. PK 가 달라 MERGE 가 겹치지 않기 때문이다.
+    #
+    # 실측 2026-09-02: `_Tombstone` 1행(그리고 `_SyncBase` 0행)짜리 스토어에서
+    # "1행을 넣었는데 2행이다"로 검증이 잡았다. `_SyncBase` 와 무관한 선재 결함이고,
+    # 툼스톤이 있는 스토어면 이관이 완주할 수 없었다 — 라이브 허브가 여기까지 오지
+    # 못한 것은 `_SyncBase` 거절이 먼저 멈춰 세웠기 때문이다.
+    return ({**dump, "nodes": new_nodes, "edges": new_edges, "meta": {}},
+            new_meta, stats)
 
 
 def write_meta(store, meta: dict) -> int:
