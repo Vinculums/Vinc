@@ -1066,7 +1066,7 @@ class _Handler(BaseHTTPRequestHandler):
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, {"error": bad})
-            auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
+            auth = self._auth(space)
             if not auth["ok"]:
                 # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
                 # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
@@ -1112,7 +1112,7 @@ class _Handler(BaseHTTPRequestHandler):
                     return auth
                 if not _UUID_RE.match(want):
                     return None          # 모양이 틀린 것은 계정에 묻지도 않는다
-                got = self.app.resolve_auth(self.headers.get("Authorization"), want)
+                got = self._auth(want)
                 return got if got["ok"] else None
 
             pairs = [(m, _auth_for(m)) for m in msgs]
@@ -1325,7 +1325,7 @@ class _Handler(BaseHTTPRequestHandler):
         **쿼터 면제**: Dispatcher(rpc)를 우회하므로 `quota_check` 가 아예 안 불린다.
         의도된 설계 — 무료 15회/일은 도구 호출 한도이지, 동기화가 그걸로 막히면
         기능 자체가 성립하지 않는다(delta 한 번에 수백 노드가 오간다)."""
-        auth = self.app.resolve_auth(self.headers.get("Authorization"))
+        auth = self._auth()
         if not auth["ok"]:
             return self._unauthorized()
         owner = auth["owner"]
@@ -1357,24 +1357,62 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
-    # ── 로깅 ──────────────────────────────────────────────────────────────
-    # **실패만** 남긴다: 2xx·3xx 는 조용히, 4xx·5xx 와 예외는 stdout 으로. 컨테이너에서
-    # stdout 은 곧 로그라 삼키면 장애 때 단서가 0 이 된다
+    # ── 인증 + 로깅 ───────────────────────────────────────────────────────
+    def _auth(self, space: str | None = None) -> dict:
+        """`resolve_auth` 를 부르고 **누가 불렀는지를 응답 로그에 실을 수 있게** 남긴다.
+
+        호출부 셋이 각자 `self.app.resolve_auth(...)` 를 부르는데 owner 를 기억하는
+        자리가 없어서, 성공한 요청을 계정에 귀속할 방법이 아무 데도 없었다. 쿼터
+        카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
+        [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
+        """
+        auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
+        self._owner_tag = _owner_tag(auth.get("owner")) if auth.get("ok") else None
+        return auth
+
+    # stdout 은 컨테이너에서 곧 로그다. 삼키면 장애 때 단서가 0 이 된다
     # ([[record:in-a-container-a-swallowed-log-is-no-log]]).
     def log_message(self, fmt, *args):
         sys.stdout.write("[http] %s %s\n" % (self.address_string(), fmt % args))
         sys.stdout.flush()
 
     def log_request(self, code="-", size="-"):
+        """실패 전부 + **owner 를 아는 성공**을 남긴다.
+
+        예전에는 2xx·3xx 를 통째로 버렸다. 그래서 7일치 로그 612줄이 전부 4xx·5xx 였고,
+        실사용이 얼마인지는 지표의 총량으로만 보였다 — 누가 얼마나 썼는지는 어디에도
+        없었다. 익명 성공은 지금도 버린다: `/health` 와 discovery 가 하루 1,728회라
+        (가용성 프로브 4종 × 3지역 × 5분) 그것까지 남기면 로그가 프로브 로그가 된다.
+        """
+        # 한 번 쓰고 비운다. keep-alive 는 한 연결로 여러 요청을 처리하므로, 안 비우면
+        # 인증 없는 다음 요청이 앞 요청의 owner 를 달고 남는다.
+        tag, self._owner_tag = getattr(self, "_owner_tag", None), None
         try:
             n = int(code)
         except (TypeError, ValueError):
             n = 0
-        if n and n < 400:
-            return   # 정상 응답은 남기지 않는다
+        if n and n < 400 and not tag:
+            return
         # 쿼리스트링은 잘라낸다 — /authorize 의 파라미터 등이 로그에 눌러앉지 않도록.
         line = (self.requestline or "").split("?")[0]
-        self.log_message('"%s" %s %s', line, code, size)
+        self.log_message('"%s" %s %s%s', line, code, size,
+                         f" owner={tag}" if tag else "")
+
+
+def _owner_tag(owner: str | None) -> str | None:
+    """로그에 실을 owner 표식 — **해시만** 남긴다.
+
+    owner 는 `user:<uuid>` 로 이미 불투명하지만, 원문을 남기면 로그 한 벌이 곧 계정
+    명부가 되고 다른 로그와 조인된다. 절단 해시는 "이 계정이 오늘 몇 번 불렀나"에는
+    충분하고 계정 테이블로 되돌아갈 수는 없다 — 계정 앱의 감사 로그가 이메일에 쓰는
+    `subjectTag` 와 같은 모양이다.
+
+    12자를 쓰는 이유: 오늘 이 그래프의 계정 수는 한 자릿수이고, 48비트면 충돌 확률이
+    실질적으로 0 이면서 로그 한 줄이 짧다.
+    """
+    if not owner:
+        return None
+    return hashlib.sha256(owner.encode("utf-8")).hexdigest()[:12]
 
 
 class BoundedHTTPServer(ThreadingHTTPServer):
