@@ -213,6 +213,8 @@ jobs:
             # 삼켰는지 아무도 모른다 — 이 단계가 존재하는 이유가 그것이다.
             az containerapp revision deactivate $APP --revision "$rev" --output none
           done
+          # 내린 것의 이름을 다음 단계로 넘긴다. 재실행이면 되살릴 대상이 바로 이것이다.
+          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
           # ⚠ **활성 여부로 재면 안 된다.** `properties.active` 는 deactivate 즉시
           # 뒤집히고 컨테이너 종료를 기다리지 않는다. 우리가 기다리는 것은 종료 훅이
           # 최종 스냅샷을 볼륨에 쓰는 것이므로, 재야 하는 값은 **살아 있는 레플리카**다
@@ -250,19 +252,47 @@ jobs:
           if ! az containerapp update $APP --image "$IMAGE" --output none; then
             echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
             echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2
-            echo "  az containerapp revision list --name vinc-hub -g vincsRG -o table" >&2
-            echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision <이름>" >&2
+            echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision ${STOPPED_REVS:-<이름>}" >&2
             exit 1
           fi
           latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "latest revision: $latest"
+
+          # ⚠ **같은 SHA 로 다시 돌리면 새 리비전이 안 생긴다.** 이미지 태그가 커밋 SHA라
+          # 템플릿이 그대로여서 update 가 no-op 이고, 그러면 latest 는 위 단계가 방금
+          # 내린 바로 그 리비전이다. 아래 대기 루프는 영원히 Stopped 를 보다 8분 뒤 죽고,
+          # 그 사이 허브는 내려가 있다 — 2026-09-02 00:16 에 정확히 그렇게 죽었다
+          # (23:56 push 로 0000124 가 뜬 뒤, 같은 SHA 로 workflow_dispatch).
+          # 재실행이 자살 버튼이 되는 것은 "먼저 내린다"(#50)의 빠진 짝이었다.
+          # 그 경우 올바른 배포는 방금 내린 그것을 도로 올리는 것이다 — 이미지가 같으므로
+          # 이것은 롤백이 아니라 원래 하려던 배포 그 자체다.
+          case " ${STOPPED_REVS:-} " in
+            *" $latest "*)
+              echo "새 리비전이 생기지 않았다(이미지 동일) — 방금 내린 $latest 를 도로 올린다"
+              az containerapp revision activate $APP --revision "$latest" --output none
+              ;;
+          esac
+
           for i in $(seq 1 30); do
             st=$(az containerapp revision show $APP --revision "$latest" --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
             echo "  state: $st"
             case "$st" in Running|RunningAtMaxScale) exit 0 ;; esac
             sleep 15
           done
-          echo "::error::새 리비전이 기동하지 못했다. 허브는 지금 내려가 있다 — 마지막 정상 리비전을 'az containerapp revision activate' 로 되살릴 것." >&2
+          # ⚠ 여기의 처방은 **틀려 있었다**: "옛 리비전을 activate" 는 이 앱에서 서비스를
+          # 되살리지 못한다. activeRevisionsMode 가 Single 이라 인그레스는 언제나 latest
+          # 로만 보낸다(traffic: latestRevision=true, weight=100) — 옛 것을 올려도 트래픽이
+          # 안 간다. 새 리비전을 만들어 latest 를 바꿔야 하므로 처방은 update 다.
+          # 자동으로 하지 않는 이유: 못 뜬 리비전은 부팅 중 스토어를 반쯤 만졌을 수 있고,
+          # 그 상태에서 구 이미지를 자동으로 올리면 구 코드가 신 포맷을 읽는다(이 파일
+          # 머리말의 포맷 변경 경고와 같은 창). 사람이 보고 판단할 자리다.
+          prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
+          echo "::error::새 리비전이 기동하지 못했다 — 허브는 지금 내려가 있다." >&2
+          echo "데이터는 최종 스냅샷까지 안전하다. 되살리려면 **구 이미지로 새 리비전을 만든다**:" >&2
+          if [ -n "$prev" ]; then
+            echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
+            echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
+          fi
           exit 1
 
       # 인코더는 같은 이미지를 쓴다 — 접두·풀링·양자화 규약이 한 파일에 있고, 허브와
