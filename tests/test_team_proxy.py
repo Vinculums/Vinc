@@ -13,6 +13,9 @@
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import uuid
 from pathlib import Path
 import sys
 
@@ -44,12 +47,22 @@ def _app():
                       account_public=edverify.secret_to_public(ACCOUNT_SEED))
 
 
+#: 빈 본문의 지문. 이 파일의 호출들은 `raw_body` 를 안 넘기므로 허브가 `b""` 를 본다.
+_BH_EMPTY = base64.urlsafe_b64encode(hashlib.sha256(b"").digest()).rstrip(b"=").decode()
+
+
 def _sign(payload: dict) -> str:
+    """계정이 실제로 서명하는 모양 — `bh`·`jti` 포함(감사 M2, 이제 필수).
+
+    `jti` 는 호출마다 새로 만든다. 고정하면 두 번째 호출부터 **재생으로** 거부되고,
+    그 실패는 방어가 동작한다는 뜻이라 원인을 오해하기 쉽다."""
     import time
     now = int(time.time())
     return edverify.sign_assertion(ACCOUNT_SEED,
                                    {"iss": "account", "aud": "mcp",
-                                    "iat": now, "exp": now + 60, **payload})
+                                    "iat": now, "exp": now + 60,
+                                    "bh": _BH_EMPTY, "jti": uuid.uuid4().hex,
+                                    **payload})
 
 
 def _team_assertion(op="search", role="editor", owner=TEAM, sub="u-1", typ="proxy-team"):

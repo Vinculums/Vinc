@@ -587,26 +587,36 @@ class MCPHTTPApp:
         account 공개키만 있으면 성립한다."""
         return bool(self.account_public)
 
-    def purge_owner_request(self, assertion: str) -> dict:
+    def purge_owner_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
         """계정 서명 purge 어서션(typ=purge·iss=account·aud=mcp·≤2분)을 검증해 `sub`
         로 owner 를 유도하고, 사이드카에 owner 전 노드 삭제를 프록시한다.
 
         owner 는 **서명된 sub 에서만** 온다(요청 바디 미수용) — 유효한 A 소유자용
         어서션을 B 삭제에 재사용할 수 없다. 멱등 DETACH DELETE 라 만료창(≤2분) 내
         재생도 무해(이미 지워졌으면 0건). public_id 는 uuidv7 로 재사용되지 않아
-        재등록 계정을 오삭제할 위험도 없다."""
+        재등록 계정을 오삭제할 위험도 없다.
+
+        그 무해함이 지문·일회성 검사를 **면제하지는 않는다.** 계정은 이 경로에도
+        `bh`(본문 `"{}"` 의 해시)와 `jti` 를 이미 실어 보내는데 여기서는 읽지 않고
+        있었다 — 보내는 쪽이 지불한 값을 받는 쪽이 버리던 상태다. 무해 논증은 오늘의
+        핸들러 모양(본문 미사용·멱등)에 기대고 있으므로, 그 모양이 바뀌는 날 조용히
+        틀려진다. 검사는 그 논증과 독립으로 세워 둔다."""
         if not self.purge_enabled():
             raise PermissionError("purge is not configured")
         payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
         if not payload or payload.get("typ") != "purge" \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired purge request")
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        if not self._claim_jti(payload):
+            raise PermissionError("this approval was already used")
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("purge request is missing a subject")
         return self.bridge.request("POST", "/sync/purge-owner", body={"owner": f"user:{sub}"})
 
-    def purge_team_request(self, assertion: str) -> dict:
+    def purge_team_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
         """팀 그래프 소거(typ=purge-team) — **팀 삭제 절차 전용**이다.
 
         개인 purge 와 유형을 가른 이유가 안전이다. 개인 경로는 `sub` 에서 `user:` 소유자
@@ -622,6 +632,10 @@ class MCPHTTPApp:
         if not payload or payload.get("typ") != "purge-team" \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired team purge request")
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        if not self._claim_jti(payload):
+            raise PermissionError("this approval was already used")
         graph_owner = payload.get("graph_owner")
         if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
             raise ValueError("team purge request has an invalid graph owner")
@@ -639,10 +653,10 @@ class MCPHTTPApp:
     _seen_jti: dict
 
     def _claim_jti(self, payload: dict) -> bool:
-        """이 어서션을 처음 쓰는가. `jti` 가 없으면 True(구 계정 호환 — 아래 주석)."""
+        """이 어서션을 처음 쓰는가. `jti` 는 **필수다**(근거는 `_body_matches` 주석)."""
         jti = payload.get("jti")
         if not isinstance(jti, str) or not jti:
-            return True
+            return False
         now = time.time()
         seen = getattr(self, "_seen_jti", None)
         if seen is None:
@@ -662,14 +676,25 @@ class MCPHTTPApp:
         어서션은 owner 와 op 를 묶지만 **인자는 서명되지 않은 본문에서 읽힌다.** 그래서
         잡은 어서션을 유효 창 안에 다른 인자로 재생할 수 있었다(감사 2026-08-18 M2).
 
-        ⚠ `bh` 가 **없으면 통과시킨다.** 계정이 이 필드를 보내기 전 버전일 수 있고,
-        여기서 막으면 배포 순서가 어긋나는 순간 웹 Vinc 가 통째로 죽는다. 느슨해 보이지만
-        아니다 — 서명을 위조할 수 없으므로 공격자는 `bh` 를 **떼어낼 수 없다.** 계정이
-        배포되고 나면 유효한 어서션은 전부 이 필드를 갖는다(구 것은 120초 뒤 만료).
-        그 뒤에 필수로 올리는 것은 별도 변경이다."""
+        `bh` 는 이제 **필수다.** 이 자리는 예전에 "없으면 통과"였고, 그 주석이 스스로
+        "필수로 올리는 것은 별도 변경"이라 적어 두었다 — 이것이 그 변경이다. 넘어온 조건:
+
+          · 계정이 `bh`·`jti` 를 서명에 실은 것은 `bc22584`(2026-08-20)이고, 그 뒤
+            account-deploy 가 여러 번 성공했다(최근 2026-09-02). 2주째 라이브다.
+          · 이 세 경로(`/internal/purge-owner`·`purge-team`·`graph-owner`)를 부르는
+            것은 **계정과 테스트뿐**이다(전 리포 grep). 다른 소비자가 없다.
+
+        그래서 "구 계정이 아직 안 보낼 수 있다"는 전제가 더는 참이 아니고, 통과시키는
+        쪽이 오히려 위험하다: `/internal/*` 은 공개 도달 가능하고 남은 관문이 서명
+        하나뿐이라(감사 M2), 지문 없는 어서션을 받아 준다는 것은 잡은 어서션을 유효
+        창 안에 **다른 인자로** 재생할 여지를 남겨 두는 것이다.
+
+        ⚠ 되돌릴 일이 생기면(계정을 `bc22584` 이전으로 롤백하는 경우뿐이다) 여기를
+        `return True` 로 되돌리는 것이 아니라 **계정을 먼저 되돌린다.** 순서를 뒤집으면
+        그 사이 창이 곧 구멍이다."""
         want = payload.get("bh")
         if not isinstance(want, str) or not want:
-            return True
+            return False
         got = base64.urlsafe_b64encode(
             hashlib.sha256(raw or b"").digest()).rstrip(b"=").decode("ascii")
         return secrets.compare_digest(got, want)
@@ -1260,8 +1285,11 @@ class _Handler(BaseHTTPRequestHandler):
         if not self.app.purge_enabled():
             return self._json(503, {"error": "purge_disabled"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""
+        # 본문은 안 쓰지만 **읽어야 한다** — 지문 대조가 받은 바이트를 필요로 하고,
+        # `_raw_body` 는 `_body()` 가 채운다. 계정이 보내는 것은 `"{}"` 다.
+        self._body()
         try:
-            out = self.app.purge_owner_request(assertion)
+            out = self.app.purge_owner_request(assertion, raw_body=self._raw_body)
         except PermissionError:
             return self._json(401, {"error": "unauthorized"})
         except ValueError as e:
@@ -1279,8 +1307,9 @@ class _Handler(BaseHTTPRequestHandler):
         if not self.app.purge_enabled():
             return self._json(503, {"error": "purge_disabled"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""
+        self._body()   # 지문 대조가 받은 바이트를 쓴다 — `_internal_purge` 와 같은 이유
         try:
-            out = self.app.purge_team_request(assertion)
+            out = self.app.purge_team_request(assertion, raw_body=self._raw_body)
         except PermissionError:
             return self._json(401, {"error": "unauthorized"})
         except ValueError as e:
