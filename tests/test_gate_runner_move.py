@@ -194,3 +194,34 @@ class ThisRepo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailsClosed(unittest.TestCase):
+    """읽을 수 없을 때 통과시키지 않는가.
+
+    이 게이트는 `git show <rev>:<path>` 로 두 리비전을 읽는다. 예전에는 그 실패가
+    '그 리비전에 파일이 없다'와 **같은 값**(None)이라 그냥 건너뛰어졌고, 그러면
+    검사한 워크플로가 0건인데 결과는 PASS 였다. 얕은 체크아웃 하나면 그 상태가 된다.
+
+    이 리포가 같은 모양을 세 번 만난 뒤에 붙인 검사다 — 값이 빈 시크릿이 스킵 분기를
+    타고, 테스트가 호환 분기를 타고, 이행 검증이 앞선 거절 때문에 대상 표에 닿지 못한
+    채, 셋 다 초록이었다."""
+
+    def test_알_수_없는_base_는_통과가_아니라_실패다(self):
+        """러너가 실제로 옮겨지는 PR 을 만들고, base 만 못 읽게 한다.
+        고쳐지기 전에는 rc=0(통과)이었다 — 잡아야 할 것을 눈앞에 두고."""
+        with _Repo(_SERIAL % "[self-hosted, linux, vinc-local]",
+                   _SERIAL % "ubuntu-latest") as r:
+            rc, out = r.gate()
+            self.assertEqual(rc, 1, "전제 확인: 정상 체크아웃에서는 잡아낸다")
+
+            missing = "0" * 40          # 이 저장소에 없는 커밋
+            proc = subprocess.run(
+                [sys.executable, "-X", "utf8",
+                 str(_ROOT / "scripts" / "gate_runner_move.py"), missing, r.head],
+                cwd=r.root, capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+            self.assertIn("못 읽었다", proc.stdout + proc.stderr)
+            self.assertIn("fetch-depth", proc.stdout + proc.stderr,
+                          "가장 흔한 원인과 처방을 함께 말해야 한다")
