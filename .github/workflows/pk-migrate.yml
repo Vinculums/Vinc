@@ -194,11 +194,24 @@ jobs:
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
-          curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+          # ⚠ 파이프로 자르지 않는다. `curl … | head -c 400` 은 head 가 400바이트에서
+          # 파이프를 닫는 순간 curl 을 EPIPE 로 죽이고(exit 23), `pipefail` 이 그것을
+          # 단계 실패로 올린다. 2026-09-02 실측: 허브는 tools/list 를 정상 응답했는데
+          # 이 단계만 빨갰다 — **기능을 보라고 만든 probe 가 자기 출력을 자르다 넘어진
+          # 것**이다. 받아서 변수에 담고 셸이 자른다.
+          out=$(curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
             -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -c 400
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          echo "${out:0:400}"
           echo
+          # 200 을 받았다는 것만으로는 부족하다(이 프로젝트의 기능 장애는 세 번 다
+          # /health 200 이었다). 도구 목록이 실제로 들어 있는지 본다.
+          case "$out" in
+            *'"tools"'*) echo "tools/list 응답에 도구 목록이 있다" ;;
+            *) echo "::error::허브가 응답했으나 tools/list 에 도구 목록이 없다 — 앞문이 아니라 앱을 볼 것" >&2
+               exit 1 ;;
+          esac
           echo "⚠ 완료 판정은 이것이 아니다. 개인 주제로 팩을 만들어 팀으로 불러오고"
           echo "  merged.nodes.created 가 0 이 아니며 id_conflicts 가 빈지 볼 것 (#136)."
           echo "  문서 수를 세면 안 된다 — 그게 이 고장이 통과했던 이유다."
