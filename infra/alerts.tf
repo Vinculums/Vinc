@@ -271,3 +271,52 @@ resource "azurerm_monitor_metric_alert" "db_storage_ratchet" {
     action_group_id = local.action_group_id
   }
 }
+
+# ── 계정 앱: 언제 올릴지를 사람이 기억하지 않아도 되게 ──────────────────────
+# 2026-09-02 실측. 이 앱은 이미 0.5 vCPU / 1Gi 다 — 위험 문서가 적어 둔 0.25/0.5 는
+# 낡았고(그 값으로 답했다가 정정했다), 상향은 account-deploy.yml 91~92 줄에 선언돼
+# 있다. 그러니 지금 필요한 것은 상향이 아니라 **다음 상향의 시점을 놓치지 않는 것**이다:
+#
+#   WorkingSetBytes 7일 최대  212MB / 1024MB = 21%
+#   UsageNanoCores  7일 최대  0.001 vCPU / 0.5 = 0.2%
+#   RestartCount    7일       0
+#
+# 임계값 75%(805,306,368 바이트)의 뜻: 21%에서 75%까지는 지금 부하로 한참 걸리므로
+# "곧 죽는다"가 아니라 "이제 자원을 올릴 때다"이다. OOM 은 여기서 아직 멀고, 이
+# 앱은 로그인·결제·팀·모든 호스티드 키 검증을 진다 — 죽고 나서 아는 자리가 아니다.
+#
+# aggregation 이 Maximum 인 이유: 이 메트릭의 primary 는 Average 인데, 평균으로 재면
+# 하루 대부분이 낮아 스파이크를 못 본다. 우리가 사려는 것은 스파이크의 여유다.
+#
+# severity 3 인 이유: 1은 "제품이 안 된다"(가용성 넷), 2는 "되돌릴 수 없다"(DB 래칫).
+# 이건 아무것도 안 망가진 상태에서 "슬슬 올려라"라고 말하는 것이라 셋째 급이다.
+# 급을 아껴 쓰지 않으면 급이 정보를 잃는다.
+#
+# ⚠ 이 앱은 terraform 이 안 든다(generated.tf 에 없다) — 그래서 리소스 참조가 아니라
+# id 문자열이다. 위 web test 들이 insights_id 를 그렇게 쓰는 것과 같은 이유다.
+locals {
+  account_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-account"
+}
+
+resource "azurerm_monitor_metric_alert" "account_memory_headroom" {
+  name                = "account-memory-headroom-gone"
+  resource_group_name = var.resource_group_name
+  scopes              = [local.account_app_id]
+  description         = "계정 앱 메모리가 1Gi 의 75% 를 넘었다 — 자원을 올릴 때다. 이 앱이 로그인·결제·팀·호스티드 키 검증을 전부 진다."
+  severity            = 3
+  frequency           = "PT15M"
+  window_size         = "PT1H"
+  auto_mitigate       = true
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "WorkingSetBytes"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 805306368 # 1 GiB 의 75%
+  }
+
+  action {
+    action_group_id = local.action_group_id
+  }
+}
