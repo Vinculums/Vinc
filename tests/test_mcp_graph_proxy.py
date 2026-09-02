@@ -8,8 +8,11 @@ purge 와 같은 신뢰 모델(계정 서명·우리가 검증·루프백)이되
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -33,10 +36,23 @@ class _CapBridge(Bridge):
         return {"ok": True}
 
 
+#: 빈 본문의 지문. 아래 호출들은 `raw_body` 를 안 넘기므로 허브가 `b""` 를 대조한다.
+_BH_EMPTY = base64.urlsafe_b64encode(hashlib.sha256(b"").digest()).rstrip(b"=").decode()
+
+
 def _assertion(op="search", sub="u-1", seed=ACCT_SEED, **over):
+    """계정이 **실제로 서명하는 모양**으로 만든다 — `bh`·`jti` 포함.
+
+    이 둘이 없던 시절 이 헬퍼는 호환 경로(없으면 통과)를 시험하고 있었고, 그래서
+    필수로 올리는 순간 전부 떨어졌다. 계정은 `bc22584`(2026-08-20)부터 두 필드를
+    싣는다(account/src/services/mcpProxy.ts) — 여기를 그 모양에 맞춘다.
+
+    `jti` 는 **호출마다 새로 만든다.** 고정하면 첫 테스트만 통과하고 나머지가 재생으로
+    거부되는데, 그 실패는 "재생 방어가 동작한다"는 뜻이라 원인을 오해하기 쉽다."""
     now = int(time.time())
     body = {"typ": "proxy", "iss": "account", "aud": "mcp",
-            "sub": sub, "op": op, "iat": now, "exp": now + 120}
+            "sub": sub, "op": op, "iat": now, "exp": now + 120,
+            "bh": _BH_EMPTY, "jti": uuid.uuid4().hex}
     body.update(over)
     return ev.sign_assertion(seed, body)
 
@@ -142,3 +158,47 @@ def test_disabled_without_account_public():
     assert not app.graph_enabled()
     with pytest.raises(PermissionError):
         app.graph_owner_request(_assertion(), {})
+
+
+# ── 감사 M2: 본문 지문과 일회성 id 가 **필수**다 ────────────────────────────────
+#
+# 이 넷은 예전에 전부 통과했다. `bh`/`jti` 가 없으면 통과시키는 호환 분기가 있었고,
+# 계정이 아직 안 보낼 수 있다는 전제 때문이었다. 계정은 bc22584(2026-08-20)부터
+# 보내고 이 경로를 부르는 다른 소비자가 없어서 그 전제가 만료됐다.
+#
+# ⚠ 통과하는 쪽만 시험하면 이 강제는 **조용히 되돌려질 수 있다** — 호환 분기를 되살려도
+# 기존 테스트는 전부 초록이기 때문이다. 그래서 거부되는 쪽을 고정한다.
+
+def test_assertion_without_a_body_digest_is_refused(app):
+    """`bh` 없는 어서션. 서명은 유효하다 — 거부 사유는 서명이 아니라 결속 부재다."""
+    with pytest.raises(PermissionError):
+        app.graph_owner_request(_assertion(bh=""), {})
+    assert app.bridge.calls == []
+
+
+def test_assertion_without_a_nonce_is_refused(app):
+    with pytest.raises(PermissionError):
+        app.graph_owner_request(_assertion(jti=""), {})
+    assert app.bridge.calls == []
+
+
+def test_a_captured_assertion_cannot_be_replayed(app):
+    """같은 어서션 두 번. 첫 번째는 정상이고 두 번째가 거부돼야 한다 — 이것이 없으면
+    유효 창(120초) 안에서 잡은 어서션을 몇 번이고 다시 쓸 수 있다."""
+    token = _assertion(op="search")
+    app.graph_owner_request(token, {"query": "x"})
+    assert len(app.bridge.calls) == 1
+    with pytest.raises(PermissionError):
+        app.graph_owner_request(token, {"query": "x"})
+    assert len(app.bridge.calls) == 1          # 두 번째는 사이드카에 닿지 않았다
+
+
+def test_a_body_that_does_not_match_the_digest_is_refused(app):
+    """M2 의 실제 공격 모양: 어서션은 진짜인데 **인자만 바꿔치기**한다.
+
+    빈 본문으로 서명된 것을 다른 바이트와 함께 낸다. 서명·typ·iss·aud·exp 가 전부
+    유효하므로, 이 검사가 없으면 통과한다."""
+    with pytest.raises(PermissionError):
+        app.graph_owner_request(_assertion(op="search"), {"query": "x"},
+                                raw_body=b'{"query":"attacker chose this"}')
+    assert app.bridge.calls == []

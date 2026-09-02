@@ -11,8 +11,11 @@
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -109,10 +112,20 @@ class _PurgeCapBridge(Bridge):
         return {"executed": True, "deleted": {"Concept": 3}, "total": 3}
 
 
+#: 빈 본문의 지문. 아래 호출들은 `raw_body` 를 안 넘기므로 허브가 `b""` 를 대조한다.
+#: (라이브에서 계정이 보내는 것은 `"{}"` 이고, 그 경로는 핸들러가 `_body()` 로 읽는다.)
+_BH_EMPTY = base64.urlsafe_b64encode(hashlib.sha256(b"").digest()).rstrip(b"=").decode()
+
+
 def _purge_assertion(sub="u-1", seed=ACCT_SEED, **over):
+    """계정이 실제로 서명하는 모양 — `bh`·`jti` 포함(account/src/services/mcpPurge.ts).
+
+    `jti` 는 호출마다 새로 만든다. 고정하면 두 번째 호출부터 재생으로 거부되고, 그
+    실패는 방어가 동작한다는 뜻이라 원인을 오해하기 쉽다."""
     now = int(time.time())
     body = {"typ": "purge", "iss": "account", "aud": "mcp",
-            "sub": sub, "iat": now, "exp": now + 120}
+            "sub": sub, "iat": now, "exp": now + 120,
+            "bh": _BH_EMPTY, "jti": uuid.uuid4().hex}
     body.update(over)
     return ev.sign_assertion(seed, body)
 
