@@ -853,9 +853,13 @@ class VincApp:
         # 기존 값을 보존하고, 빈 문자열이면 사용자가 지운 것이다. None 으로 뭉개면
         # 제목만 고쳐도 내용 시점이 되살아난다.
         ctime = body.get("content_time")
+        # title 도 같은 3값이다. 여기서 `or ""` 로 뭉개면 **본문만 재전송한 호출이
+        # 제목을 지운다** — 그것이 라이브 문서 여덟 건의 제목을 비운 경로였다.
+        btitle = body.get("title")
         res = self.jobs.run_sync("doc.put", lambda: docstore.put_doc(
             self.store, owner=owner, text=_req(body, "text"),
-            doc_id=body.get("id") or None, title=body.get("title") or "",
+            doc_id=body.get("id") or None,
+            title=None if btitle is None else str(btitle),
             origin=body.get("origin") or "",
             content_time=None if ctime is None else str(ctime)))
         return 200, res

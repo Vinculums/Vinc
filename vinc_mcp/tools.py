@@ -950,7 +950,7 @@ TOOLS: list[dict] = [
                        "create (the returned doc_id identifies it); pass doc_id to edit in place "
                        "(re-chunked losslessly, stale chunks removed). The store IS the source of "
                        "truth — no external file is needed. Returns {doc_id, created, chunks, "
-                       "replaced, content_hash, skipped, warnings}. Unchanged text is a no-op "
+                       "replaced, content_hash, skipped, title, warnings}. `title` is the title AS STORED after this call, so one call confirms what the document is now named — do not follow a write with vinc_doc_list to check. Unchanged text is a no-op "
                        "(skipped=true). READ `created`: it is the only field that separates "
                        "editing a document from making a second one, because a fresh write and "
                        "an unchanged re-write both report replaced 0. A document's own front "
@@ -961,7 +961,7 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
-            "title": {"type": "string"},
+            "title": {"type": "string", "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."},
             "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
         }, "required": ["text"]},
         "run": _t_doc_put,

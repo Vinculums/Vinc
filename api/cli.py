@@ -180,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     dp = dsub.add_parser("put", help="ingest/update a document from raw text (stdin or --file)")
     dp.add_argument("--owner", required=True, help="owner_id — 정본은 무소유 불가(SEC-1)")
     dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
-    dp.add_argument("--title", default="")
+    dp.add_argument("--title", default=None,
+                    help="문서 제목. **생략하면 기존 제목을 보존한다**(빈 값으로 덮지 않는다). "
+                         "지우려면 --title '' 를 명시할 것")
     dp.add_argument("--origin", default="", help="출처 표시(조인에 쓰지 않음 — display only)")
     dp.add_argument("--file", default=None,
                     help="read from file (.md/.txt/.rst/.pdf — 편의 입력, 정본은 스토어). "
