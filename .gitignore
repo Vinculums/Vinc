@@ -50,3 +50,8 @@ app/src-tauri/gen/
 # uv 캐시 락파일 — 로컬 테스트 실행(`uv run`)이 만든다. 정본 의존성은
 # pyproject.toml 이고, 이 락은 기기별 파생물이라 추적하지 않는다.
 uv.lock
+
+# 평가·리허설 부산물 — 모델 가중치 수백 MB 가 여기 앉는다.
+# 이 워킹트리는 세션 공유라 남의 `git add -A` 가 이것을 집는다.
+.cache/
+work/
