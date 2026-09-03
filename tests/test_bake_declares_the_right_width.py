@@ -66,6 +66,24 @@ def test_아티팩트_경로가_모델과_같은_계열이다():
     )
 
 
+def test_심링크_금지가_huggingface_import_보다_앞에_선다():
+    """`HF_HUB_DISABLE_SYMLINKS` 는 huggingface_hub 이 **import 될 때** 읽힌다.
+    import 뒤로 밀리면 조용히 아무 효과가 없고, 2GB 넘는 모델의 굽기가 다시
+    'should be stored in …, but it is a symbolic link' 로 죽는다(실측 2026-09-03).
+
+    순서가 계약이므로 순서를 고정한다 — 주석만으로는 다음 사람이 import 를 정리하다
+    위로 올릴 수 있다."""
+    src = (_ROOT / "packaging" / "bake_embed_model.py").read_text(encoding="utf-8")
+    env_at = src.find("HF_HUB_DISABLE_SYMLINKS")
+    imp_at = src.find("import huggingface_hub")
+    assert env_at != -1, "HF_HUB_DISABLE_SYMLINKS 설정이 사라졌다"
+    assert imp_at != -1, "huggingface_hub import 를 못 찾았다 — 이 테스트가 낡았다"
+    assert env_at < imp_at, (
+        "HF_HUB_DISABLE_SYMLINKS 를 huggingface_hub import **뒤**에 세우고 있다 — "
+        "그 시점에는 이미 읽힌 뒤라 효과가 없다"
+    )
+
+
 def test_굽기가_폭_검사를_실제로_부른다():
     """검사를 만들어 두고 부르지 않는 것이 오늘의 주제였다. 호출을 고정한다."""
     src = (_ROOT / "packaging" / "bake_embed_model.py").read_text(encoding="utf-8")
