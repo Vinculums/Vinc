@@ -117,7 +117,7 @@ def import_docs(store, *, owner: str, payload: dict,
         # 때만 의미가 있고(put_doc 이 기존 값을 보존한다), 구 송신자는 키가 없어
         # None 이 되므로 로컬 규칙이 그대로 적용된다(하위호환).
         res = ds.put_doc(store, owner=owner, text=d.get("text") or "", doc_id=doc_id,
-                         title=d.get("title") or "", origin=d.get("origin") or "",
+                         title=d.get("title"), origin=d.get("origin") or "",
                          embed=embed, link=True, updated_at=remote_ua or None,
                          created_at=d.get("created_at") or None,
                          content_time=d.get("content_time"))

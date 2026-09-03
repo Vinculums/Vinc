@@ -961,6 +961,34 @@ class DocstoreE2E(unittest.TestCase):
             "RETURN count(ch) AS c", {"d": out["doc_id"]})
         self.assertEqual(int(rows[0]["c"]), 0)
 
+    def test_title_absent_preserves_and_empty_string_clears(self):
+        """title 은 `content_time` 과 같은 3값이다: 키 부재=보존 · ""=비움 · 값=설정.
+
+        무가드 시절에는 본문만 재전송한 호출이 제목을 빈 문자열로 덮었고, 그 덮임이
+        skip 비교를 어긋내 **내용이 같은데도** 청크를 전량 재작성했다. 그래서 이 테스트는
+        제목만이 아니라 `skipped` 도 함께 건다 — 파괴적 재작성이 그 신호로 드러난다."""
+        out = ds.put_doc(self.store, owner="user:a", text="본문.", title="원래 제목")
+        did = out["doc_id"]
+        self.assertEqual(out["title"], "원래 제목")   # 응답이 저장된 제목을 말한다
+
+        # ① 키를 안 보낸 재전송 = 보존. 내용도 같으므로 skip 이어야 한다.
+        same = ds.put_doc(self.store, owner="user:a", text="본문.", doc_id=did)
+        self.assertTrue(same["skipped"], "제목 보존이 안 되면 여기서 전량 재작성이 된다")
+        self.assertEqual(same["title"], "원래 제목")
+        self.assertEqual(ds._meta(self.store, did)["title"], "원래 제목")
+
+        # ② 본문만 바뀐 재전송도 제목을 지키다.
+        ed = ds.put_doc(self.store, owner="user:a", text="본문 고침.", doc_id=did)
+        self.assertFalse(ed["skipped"])
+        self.assertEqual(ed["title"], "원래 제목")
+        self.assertEqual(ds._meta(self.store, did)["title"], "원래 제목")
+
+        # ③ 빈 문자열은 "지웠다" — 보존과 구분된다.
+        cleared = ds.put_doc(self.store, owner="user:a", text="본문 고침.", doc_id=did,
+                             title="")
+        self.assertEqual(cleared["title"], "")
+        self.assertEqual(ds._meta(self.store, did)["title"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

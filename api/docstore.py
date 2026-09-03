@@ -431,7 +431,7 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
 
 
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
-            title: str = "", origin: str = "", layer: str = "ssot",
+            title: str | None = None, origin: str = "", layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
             boundaries: list[int] | None = None,
             embed: Callable[[list[str]], list[list[float]]] | None = None,
@@ -461,22 +461,28 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # (strip 이 이 바이트로 owner 를 잘라내므로 물리 키로 오인된다). text 는 원문
     # 정본(D45)이라 제외 — 검열이 아니라 키 재료가 되는 필드만 본다.
     # 근거: [[vinc.plan.node-pk-namespacing]] §7
-    if pkns.has_sep((owner, doc_id, title, origin)):
+    if pkns.has_sep((owner, doc_id, title or "", origin)):
         base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
 
     content_hash = _sha(text)
-    doc_id = doc_id or make_doc_id(owner, content_hash, title, origin)
+    doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin)
     base["doc_id"] = doc_id
 
     prev = _meta(store, doc_id)
+    # title 은 `content_time` 과 같은 3값이다: **키 부재(None)=기존 보존 · ""=비움 ·
+    # 값=설정.** 여태 무조건 SET 이라 본문만 재전송한 호출이 제목을 빈 문자열로 덮었고,
+    # 그 덮임이 아래 skip 비교("해시와 제목이 둘 다 같을 때만 skip")를 어긋내
+    # **청크 전량 삭제·재작성**까지 끌고 갔다 — 무해해야 할 재전송이 파괴적 쓰기가 된다.
+    # 노드 쪽은 `fragment._KEPT_FIELDS` 로 같은 수술이 끝나 있었고 문서 쪽만 남아 있었다.
+    kept_title = title if title is not None else str((prev or {}).get("title") or "")
     if prev is not None:
         if prev.get("owner_id") and prev["owner_id"] != owner:
             base["error"] = "owner mismatch — 남의 문서에는 쓸 수 없다(SEC-1)"
             return base
-        if prev.get("content_hash") == content_hash and prev.get("title") == title:
+        if prev.get("content_hash") == content_hash and prev.get("title") == kept_title:
             base.update(executed=True, skipped=True, created=False,
-                        chunks=int(prev.get("chunk_count") or 0),
+                        chunks=int(prev.get("chunk_count") or 0), title=kept_title,
                         content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
             return base
 
@@ -538,7 +544,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
         "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne, "
         "d.created_at = $born, d.content_time = $ctime",
-        {"id": doc_id, "owner": owner, "title": title, "origin": origin,
+        {"id": doc_id, "owner": owner, "title": kept_title, "origin": origin,
          "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq,
          "ne": needs_embed, "born": born, "ctime": ctime})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
@@ -549,7 +555,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         linked = _relink_mentions(store, doc_id, owner=owner, origin=origin)
 
     base.update(executed=True, skipped=False, created=prev is None,
-                chunks=len(chunks), replaced=removed,
+                chunks=len(chunks), replaced=removed, title=kept_title,
                 content_hash=content_hash, mentions=linked, updated_at=stamp,
                 sync_seq=seq, needs_embed=bool(needs_embed),
                 warnings=_doc_id_warnings(text, doc_id),
