@@ -38,6 +38,10 @@
 # 직렬화가 느는 것을 사람이 한 번 보게 하려고 있는 것이라, 여기서 늘릴 이유가 없다.
 #
 # ⚠ GitHub 분을 쓴다. 그래서 `workflow_dispatch` 전용이고 자동으로 도는 경로가 없다.
+#
+# ⚠ **`--ref main` 으로만 돈다.** 이 리포의 OIDC 연합 자격증명은 `refs/heads/main` 에
+# 묶여 있어서, 브랜치에서 띄우면 `azure/login` 이 AADSTS700213 로 죽는다(실측 run
+# 33733996317). 프로브 자체를 고치는 변경은 머지된 뒤에야 프로브로 확인할 수 있다.
 name: bake-probe
 
 on:
@@ -80,6 +84,16 @@ jobs:
       - name: 세 줄을 갈아 끼운다 (러너의 체크아웃에서만)
         run: |
           set -euo pipefail
+          # 🔴 값이 오는 길에서 바뀔 수 있다. Git Bash 에서 `gh workflow run -f
+          # artifact_path=/srv/...` 를 부르면 MSYS 경로 변환이 그것을 통째로
+          # `D:/git/srv/...` 로 바꾼다(실측 run 33733996317 — 그 런은 OIDC 로 먼저
+          # 죽어서 여기까지 안 왔지만, 왔다면 이미지 안에서 "구운 게 없다"가 됐다).
+          # 런타임이 보는 자리는 `embed_worker` 의 `/srv/vinc/models/` 하나이므로
+          # 그 밖이면 굽는 자리와 찾는 자리가 갈린 것이고, 그러면 굽지 말아야 한다.
+          case "$APATH" in
+            /srv/vinc/models/*) ;;
+            *) echo "::error::artifact_path 가 /srv/vinc/models/ 밖이다: ${APATH} — Git Bash 라면 MSYS 경로 변환이다(MSYS_NO_PATHCONV=1 로 부를 것)"; exit 1 ;;
+          esac
           sed -i -E \
             -e "s|^ENV VINC_EMBED_MODEL=.*|ENV VINC_EMBED_MODEL=${MODEL}|" \
             -e "s|^ENV VINC_EMBED_MODEL_PATH=.*|ENV VINC_EMBED_MODEL_PATH=${APATH}|" \
@@ -132,6 +146,64 @@ jobs:
             python packaging/bake_embed_model.py 2>&1 | tee bake.log
           ls -la models
 
+      - name: 기준선 e5 도 굽는다 (RUNNER_TEMP 로 — models/ 에 구우면 토크나이저가 덮인다)
+        # 조건 5 는 **짝지은 비교**다. 기준선을 여기서 함께 구워야 두 아티팩트가 같은
+        # 러너·같은 ORT·같은 레시피에서 나온 것이 되고, 그래야 차이를 모델 차이로 읽을
+        # 수 있다. 따로 구운 것끼리 비교하면 무엇이 달랐는지 말할 수가 없다.
+        #
+        # 🔴 `models/` 에 구우면 안 된다. `bake_embed_model.py` 의 `TOK` 는 아티팩트
+        # 경로에서 **파생**되므로(`dirname(OUT)/tokenizer.json`), 같은 디렉터리에 두 번
+        # 구우면 뒤의 굽기가 앞의 tokenizer.json 을 덮는다. 그 뒤로는 어느 쪽 평가든
+        # 잘못된 쌍을 재는데, 크기도 폭도 정상이라 **아무 데서도 안 걸린다**.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/baseline"
+          VINC_EMBED_MODEL=intfloat/multilingual-e5-base           VINC_EMBED_MODEL_PATH="$RUNNER_TEMP/baseline/e5-int8-rr.onnx"           VINC_EMBED_DIM=768             python packaging/bake_embed_model.py
+          ls -la "$RUNNER_TEMP/baseline"
+
+      - name: 무엇을 구웠는지 각인한다 (sha256 · HF 리비전 · ORT)
+        # 내려받은 바이트가 **이 런이 검증한 바로 그것**인지 나중에 대조할 수 있어야
+        # 한다. 대조표가 없으면 로컬에서 잰 수치가 어느 파일에 대한 것인지 말할 수 없고,
+        # 그러면 그 수치는 조건 5 의 "실 아티팩트"를 증명하지 못한다.
+        #
+        # HF 리비전을 함께 박는 이유: `hf_hub_download` 에 `revision=` 이 없어서 굽기는
+        # 언제나 그 시점의 main 을 받는다. sha 를 남겨 두면 적어도 **다음 굽기와 같은
+        # 것을 받았는지**는 말할 수 있다.
+        run: |
+          set -euo pipefail
+          python - <<'PY' > manifest.json
+          import glob, hashlib, json, os
+          import onnxruntime, huggingface_hub as hf
+
+          def sha256(p):
+              h = hashlib.sha256()
+              with open(p, "rb") as fh:
+                  for blk in iter(lambda: fh.read(1 << 20), b""):
+                      h.update(blk)
+              return h.hexdigest()
+
+          paths = sorted(glob.glob("models/*")
+                         + glob.glob(os.path.join(os.environ["RUNNER_TEMP"], "baseline", "*")))
+          print(json.dumps({
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "onnxruntime": onnxruntime.__version__,
+              "repos": {m: hf.model_info(m).sha
+                        for m in dict.fromkeys([os.environ["MODEL"],
+                                                "intfloat/multilingual-e5-base"])},
+              "files": [{"name": os.path.basename(p), "bytes": os.path.getsize(p),
+                         "sha256": sha256(p)} for p in paths],
+          }, indent=2, ensure_ascii=False))
+          PY
+          {
+            echo '## 구운 것의 각인'
+            echo
+            echo '```json'
+            cat manifest.json
+            echo '```'
+            echo
+            echo '내려받은 뒤 `sha256sum` 으로 이 값과 대조할 것 — 다르면 거기서 멈춘다.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 이미지에서 검증한다 (밀지 않는다)
         # `--image` 없음 = 태그 없음 = 배포가 가리킬 것이 없음. `--no-push` 는 그것을
         # 한 번 더 못박는다. hub-deploy 의 같은 명령과 다른 점은 이 두 가지뿐이다.
@@ -168,3 +240,27 @@ jobs:
           got="${line##*width=}"
           [ "$got" = "$DIM" ] || { echo "::error::잰 폭 ${got} · 선언 ${DIM}" >&2; exit 1; }
           echo "폭 ${got} 확인 — 선언과 일치"
+
+      - name: 검증된 바이트를 내보낸다 (dispatched)
+        # `판정` 뒤에 둔다 — 기본 `if: success()` 라, **검증을 통과한 바이트만** 나간다.
+        # 이 셋이 조건 5 의 로컬 측정 입력이다. 로컬에서 다시 굽지 않는 이유는 레시피가
+        # 같아도 다른 파일이고, 조건 5 가 요구하는 것은 "실 아티팩트"이기 때문이다.
+        uses: actions/upload-artifact@v4
+        with:
+          name: baked-dispatched
+          path: models/
+          retention-days: 7
+
+      - name: 검증된 바이트를 내보낸다 (baseline e5)
+        uses: actions/upload-artifact@v4
+        with:
+          name: baked-baseline
+          path: ${{ runner.temp }}/baseline/
+          retention-days: 7
+
+      - name: 각인을 내보낸다
+        uses: actions/upload-artifact@v4
+        with:
+          name: bake-manifest
+          path: manifest.json
+          retention-days: 7

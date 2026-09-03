@@ -51,7 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api.docstore import chunk_doc                          # noqa: E402
-from encoder import Encoder                                 # noqa: E402
+from encoder import Encoder, _load_production_worker        # noqa: E402
 from make_queries import (                                  # noqa: E402
     _CORPORA, _DOC_KO_THRESHOLD, _ROOT, _body_without_frontmatter, lang_of,
 )
@@ -140,6 +140,14 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
     import numpy as np
 
     name, _, onnx = model_spec.partition("=")
+    # 라벨이 풀링·접두·토크나이저를 고르고 파일은 가중치만 준다. 둘이 어긋나도 아무
+    # 것도 안 터지고 그럴듯한 표가 나오므로 여기서 막는다. 규약은 프로덕션의
+    # `artifact_name` 하나이고, 그것을 명령줄에 적용한다.
+    if onnx:
+        want = _load_production_worker().artifact_name(name)
+        if Path(onnx).name != want:
+            raise SystemExit(f"🔴 라벨과 파일이 어긋난다: {name} 은 {want} 를 기대하는데 "
+                             f"{Path(onnx).name} 이 왔다")
     enc = Encoder(name, onnx or None)
     label = f"{name}{' [' + Path(onnx).name + ']' if onnx else ''}"
 
@@ -148,7 +156,11 @@ def bench(model_spec: str, queries: list[dict], texts: list[str],
     P = np.array(enc.encode(texts, "passage"), dtype=np.float32)
     t_corpus = time.perf_counter() - t0
     t0 = time.perf_counter()
-    Q = np.array(enc.encode([q["query"] for q in queries], "query"), dtype=np.float32)
+    # 질의는 **한 건씩** 인코딩한다 — 프로덕션 질의 경로가 언제나 배치 1 이라서다
+    # (`api/server.py`). int8 은 배치 구성이 패딩을 바꿔 벡터를 흔든다(단건 대 배치 8
+    # 코사인 0.9912 실측). 배치로 재면 프로덕션이 쓰지 않는 벡터를 재는 것이 된다.
+    Q = np.array([enc.encode([q["query"]], "query")[0] for q in queries],
+                 dtype=np.float32)
     t_query = time.perf_counter() - t0
     sims = Q @ P.T                       # 둘 다 L2 정규화돼 있으므로 내적 = 코사인
 
