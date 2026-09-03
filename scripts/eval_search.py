@@ -41,6 +41,7 @@ import json
 import math
 import os
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -223,6 +224,21 @@ def main() -> int:
     per: dict[str, list[dict]] = {"fts": [], "vector": [], "rrf": []}
     by_lang: dict[str, dict[str, list[dict]]] = {}
     failures = 0
+    arm_notes: dict[str, int] = {}       # "arms|vector_note" -> 횟수
+    vector_dropped = 0                   # 분모에서 사라질 뻔한 질의 수
+    tm: dict[str, list[float]] = {"enc": [], "search_fts": [], "ann": [], "rrf_total": []}
+
+    # 워밍업 1회. 확장 LOAD 와 HNSW 첫 접촉이 첫 질의에 통째로 실린다(실측 621ms 대
+    # 8.1ms). 그것을 표본에 넣으면 첫 질의 하나가 p95 를 혼자 정한다.
+    if qs:
+        _w = qs[0]["query"]
+        if encode_url:
+            try:
+                store.vector_search(encode_query(_w, encode_url), 200,
+                                    {"owner_id": args.owner})
+            except Exception:
+                pass
+        q.search(_w, top_k=args.top_k, owner=args.owner, cfg=cfg, store=store)
 
     for item in qs:
         text, truth = item["query"], item["doc_id"]
@@ -233,14 +249,22 @@ def main() -> int:
 
         qvec = None
         if encode_url:
+            _t = time.perf_counter()
             try:
                 qvec = encode_query(text, encode_url)
+                tm["enc"].append((time.perf_counter() - _t) * 1000)
             except Exception as exc:
                 failures += 1
                 if not vec_note:
                     vec_note = f"임베딩 실패 {failures}건 — 마지막: {type(exc).__name__}"
 
+        _t = time.perf_counter()
         res = q.search(text, top_k=args.top_k, owner=args.owner, cfg=cfg, store=store)
+        # ⚠ 이 시계는 FTS 팔만이 아니다. `q.search` 는 노드 폴백까지 도는 봉투이고,
+        # 실측 분해가 `_node_fallback 7.1ms · _chunk_arms(FTS) 6.6ms · 전체 20.8ms` 다.
+        # 그래서 `rrf_total - (enc + search_fts + ann)` 을 "융합 비용"이라 부르면 음수가
+        # 나온다. 그 뺄셈을 하지 말 것 — 이 넷은 겹치는 구간이지 분해가 아니다.
+        tm["search_fts"].append((time.perf_counter() - _t) * 1000)
         # 🔴 백엔드가 실패를 말했으면 **그것을 측정값으로 바꾸지 않는다.** `search` 는
         # index_missing·extension_unavailable 같은 사유를 `error` 로 정직하게 싣는데,
         # 그걸 무시하면 전 질의가 0 행이 되어 "Recall 0.000" 이라는 **정상 모양의 표**가
@@ -256,15 +280,32 @@ def main() -> int:
         by_lang[lang]["fts"].append(s)
 
         if qvec is not None:
+            _t = time.perf_counter()
             try:
-                vrows = store.vector_search(qvec, args.top_k, None)
-                s = score(_docs_of(store, vrows), truth, args.top_k)
+                # 🔴 프로덕션 파라미터로 부른다. `api/query.py::_chunk_arms` 는 pool cap
+                # 200 과 owner 필터로 부르는데, 여기서 `(top_k, None)` 으로 부르면 다른
+                # 일을 재게 된다 — 481청크에서 6.2ms 대 13.4ms, 2.2배다. 그 값을 ANN
+                # 몫으로 인용하면 프로덕션의 절반으로 그린다.
+                vrows = store.vector_search(qvec, 200, {"owner_id": args.owner})
+                tm["ann"].append((time.perf_counter() - _t) * 1000)
+                s = score(_docs_of(store, vrows[:args.top_k]), truth, args.top_k)
                 per["vector"].append(s)
                 by_lang[lang]["vector"].append(s)
             except Exception:
-                pass
+                # 🔴 `pass` 로 넘기면 실패한 질의가 **분모에서 사라진다**(생존편향).
+                # 남은 질의만으로 계산된 평균이 정상 모양의 표로 나온다.
+                vector_dropped += 1
+            _t = time.perf_counter()
             res2 = q.search(text, query_embedding=qvec, top_k=args.top_k,
                             owner=args.owner, cfg=cfg, store=store)
+            tm["rrf_total"].append((time.perf_counter() - _t) * 1000)
+            # 🔴 RRF 조건도 검사한다. 위의 FTS 호출에만 `error` 검사가 있어서, 벡터 팔이
+            # 죽은 창에서 나온 FTS 단독 결과를 "rrf" 라고 이름 붙여 기록하고 있었다.
+            if res2.get("error"):
+                raise SystemExit(f"RRF 조건이 실패를 보고했다 — 측정 불성립: {res2['error']}")
+            _a = res2.get("arms") if isinstance(res2.get("arms"), str) else "?"
+            _k = f"{_a}|{res2.get('vector_note') or ''}"
+            arm_notes[_k] = arm_notes.get(_k, 0) + 1
             s = score(_docs_of(store, res2.get("rows") or []), truth, args.top_k)
             per["rrf"].append(s)
             by_lang[lang]["rrf"].append(s)
@@ -284,6 +325,19 @@ def main() -> int:
                          for c, v in conds.items() if v}
                     for lg, conds in by_lang.items()},
     }
+
+    def _pct(v, frac):
+        if not v:
+            return None
+        srt = sorted(v)
+        return round(srt[min(int(len(srt) * frac), len(srt) - 1)], 2)
+
+    out["timing_ms"] = {k: {"n": len(v), "p50": _pct(v, 0.5), "p95": _pct(v, 0.95)}
+                        for k, v in tm.items() if v}
+    # 벡터 팔이 **실제로** 붙은 질의의 비율. 이것이 없으면 강등된 창에서 나온 rrf 행을
+    # 정상 rrf 로 읽는다 — 라이브에서 오늘 세 번 연속 그 상태였다.
+    out["arms_census"] = arm_notes
+    out["vector_dropped"] = vector_dropped
     store.close()
 
     if args.json:
