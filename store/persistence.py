@@ -310,8 +310,20 @@ class SnapshotPolicy:
         2026-08-09 에 이 값이 없어서, 스냅샷이 도는지를 파일 mtime 으로 재다가
         20분을 헤맸다(Azure REST API 의 lastModified 와 컨테이너가 CIFS 로 보는
         mtime 이 달라 오판까지 했다)."""
-        return {"state": self.last_state,
-                "every_s": self.every,
-                "pending_write": self._dirty,
-                "age_s": None if self._last_ok is None
-                         else round(self._clock() - self._last_ok)}
+        out = {"state": self.last_state,
+               "every_s": self.every,
+               "pending_write": self._dirty,
+               "age_s": None if self._last_ok is None
+                        else round(self._clock() - self._last_ok)}
+        # `state:"off"` 옆에 `every_s:300` 이 나란히 있으면 "5분마다 돌아야 하는
+        # 무언가가 멈춰 있다"로 읽힌다 — 2026-09-03 에 실제로 그렇게 읽혔고, 켜는
+        # 경로를 찾다가 시간을 썼다. 켤 것이 아니다: 이 기능은 작업본을 **영속
+        # 볼륨으로 복사**하는 것이고, 켜는 것은 배포의 의도적 행위다(모듈 §계약).
+        # 복사해 둘 두 번째 자리가 없는 설치(데스크탑)에서는 꺼진 것이 정상이다.
+        # 필드는 그대로 둔다 — 이것을 읽는 알람이 이미 있다(test_snapshot_visibility).
+        # 대신 그 자리에서 뜻을 말한다.
+        if self.last_state == "off":
+            out["note"] = ("영속 스냅샷은 배포에서 켠다(VINC_STORE_SNAPSHOT). 복사해 둘 "
+                           "두 번째 자리가 없는 설치에서는 꺼진 것이 정상이고, every_s 는 "
+                           "그 경우 아무 일정도 뜻하지 않는다. 내구성은 POST /backup 이 맡는다.")
+        return out

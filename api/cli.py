@@ -27,6 +27,18 @@ def _csv(val: str | None) -> list[str] | None:
     return [s.strip() for s in val.split(",") if s.strip()]
 
 
+#: `--owner` 가 무슨 값인지 아무것도 알려 주지 않아서, 사람 이름·계정 이름을 넣어
+#: 보고 전부 0건을 받는 일이 있었다(2026-09-03). 필수 인자인데 값의 모양을 모르면
+#: "스토어가 비었다"로 오진하게 된다 — 실제로 그렇게 읽혔다. 그래서 값을 말한다.
+#:
+#: 응답에 실재 owner 목록을 붙이는 쪽을 먼저 해 봤는데, 그러면 **CLI 응답만** 달라져
+#: HTTP==CLI 등가(`tests/test_server.py` EquivalenceTests)가 깨진다. 테스트된 불변식을
+#: 편의 메시지와 맞바꾸지 않는다.
+_OWNER_HELP = ("owner_id — 데스크탑 앱이 쓰는 값은 `user:local` 이고, 계정을 연결하면 "
+               "`user:<uuid>` 가 섞인다. 사람 이름·계정 이름이 아니다(넣으면 조용히 "
+               "0건). 이 스토어에 무엇이 있는지는 `domains`(--owner 생략 가능)로 본다")
+
+
 def _emit(obj: dict) -> int:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
     return 0
@@ -53,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
     r.add_argument("--query", default="")
-    r.add_argument("--owner", default=None, help="owner_id scope (the individual learner — 'my memory')")
+    r.add_argument("--owner", default=None, help=_OWNER_HELP)
     r.add_argument("--domain", default=None, help="learning domain (free/user-defined: physics, math, art, …)")
     r.add_argument("--tenant", default=None, help="tenant_id scope (governance boundary)")
     r.add_argument("--workspace", default=None)
@@ -82,10 +94,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="report what would change without writing")
 
     lm = sub.add_parser("learner", help="a learner's method — how they learn (LearnerPattern / U-patterns)")
-    lm.add_argument("--owner", required=True, help="owner_id (the individual learner)")
+    lm.add_argument("--owner", required=True, help=_OWNER_HELP)
 
     gr = sub.add_parser("graph", help="learning knowledge-graph (concepts + relations) for a learner")
-    gr.add_argument("--owner", required=True)
+    gr.add_argument("--owner", required=True, help=_OWNER_HELP)
     gr.add_argument("--domain", default=None, help="narrow to one open/user-defined domain")
 
     # ⚠ 이 셋은 오래도록 `--owner` 가 **없었다**. SEC-1 이전 유물인데, PK
@@ -164,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--token", default=None, help="session token (default: generate)")
     sv.add_argument("--profile", default=None, help="domain profile.yml path (backup 동봉)")
     sv.add_argument("--data", default=None,
-                    help="data home (default: MEMORY_DATA_DIR, else ~/.vinc — D43)")
+                    help="db 파일 경로 (default: MEMORY_DATA_DIR, else ~/.vinc/db — D43). "
+                         "디렉터리를 주면 열리지 않는다")
     sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
 
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")

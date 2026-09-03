@@ -1076,6 +1076,17 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     age = _age_s(out["last_applied_at"])
     out["age_s"] = None if age is None else round(age)
     out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
+    # `pending` 만 보면 "곧 줄어드는 큐"로 읽힌다. 그런데 이 스토어에 벡터를 만들어
+    # 넣는 워커가 **아예 붙지 않은 설치**에서는 그 수가 영원히 안 줄어든다 — 데스크탑
+    # 번들은 인코더 스택을 이름으로 제외한다(`packaging/sidecar.spec` 의 excludes).
+    # 그 경우 정체는 결함이 아니라 설계이고, `stalled` 알람도 age_s 가 None 이라 안
+    # 뜬다. 즉 밖에서 보는 사람에게는 **아무 신호 없이 124 라는 수만** 남는다.
+    # 여기서 둘을 가려 주지는 못한다(사이드카는 워커의 존재를 모른다). 대신 두 읽기를
+    # 나란히 말한다 — 어느 쪽인지는 워커가 붙었는지로 사람이 가른다.
+    if not out["stored"] and not out["last_applied_at"] and out["pending"] > 0:
+        out["note"] = ("이 스토어는 벡터를 한 번도 받은 적이 없다. 임베딩 워커가 붙은 "
+                       "설치라면 첫 실행 전이고, 안 붙은 설치(데스크탑 기본)라면 이 수는 "
+                       "줄지 않는다 — 그때 검색은 키워드 팔 하나로 답한다.")
     return out
 
 

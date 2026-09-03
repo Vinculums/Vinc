@@ -531,6 +531,15 @@ fn main() {
                             if s.is_empty() { continue; }
                             format!("stderr: {}", s.chars().take(200).collect::<String>())
                         }
+                        // stdout 도 남긴다. 여태 `_ => continue` 가 이것을 통째로
+                        // 버려서, 사이드카가 stdout 으로 낸 것은 **어디에도** 안
+                        // 남았다(파일 로그에도, 진단 문자열에도). 기동 실패를 조사할
+                        // 때 stderr 만 있고 stdout 이 없으면 반쪽이다.
+                        CommandEvent::Stdout(b) => {
+                            let s = String::from_utf8_lossy(&b).trim().to_string();
+                            if s.is_empty() { continue; }
+                            format!("stdout: {}", s.chars().take(200).collect::<String>())
+                        }
                         CommandEvent::Error(e) => format!("spawn error: {e}"),
                         CommandEvent::Terminated(p) => format!(
                             "terminated: code={:?} signal={:?}", p.code, p.signal),
