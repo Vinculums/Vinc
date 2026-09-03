@@ -127,6 +127,11 @@ jobs:
     # 겪은 사람일 이유가 없다. 호스티드에서는 무해한 한 줄이다.
     steps:
       - uses: actions/checkout@v4
+      # 모델 굽기 스텝이 쓴다(아래). 이미지와 같은 3.12 로 맞춘다 — 산출물은 ONNX 라
+      # 버전에 안 묶이지만, `python` 이라는 이름이 있어야 그 스텝이 돈다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       # ⚠ `runner.temp` 표현식을 job 의 `env:` 에 쓰지 않는다 — 그 컨텍스트는 거기서
       # 못 쓰고, 쓰면 워크플로가 **jobs 0 으로 검증 실패**한다(이 리포가 이미 물린 자리).
@@ -172,6 +177,35 @@ jobs:
             exit 1
           fi
           echo "revisionSuffix 비어 있음 — 자동 번호 유지"
+
+      # ── 모델을 여기서 굽는다 (ACR 이 아니라) ─────────────────────────────────
+      #
+      # ACR 빌드 에이전트는 아티팩트를 **못 담는 게 아니다.** fp32 를 다 받고 나서
+      # `quantize_dynamic` 에서 OOM 으로 죽는다(실측 exit 137, bge-m3 2.27GB,
+      # bake-probe run 33716383547). vincacr 는 Basic 티어라 에이전트에 메모리를 더 줄
+      # 수 없다 — 전용 에이전트 풀은 Premium 기능이다. 그래서 **메모리를 쓰는 호출
+      # 하나만** 이 러너로 옮겼다(호스티드 러너는 약 16GB).
+      #
+      # 아티팩트는 아래 `az acr build … .` 의 끝 점이 빌드 컨텍스트로 올린다. 저장소도
+      # 자격증명도 새 워크플로도 필요 없다. 검증은 이미지 안에 남아 있다 —
+      # `Dockerfile.hub` 의 `RUN` 이 **COPY 된 그 바이트**를 열어 폭을 대조한다.
+      #
+      # ⚠ 세 값을 여기 하드코딩하지 않는다. 그러면 이 스텝이 Dockerfile ENV 의 **네
+      # 번째 독자**가 되고, 두 CI 테스트(Dockerfile↔EMBEDDING_DIM_BY_MODEL, basename
+      # 정확 일치)가 초록인 채로 갈릴 수 있다. Dockerfile 에서 읽어 쓴다.
+      - name: 모델을 굽는다 (러너 — ACR 에이전트는 메모리가 모자란다)
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          echo "굽는다: $VINC_EMBED_MODEL → $VINC_EMBED_MODEL_PATH (폭 $VINC_EMBED_DIM)"
+          python -m pip install --quiet --disable-pip-version-check \
+            onnx onnxruntime tokenizers numpy huggingface_hub
+          # 컨테이너 절대경로를 컨텍스트 상대경로로 옮긴다. basename 은 Dockerfile 이
+          # 정한 그대로 쓴다 — 그래야 `artifact_name(모델)` 대조가 계속 성립한다.
+          mkdir -p models
+          VINC_EMBED_MODEL_PATH="models/$(basename "$VINC_EMBED_MODEL_PATH")" \
+            python packaging/bake_embed_model.py
+          ls -la models
 
       - name: Build & push image (ACR Tasks)
         run: |

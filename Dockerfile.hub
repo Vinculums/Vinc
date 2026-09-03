@@ -58,12 +58,31 @@ RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
 ENV VINC_EMBED_MODEL=intfloat/multilingual-e5-base
 ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/e5-int8-rr.onnx
 ENV VINC_EMBED_DIM=768
+#
+# ── 굽기는 러너에서, 검증은 여기서 (2026-09-03) ──────────────────────────────
+#
+# 예전에는 이 자리에서 `pip install onnx` 하고 fp32 를 받아 양자화했다. **bge-m3 에서는
+# 그것이 불가능하다**: ACR 빌드 에이전트가 2.27GB 를 다 받고 나서 `quantize_dynamic`
+# 에서 OOM 으로 죽는다(실측 exit 137, bake-probe run 33716383547). vincacr 는 Basic
+# 티어라 에이전트에 메모리를 더 줄 수 없다 — 전용 에이전트 풀은 Premium 기능이다.
+#
+# 그래서 **메모리를 쓰는 호출 하나만** hub-deploy 의 러너로 옮겼다. 아티팩트는 빌드
+# 컨텍스트로 올라온다(`az acr build … .` 의 끝 점). 새 저장소도 자격증명도 워크플로도
+# 없다. 덤으로 이 레이어에서 `pip install onnx` 와 2.27GB 다운로드가 사라졌다.
+#
+# 🔴 **검증은 옮기지 않았다.** `COPY` 는 `RUN` 처럼 빨개지지 못하고 잘린 파일은 조용히
+# 성공하는데, 그 결과가 런타임에서 **영구 stall** 로 나온다(로드 예외가 문서별 except
+# 에 삼켜지고 `/health` 는 200 을 유지한다). 아래 `RUN` 이 **COPY 된 바로 그 바이트**를
+# 열어 추론을 돌리고 폭을 대조한다 — 그래서 "검증한 것 = 실은 것" 이 그대로다.
+# 이 줄을 지우면 아무 테스트도 안 떨어지지만 그 성질이 사라진다.
+#
+# `models/` 가 없으면 이 COPY 가 **크게 죽는다.** 그것이 옳은 방향이다 — 조용히
+# 안 구워진 이미지를 내보내는 것보다 낫다. 로컬에서 지으려면 먼저 굽는다:
+#   python packaging/bake_embed_model.py     (VINC_EMBED_MODEL_PATH 를 models/ 로)
+COPY models/ /srv/vinc/models/
 COPY packaging/bake_embed_model.py /tmp/bake_embed_model.py
-RUN pip install --no-cache-dir onnx \
- && mkdir -p /srv/vinc/models \
- && python /tmp/bake_embed_model.py \
- && pip uninstall -y onnx \
- && rm -rf /root/.cache/huggingface /tmp/bake_embed_model.py
+RUN python /tmp/bake_embed_model.py \
+ && rm -f /tmp/bake_embed_model.py
 
 COPY api ./api
 COPY store ./store
