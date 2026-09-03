@@ -106,7 +106,13 @@ class Encoder:
         os.makedirs(self.cache, exist_ok=True)
         path = self.onnx_path or hf_hub_download(
             self.model, "onnx/model.onnx", cache_dir=self.cache)
-        tok_path = hf_hub_download(self.model, "tokenizer.json", cache_dir=self.cache)
+        # 구운 아티팩트 **옆의** 토크나이저를 먼저 본다 — 프로덕션(`embed_worker.py`
+        # `_Embedder._load`)이 하는 그대로다. 허브에서 새로 받으면 구운 쌍이 아닌 다른
+        # 토크나이저로 평가하게 되고, 그 차이는 예외 없이 순위만 바꾼다.
+        baked_tok = os.path.join(os.path.dirname(path), "tokenizer.json")
+        tok_path = (baked_tok if os.path.exists(baked_tok)
+                    else hf_hub_download(self.model, "tokenizer.json",
+                                         cache_dir=self.cache))
 
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(self.max_tokens)
@@ -181,17 +187,28 @@ def selfcheck(model: str) -> int:
 
     samples = ["Newtonian mechanics describes motion under forces.",
                "허브는 단일 라이터라 리비전 롤링 전환이 안 된다.",
-               "mixed 문장 with both scripts 섞여 있다."]
+               "mixed 문장 with both scripts 섞여 있다.",
+               # 512토큰을 **넘겨** 절단 경로를 지나게 한다. 짧은 문장 셋만 있으면 두
+               # 구현이 서로 다르게 자르거나 다르게 채워도 이 가드가 통과한다 — 실제
+               # 코퍼스 청크는 2000자라 언제나 이쪽이다.
+               ("허브는 단일 라이터라 리비전 롤링 전환이 안 된다. " * 120).strip(),
+               # 거의 전부가 패딩인 입력. pad-id 오선택(e5 는 0 이 `<s>`)을 여기서 본다.
+               "단어"]
     # ⚠ 프로덕션이 **실제 해석한 onnx 파일**을 이쪽에도 준다. 프로덕션 `_resolve_model`
     # 은 e5 를 int8-rr 로 구워 쓰므로, 이걸 빼면 fp32 대 int8 의 양자화 오차(실측 최악
     # 코사인 0.98486)가 구현 차이로 읽혀 **거짓 경보**가 된다 — W16 에서 실제로 물렸다.
     # 같은 파일이면 두 구현은 1.0 이 나온다(실측 2026-08-30).
     resolved = w._resolve_model(w.MODEL, w.CACHE)
-    mine = np.array(Encoder(model, resolved).encode(samples, "passage"))
-    theirs = np.array(w._Embedder().encode([w._prefix(s, "passage") for s in samples]))
-    cos = (mine * theirs).sum(axis=1) / (
-        np.linalg.norm(mine, axis=1) * np.linalg.norm(theirs, axis=1))
-    worst = float(cos.min())
+    enc, emb = Encoder(model, resolved), w._Embedder()
+    # 두 종류(passage · query)를 다 지난다. 접두가 갈리는 것은 query 쪽이고(e5 는
+    # 특히), passage 만 보면 질의 경로의 드리프트를 통째로 못 본다.
+    worst = 1.0
+    for kind in ("passage", "query"):
+        mine = np.array(enc.encode(samples, kind))
+        theirs = np.array(emb.encode([w._prefix(t, kind) for t in samples]))
+        cos = (mine * theirs).sum(axis=1) / (
+            np.linalg.norm(mine, axis=1) * np.linalg.norm(theirs, axis=1))
+        worst = min(worst, float(cos.min()))
     print(f"selfcheck({model}): 최악 코사인 {worst:.8f} (기준 ≥0.9999)")
     if worst < 0.9999:
         print("🔴 두 구현이 갈라졌다 — 이 상태의 모델 비교는 구현 차이를 모델 차이로 "
