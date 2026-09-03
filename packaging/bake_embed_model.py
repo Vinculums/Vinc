@@ -37,6 +37,51 @@ import onnxruntime.quantization as ortq
 OUT = os.environ.get("VINC_EMBED_MODEL_PATH", "/srv/vinc/models/e5-int8-rr.onnx")
 TOK = os.path.join(os.path.dirname(OUT), "tokenizer.json")
 MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
+#: 이 모델이 내야 하는 벡터 폭. `Dockerfile.hub` 의 ENV 가 정본이고, 그 값이
+#: `store/config.py::EMBEDDING_DIM_BY_MODEL` 과 어긋나지 않는지는 CI 테스트가 본다
+#: (tests/test_bake_declares_the_right_width.py). 여기서 표를 복사하지 않는 이유는
+#: 복사본이 드리프트하기 때문이고, ENV 로 받는 이유는 이 파일 하나만 이미지로
+#: 복사되어 `store.config` 를 import 할 수 없기 때문이다.
+DIM = int(os.environ.get("VINC_EMBED_DIM", "768"))
+
+
+def verify_embedding_width(model_path: str, tokenizer_path: str, expected: int) -> int:
+    """구운 artifact 를 **실제로 열어 한 번 돌리고** 출력 폭을 잰다.
+
+    크기 하한이 답할 수 없는 질문에 답한다: 이 파일이 로드되는가, 그리고 선언한 폭을
+    내는가. 모델 교체에서 이것이 결정적인 이유는 차원이 함께 바뀌기 때문이다 —
+    e5 는 768, bge-m3 는 1024(`store/config.py`). 폭이 어긋난 벡터를 스토어에 쓰면
+    `ARRAY(768)` 열에서 캐스팅 오류가 나는데, 그때는 **이미 옛 벡터를 지운 뒤**다
+    (`scripts/rehearse_rebuild.py` 머리말). 빌드에서 잡는 편이 훨씬 싸다.
+
+    onnxruntime·tokenizers·numpy 는 런타임 레이어에 이미 있다(`Dockerfile.hub`) —
+    이 검사를 위해 새로 까는 것이 없다.
+    """
+    import numpy as np
+    import onnxruntime as ort
+    from tokenizers import Tokenizer
+
+    enc = Tokenizer.from_file(tokenizer_path).encode("dimension probe")
+    ids = np.array([enc.ids], dtype=np.int64)
+    supply = {"input_ids": ids,
+              "attention_mask": np.array([enc.attention_mask], dtype=np.int64),
+              "token_type_ids": np.zeros_like(ids)}
+    sess = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+    feed = {}
+    for spec in sess.get_inputs():
+        if spec.name not in supply:
+            # 모르는 입력을 0 으로 채워 넘기지 않는다 — 그러면 폭은 나오는데 그 값이
+            # 무엇인지 아무도 모른다. 답할 수 없으면 답하지 않는다.
+            sys.exit(f"FATAL: 구운 모델이 모르는 입력을 요구한다: {spec.name!r}")
+        feed[spec.name] = supply[spec.name]
+    got = int(sess.run(None, feed)[0].shape[-1])
+    if got != expected:
+        sys.exit(
+            f"FATAL: 구운 모델의 출력 폭이 {got} 인데 VINC_EMBED_DIM 은 {expected} 다. "
+            f"모델({MODEL})과 선언 폭이 어긋났다 — Dockerfile.hub 의 "
+            f"VINC_EMBED_MODEL·VINC_EMBED_DIM 를 함께 볼 것"
+        )
+    return got
 
 # 공식 int8(`model_qint8_avx512_vnni.onnx`)은 U8S8+per_channel+reduce_range=False 라
 # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
@@ -66,10 +111,17 @@ shutil.copy(hf.hf_hub_download(MODEL, "tokenizer.json"), TOK)
 
 # 결과 검증 — 조용히 건너뛴 실패를 빌드에서 잡는다(위 §② 재발 방지).
 # 실측 279MB. 200MB 미만이면 무언가 잘못된 것이므로 빌드를 세운다.
+#
+# ⚠ **크기 하한만으로는 부족하다.** 이 문턱은 e5 int8-rr 의 실측 279MB 에 맞춘 값이라
+# 그보다 훨씬 큰 모델(bge-m3)에서는 **잘린 파일도 넘어간다** — 채택하려는 쪽에서 더
+# 약하다는 뜻이다. 그리고 크기는 "열리는가·폭이 맞는가" 를 아예 묻지 않는다.
+# 이 파일이 존재하는 이유가 무음 굽기 실패였는데(위 §②), 그때의 처방은 **일어난
+# 고장**을 잡았지 그 부류를 잡지 못했다. 아래 폭 검사가 그 자리를 메운다.
 size = os.path.getsize(OUT)
 if size < 200 * 1024 * 1024:
     sys.exit(f"FATAL: 구워진 모델이 너무 작다({size}B) — 양자화가 제대로 안 됐다")
 if not os.path.getsize(TOK):
     sys.exit("FATAL: 토크나이저가 비어 있다")
 
-print(f"baked: model={size}B tokenizer={os.path.getsize(TOK)}B", flush=True)
+width = verify_embedding_width(OUT, TOK, DIM)
+print(f"baked: model={size}B tokenizer={os.path.getsize(TOK)}B width={width}", flush=True)
