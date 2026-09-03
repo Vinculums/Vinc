@@ -334,17 +334,43 @@ jobs:
       # 0.95~0.97 이라 눈에 안 띈다). 그래서 같은 SHA 로 함께 올린다.
       # 앱이 없으면 조용히 건너뛴다 — 인코더 도입 전 상태에서도 이 워크플로가 돌아야 한다.
       # 스토어를 안 물으므로 단일 writer 순서 조정(위)이 필요 없다.
-      - name: Deploy encoder (same image, skip if absent)
+      - name: Deploy encoder (same image) — 없는 것과 확인 못 한 것을 가른다
+        # 🔴 전에는 `2>/dev/null` 로 조회 실패를 통째로 "없음"으로 읽고 `exit 0` 했다.
+        # 일시적 API 오류·스로틀링 하나면 허브만 새 이미지로 가고 인코더는 옛것에 남는다.
+        # 그 상태가 위험한 이유는 모델이 **이미지의 ENV** 로 오기 때문이다 — 통과 접두를
+        # 붙이는 허브 워커와 질의 접두를 붙이는 vinc-encode 가 서로 다른 모델이 되고,
+        # 그러면 벡터가 다른 공간에 놓인다. 코사인 0.95~0.97 에 예외 0건이라 헬스체크도
+        # 로그도 통과한다. 모델 교체(Decision B)에서 정확히 이것이 막아야 할 고장이다.
         run: |
           set -euo pipefail
-          if ! az containerapp show -n vinc-encode -g vincsRG --output none 2>/dev/null; then
+          if err=$(az containerapp show -n vinc-encode -g vincsRG --output none 2>&1); then
+            echo "ENCODE_PRESENT=1" >> "$GITHUB_ENV"
+          elif printf '%s' "$err" | grep -qiE 'ResourceNotFound|was not found|could not be found'; then
             echo "vinc-encode 없음 — 건너뛴다"
+            echo "ENCODE_PRESENT=0" >> "$GITHUB_ENV"
             exit 0
           fi
           az containerapp update \
             --name vinc-encode --resource-group vincsRG \
             --image vincacr.azurecr.io/vinc-hub:${{ github.sha }} --output none
           echo "vinc-encode 갱신: ${{ github.sha }}"
+
+      - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
+        # 위 스텝이 성공을 보고해도 갱신이 라이브에 반영됐는지는 별개다. 여기서 다시
+        # 읽어 대조한다 — 같은 이미지 = 같은 ENV = 같은 인코더 공간이고, 이 리포에는
+        # 두 앱을 잇는 코드가 없어서 이 대조 말고는 확인할 자리가 없다.
+        if: env.ENCODE_PRESENT == '1'
+        run: |
+          set -euo pipefail
+          h=$(az containerapp show -n vinc-hub    -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
+          e=$(az containerapp show -n vinc-encode -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
+          echo "hub    = ${h}"
+          echo "encode = ${e}"
+          [ "$h" = "$e" ] || {
+            echo "::error::두 앱의 이미지가 다르다 — 통과 인코더와 질의 인코더가 다른 공간에 있다" >&2
+            exit 1
+          }
+          echo "인코더 공간 일치 확인"
 
       - name: Verify health (MCP tools/list)
         run: |
