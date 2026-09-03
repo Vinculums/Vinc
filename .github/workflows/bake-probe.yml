@@ -1,0 +1,154 @@
+# 굽기만 하고 배포는 안 한다 — Decision B 조건 5("실 아티팩트를 end to end 로 검증")를
+# 라이브를 건드리지 않고 재는 자리.
+#
+# ## 왜 브랜치가 아니라 dispatch 입력인가
+#
+# 실험 값(BAAI/bge-m3 · 1024)은 **리포에 남지 않는다.** 러너가 체크아웃한 사본의
+# `Dockerfile.hub` 세 줄을 그 자리에서 갈아 끼우고 굽는다. 커밋도 브랜치도 없으니
+# 그 값을 담은 ref 자체가 존재하지 않는다.
+#
+# 브랜치로 하면 안 되는 이유가 취향이 아니다. `Dockerfile.hub` 는 hub-deploy 의 push
+# 경로 필터 **안**에 있고, hub-deploy 의 `workflow_dispatch` 는 ref 가드도 확인 인자도
+# 없다. 그래서 m3 ENV 를 담은 브랜치가 존재하는 순간, 머지 한 번이나 드롭다운 한 번이
+# 그것을 라이브로 보낸다. 그리고 그 배포는 단순 실패가 아니다:
+#
+#   api/server.py:1018 이 첫 워커 폴에서 `docstore.switch_embed_model` 을 부르고,
+#   그것은 **옛 벡터를 전부 지운다**(packaging/embed_worker.py:34 가 그 설계를 적는다).
+#   그 뒤 1024 벡터가 `FLOAT[768]` 열에 안 들어가 실패한다 — 스토어를 이미 비운 다음에
+#   (scripts/rehearse_rebuild.py 머리말이 같은 순서를 경고한다).
+#
+# "이 브랜치는 머지하지 말 것"이라는 주석은 그 사고의 방어가 못 된다. 이 리포의 정본이
+# 그것이다 — [[record:writing-a-trap-down-does-not-stop-it-a-check-does]].
+#
+# ## 안전은 없는 스텝이지 플래그가 아니다
+#
+# ⚠ **이 파일에 `az containerapp` 을 절대 더하지 말 것.** hub-deploy 에 `bake_only`
+# 입력을 다는 쪽이 diff 는 작아 보이지만, 빌드와 `containerapp update` 사이에 조건이
+# 여럿 생기고 그 사이에는 **구 리비전을 먼저 내리는 스텝**이 있다. 조건 하나가 뒤집히면
+# 결과가 허브 정지다. 여기서는 배포 동사가 아예 없어서 뒤집힐 것이 없다.
+#
+# `--image` 를 주지 않으므로 태그도 매니페스트도 안 생긴다 — `containerapp update
+# --image` 가 가리킬 이름 자체가 없고, `:latest` 도 안 움직여 롤백 경로가 그대로다.
+#
+# ## concurrency 를 일부러 안 단다
+#
+# 이 런은 `--no-push` 라 스토어·리비전·레지스트리 어느 것도 안 건드리므로 직렬화할
+# 이유가 없다. 그리고 `cancel-in-progress: false` 를 다는 순간 직렬화 워크플로 명단을
+# 넷으로 고정한 테스트가 떨어진다(tests/test_gate_runner_move.py) — 그 테스트는
+# 직렬화가 느는 것을 사람이 한 번 보게 하려고 있는 것이라, 여기서 늘릴 이유가 없다.
+#
+# ⚠ GitHub 분을 쓴다. 그래서 `workflow_dispatch` 전용이고 자동으로 도는 경로가 없다.
+name: bake-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "HF 모델 id (VINC_EMBED_MODEL)"
+        type: string
+        default: "BAAI/bge-m3"
+      artifact_path:
+        description: "구울 자리 (VINC_EMBED_MODEL_PATH)"
+        type: string
+        default: "/srv/vinc/models/bge-m3-int8-rr.onnx"
+      dim:
+        description: "이 모델이 내야 하는 벡터 폭 (VINC_EMBED_DIM)"
+        type: string
+        default: "1024"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    # e5 굽기가 ACR 1분 57초 안에서 29초였다. m3 는 fp32 가 2.27GB 라 훨씬 오래 걸리고,
+    # 이 값은 일정을 조이는 장치가 아니라 **행을 잡는 장치**다.
+    timeout-minutes: 60
+    env:
+      # ⚠ `${{ }}` 를 `run` 본문에 직접 끼우지 않는다 — 입력이 셸로 새는 자리다.
+      MODEL: ${{ inputs.model }}
+      APATH: ${{ inputs.artifact_path }}
+      DIM: ${{ inputs.dim }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 세 줄을 갈아 끼운다 (러너의 체크아웃에서만)
+        run: |
+          set -euo pipefail
+          sed -i -E \
+            -e "s|^ENV VINC_EMBED_MODEL=.*|ENV VINC_EMBED_MODEL=${MODEL}|" \
+            -e "s|^ENV VINC_EMBED_MODEL_PATH=.*|ENV VINC_EMBED_MODEL_PATH=${APATH}|" \
+            -e "s|^ENV VINC_EMBED_DIM=.*|ENV VINC_EMBED_DIM=${DIM}|" \
+            Dockerfile.hub
+          # 치환이 **먹었는지** 확인한다. sed 는 안 맞아도 0 으로 끝나므로, 이걸 안 보면
+          # ENV 형태가 바뀐 날 e5 를 굽고 "m3 를 쟀다"고 보고하게 된다.
+          grep -Fxq "ENV VINC_EMBED_MODEL=${MODEL}" Dockerfile.hub \
+            && grep -Fxq "ENV VINC_EMBED_MODEL_PATH=${APATH}" Dockerfile.hub \
+            && grep -Fxq "ENV VINC_EMBED_DIM=${DIM}" Dockerfile.hub \
+            || { echo "::error::세 줄 교체가 안 먹었다 — Dockerfile.hub 의 ENV 형태가 바뀌었다"; exit 1; }
+          {
+            echo '## 무엇을 굽는가'
+            echo '```diff'
+            git --no-pager diff -- Dockerfile.hub
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 선언이 서로 맞는가 (굽기 전에)
+        # ACR 분을 쓰기 **전에** 세 값이 정본 표와 맞는지 본다. 이 둘은 이미 있는
+        # 테스트다 — Dockerfile 을 읽어 모델↔폭(store/config.py 대조)과 모델↔경로
+        # 계열을 검사한다. 새로 만드는 검사가 없다.
+        run: |
+          set -euo pipefail
+          pip install --quiet --disable-pip-version-check pytest pyyaml
+          python -m pytest tests/test_bake_declares_the_right_width.py \
+                           tests/test_embed_worker.py -q
+
+      - name: Azure 프로필을 이 잡 전용으로
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 굽는다 (밀지 않는다)
+        # `--image` 없음 = 태그 없음 = 배포가 가리킬 것이 없음. `--no-push` 는 그것을
+        # 한 번 더 못박는다. hub-deploy 의 같은 명령과 다른 점은 이 두 가지뿐이다.
+        run: |
+          set -euo pipefail
+          az acr build --registry vincacr --no-push -f Dockerfile.hub . 2>&1 | tee acr.log
+
+      - name: 판정
+        # 굽기가 스스로 폭을 재고 어긋나면 이미 위에서 죽는다(verify_embedding_width).
+        # 여기서 다시 보는 것은 **그 줄이 아예 없는 경우**다 — 레이어가 안 돌았는데
+        # 빌드가 초록인 상황이 이 리포에 실제로 있었다(run dem, 2026-08-01: 이미지가
+        # 400MB 대신 5MB 늘고 빌드는 성공, 런타임에서 OOM).
+        run: |
+          set -euo pipefail
+          line=$(grep -oE 'baked: model=[0-9]+B tokenizer=[0-9]+B width=[0-9]+' acr.log | tail -1 || true)
+          {
+            echo "## 판정"
+            echo
+            echo "| model | artifact | 선언 폭 | 굽기가 찍은 줄 |"
+            echo "|---|---|---|---|"
+            echo "| \`${MODEL}\` | \`${APATH}\` | **${DIM}** | \`${line:-없음}\` |"
+            echo
+            echo "⚠ 이 런은 아무것도 배포하지 않았다 — \`--no-push\`, 태그 없음, 컨테이너앱 호출 0."
+            echo
+            echo "⚠ **폭은 품질이 아니다.** 이 리포가 실제로 물린 아티팩트 고장은 오류 없는 int8 포화였다"
+            echo "(공식 int8 에서 한국어 nDCG 0.670 → 0.472, 예외 0건). 폭 검사는 그것을 구조적으로 못 본다."
+            echo "이 초록은 \"굽히고 · 열리고 · 폭이 맞다\"까지다."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$line" ]; then
+            echo "::error::로그에 baked 줄이 없다 — 굽기 레이어가 안 돌았다. 이 런은 아무것도 검증하지 않았다" >&2
+            exit 1
+          fi
+          got="${line##*width=}"
+          [ "$got" = "$DIM" ] || { echo "::error::잰 폭 ${got} · 선언 ${DIM}" >&2; exit 1; }
+          echo "폭 ${got} 확인 — 선언과 일치"
