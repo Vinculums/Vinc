@@ -103,7 +103,10 @@ def peak_rss_mb() -> float:
         c.cb = ctypes.sizeof(_PMC)
         if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
             return -1.0
-        return c.PeakWorkingSetSize / 1e6
+        # `PeakWorkingSetSize` 는 워킹셋이라 시스템 메모리 압력에서 **OS 가 트림한다** —
+        # 바쁜 기계가 더 작은 값을 내고, 그 작은 값이 "2GiB 에 들어간다"로 읽히고,
+        # 프로덕션에서 SIGKILL 이 난다. 커밋 피크(`PeakPagefileUsage`)와 큰 쪽을 쓴다.
+        return max(c.PeakWorkingSetSize, c.PeakPagefileUsage) / 1e6
     except Exception:
         return -1.0
 
@@ -276,6 +279,19 @@ def retable_vectors(data_dir: str, *, model: str) -> dict:
     out.update(after=after, requeued=sw.get("requeued"),
                wall_s=round(time.perf_counter() - t0, 3),
                peak_rss_mb=round(peak_rss_mb(), 1))
+    # 🔴 **지운 뒤에 재큐가 안 되면 벡터는 영영 안 돌아온다.** `switch_embed_model` 은
+    # 저장된 모델 식별자가 그대로면 "바뀐 게 없다"고 보고 재큐를 건너뛰는데, 위에서
+    # ChunkVec 은 **이미 DROP 했다.** 그 조합이 남기는 것은 벡터 0 · pending 0 인
+    # 스토어다 — 의미 검색이 죽었고, 죽었다는 사실을 아무것도 말하지 않으며, 워커도
+    # 할 일이 없다고 판단한다. 실측 2026-09-03: e5 스토어에 `retable --model e5` 를
+    # 걸었더니 481벡터가 사라지고 `requeued: null` 만 남았다.
+    # `rebuild_store` 에는 같은 가드가 이미 있다(docs != requeued → SystemExit).
+    if before["vecs"] > 0 and not after["pending"]:
+        raise SystemExit(
+            f"벡터 {before['vecs']}건을 지웠는데 재큐가 0이다(requeued={sw.get('requeued')}) "
+            f"— 이 스토어는 의미 검색이 죽은 채로 남는다. 같은 모델로 retable 하면 "
+            f"`switch_embed_model` 이 재큐를 건너뛴다. 다른 모델로 부르거나 "
+            f"`rebuild` 경로를 쓸 것.")
     return out
 
 
@@ -299,6 +315,14 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
     out: dict = {"phase": "reindex", "model": _hf(model)}
     store, cfg = open_at(data_dir, model)
     enc = encoder_for(model, onnx)
+    # 🔴 `Encoder` 는 지연 로드다. 이 줄이 없으면 ONNX 세션 빌드와 아티팩트 파일 읽기
+    # (e5 279MB · m3 570MB, 이 기계는 D: 가 5400rpm)가 t0 **뒤**의 첫 encode 안에서
+    # 일어나 처리량에 섞인다. 실측 고정비 e5 2.40s · m3 2.98s 이고, 짧은 런에서는
+    # e5 12.9% · m3 3.9% 를 먹는다 — 오염 크기가 모델마다 달라서 **비율까지 흔든다**
+    # (고정비 제거 시 스레드 스케일링이 e5 2.56 → 2.97 로 옮겨 갔다).
+    _t = time.perf_counter()
+    enc.encode(["warmup"], kind="passage")
+    load_s = round(time.perf_counter() - _t, 2)
     t0 = time.perf_counter()
     chunks = docs = 0
     while True:
@@ -316,8 +340,13 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
             docs += 1
             if kill_after and chunks >= kill_after:
                 # W14 stall 알람 검증용 — 워커가 중간에 죽는 상황을 그대로 만든다.
-                out.update(killed_at_chunks=chunks, encode_s=round(time.perf_counter() - t0, 2),
-                           **_stats(store))
+                _e = time.perf_counter() - t0
+                # 잘린 런도 처리량과 피크를 낸다. 전에는 이 둘을 안 실어서,
+                # `--kill-after` 로 재는 배터리가 답한다고 적은 값이 안 나왔다.
+                out.update(killed_at_chunks=chunks, load_s=load_s,
+                           encode_s=round(_e, 2),
+                           chunks_per_s=round(chunks / _e, 3) if _e else 0,
+                           peak_rss_mb=round(peak_rss_mb(), 1), **_stats(store))
                 store.close()
                 return out
     enc_s = time.perf_counter() - t0
@@ -326,7 +355,7 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
     idx_s = time.perf_counter() - t1
     out.update(_stats(store))
     store.close()
-    out.update(docs_embedded=docs, chunks_embedded=chunks,
+    out.update(docs_embedded=docs, chunks_embedded=chunks, load_s=load_s,
                encode_s=round(enc_s, 2), index_s=round(idx_s, 2),
                chunks_per_s=round(chunks / enc_s, 2) if enc_s else 0,
                wall_s=round(enc_s + idx_s, 2), peak_rss_mb=round(peak_rss_mb(), 1))
