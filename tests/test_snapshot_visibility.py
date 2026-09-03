@@ -58,6 +58,21 @@ class PolicyDetailTest(unittest.TestCase):
         self.assertEqual(d["age_s"], 180, d)
         self.assertTrue(d["state"].startswith("error"), d)
 
+    def test_off_says_what_off_means(self):
+        """`state:"off"` 옆의 `every_s:300` 은 "5분마다 돌 것이 멈춰 있다"로 읽힌다.
+
+        켤 것이 아니다 — 작업본을 영속 볼륨으로 복사하는 기능이고, 복사해 둘 두 번째
+        자리가 없는 설치에서는 꺼진 것이 정상이다. 필드는 알람이 읽으므로 그대로 두고
+        뜻만 덧붙인다. 켜져 있을 때 이 문장이 붙으면 그것도 거짓이므로 함께 건다."""
+        off = SnapshotPolicy(every=300, clock=_Clock())
+        self.assertEqual(off.last_state, "off")
+        self.assertEqual(off.detail()["every_s"], 300)      # 알람이 읽는 필드는 그대로
+        self.assertIn("note", off.detail())
+
+        on = SnapshotPolicy(every=300, clock=_Clock())
+        on.done("ok")
+        self.assertNotIn("note", on.detail(), "켜진 스냅샷에 이 설명이 붙으면 거짓이다")
+
     def test_pending_write_is_visible(self):
         """쓰기가 있었는데 아직 안 떴다 = 지금 죽으면 그만큼 잃는다."""
         p = SnapshotPolicy(every=300, clock=_Clock())

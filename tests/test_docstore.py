@@ -433,6 +433,22 @@ class DocstoreE2E(unittest.TestCase):
         self.assertTrue(r.get("changed"))
         self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0)
 
+    def test_한_번도_임베딩된_적_없으면_그_뜻을_함께_말한다(self):
+        """`pending: 124` 만 보이면 "곧 줄어드는 큐"로 읽힌다. 워커가 아예 붙지 않은
+        설치(데스크탑 번들은 인코더 스택을 제외한다)에서는 그 수가 안 줄고, `stalled`
+        도 age_s 가 None 이라 안 뜬다 — 밖에서는 아무 신호 없이 숫자만 남는다.
+
+        **안 붙는 쪽도 함께 건다**: 한 번이라도 적용됐으면 이 문장은 소음이다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        st = ds.embed_model_state(self.store)
+        self.assertGreater(st["pending"], 0)
+        self.assertIn("note", st, "대기만 있고 이력이 없는 상태가 설명 없이 남았다")
+
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertNotIn("note", ds.embed_model_state(self.store),
+                         "한 번이라도 적용된 뒤에는 이 문장이 소음이다")
+
     def test_이행_상태가_정직하게_보고된다(self):
         """`migrating` 은 '기록이 있고 + 재임베딩 대기가 남았다' 일 때만 참이다.
         서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
