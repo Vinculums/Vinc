@@ -97,3 +97,54 @@ def test_굽기가_폭_검사를_실제로_부른다():
                                   "VINC_EMBED_DIM"])
 def test_세_줄이_모두_있다(name):
     assert _env(name)
+
+
+# ── 굽기는 러너, 검증은 이미지 (2026-09-03) ──────────────────────────────────
+#
+# `quantize_dynamic` 만 ACR 밖으로 나갔다. 그때 잃기 쉬운 성질이 **"검증한 바이트 =
+# 실은 바이트"** 다 — 검증을 이미지 밖으로 같이 내보내면 조용히 사라지고, 아무 테스트도
+# 안 떨어진다. 그래서 여기서 고정한다.
+
+def test_이미지가_COPY_한_바이트를_스스로_검증한다():
+    """`COPY` 는 `RUN` 처럼 빨개지지 못하고 잘린 파일은 조용히 성공한다. 그 결과는
+    런타임에서 빌드 실패가 아니라 영구 stall 이다(로드 예외가 문서별 except 에 삼켜지고
+    /health 는 200 을 유지한다). 그래서 이미지 안에서 한 번 열어 봐야 한다."""
+    df = DOCKERFILE.read_text(encoding="utf-8")
+    assert "COPY models/" in df, "아티팩트를 컨텍스트에서 안 가져온다"
+    assert re.search(r"^RUN python /tmp/bake_embed_model\.py", df, re.MULTILINE), (
+        "COPY 만 하고 검증 RUN 이 없다 — 실은 바이트를 아무도 안 연다"
+    )
+
+
+def test_이미지_빌드가_양자화_의존성을_다시_들이지_않는다():
+    """`onnx` 를 이미지에서 뺀 것이 이 변경의 덤이다. 다시 들어오면 굽기가 이미지로
+    돌아왔다는 뜻이고, 그러면 bge-m3 에서 다시 OOM 이다."""
+    df = DOCKERFILE.read_text(encoding="utf-8")
+    bake_layer = df[df.index("COPY models/"):]
+    assert "pip install" not in bake_layer, (
+        f"굽기 레이어에 pip install 이 돌아왔다:\n{bake_layer[:400]}"
+    )
+
+
+def test_무거운_import_가_굽는_분기_안에_있다():
+    """`huggingface_hub` 과 `onnxruntime.quantization` 이 모듈 최상단에 있으면 검증
+    전용 실행(이미지 빌드)이 ImportError 로 죽는다 — 거기엔 `onnx` 가 없다."""
+    src = (_ROOT / "packaging" / "bake_embed_model.py").read_text(encoding="utf-8")
+    for mod in ("import huggingface_hub", "import onnxruntime.quantization"):
+        for line in src.splitlines():
+            if line.strip().startswith(mod):
+                assert line.startswith(" "), (
+                    f"{mod!r} 이 최상단에 있다 — 굽는 분기 안으로 들여쓸 것"
+                )
+
+
+def test_models_가_빌드_컨텍스트에서_제외되지_않는다():
+    """`.dockerignore` 에 넣으면 `COPY models/` 가 죽는다. 여기 없는 것이 의도라는
+    사실이 어딘가에 적혀 있어야 다음 사람이 '누락'으로 보고 더하지 않는다."""
+    di = (_ROOT / ".dockerignore").read_text(encoding="utf-8")
+    ignored = [ln.strip() for ln in di.splitlines()
+               if ln.strip() and not ln.strip().startswith("#")]
+    assert not any(ln.rstrip("/") == "models" for ln in ignored), (
+        ".dockerignore 가 models/ 를 뺀다 — COPY models/ 가 죽는다"
+    )
+    assert "models/" in di, "제외하지 않는다는 것이 의도임을 적어 둘 것"

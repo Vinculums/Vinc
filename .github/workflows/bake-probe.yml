@@ -117,9 +117,25 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 굽는다 (밀지 않는다)
+      - name: 모델을 굽는다 (러너 — 여기가 메모리가 있는 자리다)
+        # 2026-09-03 이후 굽기는 ACR 이 아니라 러너에서 한다. 이 프로브가 처음 그
+        # 사실을 밝힌 자리이기도 하다 — ACR 에이전트가 bge-m3 2.27GB 를 다 받고
+        # `quantize_dynamic` 에서 OOM 으로 죽었다(exit 137, run 33716383547).
+        # 호스티드 러너는 약 16GB 라 여기서는 돈다.
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          python -m pip install --quiet --disable-pip-version-check \
+            onnx onnxruntime tokenizers numpy huggingface_hub
+          mkdir -p models
+          VINC_EMBED_MODEL_PATH="models/$(basename "$VINC_EMBED_MODEL_PATH")" \
+            python packaging/bake_embed_model.py 2>&1 | tee bake.log
+          ls -la models
+
+      - name: 이미지에서 검증한다 (밀지 않는다)
         # `--image` 없음 = 태그 없음 = 배포가 가리킬 것이 없음. `--no-push` 는 그것을
         # 한 번 더 못박는다. hub-deploy 의 같은 명령과 다른 점은 이 두 가지뿐이다.
+        # 여기서 도는 것은 이제 굽기가 아니라 **COPY 된 바이트의 검증**이다.
         run: |
           set -euo pipefail
           az acr build --registry vincacr --no-push -f Dockerfile.hub . 2>&1 | tee acr.log

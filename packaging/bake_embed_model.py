@@ -42,8 +42,10 @@ import sys
 # 그쪽은 그래프 파일을 직접 열므로 이 검사를 아예 안 탄다.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 
-import huggingface_hub as hf  # noqa: E402  (위 환경변수가 먼저 서야 한다)
-import onnxruntime.quantization as ortq  # noqa: E402
+# ⚠ `huggingface_hub` 과 `onnxruntime.quantization` 은 여기서 import 하지 않는다 —
+# **굽는 분기 안에서만** 든다. 검증 전용으로 도는 이미지 빌드에는 `onnx` 가 없고
+# (굽지 않으므로 설치할 이유가 없다), 여기서 올리면 그 실행이 ImportError 로 죽는다.
+# 위의 `HF_HUB_DISABLE_SYMLINKS` 는 그 지연 import 보다도 앞이므로 계약이 더 확실해진다.
 
 # 🔴 **런타임이 찾는 바로 그 경로에 굽는다.** 굽는 이름과 찾는 이름을 각자 적으면
 # 갈라지고, 갈라진 순간 런타임은 "구운 게 없다"고 판정해 조용히 fp32(e5 1.06GB ·
@@ -104,39 +106,78 @@ def verify_embedding_width(model_path: str, tokenizer_path: str, expected: int) 
 # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
 # 0.670 → 0.472). reduce_range=True 는 가중치를 7비트로 낮춰 포화를 산술적으로
 # 불가능하게 만든다 — 그래서 공식본을 쓰지 않고 직접 굽는다.
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
-# 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 등 **별도 파일**로
-# 나온다. 그래프 파일만 받으면 quantize 가 로드에서 터진다 — 같은 스냅샷 디렉터리에
-# 나란히 받아야 onnx 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 설정류는 제외.
-# (같은 규칙이 `scripts/quantize_e5.py` 에도 있다. 그쪽은 실험용 로컬 빌드다.)
-for _f in hf.list_repo_files(MODEL):
-    if (_f.startswith("onnx/") and _f != "onnx/model.onnx"
-            and not _f.endswith((".onnx", ".json", ".model"))):
-        hf.hf_hub_download(MODEL, _f)
-ortq.quantize_dynamic(
-    fp32,
-    OUT,
-    weight_type=ortq.QuantType.QInt8,
-    per_channel=True,
-    reduce_range=True,
-    extra_options={"MatMulConstBOnly": True},
-)
-
-# 토크나이저(17MB)도 함께 굽는다 — 런타임 네트워크 의존을 남기지 않는다.
-shutil.copy(hf.hf_hub_download(MODEL, "tokenizer.json"), TOK)
-
-# 결과 검증 — 조용히 건너뛴 실패를 빌드에서 잡는다(위 §② 재발 방지).
-# 실측 279MB. 200MB 미만이면 무언가 잘못된 것이므로 빌드를 세운다.
+# ── 굽기는 조건부, 검증은 무조건 ────────────────────────────────────────────
 #
-# ⚠ **크기 하한만으로는 부족하다.** 이 문턱은 e5 int8-rr 의 실측 279MB 에 맞춘 값이라
-# 그보다 훨씬 큰 모델(bge-m3)에서는 **잘린 파일도 넘어간다** — 채택하려는 쪽에서 더
-# 약하다는 뜻이다. 그리고 크기는 "열리는가·폭이 맞는가" 를 아예 묻지 않는다.
-# 이 파일이 존재하는 이유가 무음 굽기 실패였는데(위 §②), 그때의 처방은 **일어난
-# 고장**을 잡았지 그 부류를 잡지 못했다. 아래 폭 검사가 그 자리를 메운다.
+# 이 파일은 **두 자리에서** 돌고, 그 둘이 하는 일이 다르다:
+#
+#   ① 러너(hub-deploy 의 ubuntu-latest) — 아티팩트가 없으므로 **굽는다.**
+#   ② 이미지 빌드(`RUN`) — `COPY` 로 이미 와 있으므로 **검증만 한다.**
+#
+# 굽기가 러너로 나간 이유는 메모리다. ACR 빌드 에이전트는 fp32 2.27GB 를 **다 받고
+# 나서** `quantize_dynamic` 에서 OOM 으로 죽는다(실측 2026-09-03, exit 137,
+# bake-probe run 33716383547). Basic 티어라 에이전트에 메모리를 더 줄 수 없다
+# (전용 에이전트 풀은 Premium 기능).
+#
+# 🔴 **그래도 검증은 이미지 안에 남는다.** 그것이 이 구조의 요점이다. `COPY` 는
+# `RUN` 처럼 빨개지지 못하고, 잘린 파일은 조용히 성공한다(이 리포 실화:
+# `scripts/quantize_e5.py` 가 278,686,411 → 29,360,128 무음 절단을 기록한다).
+# 그리고 그 결과는 런타임에서 빌드 실패가 아니라 **영구 stall** 로 나온다 —
+# `_load()` 가 문서별 `except` 안에서 지연 호출돼 로드 예외가 문서당 stderr 한 줄로
+# 삼켜지고 영원히 재시도된다. `/health` 는 200 을 유지한다.
+#
+# 아래 `verify_embedding_width` 는 **시스템 전체에서 아티팩트를 실제로 열어 돌려
+# 보는 유일한 자리**다. 런타임이 하는 것은 basename 문자열 비교 하나뿐이고 그 양쪽이
+# 둘 다 Dockerfile ENV 라 파일을 한 바이트도 안 읽는다(`VINC_EMBED_DIM` 은 런타임에서
+# 아예 안 읽힌다). 그래서 이 검사를 이미지 밖으로 내보내면 **검증한 바이트와 실은
+# 바이트가 갈린다.** 여기 남겨 둔 것이 그 성질을 되사는 값 전부다.
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
+
+if os.path.exists(OUT) and os.path.exists(TOK):
+    print(f"skip-bake: 이미 있는 아티팩트를 검증만 한다 ({OUT})", flush=True)
+else:
+    # 무거운 import 는 이 분기 안에서만 한다 — 이미지에는 `onnx` 가 없다(굽지 않으므로
+    # 설치할 이유가 없어졌다). 위로 올리면 검증 전용 실행이 ImportError 로 죽는다.
+    import huggingface_hub as hf   # noqa: E402
+    import onnxruntime.quantization as ortq   # noqa: E402
+
+    # 공식 int8(`model_qint8_avx512_vnni.onnx`)은 U8S8+per_channel+reduce_range=False 라
+    # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
+    # 0.670 → 0.472). reduce_range=True 는 가중치를 7비트로 낮춰 포화를 산술적으로
+    # 불가능하게 만든다 — 그래서 공식본을 쓰지 않고 직접 굽는다.
+    fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
+    src_bytes = os.path.getsize(fp32)
+    # 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 등 **별도 파일**로
+    # 나온다. 그래프 파일만 받으면 quantize 가 로드에서 터진다 — 같은 스냅샷 디렉터리에
+    # 나란히 받아야 onnx 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 설정류는 제외.
+    # (같은 규칙이 `scripts/quantize_e5.py` 에도 있다. 그쪽은 실험용 로컬 빌드다.)
+    for _f in hf.list_repo_files(MODEL):
+        if (_f.startswith("onnx/") and _f != "onnx/model.onnx"
+                and not _f.endswith((".onnx", ".json", ".model"))):
+            src_bytes += os.path.getsize(hf.hf_hub_download(MODEL, _f))
+    ortq.quantize_dynamic(
+        fp32,
+        OUT,
+        weight_type=ortq.QuantType.QInt8,
+        per_channel=True,
+        reduce_range=True,
+        extra_options={"MatMulConstBOnly": True},
+    )
+
+    # 토크나이저(17MB)도 함께 굽는다 — 런타임 네트워크 의존을 남기지 않는다.
+    shutil.copy(hf.hf_hub_download(MODEL, "tokenizer.json"), TOK)
+
+    # 크기 하한을 **원본에서 유도한다.** 예전에는 200MB 리터럴이었는데 그것은 e5
+    # int8-rr 의 실측 279MB 에 맞춘 값이라, 훨씬 큰 모델에서는 잘린 파일도 넘어갔다 —
+    # 채택하려는 쪽에서 더 약했다. int8 은 fp32 의 1/4 근처이고(e5 실측 26%),
+    # 0.15 는 그 아래로 넉넉히 둔 여유다. 선언이 아니라 유도라 모델이 바뀌어도 따라온다.
+    floor = int(src_bytes * 0.15)
+    got = os.path.getsize(OUT)
+    if got < floor:
+        sys.exit(f"FATAL: 구워진 모델이 너무 작다({got}B < {floor}B, 원본 {src_bytes}B) "
+                 f"— 양자화가 제대로 안 됐다")
+
+# ── 여기부터는 어느 자리에서 돌든 똑같이 한다 ────────────────────────────────
 size = os.path.getsize(OUT)
-if size < 200 * 1024 * 1024:
-    sys.exit(f"FATAL: 구워진 모델이 너무 작다({size}B) — 양자화가 제대로 안 됐다")
 if not os.path.getsize(TOK):
     sys.exit("FATAL: 토크나이저가 비어 있다")
 
