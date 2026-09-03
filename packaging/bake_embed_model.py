@@ -25,8 +25,25 @@ import os
 import shutil
 import sys
 
-import huggingface_hub as hf
-import onnxruntime.quantization as ortq
+# ⚠ **이 줄은 `huggingface_hub` import 보다 앞에 있어야 한다.** 그 패키지는 이 값을
+# `constants` 모듈이 **import 되는 시점에** 한 번 읽는다(`_is_true(os.environ.get(...))`).
+# 뒤로 옮기면 조용히 아무 효과가 없다.
+#
+# 왜 필요한가(실측 2026-09-03, bake-probe run 33714831308, ACR 52초):
+# hf 캐시는 `blobs/` 의 실파일을 `snapshots/` 에서 **심링크**로 가리킨다. 2GB 를 넘는
+# 모델은 가중치가 `model.onnx_data` 별도 파일로 오는데, onnx 의 외부 데이터 로더는
+# 심링크를 **거부한다**(경로 traversal 방어):
+#
+#   ValidationError: Data of TensorProto (…word_embeddings.weight) should be stored in
+#   …/onnx/model.onnx_data, but it is a symbolic link.
+#
+# 즉 동반 파일을 올바른 자리에 받아 놓고도 로드에서 막힌다. 이 값이 켜지면 hf 가
+# 심링크 대신 **복사**한다. e5(단일 파일, 외부 데이터 없음)에는 영향이 없다 —
+# 그쪽은 그래프 파일을 직접 열므로 이 검사를 아예 안 탄다.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+
+import huggingface_hub as hf  # noqa: E402  (위 환경변수가 먼저 서야 한다)
+import onnxruntime.quantization as ortq  # noqa: E402
 
 # 🔴 **런타임이 찾는 바로 그 경로에 굽는다.** 굽는 이름과 찾는 이름을 각자 적으면
 # 갈라지고, 갈라진 순간 런타임은 "구운 게 없다"고 판정해 조용히 fp32(e5 1.06GB ·
