@@ -88,10 +88,21 @@ def peak_rss_mb() -> float:
                         ("PagefileUsage", ctypes.c_size_t),
                         ("PeakPagefileUsage", ctypes.c_size_t)]
 
+        # 🔴 `restype` 을 지정해야 한다. 기본값은 `c_int` 라 64비트에서 의사 핸들
+        # (HANDLE)-1 이 32비트로 잘려 0x00000000FFFFFFFF 로 건네지고, 호출이 **실패**
+        # 한다. 그런데 반환값을 안 보면 0 으로 채워진 구조체가 그대로 나가서
+        # `peak_rss_mb()` 가 **0.0 을 답한다** — "메모리를 안 썼다"로 읽히는 "못 쟀다"다.
+        # 실측 2026-09-03: 고치기 전 반환 0 · peak 0.0MB, 고친 뒤 반환 1 · peak 14.3MB.
+        # psutil 이 있는 환경에서는 위 분기가 먼저 잡혀서 이 결함이 안 보였다.
+        k32, psapi = ctypes.windll.kernel32, ctypes.windll.psapi   # type: ignore[attr-defined]
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE,
+                                               ctypes.POINTER(_PMC), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
         c = _PMC()
         c.cb = ctypes.sizeof(_PMC)
-        ctypes.windll.psapi.GetProcessMemoryInfo(          # type: ignore[attr-defined]
-            ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb)
+        if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+            return -1.0
         return c.PeakWorkingSetSize / 1e6
     except Exception:
         return -1.0
