@@ -94,6 +94,7 @@ class Encoder:
         self.batch = batch
         self._sess = None
         self._tok = None
+        self._counter = None
         self._names: list[str] = []
 
     def _load(self) -> None:
@@ -116,6 +117,10 @@ class Encoder:
 
         tok = Tokenizer.from_file(tok_path)
         tok.enable_truncation(self.max_tokens)
+        # 조각내기(`split_for_embed`)가 **진짜 토큰 수**를 세게 한다. truncation 이 켜진
+        # 위 인스턴스로 세면 길이가 항상 ≤상한으로 보이므로(`embed_worker` 와 같은 함정)
+        # 자르지 않는 별도 인스턴스를 든다.
+        self._counter = Tokenizer.from_file(tok_path)
         # ⚠ 기본 pad_id 0 이 항상 패딩 토큰은 아니다 — e5(XLM-R)에서 0 은 `<s>` 이고
         # `<pad>` 는 1 이다. 마스크가 풀링을 방어하긴 하지만 틀린 입력은 틀린 입력이다.
         pad = tok.token_to_id("<pad>") or tok.token_to_id("[PAD]")
@@ -135,6 +140,21 @@ class Encoder:
         self._sess = ort.InferenceSession(path, sess_options=opts,
                                           providers=["CPUExecutionProvider"])
         self._names = [i.name for i in self._sess.get_inputs()]
+
+    def count_tokens(self, text: str) -> int:
+        self._load()
+        return len(self._counter.encode(text).ids)
+
+    def split_for_embed(self, text: str, max_tokens: int = 500) -> list[str]:
+        """청크 → 임베딩 조각(워커 `packaging/embed_worker.py::_split_for_embed` 와 같은
+        규칙: `api.docstore.chunk_doc` 토큰 기준·무손실 경계, 저장 청크는 안 건드린다).
+
+        리허설의 `reindex` 는 여태 청크를 통째로 한 벡터로 만들었다. 프로덕션 워커는
+        ≤500 토큰 조각마다 벡터를 만들어 `ChunkVec` 자식으로 편다(라이브 허브 실측
+        청크당 2.08개). 그 형상으로 스토어를 만들려면 이 함수가 필요하다."""
+        from api.docstore import chunk_doc
+        parts = chunk_doc(text, max_tokens=max_tokens, count=self.count_tokens)
+        return [p["text"] for p in parts if p["text"].strip()] or [text]
 
     def encode(self, texts: list[str], kind: str = "passage") -> list[list[float]]:
         out: list[list[float]] = []
