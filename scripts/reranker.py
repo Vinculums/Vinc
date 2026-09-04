@@ -88,6 +88,21 @@ def maxp(piece_scores: list[list[float]]) -> list[float]:
     return [max(ps) if ps else -math.inf for ps in piece_scores]
 
 
+def pick_piece(pieces: list[str], seq: int | None) -> str:
+    """자식 하나만 고른다. seq 가 없거나 범위를 벗어나면 첫 조각(= `first` 창과 같은 자리).
+
+    벡터 팔은 **이미** 부모당 최선 자식을 골라 놓고 접기에서 그 신원을 버린다
+    (`store/embedded_backend.py::vector_search` 의 RETURN 에 seq 가 없다). 그것을
+    되찾아 그 조각만 채점하면 쌍 수가 후보 수와 같아진다 — `max` 창의 2.16배가 1배다.
+    되찾지 못한 후보(FTS 단독으로 들어온 행 등)는 `first` 와 같은 자리를 본다:
+    "모른다"를 "관련 없다"로 바꾸지 않는다."""
+    if not pieces:
+        raise ValueError("pieces 가 비었다")
+    if seq is None or seq < 0 or seq >= len(pieces):
+        return pieces[0]
+    return pieces[seq]
+
+
 def gate(rows: list[dict], policy: str, *, k: int = RRF_K,
          score_key: str = "rrf_score") -> bool:
     """이 융합 풀에 리랭커를 **돌릴지**를 정한다(True = 돌린다).
@@ -226,14 +241,22 @@ class Reranker:
         parts = chunk_doc(text, max_tokens=self.piece_tokens, count=self.count_tokens)
         return [p["text"] for p in parts if p["text"].strip()] or [text]
 
-    def score_texts(self, query: str, texts: list[str], *, window: str = "first"
-                    ) -> tuple[list[float], int]:
+    def score_texts(self, query: str, texts: list[str], *, window: str = "first",
+                    seqs: list[int | None] | None = None) -> tuple[list[float], int]:
         """청크 텍스트 목록 → 청크 점수. 반환 (점수, 실제로 잰 쌍 수).
 
         `first`  청크 앞 max_tokens 만 본다(쌍 = 청크 수).
-        `max`    조각별로 재서 최대(쌍 = 조각 수). 벡터가 본 조각과 같은 조각이다."""
+        `max`    조각별로 재서 최대(쌍 = 조각 수). 벡터가 본 조각과 같은 조각이다.
+        `child`  벡터가 이긴 조각 **하나만** 잰다(쌍 = 청크 수). `seqs` 가 후보마다 그
+                 조각 번호를 준다 — 없으면 그 후보는 `first` 와 같은 자리를 본다."""
         if window == "first":
             return self.score(query, texts), len(texts)
+        if window == "child":
+            sq = seqs if seqs is not None else [None] * len(texts)
+            if len(sq) != len(texts):
+                raise ValueError(f"seqs {len(sq)} != texts {len(texts)}")
+            chosen = [pick_piece(self.split(t), n) for t, n in zip(texts, sq)]
+            return self.score(query, chosen), len(chosen)
         if window != "max":
             raise ValueError(f"unknown window {window!r}")
         pieces: list[str] = []
@@ -294,7 +317,7 @@ def main() -> int:
     ap.add_argument("--model", default="BAAI/bge-reranker-v2-m3",
                     help="이름 또는 이름=ONNX경로")
     ap.add_argument("--max-tokens", type=int, default=512)
-    ap.add_argument("--window", choices=("first", "max"), default="first")
+    ap.add_argument("--window", choices=("first", "max", "child"), default="first")
     ap.add_argument("--rss-probe", action="store_true",
                     help="이 모델만 든 프로세스의 로드·첫 호출·피크 RSS 를 JSON 으로")
     ap.add_argument("text", nargs="*", help="첫 인자가 질의, 나머지가 본문")
