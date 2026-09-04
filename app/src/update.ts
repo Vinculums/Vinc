@@ -59,7 +59,12 @@ function showToast(
 
   const msg = el.querySelector<HTMLElement>(".update-msg")!;
   const actions = el.querySelector<HTMLElement>(".update-actions")!;
-  const dismiss = () => el.remove();
+  // 등장이 있으면 퇴장도 있어야 한다(뚝 끊기지 않게). 감소 모션이면 바로 지운다.
+  const dismiss = () => {
+    if (!el.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { el.remove(); return; }
+    const a = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" });
+    void a.finished.then(() => el.remove()).catch(() => el.remove());
+  };
 
   el.querySelector<HTMLButtonElement>('[data-act="later"]')!
     .addEventListener("click", dismiss);

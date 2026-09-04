@@ -190,22 +190,10 @@ function openPalette() {
     return hits;
   };
   let hits = draw();
-  // 팔레트는 단축키로 열리므로 나온 곳이 없다 — `null` 을 **명시로** 넘겨 추정을 끄고
-  // 중립 지점(가운데 위)에서 자라게 한다. 인자를 생략하면 그때의 포커스를 트리거로
-  // 삼아, 검색창에 커서를 둔 채 단축키를 누르면 팔레트가 검색창에서 자라나고 검색창이
-  // 튄다(motion.ts resolveTrigger — 생략과 null 은 다른 뜻이다).
-  const card = palette.querySelector<HTMLElement>(".palette-card")!;
-  fadeIn(palette);
-  popIn(card, null);
-  // 닫기도 기다린다 — 열림만 부드럽고 닫힘이 뚝 끊기는 것이 이번에 고친 그 결함이다.
-  let fading = false;
-  const close = () => {
-    if (fading) return;
-    fading = true;
-    void Promise.all([popOut(card, null), fadeOut(palette)]).then(() => {
-      palette.hidden = true; fading = false;
-    });
-  };
+  // 팔레트에는 등장·퇴장 애니메이션이 **없다**. 단축키로 하루 수십 번 여는 것이라 모션은
+  // 매번 기다리는 시간이 되고(Raycast 가 같은 판단이다), 나온 곳도 없어 설명할 공간 단서도
+  // 없다. 시트·모달의 popIn/popOut 은 클릭으로 여는 것들의 문법이다.
+  const close = () => { palette.hidden = true; };
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") close();

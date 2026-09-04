@@ -266,6 +266,20 @@ function paint() {
   body.innerHTML = html;
 }
 
+/** 캐럿을 **실제로 돌린다.** paint() 가 트리를 통째로 다시 그리므로 새 캐럿은 최종 각도로
+ *  태어나고 전이는 시작점이 없다 — `.lnb-caret` 의 transition 이 여태 한 번도 돌지 않은
+ *  이유. 방금 그린 캐럿을 이전 각도에 세워 한 프레임 확정한 뒤 놓아 준다(FLIP). */
+function spinCaret(key: string, open: boolean): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const caret = $("lnb-body")?.querySelector<HTMLElement>(`.lnb-group[data-group="${CSS.escape(key)}"] > .lnb-caret`);
+  if (!caret) return;
+  caret.style.transition = "none";
+  caret.style.transform = open ? "rotate(0deg)" : "rotate(90deg)";
+  void caret.offsetWidth;                  // 시작 상태 확정 — 없으면 한 프레임에 건너뛴다
+  caret.style.transition = "";
+  caret.style.transform = "";
+}
+
 /** 문서 클릭 — **지도로 가고 문서를 연다**(둘 다, 한 클릭에). 여태 노드로만
  *  날아가서, 목록에서 문서를 골라도 본문은 두 번째 클릭이 있어야 나왔고 그 두 번째
  *  클릭조차 "그 노드의 발췌가 마침 이 문서일 때"만 성립했다. 착지 노드가 없는
@@ -335,6 +349,7 @@ export function mountLnb() {
       if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
       saveExpanded();
       paint();
+      spinCaret(key, expanded.has(key));
       return;
     }
     if (t.closest(".lnb-scope-clear")) {
