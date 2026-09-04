@@ -153,18 +153,37 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY' > rerank-manifest.json
-          import hashlib, json, os
+          import hashlib, json, os, re
           import onnxruntime, huggingface_hub as hf
           p = "art/model-int8-rr.onnx"
           h = hashlib.sha256()
           with open(p, "rb") as fh:
               for blk in iter(lambda: fh.read(1 << 20), b""):
                   h.update(blk)
+
+          # 🔴 어느 CPU 에서 쟀는지 없으면 이 수치는 **다음 실행과도 비교 불가**다.
+          # 실제로 물렸다: 같은 아티팩트(sha256 동일)로 mmarco:jina 쌍당 비가 이 리포의
+          # 워크스테이션에서 2.78배, 이 컨테이너에서 1.42배, PR #190 의 VM 에서 약 1.0배로
+          # 나왔다. int8 커널이 명령어 집합을 타는데 그 집합을 아무도 안 적어서, "하드웨어
+          # 탓"이 추측으로 남았다. 관심 있는 플래그만 남긴다(전체는 길고 대부분 무관하다).
+          WANT = ("avx", "avx2", "avx512f", "avx512_vnni", "avx_vnni", "amx_int8", "f16c", "fma")
+          cpu = {"model": None, "flags": [], "cores": os.cpu_count()}
+          try:
+              txt = open("/proc/cpuinfo", encoding="utf-8").read()
+              m = re.search(r"^model name\s*:\s*(.+)$", txt, re.M)
+              cpu["model"] = m.group(1).strip() if m else None
+              f = re.search(r"^flags\s*:\s*(.+)$", txt, re.M)
+              have = set((f.group(1) if f else "").split())
+              cpu["flags"] = [x for x in WANT if x in have]
+          except OSError as e:
+              cpu["error"] = str(e)
+
           print(json.dumps({
               "run_id": os.environ.get("GITHUB_RUN_ID"),
               "model": os.environ["MODEL"],
               "hf_revision": hf.model_info(os.environ["MODEL"]).sha,
               "onnxruntime_runner": onnxruntime.__version__,
+              "cpu": cpu,
               "artifact": {"bytes": os.path.getsize(p), "sha256": h.hexdigest()},
               "limits": {"cpus": os.environ["LIMIT_CPUS"], "memory": os.environ["LIMIT_MEM"],
                          "app": os.environ["APP"]},
@@ -185,6 +204,11 @@ jobs:
           print(f"| 항목 | 값 |\n|---|---|")
           print(f"| 모델 | `{d.get('model')}` |")
           print(f"| 가둔 형상 | {os.environ['APP']} — cpus {os.environ['LIMIT_CPUS']} · mem {os.environ['LIMIT_MEM']} |")
+          try:
+              mf = json.load(open("rerank-manifest.json", encoding="utf-8"))["cpu"]
+              print(f"| CPU | {mf.get('model')} · {' '.join(mf.get('flags') or ['(플래그 없음)'])} |")
+          except Exception:
+              print("| CPU | 각인을 못 읽었다 |")
           print(f"| 아티팩트 | {d.get('artifact_mb')} MB |")
           print(f"| 로드 | {d.get('load_s')} s |")
           print(f"| 첫 호출 | {d.get('first_call_s')} s |")
