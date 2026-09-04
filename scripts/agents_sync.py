@@ -57,7 +57,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from vinc_mcp.roles import (DOMAIN, ID_PREFIX, build_payload,  # noqa: E402
-                            render_shell)
+                            render_shell, roster_rows)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / ".claude" / "agents"
@@ -125,12 +125,16 @@ def cmd_pull() -> int:
     """**여기만 네트워크를 쓴다** — `refresh_graph_refs.py` 와 같은 자리, 같은 이유."""
     from vinc_mcp import remote
 
-    res = remote.call("vinc_neighbors",
-                      {"node": f"domain:{DOMAIN}", "limit": 200})
-    if res.get("isError") or not res.get("found"):
-        raise SystemExit(f"[agents] 도메인 조회 실패: {res.get('error') or res}")
-    ids = sorted({n["id"] for n in res.get("neighbors", [])
-                  if str(n.get("id", "")).startswith(ID_PREFIX)})
+    def _neighbors(node: str) -> list[dict]:
+        res = remote.call("vinc_neighbors", {"node": node, "limit": 200})
+        if res.get("isError"):
+            raise SystemExit(f"[agents] {node} 조회 실패: {res.get('error') or res}")
+        # 멤버 없는 자식 도메인은 found:false 로 온다 — 고장이 아니라 비어 있는 것이다.
+        return res.get("neighbors", []) or []
+
+    # 직속 + 직계 자식 도메인. prompts/list 와 **같은 함수**를 지난다(Vinc#204: 역할이
+    # vinc/agent/roles 로 옮겨지자 직속만 읽던 이 자리가 역할 0건을 쓸 판이었다).
+    ids = [str(r["id"]) for r in roster_rows(_neighbors)]
     if not ids:
         raise SystemExit(f"[agents] {DOMAIN} 에 역할 노드가 없다 — 도메인 이름을 확인하라")
     print(f"[agents] 역할 {len(ids)}개")

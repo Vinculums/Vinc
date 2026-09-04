@@ -51,15 +51,28 @@ _LOUD_ROLE = {
 class _RosterBridge(Bridge):
     """로스터를 답하는 가짜 사이드카. 호출 궤적을 남긴다."""
 
-    def __init__(self, roles_=None, owner="user:test"):
+    def __init__(self, roles_=None, owner="user:test", nested=False):
         super().__init__(base="http://127.0.0.1:1", token="t", owner=owner)
         self.roles = SNAPSHOT["roles"] if roles_ is None else roles_
+        # nested: 라이브 그래프의 2026-09-04 이후 모양 — 역할은 `vinc/agent/roles` 에,
+        # 루트에는 자식 도메인 행만, 형제 `openclaw` 는 멤버 없음(found:false).
+        self.nested = nested
         self.calls: list[tuple] = []
 
     def request(self, method, path, params=None, body=None, timeout=60):
         self.calls.append((method, path, dict(params or {}), body))
         if path == "/neighbors":
-            if (params or {}).get("node") == f"domain:{roles.DOMAIN}":
+            node = (params or {}).get("node")
+            root = f"domain:{roles.DOMAIN}"
+            if self.nested and node == root:
+                return {"executed": True, "found": True, "neighbors": [
+                    {"rel": "PARENT_OF", "id": f"{root}/openclaw", "title": "openclaw",
+                     "domain": roles.DOMAIN},
+                    {"rel": "PARENT_OF", "id": f"{root}/roles", "title": "roles",
+                     "domain": roles.DOMAIN}]}
+            if self.nested and node == f"{root}/openclaw":
+                return {"executed": True, "found": False, "neighbors": []}
+            if node == root or (self.nested and node == f"{root}/roles"):
                 return {"executed": True, "found": True, "neighbors": [
                     {"rel": "IN_DOMAIN", "id": r["id"], "title": r["label"],
                      "domain": r["domain"]} for r in self.roles]}
@@ -138,11 +151,34 @@ class ListPrompts(unittest.TestCase):
         self.assertEqual([p["name"] for p in roles.list_prompts(b)["prompts"]],
                          ["agent-loud"])
 
-    def test_list_is_one_bridge_call(self):
-        """역할마다 서브그래프를 끌면 호스트가 붙을 때마다 조회 열여섯 건이다."""
+    def test_list_is_one_bridge_call_per_domain_level(self):
+        """역할마다 서브그래프를 끌면 호스트가 붙을 때마다 조회 열여섯 건이다. 도메인에
+        한 번, 직계 자식 도메인이 있으면 자식마다 한 번 — 그 이상은 없다."""
         b = _RosterBridge()
         roles.list_prompts(b)
         self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/neighbors")])
+        b = _RosterBridge(nested=True)
+        roles.list_prompts(b)
+        self.assertEqual([c[2]["node"] for c in b.calls],
+                         ["domain:vinc/agent", "domain:vinc/agent/openclaw",
+                          "domain:vinc/agent/roles"])
+
+    def test_roles_filed_one_level_down_are_still_the_roster(self):
+        """2026-09-04 에 역할 열일곱이 vinc/agent/roles 로 옮겨지자 직속만 읽던 목록이
+        비었다(Vinc#204). 자식 도메인 한 단계는 로스터다."""
+        got = roles.list_prompts(_RosterBridge(nested=True))
+        self.assertEqual([p["name"] for p in got["prompts"]],
+                         [r["name"] for r in SNAPSHOT["roles"]])
+        self.assertEqual(len(got["prompts"]), 17)
+
+    def test_a_role_seen_in_two_domains_is_listed_once(self):
+        rows = roles.roster_rows(lambda node: [
+            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"},
+            {"rel": "IN_DOMAIN", "id": "concept:agent-x"}] if node == "domain:vinc/agent"
+            else [{"rel": "IN_DOMAIN", "id": "concept:agent-x"},
+                  {"rel": "IN_DOMAIN", "id": "concept:agent-a"},
+                  {"rel": "IN_DOMAIN", "id": "decision:agent-not-a-role"}])
+        self.assertEqual([r["id"] for r in rows], ["concept:agent-a", "concept:agent-x"])
 
     def test_an_empty_roster_is_an_empty_list_not_an_error(self):
         """vinc/agent 도메인이 없는 그래프는 고장이 아니다 — 이 기능은 제품이고,
