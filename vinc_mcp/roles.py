@@ -232,10 +232,37 @@ def _fence(body: str) -> str:
     return f"{tick}\n{body}\n{tick}"
 
 
+def roster_rows(neighbors) -> list[dict]:
+    """역할 행 — `domain:vinc/agent` 의 직속 멤버에 **직계 자식 도메인의 멤버**를 더해,
+    `concept:agent-` 접두 행만 id 순으로.
+
+    왜 자식까지 읽나: 2026-09-04 에 역할 열일곱이 `vinc/agent/roles` 로 옮겨졌는데 이
+    함수의 전신은 직속만 읽어 라이브 `prompts/list` 가 비었고 `--pull` 은 역할 0건을
+    쓸 판이었다(record:prompts-list-and-agents-sync-read-only-the-direct-members-of-vinc-agent-2026-09-05,
+    Vinc#204). 도메인 좌표의 neighbors 는 자식 도메인(PARENT_OF)과 직속 멤버(IN_DOMAIN)
+    만 내므로 자식을 한 홉 더 읽는다. 한 단계만인 이유: 역할을 두 단계보다 깊이 둘
+    이유가 없고, 트리 전체를 걷는 것은 `vinc_domains` 의 일이다.
+
+    `neighbors(node)` 는 행 목록을 돌려주는 호출자다. prompts 는 브리지로, agents_sync
+    는 remote 로 넘긴다 — 같은 함수를 지나야 두 표면이 같은 로스터를 본다."""
+    rows = list(neighbors(f"domain:{DOMAIN}"))
+    for child in [r for r in rows if r.get("rel") == "PARENT_OF" and r.get("id")]:
+        rows += neighbors(str(child["id"]))
+    seen: set[str] = set()
+    out = []
+    for row in rows:
+        rid = str(row.get("id") or "")
+        if rid.startswith(ID_PREFIX) and rid not in seen:
+            seen.add(rid)
+            out.append(row)
+    return sorted(out, key=lambda r: str(r.get("id") or ""))
+
+
 def list_prompts(bridge, forced_owner: str | None = None) -> dict:
     """`prompts/list` — `domain:vinc/agent` 에 속한 역할 개념을 프롬프트로 낸다.
 
-    한 번의 `/neighbors` 로 끝낸다. description 을 `props.mission` 으로 채우려면
+    `/neighbors` 를 도메인에 한 번, 직계 자식 도메인마다 한 번 부른다(`roster_rows`).
+    역할마다 서브그래프를 끌지는 않는다: description 을 `props.mission` 으로 채우려면
     역할마다 서브그래프를 한 번씩 더 끌어야 하는데(neighbors 는 props 를 안 준다),
     그건 호스트가 붙을 때마다 조회 열여섯 건이고 **고르는 화면의 부제** 값으로는
     비싸다. 임무 문장은 그것이 실제로 일을 하는 자리인 `prompts/get` 이 싣는다.
@@ -243,14 +270,16 @@ def list_prompts(bridge, forced_owner: str | None = None) -> dict:
     로스터가 없는 그래프에서는 빈 목록이 정답이다 — 오류가 아니다. 이 기능은
     도그푸딩 전용이 아니라 제품이고, 남의 그래프에 vinc/agent 도메인이 없는 것은
     고장이 아니다."""
-    res = bridge.request("GET", "/neighbors", params={
-        "owner": _owner_of(bridge, forced_owner),
-        "node": f"domain:{DOMAIN}", "limit": 200})
+    owner = _owner_of(bridge, forced_owner)
+
+    def _neighbors(node: str) -> list[dict]:
+        res = bridge.request("GET", "/neighbors", params={
+            "owner": owner, "node": node, "limit": 200})
+        return res.get("neighbors") or []
+
     out = []
-    for row in sorted(res.get("neighbors") or [], key=lambda r: str(r.get("id") or "")):
+    for row in roster_rows(_neighbors):
         rid = str(row.get("id") or "")
-        if not rid.startswith(ID_PREFIX):
-            continue
         # `title` 은 안 싣는다 — 여기서는 description 과 같은 문자열이 되고, 같은
         # 값을 두 필드로 내면 나중에 한쪽만 고쳐진다. description 은 2024-11-05
         # 부터 모든 리비전이 알고, title 은 그렇지 않다.
