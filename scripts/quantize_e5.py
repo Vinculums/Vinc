@@ -39,6 +39,8 @@ import sys
 
 #: 실측 크기(바이트). 다운로드가 조용히 잘려도 그대로 재면 엉뚱한 수치가 나온다 —
 #: 이 세션에서 실제로 한 파일이 278,686,411 → 29,360,128 로 잘려 있었다.
+#: e5 계열의 정본 크기다. 더 작은 모델(리랭커 118M 은 int8 이 ~120MB)에는 --min-size 로
+#: 그 모델의 정본을 준다. 상수로 두면 작은 모델은 양자화에 성공하고도 FATAL 로 죽는다.
 _EXPECT_INT8_MIN = 200 * 1024 * 1024
 
 
@@ -49,13 +51,15 @@ def main() -> int:
     ap.add_argument("--cache", default=os.environ.get("VINC_EMBED_CACHE", ".cache/embed"))
     ap.add_argument("--keep-fp32", action="store_true",
                     help="fp32 원본(약 1GB)을 지우지 않는다(fp32 대조 실험용)")
+    ap.add_argument("--min-size", type=int, default=_EXPECT_INT8_MIN,
+                    help="이 크기 미만이면 양자화가 안 된 것으로 본다(모델별 정본 크기)")
     args = ap.parse_args()
 
     from huggingface_hub import hf_hub_download, list_repo_files
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    if os.path.exists(args.out) and os.path.getsize(args.out) >= _EXPECT_INT8_MIN:
+    if os.path.exists(args.out) and os.path.getsize(args.out) >= args.min_size:
         print(f"이미 있다 — {args.out} ({os.path.getsize(args.out)}B)")
         return 0
 
@@ -76,7 +80,7 @@ def main() -> int:
     os.replace(tmp, args.out)             # 원자적 — 중간에 죽어도 반쪽이 안 남는다
 
     size = os.path.getsize(args.out)
-    if size < _EXPECT_INT8_MIN:
+    if size < args.min_size:
         print(f"FATAL: 결과가 너무 작다({size}B) — 양자화가 제대로 안 됐다", file=sys.stderr)
         return 1
     if not args.keep_fp32:

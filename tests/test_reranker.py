@@ -149,5 +149,57 @@ class ScoreExtTests(unittest.TestCase):
         self.assertGreaterEqual(b["ci95"][1], 0.0)
 
 
+class PickPieceTests(unittest.TestCase):
+    """자식 창 — 벡터가 이긴 조각 하나만 채점한다. seq 를 잘못 집으면 `max` 창보다
+    나쁜 값을 내면서 "자식 창은 안 된다"로 읽히므로, 경계는 테스트로 못박는다."""
+
+    def setUp(self):
+        self.m = _load("reranker")
+
+    def test_seq_가_없거나_범위_밖이면_첫_조각(self):
+        pieces = ["a", "b", "c"]
+        for seq in (None, -1, 3, 99):
+            self.assertEqual(self.m.pick_piece(pieces, seq), "a", seq)
+
+    def test_범위_안이면_그_조각(self):
+        pieces = ["a", "b", "c"]
+        self.assertEqual(self.m.pick_piece(pieces, 0), "a")
+        self.assertEqual(self.m.pick_piece(pieces, 2), "c")
+
+    def test_조각이_없으면_죽는다(self):
+        with self.assertRaises(ValueError):
+            self.m.pick_piece([], 0)
+
+    def test_child_창은_후보당_쌍_하나만_쓴다(self):
+        """`max` 는 조각 수만큼 재고 `child` 는 후보 수만큼 잰다 — 그 차이가 실험의
+        전부다. 모델 없이 split·score 만 갈아 끼워 쌍 수를 센다."""
+        m = self.m
+        pieces = {"A": ["a0", "a1", "a2"], "B": ["b0", "b1"]}
+        rr = m.Reranker.__new__(m.Reranker)
+        seen = []
+        rr.split = lambda t: pieces[t]
+        rr.score = lambda q, ps: (seen.extend(ps), [1.0] * len(ps))[1]
+
+        texts = ["A", "B"]
+        scores, pairs = m.Reranker.score_texts(rr, "q", texts, window="child",
+                                               seqs=[2, None])
+        self.assertEqual(pairs, len(texts))
+        self.assertEqual(seen, ["a2", "b0"])
+        self.assertEqual(len(scores), len(texts))
+
+        seen.clear()
+        _, pairs_max = m.Reranker.score_texts(rr, "q", texts, window="max")
+        self.assertEqual(pairs_max, 5)          # 조각 수 = 3 + 2
+        self.assertGreater(pairs_max, pairs)
+
+    def test_seqs_길이가_다르면_죽는다(self):
+        m = self.m
+        rr = m.Reranker.__new__(m.Reranker)
+        rr.split = lambda t: [t]
+        rr.score = lambda q, ps: [0.0] * len(ps)
+        with self.assertRaises(ValueError):
+            m.Reranker.score_texts(rr, "q", ["A", "B"], window="child", seqs=[0])
+
+
 if __name__ == "__main__":
     unittest.main()

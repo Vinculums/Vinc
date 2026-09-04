@@ -47,6 +47,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -59,7 +60,8 @@ from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
 
 import eval_search as es                                     # noqa: E402
-from reranker import Reranker, gate, parse_model_spec, peak_rss_mb, rerank_rows  # noqa: E402
+from reranker import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
+                      pick_piece, rerank_rows)
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _DEFAULT_EVALSETS = [str(_FIXTURES / n) for n in
@@ -151,6 +153,35 @@ def _pct(v: list[float], frac: float):
 
 
 # ── 실행 ────────────────────────────────────────────────────────────────────
+#: 자식 레벨 벡터 조회. `vector_search` 는 부모로 접으면서 seq 를 버리므로 여기서
+#: 직접 부른다. 접는 규칙은 백엔드와 같다: 이미 distance 오름차순이니 첫 등장이 이긴다.
+#: ⚠ 인덱스 이름은 **LITERAL 이어야 한다** — `$idx` 로 넘기면 `Binder exception:
+#: $idx has type PARAMETER but LITERAL was expected` 다(실측). 백엔드도 같은 이유로
+#: f-string 으로 끼운다(`store/embedded_backend.py::vector_search`). 이름이 코드에
+#: 섞이므로 식별자 형태만 허용한다.
+_CHILD_CY = ("CALL QUERY_VECTOR_INDEX('ChunkVec', '{idx}', $emb, $k) "
+             "RETURN node.chunk_id AS id, node.seq AS seq, distance ORDER BY distance")
+
+
+def child_seqs(store, qvec: list[float], k: int) -> dict[str, int]:
+    """부모 chunk_id -> 이긴 자식의 seq. 실패하면 **죽는다**(조용한 빈 맵이면 `child`
+    창이 `first` 로 강등되는데 출력에서 둘을 구분할 방법이 없다)."""
+    idx = getattr(store, "_VEC_INDEX", "chunk_vec")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(idx)):
+        raise SystemExit(f"인덱스 이름이 식별자가 아니다: {idx!r}")
+    try:
+        rows = store.run(_CHILD_CY.format(idx=idx), {"emb": list(qvec), "k": int(k)})
+    except Exception as e:                       # noqa: BLE001
+        raise SystemExit(f"자식 seq 조회 실패({type(e).__name__}: {e}) - child 창은 "
+                         "이게 없으면 first 와 같아진다. 스토어가 --split 로 만들어졌나?")
+    out: dict[str, int] = {}
+    for r in rows:
+        i = r.get("id")
+        if i is not None and i not in out:
+            out[i] = int(r.get("seq") or 0)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", help="스토어 데이터 경로")
@@ -161,7 +192,10 @@ def main() -> int:
     ap.add_argument("--encoder", help="이름=onnx · 프로세스 안 임베더(VINC_EMBED_ENCODE 없을 때)")
     ap.add_argument("--rerank", required=True, help="이름=onnx · 크로스인코더")
     ap.add_argument("--depth", default="10,20,50", help="후보 깊이 K 목록")
-    ap.add_argument("--window", choices=("first", "max"), default="first")
+    ap.add_argument("--window", choices=("first", "max", "child"), default="first")
+    ap.add_argument("--split-count", choices=("tokenizer", "estimate"), default="tokenizer",
+                    help="child 창에서 조각을 셀 때 무엇으로 세나. tokenizer=리랭커 어휘"
+                         "(워커와 같은 종류) · estimate=프로덕션 질의 경로의 근사")
     ap.add_argument("--max-tokens", type=int, default=512)
     ap.add_argument("--gate", action="append", default=[],
                     help="적응형 게이트 정책(반복 가능): top-agree · margin:0.2")
@@ -228,6 +262,19 @@ def main() -> int:
     gate_hits: dict[str, int] = {}
     arm_notes: dict[str, int] = {}
     per_query: list[dict] = []
+    align = {"ok": 0, "mismatch": 0, "found": 0, "candidates": 0}
+    vec_n: dict[str, int] = {}
+
+    def split_count(text: str) -> list[str]:
+        """`--split-count` 가 무엇으로 세느냐를 정한다. estimate 는 프로덕션 질의 경로가
+        가진 것(토크나이저 없음 -> `api/docstore.estimate_tokens`, 1.3배 여유)이고
+        tokenizer 는 워커가 쓴 것이다. 둘의 불일치율이 곧 프로덕션 이식 비용이다."""
+        if args.split_count == "tokenizer":
+            return rr.split(text)
+        from api.docstore import chunk_doc
+        parts = chunk_doc(text, max_tokens=rr.piece_tokens)
+        return [p["text"] for p in parts if p["text"].strip()] or [text]
+
 
     # 워밍업(eval_search 와 같은 이유: 확장 LOAD 와 HNSW 첫 접촉을 표본에서 뺀다).
     _w = qs[0]["query"]
@@ -289,12 +336,29 @@ def main() -> int:
         # `ms_per_pair` 가 얕은 깊이의 비용을 준다. 깊이별 지연을 직접 재려면 `--depth`
         # 하나로 따로 돌린다(지연 패스 · VINC_EVAL_THREADS=1).
         cand_all = pool[:max_k]
+        cand_texts = [r.get("text") or "" for r in cand_all]
+        seqs = None
+        if args.window == "child":
+            smap = child_seqs(store, qvec, max_k * 8)
+            seqs = [smap.get(str(r.get("id") or "")) for r in cand_all]
+            align["found"] += sum(x is not None for x in seqs)
+            # 조각 수 대조 = 토크나이저 불일치 측정. 하네스가 세는 조각 수와 스토어에
+            # 실제로 들어간 자식 수가 다르면 seq 는 **다른 조각**을 가리킨다.
+            for r, t in zip(cand_all, cand_texts):
+                cid = str(r.get("id") or "")
+                if cid not in vec_n:
+                    rows_n = store.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $i "
+                                       "RETURN count(v) AS c", {"i": cid})
+                    vec_n[cid] = int(rows_n[0]["c"]) if rows_n else 0
+                mine = len(split_count(t))
+                align["ok" if mine == vec_n[cid] else "mismatch"] += 1
         _t = time.perf_counter()
-        scores_all, n_pairs = rr.score_texts(text, [r.get("text") or "" for r in cand_all],
-                                             window=args.window)
+        scores_all, n_pairs = rr.score_texts(text, cand_texts,
+                                             window=args.window, seqs=seqs)
         dt = (time.perf_counter() - _t) * 1000
         tm.setdefault(f"rerank@{max_k}", []).append(dt)
         pairs.setdefault(f"rerank@{max_k}", []).append(n_pairs)
+        align["candidates"] += len(cand_all)
         for K in depths:
             cand = cand_all[:K]
             c = f"rerank@{K}"
@@ -339,6 +403,10 @@ def main() -> int:
         "ms_per_pair": {k: round(sum(tm[k]) / max(1, sum(pairs[k])), 2) for k in pairs},
         "gate_stats": {g: {"triggered": n, "total": len(qs)} for g, n in gate_hits.items()},
         "arms_census": arm_notes,
+        "piece_align": ({**align, "split_count": args.split_count,
+                         "rate": round(align["mismatch"]
+                                       / max(1, align["ok"] + align["mismatch"]), 4)}
+                        if args.window == "child" else None),
         "peak_rss_mb": peak_rss_mb(),
         "per_query": per_query,
     }
@@ -351,6 +419,14 @@ def main() -> int:
                                  n=args.bootstrap)
              for c, v in cs.items() if c != "rrf" and v}
         for lg, cs in by_lang.items()}
+
+    if args.window == "child":
+        pa = out["piece_align"]
+        if pa["rate"] > 0.10:
+            raise SystemExit(
+                f"조각 수 불일치 {pa['rate']:.1%}(> 10%) - seq 가 임베드된 것과 다른 "
+                f"조각을 가리킨다. 이 조건의 수치는 읽을 수 없다. "
+                f"ok={pa['ok']} mismatch={pa['mismatch']} split_count={pa['split_count']}")
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

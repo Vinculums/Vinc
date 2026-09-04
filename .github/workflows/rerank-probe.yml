@@ -1,0 +1,220 @@
+# 리랭커를 **컨테이너 형상 안에서** 잰다. 배포는 물론이고 Azure 호출도 0건이다.
+#
+# ## 왜 있는가
+#
+# 리랭커 측정(PR #190)은 4 vCPU Xeon(avx512_vnni) VM 에서 했고, 문서가 그 조건을 적으며
+# "컨테이너와 M1 에서는 아무것도 안 쟀다. 절대 지연은 옮겨 쓰지 말 것"이라고 못박았다.
+# 워크스테이션에서 다시 재도 그 말은 그대로다 — 이 리포의 개발 기계는 Kaby Lake 라
+# VNNI 가 아예 없고, 게다가 `resource` 모듈이 없어 `peak_rss_mb()` 가 -1.0 을 낸다
+# (`scripts/reranker.py` 의 peak_rss_mb 는 POSIX 전용이다). 즉 **RSS 는 그 기계에서
+# 구조적으로 못 잰다.** 그 두 수치가 나오는 자리가 여기다.
+#
+# ## 왜 Azure 동사가 없는가
+#
+# `bake-probe.yml` 이 `refs/heads/main` 에 묶이는 이유는 OIDC 연합 자격증명뿐이다
+# (브랜치에서 띄우면 azure/login 이 AADSTS700213 으로 죽는다). 이 프로브는 레지스트리도
+# 구독도 필요 없으므로 로그인을 안 넣는다 — 그러면 `--ref` 제약이 사라지고, 무엇보다
+# **뒤집힐 조건이 없다**. 그래도 workflow_dispatch 는 기본 브랜치에 파일이 있어야
+# 목록에 뜨므로 첫 실행은 머지 뒤다.
+#
+# ## concurrency 를 일부러 안 단다
+#
+# 스토어·리비전·레지스트리 어느 것도 안 건드리므로 직렬화할 이유가 없다. 그리고
+# `cancel-in-progress: false` 를 다는 순간 직렬화 워크플로 명단을 넷으로 고정한
+# `tests/test_gate_runner_move.py` 가 떨어진다 — 그 테스트는 직렬화가 느는 것을 사람이
+# 한 번 보게 하려고 있는 것이다.
+#
+# ## 이 프로브가 못 내는 것 (요약에도 찍는다)
+#
+# 인증된 end to end 검색 지연 · `vinc-encode` cold start(minReplicas 0 이라 콜드 경로는
+# 배포된 리비전에만 있다) · 실제 ACA CPU 모델과 스로틀링 · 허브↔인코드 RTT · 동거(이미
+# e5 세션이 올라간 같은 2GiB 안에서 리랭커가 도는 상황). GitHub 호스티드 러너는 Azure
+# 위에 있지만 ACA 그 자체는 아니다.
+#
+# ⚠ GitHub 분을 쓴다. 그래서 `workflow_dispatch` 전용이고 자동으로 도는 경로가 없다.
+name: rerank-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "HF 리랭커 id"
+        type: string
+        default: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+      min_size:
+        description: "int8 결과의 정본 크기 하한(바이트). mmarco 113MB · jina 267MB"
+        type: string
+        default: "100000000"
+      max_tokens:
+        description: "쌍 하나의 상한 토큰"
+        type: string
+        default: "512"
+      app:
+        description: "어느 앱의 형상으로 가둘까 (scripts/app-config-baseline.json 의 키)"
+        type: choice
+        options: ["vinc-encode", "vinc-hub", "vinc-account"]
+        default: "vinc-encode"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # ⚠ `${{ }}` 를 `run` 본문에 직접 끼우지 않는다 — 입력이 셸로 새는 자리다.
+      MODEL: ${{ inputs.model }}
+      MIN_SIZE: ${{ inputs.min_size }}
+      MAX_TOKENS: ${{ inputs.max_tokens }}
+      APP: ${{ inputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 가둘 형상을 정본에서 읽는다 (하드코딩하지 않는다)
+        # cpu·memory 를 여기 적으면 정본이 바뀐 날 조용히 다른 형상을 재게 된다.
+        # `scripts/app-config-baseline.json` 은 매 hub-deploy 마다 라이브와 대조되는
+        # 기준선이므로(gate_app_config.py), 그것을 그대로 읽는 것이 유일하게 안 어긋난다.
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json, os, re
+          app = os.environ["APP"]
+          d = json.load(open("scripts/app-config-baseline.json", encoding="utf-8"))
+          res = d[app]["resources"]
+          mem = str(res["memory"])
+          m = re.fullmatch(r"([0-9.]+)Gi", mem)
+          if not m:
+              raise SystemExit(f"memory 형식을 모른다: {mem!r}")
+          print(f"LIMIT_CPUS={res['cpu']}")
+          print(f"LIMIT_MEM={m.group(1)}g")
+          PY
+          echo "가둘 형상: $APP"
+
+      - name: 러너에서 굽는다 (컨테이너에는 없는 메모리가 여기 있다)
+        # `bake_embed_model.py` 머리말과 같은 이유: 런타임 양자화는 2GiB 안에서 불가능하다
+        # (피크 1.5GB+). 아티팩트는 러너에서 만들고 컨테이너에는 읽기 전용으로 물린다.
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check \
+            onnx onnxruntime tokenizers numpy huggingface_hub
+          mkdir -p art
+          python scripts/quantize_e5.py --model "$MODEL" \
+            --out art/model-int8-rr.onnx --cache "$RUNNER_TEMP/hf" \
+            --min-size "$MIN_SIZE"
+          ls -la art
+
+      - name: 프로브 이미지 (베이스와 pip 줄을 Dockerfile.hub 에서 뽑는다)
+        # 스택을 손으로 적으면 허브가 파이썬이나 ORT 설치를 바꾼 날 조용히 갈린다.
+        # 두 줄을 **추출**하고, 못 찾으면 죽는다 — 이 리포의 상습 고장이 "치환이 안
+        # 먹었는데 초록"이다(bake-probe 의 grep -Fxq 와 같은 이유).
+        run: |
+          set -euo pipefail
+          base=$(grep -m1 -E '^FROM python:' Dockerfile.hub)
+          pipline=$(grep -m1 -E '^RUN pip install .*onnxruntime' Dockerfile.hub)
+          [ -n "$base" ] && [ -n "$pipline" ] || {
+            echo "::error::Dockerfile.hub 에서 FROM/onnxruntime 줄을 못 찾았다 — 형태가 바뀌었다"; exit 1; }
+          printf '%s\n%s\n' "$base" "$pipline" > Dockerfile.rerank-probe
+          {
+            echo '## 프로브 이미지'
+            echo '```dockerfile'
+            cat Dockerfile.rerank-probe
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          docker build -f Dockerfile.rerank-probe -t vinc-rerank-probe .
+
+      - name: 컨테이너 형상 안에서 잰다
+        # `scripts/` 를 마운트한다 — 이미지 안 사본이 아니라 **이 체크아웃의 코드**를
+        # 재고, PR 이 머지되기 전에도 돈다. 스레드 1 = 프로덕션 조건.
+        # exit 137 은 2GiB OOM 킬이고 그것 자체가 사양 질문의 답이다.
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --cpus "$LIMIT_CPUS" --memory "$LIMIT_MEM" \
+            -e VINC_EVAL_THREADS=1 -e HF_HOME=/tmp/hf \
+            -v "$PWD/art:/art:ro" -v "$PWD/scripts:/probe:ro" \
+            vinc-rerank-probe \
+            python /probe/reranker.py --model "$MODEL=/art/model-int8-rr.onnx" \
+              --rss-probe --max-tokens "$MAX_TOKENS" > probe.json 2> probe.err
+          rc=$?
+          set -e
+          echo "docker rc=$rc"
+          if [ "$rc" -eq 137 ]; then
+            echo "::error::exit 137 — $LIMIT_MEM 안에서 OOM 으로 죽었다. 이 모델은 이 형상에 안 들어간다(그 자체가 답이다)" >&2
+          fi
+          tail -20 probe.err || true
+          [ "$rc" -eq 0 ] || exit "$rc"
+
+      - name: 각인 (sha256 · HF 리비전 · ORT)
+        # 나중에 잰 수치가 **어느 파일**에 대한 것인지 말할 수 있어야 한다.
+        run: |
+          set -euo pipefail
+          python - <<'PY' > rerank-manifest.json
+          import hashlib, json, os
+          import onnxruntime, huggingface_hub as hf
+          p = "art/model-int8-rr.onnx"
+          h = hashlib.sha256()
+          with open(p, "rb") as fh:
+              for blk in iter(lambda: fh.read(1 << 20), b""):
+                  h.update(blk)
+          print(json.dumps({
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "model": os.environ["MODEL"],
+              "hf_revision": hf.model_info(os.environ["MODEL"]).sha,
+              "onnxruntime_runner": onnxruntime.__version__,
+              "artifact": {"bytes": os.path.getsize(p), "sha256": h.hexdigest()},
+              "limits": {"cpus": os.environ["LIMIT_CPUS"], "memory": os.environ["LIMIT_MEM"],
+                         "app": os.environ["APP"]},
+          }, indent=2, ensure_ascii=False))
+          PY
+          cat rerank-manifest.json
+
+      - name: 판정
+        # 초록이 "쟀다"를 뜻하게 만드는 자리. 수치가 없는데 초록인 런은 이 리포에 실제로
+        # 있었다(bake-probe 머리말의 run dem). 없으면 죽는다.
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os, sys
+          d = json.load(open("probe.json", encoding="utf-8"))
+          mspp, rss = d.get("ms_per_long_pair"), d.get("peak_rss_mb")
+          print("## 판정\n")
+          print(f"| 항목 | 값 |\n|---|---|")
+          print(f"| 모델 | `{d.get('model')}` |")
+          print(f"| 가둔 형상 | {os.environ['APP']} — cpus {os.environ['LIMIT_CPUS']} · mem {os.environ['LIMIT_MEM']} |")
+          print(f"| 아티팩트 | {d.get('artifact_mb')} MB |")
+          print(f"| 로드 | {d.get('load_s')} s |")
+          print(f"| 첫 호출 | {d.get('first_call_s')} s |")
+          print(f"| 콜드 합계 | {d.get('cold_total_s')} s |")
+          print(f"| **{d.get('max_tokens')}토큰 쌍당** | **{mspp} ms** (스레드 {d.get('threads')}) |")
+          print(f"| **피크 RSS** | **{rss} MB** |")
+          print()
+          print("⚠ 이 런은 아무것도 배포하지 않았고 Azure 를 호출하지 않았다.")
+          print()
+          print("⚠ **이 수치가 못 말하는 것**: 인증된 end to end 검색 지연 · `vinc-encode` 콜드스타트")
+          print("(minReplicas 0 이라 콜드 경로는 배포된 리비전에만 있다) · 실제 ACA CPU 모델과 스로틀링 ·")
+          print("허브↔인코드 RTT · 동거(같은 2GiB 에 e5 세션이 이미 올라간 상태). GitHub 호스티드 러너는")
+          print("Azure 위에 있지만 ACA 그 자체는 아니다.")
+          bad = []
+          if mspp is None:
+              bad.append("ms_per_long_pair 가 없다 — 이 런은 아무것도 재지 않았다")
+          if rss is None or float(rss) <= 0:
+              bad.append(f"peak_rss_mb={rss} — 리눅스에서 이 값이 0 이하면 계기가 거짓말을 한 것이다")
+          if bad:
+              for b in bad:
+                  print(f"::error::{b}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rerank-probe-${{ inputs.app }}
+          path: |
+            probe.json
+            probe.err
+            rerank-manifest.json
+          retention-days: 7
