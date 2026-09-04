@@ -1,0 +1,198 @@
+# 살아 있는 컨테이너 **안에서** 잰다. 러너 위의 대역이 아니라 vinc-hub · vinc-encode 그
+# 자체다. 배포도, 쓰기도, 인프라 변경도 없다.
+#
+# ## 왜 이게 따로 있는가
+#
+# `rerank-probe.yml` 은 러너 위 도커에서 ACA **형상**(1cpu·2GiB)을 흉내 낸다. 그것으로도
+# 피크 RSS 는 나오지만 CPU 는 안 나온다 — 러너 풀이 이종이라 같은 아티팩트가 147ms 와
+# 271ms 로 잰다(2026-09-04, 세 런에 CPU 세 종). 그래서 컨테이너 판단에 러너 수치를 쓰면
+# 안 되고, 이 리포의 성능 정본이 오래 안고 있던 결함(M1 수치를 기계 경계 너머로 옮기는
+# 것)을 반복하게 된다. 여기서는 그 경계를 넘지 않는다.
+#
+# ## 무엇을 재나
+#
+# 1. **허브 컨테이너의 CPU 정체** — `/proc/cpuinfo` 의 모델명과 관심 플래그.
+#    `record:hub-encoder-cpu-has-vnni-2026-08-30` 이 인코더에서 한 번 쟀고, 그 기록 자신이
+#    "Consumption 은 배포마다 하드웨어를 고정하지 않는다"고 적었다. 그래서 한 번이 아니라
+#    잴 때마다 남긴다.
+# 2. **허브 → 인코더 `/encode` 왕복 12회.** 컨테이너 안에서 `curl` 로 잰다. 인코더는
+#    minReplicas 0 이라 **첫 호출이 콜드 경로**다 — 그 값을 따로 남긴다.
+#    앞문으로 잰 값(`record:the-cold-window-is-nine-queries-not-one-2026-09-04`)에는
+#    네트워크와 앞문이 섞여 있고, 여기 값에는 안 섞인다. 둘의 차가 곧 그 몫이다.
+# 3. **인코더 컨테이너의 CPU 정체** — 위 왕복이 인코더를 깨운 **뒤에** 시도한다. 그전에는
+#    레플리카가 없어 exec 자체가 안 된다(실측: "Could not find a replica for this app").
+#
+# ## 안전
+#
+# 읽기만 한다. `/encode` 는 허브가 질의마다 이미 부르는 그 호출이고, `/proc/cpuinfo` 는
+# 공짜다. 모델을 새로 올리지 않는다 — 인코더에 이미 상주하는 것을 부를 뿐이라 메모리가
+# 늘지 않는다. **컨테이너 안에서 양자화하거나 모델을 내려받지 않는다**: 그 경로가 2 GiB
+# 안에서 OOM 이고, OOM 은 레플리카 재시작이며, 재시작 중에는 라이브 검색이 조용히 FTS
+# 단독으로 강등된다.
+#
+# 토큰은 컨테이너 자신의 env 에서 읽어 컨테이너 안에서만 쓴다. 명령줄·로그·요약 어디에도
+# 안 올라간다.
+#
+# ⚠ **`--ref main` 으로만 돈다.** OIDC 연합 자격증명이 `refs/heads/main` 에 묶여 있어서
+# 브랜치에서 띄우면 `azure/login` 이 AADSTS700213 로 죽는다(`bake-probe.yml` 머리말).
+# 그러니 이 프로브 자체를 고치는 변경은 머지된 뒤에야 프로브로 확인할 수 있다.
+#
+# ⚠ 로컬 `az` 로는 안 된다. 이 리포의 개발 신원은 `vincsRG` 에 Reader 뿐이고
+# `Microsoft.App/containerApps/getAuthToken/action` 이 없어 exec 이 거절된다(실측
+# 2026-09-04). Actions 신원에는 있다 — 그래서 이 자리가 워크플로다.
+#
+# ## concurrency 를 일부러 안 단다
+#
+# 스토어·리비전·레지스트리 어느 것도 안 건드린다. 그리고 `cancel-in-progress: false` 를
+# 다는 순간 직렬화 워크플로 명단을 넷으로 고정한 `tests/test_gate_runner_move.py` 가
+# 떨어진다.
+name: container-latency-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      calls:
+        description: "인코더 왕복 횟수 (첫 호출은 콜드 후보라 따로 센다)"
+        type: string
+        default: "12"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CALLS: ${{ inputs.calls }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure 프로필을 이 잡 전용으로
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 프로브를 base64 로 싼다 (따옴표가 세 겹을 지나므로)
+        # YAML → az → 컨테이너 셸을 지나는 동안 따옴표가 세 번 재해석된다. base64 는
+        # 셸 메타문자가 없어서 그 세 겹을 통째로 건너뛴다.
+        run: |
+          set -euo pipefail
+          cat > probe.sh <<'SH'
+          set -u
+          # ⚠ 컨테이너의 env 에 있는 것은 VINC_EMBED_REMOTE 다. VINC_EMBED_ENCODE 는
+          # docker-entrypoint.sh 가 기동할 때 그것에서 파생하므로, exec 이 여는 새 셸에는
+          # 없다. 둘 다 본다.
+          U="${VINC_EMBED_REMOTE:-${VINC_EMBED_ENCODE:-}}"
+          if [ -z "$U" ]; then echo "PROBE_ERR no-encode-url"; exit 0; fi
+          U="${U%/}"
+          echo "PROBE_CPU $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')"
+          echo "PROBE_NPROC $(nproc)"
+          echo "PROBE_FLAGS $(grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -Ex 'avx|avx2|avx512f|avx512_vnni|avx_vnni|amx_int8|f16c|fma' | tr '\n' ' ')"
+          i=0
+          while [ "$i" -lt "${CALLS:-12}" ]; do
+            r=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 180 \
+                -H "Authorization: Bearer ${VINC_EMBED_ENCODE_TOKEN:-}" \
+                -H 'Content-Type: application/json' \
+                -d '{"texts":["cold start latency probe"],"kind":"query"}' \
+                "$U/encode" 2>/dev/null)
+            echo "PROBE_ENCODE $i $r"
+            i=$((i+1))
+          done
+          echo "PROBE_DONE"
+          SH
+          # CALLS 를 스크립트 안으로 넣는다(컨테이너 env 에는 없다).
+          sed -i "1i CALLS=${CALLS}" probe.sh
+          echo "B64=$(base64 -w0 probe.sh)" >> "$GITHUB_ENV"
+
+      - name: 허브 컨테이너 안에서 잰다
+        # 실패해도 여기서 죽이지 않는다 — 판정 단계가 무엇이 없는지 말하게 한다.
+        # exec 이 아무것도 안 내놓는 경우와 재는 데 실패한 경우는 다른 고장이다.
+        run: |
+          set -uo pipefail
+          az containerapp exec -n vinc-hub -g vincsRG \
+            --command "sh -c 'echo $B64 | base64 -d | sh'" > hub.raw 2>&1 || true
+          tr -d '\r' < hub.raw > hub.out
+          echo "--- 허브 exec 출력 (토큰은 안 실린다) ---"
+          grep -E '^PROBE_' hub.out || sed -n '1,15p' hub.out
+
+      - name: 인코더 컨테이너 안에서도 CPU 를 읽는다 (위 왕복이 깨운 뒤)
+        continue-on-error: true
+        # minReplicas 0 이라 왕복 전에는 레플리카가 없다. 그래도 스케일다운과 경합할 수
+        # 있으므로 실패를 허용한다 — 이 값이 없다고 위의 측정이 무효가 되지는 않는다.
+        run: |
+          set -uo pipefail
+          az containerapp exec -n vinc-encode -g vincsRG \
+            --command "sh -c 'grep -m1 \"model name\" /proc/cpuinfo; nproc'" > enc.raw 2>&1 || true
+          tr -d '\r' < enc.raw > enc.out
+          sed -n '1,10p' enc.out
+
+      - name: 판정
+        # 초록이 "쟀다"를 뜻하게 만드는 자리. 수치가 없는데 초록인 런은 이 리포에 실제로
+        # 있었다(`bake-probe.yml` 머리말의 run dem).
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os, pathlib, re, statistics, sys
+
+          out = pathlib.Path("hub.out").read_text(encoding="utf-8", errors="replace")
+          enc = pathlib.Path("enc.out").read_text(encoding="utf-8", errors="replace") \
+              if pathlib.Path("enc.out").exists() else ""
+
+          def one(tag):
+              m = re.search(rf"^PROBE_{tag} (.*)$", out, re.M)
+              return m.group(1).strip() if m else None
+
+          calls = [(int(i), c, float(t)) for i, c, t in
+                   re.findall(r"^PROBE_ENCODE (\d+) (\d+) ([\d.]+)$", out, re.M)]
+          ok = [(i, t) for i, c, t in calls if c == "200"]
+
+          print("## 컨테이너 안에서 잰 값\n")
+          print("| 항목 | 값 |\n|---|---|")
+          print(f"| 허브 CPU | {one('CPU') or '읽지 못함'} |")
+          print(f"| 허브 vCPU 수 | {one('NPROC') or '읽지 못함'} |")
+          print(f"| 허브 플래그 | `{one('FLAGS') or '읽지 못함'}` |")
+          if ok:
+              first = ok[0][1] * 1000
+              tail = sorted(t * 1000 for i, t in ok[1:])
+              print(f"| /encode 첫 호출 | **{first:.0f} ms** (인코더 minReplicas 0 = 콜드 후보) |")
+              if tail:
+                  med = statistics.median(tail)
+                  print(f"| 이후 중앙값 | **{med:.0f} ms** (최소 {tail[0]:.0f} · 최대 {tail[-1]:.0f}"
+                        f" · 흩어짐 {(tail[-1]-tail[0])/med*100:.0f}%) |")
+              print(f"| 성공/전체 | {len(ok)}/{len(calls)} |")
+          encline = next((l for l in enc.splitlines() if "model name" in l), None)
+          print(f"| 인코더 CPU | {encline.split(':', 1)[-1].strip() if encline else '읽지 못함(레플리카 없음일 수 있다)'} |")
+          print()
+          print("⚠ **이 런은 아무것도 배포하지 않았고 아무것도 쓰지 않았다.** `/encode` 는 허브가")
+          print("질의마다 이미 부르는 호출이고, 모델을 새로 올리지 않았다.")
+          print()
+          print("⚠ **이 수치가 못 말하는 것**: 인코더 안의 CPU 시간만 따로 뗀 값(여기 값에는")
+          print("컨테이너 사이 RTT 가 들어 있다) · 스케일다운을 부르는 유휴 시간(통제 안 함) ·")
+          print("동거(다른 것이 같은 2GiB 에 상주할 때). Consumption 은 배포마다 하드웨어를")
+          print("고정하지 않으므로 위의 CPU 줄은 **이 런의 사실**이지 상수가 아니다.")
+
+          bad = []
+          if not one("CPU"):
+              bad.append("허브 CPU 를 못 읽었다 — exec 이 아무것도 내놓지 않았을 수 있다")
+          if not ok:
+              bad.append("성공한 /encode 왕복이 0건이다 — 이 런은 지연을 재지 않았다")
+          if bad:
+              for b in bad:
+                  print(f"::error::{b}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-latency-probe
+          path: |
+            hub.out
+            enc.out
+          retention-days: 7
