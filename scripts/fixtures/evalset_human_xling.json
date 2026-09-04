@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "generated_by": "손으로 작성 — 2026-09-04 리랭커 후속, evalset_human.json 의 en 질의 손번역",
+  "axis": "ko2en",
+  "note": "리랭커의 이득은 교차언어에 몰려 있는데(정본 셋 ko2en +0.344 · en2ko +0.224, 동일언어 ko 는 +0.049 로 CI 가 0 을 포함) 그 축이 **소제목 질의로만** 검증돼 있었다. 자연어 질의로 검증한 축은 리랭커가 원래 못하는 동일언어뿐이라 두 축이 어긋나 판정이 안 섰다. 이 셋이 그 빈칸이다: 자연어 × 교차언어. 정본 evalset_xling.json 과 같은 절차이고 다른 점은 원문이 소제목이 아니라 사람이 쓴 자연어 질문이라는 것 하나다.",
+  "rules": [
+    "evalset_human.json 의 en 질의 25개를 1:1 손번역한다. 정답 doc_id·source 는 그대로 물려받는다.",
+    "뜻을 옮기되 한국어로 자연스럽게 쓴다 — 직역체가 되면 이 셋의 존재 이유(자연어)가 사라진다.",
+    "번역문이 같아지는 쌍은 정답이 모호하므로 버린다(정본 xling 규칙의 재적용).",
+    "원문은 en_query 로 동봉한다 — 번역 검수가 파일 하나로 끝나게.",
+    "고유명사의 한국어 표기는 FTS 어휘 신호를 일부 남긴다. 실사용(한국어 문장 + 영어 자료)과 같은 방향의 편향이라 그대로 둔다."
+  ],
+  "corpora": [
+    {
+      "path": "Vinc/starter-packs/work",
+      "expected_lang": "en"
+    }
+  ],
+  "counts": {
+    "source_en": 25,
+    "dropped_ambiguous": 0,
+    "selected": 25,
+    "docs": 25
+  },
+  "queries": [
+    {
+      "query": "그 판화가는 왜 평생 이름을 바꾸고 집을 옮겨 다녔나",
+      "doc_id": "eval/en/work/art/Hokusai.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Hokusai.md",
+      "en_query": "why did the print artist keep renaming himself and moving house all his life"
+    },
+    {
+      "query": "아무것도 연주하지 않고 대신 그 공간의 소리를 듣게 하는 작품",
+      "doc_id": "eval/en/work/art/John-Cage.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/John-Cage.md",
+      "en_query": "the piece where nothing is played and you listen to the room instead"
+    },
+    {
+      "query": "당선되고도 짓지 못한 설계로 여러 해를 보낸 건축가",
+      "doc_id": "eval/en/work/art/Zaha-Hadid.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Zaha-Hadid.md",
+      "en_query": "the architect who spent years winning competitions that were never built"
+    },
+    {
+      "query": "악보마다 오직 신의 영광을 위해서라고 적어 넣은 작곡가",
+      "doc_id": "eval/en/work/art/Bach-J-S.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Bach-J-S.md",
+      "en_query": "the composer who signed every manuscript to the glory of God alone"
+    },
+    {
+      "query": "꿈이 아니라 자기 현실을 그렸다고 말한 화가",
+      "doc_id": "eval/en/work/art/Frida-Kahlo.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Frida-Kahlo.md",
+      "en_query": "the painter who said she painted her own reality rather than dreams"
+    },
+    {
+      "query": "코르셋을 저지로 바꾸고 수수한 검정을 우아하게 만든 사람",
+      "doc_id": "eval/en/work/art/Coco-Chanel.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Coco-Chanel.md",
+      "en_query": "who replaced the corset with jersey and made plain black elegant"
+    },
+    {
+      "query": "헤이안 궁정의 여인이 썼다는 최초의 소설",
+      "doc_id": "eval/en/work/art/Murasaki-Shikibu.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Murasaki-Shikibu.md",
+      "en_query": "the Heian court woman credited with the first novel"
+    },
+    {
+      "query": "어둠의 심연에 아프리카 쪽에서 답한 소설가",
+      "doc_id": "eval/en/work/art/Chinua-Achebe.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Chinua-Achebe.md",
+      "en_query": "the novelist who answered Heart of Darkness from an African viewpoint"
+    },
+    {
+      "query": "반란과 백성의 고통을 따라간 당나라 시인",
+      "doc_id": "eval/en/work/art/Du-Fu.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Du-Fu.md",
+      "en_query": "the Tang poet whose work follows a rebellion and the suffering of ordinary people"
+    },
+    {
+      "query": "성가와 환상과 의학서를 두루 쓴 수녀원장",
+      "doc_id": "eval/en/work/art/Hildegard-von-Bingen.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Hildegard-von-Bingen.md",
+      "en_query": "the abbess who wrote chant, visions and medical texts alike"
+    },
+    {
+      "query": "거리에서 데려온 사람을 성화의 모델로 쓴 화가",
+      "doc_id": "eval/en/work/art/Caravaggio.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Caravaggio.md",
+      "en_query": "the painter who used people off the street as models for sacred scenes"
+    },
+    {
+      "query": "보이는 대로가 아니라 생각하는 대로 그린다고 말한 화가",
+      "doc_id": "eval/en/work/art/Picasso.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Picasso.md",
+      "en_query": "the painter who said he paints things as he thinks them, not as he sees them"
+    },
+    {
+      "query": "회화가 과학이라고 주장하며 시신을 해부한 사람",
+      "doc_id": "eval/en/work/art/Leonardo-da-Vinci.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/art/Leonardo-da-Vinci.md",
+      "en_query": "who argued that painting is a science and dissected bodies to prove it"
+    },
+    {
+      "query": "공짜 점심이 없다는 것만으로 옵션 가격이 정해지는 이유",
+      "doc_id": "eval/en/work/economics/14-금융공학.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/economics/14-금융공학.md",
+      "en_query": "how the impossibility of a free lunch fixes what an option is worth"
+    },
+    {
+      "query": "내 최선의 수가 남들이 무엇을 고르느냐에 달려 있을 때",
+      "doc_id": "eval/en/work/economics/04-게임이론.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/economics/04-게임이론.md",
+      "en_query": "when my best move depends on what everyone else decides"
+    },
+    {
+      "query": "새 기업이 옛 기업을 밀어내는 것이 자본주의를 굴린다는 생각",
+      "doc_id": "eval/en/work/economics/10-Schumpeter-진화경제.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/economics/10-Schumpeter-진화경제.md",
+      "en_query": "the idea that new firms wiping out old ones is what makes capitalism grow"
+    },
+    {
+      "query": "실험을 못 하는 자료에서 인과를 어떻게 끌어내나",
+      "doc_id": "eval/en/work/economics/15-계량경제.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/economics/15-계량경제.md",
+      "en_query": "how do you get causation out of data when you cannot run an experiment"
+    },
+    {
+      "query": "어떤 절차로도 프로그램이 멈출지 미리 판정할 수 없다는 증명",
+      "doc_id": "eval/en/work/math/07-계산-복잡도.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/math/07-계산-복잡도.md",
+      "en_query": "the proof that no procedure can decide in advance whether a program will stop"
+    },
+    {
+      "query": "다항식의 해집합을 환과 층으로 다루는 분야",
+      "doc_id": "eval/en/work/math/08-algebraic-geometry.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/math/08-algebraic-geometry.md",
+      "en_query": "studying the solution sets of polynomials through rings and sheaves"
+    },
+    {
+      "query": "같음 자체에 구조를 주어 집합론을 대신하려는 시도",
+      "doc_id": "eval/en/work/math/11-infinity-categories-HoTT.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/math/11-infinity-categories-HoTT.md",
+      "en_query": "treating equality itself as having structure, as a replacement for set theory"
+    },
+    {
+      "query": "에너지는 보존되는데 쓸 수 있는 몫은 왜 계속 줄어드나",
+      "doc_id": "eval/en/work/physics/05-열역학4법칙.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/physics/05-열역학4법칙.md",
+      "en_query": "why usable energy keeps shrinking even though energy is conserved"
+    },
+    {
+      "query": "입자를 공간 전체에 퍼진 장의 들뜸으로 다루는 이유",
+      "doc_id": "eval/en/work/physics/12-양자장론.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/physics/12-양자장론.md",
+      "en_query": "why a particle is treated as an excitation of a field filling all of space"
+    },
+    {
+      "query": "블랙홀에서 정보가 살아남으려면 복사의 엔트로피가 왜 꺾여야 하나",
+      "doc_id": "eval/en/work/physics/18-Page-curve.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/physics/18-Page-curve.md",
+      "en_query": "how the entropy of radiation has to turn around for information to survive a black hole"
+    },
+    {
+      "query": "블랙홀 지평선에 머무는 전하를 다룬 마지막 논문",
+      "doc_id": "eval/en/work/physics/25-Soft-hair.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/physics/25-Soft-hair.md",
+      "en_query": "the last paper on charges that live on the horizon of a black hole"
+    },
+    {
+      "query": "잡음이 건드리지 못하게 양자 정보를 땋아서 저장하는 것",
+      "doc_id": "eval/en/work/physics/30-Topological-qubit-non-abelian.md",
+      "lang": "ko2en",
+      "corpus": "en",
+      "source": "work/physics/30-Topological-qubit-non-abelian.md",
+      "en_query": "storing quantum information in braids so that noise cannot corrupt it"
+    }
+  ]
+}

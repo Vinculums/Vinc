@@ -173,5 +173,55 @@ class HumanSetTests(unittest.TestCase):
             self.assertEqual(n, sum(q["lang"] == lang for q in self.h["queries"]))
 
 
+class HumanXlingTests(unittest.TestCase):
+    """사람이 쓴 교차언어 셋(ko2en). 정본 xling 과 같은 검사를 받되 원문이 소제목이 아니라
+    사람이 쓴 자연어라는 것만 다르다. 이 셋이 리랭커 판정의 빈칸이었다: 리랭커가 잘하는
+    축은 교차언어인데 그 축이 소제목 질의로만 검증돼 있었다."""
+
+    def setUp(self):
+        self.x = json.loads((_FIX / "evalset_human_xling.json").read_text(encoding="utf-8"))
+        self.h = json.loads((_FIX / "evalset_human.json").read_text(encoding="utf-8"))
+
+    def test_정답은_사람_셋_en_정답의_부분집합이다(self):
+        gold = {q["doc_id"] for q in self.h["queries"] if q["lang"] == "en"}
+        for q in self.x["queries"]:
+            self.assertIn(q["doc_id"], gold, q["query"])
+
+    def test_원문은_사람_셋_en_질의에_실재한다(self):
+        src = {q["query"] for q in self.h["queries"] if q["lang"] == "en"}
+        for q in self.x["queries"]:
+            self.assertIn(q["en_query"], src, q["query"])
+
+    def test_질의는_전부_한국어다(self):
+        """라벨한 언어와 실제 언어가 어긋나면 이 축이 동일언어 축과 섞인다 —
+        정본 셋을 한 번 무효로 만든 그 오염이다."""
+        for q in self.x["queries"]:
+            self.assertGreater(_hangul_ratio(q["query"]), 0.15, q["query"])
+
+    def test_정답_문서는_전부_영어다(self):
+        """교차언어의 뜻: 질의는 한국어, 코퍼스는 영어. 정답이 한국어 문서면 축이 아니다."""
+        for q in self.x["queries"]:
+            self.assertEqual(q["doc_id"].split("/")[1], "en", q["query"])
+            self.assertEqual(q["lang"], "ko2en")
+
+    def test_중복_번역문이_없다(self):
+        texts = [q["query"].casefold() for q in self.x["queries"]]
+        self.assertEqual(len(texts), len(set(texts)))
+
+    def test_기존_픽스처와_겹치는_질의가_없다(self):
+        gen = set()
+        for name in ("evalset.json", "evalset_xling.json", "evalset_xling_en2ko.json",
+                     "evalset_human.json"):
+            for q in json.loads((_FIX / name).read_text(encoding="utf-8"))["queries"]:
+                gen.add(q["query"].casefold())
+        for q in self.x["queries"]:
+            self.assertNotIn(q["query"].casefold(), gen, q["query"])
+
+    def test_counts_가_실제와_같다(self):
+        c = self.x["counts"]
+        self.assertEqual(c["selected"], len(self.x["queries"]))
+        self.assertEqual(c["source_en"] - c["dropped_ambiguous"], c["selected"])
+
+
 if __name__ == "__main__":
     unittest.main()
