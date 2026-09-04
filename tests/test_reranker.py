@@ -201,5 +201,40 @@ class PickPieceTests(unittest.TestCase):
             m.Reranker.score_texts(rr, "q", ["A", "B"], window="child", seqs=[0])
 
 
+class SummarizeRunsTests(unittest.TestCase):
+    """반복 측정의 중앙값과 흩어진 정도. 이 계산이 틀리면 잡음이 결론으로 읽힌다 —
+    실제로 한 번 그랬다(같은 러너 타입에서 jina 385.2ms 와 693.5ms 를 한 표본씩 재고
+    "하드웨어가 다르다"로 읽었다, 2026-09-04)."""
+
+    def setUp(self):
+        self.m = _load("reranker")
+
+    def test_중앙값이지_평균이_아니다(self):
+        """공유 vCPU 의 잡음은 느려지는 쪽으로만 튄다. 평균은 그 꼬리를 먹는다."""
+        r = self.m.summarize_runs([100.0, 110.0, 400.0])
+        self.assertEqual(r["ms_per_long_pair"], 110.0)      # 평균이면 203.3
+        self.assertEqual(r["ms_per_long_pair_min"], 100.0)
+        self.assertEqual(r["ms_per_long_pair_max"], 400.0)
+
+    def test_짝수개는_가운데_둘의_평균(self):
+        r = self.m.summarize_runs([100.0, 200.0])
+        self.assertEqual(r["ms_per_long_pair"], 150.0)
+
+    def test_스프레드는_중앙값_대비_최대최소_폭이다(self):
+        r = self.m.summarize_runs([100.0, 100.0, 200.0])
+        self.assertEqual(r["spread_pct"], 100.0)            # (200-100)/100
+        self.assertEqual(self.m.summarize_runs([50.0] * 4)["spread_pct"], 0.0)
+
+    def test_한_번만_재면_스프레드가_0_이라_아무_말도_못_한다(self):
+        r = self.m.summarize_runs([250.0])
+        self.assertEqual(r["reps"], 1)
+        self.assertEqual(r["spread_pct"], 0.0)
+
+    def test_빈_입력은_수치를_지어내지_않는다(self):
+        r = self.m.summarize_runs([])
+        self.assertEqual(r["reps"], 0)
+        self.assertIsNone(r["ms_per_long_pair"])
+
+
 if __name__ == "__main__":
     unittest.main()
