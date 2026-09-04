@@ -213,7 +213,10 @@ jobs:
           print(f"| 로드 | {d.get('load_s')} s |")
           print(f"| 첫 호출 | {d.get('first_call_s')} s |")
           print(f"| 콜드 합계 | {d.get('cold_total_s')} s |")
-          print(f"| **{d.get('max_tokens')}토큰 쌍당** | **{mspp} ms** (스레드 {d.get('threads')}) |")
+          print(f"| **{d.get('max_tokens')}토큰 쌍당** | **{mspp} ms** 중앙값 · "
+                f"{d.get('reps')}회 {d.get('ms_per_long_pair_runs')} (스레드 {d.get('threads')}) |")
+          print(f"| 흩어진 정도 | {d.get('spread_pct')}% (최소 {d.get('ms_per_long_pair_min')} · "
+                f"최대 {d.get('ms_per_long_pair_max')}) |")
           print(f"| **피크 RSS** | **{rss} MB** |")
           print()
           print("⚠ 이 런은 아무것도 배포하지 않았고 Azure 를 호출하지 않았다.")
@@ -222,6 +225,12 @@ jobs:
           print("(minReplicas 0 이라 콜드 경로는 배포된 리비전에만 있다) · 실제 ACA CPU 모델과 스로틀링 ·")
           print("허브↔인코드 RTT · 동거(같은 2GiB 에 e5 세션이 이미 올라간 상태). GitHub 호스티드 러너는")
           print("Azure 위에 있지만 ACA 그 자체는 아니다.")
+          sp = d.get("spread_pct")
+          if sp is not None and sp > 25:
+              print()
+              print(f"⚠ **흩어진 정도 {sp}% — 이 런의 쌍당 비용으로 예산을 짜지 말 것.** 공유 vCPU 의")
+              print("잡음이 이 폭이면 두 모델·두 런의 차이를 하드웨어 차이로 읽게 된다(2026-09-04 실제 오독).")
+              print("다시 돌려 중앙값이 겹치는지 볼 것.")
           bad = []
           if mspp is None:
               bad.append("ms_per_long_pair 가 없다 — 이 런은 아무것도 재지 않았다")

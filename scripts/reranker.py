@@ -88,6 +88,25 @@ def maxp(piece_scores: list[list[float]]) -> list[float]:
     return [max(ps) if ps else -math.inf for ps in piece_scores]
 
 
+def summarize_runs(runs: list[float]) -> dict:
+    """반복 측정 → 중앙값 + 흩어진 정도. **중앙값을 쓰는 이유**는 공유 vCPU 의 잡음이
+    한쪽으로만 튀기 때문이다(느려지는 쪽으로). 평균은 그 꼬리를 그대로 먹는다.
+
+    `spread_pct` 는 (최대-최소)/중앙값 이다. 이 값이 크면 그 런의 쌍당 비용으로 예산을
+    짜면 안 된다 — 숨길 것이 아니라 그 자체가 결과다."""
+    if not runs:
+        return {"reps": 0, "ms_per_long_pair": None, "spread_pct": None}
+    o = sorted(runs)
+    mid = len(o) // 2
+    med = o[mid] if len(o) % 2 else (o[mid - 1] + o[mid]) / 2
+    return {"reps": len(o),
+            "ms_per_long_pair": round(med, 1),
+            "ms_per_long_pair_runs": [round(x, 1) for x in runs],
+            "ms_per_long_pair_min": round(o[0], 1),
+            "ms_per_long_pair_max": round(o[-1], 1),
+            "spread_pct": round((o[-1] - o[0]) / med * 100, 1) if med else None}
+
+
 def pick_piece(pieces: list[str], seq: int | None) -> str:
     """자식 하나만 고른다. seq 가 없거나 범위를 벗어나면 첫 조각(= `first` 창과 같은 자리).
 
@@ -285,10 +304,22 @@ def peak_rss_mb() -> float:
         return -1.0
 
 
-def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16) -> dict:
-    """모델 하나만 든 프로세스의 로드 시간·첫 호출·피크 RSS. **한 프로세스에 모델
-    하나**여야 한다: 피크 카운터는 내려가지 않아서 두 모델을 한 프로세스에서 재면
-    둘째 값이 첫째에 오염된다(성능 정본 §4 와 같은 규칙)."""
+def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16,
+              reps: int = 3) -> dict:
+    """모델 하나만 든 프로세스의 로드 시간·첫 호출·피크 RSS·쌍당 비용. **한 프로세스에
+    모델 하나**여야 한다: 피크 카운터는 내려가지 않아서 두 모델을 한 프로세스에서 재면
+    둘째 값이 첫째에 오염된다(성능 정본 §4 와 같은 규칙).
+
+    🔴 **쌍당 비용은 한 번 재면 안 된다.** 전에는 16쌍을 한 번 재서 그 값을 점추정으로
+    냈는데, 같은 러너 타입(AMD EPYC 7763)에서 두 번 돌린 결과가 jina 385.2ms 와
+    693.5ms 로 **80% 갈렸다**(2026-09-04 실측, run 33841962408 대 33842493227).
+    공유 vCPU 에서는 그 정도가 정상 잡음이고, 표본 하나를 그대로 내놓으면 그 잡음이
+    "하드웨어가 다르다"는 결론으로 읽힌다 — 실제로 그렇게 한 번 오독했다.
+    그래서 `reps` 번 재고 **중앙값**을 내며 최소·최대를 함께 싣는다. 스프레드가 크면
+    그 수치로 예산을 짜면 안 된다는 뜻이고, 그건 숨길 것이 아니라 결과다.
+
+    피크 RSS 는 반대로 안정적이었다(같은 두 런에서 1% 안). 반복해도 피크는 최대치이므로
+    의미가 그대로다."""
     before = peak_rss_mb()
     rr = Reranker(model, onnx, max_tokens=max_tokens)
     t0 = time.perf_counter()
@@ -299,14 +330,17 @@ def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16)
     first_call_s = time.perf_counter() - t1
     # 상한 길이 쌍으로 아레나를 실제 크기까지 키운다. 짧은 쌍만 재면 피크가 작게 나온다.
     long = ("허브는 단일 라이터라 리비전 롤링 전환이 안 된다. " * 200).strip()
-    t2 = time.perf_counter()
-    rr.score("무엇이 문제인가", [long] * pairs)
-    full_s = time.perf_counter() - t2
+    runs: list[float] = []
+    for _ in range(max(1, reps)):
+        t2 = time.perf_counter()
+        rr.score("무엇이 문제인가", [long] * pairs)
+        runs.append((time.perf_counter() - t2) * 1000 / pairs)
     return {"model": model, "onnx": onnx, "max_tokens": max_tokens,
             "load_s": round(load_s, 3), "first_call_s": round(first_call_s, 3),
             "cold_total_s": round(load_s + first_call_s, 3),
-            "long_pairs": pairs, "long_pairs_s": round(full_s, 3),
-            "ms_per_long_pair": round(full_s * 1000 / pairs, 1),
+            "long_pairs": pairs,
+            "long_pairs_s": round(sum(runs) * pairs / 1000, 3),
+            **summarize_runs(runs),
             "threads": int(os.environ.get("VINC_EVAL_THREADS", "1") or "1"),
             "artifact_mb": round(os.path.getsize(onnx) / 1e6, 1) if onnx and os.path.exists(onnx) else None,
             "peak_rss_mb_before": before, "peak_rss_mb": peak_rss_mb()}
@@ -318,6 +352,8 @@ def main() -> int:
                     help="이름 또는 이름=ONNX경로")
     ap.add_argument("--max-tokens", type=int, default=512)
     ap.add_argument("--window", choices=("first", "max", "child"), default="first")
+    ap.add_argument("--reps", type=int, default=3,
+                    help="--rss-probe 의 쌍 측정 반복 횟수. 1 이면 스프레드를 못 본다")
     ap.add_argument("--rss-probe", action="store_true",
                     help="이 모델만 든 프로세스의 로드·첫 호출·피크 RSS 를 JSON 으로")
     ap.add_argument("text", nargs="*", help="첫 인자가 질의, 나머지가 본문")
@@ -325,7 +361,8 @@ def main() -> int:
     name, path = parse_model_spec(args.model)
     if args.rss_probe:
         import json
-        print(json.dumps(rss_probe(name, path, max_tokens=args.max_tokens), ensure_ascii=False))
+        print(json.dumps(rss_probe(name, path, max_tokens=args.max_tokens,
+                                   reps=args.reps), ensure_ascii=False))
         return 0
     if len(args.text) < 2:
         ap.error("질의 하나와 본문 하나 이상을 주거나 --rss-probe 를 쓸 것")
