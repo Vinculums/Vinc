@@ -308,11 +308,16 @@ def cmd_rebuild(a) -> int:
 # ── 3단계: 재색인(전량 재임베딩) ─────────────────────────────────────────────
 
 def reindex(data_dir: str, model: str, *, onnx: str | None = None,
-            batch_docs: int = 8, kill_after: int = 0) -> dict:
+            batch_docs: int = 8, kill_after: int = 0, split: bool = False) -> dict:
     """`needs_embed` 를 비운다 — 허브 워커(`packaging/embed_worker.py`)와 같은 순서:
     pending_embed_chunks → 인코딩 → apply_embeddings. 다른 것은 사이드카 HTTP 를
     거치지 않는 것뿐이라, 여기서 재는 것은 **인코딩 + 스토어 쓰기**의 비용이다."""
-    out: dict = {"phase": "reindex", "model": _hf(model)}
+    # ⚠ `split=False`(기본) 는 청크를 **통째로 한 벡터**로 만든다. 프로덕션 워커는
+    # ≤500 토큰 조각마다 벡터를 만들어 자식으로 펴므로(청크당 2.08개, 라이브 실측)
+    # 기본값은 프로덕션 형상이 아니다. 검색 품질을 잴 스토어는 `split=True` 로 만든다.
+    # 두 모드의 chunks/s 는 서로 비교 불가다(조각 수가 다르다). 성능 정본 §3 의
+    # 처리량은 전부 split=False 로 잰 것이라 기본값을 바꾸지 않는다.
+    out: dict = {"phase": "reindex", "model": _hf(model), "split": bool(split)}
     store, cfg = open_at(data_dir, model)
     enc = encoder_for(model, onnx)
     # 🔴 `Encoder` 는 지연 로드다. 이 줄이 없으면 ONNX 세션 빌드와 아티팩트 파일 읽기
@@ -324,7 +329,7 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
     enc.encode(["warmup"], kind="passage")
     load_s = round(time.perf_counter() - _t, 2)
     t0 = time.perf_counter()
-    chunks = docs = 0
+    chunks = docs = vec_rows = 0
     while True:
         pend = ds.pending_embed_chunks(store, limit=batch_docs)
         if not pend:
@@ -333,9 +338,20 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
         for row in pend:
             by_doc.setdefault(row["doc_id"], []).append(row)
         for doc_id, rows in by_doc.items():
-            vecs = enc.encode([r["text"] for r in rows], kind="passage")
-            ds.apply_embeddings(store, doc_id, {r["chunk_id"]: v
-                                                for r, v in zip(rows, vecs)})
+            if split:
+                pieces_of = [enc.split_for_embed(r["text"]) for r in rows]
+                flat = enc.encode([p for ps in pieces_of for p in ps], kind="passage")
+                emb: dict = {}
+                at = 0
+                for r, ps in zip(rows, pieces_of):
+                    emb[r["chunk_id"]] = flat[at:at + len(ps)]
+                    at += len(ps)
+                vec_rows += sum(len(ps) for ps in pieces_of)
+            else:
+                vecs = enc.encode([r["text"] for r in rows], kind="passage")
+                emb = {r["chunk_id"]: v for r, v in zip(rows, vecs)}
+                vec_rows += len(rows)
+            ds.apply_embeddings(store, doc_id, emb)
             chunks += len(rows)
             docs += 1
             if kill_after and chunks >= kill_after:
@@ -355,7 +371,8 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
     idx_s = time.perf_counter() - t1
     out.update(_stats(store))
     store.close()
-    out.update(docs_embedded=docs, chunks_embedded=chunks, load_s=load_s,
+    out.update(docs_embedded=docs, chunks_embedded=chunks, vectors_made=vec_rows,
+               load_s=load_s,
                encode_s=round(enc_s, 2), index_s=round(idx_s, 2),
                chunks_per_s=round(chunks / enc_s, 2) if enc_s else 0,
                wall_s=round(enc_s + idx_s, 2), peak_rss_mb=round(peak_rss_mb(), 1))
@@ -363,7 +380,8 @@ def reindex(data_dir: str, model: str, *, onnx: str | None = None,
 
 
 def cmd_reindex(a) -> int:
-    print(json.dumps(reindex(a.data, a.model, onnx=a.onnx, kill_after=a.kill_after),
+    print(json.dumps(reindex(a.data, a.model, onnx=a.onnx, kill_after=a.kill_after,
+                             split=a.split),
                      ensure_ascii=False))
     return 0
 
@@ -509,6 +527,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_retable)
 
     p = sub.add_parser("reindex"); common(p, model_default="m3")
+    p.add_argument("--split", action="store_true",
+                   help="워커처럼 청크를 ≤500 토큰 조각으로 나눠 조각마다 벡터(프로덕션 형상)")
     p.add_argument("--kill-after", type=int, default=0,
                    help="이만큼 청크를 채우고 중단(정체 알람 검증용)")
     p.set_defaults(fn=cmd_reindex)
