@@ -1,6 +1,6 @@
 /* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
    SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: ac00584a28bfd74dcef6807aa1bc22931d57446f6b4b71b85a1d8a01e679377a */
+/* sync-sha256: a29ba30fd856af0aa00adc716239469067c9e1760570bd8607c697d102f64d59 */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -31,6 +31,19 @@
   --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
   --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
   --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+
+  /* Motion — 곡선·시간(gen_motion.py, SSoT motion 그룹). 등장·퇴장·작은 UI 는 ease-out,
+     화면 위 이동은 ease-in-out, 큰 면(패널·시트)은 drawer, 메뉴·모달 성장은 settle */
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in-out: cubic-bezier(.77, 0, .175, 1);
+  --ease-drawer: cubic-bezier(.32, .72, 0, 1);
+  --ease-settle: cubic-bezier(.16, 1, .3, 1);
+  --dur-fast: .15s;
+  --dur-hover: .2s;
+  --dur-base: .3s;
+  --dur-in: .4s;
+  --dur-out: .24s;
+  --dur-panel: .32s;
 
   /* Shape */
   --radius: 0.875rem;
@@ -99,4 +112,10 @@
   --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
   --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
   --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+
+  /* Depth (dark overrides) */
+  --shadow-elev-1: 0 1px 2px hsl(0 0% 0% / 0.35);
+  --shadow-elev-2: 0 4px 12px hsl(0 0% 0% / 0.35);
+  --shadow-elev-3: 0 8px 24px hsl(0 0% 0% / 0.45);
+  --shadow-float: 0 30px 60px -16px hsl(0 0% 0% / 0.55);
 }

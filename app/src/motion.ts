@@ -20,7 +20,8 @@
  *
  *  `prefers-reduced-motion` 이면 **움직임만 뺀다** — 크기·튕김은 없고 짧은 불투명도 전이만
  *  남긴다(어지럼은 이동에서 오고, 페이드는 상태가 바뀌었음을 읽게 한다). 값(시간·곡선)은
- *  app.css 토큰(--dur-in · --dur-out · --ease-settle)에서 읽는다: 두 벌이 아니라 한 벌이다. */
+ *  허브 토큰(tokens.desktop.css 의 --dur-in · --dur-out · --ease-settle, SSoT 는 design-hub)에서
+ *  읽는다: 두 벌이 아니라 한 벌이다. */
 
 /** macOS dock 에서 앱이 열리는 물성을 흉내낸다(발주자 지시 2026-08-05):
  *    ① 아이콘 자리에서 **아주 작게** 시작해 원래 크기로 자란다(0.94→1 은 "살짝 커짐"
@@ -30,10 +31,10 @@
  *    ④ 아이콘이 눌린 것처럼 **튕긴다**(dock bounce) — 어느 아이콘이 이걸 열었는지
  *       화면이 스스로 가리킨다
  *  불투명도는 앞쪽 40% 에서만 올린다: 끝까지 함께 올리면 다 자란 뒤에도 흐릿해 보인다. */
-const EASE_IN_FALLBACK = "cubic-bezier(.16, 1, .3, 1)";   // = app.css --ease-settle
+const EASE_IN_FALLBACK = "cubic-bezier(.16, 1, .3, 1)";   // = 토큰 --ease-settle
 const EASE_OUT = "cubic-bezier(.4, 0, .9, .4)";            // 가속(빨려 들어감) — 닫기 전용, 토큰 없음
-const IN_MS_FALLBACK = 400;                                // = app.css --dur-in
-const OUT_MS_FALLBACK = 240;                               // = app.css --dur-out
+const IN_MS_FALLBACK = 400;                                // = 토큰 --dur-in
+const OUT_MS_FALLBACK = 240;                               // = 토큰 --dur-out
 const BOUNCE_MS = 460;
 const REDUCED_FADE_MS = 120;
 
