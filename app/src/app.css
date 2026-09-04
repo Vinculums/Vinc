@@ -95,8 +95,53 @@ select {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   cursor: pointer;
+  display: inline-flex; align-items: center; gap: .55rem;   /* base-select 의 버튼 면: 라벨 · 캐럿 */
 }
 select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+
+/* 목록(팝업)도 우리 것으로 — appearance:base-select 는 버튼 면과 ::picker 둘 다 CSS 로
+   그리게 한다(시맨틱·키보드는 네이티브 그대로). 지시 2026-09-05: 스페이스 선택·주제
+   선택 같은 OS 기본 드롭다운을 우리 디자인으로. WebView2(Windows)·최신 WebKit 은
+   그리고, 미지원 엔진은 이 블록을 무시해 위의 버튼 스타일 + OS 팝업으로 떨어진다.
+   모양은 모드 메뉴(.tb-mrow)와 한 줄: 카드 · hairline · ring/.1 호버 · 체크는 오른쪽.
+   같은 블록이 Vinc-homepage/site/assets/site.css 에 있다. 바꾸면 둘 다. */
+select, ::picker(select) { appearance: base-select; }
+select::picker-icon {
+  content: ""; flex: none; margin-left: auto; width: .42em; height: .42em;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  opacity: .7;   /* 색을 다시 적지 않는다(tests/test_select_is_one_rule) — 글자색을 흐려 캡션 톤으로 */
+  transform: translateY(-.12em) rotate(45deg);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+select:open::picker-icon { transform: translateY(.12em) rotate(225deg); }
+::picker(select) {
+  /* 자리. UA 는 position-try-order:most-block-size 라 셀렉트가 화면 중앙선 아래에 있으면 아래 공간이
+     넉넉해도 더 넓은 위쪽을 고른다(Chromium 152 실측 2026-09-05 — 커뮤니티 정렬이 늘 위로 떴다).
+     normal 로 되돌려 아래가 기본, 넘칠 때만 위로. max-height 를 고정하는 이유: UA 기본 stretch 는
+     좁은 틈에 목록을 42px 로 짜부라뜨려 넘침 자체를 없애므로 위로 뒤집히는 일이 영영 없다. */
+  position-try-order: normal; max-height: 60vh;
+  margin: .3rem 0 0; padding: .3rem; min-width: anchor-size(width);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  box-shadow: var(--shadow-elev-2, none);
+}
+option {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .48rem .7rem; border-radius: .5rem;
+  font: inherit; cursor: pointer;
+}
+option:hover, option:focus-visible { background: hsl(var(--ring) / .1); outline: none; }
+option:checked { font-weight: 600; }
+option::checkmark { order: 1; margin-left: auto; content: "✓"; font-family: var(--font-mono); color: hsl(var(--ring)); }
+@media (prefers-reduced-motion: no-preference) {
+  ::picker(select) {
+    opacity: 1; transform: translateY(0);
+    transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out),
+      overlay var(--dur-fast) allow-discrete, display var(--dur-fast) allow-discrete;
+  }
+  ::picker(select):not(:popover-open) { opacity: 0; transform: translateY(-.25rem); }
+  @starting-style { ::picker(select):popover-open { opacity: 0; transform: translateY(-.25rem); } }
+}
 
 /* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
       불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */
