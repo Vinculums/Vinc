@@ -60,9 +60,10 @@ export function openFloatPanel(opts: {
   closeLabel: string;
   onClose?: () => void;
 }): FloatHandle {
+  const swapping = live !== null;   // 카드가 열린 채 다른 노드를 고른 것 — 등장을 되풀이하지 않는다
   closeFloatPanel();
   const el = document.createElement("div");
-  el.className = "float-card";
+  el.className = swapping ? "float-card float-card--swap" : "float-card";
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", opts.title);
   el.innerHTML = `

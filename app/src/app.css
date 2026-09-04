@@ -158,8 +158,11 @@ body {
      손잡이 묶음과 검색바가 **같은 값을** 쓴다(아래 #tb-actions·#tb-search). */
   --tb-gap: .5rem;
   --dur-panel: .32s;   /* 폭·이동 — 큰 면이 움직이므로 조금 길게 */
-  --dur-in: .26s;      /* 모달 열기 */
-  --dur-out: .18s;     /* 닫기는 열기보다 짧다 — 사라지는 것을 기다리게 하지 않는다 */
+  --dur-in: .4s;       /* 모달·시트 열기 — motion.ts 가 이 값을 읽는다(두 벌이 아니라 한 벌) */
+  --dur-out: .24s;     /* 닫기는 열기보다 짧다 — 사라지는 것을 기다리게 하지 않는다 */
+  --dur-fast: .15s;    /* 캐럿·누름처럼 작은 응답 */
+  /* 안착 곡선(강한 감속) — 메뉴·카드·팝오버의 등장, 모달의 성장(motion.ts), 번들 회전. */
+  --ease-settle: cubic-bezier(.16, 1, .3, 1);
 }
 /* 셸은 두 열이다: 문서 목록 | 표면(지도).
    문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(발주자 지시 2026-08-05) —
@@ -236,7 +239,7 @@ body {
   background: transparent;
   box-shadow: 0 0 3rem hsl(0 0% 0% / .3);
   transition: transform var(--dur-panel) var(--ease-out),
-              opacity var(--dur-out) ease;
+              opacity var(--dur-out) var(--ease-out);
 }
 /* 유리를 못 쓰는 환경에서는 **불투명으로 되돌린다** — 반투명인데 흐림이 없으면
    뒤 글자가 그대로 겹쳐 읽혀 둘 다 못 읽는다(투명도만 남기는 것이 최악이다). */
@@ -258,7 +261,7 @@ body {
   transform: translateX(-101%); opacity: 0; pointer-events: none;
 }
 #docpane[hidden] { display: none; }
-@media (prefers-reduced-motion: reduce) { #docpane { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
 .pane-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 /* 접힘 = 폭 0. **내용은 살아 있다**(닫힘과 다른 상태다) — 그래서 테두리만 남지 않게
    여기서도 선을 지운다. 닫힘은 위 [hidden] 이 통째로 없앤다. */
@@ -291,12 +294,10 @@ body {
 .lnb-navrow, .lnb-doc, .lnb-group, .tb-icon, .btn, .palette-row, .chip {
   transition: background-color .16s ease, color .16s ease, border-color .16s ease;
 }
-/* 주제를 펼치는 삼각형이 **돌아간다** — 여태 두 상태 사이를 순간이동해서, 펼침이
-   일어났다는 사실 자체가 눈에 안 걸렸다. */
-.lnb-caret { transition: transform .2s var(--ease-out); }
+/* 감소 모션에서도 색 전이는 남긴다 — 움직임이 아니라 상태를 읽게 하는 전이다. 끄는 것은
+   아래 누름(transform)뿐. (캐럿의 회전 전이는 .lnb-caret 자기 규칙에 있다.) */
 @media (prefers-reduced-motion: reduce) {
-  .lnb-navrow, .lnb-doc, .lnb-group, .tb-icon, .btn, .palette-row, .chip,
-  .lnb-caret { transition: none; }
+  .tb-icon, .btn, .chip { transition-property: background-color, color, border-color; }
 }
 
 .lnb-nav { display: flex; flex-direction: column; gap: 1px; padding: .15rem 0 .5rem; }
@@ -354,7 +355,8 @@ body {
 .lnb-caret {
   display: inline-block; flex: 0 0 auto; width: .7rem; text-align: center;
   color: hsl(var(--caption-foreground));
-  transition: transform var(--dur-fast, .15s) ease;
+  /* 회전이 실제로 도는 것은 lnb.ts spinCaret 덕이다 — 트리는 통째로 다시 그려지므로. */
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .lnb-caret.open { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .lnb-caret { transition: none; } }
@@ -743,10 +745,13 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius-sm, .625rem); box-shadow: var(--shadow-elev-3, none);
   display: flex; flex-direction: column;
-  animation: ctxIn .12s cubic-bezier(.22, 1, .36, 1);
+  animation: ctxIn .12s var(--ease-settle);
+  transform-origin: 0 0;   /* 메뉴는 포인터 자리에 왼쪽 위가 붙는다 — 거기서 자란다 */
 }
 @keyframes ctxIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ctx-menu { animation: none; } }
+/* 감소 모션의 등장은 전부 이것 하나다: 움직임 없이 나타나기만 한다. */
+@keyframes fadeOnly { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ctx-menu { animation: fadeOnly .12s ease; } }
 .ctx-item {
   border: none; background: none; font: inherit; text-align: left; cursor: pointer;
   padding: .4rem .6rem; border-radius: .4rem; color: hsl(var(--foreground));
@@ -986,12 +991,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); font-size: var(--fs-base); }
 .proc-bar { position: relative; height: 4px; border-radius: 2px; background: hsl(var(--muted)); overflow: hidden; }
 .proc-bar > i {
-  position: absolute; inset: 0 100% 0 0; border-radius: 2px;
-  background: hsl(var(--primary)); transition: right .35s ease;
+  position: absolute; inset: 0; border-radius: 2px;
+  transform-origin: left; transform: scaleX(0);          /* right 를 움직이면 매 프레임 레이아웃이다 */
+  background: hsl(var(--primary)); transition: transform .3s var(--ease-out);
 }
-.proc-row[data-state="active"] .proc-bar > i { right: 45%; }
-.proc-row[data-state="done"] .proc-bar > i { right: 0; }
-.proc-row[data-state="failed"] .proc-bar > i { right: 55%; background: hsl(var(--danger)); }
+.proc-row[data-state="active"] .proc-bar > i { transform: scaleX(.55); }
+.proc-row[data-state="done"] .proc-bar > i { transform: scaleX(1); }
+.proc-row[data-state="failed"] .proc-bar > i { transform: scaleX(.45); background: hsl(var(--danger)); }
 .proc-status { font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); text-align: right; white-space: nowrap; }
 .proc-row[data-state="failed"] .proc-status { color: hsl(var(--danger)); }
 .proc-slim { text-align: center; }
@@ -1003,6 +1009,18 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   gap: var(--space-2, .5rem); padding: var(--space-6, 1.5rem) 0;
 }
 .success-check { display: grid; place-items: center; color: hsl(var(--primary)); margin-bottom: var(--space-1, .25rem); }
+/* 드물게 오는 순간(가져오기 성공 · 첫 실행)에만 쓰는 등장 — 체크가 안착하고 칩이 차례로 선다. */
+@media (prefers-reduced-motion: no-preference) {
+  .success-check { animation: success-pop .32s var(--ease-settle) backwards; }
+  .concept-chips .chip, .fr-why li { animation: chip-rise .24s var(--ease-out) backwards; }
+  .concept-chips .chip:nth-child(2), .fr-why li:nth-child(2) { animation-delay: 45ms; }
+  .concept-chips .chip:nth-child(3), .fr-why li:nth-child(3) { animation-delay: 90ms; }
+  .concept-chips .chip:nth-child(4) { animation-delay: 135ms; }
+  .concept-chips .chip:nth-child(5) { animation-delay: 180ms; }
+  .concept-chips .chip:nth-child(n+6) { animation-delay: 225ms; }
+}
+@keyframes success-pop { from { opacity: 0; transform: scale(.8); } }
+@keyframes chip-rise { from { opacity: 0; transform: translateY(6px); } }
 .success-stage h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
 .success-body { margin: 0; font-size: var(--fs-base); }
 .success-failed { margin: .1rem 0 0; font-size: var(--fs-sm); }
@@ -1257,9 +1275,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   display: flex; flex-direction: column; overflow: hidden;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius); box-shadow: var(--shadow-float, var(--shadow-elev-3, none));
-  animation: lensRise .16s cubic-bezier(.22, 1, .36, 1);
+  animation: lensRise .16s var(--ease-settle);
 }
-@media (prefers-reduced-motion: reduce) { .float-card { animation: none; } }
+/* 카드가 열린 채 다른 노드를 고르면 등장을 되풀이하지 않는다(float-panel.ts) — 하루 수십 번 하는 일이다. */
+.float-card--swap { animation: none; }
+@media (prefers-reduced-motion: reduce) { .float-card { animation: fadeOnly .16s ease; } }
 .float-head {
   display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
   padding: .4rem .4rem .4rem .55rem; cursor: grab; touch-action: none;
@@ -1403,7 +1423,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   width: 19rem; padding: .8rem .9rem;
   background: hsl(var(--card)); border: 1px solid hsl(var(--ring) / .5);
   border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
-  animation: lensRise .2s cubic-bezier(.22, 1, .36, 1);
+  animation: lensRise .2s var(--ease-settle);
 }
 .coach-line { margin: 0 0 .45rem; font-size: var(--fs-sm); line-height: 1.5; color: hsl(var(--muted-foreground)); }
 .coach-line b { color: hsl(var(--foreground)); }
@@ -1470,14 +1490,14 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 전환 중(>400ms) — 캔버스를 살짝 물리고 상단에 진행 막대. 내용을 가리지 않는다. */
 .view-busy #view-canvas { opacity: .5; transition: opacity .12s ease; }
 .view-busy::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 8;
+  content: ""; position: absolute; left: 0; top: 0; width: 40%; height: 2px; z-index: 8;
   background: linear-gradient(90deg, transparent, hsl(var(--ring)), transparent);
-  background-size: 40% 100%; background-repeat: no-repeat;
   animation: busySweep 1s linear infinite;
 }
-@keyframes busySweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+/* 합성만 한다 — background-position 은 매 프레임 띠 전체를 다시 칠했다. 40% 폭이라 350% 가 오른쪽 끝 밖이다. */
+@keyframes busySweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
 @media (prefers-reduced-motion: reduce) {
-  .view-busy::after { animation: none; background-position: 0 0; background-size: 100% 100%; opacity: .5; }
+  .view-busy::after { animation: none; width: 100%; opacity: .5; }
 }
 #view-msg a, #view-msg button { pointer-events: auto; }
 /* 렌즈 패널 — 좌하단 렌즈 버튼 **위로** 열린다(버튼이 패널을 가리지 않게).
@@ -1782,9 +1802,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-lin-back { stroke-dasharray: 3 3; }
 .pl-lin.pl-hl { stroke: hsl(var(--focus)); stroke-width: 1.6; opacity: 1; }
 .pl-lin.pl-fade { opacity: var(--recede-line); }
-@media (prefers-reduced-motion: no-preference) {
-  .pl-lin { transition: opacity .22s ease, stroke-width .22s ease; }
-}
+/* 불투명도 전이는 감소 모션에서도 남긴다 — 움직임이 아니다. */
+.pl-lin { transition: opacity .22s ease, stroke-width .22s ease; }
 
 /* 타임라인 뿌리(세로 시간축) — 시작 시점 한 점에서 가지가 갈라진다. 목(neck)은
    가지보다 옅게 둬 "갈라짐"이 배경으로, 가지가 본문으로 읽히게 한다. */
@@ -1819,9 +1838,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-fade { opacity: var(--recede-node); }
 .pl-link.pl-fade, .pl-ribbon.pl-fade, .pl-lane.pl-fade { opacity: var(--recede-line); }
 .pl-fade .pl-lab, .pl-fade .pl-cap, .pl-fade .pl-sub { opacity: var(--recede-text); }
-@media (prefers-reduced-motion: no-preference) {
-  .pl-node, .pl-link, .pl-ribbon, .pl-row, .pl-lane { transition: opacity .22s ease; }
-}
+.pl-node, .pl-link, .pl-ribbon, .pl-row, .pl-lane { transition: opacity .22s ease; }
 
 /* 방사형 계층 번들(Sankey 대체) — surfaces/view-bundle.ts.
    선은 계층을 타고 다발이 되므로 굵기가 아니라 **겹침**이 밀도를 말한다. 그래서
@@ -1845,7 +1862,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    한 프레임 번쩍이지 않는다. */
 @media (prefers-reduced-motion: no-preference) {
   .pl-bd-anim .pl-bd-link {
-    animation: pl-bd-draw 520ms cubic-bezier(.16, 1, .3, 1) backwards;
+    animation: pl-bd-draw 520ms var(--ease-settle) backwards;
     animation-delay: calc(var(--i, 0) * 2.2ms);
   }
 }
@@ -1880,7 +1897,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-bd-hit { fill: transparent; pointer-events: all; }
 .pl-bd-leaf { cursor: pointer; }
 /* 짚었다는 것이 보여야 과녁이 넓어진 값을 한다(라벨이 없는 잎도 있다). */
-.pl-bd-leaf:hover .pl-bd-dot { r: 3.5; }
+@media (hover: hover) and (pointer: fine) { .pl-bd-leaf:hover .pl-bd-dot { r: 3.5; } }
 .pl-bd-leaf:hover .pl-bd-label { fill: hsl(var(--foreground)); }
 
 /* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).
@@ -1950,7 +1967,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   /* backwards — forwards 로 두면 안무가 끝난 뒤에도 opacity 를 애니메이션이 붙들어
      .pl-fade 의 물러남이 최초 화면에서 통째로 무시된다(리사이즈 전까지). */
   .pl-sankey .pl-node.pl-in {
-    animation: pl-node-in .36s cubic-bezier(.85, 0, .15, 1) backwards;
+    animation: pl-node-in .36s var(--ease-settle) backwards;
     animation-delay: calc(var(--i, 0) * 30ms);
   }
   /* 리본이 면이 되면서 stroke-dashoffset 성장은 못 쓴다(그건 선의 문법이다).
@@ -1958,6 +1975,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
      레이아웃을 유발하지 않는다. fill-box 라 리본마다 자기 시작점이 축이 된다. */
 }
 @keyframes pl-node-in { from { opacity: 0 } to { opacity: 1 } }
+/* 계보 선 그리기 — pathLength=100 이라 100→0 이 곧 0%→100% 다(view-planar.ts). 이 키프레임이
+   없던 동안(2026-09-05 감사에서 발견) 선은 애니메이션 없이 완성 상태로 그냥 나타났다. */
+@keyframes pl-root-grow { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
 
 /* 타임라인 진입 안무 — **뿌리가 내린다**(발주자 지시 2026-08-02).
    위(시작 시점)에서 아래(현재)로 선이 자라고, 지나간 자리에 마디가 켜진다.
@@ -2113,7 +2133,7 @@ input.slider::-webkit-slider-thumb {
   box-shadow: 0 1px 3px hsl(0 0% 0% / .35);
   transition: transform .12s ease, box-shadow .12s ease;
 }
-input.slider:hover::-webkit-slider-thumb { transform: scale(1.12); }
+@media (hover: hover) and (pointer: fine) { input.slider:hover::-webkit-slider-thumb { transform: scale(1.12); } }
 input.slider:active::-webkit-slider-thumb {
   transform: scale(1.22); box-shadow: 0 1px 5px hsl(0 0% 0% / .45);
 }
@@ -2148,14 +2168,15 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   border-radius: .6rem;
 }
 /* 선택이 **미끄러진다**(components.ts initSegMotion 이 자리를 잡아 준다).
-   살짝 넘어갔다 돌아오는 곡선 — 칸을 옮겨 탄 관성이 남는다. */
+   빠르게 나가 부드럽게 안착한다. 튕김(1.4 오버슈트)은 뺐다 — 하루 수십 번 누르는 탭에서
+   튕김은 관성이 아니라 지연으로 읽힌다. */
 .seg-thumb {
   position: absolute; left: 0; top: 0; z-index: 0; opacity: 0;
   background: hsl(var(--card)); border-radius: .45rem;
   box-shadow: 0 1px 2px hsl(var(--foreground) / .22), inset 0 1px 0 hsl(0 0% 100% / .3);
   pointer-events: none;
-  transition: transform .34s cubic-bezier(.34, 1.4, .64, 1),
-              width .34s cubic-bezier(.34, 1.4, .64, 1),
+  transition: transform .22s var(--ease-out),
+              width .22s var(--ease-out),
               height .2s ease, opacity .16s ease;
 }
 /* 다크에서 알약은 `--card`(어두운 면)가 아니라 **밝은 회색**이다(다크 mac 세그먼트).
@@ -2182,7 +2203,14 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   background: linear-gradient(hsl(var(--card)), hsl(var(--muted)));
   box-shadow: 0 1px 1.5px hsl(var(--foreground) / .16), inset 0 1px 0 hsl(0 0% 100% / .3);
 }
-.btn:active { transform: translateY(.5px); filter: brightness(.97); }
+.btn:active { transform: scale(.97); filter: brightness(.97); }
+/* 누르면 눌린다 — 버튼꼴만. 목록 행(.lnb-*, .palette-row, .card-row)은 크기를 건드리면 글줄이
+   흔들리므로 색만 전이한다(위 규칙). 전이는 여기서 transform 을 더해 앞선 선언을 잇는다. */
+.tb-icon, .btn, .chip:not(.chip-static), .lens-btn, .card-ctl, .tile {
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease,
+              transform var(--dur-fast) var(--ease-out);
+}
+.tb-icon:active, .chip:not(.chip-static):active, .lens-btn:active, .card-ctl:active, .tile:active { transform: scale(.96); }
 .btn-primary {
   background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
   box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
@@ -2224,7 +2252,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   from { opacity: 0; transform: translate(-50%, .5rem); }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
-@media (prefers-reduced-motion: reduce) { .update-toast { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .update-toast { animation: fadeOnly .18s ease; } }
 
 /* S2 — 레일 도메인 행의 관리(⋯) 버튼. 평소엔 숨고 호버·포커스에만 드러나
    행의 시각 밀도를 유지한다(레일은 좁다). */
