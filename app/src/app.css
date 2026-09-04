@@ -148,21 +148,13 @@ body {
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
 :root {
   --lnb-w: 14.5rem;
-  /* 모션 한 벌 — 값이 여기 한 군데에만 살아야 패널·시트·모달이 같은 물성을 갖는다.
-     곡선은 macOS 계열의 "빠르게 나가고 부드럽게 안착"이다(관성 있는 감속). */
-  --ease-out: cubic-bezier(.32, .72, 0, 1);
-  /* 전체 속도감은 여기 셋으로 조절한다(발주자 지시 2026-08-05 — 살짝 늦춤).
-     모달 쪽 값은 motion.ts 상수와 짝이다: 둘이 어긋나면 같은 동작이 표면마다 다른
-     속도로 움직인다. */
+  /* 모션 토큰(--ease-* · --dur-*)은 여기 없다 — 디자인 허브 SSoT(design-tokens.json 의
+     motion 그룹)가 tokens.desktop.css / tokens.web.css 로 내려 준다(2026-09-05). 큰 면(셸 열·
+     문서 패널·상단 바 폭)은 --ease-drawer, 작은 응답(캐럿·누름·알약)은 --ease-out, 메뉴·카드
+     등장과 모달 성장은 --ease-settle. motion.ts 와 view-bundle.ts 가 같은 토큰을 읽는다. */
   /* 상단 바에서 LNB 경계 양쪽으로 남기는 여백. 경계선이 그 여백의 정중앙에 오도록
      손잡이 묶음과 검색바가 **같은 값을** 쓴다(아래 #tb-actions·#tb-search). */
   --tb-gap: .5rem;
-  --dur-panel: .32s;   /* 폭·이동 — 큰 면이 움직이므로 조금 길게 */
-  --dur-in: .4s;       /* 모달·시트 열기 — motion.ts 가 이 값을 읽는다(두 벌이 아니라 한 벌) */
-  --dur-out: .24s;     /* 닫기는 열기보다 짧다 — 사라지는 것을 기다리게 하지 않는다 */
-  --dur-fast: .15s;    /* 캐럿·누름처럼 작은 응답 */
-  /* 안착 곡선(강한 감속) — 메뉴·카드·팝오버의 등장, 모달의 성장(motion.ts), 번들 회전. */
-  --ease-settle: cubic-bezier(.16, 1, .3, 1);
 }
 /* 셸은 두 열이다: 문서 목록 | 표면(지도).
    문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(발주자 지시 2026-08-05) —
@@ -175,7 +167,7 @@ body {
   height: 100vh; min-height: 0; overflow: hidden;
   /* 사이드바 접기가 **미끄러진다**. 폭 하나가 열 정의 안에 있으므로 열 자체를
      전이시킨다(요소마다 따로 애니메이션을 걸면 트리와 표면이 어긋나게 움직인다). */
-  transition: grid-template-columns var(--dur-panel) var(--ease-out);
+  transition: grid-template-columns var(--dur-panel) var(--ease-drawer);
 }
 #shell > * { min-width: 0; min-height: 0; }
 #topbar { grid-column: 1 / -1; }
@@ -238,7 +230,7 @@ body {
      때마다 블러가 다시 계산돼 스크롤이 끊긴다(렌즈 패널과 같은 처분, 2026-08-05). */
   background: transparent;
   box-shadow: 0 0 3rem hsl(0 0% 0% / .3);
-  transition: transform var(--dur-panel) var(--ease-out),
+  transition: transform var(--dur-panel) var(--ease-drawer),
               opacity var(--dur-out) var(--ease-out);
 }
 /* 유리를 못 쓰는 환경에서는 **불투명으로 되돌린다** — 반투명인데 흐림이 없으면
@@ -682,7 +674,7 @@ body {
   flex: 0 0 auto;
   width: max(calc(var(--lnb-w) - var(--tb-gap)), 9.5rem);
   padding-left: .55rem;
-  transition: width var(--dur-panel) var(--ease-out);
+  transition: width var(--dur-panel) var(--ease-drawer);
 }
 @media (prefers-reduced-motion: reduce) { #tb-actions { transition: none; } }
 .tb-icon {

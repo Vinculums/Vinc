@@ -141,3 +141,24 @@ A push touches exactly one file, which puts the cards, components and templates 
 
 ⚠ If `guidelines/`, `components/`, `templates/` or `assets/` appear in finalize_plan's
 `writes`, that is an accident. The list must always be exactly `["tokens/ssot.css"]`.
+
+## Motion tokens (2026-09-05)
+
+The engine cannot emit a motion group (§5 above), so the hub carries one custom step:
+
+- SSoT: `DESIGN/design-tokens.json` gains a `motion` group (flat strings, one `note`).
+  `--ease-out` / `--ease-in-out` / `--ease-drawer` / `--ease-settle`, `--dur-fast` /
+  `--dur-hover` / `--dur-base` / `--dur-in` / `--dur-out` / `--dur-panel`. Same values for
+  every skin.
+- `scripts/gen_motion.py` injects the block before `/* Shape */` in the **dist** outputs only.
+  `DESIGN/tokens.css` stays pure engine output so `gen_tokens --check` keeps passing.
+- `scripts/build_dist.py` fixes the order (engine base, engine tenant, copies, scope, motion,
+  theme.ts). Run it, then `scripts/sync_out.py --check|--apply`. `build_dist.py --check` runs
+  the two engine `--check`s.
+- Found while wiring this: `tenants/desktop/design/tokens.css` and the app copies had never
+  received the dark `Depth` overrides that the SSoT already had; the first `build_dist` run
+  brought them across (4 `--shadow-*` lines under `[data-theme="dark"]`).
+- Consumers no longer define motion tokens locally (`app/src/app.css`, homepage `site.css`).
+  The app's large surfaces use `--ease-drawer` (the old local `--ease-out` value); small UI
+  uses `--ease-out`; `app/src/motion.ts` reads `--dur-in`, `--dur-out`, `--ease-settle`.
+
