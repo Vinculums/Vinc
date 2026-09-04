@@ -7,7 +7,8 @@
     "정답 문서의 어떤 소제목에서도 내용어 3개를 연속으로 재사용하지 않는다(기계 검사).",
     "정답 문서는 정확히 하나. 두 번째 문서로도 답이 되면 버린다(생성기의 모호성 배제를 손으로).",
     "문서당 최대 2개. 동일언어만 — 교차언어는 xling 픽스처 둘이 이미 덮는다.",
-    "질의 문자열이 생성 픽스처 셋 중 어디에도 나타나면 안 된다(기계 검사)."
+    "질의 문자열이 생성 픽스처 셋 중 어디에도 나타나면 안 된다(기계 검사).",
+    "F8 금지 어휘를 담은 doc_id 는 못 쓴다 — 이 파일은 추적되고 scripts/gate_forbidden.py 가 소스를 읽는다. 해당 문서 세 건은 정답에서 제외됐다."
   ],
   "corpora": [
     {
@@ -103,11 +104,11 @@
       "source": "vinc/D/vinc.d.glass-language.md"
     },
     {
-      "query": "줌을 빼면 화면이 새까매지고 점들이 서로 구분이 안 되는 문제",
-      "doc_id": "eval/ko/vinc/D/vinc.d.atlas-visibility-research.md",
+      "query": "조작 신호와 실제 데이터가 서로 다른 통로로 가는 구조",
+      "doc_id": "eval/ko/vinc/ARCHITECTURE.md",
       "lang": "ko",
       "corpus": "ko",
-      "source": "vinc/D/vinc.d.atlas-visibility-research.md"
+      "source": "vinc/ARCHITECTURE.md"
     },
     {
       "query": "띠가 갈라지고 합쳐지며 흐르는 그림을 합계 화면에 쓸 수 있을지",
