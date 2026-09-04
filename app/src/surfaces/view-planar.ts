@@ -298,7 +298,10 @@ export function mountColumns(el: HTMLElement,
        /** 초점이 걸렸을 때 **남을 것**을 정하는 관계 — 갈래를 가리지 않고 전부 받는다.
         *  그려지는 선(lineage)과 다른 입력인 이유: 그리는 것은 방향 관계만이지만,
         *  "관련"은 그보다 넓다(연관·부착·다리도 이어진 것이다). */
-       related?: { source: string; target: string }[] },
+       related?: { source: string; target: string }[];
+       /** 진입 안무를 돌릴 것인가. 옵션만 바꾼 재마운트(keepPanel)는 false — 같은 화면을
+        *  다시 그리는데 뿌리가 또 내리면 모션이 신호가 아니라 잡음이 된다. 기본 true. */
+       entrance?: boolean },
 ): PlanarHandle {
   const pool = timelinePool(nodes, o.docs);
   const dated = pool.filter((n) => !!(n.ts && n.ts.trim()))
@@ -330,7 +333,7 @@ const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
   const COL_MIN = 15, COL_MAX = 46;   // 기둥 간격. 좁아지면 가로 스크롤이 받는다
   const SLOT = 12;                    // 점 하나가 세로로 차지하는 몫
   const R_MIN = 1.9, R_MAX = 5.2;
-  let first = true;
+  let first = o.entrance !== false;
   /** 마지막으로 그린 점들의 좌표. 초점 선을 **다시 그리지 않고** 얹기 위해 남긴다
    *  (짚을 때마다 227개 마크를 재생성하면 호버가 무거워진다). */
   let posOut = new Map<string, { x: number; y: number }>();
