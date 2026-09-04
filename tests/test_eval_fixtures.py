@@ -14,6 +14,11 @@
    검증을 방향만 뒤집어 받는다: 정답은 정본 ko 정답의 부분집합(전부 한국어 문서),
    질의는 실제로 영어(한글이 남았으면 ko 동일언어 축과 섞인다 — 1의 오염이
    반대 방향으로 재발하는 형태), dedup·counts 동일.
+4. 사람이 친 셋(evalset_human.json, 실험 A)은 앞의 셋과 **출처가 다르다** — 생성기가
+   아니라 손으로 썼다. 그래서 기계가 지켜 주던 것(언어 정합·중복 없음)을 여기서 다시
+   확인하고, 이 셋의 존재 이유인 "소제목이 아니다"를 기계로 못박는다: 질의 문자열이
+   생성 픽스처 어디에도 나타나면 안 된다. 그게 깨지면 이 셋은 정본 셋의 복사본이고
+   편향을 가르는 대조군 노릇을 못 한다.
 """
 from __future__ import annotations
 
@@ -118,6 +123,54 @@ class En2koSetTests(unittest.TestCase):
         c = self.x["counts"]
         self.assertEqual(c["selected"], len(self.x["queries"]))
         self.assertEqual(c["source_ko"] - c["dropped_ambiguous"], c["selected"])
+
+
+class HumanSetTests(unittest.TestCase):
+    """손으로 쓴 셋 — 생성기가 지켜 주던 불변식을 사람이 깼는지 본다."""
+
+    def setUp(self):
+        self.h = json.loads((_FIX / "evalset_human.json").read_text(encoding="utf-8"))
+        self.gen = set()
+        for name in ("evalset.json", "evalset_xling.json", "evalset_xling_en2ko.json"):
+            for q in json.loads((_FIX / name).read_text(encoding="utf-8"))["queries"]:
+                self.gen.add(q["query"].casefold())
+                if "en_query" in q:
+                    self.gen.add(q["en_query"].casefold())
+
+    def test_교차언어_쌍이_없다(self):
+        for q in self.h["queries"]:
+            self.assertEqual(q["lang"], q["doc_id"].split("/")[1], q["query"])
+
+    def test_라벨한_언어가_실제_언어다(self):
+        """정본 셋을 무효로 만든 그 오염(한국어 라벨에 한글 0자)의 재발 방지."""
+        for q in self.h["queries"]:
+            r = _hangul_ratio(q["query"])
+            if q["lang"] == "ko":
+                self.assertGreater(r, 0.15, q["query"])
+            else:
+                self.assertLess(r, 0.05, q["query"])
+
+    def test_생성_픽스처와_겹치는_질의가_없다(self):
+        """이 셋의 존재 이유. 하나라도 겹치면 소제목 편향을 가르는 대조군이 아니다."""
+        for q in self.h["queries"]:
+            self.assertNotIn(q["query"].casefold(), self.gen, q["query"])
+
+    def test_중복_질의가_없다(self):
+        texts = [q["query"].casefold() for q in self.h["queries"]]
+        self.assertEqual(len(texts), len(set(texts)))
+
+    def test_문서당_두_개를_넘지_않는다(self):
+        per = {}
+        for q in self.h["queries"]:
+            per[q["doc_id"]] = per.get(q["doc_id"], 0) + 1
+        self.assertLessEqual(max(per.values()), 2, per)
+
+    def test_counts_가_실제와_같다(self):
+        c = self.h["counts"]
+        self.assertEqual(c["selected"], len(self.h["queries"]))
+        self.assertGreaterEqual(c["selected"], 20)
+        for lang, n in c["by_lang"].items():
+            self.assertEqual(n, sum(q["lang"] == lang for q in self.h["queries"]))
 
 
 if __name__ == "__main__":
