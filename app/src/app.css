@@ -115,6 +115,11 @@ select::picker-icon {
 }
 select:open::picker-icon { transform: translateY(.12em) rotate(225deg); }
 ::picker(select) {
+  /* 자리. UA 는 position-try-order:most-block-size 라 셀렉트가 화면 중앙선 아래에 있으면 아래 공간이
+     넉넉해도 더 넓은 위쪽을 고른다(Chromium 152 실측 2026-09-05 — 커뮤니티 정렬이 늘 위로 떴다).
+     normal 로 되돌려 아래가 기본, 넘칠 때만 위로. max-height 를 고정하는 이유: UA 기본 stretch 는
+     좁은 틈에 목록을 42px 로 짜부라뜨려 넘침 자체를 없애므로 위로 뒤집히는 일이 영영 없다. */
+  position-try-order: normal; max-height: 60vh;
   margin: .3rem 0 0; padding: .3rem; min-width: anchor-size(width);
   border: 1px solid hsl(var(--border)); border-radius: var(--radius);
   background: hsl(var(--card)); color: hsl(var(--foreground));
