@@ -1432,6 +1432,7 @@ export async function renderView(el: HTMLElement) {
     setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
     const res = await fetchGraph(p, scope);
     if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
+    swapSurface();
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
     // 관점 하나가 다른 모양이면 같은 사정이 화면마다 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
@@ -2384,6 +2385,7 @@ export async function renderView(el: HTMLElement) {
     setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
     const res = await fetchGraph(p, { domains });
     if (res.stale) return;
+    swapSurface();
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
@@ -2426,7 +2428,7 @@ export async function renderView(el: HTMLElement) {
   /** 평면 관점(타임라인 · 번들). 스코프 상태는 하나도 갖지 않고
    *  trail 의 마지막 층을 읽어 필요한 것만 가져온다. 데이터가 없는 스코프에서도
    *  관점은 선택된 채로 두고(비활성·숨김 없음) 캔버스에 두 절짜리 빈 상태를 그린다. */
-  async function showPlanar(level: Level) {
+  async function showPlanar(level: Level, entrance = true) {
     const p = curPrefs();
     const domains = lvDomains(level);
     // L0/L1 — 3D 와 똑같은 서브그래프를 받아 평면으로만 다시 그린다(별도 계약 없음).
@@ -2441,6 +2443,7 @@ export async function renderView(el: HTMLElement) {
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
     const res = await fetchGraph(p, { domains });
     if (res.stale) return;
+    swapSurface();
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
@@ -2513,6 +2516,7 @@ export async function renderView(el: HTMLElement) {
       // 안 받는다: 점마다 이름을 달 자리가 없고(이름은 hover 툴팁이 답한다), 그래서
       // 아래 rowsFor 의 timeline 행에서도 `labels` 를 뺐다.
       planar = mountColumns(canvas, feed, {
+        entrance,
         docs: p.timelineDocs,
         // ⚠ 다른 관점과 달리 클릭이 **스코프를 안 바꾼다**(발주자 지시 2026-08-14).
         // 이 관점은 이미 전량을 그리므로 파고들 곳이 없다 — 클릭은 그 자리에서
@@ -2560,6 +2564,7 @@ export async function renderView(el: HTMLElement) {
         feed = nodes.filter((n) => keep.has(n.id));
       }
       planar = mountBundle(canvas, feed, curEdges, {
+        entrance,
         depth: p.bundleDepth, off: p.bundleOff, labels: p.labels !== "none", tint: planarTints,
         // 클릭 = 회전 + 상세 레일. 이 관점의 값은 링 전체가 한 화면에 있다는 것이라
         // 스코프를 갈아 파고들면 방금 돌린 회전과 함께 그 값이 사라진다. (그 파고들기
@@ -2608,6 +2613,26 @@ export async function renderView(el: HTMLElement) {
   /** show() 세대. 연달아 두 번 부르면 앞의 것이 fetch 에서 돌아왔을 때 이 값이 이미
    *  넘어가 있다 — fetchGraph 가 그걸 보고 `stale` 로 접는다(옛 응답이 새 그림을 덮던
    *  것, 그리고 옛 마운트가 새 캔버스 위에 한 번 더 붙던 것을 막는다). */
+  /** 옛 표면을 부수고 새 표면을 받을 준비를 한다. 각 show* 가 데이터를 받은 **직후**,
+   *  그리기 **직전**에 부른다. 빈 상태·오류 상자도 이 뒤에 그린다(옛 지도 위에 얹지 않게).
+   *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
+  function swapSurface() {
+    extraSigmas.forEach((s) => s.kill());
+    extraSigmas = [];
+    if (planar) { planar.dispose(); planar = null; }
+    if (g2) { g2.dispose(); g2 = null; }
+    if (g3) { g3._destructor?.(); g3 = null; }
+    canvas.innerHTML = "";
+    canvas.style.opacity = "0";
+  }
+  /** swapSurface 뒤 첫 그림을 160ms 로 들여온다(불투명도만 — 관점 전환은 하루 수십 번
+   *  하는 일이라 이보다 길거나 움직이면 기다림이 된다). 감소 모션이면 바로 보인다. */
+  function revealSurface() {
+    if (canvas.style.opacity !== "0") return;      // swap 이 없었다(stale 등)
+    canvas.style.opacity = "";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+  }
   let showSeq = 0;
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
@@ -2623,12 +2648,9 @@ export async function renderView(el: HTMLElement) {
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — wireLasso 가 다시 켠다
     if (!opts?.keepPanel) void closePanel();
-    extraSigmas.forEach((s) => s.kill());
-    extraSigmas = [];
-    if (planar) { planar.dispose(); planar = null; }
-    if (g2) { g2.dispose(); g2 = null; }
-    if (g3) { g3._destructor?.(); g3 = null; }
-    canvas.innerHTML = "";
+    // 옛 표면은 **여기서 부수지 않는다.** 새 데이터가 도착해 그릴 준비가 됐을 때
+    // swapSurface() 가 부수고 곧바로 새 표면을 세운다 — 그래야 fetch 동안 빈 상자가
+    // 아니라 보던 지도가 남고, 새 지도가 그 위로 짧게 페이드인한다(2026-09-05 감사).
     drawLegend();
     drawMetrics(null);
     // 위치 표시는 좌측 트리 담당(D71 — 크럼 폐지). 지금 층의 주제를 넘겨 준다.
@@ -2646,7 +2668,7 @@ export async function renderView(el: HTMLElement) {
     try {
       // 관점이 Level 보다 먼저다 — 평면 관점에서는 mount3d 가 아예 도달 불가능해진다.
       const v = curPrefs().view;
-      if (isPlanar(v)) await showPlanar(level);
+      if (isPlanar(v)) await showPlanar(level, !opts?.keepPanel);
       else if (v === "2d") await show2d(level);
       // D69 — L0 도 이제 그냥 그래프다(스코프 없는 `/graph`). 주제 표는 좌측 트리로,
       // 주제 이름 변경도 그 트리의 우클릭으로 옮겼다.
@@ -2674,7 +2696,7 @@ export async function renderView(el: HTMLElement) {
         if (pre) pre.textContent = why;
       }
     } finally {
-      if (seq === showSeq) setBusy(false);       // 새 세대가 돌고 있으면 그쪽이 끈다
+      if (seq === showSeq) { setBusy(false); revealSurface(); }   // 새 세대가 돌고 있으면 그쪽이 끈다
     }
   }
 
