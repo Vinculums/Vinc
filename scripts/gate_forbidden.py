@@ -68,6 +68,25 @@ _EXCLUDE_DIRS = {
 #   · starter-packs 세 파일은 제품 표면이 아니라 예시 지식 콘텐츠이고, 거기 나오는
 #     "atlas" 는 전부 무관한 일반명사(책 제목 "Atlas of AI", "a time atlas" 등 —
 #     실측 2026-08-15, 셋 다 확인함). 서피스명과 우연히 겹치는 영어 단어일 뿐이다.
+#: **루트에 고정된** 제외. `_EXCLUDE_DIRS` 와 나눈 이유가 실측이다: 그쪽은
+#: `set(parts) & _EXCLUDE_DIRS` 라 **경로 어디에 있든** 그 이름을 뺀다. 거기에 `work`
+#: 를 넣으면 `starter-packs/work/` 까지 빠지는데, 그것은 gitignore 된 부산물이 아니라
+#: **추적되고 출하되는 시드 코퍼스 123파일**이고 이 게이트 스캔 대상 596 중 120, 20% 다.
+#: 그 디렉터리가 관할이라는 증거는 아래 허용목록에 그 안의 파일 셋이 이름으로 올라
+#: 있다는 것이다(미분기하의 "atlas of charts") — 이름 매칭으로 빼면 그 셋이 조용히
+#: 죽은 코드가 되고, 새로 들어오는 스타터팩 문서의 금지 어휘는 아무도 안 본다.
+#:
+#: 여기 둘은 세션 부산물이다(.gitignore, 커밋 4698e6c). `models/` 와 같은 이유로 뺀다:
+#: 다국어 토크나이저의 어휘가 금지 어휘를 정당하게 담는다(실측 2026-09-04:
+#: `.cache/embed/baked-*/tokenizer.json` 에 `"▁Atlas"` · `"quvvatlash"` 6건). CI 는
+#: 굽기를 안 해서 초록이고 **모델을 구운 로컬만 빨갛다** — 그 상태가 이어지면 사람이
+#: 이 게이트를 잡음으로 배우고, 그러면 진짜 금지어가 지나간다.
+#:
+#: git 이 무시하는 것을 통째로 건너뛰지 않는 이유: 무시되지만 **배포에는 실리는**
+#: 산출물이 있을 수 있고, 그런 파일의 금지 어휘는 여전히 사용자에게 닿는다.
+_EXCLUDE_ROOTS = (".cache/", "work/")
+
+
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
     "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
@@ -203,6 +222,8 @@ def _iter_files(root: Path):
         if p.suffix.lower() not in _TEXT_EXT:
             continue
         rel = p.relative_to(root).as_posix()
+        if rel.startswith(_EXCLUDE_ROOTS):
+            continue
         if any(rel.endswith(s) for s in _ALLOWLIST_SUFFIXES):
             continue
         yield p, rel

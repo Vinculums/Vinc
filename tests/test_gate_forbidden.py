@@ -93,5 +93,45 @@ class TestF9KoreanCopy(unittest.TestCase):
         self.assertEqual(0, len(v))
 
 
+class TestExcludeIsRootAnchored(unittest.TestCase):
+    """세션 부산물을 빼되 **출하 콘텐츠는 빼지 않는다**.
+
+    `_EXCLUDE_DIRS` 는 `set(parts) & ...` 라 경로 어디에 있든 그 이름을 뺀다. 거기에
+    `work` 를 넣으면 gitignore 된 `work/` 뿐 아니라 **추적되고 출하되는**
+    `starter-packs/work/` 까지 빠진다(이 리포에서 123파일, 게이트 스캔 대상의 20%).
+    그래서 루트 고정 제외를 따로 둔다. 이 테스트가 그 구분을 잠근다."""
+
+    def _seen(self, *names):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for n in names:
+                p = root / n
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("hello", encoding="utf-8")
+            return {rel for _, rel in g._iter_files(root)}
+
+    def test_루트의_부산물은_빠진다(self):
+        seen = self._seen("work/perf/a.md", ".cache/embed/tokenizer.json", "keep.md")
+        self.assertEqual(seen, {"keep.md"})
+
+    def test_같은_이름이라도_루트가_아니면_스캔한다(self):
+        """출하되는 스타터팩이 여기 산다. 이름 매칭으로 빼면 조용히 사각이 된다."""
+        seen = self._seen("starter-packs/work/art/x.md", "a/.cache/b.md")
+        self.assertIn("starter-packs/work/art/x.md", seen)
+        self.assertIn("a/.cache/b.md", seen)
+
+    def test_스타터팩_허용목록의_디렉터리가_관할_안에_있다(self):
+        """허용목록에 그 디렉터리의 파일이 **이름으로** 올라 있다는 것이 곧 그곳이
+        관할이라는 증거다. 제외가 이름 매칭이 되면 그 항목들은 아무 일도 안 하게 된다.
+
+        허용목록 파일 자체는 `_iter_files` 가 걸러 내보내지 않으므로(그게 허용목록의
+        뜻이다) **같은 디렉터리의 이웃 파일**이 스캔되는지로 관할을 확인한다."""
+        starter = [x for x in g._ALLOWLIST_SUFFIXES if x.startswith("starter-packs/work/")]
+        self.assertTrue(starter, "스타터팩 허용목록이 사라졌다면 이 테스트를 고칠 것")
+        for entry in starter:
+            sibling = str(Path(entry).parent / "sibling-not-allowlisted.md").replace("\\", "/")
+            self.assertIn(sibling, self._seen(sibling), entry)
+
+
 if __name__ == "__main__":
     unittest.main()
