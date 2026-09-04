@@ -37,6 +37,11 @@
 # 브랜치에서 띄우면 `azure/login` 이 AADSTS700213 로 죽는다(`bake-probe.yml` 머리말).
 # 그러니 이 프로브 자체를 고치는 변경은 머지된 뒤에야 프로브로 확인할 수 있다.
 #
+# ⚠ **`az containerapp exec` 는 TTY 를 요구한다.** 파이프에 붙이면 권한과 무관하게
+# `termios.error: Inappropriate ioctl for device` 로 죽는다(실측 run 33883513566). CI 에도
+# 터미널이 없으므로 `script -qec ... /dev/null` 로 pty 를 만들어 준다. az 의 제약이지
+# 이 워크플로의 선택이 아니다.
+#
 # ⚠ 로컬 `az` 로는 안 된다. 이 리포의 개발 신원은 `vincsRG` 에 Reader 뿐이고
 # `Microsoft.App/containerApps/getAuthToken/action` 이 없어 exec 이 거절된다(실측
 # 2026-09-04). Actions 신원에는 있다 — 그래서 이 자리가 워크플로다.
@@ -115,8 +120,13 @@ jobs:
         # exec 이 아무것도 안 내놓는 경우와 재는 데 실패한 경우는 다른 고장이다.
         run: |
           set -uo pipefail
-          az containerapp exec -n vinc-hub -g vincsRG \
-            --command "sh -c 'echo $B64 | base64 -d | sh'" > hub.raw 2>&1 || true
+          # 🔴 `az containerapp exec` 는 **TTY 를 요구한다.** 파이프에 붙이면
+          # `_ssh_utils.get_stdin_writer` 가 `tty.setcbreak(sys.stdin.fileno())` 를 불러
+          # `termios.error: (25, 'Inappropriate ioctl for device')` 로 죽는다(실측 run
+          # 33883513566). 권한 문제가 아니다 — 거기까지 갔다는 것이 인증 통과의 증거다.
+          # `script` 로 pty 를 만들어 준다. `timeout` 은 대화형 세션이 입력을 기다리며
+          # 안 끝나는 경우를 자른다.
+          timeout 420 script -qec "az containerapp exec -n vinc-hub -g vincsRG --command \"sh -c 'echo $B64 | base64 -d | sh'\"" /dev/null > hub.raw 2>&1 || true
           tr -d '\r' < hub.raw > hub.out
           echo "--- 허브 exec 출력 (토큰은 안 실린다) ---"
           grep -E '^PROBE_' hub.out || sed -n '1,15p' hub.out
@@ -127,8 +137,7 @@ jobs:
         # 있으므로 실패를 허용한다 — 이 값이 없다고 위의 측정이 무효가 되지는 않는다.
         run: |
           set -uo pipefail
-          az containerapp exec -n vinc-encode -g vincsRG \
-            --command "sh -c 'grep -m1 \"model name\" /proc/cpuinfo; nproc'" > enc.raw 2>&1 || true
+          timeout 180 script -qec "az containerapp exec -n vinc-encode -g vincsRG --command \"sh -c 'grep -m1 model.name /proc/cpuinfo; nproc'\"" /dev/null > enc.raw 2>&1 || true
           tr -d '\r' < enc.raw > enc.out
           sed -n '1,10p' enc.out
 
