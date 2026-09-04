@@ -95,6 +95,7 @@ select {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   cursor: pointer;
+  display: inline-flex; align-items: center; gap: .55rem;   /* base-select 의 버튼 면: 라벨 · 캐럿 */
 }
 select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 
@@ -105,11 +106,10 @@ select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
    모양은 모드 메뉴(.tb-mrow)와 한 줄: 카드 · hairline · ring/.1 호버 · 체크는 오른쪽.
    같은 블록이 Vinc-homepage/site/assets/site.css 에 있다. 바꾸면 둘 다. */
 select, ::picker(select) { appearance: base-select; }
-select { display: inline-flex; align-items: center; gap: .55rem; }
 select::picker-icon {
   content: ""; flex: none; margin-left: auto; width: .42em; height: .42em;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-  color: hsl(var(--caption-foreground));
+  opacity: .7;   /* 색을 다시 적지 않는다(tests/test_select_is_one_rule) — 글자색을 흐려 캡션 톤으로 */
   transform: translateY(-.12em) rotate(45deg);
   transition: transform var(--dur-fast) var(--ease-out);
 }
