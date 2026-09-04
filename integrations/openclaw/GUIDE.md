@@ -22,25 +22,33 @@ Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 두 경
 
 ## 1. 표준 MCP 등록 (모든 MCP 클라이언트 공통)
 
-`openclaw.json` 에 아래를 추가한다:
+`~/.openclaw/openclaw.json` 의 `mcp.servers` 아래에 추가하고 게이트웨이를 재시작한다:
 
 ```json
 {
-  "mcpServers": {
-    "vinc": {
-      "url": "https://mcp.vincs.io/mcp",
-      "headers": { "Authorization": "Bearer <VINC_API_KEY>" }
+  "mcp": {
+    "servers": {
+      "vinc": {
+        "url": "https://mcp.vincs.io/mcp",
+        "transport": "streamable-http",
+        "headers": { "Authorization": "Bearer <VINC_RO_KEY>" }
+      }
     }
   }
 }
 ```
 
+`transport` 는 필수다. 빼면 OpenClaw 기본값이 SSE 인데 Vinc 허브는 Streamable HTTP
+만 내므로 연결이 실패한다.
+
 `vinc_search` · `vinc_doc_get` · `vinc_graph` 등 Vinc 도구가 내장 도구와 나란히
 노출된다. 한계: 에이전트가 도구를 부르기로 스스로 판단해야 하며(자동 회수 없음),
 도구 정의가 컨텍스트 토큰을 소모한다.
 
-> 확인 필요(공개 전): `mcpServers` 항목의 필드명(`url`/`headers`)은 공개 시점의
-> OpenClaw 버전 문서와 실왕복으로 재검증할 것.
+> 2026-09-05 문서 대조 완료: 이 문서의 이전 판은 최상위 `mcpServers` 를 적었는데
+> OpenClaw 설정 레퍼런스(docs.openclaw.ai/gateway/configuration-reference · cli/mcp)는
+> `mcp.servers` 이고 `transport` 기본이 SSE 다. 위 블록이 그 정정이다. 라이브 OpenClaw
+> 게이트웨이 왕복은 아직 안 걸었다(아래 "안 한 것").
 
 ## 2. 코퍼스 supplement 플러그인 (OpenClaw 전용)
 
@@ -86,10 +94,11 @@ Vinc 가 돌려주는 재료에는 항상 출처가 붙는다. 소비하는 에�
    `updated_at` 시점이 함께 온다. 주장에 이 인용을 그대로 부착한다.
 2. **근거(evidence)가 있는 관계는 근거 문장을 인용한다.** 노드 상세의 관계 줄에
    `[evidence: "..."]` 로 표기된다.
-3. **근거가 없는 관계는 거부하지 않고 `[unsourced]` 로 라벨한다.** 근거 없는
-   주장을 거부형 게이트로 차단하면 현 그래프 상태(관계 근거 커버리지 2.8%)에서
-   관계 인용의 약 97% 가 차단된다. 커버리지가 오를 때까지, 게이트의 역할은
-   차단이 아니라 **소비자에게 근거 유무를 정직하게 표시하는 것**이다
+3. **근거가 없는 관계는 거부하지 않고 `[unsourced]` 로 라벨한다.** 2026-08-30 센서스
+   (`record:edge-evidence-coverage-2026-08-30`, 일곱 도메인·88 관계)에서 출처 문장을 가진
+   관계는 20건이다(전체의 23%, 문장을 둘 자리가 있는 관계 종류만 치면 36%). 근거 없는
+   주장을 거부형 게이트로 차단하면 관계 인용의 대부분이 차단된다. 커버리지가 오를 때까지,
+   게이트의 역할은 차단이 아니라 **소비자에게 근거 유무를 정직하게 표시하는 것**이다
    (근거: `record:openclaw-research-review-2026-08-29` finding 2).
 4. unsourced 라벨이 붙은 재료로 답할 때는 응답에도 그 라벨을 전파한다.
    "그래프에 있으나 근거 문장은 없다" 와 "근거가 인용된다" 는 다른 신뢰 등급이다.
@@ -100,4 +109,5 @@ Vinc 가 돌려주는 재료에는 항상 출처가 붙는다. 소비하는 에�
   사람 판단으로 실행). 단위 테스트는 플러그인 API 와 허브를 모킹한다: `npm test`.
 - 공개 배포(패키징·레지스트리 게시). W18 은 풀렸으므로 이제 남은 것은 배포 작업
   자체이지 선행조건이 아니다.
-- `mcpServers` 설정 필드명의 실왕복 검증 (위 1절의 확인 필요 항목).
+- 1절 `mcp.servers` 블록의 라이브 OpenClaw 게이트웨이 왕복 (필드명은 2026-09-05 에
+  공식 레퍼런스와 대조했고, 실제 연결은 아직이다).
