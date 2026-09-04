@@ -124,6 +124,66 @@ resource "azurerm_application_insights_standard_web_test" "internal_path_reaches
   }
 }
 
+# ── 2b. 허브의 내부 경로도 앱까지 닿는가 ────────────────────────────────────
+# 위 프로브는 **계정 앱**의 `/internal` 만 본다. 허브에도 내부 경로가 셋 있고
+# (`vinc_mcp/http_server.py:1241-1245`: purge-owner · purge-team · graph-owner) 그쪽에는
+# 아무 감시가 없었다.
+#
+# **왜 인그레스에서 막지 않고 감시하는가.** 감사 M2 의 나머지 절반은 "이 경로들을
+# 인그레스에서 차단한다"였는데, 그 형태로는 불가능하다: ACA 의 `ipSecurityRestrictions`
+# 는 **앱 단위지 경로 단위가 아니고**, 허브 인그레스는 mcp.vincs.io 를 세상에 서비스해야
+# 하므로 공개로 남아야 한다. 게다가 계정 앱이 허브를 부르는 주소가 공개 FQDN 이다
+# (`VINC_MCP_INTERNAL_URL`, 2026-09-04 확인). 그래서 실제로 할 수 있는 것은 **앱 층을
+# 단단히 하고**(#174: 서명 + 본문 다이제스트 + 일회성 jti) **그것이 계속 서 있는지
+# 지켜보는 것**이다.
+#
+# 판별자는 위와 같다: 앱이 답하면 401 + 본문에 `unauthorized`, 앞문이 가로채면 본문이
+# 빈다. 실측 2026-09-04: `{"error": "unauthorized"}`.
+#
+# **읽기 경로를 찌르는 이유.** 셋 중 둘은 파괴적이다(purge-*). 감시 프로브는 어떤
+# 회귀에서도 해를 끼칠 수 없어야 하고, 인증을 건너뛰는 회귀가 실제로 났을 때 파괴
+# 경로를 5분마다 찌르고 있으면 그 프로브 자신이 사고가 된다. graph-owner 는 읽기다.
+#
+# 이 프로브가 못 보는 것: 서명 검증이 통과한 뒤의 권한 문제. 그건 어서션 단위 테스트가
+# 잡는다. 둘은 다른 고장을 잡는다.
+resource "azurerm_application_insights_standard_web_test" "hub_internal_path_reaches_app" {
+  name                    = "vinc-hub-internal-path-reaches-app"
+  resource_group_name     = var.resource_group_name
+  location                = "koreacentral"
+  application_insights_id = local.insights_id
+  geo_locations           = local.probe_locations
+  frequency               = 300
+  timeout                 = 30
+  enabled                 = true
+  retry_enabled           = true
+  description             = "허브 내부 경로가 앞문이 아니라 앱까지 닿는가 (401 의 모양으로 가른다)"
+
+  request {
+    url       = "https://mcp.vincs.io/internal/graph-owner"
+    http_verb = "POST"
+    # ⚠ 디코드된 값을 쓴다 — 위 프로브의 주석과 같은 이유다(base64 를 적으면 config 와
+    #   state 가 영영 안 맞고 매 plan 이 같은 변경을 제안한다).
+    body = "{}"
+
+    header {
+      name  = "Content-Type"
+      value = "application/json"
+    }
+  }
+
+  validation_rules {
+    # 401 이 정상이다. 서명 없이 찔렀으니 어서션 게이트가 거절하는 것이 맞다.
+    expected_status_code = 401
+    ssl_check_enabled    = true
+
+    content {
+      content_match      = "unauthorized"
+      pass_if_text_found = true
+      ignore_case        = false
+    }
+  }
+}
+
 # ── 3. 계정 앱이 살아 있고 스키마가 코드를 따라잡았는가 ─────────────────────
 # 계정 앱에는 지금 경보가 하나도 없는데, 로그인·결제·팀과 모든 호스티드 키의 검증이
 # 여기 있다. 허브가 키를 확인할 때마다 이 앱을 지난다.
