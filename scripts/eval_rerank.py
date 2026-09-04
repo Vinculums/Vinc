@@ -47,6 +47,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -154,7 +155,11 @@ def _pct(v: list[float], frac: float):
 # ── 실행 ────────────────────────────────────────────────────────────────────
 #: 자식 레벨 벡터 조회. `vector_search` 는 부모로 접으면서 seq 를 버리므로 여기서
 #: 직접 부른다. 접는 규칙은 백엔드와 같다: 이미 distance 오름차순이니 첫 등장이 이긴다.
-_CHILD_CY = ("CALL QUERY_VECTOR_INDEX('ChunkVec', $idx, $emb, $k) "
+#: ⚠ 인덱스 이름은 **LITERAL 이어야 한다** — `$idx` 로 넘기면 `Binder exception:
+#: $idx has type PARAMETER but LITERAL was expected` 다(실측). 백엔드도 같은 이유로
+#: f-string 으로 끼운다(`store/embedded_backend.py::vector_search`). 이름이 코드에
+#: 섞이므로 식별자 형태만 허용한다.
+_CHILD_CY = ("CALL QUERY_VECTOR_INDEX('ChunkVec', '{idx}', $emb, $k) "
              "RETURN node.chunk_id AS id, node.seq AS seq, distance ORDER BY distance")
 
 
@@ -162,8 +167,10 @@ def child_seqs(store, qvec: list[float], k: int) -> dict[str, int]:
     """부모 chunk_id -> 이긴 자식의 seq. 실패하면 **죽는다**(조용한 빈 맵이면 `child`
     창이 `first` 로 강등되는데 출력에서 둘을 구분할 방법이 없다)."""
     idx = getattr(store, "_VEC_INDEX", "chunk_vec")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(idx)):
+        raise SystemExit(f"인덱스 이름이 식별자가 아니다: {idx!r}")
     try:
-        rows = store.run(_CHILD_CY, {"idx": idx, "emb": list(qvec), "k": int(k)})
+        rows = store.run(_CHILD_CY.format(idx=idx), {"emb": list(qvec), "k": int(k)})
     except Exception as e:                       # noqa: BLE001
         raise SystemExit(f"자식 seq 조회 실패({type(e).__name__}: {e}) - child 창은 "
                          "이게 없으면 first 와 같아진다. 스토어가 --split 로 만들어졌나?")
