@@ -10,7 +10,7 @@
   2. 무효·실효 커서는 **조용히 첫 페이지로 폴백하지 않고** 명시적 오류를 낸다.
   3. 기본 응답은 발췌(snippet)다 — 전문은 vinc_doc_get(doc_id) 으로 유도한다.
   4. MCP 봉투는 초과 결과를 거부하는 대신 꼬리 행을 덜어 잘린 페이지로 돌려준다
-     (vinc_search 만 — 다른 도구는 기존 거부 유지).
+     (등재된 도구만 — vinc_search·vinc_brief·vinc_graph; 나머지는 기존 거부 유지).
   5. 커서 코덱은 api.query 와 vinc_mcp.tools 에 미러된 두 사본이다 — 왕복 호환이
      깨지면 shrinker 가 만든 커서를 사이드카가 못 읽는다(교차 계약 테스트).
 """
@@ -223,7 +223,11 @@ class EnvelopeIntegrationTests(unittest.TestCase):
         #   vinc_search — 꼬리 행을 덜고 next_cursor 로 이어 읽는다.
         #   vinc_brief  — 발췌를 덜어도 grounds 에 doc_id 가 남아 되찾을 수 있다
         #                 ([[vinc.plan.mcp-agent-surface §4]]).
-        self.assertEqual(set(mcp_tools.SHRINKERS), {"vinc_search", "vinc_brief"})
+        #   vinc_graph  — 시드는 통째로 남기고 이웃의 props·one_liner, 엣지 evidence 를
+        #                 던다. 이웃의 props 는 그 id 로 다시 부르면 되찾는다. 조밀한
+        #                 노드의 depth 1 이 상한을 넘겨 시드 하나를 읽으러 온 --pull 이
+        #                 죽었다(2026-09-05, Vinc#204 후속).
+        self.assertEqual(set(mcp_tools.SHRINKERS), {"vinc_search", "vinc_brief", "vinc_graph"})
 
 
 class ToolContractAdditionsTests(unittest.TestCase):

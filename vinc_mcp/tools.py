@@ -1233,7 +1233,8 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
 
 
 #: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
-#: (vinc_graph 등 — JSON 을 중간에서 자르면 깨진 구문이 된다).
+#: (JSON 을 중간에서 자르면 깨진 구문이 된다). 등재된 것도 문자 단위로는 안 자른다 —
+#: 덜 중요한 **필드나 항목**을 통째로 덜어낸다.
 def _shrink_brief_result(out: dict, budget: int) -> dict | None:
     """vinc_brief 결과를 예산 안으로 줄인다 — **발췌를 먼저, 관계를 나중에** 덜어낸다.
 
@@ -1269,10 +1270,62 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
     return out
 
 
+def _shrink_graph_result(out: dict, budget: int) -> dict | None:
+    """vinc_graph 결과를 예산 안으로 줄인다 — **시드는 통째로, 이웃은 껍데기만**.
+
+    순서: 이웃 노드의 `props` → 이웃 노드의 `one_liner` → 엣지의 `evidence`. 시드 노드는
+    손대지 않는다. 이 도구로 노드 **하나**의 props 를 읽는 독자가 있기 때문이다:
+    `agents_sync --pull` 과 역할 껍데기의 "두 호출"이 그것이고, 2026-09-05 에
+    `concept:agent-dev-account` 의 depth 1 이 75,481자로 거부되자 `--pull` 이 죽었다
+    (Vinc#204 후속). depth 는 1 아래로 내려가지 않으므로 더 가벼운 읽기가 없었다.
+
+    덜어낸 것은 되찾을 수 있다: 이웃의 props 는 그 이웃의 id 로 다시 부르면 나오고,
+    엣지의 evidence 는 `vinc_brief` 가 그 노드에 대해 싣는다. 그래서 자르는 게 아니라
+    **덜 싣는** 것이다. 그래도 안 들어가면 None 을 돌려 기존 거부 경로로 보낸다."""
+    if not isinstance(out, dict) or not isinstance(out.get("nodes"), list):
+        return None
+
+    def _size() -> int:
+        return len(json.dumps(out, ensure_ascii=False))
+
+    seed = out.get("seed")
+    dropped = {"neighbour_props": 0, "neighbour_one_liners": 0, "edge_evidence": 0}
+    for key, empty, counter in (("props", {}, "neighbour_props"),
+                                ("one_liner", "", "neighbour_one_liners")):
+        for n in out["nodes"]:
+            if _size() <= budget:
+                break
+            if isinstance(n, dict) and n.get("id") != seed and n.get(key):
+                n[key] = empty
+                dropped[counter] += 1
+    edges = out.get("edges")
+    if isinstance(edges, list):
+        for e in edges:
+            if _size() <= budget:
+                break
+            if isinstance(e, dict) and e.get("evidence"):
+                e["evidence"] = ""
+                dropped["edge_evidence"] += 1
+    if _size() > budget:
+        return None
+    if any(dropped.values()):
+        out["shrunk"] = dropped
+        note = ("shrunk to fit the result size limit: emptied props on %d neighbour(s), "
+                "one_liner on %d, evidence on %d edge(s); the seed is intact, and a "
+                "neighbour's props come back by reading that neighbour's own id"
+                % (dropped["neighbour_props"], dropped["neighbour_one_liners"],
+                   dropped["edge_evidence"]))
+        out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
+    return out
+
+
 SHRINKERS = {"vinc_search": _shrink_search_result,
              # W1 — brief 는 조밀한 이웃에서 예산을 넘길 수 있다. 정책으로
              # 강등한다: 발췌부터 덜고 관계는 마지막까지 남긴다.
-             "vinc_brief": _shrink_brief_result}
+             "vinc_brief": _shrink_brief_result,
+             # 조밀한 노드의 depth 1 이 상한을 넘겼다(2026-09-05, 75,481자). 시드를
+             # 지키고 이웃의 props 부터 던다 — 시드 하나를 읽으러 온 독자가 있다.
+             "vinc_graph": _shrink_graph_result}
 
 
 def call(name: str, args: dict | None, bridge: Bridge,
