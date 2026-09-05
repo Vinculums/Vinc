@@ -46,7 +46,14 @@
         {"name": "Docs · GRAPH.md What / dark", "children": []},
         {"name": "Docs · GRAPH.md Generate / dark", "children": []},
         {"name": "Docs · GRAPH.md Spec / dark", "children": []},
-        {"name": "Docs · GRAPH.md Validate / dark", "children": []}
+        {"name": "Docs · GRAPH.md Validate / dark", "children": []},
+        {"name": "Docs · MCP Sign-in / dark", "children": []},
+        {"name": "Docs · Agents / dark", "children": []},
+        {"name": "Docs · Agents · Hosts / dark", "children": []},
+        {"name": "Docs · Agents · OpenClaw / dark", "children": []},
+        {"name": "Docs · Agents · Roles / dark", "children": []},
+        {"name": "Docs · Agents · Packs / dark", "children": []},
+        {"name": "Docs · One graph / dark", "children": []}
       ],
       "components": []
     },

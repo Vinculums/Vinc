@@ -94,16 +94,18 @@ ROUTES = {
     "/docs/graph-md/build/": "Docs · GRAPH.md Generate / dark",
     "/docs/graph-md/spec/": "Docs · GRAPH.md Spec / dark",
     "/docs/graph-md/check/": "Docs · GRAPH.md Validate / dark",
-    # 아래는 2026-09-05 실측 결손. 그려 넣으면 프레임 이름으로 바꾼다.
-    "/docs/mcp/sign-in/": None,
-    "/docs/agents/": None,
-    "/docs/agents/hosts/": None,
-    "/docs/agents/openclaw/": None,
-    "/docs/agents/roles/": None,
-    # 이 둘은 게이트가 **처음으로 잡아낸 회귀**다. 로컬 사이트 체크아웃이 origin 보다
-    # 6커밋 뒤처져 있었고, 최신화하자마자 미선언으로 빨개졌다(2026-09-05).
-    "/docs/agents/packs/": None,
-    "/docs/one-graph/": None,
+    # 아래 일곱은 2026-09-05 에 결손으로 잡혔다가 같은 날 신설했다. 마지막 둘은 게이트가
+    # **처음으로 잡아낸 회귀**다 — 로컬 사이트 체크아웃이 origin 보다 6커밋 뒤처져 있었고,
+    # 최신화하자마자 미선언으로 빨개졌다.
+    # ⚠ 셸과 제목만 실물이고 본문은 아직 도너(Overview)의 것이다. 프레임이 있다는 것과
+    # 그려졌다는 것은 다른 말이라, 프레임 주석에 그 사실을 적어 두었다.
+    "/docs/mcp/sign-in/": "Docs · MCP Sign-in / dark",
+    "/docs/agents/": "Docs · Agents / dark",
+    "/docs/agents/hosts/": "Docs · Agents · Hosts / dark",
+    "/docs/agents/openclaw/": "Docs · Agents · OpenClaw / dark",
+    "/docs/agents/roles/": "Docs · Agents · Roles / dark",
+    "/docs/agents/packs/": "Docs · Agents · Packs / dark",
+    "/docs/one-graph/": "Docs · One graph / dark",
 }
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
 ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
