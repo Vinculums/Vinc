@@ -16,7 +16,9 @@
 **이 스냅샷이 실제로 검증하는 것.** 발주자가 고른 안은 부모-자식(parent-child)이라
 재청킹이 일어나지 않는다. 따라서 임베딩 이행 전후로 MENTIONS 는 **기준선 그대로여야
 한다**. 즉 이것은 손실 대비가 아니라 그 주장의 검증이다. 코드로도 같은 결론이 나온다:
-MENTIONS 재링크는 `docstore._relink_mentions` 뿐이고 그것은 `put_doc` 에서만 불린다.
+MENTIONS 재링크는 `docstore._relink_mentions`(`put_doc` 에서만) 와, 링크 **규칙**이 바뀐
+기동에 한 번 도는 `engines.mentions_link.ensure_rule` 둘이다 — 후자는 규칙 표식
+(`_SchemaMeta.mentions_rule`)이 코드와 다를 때만 전량을 다시 만든다.
 임베딩 워커는 `apply_embeddings` 만 부르므로 청크도 링크도 건드리지 않는다. **차이가
 0 이 아니면 부모-자식 구현이 청크를 건드리고 있다는 뜻이다** — 즉시 보고 대상이다.
 
