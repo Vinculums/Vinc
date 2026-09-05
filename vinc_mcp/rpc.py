@@ -222,7 +222,7 @@ _NARROW_HINT = {
 def _result_text(text: str, name: str, args: dict) -> dict:
     """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
 
-    GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search·vinc_brief)는 거부
+    GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search·vinc_brief·vinc_graph)는 거부
     대신 덜 중요한 조각을 덜어 예산 안의 **잘린 결과**로 돌려준다 — 잘렸다는 사실은
     도구별 표식(has_more/next_cursor, shrunk)이 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
     미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다)."""

@@ -143,7 +143,10 @@ def cmd_pull() -> int:
     for rid in ids:
         got = remote.call("vinc_graph", {"seed_id": rid, "depth": 1})
         if got.get("isError") or not got.get("found"):
-            raise SystemExit(f"[agents] {rid} 조회 실패: {got.get('error')}")
+            # 상한 초과 같은 도구 오류는 `text` 에 온다 — `error` 만 보면 None 이 찍혀
+            # 왜 죽었는지 알 수 없다(2026-09-05 실측).
+            raise SystemExit(f"[agents] {rid} 조회 실패: "
+                             f"{got.get('error') or got.get('text') or got}")
         node = next((n for n in got.get("nodes", []) if n.get("id") == rid), None)
         if node is None:
             # 고립 노드가 빈 필드로 보고되던 전례가 있다

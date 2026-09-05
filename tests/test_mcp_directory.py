@@ -86,6 +86,58 @@ def test_oversized_result_degrades_to_actionable_error():
     assert res["_meta"]["vinc_too_large"]["tool"] == "vinc_graph"
 
 
+def _fat_graph(seed="concept:agent-x", neighbours=40, chars=2500):
+    """시드 하나 + 무거운 이웃들. 이웃의 props 만으로 상한(72k)을 넘긴다."""
+    nodes = [{"id": seed, "label": "seed", "kind": "concept", "domain": "vinc/agent",
+              "props": {"mission": "m", "reads": ["a", "b"], "never": ["merge"]},
+              "one_liner": "the seed"}]
+    edges = []
+    for i in range(neighbours):
+        nid = f"record:n{i}"
+        nodes.append({"id": nid, "label": f"n{i}", "kind": "record", "domain": "vinc/x",
+                      "props": {"note": "가" * chars}, "one_liner": "나" * 50})
+        edges.append({"source": nid, "target": seed, "type": "RELATED_TO",
+                      "evidence": "다" * 80})
+    return {"kind": "graph", "executed": True, "found": True, "seed": seed, "depth": 1,
+            "nodes": nodes, "edges": edges}
+
+
+def test_oversized_graph_keeps_the_seed_and_empties_neighbour_props_first():
+    """2026-09-05: concept:agent-dev-account 의 depth 1 이 75,481자로 거부돼 --pull 이
+    죽었다. 시드 하나를 읽으러 온 독자에게는 이웃의 props 가 아니라 시드가 중요하다."""
+    out = tools._shrink_graph_result(_fat_graph(), 20_000)
+    assert out is not None
+    seed = next(n for n in out["nodes"] if n["id"] == "concept:agent-x")
+    assert seed["props"] == {"mission": "m", "reads": ["a", "b"], "never": ["merge"]}
+    assert seed["one_liner"] == "the seed"
+    assert out["shrunk"]["neighbour_props"] > 0
+    # 예산에 들어가는 순간 멈추므로 evidence 는 아직 손대지 않았어야 한다.
+    assert out["shrunk"]["edge_evidence"] == 0
+    assert all(e["evidence"] for e in out["edges"])
+    assert "shrunk to fit" in out["note"]
+    assert len(json.dumps(out, ensure_ascii=False)) <= 20_000
+
+
+def test_oversized_graph_that_cannot_fit_is_still_refused():
+    """이웃을 다 비워도 시드 자체가 예산을 넘기면 자르지 않고 거부한다."""
+    fat = _fat_graph(neighbours=2)
+    fat["nodes"][0]["props"] = {"note": "라" * 30_000}
+    assert tools._shrink_graph_result(fat, 20_000) is None
+
+
+def test_oversized_graph_goes_through_the_dispatcher_as_a_shrunk_result():
+    d = rpc.Dispatcher(_StubBridge(_fat_graph()))
+    r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "vinc_graph",
+                             "arguments": {"seed_id": "concept:agent-x", "depth": 1}}})
+    res = r["result"]
+    assert res["isError"] is False
+    out = json.loads(res["content"][0]["text"])
+    assert out["shrunk"]["neighbour_props"] > 0
+    assert next(n for n in out["nodes"] if n["id"] == "concept:agent-x")["props"]["mission"] == "m"
+    assert tools.SHRINKERS["vinc_graph"] is tools._shrink_graph_result
+
+
 def test_normal_result_is_not_touched():
     d = rpc.Dispatcher(_StubBridge({"rows": [1, 2, 3]}))
     r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
