@@ -68,10 +68,18 @@ class IconGapsUseTheDeclaredSet(unittest.TestCase):
 class ExtractorsSeeTheRealTree(unittest.TestCase):
     """추출기가 조용히 빈손이면 게이트는 통과하면서 아무것도 안 지킨다."""
 
-    def test_routes_and_dialogs_and_icons_are_non_empty(self):
-        self.assertGreater(len(fi.site_routes()), 20)
+    def test_in_repo_extractors_are_non_empty(self):
+        # 이 둘은 Vinc 안에서 읽으므로 어디서 돌든 비면 안 된다.
         self.assertGreater(len(fi.app_dialogs()), 10)
-        self.assertGreater(len(fi.code_icons()), 20)
+        self.assertGreater(len(fi.code_icons()), 10)
+
+    def test_routes_are_non_empty_only_when_the_site_repo_is_here(self):
+        # ⚠ CI 는 Vinc 하나만 체크아웃한다. 이걸 무조건 단언했다가 PR #217 에서
+        # 정확히 이 줄로 빨개졌다(로컬 초록 · CI 빨강). 사이트가 있을 때만 센다.
+        if fi.site_present():
+            self.assertGreater(len(fi.site_routes()), 20)
+        else:
+            self.assertEqual(fi.site_routes(), set())
 
     def test_the_helper_definition_file_is_not_counted_as_a_call_site(self):
         # components.ts 는 openSheet 등을 **정의**한다. 세면 유령 모달 넷이 생긴다.
@@ -79,6 +87,42 @@ class ExtractorsSeeTheRealTree(unittest.TestCase):
 
     def test_internal_only_routes_are_excluded(self):
         self.assertFalse([r for r in fi.site_routes() if r.startswith("/vt-check")])
+
+
+class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
+    """CI 조건 재현: 사이트가 없을 때 라우트를 검사한 척해도, 빨개져도 안 된다.
+
+    빈 집합을 코드 목록으로 쓰면 맵의 모든 라우트가 "코드에서 사라졌다"로 잡혀 게이트가
+    영구히 빨갛고, 그렇다고 조용히 통과시키면 검사했다는 거짓이 된다. 그래서 건너뛰고,
+    건너뛴 사실을 출력한다.
+    """
+
+    def setUp(self):
+        self._site = fi.SITE
+        fi.SITE = pathlib.Path(__file__).resolve().parent / "__no_such_site__"
+
+    def tearDown(self):
+        fi.SITE = self._site
+
+    def test_site_is_reported_absent(self):
+        self.assertFalse(fi.site_present())
+        self.assertEqual(fi.site_routes(), set())
+
+    def test_the_absent_repo_does_not_produce_stale_map_failures(self):
+        # 이 조합이 바로 CI 에서 게이트를 38건 실패로 만들 뻔한 것이다.
+        r = fi._check("routes", fi.site_routes(), fi.ROUTES, set())
+        self.assertGreater(len(r["stale_map"]), 30, "빈 코드 목록은 맵 전체를 잔여로 만든다")
+
+    def test_the_gate_passes_and_says_it_skipped(self):
+        import io as _io
+        import contextlib
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = fi.main([])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("SKIP", out)
+        self.assertIn("검사 못 함", out)
 
 
 if __name__ == "__main__":

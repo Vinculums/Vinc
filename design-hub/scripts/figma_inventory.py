@@ -145,8 +145,20 @@ ICON_GAPS = {
 }
 
 
+def site_present() -> bool:
+    """`Vinc-homepage` 가 체크아웃돼 있는가.
+
+    ⚠ CI 는 자기 리포 하나만 체크아웃한다. 그래서 사이트가 없는 것은 **정상**이고,
+    그때 라우트 대조는 원리상 성립하지 않는다. 이걸 다루지 않으면 두 가지로 다 틀린다
+    — 빈 집합을 코드 목록으로 쓰면 맵의 38줄이 전부 "코드에서 사라졌다"로 빨개지고,
+    조용히 통과시키면 "검사했다"는 거짓이 된다. `sync_out.py` 가 같은 문제를 먼저
+    만났고 결론도 같았다: **건너뛰되 세어서 출력한다.**
+    """
+    return SITE.exists()
+
+
 def site_routes() -> set[str]:
-    if not SITE.exists():
+    if not site_present():
         return set()
     out = set()
     for p in SITE.rglob("index.html"):
@@ -211,10 +223,12 @@ def _check(kind: str, code: set[str], mapping: dict, live: set[str],
             "stale_map": stale_map, "figma_only": sorted(live - referenced)}
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # argv 를 인자로 받는 이유: 테스트가 이 함수를 부를 때 `sys.argv` 에는 러너의
+    # 인자가 들어 있어 argparse 가 그걸 먹고 SystemExit 2 로 죽는다(실제로 물렸다).
     ap = argparse.ArgumentParser(description="코드 화면·모달·아이콘 목록 ↔ Figma 대조")
     ap.add_argument("--live", default="imports/figma-inventory.json")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     p = HUB / a.live
     if not p.exists():
         print(f"[ERROR] 인벤토리 덤프가 없다: {p}\n        docstring 의 JS 를 use_figma 로 돌려 저장하라.",
@@ -223,12 +237,16 @@ def main() -> int:
     live = json.loads(p.read_text(encoding="utf-8"))
     frames, states, icons = figma_names(live)
 
-    results = [
-        _check("사이트 라우트", site_routes(), ROUTES, frames),
-        _check("앱 모달", app_dialogs(), DIALOGS, states),
-        _check("아이콘", code_icons(), {i: "Icon / " + i for i in code_icons()},
-               {"Icon / " + i for i in icons}, frozenset(ICON_GAPS)),
-    ]
+    have_site = site_present()
+    results, skipped = [], []
+    if have_site:
+        results.append(_check("사이트 라우트", site_routes(), ROUTES, frames))
+    else:
+        skipped.append("사이트 라우트 — Vinc-homepage 가 체크아웃돼 있지 않다")
+    results.append(_check("앱 모달", app_dialogs(), DIALOGS, states))
+    results.append(_check("아이콘" + ("" if have_site else " (앱만 · 사이트 미체크아웃)"),
+                          code_icons(), {i: "Icon / " + i for i in code_icons()},
+                          {"Icon / " + i for i in icons}, frozenset(ICON_GAPS)))
 
     fail = 0
     for r in results:
@@ -250,8 +268,11 @@ def main() -> int:
         print(f"  결손 {len(r['gaps'])}건 · 실패 "
               f"{len(r['undeclared']) + len(r['rotten']) + len(r['stale_map'])}건")
 
+    for s in skipped:
+        print(f"── [SKIP] {s}")
     total_gap = sum(len(r["gaps"]) for r in results)
-    print(f"\n{'통과' if not fail else f'실패 {fail}건'} · 선언된 결손 {total_gap}건")
+    tail = f" · 검사 못 함 {len(skipped)}건(리포 부재)" if skipped else ""
+    print(f"\n{'통과' if not fail else f'실패 {fail}건'} · 선언된 결손 {total_gap}건{tail}")
     return 1 if fail else 0
 
 

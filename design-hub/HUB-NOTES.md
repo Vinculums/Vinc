@@ -132,6 +132,14 @@ verifies the frame really exists.
 ⚠ `components.ts` is where those four helpers are **defined**. Counting it as a call site
 invents four modals that do not exist, so it is excluded by name and a test holds that.
 
+⚠ **CI does not have `Vinc-homepage`** — a job checks out its own repository only. The route
+comparison then cannot be made at all, and getting that wrong fails in both directions: feed
+the empty set in as the code list and all 38 mapped routes read as "deleted from code", so the
+gate is permanently red; pass silently and "we checked" is a lie. `sync_out.py --check` met
+this first and reached the same answer: **skip it, and print that you skipped**. The first CI
+run of PR #217 was red on exactly this line while local was green, so a test now reproduces
+the condition rather than trusting that it will not recur.
+
 ## Figma file inventory (WUXLeDDNBqih2KTZOz9wCX), the new canon after the 2026-08-06 rebuild
 
 The old "owner-fixed four pages" rule was retired on 2026-08-06 when the owner deleted every
