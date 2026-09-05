@@ -75,6 +75,71 @@ Constraints confirmed by testing `_meta/design_rules/token_gen.py::render_css` d
 - The old source of truth is **legacy-frozen**: it exists to keep `app/src/tokens.css`
   reproducible until phase 5 replaces the application tokens. Never edit it by hand.
 
+## Figma is kept level with the code by a gate now (2026-09-05)
+
+The owner settled the direction: **code is canonical, Figma follows it.** Until this date
+nothing checked that, and the cost showed up the first time anyone looked: four semantic
+variables and two primitives were missing, the whole motion group and the dark shadows had
+no counterpart, and dark `primary`/`primary-foreground` held **different values** from the
+source of truth while their own Figma descriptions still recorded the code's. All of it is
+applied now, and the drift is 0.
+
+```bash
+# 1. dump live Figma (the agent runs the JS in the script's docstring through use_figma)
+#    into imports/figma-live.json, then:
+python -X utf8 scripts/figma_diff.py                    # exit 1 = Figma is behind
+python -X utf8 scripts/figma_diff.py --plan reports/figma-plan.json
+```
+
+The name map between the two sides lives in `scripts/figma_diff.py` and nowhere else, on
+purpose: there is one consumer, so a second file would only give the two something to
+disagree about. What is deliberately **not** compared is listed in the same docstring, and
+that list is the contract, not an oversight: `Graph`/`Window`/`Email` reach code only
+through `gen_theme_ts.py`, `Locale` is copy whose canon is the site, and `Domain` uses a
+fixed palette in Figma against a generative model in code.
+
+⚠ `imports/figma-live.json` is a machine dump, not a note. Patching it by hand makes the
+gate agree with a file instead of with Figma, which is the one failure it exists to catch.
+
+⚠ Four `Scale` keys are Figma-only and are **not** Figma being wrong: `icon/app` 18,
+`icon/base` 24, `layout/lnb-w` 232, `layout/gnb-h` 52 all match values that live in
+`app/src/app.css` rather than in the token SSoT. Promoting them into the SSoT is a separate
+decision; until then they stay on the ignore list.
+
+## The second gate: the lists, not the values (2026-09-05)
+
+`figma_diff.py` answers "do the two sides hold the same values". It cannot answer "does Figma
+have a frame for every screen we ship", and that question had been sitting in the plan marked
+"not compared" for weeks. Counting it by hand once found four application modals and five
+documentation pages missing. Counted by hand, it would be wrong again next week.
+
+```bash
+python -X utf8 scripts/figma_inventory.py     # exit 1 = 코드에 늘려 놓고 Figma 대응을 선언 안 했다
+```
+
+It compares three lists, each extracted from the tree rather than typed out: **site routes**
+(every `index.html` under `Vinc-homepage/site`), **application modals** (every `openSheet`,
+`confirmDestructive`, `promptText` and `openContextMenu` call site, keyed by module plus title
+expression so moving code around does not break the key), and **icons** (`app/src/icons/*.svg`
+plus the site's icon module).
+
+The distinction that makes it survivable: a **declared gap** is written as `None` in the map,
+prints every run and does not fail; an **undeclared** item fails. Failing on the backlog would
+have got the gate switched off, and passing silently would restore exactly the state it exists
+to end. Draw the missing frame, replace the `None` with its name, and from then on the gate
+verifies the frame really exists.
+
+⚠ `components.ts` is where those four helpers are **defined**. Counting it as a call site
+invents four modals that do not exist, so it is excluded by name and a test holds that.
+
+⚠ **CI does not have `Vinc-homepage`** — a job checks out its own repository only. The route
+comparison then cannot be made at all, and getting that wrong fails in both directions: feed
+the empty set in as the code list and all 38 mapped routes read as "deleted from code", so the
+gate is permanently red; pass silently and "we checked" is a lie. `sync_out.py --check` met
+this first and reached the same answer: **skip it, and print that you skipped**. The first CI
+run of PR #217 was red on exactly this line while local was green, so a test now reproduces
+the condition rather than trusting that it will not recur.
+
 ## Figma file inventory (WUXLeDDNBqih2KTZOz9wCX), the new canon after the 2026-08-06 rebuild
 
 The old "owner-fixed four pages" rule was retired on 2026-08-06 when the owner deleted every
@@ -84,6 +149,11 @@ existing screen and directed a full rebuild. The detailed record is in
 ⚠ `get_metadata` without a nodeId has a bug where it reports **only one** page, so always
 confirm the full list through `use_figma` and `figma.root.children`. This bug has produced two
 misjudgements already.
+
+⚠ The table below says six pages and it is **wrong**: there are seven. `Homepage(Docs)`
+(`337:2590`) was added later and never written down here, which is what a hand-maintained
+inventory does. Measured 2026-09-05 through `figma.root.children`, which is also how the
+`get_metadata` bug below is worked around.
 
 The six canonical pages:
 
@@ -96,14 +166,41 @@ The six canonical pages:
 | 4 | **Node** | `184:2076` | five graph examples: 3D dark (299:30), 3D light (300:30), 2D (301:30), Timeline (302:30), Sankey (303:30) |
 | 5 | **Email** | `219:5` | the email design system (251:27) plus 14 templates (7 kinds in English and Korean) |
 
-Seven variable collections, all new, with the old three deleted: Primitive (221:5), Semantic
-(222:5, Light and Dark, matching the source-of-truth semantic names), Graph (223:5, linkRamp
-plus viewScene), Domain (223:27), Window (223:35), Email (223:45) and Scale (224:5, with icon
-18 and 24 newly added).
+Variable collections: Primitive (221:5), Semantic (222:5, Light and Dark, matching the
+source-of-truth semantic names), Graph (223:5, linkRamp plus viewScene), Domain (223:27),
+Window (223:35), Email (223:45) and Scale (224:5, with icon 18 and 24 newly added). Two more
+have appeared since: **Locale** (318:30, EN and KO, 376 copy strings) and **Motion**
+(477:2571, created 2026-09-05 to carry the SSoT's curves and durations).
 
-The font is **settled as Pretendard**; Inter stands in until it is installed, after which the
-text styles' fontName is replaced in bulk. The full node id map is in the session scratch
-`figma-node-map.md` and is to be ingested into the Vinc graph.
+The font is **settled as Pretendard and the swap is still not done.** Measured 2026-09-05, and
+the two halves disagree, which is why a glance at the text styles misleads:
+
+| Layer | State |
+|---|---|
+| The 22 text styles | all declare Pretendard |
+| App(Desktop) screen text | 784 nodes: **Inter 778 · JetBrains Mono 6 · Pretendard 0** |
+| Font availability to the MCP session | Pretendard is **not loadable** (0 of 1,938 families) |
+
+So the styles were repointed at Pretendard but the screens were never re-rendered onto it.
+
+**Why the family is missing here and not in your Figma.** The MCP session executes against
+Figma's hosted font catalogue only: 1,938 families containing the Google set (Noto Sans KR,
+Nanum, Gothic A1) and Figma's own bundles (Inter, SF Pro, JetBrains Mono), and **no
+OS-installed font at all** (no Malgun Gothic, no Segoe UI, no Apple SD Gothic). Pretendard is
+not a Google font, so the desktop app and the browser resolve it from the machine it is
+installed on while this environment cannot see it. The file is fine; what breaks is only an
+agent-side `characters` write, which fails with `The font family "Pretendard" does not exist`.
+
+**The way around it, and it is the better way anyway.** Text bound to a variable is fixed at
+the variable, and a variable write needs no font. Both nodes that blocked the F8 purge turned
+out to be bound to `Locale` entries (`mock/view`, which was renamed in the same pass because
+its key carried the retired word too, and `landing/s2t`), so setting those values cleared them.
+That is also the route for the whole 376-string copy sync: it does not need the font, and it
+fixes the copy at its source instead of in each frame. Only genuinely detached text on a
+Pretendard style is unreachable from here.
+
+The full node id map is in the session scratch `figma-node-map.md` and is to be ingested into
+the Vinc graph.
 
 ## Next
 

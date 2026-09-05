@@ -1,0 +1,115 @@
+{
+  "$meta": {
+    "source": "figma",
+    "file": "WUXLeDDNBqih2KTZOz9wCX",
+    "exported": "2026-09-05",
+    "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
+    "scope": "Frame and component NAMES only. Values live in imports/figma-live.json, which figma_diff.py reads; this file is the list, that one is the content.",
+    "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma."
+  },
+  "pages": {
+    "Homepage": {
+      "frames": [
+        {"name": "Home · Community · Pack modal states / dark", "children": ["modal-card", "modal-card", "modal-card", "modal-card"]},
+        {"name": "Home · Release / dark", "children": ["hero", "rel", "roadmap"]},
+        {"name": "Home · Privacy / dark", "children": ["hero", "body-en", "body-ko (전문 병기, 코드 정본)"]},
+        {"name": "Home · Auth · Login & Welcome / dark", "children": ["LOGIN · FORM", "LOGIN · SENT", "WELCOME · LOADING", "WELCOME · FORM", "WELCOME · AVAILABLE"]},
+        {"name": "Home · Auth · Verify states / dark", "children": ["VERIFY · CONFIRM", "VERIFY · VERIFYING", "VERIFY · CONFIRM CONTEXT", "VERIFY · EXPIRED", "VERIFY · INVALID", "VERIFY · ERROR"]},
+        {"name": "Home · Auth · Subscribe & Unsubscribe states / dark", "children": ["SUBSCRIBE · CONFIRM", "SUBSCRIBE · CONFIRMING", "SUBSCRIBE · CONFIRMED", "SUBSCRIBE · EXPIRED", "SUBSCRIBE · ERROR", "UNSUB · CONFIRM", "UNSUB · UNSUBSCRIBING", "UNSUB · UNSUBSCRIBED", "UNSUB · INVALID", "UNSUB · ERROR"]},
+        {"name": "Home · Account / dark", "children": ["acards"]},
+        {"name": "Home · Account · Team / dark", "children": ["cards"]},
+        {"name": "Home · Account · Delete states / dark", "children": ["DELETE · CONFIRM", "DELETE · DELETING", "DELETE · DELETED", "DELETE · EXPIRED", "DELETE · ERROR"]},
+        {"name": "Home · Connect & Connect-app states / dark", "children": ["CONNECT · LOAD", "CONNECT · ASK", "CONNECT · LOGIN", "CONNECT · DONE", "CONNECT · ERROR", "CONNECT-APP · LOAD", "CONNECT-APP · ASK", "CONNECT-APP · LOGIN", "CONNECT-APP · DONE", "CONNECT-APP · MANUAL", "CONNECT-APP · ERROR"]},
+        {"name": "Home · 404 / dark (신설)", "children": ["body"]},
+        {"name": "Home · Service states / dark (신설: 429 · unavailable · signed-out)", "children": ["429 · RATE LIMITED", "WEB GRAPH UNAVAILABLE", "ACCOUNT · SIGNED OUT"]},
+        {"name": "Home · Mobile GNB drawer / dark (신설)", "children": ["gnb-mobile", "drawer"]},
+        {"name": "Home · Landing / dark", "children": ["hero", "app-mockup (always dark)", "how", "features", "packs", "vows-wrap", "fin", "newsletter"]},
+        {"name": "Home · Download / dark", "children": ["hero", "platforms", "assure", "firstrun"]},
+        {"name": "Home · Pricing / dark", "children": ["hero", "tiers", "note", "faq"]},
+        {"name": "Home · Community / dark", "children": ["hero", "toolbar", "grid"]}
+      ],
+      "components": []
+    },
+    "Homepage(Docs)": {
+      "frames": [
+        {"name": "Docs · Overview / dark", "children": []},
+        {"name": "Docs · Quickstart / dark", "children": []},
+        {"name": "Docs · What to put in it / dark", "children": []},
+        {"name": "Docs · Import / dark", "children": []},
+        {"name": "Docs · View / dark", "children": []},
+        {"name": "Docs · Search / dark", "children": []},
+        {"name": "Docs · Packs & community / dark", "children": []},
+        {"name": "Docs · Shortcuts / dark", "children": []},
+        {"name": "Docs · MCP Setup / dark", "children": []},
+        {"name": "Docs · MCP Tools / dark", "children": []},
+        {"name": "Docs · CLI Reference / dark", "children": []},
+        {"name": "Docs · GRAPH.md What / dark", "children": []},
+        {"name": "Docs · GRAPH.md Generate / dark", "children": []},
+        {"name": "Docs · GRAPH.md Spec / dark", "children": []},
+        {"name": "Docs · GRAPH.md Validate / dark", "children": []}
+      ],
+      "components": []
+    },
+    "App(Desktop)": {
+      "frames": [
+        {"name": "App · View · default (canvas placeholder) / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)"]},
+        {"name": "Frame", "children": []},
+        {"name": "App · View · empty / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)"]},
+        {"name": "App · View · lens panel (Options) / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)"]},
+        {"name": "App · View · coachmark & lasso / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)"]},
+        {"name": "App · View · node detail + related card / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "docpane", "App / FloatCard", "related-rows (float card body)"]},
+        {"name": "App · View · edge detail / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "docpane"]},
+        {"name": "App · View · reader (verified, saved) / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "docpane"]},
+        {"name": "App · Search · results / dark", "children": ["App / Titlebar", "topbar", "lnb", "search-surface"]},
+        {"name": "App · Search · no results + reindex badge / dark", "children": ["App / Titlebar", "topbar", "lnb", "search-surface"]},
+        {"name": "App · Search · error + browse / dark", "children": ["App / Titlebar", "topbar", "lnb", "search-surface"]},
+        {"name": "App · Ask · answer card / dark", "children": ["App / Titlebar", "topbar", "lnb", "search-surface"]},
+        {"name": "App · Packs (with Intake dropzone) / dark", "children": ["App / Titlebar", "topbar", "lnb", "packs-surface"]},
+        {"name": "App · Intake · states (Ingesting/Success/Error) / dark", "children": ["INGESTING (42:5)", "SUCCESS (42:7)", "ERROR"]},
+        {"name": "App · Settings · Account tab / dark", "children": ["App / Titlebar", "topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "settings-popover"]},
+        {"name": "App · Settings · Connections + Data + Advanced / dark", "children": ["settings-popover", "settings-popover", "settings-popover"]},
+        {"name": "App · Settings · device flow states / dark", "children": ["NOT CONNECTED", "WAITING", "CONNECTED", "EXPIRED", "FAILED"]},
+        {"name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark", "children": ["SHARE AS A PACK", "WHERE SHOULD THIS GO?", "IMPORT A PACK", "DESTRUCTIVE CONFIRM", "TEXT PROMPT"]},
+        {"name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark", "children": ["TOOLS · CREATE", "GRAPH.MD", "DOC EDITOR · CONFLICT"]},
+        {"name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark", "children": ["COMMAND PALETTE", "CONTEXT MENUS", "TOOLTIP · UPDATE TOAST", "ASK HISTORY · CHEATSHEET"]},
+        {"name": "App · Web skin (GNB attached) / dark", "children": ["topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "Home / GNB"]}
+      ],
+      "components": []
+    },
+    "Design System(Homepage)": {
+      "frames": [
+        {"name": "01 · Logo", "children": ["Logo", "Logo · dark sample", "Logo · rules", "Logo / Mark"]},
+        {"name": "02 · Icons", "children": []},
+        {"name": "03 · Components (Home)", "children": []},
+        {"name": "00 · Policies (2026-08-06 신설·확정)", "children": []}
+      ],
+      "components": [
+        "Logo / Mark",
+        "Icon / alert", "Icon / arc", "Icon / bar-group", "Icon / caret", "Icon / check",
+        "Icon / chevron-left", "Icon / chevron-right", "Icon / comet", "Icon / dash-ramp",
+        "Icon / decide", "Icon / disc", "Icon / domains", "Icon / dot-grid", "Icon / dot",
+        "Icon / download", "Icon / dumbbell", "Icon / edit", "Icon / ellipse", "Icon / graph",
+        "Icon / half-disc", "Icon / hourglass", "Icon / ingest", "Icon / lock", "Icon / login",
+        "Icon / onboarding", "Icon / pack-export", "Icon / pause", "Icon / pendulum",
+        "Icon / pill-v", "Icon / pill", "Icon / pin", "Icon / play", "Icon / recall",
+        "Icon / ring", "Icon / search", "Icon / settings", "Icon / sparkle", "Icon / stack",
+        "Icon / sync", "Icon / tag", "Icon / undo", "Icon / upload", "Icon / x",
+        "Icon / pack-in", "Icon / share-nodes", "Icon / globe", "Icon / sun", "Icon / moon",
+        "Home / Button", "Home / Badge", "Home / Chip", "Home / Toggle", "Home / Input",
+        "Home / Seg", "Home / GNB", "Home / Footer", "Home / LangModal", "Home / Banner",
+        "Home / Card", "Home / AuthCard", "Home / ModalCard", "Home / CommunityCard",
+        "Home / PageBackground", "Motion / Orbit glow", "Motion / Orbit guide"
+      ]
+    },
+    "Design System(App)": {
+      "frames": [{"name": "03 · Components (App)", "children": []}],
+      "components": [
+        "App / Button", "App / Chip", "App / NavItem", "App / DomainRow", "App / DocRow",
+        "App / ListRow", "App / StateMark", "App / ProgressBar", "App / ErrorBanner",
+        "App / EmptyState", "App / Tooltip", "App / Sheet", "App / ViewSeg", "App / Slider",
+        "App / MenuItem", "App / GraphNode", "App / PackCard", "App / FloatCard",
+        "App / UpdateToast", "App / Titlebar", "App / Topbar"
+      ]
+    }
+  }
+}

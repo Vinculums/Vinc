@@ -1,0 +1,87 @@
+{
+  "$meta": {
+    "source": "figma",
+    "file": "WUXLeDDNBqih2KTZOz9wCX",
+    "exported": "2026-09-05",
+    "how": "use_figma with the JS in scripts/figma_diff.py's docstring, verbatim.",
+    "scope": "Only the four collections figma_diff.py compares (Primitive, Semantic, Scale, Motion) plus the effect styles. Graph, Window, Email, Domain and Locale are deliberately absent: the first three reach code through gen_theme_ts.py, Domain uses a different model on each side, and Locale is copy whose canon is the site.",
+    "note": "Unlike imports/figma-variables-*.json this is NOT a hand-written provenance record, it is the machine input to the drift gate. Never patch it by hand: re-run the dump. A hand-patched dump makes the gate agree with a file instead of with Figma, which is the exact failure this gate exists to catch."
+  },
+  "variables": {
+    "Primitive": {
+      "Value": {
+        "grain_50": "#FBFBFA", "grain_100": "#F2F2F0", "grain_200": "#E9E9E6", "grain_300": "#D1D2D6",
+        "hairline": "#DEDEDA", "ink_900": "#17171A", "ink_600": "#55565E", "ink_400": "#82838D",
+        "indigo_900": "#32355C", "indigo_700": "#3A4070", "indigo_600": "#4A4F8C",
+        "peri_400": "#8F96D9", "peri_200": "#B9BEF0", "peri_500": "#7E86D3",
+        "slate_400": "#9496A9", "slate_500": "#747790", "slate_700": "#525466",
+        "ok_700": "#2F6B4E", "ok_300": "#8FCBA8", "warn_bg": "#E5DCC3", "d_warn_bg": "#4A4230",
+        "danger_700": "#A03A3A", "danger_300": "#E08585",
+        "d_bg0": "#0C0D13", "d_bg1": "#12141D", "d_bg2": "#191C2A", "d_line": "#262A3D",
+        "d_text": "#E8E7EF", "d_soft": "#A7A9BF", "d_mute": "#6E7189",
+        "peri_250": "#BDBFE3", "win_close": "#DC2828"
+      }
+    },
+    "Semantic": {
+      "Light": {
+        "background": "{grain_100}", "foreground": "{ink_900}", "card": "{grain_50}",
+        "card-foreground": "{ink_900}", "muted": "{grain_200}", "muted-foreground": "{ink_600}",
+        "caption-foreground": "{ink_400}", "border": "{hairline}", "input": "{hairline}",
+        "ring": "{peri_400}", "primary": "{indigo_900}", "primary-foreground": "{grain_100}",
+        "accent": "{grain_200}", "accent-foreground": "{ink_900}", "link": "{indigo_600}",
+        "info": "{indigo_600}", "info-strong": "{indigo_600}", "info-foreground": "{grain_100}",
+        "success": "{ok_700}", "success-foreground": "{grain_100}", "warning": "{warn_bg}",
+        "warning-foreground": "{ink_900}", "danger": "{danger_700}", "danger-foreground": "{grain_100}",
+        "focus": "{indigo_900}", "logo-tip": "{indigo_900}",
+        "titlebar-close": "{win_close}", "titlebar-close-foreground": "{grain_50}"
+      },
+      "Dark": {
+        "background": "{d_bg0}", "foreground": "{d_text}", "card": "{d_bg2}",
+        "card-foreground": "{d_text}", "muted": "{d_bg1}", "muted-foreground": "{d_soft}",
+        "caption-foreground": "{d_mute}", "border": "{d_line}", "input": "{d_line}",
+        "ring": "{peri_400}", "primary": "{indigo_700}", "primary-foreground": "{peri_200}",
+        "accent": "{d_bg2}", "accent-foreground": "{d_text}", "link": "{peri_400}",
+        "info": "{peri_400}", "info-strong": "{peri_400}", "info-foreground": "{d_bg0}",
+        "success": "{ok_300}", "success-foreground": "{d_bg0}", "warning": "{d_warn_bg}",
+        "warning-foreground": "{d_text}", "danger": "{danger_300}", "danger-foreground": "{d_bg0}",
+        "focus": "{peri_400}", "logo-tip": "{peri_250}",
+        "titlebar-close": "{win_close}", "titlebar-close-foreground": "{grain_50}"
+      }
+    },
+    "Scale": {
+      "Value": {
+        "radius/default": 14, "radius/sm": 10, "radius/lg": 20, "radius/pill": 999,
+        "space/1": 4, "space/2": 8, "space/3": 12, "space/4": 16, "space/5": 24,
+        "space/6": 32, "space/8": 48,
+        "fs/sm": 13, "fs/base": 15, "fs/lg": 17, "fs/xl": 36, "fs/display": 56,
+        "icon/app": 18, "icon/base": 24, "layout/lnb-w": 232, "layout/gnb-h": 52
+      }
+    },
+    "Motion": {
+      "Value": {
+        "ease-out": "cubic-bezier(.22, 1, .36, 1)",
+        "ease-in-out": "cubic-bezier(.77, 0, .175, 1)",
+        "ease-drawer": "cubic-bezier(.32, .72, 0, 1)",
+        "ease-settle": "cubic-bezier(.16, 1, .3, 1)",
+        "dur-fast": 150, "dur-hover": 200, "dur-base": 300,
+        "dur-in": 400, "dur-out": 240, "dur-panel": 320
+      }
+    }
+  },
+  "effectStyles": [
+    {"name": "shadow/soft", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 40, "color": {"r": 0.048, "g": 0.052, "b": 0.072, "a": 0.08}, "offset": {"x": 0, "y": 20}, "spread": -12, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/float", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 60, "color": {"r": 0.048, "g": 0.052, "b": 0.072, "a": 0.12}, "offset": {"x": 0, "y": 30}, "spread": -16, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/elev-1", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 2, "color": {"r": 0.048, "g": 0.052, "b": 0.072, "a": 0.07}, "offset": {"x": 0, "y": 1}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/elev-2", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 12, "color": {"r": 0.048, "g": 0.052, "b": 0.072, "a": 0.11}, "offset": {"x": 0, "y": 4}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/elev-3", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 30, "color": {"r": 0.048, "g": 0.052, "b": 0.072, "a": 0.16}, "offset": {"x": 0, "y": 10}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "glass/panel", "effects": [{"type": "BACKGROUND_BLUR", "visible": true, "radius": 14, "blurType": "NORMAL"}]},
+    {"name": "glow/focus", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 30, "color": {"r": 0.7255, "g": 0.7451, "b": 0.9412, "a": 0.9}, "offset": {"x": 0, "y": 0}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "glow/near", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 16, "color": {"r": 0.5608, "g": 0.5882, "b": 0.851, "a": 0.5}, "offset": {"x": 0, "y": 0}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "glow/mid", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 10, "color": {"r": 0.5608, "g": 0.5882, "b": 0.851, "a": 0.35}, "offset": {"x": 0, "y": 0}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "glow/far", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 6, "color": {"r": 0.5804, "g": 0.5882, "b": 0.6627, "a": 0.18}, "offset": {"x": 0, "y": 0}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/dark-elev-1", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 2, "color": {"r": 0, "g": 0, "b": 0, "a": 0.35}, "offset": {"x": 0, "y": 1}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/dark-elev-2", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 12, "color": {"r": 0, "g": 0, "b": 0, "a": 0.35}, "offset": {"x": 0, "y": 4}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/dark-elev-3", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 24, "color": {"r": 0, "g": 0, "b": 0, "a": 0.45}, "offset": {"x": 0, "y": 8}, "spread": 0, "blendMode": "NORMAL", "showShadowBehindNode": true}]},
+    {"name": "shadow/dark-float", "effects": [{"type": "DROP_SHADOW", "visible": true, "radius": 60, "color": {"r": 0, "g": 0, "b": 0, "a": 0.55}, "offset": {"x": 0, "y": 30}, "spread": -16, "blendMode": "NORMAL", "showShadowBehindNode": true}]}
+  ]
+}
