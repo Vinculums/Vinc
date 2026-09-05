@@ -104,6 +104,40 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "expiredTitle": "expiredT", "expiredBody": "expiredB",
         "errorTitle": "errT", "errorBody": "errB",
     }),
+    # ⚠ `/connect/`(어시스턴트 커넥터)와 `/connect-app/`(데스크탑 앱 링크)는 Figma 에서
+    # 한 프레임에 나란히 살고 접두도 `connect/` 하나를 공유한다. 그래서 두 라우트가
+    # 같은 접두로 서로 다른 꼬리를 쓴다.
+    "/connect/": ("connect/", {
+        "loadTitle": "loadT", "loadBody": "loadB",
+        "askTitle": "askT", "askBody": "askB",
+        "kvApp": "kApp", "kvReturn": "kSend", "askWarn": "warnB",
+        "loginTitle": "loginT", "loginBody": "loginB",
+        "doneTitle": "doneT", "doneBody": "doneB",
+        "errTitle": "errT", "errBody": "errB",
+        "footNote": "foot",
+    }),
+    "/connect-app/": ("connect/", {
+        "appAskTitle": "askT", "appAskBody": "askB", "appAskWarn": "warnB",
+        "kvAccount": "kAcct", "kvDelivered": "kDest", "kvKey": "kKey",
+        "appDoneBody": "doneB",
+        "manualTitle": "manT", "manualBody": "manB", "manualWarn": "manW",
+    }),
+    "/account/": ("account/", {
+        "usernameDesc": "unB", "packsTitle": "cpT", "packsDesc": "cpB",
+        "planDesc": "proB", "connectorDesc": "mkB", "keyWarn": "onceLabel",
+        "newsDesc": "nlB", "deleteTitle": "delT", "deleteDesc": "delB",
+        # 아래는 Figma 가 표본 데이터로 들고 있는 것이라 라이브 문구가 없다.
+        "planBadge": None, "usernameTitle": None, "packName": None, "packImports": None,
+        "planTitle": None, "connectorTitle": None, "keyRowTitle": None, "keyRowMeta": None,
+        "newsTitle": None,
+    }),
+    "/account/team/": ("team/", {
+        "sub": "lead", "inviteCardTitle": "acT", "inviteCardDesc": "acB",
+        "createDesc": "crB", "inviteDesc": "ivB", "dangerDesc": "dgB",
+        "h1": None, "createTitle": None, "inputName": None, "inputSeats": None,
+        "seatMeta": None, "roleAdmin": None, "roleEditor": None, "roleViewer": None,
+        "membersTitle": None, "inviteTitle": None, "dangerTitle": None,
+    }),
     "/404": ("err404/", {"body": "sub"}),
     "/release/": ("release/", {"h1": "h1", "heroSub": "sub"}),
     "/privacy/": ("privacy/", {
