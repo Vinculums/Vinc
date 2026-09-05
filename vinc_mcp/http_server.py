@@ -371,10 +371,13 @@ class MCPHTTPApp:
         """소비 1회 시도. 허용이면 None, 초과·잠금이면 **tools/call 결과 dict**.
 
         카운터는 owner(public_id) 단위 — 키를 여러 개 만들어도 합산된다(우회 불가).
+        `exempt_owners` 에 든 owner 는 세지 않는다(잠금도 보지 않는다).
         """
         if not self.quota_config or self.store is None or not owner:
             return None                              # 미설정/로컬 = 무제한
         cfg = self.quota_config
+        if owner in cfg.get("exempt_owners", ()):
+            return None                              # 면제 owner — 도그푸딩 계정
         paid = plan in entitlement.PAID_PLANS
         limit = cfg["pro_limit"] if paid else cfg["free_limit"]
         r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
