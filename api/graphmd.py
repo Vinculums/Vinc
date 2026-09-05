@@ -153,13 +153,13 @@ _TPL_KO = """# GRAPH.md
 
 ## 이 파일은 무엇인가 [이 그래프가 정함]
 이 지식그래프에 쓸 때의 관례입니다. 세션에서 첫 쓰기를 하기 전에 읽으십시오.
-의미를 판단하는 것은 당신의 일입니다. 이 파일은 관례만 고정합니다.
+의미를 판단하는 것은 쓰는 사람의 일입니다. 이 파일은 관례만 고정합니다.
 
 ## 쓰기 전에 읽을 것 [이 그래프가 정함]
 먼저 검색하고(vinc_search), 돌려받은 id 를 재사용하고, 비슷한 개념을 새로 만들기보다
 기존 개념에 붙이십시오. id 는 종류를 접두사로 답니다:
 concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
-제목도 본문도 **영어로** 쓰십시오. 당신이 어떤 언어로 생각하든 그렇습니다.
+제목도 본문도 **영어로** 쓰십시오. 어떤 언어로 생각하든 그렇습니다.
 
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
@@ -216,7 +216,7 @@ _HEADER = {
 }
 _GEN_HEAD = {
     "en": "<!-- vinc:generated start · copied from the ontology below this line -->",
-    "ko": "<!-- vinc:generated start · 여기부터 온톨로지에서 옮겨 적습니다 -->",
+    "ko": "<!-- vinc:generated start · 여기부터 그래프에서 옮겨 적습니다 -->",
 }
 _GEN_TAIL = "<!-- vinc:generated end -->"
 _GEN_BODY = {
