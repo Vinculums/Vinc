@@ -185,7 +185,9 @@ _F8 = [
 # (주석·문서 포함) 더 강하다. 같은 줄을 두 번 세지 않으려고 뺀다.
 # `온톨로지` 는 **보류**다(금지 아님). 영어 쪽 제품 명사 결정이 아직 안 났고
 # (vinc.spec.ui-copy-ko §9.2), 한국어는 그 결정을 따라간다. W8 항목 11 이후 재검토.
-_KO_SCOPE = ("app/src/",)
+# api/graphmd.py 도 관할이다: GRAPH.md 한국어 템플릿(_TPL_KO)은 사용자에게 파일로 나가고
+# 사이트가 그대로 미러한다. 2026-09-05 까지 여기 없어서 `당신` 둘·`온톨로지` 하나가 살았다.
+_KO_SCOPE = ("app/src/", "api/graphmd.py")
 _F9 = [
     Rule("F9", w, re.compile(w), note=note, scope=_KO_SCOPE, code_only=True)
     for w, note in (

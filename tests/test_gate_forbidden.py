@@ -63,6 +63,12 @@ class TestGate(unittest.TestCase):
 class TestF9KoreanCopy(unittest.TestCase):
     """F9 — 한국어 사용자 가시 어휘(vinc.spec.ui-copy-ko §4)."""
 
+    def test_graphmd_template_is_in_scope(self):
+        # GRAPH.md 한국어 템플릿은 사용자에게 파일로 나가고 사이트가 미러한다 — app/src 와
+        # 같은 관할이다. 2026-09-05 까지 범위 밖이어서 2인칭이 템플릿에 살아 있었다.
+        v = _scan_text("api/graphmd.py", 'x = "의미를 판단하는 것은 당신의 일입니다."' + chr(10))
+        self.assertEqual(["F9"], [x.gate for x in v])
+
     def test_forbidden_word_in_app_src_string(self):
         v = _scan_text("app/src/copy.ts", 'note: "당신에게 남습니다",\n')
         self.assertEqual(1, len(v))
