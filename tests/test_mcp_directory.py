@@ -86,8 +86,9 @@ def test_oversized_result_degrades_to_actionable_error():
     assert res["_meta"]["vinc_too_large"]["tool"] == "vinc_graph"
 
 
-def _fat_graph(seed="concept:agent-x", neighbours=40, chars=2500):
-    """시드 하나 + 무거운 이웃들. 이웃의 props 만으로 상한(72k)을 넘긴다."""
+def _fat_graph(seed="concept:agent-x", neighbours=40, chars=2500, second_ring=0):
+    """시드 하나 + 무거운 이웃들. 이웃의 props 만으로 상한(72k)을 넘긴다.
+    second_ring: 이웃마다 붙은 둘째 고리 노드 수 — depth 1 이 실제로 싣는 모양(F14)."""
     nodes = [{"id": seed, "label": "seed", "kind": "concept", "domain": "vinc/agent",
               "props": {"mission": "m", "reads": ["a", "b"], "never": ["merge"]},
               "one_liner": "the seed"}]
@@ -98,6 +99,12 @@ def _fat_graph(seed="concept:agent-x", neighbours=40, chars=2500):
                       "props": {"note": "가" * chars}, "one_liner": "나" * 50})
         edges.append({"source": nid, "target": seed, "type": "RELATED_TO",
                       "evidence": "다" * 80})
+        for j in range(second_ring):
+            rid = f"record:n{i}-r{j}"
+            nodes.append({"id": rid, "label": "second ring " * 8, "kind": "record",
+                          "domain": "vinc/x", "props": {}, "one_liner": ""})
+            edges.append({"source": rid, "target": nid, "type": "ATTACHES_TO",
+                          "evidence": ""})
     return {"kind": "graph", "executed": True, "found": True, "seed": seed, "depth": 1,
             "nodes": nodes, "edges": edges}
 
@@ -116,6 +123,22 @@ def test_oversized_graph_keeps_the_seed_and_empties_neighbour_props_first():
     assert all(e["evidence"] for e in out["edges"])
     assert "shrunk to fit" in out["note"]
     assert len(json.dumps(out, ensure_ascii=False)) <= 20_000
+
+
+def test_oversized_graph_drops_the_second_ring_before_giving_up():
+    """concept:agent-dev-app: 직접 이웃 일곱, depth 1 은 87,417자. 이웃의 props 를 다
+    비워도 둘째 고리(이웃에 붙은 record 들과 그 엣지)가 상한을 넘겼다. 시드와 직접
+    고리는 남고 그 밖은 덜어낸다."""
+    fat = _fat_graph(neighbours=7, chars=10, second_ring=60)
+    out = tools._shrink_graph_result(fat, 12_000)
+    assert out is not None
+    ids = {n["id"] for n in out["nodes"]}
+    assert "concept:agent-x" in ids
+    assert all(f"record:n{i}" in ids for i in range(7)), "직접 이웃이 잘렸다"
+    assert not any("-r" in i for i in ids), "둘째 고리가 남았다"
+    assert all("concept:agent-x" in (e["source"], e["target"]) for e in out["edges"])
+    assert out["shrunk"]["far_nodes"] == 7 * 60 and out["shrunk"]["far_edges"] == 7 * 60
+    assert "not touching the seed" in out["note"]
 
 
 def test_oversized_graph_that_cannot_fit_is_still_refused():
