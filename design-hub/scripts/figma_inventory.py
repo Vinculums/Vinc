@@ -94,12 +94,16 @@ ROUTES = {
     "/docs/graph-md/build/": "Docs · GRAPH.md Generate / dark",
     "/docs/graph-md/spec/": "Docs · GRAPH.md Spec / dark",
     "/docs/graph-md/check/": "Docs · GRAPH.md Validate / dark",
-    # 아래 다섯은 2026-09-05 실측 결손. 그려 넣으면 프레임 이름으로 바꾼다.
+    # 아래는 2026-09-05 실측 결손. 그려 넣으면 프레임 이름으로 바꾼다.
     "/docs/mcp/sign-in/": None,
     "/docs/agents/": None,
     "/docs/agents/hosts/": None,
     "/docs/agents/openclaw/": None,
     "/docs/agents/roles/": None,
+    # 이 둘은 게이트가 **처음으로 잡아낸 회귀**다. 로컬 사이트 체크아웃이 origin 보다
+    # 6커밋 뒤처져 있었고, 최신화하자마자 미선언으로 빨개졌다(2026-09-05).
+    "/docs/agents/packs/": None,
+    "/docs/one-graph/": None,
 }
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
 ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
