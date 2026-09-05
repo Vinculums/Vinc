@@ -6,7 +6,7 @@
       "id": "concept:agent-copy-owner",
       "name": "agent-copy-owner",
       "label": "Agent role: copy owner",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -57,7 +57,7 @@
       "id": "concept:agent-copy-writer",
       "name": "agent-copy-writer",
       "label": "Agent role: copy writer",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -107,7 +107,7 @@
       "id": "concept:agent-design",
       "name": "agent-design",
       "label": "Agent role: design",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -163,7 +163,7 @@
       "id": "concept:agent-dev-account",
       "name": "agent-dev-account",
       "label": "Agent role: account backend development",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -212,7 +212,7 @@
       "id": "concept:agent-dev-app",
       "name": "agent-dev-app",
       "label": "Agent role: application development",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -263,7 +263,7 @@
       "id": "concept:agent-dev-core",
       "name": "agent-dev-core",
       "label": "Agent role: core development",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -320,7 +320,7 @@
       "id": "concept:agent-gate-runner",
       "name": "agent-gate-runner",
       "label": "Agent role: gate runner",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "role",
@@ -371,7 +371,7 @@
       "id": "concept:agent-infra",
       "name": "agent-infra",
       "label": "Agent role: infrastructure",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "deliver",
@@ -429,7 +429,7 @@
       "id": "concept:agent-marketing",
       "name": "agent-marketing",
       "label": "Agent role: marketing",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "execute",
@@ -484,7 +484,7 @@
       "id": "concept:agent-ops",
       "name": "agent-ops",
       "label": "Agent role: operations",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "deliver",
@@ -539,7 +539,7 @@
       "id": "concept:agent-orchestrator",
       "name": "agent-orchestrator",
       "label": "Agent role: orchestrator",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "orchestrate",
@@ -594,7 +594,7 @@
       "id": "concept:agent-release",
       "name": "agent-release",
       "label": "Agent role: release",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "deliver",
@@ -644,7 +644,7 @@
       "id": "concept:agent-research",
       "name": "agent-research",
       "label": "Agent role: research and planning",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "knowledge",
@@ -693,7 +693,7 @@
       "id": "concept:agent-reviewer-checklist",
       "name": "agent-reviewer-checklist",
       "label": "Agent role: checklist reviewer",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "role",
@@ -732,7 +732,7 @@
       "id": "concept:agent-reviewer-judgement",
       "name": "agent-reviewer-judgement",
       "label": "Agent role: judgement reviewer",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "role",
@@ -776,7 +776,7 @@
       "id": "concept:agent-security",
       "name": "agent-security",
       "label": "Agent role: security",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "role",
@@ -831,7 +831,7 @@
       "id": "concept:agent-steward",
       "name": "agent-steward",
       "label": "Agent role: graph steward",
-      "domain": "vinc/agent",
+      "domain": "vinc/agent/roles",
       "tags": [
         "agent",
         "knowledge",
