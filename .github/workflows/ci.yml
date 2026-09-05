@@ -347,6 +347,26 @@ jobs:
       - name: Design surface gate (app)
         run: python -X utf8 design-hub/scripts/gate_surface.py app/src
 
+      # Figma 가 토큰 SSoT 를 따라오고 있는가(정본=코드, decision:code-is-canon-figma-follows).
+      # CI 에는 Figma 자격증명이 없으므로 라이브를 못 본다 — 커밋된 덤프
+      # design-hub/imports/figma-live.json 과 SSoT 를 대조한다. 그래서 이 게이트가 잡는 것은
+      # **"토큰을 고치고 Figma 를 갱신하지 않은 커밋"** 이다: 덤프를 초록으로 되돌리는
+      # 유일한 정상 경로가 라이브를 다시 뜨는 것이라, 초록이면 Figma 도 갱신됐다는 뜻이 된다.
+      # ⚠ 덤프를 손으로 고치면 이 추론이 깨진다(각인 게이트와 같은 종류의 한계다). 그래서
+      # 그 파일 $meta 에 "패치 금지, 다시 뜰 것"을 적어 두었다.
+      # 갱신법: 에이전트가 design-hub/scripts/figma_diff.py docstring 의 JS 를 use_figma 로
+      # 돌려 덤프를 새로 쓰고, 차이가 있으면 --plan 대로 **Figma 를** 고친다(반대 아님).
+      - name: Figma token drift gate
+        run: python -X utf8 design-hub/scripts/figma_diff.py
+
+      # 위 게이트가 토큰 **값**을 본다면 이쪽은 화면·모달·아이콘의 **목록**을 본다.
+      # 잡는 것은 "코드에 화면이나 모달을 늘리면서 Figma 대응을 선언하지 않은 커밋"이다.
+      # 아직 안 그린 것(2026-09-05 기준 31건)은 맵에 `None` 으로 **선언돼 있어** 실패로
+      # 세지 않고 매 실행 목록으로만 나온다 — 그리지 않았다고 빨갛게 만들면 게이트가
+      # 곧 꺼지기 때문이다. 그린 뒤 `None` 을 프레임 이름으로 바꾸면 그때부터 실재를 본다.
+      - name: Figma inventory gate (screens · modals · icons)
+        run: python -X utf8 design-hub/scripts/figma_inventory.py
+
       # 역할 껍데기(.claude/agents/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
       # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.
       # 오프라인이다 — 대조 대상은 커밋된 agents/roles.json 이고 CI 에 그래프 키는
