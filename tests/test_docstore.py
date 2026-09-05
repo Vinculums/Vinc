@@ -661,6 +661,48 @@ class DocstoreE2E(unittest.TestCase):
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
 
+    def test_ensure_rule_relinks_stale_links_once_and_stamps(self):
+        """규칙 표식이 없거나 다르면 전량 재링크하고, 같으면 아무것도 안 한다.
+
+        재링크는 put_doc 에서만 일어나므로 규칙만 좁혀 배포하면 옛 규칙의 링크가
+        그대로 남는다 — 그 잔재를 지우는 것이 이 경로의 존재 이유다. 여기서는 옛
+        규칙(집합 포함)만 만들 수 있는 링크를 손으로 심어 잔재를 흉내 낸다."""
+        from engines import mentions_link as ml
+        self.store.run("MERGE (c:Concept {concept_id: $i}) SET c.owner_id = 'user:a', "
+                       "c.title = 'Vinc Design Hub', c.domain = 'design'",
+                       {"i": _pk("concept:design-hub")})
+        filler = " ".join(f"w{i}" for i in range(20))
+        far = ds.put_doc(self.store, owner="user:a", title="far",
+                         text=f"vinc {filler} design {filler} hub")["doc_id"]
+        near = ds.put_doc(self.store, owner="user:a", title="near",
+                          text="the design hub inside vinc holds the tokens")["doc_id"]
+
+        def links(doc_id):
+            rows = self.store.run(
+                "MATCH (ch:Chunk)-[m:MENTIONS]->(c:Concept) WHERE ch.doc_id = $d "
+                "RETURN c.concept_id AS cid", {"d": doc_id}) or []
+            return sorted(r["cid"] for r in rows)
+
+        self.assertEqual(links(far), [], "새 규칙에서는 흩어진 토큰이 걸리면 안 된다")
+        self.assertEqual(links(near), ["concept:design-hub"])
+        # 옛 규칙의 잔재를 흉내 낸다 — 흩어진 문서에 링크를 손으로 심는다.
+        self.store.run(
+            "MATCH (ch:Chunk), (c:Concept) WHERE ch.doc_id = $d AND c.concept_id = $i "
+            "MERGE (ch)-[m:MENTIONS]->(c) SET m.method = 'title'",
+            {"d": far, "i": _pk("concept:design-hub")})
+        self.assertEqual(links(far), ["concept:design-hub"])
+
+        first = ml.ensure_rule(self.store)
+        self.assertTrue(first["executed"] and first["changed"], first)
+        self.assertEqual(first["previous"], "", "표식이 없으면 바뀐 것으로 친다")
+        self.assertEqual(links(far), [], "재링크가 옛 규칙의 링크를 지웠어야 한다")
+        self.assertEqual(links(near), ["concept:design-hub"])
+
+        second = ml.ensure_rule(self.store)
+        self.assertTrue(second["executed"])
+        self.assertFalse(second["changed"], "표식이 같으면 두 번 돌지 않는다")
+        self.assertEqual(second["previous"], ml.MENTIONS_RULE)
+
     def test_domains_census_counts_untopiced(self):
         """무주제 노드는 "(none)" 행 — 걸러 내면 부재가 비존재로 읽혀 센서스가
         자기가 못 세는 것을 숨긴다(근거: [[vinc.ops.topic-assignment-eval]] §1.1)."""

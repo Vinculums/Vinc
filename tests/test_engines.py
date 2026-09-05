@@ -208,6 +208,54 @@ class MentionsLinkTests(unittest.TestCase):
                      "stem": "z", "source_file": "b/y.md"}]
         self.assertEqual(self.m.compute_links(chunks, concepts), [])
 
+    def test_title_tokens_scattered_beyond_window_no_match(self):
+        # 제목 토큰이 전부 있어도 창(_TITLE_WINDOW) 밖에 흩어져 있으면 매치 안 함.
+        # 2026-09-05 실측: "Vinc Design Hub" 가 vinc·design·hub 를 문단마다 하나씩만
+        # 담은 2000자 청크에 걸려 디자인과 무관한 문서 8건의 대표 개념이 됐다.
+        filler = " ".join(f"w{i}" for i in range(20))
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": f"vinc {filler} design {filler} hub"}]
+        concepts = [{"concept_id": "c1", "title": "Vinc Design Hub", "stem": "z",
+                     "source_file": "b/y.md"}]
+        self.assertEqual(self.m.compute_links(chunks, concepts), [])
+
+    def test_title_tokens_reordered_within_window_match(self):
+        # 어순이 달라도 창 안에 모여 있으면 매치 — 인용은 대개 바꿔 말한다
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": "the design hub inside vinc holds the token values"}]
+        concepts = [{"concept_id": "c1", "title": "Vinc Design Hub", "stem": "z",
+                     "source_file": "b/y.md"}]
+        self.assertEqual([(l["concept_id"], l["method"])
+                          for l in self.m.compute_links(chunks, concepts)],
+                         [("c1", "title")])
+
+    def test_title_window_is_anywhere_in_the_chunk(self):
+        # 앞쪽엔 흩어져 있고 뒤쪽에 모여 있으면 매치 — 창은 "어딘가 한 번"이다
+        filler = " ".join(f"w{i}" for i in range(20))
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": f"vinc {filler} design {filler} hub {filler} vinc design hub"}]
+        concepts = [{"concept_id": "c1", "title": "Vinc Design Hub", "stem": "z",
+                     "source_file": "b/y.md"}]
+        self.assertEqual(len(self.m.compute_links(chunks, concepts)), 1)
+
+    def test_single_token_title_has_no_window(self):
+        filler = " ".join(f"w{i}" for i in range(20))
+        chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
+                   "text": f"alpha {filler} beta"}]
+        concepts = [{"concept_id": "c1", "title": "alpha", "stem": "z", "source_file": ""}]
+        self.assertEqual(len(self.m.compute_links(chunks, concepts)), 1)
+
+    def test_window_boundary_is_exact(self):
+        # 두 토큰이 정확히 창 폭만큼 떨어지면 안 걸리고, 하나 덜 떨어지면 걸린다
+        W = self.m._TITLE_WINDOW
+        concepts = [{"concept_id": "c1", "title": "alpha beta", "stem": "z", "source_file": ""}]
+        far = "alpha " + " ".join(f"w{i}" for i in range(W - 1)) + " beta"     # 거리 W
+        near = "alpha " + " ".join(f"w{i}" for i in range(W - 2)) + " beta"    # 거리 W-1
+        self.assertEqual(self.m.compute_links(
+            [{"chunk_id": "ch1", "source_file": "", "text": far}], concepts), [])
+        self.assertEqual(len(self.m.compute_links(
+            [{"chunk_id": "ch1", "source_file": "", "text": near}], concepts)), 1)
+
     def test_stem_fallback(self):
         chunks = [{"chunk_id": "ch1", "source_file": "/a/x.md",
                    "text": "본문에 identifier renorm 가 토큰으로 등장"}]

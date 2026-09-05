@@ -221,7 +221,33 @@ class VincApp:
                 # 기동은 계속하되 사유를 stderr(셸이 수집)와 /health 에 남긴다.
                 provision_error = f"{type(exc).__name__}: {exc}"
                 print(f"vinc-sidecar: provision failed — {provision_error}", file=sys.stderr)
-        return cls(cfg, store=store, provision_error=provision_error, **kw)
+        app = cls(cfg, store=store, provision_error=provision_error, **kw)
+        if store is not None and provision_error is None:
+            app._schedule_mentions_rule()
+        return app
+
+    def _schedule_mentions_rule(self) -> None:
+        """MENTIONS 링크 규칙 표식 대조(`engines.mentions_link.ensure_rule`)를 잡 큐에 건다.
+
+        기동을 막지 않고(submit — 비동기) 쓰기는 단일 워커로 직렬화된다(R4). 표식이
+        같으면 읽기 한 번이고, 다르면 전량 재링크다. 이 훅이 있는 이유: 재링크는
+        `put_doc` 에서만 일어나므로 규칙만 바꿔 배포하면 **이미 적재된 문서의 링크는
+        옛 규칙 그대로** 남는다(임베딩 모델 전환과 같은 형태의 조용한 드리프트).
+        실패는 기동을 죽이지 않는다 — 링크는 증강이다."""
+        store = self.store
+
+        def _run() -> dict:
+            from engines.mentions_link import ensure_rule
+            res = ensure_rule(store)
+            if res.get("changed"):
+                print(f"vinc-sidecar: MENTIONS 재링크 — 규칙 {res.get('previous') or '(없음)'}"
+                      f" → {res.get('rule')} · {res.get('owners')}", file=sys.stderr)
+            return res
+
+        try:
+            self.jobs.submit("mentions.rule", _run)
+        except Exception as exc:      # noqa: BLE001 — 기동 경로, 죽이지 않는다
+            print(f"vinc-sidecar: mentions rule check skipped — {exc}", file=sys.stderr)
 
     # ── 영속 스냅샷 ──────────────────────────────────────────────────────
     def _maybe_snapshot(self, *, force: bool = False) -> str | None:
