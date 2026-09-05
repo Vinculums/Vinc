@@ -180,6 +180,12 @@ layout and moving copy to the live values across eleven screens. Every screen fr
 its Vinc address as a Dev Mode annotation and all 39 components carry theirs in the
 `description`, both written in this repo's double-bracket citation syntax (`[[` id `]]`).
 
+⚠ Counted page by page on 2026-09-06, nine boards did not: the application overlays board
+built the same day, the community gallery and its modal states, the mobile drawer, the six
+graph visual-language boards, and all fourteen email boards. They do now, and the count is
+89 boards and 41 components. A `SECTION` can hold neither an annotation nor a description, so
+the email design system section carries none and its boards carry it instead.
+
 Two axes the file had nothing for now exist: a `Flows` page holding five user journeys with
 their branches, and real prototype connections on the application page, which had **zero**
 across 2,160 nodes while the homepage had 102.
