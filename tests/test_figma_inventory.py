@@ -119,8 +119,10 @@ class TheUnitIsScreenTimesState(unittest.TestCase):
 
     def test_the_real_matrix_only_names_states_that_exist(self):
         live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
-        _, _, _, kids = fi.figma_names(live)
-        m = fi.check_states(set(fi.ROUTE_STATES), fi.ROUTE_STATES, kids)
+        frames, _, _, kids = fi.figma_names(live)
+        # ⚠ 자식만 보면 단일 상태 라우트가 전부 부패로 잡힌다 — 그 상태는 곧 최상위
+        # 프레임이기 때문이다. main() 과 같은 집합을 봐야 테스트가 실물을 검사한다.
+        m = fi.check_states(set(fi.ROUTE_STATES), fi.ROUTE_STATES, kids | frames)
         self.assertEqual(m["rotten"], [], "매트릭스가 없는 프레임을 가리킨다")
         self.assertGreater(m["declared"], 30)
 
