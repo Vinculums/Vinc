@@ -205,6 +205,12 @@ class Dispatcher:
 # 잡아 25k 토큰 ≈ 75k 자 → 여유를 둬 72k. 초과분을 잘라 보내지 않는 이유: JSON 을
 # 자르면 모델이 **깨진 구문**을 받는다 — 조용한 오염보다 명시적 거절이 낫다.
 MAX_RESULT_CHARS = 72_000
+#: 축소기에 주는 예산은 상한보다 이만큼 작다. 축소기 셋은 예산에 드는 순간 멈추고 **그 뒤에**
+#: 표식(shrunk·note·next_cursor, 최대 ~450자)을 붙인다. 상한을 그대로 주면 조금만 넘긴 원본은
+#: 표식만큼 다시 넘겨 아래 거부로 떨어진다 — 2026-09-05 라이브에서 concept:agent-dev-account 의
+#: depth 1(75,481자)이 축소기 배포 뒤에도 거부돼 `agents_sync --pull` 이 죽었다.
+#: 근거: [[record:shrinker-marker-overshoots-the-budget-2026-09-05]]
+_MARKER_RESERVE = 1_000
 
 # 응답이 큰 도구별로 '어떻게 줄일지'를 알려준다 — 그냥 "너무 큼"은 행동 불가.
 _NARROW_HINT = {
@@ -231,7 +237,7 @@ def _result_text(text: str, name: str, args: dict) -> dict:
     shrink = tools.SHRINKERS.get(name)
     if shrink is not None:
         try:
-            slim = shrink(json.loads(text), MAX_RESULT_CHARS)
+            slim = shrink(json.loads(text), MAX_RESULT_CHARS - _MARKER_RESERVE)
         except Exception:
             slim = None
         if slim is not None:
