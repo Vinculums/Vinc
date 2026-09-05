@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
 import unittest
 
@@ -87,6 +88,41 @@ class ExtractorsSeeTheRealTree(unittest.TestCase):
 
     def test_internal_only_routes_are_excluded(self):
         self.assertFalse([r for r in fi.site_routes() if r.startswith("/vt-check")])
+
+
+class TheUnitIsScreenTimesState(unittest.TestCase):
+    """화면 하나에 상태가 여섯이면 시안도 여섯이다. 하나만 있는 것과 구분돼야 한다."""
+
+    LIVE = {"VERIFY · CONFIRM", "VERIFY · ERROR"}
+
+    def test_declared_states_that_exist_pass(self):
+        m = fi.check_states({"/v/"}, {"/v/": {"confirm": "VERIFY · CONFIRM"}}, self.LIVE)
+        self.assertEqual((m["rotten"], m["gaps"], m["declared"]), ([], [], 1))
+
+    def test_a_declared_state_missing_from_figma_fails(self):
+        m = fi.check_states({"/v/"}, {"/v/": {"gone": "VERIFY · GONE"}}, self.LIVE)
+        self.assertEqual(m["rotten"], [("/v/#gone", "VERIFY · GONE")])
+
+    def test_a_none_state_is_a_declared_gap(self):
+        m = fi.check_states({"/v/"}, {"/v/": {"todo": None}}, self.LIVE)
+        self.assertEqual((m["gaps"], m["rotten"]), (["/v/#todo"], []))
+
+    def test_a_route_with_no_matrix_is_counted_not_failed(self):
+        # 이게 "시안이 몇 장 더 필요한가"의 답이다. 상태가 하나뿐이라고 거짓 주장하지 않는다.
+        m = fi.check_states({"/v/", "/pricing/"}, {"/v/": {"confirm": "VERIFY · CONFIRM"}}, self.LIVE)
+        self.assertEqual(m["undeclared_routes"], ["/pricing/"])
+
+    def test_a_matrix_entry_for_a_route_that_no_longer_exists_is_ignored_here(self):
+        # 라우트가 사라진 것은 _check 의 stale_map 이 잡는다. 여기서 또 세면 이중 보고다.
+        m = fi.check_states(set(), {"/gone/": {"x": "VERIFY · GONE"}}, self.LIVE)
+        self.assertEqual((m["rotten"], m["declared"]), ([], 0))
+
+    def test_the_real_matrix_only_names_states_that_exist(self):
+        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        _, _, _, kids = fi.figma_names(live)
+        m = fi.check_states(set(fi.ROUTE_STATES), fi.ROUTE_STATES, kids)
+        self.assertEqual(m["rotten"], [], "매트릭스가 없는 프레임을 가리킨다")
+        self.assertGreater(m["declared"], 30)
 
 
 class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):

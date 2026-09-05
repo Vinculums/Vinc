@@ -104,6 +104,38 @@ ROUTES = {
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
 ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
 
+#: 상태 매트릭스 — **화면이 아니라 화면×상태가 단위다.**
+#:
+#: 위의 ROUTES 는 "이 라우트에 시안이 있는가"만 답한다. 그래서 상태가 여섯 개 필요한
+#: `/auth/verify/` 와 하나뿐인 `/pricing/` 이 똑같이 초록으로 보인다 — 기본 화면 하나만
+#: 있어도 덮였다고 말한다. 이 표가 그 축을 더한다.
+#:
+#: 값이 프레임 이름이면 실재를 검증하고, `None` 이면 선언된 결손이다. 여기 **없는**
+#: 라우트는 "상태를 아직 선언하지 않음"으로 세어서 출력한다 — 거짓으로 하나뿐이라고
+#: 주장하지 않기 위해서다. 그 수가 곧 "시안이 몇 장 더 필요한가"다.
+ROUTE_STATES = {
+    "/login/": {"form": "LOGIN · FORM", "sent": "LOGIN · SENT"},
+    "/welcome/": {"loading": "WELCOME · LOADING", "form": "WELCOME · FORM",
+                  "available": "WELCOME · AVAILABLE"},
+    "/auth/verify/": {"confirm": "VERIFY · CONFIRM", "verifying": "VERIFY · VERIFYING",
+                      "confirm-context": "VERIFY · CONFIRM CONTEXT", "expired": "VERIFY · EXPIRED",
+                      "invalid": "VERIFY · INVALID", "error": "VERIFY · ERROR"},
+    "/account/delete/": {"confirm": "DELETE · CONFIRM", "deleting": "DELETE · DELETING",
+                         "deleted": "DELETE · DELETED", "expired": "DELETE · EXPIRED",
+                         "error": "DELETE · ERROR"},
+    "/subscribe/confirm/": {"confirm": "SUBSCRIBE · CONFIRM", "confirming": "SUBSCRIBE · CONFIRMING",
+                            "confirmed": "SUBSCRIBE · CONFIRMED", "expired": "SUBSCRIBE · EXPIRED",
+                            "error": "SUBSCRIBE · ERROR"},
+    "/unsubscribe/": {"confirm": "UNSUB · CONFIRM", "unsubscribing": "UNSUB · UNSUBSCRIBING",
+                      "unsubscribed": "UNSUB · UNSUBSCRIBED", "invalid": "UNSUB · INVALID",
+                      "error": "UNSUB · ERROR"},
+    "/connect/": {"load": "CONNECT · LOAD", "ask": "CONNECT · ASK", "login": "CONNECT · LOGIN",
+                  "done": "CONNECT · DONE", "error": "CONNECT · ERROR"},
+    "/connect-app/": {"load": "CONNECT-APP · LOAD", "ask": "CONNECT-APP · ASK",
+                      "login": "CONNECT-APP · LOGIN", "done": "CONNECT-APP · DONE",
+                      "manual": "CONNECT-APP · MANUAL", "error": "CONNECT-APP · ERROR"},
+}
+
 # ── 앱 모달 ↔ Figma 오버레이 상태 ───────────────────────────────────────────
 # 키는 `모듈:제목식`. 줄 번호가 아니라 식이라 코드가 위아래로 움직여도 안 깨진다.
 DIALOGS = {
@@ -190,18 +222,46 @@ def code_icons() -> set[str]:
     return {i for i in out if i not in ICON_IGNORE and not i.startswith(ICON_IGNORE_PREFIX)}
 
 
-def figma_names(live: dict) -> tuple[set[str], set[str], set[str]]:
-    """(프레임 이름, 오버레이 상태 이름, 아이콘 컴포넌트 이름)."""
-    frames, states, icons = set(), set(), set()
+def figma_names(live: dict) -> tuple[set[str], set[str], set[str], set[str]]:
+    """(프레임 이름, 오버레이 상태 이름, 아이콘 이름, 모든 자식 이름).
+
+    마지막 것이 화면 상태의 후보다 — 상태는 상태 보드 프레임의 **자식**으로 산다
+    (`VERIFY · EXPIRED` 처럼). 오버레이용 `states` 와 달리 이쪽은 프레임 이름으로
+    거르지 않는다: 상태 보드의 이름 규칙이 하나가 아니라서다.
+    """
+    frames, states, icons, kids = set(), set(), set(), set()
     for pname, page in live.get("pages", {}).items():
         for f in page.get("frames", []):
             frames.add(f["name"])
+            kids |= set(f.get("children", []))
             if "Overlays" in f["name"] or "states" in f["name"] or "tab" in f["name"]:
                 states |= set(f.get("children", []))
         for c in page.get("components", []):
             if c.startswith("Icon / "):
                 icons.add(c[len("Icon / "):])
-    return frames, states, icons
+    return frames, states, icons, kids
+
+
+def check_states(routes: set[str], matrix: dict, live_kids: set[str]) -> dict:
+    """선언된 상태 매트릭스를 Figma 자식 프레임과 대조한다.
+
+    라우트 자체의 존재는 `_check` 가 이미 본다. 여기는 그 위층이다 — 그 라우트가
+    가진다고 **선언한** 상태 하나하나가 실재하는가. 매트릭스가 아예 없는 라우트는
+    실패가 아니라 `undeclared` 로 세어 출력한다: 상태가 하나뿐이라고 거짓 주장하는
+    대신, 아직 안 정했다고 말하는 쪽이 맞다.
+    """
+    rotten, gaps, counted = [], [], 0
+    for route, states in matrix.items():
+        if route not in routes:
+            continue                     # 라우트 자체가 사라졌다 — _check 가 잡는다
+        for name, frame in states.items():
+            counted += 1
+            if frame is None:
+                gaps.append(f"{route}#{name}")
+            elif frame not in live_kids:
+                rotten.append((f"{route}#{name}", frame))
+    return {"rotten": rotten, "gaps": gaps, "declared": counted,
+            "undeclared_routes": sorted(routes - set(matrix))}
 
 
 def _check(kind: str, code: set[str], mapping: dict, live: set[str],
@@ -235,14 +295,16 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 3
     live = json.loads(p.read_text(encoding="utf-8"))
-    frames, states, icons = figma_names(live)
+    frames, states, icons, kids = figma_names(live)
 
     have_site = site_present()
-    results, skipped = [], []
+    results, skipped, matrix = [], [], None
     if have_site:
-        results.append(_check("사이트 라우트", site_routes(), ROUTES, frames))
+        routes = site_routes()
+        results.append(_check("사이트 라우트", routes, ROUTES, frames))
+        matrix = check_states(routes, ROUTE_STATES, kids)
     else:
-        skipped.append("사이트 라우트 — Vinc-homepage 가 체크아웃돼 있지 않다")
+        skipped.append("사이트 라우트 · 상태 매트릭스 — Vinc-homepage 가 체크아웃돼 있지 않다")
     results.append(_check("앱 모달", app_dialogs(), DIALOGS, states))
     results.append(_check("아이콘" + ("" if have_site else " (앱만 · 사이트 미체크아웃)"),
                           code_icons(), {i: "Icon / " + i for i in code_icons()},
@@ -268,11 +330,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  결손 {len(r['gaps'])}건 · 실패 "
               f"{len(r['undeclared']) + len(r['rotten']) + len(r['stale_map'])}건")
 
+    total_gap = sum(len(r["gaps"]) for r in results)
+    if matrix is not None:
+        print("── 화면 상태 (화면×상태)")
+        for k, v in matrix["rotten"]:
+            print(f"  [FAIL·맵 부패] {k} → '{v}' 가 Figma 에 없다")
+            fail += 1
+        for k in matrix["gaps"]:
+            print(f"  [GAP] {k} — Figma 에 아직 없다(선언된 결손)")
+        total_gap += len(matrix["gaps"])
+        if matrix["undeclared_routes"]:
+            print(f"  [MATRIX] 상태 미선언 {len(matrix['undeclared_routes'])}건: "
+                  + ", ".join(matrix["undeclared_routes"][:6])
+                  + (" …" if len(matrix["undeclared_routes"]) > 6 else ""))
+        print(f"  선언된 상태 {matrix['declared']}건 · 실패 {len(matrix['rotten'])}건")
+
     for s in skipped:
         print(f"── [SKIP] {s}")
-    total_gap = sum(len(r["gaps"]) for r in results)
     tail = f" · 검사 못 함 {len(skipped)}건(리포 부재)" if skipped else ""
-    print(f"\n{'통과' if not fail else f'실패 {fail}건'} · 선언된 결손 {total_gap}건{tail}")
+    matrix_tail = (f" · 상태 미선언 라우트 {len(matrix['undeclared_routes'])}건"
+                   if matrix and matrix["undeclared_routes"] else "")
+    print(f"\n{'통과' if not fail else f'실패 {fail}건'} · 선언된 결손 {total_gap}건{matrix_tail}{tail}")
     return 1 if fail else 0
 
 
