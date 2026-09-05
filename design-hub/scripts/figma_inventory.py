@@ -157,11 +157,12 @@ DIALOGS = {
     "lnb.ts:promptText": "TEXT PROMPT",
     "surfaces/view.ts:openContextMenu": "CONTEXT MENUS",
     "surfaces/view.ts:confirmDestructive": "DESTRUCTIVE CONFIRM",
-    # 2026-09-05 실측 결손.
-    "empty-invite.ts:c.newSheetTitle": None,       # "New node"
-    "firstrun.ts:c.title": None,                   # "Sign in, or stay on this machine"
-    "sheets.ts:S.docTitle": None,                  # 문서 가져오기(D45), 팩 가져오기와 다른 시트
-    "topbar.ts:COPY.ui.topbar.browseAll": None,    # "All documents"
+    # 2026-09-05 에 결손으로 잡혔다가 같은 날 `App · Overlays 4` 로 신설했다.
+    # ⚠ 제목·부제·닫기는 실물이고 본문은 아직 도너(팩 공유)의 것이다. 보드 주석에 적었다.
+    "empty-invite.ts:c.newSheetTitle": "NEW NODE",
+    "firstrun.ts:c.title": "FIRST RUN",
+    "sheets.ts:S.docTitle": "IMPORT A DOCUMENT",
+    "topbar.ts:COPY.ui.topbar.browseAll": "ALL DOCUMENTS",
 }
 #: 헬퍼가 **정의된** 파일. 호출부가 아니므로 세지 않는다.
 DIALOG_DEF_FILES = {"components.ts"}
@@ -176,10 +177,11 @@ ICON_IGNORE = {"view"}
 #: 코드에는 있고 Figma 아이콘 시트에는 아직 없는 것(2026-09-05 실측 22건). 라우트·모달의
 #: `None` 과 같은 뜻이다 — **선언된** 결손이라 실패로 세지 않는다. 그려 넣으면 여기서 뺀다.
 #: 여기 없는 새 아이콘이 코드에 생기면 그때는 FAIL 이다. 그것이 이 목록의 쓸모다.
+#: 2026-09-05: 17개를 사이트 모듈의 실제 도형으로 Figma 에 만들어 넣었고, 유령 셋
+#: (display·width·email)은 추출기를 고쳐 사라졌다. 남은 둘은 원본이 이 경로에 없다.
 ICON_GAPS = {
-    "backup", "copy", "desktop", "display", "email", "folder", "identity", "info", "key",
-    "link", "mail", "mcp", "offline", "open", "pack", "packin", "parse", "plug", "portable",
-    "shield", "tags", "width",
+    "mail",   # 사이트 모듈에는 있는데 이 세션에서 렌더로 못 받았다. 다음 회차에 추가.
+    "mcp",    # app/src/icons/mcp.svg. 180 좌표계라 24 로 재척도해야 하고, MCP 공식 마크다.
 }
 
 
@@ -221,10 +223,17 @@ def app_dialogs() -> set[str]:
 
 
 def code_icons() -> set[str]:
+    """앱의 SVG 파일 + 사이트 아이콘 모듈의 항목 이름.
+
+    ⚠ 사이트 모듈은 `이름: [그림, '설명']` 꼴이라 **값이 `[` 로 시작하는 것만** 아이콘이다.
+    처음에는 `이름:` 을 전부 잡았는데, 그러면 모듈 안의 CSS 문자열(`display:` · `width:`)과
+    주석 문자열(`'email: magic links…'`)까지 아이콘으로 세어 **있지도 않은 결손 셋**을
+    만들어 낸다. 실제로 그 셋을 Figma 에 그리려다 원본이 없어서 알았다.
+    """
     out = {p.stem for p in (APP / "icons").glob("*.svg")}
     js = SITE / "assets" / "vinc-icons.js"
     if js.exists():
-        out |= set(re.findall(r"^\s*['\"]?([a-z0-9-]+)['\"]?\s*:", js.read_text(encoding="utf-8"), re.M))
+        out |= set(re.findall(r"^\s*([a-z0-9-]+)\s*:\s*\[", js.read_text(encoding="utf-8"), re.M))
     return {i for i in out if i not in ICON_IGNORE and not i.startswith(ICON_IGNORE_PREFIX)}
 
 

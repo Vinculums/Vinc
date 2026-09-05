@@ -79,7 +79,8 @@
         {"name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark", "children": ["SHARE AS A PACK", "WHERE SHOULD THIS GO?", "IMPORT A PACK", "DESTRUCTIVE CONFIRM", "TEXT PROMPT"]},
         {"name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark", "children": ["TOOLS · CREATE", "GRAPH.MD", "DOC EDITOR · CONFLICT"]},
         {"name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark", "children": ["COMMAND PALETTE", "CONTEXT MENUS", "TOOLTIP · UPDATE TOAST", "ASK HISTORY · CHEATSHEET"]},
-        {"name": "App · Web skin (GNB attached) / dark", "children": ["topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "Home / GNB"]}
+        {"name": "App · Web skin (GNB attached) / dark", "children": ["topbar", "lnb", "view-canvas (graph placeholder · Node 페이지 예시 참조)", "Home / GNB"]},
+        {"name": "App · Overlays 4 · first run + new node + doc import + browse / dark", "children": ["FIRST RUN", "NEW NODE", "IMPORT A DOCUMENT", "ALL DOCUMENTS"]}
       ],
       "components": []
     },
@@ -102,6 +103,10 @@
         "Icon / ring", "Icon / search", "Icon / settings", "Icon / sparkle", "Icon / stack",
         "Icon / sync", "Icon / tag", "Icon / undo", "Icon / upload", "Icon / x",
         "Icon / pack-in", "Icon / share-nodes", "Icon / globe", "Icon / sun", "Icon / moon",
+        "Icon / backup", "Icon / copy", "Icon / desktop", "Icon / folder", "Icon / identity",
+        "Icon / info", "Icon / key", "Icon / link", "Icon / offline", "Icon / open",
+        "Icon / pack", "Icon / packin", "Icon / parse", "Icon / plug", "Icon / portable",
+        "Icon / shield", "Icon / tags",
         "Home / Button", "Home / Badge", "Home / Chip", "Home / Toggle", "Home / Input",
         "Home / Seg", "Home / GNB", "Home / Footer", "Home / LangModal", "Home / Banner",
         "Home / Card", "Home / AuthCard", "Home / ModalCard", "Home / CommunityCard",
