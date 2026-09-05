@@ -154,7 +154,14 @@ def main(argv: list[str] | None = None) -> int:
         print("[SKIP] 앱 소스가 없다 — 대조 못 함")
         return 0
     dump = json.loads(DUMP.read_text(encoding="utf-8"))
-    r = check(dump, code_sigs())
+    sigs = code_sigs()
+    if a.list:
+        # 허용목록을 처음 쓰거나 늘릴 때 쓴다: 코드에 없는 것만, 선언 여부와 무관하게.
+        for s2, excerpt, board in dump["strings"]:
+            if s2 not in sigs:
+                print(f"{s2}: {ALLOW.get(s2, '?'):8} {board} · {excerpt!r}")
+        return 0
+    r = check(dump, sigs)
     print("── 앱 보드 문구 (보드 글자 ↔ app/src 리터럴)")
     for s, excerpt, board in r["fail"]:
         print(f"  [FAIL] {board} · {excerpt!r} — 앱이 하지 않는 말이다(지문 {s})")
