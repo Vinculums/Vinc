@@ -1132,12 +1132,16 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
     자기가 뭘 가졌는지 모르는 상태가 되고, 재시도가 멱등하지 않게 된다.
     """
     incoming = {d for d in ((n.get("domain") or "").strip() for n in fragment_nodes) if d}
+    # 예약 주제(`vinc/agent`)는 상한 밖이다 — 들어오는 쪽과 이미 있는 쪽 **양쪽**에서
+    # 뺀다. 한쪽만 빼면 기본 Agent 팩이 들어간 뒤 사용자의 남은 주제가 넷이 된다.
+    incoming = {d for d in incoming if not domain_hierarchy.is_reserved(d)}
     if not incoming:
         return None                       # 주제 없는 적재는 상한과 무관
     from . import query                    # 국소 import — 상한이 꺼져 있으면 비용 0
     existing = query.domain_names(owner=owner, store=store)
     if existing is None:
         return None                       # 스토어 미도달 = 판정 불가 → 막지 않는다
+    existing = {d for d in existing if not domain_hierarchy.is_reserved(d)}
     fresh = incoming - existing
     if not fresh or len(existing) + len(fresh) <= max_domains:
         return None

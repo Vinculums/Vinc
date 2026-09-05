@@ -123,6 +123,36 @@ def test_cap_is_skipped_without_explicit_owner(monkeypatch):
     assert calls == []
 
 
+# ── 3b. 예약 주제는 상한 밖 ─────────────────────────────────────────────────
+def test_reserved_agent_topic_is_never_counted(monkeypatch):
+    """기본 Agent 팩은 모든 스페이스에 들어간다. 그것이 무료 주제 다섯 중 하나를 먹으면
+    제품이 자기 기본값에 세금을 물리는 셈이다 — vinc/agent 는 양쪽 집합에서 빠진다."""
+    monkeypatch.setattr(query, "domain_names",
+                        lambda **kw: {"work", "research", "home", "vinc/agent"})
+    # 예약 주제로의 적재는 상한이 꽉 차 있어도 통과한다
+    assert frag._domain_gate([_node("c:1", "vinc/agent")],
+                             store=object(), owner="user:u1", max_domains=3) is None
+    assert frag._domain_gate([_node("c:1", "vinc/agent/roles")],
+                             store=object(), owner="user:u1", max_domains=3) is None
+    # 그리고 이미 있는 예약 주제는 current 에 세지 않는다(3, 4 가 아니라)
+    denial = frag._domain_gate([_node("c:1", "brand-new")],
+                               store=object(), owner="user:u1", max_domains=3)
+    assert denial and denial["current"] == 3
+    assert frag._domain_gate([_node("c:1", "brand-new")],
+                             store=object(), owner="user:u1", max_domains=4) is None
+
+
+def test_reserved_topic_matches_the_roster_domain():
+    """`roles.DOMAIN` 과 `RESERVED_TOPICS` 가 갈리면 프롬프트 표면은 한 주제를 읽고
+    상한은 다른 주제를 면제한다 — 두 상수를 한 테스트가 묶는다."""
+    from engines import domain_hierarchy as dh
+    from vinc_mcp import roles
+    assert roles.DOMAIN in dh.RESERVED_TOPICS
+    assert dh.is_reserved(roles.DOMAIN) and dh.is_reserved(roles.DOMAIN + "/roles")
+    assert not dh.is_reserved("vinc/agentic") and not dh.is_reserved("vinc")
+    assert not dh.is_reserved("") and not dh.is_reserved(None)
+
+
 # ── 4. 허브가 등급을 숫자로 옮긴다 ───────────────────────────────────────────
 class _StubBridge(Bridge):
     def __init__(self):
