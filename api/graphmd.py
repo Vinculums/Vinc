@@ -47,7 +47,7 @@ TOOL_RE = re.compile(r"\bvinc_[a-z_]+\b")
 WIRE_EDGES = ("relates_to", "prerequisite_of", "derives_from",
               "inherits_from", "connects_via", "about")
 
-#: 필수 절 — (key, (EN 제목, ko 제목)). 순서가 곧 검사 순서다.
+#: 절 — (key, (EN 제목, ko 제목)). 순서가 곧 검사 순서다.
 SECTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("what", ("What this is", "이 파일은 무엇인가")),
     ("read", ("Read before you write", "쓰기 전에 읽을 것")),
@@ -55,12 +55,26 @@ SECTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("size", ("How big is one concept", "개념 하나의 크기")),
     ("relations", ("Relations", "관계")),
     ("documents", ("Documents", "문서")),
+    ("roles", ("Roles", "역할")),
+    ("topics", ("Topics", "주제")),
     ("domains", ("Domains in this graph", "이 그래프의 도메인")),
     ("vocab", ("Ratified vocabulary", "재가된 어휘")),
     ("donot", ("Do not", "하지 말 것")),
 )
+#: 있으면 순서를 보고, 없어도 결함이 아닌 절. 2026-09-05 에 더한 둘이다 — 필수로
+#: 넣으면 그날 이전에 만들어진 모든 파일이 BLOCK 이 된다(산문은 build 가 안 채운다).
+OPTIONAL_SECTIONS = frozenset({"roles", "topics"})
 
-LINE_WARN, LINE_FAIL = 60, 100
+
+def _title(key: str, lang: str) -> str:
+    en, ko = dict(SECTIONS)[key]
+    return ko if lang == "ko" else en
+
+
+#: 경고 60 → 70(2026-09-05). Roles·Topics 두 절이 아홉 줄을 더했고, 그만큼을 예시
+#: 절에서 깎는 것은 규격이 "규칙 아니라 예시로" 두기로 한 것을 깎는 일이었다.
+#: 근거: [[vinc.canon.graph-conventions §2]] (F2 개정) 와 그 결정 노드.
+LINE_WARN, LINE_FAIL = 70, 100
 #: 화면 노출 금지 문자(D38). 이 템플릿은 문서 사이트에 그대로 실린다.
 FORBIDDEN_GLYPHS = ("—",)   # em-dash
 
@@ -117,6 +131,15 @@ Not sure: use relates_to. Never flip a directed edge to make it fit.
 Source text goes in through vinc_doc_put and the store keeps the canonical copy. Do
 not paste a whole document into a Record; link concepts through the document, not a copy.
 
+## Roles [schema-fixed]
+An Agent role is a Concept: id concept:agent-<name>, topic vinc/agent (a reserved topic).
+Its contract is props: mission, tier, rung, reads (ordered doc ids), gates, never, person_only.
+props replace whole on every write: read them back, then resend. A change ships with a Decision about the role.
+
+## Topics [this graph decides]
+A topic is the domain field. Shape it area/discipline/subject, two or three levels, lowercase english.
+A leaf holds ten to sixty nodes: past sixty split it, under five fold it into its parent.
+
 {generated}
 
 ## Do not [this graph decides]
@@ -170,6 +193,15 @@ Record 에서 둘 중 어디로든 위 넷 중 아무거나. 그 엣지들과 ab
 원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다. 문서 전문을 Record 에
 붙여넣지 마십시오. 개념은 문서를 통해 연결하고, 사본을 통해 연결하지 마십시오.
 
+## 역할 [스키마 고정]
+Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 주제는 vinc/agent(예약된 주제).
+계약은 props 에 둡니다: mission, tier, rung, reads(순서 있는 문서 id), gates, never, person_only.
+props 는 쓸 때마다 통째로 바뀝니다: 먼저 되읽고 다시 보내십시오. 변경은 그 역할에 대한 Decision 과 함께 갑니다.
+
+## 주제 [이 그래프가 정함]
+주제는 domain 필드입니다. 영역/분야/소재로, 두세 단계, 소문자 영어로 짓습니다.
+잎 하나에 노드 열에서 예순: 예순을 넘으면 쪼개고, 다섯 아래면 부모로 접으십시오.
+
 {generated}
 
 ## 하지 말 것 [이 그래프가 정함]
@@ -188,10 +220,11 @@ _GEN_HEAD = {
 }
 _GEN_TAIL = "<!-- vinc:generated end -->"
 _GEN_BODY = {
-    # ⚠ 줄 예산(LINE_WARN=60)이 꽉 차 있다 — 한 줄을 더하려면 어딘가에서 한 줄을 빼야
-    # 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
+    # ⚠ 줄 예산(LINE_WARN=70)에 남는 자리가 한 줄이다 — 한 줄을 더하려면 어딘가에서
+    # 한 줄을 빼야 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
+    # "소문자 영어"는 Topics 절로 옮겼다(산문 영역이 정할 일이라).
     "en": ("## Domains in this graph\n{domains}\n"
-           "Lowercase english. A slash makes a tree: 'vinc/design' files that node "
+           "A slash makes a tree: 'vinc/design' files that node "
            "under 'vinc', with nothing extra to author. "
            "Walk it with vinc_neighbors('domain:vinc').\n\n"
            "## Ratified vocabulary\n"
@@ -199,7 +232,7 @@ _GEN_BODY = {
            "edge types: {edges}\n"
            "Anything else you write is kept and marked proposed, for a person to ratify."),
     "ko": ("## 이 그래프의 도메인\n{domains}\n"
-           "소문자 영어. 슬래시가 계층이 됩니다: 'vinc/design' 은 그 노드를 'vinc' "
+           "슬래시가 계층이 됩니다: 'vinc/design' 은 그 노드를 'vinc' "
            "아래 둡니다. 따로 저작할 것이 없습니다. "
            "vinc_neighbors('domain:vinc') 로 걸어 내려가십시오.\n\n"
            "## 재가된 어휘\n"
@@ -215,7 +248,7 @@ _EMPTY = {
 }
 _MORE = {"en": "and {n} more", "ko": "외 {n}개"}
 
-#: 도메인 목록의 상한. 넘치면 "외 N개" — 목록이 60줄 예산을 먹게 두지 않는다.
+#: 도메인 목록의 상한. 넘치면 "외 N개" — 목록이 70줄 예산을 먹게 두지 않는다.
 DOMAIN_LIMIT = 12
 
 
@@ -407,12 +440,14 @@ def check(text: str, *, store=None, themes=None, owner: str | None = None) -> di
     titles = [t for _n, t in heads]
     idx = {t: i for i, t in enumerate(titles)}
     want = [ko if lang == "ko" else en for _k, (en, ko) in SECTIONS]
+    required = [ko if lang == "ko" else en for k, (en, ko) in SECTIONS
+                if k not in OPTIONAL_SECTIONS]
     present = [t for t in want if t in idx]
     if len(present) < 2:
         findings.append(_f("section-order", FIX,
                            "no recognisable sections (this checker knows en and ko only)"))
     else:
-        for t in want:
+        for t in required:
             if t not in idx:
                 findings.append(_f("section-order", BLOCK, f"missing section: {t}"))
         order = [idx[t] for t in present]
@@ -452,7 +487,7 @@ def check(text: str, *, store=None, themes=None, owner: str | None = None) -> di
     facts = collect(store, owner=owner, themes=themes) if store is not None else None
 
     # 5. unknown-edge
-    rel_title = SECTIONS[4][1][1 if lang == "ko" else 0]
+    rel_title = _title("relations", lang)
     allowed = set(WIRE_EDGES) | set((facts or {}).get("edge_types") or [])
     for ln in _section_body(lines, rel_title):
         m = re.match(r"^-\s+([a-z][a-z0-9_]*)\s*:", ln)
@@ -466,7 +501,7 @@ def check(text: str, *, store=None, themes=None, owner: str | None = None) -> di
             findings.append(_f("generated-drift", BLOCK,
                                "generated region does not match the store — rebuild it"))
         # 6. unknown-domain
-        dom_title = SECTIONS[6][1][1 if lang == "ko" else 0]
+        dom_title = _title("domains", lang)
         listed = _parse_domains(_section_body(parts[1].split("\n"), dom_title))
         for d in listed:
             if d not in set(facts.get("domains") or []):

@@ -2,7 +2,9 @@
 """api/graphmd — GRAPH.md 생성·검증(vinc.c.graph-md) + 동기화 제외.
 
 순수 테스트(스토어 불필요):
-  - 출하 템플릿 EN·ko 가 스스로의 9규칙을 통과한다(60줄 예산 포함).
+  - 출하 템플릿 EN·ko 가 스스로의 9규칙을 통과한다(70줄 예산 포함).
+  - Roles·Topics 는 **선택 절**이다: 템플릿에는 있고 순서가 맞아야 하지만, 없는
+    파일도 통과한다(2026-09-05 이전에 만들어진 파일이 전부 그렇다).
   - 규칙별 위반이 정확한 수준(BLOCK/FIX)으로 잡힌다.
   - build 가 **산문을 보존**하고 생성 구역만 갈아 끼운다.
 실엔진 테스트:
@@ -55,6 +57,40 @@ class TemplateTests(unittest.TestCase):
         n_en = len(self._built("en").rstrip().split("\n"))
         n_ko = len(self._built("ko").rstrip().split("\n"))
         self.assertEqual(n_en, n_ko, "EN/ko 템플릿 줄 수가 어긋났다(1:1 규격 위반)")
+
+    def test_optional_sections_ship_in_both_templates_in_order(self):
+        """Roles 는 프롬프트 표면이 읽는 모양이고 Topics 는 트리 짓는 법이다. 둘 다
+        Documents 뒤, 생성 구역 앞에 온다."""
+        for lang, (roles, topics, docs) in (("en", ("## Roles", "## Topics", "## Documents")),
+                                            ("ko", ("## 역할", "## 주제", "## 문서"))):
+            with self.subTest(lang=lang):
+                text = self._built(lang)
+                i_d, i_r, i_t = text.index(docs), text.index(roles), text.index(topics)
+                i_g = text.index(graphmd._GEN_HEAD[lang])
+                self.assertTrue(i_d < i_r < i_t < i_g, (i_d, i_r, i_t, i_g))
+                self.assertIn("concept:agent-", text)
+                self.assertIn("vinc/agent", text)
+
+    def test_a_file_without_the_optional_sections_still_passes(self):
+        """예전 파일에는 두 절이 없다. 그것을 BLOCK 으로 만들면 이 버전이 모든 사용자의
+        관례 파일을 한꺼번에 빨갛게 칠한다 — 산문은 build 가 채워 주지 않는다."""
+        lines = self._built("en").split("\n")
+        i = lines.index("## Roles [schema-fixed]")
+        j = lines.index(graphmd._GEN_HEAD["en"])
+        stripped = "\n".join(lines[:i] + lines[j:])
+        res = graphmd.check(stripped)
+        self.assertEqual(res["exit_code"], 0, res["findings"])
+        self.assertNotIn("section-order", [f["rule"] for f in res["findings"]])
+
+    def test_optional_section_out_of_order_blocks(self):
+        """선택은 '없어도 된다'이지 '아무 데나 있어도 된다'가 아니다."""
+        lines = self._built("en").split("\n")
+        i = lines.index("## Topics [this graph decides]")
+        block, rest = lines[i:i + 3], lines[:i] + lines[i + 3:]
+        k = rest.index("## Documents [schema-fixed]")
+        res = graphmd.check("\n".join(rest[:k] + block + [""] + rest[k:]))
+        self.assertIn("section-order", [f["rule"] for f in res["findings"]])
+        self.assertEqual(res["exit_code"], 2)
 
     def test_legacy_core_vinc_tags_still_validate(self):
         """구 2분류([core]/[vinc]) 파일은 사용자 손에 이미 존재한다(GM-3: 산문은
