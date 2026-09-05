@@ -229,11 +229,98 @@ def emit(route: str) -> dict:
     return {"route": route, "values": out, "figma_only": gone, "missing_in_figma": missing}
 
 
+#: **Figma 를 코드와 맞춘 시점의 문구 서명.** 스냅샷을 쓸 때 Figma 를 읽지는 않는다 —
+#: 읽을 수 있으면 게이트가 오프라인이 아니게 된다. 대신 "지금 둘이 같다"를 사람이 확인한
+#: 뒤 라이브 값을 찍는다. 그래서 이 파일이 잡는 것은 **그 뒤에 코드 문구가 바뀌었는데
+#: Figma 를 안 고친 경우**이고, 그게 실제로 생기는 드리프트다(2026-09-06 실측: 162건 중
+#: 161건 일치, 남은 하나는 한국어 없는 키의 정상 폴백이었다).
+#: Figma 쪽 값의 **서명 스냅샷**. 전문을 커밋하지 않는 이유는 이 리포의 규율이다 —
+#: 카피의 정본은 코드이고, 파일에 사본을 두면 곧 두 벌이 갈린다
+#: (계약은 [[decision:code-is-canon-figma-follows]]). 서명은 길이와
+#: 체크섬뿐이라 사본이 아니고, 다름을 잡는 데는 충분하다.
+SIG = HUB / "imports" / "figma-copy-sig.json"
+
+
+def sig(s: str | None) -> str:
+    """길이:체크섬. 값을 복원할 수 없고 한 글자만 달라도 바뀐다."""
+    s = "" if s is None else str(s)
+    h = 0
+    for ch in s:
+        h = (h * 31 + ord(ch)) % 99991
+    return f"{len(s)}:{h}"
+
+
+def live_signatures() -> dict[str, str]:
+    """대응표의 모든 라우트에서 라이브 문구를 뽑아 서명으로 만든다."""
+    out: dict[str, str] = {}
+    for route in MAP:
+        for name, v in emit(route)["values"].items():
+            out[name] = sig(v.get("EN")) + "|" + sig(v.get("KO"))
+    return out
+
+
+def check() -> int:
+    """라이브 문구가 Figma 스냅샷과 같은가.
+
+    ⚠ 한국어가 없는 키(라이브 KO 가 `None`)는 화면에서 영어로 떨어진다. Figma 는 그
+    자리에 영어를 넣어 두는 것이 맞으므로, **라이브 KO 가 비었으면 KO 는 대조하지
+    않는다** — 안 그러면 정상 폴백이 매번 어긋남으로 잡힌다(2026-09-06 에 `pricing/faqTitle`
+    하나가 정확히 그렇게 잡혔다).
+    """
+    if not SIG.exists():
+        print(f"[SKIP] {SIG.relative_to(HUB)} 가 없다 — --write-sig 로 스냅샷을 먼저 만들 것")
+        return 0
+    if not SITE.exists():
+        print("[SKIP] 문구 대조 — Vinc-homepage 가 체크아웃돼 있지 않다")
+        return 0
+    snap = json.loads(SIG.read_text(encoding="utf-8"))["signatures"]
+    live = live_signatures()
+    bad, gone = [], []
+    for name, s in sorted(live.items()):
+        if name not in snap:
+            gone.append(name)
+            continue
+        want_en, want_ko = snap[name].split("|")
+        got_en, got_ko = s.split("|")
+        if got_en != want_en:
+            bad.append((name, "EN"))
+        elif got_ko != want_ko and not got_ko.startswith("0:"):
+            bad.append((name, "KO"))
+    stale = sorted(set(snap) - set(live))
+    for name, lang in bad:
+        print(f"  [FAIL] {name} ({lang}) — 라이브 문구가 Figma 와 다르다")
+    for name in gone:
+        print(f"  [FAIL·미선언] {name} — 스냅샷에 없다(변수를 새로 만들었으면 --write-sig)")
+    for name in stale:
+        print(f"  [FAIL·잔여] {name} — 라이브에서 사라졌다")
+    n = len(bad) + len(gone) + len(stale)
+    print(f"문구 대조 {len(live)}건 · 어긋남 {n}건")
+    if n:
+        print("Figma 를 고치고 나서 --write-sig 로 스냅샷을 갱신할 것(정본은 코드다)",
+              file=sys.stderr)
+    return 1 if n else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="라이브 문구를 Figma Locale 형태로 뽑는다")
     ap.add_argument("--emit", metavar="ROUTE")
     ap.add_argument("--routes", action="store_true")
+    ap.add_argument("--check", action="store_true",
+                    help="라이브 문구가 Figma 스냅샷과 같은가(CI 용, exit 1 이면 다름)")
+    ap.add_argument("--write-sig", action="store_true",
+                    help="Figma 값을 반영한 뒤 스냅샷을 다시 쓴다(같은 커밋에 넣을 것)")
     a = ap.parse_args(argv)
+    if a.check:
+        return check()
+    if a.write_sig:
+        SIG.parent.mkdir(parents=True, exist_ok=True)
+        SIG.write_text(json.dumps({
+            "note": "Figma Locale 값의 서명(길이:체크섬). 값 자체가 아니다 — 카피의 정본은 코드다.",
+            "written": "figma_copy.py --write-sig",
+            "signatures": live_signatures(),
+        }, ensure_ascii=False, indent=1) + chr(10), encoding="utf-8")
+        print(f"스냅샷 {len(live_signatures())}건 → {SIG.relative_to(HUB)}")
+        return 0
     if a.routes:
         for r in MAP:
             print(r)

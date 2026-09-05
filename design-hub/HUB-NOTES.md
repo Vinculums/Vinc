@@ -158,7 +158,7 @@ screens, four application overlays, nineteen icons, the Weave graph example, and
 account/team/community states. It also meant rebuilding the landing screen to the live
 layout and moving copy to the live values across eleven screens. Every screen frame carries
 its Vinc address as a Dev Mode annotation and all 39 components carry theirs in the
-`description`, both written in this repo's `[[id]]` citation syntax.
+`description`, both written in this repo's double-bracket citation syntax (`[[` id `]]`).
 
 Two axes the file had nothing for now exist: a `Flows` page holding five user journeys with
 their branches, and real prototype connections on the application page, which had **zero**
