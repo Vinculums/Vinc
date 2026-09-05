@@ -592,6 +592,13 @@ def main(argv: list[str] | None = None) -> int:
                     "pro_limit": int(os.environ.get("VINC_PRO_DAILY_LIMIT", "2000")),
                     "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
                     "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
+                    # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
+                    # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
+                    # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
+                    # 값은 hub-deploy 가 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 에서 싣는다.
+                    "exempt_owners": frozenset(
+                        o.strip() for o in
+                        os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
                 }
             # 무료 등급 주제 개수 상한(AP-1 §3.4) — 미설정이면 기능 자체가 꺼진다.
             # 쿼터와 달리 별도 on 스위치를 두지 않는다: 값의 존재가 곧 스위치다.

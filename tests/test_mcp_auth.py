@@ -143,6 +143,17 @@ def test_quota_allows_then_denies_with_human_message():
     assert "Free tier limit reached" in denial["content"][0]["text"]
 
 
+def test_quota_exempt_owner_is_never_denied_while_others_still_count():
+    cfg = dict(_QCFG, exempt_owners=frozenset({"user:owner"}))
+    app = MCPHTTPApp(_StubBridge(), store=Store(":memory:"), quota_config=cfg,
+                     verify_key=lambda raw: {"owner": "user:owner", "plan": "pro"})
+    for _ in range(3):
+        assert app.quota_check("user:u1", "free") is None
+    assert app.quota_check("user:u1", "free")["isError"] is True   # 남은 owner 는 그대로 센다
+    for _ in range(_QCFG["pro_limit"] * 2):
+        assert app.quota_check("user:owner", "pro") is None         # 한도·잠금 무관
+
+
 def test_quota_pro_gets_higher_ceiling_and_no_upsell():
     app = _quota_app("pro")
     for _ in range(10):
