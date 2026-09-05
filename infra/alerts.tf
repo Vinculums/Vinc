@@ -380,3 +380,59 @@ resource "azurerm_monitor_metric_alert" "account_memory_headroom" {
     action_group_id = local.action_group_id
   }
 }
+
+# ── 단일 writer 인데 플랫폼이 두 레플리카로 서지했다 ────────────────────────
+# 2026-09-04 실측: vinc-hub 은 Single 모드 · min=max=1 인데도 **노드 재스케줄** 때
+# 플랫폼이 잠깐 두 레플리카로 겹친다(그날 ~99초). 배포가 아니라 같은 리비전의 재배치라
+# hub-deploy.yml 의 직렬화(내리고 → 레플리카 0 대기 → 올린다)가 이걸 못 막는다.
+#
+# 겹치는 동안 무슨 일이 나는가: 새 레플리카가 낡은 스냅샷에서 복원하는데 구 레플리카는
+# 계속 쓰고 있고, 살아남은 쪽의 다음 주기 스냅샷이 상대의 final snapshot 을 볼륨에서
+# 덮는다 — 최대 한 스냅샷 주기(현재 60초)어치 쓰기가 **무음으로** 사라진다.
+# 근거: [[record:concurrent-replica-overlap-clobbers-the-final-snapshot-2026-09-04]]
+#       [[decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04]]
+#
+# 이 경보는 원천 고침이 아니다(그건 동시 writer 를 막는 별도 결정이다). 그 사고를
+# **무음에서 꺼내는** 장치다: 겹침이 나면 사람이 그 시각 근처의 쓰기를 확인해 필요하면
+# 다시 쓴다.
+#
+# 왜 Replicas > 1 이 정확한 판별자인가: 제대로 직렬화된 배포는 1→0→1 로 지나가 절대
+# 2가 안 된다. 그러니 이 경보가 울리는 것은 오직 직렬화 안 된 재스케줄 서지뿐이다.
+# 오탐이 구조적으로 없다.
+#
+# aggregation 이 Maximum 인 이유: 겹침은 짧다(초 단위). Average 면 5분 창에 묻힌다.
+# 창을 PT5M 로 짧게, 평가를 PT1M 로 잦게 둬 초 단위 겹침도 한두 분 안에 잡는다.
+#
+# ⚠ vinc-hub 은 terraform 이 안 든다(generated.tf 에 없다 — 컨테이너 앱 셋은 시크릿
+# 때문에 관리 대상에서 뺐다). 그래서 리소스 참조가 아니라 id 문자열이다. 위
+# account_memory_headroom 이 같은 이유로 그렇게 한다.
+#
+# severity 2 인 이유: 1은 "제품이 안 된다"(가용성 넷). 이건 제품은 도는데 되돌리기
+# 어려운 쓰기 유실이 났을 수 있다는 신호라, DB 래칫과 같은 급이다("되돌릴 수 없는
+# 사건을 사람이 볼 수 있는 창으로").
+locals {
+  hub_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-hub"
+}
+
+resource "azurerm_monitor_metric_alert" "hub_replica_overlap" {
+  name                = "hub-two-replica-overlap"
+  resource_group_name = var.resource_group_name
+  scopes              = [local.hub_app_id]
+  description         = "vinc-hub 이 두 레플리카로 겹쳤다 — 단일 writer 스토어라 재스케줄 서지 중 최대 한 스냅샷 주기어치 쓰기가 유실될 수 있다. 이 시각 근처의 쓰기를 확인할 것."
+  severity            = 2
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+  auto_mitigate       = true
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "Replicas"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 1
+  }
+
+  action {
+    action_group_id = local.action_group_id
+  }
+}
