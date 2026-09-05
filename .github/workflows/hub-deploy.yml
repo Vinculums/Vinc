@@ -283,7 +283,15 @@ jobs:
           # 이미 내렸기 때문이다. `set -e` 로 그냥 죽으면 az 오류만 남고, 지금 서비스가
           # 멈춰 있다는 사실도 되살리는 방법도 아무 데도 안 적힌다. 가장 위험한 창이라
           # 라벨을 붙인다.
-          if ! az containerapp update $APP --image "$IMAGE" --output none; then
+          # 허브 env 는 **여기서만** 바꾼다. 앞 단계가 구 리비전을 내리고 레플리카 0 을
+          # 본 뒤라 새 리비전과 겹치지 않는다 — 콘솔이나 bare `az containerapp update
+          # --set-env-vars` 는 두 리비전을 겹쳐 돌려 09-04 유실과 같은 모양이 된다.
+          # 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 가 비어 있으면 env 는 건드리지 않는다.
+          ENVARGS=()
+          if [ -n "${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}" ]; then
+            ENVARGS=(--set-env-vars "VINC_QUOTA_EXEMPT_OWNERS=${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}")
+          fi
+          if ! az containerapp update $APP --image "$IMAGE" "${ENVARGS[@]}" --output none; then
             echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
             echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2
             echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision ${STOPPED_REVS:-<이름>}" >&2

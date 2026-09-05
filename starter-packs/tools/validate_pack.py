@@ -9,14 +9,16 @@ Checks per pack:
   P4  non-domain nodes have title; domain nodes have NO props (import warning otherwise)
   P5  bridge nodes have no tags/domain keys (Bridge table lacks those columns)
   P6  edge types ∈ enum; endpoints exist in the same fragment;
-      pair legality: cc-types = concept→concept (record→concept also legal),
-      connects_via = bridge→concept
+      pair legality: cc-types = concept|record|decision → concept|decision,
+      connects_via = bridge→concept, about = episode|decision → concept|decision
+      (the same pairs api/fragment.py accepts)
   P7  manifest.counts match actuals
   P8  language: props.body_md / title should not contain Hangul (release = English)
 Cross-pack:
   X1  same node id ⇒ byte-identical JSON in every pack (MERGE SET overwrites on match)
 
-Exit 0 = all PASS. Usage: python validate_pack.py [pack1 pack2 ...] (default: ../*.vincpack)
+Exit 0 = all PASS. Usage: python validate_pack.py [pack1 pack2 ...]
+(default: ../*.vincpack and ../agents/*.json). Reads zip and JSON packs alike (api.packfile).
 """
 from __future__ import annotations
 
@@ -25,15 +27,22 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # 리포 루트 — api.packfile
+from api import packfile  # noqa: E402
+
 CC = {"relates_to", "prerequisite_of", "derives_from", "inherits_from"}
-EDGE_TYPES = CC | {"connects_via"}
+EDGE_TYPES = CC | {"connects_via", "about"}
+#: cc 엣지와 about 의 끝점 — fragment 가 받는 쌍과 같다(concept 과 decision 은 호환 끝점).
+CC_FROM = {"concept", "record", "decision"}
+CC_TO = {"concept", "decision"}
+ABOUT_FROM = {"episode", "decision"}
 NODE_TYPES = {"record", "concept", "domain", "bridge", "episode", "decision"}
 HANGUL = re.compile(r"[가-힣]")
 
 
 def check_pack(path: Path, errors: list[str], warns: list[str]) -> dict:
     pk = f"[{path.name}]"
-    pack = json.loads(path.read_text(encoding="utf-8"))
+    pack = packfile.from_bytes(path.read_bytes())       # zip 이든 구 JSON 이든
     if pack.get("vinc_pack") != 1:
         errors.append(f"{pk} P1 vinc_pack != 1")
     if pack.get("kind") != "share":
@@ -87,8 +96,12 @@ def check_pack(path: Path, errors: list[str], warns: list[str]) -> dict:
             continue
         if et == "connects_via" and (st, tt) != ("bridge", "concept"):
             errors.append(f"{pk} P6 connects_via must be bridge→concept: {s}({st})→{t}({tt})")
-        if et in CC and not (st in ("concept", "record") and tt == "concept"):
-            errors.append(f"{pk} P6 {et} must be concept/record→concept: {s}({st})→{t}({tt})")
+        if et in CC and not (st in CC_FROM and tt in CC_TO):
+            errors.append(f"{pk} P6 {et} must be concept/record/decision→concept/decision: "
+                          f"{s}({st})→{t}({tt})")
+        if et == "about" and not (st in ABOUT_FROM and tt in CC_TO):
+            errors.append(f"{pk} P6 about must be episode/decision→concept/decision: "
+                          f"{s}({st})→{t}({tt})")
 
     counts = (pack.get("manifest") or {}).get("counts") or {}
     actual_c = sum(1 for n in nodes if n.get("type") == "concept")
@@ -104,8 +117,9 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     args = sys.argv[1:]
+    packs_dir = Path(__file__).parent.parent
     paths = ([Path(a) for a in args] if args
-             else sorted((Path(__file__).parent.parent).glob("*.vincpack")))
+             else sorted(packs_dir.glob("*.vincpack")) + sorted((packs_dir / "agents").glob("*.json")))
     if not paths:
         print("no packs found"); sys.exit(1)
     errors: list[str] = []

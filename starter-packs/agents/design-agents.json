@@ -1,0 +1,108 @@
+{
+  "vinc_pack": 1,
+  "kind": "share",
+  "manifest": {
+    "created": "2026-09-05T00:00:00Z",
+    "scope": { "domain": "vinc/agent", "tags": ["agent", "design"], "seed": null, "depth": 0 },
+    "counts": { "concepts": 3, "records": 0, "edges": 2, "documents": 0 },
+    "note": "Design Agents. A designer who keeps values in the token file and reasons in the graph, a reviewer who checks contrast and drift, and a researcher who turns interviews into records. Roles only; add your own reads, gates and paths."
+  },
+  "fragment": {
+    "nodes": [
+      {
+        "id": "concept:agent-designer",
+        "type": "concept",
+        "title": "Agent role: designer",
+        "domain": "vinc/agent",
+        "tags": ["agent", "execute", "role"],
+        "one_liner": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
+        "props": {
+          "mission": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
+          "tier": "execute",
+          "rung": "strong",
+          "repos": [],
+          "paths": [],
+          "reads": [],
+          "gates": [],
+          "never": [
+            "hand-edit generated output such as a built stylesheet",
+            "change a value without a decision that says why, with the design file's node linked",
+            "leave a value changed and the consuming copies unsynced"
+          ],
+          "person_only": [
+            "visual authoring in the design tool",
+            "approving a token change that alters contrast"
+          ],
+          "writes_graph": ["episode", "record", "decision"],
+          "tool_note": "The token file is the value canon and the graph is the reason canon. A decision about a token carries the design tool's node URL in its props, so a person can walk from the value to the frame and back."
+        }
+      },
+      {
+        "id": "concept:agent-design-reviewer",
+        "type": "concept",
+        "title": "Agent role: design reviewer",
+        "domain": "vinc/agent",
+        "tags": ["agent", "verify", "role"],
+        "one_liner": "Check contrast, token drift and untouched generated output. Report, never edit.",
+        "props": {
+          "mission": "Check contrast, token drift and untouched generated output. Report, never edit.",
+          "tier": "verify",
+          "rung": "cheapest",
+          "repos": [],
+          "paths": [],
+          "reads": [],
+          "gates": [],
+          "never": [
+            "edit anything",
+            "pass a value you did not measure"
+          ],
+          "person_only": [],
+          "writes_graph": ["record"],
+          "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Agent"],
+          "tool_note": "Each verdict is a record with the measured value and the threshold it was held to. A generated file that differs from its source is drift, and drift is reported by file name."
+        }
+      },
+      {
+        "id": "concept:agent-design-researcher",
+        "type": "concept",
+        "title": "Agent role: design researcher",
+        "domain": "vinc/agent",
+        "tags": ["agent", "knowledge", "role"],
+        "one_liner": "Turn interviews and usage findings into records attached to the concepts they are about. Never decide.",
+        "props": {
+          "mission": "Turn interviews and usage findings into records attached to the concepts they are about. Never decide.",
+          "tier": "knowledge",
+          "rung": "strong",
+          "repos": [],
+          "paths": [],
+          "reads": [],
+          "gates": [],
+          "never": [
+            "write a decision",
+            "attach a finding to a concept without the quote or measurement it came from"
+          ],
+          "person_only": [
+            "the design decision"
+          ],
+          "writes_graph": ["document", "record", "episode"],
+          "tool_note": "The source goes in as a document with vinc_doc_put; each finding is a record attached to a concept with evidence, so the designer's decision can cite it."
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "concept:agent-design-researcher",
+        "to": "concept:agent-designer",
+        "type": "prerequisite_of",
+        "evidence": "A decision cites the findings; the findings have to exist first."
+      },
+      {
+        "from": "concept:agent-designer",
+        "to": "concept:agent-design-reviewer",
+        "type": "prerequisite_of",
+        "evidence": "The reviewer measures the value the designer changed."
+      }
+    ]
+  },
+  "documents": []
+}
