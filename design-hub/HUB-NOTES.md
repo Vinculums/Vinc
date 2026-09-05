@@ -141,7 +141,27 @@ invents four modals that do not exist, so it is excluded by name and a test hold
 앱 표면 상태      선언된 상태 27 · 결손 0
 화면 상태        선언된 상태 81 · 결손 0 · 미선언 0
 앱 컴포넌트       대조된 변형 46 · 실패 0
+앱 보드 문구      대조 375 · 코드와 일치 222 · 실패 0 · 열린 판정 6
 ```
+
+The last line is the fifth axis, added 2026-09-06 after three of the four application overlays
+were found showing another sheet's body. Every distinct string on the desktop boards is
+fingerprinted against every string literal in `app/src`. What is neither a code string nor a
+declared exception fails. The exceptions are classified rather than hidden: sample data,
+sentences the code assembles from a template, board annotations that name a state, glyphs and
+keycaps, and the site's own navigation on the web-skin board.
+
+Six entries carry the verdict `open`, printed one per line every run rather than counted: the
+board says something the application has no string for, and whether that is a missing feature
+or a mockup that ran ahead is a decision, not a cleanup. `Trace from here`, `Open the full
+document`, `Related nodes`, `Where should this go?`, the team destination's note, and the
+viewpoint tooltip.
+
+Two things had to be true before the comparison could work at all. Fourteen headings were
+stored in capitals in Figma while the code stores sentence case and `app.css` raises them, so
+nothing matched; they are now stored the code's way with `textCase`. And that immediately
+exposed what the mismatch had hidden, the settings board saying `DOMAINS TO SYNC` where the
+product renamed the vocabulary to `Topics to sync`.
 
 The last line is a different kind of check from the four above it, added 2026-09-06. Those
 count: is the thing there. It corresponds: every desktop component variant is bound to the
