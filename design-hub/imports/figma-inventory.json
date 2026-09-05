@@ -106,12 +106,23 @@
         "Icon / backup", "Icon / copy", "Icon / desktop", "Icon / folder", "Icon / identity",
         "Icon / info", "Icon / key", "Icon / link", "Icon / offline", "Icon / open",
         "Icon / pack", "Icon / packin", "Icon / parse", "Icon / plug", "Icon / portable",
-        "Icon / shield", "Icon / tags",
+        "Icon / shield", "Icon / tags", "Icon / mail", "Icon / mcp",
         "Home / Button", "Home / Badge", "Home / Chip", "Home / Toggle", "Home / Input",
         "Home / Seg", "Home / GNB", "Home / Footer", "Home / LangModal", "Home / Banner",
         "Home / Card", "Home / AuthCard", "Home / ModalCard", "Home / CommunityCard",
         "Home / PageBackground", "Motion / Orbit glow", "Motion / Orbit guide"
       ]
+    },
+    "Node": {
+      "frames": [
+        {"name": "Graph · 3D · dark (constellation glow, view3d.ts 재현)", "children": []},
+        {"name": "Graph · 3D · light", "children": []},
+        {"name": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)", "children": []},
+        {"name": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)", "children": []},
+        {"name": "Graph · Sankey · dark (SUPERSEDED · 제품은 Weave 방사형 번들, view-bundle.ts)", "children": []},
+        {"name": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)", "children": []}
+      ],
+      "components": []
     },
     "Design System(App)": {
       "frames": [{"name": "03 · Components (App)", "children": []}],

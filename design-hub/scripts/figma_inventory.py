@@ -164,6 +164,51 @@ DIALOGS = {
     "sheets.ts:S.docTitle": "IMPORT A DOCUMENT",
     "topbar.ts:COPY.ui.topbar.browseAll": "ALL DOCUMENTS",
 }
+#: 앱 표면 ↔ Figma 화면 상태. 사이트의 ROUTE_STATES 와 같은 축이다 — 단위는 표면이
+#: 아니라 **표면×상태**다. 앱 쪽은 상태가 프레임 이름 자체에 들어 있어서(예: `App ·
+#: Search · no results …`) 값이 최상위 프레임 이름이거나 상태 보드의 자식 이름이다.
+APP_STATES = {
+    "surfaces/view.ts": {
+        "default": "App · View · default (canvas placeholder) / dark",
+        "empty": "App · View · empty / dark",
+        "lens": "App · View · lens panel (Options) / dark",
+        "coachmark": "App · View · coachmark & lasso / dark",
+        "node-detail": "App · View · node detail + related card / dark",
+        "edge-detail": "App · View · edge detail / dark",
+        "reader": "App · View · reader (verified, saved) / dark",
+    },
+    "surfaces/search.ts": {
+        "results": "App · Search · results / dark",
+        "no-results": "App · Search · no results + reindex badge / dark",
+        "error": "App · Search · error + browse / dark",
+    },
+    "ask.ts": {"answer": "App · Ask · answer card / dark"},
+    "surfaces/packs.ts": {"default": "App · Packs (with Intake dropzone) / dark"},
+    "surfaces/intake.ts": {
+        "ingesting": "INGESTING (42:5)", "success": "SUCCESS (42:7)", "error": "ERROR",
+    },
+    "surfaces/settings.ts": {
+        "account": "App · Settings · Account tab / dark",
+        "rest": "App · Settings · Connections + Data + Advanced / dark",
+    },
+    "account-connect.ts": {
+        "not-connected": "NOT CONNECTED", "waiting": "WAITING", "connected": "CONNECTED",
+        "expired": "EXPIRED", "failed": "FAILED",
+    },
+    # 그래프 렌더러 넷은 화면이 아니라 **캔버스 안의 그림**이라 Node 페이지에 예시로 산다.
+    "surfaces/view3d.ts": {"dark": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
+                           "light": "Graph · 3D · light"},
+    "surfaces/view2d.ts": {"default": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)"},
+    "surfaces/view-planar.ts": {
+        "timeline": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)"},
+    # ⚠ 제품이 생키를 버리고 방사형 번들(Weave)로 갔는데 Node 페이지 예시는 아직 생키다.
+    # 이름만 바꾸면 없는 화면을 현행처럼 보이게 하므로 SUPERSEDED 로 표시해 두었고,
+    # Weave 예시는 **다시 그려야 한다** — 개명이 아니라 작도다.
+    "surfaces/view-bundle.ts": {"weave": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)"},
+    # records 는 흡수된 표면이다([[vinc.spec.surface-records]]). 화면이 없는 것이 맞다.
+    "surfaces/records.ts": {},
+}
+
 #: 헬퍼가 **정의된** 파일. 호출부가 아니므로 세지 않는다.
 DIALOG_DEF_FILES = {"components.ts"}
 HELPERS = ("openSheet", "confirmDestructive", "promptText", "openContextMenu")
@@ -179,10 +224,7 @@ ICON_IGNORE = {"view"}
 #: 여기 없는 새 아이콘이 코드에 생기면 그때는 FAIL 이다. 그것이 이 목록의 쓸모다.
 #: 2026-09-05: 17개를 사이트 모듈의 실제 도형으로 Figma 에 만들어 넣었고, 유령 셋
 #: (display·width·email)은 추출기를 고쳐 사라졌다. 남은 둘은 원본이 이 경로에 없다.
-ICON_GAPS = {
-    "mail",   # 사이트 모듈에는 있는데 이 세션에서 렌더로 못 받았다. 다음 회차에 추가.
-    "mcp",    # app/src/icons/mcp.svg. 180 좌표계라 24 로 재척도해야 하고, MCP 공식 마크다.
-}
+ICON_GAPS: set[str] = set()   # 2026-09-05: 전부 채웠다. 새 아이콘이 코드에 생기면 FAIL 이다.
 
 
 def site_present() -> bool:
@@ -219,6 +261,15 @@ def app_dialogs() -> set[str]:
         for m in _DIALOG_RX.finditer(p.read_text(encoding="utf-8")):
             helper, title = m.group(1), (m.group(2) or "").strip()
             out.add(f"{rel}:{title or helper}")
+    return out
+
+
+def app_surfaces() -> set[str]:
+    """앱이 실제로 그리는 표면 모듈. `surfaces/` 전부와, 표면급으로 쓰이는 최상위 둘."""
+    out = {"surfaces/" + p.name for p in (APP / "surfaces").glob("*.ts")}
+    for extra in ("ask.ts", "account-connect.ts"):
+        if (APP / extra).exists():
+            out.add(extra)
     return out
 
 
@@ -345,7 +396,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  결손 {len(r['gaps'])}건 · 실패 "
               f"{len(r['undeclared']) + len(r['rotten']) + len(r['stale_map'])}건")
 
-    total_gap = sum(len(r["gaps"]) for r in results)
+    # 앱 표면도 같은 축으로 본다. 사이트와 달리 리포가 늘 있으므로 건너뛸 일이 없다.
+    app = check_states(app_surfaces(), APP_STATES, frames | states)
+    print("── 앱 표면 상태 (표면×상태)")
+    for k, v in app["rotten"]:
+        print(f"  [FAIL·맵 부패] {k} → '{v}' 가 Figma 에 없다")
+        fail += 1
+    for k in app["gaps"]:
+        print(f"  [GAP] {k} — Figma 에 아직 없다(선언된 결손)")
+    total_gap_app = len(app["gaps"])
+    if app["undeclared_routes"]:
+        print(f"  [MATRIX] 상태 미선언 {len(app['undeclared_routes'])}건: "
+              + ", ".join(app["undeclared_routes"][:6])
+              + (" …" if len(app["undeclared_routes"]) > 6 else ""))
+    print(f"  선언된 상태 {app['declared']}건 · 실패 {len(app['rotten'])}건")
+
+    total_gap = sum(len(r["gaps"]) for r in results) + total_gap_app
     if matrix is not None:
         print("── 화면 상태 (화면×상태)")
         for k, v in matrix["rotten"]:
