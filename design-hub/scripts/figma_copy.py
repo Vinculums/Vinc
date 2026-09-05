@@ -67,6 +67,54 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "faq3Q": "q3", "faq3A": "a3", "faq4Q": "q4", "faq4A": "a4",
         "segYearly": "cyYear", "segMonthly": "cyMonth",
     }),
+    "/login/": ("login/", {
+        "signinTitle": "h1", "signinBody": "sub", "signinFine": "note",
+        "sentTitle": "sentT", "sentBody": "sentB",
+    }),
+    # ⚠ 환영 화면의 변수는 `welcome/` 이 아니라 `login/` 접두를 쓴다. 두 라우트가
+    # Figma 에서 한 프레임(Auth · Login & Welcome)에 살기 때문이다.
+    "/welcome/": ("login/", {
+        "welcomeTitle": "h1", "welcomeBody": "sub", "usernameRule": "rules",
+        "skipFine": "foot", "loading": "loading",
+        "usernameAvailable": None,
+    }),
+    "/auth/verify/": ("verify/", {
+        "confirmTitle": "confirmT", "confirmBody": "confirmB", "confirmFine": "confirmNote",
+        "verifying": "verifyingT", "contextTitle": "ctxT",
+        "expiredTitle": "expiredT", "expiredBody": "expiredB",
+        "invalidTitle": "invalidT", "invalidBody": "invalidB",
+        "errorTitle": "errT", "errorBody": "errB",
+        "contextBody": None,
+    }),
+    "/subscribe/confirm/": ("sub/", {
+        "confirmTitle": "confirmT", "confirmBody": "confirmB", "confirmFine": "confirmNote",
+        "confirming": "confirmingT", "confirmedTitle": "doneT",
+        "expiredTitle": "expiredT", "expiredBody": "expiredB",
+        "errorTitle": "errT", "errorBody": "errB",
+    }),
+    "/unsubscribe/": ("sub/", {
+        "unsubTitle": "confirmT", "unsubBody": "confirmB",
+        "unsubscribing": "unsubbingT", "unsubbedTitle": "doneT", "unsubbedBody": "doneB",
+        "unsubInvalidTitle": "invalidT", "unsubInvalidBody": "invalidB",
+        "unsubErrorTitle": "errT", "unsubErrorBody": "errB",
+    }),
+    "/account/delete/": ("del/", {
+        "confirmTitle": "confirmT", "confirmBody": "confirmB",
+        "deleting": "deletingT", "doneTitle": "deletedT", "doneBody": "deletedB",
+        "expiredTitle": "expiredT", "expiredBody": "expiredB",
+        "errorTitle": "errT", "errorBody": "errB",
+    }),
+    "/404": ("err404/", {"body": "sub"}),
+    "/release/": ("release/", {"h1": "h1", "heroSub": "sub"}),
+    "/privacy/": ("privacy/", {
+        "h1": "h1",
+        "s1Title": "h2ways", "s2Title": "h2store", "s3Title": "h2not",
+        "s4Title": "h2third", "s5Title": "h2keep", "s6Title": "h2contact",
+        # 본문은 라이브가 여러 조각(k1~k4 · n1~n2 · c1/c2)으로 나뉘어 있고 Figma 는
+        # 절마다 한 덩어리다. 조각을 합치는 규칙이 필요해서 사람 판정 전까지 보류한다.
+        "sub": None, "updated": None, "s1Body": None, "s2Body": None, "s3Body": None,
+        "s4Body": None, "s5Body": None, "s6Body": None, "showKoBlock": None,
+    }),
     "/community/": ("community/", {
         "h1a": "h1", "heroBody": "lede",
         "shareCta": "shareCta", "shareNote": "shareNote",
@@ -104,17 +152,27 @@ def extract(path: pathlib.Path) -> dict:
             depth += -1 if nxt.group(1) else 1
         close = src.rfind("<", start, i)
         en.setdefault(key, _strip(src[start:close if close > start else start]))
+    # ⚠ 페이지마다 따옴표가 다르다. 대부분은 `key: '...'` 인데 welcome·verify 는
+    # `key: "..."` 를 쓴다. 작은따옴표만 보다가 그 두 쪽의 한국어를 통째로 놓쳤고,
+    # 하마터면 영어만 덮어써서 반쪽짜리로 만들 뻔했다. 두 형태를 다 받는다.
     bs = chr(92)
     ko: dict[str, str] = {}
-    for m in re.finditer(r"(\w+)\s*:\s*'((?:[^'" + bs + bs + r"]|" + bs + bs + r".)*)'", src):
-        v = m.group(2)
-        if re.search(r"[가-힣]", v):
-            ko.setdefault(m.group(1), _strip(v.replace(bs + "'", "'")))
+    for q in ("'", '"'):
+        pat = r"(\w+)\s*:\s*" + q + r"((?:[^" + q + bs + bs + r"]|" + bs + bs + r".)*)" + q
+        for m in re.finditer(pat, src):
+            v = m.group(2)
+            if re.search(r"[가-힣]", v):
+                ko.setdefault(m.group(1), _strip(v.replace(bs + q, q)))
     return {"en": en, "ko": ko}
 
 
 def page_path(route: str) -> pathlib.Path:
-    return SITE / (route.strip("/") + "/index.html" if route != "/" else "index.html")
+    if route == "/":
+        return SITE / "index.html"
+    rel = route.strip("/")
+    # 대부분은 디렉터리 + index.html 이지만 404 만 파일 하나다(정적 호스팅 관례).
+    flat = SITE / (rel + ".html")
+    return flat if flat.exists() else SITE / rel / "index.html"
 
 
 def emit(route: str) -> dict:
