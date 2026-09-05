@@ -53,7 +53,9 @@ def main() -> int:
             print(f"  MISSING {e['file']}", file=sys.stderr)
             return 1
         pack = packfile.from_bytes(zpath.read_bytes())      # zip → dict (documents 포함)
-        name = e["file"].replace(".vincpack", ".json.vincpack")
+        # `agents/default-agents.json` 처럼 하위 폴더의 JSON 원본도 같은 길을 지난다:
+        # 이름만 평탄화하고(seed-json/ 은 한 층), .json 은 이미 JSON 이라 그대로.
+        name = Path(e["file"]).name.replace(".vincpack", ".json.vincpack")
         text = json.dumps(pack, ensure_ascii=False, indent=2) + "\n"
         size = len(text.encode("utf-8"))
         (out / name).write_text(text, encoding="utf-8")
