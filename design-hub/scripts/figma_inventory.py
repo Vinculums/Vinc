@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""figma_inventory.py — 코드의 화면·모달·아이콘 목록과 Figma 의 그것을 대조한다.
+"""figma_inventory.py — 코드의 화면·모달·아이콘·컴포넌트를 Figma 의 그것과 대조한다.
 
 `figma_diff.py` 가 토큰 **값**을 본다면 이쪽은 **목록**을 본다. 둘을 가른 이유는
 고장의 종류가 달라서다: 값은 "다르다"가 문제고, 목록은 **"한쪽에만 있다"**가 문제다.
@@ -18,6 +18,8 @@ Figma 에 아예 없었다. 그때까지 이 칸은 계획서에 "대조 안 됨
   **선언한** 항목이라 실패로 세지 않고 매 실행 목록으로 보여 준다. 그리지 않은 것을
   빨갛게 만들면 게이트가 곧 꺼지고, 조용히 넘기면 애초에 없느니만 못하다. 그려 넣은 뒤
   `None` 을 프레임 이름으로 바꾸면 그때부터 실재가 검증된다.
+- **FAIL · 표식 부패**: 컴포넌트 변형이 가리키는 코드 표식이 `app/src` 에 없다. 세는
+  축들과 달리 이쪽은 **대응**을 본다 — 개수가 맞아도 이름이 어긋나면 여기서 걸린다.
 - **INFO · Figma 에만**: 맵이 참조하지 않는 Figma 프레임. 시안이거나 폐기 대기라 판정이
   필요한 것들이므로 세어서 보여만 준다.
 
@@ -38,9 +40,12 @@ const page = await figma.getNodeByIdAsync(PAGE_ID);
 await figma.setCurrentPageAsync(page);
 const frames = page.children.filter(n => n.type !== "COMPONENT" && n.type !== "COMPONENT_SET")
   .map(n => ({ name: n.name, children: (n.children || []).map(c => c.name) }));
-const comps = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] })
-  .filter(n => !(n.parent && n.parent.type === "COMPONENT_SET")).map(n => n.name);
-return { name: page.name, frames, components: comps };
+const sets = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] })
+  .filter(n => !(n.parent && n.parent.type === "COMPONENT_SET"));
+const variants = {};                              // Design System(App) 만 쓴다
+for (const n of sets)
+  if (n.type === "COMPONENT_SET") variants[n.name] = n.children.map(c => c.name);
+return { name: page.name, frames, components: sets.map(n => n.name), variants };
 ```
 
 ⚠ 덤프는 손으로 고치지 않는다. 고치면 게이트가 Figma 가 아니라 그 파일과 합의한다.
@@ -256,6 +261,55 @@ APP_STATES = {
     "surfaces/records.ts": {},
 }
 
+# ── 앱 컴포넌트 (변형×코드 표식) ──────────────────────────────────────────────
+#: 데스크탑 컴포넌트 하나하나를, 그것을 정의하는 **코드의 표식**에 건다.
+#:
+#: 왜 이 축이 따로 필요한가. 위의 축들은 전부 **세는** 축이다 — 있나 없나. 그런데
+#: 2026-09-06 대조에서 나온 어긋남 넷은 값도 개수도 맞고 **이름만** 코드와 달랐다:
+#: DocRow 의 잉크 눈금이 1/2/3(코드는 `--ink:0|1|2`), StateMark 의 첫 값이 Full
+#: (코드는 `stateDot("filled"…)`), PackCard 의 Highlight 는 코드에 근거가 아예 없었고,
+#: Chip 은 코드의 `.chip-static` 을 안 그리고 있었다. 세는 게이트 둘은 그 넷을 전부
+#: 통과시켰다. 세어서 맞다는 것과 대응한다는 것은 다른 말이다.
+#: 근거: [[vinc.spec.surface-tree]]
+#:
+#: 값의 뜻:
+#:   문자열 — `app/src` 어딘가에 그대로 있어야 하는 표식. 없으면 FAIL(개명·삭제됐다).
+#:   None   — 코드에 **고유 표식이 없는 기본값**(수식자 없는 평범한 상태). 결손이 아니다.
+APP_COMPONENTS: dict[str, dict[str, str | None]] = {
+    "App / Button":      {"Kind=Primary": 'btn-primary', "Kind=Ghost": 'class="btn"',
+                          "Kind=Quiet": "btn-quiet", "Kind=Danger": "btn-danger"},
+    "App / Chip":        {"State=Default": "chip", "State=Active": "chip.active",
+                          "State=Static": "chip-static"},
+    "App / NavItem":     {"State=Default": "lnb-navrow", "State=Active": "lnb-navrow.on"},
+    "App / DomainRow":   {"State=Default": "lnb-group", "State=Active": "lnb-group.on"},
+    # 잉크 1단은 코드에서 색을 주지 않는 기본값이라 표식이 없다. 0 과 2 만 CSS 에 산다.
+    "App / DocRow":      {"Ink=0": "--ink:0", "Ink=1": None, "Ink=2": "--ink:2"},
+    "App / ListRow":     {"State=Default": "list-row", "State=Hover": "list-row:hover"},
+    "App / StateMark":   {"State=Filled": '"filled"', "State=Half": '"half"',
+                          "State=Empty": '"empty"'},
+    "App / Sheet":       {"Size=Action": '|| "action"', "Size=Write": 'data-size="write"',
+                          "Size=Browse": 'data-size="browse"'},
+    # 네 번째의 코드 키는 `bundle` 이고 Weave 는 화면 라벨이다. 표식은 코드 쪽을 건다.
+    "App / ViewSeg":     {"Active=3D": '"3d"', "Active=2D": '"2d"',
+                          "Active=Timeline": '"timeline"', "Active=Weave": '"bundle"'},
+    "App / MenuItem":    {"Tone=Default": "menu-item", "Tone=Hover": "menu-item:hover",
+                          "Tone=Danger": "danger"},
+    "App / GraphNode":   {"Tier=Focus": '"focus"', "Tier=Near": '"near"',
+                          "Tier=Mid": '"mid"', "Tier=Far": '"far"'},
+    "App / PackCard":    {"State=Default": "pack-card"},
+    "App / UpdateToast": {"State=Available": "t.available", "State=Downloading": "t.downloading",
+                          "State=Installing": "t.installing", "State=Failed": "t.failed"},
+    # 변형이 없는 것들. 컴포넌트 자체의 표식 하나만 건다.
+    "App / ProgressBar": {"": "proc-bar"},
+    "App / ErrorBanner": {"": "error-banner"},
+    "App / EmptyState":  {"": "empty-invite"},
+    "App / Tooltip":     {"": "tooltip"},
+    "App / Slider":      {"": "slider"},
+    "App / FloatCard":   {"": "float-card"},
+    "App / Titlebar":    {"": "titlebar"},
+    "App / Topbar":      {"": "topbar"},
+}
+
 #: 헬퍼가 **정의된** 파일. 호출부가 아니므로 세지 않는다.
 DIALOG_DEF_FILES = {"components.ts"}
 HELPERS = ("openSheet", "confirmDestructive", "promptText", "openContextMenu")
@@ -377,6 +431,47 @@ def check_states(routes: set[str], matrix: dict, live_kids: set[str]) -> dict:
             "undeclared_routes": sorted(routes - set(matrix))}
 
 
+def app_source() -> str:
+    """앱 소스 전문을 한 덩어리로. 표식이 **어느 파일에** 있는지는 여기선 안 따진다 —
+    묻는 것은 "코드에 아직 있는가" 하나뿐이고, 파일이 갈라져도 그 답은 안 변한다."""
+    return "\n".join(p.read_text(encoding="utf-8")
+                     for p in sorted(APP.rglob("*")) if p.suffix in (".ts", ".css"))
+
+
+def check_components(live: dict, mapping: dict, source: str) -> dict:
+    """Figma 컴포넌트·변형을 코드 표식과 맞대 본다.
+
+    네 가지가 갈린다:
+      - 미선언  : Figma 에 컴포넌트나 변형이 늘었는데 맵에 없다(FAIL)
+      - 잔여    : 맵에 있는데 Figma 에서 사라졌다(FAIL)
+      - 표식 부패: 맵이 가리키는 코드 표식이 `app/src` 에 없다(FAIL) — 개명이 여기서 잡힌다
+      - 기본값  : 코드에 고유 표식이 없는 변형(None). 결손이 아니라 정보다
+    """
+    dsapp = live.get("pages", {}).get("Design System(App)", {})
+    comps = set(dsapp.get("components", []))
+    variants = dsapp.get("variants", {})
+    undeclared, stale, rotten, plain, counted = [], [], [], [], 0
+
+    undeclared += sorted(f"{c} (컴포넌트)" for c in comps - set(mapping))
+    stale += sorted(f"{c} (컴포넌트)" for c in set(mapping) - comps)
+
+    for name in sorted(comps & set(mapping)):
+        want = mapping[name]
+        # 변형이 없는 컴포넌트는 덤프에 variants 항목이 없다. 맵도 `{"": 표식}` 한 줄이다.
+        live_vals = set(variants.get(name, [""] if "" in want else []))
+        undeclared += sorted(f"{name} · {v}" for v in live_vals - set(want))
+        stale += sorted(f"{name} · {v}" for v in set(want) - live_vals)
+        for v in sorted(live_vals & set(want)):
+            counted += 1
+            token = want[v]
+            if token is None:
+                plain.append(f"{name} · {v}")
+            elif token not in source:
+                rotten.append((f"{name} · {v}" if v else name, token))
+    return {"undeclared": undeclared, "stale": stale, "rotten": rotten,
+            "plain": plain, "declared": counted}
+
+
 def _check(kind: str, code: set[str], mapping: dict, live: set[str],
            gaps_set: frozenset = frozenset()) -> dict:
     """코드 항목을 맵에 비추고, 맵이 가리키는 이름이 Figma 에 실재하는지 본다.
@@ -459,6 +554,25 @@ def main(argv: list[str] | None = None) -> int:
               + ", ".join(app["undeclared_routes"][:6])
               + (" …" if len(app["undeclared_routes"]) > 6 else ""))
     print(f"  선언된 상태 {app['declared']}건 · 실패 {len(app['rotten'])}건")
+
+    # 컴포넌트는 세는 축이 아니라 **대응하는** 축이다. 위 축들이 전부 초록인 채로
+    # 이름만 코드와 어긋난 적이 있어서(2026-09-06) 따로 둔다.
+    comp = check_components(live, APP_COMPONENTS, app_source())
+    print("── 앱 컴포넌트 (변형×코드 표식)")
+    for k in comp["undeclared"]:
+        print(f"  [FAIL·미선언] {k} — Figma 에 있는데 코드 표식을 선언하지 않았다")
+        fail += 1
+    for k in comp["stale"]:
+        print(f"  [FAIL·맵 잔여] {k} — 맵에 있는데 Figma 에서 사라졌다")
+        fail += 1
+    for k, v in comp["rotten"]:
+        print(f"  [FAIL·표식 부패] {k} → 코드에 '{v}' 가 없다(개명·삭제됐다)")
+        fail += 1
+    if comp["plain"]:
+        print(f"  [INFO] 코드에 고유 표식이 없는 기본값 {len(comp['plain'])}건: "
+              + ", ".join(comp["plain"]))
+    print(f"  대조된 변형 {comp['declared']}건 · 실패 "
+          f"{len(comp['undeclared']) + len(comp['stale']) + len(comp['rotten'])}건")
 
     total_gap = sum(len(r["gaps"]) for r in results) + total_gap_app
     if matrix is not None:

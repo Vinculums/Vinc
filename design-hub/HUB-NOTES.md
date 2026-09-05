@@ -140,7 +140,18 @@ invents four modals that do not exist, so it is excluded by name and a test hold
 아이콘           결손 0
 앱 표면 상태      선언된 상태 27 · 결손 0
 화면 상태        선언된 상태 81 · 결손 0 · 미선언 0
+앱 컴포넌트       대조된 변형 46 · 실패 0
 ```
+
+The last line is a different kind of check from the four above it, added 2026-09-06. Those
+count: is the thing there. It corresponds: every desktop component variant is bound to the
+mark in `app/src` that defines it, and the gate fails when that mark is gone. The axis exists
+because a comparison of all 21 desktop components found four disagreements that every counting
+gate passed, since the counts were right and only the names were wrong: `DocRow` numbered its
+ink scale 1/2/3 where the code inlines `--ink: 0|1|2`, `StateMark` said `Full` where the
+function signature says `filled`, `PackCard` carried a `Highlight` state with nothing behind it,
+and `Chip` was missing the `.chip-static` the stylesheet has. Values, colour and structure
+agreed everywhere; naming was the whole of the drift.
 
 Getting there meant building what code had and Figma did not: seven documentation
 screens, four application overlays, nineteen icons, the Weave graph example, and nine

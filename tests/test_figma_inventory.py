@@ -163,5 +163,41 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
         self.assertIn("검사 못 함", out)
 
 
+class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
+    """세는 축이 전부 초록인 채로 이름만 코드와 어긋난 적이 있다(2026-09-06). 그 축이다."""
+
+    LIVE = {"pages": {"Design System(App)": {
+        "components": ["App / Chip"], "variants": {"App / Chip": ["State=Default", "State=Static"]}}}}
+
+    def test_a_variant_whose_code_mark_is_gone_fails(self):
+        # 코드에서 클래스를 개명하면 여기서 잡힌다. 개수는 그대로라 다른 축은 못 본다.
+        r = fi.check_components(self.LIVE, {"App / Chip": {"State=Default": "chip",
+                                                           "State=Static": "chip-static"}}, ".chip {}")
+        self.assertEqual(r["rotten"], [("App / Chip · State=Static", "chip-static")])
+
+    def test_a_new_figma_variant_with_no_declaration_fails(self):
+        r = fi.check_components(self.LIVE, {"App / Chip": {"State=Default": "chip"}}, ".chip {}")
+        self.assertEqual(r["undeclared"], ["App / Chip · State=Static"])
+
+    def test_a_declared_variant_deleted_from_figma_fails(self):
+        r = fi.check_components(self.LIVE, {"App / Chip": {"State=Default": "chip",
+                                                           "State=Static": "chip-static",
+                                                           "State=Gone": "chip-gone"}},
+                                ".chip .chip-static .chip-gone")
+        self.assertEqual(r["stale"], ["App / Chip · State=Gone"])
+
+    def test_a_none_mark_is_a_plain_default_not_a_failure(self):
+        # 수식자가 없는 기본값은 결손이 아니다. 실패로 세면 게이트가 곧 꺼진다.
+        r = fi.check_components(self.LIVE, {"App / Chip": {"State=Default": None,
+                                                           "State=Static": "chip-static"}}, "chip-static")
+        self.assertEqual((r["plain"], r["rotten"]), (["App / Chip · State=Default"], []))
+
+    def test_the_real_map_matches_the_real_dump_and_the_real_source(self):
+        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        r = fi.check_components(live, fi.APP_COMPONENTS, fi.app_source())
+        self.assertEqual((r["undeclared"], r["stale"], r["rotten"]), ([], [], []))
+        self.assertGreater(r["declared"], 40)
+
+
 if __name__ == "__main__":
     unittest.main()
