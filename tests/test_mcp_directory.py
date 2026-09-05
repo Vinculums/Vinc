@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import pytest
 import threading
 import urllib.error
 import urllib.request
@@ -159,6 +161,52 @@ def test_oversized_graph_goes_through_the_dispatcher_as_a_shrunk_result():
     assert out["shrunk"]["neighbour_props"] > 0
     assert next(n for n in out["nodes"] if n["id"] == "concept:agent-x")["props"]["mission"] == "m"
     assert tools.SHRINKERS["vinc_graph"] is tools._shrink_graph_result
+
+
+
+def test_shrunk_result_stays_under_the_limit_even_after_its_own_marker(monkeypatch):
+    """2026-09-05 라이브: 축소기가 배포된 뒤에도 concept:agent-dev-account 의 depth 1
+    (75,481자)이 거부됐다. 축소기는 상한 바로 아래에서 멈추고 그 뒤 shrunk·note 표식
+    (~440자)을 붙여 다시 넘겼고, 봉투는 그것을 원본 크기로 거부했다. 예산에 표식 자리를
+    비워 둔다. 상한을 '이웃 하나만 비우면 드는 크기 + 50' 에 두어 그 모양을 재현한다."""
+    fat = _fat_graph(neighbours=6, chars=300)
+    trimmed = json.loads(json.dumps(fat))
+    trimmed["nodes"][1]["props"] = {}
+    limit = len(json.dumps(trimmed, ensure_ascii=False)) + 50
+    monkeypatch.setattr(rpc, "MAX_RESULT_CHARS", limit)
+    d = rpc.Dispatcher(_StubBridge(fat))
+    r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "vinc_graph",
+                             "arguments": {"seed_id": "concept:agent-x", "depth": 1}}})
+    res = r["result"]
+    assert res["isError"] is False, res["content"][0]["text"]
+    assert len(res["content"][0]["text"]) <= limit
+    out = json.loads(res["content"][0]["text"])
+    assert out["shrunk"]["neighbour_props"] >= 2 and "shrunk to fit" in out["note"]
+
+
+@pytest.mark.parametrize("name,payload", [
+    ("vinc_graph", _fat_graph(neighbours=6, chars=300, second_ring=3)),
+    ("vinc_brief", {"kind": "brief", "grounds": ["a"] * 10,
+                    "excerpts": [{"doc_id": "d", "text": "가" * 300}] * 10,
+                    "links": {"items": [{"id": f"concept:l{i}", "type": "RELATED_TO"}
+                                        for i in range(10)]}}),
+    ("vinc_search", {"kind": "search", "rows": [{"id": f"doc#{i}", "snippet": "나" * 100}
+                                                for i in range(40)],
+                     "page": {"offset": 0, "limit": 40, "fingerprint": "abc123"},
+                     "total_count": 40}),
+])
+def test_every_shrinker_marker_fits_in_the_reserve(name, payload):
+    """표식 자리(_MARKER_RESERVE)는 세 축소기가 붙이는 것 중 가장 큰 것보다 커야 한다.
+    표식이 자라 이 값을 넘기면 위 시나리오가 되살아난다 — 그때는 표식이 아니라 이 상수를
+    같은 커밋에서 올린다."""
+    out = tools.SHRINKERS[name](json.loads(json.dumps(payload)), 2_000)
+    assert out is not None
+    bare = {k: v for k, v in out.items()
+            if k not in ("shrunk", "note", "has_more", "next_cursor")}
+    marker = (len(json.dumps(out, ensure_ascii=False))
+              - len(json.dumps(bare, ensure_ascii=False)))
+    assert 0 < marker < rpc._MARKER_RESERVE, (name, marker)
 
 
 def test_normal_result_is_not_touched():
