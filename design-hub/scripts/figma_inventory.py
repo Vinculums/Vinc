@@ -140,6 +140,53 @@ ROUTE_STATES = {
     "/connect-app/": {"load": "CONNECT-APP · LOAD", "ask": "CONNECT-APP · ASK",
                       "login": "CONNECT-APP · LOGIN", "done": "CONNECT-APP · DONE",
                       "manual": "CONNECT-APP · MANUAL", "error": "CONNECT-APP · ERROR"},
+
+    # ── 단일 상태 라우트 ────────────────────────────────────────────────────
+    # 읽기만 하는 정적 페이지들이다. 상태가 하나라는 것은 **주장이지 결손이 아니라서**
+    # 미선언으로 두면 영영 31 이라는 수가 남는다. 실제로 하나뿐이면 하나라고 적는다.
+    "/": {"default": "Home · Landing / dark"},
+    "/404": {"default": "Home · 404 / dark (신설)"},
+    "/pricing/": {"default": "Home · Pricing / dark"},
+    "/privacy/": {"default": "Home · Privacy / dark"},
+    "/release/": {"default": "Home · Release / dark"},
+    "/download/": {"default": "Home · Download / dark"},
+    "/docs/": {"default": "Docs · Overview / dark"},
+    "/docs/quickstart/": {"default": "Docs · Quickstart / dark"},
+    "/docs/use-cases/": {"default": "Docs · What to put in it / dark"},
+    "/docs/import/": {"default": "Docs · Import / dark"},
+    "/docs/view/": {"default": "Docs · View / dark"},
+    "/docs/search/": {"default": "Docs · Search / dark"},
+    "/docs/packs/": {"default": "Docs · Packs & community / dark"},
+    "/docs/shortcuts/": {"default": "Docs · Shortcuts / dark"},
+    "/docs/mcp/": {"default": "Docs · MCP Setup / dark"},
+    "/docs/mcp/tools/": {"default": "Docs · MCP Tools / dark"},
+    "/docs/mcp/sign-in/": {"default": "Docs · MCP Sign-in / dark"},
+    "/docs/cli/": {"default": "Docs · CLI Reference / dark"},
+    "/docs/graph-md/": {"default": "Docs · GRAPH.md What / dark"},
+    "/docs/graph-md/build/": {"default": "Docs · GRAPH.md Generate / dark"},
+    "/docs/graph-md/spec/": {"default": "Docs · GRAPH.md Spec / dark"},
+    "/docs/graph-md/check/": {"default": "Docs · GRAPH.md Validate / dark"},
+    "/docs/agents/": {"default": "Docs · Agents / dark"},
+    "/docs/agents/hosts/": {"default": "Docs · Agents · Hosts / dark"},
+    "/docs/agents/openclaw/": {"default": "Docs · Agents · OpenClaw / dark"},
+    "/docs/agents/roles/": {"default": "Docs · Agents · Roles / dark"},
+    "/docs/agents/packs/": {"default": "Docs · Agents · Packs / dark"},
+    "/docs/one-graph/": {"default": "Docs · One graph / dark"},
+
+    # ── 상태가 더 필요한 라우트 ──────────────────────────────────────────────
+    # 코드에 상태 분기가 실재하는데 Figma 에 기본 화면만 있다. 결손으로 **선언**한다.
+    "/account/": {"default": "Home · Account / dark",
+                  "signed-out": "ACCOUNT · SIGNED OUT",       # Service states 보드에 있다
+                  "rate-limited": "429 · RATE LIMITED",
+                  "graph-unavailable": "WEB GRAPH UNAVAILABLE",
+                  "key-created": "ACCOUNT · KEY CREATED",
+                  "username-taken": "ACCOUNT · USERNAME TAKEN"},
+    "/account/team/": {"default": "Home · Account · Team / dark",
+                       "invited": "TEAM · INVITED", "no-teams": "TEAM · NO TEAMS",
+                       "seat-full": "TEAM · SEAT FULL"},
+    "/community/": {"default": "Home · Community / dark", "modal-ask": "modal-card",
+                    "loading": "COMMUNITY · LOADING", "empty": "COMMUNITY · EMPTY",
+                    "no-match": "COMMUNITY · NO MATCH", "error": "COMMUNITY · ERROR"},
 }
 
 # ── 앱 모달 ↔ Figma 오버레이 상태 ───────────────────────────────────────────
@@ -368,7 +415,9 @@ def main(argv: list[str] | None = None) -> int:
     if have_site:
         routes = site_routes()
         results.append(_check("사이트 라우트", routes, ROUTES, frames))
-        matrix = check_states(routes, ROUTE_STATES, kids)
+        # 상태는 보통 상태 보드의 **자식**이지만, 단일 상태 라우트는 상태가 곧 최상위
+        # 프레임이다(문서 15쪽이 그렇다). 둘 다 봐야 한쪽이 거짓 실패로 잡히지 않는다.
+        matrix = check_states(routes, ROUTE_STATES, kids | frames)
     else:
         skipped.append("사이트 라우트 · 상태 매트릭스 — Vinc-homepage 가 체크아웃돼 있지 않다")
     results.append(_check("앱 모달", app_dialogs(), DIALOGS, states))

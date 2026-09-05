@@ -26,7 +26,8 @@
         {"name": "Home · Landing / dark", "children": ["hero", "app-mockup (always dark)", "how", "features", "packs", "vows-wrap", "fin", "newsletter"]},
         {"name": "Home · Download / dark", "children": ["hero", "platforms", "assure", "firstrun"]},
         {"name": "Home · Pricing / dark", "children": ["hero", "tiers", "note", "faq"]},
-        {"name": "Home · Community / dark", "children": ["hero", "toolbar", "grid"]}
+        {"name": "Home · Community / dark", "children": ["hero", "toolbar", "grid"]},
+        {"name": "Home · Account · Team · Community states / dark (신설)", "children": ["ACCOUNT · KEY CREATED", "ACCOUNT · USERNAME TAKEN", "TEAM · INVITED", "TEAM · NO TEAMS", "TEAM · SEAT FULL", "COMMUNITY · LOADING", "COMMUNITY · EMPTY", "COMMUNITY · NO MATCH", "COMMUNITY · ERROR"]}
       ],
       "components": []
     },
