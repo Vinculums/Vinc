@@ -1273,15 +1273,22 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
 def _shrink_graph_result(out: dict, budget: int) -> dict | None:
     """vinc_graph 결과를 예산 안으로 줄인다 — **시드는 통째로, 이웃은 껍데기만**.
 
-    순서: 이웃 노드의 `props` → 이웃 노드의 `one_liner` → 엣지의 `evidence`. 시드 노드는
-    손대지 않는다. 이 도구로 노드 **하나**의 props 를 읽는 독자가 있기 때문이다:
+    순서: 이웃 노드의 `props` → 이웃 노드의 `one_liner` → 엣지의 `evidence` → 시드에
+    닿지 않는 엣지 → 시드의 직접 이웃이 아닌 노드. 시드 노드는 손대지 않는다. 이
+    도구로 노드 **하나**의 props 를 읽는 독자가 있기 때문이다:
     `agents_sync --pull` 과 역할 껍데기의 "두 호출"이 그것이고, 2026-09-05 에
     `concept:agent-dev-account` 의 depth 1 이 75,481자로 거부되자 `--pull` 이 죽었다
     (Vinc#204 후속). depth 는 1 아래로 내려가지 않으므로 더 가벼운 읽기가 없었다.
 
+    뒤의 두 단은 왜 있나: depth 1 은 개념 이웃만이 아니라 그 이웃들에 붙은 record·
+    episode 와 그들 사이의 엣지까지 싣는다(F14 합류). `concept:agent-dev-app` 은 직접
+    이웃이 일곱인데 depth 1 이 87,417자였고, 이웃의 props 를 전부 비워도 둘째 고리와
+    그 엣지들이 상한을 넘겼다(2026-09-05). 시드를 읽으러 온 독자에게 둘째 고리는 덤이다.
+
     덜어낸 것은 되찾을 수 있다: 이웃의 props 는 그 이웃의 id 로 다시 부르면 나오고,
-    엣지의 evidence 는 `vinc_brief` 가 그 노드에 대해 싣는다. 그래서 자르는 게 아니라
-    **덜 싣는** 것이다. 그래도 안 들어가면 None 을 돌려 기존 거부 경로로 보낸다."""
+    엣지의 evidence 는 `vinc_brief` 가, 둘째 고리는 이웃을 시드로 다시 부르면 나온다.
+    그래서 자르는 게 아니라 **덜 싣는** 것이다. 그래도 안 들어가면 None 을 돌려 기존
+    거부 경로로 보낸다."""
     if not isinstance(out, dict) or not isinstance(out.get("nodes"), list):
         return None
 
@@ -1306,15 +1313,33 @@ def _shrink_graph_result(out: dict, budget: int) -> dict | None:
             if isinstance(e, dict) and e.get("evidence"):
                 e["evidence"] = ""
                 dropped["edge_evidence"] += 1
+    dropped["far_edges"] = dropped["far_nodes"] = 0
+    if isinstance(edges, list) and seed and _size() > budget:
+        # 시드에 닿지 않는 엣지(이웃끼리, 이웃과 그 record 사이)를 덜어낸다.
+        near = [e for e in edges
+                if isinstance(e, dict) and seed in (e.get("source"), e.get("target"))]
+        dropped["far_edges"] = len(edges) - len(near)
+        edges[:] = near
+        if _size() > budget:
+            # 시드의 직접 이웃이 아닌 노드(둘째 고리)를 덜어낸다.
+            keep = {seed}
+            for e in edges:
+                keep.add(e.get("source"))
+                keep.add(e.get("target"))
+            before = len(out["nodes"])
+            out["nodes"][:] = [n for n in out["nodes"]
+                               if isinstance(n, dict) and n.get("id") in keep]
+            dropped["far_nodes"] = before - len(out["nodes"])
     if _size() > budget:
         return None
     if any(dropped.values()):
         out["shrunk"] = dropped
         note = ("shrunk to fit the result size limit: emptied props on %d neighbour(s), "
-                "one_liner on %d, evidence on %d edge(s); the seed is intact, and a "
-                "neighbour's props come back by reading that neighbour's own id"
+                "one_liner on %d, evidence on %d edge(s), dropped %d edge(s) and %d "
+                "node(s) not touching the seed; the seed and its direct ring are intact, "
+                "and anything dropped comes back by reading that node's own id"
                 % (dropped["neighbour_props"], dropped["neighbour_one_liners"],
-                   dropped["edge_evidence"]))
+                   dropped["edge_evidence"], dropped["far_edges"], dropped["far_nodes"]))
         out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
     return out
 
