@@ -62,6 +62,11 @@ for c in "${missing[@]}"; do
   case "$c" in
     python) pkgs+=("python-is-python3") ;;
     az)     echo "  az 는 apt 가 아니라 Microsoft 설치 스크립트로 깐다 — 건너뛴다." >&2 ;;
+    # ⚠ apt 의 `docker` 는 이것이 아니다(도커 엔진은 `docker.io` 나 도커 공식 저장소다).
+    # 그리고 이 기계의 러너는 WSL 배포판이라 도커는 Docker Desktop 의 WSL 연동이 준다 —
+    # 그 위에 apt 판을 얹으면 소켓이 갈린다. 그래서 이름만 대고 설치는 사람에게 넘긴다.
+    docker) echo "  docker 는 apt 로 깔지 않는다 — WSL 러너는 Docker Desktop 의 WSL 연동을," >&2
+            echo "  그 밖에서는 도커 공식 저장소를 쓴다. 켜고 나서 다시 돌릴 것." >&2 ;;
     *)      pkgs+=("$c") ;;
   esac
 done
