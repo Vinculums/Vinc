@@ -92,10 +92,9 @@ ALLOW: dict[int, str] = {
     # ── 코드가 값을 끼워 조립하거나, 보드가 한 문장을 두 줄로 나눈 것
     787500: "interp", 812004: "interp", 185089: "interp", 517676: "interp", 458745: "interp", 763182: "interp",
     656753: "interp", 499170: "interp", 321587: "interp", 411884: "interp", 21677: "interp",
-    # ── 열린 판정: 보드가 말하는데 코드에 그 말이 없다. 지우기 전에 사람이 정해야 한다
-    #    (기능이 빠진 것인지, 시안이 앞서간 것인지). 매 실행 한 줄씩 나온다.
-    762171: "open", 577145: "open", 277192: "open", 192607: "open", 189623: "open",
-    319239: "open",
+    # ── 열린 판정 여섯(Trace from here · Open the full document · Related nodes · Where should this
+    #    go? · 팀 목적지 설명 · Switch how you look at the map)은 2026-09-06 오너가 보드에서 지우거나
+    #    코드 문구로 바꿨다(툴팁은 "View and legend"). 남은 "open" 은 없다 — 새로 생기면 여기 분류로 선언한다.
     # ── 웹 스킨이 얹는 사이트 GNB(정본은 Vinc-homepage)
     605224: "site", 283018: "site", 991179: "site", 305331: "site", 135677: "site",
 }

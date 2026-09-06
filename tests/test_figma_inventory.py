@@ -166,7 +166,7 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
 class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
     """세는 축이 전부 초록인 채로 이름만 코드와 어긋난 적이 있다(2026-09-06). 그 축이다."""
 
-    LIVE = {"pages": {"Design System(App)": {
+    LIVE = {"pages": {"02 · App Components": {
         "components": ["App / Chip"], "variants": {"App / Chip": ["State=Default", "State=Static"]}}}}
 
     def test_a_variant_whose_code_mark_is_gone_fails(self):

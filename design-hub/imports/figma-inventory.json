@@ -4,485 +4,11 @@
   "file": "WUXLeDDNBqih2KTZOz9wCX",
   "exported": "2026-09-06",
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
-  "scope": "Frame and component NAMES, plus variant values for the application component sets. Values live in imports/figma-live.json, which figma_diff.py reads; this file is the list, that one is the content.",
+  "scope": "Frame and component NAMES, plus variant values for the application component page. Nine pages of the 2026-09-06 structure (vinc.plan.figma-product-structure §2): 01 · Foundations, 02 · App Components, 04 · Surfaces, 05 · Overlays, 06 · States, 08 · Reference, 10 · Site Components, 11 · Site Screens, 12 · Docs Screens. 00 · Cover, 03 · App Shell, 07 · Prototypes, 13 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma."
  },
  "pages": {
-  "Homepage": {
-   "frames": [
-    {
-     "name": "Home · Community · Pack modal states / dark",
-     "children": [
-      "modal-card",
-      "modal-card",
-      "modal-card",
-      "modal-card"
-     ]
-    },
-    {
-     "name": "Home · Release / dark",
-     "children": [
-      "hero",
-      "rel",
-      "roadmap"
-     ]
-    },
-    {
-     "name": "Home · Privacy / dark",
-     "children": [
-      "hero",
-      "body-en",
-      "body-ko (전문 병기, 코드 정본)"
-     ]
-    },
-    {
-     "name": "Home · Auth · Login & Welcome / dark",
-     "children": [
-      "LOGIN · FORM",
-      "LOGIN · SENT",
-      "WELCOME · LOADING",
-      "WELCOME · FORM",
-      "WELCOME · AVAILABLE"
-     ]
-    },
-    {
-     "name": "Home · Auth · Verify states / dark",
-     "children": [
-      "VERIFY · CONFIRM",
-      "VERIFY · VERIFYING",
-      "VERIFY · CONFIRM CONTEXT",
-      "VERIFY · EXPIRED",
-      "VERIFY · INVALID",
-      "VERIFY · ERROR"
-     ]
-    },
-    {
-     "name": "Home · Auth · Subscribe & Unsubscribe states / dark",
-     "children": [
-      "SUBSCRIBE · CONFIRM",
-      "SUBSCRIBE · CONFIRMING",
-      "SUBSCRIBE · CONFIRMED",
-      "SUBSCRIBE · EXPIRED",
-      "SUBSCRIBE · ERROR",
-      "UNSUB · CONFIRM",
-      "UNSUB · UNSUBSCRIBING",
-      "UNSUB · UNSUBSCRIBED",
-      "UNSUB · INVALID",
-      "UNSUB · ERROR"
-     ]
-    },
-    {
-     "name": "Home · Account / dark",
-     "children": [
-      "acards"
-     ]
-    },
-    {
-     "name": "Home · Account · Team / dark",
-     "children": [
-      "cards"
-     ]
-    },
-    {
-     "name": "Home · Account · Delete states / dark",
-     "children": [
-      "DELETE · CONFIRM",
-      "DELETE · DELETING",
-      "DELETE · DELETED",
-      "DELETE · EXPIRED",
-      "DELETE · ERROR"
-     ]
-    },
-    {
-     "name": "Home · Connect & Connect-app states / dark",
-     "children": [
-      "CONNECT · LOAD",
-      "CONNECT · ASK",
-      "CONNECT · LOGIN",
-      "CONNECT · DONE",
-      "CONNECT · ERROR",
-      "CONNECT-APP · LOAD",
-      "CONNECT-APP · ASK",
-      "CONNECT-APP · LOGIN",
-      "CONNECT-APP · DONE",
-      "CONNECT-APP · MANUAL",
-      "CONNECT-APP · ERROR"
-     ]
-    },
-    {
-     "name": "Home · 404 / dark (신설)",
-     "children": [
-      "body"
-     ]
-    },
-    {
-     "name": "Home · Service states / dark (신설: 429 · unavailable · signed-out)",
-     "children": [
-      "429 · RATE LIMITED",
-      "WEB GRAPH UNAVAILABLE",
-      "ACCOUNT · SIGNED OUT"
-     ]
-    },
-    {
-     "name": "Home · Mobile GNB drawer / dark (신설)",
-     "children": [
-      "gnb-mobile",
-      "drawer"
-     ]
-    },
-    {
-     "name": "Home · Landing / dark",
-     "children": [
-      "hero",
-      "app-mockup (always dark)",
-      "how",
-      "features",
-      "packs",
-      "vows-wrap",
-      "fin",
-      "newsletter"
-     ]
-    },
-    {
-     "name": "Home · Download / dark",
-     "children": [
-      "hero",
-      "platforms",
-      "assure",
-      "firstrun"
-     ]
-    },
-    {
-     "name": "Home · Pricing / dark",
-     "children": [
-      "hero",
-      "tiers",
-      "note",
-      "faq"
-     ]
-    },
-    {
-     "name": "Home · Community / dark",
-     "children": [
-      "hero",
-      "toolbar",
-      "grid"
-     ]
-    },
-    {
-     "name": "Home · Account · Team · Community states / dark (신설)",
-     "children": [
-      "ACCOUNT · KEY CREATED",
-      "ACCOUNT · USERNAME TAKEN",
-      "TEAM · INVITED",
-      "TEAM · NO TEAMS",
-      "TEAM · SEAT FULL",
-      "COMMUNITY · LOADING",
-      "COMMUNITY · EMPTY",
-      "COMMUNITY · NO MATCH",
-      "COMMUNITY · ERROR"
-     ]
-    }
-   ],
-   "components": []
-  },
-  "Homepage(Docs)": {
-   "frames": [
-    {
-     "name": "Docs · Overview / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Quickstart / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · What to add / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Import / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · View / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Search / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Packs & community / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Shortcuts / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · MCP Setup / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · MCP Tools / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · CLI Reference / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · GRAPH.md What / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · GRAPH.md Generate / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · GRAPH.md Spec / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · GRAPH.md Validate / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · MCP Sign-in / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Agents / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Agents · Hosts / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Agents · OpenClaw / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Agents · Roles / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · Agents · Packs / dark",
-     "children": []
-    },
-    {
-     "name": "Docs · One graph / dark",
-     "children": []
-    }
-   ],
-   "components": []
-  },
-  "App(Desktop)": {
-   "frames": [
-    {
-     "name": "App · View · default (canvas placeholder) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
-    },
-    {
-     "name": "Frame",
-     "children": []
-    },
-    {
-     "name": "App · View · empty / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
-    },
-    {
-     "name": "App · View · lens panel (Options) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
-    },
-    {
-     "name": "App · View · coachmark & lasso / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
-    },
-    {
-     "name": "App · View · node detail + related card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane",
-      "App / FloatCard",
-      "related-rows (float card body)"
-     ]
-    },
-    {
-     "name": "App · View · edge detail / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
-    },
-    {
-     "name": "App · View · reader (verified, saved) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
-    },
-    {
-     "name": "App · Search · results / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Search · no results + reindex badge / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Search · error + browse / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Ask · answer card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Packs (with Intake dropzone) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "packs-surface"
-     ]
-    },
-    {
-     "name": "App · Intake · states (Ingesting/Success/Error) / dark",
-     "children": [
-      "INGESTING (42:5)",
-      "SUCCESS (42:7)",
-      "ERROR"
-     ]
-    },
-    {
-     "name": "App · Settings · Account tab / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "settings-popover"
-     ]
-    },
-    {
-     "name": "App · Settings · Connections + Data + Advanced / dark",
-     "children": [
-      "settings-popover",
-      "settings-popover",
-      "settings-popover"
-     ]
-    },
-    {
-     "name": "App · Settings · device flow states / dark",
-     "children": [
-      "NOT CONNECTED",
-      "WAITING",
-      "CONNECTED",
-      "EXPIRED",
-      "FAILED"
-     ]
-    },
-    {
-     "name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark",
-     "children": [
-      "SHARE AS A PACK",
-      "WHERE SHOULD THIS GO?",
-      "IMPORT A PACK",
-      "DESTRUCTIVE CONFIRM",
-      "TEXT PROMPT"
-     ]
-    },
-    {
-     "name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark",
-     "children": [
-      "TOOLS · CREATE",
-      "GRAPH.MD",
-      "DOC EDITOR · CONFLICT"
-     ]
-    },
-    {
-     "name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark",
-     "children": [
-      "COMMAND PALETTE",
-      "CONTEXT MENUS",
-      "TOOLTIP · UPDATE TOAST",
-      "ASK HISTORY · CHEATSHEET"
-     ]
-    },
-    {
-     "name": "App · Web skin (GNB attached) / dark",
-     "children": [
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "Home / GNB"
-     ]
-    },
-    {
-     "name": "App · Overlays 4 · first run + new node + doc import + browse / dark",
-     "children": [
-      "FIRST RUN",
-      "NEW NODE",
-      "IMPORT A DOCUMENT",
-      "ALL DOCUMENTS"
-     ]
-    }
-   ],
-   "components": []
-  },
-  "Design System(Homepage)": {
+  "01 · Foundations": {
    "frames": [
     {
      "name": "01 · Logo",
@@ -495,141 +21,183 @@
     },
     {
      "name": "02 · Icons",
-     "children": []
-    },
-    {
-     "name": "03 · Components (Home)",
-     "children": []
-    },
-    {
-     "name": "00 · Policies (2026-08-06 신설·확정)",
-     "children": []
+     "children": [
+      "Icon / alert",
+      "Icon / arc",
+      "Icon / bar-group",
+      "Icon / caret",
+      "Icon / check",
+      "Icon / chevron-left",
+      "Icon / chevron-right",
+      "Icon / comet",
+      "Icon / dash-ramp",
+      "Icon / decide",
+      "Icon / disc",
+      "Icon / domains",
+      "Icon / dot-grid",
+      "Icon / dot",
+      "Icon / download",
+      "Icon / dumbbell",
+      "Icon / edit",
+      "Icon / ellipse",
+      "Icon / graph",
+      "Icon / half-disc",
+      "Icon / hourglass",
+      "Icon / ingest",
+      "Icon / lock",
+      "Icon / login",
+      "Icon / onboarding",
+      "Icon / pack-export",
+      "Icon / pause",
+      "Icon / pendulum",
+      "Icon / pill-v",
+      "Icon / pill",
+      "Icon / pin",
+      "Icon / play",
+      "Icon / recall",
+      "Icon / ring",
+      "Icon / search",
+      "Icon / settings",
+      "Icon / sparkle",
+      "Icon / stack",
+      "Icon / sync",
+      "Icon / tag",
+      "Icon / undo",
+      "Icon / upload",
+      "Icon / x",
+      "Icon / pack-in",
+      "Icon / share-nodes",
+      "Icon / globe",
+      "Icon / sun",
+      "Icon / moon",
+      "Icon / backup",
+      "Icon / copy",
+      "Icon / desktop",
+      "Icon / folder",
+      "Icon / identity",
+      "Icon / info",
+      "Icon / key",
+      "Icon / link",
+      "Icon / offline",
+      "Icon / open",
+      "Icon / pack",
+      "Icon / packin",
+      "Icon / parse",
+      "Icon / plug",
+      "Icon / portable",
+      "Icon / shield",
+      "Icon / tags",
+      "Icon / mail",
+      "Icon / mcp"
+     ]
     }
    ],
    "components": [
-    "Home / AuthCard",
-    "Home / Badge",
-    "Home / Banner",
-    "Home / Button",
-    "Home / Card",
-    "Home / Chip",
-    "Home / CommunityCard",
-    "Home / Footer",
-    "Home / GNB",
-    "Home / Input",
-    "Home / LangModal",
-    "Home / ModalCard",
-    "Home / PageBackground",
-    "Home / Seg",
-    "Home / Toggle",
+    "Logo / Mark",
     "Icon / alert",
     "Icon / arc",
-    "Icon / backup",
     "Icon / bar-group",
     "Icon / caret",
     "Icon / check",
     "Icon / chevron-left",
     "Icon / chevron-right",
     "Icon / comet",
-    "Icon / copy",
     "Icon / dash-ramp",
     "Icon / decide",
-    "Icon / desktop",
     "Icon / disc",
     "Icon / domains",
-    "Icon / dot",
     "Icon / dot-grid",
+    "Icon / dot",
     "Icon / download",
     "Icon / dumbbell",
     "Icon / edit",
     "Icon / ellipse",
-    "Icon / folder",
-    "Icon / globe",
     "Icon / graph",
     "Icon / half-disc",
     "Icon / hourglass",
-    "Icon / identity",
-    "Icon / info",
     "Icon / ingest",
-    "Icon / key",
-    "Icon / link",
     "Icon / lock",
     "Icon / login",
-    "Icon / mail",
-    "Icon / mcp",
-    "Icon / moon",
-    "Icon / offline",
     "Icon / onboarding",
-    "Icon / open",
-    "Icon / pack",
     "Icon / pack-export",
-    "Icon / pack-in",
-    "Icon / packin",
-    "Icon / parse",
     "Icon / pause",
     "Icon / pendulum",
-    "Icon / pill",
     "Icon / pill-v",
+    "Icon / pill",
     "Icon / pin",
     "Icon / play",
-    "Icon / plug",
-    "Icon / portable",
     "Icon / recall",
     "Icon / ring",
     "Icon / search",
     "Icon / settings",
-    "Icon / share-nodes",
-    "Icon / shield",
     "Icon / sparkle",
     "Icon / stack",
-    "Icon / sun",
     "Icon / sync",
     "Icon / tag",
-    "Icon / tags",
     "Icon / undo",
     "Icon / upload",
     "Icon / x",
-    "Logo / Mark",
-    "Motion / Orbit glow",
-    "Motion / Orbit guide",
-    "Site / HowPanel",
-    "Site / HowStepCard"
-   ]
-  },
-  "Node": {
-   "frames": [
-    {
-     "name": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
-     "children": []
-    },
-    {
-     "name": "Graph · 3D · light",
-     "children": []
-    },
-    {
-     "name": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)",
-     "children": []
-    },
-    {
-     "name": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)",
-     "children": []
-    },
-    {
-     "name": "Graph · Sankey · dark (SUPERSEDED · 제품은 Weave 방사형 번들, view-bundle.ts)",
-     "children": []
-    },
-    {
-     "name": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)",
-     "children": []
-    }
+    "Icon / pack-in",
+    "Icon / share-nodes",
+    "Icon / globe",
+    "Icon / sun",
+    "Icon / moon",
+    "Icon / backup",
+    "Icon / copy",
+    "Icon / desktop",
+    "Icon / folder",
+    "Icon / identity",
+    "Icon / info",
+    "Icon / key",
+    "Icon / link",
+    "Icon / offline",
+    "Icon / open",
+    "Icon / pack",
+    "Icon / packin",
+    "Icon / parse",
+    "Icon / plug",
+    "Icon / portable",
+    "Icon / shield",
+    "Icon / tags",
+    "Icon / mail",
+    "Icon / mcp"
    ],
-   "components": []
+   "variants": {
+    "Logo / Mark": [
+     "Tone=Indigo",
+     "Tone=White",
+     "Tone=Foreground",
+     "Tone=Primary"
+    ]
+   }
   },
-  "Design System(App)": {
+  "02 · App Components": {
    "frames": [
     {
      "name": "03 · Components (App)",
-     "children": []
+     "children": [
+      "App / Button",
+      "App / Chip",
+      "App / NavItem",
+      "App / DomainRow",
+      "App / DocRow",
+      "App / ListRow",
+      "App / StateMark",
+      "App / ProgressBar",
+      "App / ErrorBanner",
+      "App / EmptyState",
+      "App / Tooltip",
+      "App / Sheet",
+      "App / ViewSeg",
+      "App / Slider",
+      "App / MenuItem",
+      "App / GraphNode",
+      "App / PackCard",
+      "App / FloatCard",
+      "App / UpdateToast",
+      "App / Titlebar",
+      "App / Topbar"
+     ]
     }
    ],
    "components": [
@@ -721,6 +289,1101 @@
      "State=Failed"
     ]
    }
+  },
+  "04 · Surfaces": {
+   "frames": [
+    {
+     "name": "App · View · default (canvas placeholder) / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
+     ]
+    },
+    {
+     "name": "App · View · lens panel (Options) / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
+     ]
+    },
+    {
+     "name": "App · View · node detail + related card / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
+      "docpane",
+      "App / FloatCard",
+      "related-rows (float card body)"
+     ]
+    },
+    {
+     "name": "App · View · edge detail / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
+      "docpane"
+     ]
+    },
+    {
+     "name": "App · View · reader (verified, saved) / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
+      "docpane"
+     ]
+    },
+    {
+     "name": "App · Search · results / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "search-surface"
+     ]
+    },
+    {
+     "name": "App · Ask · answer card / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "search-surface"
+     ]
+    },
+    {
+     "name": "App · Packs (with Intake dropzone) / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "packs-surface"
+     ]
+    },
+    {
+     "name": "App · Web skin (GNB attached) / dark",
+     "children": [
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
+      "Site / GNB"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
+  },
+  "05 · Overlays": {
+   "frames": [
+    {
+     "name": "App · Settings · Account tab / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
+      "scrim",
+      "settings-popover"
+     ]
+    },
+    {
+     "name": "App · Settings · Connections + Data + Advanced / dark",
+     "children": [
+      "settings-popover",
+      "settings-popover",
+      "settings-popover"
+     ]
+    },
+    {
+     "name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark",
+     "children": [
+      "SHARE AS A PACK",
+      "WHERE SHOULD THIS GO?",
+      "IMPORT A PACK",
+      "DESTRUCTIVE CONFIRM",
+      "TEXT PROMPT"
+     ]
+    },
+    {
+     "name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark",
+     "children": [
+      "TOOLS · CREATE",
+      "GRAPH.MD",
+      "DOC EDITOR · CONFLICT"
+     ]
+    },
+    {
+     "name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark",
+     "children": [
+      "COMMAND PALETTE",
+      "CONTEXT MENUS",
+      "TOOLTIP · UPDATE TOAST",
+      "ASK HISTORY · CHEATSHEET"
+     ]
+    },
+    {
+     "name": "App · Overlays 4 · first run + new node + doc import + browse / dark",
+     "children": [
+      "FIRST RUN",
+      "NEW NODE",
+      "IMPORT A DOCUMENT",
+      "ALL DOCUMENTS"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
+  },
+  "06 · States": {
+   "frames": [
+    {
+     "name": "App · View · empty / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
+     ]
+    },
+    {
+     "name": "App · View · coachmark & lasso / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
+     ]
+    },
+    {
+     "name": "App · Search · no results + reindex badge / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "search-surface"
+     ]
+    },
+    {
+     "name": "App · Search · error + browse / dark",
+     "children": [
+      "App / Titlebar",
+      "topbar",
+      "lnb",
+      "search-surface"
+     ]
+    },
+    {
+     "name": "App · Intake · states (Ingesting/Success/Error) / dark",
+     "children": [
+      "INGESTING (42:5)",
+      "SUCCESS (42:7)",
+      "ERROR"
+     ]
+    },
+    {
+     "name": "App · Settings · device flow states / dark",
+     "children": [
+      "NOT CONNECTED",
+      "WAITING",
+      "CONNECTED",
+      "EXPIRED",
+      "FAILED"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
+  },
+  "08 · Reference": {
+   "frames": [
+    {
+     "name": "Node & Edge Visual Language",
+     "children": [
+      "header",
+      "sec-nodes",
+      "sec-state",
+      "sec-edges",
+      "sec-graph"
+     ]
+    },
+    {
+     "name": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
+     "children": [
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Polygon",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "label",
+      "label",
+      "label",
+      "label"
+     ]
+    },
+    {
+     "name": "Graph · 3D · light (matte ink, D77)",
+     "children": [
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Polygon",
+      "Polygon",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Polygon",
+      "Ellipse",
+      "Ellipse",
+      "label",
+      "label",
+      "label",
+      "label"
+     ]
+    },
+    {
+     "name": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)",
+     "children": [
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "Ellipse",
+      "a2-badge",
+      "a2-badge",
+      "a2-badge",
+      "minimap"
+     ]
+    },
+    {
+     "name": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)",
+     "children": [
+      "2026-03",
+      "Rectangle",
+      "2026-04",
+      "Rectangle",
+      "2026-05",
+      "Rectangle",
+      "2026-06",
+      "Rectangle",
+      "2026-07",
+      "Rectangle",
+      "2026-08",
+      "Rectangle",
+      "Ellipse",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "physics",
+      "Vector",
+      "economics",
+      "Vector",
+      "design",
+      "Ellipse",
+      "Vector",
+      "Gauge symmetry",
+      "Polygon",
+      "Vector",
+      "Quantum field theory notes",
+      "Ellipse",
+      "Vector",
+      "Renormalization",
+      "Polygon",
+      "Vector",
+      "Symmetry breaking memo",
+      "Ellipse",
+      "Vector",
+      "Noether current",
+      "Polygon",
+      "Vector",
+      "Trade history",
+      "Ellipse",
+      "Vector",
+      "Equilibrium",
+      "Ellipse",
+      "Vector",
+      "Econophysics",
+      "Polygon",
+      "Vector",
+      "Design tokens",
+      "Ellipse",
+      "Vector",
+      "Signal palette",
+      "Vector",
+      "Vector",
+      "Frame",
+      "Frame"
+     ]
+    },
+    {
+     "name": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)",
+     "children": [
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector",
+      "Vector"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
+  },
+  "10 · Site Components": {
+   "frames": [
+    {
+     "name": "01 · Site Components",
+     "children": [
+      "Site / Button",
+      "Site / Badge",
+      "Site / Chip",
+      "Site / Toggle",
+      "Site / Input",
+      "Site / Seg",
+      "Site / GNB",
+      "Site / Footer",
+      "Site / LangModal",
+      "Site / Banner",
+      "Site / Card",
+      "Site / AuthCard",
+      "Site / ModalCard",
+      "Site / CommunityCard"
+     ]
+    }
+   ],
+   "components": [
+    "Site / Button",
+    "Site / Badge",
+    "Site / Chip",
+    "Site / Toggle",
+    "Site / Input",
+    "Site / Seg",
+    "Site / GNB",
+    "Site / Footer",
+    "Site / LangModal",
+    "Site / Banner",
+    "Site / Card",
+    "Site / AuthCard",
+    "Site / ModalCard",
+    "Site / CommunityCard",
+    "Site / PageBackground",
+    "Motion / Orbit glow",
+    "Motion / Orbit guide",
+    "Site / HowPanel",
+    "Site / HowStepCard"
+   ],
+   "variants": {
+    "Site / Button": [
+     "Kind=Primary",
+     "Kind=Quiet"
+    ],
+    "Site / Badge": [
+     "Tone=Info",
+     "Tone=Success",
+     "Tone=Ring"
+    ],
+    "Site / Chip": [
+     "Status=Done",
+     "Status=Now",
+     "Status=Neutral"
+    ],
+    "Site / Toggle": [
+     "State=On",
+     "State=Off"
+    ],
+    "Site / Input": [
+     "State=Default",
+     "State=Focus"
+    ],
+    "Site / Seg": [
+     "Active=A",
+     "Active=B",
+     "Active=C"
+    ],
+    "Site / Banner": [
+     "Kind=Notice",
+     "Kind=Trial"
+    ],
+    "Site / AuthCard": [
+     "Tone=Default",
+     "Tone=Danger"
+    ],
+    "Motion / Orbit glow": [
+     "Pulse=Low",
+     "Pulse=High"
+    ],
+    "Motion / Orbit guide": [
+     "Spin=0",
+     "Spin=90",
+     "Spin=180",
+     "Spin=270"
+    ],
+    "Site / HowPanel": [
+     "Step=Ingest",
+     "Step=View",
+     "Step=Packs"
+    ],
+    "Site / HowStepCard": [
+     "Step=01",
+     "Step=02",
+     "Step=03"
+    ]
+   }
+  },
+  "11 · Site Screens": {
+   "frames": [
+    {
+     "name": "Site · Community · Pack modal states / dark",
+     "children": [
+      "modal-card",
+      "modal-card",
+      "modal-card",
+      "modal-card"
+     ]
+    },
+    {
+     "name": "Site · Release / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "rel",
+      "roadmap",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Privacy / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "body-en",
+      "body-ko (전문 병기, 코드 정본)",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Auth · Login & Welcome / dark",
+     "children": [
+      "LOGIN · FORM",
+      "LOGIN · SENT",
+      "WELCOME · LOADING",
+      "WELCOME · FORM",
+      "WELCOME · AVAILABLE"
+     ]
+    },
+    {
+     "name": "Site · Auth · Verify states / dark",
+     "children": [
+      "VERIFY · CONFIRM",
+      "VERIFY · VERIFYING",
+      "VERIFY · CONFIRM CONTEXT",
+      "VERIFY · EXPIRED",
+      "VERIFY · INVALID",
+      "VERIFY · ERROR"
+     ]
+    },
+    {
+     "name": "Site · Auth · Subscribe & Unsubscribe states / dark",
+     "children": [
+      "SUBSCRIBE · CONFIRM",
+      "SUBSCRIBE · CONFIRMING",
+      "SUBSCRIBE · CONFIRMED",
+      "SUBSCRIBE · EXPIRED",
+      "SUBSCRIBE · ERROR",
+      "UNSUB · CONFIRM",
+      "UNSUB · UNSUBSCRIBING",
+      "UNSUB · UNSUBSCRIBED",
+      "UNSUB · INVALID",
+      "UNSUB · ERROR"
+     ]
+    },
+    {
+     "name": "Site · Account / dark",
+     "children": [
+      "Site / GNB",
+      "acards",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Account · Team / dark",
+     "children": [
+      "Site / GNB",
+      "cards",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Account · Delete states / dark",
+     "children": [
+      "DELETE · CONFIRM",
+      "DELETE · DELETING",
+      "DELETE · DELETED",
+      "DELETE · EXPIRED",
+      "DELETE · ERROR"
+     ]
+    },
+    {
+     "name": "Site · Connect & Connect-app states / dark",
+     "children": [
+      "CONNECT · LOAD",
+      "CONNECT · ASK",
+      "CONNECT · LOGIN",
+      "CONNECT · DONE",
+      "CONNECT · ERROR",
+      "CONNECT-APP · LOAD",
+      "CONNECT-APP · ASK",
+      "CONNECT-APP · LOGIN",
+      "CONNECT-APP · DONE",
+      "CONNECT-APP · MANUAL",
+      "CONNECT-APP · ERROR"
+     ]
+    },
+    {
+     "name": "Site · 404 / dark (신설)",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "body",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Service states / dark (신설: 429 · unavailable · signed-out)",
+     "children": [
+      "429 · RATE LIMITED",
+      "WEB GRAPH UNAVAILABLE",
+      "ACCOUNT · SIGNED OUT"
+     ]
+    },
+    {
+     "name": "Site · Mobile GNB drawer / dark (신설)",
+     "children": [
+      "gnb-mobile",
+      "drawer"
+     ]
+    },
+    {
+     "name": "Site · Landing / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "app-mockup (always dark)",
+      "how",
+      "mcp",
+      "sync",
+      "packs",
+      "features",
+      "vows-wrap",
+      "fin",
+      "newsletter",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Download / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "platforms",
+      "assure",
+      "firstrun",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Pricing / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "tiers",
+      "note",
+      "faq",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Community / dark",
+     "children": [
+      "Site / PageBackground",
+      "Site / GNB",
+      "hero",
+      "toolbar",
+      "grid",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Site · Account · Team · Community states / dark (신설)",
+     "children": [
+      "ACCOUNT · KEY CREATED",
+      "ACCOUNT · USERNAME TAKEN",
+      "TEAM · INVITED",
+      "TEAM · NO TEAMS",
+      "TEAM · SEAT FULL",
+      "COMMUNITY · LOADING",
+      "COMMUNITY · EMPTY",
+      "COMMUNITY · NO MATCH",
+      "COMMUNITY · ERROR"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
+  },
+  "12 · Docs Screens": {
+   "frames": [
+    {
+     "name": "Docs · Overview / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Quickstart / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · What to add / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Import / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · View / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Search / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Packs & community / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Shortcuts / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · MCP Setup / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · MCP Tools / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · CLI Reference / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md What / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Generate / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Spec / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Validate / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · MCP Sign-in / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Hosts / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · OpenClaw / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Roles / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Packs / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · One graph / dark",
+     "children": [
+      "Site / GNB",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    }
+   ],
+   "components": [],
+   "variants": {}
   }
  }
 }
