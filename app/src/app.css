@@ -1152,19 +1152,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .success-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-4, 1rem); flex-wrap: wrap; justify-content: center; }
 .success-stage .diag { font-size: .72rem; word-break: break-all; opacity: .75; margin-top: .4rem; }
 
-/* ── Packs — 토글 제거, 의도별 섹션 카드(가져오기/공유/커뮤니티/백업). ── */
-.pack-card {
-  max-width: none; margin: 0 0 var(--space-4, 1rem);
-  border: 1px solid hsl(var(--border)); border-radius: .75rem;
-  background: hsl(var(--card) / .5); padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
-}
-#pack-import.pack-card { padding-bottom: var(--space-2, .5rem); }   /* 드롭존 자체 여백 보유 */
-.pack-h { margin: 0; font-size: var(--fs-base); color: hsl(var(--foreground)); }
-.pack-desc { margin: .2rem 0 var(--space-3, .75rem); font-size: var(--fs-sm); }
-.pack-note { margin: var(--space-3, .75rem) 0 0; font-size: var(--fs-sm); }
-.pack-arealink { color: hsl(var(--primary)); text-decoration: none; font-size: var(--fs-sm); }
-.pack-arealink:hover { text-decoration: underline; color: hsl(var(--foreground)); }
-.pack-row { display: flex; align-items: end; gap: var(--space-3, .75rem); flex-wrap: wrap; }
+/* ── 팩 — 표면이 사라지고 남은 것(P15). 섹션 카드 규칙 일곱(`.pack-card`·`.pack-h`·
+      `.pack-desc`·`.pack-note`·`.pack-arealink`·`.pack-row`·`#pack-import`)은 그 표면
+      말고 쓰는 데가 없어 함께 지웠다. 여기 남은 셋은 지금도 붙는 자리가 있다:
+      `.pack-field` 는 시트의 커뮤니티 게시 폼, 나머지 둘은 Tools 공유 탭의 백업 링크. ── */
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
 .pack-field select { min-width: 12rem; }   /* 모양은 공용 select 규칙 */
 /* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거

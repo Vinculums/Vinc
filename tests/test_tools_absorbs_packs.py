@@ -97,6 +97,41 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertRegex(pub, r'code\s*===\s*"username_required"', "핸들 오류를 안 가른다")
         self.assertIn("publishNeedHandle", pub, "핸들 안내 문구가 없다")
 
+    # ── 표면을 지우면서 조용히 깨지는 것 둘 ────────────────────────────────
+    def test_숫자_단축키가_표면_수를_따라간다(self):
+        """`"1"`~`"3"` 리터럴이 박혀 있었다. 표면이 둘로 줄면 3 을 눌러 `#undefined`
+        로 가는데, 문자열 비교라 타입이 아무 말도 안 하고 게이트도 이 자리를 안 본다.
+        표면 수가 다시 바뀌어도 같은 일이 나므로 상한을 `ORDER` 에 맨다."""
+        main = (APP / "main.ts").read_text(encoding="utf-8")
+        self.assertIn("ORDER.length", main, "단축키 상한이 표면 목록에서 안 온다")
+        self.assertNotRegex(main, r'e\.key\s*>=\s*"1"',
+                            "숫자 단축키가 아직 리터럴 범위로 잘려 있다")
+
+    def test_옛_주소가_죽지_않는다(self):
+        """`#packs`·`#intake` 는 이미 밖에 나가 있는 주소다. 표면만 지우면 링크가
+        기본 화면으로 조용히 떨어지고, 그 사람이 찾던 것이 어디 갔는지는 화면 어디에도
+        없다. `ALIAS` 가 받고 `ALIAS_TOOLS` 가 그 갈래를 연다."""
+        main = (APP / "main.ts").read_text(encoding="utf-8")
+        # ⚠ 두 표를 **따로** 잘라야 한다. `ALIAS_TOOLS` 까지 한 덩어리로 보면 별칭을
+        # 지워도 뒤 표의 같은 키가 정규식을 만족시켜 초록이었다(변이로 실측).
+        alias = main[main.index("const ALIAS:"):main.index("const ALIAS_TOOLS:")]
+        tools = main[main.index("const ALIAS_TOOLS:"):main.index("const surfaceEl")]
+        for old in ("packs", "intake"):
+            with self.subTest(hash=old):
+                self.assertRegex(alias, r"\b" + old + r':\s*"\w+"', f"#{old} 를 아무도 안 받는다")
+                self.assertRegex(tools, r"\b" + old + r':\s*"(import|share)"',
+                                 f"#{old} 가 Tools 를 안 연다")
+        self.assertIn("m.openTools(ALIAS_TOOLS[rawHead])", main,
+                      "라우터가 ALIAS_TOOLS 를 안 쓴다")
+
+    def test_지운_표면이_트리에_남아_있지_않다(self):
+        """반쯤 지우면 죽은 코드가 살아 있는 화면처럼 읽힌다."""
+        self.assertFalse((APP / "surfaces" / "packs.ts").exists(), "packs.ts 가 남아 있다")
+        hits = [f"{p.name}:{i}" for p in sorted(APP.rglob("*.ts"))
+                for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+                if 'location.hash = "#packs"' in line or "renderPacks" in line]
+        self.assertEqual([], hits, "#packs 로 보내는 자리가 남아 있다")
+
     # ── Tools 자체가 도달 가능한가 ─────────────────────────────────────────
     def test_Tools_를_여는_자리가_앱에_남아_있다(self):
         """이 파일의 나머지 전부가 Tools 안을 재는 것이라, Tools 를 여는 손잡이가

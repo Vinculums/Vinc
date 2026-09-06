@@ -3,7 +3,6 @@ import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
-import { renderPacks } from "./surfaces/packs";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
@@ -15,22 +14,29 @@ import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { initSegMotion, wireScrimDismiss } from "./components";
 
-// 표면 3종: View / Search(+Records) / Packs(+Intake).
-type Surface = "view" | "search" | "packs";
+// 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
+// 갔다(P15) — 다섯 기능이 전부 거기 산다.
+type Surface = "view" | "search";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
   view: renderView,
   search: renderSearch,
-  packs: renderPacks,
 };
-const ORDER: Surface[] = ["view", "search", "packs"];
+const ORDER: Surface[] = ["view", "search"];
 // 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
 // 이지만 사용자에게는 `Home` 이다 — 발주자 지시 2026-07-27.
 const SURFACE_LABEL: Record<Surface, string> = {
-  view: COPY.ui.topbar.home, search: "Search", packs: "Packs",
+  view: COPY.ui.topbar.home, search: "Search",
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
 // `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15) — 무기한 유지.
-const ALIAS: Record<string, Surface> = { intake: "packs", records: "search", atlas: "view" };
+const ALIAS: Record<string, Surface> = {
+  intake: "view", packs: "view", records: "search", atlas: "view",
+};
+// 옛 주소가 **무엇을 찾아 왔는지**. `#packs` 는 이미 밖에 나가 있는 주소라 표면이
+// 사라졌다고 링크까지 죽이지 않는다. 그런데 첫 화면으로 보내기만 하면 지도가 뜰 뿐이라,
+// 백업이나 공유를 찾아 온 사람은 그것이 어디로 갔는지 알 길이 없다 — 그래서 그 갈래의
+// Tools 를 함께 연다. 나머지 별칭(`atlas`·`records`)은 가리키는 표면이 그대로 있어 없다.
+const ALIAS_TOOLS: Record<string, "import" | "share"> = { intake: "import", packs: "share" };
 
 const surfaceEl = document.getElementById("surface")!;
 const topbar = document.getElementById("topbar")!;
@@ -100,6 +106,9 @@ async function route() {
     // 읽힌다). intake·records 는 하위경로가 없던 별칭이라 이 차이가 드러나지 않았다.
     const rest = location.hash.replace(/^#[^/]*/, "");
     location.hash = `#${ALIAS[rawHead]}${rest}`;
+    if (rawHead in ALIAS_TOOLS) {
+      void import("./tools").then((m) => m.openTools(ALIAS_TOOLS[rawHead]));
+    }
     return;                                                          // hashchange → 재진입
   }
   const s = current();
@@ -162,8 +171,12 @@ const COMMANDS: Cmd[] = [
     label: COPY.ui.palette.goTo(SURFACE_LABEL[s]), hint: `${i + 1}`,
     run: () => { location.hash = `#${s}`; },
   })),
-  { label: COPY.ui.palette.ingest, hint: "Packs", run: () => { location.hash = "#packs"; } },
-  { label: COPY.ui.palette.share, hint: "Packs", run: () => { location.hash = "#packs"; } },
+  // 여태 이 둘은 `#packs` 로 보냈다. 표면이 사라졌으니 이제 직접 그 갈래를 연다 —
+  // 별칭을 한 번 거치게 두면 팔레트가 주소창을 흔들고 화면이 한 번 갈아엎힌다.
+  { label: COPY.ui.palette.ingest, hint: COPY.ui.tools.title,
+    run: () => void import("./tools").then((m) => m.openTools("import")) },
+  { label: COPY.ui.palette.share, hint: COPY.ui.tools.title,
+    run: () => void import("./tools").then((m) => m.openTools("share")) },
   { label: COPY.ui.palette.settings, hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
 ];
 
@@ -212,7 +225,8 @@ async function openCheatsheet() {
   const { openSheet } = await import("./components");
   const sheet = openSheet({ title: COPY.ui.palette.keyboard });
   sheet.body.innerHTML =
-    [["1–3", COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
+    // 표 안의 범위도 표면 수에서 나온다 — 손으로 적으면 위 단축키와 갈라진다.
+    [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
      ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
      ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
       .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
@@ -227,7 +241,11 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); openPalette(); return;
   }
   if (inField) return;
-  if (e.key >= "1" && e.key <= "3") location.hash = `#${ORDER[Number(e.key) - 1]}`;
+  // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가
+  // 줄어드는 순간 조용히 틀리는 종류다 — 3 을 누르면 `#undefined` 로 간다. 타입은
+  // 문자열 비교라 아무 말도 안 하고, 게이트도 이 자리를 안 본다.
+  const n = Number(e.key);
+  if (n >= 1 && n <= ORDER.length) location.hash = `#${ORDER[n - 1]}`;
   // `[`(레일 접기)는 레일과 함께 사라졌다(D56) — 상단 바는 접을 것이 없다.
   if (e.key === "?") void openCheatsheet();
   if (e.key === "Escape") palette.hidden = true;
