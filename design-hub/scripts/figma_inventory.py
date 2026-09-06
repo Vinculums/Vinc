@@ -30,7 +30,8 @@ Figma 에 아예 없었다. 그때까지 이 칸은 계획서에 "대조 안 됨
 라이브 덤프는 `imports/figma-inventory.json` 이고 에이전트가 `use_figma` 로 뜬다:
 
 ```js
-const want = ["Homepage", "Homepage(Docs)", "App(Desktop)", "Design System(Homepage)", "Design System(App)"];
+const want = ["01 · Foundations", "02 · App Components", "04 · Surfaces", "05 · Overlays", "06 · States",
+              "08 · Reference", "10 · Site Components", "11 · Site Screens", "12 · Docs Screens"];   // 2026-09-06 구조
 const pages = {};
 for (const p of figma.root.children) {            // ⚠ 페이지 전환은 호출당 한 번뿐이라
   if (!want.includes(p.name)) continue;           //    이 루프는 페이지별로 나눠 돌린다
@@ -42,7 +43,7 @@ const frames = page.children.filter(n => n.type !== "COMPONENT" && n.type !== "C
   .map(n => ({ name: n.name, children: (n.children || []).map(c => c.name) }));
 const sets = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] })
   .filter(n => !(n.parent && n.parent.type === "COMPONENT_SET"));
-const variants = {};                              // Design System(App) 만 쓴다
+const variants = {};                              // 02 · App Components 만 쓴다
 for (const n of sets)
   if (n.type === "COMPONENT_SET") variants[n.name] = n.children.map(c => c.name);
 return { name: page.name, frames, components: sets.map(n => n.name), variants };
@@ -59,6 +60,11 @@ import re
 import sys
 
 HUB = pathlib.Path(__file__).resolve().parent.parent
+#: 앱 컴포넌트 세트가 사는 페이지. 2026-09-06 에 파일을 제품 구조대로 재편하면서
+#: `Design System(App)` 이 이 이름이 됐다(vinc.plan.figma-product-structure §2). 화면 보드는
+#: 04 · Surfaces / 05 · Overlays / 06 · States 세 페이지에 나뉘어 살지만 프레임 축은 페이지를
+#: 가리지 않고 전부 합쳐 세므로 여기 적을 것은 이 하나다.
+APP_COMPONENTS_PAGE = "02 · App Components"
 VINC = HUB.parent
 SITE = VINC.parent / "Vinc-homepage" / "site"
 APP = VINC / "app" / "src"
@@ -67,23 +73,23 @@ APP = VINC / "app" / "src"
 # 한 프레임이 여러 라우트를 담기도 한다(로그인과 환영이 한 장에 있다). 값이 None 이면
 # "코드에는 있고 Figma 에는 아직 없다"고 **선언한** 것이다.
 ROUTES = {
-    "/": "Home · Landing / dark",
-    "/404": "Home · 404 / dark (신설)",
-    "/account/": "Home · Account / dark",
-    "/account/delete/": "Home · Account · Delete states / dark",
-    "/account/team/": "Home · Account · Team / dark",
-    "/auth/verify/": "Home · Auth · Verify states / dark",
-    "/community/": "Home · Community / dark",
-    "/connect/": "Home · Connect & Connect-app states / dark",
-    "/connect-app/": "Home · Connect & Connect-app states / dark",
-    "/download/": "Home · Download / dark",
-    "/login/": "Home · Auth · Login & Welcome / dark",
-    "/welcome/": "Home · Auth · Login & Welcome / dark",
-    "/pricing/": "Home · Pricing / dark",
-    "/privacy/": "Home · Privacy / dark",
-    "/release/": "Home · Release / dark",
-    "/subscribe/confirm/": "Home · Auth · Subscribe & Unsubscribe states / dark",
-    "/unsubscribe/": "Home · Auth · Subscribe & Unsubscribe states / dark",
+    "/": "Site · Landing / dark",
+    "/404": "Site · 404 / dark (신설)",
+    "/account/": "Site · Account / dark",
+    "/account/delete/": "Site · Account · Delete states / dark",
+    "/account/team/": "Site · Account · Team / dark",
+    "/auth/verify/": "Site · Auth · Verify states / dark",
+    "/community/": "Site · Community / dark",
+    "/connect/": "Site · Connect & Connect-app states / dark",
+    "/connect-app/": "Site · Connect & Connect-app states / dark",
+    "/download/": "Site · Download / dark",
+    "/login/": "Site · Auth · Login & Welcome / dark",
+    "/welcome/": "Site · Auth · Login & Welcome / dark",
+    "/pricing/": "Site · Pricing / dark",
+    "/privacy/": "Site · Privacy / dark",
+    "/release/": "Site · Release / dark",
+    "/subscribe/confirm/": "Site · Auth · Subscribe & Unsubscribe states / dark",
+    "/unsubscribe/": "Site · Auth · Subscribe & Unsubscribe states / dark",
     "/docs/": "Docs · Overview / dark",
     "/docs/quickstart/": "Docs · Quickstart / dark",
     "/docs/use-cases/": "Docs · What to add / dark",
@@ -149,12 +155,12 @@ ROUTE_STATES = {
     # ── 단일 상태 라우트 ────────────────────────────────────────────────────
     # 읽기만 하는 정적 페이지들이다. 상태가 하나라는 것은 **주장이지 결손이 아니라서**
     # 미선언으로 두면 영영 31 이라는 수가 남는다. 실제로 하나뿐이면 하나라고 적는다.
-    "/": {"default": "Home · Landing / dark"},
-    "/404": {"default": "Home · 404 / dark (신설)"},
-    "/pricing/": {"default": "Home · Pricing / dark"},
-    "/privacy/": {"default": "Home · Privacy / dark"},
-    "/release/": {"default": "Home · Release / dark"},
-    "/download/": {"default": "Home · Download / dark"},
+    "/": {"default": "Site · Landing / dark"},
+    "/404": {"default": "Site · 404 / dark (신설)"},
+    "/pricing/": {"default": "Site · Pricing / dark"},
+    "/privacy/": {"default": "Site · Privacy / dark"},
+    "/release/": {"default": "Site · Release / dark"},
+    "/download/": {"default": "Site · Download / dark"},
     "/docs/": {"default": "Docs · Overview / dark"},
     "/docs/quickstart/": {"default": "Docs · Quickstart / dark"},
     "/docs/use-cases/": {"default": "Docs · What to add / dark"},
@@ -180,16 +186,16 @@ ROUTE_STATES = {
 
     # ── 상태가 더 필요한 라우트 ──────────────────────────────────────────────
     # 코드에 상태 분기가 실재하는데 Figma 에 기본 화면만 있다. 결손으로 **선언**한다.
-    "/account/": {"default": "Home · Account / dark",
+    "/account/": {"default": "Site · Account / dark",
                   "signed-out": "ACCOUNT · SIGNED OUT",       # Service states 보드에 있다
                   "rate-limited": "429 · RATE LIMITED",
                   "graph-unavailable": "WEB GRAPH UNAVAILABLE",
                   "key-created": "ACCOUNT · KEY CREATED",
                   "username-taken": "ACCOUNT · USERNAME TAKEN"},
-    "/account/team/": {"default": "Home · Account · Team / dark",
+    "/account/team/": {"default": "Site · Account · Team / dark",
                        "invited": "TEAM · INVITED", "no-teams": "TEAM · NO TEAMS",
                        "seat-full": "TEAM · SEAT FULL"},
-    "/community/": {"default": "Home · Community / dark", "modal-ask": "modal-card",
+    "/community/": {"default": "Site · Community / dark", "modal-ask": "modal-card",
                     "loading": "COMMUNITY · LOADING", "empty": "COMMUNITY · EMPTY",
                     "no-match": "COMMUNITY · NO MATCH", "error": "COMMUNITY · ERROR"},
 }
@@ -249,7 +255,7 @@ APP_STATES = {
     },
     # 그래프 렌더러 넷은 화면이 아니라 **캔버스 안의 그림**이라 Node 페이지에 예시로 산다.
     "surfaces/view3d.ts": {"dark": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
-                           "light": "Graph · 3D · light"},
+                           "light": "Graph · 3D · light (matte ink, D77)"},
     "surfaces/view2d.ts": {"default": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)"},
     "surfaces/view-planar.ts": {
         "timeline": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)"},
@@ -447,7 +453,7 @@ def check_components(live: dict, mapping: dict, source: str) -> dict:
       - 표식 부패: 맵이 가리키는 코드 표식이 `app/src` 에 없다(FAIL) — 개명이 여기서 잡힌다
       - 기본값  : 코드에 고유 표식이 없는 변형(None). 결손이 아니라 정보다
     """
-    dsapp = live.get("pages", {}).get("Design System(App)", {})
+    dsapp = live.get("pages", {}).get(APP_COMPONENTS_PAGE, {})
     comps = set(dsapp.get("components", []))
     variants = dsapp.get("variants", {})
     undeclared, stale, rotten, plain, counted = [], [], [], [], 0

@@ -2,9 +2,9 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "page": "App(Desktop)",
+  "page": "04 · Surfaces, 05 · Overlays, 06 · States (the App(Desktop) boards, sorted onto three pages on 2026-09-06)",
   "exported": "2026-09-06",
-  "how": "use_figma, the JS in scripts/figma_app_copy.py's docstring. One row per distinct string.",
+  "how": "use_figma, one call per page: for every top-level board, every TEXT node's characters; sig(s) = fold h*31+codepoint mod 999983 (the same function as figma_app_copy.sig); board label = frame name without 'App · ' and ' / dark', first 22 chars; rows deduplicated by fingerprint across the three pages.",
   "shape": "[fingerprint, first 34 chars, board]. The fingerprint is over the FULL stored string; the excerpt is only so a failure can be read.",
   "why-not-the-text": "Storing the words would put a second copy of the app's copy in the repository, and the canon is app/src. A fingerprint is not a copy.",
   "note": "Machine dump. Never patch it by hand: re-run the dump."
@@ -146,21 +146,6 @@
    "View · default (canvas"
   ],
   [
-   787500,
-   "No knowledge map yet.",
-   "View · empty"
-  ],
-  [
-   812004,
-   "Add files or run a search, and the",
-   "View · empty"
-  ],
-  [
-   946210,
-   "Import files",
-   "View · empty"
-  ],
-  [
    870708,
    "Options",
    "View · lens panel (Opt"
@@ -261,36 +246,6 @@
    "View · lens panel (Opt"
   ],
   [
-   941772,
-   "Top right",
-   "View · coachmark & las"
-  ],
-  [
-   310146,
-   "switch how you look at the map, an",
-   "View · coachmark & las"
-  ],
-  [
-   881906,
-   "Right-click a node",
-   "View · coachmark & las"
-  ],
-  [
-   944761,
-   "open it, trace from it, or share j",
-   "View · coachmark & las"
-  ],
-  [
-   706777,
-   "Got it",
-   "View · coachmark & las"
-  ],
-  [
-   601994,
-   "Share as a pack (7)",
-   "View · coachmark & las"
-  ],
-  [
    679708,
    "Node detail",
    "View · node detail + r"
@@ -331,11 +286,6 @@
    "View · node detail + r"
   ],
   [
-   762171,
-   "Trace from here",
-   "View · node detail + r"
-  ],
-  [
    848702,
    "Share",
    "View · node detail + r"
@@ -371,18 +321,8 @@
    "View · node detail + r"
   ],
   [
-   577145,
-   "Open the full document",
-   "View · node detail + r"
-  ],
-  [
    286144,
    "⋮⋮",
-   "View · node detail + r"
-  ],
-  [
-   277192,
-   "Related nodes",
    "View · node detail + r"
   ],
   [
@@ -551,41 +491,6 @@
    "Search · results"
   ],
   [
-   670481,
-   "hypergraph",
-   "Search · no results + "
-  ],
-  [
-   100920,
-   "Updating the meaning index: keywor",
-   "Search · no results + "
-  ],
-  [
-   789519,
-   "No results for 'hypergraph'. Try a",
-   "Search · no results + "
-  ],
-  [
-   654197,
-   "Open in View",
-   "Search · no results + "
-  ],
-  [
-   910322,
-   "Search all your documents, by mean",
-   "Search · error + brows"
-  ],
-  [
-   140049,
-   "△ Search couldn't run. Retry anyti",
-   "Search · error + brows"
-  ],
-  [
-   130866,
-   "All topics",
-   "Search · error + brows"
-  ],
-  [
    467910,
    "What is gauge symmetry",
    "Ask · answer card"
@@ -618,6 +523,11 @@
   [
    195576,
    "3 related nodes · 8 linked · 2 att",
+   "Ask · answer card"
+  ],
+  [
+   654197,
+   "Open in View",
    "Ask · answer card"
   ],
   [
@@ -736,104 +646,34 @@
    "Packs (with Intake dro"
   ],
   [
-   265037,
-   "INGESTING (42:5)",
-   "Intake · states (Inges"
+   605224,
+   "Sign in",
+   "Web skin (GNB attached"
   ],
   [
-   275792,
-   "Importing…",
-   "Intake · states (Inges"
+   283018,
+   "Web app",
+   "Web skin (GNB attached"
   ],
   [
-   954258,
-   "2 / 4 processed · on your device o",
-   "Intake · states (Inges"
+   991179,
+   "Download",
+   "Web skin (GNB attached"
   ],
   [
-   745329,
-   "field-notes.md",
-   "Intake · states (Inges"
+   305331,
+   "Pricing",
+   "Web skin (GNB attached"
   ],
   [
-   136004,
-   "Done",
-   "Intake · states (Inges"
+   663243,
+   "Community",
+   "Web skin (GNB attached"
   ],
   [
-   285964,
-   "qft-notes.md",
-   "Intake · states (Inges"
-  ],
-  [
-   655627,
-   "trade-history.pdf",
-   "Intake · states (Inges"
-  ],
-  [
-   13881,
-   "Linking…",
-   "Intake · states (Inges"
-  ],
-  [
-   941597,
-   "sketches.txt",
-   "Intake · states (Inges"
-  ],
-  [
-   739320,
-   "Waiting",
-   "Intake · states (Inges"
-  ],
-  [
-   941077,
-   "SUCCESS (42:7)",
-   "Intake · states (Inges"
-  ],
-  [
-   463294,
-   "Imported 4 files: 18 concepts, 32 ",
-   "Intake · states (Inges"
-  ],
-  [
-   145264,
-   "Added 4 documents, kept whole and ",
-   "Intake · states (Inges"
-  ],
-  [
-   443966,
-   "Newly linked concepts are now in y",
-   "Intake · states (Inges"
-  ],
-  [
-   973615,
-   "12 concept candidates found · Appl",
-   "Intake · states (Inges"
-  ],
-  [
-   70578,
-   "Add more",
-   "Intake · states (Inges"
-  ],
-  [
-   248266,
-   "ERROR",
-   "Intake · states (Inges"
-  ],
-  [
-   9093,
-   "△ Couldn't read trade-history.pdf.",
-   "Intake · states (Inges"
-  ],
-  [
-   541022,
-   "trade-history.pdf is password prot",
-   "Intake · states (Inges"
-  ],
-  [
-   224728,
-   "진단: read_failed · v0.7.4+a1b2c3 co",
-   "Intake · states (Inges"
+   135677,
+   "Docs",
+   "Web skin (GNB attached"
   ],
   [
    593171,
@@ -1071,56 +911,6 @@
    "Settings · Connections"
   ],
   [
-   376276,
-   "NOT CONNECTED",
-   "Settings · device flow"
-  ],
-  [
-   52646,
-   "WAITING",
-   "Settings · device flow"
-  ],
-  [
-   940916,
-   "Waiting for approval in your brows",
-   "Settings · device flow"
-  ],
-  [
-   811482,
-   "CONNECTED",
-   "Settings · device flow"
-  ],
-  [
-   781142,
-   "Connected · @jade_kim",
-   "Settings · device flow"
-  ],
-  [
-   319708,
-   "Removes the key from this machine.",
-   "Settings · device flow"
-  ],
-  [
-   341887,
-   "EXPIRED",
-   "Settings · device flow"
-  ],
-  [
-   414992,
-   "The request expired. Try again.",
-   "Settings · device flow"
-  ],
-  [
-   354543,
-   "FAILED",
-   "Settings · device flow"
-  ],
-  [
-   104058,
-   "Connection didn't complete",
-   "Settings · device flow"
-  ],
-  [
    258877,
    "SHARE AS A PACK",
    "Overlays 1 · sheets (S"
@@ -1186,11 +976,6 @@
    "Overlays 1 · sheets (S"
   ],
   [
-   192607,
-   "Where should this go?",
-   "Overlays 1 · sheets (S"
-  ],
-  [
    644059,
    "Same pack, different destination. ",
    "Overlays 1 · sheets (S"
@@ -1203,21 +988,6 @@
   [
    613881,
    "Copy into your personal graph. The",
-   "Overlays 1 · sheets (S"
-  ],
-  [
-   410814,
-   "Team space",
-   "Overlays 1 · sheets (S"
-  ],
-  [
-   189623,
-   "Copy into the team graph. Everyone",
-   "Overlays 1 · sheets (S"
-  ],
-  [
-   663243,
-   "Community",
    "Overlays 1 · sheets (S"
   ],
   [
@@ -1531,6 +1301,11 @@
    "Overlays 2 · Tools + G"
   ],
   [
+   136004,
+   "Done",
+   "Overlays 2 · Tools + G"
+  ],
+  [
    519836,
    "COMMAND PALETTE",
    "Overlays 3 · palette +"
@@ -1601,8 +1376,8 @@
    "Overlays 3 · palette +"
   ],
   [
-   319239,
-   "Switch how you look at the map",
+   40661,
+   "View and legend",
    "Overlays 3 · palette +"
   ],
   [
@@ -1714,31 +1489,6 @@
    63,
    "?",
    "Overlays 3 · palette +"
-  ],
-  [
-   605224,
-   "Sign in",
-   "Web skin (GNB attached"
-  ],
-  [
-   283018,
-   "Web app",
-   "Web skin (GNB attached"
-  ],
-  [
-   991179,
-   "Download",
-   "Web skin (GNB attached"
-  ],
-  [
-   305331,
-   "Pricing",
-   "Web skin (GNB attached"
-  ],
-  [
-   135677,
-   "Docs",
-   "Web skin (GNB attached"
   ],
   [
    963180,
@@ -1866,6 +1616,11 @@
    "Overlays 4 · first run"
   ],
   [
+   130866,
+   "All topics",
+   "Overlays 4 · first run"
+  ],
+  [
    58962,
    "physics · edited 2 days ago",
    "Overlays 4 · first run"
@@ -1889,6 +1644,221 @@
    433359,
    "mathematics · edited last week",
    "Overlays 4 · first run"
+  ],
+  [
+   787500,
+   "No knowledge map yet.",
+   "View · empty"
+  ],
+  [
+   812004,
+   "Add files or run a search, and the",
+   "View · empty"
+  ],
+  [
+   946210,
+   "Import files",
+   "View · empty"
+  ],
+  [
+   941772,
+   "Top right",
+   "View · coachmark & las"
+  ],
+  [
+   310146,
+   "switch how you look at the map, an",
+   "View · coachmark & las"
+  ],
+  [
+   881906,
+   "Right-click a node",
+   "View · coachmark & las"
+  ],
+  [
+   944761,
+   "open it, trace from it, or share j",
+   "View · coachmark & las"
+  ],
+  [
+   706777,
+   "Got it",
+   "View · coachmark & las"
+  ],
+  [
+   601994,
+   "Share as a pack (7)",
+   "View · coachmark & las"
+  ],
+  [
+   670481,
+   "hypergraph",
+   "Search · no results + "
+  ],
+  [
+   100920,
+   "Updating the meaning index: keywor",
+   "Search · no results + "
+  ],
+  [
+   789519,
+   "No results for 'hypergraph'. Try a",
+   "Search · no results + "
+  ],
+  [
+   910322,
+   "Search all your documents, by mean",
+   "Search · error + brows"
+  ],
+  [
+   140049,
+   "△ Search couldn't run. Retry anyti",
+   "Search · error + brows"
+  ],
+  [
+   265037,
+   "INGESTING (42:5)",
+   "Intake · states (Inges"
+  ],
+  [
+   275792,
+   "Importing…",
+   "Intake · states (Inges"
+  ],
+  [
+   954258,
+   "2 / 4 processed · on your device o",
+   "Intake · states (Inges"
+  ],
+  [
+   745329,
+   "field-notes.md",
+   "Intake · states (Inges"
+  ],
+  [
+   285964,
+   "qft-notes.md",
+   "Intake · states (Inges"
+  ],
+  [
+   655627,
+   "trade-history.pdf",
+   "Intake · states (Inges"
+  ],
+  [
+   13881,
+   "Linking…",
+   "Intake · states (Inges"
+  ],
+  [
+   941597,
+   "sketches.txt",
+   "Intake · states (Inges"
+  ],
+  [
+   739320,
+   "Waiting",
+   "Intake · states (Inges"
+  ],
+  [
+   941077,
+   "SUCCESS (42:7)",
+   "Intake · states (Inges"
+  ],
+  [
+   463294,
+   "Imported 4 files: 18 concepts, 32 ",
+   "Intake · states (Inges"
+  ],
+  [
+   145264,
+   "Added 4 documents, kept whole and ",
+   "Intake · states (Inges"
+  ],
+  [
+   443966,
+   "Newly linked concepts are now in y",
+   "Intake · states (Inges"
+  ],
+  [
+   973615,
+   "12 concept candidates found · Appl",
+   "Intake · states (Inges"
+  ],
+  [
+   70578,
+   "Add more",
+   "Intake · states (Inges"
+  ],
+  [
+   248266,
+   "ERROR",
+   "Intake · states (Inges"
+  ],
+  [
+   9093,
+   "△ Couldn't read trade-history.pdf.",
+   "Intake · states (Inges"
+  ],
+  [
+   541022,
+   "trade-history.pdf is password prot",
+   "Intake · states (Inges"
+  ],
+  [
+   224728,
+   "진단: read_failed · v0.7.4+a1b2c3 co",
+   "Intake · states (Inges"
+  ],
+  [
+   376276,
+   "NOT CONNECTED",
+   "Settings · device flow"
+  ],
+  [
+   52646,
+   "WAITING",
+   "Settings · device flow"
+  ],
+  [
+   940916,
+   "Waiting for approval in your brows",
+   "Settings · device flow"
+  ],
+  [
+   811482,
+   "CONNECTED",
+   "Settings · device flow"
+  ],
+  [
+   781142,
+   "Connected · @jade_kim",
+   "Settings · device flow"
+  ],
+  [
+   319708,
+   "Removes the key from this machine.",
+   "Settings · device flow"
+  ],
+  [
+   341887,
+   "EXPIRED",
+   "Settings · device flow"
+  ],
+  [
+   414992,
+   "The request expired. Try again.",
+   "Settings · device flow"
+  ],
+  [
+   354543,
+   "FAILED",
+   "Settings · device flow"
+  ],
+  [
+   104058,
+   "Connection didn't complete",
+   "Settings · device flow"
   ]
  ]
 }
