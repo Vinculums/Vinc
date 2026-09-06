@@ -10,6 +10,60 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /**
+ * 진행 표시 — 공유 경로의 **모든 기다림이 이 한 벌**을 쓴다(팩 준비 · 스페이스로
+ * 보내기 · 파일로 받기 · 커뮤니티 게시). 전에는 자리마다 `<p class="hint">` 한 줄이라,
+ * 같은 시트 안에서 같은 일을 기다리는데 모양이 자리마다 달랐다.
+ *
+ * **게이지는 불확정(indeterminate)이다. 단계를 못 만들어서가 아니라 없는 단계를
+ * 지어내지 않기 위해서다.** 다만 네 자리가 기다리는 것은 한 모양이 아니라 **셋**이다:
+ *
+ *   1. `call()`(`api.ts:147`) — `api.share` · `api.importPack` 이 지난다. `fetch`
+ *      하나와 `res.json()` 하나뿐이라 중간 보고가 물리적으로 없다.
+ *   2. `communityPost()`(`api.ts:465`) — `community.publish` 는 `call()` 을 **안
+ *      지난다**. 별개의 `fetch` 다. 다른 함수지만 역시 요청 하나 · 응답 하나다.
+ *   3. `toBytes()`(`packfile.ts:54`) — 파일로 받기는 `api.ts` 를 **아예 안 탄다**.
+ *      그리고 여기엔 셀 수 있는 일이 있다: `for (const [name, obj] of files)` 가
+ *      파일마다 `await deflateRaw` 를 돌고, 총수를 `files.length`(매니페스트 ·
+ *      프래그먼트 · 문서 N)로 **미리 안다**.
+ *
+ * 3번을 그래도 안 세는 이유는 셀 수 없어서가 아니다. 그 루프가 이 경로의 기다림
+ * **전부**라(뒤는 Blob 생성과 `a.click()` 뿐이다) 퍼센트를 그리면 막대가 100으로
+ * 달려가 곧바로 사라진다. 그것을 보여주려면 `toBytes` 에 콜백을 뚫어야 하는데,
+ * 호출부는 `downloadPack` 하나뿐이면서(전수 확인) 팩 규격 파일이 시트의 표시 사정을
+ * 알게 되는 대가는 그 한 자리보다 크다. 1·2번은 애초에 셀 것이 없다.
+ *
+ * 퍼센트를 시계로 지어내는 쪽은 참조 원본(커뮤니티 페이지)이 실제로 그렇게 한다:
+ * 요청은 하나인데 `setInterval(…, 550)` 이 막대를 8 → 32 → 56 → 80% 로 밀고, 응답이
+ * 오면 100% 로 점프한다. 그 수치는 서버가 어디까지 갔는지와 아무 관계가 없다.
+ *
+ * **`role="status"` 는 이 마크업에 없다.** 라이브 영역은 내용이 바뀌기 **전에** DOM 에
+ * 서 있어야 읽히는데 이것은 내용과 함께 삽입되므로, 자기 자신에 달면 아무것도 알리지
+ * 못한다. 붙일 상주 자리가 있는 곳은 커뮤니티 게시뿐이라 거기만 붙였다(`#pub-progress`
+ * 가 폼과 함께 먼저 서 있다). 나머지 셋은 `sheet.body` 를 통째로 갈아치우므로 **알리는
+ * 것이 없다.** 상주 자리를 만들려면 `openSheet` 를 고쳐야 하는데(시트 20 곳 공용)
+ * 그쪽엔 더 앞선 결함이 있다 — 시트를 열 때 초점을 시트 안으로 옮기지 않는다. 초점이
+ * 뒤의 버튼에 남아 있는 채로 알림만 먼저 다는 것은 순서가 거꾸로다.
+ *
+ * 라벨은 **한 번만** 싣는다. 보이는 `<p>` 를 `aria-labelledby` 로 가리킨다 — 전에는
+ * `aria-label` 에 같은 문구를 한 벌 더 실어 두 번 읽혔다. `aria-valuenow` 는 없다.
+ * 그것이 불확정의 정의다.
+ *
+ * 옮겨 온 것은 **모양**이다(4px · radius 2px · `--muted` 트랙 위 `--primary` 채움).
+ * 움직임은 지도의 `.view-busy` 에서 가져왔다 — 앱 안에서 "바쁨"이 두 가지 모양으로
+ * 읽히지 않게. 색·간격은 토큰에서만 온다(하드코딩 색은 표면 게이트가 막는다).
+ */
+function sheetProgress(label: string): string {
+  return `
+    <div class="sheet-progress">
+      <p class="hint" id="sheet-progress-label">${esc(label)}</p>
+      <div class="sheet-progress-track" role="progressbar"
+           aria-labelledby="sheet-progress-label">
+        <span></span>
+      </div>
+    </div>`;
+}
+
+/**
  * 팩 사양 표 — 나가는 것의 수치.
  *
  * **문서 수는 장식이 아니라 계측기다.** 문서는 고르는 것이 아니라 담긴 개념을
@@ -50,7 +104,7 @@ export async function openShareSheet(
 ) {
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub });
-  sheet.body.innerHTML = `<p class="hint">${COPY.ui.sheet.preparing}</p>`;
+  sheet.body.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
   try {
     const pack = await api.share(cfg.owner, {
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
@@ -89,7 +143,7 @@ export async function openShareSheet(
       if (opts.into) {
         const U = COPY.ui.sheet;
         const where = opts.intoLabel || U.destTeam;
-        sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+        sheet.body.innerHTML = sheetProgress(U.destWorking);
         sheet.foot.innerHTML = "";
         void api.importPack(out, cfg.owner, opts.into).then(
           (res) => {
@@ -224,7 +278,7 @@ async function chooseDestination(
     sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
       // 커뮤니티는 자체 폼으로 이어지므로 여기서 완료 화면을 그리지 않는다.
       if (d.key === "community") { void d.run(); return; }
-      sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+      sheet.body.innerHTML = sheetProgress(U.destWorking);
       sheet.foot.innerHTML = "";
       void d.run().then(
         (landed) => {
@@ -257,7 +311,8 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
       <input id="pub-consent" type="checkbox" />
       <span class="meta">${esc(P.publishConsent)}</span>
     </label>
-    <p class="hint" id="pub-err"></p>`;
+    <p class="hint" id="pub-err"></p>
+    <div id="pub-progress" role="status"></div>`;
   sheet.foot.innerHTML = sheetActions(
     { id: "sheet-pub", label: P.publishGo },
     { id: "sheet-cancel", label: COPY.ui.common.cancel });
@@ -267,9 +322,14 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
     const desc = (sheet.body.querySelector("#pub-desc") as HTMLInputElement).value.trim();
     const ok = (sheet.body.querySelector("#pub-consent") as HTMLInputElement).checked;
     const err = sheet.body.querySelector("#pub-err")!;
+    // 진행 표시는 오류 줄과 **다른 자리**에 둔다. 실패하면 폼이 그대로 남아 다시
+    // 누를 수 있어야 하는데(다른 목적지와 달리 여기엔 사용자가 친 이름·설명이 있다),
+    // 한 자리를 돌려쓰면 실패 문구가 막대를 지우거나 막대가 문구를 지운다.
+    const prog = sheet.body.querySelector("#pub-progress")!;
     if (!name) { err.textContent = P.publishNeedName; return; }
     if (!ok) { err.textContent = P.publishNeedConsent; return; }
-    err.textContent = COPY.ui.sheet.destWorking;
+    err.textContent = "";
+    prog.innerHTML = sheetProgress(COPY.ui.sheet.destWorking);
     void community.publish(name, desc, out).then(
       () => {
         sheet.body.innerHTML = `<p class="hint">${esc(
@@ -277,7 +337,7 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
         sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
         sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
       },
-      () => { err.textContent = COPY.ui.sheet.destFailed; },
+      () => { prog.innerHTML = ""; err.textContent = COPY.ui.sheet.destFailed; },
     );
   });
 }
