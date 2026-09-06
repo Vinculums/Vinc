@@ -3012,7 +3012,7 @@ def _domain_depths(concepts: dict[str, str],
     return out
 
 
-def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
+def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
     """좌측 문서 트리(D69) — 주제 → 그 주제의 문서, **개념 계층 깊이순**.
 
     문서는 주제 열을 갖지 않으므로(`_DocMeta`, D45) 주제도 착지 노드도 전부
@@ -3029,6 +3029,15 @@ def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
     - 개념은 있는데 문서가 없는 주제도 **빈 그룹으로 싣는다**(주제가 목록에서
       사라지면 이름을 바꾸거나 문서를 붙일 방법이 없어진다).
     - 언급이 하나도 없는 문서는 `unfiled` — 없는 주제를 지어내지 않는다(D45-V).
+
+    ``nodes=True`` 면 주제마다 ``nodes: [{id, title, kind, depth}]`` 를 함께 싣는다
+    (좌측 트리의 노드 갈래). **기본은 False 이고 그때 응답은 종전과 글자까지 같다** —
+    제목은 문서보다 수가 훨씬 많고(개념 1400 대 문서 215 인 그래프가 실재한다) 이
+    응답은 웹에서 허브를 거치므로, 안 쓰는 화면까지 그 무게를 지게 두지 않는다.
+
+    노드 모집단은 위 ``concepts`` 수를 세는 것과 **같은 집합**이다(`_SEMANTIC_PK`,
+    즉 Concept 과 Decision). 주제 머리가 "개념 N개"라고 말하면 그 갈래에 정확히 N줄이
+    있어야 한다 — 다른 집합을 세면 화면이 스스로를 반박한다.
     """
     from api import docstore as _ds
 
@@ -3043,20 +3052,27 @@ def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
     try:
         # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
         # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
+        # 제목은 노드 갈래를 요청했을 때만 싣는다 — 안 그러면 기본 호출이 그래프
+        # 전체의 제목을 끌고 온다(이 응답이 웹에서는 허브를 건넌다).
+        title_col = ", c.title AS title" if nodes else ""
         crows = store.run(
             " UNION ALL ".join(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain"
+                f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
+                f"'{lbl.lower()}' AS kind"
                 for lbl, pk in _SEMANTIC_PK.items()),
             {"owner": owner}) or []
         by_domain: dict[str, dict[str, str]] = {}
         cdom: dict[str, str] = {}
+        cmeta: dict[str, tuple[str, str]] = {}     # id → (title, kind), nodes=True 일 때만
         for r in crows:
             cid, dom = r.get("id") or "", (r.get("domain") or "").strip()
             if not cid or not dom:
                 continue
             cdom[cid] = dom
             by_domain.setdefault(dom, {})[cid] = dom
+            if nodes:
+                cmeta[cid] = (r.get("title") or "", r.get("kind") or "concept")
 
         # 방향 엣지 2종을 한 번에. 양 끝 owner 가드(SEC-1).
         erows = store.run(
@@ -3099,8 +3115,18 @@ def nav_tree(*, owner: str, cfg=None, store=None) -> dict:
         for dom in sorted(groups):
             rows = sorted(groups[dom],
                           key=lambda r: (r["depth"], r["title"], r["doc_id"]))
-            out.append({"domain": dom, "concepts": len(by_domain.get(dom, {})),
-                        "docs": rows})
+            g = {"domain": dom, "concepts": len(by_domain.get(dom, {})),
+                 "docs": rows}
+            if nodes:
+                # 문서와 **같은 정렬 규칙**(깊이 → 제목 → id). 두 갈래를 오갈 때
+                # 줄 순서의 뜻이 달라지면 토글이 목록을 뒤섞는 것으로 읽힌다.
+                g["nodes"] = sorted(
+                    ({"id": cid, "title": cmeta.get(cid, ("", ""))[0],
+                      "kind": cmeta.get(cid, ("", "concept"))[1],
+                      "depth": int(depths.get(cid, 0))}
+                     for cid in by_domain.get(dom, {})),
+                    key=lambda r: (r["depth"], r["title"], r["id"]))
+            out.append(g)
         out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
         base.update(executed=True, domains=out, unfiled=unfiled,
                     counts={"domains": len(out), "docs": len(docs),

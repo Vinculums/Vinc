@@ -249,7 +249,13 @@ export type NavDoc = {
   doc_id: string; title: string; updated_at: string;
   node_id: string; node_title: string; depth: number;
 };
-export type NavGroup = { domain: string; concepts: number; docs: NavDoc[] };
+/** 좌측 트리의 노드 갈래 한 줄. `concepts` 가 세는 것과 **같은 집합**이다
+ *  (Concept + Decision) — 머리가 말하는 수와 줄 수가 갈리면 안 된다. */
+export type NavNode = { id: string; title: string; kind: string; depth: number };
+/** `nodes` 는 `navTree(owner, {nodes:true})` 로 물었을 때만 온다. 기본 응답을
+ *  무겁게 하지 않으려는 것이다 — 개념 제목은 문서보다 수가 훨씬 많고, 웹모드에서는
+ *  이 응답이 계정 프록시를 건넌다. */
+export type NavGroup = { domain: string; concepts: number; docs: NavDoc[]; nodes?: NavNode[] };
 export type NavTreeRes = {
   executed: boolean; note?: string;
   domains?: NavGroup[];
@@ -376,7 +382,8 @@ export const api = {
              primary_concept_id?: string; primary_concept_title?: string }[];
   }> => call("/docs", { owner }),
   // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
-  navTree: (owner: string): Promise<NavTreeRes> => call("/nav-tree", { owner }),
+  navTree: (owner: string, opts?: { nodes?: boolean }): Promise<NavTreeRes> =>
+    call("/nav-tree", opts?.nodes ? { owner, nodes: 1 } : { owner }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
   // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.

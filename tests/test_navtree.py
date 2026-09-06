@@ -114,8 +114,8 @@ class NavTreeE2E(unittest.TestCase):
         return ds.put_doc(self.store, owner=owner or self.OWNER, text=body,
                           title=title)["doc_id"]
 
-    def _tree(self, owner=None):
-        res = q.nav_tree(owner=owner or self.OWNER, store=self.store)
+    def _tree(self, owner=None, nodes=False):
+        res = q.nav_tree(owner=owner or self.OWNER, store=self.store, nodes=nodes)
         self.assertTrue(res["executed"], res.get("note"))
         return res
 
@@ -185,6 +185,55 @@ class NavTreeE2E(unittest.TestCase):
         theirs = self._tree(owner="user:b")
         self.assertEqual([d["title"] for g in theirs["domains"] for d in g["docs"]],
                          ["남의 글"])
+
+    # ── 노드 갈래(nodes=True) — 좌측 트리가 문서 대신 노드를 낼 때 쓰는 목록 ──────
+    # 이 갈래의 계약은 하나로 요약된다: **주제 머리가 말하는 개념 수와 그 갈래의 줄
+    # 수가 같아야 한다.** 다른 집합을 세면 화면이 스스로를 반박한다.
+
+    def test_nodes_are_absent_unless_asked(self):
+        # 기본 응답은 종전 그대로다. 제목은 문서보다 수가 훨씬 많고 이 응답은 웹에서
+        # 허브를 건너므로, 안 쓰는 화면이 그 무게를 지면 안 된다.
+        self._concept("concept:aa", "phys")
+        self._doc("aa 를 다룬 글.", "P")
+        self.assertNotIn("nodes", self._group(self._tree(), "phys"))
+
+    def test_nodes_match_the_concept_count_and_carry_titles(self):
+        for cid, title in (("concept:aa", "에이"), ("concept:bb", "비이")):
+            self._concept(cid, "phys", title=title)
+        self._doc("aa 를 다룬 글.", "P")
+        g = self._group(self._tree(nodes=True), "phys")
+        self.assertEqual(len(g["nodes"]), g["concepts"])
+        self.assertEqual({n["title"] for n in g["nodes"]}, {"에이", "비이"})
+        self.assertEqual({n["kind"] for n in g["nodes"]}, {"concept"})
+
+    def test_nodes_sort_by_depth_then_title(self):
+        # 문서와 **같은 정렬 규칙**이라 갈래를 오가도 줄 순서의 뜻이 안 바뀐다.
+        for cid, title in (("concept:base", "지비"), ("concept:leaf", "아리"),
+                           ("concept:solo", "가나")):
+            self._concept(cid, "phys", title=title)
+        self._rel("PREREQUISITE_OF", "concept:base", "concept:leaf")
+        self._doc("base 를 다룬 글.", "P")
+        nodes = self._group(self._tree(nodes=True), "phys")["nodes"]
+        self.assertEqual([n["depth"] for n in nodes], [0, 0, 1])
+        # 같은 층에서는 제목순 — 가나(0) 지비(0) 다음에 아리(1)
+        self.assertEqual([n["title"] for n in nodes], ["가나", "지비", "아리"])
+
+    def test_nodes_are_owner_scoped(self):
+        self._concept("concept:mine", "phys", title="내것")
+        self._concept("concept:theirs", "phys", title="남것", owner="user:b")
+        self._doc("mine 를 다룬 글.", "내 글")
+        g = self._group(self._tree(nodes=True), "phys")
+        self.assertEqual([n["title"] for n in g["nodes"]], ["내것"])
+
+    def test_a_topic_with_no_documents_still_lists_its_nodes(self):
+        # 빈 주제를 존치하는 이유(문서 갈래)가 노드 갈래에서는 더 분명하다 —
+        # 문서가 없어도 노드는 있고, 그 주제는 노드 갈래의 정상 상태다.
+        self._concept("concept:lonely", "solo", title="외톨")
+        self._concept("concept:aa", "phys", title="에이")
+        self._doc("aa 를 다룬 글.", "P")
+        g = self._group(self._tree(nodes=True), "solo")
+        self.assertEqual(g["docs"], [])
+        self.assertEqual([n["title"] for n in g["nodes"]], ["외톨"])
 
     def test_cycle_in_store_terminates(self):
         # 사이클이 있어도 응답이 온다(무한 루프·타임아웃 회귀 방지).

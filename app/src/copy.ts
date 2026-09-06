@@ -282,6 +282,13 @@ const EN = {
       failed: "The list is unavailable right now.",
       retry: "Try again",
       conceptCount: (n: number) => `${n} concept${n === 1 ? "" : "s"}`,
+      // 갈래 전환(D69 안에서). 주제 줄은 그대로이고 그 아래 무엇이 걸리는지만 바뀐다 —
+      // 이 열은 여전히 문서 탐색기이지 서피스 내비가 아니다(adr-design-069).
+      modeDocs: "Documents", modeNodes: "Nodes",
+      modeDocsTip: "List the documents under each topic",
+      modeNodesTip: "List the concepts under each topic",
+      nodeTip: "Show this on the map",
+      noNodes: "No concepts in this topic yet.",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       editOnly: "No place on the map yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
@@ -1073,6 +1080,11 @@ const KO: Deck = {
       failed: "목록을 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
       retry: "다시 시도하기",
       conceptCount: (n: number) => `개념 ${n}개`,
+      modeDocs: "문서", modeNodes: "노드",
+      modeDocsTip: "주제마다 문서를 폅니다",
+      modeNodesTip: "주제마다 개념을 폅니다",
+      nodeTip: "지도에서 봅니다",
+      noNodes: "이 주제에는 아직 개념이 없습니다.",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       editOnly: "아직 지도에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",

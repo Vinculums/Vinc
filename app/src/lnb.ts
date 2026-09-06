@@ -1,11 +1,12 @@
 import { api, cfg } from "./api";
-import type { NavGroup, NavTreeRes } from "./api";
+import type { NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
  *
- *  여기 사는 것: 표면 내비(홈·검색·팩) · 주제 트리(주제 → 그 주제의 문서) · 접기.
+ *  여기 사는 것: 표면 내비(홈·검색·팩) · 주제 트리(주제 → 그 주제의 문서 또는 노드)
+ *  · 접기.
  *  D56 이 상단 바 하나로 몰아넣었던 것을 되돌린다. 되돌리는 이유는 그때와 전제가
  *  다르기 때문이다 — 이 사이드바가 싣는 것은 "표면 5개로 가는 내비"(D26 이 아이콘
  *  레일로 충분하다고 판정한 것)가 아니라 **문서 탐색기**다. Obsidian 으로 치면
@@ -28,6 +29,7 @@ type TopicPicker = (path: string, add: boolean) => void;
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
+const KEY_MODE = "vinc.shell.lnb.mode";   // 갈래: 문서 | 노드
 
 let navigate: Navigator | null = null;
 let pickTopic: TopicPicker | null = null;
@@ -38,6 +40,14 @@ let active: { domain?: string; nodeId?: string } = {};
 /** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
 let picked = new Set<string>();
 let expanded = new Set<string>();
+
+/** 주제 줄 **아래**에 무엇이 걸리는가. 주제 줄 자체는 두 갈래에서 같다 —
+ *  이것은 서피스 내비가 아니라 이 열이 무엇을 펴는지의 선택이고, 그래서
+ *  `adr-design-069`("왼쪽 열은 문서 탐색기다")를 되돌리지 않는다.
+ *
+ *  기억한다. 노드로 일하는 사람이 창을 열 때마다 문서 목록을 지나가지 않아야 한다. */
+type Mode = "docs" | "nodes";
+let mode: Mode = localStorage.getItem(KEY_MODE) === "nodes" ? "nodes" : "docs";
 let wired = false;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
@@ -102,17 +112,32 @@ export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?
   paint();
 }
 
+/** 이 응답이 노드 갈래를 그릴 수 있는가. 서버는 `nodes=1` 로 물었을 때만 싣는다. */
+const hasNodes = (t: NavTreeRes | null): boolean =>
+  !!t?.domains?.length && t.domains.some((g) => Array.isArray(g.nodes));
+
 /** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후). */
 export async function refreshLnb(): Promise<void> {
   loading = true; failed = false;
   paint();
   try {
-    tree = await api.navTree(cfg.owner);
+    // 노드 갈래일 때만 제목까지 받는다. 노드 응답은 문서까지 함께 실어 오므로
+    // 한 번 받아 두면 갈래를 도로 넘겨도 다시 부르지 않는다.
+    tree = await api.navTree(cfg.owner, { nodes: mode === "nodes" });
     failed = !tree?.executed;
   } catch {
     tree = null; failed = true;
   }
   loading = false;
+  paint();
+}
+
+/** 갈래 전환. 노드 목록이 아직 없을 때만 다시 읽는다 — 되돌아오는 길은 공짜다. */
+function setMode(next: Mode): void {
+  if (mode === next) return;
+  mode = next;
+  localStorage.setItem(KEY_MODE, next);
+  if (next === "nodes" && !hasNodes(tree)) { void refreshLnb(); return; }
   paint();
 }
 
@@ -154,6 +179,21 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
   </button>`;
 }
 
+/** 노드 한 줄. 문서 줄과 **같은 깊이 표현**을 쓴다(들여쓰기 · 잉크 · aria-level) —
+ *  두 갈래가 같은 계층을 그리는데 다르게 생기면 같은 트리로 안 읽힌다. 다른 것은
+ *  하나뿐이다: 열 문서가 없으므로 누르면 지도에서 그 노드로 간다. */
+function nodeRow(nd: NavNode, domain = ""): string {
+  const depth = Math.min(Math.max(Number(nd.depth ?? 0), 0), 8);
+  const on = active.nodeId === nd.id;
+  const ink = Math.min(depth, 2);
+  return `<button class="lnb-doc lnb-node${on ? " on" : ""}" role="treeitem"
+    aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-nodeid="${esc(nd.id)}"
+    data-dom="${esc(domain)}" style="--lvl:${depth};--ink:${ink}"
+    data-tip="${esc(COPY.ui.lnb.nodeTip)}">
+    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(nd.title || nd.id)}</span>
+  </button>`;
+}
+
 /** 주제 트리의 한 마디. `path` 가 `/nav-tree` 의 주제 문자열 통짜와 같은 값이라
  *  선택·활성 키는 그대로다 — 중첩은 **화면의 일**이고 계약은 안 바뀐다. */
 type DomNode = { seg: string; path: string; group?: NavGroup; kids: DomNode[] };
@@ -182,6 +222,8 @@ function nestGroups(groups: NavGroup[]): DomNode[] {
 }
 const subDocs = (n: DomNode): number =>
   (n.group?.docs.length || 0) + n.kids.reduce((s, k) => s + subDocs(k), 0);
+/** 갈래에 맞는 수. 주제 줄 끝의 숫자가 그 아래 펼쳐질 줄 수와 같아야 한다. */
+const subCount = (n: DomNode): number => (mode === "nodes" ? subConcepts(n) : subDocs(n));
 const subConcepts = (n: DomNode): number =>
   (n.group?.concepts || 0) + n.kids.reduce((s, k) => s + subConcepts(k), 0);
 
@@ -197,18 +239,21 @@ function groupRows(n: DomNode, level = 1): string {
       data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))} · ${esc(COPY.ui.lnb.topicTip)}">
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
       <span class="lnb-gname">${esc(n.seg)}</span>
-      <span class="lnb-gcount">${subDocs(n) || "·"}</span>
+      <span class="lnb-gcount">${subCount(n) || "·"}</span>
     </button>`;
   if (!open) return head;
   // 자식 가지가 먼저, 그다음 이 주제 자신의 문서. 순서를 뒤집으면 문서 목록 끝에
   // 가지가 붙어 "문서인 줄 알았던 것"이 사실 폴더인 상황이 된다.
   const kids = n.kids.map((k) => groupRows(k, level + 1)).join("");
-  const own = n.group?.docs.length
-    ? n.group.docs.map((d) => docRow(d, n.path)).join("")
+  const rows = mode === "nodes"
+    ? (n.group?.nodes || []).map((nd) => nodeRow(nd, n.path)).join("")
+    : (n.group?.docs || []).map((d) => docRow(d, n.path)).join("");
+  const own = rows
     // 개념만 있고 문서가 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나
     // 문서를 붙일 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
     // (자식 가지가 있으면 비어 보이지 않으므로 그 문구를 내지 않는다.)
-    : (n.kids.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`);
+    || (n.kids.length ? "" : `<p class="lnb-none hint">${
+      esc(mode === "nodes" ? COPY.ui.lnb.noNodes : COPY.ui.lnb.empty)}</p>`);
   return head + `<div class="lnb-docs" role="group">${kids}${own}</div>`;
 }
 
@@ -231,6 +276,14 @@ function paint() {
   let html = navRows();
   html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
     <span class="hint">${topicCount || "·"}</span></div>`;
+  // 갈래 칩 — 주제 줄은 그대로이고 그 아래 무엇이 걸리는지만 바뀐다. `radiogroup`
+  // 인 이유: 둘 중 하나이지 둘 다 켤 수 있는 것이 아니다.
+  html += `<div class="lnb-mode" role="radiogroup" aria-label="${esc(COPY.ui.lnb.documents)}">${
+    ([["docs", COPY.ui.lnb.modeDocs, COPY.ui.lnb.modeDocsTip],
+      ["nodes", COPY.ui.lnb.modeNodes, COPY.ui.lnb.modeNodesTip]] as const)
+      .map(([key, label, tip]) => `<button class="lnb-modechip${mode === key ? " on" : ""}"
+        type="button" role="radio" aria-checked="${mode === key}" data-mode="${key}"
+        data-tip="${esc(tip)}">${esc(label)}</button>`).join("")}</div>`;
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
   if (picked.size) {
@@ -238,6 +291,18 @@ function paint() {
       <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
       <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
     </div>`;
+  }
+  // 노드 갈래를 골랐는데 응답이 노드를 안 실어 왔다. 데스크탑에서는 사이드카가 앱과
+  // 한 벌이라 날 수 없지만 **웹모드는 다르다** — 사이트가 배포한 앱과 허브의 사이드카가
+  // 따로 올라가므로 앱이 먼저 새것일 수 있다. 그때 빈 트리를 그리면 "내 개념이
+  // 사라졌다"로 읽힌다. 갈래는 사용자가 고른 대로 두고, 못 받았다고 말한다.
+  // ⚠ 주제가 하나도 없을 때는 여기 오면 안 된다 — 그건 빈 그래프이지 못 받은 것이
+  // 아니다. 아래 빈 상태 CTA 가 그 경우를 맡는다.
+  if (mode === "nodes" && groups.length > 0 && !hasNodes(tree)) {
+    body.innerHTML = html
+      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
+      + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
+    return;
   }
   if (!groups.length && !unfiled.length) {
     html += `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`
@@ -330,6 +395,19 @@ export function mountLnb() {
   const body = $("lnb-body")!;
   body.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
+    const chip = t.closest<HTMLElement>(".lnb-modechip");
+    if (chip) { setMode(chip.dataset.mode === "nodes" ? "nodes" : "docs"); return; }
+    // 노드 줄이 문서 줄의 class 를 함께 쓰므로(같은 생김새) **먼저** 가른다.
+    const nd = t.closest<HTMLElement>(".lnb-node");
+    if (nd) {
+      const id = nd.dataset.nodeid || "";
+      if (!id) return;
+      if (navigate) navigate(id, nd.dataset.dom || "");
+      else location.hash = `#view/trace/${encodeURIComponent(id)}`;
+      active = { domain: nd.dataset.dom || "", nodeId: id };
+      paint();
+      return;
+    }
     const doc = t.closest<HTMLElement>(".lnb-doc");
     if (doc) {
       void openDoc(doc.dataset.doc || "", doc.dataset.node || "", doc.dataset.dom || "");
