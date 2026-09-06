@@ -114,7 +114,6 @@ const EN = {
       intake: "Documents in, knowledge out.",
       records: "All your knowledge, in one place.",
       search: "Meaning and keywords, together.",
-      packs: "Bundle, share, merge.",
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯). 이름 변경은 내 노드의 도메인만 바꾼다.
     domains: {
@@ -934,7 +933,6 @@ const KO: Deck = {
       intake: "문서에서 지식으로",
       records: "내가 모은 지식을 한곳에",
       search: "의미와 키워드를 함께",
-      packs: "묶기 · 나누기 · 합치기",
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯).
     domains: {
