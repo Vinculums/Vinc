@@ -39,9 +39,35 @@ class TheSnapshotIsRealAndCurrent(unittest.TestCase):
         self.assertIn("pricing", prefixes)
         self.assertIn("connect", prefixes)
 
-    def test_check_passes_against_the_live_site_or_skips(self):
-        # 사이트가 없는 CI 잡에서는 건너뛰되, 있으면 실제로 0 이어야 한다.
-        self.assertEqual(fc.check(), 0)
+    def test_check_passes_when_the_site_is_here_and_says_so_when_it_is_not(self):
+        # ⚠ `check() == 0` 만 단언하면 사이트가 없는 CI 에서도 통과하고, 그건
+        #   "검사했다"가 아니라 "건너뛰었다"다. 어느 경로를 탔는지까지 단언한다.
+        import contextlib
+        import io as _io
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = fc.check()
+        out = buf.getvalue()
+        self.assertEqual(rc, 0, out)
+        if fc.SITE.exists():
+            self.assertIn("문구 대조", out)
+            self.assertIn("어긋남 0건", out)
+        else:
+            self.assertIn("SKIP", out)
+
+    def test_the_site_path_can_be_pointed_somewhere_else(self):
+        # CI 배치가 로컬과 다르다. 밖에서 지정하지 못하면 게이트는 소비 리포에서 못 돈다.
+        import importlib
+        import os
+        os.environ["VINC_SITE_DIR"] = str(pathlib.Path(__file__).parent)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "figma_copy_env", HUB / "scripts" / "figma_copy.py")
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            self.assertEqual(m.SITE, pathlib.Path(__file__).parent.resolve())
+        finally:
+            del os.environ["VINC_SITE_DIR"]
 
 
 if __name__ == "__main__":
