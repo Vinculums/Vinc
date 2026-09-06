@@ -98,7 +98,8 @@ jobs:
   changes:
     name: changes (path gate)
     # ⚠ **이 잡이 셀프호스티드로 남으면 호스티드로 옮긴 잡들이 인질이 된다.**
-    # `core-pkns` · `app` · `rust` 가 전부 `needs: changes` 다. 러너가 안 올라오면
+    # `app` 과 `rust` 가 `needs: changes` 다(`core-pkns` 는 2026-09-07 에 뗐다 — 그 잡의
+    # 주석이 이유다). 러너가 안 올라오면
     # 이 19초짜리가 큐에 남고, 그 뒤 잡들은 호스티드든 아니든 **시작조차 못 한다**
     # (#130 이 적은 24시간 만료가 여기서 전파된다). 그래서 #146 이 core 를 옮긴 것을
     # 실제로 성립시키려면 이것도 같이 나와야 한다.
@@ -115,7 +116,6 @@ jobs:
     runs-on: [self-hosted, linux, vinc-local]
     timeout-minutes: 10
     outputs:
-      python: ${{ steps.f.outputs.python }}
       app: ${{ steps.f.outputs.app }}
       rust: ${{ steps.f.outputs.rust }}
     steps:
@@ -149,8 +149,8 @@ jobs:
           #
           # 못 구하면 **켠다.** 판정이 애매할 때 이 파일이 늘 고르는 방향이다.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "not a pull_request — python·app 은 전량 실행"
-            { echo "python=true"; echo "app=true"; } >> "$GITHUB_OUTPUT"
+            echo "not a pull_request — app 은 전량 실행"
+            echo "app=true" >> "$GITHUB_OUTPUT"
             before="${{ github.event.before }}"
             ok=1
             [ -n "$before" ] || ok=0
@@ -176,7 +176,7 @@ jobs:
           # 검증이 조용히 사라지므로, 실패 방향은 언제나 "더 돌리는 쪽"이다.
           if ! files=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null) || [ -z "$files" ]; then
             echo "::warning::변경 목록을 못 구했다($BASE..$HEAD) — 전량 실행으로 붙는다"
-            { echo "python=true"; echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
+            { echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "── 변경 파일"; echo "$files"
@@ -184,12 +184,12 @@ jobs:
           # 이 워크플로 자신이 바뀌면 전부 돈다 — 조건을 고친 사람이 그 조건이 실제로
           # 무엇을 켜고 끄는지 한 번은 봐야 한다.
           if has '^\.github/workflows/ci\.yml$'; then
-            { echo "python=true"; echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
+            { echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # core-pkns 는 `pytest tests` 만 돈다(게이트 없음). 입력은 파이썬 소스와 테스트다.
-          has '^(api|store|engines|vinc_mcp|tests|scripts|packaging)/|^(verify\.py|pyproject\.toml)$' \
-            && echo "python=true" >> "$GITHUB_OUTPUT" || echo "python=false" >> "$GITHUB_OUTPUT"
+          # ⚠ **파이썬 경로 필터는 없다.** 여기 있었고, 그것이 전량 pytest 를 끄는
+          # 스위치였다 — 경위와 실측은 `core-pkns` 잡의 주석에 있다. 다시 만들지 말 것:
+          # `core`·`core-pkns` 는 둘 다 무조건이고 이 잡이 거르는 것은 `app`·`rust` 뿐이다.
           # app 잡은 tsc 와 dev/*-check.ts 뿐 — app/ 밖을 읽지 않는다.
           has '^app/' \
             && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
@@ -450,10 +450,36 @@ jobs:
   # 픽스처가 층을 헷갈린 것이다(스토어에 직접 심는 시드는 물리 키를 써야 한다).
   core-pkns:
     name: core (VINC_PK_NAMESPACED=on)
-    needs: changes
-    # 파이썬이 안 바뀐 PR 에서 이 잡은 `core` 와 **같은 코드를 두 번째로** 도는 것이다.
-    # 켠 모드가 검증하는 것은 물리 키 층이고 그 층은 파이썬 밖에 없다.
-    if: needs.changes.outputs.python == 'true'
+    # ⚠ **조건이 없다 — 전량 pytest 를 도는 자리가 여기 하나뿐이기 때문이다.**
+    #
+    # `core` 가 부르는 `verify.py` 는 `unittest.TestLoader().discover` 로 수집하는데,
+    # 그 로더는 **모듈 수준 `def test_*` 를 아예 못 본다**(tests/ 에 `load_tests` 도
+    # 없다). 같은 트리를 두 로더로 세면 갈린다 — 실측 2026-09-07(6261e78):
+    # unittest 1536건 · pytest 1977건. **441건이 이 잡에만 있고** 거기에
+    # test_owner_isolation(15) · test_write_tenancy(14) · test_sync(22) ·
+    # test_mcp_auth(14) · test_mcp_scoped_keys(16) · test_tool_contract(27) 이 든다.
+    # 이 파일 머리말(`:3-5`)이 이 워크플로가 존재하는 이유로 지목한 그 케이스들이다.
+    #
+    # 여기 `needs: changes` 와 `if: ...python == 'true'` 가 있던 동안 그 441건을 끄는
+    # 스위치가 **둘**이었다: 경로 필터가 false 이거나, `changes` 가 빨갛거나 큐에
+    # 남거나. 둘 다 눌렸다 — 런 34044028449(#237, 지금의 main)는 `core-pkns skipped`
+    # · `core success` 로 **초록으로 머지됐고** 그 실행에서 소유자 격리·쓰기 테넌시는
+    # 한 건도 안 돌았다. 그래서 `if` 만이 아니라 `needs` 도 걷었다. `needs` 를 남기면
+    # 두 번째 스위치가 그대로다(#233 이 그 경로였다: 의도된 빨강 하나가 나머지를 껐다).
+    #
+    # 되돌리려는 사람에게: 반대 방향의 판정이 이미 둘 있다 —
+    # [[decision:core-pkns-stays-because-the-hub-runs-the-flag-on]] 이 "이 잡은 은퇴일이
+    # 없고 PR 에서 내려오지 않는다"고 정했고,
+    # [[record:core-pkns-if-skips-app-and-agents-changes-2026-09-05]] 이 "처방은 조건을
+    # 넓히거나 걷는 것"이라고 적었다. 조건을 되살리려면 그 둘을 먼저 뒤집을 것.
+    # 이 형태를 지키는 것은 tests/test_ci_suite_is_unconditional.py 다.
+    #
+    # 대가는 정직하게 적는다: 이 잡이 PR 마다 늘 돈다(호스티드 분이 아니라 아래
+    # `runs-on` 의 셀프호스티드 시간이다). 그리고 `needs` 를 걷었으므로 `changes` 와
+    # 같은 라벨을 두고 나란히 줄을 선다 — 러너가 다 차면 19초짜리 `changes` 가 뒤로
+    # 밀리고 그만큼 `app`·`rust` 의 시작이 늦는다. 그것이 아파지면 처방은 이 잡을
+    # 다시 조건부로 만드는 것이 아니라 `changes` 를 호스티드로 되돌리는 것이다.
+    #
     # `core` 와 같은 이유로 함께 옮긴다(그 잡의 주석이 근거다). 이쪽은 51분이었다
     # (런 33389200262, 12:16:25 → 13:07:20). 하나만 옮기면 남은 쪽이 그대로 큐를
     # 붙잡으므로, 둘을 갈라 두는 것은 이 변경의 목적을 반만 이룬다.
