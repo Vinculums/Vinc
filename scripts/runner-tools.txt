@@ -21,6 +21,11 @@ gh
 # 배포 잡 전용(hub-deploy 의 az acr build · env 조작). Windows 러너는 배포를 안 돈다.
 az @linux
 
+# 릴리스 리눅스 다리 전용. 그 다리는 `ubuntu:22.04` 컨테이너 안에서 짓는데(사용자
+# glibc 바닥이 빌드 기계의 glibc 이고 러너는 24.04 다), `release.yml` 의 `image` 잡이
+# 그 이미지를 굽고 러너 안 레지스트리로 낸다. Windows 러너는 그 다리를 안 돈다.
+docker @linux
+
 # `python` 이라는 이름으로 불린다. Ubuntu 는 python3 만 깔려 있어 별칭이 필요하다
 # (`python-is-python3`) — 이것이 첫 번째 사고였다.
 python @linux
