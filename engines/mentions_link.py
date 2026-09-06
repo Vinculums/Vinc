@@ -152,6 +152,33 @@ def _fetch_chunks(store, owner: str | None = None) -> list[dict]:
     return rows or []
 
 
+def backfill_chunk_owners(store) -> dict:
+    """owner 가 빈 청크에 **그 문서의 owner** 를 찍는다. 반환 {filled, remaining}.
+
+    빈 owner 는 전량 재링크의 사각지대다. `link_mentions(scope_chunks=True)` 는
+    `WHERE c.owner_id = $o` 로 청크를 좁히고 `ensure_rule` 은 빈 버킷을 아예 건너뛰므로,
+    그런 청크는 **삭제에도 재생성에도 안 잡힌다.** 그런데 `put_doc` 의 재링크는 doc_id
+    로만 걸러 늘 성공한다 — 그 비대칭이 "문서 하나씩은 되는데 전량은 한 번도 안 되는"
+    상태를 만들었다. 재현·근거:
+    [[record:the-startup-relink-skips-ownerless-chunks-and-then-stamps-the-marker-2026-09-06]]
+
+    고치는 방향을 **스코프 넓히기가 아니라 데이터 채우기**로 잡은 이유: 빈 owner 를
+    현재 owner 로 싸잡아 링크하면 그것이 곧 교차 테넌트 링크이고, 그 가드는
+    `ensure_rule` 이 지키려던 바로 그것이다. 청크의 owner 는 짐작할 값이 아니라
+    **그 청크가 속한 문서가 이미 알고 있는 값**이다.
+
+    문서 메타가 없는 고아 청크는 남긴다(귀속할 owner 가 없다). 그 수를 `remaining`
+    으로 돌려 호출부가 조용히 넘어가지 않게 한다."""
+    try:
+        store.run("MATCH (c:Chunk), (d:_DocMeta) WHERE c.owner_id = '' "
+                  "AND d.doc_id = c.doc_id AND d.owner_id <> '' "
+                  "SET c.owner_id = d.owner_id")
+        rows = store.run("MATCH (c:Chunk) WHERE c.owner_id = '' RETURN count(c) AS n") or []
+    except Exception:
+        return {"filled": 0, "remaining": -1}   # 구스토어 — 강등(실패 아님)
+    return {"filled": 0, "remaining": int((rows[0].get("n") if rows else 0) or 0)}
+
+
 def _chunk_owners(store) -> list[str]:
     """스토어에 청크를 가진 소유자 전부(빈 문자열 = owner 없이 적재된 로컬 청크)."""
     rows = store.run("MATCH (c:Chunk) RETURN DISTINCT c.owner_id AS o") or []
@@ -269,6 +296,8 @@ def ensure_rule(store) -> dict:
     if stored == MENTIONS_RULE:
         out.update(executed=True, changed=False)
         return out
+    # 좁히기 **전에** 데이터를 고친다 — 빈 owner 청크는 아래 루프가 통째로 건너뛴다.
+    back = backfill_chunk_owners(store)
     owners = _chunk_owners(store)
     per: dict[str, int] = {}
     skipped = 0
@@ -279,7 +308,8 @@ def ensure_rule(store) -> dict:
         per[o or "(local)"] = int(relink_all(store, owner=o or None).get("links") or 0)
     store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
               {"k": _RULE_KEY, "v": MENTIONS_RULE})
-    out.update(executed=True, changed=True, owners=per, skipped_ownerless=skipped)
+    out.update(executed=True, changed=True, owners=per, skipped_ownerless=skipped,
+               ownerless_remaining=back.get("remaining", -1))
     return out
 
 
