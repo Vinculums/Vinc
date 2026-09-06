@@ -224,7 +224,11 @@ let sourceRev = null; try { sourceRev = (await import("node:child_process")).exe
 // 바꾸지만 트리는 그대로 옮기므로, 브랜치에서 캡처해도 머지된 main 에서 통과한다.
 // (커밋 계보로 재던 시절에는 그 길이 없었다: figma_app_copy.py 머리 참조.)
 let sourceTree = null; try { sourceTree = (await import("node:child_process")).execSync("git rev-parse HEAD:app/src", { cwd: REPO, encoding: "utf8" }).trim(); } catch {}
-const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID, sourceRev, sourceTree, states: [] };
+// 설명 두 줄은 스크립트가 쓴다. 손으로 붙여 두면 다음 캡처가 조용히 지운다(실측 2026-09-06).
+const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID,
+  sourceRev, sourceRevNote: "Vinc commit whose app/src the captures rendered",
+  sourceTree, sourceTreeNote: "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)",
+  states: [] };
 let fails = 0;
 for (const s of states) {
   const ctx = await browser.newContext({ viewport: s.vp ?? VP, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", deviceScaleFactor: 1 });
