@@ -35,7 +35,9 @@ const side = async (p) => { const r = await fetch(SIDE + p, { headers: { Authori
 
 // ── 공통 ───────────────────────────────────────────────────────────────────
 const VP = { width: 1280, height: 800 };
-const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": "tenant:local" };
+// vinc.sidecar.base: 셸 분기(tauri.localhost)는 api.ts 가 8787 을 기본으로 박으므로, --sidecar 로 다른 포트를 주면
+// 여기서 앱에도 알려야 한다. 없으면 스크립트는 8788 을 보고 앱은 8787 을 봐서 다른 스토어를 찍는다(2026-09-07 실측).
+const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.sidecar.base": SIDE, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": "tenant:local" };
 const SHELL_INIT = () => {
   // main.ts 는 Tauri 창 핸들을 얻은 뒤에만 dataset.shell 을 켠다. 브라우저에는 창이 없으니 여기서 켠다.
   document.addEventListener("DOMContentLoaded", () => { document.documentElement.dataset.shell = ""; });
@@ -121,6 +123,10 @@ V("timeline", "viewpoint Timeline", (p) => viewpoint(p, "Timeline"));
 V("weave", "viewpoint Weave", (p) => viewpoint(p, "Weave"));
 V("topic-scope", "LNB: click a topic name, scope banner appears", async (p) => { await firstTopic(p).click(); await sleep(1800); });
 V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#lnb-toggle").click(); await sleep(600); });
+// #232: 주제 줄 아래 갈래가 문서 | 노드 둘이다. 노드 갈래는 localStorage 가 정하고(vinc.shell.lnb.mode) 첫 주제를
+// 펼쳐 둔 채 열면 개념 줄이 문서 줄 자리에 선다. 이 상태가 없으면 Figma 는 칩만 있고 칩이 여는 것은 없다.
+V("lnb-nodes", "LNB: Nodes chip, first topic expanded: concept rows in place of document rows", async (p) => { await p.waitForSelector(".lnb-node", { timeout: 15000 }); await sleep(600); },
+  { ls: { "vinc.shell.lnb.mode": "nodes", "vinc.shell.lnb.groups": JSON.stringify(["physics"]) } });
 V("lens-options-3d", "lens button: Options tab (3D rows)", openLens);
 V("lens-options-2d", "lens: Options for 2D", async (p) => { await viewpoint(p, "2D"); await openLens(p); });
 V("lens-options-timeline", "lens: Options for Timeline", async (p) => { await viewpoint(p, "Timeline"); await openLens(p); });

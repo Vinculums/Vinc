@@ -3,7 +3,7 @@
  "capturedAt": "2026-09-06T13:19:32.030Z",
  "tool": "design-hub/scripts/capture_app.mjs",
  "node": null,
- "sourceRev": "2edcfb2436fc3ca6acd070159467999fe56a4484",
+ "sourceRev": "d41d2f0ff39039745d3d80df1b7a9907cd042924",
  "sourceRevNote": "Vinc commit whose app/src the captures rendered",
  "sourceTree": "df6d688697e72920b5c3a7e8971761de750caeba",
  "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)",
@@ -878,6 +878,20 @@
    "scheme": "light",
    "file": "packs__light.png",
    "sha1": "a44e11aea23453d14f51d9ac99471e780aa0f9e8"
+  },
+  {
+   "id": "view__lnb-nodes",
+   "surface": "#view",
+   "state": "lnb-nodes",
+   "trigger": "LNB: Nodes chip, first topic expanded: concept rows in place of document rows",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-nodes.png",
+   "sha1": "87588e12f432572da6abf88c6a5835eecc8c8f1d"
   }
- ]
+ ],
+ "updatedAt": "2026-09-06T15:40:00.503Z"
 }

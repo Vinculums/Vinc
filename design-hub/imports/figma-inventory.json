@@ -2,7 +2,7 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-09-06",
+  "exported": "2026-09-07",
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the application component page. Nine pages of the 2026-09-06 structure (vinc.plan.figma-product-structure §2): 01 · Foundations, 02 · App Components, 04 · Surfaces, 05 · Overlays, 06 · States, 08 · Reference, 10 · Site Components, 11 · Site Screens, 12 · Docs Screens. 00 · Cover, 03 · App Shell, 07 · Prototypes, 13 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
@@ -25,46 +25,28 @@
      "name": "02 · Icons",
      "children": [
       "Icon / alert",
-      "Icon / arc",
-      "Icon / bar-group",
       "Icon / caret",
       "Icon / check",
       "Icon / chevron-left",
-      "Icon / chevron-right",
-      "Icon / comet",
       "Icon / dash-ramp",
       "Icon / decide",
-      "Icon / disc",
       "Icon / domains",
       "Icon / dot-grid",
       "Icon / dot",
       "Icon / download",
-      "Icon / dumbbell",
       "Icon / edit",
-      "Icon / ellipse",
       "Icon / graph",
       "Icon / half-disc",
-      "Icon / hourglass",
       "Icon / ingest",
       "Icon / lock",
-      "Icon / login",
-      "Icon / onboarding",
       "Icon / pack-export",
-      "Icon / pause",
-      "Icon / pendulum",
-      "Icon / pill-v",
-      "Icon / pill",
       "Icon / pin",
-      "Icon / play",
       "Icon / recall",
       "Icon / ring",
       "Icon / search",
       "Icon / settings",
       "Icon / sparkle",
       "Icon / stack",
-      "Icon / sync",
-      "Icon / tag",
-      "Icon / undo",
       "Icon / upload",
       "Icon / x",
       "Icon / pack-in",
@@ -72,71 +54,73 @@
       "Icon / globe",
       "Icon / sun",
       "Icon / moon",
-      "Icon / backup",
-      "Icon / copy",
-      "Icon / desktop",
       "Icon / folder",
-      "Icon / identity",
-      "Icon / info",
-      "Icon / key",
-      "Icon / link",
-      "Icon / offline",
-      "Icon / open",
       "Icon / pack",
       "Icon / packin",
-      "Icon / parse",
-      "Icon / plug",
-      "Icon / portable",
-      "Icon / shield",
-      "Icon / tags",
-      "Icon / mail",
       "Icon / mcp"
+     ]
+    },
+    {
+     "name": "03 · Color",
+     "children": [
+      "Color / Primitive",
+      "Color / Semantic (Light · Dark)",
+      "Color / Graph",
+      "Color / Domain tint",
+      "Color / Window (desktop shell)",
+      "Color / Email"
+     ]
+    },
+    {
+     "name": "04 · Type",
+     "children": [
+      "Type / Scale"
+     ]
+    },
+    {
+     "name": "05 · Effects",
+     "children": [
+      "Effect / Shadows · Glass · Glow"
+     ]
+    },
+    {
+     "name": "06 · Scale",
+     "children": [
+      "Scale / Radius · Space"
+     ]
+    },
+    {
+     "name": "07 · Motion",
+     "children": [
+      "Motion / Easing · Duration"
      ]
     }
    ],
    "components": [
     "Logo / Mark",
     "Icon / alert",
-    "Icon / arc",
-    "Icon / bar-group",
     "Icon / caret",
     "Icon / check",
     "Icon / chevron-left",
-    "Icon / chevron-right",
-    "Icon / comet",
     "Icon / dash-ramp",
     "Icon / decide",
-    "Icon / disc",
     "Icon / domains",
     "Icon / dot-grid",
     "Icon / dot",
     "Icon / download",
-    "Icon / dumbbell",
     "Icon / edit",
-    "Icon / ellipse",
     "Icon / graph",
     "Icon / half-disc",
-    "Icon / hourglass",
     "Icon / ingest",
     "Icon / lock",
-    "Icon / login",
-    "Icon / onboarding",
     "Icon / pack-export",
-    "Icon / pause",
-    "Icon / pendulum",
-    "Icon / pill-v",
-    "Icon / pill",
     "Icon / pin",
-    "Icon / play",
     "Icon / recall",
     "Icon / ring",
     "Icon / search",
     "Icon / settings",
     "Icon / sparkle",
     "Icon / stack",
-    "Icon / sync",
-    "Icon / tag",
-    "Icon / undo",
     "Icon / upload",
     "Icon / x",
     "Icon / pack-in",
@@ -144,24 +128,9 @@
     "Icon / globe",
     "Icon / sun",
     "Icon / moon",
-    "Icon / backup",
-    "Icon / copy",
-    "Icon / desktop",
     "Icon / folder",
-    "Icon / identity",
-    "Icon / info",
-    "Icon / key",
-    "Icon / link",
-    "Icon / offline",
-    "Icon / open",
     "Icon / pack",
     "Icon / packin",
-    "Icon / parse",
-    "Icon / plug",
-    "Icon / portable",
-    "Icon / shield",
-    "Icon / tags",
-    "Icon / mail",
     "Icon / mcp"
    ],
    "variants": {
@@ -176,54 +145,82 @@
   "02 · App Components": {
    "frames": [
     {
-     "name": "03 · Components (App)",
+     "name": "01 · Actions",
      "children": [
       "App / Button",
+      "App / MenuItem",
       "App / Chip",
+      "App / IconButton"
+     ]
+    },
+    {
+     "name": "02 · Inputs",
+     "children": [
+      "App / Slider",
+      "App / ViewSeg",
+      "App / SearchModeButton",
+      "App / SearchField",
+      "App / Kbd",
+      "App / TileRadio",
+      "App / SwitchRow",
+      "App / SliderRow"
+     ]
+    },
+    {
+     "name": "03 · Navigation",
+     "children": [
       "App / NavItem",
       "App / DomainRow",
       "App / DocRow",
       "App / ListRow",
+      "App / TreeMode"
+     ]
+    },
+    {
+     "name": "04 · Data & Graph",
+     "children": [
+      "App / GraphNode",
       "App / StateMark",
       "App / ProgressBar",
+      "App / PackCard"
+     ]
+    },
+    {
+     "name": "05 · Feedback",
+     "children": [
       "App / ErrorBanner",
       "App / EmptyState",
       "App / Tooltip",
-      "App / Sheet",
-      "App / ViewSeg",
-      "App / Slider",
-      "App / MenuItem",
-      "App / GraphNode",
-      "App / PackCard",
-      "App / FloatCard",
-      "App / UpdateToast",
-      "App / Titlebar",
-      "App / Topbar"
+      "App / UpdateToast"
      ]
     }
    ],
    "components": [
     "App / Button",
+    "App / MenuItem",
     "App / Chip",
+    "App / IconButton",
+    "App / Slider",
+    "App / ViewSeg",
+    "App / SearchModeButton",
+    "App / SearchField",
+    "App / Kbd",
+    "App / TileRadio",
+    "App / SwitchRow",
+    "App / SliderRow",
     "App / NavItem",
     "App / DomainRow",
     "App / DocRow",
     "App / ListRow",
+    "App / TreeMode",
+    "App / GraphNode",
     "App / StateMark",
     "App / ProgressBar",
+    "App / PackCard",
     "App / ErrorBanner",
     "App / EmptyState",
     "App / Tooltip",
-    "App / Sheet",
-    "App / ViewSeg",
-    "App / Slider",
-    "App / MenuItem",
-    "App / GraphNode",
-    "App / PackCard",
-    "App / FloatCard",
-    "App / UpdateToast",
-    "App / Titlebar",
-    "App / Topbar"
+    "App / UpdateToast"
    ],
    "variants": {
     "App / Button": [
@@ -232,10 +229,29 @@
      "Kind=Quiet",
      "Kind=Danger"
     ],
+    "App / MenuItem": [
+     "Tone=Default",
+     "Tone=Hover",
+     "Tone=Danger"
+    ],
     "App / Chip": [
      "State=Default",
      "State=Active",
      "State=Static"
+    ],
+    "App / ViewSeg": [
+     "Active=3D",
+     "Active=2D",
+     "Active=Timeline",
+     "Active=Weave"
+    ],
+    "App / SearchModeButton": [
+     "Mode=Find",
+     "Mode=Ask"
+    ],
+    "App / TileRadio": [
+     "State=Selected",
+     "State=Idle"
     ],
     "App / NavItem": [
      "State=Default",
@@ -254,32 +270,20 @@
      "State=Default",
      "State=Hover"
     ],
-    "App / StateMark": [
-     "State=Filled",
-     "State=Half",
-     "State=Empty"
-    ],
-    "App / Sheet": [
-     "Size=Action",
-     "Size=Write",
-     "Size=Browse"
-    ],
-    "App / ViewSeg": [
-     "Active=3D",
-     "Active=2D",
-     "Active=Timeline",
-     "Active=Weave"
-    ],
-    "App / MenuItem": [
-     "Tone=Default",
-     "Tone=Hover",
-     "Tone=Danger"
+    "App / TreeMode": [
+     "Mode=Documents",
+     "Mode=Nodes"
     ],
     "App / GraphNode": [
      "Tier=Focus",
      "Tier=Near",
      "Tier=Mid",
      "Tier=Far"
+    ],
+    "App / StateMark": [
+     "State=Filled",
+     "State=Half",
+     "State=Empty"
     ],
     "App / PackCard": [
      "State=Default"
@@ -296,55 +300,130 @@
    "frames": [
     {
      "name": "App · View · 3d / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · 2d / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · timeline / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · weave / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · topic-scope / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lnb-collapsed / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · reader / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Overlay / Tooltip",
+      "Dialog - Caravaggio",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · docpane-folded / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Dialog - Caravaggio",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · node-detail / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Dialog - Quantum Information",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · edge-detail / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Dialog - Mathur fuzzball",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Search / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Search · results / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Packs / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
+    },
+    {
+     "name": "App · View",
      "children": []
+    },
+    {
+     "name": "App · Search",
+     "children": []
+    },
+    {
+     "name": "App · Packs",
+     "children": []
+    },
+    {
+     "name": "Topics",
+     "children": []
+    },
+    {
+     "name": "App · View · lnb-nodes / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     }
    ],
    "components": [],
@@ -354,225 +433,915 @@
    "frames": [
     {
      "name": "App · View · node-float / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Overlay / Float card",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · node-float-links / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Overlay / Float card",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · node-ask-menu / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Overlay / Float card",
+      "Overlay / Context menu",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · node-delete-confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Dialog - Quantum Information",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · topic-context-menu / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Overlay / Context menu",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · topic-rename-prompt / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-options-3d / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Shell / Statusbar",
+      "Shell / Topbar",
+      "Overlay / Lens panel",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-options-2d / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Header",
+      "Overlay / Lens panel",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-options-timeline / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Shell / Statusbar",
+      "Header",
+      "Overlay / Lens panel",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-options-weave / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Header",
+      "Overlay / Lens panel",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-legend / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Shell / Statusbar",
+      "Shell / Topbar",
+      "Overlay / Lens panel",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · View · lens-help-open / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · new-node-sheet / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · first-run / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · coachmark / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Shell / Statusbar",
+      "Shell / Topbar",
+      "Overlay / Lens panel",
+      "Overlay / Tooltip",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · mode-menu / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · find-results / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · find-empty / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · find-loading / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · find-error / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · browse-sheet / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · browse-sheet-docs / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · ask-intro / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · ask-answer / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · ask-none / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · ask-history / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · palette / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Shell / Topbar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · palette-filtered / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Shell / Topbar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · cheatsheet / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · tools-create / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · tools-import / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · tools-share / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · share-sheet / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · share-result / dark",
-     "children": []
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
     },
     {
      "name": "App · Topbar · import-pack-sheet / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · import-doc-sheet / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · graphmd / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · settings-account / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Container",
+      "Shell / Topbar",
+      "Overlay / Settings",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · settings-connections / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Container",
+      "Shell / Topbar",
+      "Overlay / Settings",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · settings-data / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Container",
+      "Shell / Topbar",
+      "Overlay / Settings",
+      "Interaction map"
+     ]
     },
     {
      "name": "App · Topbar · settings-advanced / dark",
+     "children": [
+      "Body",
+      "Main Content",
+      "Shell / Statusbar",
+      "Container",
+      "Shell / Topbar",
+      "Overlay / Settings",
+      "Interaction map"
+     ]
+    },
+    {
+     "name": "App · View · new-node-sheet / dark",
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
+    },
+    {
+     "name": "App · View · first-run / dark",
+     "children": [
+      "Body",
+      "Container",
+      "Interaction map"
+     ]
+    },
+    {
+     "name": "App · View · coachmark / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container",
+      "Interaction map"
+     ]
+    },
+    {
+     "name": "App · View · overlays",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · overlays",
+     "children": []
+    },
+    {
+     "name": "00 · Overlay Components",
+     "children": [
+      "Overlay / Settings",
+      "Overlay / Float card",
+      "Overlay / Context menu",
+      "Overlay / Lens panel",
+      "Overlay / Tooltip",
+      "Overlay / Coachmark",
+      "Overlay / Search mode menu",
+      "Overlay / Search results",
+      "Overlay / Ask panel",
+      "Overlay / Sheet · Tools",
+      "Overlay / Sheet · All documents",
+      "Overlay / Command palette",
+      "Overlay / Sheet · Share as a pack",
+      "Overlay / Sheet · Import a pack",
+      "Overlay / Sheet · Import a document",
+      "Overlay / Sheet · GRAPH.md",
+      "Overlay / Sheet · New node",
+      "Overlay / Sheet · First run",
+      "Overlay / Sheet · Past questions",
+      "Overlay / Sheet · Keyboard",
+      "Overlay / Prompt · Text",
+      "Overlay / Confirm · Destructive"
+     ]
+    }
+   ],
+   "components": [
+    "Overlay / Settings",
+    "Overlay / Float card",
+    "Overlay / Context menu",
+    "Overlay / Lens panel",
+    "Overlay / Tooltip",
+    "Overlay / Coachmark",
+    "Overlay / Search mode menu",
+    "Overlay / Search results",
+    "Overlay / Ask panel",
+    "Overlay / Sheet · Tools",
+    "Overlay / Sheet · All documents",
+    "Overlay / Command palette",
+    "Overlay / Sheet · Share as a pack",
+    "Overlay / Sheet · Import a pack",
+    "Overlay / Sheet · Import a document",
+    "Overlay / Sheet · GRAPH.md",
+    "Overlay / Sheet · New node",
+    "Overlay / Sheet · First run",
+    "Overlay / Sheet · Past questions",
+    "Overlay / Sheet · Keyboard",
+    "Overlay / Prompt · Text",
+    "Overlay / Confirm · Destructive"
+   ],
+   "variants": {
+    "Overlay / Settings": [
+     "Tab=Account",
+     "Tab=Connections",
+     "Tab=Data",
+     "Tab=Advanced"
+    ],
+    "Overlay / Float card": [
+     "State=Default",
+     "State=Links open",
+     "State=Ask menu"
+    ],
+    "Overlay / Context menu": [
+     "Kind=Node",
+     "Kind=Topic"
+    ],
+    "Overlay / Lens panel": [
+     "Viewpoint=3D, Tab=Options, Help=Off",
+     "Viewpoint=2D, Tab=Options, Help=Off",
+     "Viewpoint=Timeline, Tab=Options, Help=Off",
+     "Viewpoint=Weave, Tab=Options, Help=Off",
+     "Viewpoint=3D, Tab=Legend, Help=Off",
+     "Viewpoint=3D, Tab=Options, Help=On"
+    ],
+    "Overlay / Tooltip": [
+     "Kind=Short",
+     "Kind=Long"
+    ],
+    "Overlay / Search results": [
+     "State=Results",
+     "State=Empty",
+     "State=Loading",
+     "State=Error"
+    ],
+    "Overlay / Ask panel": [
+     "State=Answer",
+     "State=None"
+    ],
+    "Overlay / Sheet · Tools": [
+     "Tab=Create",
+     "Tab=Import",
+     "Tab=Share"
+    ],
+    "Overlay / Sheet · All documents": [
+     "Layer=Topics",
+     "Layer=Docs"
+    ],
+    "Overlay / Command palette": [
+     "State=Default",
+     "State=Filtered"
+    ]
+   }
+  },
+  "06 · States": {
+   "frames": [
+    {
+     "name": "App · View · empty-invite / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · View · error / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · View · lnb-failed / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · View · lnb-loading / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Search · empty / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Search · error / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Packs · intake-ingesting / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Packs · intake-success / dark",
+     "children": [
+      "Shell / Titlebar",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Packs · intake-error / dark",
+     "children": [
+      "Shell / Titlebar"
+     ]
+    },
+    {
+     "name": "Container",
+     "children": [
+      "Sidebar - Documents",
+      "Main Content",
+      "Header"
+     ]
+    },
+    {
+     "name": "App · View · light / light",
+     "children": [
+      "Container",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · View · light-lens / light",
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Container",
+      "Header",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · Topbar · settings-light / light",
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Container",
+      "Header",
+      "Dialog - Settings"
+     ]
+    },
+    {
+     "name": "App · Packs · light / light",
+     "children": [
+      "Container",
+      "Container"
+     ]
+    },
+    {
+     "name": "App · View · states",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · states",
+     "children": []
+    },
+    {
+     "name": "App · Search · states",
+     "children": []
+    },
+    {
+     "name": "App · Packs · states",
      "children": []
     }
    ],
    "components": [],
    "variants": {}
   },
-  "06 · States": {
+  "10 · Site Components": {
    "frames": [
     {
-     "name": "App · View · empty-invite / dark",
-     "children": []
+     "name": "01 · Site Components",
+     "children": [
+      "Site / Button",
+      "Site / Badge",
+      "Site / Chip",
+      "Site / Toggle",
+      "Site / Input",
+      "Site / Seg",
+      "Site / Footer",
+      "Site / Banner",
+      "Site / Card",
+      "Site / AuthCard",
+      "Site / ModalCard",
+      "Site / CommunityCard",
+      "Site / PageBackground",
+      "Site / HowPanel",
+      "Site / HowStepCard",
+      "Site / GNB"
+     ]
     },
     {
-     "name": "App · View · error / dark",
-     "children": []
+     "name": "02 · Motion",
+     "children": [
+      "Motion / Orbit glow",
+      "Motion / Orbit guide"
+     ]
+    }
+   ],
+   "components": [
+    "Site / Button",
+    "Site / Badge",
+    "Site / Chip",
+    "Site / Toggle",
+    "Site / Input",
+    "Site / Seg",
+    "Site / Footer",
+    "Site / Banner",
+    "Site / Card",
+    "Site / AuthCard",
+    "Site / ModalCard",
+    "Site / CommunityCard",
+    "Site / PageBackground",
+    "Site / HowPanel",
+    "Site / HowStepCard",
+    "Site / GNB",
+    "Motion / Orbit glow",
+    "Motion / Orbit guide"
+   ],
+   "variants": {
+    "Site / Button": [
+     "Kind=Primary",
+     "Kind=Quiet"
+    ],
+    "Site / Badge": [
+     "Tone=Info",
+     "Tone=Success",
+     "Tone=Ring"
+    ],
+    "Site / Chip": [
+     "Status=Done",
+     "Status=Now",
+     "Status=Neutral"
+    ],
+    "Site / Toggle": [
+     "State=On",
+     "State=Off"
+    ],
+    "Site / Input": [
+     "State=Default",
+     "State=Focus"
+    ],
+    "Site / Seg": [
+     "Active=A",
+     "Active=B",
+     "Active=C"
+    ],
+    "Site / Banner": [
+     "Kind=Notice",
+     "Kind=Trial"
+    ],
+    "Site / AuthCard": [
+     "Tone=Default",
+     "Tone=Danger"
+    ],
+    "Site / HowPanel": [
+     "Step=Ingest",
+     "Step=View",
+     "Step=Packs"
+    ],
+    "Site / HowStepCard": [
+     "Step=01",
+     "Step=02",
+     "Step=03"
+    ],
+    "Site / GNB": [
+     "Session=Out, Active=Home, Width=Desktop",
+     "Session=Out, Active=Community, Width=Desktop",
+     "Session=In, Active=Account, Width=Desktop",
+     "Session=In, Active=Community, Width=Desktop",
+     "Session=Out, Active=Home, Width=Two-row",
+     "Session=In, Active=Home, Width=Desktop",
+     "Session=Out, Active=Community, Width=Two-row",
+     "Session=In, Active=Account, Width=Two-row",
+     "Session=Out, Active=Account, Width=Desktop",
+     "Session=Out, Active=Pricing, Width=Desktop",
+     "Session=Out, Active=Pricing, Width=Two-row",
+     "Session=Out, Active=Download, Width=Desktop",
+     "Session=Out, Active=Docs, Width=Desktop",
+     "Session=Out, Active=Docs, Width=Two-row",
+     "Session=Out, Active=Docs, Width=800"
+    ],
+    "Motion / Orbit glow": [
+     "Pulse=Low",
+     "Pulse=High"
+    ],
+    "Motion / Orbit guide": [
+     "Spin=0",
+     "Spin=90",
+     "Spin=180",
+     "Spin=270"
+    ]
+   }
+  },
+  "12 · Docs Screens": {
+   "frames": [
+    {
+     "name": "Docs · Overview / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · View · lnb-failed / dark",
-     "children": []
+     "name": "Docs · Quickstart / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · View · lnb-loading / dark",
-     "children": []
+     "name": "Docs · What to add / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · View · light / light",
-     "children": []
+     "name": "Docs · Import / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · View · light-lens / light",
-     "children": []
+     "name": "Docs · View / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Topbar · settings-light / light",
-     "children": []
+     "name": "Docs · Search / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Search · empty / dark",
-     "children": []
+     "name": "Docs · Packs & community / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Search · error / dark",
-     "children": []
+     "name": "Docs · Shortcuts / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Packs · intake-ingesting / dark",
-     "children": []
+     "name": "Docs · MCP Setup / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Packs · intake-success / dark",
-     "children": []
+     "name": "Docs · MCP Tools / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Packs · intake-error / dark",
-     "children": []
+     "name": "Docs · CLI Reference / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     },
     {
-     "name": "App · Packs · light / light",
-     "children": []
+     "name": "Docs · GRAPH.md What / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Generate / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Spec / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · GRAPH.md Validate / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · MCP Sign-in / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Hosts / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · OpenClaw / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Roles / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · Agents · Packs / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
+    },
+    {
+     "name": "Docs · One graph / dark",
+     "children": [
+      "Site / GNB (hand-drawn)",
+      "docs-cols",
+      "Site / Footer"
+     ]
     }
    ],
    "components": [],
@@ -966,919 +1735,2696 @@
       "Vector",
       "Vector"
      ]
+    },
+    {
+     "name": "site · /",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__default",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__signed-in",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__light",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__ko",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__mobile-390",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__steps-1",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__steps-2",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__steps-3",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__newsletter-busy",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__newsletter-success",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__newsletter-invalid",
+     "children": []
+    },
+    {
+     "name": "Ref · site · landing__newsletter-error",
+     "children": []
+    },
+    {
+     "name": "site · /community/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__default",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__signed-in",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__loading",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__no-match",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-confirm-card",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-confirm-button",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-legend-focus",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-signed-out",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-busy",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-ok",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-matched",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-partial",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-warnings",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-429",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__modal-result-401",
+     "children": []
+    },
+    {
+     "name": "Ref · site · community__mobile-390",
+     "children": []
+    },
+    {
+     "name": "site · /account/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__default",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__pro",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__team-member",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__plan-get-pro",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__plan-active",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__plan-trialing",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__plan-past-due",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__plan-hidden",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-unset",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-checking",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-available",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-taken",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-too-short",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-bad-format",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-reserved",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-saved",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-cooldown",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__username-conflict",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__keys-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__keys-fresh",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__keys-fresh-readonly",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__keys-limit",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__keys-revoke-confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__graph-default",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__graph-more-open",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__graph-drill-product",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__graph-drill-book",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__graph-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__community-list",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__community-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__community-takedown-confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__delete-ask",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__delete-typed",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__delete-busy",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__delete-done",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__delete-error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account__mobile-390",
+     "children": []
+    },
+    {
+     "name": "site · /account/team/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__default-admin",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__viewer",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__no-mcp-base",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__no-teams",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-card",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-accepted",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-invalid",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-typeahead",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-sent",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-seat-full",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__invite-delivery-failed",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__connector-copied",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__danger-error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__graph",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__graph-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__drill-list",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__drill-loading",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__drill-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__drill-error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__drill-detail",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__community-tab",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__create-modal",
+     "children": []
+    },
+    {
+     "name": "Ref · site · team__create-error",
+     "children": []
+    },
+    {
+     "name": "site · /login/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__default",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__sending",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__sent",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__invalid",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__rate-limited",
+     "children": []
+    },
+    {
+     "name": "Ref · site · login__error",
+     "children": []
+    },
+    {
+     "name": "site · /auth/verify/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__verifying",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__ctx",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__expired",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · verify__invalid",
+     "children": []
+    },
+    {
+     "name": "site · /welcome/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · welcome__loading",
+     "children": []
+    },
+    {
+     "name": "Ref · site · welcome__form",
+     "children": []
+    },
+    {
+     "name": "Ref · site · welcome__available",
+     "children": []
+    },
+    {
+     "name": "Ref · site · welcome__taken",
+     "children": []
+    },
+    {
+     "name": "site · /connect/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__loading",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__ask",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__login",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__done",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__expired",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect__no-cra",
+     "children": []
+    },
+    {
+     "name": "site · /connect-app/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__ask",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__login",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__done",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__manual",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · connect-app__expired",
+     "children": []
+    },
+    {
+     "name": "site · /subscribe/confirm/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__confirming",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__confirmed",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__expired",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · subscribe__no-token",
+     "children": []
+    },
+    {
+     "name": "site · /unsubscribe/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__unsubscribing",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__unsubscribed",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__invalid",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__error",
+     "children": []
+    },
+    {
+     "name": "Ref · site · unsubscribe__no-token",
+     "children": []
+    },
+    {
+     "name": "site · /account/delete/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__confirm-signed-out",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__deleting",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__deleted",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__expired",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__error-no-retry",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__error-retry",
+     "children": []
+    },
+    {
+     "name": "Ref · site · account-delete__no-token",
+     "children": []
+    },
+    {
+     "name": "site · /pricing/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · pricing__monthly",
+     "children": []
+    },
+    {
+     "name": "Ref · site · pricing__yearly",
+     "children": []
+    },
+    {
+     "name": "Ref · site · pricing__trial-banner",
+     "children": []
+    },
+    {
+     "name": "Ref · site · pricing__ko",
+     "children": []
+    },
+    {
+     "name": "Ref · site · pricing__mobile-390",
+     "children": []
+    },
+    {
+     "name": "site · /download/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · download__mac",
+     "children": []
+    },
+    {
+     "name": "Ref · site · download__win",
+     "children": []
+    },
+    {
+     "name": "Ref · site · download__linux",
+     "children": []
+    },
+    {
+     "name": "Ref · site · download__other",
+     "children": []
+    },
+    {
+     "name": "site · /release/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · release__default",
+     "children": []
+    },
+    {
+     "name": "site · /privacy/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · privacy__default",
+     "children": []
+    },
+    {
+     "name": "site · /this-page-is-not-here/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · 404__default",
+     "children": []
+    },
+    {
+     "name": "site · /docs/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__index",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__mobile-390",
+     "children": []
+    },
+    {
+     "name": "site · /docs/mcp/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__mcp",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__mobile-800",
+     "children": []
+    },
+    {
+     "name": "site · /docs/agents/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__agents",
+     "children": []
+    },
+    {
+     "name": "site · /docs/cli/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__cli",
+     "children": []
+    },
+    {
+     "name": "site · /docs/graph-md/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__graph-md",
+     "children": []
+    },
+    {
+     "name": "site · /docs/mcp/sign-in/",
+     "children": []
+    },
+    {
+     "name": "Ref · site · docs__mcp-sign-in",
+     "children": []
+    },
+    {
+     "name": "app · #view",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__3d",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__2d",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__timeline",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__weave",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__topic-scope",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lnb-collapsed",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-options-3d",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-options-2d",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-options-timeline",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-options-weave",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-legend",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lens-help-open",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__node-float",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__node-float-links",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__node-ask-menu",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__node-detail",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__node-delete-confirm",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__edge-detail",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__reader",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__docpane-folded",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__topic-context-menu",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__topic-rename-prompt",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__coachmark",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__first-run",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__light",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__light-lens",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__empty-invite",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__new-node-sheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__error",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lnb-failed",
+     "children": []
+    },
+    {
+     "name": "Ref · app · view__lnb-loading",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__mode-menu",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__find-results",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__find-empty",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__find-loading",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__find-error",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__browse-sheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__browse-sheet-docs",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__ask-intro",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__ask-answer",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__ask-none",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__ask-history",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__palette",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__palette-filtered",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__cheatsheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__tools-create",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__tools-import",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__tools-share",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__share-sheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__share-result",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__import-pack-sheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__import-doc-sheet",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__graphmd",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__settings-account",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__settings-connections",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__settings-data",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__settings-advanced",
+     "children": []
+    },
+    {
+     "name": "Ref · app · topbar__settings-light",
+     "children": []
+    },
+    {
+     "name": "app · #search",
+     "children": []
+    },
+    {
+     "name": "Ref · app · search__default",
+     "children": []
+    },
+    {
+     "name": "Ref · app · search__results",
+     "children": []
+    },
+    {
+     "name": "Ref · app · search__empty",
+     "children": []
+    },
+    {
+     "name": "Ref · app · search__error",
+     "children": []
+    },
+    {
+     "name": "app · #packs",
+     "children": []
+    },
+    {
+     "name": "Ref · app · packs__default",
+     "children": []
+    },
+    {
+     "name": "Ref · app · packs__intake-ingesting",
+     "children": []
+    },
+    {
+     "name": "Ref · app · packs__intake-success",
+     "children": []
+    },
+    {
+     "name": "Ref · app · packs__intake-error",
+     "children": []
+    },
+    {
+     "name": "Ref · app · packs__light",
+     "children": []
     }
    ],
    "components": [],
    "variants": {}
-  },
-  "10 · Site Components": {
-   "frames": [
-    {
-     "name": "01 · Site Components",
-     "children": [
-      "Site / Button",
-      "Site / Badge",
-      "Site / Chip",
-      "Site / Toggle",
-      "Site / Input",
-      "Site / Seg",
-      "Site / GNB",
-      "Site / Footer",
-      "Site / LangModal",
-      "Site / Banner",
-      "Site / Card",
-      "Site / AuthCard",
-      "Site / ModalCard",
-      "Site / CommunityCard"
-     ]
-    }
-   ],
-   "components": [
-    "Site / Button",
-    "Site / Badge",
-    "Site / Chip",
-    "Site / Toggle",
-    "Site / Input",
-    "Site / Seg",
-    "Site / GNB",
-    "Site / Footer",
-    "Site / LangModal",
-    "Site / Banner",
-    "Site / Card",
-    "Site / AuthCard",
-    "Site / ModalCard",
-    "Site / CommunityCard",
-    "Site / PageBackground",
-    "Motion / Orbit glow",
-    "Motion / Orbit guide",
-    "Site / HowPanel",
-    "Site / HowStepCard"
-   ],
-   "variants": {
-    "Site / Button": [
-     "Kind=Primary",
-     "Kind=Quiet"
-    ],
-    "Site / Badge": [
-     "Tone=Info",
-     "Tone=Success",
-     "Tone=Ring"
-    ],
-    "Site / Chip": [
-     "Status=Done",
-     "Status=Now",
-     "Status=Neutral"
-    ],
-    "Site / Toggle": [
-     "State=On",
-     "State=Off"
-    ],
-    "Site / Input": [
-     "State=Default",
-     "State=Focus"
-    ],
-    "Site / Seg": [
-     "Active=A",
-     "Active=B",
-     "Active=C"
-    ],
-    "Site / Banner": [
-     "Kind=Notice",
-     "Kind=Trial"
-    ],
-    "Site / AuthCard": [
-     "Tone=Default",
-     "Tone=Danger"
-    ],
-    "Motion / Orbit glow": [
-     "Pulse=Low",
-     "Pulse=High"
-    ],
-    "Motion / Orbit guide": [
-     "Spin=0",
-     "Spin=90",
-     "Spin=180",
-     "Spin=270"
-    ],
-    "Site / HowPanel": [
-     "Step=Ingest",
-     "Step=View",
-     "Step=Packs"
-    ],
-    "Site / HowStepCard": [
-     "Step=01",
-     "Step=02",
-     "Step=03"
-    ]
-   }
   },
   "11 · Site Screens": {
    "frames": [
     {
      "name": "Site · Landing / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Community / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Account · Team · default-admin / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Account / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Community · modal-confirm-card / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-matched / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-signed-out / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-ok / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-confirm-button / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-busy / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Landing · mobile-390 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · steps-2 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · steps-1 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · signed-in / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · newsletter-success / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · steps-3 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · newsletter-busy / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · newsletter-invalid / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Landing · newsletter-error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · signed-in / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · empty / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · no-match / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · modal-legend-focus / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-partial / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-warnings / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-429 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · modal-result-error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Community · loading / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · modal-result-401 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · pro / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · team-member / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Community · mobile-390 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · plan-get-pro / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · plan-active / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · plan-trialing / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · plan-hidden / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · plan-past-due / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-checking / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-unset / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-taken / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-available / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-bad-format / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-too-short / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-reserved / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-saved / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-cooldown / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · username-conflict / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · keys-empty / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · keys-fresh / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · keys-fresh-readonly / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · keys-limit / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · keys-revoke-confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · graph-default / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · graph-more-open / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · graph-drill-book / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · graph-drill-product / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · graph-empty / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · community-list / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · community-takedown-confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · community-empty / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · delete-ask / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · delete-typed / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · delete-done / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · delete-busy / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · delete-error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · mobile-390 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · no-mcp-base / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · viewer / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · no-teams / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-card / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-typeahead / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-invalid / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-sent / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-delivery-failed / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · invite-seat-full / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · connector-copied / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · danger-error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · graph / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Account · Team · graph-empty / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · drill-list / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Account · Team · drill-loading / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · Team · drill-empty / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · Team · drill-error / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · Team · drill-detail / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · Team · community-tab / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Team · create-modal / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Account · Team · create-error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB",
+      "Container"
+     ]
     },
     {
      "name": "Site · Auth · Login / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Auth · Login · sending / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Login · sent / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Login · invalid / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Login · rate-limited / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Login · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Verify · confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Auth · Verify · verifying / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Verify · ctx / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Verify · expired / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Verify · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Verify · invalid / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Welcome · form / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Auth · Welcome · available / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Welcome · taken / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · ask / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Connect · login / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Auth · Welcome · loading / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · done / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · expired / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · loading / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect · no-cra / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect-app · ask / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Connect-app · login / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect-app · done / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect-app · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect-app · manual / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Connect-app · expired / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Subscribe · confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Subscribe · confirming / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Subscribe · confirmed / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Subscribe · expired / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Subscribe · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Subscribe · no-token / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Unsubscribe · confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Unsubscribe · unsubscribing / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Unsubscribe · unsubscribed / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Unsubscribe · invalid / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Unsubscribe · error / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Unsubscribe · no-token / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · confirm / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Account · Delete · confirm-signed-out / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · deleting / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · expired / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · deleted / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · error-no-retry / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · error-retry / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Account · Delete · no-token / dark",
-     "children": []
+     "children": [
+      "Body:margin",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Pricing · monthly / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Pricing · yearly / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB",
+      "Interaction map"
+     ]
     },
     {
      "name": "Site · Pricing · trial-banner / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Pricing · mobile-390 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Download · mac / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Download · win / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Download · linux / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Download · other / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Privacy / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Release / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · 404 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Main Content",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Docs · index / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · agents / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · mcp / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · graph-md / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · cli / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · mcp-sign-in / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
     },
     {
      "name": "Site · Docs · mobile-390 / dark",
-     "children": []
+     "children": [
+      "Body",
+      "Container",
+      "Container",
+      "Footer",
+      "Site / GNB"
+     ]
     },
     {
      "name": "Site · Docs · mobile-800 / dark",
+     "children": [
+      "Body",
+      "Container",
+      "Site / GNB",
+      "Container",
+      "Footer"
+     ]
+    },
+    {
+     "name": "Site · Landing",
      "children": []
-    }
-   ],
-   "components": [],
-   "variants": {}
-  },
-  "12 · Docs Screens": {
-   "frames": [
-    {
-     "name": "Docs · Overview / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
     },
     {
-     "name": "Docs · Quickstart / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Community",
+     "children": []
     },
     {
-     "name": "Docs · What to add / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Account",
+     "children": []
     },
     {
-     "name": "Docs · Import / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Account · Team",
+     "children": []
     },
     {
-     "name": "Docs · View / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Auth · Login",
+     "children": []
     },
     {
-     "name": "Docs · Search / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Auth · Verify",
+     "children": []
     },
     {
-     "name": "Docs · Packs & community / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Auth · Welcome",
+     "children": []
     },
     {
-     "name": "Docs · Shortcuts / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Connect",
+     "children": []
     },
     {
-     "name": "Docs · MCP Setup / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Connect-app",
+     "children": []
     },
     {
-     "name": "Docs · MCP Tools / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Subscribe",
+     "children": []
     },
     {
-     "name": "Docs · CLI Reference / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Unsubscribe",
+     "children": []
     },
     {
-     "name": "Docs · GRAPH.md What / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Account · Delete",
+     "children": []
     },
     {
-     "name": "Docs · GRAPH.md Generate / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Pricing",
+     "children": []
     },
     {
-     "name": "Docs · GRAPH.md Spec / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Download",
+     "children": []
     },
     {
-     "name": "Docs · GRAPH.md Validate / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Release",
+     "children": []
     },
     {
-     "name": "Docs · MCP Sign-in / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Privacy",
+     "children": []
     },
     {
-     "name": "Docs · Agents / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · 404",
+     "children": []
     },
     {
-     "name": "Docs · Agents · Hosts / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Docs · Agents · OpenClaw / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Docs · Agents · Roles / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Docs · Agents · Packs / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Docs · One graph / dark",
-     "children": [
-      "Site / GNB",
-      "docs-cols",
-      "Site / Footer"
-     ]
+     "name": "Site · Docs",
+     "children": []
     }
    ],
    "components": [],
