@@ -488,7 +488,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         if prev.get("owner_id") and prev["owner_id"] != owner:
             base["error"] = "owner mismatch — 남의 문서에는 쓸 수 없다(SEC-1)"
             return base
-        if prev.get("content_hash") == content_hash and prev.get("title") == kept_title:
+        # `chunk_count < 0` 은 아래 ⓪ 이 찍고 크래시가 남긴 **쓰기 창 표식**이다. 그
+        # 문서는 지금 읽히지 않으므로 무변경이라도 스킵하면 안 된다 — 스킵하면 표식이
+        # 남은 채 `executed:true`(chunks:-1)가 나가고 그 문서는 영영 안 읽힌다.
+        if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
+                and int(prev.get("chunk_count") or 0) >= 0:
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
                         content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
@@ -515,6 +519,19 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # 중간 크래시 자기치유의 근거다(모듈 독스트링).
     removed = 0
     if prev is not None:
+        # ⓪ 창 표식. ①②를 도는 동안 메타는 아직 **옛** chunk_count 를 들고 있어서,
+        #    청크가 **늘어나는** re-put 은 살아 있는 행 수가 0→새 수 를 훑으며 옛 수와
+        #    정확히 한 번 일치한다 — get_doc 의 행 수 비교가 그 한 순간을 성공으로
+        #    답했다(실측: 1→2청크 re-put 중 3,600자 문서가 2,000자를 깨끗한 산문으로
+        #    돌려줬다). 어떤 행 수와도 안 맞는 값을 찍어 루프 **전체**를 덮는다.
+        #    ③ 의 메타 MERGE 가 진짜 수로 되돌린다 — 치유는 그 한 줄이 전부다.
+        # ⚠ 크래시가 이 표식을 디스크에 남기면 그 문서는 **다음 re-put 까지 계속 거절**
+        #    된다. 무청크 잔해(모듈 독스트링 "쓰기 순서 = 자기치유")와 같은 갈래다:
+        #    조용히 산문으로 읽히는 일이 없고, 되살리는 길도 전문 re-put 하나로 같다.
+        #    그래서 위 무변경 skip 이 음수 표식 앞에서 물러선다 — 안 그러면 같은 본문
+        #    re-put 이 표식을 남긴 채 성공을 답해 그 문서가 영영 안 읽힌다.
+        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.chunk_count = -1",
+                  {"id": doc_id})
         cnt = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c",
                         {"d": doc_id})
         removed = int(cnt[0].get("c")) if cnt else 0
@@ -652,7 +669,10 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
 
     verified = (연속성: b0=0 · char_start_i == char_end_{i-1}) AND
                (sha256(복원문) == _DocMeta.content_hash).
-    레거시 청크(오프셋 -1)는 복원 불가로 보고한다(검색만 가능)."""
+    레거시 청크(오프셋 -1)는 복원 불가로 보고한다(검색만 가능).
+    살아 있는 청크 수가 메타의 `chunk_count` 와 어긋나면(쓰기 창 · 삭제 창 · 크래시
+    잔해) 본문 자리를 주지 않고 `executed=False` 로 거절한다. 쓰기 창은 put_doc 이
+    `chunk_count = -1` 로 표식하므로 루프 **전체**가 덮인다 — 아래 주석 참조."""
     base: dict[str, Any] = {"kind": "doc.get", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is None:
@@ -674,6 +694,37 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
         "c.char_start AS cs, c.char_end AS ce, c.text AS text "
         "ORDER BY c.chunk_index", {"d": doc_id})
     rows = rows or []
+
+    # 살아 있는 청크 행 수가 메타의 `chunk_count` 와 다르면 이 문서는 **지금 교체되는
+    # 중이거나 중간에 끊긴 것**이다. put_doc 은 구 청크를 지우고 하나씩 다시 MERGE 한 뒤
+    # 마지막에 메타를 갱신하고, delete_doc 은 청크를 지운 뒤 메타를 지운다. 두 창과
+    # 크래시 잔해가 여기서 같은 모양으로 잡힌다 — 그래서 판정을 두 쓰기 경로가 아니라
+    # **둘이 만나는 이 자리**에 둔다(한쪽에만 두면 절반만 고친다).
+    # 안 하면 창 안의 읽기가 빈 본문이나 **앞부분만**을 executed:true 로 답한다(실측
+    # 2026-09-06: 27청크 문서가 chunks:0 · 3,802자 문서가 1,802자). `verified` 로는 못
+    # 가른다 — 오프셋 잃은 레거시 문서도 false 이고 그쪽은 행 수가 맞아 여기 안 걸린다.
+    # ⚠ 기다렸다 다시 읽지 않고 **답을 거절한다**: 이 상태는 크래시가 남기면 다음 re-put
+    # 까지 지속되므로(모듈 독스트링 "쓰기 순서 = 자기치유") 기다림으로는 낫지 않는다.
+    # ⚠ 행 수 비교 **하나만으로는 창을 다 못 덮는다** — 청크가 늘어나는 re-put 은 메타가
+    # 아직 옛 수를 들고 있어서 행 수가 그 값을 스치고 지나간다. 그 한 순간을 위해
+    # put_doc 이 창 진입 때 `chunk_count = -1`(음수 = 표식)을 찍고, 그 값이 여기서
+    # 어떤 행 수와도 안 맞아 루프 전체가 덮인다. delete_doc 은 표식이 필요 없다:
+    # 청크 삭제가 **한 문**이라 행 수가 n→0 으로 한 번에 떨어지고, 그 0 은 메타의 n 과
+    # 항상 어긋난다(중간 값이 없다).
+    # 계약: [[vinc.canon.chunk-ssot]]
+    expected = int(meta.get("chunk_count") or 0)
+    if expected and len(rows) != expected:
+        base["chunks"], base["chunk_count"] = len(rows), expected
+        base["error"] = ("document is being rewritten: its chunks are mid-replacement"
+                         if expected < 0 else
+                         "document is incomplete: %d of %d chunks are present"
+                         % (len(rows), expected))
+        base["hint"] = ("A write replaces chunks one at a time and a delete removes "
+                        "them before the metadata, so a read landing in either window "
+                        "sees this. Read it again in a moment. If it stays this way "
+                        "the last write was interrupted: re-put the full text to heal "
+                        "it. This is not an empty document, and not a missing one.")
+        return base
 
     def _off(v) -> int:   # ⚠ `v or -1` 금지 — 정당한 오프셋 0 이 falsy 로 강등된다
         return -1 if v is None else int(v)
@@ -746,6 +797,10 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
         # 행의 문서를 잃고, 그 행을 지우면 엔진이 불일치로 던진다([[vinc.ops.fts-index-drift]]).
         # ⚠ 자식 벡터(v8)를 **먼저** 지운다 — 남으면 조용히 사라지는 게 아니라 인덱스에
         # 남아 상위 k 자리를 잡아먹는다.
+        # put_doc 과 달리 여기엔 창 표식이 필요 없다: 청크 삭제가 **한 문**이라 행 수가
+        # n→0 으로 한 번에 떨어지고, 중간 값이 없으니 메타의 n 과 항상 어긋난다
+        # (get_doc 이 그 어긋남으로 거절한다). 이 줄을 청크별 루프로 바꾸면 그 보장이
+        # 깨지므로, 그때는 put_doc 처럼 표식을 찍어야 한다.
         store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
         _with_fts_repair(store, lambda: store.run(
             "MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id}))
