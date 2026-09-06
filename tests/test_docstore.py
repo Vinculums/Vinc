@@ -807,7 +807,7 @@ class DocstoreE2E(unittest.TestCase):
         self.assertIn("error", q.ledger_drilldown(owner="user:a", domain="phys",
                                                   mark="bogus", store=self.store))
 
-    def _seed_mention_doc(self, owner="user:a"):
+    def _seed_mention_doc(self, owner="user:a", topic=None):
         """(phys: beta·delta) · (math: gamma) 를 언급 밀도가 다르게 문 문서 1건.
 
         의도적으로 **전역 최다 개념(gamma, 3청크)이 대표 주제(phys, 4)에 없게** 짰다.
@@ -828,7 +828,7 @@ class DocstoreE2E(unittest.TestCase):
             text += block
             pos += len(block)
         out = ds.put_doc(self.store, owner=owner, text=text, title="언급",
-                         boundaries=starts, max_chars=64)
+                         boundaries=starts, max_chars=64, topic=topic)
         self.assertEqual(out["chunks"], len(paras))
         return out["doc_id"]
 
@@ -851,6 +851,47 @@ class DocstoreE2E(unittest.TestCase):
                    if d["doc_id"] == out["doc_id"])
         self.assertEqual((doc["topic"], doc["topics"]), ("", []))
         self.assertEqual((doc["primary_concept_id"], doc["primary_concept_title"]), ("", ""))
+
+    def _doc_row(self, did, owner="user:a"):
+        return next(d for d in ds.list_docs(self.store, owner=owner)["docs"]
+                    if d["doc_id"] == did)
+
+    def test_authored_topic_wins_and_leads_the_topics_list(self):
+        """적힌 주제가 파생 주제를 이기고 목록의 맨 앞에 선다.
+
+        파생은 본문에서 개념 제목을 찾은 **추론**이고 미러의 domain 은 사람이 단언한
+        값이다. 둘은 어긋난다 — 실측 2026-09-06, 미러가 있는 문서 117건 중 39건이
+        달랐고 그중에 배포 런북이 `vinc/engineering/account` 로 걸린 것이 있었다.
+        파생 주제를 **지우지는** 않는다: 발견으로서는 여전히 유효하다."""
+        did = self._seed_mention_doc(topic="bio/lab")
+        doc = self._doc_row(did)
+        self.assertEqual(doc["topic"], "bio/lab", "적힌 주제가 파생(phys)을 이겨야 한다")
+        self.assertEqual(doc["topics"][0], "bio/lab")
+        self.assertIn("phys", doc["topics"], "파생 주제는 뒤에 남는다(발견은 유효)")
+
+    def test_authored_topic_survives_a_rewrite_that_does_not_pass_one(self):
+        """주제를 안 실은 재작성이 적힌 주제를 지우면 안 된다 — 그것이 제목을 비웠던
+        경로와 같은 종류의 사고다(`title` 3값 처리의 이유)."""
+        did = self._seed_mention_doc(topic="bio/lab")
+        ds.put_doc(self.store, owner="user:a", doc_id=did, text="개념을 안 부르는 새 본문.")
+        self.assertEqual(self._doc_row(did)["topic"], "bio/lab")
+
+    def test_authored_topic_lands_on_the_document_when_nothing_matches_it(self):
+        """적힌 주제에 언급된 개념이 하나도 없으면 착지 노드는 **그 문서 자신의
+        미러**다. 빈 값을 주면 트리에서 눌러도 갈 곳이 없다."""
+        did = self._seed_mention_doc(topic="bio/lab")
+        doc = self._doc_row(did)
+        # ⚠ **논리 id 로 기대한다.** 스토어는 물리 키로 바인딩하되 응답에는 논리 id 를
+        # 돌려준다(같은 파일의 `links(near) == ["concept:design-hub"]` 가 같은 규약이다).
+        # 여기 `_pk(...)` 를 쓰면 플래그가 **켜진** 모드에서만 깨진다 — 실제로 깨졌다.
+        self.assertEqual(doc["primary_concept_id"], "concept:doc." + did)
+        self.assertEqual(doc["primary_concept_title"], "언급")
+
+    def test_doc_mirror_prefix_matches_the_query_copy(self):
+        """두 모듈이 서로를 모듈 수준에서 임포트하지 않아 사본이 둘이다. 갈라지면
+        문서 미러가 한쪽에서만 미러로 보인다(`_ALLOWED_PAIRS_HINT` 와 같은 처방)."""
+        from api import query as _q
+        self.assertEqual(ds._DOC_MIRROR_PREFIX, _q._DOC_CONCEPT_PREFIX)
 
     def test_mention_tally_owner_isolated(self):
         # SEC-1 — 남의 개념이 내 문서의 대표 주제·대표 개념을 흔들지 못한다.

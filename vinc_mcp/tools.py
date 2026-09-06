@@ -368,7 +368,7 @@ def _t_doc_put(args, bridge):
     return bridge.request("POST", "/doc/put", body={
         "owner": _owner(args, bridge), "text": args["text"],
         "id": args.get("doc_id"), "title": args.get("title"),
-        "origin": args.get("origin")})
+        "origin": args.get("origin"), "topic": args.get("topic")})
 
 
 def _t_conventions(args, bridge):
@@ -957,12 +957,19 @@ TOOLS: list[dict] = [
                        "matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; "
                        "passing the declared value here does not edit that document, it creates "
                        "another one with the same title. When the body declares an id different "
-                       "from the one being written to, `warnings` says so.",
+                       "from the one being written to, `warnings` says so. `topic` STATES what "
+                       "the document is about instead of leaving it to be inferred: without it the "
+                       "topic is derived by scanning the body for concept titles, which is why a "
+                       "document that cites other documents rather than naming concepts can end up "
+                       "with no topic at all or a misleading one. Passing it files the document "
+                       "under that topic and the answer survives re-writes; the response echoes it "
+                       "back as `topic`.",
         "inputSchema": {"type": "object", "properties": {
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
             "title": {"type": "string", "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."},
             "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
+            "topic": {"type": "string", "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."},
         }, "required": ["text"]},
         "run": _t_doc_put,
     },
