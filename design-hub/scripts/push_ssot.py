@@ -36,7 +36,10 @@ from pathlib import Path
 HUB = Path(__file__).resolve().parent.parent
 OUT = HUB / "dist" / "claude-design"
 SSOT = HUB / "DESIGN" / "design-tokens.json"
-CSS = HUB / "DESIGN" / "tokens.css"
+#: ⚠ `DESIGN/tokens.css` 가 아니라 **빌드 산출물**을 보낸다. 모션 토큰(--ease-* · --dur-*)은
+#: `gen_motion.py` 가 `dist/site/site-tokens.css` **에만** 덧붙이므로, 허브 파일을 그대로
+#: 보내면 Claude Design 은 곡선도 시간도 없이 그린다(2026-09-06 실측: 13줄 차이).
+CSS = HUB / "dist" / "site" / "site-tokens.css"
 
 #: 프로젝트 `styles.css` 의 정본 형태. 손으로 유지하는 6개는 그대로 두고 허브 산출물을
 #: **맨 끝에** 얹는다 — 뒤에 오는 :root 선언이 이기므로 값의 정본이 항상 SSoT 가 된다.
@@ -74,11 +77,19 @@ def main() -> int:
     args = ap.parse_args()
 
     if not CSS.exists():
-        print("[BLOCK] DESIGN/tokens.css 가 없다 — 먼저 /ds-gen", file=sys.stderr)
+        print(f"[BLOCK] {CSS.relative_to(HUB)} 가 없다 — 먼저 /ds-gen 후 scripts/build_dist.py",
+              file=sys.stderr)
         return 2
     if CSS.stat().st_mtime < SSOT.stat().st_mtime:
-        print("[BLOCK] tokens.css 가 SSoT 보다 낡았다 — 먼저 /ds-gen "
+        print("[BLOCK] 빌드 산출물이 SSoT 보다 낡았다 — 먼저 /ds-gen 후 build_dist "
               "(낡은 토큰을 올리면 Claude Design 이 조용히 옛 값으로 그린다)", file=sys.stderr)
+        return 2
+    # 모션이 빠진 파일을 보내는 것이 이 스크립트의 실제 고장이었다. 조용히 통과시키지 않는다.
+    css_text = CSS.read_text(encoding="utf-8")
+    missing = [k for k in ("--ease-out", "--dur-base") if k not in css_text]
+    if missing:
+        print(f"[BLOCK] 모션 토큰이 없다({', '.join(missing)}) — gen_motion 이 안 돌았다. "
+              "scripts/build_dist.py 를 먼저 돌릴 것", file=sys.stderr)
         return 2
 
     gate = subprocess.run(
@@ -104,8 +115,7 @@ def main() -> int:
         return 2
 
     (OUT / "tokens").mkdir(parents=True, exist_ok=True)
-    (OUT / "tokens" / "ssot.css").write_text(CSS.read_text(encoding="utf-8"),
-                                             encoding="utf-8", newline="")
+    (OUT / "tokens" / "ssot.css").write_text(css_text, encoding="utf-8", newline="")
     writes = ["tokens/ssot.css"]
     if args.setup:
         (OUT / "styles.css").write_text(STYLES, encoding="utf-8", newline="")

@@ -84,6 +84,22 @@ def _vendor_findings(root: Path) -> list:
     return out
 
 
+#: 벤더 사본이 사는 디렉터리. 남의 라이브러리는 우리 표면이 아니다 — three.js 하나가
+#: 위반 3건과 선택자 의심 17건을 만들어 진짜 6건을 묻어 버렸다(2026-09-06 실측).
+#: 이름이 아니라 **경로**로 거른다: 파일명만 보면 우리 파일과 구분이 안 된다.
+VENDOR_DIRS = ("vendor", "node_modules", "third_party")
+
+
+def _is_vendored(root: Path, name: str) -> bool:
+    """이 이름의 파일이 벤더 디렉터리 **안에만** 있는가.
+
+    같은 이름이 우리 쪽에도 있으면 거르지 않는다 — 그쪽 위반을 잃지 않기 위해서다.
+    """
+    hits = list(root.rglob(name))
+    if not hits:
+        return False
+    return all(any(part in VENDOR_DIRS for part in fp.relative_to(root).parts) for fp in hits)
+
 def _is_generated(root: Path, name: str) -> bool:
     """이 이름의 파일이 생성물인가. 같은 이름이 여럿이면 하나라도 생성물이면 참."""
     for fp in root.rglob(name):
@@ -179,7 +195,7 @@ def main() -> int:
         # Finding.found 는 "<파일명>: <발췌>" 꼴이다(엔진이 파일명만 싣는다).
         name = str(f.found).split(":", 1)[0].strip()
         if name not in gen_cache:
-            gen_cache[name] = _is_generated(root, name)
+            gen_cache[name] = _is_generated(root, name) or _is_vendored(root, name)
         if gen_cache[name]:
             skipped.append(f)
         elif _looks_like_selector(str(f.found)):

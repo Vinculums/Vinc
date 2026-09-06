@@ -34,8 +34,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "scripts", "graph-refs.json")
 
 _SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md")
+# ⚠ `design-hub` 는 2026-09-06 까지 여기 있었다. 그 사이 허브 스크립트가 그래프를
+# 인용하기 시작했고(게이트 셋의 근거 문서), 그 인용은 **한 번도 대조되지 않았다** —
+# 여섯 건 중 넷이 매니페스트에 없는 실재 노드였고 하나는 문법 예시였다. 뺐다.
 _SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "dist", "target", "build",
-              "_migration", "__pycache__", ".claude", "design-hub"}
+              "_migration", "__pycache__", ".claude"}
 # 이 문법을 **정의·예시**하는 파일들. gate_forbidden 이 `CLAUDE.md` 를 빼는 것과 같은
 # 사유 — 규칙을 적은 자리를 규칙이 잡으면 규칙을 적을 수가 없다.
 _SKIP_FILES = {"scripts/gate_graph_refs.py", "scripts/refresh_graph_refs.py"}

@@ -367,6 +367,20 @@ jobs:
       - name: Figma inventory gate (screens · modals · icons)
         run: python -X utf8 design-hub/scripts/figma_inventory.py
 
+      # 목록도 값도 맞는데 **글자만** 다른 경우가 남는다. 2026-09-06 에 162건을 손으로
+      # 대조해 Figma 를 코드와 맞췄고, 그 시점의 서명을 스냅샷으로 커밋했다. 이 스텝이
+      # 잡는 것은 그 뒤에 사이트 문구를 고치면서 Figma 를 안 고친 커밋이다.
+      # ⚠ Vinc-homepage 가 없으면 스스로 SKIP 한다 — 검사한 척하지 않는다.
+      - name: Figma copy parity gate
+        run: python -X utf8 design-hub/scripts/figma_copy.py --check
+
+      # 사이트 문구가 위 게이트라면 이쪽은 **앱 보드**의 글자다. 오버레이 셋이 다른
+      # 시트의 본문을 달고 있어도 목록·상태 게이트는 초록이었다(2026-09-06). 보드 글자
+      # 375건을 app/src 리터럴 전량과 대조하고, 표본 데이터·조립 문장·보드 주석은
+      # 분류해 선언한다. 사이트와 달리 Vinc-homepage 가 필요 없어 늘 돈다.
+      - name: Figma app board copy gate
+        run: python -X utf8 design-hub/scripts/figma_app_copy.py
+
       # 역할 껍데기(.claude/agents/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
       # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.
       # 오프라인이다 — 대조 대상은 커밋된 agents/roles.json 이고 CI 에 그래프 키는

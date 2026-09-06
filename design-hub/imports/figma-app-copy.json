@@ -1,0 +1,1894 @@
+{
+ "$meta": {
+  "source": "figma",
+  "file": "WUXLeDDNBqih2KTZOz9wCX",
+  "page": "App(Desktop)",
+  "exported": "2026-09-06",
+  "how": "use_figma, the JS in scripts/figma_app_copy.py's docstring. One row per distinct string.",
+  "shape": "[fingerprint, first 34 chars, board]. The fingerprint is over the FULL stored string; the excerpt is only so a failure can be read.",
+  "why-not-the-text": "Storing the words would put a second copy of the app's copy in the repository, and the canon is app/src. A fingerprint is not a copy.",
+  "note": "Machine dump. Never patch it by hand: re-run the dump."
+ },
+ "strings": [
+  [
+   666474,
+   "Vinc",
+   "View · default (canvas"
+  ],
+  [
+   8211,
+   "–",
+   "View · default (canvas"
+  ],
+  [
+   9634,
+   "▢",
+   "View · default (canvas"
+  ],
+  [
+   10005,
+   "✕",
+   "View · default (canvas"
+  ],
+  [
+   50,
+   "2",
+   "View · default (canvas"
+  ],
+  [
+   199565,
+   "Search your knowledge",
+   "View · default (canvas"
+  ],
+  [
+   817058,
+   "Ctrl K",
+   "View · default (canvas"
+  ],
+  [
+   1649,
+   "3D",
+   "View · default (canvas"
+  ],
+  [
+   1618,
+   "2D",
+   "View · default (canvas"
+  ],
+  [
+   574338,
+   "Timeline",
+   "View · default (canvas"
+  ],
+  [
+   453605,
+   "Weave",
+   "View · default (canvas"
+  ],
+  [
+   255137,
+   "Home",
+   "View · default (canvas"
+  ],
+  [
+   416608,
+   "DOCUMENTS · 12",
+   "View · default (canvas"
+  ],
+  [
+   862469,
+   "physics",
+   "View · default (canvas"
+  ],
+  [
+   54,
+   "6",
+   "View · default (canvas"
+  ],
+  [
+   683781,
+   "Quantum field theory notes",
+   "View · default (canvas"
+  ],
+  [
+   136842,
+   "Gauge symmetry",
+   "View · default (canvas"
+  ],
+  [
+   333825,
+   "Renormalization",
+   "View · default (canvas"
+  ],
+  [
+   29278,
+   "economics",
+   "View · default (canvas"
+  ],
+  [
+   52,
+   "4",
+   "View · default (canvas"
+  ],
+  [
+   771197,
+   "design",
+   "View · default (canvas"
+  ],
+  [
+   62704,
+   "No topic yet",
+   "View · default (canvas"
+  ],
+  [
+   951834,
+   "12 documents",
+   "View · default (canvas"
+  ],
+  [
+   771311,
+   "82% linked",
+   "View · default (canvas"
+  ],
+  [
+   161131,
+   "2 not linked",
+   "View · default (canvas"
+  ],
+  [
+   692890,
+   "latest 2026-08-02",
+   "View · default (canvas"
+  ],
+  [
+   545368,
+   "⇧ Shift-drag to select an area, th",
+   "View · default (canvas"
+  ],
+  [
+   787500,
+   "No knowledge map yet.",
+   "View · empty"
+  ],
+  [
+   812004,
+   "Add files or run a search, and the",
+   "View · empty"
+  ],
+  [
+   946210,
+   "Import files",
+   "View · empty"
+  ],
+  [
+   870708,
+   "Options",
+   "View · lens panel (Opt"
+  ],
+  [
+   298765,
+   "Legend",
+   "View · lens panel (Opt"
+  ],
+  [
+   442060,
+   "Nodes",
+   "View · lens panel (Opt"
+  ],
+  [
+   510915,
+   "Node size",
+   "View · lens panel (Opt"
+  ],
+  [
+   968908,
+   "by connections",
+   "View · lens panel (Opt"
+  ],
+  [
+   150711,
+   "Layout",
+   "View · lens panel (Opt"
+  ],
+  [
+   115801,
+   "by centre",
+   "View · lens panel (Opt"
+  ],
+  [
+   636167,
+   "Node scale",
+   "View · lens panel (Opt"
+  ],
+  [
+   48563,
+   "1.0",
+   "View · lens panel (Opt"
+  ],
+  [
+   425848,
+   "Lines",
+   "View · lens panel (Opt"
+  ],
+  [
+   40777,
+   "Line weight",
+   "View · lens panel (Opt"
+  ],
+  [
+   192438,
+   "Spread",
+   "View · lens panel (Opt"
+  ],
+  [
+   402812,
+   "Direction arrows",
+   "View · lens panel (Opt"
+  ],
+  [
+   3551,
+   "on",
+   "View · lens panel (Opt"
+  ],
+  [
+   518396,
+   "Other",
+   "View · lens panel (Opt"
+  ],
+  [
+   455611,
+   "Labels",
+   "View · lens panel (Opt"
+  ],
+  [
+   767789,
+   "on hover",
+   "View · lens panel (Opt"
+  ],
+  [
+   83719,
+   "Unlinked nodes",
+   "View · lens panel (Opt"
+  ],
+  [
+   529520,
+   "show",
+   "View · lens panel (Opt"
+  ],
+  [
+   792984,
+   "Shapes and the point color stay fi",
+   "View · lens panel (Opt"
+  ],
+  [
+   941772,
+   "Top right",
+   "View · coachmark & las"
+  ],
+  [
+   310146,
+   "switch how you look at the map, an",
+   "View · coachmark & las"
+  ],
+  [
+   881906,
+   "Right-click a node",
+   "View · coachmark & las"
+  ],
+  [
+   944761,
+   "open it, trace from it, or share j",
+   "View · coachmark & las"
+  ],
+  [
+   706777,
+   "Got it",
+   "View · coachmark & las"
+  ],
+  [
+   601994,
+   "Share as a pack (7)",
+   "View · coachmark & las"
+  ],
+  [
+   679708,
+   "Node detail",
+   "View · node detail + r"
+  ],
+  [
+   994911,
+   "Topic",
+   "View · node detail + r"
+  ],
+  [
+   426034,
+   "Links",
+   "View · node detail + r"
+  ],
+  [
+   56,
+   "8",
+   "View · node detail + r"
+  ],
+  [
+   820740,
+   "Direction",
+   "View · node detail + r"
+  ],
+  [
+   537404,
+   "→ 5 out · ← 3 in",
+   "View · node detail + r"
+  ],
+  [
+   169920,
+   "Attached",
+   "View · node detail + r"
+  ],
+  [
+   76198,
+   "Counted from this node, not from t",
+   "View · node detail + r"
+  ],
+  [
+   762171,
+   "Trace from here",
+   "View · node detail + r"
+  ],
+  [
+   848702,
+   "Share",
+   "View · node detail + r"
+  ],
+  [
+   410806,
+   "Delete",
+   "View · node detail + r"
+  ],
+  [
+   743786,
+   "From your documents",
+   "View · node detail + r"
+  ],
+  [
+   503151,
+   "§ Symmetries",
+   "View · node detail + r"
+  ],
+  [
+   950704,
+   "Local gauge symmetry requires intr",
+   "View · node detail + r"
+  ],
+  [
+   549868,
+   "§ Overview",
+   "View · node detail + r"
+  ],
+  [
+   347134,
+   "The gauge symmetry constrains whic",
+   "View · node detail + r"
+  ],
+  [
+   577145,
+   "Open the full document",
+   "View · node detail + r"
+  ],
+  [
+   286144,
+   "⋮⋮",
+   "View · node detail + r"
+  ],
+  [
+   277192,
+   "Related nodes",
+   "View · node detail + r"
+  ],
+  [
+   8594,
+   "→",
+   "View · node detail + r"
+  ],
+  [
+   994784,
+   "comes before · Recorded evidence",
+   "View · node detail + r"
+  ],
+  [
+   8592,
+   "←",
+   "View · node detail + r"
+  ],
+  [
+   991549,
+   "Symmetry breaking",
+   "View · node detail + r"
+  ],
+  [
+   331035,
+   "derives from · Recorded evidence",
+   "View · node detail + r"
+  ],
+  [
+   183,
+   "·",
+   "View · node detail + r"
+  ],
+  [
+   698628,
+   "Noether current",
+   "View · node detail + r"
+  ],
+  [
+   862451,
+   "related · No evidence recorded",
+   "View · node detail + r"
+  ],
+  [
+   958960,
+   "+4 more",
+   "View · node detail + r"
+  ],
+  [
+   47759,
+   "Gauge symmetry → Renormalization",
+   "View · edge detail"
+  ],
+  [
+   314273,
+   "Gauge symmetry comes before Renorm",
+   "View · edge detail"
+  ],
+  [
+   767959,
+   "confidence 82%",
+   "View · edge detail"
+  ],
+  [
+   230698,
+   "Recorded evidence",
+   "View · edge detail"
+  ],
+  [
+   537027,
+   "You need the symmetry constraints ",
+   "View · edge detail"
+  ],
+  [
+   817316,
+   "A local symmetry that fixes the in",
+   "View · edge detail"
+  ],
+  [
+   509031,
+   "Absorbing divergences into redefin",
+   "View · edge detail"
+  ],
+  [
+   883784,
+   "Document",
+   "View · reader (verifie"
+  ],
+  [
+   62633,
+   "Back",
+   "View · reader (verifie"
+  ],
+  [
+   702771,
+   "Expand",
+   "View · reader (verifie"
+  ],
+  [
+   266999,
+   "Editing. Changes save as you type.",
+   "View · reader (verifie"
+  ],
+  [
+   551196,
+   "## Symmetries",
+   "View · reader (verifie"
+  ],
+  [
+   301953,
+   "The compensating field transforms ",
+   "View · reader (verifie"
+  ],
+  [
+   554604,
+   "What remains is choosing the gauge",
+   "View · reader (verifie"
+  ],
+  [
+   539632,
+   "Search",
+   "Search · results"
+  ],
+  [
+   284751,
+   "Meaning and keywords, together.",
+   "Search · results"
+  ],
+  [
+   616902,
+   "gauge symmetry",
+   "Search · results"
+  ],
+  [
+   257479,
+   "domain:math tag:core \"phrase\"",
+   "Search · results"
+  ],
+  [
+   140644,
+   "6 results",
+   "Search · results"
+  ],
+  [
+   575186,
+   "PHYSICS",
+   "Search · results"
+  ],
+  [
+   8776,
+   "≈",
+   "Search · results"
+  ],
+  [
+   8801,
+   "≡",
+   "Search · results"
+  ],
+  [
+   944582,
+   "ECONOMICS",
+   "Search · results"
+  ],
+  [
+   650956,
+   "Equilibrium models",
+   "Search · results"
+  ],
+  [
+   670481,
+   "hypergraph",
+   "Search · no results + "
+  ],
+  [
+   100920,
+   "Updating the meaning index: keywor",
+   "Search · no results + "
+  ],
+  [
+   789519,
+   "No results for 'hypergraph'. Try a",
+   "Search · no results + "
+  ],
+  [
+   654197,
+   "Open in View",
+   "Search · no results + "
+  ],
+  [
+   910322,
+   "Search all your documents, by mean",
+   "Search · error + brows"
+  ],
+  [
+   140049,
+   "△ Search couldn't run. Retry anyti",
+   "Search · error + brows"
+  ],
+  [
+   130866,
+   "All topics",
+   "Search · error + brows"
+  ],
+  [
+   467910,
+   "What is gauge symmetry",
+   "Ask · answer card"
+  ],
+  [
+   498239,
+   "Ask about what you have collected.",
+   "Ask · answer card"
+  ],
+  [
+   907825,
+   "\"A local symmetry that fixes the i",
+   "Ask · answer card"
+  ],
+  [
+   679024,
+   "quoted from \"Quantum field theory ",
+   "Ask · answer card"
+  ],
+  [
+   530270,
+   "comes after",
+   "Ask · answer card"
+  ],
+  [
+   479494,
+   "related",
+   "Ask · answer card"
+  ],
+  [
+   195576,
+   "3 related nodes · 8 linked · 2 att",
+   "Ask · answer card"
+  ],
+  [
+   534946,
+   "Which one did you mean?",
+   "Ask · answer card"
+  ],
+  [
+   484176,
+   "Symmetry (physics)",
+   "Ask · answer card"
+  ],
+  [
+   544550,
+   "Symmetry (design)",
+   "Ask · answer card"
+  ],
+  [
+   871270,
+   "Packs",
+   "Packs (with Intake dro"
+  ],
+  [
+   572130,
+   "Bundle, share, merge.",
+   "Packs (with Intake dro"
+  ],
+  [
+   919301,
+   "Add knowledge to Vinc.",
+   "Packs (with Intake dro"
+  ],
+  [
+   841191,
+   "Bring in a document (.md, .txt, .r",
+   "Packs (with Intake dro"
+  ],
+  [
+   795088,
+   "Vinc runs entirely on your device.",
+   "Packs (with Intake dro"
+  ],
+  [
+   650680,
+   "Choose a file",
+   "Packs (with Intake dro"
+  ],
+  [
+   529221,
+   "New document",
+   "Packs (with Intake dro"
+  ],
+  [
+   932193,
+   "Try the sample pack",
+   "Packs (with Intake dro"
+  ],
+  [
+   831626,
+   "Go deeper with an assistant",
+   "Packs (with Intake dro"
+  ],
+  [
+   118054,
+   "Vinc reads plain documents on its ",
+   "Packs (with Intake dro"
+  ],
+  [
+   382292,
+   "Pick a topic and send a slice to s",
+   "Packs (with Intake dro"
+  ],
+  [
+   9662,
+   "▾",
+   "Packs (with Intake dro"
+  ],
+  [
+   3578,
+   "Preview & save",
+   "Packs (with Intake dro"
+  ],
+  [
+   380735,
+   "Want a specific area? Select it vi",
+   "Packs (with Intake dro"
+  ],
+  [
+   776467,
+   "The pack carries document content ",
+   "Packs (with Intake dro"
+  ],
+  [
+   808360,
+   "Publish to community",
+   "Packs (with Intake dro"
+  ],
+  [
+   939477,
+   "Make a topic public in the gallery",
+   "Packs (with Intake dro"
+  ],
+  [
+   320880,
+   "Share to community",
+   "Packs (with Intake dro"
+  ],
+  [
+   334658,
+   "Create a full backup pack",
+   "Packs (with Intake dro"
+  ],
+  [
+   144735,
+   "Export everything: for migrating t",
+   "Packs (with Intake dro"
+  ],
+  [
+   265037,
+   "INGESTING (42:5)",
+   "Intake · states (Inges"
+  ],
+  [
+   275792,
+   "Importing…",
+   "Intake · states (Inges"
+  ],
+  [
+   954258,
+   "2 / 4 processed · on your device o",
+   "Intake · states (Inges"
+  ],
+  [
+   745329,
+   "field-notes.md",
+   "Intake · states (Inges"
+  ],
+  [
+   136004,
+   "Done",
+   "Intake · states (Inges"
+  ],
+  [
+   285964,
+   "qft-notes.md",
+   "Intake · states (Inges"
+  ],
+  [
+   655627,
+   "trade-history.pdf",
+   "Intake · states (Inges"
+  ],
+  [
+   13881,
+   "Linking…",
+   "Intake · states (Inges"
+  ],
+  [
+   941597,
+   "sketches.txt",
+   "Intake · states (Inges"
+  ],
+  [
+   739320,
+   "Waiting",
+   "Intake · states (Inges"
+  ],
+  [
+   941077,
+   "SUCCESS (42:7)",
+   "Intake · states (Inges"
+  ],
+  [
+   463294,
+   "Imported 4 files: 18 concepts, 32 ",
+   "Intake · states (Inges"
+  ],
+  [
+   145264,
+   "Added 4 documents, kept whole and ",
+   "Intake · states (Inges"
+  ],
+  [
+   443966,
+   "Newly linked concepts are now in y",
+   "Intake · states (Inges"
+  ],
+  [
+   973615,
+   "12 concept candidates found · Appl",
+   "Intake · states (Inges"
+  ],
+  [
+   70578,
+   "Add more",
+   "Intake · states (Inges"
+  ],
+  [
+   248266,
+   "ERROR",
+   "Intake · states (Inges"
+  ],
+  [
+   9093,
+   "△ Couldn't read trade-history.pdf.",
+   "Intake · states (Inges"
+  ],
+  [
+   541022,
+   "trade-history.pdf is password prot",
+   "Intake · states (Inges"
+  ],
+  [
+   224728,
+   "진단: read_failed · v0.7.4+a1b2c3 co",
+   "Intake · states (Inges"
+  ],
+  [
+   593171,
+   "Settings",
+   "Settings · Account tab"
+  ],
+  [
+   907046,
+   "Account",
+   "Settings · Account tab"
+  ],
+  [
+   604813,
+   "Connections",
+   "Settings · Account tab"
+  ],
+  [
+   122732,
+   "Data",
+   "Settings · Account tab"
+  ],
+  [
+   451791,
+   "Advanced",
+   "Settings · Account tab"
+  ],
+  [
+   932694,
+   "Where it's stored",
+   "Settings · Account tab"
+  ],
+  [
+   593892,
+   "Local",
+   "Settings · Account tab"
+  ],
+  [
+   220372,
+   "ACCOUNT",
+   "Settings · Account tab"
+  ],
+  [
+   477515,
+   "Optional. Connect your vincs.io ac",
+   "Settings · Account tab"
+  ],
+  [
+   485823,
+   "Connect account",
+   "Settings · Account tab"
+  ],
+  [
+   95341,
+   "Opens your browser to sign in and ",
+   "Settings · Account tab"
+  ],
+  [
+   860089,
+   "Topics to sync",
+   "Settings · Account tab"
+  ],
+  [
+   316074,
+   "Sync now",
+   "Settings · Account tab"
+  ],
+  [
+   640277,
+   "Synced. 14 sent, 3 received.",
+   "Settings · Account tab"
+  ],
+  [
+   765990,
+   "Appearance",
+   "Settings · Account tab"
+  ],
+  [
+   775929,
+   "Theme",
+   "Settings · Account tab"
+  ],
+  [
+   76009,
+   "dark",
+   "Settings · Account tab"
+  ],
+  [
+   972380,
+   "light",
+   "Settings · Account tab"
+  ],
+  [
+   5922,
+   "auto",
+   "Settings · Account tab"
+  ],
+  [
+   506451,
+   "Language",
+   "Settings · Account tab"
+  ],
+  [
+   501526,
+   "English",
+   "Settings · Account tab"
+  ],
+  [
+   917640,
+   "한국어",
+   "Settings · Account tab"
+  ],
+  [
+   373997,
+   "Lock",
+   "Settings · Account tab"
+  ],
+  [
+   814859,
+   "Lock Vinc with a passphrase. Optio",
+   "Settings · Account tab"
+  ],
+  [
+   76154,
+   "MCP",
+   "Settings · Connections"
+  ],
+  [
+   232125,
+   "Tool calls from connected clients ",
+   "Settings · Connections"
+  ],
+  [
+   485694,
+   "Claude Desktop",
+   "Settings · Connections"
+  ],
+  [
+   265200,
+   "Remove",
+   "Settings · Connections"
+  ],
+  [
+   613636,
+   "Connect",
+   "Settings · Connections"
+  ],
+  [
+   304151,
+   "Claude Code",
+   "Settings · Connections"
+  ],
+  [
+   749811,
+   "Cursor",
+   "Settings · Connections"
+  ],
+  [
+   366293,
+   "Codex CLI",
+   "Settings · Connections"
+  ],
+  [
+   175886,
+   "Another MCP host (Kimi CLI, VS Cod",
+   "Settings · Connections"
+  ],
+  [
+   21677,
+   "Registered with Claude Desktop. Re",
+   "Settings · Connections"
+  ],
+  [
+   90956,
+   "DATA",
+   "Settings · Connections"
+  ],
+  [
+   77230,
+   "Everything Vinc knows lives in thi",
+   "Settings · Connections"
+  ],
+  [
+   469949,
+   "Open Packs (backup, community)",
+   "Settings · Connections"
+  ],
+  [
+   938784,
+   "Workspace",
+   "Settings · Connections"
+  ],
+  [
+   676701,
+   "default",
+   "Settings · Connections"
+  ],
+  [
+   834409,
+   "The space you're viewing. Switch b",
+   "Settings · Connections"
+  ],
+  [
+   452493,
+   "Account key (manual)",
+   "Settings · Connections"
+  ],
+  [
+   809406,
+   "vinc_sk_••••••••••••",
+   "Settings · Connections"
+  ],
+  [
+   561394,
+   "Fallback: create a key at vincs.io",
+   "Settings · Connections"
+  ],
+  [
+   814395,
+   "Engine address",
+   "Settings · Connections"
+  ],
+  [
+   882673,
+   "http://127.0.0.1:8791",
+   "Settings · Connections"
+  ],
+  [
+   815647,
+   "Connection secret",
+   "Settings · Connections"
+  ],
+  [
+   32205,
+   "Filled in automatically by the app",
+   "Settings · Connections"
+  ],
+  [
+   376276,
+   "NOT CONNECTED",
+   "Settings · device flow"
+  ],
+  [
+   52646,
+   "WAITING",
+   "Settings · device flow"
+  ],
+  [
+   940916,
+   "Waiting for approval in your brows",
+   "Settings · device flow"
+  ],
+  [
+   811482,
+   "CONNECTED",
+   "Settings · device flow"
+  ],
+  [
+   781142,
+   "Connected · @jade_kim",
+   "Settings · device flow"
+  ],
+  [
+   319708,
+   "Removes the key from this machine.",
+   "Settings · device flow"
+  ],
+  [
+   341887,
+   "EXPIRED",
+   "Settings · device flow"
+  ],
+  [
+   414992,
+   "The request expired. Try again.",
+   "Settings · device flow"
+  ],
+  [
+   354543,
+   "FAILED",
+   "Settings · device flow"
+  ],
+  [
+   104058,
+   "Connection didn't complete",
+   "Settings · device flow"
+  ],
+  [
+   258877,
+   "SHARE AS A PACK",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   194059,
+   "Share as a pack",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   917444,
+   "Everything below leaves in the pac",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   713139,
+   "Scope",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   15444,
+   "One topic · physics",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   876729,
+   "Concepts",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   1602,
+   "24",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   1723,
+   "61",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   91317,
+   "Format",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   944790,
+   ".vincpack",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   954012,
+   "Your pins, tags and usage stay wit",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   144229,
+   "Cancel",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   38939,
+   "WHERE SHOULD THIS GO?",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   192607,
+   "Where should this go?",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   644059,
+   "Same pack, different destination. ",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   860348,
+   "My space",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   613881,
+   "Copy into your personal graph. The",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   410814,
+   "Team space",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   189623,
+   "Copy into the team graph. Everyone",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   663243,
+   "Community",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   767271,
+   "Publish to the public gallery. Any",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   310255,
+   "Pack file",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   383262,
+   "Download a .vincpack to keep or ha",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   288594,
+   "IMPORT A PACK",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   881559,
+   "Import a pack",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   153734,
+   "Merged into your graph. Existing i",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   817887,
+   "Created",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   344277,
+   "2026-08-01",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   1757,
+   "74",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   54398,
+   "707",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   397878,
+   "Documents",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   1569,
+   "12",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   708070,
+   "74 concepts · 707 connections · 12",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   69244,
+   "Import as mine",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   917006,
+   "DESTRUCTIVE CONFIRM",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   90457,
+   "Delete \"Gauge symmetry\"?",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   185089,
+   "Its connections go too. This can't",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   334663,
+   "Keep",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   16277,
+   "TEXT PROMPT",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   225125,
+   "Rename the topic \"physics\".",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   517676,
+   "Everything in it moves along.",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   608782,
+   "Remove from this topic",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   281258,
+   "Rename",
+   "Overlays 1 · sheets (S"
+  ],
+  [
+   176753,
+   "TOOLS · CREATE",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   994059,
+   "Tools",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   943280,
+   "Write a document, and link the one",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   574758,
+   "Create",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   76023,
+   "Import",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   592561,
+   "Untitled",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   815077,
+   "Write something first. It saves as",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   990899,
+   "LINK RELATED DOCUMENTS",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   486833,
+   "Links are drawn between the main c",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   163225,
+   "physics · Gauge symmetry",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   579293,
+   "Trade history",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   685920,
+   "economics · Equilibrium",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   572222,
+   "Sketchbook",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   393582,
+   "No concept yet, so it cannot be li",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   458745,
+   "Link 2 and finish",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   350245,
+   "GRAPH.MD",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   351269,
+   "GRAPH.md",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   124197,
+   "Your assistant reads this before i",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   227742,
+   "Yours to write",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   65016,
+   "File decisions as DEC nodes. Prefe",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   67396,
+   "COPIED FROM YOUR GRAPH. REBUILD TO",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   552735,
+   "topics: physics(6) economics(4) de",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   482051,
+   "WAITING FOR YOU · 2",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   130348,
+   "Hypothesis",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   734493,
+   "node type",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   165643,
+   "Reject",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   182167,
+   "Approve",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   167481,
+   "CONTRADICTS",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   958898,
+   "relation type",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   229005,
+   "Rebuild",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   569663,
+   "Save",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   245960,
+   "DOC EDITOR · CONFLICT",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   763182,
+   "Editing. Changes save as you type.",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   381963,
+   "When (YYYY) · 2026",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   659942,
+   "Saved",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   231919,
+   "This document changed on another d",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   59304,
+   "Overwrite with my version",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   907369,
+   "Load the newer version",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   502696,
+   "3 concept candidates found · Apply",
+   "Overlays 2 · Tools + G"
+  ],
+  [
+   519836,
+   "COMMAND PALETTE",
+   "Overlays 3 · palette +"
+  ],
+  [
+   227961,
+   "Type a command…",
+   "Overlays 3 · palette +"
+  ],
+  [
+   656753,
+   "Go to Home",
+   "Overlays 3 · palette +"
+  ],
+  [
+   294537,
+   "Go to screen",
+   "Overlays 3 · palette +"
+  ],
+  [
+   499170,
+   "Go to Search",
+   "Overlays 3 · palette +"
+  ],
+  [
+   321587,
+   "Go to Packs",
+   "Overlays 3 · palette +"
+  ],
+  [
+   789046,
+   "Add data",
+   "Overlays 3 · palette +"
+  ],
+  [
+   554186,
+   "This sheet",
+   "Overlays 3 · palette +"
+  ],
+  [
+   824414,
+   "Share a pack",
+   "Overlays 3 · palette +"
+  ],
+  [
+   415127,
+   "Open Settings",
+   "Overlays 3 · palette +"
+  ],
+  [
+   126849,
+   "CONTEXT MENUS",
+   "Overlays 3 · palette +"
+  ],
+  [
+   464396,
+   "Open",
+   "Overlays 3 · palette +"
+  ],
+  [
+   100763,
+   "Share from here",
+   "Overlays 3 · palette +"
+  ],
+  [
+   156146,
+   "TOOLTIP · UPDATE TOAST",
+   "Overlays 3 · palette +"
+  ],
+  [
+   319239,
+   "Switch how you look at the map",
+   "Overlays 3 · palette +"
+  ],
+  [
+   345954,
+   "Vinc 0.7.4 is ready to install.",
+   "Overlays 3 · palette +"
+  ],
+  [
+   193285,
+   "Later",
+   "Overlays 3 · palette +"
+  ],
+  [
+   307406,
+   "Install & restart",
+   "Overlays 3 · palette +"
+  ],
+  [
+   925223,
+   "Downloading… 42%",
+   "Overlays 3 · palette +"
+  ],
+  [
+   59583,
+   "Installing… the app will restart.",
+   "Overlays 3 · palette +"
+  ],
+  [
+   47331,
+   "Update failed. You can keep using ",
+   "Overlays 3 · palette +"
+  ],
+  [
+   390175,
+   "ASK HISTORY · CHEATSHEET",
+   "Overlays 3 · palette +"
+  ],
+  [
+   456013,
+   "Past questions",
+   "Overlays 3 · palette +"
+  ],
+  [
+   998048,
+   "TODAY",
+   "Overlays 3 · palette +"
+  ],
+  [
+   859719,
+   "14:02",
+   "Overlays 3 · palette +"
+  ],
+  [
+   606968,
+   "Sources for renormalization",
+   "Overlays 3 · palette +"
+  ],
+  [
+   770445,
+   "11:38",
+   "Overlays 3 · palette +"
+  ],
+  [
+   411884,
+   "Keeping the last 60 turns.",
+   "Overlays 3 · palette +"
+  ],
+  [
+   629613,
+   "Keyboard",
+   "Overlays 3 · palette +"
+  ],
+  [
+   313757,
+   "1 · 2 · 3",
+   "Overlays 3 · palette +"
+  ],
+  [
+   968859,
+   "Ctrl Shift K",
+   "Overlays 3 · palette +"
+  ],
+  [
+   530570,
+   "Command palette",
+   "Overlays 3 · palette +"
+  ],
+  [
+   102,
+   "f",
+   "Overlays 3 · palette +"
+  ],
+  [
+   657494,
+   "Fit selection (View)",
+   "Overlays 3 · palette +"
+  ],
+  [
+   69973,
+   "Esc",
+   "Overlays 3 · palette +"
+  ],
+  [
+   534190,
+   "Step back",
+   "Overlays 3 · palette +"
+  ],
+  [
+   63,
+   "?",
+   "Overlays 3 · palette +"
+  ],
+  [
+   605224,
+   "Sign in",
+   "Web skin (GNB attached"
+  ],
+  [
+   283018,
+   "Web app",
+   "Web skin (GNB attached"
+  ],
+  [
+   991179,
+   "Download",
+   "Web skin (GNB attached"
+  ],
+  [
+   305331,
+   "Pricing",
+   "Web skin (GNB attached"
+  ],
+  [
+   135677,
+   "Docs",
+   "Web skin (GNB attached"
+  ],
+  [
+   963180,
+   "FIRST RUN",
+   "Overlays 4 · first run"
+  ],
+  [
+   276243,
+   "Sign in, or stay on this machine",
+   "Overlays 4 · first run"
+  ],
+  [
+   512304,
+   "Vinc keeps your documents on this ",
+   "Overlays 4 · first run"
+  ],
+  [
+   832252,
+   "Use Vinc from claude.ai and other ",
+   "Overlays 4 · first run"
+  ],
+  [
+   245130,
+   "Pick up the same topics on another",
+   "Overlays 4 · first run"
+  ],
+  [
+   76639,
+   "Share packs, and keep a copy of wh",
+   "Overlays 4 · first run"
+  ],
+  [
+   167334,
+   "You do not need an account to use ",
+   "Overlays 4 · first run"
+  ],
+  [
+   334982,
+   "Continue offline",
+   "Overlays 4 · first run"
+  ],
+  [
+   911527,
+   "NEW NODE",
+   "Overlays 4 · first run"
+  ],
+  [
+   645645,
+   "New node",
+   "Overlays 4 · first run"
+  ],
+  [
+   674839,
+   "Write one down. Files can come lat",
+   "Overlays 4 · first run"
+  ],
+  [
+   820104,
+   "Title",
+   "Overlays 4 · first run"
+  ],
+  [
+   338774,
+   "Kind",
+   "Overlays 4 · first run"
+  ],
+  [
+   272090,
+   "Concept (true now)",
+   "Overlays 4 · first run"
+  ],
+  [
+   690722,
+   "work/research",
+   "Overlays 4 · first run"
+  ],
+  [
+   997874,
+   "One line",
+   "Overlays 4 · first run"
+  ],
+  [
+   29323,
+   "IMPORT A DOCUMENT",
+   "Overlays 4 · first run"
+  ],
+  [
+   953801,
+   "Import a document",
+   "Overlays 4 · first run"
+  ],
+  [
+   144368,
+   "Kept whole in your graph, exactly ",
+   "Overlays 4 · first run"
+  ],
+  [
+   958775,
+   "Drag a file here, or start from a ",
+   "Overlays 4 · first run"
+  ],
+  [
+   867382,
+   "Bring a document (.md, .txt, .rst,",
+   "Overlays 4 · first run"
+  ],
+  [
+   638971,
+   "ALL DOCUMENTS",
+   "Overlays 4 · first run"
+  ],
+  [
+   845274,
+   "All documents",
+   "Overlays 4 · first run"
+  ],
+  [
+   76104,
+   "12 documents · 4 topics",
+   "Overlays 4 · first run"
+  ],
+  [
+   742559,
+   "Filter by title",
+   "Overlays 4 · first run"
+  ],
+  [
+   58962,
+   "physics · edited 2 days ago",
+   "Overlays 4 · first run"
+  ],
+  [
+   984613,
+   "physics · edited 5 days ago",
+   "Overlays 4 · first run"
+  ],
+  [
+   354277,
+   "physics · edited last week",
+   "Overlays 4 · first run"
+  ],
+  [
+   906304,
+   "Sheaf cohomology",
+   "Overlays 4 · first run"
+  ],
+  [
+   433359,
+   "mathematics · edited last week",
+   "Overlays 4 · first run"
+  ]
+ ]
+}

@@ -132,6 +132,64 @@ verifies the frame really exists.
 ⚠ `components.ts` is where those four helpers are **defined**. Counting it as a call site
 invents four modals that do not exist, so it is excluded by name and a test holds that.
 
+### What the gate reports today (2026-09-05, end of the sync campaign)
+
+```
+사이트 라우트     결손 0
+앱 모달          결손 0
+아이콘           결손 0
+앱 표면 상태      선언된 상태 27 · 결손 0
+화면 상태        선언된 상태 81 · 결손 0 · 미선언 0
+앱 컴포넌트       대조된 변형 46 · 실패 0
+앱 보드 문구      대조 375 · 코드와 일치 222 · 실패 0 · 열린 판정 6
+```
+
+The last line is the fifth axis, added 2026-09-06 after three of the four application overlays
+were found showing another sheet's body. Every distinct string on the desktop boards is
+fingerprinted against every string literal in `app/src`. What is neither a code string nor a
+declared exception fails. The exceptions are classified rather than hidden: sample data,
+sentences the code assembles from a template, board annotations that name a state, glyphs and
+keycaps, and the site's own navigation on the web-skin board.
+
+Six entries carry the verdict `open`, printed one per line every run rather than counted: the
+board says something the application has no string for, and whether that is a missing feature
+or a mockup that ran ahead is a decision, not a cleanup. `Trace from here`, `Open the full
+document`, `Related nodes`, `Where should this go?`, the team destination's note, and the
+viewpoint tooltip.
+
+Two things had to be true before the comparison could work at all. Fourteen headings were
+stored in capitals in Figma while the code stores sentence case and `app.css` raises them, so
+nothing matched; they are now stored the code's way with `textCase`. And that immediately
+exposed what the mismatch had hidden, the settings board saying `DOMAINS TO SYNC` where the
+product renamed the vocabulary to `Topics to sync`.
+
+The last line is a different kind of check from the four above it, added 2026-09-06. Those
+count: is the thing there. It corresponds: every desktop component variant is bound to the
+mark in `app/src` that defines it, and the gate fails when that mark is gone. The axis exists
+because a comparison of all 21 desktop components found four disagreements that every counting
+gate passed, since the counts were right and only the names were wrong: `DocRow` numbered its
+ink scale 1/2/3 where the code inlines `--ink: 0|1|2`, `StateMark` said `Full` where the
+function signature says `filled`, `PackCard` carried a `Highlight` state with nothing behind it,
+and `Chip` was missing the `.chip-static` the stylesheet has. Values, colour and structure
+agreed everywhere; naming was the whole of the drift.
+
+Getting there meant building what code had and Figma did not: seven documentation
+screens, four application overlays, nineteen icons, the Weave graph example, and nine
+account/team/community states. It also meant rebuilding the landing screen to the live
+layout and moving copy to the live values across eleven screens. Every screen frame carries
+its Vinc address as a Dev Mode annotation and all 39 components carry theirs in the
+`description`, both written in this repo's double-bracket citation syntax (`[[` id `]]`).
+
+⚠ Counted page by page on 2026-09-06, nine boards did not: the application overlays board
+built the same day, the community gallery and its modal states, the mobile drawer, the six
+graph visual-language boards, and all fourteen email boards. They do now, and the count is
+89 boards and 41 components. A `SECTION` can hold neither an annotation nor a description, so
+the email design system section carries none and its boards carry it instead.
+
+Two axes the file had nothing for now exist: a `Flows` page holding five user journeys with
+their branches, and real prototype connections on the application page, which had **zero**
+across 2,160 nodes while the homepage had 102.
+
 ⚠ **CI does not have `Vinc-homepage`** — a job checks out its own repository only. The route
 comparison then cannot be made at all, and getting that wrong fails in both directions: feed
 the empty set in as the code list and all 38 mapped routes read as "deleted from code", so the
