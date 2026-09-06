@@ -29,8 +29,15 @@ WATCHED = ("app/src",)
 
 
 def changes_since(rev: str, paths=WATCHED, repo: pathlib.Path = REPO) -> list[str]:
-    """`rev` 뒤에 감시 경로를 건드린 커밋들(짧은 해시 + 제목). CI 는 fetch-depth 0 이라 역사가 있다.
-    `rev` 를 모르는 얕은 체크아웃이면 git 이 실패하고, 그 사실을 예외로 올린다 — 조용히 통과하지 않는다."""
+    """`rev` 뒤에 감시 경로를 건드린 커밋들(짧은 해시 + 제목).
+
+    얕은 체크아웃에서는 판정하지 않는다 — 예외다. 잘린 경계의 커밋은 부모가 없어 트리 전체가 "변경"으로
+    읽히고(2026-09-06 CI 에서 PR 병합 커밋이 그렇게 잡혀 거짓 FAIL), 반대로 경계 너머의 진짜 변경은
+    보이지 않아 거짓 PASS 가 된다. 워크플로가 fetch-depth 0 을 주는 것이 처방이고, 여기서는 그 전제를
+    확인만 한다. `rev` 를 모르는 저장소도 같은 이유로 예외다 — 조용히 통과하지 않는다."""
+    shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=repo, capture_output=True, text=True, encoding="utf-8")
+    if shallow.stdout.strip() == "true":
+        raise RuntimeError("shallow checkout: history is cut, so freshness cannot be judged (checkout with fetch-depth: 0)")
     out = subprocess.run(["git", "rev-list", "--format=%h %s", "--no-commit-header", f"{rev}..HEAD", "--", *paths],
                          cwd=repo, capture_output=True, text=True, encoding="utf-8")
     if out.returncode != 0:
