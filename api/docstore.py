@@ -53,6 +53,13 @@ from . import graphmd
 # (토큰 기준)이 담당하고, 여기는 **정본 보관 단위**라 다소 커도 무방하다.
 DEFAULT_MAX_CHARS = 2000
 
+#: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
+#: 적은 주제**이고, 본문 매칭에서 나오는 파생 주제보다 우선한다.
+#: ⚠ `api.query._DOC_CONCEPT_PREFIX` 와 같은 문자열이어야 한다 — 두 모듈이 서로를
+#: 모듈 수준에서 임포트하지 않으므로 사본이 둘이고, 테스트가 바이트로 고정한다
+#: (`_ALLOWED_PAIRS_HINT` 와 같은 처방).
+_DOC_MIRROR_PREFIX = "concept:doc."
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
 
@@ -436,7 +443,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             boundaries: list[int] | None = None,
             embed: Callable[[list[str]], list[list[float]]] | None = None,
             link: bool = True, updated_at: str | None = None,
-            created_at: str | None = None, content_time: str | None = None) -> dict:
+            created_at: str | None = None, content_time: str | None = None,
+            topic: str | None = None) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
@@ -550,6 +558,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
 
+    # 주제를 **적는다**(선택). 링커보다 **먼저** 해야 미러 제목이 이번 본문 스캔의
+    # 대상이 된다.
+    authored = _set_authored_topic(store, doc_id, topic, owner=owner,
+                                   title=kept_title) if topic else ""
+
     linked = 0
     if link:
         linked = _relink_mentions(store, doc_id, owner=owner, origin=origin)
@@ -560,7 +573,50 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 sync_seq=seq, needs_embed=bool(needs_embed),
                 warnings=_doc_id_warnings(text, doc_id),
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
+    if topic:
+        base["topic"] = authored
     return base
+
+
+def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
+                        title: str) -> str:
+    """문서의 주제를 **적는다** — `concept:doc.<doc_id>` 미러의 `domain` 에.
+
+    파생 주제(본문 매칭 → 개념 → 그 개념의 domain)는 아무도 단언한 적 없는 값이라
+    문서와 어긋날 수 있다. 실측 2026-09-06: 미러가 있는 117건 중 39건이 파생과 달랐고
+    배포 런북이 `vinc/engineering/account` 로 걸려 있었다. 근거:
+    [[record:the-document-subject-relation-is-inferred-not-authored-2026-09-06]]
+
+    이미 있는 미러는 **domain 만** 갱신한다. 제목·one_liner 를 덮지 않는 것은
+    `extract_doc` 과 같은 태도다(다듬어 둔 값을 쓰기가 지우면 안 된다). 없으면 만들고,
+    그때만 문서 제목을 물려받는다 — 그 물림이 Ask 에서 주제 개념과 겹쳐 보이는 위험은
+    [[record:risk-doc-title-collides-with-topic]] 에 적혀 있다.
+
+    빈 문자열·공백만이면 아무것도 하지 않는다(주제를 **지우는** 것은 이 인자의 일이
+    아니다 — 지우려면 미러를 지우거나 domain 을 직접 고친다)."""
+    dom = (topic or "").strip()
+    if not dom:
+        return ""
+    # 물리 키로 바인딩한다(`extract_doc` 과 같은 규약) — 논리 id 로 쓰면 네임스페이싱이
+    # 켜진 스토어에서 남의 스코프에 걸리거나 조회에서 안 잡힌다.
+    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    st = _node_stamp(store, owner)
+    rows = store.run("MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.concept_id AS id",
+                     {"id": mid}) or []
+    if rows:
+        store.run("MATCH (n:Concept) WHERE n.concept_id = $id SET n.domain = $dom, "
+                  "n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
+                  {"id": mid, "dom": dom, "ua": st["updated_at"], "rev": st["rev"],
+                   "seq": st["sync_seq"]})
+    else:
+        store.run(
+            "MERGE (n:Concept {concept_id: $id}) SET n.title = $t, n.one_liner = '', "
+            "n.owner_id = $owner, n.domain = $dom, n.created = $now, "
+            "n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
+            {"id": mid, "t": title or doc_id, "owner": owner, "dom": dom,
+             "now": st["updated_at"], "ua": st["updated_at"], "rev": st["rev"],
+             "seq": st["sync_seq"]})
+    return dom
 
 
 def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
@@ -726,18 +782,30 @@ class MentionTally:
     **대표 개념은 대표 주제 안에서 고른다**(전역 최다가 아니라). 문서가 주제 T 밑에
     걸려 있는데 눌렀더니 다른 주제의 노드로 날아가면 트리가 자기를 반박한다."""
 
-    __slots__ = ("dom", "con", "cdom", "ctitle")
+    __slots__ = ("dom", "con", "cdom", "ctitle", "authored")
 
     def __init__(self) -> None:
         self.dom: dict[str, dict[str, int]] = {}
         self.con: dict[str, dict[str, int]] = {}
         self.cdom: dict[str, str] = {}
         self.ctitle: dict[str, str] = {}
+        #: doc_id → (domain, mirror_cid, mirror_title) — 사람이 **적은** 주제.
+        self.authored: dict[str, tuple[str, str, str]] = {}
 
     def topics(self, doc_id: str) -> list[str]:
-        """걸린 주제 전부, 많은 순(동률은 이름순 — 결정론)."""
+        """걸린 주제 전부, 많은 순(동률은 이름순 — 결정론).
+
+        ⚠ **적힌 주제가 있으면 그것이 맨 앞이다.** 나머지는 매칭이 찾아낸 것이라
+        발견으로서 유효하지만 대표는 아니다. 근거·실측:
+        [[record:the-document-subject-relation-is-inferred-not-authored-2026-09-06]]
+        (미러 domain 이 있는 문서 117건 중 39건에서 파생 주제와 어긋났고, 그중에는
+        배포 런북이 `vinc/engineering/account` 로 걸린 것도 있었다)."""
         t = self.dom.get(doc_id) or {}
-        return [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
+        found = [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
+        auth = (self.authored.get(doc_id) or ("", "", ""))[0]
+        if not auth:
+            return found
+        return [auth] + [k for k in found if k != auth]
 
     def primary(self, doc_id: str, topic: str) -> tuple[str, str]:
         """`topic` 안에서 가장 많이 언급된 개념 `(id, title)`. 없으면 `("", "")`.
@@ -747,7 +815,13 @@ class MentionTally:
         c = self.con.get(doc_id) or {}
         best = sorted(((cid, n) for cid, n in c.items() if self.cdom.get(cid, "") == topic),
                       key=lambda kv: (-kv[1], kv[0]))
-        return (best[0][0], self.ctitle.get(best[0][0], "")) if best else ("", "")
+        if best:
+            return (best[0][0], self.ctitle.get(best[0][0], ""))
+        # 적힌 주제로 왔는데 그 주제에 언급된 개념이 없을 수 있다(주제를 적기만 하고
+        # 본문은 개념 제목을 안 담은 문서). 그때는 **그 문서 자신의 미러**가 답이다 —
+        # 빈 값을 주면 트리에서 눌러도 갈 곳이 없다.
+        dom, cid, ctitle = self.authored.get(doc_id) or ("", "", "")
+        return (cid, ctitle) if dom and dom == topic and cid else ("", "")
 
 
 def mention_tally(store, *, owner: str | None = None) -> MentionTally:
@@ -783,7 +857,41 @@ def mention_tally(store, *, owner: str | None = None) -> MentionTally:
         if dom:   # 주제 집계는 주제 있는 개념만(무주제 개념이 대표 주제를 못 만든다)
             dbucket = tally.dom.setdefault(did, {})
             dbucket[dom] = dbucket.get(dom, 0) + n
+    _load_authored_topics(store, tally, owner=owner)
     return tally
+
+
+def _load_authored_topics(store, tally: MentionTally, *, owner: str | None) -> None:
+    """`concept:doc.<doc_id>` 미러의 domain 을 그 문서의 **적힌 주제**로 싣는다.
+
+    미러는 문서의 개념 그래프 쪽 자리이고 그 domain 은 사람이 고른 값이다. 파생
+    주제는 본문 문자열 매칭에서 나오므로 둘은 다를 수 있고, 실제로 어긋난다. 미러가
+    없거나 domain 이 비면 종전대로 파생만 쓴다(하위호환 — 이 함수는 더하기만 한다).
+
+    실패는 강등한다: 미러 조회가 안 되는 구스토어에서도 목록은 나와야 한다."""
+    # ⚠ `STARTS WITH 'concept:doc.'` 로 거르지 않는다. PK 네임스페이싱(design A)이
+    # 켜지면 물리 키가 `owner논리id` 라 그 접두가 안 맞고, 접두를 합성해 넣으면
+    # 이번엔 꺼진 스토어에서 안 맞는다. 주제 있는 개념 전부를 받아 파이썬에서
+    # `pkns.strip`(SEP 없으면 항등) 후에 거르면 **두 모드에서 같은 코드가 돈다**.
+    # 행 수는 MENTIONS 집계(문서×개념)보다 작으므로 대가가 없다.
+    try:
+        rows = store.run(
+            "MATCH (c:Concept) "
+            + ("WHERE c.owner_id = $o AND " if owner else "WHERE ")
+            + "c.domain IS NOT NULL AND c.domain <> '' "
+              "RETURN c.concept_id AS cid, c.title AS title, c.domain AS domain",
+            {"o": owner} if owner else None) or []
+    except Exception:
+        return
+    for r in rows:
+        cid = r.get("cid") or ""
+        logical = pkns.strip(cid)
+        if not logical.startswith(_DOC_MIRROR_PREFIX):
+            continue
+        did = logical[len(_DOC_MIRROR_PREFIX):]
+        if did:
+            tally.authored[did] = ((r.get("domain") or "").strip(), cid,
+                                   r.get("title") or "")
 
 
 def list_docs(store, *, owner: str | None = None, limit: int | None = None,
@@ -1559,8 +1667,18 @@ def _front_domain(text: str) -> str:
 
 
 def _doc_topic(store, doc_id: str, *, owner: str) -> str:
-    """이 문서의 파생 주제 하나 — 언급 개념의 domain 최다(동률은 이름순, 결정론).
-    :func:`mention_tally` 와 같은 규칙의 단일 문서판. MENTIONS 없으면 ''."""
+    """이 문서의 주제 하나. 적힌 주제(미러 domain)가 있으면 그것, 없으면 파생.
+    :func:`mention_tally` 와 **같은 규칙**의 단일 문서판이어야 한다 — 두 경로가
+    갈리면 목록과 상세가 서로를 반박한다(MentionTally 클래스 주석의 이유)."""
+    try:
+        arow = store.run(
+            "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $o "
+            "AND c.domain IS NOT NULL AND c.domain <> '' RETURN c.domain AS domain",
+            {"id": pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id), "o": owner}) or []
+        if arow:
+            return (arow[0].get("domain") or "").strip()
+    except Exception:
+        pass
     try:
         rows = store.run(
             "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "

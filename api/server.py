@@ -887,7 +887,10 @@ class VincApp:
             doc_id=body.get("id") or None,
             title=None if btitle is None else str(btitle),
             origin=body.get("origin") or "",
-            content_time=None if ctime is None else str(ctime)))
+            content_time=None if ctime is None else str(ctime),
+            # 주제는 **적는 값**이다. `or None` 으로 뭉개도 안전하다 — 빈 문자열은
+            # "지운다"가 아니라 "안 건드린다"이고, 그 판단은 _set_authored_topic 에 있다.
+            topic=body.get("topic") or None))
         return 200, res
 
     def write_conventions_build(self, body):
