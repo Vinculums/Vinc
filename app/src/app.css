@@ -913,6 +913,25 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
   padding: .1rem .6rem;
 }
+/* 목적지 고르기(공유 시트 2단계) — 갈림길은 목록이 아니라 **고르는 카드**다.
+   여태 이 자리는 `<button class="list-row">` 였는데, `.list-row` 는 버튼용 재설정을
+   갖지 않고 이 파일에 `button {}` 기본 규칙도 없다. 그래서 시트 안에서 이 셋만
+   OS 기본 테두리·배경·글꼴을 입고 떴다(설명 줄도 제목과 한 줄에 밀려 붙었다).
+   설명을 제목 아래로 내리는 것은 읽는 순서가 곧 고르는 순서이기 때문이다. */
+.dest-pick {
+  display: flex; flex-direction: column; gap: var(--space-2, .5rem);
+  margin-bottom: var(--space-3, .75rem);
+}
+.dest-pick button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: .15rem;
+  width: 100%; text-align: left; cursor: pointer; font: inherit;
+  padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+.dest-pick button:hover { border-color: hsl(var(--ring)); background: hsl(var(--ring) / .08); }
+.dest-pick .title { font-weight: 600; }
+.dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
 
 /* Command palette / cheatsheet overlay */
 #palette, #cheatsheet {
