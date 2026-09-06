@@ -193,6 +193,34 @@ class IdleTickTests(unittest.TestCase):
         self.assertTrue(idle.rang.wait(5.0))
         self.assertEqual(idle.calls, [True])
 
+    def test_a_tick_stops_once_shutdown_has_started(self):
+        """종료가 시작되면 틱은 멈춘다.
+
+        `shutdown()` 은 `_q.join()` **앞에서** `_stopping` 을 세우고, 그 뒤 호출부가
+        메인 스레드에서 마지막 스냅샷과 store.close() 를 한다(`api/server.py` close).
+        그때 워커가 유휴 틱으로 스냅샷(드라이버 close→reopen) 안에 있으면 5초 join
+        이 만료되고 같은 경로를 두 스레드가 동시에 밟는다. 틱이 없던 시절에는 잡이
+        막 끝난 찰나에만 열리던 창인데, 틱이 그것을 **완전 유휴 허브**에서도 열었다.
+
+        여기서 `_stopping` 을 직접 세우는 것은 `shutdown()` 이 하는 그대로다 — 그
+        메서드는 플래그가 이미 서 있으면 되돌아가므로(재진입 가드) 테스트에서 다시
+        부를 수 없다. 없음을 재는 것이라 대기가 필요하다: 틱 주기의 30배."""
+        second = threading.Event()
+        calls = []
+
+        def on_idle(*, wrote):
+            calls.append(wrote)
+            if len(calls) == 1:
+                jq._stopping.set()
+            else:
+                second.set()
+
+        jq = JobQueue(on_idle=on_idle, tick_s=0.01)
+        self.addCleanup(jq._q.put, None)          # 워커 루프 종료(shutdown 은 가드에 막힌다)
+        self.assertFalse(second.wait(0.3),
+                         "종료가 시작된 뒤에도 유휴 틱이 계속 떴다 — close() 가 "
+                         "메인 스레드에서 밟는 close→reopen 과 겹친다")
+
     def test_ticking_does_not_disturb_job_order_or_draining(self):
         """틱은 대기에 상한을 둘 뿐이다. FIFO 도 드레인 회계도 그대로여야 한다 —
         빈 큐에서 `task_done()` 을 부르면 여기서 ValueError 로 터진다."""

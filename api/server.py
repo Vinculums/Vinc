@@ -181,10 +181,17 @@ class VincApp:
         # 유일하게 옳은 자리다.
         # 유휴 틱 = 스냅샷 주기의 1/10. 잡이 없어도 워커가 깨어 `due()` 를 보므로
         # 손실 창이 "다음 쓰기가 올 때까지"에서 `every` + 틱 + 복사 시간으로 줄어든다.
-        # 주기가 0(스냅샷 끔)이면 틱도 없다 — 깨워 봐야 할 일이 없다.
+        #
+        # ⚠ 스냅샷을 끄는 것은 **`VINC_STORE_SNAPSHOT` 미설정**이지 주기가 아니다.
+        # `resolve_snapshot_every()` 는 그 env 와 무관하게 기본 300 을 주므로, 주기만
+        # 보고 배선하면 스냅샷이 꺼진 데스크탑 사이드카에서도 워커가 30초마다 깨는
+        # 영구 타이머가 된다(배터리). 꺼짐 판정은 `SnapshotPolicy` 가 생성자에서 이미
+        # 들고 있다 — `last_state == "off"` 가 곧 경로 미설정이다.
         self._snapshots = SnapshotPolicy()
+        tick_s = (self._snapshots.every / 10.0
+                  if self._snapshots.last_state != "off" else 0.0)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
-                                     tick_s=self._snapshots.every / 10.0 or None)
+                                     tick_s=tick_s or None)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)

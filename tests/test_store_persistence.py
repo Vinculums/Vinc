@@ -67,6 +67,16 @@ class Disabled(unittest.TestCase):
     def test_restore_is_off(self):
         self.assertEqual(persistence.restore_if_missing("/nonexistent/x"), "off")
 
+    def test_the_app_wires_no_tick(self):
+        """꺼져 있으면 워커를 깨우지도 않는다 — 1번의 나머지 절반.
+
+        `resolve_snapshot_every()` 는 이 env 와 **무관하게** 300 을 주므로, 주기만
+        보고 틱을 걸면 스냅샷이 꺼진 데스크탑 사이드카에서도 워커가 30초마다 깨는
+        영구 타이머가 남는다(배터리). 할 일이 없는 깨어남이다."""
+        app = VincApp(store=None)
+        self.addCleanup(app.jobs.shutdown, drain=False)
+        self.assertIsNone(app.jobs._tick_s)
+
     def test_save_is_off(self):
         self.assertEqual(persistence.save_snapshot(_BoomStore()), "off",
                          "꺼져 있으면 스토어를 건드리지도 않아야 한다")

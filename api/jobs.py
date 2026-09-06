@@ -157,6 +157,13 @@ class JobQueue:
                 # 대기에 상한만 둔다 — 잡이 들어오면 그 즉시 깨므로 순서·지연은 그대로다.
                 item = self._q.get(timeout=self._tick_s) if self._tick_s else self._q.get()
             except queue.Empty:
+                # 종료가 시작됐으면 틱은 여기서 끝이다. `shutdown()` 이 `_q.join()`
+                # **앞에서** 이 플래그를 세우고, 그 뒤 호출부가 메인 스레드에서
+                # 마지막 스냅샷과 store.close() 를 한다. 그때 워커가 유휴 틱으로
+                # 스냅샷(드라이버 close→reopen) 안에 있으면 5초 join 이 만료되고
+                # 같은 경로를 두 스레드가 동시에 밟는다.
+                if self._stopping.is_set():
+                    continue
                 # 큐가 빈 채로 한 주기가 지났다. 쓰기가 없었으므로 `wrote=False` 를
                 # 실어 보낸다 — 호출부는 이것으로 "표시할 것"과 "때가 됐나 볼 것"을
                 # 가른다. 여기서 `task_done()` 을 부르면 드레인 회계가 깨진다.
