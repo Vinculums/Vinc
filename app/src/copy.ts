@@ -99,7 +99,6 @@ const EN = {
     loading: (n: number) => `Packing ${n} documents…`,
     importing: "Importing…",
     success: (n: number, size: string) => `Pack ready: ${n} documents, ${size}.`,
-    shareNote: "The pack carries document content only. Your pins and tags are never shared.",
     imported: (created: number, matched: number) =>
       `Imported: ${created} new, ${matched} already here.`,
     successCta: "Reveal in folder",
@@ -108,14 +107,12 @@ const EN = {
   settings: {
     lock: "Lock Vinc with a passphrase. Optional. Your data stays on this device either way.",
     mcp: "Tool calls from connected clients appear here, as they happen.",
-    data: "Everything Vinc knows lives in this one folder.",
   },
   ui: {
     meta: {
       intake: "Documents in, knowledge out.",
       records: "All your knowledge, in one place.",
       search: "Meaning and keywords, together.",
-      packs: "Bundle, share, merge.",
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯). 이름 변경은 내 노드의 도메인만 바꾼다.
     domains: {
@@ -346,6 +343,12 @@ const EN = {
       scopeAll: "Everything", scopeTopic: "One topic", scopeHere: "What I'm looking at",
       scopeHereOff: "Open the map first to share what you're looking at.",
       go: "Continue",
+      // 소스 스페이스(P15) — 구 Packs 화면의 `개인 → 팀 불러오기`가 이 칸 하나로
+      // 일반화됐다. 목록은 계정이 주는 활동 중인 팀뿐이고, 그 밖의 소속은 고를 수
+      // 없다는 사실을 그대로 보인다(`sourceOff`).
+      source: "Which space",
+      sourceNote: "A pack from another space is copied into the one you are in now.",
+      sourceOff: "not available",
     },
     panel: {
       options: "Options",
@@ -664,9 +667,9 @@ const EN = {
     settingsUi: {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
       title: "Settings", close: "Close",
-      tabAccount: "Account", tabConnections: "Connections", tabData: "Data", tabAdvanced: "Advanced",
+      tabAccount: "Account", tabConnections: "Connections", tabAdvanced: "Advanced",
       appearance: "Appearance", account: "Account",
-      lock: "Lock", mcp: "MCP", data: "Data",
+      lock: "Lock", mcp: "MCP",
       // 저장 위치 — 상단 바의 `● Local` 칩이 옮겨 온 자리(2026-08-05).
       storage: "Where it's stored",
       storageSynced: "This device and your account",
@@ -763,11 +766,7 @@ const EN = {
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
-      openPacks: "Open Packs (backup, community)",
-      share: "Share", domain: "topic",
-      publishCta: "Share to community",
       publishTitle: "Share this pack with the community",
-      publishScope: (c: number, e: number) => `${c} concepts · ${e} connections become public.`,
       publishName: "Pack name", publishDesc: "What's in it? (optional)",
       publishConsent: "I understand this pack becomes public, and any signed-in member can bring it into their own Vinc.",
       publishGo: "Publish", publishNeedConsent: "Please confirm the pack will be public.",
@@ -776,19 +775,6 @@ const EN = {
       // (400 username_required). 시트를 닫지 않고 안내만 바꿔, 설정 후 바로 다시 누를 수 있게.
       publishNeedHandle: "Pick a username first. It's the public handle shown on what you share.",
       publishSetHandle: "Set it in your account",
-      publishEmpty: "Nothing to share in that scope. Pick a topic with some concepts.",
-      publishDone: "Published to the community.", publishView: "View in gallery",
-      // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
-      secImport: "Import", secImportDesc: "Bring a pack file into your graph.",
-      // 개인 → 팀 불러오기. 나가는 방향(팀 → 개인)은 Share 의 목적지 고르기가 맡는다.
-      secPull: "Bring in your own data",
-      secPullDesc: "Copy a topic from your personal graph into this team.",
-      pullCta: "Choose what to bring",
-      secShare: "Share", secShareDesc: "Pick a topic and send a slice to someone.",
-      secCommunity: "Publish to community", secCommunityDesc: "Make a topic public in the gallery.",
-      topic: "Topic", allTopics: "All topics",
-      previewSave: "Preview & save",
-      shareAreaHint: "Want a specific area? Select it visually in View →",
       backupLink: "Create a full backup pack",
       // 화면 노출 문자열에 em-dash 금지(발주자 지시) — 가운뎃점·괄호·콜론으로 대체.
       backupDesc: "Export everything: for migrating to a new device or an MCP client.",
@@ -801,9 +787,7 @@ const EN = {
       specFormat: "Format", specCreated: "Created", specDocs: "Documents",
       scopeAll: "Everything", scopeSeed: (d: number) => `This document, ${d} hops out`,
       scopeSelection: (n: number) => `${n} selected`,
-      pickPack: "Choose a file",
       importCta: "Import",
-      importTip: "Bring a document (.md, .txt, .rst, .pdf) or a .vincpack into your graph",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
       docTitle: "Import a document",
       docSub: "Kept whole in your graph, exactly as written.",
@@ -934,7 +918,6 @@ const KO: Deck = {
     loading: (n) => `문서 ${n}개를 팩으로 묶는 중…`,
     importing: "가져오는 중…",
     success: (n, size) => `팩이 준비됐어요 · 문서 ${n}개 · ${size}`,
-    shareNote: "팩에는 문서 내용만 담겨요. 내 고정과 태그는 절대 공유되지 않아요",
     imported: (created, matched) => `가져왔어요 · 새로 ${created}개 · 이미 있던 것 ${matched}개`,
     successCta: "폴더에서 보기",
     error: "팩을 만들지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
@@ -942,14 +925,12 @@ const KO: Deck = {
   settings: {
     lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요. 어느 쪽이든 데이터는 이 기기에 남아요.",
     mcp: "연결된 클라이언트의 도구 호출이 일어나는 대로 여기에 보여요",
-    data: "Vinc가 아는 모든 것이 이 폴더 하나에 있어요",
   },
   ui: {
     meta: {
       intake: "문서에서 지식으로",
       records: "내가 모은 지식을 한곳에",
       search: "의미와 키워드를 함께",
-      packs: "묶기 · 나누기 · 합치기",
     },
     // S2 — 도메인 관리(레일 DOMAINS 의 ⋯).
     domains: {
@@ -1135,6 +1116,9 @@ const KO: Deck = {
       scopeAll: "전체", scopeTopic: "주제 하나", scopeHere: "지금 보고 있는 곳",
       scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 지도를 여세요",
       go: "계속하기",
+      source: "어느 공간",
+      sourceNote: "다른 공간의 팩은 지금 있는 공간으로 복사돼요",
+      sourceOff: "쓸 수 없어요",
     },
     panel: {
       options: "옵션",
@@ -1395,9 +1379,9 @@ const KO: Deck = {
     settingsUi: {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
       title: "Settings", close: "닫기",
-      tabAccount: "계정", tabConnections: "연결", tabData: "데이터", tabAdvanced: "고급",
+      tabAccount: "계정", tabConnections: "연결", tabAdvanced: "고급",
       appearance: "화면", account: "계정",
-      lock: "잠금", mcp: "MCP", data: "데이터",
+      lock: "잠금", mcp: "MCP",
       storage: "저장 위치",
       storageSynced: "이 기기와 계정",
       workspace: "작업 공간",
@@ -1475,29 +1459,13 @@ const KO: Deck = {
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
-      openPacks: "Packs 열기 (백업·커뮤니티)",
-      share: "공유", domain: "주제",
-      publishCta: "커뮤니티에 공유하기",
       publishTitle: "이 팩을 커뮤니티에 공유하기",
-      publishScope: (c, e) => `개념 ${c}개 · 연결 ${e}개가 공개돼요`,
       publishName: "팩 이름", publishDesc: "어떤 내용인가요? (선택)",
       publishConsent: "이 팩이 공개되고, 로그인한 회원은 누구나 자기 Vinc로 가져갈 수 있음을 이해합니다",
       publishGo: "게시하기", publishNeedConsent: "팩 공개에 먼저 동의해 주세요",
       publishNeedName: "팩 이름을 입력해 주세요",
       publishNeedHandle: "먼저 사용자 이름을 정해 주세요. 공유하는 모든 것에 표시되는 공개 이름이에요",
       publishSetHandle: "계정에서 설정하기",
-      publishEmpty: "그 범위에는 공유할 것이 없어요. 개념이 있는 주제를 골라 보세요",
-      publishDone: "커뮤니티에 게시했어요", publishView: "갤러리에서 보기",
-      // 단일 페이지 재구성(토글 제거) — 의도별 섹션.
-      secImport: "가져오기", secImportDesc: "팩 파일을 내 그래프로 가져와요",
-      secPull: "내 데이터 가져오기",
-      secPullDesc: "개인 그래프의 주제를 이 팀으로 복사해요",
-      pullCta: "가져올 것 고르기",
-      secShare: "공유하기", secShareDesc: "주제를 골라 그 일부를 다른 사람에게 보내요",
-      secCommunity: "커뮤니티에 게시하기", secCommunityDesc: "주제를 갤러리에 공개해요",
-      topic: "주제", allTopics: "전체 주제",
-      previewSave: "미리 보고 저장하기",
-      shareAreaHint: "특정 부분만 공유하고 싶다면 View에서 직접 골라 보세요 →",
       backupLink: "전체 백업 팩 만들기",
       backupDesc: "새 기기나 MCP 클라이언트로 옮길 때 전체를 내보내요",
     },
@@ -1535,9 +1503,7 @@ const KO: Deck = {
       specFormat: "형식", specCreated: "만든 날", specDocs: "문서",
       scopeAll: "전체", scopeSeed: (d) => `이 문서에서 ${d}단계까지`,
       scopeSelection: (n) => `선택한 ${n}개`,
-      pickPack: "파일 고르기",
       importCta: "가져오기",
-      importTip: "문서(.md·.txt·.rst·.pdf)나 .vincpack 파일을 내 그래프로 가져와요",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
       docTitle: "문서 가져오기",
       docSub: "쓰인 그대로, 원문을 통째로 보관해요",

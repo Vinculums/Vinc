@@ -4,11 +4,14 @@ import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyI
 import { COPY } from "../copy";
 import { esc } from "../components";
 
-/** Settings — 중앙 모달 + 상단 탭(GNB). 4탭:
+/** Settings — 중앙 모달 + 상단 탭(GNB). 3탭:
  *  · Account   계정 연결(디바이스 플로우) + 그래프 동기화 + Theme + Language + Lock
  *  · Connections MCP(로컬 MCP 호스트 연결·해제) — 셸 전용
- *  · Data      로컬 데이터 폴더/백업
  *  · Advanced  작업공간(owner)·엔진·시크릿·수동 동기화 키 — 셸 전용
+ *
+ *  Data 탭은 없앴다(P15). 그 탭에는 `Packs 열기` 버튼 하나뿐이었고, 그 버튼은 상단
+ *  바에 가져오기·공유가 올라간 뒤 고아가 된 표면에 걸어 둔 임시 구명줄이었다. 이제
+ *  그 표면의 다섯 기능이 전부 Tools 에 있으므로 구명줄도 함께 걷는다.
  *  웹 Vinc(호스티드)는 셸 전용 탭(Connections/Advanced)과 계정연결·동기화 섹션을 숨긴다.
  *
  *  계정 연결(디바이스 플로우): 회원 키 복붙 대체 — [계정 연결]이 시스템 브라우저로
@@ -21,11 +24,10 @@ export async function renderSettings(el: HTMLElement) {
   const api = mod?.api;
   const pollJob = mod?.pollJob;
 
-  type TabId = "account" | "connections" | "data" | "advanced";
+  type TabId = "account" | "connections" | "advanced";
   const TABS: { id: TabId; label: string }[] = [
     { id: "account", label: U.tabAccount },
     ...(!WEB ? [{ id: "connections" as TabId, label: U.tabConnections }] : []),
-    { id: "data", label: U.tabData },
     ...(!WEB ? [{ id: "advanced" as TabId, label: U.tabAdvanced }] : []),
   ];
   let activeTab: TabId = "account";
@@ -56,7 +58,6 @@ export async function renderSettings(el: HTMLElement) {
     const body = el.querySelector<HTMLElement>("#settings-body")!;
     if (activeTab === "account") renderAccount(body);
     else if (activeTab === "connections") renderConnections(body);
-    else if (activeTab === "data") renderData(body);
     else renderAdvanced(body);
   }
 
@@ -440,19 +441,6 @@ export async function renderSettings(el: HTMLElement) {
     cliAdd.addEventListener("click", () => cliAction("cli_link_install"));
     cliRm.addEventListener("click", () => cliAction("cli_link_remove"));
     void cliAction("cli_link_status");
-  }
-
-  // ── Data 탭 ───────────────────────────────────────────────────────────────
-  function renderData(body: HTMLElement) {
-    // Packs 표면(전체 백업·커뮤니티 게시)은 상단 바에 가져오기·공유가 올라온 뒤
-    // 보이는 진입점이 없어졌다. 데이터 관리의 맥락인 여기서 열 수 있게 둔다.
-    body.innerHTML = `
-      <label>${U.data}</label><p class="hint">${COPY.settings.data}</p>
-      <p><button class="btn" id="s-packs">${COPY.ui.packsUi.openPacks}</button></p>`;
-    body.querySelector("#s-packs")!.addEventListener("click", () => {
-      (document.getElementById("settings-btn") as HTMLElement).click();   // 팝오버 닫기
-      location.hash = "#packs";
-    });
   }
 
   // ── Advanced 탭 (셸 전용) ─────────────────────────────────────────────────

@@ -1,6 +1,7 @@
-import { api, cfg } from "./api";
+import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, type SheetHandle } from "./components";
+import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
 /** Tools (DEC D71) — 만들기 · 가져오기 · 공유가 한 모달에 산다.
@@ -11,6 +12,11 @@ import { viewHooks } from "./topbar";
  *
  *  탭은 세 갈래를 **한 층**에 눕힌다(중첩 금지): 상단에서 고르고, 아래는 그 갈래의
  *  일만 한다. 시트 규격(D63)은 그대로다 — 머리·몸·발, 그리고 Esc·✕·배경으로 닫힘.
+ *
+ *  P15 에서 `#packs` 표면이 통째로 여기 들어왔다. 그 화면이 갖고 있던 다섯(가져오기 ·
+ *  공유 · 전체 백업 · 다른 스페이스에서 불러오기 · 커뮤니티 게시)이 전부 이 두 탭에
+ *  산다. 커뮤니티 게시만 예외로 여기서 다시 만들지 않는데, 공유가 목적지를 묻는
+ *  자리(`sheets.chooseDestination`)에 이미 같은 것이 있었기 때문이다.
  *
  *  ⚠ 만들기 탭의 링크는 **문서↔문서가 아니다.** 스토어에 문서 사이 관계 테이블이
  *  없다(_DocMeta 는 정체성 메타이고 관계는 개념 사이에만 있다). 그래서 각 문서의
@@ -72,31 +78,68 @@ export function openTools(tab: Tab = "create") {
 }
 
 // ── 가져오기 ────────────────────────────────────────────────────────────────
-// 본문은 한 줄, 발에 `파일 고르기` 하나. `새 문서`는 만들기 탭으로 승격했다(D71).
-function renderImport(pane: HTMLElement, sheet: SheetHandle) {
-  pane.innerHTML = `<p class="hint">${COPY.ui.sheet.importTip}</p>`;
-  sheet.foot.innerHTML = sheetActions({ id: "tl-pick", label: COPY.ui.sheet.pickPack });
-  sheet.foot.querySelector("#tl-pick")!.addEventListener("click", async () => {
-    sheet.close();
-    const { pickAndImport } = await import("./sheets");
-    pickAndImport();
-  });
+// 구 `#packs` 의 가져오기 칸이 그대로 들어왔다(P15) — 그 칸은 이미 `renderIntake` 를
+// 헤더리스로 품고 있었으므로 옮긴 것은 자리뿐이다.
+//
+// ⚠ 여기를 다시 `파일 고르기` 버튼 한 줄로 되돌리지 말 것. 그러면 **끌어다 놓기 ·
+// 샘플 팩 · 여러 파일 일괄 적재**가 앱에서 통째로 사라진다: `renderIntake` 를 부르는
+// 곳이 이제 여기 하나뿐이고, View 의 빈 상태 초대(empty-invite)는 그래프가 **빌 때만**
+// 뜬다. 발은 비운다 — 드롭존이 자기 CTA 를 갖고 있다(`draw` 가 이미 비워 두었다).
+function renderImport(pane: HTMLElement, _sheet: SheetHandle) {
+  renderIntake(pane, { withHeader: false, withNewDoc: false });
 }
 
 // ── 공유 ────────────────────────────────────────────────────────────────────
 // 스코프 피커가 새로 붙는다. 여태 공유는 View 훅에 매여 있어 "지금 보고 있는 곳"
 // 하나뿐이었는데, Tools 는 어느 표면에서나 열리므로 범위를 물어야 한다.
-async function renderShare(pane: HTMLElement, sheet: SheetHandle) {
+//
+// P15 로 **소스 스페이스**가 하나 더 붙었다. 와이어 계약은 이미 이것을 담고 있었다:
+// `Scope` 의 `team` 은 임의의 팀 id 이고 `call` 이 그대로 실어 보낸다. 넓힌 것은 고르는
+// 화면뿐이다(구 Packs 는 `from: {team: null}` 로 개인 하나만 못박아 두고 있었다).
+//
+// ⚠ 데스크탑에는 이 칸이 **안 그려진다**. 셸에는 팀 정체성이 아예 없고(`call` 의
+// `WEB && team` · `cfg.team` 게터 · `teamsApi.list()` 세 겹의 거절), 그래서 칸을 두면
+// 고를 수 있는데 안 먹는 화면이 된다 — 팀을 고른 사람이 개인 스토어를 받고도 성공
+// 화면을 본다. `WEB` 분기를 따로 쓰지 않는 이유는 `teamsApi.list()` 가 셸에서 `[]` 라
+// 목록이 저절로 비기 때문이다(거절 셋 중 하나가 그대로 이 화면의 규칙이 된다).
+//
+// ⚠ 목록에 띄우는 것이 **접근을 주지 않는다.** 권한은 계정이 정하고, 활동 구성원이
+// 아닌 스페이스는 존재하지 않는 것과 같은 답을 준다. 그래서 활동 중이 아닌 소속은
+// 지우지 않고 **고를 수 없게** 두어, "안 된다"와 "안 보인다"가 구별되게 한다.
+async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: string) {
   const T = COPY.ui.tools;
+  const S = COPY.ui.settingsUi;
+  const P = COPY.ui.packsUi;
   const here = viewHooks();
+  // 안 고르면 지금 있는 스페이스에서 뜬다(기존 동작).
+  const src = srcTeam ?? cfg.team;
+  const sameSpace = src === cfg.team;
   pane.innerHTML = `<p class="hint">${COPY.ui.common.loading}</p>`;
+  const teams = await teamsApi.list();
   let domains: string[] = [];
   try {
-    const res: any = await api.domains(cfg.owner);
+    // 주제 목록도 **고른 스페이스**의 것이어야 한다 — 여기가 두 번째 하드코딩 널이었다.
+    const res: any = await api.domains(cfg.owner, { team: src || null });
     domains = (res.rows || []).map((r: any) => r.domain).filter(Boolean);
   } catch { /* 주제를 못 읽어도 전체 공유는 된다 — 선택지만 줄어든다 */ }
   if (!pane.isConnected) return;
+  // 고를 것이 하나뿐이면 묻지 않는다(`chooseDestination` 과 같은 규칙).
+  const spaceRow = teams.length ? `
+    <label class="list-row tools-opt">
+      <span class="title">${esc(T.source)}</span>
+      <select id="tl-space">
+        <option value=""${src ? "" : " selected"}>${esc(S.spacePersonal)}</option>
+        ${teams.map((t) => t.status === "active"
+          ? `<option value="${esc(t.id)}"${t.id === src ? " selected" : ""}>${esc(t.name)}</option>`
+          : `<option value="${esc(t.id)}" disabled>${esc(t.name)} (${esc(T.sourceOff)})</option>`
+        ).join("")}
+      </select></label>
+    <p class="hint">${esc(T.sourceNote)}</p>` : "";
+  // `지금 보고 있는 곳`은 열려 있는 지도의 스코프다 — 다른 스페이스에서 뜨는 팩에는
+  // 대응하는 것이 없다. 꺼진 이유가 둘이라 문구도 갈린다.
+  const hereOn = !!here && sameSpace;
   pane.innerHTML = `
+    ${spaceRow}
     <p class="hint rail-sec">${esc(T.scope)}</p>
     <label class="list-row tools-opt"><input type="radio" name="tl-scope" value="all" checked />
       <span class="title">${esc(T.scopeAll)}</span></label>
@@ -106,23 +149,55 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle) {
       <select id="tl-topic" ${domains.length ? "" : "disabled"}>
         ${domains.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("")}
       </select></label>
-    <label class="list-row tools-opt"${here ? "" : ' style="opacity:.5"'}>
-      <input type="radio" name="tl-scope" value="here" ${here ? "" : "disabled"} />
+    <label class="list-row tools-opt"${hereOn ? "" : ' style="opacity:.5"'}>
+      <input type="radio" name="tl-scope" value="here" ${hereOn ? "" : "disabled"} />
       <span class="title">${esc(T.scopeHere)}</span>
-      ${here ? "" : `<span class="hint">${esc(T.scopeHereOff)}</span>`}</label>`;
+      ${hereOn ? "" : `<span class="hint">${esc(here ? T.sourceOff : T.scopeHereOff)}</span>`}</label>
+    <p class="pack-backup">
+      <button class="pack-linkbtn" id="tl-backup">${esc(P.backupLink)}</button>
+      <span class="hint">${esc(P.backupDesc)}</span>
+    </p>
+    <div id="tl-backup-msg" role="status"></div>`;
+  // 스페이스가 바뀌면 주제 목록도 `지금 보고 있는 곳`의 가부도 함께 바뀐다 — 조각조각
+  // 고치는 대신 이 작은 판을 다시 그린다(부분 갱신은 한 군데를 빠뜨리기 좋은 자리다).
+  pane.querySelector("#tl-space")?.addEventListener("change", (e) =>
+    void renderShare(pane, sheet, (e.target as HTMLSelectElement).value));
+
+  // 전체 백업 — 내 전체 컨텍스트 팩(/activate, 이관용). 구 Packs 하단의 보조 링크가
+  // 그대로 왔다. 범위를 고르는 일이 아니라 통째로 내보내는 일이라, 발의 주 액션이
+  // 아니라 본문 아래 링크로 둔다(그 화면에서도 같은 이유로 같은 자리였다).
+  pane.querySelector("#tl-backup")!.addEventListener("click", async () => {
+    const out = pane.querySelector<HTMLElement>("#tl-backup-msg")!;
+    out.innerHTML = `<p class="hint">${esc(COPY.packs.loading(0))}</p>`;
+    try {
+      const res = await api.activate(cfg.owner);
+      out.innerHTML = `<p>${esc(COPY.packs.success(res.episode_count ?? 0, res.out || "pack"))}</p>`;
+    } catch {
+      out.innerHTML = `<div class="error-banner">${esc(COPY.packs.error)}</div>`;
+    }
+  });
+
   sheet.foot.innerHTML = sheetActions(
     { id: "tl-go", label: T.go }, { id: "tl-cancel", label: COPY.ui.common.cancel });
   sheet.foot.querySelector("#tl-cancel")!.addEventListener("click", sheet.close);
   sheet.foot.querySelector("#tl-go")!.addEventListener("click", async () => {
     const pick = pane.querySelector<HTMLInputElement>("input[name=tl-scope]:checked")?.value;
+    const topic = pane.querySelector<HTMLSelectElement>("#tl-topic")?.value;
     sheet.close();
     // `지금 보고 있는 곳`은 View 가 자기 스코프를 안다 — 훅이 시트를 연다.
     if (pick === "here") { here?.share(); return; }
     const { openShareSheet } = await import("./sheets");
-    if (pick === "topic") {
-      const d = pane.querySelector<HTMLSelectElement>("#tl-topic")?.value;
-      openShareSheet(d ? { domain: d } : {});
-    } else openShareSheet({});
+    const scope = pick === "topic" && topic ? { domain: topic } : {};
+    if (sameSpace) { openShareSheet(scope); return; }
+    // 다른 스페이스에서 뜬 팩은 목적지를 묻지 않는다 — 지금 있는 곳으로 들어온다.
+    // 구 Packs 의 `개인 → 팀 불러오기`가 이 갈래로 일반화됐다(방향은 양쪽 다 된다).
+    // 이름을 못 읽었으면 intoLabel 을 비워 시트가 일반 명칭("팀 공간")을 쓰게 둔다.
+    const intoLabel = cfg.team
+      ? teams.find((t) => t.id === cfg.team)?.name
+      : S.spacePersonal;
+    openShareSheet(scope, {
+      from: { team: src || null }, into: { team: cfg.team }, intoLabel,
+    });
   });
 }
 
