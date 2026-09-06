@@ -107,7 +107,6 @@ const EN = {
   settings: {
     lock: "Lock Vinc with a passphrase. Optional. Your data stays on this device either way.",
     mcp: "Tool calls from connected clients appear here, as they happen.",
-    data: "Everything Vinc knows lives in this one folder.",
   },
   ui: {
     meta: {
@@ -670,7 +669,7 @@ const EN = {
       title: "Settings", close: "Close",
       tabAccount: "Account", tabConnections: "Connections", tabAdvanced: "Advanced",
       appearance: "Appearance", account: "Account",
-      lock: "Lock", mcp: "MCP", data: "Data",
+      lock: "Lock", mcp: "MCP",
       // 저장 위치 — 상단 바의 `● Local` 칩이 옮겨 온 자리(2026-08-05).
       storage: "Where it's stored",
       storageSynced: "This device and your account",
@@ -926,7 +925,6 @@ const KO: Deck = {
   settings: {
     lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요. 어느 쪽이든 데이터는 이 기기에 남아요.",
     mcp: "연결된 클라이언트의 도구 호출이 일어나는 대로 여기에 보여요",
-    data: "Vinc가 아는 모든 것이 이 폴더 하나에 있어요",
   },
   ui: {
     meta: {
@@ -1383,7 +1381,7 @@ const KO: Deck = {
       title: "Settings", close: "닫기",
       tabAccount: "계정", tabConnections: "연결", tabAdvanced: "고급",
       appearance: "화면", account: "계정",
-      lock: "잠금", mcp: "MCP", data: "데이터",
+      lock: "잠금", mcp: "MCP",
       storage: "저장 위치",
       storageSynced: "이 기기와 계정",
       workspace: "작업 공간",
