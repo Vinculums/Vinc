@@ -87,6 +87,30 @@ class ShareProgressTests(unittest.TestCase):
             re.search(r"setInterval|setTimeout", self.share_code),
             "공유 경로에 타이머가 생겼다 — 시계로 단계를 지어내고 있지 않은지 볼 것")
 
+    def test_알림_영역은_미리_서_있는_자리에만_붙는다(self):
+        """라이브 영역은 내용이 **바뀌기 전에** DOM 에 있어야 읽힌다.
+
+        `sheetProgress` 의 마크업은 내용과 함께 삽입되므로, 거기에 `role="status"` 를
+        달면 스크린리더가 관찰할 대상이 애초에 없다 — 알리는 척만 하는 것이다. 붙일
+        상주 자리가 있는 곳은 커뮤니티 게시뿐이고(`#pub-progress` 가 폼과 함께 먼저
+        선다) 나머지 셋은 `sheet.body` 를 통째로 갈아치운다.
+
+        라벨 중복도 같이 막는다. 보이는 `<p>` 와 `aria-label` 로 두 번 실으면 두 번
+        읽힌다 — 가리키는 것(`aria-labelledby`)은 한 번이다.
+        """
+        body = self.src[self.src.index("function sheetProgress"):]
+        body = body[: body.index(chr(10) + "}")]
+        self.assertNotIn(
+            'role="status"', body,
+            "삽입되는 마크업에 라이브 영역을 달았다 — 관찰 대상이 없어 알리지 못한다")
+        self.assertIn("aria-labelledby", body, "진행 막대에 이름이 없다")
+        self.assertNotIn(
+            "aria-label=", body,
+            "보이는 문구와 aria-label 로 라벨을 두 번 실었다 — 두 번 읽힌다")
+        self.assertIn(
+            '<div id="pub-progress" role="status">', self.share,
+            "커뮤니티 게시의 상주 자리에 라이브 영역이 없다")
+
     def test_불확정_막대가_토큰과_모션_설정을_지킨다(self):
         css = APPCSS.read_text(encoding="utf-8")
         self.assertIn(".sheet-progress-track", css, "진행 막대 규칙이 없다")
