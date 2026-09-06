@@ -881,7 +881,10 @@ class DocstoreE2E(unittest.TestCase):
         미러**다. 빈 값을 주면 트리에서 눌러도 갈 곳이 없다."""
         did = self._seed_mention_doc(topic="bio/lab")
         doc = self._doc_row(did)
-        self.assertEqual(doc["primary_concept_id"], _pk("concept:doc." + did))
+        # ⚠ **논리 id 로 기대한다.** 스토어는 물리 키로 바인딩하되 응답에는 논리 id 를
+        # 돌려준다(같은 파일의 `links(near) == ["concept:design-hub"]` 가 같은 규약이다).
+        # 여기 `_pk(...)` 를 쓰면 플래그가 **켜진** 모드에서만 깨진다 — 실제로 깨졌다.
+        self.assertEqual(doc["primary_concept_id"], "concept:doc." + did)
         self.assertEqual(doc["primary_concept_title"], "언급")
 
     def test_doc_mirror_prefix_matches_the_query_copy(self):
