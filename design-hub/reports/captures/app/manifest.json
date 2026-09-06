@@ -1,0 +1,880 @@
+{
+ "app": "http://tauri.localhost:5173",
+ "capturedAt": "2026-09-06T05:16:22.147Z",
+ "tool": "design-hub/scripts/capture_app.mjs",
+ "node": null,
+ "states": [
+  {
+   "id": "view__3d",
+   "surface": "#view",
+   "state": "3d",
+   "trigger": "load: 3D viewpoint, all topics",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__3d.png",
+   "sha1": "bfab661f1a2e82836393242e65ec80e88c774554"
+  },
+  {
+   "id": "view__2d",
+   "surface": "#view",
+   "state": "2d",
+   "trigger": "viewpoint 2D",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__2d.png",
+   "sha1": "dff9241adc5122eabdb5bd91d66ac9b8c14f373a"
+  },
+  {
+   "id": "view__timeline",
+   "surface": "#view",
+   "state": "timeline",
+   "trigger": "viewpoint Timeline",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__timeline.png",
+   "sha1": "11ea65a7bc8a9c220ebdb7fbe5c0197c0d5ac964"
+  },
+  {
+   "id": "view__weave",
+   "surface": "#view",
+   "state": "weave",
+   "trigger": "viewpoint Weave",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__weave.png",
+   "sha1": "19f3e1c2ec9d7a247a3efbba6381d7fe0c72d975"
+  },
+  {
+   "id": "view__topic-scope",
+   "surface": "#view",
+   "state": "topic-scope",
+   "trigger": "LNB: click a topic name, scope banner appears",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-scope.png",
+   "sha1": "b666f12272c7733b1196dc510b694caec7510b94"
+  },
+  {
+   "id": "view__lnb-collapsed",
+   "surface": "#view",
+   "state": "lnb-collapsed",
+   "trigger": "LNB: collapse",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-collapsed.png",
+   "sha1": "1552da7d1e3ed121de3db931ab8b182cedb5576b"
+  },
+  {
+   "id": "view__lens-options-3d",
+   "surface": "#view",
+   "state": "lens-options-3d",
+   "trigger": "lens button: Options tab (3D rows)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-options-3d.png",
+   "sha1": "2e8e72eb6348b128f217a9357523a774245b6dea"
+  },
+  {
+   "id": "view__lens-options-2d",
+   "surface": "#view",
+   "state": "lens-options-2d",
+   "trigger": "lens: Options for 2D",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-options-2d.png",
+   "sha1": "785f9419041b6af399d76092984e47c843043bee"
+  },
+  {
+   "id": "view__lens-options-timeline",
+   "surface": "#view",
+   "state": "lens-options-timeline",
+   "trigger": "lens: Options for Timeline",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-options-timeline.png",
+   "sha1": "831b9a43b178c83331b5fd7bfb33ef544734f087"
+  },
+  {
+   "id": "view__lens-options-weave",
+   "surface": "#view",
+   "state": "lens-options-weave",
+   "trigger": "lens: Options for Weave",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-options-weave.png",
+   "sha1": "8491466c3379956e5d5c15b2efe41623ac58b69d"
+  },
+  {
+   "id": "view__lens-legend",
+   "surface": "#view",
+   "state": "lens-legend",
+   "trigger": "lens: Legend tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-legend.png",
+   "sha1": "4fdde2b16674b821b095dd9420d6af7ec6c6f241"
+  },
+  {
+   "id": "view__lens-help-open",
+   "surface": "#view",
+   "state": "lens-help-open",
+   "trigger": "lens: '?' explanations expanded",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-help-open.png",
+   "sha1": "b374bbfc6a88300bdb68f97af6b89d9baa83fc69"
+  },
+  {
+   "id": "view__node-float",
+   "surface": "#view",
+   "state": "node-float",
+   "trigger": "node addressed: float card with causal cone",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-float.png",
+   "sha1": "b97b50e1819bf396350475ed7ac9b825c9275f76"
+  },
+  {
+   "id": "view__node-float-links",
+   "surface": "#view",
+   "state": "node-float-links",
+   "trigger": "float card: Links row expanded",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-float-links.png",
+   "sha1": "556ad30125b09e3aec786c6ddc1afd414047a0da"
+  },
+  {
+   "id": "view__node-ask-menu",
+   "surface": "#view",
+   "state": "node-ask-menu",
+   "trigger": "float card: Ask the assistant menu",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-ask-menu.png",
+   "sha1": "f28d5d3dc4e0a0d937b9335760c8d98176eddcad"
+  },
+  {
+   "id": "view__node-detail",
+   "surface": "#view",
+   "state": "node-detail",
+   "trigger": "float card: Detail and source: docpane node detail",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-detail.png",
+   "sha1": "fb4b6ff1fb2e46a8bb91f427b0d0f51ca4f5c985"
+  },
+  {
+   "id": "view__node-delete-confirm",
+   "surface": "#view",
+   "state": "node-delete-confirm",
+   "trigger": "float card: Delete: destructive confirm (not confirmed)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-delete-confirm.png",
+   "sha1": "48cd169956b2de54597faddbbf4e68ac0a87cbc1"
+  },
+  {
+   "id": "view__edge-detail",
+   "surface": "#view",
+   "state": "edge-detail",
+   "trigger": "float card link tag with evidence: edge detail in the docpane",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__edge-detail.png",
+   "sha1": "66c7425db806d00fc8f6978530a4aba0a10744ca"
+  },
+  {
+   "id": "view__reader",
+   "surface": "#view",
+   "state": "reader",
+   "trigger": "LNB: click a document: reader in the docpane",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__reader.png",
+   "sha1": "1d00fd72188b1dceedcf9303215b389af30e7db1"
+  },
+  {
+   "id": "view__docpane-folded",
+   "surface": "#view",
+   "state": "docpane-folded",
+   "trigger": "reader open, docpane folded",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__docpane-folded.png",
+   "sha1": "b1e997c5093f9560722f6aec2a060f8bdd887e0a"
+  },
+  {
+   "id": "view__topic-context-menu",
+   "surface": "#view",
+   "state": "topic-context-menu",
+   "trigger": "LNB: right-click a topic",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-context-menu.png",
+   "sha1": "deeb2f657f5f1daab79d5f83b6373c16aeab98f9"
+  },
+  {
+   "id": "view__topic-rename-prompt",
+   "surface": "#view",
+   "state": "topic-rename-prompt",
+   "trigger": "LNB: right-click a topic, Rename: text prompt",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-rename-prompt.png",
+   "sha1": "338bb4459bcaf3cb2cf78e6b0701d73f79538493"
+  },
+  {
+   "id": "view__coachmark",
+   "surface": "#view",
+   "state": "coachmark",
+   "trigger": "first visit: coachmark",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__coachmark.png",
+   "sha1": "e0b2ac88b820b9cc9a9068ac958855d06fb144a7"
+  },
+  {
+   "id": "view__first-run",
+   "surface": "#view",
+   "state": "first-run",
+   "trigger": "first launch in the shell: sign in or stay on this machine",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__first-run.png",
+   "sha1": "2f055e96b1d82518625fa95af8cafe2b91ee2c35"
+  },
+  {
+   "id": "view__light",
+   "surface": "#view",
+   "state": "light",
+   "trigger": "theme light",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "view__light.png",
+   "sha1": "437c7cc5abc4f5b39bd718d839a170fb7446d5fd"
+  },
+  {
+   "id": "view__light-lens",
+   "surface": "#view",
+   "state": "light-lens",
+   "trigger": "theme light, lens Options",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "view__light-lens.png",
+   "sha1": "592573a45cea3b824b4b7ae4fa2af3acd3310ed2"
+  },
+  {
+   "id": "view__empty-invite",
+   "surface": "#view",
+   "state": "empty-invite",
+   "trigger": "empty store: empty invite on the canvas, LNB empty",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__empty-invite.png",
+   "sha1": "e0403b99e6d993536c15ccf51d9eabc61c517498"
+  },
+  {
+   "id": "view__new-node-sheet",
+   "surface": "#view",
+   "state": "new-node-sheet",
+   "trigger": "empty invite: Create a node sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__new-node-sheet.png",
+   "sha1": "003e97f37430d125c7c57bd1bfe06e71a5601d70"
+  },
+  {
+   "id": "view__error",
+   "surface": "#view",
+   "state": "error",
+   "trigger": "sidecar unreachable for the map: error box",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__error.png",
+   "sha1": "6bd2daed06ebaafcf03804ff3b4d95112259c806"
+  },
+  {
+   "id": "view__lnb-failed",
+   "surface": "#view",
+   "state": "lnb-failed",
+   "trigger": "nav-tree 500: LNB failed state with Retry",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-failed.png",
+   "sha1": "34dbff457ef0e6152bd0848de5d769ffbe2b2d94"
+  },
+  {
+   "id": "view__lnb-loading",
+   "surface": "#view",
+   "state": "lnb-loading",
+   "trigger": "nav-tree pending: LNB loading",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-loading.png",
+   "sha1": "8d742d6a732e533a979b650b6d0734a7456724d1"
+  },
+  {
+   "id": "topbar__mode-menu",
+   "surface": "#view",
+   "state": "mode-menu",
+   "trigger": "search mode dropdown",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__mode-menu.png",
+   "sha1": "cd2815e1619bac82e8e2bcabb2e024d85bb5487f"
+  },
+  {
+   "id": "topbar__find-results",
+   "surface": "#view",
+   "state": "find-results",
+   "trigger": "type: results listbox",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-results.png",
+   "sha1": "5ed7cd7f5ae9ab0bbb005a38f54563a37307ea84"
+  },
+  {
+   "id": "topbar__find-empty",
+   "surface": "#view",
+   "state": "find-empty",
+   "trigger": "type a query with no hits",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-empty.png",
+   "sha1": "1b4a5d9eadf66b20210db4e944e940604a03726a"
+  },
+  {
+   "id": "topbar__find-loading",
+   "surface": "#view",
+   "state": "find-loading",
+   "trigger": "search pending",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-loading.png",
+   "sha1": "8bc0586b8d9c1a80e377815e8a736437912d1095"
+  },
+  {
+   "id": "topbar__find-error",
+   "surface": "#view",
+   "state": "find-error",
+   "trigger": "search 500",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-error.png",
+   "sha1": "3ab33d0bbf802306d109015c72bc6623092e5bb8"
+  },
+  {
+   "id": "topbar__browse-sheet",
+   "surface": "#view",
+   "state": "browse-sheet",
+   "trigger": "results footer: All documents sheet, topic layer",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__browse-sheet.png",
+   "sha1": "b1a8b687c0484c57dd9f5bf08b8a84cc3bd62514"
+  },
+  {
+   "id": "topbar__browse-sheet-docs",
+   "surface": "#view",
+   "state": "browse-sheet-docs",
+   "trigger": "All documents: inside a topic",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__browse-sheet-docs.png",
+   "sha1": "2a045af088661634900261f1e0e5d687ba51f13c"
+  },
+  {
+   "id": "topbar__ask-intro",
+   "surface": "#view",
+   "state": "ask-intro",
+   "trigger": "mode Ask: chat panel intro",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-intro.png",
+   "sha1": "055b8783e05d54a3b5fe2c5e1119a663bdece9d8"
+  },
+  {
+   "id": "topbar__ask-answer",
+   "surface": "#view",
+   "state": "ask-answer",
+   "trigger": "ask a question that resolves",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-answer.png",
+   "sha1": "bda4ef7a3afcaf03d5083a3515ed398fcd585b15"
+  },
+  {
+   "id": "topbar__ask-none",
+   "surface": "#view",
+   "state": "ask-none",
+   "trigger": "ask something the graph has nothing on",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-none.png",
+   "sha1": "08f6f5ef21c4efc18645c8a541f51cc93b3b3175"
+  },
+  {
+   "id": "topbar__ask-history",
+   "surface": "#view",
+   "state": "ask-history",
+   "trigger": "chat head: History sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-history.png",
+   "sha1": "6b65819a4bae319c813146344940ab3bd6e99f35"
+  },
+  {
+   "id": "topbar__palette",
+   "surface": "#view",
+   "state": "palette",
+   "trigger": "Ctrl+Shift+K: command palette",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__palette.png",
+   "sha1": "4f5386a9d0ad6de766c5da04c52fe14ccecbc1dd"
+  },
+  {
+   "id": "topbar__palette-filtered",
+   "surface": "#view",
+   "state": "palette-filtered",
+   "trigger": "palette with a filter typed",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__palette-filtered.png",
+   "sha1": "0d51b5b7102d7843aa905de01e8390c1a46bcd70"
+  },
+  {
+   "id": "topbar__cheatsheet",
+   "surface": "#view",
+   "state": "cheatsheet",
+   "trigger": "?: shortcuts sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__cheatsheet.png",
+   "sha1": "18fa538cfe3c630593e796309417733f33d78eff"
+  },
+  {
+   "id": "topbar__tools-create",
+   "surface": "#view",
+   "state": "tools-create",
+   "trigger": "Tools sheet: Create tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__tools-create.png",
+   "sha1": "876a56e645c0bd2c9bb2781d78802a866187208e"
+  },
+  {
+   "id": "topbar__tools-import",
+   "surface": "#view",
+   "state": "tools-import",
+   "trigger": "Tools sheet: Import tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__tools-import.png",
+   "sha1": "84f5129e5fea052f186db9d3a8db4508afb6e1d8"
+  },
+  {
+   "id": "topbar__tools-share",
+   "surface": "#view",
+   "state": "tools-share",
+   "trigger": "Tools sheet: Share tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__tools-share.png",
+   "sha1": "ded1e473dfdd1bb0c32ea0ca714a66e79a70cf7a"
+  },
+  {
+   "id": "topbar__share-sheet",
+   "surface": "#view",
+   "state": "share-sheet",
+   "trigger": "Share › Continue: share as a pack, spec grid and node list",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__share-sheet.png",
+   "sha1": "43b83c2bdde41e275e2d9db4d0a4e8568ac5265f"
+  },
+  {
+   "id": "topbar__share-result",
+   "surface": "#view",
+   "state": "share-result",
+   "trigger": "Share › Share: result (file destination on the desktop)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__share-result.png",
+   "sha1": "6fe845ae9a2cdff14099e987adfd181b5294463e"
+  },
+  {
+   "id": "topbar__import-pack-sheet",
+   "surface": "#view",
+   "state": "import-pack-sheet",
+   "trigger": "Import › pick a .vincpack: import pack sheet before confirming",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__import-pack-sheet.png",
+   "sha1": "673e7e06a6e4dfe1b9349c49a098d47574fb567f"
+  },
+  {
+   "id": "topbar__import-doc-sheet",
+   "surface": "#view",
+   "state": "import-doc-sheet",
+   "trigger": "Import › pick a .md: import document sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__import-doc-sheet.png",
+   "sha1": "3f7918128a6abff735ab35ac716d2a6d8c47d1df"
+  },
+  {
+   "id": "topbar__graphmd",
+   "surface": "#view",
+   "state": "graphmd",
+   "trigger": "GRAPH.md sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__graphmd.png",
+   "sha1": "c667f94a76b22f3e236561ab8baab96b7e7b80a0"
+  },
+  {
+   "id": "topbar__settings-account",
+   "surface": "#view",
+   "state": "settings-account",
+   "trigger": "Settings: Account tab (offline on this device)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-account.png",
+   "sha1": "9a5124f5a8386c584efcbbfc85e8165a616da93a"
+  },
+  {
+   "id": "topbar__settings-connections",
+   "surface": "#view",
+   "state": "settings-connections",
+   "trigger": "Settings: Connections tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-connections.png",
+   "sha1": "3c68752f55cb530fb24a0c8ba5bc9c0815d628ba"
+  },
+  {
+   "id": "topbar__settings-data",
+   "surface": "#view",
+   "state": "settings-data",
+   "trigger": "Settings: Data tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-data.png",
+   "sha1": "5cb49ee07df25f59873129f85fa2f2809ff8ade2"
+  },
+  {
+   "id": "topbar__settings-advanced",
+   "surface": "#view",
+   "state": "settings-advanced",
+   "trigger": "Settings: Advanced tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-advanced.png",
+   "sha1": "ce22d5a7ce5a31ded4713c821469995544b66b9c"
+  },
+  {
+   "id": "topbar__settings-light",
+   "surface": "#view",
+   "state": "settings-light",
+   "trigger": "Settings, light theme",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "topbar__settings-light.png",
+   "sha1": "53f16519961b5a77886120f6dd7bc0dadb7ba8c8"
+  },
+  {
+   "id": "search__default",
+   "surface": "#search",
+   "state": "default",
+   "trigger": "load: recent queries and the browse list",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__default.png",
+   "sha1": "0ea8b1d5ae07aa9d9bd858a97f6af70e49a0fb93"
+  },
+  {
+   "id": "search__results",
+   "surface": "#search",
+   "state": "results",
+   "trigger": "type: grouped results",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__results.png",
+   "sha1": "d03ebb9a4abebb57050ef0dcef22e6d346f0c1f5"
+  },
+  {
+   "id": "search__empty",
+   "surface": "#search",
+   "state": "empty",
+   "trigger": "no hits",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__empty.png",
+   "sha1": "3d308f8bf10005277db9ec2ecbe2c9f4f80af470"
+  },
+  {
+   "id": "search__error",
+   "surface": "#search",
+   "state": "error",
+   "trigger": "search 500: banner",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__error.png",
+   "sha1": "93d259b5e11ec8847de0771f9fc1c28f452de7f6"
+  },
+  {
+   "id": "packs__default",
+   "surface": "#packs",
+   "state": "default",
+   "trigger": "load: intake dropzone, share, backup (desktop)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "packs__default.png",
+   "sha1": "0690cfd1c557a652608d1ef64fa51dc791d73c5e"
+  },
+  {
+   "id": "packs__intake-ingesting",
+   "surface": "#packs",
+   "state": "intake-ingesting",
+   "trigger": "drop a file: per-file rows while ingest is pending",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "packs__intake-ingesting.png",
+   "sha1": "f578fa905341d00ed08b26b57fe645fcb8fa308a"
+  },
+  {
+   "id": "packs__intake-success",
+   "surface": "#packs",
+   "state": "intake-success",
+   "trigger": "drop a file: success summary",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "packs__intake-success.png",
+   "sha1": "5d41c45f49fbd19d623f4251dc0215be305a870b"
+  },
+  {
+   "id": "packs__intake-error",
+   "surface": "#packs",
+   "state": "intake-error",
+   "trigger": "drop an unsupported file: error banner",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "packs__intake-error.png",
+   "sha1": "06c9a9c39f6345da860a075d2d00d25eff90a20d"
+  },
+  {
+   "id": "packs__light",
+   "surface": "#packs",
+   "state": "light",
+   "trigger": "packs, light theme",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "packs__light.png",
+   "sha1": "6c2395c35cc6bd845d6de5567c860f3b9c4d4ac2"
+  }
+ ],
+ "updatedAt": "2026-09-06T07:08:26.399Z"
+}
