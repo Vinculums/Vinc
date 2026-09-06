@@ -260,8 +260,6 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / ListRow":     {"State=Default": "list-row", "State=Hover": "list-row:hover"},
     "App / StateMark":   {"State=Filled": '"filled"', "State=Half": '"half"',
                           "State=Empty": '"empty"'},
-    "App / Sheet":       {"Size=Action": '|| "action"', "Size=Write": 'data-size="write"',
-                          "Size=Browse": 'data-size="browse"'},
     # 네 번째의 코드 키는 `bundle` 이고 Weave 는 화면 라벨이다. 표식은 코드 쪽을 건다.
     "App / ViewSeg":     {"Active=3D": '"3d"', "Active=2D": '"2d"',
                           "Active=Timeline": '"timeline"', "Active=Weave": '"bundle"'},
@@ -278,9 +276,18 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / EmptyState":  {"": "empty-invite"},
     "App / Tooltip":     {"": "tooltip"},
     "App / Slider":      {"": "slider"},
-    "App / FloatCard":   {"": "float-card"},
-    "App / Titlebar":    {"": "titlebar"},
-    "App / Topbar":      {"": "topbar"},
+    # 2026-09-07: 캡처에서 승격한 원자들. 표식은 그 원자가 사는 CSS 클래스나 분기 문자열이다.
+    "App / IconButton":  {"": "tb-btn"},
+    "App / Kbd":         {"": "tb-kbd"},
+    "App / SearchField": {"": "tb-q"},
+    "App / SearchModeButton": {"Mode=Find": 'mode === "find"', "Mode=Ask": 'mode === "ask"'},
+    # 유휴 타일은 aria-checked 가 템플릿 문자열로 찍혀 고정 표식이 없다(DocRow Ink=1 과 같은 사정).
+    "App / TileRadio":   {"State=Selected": 'aria-checked="true"', "State=Idle": None},
+    "App / SwitchRow":   {"": "opt-swrow"},
+    "App / SliderRow":   {"": "slider-row"},
+    "App / TreeMode":    {"Mode=Documents": '"docs"', "Mode=Nodes": '"nodes"'},
+    # App / FloatCard · Sheet · Titlebar · Topbar 는 2026-09-07 에 Archive 로 갔다. 그 자리는 03 · App Shell 의
+    # `Shell / *` 과 05 · Overlays 의 `Overlay / *` 가 맡는데, 둘은 캡처 승격이라 이 표식 축이 아직 세지 않는다.
 }
 
 #: 헬퍼가 **정의된** 파일. 호출부가 아니므로 세지 않는다.
