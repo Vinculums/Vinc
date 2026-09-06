@@ -1167,8 +1167,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pack-row { display: flex; align-items: end; gap: var(--space-3, .75rem); flex-wrap: wrap; }
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
 .pack-field select { min-width: 12rem; }   /* 모양은 공용 select 규칙 */
-/* 가져오기 섹션 안의 드롭존: 카드 안이므로 무대 상단 여백·최대폭 제거 */
-#pack-import-host .intake-stage { margin-top: 0; max-width: none; }
+/* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
+   (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
+#tools-pane .intake-stage { margin-top: 0; max-width: none; }
 .pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
 .pack-linkbtn {
   font: inherit; background: none; border: none; cursor: pointer; padding: 0;

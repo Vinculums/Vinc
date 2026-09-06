@@ -1,7 +1,7 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { api, cfg, community, WEB, type Scope } from "./api";
+import { AccountError, api, cfg, community, WEB, type Scope } from "./api";
 import { toBytes } from "./packfile";
 import { COPY } from "./copy";
 import { openSheet, sheetActions } from "./components";
@@ -337,7 +337,20 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
         sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
         sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
       },
-      () => { prog.innerHTML = ""; err.textContent = COPY.ui.sheet.destFailed; },
+      (e) => {
+        prog.innerHTML = "";
+        // 게시는 공개 핸들이 붙는 **유일한** 행위라 서버가 username 을 요구한다
+        // (400 `username_required`). 이 경우만 갈라 안내한다 — 일반 오류로 뭉개면
+        // 왜 안 되는지 알 길이 없다. 폼은 그대로 두어(이름·설명이 살아 있다) 설정하고
+        // 바로 다시 누를 수 있게 한다. 구 Packs 화면이 갖고 있던 분기를 옮긴 것이고,
+        // 그 화면이 사라지면 이 안내도 함께 사라질 자리였다(P15).
+        if (e instanceof AccountError && e.code === "username_required") {
+          err.innerHTML = `<span class="hint">${esc(P.publishNeedHandle)}</span> `
+            + `<a href="/account/" target="_blank" rel="noopener">${esc(P.publishSetHandle)}</a>`;
+          return;
+        }
+        err.textContent = COPY.ui.sheet.destFailed;
+      },
     );
   });
 }

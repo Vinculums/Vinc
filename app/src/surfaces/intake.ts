@@ -17,10 +17,16 @@ import samplePack from "../sample-pack.json";
  *  (tauri.conf). 카피는 정본(COPY) — 시안 더미 문구 미사용. */
 const USER_OWNER = "tenant:local";   // 본인 데이터 공간(샘플 sample:demo 와 분리)
 
-export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
+export function renderIntake(el: HTMLElement,
+                             opts?: { withHeader?: boolean; withNewDoc?: boolean }) {
   const ui = COPY.ui.intakeUi;
-  // Packs '가져오기' 탭이 헤더리스로 재사용(패널 헤더+탭은 packs 가 제공).
+  // Tools 의 '가져오기' 탭이 헤더리스로 재사용(시트의 머리·탭줄이 크롬을 이미 준다).
   const chrome = opts?.withHeader === false ? "" : header("ingest", "Intake", COPY.ui.meta.intake);
+  // `새 문서`는 Tools 안에서는 **옆 탭이 이미 갖고 있다**(만들기). 같은 시트 안에서
+  // 같은 일을 두 자리에 두면 하나가 다른 하나 위에 시트를 또 여는 꼴이 된다.
+  // 화면 재렌더(showIdle 재호출)를 타므로 붙였다 떼는 대신 여기서 끈다.
+  const newDoc = opts?.withNewDoc === false ? "" :
+    `<button class="btn" id="new-doc">${COPY.ui.viewx.edNew}</button>`;
 
   // ── 상태 1 — Empty (42:3): 대시 드롭존 + 로고 마크 + CTA. mcp-note 유지. ──
   function showIdle() {
@@ -34,7 +40,7 @@ export function renderIntake(el: HTMLElement, opts?: { withHeader?: boolean }) {
           <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
           <div class="dz-actions">
             <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
-            <button class="btn" id="new-doc">${COPY.ui.viewx.edNew}</button>
+            ${newDoc}
             ${WEB ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
           </div>
         </div>

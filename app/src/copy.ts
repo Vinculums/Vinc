@@ -346,6 +346,12 @@ const EN = {
       scopeAll: "Everything", scopeTopic: "One topic", scopeHere: "What I'm looking at",
       scopeHereOff: "Open the map first to share what you're looking at.",
       go: "Continue",
+      // 소스 스페이스(P15) — 구 Packs 화면의 `개인 → 팀 불러오기`가 이 칸 하나로
+      // 일반화됐다. 목록은 계정이 주는 활동 중인 팀뿐이고, 그 밖의 소속은 고를 수
+      // 없다는 사실을 그대로 보인다(`sourceOff`).
+      source: "Which space",
+      sourceNote: "A pack from another space is copied into the one you are in now.",
+      sourceOff: "not available",
     },
     panel: {
       options: "Options",
@@ -801,9 +807,7 @@ const EN = {
       specFormat: "Format", specCreated: "Created", specDocs: "Documents",
       scopeAll: "Everything", scopeSeed: (d: number) => `This document, ${d} hops out`,
       scopeSelection: (n: number) => `${n} selected`,
-      pickPack: "Choose a file",
       importCta: "Import",
-      importTip: "Bring a document (.md, .txt, .rst, .pdf) or a .vincpack into your graph",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
       docTitle: "Import a document",
       docSub: "Kept whole in your graph, exactly as written.",
@@ -1135,6 +1139,9 @@ const KO: Deck = {
       scopeAll: "전체", scopeTopic: "주제 하나", scopeHere: "지금 보고 있는 곳",
       scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 지도를 여세요",
       go: "계속하기",
+      source: "어느 공간",
+      sourceNote: "다른 공간의 팩은 지금 있는 공간으로 복사돼요",
+      sourceOff: "쓸 수 없어요",
     },
     panel: {
       options: "옵션",
@@ -1535,9 +1542,7 @@ const KO: Deck = {
       specFormat: "형식", specCreated: "만든 날", specDocs: "문서",
       scopeAll: "전체", scopeSeed: (d) => `이 문서에서 ${d}단계까지`,
       scopeSelection: (n) => `선택한 ${n}개`,
-      pickPack: "파일 고르기",
       importCta: "가져오기",
-      importTip: "문서(.md·.txt·.rst·.pdf)나 .vincpack 파일을 내 그래프로 가져와요",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
       docTitle: "문서 가져오기",
       docSub: "쓰인 그대로, 원문을 통째로 보관해요",
