@@ -492,6 +492,13 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
                         content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
+            # ⚠ 주제는 본문과 **독립**이다. 본문이 그대로라고 "이 문서를 X 밑에 둬라"를
+            # 버리면 그 지시가 조용히 사라진다 — 부르는 쪽에서 가장 흔한 형태가
+            # "본문은 그대로 두고 주제만 적는다" 인데 그것이 정확히 안 먹혔다
+            # (실측 2026-09-06, 라이브에서 skipped=True 이고 topic=None 이 돌아왔다).
+            if topic:
+                base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
+                                                    title=kept_title)
             return base
 
     chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
