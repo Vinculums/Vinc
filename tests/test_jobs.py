@@ -154,5 +154,55 @@ class JobQueueTests(unittest.TestCase):
         self.assertEqual(sorted(seen), [0, 1, 2])
 
 
+class _Idle:
+    """`on_idle` 기록기 — 호출마다 `wrote` 를 담고 첫 호출에 이벤트를 푼다."""
+
+    def __init__(self):
+        self.calls: list[bool] = []
+        self.rang = threading.Event()
+
+    def __call__(self, *, wrote: bool):
+        self.calls.append(wrote)
+        self.rang.set()
+
+
+class IdleTickTests(unittest.TestCase):
+    """유휴 틱 — 잡이 없어도 워커가 깨어 `on_idle` 을 부른다.
+
+    없을 때 무슨 일이 났는가(2026-09-06): 잡 완료가 유일한 틱이라 버스트의 마지막
+    쓰기는 **다음 쓰기가 올 때까지** 아무 후처리도 못 밟았다. 허브는 ack 를 준
+    문서를 그렇게 잃었다 — 노출 창이 스냅샷 주기가 아니라 트래픽이었다."""
+
+    def _queue(self, idle, **kw) -> JobQueue:
+        jq = JobQueue(on_idle=idle, **kw)
+        self.addCleanup(jq.shutdown, drain=False)
+        return jq
+
+    def test_tick_fires_with_no_job_at_all(self):
+        """회귀 본체 — 큐에 아무것도 안 넣었는데 틱이 온다."""
+        idle = _Idle()
+        self._queue(idle, tick_s=0.01)
+        self.assertTrue(idle.rang.wait(5.0), "잡이 없으면 워커가 영영 안 깬다")
+        self.assertEqual(idle.calls[0], False, "쓰기가 없었는데 있었다고 말했다")
+
+    def test_a_finished_job_reports_a_write(self):
+        """틱을 안 걸면 예전 그대로 — 잡이 끝날 때만, 그리고 그때는 wrote=True."""
+        idle = _Idle()
+        jq = self._queue(idle)
+        jq.run_sync("t", lambda: {"ok": 1})
+        self.assertTrue(idle.rang.wait(5.0))
+        self.assertEqual(idle.calls, [True])
+
+    def test_ticking_does_not_disturb_job_order_or_draining(self):
+        """틱은 대기에 상한을 둘 뿐이다. FIFO 도 드레인 회계도 그대로여야 한다 —
+        빈 큐에서 `task_done()` 을 부르면 여기서 ValueError 로 터진다."""
+        seen = []
+        jq = JobQueue(on_idle=_Idle(), tick_s=0.01)
+        for i in range(3):
+            jq.submit("t", lambda i=i: seen.append(i) or {"i": i})
+        jq.shutdown(drain=True)
+        self.assertEqual(seen, [0, 1, 2])
+
+
 if __name__ == "__main__":
     unittest.main()

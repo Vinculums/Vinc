@@ -179,8 +179,12 @@ class VincApp:
         # 잡 큐에 무는 이유: 스냅샷은 드라이버를 **닫았다 다시 여는** 구간이 있어
         # 쓰기 스레드에서만 안전하다. 쓰기는 이 큐 하나로 직렬화되므로 여기가
         # 유일하게 옳은 자리다.
+        # 유휴 틱 = 스냅샷 주기의 1/10. 잡이 없어도 워커가 깨어 `due()` 를 보므로
+        # 손실 창이 "다음 쓰기가 올 때까지"에서 `every` + 틱 + 복사 시간으로 줄어든다.
+        # 주기가 0(스냅샷 끔)이면 틱도 없다 — 깨워 봐야 할 일이 없다.
         self._snapshots = SnapshotPolicy()
-        self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot)
+        self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
+                                     tick_s=self._snapshots.every / 10.0 or None)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
@@ -256,15 +260,22 @@ class VincApp:
             print(f"vinc-sidecar: mentions rule check skipped — {exc}", file=sys.stderr)
 
     # ── 영속 스냅샷 ──────────────────────────────────────────────────────
-    def _maybe_snapshot(self, *, force: bool = False) -> str | None:
+    def _maybe_snapshot(self, *, force: bool = False, wrote: bool = True) -> str | None:
         """때가 됐으면 작업본을 영속 볼륨으로 복사한다. **잡 워커 스레드 전용.**
 
         주기가 곧 최대 손실 창이다(기본 300초). 쓰기가 있었을 때만 뜬다 — 읽기만
-        오가는 동안 수십 MB 를 계속 미는 것은 비용만이다."""
+        오가는 동안 수십 MB 를 계속 미는 것은 비용만이다.
+
+        `wrote` 는 부른 쪽이 잡을 하나 끝냈는지(True), 빈 큐 타이머인지(False)다.
+        **False 에서 dirty 를 세우면 안 된다** — 그러면 읽기만 오가는 밤에도 계속 뜬다.
+        반대로 표시와 판정을 한 호출에 묶어 두면(예전 형태) 표시한 그 호출은 아직 때가
+        아니고 다음 호출은 **다음 쓰기**뿐이라, 버스트의 마지막 쓰기가 거기서 잤다."""
         if not force:
-            # 잡이 하나 끝나서 불렸다 = 쓰기가 있었을 수 있다. 잡 큐가 곧 쓰기
-            # 경로이므로 표시를 호출부에 흩뿌리지 않고 여기서 한 번에 든다.
-            self._snapshots.mark_dirty()
+            # 잡이 하나 끝났다 = 쓰기가 있었을 수 있다. 잡 큐가 곧 쓰기 경로이므로
+            # 표시를 호출부에 흩뿌리지 않고 여기서 한 번에 든다. 빈 큐 틱은 그 자리가
+            # 아니다 — 표시 없이 때만 본다.
+            if wrote:
+                self._snapshots.mark_dirty()
             if not self._snapshots.due():
                 return None
         state = save_snapshot(self.store)
@@ -279,10 +290,6 @@ class VincApp:
             print(f"vinc-sidecar: store snapshot — {state} (every {self._snapshots.every:.0f}s)",
                   file=sys.stderr, flush=True)
         return state
-
-    def mark_store_dirty(self) -> None:
-        """쓰기가 있었음을 알린다 — 다음 유휴 시점에 스냅샷 대상이 된다."""
-        self._snapshots.mark_dirty()
 
     # reader 뷰: 공유 Database 에서 별도 Connection(R4). 없으면 None(각 q 함수가
     # 자체 open→None→강등). 요청 단위로 생성·close.

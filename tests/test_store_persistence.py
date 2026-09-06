@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 import sys
@@ -22,6 +23,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from store import persistence                                   # noqa: E402
+from api.jobs import JobQueue                                   # noqa: E402
+from api.server import VincApp                                  # noqa: E402
 
 
 class _Clock:
@@ -230,3 +233,56 @@ class GenerationSwap(_Enabled):
         self.assertEqual(persistence.restore_if_missing(self.live + "3"), "restored")
         self.assertEqual(Path(self.live + "3").read_bytes(), b"GEN2",
                          "자리에 온전한 세대가 있으면 그것을 쓴다")
+
+
+class IdleTick(_Enabled):
+    """잡이 없어도 뜬다 — 이 파일 머리말 3번의 나머지 절반.
+
+    2026-09-06: 허브가 ack 한 `doc_put`(청크 7개 교체·경고 없음)이 2분 뒤에 없었다.
+    스냅샷은 **잡이 끝날 때만** 불렸으므로 버스트의 마지막 쓰기는 다음 쓰기가 올
+    때까지 작업 사본에만 있었고, `VINC_STORE_LOCAL` 에서 작업 사본은 컨테이너와 함께
+    죽는다. 그러니 손실 창은 주기가 아니라 **트래픽**이었다."""
+
+    def _app(self, clock) -> VincApp:
+        Path(self.live).write_bytes(b"BURST")
+        app = VincApp(store=_FakeStore(self.live))
+        app.jobs.shutdown(drain=False)     # 실물 큐의 틱은 30초 — 여기선 직접 건다
+        app._snapshots = persistence.SnapshotPolicy(every=300, clock=clock)
+        return app
+
+    def test_a_pending_write_is_snapshotted_with_no_job_in_the_queue(self):
+        """회귀 본체 — 잡을 **하나도** 안 넣었는데 밀린 쓰기가 볼륨으로 간다."""
+        clock = _Clock()
+        app = self._app(clock)
+        app._snapshots.mark_dirty()        # 버스트의 마지막 쓰기
+        clock.advance(300)                 # 주기가 찼다
+        rang = threading.Event()
+
+        def on_idle(*, wrote):
+            state = app._maybe_snapshot(wrote=wrote)
+            if state == "ok":
+                rang.set()
+            return state
+
+        jq = JobQueue(on_idle=on_idle, tick_s=0.01)
+        self.addCleanup(jq.shutdown, drain=False)
+        self.assertTrue(rang.wait(5.0),
+                        "잡을 하나도 안 넣었더니 스냅샷이 영영 안 떴다 — 다음 쓰기가 "
+                        "올 때까지 마지막 쓰기가 작업 사본에만 있다")
+        self.assertEqual(Path(self.snap).read_bytes(), b"BURST")
+
+    def test_reading_alone_pushes_nothing(self):
+        """빈 큐 틱은 dirty 를 세우면 안 된다 — 밤새 수십 MB 를 SMB 로 민다."""
+        clock = _Clock()
+        app = self._app(clock)
+        clock.advance(3000)
+        self.assertIsNone(app._maybe_snapshot(wrote=False))
+        self.assertFalse(app._snapshots.detail()["pending_write"],
+                         "읽기만 오간 구간이 쓰기 표시를 세웠다")
+
+    def test_the_app_wires_a_tick_into_its_queue(self):
+        """배선 — 실물 사이드카의 큐에 틱이 실제로 걸려 있는가."""
+        app = VincApp(store=None)
+        self.addCleanup(app.jobs.shutdown, drain=False)
+        self.assertEqual(app.jobs._tick_s, app._snapshots.every / 10.0)
+

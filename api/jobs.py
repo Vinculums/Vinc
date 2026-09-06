@@ -62,12 +62,20 @@ class JobQueue:
     잡 함수 ``fn: () -> dict`` 는 워커 스레드에서 실행된다 — 그 안의 스토어 접근은
     자동으로 직렬화되므로 임베디드 단일 커넥션 쓰기 경합이 없다.
 
-    ``on_idle`` 은 잡 하나가 끝날 때마다 불린다(쓰기 스레드). 영속 스냅샷처럼
+    ``on_idle`` 은 잡 하나가 끝날 때마다(``wrote=True``), 그리고 ``tick_s`` 를 주면
+    큐가 비어 있어도 그 주기마다(``wrote=False``) 불린다(쓰기 스레드). 영속 스냅샷처럼
     **드라이버를 닫았다 여는** 작업은 여기서만 안전하다 — 다른 스레드에서 하면
-    재오픈 중인 커넥션을 누군가 쓴다. 예외는 삼키되 조용히 넘기지는 않는다."""
+    재오픈 중인 커넥션을 누군가 쓴다. 예외는 삼키되 조용히 넘기지는 않는다.
 
-    def __init__(self, *, on_idle=None) -> None:
+    ``tick_s`` 가 없으면(기본) 워커는 잡이 올 때까지만 깬다. 그러면 잡 완료가 유일한
+    틱이라 **버스트의 마지막 쓰기는 다음 쓰기가 올 때까지** 아무 후처리도 못 밟는다 —
+    허브의 영속 스냅샷이 거기서 잤고 ack 를 준 문서를 잃었다(2026-09-06). 그래서
+    사이드카는 이 값을 준다. 틱은 잡의 순서도 지연도 바꾸지 않는다: 대기에 상한만
+    둘 뿐이고 ``Queue.get`` 은 항목이 들어오면 즉시 깬다."""
+
+    def __init__(self, *, on_idle=None, tick_s: float | None = None) -> None:
         self._on_idle = on_idle
+        self._tick_s = tick_s
         self._q: "queue.Queue" = queue.Queue()
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
@@ -145,7 +153,15 @@ class JobQueue:
     # ── 워커 루프 ─────────────────────────────────────────────────────────
     def _run(self) -> None:
         while True:
-            item = self._q.get()
+            try:
+                # 대기에 상한만 둔다 — 잡이 들어오면 그 즉시 깨므로 순서·지연은 그대로다.
+                item = self._q.get(timeout=self._tick_s) if self._tick_s else self._q.get()
+            except queue.Empty:
+                # 큐가 빈 채로 한 주기가 지났다. 쓰기가 없었으므로 `wrote=False` 를
+                # 실어 보낸다 — 호출부는 이것으로 "표시할 것"과 "때가 됐나 볼 것"을
+                # 가른다. 여기서 `task_done()` 을 부르면 드레인 회계가 깨진다.
+                self._idle_tick(wrote=False)
+                continue
             if item is None:            # sentinel — shutdown
                 self._q.task_done()
                 break
@@ -165,14 +181,18 @@ class JobQueue:
             finally:
                 job._done.set()
                 self._q.task_done()
-            self._idle_tick()
+            self._idle_tick(wrote=True)
 
-    def _idle_tick(self) -> None:
-        """잡 하나가 끝난 뒤, 쓰기 스레드에서 할 일(영속 스냅샷)을 부른다."""
+    def _idle_tick(self, *, wrote: bool) -> None:
+        """쓰기 스레드에서 할 일(영속 스냅샷)을 부른다.
+
+        ``wrote`` 는 이 틱이 잡 완료 뒤인지(True) 빈 큐 타이머인지(False)를 가른다.
+        이 큐가 곧 쓰기 경로라 호출부에는 그것 말고 "쓰기가 있었는가"를 알 재료가
+        없다 — 그래서 판단을 여기서 넘긴다."""
         if self._on_idle is None:
             return
         try:
-            self._on_idle()
+            self._on_idle(wrote=wrote)
         except Exception as exc:                      # noqa: BLE001
             print(f"[jobs] on_idle 실패(계속 진행): {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
