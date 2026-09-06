@@ -1,8 +1,12 @@
 {
- "app": "http://tauri.localhost:5173",
- "capturedAt": "2026-09-06T05:16:22.147Z",
+ "app": "http://tauri.localhost:5174",
+ "capturedAt": "2026-09-06T13:19:32.030Z",
  "tool": "design-hub/scripts/capture_app.mjs",
  "node": null,
+ "sourceRev": "2edcfb2436fc3ca6acd070159467999fe56a4484",
+ "sourceRevNote": "Vinc commit whose app/src the captures rendered",
+ "sourceTree": "df6d688697e72920b5c3a7e8971761de750caeba",
+ "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)",
  "states": [
   {
    "id": "view__3d",
@@ -15,7 +19,7 @@
    },
    "scheme": "dark",
    "file": "view__3d.png",
-   "sha1": "bfab661f1a2e82836393242e65ec80e88c774554"
+   "sha1": "85e5fd5319230917ca41c7c28d42f4aad930b979"
   },
   {
    "id": "view__2d",
@@ -28,7 +32,7 @@
    },
    "scheme": "dark",
    "file": "view__2d.png",
-   "sha1": "dff9241adc5122eabdb5bd91d66ac9b8c14f373a"
+   "sha1": "c1f42367addf05298acee8437be51281d4c85ff6"
   },
   {
    "id": "view__timeline",
@@ -41,7 +45,7 @@
    },
    "scheme": "dark",
    "file": "view__timeline.png",
-   "sha1": "11ea65a7bc8a9c220ebdb7fbe5c0197c0d5ac964"
+   "sha1": "0aac13a928cb479236b49b0327fec7cd1e4512be"
   },
   {
    "id": "view__weave",
@@ -54,7 +58,7 @@
    },
    "scheme": "dark",
    "file": "view__weave.png",
-   "sha1": "19f3e1c2ec9d7a247a3efbba6381d7fe0c72d975"
+   "sha1": "4d06b4f06d09f5766ddec18bd79017a198498796"
   },
   {
    "id": "view__topic-scope",
@@ -67,7 +71,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-scope.png",
-   "sha1": "b666f12272c7733b1196dc510b694caec7510b94"
+   "sha1": "19405578bf575c02bdcf05adcf1836ba70b13c21"
   },
   {
    "id": "view__lnb-collapsed",
@@ -80,7 +84,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-collapsed.png",
-   "sha1": "1552da7d1e3ed121de3db931ab8b182cedb5576b"
+   "sha1": "e03775ad1d4e693c1439f9cd8c6f9ac05362d272"
   },
   {
    "id": "view__lens-options-3d",
@@ -93,7 +97,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-options-3d.png",
-   "sha1": "2e8e72eb6348b128f217a9357523a774245b6dea"
+   "sha1": "5a1ece630bde372b6b5807240262dad7d4f9a688"
   },
   {
    "id": "view__lens-options-2d",
@@ -106,7 +110,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-options-2d.png",
-   "sha1": "785f9419041b6af399d76092984e47c843043bee"
+   "sha1": "1dc41c3669e3a12a9cfba0400bb19c20163f1372"
   },
   {
    "id": "view__lens-options-timeline",
@@ -119,7 +123,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-options-timeline.png",
-   "sha1": "831b9a43b178c83331b5fd7bfb33ef544734f087"
+   "sha1": "d0650b30fdfdec96cbc60ac5d2faf116b7c5015b"
   },
   {
    "id": "view__lens-options-weave",
@@ -132,7 +136,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-options-weave.png",
-   "sha1": "8491466c3379956e5d5c15b2efe41623ac58b69d"
+   "sha1": "a6883fcf386a205112d3ce28e185e9248965f331"
   },
   {
    "id": "view__lens-legend",
@@ -145,7 +149,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-legend.png",
-   "sha1": "4fdde2b16674b821b095dd9420d6af7ec6c6f241"
+   "sha1": "203fb6c9f3ca0e8fe5bad8a7d693891bd9ec465e"
   },
   {
    "id": "view__lens-help-open",
@@ -158,7 +162,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-help-open.png",
-   "sha1": "b374bbfc6a88300bdb68f97af6b89d9baa83fc69"
+   "sha1": "8627953ea66ffbbc216cb56e77d2895fcf8cb1bb"
   },
   {
    "id": "view__node-float",
@@ -171,7 +175,7 @@
    },
    "scheme": "dark",
    "file": "view__node-float.png",
-   "sha1": "b97b50e1819bf396350475ed7ac9b825c9275f76"
+   "sha1": "13084be146ec08404636e4003bf25342c9d242b3"
   },
   {
    "id": "view__node-float-links",
@@ -184,7 +188,7 @@
    },
    "scheme": "dark",
    "file": "view__node-float-links.png",
-   "sha1": "556ad30125b09e3aec786c6ddc1afd414047a0da"
+   "sha1": "1607f5ba8d0f6e9697120923c245ab070a7439b6"
   },
   {
    "id": "view__node-ask-menu",
@@ -197,7 +201,7 @@
    },
    "scheme": "dark",
    "file": "view__node-ask-menu.png",
-   "sha1": "f28d5d3dc4e0a0d937b9335760c8d98176eddcad"
+   "sha1": "d07ce75071a30543b9fa3af776ebfbf2d99f2d97"
   },
   {
    "id": "view__node-detail",
@@ -210,7 +214,7 @@
    },
    "scheme": "dark",
    "file": "view__node-detail.png",
-   "sha1": "fb4b6ff1fb2e46a8bb91f427b0d0f51ca4f5c985"
+   "sha1": "cc4061c12bed7aaec5411dc8e0cca2f3ce427bd0"
   },
   {
    "id": "view__node-delete-confirm",
@@ -223,7 +227,7 @@
    },
    "scheme": "dark",
    "file": "view__node-delete-confirm.png",
-   "sha1": "48cd169956b2de54597faddbbf4e68ac0a87cbc1"
+   "sha1": "85a54a7c7219d5bf41d51ca8430a2c0ea6c9128c"
   },
   {
    "id": "view__edge-detail",
@@ -236,7 +240,7 @@
    },
    "scheme": "dark",
    "file": "view__edge-detail.png",
-   "sha1": "66c7425db806d00fc8f6978530a4aba0a10744ca"
+   "sha1": "ef16db57bf8f9e18f00a8f7d7e7559d89e61d200"
   },
   {
    "id": "view__reader",
@@ -249,7 +253,7 @@
    },
    "scheme": "dark",
    "file": "view__reader.png",
-   "sha1": "1d00fd72188b1dceedcf9303215b389af30e7db1"
+   "sha1": "6103d65be619c0f3cbbdb519d49a8851ca9ee2bc"
   },
   {
    "id": "view__docpane-folded",
@@ -262,7 +266,7 @@
    },
    "scheme": "dark",
    "file": "view__docpane-folded.png",
-   "sha1": "b1e997c5093f9560722f6aec2a060f8bdd887e0a"
+   "sha1": "3c49620e35e43be6bc56351d570388ace944a375"
   },
   {
    "id": "view__topic-context-menu",
@@ -275,7 +279,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-context-menu.png",
-   "sha1": "deeb2f657f5f1daab79d5f83b6373c16aeab98f9"
+   "sha1": "d9d2f4ca2b3fecaf6e98418f7ef83b837b99bd49"
   },
   {
    "id": "view__topic-rename-prompt",
@@ -288,7 +292,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-rename-prompt.png",
-   "sha1": "338bb4459bcaf3cb2cf78e6b0701d73f79538493"
+   "sha1": "120ceba414214ae34a10750ebf272c377a27061d"
   },
   {
    "id": "view__coachmark",
@@ -301,7 +305,7 @@
    },
    "scheme": "dark",
    "file": "view__coachmark.png",
-   "sha1": "e0b2ac88b820b9cc9a9068ac958855d06fb144a7"
+   "sha1": "2b7410a0520ab8e3c0db60e0065c21e69d112431"
   },
   {
    "id": "view__first-run",
@@ -314,7 +318,7 @@
    },
    "scheme": "dark",
    "file": "view__first-run.png",
-   "sha1": "2f055e96b1d82518625fa95af8cafe2b91ee2c35"
+   "sha1": "3fddce4550e87940fa1ebc3190306efca6106ea1"
   },
   {
    "id": "view__light",
@@ -327,7 +331,7 @@
    },
    "scheme": "light",
    "file": "view__light.png",
-   "sha1": "437c7cc5abc4f5b39bd718d839a170fb7446d5fd"
+   "sha1": "e047c4486958809739e38ca70551a3047b663c44"
   },
   {
    "id": "view__light-lens",
@@ -340,7 +344,7 @@
    },
    "scheme": "light",
    "file": "view__light-lens.png",
-   "sha1": "592573a45cea3b824b4b7ae4fa2af3acd3310ed2"
+   "sha1": "1c9dc6c624d6d7d4ed97f6a42f91213ca20ac67d"
   },
   {
    "id": "view__empty-invite",
@@ -353,7 +357,7 @@
    },
    "scheme": "dark",
    "file": "view__empty-invite.png",
-   "sha1": "e0403b99e6d993536c15ccf51d9eabc61c517498"
+   "sha1": "4d0f8fedc9d0c3dc978483bfa3d86bf0b0956b4e"
   },
   {
    "id": "view__new-node-sheet",
@@ -366,7 +370,7 @@
    },
    "scheme": "dark",
    "file": "view__new-node-sheet.png",
-   "sha1": "003e97f37430d125c7c57bd1bfe06e71a5601d70"
+   "sha1": "cd508273026207cc8aab0c170d6c912728cb853f"
   },
   {
    "id": "view__error",
@@ -379,7 +383,7 @@
    },
    "scheme": "dark",
    "file": "view__error.png",
-   "sha1": "6bd2daed06ebaafcf03804ff3b4d95112259c806"
+   "sha1": "b3199c3e0e66d370d577b3f93379e10436cee22f"
   },
   {
    "id": "view__lnb-failed",
@@ -392,7 +396,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-failed.png",
-   "sha1": "34dbff457ef0e6152bd0848de5d769ffbe2b2d94"
+   "sha1": "f5987c12dc9dae5b2c5cae2a435158e7b8498bed"
   },
   {
    "id": "view__lnb-loading",
@@ -405,7 +409,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-loading.png",
-   "sha1": "8d742d6a732e533a979b650b6d0734a7456724d1"
+   "sha1": "c16a49e78e45d6e390ec8245506919cf73f1b8c8"
   },
   {
    "id": "topbar__mode-menu",
@@ -418,7 +422,7 @@
    },
    "scheme": "dark",
    "file": "topbar__mode-menu.png",
-   "sha1": "cd2815e1619bac82e8e2bcabb2e024d85bb5487f"
+   "sha1": "db2712e57baa86ad0828cd6ca0b9b9baecb03a74"
   },
   {
    "id": "topbar__find-results",
@@ -431,7 +435,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-results.png",
-   "sha1": "5ed7cd7f5ae9ab0bbb005a38f54563a37307ea84"
+   "sha1": "8d3edff24fb76707d7816528540cc82a900baa9d"
   },
   {
    "id": "topbar__find-empty",
@@ -444,7 +448,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-empty.png",
-   "sha1": "1b4a5d9eadf66b20210db4e944e940604a03726a"
+   "sha1": "42abee558b1822352fd6f06be57e4b616c78a802"
   },
   {
    "id": "topbar__find-loading",
@@ -457,7 +461,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-loading.png",
-   "sha1": "8bc0586b8d9c1a80e377815e8a736437912d1095"
+   "sha1": "373c9e833e7f2711c04b6e4b181f8791e494f94d"
   },
   {
    "id": "topbar__find-error",
@@ -470,7 +474,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-error.png",
-   "sha1": "3ab33d0bbf802306d109015c72bc6623092e5bb8"
+   "sha1": "97878bbf8d9ca7cf4c5a7de1648b27e978c5a064"
   },
   {
    "id": "topbar__browse-sheet",
@@ -483,7 +487,7 @@
    },
    "scheme": "dark",
    "file": "topbar__browse-sheet.png",
-   "sha1": "b1a8b687c0484c57dd9f5bf08b8a84cc3bd62514"
+   "sha1": "6650c089f620399c7a228d06790c1dbb90c1513a"
   },
   {
    "id": "topbar__browse-sheet-docs",
@@ -496,7 +500,7 @@
    },
    "scheme": "dark",
    "file": "topbar__browse-sheet-docs.png",
-   "sha1": "2a045af088661634900261f1e0e5d687ba51f13c"
+   "sha1": "84e7aa2b7e9c623a0e5ee311be5c61f9fdb5c3a9"
   },
   {
    "id": "topbar__ask-intro",
@@ -509,7 +513,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-intro.png",
-   "sha1": "055b8783e05d54a3b5fe2c5e1119a663bdece9d8"
+   "sha1": "7ecf442a8e393a25cd9f9220838e2c4565f24d9f"
   },
   {
    "id": "topbar__ask-answer",
@@ -522,7 +526,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-answer.png",
-   "sha1": "bda4ef7a3afcaf03d5083a3515ed398fcd585b15"
+   "sha1": "8c06dc8ef60bfb9fccfaf92b680c5d8b5616ef90"
   },
   {
    "id": "topbar__ask-none",
@@ -535,7 +539,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-none.png",
-   "sha1": "08f6f5ef21c4efc18645c8a541f51cc93b3b3175"
+   "sha1": "dbca1fca32b941a13b5e6545a25787b09baa560f"
   },
   {
    "id": "topbar__ask-history",
@@ -548,7 +552,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-history.png",
-   "sha1": "6b65819a4bae319c813146344940ab3bd6e99f35"
+   "sha1": "cbab125942d87f4a7ca3e2acf37215c76e6187b8"
   },
   {
    "id": "topbar__palette",
@@ -561,7 +565,7 @@
    },
    "scheme": "dark",
    "file": "topbar__palette.png",
-   "sha1": "4f5386a9d0ad6de766c5da04c52fe14ccecbc1dd"
+   "sha1": "db914ad3cf3c3894e3a750976c916e79bdd0a4b5"
   },
   {
    "id": "topbar__palette-filtered",
@@ -574,7 +578,7 @@
    },
    "scheme": "dark",
    "file": "topbar__palette-filtered.png",
-   "sha1": "0d51b5b7102d7843aa905de01e8390c1a46bcd70"
+   "sha1": "35159c20c9232bc3026eb2661900cdbaeee11046"
   },
   {
    "id": "topbar__cheatsheet",
@@ -587,7 +591,7 @@
    },
    "scheme": "dark",
    "file": "topbar__cheatsheet.png",
-   "sha1": "18fa538cfe3c630593e796309417733f33d78eff"
+   "sha1": "a2deed65b3f7b6b5f3a623c4bfc28ec881cf7921"
   },
   {
    "id": "topbar__tools-create",
@@ -600,7 +604,7 @@
    },
    "scheme": "dark",
    "file": "topbar__tools-create.png",
-   "sha1": "876a56e645c0bd2c9bb2781d78802a866187208e"
+   "sha1": "07f92f2aa89d3ccc311c3da554399595c14583e6"
   },
   {
    "id": "topbar__tools-import",
@@ -613,7 +617,7 @@
    },
    "scheme": "dark",
    "file": "topbar__tools-import.png",
-   "sha1": "84f5129e5fea052f186db9d3a8db4508afb6e1d8"
+   "sha1": "0dffc93dda46d774fcfd4104cfa84e888695eb59"
   },
   {
    "id": "topbar__tools-share",
@@ -626,7 +630,7 @@
    },
    "scheme": "dark",
    "file": "topbar__tools-share.png",
-   "sha1": "ded1e473dfdd1bb0c32ea0ca714a66e79a70cf7a"
+   "sha1": "d45449fe85f1c5554e640a3c5ecf271d8e35ac8a"
   },
   {
    "id": "topbar__share-sheet",
@@ -639,7 +643,7 @@
    },
    "scheme": "dark",
    "file": "topbar__share-sheet.png",
-   "sha1": "43b83c2bdde41e275e2d9db4d0a4e8568ac5265f"
+   "sha1": "20b1f509997f15090f9c77b85e65ce6a836b20ca"
   },
   {
    "id": "topbar__share-result",
@@ -652,7 +656,7 @@
    },
    "scheme": "dark",
    "file": "topbar__share-result.png",
-   "sha1": "6fe845ae9a2cdff14099e987adfd181b5294463e"
+   "sha1": "994cb91bd664eb0fc4ccfc1d6964f74b5e34cad3"
   },
   {
    "id": "topbar__import-pack-sheet",
@@ -665,7 +669,7 @@
    },
    "scheme": "dark",
    "file": "topbar__import-pack-sheet.png",
-   "sha1": "673e7e06a6e4dfe1b9349c49a098d47574fb567f"
+   "sha1": "c860cde94069c4d7086f6f286043821285c84b0a"
   },
   {
    "id": "topbar__import-doc-sheet",
@@ -678,7 +682,7 @@
    },
    "scheme": "dark",
    "file": "topbar__import-doc-sheet.png",
-   "sha1": "3f7918128a6abff735ab35ac716d2a6d8c47d1df"
+   "sha1": "101b0b092fbd91ee9d6415ba9e719e6462701bba"
   },
   {
    "id": "topbar__graphmd",
@@ -691,7 +695,7 @@
    },
    "scheme": "dark",
    "file": "topbar__graphmd.png",
-   "sha1": "c667f94a76b22f3e236561ab8baab96b7e7b80a0"
+   "sha1": "ee336cbc1c373fba1ebc75eea9c537f0ccea476f"
   },
   {
    "id": "topbar__settings-account",
@@ -704,7 +708,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-account.png",
-   "sha1": "9a5124f5a8386c584efcbbfc85e8165a616da93a"
+   "sha1": "f6de5a34d7ea8dd3a7259e47ec5deca4386b20fe"
   },
   {
    "id": "topbar__settings-connections",
@@ -717,7 +721,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-connections.png",
-   "sha1": "3c68752f55cb530fb24a0c8ba5bc9c0815d628ba"
+   "sha1": "a5d28c1f91af27201056bdb5a3523ac6d29affc3"
   },
   {
    "id": "topbar__settings-data",
@@ -730,7 +734,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-data.png",
-   "sha1": "5cb49ee07df25f59873129f85fa2f2809ff8ade2"
+   "sha1": "42da9bc7eabbd32b7ca76943aba39be0148eb51d"
   },
   {
    "id": "topbar__settings-advanced",
@@ -743,7 +747,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-advanced.png",
-   "sha1": "ce22d5a7ce5a31ded4713c821469995544b66b9c"
+   "sha1": "b3de868b3eb030094e9c6b0b6345b185370d638b"
   },
   {
    "id": "topbar__settings-light",
@@ -756,7 +760,7 @@
    },
    "scheme": "light",
    "file": "topbar__settings-light.png",
-   "sha1": "53f16519961b5a77886120f6dd7bc0dadb7ba8c8"
+   "sha1": "098dff15f686e84a9e1b2c5b740b5c2b89f83fad"
   },
   {
    "id": "search__default",
@@ -769,7 +773,7 @@
    },
    "scheme": "dark",
    "file": "search__default.png",
-   "sha1": "0ea8b1d5ae07aa9d9bd858a97f6af70e49a0fb93"
+   "sha1": "7525712cfc24fd9bea6ba49a28652b2b38c969ea"
   },
   {
    "id": "search__results",
@@ -782,7 +786,7 @@
    },
    "scheme": "dark",
    "file": "search__results.png",
-   "sha1": "d03ebb9a4abebb57050ef0dcef22e6d346f0c1f5"
+   "sha1": "79b5e059cd2c6be67f6690b14068e2a6c8695668"
   },
   {
    "id": "search__empty",
@@ -795,7 +799,7 @@
    },
    "scheme": "dark",
    "file": "search__empty.png",
-   "sha1": "3d308f8bf10005277db9ec2ecbe2c9f4f80af470"
+   "sha1": "1b09954614de923178d9173250f20d9843ec581b"
   },
   {
    "id": "search__error",
@@ -808,7 +812,7 @@
    },
    "scheme": "dark",
    "file": "search__error.png",
-   "sha1": "93d259b5e11ec8847de0771f9fc1c28f452de7f6"
+   "sha1": "b474e6476c1f85f65e2b987fe5f87d5689ae8d09"
   },
   {
    "id": "packs__default",
@@ -821,7 +825,7 @@
    },
    "scheme": "dark",
    "file": "packs__default.png",
-   "sha1": "0690cfd1c557a652608d1ef64fa51dc791d73c5e"
+   "sha1": "b6ae4e4dfba54b2ff237dfed88fb83dbe90eba26"
   },
   {
    "id": "packs__intake-ingesting",
@@ -834,7 +838,7 @@
    },
    "scheme": "dark",
    "file": "packs__intake-ingesting.png",
-   "sha1": "f578fa905341d00ed08b26b57fe645fcb8fa308a"
+   "sha1": "3ce5626b1aa63d96d95534711facfa54f447139f"
   },
   {
    "id": "packs__intake-success",
@@ -847,7 +851,7 @@
    },
    "scheme": "dark",
    "file": "packs__intake-success.png",
-   "sha1": "5d41c45f49fbd19d623f4251dc0215be305a870b"
+   "sha1": "3ce5626b1aa63d96d95534711facfa54f447139f"
   },
   {
    "id": "packs__intake-error",
@@ -860,7 +864,7 @@
    },
    "scheme": "dark",
    "file": "packs__intake-error.png",
-   "sha1": "06c9a9c39f6345da860a075d2d00d25eff90a20d"
+   "sha1": "5767a3ed1c230303e3f484e2df7ba1f57e2ff67f"
   },
   {
    "id": "packs__light",
@@ -873,12 +877,7 @@
    },
    "scheme": "light",
    "file": "packs__light.png",
-   "sha1": "6c2395c35cc6bd845d6de5567c860f3b9c4d4ac2"
+   "sha1": "a44e11aea23453d14f51d9ac99471e780aa0f9e8"
   }
- ],
- "updatedAt": "2026-09-06T07:08:26.399Z",
- "sourceRev": "5690fece5bae095eeb22fe2c2e49930dd7b6576f",
- "sourceRevNote": "Vinc commit whose app/src the captures rendered (vite dev on this worktree)",
- "sourceTree": "87774d7ac8fa97dfb43c65fff8a30fa0cf4da05e",
- "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)"
+ ]
 }
