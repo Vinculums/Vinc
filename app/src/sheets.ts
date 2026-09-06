@@ -10,6 +10,32 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /**
+ * 팩 사양 표 — 나가는 것의 수치.
+ *
+ * **문서 수는 장식이 아니라 계측기다.** 문서는 고르는 것이 아니라 담긴 개념을
+ * 언급하는 것만 서버가 역추적해 싣는다(`api/share.py` `_docs_for_concepts`).
+ * 그래서 스코프가 어긋나면 개념도 문서도 0인 **빈 팩**이 조용히 저장되는데,
+ * 여태 그 사실이 처음 보이는 자리는 **받는 쪽**의 가져오기 시트였다. 보내는
+ * 사람이 저장 전에 알아챌 수 있는 유일한 자리가 이 줄이다.
+ *
+ * 고르는 화면과 보낼 곳 고르는 화면이 **같은 표**를 쓴다: 개별 제외로 수가 줄면
+ * 마지막 화면의 수도 함께 준다. 형식이 두 화면에서 같은 이유는 스페이스·커뮤니티로
+ * 보낼 때도 나가는 것이 같은 팩이기 때문이다(`api.importPack`·`community.publish`
+ * 둘 다 이 팩 객체를 그대로 받는다).
+ */
+function specRows(c: Record<string, number>, scopeLabel: string): string {
+  const S = COPY.ui.sheet;
+  return `
+    <div class="sheet-spec">
+      <div><span class="hint">${S.specScope}</span><b>${esc(scopeLabel)}</b></div>
+      <div><span class="hint">${S.specConcepts}</span><b>${c.concepts ?? 0}</b></div>
+      <div><span class="hint">${S.specLinks}</span><b>${c.edges ?? 0}</b></div>
+      <div><span class="hint">${S.specDocs}</span><b>${c.documents ?? 0}</b></div>
+      <div><span class="hint">${S.specFormat}</span><b>.vincpack</b></div>
+    </div>`;
+}
+
+/**
  * `opts.from` 은 팩을 **어느 스페이스에서** 뜰지, `opts.into` 는 목적지를 미리
  * 정할지를 말한다. 둘 다 없으면 현재 스페이스에서 떠서 목적지를 물어보는
  * 기존 동작이다.
@@ -31,17 +57,13 @@ export async function openShareSheet(
     }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
     const c = pack.manifest?.counts || {};
+    const scopeLabel =
+      scope.seed ? COPY.ui.sheet.scopeSeed(scope.depth ?? 2)
+      : scope.domain ? scope.domain
+      : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
+      : COPY.ui.sheet.scopeAll;
     sheet.body.innerHTML = `
-      <div class="sheet-spec">
-        <div><span class="hint">${COPY.ui.sheet.specScope}</span><b>${esc(
-          scope.seed ? COPY.ui.sheet.scopeSeed(scope.depth ?? 2)
-          : scope.domain ? scope.domain
-          : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
-          : COPY.ui.sheet.scopeAll)}</b></div>
-        <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? 0}</b></div>
-        <div><span class="hint">${COPY.ui.sheet.specLinks}</span><b>${c.edges ?? 0}</b></div>
-        <div><span class="hint">${COPY.ui.sheet.specFormat}</span><b>.vincpack</b></div>
-      </div>
+      ${specRows(c, scopeLabel)}
       <div class="sheet-list">
         ${nodes.map((n, i) => `
           <label class="list-row" style="cursor:pointer">
@@ -80,7 +102,7 @@ export async function openShareSheet(
         return;
       }
       void chooseDestination(sheet, out, keep.length,
-        `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`);
+        `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`, scopeLabel);
     });
   } catch {
     sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
@@ -150,7 +172,7 @@ function landedLines(l: Landed, where: string): string {
  * 거기에 모달을 띄우면 선택 없는 선택지를 강요하는 꼴이 된다.
  */
 async function chooseDestination(
-  sheet: Sheet, out: any, conceptCount: number, filename: string,
+  sheet: Sheet, out: any, conceptCount: number, filename: string, scopeLabel: string,
 ): Promise<void> {
   const U = COPY.ui.sheet;
   const dests: Dest[] = [];
@@ -180,12 +202,16 @@ async function chooseDestination(
     return;
   }
 
+  // 수치는 여기서도 보인다 — 나가는 순간은 [공유]가 아니라 **이 클릭**이고, 개별
+  // 제외로 줄어든 수는 `out.manifest.counts` 에 이미 반영돼 있다.
   sheet.body.innerHTML = `
+    ${specRows(out.manifest?.counts || {}, scopeLabel)}
     <p class="hint">${esc(U.destSub)}</p>
-    <div class="sheet-list">
+    <div class="dest-pick">
       ${dests.map((d) => `
-        <button type="button" class="list-row" data-dest="${d.key}" style="cursor:pointer;width:100%;text-align:left">
-          <span class="title">${esc(d.label)}</span><span class="meta">${esc(d.note)}</span>
+        <button type="button" data-dest="${d.key}">
+          <span class="title">${esc(d.label)}</span>
+          <span class="meta">${esc(d.note)}</span>
         </button>`).join("")}
     </div>`;
   sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
