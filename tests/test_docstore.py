@@ -570,6 +570,57 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(ds.get_doc(self.store, did, owner="user:a").get("error"),
                          "unknown doc_id")
 
+    def test_자라는_re_put_은_그_한_순간도_성공이_아니다(self):
+        """청크가 **늘어나는** re-put 은 행 수 비교만으로는 한 순간이 샌다.
+
+        put_doc 은 구 청크를 지우고 하나씩 MERGE 하는 동안 메타에 **옛** chunk_count 를
+        들고 있다. 그래서 행 수가 0→새 수 를 훑으며 옛 수와 정확히 한 번 일치하고, 그
+        순간의 읽기가 `executed:true` 로 앞부분만 돌려준다(실측: 3,600자 중 2,000자가
+        깨끗한 산문). 줄어드는 re-put·빈 창은 안 새고 **자라는 쪽만** 샌다.
+        처방은 창 진입 때 찍는 `chunk_count = -1` 이고, 이 테스트가 그 표식을 지킨다.
+
+        창은 청크 루프 **안에서 직접 읽어** 잡는다 — 스레드를 경주시키지 않는다."""
+        out = ds.put_doc(self.store, owner="user:a", text="짧은 본문.", title="자람")
+        did = out["doc_id"]
+        self.assertEqual(out["chunks"], 1)                 # 옛 수 = 1
+
+        long_text = "무손실 복원 검증용 본문입니다. " * 200
+        seen: list[dict] = []
+        real_run = self.store.run
+
+        def spy(query, params=None):
+            got = real_run(query, params)
+            if query.startswith("MERGE (c:Chunk"):         # 청크 하나가 방금 들어갔다
+                seen.append(ds.get_doc(self.store, did, owner="user:a"))
+            return got
+
+        self.store.run = spy
+        try:
+            grown = ds.put_doc(self.store, owner="user:a", text=long_text,
+                               doc_id=did, title="자람")
+        finally:
+            self.store.run = real_run
+        self.assertGreater(grown["chunks"], out["chunks"], "늘어나는 re-put 이 아니다")
+        self.assertTrue(seen, "청크 루프를 한 번도 못 봤다 — 관측이 헛돌았다")
+        for i, got in enumerate(seen):
+            self.assertFalse(got["executed"],
+                             f"청크 {i} 를 쓴 순간 반쪽 문서를 성공으로 답했다")
+            self.assertNotIn("text", got, f"청크 {i} 순간에 본문 자리를 줬다")
+        self.assertTrue(ds.get_doc(self.store, did, owner="user:a")["verified"],
+                        "쓰기가 끝났는데 표식이 안 걷혔다")
+
+        # 크래시가 표식을 디스크에 남긴 갈래: 계속 거절되고, **같은 본문** re-put 이
+        # 무변경 스킵으로 도망가지 않고 치유한다(스킵하면 그 문서는 영영 안 읽힌다).
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.chunk_count = -1",
+                       {"d": did})
+        stuck = ds.get_doc(self.store, did, owner="user:a")
+        self.assertFalse(stuck["executed"], "표식이 남은 문서를 성공으로 답했다")
+        self.assertIn("rewritten", stuck["error"])
+        healed = ds.put_doc(self.store, owner="user:a", text=long_text,
+                            doc_id=did, title="자람")
+        self.assertFalse(healed.get("skipped"), "표식이 남은 문서를 무변경 스킵했다")
+        self.assertTrue(ds.get_doc(self.store, did, owner="user:a")["verified"])
+
     def test_의도적으로_빈_문서는_계속_성공이다(self):
         """빈 본문은 길이 0짜리 청크 **하나**로 저장된다(plan_boundaries 가 [0] 을 준다).
 

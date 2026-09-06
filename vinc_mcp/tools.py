@@ -1029,10 +1029,11 @@ TOOLS: list[dict] = [
                        "— nothing about the output looks wrong. Say so rather than answering from "
                        "it silently: a quietly truncated document is indistinguishable from a "
                        "short one. A document caught mid-write is refused instead of answered: "
-                       "`executed:false` with `chunks` below `chunk_count` means a write or a "
-                       "delete was replacing its chunks when you read. That is not an empty "
-                       "document. Read it again in a moment; if it stays that way the last write "
-                       "was interrupted and re-putting the full text heals it.",
+                       "`executed:false` with `chunks` disagreeing with `chunk_count` means a "
+                       "write or a delete was replacing its chunks when you read (a `chunk_count` "
+                       "of -1 marks the write itself). That is not an empty document. Read it "
+                       "again in a moment; if it stays that way the last write was interrupted "
+                       "and re-putting the full text heals it.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},
