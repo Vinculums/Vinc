@@ -197,7 +197,11 @@ const EN = {
       lensTitle: "Top right",
       lensBody: "switch how you look at the map, and read the legend.",
       menuTitle: "Right-click a node",
-      menuBody: "open it, trace from it, or share just that part.",
+      // 메뉴에 실제로 있는 것만 적는다: 열기 · 여기서부터 공유하기 · 지우기
+      // (`COPY.ui.menu` 둘 + `COPY.ui.viewx.del`, 조립은 `surfaces/view.ts` nodeMenu).
+      // 여기 있던 "trace from it" 은 2026-08-17 에 사라진 제스처를 가리키고 있었다:
+      // [[vinc.plan.document-reading]] §2.1. 지우기는 첫 화면에서 가르치지 않는다.
+      menuBody: "open it or share just that part.",
       ok: "Got it",
     },
     menu: { open: "Open", shareHere: "Share from here" },
@@ -1011,7 +1015,9 @@ const KO: Deck = {
       lensTitle: "오른쪽 위에서",
       lensBody: "지도 보는 방식을 바꾸고 범례를 볼 수 있어요",
       menuTitle: "점을 오른쪽 클릭하면",
-      menuBody: "열거나, 거기서부터 따라가거나, 그 부분만 공유할 수 있어요",
+      // 메뉴에 실제로 있는 것만 적는다(EN 덱 같은 자리에 이유가 있다).
+      // "거기서부터 따라가거나" 는 2026-08-17 에 사라진 제스처였다.
+      menuBody: "열거나 그 부분만 공유할 수 있어요",
       ok: "알겠어요",
     },
     menu: { open: "열기", shareHere: "여기서부터 공유하기" },
