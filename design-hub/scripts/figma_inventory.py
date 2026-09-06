@@ -70,26 +70,57 @@ SITE = VINC.parent / "Vinc-homepage" / "site"
 APP = VINC / "app" / "src"
 
 # ── 사이트 라우트 ↔ Figma 프레임 ────────────────────────────────────────────
-# 한 프레임이 여러 라우트를 담기도 한다(로그인과 환영이 한 장에 있다). 값이 None 이면
-# "코드에는 있고 Figma 에는 아직 없다"고 **선언한** 것이다.
-ROUTES = {
-    "/": "Site · Landing / dark",
-    "/404": "Site · 404 / dark (신설)",
-    "/account/": "Site · Account / dark",
-    "/account/delete/": "Site · Account · Delete states / dark",
-    "/account/team/": "Site · Account · Team / dark",
-    "/auth/verify/": "Site · Auth · Verify states / dark",
-    "/community/": "Site · Community / dark",
-    "/connect/": "Site · Connect & Connect-app states / dark",
-    "/connect-app/": "Site · Connect & Connect-app states / dark",
-    "/download/": "Site · Download / dark",
-    "/login/": "Site · Auth · Login & Welcome / dark",
-    "/welcome/": "Site · Auth · Login & Welcome / dark",
-    "/pricing/": "Site · Pricing / dark",
-    "/privacy/": "Site · Privacy / dark",
-    "/release/": "Site · Release / dark",
-    "/subscribe/confirm/": "Site · Auth · Subscribe & Unsubscribe states / dark",
-    "/unsubscribe/": "Site · Auth · Subscribe & Unsubscribe states / dark",
+# 사이트 보드는 2026-09-06 부터 **코드 캡처**다(scripts/capture_site_figma.mjs): 라우트×상태 하나가
+# 보드 하나고, 이름은 `Site · <Route>[ · <state>] / dark` 로 캡처 매니페스트의 상태 id 에서 나온다.
+# 그래서 이 축의 기대 집합은 손으로 적지 않고 매니페스트에서 만든다 — 매니페스트에 있는데 보드가
+# 없으면 FAIL, 코드에 라우트가 생겼는데 매니페스트에 없으면 미선언 FAIL. 문서 페이지만 예외다:
+# 그 보드들은 `12 · Docs Screens` 에 따로 살아서 아래 DOCS_ROUTES 가 그대로 답한다.
+# 근거: [[decision:site-boards-are-captures-of-the-running-code]].
+SITE_MANIFEST = HUB / "reports" / "captures" / "site" / "manifest.json"
+SITE_ROUTE_TITLES = {
+    "landing": "Landing", "community": "Community", "account": "Account", "team": "Account · Team",
+    "login": "Auth · Login", "verify": "Auth · Verify", "welcome": "Auth · Welcome", "connect": "Connect",
+    "connect-app": "Connect-app", "subscribe": "Subscribe", "unsubscribe": "Unsubscribe",
+    "account-delete": "Account · Delete", "pricing": "Pricing", "download": "Download", "release": "Release",
+    "privacy": "Privacy", "404": "404", "docs": "Docs",
+}
+#: 매니페스트에는 있지만 보드로는 두지 않는 상태. 값은 이유다.
+REFERENCE_ONLY = {
+    "landing__light": "라이트는 변수 모드로 본다(§8 D3), 보드를 두 벌 두지 않는다",
+    "landing__ko": "보드는 영어다(§8 D2); 한국어 렌더는 08 · Reference 의 PNG 로 남는다",
+    "pricing__ko": "보드는 영어다(§8 D2)",
+    "team__invite-accepted": "수락 직후 700ms 에 페이지가 새로 고쳐져 DOM 직렬화가 끝나기 전에 사라진다; PNG 참조만",
+}
+MANIFEST_ROUTE_ALIAS = {"/this-page-is-not-here/": "/404"}
+
+
+def site_board_name(state_id: str) -> str:
+    route, state = state_id.split("__", 1)
+    return f"Site · {SITE_ROUTE_TITLES[route]}" + ("" if state == "default" else f" · {state}") + " / dark"
+
+
+def _site_axis_from_manifest() -> tuple[dict, dict]:
+    """(라우트 → 대표 보드, 라우트 → {상태: 보드}). 매니페스트가 없으면 둘 다 비어 있고
+    그 사실은 main 이 출력한다 — 조용히 통과시키지 않는다."""
+    if not SITE_MANIFEST.exists():
+        return {}, {}
+    rows = json.loads(SITE_MANIFEST.read_text(encoding="utf-8"))["states"]
+    routes, states = {}, {}
+    for row in rows:
+        sid = row["id"]
+        if sid in REFERENCE_ONLY:
+            continue
+        route = MANIFEST_ROUTE_ALIAS.get(row["route"], row["route"])
+        if route.startswith("/docs/"):
+            continue                          # 문서 보드는 12 · Docs Screens 의 DOCS_ROUTES 가 답한다
+        board = site_board_name(sid)
+        routes.setdefault(route, board)
+        states.setdefault(route, {})[sid.split("__", 1)[1]] = board
+    return routes, states
+
+
+_MANIFEST_ROUTES, _MANIFEST_STATES = _site_axis_from_manifest()
+DOCS_ROUTES = {
     "/docs/": "Docs · Overview / dark",
     "/docs/quickstart/": "Docs · Quickstart / dark",
     "/docs/use-cases/": "Docs · What to add / dark",
@@ -118,87 +149,14 @@ ROUTES = {
     "/docs/agents/packs/": "Docs · Agents · Packs / dark",
     "/docs/one-graph/": "Docs · One graph / dark",
 }
+ROUTES = {**_MANIFEST_ROUTES, **DOCS_ROUTES}
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
 ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
 
-#: 상태 매트릭스 — **화면이 아니라 화면×상태가 단위다.**
-#:
-#: 위의 ROUTES 는 "이 라우트에 시안이 있는가"만 답한다. 그래서 상태가 여섯 개 필요한
-#: `/auth/verify/` 와 하나뿐인 `/pricing/` 이 똑같이 초록으로 보인다 — 기본 화면 하나만
-#: 있어도 덮였다고 말한다. 이 표가 그 축을 더한다.
-#:
-#: 값이 프레임 이름이면 실재를 검증하고, `None` 이면 선언된 결손이다. 여기 **없는**
-#: 라우트는 "상태를 아직 선언하지 않음"으로 세어서 출력한다 — 거짓으로 하나뿐이라고
-#: 주장하지 않기 위해서다. 그 수가 곧 "시안이 몇 장 더 필요한가"다.
-ROUTE_STATES = {
-    "/login/": {"form": "LOGIN · FORM", "sent": "LOGIN · SENT"},
-    "/welcome/": {"loading": "WELCOME · LOADING", "form": "WELCOME · FORM",
-                  "available": "WELCOME · AVAILABLE"},
-    "/auth/verify/": {"confirm": "VERIFY · CONFIRM", "verifying": "VERIFY · VERIFYING",
-                      "confirm-context": "VERIFY · CONFIRM CONTEXT", "expired": "VERIFY · EXPIRED",
-                      "invalid": "VERIFY · INVALID", "error": "VERIFY · ERROR"},
-    "/account/delete/": {"confirm": "DELETE · CONFIRM", "deleting": "DELETE · DELETING",
-                         "deleted": "DELETE · DELETED", "expired": "DELETE · EXPIRED",
-                         "error": "DELETE · ERROR"},
-    "/subscribe/confirm/": {"confirm": "SUBSCRIBE · CONFIRM", "confirming": "SUBSCRIBE · CONFIRMING",
-                            "confirmed": "SUBSCRIBE · CONFIRMED", "expired": "SUBSCRIBE · EXPIRED",
-                            "error": "SUBSCRIBE · ERROR"},
-    "/unsubscribe/": {"confirm": "UNSUB · CONFIRM", "unsubscribing": "UNSUB · UNSUBSCRIBING",
-                      "unsubscribed": "UNSUB · UNSUBSCRIBED", "invalid": "UNSUB · INVALID",
-                      "error": "UNSUB · ERROR"},
-    "/connect/": {"load": "CONNECT · LOAD", "ask": "CONNECT · ASK", "login": "CONNECT · LOGIN",
-                  "done": "CONNECT · DONE", "error": "CONNECT · ERROR"},
-    "/connect-app/": {"load": "CONNECT-APP · LOAD", "ask": "CONNECT-APP · ASK",
-                      "login": "CONNECT-APP · LOGIN", "done": "CONNECT-APP · DONE",
-                      "manual": "CONNECT-APP · MANUAL", "error": "CONNECT-APP · ERROR"},
-
-    # ── 단일 상태 라우트 ────────────────────────────────────────────────────
-    # 읽기만 하는 정적 페이지들이다. 상태가 하나라는 것은 **주장이지 결손이 아니라서**
-    # 미선언으로 두면 영영 31 이라는 수가 남는다. 실제로 하나뿐이면 하나라고 적는다.
-    "/": {"default": "Site · Landing / dark"},
-    "/404": {"default": "Site · 404 / dark (신설)"},
-    "/pricing/": {"default": "Site · Pricing / dark"},
-    "/privacy/": {"default": "Site · Privacy / dark"},
-    "/release/": {"default": "Site · Release / dark"},
-    "/download/": {"default": "Site · Download / dark"},
-    "/docs/": {"default": "Docs · Overview / dark"},
-    "/docs/quickstart/": {"default": "Docs · Quickstart / dark"},
-    "/docs/use-cases/": {"default": "Docs · What to add / dark"},
-    "/docs/import/": {"default": "Docs · Import / dark"},
-    "/docs/view/": {"default": "Docs · View / dark"},
-    "/docs/search/": {"default": "Docs · Search / dark"},
-    "/docs/packs/": {"default": "Docs · Packs & community / dark"},
-    "/docs/shortcuts/": {"default": "Docs · Shortcuts / dark"},
-    "/docs/mcp/": {"default": "Docs · MCP Setup / dark"},
-    "/docs/mcp/tools/": {"default": "Docs · MCP Tools / dark"},
-    "/docs/mcp/sign-in/": {"default": "Docs · MCP Sign-in / dark"},
-    "/docs/cli/": {"default": "Docs · CLI Reference / dark"},
-    "/docs/graph-md/": {"default": "Docs · GRAPH.md What / dark"},
-    "/docs/graph-md/build/": {"default": "Docs · GRAPH.md Generate / dark"},
-    "/docs/graph-md/spec/": {"default": "Docs · GRAPH.md Spec / dark"},
-    "/docs/graph-md/check/": {"default": "Docs · GRAPH.md Validate / dark"},
-    "/docs/agents/": {"default": "Docs · Agents / dark"},
-    "/docs/agents/hosts/": {"default": "Docs · Agents · Hosts / dark"},
-    "/docs/agents/openclaw/": {"default": "Docs · Agents · OpenClaw / dark"},
-    "/docs/agents/roles/": {"default": "Docs · Agents · Roles / dark"},
-    "/docs/agents/packs/": {"default": "Docs · Agents · Packs / dark"},
-    "/docs/one-graph/": {"default": "Docs · One graph / dark"},
-
-    # ── 상태가 더 필요한 라우트 ──────────────────────────────────────────────
-    # 코드에 상태 분기가 실재하는데 Figma 에 기본 화면만 있다. 결손으로 **선언**한다.
-    "/account/": {"default": "Site · Account / dark",
-                  "signed-out": "ACCOUNT · SIGNED OUT",       # Service states 보드에 있다
-                  "rate-limited": "429 · RATE LIMITED",
-                  "graph-unavailable": "WEB GRAPH UNAVAILABLE",
-                  "key-created": "ACCOUNT · KEY CREATED",
-                  "username-taken": "ACCOUNT · USERNAME TAKEN"},
-    "/account/team/": {"default": "Site · Account · Team / dark",
-                       "invited": "TEAM · INVITED", "no-teams": "TEAM · NO TEAMS",
-                       "seat-full": "TEAM · SEAT FULL"},
-    "/community/": {"default": "Site · Community / dark", "modal-ask": "modal-card",
-                    "loading": "COMMUNITY · LOADING", "empty": "COMMUNITY · EMPTY",
-                    "no-match": "COMMUNITY · NO MATCH", "error": "COMMUNITY · ERROR"},
-}
+#: 상태 매트릭스 — **화면이 아니라 화면×상태가 단위다.** 2026-09-06 부터 매니페스트가 정한다:
+#: 상태 하나가 보드 하나(`Site · Community · modal-busy / dark`). 여기 없는 라우트는
+#: "상태를 아직 캡처하지 않음"으로 세어 출력한다.
+ROUTE_STATES = _MANIFEST_STATES
 
 # ── 앱 모달 ↔ Figma 오버레이 상태 ───────────────────────────────────────────
 # 키는 `모듈:제목식`. 줄 번호가 아니라 식이라 코드가 위아래로 움직여도 안 깨진다.
