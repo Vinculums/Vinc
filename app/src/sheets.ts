@@ -202,8 +202,11 @@ async function chooseDestination(
     return;
   }
 
-  // 수치는 여기서도 보인다 — 나가는 순간은 [공유]가 아니라 **이 클릭**이고, 개별
-  // 제외로 줄어든 수는 `out.manifest.counts` 에 이미 반영돼 있다.
+  // 수치는 여기서도 보인다 — 나가는 순간은 [공유]가 아니라 **이 클릭**이다.
+  // 개별 제외로 다시 세는 것은 `concepts`·`edges` 둘뿐이고 `documents` 는 `c` 의
+  // 값이 그대로 온다. 그래도 표시가 거짓이 되지 않는 것은 `out` 이 `pack.documents`
+  // 를 손대지 않고 그대로 실어 나르기 때문이다(보이는 수 = 실제로 나가는 수).
+  // 그래서 노드를 전부 제외하면 개념 0 · 링크 0 · 문서 N 이 되는데, 맞는 표시다.
   sheet.body.innerHTML = `
     ${specRows(out.manifest?.counts || {}, scopeLabel)}
     <p class="hint">${esc(U.destSub)}</p>

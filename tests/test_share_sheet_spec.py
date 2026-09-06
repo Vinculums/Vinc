@@ -23,13 +23,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _body(src: str, head: str) -> str:
+    """`head` 로 시작하는 최상위 함수의 본문만 잘라 낸다 — 열 0 의 `}` 가 끝이다."""
+    body = src[src.index(head):]
+    return body[:body.index("\n}")]
+
+
 class ShareSheetSpecTests(unittest.TestCase):
     def test_공유_시트가_문서_수를_보여준다(self):
         src = (ROOT / "app" / "src" / "sheets.ts").read_text(encoding="utf-8")
-        spec = src[src.index("function specRows"):]
-        spec = spec[:spec.index("\n}")]
+        spec = _body(src, "function specRows")
         self.assertIn("specDocs", spec, "공유 시트 사양 표에 문서 줄이 없다")
         self.assertIn("c.documents", spec, "문서 줄이 매니페스트 카운트를 안 읽는다")
+        # 헬퍼가 **있는 것**과 **불리는 것**은 다르다 — 위 둘은 헬퍼 본문만 보므로
+        # 호출부를 지워도 그대로 통과한다(변이로 실측). 그러면 문서 줄을 포함한 사양 표
+        # 전체가 공유 시트에서 사라져도 가드는 초록이다 — 막으려던 바로 그것이다.
+        share = _body(src, "export async function openShareSheet")
+        self.assertIn("specRows(c, scopeLabel)", share, "공유 시트가 사양 표를 안 그린다")
 
     def test_서버가_같은_이름으로_문서를_센다(self):
         """앱이 읽는 키를 빌더가 실제로 넣는가 — 이름이 갈리면 화면은 조용히 0 이다."""
