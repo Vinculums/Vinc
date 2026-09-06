@@ -719,8 +719,15 @@ export async function renderView(el: HTMLElement) {
     // 버튼 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
     const r = lensBtn?.getBoundingClientRect();
     if (!r) return;
+    // 오른쪽 끝은 **패널 실측 폭**으로 잡는다 — 상수를 박으면 폭을 넓힐 때마다 다시
+    // 잘린다. 상수가 300 이던 동안 20.5rem(328px) 짜리 패널이 뷰포트 밖으로 28px
+    // 넘어가 잘렸다(폭은 두 번 의도적으로 넓힌 값이다. app.css `#view-lens-panel`).
+    // 여백 8px 는 이웃 클램프(float-panel.ts · components.ts)와 같은 값이고,
+    // Math.max 가 왼쪽 끝도 막는다. 패널이 보일 때만 부르므로 offsetWidth 는 실측이다.
+    const m = 8;
+    const w = viewPanel.offsetWidth;
     viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
-    viewPanel.style.left = `${Math.round(Math.min(r.left, window.innerWidth - 300))}px`;
+    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, window.innerWidth - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
   // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
