@@ -391,8 +391,12 @@ async function openDoc(docId: string, nodeId: string, domain?: string) {
   openDocSheet({ owner: cfg.owner, docId, onSaved: () => void refreshLnb() });
 }
 
-/** 주제 색 토글이 바뀌었다 — 지도와 **같은 토글**이라 왼쪽 트리도 함께 따라간다.
- *  값은 안 받는다: 정본은 localStorage(`vinc.view.prefs`)이고 paint 가 다시 읽는다. */
+/** 밖에서 색을 다시 굳히라고 부른다. 값은 안 받는다: 정본은 localStorage
+ *  (`vinc.view.prefs`)와 `data-theme` 이고 paint 가 둘 다 다시 읽는다.
+ *
+ *  부르는 데 둘. ① 주제 색 토글(지도와 **같은 토글**이라 왼쪽 트리도 함께 따라간다)
+ *  ② **테마 전환**(`applyTheme`) — `tintStyle` 이 싣는 것은 CSS 변수가 아니라 그때
+ *  모드로 계산한 HEX 라, 다시 그리지 않으면 뒤집힌 화면에 반대 모드 색이 남는다. */
 export function repaintLnb(): void { paint(); }
 
 export function mountLnb() {

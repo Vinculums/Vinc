@@ -11,6 +11,9 @@
      CSS 의 `var(--tint, <토큰>)` 대체값 하나뿐이다. 대체값을 지우면 도트가 사라진다.
   ③ 선택 표시(`--ring`)와 주제 색은 **같은 특이도**로 도트를 다툰다. 활성 규칙이
      뒤에 오는 것만이 그 다툼의 판정이다.
+  ④ 줄에 실리는 것은 CSS 변수가 아니라 **그때 모드로 계산한 HEX** 다. 그래서 테마가
+     뒤집혀도 도트는 스스로 안 따라오고, 다시 그려 주지 않으면 반대 모드 색이 그대로
+     남아 배경에 묻는다(실측: 굳은 dark 틴트를 light 화면에 두면 1.44~2.32:1).
 
 앱 쪽에는 JS 테스트 러너가 없다(`app/package.json` 에 `test` 없음) — `test_view_url.py`
 와 같은 자리에 두는 이유가 그것이다."""
@@ -23,6 +26,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "app" / "src"
 LNB = (SRC / "lnb.ts").read_text(encoding="utf-8")
 CSS = (SRC / "app.css").read_text(encoding="utf-8")
+MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
 
 
 class LnbTintTests(unittest.TestCase):
@@ -48,6 +52,20 @@ class LnbTintTests(unittest.TestCase):
         tinted = CSS.index('background: var(--tint, hsl(var(--muted-foreground)))')
         on = CSS.index('.lnb-doc.on .lnb-dot')
         self.assertLess(tinted, on, "활성 규칙이 뒤에 와야 선택 표시가 살아남는다")
+
+    def test_테마가_뒤집히면_트리를_다시_그린다(self):
+        """④ — 그리고 **`applyTheme` 안**이어야 한다.
+
+        설정 화면의 클릭 핸들러에 달면 테마 `pref` 가 `"auto"` 인 경로가 통째로 샌다:
+        그때 모드를 바꾸는 것은 OS 이고(아래 matchMedia 구독) 설정 클릭이 없다.
+        `applyTheme` 는 `data-theme` 를 쓰는 **유일한** 곳이라 두 경로가 여기서 만난다."""
+        head = MAIN.index("export function applyTheme() {")
+        body = MAIN[head:MAIN.index(chr(10) + "}", head)]
+        self.assertIn("repaintLnb()", body,
+                      "테마를 뒤집고 안 그리면 도트에 반대 모드 색이 남는다")
+        self.assertIn(
+            'matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme)',
+            MAIN, "OS 추종 경로가 applyTheme 를 거치지 않으면 위 보장이 반쪽이 된다")
 
 
 if __name__ == "__main__":
