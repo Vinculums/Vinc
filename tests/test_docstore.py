@@ -807,6 +807,49 @@ class DocstoreE2E(unittest.TestCase):
         self.assertIn("error", q.ledger_drilldown(owner="user:a", domain="phys",
                                                   mark="bogus", store=self.store))
 
+    def _mention_link_count(self):
+        rows = self.store.run("MATCH (ch:Chunk)-[m:MENTIONS]->() RETURN count(m) AS n") or []
+        return int((rows[0].get("n") if rows else 0) or 0)
+
+    def test_ensure_rule_reaches_chunks_whose_owner_was_never_stamped(self):
+        """owner 가 빈 청크를 전량 재링크가 통째로 건너뛰던 결함(2026-09-06 재현).
+
+        `put_doc` 의 재링크는 doc_id 로만 걸러 늘 성공하는데 `ensure_rule` 은 청크를
+        owner 로 좁히고 빈 버킷을 건너뛴다. 그래서 **문서 하나씩은 되는데 전량은 한 번도
+        안 되는** 상태가 됐고, 그 판이 표식까지 찍어 이후 모든 기동이 조기 반환했다.
+
+        고치는 방향은 스코프를 넓히는 것이 **아니다** — 빈 owner 를 현재 owner 로
+        싸잡으면 그것이 곧 교차 테넌트 링크이고, 그 가드는 이 경로가 지키려던 바로
+        그것이다. 청크의 owner 는 짐작할 값이 아니라 그 문서가 이미 아는 값이다."""
+        from engines import mentions_link as ml
+        self.store.run("MERGE (c:Concept {concept_id:$i}) SET c.owner_id='user:a', "
+                       "c.title='Design Hub', c.domain='design'",
+                       {"i": _pk("concept:design-hub")})
+        ds.put_doc(self.store, owner="user:a", title="note",
+                   text="the design hub holds the tokens")
+        self.assertEqual(self._mention_link_count(), 1, "put_doc 경로는 원래 된다")
+        # 구 코퍼스 재현: 청크 owner 를 비우고 스토어를 다소유자로 만든다.
+        self.store.run("MATCH (c:Chunk) SET c.owner_id = ''")
+        self.store.run("CREATE (c:Chunk {chunk_id:'orphan1', doc_id:'no-such-doc', "
+                       "text:'unrelated', owner_id:'user:b', source_file:''})")
+        self.store.run("MATCH (ch:Chunk)-[m:MENTIONS]->() DELETE m")
+        self.assertEqual(self._mention_link_count(), 0)
+
+        res = ml.ensure_rule(self.store)
+        self.assertTrue(res["changed"], res)
+        self.assertEqual(self._mention_link_count(), 1,
+                         "문서의 청크는 owner 를 되찾아 재링크돼야 한다")
+
+    def test_ownerless_orphan_chunk_is_reported_not_hidden(self):
+        """문서 메타가 없는 청크는 귀속할 owner 가 없어 남는다 — 그 수를 돌려준다.
+        조용히 0건 재링크하고 표식만 찍는 것이 이 결함의 본체였다."""
+        from engines import mentions_link as ml
+        self.store.run("CREATE (c:Chunk {chunk_id:'orphan1', doc_id:'no-such-doc', "
+                       "text:'x', owner_id:'', source_file:''})")
+        res = ml.ensure_rule(self.store)
+        self.assertEqual(res["ownerless_remaining"], 1,
+                         "귀속 못 한 청크가 응답에 드러나야 한다")
+
     def _seed_mention_doc(self, owner="user:a", topic=None):
         """(phys: beta·delta) · (math: gamma) 를 언급 밀도가 다르게 문 문서 1건.
 

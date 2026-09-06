@@ -242,6 +242,12 @@ class VincApp:
             if res.get("changed"):
                 print(f"vinc-sidecar: MENTIONS 재링크 — 규칙 {res.get('previous') or '(없음)'}"
                       f" → {res.get('rule')} · {res.get('owners')}", file=sys.stderr)
+            # owner 를 귀속 못 한 청크는 전량 재링크가 **건너뛴다.** 조용히 넘어가면
+            # "전량이라고 적힌 경로가 아무것도 안 한" 상태가 표식만 남기고 굳는다 —
+            # 2026-09-06 에 실제로 그렇게 굳어 있었다.
+            if (res.get("ownerless_remaining") or 0) > 0:
+                print(f"vinc-sidecar: ⚠ owner 없는 청크 {res['ownerless_remaining']}개 — "
+                      "재링크가 건너뛴다(문서 메타가 없는 고아)", file=sys.stderr)
             return res
 
         try:
