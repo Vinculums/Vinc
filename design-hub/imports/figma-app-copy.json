@@ -331,11 +331,6 @@
    "View · node detail + r"
   ],
   [
-   762171,
-   "Trace from here",
-   "View · node detail + r"
-  ],
-  [
    848702,
    "Share",
    "View · node detail + r"
@@ -371,18 +366,8 @@
    "View · node detail + r"
   ],
   [
-   577145,
-   "Open the full document",
-   "View · node detail + r"
-  ],
-  [
    286144,
    "⋮⋮",
-   "View · node detail + r"
-  ],
-  [
-   277192,
-   "Related nodes",
    "View · node detail + r"
   ],
   [
@@ -1186,11 +1171,6 @@
    "Overlays 1 · sheets (S"
   ],
   [
-   192607,
-   "Where should this go?",
-   "Overlays 1 · sheets (S"
-  ],
-  [
    644059,
    "Same pack, different destination. ",
    "Overlays 1 · sheets (S"
@@ -1203,16 +1183,6 @@
   [
    613881,
    "Copy into your personal graph. The",
-   "Overlays 1 · sheets (S"
-  ],
-  [
-   410814,
-   "Team space",
-   "Overlays 1 · sheets (S"
-  ],
-  [
-   189623,
-   "Copy into the team graph. Everyone",
    "Overlays 1 · sheets (S"
   ],
   [
@@ -1601,11 +1571,6 @@
    "Overlays 3 · palette +"
   ],
   [
-   319239,
-   "Switch how you look at the map",
-   "Overlays 3 · palette +"
-  ],
-  [
    345954,
    "Vinc 0.7.4 is ready to install.",
    "Overlays 3 · palette +"
@@ -1889,6 +1854,11 @@
    433359,
    "mathematics · edited last week",
    "Overlays 4 · first run"
+  ],
+  [
+   40661,
+   "View and legend",
+   "Overlays 3 · palette +"
   ]
  ]
 }
