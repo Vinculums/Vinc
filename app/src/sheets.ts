@@ -10,6 +10,33 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /**
+ * 진행 표시 — 공유 경로의 **모든 기다림이 이 한 벌**을 쓴다(팩 준비 · 스페이스로
+ * 보내기 · 파일로 받기 · 커뮤니티 게시). 전에는 자리마다 `<p class="hint">` 한 줄이라,
+ * 같은 시트 안에서 같은 일을 기다리는데 모양이 자리마다 달랐다.
+ *
+ * **게이지는 불확정(indeterminate)이다. 단계를 못 만들어서가 아니라 없는 단계를
+ * 지어내지 않기 위해서다.** 이 경로들은 전부 `api.ts` 의 `call()` 한 번으로 끝난다 —
+ * `fetch` 하나와 `res.json()` 하나뿐이라 중간 보고가 물리적으로 없다. 그래서 퍼센트를
+ * 그리려면 시계로 지어내야 하는데, 그것은 진행을 보여주는 대신 **보여주는 척**하는
+ * 것이다. 참조 원본(커뮤니티 페이지)이 실제로 그렇게 한다: 요청은 하나인데
+ * `setInterval(…, 550)` 이 막대를 8 → 32 → 56 → 80% 로 밀고, 응답이 오면 100% 로
+ * 점프한다. 그 수치는 서버가 어디까지 갔는지와 아무 관계가 없다.
+ *
+ * 옮겨 온 것은 **모양**이다(4px · radius 2px · `--muted` 트랙 위 `--primary` 채움).
+ * 움직임은 지도의 `.view-busy` 에서 가져왔다 — 앱 안에서 "바쁨"이 두 가지 모양으로
+ * 읽히지 않게. 색·간격은 토큰에서만 온다(하드코딩 색은 표면 게이트가 막는다).
+ */
+function sheetProgress(label: string): string {
+  return `
+    <div class="sheet-progress" role="status">
+      <p class="hint">${esc(label)}</p>
+      <div class="sheet-progress-track" role="progressbar" aria-label="${esc(label)}">
+        <span></span>
+      </div>
+    </div>`;
+}
+
+/**
  * 팩 사양 표 — 나가는 것의 수치.
  *
  * **문서 수는 장식이 아니라 계측기다.** 문서는 고르는 것이 아니라 담긴 개념을
@@ -50,7 +77,7 @@ export async function openShareSheet(
 ) {
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub });
-  sheet.body.innerHTML = `<p class="hint">${COPY.ui.sheet.preparing}</p>`;
+  sheet.body.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
   try {
     const pack = await api.share(cfg.owner, {
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
@@ -89,7 +116,7 @@ export async function openShareSheet(
       if (opts.into) {
         const U = COPY.ui.sheet;
         const where = opts.intoLabel || U.destTeam;
-        sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+        sheet.body.innerHTML = sheetProgress(U.destWorking);
         sheet.foot.innerHTML = "";
         void api.importPack(out, cfg.owner, opts.into).then(
           (res) => {
@@ -224,7 +251,7 @@ async function chooseDestination(
     sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
       // 커뮤니티는 자체 폼으로 이어지므로 여기서 완료 화면을 그리지 않는다.
       if (d.key === "community") { void d.run(); return; }
-      sheet.body.innerHTML = `<p class="hint">${esc(U.destWorking)}</p>`;
+      sheet.body.innerHTML = sheetProgress(U.destWorking);
       sheet.foot.innerHTML = "";
       void d.run().then(
         (landed) => {
@@ -257,7 +284,8 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
       <input id="pub-consent" type="checkbox" />
       <span class="meta">${esc(P.publishConsent)}</span>
     </label>
-    <p class="hint" id="pub-err"></p>`;
+    <p class="hint" id="pub-err"></p>
+    <div id="pub-progress"></div>`;
   sheet.foot.innerHTML = sheetActions(
     { id: "sheet-pub", label: P.publishGo },
     { id: "sheet-cancel", label: COPY.ui.common.cancel });
@@ -267,9 +295,14 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
     const desc = (sheet.body.querySelector("#pub-desc") as HTMLInputElement).value.trim();
     const ok = (sheet.body.querySelector("#pub-consent") as HTMLInputElement).checked;
     const err = sheet.body.querySelector("#pub-err")!;
+    // 진행 표시는 오류 줄과 **다른 자리**에 둔다. 실패하면 폼이 그대로 남아 다시
+    // 누를 수 있어야 하는데(다른 목적지와 달리 여기엔 사용자가 친 이름·설명이 있다),
+    // 한 자리를 돌려쓰면 실패 문구가 막대를 지우거나 막대가 문구를 지운다.
+    const prog = sheet.body.querySelector("#pub-progress")!;
     if (!name) { err.textContent = P.publishNeedName; return; }
     if (!ok) { err.textContent = P.publishNeedConsent; return; }
-    err.textContent = COPY.ui.sheet.destWorking;
+    err.textContent = "";
+    prog.innerHTML = sheetProgress(COPY.ui.sheet.destWorking);
     void community.publish(name, desc, out).then(
       () => {
         sheet.body.innerHTML = `<p class="hint">${esc(
@@ -277,7 +310,7 @@ async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
         sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
         sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
       },
-      () => { err.textContent = COPY.ui.sheet.destFailed; },
+      () => { prog.innerHTML = ""; err.textContent = COPY.ui.sheet.destFailed; },
     );
   });
 }

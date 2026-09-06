@@ -932,6 +932,43 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .dest-pick button:hover { border-color: hsl(var(--ring)); background: hsl(var(--ring) / .08); }
 .dest-pick .title { font-weight: 600; }
 .dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
+/* 진행 표시 — 공유 시트의 기다림 전부가 이 한 벌을 쓴다(팩 준비 · 스페이스로 보내기
+   · 파일로 받기 · 커뮤니티 게시). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데
+   모양이 자리마다 달랐다.
+   **불확정 막대다.** 그 경로들은 전부 `api.ts` 의 `call()` 한 번(fetch 하나)이라 중간
+   보고가 없다 — 퍼센트를 그리려면 시계로 지어내야 하고, 그건 진행을 보여주는 대신
+   보여주는 척하는 것이다. 이유는 `sheets.ts` 의 `sheetProgress` 주석에 있다.
+   기하(4px · radius 2px · --muted 트랙 위 --primary 채움)는 커뮤니티 페이지의 원본에서,
+   움직임은 지도의 `.view-busy` 에서 가져왔다. 앱 안에서 "바쁨"이 두 모양으로 읽히지
+   않게 하려는 것이고, 그래서 `busySweep` 키프레임을 새로 만들지 않고 그것을 그대로
+   쓴다(정의는 같은 파일 아래쪽 `.view-busy` 옆 — CSS 키프레임은 선언 순서와 무관하다). */
+.sheet-progress { margin-bottom: var(--space-3, .75rem); }
+.sheet-progress > p { margin: 0 0 .55rem; }
+.sheet-progress-track {
+  height: 4px; border-radius: 2px; overflow: hidden;
+  background: hsl(var(--muted));
+}
+/* 40% 폭은 임의값이 아니다 — `busySweep` 이 -100% → 350% 로 미는 값이 그 폭을 전제로
+   오른쪽 끝 밖까지 나가도록 맞춰져 있다. 폭을 바꾸면 키프레임도 함께 바꿔야 한다. */
+.sheet-progress-track > span {
+  display: block; height: 100%; width: 40%; border-radius: 2px;
+  background: hsl(var(--primary));
+  animation: busySweep 1s linear infinite;
+}
+/* 다크에서만 채움을 --ring 으로 바꾼다. **취향이 아니라 실측이다** — 채움 대 트랙의
+   대비를 두 모드에서 재 보면 어느 한 토큰도 양쪽을 통과하지 못한다(WCAG 1.4.11 은
+   비텍스트 3:1):
+     라이트  --primary/--muted 9.58:1 통과 · --ring/--muted 2.24:1 미달
+     다크    --primary/--muted 1.87:1 미달 · --ring/--muted 6.74:1 통과
+   원본(공홈 커뮤니티)은 두 모드 다 --primary 라 다크에서 막대가 트랙에 잠긴다.
+   모양은 옮겨 오되 그 결함은 옮겨 오지 않는다. --ring 을 고른 것은 지도의
+   `.view-busy` 가 이미 쓰는 색이라 "바쁨"의 색이 앱 안에서 하나로 남기 때문이다. */
+[data-theme="dark"] .sheet-progress-track > span { background: hsl(var(--ring)); }
+/* 모션을 줄인 환경에서는 움직이지 않는다. 채운 막대만으로는 "얼마나"를 말할 수 없지만
+   애초에 말할 것이 없으므로 손해가 없다 — "무엇을 기다리는지"는 위의 문구가 진다. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet-progress-track > span { animation: none; width: 100%; opacity: .5; }
+}
 
 /* Command palette / cheatsheet overlay */
 #palette, #cheatsheet {
