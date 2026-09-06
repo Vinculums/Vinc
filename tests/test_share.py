@@ -338,17 +338,24 @@ class DomainSubtreeScopeE2E(unittest.TestCase):
         self.assertNotIn("concept:designsystem-note", ids)   # 접두는 `d + "/"` 다
 
     def test_subtree_scope_still_stops_at_the_owner(self):
-        # SEC-1 — 접두일치가 소유자를 넘지 않는다.
+        """SEC-1 — 접두일치가 소유자를 넘지 않는다.
+
+        무는 자리는 **팩에 실린 노드 id 집합**이다. 문서 쪽으로는 이 누출이 안 보인다:
+        `_docs_for_concepts` 가 Chunk 에 자기 owner 술어를 또 걸고(`api/share.py`),
+        `make_doc_id` 는 owner 를 해시에 넣어(`api/docstore.py`) 두 owner 의 doc_id 가
+        애초에 겹칠 수 없다. 실측 — `_concepts_plan` 의 `c.owner_id = $owner` 를 지우면
+        개념이 2→4 로 새는데 `counts["documents"]` 는 1 그대로였다.
+        """
         st = self._store()
         self._seed(st, owner="user:alice")
-        self._seed(st, owner="user:bob", pre="b-")
+        b_doc = self._seed(st, owner="user:bob", pre="b-")
         pack = share.build_share_pack(owner="user:bob", domain="vinc/design", store=st)
-        self.assertEqual(pack["manifest"]["counts"]["documents"], 1)
-        b_docs = {d["doc_id"] for d in pack["documents"]}
-        a_docs = {r["d"] for r in st.run(
-            "MATCH (c:Chunk) WHERE c.owner_id=$o RETURN DISTINCT c.doc_id AS d",
-            {"o": "user:alice"})}
-        self.assertEqual(b_docs & a_docs, set())
+        ids = {n["id"] for n in pack["fragment"]["nodes"]}
+        # 개념(`_concepts_plan`)과 Episode(`_episodes_plan`) 둘 다 — 어느 쪽 owner
+        # 술어를 지워도 alice 의 id 가 여기 섞여 이 한 줄이 깨진다.
+        self.assertEqual(ids, {"concept:b-design-tokens", "concept:b-contrast-floor",
+                               "ep:b-token-review"})
+        self.assertEqual([d["doc_id"] for d in pack["documents"]], [b_doc])
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
