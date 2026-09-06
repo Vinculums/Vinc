@@ -33,16 +33,24 @@ _ENTRY = _ROOT / "packaging" / "docker-entrypoint.sh"
 # "붙었다가 프로세스가 죽는 것"이고, 후자가 카운터를 못 올리던 바로 그 경우다.
 _CURL = '#!/bin/sh\necho \'{"status": "ok"}\'\n'
 
-# 사이드카는 뜨자마자 잠깐 살고 죽는다 — 헬스 창(30s)보다 짧게 살면 헬스조차 못 붙어
-# 다른 갈래를 타므로, **헬스는 붙고 그 다음에 죽는** 모양으로 만든다. 그것이 실제
-# 사고의 모양이고 구 카운터가 못 세던 모양이다.
+# 사이드카는 뜨자마자 잠깐 살고 죽는다. **워치독이 루프 머리에서 한 번은 살아 있는
+# 것을 봐야 한다** — 그것이 구 카운터가 회복으로 오인하던 순간이고, 못 보면 이 검사는
+# 조용히 아무것도 안 재게 된다. 그래서 수명 > (루프 주기 + 재기동 한 바퀴의 부대비용)
+# 이어야 한다. 아래 `_run()` 이 주기를 0.5s 로 준다.
+#
+# ⚠ 비는 기본값의 1.4배(7/5)가 아니라 **3배(1.5/0.5)** 다. 0.7 로 줄였더니 구 결함을
+# 되살린 사본이 검사를 그대로 통과했다(2026-09-07 뮤테이션 실측: 0.7 통과=검출 실패,
+# 1.0·1.5 는 검출). 재기동 뒤 `start_sidecar`·`curl`·`date` 프로세스 기동이 윈도우에서
+# 0.5초 가까이 먹어 0.2초 여유를 다 쓴다. 줄이려면 같은 뮤테이션을 다시 돌려 볼 것.
+# 근거: [[vinc.plan.watchdog-test-timers]] §4 ·
+# [[record:the-watchdog-stub-must-outlive-three-poll-periods-not-one-2026-09-07]]
 _PY = """#!/bin/sh
 OUT="{out}"
 case "$*" in
   *"api.cli serve"*)
       n=$(cat "$OUT/starts" 2>/dev/null || echo 0)
       echo $((n + 1)) > "$OUT/starts"
-      sleep 7
+      sleep 1.5
       exit 139 ;;
   *"mcp serve-http"*)
       echo started > "$OUT/mcp-started"
@@ -146,6 +154,14 @@ class WatchdogGivesUpTests(unittest.TestCase):
             # 안정 판정 창을 크게 둬서 **회복으로 오인되지 않게** 한다. 이 값이
             # 작으면 떴다 죽는 것이 회복으로 세어져 구 결함이 되살아난다.
             "VINC_SIDECAR_STABLE_S": "9999",
+            # 타이밍을 검사용으로 줄인다. 기본값(5·2·30)은 안 건드리고 env 로만
+            # 덮으므로 운영 동작은 그대로다. 위 스텁의 1.5s 가 `POLL_S` 0.5s 에
+            # 재기동 한 바퀴의 부대비용을 더한 것보다 길어야 한다는 불변식이 여기
+            # 걸려 있다 — 이 값을 올리려면 스텁도 함께 올릴 것.
+            # 근거: [[vinc.plan.watchdog-test-timers]] §4
+            "VINC_SIDECAR_POLL_S": "0.5",
+            "VINC_SIDECAR_KILL_PAUSE_S": "0.2",
+            "VINC_SIDECAR_HEALTH_TRIES": "3",
         })
         env.update(extra or {})
         env.pop("VINC_ROLE", None)
@@ -179,7 +195,7 @@ class WatchdogGivesUpTests(unittest.TestCase):
                                        encoding="utf-8")
         os.chmod(self.bin / "python", 0o755)
         os.chmod(self.bin / "curl", 0o755)
-        proc = self._run(extra={"VINC_SIDECAR_HUNG_S": "10"})
+        proc = self._run(extra={"VINC_SIDECAR_HUNG_S": "1"})
         log = proc.stdout or ""
         self.assertEqual(
             proc.returncode, 0,

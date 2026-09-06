@@ -164,14 +164,19 @@ trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null' TERM INT
 # 진행 상황을 30초마다 찍는다 — 아무 말 없이 5분을 기다리면 "멈춘 것"과 "재생 중"이
 # 구분되지 않는다(이 프로젝트가 반복해 겪은 무음 고장의 형태다).
 SIDECAR_BOOT_TIMEOUT="${VINC_SIDECAR_BOOT_TIMEOUT:-300}"
+# 헬스 폴링 1회분의 시도 수(1회/s 이므로 곧 초다). 아래 `boot_waited` 증분과 재기동
+# 뒤 대기가 **같은 값을 써야 한다** — 한 자리만 바꾸면 부팅 진행 회계가 조용히
+# 어긋나고 `SIDECAR_BOOT_TIMEOUT` 이 딴 시간을 뜻하게 된다.
+# 근거: [[vinc.plan.watchdog-test-timers]] §3
+SIDECAR_HEALTH_TRIES="${VINC_SIDECAR_HEALTH_TRIES:-30}"
 echo "[entrypoint] waiting for sidecar health (최대 ${SIDECAR_BOOT_TIMEOUT}s — WAL 재생 여유)..."
 boot_waited=0
 while [ "$boot_waited" -lt "$SIDECAR_BOOT_TIMEOUT" ]; do
-  if wait_for_sidecar_health 30; then
+  if wait_for_sidecar_health "$SIDECAR_HEALTH_TRIES"; then
     echo "[entrypoint] sidecar ready (${boot_waited}s 대기)"
     break
   fi
-  boot_waited=$((boot_waited + 30))
+  boot_waited=$((boot_waited + SIDECAR_HEALTH_TRIES))
   # 프로세스가 살아 있으면 재생 중일 수 있다 — 죽었으면 기다릴 이유가 없다.
   if ! kill -0 "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null; then
     echo "[entrypoint] sidecar 프로세스가 사라졌다 — 대기 중단(${boot_waited}s)" >&2
@@ -262,7 +267,8 @@ fi
 # Container Apps 관점에서는 "정상"이었고, 사이드카가 스스로 돌아올 때까지(혹은
 # 다음 배포까지) 그래프 read/write 전부가 조용히 막혀 있었다.
 #
-# 5초마다 생사만 확인(kill -0, 가볍다) — 죽었으면 재기동 후 헬스를 다시 기다린다.
+# `SIDECAR_POLL_S`(기본 5초)마다 생사만 확인(kill -0, 가볍다) — 죽었으면 재기동 후
+# 헬스를 다시 기다린다.
 #
 # ⚠ **여기 두 가지가 틀려 있었고 2026-08-28 에 둘 다 물렸다**
 # ([[vinc.ops.incident-2026-08-28-hub-sidecar]] §3·§4).
@@ -291,6 +297,8 @@ fi
 SIDECAR_STABLE_S="${VINC_SIDECAR_STABLE_S:-300}"   # 이만큼 건강하면 회복으로 친다
 SIDECAR_MAX_RESTARTS="${VINC_SIDECAR_MAX_RESTARTS:-5}"
 SIDECAR_HUNG_S="${VINC_SIDECAR_HUNG_S:-120}"       # 살아 있는데 이만큼 무응답이면 멈춘 것
+SIDECAR_POLL_S="${VINC_SIDECAR_POLL_S:-5}"         # 워치독 루프 주기
+SIDECAR_KILL_PAUSE_S="${VINC_SIDECAR_KILL_PAUSE_S:-2}"   # 죽은 뒤 재기동까지의 유예
 MAIN_PID=$$                                        # 서브셸에서 이 스크립트를 겨눈다
 
 # 상한에 닿았을 때 하는 일 하나 — 죽는 갈래와 멈추는 갈래가 같은 곳으로 온다.
@@ -306,7 +314,7 @@ give_up_and_recycle() {
   # 0 으로 두면 첫 폴링이 무응답일 때 기준 시각이 없어 멈춤을 영영 못 센다.
   last_ok="$(date +%s)"
   while true; do
-    sleep 5
+    sleep "$SIDECAR_POLL_S"
     now="$(date +%s)"
     pid="$(cat "$SIDECAR_PIDFILE" 2>/dev/null || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -334,10 +342,10 @@ give_up_and_recycle() {
          "재기동 시도 $restart_count/$SIDECAR_MAX_RESTARTS" >&2
     # OS 가 죽은 프로세스의 파일 핸들·락을 정리할 시간(Azure Files=SMB 는 로컬보다
     # 늦게 반영될 수 있다 — 즉시 재기동하면 새 프로세스가 락을 또 못 잡는다).
-    sleep 2
+    sleep "$SIDECAR_KILL_PAUSE_S"
     start_sidecar
     restart_at="$(date +%s)"
-    if wait_for_sidecar_health 30; then
+    if wait_for_sidecar_health "$SIDECAR_HEALTH_TRIES"; then
       # 여기서 카운터를 0 으로 되돌리지 **않는다** — 헬스가 한 번 통과한 것은 회복이
       # 아니라 회복일 수도 있는 시작점이다(①). 시각만 찍어 두고, 위 루프가 그 뒤로
       # `SIDECAR_STABLE_S` 동안 계속 건강한 것을 보면 그때 회복으로 친다.
