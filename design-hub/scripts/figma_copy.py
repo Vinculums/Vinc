@@ -27,12 +27,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import re
 import sys
 
 HUB = pathlib.Path(__file__).resolve().parent.parent
-SITE = HUB.parent.parent / "Vinc-homepage" / "site"
+#: 사이트가 어디 있는가. 기본은 두 리포가 나란히 놓인 로컬 배치다. **CI 는 배치가 다르다** —
+#: 소비 리포의 잡은 자기 리포를 루트에, Vinc 를 그 아래 하위 디렉터리로 체크아웃하므로
+#: 상대경로가 성립하지 않는다. 그래서 밖에서 지정할 수 있어야 한다. 이 한 줄이 없으면
+#: 게이트는 "사이트가 없다"며 영원히 SKIP 하고, 초록인 채로 아무것도 안 지킨다.
+SITE = pathlib.Path(os.environ["VINC_SITE_DIR"]).resolve() if os.environ.get("VINC_SITE_DIR")     else HUB.parent.parent / "Vinc-homepage" / "site"
 
 #: 라우트 → (Figma 변수 접두, {Figma 키 꼬리: 라이브 data-i 키}).
 #: 값이 None 이면 "라이브에서 사라진 Figma 변수"다 — 지우기 전에 눈으로 확인하라고 남긴다.

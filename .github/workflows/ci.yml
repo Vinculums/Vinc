@@ -367,12 +367,11 @@ jobs:
       - name: Figma inventory gate (screens · modals · icons)
         run: python -X utf8 design-hub/scripts/figma_inventory.py
 
-      # 목록도 값도 맞는데 **글자만** 다른 경우가 남는다. 2026-09-06 에 162건을 손으로
-      # 대조해 Figma 를 코드와 맞췄고, 그 시점의 서명을 스냅샷으로 커밋했다. 이 스텝이
-      # 잡는 것은 그 뒤에 사이트 문구를 고치면서 Figma 를 안 고친 커밋이다.
-      # ⚠ Vinc-homepage 가 없으면 스스로 SKIP 한다 — 검사한 척하지 않는다.
-      - name: Figma copy parity gate
-        run: python -X utf8 design-hub/scripts/figma_copy.py --check
+      # ⚠ 사이트 문구 대조(`figma_copy.py --check`)는 **여기 없다**. 이 잡은 Vinc 만
+      # 체크아웃하므로 그 게이트는 영원히 SKIP 했고, 초록 스텝이 검사한 것처럼 읽혔다
+      # (2026-09-06 지적). 스냅샷과 대응표는 이 리포에 있고 사이트는 저쪽에 있으므로,
+      # 소비 리포 CI 가 Vinc 를 읽기 전용으로 체크아웃해 거기서 돌린다:
+      # Vinc-homepage/.github/workflows/site-ci.yml · site-deploy.yml.
 
       # 사이트 문구가 위 게이트라면 이쪽은 **앱 보드**의 글자다. 오버레이 셋이 다른
       # 시트의 본문을 달고 있어도 목록·상태 게이트는 초록이었다(2026-09-06). 보드 글자
