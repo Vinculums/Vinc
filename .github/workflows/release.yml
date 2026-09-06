@@ -48,7 +48,11 @@ jobs:
   # 실측 근거: `app/package-lock.json` 이 7릴리스(0.6.0→0.6.7) 방치돼 있었다
   # (Cargo.lock 은 체크리스트에 있는데 이건 빠진 비대칭 — scripts/version_sync.py 참조).
   version-gate:
-    runs-on: ubuntu-latest
+    # 셀프호스티드다(2026-09-06). 이 잡은 파이썬 한 줄이라 어디서 돌든 같고, 조직
+    # 예산이 지출 구간에 들어간 뒤로는 "어디서 도는가" 가 곧 비용이다. 컨테이너가
+    # 필요 없는 이유는 산출물이 없어서다 — glibc 계약은 `build` 의 리눅스 다리에만 있다.
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,29 +67,93 @@ jobs:
             python scripts/version_sync.py --check
           fi
 
-  build:
+  # ── 리눅스 다리의 빌드 환경을 굽는다 ────────────────────────────────────────
+  # `container:` 는 잡이 **시작하기 전에** 이미지가 있어야 하므로 스텝으로는 못 만든다.
+  # 그래서 앞선 잡에서 굽는다. 러너가 영속이라 레이어 캐시가 남아, Dockerfile 이
+  # 안 바뀌면 이 잡은 몇 초다. 새 러너에서는 여기서 한 번 굽고 그 뒤로는 안 굽는다.
+  #
+  # 왜 굽나: 처음 판은 같은 목록을 잡 안에서 apt 로 깔았고 **매 릴리스 32분**이었다
+  # (실측 런 34030111531 — 준비물 636초 + webkit deps 1280초). 도커 오버레이가 WSL
+  # 위에서 dpkg 언팩에 느린 것이고, 그 32분이 레이어 캐시로 0 이 된다.
+  # ⚠ 태그는 아래 `build` 매트릭스의 `container:` 와 **글자 그대로 같아야 한다**.
+  #
+  # ⚠ **왜 레지스트리까지 세우나.** 러너는 `container:` 이미지를 로컬에 있어도 보지
+  # 않고 **무조건 `docker pull` 한다**(실측 런 34035667084 — 로컬 태그만 두었더니
+  # `pull access denied ... repository does not exist` 로 잡이 18초에 죽었다). 그래서
+  # 이름이 실재하는 레지스트리를 가리켜야 한다. 바깥 레지스트리는 두 이유로 안 쓴다:
+  # GitHub Packages 저장은 Actions 아티팩트와 **같은 0.5GB 한도**를 나눠 쓰는데 이
+  # 이미지가 375MB 이고, 그 한도는 v0.6.0·v0.6.5 릴리스를 이미 한 번 막았다(이 파일
+  # 머리의 "아티팩트 미사용" 절이 그 사고다). 공개 패키지로 내보내는 것은 이 변경이
+  # 혼자 내릴 결정이 아니다. 그래서 러너 안에 레지스트리 하나를 세운다 — 바깥으로
+  # 나가지 않고, 한도를 안 먹고, 없으면 이 잡이 다시 세운다.
+  image:
     needs: version-gate
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/runner-preflight
+        with:
+          tools: docker
+      - name: Bake the linux build image and serve it from a runner-local registry
+        run: |
+          set -euo pipefail
+          # 멱등하게 세운다 — 있으면 켜고, 없으면 만든다.
+          docker start vinc-registry 2>/dev/null \
+            || docker run -d --restart=always --name vinc-registry -p 5000:5000 registry:2
+          docker build -t localhost:5000/vinc-release-linux:22.04 \
+            -f packaging/Dockerfile.release-linux packaging/
+          docker push localhost:5000/vinc-release-linux:22.04
+          # 굽기만 하고 못 쓰는 이미지를 다음 잡에서 발견하지 않는다.
+          docker run --rm localhost:5000/vinc-release-linux:22.04 \
+            bash -c 'id; ldd --version | head -1'
+
+  build:
+    needs: [version-gate, image]
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ⚠ **리눅스는 `ubuntu-latest` 가 아니라 `ubuntu-22.04` 다.** 여기서 지은
-          # 바이너리의 **최소 glibc 가 빌드 기계의 glibc** 이므로, `latest` 를 쓰면
-          # 러너 이미지가 올라가는 날 구형 배포판 사용자가 조용히 실행을 못 하게 된다
-          # (24.04 는 2.39, 22.04 는 2.35). CI 는 이걸 안 잡아 준다 — 사용자가 잡는다.
-          # v0.8.2 까지 이 값이었고 그대로 출하됐다.
-          - os: ubuntu-22.04
+          # ⚠ **리눅스가 22.04 인 것은 러너 이미지 취향이 아니라 계약이다.** 여기서
+          # 지은 바이너리의 **최소 glibc 가 빌드 기계의 glibc** 이므로, 더 새 배포판에서
+          # 빌드하면 구형 사용자가 조용히 실행을 못 하게 된다(24.04 는 2.39, 22.04 는
+          # 2.35). CI 는 이걸 안 잡아 준다 — 사용자가 잡는다. v0.8.2 까지 그렇게 출하됐다.
+          #
+          # 그래서 러너를 셀프호스티드로 옮기면서 **22.04 를 컨테이너로 들고 갔다**
+          # (2026-09-06). 러너 기계는 WSL 의 Ubuntu 24.04 라 그 위에서 그냥 지으면
+          # 바닥이 2.39 로 올라간다. `container:` 안에서 지으면 툴체인도 링크 대상도
+          # 전부 22.04 의 것이라 산출물은 `ubuntu-22.04` 러너와 같다.
+          # ⚠ 이 값을 다른 이미지로 바꾸는 것은 **사용자 바닥을 바꾸는 일**이다.
+          # 정본은 `packaging/Dockerfile.release-linux` 이고 위 `image` 잡이 굽는다.
+          # 근거: [[record:every-recurring-deploy-now-runs-on-the-local-runner-and-tmpdir-travels-with-the-job-2026-09-06]]
+          - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
+            container: localhost:5000/vinc-release-linux:22.04
+          # ⚠ 이 둘은 호스티드로 남는다. macOS 는 로컬 러너가 아예 없고(그리고 분을
+          # 10배로 센다), 윈도우는 릴리스 빌드가 러너의 MSVC 툴체인에 의존한다.
+          # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
           - os: macos-latest
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
+    # 리눅스만 컨테이너다. 나머지 둘은 `matrix.container` 가 아예 없어 빈 문자열로
+    # 평가되고, 빈 값은 "컨테이너 없음" 이다(호스티드 잡의 동작은 그대로).
+    container: ${{ matrix.container }}
+    # 매달린 잡을 자르는 장치. 셀프호스티드에서 대가는 분이 아니라 **러너 하나를
+    # 붙잡는 것**이고, 호스티드에서는 macOS 가 10배로 세는 분이다. 실측은 20분대다.
+    timeout-minutes: 60
+    env:
+      # AppImage 번들러(linuxdeploy)는 기본적으로 자기를 FUSE 로 마운트하는데
+      # 컨테이너에는 `/dev/fuse` 가 없다. 이 변수가 마운트 대신 압축해제로 돌린다.
+      # 컨테이너가 아닌 다리에서는 아무 일도 하지 않으므로 잡 전체에 둔다.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
       # ⚠ 여기 있던 "Prefer Git Bash on Windows" 스텝을 걷어냈다. 그것은 노트북
       # 러너의 사실이었다 — 그 기계는 System32 가 PATH 에서 Git 보다 앞이라
       # `shell: bash` 가 WSL 의 bash 로 잡혔다. 호스티드 windows-latest 는 Git Bash 가
       # 먼저라 그 문제가 없다(ci.yml 이 #151 에서 같은 이유로 같은 스텝을 지웠다).
+
       - uses: actions/checkout@v4
 
       # 이 잡이 부르는 외부 명령을 **빌드 앞에서** 확인한다. 없으면 19분을 태우고
@@ -226,15 +294,19 @@ jobs:
         working-directory: app
         run: npm ci
       - uses: dtolnay/rust-toolchain@stable
+      # ⚠ 리눅스 다리에서는 **일부러 쓰지 않는다.** 이 액션은 파일시스템이 매번
+      # 파괴되는 호스티드 러너용이고, 거기서는 값을 한다. 리눅스는 이제 영속
+      # 셀프호스티드이고 실측(런 34030111531)은 **복원 2초 · 저장 491초 대 컴파일
+      # 640초**였다 — 저장이 컴파일의 8할을 도로 먹는다. ci.yml 이 같은 이유로 같은
+      # 액션을 뺐다([[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
       - uses: swatinem/rust-cache@v2
+        if: matrix.container == ''
         with:
           workspaces: app/src-tauri
-      - name: Linux webkit deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-            librsvg2-dev patchelf libdbus-1-dev
+      # ⚠ 여기 있던 "Linux webkit deps" 스텝을 걷어냈다. 리눅스 다리가 컨테이너뿐이라
+      # 그 목록은 `packaging/Dockerfile.release-linux` 가 이미 들고 있다 — 스텝으로
+      # 두면 이미지가 한 일을 매 릴리스 21분 들여 다시 하는 것이었다(실측 1280초).
+      # 그 목록을 고칠 자리는 이제 Dockerfile 하나다.
 
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
       # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.
@@ -328,7 +400,10 @@ jobs:
     needs: build
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    # 셀프호스티드(2026-09-06). `gh`·`jq`·`curl` 만 부르고 산출물을 짓지 않는다 —
+    # 아래 preflight 가 그 셋의 존재를 먼저 확인하므로 없으면 2초에 선다.
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 20
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
@@ -416,7 +491,9 @@ jobs:
   prune:
     needs: assemble
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    # 셀프호스티드(2026-09-06). `curl`·`jq` 만 부른다(체크아웃도 안 한다).
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 20
     steps:
       - name: Archive old releases (keep newest 5 installers, strip the rest)
         env:

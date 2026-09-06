@@ -5,6 +5,9 @@
 *.service   text eol=lf
 *.cron      text eol=lf
 *.py        text eol=lf
+# Dockerfile 은 리눅스 러너의 도커가 읽는다. CRLF 로 체크아웃되면 `RUN` 의 줄
+# 이음이 `` 을 달고 셸로 들어간다 — 위 *.sh 와 같은 이유다.
+Dockerfile* text eol=lf
 Caddyfile   text eol=lf
 deploy/**   text eol=lf
 scripts/**  text eol=lf
