@@ -67,8 +67,13 @@ def project_app(show: dict, auth: dict) -> dict:
         "env_names": sorted(e.get("name") or "" for e in (c0.get("env") or [])),
         "resources": {k: (c0.get("resources") or {}).get(k)
                       for k in ("cpu", "memory", "ephemeralStorage")},
+        # cooldownPeriod 는 배포가 아니라 운영자가 정하는 값이라 여기 든다. 아래
+        # test_배포마다_바뀌는_필드는_없다 가 막는 것(이미지·리비전)과는 반대편이다 —
+        # 매 배포 저절로 바뀌지 않으므로 기준선에 들어가도 게이트가 매번 울지 않는다.
+        # 그리고 이 값이 곧 vinc-encode 콜드창이 열리는 빈도다(마지막 호출 뒤 N 초에
+        # 레플리카가 내려간다). 근거: [[vinc.plan.encode-cold-start-declaration]]
         "scale": {k: (tmpl.get("scale") or {}).get(k)
-                  for k in ("minReplicas", "maxReplicas")},
+                  for k in ("minReplicas", "maxReplicas", "cooldownPeriod")},
         "ingress": {
             "external": ing.get("external"),
             "targetPort": ing.get("targetPort"),
