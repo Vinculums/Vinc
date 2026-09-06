@@ -532,6 +532,56 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(got["text"], text)                    # 바이트 동일 복원
         self.assertGreater(out["chunks"], 1)                   # 실제로 분할됐는가
 
+    def test_쓰기_창의_읽기는_성공으로_답하지_않는다(self):
+        """청크가 덜 쓰인 문서를 `executed:true` 로 답하면 안 된다.
+
+        put_doc 은 구 청크를 지우고 하나씩 다시 MERGE 한 뒤 **마지막에** 메타를 갱신하고,
+        delete_doc 은 청크를 지운 뒤 메타를 지운다. 그 사이에 낀 읽기가 보는 것은 셋 다
+        같은 모양이다: 메타의 `chunk_count` 는 그대로인데 살아 있는 행이 모자라다.
+        크래시가 남긴 무청크 문서도 같은 모양이라 며칠 갈 수 있다.
+        실측 2026-09-06: 27청크 문서가 `executed:true` · `chunks:0` 으로 답했고, 청크
+        루프 중간에서는 3,802자 중 1,802자가 **깨끗한 산문으로** 돌아왔다.
+        상태는 스토어에 직접 만든다 — 스레드를 경주시키지 않는다."""
+        text = "무손실 복원 검증용 본문입니다. " * 200
+        out = ds.put_doc(self.store, owner="user:a", text=text, title="창")
+        did = out["doc_id"]
+        self.assertGreater(out["chunks"], 1)
+
+        # ① 빈 창: 쓰기 시작 직후 · 삭제 중 · 크래시 잔해가 전부 이 모양이다.
+        self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": did})
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertFalse(got["executed"], "빈 본문을 성공으로 답했다")
+        self.assertNotIn("text", got, "읽을 수 없는 문서에 본문 자리를 주면 안 된다")
+        self.assertEqual((got["chunks"], got["chunk_count"]), (0, out["chunks"]))
+        self.assertIn("incomplete", got["error"])
+
+        # ② 부분 창: 앞부분만 남았고 그것만 보면 아무 이상이 없다. 빈 본문보다 나쁘다.
+        out2 = ds.put_doc(self.store, owner="user:a", text=text, title="창2")
+        did2 = out2["doc_id"]
+        self.store.run("MATCH (c:Chunk) WHERE c.chunk_id = $i DETACH DELETE c",
+                       {"i": self._chunk_ids(did2)[-1]})
+        half = ds.get_doc(self.store, did2, owner="user:a")
+        self.assertFalse(half["executed"], "앞부분만 남은 문서를 성공으로 답했다")
+        self.assertNotIn("text", half)
+        self.assertEqual(half["chunk_count"] - half["chunks"], 1)
+
+        # ③ 삭제가 **끝난** 문서는 모양이 갈린다 — 창과 부재를 섞으면 안 된다.
+        ds.delete_doc(self.store, did, owner="user:a")
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a").get("error"),
+                         "unknown doc_id")
+
+    def test_의도적으로_빈_문서는_계속_성공이다(self):
+        """빈 본문은 길이 0짜리 청크 **하나**로 저장된다(plan_boundaries 가 [0] 을 준다).
+
+        그러니 `chunk_count` 와 행 수가 맞고, 위 가드에 걸리면 안 된다. 빈 문서와
+        파괴된 문서를 가르는 것이 그 가드의 전부라 이 단언이 그 축이다."""
+        out = ds.put_doc(self.store, owner="user:a", text="", title="빈 문서")
+        got = ds.get_doc(self.store, out["doc_id"], owner="user:a")
+        self.assertTrue(got["executed"])
+        self.assertIs(got["verified"], True)
+        self.assertEqual(got["text"], "")
+        self.assertEqual(got["chunks"], 1)
+
     def test_edit_rechunk_no_orphans_and_skip_unchanged(self):
         long_text = "긴 본문. " * 800
         out = ds.put_doc(self.store, owner="user:a", text=long_text, title="편집")

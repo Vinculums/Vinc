@@ -652,7 +652,9 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
 
     verified = (연속성: b0=0 · char_start_i == char_end_{i-1}) AND
                (sha256(복원문) == _DocMeta.content_hash).
-    레거시 청크(오프셋 -1)는 복원 불가로 보고한다(검색만 가능)."""
+    레거시 청크(오프셋 -1)는 복원 불가로 보고한다(검색만 가능).
+    살아 있는 청크 수가 메타의 `chunk_count` 와 어긋나면(쓰기 창 · 삭제 창 · 크래시
+    잔해) 본문 자리를 주지 않고 `executed=False` 로 거절한다 — 아래 주석 참조."""
     base: dict[str, Any] = {"kind": "doc.get", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is None:
@@ -674,6 +676,29 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
         "c.char_start AS cs, c.char_end AS ce, c.text AS text "
         "ORDER BY c.chunk_index", {"d": doc_id})
     rows = rows or []
+
+    # 살아 있는 청크 행 수가 메타의 `chunk_count` 와 다르면 이 문서는 **지금 교체되는
+    # 중이거나 중간에 끊긴 것**이다. put_doc 은 구 청크를 지우고 하나씩 다시 MERGE 한 뒤
+    # 마지막에 메타를 갱신하고, delete_doc 은 청크를 지운 뒤 메타를 지운다. 두 창과
+    # 크래시 잔해가 여기서 같은 모양으로 잡힌다 — 그래서 판정을 두 쓰기 경로가 아니라
+    # **둘이 만나는 이 자리**에 둔다(한쪽에만 두면 절반만 고친다).
+    # 안 하면 창 안의 읽기가 빈 본문이나 **앞부분만**을 executed:true 로 답한다(실측
+    # 2026-09-06: 27청크 문서가 chunks:0 · 3,802자 문서가 1,802자). `verified` 로는 못
+    # 가른다 — 오프셋 잃은 레거시 문서도 false 이고 그쪽은 행 수가 맞아 여기 안 걸린다.
+    # ⚠ 기다렸다 다시 읽지 않고 **답을 거절한다**: 이 상태는 크래시가 남기면 다음 re-put
+    # 까지 지속되므로(모듈 독스트링 "쓰기 순서 = 자기치유") 기다림으로는 낫지 않는다.
+    # 계약: [[vinc.canon.chunk-ssot]]
+    expected = int(meta.get("chunk_count") or 0)
+    if expected and len(rows) != expected:
+        base["chunks"], base["chunk_count"] = len(rows), expected
+        base["error"] = ("document is incomplete: %d of %d chunks are present"
+                         % (len(rows), expected))
+        base["hint"] = ("A write replaces chunks one at a time and a delete removes "
+                        "them before the metadata, so a read landing in either window "
+                        "sees this. Read it again in a moment. If it stays this way "
+                        "the last write was interrupted: re-put the full text to heal "
+                        "it. This is not an empty document, and not a missing one.")
+        return base
 
     def _off(v) -> int:   # ⚠ `v or -1` 금지 — 정당한 오프셋 0 이 falsy 로 강등된다
         return -1 if v is None else int(v)
