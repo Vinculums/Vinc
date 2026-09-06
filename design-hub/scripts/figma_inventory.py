@@ -161,68 +161,77 @@ ROUTE_STATES = _MANIFEST_STATES
 # ── 앱 모달 ↔ Figma 오버레이 상태 ───────────────────────────────────────────
 # 키는 `모듈:제목식`. 줄 번호가 아니라 식이라 코드가 위아래로 움직여도 안 깨진다.
 DIALOGS = {
-    "ask.ts:c.historyTitle": "ASK HISTORY · CHEATSHEET",
-    "conventions.ts:C.title": "GRAPH.MD",
-    "doc-editor.ts:opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew": "DOC EDITOR · CONFLICT",
-    "empty-invite.ts:COPY.ui.sheet.importTitle": "IMPORT A PACK",
-    "main.ts:COPY.ui.palette.keyboard": "ASK HISTORY · CHEATSHEET",
-    "sheets.ts:COPY.ui.sheet.shareTitle": "SHARE AS A PACK",
-    "sheets.ts:COPY.ui.sheet.importTitle": "IMPORT A PACK",
-    "tools.ts:T.title": "TOOLS · CREATE",
-    "lnb.ts:openContextMenu": "CONTEXT MENUS",
-    "lnb.ts:promptText": "TEXT PROMPT",
-    "surfaces/view.ts:openContextMenu": "CONTEXT MENUS",
-    "surfaces/view.ts:confirmDestructive": "DESTRUCTIVE CONFIRM",
-    # 2026-09-05 에 결손으로 잡혔다가 같은 날 `App · Overlays 4` 로 신설했다.
-    # ⚠ 제목·부제·닫기는 실물이고 본문은 아직 도너(팩 공유)의 것이다. 보드 주석에 적었다.
-    "empty-invite.ts:c.newSheetTitle": "NEW NODE",
-    "firstrun.ts:c.title": "FIRST RUN",
-    "sheets.ts:S.docTitle": "IMPORT A DOCUMENT",
-    "topbar.ts:COPY.ui.topbar.browseAll": "ALL DOCUMENTS",
+    # 값은 05 · Overlays 의 캡처 보드다(App · Topbar|View · <state> / dark). None 은 선언된 결손.
+    "ask.ts:c.historyTitle": "App · Topbar · ask-history / dark",
+    "conventions.ts:C.title": "App · Topbar · graphmd / dark",
+    # 문서 편집기 시트의 충돌 배너는 다른 기기의 쓰기가 있어야 뜬다 — 단일 스토어 캡처로는 못 만든다.
+    "doc-editor.ts:opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew": None,
+    "empty-invite.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
+    "main.ts:COPY.ui.palette.keyboard": "App · Topbar · cheatsheet / dark",
+    "sheets.ts:COPY.ui.sheet.shareTitle": "App · Topbar · share-sheet / dark",
+    "sheets.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
+    "tools.ts:T.title": "App · Topbar · tools-create / dark",
+    "lnb.ts:openContextMenu": "App · View · topic-context-menu / dark",
+    "lnb.ts:promptText": "App · View · topic-rename-prompt / dark",
+    # 캔버스 위 노드 우클릭 메뉴는 캔버스 좌표가 필요해 아직 캡처하지 않았다(매트릭스의 갭).
+    "surfaces/view.ts:openContextMenu": None,
+    "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
+    "empty-invite.ts:c.newSheetTitle": "App · View · new-node-sheet / dark",
+    "firstrun.ts:c.title": "App · View · first-run / dark",
+    "sheets.ts:S.docTitle": "App · Topbar · import-doc-sheet / dark",
+    "topbar.ts:COPY.ui.topbar.browseAll": "App · Topbar · browse-sheet / dark",
 }
 #: 앱 표면 ↔ Figma 화면 상태. 사이트의 ROUTE_STATES 와 같은 축이다 — 단위는 표면이
 #: 아니라 **표면×상태**다. 앱 쪽은 상태가 프레임 이름 자체에 들어 있어서(예: `App ·
 #: Search · no results …`) 값이 최상위 프레임 이름이거나 상태 보드의 자식 이름이다.
+APP_MANIFEST = HUB / "reports" / "captures" / "app" / "manifest.json"
+APP_SURFACE_TITLES = {"view": "View", "topbar": "Topbar", "search": "Search", "packs": "Packs"}
+
+
+def app_board_name(state_id: str) -> str:
+    """캡처 보드 이름. 라이트 테마 상태는 `/ light` 로 끝난다(§8 D3: 테마는 변수 모드지만 캡처는 렌더 결과다)."""
+    surf, state = state_id.split("__", 1)
+    theme = "light" if state.endswith("light") or state == "light-lens" else "dark"
+    return f"App · {APP_SURFACE_TITLES[surf]}" + ("" if state == "default" else f" · {state}") + f" / {theme}"
+
+
+def _app_module_for(state_id: str) -> str:
+    """상태가 어느 코드 모듈의 것인가 — check_states 의 축은 표면 모듈이다."""
+    surf, state = state_id.split("__", 1)
+    if surf == "packs" and state.startswith("intake-"):
+        return "surfaces/intake.ts"
+    if surf == "topbar":
+        if state.startswith("ask-"):
+            return "ask.ts"
+        if state.startswith("browse-"):
+            return "surfaces/records.ts"
+        if state.startswith("settings-"):
+            return "surfaces/settings.ts"
+        return "topbar.ts"
+    return f"surfaces/{surf}.ts"
+
+
+def _app_states_from_manifest() -> dict:
+    if not APP_MANIFEST.exists():
+        return {}
+    out: dict = {}
+    for row in json.loads(APP_MANIFEST.read_text(encoding="utf-8"))["states"]:
+        sid = row["id"]
+        out.setdefault(_app_module_for(sid), {})[sid.split("__", 1)[1]] = app_board_name(sid)
+    return out
+
+
 APP_STATES = {
-    "surfaces/view.ts": {
-        "default": "App · View · default (canvas placeholder) / dark",
-        "empty": "App · View · empty / dark",
-        "lens": "App · View · lens panel (Options) / dark",
-        "coachmark": "App · View · coachmark & lasso / dark",
-        "node-detail": "App · View · node detail + related card / dark",
-        "edge-detail": "App · View · edge detail / dark",
-        "reader": "App · View · reader (verified, saved) / dark",
-    },
-    "surfaces/search.ts": {
-        "results": "App · Search · results / dark",
-        "no-results": "App · Search · no results + reindex badge / dark",
-        "error": "App · Search · error + browse / dark",
-    },
-    "ask.ts": {"answer": "App · Ask · answer card / dark"},
-    "surfaces/packs.ts": {"default": "App · Packs (with Intake dropzone) / dark"},
-    "surfaces/intake.ts": {
-        "ingesting": "INGESTING (42:5)", "success": "SUCCESS (42:7)", "error": "ERROR",
-    },
-    "surfaces/settings.ts": {
-        "account": "App · Settings · Account tab / dark",
-        "rest": "App · Settings · Connections + Data + Advanced / dark",
-    },
-    "account-connect.ts": {
-        "not-connected": "NOT CONNECTED", "waiting": "WAITING", "connected": "CONNECTED",
-        "expired": "EXPIRED", "failed": "FAILED",
-    },
-    # 그래프 렌더러 넷은 화면이 아니라 **캔버스 안의 그림**이라 Node 페이지에 예시로 산다.
+    **_app_states_from_manifest(),
+    # 계정 연결(기기 흐름)은 계정과 브라우저 승인이 있어야 그 상태에 닿는다 — 선언된 결손.
+    "account-connect.ts": {"not-connected": None, "waiting": None, "connected": None, "expired": None, "failed": None},
+    # 렌더러 참조 보드는 08 · Reference 에 그대로 있다(캡처가 아니라 재현 스터디).
     "surfaces/view3d.ts": {"dark": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
                            "light": "Graph · 3D · light (matte ink, D77)"},
     "surfaces/view2d.ts": {"default": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)"},
     "surfaces/view-planar.ts": {
         "timeline": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)"},
-    # ⚠ 제품이 생키를 버리고 방사형 번들(Weave)로 갔는데 Node 페이지 예시는 아직 생키다.
-    # 이름만 바꾸면 없는 화면을 현행처럼 보이게 하므로 SUPERSEDED 로 표시해 두었고,
-    # Weave 예시는 **다시 그려야 한다** — 개명이 아니라 작도다.
     "surfaces/view-bundle.ts": {"weave": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)"},
-    # records 는 흡수된 표면이다([[vinc.spec.surface-records]]). 화면이 없는 것이 맞다.
-    "surfaces/records.ts": {},
 }
 
 # ── 앱 컴포넌트 (변형×코드 표식) ──────────────────────────────────────────────
@@ -332,7 +341,7 @@ def app_dialogs() -> set[str]:
 def app_surfaces() -> set[str]:
     """앱이 실제로 그리는 표면 모듈. `surfaces/` 전부와, 표면급으로 쓰이는 최상위 둘."""
     out = {"surfaces/" + p.name for p in (APP / "surfaces").glob("*.ts")}
-    for extra in ("ask.ts", "account-connect.ts"):
+    for extra in ("ask.ts", "account-connect.ts", "topbar.ts"):   # topbar.ts: 셸 핸들이 여는 오버레이의 축
         if (APP / extra).exists():
             out.add(extra)
     return out
@@ -479,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
         matrix = check_states(routes, ROUTE_STATES, kids | frames)
     else:
         skipped.append("사이트 라우트 · 상태 매트릭스 — Vinc-homepage 가 체크아웃돼 있지 않다")
-    results.append(_check("앱 모달", app_dialogs(), DIALOGS, states))
+    results.append(_check("앱 모달", app_dialogs(), DIALOGS, frames | states))   # 오버레이는 이제 보드 하나씩이다
     results.append(_check("아이콘" + ("" if have_site else " (앱만 · 사이트 미체크아웃)"),
                           code_icons(), {i: "Icon / " + i for i in code_icons()},
                           {"Icon / " + i for i in icons}, frozenset(ICON_GAPS)))

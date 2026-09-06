@@ -876,5 +876,7 @@
    "sha1": "6c2395c35cc6bd845d6de5567c860f3b9c4d4ac2"
   }
  ],
- "updatedAt": "2026-09-06T07:08:26.399Z"
+ "updatedAt": "2026-09-06T07:08:26.399Z",
+ "sourceRev": "5690fece5bae095eeb22fe2c2e49930dd7b6576f",
+ "sourceRevNote": "Vinc commit whose app/src the captures rendered (vite dev on this worktree)"
 }

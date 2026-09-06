@@ -1,94 +1,43 @@
 # -*- coding: utf-8 -*-
-"""앱 보드 문구 게이트가 실제로 무언가를 지키는가.
-
-이 게이트는 지문 비교라 조용히 죽기 쉽다. 지문 함수가 상수를 돌려주거나, 허용목록이
-전부를 덮거나, 덤프가 비면 매번 초록인 채로 아무것도 안 지킨다. 그 셋을 여기서 막는다.
-"""
+"""figma_app_copy — 앱 보드(캡처)의 신선도 판정. 2026-09-06 에 글자 대조에서 리비전 대조로 바뀌었다."""
 from __future__ import annotations
 
 import importlib.util
-import json
 import pathlib
 import unittest
 
-HUB = pathlib.Path(__file__).resolve().parent.parent / "design-hub"
+HUB = pathlib.Path(__file__).resolve().parents[1] / "design-hub"
 _spec = importlib.util.spec_from_file_location("figma_app_copy", HUB / "scripts" / "figma_app_copy.py")
 fac = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fac)
 
 
-def dump(rows):
-    return {"strings": rows}
+class CheckTests(unittest.TestCase):
+    def test_no_changes_after_the_capture_passes(self):
+        r = fac.check({"sourceRev": "abc1234", "states": [{"id": "view__3d"}]}, [])
+        self.assertTrue(r["ok"]); self.assertEqual(r["states"], 1)
+
+    def test_a_commit_touching_app_src_after_the_capture_fails(self):
+        r = fac.check({"sourceRev": "abc1234", "states": []}, ["deadbee fix(view): reorder lens rows"])
+        self.assertFalse(r["ok"]); self.assertEqual(len(r["changes"]), 1)
+
+    def test_a_manifest_without_a_revision_fails_by_itself(self):
+        r = fac.check({"states": []}, [])
+        self.assertFalse(r["ok"]); self.assertIn("sourceRev", r["reason"])
 
 
-class TheFingerprintSeparatesStrings(unittest.TestCase):
-    def test_one_character_changes_it(self):
-        self.assertNotEqual(fac.sig("Share as a pack"), fac.sig("Share as a Pack"))
+class GitTests(unittest.TestCase):
+    def test_the_committed_manifest_is_fresh_or_names_the_commits(self):
+        """실제 리포 위에서: 매니페스트의 리비전이 존재하고, 결과가 판정 가능한 형태여야 한다."""
+        import json
+        m = json.loads((HUB / "reports" / "captures" / "app" / "manifest.json").read_text(encoding="utf-8"))
+        self.assertTrue(m.get("sourceRev"), "app manifest carries no sourceRev")
+        changes = fac.changes_since(m["sourceRev"])
+        self.assertIsInstance(changes, list)
 
-    def test_order_matters(self):
-        self.assertNotEqual(fac.sig("abc"), fac.sig("cba"))
-
-
-class WhatCountsAsFailure(unittest.TestCase):
-    def test_a_string_the_app_never_says_fails(self):
-        r = fac.check(dump([[111, "Invented label", "View"]]), {222})
-        self.assertEqual(len(r["fail"]), 1)
-
-    def test_a_string_the_app_says_passes(self):
-        r = fac.check(dump([[222, "Share", "View"]]), {222})
-        self.assertEqual((r["ok"], len(r["fail"])), (1, 0))
-
-    def test_a_declared_exception_passes_and_is_counted_by_category(self):
-        fac.ALLOW[999001] = "sample"
-        try:
-            r = fac.check(dump([[999001, "Gauge symmetry", "View"]]), set())
-            self.assertEqual((r["declared"], len(r["fail"])), ({"sample": 1}, 0))
-        finally:
-            del fac.ALLOW[999001]
-
-    def test_an_open_verdict_is_listed_one_by_one_not_buried_in_a_count(self):
-        # 열린 판정은 사람이 정할 것이 남았다는 뜻이다. 분류 숫자에 묻히면 안 된다.
-        fac.ALLOW[999002] = "open"
-        try:
-            r = fac.check(dump([[999002, "Trace from here", "View"]]), set())
-            self.assertEqual(len(r["open"]), 1)
-            self.assertNotIn("open", r["declared"])
-            self.assertEqual(len(r["fail"]), 0)
-        finally:
-            del fac.ALLOW[999002]
-
-    def test_an_allow_entry_whose_string_left_the_board_fails(self):
-        # 보드에서 사라진 예외를 남겨 두면 허용목록이 계속 자란다.
-        fac.ALLOW[999003] = "sample"
-        try:
-            r = fac.check(dump([[222, "Share", "View"]]), {222})
-            self.assertIn(999003, r["stale"])
-        finally:
-            del fac.ALLOW[999003]
-
-
-class TheRealInputsAreNotEmpty(unittest.TestCase):
-    def test_the_dump_is_real(self):
-        d = json.loads(fac.DUMP.read_text(encoding="utf-8"))
-        self.assertGreater(len(d["strings"]), 300, "덤프가 비면 게이트는 통과하며 아무것도 안 본다")
-
-    def test_the_app_has_many_literals(self):
-        if not fac.APP.exists():
-            self.skipTest("앱 소스가 없다")
-        self.assertGreater(len(fac.code_sigs()), 1000)
-
-    def test_the_allowlist_does_not_swallow_the_board(self):
-        d = json.loads(fac.DUMP.read_text(encoding="utf-8"))
-        # 허용목록이 보드의 절반을 넘으면 대조가 아니라 면제다.
-        self.assertLess(len(fac.ALLOW), len(d["strings"]) // 2)
-
-    def test_the_real_check_is_clean(self):
-        if not fac.APP.exists():
-            self.skipTest("앱 소스가 없다")
-        d = json.loads(fac.DUMP.read_text(encoding="utf-8"))
-        r = fac.check(d, fac.code_sigs())
-        self.assertEqual((r["fail"], r["stale"]), ([], []))
-        self.assertGreater(r["ok"], 150, "코드와 일치하는 것이 이만큼은 돼야 대조가 의미가 있다")
+    def test_an_unknown_revision_raises_instead_of_passing(self):
+        with self.assertRaises(RuntimeError):
+            fac.changes_since("0000000000000000000000000000000000000000")
 
 
 if __name__ == "__main__":

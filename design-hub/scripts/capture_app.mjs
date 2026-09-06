@@ -205,15 +205,22 @@ PK("intake-success", "drop a file: success summary", async (p) => { await p.setI
 PK("intake-error", "drop an unsupported file: error banner", async (p) => { await p.setInputFiles("#file-input", path.join(HUB, "package.json")); await sleep(2500); });
 PK("light", "packs, light theme", undefined, { ls: { "vinc.theme": "light" }, scheme: "light" });
 
+// ── 다른 스크립트가 같은 상태 목록을 쓴다 ───────────────────────────────────
+export { S, APP, SIDE, TOKEN, VP, BASE_LS, SHELL_INIT, side, seed, seedEvidenceEdge, sleep };
+const isMain = process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href;
+
 // ── 실행 ───────────────────────────────────────────────────────────────────
 const onlyList = ONLY ? ONLY.split(",") : null;
+if (!isMain) { /* imported */ } else {
 const states = onlyList ? S.filter((s) => onlyList.some((o) => s.id.includes(o))) : S;
 if (LIST) { for (const s of states) console.log(s.id.padEnd(34), s.trigger); console.log(states.length, "states"); process.exit(0); }
 if (!(await side("/health"))) { console.error("sidecar not reachable at", SIDE); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: "chromium" });
 if (!NOSEED) await seed(browser);
-const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID, states: [] };
+// 캡처가 어느 코드를 그렸는지 남긴다. figma_app_copy.py 가 이 리비전 뒤에 app/src 가 바뀌었는지로 보드의 신선도를 본다.
+let sourceRev = null; try { sourceRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: REPO, encoding: "utf8" }).trim(); } catch {}
+const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID, sourceRev, states: [] };
 let fails = 0;
 for (const s of states) {
   const ctx = await browser.newContext({ viewport: s.vp ?? VP, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", deviceScaleFactor: 1 });
@@ -251,3 +258,4 @@ if (onlyList && fs.existsSync(mpath)) {
 fs.writeFileSync(mpath, JSON.stringify(manifest, null, 1));
 console.log(`\n${manifest.states.length - fails} captured, ${fails} failed → ${path.relative(HUB, OUT)}`);
 process.exit(fails ? 1 : 0);
+}

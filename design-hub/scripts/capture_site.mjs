@@ -335,7 +335,9 @@ if (!isMain) { /* imported: 실행부 건너뜀 */ } else {
 if (LIST) { for (const s of states) console.log(s.id.padEnd(40), s.trigger); console.log(states.length, "states"); process.exit(0); }
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
-const manifest = { base: BASE, capturedAt: T, tool: "design-hub/scripts/capture_site.mjs", states: [] };
+// 어느 사이트 리비전을 그렸는지 남긴다(형제 체크아웃 Vinc-homepage 의 HEAD; 라이브가 그것과 다르면 사람이 맞춘다).
+let siteRev = null; try { siteRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: path.resolve(HUB, "..", "..", "Vinc-homepage"), encoding: "utf8" }).trim(); } catch {}
+const manifest = { base: BASE, capturedAt: T, tool: "design-hub/scripts/capture_site.mjs", siteRev, states: [] };
 let fails = 0;
 for (const s of states) {
   const vp = s.vp ?? { width: 1440, height: 900 };

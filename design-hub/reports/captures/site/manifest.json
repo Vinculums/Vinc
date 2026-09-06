@@ -2428,5 +2428,7 @@
    "finalUrl": "/docs/"
   }
  ],
- "updatedAt": "2026-09-06T07:09:29.956Z"
+ "updatedAt": "2026-09-06T07:09:29.956Z",
+ "siteRev": "6772164e1c212354943ba5ab4c8588030e320c92",
+ "siteRevNote": "Vinc-homepage commit deployed at vincs.io when the captures ran"
 }

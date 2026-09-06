@@ -6,7 +6,8 @@
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the application component page. Nine pages of the 2026-09-06 structure (vinc.plan.figma-product-structure §2): 01 · Foundations, 02 · App Components, 04 · Surfaces, 05 · Overlays, 06 · States, 08 · Reference, 10 · Site Components, 11 · Site Screens, 12 · Docs Screens. 00 · Cover, 03 · App Shell, 07 · Prototypes, 13 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
-  "site_screens_note": "11 · Site Screens boards are html-to-design captures named Site · <Route>[ · <state>] / dark; children are not recorded because the site axis compares board names with the capture manifest."
+  "site_screens_note": "11 · Site Screens boards are html-to-design captures named Site · <Route>[ · <state>] / dark; children are not recorded because the site axis compares board names with the capture manifest.",
+  "app_boards_note": "04/05/06 boards are html-to-design captures of the running app named App · <Surface>[ · <state>] / <theme>; children are not recorded."
  },
  "pages": {
   "01 · Foundations": {
@@ -294,90 +295,56 @@
   "04 · Surfaces": {
    "frames": [
     {
-     "name": "App · View · default (canvas placeholder) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · 3d / dark",
+     "children": []
     },
     {
-     "name": "App · View · lens panel (Options) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · 2d / dark",
+     "children": []
     },
     {
-     "name": "App · View · node detail + related card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane",
-      "App / FloatCard",
-      "related-rows (float card body)"
-     ]
+     "name": "App · View · timeline / dark",
+     "children": []
     },
     {
-     "name": "App · View · edge detail / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
+     "name": "App · View · weave / dark",
+     "children": []
     },
     {
-     "name": "App · View · reader (verified, saved) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
+     "name": "App · View · topic-scope / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lnb-collapsed / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · reader / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · docpane-folded / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · node-detail / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · edge-detail / dark",
+     "children": []
+    },
+    {
+     "name": "App · Search / dark",
+     "children": []
     },
     {
      "name": "App · Search · results / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "children": []
     },
     {
-     "name": "App · Ask · answer card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Packs (with Intake dropzone) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "packs-surface"
-     ]
-    },
-    {
-     "name": "App · Web skin (GNB attached) / dark",
-     "children": [
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "Site / GNB"
-     ]
+     "name": "App · Packs / dark",
+     "children": []
     }
    ],
    "components": [],
@@ -386,59 +353,168 @@
   "05 · Overlays": {
    "frames": [
     {
-     "name": "App · Settings · Account tab / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "scrim",
-      "settings-popover"
-     ]
+     "name": "App · View · node-float / dark",
+     "children": []
     },
     {
-     "name": "App · Settings · Connections + Data + Advanced / dark",
-     "children": [
-      "settings-popover",
-      "settings-popover",
-      "settings-popover"
-     ]
+     "name": "App · View · node-float-links / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark",
-     "children": [
-      "SHARE AS A PACK",
-      "WHERE SHOULD THIS GO?",
-      "IMPORT A PACK",
-      "DESTRUCTIVE CONFIRM",
-      "TEXT PROMPT"
-     ]
+     "name": "App · View · node-ask-menu / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark",
-     "children": [
-      "TOOLS · CREATE",
-      "GRAPH.MD",
-      "DOC EDITOR · CONFLICT"
-     ]
+     "name": "App · View · node-delete-confirm / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark",
-     "children": [
-      "COMMAND PALETTE",
-      "CONTEXT MENUS",
-      "TOOLTIP · UPDATE TOAST",
-      "ASK HISTORY · CHEATSHEET"
-     ]
+     "name": "App · View · topic-context-menu / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 4 · first run + new node + doc import + browse / dark",
-     "children": [
-      "FIRST RUN",
-      "NEW NODE",
-      "IMPORT A DOCUMENT",
-      "ALL DOCUMENTS"
-     ]
+     "name": "App · View · topic-rename-prompt / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-3d / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-2d / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-timeline / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-weave / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-legend / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-help-open / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · new-node-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · first-run / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · coachmark / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · mode-menu / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-results / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-loading / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · browse-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · browse-sheet-docs / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-intro / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-answer / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-none / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-history / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · palette / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · palette-filtered / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · cheatsheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-create / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-import / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-share / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · share-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · share-result / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · import-pack-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · import-doc-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · graphmd / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-account / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-connections / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-data / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-advanced / dark",
+     "children": []
     }
    ],
    "components": [],
@@ -447,58 +523,56 @@
   "06 · States": {
    "frames": [
     {
-     "name": "App · View · empty / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · empty-invite / dark",
+     "children": []
     },
     {
-     "name": "App · View · coachmark & lasso / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · error / dark",
+     "children": []
     },
     {
-     "name": "App · Search · no results + reindex badge / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "name": "App · View · lnb-failed / dark",
+     "children": []
     },
     {
-     "name": "App · Search · error + browse / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "name": "App · View · lnb-loading / dark",
+     "children": []
     },
     {
-     "name": "App · Intake · states (Ingesting/Success/Error) / dark",
-     "children": [
-      "INGESTING (42:5)",
-      "SUCCESS (42:7)",
-      "ERROR"
-     ]
+     "name": "App · View · light / light",
+     "children": []
     },
     {
-     "name": "App · Settings · device flow states / dark",
-     "children": [
-      "NOT CONNECTED",
-      "WAITING",
-      "CONNECTED",
-      "EXPIRED",
-      "FAILED"
-     ]
+     "name": "App · View · light-lens / light",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-light / light",
+     "children": []
+    },
+    {
+     "name": "App · Search · empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Search · error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-ingesting / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-success / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · light / light",
+     "children": []
     }
    ],
    "components": [],
