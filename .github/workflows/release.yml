@@ -67,8 +67,32 @@ jobs:
             python scripts/version_sync.py --check
           fi
 
-  build:
+  # ── 리눅스 다리의 빌드 환경을 굽는다 ────────────────────────────────────────
+  # `container:` 는 잡이 **시작하기 전에** 이미지가 있어야 하므로 스텝으로는 못 만든다.
+  # 그래서 앞선 잡에서 굽는다. 러너가 영속이라 레이어 캐시가 남아, Dockerfile 이
+  # 안 바뀌면 이 잡은 몇 초다. 새 러너에서는 여기서 한 번 굽고 그 뒤로는 안 굽는다.
+  #
+  # 왜 굽나: 처음 판은 같은 목록을 잡 안에서 apt 로 깔았고 **매 릴리스 32분**이었다
+  # (실측 런 34030111531 — 준비물 636초 + webkit deps 1280초). 도커 오버레이가 WSL
+  # 위에서 dpkg 언팩에 느린 것이고, 그 32분이 레이어 캐시로 0 이 된다.
+  # ⚠ 태그는 아래 `build` 매트릭스의 `container:` 와 **글자 그대로 같아야 한다**.
+  image:
     needs: version-gate
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/runner-preflight
+        with:
+          tools: docker
+      - name: Bake the linux build image (layer cache makes this a few seconds)
+        run: |
+          docker build -t vinc-release-linux:22.04 \
+            -f packaging/Dockerfile.release-linux packaging/
+          docker run --rm vinc-release-linux:22.04 bash -c 'id; ldd --version | head -1'
+
+  build:
+    needs: [version-gate, image]
     strategy:
       fail-fast: false
       matrix:
@@ -83,10 +107,11 @@ jobs:
           # 바닥이 2.39 로 올라간다. `container:` 안에서 지으면 툴체인도 링크 대상도
           # 전부 22.04 의 것이라 산출물은 `ubuntu-22.04` 러너와 같다.
           # ⚠ 이 값을 다른 이미지로 바꾸는 것은 **사용자 바닥을 바꾸는 일**이다.
+          # 정본은 `packaging/Dockerfile.release-linux` 이고 위 `image` 잡이 굽는다.
           # 근거: [[record:every-recurring-deploy-now-runs-on-the-local-runner-and-tmpdir-travels-with-the-job-2026-09-06]]
           - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
-            container: ubuntu:22.04
+            container: vinc-release-linux:22.04
           # ⚠ 이 둘은 호스티드로 남는다. macOS 는 로컬 러너가 아예 없고(그리고 분을
           # 10배로 센다), 윈도우는 릴리스 빌드가 러너의 MSVC 툴체인에 의존한다.
           # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
@@ -111,41 +136,6 @@ jobs:
       # 러너의 사실이었다 — 그 기계는 System32 가 PATH 에서 Git 보다 앞이라
       # `shell: bash` 가 WSL 의 bash 로 잡혔다. 호스티드 windows-latest 는 Git Bash 가
       # 먼저라 그 문제가 없다(ci.yml 이 #151 에서 같은 이유로 같은 스텝을 지웠다).
-
-      # ── 컨테이너 준비물 ────────────────────────────────────────────────────
-      # 호스티드 `ubuntu-22.04` 이미지에는 들어 있고 **`ubuntu:22.04` 도커 이미지에는
-      # 없는 것**을 여기서 채운다. 이 잡이 실제로 부르는 것만 적었다:
-      #   ca-certificates  다운로드 전부(setup-python·setup-node·확장 시드)
-      #   curl jq gh       runner-preflight 가 요구하는 셋. 업로드 스텝이 셋 다 부른다
-      #   git              actions/checkout. 없으면 REST tarball 로 조용히 강등된다
-      #   sudo             아래 "Linux webkit deps" 가 그대로 `sudo apt-get` 을 부른다.
-      #                    컨테이너는 root 라 sudo 가 필요 없지만, 그 스텝은 호스티드
-      #                    다리와 공유하므로 명령을 고치는 대신 sudo 를 넣는 쪽이 싸다
-      #   build-essential pkg-config  rustc 의 링커와 tauri 의 시스템 라이브러리 탐색
-      #   file             linuxdeploy(AppImage 번들러)가 부른다
-      #   xz-utils         setup-node 가 받는 tarball
-      # ⚠ `gh` 는 22.04 의 apt 에 **없다**(23.04 부터 universe 에 들어왔다). 공식
-      # 저장소를 붙여야 한다 — 이 스텝이 없으면 preflight 가 2초에 세운다(그게 이
-      # 액션의 존재 이유다).
-      - name: Container prerequisites (what the hosted 22.04 image has and this one does not)
-        if: matrix.container != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            ca-certificates curl jq git sudo file xz-utils \
-            build-essential pkg-config
-          install -d -m 0755 /etc/apt/keyrings
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
-          chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update -qq
-          apt-get install -y -qq gh
-          echo "glibc: $(ldd --version | head -1)"
 
       - uses: actions/checkout@v4
 
@@ -287,15 +277,19 @@ jobs:
         working-directory: app
         run: npm ci
       - uses: dtolnay/rust-toolchain@stable
+      # ⚠ 리눅스 다리에서는 **일부러 쓰지 않는다.** 이 액션은 파일시스템이 매번
+      # 파괴되는 호스티드 러너용이고, 거기서는 값을 한다. 리눅스는 이제 영속
+      # 셀프호스티드이고 실측(런 34030111531)은 **복원 2초 · 저장 491초 대 컴파일
+      # 640초**였다 — 저장이 컴파일의 8할을 도로 먹는다. ci.yml 이 같은 이유로 같은
+      # 액션을 뺐다([[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
       - uses: swatinem/rust-cache@v2
+        if: matrix.container == ''
         with:
           workspaces: app/src-tauri
-      - name: Linux webkit deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-            librsvg2-dev patchelf libdbus-1-dev
+      # ⚠ 여기 있던 "Linux webkit deps" 스텝을 걷어냈다. 리눅스 다리가 컨테이너뿐이라
+      # 그 목록은 `packaging/Dockerfile.release-linux` 가 이미 들고 있다 — 스텝으로
+      # 두면 이미지가 한 일을 매 릴리스 21분 들여 다시 하는 것이었다(실측 1280초).
+      # 그 목록을 고칠 자리는 이제 Dockerfile 하나다.
 
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
       # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.
@@ -384,26 +378,6 @@ jobs:
                  --title "Vinc $TAG" --notes "Vinc $TAG" 2>/dev/null || true
           # --clobber: 재실행 멱등(같은 이름 자산 덮어쓰기).
           gh release upload "$TAG" up/* --repo "$REPO" --clobber
-
-      # ⚠ 컨테이너는 root 로 돌고 작업 디렉터리는 **러너 기계의 디스크**를 마운트한
-      # 것이다. 그래서 이 잡이 만든 파일은 호스트에서 `root:root` 로 남고, 다음에
-      # 같은 러너에서 도는 **컨테이너 아닌 잡**의 `actions/checkout` 이 그것을 지우려다
-      # permission denied 로 죽는다(러너는 uid 1000 이다). 실측으로 확인했다: 컨테이너
-      # 안에서 만든 파일을 호스트가 `root 0` 으로 본다.
-      # 소유자를 마운트 지점 자신에게서 읽는다 — 러너 uid 를 워크플로에 박지 않기 위해서.
-      # ⚠ `/__w` 전체를 훑지 않는다. 거기엔 이 기계의 **다른 리포 체크아웃과 수 GB짜리
-      # cargo 산출물**이 같이 있어서 매 릴리스마다 그 전부를 재귀 순회하게 된다.
-      # 이 잡이 실제로 쓴 네 곳만 되돌린다(그중 `_temp` 아래에 `/github/home` 이 있어
-      # rustup·npm 캐시도 같이 덮인다).
-      - name: Give the work directory back to the runner user (the container ran as root)
-        if: always() && matrix.container != ''
-        shell: bash
-        run: |
-          own=$(stat -c '%u:%g' /__w)
-          for d in "$GITHUB_WORKSPACE" /__w/_temp /__w/_actions /__w/_tool; do
-            [ -e "$d" ] && chown -R "$own" "$d"
-          done
-          echo "chown -R $own — $GITHUB_WORKSPACE _temp _actions _tool"
 
   assemble:
     needs: build
