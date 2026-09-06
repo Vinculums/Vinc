@@ -25,7 +25,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker } from "../lnb";
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, repaintLnb } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
@@ -1263,6 +1263,9 @@ export async function renderView(el: HTMLElement) {
       return;
     }
     savePrefs({ ...cur, ...mut });
+    // 주제 색은 지도와 좌측 트리가 **같은 토글**을 쓴다(표면 둘, 스위치 하나). 아래
+    // 분기가 여러 갈래로 일찍 돌아가므로 알리는 자리는 저장 직후 여기 한 곳이다.
+    if ("domainTint" in mut) repaintLnb();
     // 번들의 손잡이는 **이미 실린 데이터의 표현만** 바꾼다(단·관계·라벨). 아래
     // show() 로 내려가면 `/graph` 를 통째로 다시 받는데, 그것이 리서치
     // [[vinc.research.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만

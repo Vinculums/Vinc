@@ -11,7 +11,7 @@ import { mountSyncScheduler } from "./sync-scheduler";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
-import { mountLnb, setLnbNavigator } from "./lnb";
+import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { initSegMotion, wireScrimDismiss } from "./components";
 
@@ -284,6 +284,12 @@ export function applyTheme() {
   const dark = pref === "dark" || (pref === "auto" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // 좌측 트리의 주제 색은 paint 때 굳은 HEX 다(CSS 변수가 아니라 스스로 안 뒤집힌다).
+  // 여기서 다시 그리지 않으면 뒤집힌 화면에 반대 모드의 색이 남아 도트가 배경에 묻는다.
+  // ⚠ 설정 화면의 클릭 핸들러가 아니라 **여기**여야 한다: pref 가 "auto" 면 아래
+  //   matchMedia 가 OS 를 따라 부르므로 설정 클릭이 아예 없는 경로가 생긴다.
+  //   마운트 전 첫 호출은 `#lnb-body` 가 없어 paint 가 알아서 되돌아간다.
+  repaintLnb();
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 applyTheme();
