@@ -5,7 +5,9 @@
   "exported": "2026-09-06",
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the application component page. Nine pages of the 2026-09-06 structure (vinc.plan.figma-product-structure §2): 01 · Foundations, 02 · App Components, 04 · Surfaces, 05 · Overlays, 06 · States, 08 · Reference, 10 · Site Components, 11 · Site Screens, 12 · Docs Screens. 00 · Cover, 03 · App Shell, 07 · Prototypes, 13 · Email and 90 · Archive carry nothing the gate counts.",
-  "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma."
+  "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
+  "site_screens_note": "11 · Site Screens boards are html-to-design captures named Site · <Route>[ · <state>] / dark; children are not recorded because the site axis compares board names with the capture manifest.",
+  "app_boards_note": "04/05/06 boards are html-to-design captures of the running app named App · <Surface>[ · <state>] / <theme>; children are not recorded."
  },
  "pages": {
   "01 · Foundations": {
@@ -293,90 +295,56 @@
   "04 · Surfaces": {
    "frames": [
     {
-     "name": "App · View · default (canvas placeholder) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · 3d / dark",
+     "children": []
     },
     {
-     "name": "App · View · lens panel (Options) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · 2d / dark",
+     "children": []
     },
     {
-     "name": "App · View · node detail + related card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane",
-      "App / FloatCard",
-      "related-rows (float card body)"
-     ]
+     "name": "App · View · timeline / dark",
+     "children": []
     },
     {
-     "name": "App · View · edge detail / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
+     "name": "App · View · weave / dark",
+     "children": []
     },
     {
-     "name": "App · View · reader (verified, saved) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "docpane"
-     ]
+     "name": "App · View · topic-scope / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lnb-collapsed / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · reader / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · docpane-folded / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · node-detail / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · edge-detail / dark",
+     "children": []
+    },
+    {
+     "name": "App · Search / dark",
+     "children": []
     },
     {
      "name": "App · Search · results / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "children": []
     },
     {
-     "name": "App · Ask · answer card / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
-    },
-    {
-     "name": "App · Packs (with Intake dropzone) / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "packs-surface"
-     ]
-    },
-    {
-     "name": "App · Web skin (GNB attached) / dark",
-     "children": [
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "Site / GNB"
-     ]
+     "name": "App · Packs / dark",
+     "children": []
     }
    ],
    "components": [],
@@ -385,59 +353,168 @@
   "05 · Overlays": {
    "frames": [
     {
-     "name": "App · Settings · Account tab / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)",
-      "scrim",
-      "settings-popover"
-     ]
+     "name": "App · View · node-float / dark",
+     "children": []
     },
     {
-     "name": "App · Settings · Connections + Data + Advanced / dark",
-     "children": [
-      "settings-popover",
-      "settings-popover",
-      "settings-popover"
-     ]
+     "name": "App · View · node-float-links / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 1 · sheets (Share/Destination/Import/Confirm/Prompt) / dark",
-     "children": [
-      "SHARE AS A PACK",
-      "WHERE SHOULD THIS GO?",
-      "IMPORT A PACK",
-      "DESTRUCTIVE CONFIRM",
-      "TEXT PROMPT"
-     ]
+     "name": "App · View · node-ask-menu / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 2 · Tools + GRAPH.md + Doc editor / dark",
-     "children": [
-      "TOOLS · CREATE",
-      "GRAPH.MD",
-      "DOC EDITOR · CONFLICT"
-     ]
+     "name": "App · View · node-delete-confirm / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 3 · palette + menus + tooltip + toast + history + cheatsheet / dark",
-     "children": [
-      "COMMAND PALETTE",
-      "CONTEXT MENUS",
-      "TOOLTIP · UPDATE TOAST",
-      "ASK HISTORY · CHEATSHEET"
-     ]
+     "name": "App · View · topic-context-menu / dark",
+     "children": []
     },
     {
-     "name": "App · Overlays 4 · first run + new node + doc import + browse / dark",
-     "children": [
-      "FIRST RUN",
-      "NEW NODE",
-      "IMPORT A DOCUMENT",
-      "ALL DOCUMENTS"
-     ]
+     "name": "App · View · topic-rename-prompt / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-3d / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-2d / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-timeline / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-options-weave / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-legend / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · lens-help-open / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · new-node-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · first-run / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · coachmark / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · mode-menu / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-results / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-loading / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · find-error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · browse-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · browse-sheet-docs / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-intro / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-answer / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-none / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · ask-history / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · palette / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · palette-filtered / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · cheatsheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-create / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-import / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · tools-share / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · share-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · share-result / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · import-pack-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · import-doc-sheet / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · graphmd / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-account / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-connections / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-data / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-advanced / dark",
+     "children": []
     }
    ],
    "components": [],
@@ -446,58 +523,56 @@
   "06 · States": {
    "frames": [
     {
-     "name": "App · View · empty / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · empty-invite / dark",
+     "children": []
     },
     {
-     "name": "App · View · coachmark & lasso / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "view-canvas (graph placeholder · Node 페이지 예시 참조)"
-     ]
+     "name": "App · View · error / dark",
+     "children": []
     },
     {
-     "name": "App · Search · no results + reindex badge / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "name": "App · View · lnb-failed / dark",
+     "children": []
     },
     {
-     "name": "App · Search · error + browse / dark",
-     "children": [
-      "App / Titlebar",
-      "topbar",
-      "lnb",
-      "search-surface"
-     ]
+     "name": "App · View · lnb-loading / dark",
+     "children": []
     },
     {
-     "name": "App · Intake · states (Ingesting/Success/Error) / dark",
-     "children": [
-      "INGESTING (42:5)",
-      "SUCCESS (42:7)",
-      "ERROR"
-     ]
+     "name": "App · View · light / light",
+     "children": []
     },
     {
-     "name": "App · Settings · device flow states / dark",
-     "children": [
-      "NOT CONNECTED",
-      "WAITING",
-      "CONNECTED",
-      "EXPIRED",
-      "FAILED"
-     ]
+     "name": "App · View · light-lens / light",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-light / light",
+     "children": []
+    },
+    {
+     "name": "App · Search · empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Search · error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-ingesting / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-success / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · intake-error / dark",
+     "children": []
+    },
+    {
+     "name": "App · Packs · light / light",
+     "children": []
     }
    ],
    "components": [],
@@ -1000,204 +1075,628 @@
   "11 · Site Screens": {
    "frames": [
     {
-     "name": "Site · Community · Pack modal states / dark",
-     "children": [
-      "modal-card",
-      "modal-card",
-      "modal-card",
-      "modal-card"
-     ]
-    },
-    {
-     "name": "Site · Release / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "rel",
-      "roadmap",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Privacy / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "body-en",
-      "body-ko (전문 병기, 코드 정본)",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Auth · Login & Welcome / dark",
-     "children": [
-      "LOGIN · FORM",
-      "LOGIN · SENT",
-      "WELCOME · LOADING",
-      "WELCOME · FORM",
-      "WELCOME · AVAILABLE"
-     ]
-    },
-    {
-     "name": "Site · Auth · Verify states / dark",
-     "children": [
-      "VERIFY · CONFIRM",
-      "VERIFY · VERIFYING",
-      "VERIFY · CONFIRM CONTEXT",
-      "VERIFY · EXPIRED",
-      "VERIFY · INVALID",
-      "VERIFY · ERROR"
-     ]
-    },
-    {
-     "name": "Site · Auth · Subscribe & Unsubscribe states / dark",
-     "children": [
-      "SUBSCRIBE · CONFIRM",
-      "SUBSCRIBE · CONFIRMING",
-      "SUBSCRIBE · CONFIRMED",
-      "SUBSCRIBE · EXPIRED",
-      "SUBSCRIBE · ERROR",
-      "UNSUB · CONFIRM",
-      "UNSUB · UNSUBSCRIBING",
-      "UNSUB · UNSUBSCRIBED",
-      "UNSUB · INVALID",
-      "UNSUB · ERROR"
-     ]
-    },
-    {
-     "name": "Site · Account / dark",
-     "children": [
-      "Site / GNB",
-      "acards",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Account · Team / dark",
-     "children": [
-      "Site / GNB",
-      "cards",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Account · Delete states / dark",
-     "children": [
-      "DELETE · CONFIRM",
-      "DELETE · DELETING",
-      "DELETE · DELETED",
-      "DELETE · EXPIRED",
-      "DELETE · ERROR"
-     ]
-    },
-    {
-     "name": "Site · Connect & Connect-app states / dark",
-     "children": [
-      "CONNECT · LOAD",
-      "CONNECT · ASK",
-      "CONNECT · LOGIN",
-      "CONNECT · DONE",
-      "CONNECT · ERROR",
-      "CONNECT-APP · LOAD",
-      "CONNECT-APP · ASK",
-      "CONNECT-APP · LOGIN",
-      "CONNECT-APP · DONE",
-      "CONNECT-APP · MANUAL",
-      "CONNECT-APP · ERROR"
-     ]
-    },
-    {
-     "name": "Site · 404 / dark (신설)",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "body",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Service states / dark (신설: 429 · unavailable · signed-out)",
-     "children": [
-      "429 · RATE LIMITED",
-      "WEB GRAPH UNAVAILABLE",
-      "ACCOUNT · SIGNED OUT"
-     ]
-    },
-    {
-     "name": "Site · Mobile GNB drawer / dark (신설)",
-     "children": [
-      "gnb-mobile",
-      "drawer"
-     ]
-    },
-    {
      "name": "Site · Landing / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "app-mockup (always dark)",
-      "how",
-      "mcp",
-      "sync",
-      "packs",
-      "features",
-      "vows-wrap",
-      "fin",
-      "newsletter",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Download / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "platforms",
-      "assure",
-      "firstrun",
-      "Site / Footer"
-     ]
-    },
-    {
-     "name": "Site · Pricing / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "tiers",
-      "note",
-      "faq",
-      "Site / Footer"
-     ]
+     "children": []
     },
     {
      "name": "Site · Community / dark",
-     "children": [
-      "Site / PageBackground",
-      "Site / GNB",
-      "hero",
-      "toolbar",
-      "grid",
-      "Site / Footer"
-     ]
+     "children": []
     },
     {
-     "name": "Site · Account · Team · Community states / dark (신설)",
-     "children": [
-      "ACCOUNT · KEY CREATED",
-      "ACCOUNT · USERNAME TAKEN",
-      "TEAM · INVITED",
-      "TEAM · NO TEAMS",
-      "TEAM · SEAT FULL",
-      "COMMUNITY · LOADING",
-      "COMMUNITY · EMPTY",
-      "COMMUNITY · NO MATCH",
-      "COMMUNITY · ERROR"
-     ]
+     "name": "Site · Account · Team · default-admin / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-confirm-card / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-matched / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-signed-out / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-ok / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-confirm-button / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-busy / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · mobile-390 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · steps-2 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · steps-1 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · signed-in / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · newsletter-success / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · steps-3 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · newsletter-busy / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · newsletter-invalid / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Landing · newsletter-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · signed-in / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · no-match / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-legend-focus / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-partial / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-warnings / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-429 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · loading / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · modal-result-401 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · pro / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · team-member / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Community · mobile-390 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · plan-get-pro / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · plan-active / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · plan-trialing / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · plan-hidden / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · plan-past-due / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-checking / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-unset / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-taken / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-available / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-bad-format / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-too-short / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-reserved / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-saved / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-cooldown / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · username-conflict / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · keys-empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · keys-fresh / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · keys-fresh-readonly / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · keys-limit / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · keys-revoke-confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · graph-default / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · graph-more-open / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · graph-drill-book / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · graph-drill-product / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · graph-empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · community-list / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · community-takedown-confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · community-empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · delete-ask / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · delete-typed / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · delete-done / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · delete-busy / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · delete-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · mobile-390 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · no-mcp-base / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · viewer / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · no-teams / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-card / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-typeahead / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-invalid / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-sent / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-delivery-failed / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · invite-seat-full / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · connector-copied / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · danger-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · graph / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · graph-empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · drill-list / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · drill-loading / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · drill-empty / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · drill-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · drill-detail / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · community-tab / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · create-modal / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Team · create-error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login · sending / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login · sent / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login · invalid / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login · rate-limited / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Login · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · verifying / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · ctx / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · expired / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Verify · invalid / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Welcome · form / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Welcome · available / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Welcome · taken / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · ask / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · login / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Auth · Welcome · loading / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · done / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · expired / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · loading / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect · no-cra / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · ask / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · login / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · done / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · manual / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Connect-app · expired / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · confirming / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · confirmed / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · expired / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Subscribe · no-token / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · unsubscribing / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · unsubscribed / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · invalid / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · error / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Unsubscribe · no-token / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · confirm / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · confirm-signed-out / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · deleting / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · expired / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · deleted / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · error-no-retry / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · error-retry / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Account · Delete · no-token / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Pricing · monthly / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Pricing · yearly / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Pricing · trial-banner / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Pricing · mobile-390 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Download · mac / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Download · win / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Download · linux / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Download · other / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Privacy / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Release / dark",
+     "children": []
+    },
+    {
+     "name": "Site · 404 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · index / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · agents / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · mcp / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · graph-md / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · cli / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · mcp-sign-in / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · mobile-390 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Docs · mobile-800 / dark",
+     "children": []
     }
    ],
    "components": [],

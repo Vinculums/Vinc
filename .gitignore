@@ -55,3 +55,6 @@ uv.lock
 # 이 워킹트리는 세션 공유라 남의 `git add -A` 가 이것을 집는다.
 .cache/
 work/
+
+# design-hub capture PNGs are build products of scripts/capture_*.mjs; the manifests are committed
+design-hub/reports/captures/**/*.png
