@@ -220,7 +220,11 @@ const browser = await chromium.launch({ channel: "chromium" });
 if (!NOSEED) await seed(browser);
 // 캡처가 어느 코드를 그렸는지 남긴다. figma_app_copy.py 가 이 리비전 뒤에 app/src 가 바뀌었는지로 보드의 신선도를 본다.
 let sourceRev = null; try { sourceRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: REPO, encoding: "utf8" }).trim(); } catch {}
-const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID, sourceRev, states: [] };
+// 신선도의 **판정 근거**. 커밋이 아니라 이 트리 지문을 게이트가 본다 — 스쿼시 머지는 커밋을
+// 바꾸지만 트리는 그대로 옮기므로, 브랜치에서 캡처해도 머지된 main 에서 통과한다.
+// (커밋 계보로 재던 시절에는 그 길이 없었다: figma_app_copy.py 머리 참조.)
+let sourceTree = null; try { sourceTree = (await import("node:child_process")).execSync("git rev-parse HEAD:app/src", { cwd: REPO, encoding: "utf8" }).trim(); } catch {}
+const manifest = { app: APP, capturedAt: T, tool: "design-hub/scripts/capture_app.mjs", node: NODE_ID, sourceRev, sourceTree, states: [] };
 let fails = 0;
 for (const s of states) {
   const ctx = await browser.newContext({ viewport: s.vp ?? VP, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", deviceScaleFactor: 1 });

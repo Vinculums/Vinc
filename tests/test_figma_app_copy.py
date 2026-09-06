@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""figma_app_copy — 앱 보드(캡처)의 신선도 판정. 2026-09-06 에 글자 대조에서 리비전 대조로 바뀌었다."""
+"""figma_app_copy — 앱 보드(캡처)의 신선도 판정.
+
+2026-09-06 에 두 번 바뀌었다: 글자 대조 → 리비전 대조 → **트리 대조**. 마지막 변경의 이유가
+이 파일에서 제일 중요하다 — 리비전 대조로는 **어디서 캡처해도 통과할 수 없었다**(스쿼시 머지가
+브랜치 커밋을 버리므로). 그 불가능을 없앤 사실이 `SquashInvariantTests` 에 박혀 있다."""
 from __future__ import annotations
 
 import importlib.util
@@ -13,17 +17,25 @@ _spec.loader.exec_module(fac)
 
 
 class CheckTests(unittest.TestCase):
-    def test_no_changes_after_the_capture_passes(self):
-        r = fac.check({"sourceRev": "abc1234", "states": [{"id": "view__3d"}]}, [])
+    M = {"sourceRev": "abc1234", "sourceTree": "t" * 40, "states": [{"id": "view__3d"}]}
+
+    def test_the_same_tree_passes(self):
+        r = fac.check(self.M, [], "t" * 40)
         self.assertTrue(r["ok"]); self.assertEqual(r["states"], 1)
 
-    def test_a_commit_touching_app_src_after_the_capture_fails(self):
-        r = fac.check({"sourceRev": "abc1234", "states": []}, ["deadbee fix(view): reorder lens rows"])
-        self.assertFalse(r["ok"]); self.assertEqual(len(r["changes"]), 1)
+    def test_a_different_tree_fails(self):
+        r = fac.check(self.M, [], "u" * 40)
+        self.assertFalse(r["ok"])
 
-    def test_a_manifest_without_a_revision_fails_by_itself(self):
-        r = fac.check({"states": []}, [])
-        self.assertFalse(r["ok"]); self.assertIn("sourceRev", r["reason"])
+    def test_commits_do_not_decide_the_verdict(self):
+        """계보는 설명이지 판정이 아니다. 리비전 대조 시절에는 이 줄이 반대였고, 그래서
+        스쿼시 머지 뒤 main 이 무조건 빨개졌다."""
+        self.assertTrue(fac.check(self.M, ["deadbee fix(view): reorder lens rows"], "t" * 40)["ok"])
+        self.assertFalse(fac.check(self.M, [], "u" * 40)["ok"])
+
+    def test_a_manifest_without_a_tree_fails_by_itself(self):
+        r = fac.check({"sourceRev": "abc1234", "states": []}, [], "t" * 40)
+        self.assertFalse(r["ok"]); self.assertIn("sourceTree", r["reason"])
 
 
 def _shallow(repo) -> bool:
@@ -40,6 +52,9 @@ class GitTests(unittest.TestCase):
             self.skipTest("shallow checkout: the gate refuses to judge here by contract")
         m = json.loads((HUB / "reports" / "captures" / "app" / "manifest.json").read_text(encoding="utf-8"))
         self.assertTrue(m.get("sourceRev"), "app manifest carries no sourceRev")
+        self.assertTrue(m.get("sourceTree"), "app manifest carries no sourceTree")
+        # 지문은 캡처한 그 리비전의 트리여야 한다 — 아무 값이나 적혀 있으면 판정이 거짓이 된다.
+        self.assertEqual(m["sourceTree"], fac.source_tree(m["sourceRev"]))
         changes = fac.changes_since(m["sourceRev"])
         self.assertIsInstance(changes, list)
 
@@ -64,6 +79,79 @@ class GitTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as cm:
                 fac.changes_since(first, paths=("app",), repo=clone)
             self.assertIn("shallow", str(cm.exception))
+
+
+class TreeTests(unittest.TestCase):
+    def test_the_tree_of_a_known_revision_reads_back(self):
+        if _shallow(fac.REPO):
+            self.skipTest("shallow checkout: HEAD~ may not exist here")
+        self.assertRegex(fac.source_tree("HEAD"), r"^[0-9a-f]{40}$")
+
+    def test_an_unknown_path_raises_instead_of_passing(self):
+        with self.assertRaises(RuntimeError):
+            fac.source_tree("HEAD", paths=("no/such/dir",))
+
+
+def _repo(d, env):
+    """커밋 둘짜리 리포. `app/src` 아래에 파일을 두어 감시 경로를 흉내 낸다."""
+    import subprocess
+    run = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, env=env)
+    src = pathlib.Path(d, "src"); src.mkdir()
+    run("init", "-q", "-b", "main", cwd=src)
+    app = pathlib.Path(src, "app", "src"); app.mkdir(parents=True)
+    pathlib.Path(app, "a.ts").write_text("0")
+    run("add", ".", cwd=src); run("commit", "-q", "-m", "base", cwd=src)
+    return src, run
+
+
+class SquashInvariantTests(unittest.TestCase):
+    """이 게이트가 트리로 재는 **이유**. 스쿼시 머지는 커밋을 새로 만들지만 트리는 그대로
+    옮긴다 — 그래서 브랜치에서 캡처한 지문이 머지된 main 에서도 맞는다. 리비전 대조는
+    이 자리에서 무너졌다(브랜치 커밋이 main 의 조상이 아니라 항상 '변경됨'으로 잡혔다)."""
+
+    def test_squash_merge_keeps_the_tree_and_changes_the_commit(self):
+        import os
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                   "GIT_COMMITTER_EMAIL": "t@t", "HOME": d, "PATH": os.environ["PATH"]}
+            src, run = _repo(d, env)
+            run("switch", "-q", "-c", "feat", cwd=src)
+            pathlib.Path(src, "app", "src", "a.ts").write_text("1")
+            run("add", ".", cwd=src); run("commit", "-q", "-m", "change", cwd=src)
+            branch = subprocess.run(["git", "rev-parse", "HEAD"], cwd=src, capture_output=True,
+                                    text=True, env=env).stdout.strip()
+            branch_tree = fac.source_tree(branch, paths=("app/src",), repo=src)
+
+            run("switch", "-q", "main", cwd=src)
+            run("merge", "-q", "--squash", "feat", cwd=src)
+            run("commit", "-q", "-m", "change (#1)", cwd=src)
+            merged = subprocess.run(["git", "rev-parse", "HEAD"], cwd=src, capture_output=True,
+                                    text=True, env=env).stdout.strip()
+
+            self.assertNotEqual(branch, merged, "스쿼시가 커밋을 새로 만들지 않았다")
+            self.assertEqual(branch_tree, fac.source_tree(merged, paths=("app/src",), repo=src),
+                             "스쿼시 머지가 app/src 트리를 바꿨다 — 이 게이트의 전제가 깨진다")
+            # 그리고 브랜치에서 뜬 지문이 머지된 곳에서도 통과한다.
+            man = {"sourceRev": branch, "sourceTree": branch_tree, "states": []}
+            self.assertTrue(fac.check(man, [], fac.source_tree(merged, paths=("app/src",), repo=src))["ok"])
+
+    def test_a_shallow_clone_can_still_be_judged(self):
+        """얕은 체크아웃은 이제 판정을 막지 않는다 — 이 물음에는 역사가 필요 없다.
+        (커밋 목록만 못 낸다. `changes_since` 의 계약은 그대로다.)"""
+        import os
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                   "GIT_COMMITTER_EMAIL": "t@t", "HOME": d, "PATH": os.environ["PATH"]}
+            src, run = _repo(d, env)
+            clone = pathlib.Path(d, "clone")
+            subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{src.as_posix()}",
+                            str(clone)], cwd=d, check=True, capture_output=True, env=env)
+            self.assertTrue(_shallow(clone), "얕은 클론이 아니다 — 이 검사가 아무것도 안 잰다")
+            self.assertRegex(fac.source_tree("HEAD", paths=("app/src",), repo=clone), r"^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":

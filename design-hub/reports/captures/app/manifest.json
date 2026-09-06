@@ -878,5 +878,7 @@
  ],
  "updatedAt": "2026-09-06T07:08:26.399Z",
  "sourceRev": "5690fece5bae095eeb22fe2c2e49930dd7b6576f",
- "sourceRevNote": "Vinc commit whose app/src the captures rendered (vite dev on this worktree)"
+ "sourceRevNote": "Vinc commit whose app/src the captures rendered (vite dev on this worktree)",
+ "sourceTree": "87774d7ac8fa97dfb43c65fff8a30fa0cf4da05e",
+ "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)"
 }
