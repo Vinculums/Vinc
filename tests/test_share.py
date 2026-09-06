@@ -277,6 +277,80 @@ class PackDocumentsE2E(unittest.TestCase):
         self.assertIn("mismatch", cross.get("error") or "")
 
 
+@unittest.skipIf(_SHARE_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DomainSubtreeScopeE2E(unittest.TestCase):
+    """주제 스코프는 **하위 트리**다 — 부모 주제를 공유해도 팩이 비지 않는다.
+
+    정확일치 시절엔 부모 주제로 공유하면 개념 0건 → `_docs_for_concepts` 가 문서까지
+    0으로 만들어 **빈 팩이 오류 없이** 나갔다. 슬래시가 요점이라 형제 주제
+    (`vinc/designsystem`)는 들어오면 안 된다. FakeStore 는 WHERE 를 안 보므로 실엔진이다.
+    """
+    TEXT = ("Design tokens carry the value layer of the system. "
+            "The Contrast floor is fixed by those tokens.")
+
+    def _store(self):
+        import tempfile, os
+        from store.config import load_config
+        from store.backend import open_store
+        st = open_store(load_config({"data_dir": os.path.join(tempfile.mkdtemp(), "db")}))
+        st.provision(dim=4)
+        self.addCleanup(st.close)
+        return st
+
+    def _seed(self, st, owner="user:alice", pre=""):
+        """⚠ 노드 id 는 **전역 네임스페이스**라 두 owner 가 같은 슬러그를 못 쓴다
+        (남의 id 는 경고와 함께 skip 된다). 그래서 owner 마다 `pre` 로 가른다."""
+        from api import fragment as frag, docstore as ds
+        res = frag.merge_fragment({"owner": owner, "edges": [], "nodes": [
+            {"id": f"concept:{pre}design-tokens", "type": "concept", "title": "Design tokens",
+             "domain": "vinc/design/tokens"},
+            {"id": f"concept:{pre}contrast-floor", "type": "concept", "title": "Contrast floor",
+             "domain": "vinc/design/tokens"},
+            {"id": f"ep:{pre}token-review", "type": "episode", "title": "Token review",
+             "domain": "vinc/design/tokens"},
+            # 형제 주제 — 접두에 슬래시를 안 붙이면 이것까지 딸려 온다.
+            {"id": f"concept:{pre}designsystem-note", "type": "concept",
+             "title": "Designsystem note", "domain": "vinc/designsystem"},
+        ]}, store=st)
+        self.assertEqual(res.get("warnings") or [], [])
+        put = ds.put_doc(st, owner=owner, text=self.TEXT, title="Tokens", origin="tokens.md")
+        self.assertTrue(put.get("executed"))
+        return put["doc_id"]
+
+    def test_parent_topic_pulls_child_concepts_and_documents(self):
+        st = self._store()
+        doc = self._seed(st)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        counts = pack["manifest"]["counts"]
+        self.assertEqual(counts["concepts"], 2)
+        self.assertEqual(counts["records"], 1)          # Episode 도 같은 술어를 쓴다
+        self.assertEqual(counts["documents"], 1)        # 개념이 와야 문서가 따라온다
+        self.assertEqual([d["doc_id"] for d in pack["documents"]], [doc])
+        self.assertEqual(len(pack["fragment"]["nodes"]), counts["concepts"] + counts["records"])
+
+    def test_sibling_topic_is_not_swept_in(self):
+        st = self._store()
+        self._seed(st)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        ids = {n["id"] for n in pack["fragment"]["nodes"]}
+        self.assertEqual(ids, {"concept:design-tokens", "concept:contrast-floor",
+                               "ep:token-review"})
+        self.assertNotIn("concept:designsystem-note", ids)   # 접두는 `d + "/"` 다
+
+    def test_subtree_scope_still_stops_at_the_owner(self):
+        # SEC-1 — 접두일치가 소유자를 넘지 않는다.
+        st = self._store()
+        self._seed(st, owner="user:alice")
+        self._seed(st, owner="user:bob", pre="b-")
+        pack = share.build_share_pack(owner="user:bob", domain="vinc/design", store=st)
+        self.assertEqual(pack["manifest"]["counts"]["documents"], 1)
+        b_docs = {d["doc_id"] for d in pack["documents"]}
+        a_docs = {r["d"] for r in st.run(
+            "MATCH (c:Chunk) WHERE c.owner_id=$o RETURN DISTINCT c.doc_id AS d",
+            {"o": "user:alice"})}
+        self.assertEqual(b_docs & a_docs, set())
+
+
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class PackTimeContract(unittest.TestCase):
     """팩이 나르는 시간의 계약(발주자 결정 2026-08-17).

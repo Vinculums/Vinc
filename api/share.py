@@ -46,8 +46,12 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 근거: [[vinc.plan.node-pk-namespacing]] §7
         params["ids"] = pkns.keys(owner, ids)
     elif domain:
-        where.append("c.domain = $domain")
-        params["domain"] = domain
+        # 주제 스코프는 **하위 트리**다 — 정확일치면 부모 주제를 공유할 때 개념이 0건
+        # 나오고, 그러면 `_docs_for_concepts` 가 문서까지 0으로 만들어 **빈 팩이 오류
+        # 없이 나간다**. 판정은 `query.domain_subtree_where` 한 벌만 쓴다(같은 화면의
+        # 렌즈 소속도 그 규칙이다: app/src/surfaces/view.ts `inLens`).
+        # 근거: [[record:query-scope-ignored-the-topic-tree-it-was-standing-on]]
+        where.append(q.domain_subtree_where(["c.domain"], [domain], params))
     cypher = (
         f"MATCH (c:Concept) WHERE {' AND '.join(where)} "
         "RETURN c.concept_id AS id, c.title AS title, c.domain AS domain, "
@@ -68,8 +72,9 @@ def _episodes_plan(*, owner: str, domain: str | None = None) -> q.QueryPlan:
     where = ["e.owner_id = $owner"]
     params: dict = {"owner": owner}
     if domain:
-        where.append("e.domain = $domain")
-        params["domain"] = domain
+        # 개념과 **같은 술어**를 쓴다 — 한쪽만 하위 트리로 두면 부모 주제를 공유할 때
+        # Episode 만 빠져 팩이 반쪽이 된다.
+        where.append(q.domain_subtree_where(["e.domain"], [domain], params))
     cypher = (
         f"MATCH (e:Episode) WHERE {' AND '.join(where)} "
         "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
