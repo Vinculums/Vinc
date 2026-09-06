@@ -2,6 +2,9 @@ import { api, cfg } from "./api";
 import type { NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
+import type { ThemeMode } from "./theme";
+import { tintMap } from "./view-tint";
+import { loadPrefs } from "./view-prefs";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
  *
@@ -40,6 +43,27 @@ let active: { domain?: string; nodeId?: string } = {};
 /** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
 let picked = new Set<string>();
 let expanded = new Set<string>();
+
+/** 주제 색(열린 층) — 지도와 **같은 토글**(`ViewPrefs.domainTint`)을 읽고 같은
+ *  `tintMap` 으로 만든다. paint 마다 한 번 만들어 줄마다 조회한다.
+ *
+ *  ⚠ **색을 배정하는 배열은 이 트리의 것이다**(지도의 것을 받아 오지 않는다).
+ *  `tintMap` 은 넘긴 주제 집합을 정렬해 순위로 색을 주므로, 지도의 배열을 따라가면
+ *  (1) 스코프를 옮길 때마다 왼쪽 트리의 색이 함께 흔들리고 (2) 지금 지도에 없는
+ *  주제의 줄은 색을 잃으며 (3) 지도가 없는 표면에서는 색이 통째로 사라진다. 트리는
+ *  자기 주제 전량을 늘 갖고 있어 집합이 안정적이라 이쪽을 정본으로 뒀다.
+ *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이고, 받아들이는
+ *  근거는 이 색이 뜻을 나르지 않는다는 성질이다(꺼도 아무 정보가 사라지지 않는다:
+ *  [[decision:topic-tint-ships-on]]). */
+let tints: Map<string, string> | null = null;
+const themeMode = (): ThemeMode =>
+  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+/** 줄의 style 에 얹을 조각. ⚠ 깊이 잉크는 CSS 가 **부분문자열**로 읽는다
+ *  (app.css 의 `[style*="--ink:0"]`) — `--ink:N` 리터럴을 깨지 않도록 **뒤에** 붙인다. */
+const tintStyle = (domain: string): string => {
+  const c = tints?.get(domain.trim());
+  return c ? `;--tint:${c}` : "";
+};
 
 /** 주제 줄 **아래**에 무엇이 걸리는가. 주제 줄 자체는 두 갈래에서 같다 —
  *  이것은 서피스 내비가 아니라 이 열이 무엇을 펴는지의 선택이고, 그래서
@@ -170,11 +194,13 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
   //   --ink  : 잉크 3단(0=본문 · 1=흐림 · 2+=더 흐림). 색은 2단까지만 — 계속 흐리면
   //            AA 하한에 먼저 닿는다. 그 아래는 들여쓰기와 도트가 받는다.
   //   aria-level : 시각 밖 통로. 주제가 1단이므로 문서는 depth+2 다.
+  // 그 위에 --tint 가 하나 더 얹히는데 그것은 깊이가 아니라 **주제**를 말하고, 글자가
+  // 아니라 도트에만 앉는다 — 잉크 3단과 자리를 다투지 않게 하려는 것이다.
   const ink = Math.min(depth, 2);
   return `<button class="lnb-doc${on ? " on" : ""}" role="treeitem"
     aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-doc="${esc(d.doc_id)}"
     data-node="${esc(d.node_id || "")}" data-dom="${esc(domain)}"
-    style="--lvl:${depth};--ink:${ink}" data-tip="${esc(tip)}">
+    style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}" data-tip="${esc(tip)}">
     <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(d.title || d.doc_id)}</span>
   </button>`;
 }
@@ -188,7 +214,7 @@ function nodeRow(nd: NavNode, domain = ""): string {
   const ink = Math.min(depth, 2);
   return `<button class="lnb-doc lnb-node${on ? " on" : ""}" role="treeitem"
     aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-nodeid="${esc(nd.id)}"
-    data-dom="${esc(domain)}" style="--lvl:${depth};--ink:${ink}"
+    data-dom="${esc(domain)}" style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}"
     data-tip="${esc(COPY.ui.lnb.nodeTip)}">
     <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(nd.title || nd.id)}</span>
   </button>`;
@@ -272,6 +298,10 @@ function paint() {
   }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
+  // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
+  // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
+  tints = loadPrefs().domainTint
+    ? tintMap(groups.map((g) => g.domain), themeMode()) : null;
   const topicCount = (tree?.domains || []).length;
   let html = navRows();
   html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
@@ -360,6 +390,10 @@ async function openDoc(docId: string, nodeId: string, domain?: string) {
   const { openDocSheet } = await import("./doc-editor");
   openDocSheet({ owner: cfg.owner, docId, onSaved: () => void refreshLnb() });
 }
+
+/** 주제 색 토글이 바뀌었다 — 지도와 **같은 토글**이라 왼쪽 트리도 함께 따라간다.
+ *  값은 안 받는다: 정본은 localStorage(`vinc.view.prefs`)이고 paint 가 다시 읽는다. */
+export function repaintLnb(): void { paint(); }
 
 export function mountLnb() {
   if (wired) return;

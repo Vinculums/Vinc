@@ -448,13 +448,18 @@ body {
 .lnb-doc.on {
   background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
-/* 도트도 깊이를 거든다: 0단은 채워진 점(가지의 시작), 그 아래는 빈 점이 점점 작아진다. */
+/* 도트도 깊이를 거든다: 0단은 채워진 점(가지의 시작), 그 아래는 빈 점이 점점 작아진다.
+   주제 색(`--tint`)은 **여기에만** 앉는다 — 글자에 얹으면 잉크 3단과 정면으로 다투고,
+   도트는 이미 장식이라(aria-hidden) 색을 꺼도 잃는 정보가 없다. 토글이 꺼져 있으면
+   줄에 --tint 가 안 실려 아래 대체값이 그대로 쓰인다(합계 뷰 `.pl-bd-dot` 과 같은 관용구).
+   활성 줄(.lnb-doc.on)은 **뒤에서** --ring 으로 덮으므로 주제 색이 선택 표시를 안 가린다. */
 .lnb-dot {
   flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px;
-  border: 1px solid hsl(var(--caption-foreground));
+  border: 1px solid var(--tint, hsl(var(--caption-foreground)));
 }
 .lnb-doc[style*="--ink:0"] .lnb-dot {
-  background: hsl(var(--muted-foreground)); border-color: hsl(var(--muted-foreground));
+  background: var(--tint, hsl(var(--muted-foreground)));
+  border-color: var(--tint, hsl(var(--muted-foreground)));
 }
 .lnb-doc[style*="--ink:2"] .lnb-dot { width: 4px; height: 4px; }
 .lnb-doc.on .lnb-dot { background: hsl(var(--ring)); border-color: hsl(var(--ring)); }
