@@ -378,6 +378,26 @@ body {
   font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
   color: hsl(var(--caption-foreground)); text-transform: uppercase;
 }
+/* 갈래 칩(문서 · 노드) — 주제 줄 아래에 무엇이 걸리는지의 선택이다. 세그먼트 하나에
+   둘을 넣는 이유는 배타이기 때문이고, 그래서 radiogroup 으로 낸다. 여기서 색만으로
+   상태를 말하지 않는다: 켜진 쪽은 배경 + 글자 굵기까지 함께 바뀐다. */
+.lnb-mode {
+  display: flex; gap: .15rem; margin: 0 .4rem .35rem; padding: .15rem;
+  border-radius: var(--radius-sm, .5rem); background: hsl(var(--muted) / .5);
+}
+.lnb-modechip {
+  flex: 1 1 0; border: 0; background: none; cursor: pointer;
+  padding: .28rem .3rem; border-radius: calc(var(--radius-sm, .5rem) - .15rem);
+  font: inherit; font-size: var(--fs-sm); color: hsl(var(--caption-foreground));
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.lnb-modechip:hover { color: hsl(var(--foreground)); }
+.lnb-modechip.on {
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font-weight: 600;
+  box-shadow: var(--shadow-elev-1);
+}
+.lnb-modechip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .lnb-modechip { transition: none; } }
 .lnb-tree { display: flex; flex-direction: column; }
 .lnb-group {
   display: flex; align-items: center; gap: .35rem; width: 100%; min-height: 1.9rem;
