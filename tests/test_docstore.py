@@ -912,6 +912,25 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(doc["topics"][0], "bio/lab")
         self.assertIn("phys", doc["topics"], "파생 주제는 뒤에 남는다(발견은 유효)")
 
+    def test_topic_applies_even_when_the_text_is_unchanged(self):
+        """본문이 그대로여도 주제는 적힌다.
+
+        `put_doc` 은 내용 해시가 같으면 조기 반환한다. 주제 쓰기가 그 뒤에 있으면
+        **가장 흔한 호출 형태**("본문은 그대로 두고 주제만 적는다")가 통째로 무시된다 —
+        실측 2026-09-06, 라이브에서 skipped=True 이고 topic 이 안 붙었다. 주제는 본문과
+        독립이므로 건너뛴 판에서도 적용돼야 한다."""
+        did = self._seed_mention_doc()
+        again = ds.put_doc(self.store, owner="user:a", doc_id=did,
+                           text=self._doc_text(did), title="언급", topic="bio/lab")
+        self.assertTrue(again["skipped"], "본문이 같으면 건너뛴 판이어야 한다")
+        self.assertEqual(again.get("topic"), "bio/lab", "건너뛰어도 주제는 적힌다")
+        self.assertEqual(self._doc_row(did)["topic"], "bio/lab")
+
+    def _doc_text(self, did):
+        rows = self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
+                              "RETURN c.text AS t, c.chunk_id AS i", {"d": did}) or []
+        return "".join(r["t"] for r in sorted(rows, key=lambda r: r["i"]))
+
     def test_authored_topic_survives_a_rewrite_that_does_not_pass_one(self):
         """주제를 안 실은 재작성이 적힌 주제를 지우면 안 된다 — 그것이 제목을 비웠던
         경로와 같은 종류의 사고다(`title` 3값 처리의 이유)."""
