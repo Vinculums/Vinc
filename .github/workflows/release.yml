@@ -129,16 +129,23 @@ jobs:
           - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
             container: localhost:5000/vinc-release-linux:22.04
-          # ⚠ 이 둘은 호스티드로 남는다. macOS 는 로컬 러너가 아예 없고(그리고 분을
-          # 10배로 센다), 윈도우는 릴리스 빌드가 러너의 MSVC 툴체인에 의존한다.
-          # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
-          - os: windows-latest
+          # ⚠ 윈도우도 셀프호스티드다(2026-09-07). 직전까지 호스티드로 남겨 둔
+          # 이유는 "릴리스 빌드가 러너의 MSVC 툴체인에 의존한다" 하나였는데,
+          # ci.yml 의 `rust` 잡이 **같은 라벨**에서 `cargo check` 와 `cargo test` 를
+          # 링크까지 성공시킨다(런 34054118942) — 링커는 그 기계에 있다.
+          # 여기가 부르는 파이썬 3.11 과 노드 20 도 러너 툴캐시에 이미 있다.
+          # 릴리스당 약 $0.47 이 여기서 사라진다.
+          # ⚠ 이 다리를 다시 호스티드로 되돌리면 아래 steps 첫머리의 Git Bash 스텝도
+          # 함께 판정할 것 — 그 스텝은 이 기계의 PATH 사실을 고치는 것이다.
+          - os: [self-hosted, windows, vinc-local]
             triple: x86_64-pc-windows-msvc
+          # ⚠ macOS 만 호스티드로 남는다. 로컬 러너가 아예 없고 분을 10배로 센다.
+          # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
           - os: macos-latest
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     # 리눅스만 컨테이너다. 나머지 둘은 `matrix.container` 가 아예 없어 빈 문자열로
-    # 평가되고, 빈 값은 "컨테이너 없음" 이다(호스티드 잡의 동작은 그대로).
+    # 평가되고, 빈 값은 "컨테이너 없음" 이다(그 두 다리는 러너 위에서 그대로 돈다).
     container: ${{ matrix.container }}
     # 매달린 잡을 자르는 장치. 셀프호스티드에서 대가는 분이 아니라 **러너 하나를
     # 붙잡는 것**이고, 호스티드에서는 macOS 가 10배로 세는 분이다. 실측은 20분대다.
@@ -149,10 +156,25 @@ jobs:
       # 컨테이너가 아닌 다리에서는 아무 일도 하지 않으므로 잡 전체에 둔다.
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
-      # ⚠ 여기 있던 "Prefer Git Bash on Windows" 스텝을 걷어냈다. 그것은 노트북
-      # 러너의 사실이었다 — 그 기계는 System32 가 PATH 에서 Git 보다 앞이라
-      # `shell: bash` 가 WSL 의 bash 로 잡혔다. 호스티드 windows-latest 는 Git Bash 가
-      # 먼저라 그 문제가 없다(ci.yml 이 #151 에서 같은 이유로 같은 스텝을 지웠다).
+      # 노트북 러너는 System32 가 PATH 에서 Git 보다 앞이라 `shell: bash` 가 WSL 의
+      # bash 로 잡힌다. Git Bash 를 앞에 세운다(ci.yml 동형).
+      #
+      # ⚠ 이 스텝은 지웠다가 되살린 것이다. 호스티드 windows-latest 는 Git Bash 가
+      # PATH 앞이라 필요가 없어서 걷어냈었다. 2026-09-07 에 윈도우 다리가 다시 그
+      # 기계로 돌아왔으므로 다시 필요하다. ci.yml 도 2026-09-06 에 같은 이유로 같은
+      # 스텝을 되돌렸다(#151 이 지웠던 것을).
+      # ⚠ 아래 `runner-preflight` 보다 **앞**이어야 한다. 그 액션의 `bash` 가 WSL 로
+      # 가면 엉뚱한 기계의 jq·gh 를 검사해, 있는 것을 없다고(또는 없는 것을 있다고)
+      # 답한다 — 그 액션 헤더가 그 이유를 적어 놓았다.
+      - name: Prefer Git Bash on Windows (system32 bash is WSL)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
+          $binDir  = Join-Path $gitRoot 'bin'
+          if (Test-Path (Join-Path $binDir 'bash.exe')) {
+            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
 
       - uses: actions/checkout@v4
 
@@ -299,6 +321,15 @@ jobs:
       # 셀프호스티드이고 실측(런 34030111531)은 **복원 2초 · 저장 491초 대 컴파일
       # 640초**였다 — 저장이 컴파일의 8할을 도로 먹는다. ci.yml 이 같은 이유로 같은
       # 액션을 뺐다([[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
+      #
+      # ⚠ 조건이 `container == ''` 라 윈도우 다리는 셀프호스티드가 된 뒤에도 이 액션을
+      # 계속 쓴다. 오타가 아니다 — ci.yml 과 조건이 다르기 때문이다. ci.yml 은
+      # `CARGO_TARGET_DIR` 를 체크아웃 **밖**에 두어 디스크가 산출물을 들고 있지만,
+      # 여기는 그러지 않는다(업로드 스텝이 `app/src-tauri/target/release/bundle` 를
+      # 글자 그대로 찾는다). 그래서 `actions/checkout` 의 기본 `clean: true` 가
+      # `git clean -ffdx` 로 매번 `target/` 을 지우고, 그 조건에서는 캐시가 할 일이
+      # 남는다. ⚠ 아직 이 다리에서 재 본 적은 없다 — 저장이 컴파일보다 비싸면
+      # 처방은 이 줄이 아니라 `CARGO_TARGET_DIR` 와 업로드 경로를 같이 옮기는 것이다.
       - uses: swatinem/rust-cache@v2
         if: matrix.container == ''
         with:
