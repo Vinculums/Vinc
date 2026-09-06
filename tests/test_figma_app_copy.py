@@ -26,10 +26,18 @@ class CheckTests(unittest.TestCase):
         self.assertFalse(r["ok"]); self.assertIn("sourceRev", r["reason"])
 
 
+def _shallow(repo) -> bool:
+    import subprocess
+    return subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=repo, capture_output=True, text=True).stdout.strip() == "true"
+
+
 class GitTests(unittest.TestCase):
     def test_the_committed_manifest_is_fresh_or_names_the_commits(self):
-        """실제 리포 위에서: 매니페스트의 리비전이 존재하고, 결과가 판정 가능한 형태여야 한다."""
+        """실제 리포 위에서: 매니페스트의 리비전이 존재하고, 결과가 판정 가능한 형태여야 한다.
+        얕은 체크아웃(fetch-depth 0 이 아닌 CI 잡)에서는 게이트가 판정을 거부하는 것이 계약이라 건너뛴다."""
         import json
+        if _shallow(fac.REPO):
+            self.skipTest("shallow checkout: the gate refuses to judge here by contract")
         m = json.loads((HUB / "reports" / "captures" / "app" / "manifest.json").read_text(encoding="utf-8"))
         self.assertTrue(m.get("sourceRev"), "app manifest carries no sourceRev")
         changes = fac.changes_since(m["sourceRev"])
@@ -38,6 +46,24 @@ class GitTests(unittest.TestCase):
     def test_an_unknown_revision_raises_instead_of_passing(self):
         with self.assertRaises(RuntimeError):
             fac.changes_since("0000000000000000000000000000000000000000")
+
+    def test_a_shallow_checkout_raises_instead_of_judging(self):
+        """잘린 역사는 병합 커밋을 부모 없는 뿌리로 읽어 거짓 FAIL 을, 경계 너머 변경을 숨겨 거짓 PASS 를 낸다(2026-09-06 CI)."""
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            src, clone = pathlib.Path(d, "src"), pathlib.Path(d, "clone")
+            src.mkdir()
+            env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t", "HOME": d, "PATH": __import__("os").environ["PATH"]}
+            run = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, env=env)
+            run("init", "-q", cwd=src)
+            for i in range(2):
+                pathlib.Path(src, "app").mkdir(exist_ok=True); pathlib.Path(src, "app", "f.txt").write_text(str(i))
+                run("add", ".", cwd=src); run("commit", "-q", "-m", f"c{i}", cwd=src)
+            first = subprocess.run(["git", "rev-list", "--max-parents=0", "HEAD"], cwd=src, capture_output=True, text=True, env=env).stdout.strip()
+            run("clone", "-q", "--depth", "1", f"file://{src.as_posix()}", str(clone), cwd=d)
+            with self.assertRaises(RuntimeError) as cm:
+                fac.changes_since(first, paths=("app",), repo=clone)
+            self.assertIn("shallow", str(cm.exception))
 
 
 if __name__ == "__main__":
