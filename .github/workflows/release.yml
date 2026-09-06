@@ -76,6 +76,16 @@ jobs:
   # (실측 런 34030111531 — 준비물 636초 + webkit deps 1280초). 도커 오버레이가 WSL
   # 위에서 dpkg 언팩에 느린 것이고, 그 32분이 레이어 캐시로 0 이 된다.
   # ⚠ 태그는 아래 `build` 매트릭스의 `container:` 와 **글자 그대로 같아야 한다**.
+  #
+  # ⚠ **왜 레지스트리까지 세우나.** 러너는 `container:` 이미지를 로컬에 있어도 보지
+  # 않고 **무조건 `docker pull` 한다**(실측 런 34035667084 — 로컬 태그만 두었더니
+  # `pull access denied ... repository does not exist` 로 잡이 18초에 죽었다). 그래서
+  # 이름이 실재하는 레지스트리를 가리켜야 한다. 바깥 레지스트리는 두 이유로 안 쓴다:
+  # GitHub Packages 저장은 Actions 아티팩트와 **같은 0.5GB 한도**를 나눠 쓰는데 이
+  # 이미지가 375MB 이고, 그 한도는 v0.6.0·v0.6.5 릴리스를 이미 한 번 막았다(이 파일
+  # 머리의 "아티팩트 미사용" 절이 그 사고다). 공개 패키지로 내보내는 것은 이 변경이
+  # 혼자 내릴 결정이 아니다. 그래서 러너 안에 레지스트리 하나를 세운다 — 바깥으로
+  # 나가지 않고, 한도를 안 먹고, 없으면 이 잡이 다시 세운다.
   image:
     needs: version-gate
     runs-on: [self-hosted, linux, vinc-local]
@@ -85,11 +95,18 @@ jobs:
       - uses: ./.github/actions/runner-preflight
         with:
           tools: docker
-      - name: Bake the linux build image (layer cache makes this a few seconds)
+      - name: Bake the linux build image and serve it from a runner-local registry
         run: |
-          docker build -t vinc-release-linux:22.04 \
+          set -euo pipefail
+          # 멱등하게 세운다 — 있으면 켜고, 없으면 만든다.
+          docker start vinc-registry 2>/dev/null \
+            || docker run -d --restart=always --name vinc-registry -p 5000:5000 registry:2
+          docker build -t localhost:5000/vinc-release-linux:22.04 \
             -f packaging/Dockerfile.release-linux packaging/
-          docker run --rm vinc-release-linux:22.04 bash -c 'id; ldd --version | head -1'
+          docker push localhost:5000/vinc-release-linux:22.04
+          # 굽기만 하고 못 쓰는 이미지를 다음 잡에서 발견하지 않는다.
+          docker run --rm localhost:5000/vinc-release-linux:22.04 \
+            bash -c 'id; ldd --version | head -1'
 
   build:
     needs: [version-gate, image]
@@ -111,7 +128,7 @@ jobs:
           # 근거: [[record:every-recurring-deploy-now-runs-on-the-local-runner-and-tmpdir-travels-with-the-job-2026-09-06]]
           - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
-            container: vinc-release-linux:22.04
+            container: localhost:5000/vinc-release-linux:22.04
           # ⚠ 이 둘은 호스티드로 남는다. macOS 는 로컬 러너가 아예 없고(그리고 분을
           # 10배로 센다), 윈도우는 릴리스 빌드가 러너의 MSVC 툴체인에 의존한다.
           # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
