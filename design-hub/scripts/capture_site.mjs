@@ -150,7 +150,7 @@ add({ id: "community__error", url: "/community/", trigger: "packs 500", api: com
 add({ id: "community__no-match", url: "/community/", trigger: "search 'zzzz' matches nothing", api: commApi(null), full: false, before: async (p) => { await p.waitForSelector("#grid > *"); await p.fill("#q", "zzzz"); await sleep(400); } });
 add({ id: "community__modal-confirm-card", url: "/community/", trigger: "click a card: confirm modal (Close / Import)", api: commApi(ME), full: false, before: (p) => openModal(p, "card") });
 add({ id: "community__modal-confirm-button", url: "/community/", trigger: "click Import on a card: confirm modal (Cancel / Confirm)", api: commApi(ME), full: false, before: (p) => openModal(p, "button") });
-add({ id: "community__modal-legend-focus", url: "/community/", trigger: "click a legend chip in the modal: one domain focused", api: commApi(ME), full: false, before: async (p) => { await openModal(p); await p.locator("#mViz button, #mViz [role=button], #mViz .chip").first().click(); await sleep(300); } });
+add({ id: "community__modal-legend-focus", url: "/community/", trigger: "click a legend chip in the modal: one domain focused", api: commApi(ME), full: false, before: async (p) => { await openModal(p); const chip = p.locator("#mViz button, #mViz [role=button], #mViz .chip, #mViz li, #mViz [data-domain]").first(); if (await chip.count()) await chip.click(); else await p.locator("#mViz").getByText(/physics/i).first().click(); await sleep(300); } });
 add({ id: "community__modal-signed-out", url: "/community/", trigger: "Import while signed out: sign-in modal", api: commApi(null), full: false, before: async (p) => { await p.waitForSelector("#grid > *"); await p.locator("#grid button").first().click(); await p.waitForSelector("#modal", { state: "visible" }); await sleep(300); } });
 const importFlow = (imp) => async (p) => { await openModal(p); await p.locator("#mGo").click(); await sleep(900); };
 add({ id: "community__modal-busy", url: "/community/", trigger: "Confirm: import pending, four steps animate", api: commApi(ME, ok(PACKS), "hang"), full: false, before: importFlow() });
@@ -322,9 +322,16 @@ for (const d of ["", "mcp/", "agents/", "cli/", "graph-md/", "mcp/sign-in/"]) ad
 add({ id: "docs__mobile-800", url: "/docs/mcp/", trigger: "viewport 800: sidebar becomes a horizontal strip", api: baseApi(null), vp: { width: 800, height: 900 } });
 add({ id: "docs__mobile-390", url: "/docs/", trigger: "viewport 390", api: baseApi(null), vp: MOBILE });
 
+// ── 다른 스크립트가 같은 상태 목록을 쓴다 ───────────────────────────────────
+// capture_site_figma.mjs 는 같은 상태·픽스처로 페이지를 띄운 뒤 PNG 대신 Figma html-to-design 캡처를
+// 제출한다. 상태 정의를 한 곳에 두려고 여기서 내보내고, 실행부는 직접 실행일 때만 돈다.
+export { S, install, BASE, MOBILE, sleep };
+const isMain = process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href;
+
 // ── 실행 ───────────────────────────────────────────────────────────────────
 const onlyList = ONLY ? ONLY.split(",") : null;
 const states = onlyList ? S.filter((s) => onlyList.some((o) => s.id.includes(o))) : S;
+if (!isMain) { /* imported: 실행부 건너뜀 */ } else {
 if (LIST) { for (const s of states) console.log(s.id.padEnd(40), s.trigger); console.log(states.length, "states"); process.exit(0); }
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
@@ -377,3 +384,4 @@ if (onlyList && fs.existsSync(mpath)) {
 fs.writeFileSync(mpath, JSON.stringify(manifest, null, 1));
 console.log(`\n${manifest.states.length - fails} captured, ${fails} failed → ${path.relative(HUB, OUT)}`);
 process.exit(fails ? 1 : 0);
+}
