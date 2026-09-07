@@ -2232,14 +2232,33 @@ export async function renderView(el: HTMLElement) {
              Partial<Awaited<ReturnType<typeof api.docContext>>>];
       if (detail.hidden) return;
       if (!doc.executed || doc.text === undefined) {
-        // 쓰기 창에 걸린 문서(P17)는 "못 열었다"와 다른 사건이다 — 문서는 그대로 있고
-        // 비어 있지도 않다. 여기서 돌아가므로 아래 편집기 마운트에 닿지 않는다:
-        // 상시 편집 + 2초 디바운스라, 반쪽 본문 위에 커서를 켜면 키 하나가 그것을
-        // 정본으로 만든다. 자동 재시도는 안 건다(크래시 잔해면 영원히 돈다).
+        // ⚠ **이 이른 반환은 이 패키지가 만든 것이 아니다.** `!doc.executed ||
+        // doc.text === undefined` 는 P17b 이전부터 여기 있었고, 편집기를 세우지 않는
+        // 보호는 거기서 온다(`git show <P17b 이전>:app/src/surfaces/view.ts`).
+        // P17(#241)이 `doc_get` 을 이 상태에서 `executed:false` 로 돌린 순간 쓰기 창은
+        // 이미 이 가드에 걸렸다. 그러니 그 보호를 P17b 의 공으로 적지 말 것 —
+        // 다음 사람이 보호가 어디서 오는지 잘못 안다.
+        //
+        // 이 패키지가 더한 것은 **문구 갈래 + 사람이 누르는 재시도** 둘뿐이다: 쓰기 창은
+        // "못 열었다"와 다른 사건이라(문서는 그대로 있고 비어 있지도 않다) 같은 문구로
+        // 떨어지면 화면에서 "빈 문서"로 읽힌다. 자동 재시도는 안 건다 — 크래시 잔해면
+        // 영원히 돈다.
         const busy = docMidWrite(doc);
-        detail.innerHTML = `<p class="hint">${busy ? COPY.ui.viewx.readerMidWrite
-          : COPY.ui.viewx.readerFail}</p>`
+        // 레일 머리는 이 분기에도 있어야 한다. `detail.innerHTML` 을 통째로 갈아 끼우면
+        // `.rail-head`(#rail-close)가 함께 사라져 마우스만 쓰는 사람에게 나가는 문이
+        // Esc 키뿐이 된다. 쓰기 창 중에서도 **크래시 잔해는 다음 re-put 까지 며칠 간다** —
+        // 오래 머무는 상태라 여기부터 닫는다.
+        // ⚠ 선행 결함이 남아 있다: `readerLoading`·`readerFail`·`drillFail`·`periodFail`
+        // 도 같은 모양으로 레일을 비운다(P17b 이전부터). 그 넷은 이 패키지 밖이다.
+        detail.innerHTML = `
+          <div class="rail-head">
+            <span class="hint">${COPY.ui.viewx.readerTitle}</span>
+            <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
+                    data-tip="${COPY.ui.viewx.railClose}">✕</button>
+          </div>
+          <p class="hint">${busy ? COPY.ui.viewx.readerMidWrite : COPY.ui.viewx.readerFail}</p>`
           + (busy ? `<button class="btn" id="rdr-retry">${esc(COPY.ui.viewx.readerRetry)}</button>` : "");
+        detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
         detail.querySelector("#rdr-retry")?.addEventListener("click",
           () => void openReader(docId, conceptId, chunkIndex));
         return;
