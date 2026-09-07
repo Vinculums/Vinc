@@ -112,6 +112,23 @@ jobs:
     needs: [version-gate, image]
     strategy:
       fail-fast: false
+      # ⚠ 다리를 **하나씩** 돈다. 기본(동시)으로 두면 윈도우와 리눅스의 릴리스 프로파일
+      # Rust 빌드가 **같은 16GB 기계에서 겹친다** — 리눅스는 WSL 컨테이너 안이고 윈도우는
+      # 호스트다. 2026-09-07 실측(런 34068046636): 윈도우 step 15 가 23:56:18~00:02:12 로
+      # 리눅스 다리(23:53:14~00:10:36) 창 **안쪽**에서 돌다 커밋 한도에 부딪혀 죽었다.
+      #   memory allocation of 131072 bytes failed
+      #   failed to mmap ...libtauri_utils...rlib: 페이징 파일이 너무 작습니다 (os error 1455)
+      #   rustc exit 0xc000012d (STATUS_COMMIT_LIMIT)
+      # P10 전에는 윈도우가 호스티드 VM 이라 로컬 무거운 빌드가 하나뿐이었다. 다리를
+      # 집으로 들이면서 생긴 **구조적 경합**이지 코드 결함이 아니다.
+      #
+      # 값은 벽시계로 갚는다: 세 다리가 겹쳐 약 17분이던 것이 차례로 약 31분이 된다.
+      # 태그 발행은 드물고 반쯤 발행된 릴리스는 되돌릴 수 없으므로(아래 concurrency 가
+      # 취소를 막아 둔 이유가 그것이다) 시간 쪽으로 갚는 것이 맞다.
+      # ⚠ 호스티드 macOS 다리까지 함께 직렬화된다 — matrix 의 max-parallel 은 다리를
+      # 골라 적용할 수 없다. 분 단가는 같으므로 돈은 안 늘고 벽시계만 는다.
+      # 근거: [[record:moving-the-windows-leg-home-put-two-rust-builds-on-one-machine-2026-09-07]]
+      max-parallel: 1
       matrix:
         include:
           # ⚠ **리눅스가 22.04 인 것은 러너 이미지 취향이 아니라 계약이다.** 여기서
@@ -155,6 +172,22 @@ jobs:
       # 컨테이너에는 `/dev/fuse` 가 없다. 이 변수가 마운트 대신 압축해제로 돌린다.
       # 컨테이너가 아닌 다리에서는 아무 일도 하지 않으므로 잡 전체에 둔다.
       APPIMAGE_EXTRACT_AND_RUN: "1"
+      # ⚠ 이 기계에는 PYTHONHOME·PYTHONPATH 가 **Machine·User 양쪽 스코프에** 박혀
+      # 있다(D:/Tools/Python). 러너 서비스가 그것을 물려받으므로 `setup-python` 이
+      # 받아 온 인터프리터가 **시스템 파이썬의 stdlib** 을 읽는다. 3.11 바이너리가
+      # 더 새 stdlib 을 읽으면 이렇게 죽는다(2026-09-07 실측, 런 34067216503):
+      #   AttributeError: module '_thread' has no attribute 'daemon_threads_allowed'
+      # 그래서 `pip install ladybug==0.18.0 ...` 이 첫 파이썬 스텝에서 넘어졌다.
+      #
+      # 호스티드 windows-latest 에는 그 변수가 없어 문제가 없었다 — P10 이 다리를 이
+      # 기계로 옮기면서 처음 드러난, 전형적인 "호스티드 이미지는 선언 안 된 의존"이다.
+      # CLAUDE.md 5절이 로컬 테스트에 대해 같은 함정을 이미 적어 두었고(`env -u`),
+      # 러너에는 아무도 적용하지 않았다.
+      #
+      # 빈 문자열이면 CPython 이 무시한다 — 같은 인터프리터로 실측해 unset 과 동치다.
+      # 리눅스 컨테이너와 macOS 에는 애초에 없는 변수라 빈 값이 무해하다.
+      PYTHONHOME: ""
+      PYTHONPATH: ""
     steps:
       # 노트북 러너는 System32 가 PATH 에서 Git 보다 앞이라 `shell: bash` 가 WSL 의
       # bash 로 잡힌다. Git Bash 를 앞에 세운다(ci.yml 동형).
