@@ -189,7 +189,12 @@ TB("tools-share", "Tools sheet: Share tab", async (p) => { await p.locator("#tb-
 // [[record:the-tools-share-pane-has-no-action-buttons-until-two-network-calls-return-2026-09-07]].
 const shareSheet = async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); const go = foot(p, /continue/i).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click(); await sleep(2500); };
 TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list", shareSheet);
-TB("share-result", "Share › Share: result (file destination on the desktop)", async (p) => { await shareSheet(p); await foot(p, /^share$/i).first().click(); await sleep(2500); });
+// ⚠ `share-result` 를 걷었다(2026-09-07). 데스크탑 셸에는 목적지가 `file` 하나뿐이라
+// `chooseDestination` 의 `dests.length === 1` 분기가 **저장하고 시트를 닫는다** — 결과
+// 화면이 존재하지 않는다. 실측: [공유] 클릭 39ms 뒤 저장이 돌고 800ms 안에 시트가 사라진다.
+// 그래서 이 상태는 여태 시트가 닫힌 **뒤의 지도**를 찍고 "ok" 를 답했다. 보드는 도는 코드의
+// 캡처인데 그 보드는 아무 코드도 안 그리고 있었다. 목적지 고르기 화면은 스페이스가 둘 이상일
+// 때만 뜨므로 웹 세션이 필요하고, 그 픽스처는 이 스크립트에 없다.
 TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
 TB("import-doc-sheet", "Import › pick a .md: import document sheet", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); });
 TB("graphmd", "GRAPH.md sheet", async (p) => { await p.locator("#tb-conv").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(800); });
