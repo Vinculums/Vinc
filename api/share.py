@@ -90,7 +90,8 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
     return [r for r in rows if want & set(r.get("tags") or [])]
 
 
-def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dict]:
+def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
+                       cfg=None) -> list[dict]:
     """팩의 개념이 가리키는 원문 문서를 export 형태로 모은다 — 자기완결 공유 팩
     (개념 + 그 소스 원문). 길이 **둘**이다: `(Chunk)-[:MENTIONS]->(Concept)` 역추적과
     문서 미러(`concept:doc.<doc_id>`) id 풀기. Chunk=SSoT(D45) 이후에만 존재;
@@ -98,45 +99,63 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
 
     payload 형태는 docsync.export_docs 와 동형({doc_id,title,origin,content_hash,
     updated_at,text}) — 수신측이 import_docs 로 재청킹한다(embedding·오프셋 미전송,
-    수신 기기 재생성). SEC-1: owner 스코프 청크만 역추적한다."""
-    if not concept_ids or store is None:
+    수신 기기 재생성). SEC-1: owner 스코프 청크만 역추적한다.
+
+    ``store`` 미주입이면 **여기서 연다**(`query.execute`·`import_share_pack` 과 같은
+    규약). 예전엔 `store is None` 을 "개념이 없다"와 한 줄로 묶어 빈 목록을 냈고,
+    그래서 store 를 안 넘기는 호출자(`api/cli.py` 의 `share`)가 오류도 로그도 없이
+    `documents: 0` 인 팩을 **성공으로** 받아 갔다. 같은 스코프를 store 주입으로 부르면
+    `documents: 1` 이 나오던 자리다(실측 2026-09-07). 개념은 `query.execute` 가 스스로
+    열어 제대로 나왔으므로, 팩은 "개념은 있는데 원문만 없는" 반쪽으로 저장됐다."""
+    if not concept_ids:
         return []
-    rows = store.run(
-        "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) "
-        "WHERE co.concept_id IN $ids AND c.owner_id = $o "
-        "RETURN DISTINCT c.doc_id AS doc_id",
-        {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
-    dids = {r.get("doc_id") for r in rows or [] if r.get("doc_id")}
-    # MENTIONS 만으로는 부족하다 — 그 엣지는 **본문이 개념 이름을 담을 때** 생기므로,
-    # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
-    # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
-    # 그래서 미러 id 에서 접두를 벗겨 문서 집합에 더한다(MENTIONS 와 합집합 — 중복 없음).
-    # 접두 상수는 docstore 의 것을 그대로 쓴다(사본을 세 벌로 늘리지 않는다).
-    # `pkns.strip` 은 SEP 없으면 항등이라 네임스페이싱 on/off 양쪽에서 같은 코드가 돈다.
-    for cid in concept_ids:
-        logical = pkns.strip(cid)
-        if logical.startswith(ds._DOC_MIRROR_PREFIX):
-            did = logical[len(ds._DOC_MIRROR_PREFIX):]
-            if did:
-                dids.add(did)
-    docs: list[dict] = []
-    for did in sorted(dids):
-        # SEC-1 — 미러에서 푼 doc_id 도 owner 를 건다. `get_doc` 이 owner 불일치와
-        # 부재(오타 미러·이미 지운 문서)를 둘 다 executed=False 로 답하므로, 이 한
-        # 줄이 "남의 문서 유출"과 "없는 doc_id 를 실어 임포트를 깨는 것"을 함께 막는다.
-        got = ds.get_doc(store, did, owner=owner)
-        if not got.get("executed"):
-            continue
-        docs.append({
-            "doc_id": did, "title": got.get("title") or "",
-            "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
-            "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
-            # **내용 시점만** 싣는다. `created_at` 은 안 싣는다 — 임포트가 doc_id 를 수신
-            # owner 로 새로 파생하므로 받는 쪽에서 그것은 다른 문서이고, 이 공간에 생긴
-            # 때는 정말로 지금이다(노드는 id 를 물려받아 같은 객체라 규칙이 갈린다).
-            "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
-        })
-    return docs
+    owns = store is None
+    if owns:
+        from store.backend import open_store
+        from store.config import load_config
+        store = open_store(cfg or load_config())
+        if store is None:
+            return []          # 정말로 도달 불가 — 개념 조회도 같은 답을 냈을 자리다
+    try:
+        rows = store.run(
+            "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) "
+            "WHERE co.concept_id IN $ids AND c.owner_id = $o "
+            "RETURN DISTINCT c.doc_id AS doc_id",
+            {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
+        dids = {r.get("doc_id") for r in rows or [] if r.get("doc_id")}
+        # MENTIONS 만으로는 부족하다 — 그 엣지는 **본문이 개념 이름을 담을 때** 생기므로,
+        # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
+        # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
+        # 그래서 미러 id 에서 접두를 벗겨 문서 집합에 더한다(MENTIONS 와 합집합 — 중복 없음).
+        # 접두 상수는 docstore 의 것을 그대로 쓴다(사본을 세 벌로 늘리지 않는다).
+        # `pkns.strip` 은 SEP 없으면 항등이라 네임스페이싱 on/off 양쪽에서 같은 코드가 돈다.
+        for cid in concept_ids:
+            logical = pkns.strip(cid)
+            if logical.startswith(ds._DOC_MIRROR_PREFIX):
+                did = logical[len(ds._DOC_MIRROR_PREFIX):]
+                if did:
+                    dids.add(did)
+        docs: list[dict] = []
+        for did in sorted(dids):
+            # SEC-1 — 미러에서 푼 doc_id 도 owner 를 건다. `get_doc` 이 owner 불일치와
+            # 부재(오타 미러·이미 지운 문서)를 둘 다 executed=False 로 답하므로, 이 한
+            # 줄이 "남의 문서 유출"과 "없는 doc_id 를 실어 임포트를 깨는 것"을 함께 막는다.
+            got = ds.get_doc(store, did, owner=owner)
+            if not got.get("executed"):
+                continue
+            docs.append({
+                "doc_id": did, "title": got.get("title") or "",
+                "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
+                "updated_at": got.get("updated_at") or "", "text": got.get("text") or "",
+                # **내용 시점만** 싣는다. `created_at` 은 안 싣는다 — 임포트가 doc_id 를 수신
+                # owner 로 새로 파생하므로 받는 쪽에서 그것은 다른 문서이고, 이 공간에 생긴
+                # 때는 정말로 지금이다(노드는 id 를 물려받아 같은 객체라 규칙이 갈린다).
+                "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
+            })
+        return docs
+    finally:
+        if owns:
+            store.close()
 
 
 def build_share_pack(*, owner: str, domain: str | None = None,
@@ -223,7 +242,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     # 자기완결(D45) — 팩 개념이 참조하는 원문 문서를 함께 싣는다(Chunk=SSoT 이후).
     # vinc_pack 버전은 그대로 두고 **선택 필드**로 더한다 — 구버전 앱은 이 필드를
     # 무시하고 개념만 임포트(하위호환), 신버전은 원문까지 복원한다.
-    documents = _docs_for_concepts(store, owner=owner, concept_ids=sorted(id_set))
+    documents = _docs_for_concepts(store, owner=owner, concept_ids=sorted(id_set), cfg=cfg)
 
     created = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     pack = {
