@@ -183,7 +183,11 @@ TB("cheatsheet", "?: shortcuts sheet", async (p) => { await p.keyboard.press("Sh
 TB("tools-create", "Tools sheet: Create tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(600); });
 TB("tools-import", "Tools sheet: Import tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(400); });
 TB("tools-share", "Tools sheet: Share tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); await sleep(400); });
-const shareSheet = async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); await sleep(300); await foot(p, /continue/i).first().click(); await sleep(2500); };
+// ⚠ 300ms 고정 대기로는 못 잡는다. Tools 의 draw() 가 foot 을 비우고 renderShare 가
+// teamsApi.list() 와 api.domains() 를 **기다린 뒤에야** 버튼을 다시 단다(app/src/tools.ts:72,180).
+// 그래서 Continue 가 나타날 때까지 기다린다. 그 빈 창 자체는 별건이다 —
+// [[record:the-tools-share-pane-has-no-action-buttons-until-two-network-calls-return-2026-09-07]].
+const shareSheet = async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); const go = foot(p, /continue/i).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click(); await sleep(2500); };
 TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list", shareSheet);
 TB("share-result", "Share › Share: result (file destination on the desktop)", async (p) => { await shareSheet(p); await foot(p, /^share$/i).first().click(); await sleep(2500); });
 TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
@@ -192,7 +196,6 @@ TB("graphmd", "GRAPH.md sheet", async (p) => { await p.locator("#tb-conv").click
 const settings = async (p, tab) => { await p.locator("#settings-btn").click(); await p.waitForSelector("#settings-popover", { state: "visible" }); await sleep(300); if (tab) { await p.locator("#settings-popover [role=tab], #settings-popover button").filter({ hasText: new RegExp(`^${tab}$`, "i") }).first().click(); await sleep(500); } };
 TB("settings-account", "Settings: Account tab (offline on this device)", (p) => settings(p));
 TB("settings-connections", "Settings: Connections tab", (p) => settings(p, "Connections"));
-TB("settings-data", "Settings: Data tab", (p) => settings(p, "Data"));
 TB("settings-advanced", "Settings: Advanced tab", (p) => settings(p, "Advanced"));
 TB("settings-light", "Settings, light theme", (p) => settings(p), { ls: { "vinc.theme": "light" }, scheme: "light" });
 
@@ -203,13 +206,6 @@ SS("results", "type: grouped results", async (p) => { await p.locator("#surface 
 SS("empty", "no hits", async (p) => { await p.locator("#surface input").first().fill("zzqxv"); await sleep(1500); });
 SS("error", "search 500: banner", async (p) => { await p.locator("#surface input").first().fill("symmetry"); await sleep(1500); }, { api: [["GET", /^\/search(\?|$)/,{ status: 500, json: { error: "boom" } }]] });
 
-// packs surface and intake
-const PK = (id, trigger, before, extra = {}) => add({ id: `packs__${id}`, url: "#packs", trigger, before: async (p) => { await sleep(1500); if (before) await before(p); }, full: true, ...extra });
-PK("default", "load: intake dropzone, share, backup (desktop)");
-PK("intake-ingesting", "drop a file: per-file rows while ingest is pending", async (p) => { await p.setInputFiles("#file-input", path.join(REPO, "starter-packs", "README.md")); await sleep(900); }, { api: [["POST", /\/ingest/, "hang"]] });
-PK("intake-success", "drop a file: success summary", async (p) => { await p.setInputFiles("#file-input", path.join(REPO, "starter-packs", "README.md")); await sleep(6000); });
-PK("intake-error", "drop an unsupported file: error banner", async (p) => { await p.setInputFiles("#file-input", path.join(HUB, "package.json")); await sleep(2500); });
-PK("light", "packs, light theme", undefined, { ls: { "vinc.theme": "light" }, scheme: "light" });
 
 // ── 다른 스크립트가 같은 상태 목록을 쓴다 ───────────────────────────────────
 export { S, APP, SIDE, TOKEN, VP, BASE_LS, SHELL_INIT, side, seed, seedEvidenceEdge, sleep };
