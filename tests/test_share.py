@@ -358,6 +358,70 @@ class DomainSubtreeScopeE2E(unittest.TestCase):
         self.assertEqual([d["doc_id"] for d in pack["documents"]], [b_doc])
 
 
+@unittest.skipIf(_SHARE_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DocMirrorPullsItsDocumentE2E(unittest.TestCase):
+    """문서 미러(`concept:doc.<doc_id>`)가 팩에 실리면 **그 문서도** 실려야 한다.
+
+    미러는 Concept 이라 주제 스코프에 걸린다. 그런데 `_docs_for_concepts` 의
+    `(Chunk)-[:MENTIONS]->(Concept)` 역추적은 **본문이 개념 이름을 담을 때만** 문서를
+    찾으므로, 주제를 손으로 적기만 한 문서는 따라오지 않았다 — 받는 쪽은 "가리키는
+    개념은 있는데 그 문서가 없는" 반쪽 팩을 오류 없이 얻는다.
+
+    P11 이 넣은 `DomainSubtreeScopeE2E` 는 픽스처 본문이 개념 제목을 그대로 담고 있어
+    이 경우를 재지 못한다. 그래서 본문에 어떤 개념 제목도 없는 문서로 잰다.
+    """
+    # 어떤 개념 제목도 담지 않는다 — MENTIONS 가 0건이어야 이 경우가 재현된다.
+    TEXT = "회의는 화요일 오전에 한다. 참석자는 셋이고 장소는 아직 안 정했다.\n"
+
+    def _store(self):
+        import tempfile, os
+        from store.config import load_config
+        from store.backend import open_store
+        st = open_store(load_config({"data_dir": os.path.join(tempfile.mkdtemp(), "db")}))
+        st.provision(dim=4)
+        self.addCleanup(st.close)
+        return st
+
+    def _seed(self, st, owner="user:alice"):
+        """주제만 적힌 문서 하나 — `topic` 인자가 미러를 만든다(`_set_authored_topic`)."""
+        from api import docstore as ds
+        put = ds.put_doc(st, owner=owner, text=self.TEXT, title="회의 노트",
+                         origin="meeting.md", topic="vinc/design/tokens")
+        self.assertTrue(put.get("executed"))
+        return put["doc_id"]
+
+    def test_authored_topic_document_rides_along_with_its_mirror(self):
+        st = self._store()
+        doc = self._seed(st)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        # 미러가 노드로 실렸는지 먼저 확인한다 — 아니면 이 테스트는 다른 것을 재고 있다.
+        self.assertIn("concept:doc." + doc, {n["id"] for n in pack["fragment"]["nodes"]})
+        self.assertEqual([d["doc_id"] for d in pack.get("documents") or []], [doc])
+        self.assertEqual(pack["manifest"]["counts"]["documents"], 1)
+
+    def test_roundtrip_applies_every_document_the_manifest_counted(self):
+        st = self._store()
+        self._seed(st)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        counted = pack["manifest"]["counts"]["documents"]
+        self.assertTrue(counted, "팩이 문서를 안 실었다 — 왕복을 잴 것이 없다")
+        res = share.import_share_pack(pack, owner="user:bob", store=st)
+        self.assertEqual(res["documents"]["applied"], counted,
+                         "공유 시트가 보여준 수와 실제로 들어간 수가 다르다")
+        # 재임포트는 멱등 — content_hash 매치로 전부 skip 이다.
+        again = share.import_share_pack(pack, owner="user:bob", store=st)
+        self.assertEqual(again["documents"]["applied"], 0)
+        self.assertEqual(again["documents"]["skipped"], counted)
+
+    def test_mirror_never_reaches_across_owners(self):
+        """SEC-1 — 미러 id 에서 푼 doc_id 도 **자기 owner 스코프 안에서만** 조회한다."""
+        st = self._store()
+        a_doc = self._seed(st, owner="user:alice")
+        self.assertEqual(
+            share._docs_for_concepts(st, owner="user:bob",
+                                     concept_ids=["concept:doc." + a_doc]), [])
+
+
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class PackTimeContract(unittest.TestCase):
     """팩이 나르는 시간의 계약(발주자 결정 2026-08-17).

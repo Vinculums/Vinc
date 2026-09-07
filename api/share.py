@@ -91,9 +91,10 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
 
 
 def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dict]:
-    """팩의 개념이 참조하는(Chunk-[:MENTIONS]->Concept 역추적) 원문 문서를 export
-    형태로 모은다 — 자기완결 공유 팩(개념 + 그 소스 원문). Chunk=SSoT(D45) 이후에만
-    존재; 개념이 문서에서 추출되지 않았으면(팩·수기) 빈 목록이다.
+    """팩의 개념이 가리키는 원문 문서를 export 형태로 모은다 — 자기완결 공유 팩
+    (개념 + 그 소스 원문). 길이 **둘**이다: `(Chunk)-[:MENTIONS]->(Concept)` 역추적과
+    문서 미러(`concept:doc.<doc_id>`) id 풀기. Chunk=SSoT(D45) 이후에만 존재;
+    어느 길로도 안 걸리면(팩·수기 개념) 빈 목록이다.
 
     payload 형태는 docsync.export_docs 와 동형({doc_id,title,origin,content_hash,
     updated_at,text}) — 수신측이 import_docs 로 재청킹한다(embedding·오프셋 미전송,
@@ -105,11 +106,24 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str]) -> list[dic
         "WHERE co.concept_id IN $ids AND c.owner_id = $o "
         "RETURN DISTINCT c.doc_id AS doc_id",
         {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
+    dids = {r.get("doc_id") for r in rows or [] if r.get("doc_id")}
+    # MENTIONS 만으로는 부족하다 — 그 엣지는 **본문이 개념 이름을 담을 때** 생기므로,
+    # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
+    # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
+    # 그래서 미러 id 에서 접두를 벗겨 문서 집합에 더한다(MENTIONS 와 합집합 — 중복 없음).
+    # 접두 상수는 docstore 의 것을 그대로 쓴다(사본을 세 벌로 늘리지 않는다).
+    # `pkns.strip` 은 SEP 없으면 항등이라 네임스페이싱 on/off 양쪽에서 같은 코드가 돈다.
+    for cid in concept_ids:
+        logical = pkns.strip(cid)
+        if logical.startswith(ds._DOC_MIRROR_PREFIX):
+            did = logical[len(ds._DOC_MIRROR_PREFIX):]
+            if did:
+                dids.add(did)
     docs: list[dict] = []
-    for r in rows or []:
-        did = r.get("doc_id")
-        if not did:
-            continue
+    for did in sorted(dids):
+        # SEC-1 — 미러에서 푼 doc_id 도 owner 를 건다. `get_doc` 이 owner 불일치와
+        # 부재(오타 미러·이미 지운 문서)를 둘 다 executed=False 로 답하므로, 이 한
+        # 줄이 "남의 문서 유출"과 "없는 doc_id 를 실어 임포트를 깨는 것"을 함께 막는다.
         got = ds.get_doc(store, did, owner=owner)
         if not got.get("executed"):
             continue
