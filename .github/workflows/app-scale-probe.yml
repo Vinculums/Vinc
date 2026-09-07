@@ -1,0 +1,67 @@
+# 컨테이너 앱 셋의 **스케일 설정만** 읽어 로그에 남긴다. 배포도, 쓰기도, exec 도 없다.
+#
+# ## 왜 이게 필요한가
+#
+# `scripts/gate_app_config.py` 는 라이브 구조를 `az` 로 직접 읽는다. 파일 입력이 없으므로
+# 기준선을 갱신하려면 **az 세션이 있는 자리**가 있어야 하는데, 이 리포의 개발 신원은
+# `vincsRG` 에 Reader 뿐이고 로컬 `az` 는 로그인돼 있지 않을 때가 많다. 그래서 기준선에
+# 새 필드를 더하는 일이 여태 "az 를 가진 사람"에게 묶여 있었다.
+#
+# ⚠ OIDC 연합 자격증명이 `refs/heads/main` 에 묶여 있어 **`--ref main` 으로만 돈다**
+# (브랜치에서 띄우면 `azure/login` 이 AADSTS700213 로 죽는다 — `bake-probe.yml` 머리말).
+# 그러므로 이 워크플로 자체를 고치는 변경은 머지된 뒤에야 돌려 볼 수 있다.
+#
+# ## 왜 `--write` 를 여기서 안 돌리나
+#
+# 두 가지다. ⑴ `--write` 는 외과적이지 않다 — 그 순간 라이브에 서 있는 **모든** 드리프트를
+# 조용히 축복한다. 그것을 사람이 안 읽는 자리(러너 로그)에서 하면 이 게이트가 존재하는
+# 이유인 08-30 종류의 유실을 그대로 삼킨다. ⑵ 투영이 바뀌는 브랜치의 스크립트를 여기서
+# 돌리려면 main 의 신원으로 남의 ref 코드를 실행해야 한다.
+#
+# 그래서 여기서는 **값만 읽어 로그에 적고**, 기준선을 고치는 판단과 diff 확인은 사람(또는
+# 오케스트레이터)이 자기 자리에서 한다.
+#
+# ## 무엇이 로그에 남는가
+#
+# `properties.template.scale` 만. 레플리카 하한·상한과 `cooldownPeriod`(마지막 호출 뒤
+# 몇 초에 레플리카가 내려가는가), 그리고 규칙 이름들이다. **비밀은 안 나른다** — 시크릿
+# 값도, env 값도, 연결 문자열도 이 질의의 응답에 없다.
+name: app-scale-probe
+
+on:
+  workflow_dispatch:
+
+# concurrency 를 일부러 안 단다: 스토어·리비전·레지스트리 어느 것도 안 건드리고,
+# `cancel-in-progress: false` 를 다는 순간 직렬화 워크플로 명단을 넷으로 고정한
+# `tests/test_gate_runner_move.py` 가 떨어진다(container-latency-probe.yml 과 같은 이유).
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  scale:
+    # 셀프호스티드다. 읽기 셋이라 몇 초면 끝나지만 호스티드 분을 쓸 이유가 없다.
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 10
+    steps:
+      # az 설정을 이 런에 가둔다 — 러너는 홈이 공유라 다른 런의 세션과 섞인다
+      # (hub-deploy.yml 이 같은 이유로 같은 줄을 갖는다).
+      - name: az 설정을 이 런에 가둔다
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: 세 앱의 scale 을 읽는다
+        run: |
+          set -euo pipefail
+          for app in vinc-hub vinc-encode vinc-account; do
+            echo "== $app"
+            az containerapp show -n "$app" -g vincsRG \
+              --query "properties.template.scale" -o json
+          done
+      - name: 정리 — az 세션을 지운다
+        if: always()
+        run: rm -rf "$AZURE_CONFIG_DIR" || true
