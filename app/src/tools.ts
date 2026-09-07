@@ -1,6 +1,6 @@
 import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
-import { openSheet, sheetActions, type SheetHandle } from "./components";
+import { openSheet, sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
@@ -114,12 +114,21 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
   // 안 고르면 지금 있는 스페이스에서 뜬다(기존 동작).
   const src = srcTeam ?? cfg.team;
   const sameSpace = src === cfg.team;
-  pane.innerHTML = `<p class="hint">${COPY.ui.common.loading}</p>`;
-  const teams = await teamsApi.list();
+  // 이 대기는 **버튼이 하나도 없는 구간**을 만든다(팀 목록 · 주제 목록 두 요청).
+  // 그래서 한 줄짜리 문구가 아니라 공유 동선의 한 벌을 쓴다. 불확정인 이유는
+  // `sheetProgress` 주석 3번 — 셀 수 있는 단계가 둘뿐이라 세면 깜빡임이 된다.
+  pane.innerHTML = sheetProgress(COPY.ui.common.loading);
+  // ⚠ 이 둘은 **반드시 끝나야 한다.** 불확정 막대는 끝을 그리지 않으므로, 끝나지 않는
+  // 실패를 `살아 있음`으로 그린다 — 여기서 던지면 호출부가 `void` 라 잡을 곳도 없고
+  // (unhandled rejection) 막대만 영원히 돈다. 그래서 위의 `withTimeout` 을 씌우고 둘 다
+  // 못 읽어도 화면은 세운다: 팀을 못 읽으면 소스 칸이 없고(개인에서 뜬다), 주제를 못
+  // 읽으면 `주제로` 갈래가 꺼진다. 둘 다 화면이 이미 표현할 줄 아는 상태다.
+  let teams: Awaited<ReturnType<typeof teamsApi.list>> = [];
+  try { teams = await withTimeout(teamsApi.list()); } catch { /* 소스 칸 없이 간다 */ }
   let domains: string[] = [];
   try {
     // 주제 목록도 **고른 스페이스**의 것이어야 한다 — 여기가 두 번째 하드코딩 널이었다.
-    const res: any = await api.domains(cfg.owner, { team: src || null });
+    const res: any = await withTimeout(api.domains(cfg.owner, { team: src || null }));
     domains = (res.rows || []).map((r: any) => r.domain).filter(Boolean);
   } catch { /* 주제를 못 읽어도 전체 공유는 된다 — 선택지만 줄어든다 */ }
   if (!pane.isConnected) return;
@@ -168,10 +177,34 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
   // 아니라 본문 아래 링크로 둔다(그 화면에서도 같은 이유로 같은 자리였다).
   pane.querySelector("#tl-backup")!.addEventListener("click", async () => {
     const out = pane.querySelector<HTMLElement>("#tl-backup-msg")!;
-    out.innerHTML = `<p class="hint">${esc(COPY.packs.loading(0))}</p>`;
+    // 라벨은 "문서 0개를 팩으로 묶는 중"이었다. `api.activate` 는 무엇이 몇 개 담기는지
+    // **미리 알려주지 않으므로** 그 0 은 언제나 거짓이었다. 세는 척을 걷고 시트의 팩
+    // 준비와 같은 문구를 쓴다(같은 일이다). 세던 카피 키는 마지막 사용처가 여기여서
+    // 두 덱에서 함께 지웠다 — 찾지 마라.
+    out.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
     try {
-      const res = await api.activate(cfg.owner);
-      out.innerHTML = `<p>${esc(COPY.packs.success(res.episode_count ?? 0, res.out || "pack"))}</p>`;
+      const res: any = await api.activate(cfg.owner);
+      // 완료 문구가 응답보다 많은 것을 말하고 있었다. `api/activate.py` `activate()` 가
+      // 돌려주는 키는 넷이다 — `owner` · `episode_count` · `learner_pattern_count` ·
+      // `executed`. 거기에 `out_dir` 을 주면 `written`, 안 주면 `pack{markdown,json,mcp}`
+      // 이 붙는다. **`out` 이라는 키는 없다.** 앱은 `out` 을 실은 적이 없고 호스티드는
+      // 그 인자를 아예 지우므로(`vinc_mcp/http_server.py` — 클라가 호스트 파일경로를
+      // 정하지 못하게), `res.out || "pack"` 은 언제나 리터럴 `pack` 이었다. 크기 자리에
+      // 그 네 글자가 찍혔다.
+      //
+      // **파일도 여기서 만든다.** `out_dir` 이 없으니 서버는 아무것도 쓰지 않는다 —
+      // 안 만들면 `전체 백업 팩 만들기` 가 성공만 알리고 남기는 것이 없다. 담는 것은
+      // `pack.json`(사이드카 `write_pack` 이 쓰는 것과 같은 내용 · 같은 들여쓰기): 갈 곳이
+      // MCP 클라이언트라 사람이 읽는 `markdown` 이 아니라 이쪽이다.
+      const body = JSON.stringify(res.pack?.json ?? res, null, 2);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([body], { type: "application/json" }));
+      a.download = "vinc-backup.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      // 세는 것은 **기록**이다. `episode_count` 는 recall 이 고른 행 수이고 문서 수가
+      // 아니다(문서는 팩 공유 쪽 `_docs_for_concepts` 가 따로 센다).
+      out.innerHTML = `<p>${esc(COPY.packs.success(res.episode_count ?? 0))}</p>`;
     } catch {
       out.innerHTML = `<div class="error-banner">${esc(COPY.packs.error)}</div>`;
     }
