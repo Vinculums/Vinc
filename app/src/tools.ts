@@ -1,6 +1,6 @@
 import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
-import { openSheet, sheetActions, type SheetHandle } from "./components";
+import { openSheet, sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
@@ -114,7 +114,10 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
   // 안 고르면 지금 있는 스페이스에서 뜬다(기존 동작).
   const src = srcTeam ?? cfg.team;
   const sameSpace = src === cfg.team;
-  pane.innerHTML = `<p class="hint">${COPY.ui.common.loading}</p>`;
+  // 이 대기는 **버튼이 하나도 없는 구간**을 만든다(팀 목록 · 주제 목록 두 요청).
+  // 그래서 한 줄짜리 문구가 아니라 공유 동선의 한 벌을 쓴다. 불확정인 이유는
+  // `sheetProgress` 주석 3번 — 셀 수 있는 단계가 둘뿐이라 세면 깜빡임이 된다.
+  pane.innerHTML = sheetProgress(COPY.ui.common.loading);
   const teams = await teamsApi.list();
   let domains: string[] = [];
   try {
@@ -168,7 +171,11 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
   // 아니라 본문 아래 링크로 둔다(그 화면에서도 같은 이유로 같은 자리였다).
   pane.querySelector("#tl-backup")!.addEventListener("click", async () => {
     const out = pane.querySelector<HTMLElement>("#tl-backup-msg")!;
-    out.innerHTML = `<p class="hint">${esc(COPY.packs.loading(0))}</p>`;
+    // 라벨은 "문서 0개를 팩으로 묶는 중"이었다. `api.activate` 는 무엇이 몇 개 담기는지
+    // **미리 알려주지 않으므로** 그 0 은 언제나 거짓이었다. 세는 척을 걷고 시트의 팩
+    // 준비와 같은 문구를 쓴다(같은 일이다). 세던 카피 키는 마지막 사용처가 여기여서
+    // 두 덱에서 함께 지웠다 — 찾지 마라.
+    out.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
     try {
       const res = await api.activate(cfg.owner);
       out.innerHTML = `<p>${esc(COPY.packs.success(res.episode_count ?? 0, res.out || "pack"))}</p>`;

@@ -100,7 +100,6 @@ const EN = {
     idleCta: "Create a pack",
     shareCta: "Share a pack",
     importCta: "Import a pack",
-    loading: (n: number) => `Packing ${n} documents…`,
     importing: "Importing…",
     success: (n: number, size: string) => `Pack ready: ${n} documents, ${size}.`,
     imported: (created: number, matched: number) =>
@@ -927,7 +926,6 @@ const KO: Deck = {
     idleCta: "팩 만들기",
     shareCta: "팩 공유하기",
     importCta: "팩 가져오기",
-    loading: (n) => `문서 ${n}개를 팩으로 묶는 중…`,
     importing: "가져오는 중…",
     success: (n, size) => `팩이 준비됐어요 · 문서 ${n}개 · ${size}`,
     imported: (created, matched) => `가져왔어요 · 새로 ${created}개 · 이미 있던 것 ${matched}개`,
