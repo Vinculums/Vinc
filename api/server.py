@@ -797,6 +797,8 @@ class VincApp:
             max_excerpts=_int(p.get("max_excerpts"), 3), store=r))
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
+        # `arms` 는 여기서 붙이지 않는다 — `q.brief` 가 내부 search 에서 그대로 나른다
+        # (CLI 와 같은 값이어야 하므로 HTTP 계층에 두면 안 된다).
         if vnote and isinstance(res, dict):
             res["vector_note"] = vnote
         return code, res

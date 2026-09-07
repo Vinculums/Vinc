@@ -1,7 +1,6 @@
 import { api, cfg } from "../api";
 import { COPY } from "../copy";
-import { header } from "../components";
-import { stateDot } from "../icons";
+import { header, armsNoticeBadge } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 
@@ -90,19 +89,13 @@ export function renderSearch(el: HTMLElement) {
       let rows: any[] = [...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
       if (tag) rows = rows.filter((r) => (r.tags || []).includes(tag));
-      // GM-13 — 재임베딩 이행 배지(Success 의 하위 상태, 별도 화면 아님). 판단은
-      // 구조화 필드 embed_migration.pending 으로만 한다: arms==="fts" 는 임베딩
-      // 창구가 없는 데스크탑의 영구 정상 상태라 그것만으로 띄우면 상시 배지가 된다.
-      // 이행이 끝나면 사이드카가 필드를 더는 싣지 않아 코드 변경 없이 사라진다.
-      // 색만으로 신호 금지(D38): ◐ 글리프 + 텍스트 라벨이 신호를 나른다.
-      const pending = (res.embed_migration || {}).pending;
-      const migBadge = typeof pending === "number" && pending > 0
-        ? `<div style="margin:0 0 var(--space-2,.5rem)"><span class="badge"
-             style="border-color:hsl(var(--ring))">${stateDot("half", 12)} ${
-             COPY.search.migrating(pending)}</span></div>`
-        : "";
+      // 벡터 팔이 빠졌으면 그 사실을 말한다(GM-13 이행 배지도 여기로 합쳐졌다).
+      // 판단·톤 분기는 `armsNoticeBadge` 한 곳에 있다 — 세 표면이 같은 규칙을
+      // 써야 같은 고장이 도구에 따라 보이거나 안 보이는 일이 없다. 정상이면 빈
+      // 문자열이라 화면은 지금 그대로다.
+      const armsBadge = armsNoticeBadge(res);
       if (rows.length === 0) {
-        body.innerHTML = `${migBadge}<div class="empty"><p>${COPY.search.empty(raw)}</p>
+        body.innerHTML = `${armsBadge}<div class="empty"><p>${COPY.search.empty(raw)}</p>
           <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`;
         return;
       }
@@ -144,7 +137,7 @@ export function renderSearch(el: HTMLElement) {
             <span class="meta">${esc(r.domain || "")}</span>
           </div>`;
       };
-      body.innerHTML = migBadge +
+      body.innerHTML = armsBadge +
         `<p class="hint">${COPY.search.matches(rows.length)}</p>` +
         [...groups.entries()].map(([d, rs]) =>
           (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +

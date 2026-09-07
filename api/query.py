@@ -2822,7 +2822,13 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store)
         base["executed"] = bool(res.get("executed"))
-        for k in ("error", "note", "node_error"):
+        # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
+        # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
+        # 와 같다 — **검색이 실제로 돈 경우에만** 싣는다(id 직참조는 이 줄에 오기 전에
+        # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
+        # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
+        for k in ("error", "note", "node_error",
+                  "arms", "vector_note", "vector_rebuilding"):
             if res.get(k):
                 base[k] = res[k]
         if base.get("error"):
@@ -5304,6 +5310,10 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             # 답하면서 FTS 만 돈 것이 되고, 그건 이 필드가 막으려던 침묵 그대로다.
             base["vector_note"] = vnote
             base["arms"] = "fts"
+            # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
+            # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
+            # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).
+            base["vector_rebuilding"] = True
             _schedule_vector_index(store, cfg.embedding_dim)
 
         # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지

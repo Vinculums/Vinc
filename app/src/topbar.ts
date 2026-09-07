@@ -1,6 +1,7 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
+import { armsNotice, type ArmsNotice } from "./components";
 
 /** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
  *
@@ -198,6 +199,8 @@ export function mountTopbar() {
 
   type Hit = { id: string; title: string; domain: string; mark: string; snippet: string };
   let hits: Hit[] = [];
+  /** 마지막 질의에서 벡터 팔이 빠졌는가. 정상이면 null 이라 드롭다운은 그대로다. */
+  let notice: ArmsNotice | null = null;
   let timer: number | undefined;
   let seq = 0;                 // 늦게 온 응답이 새 질의를 덮지 않게
 
@@ -217,7 +220,10 @@ export function mountTopbar() {
     const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
       c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
     const head = `<div class="tb-rhead"><span class="hint">${COPY.ui.topbar.results}</span>
-      <span class="hint">${COPY.ui.topbar.enterHint}</span></div>`;
+      <span class="hint">${COPY.ui.topbar.enterHint}</span></div>`
+      // 벡터 팔이 빠졌으면 결과 위에 그 사실을 적는다. 특히 "결과 없음"과 겹칠 때
+      // 필요하다 — 반쪽 검색의 0건을 진짜 0건으로 읽게 두면 안 된다.
+      + (notice && !loading ? `<p class="hint tb-rnote">${notice.text}</p>` : "");
     if (loading) {
       box.innerHTML = head + `<p class="hint tb-rnote">${COPY.search.searching}</p>`;
       open(); return;
@@ -292,6 +298,7 @@ export function mountTopbar() {
     try {
       const res: any = await api.search(raw);
       if (mine !== seq) return;                  // 지나간 질의 — 버린다
+      notice = armsNotice(res);
       hits = (res.node_hits || []).slice(0, 8).map((n: any) => ({
         id: String(n.id || ""),
         title: String(n.title || n.id || ""),
@@ -304,6 +311,7 @@ export function mountTopbar() {
     } catch {
       if (mine !== seq) return;
       hits = [];
+      notice = null;              // 아예 못 물어봤다 — 팔 이야기를 할 자리가 아니다
       // 실패해도 막다른 골목을 만들지 않는다 — 목록으로 가는 길은 남긴다
       // (검색이 죽었다고 문서에 닿을 방법까지 사라지면 안 된다).
       box.innerHTML = `<p class="hint tb-rnote">${COPY.search.error}</p>`
