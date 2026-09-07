@@ -3,7 +3,7 @@
 // textarea 폴백. 무손실 규율: 저장은 편집기 문자열을 어떤 변형도 없이 /doc/put
 // 로 보낸다(verified 바이트 동일). 저장 = 디바운스 자동저장 + Ctrl/Cmd+S, 무음
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
-import { api, cfg, storeDownReason, shellInvoke } from "./api";
+import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
 
@@ -121,10 +121,35 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 스토어를 못 읽는 것은 **문서 하나가 상한 것과 다른 사건**이다. 기본 문구는
       // "잠시 후 다시 시도하세요"인데, 다른 Vinc 가 스토어를 물고 있는 동안에는
       // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
-      host.innerHTML = `<p class="hint">${storeDown === null
-        ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
-      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false,
-               scrollToOffset: () => {} };
+      // 그리고 쓰기 창(P17)은 셋째 사건이다: 문서는 멀쩡히 있고 지금 이 순간만 반쪽이다.
+      // ⚠ **이 이른 반환은 이 패키지가 만든 것이 아니다.** `!doc?.executed ||
+      // doc.text === undefined` 로 무동작 stub 을 돌려주는 갈래는 P17b 이전부터 여기
+      // 있었고, 편집기를 세우지 않는 보호는 거기서 온다. P17(#241)이 `doc_get` 을 이
+      // 상태에서 `executed:false` 로 돌린 순간 쓰기 창은 이미 이 가드에 걸렸다.
+      // P17b 가 더한 것은 **문구 갈래 + 사람이 누르는 재시도** 둘뿐이다.
+      // (그 보호를 이 패키지의 공으로 적지 말 것 — 어디서 오는지 잘못 알게 된다.)
+      const busy = !!doc && docMidWrite(doc);
+      host.innerHTML = `<p class="hint">${busy ? COPY.ui.viewx.readerMidWrite
+        : storeDown === null ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`
+        + (busy ? `<button class="btn" id="ed-retry">${esc(COPY.ui.viewx.readerRetry)}</button>` : "");
+      // 자동 재시도는 없다 — 크래시 잔해면 영원히 돈다. 사람이 누를 때만 다시 읽는다.
+      // 다시 성공하면 그때 만든 편집기를 이 stub 이 대신 들고 있어야 한다: 호출부는
+      // 이미 stub 을 잡았으므로, 위임하지 않으면 시트를 닫아도 디바운스 타이머와
+      // CM6 인스턴스가 남는다.
+      let again: DocEditorHandle | null = null;
+      // 왕복 **중에** 시트를 닫으면 `again` 이 아직 null 이라 dispose 가 위임할 데가
+      // 없다. 그대로 두면 왕복이 끝난 뒤 이미 떨어져 나간 host 에 편집기가 서고,
+      // 디바운스 타이머와 CM6 인스턴스가 아무도 안 잡은 채 남는다. 그래서 닫힌 사실을
+      // 기억했다가 **도착하는 핸들을 즉시 버린다**(취소가 아니라 폐기 — 왕복은 fetch
+      // 하나라 끊어 봐야 얻는 것이 없고, 폐기가 경합 창이 없다).
+      let closed = false;
+      host.querySelector("#ed-retry")?.addEventListener("click", () => {
+        void mountDocEditor(host, opts).then((h) => { closed ? h.dispose() : (again = h); });
+      });
+      return { dispose: () => { closed = true; again?.dispose(); },
+               setEditable: (on) => again?.setEditable(on),
+               isEditable: () => !!again?.isEditable(),
+               scrollToOffset: (pos) => again?.scrollToOffset(pos) };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
@@ -254,6 +279,12 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 무음 LWW 금지 — 기존 문서면 저장 직전 원격 해시 비교.
       if (!force && docId) {
         const cur = await api.docGet(opts.owner, docId);
+        // ⚠ P18 이 여기다(P17b 범위 밖 — 일부러 안 고쳤다). 아래 조건은 `cur.executed`
+        // 를 앞세우므로, 원격이 **쓰기 창(P17 의 `executed:false`)** 이면 비교가 통째로
+        // 건너뛰어지고 저장이 그냥 진행된다: 충돌 배너도, 아래 "덮어쓰기 전 원격본을
+        // 충돌본으로 보존"도 돌지 않는다. 즉 무음 LWW 금지 규율이 바로 그 상태에서만
+        // 풀린다. 마운트는 이 상태를 막지만(위 stub), 이 경로는 **마운트 뒤에 원격이
+        // 그 상태가 된 경우**라 stub 이 못 막는다.
         if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
           saving = false; setStatus(COPY.ui.viewx.edDirty);
           conflictBox.innerHTML = `

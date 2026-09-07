@@ -542,6 +542,12 @@ const EN = {
       readerBack: "Back",
       readerLoading: "Opening the document…",
       readerFail: "Couldn't open this document. Try again in a moment.",
+      // P17b — 쓰기 창에 걸린 문서. "비었다"로 읽히면 안 되는 유일한 실패라 따로 말한다.
+      // ⚠ 이 화면은 **편집기를 세우지 않는 것이 존재 이유**라, "전문을 다시 저장하라"는
+      // 처방을 여기 적으면 안 된다 — 그 자리에서 실행할 수단이 없다. 그래서 끝은 처방이
+      // 아니라 진단이다(응답이 일시·영구를 못 가르는 이유는 `docMidWrite` 주석).
+      readerMidWrite: "This document's save hasn't finished. Opening it now would show text that stops partway, so Vinc left it closed. The document is intact and nothing is lost. Try again in a moment. If it stays this way, the last save was interrupted.",
+      readerRetry: "Try again",
       readerTitle: "Document",
       readerUnverified: "Reconstructed (not verified)",
       // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
@@ -1271,6 +1277,8 @@ const KO: Deck = {
       readerBack: "뒤로",
       readerLoading: "문서를 여는 중…",
       readerFail: "문서를 열지 못했어요. 잠시 후 다시 시도해 보세요. 문서는 그대로 있어요",
+      readerMidWrite: "이 문서는 저장이 아직 끝나지 않았어요. 지금 열면 내용이 잘려 보이기 때문에 열지 않았어요. 문서는 그대로 있고 사라진 내용도 없어요. 잠시 뒤에 다시 시도해 보세요. 계속 이 상태면 마지막 저장이 중간에 끊긴 거예요",
+      readerRetry: "다시 시도하기",
       readerTitle: "문서",
       readerUnverified: "복원본 (검증 안 됨)",
       readerMentions: "언급",
