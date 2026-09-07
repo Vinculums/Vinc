@@ -782,7 +782,16 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     owner 지정 시 소유 가드(SEC-1). 멱등.
 
     ``tombstone`` (P3): 삭제 표식을 남겨 동기화가 상대 기기에도 삭제를 전파하게
-    한다(하드삭제만으론 다음 delta 에서 부활). 동기화 apply 의 하드삭제는 False."""
+    한다(하드삭제만으론 다음 delta 에서 부활). 동기화 apply 의 하드삭제는 False.
+
+    ⚠ **미러 개념(`concept:doc.<doc_id>`)은 일부러 안 지운다.** 그래서 지운 문서의
+    미러가 그래프에 남고 그 주제의 공유 팩마다 실린다(`documents: 0` 인 껍데기).
+    아는 천장이다 — 여기서 지우려면 `query.delete_node` 급의 파괴적 삭제여야 하고
+    (사용자가 그 노드에 그린 엣지와 다듬은 제목이 함께 사라지며, `_Tombstone` 으로
+    다른 기기에도 전파된다) 그것은 P11c(공유 시트 제외) 범위 밖의 제품 판정이다.
+    당장의 피해는 팩 쪽에서 막혀 있다: `share._docs_for_concepts` 가 부재 doc_id 를
+    걸러 빈 문서를 안 싣는다(`tests/test_share.py`
+    `test_a_mirror_whose_document_is_gone_ships_no_document` 가 그 상태를 고정한다)."""
     base: dict[str, Any] = {"kind": "doc.delete", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is not None and owner is not None and meta.get("owner_id") != owner:

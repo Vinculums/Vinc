@@ -421,6 +421,160 @@ class DocMirrorPullsItsDocumentE2E(unittest.TestCase):
             share._docs_for_concepts(st, owner="user:bob",
                                      concept_ids=["concept:doc." + a_doc]), [])
 
+    def test_a_mirror_whose_document_is_gone_ships_no_document(self):
+        """④ 부재(존재하지 않는 doc_id) 쪽을 잠근다.
+
+        P11b 는 `if not got.get("executed"): continue` 한 줄이 **둘**을 막는다고 적었다
+        — 남의 문서 유출과, 없는 doc_id 를 실어 임포트를 깨는 것. 그런데 변이 실측에서
+        그 줄을 지웠을 때 빨개지는 것은 교차-owner 테스트 **하나뿐**이었다. 절반이
+        무보호였다.
+
+        부재를 만드는 길은 지어낼 필요가 없다: `delete_doc` 은 청크·메타·툼스톤만
+        건드리고 **미러 Concept 을 안 지운다**. 그래서 지운 문서의 미러가 그래프에
+        남고 그 주제의 팩마다 실린다(⑥과 같은 뿌리의 결손, 판정은 커밋 메시지에).
+        여기서 재는 것은 그 상태에서 팩이 **빈 껍데기 문서를 만들지 않는다**는 것이다.
+        """
+        from api import docstore as ds
+        st = self._store()
+        doc = self._seed(st)
+        self.assertTrue(ds.delete_doc(st, doc, owner="user:alice")["executed"])
+        mirror = "concept:doc." + doc
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        # 전제 확인 — 미러가 실제로 팩에 남아 있어야 이 테스트가 그 경우를 잰다.
+        self.assertIn(mirror, {n["id"] for n in pack["fragment"]["nodes"]})
+        self.assertEqual(pack.get("documents") or [], [],
+                         "지워진 문서의 doc_id 가 팩에 실렸다 — 임포트가 빈 문서를 만든다")
+        self.assertEqual(pack["manifest"]["counts"]["documents"], 0)
+        self.assertEqual(
+            share._docs_for_concepts(st, owner="user:alice", concept_ids=[mirror]), [])
+
+    def test_mentions_lookup_does_not_even_ask_for_another_owners_document(self):
+        """⑤ MENTIONS 술어의 owner 절을 **테스트로** 만든다.
+
+        `_docs_for_concepts` 독스트링은 "SEC-1: owner 스코프 청크만 역추적한다"고
+        단언하는데, `c.owner_id = $o` 를 지워도 share 테스트 22건이 전부 초록이었다
+        — 뒤의 `get_doc(..., owner=owner)` 가 두 번째 방어선이라 실제 누출은 없지만,
+        **첫 번째 벽은 아무도 안 지키고 있었다**. 그래서 그 벽이 하는 일을 직접 잰다:
+        남의 개념에서 나온 doc_id 는 `get_doc` 까지 **가지도 않는다**.
+
+        ⚠ PK 네임스페이싱이 켜진 잡에서는 `$ids` 가 이미 bob 으로 합성돼 alice 의
+        키와 안 맞으므로, 이 테스트는 그 모드에서 변이를 못 잡는다(그쪽은 pkns 가
+        같은 일을 하는 세 번째 벽이다). 잡는 자리는 꺼진 모드(`core`)다.
+        """
+        from api import docstore as ds
+        st = self._store()
+        # 본문이 개념 제목을 담아 MENTIONS 가 실제로 생기는 픽스처를 쓴다.
+        a_concept = "concept:design-tokens"
+        from api import fragment as frag
+        self.assertEqual(frag.merge_fragment({"owner": "user:alice", "edges": [], "nodes": [
+            {"id": a_concept, "type": "concept", "title": "Design tokens",
+             "domain": "vinc/design/tokens"}]}, store=st).get("warnings") or [], [])
+        a_doc = ds.put_doc(st, owner="user:alice", origin="tokens.md", title="Tokens",
+                           text="Design tokens carry the value layer.")["doc_id"]
+        self.assertTrue(st.run(
+            "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) WHERE c.doc_id = $d "
+            "RETURN c.doc_id AS d", {"d": a_doc}), "픽스처에 MENTIONS 가 없다")
+
+        asked: list[str] = []
+        real = ds.get_doc
+
+        def _spy(store, doc_id, **kw):
+            asked.append(doc_id)
+            return real(store, doc_id, **kw)
+
+        ds.get_doc = _spy
+        self.addCleanup(setattr, ds, "get_doc", real)
+        self.assertEqual(
+            share._docs_for_concepts(st, owner="user:bob", concept_ids=[a_concept]), [])
+        self.assertNotIn(a_doc, asked,
+                         "남의 문서 id 가 역추적에서 나왔다 — MENTIONS 의 owner 절이 죽었다")
+
+    def test_roundtrip_leaves_the_mirror_pointing_at_a_document_that_is_not_here(self):
+        """⑥ **아직 못 고친 결손을 고정한다** — 지금 테스트가 개수만 재서 이걸 통과시킨다.
+
+        수신측이 받는 미러는 발신자의 doc_id 를 그대로 안고 오는데
+        (`concept:doc.<발신 doc_id>`), 임포트는 문서의 doc_id 를 수신 owner 로 **새로
+        판다**(`put_doc(doc_id=None)` — 교차-owner 충돌 회피). 게다가 `import_share_pack`
+        은 `topic=` 을 안 넘기므로 새 문서에는 자기 미러가 생기지 않는다. 결과: 받은
+        미러는 이 공간에 없는 문서를 가리키고, 적힌 주제도 새 문서에 안 붙는다.
+
+        고치려면 팩 포맷(미러 → doc_id 재사상)이나 id 정책 판정이 필요해 P11c 범위
+        밖이다. 여기 못박아 두는 이유는 **고쳐졌을 때 이 테스트가 빨개져서** 그 사실이
+        보이게 하려는 것이다. 빨개지면 지우지 말고 기대값을 뒤집을 것.
+        """
+        from api import docstore as ds
+        src = self._store()
+        doc = self._seed(src)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=src)
+        dst = self._store()
+        res = share.import_share_pack(pack, owner="user:bob", store=dst)
+        self.assertEqual(res["documents"]["applied"], 1)
+
+        got = [r["d"] for r in dst.run(
+            "MATCH (d:_DocMeta) WHERE d.owner_id = $o RETURN d.doc_id AS d",
+            {"o": "user:bob"}) or []]
+        self.assertEqual(len(got), 1)
+        bob_doc = got[0]
+        self.assertNotEqual(bob_doc, doc, "doc_id 가 그대로면 이 결손은 사라진 것이다")
+        # 받은 미러는 발신자의 doc_id 를 가리키고, 그 문서는 여기 없다.
+        mirrors = {pkns.strip(r["c"]) for r in dst.run(
+            "MATCH (c:Concept) RETURN c.concept_id AS c") or []}
+        self.assertIn("concept:doc." + doc, mirrors)
+        self.assertNotIn("concept:doc." + bob_doc, mirrors,
+                         "새 문서에 미러가 생겼다면 재사상이 구현된 것이다")
+        self.assertFalse(ds.get_doc(dst, doc, owner="user:bob").get("executed"))
+
+
+@unittest.skipIf(_SHARE_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class ShareWithoutAnInjectedStoreE2E(unittest.TestCase):
+    """② store 를 안 넘긴 호출이 문서를 **조용히** 0으로 만들면 안 된다.
+
+    `api/cli.py` 의 `share` 는 `store=`/`cfg=` 없이 `build_share_pack` 을 부른다.
+    개념은 `query.execute` 가 스스로 스토어를 열어 제대로 나오는데, `_docs_for_concepts`
+    는 `store is None` 을 "개념이 없다"와 한 줄로 묶어 빈 목록을 냈다. 오류도 로그도
+    없고 매니페스트는 `documents: 0` 을 성공으로 보고했다.
+
+    실측(2026-09-07, 같은 스토어·같은 스코프):
+      store 주입 → {'concepts': 1, ..., 'documents': 1}
+      store 미주입 → {'concepts': 1, ..., 'documents': 0}
+
+    그래서 **두 호출을 나란히 놓고** 잰다 — 한쪽만 재면 "문서가 없는 스코프"와
+    구분이 안 된다."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_documents_do_not_vanish_when_the_caller_forgets_the_store(self):
+        from api import docstore as ds
+        from store.backend import open_store
+        from store.config import load_config
+        cfg = load_config()
+        st = open_store(cfg)
+        st.provision(dim=4)
+        doc = ds.put_doc(st, owner="user:alice", origin="meeting.md", title="회의 노트",
+                         text="회의는 화요일 오전에 한다.\n",
+                         topic="vinc/design/tokens")["doc_id"]
+        injected = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st)
+        st.close()          # CLI 는 자기 프로세스에서 열므로 여기서 놓아 준다(단일 writer)
+
+        forgot = share.build_share_pack(owner="user:alice", domain="vinc/design")
+        self.assertEqual(injected["manifest"]["counts"]["documents"], 1)
+        self.assertEqual(forgot["manifest"]["counts"], injected["manifest"]["counts"],
+                         "store 를 안 넘긴 호출이 다른 수치를 냈다")
+        self.assertEqual([d["doc_id"] for d in forgot.get("documents") or []], [doc])
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class PackTimeContract(unittest.TestCase):

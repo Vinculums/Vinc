@@ -23,6 +23,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _src() -> str:
+    return (ROOT / "app" / "src" / "sheets.ts").read_text(encoding="utf-8")
+
+
 def _body(src: str, head: str) -> str:
     """`head` 로 시작하는 최상위 함수의 본문만 잘라 낸다 — 열 0 의 `}` 가 끝이다."""
     body = src[src.index(head):]
@@ -31,7 +35,7 @@ def _body(src: str, head: str) -> str:
 
 class ShareSheetSpecTests(unittest.TestCase):
     def test_공유_시트가_문서_수를_보여준다(self):
-        src = (ROOT / "app" / "src" / "sheets.ts").read_text(encoding="utf-8")
+        src = _src()
         spec = _body(src, "function specRows")
         self.assertIn("specDocs", spec, "공유 시트 사양 표에 문서 줄이 없다")
         self.assertIn("c.documents", spec, "문서 줄이 매니페스트 카운트를 안 읽는다")
@@ -40,6 +44,45 @@ class ShareSheetSpecTests(unittest.TestCase):
         # 전체가 공유 시트에서 사라져도 가드는 초록이다 — 막으려던 바로 그것이다.
         share = _body(src, "export async function openShareSheet")
         self.assertIn("specRows(c, scopeLabel)", share, "공유 시트가 사양 표를 안 그린다")
+
+    def test_제외한_미러의_원문은_팩에_안_실린다(self):
+        """① blocker — 저장 핸들러가 노드·엣지만 걸렀고 `documents` 는 안 걸렀다.
+
+        P11b 이전에는 덜 나빴다: 문서는 본문 MENTIONS 로만 실렸으니 미러 행을 끄는
+        것과 문서는 별개였다. **P11b 이후로는 그 행이 곧 그 문서다.** 미러를 끄고
+        저장해도 원문이 그대로 나갔고, 오류도 경고도 없었다.
+
+        실측(node, `keptDocs` 를 이 소스에서 떼어 돌림 · 고치기 전 저장 핸들러 식):
+          fragment.nodes 0 · counts {"concepts":0,...,"documents":1} · documents 에 원문 그대로
+
+        JS 러너가 없으므로(`app/package.json` 에 `test` 없음) 소스에서 잠근다. 여기
+        잠그는 것은 **나가는 객체 그 자체**다 — 렌더 간접이 없어 `out` 이 곧 팩이고,
+        세 줄 중 어느 하나를 지워도 이 테스트가 빨개진다."""
+        share = _body(_src(), "export async function openShareSheet")
+        self.assertIn("const docs = keptDocs(pack.documents, excluded)", share,
+                      "제외 집합을 원문에 적용하지 않는다")
+        self.assertIn("{ documents: docs }", share,
+                      "거른 목록이 나가는 팩에 안 실린다 — 끈 원문이 그대로 나간다")
+        self.assertIn("documents: docs.length", share,
+                      "매니페스트 수가 실제 나가는 수와 갈린다(시트가 저장 전에 그 수를 보여준다)")
+
+    def test_미러가_아닌_개념을_끄는_것은_원문을_안_뺀다(self):
+        """판정을 고정한다 — 두 경우는 다르게 다룬다.
+
+        미러 행은 화면에서 그 문서 자체라 끄면 원문이 빠진다. 미러가 **아닌** 개념은
+        다르다: 그 문서는 본문 MENTIONS 로 실린 것이라 다른 개념도 언급하므로, 개념
+        하나를 뺀 것이 "원문을 빼라"는 뜻이 아니다. 그래서 `keptDocs` 는 제외 집합에서
+        **미러 id 만** doc_id 로 푼다. 이 분기를 없애고 전부 빼거나 전부 남기면 여기가
+        빨개진다."""
+        helper = _body(_src(), "function keptDocs")
+        self.assertIn("indexOf(DOC_MIRROR)", helper, "미러인지 아닌지를 안 가린다")
+        self.assertIn("at >= 0", helper, "미러가 아닌 id 도 doc_id 로 푼다")
+
+    def test_미러_접두가_서버와_같은_값이다(self):
+        """접두가 한쪽만 바뀌면 앱은 아무 문서도 못 빼고 조용히 넘긴다 — 두 층 대조."""
+        self.assertIn('const DOC_MIRROR = "concept:doc."', _src())
+        self.assertIn('_DOC_MIRROR_PREFIX = "concept:doc."',
+                      (ROOT / "api" / "docstore.py").read_text(encoding="utf-8"))
 
     def test_서버가_같은_이름으로_문서를_센다(self):
         """앱이 읽는 키를 빌더가 실제로 넣는가 — 이름이 갈리면 화면은 조용히 0 이다."""

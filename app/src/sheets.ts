@@ -35,6 +35,35 @@ function specRows(c: Record<string, number>, scopeLabel: string): string {
     </div>`;
 }
 
+/** 문서 미러 개념의 id 접두 — 서버의 `api/docstore._DOC_MIRROR_PREFIX` 와 같은 값. */
+const DOC_MIRROR = "concept:doc.";
+
+/**
+ * 제외 제스처를 **원문에도** 적용한다.
+ *
+ * 미러 행(`concept:doc.<doc_id>`)은 이 화면에서 그 문서 자체다. P11b 이후로 그 행이
+ * 실리면 원문이 따라오므로, 끄면 원문도 빠져야 한다. 전에는 노드·엣지만 걸러서
+ * 미러를 끄고 저장해도 원문이 그대로 나갔다 — 오류도 경고도 없이.
+ *
+ * **미러가 아닌 개념을 끈 것은 다르게 다룬다: 그 문서는 남는다.** 그런 문서는 본문
+ * MENTIONS 로 실린 것이라 다른 개념도 언급하고, 개념 하나를 뺀 것이 "원문을 빼라"는
+ * 뜻은 아니다. 사용자가 그 문서를 지목할 수 있는 행은 미러 행뿐이라, 지목이 있을
+ * 때만 뺀다.
+ *
+ * 접두를 `startsWith` 로 보지 않는다: 호스티드는 노드 PK 에 owner 를 합성하므로
+ * 물리 키가 `owner` + U+001F + `concept:doc.<id>` 다(`store/pkns.py`). 자리를 찾아
+ * 뒤만 취하면 앱이 그 규약을 몰라도 된다 — `documents[].doc_id` 는 서버가 이미
+ * 벗겨서 보낸다.
+ */
+function keptDocs(documents: any[] | undefined, excluded: Set<string>): any[] {
+  const dropped = new Set<string>();
+  for (const id of excluded) {
+    const at = String(id).indexOf(DOC_MIRROR);
+    if (at >= 0) dropped.add(String(id).slice(at + DOC_MIRROR.length));
+  }
+  return (documents || []).filter((d) => !dropped.has(d?.doc_id));
+}
+
 /**
  * `opts.from` 은 팩을 **어느 스페이스에서** 뜰지, `opts.into` 는 목적지를 미리
  * 정할지를 말한다. 둘 다 없으면 현재 스페이스에서 떠서 목적지를 물어보는
@@ -82,8 +111,10 @@ export async function openShareSheet(
       const keep = nodes.filter((n) => !excluded.has(n.id));
       const keepIds = new Set(keep.map((n) => n.id));
       const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
+      const docs = keptDocs(pack.documents, excluded);
       const out = { ...pack, fragment: { nodes: keep, edges },
-        manifest: { ...pack.manifest, counts: { ...c, concepts: keep.filter((n) => n.type === "concept").length, edges: edges.length } } };
+        ...(pack.documents ? { documents: docs } : {}),
+        manifest: { ...pack.manifest, counts: { ...c, concepts: keep.filter((n) => n.type === "concept").length, edges: edges.length, documents: docs.length } } };
       delete (out as any).executed;
       // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
       if (opts.into) {
@@ -203,10 +234,10 @@ async function chooseDestination(
   }
 
   // 수치는 여기서도 보인다 — 나가는 순간은 [공유]가 아니라 **이 클릭**이다.
-  // 개별 제외로 다시 세는 것은 `concepts`·`edges` 둘뿐이고 `documents` 는 `c` 의
-  // 값이 그대로 온다. 그래도 표시가 거짓이 되지 않는 것은 `out` 이 `pack.documents`
-  // 를 손대지 않고 그대로 실어 나르기 때문이다(보이는 수 = 실제로 나가는 수).
-  // 그래서 노드를 전부 제외하면 개념 0 · 링크 0 · 문서 N 이 되는데, 맞는 표시다.
+  // 개별 제외로 다시 세는 것은 `concepts`·`edges`·`documents` 셋이고, 세 값 모두
+  // `out` 이 실제로 나르는 것을 센다(보이는 수 = 실제로 나가는 수). 여기 "documents
+  // 는 손대지 않으니 표시가 거짓이 되지 않는다"고 적혀 있던 것이 blocker 였다:
+  // 미러 행을 끄면 노드는 빠지는데 원문은 그대로 나갔고 수치는 끈 것을 세고 있었다.
   sheet.body.innerHTML = `
     ${specRows(out.manifest?.counts || {}, scopeLabel)}
     <p class="hint">${esc(U.destSub)}</p>
