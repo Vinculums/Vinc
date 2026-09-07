@@ -982,7 +982,7 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
         """웜 창 안에 성공한 적이 있으면 인코더는 살아 있다. 지금 초과는 '바쁨'이니
         기다려 봐야 사용자만 세운다."""
         with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
-            app._qvec_ok = time.time()
+            app._qvec_ok = time.monotonic()
             t0 = time.time()
             vec, note = app._query_embedding("양자역학")
             elapsed = time.time() - t0
@@ -1001,12 +1001,31 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
             t1 = time.time()
             self.assertIsNone(app._query_embedding("q2")[0])
             second = time.time() - t1
-            self.assertGreater(app._qvec_cold_until, time.time(),
+            self.assertGreater(app._qvec_cold_until, time.monotonic(),
                                "긴 시도가 실패했는데 쿨다운이 안 걸렸다")
         self.assertGreaterEqual(first, self.srv._QVEC_COLD_TIMEOUT,
                                 "첫 질의가 긴 상한을 물지 않았다 — 시나리오가 안 섰다")
         self.assertLess(second, self.srv._QVEC_COLD_TIMEOUT,
                         "죽은 인코더에 두 번째 질의도 긴 상한을 물었다")
+
+    def test_성공_한_번이_다음_시간_초과를_바쁨으로_바꾼다(self):
+        """`_encode_query` 의 성공 기록이 '웜' 판정의 **유일한** 입력이다. 그 한 줄이
+        사라지면 인코더가 살아서 바쁠 뿐인 초과가 전부 콜드로 승격돼 긴 상한을 문다 —
+        짧은 상한이 원래 막던 사고 그대로이고, 오류도 로그도 안 난다."""
+        with _encode_stub([1.0, 0.0]) as url, self._app_at(url) as app:
+            self.assertEqual(app._query_embedding("양자역학")[0], [1.0, 0.0])
+            self.assertFalse(app._claim_cold_retry(),
+                             "방금 성공했는데 콜드 자격을 준다 — 성공이 기록되지 않았다")
+
+    def test_긴_시도가_끝나면_다음_질의가_다시_자격을_얻는다(self):
+        """'기다리는 스레드가 있다' 플래그를 안 풀면 그 프로세스는 영영 콜드 재시도를
+        못 한다. 인코더가 다시 잠들면 벡터 팔이 안 켜지고, 남는 신호는 평범한 시간
+        초과 하나뿐이라 '바쁜 인코더'와 구분되지 않는다."""
+        self.srv._QVEC_COLD_COOLDOWN = 0.0    # 쿨다운은 위 테스트가 지킨다
+        with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
+            self.assertIsNone(app._query_embedding("q1")[0])
+            self.assertTrue(app._claim_cold_retry(),
+                            "긴 시도가 끝났는데 자격이 안 돌아온다 — 플래그가 샜다")
 
     def test_긴_상한은_한_번에_한_스레드만_문다(self):
         """동시 질의가 다같이 기다리면 콜드스타트 한 번이 요청 전부를 세운다."""

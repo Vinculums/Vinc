@@ -45,13 +45,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #:   깨는 데는 오래 걸리지만 한 번 깨면 그 뒤 질의는 싸다 — 여기서 1.5초에 포기하면
 #:   벡터 팔이 영영 안 켜진다.
 #:
-#: 둘을 가르는 신호는 **최근 성공 시각**이다(`VincApp._claim_cold_retry`).
-#: 최악 지연 상한 = `_QVEC_TIMEOUT` + `_QVEC_COLD_TIMEOUT`(기본 1.5+30 = 31.5초)이고
-#: 한 질의당 한 번뿐이다. 인코더가 죽어 있으면 그 값을 무는 질의는
-#: `_QVEC_COLD_COOLDOWN` 마다 하나이고 나머지는 전부 `_QVEC_TIMEOUT` 에서 끊는다.
+#: 둘을 가르는 신호는 **최근 성공 시각**이다(`VincApp._claim_cold_retry`). 긴 값을 무는
+#: 질의는 한 질의당 한 번뿐이고, 인코더가 죽어 있으면 `_QVEC_COLD_COOLDOWN` 마다 하나이며
+#: 나머지는 전부 `_QVEC_TIMEOUT` 에서 끊는다.
 #:
-#: ⚠ 기다림을 늘리는 값이므로 그 기다림이 화면에 보여야 한다 — 안 보이면 "가끔 느린
-#: 검색"이 새 무음 결함이 된다.
+#: ⚠ **이 값들은 총 상한이 아니라 소켓 연산당 상한이다.** `urlopen(timeout=T)` 은 연결에도
+#: 매 read 에도 각각 T 를 주므로, 응답을 찔끔찔끔 흘리는 인코더에는 총 지연이 T 를 얼마든지
+#: 넘는다(실측: T=1.5 에 10.2초 걸리고 **예외 없이 성공**). 그러니 "1.5+30"을 상류 예산의
+#: 천장으로 잡지 마라. 총 지연을 실제로 끊는 것은 브리지 요청 상한 하나뿐이고
+#: (`vinc_mcp/bridge.py` `request(timeout=60)`) 거기 걸리면 강등이 아니라 호출 자체가
+#: 실패한다 — 콜드 값을 키울 때 먼저 볼 곳이 그 60초다.
+#:
+#: ⚠ 기다림을 늘리는 값이므로 그 기다림이 보여야 한다 — 안 보이면 "가끔 느린 검색"이
+#: 새 무음 결함이 된다. 지금 남는 곳은 **사이드카 stderr 한 줄뿐**이다(`_query_embedding`).
+#: `vector_note` 로는 못 낸다 — 그 필드의 계약이 "의미 팔이 안 돌았을 때만 나타난다"라서
+#: (`vinc_mcp/tools.py`) 성공한 콜드 재시도에 붙이면 계약이 깨진다. 화면에 내려면 계약을
+#: 먼저 고칠 것.
 _QVEC_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_TIMEOUT", "1.5"))
 _QVEC_COLD_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_COLD_TIMEOUT", "30"))
 _QVEC_WARM_WINDOW = float(os.environ.get("VINC_EMBED_ENCODE_WARM_WINDOW", "300"))
@@ -231,7 +240,9 @@ class VincApp:
         self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
         self._mig_pending = 0    # 이행 중 남은 문서 수(GM-13 배지 진행도, note 와 동시 갱신)
         # 쿼리 임베딩 창구 상태 — 콜드스타트와 '바쁨'을 가르는 재료(`_claim_cold_retry`).
-        self._qvec_ok = 0.0          # 마지막 성공 시각(0 = 아직 한 번도 성공 못 했다)
+        # ⚠ 아래 셋은 전부 `time.monotonic()` 눈금이다(벽시계 아님). NTP 역방향 스텝이나
+        # VM 재개가 시계를 밀면 '웜'·쿨다운 판정이 오류도 로그도 없이 뒤집힌다.
+        self._qvec_ok = float("-inf")  # 마지막 성공 시각(-inf = 아직 한 번도 성공 못 했다)
         self._qvec_cold_until = 0.0  # 이 시각 전에는 긴 상한을 쓰지 않는다(죽은 인코더 가드)
         self._qvec_cold_busy = False # 지금 긴 상한으로 기다리는 스레드가 있다
         self._qvec_lock = threading.Lock()
@@ -629,11 +640,19 @@ class VincApp:
                 return None, f"{type(exc).__name__}: {str(exc)[:120]}"
         # 콜드로 판정됐다 — **한 번만** 길게 기다린다. 여기서도 실패하면 인코더가 죽은
         # 것으로 보고 쿨다운을 걸어, 뒤따르는 질의들이 같은 값을 물지 않게 한다.
+        t0 = time.monotonic()
         try:
-            return self._encode_query(url, text, _QVEC_COLD_TIMEOUT)
+            out = self._encode_query(url, text, _QVEC_COLD_TIMEOUT)
+            # 성공한 콜드 재시도는 어디에도 안 남으면 "가끔 30초 걸리는 검색"이 된다.
+            # `vector_note` 는 못 쓴다 — 그 필드의 계약이 "의미 팔이 **안** 돌았을 때만
+            # 나타난다"이고(`vinc_mcp/tools.py`) 여기서는 돌았다. 화면에 보이게 하는 것은
+            # 별건이고, 그때까지 최소한 로그에는 남는다.
+            print(f"vinc-sidecar: 질의 임베딩 콜드 재시도 성공 — "
+                  f"{time.monotonic() - t0:.1f}s 기다렸다", file=sys.stderr, flush=True)
+            return out
         except Exception as exc:
             with self._qvec_lock:
-                self._qvec_cold_until = time.time() + _QVEC_COLD_COOLDOWN
+                self._qvec_cold_until = time.monotonic() + _QVEC_COLD_COOLDOWN
             return None, f"{type(exc).__name__}: {str(exc)[:120]}"
         finally:
             with self._qvec_lock:
@@ -656,7 +675,7 @@ class VincApp:
                                      headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             vecs = (json.load(resp) or {}).get("vectors") or []
-        self._qvec_ok = time.time()   # 살아 있다 — 다음 시간 초과는 '바쁨'으로 읽는다
+        self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
         return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
 
     def _claim_cold_retry(self) -> bool:
@@ -667,7 +686,7 @@ class VincApp:
         시도가 실패해 건 쿨다운이 지났다 — 인코더가 죽어 있는데 **모든** 질의가 긴
         상한을 물면 안 된다. (3) 긴 상한으로 기다리는 스레드가 지금 없다 — 동시 질의가
         다같이 기다리면 콜드스타트 한 번이 요청 전부를 세운다."""
-        now = time.time()
+        now = time.monotonic()
         with self._qvec_lock:
             if self._qvec_cold_busy or now < self._qvec_cold_until:
                 return False
