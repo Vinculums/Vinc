@@ -13,6 +13,8 @@ import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { initSegMotion, wireScrimDismiss } from "./components";
+import { isTypingTarget } from "./keys";
+import { disposeEditorsIn } from "./doc-editor";
 
 // 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
 // 갔다(P15) — 다섯 기능이 전부 거기 산다.
@@ -117,6 +119,10 @@ async function route() {
   // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
   // 안 된다(옮겨 심은 노드는 이미 여기 있으므로 남는다). 라우터가 닫는다.
   // 비우는 것은 **본문뿐**이다: 머리는 셸 것이고 접기 손잡이가 거기 살고 있다.
+  // 열을 비우기 **전에** 그 안의 편집기를 확정·해제한다. 여태 이 줄이 마운트 지점만
+  // 걷어 가고 핸들에는 닿지 않아서, 2초 디바운스가 화면 없는 곳에서 터졌다(저장 문구가
+  // 나갈 노드도 함께 떨어져 나가 흔적조차 안 남았다 — 2026-09-07 실측).
+  disposeEditorsIn(docpaneBodyEl);
   docpaneBodyEl.innerHTML = "";
   docpaneEl.querySelector("#rail-grip")?.remove();
   docpaneEl.hidden = true;
@@ -234,7 +240,9 @@ async function openCheatsheet() {
 }
 
 document.addEventListener("keydown", (e) => {
-  const inField = (e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA";
+  // 판정은 keys.ts 한 벌뿐이다. 여기 `tagName` 검사를 다시 적으면 표면 쪽 가드와
+  // 또 갈리고, 그 틈으로 지도 단축키가 문서 본문에 떨어진다(2026-09-07 실측).
+  const inField = isTypingTarget(e.target);
   // ⌘/Ctrl+K 는 상단 바 검색이 가져갔다(D57 — 조회가 제1 동선). 팔레트는 같은 키에
   // Shift 를 더해 남긴다: 한 키에 두 동작이 붙으면 어느 쪽이 뜰지 예측할 수 없다.
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {

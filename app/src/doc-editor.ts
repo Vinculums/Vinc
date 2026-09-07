@@ -59,13 +59,32 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
  *  구조상 Reader 라는 별도 화면이 없어졌다: 문서는 언제나 렌더된 모습이고,
  *  편집을 켜면 그 자리에 커서가 생길 뿐이다. */
 export type DocEditorHandle = {
-  dispose: () => void;
-  setEditable: (on: boolean) => void;
-  isEditable: () => boolean;
+  /** **나가면서 확정한다** — 대기 중이던 디바운스를 버리지 않고 저장한 뒤 해제한다.
+   *  상시 편집 + 자동저장인 제품에서 "버린다"는 마지막 2초를 소리 없이 잃는 것이고,
+   *  실제로 레일의 출구 넷(뒤로 · 전체폭 · ✕ · 표면 이동)이 결과 셋을 냈다
+   *  (2026-09-07 실측). 반환 Promise 는 **같은 문서를 곧바로 다시 읽는 자리**만
+   *  기다리면 된다(전체폭 승격) — 그 밖에는 무시해도 안전하다.
+   *  두 번 불러도 안전하다(타이머를 비우고 cm 을 놓는다). */
+  dispose: () => Promise<void>;
   /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
    *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
   scrollToOffset: (pos: number) => void;
 };
+
+/** 살아 있는 편집기 — **teardown 이 핸들에 닿는 유일한 통로.**
+ *  마운트 지점을 지우는 곳(라우터 · 레일 열기·닫기 · Tools 탭 전환)은 핸들을 들고
+ *  있지 않다. 그래서 여태 그것들은 화면만 걷어 갔고 디바운스는 그대로 살아 남아
+ *  화면 없는 곳에서 저장이 터졌다. 호스트로 찾을 수 있게 여기 등록해 둔다. */
+const LIVE = new Map<HTMLElement, DocEditorHandle>();
+
+/** `root`(자신 포함) 안에 마운트된 편집기를 전부 확정·해제한다.
+ *  **마운트 지점을 비우기 전에** 부를 것 — dispose 가 대기 중 편집을 먼저 저장한다.
+ *  기다리지 않는다: 저장할 글자는 dispose 가 동기적으로 이미 집어 갔다. */
+export function disposeEditorsIn(root: HTMLElement): void {
+  for (const [host, h] of [...LIVE]) {
+    if (root === host || root.contains(host)) void h.dispose();
+  }
+}
 
 export type DocEditorOpts = {
   owner: string;
@@ -75,7 +94,8 @@ export type DocEditorOpts = {
   contentHash?: string;   // 로드 시점 해시(충돌 감지 기준)
   onSaved?: (docId: string, title: string) => void;
   onClose?: () => void;
-  /** 읽기로 시작(문서 보기). 편집은 호출부가 setEditable(true) 로 켠다. */
+  /** 읽기 전용으로 마운트(커서를 켜지 않는다). 마운트 뒤 전환하는 문은 없다 —
+   *  문서 열은 상시 편집이라 쓸 곳이 없었고, 있던 토글은 사문이었다(2026-09-07 제거). */
   readOnly?: boolean;
   /** 이 개념이 언급된 위치(백엔드 계산 char 오프셋) — 렌더 위에 밑줄. */
   highlights?: { char_start: number; char_end: number }[];
@@ -128,6 +148,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 상태에서 `executed:false` 로 돌린 순간 쓰기 창은 이미 이 가드에 걸렸다.
       // P17b 가 더한 것은 **문구 갈래 + 사람이 누르는 재시도** 둘뿐이다.
       // (그 보호를 이 패키지의 공으로 적지 말 것 — 어디서 오는지 잘못 알게 된다.)
+      // 그 보호가 무엇을 막는지는 그대로다: 편집기를 세우면 상시 편집 + 2초 디바운스라
+      // 키 하나에 그 반쪽이 정본이 되고, 그 시점에 이전 본을 들고 있는 것이 없다.
       const busy = !!doc && docMidWrite(doc);
       host.innerHTML = `<p class="hint">${busy ? COPY.ui.viewx.readerMidWrite
         : storeDown === null ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`
@@ -146,10 +168,17 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       host.querySelector("#ed-retry")?.addEventListener("click", () => {
         void mountDocEditor(host, opts).then((h) => { closed ? h.dispose() : (again = h); });
       });
-      return { dispose: () => { closed = true; again?.dispose(); },
-               setEditable: (on) => again?.setEditable(on),
-               isEditable: () => !!again?.isEditable(),
-               scrollToOffset: (pos) => again?.scrollToOffset(pos) };
+      // stub 도 등록한다 — 호출부가 이것을 잡고 있어도, 마운트 지점을 지우는 쪽은
+      // 핸들을 모르고 호스트만 안다. 재시도가 성공하면 그때 등록한 진짜 편집기가
+      // 같은 호스트 자리를 덮고, 이 stub 의 dispose 는 거기로 흘러간다.
+      // `closed` 를 세우는 것이 P17b 의 몫이다 — 왕복 중에 닫히면 도착하는 핸들을
+      // 즉시 버려야 이미 떨어져 나간 host 에 편집기가 서지 않는다.
+      const stub: DocEditorHandle = {
+        dispose: async () => { closed = true; LIVE.delete(host); await again?.dispose(); },
+        scrollToOffset: (pos) => again?.scrollToOffset(pos),
+      };
+      LIVE.set(host, stub);
+      return stub;
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
@@ -376,20 +405,22 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   // 포커스를 뺏지 않는 두 경우: 읽기로 시작할 때, 그리고 편집 가능하지만 자리가
    // 지도 옆일 때(autoFocus:false — 열자마자 커서가 깜빡이면 지도 단축키가 죽는다).
   if (!opts.readOnly && opts.autoFocus !== false) (cm ? { focus: () => cm!.focus() } : src).focus();
-  let editable = !opts.readOnly;
-  return {
-    dispose: () => { if (timer) window.clearTimeout(timer); if (cm) cm.destroy(); },
-    setEditable: (on: boolean) => {
-      editable = on;
-      const bar = host.querySelector<HTMLElement>(".doc-ed-bar");
-      if (bar && !opts.hideTitle) bar.hidden = false;
-      if (cm) cm.setEditable(on); else src.readOnly = !on;
-      // 편집을 끄면 마지막 상태를 즉시 확정한다(디바운스를 기다리지 않는다).
-      if (!on) void save();
+  const handle: DocEditorHandle = {
+    dispose: async () => {
+      LIVE.delete(host);
+      // 디바운스를 **버리지 않고 확정한다.** 여기가 네 출구(뒤로 · 전체폭 · ✕ ·
+      // 표면 이동)의 결과를 하나로 만드는 자리다 — 여태 앞의 둘은 버리고 뒤의 둘은
+      // 몰래 저장했고, 어느 쪽인지는 누른 버튼이 정했다.
+      // ⚠ `save()` 는 첫 줄에서 글자를 동기적으로 집는다. 그래서 아래 destroy 가
+      //    뒤에 와야 한다 — 순서를 뒤집으면 확정할 본문이 이미 없다.
+      if (timer) { window.clearTimeout(timer); timer = undefined; await save(); }
+      cm?.destroy();
+      cm = null;
     },
-    isEditable: () => editable,
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
   };
+  LIVE.set(host, handle);
+  return handle;
 }
 
 /** 오버레이 시트로 편집기를 연다(Records/Intake 진입점). 저장은 편집기 내부에서
