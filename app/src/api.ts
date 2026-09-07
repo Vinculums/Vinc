@@ -204,6 +204,17 @@ export function storeDownReason(e: unknown): string | null {
   return err?.storeDown ? (err.reason || "") : null;
 }
 
+/** 이 `doc_get` 거절이 **쓰기 창·중간에 끊긴 쓰기**인가(P17, `api/docstore.py` get_doc).
+ *  그 갈래만 응답에 청크 수를 단다 — 모르는 id·소유자 불일치·죽은 사이드카에는 없다.
+ *  `error`·`hint` 는 영어 서버 문자열이라 화면에 쓰지 않고, 판별에만 쓰는 이 열을 본다.
+ *
+ *  ⚠ 응답은 **"잠시 뒤 낫는다"와 "크래시가 남겨 며칠 간다"를 못 가른다.** 둘이 같은
+ *  행 수 불일치로 오고, 서버도 재시도 전에는 어느 쪽인지 알 근거가 없다(쓰기 창은
+ *  다음 순간 닫히고, 잔해는 다음 re-put 까지 그대로다 — 디스크 위 모습이 같다).
+ *  그래서 문구가 두 처방(잠시 뒤 다시 · 계속 이러면 전문 재저장)을 함께 말한다. */
+export const docMidWrite = (d: { executed?: boolean; chunk_count?: number }): boolean =>
+  d.executed === false && d.chunk_count !== undefined;
+
 /** 시간축(D72). `recorded` = 기록 시각, `content` = 문서 내용이 가리키는 시점. */
 export type TimeBasis = "recorded" | "content";
 
@@ -323,6 +334,8 @@ export const api = {
   docGet: (owner: string, id: string): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
     content_hash?: string; error?: string;
+    // 쓰기 창·중단된 쓰기의 거절 표식(P17). 이 갈래에만 실린다 — `docMidWrite` 참조.
+    chunk_count?: number;
     // D72 — 최초 기록 시각 · 내용 시점. 구 사이드카에는 키 자체가 없다.
     created_at?: string; content_time?: string;
   }> => call("/doc", { owner, id }),

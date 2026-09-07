@@ -3,7 +3,7 @@
 // textarea 폴백. 무손실 규율: 저장은 편집기 문자열을 어떤 변형도 없이 /doc/put
 // 로 보낸다(verified 바이트 동일). 저장 = 디바운스 자동저장 + Ctrl/Cmd+S, 무음
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
-import { api, cfg, storeDownReason, shellInvoke } from "./api";
+import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
 
@@ -121,10 +121,26 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 스토어를 못 읽는 것은 **문서 하나가 상한 것과 다른 사건**이다. 기본 문구는
       // "잠시 후 다시 시도하세요"인데, 다른 Vinc 가 스토어를 물고 있는 동안에는
       // 몇 번을 다시 눌러도 같은 결과라 그 조언이 틀린 길로 보낸다.
-      host.innerHTML = `<p class="hint">${storeDown === null
-        ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`;
-      return { dispose: () => {}, setEditable: () => {}, isEditable: () => false,
-               scrollToOffset: () => {} };
+      // 그리고 쓰기 창(P17)은 셋째 사건이다: 문서는 멀쩡히 있고 지금 이 순간만 반쪽이다.
+      // ⚠ **여기서 돌아가는 것이 이 분기의 전부다.** 편집기를 세우면 상시 편집 + 2초
+      // 디바운스라 키 하나에 그 반쪽이 정본이 되고, 그 시점에 이전 본을 들고 있는 것은
+      // 아무것도 없다. 아래 stub 의 `setEditable` 이 무동작인 이유도 같다.
+      const busy = !!doc && docMidWrite(doc);
+      host.innerHTML = `<p class="hint">${busy ? COPY.ui.viewx.readerMidWrite
+        : storeDown === null ? COPY.ui.viewx.readerFail : COPY.view.storeDown}</p>`
+        + (busy ? `<button class="btn" id="ed-retry">${esc(COPY.ui.viewx.readerRetry)}</button>` : "");
+      // 자동 재시도는 없다 — 크래시 잔해면 영원히 돈다. 사람이 누를 때만 다시 읽는다.
+      // 다시 성공하면 그때 만든 편집기를 이 stub 이 대신 들고 있어야 한다: 호출부는
+      // 이미 stub 을 잡았으므로, 위임하지 않으면 시트를 닫아도 디바운스 타이머와
+      // CM6 인스턴스가 남는다.
+      let again: DocEditorHandle | null = null;
+      host.querySelector("#ed-retry")?.addEventListener("click", () => {
+        void mountDocEditor(host, opts).then((h) => { again = h; });
+      });
+      return { dispose: () => again?.dispose(),
+               setEditable: (on) => again?.setEditable(on),
+               isEditable: () => !!again?.isEditable(),
+               scrollToOffset: (pos) => again?.scrollToOffset(pos) };
     }
     initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
     contentTime = doc.content_time || "";

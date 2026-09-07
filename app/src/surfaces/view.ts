@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, docMidWrite, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { absoluteViewUrl, formatViewUrl } from "../view-url";
@@ -2232,7 +2232,16 @@ export async function renderView(el: HTMLElement) {
              Partial<Awaited<ReturnType<typeof api.docContext>>>];
       if (detail.hidden) return;
       if (!doc.executed || doc.text === undefined) {
-        detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
+        // 쓰기 창에 걸린 문서(P17)는 "못 열었다"와 다른 사건이다 — 문서는 그대로 있고
+        // 비어 있지도 않다. 여기서 돌아가므로 아래 편집기 마운트에 닿지 않는다:
+        // 상시 편집 + 2초 디바운스라, 반쪽 본문 위에 커서를 켜면 키 하나가 그것을
+        // 정본으로 만든다. 자동 재시도는 안 건다(크래시 잔해면 영원히 돈다).
+        const busy = docMidWrite(doc);
+        detail.innerHTML = `<p class="hint">${busy ? COPY.ui.viewx.readerMidWrite
+          : COPY.ui.viewx.readerFail}</p>`
+          + (busy ? `<button class="btn" id="rdr-retry">${esc(COPY.ui.viewx.readerRetry)}</button>` : "");
+        detail.querySelector("#rdr-retry")?.addEventListener("click",
+          () => void openReader(docId, conceptId, chunkIndex));
         return;
       }
       // 문서가 자기 제목을 `# 제목` 으로 갖고 있으면 레일 제목은 생략한다 —
