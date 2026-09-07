@@ -36,9 +36,34 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-#: 쿼리 임베딩 대기 상한(초). 조회 요청 **안**에서 도는 호출이라 짧게 잡는다 —
-#: 워커가 배경 임베딩으로 바쁘면 기다리느니 FTS 로 답하는 편이 낫다(§11 P2 게이트).
+#: 쿼리 임베딩 대기 상한(초) — **정반대 두 고장을 다른 값으로** 다룬다.
+#:
+#:   짧은 쪽(`_QVEC_TIMEOUT`)은 인코더가 **바쁜** 경우다. 조회 요청 안에서 도는
+#:   호출이라, 워커가 배경 임베딩으로 붐비면 기다리느니 FTS 로 답하는 편이 낫다
+#:   (§11 P2 게이트).
+#:   긴 쪽(`_QVEC_COLD_TIMEOUT`)은 인코더가 **없는** 경우다(레플리카 0에서 깨는 중).
+#:   깨는 데는 오래 걸리지만 한 번 깨면 그 뒤 질의는 싸다 — 여기서 1.5초에 포기하면
+#:   벡터 팔이 영영 안 켜진다.
+#:
+#: 둘을 가르는 신호는 **최근 성공 시각**이다(`VincApp._claim_cold_retry`).
+#: 최악 지연 상한 = `_QVEC_TIMEOUT` + `_QVEC_COLD_TIMEOUT`(기본 1.5+30 = 31.5초)이고
+#: 한 질의당 한 번뿐이다. 인코더가 죽어 있으면 그 값을 무는 질의는
+#: `_QVEC_COLD_COOLDOWN` 마다 하나이고 나머지는 전부 `_QVEC_TIMEOUT` 에서 끊는다.
+#:
+#: ⚠ 기다림을 늘리는 값이므로 그 기다림이 화면에 보여야 한다 — 안 보이면 "가끔 느린
+#: 검색"이 새 무음 결함이 된다.
 _QVEC_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_TIMEOUT", "1.5"))
+_QVEC_COLD_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_COLD_TIMEOUT", "30"))
+_QVEC_WARM_WINDOW = float(os.environ.get("VINC_EMBED_ENCODE_WARM_WINDOW", "300"))
+_QVEC_COLD_COOLDOWN = float(os.environ.get("VINC_EMBED_ENCODE_COLD_COOLDOWN", "120"))
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """시간 초과인가. urlopen 은 두 모양으로 낸다 — 읽기는 `TimeoutError`
+    (=`socket.timeout`), 연결은 그것을 `reason` 에 감싼 `URLError`. 연결 거부·401 은
+    여기 해당하지 않는다(빨리 오는 답이라 다시 기다릴 이유가 없다)."""
+    return isinstance(exc, TimeoutError) or isinstance(
+        getattr(exc, "reason", None), TimeoutError)
 
 from store.config import load_config
 from store.backend import open_store
@@ -205,6 +230,11 @@ class VincApp:
         self._mig_note = ""      # 임베딩 모델 이행 중 사유(빈 문자열 = 정상)
         self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
         self._mig_pending = 0    # 이행 중 남은 문서 수(GM-13 배지 진행도, note 와 동시 갱신)
+        # 쿼리 임베딩 창구 상태 — 콜드스타트와 '바쁨'을 가르는 재료(`_claim_cold_retry`).
+        self._qvec_ok = 0.0          # 마지막 성공 시각(0 = 아직 한 번도 성공 못 했다)
+        self._qvec_cold_until = 0.0  # 이 시각 전에는 긴 상한을 쓰지 않는다(죽은 인코더 가드)
+        self._qvec_cold_busy = False # 지금 긴 상한으로 기다리는 스레드가 있다
+        self._qvec_lock = threading.Lock()
         # 계정 연결 메일박스(디바이스 연결 플로우) — state 논스 → {expires,[key,email]}.
         # 인메모리 전용(재기동 시 소멸 — 연결 진행 중이면 다시 시작). B1 유지: 로그인·
         # 키 발급은 전부 브라우저(vincs.app)에서 일어나고, 앱은 발급된 키를 받기만 한다.
@@ -578,14 +608,11 @@ class VincApp:
         `VINC_EMBED_ENCODE` 가 없으면 **시도조차 하지 않는다** — 데스크탑에는 워커가
         없고, 매 검색마다 연결 실패를 기다리는 건 그 자체로 성능 사고다.
 
-        타임아웃이 짧은 이유: 이 호출은 **조회 요청 안**에 있다. 워커가 배경 임베딩으로
-        바쁘면 기다리느니 FTS 로 답하는 편이 낫다(§11 P2 게이트). 강등은 응답 메타에
-        남으므로 조용하지 않다.
-
-        ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데,
-        모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
-        빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
-        되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
+        상한이 둘인 이유: 이 호출은 **조회 요청 안**에 있으므로 인코더가 바쁠 때는
+        빨리 포기하는 게 맞지만(`_QVEC_TIMEOUT`), 인코더가 잠들어 있을 때는 한 번
+        기다려 깨우는 게 맞다(`_QVEC_COLD_TIMEOUT`) — 깨고 나면 그 뒤가 전부 싸다.
+        어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
+        메타(`vector_note`)에 남으므로 조용하지 않다."""
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
@@ -596,18 +623,58 @@ class VincApp:
         if mig:
             return None, mig
         try:
-            body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
-            headers = {"Content-Type": "application/json"}
-            tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
-            if tok:
-                headers["Authorization"] = f"Bearer {tok}"
-            req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
-                                         headers=headers)
-            with urllib.request.urlopen(req, timeout=_QVEC_TIMEOUT) as resp:
-                vecs = (json.load(resp) or {}).get("vectors") or []
-            return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
+            return self._encode_query(url, text, _QVEC_TIMEOUT)
         except Exception as exc:
+            if not (_is_timeout(exc) and self._claim_cold_retry()):
+                return None, f"{type(exc).__name__}: {str(exc)[:120]}"
+        # 콜드로 판정됐다 — **한 번만** 길게 기다린다. 여기서도 실패하면 인코더가 죽은
+        # 것으로 보고 쿨다운을 걸어, 뒤따르는 질의들이 같은 값을 물지 않게 한다.
+        try:
+            return self._encode_query(url, text, _QVEC_COLD_TIMEOUT)
+        except Exception as exc:
+            with self._qvec_lock:
+                self._qvec_cold_until = time.time() + _QVEC_COLD_COOLDOWN
             return None, f"{type(exc).__name__}: {str(exc)[:120]}"
+        finally:
+            with self._qvec_lock:
+                self._qvec_cold_busy = False
+
+    def _encode_query(self, url: str, text: str, timeout: float):
+        """창구에 한 번 물어본다. 성공하면 `(벡터|None, 사유)`, 실패하면 **던진다** —
+        바깥이 시간 초과 여부를 보고 긴 상한으로 한 번 더 갈지 정한다.
+
+        ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데,
+        모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
+        빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
+        되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
+        body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
+        if tok:
+            headers["Authorization"] = f"Bearer {tok}"
+        req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
+                                     headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            vecs = (json.load(resp) or {}).get("vectors") or []
+        self._qvec_ok = time.time()   # 살아 있다 — 다음 시간 초과는 '바쁨'으로 읽는다
+        return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
+
+    def _claim_cold_retry(self) -> bool:
+        """짧은 상한이 시간 초과일 때 **긴 상한으로 한 번 더** 갈 자격을 준다.
+
+        주는 조건 셋. (1) 웜 창(`_QVEC_WARM_WINDOW`) 안에 성공한 적이 없다 — 있으면
+        인코더는 살아 있고 지금 초과는 '바쁨'이라 더 기다려도 손해다. (2) 직전 긴
+        시도가 실패해 건 쿨다운이 지났다 — 인코더가 죽어 있는데 **모든** 질의가 긴
+        상한을 물면 안 된다. (3) 긴 상한으로 기다리는 스레드가 지금 없다 — 동시 질의가
+        다같이 기다리면 콜드스타트 한 번이 요청 전부를 세운다."""
+        now = time.time()
+        with self._qvec_lock:
+            if self._qvec_cold_busy or now < self._qvec_cold_until:
+                return False
+            if now - self._qvec_ok < _QVEC_WARM_WINDOW:
+                return False
+            self._qvec_cold_busy = True
+            return True
 
     def read_decide(self, p):
         return self._read(lambda r: q.decide(_req(p, "topic"),

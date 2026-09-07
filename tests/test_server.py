@@ -656,6 +656,10 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self._saved = {k: os.environ.get(k)
                        for k in ("VINC_EMBED_ENCODE", "VINC_EMBED_ENCODE_TIMEOUT",
                                  "VINC_EMBED_ENCODE_TOKEN")}
+        from api import server as srv
+        self.srv = srv
+        self._consts = {k: getattr(srv, k) for k in
+                        ("_QVEC_TIMEOUT", "_QVEC_COLD_TIMEOUT")}
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -663,6 +667,8 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        for k, v in self._consts.items():
+            setattr(self.srv, k, v)
 
     def _search(self):
         app = _app(store=self._Store(self))
@@ -690,7 +696,12 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
 
     def test_창구가_죽어도_검색은_답하고_사유를_남긴다(self):
         os.environ["VINC_EMBED_ENCODE"] = "http://127.0.0.1:9"   # discard 포트
-        os.environ["VINC_EMBED_ENCODE_TIMEOUT"] = "0.3"
+        # ⚠ 상한은 **모듈 속성**으로 줄인다. `VINC_EMBED_ENCODE_TIMEOUT` 은 import
+        # 시점에 한 번 읽히므로 여기서 env 를 놔 봐야 안 먹는다(오래 그렇게 적혀
+        # 있었다). 콜드 상한도 함께 줄인다 — 닫힌 포트는 이 기계에서 연결 거부일
+        # 때도 연결 시간 초과일 때도 있고, 후자면 콜드 재시도가 붙어 30초가 된다.
+        self.srv._QVEC_TIMEOUT = 0.3
+        self.srv._QVEC_COLD_TIMEOUT = 0.3
         res = self._search()
         self.assertEqual(res.get("arms"), "fts")
         self.assertTrue(res.get("vector_note"), "조용히 강등됐다 — 사유가 없다")
@@ -920,6 +931,92 @@ class BriefArmsTests(unittest.TestCase):
                             f"{name}: 팔이 통째로 죽었는데 화면이 읽을 신호가 없다")
             self.assertIsNot(res.get("vector_rebuilding"), True,
                              f"{name}: 진짜 실패를 양성 재빌드와 같은 톤으로 그린다")
+
+
+class QueryEmbeddingColdStartTests(unittest.TestCase):
+    """상한 하나가 정반대 두 고장을 맡던 것을 가른다.
+
+    **바쁜** 인코더는 빨리 포기하는 게 맞다 — 어차피 FTS 로 답할 것을 늦게 답하게 된다.
+    **잠든** 인코더(레플리카 0에서 깨는 중)는 한 번 기다려 깨우는 게 맞다 — 깨고 나면
+    그 뒤 질의가 전부 싸다. 가르는 신호는 마지막 성공 시각이고, 죽은 인코더가 모든
+    질의에 긴 값을 물리지 않도록 쿨다운이 받친다."""
+
+    def setUp(self):
+        from api import server as srv
+        self.srv = srv
+        self._consts = {k: getattr(srv, k) for k in
+                        ("_QVEC_TIMEOUT", "_QVEC_COLD_TIMEOUT",
+                         "_QVEC_WARM_WINDOW", "_QVEC_COLD_COOLDOWN")}
+        # 상수는 import 시점에 읽히므로 env 가 아니라 모듈 속성을 바꾼다.
+        srv._QVEC_TIMEOUT = 0.2
+        srv._QVEC_COLD_TIMEOUT = 1.5
+        srv._QVEC_WARM_WINDOW = 300.0
+        srv._QVEC_COLD_COOLDOWN = 60.0
+        self._saved_url = os.environ.get("VINC_EMBED_ENCODE")
+
+    def tearDown(self):
+        for k, v in self._consts.items():
+            setattr(self.srv, k, v)
+        if self._saved_url is None:
+            os.environ.pop("VINC_EMBED_ENCODE", None)
+        else:
+            os.environ["VINC_EMBED_ENCODE"] = self._saved_url
+
+    @contextlib.contextmanager
+    def _app_at(self, url):
+        os.environ["VINC_EMBED_ENCODE"] = url
+        app = _app()
+        try:
+            yield app
+        finally:
+            app.jobs.shutdown(drain=True)
+
+    def test_한_번도_성공_못_했으면_긴_상한으로_한_번_더_간다(self):
+        """콜드스타트다. 짧은 상한만 있으면 여기서 영원히 강등되고, 인코더는 깨지도
+        않으므로 다음 질의도 같은 값을 문다."""
+        with _encode_stub([1.0, 0.0], delay=0.6) as url, self._app_at(url) as app:
+            vec, note = app._query_embedding("양자역학")
+        self.assertEqual(vec, [1.0, 0.0], f"콜드스타트를 못 넘겼다: {note}")
+
+    def test_방금_성공했으면_시간_초과를_바쁨으로_보고_안_기다린다(self):
+        """웜 창 안에 성공한 적이 있으면 인코더는 살아 있다. 지금 초과는 '바쁨'이니
+        기다려 봐야 사용자만 세운다."""
+        with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
+            app._qvec_ok = time.time()
+            t0 = time.time()
+            vec, note = app._query_embedding("양자역학")
+            elapsed = time.time() - t0
+        self.assertIsNone(vec)
+        self.assertTrue(note, "조용히 강등됐다 — 사유가 없다")
+        self.assertLess(elapsed, self.srv._QVEC_COLD_TIMEOUT,
+                        "웜인데 긴 상한까지 기다렸다 — 바쁜 인코더에 사용자를 세웠다")
+
+    def test_인코더가_죽어_있으면_긴_상한을_무는_질의는_하나뿐이다(self):
+        """이 패키지의 급소. 콜드 재시도를 무조건 하면 죽은 인코더가 **모든** 질의를
+        긴 상한만큼 세운다 — 짧은 상한이 원래 막던 사고를 되살리는 것이다."""
+        with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
+            t0 = time.time()
+            self.assertIsNone(app._query_embedding("q1")[0])
+            first = time.time() - t0
+            t1 = time.time()
+            self.assertIsNone(app._query_embedding("q2")[0])
+            second = time.time() - t1
+            self.assertGreater(app._qvec_cold_until, time.time(),
+                               "긴 시도가 실패했는데 쿨다운이 안 걸렸다")
+        self.assertGreaterEqual(first, self.srv._QVEC_COLD_TIMEOUT,
+                                "첫 질의가 긴 상한을 물지 않았다 — 시나리오가 안 섰다")
+        self.assertLess(second, self.srv._QVEC_COLD_TIMEOUT,
+                        "죽은 인코더에 두 번째 질의도 긴 상한을 물었다")
+
+    def test_긴_상한은_한_번에_한_스레드만_문다(self):
+        """동시 질의가 다같이 기다리면 콜드스타트 한 번이 요청 전부를 세운다."""
+        app = _app()
+        try:
+            self.assertTrue(app._claim_cold_retry(), "콜드인데 자격을 안 준다")
+            self.assertFalse(app._claim_cold_retry(),
+                             "이미 기다리는 스레드가 있는데 또 자격을 줬다")
+        finally:
+            app.jobs.shutdown(drain=True)
 
 
 class IngestRouteTests(unittest.TestCase):
