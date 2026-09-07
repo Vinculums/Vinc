@@ -4840,16 +4840,24 @@ class _UnscopedChunkSearch(RuntimeError):
     지연 빌드 후 다시 도는 경로로 새면 같은 무스코프 조회를 한 번 더 하게 된다."""
 
 
+#: `_chunk_arms` 의 내부 팔 이름 → 응답 `arms` 의 표기.
+_ARM_LABEL = {"keyword": "fts", "semantic": "vector"}
+
 #: 벡터 인덱스가 없을 때 응답에 남기는 사유. 문구가 아니라 **이 필드의 존재**가
 #: 신호다(서버가 `vector_note` 를 붙이는 자리와 같다 — 화면은 파싱하지 않는다).
 _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
                       "full-text results only for now")
 
 
-def _chunk_arms(store, query, query_embedding, top_k, filters) -> tuple[list[dict], str]:
+def _chunk_arms(store, query, query_embedding, top_k,
+                filters) -> tuple[list[dict], str, list[str]]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
-    반환 ``(rows, vector_note)``. FTS·확장 부재는 예외로 전파(호출부가 지연 빌드·
-    error 표면화를 담당).
+    반환 ``(rows, vector_note, arm_names)``. FTS·확장 부재는 예외로 전파(호출부가
+    지연 빌드·error 표면화를 담당).
+
+    ``arm_names`` 는 **실제로 결과를 낸 팔**이다(``keyword`` · ``semantic``). 호출부의
+    ``arms`` 는 이것에서만 나온다 — 검색 전에 세우면 이 함수가 던졌을 때 아무 팔도
+    안 돌았는데 응답이 두 팔을 말한다.
 
     ⚠ **벡터 팔의 인덱스 부재는 예외로 올리지 않는다.** 문서를 쓰면 쓰기 경로가
     벡터 인덱스를 드롭하므로(HNSW 삽입 세그폴트 방어 — `drop_vector_index`), 쓰기
@@ -4881,7 +4889,7 @@ def _chunk_arms(store, query, query_embedding, top_k, filters) -> tuple[list[dic
     rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
-    return rows, vnote
+    return rows, vnote, arm_names
 
 
 def _schedule_vector_index(store, dim: int | None) -> None:
@@ -5211,10 +5219,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     detail = "full" if (detail or "").strip().lower() == "full" else "summary"
     # 어느 팔이 돌았는지를 **결과에 남긴다**. 임베딩이 오래 write-only 였는데(호출부가
     # query_embedding 을 안 넘겨 vector_search 가 한 번도 실행되지 않았다) 에러가 없어
-    # 아무도 몰랐다. 이 한 줄이 그 침묵을 깬다 — CLI·HTTP 양쪽이 같은 값을 본다
+    # 아무도 몰랐다. 이 필드가 그 침묵을 깬다 — CLI·HTTP 양쪽이 같은 값을 본다
     # (HTTP 계층에서만 붙이면 §11 게이트① 의 CLI↔HTTP 동등성이 깨진다).
+    # ⚠ **아직 아무 팔도 안 돌았으므로 "none" 에서 시작한다.** 여기서 임베딩 유무로
+    # "fts+vector" 를 미리 세우면, 청크 팔이 통째로 죽었을 때(확장 미가용·미프로비저닝)
+    # 응답이 **돌지도 않은 팔의 이름을 계속 달고 나간다** — 침묵보다 나쁜 거짓말이다.
     base = {"kind": "search", "executed": False, "rows": [], "node_hits": [],
-            "arms": "fts+vector" if query_embedding is not None else "fts",
+            "arms": "none",
             "total_count": 0, "has_more": False, "next_cursor": None}
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
     qh = _query_fingerprint(query, owner, filters, detail)
@@ -5264,13 +5275,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             scoped_ok = bool(getattr(store, "scoped_chunk_search", False))
         pool: list[dict] = []
         vnote = ""
+        ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
         try:
             if not scoped_ok:
                 raise _UnscopedChunkSearch(
                     "owner scope requested but this store does not support "
                     "owner-filtered chunk search")
-            pool, vnote = _chunk_arms(store, query, query_embedding, SEARCH_POOL_CAP,
-                                      chunk_filters or None)
+            pool, vnote, ran = _chunk_arms(store, query, query_embedding,
+                                           SEARCH_POOL_CAP, chunk_filters or None)
             base["executed"] = True
         except _UnscopedChunkSearch as exc:
             # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
@@ -5296,20 +5308,28 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
                         # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
                         builder(dim=None)
-                        pool, vnote = _chunk_arms(store, query, query_embedding,
-                                                  SEARCH_POOL_CAP, chunk_filters or None)
+                        pool, vnote, ran = _chunk_arms(
+                            store, query, query_embedding, SEARCH_POOL_CAP,
+                            chunk_filters or None)
                         base["executed"] = True
                         base["note"] = "search index built on demand"
                     except Exception as exc2:
                         base["error"] = (f"index_build_failed: "
                                          f"{type(exc2).__name__}: {exc2}")
                         base["note"] = base["error"]
+        # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
+        base["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
+        # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
+        # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
+        # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
+        # 죽는 경로(확장 미가용·미프로비저닝·스코프 미지원·빌드 실패)가 전부 여기다.
+        # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
+        if query_embedding is not None and "semantic" not in ran and base.get("error"):
+            base.setdefault("vector_note", base["error"])
         if vnote:
             # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
-            # (`vector_note`)를 둘 다 남긴다. `arms` 를 안 고치면 "fts+vector" 라고
-            # 답하면서 FTS 만 돈 것이 되고, 그건 이 필드가 막으려던 침묵 그대로다.
+            # (`vector_note`)를 둘 다 남긴다.
             base["vector_note"] = vnote
-            base["arms"] = "fts"
             # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
             # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
             # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).

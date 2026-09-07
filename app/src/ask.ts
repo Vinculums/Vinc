@@ -286,8 +286,10 @@ function toBottom(log: HTMLElement) {
 function bubble(t: Turn): string {
   if (t.role === "you")
     return `<div class="ask-turn you"><div class="ask-bubble">${esc(t.text)}</div></div>`;
-  const note = t.note ? `<p class="ask-qmeta">${esc(t.note)}</p>` : "";
-  return `<div class="ask-turn vinc"><div class="ask-bubble">${cardHtml(t.card)}${note}</div></div>`;
+  // 벡터 팔 알림은 **여기 한 곳에서만** 마크업이 된다. 값을 만드는 줄과 그리는 줄이
+  // 갈려 있으면 그리는 쪽만 지워도 호출은 남아 회귀가 안 보인다(실제로 그랬다).
+  return `<div class="ask-turn vinc"><div class="ask-bubble">${cardHtml(t.card)}${
+    t.note ? `<p class="ask-qmeta">${esc(t.note)}</p>` : ""}</div></div>`;
 }
 
 function cardHtml(card: Card): string {

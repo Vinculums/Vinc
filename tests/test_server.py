@@ -890,6 +890,37 @@ class BriefArmsTests(unittest.TestCase):
             self.assertIs(res.get("vector_rebuilding"), True,
                           f"{name}: 재빌드 창을 진짜 실패와 가를 표식이 없다")
 
+    def test_청크_팔이_통째로_죽으면_돌지_않은_팔의_이름을_안_단다(self):
+        """`arms` 를 검색 **전에** 세우던 자리의 거짓말(2026-09-07 적대적 검토가 재현).
+
+        벡터 팔이 `index_missing` 이 **아닌** 예외로 죽으면 `_chunk_arms` 가 재던지고
+        청크 팔이 통째로 빠진다(멀쩡한 키워드 결과까지). 그런데 응답은 계속
+        "fts+vector" 라고 답했고, 화면 판정이 보는 구조화 필드는 셋 다 안 서서
+        **알림도 침묵했다** — 답할 수 없는데 답한 것처럼 보이는, 이 결함의 가장 나쁜
+        얼굴이다. 이제 `arms` 는 **실제로 결과를 낸 팔**에서만 나온다."""
+        class _DeadReader(QueryEmbeddingWiringTests._Reader):
+            def vector_search(self, e, k, f=None):
+                raise RuntimeError("Binder exception: extension VECTOR 확장 미가용")
+
+        class _DeadStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self): return _DeadReader(self.o)
+
+        with _encode_stub([1.0, 0.0, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_DeadStore(self))
+            try:
+                got = {"search": app.read_search({"query": "양자역학", "owner": "u"})[1],
+                       "brief": app.read_brief({"query": "양자역학", "owner": "u"})[1]}
+            finally:
+                app.jobs.shutdown(drain=True)
+        for name, res in got.items():
+            self.assertNotIn("vector", res.get("arms") or "",
+                             f"{name}: 벡터 팔이 안 돌았는데 응답이 그 이름을 달았다")
+            self.assertTrue(res.get("vector_note"),
+                            f"{name}: 팔이 통째로 죽었는데 화면이 읽을 신호가 없다")
+            self.assertIsNot(res.get("vector_rebuilding"), True,
+                             f"{name}: 진짜 실패를 양성 재빌드와 같은 톤으로 그린다")
+
 
 class IngestRouteTests(unittest.TestCase):
     """POST /ingest — 적재 단일화(2026-07-11): 레거시 fragment 경로(Record/props,

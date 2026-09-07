@@ -93,10 +93,12 @@ export function renderSearch(el: HTMLElement) {
       // 판단·톤 분기는 `armsNoticeBadge` 한 곳에 있다 — 세 표면이 같은 규칙을
       // 써야 같은 고장이 도구에 따라 보이거나 안 보이는 일이 없다. 정상이면 빈
       // 문자열이라 화면은 지금 그대로다.
-      const armsBadge = armsNoticeBadge(res);
+      // 결과 마크업은 **이 한 곳으로만** 나간다 — 갈래마다 배지를 따로 붙이면 빠지기
+      // 쉬운 쪽이 하필 빈 결과이고, 반쪽 검색의 0건이 진짜 0건으로 읽힌다.
+      const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + html; };
       if (rows.length === 0) {
-        body.innerHTML = `${armsBadge}<div class="empty"><p>${COPY.search.empty(raw)}</p>
-          <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`;
+        show(`<div class="empty"><p>${COPY.search.empty(raw)}</p>
+          <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`);
         return;
       }
       // 도메인별 그루핑(D24) — 단일 도메인 필터 시 플랫
@@ -137,11 +139,10 @@ export function renderSearch(el: HTMLElement) {
             <span class="meta">${esc(r.domain || "")}</span>
           </div>`;
       };
-      body.innerHTML = armsBadge +
-        `<p class="hint">${COPY.search.matches(rows.length)}</p>` +
+      show(`<p class="hint">${COPY.search.matches(rows.length)}</p>` +
         [...groups.entries()].map(([d, rs]) =>
           (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +
-          rs.map(row).join("")).join("");
+          rs.map(row).join("")).join(""));
       // V2 — 여태 이 버튼은 `location.hash='#view'` 였다: 찾은 노드가 아니라 L0
       // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
       // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.
