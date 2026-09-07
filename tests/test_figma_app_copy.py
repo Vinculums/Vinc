@@ -54,8 +54,20 @@ class GitTests(unittest.TestCase):
         self.assertTrue(m.get("sourceRev"), "app manifest carries no sourceRev")
         self.assertTrue(m.get("sourceTree"), "app manifest carries no sourceTree")
         # 지문은 캡처한 그 리비전의 트리여야 한다 — 아무 값이나 적혀 있으면 판정이 거짓이 된다.
-        self.assertEqual(m["sourceTree"], fac.source_tree(m["sourceRev"]))
-        changes = fac.changes_since(m["sourceRev"])
+        # ⚠ 단 **그 리비전이 아직 있을 때만** 물을 수 있다. 브랜치에서 커밋한 뒤 캡처하면
+        # sourceRev 는 그 브랜치 커밋이고, 스쿼시 머지가 그것을 죽인다(이 리포의 정상 흐름).
+        # 그러면 깨끗한 체크아웃에서 이 줄이 RuntimeError 로 터지고, 계약은 멀쩡한데
+        # 설명용 필드 하나 때문에 main 이 빨개진다. 실측: 2026-09-07, 재캡처 #1(d4c4e75)이
+        # 머지된 뒤 main 의 ci 가 `path 'app/src' exists on disk, but not in 'd4c4e75...'`
+        # 로 죽었다. 정본이 sourceTree 이고 sourceRev 는 설명이라는 것은 매니페스트 자신의
+        # sourceTreeNote 에 적혀 있다 — 게이트(figma_app_copy.main)도 이미 그렇게 관대하다.
+        # assertEqual 은 AssertionError 라 이 except 에 안 걸린다: 리비전이 살아 있는데
+        # 지문이 다르면 여전히 실패한다.
+        try:
+            self.assertEqual(m["sourceTree"], fac.source_tree(m["sourceRev"]))
+            changes = fac.changes_since(m["sourceRev"])
+        except RuntimeError as e:
+            self.skipTest(f"sourceRev {m['sourceRev'][:7]} is gone (squash merge): {e}")
         self.assertIsInstance(changes, list)
 
     def test_an_unknown_revision_raises_instead_of_passing(self):
