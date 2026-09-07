@@ -1,6 +1,7 @@
 /** Shared surface chrome — Figma first-draft visual grammar (nodes 5:2/5:71/
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
-import { icon } from "./icons";
+import { icon, stateDot } from "./icons";
+import { COPY } from "./copy";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 
 /** ── 세그먼트 컨트롤의 물성(2026-08-05) ────────────────────────────────────
@@ -433,4 +434,38 @@ export function promptText(title: string, initial: string, confirmLabel: string,
 /** Top-right primary CTA (Figma: 포인트색 필 버튼, 화면당 1개). */
 export function headerCta(id: string, iconName: string, label: string): string {
   return `<button class="btn btn-primary header-cta" id="${id}">${icon(iconName, 16)} ${label}</button>`;
+}
+
+/** 벡터(의미) 팔이 빠진 검색을 화면이 말할 말. **정상이면 null** 이다.
+ *
+ *  판단은 **구조화 필드로만** 한다(`vector_note` 의 영문 문장은 카피가 아니다 —
+ *  파싱 금지). 세 갈래:
+ *    `embed_migration.pending`  모델 이행 중 — 양성. 남은 문서 수까지 말한다
+ *    `vector_rebuilding`        쓰기 뒤 재빌드 — 양성. 잠시 뒤 저절로 돌아온다
+ *    `vector_note` 만 있음      진짜 실패 — 창구가 답을 못 줬다(인코더 콜드스타트 등)
+ *
+ *  ⚠ `arms === "fts"` 만으로 판단하지 않는다. 임베딩 창구가 없는 데스크탑에서는
+ *  그것이 **영구 정상 상태**라, 그것만 보면 상시 경보가 되고 상시 경보는 안 읽힌다.
+ *  ⚠ 양성 둘과 실패를 가르는 것은 사이드카가 보낸 표식뿐이다. 표식이 없는 응답
+ *  (구 사이드카)에서는 재빌드 창이 실패로 보인다 — 사이드카를 올리면 갈린다. */
+export type ArmsNotice = { text: string; benign: boolean };
+
+export function armsNotice(res: any): ArmsNotice | null {
+  const pending = (res?.embed_migration || {}).pending;
+  if (typeof pending === "number" && pending > 0)
+    return { text: COPY.search.migrating(pending), benign: true };
+  if (res?.vector_rebuilding) return { text: COPY.search.rebuilding, benign: true };
+  if (res?.vector_note) return { text: COPY.search.degraded, benign: false };
+  return null;
+}
+
+/** 위 알림의 배지 markup. 색만으로 신호하지 않는다(D38) — 글리프(◐ 대 ○)와 문장이
+ *  신호를 나르고 색은 거들 뿐이다. 정상이면 빈 문자열이라 화면이 그대로 남는다. */
+export function armsNoticeBadge(res: any): string {
+  const n = armsNotice(res);
+  if (!n) return "";
+  const tone = n.benign ? "ring" : "danger";
+  return `<div style="margin:0 0 var(--space-2,.5rem)"><span class="badge"
+    style="border-color:hsl(var(--${tone}))">${
+    stateDot(n.benign ? "half" : "empty", 12)} ${n.text}</span></div>`;
 }

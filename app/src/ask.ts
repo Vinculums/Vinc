@@ -1,6 +1,6 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
-import { openSheet } from "./components";
+import { openSheet, armsNotice } from "./components";
 import { viewHooks } from "./topbar";
 
 /** 묻기 — 앱 안의 **무LLM 대화**(D73).
@@ -50,12 +50,17 @@ type Card =
   | { kind: "error" };
 
 type Turn = { role: "you"; at: number; text: string }
-           | { role: "vinc"; at: number; card: Card };
+           /** `note` = 이 답을 만들 때 벡터(의미) 팔이 빠졌다는 사실. 그 턴에 대해
+            *  참인 기록이므로 이력에 그대로 남는다(문장을 얼려 두는 것은 카드 본문과
+            *  같은 취급이다). 정상이었으면 없다. */
+           | { role: "vinc"; at: number; card: Card; note?: string };
 
 let turns: Turn[] = load();
 let panel: HTMLElement | null = null;
 let onClose: (() => void) | null = null;
 let busy = false;
+/** 마지막 `resolve` 의 벡터 팔 상태. `busy` 가 턴을 직렬화하므로 겹치지 않는다. */
+let lastNote: string | undefined;
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
@@ -104,12 +109,13 @@ export async function askSubmit(raw: string) {
   askOpen();
   render(true);                       // 생각 중 표시(질문은 이미 화면에 있다)
   let card: Card;
+  lastNote = undefined;
   try {
     card = await resolve(q);
   } catch {
     card = { kind: "error" };
   }
-  turns.push({ role: "vinc", at: Date.now(), card });
+  turns.push({ role: "vinc", at: Date.now(), card, note: lastNote });
   save();
   busy = false;
   render();
@@ -133,6 +139,9 @@ export async function askSubmit(raw: string) {
  *  임계값은 여전히 없다. 비교할 수치가 없던 것이 문제였지 규칙이 문제가 아니었다. */
 async function resolve(q: string): Promise<Card> {
   const res: any = await api.search(q);
+  // 벡터 팔이 빠졌으면 그 사실을 이 턴에 남긴다. 이 표면은 "못 찾았다"를 자주 답하는데,
+  // 반쪽 검색의 못 찾음을 진짜 못 찾음으로 읽게 두면 사용자가 자기 자료를 의심한다.
+  lastNote = armsNotice(res)?.text;
   const hits: any[] = (res?.node_hits || []).filter((h: any) => h && h.id);
   if (!hits.length) return { kind: "none", query: q };
 
@@ -277,7 +286,10 @@ function toBottom(log: HTMLElement) {
 function bubble(t: Turn): string {
   if (t.role === "you")
     return `<div class="ask-turn you"><div class="ask-bubble">${esc(t.text)}</div></div>`;
-  return `<div class="ask-turn vinc"><div class="ask-bubble">${cardHtml(t.card)}</div></div>`;
+  // 벡터 팔 알림은 **여기 한 곳에서만** 마크업이 된다. 값을 만드는 줄과 그리는 줄이
+  // 갈려 있으면 그리는 쪽만 지워도 호출은 남아 회귀가 안 보인다(실제로 그랬다).
+  return `<div class="ask-turn vinc"><div class="ask-bubble">${cardHtml(t.card)}${
+    t.note ? `<p class="ask-qmeta">${esc(t.note)}</p>` : ""}</div></div>`;
 }
 
 function cardHtml(card: Card): string {

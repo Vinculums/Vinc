@@ -1,7 +1,6 @@
 import { api, cfg } from "../api";
 import { COPY } from "../copy";
-import { header } from "../components";
-import { stateDot } from "../icons";
+import { header, armsNoticeBadge } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 
@@ -90,20 +89,16 @@ export function renderSearch(el: HTMLElement) {
       let rows: any[] = [...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
       if (tag) rows = rows.filter((r) => (r.tags || []).includes(tag));
-      // GM-13 — 재임베딩 이행 배지(Success 의 하위 상태, 별도 화면 아님). 판단은
-      // 구조화 필드 embed_migration.pending 으로만 한다: arms==="fts" 는 임베딩
-      // 창구가 없는 데스크탑의 영구 정상 상태라 그것만으로 띄우면 상시 배지가 된다.
-      // 이행이 끝나면 사이드카가 필드를 더는 싣지 않아 코드 변경 없이 사라진다.
-      // 색만으로 신호 금지(D38): ◐ 글리프 + 텍스트 라벨이 신호를 나른다.
-      const pending = (res.embed_migration || {}).pending;
-      const migBadge = typeof pending === "number" && pending > 0
-        ? `<div style="margin:0 0 var(--space-2,.5rem)"><span class="badge"
-             style="border-color:hsl(var(--ring))">${stateDot("half", 12)} ${
-             COPY.search.migrating(pending)}</span></div>`
-        : "";
+      // 벡터 팔이 빠졌으면 그 사실을 말한다(GM-13 이행 배지도 여기로 합쳐졌다).
+      // 판단·톤 분기는 `armsNoticeBadge` 한 곳에 있다 — 세 표면이 같은 규칙을
+      // 써야 같은 고장이 도구에 따라 보이거나 안 보이는 일이 없다. 정상이면 빈
+      // 문자열이라 화면은 지금 그대로다.
+      // 결과 마크업은 **이 한 곳으로만** 나간다 — 갈래마다 배지를 따로 붙이면 빠지기
+      // 쉬운 쪽이 하필 빈 결과이고, 반쪽 검색의 0건이 진짜 0건으로 읽힌다.
+      const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + html; };
       if (rows.length === 0) {
-        body.innerHTML = `${migBadge}<div class="empty"><p>${COPY.search.empty(raw)}</p>
-          <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`;
+        show(`<div class="empty"><p>${COPY.search.empty(raw)}</p>
+          <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`);
         return;
       }
       // 도메인별 그루핑(D24) — 단일 도메인 필터 시 플랫
@@ -144,11 +139,10 @@ export function renderSearch(el: HTMLElement) {
             <span class="meta">${esc(r.domain || "")}</span>
           </div>`;
       };
-      body.innerHTML = migBadge +
-        `<p class="hint">${COPY.search.matches(rows.length)}</p>` +
+      show(`<p class="hint">${COPY.search.matches(rows.length)}</p>` +
         [...groups.entries()].map(([d, rs]) =>
           (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +
-          rs.map(row).join("")).join("");
+          rs.map(row).join("")).join(""));
       // V2 — 여태 이 버튼은 `location.hash='#view'` 였다: 찾은 노드가 아니라 L0
       // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
       // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.

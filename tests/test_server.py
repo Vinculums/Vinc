@@ -811,6 +811,117 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self.assertIsNone(seen.get("_authorization"))
 
 
+class BriefArmsTests(unittest.TestCase):
+    """`/brief` 도 `/search` 와 **같은 규칙으로** 어느 팔이 돌았는지 말하는가.
+
+    두 표면은 같은 임베딩 창구를 쓴다. `/search` 만 `arms` 를 내던 동안, 같은 강등이
+    도구에 따라 보이거나 안 보였다 — 벡터 팔이 죽어도 `/brief` 는 완전해 보이는
+    답을 냈고 사용자도 에이전트도 몰랐다(08-26 이래 여섯 번 기록된 결함).
+
+    ⚠ `arms` 는 `q.brief` 가 세운다(HTTP 계층이 아니라). 여기서 붙이면 CLI 와 갈려
+    게이트① 동등성이 깨진다 — `EquivalenceTests` 가 `/brief` 를 대조한다."""
+
+    def setUp(self):
+        self.seen_vec = []
+        self._saved = os.environ.get("VINC_EMBED_ENCODE")
+        self._saved_to = os.environ.get("VINC_EMBED_ENCODE_TIMEOUT")
+
+    def tearDown(self):
+        for k, v in (("VINC_EMBED_ENCODE", self._saved),
+                     ("VINC_EMBED_ENCODE_TIMEOUT", self._saved_to)):
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _brief(self, store=None):
+        app = _app(store=store or QueryEmbeddingWiringTests._Store(self))
+        try:
+            return app.read_brief({"query": "양자역학", "owner": "u"})[1]
+        finally:
+            app.jobs.shutdown(drain=True)
+
+    def test_창구가_있으면_brief_도_두_팔을_말한다(self):
+        with _encode_stub([0.5, 0.5, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            res = self._brief()
+        self.assertEqual(res.get("arms"), "fts+vector",
+                         "brief 가 어느 팔이 돌았는지 말하지 않는다")
+
+    def test_창구가_죽으면_brief_도_강등을_말한다(self):
+        os.environ["VINC_EMBED_ENCODE"] = "http://127.0.0.1:9"   # discard 포트
+        os.environ["VINC_EMBED_ENCODE_TIMEOUT"] = "0.3"
+        res = self._brief()
+        self.assertEqual(res.get("arms"), "fts", "벡터 팔이 죽었는데 brief 는 침묵했다")
+        self.assertTrue(res.get("vector_note"), "조용히 강등됐다 — 사유가 없다")
+
+    def test_창구가_없으면_빈_필드를_붙이지_않는다(self):
+        """데스크탑의 영구 정상 상태. `arms` 는 실제로 돈 팔이므로 "fts" 가 맞고,
+        시도조차 안 했으므로 사유(vector_note)는 없어야 한다."""
+        os.environ.pop("VINC_EMBED_ENCODE", None)
+        res = self._brief()
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertFalse(res.get("vector_note"), "시도하지 않았는데 사유가 남았다")
+
+    def test_재빌드_창은_구조화_표식으로_갈린다(self):
+        """쓰기 뒤 HNSW 재빌드는 **양성 계약**이다(잠시 뒤 저절로 돌아온다).
+        화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되는데, 두 경우
+        모두 `arms=="fts"` + `vector_note` 라 영문 문장을 파싱하지 않고는 못 가른다.
+        그래서 표식을 따로 싣는다 — 화면은 문구가 아니라 이 필드를 본다."""
+        class _RebuildReader(QueryEmbeddingWiringTests._Reader):
+            def vector_search(self, e, k, f=None):
+                raise RuntimeError("Table Chunk doesn't have an index with name chunk_vec")
+
+        class _RebuildStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self): return _RebuildReader(self.o)
+
+        with _encode_stub([1.0, 0.0, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_RebuildStore(self))
+            try:
+                got = {k: app.read_search({"query": "양자역학", "owner": "u"})[1]
+                       for k in ("search",)}
+                got["brief"] = app.read_brief({"query": "양자역학", "owner": "u"})[1]
+            finally:
+                app.jobs.shutdown(drain=True)
+        for name, res in got.items():
+            self.assertEqual(res.get("arms"), "fts", name)
+            self.assertTrue(res.get("vector_note"), name)
+            self.assertIs(res.get("vector_rebuilding"), True,
+                          f"{name}: 재빌드 창을 진짜 실패와 가를 표식이 없다")
+
+    def test_청크_팔이_통째로_죽으면_돌지_않은_팔의_이름을_안_단다(self):
+        """`arms` 를 검색 **전에** 세우던 자리의 거짓말(2026-09-07 적대적 검토가 재현).
+
+        벡터 팔이 `index_missing` 이 **아닌** 예외로 죽으면 `_chunk_arms` 가 재던지고
+        청크 팔이 통째로 빠진다(멀쩡한 키워드 결과까지). 그런데 응답은 계속
+        "fts+vector" 라고 답했고, 화면 판정이 보는 구조화 필드는 셋 다 안 서서
+        **알림도 침묵했다** — 답할 수 없는데 답한 것처럼 보이는, 이 결함의 가장 나쁜
+        얼굴이다. 이제 `arms` 는 **실제로 결과를 낸 팔**에서만 나온다."""
+        class _DeadReader(QueryEmbeddingWiringTests._Reader):
+            def vector_search(self, e, k, f=None):
+                raise RuntimeError("Binder exception: extension VECTOR 확장 미가용")
+
+        class _DeadStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self): return _DeadReader(self.o)
+
+        with _encode_stub([1.0, 0.0, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_DeadStore(self))
+            try:
+                got = {"search": app.read_search({"query": "양자역학", "owner": "u"})[1],
+                       "brief": app.read_brief({"query": "양자역학", "owner": "u"})[1]}
+            finally:
+                app.jobs.shutdown(drain=True)
+        for name, res in got.items():
+            self.assertNotIn("vector", res.get("arms") or "",
+                             f"{name}: 벡터 팔이 안 돌았는데 응답이 그 이름을 달았다")
+            self.assertTrue(res.get("vector_note"),
+                            f"{name}: 팔이 통째로 죽었는데 화면이 읽을 신호가 없다")
+            self.assertIsNot(res.get("vector_rebuilding"), True,
+                             f"{name}: 진짜 실패를 양성 재빌드와 같은 톤으로 그린다")
+
+
 class IngestRouteTests(unittest.TestCase):
     """POST /ingest — 적재 단일화(2026-07-11): 레거시 fragment 경로(Record/props,
     api/fragment.merge_fragment)로 수렴. 테마 적재(Entity/TYPED)는 휴면. MERGE
