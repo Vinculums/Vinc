@@ -12,6 +12,12 @@
    있었고, 전체 백업은 P15 가 P16 **머지 뒤에** Tools 로 들여왔다. 그래서 한 벌을
    세우고도 두 자리가 샜다. 이 파일이 두 파일을 함께 보는 이유가 그것이다.
 
+   ⚠ **여섯은 이 동선의 전부이지 앱의 전부가 아니다.** 가져오기 동선(`openImportSheet`
+   하나 · `openDocImportSheet` 둘)에는 `packs.importing` 한 줄이 아직 옛 모양으로
+   남아 있고, 그중 첫째는 아래 2번이 근거로 드는 바로 그 `api.importPack` 을 기다린다.
+   셋을 한 번에 옮기는 것은 별건이라(하나는 `<p>` 안의 `<span>` 자리다) 여기서는
+   관할 밖으로 둔다 — `setUp` 의 슬라이스가 그 경계다.
+
 2. 그 게이지가 **퍼센트를 지어내지 않는다.** 여섯 자리가 지나는 네 경로 어디에도
    보고할 단계가 없다(근거는 `sheetProgress` 주석). 그런데 참조 원본(공홈 커뮤니티
    페이지)은 요청이 하나인데 `setInterval(…, 550)` 로 막대를 8 → 32 → 56 → 80% 로
@@ -45,6 +51,12 @@ COMPONENTS = ROOT / "app" / "src" / "components.ts"
 #: 기다림을 알리는 카피가 걸리는 모양. `.loading` 이 들어 있는 것은 `common.loading`
 #: 뿐 아니라 **수를 세는 척하던** `packs.loading(n)` 도 잡기 위해서다.
 BUSY = re.compile(r"\.(loading|preparing|destWorking)\b")
+
+#: 한 벌이 **화면에 붙는** 모양. `sheetProgress` 는 문자열을 돌려줄 뿐이라 부르기만
+#: 하고 버리면 아무 일도 일어나지 않는다 — 그런데 위의 검사들은 **부르는 것만** 세므로
+#: `void sheetProgress(...); out.innerHTML = "";` 로 바꿔도 통과했다(실측 6 passed).
+#: 그래서 호출 수와 이 모양의 수가 **같은지**를 함께 잠근다.
+DRAWN = re.compile(r"\.innerHTML\s*=\s*sheetProgress\(")
 
 
 def _slice(src: str, start: str, end: str) -> str:
@@ -93,12 +105,44 @@ class ShareProgressTests(unittest.TestCase):
             loose, [],
             "공유·백업 동선에 한 벌을 안 지나는 기다림 표시가 남았다:\n" + "\n".join(loose))
 
+    def test_한_벌이_실제로_화면에_붙는다(self):
+        """부르는 것과 그리는 것은 다르다 — 이 가드가 실제로 여기서 갈렸다."""
+        for name, src in self.regions.items():
+            self.assertEqual(
+                len(DRAWN.findall(src)), src.count("sheetProgress("),
+                f"{name} 에 결과를 화면에 안 붙이는 sheetProgress 호출이 있다 "
+                "— 버튼을 눌러도 아무것도 안 뜬다")
+
     def test_여섯_자리_전부_걸려_있다(self):
         """시트 넷(팩 준비 · 목적지 확정 · 목적지 선택 · 커뮤니티) + Tools 둘."""
         self.assertEqual(self.share.count("sheetProgress("), 4,
                          "공유 시트의 네 자리가 아니다")
         self.assertEqual(self.tl_share.count("sheetProgress("), 2,
                          "Tools 공유 탭의 두 자리(탭 진입 · 전체 백업)가 아니다")
+
+    def test_막대를_세운_뒤의_기다림에는_끝이_있다(self):
+        """불확정 막대는 **끝을 그리지 않는다** — 끝나지 않는 실패를 `살아 있음`으로
+        그린다. 공유 탭 진입은 막대를 세운 뒤 요청 둘을 이어 기다리는데, 호출부가
+        `void renderShare(...)` 라 여기서 던지면 잡을 곳이 없다(unhandled rejection).
+        그래서 둘 다 상한이 있어야 하고, 실패해도 화면은 서야 한다.
+        """
+        head = _code_only(self.tl_share)
+        head = head[: head.index("pane.innerHTML = " + chr(96))]
+        awaits = re.findall(r"await" + chr(92) + "s+([A-Za-z_.]+)" + chr(92) + "(", head)
+        self.assertEqual(
+            [a for a in awaits if a != "withTimeout"], [],
+            "막대를 세운 뒤 상한 없는 기다림이 있다 — 끊기면 영원히 돈다: " + repr(awaits))
+        self.assertEqual(head.count("catch"), 2,
+                         "둘 중 하나가 실패하면 화면이 안 선다(try/catch 둘)")
+
+    def test_전체_백업이_파일을_남긴다(self):
+        """`/activate` 는 `out_dir` 없이는 **아무것도 쓰지 않는다**(api/activate.py
+        `activate()`). 파일은 화면이 만든다 — 안 만들면 성공만 알리고 남는 것이 없다.
+        `res.out` 은 응답에 없는 키다(tests/test_activate.py 가 계약을 잡는다)."""
+        code = _code_only(self.tl_share)      # 주석이 옛 결함을 인용한다
+        tail = code[code.index("api.activate("):]
+        self.assertIn(".download =", tail, "전체 백업이 파일을 안 남긴다")
+        self.assertNotIn("res.out", code, "응답에 없는 키를 읽고 있다")
 
     def test_게이지가_퍼센트를_지어내지_않는다(self):
         body = self.components[self.components.index("export function sheetProgress"):]
@@ -109,7 +153,7 @@ class ShareProgressTests(unittest.TestCase):
         # 원본이 쓰는 가짜 단계 타이머가 따라 들어오지 않았는가.
         for name, src in self.regions.items():
             self.assertFalse(
-                re.search(r"setInterval", _code_only(src)),
+                re.search(r"setInterval|setTimeout", _code_only(src)),
                 f"{name} 에 타이머가 생겼다 — 시계로 단계를 지어내고 있지 않은지 볼 것")
 
     def test_알림_영역은_미리_서_있는_자리에만_붙는다(self):
@@ -132,6 +176,15 @@ class ShareProgressTests(unittest.TestCase):
         self.assertNotIn(
             "aria-label=", body,
             "보이는 문구와 aria-label 로 라벨을 두 번 실었다 — 두 번 읽힌다")
+        # 이름은 **호출마다 새로** 만든다. `openSheet` 의 close 는 퇴장 애니메이션을
+        # 기다린 뒤 지우므로 닫히는 시트가 아직 DOM 에 있고, 그때 다음 막대가 서면
+        # 고정 id 는 겹친다 — `aria-labelledby` 가 사라지는 시트의 라벨을 가리킨다.
+        self.assertNotIn(
+            'id="sheet-progress-label"', body,
+            "id 가 고정이다 — 두 벌이 겹쳐 서면 라벨이 엇갈린다")
+        self.assertRegex(
+            body, r"const id = .*\$\{\+\+",
+            "이름이 호출마다 달라지지 않는다 — 올라가는 수에서 와야 한다")
         self.assertIn(
             '<div id="pub-progress" role="status">', self.share,
             "커뮤니티 게시의 상주 자리에 라이브 영역이 없다")

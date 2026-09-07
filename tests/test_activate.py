@@ -121,6 +121,11 @@ class ActivateEntryTests(unittest.TestCase):
         self.assertEqual(res["episode_count"], 0)
         self.assertIn("markdown", res["pack"])
         self.assertIn("mcp", res["pack"])
+        self.assertIn("json", res["pack"])
+        # `out` 은 **없는 키다.** `out_dir` 을 줄 때만 `written` 이 붙고, 호스티드는
+        # 그 인자를 지운다(vinc_mcp/http_server.py). 화면이 `res.out || "pack"` 으로
+        # 이것을 읽어 크기 자리에 리터럴 `pack` 을 찍고 있었다 — 없다는 것이 계약이다.
+        self.assertNotIn("out", res)
 
 
 if __name__ == "__main__":

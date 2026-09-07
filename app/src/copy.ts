@@ -101,7 +101,7 @@ const EN = {
     shareCta: "Share a pack",
     importCta: "Import a pack",
     importing: "Importing…",
-    success: (n: number, size: string) => `Pack ready: ${n} documents, ${size}.`,
+    success: (n: number) => `Backup pack saved: ${n} records.`,
     imported: (created: number, matched: number) =>
       `Imported: ${created} new, ${matched} already here.`,
     successCta: "Reveal in folder",
@@ -927,7 +927,7 @@ const KO: Deck = {
     shareCta: "팩 공유하기",
     importCta: "팩 가져오기",
     importing: "가져오는 중…",
-    success: (n, size) => `팩이 준비됐어요 · 문서 ${n}개 · ${size}`,
+    success: (n) => `백업 팩을 저장했어요 · 기록 ${n}개`,
     imported: (created, matched) => `가져왔어요 · 새로 ${created}개 · 이미 있던 것 ${matched}개`,
     successCta: "폴더에서 보기",
     error: "팩을 만들지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",

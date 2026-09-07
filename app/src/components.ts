@@ -284,10 +284,19 @@ export function openSheet(opts: {
 }
 
 /**
- * 진행 표시 — **공유·백업 동선의 모든 기다림이 이 한 벌**을 쓴다. 여섯 자리다:
+ * 진행 표시 — **공유·백업 동선의 기다림이 전부 이 한 벌**을 쓴다. 여섯 자리다:
  * 시트 넷(팩 준비 · 스페이스로 보내기 · 파일로 받기 · 커뮤니티 게시)과 Tools 둘
  * (공유 탭 진입 · 전체 백업). 전에는 자리마다 `<p class="hint">` 한 줄이라, 같은
  * 동선에서 같은 일을 기다리는데 모양이 자리마다 달랐다.
+ *
+ * ⚠ **여섯은 이 동선의 전부이지 앱의 전부가 아니다.** `sheets.ts` 의 **가져오기**
+ * 동선에는 `<p class="hint">${COPY.packs.importing}</p>` 가 아직 셋 남아 있다
+ * (`openImportSheet` 하나 · `openDocImportSheet` 둘). 그중 첫째는 아래 1번이 근거로
+ * 든 바로 그 `api.importPack` 을 기다린다 — 같은 함수를 기다리는 자리가 동선에 따라
+ * 두 모양이라는 뜻이다. 옮기지 않은 이유는 셋 중 하나가 **자리에 안 들어가서**다:
+ * 추출 제안의 것은 `<p>` 안의 `<span>` 한 칸이라 막대를 넣으면 `<p>` 안에 `<div>` 가
+ * 들어간다. 나머지 둘만 옮기면 가져오기 동선이 다시 두 모양이 되므로, 셋을 한 번에
+ * 옮기는 것을 별건으로 둔다. 이 주석의 수는 그때 함께 늘릴 것.
  *
  * 두 표면이 함께 쓰므로 자리는 여기다(`sheets.ts` 와 `tools.ts` 둘 다 이 파일에서
  * 시트 규격을 가져온다). 전에는 `sheets.ts` 안에 있었고, 그래서 Tools 가 못 썼다.
@@ -336,16 +345,22 @@ export function openSheet(opts: {
  * 움직임은 지도의 `.view-busy` 에서 가져왔다 — 앱 안에서 "바쁨"이 두 가지 모양으로
  * 읽히지 않게. 색·간격은 토큰에서만 온다(하드코딩 색은 표면 게이트가 막는다).
  *
- * ⚠ `id` 가 고정이라 **두 벌이 동시에 서면 안 된다.** 지금은 그럴 수 없다 — 여섯
- * 자리가 서로를 지우거나(담는 자리를 갈아치운다) 순서상 겹치지 않는다(전체 백업
- * 버튼은 공유 탭 진입 대기가 끝나야 생긴다).
- */
+ * ⚠ **id 는 호출마다 새로 만든다.** 전에는 고정이었고 "두 벌이 동시에 설 수 없다"고
+ * 적어 두었는데 거짓이었다 — `openSheet` 의 `close()` 는 퇴장 애니메이션을 **기다린
+ * 뒤에** 시트를 지우므로(위 `close`), 닫히는 중인 시트가 아직 DOM 에 있는 채로 다음
+ * 시트가 선다. 실제 경로가 있다: 전체 백업이 도는 동안 `공유 시작`을 누르면
+ * `sheet.close()` 직후 `openShareSheet` 가 곧바로 자기 막대를 세운다. 그러면 id 가
+ * 겹치고 `aria-labelledby` 는 **문서 순서상 앞의 것**, 즉 사라지는 중인 시트의 라벨을
+ * 가리킨다. 겹침을 막는 것보다 이름을 안 겹치게 하는 쪽이 짧다. */
+let progressSeq = 0;
+
 export function sheetProgress(label: string): string {
+  const id = `sheet-progress-label-${++progressSeq}`;
   return `
     <div class="sheet-progress">
-      <p class="hint" id="sheet-progress-label">${esc(label)}</p>
+      <p class="hint" id="${id}">${esc(label)}</p>
       <div class="sheet-progress-track" role="progressbar"
-           aria-labelledby="sheet-progress-label">
+           aria-labelledby="${id}">
         <span></span>
       </div>
     </div>`;
