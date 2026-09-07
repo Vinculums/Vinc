@@ -167,17 +167,26 @@ class EarlyReturnIsInheritedTests(unittest.TestCase):
     보호가 이 패키지의 편집 때문에 깨지지 않았는지뿐이다."""
 
     def test_편집기_리더는_마운트_앞에서_돌아간다(self):
-        self.assertRegex(ED_BRANCH, r"\n\s*return \{",
+        branch = at(ED, "docMidWrite(doc)")
+        mount = at(ED, 'host.classList.add("doc-render")')
+        self.assertLess(branch, mount, "분기가 편집기 마운트 뒤에 있으면 소용이 없다")
+        self.assertRegex(ED[branch:mount], r"\n\s*return (stub|\{)",
                          "분기와 마운트 사이에 반환이 없다 — 편집기가 그대로 선다")
 
     def test_뷰_리더도_마운트_앞에서_돌아간다(self):
         self.assertRegex(VIEW_BRANCH, r"\n\s*return;")
 
-    def test_돌아간_뒤_넘기는_손잡이는_스스로_편집을_못_켠다(self):
-        """호출부가 `setEditable(true)` 를 눌러도 켜질 편집기가 없어야 한다. 재시도가
-        성공한 뒤에만(=`again` 이 채워진 뒤에만) 위임된다."""
-        self.assertIn("setEditable: (on) => again?.setEditable(on)", ED_BRANCH)
-        self.assertIn("let again: DocEditorHandle | null = null;", ED_BRANCH)
+    def test_돌아간_뒤_넘기는_손잡이는_재시도가_세운_편집기에_위임한다(self):
+        """이 stub 은 편집기를 세우지 않는다. 그러니 재시도가 성공한 뒤에만
+        (=`again` 이 채워진 뒤에만) 손잡이의 동작이 실체를 갖는다 — 위임이 끊기면
+        시트를 닫아도 디바운스 타이머와 CM6 인스턴스가 남는다.
+
+        ⚠ 여기는 `setEditable` 로 걸던 자리다. 그 토글은 호출부가 0이라 P18 에서
+        걷혔고(레일은 상시 편집이다), 위임 계약은 남은 두 손잡이가 그대로 진다."""
+        stub = ED[at(ED, "docMidWrite(doc)"):at(ED, 'host.classList.add("doc-render")')]
+        self.assertIn("await again?.dispose()", stub)
+        self.assertIn("again?.scrollToOffset(pos)", stub)
+        self.assertIn("let again: DocEditorHandle | null = null;", stub)
 
     def test_왕복_중에_닫으면_도착하는_편집기를_버린다(self):
         """`dispose()` 시점에 `again` 은 아직 null 이라 위임할 대상이 없다. 그대로 두면

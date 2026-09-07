@@ -16,6 +16,8 @@ import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
+import { isTypingTarget } from "../keys";
+import { disposeEditorsIn } from "../doc-editor";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
@@ -566,6 +568,10 @@ export async function renderView(el: HTMLElement) {
   }
   function closeRail() {
     detail.hidden = true;
+    // 열의 내용을 지우기 **전에** 그 안의 편집기를 확정·해제한다. 아래 innerHTML 은
+    // 마운트 지점을 걷어 갈 뿐 디바운스를 건드리지 못한다(저장이 화면 없는 곳에서
+    // 터졌다 — 2026-09-07 실측).
+    disposeEditorsIn(detail);
     detail.innerHTML = "";
     lastNode = null;
     setSpot(null);        // 원뿔은 초점에 딸린 것이라 초점이 끝나면 함께 꺼진다
@@ -575,6 +581,10 @@ export async function renderView(el: HTMLElement) {
     closeFloatPanel();
   }
   function openRail() {
+    // 여는 것도 **덮어쓰는** 것이다: 이 뒤에 오는 것은 예외 없이 `detail.innerHTML`
+    // 대입이다(상세 · 관계 · 드릴다운 · 기간 · 리더 재진입). 그 자리가 스무 곳이
+    // 넘으므로 문 앞에서 한 번 걷는다 — 호출부마다 적으면 다음에 느는 하나가 샌다.
+    disposeEditorsIn(detail);
     detail.hidden = false;
     railChrome(true);
   }
@@ -614,10 +624,11 @@ export async function renderView(el: HTMLElement) {
    *  `f` = 지금 층을 화면에 맞춤. 입력 필드 안에서는 전부 무시(타이핑 보호). */
   const onKey = (e: KeyboardEvent) => {
     if (myGen !== liveGen) { document.removeEventListener("keydown", onKey); return; }
-    const t = e.target as HTMLElement | null;
-    const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"
-      || t.isContentEditable);
-    if (typing) return;
+    // ⚠ **Esc 만은 통과시킨다.** 이 가드가 옳게 비켜서는 바람에, 편집기에 포커스가
+    // 있으면 레일을 Esc 로 닫을 수 없었다 — 들어가는 문은 모든 마크에 달려 있는데
+    // 나오는 문이 ✕ 하나로 줄었다. 이제 어느 문으로 나가도 대기 중 편집이 확정되므로
+    // (doc-editor 의 dispose) 이 문을 되살려도 잃는 것이 없다.
+    if (isTypingTarget(e.target) && e.key !== "Escape") return;
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
@@ -2321,8 +2332,9 @@ export async function renderView(el: HTMLElement) {
       detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
         b.addEventListener("click", () =>
           void focusNode(b.dataset.go!, b.dataset.dom || undefined)));
+      // 여기서 손수 dispose 하지 않는다 — 둘 다 레일을 다시 여닫으므로 위의
+      // openRail/closeRail 이 확정까지 맡는다. 두 벌로 두면 다시 갈린다.
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
-        void handle?.dispose();
         if (lastNode) openDetail(lastNode); else closeRail();
       });
       // D45-E 개정 — **Reader 와 편집기가 한 표면이다.** 문서는 언제나 렌더된
@@ -2356,11 +2368,14 @@ export async function renderView(el: HTMLElement) {
         : (ctx.chunks || []).find((c) => c.index === chunkIndex)?.char_start;
       if (at) requestAnimationFrame(() => handle.scrollToOffset(at));
       // peek→전체폭 승격 — 좁은 레일이 답답할 때 같은 문서를 시트로 연다.
-      detail.querySelector("#rdr-expand")!.addEventListener("click", () => {
-        handle.dispose();
+      // 이 문만 확정을 **기다린다**: 시트가 곧바로 같은 문서를 서버에서 다시 읽으므로,
+      // 저장이 끝나기 전에 열면 방금 친 글자가 없는 본문이 뜨고(그 뒤 편집은 해시
+      // 충돌로 튄다). 나머지 출구는 다시 읽지 않으므로 기다릴 이유가 없다.
+      detail.querySelector("#rdr-expand")!.addEventListener("click", () => void (async () => {
+        await handle.dispose();
         closeRail();
-        void openDocSheet({ owner: cfg.owner, docId });
-      });
+        await openDocSheet({ owner: cfg.owner, docId });
+      })());
     } catch {
       if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
     }

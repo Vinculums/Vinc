@@ -7,7 +7,7 @@
 // 의존성은 npm 번들 인라인(CSP 정합, CDN 없음). 스타일은 CSS/데코레이션 클래스로
 // 완전 제어(모노크롬 Ink & Paper — 색조 없이 굵기·크기·명도만).
 import {
-  EditorState, Compartment, Facet, RangeSetBuilder, StateEffect, StateField,
+  EditorState, Facet, RangeSetBuilder, StateEffect, StateField,
 } from "@codemirror/state";
 import {
   EditorView, keymap, Decoration, ViewPlugin, WidgetType,
@@ -26,10 +26,6 @@ export type CmHandle = {
   setValue: (text: string) => void;
   focus: () => void;
   destroy: () => void;
-  /** 읽기/편집 전환 — **같은 렌더를 그대로 두고** 편집 가능 여부만 바꾼다.
-   *  Reader(문서 보기)와 편집기가 한 표면인 이유: 보던 글자가 그 자리에서
-   *  고쳐진다(모드 점프도, 원문 마크다운 노출도 없다). */
-  setEditable: (on: boolean) => void;
   /** 개념 언급 위치(밑줄) 갱신 + 첫 위치로 스크롤. char 오프셋은 백엔드 계산값. */
   setHighlights: (ranges: { char_start: number; char_end: number }[]) => void;
   scrollToHighlight: () => void;
@@ -262,11 +258,10 @@ function buildBlocks(state: EditorState): Blocks {
 const blockLayer = StateField.define<Blocks>({
   create: (state) => buildBlocks(state),
   update(v, tr) {
-    const editableChanged =
-      tr.startState.facet(EditorView.editable) !== tr.state.facet(EditorView.editable);
     const selChanged = !tr.startState.selection.eq(tr.state.selection);
     const toggled = tr.effects.some((e) => e.is(fmToggle));
-    if (!tr.docChanged && !selChanged && !toggled && !editableChanged) return v;
+    // 편집 가능 여부는 마운트 이후 안 바뀌므로(컴파트먼트 없음) 무효화 조건이 아니다.
+    if (!tr.docChanged && !selChanged && !toggled) return v;
     return buildBlocks(tr.state);
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
@@ -499,7 +494,6 @@ export function mountEditor(el: HTMLElement, opts: {
    *  역시 호출부가 안다. */
   onUrl?: (url: string) => void;
 }): CmHandle {
-  const editable = new Compartment();
   let slash: SlashMenu | null = null;
   const view = new EditorView({
     parent: el,
@@ -528,7 +522,8 @@ export function mountEditor(el: HTMLElement, opts: {
         blockLayer,
         livePreview,
         highlightField,
-        editable.of(EditorView.editable.of(!opts.readOnly)),
+        // 마운트 때 한 번 정해진다 — 뒤집는 문이 없다(레일은 상시 편집이다).
+        EditorView.editable.of(!opts.readOnly),
         // 링크를 따라간다. 자리를 데코레이션이 아니라 **본문에서 다시 찾는** 이유:
         // 소스가 정본이라 offset 하나면 무엇을 눌렀는지 알 수 있고, 데코레이션에
         // 속성을 달면 그 속성이 정본과 어긋날 자리를 하나 더 만든다.
@@ -619,10 +614,6 @@ export function mountEditor(el: HTMLElement, opts: {
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
     focus: () => view.focus(),
     destroy: () => { slash?.destroy(); view.destroy(); },
-    setEditable: (on) => {
-      view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(on)) });
-      if (on) view.focus();
-    },
     setHighlights: (ranges) => {
       hl = ranges;
       view.dispatch({ effects: setHl.of(ranges.map((r) => ({ from: r.char_start, to: r.char_end }))) });
