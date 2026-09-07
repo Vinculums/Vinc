@@ -56,9 +56,11 @@ FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채
       VINC_EMBED_REMOTE=https://vinc-encode…/ VINC_EMBED_ENCODE_TOKEN=<토큰> \
       python embed_worker.py --interval 300
 
-사이드카의 질의 임베딩(`VINC_EMBED_ENCODE`)도 같은 서버를 가리킨다. 콜드스타트가
-질의 타임아웃(1.5초)보다 길어 **첫 질의는 FTS 로 강등된다** — 다만 그 요청이 리비전을
-깨우므로 다음 질의부터는 벡터가 붙는다. 강등은 응답 메타에 남아 조용하지 않다.
+사이드카의 질의 임베딩(`VINC_EMBED_ENCODE`)도 같은 서버를 가리킨다. 그쪽 상한은 **둘**
+이다(`api/server.py` `_QVEC_TIMEOUT`·`_QVEC_COLD_TIMEOUT`, 기본 1.5초·30초). 인코더가 바쁠
+뿐인 초과는 짧은 쪽에서 끊어 FTS 로 강등하지만(사유는 응답 메타에 남는다), 레플리카 0에서
+깨는 중인 콜드스타트는 긴 쪽으로 한 번 기다려 깨운다. 그러니 **첫 질의는 강등되지 않고
+30초 가까이 걸릴 수 있다** — 30초짜리 검색을 보면 여기부터 볼 것.
 """
 from __future__ import annotations
 
@@ -138,7 +140,8 @@ REMOTE_ENCODE = os.environ.get("VINC_EMBED_REMOTE", "").strip().rstrip("/")
 ENCODE_TOKEN = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
 ENCODE_BIND = os.environ.get("VINC_EMBED_BIND", "127.0.0.1").strip() or "127.0.0.1"
 # 원격 인코딩 타임아웃. 배경 배치라 넉넉해야 한다 — 콜드스타트(0→1 리비전)가
-# 여기 포함된다. 질의 경로의 1.5초(`VINC_EMBED_ENCODE_TIMEOUT`)와는 별개다.
+# 여기 포함된다. 질의 경로의 두 상한(`VINC_EMBED_ENCODE_TIMEOUT` ·
+# `VINC_EMBED_ENCODE_COLD_TIMEOUT`)과는 별개다.
 REMOTE_TIMEOUT = float(os.environ.get("VINC_EMBED_REMOTE_TIMEOUT", "120"))
 
 

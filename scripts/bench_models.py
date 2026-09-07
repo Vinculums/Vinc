@@ -34,8 +34,11 @@ W16(production-load 게이트)부터 추가된 것:
   --query-latency      평가셋 질의 전부를 **단건 query 인코딩**해 길이 구간별 p50/p95 를
                        잰다. --latency 는 청크(≤2000자, 쓰기 경로) 지연이라 사용자가
                        체감하는 질의(수십 자, 읽기 경로) 지연의 답이 아니다 — 질의
-                       경로에는 1.5초 예산이 있고(`api/server.py` `_QVEC_TIMEOUT`,
-                       넘기면 벡터 팔이 조용히 빠진다), 이 수치가 그 예산과 비교된다.
+                       경로의 예산은 **상태에 따라 둘**이다(`api/server.py`
+                       `_QVEC_TIMEOUT` 1.5초 = 웜 · `_QVEC_COLD_TIMEOUT` 30초 =
+                       콜드스타트 한 번). 이 수치는 **웜 예산**과 비교한다 — p95 가
+                       1.5초를 넘으면 웜 상태의 매 질의에서 벡터 팔이 조용히 빠지고,
+                       콜드일 때만 살아나는 것은 채택 근거가 못 된다.
                        역시 VINC_EVAL_THREADS=1 로 잰 것만 프로덕션 대비 유효
 """
 from __future__ import annotations
@@ -270,7 +273,7 @@ def main() -> int:
                     help="모델당 단건 인코딩 지연을 N개 문장으로 잰다(중앙값·p90 ms)")
     ap.add_argument("--query-latency", action="store_true",
                     help="평가셋 질의 전건을 단건 query 인코딩해 길이 구간별 "
-                         "p50/p95 ms 를 잰다(읽기 경로 — 1.5초 예산과 비교되는 수치)")
+                         "p50/p95 ms 를 잰다(읽기 경로 — 웜 예산 1.5초와 비교되는 수치)")
     ap.add_argument("--bootstrap", type=int, default=0, metavar="B",
                     help="첫 모델 대비 nDCG 차이의 짝지은 부트스트랩 95%% CI (B 회)")
     ap.add_argument("--json", action="store_true")
@@ -322,7 +325,7 @@ def main() -> int:
                   f"{t.get('chunks_per_s', 0):>8.2f}"
                   f"{single.get('median_ms', 0):>12.1f}{single.get('p90_ms', 0):>8.1f}")
     if any((r.get("timing") or {}).get("latency_query") for r in results):
-        print(f"\n질의 단건 지연 (p50/p95 ms · 1.5s 예산 대비)")
+        print(f"\n질의 단건 지연 (p50/p95 ms · 웜 예산 1.5s 대비 · 콜드는 30s)")
         for r in results:
             ql = (r.get("timing") or {}).get("latency_query") or {}
             cells = "  ".join(
