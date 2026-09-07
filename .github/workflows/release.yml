@@ -214,6 +214,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # ⚠ **이 다리는 컨테이너 안에서 도는데 `setup-python` 은 호스트의 툴캐시에서
+      # 고른다.** 그 빌드가 호스트(24.04)용이면 22.04 컨테이너에서 실행 자체가 안 된다:
+      #   /py/bin/python: /lib/x86_64-linux-gnu/libm.so.6: version `GLIBC_2.38' not found
+      # 그리고 `pip` 는 그 인터프리터를 가리키는 셔뱅 스크립트라, 셸은 그것을 **`pip: not
+      # found`** 로 답하고 잡은 exit 127 로 죽는다 — 원인과 한참 떨어진 증상이라 2026-09-07
+      # 에 이것으로 릴리스 런 셋을 잃었다.
+      #
+      # 그리고 이 기계에는 **라벨이 같은 리눅스 러너가 둘이고 툴캐시는 러너마다 따로다**
+      # (`vinc-wsl-linux` · `vinc-wsl-linux-2`). 어느 쪽이 잡을 집느냐가 운이라, 같은
+      # 커밋이 한 번은 통과하고 한 번은 죽었다. 고치는 자리는 러너의 툴캐시이지 이 파일이
+      # 아니다 — 여기서는 **먼저, 이름과 함께** 터뜨린다.
+      # 근거: [[record:two-linux-runners-share-a-label-but-not-a-toolcache-2026-09-07]]
+      - name: Assert the interpreter actually runs here
+        shell: bash
+        run: |
+          if ! python -V; then
+            echo "::error::러너 '${{ runner.name }}' 의 파이썬이 이 잡의 환경에서 실행되지 않는다"
+            echo "이 잡은 컨테이너 안에서 도는데 setup-python 은 호스트 툴캐시에서 고른다." >&2
+            echo "그 러너의 _work/_tool/Python/<ver> 를 옆으로 밀고 다시 돌릴 것" >&2
+            echo "(지우지 말고 이름을 바꿔라 — 되돌릴 수 있어야 한다)." >&2
+            exit 1
+          fi
       # ── 임베디드 드라이버 = ladybug 단일(v0.5.3, kuzu 제거) ──────────────────
       # 3중 실증 완료(앱 완전호환·G0 오프라인 확장·교차 이관 무손실, 2026-07-20).
       - name: Install sidecar build deps (LadybugDB + pypdf)
