@@ -112,6 +112,23 @@ jobs:
     needs: [version-gate, image]
     strategy:
       fail-fast: false
+      # ⚠ 다리를 **하나씩** 돈다. 기본(동시)으로 두면 윈도우와 리눅스의 릴리스 프로파일
+      # Rust 빌드가 **같은 16GB 기계에서 겹친다** — 리눅스는 WSL 컨테이너 안이고 윈도우는
+      # 호스트다. 2026-09-07 실측(런 34068046636): 윈도우 step 15 가 23:56:18~00:02:12 로
+      # 리눅스 다리(23:53:14~00:10:36) 창 **안쪽**에서 돌다 커밋 한도에 부딪혀 죽었다.
+      #   memory allocation of 131072 bytes failed
+      #   failed to mmap ...libtauri_utils...rlib: 페이징 파일이 너무 작습니다 (os error 1455)
+      #   rustc exit 0xc000012d (STATUS_COMMIT_LIMIT)
+      # P10 전에는 윈도우가 호스티드 VM 이라 로컬 무거운 빌드가 하나뿐이었다. 다리를
+      # 집으로 들이면서 생긴 **구조적 경합**이지 코드 결함이 아니다.
+      #
+      # 값은 벽시계로 갚는다: 세 다리가 겹쳐 약 17분이던 것이 차례로 약 31분이 된다.
+      # 태그 발행은 드물고 반쯤 발행된 릴리스는 되돌릴 수 없으므로(아래 concurrency 가
+      # 취소를 막아 둔 이유가 그것이다) 시간 쪽으로 갚는 것이 맞다.
+      # ⚠ 호스티드 macOS 다리까지 함께 직렬화된다 — matrix 의 max-parallel 은 다리를
+      # 골라 적용할 수 없다. 분 단가는 같으므로 돈은 안 늘고 벽시계만 는다.
+      # 근거: [[record:moving-the-windows-leg-home-put-two-rust-builds-on-one-machine-2026-09-07]]
+      max-parallel: 1
       matrix:
         include:
           # ⚠ **리눅스가 22.04 인 것은 러너 이미지 취향이 아니라 계약이다.** 여기서
