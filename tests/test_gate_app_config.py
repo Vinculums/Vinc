@@ -34,6 +34,13 @@ def _show(env=None, excluded=None):
     }}
 
 
+def _cooldown(seconds):
+    """cooldownPeriod 만 다른 az 응답 — 이 값이 바뀌면 투영이 갈려야 한다."""
+    show = _show()
+    show["properties"]["template"]["scale"]["cooldownPeriod"] = seconds
+    return show
+
+
 def _auth(excluded):
     return {"globalValidation": {"excludedPaths": excluded,
                                  "unauthenticatedClientAction": "RedirectToLoginPage"},
@@ -67,6 +74,18 @@ class ProjectionTests(unittest.TestCase):
         empty = project_app(_show(), _auth([]))
         self.assertIsNone(none["auth"])
         self.assertIsNotNone(empty["auth"])
+
+    def test_cooldownPeriod_는_투영에_남는다(self):
+        """콜드창이 얼마나 자주 열리는지가 이 값의 함수인데 게이트가 안 보고 있었다.
+
+        아래 test_배포마다_바뀌는_필드는_없다 와 헷갈리기 쉬워 여기 적어 둔다:
+        그 테스트가 막는 것은 **배포가 저절로 바꾸는** 필드(이미지·리비전)이고,
+        cooldownPeriod 는 운영자가 정해 두면 배포로 안 바뀌므로 반대편에 속한다.
+        """
+        p = project_app(_show(), {})
+        self.assertEqual(p["scale"]["cooldownPeriod"], 300)
+        self.assertNotEqual(project_app(_cooldown(60), {})["scale"],
+                            p["scale"])
 
     def test_배포마다_바뀌는_필드는_없다(self):
         """이미지·리비전이 투영에 들어가면 매 배포가 드리프트가 된다."""

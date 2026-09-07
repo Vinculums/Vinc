@@ -55,6 +55,7 @@
       "memory": "1Gi"
     },
     "scale": {
+      "cooldownPeriod": 300,
       "maxReplicas": 2,
       "minReplicas": 1
     },
@@ -94,6 +95,7 @@
       "memory": "2Gi"
     },
     "scale": {
+      "cooldownPeriod": 300,
       "maxReplicas": 1,
       "minReplicas": 0
     },
@@ -149,6 +151,7 @@
       "memory": "2Gi"
     },
     "scale": {
+      "cooldownPeriod": 300,
       "maxReplicas": 1,
       "minReplicas": 1
     },
