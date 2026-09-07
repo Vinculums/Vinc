@@ -112,23 +112,14 @@ jobs:
     needs: [version-gate, image]
     strategy:
       fail-fast: false
-      # ⚠ 다리를 **하나씩** 돈다. 기본(동시)으로 두면 윈도우와 리눅스의 릴리스 프로파일
-      # Rust 빌드가 **같은 16GB 기계에서 겹친다** — 리눅스는 WSL 컨테이너 안이고 윈도우는
-      # 호스트다. 2026-09-07 실측(런 34068046636): 윈도우 step 15 가 23:56:18~00:02:12 로
-      # 리눅스 다리(23:53:14~00:10:36) 창 **안쪽**에서 돌다 커밋 한도에 부딪혀 죽었다.
-      #   memory allocation of 131072 bytes failed
-      #   failed to mmap ...libtauri_utils...rlib: 페이징 파일이 너무 작습니다 (os error 1455)
-      #   rustc exit 0xc000012d (STATUS_COMMIT_LIMIT)
-      # P10 전에는 윈도우가 호스티드 VM 이라 로컬 무거운 빌드가 하나뿐이었다. 다리를
-      # 집으로 들이면서 생긴 **구조적 경합**이지 코드 결함이 아니다.
-      #
-      # 값은 벽시계로 갚는다: 세 다리가 겹쳐 약 17분이던 것이 차례로 약 31분이 된다.
-      # 태그 발행은 드물고 반쯤 발행된 릴리스는 되돌릴 수 없으므로(아래 concurrency 가
-      # 취소를 막아 둔 이유가 그것이다) 시간 쪽으로 갚는 것이 맞다.
-      # ⚠ 호스티드 macOS 다리까지 함께 직렬화된다 — matrix 의 max-parallel 은 다리를
-      # 골라 적용할 수 없다. 분 단가는 같으므로 돈은 안 늘고 벽시계만 는다.
-      # 근거: [[record:moving-the-windows-leg-home-put-two-rust-builds-on-one-machine-2026-09-07]]
-      max-parallel: 1
+      # ⚠ `max-parallel: 1` 이 여기 있었고 걷었다. 그것을 넣은 근거는 "윈도우와 리눅스의
+      # 릴리스 프로파일 Rust 빌드가 같은 16GB 기계에서 겹친다"였는데, 넣고 다시 재 보니
+      # **직렬화가 아무것도 안 고쳤다** — 윈도우 다리(01:48:21~01:54:34)가 리눅스가 끝난
+      # 4초 뒤에 시작했고 그 창에 이 기계에서 도는 다른 런이 하나도 없었는데 같은 값으로
+      # 죽었다. 겹침은 원인이 아니었다(실측은 위 `windows-latest` 주석에 있다).
+      # 윈도우가 호스티드로 돌아갔으므로 이 기계에서 도는 무거운 빌드는 리눅스 하나이고,
+      # 그것은 **v0.9.0 태그 런이 이미 초록으로 지나간 배치**다(런 34020701177).
+      # 그러므로 벽시계 14분을 되찾는다.
       matrix:
         include:
           # ⚠ **리눅스가 22.04 인 것은 러너 이미지 취향이 아니라 계약이다.** 여기서
@@ -146,18 +137,28 @@ jobs:
           - os: [self-hosted, linux, vinc-local]
             triple: x86_64-unknown-linux-gnu
             container: localhost:5000/vinc-release-linux:22.04
-          # ⚠ 윈도우도 셀프호스티드다(2026-09-07). 직전까지 호스티드로 남겨 둔
-          # 이유는 "릴리스 빌드가 러너의 MSVC 툴체인에 의존한다" 하나였는데,
-          # ci.yml 의 `rust` 잡이 **같은 라벨**에서 `cargo check` 와 `cargo test` 를
-          # 링크까지 성공시킨다(런 34054118942) — 링커는 그 기계에 있다.
-          # 여기가 부르는 파이썬 3.11 과 노드 20 도 러너 툴캐시에 이미 있다.
-          # 릴리스당 약 $0.47 이 여기서 사라진다.
-          # ⚠ 이 다리를 다시 호스티드로 되돌리면 아래 steps 첫머리의 Git Bash 스텝도
-          # 함께 판정할 것 — 그 스텝은 이 기계의 PATH 사실을 고치는 것이다.
-          - os: [self-hosted, windows, vinc-local]
+          # ⚠ 윈도우는 **호스티드로 돌아왔다**(2026-09-07). P10 이 이 다리를 이 기계로
+          # 옮긴 근거는 "ci.yml 의 `rust` 잡이 같은 라벨에서 링크까지 성공한다"였다.
+          # 그 근거가 틀렸다 — `cargo check`·`cargo test` 는 `tauri build`(릴리스
+          # 프로파일, opt-level 3)가 아니다. 실측 세 번 전부 같은 자리에서 죽었다:
+          #   memory allocation of 2097152 bytes failed · rustc 0xc0000409
+          # 겹침이 원인이라는 첫 판정도 틀렸다. `max-parallel: 1` 로 다리를 완전히
+          # 직렬화하고(윈도우 01:48:21~01:54:34, 리눅스가 끝난 4초 뒤) 그 창에 이
+          # 기계에서 도는 다른 런이 하나도 없는 상태에서도 같은 값으로 죽었다.
+          # 진짜 제약은 **호스트의 상시 커밋 사용량**이다: 커밋 한도 39.88GB 중
+          # 34.16GB 가 유휴 상태에서 이미 쓰이고 여유가 5.73GB 다. `CARGO_BUILD_JOBS=2`
+          # 로 rustc 를 둘로 줄여 로컬에서 다시 재도 같은 자리에서 죽는다.
+          # 근거: [[record:the-release-machine-idles-at-86-percent-of-its-commit-limit-2026-09-07]]
+          #
+          # 그래서 릴리스당 약 $0.47 을 다시 낸다. 태그 런의 이 다리가 실패하면 태그는
+          # 되돌릴 수 없고 설치본 없는 릴리스가 남으므로, 그 $0.47 은 보험료다.
+          # 되돌릴 조건: 이 기계의 페이지 파일이 커지거나(커밋 한도 상향) 상시 사용량이
+          # 내려가서, `tauri build` 가 여기서 초록인 것을 **실제로 본 뒤**.
+          - os: windows-latest
             triple: x86_64-pc-windows-msvc
-          # ⚠ macOS 만 호스티드로 남는다. 로컬 러너가 아예 없고 분을 10배로 센다.
-          # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다.
+          # ⚠ macOS 는 로컬 러너가 아예 없고 분을 10배로 센다(릴리스당 약 $0.93).
+          # 태그 발행은 드물어 여기 남는 분이 반복 지출이 아니다. 셋 중 둘이 호스티드로
+          # 돌아왔으므로 릴리스당 호스티드 비용은 약 $1.40 이다.
           - os: macos-latest
             triple: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
@@ -172,33 +173,25 @@ jobs:
       # 컨테이너에는 `/dev/fuse` 가 없다. 이 변수가 마운트 대신 압축해제로 돌린다.
       # 컨테이너가 아닌 다리에서는 아무 일도 하지 않으므로 잡 전체에 둔다.
       APPIMAGE_EXTRACT_AND_RUN: "1"
-      # ⚠ 이 기계에는 PYTHONHOME·PYTHONPATH 가 **Machine·User 양쪽 스코프에** 박혀
-      # 있다(D:/Tools/Python). 러너 서비스가 그것을 물려받으므로 `setup-python` 이
-      # 받아 온 인터프리터가 **시스템 파이썬의 stdlib** 을 읽는다. 3.11 바이너리가
-      # 더 새 stdlib 을 읽으면 이렇게 죽는다(2026-09-07 실측, 런 34067216503):
+      # ⚠ 셀프호스티드 윈도우 러너는 기계 전역 PYTHONHOME·PYTHONPATH 를 물려받는다
+      # (이 기계에는 Machine·User 양쪽 스코프에 D:/Tools/Python 이 박혀 있다). 그러면
+      # `setup-python` 이 받아 온 인터프리터가 시스템 파이썬의 stdlib 을 읽고 이렇게 죽는다:
       #   AttributeError: module '_thread' has no attribute 'daemon_threads_allowed'
-      # 그래서 `pip install ladybug==0.18.0 ...` 이 첫 파이썬 스텝에서 넘어졌다.
-      #
-      # 호스티드 windows-latest 에는 그 변수가 없어 문제가 없었다 — P10 이 다리를 이
-      # 기계로 옮기면서 처음 드러난, 전형적인 "호스티드 이미지는 선언 안 된 의존"이다.
-      # CLAUDE.md 5절이 로컬 테스트에 대해 같은 함정을 이미 적어 두었고(`env -u`),
-      # 러너에는 아무도 적용하지 않았다.
-      #
-      # 빈 문자열이면 CPython 이 무시한다 — 같은 인터프리터로 실측해 unset 과 동치다.
-      # 리눅스 컨테이너와 macOS 에는 애초에 없는 변수라 빈 값이 무해하다.
+      # 윈도우 다리가 2026-09-07 에 호스티드로 돌아갔으므로 지금은 아무 다리도 이것을
+      # 안 만난다. 그래도 남긴다: 빈 문자열이면 CPython 이 무시하고(같은 인터프리터로
+      # 실측해 unset 과 동치), 리눅스 컨테이너와 macOS 에는 애초에 없는 변수라 무해하며,
+      # 다리를 다시 집으로 들일 때 같은 사고를 두 번 겪지 않는다.
       PYTHONHOME: ""
       PYTHONPATH: ""
     steps:
       # 노트북 러너는 System32 가 PATH 에서 Git 보다 앞이라 `shell: bash` 가 WSL 의
       # bash 로 잡힌다. Git Bash 를 앞에 세운다(ci.yml 동형).
       #
-      # ⚠ 이 스텝은 지웠다가 되살린 것이다. 호스티드 windows-latest 는 Git Bash 가
-      # PATH 앞이라 필요가 없어서 걷어냈었다. 2026-09-07 에 윈도우 다리가 다시 그
-      # 기계로 돌아왔으므로 다시 필요하다. ci.yml 도 2026-09-06 에 같은 이유로 같은
-      # 스텝을 되돌렸다(#151 이 지웠던 것을).
-      # ⚠ 아래 `runner-preflight` 보다 **앞**이어야 한다. 그 액션의 `bash` 가 WSL 로
-      # 가면 엉뚱한 기계의 jq·gh 를 검사해, 있는 것을 없다고(또는 없는 것을 있다고)
-      # 답한다 — 그 액션 헤더가 그 이유를 적어 놓았다.
+      # ⚠ 이 스텝은 지웠다가 되살렸고, 지금은 **호스티드에서 무해한 채로 남는다.**
+      # 호스티드 windows-latest 는 Git Bash 가 PATH 앞이라 이 스텝이 아무것도 안 바꾼다.
+      # 남기는 이유는 위 PYTHONHOME 과 같다: 다리를 다시 집으로 들이면 그때 바로 필요하고,
+      # 없으면 `jq`·`gh` 를 부르는 업로드 스텝이 19분 빌드 끝에서 죽는다
+      # (`.github/actions/runner-preflight` 헤더가 그 사고를 세 번 기록해 두었다).
       - name: Prefer Git Bash on Windows (system32 bash is WSL)
         if: runner.os == 'Windows'
         shell: pwsh
