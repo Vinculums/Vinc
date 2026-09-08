@@ -1001,8 +1001,6 @@ body {
      따로 깎인 것처럼 읽힌다. 상단 바 카드의 곡률과 같게 두면 한 재질로 보인다. */
   border-radius: var(--radius);
 }
-/* 접힘 상태 표시 — 문 모양 아이콘은 방향으로 말하지 않으므로 채움이 그 일을 한다. */
-#tb-shell-toggle.on { color: hsl(var(--foreground)); }
 /* **왼쪽 슬롯 = 관점 세그**(자리 교환, 2026-09-09). 그 **시작점과 폭이 LNB 와 같다**
    (발주자 지시): 시작점은 레일 다음(= LNB 카드의 왼쪽 끝), 폭은 `--lnb-w`.
    그래서 세그의 오른쪽 끝이 LNB 카드의 오른쪽 끝과 같은 선에 서고, 검색바는 그
@@ -1012,7 +1010,13 @@ body {
 #tb-viewpoints {
   width: var(--lnb-w);
   justify-content: flex-start;
-  margin-left: var(--shell-gap);
+  /* 여백에서 **1px 을 뺀다** — 그것이 상단 바 카드의 테두리다(발주자 지시
+     2026-09-09: "3d 시작점은 lnb랑 같아야 하니 패딩 값만 더 있으면 되려나").
+     바 안의 상자는 카드의 내용 상자에서 시작하므로 아래 카드들보다 늘 1px 오른쪽에
+     섰다(세그 81 대 LNB 80). 그 한 칸을 갚으면 세그의 **양 끝**이 LNB 와 같은 선에
+     서고(80..312), 뒤따르는 검색바도 캔버스 카드의 왼쪽 끝(320)에서 시작한다 —
+     한 줄이 세 정렬을 동시에 닫는다. */
+  margin-left: calc(var(--shell-gap) - 1px);
   overflow: hidden;
   transition: width var(--dur-panel) var(--ease-drawer);
 }
@@ -1037,14 +1041,24 @@ body {
    다른것들도 동일한 버튼으로"). 범례만 테두리 있는 상자였고 셋은 맨몸이라, 같은
    묶음에 선 넷이 두 종류로 읽혔다. 값은 `.lens-btn` 의 것을 그대로 가져온다 —
    그쪽을 고치면 이쪽도 따라가야 하므로 선택자를 합친다. */
-#tb-right > .tb-icon {
+/* ⚠ 왼쪽 끝 손잡이도 **같은 버튼**이다(발주자 지시 2026-09-09: "lnb 닫기 버튼에
+   대해서도 범례와 같은 버튼 컴포넌트로"). 상단 바에 선 버튼이 다섯인데 넷만 상자를
+   갖고 하나가 맨몸이면, 그 하나는 버튼이 아니라 장식으로 읽힌다.
+   곡률만 자기 것을 지킨다(`--radius`) — 폭이 레일만큼 넓어서 작은 곡률이 안 맞는다. */
+#tb-right > .tb-icon, #tb-shell-toggle {
   border-color: hsl(var(--border));
   background: hsl(var(--card) / .82);
 }
-#tb-right > .tb-icon:hover, #tb-right > .tb-icon[aria-expanded="true"] {
+#tb-right > .tb-icon:hover, #tb-right > .tb-icon[aria-expanded="true"],
+#tb-shell-toggle:hover {
   background: hsl(var(--card)); color: hsl(var(--foreground));
   border-color: hsl(var(--ring));
 }
+/* 열림 표시는 **잉크만** 바꾼다. ⚠ 한때 이 상태를 위 hover 규칙에 묶었는데, 사이드바는
+   기본이 열림이라 그 버튼이 **늘 강조 테두리**를 두르고 있었다 — 넷과 같은 버튼으로
+   만든 바로 그 지시를 반대편에서 다시 깨는 꼴이다(실측 2026-09-09: 쉬는 상태에서
+   테두리가 ring 색). 문 모양 아이콘은 방향으로 말하지 않으므로 채움이 그 일을 한다. */
+#tb-shell-toggle.on { color: hsl(var(--foreground)); }
 @media (prefers-reduced-motion: reduce) { #tb-viewpoints { transition: none; } }
 /* 칩 좌우 여백을 줄여 넷이 `--lnb-w` 안에 **한 줄로** 들어간다. 자연 폭은 237px 로
    232px 보다 5px 넓어서 `Weave` 가 두 줄로 내려갔다(실측 2026-09-09) - 세그의 기본

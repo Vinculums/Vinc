@@ -87,9 +87,16 @@ const RAIL: readonly { key: string; kind?: string; domain?: string; mark: string
   { key: "agent", kind: "concept", domain: "vinc/agent/roles", mark: "concept" },
 ];
 const RAIL_KEYS = RAIL.map((r) => r.key);
+/** 레일의 현재 선택. **빈 문자열이 뜻을 가진 상태다: "아무것도 안 고름" = 전체**
+ *  (발주자 지시 2026-09-09: "홈 누르면 아무것도 선택 안 한 것으로 보여준다.
+ *  아무것도 선택 안 함은 모든 노드 전체라는 즉, 기본 화면을 말한다").
+ *  그래서 기본값도 빈 값이다 — 앱을 처음 열면 한 종에 갇혀 있는 것이 아니라
+ *  전체를 보고 있어야 한다(여태 기본이 `concept` 이라 개념만 보였다). */
 let railKey: string = RAIL_KEYS.includes(localStorage.getItem(KEY_KIND) || "")
-  ? localStorage.getItem(KEY_KIND)! : "concept";
-const rail = () => RAIL.find((r) => r.key === railKey) || RAIL[0]!;
+  ? localStorage.getItem(KEY_KIND)! : "";
+/** 고른 종의 정의. 아무것도 안 골랐으면 **없다** — 여기서 첫 항목으로 흘려보내면
+ *  "전체"라는 상태가 조용히 "개념"이 된다(그 폴백이 이 기능을 막고 있었다). */
+const rail = () => RAIL.find((r) => r.key === railKey);
 let wired = false;
 
 /** 종 표식 — 지도가 쓰는 어휘 그대로다. 여기서 **다시 그리지 않고** 그 함수를
@@ -173,6 +180,7 @@ export function setLnbKindLens(fn: KindLens | null) {
  *  개념 전체가 되면 뜻이 흐려지므로 그때는 종 렌즈를 걸지 않는다(null). */
 export function lnbKind(): string | null {
   const r = rail();
+  if (!r) return null;                 // 아무것도 안 고름 = 렌즈 없음 = 지도 전체
   return r.domain ? null : (r.kind || null);
 }
 
@@ -220,7 +228,8 @@ export async function refreshLnb(): Promise<void> {
     // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
     // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
     // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
-    tree = await api.navTree(cfg.owner, { nodes: true, kind: rail().kind });
+    // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
+    tree = await api.navTree(cfg.owner, { nodes: true, kind: rail()?.kind });
     failed = !tree?.executed;
     // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
     // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
@@ -240,7 +249,8 @@ export async function refreshLnb(): Promise<void> {
  *  것이 그 계약을 지키는 방법이다(종마다 트리를 들고 있으면 결국 전량을 메모리에
  *  갖는 것이고, 그러면 응답을 좁힌 이유가 사라진다). */
 function setRailKey(next: string): void {
-  if (railKey === next || !RAIL_KEYS.includes(next)) return;
+  // 빈 값(= 전체)도 유효한 목적지다. 그것을 거르면 홈이 아무 일도 못 한다.
+  if (railKey === next || (next !== "" && !RAIL_KEYS.includes(next))) return;
   railKey = next;
   localStorage.setItem(KEY_KIND, next);
   paintRail();
@@ -260,8 +270,12 @@ function paintRail(): void {
   // **홈은 레일에 산다**(발주자 지시 2026-09-09). 트리에 있던 동안 그 목록은
   // "문서 목록 + 내비 한 줄"이라 두 성질이 섞여 있었다 — 트리는 이제 문서만 든다.
   // 자리가 맨 위인 이유: 지도 전체로 돌아가는 것은 종을 고르는 일보다 상위다.
-  const home = `<a class="rail-btn rail-home${here === "view" ? " on" : ""}"
-      href="#view" aria-current="${here === "view" ? "page" : "false"}"
+  // 홈이 켜진 상태 = **지도 위에 있으면서 아무 종도 안 고른 것**이다. 여태
+  // 표면만 봤기 때문에 종을 고른 뒤에도 홈이 함께 켜져 있었다 — 레일에 켜진 것이
+  // 둘이면 무엇이 지금 보이는 것인지 화면이 말하지 못한다.
+  const atAll = here === "view" && !railKey;
+  const home = `<a class="rail-btn rail-home${atAll ? " on" : ""}"
+      href="#view" data-rail="" aria-current="${atAll ? "page" : "false"}"
       data-tip="${esc(COPY.ui.topbar.home)}">
       <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
       <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
@@ -546,7 +560,8 @@ export function mountLnb() {
   paintRail();
   $("lnb-rail")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".rail-btn");
-    if (b?.dataset.rail) setRailKey(b.dataset.rail);
+    // ⚠ `if (b?.dataset.rail)` 이면 홈의 빈 값이 falsy 라 걸러진다 — 있는지를 묻는다.
+    if (b?.dataset.rail !== undefined) setRailKey(b.dataset.rail);
   });
 
   const body = $("lnb-body")!;
