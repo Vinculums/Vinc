@@ -769,6 +769,16 @@ export async function renderView(el: HTMLElement) {
     // 여백 8px 는 이웃 클램프(float-panel.ts · components.ts)와 같은 값이고,
     // Math.max 가 왼쪽 끝도 막는다. 패널이 보일 때만 부르므로 offsetWidth 는 실측이다.
     const m = 8;
+    // 폭은 **패널 자기 것**이다(CSS `--lens-panel-w`) — 여기서 인라인으로 정하지
+    // 않는다. ⚠ 한때 손잡이 묶음의 실측 폭을 그대로 받아 양 끝을 맞췄는데, 그
+    // 규율은 철회됐다(발주자 지시 2026-09-09: "패널이나 모달에 대해 범례 끝에 크기
+    // 맞추는 것을 하지 말자"). 상단 바에 버튼이 하나 늘거나 관점 이름이 길어지는
+    // 것과 이 패널의 내용은 아무 상관이 없고, 묶음이 자리를 바꾸면 같은 패널이
+    // 열릴 때마다 다른 폭이 됐다. 인라인 폭을 지워 CSS 로 돌려준다.
+    // ⚠ **지우는 것이 재기보다 먼저다.** 아래 `offsetWidth` 가 이 값을 읽으므로
+    // 순서가 뒤집히면 직전 배치의 폭으로 자리를 계산한다 — 실측으로 물렸다
+    // (지우기를 뒤에 뒀더니 w=0 으로 읽혀 패널이 뷰포트 오른쪽으로 넘어갔다).
+    viewPanel.style.width = "";
     const w = viewPanel.offsetWidth;
     // ⚠ 오른쪽 한계는 **뷰포트가 아니라 지도 카드의 끝**이다. 읽는 면이 오른쪽으로
     // 온 뒤(R1) 뷰포트로 재면 렌즈 버튼이 오른쪽 위에 있으므로 패널이 열릴 자리가
@@ -783,25 +793,8 @@ export async function renderView(el: HTMLElement) {
     // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
     const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
     viewPanel.style.top = `${Math.round(Math.max(r.bottom + 6, cardTop + m))}px`;
-    // 패널의 **양 끝을 보기·범례 묶음에 맞춘다**(발주자 지시 2026-09-09: 왼쪽 끝은
-    // 그 묶음의 시작점 = 검색바가 끝나는 지점, 오른쪽 끝은 그 묶음의 끝).
-    // 두 끝을 다 맞추려면 폭이 같아야 하므로 **폭도 여기서 정한다** — 묶음의 실측
-    // 폭이다. 토큰(`--lens-panel-w`)은 그 폭의 **하한**으로 남는다: 묶음이 좁아지는
-    // 배치(관점 이름이 짧아지거나 세그가 접히는 경우)에서 패널이 자기 내용보다
-    // 좁아지면 안 되고, 그 값은 두 번 의도적으로 넓힌 것이다.
-    // 묶음이 비면(지도 없는 표면) 렌즈 버튼 하나가 기준이라 폭은 토큰만 쓴다.
-    const lensBox = document.getElementById("tb-lens")?.getBoundingClientRect();
-    const segBox = document.getElementById("tb-viewpoints")?.getBoundingClientRect();
-    const floor = parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue("--lens-panel-w")) * 16 || 328;
-    const groupL = lensBox?.width ? lensBox.left : r.left;
-    const groupR = segBox?.width ? segBox.right : r.right;
-    const wantW = Math.max(floor, Math.round(groupR - groupL));
-    viewPanel.style.width = `${wantW}px`;
-    // 왼쪽 끝을 맞춘다. 그 자리에서 오른쪽으로 `wantW` 만큼 뻗으므로 오른쪽 끝도
-    // 함께 맞는다 — 폭이 곧 정렬이다. 화면 밖으로 나가면 그때만 접어 넣는다.
-    const wantLeft = Math.min(groupL, Math.max(m, rightEdge - wantW - m));
-    viewPanel.style.left = `${Math.round(Math.max(m, wantLeft))}px`;
+    // 자리는 렌즈 버튼 아래에 오른쪽으로 붙인다. 화면·읽는 면 밖으로 나가면 접어 넣는다.
+    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
   // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
