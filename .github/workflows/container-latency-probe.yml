@@ -202,96 +202,18 @@ jobs:
       - name: 판정
         # 초록이 "쟀다"를 뜻하게 만드는 자리. 수치가 없는데 초록인 런은 이 리포에 실제로
         # 있었다(`bake-probe.yml` 머리말의 run dem).
+        #
+        # ⚠ 이 계산은 **워크플로 안의 인라인 파이썬이었다.** 그래서 테스트가 불가능했고,
+        # 그동안 프로브 런 둘이 아무 수치도 못 내고 죽었다 — 계산이 틀렸어도 알 방법이
+        # 없었다는 뜻이다. `encode-m3-probe.yml` 이 같은 파서를 필요로 하면서 두 벌이 될
+        # 참이라, 스크립트로 빼고 합성 입력 테스트를 붙였다(tests/test_summarize_encode_probe.py).
         run: |
           set -euo pipefail
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import os, pathlib, re, statistics, sys
-
-          out = pathlib.Path("hub.out").read_text(encoding="utf-8", errors="replace")
-          enc = pathlib.Path("enc.out").read_text(encoding="utf-8", errors="replace") \
-              if pathlib.Path("enc.out").exists() else ""
-
-          def one(tag):
-              m = re.search(rf"^PROBE_{tag} (.*)$", out, re.M)
-              return m.group(1).strip() if m else None
-
-          calls = [(int(i), c, float(t)) for i, c, t in
-                   re.findall(r"^PROBE_ENCODE (\d+) (\d+) ([\d.]+)$", out, re.M)]
-          ok = [(i, t) for i, c, t in calls if c == "200"]
-          # 패시지 배치 — 종류를 안 가르면 질의 한 건과 패시지 여덟 건이 한 분포에
-          # 섞여 둘 다 못 읽는다. 처리량은 이쪽에서만 나온다.
-          batches = [(int(i), c, float(t), int(n)) for i, c, t, n in
-                     re.findall(r"^PROBE_BATCH (\d+) (\d+) ([\d.]+) (\d+)$", out, re.M)]
-          bok = [(t, n) for i, c, t, n in batches if c == "200"]
-
-          def pct(xs, q):
-              xs = sorted(xs)
-              return xs[min(len(xs) - 1, int(len(xs) * q))] if xs else None
-
-          print("## 컨테이너 안에서 잰 값\n")
-          print("| 항목 | 값 |\n|---|---|")
-          print(f"| 허브 CPU | {one('CPU') or '읽지 못함'} |")
-          print(f"| 허브 vCPU 수 | {one('NPROC') or '읽지 못함'} |")
-          print(f"| 허브 플래그 | `{one('FLAGS') or '읽지 못함'}` |")
-          if ok:
-              first = ok[0][1] * 1000
-              tail = sorted(t * 1000 for i, t in ok[1:])
-              print(f"| /encode 첫 호출 | **{first:.0f} ms** (인코더 minReplicas 0 = 콜드 후보) |")
-              if tail:
-                  med = statistics.median(tail)
-                  print(f"| 이후 중앙값 | **{med:.0f} ms** (최소 {tail[0]:.0f} · 최대 {tail[-1]:.0f}"
-                        f" · 흩어짐 {(tail[-1]-tail[0])/med*100:.0f}%) |")
-              print(f"| 성공/전체 | {len(ok)}/{len(calls)} |")
-          if bok:
-              # 첫 배치는 버리지 않는다 — 질의 루프가 이미 인코더를 깨웠으므로 여기는
-              # 전부 웜이다. 콜드는 위 `/encode 첫 호출` 한 줄이 담당한다.
-              ts = [t * 1000 for t, n in bok]
-              texts = sum(n for t, n in bok)
-              secs = sum(t for t, n in bok)
-              print(f"| 패시지 배치 p50 / p95 | **{pct(ts, 0.5):.0f} ms** / {pct(ts, 0.95):.0f} ms"
-                    f" (배치 {len(bok)}개 · 배치당 {bok[0][1]}건) |")
-              print(f"| 패시지 처리량 | **{texts / secs:.1f} 건/초** ({texts}건 / {secs:.2f}s) |")
-              print(f"| 배치 성공/전체 | {len(bok)}/{len(batches)} |")
-          if ok:
-              qs = [t * 1000 for i, t in ok[1:]]
-              if qs:
-                  print(f"| 질의 p50 / p95 | {pct(qs, 0.5):.0f} ms / {pct(qs, 0.95):.0f} ms (콜드 제외) |")
-          encline = next((l for l in enc.splitlines() if "model name" in l), None)
-          print(f"| 인코더 CPU | {encline.split(':', 1)[-1].strip() if encline else '읽지 못함(레플리카 없음일 수 있다)'} |")
-
-          def encnum(tag):
-              m = re.search(rf"^PROBE_{tag} (\d+)$", enc, re.M)
-              return int(m.group(1)) if m else None
-
-          rmax, rsum, rn = encnum("RSS_MAX_KB"), encnum("RSS_SUM_KB"), encnum("RSS_N")
-          if rmax is not None:
-              # 2 GiB 한도와 나란히 놓는다 — 이 숫자가 답해야 하는 질문이 "인코더와
-              # 리랭커가 한 컨테이너에 들어가는가"이기 때문이다(계획 §4 의 셋째 조건).
-              lim = 2 * 1024 * 1024
-              print(f"| 인코더 최대 프로세스 RSS | **{rmax / 1024:.0f} MiB** |")
-              print(f"| 인코더 전체 RSS 합 | {rsum / 1024:.0f} MiB / 2048 MiB "
-                    f"({rsum / lim * 100:.0f}% · 프로세스 {rn}개) |")
-          print()
-          print("⚠ **이 런은 아무것도 배포하지 않았고 아무것도 쓰지 않았다.** `/encode` 는 허브가")
-          print("질의마다 이미 부르는 호출이고, 모델을 새로 올리지 않았다.")
-          print()
-          print("⚠ **이 수치가 못 말하는 것**: 인코더 안의 CPU 시간만 따로 뗀 값(여기 값에는")
-          print("컨테이너 사이 RTT 가 들어 있다) · 스케일다운을 부르는 유휴 시간(통제 안 함) ·")
-          print("동거(다른 것이 같은 2GiB 에 상주할 때). Consumption 은 배포마다 하드웨어를")
-          print("고정하지 않으므로 위의 CPU 줄은 **이 런의 사실**이지 상수가 아니다.")
-
-          bad = []
-          if not one("CPU"):
-              bad.append("허브 CPU 를 못 읽었다 — exec 이 아무것도 내놓지 않았을 수 있다")
-          if not ok:
-              bad.append("성공한 /encode 왕복이 0건이다 — 이 런은 지연을 재지 않았다")
-          if not bok:
-              bad.append("성공한 패시지 배치가 0건이다 — 처리량을 재지 않았다")
-          if bad:
-              for b in bad:
-                  print(f"::error::{b}", file=sys.stderr)
-              sys.exit(1)
-          PY
+          {
+            python scripts/summarize_encode_probe.py hub.out enc.out               --title "컨테이너 안에서 잰 값 (shipped 모델)"
+            echo "⚠ **이 런은 아무것도 배포하지 않았고 아무것도 쓰지 않았다.** \`/encode\` 는"
+            echo "허브가 질의마다 이미 부르는 호출이고, 모델을 새로 올리지 않았다."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
