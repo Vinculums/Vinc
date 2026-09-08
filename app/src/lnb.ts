@@ -5,6 +5,7 @@ import { icon } from "./icons";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
 import { loadPrefs } from "./view-prefs";
+import { markSvg } from "./surfaces/view-planar";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
  *
@@ -32,7 +33,7 @@ type TopicPicker = (path: string, add: boolean) => void;
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
-const KEY_MODE = "vinc.shell.lnb.mode";   // 갈래: 문서 | 노드
+const KEY_KIND = "vinc.shell.lnb.kind";   // 종 레일이 고른 것
 
 let navigate: Navigator | null = null;
 let pickTopic: TopicPicker | null = null;
@@ -65,14 +66,42 @@ const tintStyle = (domain: string): string => {
   return c ? `;--tint:${c}` : "";
 };
 
-/** 주제 줄 **아래**에 무엇이 걸리는가. 주제 줄 자체는 두 갈래에서 같다 —
- *  이것은 서피스 내비가 아니라 이 열이 무엇을 펴는지의 선택이고, 그래서
- *  `adr-design-069`("왼쪽 열은 문서 탐색기다")를 되돌리지 않는다.
+/** 종 레일이 고를 수 있는 것. 앞 넷은 **종**이고 마지막 하나는 **예약된 주제**다
+ *  (`vinc/agent/roles`). 섞여 있는 것이 아니라, 레일이 "무엇으로 그래프를 자르나"를
+ *  묻고 그 답이 대체로는 종이지만 한 번은 주제라는 뜻이다 — 그래서 화면에서도
+ *  구분선 아래에 따로 선다.
  *
- *  기억한다. 노드로 일하는 사람이 창을 열 때마다 문서 목록을 지나가지 않아야 한다. */
-type Mode = "docs" | "nodes";
-let mode: Mode = localStorage.getItem(KEY_MODE) === "nodes" ? "nodes" : "docs";
+ *  ⚠ 브리지와 개방 타입은 **없다**. 취향이 아니라 스키마다: `IN_DOMAIN` 이 네
+ *  라벨에만 걸리고 Bridge 는 `CROSSES` 로 Domain 에 붙는다(그래서 fragment ingest 가
+ *  Bridge 의 domain 을 저장하지 않는다고 경고한다). 레일에 그 줄을 세우면 영원히
+ *  빈 갈래가 된다. 정본은 `api/query.py` 의 `_TREE_PK`.
+ *
+ *  기본이 `concept` 인 이유: 문서의 착지 노드가 개념이라 그 종에서 **문서가 하나도
+ *  숨지 않는다**. 즉 여태의 기본 화면(문서 목록)이 잃는 것 없이 이 안에 들어온다. */
+const RAIL: readonly { key: string; kind?: string; domain?: string; mark: string }[] = [
+  { key: "concept", kind: "concept", mark: "concept" },
+  { key: "decision", kind: "decision", mark: "decision" },
+  { key: "record", kind: "record", mark: "record" },
+  { key: "episode", kind: "episode", mark: "episode" },
+  // Agent - 종이 아니라 주제. 표식은 개념 원 그대로다(형태=타입, D35). 자리로 가른다.
+  { key: "agent", kind: "concept", domain: "vinc/agent/roles", mark: "concept" },
+];
+const RAIL_KEYS = RAIL.map((r) => r.key);
+let railKey: string = RAIL_KEYS.includes(localStorage.getItem(KEY_KIND) || "")
+  ? localStorage.getItem(KEY_KIND)! : "concept";
+const rail = () => RAIL.find((r) => r.key === railKey) || RAIL[0]!;
 let wired = false;
+
+/** 종 표식 — 지도가 쓰는 도형 그대로다(`markSvg`, view-planar). 여기서 **다시
+ *  그리지 않고** 그 함수를 부른다: 갈라 두면 같은 노드가 화면마다 다른 모양이 되고,
+ *  그건 형태에 뜻을 실은 것을 스스로 무너뜨리는 일이다(D35).
+ *  `markSvg` 는 좌표를 받으므로 20×20 뷰박스 중앙에 반지름 6 으로 세운다. */
+function kindMark(kind: string, px: number): string {
+  const body = markSvg(kind, false, 10, 10, kind === "concept" || kind === "decision" ? 6 : 5.6,
+                       "lnb-kmk");
+  return `<svg class="lnb-mk" width="${px}" height="${px}" viewBox="0 0 20 20"
+    aria-hidden="true">${body}</svg>`;
+}
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -140,15 +169,27 @@ export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?
 const hasNodes = (t: NavTreeRes | null): boolean =>
   !!t?.domains?.length && t.domains.some((g) => Array.isArray(g.nodes));
 
+/** 레일이 그리는 개수 — 응답의 `counts.kinds` 하나에서 온다(제목을 싣지 않는 집계).
+ *  종을 갈아 끼워도 이 값은 안 바뀌므로 마지막으로 받은 것을 들고 있는다. */
+let kindCounts: Record<string, number> = {};
+
 /** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후). */
 export async function refreshLnb(): Promise<void> {
   loading = true; failed = false;
   paint();
   try {
-    // 노드 갈래일 때만 제목까지 받는다. 노드 응답은 문서까지 함께 실어 오므로
-    // 한 번 받아 두면 갈래를 도로 넘겨도 다시 부르지 않는다.
-    tree = await api.navTree(cfg.owner, { nodes: mode === "nodes" });
+    // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
+    // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
+    // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
+    tree = await api.navTree(cfg.owner, { nodes: true, kind: rail().kind });
     failed = !tree?.executed;
+    // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
+    // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
+    if (tree?.counts?.kinds) kindCounts = tree.counts.kinds;
+    // 개수가 방금 왔으므로 레일을 다시 칠한다. 첫 마운트 때 레일이 먼저 그려지고
+    // 조회가 뒤따르므로, 이 한 줄이 없으면 레일의 숫자가 **첫 화면에서 늘 0** 이다
+    // (실측 2026-09-08: 마운트 직후 툴팁이 "노드 0개"였다).
+    paintRail();
   } catch {
     tree = null; failed = true;
   }
@@ -156,13 +197,37 @@ export async function refreshLnb(): Promise<void> {
   paint();
 }
 
-/** 갈래 전환. 노드 목록이 아직 없을 때만 다시 읽는다 — 되돌아오는 길은 공짜다. */
-function setMode(next: Mode): void {
-  if (mode === next) return;
-  mode = next;
-  localStorage.setItem(KEY_MODE, next);
-  if (next === "nodes" && !hasNodes(tree)) { void refreshLnb(); return; }
-  paint();
+/** 종 전환 — **늘 다시 읽는다.** 응답이 한 종만 싣기 때문이고, 캐시를 두지 않는
+ *  것이 그 계약을 지키는 방법이다(종마다 트리를 들고 있으면 결국 전량을 메모리에
+ *  갖는 것이고, 그러면 응답을 좁힌 이유가 사라진다). */
+function setRailKey(next: string): void {
+  if (railKey === next || !RAIL_KEYS.includes(next)) return;
+  railKey = next;
+  localStorage.setItem(KEY_KIND, next);
+  paintRail();
+  void refreshLnb();
+}
+
+/** 층 1 — 종 레일. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
+ *  (레일은 상주 크롬이고 목록은 조회 결과다). */
+function paintRail(): void {
+  const el = $("lnb-rail");
+  if (!el) return;
+  const names = COPY.ui.lnb.kinds;
+  el.innerHTML = RAIL.map((r, i) => {
+    const on = r.key === railKey;
+    const name = names[r.key] || r.key;
+    // 개수는 그 **종**의 수다. Agent 는 주제라 종별 집계로 셀 수 없으므로 숫자를
+    // 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
+    const cnt = r.domain ? 0 : (kindCounts[r.key] || 0);
+    const sep = r.domain && i > 0 ? `<hr class="rail-sep">` : "";
+    return sep + `<button class="rail-btn" type="button" data-rail="${esc(r.key)}"
+      aria-pressed="${on}" aria-label="${esc(name)}"
+      data-tip="${esc(r.domain ? name : COPY.ui.lnb.kindTip(name, cnt))}">
+      ${kindMark(r.mark, 18)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
+      cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
+    </button>`;
+  }).join("") + `<span class="rail-fill"></span>`;
 }
 
 function surfaceHash(): string {
@@ -212,11 +277,13 @@ function nodeRow(nd: NavNode, domain = ""): string {
   const depth = Math.min(Math.max(Number(nd.depth ?? 0), 0), 8);
   const on = active.nodeId === nd.id;
   const ink = Math.min(depth, 2);
+  // 표식이 **종**을 말한다(도트가 아니라). 도트는 문서의 것으로 남는다 — 그래서
+  // "이 줄이 노드인가 문서인가"를 색이나 위치가 아니라 모양이 먼저 말한다.
   return `<button class="lnb-doc lnb-node${on ? " on" : ""}" role="treeitem"
     aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-nodeid="${esc(nd.id)}"
     data-dom="${esc(domain)}" style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}"
     data-tip="${esc(COPY.ui.lnb.nodeTip)}">
-    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(nd.title || nd.id)}</span>
+    ${kindMark(nd.kind || "concept", 11)}<span class="lnb-dtitle">${esc(nd.title || nd.id)}</span>
   </button>`;
 }
 
@@ -248,8 +315,12 @@ function nestGroups(groups: NavGroup[]): DomNode[] {
 }
 const subDocs = (n: DomNode): number =>
   (n.group?.docs.length || 0) + n.kids.reduce((s, k) => s + subDocs(k), 0);
-/** 갈래에 맞는 수. 주제 줄 끝의 숫자가 그 아래 펼쳐질 줄 수와 같아야 한다. */
-const subCount = (n: DomNode): number => (mode === "nodes" ? subConcepts(n) : subDocs(n));
+/** 주제 줄 끝의 숫자 = 그 아래 펼쳐질 **노드** 줄 수. 서버가 `count` 로 준다
+ *  (`kind` 로 물었을 때만 오는 열이고, 그것이 곧 그 갈래의 줄 수라는 계약이다).
+ *  문서는 노드 아래 매달리므로 이 숫자에 안 들어간다 — 세는 것과 그리는 것이
+ *  같아야 한다는 규율은 **노드 줄에 대한 것**이다. */
+const subCount = (n: DomNode): number =>
+  (n.group?.count ?? n.group?.concepts ?? 0) + n.kids.reduce((s, k) => s + subCount(k), 0);
 const subConcepts = (n: DomNode): number =>
   (n.group?.concepts || 0) + n.kids.reduce((s, k) => s + subConcepts(k), 0);
 
@@ -271,15 +342,38 @@ function groupRows(n: DomNode, level = 1): string {
   // 자식 가지가 먼저, 그다음 이 주제 자신의 문서. 순서를 뒤집으면 문서 목록 끝에
   // 가지가 붙어 "문서인 줄 알았던 것"이 사실 폴더인 상황이 된다.
   const kids = n.kids.map((k) => groupRows(k, level + 1)).join("");
-  const rows = mode === "nodes"
-    ? (n.group?.nodes || []).map((nd) => nodeRow(nd, n.path)).join("")
-    : (n.group?.docs || []).map((d) => docRow(d, n.path)).join("");
-  const own = rows
-    // 개념만 있고 문서가 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나
-    // 문서를 붙일 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
+  // **구조를 보여 준다**: 노드 한 줄, 그 아래 그 노드의 문서. 여태는 둘 중 하나만
+  // 보여 줬고(칩이 배타였다), 그래서 "이 문서가 어느 개념의 것인가"가 화면에
+  // 없었다. 조인 열은 응답에 이미 있다(`NavDoc.node_id` ↔ `NavNode.id`).
+  const docs = n.group?.docs || [];
+  const byNode = new Map<string, typeof docs>();
+  for (const d of docs) {
+    const k = d.node_id || "";
+    const cur = byNode.get(k);
+    if (cur) cur.push(d); else byNode.set(k, [d]);
+  }
+  const nodes = n.group?.nodes || [];
+  const seen = new Set<string>();
+  const rows = nodes.map((nd) => {
+    seen.add(nd.id);
+    const mine = byNode.get(nd.id) || [];
+    // 문서의 들여쓰기는 **자기 노드보다 한 단**이다. 여태는 착지 개념의 깊이를
+    // 그대로 물려받아, 문서 줄의 들여쓰기가 그 문서의 것이 아닌 값을 말했다.
+    return nodeRow(nd, n.path)
+      + mine.map((d) => docRow({ ...d, depth: (nd.depth || 0) + 1 }, n.path)).join("");
+  }).join("");
+  // 착지 노드가 이 종에 없는 문서 — **숨기지 않는다.** 종을 고른 것이 문서를 지우는
+  // 일이 되면 목록을 신뢰할 수 없다. 주제 자리에 그대로 세우고 왜 거기 있는지 말한다.
+  const orphans = docs.filter((d) => !d.node_id || !seen.has(d.node_id));
+  const rest = orphans.length
+    ? `<p class="lnb-none hint">${esc(COPY.ui.lnb.docsElsewhere)}</p>`
+      + orphans.map((d) => docRow({ ...d, depth: 0 }, n.path)).join("")
+    : "";
+  const own = (rows + rest)
+    // 이 종이 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나 문서를 붙일
+    // 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
     // (자식 가지가 있으면 비어 보이지 않으므로 그 문구를 내지 않는다.)
-    || (n.kids.length ? "" : `<p class="lnb-none hint">${
-      esc(mode === "nodes" ? COPY.ui.lnb.noNodes : COPY.ui.lnb.empty)}</p>`);
+    || (n.kids.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.lnb.noNodes)}</p>`);
   return head + `<div class="lnb-docs" role="group">${kids}${own}</div>`;
 }
 
@@ -306,14 +400,6 @@ function paint() {
   let html = navRows();
   html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
     <span class="hint">${topicCount || "·"}</span></div>`;
-  // 갈래 칩 — 주제 줄은 그대로이고 그 아래 무엇이 걸리는지만 바뀐다. `radiogroup`
-  // 인 이유: 둘 중 하나이지 둘 다 켤 수 있는 것이 아니다.
-  html += `<div class="lnb-mode" role="radiogroup" aria-label="${esc(COPY.ui.lnb.documents)}">${
-    ([["docs", COPY.ui.lnb.modeDocs, COPY.ui.lnb.modeDocsTip],
-      ["nodes", COPY.ui.lnb.modeNodes, COPY.ui.lnb.modeNodesTip]] as const)
-      .map(([key, label, tip]) => `<button class="lnb-modechip${mode === key ? " on" : ""}"
-        type="button" role="radio" aria-checked="${mode === key}" data-mode="${key}"
-        data-tip="${esc(tip)}">${esc(label)}</button>`).join("")}</div>`;
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
   if (picked.size) {
@@ -328,7 +414,7 @@ function paint() {
   // 사라졌다"로 읽힌다. 갈래는 사용자가 고른 대로 두고, 못 받았다고 말한다.
   // ⚠ 주제가 하나도 없을 때는 여기 오면 안 된다 — 그건 빈 그래프이지 못 받은 것이
   // 아니다. 아래 빈 상태 CTA 가 그 경우를 맡는다.
-  if (mode === "nodes" && groups.length > 0 && !hasNodes(tree)) {
+  if (groups.length > 0 && !hasNodes(tree)) {
     body.innerHTML = html
       + `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
       + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
@@ -430,11 +516,17 @@ export function mountLnb() {
     reopen.addEventListener("click", () => setOpen(true));
   }
 
+  // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
+  paintRail();
+  $("lnb-rail")?.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>(".rail-btn");
+    if (b?.dataset.rail) setRailKey(b.dataset.rail);
+  });
+
   const body = $("lnb-body")!;
   body.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    const chip = t.closest<HTMLElement>(".lnb-modechip");
-    if (chip) { setMode(chip.dataset.mode === "nodes" ? "nodes" : "docs"); return; }
+
     // 노드 줄이 문서 줄의 class 를 함께 쓰므로(같은 생김새) **먼저** 가른다.
     const nd = t.closest<HTMLElement>(".lnb-node");
     if (nd) {

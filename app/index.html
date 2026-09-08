@@ -100,6 +100,10 @@
       </header>
       <!-- 좌측 문서 트리(D69). 내용은 lnb.ts 가 채운다. 접히면 폭 0 이 되므로
            다시 여는 손잡이는 사이드바 **밖**(셸 직속)에 둔다. -->
+      <!-- 층 1 - 종 레일. 트리 **안**이 아니라 그 형제다: 안에 두면 트리가
+           스크롤될 때 레일도 함께 밀려 올라간다(레일은 상주 크롬이다). 내용은
+           lnb.ts 가 채운다. -->
+      <nav id="lnb-rail" aria-label="Kinds"></nav>
       <aside id="lnb" aria-label="Documents"></aside>
       <button id="lnb-reopen" type="button" class="tb-icon" aria-controls="lnb"></button>
       <!-- 문서 내용 열 — 예전엔 캔버스 **위에 겹쳐 뜨는** 우측 레일(#view-detail)이었다.

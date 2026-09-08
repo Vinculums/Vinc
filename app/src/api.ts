@@ -266,12 +266,18 @@ export type NavNode = { id: string; title: string; kind: string; depth: number }
 /** `nodes` 는 `navTree(owner, {nodes:true})` 로 물었을 때만 온다. 기본 응답을
  *  무겁게 하지 않으려는 것이다 — 개념 제목은 문서보다 수가 훨씬 많고, 웹모드에서는
  *  이 응답이 계정 프록시를 건넌다. */
-export type NavGroup = { domain: string; concepts: number; docs: NavDoc[]; nodes?: NavNode[] };
+/** `count` 는 `kind` 로 물었을 때만 온다 - 그 주제에 있는 **그 종**의 수이고,
+ *  곧 그 갈래의 줄 수다. `concepts` 는 뜻이 바뀌지 않는다(늘 개념 + 결정). */
+export type NavGroup = { domain: string; concepts: number; count?: number;
+                         docs: NavDoc[]; nodes?: NavNode[] };
 export type NavTreeRes = {
   executed: boolean; note?: string;
   domains?: NavGroup[];
   unfiled?: { doc_id: string; title: string; updated_at: string }[];
-  counts?: { domains: number; docs: number; unfiled: number };
+  //: `kinds` 는 종별 수 - 레일이 읽는 유일한 집계. `kind` 는 이 응답이 어느 종으로
+  //: 좁혀졌는지(안 좁혔으면 없다).
+  counts?: { domains: number; docs: number; unfiled: number;
+             kinds?: Record<string, number>; kind?: string };
 };
 
 export const api = {
@@ -395,8 +401,12 @@ export const api = {
              primary_concept_id?: string; primary_concept_title?: string }[];
   }> => call("/docs", { owner }),
   // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
-  navTree: (owner: string, opts?: { nodes?: boolean }): Promise<NavTreeRes> =>
-    call("/nav-tree", opts?.nodes ? { owner, nodes: 1 } : { owner }),
+  //: `kind` 는 모집단을 그 종 **하나**로 좁힌다(종 레일). 목록을 종별로 가져가는
+  //: 것이 계약이다 - 전부를 한 번에 싣는 값은 없고, 레일의 개수는 응답의
+  //: `counts.kinds` 가 따로 준다(제목을 싣지 않는 집계).
+  navTree: (owner: string, opts?: { nodes?: boolean; kind?: string }): Promise<NavTreeRes> =>
+    call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
+                        ...(opts?.kind ? { kind: opts.kind } : {}) }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
   // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.
