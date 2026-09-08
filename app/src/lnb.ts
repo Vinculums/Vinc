@@ -126,12 +126,19 @@ function isOpen(): boolean {
 function setOpen(open: boolean) {
   localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
   document.getElementById("shell")?.setAttribute("data-lnb", open ? "open" : "closed");
-  const t = $("lnb-toggle");
+  // 손잡이는 상단 바에 **하나**다(2026-09-09). 여태 패널 머리의 접기 버튼과 셸
+  // 직속 재열기 버튼 두 벌이었고, 접히면 손잡이의 자리가 바뀌었다. 하나로 모으면
+  // 자리가 안 바뀌고, 패널 머리가 쓰던 52px 가 목록에 돌아온다.
+  const t = $("tb-lnb-toggle");
   if (t) {
     t.setAttribute("aria-expanded", String(open));
     const label = open ? COPY.ui.lnb.close : COPY.ui.lnb.open;
     t.setAttribute("aria-label", label);
     t.setAttribute("data-tip", label);
+    // 셰브론이 **열릴 방향**을 가리킨다: 열려 있으면 접는 쪽(왼쪽), 접혀 있으면
+    // 펴는 쪽(오른쪽). 방향이 안 바뀌면 같은 아이콘이 두 뜻을 갖는다.
+    const svg = t.querySelector("svg");
+    if (svg) svg.style.transform = open ? "" : "rotate(180deg)";
   }
 }
 
@@ -527,28 +534,17 @@ export function mountLnb() {
   if (!root) return;
   expanded = loadExpanded();
 
-  root.innerHTML = `
-    <div class="lnb-head">
-      <!-- 패널 제목은 비워 둔다. 바로 아래 절 제목이 같은 말을 하고 있었고(Home 을
-           사이에 두고 두 번), 이 줄의 일은 접기 버튼을 담는 것이다. 버튼은 자기
-           aria-label 을 가지므로 접근성에서 잃는 것이 없다. -->
-      <span class="lnb-title" aria-hidden="true"></span>
-      <button class="tb-icon lnb-x" id="lnb-toggle" type="button" aria-controls="lnb-body">
-        ${icon("chevron-left", 16)}
-      </button>
-    </div>
-    <div class="lnb-body" id="lnb-body"></div>`;
+  // **머리가 없다.** 여태 이 카드의 첫 52px 는 셰브론 하나를 담은 머리였고, 그만큼
+  // 첫 줄(홈)을 아래로 밀었다(발주자 지적 2026-09-09, `수정항목/lnb.JPG`).
+  // 접기 손잡이는 상단 바로 갔으므로 여기 담을 것이 없다.
+  root.innerHTML = `<div class="lnb-body" id="lnb-body"></div>`;
   setOpen(isOpen());
 
-  $("lnb-toggle")!.addEventListener("click", () => setOpen(!isOpen()));
-  // 접힌 상태에서 다시 여는 손잡이. 접기 버튼과 같은 일을 하지만 사이드바 **밖**에
-  // 살아야 한다 — 사이드바가 폭 0 이 되면 그 안의 버튼도 함께 사라지기 때문이다.
-  const reopen = $("lnb-reopen");
-  if (reopen) {
-    reopen.innerHTML = icon("chevron-left", 16);
-    reopen.setAttribute("aria-label", COPY.ui.lnb.open);
-    reopen.setAttribute("data-tip", COPY.ui.lnb.open);
-    reopen.addEventListener("click", () => setOpen(true));
+  const toggle = $("tb-lnb-toggle");
+  if (toggle) {
+    toggle.innerHTML = icon("chevron-left", 16);
+    toggle.addEventListener("click", () => setOpen(!isOpen()));
+    setOpen(isOpen());   // 아이콘이 붙은 뒤 방향·라벨을 한 번 더 확정한다
   }
 
   // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.

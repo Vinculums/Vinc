@@ -52,16 +52,34 @@ const docpaneBodyEl = document.getElementById("docpane-body")!;
 // 선택에 딸린 물건이라, 기억해 두면 다음에 노드를 눌러도 화면이 그대로여서 "눌렀는데
 // 아무 일도 안 일어난다"가 된다 — 명시적인 조작의 결과는 반드시 보여야 한다.
 {
-  const fold = document.getElementById("docpane-fold")!;
-  const reopen = document.getElementById("docpane-reopen")!;
+  // 손잡이는 **상단 바에 하나**다(2026-09-09). 여태 패널 안의 접기 버튼과 셸 직속
+  // 재열기 버튼 두 벌이었는데, 그 둘은 같은 일을 반대 방향으로 하는 것이라
+  // "같은 것이 같은 자리에 있다"를 깨고 있었다(접히면 자리가 바뀐다).
+  const toggle = document.getElementById("tb-doc-toggle")!;
   docpaneEl.setAttribute("aria-label", COPY.ui.lnb.paneTitle);
-  for (const [btn, tip] of [[fold, COPY.ui.lnb.paneFold], [reopen, COPY.ui.lnb.paneUnfold]] as const) {
-    btn.innerHTML = icon("chevron-left", 16);
-    btn.setAttribute("aria-label", tip);
-    btn.setAttribute("data-tip", tip);
-  }
-  fold.addEventListener("click", () => { shellEl.dataset.doc = "folded"; });
-  reopen.addEventListener("click", () => { shellEl.dataset.doc = "open"; });
+  const paint = () => {
+    const folded = shellEl.dataset.doc === "folded";
+    const tip = folded ? COPY.ui.lnb.paneUnfold : COPY.ui.lnb.paneFold;
+    toggle.innerHTML = icon("chevron-left", 16);
+    // ⚠ 방향이 **트리 손잡이와 반대**다. 둘 다 같은 셰브론을 쓰면 상단 바에 똑같은
+    // 아이콘이 둘 나란히 서서 어느 것이 무엇인지 구별이 안 된다(실측으로 확인).
+    // 규칙은 하나: 셰브론은 **그 패널이 사라지는 쪽**을 가리킨다. 트리는 왼쪽으로,
+    // 문서 패널은 오른쪽으로 나간다(R1). 접히면 각각 반대로 뒤집힌다.
+    const svg = toggle.querySelector("svg");
+    if (svg) svg.style.transform = folded ? "" : "rotate(180deg)";
+    toggle.setAttribute("aria-label", tip);
+    toggle.setAttribute("data-tip", tip);
+    toggle.setAttribute("aria-expanded", String(!folded));
+    // 선택이 없으면(closed) 접을 것이 없다 — 손잡이도 있을 자격이 없다.
+    toggle.hidden = !shellEl.dataset.doc || shellEl.dataset.doc === "closed";
+  };
+  toggle.addEventListener("click", () => {
+    shellEl.dataset.doc = shellEl.dataset.doc === "folded" ? "open" : "folded";
+    paint();
+  });
+  paint();
+  // 표면이 열을 열고 닫는다(railChrome) — 그 변화를 손잡이가 따라야 한다.
+  new MutationObserver(paint).observe(shellEl, { attributeFilter: ["data-doc"] });
 }
 
 // Notation icons into the top bar (CSS가 18px 로 클램프)

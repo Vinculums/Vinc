@@ -777,7 +777,11 @@ export async function renderView(el: HTMLElement) {
     const paneLeft = pane && !pane.hidden && shell?.dataset.doc === "open"
       ? pane.getBoundingClientRect().left : window.innerWidth;
     const rightEdge = Math.max(paneLeft, w + m * 2);   // 패널이 들어갈 자리는 남긴다
-    viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
+    // 위 한계도 **캔버스 카드**다. 렌즈 버튼 바로 아래(+6px)로 두면 상단 바와 캔버스
+    // 카드 사이의 여백 위에 패널이 걸친다 — 지도를 보는 손잡이가 지도 밖에서 열리는
+    // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
+    const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
+    viewPanel.style.top = `${Math.round(Math.max(r.bottom + 6, cardTop + m))}px`;
     viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
@@ -1615,6 +1619,16 @@ export async function renderView(el: HTMLElement) {
 
   /** 노드의 화면 좌표(카드를 그 옆에 띄우기 위한 것). 렌더러마다 좌표계가 달라
    *  구할 수 없으면 캔버스 우상단 근처로 강등한다 — 카드가 안 뜨는 것보다 낫다. */
+  /** 부유 카드의 집 — 지도 카드의 좌상단에서 한 칸 들어온 자리.
+   *  뷰포트 상수가 아니라 **실측 rect** 에서 뽑는다: 왼쪽 열이 접히거나 창이 바뀌면
+   *  지도 카드의 위치도 바뀌고, 상수로 두면 그때 카드가 크롬 위에 얹힌다. */
+  function homeCardPos(): { x: number; y: number } {
+    const r = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect();
+    const step = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue("--shell-gap")) * 16 || 8;
+    return { x: Math.round(r.left + step * 2), y: Math.round(r.top + step * 2) };
+  }
+
   function nodeScreenPos(id: string): { x: number; y: number } {
     const r = canvas.getBoundingClientRect();
     const n = g3 ? findNode3d(g3, id) : null;
@@ -1709,10 +1723,20 @@ export async function renderView(el: HTMLElement) {
    *  인과 원뿔은 줄에서 뺐다 — 노드를 고르는 순간 `focusOnMap` 이 이미 과거·미래
    *  폐포를 점등하므로 카드가 다시 부를 일이 아니다. */
   async function openRelsCard(nd: N3) {
-    const pos = nodeScreenPos(nd.id);
+    // 카드의 **집은 지도 카드의 좌상단**이다(발주자 지시 2026-09-09,
+    // `수정항목/노드 클릭 플로팅 모달.JPG` 가 그 자리를 가리킨다). 여태는 노드의
+    // 화면좌표 옆이었고, 그것이 낸 문제 둘:
+    //   ① 자리가 매번 다르다 — 카드를 읽으려면 눈이 카드를 먼저 찾아야 했다.
+    //   ② 읽는 면이 오른쪽으로 온 뒤(R1) 오른쪽 노드를 누르면 카드가 본문 위에 겹쳤다.
+    // 고정 자리는 그 둘을 함께 없앤다. 노드와의 연결은 좌표가 아니라 **인과 원뿔의
+    // 점등**이 말한다(focusOnMap 이 이미 그 일을 한다) — 카드가 노드 옆에 있어야
+    // 한다는 요구는 그 점등이 없던 시절의 것이다.
+    // 사용자가 끌어 옮기면 그 자리를 기억한다(float-panel.ts) — 고정은 집일 뿐이고
+    // 손이 옮긴 자리를 되돌리지 않는다.
+    const home = homeCardPos();
     const V = COPY.ui.viewx;
     const card = openFloatPanel({
-      title: nd.label, x: pos.x, y: pos.y, closeLabel: V.railClose,
+      title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose,
     });
     // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
     const tint = nd.domain ? tintMap([nd.domain], curMode()).get(nd.domain) : undefined;

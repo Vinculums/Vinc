@@ -91,23 +91,36 @@ class ShellSizeSpecTests(unittest.TestCase):
             self.assertIn("var(--ctl-h)", body,
                           f"{sel} 이 --ctl-h 를 안 쓴다 — 나란히 선 컨트롤의 높이가 갈린다")
 
-    def test_사이드바_머리가_상단_바와_같은_높이를_쓴다(self):
-        body = decl(".lnb-head")
-        self.assertIn(
-            "var(--topbar-h)", body,
-            "머리 높이를 상하 패딩으로 맞추면 안의 버튼 크기가 바뀌는 날 조용히 어긋난다 "
-            "(고치기 전이 정확히 그 상태였다: 패딩 8.8 로 52px 를 맞춰 놓았다)")
+    def test_패널_머리가_없다(self):
+        """트리와 문서 패널의 **머리 줄이 없다.**
 
-    def test_레일_위여백이_계산값이다(self):
-        """레일 첫 버튼의 중심선이 트리 머리 버튼의 중심선과 같은 높이에 서는 것은
-        `(--topbar-h - --rail-btn-h) / 2` 라는 **계산**의 결과다. 손으로 4px 를
-        적어 두면 버튼 높이를 바꾸는 날 어긋난다."""
-        body = decl("#lnb-rail")
-        self.assertTrue(body, "#lnb-rail 규칙이 없다")
-        self.assertRegex(
-            body.replace("\n", " "),
-            r"calc\(\s*\(\s*var\(--topbar-h\)\s*-\s*var\(--rail-btn-h\)\s*\)\s*/\s*2\s*\)",
-            "레일 위여백이 계산값이 아니다 — 중심선 정렬이 상수로 굳으면 조용히 깨진다")
+        각각 셰브론 하나만 담은 52px 짜리 줄이었고, 그만큼 첫 내용을 아래로 밀었다
+        (홈이 카드 시작에서 52px 아래에 있었다). 문서 패널은 더해서 자기 제목 줄과
+        겹쳐 머리가 두 줄이었다. 손잡이는 상단 바로 갔다.
+        근거 이미지: 발주자 `수정항목/lnb.JPG` · `수정항목/문서 패널.JPG`."""
+        for sel in (".lnb-head", ".pane-head"):
+            self.assertFalse(
+                decl(sel),
+                f"{sel} 규칙이 되살아났다 — 패널 첫 줄이 다시 52px 아래로 밀린다")
+        for el_id in ("lnb-reopen", "docpane-reopen"):
+            self.assertNotIn(
+                "#" + el_id, CSS,
+                f"#{el_id} 규칙이 되살아났다 — 접기 손잡이는 상단 바에 하나여야 한다 "
+                "(접힘에 따라 자리가 바뀌면 같은 것이 두 자리를 갖는다)")
+
+    def test_두_층이_같은_여백으로_첫_줄을_맞춘다(self):
+        """레일과 트리 본문이 **같은 변수**로 위 여백을 갖는다.
+
+        그것이 지금의 정렬 수단이다: 머리가 없어진 뒤에는 같은 값을 쓰는 것이 곧
+        "두 층의 첫 줄이 같은 높이에서 시작한다"다. 한쪽에 상수를 적어 두면 다른
+        쪽을 고치는 날 조용히 어긋난다(머리가 있던 시절에는 중심선을 계산으로
+        맞춰야 했고, 그 계산은 머리와 함께 사라졌다)."""
+        for sel in ("#lnb-rail", ".lnb-body"):
+            body = decl(sel)
+            self.assertTrue(body, f"{sel} 규칙이 없다")
+            self.assertRegex(
+                body, r"padding:\s*var\(--pad-card\)",
+                f"{sel} 의 위 여백이 --pad-card 가 아니다 — 두 층의 첫 줄이 갈린다")
 
 
 if __name__ == "__main__":
