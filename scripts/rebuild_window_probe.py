@@ -138,12 +138,42 @@ def summarize(path: str) -> dict:
     for r in ok:
         k = f"{r.get('arms')}|{'rebuilding' if r.get('vector_rebuilding') else ''}"
         out["arms_census"][k] = out["arms_census"].get(k, 0) + 1
+    # ── 시간대별. **하루 비율 한 수로 읽으면 틀린다.**
+    # 실측(2026-09-08 중간 판독): 저하 표본 5건이 **전부 한 시간(13Z)** 에 몰려 있었고
+    # 그 시간은 이 그래프에 스무 번 넘게 쓴 시간이었다. 조용한 두 시간은 0/13 과 0/38 로
+    # 정확히 0 이다. 즉 이 값은 서 있는 상태가 아니라 **쓰기 빈도의 함수**인데, 하루
+    # 비율만 내면 그 사실이 사라진다. 판정하는 사람이 다시 안 세도록 여기서 갈라 준다.
+    by_hour: dict = {}
+    for r in ok:
+        h = str(r.get("ts") or "")[11:13]
+        if not h:
+            continue
+        b = by_hour.setdefault(h, {"n": 0, "rebuilding": 0})
+        b["n"] += 1
+        if r.get("vector_rebuilding"):
+            b["rebuilding"] += 1
+    for b in by_hour.values():
+        b["ratio"] = round(b["rebuilding"] / b["n"], 4) if b["n"] else None
+    out["by_hour_utc"] = dict(sorted(by_hour.items()))
+    hours = [b["ratio"] for b in by_hour.values() if b["ratio"] is not None]
+    out["hours_with_none"] = sum(1 for x in hours if x == 0.0)
+    out["worst_hour_ratio"] = max(hours) if hours else None
+    # 재빌드가 아닌 이유로 강등된 표본도 따로 센다 — 인코더 콜드스타트가 여기 들어온다.
+    # 분자에 섞으면 R3 가 묻지 않은 것을 재게 되고, 아예 안 세면 사라진다.
+    out["degraded_not_rebuilding"] = sum(
+        1 for r in asked if r.get("arms") != "fts+vector" and not r.get("vector_rebuilding"))
+
     # 판정은 계획 §6 의 문턱을 그대로 적는다 — 읽는 사람이 다시 안 찾게.
     ratio = out["ratio"]
     out["verdict"] = ("no usable sample" if ratio is None else
                       "opens R7 (>= 0.20)" if ratio >= 0.20 else
                       "closes R7 (< 0.05)" if ratio < 0.05 else
                       "inconclusive — keep the counter and re-read")
+    if out["worst_hour_ratio"] is not None and out["hours_with_none"]:
+        out["read_with"] = (
+            f"{out['hours_with_none']} of {len(by_hour)} hours read exactly 0.0000 and the "
+            f"worst hour reads {out['worst_hour_ratio']}. The day ratio is an average over "
+            "write activity, not a standing condition — quote by_hour_utc beside it.")
     return out
 
 
