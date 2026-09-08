@@ -421,12 +421,29 @@ body {
 /* **오른쪽 끝**이다(R1, 2026-09-08). 여태 지도 왼쪽이었고, 층 LNB 가 들어오면서
    지도 앞에 레일 + 트리 + 읽는 면 = 세 열이 서게 됐다. 내비는 왼쪽, 자료는 오른쪽 —
    인스펙터의 자리다. 여는 것과 접는 것이 같은 길(오른쪽)로 오간다. */
+/* **카드다**(2026-09-09, 판정은 내가 했다). 여태 이 면만 모서리 없는 판이었고,
+   그래서 떠 있는 층인데도 지도에 붙어 있는 것처럼 읽혔다. 이 앱의 다른 부유 층은
+   전부 둥근 카드다 — 팔레트 · 렌즈 패널 · 부유 카드 · 시트 · 툴팁. 예외가 하나뿐일
+   이유가 없고, 그 예외가 곧 "미완으로 보인다"의 한 조각이었다.
+   네 변을 카드 안쪽으로 들여 네 모서리를 다 둥글린다 — 오른쪽만 붙여 두면 그 두
+   모서리는 캔버스 카드의 것이 되고, 그러면 이 면이 자기 카드인지 캔버스의 일부인지가
+   폭에 따라 달라진다. 뒤로 지도가 한 줄 보이는 것은 부유 층의 성질이지 결함이 아니다. */
 #docpane {
-  position: absolute; top: 0; bottom: 0; right: 0;
-  width: min(var(--rail-size, 20rem), 100%);
+  position: absolute;
+  top: var(--shell-gap); bottom: var(--shell-gap); right: var(--shell-gap);
+  /* 기본 폭은 **계산값**이다: 이 패널의 왼쪽 끝이 렌즈 버튼의 시작점(= 검색바가
+     끝나는 지점 = 렌즈 패널의 왼쪽 끝)에 서야 한다(발주자 지시 2026-09-09).
+     그 지점은 `상단바 안쪽 오른쪽 - --lens-panel-w` 이고 이 패널의 오른쪽 끝은
+     `캔버스 카드 오른쪽 - --shell-gap` 이라, 창 폭이 소거되고 토큰만 남는다:
+       폭 = --lens-panel-w + (상단 바 오른쪽 여백) + 1px(테두리) - --shell-gap
+     사용자가 끌어 정한 값(`--rail-size`)이 있으면 그것이 이긴다. */
+  width: min(var(--rail-size,
+    calc(var(--lens-panel-w) + var(--space-4, 1rem) + 1px - var(--shell-gap))),
+    calc(100% - var(--shell-gap) * 2));
   pointer-events: auto;
   display: flex; flex-direction: column; overflow: hidden;
-  border-left: 1px solid hsl(var(--border) / .55);
+  border: 1px solid hsl(var(--border) / .55);
+  border-radius: var(--radius);
   /* 유리는 **형제 층**(::before)이 갖는다 — 조상이 블러를 가지면 그 안에서 스크롤할
      때마다 블러가 다시 계산돼 스크롤이 끊긴다(렌즈 패널과 같은 처분, 2026-08-05). */
   background: transparent;
@@ -438,6 +455,9 @@ body {
    뒤 글자가 그대로 겹쳐 읽혀 둘 다 못 읽는다(투명도만 남기는 것이 최악이다). */
 #docpane::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
+  /* 부모의 곡률을 따라간다 — `inset: 0` 인 형제 층은 부모 radius 를 물려받지 않아
+     모서리 밖으로 네모난 유리가 삐져 나온다. */
+  border-radius: inherit;
   background: hsl(var(--card) / .74);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
@@ -453,7 +473,8 @@ body {
    찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다 — 나간 쪽으로 되돌아오는 것이
    공간 일관성이다. */
 #shell[data-doc="folded"] #docpane {
-  transform: translateX(101%); opacity: 0; pointer-events: none;
+  /* 카드가 되면서 오른쪽에 여백이 생겼으므로 그만큼 더 나가야 완전히 사라진다. */
+  transform: translateX(calc(101% + var(--shell-gap))); opacity: 0; pointer-events: none;
 }
 #docpane[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
@@ -744,9 +765,8 @@ body {
    세그에 하한을 주고 칩을 오른쪽 끝에 붙이므로, 묶음의 오른쪽 끝은 상단 바의 오른쪽
    안쪽 끝에 그대로 남고 왼쪽 끝만 왼쪽으로 밀린다 - 그 지점이 곧 검색바가 끝나는
    지점이고 패널의 왼쪽 끝이다(세 선이 하나가 된다). */
-#tb-lens:not(:empty) + #tb-viewpoints:not(:empty) {
+#tb-lens:not(:empty) + #tb-actions {
   min-width: calc(var(--lens-panel-w) - var(--ctl-h) - var(--space-2, .5rem));
-  justify-content: flex-end;
 }
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
@@ -970,17 +990,25 @@ body {
    검색바에 같은 gap 을 왼쪽 여백으로 준다. 값이 한 변수라 둘이 어긋날 수 없다.
    아이콘 사이 간격은 space-between 이 균일하게 나눈다(셋 다 같은 크기의 아이콘 버튼).
    LNB 가 접히면(폭 0) 아이콘이 사라지면 안 되므로 최소 폭을 준다. */
-#tb-actions {
-  display: flex; align-items: center;
-  /* 폭은 **레일 + 트리**다. 그 오른쪽 끝이 검색 입력의 왼쪽 끝이고, 그 선이 캔버스
-     카드의 왼쪽 끝이다 — 검색바는 "LNB 가 끝나는 지점부터" 시작한다(발주자 지시). */
+/* **왼쪽 슬롯 = 관점 세그**(자리 교환, 2026-09-09). 폭은 여전히 레일 + 트리다:
+   그 오른쪽 끝이 검색 입력의 왼쪽 끝이고 그 선이 캔버스 카드의 왼쪽 끝이라는 규율이
+   이 폭에 걸려 있다(검색바는 "LNB 가 끝나는 지점부터" 시작한다).
+   세그는 **하나의 컨트롤**이라 그 안의 칩을 퍼뜨리지 않는다 — 아이콘 셋을 퍼뜨렸던
+   것과 다른 이유다. 왼쪽에 붙이고 남는 자리는 검색바 앞에 둔다. */
+#tb-viewpoints {
   width: max(calc(var(--kind-rail-w) + var(--shell-gap) + var(--lnb-w) - var(--tb-gap)), 9.5rem);
-  /* 그 안에서 아이콘은 **고르게 퍼진다.** 왼쪽에 모으면 오른쪽이 통째로 비어
-     한쪽으로 쏠려 보인다(발주자 지적 `수정항목/gnb 설정.JPG`). */
-  justify-content: space-between;
-  flex: 0 0 auto;
+  justify-content: flex-start;
   padding: 0 var(--pad-card);
   transition: width var(--dur-panel) var(--ease-drawer);
+}
+/* **오른쪽 묶음 = 렌즈 + 앱 손잡이.** 그 폭이 렌즈 패널의 폭이라(아래 min-width)
+   패널의 왼쪽 끝이 렌즈 버튼의 시작점에 맞는다. 남는 자리는 렌즈와 손잡이 **사이**
+   에 둔다: 손잡이는 오른쪽 끝(상단 바 안쪽 끝)에 모이고, 렌즈는 묶음의 왼쪽 끝에
+   선다 — 그 두 자리가 각각 패널의 왼쪽 끝과 바의 오른쪽 끝이다. */
+#tb-actions {
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  justify-content: flex-end;
+  flex: 0 0 auto;
 }
 @media (prefers-reduced-motion: reduce) { #tb-actions { transition: none; } }
 /* 앱 손잡이(설정·도구·GRAPH.md)와 **패널 손잡이**(트리·문서 접기)를 가른다.

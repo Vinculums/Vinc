@@ -189,7 +189,11 @@ const DEFAULTS: ViewPrefs = {
   labels: "hover", arrows: true, edges: "focus", spread: 1, cone: 1,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
-  railW: 20,
+  //: 21rem = 336px. `app.css` 의 `#docpane` 폴백 계산과 같은 자리를 노린다:
+  //: --lens-panel-w(328) + 상단 바 오른쪽 여백(16) + 테두리(1) - --shell-gap(8) = 337.
+  //: 그 값이 곧 "패널 왼쪽 끝 = 렌즈 버튼 시작점"이다(발주자 지시 2026-09-09).
+  //: rem 격자에 맞추느라 1px 짧다 — 그 1px 은 테두리 몫이라 눈에 안 걸린다.
+  railW: 21,
   timeBasis: "recorded",
   when: 1,
   edgeOff: [],

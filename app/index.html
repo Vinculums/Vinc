@@ -53,23 +53,15 @@
       <header id="topbar">
 
 
-        <!-- 셸 손잡이(설정·도구·GRAPH.md)는 **왼쪽**에 산다. 오른쪽에 있던 동안에는
-             지도 손잡이(보기·관점)와 한 덩어리로 보여, 앱을 다루는 일과 지도를 보는
-             방식을 고르는 일이 같은 무리로 읽혔다. 이제 왼쪽 = 앱, 오른쪽 = 지도다. -->
-        <div id="tb-actions">
-          <button class="tb-icon" id="settings-btn" data-icon="settings"
-                  aria-haspopup="dialog"></button>
-          <!-- D71 — 지식이 드나드는 문 셋(만들기·가져오기·공유)을 버튼 하나로 모은다. -->
-          <button class="tb-icon" id="tb-tools"></button>
-          <!-- GRAPH.md(GM-8 관례 파일) — 아이콘 하나가 두 일을 겸한다: 편집 + 재가 대기.
-               뱃지가 없으면 이 자리에 있을 자격이 없다(상시 점유의 근거가 뱃지다). -->
-          <button class="tb-icon tb-conv" id="tb-conv" data-icon="ring"
-                  aria-haspopup="dialog"><span id="tb-conv-badge" hidden></span></button>
-          <!-- ⚠ 여기 패널 손잡이 둘을 두었다가 뺐다(발주자 지적 2026-09-09).
-               트리 접기는 **레일 맨 아래**에 산다(내비가 레일로 모였으므로 그 목록을
-               접는 손잡이도 거기 있는 것이 맞다). 문서 패널은 자기 제목 줄의 ✕ 하나로
-               닫는다 — 접기와 닫기는 사용자에게 같은 행위라 두 벌 둘 이유가 없다. -->
-        </div>
+        <!-- ⚠ **자리를 바꿨다**(발주자 지시 2026-09-09). 여태 왼쪽은 앱(설정·도구·
+             규칙)이고 오른쪽은 지도(렌즈·관점)였다 — D56·D57·D71 이 세운 "왼쪽 = 앱,
+             오른쪽 = 지도"다. 이제 **관점 세그가 왼쪽**에 서고 앱 손잡이가 오른쪽으로
+             간다. 되돌리려면 이 주석부터 읽을 것: 뒤집힌 것은 그 규율 자체다.
+             렌즈는 오른쪽에 남는다 — 그 패널이 오른쪽에서 열리고, 패널의 왼쪽 끝을
+             렌즈 버튼의 시작점에 맞추는 계약이 걸려 있다(view.ts positionPanel).
+             왼쪽 슬롯의 폭은 그대로 레일 + 트리다: 검색바가 "LNB 가 끝나는 지점"에서
+             시작한다는 규율이 그 폭에 걸려 있다. -->
+        <div id="tb-viewpoints" role="group"></div>
 
         <!-- 상시 검색(D57) — 조회는 그래프를 훑는 일이 아니라 이름을 대는 일이다.
              Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#view/trace/<id>).
@@ -96,11 +88,24 @@
           <div id="tb-chat" hidden></div>
         </div>
 
-        <!-- 지도 손잡이(D71) — 보기와 범례 + 관점 세그. 검색 **오른쪽**이다: 지도를
-             보는 방식은 지도 옆에서 고르는 것이 자연스럽고, 왼쪽 셸 손잡이와 섞이지
-             않는다. 내용은 View 가 채우고 떠날 때 비운다(setViewHooks). -->
+        <!-- 오른쪽 묶음 — 보기와 범례(렌즈) + 앱 손잡이. 이 묶음의 **폭이 렌즈 패널의
+             폭**이고, 그래서 패널의 왼쪽 끝이 렌즈 버튼의 시작점(= 검색바가 끝나는
+             지점)에 맞는다. 렌즈 내용은 View 가 채우고 떠날 때 비운다(setViewHooks). -->
         <div id="tb-lens"></div>
-        <div id="tb-viewpoints" role="group"></div>
+        <div id="tb-actions">
+          <button class="tb-icon" id="settings-btn" data-icon="settings"
+                  aria-haspopup="dialog"></button>
+          <!-- D71 — 지식이 드나드는 문 셋(만들기·가져오기·공유)을 버튼 하나로 모은다. -->
+          <button class="tb-icon" id="tb-tools"></button>
+          <!-- GRAPH.md(GM-8 관례 파일) — 아이콘 하나가 두 일을 겸한다: 편집 + 재가 대기.
+               뱃지가 없으면 이 자리에 있을 자격이 없다(상시 점유의 근거가 뱃지다). -->
+          <button class="tb-icon tb-conv" id="tb-conv" data-icon="ring"
+                  aria-haspopup="dialog"><span id="tb-conv-badge" hidden></span></button>
+          <!-- ⚠ 여기 패널 손잡이 둘을 두었다가 뺐다(발주자 지적 2026-09-09).
+               트리 접기는 **레일 맨 아래**에 산다(내비가 레일로 모였으므로 그 목록을
+               접는 손잡이도 거기 있는 것이 맞다). 문서 패널은 자기 제목 줄의 ✕ 하나로
+               닫는다 — 접기와 닫기는 사용자에게 같은 행위라 두 벌 둘 이유가 없다. -->
+        </div>
       </header>
       <!-- 좌측 문서 트리(D69). 내용은 lnb.ts 가 채운다. 접히면 폭 0 이 되므로
            다시 여는 손잡이는 사이드바 **밖**(셸 직속)에 둔다. -->
