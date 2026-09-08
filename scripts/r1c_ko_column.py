@@ -50,27 +50,44 @@ def prepare(src: str, out: str) -> dict:
     if store is None:
         raise SystemExit(f"사본을 열 수 없다: {out}")
 
+    # 🔴 **색인을 먼저 내린다.** 색인이 붙은 채로 Chunk 에 SET 을 걸면 프로세스가
+    # **예외 없이 죽는다** — stdout 이 그 줄에서 끊기고 종료코드는 0 이며 열은 빈 채로
+    # 남는다. 백필 0건을 "쿼리가 안 맞았나" 로 두 번 오독했다. 이 리포가 이미 아는
+    # 고장 종류다(`embedded_backend` 가 벡터 삽입 때 색인을 통째로 드롭하는 이유).
+    #
+    # ⚠ 날 Cypher 로 `DROP_FTS_INDEX` 를 부르지 말 것. 확장이 이 커넥션에 로드돼
+    # 있지 않으면 "function DROP_FTS_INDEX is not defined" 로 **실패하고**, 그것을
+    # try/except 로 삼키면 색인이 남은 채 백필로 들어가 위의 무음 사망이 난다.
+    # `drop_search_indexes()` 가 확장 로드까지 해 준다.
+    store.drop_search_indexes()
+
     # 열이 이미 있으면 ALTER 가 실패한다 — 사본이므로 그때는 사람 실수다(멱등 아님).
     store.run(f"ALTER TABLE Chunk ADD {_COL} STRING DEFAULT ''")
 
-    rows = store.run("MATCH (c:Chunk) RETURN c.id AS id, c.text AS text")
+    rows = store.run("MATCH (c:Chunk) RETURN c.chunk_id AS cid, c.text AS text")
     n = 0
     for r in rows:
-        stripped = ko_stripped_text(r.get("text") or "")
-        store.run(f"MATCH (c:Chunk) WHERE c.id = $i SET c.{_COL} = $s",
-                  {"i": r["id"], "s": stripped})
+        store.run(f"MATCH (c:Chunk) WHERE c.chunk_id = $i SET c.{_COL} = $s",
+                  {"i": r["cid"], "s": ko_stripped_text(r.get("text") or "")})
         n += 1
 
+    # 스스로 확인한다 — 위의 무음 사망이 정확히 "0건인데 성공으로 보이는" 모양이었다.
+    filled = store.run(f"MATCH (c:Chunk) WHERE c.{_COL} <> '' RETURN count(c) AS c")
+    filled = int(filled[0]["c"]) if filled else 0
+    if filled == 0:
+        store.close()
+        raise SystemExit(f"백필이 한 건도 안 들어갔다({n}건 시도) — 사본을 지우고 다시 볼 것")
+
     # 두 열을 한 색인에 넣는다. 원문 열을 빼지 않는 것이 요점이다 — 영어는 원문 열의
-    # 영어 어간 처리로 계속 맞아야 하고, 실측에서 그것이 유지된다.
+    # 영어 어간 처리로 계속 맞아야 하고, 실측에서 그것이 유지된다. 벡터 색인은 원래
+    # 모양 그대로 되돌린다(`build_search_indexes` 는 FTS 를 `['text']` 한 열로만
+    # 만들기 때문에 여기서는 안 쓴다).
     idx = getattr(store, "_FTS_INDEX", None) or "chunk_ft"
-    try:
-        store.run(f"CALL DROP_FTS_INDEX('Chunk','{idx}')")
-    except Exception:
-        pass
+    vidx = getattr(store, "_VEC_INDEX", None) or "chunk_vec"
+    store.run(f"CALL CREATE_VECTOR_INDEX('ChunkVec','{vidx}','embedding')")
     store.run(f"CALL CREATE_FTS_INDEX('Chunk','{idx}',['text','{_COL}'])")
     store.close()
-    return {"src": src, "out": out, "chunks_backfilled": n,
+    return {"src": src, "out": out, "chunks_backfilled": n, "chunks_nonempty": filled,
             "wall_s": round(time.perf_counter() - t0, 2)}
 
 
