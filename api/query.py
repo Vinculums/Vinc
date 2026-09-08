@@ -4134,8 +4134,25 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         # F7 — 여태 `found:false` 뿐이라 **끝점이 없는 것**과 **길이 없는 것**이
         # 구분되지 않았다. 둘은 다음 행동이 완전히 다르다: 앞은 id 를 고쳐야 하고
         # 뒤는 depth 를 늘리거나 엣지를 이어야 한다. 어느 끝이 문제인지 짚어 준다.
-        missing = [x for x in (a_id, b_id)
-                   if not any(c["id"] == x for c in near_nodes(store, x, owner=owner))]
+        #
+        # ⚠ **존재는 PK 로 묻는다.** 이 판정이 `near_nodes`(제목·props **유사도** 검색)
+        # 였고, 유사도는 존재의 증거가 아니다: 슬러그 id 는 제 산문 제목 안에 글자
+        # 그대로 안 나타나는 일이 흔해서 후보가 0이 되고, 그러면 **실재하는 노드가
+        # `unknown node` 로 보고된다.** 라이브 실측(2026-09-08): `concept:hybrid-search`
+        # 는 이웃 28개를 가진 멀쩡한 개념인데 이 표면만 "unknown node" 라고 답했다.
+        # `neighbors()` 가 정확히 같은 결함을 3860행대에서 이미 고쳤는데(그 주석이
+        # 이 처방을 적어 놓았다) **형제 함수만 안 받았다.** 그리고 이 검사가 먼저라,
+        # 아래의 "개념 층만 걷는다" 안내가 대부분 도달조차 못 했다.
+        # 근거: [[record:path-called-an-existing-concept-unknown-2026-09-08]]
+        def _exists(x: str) -> bool:
+            probe = execute(seed_lookup_plan(x, owner=owner), cfg, store=store)
+            if not probe.get("executed"):
+                # 프로브가 못 돌았으면 **모르는 것**이지 없는 것이 아니다 —
+                # 조회 실패를 부재로 단언하지 않는다(`neighbors()` 와 같은 태도).
+                return True
+            return any(r.get("id") == x for r in probe.get("rows", []))
+
+        missing = [x for x in (a_id, b_id) if not _exists(x)]
         if missing:
             base["error"] = "unknown node: " + ", ".join(missing)
             cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
