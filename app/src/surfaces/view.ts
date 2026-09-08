@@ -7,7 +7,8 @@ import { absoluteViewUrl, formatViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
-import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
+import { bucketRange, gateway3dSvg, mark3dSvg, markSvg, mountColumns, pickGrain,
+         timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
 import { bundleStatsByType, mountBundle, type BundleEdge,
          type BundleNode } from "./view-bundle";
@@ -27,7 +28,8 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker, repaintLnb } from "../lnb";
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
+         repaintLnb } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
@@ -242,10 +244,30 @@ export async function renderView(el: HTMLElement) {
    *  (타임라인 · Weave)에는 걸지 않는다: 거기 선은 관계가 아니라 흐름이고, Weave 는
    *  선 하나가 여러 관계를 묶은 것이라 엣지 정체성이 남지 않는다. */
   let spot: Spot | null = null;
+  /** 레일에서 고른 종 — **서 있는** 점등이다(원뿔·범례 hover 는 일시적이다).
+   *  둘을 한 변수로 섞지 않는 이유: 노드를 눌러 원뿔이 서면 그것이 종 강조를 덮고,
+   *  원뿔이 끝나면 종 강조로 **돌아와야** 한다. hover 가 이미 같은 규칙으로 도는데
+   *  (`손을 떼면 점등이 있던 자리로 돌아간다`, view3d) 그 자리를 여기서도 만들어
+   *  준다 — 기구를 두 벌로 늘리지 않고 `null` 의 뜻만 "서 있는 것으로 복귀"로 정한다. */
+  let kindSpot: Spot | null = null;
   function setSpot(s: Spot | null) {
-    spot = s;
-    (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(s);
-    g2?.spotlight?.(s);
+    // `null` = 일시 점등이 끝났다 = 서 있는 종 렌즈로 돌아간다.
+    spot = s ?? kindSpot;
+    const eff = spot;
+    (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(eff);
+    g2?.spotlight?.(eff);
+  }
+  /** 지금 그려진 노드 중 그 종만 밝힌다. 엣지는 비운다 — 종은 노드의 성질이고
+   *  "그 종에 닿는 선"은 종의 집합이 아니다(선을 함께 밝히면 두 뜻이 섞인다).
+   *  ⚠ 평면 관점(타임라인 · Weave)에는 점등이 걸리지 않는다(위 `spot` 주석) —
+   *  거기서 종 렌즈는 조용히 아무 일도 하지 않고, 그것이 기존 계약이다. */
+  function applyKindLens(kind: string | null): void {
+    kindSpot = kind
+      ? { nodes: new Set(curNodes.filter((x) => (x.kind || "concept") === kind)
+                                 .map((x) => x.id)), edges: new Set<string>() }
+      : null;
+    // 원뿔이 서 있는 동안에는 그것이 위다 — 그때는 종 렌즈를 예약만 해 둔다.
+    if (!lastNode || detail.hidden) setSpot(null);
   }
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
@@ -254,6 +276,18 @@ export async function renderView(el: HTMLElement) {
   // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
   // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
   let curNodes: GraphNode[] = [];
+  /** 지금 그려진 노드를 갈아 끼운다. **여기 한 곳으로 모은 이유**는 서 있는 종
+   *  렌즈가 이 집합 위에서 정의되기 때문이다 — 층을 옮기거나 스코프를 좁히면 강조할
+   *  대상이 통째로 바뀌는데, 대입만 세 곳에 흩어져 있으면 그중 하나에서 렌즈가 옛
+   *  집합을 들고 남는다(강조가 지도에 없는 id 를 가리켜 아무것도 안 밝는다). */
+  function setCurNodes(next: GraphNode[]): void {
+    curNodes = next;
+    // ⚠ **여기서 종 렌즈를 걸지 않는다.** 이 함수는 데이터가 도착한 시점이고
+    // 렌더러는 아직 안 세워졌다(`swapSurface` 가 그 뒤에 돈다). 여기서 걸면 교체
+    // 직전의 `spot = null` 이 곧바로 지워 버려 **계산은 맞는데 화면이 그대로**다
+    // (실측 2026-09-09: 레일을 눌러도 지도가 안 흐려졌다). 거는 자리는 `show` 의
+    // `finally` 다 — 마운트가 끝난 뒤이고 모든 관점이 그 길을 지난다.
+  }
   // 지금 타임라인이 쓰는 버킷 알갱이(D72) — 밴드 클릭이 같은 구간을 만들어야 한다.
   let periodGrain: Grain = "month";
   // 마지막으로 짚은 곳(D70) — 합계의 `기타` 병합 핀에 쓴다. trail 과 별개다:
@@ -338,20 +372,8 @@ export async function renderView(el: HTMLElement) {
     depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4 19 19M21.6 8.4 9 19M6.4 8.4 21.6 8.4M9 19h10M6.4 8.4 9 19" ${AS} stroke-width="1"/><circle cx="6.4" cy="8.4" r="1.4" ${AF}/><circle cx="21.6" cy="8.4" r="1.4" ${AF}/><circle cx="9" cy="19" r="1.4" ${AF}/><circle cx="19" cy="19" r="1.4" ${AF}/>`,
   };
 
-  /** v2 범례 마크 — 3D 셋은 실제 지오메트리(구 · 정사면체 DOC_ROT · 정팔면체
-   *  rot.y 0.5 · 겹껍질 · 윤곽선)를 기본 카메라에서 투영한 실루엣이다(view3d.ts
-   *  kindGeometry/nodeObject 와 짝). 평면 셋은 여기서 그리지 않는다 — 정본
-   *  `markSvg`(view-planar) 를 좌표째 불러 쓴다: 범례가 손으로 재현하다 어긋난
-   *  전력이 있다(주제 겹껍질을 토성 고리로, 다리를 1.45배로). */
-  const MARK3D: Record<string, string> = {
-    // ds-allow: 이 흰색은 팔레트가 아니라 **조명**이다 — 구 실루엣의 상단 하이라이트
-    // (램버트 음영의 밝은 면)를 30% 투명 백색으로 흉내낸다. 잉크는 currentColor 다.
-    concept: `<defs><radialGradient id="v3sph" cx="52%" cy="26%" r="72%"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><circle cx="12" cy="12" r="8.4" fill="currentColor" opacity=".92"/><circle cx="12" cy="12" r="8.4" fill="url(#v3sph)"/>`,
-    document: `<polygon points="7.39,16.96 16.31,17.88 18.39,6.51" fill="currentColor" opacity=".69"/><polygon points="5.9,6.66 7.39,16.96 18.39,6.51" fill="currentColor" opacity=".92"/>`,
-    bridge: `<polygon points="20.9,11.94 12.16,15.16 12,20.32" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12,20.32 12.16,15.16" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12.16,15.16 12,3.68" fill="currentColor" opacity=".9"/><polygon points="20.9,11.94 12,3.68 12.16,15.16" fill="currentColor" opacity=".94"/>`,
-    topic: `<circle cx="12" cy="12" r="9.4" fill="currentColor" opacity=".28"/><circle cx="12" cy="12" r="4.2" fill="currentColor"/>`,
-    gateway: `<path d="M8.09 4.59L15.32 5.62M15.32 5.62L7.72 9.43M8.09 4.59L7.72 9.43M7.72 9.43L3.62 12.21M8.09 17.95L7.72 9.43M8.09 17.95L3.62 12.21M15.32 13.88L15.32 5.62M15.32 13.88L7.72 9.43M15.32 5.62L20.38 11.79M8.09 17.95L8.68 18.38M8.09 17.95L15.91 19.41M8.09 17.95L15.32 13.88M15.91 19.41L15.32 13.88M15.32 13.88L20.38 11.79M15.91 19.41L20.38 11.79" fill="none" stroke="currentColor" stroke-width=".7" opacity=".22"/><path d="M8.09 4.59L3.62 12.21M8.68 10.12L3.62 12.21M8.09 4.59L8.68 10.12M15.91 6.05L8.68 10.12M8.09 4.59L15.91 6.05M8.68 10.12L16.28 14.57M15.91 6.05L16.28 14.57M8.68 18.38L3.62 12.21M8.68 18.38L8.68 10.12M15.91 6.05L20.38 11.79M15.91 19.41L16.28 14.57M8.68 18.38L16.28 14.57M15.91 19.41L8.68 18.38M20.38 11.79L16.28 14.57" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>`,
-  };
+  // 3D 실루엣 표식은 어휘 파일에 있다(view-planar `mark3dSvg`) — 좌측 레일도 같은
+  // art 를 쓰므로 범례 안에 사본을 두지 않는다.
   /** 선 갈래 견본(18×12) — 실제 변별 채널(굵기·화살촉·농도) 그대로. */
   const LINE_ART: Record<EdgeKind, string> = {
     directed: `<path d="M1 6h11" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 3.4 17 6l-6 2.6Z" fill="currentColor"/>`,
@@ -376,20 +398,20 @@ export async function renderView(el: HTMLElement) {
     const flatMark = (kind: string, gateway = false) =>
       `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${
         markSvg(kind, gateway, 12, 12, 8, "")}</svg>`;
-    const m3 = (svg: string) =>
-      `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+    // `lg-` 접두 gid — 같은 문서의 레일(`rail-`)과 겹치지 않게(mark3dSvg 주석).
+    const m3 = (kind: string) => mark3dSvg(kind, 24, `lg-${kind}`, "lg-mark2");
     const shapeRow = (art: string, label: string, noteTxt: string) =>
       `<span class="lg-shape">${art}<span class="lg-shape-t">${esc(label)}`
       + `<span class="lg-note">${esc(noteTxt)}</span></span></span>`;
     const shapes = [
-      shapeRow(is3d ? m3(MARK3D.concept) : flatMark("concept"), L.concept, note.concept),
-      shapeRow(is3d ? m3(MARK3D.document) : flatMark("record"), L.document, note.document),
-      shapeRow(is3d ? m3(MARK3D.bridge) : flatMark("bridge"), L.bridge, note.bridge),
-      shapeRow(is3d ? m3(MARK3D.topic) : flatMark("domain"), L.topic, note.topic),
+      shapeRow(is3d ? m3("concept") : flatMark("concept"), L.concept, note.concept),
+      shapeRow(is3d ? m3("record") : flatMark("record"), L.document, note.document),
+      shapeRow(is3d ? m3("bridge") : flatMark("bridge"), L.bridge, note.bridge),
+      shapeRow(is3d ? m3("domain") : flatMark("domain"), L.topic, note.topic),
       // Weave 는 관문 윤곽을 안 그린다(view-bundle markSvg(gateway=false)) — 그리지
       // 않는 것은 가르치지 않는다.
       ...(p.view === "bundle" ? [] :
-        [shapeRow(is3d ? m3(MARK3D.gateway) : flatMark("concept", true),
+        [shapeRow(is3d ? gateway3dSvg(24, "lg-mark2") : flatMark("concept", true),
                   L.gateway, note.gateway)]),
     ].join("");
     // 물러남 4단 — 수치는 recede.ts 가 토큰에서 읽는다(범례는 그리는 그대로).
@@ -557,6 +579,10 @@ export async function renderView(el: HTMLElement) {
   function setRailWidth(rem: number) {
     const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
     (shell ?? el).style.setProperty("--rail-size", `${w}rem`);
+    // 열려 있는 렌즈 패널은 이 폭에 걸려 있다(positionPanel 이 읽는 면의 왼쪽 끝을
+    // 오른쪽 한계로 쓴다). 폭의 단일 원천이 여기 하나이므로 재배치도 여기서 부른다 -
+    // 안 부르면 폭을 넓히는 동안 패널이 읽는 면 아래로 들어간다.
+    if (!viewPanel.hidden) positionPanel();
     return w;
   }
   function railChrome(open: boolean) {
@@ -565,6 +591,10 @@ export async function renderView(el: HTMLElement) {
     if (shell) shell.dataset.doc = open ? "open" : "closed";
     if (docpane) docpane.hidden = !open;
     railGrip.hidden = !open;
+    // 읽는 면이 열리거나 닫히면 렌즈 패널의 오른쪽 한계가 바뀐다(positionPanel 이
+    // 그 왼쪽 끝을 읽는다). 폭 변경(setRailWidth)과 **열림 변경**은 다른 사건이라
+    // 둘 다 걸어야 한다 - 안 걸면 "렌즈를 열어 둔 채 문서를 여는" 순서에서만 겹친다.
+    if (!viewPanel.hidden) positionPanel();
   }
   function closeRail() {
     detail.hidden = true;
@@ -739,8 +769,16 @@ export async function renderView(el: HTMLElement) {
     // Math.max 가 왼쪽 끝도 막는다. 패널이 보일 때만 부르므로 offsetWidth 는 실측이다.
     const m = 8;
     const w = viewPanel.offsetWidth;
+    // ⚠ 오른쪽 한계는 **뷰포트가 아니라 지도 카드의 끝**이다. 읽는 면이 오른쪽으로
+    // 온 뒤(R1) 뷰포트로 재면 렌즈 버튼이 오른쪽 위에 있으므로 패널이 열릴 자리가
+    // 곧 읽는 면 위가 된다 — 지도를 보는 손잡이가 지도가 아닌 것을 덮는다.
+    // 패널이 떠 있는 동안 폭이 바뀔 수 있으므로(정지점) 실측으로 읽는다.
+    const pane = document.getElementById("docpane");
+    const paneLeft = pane && !pane.hidden && shell?.dataset.doc === "open"
+      ? pane.getBoundingClientRect().left : window.innerWidth;
+    const rightEdge = Math.max(paneLeft, w + m * 2);   // 패널이 들어갈 자리는 남긴다
     viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
-    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, window.innerWidth - w - m)))}px`;
+    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
   // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
@@ -1471,7 +1509,7 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     curEdges = res.edges || [];
-    curNodes = nodes;
+    setCurNodes(nodes);
     // 지표는 **커서가 고른 모집단**을 센다. 시간을 잘라 놓고 수는 전량을 말하면
     // 그 줄이 화면을 거짓으로 서술한다. 다만 `unlinked` 는 반영하지 않는다 — 고아
     // 칸이 곧 그것을 되돌리는 컨트롤이라, 숨긴 순간 0 이 되면 돌아올 길이 사라진다.
@@ -2444,7 +2482,7 @@ export async function renderView(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
-    curNodes = gnodes;
+    setCurNodes(gnodes);
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
@@ -2502,7 +2540,7 @@ export async function renderView(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
-    curNodes = gnodes;
+    setCurNodes(gnodes);
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
       setMsg(level.kind === "l0"
@@ -2698,6 +2736,7 @@ export async function renderView(el: HTMLElement) {
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
+    kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
@@ -2751,7 +2790,13 @@ export async function renderView(el: HTMLElement) {
         if (pre) pre.textContent = why;
       }
     } finally {
-      if (seq === showSeq) { setBusy(false); revealSurface(); }   // 새 세대가 돌고 있으면 그쪽이 끈다
+      if (seq === showSeq) {
+        setBusy(false); revealSurface();   // 새 세대가 돌고 있으면 그쪽이 끈다
+        // 서 있는 종 렌즈를 **새 렌더러에** 다시 건다. 관점 넷이 전부 이 길을
+        // 지나므로 걸어 주는 자리도 하나다(2D·3D 는 점등을 받고 평면 둘은 조용히
+        // 무시한다 — 기존 계약).
+        applyKindLens(lnbKind());
+      }
     }
   }
 
@@ -2822,6 +2867,10 @@ export async function renderView(el: HTMLElement) {
     if (next.length) trail.push({ kind: "l1", domains: next });
     void show(trail[trail.length - 1]);
   });
+
+  // 종 렌즈 — 레일이 고른 종을 지도에서도 강조한다. 등록 즉시 현재 값으로 한 번
+  // 부르므로(setLnbKindLens 안에서) 마운트 직후에도 왼쪽과 오른쪽이 같은 것을 본다.
+  setLnbKindLens((kind) => applyKindLens(kind));
 
   await show(trail[trail.length - 1]);
   if (landOn) await focusNode(landOn);

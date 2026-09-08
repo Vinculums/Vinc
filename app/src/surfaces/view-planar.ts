@@ -174,6 +174,55 @@ export function markSvg(kind: string | undefined, gateway: boolean,
   return `<circle class="${cls}" ${a("cx", x)} ${a("cy", y)} ${a("r", r)}/>`;
 }
 
+/** 3D 실루엣 표식 — 실제 지오메트리(구 · 정사면체 DOC_ROT · 정팔면체 rot.y 0.5 ·
+ *  겹껍질 · 윤곽선)를 기본 카메라에서 투영한 것이다(`view3d.ts` kindGeometry/
+ *  nodeObject 와 짝). 평면 셋(`markSvg`)과 **같은 어휘의 다른 투영**이라 한 파일에
+ *  둔다: 갈라 두었더니 범례가 손으로 재현하다 어긋난 전력이 있다(주제 겹껍질을
+ *  토성 고리로, 다리를 1.45배로 그렸다).
+ *
+ *  키는 다섯이고 노드 종은 여섯이다 — 그것이 이 어휘의 성질이다:
+ *  개념과 결정은 **같은 구**이고, 기록·사건·엔티티는 **같은 정사면체**다. 그래서
+ *  종을 고르는 손잡이는 도형만으로 개념과 결정을 가를 수 없고, 이름이 필요하다
+ *  (좌측 레일이 표식 아래에 이름을 두는 이유).
+ *
+ *  `__GID__` 는 구의 상단 하이라이트가 쓰는 그라디언트 id 자리다(백틱 문자열
+ *  안이므로 `${...}` 로 두면 **정의 시점에 보간된다** — 실측으로 물렸다). 호출부가 서로 다른
+ *  값을 넣어야 한다 — 같은 문서에 구가 여럿 서면 id 가 겹치고, 그때 브라우저는 첫
+ *  정의만 쓴다(지금은 값이 같아 눈에 안 보이지만, 하나를 고치는 날 나머지가 조용히
+ *  안 따라온다). */
+const MARK3D_ART: Record<string, string> = {
+    // ds-allow: 이 흰색은 팔레트가 아니라 **조명**이다 — 구 실루엣의 상단 하이라이트
+    // (램버트 음영의 밝은 면)를 30% 투명 백색으로 흉내낸다. 잉크는 currentColor 다.
+    concept: `<defs><radialGradient id="__GID__" cx="52%" cy="26%" r="72%"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><circle cx="12" cy="12" r="8.4" fill="currentColor" opacity=".92"/><circle cx="12" cy="12" r="8.4" fill="url(#__GID__)"/>`,
+    document: `<polygon points="7.39,16.96 16.31,17.88 18.39,6.51" fill="currentColor" opacity=".69"/><polygon points="5.9,6.66 7.39,16.96 18.39,6.51" fill="currentColor" opacity=".92"/>`,
+    bridge: `<polygon points="20.9,11.94 12.16,15.16 12,20.32" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12,20.32 12.16,15.16" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12.16,15.16 12,3.68" fill="currentColor" opacity=".9"/><polygon points="20.9,11.94 12,3.68 12.16,15.16" fill="currentColor" opacity=".94"/>`,
+    topic: `<circle cx="12" cy="12" r="9.4" fill="currentColor" opacity=".28"/><circle cx="12" cy="12" r="4.2" fill="currentColor"/>`,
+    gateway: `<path d="M8.09 4.59L15.32 5.62M15.32 5.62L7.72 9.43M8.09 4.59L7.72 9.43M7.72 9.43L3.62 12.21M8.09 17.95L7.72 9.43M8.09 17.95L3.62 12.21M15.32 13.88L15.32 5.62M15.32 13.88L7.72 9.43M15.32 5.62L20.38 11.79M8.09 17.95L8.68 18.38M8.09 17.95L15.91 19.41M8.09 17.95L15.32 13.88M15.91 19.41L15.32 13.88M15.32 13.88L20.38 11.79M15.91 19.41L20.38 11.79" fill="none" stroke="currentColor" stroke-width=".7" opacity=".22"/><path d="M8.09 4.59L3.62 12.21M8.68 10.12L3.62 12.21M8.09 4.59L8.68 10.12M15.91 6.05L8.68 10.12M8.09 4.59L15.91 6.05M8.68 10.12L16.28 14.57M15.91 6.05L16.28 14.57M8.68 18.38L3.62 12.21M8.68 18.38L8.68 10.12M15.91 6.05L20.38 11.79M15.91 19.41L16.28 14.57M8.68 18.38L16.28 14.57M15.91 19.41L8.68 18.38M20.38 11.79L16.28 14.57" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>`,
+};
+
+/** 노드 종 → 3D art 키. `markSvg` 의 분기와 **같은 판정**이어야 한다(같은 종이
+ *  평면과 입체에서 다른 도형이 되면 형태에 실은 뜻이 깨진다, D35). */
+const ART_KEY = (kind: string | undefined): string =>
+  kind === "bridge" ? "bridge"
+  : kind === "domain" ? "topic"
+  : kind === "concept" || kind === "decision" || !kind ? "concept"
+  : "document";
+
+/** 3D 표식 한 벌. `gid` 는 문서 안에서 유일해야 한다(위 주석). */
+export function mark3dSvg(kind: string | undefined, px: number, gid: string,
+                          cls = ""): string {
+  const art = (MARK3D_ART[ART_KEY(kind)] || MARK3D_ART.concept!)
+    .replace(/__GID__/g, gid);
+  return `<svg class="${cls}" width="${px}" height="${px}" viewBox="0 0 24 24"`
+    + ` aria-hidden="true">${art}</svg>`;
+}
+
+/** 관문(실체 없음)은 종이 아니라 상태라 따로 부른다 — 범례만 쓴다. */
+export function gateway3dSvg(px: number, cls = ""): string {
+  return `<svg class="${cls}" width="${px}" height="${px}" viewBox="0 0 24 24"`
+    + ` aria-hidden="true">${MARK3D_ART.gateway}</svg>`;
+}
+
 const hexPts = (cx: number, cy: number, r: number) => {
   const p: string[] = [];
   for (let i = 0; i < 6; i++) {

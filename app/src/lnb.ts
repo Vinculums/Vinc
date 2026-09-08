@@ -5,7 +5,7 @@ import { icon } from "./icons";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
 import { loadPrefs } from "./view-prefs";
-import { markSvg } from "./surfaces/view-planar";
+import { mark3dSvg, markSvg } from "./surfaces/view-planar";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
  *
@@ -92,10 +92,22 @@ let railKey: string = RAIL_KEYS.includes(localStorage.getItem(KEY_KIND) || "")
 const rail = () => RAIL.find((r) => r.key === railKey) || RAIL[0]!;
 let wired = false;
 
-/** 종 표식 — 지도가 쓰는 도형 그대로다(`markSvg`, view-planar). 여기서 **다시
- *  그리지 않고** 그 함수를 부른다: 갈라 두면 같은 노드가 화면마다 다른 모양이 되고,
- *  그건 형태에 뜻을 실은 것을 스스로 무너뜨리는 일이다(D35).
- *  `markSvg` 는 좌표를 받으므로 20×20 뷰박스 중앙에 반지름 6 으로 세운다. */
+/** 종 표식 — 지도가 쓰는 어휘 그대로다. 여기서 **다시 그리지 않고** 그 함수를
+ *  부른다: 갈라 두면 같은 노드가 화면마다 다른 모양이 되고, 그건 형태에 뜻을 실은
+ *  것을 스스로 무너뜨리는 일이다(D35).
+ *
+ *  **레일은 3D, 줄은 평면이다.** 같은 어휘의 두 투영이고(범례가 관점에 따라 그렇게
+ *  한다) 나누는 근거는 둘이다:
+ *   ① 크기 — 레일은 18px 배지라 구의 상단 하이라이트와 정사면체의 두 면이 읽히지만,
+ *     줄의 11px 에서는 그 음영이 잉크 얼룩이 된다.
+ *   ② id — 3D 구는 하이라이트에 그라디언트 `<defs>` 가 필요하고 그 id 는 문서 안에서
+ *     유일해야 한다. 레일은 다섯 줄이라 종마다 하나면 되는데, 트리는 같은 종이 수십
+ *     줄이라 같은 id 가 그만큼 생긴다(브라우저는 첫 정의만 쓴다 — 지금은 값이 같아
+ *     안 보이지만 하나를 고치는 날 나머지가 조용히 안 따라온다). */
+function kindMark3d(kind: string, key: string, px: number): string {
+  return mark3dSvg(kind, px, `rail-${key}`, "lnb-mk");
+}
+/** 트리 줄의 평면 표식. `markSvg` 는 좌표를 받으므로 20×20 뷰박스 중앙에 세운다. */
 function kindMark(kind: string, px: number): string {
   const body = markSvg(kind, false, 10, 10, kind === "concept" || kind === "decision" ? 6 : 5.6,
                        "lnb-kmk");
@@ -136,6 +148,26 @@ function saveExpanded() {
 
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
 export function setLnbTopicPicker(fn: TopicPicker | null) { pickTopic = fn; }
+
+/** 종 렌즈 — 레일에서 고른 종을 **지도에도** 건다. 훅이 없으면(표면이 없거나 떠났으면)
+ *  레일은 트리만 바꾼다: 눌러도 아무 일 없는 손잡이를 만들지 않는다는 규율의 반대편
+ *  이다. 여기서는 "지도가 없으면 지도 일은 안 한다"가 그 규율이다.
+ *
+ *  넘기는 것은 **종 이름 하나**다(노드 id 목록이 아니라). 지금 지도에 무엇이 그려져
+ *  있는지는 표면만 알고, 그 집합을 트리가 다시 계산하면 두 벌이 어긋난다. */
+type KindLens = (kind: string | null) => void;
+let kindLens: KindLens | null = null;
+export function setLnbKindLens(fn: KindLens | null) {
+  kindLens = fn;
+  if (fn) fn(lnbKind());
+}
+
+/** 지금 레일이 고른 종. Agent 는 주제 필터라 **종으로는 개념**이다 — 지도 강조도
+ *  개념 전체가 되면 뜻이 흐려지므로 그때는 종 렌즈를 걸지 않는다(null). */
+export function lnbKind(): string | null {
+  const r = rail();
+  return r.domain ? null : (r.kind || null);
+}
 
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
@@ -205,6 +237,9 @@ function setRailKey(next: string): void {
   railKey = next;
   localStorage.setItem(KEY_KIND, next);
   paintRail();
+  // 지도에도 같은 종을 건다 — 왼쪽에서 고른 것이 오른쪽에서 안 보이면 두 화면이
+  // 다른 것을 보고 있는 셈이다(발주자 지적 2026-09-09).
+  kindLens?.(lnbKind());
   void refreshLnb();
 }
 
@@ -224,7 +259,7 @@ function paintRail(): void {
     return sep + `<button class="rail-btn" type="button" data-rail="${esc(r.key)}"
       aria-pressed="${on}" aria-label="${esc(name)}"
       data-tip="${esc(r.domain ? name : COPY.ui.lnb.kindTip(name, cnt))}">
-      ${kindMark(r.mark, 18)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
+      ${kindMark3d(r.mark, r.key, 20)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
       cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
     </button>`;
   }).join("") + `<span class="rail-fill"></span>`;
