@@ -382,12 +382,16 @@ def main() -> int:
             stats[key] = int(r[0]["c"]) if r else 0
         except Exception:
             stats[key] = -1
+    # 코퍼스 지문·split 여부·청커·런타임·CPU. `store` 셋만으로는 두 실행이
+    # 같은 것 위에서 났는지 말할 수 없다([[vinc.plan.retrieval-research-2026-09-08 §3]]).
+    manifest = es.run_manifest(store, args.owner, args.data)
     store.close()
 
     out = {
         "kind": "eval.rerank",
         "queries": len(qs), "source": paths, "top_k": PAGE,
         "store": {"data": args.data, "owner": args.owner, **stats},
+        "manifest": manifest,
         "encoder": (encode_url or args.encoder),
         "reranker": {"model": rname, "onnx": rpath, "window": args.window,
                      "max_tokens": args.max_tokens, "load_s": round(rr.load_s or 0, 3),
