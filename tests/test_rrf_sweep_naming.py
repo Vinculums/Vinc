@@ -49,3 +49,23 @@ def test_arm_depth_drops_the_tail_contribution():
     a_cut = next(r["rrf_score"] for r in cut if r["id"] == "A")
     assert a_cut < a_full
     assert "B" not in {r["id"] for r in cut}
+
+
+def test_ko_stripper_is_one_function_and_leaves_english_alone():
+    """색인 쪽 백필과 질의 쪽이 **같은 함수**를 써야 한다 — 두 벌이 되면 조용히 갈라지고,
+    갈라진 순간 이 실험은 아무것도 재지 못한다(색인에 없는 토큰을 묻게 된다).
+
+    영어를 건드리지 않는 것도 계약이다. 원문 열의 영어 어간 처리가 계속 맞아야
+    한국어를 살리면서 영어를 잃지 않는다. 근거: [[record:korean-fts-analyser-2026-09-08]]"""
+    from eval_rerank import ko_stripped_text
+    import r1c_ko_column
+
+    assert r1c_ko_column.ko_stripped_text is ko_stripped_text
+
+    assert ko_stripped_text("데이터 영속성을 보장한다") == "데이터 영속성 보장한다"
+    assert ko_stripped_text("워커는 청크를 나눈다") == "워커 청크 나눈다"
+    # 영어는 한 글자도 안 바뀐다.
+    for s in ("the embedding worker splits chunks", "workers", "HNSW index rebuild"):
+        assert ko_stripped_text(s) == " ".join(s.split())
+    # 어간이 한 글자로 줄 것은 손대지 않는다(`_strip_ko_suffix` 의 계약).
+    assert ko_stripped_text("국가") == "국가"
