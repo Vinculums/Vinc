@@ -32,7 +32,10 @@ export async function renderSettings(el: HTMLElement) {
   ];
   let activeTab: TabId = "account";
 
-  // ── 모달 크롬(탭바 + 닫기) ────────────────────────────────────────────────
+  // ── 탭바 + 몸 ─────────────────────────────────────────────────────────────
+  //  ⚠ **닫기 버튼이 없다**(2026-09-09). 이 화면은 이제 시트 안에서 열리고
+  //  (`openSheet`), 시트가 제목 줄에 ✕ 를 이미 갖고 있다 — 여기서 하나 더 그리면
+  //  같은 상자에 닫기가 둘이 된다. Esc·스크림·✕ 세 탈출구도 시트의 것이다.
   function shell() {
     el.innerHTML = `
       <div class="settings-head">
@@ -40,12 +43,8 @@ export async function renderSettings(el: HTMLElement) {
           ${TABS.map((t) => `<button class="settings-tab${t.id === activeTab ? " active" : ""}"
             data-tab="${t.id}" role="tab">${t.label}</button>`).join("")}
         </div>
-        <button class="settings-close" id="settings-x" aria-label="${U.close}">✕</button>
       </div>
       <div class="settings-body" id="settings-body"></div>`;
-    // 닫기 = Esc 디스패치(닫힘 로직은 main.ts 소유 — 결합 최소화).
-    el.querySelector("#settings-x")!.addEventListener("click", () =>
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     el.querySelectorAll<HTMLElement>(".settings-tab").forEach((b) =>
       b.addEventListener("click", () => {
         activeTab = b.dataset.tab as TabId;

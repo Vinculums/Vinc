@@ -13,6 +13,10 @@ import pin from "./icons/pin.svg?raw";
 import alert from "./icons/alert.svg?raw";
 import check from "./icons/check.svg?raw";
 import chevronLeft from "./icons/chevron-left.svg?raw";
+//: 사이드바 토글 글리프(문 모양) — 왼쪽 열을 접고 펴는 손잡이가 쓴다. 셰브론은
+//: "방향"만 말하고 **무엇이 움직이는지**를 말하지 않아, 상단 바에 셰브론이 둘
+//: 있던 동안 어느 것이 무엇인지 구별이 안 됐다(발주자 지시 2026-09-09).
+import sidebar from "./icons/sidebar.svg?raw";
 import dotGrid from "./icons/dot-grid.svg?raw";
 import domains from "./icons/domains.svg?raw";
 import decide from "./icons/decide.svg?raw";
@@ -30,7 +34,7 @@ import mcp from "./icons/mcp.svg?raw";
 const REG: Record<string, string> = {
   ingest, recall, graph, search, "pack-export": packExport, settings,
   dot, "half-disc": halfDisc, ring, pin, alert, check,
-  "chevron-left": chevronLeft, "dot-grid": dotGrid, domains, decide,
+  "chevron-left": chevronLeft, sidebar, "dot-grid": dotGrid, domains, decide,
   lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes,
   // MCP 공식 마크(발주자 지시, 2026-08-26). 이 세트에서 **유일하게 우리가 그리지 않은
   // 도형**이라, 기하를 손대지 않는다는 조건이 파일 주석에 함께 적혀 있다. 여기 쓰는

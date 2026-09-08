@@ -125,6 +125,25 @@ class ShellSizeSpecTests(unittest.TestCase):
                 body, r"padding:\s*var\(--pad-card\)",
                 f"{sel} 의 위 여백이 --pad-card 가 아니다 — 두 층의 첫 줄이 갈린다")
 
+    def test_앱을_다루는_창_셋이_한_상자다(self):
+        """설정 · 도구 · GRAPH.md 가 **같은 규격**으로 뜬다(발주자 지시 2026-09-09).
+
+        여태 셋이 각자 다른 폭·높이·자리였다(설정 42×34rem 중앙 · 도구 68vw×72vh
+        상단 · GRAPH.md 52rem×84vh 상단). 그래서 같은 손잡이 묶음에서 여는 창이
+        서로 다른 높이에 떴다. 설정을 시트로 합쳐(`openSheet`, size "panel") 셋이
+        한 규칙을 읽게 했으므로, 그 규칙이 토큰을 읽는지를 여기서 지킨다 —
+        누가 값을 되돌려 적어도 조용히 갈리지 않는다."""
+        body = decl('.sheet[data-size="panel"]')
+        self.assertTrue(body, '.sheet[data-size="panel"] 규칙이 없다 '
+                              "— 설정 시트가 기본 크기로 떨어진다")
+        for tok in ("--modal-w", "--modal-h"):
+            self.assertIn(tok, body,
+                          f"panel 단계가 {tok} 를 안 읽는다 — 셋이 다시 갈린다")
+        self.assertNotIn(
+            "#settings-popover", CSS,
+            "#settings-popover 규칙이 되살아났다 — 설정은 시트다(구현이 둘이면 "
+            "상자·자리·딤이 다음에 또 갈린다)")
+
 
 if __name__ == "__main__":
     unittest.main()

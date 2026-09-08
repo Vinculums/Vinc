@@ -135,10 +135,10 @@ function setOpen(open: boolean) {
     const label = open ? COPY.ui.lnb.close : COPY.ui.lnb.open;
     t.setAttribute("aria-label", label);
     t.setAttribute("data-tip", label);
-    // 셰브론이 **열릴 방향**을 가리킨다: 열려 있으면 접는 쪽(왼쪽), 접혀 있으면
-    // 펴는 쪽(오른쪽). 방향이 안 바뀌면 같은 아이콘이 두 뜻을 갖는다.
-    const svg = t.querySelector("svg");
-    if (svg) svg.style.transform = open ? "" : "rotate(180deg)";
+    // 아이콘은 **문 모양**이고 방향으로 상태를 말하지 않는다(2026-09-09). 셰브론은
+    // 방향만 말하고 무엇이 움직이는지를 말하지 않아서, 상단 바에 셰브론이 둘 있던
+    // 동안 어느 것이 무엇인지 구별이 안 됐다. 상태는 `aria-expanded` 와 채움이 말한다.
+    t.classList.toggle("on", open);
   }
 }
 
@@ -536,7 +536,7 @@ export function mountLnb() {
   root.innerHTML = `<div class="lnb-body" id="lnb-body"></div>`;
   const shellToggle = $("tb-shell-toggle");
   if (shellToggle) {
-    shellToggle.innerHTML = icon("chevron-left", 16);
+    shellToggle.innerHTML = icon("sidebar", 18);
     shellToggle.addEventListener("click", () => setOpen(!isOpen()));
   }
   setOpen(isOpen());

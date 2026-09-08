@@ -12,7 +12,8 @@ import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { initSegMotion, wireScrimDismiss } from "./components";
+import { initSegMotion, openSheet, wireScrimDismiss,
+         type SheetHandle } from "./components";
 import { isTypingTarget } from "./keys";
 import { disposeEditorsIn } from "./doc-editor";
 
@@ -65,7 +66,6 @@ document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topb
 document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar.settings);
 // 시트의 이름도 덱에서 온다 — index.html 의 aria-label 은 영어로 박혀 있어서, 열 때
 // 스크린리더가 버튼과 다른 언어로 읽는다. 덱이 정본이므로 여기서 덮는다.
-document.getElementById("settings-popover")!.setAttribute("aria-label", COPY.ui.topbar.settings);
 
 // 관례(GM-8) — 아이콘 하나 + 제안 적체 뱃지. 시트는 눌릴 때 지연 로드한다.
 {
@@ -133,33 +133,22 @@ async function route() {
 window.addEventListener("hashchange", route);
 document.title = `Vinc · ${COPY.tagline}`;
 
-// Settings — 우측 슬라이드오버(딤 스크림 + 우측 패널). 스크림/Esc 로 닫힘.
-const popover = document.getElementById("settings-popover")!;
-const settingsScrim = document.getElementById("settings-scrim")!;
+// Settings — **시트다**(2026-09-09). 여태 자기 팝오버 + 자기 스크림 + 자기 개폐
+// 배선을 따로 갖고 있었고, 그래서 도구·GRAPH.md 와 상자·자리·딤·모션이 갈렸다.
+// 같은 토큰을 읽게 맞춰 놓았어도 **구현이 둘이면 다음에 또 갈린다** — 그래서 합쳤다.
+// 딸려 사라진 것: `#settings-popover` · `#settings-scrim` 요소와 그 CSS,
+// 여기 있던 popIn/popOut/fadeIn/fadeOut/wireScrimDismiss/Esc 배선 여섯 벌
+// (시트가 전부 갖고 있다: 트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리).
 const settingsBtn = document.getElementById("settings-btn")!;
-// 설정은 **자기를 연 아이콘에서** 자라고 그 아이콘으로 빨려 들어간다(motion.ts).
-// 트리거를 명시로 넘긴다 — 스크림·Esc 로 닫을 때는 포커스가 그 아이콘에 없으므로
-// 추정에 맡기면 닫히는 방향이 매번 달라진다(같은 문이 열리고 닫히는 것으로 안 읽힌다).
-function openSettings() {
-  settingsScrim.hidden = false; popover.hidden = false;
-  void renderSettings(popover);
-  fadeIn(settingsScrim);
-  popIn(popover, settingsBtn);
-}
-let closing = false;
-async function closeSettings() {
-  if (closing || popover.hidden) return;
-  closing = true;
-  await Promise.all([popOut(popover, settingsBtn), fadeOut(settingsScrim)]);
-  settingsScrim.hidden = true; popover.hidden = true;
-  closing = false;
-}
+let settingsSheet: SheetHandle | null = null;
 settingsBtn.addEventListener("click", () => {
-  if (popover.hidden) openSettings(); else void closeSettings();
-});
-wireScrimDismiss(settingsScrim, () => void closeSettings());
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !popover.hidden) void closeSettings();
+  if (settingsSheet) { settingsSheet.close(); settingsSheet = null; return; }
+  const sheet = openSheet({
+    title: COPY.ui.topbar.settings, size: "panel",
+    onClose: () => { settingsSheet = null; },
+  });
+  settingsSheet = sheet;
+  void renderSettings(sheet.body);
 });
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
