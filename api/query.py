@@ -171,6 +171,24 @@ def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
 #: 순회는 검색이 아니라 열람이다 — 그쪽은 vinc_doc_list/vinc_recall 이 담당한다.
 SEARCH_POOL_CAP = 200
 
+#: 청크 하이브리드 융합의 RRF 상수. `rrf_fuse` 의 기본은 60 이고 **여태 아무도 안
+#: 넘겼다** — 즉 60 은 한 번도 측정된 적 없는 값이었다. 176문서 split 스토어에서
+#: k 를 10·20·60·100 으로 쓸어 보니 작은 쪽이 단조로 낫다:
+#:
+#:     질의 셋        k=10              k=20              k=100
+#:     캐논 118      +0.0169(0 포함)    +0.0109 [+0.001,+0.021]  -0.0071
+#:     사람 75       +0.0931 [+0.048,+0.147]  +0.0613 [+0.035,+0.093]  -0.0128 [-0.027,-0.002]
+#:
+#: k=10 이 더 크지만 캐논 셋과 사람 셋의 한국어 축에서 구간이 0을 스친다. **두 셋
+#: 모두에서 유의하고 어느 축도 나빠지지 않는 값은 20 하나다** — 한쪽에서 최고인 값이
+#: 아니라 양쪽에서 버티는 값을 택한다.
+#: 근거: [[record:rrf-k-and-weight-sweep-on-full176-2026-09-08]] ·
+#: [[record:rrf-k-20-reproduces-on-the-human-control-2026-09-08]]
+#:
+#: ⚠ 노드 융합(`title_hits`+`graph_hits`)에는 **적용하지 않는다.** 그 팔들은 재 본
+#: 적이 없고, 같은 상수를 쓴다고 같은 최적값을 갖지 않는다.
+CHUNK_RRF_K = 20
+
 
 def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
                        detail: str) -> str:
@@ -4907,7 +4925,7 @@ def _chunk_arms(store, query, query_embedding, top_k,
     # 접두만 보면 되고(추가 질의 0), **융합 전에** 걸러야 상위 k 를 관례가 잠식하지 않는다.
     for a in arms:
         a[:] = [r for r in a if not str(r.get("id") or "").startswith(_CONV_PREFIX)]
-    rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+    rows = (rrf_fuse(arms, k=CHUNK_RRF_K, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
     return rows, vnote, arm_names
