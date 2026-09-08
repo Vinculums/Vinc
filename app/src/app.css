@@ -583,7 +583,10 @@ body {
 }
 .lnb-modechip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .lnb-modechip { transition: none; } }
-.lnb-tree { display: flex; flex-direction: column; }
+/* 줄 사이에 **여백**이 있다(발주자 지적 2026-09-09: "위아래 모두 선택되면 겹치니까").
+   줄의 켜진 표시는 알약 하나이므로, 붙어 있으면 두 알약이 한 덩어리로 읽힌다.
+   4px 이라 줄 간격은 28 + 4 = 32px — 둘 다 격자 위다. */
+.lnb-tree { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
 .lnb-group {
   display: flex; align-items: center; gap: var(--space-1, .25rem);
   width: 100%; min-height: var(--row-h);
@@ -613,7 +616,7 @@ body {
    1단이 10.88px 라 주제와 첫 문서가 3.4px 밖에 안 벌어져 층이 안 읽혔다. 선은
    캐럿 중심(.5rem 패딩 + .35rem 캐럿 절반)에 맞춰 세워 시선이 이어진다. */
 .lnb-docs {
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; gap: var(--space-1, .25rem);
   margin-left: var(--space-3, .75rem); padding-left: var(--space-1, .25rem);
   border-left: 1px solid hsl(var(--border));
 }
@@ -734,9 +737,17 @@ body {
 #tb-lens, #tb-viewpoints { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-lens:not(:empty) { margin-right: var(--space-2, .5rem); }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
-/* 세그는 자기 내용 폭이다. 패널을 이 묶음에 **맞추는 쪽**은 패널이다 — 패널이 더
-   좁으므로 오른쪽 끝을 공유하게 놓는다(view.ts positionPanel). 반대로 묶음을 패널
-   폭으로 늘리면 세그와 렌즈 사이에 빈 자리가 생긴다. */
+/* 묶음의 폭 = **패널의 폭**이다(발주자 지시 2026-09-09).
+   실측으로 방향이 갈렸다(1440x900): 묶음의 자연 폭은 279px 이고 패널은 328px 라
+   **패널이 더 넓다.** 그래서 좁은 쪽인 묶음을 넓힌다 - 패널을 279 로 줄이면 그 안의
+   세그가 두 줄로 접힌다(20.5rem 은 정확히 그 문제로 두 번 넓힌 값이다).
+   세그에 하한을 주고 칩을 오른쪽 끝에 붙이므로, 묶음의 오른쪽 끝은 상단 바의 오른쪽
+   안쪽 끝에 그대로 남고 왼쪽 끝만 왼쪽으로 밀린다 - 그 지점이 곧 검색바가 끝나는
+   지점이고 패널의 왼쪽 끝이다(세 선이 하나가 된다). */
+#tb-lens:not(:empty) + #tb-viewpoints:not(:empty) {
+  min-width: calc(var(--lens-panel-w) - var(--ctl-h) - var(--space-2, .5rem));
+  justify-content: flex-end;
+}
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
    바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
@@ -1797,7 +1808,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #view-legend { flex: 0 0 auto; }
 /* 렌즈 = 아이콘 하나. 지도 위 크롬은 최소 잉크로 — 이름표는 툴팁이 맡는다. */
 .lens-btn {
-  display: grid; place-items: center; width: 2.15rem; height: 2.15rem;
+  /* 규격 밖에 남아 있던 값(2.15rem = 34.4px)이었다. 그 2px 때문에 보기·범례 묶음의
+     폭이 326 이 되어 패널(328)과 오른쪽 끝이 어긋났다 - 정렬이 컨트롤 하나의 크기에
+     걸려 있었다는 뜻이다. 다른 아이콘 버튼과 같은 높이를 쓴다. */
+  display: grid; place-items: center;
+  width: var(--ctl-h); height: var(--ctl-h); padding: 0;
   border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
   background: hsl(var(--card) / .82); color: hsl(var(--muted-foreground)); cursor: pointer;
 }

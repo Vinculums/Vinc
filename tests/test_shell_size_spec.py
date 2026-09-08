@@ -85,7 +85,10 @@ class ShellSizeSpecTests(unittest.TestCase):
                 f"{sel} 이 --row-h 를 안 쓴다 — 목록의 한 줄이 다시 갈렸다는 뜻이다")
 
     def test_아이콘_버튼과_입력이_같은_높이_변수를_쓴다(self):
-        for sel in (".tb-icon", "#tb-search"):
+        # `.lens-btn` 이 여기 있는 이유: 그 하나가 2.15rem 으로 남아 있던 동안
+        # 보기·범례 묶음의 폭이 2px 모자라 렌즈 패널과 오른쪽 끝이 어긋났다.
+        # 정렬이 컨트롤 하나의 크기에 걸려 있으므로 그 크기를 검사가 잡는다.
+        for sel in (".tb-icon", "#tb-search", ".lens-btn"):
             body = decl(sel)
             self.assertTrue(body, f"{sel} 규칙이 없다")
             self.assertIn("var(--ctl-h)", body,

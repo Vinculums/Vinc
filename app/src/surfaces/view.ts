@@ -755,6 +755,7 @@ export async function renderView(el: HTMLElement) {
     if (window.matchMedia(NARROW).matches) {
       viewPanel.style.top = "";
       viewPanel.style.left = "";
+      viewPanel.style.width = "";   // 좁은 창은 전폭 승격 — 인라인 폭이 남으면 그것을 이긴다
       return;
     }
     // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
@@ -782,14 +783,24 @@ export async function renderView(el: HTMLElement) {
     // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
     const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
     viewPanel.style.top = `${Math.round(Math.max(r.bottom + 6, cardTop + m))}px`;
-    // 왼쪽 끝이 아니라 **오른쪽 끝을 맞춘다**(발주자 지시 2026-09-09: "보기와 범례가
-    // 끝나는 지점을 패널 크기 정도로"). 패널은 보기·범례 묶음보다 좁으므로, 버튼의
-    // 왼쪽에 붙이면 묶음 오른쪽 끝과 패널 오른쪽 끝이 어긋난 채 열린다. 끝을 맞추면
-    // 두 상자가 한 변을 공유한다.
-    const grp = document.getElementById("tb-viewpoints");
-    const groupRight = grp && grp.getBoundingClientRect().width
-      ? grp.getBoundingClientRect().right : r.right;
-    const wantLeft = Math.min(groupRight, rightEdge - m) - w;
+    // 패널의 **양 끝을 보기·범례 묶음에 맞춘다**(발주자 지시 2026-09-09: 왼쪽 끝은
+    // 그 묶음의 시작점 = 검색바가 끝나는 지점, 오른쪽 끝은 그 묶음의 끝).
+    // 두 끝을 다 맞추려면 폭이 같아야 하므로 **폭도 여기서 정한다** — 묶음의 실측
+    // 폭이다. 토큰(`--lens-panel-w`)은 그 폭의 **하한**으로 남는다: 묶음이 좁아지는
+    // 배치(관점 이름이 짧아지거나 세그가 접히는 경우)에서 패널이 자기 내용보다
+    // 좁아지면 안 되고, 그 값은 두 번 의도적으로 넓힌 것이다.
+    // 묶음이 비면(지도 없는 표면) 렌즈 버튼 하나가 기준이라 폭은 토큰만 쓴다.
+    const lensBox = document.getElementById("tb-lens")?.getBoundingClientRect();
+    const segBox = document.getElementById("tb-viewpoints")?.getBoundingClientRect();
+    const floor = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue("--lens-panel-w")) * 16 || 328;
+    const groupL = lensBox?.width ? lensBox.left : r.left;
+    const groupR = segBox?.width ? segBox.right : r.right;
+    const wantW = Math.max(floor, Math.round(groupR - groupL));
+    viewPanel.style.width = `${wantW}px`;
+    // 왼쪽 끝을 맞춘다. 그 자리에서 오른쪽으로 `wantW` 만큼 뻗으므로 오른쪽 끝도
+    // 함께 맞는다 — 폭이 곧 정렬이다. 화면 밖으로 나가면 그때만 접어 넣는다.
+    const wantLeft = Math.min(groupL, Math.max(m, rightEdge - wantW - m));
     viewPanel.style.left = `${Math.round(Math.max(m, wantLeft))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
