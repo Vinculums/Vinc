@@ -47,3 +47,26 @@ class RepoIsClean(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScanReach(unittest.TestCase):
+    """스캔 대상 확장자가 좁아지면 **게이트는 계속 초록이면서** 검사만 줄어든다.
+    그 조용한 후퇴가 실제로 있었다: 워크플로와 Terraform 의 인용 27건이
+    2026-09-08 까지 한 번도 대조되지 않았다. 여기서 확장자별로 못 박는다."""
+
+    def test_every_source_kind_that_carries_citations_is_scanned(self):
+        import os
+        import tempfile
+
+        from scripts.gate_graph_refs import scan_repo
+
+        names = ("a.py", "b.ts", "c.tsx", "d.rs", "e.md", "f.yml", "g.yaml", "h.tf")
+        with tempfile.TemporaryDirectory() as root:
+            for n in names:
+                with open(os.path.join(root, n), "w", encoding="utf-8") as fh:
+                    fh.write("# [[vinc.spec.dataplane]]" + os.linesep)
+            # 스캔 밖이어야 하는 것 하나 — 넓히기가 전부를 삼키지 않았는지 본다.
+            with open(os.path.join(root, "i.json"), "w", encoding="utf-8") as fh:
+                fh.write('{"x": "[[vinc.spec.dataplane]]"}' + os.linesep)
+            found = {rel for rel, _, _ in scan_repo(root)}
+        self.assertEqual(found, set(names))
