@@ -207,8 +207,11 @@ export function openSheet(opts: {
    *  단계는 셋뿐이고, 시트는 그중 하나를 고를 뿐 임의 폭을 쓰지 못한다:
    *    `action`(기본) 묻고 답하는 자리 — 확인·프롬프트·공유·가져오기
    *    `write`  글 쓰는 자리 — 문서 편집기
-   *    `browse` 훑는 자리 — 모든 문서(화면의 2/3 남짓) */
-  size?: "action" | "write" | "browse";
+   *    `browse` 훑는 자리 — 모든 문서(화면의 2/3 남짓)
+   *    `panel`  앱을 다루는 창 — 설정 · 도구 · GRAPH.md 가 **같은 상자**를 쓴다
+   *             (2026-09-09). 값은 `--modal-w`·`--modal-h` 이고 설정 모달도 그 둘을
+   *             읽으므로, 셋이 같은 크기·같은 자리에 뜬다 */
+  size?: "action" | "write" | "browse" | "panel";
   /** 닫힐 때 한 번 호출(편집기 dispose 등). */
   onClose?: () => void;
   /** 라벨 없이 몸만 쓰는 시트(문서 편집기처럼) — 머리의 제목을 숨긴다. */

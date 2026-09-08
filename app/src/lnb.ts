@@ -126,10 +126,10 @@ function isOpen(): boolean {
 function setOpen(open: boolean) {
   localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
   document.getElementById("shell")?.setAttribute("data-lnb", open ? "open" : "closed");
-  // 손잡이는 **레일 맨 아래**에 하나다(2026-09-09). 레일은 접혀도 남으므로 자리가
-  // 사라지지 않고, 그래서 셸 직속 재열기 버튼이 필요 없다. 상단 바에 두었다가
-  // 지적받고 여기로 왔다 — 내비가 레일에 모였으니 그 목록을 접는 손잡이도 여기다.
-  const t = document.querySelector<HTMLElement>("#lnb-rail .rail-fold");
+  // 손잡이는 **상단 바 왼쪽 끝**에 하나다(발주자 지시 2026-09-09). 접는 대상이
+  // 레일 + 트리 **둘 다**이므로, 접히는 것 안에 손잡이를 두면 함께 사라진다.
+  // 자리가 레일 위라 접는 대상 위에 손잡이가 선다.
+  const t = $("tb-shell-toggle");
   if (t) {
     t.setAttribute("aria-expanded", String(open));
     const label = open ? COPY.ui.lnb.close : COPY.ui.lnb.open;
@@ -280,12 +280,9 @@ function paintRail(): void {
       cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
     </button>`;
   }).join("")
-    + `<span class="rail-fill"></span>`
-    // 트리 접기 — 맨 아래. 아이콘·라벨은 setOpen 이 상태에 맞춰 채운다.
-    + `<button class="rail-fold" type="button" aria-controls="lnb"></button>`;
-  const fold = el.querySelector<HTMLElement>(".rail-fold");
-  if (fold) fold.innerHTML = icon("chevron-left", 16);
-  setOpen(isOpen());
+    + `<span class="rail-fill"></span>`;
+  // ⚠ 레일에 접기 버튼을 두었다가 뺐다(2026-09-09). 접는 대상이 레일까지이므로
+  // 손잡이가 그 안에 있으면 함께 사라진다 — 상단 바 왼쪽 끝으로 갔다.
 }
 
 /* ⚠ `navRows()` 와 `surfaceHash()` 는 **사라졌다**(2026-09-09). 홈 한 줄이
@@ -537,6 +534,11 @@ export function mountLnb() {
   // 첫 줄(홈)을 아래로 밀었다(발주자 지적 2026-09-09, `수정항목/lnb.JPG`).
   // 접기 손잡이는 상단 바로 갔으므로 여기 담을 것이 없다.
   root.innerHTML = `<div class="lnb-body" id="lnb-body"></div>`;
+  const shellToggle = $("tb-shell-toggle");
+  if (shellToggle) {
+    shellToggle.innerHTML = icon("chevron-left", 16);
+    shellToggle.addEventListener("click", () => setOpen(!isOpen()));
+  }
   setOpen(isOpen());
 
 

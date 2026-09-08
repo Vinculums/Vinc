@@ -55,7 +55,8 @@ export async function proposedCount(): Promise<number> {
 
 export async function openConventions() {
   const C = COPY.ui.conv;
-  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "write" });
+  // 설정 모달과 같은 상자(size "panel") — 위 tools.ts 와 같은 이유.
+  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "panel" });
   sheet.body.innerHTML = `<p class="hint">${C.loading}</p>`;
 
   let themeId = "";
