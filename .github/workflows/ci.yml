@@ -709,3 +709,25 @@ jobs:
       - name: cargo test
         working-directory: app/src-tauri
         run: cargo test --locked
+
+      # 크래시한 rustc 는 이 디렉터리에 **다음 실행이 못 읽는 산출물**을 남긴다. 위
+      # `CARGO_TARGET_DIR` 는 일부러 `git clean` 사정권 밖이라 아무도 안 치우고, 그래서
+      # 한 번의 크래시가 그 뒤 모든 실행을 즉사시킨다 — 2026-09-07 실측: 윈도우에서
+      # STATUS_STACK_BUFFER_OVERRUN 으로 죽은 뒤, 다음 런부터 53초 만에
+      # `error[E0786]: failed to mmap rmeta metadata` 로 끝났다. 파일은 잘려 있지도
+      # 잠겨 있지도 않았고 그저 rustc 가 못 읽었다. 그 잡은 러스트를 건드릴 때만 도니까
+      # 시체가 오래 남고, 다음 사람은 자기 변경 탓으로 읽는다.
+      #
+      # 실패했을 때만 지운다: 성공한 캐시는 이 잡의 가장 큰 비용 절감이다(찬 캐시 첫 런은
+      # 훨씬 길다). 지우는 것은 이 러너의 디렉터리뿐이고, 다음 런이 다시 채운다.
+      # 근거: [[record:a-crashed-rustc-poisons-the-shared-cargo-target-and-every-later-run-dies-in-fifty-seconds-2026-09-07]]
+      - name: 실패하면 산출물 캐시를 버린다 (크래시가 못 읽는 파일을 남긴다)
+        if: failure()
+        shell: bash
+        run: |
+          if [ -n "${CARGO_TARGET_DIR:-}" ] && [ -d "$CARGO_TARGET_DIR" ]; then
+            echo "::warning::러스트 잡이 실패했다 — $CARGO_TARGET_DIR 를 버린다(크래시 잔해 방지)"
+            rm -rf "$CARGO_TARGET_DIR"
+          else
+            echo "CARGO_TARGET_DIR 가 없다 — 버릴 것 없음"
+          fi
