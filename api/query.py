@@ -4050,6 +4050,13 @@ def path_candidates_plan(seed: str, *, depth: int = 6,
 WEIGHT_HOPS = "hops"
 WEIGHT_CONFIDENCE = "confidence"
 
+#: 이 표면은 **개념 층만** 걷는다(`shortest_path_plan` 의 패턴이 `(:Concept)` 이다).
+#: 그래서 record·decision·episode id 를 주면 노드가 멀쩡히 있어도 매치가 0이고,
+#: 여태 그 답이 `found:false` 였다 — "안 이어져 있다"와 구분이 안 됐다. 실제로
+#: 그 답을 연결 부재로 읽고 "노드들이 섬이다"라고 보고한 적이 있다(2026-09-07).
+#: 접두만 본다: 알려진 비-개념 접두일 때만 말하므로 정상 개념을 거짓으로 막지 않는다.
+_NON_CONCEPT_PREFIXES = ("record:", "decision:", "episode:", "domain:", "bridge:")
+
 
 def _weighted_shortest_path(a_id: str, b_id: str, *, max_depth: int, owner: str | None,
                             cfg, store) -> dict:
@@ -4140,10 +4147,24 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
             if cands:
                 base["candidates"] = cands[:3]
         else:
-            base["error"] = f"no path within max_depth={max_depth}"
-            base["hint"] = ("Both nodes exist but nothing connects them within this "
-                            "depth. Raise `max_depth`, or use vinc_neighbors on each "
-                            "end to see what they do connect to.")
+            # 개념이 아닌 끝점은 **연결 부재가 아니라 층 부재**다. 이걸 안 가르면
+            # 읽는 쪽이 빈 답을 "안 이어져 있다"로 읽는다.
+            wrong = [x for x in (a_id, b_id)
+                     if x.lower().startswith(_NON_CONCEPT_PREFIXES)]
+            if wrong:
+                base["error"] = ("this tool walks the concept layer only: "
+                                 + ", ".join(wrong) + " is not a concept id")
+                base["hint"] = ("Shortest paths are computed between `concept:` nodes. "
+                                "A record, decision or episode is attached to concepts "
+                                "rather than sitting on the path graph, so it can never "
+                                "be an endpoint here even when it exists and is well "
+                                "connected. Use vinc_neighbors on that id to see what it "
+                                "attaches to, then path between those concepts.")
+            else:
+                base["error"] = f"no path within max_depth={max_depth}"
+                base["hint"] = ("Both nodes exist but nothing connects them within this "
+                                "depth. Raise `max_depth`, or use vinc_neighbors on each "
+                                "end to see what they do connect to.")
     return base
 
 

@@ -656,7 +656,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_path",
-        "description": "Find the shortest relation path(s) between two concepts — the physically "
+        "description": "Find the shortest relation path(s) between two concepts. **Concept ids only**: this walks the concept layer, so a record, decision or episode id can never be an endpoint even when it exists and is well connected (it attaches to concepts rather than sitting on the path graph) — you get an explicit error saying so, not a bare not-found. Returns the physically "
                        "connected edge chain, returned as an ordered id/title sequence. Use this to "
                        "give a model concrete evidence of HOW two concepts connect instead of "
                        "guessing. Two distance measures, chosen with `weight`: 'hops' (default, "
@@ -668,8 +668,8 @@ TOOLS: list[dict] = [
                        "degenerates exactly to 'hops'. Returns {found, length, weight, "
                        "paths:[{ids,titles,length,[cost]}], count}. Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "a": {"type": "string", "description": "Exact source concept id."},
-            "b": {"type": "string", "description": "Exact target concept id."},
+            "a": {"type": "string", "description": "Exact source concept id (must start with `concept:`)."},
+            "b": {"type": "string", "description": "Exact target concept id (must start with `concept:`)."},
             "max_depth": {"type": "integer", "default": 6, "minimum": 1, "maximum": 8,
                           "description": "Max path length in hops."},
             "weight": {"type": "string", "enum": ["hops", "confidence"], "default": "hops",
