@@ -1142,6 +1142,19 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
 _SEMANTIC_PK: dict[str, str] = {"Concept": "concept_id", "Decision": "decision_id"}
 _SEMANTIC_LABELS = frozenset(_SEMANTIC_PK)
 
+#: 주제 아래 설 수 있는 종 **전부**. `_SEMANTIC_PK` 보다 넓다 — 좌측 트리의 종 레일이
+#: 기록·사건까지 세우기 때문이다. Bridge 와 개방 타입(Entity)이 빠진 것은 취향이 아니라
+#: 스키마다: `IN_DOMAIN` 이 이 넷에만 걸리고(store/embedded_schema.py), Bridge 는
+#: `CROSSES` 로 Domain 에 붙어 source_domain/target_domain 을 따로 갖는다(그래서
+#: fragment ingest 가 Bridge 의 domain 을 저장하지 않는다고 경고한다). 개방 타입은
+#: domain 을 아예 보존하지 않는다. **없는 줄을 레일에 세우지 않으려면 이 목록이 정본이다.**
+_TREE_PK: dict[str, str] = {
+    "Concept": "concept_id", "Decision": "decision_id",
+    "Record": "record_id", "Episode": "episode_id",
+}
+#: 화면이 보내는 종 이름 → 라벨. 소문자 단수형이 `NavNode.kind` 와 같은 값이다.
+_TREE_KIND_LABEL: dict[str, str] = {lbl.lower(): lbl for lbl in _TREE_PK}
+
 _SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용 (+ entity, F1)
     "concept": ("Concept", "concept_id"),
     "episode": ("Episode", "episode_id"),
@@ -3018,7 +3031,8 @@ def _domain_depths(concepts: dict[str, str],
     return out
 
 
-def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
+def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
+             cfg=None, store=None) -> dict:
     """좌측 문서 트리(D69) — 주제 → 그 주제의 문서, **개념 계층 깊이순**.
 
     문서는 주제 열을 갖지 않으므로(`_DocMeta`, D45) 주제도 착지 노드도 전부
@@ -3041,9 +3055,22 @@ def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
     제목은 문서보다 수가 훨씬 많고(개념 1400 대 문서 215 인 그래프가 실재한다) 이
     응답은 웹에서 허브를 거치므로, 안 쓰는 화면까지 그 무게를 지게 두지 않는다.
 
-    노드 모집단은 위 ``concepts`` 수를 세는 것과 **같은 집합**이다(`_SEMANTIC_PK`,
+노드 모집단의 기본은 위 ``concepts`` 수를 세는 것과 **같은 집합**이다(`_SEMANTIC_PK`,
     즉 Concept 과 Decision). 주제 머리가 "개념 N개"라고 말하면 그 갈래에 정확히 N줄이
     있어야 한다 — 다른 집합을 세면 화면이 스스로를 반박한다.
+
+    ``kind`` 를 주면 모집단이 **그 종 하나**가 된다(`concept|decision|record|episode`).
+    그때 각 주제에 ``count`` 가 함께 실리고 그것이 그 갈래의 줄 수다 — 위 계약을 깨지
+    않고 지키는 방법이 이것이다: 세는 집합과 그리는 집합이 여전히 같고, 무엇을 세는지가
+    인자로 드러난다. ``concepts`` 는 뜻이 바뀌지 않는다(늘 Concept + Decision).
+
+    **종을 통째로 싣는 인자는 없다.** 기록이 이 그래프에서 가장 큰 종이고 이 응답은
+    웹에서 계정 프록시를 건너므로, 화면은 레일에서 고른 한 종만 가져간다. 레일이
+    개수를 알기 위해 필요한 것은 목록이 아니라 집계뿐이라 그것은 ``counts.kinds``
+    (종별 수)가 따로 준다 — 쿼리 하나이고 제목을 싣지 않는다.
+
+    ⚠ 주제 아래 설 수 있는 종은 **넷뿐이다**(`_TREE_PK`). Bridge 와 개방 타입은
+    스키마가 `IN_DOMAIN` 을 주지 않는다 — 레일에 그 줄을 세우면 영원히 빈 갈래가 된다.
     """
     from api import docstore as _ds
 
@@ -3055,19 +3082,34 @@ def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
     if store is None:
         base["note"] = "no reachable store"
         return base
+    want = _TREE_KIND_LABEL.get((kind or "").strip().lower()) if kind else None
+    if kind and not want:
+        base["note"] = f"unknown kind: {kind}"
+        return base
     try:
         # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
         # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
         # 제목은 노드 갈래를 요청했을 때만 싣는다 — 안 그러면 기본 호출이 그래프
         # 전체의 제목을 끌고 온다(이 응답이 웹에서는 허브를 건넌다).
         title_col = ", c.title AS title" if nodes else ""
+        # 모집단 — 기본은 종전(Concept + Decision), `kind` 를 주면 그 하나뿐이다.
+        # 넷을 한꺼번에 싣는 분기는 두지 않는다(위 계약: 목록은 한 종씩).
+        pop = {want: _TREE_PK[want]} if want else dict(_SEMANTIC_PK)
         crows = store.run(
             " UNION ALL ".join(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
                 f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
                 f"'{lbl.lower()}' AS kind"
-                for lbl, pk in _SEMANTIC_PK.items()),
+                for lbl, pk in pop.items()),
             {"owner": owner}) or []
+        # 레일의 개수 — 제목을 싣지 않는 집계 하나. 종을 고르는 손잡이가 "없는 것"과
+        # "아직 안 가져온 것"을 구별할 수 있어야 하므로 0 도 키로 남긴다.
+        kind_counts: dict[str, int] = {}
+        for lbl, pk in _TREE_PK.items():
+            rows = store.run(
+                f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+                f"AND c.domain <> '' RETURN count(c.{pk}) AS n", {"owner": owner}) or []
+            kind_counts[lbl.lower()] = int((rows[0] or {}).get("n") or 0) if rows else 0
         by_domain: dict[str, dict[str, str]] = {}
         cdom: dict[str, str] = {}
         cmeta: dict[str, tuple[str, str]] = {}     # id → (title, kind), nodes=True 일 때만
@@ -3123,6 +3165,10 @@ def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
                           key=lambda r: (r["depth"], r["title"], r["doc_id"]))
             g = {"domain": dom, "concepts": len(by_domain.get(dom, {})),
                  "docs": rows}
+            # `kind` 로 물었을 때의 주제 머리 숫자. `concepts` 와 이름을 나눈 이유는
+            # 그 열의 뜻(Concept + Decision)을 바꾸지 않으려는 것이다.
+            if want:
+                g["count"] = len(by_domain.get(dom, {}))
             if nodes:
                 # 문서와 **같은 정렬 규칙**(깊이 → 제목 → id). 두 갈래를 오갈 때
                 # 줄 순서의 뜻이 달라지면 토글이 목록을 뒤섞는 것으로 읽힌다.
@@ -3134,9 +3180,11 @@ def nav_tree(*, owner: str, nodes: bool = False, cfg=None, store=None) -> dict:
                     key=lambda r: (r["depth"], r["title"], r["id"]))
             out.append(g)
         out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
-        base.update(executed=True, domains=out, unfiled=unfiled,
-                    counts={"domains": len(out), "docs": len(docs),
-                            "unfiled": len(unfiled)})
+        counts = {"domains": len(out), "docs": len(docs), "unfiled": len(unfiled),
+                  "kinds": kind_counts}
+        if want:
+            counts["kind"] = want.lower()
+        base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
