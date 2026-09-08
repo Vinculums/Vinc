@@ -603,7 +603,9 @@ export async function renderView(el: HTMLElement) {
       const startW = detail.getBoundingClientRect().width / root;
       let live = startW;
       const move = (ev: PointerEvent) => {
-        live = setRailWidth(startW + (ev.clientX - startX) / root);
+        // ⚠ 부호가 **뺄셈**이다: 패널이 오른쪽에 붙어 있으므로(R1) 왼쪽으로 끌 때
+        // 넓어진다. 더하기로 두면 잡은 손과 모서리가 반대로 움직인다.
+        live = setRailWidth(startW - (ev.clientX - startX) / root);
       };
       const up = () => {
         grip.removeEventListener("pointermove", move);

@@ -192,6 +192,15 @@ body {
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
 :root {
   --lnb-w: 14.5rem;
+  /* 종 레일 폭. ⚠ **라벨이 있어야 한다**는 것이 실측으로 드러났다(2026-09-08):
+     마크 어휘가 개념과 결정에 **같은 도형**(구)을 주므로(D35, viewpoints 마크 표)
+     20px 아이콘만으로는 그 두 줄을 구별할 수 없다. 새 도형을 지어내면 형태=타입이
+     깨지므로, 대신 표식 아래에 아주 작은 이름을 둔다. 4.25rem 은 "결정"·"Agent" 가
+     한 줄에 들어가는 폭이다.
+     ⚠ 이름이 `--rail-w` 가 아닌 이유: 그 이름은 **이미 쓰이고 있다**(아래 `#surface`
+     가 읽는 면 폭만큼 인캔버스 크롬을 비켜서게 하는 변수다). 같은 이름을 두 뜻으로
+     쓰면 한쪽을 고칠 때 다른 쪽이 조용히 따라 움직인다. */
+  --kind-rail-w: 4.25rem;
   /* 모션 토큰(--ease-* · --dur-*)은 여기 없다 — 디자인 허브 SSoT(design-tokens.json 의
      motion 그룹)가 tokens.desktop.css / tokens.web.css 로 내려 준다(2026-09-05). 큰 면(셸 열·
      문서 패널·상단 바 폭)은 --ease-drawer, 작은 응답(캐럿·누름·알약)은 --ease-out, 메뉴·카드
@@ -226,7 +235,7 @@ body {
    잃는다. 바꾼 것은 칠과 모서리뿐이고 배치는 안 건드렸다. */
 #shell {
   display: grid;
-  grid-template-columns: var(--lnb-w) minmax(0, 1fr);
+  grid-template-columns: var(--kind-rail-w) var(--lnb-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh; min-height: 0; overflow: hidden;
   padding: var(--shell-gap);
@@ -243,12 +252,70 @@ body {
 #topbar { grid-column: 1 / -1; }
 /* 접히면 폭 0 **그리고 간격 0** — 간격을 남기면 창 왼쪽에 셸 padding + 열 간격이
    겹쳐 캔버스만 1rem 안쪽으로 들어간다(다른 세 변은 .5rem 이다). */
-#shell[data-lnb="closed"] { --lnb-w: 0rem; column-gap: 0; }
+/* 접힘은 **트리만** 접는다. 레일은 남는다 - 그것이 층 둘로 나눈 이유다:
+   자리를 되찾고 싶은 것은 목록이고, 종을 고르는 손잡이는 늘 손에 있어야 한다.
+   그래서 여기서 간격을 0 으로 만들지 않는다(레일과 캔버스 사이 여백은 유지). */
+#shell[data-lnb="closed"] { --lnb-w: 0rem; }
 @media (prefers-reduced-motion: reduce) { #shell { transition: none; } }
 
 /* ── 좌측 문서 트리 ─────────────────────────────────────────────────────── */
-#lnb {
+/* 층 1 - 종 레일. 칠이 **판 색**이라 틀의 일부로 읽힌다: 카드로 만들면 나란히
+   뜬 카드가 셋이 되고, 그러면 어느 것이 목록이고 어느 것이 손잡이인지 형태가
+   말하지 않는다. 테두리만으로 자기 영역을 표시한다. */
+#lnb-rail {
   grid-column: 1; grid-row: 2;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1px; padding: .3rem 0; overflow: hidden;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+.rail-btn {
+  position: relative; flex: 0 0 auto;
+  width: 3.55rem; padding: .3rem 0 .25rem;
+  display: flex; flex-direction: column; align-items: center; gap: .15rem;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: none; color: hsl(var(--foreground)); cursor: pointer;
+  font: inherit;
+}
+/* 이름 - 표식 아래 한 줄. 잉크는 캡션 톤이라 표식이 먼저 읽히고 이름이 확인해 준다
+   (반대가 되면 아이콘 레일이 아니라 글자 목록이 된다). */
+.rail-name {
+  font-size: .62rem; line-height: 1.1; letter-spacing: .01em;
+  color: hsl(var(--caption-foreground)); white-space: nowrap;
+}
+.rail-btn[aria-pressed="true"] .rail-name {
+  color: hsl(var(--foreground)); font-weight: 600;
+}
+.rail-btn:hover { background: hsl(var(--ring) / .12); }
+/* 고른 종은 **올라온 면**이 된다 - 판 위의 작은 카드. 배경색만 바꾸면 호버와
+   구별이 안 되고(둘 다 옅은 채움), 그러면 "지금 무엇을 보고 있나"를 잃는다. */
+.rail-btn[aria-pressed="true"] {
+  background: hsl(var(--card)); border-color: hsl(var(--border));
+  box-shadow: var(--shadow-elev-1);
+}
+.rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.rail-btn svg { display: block; }
+/* 개수 - 표식 오른쪽 아래에 붙는다. 0 이면 아예 안 그린다(빈 종을 세우지 않는다는
+   규율과 같은 태도: 없는 것을 0 으로 말하면 그 줄이 계속 자리를 차지한다). */
+/* 개수는 이름과 **한 줄**이다. 절대배치로 모서리에 띄웠더니 표식과 이름 사이에
+   떠서 어느 쪽 것인지 안 읽혔다(실측 2026-09-08). 붙여 두면 "개념 18" 한 마디가 된다. */
+.rail-n {
+  font-family: var(--font-mono); font-weight: 400;
+  color: hsl(var(--caption-foreground)); margin-left: .2em;
+}
+.rail-btn[aria-pressed="true"] .rail-n { color: hsl(var(--muted-foreground)); }
+.rail-btn { position: relative; }
+/* Agent 는 종이 아니라 **예약된 주제**다(vinc/agent/roles). 구분선이 그 사실을
+   말한다 - 위는 종, 아래는 주제. 새 도형을 지어내지 않는 이유가 이것이다. */
+.rail-sep {
+  width: 2rem; height: 0; margin: .3rem 0; flex: 0 0 auto;
+  border: none; border-top: 1px solid hsl(var(--border));
+}
+.rail-fill { flex: 1 1 auto; }
+
+#lnb {
+  grid-column: 2; grid-row: 2;
   display: flex; flex-direction: column; overflow: hidden;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
@@ -283,7 +350,7 @@ body {
 #lnb-reopen { display: none; }
 #shell[data-lnb="closed"] #lnb-reopen {
   display: grid; place-items: center;
-  grid-column: 1; grid-row: 2; align-self: start; justify-self: start;
+  grid-column: 2; grid-row: 2; align-self: start; justify-self: start;
   position: relative; z-index: 6; margin: var(--shell-gap) 0 0 var(--shell-gap);
 }
 #shell[data-lnb="closed"] #lnb-reopen svg { transform: rotate(180deg); }
@@ -298,7 +365,7 @@ body {
    칸이 `overflow: hidden` 인 것이 핵심이다: 접힘은 왼쪽으로 미끄러져 나가는 이동이고,
    클립하는 부모가 없으면 그 이동이 **LNB 위를 지나간다**(실측 버그). */
 #docpane-slot {
-  grid-column: 2; grid-row: 2; position: relative; overflow: hidden;
+  grid-column: 3; grid-row: 2; position: relative; overflow: hidden;
   /* 캔버스 카드와 **같은 곡률**. 이 칸이 클리핑을 하고 있으므로(아래 주석) 반지름을
      주면 패널의 왼쪽 두 모서리가 카드의 모서리를 그대로 따라간다 — 패널에 반지름을
      직접 주면 폭을 끝까지 끌었을 때 오른쪽 모서리까지 둥글어져 카드 안에 카드가 생긴다. */
@@ -306,12 +373,15 @@ body {
   pointer-events: none;          /* 빈 자리로 지도를 계속 만질 수 있어야 한다 */
   z-index: 5;
 }
+/* **오른쪽 끝**이다(R1, 2026-09-08). 여태 지도 왼쪽이었고, 층 LNB 가 들어오면서
+   지도 앞에 레일 + 트리 + 읽는 면 = 세 열이 서게 됐다. 내비는 왼쪽, 자료는 오른쪽 —
+   인스펙터의 자리다. 여는 것과 접는 것이 같은 길(오른쪽)로 오간다. */
 #docpane {
-  position: absolute; top: 0; bottom: 0; left: 0;
+  position: absolute; top: 0; bottom: 0; right: 0;
   width: min(var(--rail-size, 20rem), 100%);
   pointer-events: auto;
   display: flex; flex-direction: column; overflow: hidden;
-  border-right: 1px solid hsl(var(--border) / .55);
+  border-left: 1px solid hsl(var(--border) / .55);
   /* 유리는 **형제 층**(::before)이 갖는다 — 조상이 블러를 가지면 그 안에서 스크롤할
      때마다 블러가 다시 계산돼 스크롤이 끊긴다(렌즈 패널과 같은 처분, 2026-08-05). */
   background: transparent;
@@ -333,10 +403,11 @@ body {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #docpane::before { background: hsl(var(--card)); }
 }
-/* 접힘 = 왼쪽으로 미끄러져 나간다(폭 0 으로 줄어드는 것이 아니라). 안의 글자가
-   찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다. */
+/* 접힘 = **오른쪽으로** 미끄러져 나간다(폭 0 으로 줄어드는 것이 아니라). 안의 글자가
+   찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다 — 나간 쪽으로 되돌아오는 것이
+   공간 일관성이다. */
 #shell[data-doc="folded"] #docpane {
-  transform: translateX(-101%); opacity: 0; pointer-events: none;
+  transform: translateX(101%); opacity: 0; pointer-events: none;
 }
 #docpane[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
@@ -352,18 +423,20 @@ body {
 #docpane-reopen { display: none; }
 #shell[data-doc="folded"] #docpane-reopen {
   display: grid; place-items: center;
-  grid-column: 2; grid-row: 2; align-self: start; justify-self: start;
-  position: relative; z-index: 6; margin: var(--shell-gap) 0 0 var(--shell-gap);
+  /* 패널이 나간 쪽 = 다시 부르는 쪽. 왼쪽에 두면 오른쪽에서 나간 것을 왼쪽에서
+     불러오는 꼴이 된다. */
+  grid-column: 3; grid-row: 2; align-self: start; justify-self: end;
+  position: relative; z-index: 6; margin: var(--shell-gap) var(--shell-gap) 0 0;
 }
-/* LNB 재열기 손잡이가 비켜서는 거리. 2.9rem = 그 버튼의 왼쪽 여백(.35rem) + 폭
-   (2.15rem) + 사이 간격. 실측으로 정했다(2.4rem 은 2px 겹쳤다). */
-:root { --reopen-clear: 2.9rem; }
-#shell[data-lnb="closed"][data-doc="folded"] #docpane-reopen { margin-left: var(--reopen-clear); }
-/* LNB 가 접히면 그 재열기 손잡이가 1열(폭 0) 위로 떠 **문서 열의 머리 위에 얹힌다**
-   — 실측으로 제목 글자와 정면으로 겹쳤다. 비켜서는 것은 머리뿐이다: 손잡이는 머리
-   높이 안에만 있으므로 열 전체에 여백을 주면 아래 본문까지 공짜로 좁아진다. */
-#shell[data-lnb="closed"] #docpane .pane-head { padding-left: var(--reopen-clear); }
-#shell[data-doc="folded"] #docpane-reopen svg { transform: rotate(180deg); }
+/* ⚠ 여기 있던 회피 규칙 둘(`--reopen-clear`)은 **사라졌다**. 읽는 면이 오른쪽으로
+   가면서 그 재열기 손잡이도 오른쪽 위로 갔고, LNB 재열기 손잡이(왼쪽 위)와 같은
+   지점을 다툴 일이 없다. 두 손잡이가 동시에 존재할 수 있다는 사실이 그 규칙의
+   유일한 근거였으므로 근거가 없어졌다. */
+/* (같은 이유로 문서 열 머리의 왼쪽 회피 여백도 사라졌다 — 그 머리는 이제 화면
+   오른쪽에 있고 LNB 손잡이는 왼쪽에 있다.) */
+/* 패널이 오른쪽에 있으므로 손잡이는 **왼쪽을 가리킨다**(가리키는 방향 = 열릴 방향).
+   기존 180도 회전은 왼쪽 패널 전제였다. */
+#shell[data-doc="folded"] #docpane-reopen svg { transform: none; }
 /* 지도(그리고 다른 표면)도 같은 카드다. 크롬 둘만 둥글게 하면 캔버스가 오른쪽·
    아래·오른쪽위 세 변에서 창 끝에 그대로 붙어, 떠 있는 카드 둘이 붙어 있는 판 위에
    얹힌 꼴이 된다. 모서리를 깎는 것은 `overflow` 가 이미 여기 있어서 공짜다
@@ -374,7 +447,7 @@ body {
    말하는 방법이다 — 가장 큰 면이 떠오르면 창 네 변이 다 어두워지고, 그러면 크롬이
    그 위에 떠 있다는 사실이 안 읽힌다. 내용은 바닥이고 크롬이 그 위에 뜬다. */
 #surface {
-  grid-column: 2; grid-row: 2;
+  grid-column: 3; grid-row: 2;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   /* 앰비언트 워시가 여기로 왔다(body → 내용 카드). 유리 패널은 전부 이 카드 **위**에
@@ -441,9 +514,12 @@ body {
   font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
   color: hsl(var(--caption-foreground)); text-transform: uppercase;
 }
-/* 갈래 칩(문서 · 노드) — 주제 줄 아래에 무엇이 걸리는지의 선택이다. 세그먼트 하나에
-   둘을 넣는 이유는 배타이기 때문이고, 그래서 radiogroup 으로 낸다. 여기서 색만으로
-   상태를 말하지 않는다: 켜진 쪽은 배경 + 글자 굵기까지 함께 바뀐다. */
+/* ⚠ 여기 있던 갈래 칩(`문서 | 노드`)은 폐기됐다 - 종 레일이 그 일을 일반화했고,
+   같은 일을 하는 손잡이를 두 벌 두지 않는다. 남은 규칙은 없다.
+   층 2 의 노드 줄이 쓰는 표식 규칙만 아래에 있다(.lnb-mk). */
+.lnb-mk {
+  flex: 0 0 auto; display: block; color: inherit;
+}
 .lnb-mode {
   display: flex; gap: .15rem; margin: 0 .4rem .35rem; padding: .15rem;
   border-radius: var(--radius-sm, .5rem); background: hsl(var(--muted) / .5);
@@ -823,9 +899,15 @@ body {
    아이콘 사이 간격은 space-between 이 균일하게 나눈다(셋 다 같은 크기의 아이콘 버튼).
    LNB 가 접히면(폭 0) 아이콘이 사라지면 안 되므로 최소 폭을 준다. */
 #tb-actions {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: .15rem;
+  /* ⚠ `space-between` 이었다. 열이 하나 늘어 이 묶음의 폭이 19rem 이 되자 아이콘
+     셋이 300px 에 흩뿌려져 한 묶음으로 안 읽혔다(실측 2026-09-08). 폭은 정렬을
+     위해 유지하고(오른쪽 끝이 검색 입력의 왼쪽 끝) 아이콘은 왼쪽에 모은다. */
+  justify-content: flex-start;
   flex: 0 0 auto;
-  width: max(calc(var(--lnb-w) - var(--tb-gap)), 9.5rem);
+  /* 레일과 트리 **둘**을 덮는다(열이 하나 늘었다). 그 오른쪽 끝이 검색 입력의
+     왼쪽 끝과 같은 선에 서고, 그 선이 캔버스 카드의 왼쪽 끝이다. */
+  width: max(calc(var(--kind-rail-w) + var(--shell-gap) + var(--lnb-w) - var(--tb-gap)), 9.5rem);
   padding-left: .55rem;
   transition: width var(--dur-panel) var(--ease-drawer);
 }
@@ -1281,9 +1363,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 잡는 면은 6px 이되 보이는 선은 1px — 손이 닿는 넓이와 눈에 보이는 두께는 다르다.
    열의 **오른쪽** 모서리에 선다: 끌면 지도가 넓어지고 문서가 좁아진다(겹쳐 있던
    시절에는 왼쪽 모서리였다 — 그때는 패널이 오른쪽 벽에 붙어 있었다). */
+/* 패널의 **왼쪽** 모서리다(R1 로 패널이 오른쪽에 붙었다). 오른쪽에 두면 창 끝에
+   붙어 잡을 수 없다. */
 #rail-grip {
   position: absolute; top: 0; bottom: 0; z-index: 3;
-  right: -3px; width: 6px;
+  left: -3px; width: 6px;
   cursor: col-resize; touch-action: none;
 }
 /* 캔버스 안 크롬은 이제 비켜설 이유가 없다 — 패널이 겹치지 않고 표면 자체가 줄어든다.
