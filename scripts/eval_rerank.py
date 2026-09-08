@@ -97,6 +97,27 @@ def weighted_rrf(ranked_lists: list[list[dict]], weights: list[float], *, k: int
     return out
 
 
+#: 가중 RRF 대조군의 기본값. `api.query.rrf_fuse` 의 k 와 같은 수이고, 프로덕션에서는
+#: 아무 호출부도 이 인자를 안 넘긴다 — 그래서 60 이 측정된 적 없는 기본값이다.
+#: 근거와 스윕 범위: [[vinc.plan.retrieval-research-2026-09-08 §4]]
+DEFAULT_RRF_K = 60
+
+
+def cond_name(w: float, k: int, depth: int) -> str:
+    """가중 RRF 조건의 이름. **기본값이면 접미를 안 붙인다.**
+
+    이 플래그가 생기기 전에 잰 결과 JSON 의 조건 이름이 `rrf_w1` 이다. 기본 조건에도
+    `_k60_d0` 을 붙이면 같은 조건이 다른 이름을 갖게 되어 옛 측정과 나란히 못 놓는다
+    (계획 §2 의 비교 규칙은 이름이 아니라 매니페스트로 판정하지만, 이름이 갈리면
+    사람이 표를 못 읽는다)."""
+    n = f"rrf_w{w:g}"
+    if k != DEFAULT_RRF_K:
+        n += f"_k{k}"
+    if depth:
+        n += f"_d{depth}"
+    return n
+
+
 def score_ext(ranked_doc_ids: list[str], truth: str, k: int) -> dict:
     """eval_search.score 에 recall@1 · recall@3 · rank 를 더한다. 앞의 셋은 그 함수의
     값을 **그대로** 쓴다(따로 계산하면 언젠가 갈라진다)."""
@@ -201,6 +222,12 @@ def main() -> int:
                     help="적응형 게이트 정책(반복 가능): top-agree · margin:0.2")
     ap.add_argument("--vec-weight", action="append", type=float, default=[],
                     help="가중 RRF 대조군의 벡터 팔 가중치(반복 가능)")
+    ap.add_argument("--rrf-k", action="append", type=int, default=[],
+                    help=f"가중 RRF 의 k(반복 가능, 미지정={DEFAULT_RRF_K}). 프로덕션은 "
+                         "이 인자를 아무도 안 넘겨 60 이 한 번도 측정된 적 없다")
+    ap.add_argument("--arm-depth", action="append", type=int, default=[],
+                    help="팔마다 융합에 넣을 후보 수(반복 가능, 미지정=SEARCH_POOL_CAP 전량). "
+                         "두 팔을 같은 깊이로 자른다 — 재조회는 안 한다")
     ap.add_argument("--bootstrap", type=int, default=1000)
     ap.add_argument("--out", help="결과 JSON 경로(없으면 stdout 표)")
     args = ap.parse_args()
@@ -224,6 +251,9 @@ def main() -> int:
 
     depths = sorted({int(x) for x in args.depth.split(",") if x.strip()})
     max_k = max(depths)
+    # 미지정이면 각각 한 값짜리 목록 = 예전과 똑같은 한 조건. 스윕은 옵트인이다.
+    rrf_ks = sorted({int(x) for x in (args.rrf_k or [DEFAULT_RRF_K])})
+    arm_depths = sorted({int(x) for x in (args.arm_depth or [0])})
     filters = {"owner_id": args.owner} if args.owner else None
 
     # 임베더: 루프백 창구(프로덕션 형상) 우선, 없으면 프로세스 안.
@@ -250,7 +280,8 @@ def main() -> int:
     rr = Reranker(rname, rpath, max_tokens=args.max_tokens)
     warm_s = rr.warm()
 
-    conds = ["fts", "rrf"] + [f"rrf_w{w:g}" for w in args.vec_weight]
+    conds = ["fts", "rrf"] + [cond_name(w, kk, d) for w in args.vec_weight
+                              for kk in rrf_ks for d in arm_depths]
     for K in depths:
         conds.append(f"rerank@{K}")
         for g in args.gate:
@@ -325,10 +356,15 @@ def main() -> int:
             kw = [r for r in kw if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
             vec = [r for r in vec if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
             for w in args.vec_weight:
-                fused = weighted_rrf([kw, vec], [1.0, w])
-                s = score_ext(es._docs_of(store, fused[:PAGE]), truth, PAGE)
-                c = f"rrf_w{w:g}"
-                per[c].append(s); by_lang[lang][c].append(s); rec[c] = s["rank"]
+                for kk in rrf_ks:
+                    for d in arm_depths:
+                        # 깊이는 이미 받아 둔 풀을 자르기만 한다 — 팔을 다시 조회하면
+                        # 스토어를 depth 수만큼 더 때리는데 얻는 것이 없다.
+                        fused = weighted_rrf([kw[:d] if d else kw,
+                                              vec[:d] if d else vec], [1.0, w], k=kk)
+                        s = score_ext(es._docs_of(store, fused[:PAGE]), truth, PAGE)
+                        c = cond_name(w, kk, d)
+                        per[c].append(s); by_lang[lang][c].append(s); rec[c] = s["rank"]
 
         # 리랭크: 가장 깊은 K 를 **한 번만** 재고 얕은 K 는 그 점수의 접두를 쓴다. 쌍의
         # 점수는 서로 독립이라 결과는 K 마다 따로 잰 것과 같다(질의당 쌍 수가 곧 비용이라
@@ -398,6 +434,7 @@ def main() -> int:
                      "warm_s": round(warm_s, 3),
                      "threads": int(os.environ.get("VINC_EVAL_THREADS", "1") or "1")},
         "depths": depths, "gates": args.gate, "vec_weights": args.vec_weight,
+        "rrf_ks": rrf_ks, "arm_depths": arm_depths,
         "overall": {c: summarize(v) for c, v in per.items() if v},
         "by_lang": {lg: {c: summarize(v) for c, v in cs.items() if v}
                     for lg, cs in by_lang.items()},
