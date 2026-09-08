@@ -168,15 +168,21 @@ def lang_of(text: str) -> str:
 
 # ── 실행 ────────────────────────────────────────────────────────────────────
 def _docs_of(store, rows: list[dict]) -> list[str]:
-    """검색 결과(청크) → 문서 id 순서(중복 제거, 순위 보존)."""
+    """검색 결과(청크) → 문서 id 순서(중복 제거, 순위 보존).
+
+    ⚠ **행마다 스토어를 때리지 않는다.** 예전에는 청크 하나에 질의 하나였는데, 조건이
+    늘자 그것이 배터리 전체의 지배 비용이 됐다: 융합 스윕 하나가 조건 80 × 질의 118 ×
+    행 10 = **94,400 왕복**이라 51분을 썼고, 그 시간의 거의 전부가 이 함수였다.
+    한 번에 묻는다 — 매핑도 순서도 그대로다."""
+    ids = [r.get("id") for r in rows if r.get("id")]
+    if not ids:
+        return []
+    got = store.run("MATCH (c:Chunk) WHERE c.chunk_id IN $ids "
+                    "RETURN c.chunk_id AS i, c.doc_id AS d", {"ids": ids}) or []
+    by_id = {g.get("i"): g.get("d") for g in got}
     out, seen = [], set()
-    for r in rows:
-        cid = r.get("id")
-        if not cid:
-            continue
-        got = store.run("MATCH (c:Chunk) WHERE c.chunk_id = $i RETURN c.doc_id AS d",
-                        {"i": cid}) or []
-        d = got[0].get("d") if got else None
+    for cid in ids:                      # 순위는 rows 순서가 정한다 — 질의 결과가 아니라
+        d = by_id.get(cid)
         if d and d not in seen:
             seen.add(d)
             out.append(d)
