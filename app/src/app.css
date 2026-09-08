@@ -167,12 +167,11 @@ html, body { height: 100%; margin: 0; }
 body {
   /* D37 보강 — 환경 대기(ambient): 유리가 흡수할 배경. 비의미 워시 3개 —
      밝은 종이빛(좌상)·포인트색 속삭임(우, 상한 .08)·모래빛(하단). 전부
-     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변). */
-  background:
-    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--card)) 0%, transparent 60%),
-    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
-    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--muted)) 0%, transparent 60%),
-    hsl(var(--background));
+     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변).
+     ⚠ 셸이 카드가 된 뒤 이 워시는 **`#surface` 가 든다**(아래 그 규칙). 여기 남는
+     것은 셸 밖에서 열리는 배치(웹 스킨의 여백 등)를 위한 바탕이다 — 셸이 판을
+     불투명하게 칠하므로 셸 안에서는 이 줄이 보이지 않는다. */
+  background: hsl(var(--background));
   background-attachment: fixed;
   color: hsl(var(--foreground));
   font-family: var(--font-ui, system-ui), system-ui, sans-serif;
@@ -378,6 +377,15 @@ body {
   grid-column: 2; grid-row: 2;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
+  /* 앰비언트 워시가 여기로 왔다(body → 내용 카드). 유리 패널은 전부 이 카드 **위**에
+     뜨므로(문서 열·렌즈·부유 카드) 굴절할 것이 그대로 남는다. `fixed` 는 워시를
+     뷰포트에 고정해 카드 폭이 바뀔 때 무늬가 따라 늘어나지 않게 한다. */
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--card)) 0%, transparent 60%),
+    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
+    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--muted)) 0%, transparent 60%),
+    hsl(var(--background));
+  background-attachment: fixed;
 }
 
 /* 손이 닿는 것은 전부 **부드럽게 반응한다**(발주자 지적 2026-08-05 — 트리가 딱딱하다).
