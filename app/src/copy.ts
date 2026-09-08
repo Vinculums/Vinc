@@ -307,7 +307,6 @@ const EN = {
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
-      paneFold: "Fold the document panel", paneUnfold: "Unfold the document panel",
     },
     // Tools(D71) — 만들기 · 가져오기 · 공유를 한 모달에서. 상단 바 버튼 둘을 대체한다.
     // 관례(GM-8) — 어시스턴트가 쓰기 전에 읽는 것. "규칙"이라 부르지 않는다:
@@ -1098,7 +1097,6 @@ const KO: Deck = {
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       editOnly: "아직 지도에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",
-      paneFold: "문서 패널 접기", paneUnfold: "문서 패널 펼치기",
     },
     conv: {
       title: "GRAPH.md",

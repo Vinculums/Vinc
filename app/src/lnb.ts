@@ -126,10 +126,10 @@ function isOpen(): boolean {
 function setOpen(open: boolean) {
   localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
   document.getElementById("shell")?.setAttribute("data-lnb", open ? "open" : "closed");
-  // 손잡이는 상단 바에 **하나**다(2026-09-09). 여태 패널 머리의 접기 버튼과 셸
-  // 직속 재열기 버튼 두 벌이었고, 접히면 손잡이의 자리가 바뀌었다. 하나로 모으면
-  // 자리가 안 바뀌고, 패널 머리가 쓰던 52px 가 목록에 돌아온다.
-  const t = $("tb-lnb-toggle");
+  // 손잡이는 **레일 맨 아래**에 하나다(2026-09-09). 레일은 접혀도 남으므로 자리가
+  // 사라지지 않고, 그래서 셸 직속 재열기 버튼이 필요 없다. 상단 바에 두었다가
+  // 지적받고 여기로 왔다 — 내비가 레일에 모였으니 그 목록을 접는 손잡이도 여기다.
+  const t = document.querySelector<HTMLElement>("#lnb-rail .rail-fold");
   if (t) {
     t.setAttribute("aria-expanded", String(open));
     const label = open ? COPY.ui.lnb.close : COPY.ui.lnb.open;
@@ -256,7 +256,17 @@ function paintRail(): void {
   const el = $("lnb-rail");
   if (!el) return;
   const names = COPY.ui.lnb.kinds;
-  el.innerHTML = RAIL.map((r, i) => {
+  const here = location.hash.replace(/^#/, "").split("/")[0] || "view";
+  // **홈은 레일에 산다**(발주자 지시 2026-09-09). 트리에 있던 동안 그 목록은
+  // "문서 목록 + 내비 한 줄"이라 두 성질이 섞여 있었다 — 트리는 이제 문서만 든다.
+  // 자리가 맨 위인 이유: 지도 전체로 돌아가는 것은 종을 고르는 일보다 상위다.
+  const home = `<a class="rail-btn rail-home${here === "view" ? " on" : ""}"
+      href="#view" aria-current="${here === "view" ? "page" : "false"}"
+      data-tip="${esc(COPY.ui.topbar.home)}">
+      <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
+      <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
+    </a><hr class="rail-sep">`;
+  el.innerHTML = home + RAIL.map((r, i) => {
     const on = r.key === railKey;
     const name = names[r.key] || r.key;
     // 개수는 그 **종**의 수다. Agent 는 주제라 종별 집계로 셀 수 없으므로 숫자를
@@ -269,26 +279,17 @@ function paintRail(): void {
       ${kindMark3d(r.mark, r.key, 20)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
       cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
     </button>`;
-  }).join("") + `<span class="rail-fill"></span>`;
+  }).join("")
+    + `<span class="rail-fill"></span>`
+    // 트리 접기 — 맨 아래. 아이콘·라벨은 setOpen 이 상태에 맞춰 채운다.
+    + `<button class="rail-fold" type="button" aria-controls="lnb"></button>`;
+  const fold = el.querySelector<HTMLElement>(".rail-fold");
+  if (fold) fold.innerHTML = icon("chevron-left", 16);
+  setOpen(isOpen());
 }
 
-function surfaceHash(): string {
-  return location.hash.replace(/^#/, "").split("/")[0] || "view";
-}
-
-function navRows(): string {
-  // **홈 하나뿐이다**(발주자 지시 2026-07-31). 검색은 상단 바가 상시로 들고 있고,
-  // 가져오기·공유는 Tools 로 갔다(D71) — 같은 문을 두 번 그리지 않는다. 남은 하나는
-  // "전체 지도로 돌아가기"라서, 크럼이 지고 간 자리를 실제로 메우는 유일한 행이다.
-  // (Search·Packs 표면 자체는 살아 있고 해시·팔레트·단축키 1~3 으로 간다.)
-  const here = surfaceHash();
-  const on = here === "view";
-  return `<nav class="lnb-nav" aria-label="${esc(COPY.ui.topbar.home)}">
-      <a class="lnb-navrow${on ? " on" : ""}" href="#view"${on ? ' aria-current="page"' : ""}>
-        <span class="lnb-ico" aria-hidden="true">${icon("graph", 15)}</span>
-        <span>${esc(COPY.ui.topbar.home)}</span></a>
-    </nav>`;
-}
+/* ⚠ `navRows()` 와 `surfaceHash()` 는 **사라졌다**(2026-09-09). 홈 한 줄이
+   레일로 갔으므로 이 열은 문서만 든다 — 내비를 그릴 것이 없다. */
 
 function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number },
                 domain = ""): string {
@@ -423,12 +424,11 @@ function paint() {
   const body = $("lnb-body");
   if (!body) return;
   if (loading && !tree) {
-    body.innerHTML = navRows() + `<p class="lnb-none hint">${esc(COPY.ui.lnb.loading)}</p>`;
+    body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.loading)}</p>`;
     return;
   }
   if (failed) {
-    body.innerHTML = navRows()
-      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
+    body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
       + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
     return;
   }
@@ -439,8 +439,7 @@ function paint() {
   tints = loadPrefs().domainTint
     ? tintMap(groups.map((g) => g.domain), themeMode()) : null;
   const topicCount = (tree?.domains || []).length;
-  let html = navRows();
-  html += `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
+  let html = `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
     <span class="hint">${topicCount || "·"}</span></div>`;
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
@@ -540,12 +539,6 @@ export function mountLnb() {
   root.innerHTML = `<div class="lnb-body" id="lnb-body"></div>`;
   setOpen(isOpen());
 
-  const toggle = $("tb-lnb-toggle");
-  if (toggle) {
-    toggle.innerHTML = icon("chevron-left", 16);
-    toggle.addEventListener("click", () => setOpen(!isOpen()));
-    setOpen(isOpen());   // 아이콘이 붙은 뒤 방향·라벨을 한 번 더 확정한다
-  }
 
   // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
   paintRail();

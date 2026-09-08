@@ -782,7 +782,15 @@ export async function renderView(el: HTMLElement) {
     // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
     const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
     viewPanel.style.top = `${Math.round(Math.max(r.bottom + 6, cardTop + m))}px`;
-    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
+    // 왼쪽 끝이 아니라 **오른쪽 끝을 맞춘다**(발주자 지시 2026-09-09: "보기와 범례가
+    // 끝나는 지점을 패널 크기 정도로"). 패널은 보기·범례 묶음보다 좁으므로, 버튼의
+    // 왼쪽에 붙이면 묶음 오른쪽 끝과 패널 오른쪽 끝이 어긋난 채 열린다. 끝을 맞추면
+    // 두 상자가 한 변을 공유한다.
+    const grp = document.getElementById("tb-viewpoints");
+    const groupRight = grp && grp.getBoundingClientRect().width
+      ? grp.getBoundingClientRect().right : r.right;
+    const wantLeft = Math.min(groupRight, rightEdge - m) - w;
+    viewPanel.style.left = `${Math.round(Math.max(m, wantLeft))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
   // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
