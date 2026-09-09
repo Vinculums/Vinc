@@ -54,6 +54,8 @@ PIECE_TOKENS = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 
 #: `rrf_fuse` 의 k(60). 게이트 규칙 `top-agree` 가 "두 팔이 다 1위로 놓았다"를 점수로
 #: 알아보는 데 쓴다: 그때 rrf_score = 2/(k+1) 이다.
+#: 이 파일이 아는 융합 k 의 **역사적** 기본값. `gate()` 는 이제 이 값을 안 쓴다 —
+#: 부르는 쪽이 자기 풀의 k 를 말한다. 남겨 두는 것은 옛 결과 JSON 을 읽을 때 필요해서다.
 RRF_K = 60
 
 
@@ -122,13 +124,21 @@ def pick_piece(pieces: list[str], seq: int | None) -> str:
     return pieces[seq]
 
 
-def gate(rows: list[dict], policy: str, *, k: int = RRF_K,
+def gate(rows: list[dict], policy: str, *, k: int,
          score_key: str = "rrf_score") -> bool:
     """이 융합 풀에 리랭커를 **돌릴지**를 정한다(True = 돌린다).
 
     `always`      언제나.
     `top-agree`   두 팔이 같은 청크를 1위로 놓았으면 **건너뛴다**(rrf_score = 2/(k+1)).
                   "FTS 와 벡터가 동의한다"는 이 융합에서 얻을 수 있는 가장 강한 신호다.
+
+    🔴 **`k` 는 이 풀이 실제로 융합된 값이어야 하고, 그래서 기본값이 없다.** 여기 상수를
+    기본값으로 두었더니 프로덕션 k 가 60에서 20으로 바뀐 뒤(Vinc#270) 이 게이트가
+    **75건 중 0건** 발화했다 — k=20 융합의 1위 점수는 최소 1/21 = 0.0476 인데 임계값은
+    2/61 = 0.0328 이라 비교가 구조적으로 성립하지 않는다. 그런데 조용했다: `gated` 열이
+    `rrf` 와 똑같이 나올 뿐이라 "게이트가 잘 걸러낸다"로 읽힌다. 부르는 쪽이 k 를 말하게
+    하면 두 상수가 갈리는 순간이 호출부에서 보인다.
+    근거: [[record:the-top-agree-gate-never-fired-after-the-k-change-2026-09-09]]
     `margin:x`    1위와 2위의 상대 간격 (s1-s2)/s1 이 x 미만일 때만 돌린다. 1위가
                   멀찍이 앞서면 리랭커가 바꿀 것이 적다는 가정이다.
     행이 둘 미만이면 돌릴 이유가 없다(순서가 없다)."""
