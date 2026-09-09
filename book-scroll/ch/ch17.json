@@ -14,63 +14,83 @@
    "eyebrow": "Part 2 · Chapter 17",
    "h": "How Meaning Becomes Space",
    "paras": [
-    "In a memory system the vector is the least visible component. The graph has nodes and relationships; documents have text a person can read. A vector is an array of numbers.",
-    "In a search system that array does one job: it places a passage inside a space of meanings.",
-    "The flow is simple. A document becomes chunks, each chunk is embedded, and the vectors are stored."
+    "Vectors are one of the least visible parts of a memory system. A graph has nodes and relationships. A document has text a person can read. A vector, by contrast, is just an array of numbers. But in a retrieval system, that array of numbers does something important: it places a piece of text into a semantic space.",
+    "In VINC, the pipeline for producing a vector is simple.",
+    "A whole document doesn't get turned into a vector all at once. It's first split into small Chunks, which become the smallest unit of retrieval. Each Chunk is then fed into an embedding model, and the resulting vector gets stored."
    ],
-   "claim": "What matters is not the vector. It is which space the vector was placed in."
-  },
-  {
-   "label": "17.1",
-   "h": "Chunks Come First",
-   "paras": [
-    "Embedding does not happen in a vacuum. There has to be text to search first.",
-    "The whole document is not turned into one vector. It is split, and each piece becomes an independent search target.",
-    "So the size and the boundaries of a chunk affect search quality directly. Too large and different content is blended into one vector. Too small and the context is lost.",
-    "Which means the embedding model alone does not determine search quality. What was made into one chunk matters as much."
-   ]
-  },
-  {
-   "label": "17.2",
-   "h": "A Fixed Number of Dimensions",
-   "paras": [
-    "The model turns text into a fixed-width array of numbers. If its output dimension is 768, one chunk is represented by 768 reals.",
-    "At search time the question is embedded the same way, and the similarity between the question's vector and the stored vectors is computed.",
-    "So vector search is unlike string search: the strings do not have to match if the two are close in the space of meanings.",
-    "The catch is that closeness in that space is a property of the model, not of the world."
-   ]
-  },
-  {
-   "label": "17.3",
-   "h": "The Dimension Is Part of the Store",
-   "paras": [
-    "Here a real technical constraint appears. If the store expects 768-wide vectors and a new model emits a different width, changing the model does not finish the job.",
-    "The storage structure has to be compatible with the model's output space too.",
-    "Model, dimension and store are bound together as one contract. So swapping an embedding model is not a configuration change.",
-    "If the existing data lives in the previous model's space, that data has to be converted into the space the new search runs in."
+   "diagrams": [
+    "Document → Chunk → embed → vector store"
    ],
-   "claim": "Changing the store does not move old vectors into the new space by itself."
+   "claim": "What matters here isn't the vector itself so much as which space it was placed into."
   },
   {
-   "label": "17.4",
-   "h": "A Vector Is Not the Memory",
    "paras": [
-    "A successful vector search does not complete a memory.",
-    "A vector does not stand in for the source text, and it does not stand in for the concepts and relationships in the graph.",
-    "One search result can hold at least three different kinds of information: the source text, the vector, and the related graph nodes. The vector is the one that is for finding.",
-    "The text supplies evidence, the graph supplies meaning and relationships, and the vector finds semantically near candidates. Equate the vector with memory and the role of the search system is misread."
-   ]
-  },
-  {
-   "label": "17.5",
-   "h": "The Cost of Changing Models",
-   "paras": [
-    "Change the chunking and results change with the same model. Change the model and the space changes under the same chunks. Change which candidate gets selected and the final result changes again with the same vectors.",
-    "So embedding is one stage in a retrieval pipeline, not the retrieval system.",
-    "And the cost of replacing a model is not only throughput. Existing chunks have to be re-embedded, the new vectors stored, and the index rebuilt. The more data there is, the larger that cost.",
-    "This is measured with real numbers in Part 4. Here the point is only that it is a migration, not a setting."
+    "Embedding doesn't happen out of nowhere: there has to be text to embed in the first place.",
+    "Each Chunk becomes an independent retrieval target. So the size and boundaries of a Chunk directly affect retrieval quality.",
+    "A Chunk that's too large mixes unrelated content into a single vector. One that's too small loses its context. So retrieval quality isn't decided by the embedding model alone: what gets packed into a Chunk matters just as much."
    ],
-   "claim": "A vector is not the final form of memory. It is a coordinate for finding it."
+   "h": "Chunks Have to Exist First",
+   "diagrams": [
+    "Document\n ├─ Chunk 1\n ├─ Chunk 2\n ├─ Chunk 3\n └─ Chunk 4"
+   ],
+   "label": "17.1"
+  },
+  {
+   "paras": [
+    "An embedding model turns text into a fixed-dimensional array of numbers. If a model outputs 768 dimensions, a Chunk gets represented as 768 real numbers.",
+    "At search time, the query gets turned into a vector the same way, and the system computes similarity between the stored vectors and the query vector.",
+    "That's what makes vector search different from plain string matching: two pieces of text don't have to share the same wording to become candidates, as long as they sit close together in semantic space."
+   ],
+   "h": "Embedding Is a Transformation into Semantic Space",
+   "label": "17.2"
+  },
+  {
+   "paras": [
+    "A real technical problem shows up here. If a vector store expects 768-dimensional vectors and a new embedding model produces vectors of a different size, swapping the model alone doesn't finish the job. The storage structure has to be compatible with the model's output space too.",
+    "The embedding model, the vector dimension, and the vector store are bound together in a single contract. That's why changing the embedding model isn't a simple configuration change. If existing data lives in the semantic space of the old model, it has to be transformed again to fit the search space the new model defines.",
+    "Changing models can pull in the following chain:"
+   ],
+   "h": "Vector Dimension Is Part of the Storage Contract",
+   "diagrams": [
+    "Model change\n    ↓\ncheck dimension / space\n    ↓\ncheck existing vector compatibility\n    ↓\nre-embed\n    ↓\nrebuild index"
+   ],
+   "claim": "Changing the storage structure alone doesn't magically move existing vectors into the new semantic space.",
+   "label": "17.3"
+  },
+  {
+   "paras": [
+    "A successful vector search doesn't mean memory has been reconstructed. A vector doesn't stand in for the original text, and it doesn't stand in for the graph's concepts or relationships either.",
+    "A single search result can involve at least three different kinds of information: the original text, the vector, and related graph Nodes. The vector is the retrieval representation among these. The original text provides evidence, the graph provides meaning and relationships, and the vector is used to find candidates that are close in meaning.",
+    "Treating a vector as identical to memory misunderstands what a retrieval system is for."
+   ],
+   "h": "A Vector Is Not Memory Itself",
+   "label": "17.4"
+  },
+  {
+   "paras": [
+    "Change how documents get chunked, and retrieval results can shift even with the same embedding model. Change the model, and the semantic space shifts even with the same Chunks. Keep the same vectors, and the final outcome can still change depending on which candidates get chosen after retrieval.",
+    "Embedding, then, is one stage of the retrieval pipeline: not the whole retrieval system."
+   ],
+   "h": "Retrieval Quality Isn't Decided by the Model Alone",
+   "label": "17.5"
+  },
+  {
+   "paras": [
+    "Replacing an embedding model doesn't just cost processing time. Existing Chunks have to be re-embedded, new vectors have to be stored, and search indexes have to be rebuilt. This cost grows as data grows, and if the model's dimension changes too, storage compatibility becomes another thing to check.",
+    "This isn't a model-selection problem: it's a retrieval-infrastructure problem. This cost gets revisited with real numbers later, in Part 4."
+   ],
+   "h": "The Cost of Changing a Model",
+   "label": "17.6"
+  },
+  {
+   "paras": [
+    "A vector doesn't directly explain meaning. Two pieces of text having a short distance between their vectors means they're close in the embedding model's semantic space: it doesn't mean they're the same memory.",
+    "So in VINC's retrieval structure, vector search is used to generate candidates, but final identity is never left to vector similarity alone. That distinction is exactly what makes the resolution step in the next chapter necessary.",
+    "It's a coordinate for finding memory."
+   ],
+   "h": "The Boundary Between Vectors and Meaning",
+   "claim": "A vector isn't the final form memory takes.",
+   "label": "17.7"
   },
   {
    "kind": "close",
@@ -80,72 +100,6 @@
    ],
    "nextLabel": "Chapter 18. How Search Results Get Confirmed as Memory",
    "nextHref": "Ch18.dc.html"
-  }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "stage": [
-  "  // Part 1 register, with the one motion the addendum names for this",
-  "  // chapter: when the model changes, every point in the field moves at",
-  "  // once. That single motion carries the whole cost-of-re-embedding",
-  "  // argument, so it is scrubbed rather than played and it reverses.",
-  "  FIELD = 34;",
-  "  pt(i, shifted) {",
-  "    const a = i * 137.508, rad = Math.sqrt((i + 1) / this.FIELD) * 168;",
-  "    const q = pol(320, 300, rad, a);",
-  "    if (!shifted) return q;",
-  "    // the same points in a different space: a different model, so a",
-  "    // different arrangement, not a jittered version of this one",
-  "    const b = i * 97.3 + 40, r2 = Math.sqrt(((i * 7) % this.FIELD + 1) / this.FIELD) * 168;",
-  "    return pol(320, 300, r2, b);",
-  "  }",
-  "  stage(s, p) {",
-  "    const E = React.createElement, kids = [];",
-  "    // beats 0 to 1 build the field out of chunks; beat 5 moves all of it",
-  "    const grown = s >= 1 ? 1 : smooth(clamp((p - 0.15) / 0.7, 0, 1));",
-  "    const moved = s >= 5 ? (s > 5 ? 1 : smooth(clamp(p * 1.2, 0, 1))) : 0;",
-  "    const n = Math.max(1, Math.round(grown * this.FIELD));",
-  "    for (let i = 0; i < n; i++) {",
-  "      const A = this.pt(i, false), B = this.pt(i, true);",
-  "      const x = lerp(A[0], B[0], moved), y = lerp(A[1], B[1], moved);",
-  "      kids.push(E('path', { key: 'p' + i, d: blob(x, y, 5, K), fill: INK }));",
-  "    }",
-  "    // the document the field came out of, kept at the left as context",
-  "    kids.push(E('polygon', { key: 'doc',",
-  "      points: shapePoints('hex', 74, 300, 16), fill: PAPER, stroke: EDGE,",
-  "      strokeWidth: 1.25, strokeLinejoin: 'round' }));",
-  "    kids.push(E('text', { key: 'dt', x: 74, y: 336, textAnchor: 'middle', fontSize: 12.5,",
-  "      fontStyle: 'italic', fill: EDGE }, 'one document'));",
-  "    kids.push(E('text', { key: 'ft', x: 320, y: 520, textAnchor: 'middle', fontSize: 13,",
-  "      fontStyle: 'italic', fill: INK },",
-  "      moved > 0.02 ? (moved > 0.98 ? 'a different model, a different space'",
-  "                                   : 'every point moves at once')",
-  "                   : (n < this.FIELD ? n + ' of ' + this.FIELD + ' chunks embedded'",
-  "                                     : 'near points sit together')));",
-  "    if (s >= 3) {",
-  "      kids.push(E('text', { key: 'dim', x: 320, y: 548, textAnchor: 'middle', fontSize: 12.5,",
-  "        fill: META, style: { fontVariantNumeric: 'tabular-nums' } },",
-  "        moved > 0.5 ? 'the store has to accept this width too' : '768 reals per chunk'));",
-  "    }",
-  "    return E('g', { key: 'field' }, kids);",
-  "  }"
- ],
- "figures": [
-  {
-   "id": "model",
-   "glyph": "cube",
-   "p": [
-    560,
-    112
-   ],
-   "size": 40,
-   "at": 2,
-   "wash": "peri",
-   "washAt": 5,
-   "washR": 28,
-   "label": "the model",
-   "labelDy": 14
   }
  ]
 }

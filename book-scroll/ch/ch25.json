@@ -14,63 +14,119 @@
    "eyebrow": "Part 3 · Chapter 26",
    "h": "How Graph Space Gets Created",
    "paras": [
-    "A graph does not hold only nodes and edges. Who owns it, what range of data it holds, and who may reach it are part of the graph too.",
-    "VINC expresses that boundary as a space.",
-    "The point is that a space is less a complicated graph object than a boundary determined by ownership."
+    "A Graph isn't just Nodes and Edges. Who owns that Graph, what range of data it holds, and who can access it are all part of the Graph too.",
+    "VINC expresses this boundary as Space. The key idea is that Space isn't some separate, complicated graph object: it's a boundary determined by ownership scope."
    ],
-   "claim": "Space is not a screen setting. It is part of the data model and the permission model."
-  },
-  {
-   "label": "26.1",
-   "h": "Personal and Team",
-   "paras": [
-    "There can be a personal graph and a team graph.",
-    "What matters is that the two are not different folders in one store. When the owner differs, the boundary of memory differs.",
-    "And when a tool is called, which space it runs in has to be unambiguous.",
-    "The argument can be passed explicitly; omitted, it defaults to the personal graph. That default exists for convenience, which means a write meant for a team can land somewhere else if nobody says otherwise."
+   "diagrams": [
+    "Space\n   ↓\nOwner\n   ↓\nGraph Data"
    ]
   },
   {
-   "label": "26.2",
-   "h": "An Address Can Decide It Too",
    "paras": [
-    "At a team endpoint, the address itself indicates the space.",
-    "Then the URL decides which graph is being entered and the credential proves the right to enter it.",
-    "Address answers which graph. Credential answers whether this caller may go in. Keeping those two questions apart is what makes the boundary auditable.",
-    "Conflate them and a valid credential starts to look like permission for every graph it could reach.",
-    "A credential that implies permission for every graph it can reach is not a boundary."
-   ]
+    "VINC can have Personal Graphs and Team Graphs.",
+    "What matters is that these aren't just different folders in the same storage. A different Owner means a different memory boundary."
+   ],
+   "h": "Personal Graphs and Team Graphs",
+   "diagrams": [
+    "Personal\n   ↓\none owner\n\nTeam\n   ↓\nteam owner / team space"
+   ],
+   "label": "26.1"
   },
   {
-   "label": "26.3",
+   "paras": [
+    "When a tool executes, which Space it's operating in has to be clear.",
+    "VINC's tool API can take space as an argument; omit it, and the personal Graph is the default. That default exists for convenience. Using a Team Graph requires specifying the right Space explicitly."
+   ],
+   "h": "Space Becomes Part of a Call",
+   "diagrams": [
+    "Tool Call\n   ↓\nspace\n   ↓\nGraph"
+   ],
+   "label": "26.2"
+  },
+  {
+   "paras": [
+    "At the MCP boundary, a Team endpoint can identify the Space by itself. In that case, the URL address decides which Graph you're entering, and the credential proves you're allowed to enter it.",
+    "This distinction matters especially at the MCP boundary."
+   ],
+   "h": "An Address Can Determine Space Too",
+   "diagrams": [
+    "Address\n= which Graph\n\nCredential\n= is this caller allowed in"
+   ],
+   "label": "26.3"
+  },
+  {
+   "paras": [
+    "A user picking a Team in the interface can look like a plain UI action. At the system level, though, Space determines the boundary of data access."
+   ],
+   "h": "Space Is Not Just a Screen Setting",
+   "diagrams": [
+    "Space\n  ↓\nSearch Scope\n  ↓\nGraph Scope\n  ↓\nDocument Scope\n  ↓\nWrite Scope"
+   ],
+   "claim": "So Space isn't a UI selection: it's part of the data model and the permission model.",
+   "label": "26.4"
+  },
+  {
+   "paras": [
+    "Mixing Graphs across different Owners breaks the reliability of a memory system. So search and graph traversal both have to stay within the same Owner's scope.",
+    "A search under Owner A should never surface a Node from Owner B's graph. This isn't only a security concern: it's a retrieval-correctness concern too."
+   ],
    "h": "Owner Isolation",
-   "paras": [
-    "If graphs from different owners mix, the reliability of the whole memory system collapses.",
-    "So search and traversal have to run inside the same owner range. A search by one owner must not contain another owner's nodes.",
-    "That is not only a security problem. It is a search-accuracy problem: a foreign node in a result set is a wrong answer even when nothing was leaked.",
-    "Space also affects the boundary of synchronisation. Graphs of the same owner can converge across environments; graphs of different owners must never be merged into one sync range."
+   "diagrams": [
+    "Owner A\n └─ Graph A\n\nOwner B\n └─ Graph B"
    ],
-   "claim": "A result that mixes owners is wrong before it is unsafe."
+   "label": "26.5"
   },
   {
-   "label": "26.4",
-   "h": "Membership Is Not Role",
    "paras": [
-    "Being able to reach a team graph does not mean being able to do everything in it.",
-    "A team has roles: viewer, editor, admin. That role decides what may be done after entry, separately from whether entry is allowed.",
-    "So authentication, space and role must not be collapsed into one check.",
-    "Three questions: who is this, which graph, and what may they do there. Answering two of them and guessing the third is how a write ends up somewhere nobody intended."
-   ]
+    "Having access to a Team Graph doesn't mean permission to do everything inside it. A Team can carry roles like viewer, editor, admin. These decide, separately from whether you can enter the Space at all, what you're allowed to do once you're inside it.",
+    "So authentication, Space, and Role shouldn't get collapsed into one thing."
+   ],
+   "h": "Team Roles Are Separate From Space",
+   "diagrams": [
+    "Space\n  ↓\nMembership\n  ↓\nRole\n  ↓\nAllowed Operation"
+   ],
+   "label": "26.6"
   },
   {
-   "label": "26.5",
-   "h": "Knowing Which Graph You Are In",
    "paras": [
-    "As the space structure grows, a caller has to be able to find out which graph it is reaching.",
-    "The surface that answers that reports the identity, the spaces available on this connection, and the role in each.",
-    "It is not a convenience. Call a tool without knowing which spaces exist and a read or a write can land on the wrong graph.",
-    "So a space decides how far the graph counts as one memory: owner, nodes, relations, documents, search and permissions."
-   ]
+    "When a Graph exists across multiple devices or environments, Space also shapes the boundary of synchronization. The same Owner's Graph can converge across environments, but Graphs belonging to different Owners should never merge into one sync scope."
+   ],
+   "h": "Space and Sync",
+   "label": "26.7"
+  },
+  {
+   "paras": [
+    "As the Space model gets richer, a caller needs to know which Graph it's actually accessing. A surface for confirming this reports the Spaces available in the current connection, and the role held in each.",
+    "This isn't just a convenience. Call a tool without knowing what Space even exists, and you can end up reading or writing against the wrong Graph."
+   ],
+   "h": "Why a \"Who Am I\" Surface Is Needed",
+   "diagrams": [
+    "whoami\n   ↓\nIdentity\n   ↓\nAvailable Spaces\n   ↓\nRole"
+   ],
+   "label": "26.8"
+  },
+  {
+   "paras": [
+    "Requiring Space to always be stated explicitly would raise safety. But to stay compatible with existing personal connections, VINC chose to keep Personal as the default when Space is omitted.",
+    "What matters isn't the default existing: it's that the default is clearly defined as part of the system's contract."
+   ],
+   "h": "Balancing Defaults Against Explicitness",
+   "diagrams": [
+    "space omitted\n      ↓\npersonal\n\nspace specified\n      ↓\nspecified graph\n\nteam endpoint\n      ↓\nteam graph"
+   ],
+   "label": "26.9"
+  },
+  {
+   "paras": [
+    "In the end, Space decides how far a Graph should be treated as one single memory.",
+    "So a Graph's space isn't just a visible area on a screen. It's a system boundary that decides whose memory it is, what data gets searched together, and who's allowed to change it.",
+    "At this point, a Graph can no longer be described by Nodes and Edges alone. A Graph has time, it has evidence, it has shape, it has viewpoints, and it has a Space wrapping the whole thing."
+   ],
+   "h": "Graph Space Is a Memory Boundary",
+   "diagrams": [
+    "Space\n ├─ Owner\n ├─ Nodes\n ├─ Relations\n ├─ Documents\n ├─ Search\n └─ Permissions"
+   ],
+   "label": "26.10"
   },
   {
    "kind": "close",
@@ -80,99 +136,6 @@
    ],
    "nextLabel": "Chapter 27. How Causal Relationships Become Space",
    "nextHref": "Ch26.dc.html"
-  }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "conveyor": {
-  "y": 300,
-  "x0": 108,
-  "x1": 532,
-  "stations": [
-   {
-    "name": "a call",
-    "shape": "circle",
-    "count": 1,
-    "r": 13
-   },
-   {
-    "name": "identity",
-    "shape": "circle",
-    "count": 1,
-    "r": 12,
-    "note": "who is this"
-   },
-   {
-    "name": "space",
-    "shape": "ring",
-    "count": 1,
-    "r": 15,
-    "note": "which graph",
-    "glyph": "logo"
-   },
-   {
-    "name": "role",
-    "shape": "diamond",
-    "count": 1,
-    "r": 13,
-    "note": "what may they do",
-    "glyph": "agent"
-   },
-   {
-    "name": "owner range",
-    "shape": "circle",
-    "count": 3,
-    "r": 10,
-    "glyph": "astronaut"
-   },
-   {
-    "name": "one memory",
-    "shape": "circle",
-    "count": 3,
-    "r": 10,
-    "note": "search, docs, permissions"
-   }
-  ]
- },
- "figures": [
-  {
-   "id": "personal",
-   "glyph": "logo",
-   "p": [
-    190,
-    116
-   ],
-   "size": 40,
-   "at": 1,
-   "label": "personal",
-   "labelDy": 14
-  },
-  {
-   "id": "team",
-   "glyph": "logo",
-   "p": [
-    450,
-    116
-   ],
-   "size": 40,
-   "at": 1,
-   "label": "team",
-   "labelDy": 14
-  },
-  {
-   "id": "wall",
-   "glyph": "wall",
-   "p": [
-    320,
-    118
-   ],
-   "size": 56,
-   "at": 3,
-   "wash": "danger",
-   "washR": 22,
-   "label": "owner isolation",
-   "labelDy": 16
   }
  ]
 }

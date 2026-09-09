@@ -14,66 +14,50 @@
    "eyebrow": "Part 4 · Chapter 30",
    "h": "A Tool's Efficiency Is Measured in Calls",
    "paras": [
-    "The easiest thing to measure about a tool call is its latency.",
-    "But from an agent's side, how many milliseconds one call took is not the cost that matters.",
-    "How many calls it takes to solve one question is the more direct cost."
+    "The easiest thing to measure first, when evaluating an MCP tool, is call latency.",
+    "But from an Agent's perspective, what matters isn't how many milliseconds a single call takes. The more direct cost is how many calls the Agent needs to resolve one question.",
+    "Consider these two paths:",
+    "versus a tool built like this instead:",
+    "Even if every individual MCP call runs at the same speed in both systems, the total cost of solving the task differs enormously. So VINC's MCP efficiency evaluation treats calls-to-resolution as its core metric."
    ],
-   "claim": "Two systems with identical per-call speed can differ enormously in total cost."
-  },
-  {
-   "label": "30.1",
-   "h": "Two Paths to One Answer",
-   "paras": [
-    "One path: search, check the node, check the relationships, check the record, inspect again, answer.",
-    "Another path: return the needed node, its evidence and its relationships together, then answer.",
-    "So VINC's MCP efficiency evaluation treats calls-to-resolution as the core metric rather than transport time.",
-    "The addendum for this page draws it literally: seven marks, then two. No chart is needed when the number is small enough to count.",
-    "Neither path is wrong. They cost different amounts to walk, and only one of the two costs shows up in a latency chart."
+   "diagrams": [
+    "question\n→ search\n→ check node\n→ check relation\n→ check record\n→ inspect again\n→ answer",
+    "question\n→ return the needed node + evidence + relation together\n→ answer"
    ]
   },
   {
-   "label": "30.2",
-   "h": "Counting Calls Is Not Enough Either",
    "paras": [
-    "One call that found nothing is a small number and not an efficient one.",
-    "So call efficiency has to be read across several axes at once: whether the task was actually solved, how many calls it took, how many contributed nothing, how large the payload the model had to process was, whether the evidence needed for the answer was obtained, and whether the run recovered from a bad or empty result.",
-    "On that reading a fast API is not automatically a good tool.",
-    "A good tool returns accurate material in few calls and leaves the agent nothing to go back for."
+    "Counting calls alone isn't enough either. A single call that finds nothing has a low call count without being efficient.",
+    "So call efficiency has to be viewed across at least these axes together:",
+    "Task Success: did it actually solve the task. MCP Call Count: how many calls it took to resolve. Unnecessary Call Rate: how many calls contributed nothing to the result. Payload / Token Volume: how large a result the model had to process. Evidence Resolution: did the answer actually reach its supporting evidence. Recovery: did it recover from a wrong search or an empty result.",
+    "In this framing, \"a fast API\" isn't automatically a good tool. A good tool returns accurate material in few calls, and doesn't force the Agent to go exploring again afterward."
    ],
-   "claim": "Success, calls, waste, payload, evidence, recovery. One of them alone says nothing."
+   "h": "What Counts as Resolution",
+   "label": "30.1"
   },
   {
-   "label": "30.3",
-   "h": "Where the Bottleneck Actually Was",
    "paras": [
-    "In evaluation based on real interaction, single-search responsiveness and hopping from a concept to its neighbours were both practical enough.",
-    "The cost showed up in repeated sequential calls, in the round trips.",
-    "And as result payloads grew, the bottleneck moved from the transport layer toward the model's context.",
-    "So the next thing to optimise is not necessarily latency. Collapsing search, confirm, check relationships, confirm again into one meaningful retrieval has the larger effect.",
-    "Which means the surface, not the wire, is where the remaining cost lives."
-   ]
-  },
-  {
-   "label": "30.4",
-   "h": "Search and Brief Do Not Compete",
-   "paras": [
-    "Read this way, a search tool and a material-assembly tool are not two search tools competing.",
-    "Search is closer to a primitive that finds candidates. Brief takes a question, searches, resolves the target, and combines that node's context: a composite retrieval.",
-    "So what has to be evaluated is not which tool is faster.",
-    "It is how the whole call path changes for the same task, which is a different measurement and needs the same fixture discipline as Chapter 29.",
-    "A primitive and a composite are not rivals; one is built out of the other."
-   ]
-  },
-  {
-   "label": "30.5",
-   "h": "The Number Is Not the Verdict",
-   "paras": [
-    "A drop from seven calls to two is a result under the conditions it was measured in, not a property of the tool.",
-    "Change the task set and the ratio changes. That is why the tasks are fixed and recorded alongside the count.",
-    "One finding in a rerun inverted against the baseline, and that inversion is part of the record rather than an embarrassment to be smoothed out.",
-    "A measurement that only ever confirms the design is not measuring the design."
+    "Evaluation based on real MCP interaction found that a single retrieval's responsiveness, and traversal from a concept to its neighborhood, were both observed at a comfortably practical level.",
+    "Repeated sequential calls, though, exposed round-trip cost. As result payloads grew, the bottleneck shifted from the transport layer toward the model's context window.",
+    "This observation points somewhere important:",
+    "Compressing several stages of calls (search, check, check relation, check again) into one meaningful retrieval shape can have a much bigger effect."
    ],
-   "claim": "An inverted finding is a finding."
+   "h": "Where the Bottleneck Showed Up in VINC",
+   "claim": "MCP's next optimization target doesn't have to be transport latency.",
+   "label": "30.2"
+  },
+  {
+   "paras": [
+    "Given this, search and the material-assembly tool (brief) shouldn't be read as two competing search tools.",
+    "Search is closer to a primitive that finds candidates. Brief is closer to a composite retrieval: it takes a question, searches, resolves a target, and combines that Node's context.",
+    "Structurally:",
+    "So the thing worth evaluating isn't which tool is faster. It's how the entire call path needed to solve the same task changes."
+   ],
+   "h": "Search and Brief Don't Compete",
+   "diagrams": [
+    "Search\n    ↓\ncandidate retrieval\n\nBrief\n    ↓\nsearch\n    ↓\nresolution\n    ↓\nnode context\n    ↓\nanswer material"
+   ],
+   "label": "30.3"
   },
   {
    "kind": "close",
@@ -83,56 +67,6 @@
    ],
    "nextLabel": "Chapter 31. How Embedding Models Get Compared",
    "nextHref": "Ch30.dc.html"
-  }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "pair": {
-  "left": "before",
-  "right": "after",
-  "lx": 196,
-  "rx": 452,
-  "y0": 200,
-  "dy": 96,
-  "note": "same seven tasks, one surface added",
-  "noteAt": 3,
-  "rows": [
-   {
-    "label": "calls to resolution",
-    "kind": "count",
-    "a": 7,
-    "b": 2,
-    "at": 1
-   },
-   {
-    "label": "evidence obtained",
-    "kind": "count",
-    "a": 1,
-    "b": 1,
-    "at": 2
-   },
-   {
-    "label": "round trips",
-    "kind": "count",
-    "a": 6,
-    "b": 1,
-    "at": 3
-   }
-  ]
- },
- "figures": [
-  {
-   "id": "agent",
-   "glyph": "agent",
-   "p": [
-    96,
-    92
-   ],
-   "size": 40,
-   "at": 1,
-   "label": "pays in calls",
-   "labelDy": 14
   }
  ]
 }

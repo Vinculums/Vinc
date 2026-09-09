@@ -14,132 +14,62 @@
    "eyebrow": "Part 1 · Chapter 11",
    "h": "What Are Nodes and Edges",
    "paras": [
-    "Chapter 10 divided memory into six kinds of node. Here we look at what that division actually does, and why an edge between nodes is not just a line.",
-    "Putting the name Concept on a node and that node actually being treated as a concept are two different things.",
-    "If a node is a Concept, it gets referred to repeatedly, becomes a candidate in search, and can relate to other concepts."
-   ],
-   "claim": "The kind of a node is not decoration. It is a contract about how the system will handle it."
-  },
-  {
-   "label": "11.1",
-   "h": "Naming Is Not Typing",
-   "paras": [
-    "If a node is an Episode, it means an event recalled in time order, and it is not usually the thing search resolves onto.",
-    "Write Concept and treat it like an Episode, or the reverse, and search and traversal come apart from each other.",
-    "The failure is quiet. Nothing errors; the node is simply never found by the queries that should have found it, and is found by ones that should not.",
-    "So the kind is a decision about handling, made once, at the point the memory is written."
+    "Chapter 1 split memory into six Node kinds: Concept, Episode, Record, Decision, Bridge, Entity. This chapter looks at what that split actually does, and why an Edge (the relationship that joins two Nodes) is never just a line."
    ]
   },
   {
-   "label": "11.2",
-   "h": "One Sentence, Three Kinds",
    "paras": [
-    "Each kind answers a different question. A Concept answers what this means. An Episode answers when something happened. A Record answers what was observed or confirmed. A Decision answers what was chosen.",
-    "A Bridge answers where two separate areas meet. An Entity answers what this is called, for a thing that needs identifying before it has become a proper concept.",
-    "Take one sentence: we decided to adopt a new vector database. At least three kinds of information are folded into it.",
-    "The database as a concept, the choice as a decision, and the circumstances of the moment as an episode. Store them as one lump of text and the question of why that technology was chosen becomes unanswerable."
+    "Writing \"Concept\" on a Node is different from that Node actually being treated as a Concept. If a Node is a Concept, it means the Node gets referenced repeatedly, becomes a retrieval candidate, and can form relationships with other Concepts. An Episode, by contrast, means an event recalled in chronological order: not something retrieval usually tries to pin down as a final target.",
+    "So a Node's kind isn't decoration. It's closer to a contract that decides in advance how that Node will be handled inside the system. Label something a Concept and treat it like an Episode, or the reverse, and retrieval and relationship traversal start to drift apart."
    ],
-   "claim": "Separate them and the question can be answered from the part that holds the answer."
+   "h": "A Node Is a Contract, Not a Label",
+   "label": "11.1"
   },
   {
-   "label": "11.3",
-   "h": "An Edge Carries Direction and Meaning",
    "paras": [
-    "Knowing that two nodes are connected is not enough information.",
-    "If A and B are connected, is A the cause of B, is A a condition that must hold before B, or are the two merely related? Those are entirely different statements.",
-    "So an edge has a name and a direction. A prerequisite-of B is a concrete claim: A has to hold before B does. Reverse it and it says something else.",
-    "The relationships used most are deliberately few: relates-to for loose association, prerequisite-of for a precondition, derives-from, inherits-from, and about."
-   ]
-  },
-  {
-   "label": "11.4",
-   "h": "Why the Vocabulary Stays Small",
-   "paras": [
-    "The set is not kept small out of tidiness. Every additional relationship name is another thing a reader, an assistant and an agent all have to agree on the meaning of.",
-    "The cost of that agreement is paid again on every new node written and every query asked.",
-    "And not every kind can be joined by every relationship. Relates-to between two concepts is natural; between two decisions it usually is not, because decisions relate through lineage rather than through vague association.",
-    "One decision superseded another. That is the shape a decision-to-decision relationship normally has.",
-    "A vocabulary nobody can hold in mind is a vocabulary that gets used inconsistently."
-   ]
-  },
-  {
-   "label": "11.5",
-   "h": "A Graph That Says Nothing",
-   "paras": [
-    "Without those constraints a graph can look dense and say nothing.",
-    "A graph where everything relates-to everything is not different, in practice, from a graph that makes no distinctions at all.",
-    "So nodes settle what exists, and edges settle the terms on which those things meet.",
-    "Keeping the two separate is what lets a later question be precise: not everything related to this concept, but what had to come before it, and what was derived from it.",
-    "A graph that draws every possible line has drawn no distinction at all."
+    "Each kind answers a different question.",
+    "Concept: what does this mean (a persistent idea); Episode: what happened, and when (an event on a timeline); Record: what was observed or confirmed (supporting evidence); Decision: what was chosen (the outcome of a judgment); Bridge: where do separate domains meet (a connection point); Entity: what is this called (not yet a formal concept, but still needs identification).",
+    "Take a single sentence: \"we decided to adopt a new vector database.\" At least three kinds of information are tangled together in it: the concept of that database itself (Concept), the choice to adopt it (Decision), and the circumstances at the time that choice was made (Episode). Store all three as one undifferentiated blob of text, and later on, a question like \"why did we pick this technology back then\" becomes hard to answer. Split them by kind, and you can go straight to the piece the question actually needs."
    ],
-   "claim": "Everything connected to everything is the same picture as nothing connected at all."
+   "h": "Why Six Kinds",
+   "label": "11.2"
+  },
+  {
+   "paras": [
+    "Knowing that two Nodes are connected isn't enough information by itself. If A and B are connected, whether A caused B, whether A is a precondition B needs first, or whether they're just loosely related: these are entirely different claims.",
+    "That's why an Edge has both a name and a direction.",
+    "This notation doesn't just say A and B are linked. It makes a specific claim: A has to be established before B can be. Flip the direction and write the same relation from B to A, and the meaning changes completely.",
+    "VINC deliberately keeps the vocabulary of relations small: relates_to (loose association), prerequisite_of (precondition), derives_from (derivation), inherits_from (inheritance), about (what something concerns). The vocabulary stays narrow on purpose: every new relation name adds another thing everyone has to agree on again: what exactly does this relation mean."
+   ],
+   "h": "An Edge Carries Direction and Meaning Together",
+   "diagrams": [
+    "A ──prerequisite_of──> B"
+   ],
+   "label": "11.3"
+  },
+  {
+   "paras": [
+    "Not every Node kind can connect to every other kind through any relation you like. A relates_to between two Concepts feels natural. The same relates_to between two Decisions probably needs to mean something different: Decisions are usually chained by lineage (one decision superseding another), not by vague association.",
+    "Without this constraint, a graph can look dense on the surface while saying nothing underneath. A graph where everything connects to everything through relates_to is functionally no different from a graph that draws no distinctions at all."
+   ],
+   "h": "Allowed Pairings, and Pairings That Aren't",
+   "label": "11.4"
+  },
+  {
+   "paras": [
+    "To sum up: a Node decides what exists. An Edge decides in what capacity those things meet each other. Keeping the two separate is what lets you later ask much sharper questions of the graph than \"everything related to this concept\": questions like \"what had to exist before this concept\" or \"what was derived from this concept.\""
+   ],
+   "h": "Why Split Node and Edge",
+   "label": "11.5"
   },
   {
    "kind": "close",
    "label": "11.close",
    "paras": [
-    "The next chapter follows these nodes and edges back to the source document, and asks how the graph holds on to the meaning that came out of a document without replacing the document itself."
+    "The next chapter looks at how these Nodes and Edges connect back to the source document: how the graph holds onto meaning drawn from a document without ever replacing the document itself."
    ],
    "nextLabel": "Chapter 12. How Documents and the Graph Connect",
    "nextHref": "Ch12.dc.html"
   }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "hub": {
-  "cx": 320,
-  "cy": 300,
-  "r": 64,
-  "spokeR": 190,
-  "center": {
-   "glyph": "doc",
-   "size": 64,
-   "label": "one sentence"
-  },
-  "spokes": [
-   {
-    "name": "Concept",
-    "glyph": "book",
-    "at": 2,
-    "sub": "what it means"
-   },
-   {
-    "name": "prerequisite of",
-    "glyph": "arrow",
-    "at": 3,
-    "dir": "out"
-   },
-   {
-    "name": "Episode",
-    "glyph": "clock",
-    "at": 2,
-    "sub": "when it happened"
-   },
-   {
-    "name": "derives from",
-    "glyph": "arrow",
-    "at": 3,
-    "dir": "in"
-   },
-   {
-    "name": "Record",
-    "glyph": "doc",
-    "at": 2,
-    "sub": "what was observed"
-   },
-   {
-    "name": "about",
-    "glyph": "arrow",
-    "at": 3,
-    "dir": "in"
-   }
-  ],
-  "at": 0,
-  "ringAt": 1,
-  "crossAt": 5,
-  "note": "everything connected to everything",
-  "noteAt": 5
- },
- "figures": []
+ ]
 }

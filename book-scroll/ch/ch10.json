@@ -14,144 +14,68 @@
    "eyebrow": "Part 1 · Chapter 10",
    "h": "What VINC Stores",
    "paras": [
-    "To turn memory into a system, we first have to define the form memory is stored in.",
-    "VINC's physical model does not store everything in one free-form structure. It separates the roles a node can have, and expresses the relationships between nodes as a graph.",
-    "The central distinction is the kind of node: Concept, Episode, Record, Decision, Bridge, Entity."
-   ],
-   "claim": "The reason to separate kinds is that these memories are not used the same way."
+    "Turning memory into a system starts with a question most people skip: in what form is memory actually stored?",
+    "VINC does not store everything as one loose, freeform structure. Depending on what kind of memory something is, it becomes a certain kind of Node, and the relationships between Nodes are expressed as a Graph.",
+    "The core distinction is a set of Node kinds: Concept, Episode, Record, Decision, Bridge, and Entity."
+   ]
   },
   {
-   "label": "10.1",
+   "paras": [
+    "A Concept represents an idea the system can keep referring back to. An Episode represents a specific event or experience. A Record captures something observed or reported as fact. A Decision represents a choice or judgment made about something. A Bridge is a relationship unit that connects otherwise separate domains or structures. An Entity is a structure for identifying a particular object.",
+    "The idea that a team adopted a particular technology, and the fact that a particular test ran on a particular day, are both memories, but they are not the same kind of memory.",
+    "Store a Concept and an Episode in the same shape, and later retrieval and relationship interpretation lose the ability to tell them apart."
+   ],
    "h": "Six Kinds, Six Questions",
-   "paras": [
-    "A Concept represents a meaning the system can keep referring to. An Episode represents a particular event or experience. A Record represents something observed or confirmed. A Decision represents a judgment or a choice made about something.",
-    "A Bridge is the unit that connects separate areas or structures. An Entity is a structure for identifying a particular thing.",
-    "Adopting a fact about a technology and running a test on a Tuesday are both memory, and they are not the same kind of memory.",
-    "Store one Concept and one Episode in the same shape and later, in search and in relationship traversal, the two become hard to tell apart."
-   ]
+   "claim": "These kinds exist because not every memory gets used the same way.",
+   "label": "10.1"
   },
   {
-   "label": "10.2",
+   "paras": [
+    "So VINC's Node model keeps the set of kinds closed and gives each one a clearly defined role.",
+    "What varies is the actual content of a Node. Each Node can carry properties suited to its role, and connects to other Nodes through relationships."
+   ],
    "h": "Kinds Are Closed, Contents Are Not",
-   "paras": [
-    "So the node model keeps the set of kinds closed and defines each role precisely.",
-    "The contents are a different matter. Each node carries the properties its own role needs, and connects to other nodes through relationships.",
-    "That combination is what lets the structure stay stable while the meanings inside it keep growing. A new subject does not require a new kind of node.",
-    "It requires a new node of an existing kind, filed under the right topic, with the right relationships attached."
-   ]
+   "label": "10.2"
   },
   {
-   "label": "10.3",
+   "paras": [
+    "An Edge in the Graph is not just a line, either.",
+    "about can express what a piece of memory concerns. prerequisite_of expresses a precondition relationship. derives_from expresses derivation, and inherits_from expresses inheritance.",
+    "Direction matters here too.",
+    "Recording that A is a prerequisite of B is a different claim from recording that B is a prerequisite of A. So the Graph has to preserve both the kind of relationship and its direction, alongside the Nodes themselves."
+   ],
    "h": "An Edge Is Not a Line",
-   "paras": [
-    "The edges of the graph are not simply connection information either.",
-    "About says what a piece of memory is a memory of. Prerequisite-of expresses a precondition. Derives-from expresses a derivation. Inherits-from expresses a succession.",
-    "Direction matters as much as the name. Recording that A is a prerequisite of B and recording that B is a prerequisite of A are different claims about the world.",
-    "So the graph has to preserve the kind and the direction of a relationship alongside the nodes themselves."
-   ],
-   "claim": "A relationship carries a claim, and a claim can be right or wrong."
+   "label": "10.3"
   },
   {
-   "label": "10.4",
+   "paras": [
+    "Time is part of this structure as well.",
+    "When an event actually happened and when that memory entered the system are two different questions. This book calls the first world time (content_time) and the second graph time (created). That distinction gets its own full treatment later.",
+    "Which space a Graph belongs to matters just as much. A personal space and a team space define different boundaries for what memory is reachable."
+   ],
    "h": "Two Clocks and One Space",
-   "paras": [
-    "Time is part of the structure. When the event a memory describes actually happened and when that memory entered the system are different questions.",
-    "This book calls the first world time and the second graph time. The distinction is taken up properly later, and it matters here because a single timestamp cannot hold both.",
-    "Which space a graph belongs to matters as well. A personal space and a team space determine the reach of a memory: what is searched with it, and who may change it."
-   ]
+   "label": "10.4"
   },
   {
-   "label": "10.5",
-   "h": "The Source Text Is Kept Beside It",
    "paras": [
-    "One memory is therefore not made of one value. A node defines what a thing is, an edge defines a relationship, time defines the context, and space defines the reach.",
-    "And the source text is preserved separately from all of that.",
-    "When a document is structured, the original wording is not thrown away. The graph is not a copy that replaces the document; it is the structure of meanings and relationships that can be used again from it.",
-    "None of this exists to make storage complicated. It exists so the system can be precise about what kind of memory it is holding."
+    "In the end, a single memory is never made of a single value.",
+    "The Node defines what it is. The Edge defines how it relates. Time defines the context it sits in. Space defines the boundary it belongs to.",
+    "And the original text is preserved separately from all of this.",
+    "When a document gets structured, its original wording should not be discarded in the process. The graph is not a replacement copy of the document: it is a structure that captures the meaning and relationships a document can be used for again.",
+    "None of this separation exists to make storage more complicated. It exists so the system can hold a clear, explicit understanding of what kind of memory something is and what role it plays."
    ],
-   "claim": "The graph does not replace the document. It makes the document usable more than once."
+   "h": "The Source Text Is Kept Beside It",
+   "label": "10.5"
   },
   {
    "kind": "close",
    "label": "10.close",
    "paras": [
-    "Once the physical model is settled, the next problem is how that model and the source text connect to each other.",
-    "VINC does not merge documents and the graph into one thing. It keeps each in its own role and lets you follow one to the other."
+    "Once the physical model is settled, the next question is how this model connects back to the original text.",
+    "VINC does not merge documents and graphs into one thing. It keeps their roles distinct, while making sure each can be followed back to the other."
    ],
    "nextLabel": "Chapter 11. What Are Nodes and Edges",
    "nextHref": "Ch11.dc.html"
-  }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "hub": {
-  "cx": 320,
-  "cy": 300,
-  "r": 70,
-  "spokeR": 196,
-  "center": {
-   "glyph": "logo",
-   "size": 76,
-   "label": "one memory",
-   "wash": "peri",
-   "washAt": 5
-  },
-  "spokes": [
-   {
-    "name": "Concept",
-    "glyph": "book",
-    "at": 1,
-    "sub": "what this means"
-   },
-   {
-    "name": "Episode",
-    "glyph": "clock",
-    "at": 1,
-    "sub": "when it happened"
-   },
-   {
-    "name": "Record",
-    "glyph": "doc",
-    "at": 1,
-    "sub": "what was observed"
-   },
-   {
-    "name": "Decision",
-    "glyph": "gate",
-    "at": 1,
-    "sub": "what was chosen"
-   },
-   {
-    "name": "Bridge",
-    "glyph": "arrow",
-    "at": 1,
-    "sub": "what joins areas"
-   },
-   {
-    "name": "Entity",
-    "glyph": "tablet",
-    "at": 1,
-    "sub": "which thing"
-   }
-  ],
-  "at": 0,
-  "ringAt": 0,
-  "note": "an edge carries a kind and a direction",
-  "noteAt": 3
- },
- "figures": [
-  {
-   "id": "src",
-   "glyph": "doc",
-   "p": [
-    562,
-    548
-   ],
-   "size": 40,
-   "at": 5,
-   "label": "kept beside it",
-   "labelDy": 16
   }
  ]
 }

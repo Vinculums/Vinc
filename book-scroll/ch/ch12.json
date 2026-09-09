@@ -14,157 +14,63 @@
    "eyebrow": "Part 1 · Chapter 12",
    "h": "How Documents and the Graph Connect",
    "paras": [
-    "Structuring memory into nodes and edges does not make the original document unnecessary.",
-    "If anything, the stronger the graph gets, the more the question matters: where did this node's claim come from?",
-    "Suppose the sentence we are adopting a new vector database appears in three different documents."
-   ],
-   "claim": "Three appearances do not have to mean three memories."
-  },
-  {
-   "label": "12.1",
-   "h": "Same Sentence, Different Memory",
-   "paras": [
-    "The three documents may be mentioning the same project and the same decision from three points in time.",
-    "But merging two decisions from different projects because their wording is similar erases the difference between the choices those projects actually made.",
-    "So the test for whether this is the same memory is not surface similarity of the text.",
-    "The test lives on the graph side. The document is where wording and context are preserved; the graph is where identifiers settle whether two expressions point at the same thing."
+    "Structuring memory into Nodes and Edges doesn't make the original document unnecessary. If anything, the sturdier the graph gets, the more the question \"where did this Node's claim actually come from\" matters."
    ]
   },
   {
-   "label": "12.2",
+   "paras": [
+    "Say the sentence \"we're adopting a new vector database\" shows up in three different documents. That doesn't mean three separate memories need to exist. All three documents might be describing the same project, the same decision, from three different points in time. On the other hand, merging decisions from different projects into one just because the wording is similar erases the actual difference between what each project chose.",
+    "So the test for \"is this the same memory\" isn't surface similarity between sentences. That test belongs to the graph. The document is where wording and context are preserved. The graph is where an identifier confirms whether those different wordings actually point to the same thing."
+   ],
+   "h": "The Same Sentence Isn't Always the Same Memory",
+   "label": "12.1"
+  },
+  {
+   "paras": [
+    "Storing a document doesn't turn the whole thing into a single Node. Instead, the document is split into smaller pieces: Chunks. A Chunk isn't a new unit of meaning. It's a processing unit, made for search and retrieval.",
+    "One condition matters here: splitting into pieces has to leave the original fully recoverable. Stitch the Chunks back together and you should get exactly the original text. If a sentence gets cut or reordered somewhere in storage, there's no way later to check what a piece of evidence actually said."
+   ],
    "h": "Document and Chunk Are Different Layers",
-   "paras": [
-    "When a document is stored, the whole text does not become one node. It is split into smaller pieces.",
-    "That piece is not a new unit of meaning. It is a unit of processing, for searching and for fetching back.",
-    "One condition matters here: the split has to be reversible. Joining the pieces back together has to give the original exactly.",
-    "If a sentence gets cut or the order shifts during storage, there is no longer any way to confirm what the evidence actually said, and the store has quietly stopped being evidence."
+   "diagrams": [
+    "Document\n ├─ Chunk 1\n ├─ Chunk 2\n └─ Chunk 3"
    ],
-   "claim": "A quietly truncated document is indistinguishable from a short one."
+   "label": "12.2"
   },
   {
-   "label": "12.3",
-   "h": "Finding Meaning, Not Erasing Text",
    "paras": [
-    "After the document is stored, the concepts worth reusing are found inside it.",
-    "If the document turns out to be about a particular vector database, that database becomes a concept, or connects to one that already exists. The connection is called MENTIONS.",
-    "The source text does not disappear in the process. A concept is not a summary that stands in for the document; it is closer to a handle that points at a meaning the document can supply again.",
-    "So opening one concept should let you walk back to the documents that support it."
-   ]
-  },
-  {
-   "label": "12.4",
-   "h": "Reuse Matters More Than Creation",
-   "paras": [
-    "If every concept discovered in every incoming document becomes a new node, the number of nodes pointing at one concept keeps growing.",
-    "The graph gets bigger and less useful. When information about one concept is scattered across ten nodes, there is no way to know which one to read to see the whole picture.",
-    "So processing a new document always starts with a question: is this concept already in the graph? If it is, connect the document to the existing node rather than making another.",
-    "That judgment does not follow automatically from how similar the wording is, because similar wording can point at different projects and different moments."
+    "Once a document is stored, the system looks inside it for concepts worth reusing. If it finds that a document is talking about a particular vector database, it can create a Concept for that database, or connect it to one that already exists. This connection is called MENTIONS.",
+    "The original text doesn't disappear here. A Concept isn't a summary that replaces the document: it's closer to a handle pointing at meaning the document can be used for again. Open up a Concept, and you should be able to trace it back to the documents that support it."
    ],
-   "claim": "Search before write, or the same thing exists twice."
+   "h": "Discovering Meaning Is Not the Same as Erasing the Original",
+   "diagrams": [
+    "Document ──MENTIONS──> Concept"
+   ],
+   "label": "12.3"
   },
   {
-   "label": "12.5",
-   "h": "Splitting the Responsibility",
    "paras": [
-    "The reason to divide the work between document and graph is simple.",
-    "When a document changes, the document is corrected. When a meaning in the graph changes, nodes and relationships are corrected.",
-    "Bundle the two together and every document edit forces a pass over every concept derived from it, or every concept refinement reaches back into the source text.",
-    "Kept apart, each can move on its own. The source stays exactly preserved, and the graph above it can keep being reorganised and reconnected."
-   ]
+    "If every new document automatically spawns a new Node for whatever it mentions, Nodes pointing at the same concept keep multiplying. The graph grows, but it becomes less useful, not more. Scatter information about one concept across ten different Nodes, and there's no way to know which one to look at for the full picture.",
+    "So processing a new document always starts with a question: does this concept already exist in the graph? If it does, don't make a new Node: connect this document to the existing one. Only make a new Node when it doesn't. This judgment isn't something wording similarity can decide on its own. Two expressions that look alike might actually refer to different decisions from different projects made at different times. How that judgment actually gets settled is covered in more depth in the later chapter \"How Memory Gets Found.\""
+   ],
+   "h": "Finding an Existing Concept Matters More Than Making a New One",
+   "label": "12.4"
+  },
+  {
+   "paras": [
+    "The reason for splitting responsibility between document and graph is simple. When a document changes, the document itself gets corrected. When the graph's meaning changes, the Nodes and relationships get corrected. Bundle the two together, and every edit to a document forces you to revisit every concept derived from it: or, the other way around, every refinement to a concept ends up touching the original text.",
+    "Keep them apart, and each can move independently. The original text stays accurately preserved on its own terms, while the graph keeps getting reorganized and reconnected on top of it. If the document is the original copy of a memory, the graph is the collection of handles built to pull pieces of it back out, again and again."
+   ],
+   "h": "What Splitting the Responsibility Buys You",
+   "label": "12.5"
   },
   {
    "kind": "close",
    "label": "12.close",
    "paras": [
-    "The next chapter asks how far to go in making these handles, and why the concept system is managed separately from the graph's own structure."
+    "The next chapter looks at how far these handles (concepts like Concept) should go, and why the system this vocabulary lives in is kept separate from the graph's structure itself."
    ],
    "nextLabel": "Chapter 13. How the Concept System Is Managed",
    "nextHref": "Ch13.dc.html"
-  }
- ],
- "conveyor": {
-  "y": 300,
-  "x0": 110,
-  "x1": 530,
-  "stations": [
-   {
-    "name": "document",
-    "shape": "hex",
-    "count": 1,
-    "r": 17,
-    "note": "wording and context",
-    "glyph": "doc",
-    "payload": "doc"
-   },
-   {
-    "name": "chunks",
-    "shape": "hex",
-    "count": 4,
-    "r": 9,
-    "note": "a processing unit, reversible",
-    "glyph": "stack"
-   },
-   {
-    "name": "candidates",
-    "shape": "circle",
-    "count": 4,
-    "r": 9,
-    "glyph": "stack"
-   },
-   {
-    "name": "search first",
-    "shape": "circle",
-    "count": 2,
-    "r": 11,
-    "note": "does this already exist"
-   },
-   {
-    "name": "MENTIONS",
-    "shape": "circle",
-    "count": 2,
-    "r": 11,
-    "glyph": "arrow"
-   },
-   {
-    "name": "back to source",
-    "shape": "hex",
-    "count": 1,
-    "r": 17,
-    "note": "the handle points home",
-    "glyph": "doc"
-   }
-  ]
- },
- "marks": [],
- "lines": [],
- "anchors": [],
- "figures": [
-  {
-   "id": "three",
-   "glyph": "stack",
-   "p": [
-    104,
-    118
-   ],
-   "size": 42,
-   "at": 1,
-   "label": "three appearances",
-   "labelDy": 14
-  },
-  {
-   "id": "one",
-   "glyph": "logo",
-   "p": [
-    536,
-    116
-   ],
-   "size": 42,
-   "at": 3,
-   "wash": "peri",
-   "washAt": 3,
-   "washR": 30,
-   "label": "one memory",
-   "labelDy": 14
   }
  ]
 }

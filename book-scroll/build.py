@@ -12,11 +12,12 @@ import json, os, re, sys, glob
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out")
 
-# Prose volume band, per the owner's instruction that chapters were too thin.
-# Measured against the reference artboards: their middle beats ran 35-60 words,
-# which is what read as too little.
-MIN_WORDS, MAX_WORDS = 80, 150
-MIN_PARAS = 3
+# Prose volume: a floor and a ceiling, not a target. The 80-150 band of v1 was
+# reached by padding (motion directives and restated sentences written into the
+# prose; graph doc vinc.plan.book-content-review-2026-09-10 section 3). Beats now
+# come from the graph documents one section each, so a thin beat is a thin section.
+MIN_WORDS, MAX_WORDS = 30, 160
+MIN_PARAS = 1
 
 FONT = "Pretendard, ui-sans-serif, system-ui, sans-serif"
 INK, PAPER, META, LINK = "#17171A", "#F2F2F0", "#82838D", "#4A4F8C"

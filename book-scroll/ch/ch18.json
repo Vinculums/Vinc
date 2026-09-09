@@ -14,65 +14,91 @@
    "eyebrow": "Part 2 · Chapter 18",
    "h": "How Search Results Get Confirmed as Memory",
    "paras": [
-    "Search is the entrance to a memory system. But a search result does not become memory by arriving.",
-    "One question can produce several candidates.",
-    "The problem is not finding many. It is deciding which one should actually be interpreted."
+    "Search is the entrance to a memory system. But a search result isn't memory by itself.",
+    "A single question can surface several candidates.",
+    "The problem isn't finding a lot of candidates. It's deciding which one should actually be interpreted."
    ],
-   "claim": "Search asks what could be related. Resolution asks which of them this points at."
-  },
-  {
-   "label": "18.1",
-   "h": "Candidates Arrive From Several Paths",
-   "paras": [
-    "Search candidates are not produced by one database.",
-    "A text result can be a candidate. A vector result can be a candidate. A node in the graph can be found directly. A record or a decision can be connected to the question as well.",
-    "What matters is that these candidates are different shapes. A text result holds a document fragment, a graph search holds a concept, a record is a separate object again.",
-    "Pooling them means putting different shapes under one standard before anything is chosen."
+   "diagrams": [
+    "Question\n   ↓\nSearch\n   ↓\nCandidate A\nCandidate B\nCandidate C"
    ]
   },
   {
-   "label": "18.2",
-   "h": "Candidate and Resolved Are Different States",
    "paras": [
-    "Chapter 16 already showed that this system does not choose in the face of ambiguity. The question here is how that principle is actually kept.",
-    "If two candidates look equally plausible, having a rule that picks one of them is not what justifies the pick.",
-    "The absence of grounds for choosing is itself a result. Given that one wrongly chosen node drags every later traversal in the wrong direction, not choosing is a normal response for the system.",
-    "Read resolution as a similarity threshold and this structure is lost."
+    "Search candidates don't all come from one database.",
+    "A text search result can be a candidate. A vector search result can be a candidate. A graph Node can be found directly. Other stored objects like Records or Decisions can connect to a question too.",
+    "What matters is that these candidates aren't all the same shape. A search result can be a document Chunk. A graph result can be a Concept. A Record is a distinct kind of recorded object."
    ],
-   "claim": "Not choosing is a normal answer, not a failed one."
+   "h": "Candidates Arrive Through Different Paths",
+   "label": "18.1"
   },
   {
-   "label": "18.3",
-   "h": "Then the Material Comes Out",
    "paras": [
-    "Search is the stage that produces candidates. Resolution is the stage that confirms whether a candidate can be identified at all.",
-    "With that split, search can look broadly while resolution behaves conservatively.",
-    "Once one node is resolved, the material around it can be assembled: related concepts, related records, related decisions, and the document excerpts behind them.",
-    "The search result is not a list of text. It is the starting point for the next traversal.",
-    "Broad search and conservative resolution are not in tension; they are the same design."
-   ]
-  },
-  {
-   "label": "18.4",
-   "h": "A Record Is Not a Concept",
-   "paras": [
-    "A concept is a unit of meaning the system works with. A record is an object preserving a particular fact or measurement.",
-    "Finding a concept does not mean the related records can be treated as the same thing. And a record being found does not make it the concept either.",
-    "After resolution these different objects have to be read together, with the difference between them intact.",
-    "An episode is different again: it records what happened in time order, so it is material for recalling when something occurred rather than a target for resolution."
-   ]
-  },
-  {
-   "label": "18.5",
-   "h": "Search Failure Is a State",
-   "paras": [
-    "There are cases with no result, with too few candidates, or with candidates that cannot be told apart.",
-    "In those cases the system does not manufacture a memory.",
-    "No candidates means no resolution. Ambiguous candidates means no resolution. This is not a failed search; it is an important system state.",
-    "One of the most dangerous outcomes in a memory system is resolving onto something with no grounds and having every later step treat it as fact.",
-    "An empty result that says it is empty is more useful than a full one that guessed."
+    "Chapter 7 already showed that this system doesn't pick when things are ambiguous. The question here is how that principle actually gets enforced.",
+    "If two candidates look equally plausible, the point isn't that some rule has to justify picking one of them: the absence of any basis for picking is itself a valid outcome. Picking the wrong Node drags everything explored afterward in the wrong direction, which is exactly why not picking counts as a normal response from the system, not a failure.",
+    "Understanding resolution as a simple similarity threshold misses this structure. Search is the stage that produces candidates. Resolution is the stage that checks whether one of them can actually be identified.",
+    "This split lets a search system stay broad while retrieval, and stay conservative at the resolution step."
    ],
-   "claim": "The structure needs the ability to find and the ability not to choose."
+   "h": "Candidate and Resolution Are Different States",
+   "diagrams": [
+    "Search\n  ↓\nCandidates\n  ↓\nResolution\n  ↓\nOne Node",
+    "Search = what could be relevant?\nResolution = which of these is it pointing at?"
+   ],
+   "label": "18.2"
+  },
+  {
+   "paras": [
+    "Once one Node is resolved, the system can start assembling material around it.",
+    "The graph matters here. If a search result lands on a particular Concept, the Records and relationships connected to that Concept can be explored. Chunks from related documents can also serve as evidence.",
+    "A search result stops being just a list of text and becomes the starting point for further navigation."
+   ],
+   "h": "Material Gets Pulled From the Resolved Node",
+   "diagrams": [
+    "resolved Node\n      ↓\nrelated Concepts\nrelated Records\nrelated Decisions\n      ↓\ndocuments / excerpts\n      ↓\nanswer material"
+   ],
+   "label": "18.3"
+  },
+  {
+   "paras": [
+    "A Concept is a unit of meaning the system works with. A Record is an object that preserves a specific fact or observation.",
+    "A search result landing on a Concept doesn't mean its attached records should automatically be treated as identical to it. Nor does a Record being found make it the same as the concept it describes. After resolution, these different objects still have to be read as connected but distinct."
+   ],
+   "h": "A Record Is a Different Kind of Object Than a Concept",
+   "diagrams": [
+    "Concept\n   │\n   └── ATTACHES_TO\n          │\n        Record"
+   ],
+   "label": "18.4"
+  },
+  {
+   "paras": [
+    "An Episode records something that happened, in chronological order. So an Episode isn't a resolution target in the same way a Concept or Record is. An Episode is material for recalling what happened, and when, along a timeline.",
+    "Search decides what to look for. Episodes add the temporal context around it."
+   ],
+   "h": "Episodes Play a Different Role",
+   "diagrams": [
+    "Question\n   ↓\nrelevant Node\n   ↓\nrelated Episode\n   ↓\ntemporal context"
+   ],
+   "label": "18.5"
+  },
+  {
+   "paras": [
+    "The same concept can be expressed in different languages. A Korean question can point at a Concept or Record written in English. Plain string matching isn't enough here.",
+    "Embedding helps close this gap in semantic space across languages. But final resolution shouldn't rely on vector similarity alone. So language differences get handled by broadening candidates at the search stage, and confirming identity through structure at the resolution stage."
+   ],
+   "h": "Language Differences Are Also a Post-Search Problem",
+   "label": "18.6"
+  },
+  {
+   "paras": [
+    "Sometimes there's no result. Sometimes there aren't enough candidates. Sometimes the candidates can't be told apart.",
+    "In these cases, the system doesn't force a memory into existence.",
+    "This isn't a failed search: it's an important system state. One of the most dangerous outcomes in a memory system is resolving a target with no basis for it, and letting every downstream step treat that target as fact."
+   ],
+   "h": "Search Failure Is Also a Valid State",
+   "diagrams": [
+    "no candidate → no resolution\nambiguous candidates → no resolution"
+   ],
+   "claim": "So VINC's retrieval structure needs both the ability to find, and the ability not to choose.",
+   "label": "18.7"
   },
   {
    "kind": "close",
@@ -83,61 +109,5 @@
    "nextLabel": "Chapter 19. How Memory Becomes Material",
    "nextHref": "Ch19.dc.html"
   }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "hub": {
-  "cx": 320,
-  "cy": 300,
-  "r": 60,
-  "spokeR": 190,
-  "center": {
-   "glyph": "check",
-   "size": 58,
-   "label": "resolved",
-   "wash": "ok",
-   "washAt": 2
-  },
-  "spokes": [
-   {
-    "name": "full text",
-    "glyph": "doc",
-    "at": 1,
-    "dir": "in"
-   },
-   {
-    "name": "vector",
-    "glyph": "cube",
-    "at": 1,
-    "dir": "in"
-   },
-   {
-    "name": "graph",
-    "glyph": "logo",
-    "at": 1,
-    "dir": "in"
-   },
-   {
-    "name": "material",
-    "glyph": "stack",
-    "at": 3
-   },
-   {
-    "name": "record",
-    "glyph": "doc",
-    "at": 4,
-    "sub": "not a concept"
-   },
-   {
-    "name": "no choice",
-    "glyph": "question",
-    "at": 5,
-    "sub": "a normal answer"
-   }
-  ],
-  "at": 0,
-  "ringAt": 1
- },
- "figures": []
+ ]
 }

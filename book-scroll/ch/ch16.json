@@ -14,63 +14,46 @@
    "eyebrow": "Part 2 · Chapter 16",
    "h": "How Memory Gets Found",
    "paras": [
-    "Memory being stored somewhere is not enough to make it usable for the task in front of you.",
-    "When a question comes in, the system first has to find relevant memory.",
-    "But a search result, by itself, is not an answer."
-   ],
-   "claim": "Search narrows down where memory might be. Something else has to decide what it is."
-  },
-  {
-   "label": "16.1",
-   "h": "Search Is Not One Method",
-   "paras": [
-    "Full-text search is strong at finding an exact word or expression, confirming that a specific phrase actually appears somewhere.",
-    "Vector search is strong at finding candidates close in meaning even when the wording differs. A question phrased differently from the source can still pull in the documents and nodes sitting in the same semantic neighbourhood.",
-    "The two do not compete. Full-text finds matching wording; vector finds semantic proximity.",
-    "But results from either are still only candidates, and treating a candidate as a result is where a search system starts lying to the caller."
+    "Memory being stored somewhere isn't enough to make it usable for the task in front of you.",
+    "When a question comes in, the system first has to find relevant memory. But a search result, by itself, is not an answer."
    ]
   },
   {
-   "label": "16.2",
+   "paras": [
+    "Full-text search is strong at finding an exact word or expression: confirming that a specific phrase actually appears somewhere in a document.",
+    "Vector search is strong at finding candidates that are close in meaning even when the wording is different. Even if the question is phrased differently from the source, it can pull in documents or Nodes sitting in the same semantic neighborhood.",
+    "The two don't compete. Full-text finds matching wording; vector finds semantic proximity.",
+    "But results from either are still just candidates. If several Concepts with similar titles show up in a result set, picking whichever one scored highest isn't automatically safe: different memories can share similar wording."
+   ],
+   "h": "Search Isn't One Method",
+   "label": "16.1"
+  },
+  {
+   "paras": [
+    "In VINC's actual retrieval structure, candidates can arrive through more than one path: found directly in a search result, or surfaced through a Node or Record search.",
+    "These candidates get pooled under a common standard, and then the system has to identify the actual Graph Node.",
+    "The core principle here: when it's ambiguous, don't choose. If two candidates are equally good fits and there's no basis for preferring one, holding off is safer than the system arbitrarily picking one.",
+    "This isn't a search-quality problem: it's a memory-identity problem. Pick the wrong Node once, and everything the system explores from there proceeds on the wrong memory as its foundation.",
+    "Conversely, once a Node is clearly resolved, it becomes an entry point for exploring memory. From the resolved Node, you can follow connected Records, Episodes, Decisions, Concepts, and expand into the related structure. If needed, you can go all the way back to the original text of a connected document.",
+    "So the retrieval flow runs longer than plain search.",
+    "Resolution, in this structure, isn't the step that turns a search result into an answer. It's the step that identifies, among several candidates, which memory the current question is actually pointing at.",
+    "A search system finding a sentence with a high similarity score doesn't mean that sentence is the answer to the current question."
+   ],
    "h": "From Candidate to Target",
-   "paras": [
-    "If several concepts with similar titles show up in a result set, picking whichever scored highest is not automatically safe. Different memories can share similar wording.",
-    "Candidates can arrive through more than one path: found directly in a text result, or surfaced through a node or record search.",
-    "They get pooled under a common standard, and then the system has to identify the actual graph node.",
-    "The core principle here is that when it is ambiguous, the system does not choose."
+   "diagrams": [
+    "Question\n→ Search\n→ Candidates\n→ Candidate integration\n→ Resolution\n→ One Node\n→ Related Nodes / documents\n→ Evidence"
    ],
-   "claim": "When two candidates fit equally and nothing separates them, holding off is the answer."
+   "claim": "Search narrows down where memory might be; resolution decides what it is.",
+   "label": "16.2"
   },
   {
-   "label": "16.3",
-   "h": "A Memory-Identity Problem",
    "paras": [
-    "This is not a search-quality problem. It is a memory-identity problem.",
-    "Pick the wrong node once and everything the system explores from there proceeds on the wrong memory as its foundation, and every later step looks perfectly well-formed.",
-    "Conversely, once a node is clearly resolved it becomes an entry point. From it you can follow connected records, episodes, decisions and concepts, and expand into the surrounding structure.",
-    "If you need to, you can go all the way back to the original text of a connected document."
-   ]
-  },
-  {
-   "label": "16.4",
-   "h": "The Flow Runs Longer Than Search",
-   "paras": [
-    "So retrieval is longer than a query. A question produces candidates, the candidates are integrated, one node is resolved, and only then do related nodes, documents and evidence come into view.",
-    "Resolution is not the step that turns a search result into an answer.",
-    "It is the step that identifies, among several candidates, which memory the current question is actually pointing at.",
-    "A high similarity score on a sentence does not make that sentence the answer to the question that was asked."
-   ]
-  },
-  {
-   "label": "16.5",
-   "h": "Language Is Not Identity",
-   "paras": [
-    "The same concept can be expressed in more than one language, and a question in one language can point at a node written in another.",
-    "Because a Korean question and an English document can be connected semantically, vector search helps surface candidates across that gap.",
-    "But two languages differing is never enough by itself to confirm the two are the same memory. Final identification still needs the node's structure and its relationships.",
-    "So language difference widens the candidate set at the search step, and is settled at the resolution step."
+    "Because a Korean question and an English document can be connected semantically, vector search can help surface candidates across that language gap. But the fact that two languages differ is never enough by itself to confirm they're the same memory: final identification still needs the Node's structure and relationships.",
+    "So the goal of search isn't to generate an answer on the spot. Search narrows the space that needs interpreting; resolution identifies the target of memory within that space. And once memory is identified, the system can follow its relationships and documents to assemble the material the current task actually needs."
    ],
-   "claim": "At this point search stops being a database function and becomes the entrance to a memory system."
+   "h": "Different Languages Can Still Be the Same Memory",
+   "claim": "At this point search stops being a plain database function and becomes the entrance to a memory system.",
+   "label": "16.3"
   },
   {
    "kind": "close",
@@ -81,61 +64,5 @@
    "nextLabel": "Chapter 17. How Meaning Becomes Space",
    "nextHref": "Ch17.dc.html"
   }
- ],
- "marks": [],
- "lines": [],
- "anchors": [],
- "hub": {
-  "cx": 320,
-  "cy": 300,
-  "r": 62,
-  "spokeR": 190,
-  "center": {
-   "glyph": "lens",
-   "size": 60,
-   "label": "the question"
-  },
-  "spokes": [
-   {
-    "name": "full text",
-    "glyph": "doc",
-    "at": 1,
-    "sub": "matching wording"
-   },
-   {
-    "name": "vector",
-    "glyph": "cube",
-    "at": 1,
-    "sub": "semantic proximity"
-   },
-   {
-    "name": "graph walk",
-    "glyph": "logo",
-    "at": 1,
-    "sub": "one hop at a time"
-   },
-   {
-    "name": "candidates",
-    "glyph": "stack",
-    "at": 2
-   },
-   {
-    "name": "held",
-    "glyph": "question",
-    "at": 2,
-    "sub": "two fit equally",
-    "wash": "warn"
-   },
-   {
-    "name": "entry point",
-    "glyph": "door",
-    "at": 5
-   }
-  ],
-  "at": 0,
-  "ringAt": 1,
-  "note": "search narrows; something else decides",
-  "noteAt": 4
- },
- "figures": []
+ ]
 }
