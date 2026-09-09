@@ -77,6 +77,19 @@ def load_gold(paths: list[str]) -> list[dict]:
     return rows
 
 
+#: 답 불가에는 **두 종류**가 있고 섞으면 한 수가 두 고장을 뜻한다.
+#:
+#: ``no-topic`` 은 그래프가 그 주제를 아예 안 담은 경우다(사무실 임대료). ``attribute-absent``
+#: 는 주제 노드가 **있는데** 물은 속성이 없는 경우다("이 문장을 누가 썼나" — 그 개념은
+#: 제목 토큰이 완전히 맞아 1위로 오지만 저자는 저작된 적이 없다). 뒤엣것이 훨씬 어렵고,
+#: 검색 문헌이 relevance ≠ answerability 라 부르는 자리다.
+#:
+#: 이 갈래가 없을 때 이 정답셋의 답 불가는 6문항이었고 **그중 셋이 어휘 겹침 0.00** 이라
+#: 후보 자체가 안 생겼다 — 거저 통과하는 문항으로 정직성을 재고 있었다.
+#: 근거: [[record:the-unanswerable-gold-was-too-easy-to-measure-honesty-2026-09-10]]
+UNANSWERABLE_KINDS = frozenset({"no-topic", "attribute-absent"})
+
+
 def check_gold(rows: list[dict]) -> list[str]:
     """정답셋 자체를 먼저 검사한다. **낡은 평가셋은 측정하지 않는 측정이다** —
     `eval_tooluse.py` 가 같은 이유로 존재한다."""
@@ -89,6 +102,10 @@ def check_gold(rows: list[dict]) -> list[str]:
                 bad.append(f"{i}: answerable 인데 gold_node_id 가 없다")
         elif r.get("gold_node_id"):
             bad.append(f"{i}: answerable=false 인데 gold_node_id 가 있다 — 둘 중 하나가 틀렸다")
+        if not r.get("answerable", True) and r.get("unanswerable_kind") not in UNANSWERABLE_KINDS:
+            # 종류가 없으면 두 고장이 한 수에 섞인다(:data:`UNANSWERABLE_KINDS` 주석).
+            bad.append(f"{i}: answerable=false 인데 unanswerable_kind 가 "
+                       f"{r.get('unanswerable_kind')!r} 다 — {sorted(UNANSWERABLE_KINDS)} 중 하나여야 한다")
         if r.get("language_axis") not in (None, "en", "ko", "ko2en", "en2ko"):
             bad.append(f"{i}: language_axis 가 낯설다: {r.get('language_axis')}")
     return bad
@@ -178,6 +195,7 @@ def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
     out = {
         "query": row.get("query"), "axis": row.get("language_axis") or "?",
         "gold_kind": row.get("gold_kind") or "?", "answerable": answerable,
+        "unanswerable_kind": row.get("unanswerable_kind") or "",
         "status": status, "node": node, "rank": rank, "union_rank": urank,
         "title_reuse": row.get("_title_reuse", 0.0),
         "resolved_via": res.get("resolved_via") or "",
@@ -217,6 +235,12 @@ def summarize(rows: list[dict]) -> dict:
         "gold_in_union_rate": mean([1.0 if r["union_rank"] else 0.0 for r in ans]),
         "wrong_node_rate": mean([r["wrong_node"] for r in ans]),
         "false_resolved_rate": mean([r["false_resolved"] for r in una]),
+        # 종류별로 갈라 낸다 — 합친 수는 두 고장의 가중평균이라 어느 쪽이 움직였는지 못 본다.
+        "false_resolved_by_kind": {
+            k: {"n": len([r for r in una if r["unanswerable_kind"] == k]),
+                "rate": mean([r["false_resolved"] for r in una
+                              if r["unanswerable_kind"] == k])}
+            for k in sorted(UNANSWERABLE_KINDS)},
         "choose_rate": mean([r["chose"] for r in rows]),
         "unreadable_rate": mean([1.0 if r["unreadable"] else 0.0 for r in rows]),
         "fell_through_rate": mean([1.0 if r["fell_through"] else 0.0 for r in rows]),

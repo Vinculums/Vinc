@@ -90,6 +90,25 @@ class Grading(unittest.TestCase):
         self.assertEqual(s["by_axis"]["en"]["n"], 1)
         self.assertEqual(s["by_kind"]["concept"]["n"], 2)
 
+    def test_the_two_kinds_of_unanswerable_are_counted_apart(self):
+        """합친 확정률은 두 고장의 가중평균이라 어느 쪽이 움직였는지 못 본다.
+
+        실측(2026-09-10, 81문항): 배포된 규칙의 합친 수는 0.1429 인데 갈라 보면
+        주제없음 0.0000 · 속성없음 0.4286 이다. 남은 고장은 통째로 뒤쪽에 있고,
+        합친 수만 보면 '거의 안 틀린다'로 읽힌다."""
+        def una(status, kind):
+            return grade_one(_res(status, "concept:q"),
+                             {"gold_node_id": "", "answerable": False,
+                              "gold_kind": "none", "language_axis": "en",
+                              "unanswerable_kind": kind})
+        s = summarize([una("choose", "no-topic"), una("choose", "no-topic"),
+                       una("resolved", "attribute-absent")])
+        b = s["false_resolved_by_kind"]
+        self.assertEqual((b["no-topic"]["n"], b["no-topic"]["rate"]), (2, 0.0))
+        self.assertEqual((b["attribute-absent"]["n"], b["attribute-absent"]["rate"]), (1, 1.0))
+        # 합친 수는 셋의 평균이라 뒤쪽의 1.0 을 0.3333 으로 희석한다.
+        self.assertEqual(s["false_resolved_rate"], 0.3333)
+
 
 class UnionRank(unittest.TestCase):
     """확정한 질의의 후보는 계약상 비어 있다 — 그것을 "정답이 없다"로 세면 안 된다."""
@@ -166,7 +185,20 @@ class GoldFileRules(unittest.TestCase):
             {"query": "q", "answerable": True, "gold_node_id": "concept:a",
              "language_axis": "ko"},
             {"query": "q2", "answerable": False, "gold_node_id": "",
-             "language_axis": "en"}]), [])
+             "language_axis": "en", "unanswerable_kind": "no-topic"}]), [])
+
+    def test_an_unanswerable_row_without_a_kind_is_rejected(self):
+        """종류가 없으면 한 수가 두 고장을 뜻한다. 이 정답셋이 실제로 그랬다 —
+        답 불가 6문항이 전부 '주제 자체가 없다' 쪽이라 확정률이 늘 0.0000 이었고,
+        그동안 '주제는 있는데 속성이 없다' 쪽은 재고 있지도 않았다."""
+        bad = check_gold([{"query": "q", "answerable": False, "gold_node_id": "",
+                           "language_axis": "en"}])
+        self.assertTrue(any("unanswerable_kind" in b for b in bad), bad)
+
+    def test_an_unknown_kind_is_rejected(self):
+        bad = check_gold([{"query": "q", "answerable": False, "gold_node_id": "",
+                           "language_axis": "en", "unanswerable_kind": "dunno"}])
+        self.assertTrue(any("unanswerable_kind" in b for b in bad), bad)
 
 
 class SemanticArmIsOptInAndDeclared(unittest.TestCase):
