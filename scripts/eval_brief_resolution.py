@@ -206,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gold", action="append", required=True, help="정답 파일(반복 가능)")
     ap.add_argument("--out", help="결과 JSON 경로(없으면 요약만 stdout)")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--encoder", metavar="이름=onnx",
+                    help="질의를 프로세스 안에서 임베딩해 의미 팔을 켠다. 없으면 어휘·"
+                         "그래프 경로만 잰다(그 사실이 결과의 arms_note 에 적힌다)")
     ap.add_argument("--allow-missing-gold", action="store_true",
                     help="정답 노드가 스토어에 없어도 진행(기본은 거부 — 조용한 0점 방지)")
     a = ap.parse_args(argv)
@@ -233,26 +236,42 @@ def main(argv: list[str] | None = None) -> int:
         store.close()
         return 1
 
+    # 🔴 질의 임베딩은 **선택**이고 기본은 끈 것이다. 벡터가 없는 스토어에 임베딩을
+    # 넘기면 없는 팔을 있는 척 재게 된다. 켠 경우에는 프로덕션과 같은 창구를 쓰지
+    # 않는다는 것을 결과에 적는다 — 여기 것은 프로세스 안 인코더다.
+    enc = None
+    if a.encoder:
+        from encoder import Encoder                      # noqa: PLC0415
+        name, path = a.encoder.split("=", 1) if "=" in a.encoder else (a.encoder, None)
+        enc = Encoder(name, path)
+        enc.encode(["warmup"], kind="query")   # 적재 비용을 첫 질의 밖으로 뺀다
+
     graded, t0 = [], time.perf_counter()
     for r in rows:
         # 🔴 `query_embedding` 을 안 넘긴다. 이 스토어에는 벡터가 없을 수 있고(데스크탑
         # 스냅샷은 ChunkVec 0), 넘기면 없는 팔을 있는 척 재게 된다. N1 이 재는 것은
         # 해소이지 벡터 검색이 아니다 — 그 사실을 결과에 적는다.
-        res = q.brief(r["query"], owner=a.owner, store=store)
+        qvec = enc.encode([r["query"]], kind="query")[0] if enc else None
+        res = q.brief(r["query"], owner=a.owner, store=store, query_embedding=qvec)
         # 같은 풀에서 잰다 — brief 가 내부적으로 요구하는 깊이 그대로다(집 규칙 5:
         # 다른 풀에서 잰 두 팔은 단계가 아니라 풀을 잰다).
         hits = (q.search(r["query"], top_k=q._BRIEF_TOP_K, owner=a.owner,
-                         store=store).get("node_hits") or [])
+                         store=store, query_embedding=qvec).get("node_hits") or [])
         graded.append(grade_one(res, r, hits))
     wall = time.perf_counter() - t0
     store.close()
 
     summ = summarize(graded)
     summ["wall_s"] = round(wall, 2)
-    summ["arms_note"] = ("query_embedding 미전달 — 의미 팔 없음. 이 수치는 어휘·그래프 "
-                         "경로만의 해소 정확도다")
+    summ["arms_note"] = (
+        f"질의 임베딩: 프로세스 안 인코더 {a.encoder} — 의미 팔이 돌았다. 프로덕션은 "
+        f"HTTP 창구를 쓰므로 지연은 비교 불가이고, 순위는 같은 벡터라 비교 가능하다"
+        if enc else
+        "query_embedding 미전달 — 의미 팔 없음. 이 수치는 어휘·그래프 경로만의 해소 정확도다")
+    summ["encoder"] = a.encoder or ""
     summ["missing_gold_nodes"] = missing
     out = {"kind": "brief.resolution", "store": a.data, "owner": a.owner,
+           "encoder": a.encoder or "",
            "gold_files": a.gold, "summary": summ, "per_query": graded}
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1),
