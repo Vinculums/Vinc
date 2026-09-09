@@ -30,7 +30,8 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
          repaintLnb } from "../lnb";
-import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
+import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
+         floatCeiling } from "../float-panel";
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
@@ -238,6 +239,11 @@ export async function renderView(el: HTMLElement) {
    *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
   let keepCam: Cam3 | null = null;
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
+  /** 재생이 밟고 있는 커서. `null` 이면 저장값(`prefs.when`)이 정본이다.
+   *  저장하지 않는 이유: 걸음마다 localStorage 를 쓰면 재생이 곧 60번의 쓰기가 되고,
+   *  중간에 멈췄을 때 사용자가 고른 적 없는 자리가 저장된 채로 남는다. */
+  let replayWhen: number | null = null;
+  let replayTimer = 0;
   let planar: PlanarHandle | null = null;           // 평면 관점(타임라인 · 번들)
   /** 지금 밝히고 있는 것(범례 갈래 hover · 인과 원뿔). **프리퍼런스가 아니다** —
    *  일시 상태라 localStorage·주소·applyPrefs 어디에도 실리지 않는다. 평면 관점
@@ -799,13 +805,18 @@ export async function renderView(el: HTMLElement) {
     // 위 한계도 **캔버스 카드**다. 렌즈 버튼 바로 아래(+6px)로 두면 상단 바와 캔버스
     // 카드 사이의 여백 위에 패널이 걸친다 — 지도를 보는 손잡이가 지도 밖에서 열리는
     // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
-    const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
+    // ⚠ 천장은 **상단 바 아래**다(발주자 지적 2026-09-10: "살짝 gnb 를 가린다").
+    //    여태 캔버스 카드의 위끝을 썼는데 그 카드는 바와 **같은 칸에 겹쳐** 천장까지
+    //    올라온다(바가 지도 위에 뜬 뒤로) — 그래서 이 값이 바보다 위였고, 아래 계산이
+    //    버튼 밑(60+6=66)으로 잡히면 바 밑변(68)을 2px 파고들었다(실측).
+    //    떠 있는 것들이 한 천장을 쓰도록 `floatCeiling()` 하나로 모은다.
+    const cardTop = floatCeiling() - m;
     // ⚠ **아래로 못 들어가면 위로 연다**(2026-09-09). 렌즈 버튼이 레일 **맨 아래**로
     // 내려간 뒤(발주자 지시) 버튼 아래에 남는 자리가 40px 뿐이라, 아래로만 여는 코드는
     // 패널을 화면 밖으로 밀어냈다. 트리거에서 자라는 것은 지키고 방향만 뒤집는다 —
     // 그것이 팝오버의 규칙이다(`float-panel.ts`·`components.ts` 도 같은 처분).
     const h = viewPanel.offsetHeight;
-    const below = r.bottom + 6;
+    const below = Math.max(r.bottom + 6, floatCeiling());
     const above = r.top - 6 - h;
     const fitsBelow = below + h + m <= window.innerHeight;
     const top = fitsBelow ? below
@@ -908,7 +919,7 @@ export async function renderView(el: HTMLElement) {
       // 시간은 **자기 묶음**을 갖는다 — 투영(3D·2D)과 직교하는 축이라 "그 밖"에
       // 섞어 두면 다른 손잡이들과 같은 급으로 읽힌다. 축(basis)과 커서(when)는
       // 한 쌍이다: 커서는 어느 시계를 자르는지 말하지 않으면 뜻이 없다.
-      { label: COPY.ui.panel.groupTime, keys: pick("when", "basis") },
+      { label: COPY.ui.panel.groupTime, keys: pick("basis", "when", "replay") },
     ].filter((g) => g.keys.length > 0);
   }
 
@@ -926,7 +937,7 @@ export async function renderView(el: HTMLElement) {
       // 이 순서였다 — 셋을 맞춘다.
       case "3d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
-                "spread", "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
+                "spread", "edgeWidth", "edgeShow", "domainTint", "basis", "when", "replay"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
                 "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
@@ -937,7 +948,10 @@ export async function renderView(el: HTMLElement) {
       // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
       // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
-      case "bundle": return ["bundleDepth", "bundleRels", "labels", "domainTint"];
+      // Weave 도 시간을 갖는다(발주자 지시 2026-09-10 — 신설). 링 각도가 전량으로
+      // 잡혀 있어 커서가 자리를 안 흔든다는 것이 그 전제다.
+      case "bundle":
+        return ["bundleDepth", "bundleRels", "labels", "domainTint", "basis", "when", "replay"];
     }
   }
 
@@ -1087,6 +1101,11 @@ export async function renderView(el: HTMLElement) {
       // D74 — 원인·결과 겹치기. 기본은 꺼짐: 촘촘한 그래프에서는 선이 마디를 덮는다.
       lineage: swRow(COPY.ui.panel.lineage, "timelineLineage", p.timelineLineage,
         COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "lineageOn", "lineageOff"),
+      // 흐름 재생. `data-pref` 를 **안 쓴다** — 이것은 저장되는 값이 아니라 동작이라
+      // 공용 배선(값 설정)에 걸리면 안 된다.
+      replay: `<div class="opt-swrow"><span class="hint">${esc(COPY.ui.panel.replay)}</span>`
+        + `<button class="btn" id="pref-replay" type="button">${
+            esc(COPY.ui.panel.replayPlay)}</button></div>`,
       // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다.
       basis: tileRow(COPY.ui.panel.timeBasis, [
         { val: "recorded", label: COPY.ui.panel.basisRecorded, art: ART.basisRecorded,
@@ -1174,6 +1193,9 @@ export async function renderView(el: HTMLElement) {
         localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
         drawViewPanel();
       }));
+    viewPanel.querySelector<HTMLElement>("#pref-replay")?.addEventListener("click", () => {
+      if (replayTimer) stopReplay(); else startReplay();
+    });
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.pref as keyof ViewPrefs;
@@ -1202,19 +1224,34 @@ export async function renderView(el: HTMLElement) {
       });
     });
 
-    // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
-    // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
-    viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
-      applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
-    // 시간 커서도 **놓을 때** 적용한다. 서버는 안 부르지만(좌표는 그대로) 보이는
-    // 노드 집합이 바뀌므로 제자리 반영이 안 되고 재마운트가 필요하다 — 드래그마다
-    // 재마운트하면 손끝보다 화면이 느려진다. 숫자(=잘린 날짜)는 끄는 동안 따라
-    // 움직이므로 손잡이가 죽어 보이지는 않는다.
-    // ponytail: 놓을 때만 반영. 진짜 스크럽(끄는 내내 장면이 따라옴)은 렌더러가
-    // 노드를 제자리에서 숨길 수 있어야 한다(3D 는 nodeVisibility, 2D 는 필터) —
-    // 그 배선이 생기면 __update 화이트리스트에 `when` 을 넣고 input 으로 옮긴다.
-    viewPanel.querySelector<HTMLInputElement>("#pref-when")?.addEventListener("change", (e) =>
-      applyPrefs({ when: Number((e.target as HTMLInputElement).value) }, "#pref-when"));
+    // 밀도(cone)만 **라이브가 안 된다.** 다른 슬라이더와 달리 이 값은 진짜로 서버로
+    // 간다(`fetchGraph` 가 `/graph?cone=` 에 싣는다 — 좌표를 사이드카가 다시 만든다).
+    // 실측 왕복이 **로컬에서도 240ms** 라(웹모드는 계정 프록시를 더 건넌다) 끄는 동안
+    // 매번 부르면 지도가 엄지보다 네 칸쯤 뒤에서 따라온다 — 그건 "즉시"가 아니라
+    // 더 나쁜 상태다.
+    // ⚠ `spread` 도 한때 같은 이유로 묶여 있었는데 그건 **거짓이었다**(소비처를 읽으면
+    //   좌표에 곱하기만 한다). 그래서 이번엔 짐작하지 않고 요청을 재서 확인했다.
+    // 절충: **손을 멈추면** 반영한다(놓을 때까지 안 기다린다). 끄는 도중 잠깐 멈추는
+    // 것이 값을 고르는 실제 동작이라, 거기서 화면이 따라오면 대부분의 체감이 산다.
+    {
+      const cone = viewPanel.querySelector<HTMLInputElement>("#pref-cone");
+      let hold = 0;
+      const send = () => applyPrefs({ cone: Number(cone!.value) }, "#pref-cone");
+      cone?.addEventListener("input", () => {
+        if (hold) clearTimeout(hold);
+        hold = window.setTimeout(() => { hold = 0; void send(); }, 200);
+      });
+      // 놓을 때는 기다릴 이유가 없다 — 대기 중인 것을 걷어내고 곧바로 보낸다.
+      cone?.addEventListener("change", () => {
+        if (hold) { clearTimeout(hold); hold = 0; }
+        void send();
+      });
+    }
+    // ⚠ 시간 커서는 **끄는 내내 따라온다**(2026-09-10). 바로 위 줄에 "그 배선이
+    //    생기면 input 으로 옮긴다"고 적어 둔 그 배선이 생겼다: 렌더러가 노드를
+    //    제자리에서 숨기므로(3D `nodeVisibility` · 2D 리듀서 · Weave `visible`)
+    //    재마운트가 사라졌고, 서버는 원래 안 불렀다(실측 요청 0건).
+    //    그래서 아래 `liveScale` 이 맡는다 — 배율 슬라이더들과 같은 급이 됐다.
     // 이 셋은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
     // 바로 반영해 손끝에 붙게 한다.
     //
@@ -1229,7 +1266,7 @@ export async function renderView(el: HTMLElement) {
     // 스텝을 0.1 → 0.02 로 잘게 나눈 만큼 input 이 다섯 배 자주 온다. 그대로 매번
     // 다시 그리면 손끝은 부드러워지고 화면이 밀린다 — **프레임당 한 번**으로 묶는다
     // (마지막 값만 쓰므로 중간 값을 버려도 결과가 같다).
-    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread") => {
+    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread" | "when") => {
       const s = viewPanel.querySelector<HTMLInputElement>(sel);
       // 조용히 돌아가면 그 손잡이는 **아무 일도 안 하는 슬라이더**가 된다 — 끌리기는
       // 하고 숫자도 움직이는데(값 표시는 별도 배선) 화면만 안 바뀐다. 행 목록과 이
@@ -1250,6 +1287,7 @@ export async function renderView(el: HTMLElement) {
     liveScale("#pref-nodescale", "nodeScale");
     liveScale("#pref-edgescale", "edgeScale");
     liveScale("#pref-spread", "spread");
+    liveScale("#pref-when", "when");     // 위 주석 — 이제 좌표도 망도 안 건드린다
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyViewpoint(b.dataset.view as Viewpoint)));
     // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
@@ -1388,6 +1426,25 @@ export async function renderView(el: HTMLElement) {
       if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
+    // 시간 커서만 바뀌었으면 **장면을 다시 짓지 않는다.** 위 번들 빠른 길과 같은
+    // 태도이고 근거도 같다: 조회가 필요 없는 변경에 전량 재조회 + 재마운트를 붙이면
+    // 카메라·배치·점등이 매 걸음 되감긴다. 3D·2D 는 전량을 싣고 있으므로 가시성만
+    // 갈아 끼우면 끝이다. 평면 관점(타임라인)은 축 자체가 시간이라 여기 안 걸린다
+    // (`g3`·`g2` 가 없다) — 그쪽은 원래 경로로 다시 그린다.
+    const timeOnly = (Object.keys(mut) as string[])
+      .every((k) => k === "when" || k === "timeBasis");
+    if (timeOnly && (g3 || g2 || curPrefs().view === "bundle")) {
+      // ⚠ **패널을 다시 그리지 않는다**(발주자 지적 2026-09-10: "마우스로 커서
+      //    움직이려 해도 한 칸만 움직인다"). `openPanel()` 은 `drawViewPanel()` 을
+      //    거쳐 패널을 innerHTML 로 통째로 갈아 끼우는데, 그러면 **끌고 있던 그
+      //    슬라이더가 새 요소로 바뀌어** 드래그가 그 자리에서 죽는다. 한 칸 움직이고
+      //    멈추는 것이 정확히 그 모양이다.
+      //    다른 배율 슬라이더가 멀쩡했던 이유도 같다 — 그쪽 경로는 패널을 안 그린다.
+      //    여기서 다시 그릴 이유도 없다: 값을 끌고 있다는 것은 패널이 이미 열려
+      //    있다는 뜻이고, 바뀌는 표시(숫자)는 `applyTimeCut` 이 직접 맞춘다.
+      applyTimeCut();
+      return;
+    }
     const lv = trail[trail.length - 1];
     // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 (1) 서버는 안 부르고
     // (2) 카메라를 잇고 (3) 렌더러가 제자리에서 소화할 수 있으면 다시 그리지도 않는다.
@@ -1490,8 +1547,9 @@ export async function renderView(el: HTMLElement) {
    *  숨겼기 때문이다(정의상 엣지가 없다) — 커서는 다르다. */
   function timeCut(): string {
     const p = curPrefs();
-    if (p.when >= 1) return "";
-    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), p.when);
+    const w = replayWhen ?? p.when;      // 재생 중에는 그 걸음이 커서다
+    if (w >= 1) return "";
+    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), w);
   }
   function atTime<T extends { ts?: string; content_ts?: string }>(ns: T[]): T[] {
     const cut = timeCut();
@@ -1499,6 +1557,115 @@ export async function renderView(el: HTMLElement) {
     const basis = curPrefs().timeBasis;
     return ns.filter((n) => visibleAt(nodeTimeOn(n, basis), cut));
   }
+  /** 지금 커서가 남긴 노드 id. `null` 이면 전량이다.
+   *
+   *  **렌더러는 시간으로 노드를 빼지 않고 숨긴다**(발주자 지시 2026-09-10: "화면이
+   *  이동 시점에 맞게 하나씩 생기거나 사라지는 렌더링... 지금은 뚝뚝 그래프가
+   *  바뀌니까"). 빼면 장면을 다시 지어야 하고, 그때 카메라·배치·점등이 전부
+   *  되감긴다 — 그것이 "뚝뚝"의 정체다. 실측으로 확인한 것 하나: 이 슬라이더는
+   *  **네트워크를 안 탄다**(요청 0건). 즉 값은 이미 손에 있고 문제는 그리는 방식뿐이다.
+   *  좌표가 미리 계산돼 오므로(3D `__x0`, 2D `px/py`) 숨긴 점이 남의 자리를 안
+   *  건드린다 — 그래서 숨기기가 배치를 보존한다. */
+  function timeVisibleIds(): Set<string> | null {
+    if (!timeCut()) return null;
+    return new Set(atTime(curNodes).map((n) => n.id));
+  }
+  /** 커서를 **살아 있는 렌더러에** 건다. 마운트 직후에도 한 번 불러 첫 화면이
+   *  커서를 반영하게 한다(마운트는 이제 전량을 싣는다). */
+  function applyTimeCut(): void {
+    const ids = timeVisibleIds();
+    if (g3) {
+      const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
+      g3.nodeVisibility((n: any) => !ids || ids.has(n.id));
+      g3.linkVisibility((l: any) => !ids || (ids.has(lid(l.source)) && ids.has(lid(l.target))));
+    }
+    g2?.setTimeVisible(ids);
+    // Weave — 링 각도는 마운트 때 전량으로 잡혀 있으므로 그리기만 다시 한다
+    // (`view-bundle` 의 `visible` 주석). 안무는 끈다: 걸음 자체가 모션이다.
+    const bh0 = planar as (PlanarHandle & { update?: (o: unknown, a?: boolean) => void }) | null;
+    if (curPrefs().view === "bundle" && bh0?.update) bh0.update({ visible: ids }, false);
+    drawMetrics(atTime(curNodes));     // 지표는 커서가 고른 모집단을 센다(위 규칙)
+    const w = replayWhen ?? curPrefs().when;
+    // ⚠ **슬라이더는 건드리지 않는다**(발주자 지시 2026-09-10: "play 버튼 누르면
+    //    커서가 움직이는데 별개로 작동시키면 안 되나"). 재생은 커서를 **빌려 볼 뿐**
+    //    옮기지 않는다 — 끝나면 사용자가 놓아 둔 자리로 돌아온다.
+    //    드래그 중에 되쓰면 엄지와도 싸운다: `input` 은 1px 마다 뜨는데(step 0.005)
+    //    반영은 프레임당 한 번이라, 한 프레임 늦은 값이 앞서 간 엄지를 뒤로 당긴다.
+    // 값 표시만 따라간다 — `<output>` 이라 손과 다투지 않고, 재생 중에 지금 어느
+    // 시점을 보고 있는지는 읽혀야 한다.
+    const out = viewPanel.querySelector<HTMLElement>("#pref-when-val");
+    if (out) out.textContent = whenLabel(w);
+  }
+
+  /** 첫 시점부터 지금까지를 **밟아 보여 준다**(발주자 지시 2026-09-10).
+   *
+   *  걸음 단위로 도는 이유: 이 커서는 분위수라 매 프레임 값을 조금씩 올려도 실제로
+   *  보이는 것은 **다음 시각에 닿을 때만** 바뀐다. 프레임을 태우면 같은 그림을
+   *  수십 번 다시 그리고, 걸음을 태우면 한 걸음이 곧 "이때 이것들이 생겼다"가 된다.
+   *  걸음 수는 실제 시각 종수로 잡되 상한을 둔다 — 종수가 수천이면 재생이 길어진다. */
+  /** 표면이 갈리면 재생도 끝난다. 타이머만 끊는다 — `applyTimeCut` 은 이 시점에
+   *  가리킬 렌더러가 없다(방금 dispose 됐다). */
+  /** 재생이 걸어 둔 배선을 거두는 손. 재생이 없으면 아무 일도 안 한다. */
+  let replayCleanup: (() => void) | null = null;
+  function killReplay(): void {
+    if (replayTimer) { cancelAnimationFrame(replayTimer); replayTimer = 0; }
+    replayCleanup?.(); replayCleanup = null;
+    replayWhen = null;
+  }
+  function stopReplay(): void {
+    if (replayTimer) { cancelAnimationFrame(replayTimer); replayTimer = 0; }
+    replayCleanup?.(); replayCleanup = null;
+    replayWhen = null;
+    applyTimeCut();
+    const b = viewPanel.querySelector<HTMLElement>("#pref-replay");
+    if (b) b.textContent = COPY.ui.panel.replayPlay;
+  }
+  function startReplay(): void {
+    const p = curPrefs();
+    const times = [...new Set(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)).filter(Boolean))];
+    if (times.length < 2) return;              // 밟을 것이 없다 — 아무 일도 안 한다
+    const steps = Math.min(times.length, 60);
+    const DUR = 2400;                                     // 총 ~2.4초
+    const b = viewPanel.querySelector<HTMLElement>("#pref-replay");
+    if (b) b.textContent = COPY.ui.panel.replayStop;
+    // **걸음을 세지 않고 경과 시간을 읽는다.** 프레임을 세면 느린 기계에서 재생이
+    // 길어지고, 타이머를 세면 창이 가려진 동안 조여져(브라우저가 배경 타이머를
+    // 재운다) 도중에 멎은 채 남는다 — 실측으로 20개에서 멈춘 채 버튼이 "멈춤"에
+    // 걸렸다. 시계를 정본으로 두면 몇 프레임을 건너뛰어도 제자리에 도착한다.
+    const t0 = performance.now();
+    const finish = () => {
+      // 끝나면 **사용자가 놓아 둔 커서로 돌아간다.** 저장값을 안 건드리는 것이
+      // "별개로 작동"의 뜻이다 — 재생은 흐름을 한 번 보여 주는 동작이지 값을
+      // 고르는 동작이 아니다. `replayWhen` 만 비우면 `timeCut` 이 저장값을 다시
+      // 읽으므로 되돌리는 코드가 따로 필요 없다.
+      replayWhen = null;
+      stopReplay();
+    };
+    // ⚠ 가림은 **이벤트로** 받는다. `step` 안에서 `document.hidden` 만 보면 늦는다 —
+    //    창이 가려지는 순간 rAF 가 멎으므로 그 검사가 영영 안 돌고, 재생이 반쯤
+    //    그려진 채로 굳는다(실측 2026-09-10: 9개에서 멈추고 버튼이 "멈춤"에 걸렸다).
+    const onHide = () => { if (document.hidden) finish(); };
+    document.addEventListener("visibilitychange", onHide);
+    replayCleanup = () => document.removeEventListener("visibilitychange", onHide);
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / DUR);
+      replayWhen = Math.floor(k * steps) / steps;    // 시각 종수만큼만 계단을 밟는다
+      applyTimeCut();
+      if (k >= 1) { finish(); return; }
+      replayTimer = requestAnimationFrame(step);
+    };
+    // 시작할 수 없는 두 자리에서는 **아예 시작하지 않는다.** 창이 이미 가려져 있으면
+    // rAF 가 한 번도 안 뛰어 첫 걸음에서 굳고 버튼만 "멈춤"에 걸린다(가림 이벤트는
+    // 이미 가려진 상태에서는 다시 오지 않는다). 움직임을 줄이라고 한 환경에서는
+    // 밟는 것 자체가 그 요청에 어긋난다.
+    if (document.hidden
+        || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      stopReplay();
+      return;
+    }
+    step();
+  }
+
   function pruneEdges(es: GraphEdge[], ns: { id: string }[]): GraphEdge[] {
     if (!timeCut()) return es;
     const live = new Set(ns.map((n) => n.id));
@@ -1575,8 +1742,11 @@ export async function renderView(el: HTMLElement) {
     // 초점 마크(닫힌 층의 단일 초점색)는 이제 **지금 짚고 있는 노드**가 든다. 예전엔
     // L2 씨앗이 그 자리였는데 층이 사라졌고, 스코프를 넓혀 데려온 노드가 어느 점인지
     // 말해 주는 일은 남아야 한다 — 카메라만 옮기면 "어디로 갔는지"가 안 남는다.
-    // 시간 필터는 **toN3 앞**이다 — N3 는 렌더 전용 형태라 시간 열을 안 들고 간다.
-    const shown3 = filterUnlinked(toN3(atTime(nodes), domains, lnbFocus.nodeId));
+    // ⚠ **전량을 싣는다**(2026-09-10). 여기서 시간을 걸러 내면 커서를 밀 때마다
+    //    장면을 다시 지어야 한다 — 아래 `applyTimeCut` 이 가시성으로 대신 한다.
+    //    `filterUnlinked` 는 전량 기준이 오히려 옳다: 커서가 이웃을 잠시 가렸다고
+    //    그 노드가 고아가 되는 것은 아니다.
+    const shown3 = filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId));
     g3 = mount3d(canvas, shown3, toL3(pruneEdges(visibleEdges(), shown3)), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
@@ -1587,6 +1757,7 @@ export async function renderView(el: HTMLElement) {
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
     }, p, keepCam);
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
+    applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
   }
 
@@ -2568,7 +2739,8 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
-    const shown2 = atTime(gnodes).map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
+    // 3D 와 같은 이유로 **전량**이다(위 `shown3` 주석) — 커서는 가시성이 건다.
+    const shown2 = gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
     g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
       markId: lnbFocus.nodeId,
       onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
@@ -2576,6 +2748,7 @@ export async function renderView(el: HTMLElement) {
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
     }, p);
+    applyTimeCut();
   }
 
   const showL1 = (domains: string[]) => showGraphScope({ domains });
@@ -2789,6 +2962,7 @@ export async function renderView(el: HTMLElement) {
   function swapSurface() {
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
+    killReplay();
     if (planar) { planar.dispose(); planar = null; }
     if (g2) { g2.dispose(); g2 = null; }
     if (g3) { g3._destructor?.(); g3 = null; }

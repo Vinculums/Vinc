@@ -287,6 +287,9 @@ body {
    잃는다. 바꾼 것은 칠과 모서리뿐이고 배치는 안 건드렸다. */
 #shell {
   display: grid;
+  /* 좁은 창에서 트리가 **서랍으로 뜨는** 좌표계(아래 미디어쿼리). 넓은 창에서는
+     절대배치 자식이 없어 아무 일도 하지 않는다. */
+  position: relative;
   grid-template-columns: var(--kind-rail-w) var(--lnb-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh; min-height: 0; overflow: hidden;
@@ -913,7 +916,9 @@ body {
   /* 남는 자리를 다 먹고, 오른쪽 넷과는 한 칸 벌린다. 좌우 바깥 여백은 바의 padding
      이 한 벌로 갖는다 — 여기에 또 주면 왼쪽은 바의 것, 오른쪽은 이것의 것이 된다. */
   margin: 0 var(--space-3, .75rem) 0 0;
-  position: relative; flex: 1 1 auto;
+  /* `min-width: 0` 이 없으면 flex 아이템이 **내용보다 못 줄어든다**(기본 auto) —
+     좁은 창에서 바가 열 밖으로 넘치던 것의 두 번째 원인이다. 첫째는 열 자체였다. */
+  position: relative; flex: 1 1 auto; min-width: 0;
 }
 #tb-search > #tb-q,
 #tb-search > .tb-kbd { vertical-align: middle; }
@@ -2216,7 +2221,39 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    접힌다 — 좁은 것을 좁게 쓰는 최악의 조합이다. 문서 패널과 같은 처분을 한다:
    좁으면 한 번에 하나만 보여 준다. 좌표(inline top/left)는 JS 가 지운다
    (view.ts positionPanel — 인라인은 미디어쿼리를 이긴다). */
+/* ── 좁은 창(<900px) — 셸이 두 칸이 된다 ─────────────────────────────────
+   여태 이 폭에 **셸 규칙이 아예 없었다**(렌즈 패널만 승격 규칙을 갖고 있었다).
+   그래서 375px 에서 격자가 `64px 232px 47.2px` 가 되어 지도가 47px 로 찌그러지고,
+   상단 바는 3열에 살므로 그 47px 안에서 내용이 화면 밖 873px 까지 넘쳤다
+   (실측 2026-09-10). 두 층 중 **자리를 되찾고 싶은 것은 목록**이라는 규율은
+   여기서도 같다 — 레일은 남고 트리가 접힌다.
+   ⚠ 접는다고 손잡이가 죽으면 안 된다("보이는 손잡이는 반드시 무언가를 한다").
+   그래서 열면 열을 뺏는 대신 **지도 위로 뜬다** — 좁은 화면에서 목록과 지도를
+   나란히 두는 것은 둘 다 못 쓰게 만드는 일이다. */
 @media (max-width: 900px) {
+  #shell { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
+  #shell[data-lnb="open"] #lnb {
+    /* ⚠ `grid-column` 을 **전체로 편다.** 절대배치된 격자 자식은 자리 지정이 있으면
+       그 **격자 영역**이 좌표계가 된다(패딩 상자가 아니라) — 2열에 둔 채로 두면
+       left 가 2열 시작점(80px)에 더해져 서랍이 그만큼 오른쪽으로 밀린다
+       (실측 2026-09-10: 72 로 적었는데 152 에 섰다). */
+    grid-column: 1 / -1;
+    position: absolute; z-index: 45;
+    left: calc(var(--kind-rail-w) + var(--shell-gap));
+    top: var(--shell-gap); bottom: var(--shell-gap);
+    width: var(--lnb-w);
+  }
+  /* 서랍이 닫혀 있으면 그리지 않는다 — 폭 0 인 열에 남은 테두리가 레일 옆에
+     1px 띠로 보인다(넓은 창의 접힘이 같은 이유로 테두리를 지우는 것과 같다). */
+  #shell:not([data-lnb="open"]) #lnb { border: none; box-shadow: none; }
+  /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
+     375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
+     일이라, 간격을 좁히고 남으면 그 줄 안에서만 굴린다(넘침은 자기 상자가 받는다). */
+  #view-metrics {
+    gap: var(--space-2, .5rem); font-size: .66rem;
+    min-width: 0; overflow-x: auto; scrollbar-width: none;
+  }
+  #view-metrics::-webkit-scrollbar { display: none; }
   #view-lens-panel {
     top: calc(var(--topbar-h) + var(--shell-gap) * 2); left: 0; right: 0; bottom: 0;
     width: auto; max-height: none;

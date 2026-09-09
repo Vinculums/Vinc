@@ -459,6 +459,7 @@ const EN = {
       // 아니라 "주제를 색으로 볼까"다.
       domainTint: "Tint by topic",
       timeBasis: "Time",
+      replay: "Flow", replayPlay: "Play", replayStop: "Stop",
       basisRecorded: "when recorded", basisContent: "when it happened",
       noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
@@ -1217,6 +1218,7 @@ const KO: Deck = {
       lineage: "원인과 결과",
       domainTint: "주제별 색조",
       timeBasis: "기준",
+      replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 '일어난 때'가 적힌 문서가 없어요. 문서를 쓸 때 함께 적어 보세요",
       fixedNote: "모양과 초점색은 바꿀 수 없어요. 뜻을 담고 있어서, 공유한 팩이 어디서 열어도 같게 보여요",
