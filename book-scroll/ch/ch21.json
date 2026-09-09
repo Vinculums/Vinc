@@ -16,35 +16,37 @@
    "paras": [
     "Treat an Agent as just a program, and it becomes hard to say what memory that Agent is even supposed to use.",
     "Agents sharing the same Graph can have entirely different purposes. One Agent handles retrieval, another handles evaluation, another analyzes documents.",
-    "VINC expresses this difference as an Agent Role. And a Role isn't just a configuration value: it can be a Node that persists and gets referenced inside the Graph."
-   ]
+    "VINC expresses this difference as an Agent Role."
+   ],
+   "claim": "And a Role isn't just a configuration value: it can be a Node that persists and gets referenced inside the Graph."
   },
   {
    "paras": [
     "An Agent can exist in the Graph as something like concept:agent-*.",
-    "With this structure, an Agent's role can be explored the same way any other concept in the Graph is. Representing an Agent as a Graph Node separates its definition from its execution process."
+    "With this structure, an Agent's role can be explored the same way any other concept in the Graph is."
    ],
    "h": "Representing an Agent as a Concept",
    "diagrams": [
     "Agent\n  ├─ Role\n  ├─ Domain\n  ├─ Decisions\n  ├─ related Concepts\n  └─ Prompt surface"
    ],
+   "claim": "Representing an Agent as a Graph Node separates its definition from its execution process.",
    "label": "21.1"
   },
   {
    "paras": [
     "An Agent Role isn't just a label.",
-    "Say a particular Agent handles retrieval. What kind of information should it look for, which Domain does it operate in, which Prompts can it use: all of this can be expressed as connections.",
-    "This way, an Agent's behavior doesn't have to get crammed into one giant system prompt."
+    "Say a particular Agent handles retrieval. What kind of information should it look for, which Domain does it operate in, which Prompts can it use: all of this can be expressed as connections."
    ],
    "h": "A Role Describes the Boundary of Behavior",
    "diagrams": [
     "Agent Role\n   ├─ identity\n   ├─ purpose\n   ├─ domain\n   ├─ constraints\n   └─ related Decisions"
    ],
+   "claim": "This way, an Agent's behavior doesn't have to get crammed into one giant system prompt.",
    "label": "21.2"
   },
   {
    "paras": [
-    "MCP can expose an Agent Role's list and contract externally through a Prompt surface. Agent and Prompt shouldn't be treated as the same thing here.",
+    "MCP can expose an Agent Role's list and contract externally through a Prompt surface.",
     "Agent expresses who performs a role. Prompt expresses what instructions carry out that role.",
     "With this structure, the Prompt an Agent uses can be swapped, or the Prompt surface expanded, while the Agent's own identity in the graph stays intact."
    ],
@@ -52,6 +54,7 @@
    "diagrams": [
     "Agent\n  ↓\nRole\n  ↓\nPrompt\n  ↓\ntool use\n  ↓\nmemory"
    ],
+   "claim": "Agent and Prompt shouldn't be treated as the same thing here.",
    "label": "21.3"
   },
   {
@@ -59,40 +62,43 @@
     "Representing an Agent as a Graph Node doesn't turn the Graph into something that directs how an Agent runs.",
     "The Graph can express things like this:",
     "But when it runs, how many times, and which worker runs it: those are the runtime environment's job, not the Graph's.",
-    "This separation matters a lot. Start using the Graph as a scheduler, and semantic structure and execution state end up tangled into one thing."
+    "This separation matters a lot."
    ],
    "h": "The Graph Is Not the Scheduler Directing Agents",
    "diagrams": [
     "Agent A\n  ├─ uses → Concept X\n  ├─ relates → Decision Y\n  └─ follows → Prompt Z",
     "Graph = the Agent's meaning and relationships\nRuntime = the Agent's actual execution"
    ],
+   "claim": "Start using the Graph as a scheduler, and semantic structure and execution state end up tangled into one thing.",
    "label": "21.4"
   },
   {
    "paras": [
     "Up to now, an Agent has just been described as something that uses memory. Model it as a Graph Node, and it goes one step further: the Agent itself becomes something referenceable inside the Graph.",
-    "Which Agent Role produced a particular Decision, which Agent works with a particular Concept, which Prompt connects to a particular role: all of this can be expressed in the Graph. That turns an Agent from a one-off execution object into a persistent, referenceable component of the system."
+    "Which Agent Role produced a particular Decision, which Agent works with a particular Concept, which Prompt connects to a particular role: all of this can be expressed in the Graph."
    ],
    "h": "An Agent Is Both a User of Memory and Part of It",
+   "claim": "That turns an Agent from a one-off execution object into a persistent, referenceable component of the system.",
    "label": "21.5"
   },
   {
    "paras": [
     "An Agent's implementation can change without necessarily changing what its Role means. The model or the tool-calling mechanism behind a retrieval role, for instance, can change while the retrieval role itself stays the same.",
-    "Separating Role from implementation lets system changes get managed in smaller pieces. The Graph expresses meaning that persists; the runtime expresses however execution happens right now."
+    "Separating Role from implementation lets system changes get managed in smaller pieces."
    ],
    "h": "A Role Can Outlive Its Implementation",
+   "claim": "The Graph expresses meaning that persists; the runtime expresses however execution happens right now.",
    "label": "21.6"
   },
   {
    "paras": [
-    "Model Agent Roles as Concept Nodes, and the system can build an Agent roster directly out of the Graph.",
-    "Each Agent carries its own Domain and relationships. This is more powerful than a flat list, because Agents can be explored the same way any other graph element is: which Domain an Agent belongs to, which Concepts it touches, which Decisions it references, all confirmable within a single Graph."
+    "Each Agent carries its own Domain and relationships. This is more powerful than a flat list, because Agents can be explored the same way any other graph element is, which Domain an Agent belongs to, which Concepts it touches, which Decisions it references, all confirmable within a single Graph."
    ],
    "h": "Roles Together Form a Roster",
    "diagrams": [
     "Agent roster\n ├─ retrieval Agent\n ├─ evaluation Agent\n ├─ documentation Agent\n └─ analysis Agent"
    ],
+   "claim": "Model Agent Roles as Concept Nodes, and the system can build an Agent roster directly out of the Graph.",
    "label": "21.7"
   },
   {

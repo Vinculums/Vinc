@@ -15,17 +15,35 @@
    "h": "Failures That Look Like Success",
    "paras": [
     "The most dangerous failure in system evaluation isn't the obvious kind. What's more dangerous is running the wrong experiment while returning perfectly normal-looking numbers.",
-    "Say you're evaluating cross-lingual retrieval, but the actual fixture has zero cross-lingual pairs in it. The benchmark can still run. The metric still gets computed. But that number isn't measuring cross-lingual retrieval performance at all.",
-    "This is a failure that looks like success."
-   ]
+    "Say you're evaluating cross-lingual retrieval, but the actual fixture has zero cross-lingual pairs in it. The benchmark can still run. The metric still gets computed. But that number isn't measuring cross-lingual retrieval performance at all."
+   ],
+   "claim": "This is a failure that looks like success."
   },
   {
    "paras": [
     "Some of VINC's evaluations hit timeouts on the vector retrieval arm. If the resulting system just returned text-search results in that case, the search can look, from the outside, like it succeeded. But if the thing being evaluated is hybrid retrieval, that's not success.",
-    "So a result needs to record, alongside the plain search result, which retrieval arm actually ran. Only once each path's execution is confirmed can the final result be interpreted correctly."
+    "Only once each path's execution is confirmed can the final result be interpreted correctly."
    ],
    "h": "A Failed Vector Arm Produces the Same Problem",
+   "claim": "So a result needs to record, alongside the plain search result, which retrieval arm actually ran.",
    "label": "33.1"
+  },
+  {
+   "paras": [
+    "The reranking gate of Chapter 16 fires only when the two search arms disagree about first place. For a while it never fired at all. The gate recognizes agreement by the fused score two first places produce together, and that score depends on the fusion setting. The pool was being fused with one setting and the gate was checking for the score of another, so the agreement it looked for could never appear.",
+    "Nothing in the output said so. The result file even recorded the other fusion setting in its own metadata while judging a pool built with this one."
+   ],
+   "h": "A Gate That Never Fires Looks Like a Gate That Always Skips",
+   "claim": "A gate that never fires prints a result identical to no reranking, and no reranking is exactly what a gate correctly skipping every query would print.",
+   "label": "33.2"
+  },
+  {
+   "paras": [
+    "It was found in September 2026, not by reading numbers, but by making the gate state which fusion its pool came from instead of assuming one. Re-measured, the gate fired on most queries and its column was identical to always reranking, which is what a working gate should look like."
+   ],
+   "h": "Make It Say What Ran",
+   "claim": "The lesson is the same as the vector arm's: a component that silently does nothing produces the same output as one that correctly does nothing, so the result has to say what ran.",
+   "label": "33.3"
   },
   {
    "paras": [
@@ -35,18 +53,19 @@
    ],
    "h": "Empty Retrieval Is Also Information",
    "claim": "When it's ambiguous, don't pick.",
-   "label": "33.2"
+   "label": "33.4"
   },
   {
    "paras": [
     "So evaluation has to include what happens after a failure, too.",
-    "Record whether recovery succeeded, how many extra calls it took, and whether evidence was finally secured. Only then can \"succeeded on the first try\" be told apart from \"succeeded after five wrong turns.\""
+    "Record whether recovery succeeded, how many extra calls it took, and whether evidence was finally secured."
    ],
    "h": "Recovery Gets Measured",
    "diagrams": [
     "Query\n ↓\nRetrieval\n ↓\nEmpty / Wrong\n ↓\nRecovery\n ↓\nResolution"
    ],
-   "label": "33.3"
+   "claim": "Only then can \"succeeded on the first try\" be told apart from \"succeeded after five wrong turns.\"",
+   "label": "33.5"
   },
   {
    "kind": "close",

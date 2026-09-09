@@ -16,11 +16,12 @@
    "paras": [
     "A memory system can work perfectly well internally and still have limited practical value if an Agent can't reach it.",
     "VINC connects this boundary through MCP, the Model Context Protocol.",
-    "The MCP layer doesn't decide the meaning of memory here. It's the boundary that carries an external system's request into VINC's internal functionality."
+    "It's the boundary that carries an external system's request into VINC's internal functionality."
    ],
    "diagrams": [
     "Agent / Host\n      ↓\nMCP\n      ↓\nVINC's dispatcher\n      ↓\nVINC's tools\n      ↓\nGraph / Document / Search"
-   ]
+   ],
+   "claim": "The MCP layer doesn't decide the meaning of memory here."
   },
   {
    "paras": [
@@ -34,69 +35,75 @@
   },
   {
    "paras": [
-    "VINC can be reached through a local channel (stdio) or a remote channel (HTTP). Whichever channel is used, requests pass through the same dispatcher internally. So requests like \"initialize,\" \"ping,\" \"list tools,\" and \"call tool\" all go through one shared processing structure.",
-    "The core idea here is keeping the channel separate from memory's logic."
+    "VINC can be reached through a local channel (stdio) or a remote channel (HTTP). Whichever channel is used, requests pass through the same dispatcher internally. So requests like \"initialize,\" \"ping,\" \"list tools,\" and \"call tool\" all go through one shared processing structure."
    ],
    "h": "Two Channels, One Dispatcher",
+   "claim": "The core idea here is keeping the channel separate from memory's logic.",
    "label": "20.2"
   },
   {
    "paras": [
     "From the outside, VINC can look like a collection of tools. Internally, though, this boundary doesn't define the whole memory system.",
-    "MCP is the protocol boundary through which an external Agent reaches VINC. Change this boundary, and the underlying structure of the Graph, Document, and Retrieval layers doesn't necessarily have to change with it. That separation is what gives the system room to grow over the long run."
+    "MCP is the protocol boundary through which an external Agent reaches VINC. That separation is what gives the system room to grow over the long run."
    ],
    "h": "MCP Is VINC's Boundary, Not VINC Itself",
    "diagrams": [
     "MCP\n ↓\ntool surface\n ↓\nVINC's internal system"
    ],
+   "claim": "Change this boundary, and the underlying structure of the Graph, Document, and Retrieval layers doesn't necessarily have to change with it.",
    "label": "20.3"
   },
   {
    "paras": [
     "Not every VINC tool carries the same risk. Reading is different from writing; deleting a document is different from searching one.",
     "VINC derives a tier for each tool from its annotations and registration metadata, and manages safety according to that tier.",
-    "The important principle here: when in doubt, default to blocking. When a tool's safety characteristics can't be confidently determined, the more dangerous permission never gets granted automatically."
+    "When a tool's safety characteristics can't be confidently determined, the more dangerous permission never gets granted automatically."
    ],
    "h": "Tools Carry a Safety Boundary, Not Just a Function",
    "diagrams": [
     "tool\n ↓\nannotation\n ↓\ntier\n ↓\nallowed operation"
    ],
+   "claim": "The important principle here: when in doubt, default to blocking.",
    "label": "20.4"
   },
   {
    "paras": [
     "Authentication alone isn't enough when an external system uses VINC. Which graph space it's accessing has to be settled too. A team route creates a boundary like this:",
-    "Even an authenticated request shouldn't be able to reach data outside the correct space. Every request gets checked for authentication and space selection before a tool actually runs. That's what keeps the access-control principle stable regardless of which channel the connection came through."
+    "Every request gets checked for authentication and space selection before a tool actually runs. That's what keeps the access-control principle stable regardless of which channel the connection came through."
    ],
    "h": "Authentication and Space Are Managed Together",
    "diagrams": [
     "/t/<team-uuid>/mcp\n          ↓\n       team space"
    ],
+   "claim": "Even an authenticated request shouldn't be able to reach data outside the correct space.",
    "label": "20.5"
   },
   {
    "paras": [
     "Search results and assembled material can grow as connected memory grows. These results eventually flow into an Agent's context. Without a size limit, more accurate retrieval still means more call cost and more processing on the Agent's side.",
-    "So VINC's MCP surface has a result budget. Search and material-building tools can carry a mechanism that shrinks oversized results. What matters isn't cutting data arbitrarily: it's understanding the shape of the result and narrowing it while keeping what's needed. When a result has to be narrowed so far that the original can't be handed back intact, the fact that it was narrowed becomes a signal in itself."
+    "So VINC's MCP surface has a result budget. Search and material-building tools can carry a mechanism that shrinks oversized results. What matters isn't cutting data arbitrarily: it's understanding the shape of the result and narrowing it while keeping what's needed."
    ],
    "h": "Results Need a Boundary Too",
+   "claim": "When a result has to be narrowed so far that the original can't be handed back intact, the fact that it was narrowed becomes a signal in itself.",
    "label": "20.6"
   },
   {
    "paras": [
     "Say an Agent uses memory by repeatedly searching, inspecting, checking a relationship, inspecting again, searching again. Each individual call can be fast, but solving the whole problem still takes multiple round trips.",
     "Compress the necessary exploration into a single higher-level surface instead, and a single question can return a resolved Node, its context, and its evidence all at once.",
-    "So MCP's performance can't be judged by channel response time alone. From an Agent's point of view, what matters more is how few calls it took to reach an answer, how many of those calls turned out unnecessary, whether result size stayed reasonable, and whether evidence actually got secured. This question comes back with real numbers in Part 4."
+    "From an Agent's point of view, what matters more is how few calls it took to reach an answer, how many of those calls turned out unnecessary, whether result size stayed reasonable, and whether evidence actually got secured. This question comes back with real numbers in Part 4."
    ],
    "h": "Call Count Is Also Part of the Design",
+   "claim": "So MCP's performance can't be judged by channel response time alone.",
    "label": "20.7"
   },
   {
    "paras": [
     "MCP doesn't solve every problem a memory system has. Changing the vocabulary itself (deciding what counts as a particular kind of Concept) isn't this boundary's responsibility. Keeping that line intact is what keeps the MCP layer from accumulating more responsibility than it should carry.",
-    "MCP's role, in the end, is simple: let an external Agent invoke VINC's memory functions safely and consistently. The actual meaning of memory, above that, belongs to the Graph, the Document, Retrieval, and Resolution."
+    "The actual meaning of memory, above that, belongs to the Graph, the Document, Retrieval, and Resolution."
    ],
    "h": "What This Boundary Doesn't Do",
+   "claim": "MCP's role, in the end, is simple: let an external Agent invoke VINC's memory functions safely and consistently.",
    "label": "20.8"
   },
   {

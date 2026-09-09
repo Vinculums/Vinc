@@ -15,9 +15,9 @@
    "h": "What VINC Stores",
    "paras": [
     "Turning memory into a system starts with a question most people skip: in what form is memory actually stored?",
-    "VINC does not store everything as one loose, freeform structure. Depending on what kind of memory something is, it becomes a certain kind of Node, and the relationships between Nodes are expressed as a Graph.",
-    "The core distinction is a set of Node kinds: Concept, Episode, Record, Decision, Bridge, and Entity."
-   ]
+    "VINC does not store everything as one loose, freeform structure. Depending on what kind of memory something is, it becomes a certain kind of Node, and the relationships between Nodes are expressed as a Graph."
+   ],
+   "claim": "The core distinction is a set of Node kinds: Concept, Episode, Record, Decision, Bridge, and Entity."
   },
   {
    "paras": [
@@ -31,10 +31,10 @@
   },
   {
    "paras": [
-    "So VINC's Node model keeps the set of kinds closed and gives each one a clearly defined role.",
     "What varies is the actual content of a Node. Each Node can carry properties suited to its role, and connects to other Nodes through relationships."
    ],
    "h": "Kinds Are Closed, Contents Are Not",
+   "claim": "So VINC's Node model keeps the set of kinds closed and gives each one a clearly defined role.",
    "label": "10.2"
   },
   {
@@ -42,18 +42,20 @@
     "An Edge in the Graph is not just a line, either.",
     "about can express what a piece of memory concerns. prerequisite_of expresses a precondition relationship. derives_from expresses derivation, and inherits_from expresses inheritance.",
     "Direction matters here too.",
-    "Recording that A is a prerequisite of B is a different claim from recording that B is a prerequisite of A. So the Graph has to preserve both the kind of relationship and its direction, alongside the Nodes themselves."
+    "So the Graph has to preserve both the kind of relationship and its direction, alongside the Nodes themselves."
    ],
    "h": "An Edge Is Not a Line",
+   "claim": "Recording that A is a prerequisite of B is a different claim from recording that B is a prerequisite of A.",
    "label": "10.3"
   },
   {
    "paras": [
     "Time is part of this structure as well.",
-    "When an event actually happened and when that memory entered the system are two different questions. This book calls the first world time (content_time) and the second graph time (created). That distinction gets its own full treatment later.",
+    "This book calls the first world time (content_time) and the second graph time (created). That distinction gets its own full treatment later.",
     "Which space a Graph belongs to matters just as much. A personal space and a team space define different boundaries for what memory is reachable."
    ],
    "h": "Two Clocks and One Space",
+   "claim": "When an event actually happened and when that memory entered the system are two different questions.",
    "label": "10.4"
   },
   {
@@ -61,10 +63,11 @@
     "In the end, a single memory is never made of a single value.",
     "The Node defines what it is. The Edge defines how it relates. Time defines the context it sits in. Space defines the boundary it belongs to.",
     "And the original text is preserved separately from all of this.",
-    "When a document gets structured, its original wording should not be discarded in the process. The graph is not a replacement copy of the document: it is a structure that captures the meaning and relationships a document can be used for again.",
+    "When a document gets structured, its original wording should not be discarded in the process.",
     "None of this separation exists to make storage more complicated. It exists so the system can hold a clear, explicit understanding of what kind of memory something is and what role it plays."
    ],
    "h": "The Source Text Is Kept Beside It",
+   "claim": "The graph is not a replacement copy of the document: it is a structure that captures the meaning and relationships a document can be used for again.",
    "label": "10.5"
   },
   {

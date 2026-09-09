@@ -14,54 +14,58 @@
    "eyebrow": "Part 3 · Chapter 25",
    "h": "How Nodes and Edges Become Visible",
    "paras": [
-    "A Graph is a data structure, but nobody reads database tables directly. People understand structure by looking at the shape of Nodes and the lines drawn between them as Edges.",
-    "So visualizing a Graph needs its own grammar."
+    "A Graph is a data structure, but nobody reads database tables directly. People understand structure by looking at the shape of Nodes and the lines drawn between them as Edges."
    ],
    "diagrams": [
     "Node Type\n    ↓\nShape\n\nEdge Kind\n    ↓\nLine Language"
-   ]
+   ],
+   "claim": "So visualizing a Graph needs its own grammar."
   },
   {
    "paras": [
     "Concept, Record, Decision, Episode, Bridge: each carries a different meaning. Telling them apart on screen needs an explicit mapping between Node Type and Shape.",
-    "What matters here is less the specific shapes chosen and more that a mapping rule exists at all. Shapes can change, but the same Node Type has to keep meaning the same thing."
+    "What matters here is less the specific shapes chosen and more that a mapping rule exists at all."
    ],
    "h": "Node Kinds Can Map to Shapes",
    "diagrams": [
     "Concept  → shape A\nRecord   → shape B\nDecision → shape C\nEpisode  → shape D\nBridge   → shape E"
    ],
+   "claim": "Shapes can change, but the same Node Type has to keep meaning the same thing.",
    "label": "25.1"
   },
   {
    "paras": [
-    "Draw every relationship with the same line, and the graph's structural differences disappear. Different relationship kinds can get different visual treatment."
+    "Different relationship kinds can get different visual treatment."
    ],
    "h": "Edges Have Kinds Too",
+   "claim": "Draw every relationship with the same line, and the graph's structural differences disappear.",
    "label": "25.2"
   },
   {
    "paras": [
-    "The first carries direction. The second can express a bidirectional relationship. An arrow, or the direction of a line, isn't decoration: it's part of what the graph means."
+    "The first carries direction. The second can express a bidirectional relationship."
    ],
    "h": "Direction Is Information",
    "diagrams": [
     "A ─────> B\n\nA <─────> B"
    ],
+   "claim": "An arrow, or the direction of a line, isn't decoration: it's part of what the graph means.",
    "label": "25.3"
   },
   {
    "paras": [
-    "A Bridge plays a different role than a plain Node-to-Node connection. Render Bridges with their own distinct treatment, and users can tell an ordinary direct relationship apart from a special connection that bridges two otherwise separate structures. This matters especially where the graph crosses different Domains."
+    "A Bridge plays a different role than a plain Node-to-Node connection. Render Bridges with their own distinct treatment, and users can tell an ordinary direct relationship apart from a special connection that bridges two otherwise separate structures."
    ],
    "h": "Bridges Are Different From Ordinary Edges",
+   "claim": "This matters especially where the graph crosses different Domains.",
    "label": "25.4"
   },
   {
    "paras": [
-    "Rendering a Graph needs coordinates. But a View isn't just an object storing coordinates. Its core axes are Scope, Viewpoint, Node Shape, Edge Kind, Coordinates, Density, Time, Focus, Interaction.",
-    "So the same Graph can look completely different depending on which Scope and Viewpoint get selected."
+    "Rendering a Graph needs coordinates. But a View isn't just an object storing coordinates. Its core axes are Scope, Viewpoint, Node Shape, Edge Kind, Coordinates, Density, Time, Focus, Interaction."
    ],
    "h": "A View Is More Than Coordinates",
+   "claim": "So the same Graph can look completely different depending on which Scope and Viewpoint get selected.",
    "label": "25.5"
   },
   {
@@ -78,35 +82,37 @@
   },
   {
    "paras": [
-    "The current View design gives an important role to viewpoints like 3D, 2D, timeline, and weave. Each answers a different question.",
-    "It's the same Graph, examined through different questions."
+    "The current View design gives an important role to viewpoints like 3D, 2D, timeline, and weave. Each answers a different question."
    ],
    "h": "There Can Be Several Viewpoints",
    "diagrams": [
     "3D\n= how does the center relate to what surrounds it?\n\n2D\n= how does the same structure look on a plane?\n\ntimeline\n= how is structure arranged along a time axis?\n\nweave\n= how can relationships and topics be bundled together?"
    ],
+   "claim": "It's the same Graph, examined through different questions.",
    "label": "25.7"
   },
   {
    "paras": [
     "Defining a visual grammar is one thing; having the actual renderer preserve that grammar is another. You can define a vocabulary of Node shapes and still end up, on screen, with several different Node kinds collapsing into roughly the same shape.",
-    "That risk points at an important principle. A visual language isn't finished just because it's documented. The renderer has to actually implement the same contract."
+    "That risk points at an important principle. A visual language isn't finished just because it's documented."
    ],
    "h": "Defining a Grammar and Honoring It Are Different Problems",
    "diagrams": [
     "Declared Shape Language\n        ↓\nRenderer\n        ↓\nCollapsed Visual Language"
    ],
+   "claim": "The renderer has to actually implement the same contract.",
    "label": "25.8"
   },
   {
    "paras": [
     "If the Graph provides structure, View turns that structure into something a person can explore.",
-    "So View is more than screen decoration. Which relationship gets emphasized, and which information fades into the background, shapes how a person ends up interpreting the Graph."
+    "So View is more than screen decoration."
    ],
    "h": "View Is the Layer Between Data and Interpretation",
    "diagrams": [
     "Graph\n  ↓\nView Model\n  ↓\nShape / Edge / Coordinate\n  ↓\nViewport\n  ↓\nHuman Interpretation"
    ],
+   "claim": "Which relationship gets emphasized, and which information fades into the background, shapes how a person ends up interpreting the Graph.",
    "label": "25.9"
   },
   {

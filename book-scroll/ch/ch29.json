@@ -18,21 +18,23 @@
     "But from an Agent's perspective, what matters isn't how many milliseconds a single call takes. The more direct cost is how many calls the Agent needs to resolve one question.",
     "Consider these two paths:",
     "versus a tool built like this instead:",
-    "Even if every individual MCP call runs at the same speed in both systems, the total cost of solving the task differs enormously. So VINC's MCP efficiency evaluation treats calls-to-resolution as its core metric."
+    "Even if every individual MCP call runs at the same speed in both systems, the total cost of solving the task differs enormously."
    ],
    "diagrams": [
     "question\n→ search\n→ check node\n→ check relation\n→ check record\n→ inspect again\n→ answer",
     "question\n→ return the needed node + evidence + relation together\n→ answer"
-   ]
+   ],
+   "claim": "So VINC's MCP efficiency evaluation treats calls-to-resolution as its core metric."
   },
   {
    "paras": [
     "Counting calls alone isn't enough either. A single call that finds nothing has a low call count without being efficient.",
     "So call efficiency has to be viewed across at least these axes together:",
     "Task Success: did it actually solve the task. MCP Call Count: how many calls it took to resolve. Unnecessary Call Rate: how many calls contributed nothing to the result. Payload / Token Volume: how large a result the model had to process. Evidence Resolution: did the answer actually reach its supporting evidence. Recovery: did it recover from a wrong search or an empty result.",
-    "In this framing, \"a fast API\" isn't automatically a good tool. A good tool returns accurate material in few calls, and doesn't force the Agent to go exploring again afterward."
+    "In this framing, \"a fast API\" isn't automatically a good tool."
    ],
    "h": "What Counts as Resolution",
+   "claim": "A good tool returns accurate material in few calls, and doesn't force the Agent to go exploring again afterward.",
    "label": "30.1"
   },
   {
@@ -51,12 +53,13 @@
     "Given this, search and the material-assembly tool (brief) shouldn't be read as two competing search tools.",
     "Search is closer to a primitive that finds candidates. Brief is closer to a composite retrieval: it takes a question, searches, resolves a target, and combines that Node's context.",
     "Structurally:",
-    "So the thing worth evaluating isn't which tool is faster. It's how the entire call path needed to solve the same task changes."
+    "So the thing worth evaluating isn't which tool is faster."
    ],
    "h": "Search and Brief Don't Compete",
    "diagrams": [
     "Search\n    ↓\ncandidate retrieval\n\nBrief\n    ↓\nsearch\n    ↓\nresolution\n    ↓\nnode context\n    ↓\nanswer material"
    ],
+   "claim": "It's how the entire call path needed to solve the same task changes.",
    "label": "30.3"
   },
   {

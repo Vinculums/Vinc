@@ -22,93 +22,97 @@
   {
    "paras": [
     "A Role Node needs a Mission describing what that role is supposed to do. Two Agents reading the same repository can still need to behave completely differently if their purposes differ.",
-    "This isn't just a difference in wording. One has authority to change something; the other must not change anything, only verify. That distinction has to survive in the graph as a Mission, so later on, you can trace back why an Agent acted (or didn't act) the way it did."
+    "This isn't just a difference in wording. That distinction has to survive in the graph as a Mission, so later on, you can trace back why an Agent acted (or didn't act) the way it did."
    ],
    "h": "Mission Comes First",
    "diagrams": [
     "Development Agent\n    → implements, changes contracts\n\nVerification Agent\n    → confirms the change satisfies requirements"
    ],
+   "claim": "One has authority to change something; the other must not change anything, only verify.",
    "label": "22.1"
   },
   {
    "paras": [
-    "Having access to a lot of material doesn't mean it's fine to read it in any order. Some roles have a document to check first, a relationship to look at next, and a condition to verify last.",
-    "Pin the reading order down as part of the role, and different Agents looking at the same graph can follow genuinely different exploration paths."
+    "Having access to a lot of material doesn't mean it's fine to read it in any order. Some roles have a document to check first, a relationship to look at next, and a condition to verify last."
    ],
    "h": "Reading Order Is Part of the Contract Too",
    "diagrams": [
     "question\n  ↓\nrole-defined order\n  ↓\nread this first → then check this → verify this last\n  ↓\nact"
    ],
+   "claim": "Pin the reading order down as part of the role, and different Agents looking at the same graph can follow genuinely different exploration paths.",
    "label": "22.2"
   },
   {
    "paras": [
-    "Finishing a task doesn't automatically mean the task is done. Each role can have a Gate: a condition that has to pass before work moves to the next stage.",
-    "Without this door, \"I did the work\" and \"the work is actually finished\" become indistinguishable."
+    "Finishing a task doesn't automatically mean the task is done. Each role can have a Gate: a condition that has to pass before work moves to the next stage."
    ],
    "h": "A Door That Has to Be Passed",
    "diagrams": [
     "work done\n  ↓\nGate\n  ├─ pass → next stage\n  └─ fail → stays, or gets revised"
    ],
+   "claim": "Without this door, \"I did the work\" and \"the work is actually finished\" become indistinguishable.",
    "label": "22.3"
   },
   {
    "paras": [
     "Real work rarely finishes inside one role. It moves through stages: research, design, implementation, review, release. If each stage has a responsible role, that sequence itself can be expressed as a graph relationship.",
-    "This arrow isn't just \"whose turn is next.\" It captures the fact that a later stage depends on an earlier one.",
+    "This arrow isn't just \"whose turn is next.\"",
     "What matters here: writing this flow into the graph doesn't mean the graph enforces and executes that order. The graph only describes who's responsible for what, and how those responsibilities chain together. When it actually runs, how many times, and which worker handles it: that stays the job of a separate runtime."
    ],
    "h": "Several Roles Chained Together Become a Flow",
    "diagrams": [
     "research\n   ↓\ndesign\n   ↓\nimplementation\n   ↓\nreview\n   ↓\nrelease"
    ],
+   "claim": "It captures the fact that a later stage depends on an earlier one.",
    "label": "22.4"
   },
   {
    "paras": [
     "There's a gap between a role existing in the graph and a runtime actually acting according to that role. Closing that gap takes at least three actions:",
-    "read the role from the graph; turn what was read into something the runtime can use; check that what got generated still says the same thing the graph's original does.",
-    "Keep these three separate, and the graph stays the source of truth for a role, while whatever gets generated in the runtime is a derived artifact."
+    "read the role from the graph; turn what was read into something the runtime can use; check that what got generated still says the same thing the graph's original does."
    ],
    "h": "Three Actions Keep the Contract Honest",
+   "claim": "Keep these three separate, and the graph stays the source of truth for a role, while whatever gets generated in the runtime is a derived artifact.",
    "label": "22.5"
   },
   {
    "paras": [
     "A role that only exists inside the graph never reaches the external system that's supposed to carry it out. So a role's contract has to be exposed in a form outside systems can query.",
-    "One principle matters here: this externally exposed copy can't turn into a separately, manually maintained document. When the role changes in the graph, the contract visible outside has to change with it."
+    "One principle matters here: this externally exposed copy can't turn into a separately, manually maintained document."
    ],
    "h": "A Role Has to Be Visible From Outside Too",
+   "claim": "When the role changes in the graph, the contract visible outside has to change with it.",
    "label": "22.6"
   },
   {
    "paras": [
-    "Give an Agent unrestricted access to every piece of material, and the boundary that originally defined its role stops meaning anything.",
-    "This fence isn't only about security. Letting an Agent read unrelated material unnecessarily widens what it has to judge: and that blurs the role itself."
+    "This fence isn't only about security. Letting an Agent read unrelated material unnecessarily widens what it has to judge, and that blurs the role itself."
    ],
    "h": "A Role Needs a Fence",
    "diagrams": [
     "role\n  ↓\nonly material within the allowed scope\n  ↓\nreadable memory"
    ],
+   "claim": "Give an Agent unrestricted access to every piece of material, and the boundary that originally defined its role stops meaning anything.",
    "label": "22.7"
   },
   {
    "paras": [
     "Putting a role into the graph isn't about making the graph conduct execution.",
     "Keeping this split lets changing a role's definition and changing the infrastructure that executes it move at different speeds, independently.",
-    "In the end, having many Agent Roles isn't what matters. What matters is that each role's responsibility, reading order, required gates, and prohibitions stay traceable inside the graph."
+    "In the end, having many Agent Roles isn't what matters."
    ],
    "h": "The Graph Is a Contract, Not a Conductor",
    "diagrams": [
     "Graph = preserves the role's contract\nRuntime = actually acts according to that contract\nA person or automated check = confirms whether it's okay to move to the next stage"
    ],
+   "claim": "What matters is that each role's responsibility, reading order, required gates, and prohibitions stay traceable inside the graph.",
    "label": "22.8"
   },
   {
    "kind": "close",
    "label": "22.close",
    "paras": [
-    "Chapter 21 covered what a role exists as. This chapter covered what that existence actually holds it to. What's left is the relationships this role produces: and the evidence attached to each one."
+    "Chapter 21 covered what a role exists as. This chapter covered what that existence actually holds it to. What's left is the relationships this role produces, and the evidence attached to each one."
    ],
    "nextLabel": "Chapter 23. How Evidence Attaches to a Relationship",
    "nextHref": "Ch22.dc.html"

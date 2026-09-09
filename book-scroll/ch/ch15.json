@@ -24,16 +24,17 @@
    "paras": [
     "The first step is storing the Document.",
     "The full text gets stored and managed as processable Chunks. A Chunk isn't a unit that redefines the document's meaning: it's a processing unit built for search and storage.",
-    "One condition matters here: the original has to be fully recoverable. Once a document is stored, the system can search through it via its Chunks, and reconstruct the whole document again if needed. So nothing about the original wording gets lost in the structuring process."
+    "Once a document is stored, the system can search through it via its Chunks, and reconstruct the whole document again if needed. So nothing about the original wording gets lost in the structuring process."
    ],
    "h": "Step One Is Preservation",
+   "claim": "One condition matters here: the original has to be fully recoverable.",
    "label": "15.1"
   },
   {
    "paras": [
     "The next step looks inside the document for meaning worth reusing.",
     "Based on a document's structure and content, Concept candidates can be produced. Automatic extraction is the starting point for finding meaningful structure inside a document.",
-    "But an extracted candidate isn't automatically a new memory. The system first has to check whether the same concept already exists in the Graph. If a matching Concept already exists, the document gets connected to that existing Node instead of spawning a new one.",
+    "The system first has to check whether the same concept already exists in the Graph. If a matching Concept already exists, the document gets connected to that existing Node instead of spawning a new one.",
     "MENTIONS plays an important role here. If a document mentions a particular Concept, that connection between document and Concept gets recorded. The Concept then exists independently in the graph, while still being traceable back to which documents support it.",
     "The overall flow looks like this:",
     "This structure splits the responsibility between document and Graph. The document preserves the original wording and context. The Graph structures the meaning that can be reused from it."
@@ -42,23 +43,25 @@
    "diagrams": [
     "Document\n→ Chunk\n→ extract Concept candidates\n→ check for an existing Node\n→ reuse the existing Node, or create a new one\n→ connect via MENTIONS\n→ add relationships and evidence"
    ],
+   "claim": "But an extracted candidate isn't automatically a new memory.",
    "label": "15.2"
   },
   {
    "paras": [
     "Automatic extraction is the system finding reusable candidates inside a document. After that, a person can refine a title or a description, and the extraction process shouldn't be allowed to silently overwrite a Concept that's already been cleaned up.",
-    "This is a matter of memory's stability. When a new document arrives, the system shouldn't remake the same memory from scratch: it should add new evidence and relationships onto the memory that already exists."
+    "This is a matter of memory's stability."
    ],
    "h": "Automatic Extraction Isn't the Same as Human-Refined Meaning",
+   "claim": "When a new document arrives, the system shouldn't remake the same memory from scratch: it should add new evidence and relationships onto the memory that already exists.",
    "label": "15.3"
   },
   {
    "paras": [
-    "Going from document to Node, in the end, doesn't mean compressing a document into a Node.",
     "The document preserves context. The Graph structures meaning.",
     "Because the two stay connected, you can go from a Concept back to the original text, or go from a document, following the Concepts it mentions, into the graph."
    ],
    "h": "What \"Document to Node\" Actually Means",
+   "claim": "Going from document to Node, in the end, doesn't mean compressing a document into a Node.",
    "label": "15.4"
   },
   {

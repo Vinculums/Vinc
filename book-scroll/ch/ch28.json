@@ -39,9 +39,10 @@
     "A good evaluation needs, at minimum, this information preserved:",
     "which fixture was used; whether the fixture is valid; which model was used; what precision and quantization were used; what retrieval architecture was used; what hardware and kernel conditions it ran under; what metric was computed; what result came out; if it failed, why it failed.",
     "Without this, a measurement result stays a one-off observation.",
-    "In VINC, the point of measurement isn't to produce a number. It's to hold onto the conditions so the same question can be asked again in the next run."
+    "In VINC, the point of measurement isn't to produce a number."
    ],
    "h": "Reproducible Measurement",
+   "claim": "It's to hold onto the conditions so the same question can be asked again in the next run.",
    "label": "29.2"
   },
   {

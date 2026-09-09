@@ -21,79 +21,85 @@
   },
   {
    "paras": [
-    "Node A sitting close to Node B doesn't mean the two are necessarily close in meaning. That closeness can come from semantic similarity, topic grouping, graph connectivity, or layout optimization. So on-screen distance alone shouldn't be read as a semantic relationship."
+    "Node A sitting close to Node B doesn't mean the two are necessarily close in meaning. That closeness can come from semantic similarity, topic grouping, graph connectivity, or layout optimization."
    ],
    "h": "Position Isn't the Same as Meaning",
+   "claim": "So on-screen distance alone shouldn't be read as a semantic relationship.",
    "label": "28.1"
   },
   {
    "paras": [
-    "Density is less a property any single Node carries and more a value describing how much structure sits packed into a given region of space. A dense region shows a lot of Nodes or Edges concentrated together. But density itself doesn't explain why."
+    "Density is less a property any single Node carries and more a value describing how much structure sits packed into a given region of space. A dense region shows a lot of Nodes or Edges concentrated together."
    ],
    "h": "Density Is a Property of a Collection",
+   "claim": "But density itself doesn't explain why.",
    "label": "28.2"
   },
   {
    "paras": [
-    "In VINC, Domain sorts Nodes by subject. So laying out Nodes from the same Topic so they cluster together can produce topic-level density in the graph. This is different information from search-result semantic similarity: it's spatial organization that reveals topic structure."
+    "In VINC, Domain sorts Nodes by subject. So laying out Nodes from the same Topic so they cluster together can produce topic-level density in the graph."
    ],
    "h": "Topic and Domain Produce Natural Density",
+   "claim": "This is different information from search-result semantic similarity: it's spatial organization that reveals topic structure.",
    "label": "28.3"
   },
   {
    "paras": [
-    "VINC researched whether Node distribution, by Topic and Domain, could be modeled as a Gaussian shape. The idea was simple: treat each Topic as a distribution, place Nodes around it, and natural clustering emerges. This approach had the potential to express density and clustering together, beyond what plain point placement could show."
+    "VINC researched whether Node distribution, by Topic and Domain, could be modeled as a Gaussian shape. The idea was simple: treat each Topic as a distribution, place Nodes around it, and natural clustering emerges."
    ],
    "h": "Gaussian Layout Started From This Problem",
+   "claim": "This approach had the potential to express density and clustering together, beyond what plain point placement could show.",
    "label": "28.4"
   },
   {
    "paras": [
-    "The research concluded that Gaussian layout should not become VINC's default placement method. The reason: merging layout's role with density's role risked blurring structure the existing View was deliberately trying to preserve.",
-    "These two don't need to run through the same algorithm."
+    "The research concluded that Gaussian layout should not become VINC's default placement method. The reason: merging layout's role with density's role risked blurring structure the existing View was deliberately trying to preserve."
    ],
    "h": "But Gaussian Was Not Adopted as the Default Layout",
    "diagrams": [
     "Layout = where to place a Node\nDensity = where structure concentrates"
    ],
+   "claim": "These two don't need to run through the same algorithm.",
    "label": "28.5"
   },
   {
    "paras": [
     "The more useful direction to come out of the Gaussian research wasn't using Gaussian as a Node-placement algorithm: it was using it as a Density Layer.",
-    "The base layout still decides Node coordinates; a Gaussian or similar distribution model expresses the density around them. This keeps a Node's structure separate from its spatial concentration.",
+    "The base layout still decides Node coordinates; a Gaussian or similar distribution model expresses the density around them.",
     "In a 3D View, the density of surrounding space can be expressed as an additional visual layer, on top of Node position. This is different from turning Nodes themselves into density objects. A Node stays a graph object; Density becomes a supplementary representation of how that graph is distributed through space."
    ],
    "h": "Density Can Be Its Own Visual Layer",
    "diagrams": [
     "Graph Layout + Density Field"
    ],
+   "claim": "This keeps a Node's structure separate from its spatial concentration.",
    "label": "28.6"
   },
   {
    "paras": [
     "Say a dense region exists. Looking at it alone can't tell you which of these is true: is it the same Topic, is it a region of many relationships, is it where search results concentrated, or is it just an artifact of the layout algorithm.",
-    "So Density is a clue for interpretation, not the interpretation itself. Giving Density any meaning requires checking which Nodes and Edges actually make up that region.",
+    "Giving Density any meaning requires checking which Nodes and Edges actually make up that region.",
     "Say, for instance, that Nodes from a particular topic look clustered on one side of the screen. That alone doesn't prove the topic gets discussed more than others: it might simply mean those Nodes were all added recently, at once, and haven't yet spread into other regions."
    ],
    "h": "Density Doesn't Explain Its Own Cause",
+   "claim": "So Density is a clue for interpretation, not the interpretation itself.",
    "label": "28.7"
   },
   {
    "paras": [
     "VINC's View design leans toward treating coordinates as a function computed from graph state, rather than storing them as arbitrary state.",
-    "The same input should produce, as closely as possible, the same layout. This principle is what lets spatial structure get reproduced when a View is reopened, or rendered in a different environment."
+    "This principle is what lets spatial structure get reproduced when a View is reopened, or rendered in a different environment."
    ],
    "h": "Layout Has to Be a Function",
    "diagrams": [
     "Coordinates = f(Graph, Scope, Viewpoint, Layout State)"
    ],
+   "claim": "The same input should produce, as closely as possible, the same layout.",
    "label": "28.8"
   },
   {
    "paras": [
     "A Node sitting close to another Node doesn't mean evidence has appeared for a relationship between them.",
-    "Likewise, a dense region doesn't mean that topic matters more.",
     "This is exactly why visual representation and graph meaning have to stay separate."
    ],
    "h": "Layout and Evidence Need Separating Too",
@@ -101,18 +107,20 @@
     "Spatial proximity ≠ Evidence",
     "Density ≠ Importance"
    ],
+   "claim": "Likewise, a dense region doesn't mean that topic matters more.",
    "label": "28.9"
   },
   {
    "paras": [
     "VINC's spatial representation can't be explained by one layout algorithm.",
     "Node position builds the space needed to read relationships. Density shows where structure concentrates. Causal Order supplies direction: what precedes, what derives.",
-    "A good Graph View, then, doesn't explain everything through one rule like \"close means similar.\" Layout shows structure. Density shows concentration. Relationships decide meaning. Hold to that, and space stops distorting what the Graph means: and becomes an interface for exploring it."
+    "A good Graph View, then, doesn't explain everything through one rule like \"close means similar.\" Layout shows structure. Density shows concentration. Relationships decide meaning."
    ],
    "h": "Space Is, in the End, the Result of Several Layers",
    "diagrams": [
     "Graph\n ├─ Node Type\n ├─ Edge Kind\n ├─ Topic / Domain\n ├─ Time\n ├─ Causal Order\n └─ Evidence\n        ↓\n     View Model\n        ↓\n   Coordinates + Density\n        ↓\n     Renderer"
    ],
+   "claim": "Hold to that, and space stops distorting what the Graph means, and becomes an interface for exploring it.",
    "label": "28.10"
   },
   {

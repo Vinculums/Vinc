@@ -15,13 +15,14 @@
    "h": "The Cost of Changing a Model and Storage Structure",
    "paras": [
     "An embedding vector's dimension isn't just a model property. If storage is built to hold vectors of a particular width, that width becomes a storage contract.",
-    "VINC's existing store uses a fixed vector width. So adding an embedding model with a different width isn't a simple configuration change: a model using a different vector width can't just be dropped into the existing structure."
-   ]
+    "So adding an embedding model with a different width isn't a simple configuration change: a model using a different vector width can't just be dropped into the existing structure."
+   ],
+   "claim": "VINC's existing store uses a fixed vector width."
   },
   {
    "paras": [
     "One distinction matters here:",
-    "Changing the DDL alone doesn't transform existing documents' embeddings into the new semantic space. Even after the storage structure changes, embeddings for existing chunks still need to be regenerated.",
+    "Even after the storage structure changes, embeddings for existing chunks still need to be regenerated.",
     "The process required looks like this:",
     "So the cost of changing a model shouldn't be calculated as just the cost of a schema migration."
    ],
@@ -30,6 +31,7 @@
     "Schema migration ≠ Embedding migration",
     "existing chunks\n    ↓\nnew embedding model\n    ↓\nre-embed\n    ↓\nnew vectors\n    ↓\nrebuild the vector index\n    ↓\nvalidate retrieval"
    ],
+   "claim": "Changing the DDL alone doesn't transform existing documents' embeddings into the new semantic space.",
    "label": "32.1"
   },
   {
@@ -45,13 +47,13 @@
   {
    "paras": [
     "Changing a model affects more than data structure: it also touches things like an embedding worker's branching logic. Problems can surface in places like prefix handling meant to distinguish between models.",
-    "Issues like this don't show up in benchmark numbers alone. So migration evaluation has to include:",
-    "In the end, choosing a model isn't a comparison of model performance: it's a comparison of the cost of changing the entire storage and execution path."
+    "Issues like this don't show up in benchmark numbers alone. So migration evaluation has to include:"
    ],
    "h": "Implementation Bugs Are Part of the Migration Cost Too",
    "diagrams": [
     "Schema compatibility\n+ Worker compatibility\n+ Model registry\n+ Re-embedding\n+ Index rebuild\n+ Retrieval validation"
    ],
+   "claim": "In the end, choosing a model isn't a comparison of model performance: it's a comparison of the cost of changing the entire storage and execution path.",
    "label": "32.3"
   },
   {
