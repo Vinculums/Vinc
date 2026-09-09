@@ -160,7 +160,21 @@ class ShellSizeSpecTests(unittest.TestCase):
         closed = decl('#shell[data-lnb="closed"]')
         self.assertIn(
             "var(--kind-rail-w) 0", closed,
-            "접힘이 레일까지 접는다 — 앱 손잡이 넷과 다시 펼 손잡이가 함께 사라진다")
+            "접힘이 레일까지 접는다 — 다시 펼 손잡이와 홈이 함께 사라진다")
+
+    def test_바가_지도와_같은_칸에_겹친다(self):
+        """상단 바는 지도 위에 **떠 있다**(발주자 지시 2026-09-09: "나누지 않고 gnb 가
+        view 위에 떠 있도록"). 열을 나누면 지도가 그만큼 짧아지고 바는 카드가 된다.
+
+        셋이 한 몸이다: 지도가 두 행을 걸치고 · 바가 그 첫 행에 겹치고 · 지도 안에서
+        위쪽에 서는 것들이 `--chrome-top` 만큼 비켜선다. 하나만 되돌리면 바가 지도를
+        가리거나 지도가 다시 잘린다."""
+        self.assertIn("grid-row: 1 / -1", decl("#surface"),
+                      "지도가 두 행을 걸치지 않는다 — 바와 열을 나눠 쓰고 있다")
+        self.assertIn("--chrome-top", decl("#docpane"),
+                      "읽는 면이 떠 있는 바를 비켜서지 않는다 — 바 밑에 깔린다")
+        self.assertIn("--chrome-top", decl("#view-tools"),
+                      "인캔버스 크롬이 떠 있는 바를 비켜서지 않는다")
 
 
 if __name__ == "__main__":
