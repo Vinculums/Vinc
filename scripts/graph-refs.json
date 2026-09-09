@@ -273,6 +273,7 @@
     "record:domain-hierarchy-was-a-string-until-v11",
     "record:edge-birth-v14",
     "record:embed-prefix-missing-m3-branch-2026-08-30",
+    "record:encoder-resident-set-leaves-1-1-gib-for-a-reranker-2026-09-08",
     "record:endpoint-table-must-be-built-from-merged-nodes",
     "record:endpoint-types-resolve-only-within-one-payload",
     "record:episode-can-never-be-a-brief-candidate-2026-09-09",
