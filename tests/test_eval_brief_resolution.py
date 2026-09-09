@@ -29,8 +29,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from eval_brief_resolution import (check_gold, grade_one, rank_of,  # noqa: E402
-                                   summarize, union_rank_of)
+from eval_brief_resolution import (LOW_REUSE, check_gold, grade_one,  # noqa: E402
+                                   rank_of, summarize, title_reuse, union_rank_of)
 
 
 def _res(status, node=None, candidates=()):
@@ -117,6 +117,37 @@ class UnionRank(unittest.TestCase):
         g = grade_one(_res("choose", None, ["concept:x"]), row, [{"id": "concept:x"}])
         self.assertEqual(union_rank_of("concept:a", [{"id": "concept:x"}]), 0)
         self.assertEqual(g["uhit"][10], 0.0)
+
+
+class TitleTokenReuse(unittest.TestCase):
+    """축을 비교하려면 겹침을 함께 봐야 한다 — 안 그러면 저작 차이가 언어 발견으로 읽힌다."""
+
+    def test_a_question_carrying_no_title_token_scores_zero(self):
+        self.assertEqual(title_reuse("전혀 다른 낱말로만 쓴 질문", "Deployment order"), 0.0)
+
+    def test_a_question_quoting_the_title_scores_one(self):
+        self.assertEqual(title_reuse("what is the deployment order", "deployment order"), 1.0)
+
+    def test_an_empty_title_does_not_divide_by_zero(self):
+        self.assertEqual(title_reuse("anything", ""), 0.0)
+
+    def test_the_summary_puts_reuse_next_to_the_axis_it_could_explain(self):
+        def row(axis, reuse, urank):
+            g = grade_one(_res("choose", None, []),
+                          {"gold_node_id": "concept:a", "answerable": True,
+                           "gold_kind": "concept", "language_axis": axis,
+                           "_title_reuse": reuse},
+                          [{"id": "concept:a"}] if urank else [])
+            return g
+
+        s = summarize([row("en", 0.8, True), row("ko", 0.1, False)])
+        ax = s["by_axis_reuse"]
+        self.assertEqual(ax["en"]["median_title_reuse"], 0.8)
+        self.assertEqual(ax["ko"]["median_title_reuse"], 0.1)
+        self.assertEqual(ax["en"]["gold_in_union"], "1/1")
+        # 겹침이 낮은 층에는 en 이 아예 없다 — 그 칸이 비어야 교란이 보인다.
+        self.assertEqual(ax["en"][f"gold_in_union_at_reuse_le_{LOW_REUSE}"], "0/0")
+        self.assertEqual(ax["ko"][f"gold_in_union_at_reuse_le_{LOW_REUSE}"], "0/1")
 
 
 class GoldFileRules(unittest.TestCase):
