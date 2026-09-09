@@ -365,11 +365,19 @@ export async function renderView(el: HTMLElement) {
     edgeBring: `<circle cx="14" cy="12" r="3" ${AF}/><circle cx="14" cy="4.5" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="8" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="14" cy="19.5" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="8" r="1.5" ${AF} opacity=".8"/>`,
     layoutHub: `<circle cx="14" cy="12" r="3" ${AF}/><path d="M14 12 14 4M14 12 21 7.5M14 12 21 16.5M14 12 14 20M14 12 7 16.5M14 12 7 7.5" ${AS} stroke-width=".9" opacity=".45"/><circle cx="14" cy="4" r="1.5" ${AF}/><circle cx="21" cy="7.5" r="1.5" ${AF}/><circle cx="21" cy="16.5" r="1.5" ${AF}/><circle cx="14" cy="20" r="1.5" ${AF}/><circle cx="7" cy="16.5" r="1.5" ${AF}/><circle cx="7" cy="7.5" r="1.5" ${AF}/>`,
     layoutRank: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
-    basisRecorded: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M18 18v-4M20.5 18v-6M23 18v-3" ${AS} stroke-width="1.6"/><circle cx="18" cy="12.6" r="1.3" ${AF}/><circle cx="20.5" cy="10.6" r="1.3" ${AF}/><circle cx="23" cy="13.6" r="1.3" ${AF}/>`,
-    basisContent: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M5 18v-4M11 18v-6M17 18v-3M23 18v-5" ${AS} stroke-width="1.6"/><circle cx="5" cy="12.6" r="1.3" ${AF}/><circle cx="11" cy="10.6" r="1.3" ${AF}/><circle cx="17" cy="13.6" r="1.3" ${AF}/><circle cx="23" cy="11.6" r="1.3" ${AF}/>`,
-    depth1: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C12 13 16 13 21.6 8.4" ${AS} stroke-width="1.5"/><circle cx="6.4" cy="8.4" r="1.7" ${AF}/><circle cx="21.6" cy="8.4" r="1.7" ${AF}/><circle cx="9" cy="19" r="1.1" ${AF} opacity=".5"/><circle cx="19" cy="19" r="1.1" ${AF} opacity=".5"/>`,
-    depth2: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C11 12 13 15 9 19M21.6 8.4C17 12 15 15 19 19" ${AS} stroke-width="1.3"/><circle cx="6.4" cy="8.4" r="1.5" ${AF}/><circle cx="21.6" cy="8.4" r="1.5" ${AF}/><circle cx="9" cy="19" r="1.5" ${AF}/><circle cx="19" cy="19" r="1.5" ${AF}/>`,
-    depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4 19 19M21.6 8.4 9 19M6.4 8.4 21.6 8.4M9 19h10M6.4 8.4 9 19" ${AS} stroke-width="1"/><circle cx="6.4" cy="8.4" r="1.4" ${AF}/><circle cx="21.6" cy="8.4" r="1.4" ${AF}/><circle cx="9" cy="19" r="1.4" ${AF}/><circle cx="19" cy="19" r="1.4" ${AF}/>`,
+    /* 시간 기준 — 가르는 것은 **몰림 대 퍼짐**이다(도움말: "한 번에 적재한 것들이
+       같은 자리에 몰려요" 대 "적은 날과 무관하게 퍼져요"). 여태 둘 다 "축 + 눈금 +
+       점"이라 눈금 개수만 달랐고, 28×24 에서 그 차이는 안 보였다(발주자 지적
+       2026-09-10). 이제 실루엣 자체가 다르다: 한 기둥 대 흩어진 점. */
+    basisRecorded: `<path d="M3 19.5h22" ${AS} stroke-width="1" opacity=".4"/><path d="M17 19.5v-11" ${AS} stroke-width="1.2" opacity=".55"/><circle cx="17" cy="8.5" r="1.9" ${AF}/><circle cx="17" cy="13" r="1.9" ${AF}/><circle cx="17" cy="17.5" r="1.9" ${AF}/>`,
+    basisContent: `<path d="M3 19.5h22" ${AS} stroke-width="1" opacity=".4"/><path d="M6 19.5v-5M12 19.5v-9M18 19.5v-4M23 19.5v-8" ${AS} stroke-width="1" opacity=".35"/><circle cx="6" cy="14.5" r="1.9" ${AF}/><circle cx="12" cy="10.5" r="1.9" ${AF}/><circle cx="18" cy="15.5" r="1.9" ${AF}/><circle cx="23" cy="11.5" r="1.9" ${AF}/>`,
+    /* 선 묶기 — 가르는 것은 **얼마나 잘게 묶느냐**다. 굵고 적은 줄기(주제)에서
+       가늘고 많은 실(개별)로 단조롭게 간다: 묶음이 거칠수록 선이 합쳐져 굵어지고
+       수가 준다. 끝점의 크기도 함께 줄어 "묶인 덩어리 → 낱개"가 읽힌다.
+       여태는 셋 다 원 안의 곡선이라 개수도 굵기도 뜻을 안 실었다. */
+    depth1: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M5.4 12 22.6 12" ${AS} stroke-width="2.6" stroke-linecap="round"/><circle cx="5.4" cy="12" r="2.4" ${AF}/><circle cx="22.6" cy="12" r="2.4" ${AF}/>`,
+    depth2: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M7.9 5.9 20.1 18.1M7.9 18.1 20.1 5.9M5.4 12 22.6 12" ${AS} stroke-width="1.4" stroke-linecap="round"/><circle cx="7.9" cy="5.9" r="1.6" ${AF}/><circle cx="20.1" cy="5.9" r="1.6" ${AF}/><circle cx="7.9" cy="18.1" r="1.6" ${AF}/><circle cx="20.1" cy="18.1" r="1.6" ${AF}/><circle cx="5.4" cy="12" r="1.6" ${AF}/><circle cx="22.6" cy="12" r="1.6" ${AF}/>`,
+    depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M22.6 12 5.4 12M20.1 18.1 7.9 5.9M14 20.6 14 3.4M7.9 18.1 20.1 5.9M22.6 12 7.9 18.1M5.4 12 20.1 5.9" ${AS} stroke-width=".75" stroke-linecap="round" opacity=".9"/><circle cx="22.6" cy="12" r="1.15" ${AF}/><circle cx="20.1" cy="18.1" r="1.15" ${AF}/><circle cx="14" cy="20.6" r="1.15" ${AF}/><circle cx="7.9" cy="18.1" r="1.15" ${AF}/><circle cx="5.4" cy="12" r="1.15" ${AF}/><circle cx="7.9" cy="5.9" r="1.15" ${AF}/><circle cx="14" cy="3.4" r="1.15" ${AF}/><circle cx="20.1" cy="5.9" r="1.15" ${AF}/>`,
   };
 
   // 3D 실루엣 표식은 어휘 파일에 있다(view-planar `mark3dSvg`) — 좌측 레일도 같은
@@ -840,7 +848,7 @@ export async function renderView(el: HTMLElement) {
     // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
     // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
     if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
-    popIn(viewPanel, lensBtn);
+    popIn(viewPanel);
     // 바깥을 누르면 닫힌다(발주자 지시 2026-08-05). 딤이 없는 패널이라 스크림 대신
     // 문서 전체를 듣는다 — 렌즈 버튼은 스스로 토글하므로 예외로 둔다(안 그러면 닫고
     // 다시 여는 두 처리가 겹친다). 배선은 닫을 때 반드시 해제한다.
@@ -857,7 +865,7 @@ export async function renderView(el: HTMLElement) {
     const seq = ++panelSeq;
     unwirePanelDismiss?.();
     unwirePanelDismiss = null;
-    await popOut(viewPanel, lensBtn);      // 퇴장을 기다린 뒤 숨긴다
+    await popOut(viewPanel);      // 퇴장을 기다린 뒤 숨긴다
     if (seq !== panelSeq) return;          // 그 사이 다시 열렸다 — 이 닫힘은 무효다
     viewPanel.hidden = true;
     const b = lensBtn;
@@ -911,12 +919,17 @@ export async function renderView(el: HTMLElement) {
       // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
       // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
       // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
+      // ⚠ `basis` 가 `when` **앞**이다(발주자 지시 2026-09-10). 기준이 시점의 뜻을
+      // 정하기 때문이다: 같은 슬라이더 자리라도 "기록한 때"냐 "일어난 때"냐에 따라
+      // 다른 축을 자른다. 고르는 순서가 읽는 순서와 어긋나면 슬라이더를 먼저 만지고
+      // 기준을 바꿔 방금 고른 시점이 다른 곳을 가리키게 된다. Timeline 은 처음부터
+      // 이 순서였다 — 셋을 맞춘다.
       case "3d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
-                "spread", "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
+                "spread", "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
-                "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
+                "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
@@ -1001,10 +1014,14 @@ export async function renderView(el: HTMLElement) {
     const swRow = (cap: string, pref: string, isOn: boolean,
                    onLabel: string, offLabel: string, onVal: string, offVal: string,
                    onHelp: string, offHelp: string) =>
-      `<div class="opt-swrow"><span class="hint">${esc(cap)}</span><span class="seg">`
-      + chip(pref, onVal, onLabel, isOn, onHelp)
-      + chip(pref, offVal, offLabel, !isOn, offHelp)
-      + `</span></div>`
+      // 스위치는 **누르면 갈 값**을 싣는다(지금 값이 아니라) — 그래야 위 `[data-pref]`
+      // 공용 배선이 칩 때와 똑같이 동작한다(고르기 = 그 값으로 설정). 라벨은 화면에서
+      // 사라지지만 `dh` 로 남아 바닥 설명 줄이 받는다.
+      `<div class="opt-swrow"><span class="hint">${esc(cap)}</span>`
+      + `<button class="switch" type="button" role="switch" aria-checked="${isOn}"`
+      + ` aria-label="${esc(cap)}" data-pref="${pref}" data-val="${esc(isOn ? offVal : onVal)}"`
+      + dh(isOn ? onLabel : offLabel, isOn ? onHelp : offHelp)
+      + `><span class="switch-knob"></span></button></div>`
       + (helpOn ? `<p class="hint sub">${esc(H[isOn ? onHelp : offHelp] || "")}</p>` : "");
     // 활성 표시는 "지금 그려지는 것"만 따른다(shownViewpoint).
     const shown = shownViewpoint(lv);
@@ -1137,12 +1154,20 @@ export async function renderView(el: HTMLElement) {
       ? `<p class="lens-help"><b id="lens-help-name"></b><span id="lens-help-text">${
           esc(COPY.ui.panel.helpHint)}</span></p>`
       : "";
-    viewPanel.innerHTML = `<div class="lens-scroll">`
-      + head + tabSeg
+    // **머리와 발은 스크롤 밖이다**(발주자 지적 2026-09-10: 스크롤 시작 지점이 더
+    // 아래여야 한다). 여태 셋 다 `.lens-scroll` 안이라 패널 전체가 굴렀다 — 탭이
+    // 밀려 올라가 지금 어느 갈래인지 화면에서 사라졌고, 설명 줄도 함께 사라졌다.
+    // ⚠ 그 설명 줄은 **고정이라고 적혀 있던 것**이다(`.lens-help` 주석: "패널 안의
+    //    고정 자리라 WCAG 1.4.13 을 구조로 만족한다"). 값을 가리키는 동안 설명이
+    //    스크롤 밖으로 나가면 그 근거가 성립하지 않는다.
+    // 구조는 시트와 같다(`.sheet-head` / `.sheet-body` / `.sheet-foot`) — 화면마다
+    // 다른 구조를 익히게 하지 않는다는 D63 의 규율이 오버레이 전체에 걸린다.
+    viewPanel.innerHTML = head + tabSeg
+      + `<div class="lens-scroll">`
       + (tab === "opts" ? groupsHTML : legendHTML())
-      + helpLine
-      + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
-      + `</div>`;
+      + `</div>`
+      + `<div class="lens-foot">` + helpLine
+      + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p></div>`;
     if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
     viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {

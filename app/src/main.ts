@@ -12,7 +12,7 @@ import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { initSegMotion, openSheet, wireScrimDismiss,
+import { openSheet, wireScrimDismiss,
          type SheetHandle } from "./components";
 import { isTypingTarget } from "./keys";
 import { disposeEditorsIn } from "./doc-editor";
@@ -84,9 +84,6 @@ document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar
 mountTopbar();
 // 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
 mountLnb();
-// 세그먼트 컨트롤(관점·테마·언어·배치)의 선택이 미끄러지게 한다 — 호출부는 그대로
-// 두고 문서 전체를 한 번 관찰한다(components.ts initSegMotion).
-initSegMotion();
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];

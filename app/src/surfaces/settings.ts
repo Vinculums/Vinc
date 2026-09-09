@@ -450,7 +450,10 @@ export async function renderSettings(el: HTMLElement) {
       <input id="s-owner" value="${cfg.owner}" />
       <label for="s-sync-key">${U.syncKey}</label>
       <p class="hint">${U.syncKeyHint}</p>
-      <input id="s-sync-key" type="password" placeholder="vinc_sk_…" autocomplete="off" />
+      <p class="s-keyrow"><input id="s-sync-key" type="password" placeholder="vinc_sk_…"
+         autocomplete="off" /><button class="btn" id="s-sync-key-save" type="button">${
+        U.syncKeySave}</button></p>
+      <p class="hint" id="s-sync-key-said" hidden></p>
       <label for="s-base">${U.engine}</label>
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
@@ -474,13 +477,25 @@ export async function renderSettings(el: HTMLElement) {
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
     // 그것을 없애자는 것이 이 변경의 목적이다(감사 M8). 비어 있으면 "안 바꿈"이다.
     const keyInput = body.querySelector<HTMLInputElement>("#s-sync-key")!;
-    keyInput.addEventListener("change", () => {
+    const keySaid = body.querySelector<HTMLElement>("#s-sync-key-said")!;
+    // **저장했다고 말한다**(발주자 지적 2026-09-10: "키 입력하면 저장되는 게 아니던데").
+    // 실은 저장되고 있었다 — 다만 곧바로 입력칸을 비우는데(위 M8 규칙) 아무 말도
+    // 안 해서, 비워지는 것이 "버려졌다"로 읽혔다. 지우는 것을 되돌리지 않고
+    // **왜 지우는지를 말한다**: 키를 화면에 남기지 않는 것이 그 규칙의 목적이므로.
+    const save = () => {
       const v = keyInput.value.trim();
       if (!v) return;
       void setAccountKey(v);
       localStorage.removeItem("vinc.sync.email");   // 수동 키 = 이메일 미상
       keyInput.value = "";                          // 입력칸에도 남기지 않는다
-    });
+      keySaid.textContent = U.syncKeySaved;
+      keySaid.hidden = false;
+    };
+    // 버튼이 **정본 경로**다. `change` 만 두면 입력칸에 포커스를 둔 채 시트를 닫을 때
+    // 이벤트가 아예 안 뜨고 키가 조용히 사라진다(실측 경로: Esc·딤 클릭).
+    body.querySelector<HTMLElement>("#s-sync-key-save")!.addEventListener("click", save);
+    keyInput.addEventListener("change", save);
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   }
 
   shell();

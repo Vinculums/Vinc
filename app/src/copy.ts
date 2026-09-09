@@ -335,11 +335,11 @@ const EN = {
       title: "Tools",
       tip: "Write, bring in, or share",
       create: "Create", import: "Import", share: "Share",
-      createSub: "Write a document, and link the ones it belongs with.",
+      createSub: "Link them.",
       importSub: "Bring in a document or a pack someone shared.",
       shareSub: "Bundle a part of your graph into a file.",
       linkHeader: "Link related documents",
-      linkHint: "Links are drawn between the main concept of each document.",
+      linkHint: "Links run between the main concept of each document.",
       linkFilter: "Filter documents",
       linkNone: "No other documents yet.",
       noConcept: "No concept yet, so it cannot be linked.",
@@ -364,10 +364,10 @@ const EN = {
     panel: {
       options: "Options",
       allTopics: "All topics",
-      nodeSize: "Node size", byConnections: "by connections", uniform: "uniform",
+      nodeSize: "Size", byConnections: "by connections", uniform: "uniform",
       labels: "Labels", onHover: "on hover", off: "off",
       arrows: "Direction arrows", on: "on",
-      edgeShow: "Show lines",
+      edgeShow: "Links",
       edgeShowName: {
         always: "always", focus: "on focus", particles: "particles", bring: "bring &amp; go",
       } as Record<string, string>,
@@ -450,7 +450,7 @@ const EN = {
       when: "Time cursor",
       whenAll: "All",
       groupTime: "Time",
-      cone: "Branch spread",
+      cone: "Density",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
@@ -753,6 +753,7 @@ const EN = {
       acctOffline: "This device is working offline. Your notes stay here and go nowhere.",
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
+      syncKeySave: "Save key", syncKeySaved: "Saved. The field is cleared on purpose - the key is never kept on screen.",
       syncDomains: "Topics to sync",
       syncNoDomains: "No topics yet. Add some knowledge first.",
       // 고른 것이 없으면 push 가 아무것도 안 보낸다(export 가 선택 도메인만 훑는다).
@@ -983,7 +984,7 @@ const KO: Deck = {
       bridgeLine: "다리로 이어진 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
       drawnAs3d: "3D 지오메트리 그대로",
-      drawnAsFlat: "2D · 타임라인 · Weave 공용",
+      drawnAsFlat: "2D · Timeline · Weave 공용",
       markNote3d: {
         concept: "구",
         document: "정사면체 · 자전하지 않으니 이 각도가 곧 실루엣이에요",
@@ -1119,11 +1120,11 @@ const KO: Deck = {
       title: "도구",
       tip: "쓰기 · 가져오기 · 공유하기",
       create: "만들기", import: "가져오기", share: "공유하기",
-      createSub: "문서를 쓰고, 함께 둘 문서를 연결해요",
+      createSub: "연결해요",
       importSub: "문서나 공유받은 팩을 가져와요",
       shareSub: "그래프의 일부를 파일 하나로 묶어요",
       linkHeader: "관련 문서 연결하기",
-      linkHint: "연결은 각 문서의 대표 개념 사이에 그어져요",
+      linkHint: "연결은 각 문서의 대표 개념 사이에 이어져요",
       linkFilter: "문서 찾기",
       linkNone: "아직 다른 문서가 없어요",
       noConcept: "아직 개념이 없어서 연결할 수 없어요",
@@ -1144,10 +1145,10 @@ const KO: Deck = {
     panel: {
       options: "옵션",
       allTopics: "모든 주제",
-      nodeSize: "노드 크기", byConnections: "연결 수에 따라", uniform: "모두 같게",
+      nodeSize: "크기", byConnections: "연결 수에 따라", uniform: "모두 같게",
       labels: "이름", onHover: "가리킬 때만", off: "끔",
       arrows: "방향 화살표", on: "켬",
-      edgeShow: "선 보이기",
+      edgeShow: "연결",
       edgeShowName: {
         always: "항상", focus: "가리킬 때만", particles: "흐름", bring: "모아 보기",
       } as Record<string, string>,
@@ -1211,7 +1212,7 @@ const KO: Deck = {
       when: "시점",
       whenAll: "전체",
       groupTime: "시간",
-      cone: "가지 벌어짐",
+      cone: "밀도",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
       domainTint: "주제별 색조",
@@ -1222,7 +1223,7 @@ const KO: Deck = {
     },
     viewx: {
       shareCta: "공유하기",
-      timeline: "타임라인",
+      timeline: "Timeline",
       bundle: "Weave",
       bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
@@ -1344,7 +1345,7 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}을(를) 다뤄요`,
       },
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 타임라인이 보여요",
+      noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 Timeline 이 보여요",
       undated: (n) => `날짜가 없는 문서 ${n}개`,
       noLineage: "아직 무엇이 무엇으로 이어졌는지 적힌 것이 없어요",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
@@ -1354,7 +1355,7 @@ const KO: Deck = {
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      timelineChart: (n, m) => `타임라인: 주제 ${m}개에 걸친 문서 ${n}개`,
+      timelineChart: (n, m) => `Timeline: 주제 ${m}개에 걸친 문서 ${n}개`,
       seg: {
         episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
@@ -1457,6 +1458,7 @@ const KO: Deck = {
       acctOffline: "이 기기는 오프라인으로 쓰고 있어요. 기록은 여기 남고 어디로도 나가지 않아요.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
+      syncKeySave: "키 저장", syncKeySaved: "저장했어요. 입력칸을 비우는 것은 일부러예요 · 키를 화면에 남기지 않아요",
       syncDomains: "동기화할 주제",
       syncNoDomains: "아직 주제가 없어요. 먼저 데이터를 추가해 보세요.",
       syncNonePicked: "고른 주제가 없어서 이 기기를 떠나는 것이 없어요. 아래에서 고르기 전까지는 여기에 쓴 것이 전부 이 기기에만 남아요.",

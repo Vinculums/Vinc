@@ -100,11 +100,22 @@ class ShellSizeSpecTests(unittest.TestCase):
         각각 셰브론 하나만 담은 52px 짜리 줄이었고, 그만큼 첫 내용을 아래로 밀었다
         (홈이 카드 시작에서 52px 아래에 있었다). 문서 패널은 더해서 자기 제목 줄과
         겹쳐 머리가 두 줄이었다. 손잡이는 상단 바로 갔다.
-        근거 이미지: 발주자 `수정항목/lnb.JPG` · `수정항목/문서 패널.JPG`."""
-        for sel in (".lnb-head", ".pane-head"):
-            self.assertFalse(
-                decl(sel),
-                f"{sel} 규칙이 되살아났다 — 패널 첫 줄이 다시 52px 아래로 밀린다")
+        근거 이미지: 발주자 `수정항목/lnb.JPG` · `수정항목/문서 패널.JPG`.
+
+        ⚠ 검사가 막는 것은 **줄 하나를 통째로 먹는 크롬 머리**이지 `.lnb-head` 라는
+        이름이 아니다(2026-09-10 에 갈랐다). 지금 `.lnb-head` 에 사는 것은 `주제 N`
+        라벨 한 줄이고, 그것은 원래 본문 스크롤러의 첫 자식이었다 — 스크롤 밖으로
+        옮겼을 뿐 **자리를 더 먹지 않는다**(실측: 트리 첫 줄이 카드 위에서 44.8px 로
+        전후 동일). 그래서 이름 대신 **높이를 먹는 선언**이 있는지를 본다."""
+        self.assertFalse(decl(".pane-head"),
+                         ".pane-head 규칙이 되살아났다 — 문서 패널 머리가 두 줄이 된다")
+        head = decl(".lnb-head")
+        if head:
+            for prop in ("min-height", "height"):
+                self.assertNotIn(
+                    prop + ":", head,
+                    f".lnb-head 가 {prop} 를 선언한다 — 라벨 한 줄이 아니라 크롬 머리로 "
+                    "자란다(그 줄이 첫 내용을 아래로 밀던 것이 이 검사의 근거다)")
         for el_id in ("lnb-reopen", "docpane-reopen"):
             self.assertNotIn(
                 "#" + el_id, CSS,
@@ -117,8 +128,13 @@ class ShellSizeSpecTests(unittest.TestCase):
         그것이 지금의 정렬 수단이다: 머리가 없어진 뒤에는 같은 값을 쓰는 것이 곧
         "두 층의 첫 줄이 같은 높이에서 시작한다"다. 한쪽에 상수를 적어 두면 다른
         쪽을 고치는 날 조용히 어긋난다(머리가 있던 시절에는 중심선을 계산으로
-        맞춰야 했고, 그 계산은 머리와 함께 사라졌다)."""
-        for sel in ("#lnb-rail", ".lnb-body"):
+        맞춰야 했고, 그 계산은 머리와 함께 사라졌다).
+
+        ⚠ 트리 쪽에서 그 여백을 가진 요소가 `.lnb-body` → `.lnb-head` 로 옮겼다
+        (2026-09-10, `주제 N` 줄을 스크롤 밖으로 뺐다). 재는 대상은 **첫 줄을 담은
+        상자**이지 특정 이름이 아니다 — 본문은 이제 머리 아래에서 시작하므로 위
+        여백을 두 번 주지 않는다."""
+        for sel in ("#lnb-rail", ".lnb-head"):
             body = decl(sel)
             self.assertTrue(body, f"{sel} 규칙이 없다")
             self.assertRegex(

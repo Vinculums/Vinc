@@ -283,14 +283,15 @@ function paintRail(): void {
       <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
       <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
     </a><hr class="rail-sep">`;
-  el.innerHTML = home + RAIL.map((r, i) => {
+  el.innerHTML = home + RAIL.map((r) => {
     const on = r.key === railKey;
     const name = names[r.key] || r.key;
     // 개수는 그 **종**의 수다. Agent 는 주제라 종별 집계로 셀 수 없으므로 숫자를
     // 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
     const cnt = r.domain ? 0 : (kindCounts[r.key] || 0);
-    const sep = r.domain && i > 0 ? `<hr class="rail-sep">` : "";
-    return sep + `<button class="rail-btn" type="button" data-rail="${esc(r.key)}"
+    // ⚠ Agent 앞 구분선은 **없다**(2026-09-09). 레일의 선은 홈 아래 하나뿐이고
+    //    그것 하나여야 뜻이 하나다 — 근거는 app.css `.rail-sep` 주석.
+    return `<button class="rail-btn" type="button" data-rail="${esc(r.key)}"
       aria-pressed="${on}" aria-label="${esc(name)}"
       data-tip="${esc(r.domain ? name : COPY.ui.lnb.kindTip(name, cnt))}">
       ${kindMark3d(r.mark, r.key, 20)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
@@ -434,14 +435,26 @@ function groupRows(n: DomNode, level = 1): string {
   return head + `<div class="lnb-docs" role="group">${kids}${own}</div>`;
 }
 
+/** 스크롤 밖의 머리 — 지금 몇 주제를 보고 있는지. 인자가 없으면 비운다(아직
+ *  못 세었거나 셀 것이 없는 상태에서 `0` 을 내면 "주제가 없다"로 읽힌다). */
+function paintHead(n?: number): void {
+  const h = $("lnb-head");
+  if (!h) return;
+  h.innerHTML = n === undefined ? ""
+    : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>`
+      + `<span class="hint">${n || "·"}</span></div>`;
+}
+
 function paint() {
   const body = $("lnb-body");
   if (!body) return;
   if (loading && !tree) {
+    paintHead();
     body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.loading)}</p>`;
     return;
   }
   if (failed) {
+    paintHead();
     body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
       + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
     return;
@@ -452,9 +465,8 @@ function paint() {
   // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
   tints = loadPrefs().domainTint
     ? tintMap(groups.map((g) => g.domain), themeMode()) : null;
-  const topicCount = (tree?.domains || []).length;
-  let html = `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>
-    <span class="hint">${topicCount || "·"}</span></div>`;
+  paintHead((tree?.domains || []).length);
+  let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
   if (picked.size) {
@@ -552,7 +564,12 @@ export function mountLnb() {
   // 접기 손잡이는 상단 바로 갔으므로 여기 담을 것이 없다.
   // ⚠ **덮지 않고 잇는다**(2026-09-09). 이 카드의 첫 칸은 관점 세그이고 그것은
   // `index.html` 에 있다 — 대입으로 쓰면 세그가 지워진다.
-  root.insertAdjacentHTML("beforeend", `<div class="lnb-body" id="lnb-body"></div>`);
+  // 머리는 **스크롤 밖**이다(발주자 지적 2026-09-10: 스크롤 시작 지점이 더 아래여야
+  // 한다). 여태 `문서 N` 줄이 목록과 한 상자에 있어 굴리면 함께 사라졌다 — 지금 무엇을
+  // 보고 있는지 말하는 줄이 스크롤과 함께 없어지면 그 줄의 일이 성립하지 않는다.
+  // 렌즈 패널·시트와 같은 배치다(머리 고정 · 몸만 스크롤).
+  root.insertAdjacentHTML("beforeend",
+    `<div class="lnb-head" id="lnb-head"></div><div class="lnb-body" id="lnb-body"></div>`);
   const shellToggle = $("tb-shell-toggle");
   if (shellToggle) {
     shellToggle.innerHTML = icon("sidebar", 18);

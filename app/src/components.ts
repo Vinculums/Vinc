@@ -4,88 +4,6 @@ import { icon, stateDot } from "./icons";
 import { COPY } from "./copy";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 
-/** ── 세그먼트 컨트롤의 물성(2026-08-05) ────────────────────────────────────
- *
- *  `.seg`(3D/2D/타임라인/Sankey · 테마 · 언어 · 배치)는 여태 **활성 칩의 배경색만
- *  갈아 끼웠다.** 그래서 고를 때 선택이 "이동"하지 않고 한 칸이 꺼지고 다른 칸이
- *  켜졌다 — 어느 것에서 어느 것으로 옮겼는지 눈이 따라갈 대상이 없다.
- *
- *  움직이는 알약(thumb)을 하나 넣어 그것이 미끄러진다. 배경은 thumb 이 갖고 칩은
- *  글자만 갖는다(둘 다 배경을 가지면 이동 중에 두 개가 켜져 보인다).
- *
- *  **호출부를 하나도 고치지 않는다.** 세그를 그리는 곳이 여섯 군데(View 관점·렌즈
- *  패널·설정 셋·팩)인데 각자 innerHTML 로 다시 그리므로, 배선을 심으면 다시 그릴
- *  때마다 사라진다. 그래서 문서 전체를 한 번 관찰하고(MutationObserver) 활성 칩이
- *  바뀌거나 세그가 새로 생기면 알약을 그 자리로 옮긴다. */
-let segRaf = 0;
-
-/** 세그를 **다시 그려도** 알약이 이어지게 하는 기억(FLIP).
- *
- *  왜 필요한가: 세그를 그리는 곳들이 선택을 바꿀 때 컨테이너를 innerHTML 로 다시
- *  그린다(설정의 테마는 패널 전체, View 의 관점은 표면 전체). 그러면 알약도 새
- *  요소로 태어나므로 전이할 이전 상태가 없어 **그냥 새 자리에 나타난다** — 미끄러지지
- *  않는다. 호출부 여섯 군데를 "상태만 갱신"으로 바꾸는 것이 정공법이지만, 그건 각
- *  화면의 렌더 계약을 건드리는 일이라 위험이 크다. 대신 마지막 자리를 기억해 두고
- *  새 알약을 그 자리에 놓은 뒤 목표로 옮긴다(첫 프레임만 전이 없이).
- *
- *  키는 "어느 컨테이너의 어떤 선택지 묶음인가" — 라벨 조합이 그 세그의 정체다. */
-const segMemory = new Map<string, { t: string; w: string; h: string }>();
-
-function segKey(seg: HTMLElement): string {
-  const host = seg.closest<HTMLElement>("[id]")?.id ?? "";
-  const labels = Array.from(seg.querySelectorAll<HTMLElement>(".chip"))
-    .map((c) => c.textContent?.trim() ?? "").join("|");
-  return `${host}::${labels}`;
-}
-
-function placeSegThumb(seg: HTMLElement): void {
-  const active = seg.querySelector<HTMLElement>(".chip.active");
-  let thumb = seg.querySelector<HTMLElement>(".seg-thumb");
-  if (!active) { if (thumb) thumb.style.opacity = "0"; return; }
-  const key = segKey(seg);
-  if (!thumb) {
-    thumb = document.createElement("span");
-    thumb.className = "seg-thumb";
-    thumb.setAttribute("aria-hidden", "true");
-    seg.prepend(thumb);
-    // 새로 태어난 알약을 **기억한 자리에** 먼저 세운다(전이 없이). 그래야 바로 아래
-    // 목표 위치 지정이 "이동"으로 보인다. reflow 한 번이 그 둘을 가른다.
-    const prev = segMemory.get(key);
-    if (prev) {
-      thumb.style.transition = "none";
-      thumb.style.opacity = "1";
-      thumb.style.transform = prev.t;
-      thumb.style.width = prev.w;
-      thumb.style.height = prev.h;
-      void thumb.offsetWidth;              // 강제 reflow — 위 상태를 확정시킨다
-      thumb.style.transition = "";
-    }
-  }
-  // ⚠ `getBoundingClientRect` 를 쓰지 않는다. 세그가 **스케일 애니메이션 중인 조상**
-  // 안에 있으면(모달이 열리는 340ms 동안 전부 그렇다) 그 rect 는 축소된 좌표를 주고,
-  // 그 값이 알약의 width 로 굳어 8px 짜리 점이 된다(실측). `offset*` 은 레이아웃
-  // 값이라 변환의 영향을 받지 않는다.
-  // offsetLeft/Top 은 offsetParent(=position:relative 인 .seg)의 테두리 기준이고,
-  // 알약은 padding 상자 기준(left:0)이므로 테두리 두께만 뺀다.
-  if (!active.offsetWidth) return;         // 아직 레이아웃 전 — 다음 관찰에서 잡는다
-  thumb.style.opacity = "1";
-  thumb.style.width = `${active.offsetWidth}px`;
-  thumb.style.height = `${active.offsetHeight}px`;
-  thumb.style.transform =
-    `translate(${active.offsetLeft - seg.clientLeft}px, ${active.offsetTop - seg.clientTop}px)`;
-  segMemory.set(key, { t: thumb.style.transform, w: thumb.style.width, h: thumb.style.height });
-}
-
-function placeAllSegThumbs(): void {
-  segRaf = 0;
-  document.querySelectorAll<HTMLElement>(".seg").forEach(placeSegThumb);
-}
-
-function scheduleSegPlace(): void {
-  if (segRaf) return;                      // 한 프레임에 한 번만(관찰이 폭주해도)
-  segRaf = requestAnimationFrame(placeAllSegThumbs);
-}
-
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
  *  두 함정을 함께 막는다:
@@ -129,31 +47,6 @@ export function wireOutsideDismiss(panel: HTMLElement, close: () => void,
 }
 
 /** 앱 기동 때 한 번. 이후 세그가 어디서 다시 그려지든 알약이 따라간다. */
-/** 이 변화가 세그와 **관계가 있는가**. 없으면 아무 일도 하지 않는다.
- *
- *  왜 필요한가(2026-08-05 실측): 관찰 범위가 `document.body` 전체라, 툴팁이 뜨고 지는
- *  것 같은 무관한 변화에도 콜백이 돌았다. 그 콜백은 문서의 모든 `.chip` 좌표를
- *  `offset*` 으로 읽으므로 **강제 레이아웃**이다 — 옵션 패널을 굴리면 포인터가 지나는
- *  라벨마다 툴팁이 붙었다 떨어지고, 그때마다 전체 측정이 끼어들어 스크롤이 끊겼다. */
-function touchesSeg(recs: MutationRecord[]): boolean {
-  const isSegish = (n: Node) => n instanceof Element
-    && (n.matches(".seg, .chip, .seg-thumb") || !!n.querySelector(".seg"));
-  for (const r of recs) {
-    const t = r.target;
-    if (t instanceof Element && t.closest(".seg")) return true;
-    for (const n of r.addedNodes) if (isSegish(n)) return true;
-    for (const n of r.removedNodes) if (isSegish(n)) return true;
-  }
-  return false;
-}
-
-export function initSegMotion(): void {
-  scheduleSegPlace();
-  new MutationObserver((recs) => { if (touchesSeg(recs)) scheduleSegPlace(); })
-    .observe(document.body, { subtree: true, childList: true, attributeFilter: ["class"] });
-  window.addEventListener("resize", scheduleSegPlace);
-}
-
 /** Surface header: display title + muted meta line. (아이콘은 LNB 와 중복이라
  *  페이지에서 미표기 — iconName 은 호출부 안정성 위해 시그니처만 유지.) */
 export function header(_iconName: string, title: string, meta: string,
@@ -248,16 +141,15 @@ export function openSheet(opts: {
   // 클릭 핸들러 안이라 방금 눌린 버튼이 곧 activeElement 다. 배선을 20 곳에 퍼뜨리는
   // 대신 한 군데서 추정하고, 못 찾으면 중립 지점(가운데 위)으로 물러선다.
   const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
-  const trigger = document.activeElement;
   fadeIn(el);
-  popIn(sheetEl, trigger);
+  popIn(sheetEl);
   let closed = false;
   const close = () => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
     closed = true;
     document.removeEventListener("keydown", onKey, true);
     // 퇴장을 **기다린 뒤** 지운다 — 여태 닫기는 애니메이션이 아예 없어 뚝 끊겼다.
-    void Promise.all([popOut(sheetEl, trigger), fadeOut(el)]).then(() => {
+    void Promise.all([popOut(sheetEl), fadeOut(el)]).then(() => {
       el.remove();
       opts.onClose?.();
     });
@@ -430,15 +322,14 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
 function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => void) => void {
   const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
   // 이 다이얼로그를 연 버튼. 아래에서 자기 버튼으로 포커스를 옮기기 **전에** 잡는다.
-  const trigger = document.activeElement;
   fadeIn(el);
-  popIn(sheetEl, trigger);
+  popIn(sheetEl);
   wireScrimDismiss(el, dismiss);
   let closed = false;
   return (then) => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
     closed = true;
-    void Promise.all([popOut(sheetEl, trigger), fadeOut(el)]).then(() => { el.remove(); then(); });
+    void Promise.all([popOut(sheetEl), fadeOut(el)]).then(() => { el.remove(); then(); });
   };
 }
 
