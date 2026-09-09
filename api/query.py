@@ -2448,7 +2448,16 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         one_liner=ep[0].get("s") or "",
                         rev=ep[0].get("rev") or 0,
                         updated_at=ep[0].get("updated_at") or "")
-            return base   # Episode 는 MENTIONS 대상이 아니다 — 요약이 곧 설명.
+            # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
+            # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
+            # 일찍 빠져나가면서 그 둘을 함께 건너뛰고 있었고, 사건이 해소 후보가 되면서
+            # (2026-09-09) 확정된 사건만 관계 없이 답하게 됐다. 바로 위 Record 갈래가
+            # 같은 사유로 이미 링크를 채운다.
+            base["arm"] = "none"
+            base["excerpts"] = []
+            base["links"] = _episode_links(store, node, owner=owner,
+                                           with_evidence=with_evidence)
+            return base
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
             f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
@@ -2535,6 +2544,47 @@ def _record_links(store, node: str, *, owner: str,
     items = [{
         "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
         "domain": r.get("domain") or "", "type": "ATTACHES_TO", "dir": "out",
+        "evidence": bool((r.get("ev") or "").strip()),
+        "confidence": float(r.get("conf") or 0.0), "note": "",
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
+    } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
+                                           str(r.get("id") or "")))]
+    return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
+            "items": items[:_NODE_LINKS_CAP],
+            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+
+
+def _episode_links(store, node: str, *, owner: str,
+                   with_evidence: bool = False) -> dict:
+    """Episode 시드의 관계 목록 — 그 사건이 **무엇에 대한 것인가**(ABOUT).
+
+    :func:`_record_links` 와 같은 모양이다. 부착 엣지가 시드에서 **나가므로**
+    "무엇이 이 노드에 붙어 있나"를 묻는 :func:`_node_links` 의 팔들은 구조적으로 0행을
+    낸다. 게다가 Episode 는 `_SEMANTIC_LABELS` 가 아니라 그쪽에서 Concept 으로 접히는데,
+    그러면 **다른 테이블을 조회하고 조용히 빈 목록**을 낸다.
+
+    이 함수가 없던 동안 `node_context` 의 Episode 갈래는 링크를 아예 안 실었다. 사건이
+    해소 후보가 아니던 시절에는 눈에 띄지 않았지만, 2026-09-09 에 후보로 올리면서
+    **확정된 사건만 관계 없이 답하는** 상태가 됐다. 이 스토어 실측: 사건 160건에 ABOUT
+    256개(개념 226 · 결정 30)이고 관계가 0인 사건은 둘뿐이다.
+    근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]]"""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+             "truncated": False, "executed": False}
+    try:
+        rows = store.run(" UNION ALL ".join(
+            f"MATCH (e:Episode)-[r:ABOUT]->(o:{ol}) "
+            "WHERE e.episode_id = $id AND e.owner_id = $owner "
+            "AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "r.evidence AS ev, r.confidence AS conf "
+            for ol, opk in _SEMANTIC_PK.items()),
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+    except Exception:
+        return empty
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        "domain": r.get("domain") or "", "type": "ABOUT", "dir": "out",
         "evidence": bool((r.get("ev") or "").strip()),
         "confidence": float(r.get("conf") or 0.0), "note": "",
         "valid_from": "", "valid_until": "",
