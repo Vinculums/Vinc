@@ -59,6 +59,10 @@ from store.config import load_config  # noqa: E402
 #: 후보 순위를 이만큼까지 본다. R@10 이 계획의 마지막 칸이다.
 RANKS = (1, 3, 10)
 
+#: 이 아래를 "제목 낱말을 거의 안 남긴 질문"으로 본다. 축끼리 비교할 때 이 층만 보면
+#: 저작 차이가 빠진다 — 2026-09-09 에 en 중앙값이 ko 의 두 배였다.
+LOW_REUSE = 0.34
+
 
 def load_gold(paths: list[str]) -> list[dict]:
     rows: list[dict] = []
@@ -88,6 +92,37 @@ def check_gold(rows: list[dict]) -> list[str]:
         if r.get("language_axis") not in (None, "en", "ko", "ko2en", "en2ko"):
             bad.append(f"{i}: language_axis 가 낯설다: {r.get('language_axis')}")
     return bad
+
+
+def title_reuse(query: str, title: str) -> float:
+    """질의가 정답 제목의 토큰을 얼마나 나르나 (0.0~1.0).
+
+    **이 수 없이는 축끼리 비교가 안 된다.** 후보 진입을 정하는 것은 제목 팔의 점수이고
+    그 점수는 맞은 토큰 수다. 그래서 "한국어가 나쁘다"처럼 보이는 것이 사실은 "그 축의
+    질문이 제목 낱말을 덜 남겼다"인 경우가 있다 — 2026-09-09 에 실제로 그랬고, 겹침을
+    통제하니 축 넷이 거의 같은 자리로 모였다.
+
+    제목 팔이 쓰는 토크나이저 그대로 잰다. 다른 것으로 재면 랭커가 보는 양이 아니라
+    비슷한 다른 양을 재게 된다.
+    근거: [[record:node-candidacy-tracks-title-token-reuse-not-language-2026-09-09]]"""
+    tt = set(q.normalize_query_tokens(title or ""))
+    if not tt:
+        return 0.0
+    return round(len(set(q.normalize_query_tokens(query or "")) & tt) / len(tt), 4)
+
+
+def gold_titles(store, rows: list[dict], owner: str) -> dict:
+    """정답 노드의 제목. 존재 확인과 같은 프로브를 쓴다 — 조회를 두 번 하지 않는다."""
+    out: dict = {}
+    for r in rows:
+        nid = r.get("gold_node_id")
+        if not nid or nid in out:
+            continue
+        probe = q.execute(q.seed_lookup_plan(nid, owner=owner), None, store=store)
+        for x in probe.get("rows", []) if probe.get("executed") else []:
+            if x.get("id") == nid:
+                out[nid] = x.get("title") or ""
+    return out
 
 
 def gold_present(store, rows: list[dict], owner: str) -> list[str]:
@@ -144,6 +179,7 @@ def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
         "query": row.get("query"), "axis": row.get("language_axis") or "?",
         "gold_kind": row.get("gold_kind") or "?", "answerable": answerable,
         "status": status, "node": node, "rank": rank, "union_rank": urank,
+        "title_reuse": row.get("_title_reuse", 0.0),
         "resolved_via": res.get("resolved_via") or "",
         "grounds": len(res.get("grounds") or []),
         "unreadable": bool(res.get("unreadable")),
@@ -196,6 +232,23 @@ def summarize(rows: list[dict]) -> dict:
                 b[f"R@{k}"].append(r["hit"][k])
         out[label] = {k: {"n": v["n"], **{f"R@{r}": mean(v[f"R@{r}"]) for r in RANKS}}
                       for k, v in sorted(d.items())}
+    # 축을 비교하려면 겹침을 함께 봐야 한다 — 이 둘이 떨어져 있으면 교란이 숨는다.
+    reuse: dict = {}
+    for r in ans:
+        b = reuse.setdefault(r["axis"], {"n": 0, "reuse": [], "in_union": 0,
+                                         "low_n": 0, "low_in_union": 0})
+        b["n"] += 1
+        b["reuse"].append(r["title_reuse"])
+        hit = 1 if r["union_rank"] else 0
+        b["in_union"] += hit
+        if r["title_reuse"] <= LOW_REUSE:
+            b["low_n"] += 1
+            b["low_in_union"] += hit
+    out["by_axis_reuse"] = {
+        k: {"n": v["n"], "median_title_reuse": round(statistics.median(v["reuse"]), 4),
+            "gold_in_union": f'{v["in_union"]}/{v["n"]}',
+            f"gold_in_union_at_reuse_le_{LOW_REUSE}": f'{v["low_in_union"]}/{v["low_n"]}'}
+        for k, v in sorted(reuse.items())}
     return out
 
 
@@ -245,6 +298,11 @@ def main(argv: list[str] | None = None) -> int:
         name, path = a.encoder.split("=", 1) if "=" in a.encoder else (a.encoder, None)
         enc = Encoder(name, path)
         enc.encode(["warmup"], kind="query")   # 적재 비용을 첫 질의 밖으로 뺀다
+
+    titles = gold_titles(store, rows, a.owner)
+    for r in rows:
+        r["_title_reuse"] = title_reuse(r.get("query", ""),
+                                        titles.get(r.get("gold_node_id") or "", ""))
 
     graded, t0 = [], time.perf_counter()
     for r in rows:
