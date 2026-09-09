@@ -117,16 +117,33 @@ def rank_of(gold: str, res: dict) -> int:
     return 0
 
 
-def grade_one(res: dict, row: dict) -> dict:
+def union_rank_of(gold: str, hits: list) -> int:
+    """후보 **합집합**에서의 순위. `rank_of` 와 다른 것을 센다.
+
+    ⚠ `brief` 는 확정했을 때 `candidates` 를 싣지 않는다(계약대로다 — 확정했으면 후보를
+    내밀 이유가 없다). 그래서 `rank_of` 만으로 R@3·R@10 을 내면 **확정한 질의는 전부
+    순위 0** 이 되어, 실제로는 2위에 있던 정답이 "없음"으로 세어진다. 첫 런에서 R@1 과
+    R@3 이 거의 같게 나온 것이 그 그림자였다(0.1622 대 0.1892, 합집합으로는 0.3243).
+    그러니 노출 순위와 합집합 순위를 **둘 다** 싣는다: 앞은 부르는 쪽이 보는 것,
+    뒤는 이 파이프라인이 가진 천장.
+    근거: [[record:the-candidate-union-not-the-ranking-is-what-caps-node-resolution-2026-09-09]]"""
+    for i, h in enumerate(hits or []):
+        if (h.get("id") if isinstance(h, dict) else h) == gold:
+            return i + 1
+    return 0
+
+
+def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
     status = res.get("status")
     gold = row.get("gold_node_id") or ""
     answerable = bool(row.get("answerable", True))
     node = (res.get("node") or {}).get("id") or ""
     rank = rank_of(gold, res) if gold else 0
+    urank = union_rank_of(gold, hits) if gold else 0
     out = {
         "query": row.get("query"), "axis": row.get("language_axis") or "?",
         "gold_kind": row.get("gold_kind") or "?", "answerable": answerable,
-        "status": status, "node": node, "rank": rank,
+        "status": status, "node": node, "rank": rank, "union_rank": urank,
         "resolved_via": res.get("resolved_via") or "",
         "grounds": len(res.get("grounds") or []),
         "unreadable": bool(res.get("unreadable")),
@@ -134,11 +151,13 @@ def grade_one(res: dict, row: dict) -> dict:
     }
     if answerable:
         out["hit"] = {k: 1.0 if 0 < rank <= k else 0.0 for k in RANKS}
+        out["uhit"] = {k: 1.0 if 0 < urank <= k else 0.0 for k in RANKS}
         # 확정했는데 정답이 아니다 — 모르는 것과 **다른 고장**이다.
         out["wrong_node"] = 1.0 if (status == "resolved" and node != gold) else 0.0
         out["false_resolved"] = 0.0
     else:
         out["hit"] = {k: 0.0 for k in RANKS}
+        out["uhit"] = {k: 0.0 for k in RANKS}
         out["wrong_node"] = 0.0
         # 답이 없는 질문에 확정을 준다 — 정확도 문제가 아니라 정직성 문제다.
         out["false_resolved"] = 1.0 if status == "resolved" else 0.0
@@ -156,6 +175,10 @@ def summarize(rows: list[dict]) -> dict:
     out: dict = {
         "n": len(rows), "answerable": len(ans), "unanswerable": len(una),
         "node_recall": {f"R@{k}": mean([r["hit"][k] for r in ans]) for k in RANKS},
+        # 합집합 회수율 — 이 파이프라인의 천장. 노출 회수율과의 차이가 곧 "확정 뒤에
+        # 가려진 정답"의 크기다. R@10 은 후보 목록이 top_k 로 잘리므로 그 길이가 상한이다.
+        "union_recall": {f"R@{k}": mean([r["uhit"][k] for r in ans]) for k in RANKS},
+        "gold_in_union_rate": mean([1.0 if r["union_rank"] else 0.0 for r in ans]),
         "wrong_node_rate": mean([r["wrong_node"] for r in ans]),
         "false_resolved_rate": mean([r["false_resolved"] for r in una]),
         "choose_rate": mean([r["chose"] for r in rows]),
@@ -216,7 +239,11 @@ def main(argv: list[str] | None = None) -> int:
         # 스냅샷은 ChunkVec 0), 넘기면 없는 팔을 있는 척 재게 된다. N1 이 재는 것은
         # 해소이지 벡터 검색이 아니다 — 그 사실을 결과에 적는다.
         res = q.brief(r["query"], owner=a.owner, store=store)
-        graded.append(grade_one(res, r))
+        # 같은 풀에서 잰다 — brief 가 내부적으로 요구하는 깊이 그대로다(집 규칙 5:
+        # 다른 풀에서 잰 두 팔은 단계가 아니라 풀을 잰다).
+        hits = (q.search(r["query"], top_k=q._BRIEF_TOP_K, owner=a.owner,
+                         store=store).get("node_hits") or [])
+        graded.append(grade_one(res, r, hits))
     wall = time.perf_counter() - t0
     store.close()
 

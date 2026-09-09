@@ -22,7 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from eval_brief_resolution import check_gold, grade_one, rank_of, summarize  # noqa: E402
+from eval_brief_resolution import (check_gold, grade_one, rank_of,  # noqa: E402
+                                   summarize, union_rank_of)
 
 
 def _res(status, node=None, candidates=()):
@@ -81,6 +82,34 @@ class Grading(unittest.TestCase):
         self.assertEqual(s["false_resolved_rate"], 1.0)
         self.assertEqual(s["by_axis"]["en"]["n"], 1)
         self.assertEqual(s["by_kind"]["concept"]["n"], 2)
+
+
+class UnionRank(unittest.TestCase):
+    """확정한 질의의 후보는 계약상 비어 있다 — 그것을 "정답이 없다"로 세면 안 된다."""
+
+    def test_a_gold_hidden_behind_a_confident_wrong_answer_still_counts_in_the_union(self):
+        row = {"gold_node_id": "concept:a", "answerable": True, "gold_kind": "concept"}
+        hits = [{"id": "record:long-title"}, {"id": "concept:a"}]
+        g = grade_one(_res("resolved", "record:long-title"), row, hits)
+        self.assertEqual(g["rank"], 0, "brief 는 확정하면 후보를 안 싣는다")
+        self.assertEqual(g["union_rank"], 2)
+        self.assertEqual(g["hit"][3], 0.0)
+        self.assertEqual(g["uhit"][3], 1.0, "합집합에 있는 정답을 없다고 셌다")
+
+    def test_the_two_recalls_are_reported_side_by_side(self):
+        row = {"gold_node_id": "concept:a", "answerable": True,
+               "gold_kind": "concept", "language_axis": "en"}
+        s = summarize([grade_one(_res("resolved", "record:x"), row,
+                                 [{"id": "record:x"}, {"id": "concept:a"}])])
+        self.assertEqual(s["node_recall"]["R@3"], 0.0)
+        self.assertEqual(s["union_recall"]["R@3"], 1.0)
+        self.assertEqual(s["gold_in_union_rate"], 1.0)
+
+    def test_a_gold_absent_from_the_union_is_zero_in_both(self):
+        row = {"gold_node_id": "concept:a", "answerable": True, "gold_kind": "concept"}
+        g = grade_one(_res("choose", None, ["concept:x"]), row, [{"id": "concept:x"}])
+        self.assertEqual(union_rank_of("concept:a", [{"id": "concept:x"}]), 0)
+        self.assertEqual(g["uhit"][10], 0.0)
 
 
 class GoldFileRules(unittest.TestCase):
