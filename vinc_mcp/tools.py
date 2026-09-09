@@ -113,14 +113,25 @@ _FRAGMENT_SCHEMA = {
                                    "description": "Record only — when the claim this record makes became "
                                                   "true. Same YYYY[-MM[-DD]] contract as content_time; "
                                                   "empty string clears it. Omitting the field on a resend "
-                                                  "preserves the stored value."},
+                                                  "preserves the stored value. SET IT when this record "
+                                                  "asserts a present state of the product, infra or "
+                                                  "process, because the default read path now returns "
+                                                  "current claims only. Leaving it empty is not an error "
+                                                  "and does not hide the record — unstated reads as "
+                                                  "current — but a record that will one day be replaced "
+                                                  "cannot be retired without a start."},
                     "valid_until": {"type": "string",
                                     "description": "Record only — when the claim stopped being true "
                                                    "(half-open: the claim does not hold at this instant). "
                                                    "Setting it is how a record is invalidated without "
                                                    "deleting it — resend just {id, type, valid_until}. "
                                                    "Same format contract as valid_from; empty string "
-                                                   "clears it (the claim holds again)."},
+                                                   "clears it (the claim holds again). This is the ONLY field that "
+                                                   "removes a node from the default read: an unstated "
+                                                   "valid_from does not. When you supersede a claim, "
+                                                   "set this on the old one to the date the new one "
+                                                   "starts, and do not delete it — a retired claim is "
+                                                   "still a true description of what held then."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."},
                 },
                 "required": ["id", "type"],
