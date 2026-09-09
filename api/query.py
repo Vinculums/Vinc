@@ -13,6 +13,7 @@ import datetime as _dt
 import hashlib
 import itertools
 import json
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -5382,20 +5383,46 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
     return out[:max(1, int(limit))]
 
 
+def _node_semantic_arm_on() -> bool:
+    """의미 암을 켤 것인가. **기본은 꺼짐**이고 `VINC_NODE_SEMANTIC_ARM` 이 켠다.
+
+    껐다 켜서 쟀고(2026-09-09, 정답 66문항) **꺼진 채로 둔다**. 팔은 제 일을 한다 —
+    후보 진입이 21/60 에서 35/60 으로 오른다. 그런데 그 이득의 11건이 `resolved` 뒤에
+    갇힌다: 확신하면 후보 목록을 감추므로 정답이 후보에 **들어와도 화면에 안 나온다**.
+    사용자에게 실제로 달라지는 것은 답 가능 60건 중 3건뿐이고, 답 불가 두 건이 깨끗한
+    "없음"을 잃는다(none → choose). 기본값은 랭킹 절반이 이 후보를 고를 수 있을 때 뒤집는다.
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
 def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
-                    top_k: int) -> list[dict]:
-    """title 폴백 + 그래프 암을 개념-공간 RRF 융합(§4-2, D24 매치 표기). 각 행에
-    ``arms``(title/graph 멤버십)를 부여한다. 그래프 암이 비면 **융합하지 않고**
-    title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변)."""
+                    top_k: int, vec_hits: list[dict] | None = None) -> list[dict]:
+    """title 폴백 + 그래프 암 (+ v17 의미 암)을 개념-공간 RRF 융합(§4-2, D24 매치 표기).
+    각 행에 ``arms``(title/graph/semantic 멤버십)를 부여한다. 다른 팔이 다 비면
+    **융합하지 않고** title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변).
+
+    의미 암은 **어휘가 하나도 안 겹쳐도 닿는 유일한 팔**이다. 실측(2026-09-09): 후보
+    진입을 21/60 에서 35/60 으로 올리고, 그 이득은 제목이 안 겹치는 축에 몰린다
+    (제목 재사용 ≤0.34 인 한국어 질문 1/8 → 5/8). 다만 **답이 바뀌지는 않는다** —
+    기본이 꺼진 이유는 :func:`_node_semantic_arm_on` 에 있다.
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
     membership: dict = {}
-    for name, rows_ in (("title", title_hits), ("graph", graph_hits)):
+    arms_in = [("title", title_hits), ("graph", graph_hits),
+               ("semantic", vec_hits or [])]
+    for name, rows_ in arms_in:
         for r in rows_:
             membership.setdefault(r.get("id"), set()).add(name)
-    if not graph_hits:
-        for r in title_hits:
+    lists = [rows_ for _, rows_ in arms_in if rows_]
+    if len(lists) < 2:
+        # 융합할 것이 없으면 그 한 팔의 순서를 그대로 낸다. `title_hits` 로 못 박으면
+        # **제목 팔이 빈 채 다른 팔만 찬 경우가 통째로 버려진다**(융합 전 동작은 그때
+        # 그 팔의 행을 냈다).
+        out = lists[0] if lists else []
+        for r in out:
             r["arms"] = sorted(membership.get(r.get("id"), []))
-        return title_hits
-    fused = rrf_fuse([title_hits, graph_hits], top_k=top_k)   # title 우선(행 유지)
+        return out
+    fused = rrf_fuse(lists, top_k=top_k)   # title 우선(행 유지)
     for r in fused:
         r["arms"] = sorted(membership.get(r.get("id"), []))
     return fused
@@ -5582,15 +5609,42 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
 
-        # (4) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
+        # (4-a) v17 의미 암 — 노드 미러(NodeVec)를 질의 벡터로 찾는다. **어휘가 하나도
+        # 안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
+        # 순위에 얹혀 있어(graph), 패러프레이즈를 못 건넌다.
+        #
+        # ⚠ 기본은 **꺼져 있다**(`VINC_NODE_SEMANTIC_ARM=on` 으로 켠다). 껐다 켜서
+        # 쟀고(정답 66문항) 켜는 쪽이 이기지 못했다: 후보 진입은 21/60 → 35/60 인데
+        # resolved 46건의 **선택이 하나도 안 바뀌었다**. 즉 이 팔은 정답을 닿게 하고
+        # 랭킹은 여전히 못 고른다 — 병목이 후보에서 랭킹으로 옮겨 갔을 뿐이다.
+        # 켜는 값은 랭킹 절반(같은 미러 위의 BM25)이 붙은 뒤에 다시 잰다.
+        # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+        vec_hits: list[dict] = []
+        if query_embedding is not None and _node_semantic_arm_on():
+            try:
+                # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
+                # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
+                vec_hits = [{"id": h.get("id"),
+                             "title": h.get("title") or h.get("text") or "",
+                             "kind": h.get("kind") or "", "domain": "",
+                             "matched_in": "semantic", "hit_tokens": 0,
+                             "title_tokens": 0, "token_total": 0}
+                            for h in (store.node_vector_search(
+                                query_embedding, top_k, owner=owner) or [])]
+            except Exception as exc:
+                base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
+
+        # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
         try:
             chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")]
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k)
+            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
+                                                vec_hits=vec_hits)
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k)
+            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k,
+                                                vec_hits=vec_hits)
     finally:
         if owns:
             store.close()

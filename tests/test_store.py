@@ -184,7 +184,16 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 16)   # v16 — ATTACHES_TO 근거(E-G6)
+        self.assertEqual(eschema.SCHEMA_VERSION, 17)   # v17 — 노드 미러(NodeVec)
+        # v17 이 주장하는 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
+        # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
+        # 데이터 스텝이라 여기 못 쓴다. 이 두 줄이 그 주장을 지킨다.
+        self.assertIn("CREATE NODE TABLE NodeVec(node_id STRING", ddl)
+        # 미러의 `title` 은 화면 라벨이고 `text` 는 찾는 표면이다 — 둘은 다른 열이어야 한다.
+        nodevec_ddl = next(s for s in ddl.splitlines()
+                           if s.startswith("CREATE NODE TABLE NodeVec"))
+        for col in ("title STRING", "text STRING", "owner_id STRING", "embedding FLOAT["):
+            self.assertIn(col, nodevec_ddl)
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
@@ -197,6 +206,10 @@ class ProvisionTests(unittest.TestCase):
         def only(v):
             later = set(eschema.migration_statements(v))
             return [s for s in eschema.migration_statements(v - 1) if s not in later]
+
+        # v17 의 몫은 **비어 있어야 한다**. 비지 않았다면 노드 테이블에 ALTER 를 붙인
+        # 것이고, 그것은 부팅 DDL 이 이미 하는 일을 두 번 하는 것이다.
+        self.assertEqual(only(17), [], "v17 은 ALTER 스텝이 없어야 한다")
 
         v12 = only(12)
         self.assertIn("ALTER TABLE ABOUT ADD FROM Decision TO Concept", v12)

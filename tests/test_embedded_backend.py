@@ -1188,7 +1188,17 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "16")   # v16 — ATTACHES_TO 근거(E-G6)
+        self.assertEqual(rows[0]["v"], "17")   # v17 — 노드 미러(NodeVec)
+        # v17 — 미러는 **부팅 DDL 이 만든다**(ALTER 도 백필도 없다). 실제로 서는지
+        # 여기서 확인한다: 이 가정이 틀리면 채우기가 'Table NodeVec does not exist' 로
+        # 죽는다(2026-09-09 에 실제로 물렸다).
+        store.run("CREATE (:NodeVec {node_id:'concept:t1', kind:'concept', "
+                  "owner_id:'user:x', title:'T', text:'T. 한 줄 설명', model:'m', "
+                  f"embedding:{[0.0] * cfg.embedding_dim}}})")
+        mir = store.run("MATCH (n:NodeVec) RETURN n.title AS t, n.text AS x")
+        self.assertEqual(mir[0]["t"], "T")
+        self.assertNotEqual(mir[0]["t"], mir[0]["x"],
+                            "라벨(title)과 찾는 표면(text)은 다른 열이어야 한다")
         # v12 — Decision 노드 테이블 + **개념과 같은 자리**의 끝점 쌍이 실동작한다.
         # 신규 설치는 base DDL 이, 구 설치는 ALTER ADD FROM/TO 가 같은 형태로 수렴.
         store.run("MERGE (d:Decision {decision_id:'decision:t1'}) "
