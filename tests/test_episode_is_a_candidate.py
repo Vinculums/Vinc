@@ -103,5 +103,63 @@ class EpisodeCandidacy(unittest.TestCase):
         self.assertTrue(out.get("one_liner"), "사건의 서술이 재료로 안 실렸다")
 
 
+class EpisodeLinks(EpisodeCandidacy):
+    """확정된 사건이 **관계 없이** 답하면 안 된다.
+
+    사건은 MENTIONS 대상이 아니라 발췌가 없다. 그래서 그 갈래가 일찍 빠져나갔는데, 그때
+    ABOUT 관계까지 함께 버려졌다. 사건이 해소 후보가 아니던 동안에는 안 보였고, 후보로
+    올린 순간부터는 **확정된 사건만 관계가 비는** 상태가 된다.
+    근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]]
+    """
+
+    def setUp(self):
+        super().setUp()
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "episode:2026-01-02-the-pipeline-stalled", "type": "episode",
+             "title": "The nightly pipeline stalled", "date": "2026-01-02"},
+            {"id": "concept:queue-drain", "type": "concept", "title": "Queue drain"},
+        ], "edges": [
+            {"from": "episode:2026-01-02-the-pipeline-stalled",
+             "to": "concept:queue-drain", "type": "about",
+             "evidence": "The queue stopped draining at 02:00."},
+        ]}, store=self.store)
+
+    def test_a_resolved_episode_carries_its_about_relations(self):
+        out = q.brief("the nightly pipeline stalled", owner=self.OWNER,
+                      store=self.store)
+        links = out.get("links") or {}
+        self.assertEqual(links.get("degree"), 1, "사건의 관계가 비었다")
+        self.assertEqual(links["items"][0]["id"], "concept:queue-drain")
+        self.assertEqual(links["items"][0]["type"], "ABOUT")
+        self.assertEqual(links["items"][0]["dir"], "out")
+
+    def test_the_evidence_sentence_comes_with_it_when_asked(self):
+        got = q.node_context(owner=self.OWNER,
+                             node="episode:2026-01-02-the-pipeline-stalled",
+                             limit=3, with_evidence=True, store=self.store)
+        it = got["links"]["items"][0]
+        self.assertTrue(it["evidence"])
+        self.assertIn("stopped draining", it["evidence_text"])
+
+    def test_an_episode_still_has_no_excerpts(self):
+        """발췌가 없는 것은 결함이 아니다 — 사건은 MENTIONS 대상이 아니고 요약이 설명이다."""
+        got = q.node_context(owner=self.OWNER,
+                             node="episode:2026-01-02-the-pipeline-stalled",
+                             limit=3, store=self.store)
+        self.assertEqual(got.get("excerpts"), [])
+        self.assertEqual(got.get("arm"), "none")
+
+    def test_another_owners_concept_is_not_linked_in(self):
+        frag.merge_fragment({"owner": "user:someone-else", "nodes": [
+            {"id": "concept:queue-drain-elsewhere", "type": "concept",
+             "title": "Queue drain elsewhere"},
+        ]}, store=self.store)
+        got = q.node_context(owner=self.OWNER,
+                             node="episode:2026-01-02-the-pipeline-stalled",
+                             limit=3, store=self.store)
+        ids = [i["id"] for i in got["links"]["items"]]
+        self.assertNotIn("concept:queue-drain-elsewhere", ids)
+
+
 if __name__ == "__main__":
     unittest.main()
