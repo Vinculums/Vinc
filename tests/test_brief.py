@@ -60,14 +60,45 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(status, "choose")
         self.assertEqual([h["id"] for h in picked], ["concept:a", "concept:b"])
 
-    def test_엄격하게_이기면_확정이다(self):
-        # 질문이 어느 제목과도 같지 않아 점수만으로 갈리는 경우다.
+    def test_토큰_하나_차이로는_확신하지_않는다(self):
+        """⚠ 이 검사는 뒤집힌 것이다. 전에는 토큰 하나만 더 맞히면 확정이었고, 그것이
+        사실상 문턱이 없다는 뜻이었다 — 실측(2026-09-09, 정답 66문항): 답 가능 60건 중
+        46건을 확신하고 **그중 36건이 틀렸다**. 문턱을 둘로 올리니 확신 15 · 오답 7 이다.
+        되돌리려면 `VINC_BRIEF_STRICT=off`(:func:`api.query._brief_strict_on`)."""
         hits = [{"id": "concept:a", "title": "alpha core", "hit_tokens": 1,
                  "title_tokens": 1},
                 {"id": "concept:b", "title": "alpha edge core", "hit_tokens": 2,
                  "title_tokens": 2}]
+        self.assertEqual(q._brief_resolve("어느 alpha core 인가", hits)[0], "choose")
+
+    def test_두_토큰_차로_이기면_확정이다(self):
+        hits = [{"id": "concept:a", "title": "alpha core", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:b", "title": "alpha edge core deep", "hit_tokens": 3,
+                 "title_tokens": 3}]
         status, picked = q._brief_resolve("어느 alpha core 인가", hits)
         self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:b"))
+
+    def test_여러_팔이_함께_올린_후보가_먼저다(self):
+        """어휘와 의미가 같은 노드를 함께 가리켰다는 것은, 토큰 하나를 더 맞힌 것보다
+        강한 증거다. `arms` 가 없는 호출부는 전부 0 이라 순서가 안 바뀐다."""
+        hits = [{"id": "concept:a", "title": "가", "hit_tokens": 2, "title_tokens": 2,
+                 "arms": ["title"]},
+                {"id": "concept:b", "title": "나", "hit_tokens": 2, "title_tokens": 2,
+                 "arms": ["semantic", "title"]}]
+        self.assertEqual(q._brief_resolve("아무 질문", hits)[1][0]["id"], "concept:b")
+
+    def test_비상구를_열면_옛_규칙으로_돌아간다(self):
+        hits = [{"id": "concept:a", "title": "alpha core", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:b", "title": "alpha edge core", "hit_tokens": 2,
+                 "title_tokens": 2}]
+        os.environ["VINC_BRIEF_STRICT"] = "off"
+        try:
+            status, picked = q._brief_resolve("어느 alpha core 인가", hits)
+            self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:b"))
+        finally:
+            os.environ.pop("VINC_BRIEF_STRICT", None)
 
     def test_그래프_팔만_올라오면_확정하지_않는다(self):
         """청크 인접은 "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다."""
@@ -379,7 +410,7 @@ class BriefRecordE2E(unittest.TestCase):
 
         q.node_context = flaky
         try:
-            out = self._brief("agent test card call efficiency")
+            out = self._brief("agent test card call")   # 여유 2 (3 대 1)
         finally:
             q.node_context = real
         self.assertEqual(out["status"], "resolved", out.get("note"))
@@ -392,13 +423,18 @@ class BriefRecordE2E(unittest.TestCase):
         """⚠ 특성화 검사 — 바람직한 동작을 고정하는 것이 **아니라**, 남아 있는 결함을
         고정한다. 2026-08-30 재측정의 태스크 C 다.
 
-        Record 를 열 수 있게 되면서 이 태스크의 실패가 `status:"none"`(시끄러운 실패)
-        에서 **자신만만한 오답**(조용한 실패)으로 바뀌었다. 원인은 해소 규칙의 동점
-        처리다: hit_tokens 가 비기면 title_tokens 로 가르는데, 질의와 제목의 언어가
-        다른 노드는 id 로 정확히 맞아도 title_tokens 가 0 이라 구조적으로 진다.
+        원인은 해소 규칙의 동점 처리다: hit_tokens 가 비기면 title_tokens 로 가르는데,
+        질의와 제목의 언어가 다른 노드는 id 로 정확히 맞아도 title_tokens 가 0 이라
+        구조적으로 진다.
 
-        이것을 고치는 것은 랭킹 변경이라 모든 질의에 영향을 주고 자체 평가가 필요하다.
-        여기서는 판정하지 않고 수를 남긴다 — 고치는 사람이 이 검사를 뒤집게 된다.
+        ⚠ **엄격 판정(2026-09-09)은 이 갈래를 못 닫는다.** 전체로는 확신 오답을 36 에서
+        7 로 줄였는데 여기는 남는다 — hit 이 2 대 2 로 비겨도 title 이 2 대 0 이라
+        **제목 토큰만으로 여유 2 가 채워지기 때문**이다.
+
+        닫는 길("맞은 토큰이 비기면 제목 토큰만으로는 확신하지 않는다")은 **재 보고
+        기각했다**(2026-09-09, 같은 정답층 탐침): 확신 오답이 5 에서 0 으로 가는 대신
+        확신이 13건에서 2건으로 무너지고 맞는 확신 여섯이 함께 사라진다. 이 갈래 하나를
+        닫자고 확신을 통째로 포기할 수는 없다. 그래서 수를 남긴다.
         근거: [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]"""
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:silent-truncation", "type": "concept",
@@ -462,7 +498,7 @@ class BriefRecordE2E(unittest.TestCase):
         q.node_context = lambda *, node, **kw: {"executed": False,
                                                 "note": "unknown node: " + node}
         try:
-            out = self._brief("agent test card call efficiency")
+            out = self._brief("agent test card call")   # 여유 2 (3 대 1)
         finally:
             q.node_context = real
         self.assertEqual(out["status"], "none")
