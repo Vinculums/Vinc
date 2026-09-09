@@ -42,7 +42,6 @@ const ALIAS: Record<string, Surface> = {
 const ALIAS_TOOLS: Record<string, "import" | "share"> = { intake: "import", packs: "share" };
 
 const surfaceEl = document.getElementById("surface")!;
-const topbar = document.getElementById("topbar")!;
 const shellEl = document.getElementById("shell")!;
 const docpaneEl = document.getElementById("docpane")!;
 const docpaneBodyEl = document.getElementById("docpane-body")!;
@@ -58,8 +57,12 @@ const docpaneBodyEl = document.getElementById("docpane-body")!;
 // 이제 아무도 켜지 않는다 — 상태와 그 CSS 는 남겨 둔다(임베드 배치가 쓸 수 있다).
 docpaneEl.setAttribute("aria-label", COPY.ui.lnb.paneTitle);
 
-// Notation icons into the top bar (CSS가 18px 로 클램프)
-topbar.querySelectorAll<HTMLElement>("[data-icon]").forEach((el) => {
+// 표기 아이콘 심기(CSS 가 18px 로 클램프).
+// ⚠ 범위는 **셸**이다(2026-09-09). 여태 `topbar` 안만 훑었는데 설정·GRAPH.md 버튼이
+// 레일로 내려가면서 그 범위를 벗어나 **아이콘 없는 빈 사각**이 됐다(실측). 선택자에
+// 자리를 박아 두면 요소가 옮겨 갈 때마다 조용히 빠진다 — `data-icon` 이 있는 곳이
+// 곧 심을 곳이다.
+document.querySelectorAll<HTMLElement>("#shell [data-icon]").forEach((el) => {
   el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon!, 18));
 });
 document.getElementById("settings-btn")!.setAttribute("aria-label", COPY.ui.topbar.settings);

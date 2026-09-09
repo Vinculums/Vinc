@@ -263,7 +263,10 @@ function setRailKey(next: string): void {
 /** 층 1 — 종 레일. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
  *  (레일은 상주 크롬이고 목록은 조회 결과다). */
 function paintRail(): void {
-  const el = $("lnb-rail");
+  // ⚠ 레일 **전체**가 아니라 가운데 칸만 칠한다(2026-09-09). 레일에는 손잡이와 앱
+  // 버튼 넷이 함께 사는데, 여기서 `#lnb-rail` 을 덮으면 그 둘이 종을 다시 그릴
+  // 때마다 사라진다(그리고 그때 붙인 리스너도 함께 죽는다).
+  const el = $("rail-kinds");
   if (!el) return;
   const names = COPY.ui.lnb.kinds;
   const here = location.hash.replace(/^#/, "").split("/")[0] || "view";
@@ -547,7 +550,9 @@ export function mountLnb() {
   // **머리가 없다.** 여태 이 카드의 첫 52px 는 셰브론 하나를 담은 머리였고, 그만큼
   // 첫 줄(홈)을 아래로 밀었다(발주자 지적 2026-09-09, `수정항목/lnb.JPG`).
   // 접기 손잡이는 상단 바로 갔으므로 여기 담을 것이 없다.
-  root.innerHTML = `<div class="lnb-body" id="lnb-body"></div>`;
+  // ⚠ **덮지 않고 잇는다**(2026-09-09). 이 카드의 첫 칸은 관점 세그이고 그것은
+  // `index.html` 에 있다 — 대입으로 쓰면 세그가 지워진다.
+  root.insertAdjacentHTML("beforeend", `<div class="lnb-body" id="lnb-body"></div>`);
   const shellToggle = $("tb-shell-toggle");
   if (shellToggle) {
     shellToggle.innerHTML = icon("sidebar", 18);

@@ -792,8 +792,19 @@ export async function renderView(el: HTMLElement) {
     // 카드 사이의 여백 위에 패널이 걸친다 — 지도를 보는 손잡이가 지도 밖에서 열리는
     // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
     const cardTop = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect().top;
-    viewPanel.style.top = `${Math.round(Math.max(r.bottom + 6, cardTop + m))}px`;
-    // 자리는 렌즈 버튼 아래에 오른쪽으로 붙인다. 화면·읽는 면 밖으로 나가면 접어 넣는다.
+    // ⚠ **아래로 못 들어가면 위로 연다**(2026-09-09). 렌즈 버튼이 레일 **맨 아래**로
+    // 내려간 뒤(발주자 지시) 버튼 아래에 남는 자리가 40px 뿐이라, 아래로만 여는 코드는
+    // 패널을 화면 밖으로 밀어냈다. 트리거에서 자라는 것은 지키고 방향만 뒤집는다 —
+    // 그것이 팝오버의 규칙이다(`float-panel.ts`·`components.ts` 도 같은 처분).
+    const h = viewPanel.offsetHeight;
+    const below = r.bottom + 6;
+    const above = r.top - 6 - h;
+    const fitsBelow = below + h + m <= window.innerHeight;
+    const top = fitsBelow ? below
+      : (above >= cardTop + m ? above
+         : Math.max(cardTop + m, window.innerHeight - h - m));
+    viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
+    // 자리는 렌즈 버튼에 왼쪽을 맞춘다. 화면·읽는 면 밖으로 나가면 접어 넣는다.
     viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
@@ -816,6 +827,11 @@ export async function renderView(el: HTMLElement) {
     // (관점 발견 힌트와 그 seen 플래그는 2026-08-17 에 걷어냈다 — 세그먼트가 상단 바로
     //  올라간 뒤 힌트를 띄우는 코드가 없어 쓰는 곳 없이 지우는 곳만 남아 있었다.)
     drawViewPanel();
+    // ⚠ **내용이 찬 뒤에 한 번 더 잡는다.** 위 `positionPanel()` 은 빈 패널을 재므로
+    // 높이가 0 에 가깝고, "아래로 들어가는가"의 판정이 늘 참이 된다 — 렌즈 버튼이
+    // 레일 맨 아래로 내려간 뒤 그 오판이 패널을 화면 밖(아래끝 1529 대 화면 900)으로
+    // 밀어냈다(실측 2026-09-09). 폭 때와 같은 종의 함정이다: **재는 것은 채운 뒤에.**
+    positionPanel();
     // 활성 칩이 없는 프레임(Compare — 관점도 프레임도 활성이 아니다)에서도 포커스는
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.

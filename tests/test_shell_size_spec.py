@@ -144,6 +144,24 @@ class ShellSizeSpecTests(unittest.TestCase):
             "#settings-popover 규칙이 되살아났다 — 설정은 시트다(구현이 둘이면 "
             "상자·자리·딤이 다음에 또 갈린다)")
 
+    def test_사이드바_둘이_천장까지_서고_바는_지도_위에만_얹힌다(self):
+        """셸의 골격(발주자 지시 2026-09-09).
+
+        층 1(레일)과 층 2(트리)가 1행부터 서고 상단 바는 3열 1행이다 — 그래서 바에는
+        검색만 남고 손잡이·앱 버튼 넷은 레일로, 관점 세그는 트리로 갔다. 이 셋이
+        한 배치의 세 조각이라 하나만 되돌리면 화면이 깨지므로 함께 지킨다.
+        그리고 **레일은 접히지 않는다**: 앱의 유일한 손잡이 넷과 홈이 여기 살아서,
+        접으면 그것들이 화면에서 사라지고 다시 펼 손잡이도 함께 없어진다."""
+        for sel, want in (("#lnb-rail", "grid-row: 1 / -1"),
+                          ("#lnb", "grid-row: 1 / -1"),
+                          ("#topbar", "grid-column: 3")):
+            body = decl(sel)
+            self.assertIn(want, body, f"{sel} 가 `{want}` 를 안 쓴다 — 셸 골격이 되돌려졌다")
+        closed = decl('#shell[data-lnb="closed"]')
+        self.assertIn(
+            "var(--kind-rail-w) 0", closed,
+            "접힘이 레일까지 접는다 — 앱 손잡이 넷과 다시 펼 손잡이가 함께 사라진다")
+
 
 if __name__ == "__main__":
     unittest.main()
