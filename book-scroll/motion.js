@@ -201,7 +201,7 @@ function layoutDiagram(m) {
       const rowsTxt = c.rows.map(([a, b]) => `${a} = ${b}`);
       const wdt = Math.max(c.title.length, ...rowsTxt.map(r => r.length)) * CH + PAD * 2 + 8;
       const w = Math.min(320, Math.max(120, wdt)), h = PAD * 2 + LH + 8 + c.rows.length * LH;
-      const b = { label: c.title, lines: [c.title], w, h, x: x - w / 2, y: 0, card: c.rows.map(([a, v]) => `${a} = ${v}`) };
+      const b = { label: c.title, lines: [c.title], w, h, x: x - w / 2, y: 0, card: c.rows.map(([a, v]) => a ? `${a} = ${v}` : v) };
       nodes.push(b);
     });
     nodes[nodes.length - 1].terminal = true;
