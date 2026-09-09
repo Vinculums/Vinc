@@ -2914,6 +2914,57 @@ def _brief_grounds(node_id: str, excerpts: list[dict], items: list[dict]) -> lis
     return sorted(x for x in out if x)
 
 
+def _brief_answerability_on() -> bool:
+    """답변 가능성 게이트를 켤 것인가. **기본은 꺼짐**(`VINC_BRIEF_ANSWERABILITY`).
+
+    끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
+    답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
+    수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
+    return str(os.environ.get("VINC_BRIEF_ANSWERABILITY", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+#: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
+#: 확신하지 않는다. 실측으로 고른 자리다(2026-09-10, 정답 81문항 · 확신 18건):
+#:
+#:     문턱   확신  정답  오답  답불가확정
+#:     꺼짐    18     8     7      3
+#:     0.34     9     5     4      0
+#:     0.67    14     7     7      0
+#:
+#: 0.34 는 오답 확정도 셋 줄이지만 그것은 **이 게이트의 일이 아니라 랭킹의 일**이고
+#: (`_brief_strict_on` 이 한 것), 그 대가로 맞는 확신을 둘 더 잃는다. 0.67 은 목적
+#: (답 불가에 확신을 주지 않는다)을 최소 비용으로 달성한다 — 맞는 확신 하나.
+#:
+#: ⚠ 잃는 그 하나는 **형태 변화** 때문이다: 질문의 `sent` 가 코퍼스의 `send` 와 표면이
+#: 달라 고아로 보인다. 어간 분석이 없는 한 이 게이트의 천장이 그것이다.
+_ORPHAN_BLOCK = 0.67
+
+
+def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
+    """질문에서 확정 노드의 제목이 안 먹은 부분 중, **아무 데서도 못 본** 토큰의 비율.
+
+    어떤 토큰이 검색이 가져온 후보 제목과 청크 발췌 어디에도 없다면, 그 노드가 아니라
+    **어느 노드도** 질문의 그 부분을 다루지 못한다. 주제는 맞는데 물은 것이 없는 자리다.
+
+    코퍼스 어휘 전량과 대조하는 것이 정확하지만 질의당 402ms 다(실측). 이미 가져온
+    것만 보는 이 근사는 공짜이고, 운용 문턱(0.34~0.50)에서 정확판과 **결과가 같았다**.
+    근거: [[record:answerability-is-a-residual-coverage-question-2026-09-10]]"""
+    qt = normalize_query_tokens(query)
+    if not qt:
+        return 0.0
+    tt = set(normalize_query_tokens(str(picked_title or "")))
+    resid = [t for t in qt if t not in tt]
+    if not resid:
+        return 0.0
+    seen: set = set()
+    for h in res.get("node_hits") or []:
+        seen |= set(normalize_query_tokens(str(h.get("title") or ""), cap=64))
+    for r in res.get("rows") or []:
+        seen |= set(normalize_query_tokens(str(r.get("snippet") or ""), cap=256))
+    return sum(1 for t in resid if t not in seen) / len(resid)
+
+
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, cfg=None, store=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
@@ -2992,6 +3043,21 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 base["validity_note"] = (
                     "a claim that is no longer current tied with the leading candidate, "
                     "so this was not resolved; pass historical=true to see it")
+        # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
+        # 인용하고 그 **속성**을 물으면(“…는 문장은 누가 썼나”) 제목이 통째로 맞아
+        # 토큰 여유가 넘치고, 확신 문턱은 그것을 못 거른다 — 랭킹 문제가 아니기 때문이다.
+        # 실측(2026-09-10, 답 불가 21문항): 이 갈래가 없으면 '주제는 있는데 속성이 없는'
+        # 7건 중 3건을 확신했다. 이 게이트는 그 셋을 전부 막고(답불가 확정 0.1429 → 0.0000)
+        # 맞는 확신 하나를 잃는다. **노출 R@1 은 안 변한다** — 강등된 질문도 후보 목록에
+        # 정답을 1위로 싣기 때문이다.
+        # ⚠ 기본은 꺼져 있다 — 이유는 :func:`_brief_answerability_on` 에 있다.
+        if status == "resolved" and picked and _brief_answerability_on():
+            _orphan = _brief_orphan_residual(query, picked[0].get("title"), res)
+            if _orphan >= _ORPHAN_BLOCK:
+                status = "choose"
+                base["answerability_note"] = (
+                    "the topic matched but the question asks for something this graph "
+                    "does not hold, so this was not resolved")
         base["status"] = status
         if unread_ids and status in ("choose", "none"):
             base["unreadable"] = list(unread_ids)
