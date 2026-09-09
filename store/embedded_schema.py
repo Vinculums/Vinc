@@ -106,6 +106,33 @@ _NODE_TABLES: dict[str, dict] = {
     "Entity": {"pk": "entity_id", "cols": [
         ("entity_id", "STRING"), ("type", "STRING"), ("title", "STRING"),
         ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
+    # v17 — **노드 미러**. 노드 층에는 색인이 하나도 없었다: 제목 검색은 Cypher
+    # CONTAINS 전수 스캔이고 점수는 파이썬에서 맞은 토큰을 세는 것이다. 그래서 질문과
+    # 노드가 낱말을 안 나누면 그 노드는 **어떤 팔로도 후보가 못 된다**(실측: 답 가능
+    # 60건 중 39건).
+    #
+    # 왜 라벨마다가 아니라 미러 한 벌인가. 색인은 테이블마다 걸리는데 의미층 노드는
+    # 라벨이 넷이다. 넷에 각각 걸면 색인이 넷이고 조회도 UNION 넷이다. 노드당 한 행을
+    # 두면 **한 번 채워 두 팔(HNSW·FTS)이 먹는다**.
+    #
+    # `text` 는 찾는 표면이고 답변 재료가 아니다 — 좁게 담는다. 오늘 Episode 의 요약을
+    # 검색 표면에 넣었다가 답 불가 질문을 확정하게 만든 적이 있다
+    # ([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
+    #
+    # ⚠ 채우기는 **드롭 → 벡터와 함께 전량 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
+    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측).
+    # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+    "NodeVec": {"pk": "node_id", "cols": [
+        ("node_id", "STRING"),           # 논리 id 그대로(concept:x · record:y …)
+        ("kind", "STRING"),              # concept | record | decision | episode
+        ("owner_id", "STRING"),
+        ("title", "STRING"),             # 화면에 낼 이름. **text 와 다르다** — 이 팔의
+                                         # 행이 후보 목록에 뜰 때 라벨이 되는 자리라,
+                                         # 여기에 찾는 표면을 넣으면 "제목. 한줄설명…"
+                                         # 이 그대로 사용자에게 나간다(1365 중 225 행).
+        ("text", "STRING"),              # 임베딩한 그 문자열 — 재현과 FTS 용
+        ("model", "STRING"),             # 어느 모델로 만든 벡터인가(혼재 방지)
+        ("embedding", "FLOAT[{dim}]")]},
 }
 
 # ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
@@ -208,7 +235,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
 #: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON
@@ -315,6 +342,10 @@ def migration_statements(from_version: int) -> list[str]:
         # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
         stmts.append("ALTER TABLE ATTACHES_TO ADD evidence STRING DEFAULT ''")
         stmts.append("ALTER TABLE ATTACHES_TO ADD confidence DOUBLE DEFAULT 0.0")
+    # v17 — 노드 미러(NodeVec). **ALTER 스텝이 없다**: 신규 노드 테이블은 매 부팅
+    # 멱등 DDL(render_node_tables)이 만든다(ChunkVec·_MergeRejection 전례). 백필도
+    # 여기 못 쓴다 — 임베딩은 DDL 이 아니라 모델을 부르는 데이터 스텝이고, 비어 있는
+    # 동안은 의미 팔이 0행을 낼 뿐 기존 경로가 멀쩡하다(ChunkVec 과 같은 태도).
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

@@ -756,6 +756,10 @@ class EmbeddedBackend:
     #: SEC-1 — 청크 팔이 owner_id 필터를 적용한다(`_ReaderView.scoped_chunk_search` 주석).
     scoped_chunk_search = True
     _VEC_INDEX = "chunk_vec"
+    #: v17 — 노드 미러의 HNSW. Chunk 쪽과 **다른 인덱스**다: 라이프사이클이 다르고
+    #: (노드 미러는 문서 쓰기마다 흔들리지 않는다) 드롭 범위를 섞으면 문서 한 건 쓰기가
+    #: 노드 색인까지 무너뜨린다.
+    _NODE_VEC_INDEX = "node_vec"
     # 자식 과추출 배수 — 한 부모의 조각들이 상위 k 를 다 차지하지 않게(:meth:`vector_search`).
     _CHILD_FANOUT = 4
     _FTS_INDEX = "chunk_ft"
@@ -1060,6 +1064,64 @@ class EmbeddedBackend:
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
         return list(best.values())[:int(top_k)]
+
+    def node_vector_search(self, embedding, top_k, *, owner=None, conn=None) -> list[dict]:
+        """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
+
+        Chunk 쪽 :meth:`vector_search` 와 **모양이 다르다**. 저쪽은 자식(ChunkVec)에서
+        찾아 부모로 접지만, 노드는 제목이 짧아 한 행에 벡터 하나다. 접을 것이 없다.
+
+        SEC-1: owner 를 반드시 건다. 미러는 노드의 사본이라 스코프가 새면 남의 그래프
+        제목이 후보로 올라온다 — Chunk 팔이 같은 이유로 fail-closed 인 것과 같다.
+
+        인덱스가 없거나 미러가 비어 있으면 **예외가 아니라 빈 목록**이다. 이 팔은 증강이고,
+        없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도).
+        근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+        c = conn or self._conn
+        try:
+            self._load_ext("vector", reader=conn is not None)
+        except Exception:
+            return []
+        k = int(top_k) * (self._OVERSAMPLE if owner else 1)
+        params: dict = {"emb": list(embedding), "k": k}
+        where = ""
+        if owner:
+            where = "WHERE node.owner_id = $owner "
+            params["owner"] = owner
+        cypher = (
+            f"CALL QUERY_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}', $emb, $k) "
+            f"{where}"
+            "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
+            "node.text AS text, distance "
+            "ORDER BY distance"
+        )
+        try:
+            rows = _exec_to_dicts(c, cypher, params)
+        except Exception:
+            return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
+        return rows[:int(top_k)]
+
+    def drop_node_vector_index(self) -> None:
+        """노드 미러의 HNSW 만 제거(멱등).
+
+        🔴 **미러를 채우기 전에 반드시 부른다.** "없던 벡터가 생기는" 것이 HNSW 삽입이고
+        그것만 세그폴트를 낸다(:meth:`drop_vector_index` 주석의 실측 — exit 139). 미러
+        채우기는 정확히 그 모양이라 드롭이 방어 장치다."""
+        try:
+            self._load_ext("vector")
+            self._conn.execute(
+                f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')")
+        except Exception:
+            pass
+
+    def create_node_vector_index(self) -> None:
+        """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다."""
+        try:
+            self._load_ext("vector")
+            self._conn.execute(
+                f"CALL CREATE_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}','embedding')")
+        except Exception:
+            pass        # 이미 있음 — 멱등
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn
