@@ -449,7 +449,11 @@ def main() -> int:
             per[c].append(s_rr); by_lang[lang][c].append(s_rr); rec[c] = s_rr["rank"]
             for g in args.gate:
                 gc = f"gated:{g}@{K}"
-                on = gate(cand, g)
+                # 🔴 이 풀은 `q.search` 가 낸 것이라 **프로덕션 k** 로 융합돼 있다.
+                # 아래 `--rrf-k` 조건들과는 다른 값이다. 게이트에 그 k 를 넘기지 않으면
+                # 임계값이 다른 융합을 재게 되고, 그때 결과는 "게이트가 한 번도 안 켜졌다"
+                # 인데 화면에는 `gated` 열이 `rrf` 와 같게만 보인다(실제로 물렸다).
+                on = gate(cand, g, k=q.CHUNK_RRF_K)
                 gate_hits[gc] = gate_hits.get(gc, 0) + (1 if on else 0)
                 s_g = s_rr if on else per["rrf"][-1]
                 per[gc].append(s_g); by_lang[lang][gc].append(s_g); rec[gc] = s_g["rank"]

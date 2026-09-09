@@ -74,34 +74,57 @@ class GateTests(unittest.TestCase):
     """게이트는 "리랭커를 **돌릴지**"를 답한다(True = 돌린다). 방향을 헷갈리면 적응형
     조건이 정확히 반대의 질의에서 리랭커를 켠다."""
 
+    K = 60          # 이 클래스의 풀이 융합된 값. 게이트에 늘 함께 넘긴다.
+
     def setUp(self):
         self.m = _load("reranker")
-        self.both_first = 2.0 / (self.m.RRF_K + 1)
+        self.both_first = 2.0 / (self.K + 1)
 
     def test_always_는_행이_둘_이상이면_켠다(self):
-        self.assertTrue(self.m.gate([{"rrf_score": 0.1}, {"rrf_score": 0.05}], "always"))
+        self.assertTrue(self.m.gate([{"rrf_score": 0.1}, {"rrf_score": 0.05}],
+                                    "always", k=self.K))
 
     def test_행이_둘_미만이면_어떤_정책도_끈다(self):
-        self.assertFalse(self.m.gate([{"rrf_score": 0.1}], "always"))
-        self.assertFalse(self.m.gate([], "top-agree"))
+        self.assertFalse(self.m.gate([{"rrf_score": 0.1}], "always", k=self.K))
+        self.assertFalse(self.m.gate([], "top-agree", k=self.K))
 
     def test_top_agree_는_두_팔이_같은_1위를_놓았을_때_끈다(self):
         rows = [{"rrf_score": self.both_first}, {"rrf_score": 0.02}]
-        self.assertFalse(self.m.gate(rows, "top-agree"))
+        self.assertFalse(self.m.gate(rows, "top-agree", k=self.K))
 
     def test_top_agree_는_한_팔만_1위로_놓았을_때_켠다(self):
-        rows = [{"rrf_score": 1.0 / (self.m.RRF_K + 1)}, {"rrf_score": 0.01}]
-        self.assertTrue(self.m.gate(rows, "top-agree"))
+        rows = [{"rrf_score": 1.0 / (self.K + 1)}, {"rrf_score": 0.01}]
+        self.assertTrue(self.m.gate(rows, "top-agree", k=self.K))
+
+    def test_k_를_안_주면_부를_수_없다(self):
+        """기본값이 있던 동안 프로덕션 k 가 60에서 20으로 바뀌자 게이트가 **75건 중
+        0건** 발화했고, 화면에는 `gated` 열이 `rrf` 와 같게만 보여서 조용했다.
+        근거: [[record:the-top-agree-gate-never-fired-after-the-k-change-2026-09-09]]"""
+        with self.assertRaises(TypeError):
+            self.m.gate([{"rrf_score": 0.1}, {"rrf_score": 0.05}], "always")
+
+    def test_풀의_k_가_임계값을_정한다(self):
+        """같은 점수라도 k 가 다르면 판정이 뒤집힌다 — 그것이 상수를 못 박으면 안 되는
+        이유다. k=20 융합에서 두 팔이 동의한 1위는 2/21 이고, 그 값을 k=60 기준으로
+        재면 '동의 안 함'으로 읽혀 언제나 리랭크를 켠다."""
+        agreed_at_20 = [{"rrf_score": 2.0 / 21}, {"rrf_score": 1.0 / 21}]
+        self.assertFalse(self.m.gate(agreed_at_20, "top-agree", k=20))
+        self.assertFalse(self.m.gate(agreed_at_20, "top-agree", k=60),
+                         "k=60 기준으로도 0.095 는 2/61 보다 크다 — 이쪽은 항상 끈다")
+        one_arm_at_20 = [{"rrf_score": 1.0 / 21}, {"rrf_score": 1.0 / 22}]
+        self.assertTrue(self.m.gate(one_arm_at_20, "top-agree", k=20))
+        self.assertFalse(self.m.gate(one_arm_at_20, "top-agree", k=60),
+                         "k 가 틀리면 켜야 할 질의를 끈다 — 이것이 0건 발화의 정체다")
 
     def test_margin_은_간격이_좁을_때만_켠다(self):
         close = [{"rrf_score": 0.030}, {"rrf_score": 0.029}]
         far = [{"rrf_score": 0.030}, {"rrf_score": 0.010}]
-        self.assertTrue(self.m.gate(close, "margin:0.2"))
-        self.assertFalse(self.m.gate(far, "margin:0.2"))
+        self.assertTrue(self.m.gate(close, "margin:0.2", k=self.K))
+        self.assertFalse(self.m.gate(far, "margin:0.2", k=self.K))
 
     def test_모르는_정책은_세운다(self):
         with self.assertRaises(ValueError):
-            self.m.gate([{"rrf_score": 0.1}, {"rrf_score": 0.05}], "random")
+            self.m.gate([{"rrf_score": 0.1}, {"rrf_score": 0.05}], "random", k=self.K)
 
 
 class WeightedRrfTests(unittest.TestCase):
