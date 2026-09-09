@@ -11,6 +11,7 @@ import json, os, re, sys, glob
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out")
+LOCAL = os.path.join(HERE, "out-local")   # the same pages, openable without the canvas runtime
 
 # Prose volume: a floor and a ceiling, not a target. The 80-150 band of v1 was
 # reached by padding (motion directives and restated sentences written into the
@@ -84,33 +85,25 @@ def build(ch, engine):
         secs.append(section(b, i, i == len(ch["beats"]) - 1))
     body = "\n\n".join(secs)
 
+    # what the motion engine gets: the beats' text (heading, claim, the
+    # document's diagrams) and the chapter's authored motion, if any
+    beats = [{"h": b.get("h", ""), "claim": b.get("claim", ""), "diagrams": b.get("diagrams", [])} for b in ch["beats"]]
+    slot = ch["n"] if isinstance(ch["n"], str) else f"{ch['n']:02d}"
+    mpath = os.path.join(HERE, "motion", f"{slot}.json")
+    motion = json.load(open(mpath, encoding="utf-8")) if os.path.exists(mpath) else {}
     data = [
         f"const PART = {part}, CHAPTER = {json.dumps(ch['title'])};",
-        f"const MARKS = {json.dumps(ch.get('marks', []))};",
-        f"const ANCHORS = {json.dumps(ch.get('anchors', []))};",
-        f"const LINES = {json.dumps(ch.get('lines', []))};",
-        f"const FIGURES = {json.dumps(ch.get('figures', []))};",
+        f"const BEATS = {json.dumps(beats, ensure_ascii=False)};",
+        f"const MOTION = {json.dumps(motion, ensure_ascii=False)};",
     ]
-    stage = "\n".join(ch.get("stage", []))
     cls = [
         "class Component extends BookChapter {",
-        f"  PART = PART; MARKS = MARKS; ANCHORS = ANCHORS; LINES = LINES; FIGURES = FIGURES;",
+        "  PART = PART; BEATS = BEATS; MOTION = MOTION;",
         f"  LAST = {len(ch['beats']) - 1};",
         f"  VIEWBOX = {json.dumps(ch.get('viewBox', '0 0 640 640'))};",
         f"  SIDE = {json.dumps(ch.get('side', 'left'))};",
+        "}",
     ]
-    if ch.get("focusAt") is not None:
-        cls.append(f"  FOCUS_AT = {ch['focusAt']};")
-    if ch.get("focusScrub") is False:
-        cls.append("  FOCUS_SCRUB = false;")
-    # part registers: the chapter declares one and the engine's default
-    # stage() dispatches on it (Part 1 conveyor, Part 2 pair, Part 3 ring)
-    for key, name in (("conveyor", "CONVEYOR"), ("pair", "PAIR"), ("ring", "RING"), ("hub", "HUB"), ("ground", "GROUND")):
-        if ch.get(key):
-            cls.append(f"  {name} = {json.dumps(ch[key])};")
-    if stage:
-        cls.append(stage)
-    cls.append("}")
 
     return f"""<!DOCTYPE html>
 <html>
@@ -127,6 +120,7 @@ def build(ch, engine):
     a {{ color: {INK}; text-decoration: none; }}
     a:hover {{ color: {LINK}; }}
     [data-step] p {{ text-wrap: pretty; word-break: keep-all; }}
+    [data-layout="text"] {{ position: relative; z-index: 1; }}
     @media (max-width: 900px) {{
       [data-layout="main"] {{ grid-template-columns: minmax(0, 1fr) !important; }}
       [data-layout="canvas"] {{ order: 0 !important; height: 46vh !important; padding: 56px 24px 8px !important; background: {PAPER}; z-index: 1; }}
@@ -165,8 +159,32 @@ def build(ch, engine):
 """
 
 
+SHIM = """<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+// stands in for the canvas runtime (support.js) when a page is opened on its own
+class DCLogic { constructor(props) { this.props = props || {}; this.state = {}; } setState(s) { Object.assign(this.state, s); if (this._rerender) this._rerender(); } forceUpdate() { if (this._rerender) this._rerender(); } }
+window.addEventListener('DOMContentLoaded', () => {
+  const c = new Component({});
+  const mount = document.querySelector('[data-layout="canvas"]'); mount.textContent = '';
+  const root = ReactDOM.createRoot(mount);
+  c._rerender = () => root.render(c.renderVals().canvas);
+  c._rerender(); c.componentDidMount();
+});
+</script>"""
+
+
+def localize(html, side):
+    """The same page with the runtime's placeholders filled and the shim in place."""
+    html = html.replace('<script src="./support.js"></script>', SHIM)
+    return (html.replace("{{ side }}", side)
+                .replace("{{ textOrder }}", "0" if side == "left" else "1")
+                .replace("{{ canvasOrder }}", "1" if side == "left" else "0")
+                .replace("{{ canvas }}", ""))
+
+
 def main():
-    engine = open(os.path.join(HERE, "engine.js"), encoding="utf-8").read()
+    engine = open(os.path.join(HERE, "motion.js"), encoding="utf-8").read()
     files = sorted(glob.glob(os.path.join(HERE, "ch", "*.json")))
     if not files:
         print("no chapter data in ch/"); return 1
@@ -193,10 +211,14 @@ def main():
               f"marks={len(ch.get('marks', []))} lines={len(ch.get('lines', []))}{flag}")
         if not check:
             name = ch.get("file") or f"Ch{slot}.dc.html"
+            html = build(ch, engine)
             # newline="\n" or Windows text mode writes CRLF, which the canvas
             # keeps verbatim and which broke the render probe's line matching
             with open(os.path.join(OUT, name), "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(build(ch, engine))
+                fh.write(html)
+            os.makedirs(LOCAL, exist_ok=True)
+            with open(os.path.join(LOCAL, name.replace(".dc.html", ".html")), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(localize(html, ch.get("side", "left")))
     print(f"--- {len(files)} chapters, {bad} outside the prose band "
           f"({MIN_WORDS}-{MAX_WORDS} words, >={MIN_PARAS} paragraphs per middle beat)")
     return 0

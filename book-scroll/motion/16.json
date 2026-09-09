@@ -1,0 +1,12 @@
+{
+  "_": "Chapter 16. The document's own diagram carries beat 5; the other beats get an authored text diagram in the same ASCII grammar the documents use.",
+  "beats": {
+    "0": {"diagram": "a question\n  ↓\nrelevant memory\n  ↓\nnot yet an answer"},
+    "1": {"diagram": "Full-text → matching wording\nVector → semantic proximity"},
+    "2": {"diagram": "full-text list\n  ↓\nranked by rank\n\nvector list\n  ↓\nranked by rank\n\none fused list\n  ↓\nthe handful both put near the top"},
+    "3": {"diagram": "the two arms agree on first place → the gate skips\nthe two arms disagree → a third reader judges the pair"},
+    "4": {"diagram": "candidates\n ├─ a title sharing words with the question\n └─ a Concept the top chunks mention\n↓\none Node, or none"},
+    "6": {"diagram": "the text\n  ↓\nsemantic arm + third reader\n  ↓\nreached across languages\n\na Node's title\n  ↓\ntitle words carried by the question\n  ↓\nnever entered the pool"},
+    "7": {"diagram": "search → narrows the space\nresolution → names the target\nrelationships and documents → the material"}
+  }
+}
