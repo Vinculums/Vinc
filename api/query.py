@@ -2808,12 +2808,43 @@ def _brief_norm(s) -> str:
     return str(s or "").strip().lower()
 
 
+def _brief_strict_on() -> bool:
+    """엄격 판정을 켤 것인가. **기본은 켜짐**이고 `VINC_BRIEF_STRICT=off` 가 옛 규칙으로
+    되돌린다(비상구 — 켠 채로 두는 것이 맞다는 근거는 아래에 있다).
+
+    옛 규칙은 토큰 하나 차이면 확신했다. 실측(2026-09-09, 정답 66문항 · 1365노드):
+    답 가능 60건 중 **46건을 확신하고 그중 36건이 틀렸다**. 확신 46번에 정답 10번은
+    답이 아니라 소음이고, 지식 도구에서 그것은 되묻는 것보다 나쁘다.
+
+    엄격 판정은 확신 15건 · 그중 정답 8건 · **오답 7건**이다. 맞는 확신 둘과 노출 R@1
+    한 건을 내주고 확신 오답 29건을 지운다. 의미 팔까지 켜면 확신 20 · 정답 13 · 오답 7
+    이고 노출 R@1 이 0.1667 에서 0.2833 으로 오른다 — 두 변경은 **따로 재면 둘 다 안
+    오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
+    그 위에 확신 오답을 얹고 목록을 감췄다).
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
+        "0", "off", "false", "no")
+
+
+#: 확신에 필요한 토큰 차. 옛 값 1 은 **토큰 하나 차이면 확신한다**는 뜻이라 사실상
+#: 문턱이 없었다. 이 값을 내리기 전에 :func:`_brief_strict_on` 의 수치를 볼 것.
+_STRICT_MARGIN = 2
+
+
 def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
 
     ⚠ 그래프 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 청크 인접은
     "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은
-    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계)."""
+    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계).
+
+    **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 꺼짐)은 순서에 `arms` 를 먼저 넣고 문턱을
+    `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
+    함께 가리켰다는 뜻이라, 토큰 하나를 더 맞힌 것보다 강한 증거다.
+    ⚠ **융합 점수(RRF)로 정렬하는 안은 기각됐다.** 팔을 켜면 좋아 보이지만 끄면 나빠진다
+    (오답확정 37 → 44) — 팔이 둘뿐일 때 RRF 순위는 토큰 순서보다 못하다. 판정은 팔의
+    기본값과 무관하게 모두에게 적용되므로 팔에 의존하는 규칙은 쓸 수 없다.
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
     rows = [h for h in hits if isinstance(h, dict) and h.get("id")]
     if not rows:
         return "none", []
@@ -2823,13 +2854,19 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
             return "resolved", [h]
     if len(rows) == 1:
         return "resolved", [rows[0]]
+    strict = _brief_strict_on()
     # 안정 정렬 — 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
-    ranked = sorted(rows, key=lambda h: (-_brief_int(h.get("hit_tokens")),
-                                         -_brief_int(h.get("title_tokens"))))
+    # `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다.
+    ranked = sorted(rows, key=lambda h: (
+        -len(h.get("arms") or []) if strict else 0,
+        -_brief_int(h.get("hit_tokens")),
+        -_brief_int(h.get("title_tokens"))))
     top, second = ranked[0], ranked[1]
+    margin = _STRICT_MARGIN if strict else 1     # 1 이면 현행과 글자 그대로 같다
     decisive = _brief_int(top.get("hit_tokens")) > 0 and (
-        _brief_int(top.get("hit_tokens")) > _brief_int(second.get("hit_tokens"))
-        or _brief_int(top.get("title_tokens")) > _brief_int(second.get("title_tokens")))
+        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
+        or _brief_int(top.get("title_tokens"))
+        - _brief_int(second.get("title_tokens")) >= margin)
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
     return ("resolved", ranked) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
