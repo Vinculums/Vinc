@@ -94,6 +94,38 @@ class FusionShape(unittest.TestCase):
                                 vec_hits=self.rows("a"))
         self.assertEqual(out[0]["arms"], ["graph", "semantic", "title"])
 
+    def test_a_semantically_decisive_row_is_ordered_first(self):
+        """의미 팔이 **자기 기준으로 단호할 때만** 앞에 놓는다. 절대 거리는 못 쓴다 —
+        완전 일치가 0.077 인데 아무 말이나 던져도 0.170 이라 크게 겹친다. 가르는 것은
+        1위가 2위보다 뚜렷하게 가까운가이고, 그 격차는 맞혔을 때 0.0215 · 틀렸을 때
+        0.0047 로 4.6배 갈린다(실측 2026-09-10)."""
+        hits = [{"id": "record:noisy", "title": "노이즈", "hit_tokens": 1,
+                 "title_tokens": 1, "arms": ["title"]},
+                {"id": "concept:right", "title": "정답", "hit_tokens": 0,
+                 "title_tokens": 0, "arms": ["semantic"], "sem_decisive": True}]
+        self.assertEqual(q._brief_resolve("아무 질문", hits)[1][0]["id"], "concept:right")
+
+    def test_decisiveness_reorders_but_never_confirms(self):
+        """단호함은 **순서만** 바꾼다. 답 불가 21문항 중 9건도 0.010 격차를 통과하므로
+        이것으로 확정을 주면 정직성이 무너진다."""
+        hits = [{"id": "concept:right", "title": "정답", "hit_tokens": 0,
+                 "title_tokens": 0, "arms": ["semantic"], "sem_decisive": True},
+                {"id": "record:noisy", "title": "노이즈", "hit_tokens": 0,
+                 "title_tokens": 0, "arms": ["title"]}]
+        self.assertEqual(q._brief_resolve("아무 질문", hits)[0], "choose")
+
+    def test_the_rank_flag_is_off_by_default(self):
+        prev = os.environ.pop("VINC_NODE_SEM_RANK", None)
+        try:
+            self.assertFalse(q._node_sem_rank_on())
+        finally:
+            if prev is not None:
+                os.environ["VINC_NODE_SEM_RANK"] = prev
+
+    def test_the_gap_is_where_it_was_measured(self):
+        """옮기려면 다시 재야 한다 — 0.025 에서는 노출 R@1 이 0.4833 에서 0.3167 로 내린다."""
+        self.assertEqual(q._SEM_GAP, 0.010)
+
     def test_two_arms_fuse_rather_than_concatenate(self):
         out = q._fuse_node_hits(self.rows("a", "b"), [], top_k=5,
                                 vec_hits=self.rows("b", "c"))

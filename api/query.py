@@ -2858,6 +2858,9 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     # 안정 정렬 — 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
     # `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다.
     ranked = sorted(rows, key=lambda h: (
+        # 의미 팔이 자기 기준으로 단호했던 노드를 먼저 놓는다(`_SEM_GAP` 주석).
+        # **순서만** 바꾼다 — 아래 `decisive` 는 여전히 어휘 여유를 요구한다.
+        -1 if (strict and h.get("sem_decisive")) else 0,
         -len(h.get("arms") or []) if strict else 0,
         -_brief_int(h.get("hit_tokens")),
         -_brief_int(h.get("title_tokens"))))
@@ -2937,7 +2940,14 @@ def _brief_answerability_on() -> bool:
 #: (답 불가에 확신을 주지 않는다)을 최소 비용으로 달성한다 — 맞는 확신 하나.
 #:
 #: ⚠ 잃는 그 하나는 **형태 변화** 때문이다: 질문의 `sent` 가 코퍼스의 `send` 와 표면이
-#: 달라 고아로 보인다. 어간 분석이 없는 한 이 게이트의 천장이 그것이다.
+#: 달라 고아로 보인다. 이것이 이 게이트의 알려진 천장이다.
+#:
+#: ⚠ **"어간 분석을 붙이면 된다"는 처방이 아니다 — 기각됐다(2026-09-10).** 한때 이 자리에
+#: 그렇게 적혀 있었으나 재 본 적이 없는 추측이었다. 붙이면 표면이 뭉쳐 고아율이 함께
+#: 낮아지므로 게이트가 무뎌질 수 있고, 그 방향은 측정되지 않았다. 그리고 이 리포에는
+#: 반대 방향의 실측이 이미 있다 — 한국어 전문 검색이 지는 원인은 어간 처리가 아니었다
+#: (`scripts/r1c_ko_column.py`). 천장을 넘으려면 새 측정이 필요하고, 그 측정 전에는
+#: 이 문장을 처방으로 읽지 말 것.
 _ORPHAN_BLOCK = 0.67
 
 
@@ -5499,6 +5509,27 @@ def _node_semantic_arm_on() -> bool:
         "1", "on", "true", "yes")
 
 
+def _node_sem_rank_on() -> bool:
+    """의미 팔의 단호함을 순서에 반영할 것인가. **기본은 꺼짐**(`VINC_NODE_SEM_RANK`)."""
+    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+#: 의미 팔이 **자기 기준으로 단호하다**고 볼 1-2위 거리 격차.
+#:
+#: 절대 거리는 못 쓴다: 완전 일치가 0.077 인데 아무 말이나 던져도 0.170 이라 범위가
+#: 좁고 크게 겹친다(실측 2026-09-10). 가르는 것은 **1위가 2위보다 뚜렷하게 가까운가**이고,
+#: 그 격차의 중앙값은 맞혔을 때 0.0215 · 틀렸을 때 0.0047 로 4.6배 갈린다. 어휘 층이
+#: "1위가 2위를 2토큰 차로 이겨야 한다"고 요구하는 것과 같은 모양이다.
+#:
+#: 문턱별 의미 팔 1위 정밀도(답 가능 60): 0.000 → 28/60(0.47) · 0.010 → 26/31(0.84)
+#: · 0.025 → 12/13(0.92) · 0.040 → 9/9(1.00).
+#: ⚠ 이 단호함은 **순서만** 바꾼다. 확신은 여전히 어휘 여유를 요구한다 — 답 불가
+#: 21문항 중 9건도 0.010 격차를 통과하므로 이것으로 확정을 주면 정직성이 무너진다.
+#: 근거: [[record:the-semantic-arm-decides-by-its-own-margin-not-its-distance-2026-09-10]]
+_SEM_GAP = 0.010
+
+
 def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
                     top_k: int, vec_hits: list[dict] | None = None) -> list[dict]:
     """title 폴백 + 그래프 암 (+ v17 의미 암)을 개념-공간 RRF 융합(§4-2, D24 매치 표기).
@@ -5723,17 +5754,29 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 켜는 값은 랭킹 절반(같은 미러 위의 BM25)이 붙은 뒤에 다시 잰다.
         # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
         vec_hits: list[dict] = []
+        _sem_decisive: str | None = None
         if query_embedding is not None and _node_semantic_arm_on():
             try:
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
+                _raw = store.node_vector_search(
+                    query_embedding, top_k, owner=owner) or []
                 vec_hits = [{"id": h.get("id"),
                              "title": h.get("title") or h.get("text") or "",
                              "kind": h.get("kind") or "", "domain": "",
                              "matched_in": "semantic", "hit_tokens": 0,
-                             "title_tokens": 0, "token_total": 0}
-                            for h in (store.node_vector_search(
-                                query_embedding, top_k, owner=owner) or [])]
+                             "title_tokens": 0, "token_total": 0,
+                             "distance": h.get("distance")}
+                            for h in _raw]
+                # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
+                # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
+                if len(_raw) > 1 and _node_sem_rank_on():
+                    try:
+                        if (float(_raw[1]["distance"])
+                                - float(_raw[0]["distance"])) >= _SEM_GAP:
+                            _sem_decisive = _raw[0].get("id")
+                    except (TypeError, ValueError, KeyError):
+                        pass
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
 
@@ -5744,6 +5787,11 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
             base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
                                                 vec_hits=vec_hits)
+            # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
+            # 융합 **뒤에** id 로 찾아 단다.
+            for _r in base["node_hits"]:
+                if _sem_decisive and _r.get("id") == _sem_decisive:
+                    _r["sem_decisive"] = True
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
             base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k,
