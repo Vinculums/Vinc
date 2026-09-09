@@ -16,9 +16,16 @@
 """
 from __future__ import annotations
 
+import contextlib
+import io
+import json
+import pathlib
 import sys
+import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -129,6 +136,79 @@ class GoldFileRules(unittest.TestCase):
              "language_axis": "ko"},
             {"query": "q2", "answerable": False, "gold_node_id": "",
              "language_axis": "en"}]), [])
+
+
+class SemanticArmIsOptInAndDeclared(unittest.TestCase):
+    """의미 팔은 **옵트인**이고, 켰는지 껐는지가 결과에 남아야 한다.
+
+    벡터 없는 스토어에 임베딩을 넘기면 없는 팔을 있는 척 재고, 켜 놓고 안 적으면 두 런이
+    비교 가능해 보인다. 둘 다 조용한 오측이다."""
+
+    def _run(self, argv_extra, spy):
+        import eval_brief_resolution as e
+        gold = pathlib.Path(self.tmp) / "g.jsonl"
+        gold.write_text(json.dumps({"query": "q", "gold_node_id": "concept:a",
+                                    "answerable": True, "gold_kind": "concept",
+                                    "language_axis": "en"})
+                        + "\n", encoding="utf-8")
+        out = pathlib.Path(self.tmp) / "o.json"
+        with (mock.patch.object(e, "open_store", return_value=_FakeStore()),
+              mock.patch.object(e, "gold_present", return_value=[]),
+              mock.patch.object(e.q, "brief", spy),
+              mock.patch.object(e.q, "search",
+                                lambda *a, **k: {"node_hits": []}),
+              contextlib.redirect_stdout(io.StringIO())):
+            rc = e.main(["--data", "x", "--owner", "o", "--gold", str(gold),
+                         "--out", str(out)] + argv_extra)
+        self.assertEqual(rc, 0)
+        return json.loads(out.read_text(encoding="utf-8"))
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_without_an_encoder_no_embedding_is_passed_and_the_note_says_so(self):
+        seen = {}
+
+        def spy(query, **kw):
+            seen["vec"] = kw.get("query_embedding")
+            return _res("none")
+
+        got = self._run([], spy)
+        self.assertIsNone(seen["vec"], "벡터 없는 스토어에 임베딩을 넘겼다")
+        self.assertIn("의미 팔 없음", got["summary"]["arms_note"])
+        self.assertEqual(got["encoder"], "")
+
+    def test_with_an_encoder_the_vector_reaches_brief_and_the_note_records_it(self):
+        seen = {}
+
+        def spy(query, **kw):
+            seen["vec"] = kw.get("query_embedding")
+            return _res("none")
+
+        with mock.patch.dict("sys.modules", {"encoder": _fake_encoder_module()}):
+            got = self._run(["--encoder", "some/model=art.onnx"], spy)
+        self.assertEqual(seen["vec"], [0.5, 0.5])
+        self.assertIn("의미 팔이 돌았다", got["summary"]["arms_note"])
+        self.assertEqual(got["encoder"], "some/model=art.onnx")
+
+
+class _FakeStore:
+    def close(self):
+        pass
+
+
+def _fake_encoder_module():
+    mod = types.ModuleType("encoder")
+
+    class Encoder:
+        def __init__(self, model, path=None):
+            self.model, self.path = model, path
+
+        def encode(self, texts, kind=None):
+            return [[0.5, 0.5] for _ in texts]
+
+    mod.Encoder = Encoder
+    return mod
 
 
 if __name__ == "__main__":
