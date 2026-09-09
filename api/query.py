@@ -5081,7 +5081,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
       ③ **파이썬에서 점수를 매긴다**(§4-2 — Cypher 안에 점수식을 두지 않는다):
          맞은 토큰 수(주) → 제목에서 맞은 토큰 수 → 필드 강도 → id.
 
-    반환 행: {id, title, kind('concept'|'record'), domain, matched_in('title'|
+    반환 행: {id, title, kind('concept'|'record'|'decision'|'episode'), domain, matched_in('title'|
     'one_liner'|'props'), hit_tokens, title_tokens, token_total} — 뒤 세 개가 신설이다.
     호출부(묻기 등)가 "얼마나 확실한 매치인가"를 **임의 임계값 없이** 판정하려면 맞은
     토큰 수가 필요하다. 구 소비처는 새 키를 무시하면 그만이다(가산 변경).
@@ -5095,10 +5095,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     params: dict = {f"q{i}": t for i, t in enumerate(toks)}
     idx = range(len(toks))
     # SEC-1: 소유자 스코프. 없으면(로컬 단일 사용자) 기존 전역 검색.
-    own_c = own_r = own_d = ""
+    own_c = own_r = own_d = own_e = ""
     if owner:
         own_c, own_r = " AND c.owner_id = $owner", " AND r.owner_id = $owner"
-        own_d = " AND d.owner_id = $owner"
+        own_d, own_e = " AND d.owner_id = $owner", " AND e.owner_id = $owner"
         params["owner"] = owner
 
     # PK 네임스페이싱 — id 열은 물리 키(`owner슬러그`)라, **owner 문자열의
@@ -5126,6 +5126,21 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 없으면 `vinc_neighbors` 가 실재하는 결정을 "unknown node" 라고 답한다 — 실제로
     # 라이브에서 그렇게 나왔다(2026-08-09 이관 직전 탐침).
     d_fields = ("d.title", "d.props", "d.decision_id")
+    # Episode 도 같은 폴백에 넣는다(2026-09-09). 여기 없던 동안 **사건은 어떤 팔로도
+    # 후보가 될 수 없었다** — 제목 팔의 UNION 은 셋뿐이고 그래프 팔은 Concept 만
+    # 승격하므로, 스토어에 160건이 있어도 `brief` 가 이름을 댈 방법이 0이었다. Decision
+    # 이 v12 전까지 있던 자리와 같고, 그때 남긴 이유("빠뜨리면 검색으로 도달 불가")도 같다.
+    #
+    # 실측으로 골랐다: 정답 60문항에서 R@1 0.133 → 0.183, R@5 0.283 → 0.367 이고
+    # **다른 종류는 한 문항도 잃지 않는다**(Episode 만 0/10 → 3/10). 같이 재 본 "맞은
+    # 토큰 수를 제목 길이로 나눈다"는 정반대였다(R@1 0.033) — 짧은 제목이 토큰 하나로
+    # 다 이겨서, 그 가설은 기각한다.
+    #
+    # `summary` 를 one_liner 자리에 싣는다 — Episode 의 서술이 거기 있고, `node_context`
+    # 도 같은 열을 그 자리로 올린다(부르는 쪽이 두 종류를 같게 읽는다).
+    # 근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]] ·
+    # [[record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09]]
+    e_fields = ("e.title", "e.summary", "e.episode_id")
     cypher = (
         f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
@@ -5137,7 +5152,11 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         "UNION ALL "
         f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
         "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
-        "d.domain AS domain, '' AS one_liner, d.props AS props_raw"
+        "d.domain AS domain, '' AS one_liner, d.props AS props_raw "
+        "UNION ALL "
+        f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
+        "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
+        "e.domain AS domain, e.summary AS one_liner, '' AS props_raw"
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
