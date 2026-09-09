@@ -158,5 +158,62 @@ class ReadPathDefault(unittest.TestCase):
             self.assertIn(nid, ids, f"{nid} 가 유효구간 필터에 걸렸다")
 
 
+class TheFilterMustNotManufactureConfidence(ReadPathDefault):
+    """필터는 **보이는 것**을 바꾸지 답을 바꾸지 않는다.
+
+    유효구간 필터가 동점이던 후보 하나를 지우면 남은 하나가 단독 승자가 된다. 그러면
+    원래 "모르겠다"(choose)였을 질문이 확신 있는 답이 되고, 그건 §4.2 가 의도한 것이
+    아니다. 실측으로 답 불가 질문 6건 중 1건이 그렇게 확정됐다(정직성 0.0 → 0.1667).
+
+    근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
+    """
+
+    def setUp(self):
+        super().setUp()
+        # 같은 점수로 붙는 둘 — 하나는 폐기됐고 하나는 살아 있다.
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:cache-policy-live", "type": "record",
+             "title": "cache policy for the edge", "domain": "eng"},
+            {"id": "record:cache-policy-retired", "type": "record",
+             "title": "cache policy for the edge", "domain": "eng",
+             "valid_from": "2025-01-01", "valid_until": "2026-01-01"},
+        ]}, store=self.store)
+
+    def test_a_tie_broken_only_by_the_filter_does_not_resolve(self):
+        out = q.brief("cache policy for the edge", owner=self.OWNER, store=self.store)
+        self.assertEqual(out["status"], "choose",
+                         "필터가 동점을 깨서 확신을 만들었다")
+        self.assertIn("no longer current", out.get("validity_note") or "")
+
+    def test_it_still_resolves_when_the_winner_is_clear_on_its_own(self):
+        """지운 것이 있다고 무조건 못 정하게 하면, 필터가 다른 방향으로 답을 바꾼다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:cache-policy-live-and-detailed", "type": "record",
+             "title": "cache policy for the edge in detail", "domain": "eng"},
+        ]}, store=self.store)
+        out = q.brief("cache policy for the edge in detail",
+                      owner=self.OWNER, store=self.store)
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "record:cache-policy-live-and-detailed")
+
+    def test_the_historical_switch_brings_the_hidden_one_back_into_view(self):
+        """스위치는 가려진 쪽을 보여 준다.
+
+        ⚠ 여기서 `brief` 의 상태를 보지 않는다. 두 제목이 질의와 **글자 그대로 같아**
+        `_brief_resolve` 의 "이름을 댄 경우" 갈래가 랭킹 앞에서 먼저 확정하기 때문이다
+        (기존 계약). 그 갈래가 같은 제목 둘 중 하나를 고르는 것은 이 변경과 무관한
+        별개의 문제이고, 이 테스트가 볼 것은 필터가 무엇을 감췄나뿐이다."""
+        base = q.search("cache policy for the edge", owner=self.OWNER,
+                        top_k=10, store=self.store)
+        self.assertNotIn("record:cache-policy-retired",
+                         [h["id"] for h in base["node_hits"]])
+        self.assertTrue(base.get("validity_filtered"))
+        both = q.search("cache policy for the edge", owner=self.OWNER,
+                        top_k=10, store=self.store, historical=True)
+        self.assertIn("record:cache-policy-retired",
+                      [h["id"] for h in both["node_hits"]])
+        self.assertIsNone(both.get("validity_filtered"))
+
+
 if __name__ == "__main__":
     unittest.main()
