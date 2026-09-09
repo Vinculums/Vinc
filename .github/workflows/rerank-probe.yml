@@ -61,6 +61,10 @@ on:
         description: "쌍 하나의 상한 토큰"
         type: string
         default: "512"
+      batch:
+        description: "첫 측정의 추론 배치. 두 번째 측정은 언제나 1 로 한 번 더 돈다"
+        type: string
+        default: "8"
       app:
         description: "어느 앱의 형상으로 가둘까 (scripts/app-config-baseline.json 의 키)"
         type: choice
@@ -79,6 +83,7 @@ jobs:
       MODEL: ${{ inputs.model }}
       MIN_SIZE: ${{ inputs.min_size }}
       MAX_TOKENS: ${{ inputs.max_tokens }}
+      BATCH: ${{ inputs.batch }}
       APP: ${{ inputs.app }}
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +155,8 @@ jobs:
             -v "$PWD/art:/art:ro" -v "$PWD/scripts:/probe:ro" \
             vinc-rerank-probe \
             python /probe/reranker.py --model "$MODEL=/art/model-int8-rr.onnx" \
-              --rss-probe --max-tokens "$MAX_TOKENS" > probe.json 2> probe.err
+              --rss-probe --max-tokens "$MAX_TOKENS" --batch "$BATCH" \
+              > probe.json 2> probe.err
           rc=$?
           set -e
           echo "docker rc=$rc"
@@ -160,6 +166,33 @@ jobs:
           tail -20 probe.err || true
           [ "$rc" -eq 0 ] || exit "$rc"
 
+      - name: 배치 1 을 같은 기계에서 한 번 더 잰다
+        # 상주 크기의 절반 이상이 ORT 아레나이고 그 크기는 배치가 정한다. 여태 잰 값은
+        # 전부 배치 8 이라 "리랭커가 인코더 옆에 들어가나"에 답하지 못했다 — 프로덕션
+        # 리랭킹은 후보 몇 개짜리 짧은 목록이라 배치 1 이 그 형상에 더 가깝다.
+        #
+        # ⚠ **프로세스를 새로 띄운다.** 피크 카운터는 안 내려가므로 한 프로세스에서
+        # 8 뒤에 1 을 재면 8 의 값을 다시 읽는다.
+        # ⚠ **같은 잡, 같은 기계다.** 호스티드 풀이 이종이라 두 dispatch 의 수로 비를
+        # 내면 안 된다는 규칙이 이 파일 머리에 있다(실제로 한 번 오독했다).
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --cpus "$LIMIT_CPUS" --memory "$LIMIT_MEM" \
+            -e VINC_EVAL_THREADS=1 -e HF_HOME=/tmp/hf \
+            -v "$PWD/art:/art:ro" -v "$PWD/scripts:/probe:ro" \
+            vinc-rerank-probe \
+            python /probe/reranker.py --model "$MODEL=/art/model-int8-rr.onnx" \
+              --rss-probe --max-tokens "$MAX_TOKENS" --batch 1 \
+              > probe-b1.json 2> probe-b1.err
+          rc=$?
+          set -e
+          echo "docker rc(batch 1)=$rc"
+          if [ "$rc" -eq 137 ]; then
+            echo "::error::배치 1 에서도 $LIMIT_MEM 안에서 OOM 이다 — 이 형상에 안 들어간다" >&2
+          fi
+          tail -20 probe-b1.err || true
+          [ "$rc" -eq 0 ] || exit "$rc"
       - name: 각인 (sha256 · HF 리비전 · ORT)
         # 나중에 잰 수치가 **어느 파일**에 대한 것인지 말할 수 있어야 한다.
         run: |
@@ -229,7 +262,17 @@ jobs:
                 f"{d.get('reps')}회 {d.get('ms_per_long_pair_runs')} (스레드 {d.get('threads')}) |")
           print(f"| 흩어진 정도 | {d.get('spread_pct')}% (최소 {d.get('ms_per_long_pair_min')} · "
                 f"최대 {d.get('ms_per_long_pair_max')}) |")
-          print(f"| **피크 RSS** | **{rss} MB** |")
+          print(f"| **피크 RSS (배치 {d.get('batch')})** | **{rss} MB** |")
+          try:
+              b1 = json.load(open("probe-b1.json", encoding="utf-8"))
+              print(f"| **피크 RSS (배치 1)** | **{b1.get('peak_rss_mb')} MB** |")
+              print(f"| 배치 1 쌍당 | {b1.get('ms_per_long_pair')} ms 중앙값 |")
+              # 인코더 옆에 들어가나. 두 인코더의 상주 크기는 실측이다.
+              for enc, left in (("e5 953 MiB", 2048 - 953), ("m3 1408 MiB", 2048 - 1408)):
+                  fits = (b1.get("peak_rss_mb") or 1e9) <= left
+                  print(f"| {enc} 옆 여유 {left} MiB | {'들어간다' if fits else '**안 들어간다**'} |")
+          except FileNotFoundError:
+              print("| 배치 1 | 안 쟀다 |")
           print()
           print("⚠ 이 런은 아무것도 배포하지 않았고 Azure 를 호출하지 않았다.")
           print()
@@ -264,6 +307,7 @@ jobs:
           name: rerank-probe-${{ inputs.app }}
           path: |
             probe.json
+            probe-b1.json
             probe.err
             rerank-manifest.json
           retention-days: 7
