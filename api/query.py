@@ -2932,12 +2932,28 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
         for k in ("error", "note", "node_error",
                   "arms", "vector_note", "vector_rebuilding",
-                  "validity_filtered", "validity_note"):
+                  "validity_filtered", "validity_note", "validity_best_dropped"):
             if res.get(k):
                 base[k] = res[k]
         if base.get("error"):
             return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
+        # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
+        # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
+        # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
+        # 바가 아니다. 실측(2026-09-09): 이 갈래가 없는 동안 답 불가 질문 6건 중 1건이
+        # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
+        # 하나가 단독 승자가 된 모양이었다.
+        # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
+        if status == "resolved" and picked and base.get("validity_filtered"):
+            _bd = tuple(base.get("validity_best_dropped") or (0, 0))
+            _w = (_brief_int(picked[0].get("hit_tokens")),
+                  _brief_int(picked[0].get("title_tokens")))
+            if _bd >= _w:
+                status = "choose"
+                base["validity_note"] = (
+                    "a claim that is no longer current tied with the leading candidate, "
+                    "so this was not resolved; pass historical=true to see it")
         base["status"] = status
         if unread_ids and status in ("choose", "none"):
             base["unreadable"] = list(unread_ids)
@@ -5257,6 +5273,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
     dropped = 0
+    best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
     for r in rows:
         # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
         # 그 절이 빠지면 낡은 것이 아니라 코퍼스의 7할이 사라진다(`validity_state` 참조).
@@ -5266,6 +5283,16 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
             st = validity_state(r.get("valid_from"), r.get("valid_until"))
             if st != "current":
                 dropped += 1
+                # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
+                # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
+                # 부르는 쪽이 그것을 알아야 판단할 수 있다.
+                _dt_ = sum(1 for t in toks if t in str(r.get("title") or "").lower())
+                _dh_ = sum(1 for t in toks
+                           if t in str(r.get("title") or "").lower()
+                           or t in str(r.get("one_liner") or "").lower()
+                           or t in str(r.get("props_raw") or "").lower())
+                if (_dh_, _dt_) > best_dropped:
+                    best_dropped = (_dh_, _dt_)
                 continue
         title = str(r.get("title") or "").lower()
         one = str(r.get("one_liner") or "").lower()
@@ -5291,6 +5318,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
                                _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
     if stats is not None:
         stats["dropped_not_current"] = dropped
+        stats["best_dropped_score"] = best_dropped
     return scored[:max(1, int(limit))]
 
 
@@ -5444,6 +5472,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
         if _vstats.get("dropped_not_current"):
             base["validity_filtered"] = _vstats["dropped_not_current"]
+            base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
             base["validity_note"] = ("hid nodes whose claim is no longer current; "
                                      "pass historical=true to include them")
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
