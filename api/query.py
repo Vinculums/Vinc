@@ -5136,11 +5136,19 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 토큰 수를 제목 길이로 나눈다"는 정반대였다(R@1 0.033) — 짧은 제목이 토큰 하나로
     # 다 이겨서, 그 가설은 기각한다.
     #
-    # `summary` 를 one_liner 자리에 싣는다 — Episode 의 서술이 거기 있고, `node_context`
-    # 도 같은 열을 그 자리로 올린다(부르는 쪽이 두 종류를 같게 읽는다).
+    # ⚠ **`summary` 는 검색 필드에 넣지 않는다.** 처음엔 넣었다가 되돌렸다(2026-09-09).
+    # 사건의 요약은 문단이라 토큰 표면이 넓고, 그건 Record 제목이 남의 질문을 가져가는
+    # 것과 **같은 기전**이다. 실측: 요약을 포함하면 답 불가 질문 6건 중 1건이 사건으로
+    # **확정**됐다(정직성 0.0 → 0.1667). 빼면 이득은 그대로다 — R@1 0.1667 유지, 후보
+    # 진입 0.3333 → 0.3500, 확정 오답 0.6167 → 0.6000, 답 불가 확정 0.0 복구. R@3 만
+    # 0.2000 → 0.1833(한 문항)이 값이다.
+    #
+    # 확정된 뒤의 재료는 그대로다 — `node_context` 가 `summary` 를 one_liner 자리로
+    # 올리므로 서술 문단은 답변 재료에 실린다. 여기서 빼는 것은 **찾는 표면**뿐이다.
     # 근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]] ·
-    # [[record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09]]
-    e_fields = ("e.title", "e.summary", "e.episode_id")
+    # [[record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09]] ·
+    # [[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]
+    e_fields = ("e.title", "e.episode_id")
     cypher = (
         f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
@@ -5156,7 +5164,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         "UNION ALL "
         f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
         "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
-        "e.domain AS domain, e.summary AS one_liner, '' AS props_raw"
+        "e.domain AS domain, '' AS one_liner, '' AS props_raw"
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []

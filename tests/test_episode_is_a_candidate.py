@@ -67,12 +67,21 @@ class EpisodeCandidacy(unittest.TestCase):
         got = next(h for h in hits if h["kind"] == "episode")
         self.assertEqual(got["matched_in"], "title")
 
-    def test_the_summary_is_searchable_the_way_a_concept_one_liner_is(self):
+    def test_the_summary_is_not_a_search_surface(self):
+        """요약은 **찾는 표면이 아니다.** 문단이라 토큰이 넓고, 그건 긴 제목이 남의
+        질문을 가져가는 것과 같은 기전이다. 실측으로 답 불가 질문 6건 중 1건이 사건으로
+        확정됐고(정직성 0.0 → 0.1667), 이 열을 빼니 이득은 그대로 남고 그 고장만 사라졌다.
+        근거: [[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]"""
         hits = q._node_fallback_search(self.store, "queue filled and nothing drained",
                                        limit=10, owner=self.OWNER)
-        got = [h for h in hits if h["kind"] == "episode"]
-        self.assertTrue(got, "요약으로는 못 찾았다")
-        self.assertEqual(got[0]["matched_in"], "one_liner")
+        self.assertEqual([h for h in hits if h["kind"] == "episode"], [],
+                         "요약으로 사건이 잡혔다 — 넓은 표면이 되돌아왔다")
+
+    def test_the_summary_still_reaches_the_reader_once_the_episode_is_resolved(self):
+        """찾는 표면에서 뺀 것이지 재료에서 뺀 것이 아니다."""
+        out = q.brief("the nightly pipeline stalled", owner=self.OWNER, store=self.store)
+        self.assertEqual(out["node"]["id"], "episode:2026-01-02-the-pipeline-stalled")
+        self.assertIn("nothing drained", out.get("one_liner") or "")
 
     def test_another_owners_episode_is_not_a_candidate(self):
         frag.merge_fragment({"owner": "user:someone-else", "nodes": [
