@@ -9,6 +9,7 @@ callers — and tests — get a deterministic result without a live database.
 from __future__ import annotations
 
 import base64
+import datetime as _dt
 import hashlib
 import itertools
 import json
@@ -537,6 +538,40 @@ def _validity_cols(alias: str, prefix: str = "") -> str:
 #: Record 아닌 UNION 팔의 자리 맞춤 — 빈 문자열은 결손이 아니라 사실이다
 #: (그 종류엔 구간이 없다).
 _VALIDITY_EMPTY = "'' AS valid_from, '' AS valid_until"
+
+
+def _today() -> str:
+    """오늘(UTC, `YYYY-MM-DD`). 구간 비교는 사전식이라 문자열이면 충분하다."""
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def validity_state(valid_from: str | None, valid_until: str | None,
+                   *, now: str | None = None) -> str:
+    """반개구간 `[valid_from, valid_until)` 에서 파생하는 상태.
+    `future` · `current` · `historical` 셋 중 하나를 낸다.
+
+    🔴 **미기재 `valid_from` 은 current 다.** 이 한 줄이 이 함수의 전부라 해도 된다.
+    정책 초안은 `current = valid_from <= now` 였는데 거기엔 미기재 분기가 없고,
+    W13 계약이 "빈 값 = 미기재"인 이상 그건 예외가 아니라 **다수**다 — 실측으로
+    Record 610건 중 **432건(70.8%)** 이 `valid_from` 을 안 달고 있다. 그 정의로
+    기본 읽기를 걸면 낡은 것이 아니라 코퍼스의 7할이 사라진다. 그래서 무언가를
+    감추는 것은 **명시된 `valid_until` 뿐**이고, 그것이 "stale ≠ false"와도
+    실제 저작 관행(`valid_until` 사용 7건)과도 맞는다.
+
+    구간 형식은 `YYYY[-MM[-DD]]` 이고 비교는 사전식이다. `2026` 은 `2026-09-09`
+    보다 작으므로 연도만 적힌 시작은 그 해 내내 current 이고, 연도만 적힌 끝은
+    그 해가 시작되는 순간부터 historical 이다(반개구간의 뜻 그대로).
+
+    근거: [[decision:temporal-model-operational-policy-2026-09-09]] ·
+    [[record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09]]"""
+    now = now or _today()
+    vf = (valid_from or "").strip()
+    vu = (valid_until or "").strip()
+    if vf and now < vf:
+        return "future"
+    if vu and now >= vu:
+        return "historical"
+    return "current"
 
 
 def graph_plan(*, owner: str, domain: str | None = None,
@@ -2842,7 +2877,7 @@ def _brief_grounds(node_id: str, excerpts: list[dict], items: list[dict]) -> lis
 
 
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
-          max_excerpts: int = 3, cfg=None, store=None) -> dict:
+          max_excerpts: int = 3, historical: bool = False, cfg=None, store=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -2888,7 +2923,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             unread_ids.append({"id": qid,
                                "note": got.get("note") or ("node not found: " + qid)})
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
-                     owner=owner, store=store)
+                     owner=owner, store=store, historical=historical)
         base["executed"] = bool(res.get("executed"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
         # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
@@ -2896,7 +2931,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
         for k in ("error", "note", "node_error",
-                  "arms", "vector_note", "vector_rebuilding"):
+                  "arms", "vector_note", "vector_rebuilding",
+                  "validity_filtered", "validity_note"):
             if res.get(k):
                 base[k] = res[k]
         if base.get("error"):
@@ -5115,7 +5151,8 @@ def miss(kind: str, *, error: str, hint: str, **extra) -> dict:
 
 
 def _node_fallback_search(store, query: str, *, limit: int = 20,
-                          owner: str | None = None) -> list[dict]:
+                          owner: str | None = None, historical: bool = False,
+                          stats: dict | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -5202,23 +5239,34 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     cypher = (
         f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
-        "c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw "
+        f"c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw, "
+        f"{_VALIDITY_EMPTY} "
         "UNION ALL "
         f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
         "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
-        "r.domain AS domain, '' AS one_liner, r.props AS props_raw "
+        f"r.domain AS domain, '' AS one_liner, r.props AS props_raw, {_validity_cols('r')} "
         "UNION ALL "
         f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
         "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
-        "d.domain AS domain, '' AS one_liner, d.props AS props_raw "
+        f"d.domain AS domain, '' AS one_liner, d.props AS props_raw, {_VALIDITY_EMPTY} "
         "UNION ALL "
         f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
         "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
-        "e.domain AS domain, '' AS one_liner, '' AS props_raw"
+        f"e.domain AS domain, '' AS one_liner, '' AS props_raw, {_VALIDITY_EMPTY}"
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
+    dropped = 0
     for r in rows:
+        # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
+        # 그 절이 빠지면 낡은 것이 아니라 코퍼스의 7할이 사라진다(`validity_state` 참조).
+        # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
+        # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
+        if not historical:
+            st = validity_state(r.get("valid_from"), r.get("valid_until"))
+            if st != "current":
+                dropped += 1
+                continue
         title = str(r.get("title") or "").lower()
         one = str(r.get("one_liner") or "").lower()
         props = str(r.get("props_raw") or "").lower()
@@ -5241,6 +5289,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 결정론 랭킹: 맞은 토큰 수 ↓ → 제목 토큰 수 ↓ → 필드 강도 ↑ → id ↑.
     scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
                                _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
+    if stats is not None:
+        stats["dropped_not_current"] = dropped
     return scored[:max(1, int(limit))]
 
 
@@ -5326,7 +5376,7 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
-           cfg=None, store=None) -> dict:
+           historical: bool = False, cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -5384,10 +5434,18 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
         # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
         title_hits: list[dict] = []
+        _vstats: dict = {}
         try:
-            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner)
+            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
+                                               historical=historical, stats=_vstats)
         except Exception as exc:
             base["node_error"] = f"{type(exc).__name__}: {exc}"
+        # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
+        # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
+        if _vstats.get("dropped_not_current"):
+            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base["validity_note"] = ("hid nodes whose claim is no longer current; "
+                                     "pass historical=true to include them")
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.

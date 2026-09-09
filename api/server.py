@@ -564,6 +564,7 @@ class VincApp:
                                                   filters=filters or None,
                                                   cursor=p.get("cursor") or None,
                                                   detail=p.get("detail") or "summary",
+                                                  historical=_flag(p.get("historical")),
                                                   owner=p.get("owner") or None, store=r))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
         # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
@@ -878,9 +879,12 @@ class VincApp:
         # 데스크탑 Ask 와 답이 갈리지 않는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
         query = _req(p, "query")
         qvec, vnote = self._query_embedding(query)
+        # 유효구간 기본은 current 만이다(채택된 시간 정책 §4.2). `historical=true` 가
+        # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         code, res = self._read(lambda r: q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
-            max_excerpts=_int(p.get("max_excerpts"), 3), store=r))
+            max_excerpts=_int(p.get("max_excerpts"), 3),
+            historical=_flag(p.get("historical")), store=r))
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
         # `arms` 는 여기서 붙이지 않는다 — `q.brief` 가 내부 search 에서 그대로 나른다
