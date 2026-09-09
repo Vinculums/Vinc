@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/depth.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/base.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/styles.css">
+  <script src="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/_ds_bundle.js"></script>
+  <style>
+    html, body { margin: 0; background: #F2F2F0; color: #17171A; }
+    a { color: #17171A; text-decoration: none; }
+    a:hover { color: #4A4F8C; }
+    [data-step] p { text-wrap: pretty; word-break: keep-all; }
+    @media (max-width: 900px) {
+      [data-layout="main"] { grid-template-columns: minmax(0, 1fr) !important; }
+      [data-layout="canvas"] { order: 0 !important; height: 46vh !important; padding: 56px 24px 8px !important; background: #F2F2F0; z-index: 1; }
+      [data-layout="text"] { order: 1 !important; padding: 0 24px !important; }
+      [data-layout="text"] [data-step] { min-height: 60vh !important; }
+    }
+    @keyframes vb-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) { [data-step], [data-mark], [data-line], [data-run] { transition: none !important; animation: none !important; } }
+  </style>
+</helmet>
+<div style="font-family: Pretendard, ui-sans-serif, system-ui, sans-serif; background: #F2F2F0; color: #17171A; min-height: 100vh; -webkit-font-smoothing: antialiased;">
+  <header style="position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; font-size: 13px; color: #55565E; z-index: 2; pointer-events: none;">
+    <a href="Vinc About.dc.html" style="pointer-events: auto; font-weight: 500;">Vinc Book</a>
+    <span style="font-variant-numeric: tabular-nums;">Part 0, Chapter 3</span>
+  </header>
+  <main data-layout="main" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start;">
+    <div data-layout="text" style="padding: 0 48px 0 max(48px, 7vw); order: {{ textOrder }};">
+
+      <section data-step="0" data-screen-label="3.0" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 96px 0 64px; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 16px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">Chapter 3</p>
+        <h1 style="margin: 0 0 28px; font-size: 36px; line-height: 1.15; font-weight: 600; letter-spacing: -0.022em; text-wrap: pretty; word-break: keep-all;">Memory Changes the Answer</h1>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">AI can provide the ability to think. We can borrow that ability. But the things we have experienced, the decisions we have made, and the meanings unique to us do not automatically exist inside an AI model.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">So one question remains. What changes when we give our memory to AI?</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">The answer changes.</p>
+      </section>
+
+      <section data-step="1" data-screen-label="3.1" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.1</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">AI Does Not Retrieve a Predetermined Answer</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">When we ask a language model a question, it does not simply retrieve a completed answer from a hidden database.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">In simplified terms, it can be understood as sampling from a distribution of possible continuations.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">What we show the model changes the space in which it can construct an answer.</p>
+      </section>
+
+      <section data-step="2" data-screen-label="3.2" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.2</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">General Questions Produce General Answers</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">For questions such as “What makes a good database?”, general knowledge is often enough.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">But the questions we actually care about are often more specific. “Why did we choose this database?” “What did we try last time, and why did it fail?”</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">They are questions about our experience.</p>
+      </section>
+
+      <section data-step="3" data-screen-label="3.3" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.3</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Our Memory Is Not in the Model's Training Data</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">The definitions we created, the decisions we made, the measurements we collected, and the failures we experienced are usually not present in any AI model's training data.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">No matter how good the prompt is, it cannot summon a memory that was never supplied.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">If we want an answer to move into a space the model does not know, we have to provide the information that leads there as context.</p>
+      </section>
+
+      <section data-step="4" data-screen-label="3.4" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.4</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Memory Conditions the Answer</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Our definitions enter the context. Our decisions enter it. Our measurements and experiences enter it.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">The resulting distribution of possible answers changes. This can be called conditioning.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">We change the world the model is looking at.</p>
+      </section>
+
+      <section data-step="5" data-screen-label="3.5" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.5</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Memory Is Not a Single Document</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Something happened. We know why it happened. We made a decision. We observed its result. These pieces are connected.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Why did we reject A? Which experiment influenced the decision? The answers may be distributed across records, decisions, and events.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">The meaning of memory is created not only by individual records, but also by the relationships between them.</p>
+      </section>
+
+      <section data-step="6" data-screen-label="3.6" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.6</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">A Graph Preserves Relationships in Memory</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">An event can lead to a decision. A decision can be connected to a person. Its evidence can be connected to an experiment result.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Search asks “what should we find?” Graph traversal asks “what is around what we found?”</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">What matters is what is connected to what.</p>
+      </section>
+
+      <section data-step="7" data-screen-label="3.7" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.7</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Vinc Conditions an External AI's Answers with Our Memory</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Vinc does not generate the answer instead of the AI. Its role is to provide, within a defined structure, what the AI should see before constructing an answer.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Good conditioning material has three properties. Material. Precise. Repeatable.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">Vinc is a mechanism for conditioning an external AI model's answer distribution on our knowledge.</p>
+      </section>
+
+      <section data-step="8" data-screen-label="3.8" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.8</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Probabilistic AI and Deterministic Memory</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">AI is probabilistic. Yet the process that prepares the memory conditioning that AI should receive should be as deterministic as possible.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">If retrieval chooses different records every time, the memory supplied to the AI becomes unstable. We would no longer know what we were controlling.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">Probability belongs outside; the process that prepares memory should be as deterministic as possible.</p>
+        <div style="display: flex; align-items: center; gap: 16px; margin-top: 32px;">
+          <button type="button" onClick="{{ rerun }}" style="font: inherit; font-size: 15px; font-weight: 500; color: #17171A; background: transparent; border: 1px solid #17171A; border-radius: 999px; padding: 8px 16px; cursor: pointer;" style-hover="background: #E9E9E6;">Run the same question again</button>
+          <span style="font-size: 13px; color: #55565E; font-variant-numeric: tabular-nums;">{{ runsLabel }}</span>
+        </div>
+      </section>
+
+      <section data-step="9" data-screen-label="3.9" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">3.9</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">The Quality of Memory Affects the Quality of the Answer</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Giving AI our memory does not guarantee that it will use that memory correctly. And if the stored memory is wrong, the AI may construct an answer from that wrong memory.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">What Vinc aims to reduce is a different kind of variation: variation caused by not knowing what the AI saw when it answered.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">A good answer does not come only from a good model. It should begin from good memory.</p>
+      </section>
+
+      <section data-step="10" data-screen-label="3.close" style="min-height: 70vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0 128px; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Memory changes the answer. And that leads naturally to the next question.</p>
+        <p style="margin: 0 0 32px; font-size: 17px; line-height: 1.6;">What should we remember?</p>
+        <a href="Vinc About.dc.html" style="font-size: 15px; line-height: 1.5; color: #55565E;">Chapter 4. What Should We Remember</a>
+      </section>
+
+    </div>
+    <div data-layout="canvas" style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 64px 48px; box-sizing: border-box; order: {{ canvasOrder }};">
+      {{ canvas }}
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;textSide&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;left&quot;,&quot;right&quot;],&quot;default&quot;:&quot;left&quot;,&quot;tsType&quot;:&quot;'left' | 'right'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;triggerLine&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.5,&quot;min&quot;:0.3,&quot;max&quot;:0.7,&quot;step&quot;:0.05,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Scroll&quot;}}">
+const INK = '#17171A', PAPER = '#F2F2F0';
+const ENTER = 'cubic-bezier(.22,1,.36,1)', LEAVE = 'cubic-bezier(.4,0,.7,1)';
+const BASE = 420, LAST_STEP = 10;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+const pol = (cx, cy, rad, deg) => [cx + rad * Math.cos(deg * Math.PI / 180), cy + rad * Math.sin(deg * Math.PI / 180)];
+const hex = (x, y, r) => Array.from({ length: 6 }, (_, k) => pol(x, y, r, 60 * k - 30).join(',')).join(' ');
+// distribution (mu, sigma) per step; interpolated by within-step progress
+const DIST = [[320, 150], [320, 150], [320, 150], [320, 150], [400, 95], [440, 62], [440, 62], [450, 42], [450, 42], [450, 42], [450, 42]];
+const curve = (mu, sg) => {
+  const H = Math.min(200, 90 * 150 / sg);
+  let d = '';
+  for (let i = 0; i <= 52; i++) {
+    const x = 80 + i * 10, y = BASE - H * Math.exp(-((x - mu) ** 2) / (2 * sg * sg));
+    d += (i ? ' L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1);
+  }
+  return d;
+};
+const SAMPLES = [180, 250, 300, 340, 395, 470];
+const RECS = [
+  { id: 'r1', at: 3, pos: { 3: [560, 150], 4: [410, 372] } },
+  { id: 'r2', at: 5, pos: { 5: [450, 346] } },
+  { id: 'r3', at: 5, pos: { 5: [478, 378] } },
+];
+const RING = [446, 366, 50];
+const Q = [330, 140];
+const rnd = n => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+
+class Component extends DCLogic {
+  state = { step: 0, p: 0, runs: 1 };
+  componentDidMount() {
+    this.reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.onScroll = () => { if (this.raf) return; this.raf = requestAnimationFrame(() => { this.raf = 0; this.spy(); }); };
+    document.addEventListener('scroll', this.onScroll, true);
+    window.addEventListener('resize', this.onScroll);
+    this.spy(); setTimeout(() => this.spy(), 300); setTimeout(() => this.spy(), 1200);
+    this.onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
+      const dir = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : (e.key === 'ArrowUp' || e.key === 'k') ? -1 : 0;
+      if (!dir) return;
+      const els = Array.from(document.querySelectorAll('[data-step]'));
+      const next = els[Math.max(0, Math.min(els.length - 1, this.state.step + dir))];
+      if (!next) return;
+      e.preventDefault();
+      const line = window.innerHeight * (this.props.triggerLine ?? 0.5);
+      const top = next.getBoundingClientRect().top;
+      const target = window.innerWidth <= 900 ? top - window.innerHeight * 0.46 - 16 : top - line + Math.min(48, next.getBoundingClientRect().height * 0.1);
+      window.scrollBy({ top: target, behavior: this.reduced ? 'auto' : 'smooth' });
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() {
+    document.removeEventListener('scroll', this.onScroll, true);
+    window.removeEventListener('resize', this.onScroll);
+    window.removeEventListener('keydown', this.onKey);
+  }
+  spy() {
+    const els = Array.from(document.querySelectorAll('[data-step]'));
+    if (!els.length) return;
+    const line = window.innerWidth <= 900 ? window.innerHeight * 0.46 + 80 : window.innerHeight * (this.props.triggerLine ?? 0.5);
+    const tops = els.map(el => el.getBoundingClientRect().top);
+    let a = 0;
+    tops.forEach((t, i) => { if (t <= line) a = i; });
+    els.forEach((el, i) => { el.style.opacity = i === a ? '1' : '0.35'; });
+    const span = a + 1 < tops.length ? tops[a + 1] - tops[a] : els[a].getBoundingClientRect().height * 0.5;
+    let p = this.reduced ? 0 : clamp((line - tops[a]) / Math.max(1, span), 0, 1);
+    const step = Math.min(a, LAST_STEP);
+    if (step !== this.state.step || Math.abs(p - this.state.p) > 0.002) this.setState({ step, p });
+  }
+  posOf(m, s, w) {
+    const keys = Object.keys(m.pos).map(Number).filter(k => k <= s).sort((a, b) => a - b);
+    const first = Math.min(...Object.keys(m.pos).map(Number));
+    const cur = m.pos[keys.length ? keys[keys.length - 1] : first], nxt = keys.length ? m.pos[s + 1] : null;
+    return nxt ? [lerp(cur[0], nxt[0], w), lerp(cur[1], nxt[1], w)] : cur;
+  }
+  renderCanvas() {
+    const { step: s, p, runs } = this.state, E = React.createElement;
+    const w = smooth((p - 0.35) / 0.6);
+    const d0 = DIST[s], d1 = DIST[Math.min(s + 1, LAST_STEP)];
+    const mu = lerp(d0[0], d1[0], w), sg = lerp(d0[1], d1[1], w);
+    const dimAll = s >= 9;
+    const kids = [];
+    kids.push(E('line', { key: 'base', x1: 80, y1: BASE, x2: 600, y2: BASE, stroke: INK, strokeWidth: 1, opacity: 0.5 }));
+    kids.push(E('path', { key: 'ghost', d: curve(320, 150), fill: 'none', stroke: INK, strokeWidth: 1, style: { opacity: s >= 4 ? 0.12 : 0, transition: `opacity .3s ${ENTER}` } }));
+    kids.push(E('path', { key: 'curve', d: curve(mu, sg), fill: 'none', stroke: INK, strokeWidth: 1 }));
+    SAMPLES.forEach((x, i) => {
+      const vis = s >= 1, dim = s >= 4;
+      kids.push(E('circle', { key: 'sm' + i, 'data-mark': 'sample', cx: x, cy: BASE - 5, r: 4, fill: INK, style: {
+        opacity: vis ? (dim ? 0.4 : 1) : 0, transform: vis ? 'translateY(0)' : 'translateY(-40px)',
+        transition: vis ? `opacity .3s ${ENTER} ${i * 45}ms, transform .3s ${ENTER} ${i * 45}ms` : `opacity .2s ${LEAVE}, transform .2s ${LEAVE}` } }));
+    });
+    kids.push(E('g', { key: 'tick', style: { opacity: s >= 2 ? (s >= 4 ? 0.35 : 1) : 0, transition: `opacity .3s ${ENTER}` } },
+      E('line', { x1: 320, y1: BASE, x2: 320, y2: BASE + 10, stroke: INK, strokeWidth: 1 }),
+      E('text', { x: 320, y: BASE + 28, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'a general answer')));
+    const rp = {};
+    RECS.forEach(m => { rp[m.id] = this.posOf(m, s, w); });
+    [['r1', 'r2'], ['r2', 'r3'], ['r1', 'r3']].forEach(([a, b], i) => {
+      const vis = s >= 6, A = rp[a], B = rp[b];
+      const dx = B[0] - A[0], dy = B[1] - A[1], d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
+      const P0 = [A[0] + ux * 13, A[1] + uy * 13], P2 = [B[0] - ux * 13, B[1] - uy * 13];
+      const side = i % 2 ? 1 : -1, C = [(P0[0] + P2[0]) / 2 - uy * d * 0.12 * side, (P0[1] + P2[1]) / 2 + ux * d * 0.12 * side];
+      kids.push(E('path', { key: 'ln' + a + b, 'data-line': a + b, d: `M${P0[0]},${P0[1]} Q${C[0]},${C[1]} ${P2[0]},${P2[1]}`, fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1,
+        style: { strokeDashoffset: vis ? 0 : 1, opacity: vis ? 0.85 : 0, transition: vis ? `stroke-dashoffset .5s ${ENTER} ${150 + i * 80}ms, opacity .2s ${ENTER}` : `stroke-dashoffset .2s ${LEAVE}, opacity .2s ${LEAVE}` } }));
+    });
+    RECS.forEach((m, i) => {
+      const vis = s >= m.at, P = rp[m.id];
+      kids.push(E('polygon', { key: m.id, 'data-mark': m.id, points: hex(P[0], P[1], 11), fill: PAPER, stroke: INK, strokeWidth: 1.25, strokeLinejoin: 'round', style: {
+        opacity: vis ? 1 : 0, transform: vis ? 'scale(1)' : 'scale(.85)', transformBox: 'fill-box', transformOrigin: 'center',
+        transition: vis ? `opacity .3s ${ENTER} ${i * 60}ms, transform .3s ${ENTER} ${i * 60}ms` : `opacity .2s ${LEAVE}, transform .2s ${LEAVE}` } }));
+    });
+    kids.push(E('g', { key: 'ring', style: { opacity: s >= 7 ? 1 : 0, transition: `opacity .3s ${ENTER} 150ms` } },
+      E('circle', { cx: RING[0], cy: RING[1], r: RING[2], fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1, style: { strokeDashoffset: s >= 7 ? 0 : 1, transition: s >= 7 ? `stroke-dashoffset .5s ${ENTER} 150ms` : `stroke-dashoffset .2s ${LEAVE}` } }),
+      E('text', { x: RING[0], y: BASE + 28, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'what the AI sees before answering')));
+    // two runs
+    const runKids = [];
+    const lands = [];
+    for (let k = 1; k <= runs; k++) {
+      const lx = 150 + rnd(k) * 160, last = k === runs;
+      const wob = (rnd(k + 50) - 0.5) * 220;
+      const dl = `M${Q[0]},${Q[1]} Q${(Q[0] + lx) / 2 + wob},${(Q[1] + BASE) / 2} ${lx},${BASE - 4}`;
+      const dr = `M${Q[0]},${Q[1]} Q${RING[0] - 40},${RING[1] - 60} ${RING[0]},${BASE - 4}`;
+      const anim = this.reduced ? 'none' : 'vb-draw .5s cubic-bezier(.22,1,.36,1) both';
+      runKids.push(E('path', { key: 'L' + k, 'data-run': k, d: dl, fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1, style: { opacity: last ? 0.85 : 0.12, animation: last ? anim : 'none', strokeDashoffset: 0 } }));
+      if (last) runKids.push(E('path', { key: 'R' + k, 'data-run': 'r' + k, d: dr, fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1, style: { opacity: 0.85, animation: anim, strokeDashoffset: 0 } }));
+      lands.push(E('circle', { key: 'l' + k, cx: lx, cy: BASE - 4, r: 3, fill: INK, opacity: last ? 1 : 0.4 }));
+    }
+    lands.push(E('circle', { key: 'lr', cx: RING[0], cy: BASE - 4, r: 3, fill: INK }));
+    kids.push(E('g', { key: 'runs', style: { opacity: s >= 8 ? (dimAll ? 0.4 : 1) : 0, transition: `opacity .3s ${ENTER}` } },
+      E('circle', { key: 'q', cx: Q[0], cy: Q[1], r: 7, fill: INK }),
+      E('text', { key: 'qt', x: Q[0], y: Q[1] - 16, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'the same question'),
+      ...runKids, ...lands,
+      E('text', { key: 'lt', x: 230, y: BASE + 52, textAnchor: 'middle', fontSize: 13, fill: INK, style: { fontVariantNumeric: 'tabular-nums' } }, `${runs} ${runs === 1 ? 'run' : 'runs'} · ${runs} landing ${runs === 1 ? 'point' : 'points'}`),
+      E('text', { key: 'rt', x: RING[0], y: BASE + 52, textAnchor: 'middle', fontSize: 13, fill: INK, style: { fontVariantNumeric: 'tabular-nums' } }, `${runs} ${runs === 1 ? 'run' : 'runs'} · 1 landing point`)));
+    return E('svg', { viewBox: '0 0 640 640', width: '100%', height: '100%', style: { maxWidth: 'min(100%, calc(100vh - 128px))', maxHeight: '100%', display: 'block', overflow: 'visible', fontFamily: 'Pretendard, ui-sans-serif, system-ui, sans-serif' } }, kids);
+  }
+  renderVals() {
+    const side = this.props.textSide ?? 'left', runs = this.state.runs;
+    return { canvas: this.renderCanvas(), textOrder: side === 'left' ? 0 : 1, canvasOrder: side === 'left' ? 1 : 0,
+      rerun: () => this.setState(s => ({ runs: Math.min(s.runs + 1, 7) })),
+      runsLabel: runs >= 7 ? '7 runs. Enough to see it.' : `${runs} ${runs === 1 ? 'run' : 'runs'} so far` };
+  }
+}
+</script>
+</body>
+</html>

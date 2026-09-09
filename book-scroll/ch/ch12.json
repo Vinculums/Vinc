@@ -1,0 +1,170 @@
+{
+ "n": 12,
+ "no": 12,
+ "part": 1,
+ "file": "Ch12.dc.html",
+ "slot": "vinc.book.12-canonical-graph.en",
+ "title": "How Documents and the Graph Connect",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "12.0",
+   "eyebrow": "Part 1 · Chapter 12",
+   "h": "How Documents and the Graph Connect",
+   "paras": [
+    "Structuring memory into nodes and edges does not make the original document unnecessary.",
+    "If anything, the stronger the graph gets, the more the question matters: where did this node's claim come from?",
+    "Suppose the sentence we are adopting a new vector database appears in three different documents."
+   ],
+   "claim": "Three appearances do not have to mean three memories."
+  },
+  {
+   "label": "12.1",
+   "h": "Same Sentence, Different Memory",
+   "paras": [
+    "The three documents may be mentioning the same project and the same decision from three points in time.",
+    "But merging two decisions from different projects because their wording is similar erases the difference between the choices those projects actually made.",
+    "So the test for whether this is the same memory is not surface similarity of the text.",
+    "The test lives on the graph side. The document is where wording and context are preserved; the graph is where identifiers settle whether two expressions point at the same thing."
+   ]
+  },
+  {
+   "label": "12.2",
+   "h": "Document and Chunk Are Different Layers",
+   "paras": [
+    "When a document is stored, the whole text does not become one node. It is split into smaller pieces.",
+    "That piece is not a new unit of meaning. It is a unit of processing, for searching and for fetching back.",
+    "One condition matters here: the split has to be reversible. Joining the pieces back together has to give the original exactly.",
+    "If a sentence gets cut or the order shifts during storage, there is no longer any way to confirm what the evidence actually said, and the store has quietly stopped being evidence."
+   ],
+   "claim": "A quietly truncated document is indistinguishable from a short one."
+  },
+  {
+   "label": "12.3",
+   "h": "Finding Meaning, Not Erasing Text",
+   "paras": [
+    "After the document is stored, the concepts worth reusing are found inside it.",
+    "If the document turns out to be about a particular vector database, that database becomes a concept, or connects to one that already exists. The connection is called MENTIONS.",
+    "The source text does not disappear in the process. A concept is not a summary that stands in for the document; it is closer to a handle that points at a meaning the document can supply again.",
+    "So opening one concept should let you walk back to the documents that support it."
+   ]
+  },
+  {
+   "label": "12.4",
+   "h": "Reuse Matters More Than Creation",
+   "paras": [
+    "If every concept discovered in every incoming document becomes a new node, the number of nodes pointing at one concept keeps growing.",
+    "The graph gets bigger and less useful. When information about one concept is scattered across ten nodes, there is no way to know which one to read to see the whole picture.",
+    "So processing a new document always starts with a question: is this concept already in the graph? If it is, connect the document to the existing node rather than making another.",
+    "That judgment does not follow automatically from how similar the wording is, because similar wording can point at different projects and different moments."
+   ],
+   "claim": "Search before write, or the same thing exists twice."
+  },
+  {
+   "label": "12.5",
+   "h": "Splitting the Responsibility",
+   "paras": [
+    "The reason to divide the work between document and graph is simple.",
+    "When a document changes, the document is corrected. When a meaning in the graph changes, nodes and relationships are corrected.",
+    "Bundle the two together and every document edit forces a pass over every concept derived from it, or every concept refinement reaches back into the source text.",
+    "Kept apart, each can move on its own. The source stays exactly preserved, and the graph above it can keep being reorganised and reconnected."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "12.close",
+   "paras": [
+    "The next chapter asks how far to go in making these handles, and why the concept system is managed separately from the graph's own structure."
+   ],
+   "nextLabel": "Chapter 13. How the Concept System Is Managed",
+   "nextHref": "Ch13.dc.html"
+  }
+ ],
+ "conveyor": {
+  "y": 300,
+  "x0": 110,
+  "x1": 530,
+  "stations": [
+   {
+    "name": "document",
+    "shape": "hex",
+    "count": 1,
+    "r": 17,
+    "note": "wording and context",
+    "glyph": "doc",
+    "payload": "doc"
+   },
+   {
+    "name": "chunks",
+    "shape": "hex",
+    "count": 4,
+    "r": 9,
+    "note": "a processing unit, reversible",
+    "glyph": "stack"
+   },
+   {
+    "name": "candidates",
+    "shape": "circle",
+    "count": 4,
+    "r": 9,
+    "glyph": "stack"
+   },
+   {
+    "name": "search first",
+    "shape": "circle",
+    "count": 2,
+    "r": 11,
+    "note": "does this already exist"
+   },
+   {
+    "name": "MENTIONS",
+    "shape": "circle",
+    "count": 2,
+    "r": 11,
+    "glyph": "arrow"
+   },
+   {
+    "name": "back to source",
+    "shape": "hex",
+    "count": 1,
+    "r": 17,
+    "note": "the handle points home",
+    "glyph": "doc"
+   }
+  ]
+ },
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "figures": [
+  {
+   "id": "three",
+   "glyph": "stack",
+   "p": [
+    104,
+    118
+   ],
+   "size": 42,
+   "at": 1,
+   "label": "three appearances",
+   "labelDy": 14
+  },
+  {
+   "id": "one",
+   "glyph": "logo",
+   "p": [
+    536,
+    116
+   ],
+   "size": 42,
+   "at": 3,
+   "wash": "peri",
+   "washAt": 3,
+   "washR": 30,
+   "label": "one memory",
+   "labelDy": 14
+  }
+ ]
+}

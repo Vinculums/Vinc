@@ -1,0 +1,145 @@
+{
+ "n": 11,
+ "no": 11,
+ "part": 1,
+ "file": "Ch11.dc.html",
+ "slot": "vinc.book.11-memory-model.en",
+ "title": "What Are Nodes and Edges",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "11.0",
+   "eyebrow": "Part 1 · Chapter 11",
+   "h": "What Are Nodes and Edges",
+   "paras": [
+    "Chapter 10 divided memory into six kinds of node. Here we look at what that division actually does, and why an edge between nodes is not just a line.",
+    "Putting the name Concept on a node and that node actually being treated as a concept are two different things.",
+    "If a node is a Concept, it gets referred to repeatedly, becomes a candidate in search, and can relate to other concepts."
+   ],
+   "claim": "The kind of a node is not decoration. It is a contract about how the system will handle it."
+  },
+  {
+   "label": "11.1",
+   "h": "Naming Is Not Typing",
+   "paras": [
+    "If a node is an Episode, it means an event recalled in time order, and it is not usually the thing search resolves onto.",
+    "Write Concept and treat it like an Episode, or the reverse, and search and traversal come apart from each other.",
+    "The failure is quiet. Nothing errors; the node is simply never found by the queries that should have found it, and is found by ones that should not.",
+    "So the kind is a decision about handling, made once, at the point the memory is written."
+   ]
+  },
+  {
+   "label": "11.2",
+   "h": "One Sentence, Three Kinds",
+   "paras": [
+    "Each kind answers a different question. A Concept answers what this means. An Episode answers when something happened. A Record answers what was observed or confirmed. A Decision answers what was chosen.",
+    "A Bridge answers where two separate areas meet. An Entity answers what this is called, for a thing that needs identifying before it has become a proper concept.",
+    "Take one sentence: we decided to adopt a new vector database. At least three kinds of information are folded into it.",
+    "The database as a concept, the choice as a decision, and the circumstances of the moment as an episode. Store them as one lump of text and the question of why that technology was chosen becomes unanswerable."
+   ],
+   "claim": "Separate them and the question can be answered from the part that holds the answer."
+  },
+  {
+   "label": "11.3",
+   "h": "An Edge Carries Direction and Meaning",
+   "paras": [
+    "Knowing that two nodes are connected is not enough information.",
+    "If A and B are connected, is A the cause of B, is A a condition that must hold before B, or are the two merely related? Those are entirely different statements.",
+    "So an edge has a name and a direction. A prerequisite-of B is a concrete claim: A has to hold before B does. Reverse it and it says something else.",
+    "The relationships used most are deliberately few: relates-to for loose association, prerequisite-of for a precondition, derives-from, inherits-from, and about."
+   ]
+  },
+  {
+   "label": "11.4",
+   "h": "Why the Vocabulary Stays Small",
+   "paras": [
+    "The set is not kept small out of tidiness. Every additional relationship name is another thing a reader, an assistant and an agent all have to agree on the meaning of.",
+    "The cost of that agreement is paid again on every new node written and every query asked.",
+    "And not every kind can be joined by every relationship. Relates-to between two concepts is natural; between two decisions it usually is not, because decisions relate through lineage rather than through vague association.",
+    "One decision superseded another. That is the shape a decision-to-decision relationship normally has.",
+    "A vocabulary nobody can hold in mind is a vocabulary that gets used inconsistently."
+   ]
+  },
+  {
+   "label": "11.5",
+   "h": "A Graph That Says Nothing",
+   "paras": [
+    "Without those constraints a graph can look dense and say nothing.",
+    "A graph where everything relates-to everything is not different, in practice, from a graph that makes no distinctions at all.",
+    "So nodes settle what exists, and edges settle the terms on which those things meet.",
+    "Keeping the two separate is what lets a later question be precise: not everything related to this concept, but what had to come before it, and what was derived from it.",
+    "A graph that draws every possible line has drawn no distinction at all."
+   ],
+   "claim": "Everything connected to everything is the same picture as nothing connected at all."
+  },
+  {
+   "kind": "close",
+   "label": "11.close",
+   "paras": [
+    "The next chapter follows these nodes and edges back to the source document, and asks how the graph holds on to the meaning that came out of a document without replacing the document itself."
+   ],
+   "nextLabel": "Chapter 12. How Documents and the Graph Connect",
+   "nextHref": "Ch12.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "hub": {
+  "cx": 320,
+  "cy": 300,
+  "r": 64,
+  "spokeR": 190,
+  "center": {
+   "glyph": "doc",
+   "size": 64,
+   "label": "one sentence"
+  },
+  "spokes": [
+   {
+    "name": "Concept",
+    "glyph": "book",
+    "at": 2,
+    "sub": "what it means"
+   },
+   {
+    "name": "prerequisite of",
+    "glyph": "arrow",
+    "at": 3,
+    "dir": "out"
+   },
+   {
+    "name": "Episode",
+    "glyph": "clock",
+    "at": 2,
+    "sub": "when it happened"
+   },
+   {
+    "name": "derives from",
+    "glyph": "arrow",
+    "at": 3,
+    "dir": "in"
+   },
+   {
+    "name": "Record",
+    "glyph": "doc",
+    "at": 2,
+    "sub": "what was observed"
+   },
+   {
+    "name": "about",
+    "glyph": "arrow",
+    "at": 3,
+    "dir": "in"
+   }
+  ],
+  "at": 0,
+  "ringAt": 1,
+  "crossAt": 5,
+  "note": "everything connected to everything",
+  "noteAt": 5
+ },
+ "figures": []
+}

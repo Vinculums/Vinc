@@ -1,0 +1,483 @@
+{
+ "n": 8,
+ "part": 0,
+ "file": "Ch08.dc.html",
+ "slot": "vinc.book.08-trust.en",
+ "title": "Can We Trust Memory?",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "8.0",
+   "eyebrow": "Part 0 · Chapter 8",
+   "h": "Can We Trust Memory?",
+   "paras": [
+    "In Chapter 7 we created an entity that uses memory. An agent reads memory from the graph, makes judgments, acts, and leaves new memory behind.",
+    "Memory is no longer passive storage. It has become a force that moves action.",
+    "That creates a new problem. What happens when the memory is wrong?",
+    "Good memory increases an agent's capability. Wrong memory can strengthen wrong behaviour just as effectively."
+   ],
+   "claim": "The hardest question is not how much we remember. It is how much we can trust what we remember."
+  },
+  {
+   "label": "8.1",
+   "h": "The Price of Connection Is Trust",
+   "paras": [
+    "We have spent the previous chapters connecting memory. We recorded information, created concepts, created relationships, added time and space, and let agents read the result.",
+    "As that structure becomes more powerful, another fact becomes more powerful with it.",
+    "Errors travel the same path.",
+    "A wrong record enters the graph. It connects to other memories. An agent reads it as context. What began as a small error becomes an error in real action, and nothing about the path had to change for that to happen."
+   ]
+  },
+  {
+   "label": "8.2",
+   "h": "The Right Answer, Unreachable",
+   "paras": [
+    "The harder failure is not caused by an empty graph.",
+    "Sometimes the correct answer already exists inside the graph and simply cannot be found.",
+    "A document may make a false claim while a correct record that contradicts it also exists. If the two are not connected, an agent may read only the false document.",
+    "So the problem is not that the information does not exist. The information existed and was not connected, and adding more data does not fix that. We need to know what supports what, what conflicts with what, and which record represents the more recent state."
+   ]
+  },
+  {
+   "label": "8.3",
+   "h": "Memory Grows Old",
+   "paras": [
+    "Not every memory stays valid at the same rate. Some explanations change little. Others can be outdated within hours.",
+    "Memory describing world state is especially sensitive: code state, deployment state, pull-request state, infrastructure state, and measurements can all move underneath a sentence that was true when it was written.",
+    "That does not mean the old record should be deleted.",
+    "The important thing is to make clear when the record was valid. We should not use an old memory as though it were a current fact."
+   ],
+   "claim": "It does not disappear. It stops being current, which is a different thing."
+  },
+  {
+   "label": "8.4",
+   "h": "Not All Memory Is the Same Kind",
+   "paras": [
+    "Concepts, decisions, and records have different roles. A concept explains. A decision chooses. A record observes or measures.",
+    "If we ask whether a system is currently deployed, answering with an old decision is dangerous. A decision describes a choice made at the time; it does not prove present state.",
+    "A judgment about current state needs a recent record, or evidence verified through an external system.",
+    "So distinguishing memory types is not merely classification. It distinguishes what kind of memory can serve as evidence for what kind of question."
+   ]
+  },
+  {
+   "label": "8.5",
+   "h": "Verifiability, Not Belief",
+   "paras": [
+    "Should Vinc be a system that makes the graph perfect? No.",
+    "Reality changes. New information arrives. Past judgments can later be shown to be wrong.",
+    "So the realistic goal is not to make every memory true. It is to keep memory in a verifiable state, and that takes more than one layer.",
+    "The server has to honour its data contracts. The graph has to represent claims and relationships structurally. Orchestration has to make it possible to trace what the agent actually acted upon. No single layer is enough by itself."
+   ]
+  },
+  {
+   "label": "8.6",
+   "h": "I Checked, and Can Be Checked",
+   "paras": [
+    "There is a dangerous phrase in agent systems. I checked.",
+    "The phrase itself is not evidence.",
+    "What was checked? Which tool was used? What target? When? What was the result?",
+    "Conceptually an assertion carries its evidence with it: the tool call, the target, and the time, all four of them. If that evidence does not exist, the claim should not be presented as though it were verified.",
+    "The sentence sounds like a result and carries none, which is exactly why it survives review."
+   ],
+   "claim": "Verified facts and inferred facts have to stay distinguishable."
+  },
+  {
+   "label": "8.7",
+   "h": "Failure Teaches the System",
+   "paras": [
+    "Verification does not make errors disappear. What matters is what remains after one is discovered.",
+    "If a claim is wrong we can record why. We can connect the evidence that contradicted it. We can trace which agent used it. We can fold the lesson into the context of later work.",
+    "Failure is therefore not merely something to delete.",
+    "Failure becomes part of memory too, and a memory system that throws its failures away has to learn the same thing twice."
+   ]
+  },
+  {
+   "label": "8.8",
+   "h": "The Graph Cannot Enforce Everything",
+   "paras": [
+    "Recording that something is prohibited does not physically prevent every agent from doing it.",
+    "The graph can provide contracts and context, connect evidence and provenance, and express conditions that should be checked. Actual authorization and execution blocking may need separate systems.",
+    "So Vinc should not claim that the graph prevents every error.",
+    "The more precise claim is that the graph makes it possible to trace what is claimed and what supports it. That distinction matters, because the stronger version would be a promise the structure cannot keep."
+   ]
+  },
+  {
+   "label": "8.9",
+   "h": "Complete Trust Is Not the Goal",
+   "paras": [
+    "A memory system becomes dangerous the moment it claims to guarantee perfect truth.",
+    "The world changes. Memory is added. Relationships are revised. Past judgments are reevaluated.",
+    "So what Vinc pursues is not complete trust but a structure in which trust can be verified: we preserve not only what we know, but why we know it, when we knew it, what evidence supported it, and what was later found to be wrong.",
+    "Then memory becomes more than storage. It becomes a history that can be reviewed."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "8.close",
+   "paras": [
+    "A memory that survives a long time is not necessarily correct. A highly connected memory is not necessarily important. A memory an agent reads repeatedly is not necessarily true. A good memory system lets us doubt memory when necessary, and record the doubt as well.",
+    "Which leaves one more question. If we try to remember everything, connect everything, and control every action, what does the system become?"
+   ],
+   "nextLabel": "Chapter 9. What We Deliberately Do Not Do",
+   "nextHref": "Ch09.dc.html"
+  }
+ ],
+ "anchors": [],
+ "marks": [
+  {
+   "id": "s0",
+   "shape": "hex",
+   "p": [
+    116,
+    96
+   ],
+   "r": 12,
+   "at": 0,
+   "label": "information",
+   "labelAt": 1,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "s1",
+   "shape": "circle",
+   "p": [
+    116,
+    190
+   ],
+   "r": 12,
+   "at": 0,
+   "label": "memory",
+   "labelAt": 1,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "s2",
+   "shape": "circle",
+   "p": [
+    116,
+    284
+   ],
+   "r": 12,
+   "at": 0,
+   "label": "graph",
+   "labelAt": 1,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "s3",
+   "shape": "ring",
+   "p": [
+    116,
+    378
+   ],
+   "r": 13,
+   "at": 0,
+   "label": "agent",
+   "labelAt": 1,
+   "lpos": "left",
+   "labelSize": 12.5,
+   "glyph": "agent",
+   "gs": 34,
+   "z": 0.9
+  },
+  {
+   "id": "s4",
+   "shape": "diamond",
+   "p": [
+    116,
+    472
+   ],
+   "r": 13,
+   "at": 0,
+   "label": "action",
+   "labelAt": 1,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "fa",
+   "shape": "hex",
+   "p": [
+    318,
+    120
+   ],
+   "r": 13,
+   "at": 2,
+   "label": "the false claim",
+   "labelAt": 2,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "tr",
+   "shape": "hex",
+   "p": [
+    318,
+    252
+   ],
+   "r": 13,
+   "at": 2,
+   "label": "the record that refutes it",
+   "labelAt": 2,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "ag",
+   "shape": "ring",
+   "p": [
+    232,
+    186
+   ],
+   "r": 14,
+   "at": 2,
+   "glyph": "agent",
+   "gs": 30
+  },
+  {
+   "id": "ex",
+   "shape": "circle",
+   "p": [
+    452,
+    402
+   ],
+   "r": 6,
+   "at": 6,
+   "label": "evidence",
+   "labelAt": 6,
+   "lpos": "right",
+   "labelSize": 12,
+   "wash": "ok",
+   "washAt": 6,
+   "washR": 14
+  },
+  {
+   "id": "tl",
+   "shape": "circle",
+   "p": [
+    452,
+    430
+   ],
+   "r": 6,
+   "at": 6,
+   "label": "tool call",
+   "labelAt": 6,
+   "lpos": "right",
+   "labelSize": 12
+  },
+  {
+   "id": "tg",
+   "shape": "circle",
+   "p": [
+    452,
+    458
+   ],
+   "r": 6,
+   "at": 6,
+   "label": "target",
+   "labelAt": 6,
+   "lpos": "right",
+   "labelSize": 12
+  },
+  {
+   "id": "tm",
+   "shape": "circle",
+   "p": [
+    452,
+    486
+   ],
+   "r": 6,
+   "at": 6,
+   "label": "time",
+   "labelAt": 6,
+   "lpos": "right",
+   "labelSize": 12
+  },
+  {
+   "id": "cl",
+   "shape": "diamond",
+   "p": [
+    346,
+    444
+   ],
+   "r": 15,
+   "at": 6,
+   "label": "the assertion",
+   "labelAt": 6,
+   "lpos": "left",
+   "labelSize": 12.5,
+   "z": 0.85
+  }
+ ],
+ "lines": [
+  {
+   "from": "s0",
+   "to": "s1",
+   "at": 0,
+   "dir": true,
+   "stagger": 0
+  },
+  {
+   "from": "s1",
+   "to": "s2",
+   "at": 0,
+   "dir": true,
+   "stagger": 1
+  },
+  {
+   "from": "s2",
+   "to": "s3",
+   "at": 0,
+   "dir": true,
+   "stagger": 2
+  },
+  {
+   "from": "s3",
+   "to": "s4",
+   "at": 0,
+   "dir": true,
+   "stagger": 3
+  },
+  {
+   "from": "ag",
+   "to": "fa",
+   "at": 2,
+   "dir": true,
+   "stagger": 0
+  },
+  {
+   "from": "ag",
+   "to": "tr",
+   "at": 3,
+   "dir": true,
+   "label": "one edge is enough",
+   "labelAt": 3,
+   "side": -1,
+   "stagger": 1
+  },
+  {
+   "from": "cl",
+   "to": "ex",
+   "at": 6,
+   "ink": 2,
+   "stagger": 0
+  },
+  {
+   "from": "cl",
+   "to": "tl",
+   "at": 6,
+   "ink": 2,
+   "stagger": 1
+  },
+  {
+   "from": "cl",
+   "to": "tg",
+   "at": 6,
+   "ink": 2,
+   "stagger": 2
+  },
+  {
+   "from": "cl",
+   "to": "tm",
+   "at": 6,
+   "ink": 2,
+   "stagger": 3
+  }
+ ],
+ "stage": [
+  "  // OPEN, the same path. The chain is traced once in ink; then the top mark",
+  "  // is marked wrong and the identical trace runs again, at the same speed,",
+  "  // along the same geometry. Nothing about the path changes — only the",
+  "  // value does, which is the whole claim of the beat.",
+  "  CHAIN = [[116, 96], [116, 190], [116, 284], [116, 378], [116, 472]];",
+  "  stage(s, p) {",
+  "    const E = React.createElement, kids = [];",
+  "    // the travelling dot: first pass on beat 0, second pass on beat 1 with",
+  "    // the source marked wrong",
+  "    if (s <= 1) {",
+  "      const t = smooth(clamp((p - 0.15) / 0.72, 0, 1));",
+  "      const span = (this.CHAIN.length - 1) * t;",
+  "      const i = Math.min(this.CHAIN.length - 2, Math.floor(span));",
+  "      const f = span - i;",
+  "      const A = this.CHAIN[i], B = this.CHAIN[i + 1];",
+  "      const x = lerp(A[0], B[0], f), y = lerp(A[1], B[1], f);",
+  "      kids.push(E('path', { key: 'trav', d: blob(x + 26, y, 6, K), fill: INK }));",
+  "      kids.push(E('text', { key: 'tt', x: 152, y: 540, fontSize: 13, fontStyle: 'italic', fill: INK },",
+  "        s === 1 ? 'the same path, a different value' : 'one pass'));",
+  "    }",
+  "    // beat 3, ageing. The record's ink falls along a time axis while the",
+  "    // validity bracket around it closes. It never leaves the picture.",
+  "    if (s === 3) {",
+  "      const t = smooth(clamp((p - 0.1) / 0.8, 0, 1));",
+  "      const X0 = 300, X1 = 580, Y = 300;",
+  "      kids.push(E('line', { key: 'tax', x1: X0, y1: Y, x2: X1, y2: Y, stroke: EDGE, strokeWidth: 1 }));",
+  "      const cx = lerp(X0 + 30, X1 - 40, t);",
+  "      const bw = lerp(96, 12, t);",
+  "      kids.push(E('path', { key: 'rec', d: blob(cx, Y - 40, 11, K),",
+  "        fill: mixHex(INK, FADE, t) }));",
+  "      kids.push(E('path', { key: 'br',",
+  "        d: `M${cx - bw},${Y - 66} L${cx - bw},${Y - 14} M${cx + bw},${Y - 66} L${cx + bw},${Y - 14}`,",
+  "        fill: 'none', stroke: EDGE, strokeWidth: 1, strokeLinecap: 'round' }));",
+  "      kids.push(E('text', { key: 'brt', x: cx, y: Y + 24, textAnchor: 'middle', fontSize: 12.5,",
+  "        fontStyle: 'italic', fill: INK }, t > 0.75 ? 'no longer current' : 'valid'));",
+  "    }",
+  "    // beat 5, the three layers verifiability rests on. One frame each, no",
+  "    // second colour, and the word under them is the point.",
+  "    if (s === 5) {",
+  "      [['server contract', 150], ['graph claims', 320], ['orchestration evidence', 490]]",
+  "        .forEach(([t, x], i) => {",
+  "          kids.push(E('rect', { key: 'ly' + i, x: x - 74, y: 260, width: 148, height: 64,",
+  "            fill: 'none', stroke: INK, strokeWidth: 1 }));",
+  "          kids.push(E('text', { key: 'lt' + i, x: x, y: 297, textAnchor: 'middle',",
+  "            fontSize: 12.5, fontStyle: 'italic', fill: INK }, t));",
+  "          kids.push(E('line', { key: 'lc' + i, x1: x, y1: 324, x2: 320, y2: 384,",
+  "            stroke: EDGE, strokeWidth: 1 }));",
+  "        });",
+  "      kids.push(E('text', { key: 'vf', x: 320, y: 404, textAnchor: 'middle', fontSize: 13,",
+  "        fontStyle: 'italic', fill: INK }, 'verifiability'));",
+  "    }",
+  "    return E('g', { key: 'fig' }, kids);",
+  "  }"
+ ],
+ "figures": [
+  {
+   "id": "wrong",
+   "glyph": "cross",
+   "p": [
+    116,
+    96
+   ],
+   "size": 26,
+   "at": 1,
+   "until": 1,
+   "wash": "danger",
+   "washR": 20,
+   "washFrom": 0.05,
+   "washTo": 0.5,
+   "double": false
+  },
+  {
+   "id": "age",
+   "glyph": "clock",
+   "p": [
+    440,
+    188
+   ],
+   "size": 36,
+   "at": 3,
+   "until": 3
+  }
+ ],
+ "ground": [
+  320,
+  612,
+  250,
+  18
+ ],
+ "no": 8
+}

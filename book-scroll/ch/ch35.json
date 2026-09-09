@@ -1,0 +1,123 @@
+{
+ "n": 35,
+ "no": 35,
+ "part": 5,
+ "file": "Ch35.dc.html",
+ "slot": "vinc.book.35-cycle.en",
+ "title": "Memory Is a Cycle",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "35.0",
+   "eyebrow": "Closing · Chapter 35",
+   "h": "Memory Is a Cycle",
+   "paras": [
+    "The first question that comes to mind about a memory system is usually about storage. What goes where, and how do you get it back out.",
+    "Having come this far, though, it is clear how narrow that question was.",
+    "Documents alone could not be searched, so chunks were needed. Chunks alone could not hold the relationships between meanings, so vectors and a graph were needed."
+   ],
+   "claim": "Each chapter solved one problem. String the solutions together and what was there from the start was not a storage problem."
+  },
+  {
+   "label": "35.1",
+   "h": "What Each Layer Was For",
+   "paras": [
+    "The graph alone could not say who should use what, so roles and space were needed.",
+    "Search alone gave no grounds to trust its results, so evidence was needed.",
+    "And to confirm any of this actually works, measurement was needed.",
+    "None of those were additions to a storage system. Each one was the answer to a question the previous layer could not answer on its own.",
+    "Each layer exists because the one before it could answer its own question and not the next one."
+   ]
+  },
+  {
+   "label": "35.2",
+   "h": "No Single Technology",
+   "paras": [
+    "What is worth paying attention to in this cycle is not any single technology.",
+    "Vectors do not make memory. The graph does not make memory. Neither does the interface, nor the agent.",
+    "Memory only becomes a system once every one of these layers holds its own responsibility and still connects into a single flow.",
+    "Take one layer out and the flow does not degrade gracefully; it stops being a cycle and becomes a pipeline with a hole in it.",
+    "A cycle with a missing layer does not run slower. It stops being a cycle."
+   ]
+  },
+  {
+   "label": "35.3",
+   "h": "The Questions That Have to Survive",
+   "paras": [
+    "What really needs to survive in this system is not a single answer.",
+    "What did it know. When did it know it. Where does it belong. What is it connected to.",
+    "Why was that judgment made. Under what conditions was it measured. What turned out wrong. And what got decided as a result.",
+    "Eight questions, and every one of them was a chapter.",
+    "Eight questions is a short list, and answering all eight is what the structure was for.",
+    "Every one of them was a chapter, and none of them is answerable from a store alone."
+   ]
+  },
+  {
+   "label": "35.4",
+   "h": "Then It Is Not Data",
+   "paras": [
+    "Answer those structurally and what you are looking at is no longer just stored data.",
+    "It is a system's experience.",
+    "Which is the difference the whole book has been drawing: between a store that holds what was said, and a memory that holds what happened and why anyone believed it.",
+    "The first can be copied. The second has to be built, and kept.",
+    "A store can be copied in an afternoon. The reasons behind it cannot.",
+    "That is the distinction the whole book has been drawing, one layer at a time."
+   ]
+  },
+  {
+   "label": "35.5",
+   "h": "And Record Again",
+   "paras": [
+    "So the loop runs: record, structure, search, interpret, use, measure, decide, and record again.",
+    "It runs three times here and stops on the first position, because a loop that never stops is a decoration rather than an argument.",
+    "The site bans looping motion everywhere else. This is the one exception, and it is earned by the claim the chapter makes.",
+    "Memory is not the stored past. It is experience structured so it can be used again.",
+    "Three turns is enough to show a circle and few enough to stop being decoration."
+   ],
+   "claim": "Memory is experience structured so that it can be used again."
+  },
+  {
+   "kind": "close",
+   "label": "35.close",
+   "paras": [
+    "That is the end of the book, and the beginning of the part that is not a book: a graph somebody keeps."
+   ]
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "ring": {
+  "cx": 320,
+  "cy": 306,
+  "rad": 178,
+  "at": 1,
+  "steps": [
+   "record",
+   "structure",
+   "search",
+   "interpret",
+   "use",
+   "measure",
+   "decide",
+   "record again"
+  ],
+  "travelAt": 5,
+  "nameOver": 5,
+  "glyphs": [
+   "doc",
+   "logo",
+   "lens",
+   "agent",
+   "astronaut",
+   "check",
+   "gate",
+   "doc"
+  ],
+  "traveller": "astronaut",
+  "travellerWash": "peri"
+ },
+ "figures": []
+}

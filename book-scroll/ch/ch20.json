@@ -1,0 +1,143 @@
+{
+ "n": 20,
+ "no": 20,
+ "part": 2,
+ "file": "Ch20.dc.html",
+ "slot": "vinc.book.20-mcp.en",
+ "title": "How Memory Leaves the System",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "20.0",
+   "eyebrow": "Part 2 · Chapter 20",
+   "h": "How Memory Leaves the System",
+   "paras": [
+    "However well a memory system works internally, its real use is limited if an agent cannot reach it.",
+    "VINC connects that boundary with MCP.",
+    "The MCP layer does not judge the meaning of memory. It is the boundary that passes an outside request into an internal capability."
+   ],
+   "claim": "A door is not the room. Keeping the two apart is what lets either change."
+  },
+  {
+   "label": "20.1",
+   "h": "A Thin Bridge",
+   "paras": [
+    "The implementation is kept as thin as it can be. What this layer handles is protocol, request validation, authentication, which space to act in, passing the tool call through, and limiting the size of the result.",
+    "What it deliberately does not do matters as much. Judging meaning, structuring concepts, deciding duplication, settling what a memory means: none of that happens here.",
+    "Those responsibilities stay with the search, graph and document layers inside.",
+    "The reason is simple. Once the boundary starts taking on judgment, one door becomes a second implementation of the graph's contract."
+   ],
+   "claim": "A door and the graph's rules should change at different speeds."
+  },
+  {
+   "label": "20.2",
+   "h": "Two Channels, One Relay",
+   "paras": [
+    "There is a local channel and a remote channel. The channel differs and the relay behind it does not.",
+    "So initialise, ping, list the tools, call a tool: all of these use a shared processing structure whichever way in was used.",
+    "The point of that arrangement is to separate the channel from the logic of memory.",
+    "From outside VINC can look like a set of tools. Inside, this boundary does not define the memory system, and changing the boundary does not require the graph, document and retrieval structures to change with it."
+   ]
+  },
+  {
+   "label": "20.3",
+   "h": "A Tool Has a Safety Class",
+   "paras": [
+    "Not every tool carries the same risk. Reading and writing are different. Deleting a document and searching are different.",
+    "So tools are graded from their annotations and their registration, and safety is managed against that grade.",
+    "The principle here is to decide toward blocking when unsure. Where a tool's safety characteristics cannot be determined confidently, the more dangerous permission is not granted automatically.",
+    "A default that fails open is a default that will eventually be wrong quietly.",
+    "A permission granted because nothing objected is a permission nobody chose."
+   ]
+  },
+  {
+   "label": "20.4",
+   "h": "Authentication and Space Together",
+   "paras": [
+    "Authentication alone is not enough. Which graph space the call acts in has to be settled as well.",
+    "With a team address, the address itself says which graph is being entered, while the credential proves the right to enter it.",
+    "An authenticated request that does not belong to the space must not reach that data. Every request checks authentication and space selection before the tool actually runs.",
+    "That is what keeps the access rule steady even when the way in changes."
+   ]
+  },
+  {
+   "label": "20.5",
+   "h": "Calls Are Part of the Design",
+   "paras": [
+    "Results grow as connected memory grows, and the result ends up in the agent's context. Without a limit, cost and throughput suffer no matter how accurate search became.",
+    "So the surface has a result budget, and when a result had to shrink, the fact that it shrank is itself signalled.",
+    "And performance here cannot be judged by channel latency. What matters from an agent's side is how many calls it took to reach the answer, how many were wasted, whether the result was the right size, and whether the evidence came with it.",
+    "That question is measured with real numbers in Part 4."
+   ],
+   "claim": "MCP's job is to make memory reachable safely and consistently. Not to decide what it means."
+  },
+  {
+   "kind": "close",
+   "label": "20.close",
+   "paras": [
+    "The next chapters turn to who is reaching through that boundary, and what a role has to carry to be one."
+   ],
+   "nextLabel": "Chapter 21. A Role Is a Node",
+   "nextHref": "Ch21.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "hub": {
+  "cx": 320,
+  "cy": 300,
+  "r": 62,
+  "spokeR": 190,
+  "center": {
+   "glyph": "door",
+   "size": 62,
+   "label": "the relay"
+  },
+  "spokes": [
+   {
+    "name": "agent",
+    "glyph": "agent",
+    "at": 1,
+    "dir": "in"
+   },
+   {
+    "name": "local channel",
+    "glyph": "screen",
+    "at": 2,
+    "dir": "both"
+   },
+   {
+    "name": "remote channel",
+    "glyph": "arrow",
+    "at": 2,
+    "dir": "both"
+   },
+   {
+    "name": "safety class",
+    "glyph": "gate",
+    "at": 3,
+    "sub": "unsure means blocked"
+   },
+   {
+    "name": "auth + space",
+    "glyph": "check",
+    "at": 4,
+    "sub": "both, before the tool runs"
+   },
+   {
+    "name": "budgeted result",
+    "glyph": "stack",
+    "at": 5,
+    "sub": "and it says it shrank"
+   }
+  ],
+  "at": 0,
+  "ringAt": 1,
+  "note": "a door is not the room",
+  "noteAt": 0
+ },
+ "figures": []
+}

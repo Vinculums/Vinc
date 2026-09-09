@@ -1,0 +1,142 @@
+{
+ "n": 32,
+ "no": 33,
+ "part": 4,
+ "file": "Ch32.dc.html",
+ "slot": "vinc.book.32-failure-cases.en",
+ "title": "Failures That Look Like Success",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "33.0",
+   "eyebrow": "Part 4 · Chapter 33",
+   "h": "Failures That Look Like Success",
+   "paras": [
+    "The most dangerous failure in system evaluation is not the one that fails visibly.",
+    "It is the run that returns perfectly normal numbers while measuring the wrong thing.",
+    "Say we are evaluating cross-language search, and the fixture contains no cross-language pairs at all."
+   ],
+   "claim": "The benchmark runs. The metric is computed. It measures nothing about cross-language search."
+  },
+  {
+   "label": "33.1",
+   "h": "A Number That Is Not a Measurement",
+   "paras": [
+    "That is a failure that looks like success, and nothing in the output distinguishes it from a real result.",
+    "This is why Chapter 29 put the fixture check before the run rather than after it.",
+    "A metric computed on an invalid fixture is not a weaker measurement. It is a different measurement, of something nobody asked about.",
+    "And it is the kind of result that gets quoted, because it looks like every other result.",
+    "Nothing in the output says the fixture was wrong, because the fixture is not in the output."
+   ]
+  },
+  {
+   "label": "33.2",
+   "h": "A Degraded Arm Looks Like a Search",
+   "paras": [
+    "In some VINC evaluations the vector retrieval arm timed out.",
+    "If the system then returned only text results, from outside it looks as though search succeeded.",
+    "But if what was being evaluated is hybrid retrieval, that is not a success. It is one arm of two.",
+    "So the result has to record which retrieval arms actually ran. Only with that can the final result be interpreted, because a degraded search and a complete one look identical from the rows they return."
+   ],
+   "claim": "A degraded search and a complete one are indistinguishable from their output."
+  },
+  {
+   "label": "33.3",
+   "h": "Empty Is Information",
+   "paras": [
+    "An empty result does not always mean the system failed. The question may genuinely have asked for something that does not exist.",
+    "The larger problem is the opposite: an empty result where the agent picks some other node anyway.",
+    "This is where the resolution principle earns its cost. If candidates are insufficient, the empty result is kept as it is, and recovery is attempted through another path if there is one.",
+    "That is what reduces false positives, and false positives are the failures that survive review."
+   ]
+  },
+  {
+   "label": "33.4",
+   "h": "Measure the Recovery",
+   "paras": [
+    "So evaluation has to include what happened after the failure.",
+    "Whether recovery succeeded, how many extra calls it needed, whether the evidence was obtained in the end.",
+    "That is what separates succeeded on the first try from succeeded after five wrong turns, and those are not the same system even when the success rate matches.",
+    "Both facts sit side by side in the record, and neither is dramatised.",
+    "A success rate that ignores the route is a number two different systems can share."
+   ]
+  },
+  {
+   "label": "33.5",
+   "h": "Flatness Is the Point",
+   "paras": [
+    "A healthy bar and an empty fixture behind it are both true at the same time.",
+    "Neither gets animated more than the other, because the whole finding of this chapter is that the failure looked normal.",
+    "Draw the failure as an alarm and the reader learns to look for alarms, which is exactly the instinct that missed this class of failure in the first place.",
+    "So the drawing stays flat and the two facts stay adjacent, and the reader has to read both."
+   ],
+   "claim": "The failure looked normal. That is the finding, and the drawing has to say so quietly."
+  },
+  {
+   "kind": "close",
+   "label": "33.close",
+   "paras": [
+    "The last chapter of Part 4 puts measurement back before the thing it was always supposed to precede."
+   ],
+   "nextLabel": "Chapter 34. Measurement Comes Before Decision",
+   "nextHref": "Ch33.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "pair": {
+  "left": "the metric",
+  "right": "the fixture behind it",
+  "lx": 196,
+  "rx": 452,
+  "y0": 196,
+  "dy": 92,
+  "note": "both true at once",
+  "noteAt": 2,
+  "rows": [
+   {
+    "label": "reported score",
+    "kind": "bar",
+    "a": 0.71,
+    "b": 0,
+    "max": 1.0,
+    "fmt": "%",
+    "at": 1
+   },
+   {
+    "label": "cross-language pairs present",
+    "kind": "count",
+    "a": 0,
+    "b": 0,
+    "at": 2
+   },
+   {
+    "label": "retrieval arms that ran",
+    "kind": "count",
+    "a": 1,
+    "b": 2,
+    "at": 3
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "fixture",
+   "glyph": "doc",
+   "p": [
+    452,
+    92
+   ],
+   "size": 40,
+   "at": 1,
+   "ink": 2,
+   "double": false,
+   "label": "empty",
+   "labelAt": 2,
+   "labelDy": 14
+  }
+ ]
+}

@@ -1,0 +1,151 @@
+{
+ "n": 28,
+ "no": 29,
+ "part": 4,
+ "file": "Ch28.dc.html",
+ "slot": "vinc.book.28-performance.en",
+ "title": "Measurement Needs Conditions",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "29.0",
+   "eyebrow": "Part 4 · Chapter 29",
+   "h": "Measurement Needs Conditions",
+   "paras": [
+    "Measuring a system does not mean numbers can be collected straight away. First we have to settle what is being compared under what identical conditions.",
+    "In a search system this problem is large. With the same model, results change meaning when the query set, the candidate document count, the answer set, the language mix, the embedding method or the hardware changes.",
+    "So measurement starts in an order: fixture, then condition check, then run, then measure, then compare."
+   ],
+   "claim": "A fixture is the fixed set of inputs an evaluation uses."
+  },
+  {
+   "label": "29.1",
+   "h": "The Fixture Is Checked First",
+   "paras": [
+    "Queries and answers, the document set, the language composition all belong to the fixture.",
+    "In VINC's embedding evaluation the fixture itself is inspected before any number is read.",
+    "Whether cross-lingual pairs actually exist in the canonical set. Whether a cross-language query is really written in that language. Whether the answers are a subset of the canonical set. Duplicates and counts get checked first too.",
+    "Compute a metric without passing that check and the number exists while the evaluation result does not."
+   ],
+   "claim": "There is a number. It is not a measurement."
+  },
+  {
+   "label": "29.2",
+   "h": "Conditions Are Part of the Value",
+   "paras": [
+    "Suppose a search model scores 0.67 on a ranking metric. That figure alone cannot say whether it beats another experiment's 0.62.",
+    "If the two runs used corpora of different sizes, the difficulty of the search itself was different.",
+    "Fewer distractor documents in an evaluation corpus can raise the absolute score. So VINC's embedding evaluation records that a corpus cap can make absolute values higher than in a full-corpus environment, and does not compare absolute values across different measurements.",
+    "What can be compared is the difference between models inside the same fixture and the same conditions."
+   ],
+   "claim": "A measurement is not a number with its conditions removed. It is a result that includes them."
+  },
+  {
+   "label": "29.3",
+   "h": "What Has to Survive the Run",
+   "paras": [
+    "A good evaluation leaves at least this behind: which fixture, whether the fixture was valid, which model, which precision and quantization, which retrieval structure, which hardware and kernel conditions, which metrics, what came out, and if it failed, why.",
+    "Without that, a measurement is a one-off observation.",
+    "The purpose is not to produce a number. It is to remember the conditions well enough that the same question can be asked again next time.",
+    "A result nobody can re-run is a result nobody can disagree with, which sounds like strength and is not."
+   ]
+  },
+  {
+   "label": "29.4",
+   "h": "Two Runs, Side by Side",
+   "paras": [
+    "The characteristic shape of Part 4 is the same thing run twice under two conditions, with the two results sitting next to each other and the conditions labelled.",
+    "Not one number presented as a verdict.",
+    "The numbers are not editorialised, because the moment a measurement is described as good or disappointing, the description starts travelling instead of the conditions.",
+    "And a measurement that travels without its conditions turns into a claim, which is the thing Chapter 8 warned about."
+   ]
+  },
+  {
+   "label": "29.5",
+   "h": "Measurement Is Also Memory",
+   "paras": [
+    "The result of a measurement goes back into the graph as a record: this was true then, under these conditions.",
+    "That is why measurement is not an activity outside the system. It produces exactly the kind of memory the earlier parts were built to hold.",
+    "Which model was chosen, why it was chosen, which experiment failed, under which condition the result changed: all of it becomes the input to the next decision.",
+    "A number without its record is a number that will be re-derived, differently, by whoever needs it next."
+   ],
+   "claim": "A measurement kept without its conditions is a number waiting to be misquoted."
+  },
+  {
+   "kind": "close",
+   "label": "29.close",
+   "paras": [
+    "The next chapter measures the surface an agent actually pays for: not latency, but calls."
+   ],
+   "nextLabel": "Chapter 30. A Tool's Efficiency Is Measured in Calls",
+   "nextHref": "Ch29.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "pair": {
+  "left": "corpus capped",
+  "right": "full corpus",
+  "lx": 196,
+  "rx": 452,
+  "y0": 190,
+  "dy": 88,
+  "note": "same model, different difficulty",
+  "noteAt": 3,
+  "rows": [
+   {
+    "label": "fixture valid",
+    "kind": "count",
+    "a": 1,
+    "b": 1,
+    "at": 1
+   },
+   {
+    "label": "absolute score",
+    "kind": "bar",
+    "a": 0.67,
+    "b": 0.62,
+    "max": 1.0,
+    "fmt": "%",
+    "at": 2
+   },
+   {
+    "label": "comparable across runs",
+    "kind": "count",
+    "a": 0,
+    "b": 0,
+    "at": 3
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "fixture",
+   "glyph": "doc",
+   "p": [
+    96,
+    92
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "the fixture",
+   "labelDy": 14
+  },
+  {
+   "id": "valid",
+   "glyph": "check",
+   "p": [
+    138,
+    76
+   ],
+   "size": 22,
+   "at": 1,
+   "wash": "ok",
+   "washR": 16,
+   "double": false
+  }
+ ]
+}

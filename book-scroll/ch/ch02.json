@@ -1,0 +1,340 @@
+{
+ "n": 2,
+ "part": 0,
+ "file": "Ch02.dc.html",
+ "slot": "vinc.book.02-working-with-ai.en",
+ "title": "Memory in the Age of AI",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "focusAt": 8,
+ "beats": [
+  {
+   "kind": "open",
+   "label": "2.0",
+   "eyebrow": "Part 0 · Chapter 2",
+   "h": "Memory in the Age of AI",
+   "paras": [
+    "For a long time, humans have passed on what they know to other people.",
+    "We passed it on through speech and story, and left it behind in books and documents. As records accumulated, each new generation could start again from where the last one had left off.",
+    "In the digital age this ability grew far more powerful. We can now record almost everything.",
+    "And now AI has arrived."
+   ],
+   "claim": "The cost of producing information has never been lower."
+  },
+  {
+   "label": "2.1",
+   "h": "Too Many Records, Not Too Few",
+   "paras": [
+    "AI is changing even how we create records in the first place.",
+    "A person no longer has to write something from beginning to end. A single short question can produce a report, summarize a meeting, write code, organize documents, and remake vast amounts of information into new forms.",
+    "But this creates a different problem than before.",
+    "Every day a huge volume of documents, messages, code, and generated text piles up. It becomes hard to judge what matters, and a few months later it can be hard to remember why something was created at all."
+   ],
+   "claim": "The issue isn't a shortage of records. It's that there are suddenly too many."
+  },
+  {
+   "label": "2.2",
+   "h": "Not All of It Is Ours",
+   "paras": [
+    "There is a more important problem still.",
+    "Much of what AI produces is useful, but a large share of it is not our own memory.",
+    "Ask an AI how to design software and it can explain general design principles. It can explain the trade-offs of any given technology.",
+    "Pull one document out of that pile, though, and it often says nothing on its own. What it meant depended on everything around it, and that context is what the pile destroyed."
+   ]
+  },
+  {
+   "label": "2.3",
+   "h": "A Different Kind of Question",
+   "paras": [
+    "A different kind of question needs a different kind of information.",
+    "Why did we choose this approach? What did we try last time? Why did that approach fail?",
+    "What did we know at the moment we made this decision, and what has changed since then?",
+    "The answers do not come from general knowledge. They come from what we actually went through: the experience a team gained over months, the know-how one person built up slowly, a decision reached only after several failures.",
+    "None of this can be found anywhere on the internet in complete form."
+   ],
+   "claim": "That is exactly what our memory is."
+  },
+  {
+   "label": "2.4",
+   "h": "Memory and Cognition Are Not the Same",
+   "paras": [
+    "In the age of AI we can borrow powerful cognitive ability. Ask a question and it helps us think; it reads long documents, compares information, and organizes it from a new angle.",
+    "But cognition and memory are not the same thing.",
+    "AI can help us think. It does not need to own our memory in its place.",
+    "Models keep changing. A better one than today's may appear tomorrow, and in a few years we may talk with AI in an entirely different way. So should the memory we built over years be tied to one particular model?"
+   ],
+   "claim": "Our memory should outlive the model."
+  },
+  {
+   "label": "2.5",
+   "h": "Cognition Can Be Borrowed",
+   "paras": [
+    "This is where Vinc's point of view begins. Cognition is borrowed. Memory stays ours.",
+    "Vinc does not own an AI model, nor does it try to train our memory into one. There is no particular model inside Vinc.",
+    "This isn't a rejection of AI. It's the opposite. It is so that any AI can use our memory.",
+    "When a better model comes along we should be able to switch to it, without retraining or migrating what we have built up each time.",
+    "So Vinc borrows cognitive ability from outside whenever it is needed, and lets that model read our memory, connect it, and question it. We call this Borrowed Cognition."
+   ]
+  },
+  {
+   "label": "2.6",
+   "h": "One Memory, Many Doors",
+   "paras": [
+    "At the center of Vinc there is one memory. It does not belong to any particular AI or any particular application.",
+    "And there are many doors that lead into it.",
+    "You can use it directly from a computer, or reach it through the web. From an AI assistant you can reach it through MCP.",
+    "Whichever door you use, the memory at the center must not change. A door that quietly kept its own copy would not be a door; it would be a second memory, and there would be no way to say which of the two was the real one.",
+    "This is why Vinc puts many access paths on top of a single core rather than building a system per surface."
+   ],
+   "claim": "The doors can change. The center of memory has to stay one."
+  },
+  {
+   "label": "2.7",
+   "h": "The More AI There Is, the More Memory Matters",
+   "paras": [
+    "It might seem that as AI advances every knowledge problem gets solved. But the more AI produces, the more there is that needs telling apart.",
+    "What is general knowledge. What is a single answer generated just now. What is a fact we actually experienced. What is a decision we made. What is a lesson learned from a failure.",
+    "And what still needs to be remembered going forward.",
+    "AI will keep producing more and more. Which is exactly why what we need may not be more generative power."
+   ],
+   "claim": "What we need is the ability not to lose what we have experienced."
+  },
+  {
+   "kind": "close",
+   "label": "2.close",
+   "paras": [
+    "Separating cognition from memory. Borrowing the ability while keeping the memory as our own. Vinc exists to draw that line.",
+    "Which raises the next question: if this memory is ours to keep, what should be in it?"
+   ],
+   "nextLabel": "Chapter 3. Memory Changes the Answer",
+   "nextHref": "Ch03.dc.html"
+  }
+ ],
+ "anchors": [],
+ "marks": [
+  {
+   "id": "core",
+   "shape": "ring",
+   "p": [
+    452,
+    296
+   ],
+   "r": 27,
+   "at": 4,
+   "focus": true,
+   "glyph": "logo",
+   "gs": 58,
+   "z": 0.9,
+   "wash": "peri",
+   "washAt": 6,
+   "washR": 40
+  },
+  {
+   "id": "d1",
+   "shape": "circle",
+   "p": [
+    452,
+    152
+   ],
+   "r": 13,
+   "at": 5,
+   "dim": 6,
+   "glyph": "agent",
+   "gs": 30
+  },
+  {
+   "id": "d2",
+   "shape": "hex",
+   "p": [
+    576,
+    368
+   ],
+   "r": 13,
+   "at": 6,
+   "dim": 7
+  },
+  {
+   "id": "d3",
+   "shape": "diamond",
+   "p": [
+    328,
+    368
+   ],
+   "r": 14,
+   "at": 7,
+   "glyph": "agent",
+   "gs": 30
+  },
+  {
+   "id": "w1",
+   "shape": "circle",
+   "p": [
+    452,
+    462
+   ],
+   "r": 8,
+   "at": 6,
+   "label": "desktop",
+   "labelAt": 6,
+   "glyph": "door",
+   "gs": 24,
+   "z": 0.35
+  },
+  {
+   "id": "w2",
+   "shape": "circle",
+   "p": [
+    548,
+    462
+   ],
+   "r": 8,
+   "at": 6,
+   "label": "web",
+   "labelAt": 6,
+   "glyph": "door",
+   "gs": 24,
+   "z": 0.35
+  },
+  {
+   "id": "w3",
+   "shape": "circle",
+   "p": [
+    356,
+    462
+   ],
+   "r": 8,
+   "at": 6,
+   "label": "MCP",
+   "labelAt": 6,
+   "glyph": "door",
+   "gs": 24,
+   "z": 0.35
+  },
+  {
+   "id": "lone",
+   "shape": "hex",
+   "p": [
+    168,
+    254
+   ],
+   "r": 13,
+   "at": 3,
+   "dim": 4,
+   "label": "out of context",
+   "labelAt": 3,
+   "z": 0.3
+  }
+ ],
+ "lines": [
+  {
+   "from": "d1",
+   "to": "core",
+   "at": 5,
+   "dir": true,
+   "stagger": 0
+  },
+  {
+   "from": "d2",
+   "to": "core",
+   "at": 6,
+   "dir": true,
+   "fade": 7,
+   "stagger": 1
+  },
+  {
+   "from": "d3",
+   "to": "core",
+   "at": 7,
+   "dir": true,
+   "stagger": 2
+  },
+  {
+   "from": "w1",
+   "to": "core",
+   "at": 6,
+   "ink": 2,
+   "stagger": 3
+  },
+  {
+   "from": "w2",
+   "to": "core",
+   "at": 6,
+   "ink": 2,
+   "stagger": 4
+  },
+  {
+   "from": "w3",
+   "to": "core",
+   "at": 6,
+   "ink": 2,
+   "stagger": 5
+  }
+ ],
+ "stage": [
+  "  // OPEN, the flood. Pages fall and compact until the pile is one solid",
+  "  // block and nothing in it is distinguishable; then one is drawn out of",
+  "  // it and stands alone. Both states are read off (s, p) so the reader",
+  "  // scrubs the fall and scrolling up reverses it. Nothing plays on a timer.",
+  "  PAGES = 24; COLS = 6;",
+  "  page(i, gap, prog) {",
+  "    const c = i % this.COLS, r = Math.floor(i / this.COLS);",
+  "    const w = 34, h = 21;",
+  "    const x0 = 62 + c * (w + gap), y0 = 404 + r * (h + gap);",
+  "    const y = lerp(y0 - 520 - (i % 5) * 40, y0, prog);",
+  "    return { x: x0, y, w, h };",
+  "  }",
+  "  stage(s, p) {",
+  "    const E = React.createElement, kids = [];",
+  "    const landed = s >= 1;",
+  "    const fall = landed ? 1 : smooth((p - 0.12) / 0.72);",
+  "    const gap = lerp(7, 0, fall);",
+  "    const pulled = s >= 3 ? smooth(s > 3 ? 1 : p) : 0;",
+  "    const receded = s >= 4;",
+  "    for (let i = 0; i < this.PAGES; i++) {",
+  "      const prog = clamp((fall - (i % 7) * 0.03) / 0.7, 0, 1);",
+  "      const g = this.page(i, gap, prog);",
+  "      const isPulled = i === 9;",
+  "      const dx = isPulled ? lerp(0, 106, pulled) : 0;",
+  "      const dy = isPulled ? lerp(0, -150, pulled) : 0;",
+  "      kids.push(E('rect', { key: 'pg' + i, x: g.x + dx, y: g.y + dy, width: g.w, height: g.h,",
+  "        fill: PAPER, stroke: isPulled && pulled > 0.5 ? INK : (receded ? FADE : INK),",
+  "        strokeWidth: 1, style: { opacity: prog > 0 ? 1 : 0, transition: `stroke ${T_DIM}ms ${LEAVE}` } }));",
+  "    }",
+  "    // CLOSE, one core with doors around it. Four openings swing back in",
+  "    // turn and the same core is behind every one of them.",
+  "    if (s >= 8) {",
+  "      const t = smooth(p * 1.25);",
+  "      for (let k = 0; k < 4; k++) {",
+  "        const a0 = 45 + k * 90, open = clamp((t - k * 0.18) / 0.5, 0, 1);",
+  "        const span = lerp(58, 16, open), rad = 96;",
+  "        const A = pol(452, 296, rad, a0 - span / 2), B = pol(452, 296, rad, a0 + span / 2);",
+  "        kids.push(E('path', { key: 'dr' + k,",
+  "          d: `M${A[0]},${A[1]} A${rad},${rad} 0 0 1 ${B[0]},${B[1]}`,",
+  "          fill: 'none', stroke: INK, strokeWidth: 1, strokeLinecap: 'round',",
+  "          style: { opacity: open > 0 ? 1 : 0 } }));",
+  "      }",
+  "    }",
+  "    return E('g', { key: 'fig' }, kids);",
+  "  }"
+ ],
+ "figures": [
+  {
+   "id": "lens",
+   "glyph": "lens",
+   "p": [
+    214,
+    222
+   ],
+   "size": 28,
+   "at": 3,
+   "dim": 4
+  }
+ ],
+ "ground": [
+  320,
+  600,
+  246,
+  24
+ ],
+ "no": 2
+}

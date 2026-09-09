@@ -1,0 +1,315 @@
+{
+ "n": 3,
+ "part": 0,
+ "file": "Ch03.dc.html",
+ "slot": "vinc.book.03-distribution.en",
+ "title": "Memory Changes the Answer",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "3.0",
+   "eyebrow": "Part 0 · Chapter 3",
+   "h": "Memory Changes the Answer",
+   "paras": [
+    "In Chapter 2 we separated cognition from memory.",
+    "AI can provide the ability to think, and we can borrow that ability. But the things we have experienced, the decisions we have made, and the meanings unique to us do not automatically exist inside a model.",
+    "So one question remains. What changes when we give our memory to AI?",
+    "The answer is simple. The answer changes."
+   ],
+   "claim": "To understand why, we have to look at how an answer gets made."
+  },
+  {
+   "label": "3.1",
+   "h": "AI Does Not Retrieve a Predetermined Answer",
+   "paras": [
+    "When we ask a language model a question, it does not retrieve a completed answer from a hidden database.",
+    "The model generates one from patterns learned during training and the context supplied at the moment. In simplified terms, it samples from a distribution of possible continuations.",
+    "This book uses that picture as an intuition, not as a complete mathematical description.",
+    "Which is why the same question asked twice need not come back the same way.",
+    "Two people asking the identical question can get two different sentences back, and neither is a lookup failure."
+   ],
+   "claim": "What we show the model changes the space in which it can construct an answer."
+  },
+  {
+   "label": "3.2",
+   "h": "General Questions Produce General Answers",
+   "paras": [
+    "For much of what we ask, that is entirely enough.",
+    "What makes a good database? How do you solve this in Python? What are the advantages of a graph database?",
+    "There is a great deal of well-established knowledge behind questions like these, and a model can produce genuinely useful answers from it.",
+    "The trouble is that the questions we actually care about are usually far more specific than that.",
+    "A model can reason about trade-offs it has seen argued a thousand times, and that is genuinely most of what gets asked of it."
+   ]
+  },
+  {
+   "label": "3.3",
+   "h": "Our Memory Is Not in the Training Data",
+   "paras": [
+    "Why did we choose this database? What did we try last time, and why did it fail? What exactly does this word mean in our project? Is the decision we made six months ago still valid?",
+    "The definitions we created, the decisions we made, the measurements we collected, and the failures we lived through are usually not present in any model's training data.",
+    "No matter how good the prompt is, it cannot summon a memory that was never supplied.",
+    "Telling a model to answer in line with our decisions, without giving it those decisions, is not enough."
+   ],
+   "claim": "To move an answer somewhere the model does not know, we have to supply what leads there."
+  },
+  {
+   "label": "3.4",
+   "h": "Memory Conditions the Answer",
+   "paras": [
+    "This is why context matters. Context is not decoration around a question. It conditions the space from which the model constructs its answer.",
+    "When we provide our memory, the model no longer works only from general information. Our definitions enter the context. Our decisions enter it. Our measurements and experiences enter it, and so do the relationships connecting them.",
+    "The distribution of possible answers changes shape.",
+    "The important point is not that we made the model smarter.",
+    "Ask again with that context in place and the answer arrives in our vocabulary, against our history, rather than in the average of everyone's."
+   ],
+   "claim": "We changed the world the model is looking at."
+  },
+  {
+   "label": "3.5",
+   "h": "Memory Is Not a Single Document",
+   "paras": [
+    "Human memory is not a list of facts. Something happened, we know why, we know what we knew at the time, we made a decision, and we saw its result.",
+    "Consider a record that says: in August 2026, we chose B instead of A.",
+    "That may not be enough. Why was A rejected? What conditions held at the time? Which experiment influenced the choice? Who proposed it? Was the decision later maintained or changed?",
+    "The answers may not exist in one document. They may be spread across records, decisions, and events."
+   ]
+  },
+  {
+   "label": "3.6",
+   "h": "A Graph Preserves Relationships",
+   "paras": [
+    "So the meaning of memory is created not only by individual records but by the relationships between them, and giving memory to AI is not a matter of attaching more documents.",
+    "A graph is one natural way to hold those relationships. An event leads to a decision. A decision connects to a person. Its evidence connects to an experiment. That result leads to another decision.",
+    "The important thing is not a single node. What matters is what is connected to what.",
+    "Search asks what should we find. Graph traversal asks what is around what we found. That distinction matters most when we have forgotten what we remembered in the first place."
+   ]
+  },
+  {
+   "label": "3.7",
+   "h": "What the AI Sees Before Answering",
+   "paras": [
+    "Vinc is a mechanism for conditioning an external model's answer distribution on our knowledge.",
+    "It does not generate the answer instead of the AI. Its role is to provide, within a defined structure, what the AI should see before constructing one.",
+    "That material can include explanations of our concepts, our decisions and their reasons, measurements and dates, and the records that serve as canonical sources.",
+    "Good conditioning material has three properties. It is material, so it can actually support the answer. It is precise, so what was supplied can be identified. It is repeatable, so the same memory and question begin from the same place."
+   ],
+   "claim": "The answer may still vary. What it saw before answering should not."
+  },
+  {
+   "label": "3.8",
+   "h": "Probabilistic AI, Deterministic Memory",
+   "paras": [
+    "There is an apparent paradox here. AI is probabilistic, yet the process that prepares its memory should be as deterministic as we can make it.",
+    "If retrieval chooses different records every time, if relationship selection shifts arbitrarily, or if the system merges things on similarity alone, then the memory supplied to the model becomes unstable and we no longer know what we were controlling.",
+    "So search follows defined rules and traversal follows structure. When decisions conflict, the system exposes the conflict rather than silently picking a winner."
+   ],
+   "claim": "Probability belongs outside. What prepares the memory should not move."
+  },
+  {
+   "label": "3.9",
+   "h": "The Quality of Memory Reaches the Answer",
+   "paras": [
+    "Conditioning does not solve everything. Giving AI our memory does not guarantee it will use that memory correctly, and if what we stored is wrong, the answer will be built on something wrong.",
+    "Vinc is not magic that turns bad memory into good memory, and it does not remove every variation in an external model's generation.",
+    "What it reduces is a different kind of variation: the kind caused by not knowing what the model saw when it answered.",
+    "A good answer does not come only from a good model. It should begin from good memory."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "3.close",
+   "paras": [
+    "Chapter 1 described how humans developed ways to carry memory forward. Chapter 2 argued that cognition can be borrowed while memory stays ours. Memory changes the answer.",
+    "Which leads to the obvious next question: what should we remember?"
+   ],
+   "nextLabel": "Chapter 4. What Should We Remember",
+   "nextHref": "Ch04.dc.html"
+  }
+ ],
+ "anchors": [],
+ "marks": [
+  {
+   "id": "r1",
+   "shape": "hex",
+   "p": [
+    560,
+    150
+   ],
+   "r": 11,
+   "at": 3,
+   "pos": {
+    "3": [
+     560,
+     150
+    ],
+    "4": [
+     410,
+     372
+    ]
+   }
+  },
+  {
+   "id": "r2",
+   "shape": "hex",
+   "p": [
+    450,
+    346
+   ],
+   "r": 11,
+   "at": 5
+  },
+  {
+   "id": "r3",
+   "shape": "hex",
+   "p": [
+    478,
+    378
+   ],
+   "r": 11,
+   "at": 5
+  }
+ ],
+ "lines": [
+  {
+   "from": "r1",
+   "to": "r2",
+   "at": 6,
+   "stagger": 0
+  },
+  {
+   "from": "r2",
+   "to": "r3",
+   "at": 6,
+   "stagger": 1
+  },
+  {
+   "from": "r1",
+   "to": "r3",
+   "at": 6,
+   "stagger": 2
+  }
+ ],
+ "stage": [
+  "  // The distribution IS this chapter's argument, so there is no figure: the",
+  "  // curve, the samples and the two runs are the diagram. Every value is",
+  "  // read off (s, p) — no keyframe and no timer anywhere, which is where the",
+  "  // reference build diverged from the brief (it drove the reruns with a CSS",
+  "  // @keyframes and a click).",
+  "  BASE = 420;",
+  "  DIST = [[320,150],[320,150],[320,150],[320,150],[400,95],[440,62],[440,62],[450,42],[450,42],[450,42],[450,42]];",
+  "  SAMPLES = [180, 250, 300, 340, 395, 470];",
+  "  RING = [446, 366, 50];",
+  "  Q = [330, 140];",
+  "  RUNS = 5;",
+  "  rnd(n) { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); }",
+  "  curve(mu, sg) {",
+  "    const H = Math.min(200, 90 * 150 / sg);",
+  "    let d = '';",
+  "    for (let i = 0; i <= 52; i++) {",
+  "      const x = 80 + i * 10, y = this.BASE - H * Math.exp(-((x - mu) ** 2) / (2 * sg * sg));",
+  "      d += (i ? ' L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1);",
+  "    }",
+  "    return d;",
+  "  }",
+  "  stage(s, p) {",
+  "    const E = React.createElement, B = this.BASE, kids = [];",
+  "    const w = smooth((p - 0.35) / 0.6);",
+  "    const d0 = this.DIST[s], d1 = this.DIST[Math.min(s + 1, this.LAST)];",
+  "    const mu = lerp(d0[0], d1[0], w), sg = lerp(d0[1], d1[1], w);",
+  "    const receded = s >= 9;",
+  "    kids.push(E('line', { key: 'base', x1: 80, y1: B, x2: 600, y2: B, stroke: EDGE, strokeWidth: 1 }));",
+  "    // the wide original curve stays as context rather than vanishing, drawn",
+  "    // at the declared fade floor so a hairline cannot break up",
+  "    kids.push(E('path', { key: 'ghost', d: this.curve(320, 150), fill: 'none', stroke: FADE, strokeWidth: 1,",
+  "      style: { opacity: s >= 4 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } }));",
+  "    kids.push(E('path', { key: 'curve', d: this.curve(mu, sg), fill: 'none',",
+  "      stroke: receded ? EDGE : INK, strokeWidth: 1, style: { transition: `stroke ${T_DIM}ms ${LEAVE}` } }));",
+  "    this.SAMPLES.forEach((x, i) => {",
+  "      const vis = s >= 1, dim = s >= 4;",
+  "      kids.push(E('circle', { key: 'sm' + i, 'data-mark': 'sample', cx: x, cy: B - 5, r: 4, fill: INK, style: {",
+  "        opacity: vis ? (dim ? RECEDE_MARK : 1) : 0, transform: vis ? 'translateY(0)' : 'translateY(-40px)',",
+  "        transition: vis ? `opacity ${T_MARK}ms ${ENTER} ${i * 45}ms, transform ${T_MARK}ms ${ENTER} ${i * 45}ms`",
+  "                        : `opacity ${T_OUT}ms ${LEAVE}, transform ${T_OUT}ms ${LEAVE}` } }));",
+  "    });",
+  "    kids.push(E('g', { key: 'tick', style: { opacity: s >= 2 ? (s >= 4 ? RECEDE_TEXT : 1) : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } },",
+  "      E('line', { x1: 320, y1: B, x2: 320, y2: B + 10, stroke: INK, strokeWidth: 1 }),",
+  "      E('text', { x: 320, y: B + 28, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'a general answer')));",
+  "    const R = this.RING;",
+  "    kids.push(E('g', { key: 'ring', style: { opacity: s >= 7 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER} ${LINE_LAG}ms` } },",
+  "      E('circle', { cx: R[0], cy: R[1], r: R[2], fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1,",
+  "        style: { strokeDashoffset: s >= 7 ? 0 : 1,",
+  "          transition: s >= 7 ? `stroke-dashoffset ${T_LINE}ms ${ENTER} ${LINE_LAG}ms` : `stroke-dashoffset ${T_OUT}ms ${LEAVE}` } }),",
+  "      E('text', { x: R[0], y: B + 28, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'what the AI sees before answering')));",
+  "    // Two runs, scroll-scrubbed. The left arm wobbles and lands somewhere",
+  "    // different on every pass; the right arm lands on the same point every",
+  "    // pass. The reader drives the passes by scrolling, so it reverses.",
+  "    if (s >= 8) {",
+  "      const t = s > 8 ? 1 : smooth(p * 1.15);",
+  "      const shown = Math.max(1, Math.round(t * this.RUNS));",
+  "      const rk = [];",
+  "      for (let k = 1; k <= shown; k++) {",
+  "        const last = k === shown;",
+  "        const lx = 150 + this.rnd(k) * 160;",
+  "        const wob = (this.rnd(k + 50) - 0.5) * 220;",
+  "        rk.push(E('path', { key: 'L' + k, 'data-run': k,",
+  "          d: `M${this.Q[0]},${this.Q[1]} Q${(this.Q[0] + lx) / 2 + wob},${(this.Q[1] + B) / 2} ${lx},${B - 4}`,",
+  "          fill: 'none', stroke: last ? INK : FADE, strokeWidth: 1, strokeLinecap: 'round' }));",
+  "        rk.push(E('circle', { key: 'l' + k, cx: lx, cy: B - 4, r: 3, fill: last ? INK : FADE }));",
+  "        rk.push(E('path', { key: 'R' + k, 'data-run': 'r' + k,",
+  "          d: `M${this.Q[0]},${this.Q[1]} Q${R[0] - 40},${R[1] - 60} ${R[0]},${B - 4}`,",
+  "          fill: 'none', stroke: last ? INK : FADE, strokeWidth: 1, strokeLinecap: 'round' }));",
+  "      }",
+  "      rk.push(E('circle', { key: 'lr', cx: R[0], cy: B - 4, r: 3, fill: INK }));",
+  "      const n = shown;",
+  "      kids.push(E('g', { key: 'runs', style: { opacity: receded ? RECEDE_MARK : 1, transition: `opacity ${T_MARK}ms ${ENTER}` } },",
+  "        E('circle', { key: 'q', cx: this.Q[0], cy: this.Q[1], r: 7, fill: INK }),",
+  "        E('text', { key: 'qt', x: this.Q[0], y: this.Q[1] - 16, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'the same question'),",
+  "        ...rk,",
+  "        E('text', { key: 'lt', x: 230, y: B + 52, textAnchor: 'middle', fontSize: 13, fill: INK,",
+  "          style: { fontVariantNumeric: 'tabular-nums' } }, n + (n === 1 ? ' run · 1 landing point' : ' runs · ' + n + ' landing points')),",
+  "        E('text', { key: 'rt', x: R[0], y: B + 52, textAnchor: 'middle', fontSize: 13, fill: INK,",
+  "          style: { fontVariantNumeric: 'tabular-nums' } }, n + (n === 1 ? ' run · 1 landing point' : ' runs · 1 landing point'))));",
+  "    }",
+  "    return E('g', { key: 'fig' }, kids);",
+  "  }"
+ ],
+ "figures": [
+  {
+   "id": "asks",
+   "glyph": "agent",
+   "p": [
+    96,
+    118
+   ],
+   "size": 40,
+   "at": 1,
+   "dim": 4,
+   "label": "a general question",
+   "labelDy": 16
+  },
+  {
+   "id": "ours",
+   "glyph": "logo",
+   "p": [
+    560,
+    84
+   ],
+   "size": 40,
+   "at": 3,
+   "wash": "peri",
+   "washAt": 4,
+   "washR": 28,
+   "label": "our memory",
+   "labelDy": 14
+  }
+ ],
+ "ground": [
+  320,
+  600,
+  246,
+  20
+ ],
+ "no": 3
+}

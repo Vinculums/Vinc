@@ -1,0 +1,152 @@
+{
+ "n": 14,
+ "no": 14,
+ "part": 1,
+ "file": "Ch14.dc.html",
+ "slot": "vinc.book.14-graph-md.en",
+ "title": "What Grammar the System Remembers By",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "14.0",
+   "eyebrow": "Part 1 · Chapter 14",
+   "h": "What Grammar the System Remembers By",
+   "paras": [
+    "Structure and concepts alone do not let a system pass memory back and forth reliably.",
+    "A person can read around an error from context. A system has to be told explicitly which node this is, which fields are required, and which relationships are permitted.",
+    "That is what the system's grammar is for."
+   ],
+   "claim": "Grammar here is not a data format. It is what makes an exchange mean the same thing on both ends."
+  },
+  {
+   "label": "14.1",
+   "h": "What the Grammar Covers",
+   "paras": [
+    "It covers which kinds of node exist, what structure each kind has, which edges exist, what direction an edge has, and between which kinds that relationship is allowed.",
+    "The important kinds are the ones Chapter 10 named. A Concept is a unit of meaning referred to repeatedly. An Episode is an event or an experience. A Record is an observation or a confirmed fact. A Decision is a choice or a judgment about something.",
+    "Relationships have a fixed grammar too. Relates-to can express general association, while prerequisite-of is directed. Derives-from expresses derivation and inherits-from expresses succession. About says what a memory is a memory of."
+   ]
+  },
+  {
+   "label": "14.2",
+   "h": "The Name Alone Is Not Enough",
+   "paras": [
+    "So getting the relationship name right is not sufficient.",
+    "Connecting prerequisite-of from A to B and connecting the same relationship from B to A produce different structures, and only one of them is the claim that was meant.",
+    "Whether that relationship is allowed between those two kinds of node matters as well.",
+    "A grammar that accepts anything is not a grammar; it is a suggestion, and the reader on the other end has no way to know which reading was intended."
+   ]
+  },
+  {
+   "label": "14.3",
+   "h": "Errors Are Not Quietly Removed",
+   "paras": [
+    "The grammar must not silently delete what it does not understand.",
+    "Inventing a value for a missing required field, ignoring an unknown field without a word, or storing a malformed relationship with no marker all create problems later, in search and in interpretation.",
+    "So the purpose of validation is not to reject data.",
+    "It is to keep clear what the system knows and what it does not. A field that was dropped without a warning is worse than a field that was refused, because the refusal is visible and the drop is not."
+   ],
+   "claim": "What the system does not know has to stay visibly unknown."
+  },
+  {
+   "label": "14.4",
+   "h": "Reading and Writing Share the Grammar",
+   "paras": [
+    "The same principle holds on the read side.",
+    "If the write path uses a particular node and edge grammar, the read path has to understand the same structure.",
+    "When the writing system and the reading system use different grammars, they can look at one graph and come away with two different memories, and nothing in either result says so.",
+    "That is the failure this layer exists to prevent, and it is why the grammar is written down rather than carried in the code of whichever client wrote last."
+   ]
+  },
+  {
+   "label": "14.5",
+   "h": "Fragment Is Not the Graph",
+   "paras": [
+    "A Fragment is the unit used to carry this structure between systems. The graph is where that memory persists.",
+    "Keeping the two apart matters. A Fragment is not the memory itself; it is a representation for moving memory across a boundary.",
+    "And grammar does not stand in for meaning either. It defines how a system should read and write. The meaning is built from the contents of nodes, their relationships, and the documents and evidence behind them.",
+    "Because the grammar exists, the system can grow: a new agent or a new client that understands the same structure can connect to the same memory."
+   ],
+   "claim": "The grammar is the boundary between memory and whatever is running today."
+  },
+  {
+   "kind": "close",
+   "label": "14.close",
+   "paras": [
+    "The next chapter follows the whole path a document takes on the way to becoming nodes."
+   ],
+   "nextLabel": "Chapter 15. How a Document Becomes Nodes",
+   "nextHref": "Ch15.dc.html"
+  }
+ ],
+ "conveyor": {
+  "y": 300,
+  "x0": 110,
+  "x1": 530,
+  "stations": [
+   {
+    "name": "payload",
+    "shape": "hex",
+    "count": 1,
+    "r": 15,
+    "note": "a Fragment, not the graph",
+    "payload": "doc"
+   },
+   {
+    "name": "kinds checked",
+    "shape": "circle",
+    "count": 2,
+    "r": 11,
+    "glyph": "book"
+   },
+   {
+    "name": "direction checked",
+    "shape": "diamond",
+    "count": 2,
+    "r": 11,
+    "note": "A to B is not B to A"
+   },
+   {
+    "name": "unknown fields",
+    "shape": "hex",
+    "count": 2,
+    "r": 10,
+    "note": "refused, never dropped"
+   },
+   {
+    "name": "merged",
+    "shape": "circle",
+    "count": 2,
+    "r": 12
+   },
+   {
+    "name": "readable back",
+    "shape": "circle",
+    "count": 2,
+    "r": 12,
+    "note": "same grammar both ways"
+   }
+  ]
+ },
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "figures": [
+  {
+   "id": "unknown",
+   "glyph": "question",
+   "p": [
+    320,
+    128
+   ],
+   "size": 40,
+   "at": 3,
+   "wash": "warn",
+   "washR": 26,
+   "label": "visibly unknown",
+   "labelDy": 14
+  }
+ ]
+}

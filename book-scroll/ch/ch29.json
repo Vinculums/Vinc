@@ -1,0 +1,138 @@
+{
+ "n": 29,
+ "no": 30,
+ "part": 4,
+ "file": "Ch29.dc.html",
+ "slot": "vinc.book.29-call-efficiency.en",
+ "title": "A Tool's Efficiency Is Measured in Calls",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "30.0",
+   "eyebrow": "Part 4 · Chapter 30",
+   "h": "A Tool's Efficiency Is Measured in Calls",
+   "paras": [
+    "The easiest thing to measure about a tool call is its latency.",
+    "But from an agent's side, how many milliseconds one call took is not the cost that matters.",
+    "How many calls it takes to solve one question is the more direct cost."
+   ],
+   "claim": "Two systems with identical per-call speed can differ enormously in total cost."
+  },
+  {
+   "label": "30.1",
+   "h": "Two Paths to One Answer",
+   "paras": [
+    "One path: search, check the node, check the relationships, check the record, inspect again, answer.",
+    "Another path: return the needed node, its evidence and its relationships together, then answer.",
+    "So VINC's MCP efficiency evaluation treats calls-to-resolution as the core metric rather than transport time.",
+    "The addendum for this page draws it literally: seven marks, then two. No chart is needed when the number is small enough to count.",
+    "Neither path is wrong. They cost different amounts to walk, and only one of the two costs shows up in a latency chart."
+   ]
+  },
+  {
+   "label": "30.2",
+   "h": "Counting Calls Is Not Enough Either",
+   "paras": [
+    "One call that found nothing is a small number and not an efficient one.",
+    "So call efficiency has to be read across several axes at once: whether the task was actually solved, how many calls it took, how many contributed nothing, how large the payload the model had to process was, whether the evidence needed for the answer was obtained, and whether the run recovered from a bad or empty result.",
+    "On that reading a fast API is not automatically a good tool.",
+    "A good tool returns accurate material in few calls and leaves the agent nothing to go back for."
+   ],
+   "claim": "Success, calls, waste, payload, evidence, recovery. One of them alone says nothing."
+  },
+  {
+   "label": "30.3",
+   "h": "Where the Bottleneck Actually Was",
+   "paras": [
+    "In evaluation based on real interaction, single-search responsiveness and hopping from a concept to its neighbours were both practical enough.",
+    "The cost showed up in repeated sequential calls, in the round trips.",
+    "And as result payloads grew, the bottleneck moved from the transport layer toward the model's context.",
+    "So the next thing to optimise is not necessarily latency. Collapsing search, confirm, check relationships, confirm again into one meaningful retrieval has the larger effect.",
+    "Which means the surface, not the wire, is where the remaining cost lives."
+   ]
+  },
+  {
+   "label": "30.4",
+   "h": "Search and Brief Do Not Compete",
+   "paras": [
+    "Read this way, a search tool and a material-assembly tool are not two search tools competing.",
+    "Search is closer to a primitive that finds candidates. Brief takes a question, searches, resolves the target, and combines that node's context: a composite retrieval.",
+    "So what has to be evaluated is not which tool is faster.",
+    "It is how the whole call path changes for the same task, which is a different measurement and needs the same fixture discipline as Chapter 29.",
+    "A primitive and a composite are not rivals; one is built out of the other."
+   ]
+  },
+  {
+   "label": "30.5",
+   "h": "The Number Is Not the Verdict",
+   "paras": [
+    "A drop from seven calls to two is a result under the conditions it was measured in, not a property of the tool.",
+    "Change the task set and the ratio changes. That is why the tasks are fixed and recorded alongside the count.",
+    "One finding in a rerun inverted against the baseline, and that inversion is part of the record rather than an embarrassment to be smoothed out.",
+    "A measurement that only ever confirms the design is not measuring the design."
+   ],
+   "claim": "An inverted finding is a finding."
+  },
+  {
+   "kind": "close",
+   "label": "30.close",
+   "paras": [
+    "The next chapter compares the models underneath all of this, and what it takes to compare them fairly."
+   ],
+   "nextLabel": "Chapter 31. How Embedding Models Get Compared",
+   "nextHref": "Ch30.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "pair": {
+  "left": "before",
+  "right": "after",
+  "lx": 196,
+  "rx": 452,
+  "y0": 200,
+  "dy": 96,
+  "note": "same seven tasks, one surface added",
+  "noteAt": 3,
+  "rows": [
+   {
+    "label": "calls to resolution",
+    "kind": "count",
+    "a": 7,
+    "b": 2,
+    "at": 1
+   },
+   {
+    "label": "evidence obtained",
+    "kind": "count",
+    "a": 1,
+    "b": 1,
+    "at": 2
+   },
+   {
+    "label": "round trips",
+    "kind": "count",
+    "a": 6,
+    "b": 1,
+    "at": 3
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "agent",
+   "glyph": "agent",
+   "p": [
+    96,
+    92
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "pays in calls",
+   "labelDy": 14
+  }
+ ]
+}

@@ -1,0 +1,517 @@
+{
+ "n": 9,
+ "part": 0,
+ "file": "Ch09.dc.html",
+ "slot": "vinc.book.09-boundaries.en",
+ "title": "What We Deliberately Do Not Do",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "focusAt": 9,
+ "beats": [
+  {
+   "kind": "open",
+   "label": "9.0",
+   "eyebrow": "Part 0 · Chapter 9",
+   "h": "What We Deliberately Do Not Do",
+   "paras": [
+    "Chapter 8 showed that trusting memory means being able to doubt it. Memory should be verifiable, and its evidence, time, and changes should remain visible.",
+    "One final question remains.",
+    "If deciding what to build matters, should we not also decide what not to build?",
+    "AI systems are increasingly able to do more: generate more, automate more, judge more, and act on our behalf. But being able to do something is not the same as needing to do it."
+   ],
+   "claim": "Vinc treats that difference not as a lack of features, but as a design boundary."
+  },
+  {
+   "label": "9.1",
+   "h": "Not a System That Does Everything",
+   "paras": [
+    "Vinc deliberately refuses some things.",
+    "It does not place a model inside the core memory store. It does not silently generate memory on our behalf. It does not invent unsupported values. It does not merge memories merely because they appear similar. It does not turn the graph itself into an executor. It does not claim to have checked something it did not check.",
+    "These look like six different decisions, but they serve one purpose.",
+    "They keep human judgment and sources from disappearing while memory is being handled. The things Vinc does not do are not empty spaces in the product; the boundary itself is part of the design."
+   ]
+  },
+  {
+   "label": "9.2",
+   "h": "Refusal Is Not Failure",
+   "paras": [
+    "When a system refuses a request, we usually think it is limited.",
+    "In a memory system the opposite can be true. If performing a request would corrupt the nature of a record, refusing it is the action most faithful to the system's purpose.",
+    "Filling an empty value with a plausible default makes data look complete, but it creates a fact that never existed. Automatically merging two concepts because they look similar makes the graph cleaner, but can silently erase a meaning nobody agreed to erase.",
+    "So the refusals should be read one way."
+   ],
+   "claim": "A refusal exists not because the system cannot, but because it should not."
+  },
+  {
+   "label": "9.3",
+   "h": "The Blank Is a Record",
+   "paras": [
+    "We do not fabricate timestamps, unverified locations, unspecified owners, or unmeasured metrics.",
+    "Fill one in and the mark stops being the same substance: it looks complete and it is no longer evidence of anything.",
+    "An empty field can be more than a data defect. It can be a record of what we do not yet know.",
+    "So the empty state has to read as intact rather than as broken, because a system that treats blanks as damage will keep filling them."
+   ]
+  },
+  {
+   "label": "9.4",
+   "h": "The Graph Does Not Do Everything Either",
+   "paras": [
+    "Chapter 7 examined the relationship between agent and graph. The graph can steer an agent, but it is not itself the scheduler or the executor.",
+    "It can provide what should be read, which relationships exist, and which memories matter.",
+    "Actual execution and authorization may belong to separate systems.",
+    "The boundary is simple, and it is the same one Chapter 8 arrived at from the other side: providing memory and enforcing action are different problems.",
+    "Steering and compelling look similar from outside and are not the same guarantee."
+   ]
+  },
+  {
+   "label": "9.5",
+   "h": "Boundaries on What We Say",
+   "paras": [
+    "Vinc's boundaries do not apply only to stored data. What Vinc says about itself matters too.",
+    "A system should not describe itself as doing something it does not actually do. It should not make its architecture sound larger than it is merely to create the impression of memory or learning.",
+    "Privacy claims require the same discipline. Saying that data stays local in a particular environment is different from claiming the entire product is permanently disconnected from the internet.",
+    "So we do not use claims stronger than the facts support. The system's statements about itself should be as accurate as the data it stores."
+   ]
+  },
+  {
+   "label": "9.6",
+   "h": "Refusal Should Be Verifiable Too",
+   "paras": [
+    "There is an important limitation. Not every boundary can be perfectly enforced on every surface.",
+    "A vocabulary gate might inspect repository files without being able to inspect the graph corpus through the same mechanism.",
+    "Instead of hiding that limitation, we record it. Knowing where we do not have control is itself system knowledge.",
+    "This is the same principle as Chapter 8. We do not claim perfect control; we make it possible to verify what we control and what we do not. The boundary of control becomes a record."
+   ]
+  },
+  {
+   "label": "9.7",
+   "h": "Every Refusal Protects the Same Thing",
+   "paras": [
+    "Technical refusals and refusals about language share a purpose.",
+    "A technical refusal blocks unsupported judgments and values from entering the store. A refusal about language blocks unsupported trust from entering the reader's mind.",
+    "These are not separate problems. Both prevent memory from amplifying error.",
+    "An assistant reads the store and creates answers. An agent reads the store and acts. Shared memory can move into another person's graph. A small error grows as it connects, and refusal breaks that amplification at its source."
+   ]
+  },
+  {
+   "label": "9.8",
+   "h": "Checkable Over Impressive",
+   "paras": [
+    "A model answering every question fluently is impressive. In a memory system something else matters more.",
+    "What is recorded? Where did the record come from? When was it created? What is it connected to? Who confirmed it? Is it still valid?",
+    "If we can answer those, the system may be less flashy and it can endure longer.",
+    "Not having a model inside the core is a choice for reproducibility. Not merging automatically preserves semantic ownership. Leaving unknowns unknown is a choice for accuracy."
+   ],
+   "claim": "Vinc chooses a verifiable system over an impressive one."
+  },
+  {
+   "label": "9.9",
+   "h": "The Name Returns at the End",
+   "paras": [
+    "Chapter 1 began with humans using tools, recording memory, and passing it on. Across that history, one thing humans repeatedly did was connect things: experience to experience, person to person, record to record, past to present.",
+    "The name Vinc comes from the Latin vinculum, which means bond, tie, connection.",
+    "At first it may have looked like nothing more than a name. After nine chapters it reads as a design principle.",
+    "To connect is not simply to draw a line between two points. We need to know what the two ends are, why they are connected, when the connection was made, and what supports it."
+   ],
+   "claim": "So what Vinc makes is not connection. It is connection that can be trusted."
+  },
+  {
+   "kind": "close",
+   "label": "9.close",
+   "paras": [
+    "Humans built tools, recorded memory, shared it, and passed it on, and civilization could build again on what earlier generations left behind. AI has now become another kind of entity capable of reading that memory.",
+    "But giving AI memory is not simply giving it more data. It means deciding what to remember, how to connect it, what to trust, what to doubt, and what not to do. A tool does not exist to replace people. It exists to let people carry farther what they could not carry alone."
+   ],
+   "nextLabel": "Part 1. How Memory Is Stored",
+   "nextHref": "Ch10.dc.html"
+  }
+ ],
+ "anchors": [
+  {
+   "id": "hub",
+   "p": [
+    220,
+    340
+   ],
+   "r": 44,
+   "at": 9
+  }
+ ],
+ "marks": [
+  {
+   "id": "b1",
+   "shape": "circle",
+   "p": [
+    176,
+    148
+   ],
+   "r": 10,
+   "at": 1,
+   "dim": 6
+  },
+  {
+   "id": "b2",
+   "shape": "hex",
+   "p": [
+    246,
+    122
+   ],
+   "r": 10,
+   "at": 1,
+   "dim": 6
+  },
+  {
+   "id": "b3",
+   "shape": "circle",
+   "p": [
+    312,
+    158
+   ],
+   "r": 10,
+   "at": 1,
+   "dim": 6
+  },
+  {
+   "id": "b4",
+   "shape": "diamond",
+   "p": [
+    356,
+    214
+   ],
+   "r": 11,
+   "at": 2,
+   "dim": 6
+  },
+  {
+   "id": "b5",
+   "shape": "hex",
+   "p": [
+    382,
+    282
+   ],
+   "r": 10,
+   "at": 2,
+   "dim": 6
+  },
+  {
+   "id": "blank",
+   "shape": "hex",
+   "p": [
+    508,
+    168
+   ],
+   "r": 16,
+   "at": 3,
+   "dim": 6,
+   "label": "not yet known",
+   "labelAt": 3,
+   "lpos": "below",
+   "labelSize": 12.5,
+   "wash": "warn",
+   "washAt": 3,
+   "washR": 24,
+   "z": 0.3
+  },
+  {
+   "id": "p0",
+   "shape": "circle",
+   "p": [
+    220,
+    435
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p1",
+   "shape": "circle",
+   "p": [
+    147,
+    401
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p2",
+   "shape": "circle",
+   "p": [
+    126,
+    323
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p3",
+   "shape": "circle",
+   "p": [
+    173,
+    259
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p4",
+   "shape": "circle",
+   "p": [
+    253,
+    251
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p5",
+   "shape": "circle",
+   "p": [
+    309,
+    307
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p6",
+   "shape": "circle",
+   "p": [
+    307,
+    388
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p7",
+   "shape": "circle",
+   "p": [
+    247,
+    432
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  },
+  {
+   "id": "p8",
+   "shape": "circle",
+   "p": [
+    174,
+    419
+   ],
+   "r": 9,
+   "at": 9,
+   "focus": true,
+   "glyph": "astronaut",
+   "gs": 28
+  }
+ ],
+ "lines": [
+  {
+   "from": "b1",
+   "to": "b2",
+   "at": 1,
+   "ink": 2,
+   "stagger": 0
+  },
+  {
+   "from": "b2",
+   "to": "b3",
+   "at": 1,
+   "ink": 2,
+   "stagger": 1
+  },
+  {
+   "from": "b3",
+   "to": "b4",
+   "at": 2,
+   "ink": 2,
+   "stagger": 2
+  },
+  {
+   "from": "b4",
+   "to": "b5",
+   "at": 2,
+   "ink": 2,
+   "stagger": 3
+  },
+  {
+   "from": "hub",
+   "to": "p0",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p1",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p2",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p3",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p4",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p5",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p6",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p7",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "hub",
+   "to": "p8",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "p0",
+   "to": "p3",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "p1",
+   "to": "p5",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "p2",
+   "to": "p6",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "p4",
+   "to": "p8",
+   "at": 9,
+   "stagger": 0
+  },
+  {
+   "from": "p7",
+   "to": "p2",
+   "at": 9,
+   "stagger": 0
+  }
+ ],
+ "stage": [
+  "  // OPEN, the boundary. The graph grows outward and stops at a line, and",
+  "  // the line is drawn deliberately BEFORE the growth reaches it: a refusal",
+  "  // is a decision, not a collision.",
+  "  BOUND = 424;",
+  "  stage(s, p) {",
+  "    const E = React.createElement, kids = [];",
+  "    const drawn = s >= 0 ? (s >= 1 ? 1 : smooth(clamp((p - 0.05) / 0.45, 0, 1))) : 0;",
+  "    const receded = s >= 6;",
+  "    if (s <= 8) {",
+  "      kids.push(E('line', { key: 'bd', x1: this.BOUND, y1: 84, x2: this.BOUND, y2: 356,",
+  "        stroke: receded ? FADE : INK, strokeWidth: 1, strokeLinecap: 'round',",
+  "        pathLength: 1, strokeDasharray: 1,",
+  "        style: { strokeDashoffset: 1 - drawn, transition: `stroke ${T_DIM}ms ${LEAVE}` } }));",
+  "      kids.push(E('text', { key: 'bt', x: this.BOUND + 12, y: 78, fontSize: 12.5,",
+  "        fontStyle: 'italic', fill: receded ? EDGE : INK,",
+  "        style: { opacity: drawn > 0.9 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } },",
+  "        'drawn before the growth reaches it'));",
+  "    }",
+  "    // beat 3, the filled blank. A plausible value fills the slot and the",
+  "    // fill is visibly not the same substance as evidence; then it empties",
+  "    // again and the empty state reads as intact.",
+  "    if (s === 3) {",
+  "      const t = smooth(clamp((p - 0.1) / 0.45, 0, 1));",
+  "      const back = smooth(clamp((p - 0.62) / 0.34, 0, 1));",
+  "      const fill = t * (1 - back);",
+  "      kids.push(E('g', { key: 'blankfill' },",
+  "        E('path', { d: blob(508, 168, 7.5 * fill, K), fill: FADE }),",
+  "        E('text', { x: 508, y: 118, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic',",
+  "          fill: INK, style: { opacity: fill > 0.5 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } },",
+  "          'a plausible value')));",
+  "    }",
+  "    // beat 7, the two refusals meeting. One frame each and the shared word",
+  "    // underneath; no second colour, no boxes around the diagram.",
+  "    if (s === 7) {",
+  "      kids.push(E('g', { key: 'amp' },",
+  "        E('text', { x: 176, y: 500, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic', fill: INK }, 'unsupported values'),",
+  "        E('text', { x: 464, y: 500, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic', fill: INK }, 'unsupported trust'),",
+  "        E('path', { d: 'M176,514 Q320,558 320,576', fill: 'none', stroke: EDGE, strokeWidth: 1, strokeLinecap: 'round' }),",
+  "        E('path', { d: 'M464,514 Q320,558 320,576', fill: 'none', stroke: EDGE, strokeWidth: 1, strokeLinecap: 'round' }),",
+  "        E('text', { x: 320, y: 600, textAnchor: 'middle', fontSize: 13, fontStyle: 'italic', fill: INK }, 'amplified error')));",
+  "    }",
+  "    // CLOSE, the return. The ring from Chapter 1 is back at the same count",
+  "    // and the same coordinates; the hub it hangs off is drawn here, and the",
+  "    // name is set as text. This is the largest single motion in Part 0 and",
+  "    // it happens exactly once.",
+  "    if (s >= 9) {",
+  "      const t = smooth(clamp(p * 1.3, 0, 1));",
+  "      // the mark itself returns, drawn as the mark, with the one wash of",
+  "      // the chapter scribbled in under it",
+  "      kids.push(washPatch(220, 340, 54, FOCUS, 9, t, 'hubwash'));",
+  "      kids.push(...glyphEls('logo', null, 0, 220, 340, 80, 0, INK, 9, 'hub', { double: true }));",
+  "      kids.push(E('text', { key: 'vinc', x: 470, y: 348, textAnchor: 'middle',",
+  "        fontSize: 26, fontStyle: 'italic', fill: INK,",
+  "        style: { opacity: t > 0.55 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } }, 'vinculum'));",
+  "      kids.push(E('text', { key: 'vinct', x: 470, y: 374, textAnchor: 'middle',",
+  "        fontSize: 12.5, fill: META,",
+  "        style: { opacity: t > 0.7 ? 1 : 0, transition: `opacity ${T_MARK}ms ${ENTER}` } }, 'bond · tie · connection'));",
+  "    }",
+  "    return E('g', { key: 'fig' }, kids);",
+  "  }"
+ ],
+ "figures": [],
+ "ground": [
+  320,
+  630,
+  250,
+  14
+ ],
+ "no": 9
+}

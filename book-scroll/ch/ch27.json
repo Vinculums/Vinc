@@ -1,0 +1,157 @@
+{
+ "n": 27,
+ "no": 28,
+ "part": 3,
+ "file": "Ch27.dc.html",
+ "slot": "vinc.book.27-infrastructure.en",
+ "title": "What Density and Layout Show",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "28.0",
+   "eyebrow": "Part 3 · Chapter 28",
+   "h": "What Density and Layout Show",
+   "paras": [
+    "Put a graph on screen and more than position becomes visible. How much has gathered in one area becomes visible too.",
+    "Which raises the question: what does it mean that many nodes are clustered here?",
+    "There is more than one answer. It could be the size of a topic, an area where relationships concentrated, or simply a result the layout algorithm produced."
+   ],
+   "claim": "So density and layout have to be understood separately."
+  },
+  {
+   "label": "28.1",
+   "h": "Position Is Not Meaning",
+   "paras": [
+    "Node A being near node B does not mean the two meanings are necessarily close.",
+    "That nearness can arise from semantic similarity, from topic grouping, from graph connectivity, or from layout optimisation.",
+    "So a meaning relationship must not be inferred from screen distance alone.",
+    "Density is closer to a property of a set: how much structure has gathered inside a region. Which is a description, not an explanation.",
+    "Nearness on screen has at least four possible causes and the picture names none of them."
+   ]
+  },
+  {
+   "label": "28.2",
+   "h": "Topics Make Natural Density",
+   "paras": [
+    "Domain separates nodes by subject, so arranging nodes of the same topic into one region makes a density by topic appear.",
+    "That is different information from the semantic similarity of a search result. It is a spatial organisation showing topic structure.",
+    "A study looked at whether node distribution by topic could be modelled as a Gaussian: treat each topic as a distribution, place nodes around it, and clusters form naturally.",
+    "The approach could express density and clustering together rather than placing bare points."
+   ]
+  },
+  {
+   "label": "28.3",
+   "h": "It Was Not Adopted as the Layout",
+   "paras": [
+    "The result was that the Gaussian layout was not adopted as the default.",
+    "The reason is that merging the role of layout with the role of density can blur the structure the view was trying to keep.",
+    "Layout answers where a node goes. Density answers where structure is concentrated. The two do not have to be handled by one algorithm.",
+    "The more useful direction from the study was to use the distribution as a density layer rather than as a placement algorithm."
+   ],
+   "claim": "One algorithm doing two jobs does neither of them legibly."
+  },
+  {
+   "label": "28.4",
+   "h": "Density Does Not Explain Itself",
+   "paras": [
+    "Base coordinates come from the existing layout, and a distribution model expresses the density around them. Node structure and spatial concentration stay separable.",
+    "Suppose an area is dense. That alone cannot decide whether it is one topic, many relationships, a concentration of search results, or an artifact of the algorithm.",
+    "So density is a clue for interpretation and not the interpretation. Giving it meaning requires checking which nodes and edges make up the region.",
+    "Nodes of one subject bunched to one side does not prove that subject was discussed more. They may simply have been added together recently and not yet spread."
+   ]
+  },
+  {
+   "label": "28.5",
+   "h": "Layout Should Be a Function",
+   "paras": [
+    "Rather than storing coordinates as arbitrary state, they should be treated as a function computed from graph state, scope, viewpoint and layout state.",
+    "The same input should produce, as far as possible, the same arrangement, so a view can be reopened or rendered elsewhere and the spatial structure reproduced.",
+    "Proximity does not create evidence for a relationship, and a dense area is not a more important topic.",
+    "Layout shows structure, density shows concentration, and relationships decide meaning. Hold that and the space becomes an interface for exploring the graph without distorting it."
+   ],
+   "claim": "Nearness is not similarity, and density is not importance."
+  },
+  {
+   "kind": "close",
+   "label": "28.close",
+   "paras": [
+    "Parts 1 to 3 have built the structure. Part 4 asks whether any of it actually worked, and what it takes to measure that honestly."
+   ],
+   "nextLabel": "Part 4. Was the Design Actually Right",
+   "nextHref": "Ch28.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "conveyor": {
+  "y": 300,
+  "x0": 108,
+  "x1": 532,
+  "stations": [
+   {
+    "name": "graph state",
+    "shape": "circle",
+    "count": 3,
+    "r": 10,
+    "glyph": "logo"
+   },
+   {
+    "name": "topic",
+    "shape": "circle",
+    "count": 5,
+    "r": 9,
+    "scatter": true
+   },
+   {
+    "name": "layout",
+    "shape": "circle",
+    "count": 5,
+    "r": 9,
+    "note": "where a node goes",
+    "glyph": "screen"
+   },
+   {
+    "name": "density",
+    "shape": "circle",
+    "count": 5,
+    "r": 9,
+    "scatter": true,
+    "note": "where structure gathers",
+    "glyph": "cone"
+   },
+   {
+    "name": "a function",
+    "shape": "circle",
+    "count": 5,
+    "r": 9,
+    "note": "same input, same arrangement"
+   },
+   {
+    "name": "interpretation",
+    "shape": "hex",
+    "count": 3,
+    "r": 10,
+    "note": "check the nodes, not the picture"
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "lens",
+   "glyph": "lens",
+   "p": [
+    320,
+    132
+   ],
+   "size": 34,
+   "at": 4,
+   "wash": "warn",
+   "washR": 24,
+   "label": "density does not explain itself",
+   "labelDy": 14
+  }
+ ]
+}

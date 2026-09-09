@@ -1,0 +1,163 @@
+{
+ "n": 30,
+ "no": 31,
+ "part": 4,
+ "file": "Ch30.dc.html",
+ "slot": "vinc.book.30-embedding-eval.en",
+ "title": "How Embedding Models Get Compared",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "31.0",
+   "eyebrow": "Part 4 · Chapter 31",
+   "h": "How Embedding Models Get Compared",
+   "paras": [
+    "Changing an embedding model does not only change vector quality. An embedding model defines the semantic space the search system runs in.",
+    "So a model change has to be evaluated across at least four things at once: search quality, compute cost, storage structure, and operating cost.",
+    "Pick a model on search quality alone and the unexpected costs arrive later, in production."
+   ],
+   "claim": "The model is not a number. It is the space everything else is measured in."
+  },
+  {
+   "label": "31.1",
+   "h": "The Same Conditions, Again",
+   "paras": [
+    "In VINC's embedding evaluation, different models are compared under identical evaluation conditions.",
+    "What matters there is the relative difference inside the same fixture, not the absolute score.",
+    "Language characteristics matter in particular. In one experiment the Korean ranking metric fell from 0.670 to 0.472 between models.",
+    "That result is not a difference between two model names. It shows how well a semantic space fits the search workload it is being asked to serve.",
+    "A workload in one language is not a workload in another, and a single average hides which one was measured."
+   ]
+  },
+  {
+   "label": "31.2",
+   "h": "Quantization Is Part of the Model",
+   "paras": [
+    "Running a model at reduced precision does not always give the same performance characteristics.",
+    "A quantized model has to be read together with the conditions its execution kernel supports.",
+    "One evaluation assumed a situation using a particular CPU instruction extension. If that kernel condition does not hold in the real environment, accumulator behaviour and performance characteristics both change.",
+    "So model capability and runtime capability are two different claims, and a model supporting a precision does not mean this system gets that precision's performance."
+   ],
+   "claim": "Model capability is not runtime capability."
+  },
+  {
+   "label": "31.3",
+   "h": "What the Record Has to Carry",
+   "paras": [
+    "The result of an embedding evaluation should be left in a form that keeps the model, the dimension, the precision, the quantization, the kernel, the corpus, the query set, the language, the metric, the latency, and the result.",
+    "With that, the result can be interpreted again later.",
+    "Without it, a benchmark is a leaderboard, and a leaderboard is not a record of system conditions.",
+    "A ranking survives; the conditions that produced it do not, and the ranking gets quoted long after those conditions stopped holding."
+   ]
+  },
+  {
+   "label": "31.4",
+   "h": "Two Numbers, One Fixture",
+   "paras": [
+    "So the shape of this page is two columns: the same fixture, two models, the numbers beside each other and the conditions named underneath.",
+    "The lower number is not framed as a failure and the higher one is not framed as a win.",
+    "Both are what happened under stated conditions, and a reader who wants the verdict has to look at the conditions to get it.",
+    "That is slower to read and it is the only reading that survives the next model."
+   ]
+  },
+  {
+   "label": "31.5",
+   "h": "Comparison Is Not Selection",
+   "paras": [
+    "Comparing two models produces a difference. Choosing between them requires everything the difference does not contain.",
+    "Storage compatibility, re-embedding cost, index rebuild time, worker support, operating cost. Chapter 32 is about exactly those.",
+    "Which means an embedding benchmark is an input to a decision and never the decision.",
+    "Treat the benchmark as the decision and the migration cost arrives as a surprise, after the choice has already been made.",
+    "The difference tells you what changed. It does not tell you what it costs to change it."
+   ],
+   "claim": "A benchmark is not a model ranking. It is a record of system conditions."
+  },
+  {
+   "kind": "close",
+   "label": "31.close",
+   "paras": [
+    "The next chapter is the cost the benchmark left out."
+   ],
+   "nextLabel": "Chapter 32. The Cost of Changing a Model and Storage Structure",
+   "nextHref": "Ch31.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "pair": {
+  "left": "model A",
+  "right": "model B",
+  "lx": 196,
+  "rx": 452,
+  "y0": 196,
+  "dy": 92,
+  "note": "one fixture, one corpus, one query set",
+  "noteAt": 2,
+  "rows": [
+   {
+    "label": "Korean ranking metric",
+    "kind": "bar",
+    "a": 0.67,
+    "b": 0.472,
+    "max": 1.0,
+    "fmt": "%",
+    "at": 1
+   },
+   {
+    "label": "same fixture",
+    "kind": "count",
+    "a": 1,
+    "b": 1,
+    "at": 2
+   },
+   {
+    "label": "kernel condition held",
+    "kind": "count",
+    "a": 1,
+    "b": 0,
+    "at": 3
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "a",
+   "glyph": "cube",
+   "p": [
+    230,
+    96
+   ],
+   "size": 34,
+   "at": 1,
+   "label": "model A",
+   "labelDy": 12
+  },
+  {
+   "id": "fix",
+   "glyph": "doc",
+   "p": [
+    358,
+    96
+   ],
+   "size": 36,
+   "at": 1,
+   "label": "one fixture",
+   "labelDy": 12
+  },
+  {
+   "id": "b",
+   "glyph": "cube",
+   "p": [
+    486,
+    96
+   ],
+   "size": 34,
+   "at": 1,
+   "label": "model B",
+   "labelDy": 12
+  }
+ ]
+}

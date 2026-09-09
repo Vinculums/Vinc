@@ -1,0 +1,155 @@
+{
+ "n": 24,
+ "no": 25,
+ "part": 3,
+ "file": "Ch24.dc.html",
+ "slot": "vinc.book.24-view.en",
+ "title": "How Nodes and Edges Become Visible",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "25.0",
+   "eyebrow": "Part 3 · Chapter 25",
+   "h": "How Nodes and Edges Become Visible",
+   "paras": [
+    "A graph is a data structure, and a user does not read database tables. A user reads the shape of a node and the line of an edge.",
+    "So visualising a graph needs a grammar of its own.",
+    "Node type maps to shape. Edge kind maps to a line language."
+   ],
+   "claim": "The mapping matters more than the particular shapes chosen."
+  },
+  {
+   "label": "25.1",
+   "h": "Type Carries Into Shape",
+   "paras": [
+    "Concept, record, decision, episode and bridge mean different things, and telling them apart on screen needs an explicit mapping between type and shape.",
+    "What matters is not which shape is which. It is that the mapping exists and holds.",
+    "Change the shapes and the same type still has to keep the same meaning.",
+    "Draw every relationship with the same line and the structural differences in the graph disappear, so relationship kinds get different visual treatment too.",
+    "A mapping that holds is what lets a reader learn the vocabulary once."
+   ]
+  },
+  {
+   "label": "25.2",
+   "h": "Direction Is Information",
+   "paras": [
+    "A line from A to B and a line between A and B say different things.",
+    "An arrowhead, or the direction of a line, is not decoration. It is part of the graph's meaning, and a diagram that drops it has dropped a claim.",
+    "A bridge is different again from a plain node-to-node connection. Drawing it with its own treatment lets a user tell a direct relationship from a special one that joins separate structures.",
+    "That distinction matters most where different domains meet, which is exactly where a reader is least able to guess."
+   ]
+  },
+  {
+   "label": "25.3",
+   "h": "A View Is More Than Coordinates",
+   "paras": [
+    "Placing a graph on screen needs coordinates, but a view is not an object that stores coordinates.",
+    "Its axes are scope, viewpoint, node shape, edge kind, coordinates, density, time, focus and interaction.",
+    "So the same graph produces completely different screens depending on which scope and which viewpoint were chosen.",
+    "Scope decides where you are looking. Viewpoint decides how. Scope is kept in the path and the address; viewpoint is a separate setting.",
+    "Same graph, different scope and viewpoint, entirely different screen."
+   ],
+   "claim": "Changing the viewpoint does not move the scope you are looking at."
+  },
+  {
+   "label": "25.4",
+   "h": "Several Viewpoints, One Graph",
+   "paras": [
+    "In the current design 3D, 2D, timeline and weave each do real work, and each answers a different question.",
+    "3D asks how the centre and its surroundings look. 2D asks how the same structure reads on a plane. Timeline asks how things arrange along time. Weave asks how relationships and topics bundle together.",
+    "These are the same graph read against different questions, not four graphs.",
+    "Which is why the count of marks does not change when the viewpoint does.",
+    "Four questions, one graph, and the count of marks never changes between them."
+   ]
+  },
+  {
+   "label": "25.5",
+   "h": "Declaring a Grammar Is Not Keeping It",
+   "paras": [
+    "Defining a visual grammar and having the renderer preserve it are separate problems.",
+    "A shape vocabulary can be written down and the screen can still show every kind of node collapsed into roughly the same blob.",
+    "That risk points at the principle: a visual language is not finished by being declared in a document. The renderer has to implement the same contract.",
+    "A view is not decoration. Which relationships get emphasised and which get pushed into the background changes how a user reads the graph."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "25.close",
+   "paras": [
+    "The next chapter asks where that graph lives, and who it belongs to."
+   ],
+   "nextLabel": "Chapter 26. How Graph Space Gets Created",
+   "nextHref": "Ch25.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "conveyor": {
+  "y": 300,
+  "x0": 108,
+  "x1": 532,
+  "stations": [
+   {
+    "name": "types",
+    "shape": "circle",
+    "count": 4,
+    "r": 10
+   },
+   {
+    "name": "shapes",
+    "shape": "diamond",
+    "count": 4,
+    "r": 10,
+    "note": "an explicit mapping"
+   },
+   {
+    "name": "direction",
+    "shape": "diamond",
+    "count": 2,
+    "r": 11,
+    "note": "part of the meaning"
+   },
+   {
+    "name": "scope",
+    "shape": "circle",
+    "count": 1,
+    "r": 14,
+    "note": "where"
+   },
+   {
+    "name": "viewpoint",
+    "shape": "ring",
+    "count": 1,
+    "r": 15,
+    "note": "how",
+    "glyph": "screen"
+   },
+   {
+    "name": "renderer",
+    "shape": "circle",
+    "count": 4,
+    "r": 10,
+    "scatter": true,
+    "note": "or the grammar collapses",
+    "glyph": "screen"
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "view",
+   "glyph": "screen",
+   "p": [
+    320,
+    128
+   ],
+   "size": 44,
+   "at": 3,
+   "label": "a view, not coordinates",
+   "labelDy": 14
+  }
+ ]
+}

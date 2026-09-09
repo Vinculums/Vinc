@@ -1,0 +1,157 @@
+{
+ "n": 23,
+ "no": 24,
+ "part": 3,
+ "file": "Ch23.dc.html",
+ "slot": "vinc.book.23-temporal.en",
+ "title": "What Time Exists in Memory",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "24.0",
+   "eyebrow": "Part 3 · Chapter 24",
+   "h": "What Time Exists in Memory",
+   "paras": [
+    "Time in memory is not one thing.",
+    "When the event a record describes happened, and when that record entered the graph, are different questions.",
+    "VINC splits them into world time and graph time."
+   ],
+   "claim": "The two cannot substitute for one another, and one timestamp cannot hold both."
+  },
+  {
+   "label": "24.1",
+   "h": "World Time and Graph Time",
+   "paras": [
+    "World time is the time of the thing the memory points at. If a concept or a record describes an event or a fact, its content time expresses when that thing occurred.",
+    "That value can differ from the moment the record was stored.",
+    "Graph time is when the object was created and changed inside the graph: created, updated, revision, sequence.",
+    "World time answers what happened. Graph time answers when the graph learned it, or changed its mind about it.",
+    "One timestamp collapses the two and the collapse cannot be undone afterwards."
+   ]
+  },
+  {
+   "label": "24.2",
+   "h": "Mixing the Clocks Produces Errors",
+   "paras": [
+    "Suppose an event on the twentieth of August was recorded on the first of September.",
+    "A record being recently created in the graph does not mean the event happened recently.",
+    "And a record describing an old event being edited recently does not mean the event happened again.",
+    "Both mistakes are easy to make and neither announces itself, because the surviving value looks like a perfectly ordinary date.",
+    "Both mistakes produce a perfectly ordinary looking date, which is why neither gets caught."
+   ],
+   "claim": "A recent write is not a recent event."
+  },
+  {
+   "label": "24.3",
+   "h": "A Claim Can Have a Validity Window",
+   "paras": [
+    "If content time says when something occurred, a validity range says from when until when the claim holds.",
+    "Prices and policies were true at a particular time and may no longer be true now, so the time of the event and the window of the claim have to be told apart.",
+    "Decisions cannot be treated the same way either. A decision does not carry a content time; its important time is the one tracked in the graph.",
+    "That is because a decision represents a judgment made inside the system rather than an object describing an external event."
+   ]
+  },
+  {
+   "label": "24.4",
+   "h": "Kinds Have Different Clocks",
+   "paras": [
+    "So the time model differs by kind of object, and that has to be admitted rather than smoothed over.",
+    "An episode is for recalling what happened in time order, so its core is position on a timeline.",
+    "Apply the graph's creation time to an episode as if it were the event's time and the meaning gets confused.",
+    "Forcing one identical set of time fields onto every node is therefore not the correct design, however much tidier it looks in a schema."
+   ]
+  },
+  {
+   "label": "24.5",
+   "h": "Causal Time Is Another Problem",
+   "paras": [
+    "Two events being arranged one after the other does not make one the cause of the other. A happened before B and A caused B are different claims.",
+    "Prerequisite-of, derives-from and inherits-from carry a structural meaning stronger than a date comparison.",
+    "A prerequisite-of B does not say A's date is earlier. It says A precedes B in establishing or understanding it.",
+    "And time is not a viewpoint. It is handled as a state axis shared across views, because time restricts which data is in view rather than changing the camera."
+   ],
+   "claim": "Order is not causation, and the graph has to be able to say which one it means."
+  },
+  {
+   "kind": "close",
+   "label": "24.close",
+   "paras": [
+    "The next chapter turns to what nodes and edges look like once they are on a screen."
+   ],
+   "nextLabel": "Chapter 25. How Nodes and Edges Become Visible",
+   "nextHref": "Ch24.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "stage": [
+  "  // The two clocks return here, in the pipeline register rather than the",
+  "  // narrative one, so a reader recognises them from Part 0 chapter 6",
+  "  // instead of meeting them as a new idea.",
+  "  stage(s, p) {",
+  "    const E = React.createElement, kids = [];",
+  "    const X0 = 150, Y0 = 470, W = 300;",
+  "    kids.push(E('line', { key: 'ax', x1: X0, y1: Y0, x2: X0 + W, y2: Y0, stroke: EDGE, strokeWidth: 1 }));",
+  "    kids.push(E('line', { key: 'ay', x1: X0, y1: Y0, x2: X0, y2: Y0 - W, stroke: EDGE, strokeWidth: 1 }));",
+  "    kids.push(E('text', { key: 'lx', x: X0 + W / 2, y: Y0 + 26, textAnchor: 'middle', fontSize: 12.5, fill: META }, 'world time'));",
+  "    kids.push(E('text', { key: 'ly', x: X0 - 12, y: Y0 - W + 4, textAnchor: 'end', fontSize: 12.5, fill: META }, 'graph time'));",
+  "    kids.push(E('line', { key: 'diag', x1: X0, y1: Y0, x2: X0 + W, y2: Y0 - W, stroke: FADE, strokeWidth: 1 }));",
+  "    // the off-diagonal record: an old event written down recently",
+  "    if (s >= 1) {",
+  "      const t = s > 1 ? 1 : smooth(clamp(p * 1.2, 0, 1));",
+  "      const x = X0 + 70, y = lerp(Y0 - 70, Y0 - 240, t);",
+  "      kids.push(E('path', { key: 'r1', d: blob(x, y, 10, K), fill: INK }));",
+  "      kids.push(E('line', { key: 'g1', x1: x, y1: Y0 - 70, x2: x, y2: y, stroke: EDGE, strokeWidth: 1, strokeLinecap: 'round' }));",
+  "      kids.push(E('text', { key: 't1', x: x + 16, y: y - 6, fontSize: 12.5, fontStyle: 'italic', fill: INK }, 'recorded long after it happened'));",
+  "    }",
+  "    // the on-diagonal record: the two times equal",
+  "    if (s >= 3) {",
+  "      kids.push(E('path', { key: 'r2', d: blob(X0 + 220, Y0 - 220, 10, K), fill: INK }));",
+  "      kids.push(E('text', { key: 't2', x: X0 + 236, y: Y0 - 226, fontSize: 12.5, fontStyle: 'italic', fill: INK }, 'both the same'));",
+  "    }",
+  "    // beat 5, order against causation: same two marks, two readings",
+  "    if (s >= 5) {",
+  "      const a = { p: [190, 150], r: 12 }, b = { p: [430, 150], r: 12 };",
+  "      const g = linkPath(a, b, -1, true);",
+  "      kids.push(E('path', { key: 'ca', d: blob(a.p[0], a.p[1], a.r, K), fill: INK }));",
+  "      kids.push(E('path', { key: 'cb', d: blob(b.p[0], b.p[1], b.r, K), fill: INK }));",
+  "      kids.push(E('path', { key: 'cl', d: g.d, fill: 'none', stroke: INK, strokeWidth: 1,",
+  "        strokeLinecap: 'round', strokeLinejoin: 'round', pathLength: 1, strokeDasharray: 1,",
+  "        style: { strokeDashoffset: 0 } }));",
+  "      kids.push(E('text', { key: 'ct', x: 310, y: 106, textAnchor: 'middle', fontSize: 12.5,",
+  "        fontStyle: 'italic', fill: INK }, 'prerequisite of, not merely earlier'));",
+  "    }",
+  "    return E('g', { key: 'clocks' }, kids);",
+  "  }"
+ ],
+ "figures": [
+  {
+   "id": "wt",
+   "glyph": "clock",
+   "p": [
+    506,
+    470
+   ],
+   "size": 36,
+   "at": 1,
+   "label": "world",
+   "labelDy": 12
+  },
+  {
+   "id": "gt",
+   "glyph": "clock",
+   "p": [
+    150,
+    128
+   ],
+   "size": 36,
+   "at": 1,
+   "label": "graph",
+   "labelDy": 12,
+   "rot": 90
+  }
+ ]
+}

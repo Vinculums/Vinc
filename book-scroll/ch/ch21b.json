@@ -1,0 +1,139 @@
+{
+ "n": "21b",
+ "no": 22,
+ "part": 2,
+ "file": "Ch21b.dc.html",
+ "slot": "vinc.book.21b-role-contract.en",
+ "title": "How a Role Becomes a Contract",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "22.0",
+   "eyebrow": "Part 2 · Chapter 22",
+   "h": "How a Role Becomes a Contract",
+   "paras": [
+    "Chapter 21 made an agent a node on the graph. A search agent and an evaluation agent each hold an identity, and that identity is separate from the process running it.",
+    "But identity alone is not enough.",
+    "Calling an agent the search one and settling what it actually has to read and must not do are different problems."
+   ],
+   "claim": "A name points at a role. It does not say what the role demands."
+  },
+  {
+   "label": "22.1",
+   "h": "Mission Comes First",
+   "paras": [
+    "A role node needs a mission explaining what that role has to do.",
+    "Two agents reading the same repository behave completely differently if their purposes differ. One implements and changes contracts. One confirms whether that change satisfies the requirements.",
+    "That difference is not a matter of writing the instruction sentence differently. One side has permission to change something and the other must not change anything and only check.",
+    "With the distinction recorded as a mission, it becomes possible afterwards to work out why an agent behaved as it did, or why it did not."
+   ]
+  },
+  {
+   "label": "22.2",
+   "h": "Reading Order Is Part of It",
+   "paras": [
+    "Having access to a lot of material does not mean the material may be read in any order.",
+    "Some roles have a document that has to be confirmed first, then a particular relationship to inspect, then a condition to verify last.",
+    "Pin the reading order down as part of the role and agents can hold different traversal paths over the same graph without either being wrong.",
+    "An order that lives only in a person's head is an order the next agent will not follow."
+   ]
+  },
+  {
+   "label": "22.3",
+   "h": "A Gate to Pass",
+   "paras": [
+    "Finishing work is not the same as the work being done.",
+    "Each role can have a condition to pass before the next stage begins, and either it passes or it stays where it is and gets corrected.",
+    "Without that gate, a report saying the work happened and the fact that the work finished are indistinguishable.",
+    "And an agent that reports completion is exactly as convincing when it is wrong as when it is right, which is why the gate is not optional."
+   ],
+   "claim": "A report of completion is not a completion."
+  },
+  {
+   "label": "22.4",
+   "h": "Several Roles Make a Flow",
+   "paras": [
+    "Real work rarely ends inside one role. It moves through research, design, implementation, review, delivery.",
+    "If each stage has a responsible role, the order itself can be expressed as relationships in the graph.",
+    "The arrow is not simply whose turn is next. It holds the fact that the later stage depends on the earlier one.",
+    "Writing that flow into the graph does not mean the graph enforces the order. The graph explains who is responsible for what and how the responsibility carries; the runner decides when and how often."
+   ]
+  },
+  {
+   "label": "22.5",
+   "h": "Read, Render, Compare",
+   "paras": [
+    "There is a distance between a role existing in the graph and the execution environment moving the way that role says. Closing it takes three motions.",
+    "Read the role from the graph. Render it into the form the runner can use. Then check that what was rendered still says the same thing as the graph's original.",
+    "Keep those separate and the graph is the standard while the generated file is a derived artifact.",
+    "A role also needs a fence: open every document to an agent without limit and the boundary defined at the start stops meaning anything, and the role itself goes blurry."
+   ],
+   "claim": "The graph keeps the contract. The runner acts on it. A person or a check says it may proceed."
+  },
+  {
+   "kind": "close",
+   "label": "22.close",
+   "paras": [
+    "What remains is the relationships those roles create, and the evidence that attaches to each one."
+   ],
+   "nextLabel": "Chapter 23. How Evidence Attaches to a Relationship",
+   "nextHref": "Ch22.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "hub": {
+  "cx": 320,
+  "cy": 300,
+  "r": 62,
+  "spokeR": 190,
+  "center": {
+   "glyph": "agent",
+   "size": 66,
+   "label": "a role"
+  },
+  "spokes": [
+   {
+    "name": "mission",
+    "glyph": "question",
+    "at": 1,
+    "sub": "change, or only confirm"
+   },
+   {
+    "name": "reading order",
+    "glyph": "stack",
+    "at": 2,
+    "sub": "first, then, last"
+   },
+   {
+    "name": "gate",
+    "glyph": "gate",
+    "at": 3,
+    "sub": "pass, or stay"
+   },
+   {
+    "name": "flow",
+    "glyph": "arrow",
+    "at": 4,
+    "sub": "research · design · implement"
+   },
+   {
+    "name": "rendered",
+    "glyph": "screen",
+    "at": 5
+   },
+   {
+    "name": "compared back",
+    "glyph": "check",
+    "at": 5,
+    "wash": "ok"
+   }
+  ],
+  "at": 0,
+  "ringAt": 1
+ },
+ "figures": []
+}

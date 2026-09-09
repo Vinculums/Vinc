@@ -1,0 +1,142 @@
+{
+ "n": 33,
+ "no": 34,
+ "part": 4,
+ "file": "Ch33.dc.html",
+ "slot": "vinc.book.33-measurement-before-decision.en",
+ "title": "Measurement Comes Before Decision",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "34.0",
+   "eyebrow": "Part 4 · Chapter 34",
+   "h": "Measurement Comes Before Decision",
+   "paras": [
+    "In a system, important decisions often get made first. This model is better. This schema will do. This layout suits it.",
+    "But a decision made before the measurable conditions were settled is easy to overturn later.",
+    "VINC's embedding model replacement shows it."
+   ],
+   "claim": "A decision should be the result of a measurement, not the thing a measurement is asked to support."
+  },
+  {
+   "label": "34.1",
+   "h": "The Questions That Came Too Late",
+   "paras": [
+    "At first a schema change looked sufficient. Checking the actual storage structure showed a fixed-width constraint, and the new model's dimension could not be accommodated as it was.",
+    "What was needed turned out to be a rebuild, not a schema change.",
+    "The questions that should have been asked before deciding were: what is the current schema, what is the new model's dimension, can existing vectors be reused, what does re-embedding cost, is an index rebuild needed, does the worker support the new model.",
+    "None of those are hard questions. They were simply asked after the decision instead of before it."
+   ]
+  },
+  {
+   "label": "34.2",
+   "h": "The Measurement Gate",
+   "paras": [
+    "So the evaluation flow can carry a gate: question, fixture check, environment check, measure, evidence, decide.",
+    "A result that did not pass the gate is not used as grounds for a decision.",
+    "This is not procedure for its own sake. It is a device for separating the state of being measurable from the state of being decidable.",
+    "The two feel the same from inside, which is why the separation has to be structural rather than remembered.",
+    "The gate is not there to slow a decision down. It is there to say which decisions had grounds."
+   ],
+   "claim": "A result that did not pass the gate is not evidence."
+  },
+  {
+   "label": "34.3",
+   "h": "The Same Rule for Agents",
+   "paras": [
+    "The principle applies to an agent's memory retrieval unchanged.",
+    "Receiving a search result is not grounds for a conclusion. Candidate, resolution, evidence, context, interpretation, answer.",
+    "Search is discovery, resolution is selection, evidence is support, interpretation is judgment.",
+    "Mix those steps into one and the system loses the ability to tell what it knew from what it inferred, which is the distinction Chapter 8 said everything depended on.",
+    "A step that was skipped and a step that passed look the same from the answer."
+   ]
+  },
+  {
+   "label": "34.4",
+   "h": "Parts 1 to 3 Built It, Part 4 Asked",
+   "paras": [
+    "Parts 1 to 3 were about structuring memory: document, chunk, embedding, node, edge, space.",
+    "Part 4 asked whether that structure actually works: memory, search, resolution, evidence, work, measurement, decision.",
+    "So measurement is not an activity outside the system. Its results become memory again.",
+    "Which model was chosen and why, which experiment failed, under what condition the result changed: all of it becomes input to the next decision.",
+    "The structure and the check on the structure are two halves of one design.",
+    "Parts 1 to 3 answered how. Part 4 answered whether, and the two are not the same question."
+   ]
+  },
+  {
+   "label": "34.5",
+   "h": "The Loop Closes",
+   "paras": [
+    "Remember, search, interpret, measure, decide, remember again.",
+    "When that circuit continues, an agent's memory becomes a structure of verifiable experience rather than a store.",
+    "It is also the reason Part 4 exists at all. Without it, Parts 1 to 3 are a design nobody checked.",
+    "And with it, the design has a record of the conditions under which it held, which is the only form in which a design can be handed to whoever comes next.",
+    "A design handed on without its conditions is a design the next person has to re-derive."
+   ],
+   "claim": "Measurement is not outside the system. Its result is memory too."
+  },
+  {
+   "kind": "close",
+   "label": "34.close",
+   "paras": [
+    "One chapter remains, and it is the shape all of this has been tracing."
+   ],
+   "nextLabel": "Closing. Memory Is a Cycle",
+   "nextHref": "Ch35.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "pair": {
+  "left": "decide first",
+  "right": "measure first",
+  "lx": 196,
+  "rx": 452,
+  "y0": 190,
+  "dy": 88,
+  "note": "the same work, in two orders",
+  "noteAt": 2,
+  "rows": [
+   {
+    "label": "conditions known at decision",
+    "kind": "count",
+    "a": 0,
+    "b": 1,
+    "at": 1
+   },
+   {
+    "label": "decision survived contact",
+    "kind": "count",
+    "a": 0,
+    "b": 1,
+    "at": 2
+   },
+   {
+    "label": "rebuild discovered",
+    "kind": "count",
+    "a": 1,
+    "b": 1,
+    "at": 3
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "gate",
+   "glyph": "gate",
+   "p": [
+    320,
+    92
+   ],
+   "size": 44,
+   "at": 2,
+   "wash": "ok",
+   "washR": 28,
+   "label": "the measurement gate",
+   "labelDy": 14
+  }
+ ]
+}

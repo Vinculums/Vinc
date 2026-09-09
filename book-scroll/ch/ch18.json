@@ -1,0 +1,143 @@
+{
+ "n": 18,
+ "no": 18,
+ "part": 2,
+ "file": "Ch18.dc.html",
+ "slot": "vinc.book.18-retrieval.en",
+ "title": "How Search Results Get Confirmed as Memory",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "18.0",
+   "eyebrow": "Part 2 · Chapter 18",
+   "h": "How Search Results Get Confirmed as Memory",
+   "paras": [
+    "Search is the entrance to a memory system. But a search result does not become memory by arriving.",
+    "One question can produce several candidates.",
+    "The problem is not finding many. It is deciding which one should actually be interpreted."
+   ],
+   "claim": "Search asks what could be related. Resolution asks which of them this points at."
+  },
+  {
+   "label": "18.1",
+   "h": "Candidates Arrive From Several Paths",
+   "paras": [
+    "Search candidates are not produced by one database.",
+    "A text result can be a candidate. A vector result can be a candidate. A node in the graph can be found directly. A record or a decision can be connected to the question as well.",
+    "What matters is that these candidates are different shapes. A text result holds a document fragment, a graph search holds a concept, a record is a separate object again.",
+    "Pooling them means putting different shapes under one standard before anything is chosen."
+   ]
+  },
+  {
+   "label": "18.2",
+   "h": "Candidate and Resolved Are Different States",
+   "paras": [
+    "Chapter 16 already showed that this system does not choose in the face of ambiguity. The question here is how that principle is actually kept.",
+    "If two candidates look equally plausible, having a rule that picks one of them is not what justifies the pick.",
+    "The absence of grounds for choosing is itself a result. Given that one wrongly chosen node drags every later traversal in the wrong direction, not choosing is a normal response for the system.",
+    "Read resolution as a similarity threshold and this structure is lost."
+   ],
+   "claim": "Not choosing is a normal answer, not a failed one."
+  },
+  {
+   "label": "18.3",
+   "h": "Then the Material Comes Out",
+   "paras": [
+    "Search is the stage that produces candidates. Resolution is the stage that confirms whether a candidate can be identified at all.",
+    "With that split, search can look broadly while resolution behaves conservatively.",
+    "Once one node is resolved, the material around it can be assembled: related concepts, related records, related decisions, and the document excerpts behind them.",
+    "The search result is not a list of text. It is the starting point for the next traversal.",
+    "Broad search and conservative resolution are not in tension; they are the same design."
+   ]
+  },
+  {
+   "label": "18.4",
+   "h": "A Record Is Not a Concept",
+   "paras": [
+    "A concept is a unit of meaning the system works with. A record is an object preserving a particular fact or measurement.",
+    "Finding a concept does not mean the related records can be treated as the same thing. And a record being found does not make it the concept either.",
+    "After resolution these different objects have to be read together, with the difference between them intact.",
+    "An episode is different again: it records what happened in time order, so it is material for recalling when something occurred rather than a target for resolution."
+   ]
+  },
+  {
+   "label": "18.5",
+   "h": "Search Failure Is a State",
+   "paras": [
+    "There are cases with no result, with too few candidates, or with candidates that cannot be told apart.",
+    "In those cases the system does not manufacture a memory.",
+    "No candidates means no resolution. Ambiguous candidates means no resolution. This is not a failed search; it is an important system state.",
+    "One of the most dangerous outcomes in a memory system is resolving onto something with no grounds and having every later step treat it as fact.",
+    "An empty result that says it is empty is more useful than a full one that guessed."
+   ],
+   "claim": "The structure needs the ability to find and the ability not to choose."
+  },
+  {
+   "kind": "close",
+   "label": "18.close",
+   "paras": [
+    "The next chapter asks what the resolved node is actually turned into before an agent sees it."
+   ],
+   "nextLabel": "Chapter 19. How Memory Becomes Material",
+   "nextHref": "Ch19.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "hub": {
+  "cx": 320,
+  "cy": 300,
+  "r": 60,
+  "spokeR": 190,
+  "center": {
+   "glyph": "check",
+   "size": 58,
+   "label": "resolved",
+   "wash": "ok",
+   "washAt": 2
+  },
+  "spokes": [
+   {
+    "name": "full text",
+    "glyph": "doc",
+    "at": 1,
+    "dir": "in"
+   },
+   {
+    "name": "vector",
+    "glyph": "cube",
+    "at": 1,
+    "dir": "in"
+   },
+   {
+    "name": "graph",
+    "glyph": "logo",
+    "at": 1,
+    "dir": "in"
+   },
+   {
+    "name": "material",
+    "glyph": "stack",
+    "at": 3
+   },
+   {
+    "name": "record",
+    "glyph": "doc",
+    "at": 4,
+    "sub": "not a concept"
+   },
+   {
+    "name": "no choice",
+    "glyph": "question",
+    "at": 5,
+    "sub": "a normal answer"
+   }
+  ],
+  "at": 0,
+  "ringAt": 1
+ },
+ "figures": []
+}

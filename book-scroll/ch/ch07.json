@@ -1,0 +1,792 @@
+{
+ "n": 7,
+ "part": 0,
+ "file": "Ch07.dc.html",
+ "slot": "vinc.book.07-agents.en",
+ "title": "The Being That Uses Memory",
+ "side": "left",
+ "viewBox": "40 60 620 540",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "7.0",
+   "eyebrow": "Part 0 · Chapter 7",
+   "h": "The Being That Uses Memory",
+   "paras": [
+    "In Chapter 6 we made memory readable in space and time. We distinguished what to remember, built a grammar for recording it, connected the relationships, and gave the graph a space.",
+    "But memory does not act by itself.",
+    "Someone has to read it, compare it with the present situation, find what is relevant, and build a new judgment from the result.",
+    "Memory needs a user. Here we will call that user an Agent."
+   ]
+  },
+  {
+   "label": "7.1",
+   "h": "An Agent Is What It Reads",
+   "paras": [
+    "Even with the same model underneath, what an agent is given to read changes how it behaves.",
+    "An agent that reads only the current question and an agent that also reads past decisions and failure records will approach the same problem differently.",
+    "So defining an agent as a model is not enough. We have to define what memory it reads, which tools it may use, which rules it follows, and what it must not do.",
+    "Chapter 3 argued that context conditions an answer. For an agent that context is the condition of its actions."
+   ],
+   "claim": "An agent is what it reads."
+  },
+  {
+   "label": "7.2",
+   "h": "Giving an Agent Memory",
+   "paras": [
+    "Handing a language model one search tool does not by itself make an agent with memory.",
+    "What matters is that the agent's work is connected to the memory. It reads the present situation, finds the related concepts, checks the past decisions, avoids the approach that failed last time, and where it should, proposes new memory.",
+    "When that happens the graph stops being a knowledge base and becomes the agent's working context.",
+    "The agent is no longer something that consumes memory from outside the graph. It reads memory and can change it."
+   ]
+  },
+  {
+   "label": "7.3",
+   "h": "A Role Is a Node",
+   "paras": [
+    "If we think of an agent only as a prompt or a bundle of code, it becomes hard to change its role or connect several agents together.",
+    "So in Vinc a role can be a node in the graph, and several things attach to it: a mission, a reading list, an allowed surface, gates, a list of things it never does, what only a person may decide, and which model rung it runs at.",
+    "An agent then is not merely an executor. It is a node carrying a contract.",
+    "That puts part of the orchestration outside the code, where it can be read: who is responsible for what, what they must read, what they may not do, and what has to hold before the next stage begins."
+   ]
+  },
+  {
+   "label": "7.4",
+   "h": "The Node Is Not a Fixed Manual",
+   "paras": [
+    "An agent being a node does not mean its contents are frozen.",
+    "Real work keeps changing. A role starts simple, and then a new problem is found. Another agent passes along new information. The agent discovers its own failure. A person changes the priority.",
+    "So the state and the memory attached to a role have to be able to change too.",
+    "The important part is that a node's identity and a node's contents are not the same thing. The agent continues as the same agent, while what it knows and what it is doing right now both move."
+   ],
+   "claim": "The graph is not a static org chart. It reflects work in progress."
+  },
+  {
+   "label": "7.5",
+   "h": "Conversation Between Agents Becomes Memory",
+   "paras": [
+    "When several agents cooperate, what one of them finds changes what the others do.",
+    "Suppose a design agent discovers a constraint during implementation. Passing that to the implementation agent changes the conditions of the next piece of work. When a verification agent finds a new cause of failure, later agents can avoid the same mistake.",
+    "What matters in this is not the message itself but how the meaning of the graph changed because of it.",
+    "Communication between agents does not end as message passing. A finding that is promoted to memory becomes the next agent's context."
+   ],
+   "claim": "One agent's experience becomes another agent's memory."
+  },
+  {
+   "label": "7.6",
+   "h": "Workflow Is a Relationship",
+   "paras": [
+    "When several agents work together an order appears: research, design, implementation, review, delivery.",
+    "That order could be hardcoded into orchestration code. Expressed in the graph instead, the relationship between the agents is itself remembered.",
+    "Then the workflow can be read: which agent hands its result to whom, under what condition the next stage begins, which role depends on which.",
+    "The arrow is not only that this one is next. It carries the fact that the later stage depends on the earlier one."
+   ]
+  },
+  {
+   "label": "7.7",
+   "h": "One Failure Constrains the Next Run",
+   "paras": [
+    "An agent can get things wrong. What matters is that the failure does not vanish into a log.",
+    "If the cause is written down and attached to the role or the task it applies to, the next agent can read it.",
+    "Then one failure becomes a constraint on the next attempt. A traversal that took a branch and failed leaves a record on the role, and the next traversal reaching the same fork does not take that branch.",
+    "Past failure changes present behaviour, and present experience changes the future agent. This is the moment a graph stops being a store and starts preserving the trace of learning."
+   ]
+  },
+  {
+   "label": "7.8",
+   "h": "Steering Is Not Enforcing",
+   "paras": [
+    "There is an important limit here. Recording an agent's role and rules in the graph does not mean the graph physically compels every action.",
+    "The graph can provide a contract, a reading list, a record of prohibitions, and a workflow. That is not the same as automatic enforcement of every one of them.",
+    "So the graph here is neither a scheduler nor an executor. It is the structure of memory that explains the context an agent should act in.",
+    "The agent reads that structure and acts; the system performs the separate verification and permission control where those are needed."
+   ],
+   "claim": "Providing memory and enforcing action are different problems."
+  },
+  {
+   "label": "7.9",
+   "h": "Both User and Producer",
+   "paras": [
+    "At first an agent looks like something that takes memory out of the graph. In practice the other direction exists as well.",
+    "It reads from the graph, judges on that basis, does the work, and in doing so produces new facts, new failures, and new decisions. Those go back into the graph.",
+    "So an agent is not simply a consumer of memory. It is a user of memory and a producer of it, and the ring only closes on the write.",
+    "Which leaves one problem. If an agent reads memory and acts on it, what happens when that memory is wrong?"
+   ],
+   "claim": "Good memory makes an agent more capable. So does bad memory."
+  },
+  {
+   "kind": "close",
+   "label": "7.close",
+   "paras": [
+    "We built an agent that has memory. Now we have to ask whether that memory can be trusted."
+   ],
+   "nextLabel": "Chapter 8. Can We Trust Memory",
+   "nextHref": "Ch08.dc.html"
+  }
+ ],
+ "anchors": [],
+ "marks": [
+  {
+   "id": "g0",
+   "shape": "circle",
+   "p": [
+    130,
+    330
+   ],
+   "r": 11,
+   "at": 0,
+   "glyph": "logo",
+   "gs": 34
+  },
+  {
+   "id": "g1",
+   "shape": "hex",
+   "p": [
+    80,
+    290
+   ],
+   "r": 9,
+   "at": 0
+  },
+  {
+   "id": "g2",
+   "shape": "circle",
+   "p": [
+    90,
+    382
+   ],
+   "r": 8,
+   "at": 0
+  },
+  {
+   "id": "g3",
+   "shape": "hex",
+   "p": [
+    172,
+    268
+   ],
+   "r": 9,
+   "at": 0
+  },
+  {
+   "id": "g4",
+   "shape": "circle",
+   "p": [
+    182,
+    392
+   ],
+   "r": 8,
+   "at": 0
+  },
+  {
+   "id": "q",
+   "shape": "hex",
+   "p": [
+    270,
+    110
+   ],
+   "r": 10,
+   "at": 1,
+   "label": "the current question",
+   "labelAt": 1,
+   "lpos": "above"
+  },
+  {
+   "id": "A",
+   "shape": "ring",
+   "p": [
+    330,
+    190
+   ],
+   "r": 16,
+   "at": 1,
+   "dim": 2,
+   "glyph": "agent",
+   "gs": 40,
+   "z": 0.5
+  },
+  {
+   "id": "B",
+   "shape": "ring",
+   "p": [
+    330,
+    360
+   ],
+   "r": 16,
+   "at": 1,
+   "label": "Agent(t)",
+   "labelAt": 9,
+   "lpos": "above",
+   "glyph": "agent",
+   "gs": 40,
+   "z": 0.95,
+   "wash": "peri",
+   "washAt": 9,
+   "washR": 30
+  },
+  {
+   "id": "oA",
+   "shape": "circle",
+   "p": [
+    412,
+    190
+   ],
+   "r": 7,
+   "at": 1,
+   "dim": 2
+  },
+  {
+   "id": "oB",
+   "shape": "diamond",
+   "p": [
+    412,
+    360
+   ],
+   "r": 8,
+   "at": 1
+  },
+  {
+   "id": "c0",
+   "shape": "circle",
+   "p": [
+    450,
+    300
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Mission",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c1",
+   "shape": "circle",
+   "p": [
+    450,
+    328
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Reading list",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c2",
+   "shape": "circle",
+   "p": [
+    450,
+    356
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Allowed surface",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c3",
+   "shape": "circle",
+   "p": [
+    450,
+    384
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Gates",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c4",
+   "shape": "circle",
+   "p": [
+    450,
+    412
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Never",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c5",
+   "shape": "circle",
+   "p": [
+    450,
+    440
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Person only",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "c6",
+   "shape": "circle",
+   "p": [
+    450,
+    468
+   ],
+   "r": 4.5,
+   "at": 3,
+   "label": "Model rung",
+   "labelAt": 3,
+   "lpos": "right",
+   "labelSize": 12.5
+  },
+  {
+   "id": "h1",
+   "shape": "hex",
+   "p": [
+    330,
+    482
+   ],
+   "r": 9,
+   "at": 4,
+   "label": "current state",
+   "labelAt": 4,
+   "lpos": "below",
+   "labelSize": 12.5
+  },
+  {
+   "id": "h2",
+   "shape": "hex",
+   "p": [
+    400,
+    506
+   ],
+   "r": 9,
+   "at": 4,
+   "label": "discovered problem",
+   "labelAt": 4,
+   "lpos": "below",
+   "labelSize": 12.5
+  },
+  {
+   "id": "h3",
+   "shape": "hex",
+   "p": [
+    472,
+    526
+   ],
+   "r": 9,
+   "at": 4,
+   "label": "new knowledge",
+   "labelAt": 4,
+   "lpos": "below",
+   "labelSize": 12.5
+  },
+  {
+   "id": "D",
+   "shape": "ring",
+   "p": [
+    620,
+    100
+   ],
+   "r": 12,
+   "at": 5,
+   "label": "Design",
+   "labelAt": 5,
+   "lpos": "left",
+   "labelSize": 12.5,
+   "glyph": "agent",
+   "gs": 26,
+   "z": 0.3
+  },
+  {
+   "id": "cst",
+   "shape": "hex",
+   "p": [
+    560,
+    150
+   ],
+   "r": 8,
+   "at": 5,
+   "label": "Constraint",
+   "labelAt": 5,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "I",
+   "shape": "ring",
+   "p": [
+    620,
+    200
+   ],
+   "r": 12,
+   "at": 5,
+   "label": "Implementation",
+   "labelAt": 5,
+   "lpos": "left",
+   "labelSize": 12.5,
+   "glyph": "agent",
+   "gs": 26,
+   "z": 0.3
+  },
+  {
+   "id": "V",
+   "shape": "ring",
+   "p": [
+    620,
+    300
+   ],
+   "r": 12,
+   "at": 5,
+   "label": "Verification",
+   "labelAt": 5,
+   "lpos": "left",
+   "labelSize": 12.5,
+   "glyph": "agent",
+   "gs": 26,
+   "z": 0.3
+  },
+  {
+   "id": "Del",
+   "shape": "diamond",
+   "p": [
+    620,
+    400
+   ],
+   "r": 9,
+   "at": 6,
+   "label": "Delivery",
+   "labelAt": 6,
+   "lpos": "left",
+   "labelSize": 12.5
+  },
+  {
+   "id": "b1",
+   "shape": "circle",
+   "p": [
+    232,
+    470
+   ],
+   "r": 7,
+   "at": 7,
+   "dim": 7
+  },
+  {
+   "id": "b2",
+   "shape": "circle",
+   "p": [
+    172,
+    540
+   ],
+   "r": 7,
+   "at": 7,
+   "dim": 7
+  },
+  {
+   "id": "f",
+   "shape": "hex",
+   "p": [
+    104,
+    472
+   ],
+   "r": 9,
+   "at": 7,
+   "label": "Failure Record",
+   "labelAt": 7,
+   "lpos": "below",
+   "labelSize": 12.5,
+   "wash": "danger",
+   "washAt": 7,
+   "washR": 18
+  }
+ ],
+ "lines": [
+  {
+   "from": "g0",
+   "to": "g1",
+   "at": 0,
+   "ink": 2,
+   "stagger": 0
+  },
+  {
+   "from": "g0",
+   "to": "g2",
+   "at": 0,
+   "ink": 2,
+   "stagger": 1
+  },
+  {
+   "from": "g0",
+   "to": "g3",
+   "at": 0,
+   "ink": 2,
+   "stagger": 2
+  },
+  {
+   "from": "g0",
+   "to": "g4",
+   "at": 0,
+   "ink": 2,
+   "stagger": 3
+  },
+  {
+   "from": "g1",
+   "to": "g3",
+   "at": 0,
+   "ink": 2,
+   "stagger": 4
+  },
+  {
+   "from": "q",
+   "to": "A",
+   "at": 1,
+   "dir": true,
+   "stagger": 0
+  },
+  {
+   "from": "q",
+   "to": "B",
+   "at": 1,
+   "dir": true,
+   "side": 1,
+   "stagger": 1
+  },
+  {
+   "from": "g0",
+   "to": "B",
+   "at": 1,
+   "dir": true,
+   "side": -1,
+   "label": "read",
+   "labelAt": 2,
+   "stagger": 2
+  },
+  {
+   "from": "g3",
+   "to": "B",
+   "at": 1,
+   "dir": true,
+   "stagger": 3
+  },
+  {
+   "from": "A",
+   "to": "oA",
+   "at": 1,
+   "dir": true,
+   "fade": 2,
+   "stagger": 4
+  },
+  {
+   "from": "B",
+   "to": "oB",
+   "at": 1,
+   "dir": true,
+   "stagger": 5
+  },
+  {
+   "from": "g1",
+   "to": "B",
+   "at": 2,
+   "dir": true,
+   "side": -1,
+   "stagger": 0
+  },
+  {
+   "from": "g4",
+   "to": "B",
+   "at": 2,
+   "dir": true,
+   "side": 1,
+   "stagger": 1
+  },
+  {
+   "from": "B",
+   "to": "c0",
+   "at": 3,
+   "side": -1,
+   "ink": 2,
+   "stagger": 0
+  },
+  {
+   "from": "B",
+   "to": "c1",
+   "at": 3,
+   "side": -1,
+   "ink": 2,
+   "stagger": 1
+  },
+  {
+   "from": "B",
+   "to": "c2",
+   "at": 3,
+   "side": -1,
+   "ink": 2,
+   "stagger": 2
+  },
+  {
+   "from": "B",
+   "to": "c3",
+   "at": 3,
+   "side": 1,
+   "ink": 2,
+   "stagger": 3
+  },
+  {
+   "from": "B",
+   "to": "c4",
+   "at": 3,
+   "side": 1,
+   "ink": 2,
+   "stagger": 4
+  },
+  {
+   "from": "B",
+   "to": "c5",
+   "at": 3,
+   "side": 1,
+   "ink": 2,
+   "stagger": 5
+  },
+  {
+   "from": "B",
+   "to": "c6",
+   "at": 3,
+   "side": 1,
+   "ink": 2,
+   "stagger": 6
+  },
+  {
+   "from": "h1",
+   "to": "B",
+   "at": 4,
+   "dir": true,
+   "stagger": 0
+  },
+  {
+   "from": "h2",
+   "to": "B",
+   "at": 4,
+   "dir": true,
+   "stagger": 1
+  },
+  {
+   "from": "h3",
+   "to": "B",
+   "at": 4,
+   "dir": true,
+   "stagger": 2
+  },
+  {
+   "from": "D",
+   "to": "cst",
+   "at": 5,
+   "dir": true,
+   "label": "discovery",
+   "labelAt": 5,
+   "side": -1,
+   "stagger": 0
+  },
+  {
+   "from": "cst",
+   "to": "I",
+   "at": 5,
+   "dir": true,
+   "label": "transfer",
+   "labelAt": 5,
+   "side": -1,
+   "stagger": 1
+  },
+  {
+   "from": "I",
+   "to": "V",
+   "at": 5,
+   "dir": true,
+   "label": "change",
+   "labelAt": 5,
+   "side": 1,
+   "stagger": 2
+  },
+  {
+   "from": "D",
+   "to": "I",
+   "at": 6,
+   "dir": true,
+   "side": -1,
+   "ink": 2,
+   "stagger": 0
+  },
+  {
+   "from": "V",
+   "to": "Del",
+   "at": 6,
+   "dir": true,
+   "side": 1,
+   "stagger": 1
+  },
+  {
+   "from": "B",
+   "to": "b1",
+   "at": 7,
+   "dir": true,
+   "fade": 7,
+   "stagger": 0
+  },
+  {
+   "from": "b1",
+   "to": "b2",
+   "at": 7,
+   "dir": true,
+   "fade": 7,
+   "stagger": 1
+  },
+  {
+   "from": "f",
+   "to": "B",
+   "at": 7,
+   "dir": true,
+   "label": "applies to",
+   "labelAt": 7,
+   "side": 1,
+   "stagger": 2
+  },
+  {
+   "from": "B",
+   "to": "g0",
+   "at": 9,
+   "dir": true,
+   "side": 1,
+   "label": "write",
+   "labelAt": 9,
+   "stagger": 0
+  }
+ ],
+ "stage": [
+  "  // This chapter has no opening figure: it is already the closest thing in",
+  "  // the book to a hub picture, and the addendum caps figures rather than",
+  "  // requiring them. The one thing drawn here is the boundary between what",
+  "  // the contract describes and what the system enforces — one continuous",
+  "  // hairline beside the contract column, not a dashed divider.",
+  "  stage(s, p) {",
+  "    const E = React.createElement;",
+  "    if (s < 8) return null;",
+  "    return E('g', { key: 'brk' },",
+  "      E('path', { d: 'M438,292 L438,478', fill: 'none', stroke: INK, strokeWidth: 1,",
+  "        strokeLinecap: 'round', pathLength: 1, strokeDasharray: 1,",
+  "        style: { strokeDashoffset: 0, transition: `stroke-dashoffset ${T_LINE}ms ${ENTER}` } }),",
+  "      E('text', { x: 438, y: 496, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic', fill: INK },",
+  "        'describes the context'));",
+  "  }"
+ ],
+ "figures": [],
+ "ground": [
+  320,
+  612,
+  250,
+  18
+ ],
+ "no": 7
+}

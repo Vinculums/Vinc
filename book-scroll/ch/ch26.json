@@ -1,0 +1,163 @@
+{
+ "n": 26,
+ "no": 27,
+ "part": 3,
+ "file": "Ch26.dc.html",
+ "slot": "vinc.book.26-sync.en",
+ "title": "How Causal Relationships Become Space",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "27.0",
+   "eyebrow": "Part 3 · Chapter 27",
+   "h": "How Causal Relationships Become Space",
+   "paras": [
+    "An edge is not a connecting line. Some relationships express only that two nodes are connected; some express that one node has to exist before the other structurally.",
+    "Use that difference and the graph's causal structure can be read spatially.",
+    "In A prerequisite-of B, what matters is not the coordinates of A and B. It is the order between them."
+   ],
+   "claim": "Relationships make order. Order makes coordinates. Not the other way round."
+  },
+  {
+   "label": "27.1",
+   "h": "Time Order Is Not Causal Order",
+   "paras": [
+    "Two events recorded at ten and eleven o'clock do not establish that the first caused the second.",
+    "A happened before B and A is required for B are different propositions.",
+    "Two decisions made on the same day do not make one a premise of the other. Two decisions months apart, where the later one took the earlier as its basis, are related by prerequisite rather than by date.",
+    "So ordinary time information and causal relationships have to be stored separately in the graph."
+   ]
+  },
+  {
+   "label": "27.2",
+   "h": "Causal Order Is a Partial Order",
+   "paras": [
+    "Prerequisite-of, derives-from and inherits-from can be read as the relationships that create causal order.",
+    "The goal is not to sort the whole graph into one line. Some nodes have an order between them and some have no direct order at all. That is a partial order.",
+    "A can precede B and C, and B and C can both precede D, without the structure saying anything about which of B and C came first.",
+    "Pretending otherwise would invent an order the data does not contain."
+   ]
+  },
+  {
+   "label": "27.3",
+   "h": "The Cone, Read Again",
+   "paras": [
+    "From a given node, two directions can be considered. Upstream holds what precedes it in establishing it. Downstream holds what derives from it or follows as a structural consequence.",
+    "That region can be read as a causal cone, and it is the same picture Part 0 used as a borrowed lens.",
+    "It should not be read as the simple before-and-after regions of a time axis. A came before B and A is a precondition of B are different relationships, and the cone follows the second.",
+    "So causal structure and world time can be related without being the same thing."
+   ],
+   "claim": "The same picture returns, and it is a return rather than a new idea."
+  },
+  {
+   "label": "27.4",
+   "h": "No Metric Is Invented",
+   "paras": [
+    "Computing coordinates between nodes does not create a physical distance between them.",
+    "Distance is not semantic truth and geometric distance is not causal strength. Coordinates can be placement values for a view; relationships express the graph's meaning.",
+    "So spatialisation needs two layers. Graph semantics produce a causal order, the order produces layout constraints, and constraints produce coordinates.",
+    "Layout can visualise causal order. Layout must not create new causal order, and that principle gets more important the more elaborate the visualisation becomes."
+   ]
+  },
+  {
+   "label": "27.5",
+   "h": "Two Spaces, Complementary",
+   "paras": [
+    "Selecting a node lets its upstream and downstream be traversed, which is stronger than a one-hop neighbourhood: what had to precede this, and what came out of it, read together.",
+    "Embedding finds sentences and nodes that are semantically near. A causal graph finds what structurally precedes or derives.",
+    "Semantic space is similarity of meaning. Causal space is structural order. Two nodes near in meaning are not guaranteed to be causally connected, and two causally connected nodes need not be near in an embedding.",
+    "So one coordinate system does not explain every meaning, and the screen is a projection of several structures at once."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "27.close",
+   "paras": [
+    "The last chapter of Part 3 asks what the density of that projection actually shows."
+   ],
+   "nextLabel": "Chapter 28. What Density and Layout Show",
+   "nextHref": "Ch27.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "stage": [
+  "  // The cone returns here, given the same treatment as Part 0 chapter 6",
+  "  // so the reader recognises it. Hairlines, no shading: the book names it",
+  "  // as a borrowed lens rather than an implementation.",
+  "  APEX = [320, 300];",
+  "  stage(s, p) {",
+  "    const E = React.createElement, kids = [], A = this.APEX;",
+  "    const open = s >= 3 ? (s > 3 ? 1 : smooth(clamp(p * 1.15, 0, 1))) : 0;",
+  "    // beats 0 to 2: the partial order, as an order and not yet as a space",
+  "    if (s <= 2) {",
+  "      const N = { a: [320, 130], b: [200, 270], c: [440, 270], d: [320, 410] };",
+  "      const put = (k, q) => kids.push(E('path', { key: k, d: blob(q[0], q[1], 12, K), fill: INK }));",
+  "      Object.entries(N).forEach(([k, q]) => put(k, q));",
+  "      [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']].forEach(([x, y], i) => {",
+  "        const g = linkPath({ p: N[x], r: 12 }, { p: N[y], r: 12 }, i % 2 ? 1 : -1, true);",
+  "        kids.push(E('path', { key: 'e' + i, d: g.d, fill: 'none', stroke: s >= 1 ? INK : EDGE,",
+  "          strokeWidth: 1, strokeLinecap: 'round', strokeLinejoin: 'round',",
+  "          pathLength: 1, strokeDasharray: 1, style: { strokeDashoffset: 0 } }));",
+  "      });",
+  "      kids.push(E('text', { key: 'po', x: 320, y: 470, textAnchor: 'middle', fontSize: 13,",
+  "        fontStyle: 'italic', fill: INK },",
+  "        s >= 2 ? 'B and C have no order between them' : 'order, not coordinates'));",
+  "    }",
+  "    // beats 3 onward: the cone",
+  "    if (s >= 3) {",
+  "      const spread = 150 * open;",
+  "      kids.push(E('line', { key: 'ax', x1: 96, y1: A[1], x2: 544, y2: A[1], stroke: EDGE, strokeWidth: 1 }));",
+  "      kids.push(E('path', { key: 'up', d: `M${A[0] - spread},${A[1] - 150} L${A[0]},${A[1]} L${A[0] + spread},${A[1] - 150}`,",
+  "        fill: 'none', stroke: INK, strokeWidth: 1, strokeLinecap: 'round', strokeLinejoin: 'round' }));",
+  "      kids.push(E('path', { key: 'dn', d: `M${A[0] - spread},${A[1] + 150} L${A[0]},${A[1]} L${A[0] + spread},${A[1] + 150}`,",
+  "        fill: 'none', stroke: INK, strokeWidth: 1, strokeLinecap: 'round', strokeLinejoin: 'round' }));",
+  "      kids.push(E('path', { key: 'apex', d: blob(A[0], A[1], 8, K), fill: INK }));",
+  "      kids.push(E('text', { key: 'ut', x: A[0], y: A[1] - 168, textAnchor: 'middle', fontSize: 12.5,",
+  "        fontStyle: 'italic', fill: INK, style: { opacity: open > 0.6 ? 1 : 0,",
+  "          transition: `opacity ${T_MARK}ms ${ENTER}` } }, 'upstream · what had to precede'));",
+  "      kids.push(E('text', { key: 'dt', x: A[0], y: A[1] + 186, textAnchor: 'middle', fontSize: 12.5,",
+  "        fontStyle: 'italic', fill: INK, style: { opacity: open > 0.6 ? 1 : 0,",
+  "          transition: `opacity ${T_MARK}ms ${ENTER}` } }, 'downstream · what derived'));",
+  "      if (s >= 5) {",
+  "        kids.push(E('text', { key: 'sp', x: A[0], y: A[1] + 232, textAnchor: 'middle',",
+  "          fontSize: 12.5, fill: META }, 'semantic nearness is a different space'));",
+  "      }",
+  "    }",
+  "    return E('g', { key: 'cone' }, kids);",
+  "  }"
+ ],
+ "figures": [
+  {
+   "id": "clk",
+   "glyph": "clock",
+   "p": [
+    104,
+    108
+   ],
+   "size": 38,
+   "at": 1,
+   "until": 2
+  },
+  {
+   "id": "notcause",
+   "glyph": "cross",
+   "p": [
+    104,
+    108
+   ],
+   "size": 30,
+   "at": 1,
+   "until": 2,
+   "wash": "danger",
+   "washR": 22,
+   "washFrom": 0.4,
+   "double": false,
+   "label": "order is not cause",
+   "labelDy": 26
+  }
+ ]
+}

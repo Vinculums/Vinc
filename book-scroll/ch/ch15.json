@@ -1,0 +1,179 @@
+{
+ "n": 15,
+ "no": 15,
+ "part": 1,
+ "file": "Ch15.dc.html",
+ "slot": "vinc.book.15-document-pipeline.en",
+ "title": "How a Document Becomes Nodes",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "15.0",
+   "eyebrow": "Part 1 · Chapter 15",
+   "h": "How a Document Becomes Nodes",
+   "paras": [
+    "The system's real work starts the moment a document arrives.",
+    "But converting a document straight into nodes is not the structure VINC chose.",
+    "A document has its original wording and its context. The graph has reusable meanings and relationships."
+   ],
+   "claim": "So processing is not replacing the source with a graph. It is adding reusable structure while the source stays."
+  },
+  {
+   "label": "15.1",
+   "h": "The First Step Is Preservation",
+   "paras": [
+    "The first step is storing the document.",
+    "The whole text is kept and managed in units small enough to process. That unit does not redefine the document's meaning; it exists for search and for retrieval.",
+    "The condition that matters is that the original can be reconstructed. After storage the system can search the text through those units and, when it needs to, assemble the whole document again.",
+    "So nothing in the structuring step consumes the original sentences. They are still there, and still quotable."
+   ]
+  },
+  {
+   "label": "15.2",
+   "h": "The Second Step Is Discovery",
+   "paras": [
+    "Then the meanings worth reusing are found in the document.",
+    "Candidate concepts can be proposed from its structure and its content. Automatic extraction is a starting point for finding meaningful structure, not a verdict.",
+    "An extracted candidate is not therefore a new memory. The graph has to be checked first for the same concept.",
+    "If it is already there, the document connects to the existing node instead of a new one being made. That check is the difference between a graph that grows and a graph that duplicates."
+   ],
+   "claim": "Extraction proposes. It does not decide."
+  },
+  {
+   "label": "15.3",
+   "h": "MENTIONS Is the Axis",
+   "paras": [
+    "In this process the MENTIONS relationship does the load-bearing work.",
+    "If a document mentioned a particular concept, the connection between the document and the concept is left behind.",
+    "Then the concept exists independently in the graph and can still be followed back to whichever documents support it.",
+    "Without that edge the concept floats: it has a title and no evidence, and nothing in the graph says which document put it there.",
+    "An edge nobody wrote is an edge nobody can follow back."
+   ]
+  },
+  {
+   "label": "15.4",
+   "h": "Automatic and Human-Refined Are Different",
+   "paras": [
+    "Automatic extraction finds candidates. A person can refine the title or the description afterwards.",
+    "And once a concept has been cleaned up, a later extraction pass must not overwrite it arbitrarily.",
+    "This is about the stability of memory. Every incoming document should add new evidence and new relationships to existing memory rather than manufacturing the same memory again.",
+    "A pipeline that re-mints concepts on every run makes the graph noisier with every document it processes.",
+    "Stability is the property that makes a second pass safe to run at all."
+   ]
+  },
+  {
+   "label": "15.5",
+   "h": "Not Compression",
+   "paras": [
+    "So going from a document to nodes is not compressing the document into nodes.",
+    "The document preserves context. The graph structures meaning.",
+    "Because the two are connected, you can go from one concept back to the source text, and from a document into the graph by following the concepts it mentioned.",
+    "Neither direction is a summary of the other, and that is the property the rest of the book depends on.",
+    "Neither side is a summary of the other, and that is what the parts that follow rest on."
+   ],
+   "claim": "The document holds context. The graph holds structure. Both, or neither works."
+  },
+  {
+   "kind": "close",
+   "label": "15.close",
+   "paras": [
+    "Now the structured memory has to be found during real work. The next chapters are about search."
+   ],
+   "nextLabel": "Part 2. How Memory Is Found and Handed Out",
+   "nextHref": "Ch16.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "conveyor": {
+  "y": 300,
+  "x0": 108,
+  "x1": 532,
+  "stations": [
+   {
+    "name": "arrives",
+    "shape": "hex",
+    "count": 1,
+    "r": 17,
+    "payload": "doc"
+   },
+   {
+    "name": "stored whole",
+    "shape": "hex",
+    "count": 1,
+    "r": 17,
+    "note": "reconstructable"
+   },
+   {
+    "name": "chunks",
+    "shape": "hex",
+    "count": 4,
+    "r": 9,
+    "glyph": "stack"
+   },
+   {
+    "name": "candidates",
+    "shape": "circle",
+    "count": 4,
+    "r": 9,
+    "note": "proposals, not verdicts",
+    "glyph": "stack"
+   },
+   {
+    "name": "existing node?",
+    "shape": "circle",
+    "count": 2,
+    "r": 12
+   },
+   {
+    "name": "MENTIONS",
+    "shape": "circle",
+    "count": 2,
+    "r": 12,
+    "note": "the concept can be walked home",
+    "glyph": "arrow"
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "kept",
+   "glyph": "doc",
+   "p": [
+    104,
+    118
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "preserved first",
+   "labelDy": 14
+  },
+  {
+   "id": "found",
+   "glyph": "lens",
+   "p": [
+    320,
+    126
+   ],
+   "size": 34,
+   "at": 2,
+   "label": "extraction proposes",
+   "labelDy": 14
+  },
+  {
+   "id": "refined",
+   "glyph": "astronaut",
+   "p": [
+    536,
+    112
+   ],
+   "size": 38,
+   "at": 4,
+   "label": "a person refines",
+   "labelDy": 14
+  }
+ ]
+}

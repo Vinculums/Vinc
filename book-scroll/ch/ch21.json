@@ -1,0 +1,191 @@
+{
+ "n": 21,
+ "no": 21,
+ "part": 2,
+ "file": "Ch21.dc.html",
+ "slot": "vinc.book.21-agents.en",
+ "title": "A Role Is a Node",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "21.0",
+   "eyebrow": "Part 2 · Chapter 21",
+   "h": "A Role Is a Node",
+   "paras": [
+    "Look at an agent as a program only and it becomes hard to say which memory it should be using.",
+    "Agents on the same graph can have different purposes. One handles search, one handles evaluation, one analyses documents.",
+    "VINC expresses that difference as an agent role, and a role can be a node the graph keeps referring to rather than a setting."
+   ],
+   "claim": "A role that lives in a config file is a role nothing else can point at."
+  },
+  {
+   "label": "21.1",
+   "h": "An Agent as a Concept",
+   "paras": [
+    "An agent can exist in the graph in the same way other concepts do, with a role, a domain, related decisions, related concepts and a prompt surface attached.",
+    "With that structure the agent's role can be traversed like any other concept in the graph.",
+    "Expressing an agent as a node also separates its definition from the process that executes it.",
+    "The definition persists; the process is whatever is running this week.",
+    "A definition in a config file is a definition nothing else in the system can cite."
+   ]
+  },
+  {
+   "label": "21.2",
+   "h": "A Role Describes a Boundary",
+   "paras": [
+    "A role is not a naming feature.",
+    "If a particular agent handles search, what kind of information it should look for, which domain it works in, and which prompt it may use can all be expressed as connections.",
+    "So an agent's behaviour does not have to be crammed into one system prompt.",
+    "The identity, the purpose, the domain, the constraints and the related decisions each become something a reader can find, rather than a paragraph someone has to remember to update."
+   ]
+  },
+  {
+   "label": "21.3",
+   "h": "Agent and Prompt Are Not the Same",
+   "paras": [
+    "MCP can expose the list of roles and their contracts through a prompt surface. Agent and prompt should not be read as the same thing.",
+    "An agent says who performs which role. A prompt says what instructions are given to perform it.",
+    "With that split, the prompt an agent uses can be replaced, or the prompt surface widened, and the agent's identity in the graph stays what it was.",
+    "Which is what makes a role survive a rewrite of its instructions."
+   ]
+  },
+  {
+   "label": "21.4",
+   "h": "The Graph Is Not a Scheduler",
+   "paras": [
+    "Expressing an agent as a node does not mean the graph directs its execution.",
+    "The graph can express that agent A uses concept X, relates to decision Y, follows prompt Z.",
+    "When to run, how many times, and which worker takes the job belong to a separate execution environment.",
+    "That separation matters. Use the graph as a scheduler and the semantic graph and the execution state end up tangled in one structure, where neither can be changed without disturbing the other."
+   ],
+   "claim": "The graph holds meaning and relationships. The runner holds execution."
+  },
+  {
+   "label": "21.5",
+   "h": "A Roster the Graph Can Answer",
+   "paras": [
+    "Model roles as concept nodes and the system can build the agent roster from the graph directly.",
+    "Each agent carries its own domain and relationships, which is stronger than a plain list: an agent can be traversed the way any other graph element is.",
+    "Which agent belongs to which domain, which concepts it connects to, which decisions it refers to, all from one graph.",
+    "So the reason to make a role a node is not to make agents more complicated. It is to let the system describe its own execution structure."
+   ],
+   "claim": "The thing that uses memory becomes something the memory system can read."
+  },
+  {
+   "kind": "close",
+   "label": "21.close",
+   "paras": [
+    "The next chapter asks what that existence actually has to keep: how a role becomes a contract."
+   ],
+   "nextLabel": "Chapter 22. How a Role Becomes a Contract",
+   "nextHref": "Ch21b.dc.html"
+  }
+ ],
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "conveyor": {
+  "y": 300,
+  "x0": 108,
+  "x1": 532,
+  "stations": [
+   {
+    "name": "a program",
+    "shape": "circle",
+    "count": 1,
+    "r": 13
+   },
+   {
+    "name": "a role node",
+    "shape": "ring",
+    "count": 1,
+    "r": 16,
+    "note": "referable, traversable",
+    "glyph": "agent"
+   },
+   {
+    "name": "domain",
+    "shape": "circle",
+    "count": 1,
+    "r": 12
+   },
+   {
+    "name": "prompt",
+    "shape": "hex",
+    "count": 1,
+    "r": 12,
+    "note": "replaceable, identity kept"
+   },
+   {
+    "name": "the runner",
+    "shape": "diamond",
+    "count": 1,
+    "r": 13,
+    "note": "when, how often, which worker"
+   },
+   {
+    "name": "roster",
+    "shape": "ring",
+    "count": 4,
+    "r": 10,
+    "scatter": true
+   }
+  ]
+ },
+ "figures": [
+  {
+   "id": "agent",
+   "glyph": "agent",
+   "p": [
+    104,
+    116
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "an agent",
+   "labelDy": 14
+  },
+  {
+   "id": "node",
+   "glyph": "logo",
+   "p": [
+    536,
+    116
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "a node",
+   "labelDy": 14
+  },
+  {
+   "id": "sched",
+   "glyph": "clock",
+   "p": [
+    320,
+    128
+   ],
+   "size": 38,
+   "at": 4,
+   "until": 4
+  },
+  {
+   "id": "nosched",
+   "glyph": "cross",
+   "p": [
+    320,
+    128
+   ],
+   "size": 30,
+   "at": 4,
+   "until": 4,
+   "wash": "danger",
+   "washR": 24,
+   "washFrom": 0.3,
+   "double": false,
+   "label": "the graph is not a scheduler",
+   "labelDy": 26
+  }
+ ]
+}

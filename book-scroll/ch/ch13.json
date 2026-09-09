@@ -1,0 +1,177 @@
+{
+ "n": 13,
+ "no": 13,
+ "part": 1,
+ "file": "Ch13.dc.html",
+ "slot": "vinc.book.13-ontology.en",
+ "title": "How the Concept System Is Managed",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "13.0",
+   "eyebrow": "Part 1 · Chapter 13",
+   "h": "How the Concept System Is Managed",
+   "paras": [
+    "A graph needs kinds of node. It does not need every concept we use to become a kind of node.",
+    "Miss that difference and the schema grows without end.",
+    "Suppose the concepts in use are search quality, cost efficiency, Korean-language performance, reproducibility."
+   ],
+   "claim": "Being important is not a reason to become a new kind of node."
+  },
+  {
+   "label": "13.1",
+   "h": "Kind and Concept Are Different Layers",
+   "paras": [
+    "A node kind names a role the system has to handle structurally differently. A concept names a meaning the user works with inside the system.",
+    "So one node kind, Concept, can carry a very large number of different concepts.",
+    "That is where the extensibility comes from. When a new technology or a new research subject appears, it can be expressed inside the existing Concept structure without changing the database schema.",
+    "A schema change is a migration. A new concept is a write."
+   ]
+  },
+  {
+   "label": "13.2",
+   "h": "An Open Space of Meanings",
+   "paras": [
+    "The same word can carry different meanings, and different names can point at the same thing. String comparison alone cannot settle whether two concepts are the same.",
+    "Embedding, vector representation, semantic vector do not always mean the same thing. In one context they point at one concept; in another they mark out different technical scopes.",
+    "So the concept system has to live on a different layer from the graph schema.",
+    "The schema defines the structure the system must understand. The concept system extends the space of meanings the system deals with."
+   ]
+  },
+  {
+   "label": "13.3",
+   "h": "The Two Layers Talk to Each Other",
+   "paras": [
+    "They are not independent. If a new kind of information keeps appearing and does not fit any existing node kind, that is a reason to look at the schema again.",
+    "And if the existing schema is sufficient, there is no reason to build a new structure for a new meaning.",
+    "Concept shows this boundary clearly. It is a node kind the system recognises structurally, while the titles of concepts are not restricted to a fixed list.",
+    "So the structure of the graph stays comparatively stable while the meanings inside it keep expanding."
+   ],
+   "claim": "Stable structure, growing meaning. The two are not the same axis."
+  },
+  {
+   "label": "13.4",
+   "h": "Extraction Needs a Boundary Too",
+   "paras": [
+    "Making concepts also needs a limit. Turn every noun and every phrase in a document into a concept and the graph grows fast, while meaningful memory and incidental wording become hard to tell apart.",
+    "Restrict it too tightly and new meanings cannot be expressed at all.",
+    "So extraction is not string collection. It is a judgment about which expressions are worth referring to independently in later work.",
+    "The test is whether anything will ever point at this again.",
+    "Most phrases in a document are not worth a node, and deciding that is the work."
+   ]
+  },
+  {
+   "label": "13.5",
+   "h": "A Title Is Not Understanding",
+   "paras": [
+    "A string becoming a node title does not mean the system has understood the concept.",
+    "The actual meaning has to be read together with the document's context, the relationships attached, the evidence, and the time.",
+    "So the concept system is wider than the graph. The graph provides a structure for storing and connecting concepts; it does not have to fix the whole of a human system of meanings into a schema.",
+    "Because that boundary is held, the structure can stay stable while the meaning keeps extending."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "13.close",
+   "paras": [
+    "Structure and concepts are still not enough for a system to exchange memory reliably. The next chapter looks at the grammar that makes the exchange possible."
+   ],
+   "nextLabel": "Chapter 14. What Grammar the System Remembers By",
+   "nextHref": "Ch14.dc.html"
+  }
+ ],
+ "conveyor": {
+  "y": 310,
+  "x0": 120,
+  "x1": 520,
+  "stations": [
+   {
+    "name": "a phrase",
+    "shape": "circle",
+    "count": 1,
+    "r": 14
+   },
+   {
+    "name": "worth reusing?",
+    "shape": "circle",
+    "count": 1,
+    "r": 14,
+    "note": "will anything point at this again"
+   },
+   {
+    "name": "Concept",
+    "shape": "circle",
+    "count": 1,
+    "r": 16,
+    "note": "one kind, many meanings",
+    "glyph": "book"
+   },
+   {
+    "name": "context",
+    "shape": "hex",
+    "count": 3,
+    "r": 9
+   },
+   {
+    "name": "relationships",
+    "shape": "diamond",
+    "count": 3,
+    "r": 10,
+    "glyph": "arrow"
+   },
+   {
+    "name": "meaning",
+    "shape": "circle",
+    "count": 3,
+    "r": 10,
+    "scatter": true,
+    "note": "not the title alone"
+   }
+  ]
+ },
+ "marks": [],
+ "lines": [],
+ "anchors": [],
+ "figures": [
+  {
+   "id": "kinds",
+   "glyph": "tablet",
+   "p": [
+    104,
+    116
+   ],
+   "size": 38,
+   "at": 1,
+   "label": "kinds: closed",
+   "labelDy": 14
+  },
+  {
+   "id": "concepts",
+   "glyph": "book",
+   "p": [
+    536,
+    116
+   ],
+   "size": 40,
+   "at": 1,
+   "label": "concepts: open",
+   "labelDy": 14
+  },
+  {
+   "id": "title",
+   "glyph": "lens",
+   "p": [
+    320,
+    132
+   ],
+   "size": 34,
+   "at": 5,
+   "wash": "warn",
+   "washR": 24,
+   "label": "a title is not understanding",
+   "labelDy": 14
+  }
+ ]
+}
