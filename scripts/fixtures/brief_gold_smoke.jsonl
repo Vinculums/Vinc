@@ -11,6 +11,6 @@
 {"query": "the day every member's synchronization pull came back with nothing", "gold_node_id": "episode:2026-07-21-sync-pull-critical", "gold_kind": "episode", "language_axis": "en", "answerable": true, "note": "Episode. 이 종류가 후보에 아예 못 오르는지가 N1 의 물음 하나다"}
 {"query": "the release whose sidecar shipped unable to open the store", "gold_node_id": "episode:2026-07-20-v051-critical", "gold_kind": "episode", "language_axis": "en", "answerable": true, "note": "Episode"}
 {"query": "사용자에게 보이는 문자열에서 그 긴 대시를 금지한 날", "gold_node_id": "episode:2026-07-22-emdash-ban", "gold_kind": "episode", "language_axis": "ko", "answerable": true, "note": "한국어 질문 · Episode"}
-{"query": "what is the airspeed velocity of an unladen swallow", "gold_node_id": "", "gold_kind": "none", "language_axis": "en", "answerable": false, "note": "답 불가. 이 그래프에 없는 것을 확정하면 정확도가 아니라 정직성 고장이다"}
-{"query": "which supplier did we sign the office furniture contract with", "gold_node_id": "", "gold_kind": "none", "language_axis": "en", "answerable": false, "note": "답 불가 · 사업 어휘라 그럴듯하게 들리는 것이 요점"}
-{"query": "작년 신입 채용 면접관 배정표는 어디 있나", "gold_node_id": "", "gold_kind": "none", "language_axis": "ko", "answerable": false, "note": "답 불가 · 한국어"}
+{"query": "what is the airspeed velocity of an unladen swallow", "gold_node_id": "", "gold_kind": "none", "language_axis": "en", "answerable": false, "note": "답 불가. 이 그래프에 없는 것을 확정하면 정확도가 아니라 정직성 고장이다", "unanswerable_kind": "no-topic"}
+{"query": "which supplier did we sign the office furniture contract with", "gold_node_id": "", "gold_kind": "none", "language_axis": "en", "answerable": false, "note": "답 불가 · 사업 어휘라 그럴듯하게 들리는 것이 요점", "unanswerable_kind": "no-topic"}
+{"query": "작년 신입 채용 면접관 배정표는 어디 있나", "gold_node_id": "", "gold_kind": "none", "language_axis": "ko", "answerable": false, "note": "답 불가 · 한국어", "unanswerable_kind": "no-topic"}
