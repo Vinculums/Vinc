@@ -6,6 +6,7 @@
 import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { confirmDestructive } from "./components";
+import { hydrateRich } from "./rich-blocks";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -14,9 +15,19 @@ export function renderMarkdown(src: string): string {
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
   const inline = (s: string) => s
     .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
+    // `[[문서]]` 가 먼저다 — 아래 링크 규칙이 `[..](..)` 를 먹기 전에 잡아야 대괄호
+    // 두 겹이 한 겹으로 오해되지 않는다. CM 라이브 프리뷰는 이것을 doclink 로 그리는데
+    // 여기만 원문 `[[doc:x]]` 를 그대로 내고 있었다(실측 2026-09-10) — 렌더러가 둘
+    // 이라는 사실이 화면에 드러나면 안 된다는 이 함수의 규율이 깨져 있던 자리다.
+    .replace(/\[\[([^\]\n]+)\]\]/g, (_m, c) => `<u class="md-doclink">${c}</u>`)
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/\*([^*]+)\*/g, "<i>$1</i>")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<u>$1</u>");
+  /** 파이프 표. **CM 쪽에는 이미 있고 여기만 없었다** — 같은 문서가 문서 열에서는
+   *  표로, 발췌·폴백에서는 `| a | b |` 원문으로 보였다. 구분줄(`---`)이 있는 것만
+   *  표로 본다: 그것이 마크다운의 계약이고, 없으면 그냥 파이프 문자가 든 문단이다. */
+  const isDelim = (t: string) => /^\|?[\s:|-]+\|?$/.test(t) && t.includes("-");
+  const cells = (t: string) => t.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
   const out: string[] = [];
   const lines = src.split("\n");
   let i = 0, list: "ul" | "ol" | null = null;
@@ -24,10 +35,48 @@ export function renderMarkdown(src: string): string {
   while (i < lines.length) {
     const raw = lines[i]; const t = raw.trim();
     if (t.startsWith("```")) {
-      closeList(); const buf: string[] = []; i++;
+      closeList();
+      const lang = t.slice(3).trim().toLowerCase();
+      const buf: string[] = []; i++;
       while (i < lines.length && !lines[i].trim().startsWith("```")) buf.push(lines[i++]);
       i++;
-      out.push(`<pre style="overflow-x:auto"><code>${esc(buf.join("\n"))}</code></pre>`); continue;
+      const body = buf.join("\n");
+      // 다이어그램은 **자리만 만든다** — 그리는 손은 rich-blocks 의 hydrateRich 다.
+      // 여기서 못 그리는 이유는 이 함수가 동기라서고, 동기로 두는 이유는 호출부가
+      // 전부 `innerHTML =` 한 줄이기 때문이다(발췌·폴백·미리보기).
+      if (lang === "mermaid") {
+        out.push(`<div class="md-mermaid" data-rich="mermaid" data-src="${esc(body)}"></div>`);
+        continue;
+      }
+      out.push(`<pre style="overflow-x:auto"><code>${esc(body)}</code></pre>`); continue;
+    }
+    // 블록 수식 `$$...$$`. 한 줄짜리와 여러 줄짜리를 함께 받는다.
+    if (t.startsWith("$$")) {
+      closeList();
+      const one = /^[$][$](.+)[$][$]$/.exec(t);
+      let tex: string;
+      if (one) { tex = one[1]; i++; }
+      else {
+        const buf: string[] = []; i++;
+        while (i < lines.length && !lines[i].trim().endsWith("$$")) buf.push(lines[i++]);
+        if (i < lines.length) { buf.push(lines[i].trim().replace(/[$][$]$/, "")); i++; }
+        tex = (t.slice(2) + "\n" + buf.join("\n")).trim();
+      }
+      out.push(`<div class="md-math" data-rich="math" data-src="${esc(tex)}"></div>`);
+      continue;
+    }
+    // 표 — 머리줄 + 구분줄이 나란히 와야 성립한다.
+    if (t.includes("|") && i + 1 < lines.length && isDelim(lines[i + 1].trim())) {
+      closeList();
+      const head = cells(t);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().includes("|")) rows.push(cells(lines[i++].trim()));
+      out.push(`<table class="md-tbl"><thead><tr>${
+        head.map((c) => `<th>${inline(esc(c))}</th>`).join("")}</tr></thead><tbody>${
+        rows.map((r) => `<tr>${r.map((c) => `<td>${inline(esc(c))}</td>`).join("")}</tr>`).join("")
+      }</tbody></table>`);
+      continue;
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(t);
     // 깊이는 소스 그대로다. 여태 한 단계 내려 찍어(`## X` → `<h3>`) 같은 문서가
@@ -69,6 +118,11 @@ export type DocEditorHandle = {
   /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
    *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
   scrollToOffset: (pos: number) => void;
+  /** 지금 편집기가 들고 있는 원문. **복사 버튼이 쓴다**(발주자 지적 2026-09-10:
+   *  "그냥 내용 드래그해서 복사하려는 사용자도 있을 것"). 화면에서 긁으면 렌더된
+   *  모습이 딸려 오지만 문서의 정본은 마크다운이므로, 한 번 눌러 얻는 것은
+   *  **소스 그대로**여야 붙여넣은 곳에서 같은 문서가 된다. */
+  getText: () => string;
 };
 
 /** 살아 있는 편집기 — **teardown 이 핸들에 닿는 유일한 통로.**
@@ -176,6 +230,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       const stub: DocEditorHandle = {
         dispose: async () => { closed = true; LIVE.delete(host); await again?.dispose(); },
         scrollToOffset: (pos) => again?.scrollToOffset(pos),
+        // 아직 못 읽은 문서다 — 빈 문자열이 곧 "복사할 것이 없다"이고,
+        // 호출부(복사 버튼)는 그 경우 아무 일도 하지 않는다.
+        getText: () => again?.getText() ?? "",
       };
       LIVE.set(host, stub);
       return stub;
@@ -233,7 +290,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   const setText = (t: string) => { if (cm) cm.setValue(t); else { src.value = t; prev.innerHTML = renderMarkdown(t); } };
   const onEdited = () => {
     setStatus(COPY.ui.viewx.edDirty);
-    if (!cm) prev.innerHTML = renderMarkdown(src.value);
+    if (!cm) { prev.innerHTML = renderMarkdown(src.value); hydrateRich(prev); }
     if (timer) window.clearTimeout(timer);
     timer = window.setTimeout(() => void save(), 2000);
   };
@@ -280,7 +337,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   } catch {
     src.value = initial;
     src.readOnly = !!opts.readOnly;
-    prev.innerHTML = renderMarkdown(initial);
+    prev.innerHTML = renderMarkdown(initial); hydrateRich(prev);
     src.addEventListener("input", onEdited);
     src.addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
@@ -418,8 +475,14 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       cm = null;
     },
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
+    getText,
   };
   LIVE.set(host, handle);
+  // **처음부터 상태를 말한다.** 여태 `setStatus` 는 고치거나 저장할 때만 불려서,
+  // 문서를 연 직후에는 상태 줄이 비어 있었다 — 상시 편집인 면이 저장 여부를 한 번도
+  // 말하지 않은 셈이고, 그래서 "클릭해도 되나"가 남았다(발주자 지적 2026-09-10).
+  // 방금 읽어 온 그대로이므로 지금은 저장된 상태다.
+  setStatus(COPY.ui.viewx.edSaved);
   return handle;
 }
 

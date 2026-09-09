@@ -18,7 +18,8 @@ import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { isTypingTarget } from "../keys";
-import { disposeEditorsIn } from "../doc-editor";
+import { disposeEditorsIn, renderMarkdown } from "../doc-editor";
+import { hydrateRich } from "../rich-blocks";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
@@ -1924,6 +1925,16 @@ export async function renderView(el: HTMLElement) {
    *  카드는 자기 응답을 직접 들고 있지만 레일은 `loadNodeSource` 가 따로 받으므로,
    *  그 자리에서 부를 수 있도록 여기 둔다. 레일이 닫히면 다음 열기가 덮어쓴다. */
   let railAskCounts: ((deg: number, docs: number) => void) | null = null;
+  /** 문서 열의 **읽기/편집 모드**(발주자 지시 2026-09-10 — 되살림).
+   *
+   *  ⚠ 이것은 2026-08-05 의 "상시 편집" 지시를 **되돌린 것**이다. 그때의 근거는
+   *  "고치려면 매번 두 번 눌러야 한다"였고 그건 지금도 참이다. 다만 상시 편집이
+   *  치르던 값이 그보다 컸다: 읽으려고 연 문서에서 클릭 한 번이 곧 커서였고,
+   *  드래그해서 복사하려는 손과 고치려는 손이 같은 과녁을 나눠 갖지 못했다.
+   *  기본은 **읽기**다 — 문서를 여는 대부분의 이유가 읽는 것이라서.
+   *  세션 안에서만 사는 이유: 방금 고치던 사람이 다음 문서에서도 고칠 확률이
+   *  높지만, 앱을 다시 열었을 때까지 편집으로 남아 있을 이유는 없다. */
+  let docWriting = false;
 
   let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
   const nodeContextOnce = (id: string) => {
@@ -2036,7 +2047,8 @@ export async function renderView(el: HTMLElement) {
 
     // 프롬프트 메뉴 — 카드면 위의 카드면이다(유리 아님). 디자인 주석의 이유:
     // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
-    const setCounts = wireAsk(card.body, nd, () => card.el.isConnected);
+    const setCounts = wireAsk(card.body, () => card.el.isConnected,
+      (deg, docs) => nodeAskItems(nd, deg, docs));
 
     try {
       const res = await nodeContextOnce(nd.id);
@@ -2116,7 +2128,8 @@ export async function renderView(el: HTMLElement) {
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
     // 카드와 **같은 줄**이다. 수치는 loadNodeSource 가 node-context 를 받고 채운다.
-    railAskCounts = wireAsk(detail, nd, () => !detail.hidden);
+    railAskCounts = wireAsk(detail, () => !detail.hidden,
+      (deg, docs) => nodeAskItems(nd, deg, docs));
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
@@ -2320,8 +2333,42 @@ export async function renderView(el: HTMLElement) {
    *  프롬프트 셋은 번호가 아니라 **이름**이다. 숫자(깊이 1/2/3)는 크기를 말해 주지 않아
    *  늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지 스스로 말한다.
    *  근거: 디자인 정본 `Vinc Node Card.dc.html` (2b). */
-  function wireAsk(scope: HTMLElement, nd: N3,
-                   alive: () => boolean): (deg: number, docs: number) => void {
+  /** 메뉴 한 칸 — 이름·부제·담아 갈 프롬프트·따라갈 주소. */
+  type AskItem = { name: string; sub: string; body: string; url: string };
+  /** 노드에서 여는 셋. **에이전트 역할이면 한 칸이 더 붙는다**(발주자 지시
+   *  2026-09-10: "에이전트 노드 클릭 시 ask assistant 가 에이전트를 쓰게").
+   *  그 노드는 개념이 아니라 시킬 일이라, 설명을 청하는 것이 아니라 그 역할을
+   *  맡기는 말이 첫 칸에 온다. 판별은 주제 하나로 한다 — 레일의 Agent 칸이 읽는
+   *  그 주제와 **같은 값**이어야 두 자리가 같은 것을 가리킨다(`lnb.ts` RAIL). */
+  const AGENT_DOMAIN = "vinc/agent/roles";
+  function nodeAskItems(nd: N3, deg: number, docs: number): AskItem[] {
+    const V = COPY.ui.viewx;
+    const at = (depth: number) => absoluteViewUrl({ kind: "node", id: nd.id },
+                                                  { depth, viewpoint: curPrefs().view });
+    const items: AskItem[] = [
+      { name: V.askExplain, sub: V.askExplainSub, body: V.askExplainBody, url: at(1) },
+      { name: V.askCompare, sub: V.askCompareSub(deg), body: V.askCompareBody, url: at(SHARE_DEPTH) },
+      { name: V.askDocs, sub: V.askDocsSub(docs), body: V.askDocsBody, url: at(1) },
+    ];
+    if ((nd.domain || "").trim() === AGENT_DOMAIN) {
+      items.unshift({ name: V.askRole, sub: V.askRoleSub, body: V.askRoleBody, url: at(1) });
+    }
+    return items;
+  }
+  /** 문서에서 여는 셋(2026-09-10 신설). 주소는 `kind: "doc"` — 이미 있던 갈래다. */
+  function docAskItems(docId: string): AskItem[] {
+    const V = COPY.ui.viewx;
+    const url = absoluteViewUrl({ kind: "doc", id: docId }, { viewpoint: curPrefs().view });
+    return [
+      { name: V.askDocSum, sub: V.askDocSumSub, body: V.askDocSumBody, url },
+      { name: V.askDocConcepts, sub: V.askDocConceptsSub, body: V.askDocConceptsBody, url },
+      { name: V.askDocCheck, sub: V.askDocCheckSub, body: V.askDocCheckBody, url },
+    ];
+  }
+
+  function wireAsk(scope: HTMLElement, alive: () => boolean,
+                   build: (deg: number, docs: number) => AskItem[]):
+                   (deg: number, docs: number) => void {
     const V = COPY.ui.viewx;
     const trigger = scope.querySelector<HTMLButtonElement>(".js-ask");
     if (!trigger) return () => {};
@@ -2358,26 +2405,21 @@ export async function renderView(el: HTMLElement) {
     });
 
     return (deg: number, docs: number) => {
-      const items: [string, string, string, number][] = [
-        [V.askExplain, V.askExplainSub, V.askExplainBody, 1],
-        [V.askCompare, V.askCompareSub(deg), V.askCompareBody, SHARE_DEPTH],
-        [V.askDocs, V.askDocsSub(docs), V.askDocsBody, 1],
-      ];
-      menu.innerHTML = items.map(([name, sub], i) => `
+      const items = build(deg, docs);
+      menu.innerHTML = items.map((it, i) => `
         <button type="button" role="menuitem" class="menu-item" data-i="${i}">
-          <span class="menu-name">${esc(name)}</span>
-          <span class="menu-sub">${esc(sub)}</span>
+          <span class="menu-name">${esc(it.name)}</span>
+          <span class="menu-sub">${esc(it.sub)}</span>
         </button>`).join("");
       menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
         b.addEventListener("click", () => {
-          const [, , body, depth] = items[Number(b.dataset.i)];
+          const it = items[Number(b.dataset.i)];
           // 되먹임은 트리거 버튼에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
           label(V.copyLinkDone);
           window.setTimeout(() => label(V.cardAskCopy), 1400);
           close();
-          const url = absoluteViewUrl({ kind: "node", id: nd.id },
-                                      { depth, viewpoint: curPrefs().view });
-          void navigator.clipboard.writeText(`${body} ${url}`).catch(() => label(V.copyLinkFail));
+          void navigator.clipboard.writeText(`${it.body} ${it.url}`)
+            .catch(() => label(V.copyLinkFail));
         }));
     };
   }
@@ -2446,7 +2488,7 @@ export async function renderView(el: HTMLElement) {
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
       const parts: string[] = [];
-      if (res.one_liner) parts.push(`<p>${esc(res.one_liner)}</p>`);
+      if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];
       if (ex.length > 0) {
         const header = res.arm === "fts"
@@ -2459,12 +2501,13 @@ export async function renderView(el: HTMLElement) {
                  style="display:block;cursor:pointer">
               <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
                 e.section ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
-              <p class="hint" style="margin:.15rem 0 0">${underlineTerms(e.excerpt, nd.label)}</p>
+              <div class="hint doc-render rdr-excerpt">${renderExcerpt(e.excerpt, nd.label)}</div>
             </div>`).join(""));
       } else if (!res.one_liner) {
         parts.push(`<p class="hint">${COPY.ui.viewx.sourceNone}</p>`);
       }
       box.innerHTML = parts.join("");
+      hydrateRich(box);          // 발췌 안의 수식·다이어그램을 채운다(늦게 싣는다)
       box.querySelectorAll<HTMLElement>(".rdr-open").forEach((row) =>
         row.addEventListener("click", () =>
           void openReader(row.dataset.doc!, nd.id)));
@@ -2492,6 +2535,34 @@ export async function renderView(el: HTMLElement) {
       }
     }
     return out + esc(text.slice(last));
+  }
+
+  /** 발췌·한 줄 요약을 **문서와 같은 모습으로** 그린다(발주자 지적 2026-09-10:
+   *  "관련문서 보여주는 칸이나 노드 디테일 쪽에서는 마크다운 렌더링이 안 되어 보인다").
+   *
+   *  여태 이 두 자리만 원문을 그대로 냈다 — 같은 문단이 문서 열에서는 제목·굵기로
+   *  보이고 여기서는 `##`·`**` 로 보였다. 렌더러가 둘이라는 사실이 화면에 드러나면
+   *  안 된다는 규율은 이미 `renderMarkdown` 머리말에 있다(편집기와 폴백 사이).
+   *
+   *  ⚠ 순서가 중요하다: **마크다운을 먼저 그리고, 밑줄은 그 결과의 텍스트 노드에만**
+   *  건다. 원문에 밑줄을 먼저 치면 `<u>` 가 마크다운 문법 안에 끼어 렌더가 깨지고,
+   *  렌더된 HTML 에 문자열 치환을 하면 태그 속으로 `<u>` 가 들어간다. DOM 을 걸어
+   *  텍스트만 건드리는 것이 그 둘을 다 피하는 유일한 길이다. */
+  function renderExcerpt(text: string, label: string): string {
+    const host = document.createElement("div");
+    host.innerHTML = renderMarkdown(text);
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const texts: Text[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n as Text);
+    for (const t of texts) {
+      // `underlineTerms` 는 이스케이프까지 하므로 그 결과를 그대로 심는다.
+      const html = underlineTerms(t.data, label);
+      if (!html.includes("<u>")) continue;          // 바뀐 것이 없으면 손대지 않는다
+      const span = document.createElement("span");
+      span.innerHTML = html;
+      t.replaceWith(span);
+    }
+    return host.innerHTML;
   }
 
   /** Reader 서브뷰(D45-V2 2단계) — 상세 패널을 정본 전문으로 확장한다. 새 표면
@@ -2608,7 +2679,17 @@ export async function renderView(el: HTMLElement) {
         <p class="rail-acts">
           <button class="btn" id="rdr-back">${COPY.ui.viewx.readerBack}</button>
           <button class="btn" id="rdr-expand">${COPY.ui.viewx.edExpand}</button>
+          <button class="btn" id="rdr-copy">${COPY.ui.viewx.edCopy}</button>
+          <button class="btn" id="rdr-mode">${
+            docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite}</button>
+          <span class="hint" id="rdr-mode-state">${
+            docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead}</span>
         </p>
+        <!-- 문서도 프롬프트를 나눠 준다(발주자 지시 2026-09-10). 노드 카드·노드 상세와
+             같은 줄·같은 메뉴를 쓴다 — 세 자리가 같은 일을 다른 모양으로 하면 어느
+             쪽이 맞는지 매번 다시 정해야 한다(askRowHTML 머리말과 같은 이유).
+             ⚠ 이 주석은 템플릿 리터럴 **안**이다 — 백틱을 쓰면 문자열이 거기서 끊긴다. -->
+        ${askRowHTML()}
         ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
         ${mentionsHTML}
@@ -2620,6 +2701,13 @@ export async function renderView(el: HTMLElement) {
       detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
         b.addEventListener("click", () =>
           void focusNode(b.dataset.go!, b.dataset.dom || undefined)));
+      // 문서의 프롬프트 셋. 수치를 안 쓰므로 한 번 그리고 끝이다(노드 쪽은 관계·
+      // 문서 수가 늦게 오지만 문서는 자기 자신이 이미 전부다).
+      // ⚠ **노드 쪽 손을 먼저 끊는다.** 두 화면이 같은 패널을 쓰는데 메뉴는 문서에
+      //    하나뿐이라, 노드 상세가 남긴 늦은 콜백(nodeContextOnce 응답)이 방금 그린
+      //    문서 메뉴를 노드 항목으로 덮는다. 널로 두면 그 호출이 조용히 무시된다.
+      railAskCounts = null;
+      wireAsk(detail, () => !detail.hidden, () => docAskItems(docId))(0, 0);
       // 여기서 손수 dispose 하지 않는다 — 둘 다 레일을 다시 여닫으므로 위의
       // openRail/closeRail 이 확정까지 맡는다. 두 벌로 두면 다시 갈린다.
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
@@ -2631,12 +2719,17 @@ export async function renderView(el: HTMLElement) {
       // 소스를 그대로 노출했다(실측).
       const { mountDocEditor, openDocSheet } = await import("../doc-editor");
       const state = detail.querySelector<HTMLElement>("#rdr-state")!;
-      const handle = await mountDocEditor(detail.querySelector<HTMLElement>("#rdr-host")!, {
+      const rdrHost = detail.querySelector<HTMLElement>("#rdr-host")!;
+      let handle = await mountDocEditor(rdrHost, {
         owner: cfg.owner, docId, initial: doc.text, title: doc.title,
         contentHash: doc.content_hash, hideTitle: true,
-        // 상시 편집. 커서는 켜지 않는다 — 문서 열은 지도와 나란히 서므로, 열자마자
-        // 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이 글자로 들어간다.
-        readOnly: false, autoFocus: false,
+        // 모드가 정한다(위 `docWriting`). 커서는 켜지 않는다 — 문서 열은 지도와
+        // 나란히 서므로, 열자마자 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이
+        // 글자로 들어간다.
+        // ⚠ 읽기 모드에서는 CM 의 장식이 **더 완전하다**: 편집 가능일 때는 커서가
+        //    놓인 줄의 소스를 되살려 보여 주는데(라이브 프리뷰의 규칙), 읽기에서는
+        //    그럴 이유가 없어 문법이 끝까지 감춰진다. 읽는 화면이 더 깨끗해진다.
+        readOnly: !docWriting, autoFocus: false,
         // 제목 줄이 숨어 있어 편집기 자신의 상태 글자도 함께 숨는다 — 저장 신호를
         // 여기로 받아 레일 머리 옆에서 말한다.
         onStatus: (t) => { state.textContent = t; },
@@ -2646,6 +2739,40 @@ export async function renderView(el: HTMLElement) {
         // 아니고, 노드로 갈 문은 바로 위 칩이 이미 들고 있다.
         onDocLink: (id) => void openReader(id),
       });
+      // 본문 복사. 화면을 긁는 대신 **소스 그대로**를 준다 — 문서의 정본은
+      // 마크다운이라, 렌더된 글자를 복사하면 붙여넣은 곳에서 다른 문서가 된다.
+      detail.querySelector<HTMLElement>("#rdr-copy")?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLElement;
+        const text = handle.getText();
+        if (!text) return;                     // 아직 못 읽은 문서 — 조용히 아무 일도 안 한다
+        const back = COPY.ui.viewx.edCopy;
+        btn.textContent = COPY.ui.viewx.copyLinkDone;
+        window.setTimeout(() => { btn.textContent = back; }, 1400);
+        void navigator.clipboard.writeText(text)
+          .catch(() => { btn.textContent = COPY.ui.viewx.copyLinkFail; });
+      });
+      // 읽기 ↔ 편집. **다시 읽지 않는다** — 같은 본문 위에서 커서만 켜고 끄는 일이라
+      // 왕복을 붙이면 모드 전환이 문서 열기만큼 비싸진다. 나가면서 확정하는 규율은
+      // `dispose` 가 이미 진다(대기 중이던 디바운스를 저장하고 놓는다).
+      detail.querySelector<HTMLElement>("#rdr-mode")?.addEventListener("click", () => void (async () => {
+        const btn = detail.querySelector<HTMLElement>("#rdr-mode");
+        const tag = detail.querySelector<HTMLElement>("#rdr-mode-state");
+        const text = handle.getText();          // 방금까지 친 것을 그대로 물려준다
+        await handle.dispose();
+        docWriting = !docWriting;
+        if (btn) btn.textContent = docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite;
+        if (tag) tag.textContent = docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead;
+        handle = await mountDocEditor(rdrHost, {
+          owner: cfg.owner, docId, initial: text || doc.text, title: doc.title,
+          contentHash: doc.content_hash, hideTitle: true,
+          readOnly: !docWriting,
+          // 편집으로 들어갈 때만 커서를 준다 — 그것이 이 버튼을 누른 이유다.
+          autoFocus: docWriting,
+          onStatus: (t) => { state.textContent = t; },
+          highlights: hl.ranges || [],
+          onDocLink: (id) => void openReader(id),
+        });
+      })());
       // 목차 클릭·청크 히트 착지 — 편집기가 이미 오프셋으로 스크롤할 줄 안다
       // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.
       detail.querySelectorAll<HTMLElement>(".rdr-sec").forEach((b) =>
