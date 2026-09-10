@@ -10,7 +10,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
-import { S, APP, VP, BASE_LS, SHELL_INIT, side, seedEvidenceEdge, sleep } from "./capture_app.mjs";
+import { S, APP, SIDE, TOKEN, VP, BASE_LS, SHELL_INIT, side, seedEvidenceEdge, sleep } from "./capture_app.mjs";
 const OUT = process.argv[2];
 fs.mkdirSync(OUT, { recursive: true });
 const EXPAND_LENS = "#view-lens-panel{max-height:none!important;height:auto!important} .lens-scroll{max-height:none!important;overflow:visible!important}";
@@ -41,6 +41,8 @@ const T = [
   ["view__topic-rename-prompt", "last:.sheet[role=dialog]", ""],
   ["view__node-delete-confirm", ".sheet[role=alertdialog]", ""],
   ["view__tooltip-short", ".tip", ""], ["view__tooltip-long", ".tip", ""],
+  // 웹 전용 두 단계(목적지 고르기 · 커뮤니티 게시 폼). 아래 EXTRA 의 web 상태로 잰다.
+  ["topbar__share-destination", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__share-publish", "last:.sheet[role=dialog]", EXPAND_SHEET],
 ];
 // 캡처 목록에 없는 상태 셋 — 보드는 없고 Figma 컴포넌트만 있는 것들(노드 컨텍스트 메뉴 · 툴팁 둘).
 // 노드 메뉴는 WebGL 캔버스 우클릭 대신 앱 모듈을 그대로 불러 같은 항목으로 연다(카피는 COPY 에서, 정본).
@@ -51,6 +53,31 @@ const EXTRA = [
   { id: "view__tooltip-short", url: "#view", ls: {}, api: [], before: async (p) => { await settled(p); await hoverTip(p, "short"); } },
   { id: "view__tooltip-long", url: "#view", ls: {}, api: [], before: async (p) => { await settled(p); await hoverTip(p, "long"); } },
 ];
+// ── 웹 모드(WEB=true) 상태 ──────────────────────────────────────────────────
+// api.ts: WEB 은 호스트명으로 갈린다(localhost·127.0.0.1·tauri.localhost 가 아니면 웹). 크로미엄은 *.localhost 를
+// 루프백으로 풀므로 web.localhost:5199 로 같은 vite 를 열면 웹 분기가 선다. 그러면 ① 부팅이 __Host-csrf 쿠키와
+// /api/me 를 요구하고(쿠키는 https 전용 접두라 document.cookie 게터를 덮어 흉내낸다) ② 데이터가 /api/graph/* 로
+// 가는데 vite 프록시 목록엔 없으므로 여기서 사이드카로 넘긴다("sidecar" 라우트) ③ /api/teams 는 빈 목록.
+// 스킨은 desktop 으로 고정한다 — Figma 05 · Overlays 의 다른 변형이 전부 desktop 스킨이라 세트가 섞이지 않게.
+const WEB_APP = (process.env.VINC_WEB_APP || APP).replace("tauri.localhost", "web.localhost");
+const WEB_COOKIE = () => { Object.defineProperty(Document.prototype, "cookie", { get: () => "__Host-csrf=capture", set: () => {}, configurable: true }); };
+const WEB_API = [["GET", /^\/api\/me(\?|$)/, { status: 200, json: { sub: "capture" } }], ["GET", /^\/api\/teams(\?|$)/, { status: 200, json: { teams: [] } }], ["*", /^\/api\/graph\//, "sidecar"]];
+const WEB_LS = { "vinc.sidecar.base": "", "vinc.sidecar.token": "", "vinc.skin": "desktop" };
+const sheetL = (p) => p.locator(".sheet[role=dialog]").last();
+const webShare = async (p, step) => {
+  await settled(p);
+  await p.locator("#tb-tools").click(); await sheetL(p).waitFor({ state: "visible" });
+  await sheetL(p).locator("button", { hasText: /^Share$/ }).first().click();
+  const go = sheetL(p).locator(".sheet-foot button").filter({ hasText: /continue/i }).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click();
+  await p.waitForSelector(".sheet[role=dialog] #sheet-save", { timeout: 30000 }); await sleep(800);
+  await p.locator("#sheet-save").click();
+  await p.waitForSelector(".dest-pick", { timeout: 15000 }); await sleep(300);
+  if (step === "publish") { await p.locator('.dest-pick [data-dest="community"]').click(); await p.waitForSelector("#pub-name", { timeout: 10000 }); await sleep(300); }
+};
+EXTRA.push(
+  { id: "topbar__share-destination", url: "#view", web: true, app: WEB_APP, ls: WEB_LS, api: WEB_API, before: (p) => webShare(p, "destination") },
+  { id: "topbar__share-publish", url: "#view", web: true, app: WEB_APP, ls: WEB_LS, api: WEB_API, before: (p) => webShare(p, "publish") },
+);
 const SKIP_EXISTING = process.argv.includes("--skip-existing");
 const EXT = String.raw`window.__ext = (root) => {
   const R = root.getBoundingClientRect(); const n1 = (v) => Math.round(v * 10) / 10;
@@ -94,10 +121,10 @@ for (const [id, root, expand, root2] of T) {
   const ctx = await browser.newContext({ viewport: s.vp ?? VP, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", deviceScaleFactor: 1 });
   try {
     await ctx.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) { if (v === "") localStorage.removeItem(k); else localStorage.setItem(k, v); } }, { ...BASE_LS, ...s.ls, ...(s.scheme === "light" ? { "vinc.theme": "light" } : {}) });
-    await ctx.addInitScript(SHELL_INIT);
+    await ctx.addInitScript(s.web ? WEB_COOKIE : SHELL_INIT);
     const page = await ctx.newPage();
-    for (const [m, re, r] of s.api) await page.route((u) => re.test(new URL(u).pathname + new URL(u).search), async (route) => { if (m !== "*" && route.request().method() !== m) return route.continue(); if (r === "abort") return route.abort("connectionrefused"); if (r === "hang") return; return route.fulfill({ status: r.status, contentType: "application/json", body: JSON.stringify(r.json) }); });
-    await page.goto(`${APP}/${s.url}`, { waitUntil: "load", timeout: 30000 });
+    for (const [m, re, r] of s.api) await page.route((u) => re.test(new URL(u).pathname + new URL(u).search), async (route) => { if (m !== "*" && route.request().method() !== m) return route.continue(); if (r === "abort") return route.abort("connectionrefused"); if (r === "hang") return; if (r === "sidecar") { const u0 = new URL(route.request().url()); const h = route.request().headers(); const resp = await route.fetch({ url: SIDE + u0.pathname.replace(/^\/api\/graph/, "") + u0.search, headers: { accept: h.accept || "*/*", ...(h["content-type"] ? { "content-type": h["content-type"] } : {}), authorization: `Bearer ${TOKEN}` } }); return route.fulfill({ response: resp }); } return route.fulfill({ status: r.status, contentType: "application/json", body: JSON.stringify(r.json) }); });
+    await page.goto(`${s.app || APP}/${s.url}`, { waitUntil: "load", timeout: 30000 });
     if (s.before) await s.before(page);
     const pickEl = String.raw`(sel) => sel.startsWith("last:") ? [...document.querySelectorAll(sel.slice(5))].pop() : document.querySelector(sel)`;
     const vh = await page.evaluate(([pk, sel]) => { const el = (0, eval)(pk)(sel); return el ? Math.round(el.getBoundingClientRect().height * 10) / 10 : null; }, [pickEl, root]);
