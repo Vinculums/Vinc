@@ -247,6 +247,25 @@ class MirrorStore(unittest.TestCase):
         finally:
             view.close()
 
+    def test_a_semantic_hit_carries_its_real_domain(self):
+        """🔴 미러는 도메인 열을 안 담는다. 빈 문자열을 채워 보내면 받는 쪽이
+        **"무주제"로 읽는다** — 2026-09-10 에 고아 조사가 그것을 보고 "센서스가 틀렸다"
+        까지 갔다. 센서스는 옳았고 이 필드가 거짓이었다. 팔이 기본으로 켜진 뒤로는
+        모든 검색이 그 거짓을 나른다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:mine", "type": "concept", "title": "mine",
+             "domain": "vinc/engineering/search"},
+        ]}, store=self.store)
+        res = q.search("nothing shares a word with this", owner=self.OWNER,
+                       query_embedding=_vec(1, 0), top_k=5, store=self.store)
+        row = next(h for h in res["node_hits"] if h["id"] == "concept:mine")
+        self.assertIn("semantic", row["arms"])
+        self.assertEqual(row["domain"], "vinc/engineering/search")
+
+    def test_a_node_with_no_domain_still_reads_as_empty(self):
+        """진짜 무주제는 빈 문자열이 맞다 — 채우기가 그 구분을 지우면 안 된다."""
+        self.assertEqual(q._domains_for_ids(self.store, ["concept:nope"]), {})
+
     def test_the_reader_view_covers_the_read_surface(self):
         """읽기 경로가 부르는 것을 뷰가 다 갖고 있는가. 빠뜨리면 예외가 아니라 **조용한
         강등**이라(팔 하나가 사라진 결과는 그냥 결과처럼 보인다) 여기서 못 박는다.
