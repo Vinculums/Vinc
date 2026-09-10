@@ -204,6 +204,15 @@ fi
 #
 # 끄는 길: `VINC_NODE_MIRROR_REBUILD=off`. 인코더가 없으면 사이드카가 503 으로
 # 거절하고 로그에 남는다 — 조용히 넘어가지 않는다.
+#
+# 🔴 **종료 때 이것부터 걷어낸다.** 도는 중에 컨테이너가 내려가면 이 요청이 닫으려는
+# 사이드카를 붙든다 — 그러면 `shutdown()` 의 20초 대기를 넘기고, Container Apps 의
+# 유예(30초)도 넘겨 SIGKILL 이 된다. 그 끝은 체크포인트 안 된 WAL 이고 다음 기동이
+# 미완결 꼬리를 버린다(2026-08-07 문서 66건 유실의 그 사슬 그대로).
+# 그래서 `curl` 의 pid 를 **파일로** 남긴다 — 서브셸만 죽이면 curl 은 고아로 살아남아
+# 연결을 그대로 쥔다. 사이드카·워커가 같은 이유로 같은 형태를 쓴다.
+MIRROR_PIDFILE="${VINC_NODE_MIRROR_PIDFILE:-/tmp/vinc-node-mirror.pid}"
+MIRROR_SUP_PID=""
 if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
   (
     # ⚠ 세 줄 다 `node-mirror:` 로 시작한다 — **ASCII 표식이 있어야 밖에서 잡는다.**
@@ -212,15 +221,25 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 있다). 표식을 바꾸려면 `.github/workflows/hub-deploy.yml` 의 grep 도 같이 고칠 것.
     echo "[entrypoint] node-mirror: start — 배포마다 한 번, 배경으로 돈다"
     t0=$(date +%s)
-    if out=$(curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
-              -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
-              -H "Content-Type: application/json" -d '{}' \
-              http://127.0.0.1:8787/node-mirror/rebuild 2>&1); then
+    curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
+      -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
+      -H "Content-Type: application/json" -d '{}' \
+      http://127.0.0.1:8787/node-mirror/rebuild > "$MIRROR_PIDFILE.out" 2>&1 &
+    cpid=$!
+    echo "$cpid" > "$MIRROR_PIDFILE"
+    # `set -e` 아래서 `wait` 가 비영을 내면 이 서브셸이 그대로 죽는다(임베딩 감시자와
+    # 같은 함정). 상태만 받아 온다.
+    rc=0
+    wait "$cpid" || rc=$?
+    out=$(cat "$MIRROR_PIDFILE.out" 2>/dev/null)
+    if [ "$rc" = "0" ]; then
       echo "[entrypoint] node-mirror: done in $(( $(date +%s) - t0 ))s — $out"
     else
-      echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s — $out" >&2
+      echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s" \
+           "(rc=$rc) — $out" >&2
     fi
   ) &
+  MIRROR_SUP_PID=$!
 fi
 
 # 임베딩 워커 — 가비아 시절 systemd timer(5분 간격)의 컨테이너 등가물. 이게 없으면
@@ -291,7 +310,7 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
   trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
-        "$EMBED_SUP_PID" 2>/dev/null' TERM INT
+        "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" "$EMBED_SUP_PID" 2>/dev/null' TERM INT
 fi
 
 # ── 사이드카 워치독 (2026-08-03 사고 대응) ───────────────────────────────────
@@ -429,6 +448,11 @@ MCP_PID=$!
 # Container Apps 의 종료 유예는 기본 30초라 상한 20초는 그 안에 든다.
 shutdown() {
   trap '' TERM INT                      # 두 번째 신호가 이 절차를 자르지 않게
+  # 미러 재구축이 **가장 먼저** 나간다. 이것이 사이드카에 건 요청을 놓지 않으면 아래
+  # 20초 대기가 통째로 헛돌고 SIGKILL 로 끝난다(그 자리 주석 참조). curl 을 먼저
+  # 죽여야 연결이 실제로 풀린다 — 서브셸만 죽이면 curl 이 고아로 남는다.
+  kill "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+  kill "$MIRROR_SUP_PID" 2>/dev/null || true
   kill "$WATCHDOG_PID" 2>/dev/null || true
   kill "$EMBED_SUP_PID" 2>/dev/null || true
   kill "$(cat "$EMBED_PIDFILE" 2>/dev/null)" 2>/dev/null || true

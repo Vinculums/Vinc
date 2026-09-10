@@ -55,15 +55,25 @@ class _FakeStore:
     driver_name = "fake"
     scoped_chunk_search = True
 
-    def __init__(self, nodes):
+    def __init__(self, nodes, index_works=True):
         self._nodes = nodes          # [{id, title, owner, extra, label}]
         self.mirror: list[dict] = []
         self.dropped = 0
         self.created = 0
+        self.reader_open = 0         # 지금 열려 있는 리더 뷰 수
+        self._index_works = index_works
 
-    # 리더 뷰는 자기 자신이다 — 이 더블에는 쓰기/읽기 커넥션 구분이 없다.
     def reader_view(self):
-        return self
+        """읽기 전용 뷰. **닫는 것까지 센다** — 인코딩 몇 분 동안 열어 두면 그 커넥션이
+        뒤이은 인덱스 DDL(=쓰기)을 막는다."""
+        self.reader_open += 1
+        return _FakeReader(self)
+
+    def node_vector_search(self, embedding, top_k, *, owner=None):
+        if not self._index_works:
+            return []            # 인덱스가 없을 때 엔진이 하는 그대로(예외 아님)
+        return [{"id": m["node_id"]} for m in self.mirror
+                if owner is None or m["owner_id"] == owner][:top_k]
 
     def run(self, query, params=None):
         params = params or {}
@@ -93,6 +103,21 @@ class _FakeStore:
 
     def close(self):
         pass
+
+
+class _FakeReader:
+    """`_ReaderView` 대역 — 읽기만 넘기고, 닫혔는지 기억한다."""
+
+    def __init__(self, backend):
+        self._b = backend
+        self.closed = False
+
+    def run(self, query, params=None):
+        return self._b.run(query, params)
+
+    def close(self):
+        self.closed = True
+        self._b.reader_open -= 1
 
 
 def _nodes():
@@ -155,6 +180,17 @@ class Replace(unittest.TestCase):
         node_mirror.replace(s, self.rows("user:mine"), "e5")
         self.assertNotIn("stale", [m["node_id"] for m in s.mirror])
 
+    def test_it_reports_when_the_index_did_not_come_back(self):
+        """🔴 인덱스 생성은 예외를 **삼킨다**(멱등이라 그래야 한다). 삼킨 결과를 확인
+        하지 않으면 행은 들어가고 인덱스만 없는 미러가 남는데, 그 상태에서 의미 팔은
+        예외 없이 빈 목록만 낸다 — 밖에서 "안 켠 것"과 구분되지 않는다."""
+        s = _FakeStore([], index_works=False)
+        self.assertFalse(node_mirror.replace(s, self.rows("user:mine"), "e5")["index_ok"])
+
+    def test_a_healthy_rebuild_says_the_index_answers(self):
+        s = _FakeStore([])
+        self.assertTrue(node_mirror.replace(s, self.rows("user:mine"), "e5")["index_ok"])
+
     def test_a_long_list_still_lands_whole(self):
         """한 문장에 다 싣지 않고 쪼개므로, 쪼개는 자리에서 행이 새지 않는지 본다."""
         s = _FakeStore([])
@@ -175,7 +211,8 @@ class RebuildRoute(unittest.TestCase):
         self.calls: list[tuple] = []
 
         def fake_post(url, texts, kind, timeout):
-            self.calls.append((url, tuple(texts), kind))
+            # 인코딩이 도는 동안 리더가 열려 있으면 안 된다 — 아래 시험이 이 값을 본다.
+            self.calls.append((url, tuple(texts), kind, self.store.reader_open))
             return [_vec(1, 0)] * len(texts)
         sv._encode_post = fake_post
 
@@ -201,6 +238,25 @@ class RebuildRoute(unittest.TestCase):
         self.app.write_node_mirror_rebuild({})
         self.assertTrue(self.calls)
         self.assertEqual({c[2] for c in self.calls}, {"passage"})
+
+    def test_the_reader_is_closed_before_the_encoding_starts(self):
+        """🔴 인코딩은 몇 분이다. 그동안 리더를 붙들면 그 커넥션이 읽기 트랜잭션을 쥐고,
+        뒤이은 교체의 `CREATE_VECTOR_INDEX`(=DDL=쓰기)가 거절된다. 그 자리는 예외를
+        삼키므로 **행은 들어가고 인덱스만 없는** 미러가 남는다 — 2026-09-10 라이브에서
+        정확히 그랬고, 밖에서는 팔을 안 켠 것과 구분되지 않았다."""
+        self.app.write_node_mirror_rebuild({})
+        self.assertTrue(self.calls)
+        self.assertEqual([c[3] for c in self.calls], [0] * len(self.calls),
+                         "인코딩 중에 리더 뷰가 열려 있었다")
+        self.assertEqual(self.store.reader_open, 0, "리더 뷰가 새어 나갔다")
+
+    def test_the_result_says_whether_the_index_answers(self):
+        """조용한 강등을 말하게 하는 자리 — 이 값이 배포 로그까지 그대로 간다."""
+        code, res = self.app.write_node_mirror_rebuild({})
+        self.assertEqual(code, 200)
+        self.assertTrue(res["index_ok"])
+        self.app = VincApp(store=_FakeStore(_nodes(), index_works=False))
+        self.assertFalse(self.app.write_node_mirror_rebuild({})[1]["index_ok"])
 
     def test_no_encoder_is_a_refusal_not_a_silent_skip(self):
         """데스크탑에는 인코더가 없다. 조용히 0건 성공으로 넘어가면 미러가 빈 채로

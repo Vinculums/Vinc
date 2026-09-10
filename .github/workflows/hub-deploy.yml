@@ -529,8 +529,11 @@ jobs:
           for i in $(seq 1 36); do
             # ⚠ az 자체가 실패하면 **즉시 접는다.** 안 그러면 자격이나 인자가 틀린 날
             # 12분을 통째로 기다린 뒤에야 알게 되고, 그 12분이 배포마다 붙는다.
+            # ⚠ `--tail` 은 **0~300** 이다. 400 을 주면 az 가 거절하고(실측 2026-09-10)
+            # 아래 가드가 3초 만에 접는다 — 결과 미확인으로 끝난다. `--format text` 는
+            # 줄 단위 평문이라 grep 이 먹는다(기본 json 은 한 줄에 한 객체다).
             if ! log=$(az containerapp logs show --name vinc-hub -g vincsRG \
-                         --tail 400 --output tsv 2>&1); then
+                         --tail 300 --format text 2>&1); then
               echo "::warning::컨테이너 로그를 못 읽었다 — 재구축 결과 미확인: $log"
               exit 0
             fi
@@ -540,6 +543,10 @@ jobs:
                 echo "$out"
                 case "$out" in
                   *FAILED*) echo "::warning::노드 미러 재구축이 실패했다 — 의미 팔은 빈 목록을 내고 검색은 나머지 팔로 답한다. 다음 배포가 다시 시도한다" ;;
+                  # 행은 들어갔는데 인덱스가 없는 상태. 예외가 안 나므로 이 줄이
+                  # 없으면 "팔을 안 켠 것"과 밖에서 구분되지 않는다.
+                  *'"index_ok": false'*|*"'index_ok': False"*)
+                    echo "::warning::미러 행은 들어갔는데 벡터 인덱스가 없다 — 의미 팔이 조용히 빈 목록만 낸다" ;;
                 esac
                 exit 0 ;;
             esac
