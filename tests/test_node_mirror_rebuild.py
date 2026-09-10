@@ -435,7 +435,7 @@ class RealStore(unittest.TestCase):
         node_mirror.replace(self.store, rows, "test")   # 옛 키였다면 여기서 죽는다
         v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                             "RETURN m.value AS v") or [{}])[0]["v"]
-        self.assertEqual(v, "18")
+        self.assertEqual(v, "19")
 
     def test_a_failed_rekey_does_not_record_the_new_version(self):
         """🔴 드롭이 실패하면 그 예외는 삼켜지고 base DDL 의 "이미 있다"도 삼켜진다.
@@ -455,7 +455,7 @@ class RealStore(unittest.TestCase):
         self.store.migrate(dim=DIM)              # 다음 기동
         v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                             "RETURN m.value AS v") or [{}])[0]["v"]
-        self.assertEqual(v, "18", "다음 기동이 다시 시도해서 끝내야 한다")
+        self.assertEqual(v, "19", "다음 기동이 다시 시도해서 끝내야 한다")
 
     def test_running_it_twice_does_not_double_the_rows(self):
         """전량 재구축은 배포마다 돈다 — 멱등이 아니면 미러가 배포 수만큼 부푼다."""
