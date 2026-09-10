@@ -1246,8 +1246,21 @@ class VincApp:
             r = self._reader()
             if r is None:
                 return 503, {"executed": False, **store_unavailable()}
-            owner = (body.get("owner") or "").strip() or None
-            rows = node_mirror.collect(r, owner)
+            # 🔴 **리더를 여기서 닫는다.** 인코딩 몇 분 동안 열어 두면 그 커넥션이 읽기
+            # 트랜잭션을 쥐고, 뒤이은 교체의 `CREATE_VECTOR_INDEX`(=DDL=쓰기)가
+            # `Cannot start a new write transaction` 으로 거절된다. 그 자리는 멱등을
+            # 위해 예외를 삼키므로 **행은 들어가고 인덱스만 없는** 미러가 남고, 의미
+            # 팔은 예외 없이 빈 목록만 낸다 — 2026-09-10 라이브에서 실제로 그랬다.
+            # `_read` 가 `finally: r.close()` 인 것과 같은 이유다.
+            try:
+                owner = (body.get("owner") or "").strip() or None
+                rows = node_mirror.collect(r, owner)
+                try:
+                    model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
+                except Exception:
+                    model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+            finally:
+                r.close()
             if not rows:
                 return 200, {"kind": "node-mirror.rebuild", "executed": False, "rows": 0,
                              "note": "미러에 담을 노드가 0건이다"}
@@ -1264,19 +1277,19 @@ class VincApp:
                 for b, v in zip(batch, vecs):
                     b["emb"] = list(v)
             encode_s = time.monotonic() - t0
-            try:
-                model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
-            except Exception:
-                model = ""      # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
             res = self.jobs.run_sync(
                 "node-mirror.replace",
                 lambda: node_mirror.replace(self.store, rows, model),
                 timeout=_MIRROR_REPLACE_TIMEOUT)
         finally:
             self._mirror_lock.release()
+        # `index_ok` 가 거짓이면 행은 들어갔고 인덱스만 없다 — 의미 팔이 조용히 죽는
+        # 상태다. 결과에 실어야 엔트리포인트 로그와 배포 로그에 그대로 나온다.
         return 200, {"kind": "node-mirror.rebuild", "executed": True,
                      "rows": res.get("rows"), "owners": res.get("owners"),
-                     "model": model, "encode_s": round(encode_s, 1),
+                     "index_ok": res.get("index_ok"), "model": model,
+                     "encode_s": round(encode_s, 1),
+                     "swap_s": round(time.monotonic() - t0 - encode_s, 1),
                      "wall_s": round(time.monotonic() - t0, 1)}
 
     def write_embed_apply(self, body):
