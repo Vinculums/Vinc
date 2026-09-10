@@ -1673,6 +1673,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       `.pack-field` 는 시트의 커뮤니티 게시 폼, 나머지 둘은 Tools 공유 탭의 백업 링크. ── */
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
 .pack-field select { min-width: 12rem; }   /* 모양은 공용 select 규칙 */
+/* 텍스트 입력에는 규칙이 없어 브라우저 기본(흰 바탕·회색 2px)이 어두운 시트 위에 떴다.
+   위 드롭다운 주석의 그 구멍이다 — 클래스로만 칠하면 새 요소는 아무것도 안 걸친 채
+   태어난다. 그래서 컨테이너 안에서는 요소로 건다(`.settings-body input` 과 같은 꼴).
+   모서리는 --radius-sm: 이 폼 안의 <select> 가 공용 규칙으로 그 값이라 한 폼에서 갈리지 않게. */
+.pack-field input {
+  width: 100%; font: inherit; padding: var(--space-2, .5rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
 /* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
    (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
 #tools-pane .intake-stage { margin-top: 0; max-width: none; }
