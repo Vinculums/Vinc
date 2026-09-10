@@ -2,15 +2,17 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-09-07",
+  "exported": "2026-09-10",
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the application component page. Nine pages of the 2026-09-06 structure (vinc.plan.figma-product-structure §2): 01 · Foundations, 02 · App Components, 04 · Surfaces, 05 · Overlays, 06 · States, 08 · Reference, 10 · Site Components, 11 · Site Screens, 12 · Docs Screens. 00 · Cover, 03 · App Shell, 07 · Prototypes, 13 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "11 · Site Screens boards are html-to-design captures named Site · <Route>[ · <state>] / dark; children are not recorded because the site axis compares board names with the capture manifest.",
-  "app_boards_note": "04/05/06 boards are html-to-design captures of the running app named App · <Surface>[ · <state>] / <theme>; children are not recorded."
+  "app_boards_note": "04/05/06 boards are html-to-design captures of the running app named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
+  "partial_note": "2026-09-10: pages 01/02/04/05/06 re-dumped after the shell-chrome batch; 08/10/11/12 carried over from 2026-09-07 (untouched, and the site repo was not checked out)."
  },
  "pages": {
   "01 · Foundations": {
+   "name": "01 · Foundations",
    "frames": [
     {
      "name": "01 · Logo",
@@ -57,7 +59,8 @@
       "Icon / folder",
       "Icon / pack",
       "Icon / packin",
-      "Icon / mcp"
+      "Icon / mcp",
+      "Icon / sidebar"
      ]
     },
     {
@@ -131,7 +134,8 @@
     "Icon / folder",
     "Icon / pack",
     "Icon / packin",
-    "Icon / mcp"
+    "Icon / mcp",
+    "Icon / sidebar"
    ],
    "variants": {
     "Logo / Mark": [
@@ -143,6 +147,7 @@
    }
   },
   "02 · App Components": {
+   "name": "02 · App Components",
    "frames": [
     {
      "name": "01 · Actions",
@@ -162,8 +167,8 @@
       "App / SearchField",
       "App / Kbd",
       "App / TileRadio",
-      "App / SwitchRow",
-      "App / SliderRow"
+      "App / SliderRow",
+      "App / SwitchRow"
      ]
     },
     {
@@ -206,8 +211,8 @@
     "App / SearchField",
     "App / Kbd",
     "App / TileRadio",
-    "App / SwitchRow",
     "App / SliderRow",
+    "App / SwitchRow",
     "App / NavItem",
     "App / DomainRow",
     "App / DocRow",
@@ -253,6 +258,10 @@
      "State=Selected",
      "State=Idle"
     ],
+    "App / SwitchRow": [
+     "State=Off",
+     "State=On"
+    ],
     "App / NavItem": [
      "State=Default",
      "State=Active"
@@ -297,102 +306,51 @@
    }
   },
   "04 · Surfaces": {
+   "name": "04 · Surfaces",
    "frames": [
     {
      "name": "App · View · 3d / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · 2d / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · timeline / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · weave / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · topic-scope / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lnb-collapsed / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · reader / dark",
-     "children": [
-      "Body",
-      "Overlay / Tooltip",
-      "Dialog - Caravaggio",
-      "Interaction map"
-     ]
-    },
-    {
-     "name": "App · View · docpane-folded / dark",
-     "children": [
-      "Body",
-      "Dialog - Caravaggio",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · node-detail / dark",
-     "children": [
-      "Body",
-      "Dialog - Quantum Information",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · edge-detail / dark",
-     "children": [
-      "Body",
-      "Dialog - Mathur fuzzball",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Search / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Search · results / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Packs / dark",
@@ -415,285 +373,135 @@
      "children": []
     },
     {
-     "name": "Topics",
-     "children": []
-    },
-    {
      "name": "App · View · lnb-nodes / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     }
    ],
    "components": [],
    "variants": {}
   },
   "05 · Overlays": {
+   "name": "05 · Overlays",
    "frames": [
     {
      "name": "App · View · node-float / dark",
-     "children": [
-      "Body",
-      "Overlay / Float card",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · node-float-links / dark",
-     "children": [
-      "Body",
-      "Overlay / Float card",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · node-ask-menu / dark",
-     "children": [
-      "Body",
-      "Overlay / Float card",
-      "Overlay / Context menu",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · node-delete-confirm / dark",
-     "children": [
-      "Body",
-      "Dialog - Quantum Information",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · topic-context-menu / dark",
-     "children": [
-      "Body",
-      "Overlay / Context menu",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · topic-rename-prompt / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-options-3d / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Shell / Statusbar",
-      "Shell / Topbar",
-      "Overlay / Lens panel",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-options-2d / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Header",
-      "Overlay / Lens panel",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-options-timeline / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Shell / Statusbar",
-      "Header",
-      "Overlay / Lens panel",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-options-weave / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Header",
-      "Overlay / Lens panel",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-legend / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Shell / Statusbar",
-      "Shell / Topbar",
-      "Overlay / Lens panel",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lens-help-open / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Shell / Statusbar",
-      "Shell / Topbar",
-      "Overlay / Lens panel",
-      "Overlay / Tooltip",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · mode-menu / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · find-results / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · find-empty / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · find-loading / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · find-error / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · browse-sheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · browse-sheet-docs / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · ask-intro / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · ask-answer / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · ask-none / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · ask-history / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · palette / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Shell / Topbar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · palette-filtered / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Shell / Topbar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · cheatsheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · tools-create / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · tools-import / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · tools-share / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · share-sheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · share-result / dark",
@@ -704,51 +512,23 @@
     },
     {
      "name": "App · Topbar · import-pack-sheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · import-doc-sheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · graphmd / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · settings-account / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Container",
-      "Shell / Topbar",
-      "Overlay / Settings",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · settings-connections / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Container",
-      "Shell / Topbar",
-      "Overlay / Settings",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · settings-data / dark",
@@ -764,39 +544,19 @@
     },
     {
      "name": "App · Topbar · settings-advanced / dark",
-     "children": [
-      "Body",
-      "Main Content",
-      "Shell / Statusbar",
-      "Container",
-      "Shell / Topbar",
-      "Overlay / Settings",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · new-node-sheet / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · first-run / dark",
-     "children": [
-      "Body",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · coachmark / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
+     "children": []
     },
     {
      "name": "App · View · overlays",
@@ -912,48 +672,31 @@
    }
   },
   "06 · States": {
+   "name": "06 · States",
    "frames": [
     {
      "name": "App · View · empty-invite / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · View · error / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lnb-failed / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · View · lnb-loading / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Search · empty / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Search · error / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Packs · intake-ingesting / dark",
@@ -985,32 +728,15 @@
     },
     {
      "name": "App · View · light / light",
-     "children": [
-      "Container",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · View · light-lens / light",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Container",
-      "Header",
-      "Container"
-     ]
+     "children": []
     },
     {
      "name": "App · Topbar · settings-light / light",
-     "children": [
-      "Body",
-      "Main Content",
-      "Container",
-      "Container",
-      "Header",
-      "Dialog - Settings"
-     ]
+     "children": []
     },
     {
      "name": "App · Packs · light / light",

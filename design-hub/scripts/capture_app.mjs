@@ -48,7 +48,7 @@ const viewpoint = async (p, name) => { await p.locator("#tb-viewpoints button", 
 const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
 const openLens = async (p) => { await p.locator("#tb-lens").click(); await p.waitForSelector("#view-lens-panel", { state: "visible" }); await sleep(400); };
 const firstTopic = (p) => p.locator(".lnb-group .lnb-gname").first();
-const firstDoc = async (p) => { const g = p.locator(".lnb-group").first(); const caret = g.locator(".lnb-caret"); if (await caret.count()) await caret.first().click(); await sleep(400); return p.locator(".lnb-doc").first(); };
+const firstDoc = async (p) => { const g = p.locator(".lnb-group").first(); const caret = g.locator(".lnb-caret"); if (await caret.count()) await caret.first().click(); await sleep(400); return p.locator(".lnb-doc:not(.lnb-node)").first(); };   // 개념 줄(.lnb-node) 아래 문서가 온다(lnb.ts groupRows) — 문서 줄만 고른다
 const openFloat = async (p) => {
   // 노드 하나를 주소로 지목한다(#view/trace/<id>): 캔버스 좌표 없이도 float card 가 뜬다.
   const id = await pickNodeId(); if (!id) throw new Error("no node id from the sidecar search");
@@ -122,7 +122,7 @@ V("2d", "viewpoint 2D", (p) => viewpoint(p, "2D"));
 V("timeline", "viewpoint Timeline", (p) => viewpoint(p, "Timeline"));
 V("weave", "viewpoint Weave", (p) => viewpoint(p, "Weave"));
 V("topic-scope", "LNB: click a topic name, scope banner appears", async (p) => { await firstTopic(p).click(); await sleep(1800); });
-V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#lnb-toggle").click(); await sleep(600); });
+V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
 // #232: 주제 줄 아래 갈래가 문서 | 노드 둘이다. 노드 갈래는 localStorage 가 정하고(vinc.shell.lnb.mode) 첫 주제를
 // 펼쳐 둔 채 열면 개념 줄이 문서 줄 자리에 선다. 이 상태가 없으면 Figma 는 칩만 있고 칩이 여는 것은 없다.
 V("lnb-nodes", "LNB: Nodes chip, first topic expanded: concept rows in place of document rows", async (p) => { await p.waitForSelector(".lnb-node", { timeout: 15000 }); await sleep(600); },
@@ -148,7 +148,6 @@ V("edge-detail", "float card link tag with evidence: edge detail in the docpane"
   }
   throw new Error("none of the first 12 root nodes has a link with recorded evidence"); });
 V("reader", "LNB: click a document: reader in the docpane", async (p) => { const d = await firstDoc(p); await d.click(); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(1200); });
-V("docpane-folded", "reader open, docpane folded", async (p) => { const d = await firstDoc(p); await d.click(); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(800); await p.locator("#docpane-fold").click(); await sleep(500); });
 // 드릴다운(상태바 'not linked' 셀)은 고아 노드가 있을 때만 버튼이 된다. 스타터 팩 넷은 전부 연결돼 있어
 // 시드 스토어에는 고아가 없다. 이 상태의 캡처는 고아가 있는 스토어에서 따로 뜬다(매트릭스에 남긴 갭).
 V("topic-context-menu", "LNB: right-click a topic", async (p) => { await firstTopic(p).click({ button: "right" }); await sleep(300); });
@@ -198,7 +197,8 @@ TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list"
 TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
 TB("import-doc-sheet", "Import › pick a .md: import document sheet", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); });
 TB("graphmd", "GRAPH.md sheet", async (p) => { await p.locator("#tb-conv").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(800); });
-const settings = async (p, tab) => { await p.locator("#settings-btn").click(); await p.waitForSelector("#settings-popover", { state: "visible" }); await sleep(300); if (tab) { await p.locator("#settings-popover [role=tab], #settings-popover button").filter({ hasText: new RegExp(`^${tab}$`, "i") }).first().click(); await sleep(500); } };
+// 설정은 시트다(main.ts 2026-09-09): 팝오버·스크림이 사라지고 openSheet 로 열린다. 탭은 시트 본문의 [role=tab].
+const settings = async (p, tab) => { await p.locator("#settings-btn").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(300); if (tab) { await sheet(p).locator("[role=tab]").filter({ hasText: new RegExp(`^${tab}$`, "i") }).first().click(); await sleep(500); } };
 TB("settings-account", "Settings: Account tab (offline on this device)", (p) => settings(p));
 TB("settings-connections", "Settings: Connections tab", (p) => settings(p, "Connections"));
 TB("settings-advanced", "Settings: Advanced tab", (p) => settings(p, "Advanced"));

@@ -168,6 +168,12 @@ DIALOGS = {
     "doc-editor.ts:opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew": None,
     "empty-invite.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
     "main.ts:COPY.ui.palette.keyboard": "App · Topbar · cheatsheet / dark",
+    # 설정이 시트로 합쳐지며(2026-09-09) 이 모달이 `main.ts` 에서 열리게 됐는데 표에
+    # 아무도 넣지 않아 미선언으로 빨갰다. Figma 쪽 보드는 **처음부터 있었다**
+    # (settings-account / connections / data / advanced / light) — 결손이 아니라
+    # 선언 누락이다. 탭이 넷이지만 표의 단위는 모달 하나라, 다른 다중 탭 모달과
+    # 같이 **기본 탭**을 대표로 적는다(`tools.ts:T.title` 이 tools-create 인 것과 같다).
+    "main.ts:COPY.ui.topbar.settings": "App · Topbar · settings-account / dark",
     "sheets.ts:COPY.ui.sheet.shareTitle": "App · Topbar · share-sheet / dark",
     "sheets.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
     "tools.ts:T.title": "App · Topbar · tools-create / dark",
@@ -283,7 +289,8 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / SearchModeButton": {"Mode=Find": 'mode === "find"', "Mode=Ask": 'mode === "ask"'},
     # 유휴 타일은 aria-checked 가 템플릿 문자열로 찍혀 고정 표식이 없다(DocRow Ink=1 과 같은 사정).
     "App / TileRadio":   {"State=Selected": 'aria-checked="true"', "State=Idle": None},
-    "App / SwitchRow":   {"": "opt-swrow"},
+    # 2026-09-10: 켬·끔 세그를 토글(`.switch`)로 바꿨다. 끔은 aria-checked 가 템플릿 값이라 고정 표식이 없다.
+    "App / SwitchRow":   {"State=On": 'aria-checked="true"', "State=Off": None},
     "App / SliderRow":   {"": "slider-row"},
     "App / TreeMode":    {"Mode=Documents": '"docs"', "Mode=Nodes": '"nodes"'},
     # App / FloatCard · Sheet · Titlebar · Topbar 는 2026-09-07 에 Archive 로 갔다. 그 자리는 03 · App Shell 의
