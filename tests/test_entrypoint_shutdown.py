@@ -58,17 +58,31 @@ esac
 
 # 엔트리포인트를 띄우고 → MCP 기동을 기다리고 → **셸에서** TERM 을 보내고 →
 # 사이드카가 닫혔는지 본다. 종료코드가 곧 판정이다.
+# ⚠ 부팅 대기(`BOOT`)와 계약 대기(`WAIT`)의 예산은 **다른 것**이다. 앞의 것은 이 기계가
+# 얼마나 바쁜가에 달렸고(전체 스위트와 같이 돌면 프로세스 하나 뜨는 데 몇십 초가 걸린다),
+# 뒤의 것이 이 검사가 지키는 계약이다. 둘을 한 값으로 묶어 두면 **바쁜 기계가 계약 위반을
+# 만들어 낸다** — 2026-09-10 로컬 전체 스위트에서 한 번 붉었고, 단독·동시 3벌·CI 리눅스
+# 에서는 전부 통과해 원인을 가리는 데 시간이 들었다. 그래서 부팅만 넉넉히 준다.
+# 그리고 **어느 분기로 죽었는지 표를 남긴다** — 종료코드만으로는 "안 떴다"와 "안 닫았다"가
+# 안 갈린다.
+_BOOT_TICKS = 450        # ×0.2s = 90초. 프로세스가 뜨기를 기다리는 시간(계약 아님)
+_WAIT_TICKS = 150        # ×0.2s = 30초. 종료를 기다리는 시간(이것이 계약이다)
 _DRIVER = """
 sh "{entry}" > "{out}/log" 2>&1 &
 ENTRY=$!
 i=0
-while [ "$i" -lt 150 ] && [ ! -f "{out}/mcp-started" ]; do i=$((i+1)); sleep 0.2; done
-if [ ! -f "{out}/mcp-started" ]; then echo "MCP 미기동"; cat "{out}/log"; exit 2; fi
+while [ "$i" -lt {boot} ] && [ ! -f "{out}/mcp-started" ]; do i=$((i+1)); sleep 0.2; done
+if [ ! -f "{out}/mcp-started" ]; then
+  echo "DRIVER: MCP 미기동 ({boot} ticks) — 계약이 아니라 기동 실패다"; cat "{out}/log"; exit 2
+fi
 kill -TERM "$ENTRY" 2>/dev/null
 i=0
-while [ "$i" -lt 150 ] && kill -0 "$ENTRY" 2>/dev/null; do i=$((i+1)); sleep 0.2; done
+while [ "$i" -lt {wait} ] && kill -0 "$ENTRY" 2>/dev/null; do i=$((i+1)); sleep 0.2; done
+if kill -0 "$ENTRY" 2>/dev/null; then
+  echo "DRIVER: 셸이 {wait} ticks 안에 안 닫혔다"; cat "{out}/log"; exit 3
+fi
 cat "{out}/log"
-[ -f "{out}/sidecar-closed" ] || exit 1
+[ -f "{out}/sidecar-closed" ] || {{ echo "DRIVER: sidecar-closed 없음"; exit 1; }}
 exit 0
 """
 
@@ -127,10 +141,11 @@ class EntrypointShutdownTests(unittest.TestCase):
             "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
         })
         env.pop("VINC_ROLE", None)          # 허브 역할로 돈다(encode 는 즉시 exec)
-        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix())
+        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix(),
+                                boot=_BOOT_TICKS, wait=_WAIT_TICKS)
         proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              text=True, timeout=90)
+                              text=True, timeout=240)
         self.assertEqual(
             proc.returncode, 0,
             "사이드카가 SIGTERM 을 못 받았거나 셸이 안 기다렸다 — WAL 이 미완결로 "
@@ -177,10 +192,11 @@ class EntrypointShutdownTests(unittest.TestCase):
             "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
         })
         env.pop("VINC_ROLE", None)
-        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix())
+        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix(),
+                                boot=_BOOT_TICKS, wait=_WAIT_TICKS)
         proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              text=True, timeout=90)
+                              text=True, timeout=240)
         self.assertEqual(proc.returncode, 0, (proc.stdout or "")[-1500:])
         self.assertTrue(
             self._wait_for(self.out / "mirror-killed", 5.0),

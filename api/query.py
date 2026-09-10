@@ -5553,6 +5553,40 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
     return out[:max(1, int(limit))]
 
 
+#: 의미 팔이 낸 id 들의 도메인. **미러는 그 열을 안 담는다** — `NodeVec` 은 찾는 표면과
+#: 라벨만 들고 있고 도메인은 노드 표에 있다.
+#:
+#: 🔴 여기까지 빈 문자열을 채워 보내면 받는 쪽이 **"무주제"로 읽는다.** 2026-09-10 에
+#: 고아 조사를 하다가 의미 팔이 낸 `domain: ""` 을 보고 "무주제 노드가 있다, 그런데
+#: 센서스는 0을 답한다 → 센서스가 틀렸다"까지 갔다. 센서스는 옳았고 이 필드가 거짓이었다.
+#: 같은 노드가 그래프 팔로는 제 도메인을, 의미 팔로는 빈 문자열을 내는 것이 증거다.
+#: **없는 것과 비어 있는 것은 다르다**, 그리고 이 팔은 이제 기본으로 켜져 있다.
+def _domains_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict:
+    """논리 id → domain. 네 라벨을 각각 한 번씩 훑는다(반환은 top_k 규모라 작다)."""
+    if not ids:
+        return {}
+    out: dict[str, str] = {}
+    for label, pk in (("Concept", "concept_id"), ("Record", "record_id"),
+                      ("Decision", "decision_id"), ("Episode", "episode_id")):
+        where = f"WHERE n.{pk} IN $ids"
+        # PK 네임스페이싱이 켜진 스토어에서 PK 열은 물리 키(owner\x1fid)다 — 논리
+        # 슬러그로 바인딩하면 한 건도 안 맞고 domain 이 통째로 빈다(PKNS 잡에서만
+        # 붉었다). 되돌리기는 읽기 훅이 한다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+        params: dict = {"ids": pkns.keys(owner, list(ids))}
+        if owner:
+            where += " AND n.owner_id = $o"
+            params["o"] = owner
+        try:
+            rows = store.run(f"MATCH (n:{label}) {where} "
+                             f"RETURN n.{pk} AS id, n.domain AS domain", params) or []
+        except Exception:
+            continue        # 한 라벨이 막혀도 나머지는 채운다 — 이 값은 증강이다
+        for r in rows:
+            if r.get("id"):
+                out[r["id"]] = r.get("domain") or ""
+    return out
+
+
 def _node_semantic_arm_on() -> bool:
     """의미 암을 켤 것인가. **기본은 켜짐**이고 `VINC_NODE_SEMANTIC_ARM=off` 가 비상구다.
 
@@ -5831,6 +5865,12 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                              "title_tokens": 0, "token_total": 0,
                              "distance": h.get("distance")}
                             for h in _raw]
+                # 도메인은 미러에 없다. 빈 문자열로 두면 "무주제"로 읽히므로 채운다
+                # (사유는 `_domains_for_ids` 주석).
+                _doms = _domains_for_ids(
+                    store, [h["id"] for h in vec_hits if h.get("id")], owner=owner)
+                for _h in vec_hits:
+                    _h["domain"] = _doms.get(_h.get("id"), "")
                 # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
                 # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
                 if len(_raw) > 1 and _node_sem_rank_on():

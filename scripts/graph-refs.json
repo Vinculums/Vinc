@@ -113,6 +113,7 @@
     "vinc.ops.cost-management",
     "vinc.ops.deployment",
     "vinc.ops.doc-extract-mentions-gap-2026-09-03",
+    "vinc.ops.figma-authoring-mechanics",
     "vinc.ops.fts-index-drift",
     "vinc.ops.graph-claim-decay",
     "vinc.ops.incident-2026-07-16-macos-sidecar",
