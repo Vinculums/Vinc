@@ -215,5 +215,72 @@ class TheFilterMustNotManufactureConfidence(ReadPathDefault):
         self.assertIsNone(both.get("validity_filtered"))
 
 
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DecisionsAndDirectReadsCarryValidity(ReadPathDefault):
+    """채운 필드가 읽기에서 실제로 일하는지 — 필터 밖의 두 자리.
+
+    ① Decision 의 구간은 열이 아니라 props 다(§8 항목 5 임시 인코딩). 검색 팔이 그
+    자리를 안 보면 71건에 채운 값은 없는 것과 같고, 폐기된 결정이 후속과 동점으로 나온다
+    (라이브 재현 2026-09-11: `decision:d44`).
+    ② id 로 직접 연 노드는 필터를 거치지 않는다. 그러면 노드 **자신**이 historical 이라고
+    말해야 하는데, 여태 부착 목록만 구간을 실었다(라이브 재현: `record:fact-engines-orphans`
+    가 현재형 사실로 돌아왔다).
+    """
+
+    def setUp(self):
+        super().setUp()
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "decision:cache-policy-old", "type": "decision", "domain": "eng",
+             "title": "cache policy is nightly",
+             "props": {"valid_from": "2025-01-01", "valid_until": "2026-01-01",
+                       "superseded_by": "decision:cache-policy-new"}},
+            {"id": "decision:cache-policy-new", "type": "decision", "domain": "eng",
+             "title": "cache policy is hourly", "props": {"valid_from": "2026-01-01"}},
+            {"id": "decision:cache-policy-design", "type": "decision", "domain": "eng",
+             "title": "cache policy design sketch"},
+        ]}, store=self.store)
+
+    def _hits(self, **kw):
+        res = q.search("cache policy", owner=self.OWNER, top_k=10,
+                       store=self.store, **kw)
+        return [h["id"] for h in res.get("node_hits") or []], res
+
+    def test_a_retired_decision_leaves_the_default_read_and_is_counted(self):
+        ids, res = self._hits()
+        self.assertNotIn("decision:cache-policy-old", ids, "props 의 구간을 안 읽었다")
+        self.assertIn("decision:cache-policy-new", ids)
+        self.assertIn("decision:cache-policy-design", ids, "미기재 결정을 걸렀다")
+        self.assertEqual(res.get("validity_filtered"), 1)
+
+    def test_the_historical_switch_brings_the_retired_decision_back(self):
+        ids, res = self._hits(historical=True)
+        self.assertIn("decision:cache-policy-old", ids)
+        self.assertIsNone(res.get("validity_filtered"))
+
+    def test_node_context_says_the_node_itself_is_historical(self):
+        rec = q.node_context(owner=self.OWNER, node="record:quorum-note-retired",
+                             store=self.store)
+        self.assertEqual(rec["validity"], "historical")
+        self.assertEqual(rec["valid_until"], "2026-01-01")
+        dec = q.node_context(owner=self.OWNER, node="decision:cache-policy-old",
+                             store=self.store)
+        self.assertEqual(dec["validity"], "historical")
+        self.assertEqual(dec["superseded_by"], "decision:cache-policy-new")
+        live = q.node_context(owner=self.OWNER, node="decision:cache-policy-new",
+                              store=self.store)
+        self.assertEqual(live["validity"], "current")
+        self.assertEqual(live["superseded_by"], "")
+
+    def test_brief_by_id_announces_the_retirement_and_the_successor(self):
+        out = q.brief("decision:cache-policy-old", owner=self.OWNER, store=self.store)
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["resolved_via"], "id")
+        self.assertEqual(out["node"]["validity"], "historical")
+        self.assertIn("decision:cache-policy-new", out.get("validity_note") or "")
+        fresh = q.brief("decision:cache-policy-new", owner=self.OWNER, store=self.store)
+        self.assertEqual(fresh["node"]["validity"], "current")
+        self.assertNotIn("validity_note", fresh)
+
+
 if __name__ == "__main__":
     unittest.main()

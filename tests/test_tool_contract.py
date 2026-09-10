@@ -117,6 +117,17 @@ def test_member_limit_is_omitted_when_unset():
     assert "member_limit" not in seen["params"]
 
 
+def test_historical_reaches_the_sidecar_and_is_silent_when_unset():
+    """유효구간 스위치. 응답의 validity_note 가 "pass historical=true" 라고 안내하는데
+    도구가 그 인자를 떨어뜨리면 MCP 에이전트는 따를 길이 없다(라이브 재현 2026-09-11).
+    미지정이면 보내지 않는다 — 기본(current 만)은 사이드카가 정한다."""
+    for name in ("vinc_search", "vinc_brief"):
+        seen = _run(name, {"query": "q", "historical": True})
+        assert seen["params"].get("historical") == "true", name
+        seen = _run(name, {"query": "q"})
+        assert not seen["params"].get("historical"), name
+
+
 # ── 3. F12 — 설명은 선택을 가능하게 한다 ─────────────────────────────────────
 #
 # 길이는 대리 지표일 뿐이지만, 71자짜리 한 줄("Subgraph around a seed node")로는

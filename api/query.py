@@ -575,6 +575,30 @@ def validity_state(valid_from: str | None, valid_until: str | None,
     return "current"
 
 
+def _row_validity(r: dict) -> tuple[str, str]:
+    """검색 행의 유효구간 — Record 는 열, Decision 은 props 의 임시 인코딩이다
+    (`props.valid_from`/`props.valid_until`, 시간 정책 §8 항목 5). "읽기는 종류별로
+    두 자리를 본다"는 그 조항이 이 함수다. 여기 없던 동안 71건에 채운 결정 구간은
+    어떤 읽기도 보지 않았고, 폐기된 결정(d44)이 후속 결정과 동점으로 나왔다
+    (라이브 재현 2026-09-11)."""
+    if r.get("kind") == "decision":
+        p = _props_to_obj(r.get("props_raw"))
+        return str(p.get("valid_from") or ""), str(p.get("valid_until") or "")
+    return str(r.get("valid_from") or ""), str(r.get("valid_until") or "")
+
+
+def _stamp_validity(base: dict, valid_from, valid_until) -> None:
+    """노드 **자신**의 유효구간과 파생 상태를 상세에 싣는다. 부착 목록(links.items)만
+    구간을 갖고 노드가 안 가지면, id 로 직접 연 historical 기록이 현재형 사실로
+    읽힌다(라이브 재현: `record:fact-engines-orphans`). `superseded_by` 는 props 의
+    임시 인코딩(§8 항목 4)이라 같은 자리에서 꺼내 준다 — 후속으로 건너갈 유일한 길."""
+    base["valid_from"] = str(valid_from or "")
+    base["valid_until"] = str(valid_until or "")
+    base["validity"] = validity_state(base["valid_from"], base["valid_until"])
+    props = base.get("props") if isinstance(base.get("props"), dict) else {}
+    base["superseded_by"] = str(props.get("superseded_by") or "")
+
+
 def graph_plan(*, owner: str, domain: str | None = None,
                domains: list[str] | None = None) -> QueryPlan:
     """The learning knowledge-graph for an owner: Concept nodes + their relations
@@ -2377,6 +2401,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
 
     반환: {executed, node, node_kind, title, domain, one_liner, rev, updated_at, props,
+           valid_from, valid_until, validity('current'|'historical'|'future'), superseded_by,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
                    items: [{id, title, domain, type, dir, evidence, confidence, note,
@@ -2396,7 +2421,10 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                   "one_liner": "", "domain": "", "props": {}, "excerpts": [],
                   "arm": "none",
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
-                  "rev": 0, "updated_at": ""}
+                  "rev": 0, "updated_at": "",
+                  # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
+                  "valid_from": "", "valid_until": "", "validity": "",
+                  "superseded_by": ""}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -2437,6 +2465,10 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         rev=rows[0].get("rev") or 0,
                         updated_at=rows[0].get("updated_at") or "",
                         props=_props_to_obj(rows[0].get("props")))
+            # Decision 의 구간은 props 에 있다(§8 항목 5 임시 인코딩). Concept 은
+            # 구간이 없고, 미기재는 current 다.
+            _p = base["props"] if meta_label == "Decision" else {}
+            _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
@@ -2457,7 +2489,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         "AND r.owner_id = $owner "
                         "RETURN r.title AS title, r.props AS props, "
                         "r.domain AS domain, "
-                        + _track_cols("r"),
+                        + _track_cols("r") + ", " + _validity_cols("r"),
                         {"id": pkns.key(owner, node), "owner": owner})
                     if rc:
                         # one_liner 열이 없다 — 카드 본문은 props 다(부착 목록이
@@ -2469,6 +2501,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                                     rev=rc[0].get("rev") or 0,
                                     updated_at=rc[0].get("updated_at") or "",
                                     props=_props_to_obj(rc[0].get("props")))
+                        _stamp_validity(base, rc[0].get("valid_from"),
+                                        rc[0].get("valid_until"))
                         # MENTIONS 는 Chunk→Concept 이라 Record 는 대상이 아니다.
                         # 관계는 있다(ATTACHES_TO). 여기서 links 를 비워 두면
                         # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
@@ -2484,6 +2518,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         one_liner=ep[0].get("s") or "",
                         rev=ep[0].get("rev") or 0,
                         updated_at=ep[0].get("updated_at") or "")
+            _stamp_validity(base, "", "")   # 사건은 구간이 없다 — 꼴만 맞춘다
             # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
             # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
             # 일찍 빠져나가면서 그 둘을 함께 건너뛰고 있었고, 사건이 해소 후보가 되면서
@@ -2780,7 +2815,18 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     base["node"] = {"id": nid,
                     "title": ctx.get("title") or cand.get("title") or nid,
                     "domain": cand.get("domain") or ctx.get("domain") or "",
-                    "kind": ctx.get("node_kind") or cand.get("kind") or ""}
+                    "kind": ctx.get("node_kind") or cand.get("kind") or "",
+                    # 노드 자신의 유효구간 — 직참조는 필터를 거치지 않으므로 여기가
+                    # historical 을 말할 유일한 자리다.
+                    "valid_from": ctx.get("valid_from") or "",
+                    "valid_until": ctx.get("valid_until") or "",
+                    "validity": ctx.get("validity") or "current",
+                    "superseded_by": ctx.get("superseded_by") or ""}
+    if base["node"]["validity"] != "current":
+        _sb = base["node"]["superseded_by"]
+        base.setdefault("validity_note",
+                        f"this claim is {base['node']['validity']}, not current"
+                        + (f"; superseded by {_sb}" if _sb else ""))
     body = _brief_body(ctx)
     base["one_liner"] = body["text"]
     base["body_src"] = body["src"]
@@ -5451,7 +5497,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
         # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
         if not historical:
-            st = validity_state(r.get("valid_from"), r.get("valid_until"))
+            st = validity_state(*_row_validity(r))
             if st != "current":
                 dropped += 1
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
