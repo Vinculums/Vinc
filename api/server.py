@@ -74,6 +74,35 @@ def _is_timeout(exc: BaseException) -> bool:
     return isinstance(exc, TimeoutError) or isinstance(
         getattr(exc, "reason", None), TimeoutError)
 
+
+#: 미러 재구축 한 배치의 크기. 인코더 왕복 수와 한 요청의 무게를 맞바꾼다.
+_MIRROR_BATCH = int(os.environ.get("VINC_NODE_MIRROR_BATCH", "32"))
+#: 그 한 배치의 상한. 질의 경로의 1.5초와 **다른 성질**이다 — 여기서는 기다리는 쪽이
+#: 배포 스크립트라 인코더 콜드스타트(0→1 리비전)를 통째로 참는 것이 맞다.
+_MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT", "120"))
+#: 교체(드롭·삭제·삽입·인덱스 빌드)의 상한. 인코딩이 빠져 있어 짧다.
+_MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
+
+
+def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
+    """인코딩 창구에 한 번 묻는다(`packaging/embed_worker.py` `serve_encode`).
+
+    ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데, 모델을
+    `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 질의 경로를 빠뜨려
+    **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다 되는 것처럼
+    보였다. 그래서 창구를 부르는 자리를 여기 한 벌로 모았다.
+
+    실패는 **던진다** — 부르는 쪽이 시간 초과 여부를 보고 다시 갈지 정한다."""
+    body = json.dumps({"texts": list(texts), "kind": kind}).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
+                                 headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return (json.load(resp) or {}).get("vectors") or []
+
 from store.config import load_config
 from store.backend import open_store
 
@@ -85,6 +114,7 @@ from . import share
 from . import spaceproxy
 from . import sync
 from . import docstore
+from . import node_mirror
 from . import docsync
 from . import graphmd
 from . import textextract
@@ -235,6 +265,9 @@ class VincApp:
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
+        # 미러 재구축은 통째로 갈아 끼우는 일이라 **두 벌이 겹치면 안 된다** —
+        # 하나가 인덱스를 드롭한 사이 다른 하나가 만들면 반쪽 미러가 남는다.
+        self._mirror_lock = threading.Lock()
         self._reader_takes_writer: bool | None = None  # 스토어가 writer= 를 받는가(1회 판정)
         self._mig_note = ""      # 임베딩 모델 이행 중 사유(빈 문자열 = 정상)
         self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
@@ -667,15 +700,7 @@ class VincApp:
         모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
         빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
         되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
-        body = json.dumps({"texts": [text], "kind": "query"}).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
-        if tok:
-            headers["Authorization"] = f"Bearer {tok}"
-        req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
-                                     headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            vecs = (json.load(resp) or {}).get("vectors") or []
+        vecs = _encode_post(url, [text], "query", timeout)
         self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
         return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
 
@@ -1190,6 +1215,69 @@ class VincApp:
         if r is None:
             return {"error": "no reachable store"}
         return docstore.embed_model_state(r)
+
+    def write_node_mirror_rebuild(self, body):
+        """POST /node-mirror/rebuild — 노드 미러를 통째로 다시 만든다.
+
+        **배포 경계에서만 부른다**(`packaging/docker-entrypoint.sh`). 증분 삽입은
+        기각됐다 — "없던 벡터가 생기는" HNSW 삽입만 세그폴트를 내기 때문이고, 그래서
+        미러는 전량 재구축 아니면 아무것도 아니다. 그 비용(노드 수에 비례, 실측 1365
+        노드에 약 6분)을 **질의 경로가 아니라 릴리스에 물린다**. 평시 노드 쓰기는 미러
+        지연을 허용한다 — 그동안에도 제목 팔과 그래프 팔은 그대로 산다.
+        근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]
+        · [[record:the-node-mirror-rebuilds-at-the-deploy-boundary-2026-09-10]]
+
+        ⚠ **인코딩을 쓰기 큐 밖에서 한다.** 전부를 한 잡으로 묶으면 그 몇 분 동안
+        모든 쓰기가 단일 워커 뒤에 줄을 서고, `run_sync` 의 상한(600초)을 넘기는 순간
+        기다리던 쓰기가 **지연이 아니라 500** 이 된다. 느린 것은 인코더 왕복이고
+        그것은 스토어를 안 만지므로, 여기서 다 받아 두고 마지막의 짧은 교체만 큐로
+        보낸다. 조회는 리더 커넥션이라 어느 쪽에도 안 막힌다.
+
+        중간에 죽으면 인덱스 없는 미러가 남는다. 그 상태에서 의미 팔은 빈 목록을 낼
+        뿐이라 검색은 멀쩡하고, 다음 배포가 다시 만든다."""
+        url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+        if not url:
+            # 데스크탑에는 인코더가 없다 — 미러도 없고, 의미 팔은 빈 목록을 낸다.
+            return 503, {"executed": False,
+                         "error": "VINC_EMBED_ENCODE 가 비어 있다 — 인코더 없이는 못 만든다"}
+        if not self._mirror_lock.acquire(blocking=False):
+            return 409, {"executed": False, "error": "미러 재구축이 이미 돌고 있다"}
+        try:
+            r = self._reader()
+            if r is None:
+                return 503, {"executed": False, **store_unavailable()}
+            owner = (body.get("owner") or "").strip() or None
+            rows = node_mirror.collect(r, owner)
+            if not rows:
+                return 200, {"kind": "node-mirror.rebuild", "executed": False, "rows": 0,
+                             "note": "미러에 담을 노드가 0건이다"}
+            t0 = time.monotonic()
+            for i in range(0, len(rows), _MIRROR_BATCH):
+                batch = rows[i:i + _MIRROR_BATCH]
+                vecs = _encode_post(url, [b["text"] for b in batch], "passage",
+                                    _MIRROR_ENCODE_TIMEOUT)
+                if len(vecs) != len(batch):
+                    # 반만 받은 벡터로 미러를 갈아 끼우면 나머지 노드가 조용히 사라진다.
+                    return 502, {"executed": False, "error": (
+                        f"인코더가 {len(batch)}건 중 {len(vecs)}건만 돌려줬다 "
+                        f"(배치 {i // _MIRROR_BATCH + 1})")}
+                for b, v in zip(batch, vecs):
+                    b["emb"] = list(v)
+            encode_s = time.monotonic() - t0
+            try:
+                model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
+            except Exception:
+                model = ""      # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+            res = self.jobs.run_sync(
+                "node-mirror.replace",
+                lambda: node_mirror.replace(self.store, rows, model),
+                timeout=_MIRROR_REPLACE_TIMEOUT)
+        finally:
+            self._mirror_lock.release()
+        return 200, {"kind": "node-mirror.rebuild", "executed": True,
+                     "rows": res.get("rows"), "owners": res.get("owners"),
+                     "model": model, "encode_s": round(encode_s, 1),
+                     "wall_s": round(time.monotonic() - t0, 1)}
 
     def write_embed_apply(self, body):
         doc_id = _req(body, "doc_id")
@@ -1747,6 +1835,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
             "/evidence/backfill": app.write_evidence_backfill,   # 관계 근거 저작(U2)
             "/embed/apply": app.write_embed_apply,   # 자체호스팅 임베딩 워커(B, 내부)
+            # 노드 미러 전량 재구축 — 배포 경계에서 엔트리포인트가 한 번 부른다.
+            "/node-mirror/rebuild": app.write_node_mirror_rebuild,
             "/domain/rename": app.write_domain_rename,   # 도메인 일괄 변경(S2)
             "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
             "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
