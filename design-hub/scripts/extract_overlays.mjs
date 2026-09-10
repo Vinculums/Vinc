@@ -4,7 +4,8 @@
 //   node scripts/extract_overlays.mjs <out dir> --app http://tauri.localhost:5199 --sidecar http://127.0.0.1:8787 --token devtoken
 //
 // 한 줄 JSON 하나가 상태 하나다: t(tag) c(class) i(id) b[x,y,w,h] bg bd[w,color] bb(아래선) r o ov s f x(글자) F[family,size,weight,color,align,lh,italic] svg col k(children).
-// 스크롤 영역은 펼쳐서 잰다(EXPAND_*) — 잘린 줄 없이 전체 높이를 얻고, Figma 쪽에서 clipsContent 로 앱 높이로 되돌린다.
+// 스크롤 영역은 펼쳐서 잰다(EXPAND_*) — 바닥에 반쯤 잘린 줄까지 온전히 얻고, vh(펼치기 전 높이)+40 아래의 자식은 버린다.
+// 빌더가 루트를 vh 로 자르므로 그 아래는 어차피 안 보이고, 긴 목록(문서 123건)이 use_figma 코드 한도(50K자)를 넘지 않게 된다.
 // generate_figma_design(html-to-design) 이 세션에 없을 때의 대체 경로다(2026-09-10).
 import { chromium } from "playwright";
 import fs from "node:fs";
@@ -13,6 +14,7 @@ import { S, APP, VP, BASE_LS, SHELL_INIT, side, seedEvidenceEdge, sleep } from "
 const OUT = process.argv[2];
 fs.mkdirSync(OUT, { recursive: true });
 const EXPAND_LENS = "#view-lens-panel{max-height:none!important;height:auto!important} .lens-scroll{max-height:none!important;overflow:visible!important}";
+const EXPAND_POP = "#tb-results,#tb-chat{max-height:none!important;overflow:visible!important}";
 const EXPAND_SHEET = ".sheet{max-height:none!important} .sheet-body{max-height:none!important;overflow:visible!important}";
 const T = [
   ["view__lens-options-3d", "#view-lens-panel", EXPAND_LENS], ["view__lens-options-2d", "#view-lens-panel", EXPAND_LENS],
@@ -23,7 +25,33 @@ const T = [
   ["view__node-float", ".float-card", ""], ["view__node-float-links", ".float-card", ""], ["view__node-ask-menu", ".float-card", "", "[role=menu]:not([hidden])"],
   ["view__reader", "#docpane", ""], ["view__node-detail", "#docpane", ""], ["view__edge-detail", "#docpane", ""],
   ["view__3d", "#lnb", ""],
+  // ── 2026-09-10 둘째 묶음: 남은 Overlay / * 전부. "last:" 는 겹친 시트 중 맨 위(마지막) 를 고른다.
+  ["topbar__mode-menu", "#tb-modemenu", ""],
+  ["topbar__find-results", "#tb-results", EXPAND_POP], ["topbar__find-empty", "#tb-results", ""], ["topbar__find-loading", "#tb-results", ""], ["topbar__find-error", "#tb-results", ""],
+  ["topbar__ask-intro", "#tb-chat", EXPAND_POP], ["topbar__ask-answer", "#tb-chat", EXPAND_POP], ["topbar__ask-none", "#tb-chat", EXPAND_POP],
+  ["topbar__ask-history", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["topbar__palette", ".palette-card", ""], ["topbar__palette-filtered", ".palette-card", ""],
+  ["topbar__cheatsheet", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["topbar__tools-create", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__tools-import", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__tools-share", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["topbar__share-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__import-pack-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__import-doc-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["topbar__browse-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__browse-sheet-docs", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["view__new-node-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["view__first-run", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["view__coachmark", ".coach", ""],
+  ["view__topic-context-menu", ".ctx-menu", ""], ["view__node-context-menu", ".ctx-menu", ""],
+  ["view__topic-rename-prompt", "last:.sheet[role=dialog]", ""],
+  ["view__node-delete-confirm", ".sheet[role=alertdialog]", ""],
+  ["view__tooltip-short", ".tip", ""], ["view__tooltip-long", ".tip", ""],
 ];
+// 캡처 목록에 없는 상태 셋 — 보드는 없고 Figma 컴포넌트만 있는 것들(노드 컨텍스트 메뉴 · 툴팁 둘).
+// 노드 메뉴는 WebGL 캔버스 우클릭 대신 앱 모듈을 그대로 불러 같은 항목으로 연다(카피는 COPY 에서, 정본).
+const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
+const hoverTip = async (p, pick) => { await p.evaluate((pick) => { const els = [...document.querySelectorAll("#lnb [data-tip], #rail [data-tip], #topbar [data-tip]")]; els.sort((a, b) => a.dataset.tip.length - b.dataset.tip.length); const el = pick === "long" ? els[els.length - 1] : els[0]; el.setAttribute("data-ext-hover", "1"); }, pick); await p.hover("[data-ext-hover]"); await sleep(1200); };
+const EXTRA = [
+  { id: "view__node-context-menu", url: "#view", ls: {}, api: [], before: async (p) => { await settled(p); await p.evaluate(async () => { const [{ openContextMenu }, { COPY }] = await Promise.all([import("/src/components.ts"), import("/src/copy.ts")]); openContextMenu(520, 320, [{ label: COPY.ui.menu.open, run() {} }, { label: COPY.ui.menu.shareHere, run() {} }, { label: COPY.ui.viewx.del, danger: true, run() {} }]); }); await sleep(300); } },
+  { id: "view__tooltip-short", url: "#view", ls: {}, api: [], before: async (p) => { await settled(p); await hoverTip(p, "short"); } },
+  { id: "view__tooltip-long", url: "#view", ls: {}, api: [], before: async (p) => { await settled(p); await hoverTip(p, "long"); } },
+];
+const SKIP_EXISTING = process.argv.includes("--skip-existing");
 const EXT = String.raw`window.__ext = (root) => {
   const R = root.getBoundingClientRect(); const n1 = (v) => Math.round(v * 10) / 10;
   const isInline = (k) => k.nodeType === 1 && /^(span|b|i|em|strong|kbd|code|a|u|small)$/i.test(k.tagName) && !k.querySelector('svg,button,input,div') && getComputedStyle(k).display.startsWith('inline');
@@ -42,6 +70,7 @@ const EXT = String.raw`window.__ext = (root) => {
     if (cs.boxShadow !== 'none') n.s = cs.boxShadow.slice(0, 90);
     if (cs.backdropFilter !== 'none') n.f = cs.backdropFilter;
     if (el.tagName.toLowerCase() === 'svg') { n.svg = el.outerHTML.slice(0, 3000); n.col = cs.color; return n; }
+    if (/^input$/i.test(el.tagName) && /^(checkbox|radio)$/.test(el.type)) { n.t = 'cb'; n.kind = el.type; n.on = el.checked ? 1 : 0; return n; }   /* 체크박스·라디오는 값이 아니라 상태다 */
     if (/^(input|textarea|select)$/i.test(el.tagName)) { n.x = el.value || el.placeholder || ''; n.ph = el.value ? 0 : 1; n.F = font(cs); if (n.ph) n.F[3] = 'rgb(110, 113, 137)'; return n; }
     const kids = [...el.childNodes];
     const textOnly = kids.length && kids.every(k => k.nodeType === 3 || k.nodeType === 8 || isInline(k));
@@ -60,7 +89,8 @@ if (!(await side("/health"))) { console.error("sidecar not reachable"); process.
 const browser = await chromium.launch({ channel: "chromium" });
 await seedEvidenceEdge();   // edge-detail 상태가 근거 있는 관계를 요구한다
 for (const [id, root, expand, root2] of T) {
-  const s = S.find((x) => x.id === id); if (!s) { console.log("skip", id); continue; }
+  const s = [...S, ...EXTRA].find((x) => x.id === id); if (!s) { console.log("skip", id); continue; }
+  if (SKIP_EXISTING && fs.existsSync(path.join(OUT, id + ".json"))) continue;
   const ctx = await browser.newContext({ viewport: s.vp ?? VP, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", deviceScaleFactor: 1 });
   try {
     await ctx.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) { if (v === "") localStorage.removeItem(k); else localStorage.setItem(k, v); } }, { ...BASE_LS, ...s.ls, ...(s.scheme === "light" ? { "vinc.theme": "light" } : {}) });
@@ -69,9 +99,12 @@ for (const [id, root, expand, root2] of T) {
     for (const [m, re, r] of s.api) await page.route((u) => re.test(new URL(u).pathname + new URL(u).search), async (route) => { if (m !== "*" && route.request().method() !== m) return route.continue(); if (r === "abort") return route.abort("connectionrefused"); if (r === "hang") return; return route.fulfill({ status: r.status, contentType: "application/json", body: JSON.stringify(r.json) }); });
     await page.goto(`${APP}/${s.url}`, { waitUntil: "load", timeout: 30000 });
     if (s.before) await s.before(page);
+    const pickEl = String.raw`(sel) => sel.startsWith("last:") ? [...document.querySelectorAll(sel.slice(5))].pop() : document.querySelector(sel)`;
+    const vh = await page.evaluate(([pk, sel]) => { const el = (0, eval)(pk)(sel); return el ? Math.round(el.getBoundingClientRect().height * 10) / 10 : null; }, [pickEl, root]);
     await page.addStyleTag({ content: expand + " *{transition:none!important;animation:none!important}" });
     await sleep(300);
-    const data = await page.evaluate(([ext, sel, sel2]) => { (0, eval)(ext); const el = document.querySelector(sel); const d = el ? window.__ext(el) : null; if (d && sel2) { const e2 = document.querySelector(sel2); if (e2) { const R = el.getBoundingClientRect(), B = e2.getBoundingClientRect(); const m = window.__ext(e2); if (m) { m.b[0] = Math.round((B.x - R.x) * 10) / 10; m.b[1] = Math.round((B.y - R.y) * 10) / 10; m.detached = 1; (d.k = d.k || []).push(m); } } } return d; }, [EXT, root, root2 || null]);
+    const data = await page.evaluate(([ext, sel, sel2, pk]) => { (0, eval)(ext); const el = (0, eval)(pk)(sel); const d = el ? window.__ext(el) : null; if (d && sel2) { const e2 = document.querySelector(sel2); if (e2) { const R = el.getBoundingClientRect(), B = e2.getBoundingClientRect(); const m = window.__ext(e2); if (m) { m.b[0] = Math.round((B.x - R.x) * 10) / 10; m.b[1] = Math.round((B.y - R.y) * 10) / 10; m.detached = 1; (d.k = d.k || []).push(m); } } } return d; }, [EXT, root, root2 || null, pickEl]);
+    if (data) { data.vh = vh; if (vh) { const prune = (n) => { if (!n.k) return; n.k = n.k.filter((c) => c.b[1] < vh + 40); n.k.forEach(prune); }; prune(data); } }
     const f = path.join(OUT, id + ".json"); fs.writeFileSync(f, JSON.stringify(data));
     console.log(data ? "ok  " : "NULL", id, data ? `${Math.round(fs.statSync(f).size / 1024)}KB ${data.b[2]}x${data.b[3]}` : "");
   } catch (e) { console.log("FAIL", id, String(e.message || e).split("\n")[0].slice(0, 160)); }

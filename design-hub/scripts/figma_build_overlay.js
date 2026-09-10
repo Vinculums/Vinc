@@ -1,5 +1,6 @@
 // 살아 있는 DOM 추출(JSON)을 Figma 편집 레이어로 옮긴다. `extract_overlays.mjs` 가 만든 JSON 을
-// `J` 에 붙이고 `TARGET`(비울 변형·컴포넌트 id)과 `PAGE` 를 채워 use_figma 로 통째로 실행한다.
+// `JOBS` 에 [TARGET(비울 변형·컴포넌트 id), J] 쌍으로 붙이고 `PAGE` 를 채워 use_figma 로 통째로 실행한다.
+// 코드 한도가 50K자라 작은 것은 여러 개를 한 호출에, 큰 시트는 하나씩 보낸다.
 // html-to-design(generate_figma_design) 이 세션에 없을 때 쓰는 대체 경로다(2026-09-10).
 //
 // 규칙(실측으로 물린 것):
@@ -13,8 +14,7 @@
 //  - 세트 안의 변형은 maxHeight 가 걸려 있을 수 있다(캡처 승격 유산) → null 로 풀고 resize.
 //  - 시트·패널의 스크롤 영역은 추출 때 펼쳐 두므로 루트는 clipsContent 로 잘라 앱과 같은 높이를 유지한다.
 const PAGE = "619:1027";      // 05 · Overlays (문서 열·LNB 는 03 · App Shell 619:1026)
-const TARGET = "942:1767";    // 비우고 다시 그릴 변형
-const J = null;               // extract_overlays.mjs 출력(JSON) 을 여기에
+const JOBS = [];              // [["942:1767", {…extract_overlays.mjs 출력…}], …]
 const page = await figma.getNodeByIdAsync(PAGE);
 await figma.setCurrentPageAsync(page);
 for (const s of ["Regular", "Medium", "Semi Bold", "Bold", "Italic"]) await figma.loadFontAsync({ family: "Inter", style: s });
@@ -33,7 +33,11 @@ const stats = { frames: 0, texts: 0, svgs: 0, sliders: 0, cbs: 0, styleErr: 0, s
 const styleBox = async (f, n, W, H) => { const bgp = n.bg ? await paint(n.bg) : null; f.fills = bgp ? [bgp] : []; if (n.bd) { const p = await paint(n.bd[1]); if (p) { f.strokes = [p]; f.strokeWeight = n.bd[0]; f.strokeAlign = 'INSIDE'; } } else if (n.bb) { const p = await paint(n.bb[1]); if (p) { f.strokes = [p]; f.strokeAlign = 'INSIDE'; f.strokeTopWeight = 0; f.strokeLeftWeight = 0; f.strokeRightWeight = 0; f.strokeBottomWeight = n.bb[0]; } } if (n.r) f.cornerRadius = Math.min(n.r, Math.min(W, H) / 2); if (n.o !== undefined) f.opacity = n.o; if (n.f) f.effects = [{ type: 'BACKGROUND_BLUR', radius: 14, visible: true }]; };
 const build = async (n, parent, ox, oy, pw) => {
   const [x, y, w, h] = n.b; const W = Math.max(1, w), H = Math.max(1, h);
-  if (n.t === 'cb') { const c = figma.createFrame(); c.name = 'checkbox · checked'; parent.appendChild(c); c.x = x - ox; c.y = y - oy; c.resize(13, 13); c.cornerRadius = 3; c.fills = [await paint('rgb(145, 152, 217)')]; const k = figma.createNodeFromSvg('<svg viewBox="0 0 13 13"><path d="M3 6.8 5.6 9.3 10 4.4" fill="none" stroke="#191c29" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'); c.appendChild(k); k.x = 0; k.y = 0; k.resize(13, 13); stats.cbs++; return; }
+  if (n.t === 'cb') {   // 체크박스·라디오: on 이면 ring 채움 + 표식, off 면 border 만(앱 accent-color 규칙과 같다)
+    const radio = n.kind === 'radio'; const c = radio ? figma.createEllipse() : figma.createFrame(); c.name = (radio ? 'radio' : 'checkbox') + (n.on ? ' · on' : ' · off'); parent.appendChild(c); c.x = x - ox; c.y = y - oy; c.resize(13, 13); if (!radio) c.cornerRadius = 3;
+    if (n.on) { c.fills = [await paint('rgb(145, 152, 217)')]; if (radio) { const d = figma.createEllipse(); d.name = 'dot'; parent.appendChild(d); d.resize(5, 5); d.x = x - ox + 4; d.y = y - oy + 4; d.fills = [await paint('rgb(25, 28, 41)')]; } else { const k = figma.createNodeFromSvg('<svg viewBox="0 0 13 13"><path d="M3 6.8 5.6 9.3 10 4.4" fill="none" stroke="#191c29" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'); c.appendChild(k); k.x = 0; k.y = 0; k.resize(13, 13); } }
+    else { c.fills = [await paint('rgb(12, 13, 19)')]; c.strokes = [await paint('rgb(110, 113, 137)')]; c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; }
+    stats.cbs++; return; }
   if (n.t === 'svg') { let node; try { node = figma.createNodeFromSvg(n.svg.replace(/currentColor/g, n.col || '#ffffff').replace(/hsl\(var\(--ring\)\)/g, '#8f96d9')); } catch (e) { stats.svgErr++; return; } parent.appendChild(node); node.name = (n.c ? '.' + n.c : 'svg'); node.resize(W, H); node.x = x - ox; node.y = y - oy; const p = await paint(n.col); if (p) for (const v of node.findAll(k => 'strokes' in k)) { if (v.strokes.length) v.strokes = [{ ...p, opacity: v.strokes[0].opacity }]; if (v.fills.length && v.fills[0].type === 'SOLID' && hex(v.fills[0].color) !== '#8f96d9' && hex(v.fills[0].color) !== '#ffffff') v.fills = [{ ...p, opacity: v.fills[0].opacity }]; } stats.svgs++; return; }
   if (n.t === 'input' && (n.c || '').includes('slider')) {
     const g = figma.createFrame(); g.name = '#' + (n.i || 'slider'); parent.appendChild(g); g.x = x - ox; g.y = y - oy; g.resize(W, H); g.fills = []; g.clipsContent = false;
@@ -51,18 +55,24 @@ const build = async (n, parent, ox, oy, pw) => {
     (box || parent).appendChild(t); t.name = (n.i ? '#' + n.i : n.c ? '.' + n.c : 'text').slice(0, 40); t.textAutoResize = 'NONE';
     if (box) { const pad = (n.t === 'input' || n.t === 'textarea') ? 12 : 0; const padY = n.t === 'textarea' ? 10 : 0; t.x = pad; t.y = padY; t.resize(Math.max(1, W - pad * 2), Math.max(1, H - padY * 2)); } else { t.x = x - ox; t.y = y - oy; t.resize(W, H); }
     const single = !box && F[5] && H < F[5] * 1.6 && !(n.x || '').includes('\n');
-    if (single && !n.ov) { const right = (x + W) - ox; t.textAutoResize = 'WIDTH_AND_HEIGHT'; const tight = W < t.width + 12; const nearRight = pw && right > pw - 24; if (t.textAlignHorizontal === 'RIGHT' || (tight && nearRight)) t.x = right - t.width; else if (t.textAlignHorizontal === 'CENTER') t.x = (x - ox) + (W - t.width) / 2; t.y = (y - oy) + (H - t.height) / 2; }
+    if (single && !n.ov) { const right = (x + W) - ox; t.textAutoResize = 'WIDTH_AND_HEIGHT'; const tight = W < t.width + 12; const nearRight = pw && right > pw - 24; if (t.textAlignHorizontal === 'RIGHT' || (tight && nearRight && (x - ox) > 24)) t.x = right - t.width;   /* 왼쪽이 부모에 붙은 꽉 찬 블록(p.hint 등)은 오른쪽 고정이 아니다 — 2026-09-10 실측: Pretendard 폭 > 상자 폭이면 왼쪽으로 삐져나갔다 */ else if (t.textAlignHorizontal === 'CENTER') t.x = (x - ox) + (W - t.width) / 2; t.y = (y - oy) + (H - t.height) / 2; }
     try { await t.setTextStyleIdAsync(styleFor(F[1], F[2], mono)); } catch (e) { stats.styleErr++; }
     stats.texts++; return;
   }
   const f = figma.createFrame(); f.name = [n.t, n.i ? '#' + n.i : '', n.c ? '.' + n.c : ''].join('').slice(0, 60); parent.appendChild(f); f.x = x - ox; f.y = y - oy; f.resize(W, H);
-  await styleBox(f, n, W, H); f.clipsContent = !!n.ov; stats.frames++;
+  await styleBox(f, n, W, H); f.clipsContent = !!n.ov || /sheet-body|lens-scroll/.test(n.c || ''); stats.frames++;   // 펼쳐서 잰 스크롤 영역은 제 상자에서 자른다(발 아래로 줄이 새지 않게)
   for (const k of (n.k || [])) await build(k, f, x, y, W);
   return f;
 };
-const T = await figma.getNodeByIdAsync(TARGET);
-for (const c of [...T.children]) c.remove();
-T.layoutMode = 'NONE'; T.maxHeight = null; T.minHeight = null; try { T.layoutSizingHorizontal = 'FIXED'; T.layoutSizingVertical = 'FIXED'; } catch (e) {} T.resize(J.b[2], J.b[3]); await styleBox(T, J, J.b[2], J.b[3]); T.clipsContent = true;
-T.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.32 }, offset: { x: 0, y: 24 }, radius: 48, spread: 0, visible: true, blendMode: 'NORMAL' }];
-for (const k of (J.k || [])) await build(k, T, J.b[0], J.b[1], J.b[2]);
-return { mutatedNodeIds: [T.id], stats, size: [T.width, T.height] };
+const out = [];
+for (const [TARGET, J] of JOBS) {
+  const T = await figma.getNodeByIdAsync(TARGET);
+  for (const c of [...T.children]) c.remove();
+  const H = J.vh || J.b[3];   // vh = 펼치기 전 앱 높이(추출기가 잰다) — 루트를 이 높이로 잘라 앱과 같게 둔다
+  T.layoutMode = 'NONE'; T.maxHeight = null; T.minHeight = null; try { T.layoutSizingHorizontal = 'FIXED'; T.layoutSizingVertical = 'FIXED'; } catch (e) {} T.resize(J.b[2], H); await styleBox(T, J, J.b[2], H); T.clipsContent = true;
+  T.effects = [{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.32 }, offset: { x: 0, y: 24 }, radius: 48, spread: 0, visible: true, blendMode: 'NORMAL' }];
+  if (J.x !== undefined && !J.k) await build({ ...J, t: '#text', b: [J.b[0] + 10, J.b[1], J.b[2] - 20, J.b[3]] }, T, J.b[0], J.b[1], J.b[2]);   // 루트가 곧 글자인 것(툴팁)
+  for (const k of (J.k || [])) await build(k, T, J.b[0], J.b[1], J.b[2]);
+  out.push({ id: T.id, size: [T.width, T.height] });
+}
+return { mutatedNodeIds: out.map(o => o.id), out, stats };
