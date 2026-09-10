@@ -199,6 +199,7 @@ def _t_search(args, bridge):
     return bridge.request("GET", "/search", params={
         "query": args["query"], "top_k": args.get("limit", 20),
         "cursor": args.get("cursor"), "detail": args.get("detail"),
+        "historical": "true" if args.get("historical") else None,
         "owner": _owner(args, bridge)})
 
 
@@ -425,7 +426,8 @@ def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
     return bridge.request("GET", "/brief", params={
         "owner": _owner(args, bridge), "query": args["query"],
-        "max_excerpts": args.get("max_excerpts", 3)})
+        "max_excerpts": args.get("max_excerpts", 3),
+        "historical": "true" if args.get("historical") else None})
 
 
 TOOLS: list[dict] = [
@@ -463,6 +465,13 @@ TOOLS: list[dict] = [
                        "description": "Opaque next_cursor from a previous page."},
             "detail": {"type": "string", "enum": ["summary", "full"],
                        "default": "summary"},
+            "historical": {"type": "boolean", "default": False,
+                           "description": "Include nodes whose claim is no longer current "
+                                          "(valid_until in the past, or a Decision whose "
+                                          "props.valid_until has passed). The default hides "
+                                          "them and reports how many in `validity_filtered`; "
+                                          "pass true when the question is about what USED to "
+                                          "hold."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -477,7 +486,8 @@ TOOLS: list[dict] = [
                        "silently substituted. Otherwise it resolves the "
                        "question to ONE node by strict ranking, then returns that node's description, "
                        "its canonical document excerpts and its typed relations in a single call. "
-                       "Returns {kind, executed, query, status, node:{id,title,domain,kind}, one_liner, "
+                       "Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,"
+                       "valid_until,validity,superseded_by}, one_liner, "
                        "body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], "
                        "links:{degree,out,in,attached,items:[{id,title,domain,type,dir,evidence,"
                        "confidence,note}],truncated}, candidates:[...], grounds:[id...]}. "
@@ -496,6 +506,12 @@ TOOLS: list[dict] = [
                        "fit the size limit. `links.items[].evidence` is a BOOLEAN (does this relation "
                        "carry a source sentence) and `evidence_text` is that sentence when one exists, "
                        "so a relation can be QUOTED rather than merely counted. "
+                       "`node.validity` is 'current', 'historical' or 'future', derived from the "
+                       "node's OWN interval (a Record's columns, a Decision's props); when it is not "
+                       "current a `validity_note` says so and names `superseded_by` if the graph "
+                       "holds a successor. A node reached by id skips the default filter, so this "
+                       "is the one place a retired claim announces itself: do not quote a "
+                       "historical node as the present state. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string",
@@ -503,6 +519,13 @@ TOOLS: list[dict] = [
             "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},
+            "historical": {"type": "boolean", "default": False,
+                           "description": "Include nodes whose claim is no longer current "
+                                          "(valid_until in the past, or a Decision whose "
+                                          "props.valid_until has passed). The default hides "
+                                          "them and reports how many in `validity_filtered`; "
+                                          "pass true when the question is about what USED to "
+                                          "hold."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
