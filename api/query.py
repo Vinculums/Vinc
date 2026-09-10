@@ -5569,7 +5569,10 @@ def _domains_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict
     for label, pk in (("Concept", "concept_id"), ("Record", "record_id"),
                       ("Decision", "decision_id"), ("Episode", "episode_id")):
         where = f"WHERE n.{pk} IN $ids"
-        params: dict = {"ids": list(ids)}
+        # PK 네임스페이싱이 켜진 스토어에서 PK 열은 물리 키(owner\x1fid)다 — 논리
+        # 슬러그로 바인딩하면 한 건도 안 맞고 domain 이 통째로 빈다(PKNS 잡에서만
+        # 붉었다). 되돌리기는 읽기 훅이 한다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+        params: dict = {"ids": pkns.keys(owner, list(ids))}
         if owner:
             where += " AND n.owner_id = $o"
             params["o"] = owner
