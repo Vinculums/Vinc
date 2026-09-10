@@ -244,7 +244,12 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 18
+#
+# ⚠ v19 는 **DDL 이 없다.** 순전히 도메인 계층 백필을 한 번 더 돌리려고 있는 버전이고,
+# 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
+# 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
+# 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
+SCHEMA_VERSION = 19
 
 #: v18 — **테이블을 버리는 마이그레이션**(ALTER 아님). NodeVec 의 기본키가 `node_id`
 #: 에서 `vec_id`(소유자+id)로 바뀐다. 기본키는 ALTER 로 못 고치고, 미러는 배포마다
@@ -266,7 +271,14 @@ EPISODE_TIME_BACKFILL_VERSION = 9
 #: ⚠ **의미층이 늘 때마다 이 상수를 올린다.** v12 가 Decision 을 늘렸는데 백필의 라벨
 #: 표에 안 들어가 결정 67건이 엣지 없이 배포됐고, 그래서 v13 이 존재한다. 재실행은
 #: 0.1초대다(5000노드 0.14s). 계보: [[vinc.spec.dataplane §7]].
-DOMAIN_HIERARCHY_VERSION = 13
+#:
+#: 🔴 **v19 로 올린 이유는 실측된 드리프트다**(2026-09-10). 센서스는 `vinc/engineering`
+#: 에 개념 1건을 세는데 `domain:vinc/engineering` 의 IN_DOMAIN 은 0건이었다 — 열은
+#: 있고 엣지가 없는 그 상태이고, 같은 드리프트가 2026-09-05 에도 잡혔다
+#: ([[record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05]]).
+#: 그때는 노드를 손으로 재전송해 고쳤는데, **도메인으로 노드를 열거하는 표면이 없어서**
+#: 이번에는 어느 노드인지 특정할 수가 없었다. 백필은 집합 연산이라 특정할 필요가 없다.
+DOMAIN_HIERARCHY_VERSION = 19
 
 
 def migration_statements(from_version: int) -> list[str]:

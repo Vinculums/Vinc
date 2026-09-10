@@ -184,7 +184,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 18)   # v18 — 미러 키에 소유자를 넣었다
+        self.assertEqual(eschema.SCHEMA_VERSION, 19)   # v19 — 도메인 계층 백필 재실행
         # v17 이 주장한 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
         # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
         # 데이터 스텝이라 여기 못 쓴다.
@@ -196,7 +196,14 @@ class ProvisionTests(unittest.TestCase):
         # 왜 바꿨나: 같은 논리 id 가 스페이스마다 산다(새 스페이스는 전부 같은 네
         # 역할로 시작한다). `node_id` 를 키로 두면 소유자가 둘만 돼도 삽입이 죽는다.
         self.assertIn("CREATE NODE TABLE NodeVec(vec_id STRING", ddl)
-        self.assertEqual(eschema.NODE_VEC_REKEY_VERSION, eschema.SCHEMA_VERSION)
+        # 이 상수는 **v18 에 묶여 있다** — 그때 한 번 일어난 재키잉이고, 뒤 버전이
+        # 올라간다고 다시 돌 일이 아니다. 아래 도메인 백필 상수와 성질이 다르다.
+        self.assertEqual(eschema.NODE_VEC_REKEY_VERSION, 18)
+        # v19 는 DDL 이 없다 — 도메인 계층 백필을 한 번 더 돌리려고만 있는 버전이다.
+        # 백필은 `cur < DOMAIN_HIERARCHY_VERSION` 일 때만 도니까, 라이브가 이미
+        # 최신을 기록한 상태에서 다시 돌리려면 **목표 버전이 함께 움직여야 한다.**
+        # 다음에 이 줄이 실패하면 그 bump 가 주제 트리와 상관있는지 먼저 정할 것.
+        self.assertEqual(eschema.DOMAIN_HIERARCHY_VERSION, 19)
         # 미러의 `title` 은 화면 라벨이고 `text` 는 찾는 표면이다 — 둘은 다른 열이어야 한다.
         nodevec_ddl = next(s for s in ddl.splitlines()
                            if s.startswith("CREATE NODE TABLE NodeVec"))

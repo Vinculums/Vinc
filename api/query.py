@@ -4764,7 +4764,11 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
 
     반환 {executed, components:[{group, size, members, members_truncated}],
-    orphans:[id…], component_count, orphan_count}. algo 부재 시 executed=False + note.
+    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count}.
+    algo 부재 시 executed=False + note.
+
+    ``ambiguous`` — **두 스페이스에 같은 슬러그로 존재해 어느 쪽이 내 것인지 못 가리는
+    id**. 컴포넌트에도 고아에도 안 넣는다. 왜 생기는지는 아래 계산 자리의 주석에 있다.
 
     ``member_limit`` — 컴포넌트당 실을 구성원 수(기본 50, 상한 1000). 여태 50 으로
     **말없이** 잘라서, `size:173` 인 컴포넌트도 50개만 보이고 그게 전부인 줄 알기
@@ -4786,11 +4790,30 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             return base
         scope = _owner_concept_ids(store, owner)
         groups: dict = {}
+        where_seen: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
             if not cid or (scope is not None and cid not in scope):
                 continue
             groups.setdefault(grp, []).append(cid)
+            where_seen.setdefault(cid, set()).add(grp)
+        # 🔴 **한 id 가 두 컴포넌트에 있으면 그건 두 스페이스의 노드다.** 한 소유자
+        # 안에서 id 는 기본키라 유일하므로 그럴 수 없다. 스코프를 **논리 id 문자열
+        # 집합과의 교차**로 걸기 때문에(위 `_owner_concept_ids`) 같은 슬러그를 가진
+        # 남의 노드가 그 필터를 그대로 통과한다 — 새 스페이스는 전부 같은 기본 역할
+        # 넷으로 시작하므로 이것은 드물지 않다. 2026-09-10 실측: `concept:agent-steward`
+        # 가 크기 1 컴포넌트로 **네 번** 나왔고 그 수가 소유자 수와 맞았다.
+        #
+        # 어느 쪽이 내 것인지 알 방법이 없다(알고리즘 행에 소유자가 없다). 그래서
+        # 고르지 않고 **갈라서 말한다** — 고아로 세면 남의 그래프를 내 정리 대상으로
+        # 내밀게 되고, 그것이 2026-09-06 에 "진단이 같은 노드를 두 번 센다"는 유령으로
+        # 기록됐다. 유령이 아니라 스페이스가 늘어난 만큼 늘어난 것이었다.
+        # 근거: [[record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10]]
+        ambiguous = sorted(cid for cid, gs in where_seen.items() if len(gs) > 1)
+        if ambiguous:
+            drop = set(ambiguous)
+            groups = {g: [m for m in ms if m not in drop] for g, ms in groups.items()}
+            groups = {g: ms for g, ms in groups.items() if ms}
         mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
         comps = [{"group": g, "size": len(m), "members": sorted(m)[:mlim],
                   "members_truncated": len(m) > mlim}
@@ -4798,7 +4821,12 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
         orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
         base.update(executed=True, components=comps, orphans=orphans,
-                    component_count=len(comps), orphan_count=len(orphans))
+                    component_count=len(comps), orphan_count=len(orphans),
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+        if ambiguous:
+            base["ambiguous_note"] = (
+                "these ids exist in more than one space, so this diagnosis cannot tell "
+                "which node is yours and leaves them out of components and orphans")
     finally:
         if owns:
             store.close()
