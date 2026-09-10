@@ -461,6 +461,20 @@ class _ReaderView:
     def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
         return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
 
+    def node_vector_search(self, embedding, top_k, *, owner=None) -> list[dict]:
+        """노드 미러(NodeVec) 의미 검색 — **이 뷰가 노출해야 조회 경로에서 산다.**
+
+        ⚠ 2026-09-10 에 이 자리에서 세 번째로 물렸다(앞의 둘은 아래 `graph_algo` 주석에
+        있다). 미러도 팔도 다 있었는데 이 줄이 없어서, 사이드카를 지나는 **모든** 검색이
+        `node_error: '_ReaderView' object has no attribute 'node_vector_search'` 로
+        의미 팔을 잃었다. 팔이 기본으로 꺼져 있던 동안에는 아무도 못 봤고, 켠 첫날
+        라이브 질의 한 번에 드러났다.
+
+        `graph_algo`·`ensure_search_indexes` 와 달리 **쓰기 지점으로 보내지 않는다** —
+        이건 순수 조회이고 DDL 을 안 돌린다. 인덱스가 없으면 백엔드가 빈 목록을 준다."""
+        return self._b.node_vector_search(embedding, top_k, owner=owner,
+                                          conn=self._conn)
+
     def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
         """검색 인덱스 지연 보장(T3b) — **쓰기 지점으로 되돌려 보낸다**(R4).
 
