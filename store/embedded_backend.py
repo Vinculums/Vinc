@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from contextlib import contextmanager
 
 from . import pkns
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
-                              EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
+                              EPISODE_TIME_BACKFILL_VERSION,
+                              NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
                               migration_statements, render_embedded_ddl)
 
 
@@ -720,10 +722,34 @@ class EmbeddedBackend:
         2) 버전 게이트 — _SchemaMeta 의 기록 버전 이후 ALTER 스텝 적용(구 설치의 기존
            테이블에 추적열 ADD+DEFAULT 백필; 신규 설치는 이미 있어 no-op 흡수).
         3) 버전 기록. **ALTER ADD 는 additive → 롤백 시 구코드가 새 열을 단순 무시.**"""
+        # 0) **base DDL 보다 먼저** 도는 유일한 스텝(v18). NodeVec 의 기본키가 바뀌는데
+        #    기본키는 ALTER 로 못 고친다. 미러는 배포마다 통째로 다시 만드는 파생물이라
+        #    버리는 것이 옳은 이행이고(잃을 원본이 없다), 버린 자리는 바로 아래 base DDL
+        #    이 새 모양으로 다시 만든다. 뒤에 두면 방금 만든 것을 도로 지운다.
+        #    근거: [[record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10]]
+        rekeying = 0 < self._schema_version() < NODE_VEC_REKEY_VERSION
+        if rekeying:
+            self.drop_node_vector_index()
+            try:
+                self._conn.execute("DROP TABLE NodeVec")
+            except Exception:
+                pass        # 없으면 없는 대로 — base DDL 이 만든다
         for stmt in render_embedded_ddl(dim=dim):
             self._exec_idem(stmt)
+        # 🔴 **버렸다고 믿지 말고 확인한다.** 드롭이 실패하면(인덱스가 안 떨어졌다거나
+        #    확장이 안 올라왔다거나) 그 예외는 위에서 삼켜지고, base DDL 은 "이미 있다"를
+        #    또 삼킨다. 그러면 옛 모양 그대로인 테이블에 새 버전만 기록되어 **다시는
+        #    고칠 기회가 없는 반쪽 상태**가 남는다 — 재구축은 계속 죽고 이유는 안 보인다.
+        #    확인이 실패하면 버전을 올리지 않는다: 다음 기동이 그대로 다시 시도한다.
+        if rekeying and not self._node_vec_rekeyed():
+            print("vinc-store: ⚠ NodeVec 재키잉 실패 — 옛 기본키가 남아 있다. 스키마"
+                  " 버전을 올리지 않는다(다음 기동이 다시 시도한다). 의미 팔은 그동안"
+                  " 빈 목록을 낸다.", file=sys.stderr, flush=True)
+            rekeying = False
+            target = self._schema_version()      # 올리지 않는다
+        else:
+            target = SCHEMA_VERSION
         cur = self._schema_version()
-        target = SCHEMA_VERSION
         for stmt in migration_statements(cur):
             self._exec_idem(stmt)
         # 데이터 스텝(v9, F9) — DDL 로 표현할 수 없는 이관은 여기서 돈다. 열 ALTER 가
@@ -756,6 +782,15 @@ class EmbeddedBackend:
         return {"migrated_from": cur, "migrated_to": target,
                 "episode_time_backfilled": backfilled,
                 "domain_links_backfilled": domain_links}
+
+    def _node_vec_rekeyed(self) -> bool:
+        """미러가 실제로 새 기본키를 갖는가(v18). 열이 없으면 엔진이 바인딩에서 던진다 —
+        빈 테이블이어도 던지므로 행 수와 무관하게 판정된다."""
+        try:
+            self.run("MATCH (n:NodeVec) RETURN n.vec_id AS v LIMIT 1")
+            return True
+        except Exception:
+            return False
 
     def provision(self, *, dim: int) -> list[str]:
         """호환 진입점 — migrate() 로 위임(기존 호출부 무변경으로 마이그레이션 획득)."""

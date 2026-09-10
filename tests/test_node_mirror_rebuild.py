@@ -89,9 +89,14 @@ class _FakeStore:
             self.mirror = [m for m in self.mirror if m["owner_id"] not in keep]
             return []
         if query.startswith("UNWIND $rows"):
-            self.mirror += [{"node_id": r["id"], "owner_id": r["owner"],
-                             "title": r["title"], "model": params["m"],
-                             "embedding": r["emb"]} for r in params["rows"]]
+            for r in params["rows"]:
+                # 진짜 엔진이 하는 그대로: 같은 기본키가 두 번 오면 죽는다.
+                if any(m["vec_id"] == r["vid"] for m in self.mirror):
+                    raise RuntimeError(
+                        f"Found duplicated primary key value {r['vid']}")
+                self.mirror.append({"vec_id": r["vid"], "node_id": r["id"],
+                                    "owner_id": r["owner"], "title": r["title"],
+                                    "model": params["m"], "embedding": r["emb"]})
             return []
         return []
 
@@ -146,18 +151,28 @@ class Collect(unittest.TestCase):
         rows, _ = node_mirror.collect(_FakeStore(_nodes()), None)
         self.assertEqual({r["owner"] for r in rows}, {"user:mine", "user:theirs"})
 
-    def test_one_id_living_in_two_tables_does_not_kill_the_mirror(self):
-        """🔴 각 표는 자기 pk 로 유일하지만 **표 사이에는 아무 제약이 없다** — 한 논리
-        id 가 Concept 이면서 Decision 일 수 있고, 이 그래프에 실제로 있다
-        (`concept:agent-steward`). 미러는 `node_id` 가 기본키라 그런 쌍이 하나만 있어도
-        삽입이 통째로 죽고, 2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다."""
+    def test_the_same_id_in_two_spaces_is_not_a_collision(self):
+        """🔴 **이것이 v18 의 이유다.** 새 스페이스는 전부 같은 네 역할로 시작하므로
+        `concept:agent-steward` 같은 id 가 소유자 수만큼 존재한다. 그것은 겹침이 아니라
+        멀티테넌시다 — 둘 다 미러에 들어가야 각자의 스페이스에서 찾힌다.
+        2026-09-10 에 이것을 그래프 결함으로 읽고 한쪽을 버렸다."""
+        both = _nodes() + [{"label": "Concept", "id": "concept:a", "title": "Alpha",
+                            "owner": "user:theirs", "extra": "one liner"}]
+        rows, collisions = node_mirror.collect(_FakeStore(both), None)
+        self.assertEqual(collisions, [])
+        self.assertEqual(sorted(r["owner"] for r in rows if r["id"] == "concept:a"),
+                         ["user:mine", "user:theirs"])
+
+    def test_one_id_living_in_two_tables_inside_one_space_is_a_collision(self):
+        """진짜 겹침은 **한 소유자 안**에서 난다. 각 표는 자기 pk 로 유일하지만 표
+        사이에는 아무 제약이 없어, 한 논리 id 가 Concept 이면서 Decision 일 수 있다.
+        그 쌍이 하나만 있어도 삽입이 통째로 죽으므로 걸러 내되 말한다."""
         dupe = _nodes() + [{"label": "Decision", "id": "concept:a", "title": "Alpha dup",
                             "owner": "user:mine"}]
         rows, collisions = node_mirror.collect(_FakeStore(dupe), None)
         self.assertEqual(len(rows), 3, "겹친 것 하나가 나머지를 데려가면 안 된다")
-        self.assertEqual([r["id"] for r in rows].count("concept:a"), 1)
-        self.assertEqual(collisions,
-                         [{"id": "concept:a", "kept": "concept", "dropped": "decision"}])
+        self.assertEqual(collisions, [{"id": "concept:a", "owner": "user:mine",
+                                       "kept": "concept", "dropped": "decision"}])
 
     def test_a_clean_graph_reports_no_collision(self):
         self.assertEqual(node_mirror.collect(_FakeStore(_nodes()), None)[1], [])
@@ -184,7 +199,8 @@ class Replace(unittest.TestCase):
     def test_it_only_clears_the_owners_it_is_replacing(self):
         """한 소유자에게 전량 재구축을 돌려도 다른 소유자의 미러는 살아남는다."""
         s = _FakeStore([])
-        s.mirror = [{"node_id": "old", "owner_id": "user:theirs", "title": "x",
+        s.mirror = [{"vec_id": "user:theirs#old", "node_id": "old",
+                     "owner_id": "user:theirs", "title": "x",
                      "model": "e5", "embedding": _vec(1, 0)}]
         node_mirror.replace(s, self.rows("user:mine"), "e5")
         self.assertEqual({m["owner_id"] for m in s.mirror},
@@ -192,7 +208,8 @@ class Replace(unittest.TestCase):
 
     def test_the_old_rows_of_that_owner_are_gone(self):
         s = _FakeStore([])
-        s.mirror = [{"node_id": "stale", "owner_id": "user:mine", "title": "x",
+        s.mirror = [{"vec_id": "user:mine#stale", "node_id": "stale",
+                     "owner_id": "user:mine", "title": "x",
                      "model": "e5", "embedding": _vec(1, 0)}]
         node_mirror.replace(s, self.rows("user:mine"), "e5")
         self.assertNotIn("stale", [m["node_id"] for m in s.mirror])
@@ -284,6 +301,16 @@ class RebuildRoute(unittest.TestCase):
         self.assertEqual((code, res["rows"]), (200, 3))
         self.assertEqual(res["id_collision_count"], 1)
         self.assertEqual(res["id_collisions"][0]["id"], "concept:a")
+
+    def test_a_multi_space_graph_rebuilds_whole(self):
+        """스페이스마다 같은 역할 id 가 있는 그래프가 **끝까지** 들어가는가. 이것이
+        라이브에서 재구축을 네 번 죽인 모양이고, 키를 바꾼 이유다."""
+        self.app = VincApp(store=_FakeStore(_nodes() + [
+            {"label": "Concept", "id": "concept:a", "title": "Alpha",
+             "owner": "user:theirs", "extra": "one liner"}]))
+        code, res = self.app.write_node_mirror_rebuild({})
+        self.assertEqual((code, res["rows"]), (200, 4))
+        self.assertEqual(res["id_collision_count"], 0)
 
     def test_the_result_says_whether_the_index_answers(self):
         """조용한 강등을 말하게 하는 자리 — 이 값이 배포 로그까지 그대로 간다."""
@@ -381,6 +408,54 @@ class RealStore(unittest.TestCase):
         hits = self.store.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
         self.assertEqual(hits[0]["id"], "concept:alpha")
         self.assertEqual(hits[0]["title"], "Alpha")
+
+    def test_two_spaces_can_hold_the_same_node_id(self):
+        """🔴 v18 이 사는 자리. 진짜 엔진 위에서 같은 논리 id 를 두 소유자로 넣는다 —
+        v17 의 키(`node_id`)에서는 여기서 `Found duplicated primary key value` 로
+        죽었고, 그것이 라이브 재구축을 네 번 무너뜨린 모양 그대로다."""
+        rows = [{"id": "concept:agent-steward", "kind": "concept", "owner": o,
+                 "title": "Agent role: steward", "text": "Agent role: steward",
+                 "emb": _vec(1, 0)} for o in (self.OWNER, "team:other")]
+        res = node_mirror.replace(self.store, rows, "test")
+        self.assertEqual(res["rows"], 2)
+        n = (self.store.run("MATCH (n:NodeVec) RETURN count(n) AS n") or [{}])[0]["n"]
+        self.assertEqual(n, 2)
+        # 그리고 조회는 여전히 자기 스페이스 것만 본다(SEC-1).
+        hits = self.store.node_vector_search(_vec(1, 0), 5, owner="team:other")
+        self.assertEqual([h["id"] for h in hits], ["concept:agent-steward"])
+
+    def test_an_old_store_is_rekeyed_on_boot(self):
+        """v17 로 만들어진 스토어가 부팅 한 번으로 새 키를 갖는가. 허브가 다음 기동에
+        실제로 밟는 경로이고, 기본키는 ALTER 로 못 고쳐서 **테이블을 버리는** 유일한
+        마이그레이션이다."""
+        self.store.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = '17'")
+        self.store.migrate(dim=DIM)          # 부팅이 하는 그대로
+        rows = [{"id": "concept:same", "kind": "concept", "owner": o, "title": "t",
+                 "text": "t", "emb": _vec(1, 0)} for o in ("user:a", "user:b")]
+        node_mirror.replace(self.store, rows, "test")   # 옛 키였다면 여기서 죽는다
+        v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v") or [{}])[0]["v"]
+        self.assertEqual(v, "18")
+
+    def test_a_failed_rekey_does_not_record_the_new_version(self):
+        """🔴 드롭이 실패하면 그 예외는 삼켜지고 base DDL 의 "이미 있다"도 삼켜진다.
+        거기서 버전만 올리면 **옛 모양 그대로인 테이블에 새 버전이 찍혀** 다시는 고칠
+        기회가 없다 — 재구축은 계속 죽고 이유는 안 보인다. 확인이 실패하면 버전을
+        올리지 않아야 다음 기동이 다시 시도한다."""
+        self.store.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = '17'")
+        real = self.store._node_vec_rekeyed
+        self.store._node_vec_rekeyed = lambda: False
+        try:
+            self.store.migrate(dim=DIM)          # 예외 없이 끝나야 한다
+        finally:
+            self.store._node_vec_rekeyed = real
+        v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v") or [{}])[0]["v"]
+        self.assertEqual(v, "17", "고치지 못했는데 고쳤다고 기록하면 안 된다")
+        self.store.migrate(dim=DIM)              # 다음 기동
+        v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v") or [{}])[0]["v"]
+        self.assertEqual(v, "18", "다음 기동이 다시 시도해서 끝내야 한다")
 
     def test_running_it_twice_does_not_double_the_rows(self):
         """전량 재구축은 배포마다 돈다 — 멱등이 아니면 미러가 배포 수만큼 부푼다."""
