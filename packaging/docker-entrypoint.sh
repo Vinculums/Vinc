@@ -206,15 +206,19 @@ fi
 # 거절하고 로그에 남는다 — 조용히 넘어가지 않는다.
 if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
   (
-    echo "[entrypoint] 노드 미러 재구축 시작 — 배포마다 한 번, 배경으로 돈다"
+    # ⚠ 세 줄 다 `node-mirror:` 로 시작한다 — **ASCII 표식이 있어야 밖에서 잡는다.**
+    # 이 결과를 읽는 유일한 곳은 Azure 자격이 있는 hub-deploy 이고, 거기서 한국어로
+    # grep 하면 러너 로케일에 따라 조용히 0건이 된다(이 리포가 인코딩으로 물린 이력이
+    # 있다). 표식을 바꾸려면 `.github/workflows/hub-deploy.yml` 의 grep 도 같이 고칠 것.
+    echo "[entrypoint] node-mirror: start — 배포마다 한 번, 배경으로 돈다"
     t0=$(date +%s)
     if out=$(curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
               -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
               -H "Content-Type: application/json" -d '{}' \
               http://127.0.0.1:8787/node-mirror/rebuild 2>&1); then
-      echo "[entrypoint] 노드 미러 재구축 끝($(( $(date +%s) - t0 ))s): $out"
+      echo "[entrypoint] node-mirror: done in $(( $(date +%s) - t0 ))s — $out"
     else
-      echo "[entrypoint] ⚠ 노드 미러 재구축 실패($(( $(date +%s) - t0 ))s): $out" >&2
+      echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s — $out" >&2
     fi
   ) &
 fi
