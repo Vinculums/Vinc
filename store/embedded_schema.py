@@ -362,6 +362,11 @@ def migration_statements(from_version: int) -> list[str]:
     # 멱등 DDL(render_node_tables)이 만든다(ChunkVec·_MergeRejection 전례). 백필도
     # 여기 못 쓴다 — 임베딩은 DDL 이 아니라 모델을 부르는 데이터 스텝이고, 비어 있는
     # 동안은 의미 팔이 0행을 낼 뿐 기존 경로가 멀쩡하다(ChunkVec 과 같은 태도).
+    #
+    # ⚠ **v18 도 여기 없는데 이유가 다르다.** 기본키를 바꾸는 것이라 ALTER 로는 안 되고,
+    # 테이블을 버렸다 다시 만든다. 그 스텝은 `embedded_backend.migrate` 안에서 base DDL
+    # **앞**에 선다(`NODE_VEC_REKEY_VERSION`) — 여기 두면 순서가 뒤집혀 방금 만들어진
+    # 테이블을 도로 지운다. 이 목록을 유일한 이행 경로로 읽지 말 것.
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
