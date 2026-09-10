@@ -2838,7 +2838,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은
     후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계).
 
-    **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 꺼짐)은 순서에 `arms` 를 먼저 넣고 문턱을
+    **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
     `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
     함께 가리켰다는 뜻이라, 토큰 하나를 더 맞힌 것보다 강한 증거다.
     ⚠ **융합 점수(RRF)로 정렬하는 안은 기각됐다.** 팔을 켜면 좋아 보이지만 끄면 나빠진다
@@ -5497,22 +5497,31 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
 
 
 def _node_semantic_arm_on() -> bool:
-    """의미 암을 켤 것인가. **기본은 꺼짐**이고 `VINC_NODE_SEMANTIC_ARM` 이 켠다.
+    """의미 암을 켤 것인가. **기본은 켜짐**이고 `VINC_NODE_SEMANTIC_ARM=off` 가 비상구다.
 
-    껐다 켜서 쟀고(2026-09-09, 정답 66문항) **꺼진 채로 둔다**. 팔은 제 일을 한다 —
-    후보 진입이 21/60 에서 35/60 으로 오른다. 그런데 그 이득의 11건이 `resolved` 뒤에
-    갇힌다: 확신하면 후보 목록을 감추므로 정답이 후보에 **들어와도 화면에 안 나온다**.
-    사용자에게 실제로 달라지는 것은 답 가능 60건 중 3건뿐이고, 답 불가 두 건이 깨끗한
-    "없음"을 잃는다(none → choose). 기본값은 랭킹 절반이 이 후보를 고를 수 있을 때 뒤집는다.
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
-    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    ⚠ 2026-09-10 에 뒤집혔다. 전에는 꺼져 있었고 근거는 "팔이 후보만 올리고 해상은 안
+    바꾼다"였다 — 후보 진입은 21/60 → 35/60 인데 확정된 46건의 **선택이 하나도 안
+    바뀌었다**. 그 전제가 거짓이 됐다: 팔 자신의 1-2위 거리 격차를 순서 키에 넣자
+    노출 R@1 이 0.2833 → **0.4833**, 확신 오답 7 → 3 이 됐고 답 불가 확정은 그대로다.
+    한국어 축이 0.100 → 0.500 으로 가장 크게 움직인다.
+
+    **비용은 질의가 아니라 릴리스가 낸다.** 이 팔은 `NodeVec` 미러를 읽는데 미러는
+    전량 재구축만 있고(HNSW 증분 삽입이 세그폴트를 낸다) 그 재구축은 배포 경계에서
+    한 번 돈다(`api/server.py::write_node_mirror_rebuild`). 미러가 비어 있으면 이 팔은
+    **빈 목록**이지 예외가 아니다 — 그래서 켜 두는 것이 안전하다.
+    근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
+    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() not in (
+        "0", "off", "false", "no")
 
 
 def _node_sem_rank_on() -> bool:
-    """의미 팔의 단호함을 순서에 반영할 것인가. **기본은 꺼짐**(`VINC_NODE_SEM_RANK`)."""
-    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    """의미 팔의 단호함을 순서에 반영할 것인가. **기본은 켜짐**(`VINC_NODE_SEM_RANK=off`).
+
+    팔과 **한 몸이다** — 위의 0.4833 은 둘 다 켠 값이고, 팔만 켜면 0.2833 으로 돌아간다.
+    따로 끌 수 있게 둔 이유는 격차 문턱(`_SEM_GAP`)을 다시 잴 때 순서 기여만 떼어
+    보기 위해서다."""
+    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() not in (
+        "0", "off", "false", "no")
 
 
 #: 의미 팔이 **자기 기준으로 단호하다**고 볼 1-2위 거리 격차.
@@ -5747,12 +5756,9 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
         # 순위에 얹혀 있어(graph), 패러프레이즈를 못 건넌다.
         #
-        # ⚠ 기본은 **꺼져 있다**(`VINC_NODE_SEMANTIC_ARM=on` 으로 켠다). 껐다 켜서
-        # 쟀고(정답 66문항) 켜는 쪽이 이기지 못했다: 후보 진입은 21/60 → 35/60 인데
-        # resolved 46건의 **선택이 하나도 안 바뀌었다**. 즉 이 팔은 정답을 닿게 하고
-        # 랭킹은 여전히 못 고른다 — 병목이 후보에서 랭킹으로 옮겨 갔을 뿐이다.
-        # 켜는 값은 랭킹 절반(같은 미러 위의 BM25)이 붙은 뒤에 다시 잰다.
-        # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+        # 기본은 **켜져 있다**(`VINC_NODE_SEMANTIC_ARM=off` 가 비상구). 미러가 비면
+        # 빈 목록이라 켜 둬도 안 깨지고, 미러는 배포 경계에서 전량 재구축된다.
+        # 뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다.
         vec_hits: list[dict] = []
         _sem_decisive: str | None = None
         if query_embedding is not None and _node_semantic_arm_on():

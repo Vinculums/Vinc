@@ -48,19 +48,25 @@ class FlagDefault(unittest.TestCase):
         if self._prev is not None:
             os.environ["VINC_NODE_SEMANTIC_ARM"] = self._prev
 
-    def test_the_arm_is_off_unless_asked_for(self):
-        self.assertFalse(q._node_semantic_arm_on())
+    def test_the_arm_is_on_unless_switched_off(self):
+        """2026-09-10 에 뒤집혔다 — 팔 자신의 1-2위 격차를 순서에 넣자 노출 R@1 이
+        0.2833 → 0.4833 이 됐다. 미러가 비어 있어도 이 팔은 빈 목록이지 예외가
+        아니라서(`store.node_vector_search`) 켜 두는 것이 안전하다."""
+        self.assertTrue(q._node_semantic_arm_on())
 
-    def test_the_usual_truthy_spellings_turn_it_on(self):
+    def test_the_usual_truthy_spellings_keep_it_on(self):
         for v in ("on", "1", "true", "yes", "ON", " on "):
             os.environ["VINC_NODE_SEMANTIC_ARM"] = v
             self.assertTrue(q._node_semantic_arm_on(), v)
 
-    def test_a_false_string_does_not_turn_it_on(self):
-        """`bool("false")` 가 True 인 것이 이 자리의 함정이다."""
-        for v in ("", "off", "false", "0", "no"):
+    def test_the_off_spellings_are_the_escape_hatch(self):
+        """`bool("false")` 가 True 인 것이 이 자리의 함정이다. 빈 문자열은 미지정과
+        같으므로 **끄지 않는다** — 이 뒤집힘에서 갈리는 자리다."""
+        for v in ("off", "false", "0", "no", " OFF "):
             os.environ["VINC_NODE_SEMANTIC_ARM"] = v
             self.assertFalse(q._node_semantic_arm_on(), v)
+        os.environ["VINC_NODE_SEMANTIC_ARM"] = ""
+        self.assertTrue(q._node_semantic_arm_on())
 
 
 class FusionShape(unittest.TestCase):
@@ -114,11 +120,15 @@ class FusionShape(unittest.TestCase):
                  "title_tokens": 0, "arms": ["title"]}]
         self.assertEqual(q._brief_resolve("아무 질문", hits)[0], "choose")
 
-    def test_the_rank_flag_is_off_by_default(self):
+    def test_the_rank_flag_is_on_by_default(self):
+        """팔과 한 몸이다 — 0.4833 은 둘 다 켠 값이고 팔만 켜면 0.2833 으로 돌아간다."""
         prev = os.environ.pop("VINC_NODE_SEM_RANK", None)
         try:
+            self.assertTrue(q._node_sem_rank_on())
+            os.environ["VINC_NODE_SEM_RANK"] = "off"
             self.assertFalse(q._node_sem_rank_on())
         finally:
+            os.environ.pop("VINC_NODE_SEM_RANK", None)
             if prev is not None:
                 os.environ["VINC_NODE_SEM_RANK"] = prev
 
@@ -202,14 +212,17 @@ class MirrorStore(unittest.TestCase):
         finally:
             os.environ.pop("VINC_NODE_SEMANTIC_ARM", None)
 
-    def test_search_does_not_use_the_arm_while_the_flag_is_off(self):
-        prev = os.environ.pop("VINC_NODE_SEMANTIC_ARM", None)
+    def test_the_escape_hatch_actually_shuts_the_arm_off(self):
+        """기본이 켜진 뒤로 이 시험의 값어치는 **끄는 길이 실재하는가**다."""
+        prev = os.environ.get("VINC_NODE_SEMANTIC_ARM")
+        os.environ["VINC_NODE_SEMANTIC_ARM"] = "off"
         try:
             res = q.search("nothing shares a word with this", owner=self.OWNER,
                            query_embedding=_vec(1, 0), top_k=5, store=self.store)
             arms = {a for h in (res.get("node_hits") or []) for a in h.get("arms", [])}
             self.assertNotIn("semantic", arms)
         finally:
+            os.environ.pop("VINC_NODE_SEMANTIC_ARM", None)
             if prev is not None:
                 os.environ["VINC_NODE_SEMANTIC_ARM"] = prev
 

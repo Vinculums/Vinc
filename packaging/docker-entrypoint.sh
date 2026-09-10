@@ -189,6 +189,36 @@ if [ "$boot_waited" -ge "$SIDECAR_BOOT_TIMEOUT" ]; then
   exit 1
 fi
 
+# ── 노드 미러 전량 재구축 (2026-09-10) ────────────────────────────────────────
+# 의미 팔(`VINC_NODE_SEMANTIC_ARM`, 기본 켜짐)이 읽는 `NodeVec` 미러를 여기서 한 번
+# 다시 만든다. **증분 갱신은 없다** — "없던 벡터가 생기는" HNSW 삽입만 프로세스를
+# 죽이므로(exit 139) 미러는 전량 재구축 아니면 아무것도 아니다.
+#
+# 컨테이너 기동은 곧 **배포 경계**다. 그래서 그 비용(노드 수에 비례, 실측 1365노드에
+# 약 6분)이 일상 질의 경로가 아니라 릴리스에 한 번 물린다. 평시 노드 쓰기는 미러
+# 지연을 허용한다 — 그동안에도 제목 팔·그래프 팔·FTS 는 그대로 산다.
+#
+# 배경으로 보낸다. 앞세우면 MCP 가 몇 분 늦게 뜨고, Container Apps 는 그 사이 리비전을
+# 실패로 판정한다. 사이드카는 인코딩을 쓰기 큐 **밖에서** 하므로 이게 도는 동안에도
+# 쓰기는 짧게만 막힌다(교체 단계뿐).
+#
+# 끄는 길: `VINC_NODE_MIRROR_REBUILD=off`. 인코더가 없으면 사이드카가 503 으로
+# 거절하고 로그에 남는다 — 조용히 넘어가지 않는다.
+if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
+  (
+    echo "[entrypoint] 노드 미러 재구축 시작 — 배포마다 한 번, 배경으로 돈다"
+    t0=$(date +%s)
+    if out=$(curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
+              -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
+              -H "Content-Type: application/json" -d '{}' \
+              http://127.0.0.1:8787/node-mirror/rebuild 2>&1); then
+      echo "[entrypoint] 노드 미러 재구축 끝($(( $(date +%s) - t0 ))s): $out"
+    else
+      echo "[entrypoint] ⚠ 노드 미러 재구축 실패($(( $(date +%s) - t0 ))s): $out" >&2
+    fi
+  ) &
+fi
+
 # 임베딩 워커 — 가비아 시절 systemd timer(5분 간격)의 컨테이너 등가물. 이게 없으면
 # 웹 편집·팩 임포트·파일 드롭으로 들어온 문서가 needs_embed=1 로 남아 FTS 만 되고
 # 벡터가 빈다(에러 없이 의미검색만 열화 — Azure 이관 때 실제로 이 상태였다).
