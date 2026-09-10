@@ -36,6 +36,13 @@ EXTRA_CHARS = 300
 INSERT_BATCH = 256
 
 
+def vec_id(owner: str, node_id: str) -> str:
+    """미러 한 행의 기본키. **소유자를 함께 잡는다** — 같은 논리 id 가 스페이스마다
+    살기 때문이다(새 스페이스는 전부 같은 네 역할로 시작한다). `ChunkVec` 이 같은
+    자리에서 이미 이 모양이다."""
+    return f"{owner}#{node_id}"
+
+
 def mirror_text(title: str, extra: str) -> str:
     """미러 한 행의 텍스트. 제목이 먼저다 — 그것이 이 노드의 이름이다."""
     t = " ".join(str(title or "").split())
@@ -51,17 +58,19 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
     올린다(SEC-1). 그래서 `owner_id` 는 **언제나 행에 실어 돌려준다**: 지우고 넣는
     쪽이 스코프를 다시 지어내지 않게.
 
-    🔴 **id 로 겹치는 것을 걸러 낸다.** 각 표는 자기 pk 로 유일하지만 **표 사이에는
-    아무 제약이 없다** — 한 논리 id 가 Concept 이면서 Decision 일 수 있고, 실제로
-    그렇다. 미러는 `node_id` 가 기본키라 그런 쌍이 하나만 있어도 삽입이 통째로 죽고,
-    2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다(`concept:agent-steward` —
-    같은 유령이 2026-09-06 에 이미 `vinc_diagnose` 가 두 번 센다로 기록돼 있었다).
+    🔴 **겹침은 소유자까지 함께 봐야 한다.** 같은 논리 id 가 스페이스마다 사는 것은
+    정상이다(새 스페이스는 전부 같은 네 역할로 시작한다) — 그것은 겹침이 아니라
+    멀티테넌시이고, 미러의 키가 `vec_id`(소유자+id)인 이유다. 진짜 겹침은 **한 소유자
+    안에서** 같은 id 가 두 표에 있는 경우다: 각 표는 자기 pk 로 유일하지만 표 사이에는
+    아무 제약이 없어 한 논리 id 가 Concept 이면서 Decision 일 수 있다.
 
-    한 노드의 결함이 팔 전체를 끄게 두지 않는다. SPEC 순서로 **먼저 온 것을 남기고**
-    나머지는 걸러 낸 뒤, 무엇이 겹쳤는지 함께 돌려준다 — 조용히 버리면 그래프의
-    진짜 결함이 미러 뒤에 숨는다."""
+    ⚠ 2026-09-10 에 이 둘을 헷갈려 스페이스 간 중복을 그래프 결함으로 읽었다. 실제
+    결함은 미러의 키였다. 그래도 걸러 내기 자체는 남긴다 — 한 소유자 안의 진짜 겹침은
+    여전히 삽입을 통째로 죽이고, 한 노드의 결함이 팔 전체를 끄게 둘 이유가 없다.
+    SPEC 순서로 먼저 온 것을 남기고, 무엇이 겹쳤는지 함께 돌려준다(조용히 버리면
+    그래프의 진짜 결함이 미러 뒤에 숨는다)."""
     out: list[dict] = []
-    seen: dict[str, str] = {}
+    seen: dict[tuple[str, str], str] = {}
     collisions: list[dict] = []
     for label, pk, kind, extra_col in SPEC:
         proj = f"c.{extra_col} AS extra" if extra_col else "'' AS extra"
@@ -75,11 +84,13 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
             text = mirror_text(title, r.get("extra"))
             if not text:
                 continue
-            if r["id"] in seen:
-                collisions.append({"id": r["id"], "kept": seen[r["id"]], "dropped": kind})
+            key = (r.get("owner") or "", r["id"])
+            if key in seen:
+                collisions.append({"id": r["id"], "owner": key[0],
+                                   "kept": seen[key], "dropped": kind})
                 continue
-            seen[r["id"]] = kind
-            out.append({"id": r["id"], "kind": kind, "owner": r.get("owner") or "",
+            seen[key] = kind
+            out.append({"id": r["id"], "kind": kind, "owner": key[0],
                         "title": title, "text": text})
     return out, collisions
 
@@ -95,10 +106,11 @@ def replace(store, rows: list[dict], model: str) -> dict:
     store.run("MATCH (n:NodeVec) WHERE n.owner_id IN $o DELETE n", {"o": owners})
     for i in range(0, len(rows), INSERT_BATCH):
         store.run(
-            "UNWIND $rows AS r CREATE (:NodeVec {node_id: r.id, kind: r.kind, "
-            "owner_id: r.owner, title: r.title, text: r.text, model: $m, "
-            "embedding: r.emb})",
-            {"rows": [{"id": r["id"], "kind": r["kind"], "owner": r.get("owner") or "",
+            "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.vid, node_id: r.id, "
+            "kind: r.kind, owner_id: r.owner, title: r.title, text: r.text, "
+            "model: $m, embedding: r.emb})",
+            {"rows": [{"vid": vec_id(r.get("owner") or "", r["id"]), "id": r["id"],
+                       "kind": r["kind"], "owner": r.get("owner") or "",
                        "title": r["title"], "text": r["text"], "emb": list(r["emb"])}
                       for r in rows[i:i + INSERT_BATCH]],
              "m": model})

@@ -28,7 +28,8 @@ from contextlib import contextmanager
 from . import pkns
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
-                              EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
+                              EPISODE_TIME_BACKFILL_VERSION,
+                              NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
                               migration_statements, render_embedded_ddl)
 
 
@@ -720,6 +721,17 @@ class EmbeddedBackend:
         2) 버전 게이트 — _SchemaMeta 의 기록 버전 이후 ALTER 스텝 적용(구 설치의 기존
            테이블에 추적열 ADD+DEFAULT 백필; 신규 설치는 이미 있어 no-op 흡수).
         3) 버전 기록. **ALTER ADD 는 additive → 롤백 시 구코드가 새 열을 단순 무시.**"""
+        # 0) **base DDL 보다 먼저** 도는 유일한 스텝(v18). NodeVec 의 기본키가 바뀌는데
+        #    기본키는 ALTER 로 못 고친다. 미러는 배포마다 통째로 다시 만드는 파생물이라
+        #    버리는 것이 옳은 이행이고(잃을 원본이 없다), 버린 자리는 바로 아래 base DDL
+        #    이 새 모양으로 다시 만든다. 뒤에 두면 방금 만든 것을 도로 지운다.
+        #    근거: [[record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10]]
+        if 0 < self._schema_version() < NODE_VEC_REKEY_VERSION:
+            self.drop_node_vector_index()
+            try:
+                self._conn.execute("DROP TABLE NodeVec")
+            except Exception:
+                pass        # 없으면 없는 대로 — base DDL 이 만든다
         for stmt in render_embedded_ddl(dim=dim):
             self._exec_idem(stmt)
         cur = self._schema_version()

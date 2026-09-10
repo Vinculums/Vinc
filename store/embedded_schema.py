@@ -122,7 +122,16 @@ _NODE_TABLES: dict[str, dict] = {
     # ⚠ 채우기는 **드롭 → 벡터와 함께 전량 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
     # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측).
     # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
-    "NodeVec": {"pk": "node_id", "cols": [
+    #
+    # 🔴 **키는 소유자와 함께 잡는다**(v18). 처음엔 `node_id` 를 pk 로 뒀는데, 이 스토어는
+    # 멀티테넌트고 **같은 논리 id 가 스페이스마다 산다** — 새 스페이스는 전부 같은 네
+    # 역할(`concept:agent-steward` 외 셋)로 시작하므로 소유자가 여섯이면 그 넷이 여섯
+    # 벌이다. 그 상태에서 미러를 채우면 삽입이 통째로 죽고(`Found duplicated primary
+    # key value`), 2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다.
+    # 같은 자리의 `ChunkVec` 이 이미 `vec_id` 를 따로 두고 있다 — 그 전례를 안 따른 것이
+    # 원인이었다. `node_id` 는 열로 남아 조회가 그대로 논리 id 를 돌려준다.
+    "NodeVec": {"pk": "vec_id", "cols": [
+        ("vec_id", "STRING"),            # f"{owner_id}#{node_id}" — 스페이스당 한 행
         ("node_id", "STRING"),           # 논리 id 그대로(concept:x · record:y …)
         ("kind", "STRING"),              # concept | record | decision | episode
         ("owner_id", "STRING"),
@@ -235,7 +244,14 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
+
+#: v18 — **테이블을 버리는 마이그레이션**(ALTER 아님). NodeVec 의 기본키가 `node_id`
+#: 에서 `vec_id`(소유자+id)로 바뀐다. 기본키는 ALTER 로 못 고치고, 미러는 배포마다
+#: 통째로 다시 만드는 파생물이라 **버리는 것이 옳은 이행**이다 — 잃을 원본이 없다.
+#: ⚠ 이 스텝은 `migration_statements` 가 아니라 `migrate` 안에서, **base DDL 보다
+#: 먼저** 돈다. 뒤에 두면 방금 새 모양으로 만들어진 테이블을 도로 지운다.
+NODE_VEC_REKEY_VERSION = 18
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
 #: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON

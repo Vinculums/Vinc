@@ -19,6 +19,7 @@ import tempfile
 import unittest
 
 from api import fragment as frag
+from api import node_mirror
 from api import query as q
 
 try:
@@ -165,13 +166,17 @@ class MirrorStore(unittest.TestCase):
         ]}, store=self.store)
         self.store.drop_node_vector_index()
         self.store.run(
-            "UNWIND $rows AS r CREATE (:NodeVec {node_id: r.id, kind: 'concept', "
-            "owner_id: r.o, title: r.t, text: r.x, model: 'test', embedding: r.emb})",
+            "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.v, node_id: r.id, "
+            "kind: 'concept', owner_id: r.o, title: r.t, text: r.x, model: 'test', "
+            "embedding: r.emb})",
             # 제목과 찾는 표면을 **일부러 다르게** 둔다 — 라벨이 어느 쪽에서 오는지
             # 가르는 것이 아래 test_the_label_is_the_title 이다.
-            {"rows": [{"id": "concept:mine", "o": self.OWNER, "t": "mine",
+            # `vec_id` 는 소유자+id 다(v18) — 같은 논리 id 가 스페이스마다 살기 때문.
+            {"rows": [{"v": node_mirror.vec_id(self.OWNER, "concept:mine"),
+                       "id": "concept:mine", "o": self.OWNER, "t": "mine",
                        "x": "mine. a one liner that is not the title", "emb": _vec(1, 0)},
-                      {"id": "concept:theirs", "o": self.OTHER, "t": "theirs",
+                      {"v": node_mirror.vec_id(self.OTHER, "concept:theirs"),
+                       "id": "concept:theirs", "o": self.OTHER, "t": "theirs",
                        "x": "theirs", "emb": _vec(1, 0)}]})
         self.store.create_node_vector_index()
 

@@ -1188,13 +1188,15 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "17")   # v17 — 노드 미러(NodeVec)
+        self.assertEqual(rows[0]["v"], "18")   # v18 — 미러 키에 소유자를 넣었다
         # v17 — 미러는 **부팅 DDL 이 만든다**(ALTER 도 백필도 없다). 실제로 서는지
         # 여기서 확인한다: 이 가정이 틀리면 채우기가 'Table NodeVec does not exist' 로
         # 죽는다(2026-09-09 에 실제로 물렸다).
-        store.run("CREATE (:NodeVec {node_id:'concept:t1', kind:'concept', "
-                  "owner_id:'user:x', title:'T', text:'T. 한 줄 설명', model:'m', "
-                  f"embedding:{[0.0] * cfg.embedding_dim}}})")
+        # v18 — 키가 `vec_id`(소유자+id)다. 같은 논리 id 가 스페이스마다 살기 때문이고,
+        # `node_id` 를 키로 두던 동안 소유자 여섯인 그래프에서 재구축이 네 번 죽었다.
+        store.run("CREATE (:NodeVec {vec_id:'user:x#concept:t1', node_id:'concept:t1', "
+                  "kind:'concept', owner_id:'user:x', title:'T', text:'T. 한 줄 설명', "
+                  f"model:'m', embedding:{[0.0] * cfg.embedding_dim}}})")
         mir = store.run("MATCH (n:NodeVec) RETURN n.title AS t, n.text AS x")
         self.assertEqual(mir[0]["t"], "T")
         self.assertNotEqual(mir[0]["t"], mir[0]["x"],
