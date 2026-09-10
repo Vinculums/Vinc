@@ -226,6 +226,34 @@ class MirrorStore(unittest.TestCase):
             if prev is not None:
                 os.environ["VINC_NODE_SEMANTIC_ARM"] = prev
 
+    def test_the_reader_view_can_run_the_arm(self):
+        """🔴 **사이드카는 리더 뷰로 조회한다.** 이 뷰가 `node_vector_search` 를 노출하지
+        않으면 미러도 팔도 멀쩡한데 조회 경로에서만 통째로 죽는다 — 2026-09-10 에 실제로
+        그랬고, 팔이 꺼져 있던 동안 아무도 못 봤다. 위 시험들이 다 통과한 이유는 전부
+        **원본 스토어**를 주입했기 때문이다. 여기만 뷰를 지난다."""
+        view = self.store.reader_view()
+        try:
+            hits = view.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
+            self.assertEqual([h["id"] for h in hits], ["concept:mine"])
+            res = q.search("nothing shares a word with this", owner=self.OWNER,
+                           query_embedding=_vec(1, 0), top_k=5, store=view)
+            self.assertNotIn("node_error", res, res.get("node_error"))
+            self.assertIn("concept:mine", [h["id"] for h in res.get("node_hits") or []])
+        finally:
+            view.close()
+
+    def test_the_reader_view_covers_the_read_surface(self):
+        """읽기 경로가 부르는 것을 뷰가 다 갖고 있는가. 빠뜨리면 예외가 아니라 **조용한
+        강등**이라(팔 하나가 사라진 결과는 그냥 결과처럼 보인다) 여기서 못 박는다.
+        읽기 메서드를 새로 만들면 이 목록에 더할 것."""
+        view = self.store.reader_view()
+        try:
+            for name in ("run", "fulltext_search", "vector_search",
+                         "node_vector_search"):
+                self.assertTrue(callable(getattr(view, name, None)), name)
+        finally:
+            view.close()
+
     def test_search_uses_it_when_the_flag_is_on(self):
         os.environ["VINC_NODE_SEMANTIC_ARM"] = "on"
         try:
