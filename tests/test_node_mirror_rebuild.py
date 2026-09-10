@@ -437,6 +437,26 @@ class RealStore(unittest.TestCase):
                             "RETURN m.value AS v") or [{}])[0]["v"]
         self.assertEqual(v, "18")
 
+    def test_a_failed_rekey_does_not_record_the_new_version(self):
+        """🔴 드롭이 실패하면 그 예외는 삼켜지고 base DDL 의 "이미 있다"도 삼켜진다.
+        거기서 버전만 올리면 **옛 모양 그대로인 테이블에 새 버전이 찍혀** 다시는 고칠
+        기회가 없다 — 재구축은 계속 죽고 이유는 안 보인다. 확인이 실패하면 버전을
+        올리지 않아야 다음 기동이 다시 시도한다."""
+        self.store.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = '17'")
+        real = self.store._node_vec_rekeyed
+        self.store._node_vec_rekeyed = lambda: False
+        try:
+            self.store.migrate(dim=DIM)          # 예외 없이 끝나야 한다
+        finally:
+            self.store._node_vec_rekeyed = real
+        v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v") or [{}])[0]["v"]
+        self.assertEqual(v, "17", "고치지 못했는데 고쳤다고 기록하면 안 된다")
+        self.store.migrate(dim=DIM)              # 다음 기동
+        v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
+                            "RETURN m.value AS v") or [{}])[0]["v"]
+        self.assertEqual(v, "18", "다음 기동이 다시 시도해서 끝내야 한다")
+
     def test_running_it_twice_does_not_double_the_rows(self):
         """전량 재구축은 배포마다 돈다 — 멱등이 아니면 미러가 배포 수만큼 부푼다."""
         rows, _ = node_mirror.collect(self.store, self.OWNER)

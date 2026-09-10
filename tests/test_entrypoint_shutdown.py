@@ -114,6 +114,17 @@ class EntrypointShutdownTests(unittest.TestCase):
             "VINC_EMBED": "off",
             "VINC_MCP_STATE_DIR": (self.out / "state").as_posix(),
             "VINC_MCP_STATE_SNAPSHOT": (self.out / "snap" / "oauth.db").as_posix(),
+            # 🔴 **pidfile 을 이 검사의 것으로 가둔다.** 기본값은 `/tmp/vinc-*.pid`
+            # 고정 경로다 — 컨테이너 안에서는 한 벌뿐이라 맞지만, **한 기계에서 이
+            # 스크립트를 여러 번 돌리면**(이 파일이 그렇게 하고, CI 는 `core` 와
+            # `core-pkns` 두 잡을 같은 러너에서 동시에 돌린다) 서로의 pidfile 을
+            # 덮어쓴다. 그러면 `shutdown()` 이 **남의 사이드카**를 죽이고 "정상 종료"
+            # 를 찍은 뒤, 정작 자기 대역은 TERM 을 못 받아 마커를 안 남긴다.
+            # 그 모양으로 2026-09-10 에 이 파일이 두 번 붉었다(한 번은 재실행에서
+            # 통과해 흔들림으로 읽혔다). 엔트리포인트가 이 env 를 연 이유가 그것이다.
+            "VINC_SIDECAR_PIDFILE": (self.out / "sidecar.pid").as_posix(),
+            "VINC_EMBED_PIDFILE": (self.out / "embed.pid").as_posix(),
+            "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
         })
         env.pop("VINC_ROLE", None)          # 허브 역할로 돈다(encode 는 즉시 exec)
         driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix())
@@ -153,6 +164,16 @@ class EntrypointShutdownTests(unittest.TestCase):
             "VINC_EMBED": "off",
             "VINC_MCP_STATE_DIR": (self.out / "state").as_posix(),
             "VINC_MCP_STATE_SNAPSHOT": (self.out / "snap" / "oauth.db").as_posix(),
+            # 🔴 **pidfile 을 이 검사의 것으로 가둔다.** 기본값은 `/tmp/vinc-*.pid`
+            # 고정 경로다 — 컨테이너 안에서는 한 벌뿐이라 맞지만, **한 기계에서 이
+            # 스크립트를 여러 번 돌리면**(이 파일이 그렇게 하고, CI 는 `core` 와
+            # `core-pkns` 두 잡을 같은 러너에서 동시에 돌린다) 서로의 pidfile 을
+            # 덮어쓴다. 그러면 `shutdown()` 이 **남의 사이드카**를 죽이고 "정상 종료"
+            # 를 찍은 뒤, 정작 자기 대역은 TERM 을 못 받아 마커를 안 남긴다.
+            # 그 모양으로 2026-09-10 에 이 파일이 두 번 붉었다(한 번은 재실행에서
+            # 통과해 흔들림으로 읽혔다). 엔트리포인트가 이 env 를 연 이유가 그것이다.
+            "VINC_SIDECAR_PIDFILE": (self.out / "sidecar.pid").as_posix(),
+            "VINC_EMBED_PIDFILE": (self.out / "embed.pid").as_posix(),
             "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
         })
         env.pop("VINC_ROLE", None)
