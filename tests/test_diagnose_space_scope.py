@@ -98,6 +98,45 @@ class SharedSlug(unittest.TestCase):
         self.assertNotIn("ambiguous_note", res)
 
 
+class Communities(unittest.TestCase):
+    """같은 교차를 쓰는 나머지 둘. 컴포넌트만 고치면 두 진단이 계속 틀린다."""
+
+    def _com(self, rows, mine, **kw):
+        return q.communities(owner="user:mine",
+                             store=_AlgoStore(rows, mine), **kw)
+
+    def test_a_shared_slug_does_not_inflate_two_communities(self):
+        res = self._com([{"id": "concept:x", "value": 1}, {"id": "concept:x", "value": 2},
+                         {"id": "concept:a", "value": 1}, {"id": "concept:b", "value": 1}],
+                        {"concept:x", "concept:a", "concept:b"})
+        self.assertEqual(res["community_count"], 1)
+        self.assertEqual(res["communities"][0]["size"], 2)
+        self.assertEqual(res["ambiguous"], ["concept:x"])
+
+    def test_context_refuses_an_ambiguous_seed_instead_of_guessing(self):
+        """🔴 셋 중 가장 조용했던 자리. `assign` 이 논리 id 로 키를 잡는 dict 라 같은
+        슬러그가 둘이면 **마지막 행이 이긴다** — 남의 스페이스 커뮤니티를 씨앗의
+        커뮤니티로 집고 그 위에서 대표와 발췌를 만들며 아무 표시도 없다."""
+        res = q.community_context(
+            node="concept:x", owner="user:mine",
+            store=_AlgoStore([{"id": "concept:x", "value": 1},
+                              {"id": "concept:x", "value": 2},
+                              {"id": "concept:a", "value": 2}],
+                             {"concept:x", "concept:a"}))
+        self.assertFalse(res["executed"])
+        self.assertTrue(res.get("ambiguous"))
+        self.assertIn("more than one space", res["note"])
+
+    def test_context_still_answers_for_a_clean_seed(self):
+        res = q.community_context(
+            node="concept:a", owner="user:mine",
+            store=_AlgoStore([{"id": "concept:a", "value": 5},
+                              {"id": "concept:b", "value": 5}],
+                             {"concept:a", "concept:b"}))
+        self.assertTrue(res["executed"])
+        self.assertEqual(res["size"], 2)
+
+
 class VersionsMoveTogether(unittest.TestCase):
     def test_the_backfill_version_reaches_the_target(self):
         """🔴 도메인 계층 백필은 스토어가 **뒤처져 있을 때만** 돈다

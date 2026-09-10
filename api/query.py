@@ -4725,6 +4725,28 @@ def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
     return ids | {r["id"] for r in drows if r.get("id")}
 
 
+#: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.
+#:
+#: 🔴 owner 스코프를 논리 id 문자열 집합과의 교차로 걸기 때문에 생긴다
+#: (`_owner_concept_ids`). 한 소유자 안에서 id 는 기본키라 유일하니 교차는 안전해
+#: 보이는데, 같은 슬러그를 가진 남의 노드가 문자열이 같다는 이유로 통과한다. 새
+#: 스페이스는 전부 같은 기본 역할 넷으로 시작하므로 드문 일이 아니다.
+#:
+#: 어느 쪽이 내 것인지는 알 방법이 없다 — 알고리즘 행에 소유자가 없고, owner 만
+#: 투영하는 길은 엔진이 막는다(cypher 투영 그래프는 WCC 를 Binder 가 거절한다).
+#: 그래서 **고르지 않고 갈라 낸다.** 세 진단이 같은 함수를 쓴다.
+#: 근거: [[record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10]]
+def _ambiguous_algo_ids(rows, scope: set[str] | None) -> list[str]:
+    """한 id 가 서로 다른 그룹 값으로 두 번 이상 나오면 그것은 두 스페이스의 노드다."""
+    seen: dict = {}
+    for r in rows or []:
+        cid = r.get("id")
+        if not cid or (scope is not None and cid not in scope):
+            continue
+        seen.setdefault(cid, set()).add(r.get("value"))
+    return sorted(cid for cid, vals in seen.items() if len(vals) > 1)
+
+
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
     """store.graph_algo 안전 호출 — (rows, None) 또는 (None, note). ``rel_tables``
     미지정 시 어댑터 기본(개념 관계 4종). Louvain 은 단일 엣지 테이블만 지원하므로
@@ -4789,31 +4811,16 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
+        # 2026-09-10 실측: `concept:agent-steward` 가 크기 1 컴포넌트로 **네 번** 나왔고
+        # 그 수가 그 슬러그를 가진 스페이스 수와 맞았다. 사유는 `_ambiguous_algo_ids`.
+        ambiguous = _ambiguous_algo_ids(rows, scope)
+        drop = set(ambiguous)
         groups: dict = {}
-        where_seen: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
-            if not cid or (scope is not None and cid not in scope):
+            if not cid or cid in drop or (scope is not None and cid not in scope):
                 continue
             groups.setdefault(grp, []).append(cid)
-            where_seen.setdefault(cid, set()).add(grp)
-        # 🔴 **한 id 가 두 컴포넌트에 있으면 그건 두 스페이스의 노드다.** 한 소유자
-        # 안에서 id 는 기본키라 유일하므로 그럴 수 없다. 스코프를 **논리 id 문자열
-        # 집합과의 교차**로 걸기 때문에(위 `_owner_concept_ids`) 같은 슬러그를 가진
-        # 남의 노드가 그 필터를 그대로 통과한다 — 새 스페이스는 전부 같은 기본 역할
-        # 넷으로 시작하므로 이것은 드물지 않다. 2026-09-10 실측: `concept:agent-steward`
-        # 가 크기 1 컴포넌트로 **네 번** 나왔고 그 수가 소유자 수와 맞았다.
-        #
-        # 어느 쪽이 내 것인지 알 방법이 없다(알고리즘 행에 소유자가 없다). 그래서
-        # 고르지 않고 **갈라서 말한다** — 고아로 세면 남의 그래프를 내 정리 대상으로
-        # 내밀게 되고, 그것이 2026-09-06 에 "진단이 같은 노드를 두 번 센다"는 유령으로
-        # 기록됐다. 유령이 아니라 스페이스가 늘어난 만큼 늘어난 것이었다.
-        # 근거: [[record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10]]
-        ambiguous = sorted(cid for cid, gs in where_seen.items() if len(gs) > 1)
-        if ambiguous:
-            drop = set(ambiguous)
-            groups = {g: [m for m in ms if m not in drop] for g, ms in groups.items()}
-            groups = {g: ms for g, ms in groups.items() if ms}
         mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
         comps = [{"group": g, "size": len(m), "members": sorted(m)[:mlim],
                   "members_truncated": len(m) > mlim}
@@ -4970,6 +4977,10 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
+        # 컴포넌트 쪽과 같은 자리다 — 두 스페이스에 사는 슬러그는 커뮤니티 둘에 들어가
+        # `size` 를 부풀린다. 고르지 않고 갈라 낸다(`_ambiguous_algo_ids`).
+        ambiguous = _ambiguous_algo_ids(rows, scope)
+        drop = set(ambiguous)
         # 도메인 부착(지배 도메인 산정) — owner 스코프 개념 도메인 맵.
         dwhere = "WHERE c.owner_id = $owner " if owner else ""
         dparams = {"owner": owner} if owner else None
@@ -4979,7 +4990,8 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         groups: dict = {}
         for r in rows:
             cid, com = r.get("id"), r.get("value")
-            if not cid or com == -1 or (scope is not None and cid not in scope):
+            if not cid or com == -1 or cid in drop \
+                    or (scope is not None and cid not in scope):
                 continue   # -1 = Louvain 미배정(고립) — 커뮤니티 아님
             groups.setdefault(com, []).append(cid)
         out = []
@@ -4997,7 +5009,12 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
                         "members": sorted(members)[:_ml],
                         "members_truncated": len(members) > _ml})
         out.sort(key=lambda c: (-c["size"], str(c["community"])))
-        base.update(executed=True, communities=out, community_count=len(out))
+        base.update(executed=True, communities=out, community_count=len(out),
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+        if ambiguous:
+            base["ambiguous_note"] = (
+                "these ids exist in more than one space, so this diagnosis cannot tell "
+                "which node is yours and leaves them out of the communities")
     finally:
         if owns:
             store.close()
@@ -5045,7 +5062,19 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
-        assign = {r["id"]: r["value"] for r in rows if r.get("id")}
+        # 🔴 **여기가 셋 중 가장 조용한 자리였다.** `assign` 은 논리 id 로 키를 잡는
+        # dict 라, 같은 슬러그가 두 스페이스에 있으면 **마지막 행이 이긴다** — 씨앗의
+        # 커뮤니티로 남의 스페이스 값을 집어 그 위에서 대표와 발췌를 만들고, 아무 표시도
+        # 없다. 컴포넌트 쪽은 중복이 눈에 보이기라도 했다.
+        # 씨앗이 모호하면 **답하지 않는다**: 고르는 것은 추측이다.
+        ambiguous = set(_ambiguous_algo_ids(rows, scope))
+        if node in ambiguous:
+            base["note"] = (f"{node} exists in more than one space, so this cannot tell "
+                            "which node is yours")
+            base["ambiguous"] = True
+            return base
+        assign = {r["id"]: r["value"] for r in rows
+                  if r.get("id") and r["id"] not in ambiguous}
         com = assign.get(node)
         if com is None or com == -1 or (scope is not None and node not in scope):
             base["note"] = f"unknown or isolated node: {node}"
