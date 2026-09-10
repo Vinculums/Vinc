@@ -221,10 +221,15 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 있다). 표식을 바꾸려면 `.github/workflows/hub-deploy.yml` 의 grep 도 같이 고칠 것.
     echo "[entrypoint] node-mirror: start — 배포마다 한 번, 배경으로 돈다"
     t0=$(date +%s)
+    # ⚠ **HTTP 상태를 따로 받는다.** `curl -sS` 는 `-f` 가 없으면 500 에도 종료코드
+    # 0 이다. 그래서 2026-09-10 에 네 번 연속 실패한 재구축이 전부 `done` 으로 찍혔고,
+    # 사유가 본문에 실려 있었는데도 성공으로 읽혔다. `-f` 는 못 쓴다 — 그러면 본문을
+    # 버려서 사유가 사라진다. 본문은 파일로, 상태는 `-w` 로 받는다.
     curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
       -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
       -H "Content-Type: application/json" -d '{}' \
-      http://127.0.0.1:8787/node-mirror/rebuild > "$MIRROR_PIDFILE.out" 2>&1 &
+      -o "$MIRROR_PIDFILE.out" -w '%{http_code}' \
+      http://127.0.0.1:8787/node-mirror/rebuild > "$MIRROR_PIDFILE.code" 2>&1 &
     cpid=$!
     echo "$cpid" > "$MIRROR_PIDFILE"
     # `set -e` 아래서 `wait` 가 비영을 내면 이 서브셸이 그대로 죽는다(임베딩 감시자와
@@ -235,11 +240,12 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 로그는 줄 단위라 `node-mirror:` 표식이 붙은 첫 줄에는 `{` 한 글자만 들어간다.
     # 2026-09-10 에 그것 때문에 두 배포를 원인 없이 흘려보냈다.
     out=$(tr -s '\r\n\t ' ' ' < "$MIRROR_PIDFILE.out" 2>/dev/null)
-    if [ "$rc" = "0" ]; then
+    code=$(tr -dc '0-9' < "$MIRROR_PIDFILE.code" 2>/dev/null)
+    if [ "$rc" = "0" ] && [ "$code" = "200" ]; then
       echo "[entrypoint] node-mirror: done in $(( $(date +%s) - t0 ))s — $out"
     else
       echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s" \
-           "(rc=$rc) — $out" >&2
+           "(rc=$rc http=${code:-?}) — $out" >&2
     fi
   ) &
   MIRROR_SUP_PID=$!

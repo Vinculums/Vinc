@@ -43,14 +43,26 @@ def mirror_text(title: str, extra: str) -> str:
     return f"{t}. {e}".strip(". ") if e else t
 
 
-def collect(store, owner: str | None = None) -> list[dict]:
-    """미러에 담을 행. `owner=None` 이면 스토어의 **모든** 소유자다.
+def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
+    """미러에 담을 행과, **id 가 겹친 것들**. `owner=None` 이면 모든 소유자다.
 
     ⚠ owner 를 거는 쪽(CLI)과 안 거는 쪽(허브 배포 경계)이 같은 함수를 쓴다. 걸 때는
     반드시 걸어야 한다 — 안 그러면 남의 노드가 미러에 섞이고 의미 팔이 그것을 후보로
     올린다(SEC-1). 그래서 `owner_id` 는 **언제나 행에 실어 돌려준다**: 지우고 넣는
-    쪽이 스코프를 다시 지어내지 않게."""
+    쪽이 스코프를 다시 지어내지 않게.
+
+    🔴 **id 로 겹치는 것을 걸러 낸다.** 각 표는 자기 pk 로 유일하지만 **표 사이에는
+    아무 제약이 없다** — 한 논리 id 가 Concept 이면서 Decision 일 수 있고, 실제로
+    그렇다. 미러는 `node_id` 가 기본키라 그런 쌍이 하나만 있어도 삽입이 통째로 죽고,
+    2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다(`concept:agent-steward` —
+    같은 유령이 2026-09-06 에 이미 `vinc_diagnose` 가 두 번 센다로 기록돼 있었다).
+
+    한 노드의 결함이 팔 전체를 끄게 두지 않는다. SPEC 순서로 **먼저 온 것을 남기고**
+    나머지는 걸러 낸 뒤, 무엇이 겹쳤는지 함께 돌려준다 — 조용히 버리면 그래프의
+    진짜 결함이 미러 뒤에 숨는다."""
     out: list[dict] = []
+    seen: dict[str, str] = {}
+    collisions: list[dict] = []
     for label, pk, kind, extra_col in SPEC:
         proj = f"c.{extra_col} AS extra" if extra_col else "'' AS extra"
         where = "WHERE c.owner_id = $o " if owner else ""
@@ -61,10 +73,15 @@ def collect(store, owner: str | None = None) -> list[dict]:
         for r in rows:
             title = " ".join(str(r.get("title") or "").split())
             text = mirror_text(title, r.get("extra"))
-            if text:
-                out.append({"id": r["id"], "kind": kind, "owner": r.get("owner") or "",
-                            "title": title, "text": text})
-    return out
+            if not text:
+                continue
+            if r["id"] in seen:
+                collisions.append({"id": r["id"], "kept": seen[r["id"]], "dropped": kind})
+                continue
+            seen[r["id"]] = kind
+            out.append({"id": r["id"], "kind": kind, "owner": r.get("owner") or "",
+                        "title": title, "text": text})
+    return out, collisions
 
 
 def replace(store, rows: list[dict], model: str) -> dict:

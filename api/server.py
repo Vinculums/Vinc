@@ -1254,7 +1254,7 @@ class VincApp:
             # `_read` 가 `finally: r.close()` 인 것과 같은 이유다.
             try:
                 owner = (body.get("owner") or "").strip() or None
-                rows = node_mirror.collect(r, owner)
+                rows, collisions = node_mirror.collect(r, owner)
                 try:
                     model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
                 except Exception:
@@ -1288,7 +1288,11 @@ class VincApp:
         return 200, {"kind": "node-mirror.rebuild", "executed": True,
                      "rows": res.get("rows"), "owners": res.get("owners"),
                      "index_ok": res.get("index_ok"),
-                     "index_error": res.get("index_error"), "model": model,
+                     "index_error": res.get("index_error"),
+                     # id 가 겹친 노드는 그래프의 결함이지 재구축의 결함이 아니다.
+                     # 걸러 내고 **말한다** — 조용히 버리면 결함이 미러 뒤에 숨는다.
+                     "id_collisions": collisions[:5],
+                     "id_collision_count": len(collisions), "model": model,
                      "encode_s": round(encode_s, 1),
                      "swap_s": round(time.monotonic() - t0 - encode_s, 1),
                      "wall_s": round(time.monotonic() - t0, 1)}
