@@ -127,6 +127,45 @@ class EntrypointShutdownTests(unittest.TestCase):
             + (proc.stdout or "")[-1500:])
         self.assertTrue((self.out / "sidecar-closed").exists())
 
+    def test_도는_미러_재구축이_종료를_붙들지_않는다(self):
+        """재구축은 배포마다 배경으로 돌고 분 단위다. 그 요청이 닫으려는 사이드카를
+        놓지 않으면 `shutdown()` 의 20초 대기를 넘기고, Container Apps 유예(30초)도
+        넘겨 SIGKILL 이 된다 — 그 끝이 체크포인트 안 된 WAL 이고, 위 검사가 지키는
+        바로 그 사슬이다. 그래서 종료는 재구축부터 걷어내야 한다.
+
+        ⚠ 서브셸이 아니라 **curl 을 죽여야** 한다. 서브셸만 죽이면 curl 이 고아로 남아
+        연결을 그대로 쥔다 — 그래서 pid 를 파일로 남긴다."""
+        (self.bin / "curl").write_text(
+            "#!/bin/sh\n"
+            "case \"$*\" in\n"
+            "  *node-mirror/rebuild*)\n"
+            f"      trap 'echo killed > \"{self.out.as_posix()}/mirror-killed\"; exit 0' TERM\n"
+            "      i=0; while [ \"$i\" -lt 600 ]; do i=$((i+1)); sleep 0.2; done ;;\n"
+            "  *) echo '{\"status\": \"ok\"}' ;;\n"
+            "esac\n", encoding="utf-8")
+        os.chmod(self.bin / "curl", 0o755)
+
+        env = dict(os.environ)
+        env.update({
+            "PATH": str(self.bin) + os.pathsep + env.get("PATH", ""),
+            "VINC_SIDECAR_TOKEN": "t",
+            "VINC_DATA_DIR": (self.out / "db").as_posix(),
+            "VINC_EMBED": "off",
+            "VINC_MCP_STATE_DIR": (self.out / "state").as_posix(),
+            "VINC_MCP_STATE_SNAPSHOT": (self.out / "snap" / "oauth.db").as_posix(),
+            "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
+        })
+        env.pop("VINC_ROLE", None)
+        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix())
+        proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, timeout=90)
+        self.assertEqual(proc.returncode, 0, (proc.stdout or "")[-1500:])
+        self.assertTrue(
+            self._wait_for(self.out / "mirror-killed", 5.0),
+            "도는 재구축이 TERM 을 못 받았다 — 닫으려는 사이드카를 붙들어 SIGKILL 을 "
+            "부르고, 그 끝은 미완결 WAL 이다.\n" + (proc.stdout or "")[-1500:])
+
     def test_exec_로_넘기지_않는다__회귀_방지(self):
         """위 검사는 신호가 도는 환경을 요구한다. 이 검사는 환경과 무관하게
         **원인 자체**를 막는다 — `exec` 로 마지막 프로세스를 넘기면 trap 이 사라진다."""
