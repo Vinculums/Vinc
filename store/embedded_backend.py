@@ -1128,14 +1128,21 @@ class EmbeddedBackend:
         except Exception:
             pass
 
-    def create_node_vector_index(self) -> None:
-        """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다."""
+    def create_node_vector_index(self) -> str:
+        """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다.
+
+        반환은 **삼킨 사유**다(성공이면 빈 문자열). 멱등이어야 하므로 예외를 밖으로
+        내보내지 않지만, 그냥 삼키면 "이미 있음"과 "쓰기 트랜잭션을 못 잡았음"이 같은
+        침묵이 된다 — 뒤엣것은 행만 있고 인덱스가 없는 미러를 남기고, 그 상태의 의미
+        팔은 예외가 아니라 빈 목록이라 밖에서 **팔을 안 켠 것과 구분되지 않는다**
+        (2026-09-10 라이브). 부르는 쪽은 무시해도 되고, 값을 보면 이유를 안다."""
         try:
             self._load_ext("vector")
             self._conn.execute(
                 f"CALL CREATE_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}','embedding')")
-        except Exception:
-            pass        # 이미 있음 — 멱등
+            return ""
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn

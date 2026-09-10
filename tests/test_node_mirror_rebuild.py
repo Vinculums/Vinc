@@ -98,8 +98,9 @@ class _FakeStore:
     def drop_node_vector_index(self):
         self.dropped += 1
 
-    def create_node_vector_index(self):
+    def create_node_vector_index(self) -> str:
         self.created += 1
+        return "" if self._index_works else "RuntimeError: cannot start a write txn"
 
     def close(self):
         pass
@@ -186,6 +187,14 @@ class Replace(unittest.TestCase):
         예외 없이 빈 목록만 낸다 — 밖에서 "안 켠 것"과 구분되지 않는다."""
         s = _FakeStore([], index_works=False)
         self.assertFalse(node_mirror.replace(s, self.rows("user:mine"), "e5")["index_ok"])
+
+    def test_it_also_carries_the_reason_it_was_swallowed(self):
+        """`index_ok` 는 **무엇이** 틀렸는지만 말한다. 사유가 없으면 "이미 있음"과
+        "쓰기 트랜잭션을 못 잡았음"이 같은 침묵이 되고, 그 둘을 못 가르면 원인을
+        배포 여러 번에 걸쳐 못 짚는다 — 2026-09-10 에 실제로 그랬다."""
+        s = _FakeStore([], index_works=False)
+        res = node_mirror.replace(s, self.rows("user:mine"), "e5")
+        self.assertIn("write txn", res["index_error"])
 
     def test_a_healthy_rebuild_says_the_index_answers(self):
         s = _FakeStore([])

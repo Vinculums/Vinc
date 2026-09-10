@@ -231,7 +231,10 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 같은 함정). 상태만 받아 온다.
     rc=0
     wait "$cpid" || rc=$?
-    out=$(cat "$MIRROR_PIDFILE.out" 2>/dev/null)
+    # ⚠ **한 줄로 눌러 담는다.** 사이드카 응답은 `indent=2` 라 여러 줄이고, 컨테이너
+    # 로그는 줄 단위라 `node-mirror:` 표식이 붙은 첫 줄에는 `{` 한 글자만 들어간다.
+    # 2026-09-10 에 그것 때문에 두 배포를 원인 없이 흘려보냈다.
+    out=$(tr -s '\r\n\t ' ' ' < "$MIRROR_PIDFILE.out" 2>/dev/null)
     if [ "$rc" = "0" ]; then
       echo "[entrypoint] node-mirror: done in $(( $(date +%s) - t0 ))s — $out"
     else

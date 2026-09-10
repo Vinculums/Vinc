@@ -1287,7 +1287,8 @@ class VincApp:
         # 상태다. 결과에 실어야 엔트리포인트 로그와 배포 로그에 그대로 나온다.
         return 200, {"kind": "node-mirror.rebuild", "executed": True,
                      "rows": res.get("rows"), "owners": res.get("owners"),
-                     "index_ok": res.get("index_ok"), "model": model,
+                     "index_ok": res.get("index_ok"),
+                     "index_error": res.get("index_error"), "model": model,
                      "encode_s": round(encode_s, 1),
                      "swap_s": round(time.monotonic() - t0 - encode_s, 1),
                      "wall_s": round(time.monotonic() - t0, 1)}
