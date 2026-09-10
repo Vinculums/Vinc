@@ -133,21 +133,37 @@ def _nodes():
 class Collect(unittest.TestCase):
     def test_an_owner_scope_is_actually_applied(self):
         """미러는 노드의 사본이다. 스코프가 새면 남의 제목이 후보로 올라온다(SEC-1)."""
-        rows = node_mirror.collect(_FakeStore(_nodes()), "user:mine")
+        rows, _ = node_mirror.collect(_FakeStore(_nodes()), "user:mine")
         self.assertEqual(sorted(r["id"] for r in rows), ["concept:a", "record:b"])
 
     def test_no_owner_means_every_owner(self):
         """배포 경계의 재구축은 테넌트를 안 가린다 — 한 벌의 인덱스이기 때문이다."""
-        rows = node_mirror.collect(_FakeStore(_nodes()), None)
+        rows, _ = node_mirror.collect(_FakeStore(_nodes()), None)
         self.assertEqual(len(rows), 3)
 
     def test_every_row_carries_its_owner(self):
         """지우고 넣는 쪽이 스코프를 다시 지어내지 않게 한다."""
-        rows = node_mirror.collect(_FakeStore(_nodes()), None)
+        rows, _ = node_mirror.collect(_FakeStore(_nodes()), None)
         self.assertEqual({r["owner"] for r in rows}, {"user:mine", "user:theirs"})
 
+    def test_one_id_living_in_two_tables_does_not_kill_the_mirror(self):
+        """🔴 각 표는 자기 pk 로 유일하지만 **표 사이에는 아무 제약이 없다** — 한 논리
+        id 가 Concept 이면서 Decision 일 수 있고, 이 그래프에 실제로 있다
+        (`concept:agent-steward`). 미러는 `node_id` 가 기본키라 그런 쌍이 하나만 있어도
+        삽입이 통째로 죽고, 2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다."""
+        dupe = _nodes() + [{"label": "Decision", "id": "concept:a", "title": "Alpha dup",
+                            "owner": "user:mine"}]
+        rows, collisions = node_mirror.collect(_FakeStore(dupe), None)
+        self.assertEqual(len(rows), 3, "겹친 것 하나가 나머지를 데려가면 안 된다")
+        self.assertEqual([r["id"] for r in rows].count("concept:a"), 1)
+        self.assertEqual(collisions,
+                         [{"id": "concept:a", "kept": "concept", "dropped": "decision"}])
+
+    def test_a_clean_graph_reports_no_collision(self):
+        self.assertEqual(node_mirror.collect(_FakeStore(_nodes()), None)[1], [])
+
     def test_the_search_surface_is_the_title_plus_the_one_liner(self):
-        rows = node_mirror.collect(_FakeStore(_nodes()), "user:mine")
+        rows, _ = node_mirror.collect(_FakeStore(_nodes()), "user:mine")
         by_id = {r["id"]: r for r in rows}
         self.assertEqual(by_id["concept:a"]["text"], "Alpha. one liner")
         self.assertEqual(by_id["concept:a"]["title"], "Alpha")
@@ -259,6 +275,16 @@ class RebuildRoute(unittest.TestCase):
                          "인코딩 중에 리더 뷰가 열려 있었다")
         self.assertEqual(self.store.reader_open, 0, "리더 뷰가 새어 나갔다")
 
+    def test_the_result_names_the_colliding_ids(self):
+        """걸러 낸 것을 조용히 버리면 그래프의 진짜 결함이 미러 뒤에 숨는다."""
+        self.app = VincApp(store=_FakeStore(_nodes() + [
+            {"label": "Decision", "id": "concept:a", "title": "dup",
+             "owner": "user:mine"}]))
+        code, res = self.app.write_node_mirror_rebuild({})
+        self.assertEqual((code, res["rows"]), (200, 3))
+        self.assertEqual(res["id_collision_count"], 1)
+        self.assertEqual(res["id_collisions"][0]["id"], "concept:a")
+
     def test_the_result_says_whether_the_index_answers(self):
         """조용한 강등을 말하게 하는 자리 — 이 값이 배포 로그까지 그대로 간다."""
         code, res = self.app.write_node_mirror_rebuild({})
@@ -346,7 +372,7 @@ class RealStore(unittest.TestCase):
                 os.environ[k] = v
 
     def test_a_rebuild_leaves_a_mirror_you_can_search(self):
-        rows = node_mirror.collect(self.store, self.OWNER)
+        rows, _ = node_mirror.collect(self.store, self.OWNER)
         self.assertEqual(sorted(r["id"] for r in rows),
                          ["concept:alpha", "record:bravo"])
         for i, r in enumerate(rows):
@@ -358,7 +384,7 @@ class RealStore(unittest.TestCase):
 
     def test_running_it_twice_does_not_double_the_rows(self):
         """전량 재구축은 배포마다 돈다 — 멱등이 아니면 미러가 배포 수만큼 부푼다."""
-        rows = node_mirror.collect(self.store, self.OWNER)
+        rows, _ = node_mirror.collect(self.store, self.OWNER)
         for r in rows:
             r["emb"] = _vec(1, 0)
         node_mirror.replace(self.store, rows, "test")

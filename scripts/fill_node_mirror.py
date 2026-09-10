@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         store.close()
         return 1
 
-    rows = node_mirror.collect(store, a.owner)
+    rows, collisions = node_mirror.collect(store, a.owner)
     if a.limit:
         rows = rows[:a.limit]
     if not rows:
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     store.close()
 
     summary = {"kind": "node-mirror.fill", "store": a.data, "owner": a.owner,
-               "encoder": a.encoder, "rows": done, "in_store": n,
+               "encoder": a.encoder, "rows": done, "in_store": n, "id_collisions": collisions,
                "wall_s": round(wall, 1),
                "per_s": round(done / wall, 2) if wall else None}
     if a.out:
