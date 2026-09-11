@@ -271,6 +271,29 @@ class DecisionsAndDirectReadsCarryValidity(ReadPathDefault):
         self.assertEqual(live["validity"], "current")
         self.assertEqual(live["superseded_by"], "")
 
+    def test_the_semantic_arm_does_not_bring_a_retired_node_back(self):
+        """미러에는 구간이 없다. 제목 팔만 걸러 내면 폐기된 노드가 의미 팔로 되돌아온다
+        (라이브 재현 2026-09-11: 배포 뒤에도 d44 가 semantic 표로 검색에 남았다).
+        미러 대신 가짜 팔로 같은 모양을 만든다 — 이 테스트 스토어에는 미러가 없다."""
+        fake = [{"id": "record:quorum-note-retired", "title": "x", "kind": "record",
+                 "distance": 0.1},
+                {"id": "decision:cache-policy-old", "title": "y", "kind": "decision",
+                 "distance": 0.2},
+                {"id": "decision:cache-policy-new", "title": "z", "kind": "decision",
+                 "distance": 0.3}]
+        self.store.node_vector_search = lambda emb, k, owner=None: list(fake)
+        emb = [0.0, 0.0, 0.0, 1.0]
+        res = q.search("cache policy", owner=self.OWNER, top_k=10, store=self.store,
+                       query_embedding=emb)
+        ids = [h["id"] for h in res.get("node_hits") or []]
+        self.assertNotIn("record:quorum-note-retired", ids, "의미 팔이 폐기 기록을 되살렸다")
+        self.assertNotIn("decision:cache-policy-old", ids, "의미 팔이 폐기 결정을 되살렸다")
+        self.assertIn("decision:cache-policy-new", ids)
+        self.assertEqual(res.get("validity_filtered"), 3, "제목 팔 1 + 의미 팔 2")
+        both = q.search("cache policy", owner=self.OWNER, top_k=10, store=self.store,
+                        query_embedding=emb, historical=True)
+        self.assertIn("decision:cache-policy-old", [h["id"] for h in both["node_hits"]])
+
     def test_brief_by_id_announces_the_retirement_and_the_successor(self):
         out = q.brief("decision:cache-policy-old", owner=self.OWNER, store=self.store)
         self.assertEqual(out["status"], "resolved")
