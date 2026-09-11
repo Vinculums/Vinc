@@ -125,6 +125,24 @@ jobs:
           # `git diff` 가 "unknown revision" 으로 죽고, 그러면 아래 폴백이 전량 실행으로
           # 붙는다 — 안전하지만 이 잡의 목적이 사라진다.
           fetch-depth: 0
+
+      # PR 제목 계약 — 스쿼시 머지에서 **그 제목이 곧 main 의 커밋 제목**이다.
+      # 잡을 새로 만들지 않고 여기 붙인 이유는 분이다: 이 잡은 PR 마다 이미 돌고
+      # 19초짜리라, 잡을 하나 더 세우면 실행 자체는 2초인데 청구는 1분부터 시작한다.
+      #
+      # ⚠ 제목을 `run:` 안에 `${{ }}` 로 펼치지 않는다 — 제목은 사람이 쓰는 문자열이라
+      # 백틱이나 `$(…)` 가 들어오면 그대로 셸에서 돈다. `env:` 로 넘기면 셸이 값으로만 본다.
+      - name: PR title contract (type prefix, English, no dash)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          # setup-python 을 쓰지 않는다. 이 잡은 컨테이너가 아니라 러너에서 바로 돌고
+          # (#261 의 툴캐시 함정이 없는 자리다), 표준 라이브러리만 쓰는 스크립트다.
+          PY=$(command -v python3 || command -v python)
+          "$PY" -X utf8 scripts/gate_pr_title.py
+
       - id: f
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
