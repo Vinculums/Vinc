@@ -85,6 +85,33 @@ class RefreshMode(unittest.TestCase):
              mock.patch.object(R.sys, "argv", ["refresh_graph_refs.py"]):
             self.assertEqual(R.main(), 1)
 
+    def _main_with_absences(self, cited: int, absent: int) -> tuple[int, bool]:
+        """인용 노드 `cited` 종 중 앞 `absent` 건을 서버가 '없다' 고 답할 때 main() 의
+        반환값과 **매니페스트를 썼는가**."""
+        hits = [("a.py", i, f"record:n{i:03d}") for i in range(cited)]
+        gone = {f"record:n{i:03d}" for i in range(absent)}
+
+        def call(_tool, args):
+            return ABSENT if args["node"] in gone else PRESENT
+
+        with mock.patch.object(R, "scan_repo", return_value=hits), \
+             mock.patch.object(R, "fetch_docs", return_value=[]), \
+             mock.patch.object(R.remote, "call", side_effect=call), \
+             mock.patch("io.open", mock.mock_open()) as opened, \
+             mock.patch.object(R.sys, "argv", ["refresh_graph_refs.py"]):
+            rc = R.main()
+        return rc, opened.called
+
+    def test_a_few_absences_are_normal_drift_and_still_write(self):
+        """노드 몇 개가 지워진 것은 인용을 옮기라는 신호다. 매니페스트는 그것을 반영해야 한다."""
+        self.assertEqual(self._main_with_absences(cited=50, absent=3), (0, True))
+
+    def test_a_mass_absence_is_a_broken_hub_not_rotten_citations(self):
+        """🔴 2026-09-11: 허브의 정확 id 조회가 깨져 살아 있는 노드 126개가 '없다' 로 왔다.
+        그때 refresh 를 돌렸다면 매니페스트에서 126건이 빠진 채 커밋됐을 것이다. 상한을
+        넘는 '없다' 는 쓰지 않는다."""
+        self.assertEqual(self._main_with_absences(cited=50, absent=30), (1, False))
+
 
 if __name__ == "__main__":
     unittest.main()
