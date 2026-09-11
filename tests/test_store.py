@@ -38,6 +38,24 @@ class ConfigTests(unittest.TestCase):
             cfgmod.StoreConfig(embedding_model="intfloat/multilingual-e5-base").embedding_dim, 768)
         self.assertEqual(cfgmod.StoreConfig(embedding_model="BAAI/bge-m3").embedding_dim, 1024)
 
+    def test_별칭이_없으면_워커의_HF_id_가_문이_된다(self):
+        """허브는 MEMORY_EMBEDDING_MODEL 을 안 준다. Dockerfile 이 VINC_EMBED_MODEL 로
+        bge-m3 를 선언하면 스토어 열도 1024 여야 한다 — 두 이름 공간을 잇는 유일한 줄.
+        별칭이 있으면 별칭이 이긴다(데스크탑 무영향)."""
+        saved = {k: os.environ.get(k) for k in ("MEMORY_EMBEDDING_MODEL", "VINC_EMBED_MODEL")}
+        try:
+            os.environ.pop("MEMORY_EMBEDDING_MODEL", None)
+            os.environ["VINC_EMBED_MODEL"] = "BAAI/bge-m3"
+            self.assertEqual(cfgmod.load_config().embedding_dim, 1024)
+            os.environ["MEMORY_EMBEDDING_MODEL"] = "local-en"
+            self.assertEqual(cfgmod.load_config().embedding_dim, 768)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_미지_모델은_768_로_강등되지_않고_죽는다(self):
         """전에는 `.get(model, 768)` 이라 오타가 조용히 768 이 됐다. 차원은 되돌리는 데
         스토어 재구축이 드는 값이라 기본값으로 때울 자리가 아니다 — 설정 시점에

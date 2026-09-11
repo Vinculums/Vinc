@@ -219,6 +219,60 @@ class RebuildPathTests(unittest.TestCase):
         dst.close()
         self.assertTrue(hits, "재임베딩 중단 상태에서 FTS 가 죽었다")
 
+    def test_재구축이_노드_미러_벡터도_버린다(self):
+        """NodeVec(v17)은 리허설 뒤에 생긴 표다. 옛 차원의 행이 덤프에 남으면 새 열에
+        넣을 때 행마다 캐스팅 예외가 난다 — ChunkVec 과 같은 이유로 버리고, 기동이
+        전량 재구축한다."""
+        src, _ = self._mkstore()
+        self._seed_docs(src, 2)
+        src.run("CREATE (:NodeVec {vec_id:'u#concept:x', node_id:'concept:x', kind:'concept', "
+                "owner_id:'u', title:'X', text:'X', model:'e5', embedding:$e})",
+                {"e": [0.0] * 768})
+        dst, _ = self._mkstore(dim=1024)
+        try:
+            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        except RuntimeError as exc:
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        finally:
+            src.close()
+        self.assertEqual(out["node_vectors_dropped"], 1)
+        self.assertEqual(int(dst.run("MATCH (v:NodeVec) RETURN count(v) AS c")[0]["c"]), 0)
+        self.assertEqual(migrate.vector_dim(dst, "NodeVec"), 1024)
+        dst.close()
+
+    def test_차원_이행_훅은_다를_때만_재구축해_갈아_끼운다(self):
+        """허브 기동의 `migrate-dim`. 768 스토어에 1024 모델을 대면 새 파일로 재구축해
+        자리에 놓고 옛것은 `.pre-768` 로 남긴다. 같은 차원이면 손대지 않는다(멱등)."""
+        import os
+        src, cfg = self._mkstore()                    # 768
+        self._seed_docs(src, 3)
+        path = cfg.data_dir
+        src.close()
+        try:
+            out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+        except RuntimeError as exc:
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        self.assertTrue(out["changed"])
+        self.assertEqual(out["previous_dim"], 768)
+        self.assertEqual((out["docs"], out["requeued"]), (3, 3))
+        self.assertTrue(os.path.exists(out["kept"]), "옛 스토어가 되돌림용으로 남아야 한다")
+        st = open_store(load_config({"data_dir": path, "embedding_model": "BAAI/bge-m3"}))
+        try:
+            self.assertEqual(migrate.vector_dim(st, "ChunkVec"), 1024)
+            n = st.run("MATCH (d:_DocMeta) RETURN count(d) AS c")[0]["c"]
+            self.assertEqual(int(n), 3, "문서가 재구축에서 사라졌다")
+            from api import docstore as ds
+            self.assertEqual(ds.embed_model_state(st)["stored"], "BAAI/bge-m3",
+                             "워커가 같은 이름을 들고 와야 재큐를 두 번 하지 않는다")
+        finally:
+            st.close()
+        again = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+        self.assertFalse(again["changed"], "차원이 같으면 아무것도 안 해야 한다(멱등)")
+
 
 class SchemaLagExportTests(unittest.TestCase):
     """스토어가 코드보다 낮은 스키마일 때 export 가 **행을 잃지 않는다**.

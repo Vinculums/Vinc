@@ -20,6 +20,7 @@ access_count)·embedding 벡터·메타 테이블(`_DocMeta` 등)까지 전량 �
 from __future__ import annotations
 
 import json
+import re
 
 from . import embedded_schema as _schema
 
@@ -251,14 +252,113 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
 
     dump = export_store(src)
     dropped = len(dump["nodes"].pop("ChunkVec", None) or [])
+    # 노드 미러(NodeVec, v17)도 같은 이유로 버린다: 옛 차원의 벡터라 새 열에 안 들어가고,
+    # 어차피 컨테이너 기동이 전량 재구축한다(`docker-entrypoint.sh` 의 미러 재구축).
+    # 리허설(2026-08-30) 때는 이 표가 없어서 빠져 있었다.
+    node_dropped = len(dump["nodes"].pop("NodeVec", None) or [])
     stats = import_store(dst, dump, dim=dim)
     dst.ensure_search_indexes(dim=dim)
     sw = switch_embed_model(dst, model)
     docs = dst.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
     return {"model": model, "dim": dim, "vectors_dropped": dropped,
+            "node_vectors_dropped": node_dropped,
             "nodes": stats["nodes"], "edges": stats["edges"], "meta": stats["meta"],
             "docs": int(docs[0]["c"]) if docs else 0,
             "requeued": sw.get("requeued", 0)}
+
+
+def vector_dim(store, table: str = "ChunkVec") -> int | None:
+    """`table` 의 embedding 열이 실제로 가진 차원. 표가 없으면 None.
+
+    메타에 적힌 모델 이름으로 추정하지 않고 열을 직접 읽는다 — 이 값이 곧 "첫 쓰기가
+    캐스팅 예외를 내는가"를 정하는 사실이고, 메타는 비어 있거나 낡을 수 있다."""
+    try:
+        rows = store.run(f"CALL table_info('{table}') RETURN *") or []
+    except Exception:
+        return None
+    for r in rows:
+        if str(r.get("name", "")) == "embedding":
+            m = re.search(r"(\d+)", str(r.get("type", "")))
+            return int(m.group(1)) if m else None
+    return None
+
+
+def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int) -> dict:
+    """기동 시 벡터 열의 차원이 이 배포의 모델과 다르면 **재구축해서 갈아 끼운다.**
+
+    허브 컨테이너의 엔트리포인트가 사이드카를 띄우기 **전에** 부른다(`api/cli.py
+    migrate-dim`). 그 자리여야 하는 이유 둘: 스토어는 단일 writer 라 사이드카가 연 뒤에는
+    아무도 두 번째로 못 열고, 사이드카 기동 대기(300초)가 재구축 시간을 먹으면 컨테이너가
+    재시작 루프에 든다.
+
+    안전한 방향으로만 움직인다:
+      · 차원이 같으면 아무것도 하지 않는다(멱등 — 매 기동 불려도 좋다).
+      · 재구축은 **새 파일**에 만들고 원본은 읽기만 한다(:func:`rebuild_store` 의 계약).
+        `docs != requeued` 면 원본을 그대로 두고 예외를 낸다 — 반쯤 된 스토어를 자리에
+        넣지 않는다.
+      · 성공하면 원본을 ``<data_dir>.pre-<옛차원>`` 으로 물리고 새 것을 자리에 놓는다.
+        이 사본이 이 리비전 안의 되돌림 수단이고, 영속 스냅샷의 ``.prev`` 세대가 한
+        주기 더 그 뒤를 받친다. 되돌림 자체는 반대 방향의 같은 재구축이다.
+    벡터는 재구축 뒤 비어 있다. 워커가 새 모델로 다시 채우는 동안 검색은 텍스트 팔로
+    답하고 `arms`·`vector_note` 가 그 상태를 말한다 — 창의 길이는 코퍼스 × 인코더 속도다
+    (2026-09-11 산정: 소유자 그래프 하나에 약 1시간 45분).
+    근거: [[decision:bge-m3-adoption]] · [[record:embed-vector-dim-fixed-at-768-2026-08-30]]
+    """
+    import os
+    import time
+
+    from . import persistence
+    from .backend import open_store
+    from .config import load_config
+
+    out: dict = {"kind": "embed.dim.migrate", "data": data_dir, "model": model,
+                 "target_dim": target_dim, "changed": False}
+    if not os.path.exists(data_dir):
+        out["note"] = "no store yet — provision at boot creates it at the target width"
+        return out
+    t0 = time.perf_counter()
+    src = open_store(load_config({"data_dir": data_dir}))
+    if src is None:
+        raise RuntimeError("store open failed (driver)")
+    out_dir = f"{data_dir}.rebuild-{target_dim}"
+    try:
+        cur = vector_dim(src, "ChunkVec")
+        out["current_dim"] = cur
+        if cur is None:
+            out["note"] = "ChunkVec not provisioned — nothing to migrate"
+            return out
+        if cur == target_dim:
+            return out
+        for part, _req in persistence._parts(out_dir):
+            persistence._rm(part)                      # 지난 실패의 잔해
+        dst = open_store(load_config({"data_dir": out_dir, "embedding_model": model}))
+        if dst is None:
+            raise RuntimeError("rebuild target open failed (driver)")
+        try:
+            dst.provision(dim=target_dim)
+            res = rebuild_store(src, dst, model=model, dim=target_dim)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    if res["docs"] != res["requeued"]:
+        for part, _req in persistence._parts(out_dir):
+            persistence._rm(part)
+        raise RuntimeError(f"rebuild requeued {res['requeued']} of {res['docs']} documents — "
+                           "the new store is discarded and the old one stays in place")
+    keep = f"{data_dir}.pre-{cur}"
+    for part, _req in persistence._parts(keep):
+        persistence._rm(part)
+    for part, _req in persistence._parts(data_dir):
+        if os.path.exists(part):
+            os.replace(part, keep + part[len(data_dir):])
+    for part, _req in persistence._parts(out_dir):
+        if os.path.exists(part):
+            os.replace(part, data_dir + part[len(out_dir):])
+    out.update(res)
+    out.update(changed=True, previous_dim=cur, kept=keep,
+               wall_s=round(time.perf_counter() - t0, 2))
+    return out
 
 
 def _main_rebuild(args, open_store, load_config) -> int:
