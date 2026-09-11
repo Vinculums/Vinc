@@ -123,7 +123,14 @@ def load_config(overrides: dict | None = None) -> StoreConfig:
     cfg = StoreConfig(
         backend=pick("backend", "MEMORY_STORE_BACKEND", "embedded"),
         data_dir=pick("data_dir", "MEMORY_DATA_DIR", None) or None,
-        embedding_model=pick("embedding_model", "MEMORY_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+        # 모델 이름의 문은 하나다(2026-09-11). 별칭(MEMORY_EMBEDDING_MODEL)이 없으면 워커가
+        # 실제로 드는 HF id(VINC_EMBED_MODEL)를 그대로 쓴다 — 표가 양쪽 철자를 다 실으므로
+        # 차원은 어느 쪽으로도 맞다. 이 줄이 없으면 허브는 Dockerfile 이 bge-m3 를 선언해도
+        # 스토어 열을 768 로 잡고, 그 어긋남은 스토어를 비운 뒤 첫 쓰기에서야 드러난다.
+        # 근거: [[record:embed-dim-namespace-split-2026-08-30]]
+        embedding_model=(pick("embedding_model", "MEMORY_EMBEDDING_MODEL", None)
+                         or os.environ.get("VINC_EMBED_MODEL")
+                         or DEFAULT_EMBEDDING_MODEL),
         tenant_id=overrides.get("tenant_id"),
     )
     cfg.max_db_size = int(pick("max_db_size", "VINC_MAX_DB_SIZE", 0) or 0)
