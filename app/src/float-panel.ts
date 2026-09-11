@@ -35,10 +35,28 @@ let moved = false;
 
 const MARGIN = 8;
 
+/** 화면 위에 뜨는 것들의 **천장** — 상단 바 바로 아래다(발주자 지시 2026-09-10:
+ *  "gnb 바로 하단에 뜨게 하자, 지금 살짝 gnb 를 가린다").
+ *
+ *  상수를 쓰지 않고 바를 **실측**하는 이유: 이 앱은 스킨이 셋이고(셸·웹·임베드)
+ *  웹 스킨은 공홈 GNB 가 그 위에 한 겹 더 붙어 바의 자리가 통째로 내려간다.
+ *  `--chrome-top` 토큰은 셸 좌표계(그리드 안쪽) 기준이라 `fixed` 요소에는 그대로
+ *  못 쓴다 — 재면 세 스킨이 자동으로 맞는다(`positionPanel` 이 좌표를 재는 이유와 같다).
+ *  바가 없는 배치에서는 그냥 여백이 천장이다. */
+export function floatCeiling(): number {
+  const bar = document.getElementById("topbar");
+  if (!bar || bar.hidden) return MARGIN;
+  const b = bar.getBoundingClientRect();
+  return b.height > 0 ? b.bottom + MARGIN : MARGIN;
+}
+
 function clamp(el: HTMLElement, x: number, y: number) {
   const r = el.getBoundingClientRect();
+  const top = floatCeiling();
   const nx = Math.max(MARGIN, Math.min(x, window.innerWidth - r.width - MARGIN));
-  const ny = Math.max(MARGIN, Math.min(y, window.innerHeight - r.height - MARGIN));
+  // ⚠ 아래 한계가 천장보다 위일 수 있다(짧은 창 + 큰 카드) — 그때는 천장이 이긴다.
+  //    순서를 뒤집으면 카드가 바를 덮은 채 화면 밖으로 밀린다.
+  const ny = Math.max(top, Math.min(y, Math.max(top, window.innerHeight - r.height - MARGIN)));
   el.style.left = `${Math.round(nx)}px`;
   el.style.top = `${Math.round(ny)}px`;
 }

@@ -14,6 +14,7 @@ import {
   type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { fillMath, fillMermaid } from "./rich-blocks";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 
@@ -203,6 +204,43 @@ class TableWidget extends WidgetType {
   ignoreEvent() { return false; }
 }
 
+/** 수식·다이어그램 블록. 표 위젯과 **같은 규율**이다: 커서가 그 범위에 들어오면
+ *  위젯을 걷고 원문을 보인다(편집 가능일 때만) — 고칠 것은 그림이 아니라 소스다.
+ *  그리는 일은 `rich-blocks` 가 늦게 실어 와서 한다. 위젯이 만들어질 때 DOM 만
+ *  돌려주고 내용은 프라미스가 도착하면 채워진다 — CM 은 그 사이에도 자리를 잡는다. */
+class RichWidget extends WidgetType {
+  constructor(readonly kind: "math" | "mermaid", readonly src: string) { super(); }
+  eq(o: RichWidget) { return o.kind === this.kind && o.src === this.src; }
+  toDOM() {
+    const el = document.createElement("div");
+    el.className = this.kind === "math" ? "md-math" : "md-mermaid";
+    if (this.kind === "math") void fillMath(el, this.src, true);
+    else void fillMermaid(el, this.src);
+    return el;
+  }
+  ignoreEvent() { return false; }
+}
+
+/** `$$…$$` 블록의 구간. 마크다운 문법이 아니라 관례라 파서가 모르고, 그래서 줄을
+ *  훑는다. 코드펜스 **안**은 건너뛴다 — 거기 든 달러는 수식이 아니라 글자다. */
+function mathRanges(state: EditorState): { from: number; to: number }[] {
+  const out: { from: number; to: number }[] = [];
+  const doc = state.doc;
+  let inFence = false;
+  for (let n = 1, open = -1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    const t = line.text.trim();
+    if (t.startsWith("```")) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    if (open < 0) {
+      if (!t.startsWith("$$")) continue;
+      if (t.length > 4 && t.endsWith("$$")) { out.push({ from: line.from, to: line.to }); continue; }
+      open = line.from;
+    } else if (t.endsWith("$$")) { out.push({ from: open, to: line.to }); open = -1; }
+  }
+  return out;
+}
+
 // ── 블록 층 — **StateField 여야 한다** ────────────────────────────────────────
 // CM6 은 블록 데코레이션을 ViewPlugin 에서 받지 않는다("Block decorations may not
 // be specified via plugins"): 블록은 줄 높이를 바꾸므로 뷰포트를 계산하기 **전에**
@@ -248,6 +286,30 @@ function buildBlocks(state: EditorState): Blocks {
       widget: new TableWidget(state.doc.sliceString(t.from, t.to)), block: true }) });
     return false;
   } });
+
+  // 다이어그램 — 파서가 준 펜스 노드를 쓴다(줄 정규식으로 세면 중첩 펜스에서 어긋난다).
+  syntaxTree(state).iterate({ enter: (n) => {
+    if (n.name !== "FencedCode") return undefined;
+    const head = state.doc.lineAt(n.from).text.trim();
+    if (!/^```+\s*mermaid\s*$/i.test(head)) return false;
+    if (editable && sel.ranges.some((r) => r.from <= n.to && n.from <= r.to)) return false;
+    const body = state.doc.sliceString(state.doc.lineAt(n.from).to + 1,
+                                       state.doc.lineAt(n.to).from).replace(/\n$/, "");
+    ranges.push({ from: n.from, to: n.to });
+    parts.push({ from: n.from, to: n.to, deco: Decoration.replace({
+      widget: new RichWidget("mermaid", body), block: true }) });
+    return false;
+  } });
+  // 수식
+  for (const m of mathRanges(state)) {
+    if (editable && sel.ranges.some((r) => r.from <= m.to && m.from <= r.to)) continue;
+    if (ranges.some((r) => r.from <= m.from && m.to <= r.to)) continue;   // 표·프론트매터 안이면 건너뛴다
+    ranges.push(m);
+    const tex = state.doc.sliceString(m.from, m.to)
+      .replace(/^\s*[$][$]/, "").replace(/[$][$]\s*$/, "").trim();
+    parts.push({ from: m.from, to: m.to, deco: Decoration.replace({
+      widget: new RichWidget("math", tex), block: true }) });
+  }
 
   parts.sort((a, b) => a.from - b.from || a.to - b.to);
   const builder = new RangeSetBuilder<Decoration>();

@@ -49,6 +49,14 @@ export type Handle2d = {
   /** 점등 집합을 **밖에서** 건다(범례 갈래 hover · 인과 원뿔). `null` 이면 hover
    *  기본 문법으로 돌아간다. 프리퍼런스가 아니라 일시 상태라 저장되지 않는다. */
   spotlight(s: Spot | null): void;
+  /** 시간 커서가 남긴 집합. `null` 이면 전량이다.
+   *
+   *  **빼는 것이 아니라 숨긴다**(2026-09-10). 노드를 그래프에서 덜어 내면 배치가
+   *  다시 잡혀 남은 점들이 통째로 움직이는데, 시간 커서에서 그것은 정반대의 인상이다
+   *  — 커서를 미는 동안 "무엇이 언제 생겼나"를 읽으려면 **자리가 가만히 있어야**
+   *  한다. 이 렌더러의 좌표는 미리 계산돼 오므로(px/py) 숨긴 점이 남의 자리를
+   *  건드리지 않아 그 성질이 공짜다. */
+  setTimeVisible(ids: Set<string> | null): void;
 };
 
 /** 방향 3종 — 화살촉이 붙는 관계(view-planar 의 DIRECTED 와 같은 정의). */
@@ -361,7 +369,12 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   //: 물러남 값은 마운트마다 한 번만 읽는다 — `getComputedStyle` 은 레이아웃 읽기라
   //: 리듀서(노드마다·refresh 마다 불린다) 안에서 부를 것이 아니다(recede.ts 머리말).
   const recedeNode = recede("node");
+  /** 시간 커서. `null` = 전량. 리듀서가 매 프레임 읽으므로 Set 조회 하나로 끝난다. */
+  let timeVisible: Set<string> | null = null;
   sigma.setSetting("nodeReducer", (id, data) => {
+    // 시간이 **먼저**다. 아래 점등·물러남 문법은 "그려지는 것들 사이의 위계"인데,
+    // 커서 밖 노드는 애초에 그려지지 않으므로 그 위계에 낄 자리가 없다.
+    if (timeVisible && !timeVisible.has(id)) return { ...data, hidden: true };
     const focus = focusId();
     const keep = spot && !hovered ? spot.nodes : focus ? keepOf(focus) : null;
     if (!keep) return data;
@@ -542,6 +555,11 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // 남고, 그때 위계는 크기(√연결수)와 허브 배지가 계속 말한다.
   const focusOnly = () => prefs.edges === "focus";
   sigma.setSetting("edgeReducer", (id, data) => {
+    // 선은 **끝점을 따라간다** — 한쪽이 아직 안 생겼으면 그릴 곳이 없다.
+    if (timeVisible) {
+      const [a2, b2] = g.extremities(id);
+      if (!timeVisible.has(a2) || !timeVisible.has(b2)) return { ...data, hidden: true };
+    }
     if (bringOn()) return { ...data, hidden: true };   // 데려오는 방식엔 선이 없다
     const focus = focusId();
     // 점등 중에는 **그 집합에 든 선만** 켜진다. 열쇠로 대조하는 이유: 이 렌더러는
@@ -845,6 +863,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   });
 
   return {
+    setTimeVisible(ids) {
+      timeVisible = ids;
+      sigma.refresh();          // 좌표는 그대로 — 리듀서만 다시 돈다
+    },
     dispose() {
       if (flyRaf) cancelAnimationFrame(flyRaf);
       sigma.removeAllListeners();

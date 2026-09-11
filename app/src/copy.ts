@@ -288,17 +288,25 @@ const EN = {
       conceptCount: (n: number) => `${n} concept${n === 1 ? "" : "s"}`,
       // 갈래 전환(D69 안에서). 주제 줄은 그대로이고 그 아래 무엇이 걸리는지만 바뀐다 —
       // 이 열은 여전히 문서 탐색기이지 서피스 내비가 아니다(adr-design-069).
-      modeDocs: "Documents", modeNodes: "Nodes",
-      modeDocsTip: "List the documents under each topic",
-      modeNodesTip: "List the concepts under each topic",
+      // 종 레일 — 이름은 툴팁이 든다(레일에 라벨을 두면 얇은 바가 아니게 된다).
+      // Agent 는 종이 아니라 예약된 주제라서 구분선 아래에 따로 선다.
+      kinds: {
+        concept: "Concepts", decision: "Decisions",
+        record: "Records", episode: "Episodes", agent: "Agent roles",
+        // 레일에 그리는 짧은 이름. 긴 이름은 툴팁과 aria 가 그대로 든다 —
+        // 레일 폭에 안 들어가는 이름을 줄바꿈시키면 얇은 바가 아니게 된다.
+        "agent.short": "Agent",
+      } as Record<string, string>,
+      kindTip: (name: string, n: number) =>
+        `${name} · ${n === 1 ? "1 node" : `${n} nodes`}`,
       nodeTip: "Show this on the map",
-      noNodes: "No concepts in this topic yet.",
+      noNodes: "Nothing of this kind in this topic yet.",
+      docsElsewhere: "Documents that land on another kind",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       editOnly: "No place on the map yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
-      paneFold: "Fold the document panel", paneUnfold: "Unfold the document panel",
     },
     // Tools(D71) — 만들기 · 가져오기 · 공유를 한 모달에서. 상단 바 버튼 둘을 대체한다.
     // 관례(GM-8) — 어시스턴트가 쓰기 전에 읽는 것. "규칙"이라 부르지 않는다:
@@ -327,11 +335,11 @@ const EN = {
       title: "Tools",
       tip: "Write, bring in, or share",
       create: "Create", import: "Import", share: "Share",
-      createSub: "Write a document, and link the ones it belongs with.",
+      createSub: "Link them.",
       importSub: "Bring in a document or a pack someone shared.",
       shareSub: "Bundle a part of your graph into a file.",
       linkHeader: "Link related documents",
-      linkHint: "Links are drawn between the main concept of each document.",
+      linkHint: "Links run between the main concept of each document.",
       linkFilter: "Filter documents",
       linkNone: "No other documents yet.",
       noConcept: "No concept yet, so it cannot be linked.",
@@ -356,10 +364,10 @@ const EN = {
     panel: {
       options: "Options",
       allTopics: "All topics",
-      nodeSize: "Node size", byConnections: "by connections", uniform: "uniform",
+      nodeSize: "Size", byConnections: "by connections", uniform: "uniform",
       labels: "Labels", onHover: "on hover", off: "off",
       arrows: "Direction arrows", on: "on",
-      edgeShow: "Show lines",
+      edgeShow: "Links",
       edgeShowName: {
         always: "always", focus: "on focus", particles: "particles", bring: "bring &amp; go",
       } as Record<string, string>,
@@ -442,7 +450,7 @@ const EN = {
       when: "Time cursor",
       whenAll: "All",
       groupTime: "Time",
-      cone: "Branch spread",
+      cone: "Density",
       docLinks: "Document links",
       // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
       // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
@@ -451,6 +459,7 @@ const EN = {
       // 아니라 "주제를 색으로 볼까"다.
       domainTint: "Tint by topic",
       timeBasis: "Time",
+      replay: "Flow", replayPlay: "Play", replayStop: "Stop",
       basisRecorded: "when recorded", basisContent: "when it happened",
       noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
@@ -510,6 +519,21 @@ const EN = {
       askCompare: "Compare with its neighbours",
       askCompareSub: (n: number) => `${n} links, evidence included`,
       askCompareBody: "Compare this with what it links to, and say where they disagree.",
+      // 문서에서 여는 프롬프트 셋(2026-09-10). 노드의 것과 **같은 줄·같은 메뉴**를
+      // 쓰고 담아 가는 것만 다르다 — 문서는 개념이 아니라 원문이므로 묻는 말이 다르다.
+      askDocSum: "Summarise this document",
+      askDocSumSub: "The whole text, in my own words",
+      askDocSumBody: "Summarise this document from my Vinc graph, and keep its own wording where it matters.",
+      askDocConcepts: "Pull out the concepts",
+      askDocConceptsSub: "What this text is about",
+      askDocConceptsBody: "Read this document from my Vinc graph and list the concepts it argues for, with the sentence each one rests on.",
+      askDocCheck: "Check it against the graph",
+      askDocCheckSub: "Where it disagrees with what I already wrote",
+      askDocCheckBody: "Compare this document with the rest of my Vinc graph and say where they disagree.",
+      // 에이전트 역할 노드에서만 뜨는 항목. 그 노드는 개념이 아니라 **시킬 일**이다.
+      askRole: "Work as this role",
+      askRoleSub: "Its brief, from my graph",
+      askRoleBody: "Take on this role from my Vinc graph: read its brief and work as it describes.",
       askDocs: "Related documents",
       askDocsSub: (n: number) => n === 1
         ? "1 document behind this node" : `${n} documents behind this node`,
@@ -561,6 +585,9 @@ const EN = {
       edDirty: "Unsaved changes",
       edSaving: "Saving…",
       edSaved: "Saved",
+      edCopy: "Copy text",
+      edRead: "Reading", edWrite: "Editing",
+      edToRead: "Stop editing", edToWrite: "Edit",
       edSaveFail: "Couldn't save. Your text is kept. Try again.",
       edConflict: "This document changed on another device.",
       edOverwrite: "Overwrite with my version",
@@ -745,6 +772,7 @@ const EN = {
       acctOffline: "This device is working offline. Your notes stay here and go nowhere.",
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
+      syncKeySave: "Save key", syncKeySaved: "Saved. The field is cleared on purpose - the key is never kept on screen.",
       syncDomains: "Topics to sync",
       syncNoDomains: "No topics yet. Add some knowledge first.",
       // 고른 것이 없으면 push 가 아무것도 안 보낸다(export 가 선택 도메인만 훑는다).
@@ -975,7 +1003,7 @@ const KO: Deck = {
       bridgeLine: "다리로 이어진 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
       drawnAs3d: "3D 지오메트리 그대로",
-      drawnAsFlat: "2D · 타임라인 · Weave 공용",
+      drawnAsFlat: "2D · Timeline · Weave 공용",
       markNote3d: {
         concept: "구",
         document: "정사면체 · 자전하지 않으니 이 각도가 곧 실루엣이에요",
@@ -1077,15 +1105,18 @@ const KO: Deck = {
       failed: "목록을 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
       retry: "다시 시도하기",
       conceptCount: (n: number) => `개념 ${n}개`,
-      modeDocs: "문서", modeNodes: "노드",
-      modeDocsTip: "주제마다 문서를 폅니다",
-      modeNodesTip: "주제마다 개념을 폅니다",
+      kinds: {
+        concept: "개념", decision: "결정",
+        record: "기록", episode: "사건", agent: "Agent 역할",
+        "agent.short": "Agent",
+      } as Record<string, string>,
+      kindTip: (name: string, n: number) => `${name} · 노드 ${n}개`,
       nodeTip: "지도에서 봅니다",
-      noNodes: "이 주제에는 아직 개념이 없습니다.",
+      noNodes: "이 주제에는 아직 이 종이 없어요",
+      docsElsewhere: "다른 종에 붙은 문서",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       editOnly: "아직 지도에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",
-      paneFold: "문서 패널 접기", paneUnfold: "문서 패널 펼치기",
     },
     conv: {
       title: "GRAPH.md",
@@ -1108,11 +1139,11 @@ const KO: Deck = {
       title: "도구",
       tip: "쓰기 · 가져오기 · 공유하기",
       create: "만들기", import: "가져오기", share: "공유하기",
-      createSub: "문서를 쓰고, 함께 둘 문서를 연결해요",
+      createSub: "연결해요",
       importSub: "문서나 공유받은 팩을 가져와요",
       shareSub: "그래프의 일부를 파일 하나로 묶어요",
       linkHeader: "관련 문서 연결하기",
-      linkHint: "연결은 각 문서의 대표 개념 사이에 그어져요",
+      linkHint: "연결은 각 문서의 대표 개념 사이에 이어져요",
       linkFilter: "문서 찾기",
       linkNone: "아직 다른 문서가 없어요",
       noConcept: "아직 개념이 없어서 연결할 수 없어요",
@@ -1133,10 +1164,10 @@ const KO: Deck = {
     panel: {
       options: "옵션",
       allTopics: "모든 주제",
-      nodeSize: "노드 크기", byConnections: "연결 수에 따라", uniform: "모두 같게",
+      nodeSize: "크기", byConnections: "연결 수에 따라", uniform: "모두 같게",
       labels: "이름", onHover: "가리킬 때만", off: "끔",
       arrows: "방향 화살표", on: "켬",
-      edgeShow: "선 보이기",
+      edgeShow: "연결",
       edgeShowName: {
         always: "항상", focus: "가리킬 때만", particles: "흐름", bring: "모아 보기",
       } as Record<string, string>,
@@ -1200,18 +1231,19 @@ const KO: Deck = {
       when: "시점",
       whenAll: "전체",
       groupTime: "시간",
-      cone: "가지 벌어짐",
+      cone: "밀도",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
       domainTint: "주제별 색조",
       timeBasis: "기준",
+      replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 '일어난 때'가 적힌 문서가 없어요. 문서를 쓸 때 함께 적어 보세요",
       fixedNote: "모양과 초점색은 바꿀 수 없어요. 뜻을 담고 있어서, 공유한 팩이 어디서 열어도 같게 보여요",
     },
     viewx: {
       shareCta: "공유하기",
-      timeline: "타임라인",
+      timeline: "Timeline",
       bundle: "Weave",
       bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
@@ -1245,6 +1277,18 @@ const KO: Deck = {
       askCompare: "이웃과 비교",
       askCompareSub: (n) => `연결 ${n}개, 근거 포함`,
       askCompareBody: "이것과 이어진 것들을 비교하고, 어디서 서로 어긋나는지 말해 줘.",
+      askDocSum: "이 문서를 요약해 줘",
+      askDocSumSub: "전문을 내 말로",
+      askDocSumBody: "내 Vinc 그래프의 이 문서를 요약해 줘. 중요한 표현은 원문 그대로 남겨 줘.",
+      askDocConcepts: "개념을 뽑아 줘",
+      askDocConceptsSub: "이 글이 말하는 것",
+      askDocConceptsBody: "내 Vinc 그래프의 이 문서를 읽고, 이 글이 주장하는 개념과 그 근거가 된 문장을 함께 뽑아 줘.",
+      askDocCheck: "그래프와 대조해 줘",
+      askDocCheckSub: "이미 쓴 것과 어긋나는 곳",
+      askDocCheckBody: "내 Vinc 그래프의 이 문서를 나머지 그래프와 대조해서 서로 어긋나는 곳을 짚어 줘.",
+      askRole: "이 역할로 일해 줘",
+      askRoleSub: "그래프에 적힌 그 역할의 지침",
+      askRoleBody: "내 Vinc 그래프의 이 역할을 맡아 줘. 역할 문서를 읽고 거기 적힌 대로 일해 줘.",
       askDocs: "관련 문서",
       askDocsSub: (n) => `이 노드 뒤의 문서 ${n}개`,
       askDocsBody: "이것 뒤에 있는 문서들과 각각이 무엇을 말하는지 보여 줘.",
@@ -1290,6 +1334,9 @@ const KO: Deck = {
       edDirty: "저장 안 됨",
       edSaving: "저장 중…",
       edSaved: "저장됨",
+      edCopy: "본문 복사",
+      edRead: "읽는 중", edWrite: "고치는 중",
+      edToRead: "편집 끝내기", edToWrite: "편집",
       edSaveFail: "저장하지 못했어요. 다시 시도해 보세요. 쓴 내용은 그대로 있어요",
       edConflict: "이 문서가 다른 기기에서 바뀌었어요",
       edOverwrite: "내 버전으로 덮어쓰기",
@@ -1333,7 +1380,7 @@ const KO: Deck = {
         ABOUT: (a, b) => `${a}은(는) ${b}을(를) 다뤄요`,
       },
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 타임라인이 보여요",
+      noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 Timeline 이 보여요",
       undated: (n) => `날짜가 없는 문서 ${n}개`,
       noLineage: "아직 무엇이 무엇으로 이어졌는지 적힌 것이 없어요",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
@@ -1343,7 +1390,7 @@ const KO: Deck = {
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
       // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
       // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      timelineChart: (n, m) => `타임라인: 주제 ${m}개에 걸친 문서 ${n}개`,
+      timelineChart: (n, m) => `Timeline: 주제 ${m}개에 걸친 문서 ${n}개`,
       seg: {
         episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
@@ -1446,6 +1493,7 @@ const KO: Deck = {
       acctOffline: "이 기기는 오프라인으로 쓰고 있어요. 기록은 여기 남고 어디로도 나가지 않아요.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
+      syncKeySave: "키 저장", syncKeySaved: "저장했어요. 입력칸을 비우는 것은 일부러예요 · 키를 화면에 남기지 않아요",
       syncDomains: "동기화할 주제",
       syncNoDomains: "아직 주제가 없어요. 먼저 데이터를 추가해 보세요.",
       syncNonePicked: "고른 주제가 없어서 이 기기를 떠나는 것이 없어요. 아래에서 고르기 전까지는 여기에 쓴 것이 전부 이 기기에만 남아요.",

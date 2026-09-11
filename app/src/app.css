@@ -167,12 +167,11 @@ html, body { height: 100%; margin: 0; }
 body {
   /* D37 보강 — 환경 대기(ambient): 유리가 흡수할 배경. 비의미 워시 3개 —
      밝은 종이빛(좌상)·포인트색 속삭임(우, 상한 .08)·모래빛(하단). 전부
-     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변). */
-  background:
-    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--card)) 0%, transparent 60%),
-    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
-    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--muted)) 0%, transparent 60%),
-    hsl(var(--background));
+     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변).
+     ⚠ 셸이 카드가 된 뒤 이 워시는 **`#surface` 가 든다**(아래 그 규칙). 여기 남는
+     것은 셸 밖에서 열리는 배치(웹 스킨의 여백 등)를 위한 바탕이다 — 셸이 판을
+     불투명하게 칠하므로 셸 안에서는 이 줄이 보이지 않는다. */
+  background: hsl(var(--background));
   background-attachment: fixed;
   color: hsl(var(--foreground));
   font-family: var(--font-ui, system-ui), system-ui, sans-serif;
@@ -193,63 +192,326 @@ body {
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
 :root {
   --lnb-w: 14.5rem;
+  /* 종 레일 폭. ⚠ **라벨이 있어야 한다**는 것이 실측으로 드러났다(2026-09-08):
+     마크 어휘가 개념과 결정에 **같은 도형**(구)을 주므로(D35, viewpoints 마크 표)
+     20px 아이콘만으로는 그 두 줄을 구별할 수 없다. 새 도형을 지어내면 형태=타입이
+     깨지므로, 대신 표식 아래에 아주 작은 이름을 둔다. 4.25rem 은 "결정"·"Agent" 가
+     한 줄에 들어가는 폭이다.
+     ⚠ 이름이 `--rail-w` 가 아닌 이유: 그 이름은 **이미 쓰이고 있다**(아래 `#surface`
+     가 읽는 면 폭만큼 인캔버스 크롬을 비켜서게 하는 변수다). 같은 이름을 두 뜻으로
+     쓰면 한쪽을 고칠 때 다른 쪽이 조용히 따라 움직인다. */
+  --kind-rail-w: 4rem;
   /* 모션 토큰(--ease-* · --dur-*)은 여기 없다 — 디자인 허브 SSoT(design-tokens.json 의
      motion 그룹)가 tokens.desktop.css / tokens.web.css 로 내려 준다(2026-09-05). 큰 면(셸 열·
      문서 패널·상단 바 폭)은 --ease-drawer, 작은 응답(캐럿·누름·알약)은 --ease-out, 메뉴·카드
      등장과 모달 성장은 --ease-settle. motion.ts 와 view-bundle.ts 가 같은 토큰을 읽는다. */
-  /* 상단 바에서 LNB 경계 양쪽으로 남기는 여백. 경계선이 그 여백의 정중앙에 오도록
-     손잡이 묶음과 검색바가 **같은 값을** 쓴다(아래 #tb-actions·#tb-search). */
+  /* 상단 바에서 LNB 경계 양쪽으로 남기는 여백. 손잡이 묶음과 검색바가 **같은 값을**
+     쓴다(아래 #tb-actions·#tb-search).
+     ⚠ 이 값이 지키는 것이 **바뀌었다.** 평면일 때는 "LNB 경계선이 그 여백의 정중앙에
+     온다"였고, 카드가 된 뒤에는 **검색 입력의 왼쪽 끝이 캔버스 카드의 왼쪽 끝과 같은
+     선에 선다**(실측 1440px: 둘 다 249px, 테두리 1px 차). 값이 같아서 그대로 성립한
+     것이고 우연이 아니다 — 셸의 열 간격도 같은 .5rem 이기 때문이다. 셋 중 하나를
+     바꾸면 나머지 둘을 함께 재야 한다. */
   --tb-gap: .5rem;
+  /* 부유 크롬의 여백 — 창 가장자리와 카드 사이, 그리고 카드끼리의 간격이 **같은 값**
+     이다. 하나로 두는 이유: 값이 갈리면 좌상단만 좁은 비대칭이 생기는데, 그건 카드가
+     떠 있다는 인상을 가장 먼저 깨는 종류의 어긋남이다. */
+  --shell-gap: .5rem;
+  /* 지도 카드 위에 떠 있는 상단 바가 먹는 높이(바 + 위아래 여백). 지도 안에서
+     위쪽에 서는 것들(읽는 면 · 인캔버스 크롬)이 이 값만큼 비켜선다 — 바 높이를
+     바꾸는 날 비켜서는 쪽을 따로 고칠 일이 없어야 한다. */
+  --chrome-top: calc(var(--topbar-h) + var(--shell-gap) * 2);
+  /* 상단 바 높이. 여태 3.25rem 리터럴이 네 곳에 흩어져 있었고 그중 둘은 렌즈 패널의
+     top 이었다 — 바의 기하가 바뀌면 패널이 바 아래에 안 붙는다(부유로 바꾸는 이번이
+     정확히 그 경우다). 리터럴을 남기는 곳은 공홈 GNB 하나뿐이다(다른 표면의 높이다). */
+  --topbar-h: 3.25rem;
+
+  /* ── 크롬의 규격 ──────────────────────────────────────────────────────
+     **4px(.25rem) 격자**다. 여태 크롬의 크기는 손으로 잡은 값이라 격자 밖이었고
+     (2.15rem · 2.35rem · .55rem · .35rem · .28rem · .15rem …), 그래서 나란히 선
+     것들이 서로 다른 높이가 됐다 — 실측 2026-09-09(1440×900):
+       · 목록 한 줄이 셋이었다: 내비 32.85 · 주제 31.25 · 문서 28
+       · 컨트롤 높이가 셋이었다: 아이콘 34.4 · 검색 37.6 · 레일 버튼 44.5
+       · 사이드바 머리 패딩 8.8 / 5.6 / 8.8 / 13.6 — 네 변이 다 격자 밖
+     0.25rem 의 배수만 쓰면 두 카드가 나란히 설 때 줄이 저절로 맞는다.
+     **여기 이름 붙인 것만 쓴다.** 새 값을 규칙 안에 직접 적으면 다시 갈린다. */
+  --ctl-h: 2.25rem;        /* 36px — 아이콘 버튼 · 입력. 손이 짚는 최소 44px 은
+                              누르는 영역이고(패딩이 낸다) 이것은 그린 크기다 */
+  --row-h: 1.75rem;        /* 28px — 목록 한 줄(내비 · 절 제목 · 주제 · 문서) */
+  --rail-btn-h: 3rem;      /* 48px — 표식 + 이름 + 개수, 세 줄이 들어가는 높이 */
+  --pad-card: var(--space-2, .5rem);   /* 8px — 카드 안쪽 여백 */
+  --pad-row: var(--space-2, .5rem);    /* 8px — 줄의 좌우 여백 */
+  --indent: var(--space-3, .75rem);    /* 12px — 계층 한 단 */
+  /* 보기·범례 패널의 폭. **상단 바의 그 손잡이 묶음도 이 값을 읽는다** — 패널이
+     묶음 아래에서 열리므로 둘의 오른쪽 끝이 같아야 한다(발주자 지시 2026-09-09).
+     20.5rem 은 두 번 의도적으로 넓힌 값이다(세그가 두 줄로 접혔고, v2 에서 타일
+     넷 + 활성값 이름이 한 줄에 서야 했다). */
+  /* 렌즈 패널 자기 폭. 세그가 두 줄로 접히지 않는 하한이 이 값의 이유다
+     (상단 바 손잡이 묶음과는 무관하다 — 그 연결은 2026-09-09 에 철회됐다). */
+  --lens-panel-w: 20.5rem;
+  /* 앱을 다루는 창(설정 · 도구 · GRAPH.md)의 규격. 셋이 같은 상자를 쓴다 —
+     여태 셋이 각자 다른 폭·높이·자리였다(발주자 지시 2026-09-09). */
+  --modal-w: min(42rem, 94vw);
+  --modal-h: min(34rem, 86vh);
+
+  /* ── 면의 층(깊이 → 칠) ──────────────────────────────────────────────
+     깊이는 세 값으로 말한다: **판(홈) → 내용 → 구조 크롬**. 그 위는 칠이 아니라
+     유리와 그림자가 맡는다(부유 크롬).
+     ⚠ 이 이름이 필요한 이유는 `--background` 와 `--muted` 의 **밝기 순위가 테마
+     사이에서 뒤바뀌기 때문이다**(실측 2026-09-09):
+       light  muted 91% < background 95% < card 98%
+       dark   background 6% < muted 9% < card 13%
+     그래서 두 토큰을 면에 직접 배정하면 어느 쪽으로 적든 **한 테마에서만 맞는다** —
+     여태 light 에서 맞고 dark 에서 판이 내용보다 밝았다(창틀이 지도 위로 떠 보였다).
+     역할을 이름으로 고정하고 매핑만 테마별로 두면 순위가 두 테마에서 같아진다.
+     이 이름 밖의 면은 이 값을 쓰지 않는다 — 팝오버·시트는 자기 층(--card)이 있다. */
+  --surface-0: var(--muted);        /* 판 · 카드 사이 홈 — 가장 깊다 */
+  --surface-1: var(--background);   /* 내용(지도·산문 표면) */
+  --surface-2: var(--card);         /* 구조 크롬(종 레일 · 주제 트리) */
+}
+[data-theme="dark"] {
+  /* 위 주석의 뒤집힘을 여기서 되돌린다. `--card` 는 두 테마 다 맨 위라 안 적는다. */
+  --surface-0: var(--background);
+  --surface-1: var(--muted);
 }
 /* 셸은 두 열이다: 문서 목록 | 표면(지도).
    문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(발주자 지시 2026-08-05) —
    열이었을 때는 패널을 넓히면 지도가 그만큼 줄어 "읽으려면 지도를 잃는" 거래가 됐다.
    겹치면 그 거래가 사라지고, 끝까지 끌어 화면을 다 덮는 것도 정당한 상태가 된다. */
+/* 크롬은 **떠 있는 카드**다(발주자 지시 2026-09-08 — 평면이라 미완으로 읽힌다).
+   여백·모서리·그림자를 셸과 카드가 나눠 갖는다: 여백은 셸의 padding·gap 이 한 벌로
+   갖고(카드마다 margin 을 주면 인접한 두 카드 사이에서 값이 두 배가 된다), 모서리와
+   그림자는 각 카드가 갖는다.
+   ⚠ **격자 구조는 그대로다.** LNB 가 열이라는 성질(D69)이 캔버스 안 절대배치 크롬을
+   요소별 오프셋 없이 따라 좁게 만드는데, 카드처럼 보이려고 오버레이로 바꾸면 그 성질을
+   잃는다. 바꾼 것은 칠과 모서리뿐이고 배치는 안 건드렸다. */
 #shell {
   display: grid;
-  grid-template-columns: var(--lnb-w) minmax(0, 1fr);
+  /* 좁은 창에서 트리가 **서랍으로 뜨는** 좌표계(아래 미디어쿼리). 넓은 창에서는
+     절대배치 자식이 없어 아무 일도 하지 않는다. */
+  position: relative;
+  grid-template-columns: var(--kind-rail-w) var(--lnb-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh; min-height: 0; overflow: hidden;
+  padding: var(--shell-gap);
+  gap: var(--shell-gap);
+  background: hsl(var(--surface-0));
   /* 사이드바 접기가 **미끄러진다**. 폭 하나가 열 정의 안에 있으므로 열 자체를
-     전이시킨다(요소마다 따로 애니메이션을 걸면 트리와 표면이 어긋나게 움직인다). */
-  transition: grid-template-columns var(--dur-panel) var(--ease-drawer);
+     전이시킨다(요소마다 따로 애니메이션을 걸면 트리와 표면이 어긋나게 움직인다).
+     열 간격도 함께 전이한다 — 접힘에서 0 이 되므로(아래) 같이 안 움직이면 폭이 0 이
+     된 뒤에도 빈 띠가 한 프레임 남는다. */
+  transition: grid-template-columns var(--dur-panel) var(--ease-drawer),
+              column-gap var(--dur-panel) var(--ease-drawer);
 }
 #shell > * { min-width: 0; min-height: 0; }
-#topbar { grid-column: 1 / -1; }
-#shell[data-lnb="closed"] { --lnb-w: 0rem; }
+/* 상단 바는 **지도 위에만** 얹힌다(3열 1행, 발주자 지시 2026-09-09). 여태 전폭
+   (`1 / -1`)이라 사이드바가 그 아래에서 시작했다. 이제 사이드바 둘이 천장까지 서고
+   바는 지도 카드의 위층이다 — 그래서 바에는 검색만 남았다(손잡이는 레일로, 세그는
+   트리로 갔다. `index.html` 참조).
+   오른쪽 끝은 **지도 카드의 오른쪽 끝**이다(발주자 지시 2026-09-09: "gnb 길이
+   오른쪽 끝까지 해야지 검색바 길이를 늘려서"). 위아래 두 카드의 세로선이 맞는 것이
+   이 배치의 규율이고, 바를 일찍 끊으면 그 선이 깨진 채 오른쪽 위가 빈 판으로 남는다.
+   ⚠ 한때 `--gnb-tail` 로 검색바가 끝나던 지점에서 끊었다 — 철회됐다.
+   그리고 바는 지도와 **열을 나누지 않는다**(발주자 지시 2026-09-09: "view 와 gnb 가
+   나눠져 있는데 나누지 않고 gnb 가 view 위에 떠 있도록"). 같은 칸에 겹쳐 놓고 z 로
+   위에 세운다 — 그래서 지도가 천장까지 올라오고 바는 그 위에 뜬 층이 된다.
+   여백 한 칸을 둘러 두는 것이 "떠 있음"의 조건이다: 카드 모서리에 딱 붙이면 두
+   모서리가 겹쳐 바가 카드의 **일부**로 읽힌다. */
+#topbar {
+  grid-column: 3; grid-row: 1;
+  margin: var(--shell-gap);
+}
+/* 접히면 폭 0 **그리고 간격 0** — 간격을 남기면 창 왼쪽에 셸 padding + 열 간격이
+   겹쳐 캔버스만 1rem 안쪽으로 들어간다(다른 세 변은 .5rem 이다). */
+/* 접힘은 **트리만** 접는다. 레일은 남는다 - 그것이 층 둘로 나눈 이유다:
+   자리를 되찾고 싶은 것은 목록이고, 종을 고르는 손잡이는 늘 손에 있어야 한다.
+   그래서 여기서 간격을 0 으로 만들지 않는다(레일과 캔버스 사이 여백은 유지). */
+/* 접힘은 **왼쪽 전체**다(레일 + 트리, 발주자 지시 2026-09-09).
+   ⚠ **격자의 열만 접는다 — 변수는 그대로 둔다**(발주자 지적 2026-09-09:
+   "사이드바로 닫는다고 gnb까지 닫히면 안 되지"). 여기서 `--lnb-w`·`--kind-rail-w`
+   를 0 으로 덮었더니 상단 바가 **셸의 자손**이라 그 값을 함께 물려받아, 그 두
+   변수를 폭으로 읽는 손잡이(`#tb-shell-toggle`)와 관점 세그(`#tb-viewpoints`)가
+   같이 폭 0 이 됐다 — 즉 다시 펼 손잡이 자체가 사라졌다.
+   열 폭을 직접 0 으로 적으면 접히는 것은 격자의 두 열뿐이고, 변수는 상단 바가
+   자기 규격으로 계속 읽는다. 간격도 0 이어야 한다: 남기면 창 왼쪽에 셸 padding +
+   열 간격이 겹쳐 캔버스만 1rem 안쪽으로 들어간다(다른 세 변은 .5rem 이다). */
+/* ⚠ 접히는 것은 **층 2(문서 트리)뿐이다.** 한때 레일까지 함께 접었는데(2026-09-09
+   오전 지시), 그 뒤 앱 손잡이 넷과 홈이 레일로 내려왔다 — 이제 레일을 접으면
+   범례·설정·도구·GRAPH.md 가 화면에서 사라지고 다시 펼 손잡이도 함께 없어진다.
+   층을 둘로 나눈 원래 이유가 이것이다: 자리를 되찾고 싶은 것은 목록이고, 앱을
+   다루는 손잡이는 늘 손에 있어야 한다. 그래서 레일은 상주다.
+   ⚠ 폭 0 인 열에도 열 간격은 두 번 붙는다(레일↔트리, 트리↔지도) — 접힌 상태에서
+   왼쪽 여백이 8 대신 16 이 되는 것이 그 값이며, 간격을 0 으로 만들면 레일과 지도가
+   맞붙으므로 그대로 둔다. */
+#shell[data-lnb="closed"] { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
 @media (prefers-reduced-motion: reduce) { #shell { transition: none; } }
 
 /* ── 좌측 문서 트리 ─────────────────────────────────────────────────────── */
-#lnb {
-  grid-column: 1; grid-row: 2;
-  display: flex; flex-direction: column; overflow: hidden;
-  background: hsl(var(--card)); border-right: 1px solid hsl(var(--border));
+/* 층 1 - 종 레일. 칠이 **판 색**이라 틀의 일부로 읽힌다: 카드로 만들면 나란히
+   뜬 카드가 셋이 되고, 그러면 어느 것이 목록이고 어느 것이 손잡이인지 형태가
+   말하지 않는다. 테두리만으로 자기 영역을 표시한다. */
+#lnb-rail {
+  grid-column: 1; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 손잡이 자리다 */
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-1, .25rem); overflow: hidden;
+  /* 트리 본문과 **같은 여백**이다. 그래서 두 층의 첫 줄이 같은 높이에서 시작한다 —
+     여태는 트리 쪽에 머리가 있어 중심선을 계산으로 맞춰야 했는데, 머리가 없어진
+     뒤에는 같은 값을 쓰는 것이 곧 정렬이다(계산이 필요 없어졌다). */
+  /* ⚠ 세로만 `--pad-card` 다. 가로는 절반인데, 그 8px 이 라벨의 것이기 때문이다:
+     테두리를 걷어낸 뒤에도 `Decisions 212` 가 46.0px 버튼에 46.1px 로 **0.1px 넘쳤다**
+     (실측 2026-09-09). 여백을 4px 로 내리면 버튼이 54px 이 되고 여유가 7.9px 남는다.
+     레일 폭(`--kind-rail-w`)을 키우지 않는 이유는 그쪽이 지도에서 뺏어 오기 때문이다.
+     세로를 건드리지 않는 이유는 위 주석의 계약이다 — 트리 본문과 같은 값이라
+     두 층의 첫 줄이 같은 높이에서 시작한다. */
+  padding: var(--pad-card) var(--space-1, .25rem);
+  align-items: stretch;
+  /* 트리와 **같은 층**이다(둘 다 구조 크롬). 여태 판과 같은 칠이라 테두리만 있고
+     면이 없어, 옆의 트리 카드와 다른 종류의 것으로 읽혔다 — 층은 같은데. */
+  background: hsl(var(--surface-2));
+  box-shadow: var(--shadow-elev-3);   /* 트리와 같은 단 — 층 모형의 "크롬 카드" */
+  justify-content: flex-start;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 }
-#shell[data-lnb="closed"] #lnb { border-right: none; }
+.rail-btn {
+  position: relative; flex: 0 0 auto;
+  /* 폭은 **카드가 정한다**: 레일 폭에서 좌우 여백과 테두리를 뺀 값. 상수를 적어
+     두면 레일 폭을 바꾸는 날 버튼이 가운데를 벗어난다. */
+  width: auto; height: var(--rail-btn-h); padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-1, .25rem);
+  /* 테두리는 없다 — 선택도 호버도 테두리를 안 쓴다(위 `[aria-pressed]` 주석).
+     투명 테두리로 자리만 잡아 두면 라벨이 쓸 폭을 2px 먹는데, 그 폭이 빠듯하다. */
+  border: none; border-radius: var(--radius-sm);
+  background: none; color: hsl(var(--foreground)); cursor: pointer;
+  font: inherit;
+}
+/* 이름 - 표식 아래 한 줄. 잉크는 캡션 톤이라 표식이 먼저 읽히고 이름이 확인해 준다
+   (반대가 되면 아이콘 레일이 아니라 글자 목록이 된다). */
+/* 이름과 개수가 **두 줄**이다. 한 줄로 이어 붙였더니 한국어에서만 맞았다 — 레일 폭이
+   2글자(`개념`)에 맞춰져 있었고, 영어는 이름만으로 44.1px(`Decisions`)라 개수가 붙는
+   순간 46.4px 버튼을 넘었다(실측 2026-09-09: `Concepts 1400` 68.3px = 21.8px 초과).
+   `nowrap` 에 overflow 가드가 없어 가운데 정렬 그대로 **양쪽이 잘렸다**.
+   ⚠ 개수를 절대배치 배지로 되돌리지 말 것 — 표식과 이름 사이에 떠서 어느 쪽 것인지
+   안 읽힌다(실측 2026-09-08). 이름 **바로 아래**면 그 문제가 없다.
+   두 줄로 바꿔도 여유는 6.1px 뿐이다. 이름이 더 길어지는 로케일이 오면 손댈 곳은
+   여기가 아니라 `--kind-rail-w` 다. */
+.rail-name {
+  font-size: .625rem; line-height: 1; letter-spacing: .01em;
+  color: hsl(var(--caption-foreground)); white-space: nowrap;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.rail-btn[aria-pressed="true"] .rail-name {
+  color: hsl(var(--foreground)); font-weight: 600;
+}
+/* 홈 — 종이 아니라 **가는 곳**이다. 같은 크기·같은 모양을 쓰되(레일의 한 줄이므로)
+   링크라서 밑줄과 색을 눌러 준다. 구분선 아래부터가 종이다. */
+.rail-home { text-decoration: none; color: hsl(var(--muted-foreground)); }
+.rail-home.on { color: hsl(var(--foreground)); }
+.rail-home.on .rail-name { color: hsl(var(--foreground)); font-weight: 600; }
+.rail-home svg { width: 18px; height: 18px; }
+.rail-btn:hover, .rail-home:hover { background: hsl(var(--ring) / .12); }
+/* 고른 종은 **글자로만** 말한다(발주자 지시 2026-09-09) — 홈이 이미 그렇게 하고
+   있어서 둘이 같은 언어가 된다(`.rail-home.on`).
+   한때 여기서 "올라온 면"(card 채움 + 테두리 + elev-1)을 그렸는데, 레일 자체가
+   `--surface-2`(= `--card`)로 올라가면서 그 채움이 **레일과 같은 색이 됐고** 테두리만
+   남아 그것이 유일한 표시가 됐다. 채움이 죽은 자리에 테두리만 남기는 것은 표시가
+   아니라 잔해다.
+   호버와 안 겹친다: 호버는 **채움**, 선택은 **글자 굵기와 색**이라 채널이 다르다. */
+.rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.rail-btn svg { display: block; }
+/* 개수 - 표식 오른쪽 아래에 붙는다. 0 이면 아예 안 그린다(빈 종을 세우지 않는다는
+   규율과 같은 태도: 없는 것을 0 으로 말하면 그 줄이 계속 자리를 차지한다). */
+/* 개수는 이름과 **한 줄**이다. 절대배치로 모서리에 띄웠더니 표식과 이름 사이에
+   떠서 어느 쪽 것인지 안 읽혔다(실측 2026-09-08). 붙여 두면 "개념 18" 한 마디가 된다. */
+.rail-n {
+  font-family: var(--font-mono); font-weight: 400;
+  color: hsl(var(--caption-foreground)); margin-left: 0;
+}
+.rail-btn[aria-pressed="true"] .rail-n { color: hsl(var(--muted-foreground)); }
+.rail-btn { position: relative; }
+/* 구분선은 **하나뿐이다**: 위는 가는 곳(홈), 아래는 고르는 것(종·주제).
+   ⚠ Agent 앞에도 같은 선이 있었는데 걷어냈다(발주자 지시 2026-09-09). 같은 그림이
+   두 경계를 말하면(내비/종 · 종/주제) 어느 쪽도 못 말한다 — 뜻을 나누려면 선마다
+   캡션이 필요한데 46px 레일에 `종`·`주제` 두 줄을 새로 들이는 값이 그 정보값보다
+   크다. Agent 가 종이 아니라는 사실은 툴팁("Agent 역할")과 **개수가 없다는 것**이
+   이미 말한다(종별 집계로 셀 수 없어서 안 그린다).
+   폭은 레일 안쪽 전체다 — 32px 짜리 토막은 나누는 선이 아니라 떠 있는 대시로 읽힌다. */
+.rail-sep {
+  width: 100%; height: 0; margin: var(--space-1, .25rem) 0; flex: 0 0 auto;
+  border: none; border-top: 1px solid hsl(var(--border));
+}
+/* 남는 자리 — 아래 손잡이를 레일 **맨 밑**으로 밀어 내린다. */
+.rail-fill { flex: 1 1 auto; }
+/* ⚠ 레일 안의 접기 버튼(`.rail-fold`)은 사라졌다(2026-09-09) — 접는 대상이
+   레일까지이므로 손잡이가 그 안에 있으면 함께 사라진다. 상단 바 왼쪽 끝의
+   `#tb-shell-toggle` 이 그 일을 한다. */
+
+
+#lnb {
+  grid-column: 2; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 관점 세그다 */
+  display: flex; flex-direction: column; overflow: hidden;
+  background: hsl(var(--surface-2));     /* 레일과 **같은 이름**을 읽는다 — 같은 층이므로 */
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  /* 구조 면이라 **불투명**이다. 유리로 만들지 않는 이유가 둘 있고 둘 다 실측이다:
+     ① 이 카드의 본문은 스크롤하는데, 조상에 backdrop-filter 가 있으면 스크롤마다
+        블러가 다시 계산돼 끊긴다(렌즈 패널이 유리를 형제 층으로 뗀 이유와 같은 것).
+     ② 부유 유리(D37) 위에 부유 유리를 겹치면 글자가 못 읽힌다 — 문서 패널이 이미
+        유리이므로 그 아래 면은 불투명해야 한다.
+     깊이는 상단 바와 **같은 단**이다 — 나란히 뜬 두 카드가 서로 다른 높이로
+     떠 있으면 어느 쪽이 위인지 눈이 매 프레임 다시 판정한다. */
+  box-shadow: var(--shadow-elev-3);
+}
+#shell[data-lnb="closed"] #lnb { border: none; box-shadow: none; }
+/* 접힐 때 **내용이 다시 흐르지 않는다**(발주자 지적 2026-09-09 — "안에 있는 것들이
+   찌그러지면서 닫혀서 좀 별로"). 열이 좁아지는 동안 자식이 같이 좁아져 매 프레임
+   레이아웃이 다시 잡혔다: 제목이 줄어들며 말줄임이 자랐고, 세그가 접혔고, 트리 줄이
+   흔들렸다(실측 2026-09-09: 자식 폭 230.4 → 172.4 → 114.4 → 56.4 → 16).
+   폭을 열이 아니라 **변수에 매어** 두면 자식은 그대로 있고 카드가 잘라 낸다 — 서랍이
+   밀려 나가는 모양이 되고, 계산이 한 번도 다시 안 돈다.
+   ⚠ `--lnb-w` 는 닫힘에서도 살아 있다(열 폭만 0 이 된다. 위 `#shell` 주석 참조) —
+   그래서 이 폭이 접히는 동안에도 232px 로 남는다. */
+/* ⚠ **폭만 고정한다.** 한때 `flex-shrink: 0` 을 함께 걸었는데, 이 상자는 세로 flex 라
+   shrink 가 막는 것은 폭이 아니라 **높이**다 — 본문이 카드보다 커져도 안 줄어 724px
+   카드 안에서 1615px 로 자랐고, 넘친 만큼이 `overflow: hidden` 에 잘려 **트리가 아예
+   안 굴렀다**(실측 2026-09-10). 가로 고정에 필요한 것은 `width` 하나뿐이다.
+   각 칸의 세로 몫은 자기 규칙이 정한다(머리·세그는 `0 0 auto`, 본문은 `1 1 auto`). */
+#lnb > * { width: calc(var(--lnb-w) - 2px); }
+/* 그리고 **흐려진다**. 닫을 때는 곧바로(잘리는 글자를 안 보여 준다), 열 때는 열이
+   자리를 만든 뒤에 들어온다(늦은 시작). 둘이 같은 타이밍이면 여는 동안 반쯤 나온
+   내용이 카드 밖에 걸쳐 보인다. */
+#lnb > * { transition: opacity calc(var(--dur-panel) * .5) var(--ease-out)
+                       calc(var(--dur-panel) * .5); }
+#shell[data-lnb="closed"] #lnb > * { opacity: 0; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { #lnb > * { transition: none; } }
 /* 사이드바 머리는 두 열이 같은 한 벌을 쓴다(문서 목록·문서 내용) — 나란히 선 두
    열의 머리 높이·글자·여백이 어긋나면 그게 먼저 눈에 띈다. */
-.lnb-head, .pane-head {
-  display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
-  padding: .55rem .35rem .55rem .85rem;
+/* ⚠ **패널 머리 규칙은 사라졌다**(2026-09-09). 두 패널(트리 · 문서)의 머리는
+   각각 셰브론 하나만 담은 52px 짜리 줄이었고, 그만큼 첫 내용을 아래로 밀었다.
+   문서 패널은 더해서 자기 제목 줄(`문서` + ✕)과 겹쳐 **머리가 두 줄**이었다.
+   손잡이는 상단 바의 손잡이 묶음으로 갔다(`#tb-lnb-toggle`·`#tb-doc-toggle`).
+   근거 이미지: 발주자 `수정항목/lnb.JPG` · `수정항목/문서 패널.JPG`. */
+
+/* 머리 — 스크롤 밖. 좌우 여백은 본문과 같고 위 여백만 본문의 것을 가져온다. */
+.lnb-head {
+  flex: 0 0 auto;
+  padding: var(--pad-card) var(--pad-card) 0;
 }
-.lnb-title, .pane-title {
-  flex: 1 1 auto; font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
-  color: hsl(var(--caption-foreground)); text-transform: uppercase;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.lnb-head:empty { display: none; }
+.lnb-body {
+  flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+  /* 위 여백이 생겼다 — 머리가 없어졌으므로 첫 줄이 카드 모서리에 붙지 않게.
+     레일도 같은 값을 쓰므로 **두 층의 첫 줄이 같은 높이에서 시작한다**. */
+  padding: var(--space-1, .25rem) var(--pad-card) var(--space-3, .75rem);
+  /* 스크롤바 자리를 미리 비운다. 이 앱의 스크롤바는 홈(track)이 없는 막대라
+     내용 위에 떠서, 홈 알약의 오른쪽 끝을 물고 있었다(발주자 `수정항목/lnb.JPG`). */
+  scrollbar-gutter: stable;
 }
-.lnb-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 .35rem .75rem; }
-/* 문서 열 머리에는 이름표가 없다 — 접기 손잡이 하나뿐이므로 오른쪽 끝에 세운다
-   (LNB 머리에서 접기가 앉는 자리와 같은 선이다). */
-#docpane .pane-head { justify-content: flex-end; }
-/* 접힌 상태에서 다시 여는 손잡이 — 사이드바가 폭 0 이 되면 그 안의 버튼도 사라지므로
-   셸 직속으로 둔다. 열려 있을 때는 사이드바 머리의 접기 버튼이 그 일을 한다. */
-#lnb-reopen { display: none; }
-#shell[data-lnb="closed"] #lnb-reopen {
-  display: grid; place-items: center;
-  grid-column: 1; grid-row: 2; align-self: start; justify-self: start;
-  position: relative; z-index: 6; margin: .5rem 0 0 .35rem;
-}
-#shell[data-lnb="closed"] #lnb-reopen svg { transform: rotate(180deg); }
+
+/* ⚠ 접힌 사이드바를 다시 여는 **셸 직속 손잡이는 사라졌다**(2026-09-09).
+   상단 바의 `#tb-lnb-toggle` 하나가 양방향을 겸한다 — 접힘에 따라 자리가 바뀌지
+   않는 것이 그 이유다(같은 것은 같은 자리에 있어야 한다). */
 
 /* ── 문서 내용 열 ────────────────────────────────────────────────────────
    표면이 자기 상세 패널을 여기로 옮겨 심는다(View → #view-detail). 닫히면
@@ -261,16 +523,40 @@ body {
    칸이 `overflow: hidden` 인 것이 핵심이다: 접힘은 왼쪽으로 미끄러져 나가는 이동이고,
    클립하는 부모가 없으면 그 이동이 **LNB 위를 지나간다**(실측 버그). */
 #docpane-slot {
-  grid-column: 2; grid-row: 2; position: relative; overflow: hidden;
+  /* 지도와 같은 칸이므로 함께 천장까지 온다. 읽는 면이 바 아래에서 시작하는 것은
+     `#docpane` 의 `top`(= `--chrome-top`)이 맡는다. */
+  grid-column: 3; grid-row: 1 / -1; position: relative; overflow: hidden;
+  /* 캔버스 카드와 **같은 곡률**. 이 칸이 클리핑을 하고 있으므로(아래 주석) 반지름을
+     주면 패널의 왼쪽 두 모서리가 카드의 모서리를 그대로 따라간다 — 패널에 반지름을
+     직접 주면 폭을 끝까지 끌었을 때 오른쪽 모서리까지 둥글어져 카드 안에 카드가 생긴다. */
+  border-radius: var(--radius);
   pointer-events: none;          /* 빈 자리로 지도를 계속 만질 수 있어야 한다 */
   z-index: 5;
 }
+/* **오른쪽 끝**이다(R1, 2026-09-08). 여태 지도 왼쪽이었고, 층 LNB 가 들어오면서
+   지도 앞에 레일 + 트리 + 읽는 면 = 세 열이 서게 됐다. 내비는 왼쪽, 자료는 오른쪽 —
+   인스펙터의 자리다. 여는 것과 접는 것이 같은 길(오른쪽)로 오간다. */
+/* **카드다**(2026-09-09, 판정은 내가 했다). 여태 이 면만 모서리 없는 판이었고,
+   그래서 떠 있는 층인데도 지도에 붙어 있는 것처럼 읽혔다. 이 앱의 다른 부유 층은
+   전부 둥근 카드다 — 팔레트 · 렌즈 패널 · 부유 카드 · 시트 · 툴팁. 예외가 하나뿐일
+   이유가 없고, 그 예외가 곧 "미완으로 보인다"의 한 조각이었다.
+   네 변을 카드 안쪽으로 들여 네 모서리를 다 둥글린다 — 오른쪽만 붙여 두면 그 두
+   모서리는 캔버스 카드의 것이 되고, 그러면 이 면이 자기 카드인지 캔버스의 일부인지가
+   폭에 따라 달라진다. 뒤로 지도가 한 줄 보이는 것은 부유 층의 성질이지 결함이 아니다. */
 #docpane {
-  position: absolute; top: 0; bottom: 0; left: 0;
-  width: min(var(--rail-size, 20rem), 100%);
+  position: absolute;
+  /* 위는 **떠 있는 바를 비켜선다**(2026-09-09). 나머지 세 변은 카드 안쪽 한 칸이다. */
+  top: var(--chrome-top); bottom: var(--shell-gap); right: var(--shell-gap);
+  /* 폭은 **자기 것**이다(20rem 기본, 끌어 정한 `--rail-size` 가 이긴다).
+     ⚠ 한때 이 값이 `--lens-panel-w` 에서 계산됐다(왼쪽 끝을 범례 버튼의 시작점에
+     맞추려고). **그 규율은 철회됐다**(발주자 지시 2026-09-09) — 읽는 폭이 상단 바
+     손잡이의 폭에 묶여 있으면, 손잡이를 하나 더 달거나 이름을 늘리는 날 읽는 면이
+     같이 좁아진다. 두 상자의 사연은 다르므로 값도 따로 둔다. */
+  width: min(var(--rail-size, 20rem), calc(100% - var(--shell-gap) * 2));
   pointer-events: auto;
   display: flex; flex-direction: column; overflow: hidden;
-  border-right: 1px solid hsl(var(--border) / .55);
+  border: 1px solid hsl(var(--border) / .55);
+  border-radius: var(--radius);
   /* 유리는 **형제 층**(::before)이 갖는다 — 조상이 블러를 가지면 그 안에서 스크롤할
      때마다 블러가 다시 계산돼 스크롤이 끊긴다(렌즈 패널과 같은 처분, 2026-08-05). */
   background: transparent;
@@ -282,20 +568,26 @@ body {
    뒤 글자가 그대로 겹쳐 읽혀 둘 다 못 읽는다(투명도만 남기는 것이 최악이다). */
 #docpane::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
+  /* 부모의 곡률을 따라간다 — `inset: 0` 인 형제 층은 부모 radius 를 물려받지 않아
+     모서리 밖으로 네모난 유리가 삐져 나온다. */
+  border-radius: inherit;
   background: hsl(var(--card) / .74);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   pointer-events: none;
 }
 /* 머리·본문은 유리 층 **위**에 선다. */
-#docpane > .pane-head, #docpane > .pane-body { position: relative; z-index: 1; }
+/* 본문은 유리 층 **위**에 선다(머리는 사라졌다 — 위 주석). */
+#docpane > .pane-body { position: relative; z-index: 1; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #docpane::before { background: hsl(var(--card)); }
 }
-/* 접힘 = 왼쪽으로 미끄러져 나간다(폭 0 으로 줄어드는 것이 아니라). 안의 글자가
-   찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다. */
+/* 접힘 = **오른쪽으로** 미끄러져 나간다(폭 0 으로 줄어드는 것이 아니라). 안의 글자가
+   찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다 — 나간 쪽으로 되돌아오는 것이
+   공간 일관성이다. */
 #shell[data-doc="folded"] #docpane {
-  transform: translateX(-101%); opacity: 0; pointer-events: none;
+  /* 카드가 되면서 오른쪽에 여백이 생겼으므로 그만큼 더 나가야 완전히 사라진다. */
+  transform: translateX(calc(101% + var(--shell-gap))); opacity: 0; pointer-events: none;
 }
 #docpane[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
@@ -305,25 +597,41 @@ body {
 /* 접히면 폭 그립도 사라진다 — 남겨 두면 화면 밖으로 나간 패널의 모서리가 캔버스
    위에 보이지 않는 6px 띠로 남고, 거기서 끌면 접힌 패널이 소리 없이 자란다. */
 #shell[data-doc="folded"] #rail-grip { display: none; }
-/* 다시 펴는 손잡이 — 접힘일 때만 존재한다. 자리는 2열 시작점이고, LNB 까지 접혀
-   있으면 그쪽 손잡이와 같은 지점에 겹치므로 그만큼 비켜선다(둘이 동시에 접힐 수
-   있다는 사실이 이 규칙의 유일한 이유다). */
-#docpane-reopen { display: none; }
-#shell[data-doc="folded"] #docpane-reopen {
-  display: grid; place-items: center;
-  grid-column: 2; grid-row: 2; align-self: start; justify-self: start;
-  position: relative; z-index: 6; margin: .5rem 0 0 .35rem;
+/* ⚠ 문서 열의 재열기 손잡이도 사라졌다 — 상단 바의 `#tb-doc-toggle` 이 겸한다. */
+/* ⚠ 여기 있던 회피 규칙 둘(`--reopen-clear`)은 **사라졌다**. 읽는 면이 오른쪽으로
+   가면서 그 재열기 손잡이도 오른쪽 위로 갔고, LNB 재열기 손잡이(왼쪽 위)와 같은
+   지점을 다툴 일이 없다. 두 손잡이가 동시에 존재할 수 있다는 사실이 그 규칙의
+   유일한 근거였으므로 근거가 없어졌다. */
+/* (같은 이유로 문서 열 머리의 왼쪽 회피 여백도 사라졌다 — 그 머리는 이제 화면
+   오른쪽에 있고 LNB 손잡이는 왼쪽에 있다.) */
+
+/* 지도(그리고 다른 표면)도 같은 카드다. 크롬 둘만 둥글게 하면 캔버스가 오른쪽·
+   아래·오른쪽위 세 변에서 창 끝에 그대로 붙어, 떠 있는 카드 둘이 붙어 있는 판 위에
+   얹힌 꼴이 된다. 모서리를 깎는 것은 `overflow` 가 이미 여기 있어서 공짜다
+   (아래 `#surface { overflow: auto }`) — 안의 캔버스가 그 곡률로 잘린다.
+   배경은 주지 않는다: 지도는 자기 캔버스가 칠하고, 산문 표면은 여태처럼 판 색을 쓴다. */
+/* 층 넷의 모형: 판(`--background`) → **캔버스 카드**(그림자 없음 · 테두리만) →
+   크롬 카드(elev-3) → 부유 유리(D37). 캔버스에 그림자를 주지 않는 것이 이 모형을
+   말하는 방법이다 — 가장 큰 면이 떠오르면 창 네 변이 다 어두워지고, 그러면 크롬이
+   그 위에 떠 있다는 사실이 안 읽힌다. 내용은 바닥이고 크롬이 그 위에 뜬다. */
+#surface {
+  /* **천장까지** — 상단 바와 같은 칸을 쓰고 바가 그 위에 뜬다(위 `#topbar` 주석). */
+  grid-column: 3; grid-row: 1 / -1;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  /* 앰비언트 워시가 여기로 왔다(body → 내용 카드). 유리 패널은 전부 이 카드 **위**에
+     뜨므로(문서 열·렌즈·부유 카드) 굴절할 것이 그대로 남는다. `fixed` 는 워시를
+     뷰포트에 고정해 카드 폭이 바뀔 때 무늬가 따라 늘어나지 않게 한다. */
+  /* 워시 둘이 위층·아래층 값이라 **두 테마에서 같은 방향**으로 읽힌다: 왼쪽 위가
+     들리고(surface-2) 아래가 가라앉는다(surface-0). 토큰을 직접 적으면 dark 에서
+     아래 워시가 밑칠과 같은 값이 돼 사라진다. */
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--surface-2)) 0%, transparent 60%),
+    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
+    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--surface-0)) 0%, transparent 60%),
+    hsl(var(--surface-1));
+  background-attachment: fixed;
 }
-/* LNB 재열기 손잡이가 비켜서는 거리. 2.9rem = 그 버튼의 왼쪽 여백(.35rem) + 폭
-   (2.15rem) + 사이 간격. 실측으로 정했다(2.4rem 은 2px 겹쳤다). */
-:root { --reopen-clear: 2.9rem; }
-#shell[data-lnb="closed"][data-doc="folded"] #docpane-reopen { margin-left: var(--reopen-clear); }
-/* LNB 가 접히면 그 재열기 손잡이가 1열(폭 0) 위로 떠 **문서 열의 머리 위에 얹힌다**
-   — 실측으로 제목 글자와 정면으로 겹쳤다. 비켜서는 것은 머리뿐이다: 손잡이는 머리
-   높이 안에만 있으므로 열 전체에 여백을 주면 아래 본문까지 공짜로 좁아진다. */
-#shell[data-lnb="closed"] #docpane .pane-head { padding-left: var(--reopen-clear); }
-#shell[data-doc="folded"] #docpane-reopen svg { transform: rotate(180deg); }
-#surface { grid-column: 2; grid-row: 2; }
 
 /* 손이 닿는 것은 전부 **부드럽게 반응한다**(발주자 지적 2026-08-05 — 트리가 딱딱하다).
    여태 hover·active 가 배경색을 즉시 갈아 끼워, 마우스를 움직이면 색이 계단처럼 튀었다.
@@ -337,10 +645,14 @@ body {
   .tb-icon, .btn, .chip { transition-property: background-color, color, border-color; }
 }
 
-.lnb-nav { display: flex; flex-direction: column; gap: 1px; padding: .15rem 0 .5rem; }
+/* 목록 줄 넷(내비 · 절 제목 · 주제 · 문서)은 **같은 높이**(`--row-h`)를 쓴다.
+   여태 32.85 · 37.65 · 31.25 · 28 로 갈려 있었고, 그것이 "각각 크기가 따로 논다"의
+   정체다. 줄마다 다른 것은 글자 크기와 들여쓰기뿐이어야 한다. */
+.lnb-nav { display: flex; flex-direction: column; padding: 0 0 var(--space-2, .5rem); }
 .lnb-navrow {
-  display: flex; align-items: center; gap: .55rem; min-height: 2rem;
-  padding: .3rem .5rem; border-radius: var(--radius-sm, .625rem);
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  min-height: var(--row-h); padding: 0 var(--pad-row);
+  border-radius: var(--radius-sm, .625rem);
   color: hsl(var(--muted-foreground)); text-decoration: none;
   font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
 }
@@ -356,8 +668,16 @@ body {
 .lnb-ico svg { width: 15px; height: 15px; }
 
 .lnb-sec {
-  display: flex; align-items: baseline; justify-content: space-between; gap: .5rem;
-  padding: .55rem .5rem .3rem; border-top: 1px solid hsl(var(--border));
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2, .5rem); min-height: var(--row-h);
+  margin-top: var(--space-2, .5rem); padding: 0 var(--pad-row);
+  border-top: 1px solid hsl(var(--border));
+}
+/* 홈이 레일로 간 뒤 이 줄이 트리의 **첫 줄**이다. 첫 줄에는 위 여백도 구분선도
+   없다 — 위에 가를 것이 없고, 여백이 남으면 레일의 첫 줄과 8px 어긋난다
+   (실측 2026-09-09: 홈 109 대 절 제목 117). */
+.lnb-head > .lnb-sec {
+  margin-top: 0; border-top: none;
 }
 /* 주제 스코프 상태 줄 — 고른 것이 있을 때만 뜬다. 켜진 배경만으로는 몇 개를
    골랐는지도, 어떻게 푸는지도 안 보여서 붙였다(발견 가능성). 초점색을 쓰는 이유는
@@ -378,9 +698,12 @@ body {
   font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
   color: hsl(var(--caption-foreground)); text-transform: uppercase;
 }
-/* 갈래 칩(문서 · 노드) — 주제 줄 아래에 무엇이 걸리는지의 선택이다. 세그먼트 하나에
-   둘을 넣는 이유는 배타이기 때문이고, 그래서 radiogroup 으로 낸다. 여기서 색만으로
-   상태를 말하지 않는다: 켜진 쪽은 배경 + 글자 굵기까지 함께 바뀐다. */
+/* ⚠ 여기 있던 갈래 칩(`문서 | 노드`)은 폐기됐다 - 종 레일이 그 일을 일반화했고,
+   같은 일을 하는 손잡이를 두 벌 두지 않는다. 남은 규칙은 없다.
+   층 2 의 노드 줄이 쓰는 표식 규칙만 아래에 있다(.lnb-mk). */
+.lnb-mk {
+  flex: 0 0 auto; display: block; color: inherit;
+}
 .lnb-mode {
   display: flex; gap: .15rem; margin: 0 .4rem .35rem; padding: .15rem;
   border-radius: var(--radius-sm, .5rem); background: hsl(var(--muted) / .5);
@@ -398,12 +721,16 @@ body {
 }
 .lnb-modechip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .lnb-modechip { transition: none; } }
-.lnb-tree { display: flex; flex-direction: column; }
+/* 줄 사이에 **여백**이 있다(발주자 지적 2026-09-09: "위아래 모두 선택되면 겹치니까").
+   줄의 켜진 표시는 알약 하나이므로, 붙어 있으면 두 알약이 한 덩어리로 읽힌다.
+   4px 이라 줄 간격은 28 + 4 = 32px — 둘 다 격자 위다. */
+.lnb-tree { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
 .lnb-group {
-  display: flex; align-items: center; gap: .35rem; width: 100%; min-height: 1.9rem;
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  width: 100%; min-height: var(--row-h);
   border: none; background: none; font: inherit; font-size: var(--fs-base);
   color: hsl(var(--foreground)); cursor: pointer; text-align: left;
-  padding: .25rem .5rem; border-radius: var(--radius-sm, .625rem);
+  padding: 0 var(--pad-row); border-radius: var(--radius-sm, .625rem);
 }
 .lnb-group:hover { background: hsl(var(--ring) / .1); }
 /* 홈 행과 같은 알약. 색띠를 걷어내면서 배경을 함께 준다 — 굵기만 남기면 hover
@@ -423,23 +750,35 @@ body {
   flex: 0 0 auto; font-family: var(--font-mono); font-size: .7rem;
   color: hsl(var(--caption-foreground));
 }
-/* 문서 묶음 = 주제의 자식. **세로 안내선**이 그 종속을 말한다 — 들여쓰기만으로는
-   1단이 10.88px 라 주제와 첫 문서가 3.4px 밖에 안 벌어져 층이 안 읽혔다. 선은
-   캐럿 중심(.5rem 패딩 + .35rem 캐럿 절반)에 맞춰 세워 시선이 이어진다. */
+/* 문서 묶음 = 주제의 자식. 담김을 말하는 것은 **들여쓰기와 여백**이지 선이 아니다.
+   여기 세로 안내선이 있었고 2026-09-09 에 걷어냈다: 층당 5px(border 1 + padding 4)을
+   먹으면서 1x 에서는 읽히지 않았다(`--border` 1px). 계층은 이미 캐럿·들여쓰기·개수가
+   말하고 있어서 선은 중복이었다. 지우니 232px 폭에서 가장 깊은 줄의 글자가
+   121.6 → 136px 로 늘어 제목 잘림이 사라졌다(하네스 실측: `vinc/design/marks` +
+   문서 depth 2). 대신 주제 줄 위 여백이 근접으로 묶는다.
+   ⚠ 들여쓰기 체계가 **둘 겹쳐 있다**: 이 마진(주제 층당)과 줄의 `--lvl`(문서 단당
+   12px, 상한 8단). 선을 지운 것만으로는 모자랐다 — 가장 깊은 줄이 136px 가용에
+   137px 를 요구해 **1px 차이로** 여전히 잘렸다. 그래서 주제 층 마진을 12 → 8px 로
+   줄여 148px 를 냈다(4px 격자 유지, 계단은 그대로 읽힌다). 폭이 또 모자라면 손댈
+   곳은 선이 아니라 이 마진과 `--indent` 다. */
 .lnb-docs {
-  display: flex; flex-direction: column;
-  margin-left: .85rem; padding-left: .45rem;
-  border-left: 1px solid hsl(var(--border));
+  display: flex; flex-direction: column; gap: var(--space-1, .25rem);
+  margin-left: var(--space-2, .5rem);
 }
+/* 근접 = 담김. 중첩 주제 머리 위에만 한 칸 벌려 그 아래가 자기 묶음으로 읽히게 한다
+   (맨 앞은 부모 바로 밑이라 벌리지 않는다 — 벌리면 부모와 끊긴다). */
+.lnb-docs > .lnb-group { margin-top: var(--space-1, .25rem); }
+.lnb-docs > .lnb-group:first-child { margin-top: 0; }
 /* 깊이는 세 갈래로 말한다: 들여쓰기(--lvl) · 잉크 3단(--ink) · 도트 차등.
    색을 계속 흐리면 AA 하한에 닿으므로 잉크는 2단까지만 쓰고, 그 아래 깊이는
    들여쓰기와 도트가 받는다. 폭이 232px 라 단차를 무한정 키울 수 없다. */
 .lnb-doc {
-  display: flex; align-items: center; gap: .4rem; width: 100%; min-height: 1.75rem;
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  width: 100%; min-height: var(--row-h);
   border: none; background: none; font: inherit; font-size: var(--fs-sm);
   cursor: pointer; text-align: left;
   color: hsl(var(--muted-foreground));
-  padding: .2rem .5rem .2rem calc(.3rem + var(--lvl, 0) * .72rem);
+  padding: 0 var(--pad-row) 0 calc(var(--space-1, .25rem) + var(--lvl, 0) * var(--indent));
   border-radius: var(--radius-sm, .625rem);
 }
 .lnb-doc[style*="--ink:0"] { color: hsl(var(--foreground)); }
@@ -481,12 +820,13 @@ body {
 
 /* ── 커스텀 타이틀바 (데스크탑 셸 전용 · tauri decorations:false 프레임리스).
    웹 빌드·브라우저 dev 는 [data-shell] 미부여로 숨김 → OS/브라우저 크롬 그대로. ── */
-:root { --titlebar-h: 2.1rem; }
+/* 32px — 격자 위의 값. 여태 2.1rem(33.6px)이었다. */
+:root { --titlebar-h: 2rem; }
 #titlebar { display: none; }
 [data-shell] #titlebar {
   display: flex; align-items: stretch; justify-content: space-between;
   height: var(--titlebar-h); flex: 0 0 auto;
-  background: hsl(var(--card)); border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
   user-select: none; -webkit-user-select: none;
 }
 [data-shell] #shell { height: calc(100vh - var(--titlebar-h)); }
@@ -523,16 +863,34 @@ body {
    자기 padding 으로 갖는다(어긋나면 경계선이 아니라 여백이 기준이 돼 버린다). */
 #topbar {
   display: flex; align-items: center; gap: 0;
-  height: 3.25rem; flex: 0 0 auto; padding: 0 var(--space-4, 1rem) 0 0;
-  background: hsl(var(--muted) / .75);
-  border-bottom: 1px solid hsl(var(--border));
-  position: relative; z-index: 40;
+  /* 좌우 여백이 **같다**. 안에 검색 하나뿐이므로 한쪽만 다르게 둘 이유가 없어졌다
+     (넷이 오른쪽에 서 있던 동안에는 그 묶음이 오른쪽 여백을 자기 몫으로 가졌다). */
+  height: var(--topbar-h); flex: 0 0 auto; padding: 0 var(--space-3, .75rem);
+  /* 바가 **올라온 면**이 된다: muted 반투명(뒤가 비치는 얕은 띠)에서 card 불투명으로.
+     아래 실선은 지운다 — 카드의 모서리와 그림자가 같은 일을 더 잘 하고, 선까지
+     남기면 카드 위에 경계가 한 겹 더 그려져 두 언어가 겹친다. */
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  /* elev-3 이다(elev-1 아님). 라이트에서 카드와 판의 값 차이가 3% 밖에 없어
+     elev-1 의 1px 그림자로는 카드가 판에 붙어 보였다(실측). 다크는 값만으로도
+     뜨지만 같은 층에 같은 그림자를 주는 것이 층 언어를 지키는 쪽이다. */
+  box-shadow: var(--shadow-elev-3);
+  /* 지도(0) 위 · 렌즈 패널(46)·시트(70) 아래. ⚠ 문서 열(`#docpane`)은 DOM 에서
+     뒤라 같은 값이면 그쪽이 위로 온다 — 한 칸 올려 둔다(둘은 겹치지 않지만,
+     읽는 면을 끝까지 넓히면 바 밑으로 들어간다). */
+  position: relative; z-index: 41;
 }
 /* 지도 손잡이(D71) — 렌즈 + 관점 세그. 검색 오른쪽에 선다. 바의 gap 이 0 이므로
    둘 사이 간격은 렌즈가 자기 여백으로 갖는다. */
-#tb-lens, #tb-viewpoints { display: flex; align-items: center; flex: 0 0 auto; }
-#tb-lens:not(:empty) { margin-right: var(--space-2, .5rem); }
+#tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
+/* 세그는 트리 안이므로 가로 정렬만 남는다(자리·폭은 그 층이 준다). */
+#tb-viewpoints { display: flex; align-items: center; }
+
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
+/* 렌즈는 세로 묶음의 한 칸이라 가로 여백을 갖지 않는다(상단 바에 있던 시절의 것). */
+#tb-right > #tb-lens { margin: 0; }
+
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
    바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
@@ -550,20 +908,36 @@ body {
 /* 왼쪽 여백이 `--tb-gap * 2` 인 이유: 이 여백은 LNB 경계가 아니라 **손잡이 묶음의
    오른쪽 끝**(= 경계 − gap)에서부터 재진다. 경계에서 gap 만큼 더 가려면 두 배가
    필요하다. 실측으로 잡았다 — gap 한 번만 주면 중앙이 4px 왼쪽에 섰다. */
+/* **상한이 없다.** 이 입력은 왼쪽으로 LNB 가 끝나는 지점(= 캔버스 카드의 왼쪽 끝)
+   에서 시작해 오른쪽으로 보기·범례 묶음 앞까지 **꽉** 찬다(발주자 지시 2026-09-09).
+   ⚠ 한때 34rem 상한을 뒀다가 지적받고 되돌렸다. 상한을 두면 남는 자리가 입력과
+   지도 손잡이 사이에 빈 띠로 남고, 그것은 자리를 정돈한 것이 아니라 옮긴 것이다. */
 #tb-search {
-  position: relative; flex: 1 1 auto;
-  margin: 0 var(--space-3, .75rem) 0 calc(var(--tb-gap) * 2);
+  /* 남는 자리를 다 먹고, 오른쪽 넷과는 한 칸 벌린다. 좌우 바깥 여백은 바의 padding
+     이 한 벌로 갖는다 — 여기에 또 주면 왼쪽은 바의 것, 오른쪽은 이것의 것이 된다. */
+  margin: 0 var(--space-3, .75rem) 0 0;
+  /* `min-width: 0` 이 없으면 flex 아이템이 **내용보다 못 줄어든다**(기본 auto) —
+     좁은 창에서 바가 열 밖으로 넘치던 것의 두 번째 원인이다. 첫째는 열 자체였다. */
+  position: relative; flex: 1 1 auto; min-width: 0;
 }
 #tb-search > #tb-q,
 #tb-search > .tb-kbd { vertical-align: middle; }
-#tb-search { display: flex; align-items: center; gap: .5rem;
-  height: 2.35rem; padding: 0 .7rem 0 0;
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius, .75rem);
-  background: hsl(var(--card));
-  box-shadow: var(--shadow-elev-1, none); }
+/* ⚠ 위 ①②③ 의 논거는 **평면 상단 바를 전제로 한 것이다**(바가 muted 반투명이라
+   card 불투명 + 바깥 그림자가 곧 "떠 있음"이었다). 바 자신이 card 카드가 된 뒤에는
+   같은 처방이 정반대로 작동한다 — 같은 색 위에 같은 그림자를 올리면 경계가 녹는다.
+   그래서 방향을 뒤집는다: **바는 올라오고 입력은 눌린다.**
+     ① 배경 = `--background` — 라이트 95% / 다크 6% 로 두 테마 모두 card 보다 어둡다
+     ② 안쪽 그림자 — 홈처럼 파인 면. 컨트롤이 면을 **받는** 자리임을 형태로 말한다
+     ③ 모서리는 바보다 작게(`--radius-sm`) — 카드 안의 컨트롤이 카드와 같은 곡률을
+        가지면 둘이 한 겹으로 읽힌다(동심 모서리 규칙) */
+#tb-search { display: flex; align-items: center; gap: var(--space-2, .5rem);
+  height: var(--ctl-h); padding: 0 var(--pad-row) 0 0;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background));
+  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06); }
 #tb-search:focus-within {
   border-color: hsl(var(--ring));
-  box-shadow: var(--shadow-elev-1, none), 0 0 0 3px hsl(var(--ring) / .16);
+  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06), 0 0 0 3px hsl(var(--ring) / .16);
 }
 .tb-sicon { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto; }
 .tb-sicon svg { width: 15px; height: 15px; }
@@ -574,7 +948,13 @@ body {
   display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto;
   align-self: stretch; margin: 0; padding: 0 .6rem 0 .7rem;
   border: none; border-right: 1px solid hsl(var(--border));
-  border-radius: var(--radius, .75rem) 0 0 var(--radius, .75rem);
+  /* **동심 모서리**: 안쪽 = 바깥쪽 − 사이 간격. 바는 `--radius-sm`(10px)에 테두리
+     1px 이고 이 버튼은 그 안쪽에 딱 붙으므로 9px 이다. 한때 `--radius`(14px, 카드용)
+     라 안쪽이 더 둥글어 바의 모서리를 뚫고 나왔다(발주자 지적 2026-09-09) — 위
+     `#tb-search` 주석 ③ 이 "컨트롤은 바보다 작게"라고 적어 둔 그 규칙을 정작 여기서
+     반대로 어기고 있었다. */
+  border-radius: calc(var(--radius-sm, .625rem) - 1px) 0 0
+                 calc(var(--radius-sm, .625rem) - 1px);
   background: hsl(var(--muted) / .5); color: hsl(var(--foreground));
   font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
@@ -743,16 +1123,110 @@ body {
    검색바에 같은 gap 을 왼쪽 여백으로 준다. 값이 한 변수라 둘이 어긋날 수 없다.
    아이콘 사이 간격은 space-between 이 균일하게 나눈다(셋 다 같은 크기의 아이콘 버튼).
    LNB 가 접히면(폭 0) 아이콘이 사라지면 안 되므로 최소 폭을 준다. */
-#tb-actions {
-  display: flex; align-items: center; justify-content: space-between;
-  flex: 0 0 auto;
-  width: max(calc(var(--lnb-w) - var(--tb-gap)), 9.5rem);
-  padding-left: .55rem;
-  transition: width var(--dur-panel) var(--ease-drawer);
+/* 손잡이 — **레일의 첫 칸**이다(발주자 지시 2026-09-09: 상단 바에서 레일 맨 위로).
+   `.tb-icon` 이 이미 36x36 정사각 · `--radius-sm` 을 주므로 폭도 곡률도 여기서
+   덮지 않는다: 앱 버튼 넷과 같은 상자라는 말은 상자가 같다는 말이다(두 번 어긋난
+   자리다 — 폭을 레일만큼 잡았더니 혼자 길었고, 그 넓은 상자에 곡률이 안 맞아
+   덮었더니 모서리도 혼자 달랐다).
+   레일이 `align-items: stretch` 라 가로로 늘어나므로 중앙에 세워 준다 — 그러면
+   아래 레일 버튼들과 같은 중심선(레일 폭의 절반)에 선다. */
+#tb-shell-toggle { flex: 0 0 auto; align-self: center; }
+/* 종 목록 — 손잡이 아래의 나머지 전부. 남는 자리를 이 칸이 먹는다(`.rail-fill` 이
+   그 안에서 같은 일을 한 번 더 한다 — 종 목록이 짧을 때 위로 붙게). */
+#rail-kinds {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: var(--space-1, .25rem);
+  /* 손잡이와 사이를 벌린다 — 손잡이는 층 2 를 접는 것이고 아래는 종을 고르는
+     것이라, 붙여 두면 같은 묶음으로 읽힌다. */
+  margin-top: var(--pad-card);
 }
-@media (prefers-reduced-motion: reduce) { #tb-actions { transition: none; } }
+/* 관점 세그 — **층 2(문서 트리)의 첫 칸**이다(발주자 지시 2026-09-09: "3D 부분은
+   2번째 LNB 로 채운다"). 그 층의 폭을 그대로 채우므로 폭을 적을 것이 없다 —
+   여태 `--lnb-w` 를 자기 폭으로 읽고 여백으로 자리를 맞췄는데, 그 계산 사슬 전체가
+   이 한 줄로 사라졌다(같은 상자 안에 들어왔으므로 정렬이 저절로 성립한다).
+   여백은 트리 본문(`.lnb-body`)과 같은 값이라 세그와 첫 문서 줄의 좌우가 맞는다. */
+#tb-viewpoints {
+  flex: 0 0 auto;
+  padding: var(--pad-card) var(--pad-card) 0;
+  overflow: hidden;
+}
+/* **오른쪽 묶음 = 넷이 등간격**(발주자 지시 2026-09-09: "옆으로 옮겨진 버튼들에
+   대해 같은 간격으로 범례 포함 4가지"). 여태 렌즈만 왼쪽 끝이고 셋이 오른쪽에 몰려
+   있었다 — 남는 자리를 한 군데 모아 두면 그게 곧 쏠림이다.
+   넷이 **같은 flex 의 형제**여야 간격이 같아지므로 중간 상자(`#tb-actions`)를 없앴다.
+   묶음의 폭은 렌즈 패널의 폭이고, 그래서 패널의 왼쪽 끝이 첫 버튼의 시작점에 맞는다. */
+/* 앱 손잡이 넷(범례 · 설정 · 도구 · GRAPH.md) — 상단 바의 오른쪽 끝. 넷이 **같은
+   flex 의 형제**여야 간격이 같아지므로 감싸는 상자 하나에 담는다.
+   ⚠ 한 번 레일 맨 아래로 세로로 내렸다가 되돌렸다(발주자 지적 2026-09-09: "난 gnb에
+   검색만 놔두라고 한 적 없는데"). 바에서 내려간 것은 LNB 손잡이 **하나**다.
+   폭·자리를 조건부로 만들지 않는다(같은 날 지시: "패널이나 모달 켜져도 안 늘어나게").
+   렌즈 패널의 왼쪽 끝을 첫 버튼에 맞추려고 조건부 폭을 줬던 규율은 철회됐다. */
+#tb-right {
+  flex: 0 0 auto;
+  display: flex; align-items: center;
+  gap: var(--space-2, .5rem);
+}
+/* 렌즈가 빈 표면(지도 없음)에서는 셋이 남는다 — 그때도 등간격이다. */
+#tb-right > #tb-lens { flex: 0 0 auto; margin: 0; }
+/* 넷이 **같은 버튼**이다(발주자 지시 2026-09-09: "범례 버튼처럼 칸을 설정이나
+   다른것들도 동일한 버튼으로"). 범례만 테두리 있는 상자였고 셋은 맨몸이라, 같은
+   묶음에 선 넷이 두 종류로 읽혔다. 값은 `.lens-btn` 의 것을 그대로 가져온다 —
+   그쪽을 고치면 이쪽도 따라가야 하므로 선택자를 합친다. */
+/* ⚠ 왼쪽 끝 손잡이도 **같은 버튼**이다(발주자 지시 2026-09-09: "lnb 닫기 버튼에
+   대해서도 범례와 같은 버튼 컴포넌트로"). 상단 바에 선 버튼이 다섯인데 넷만 상자를
+   갖고 하나가 맨몸이면, 그 하나는 버튼이 아니라 장식으로 읽힌다.
+   곡률만 자기 것을 지킨다(`--radius`) — 폭이 레일만큼 넓어서 작은 곡률이 안 맞는다. */
+#tb-right > .tb-icon, #tb-shell-toggle {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card) / .82);
+}
+#tb-right > .tb-icon:hover, #tb-right > .tb-icon[aria-expanded="true"],
+#tb-shell-toggle:hover {
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  border-color: hsl(var(--ring));
+}
+/* 열림 표시는 **잉크만** 바꾼다. ⚠ 한때 이 상태를 위 hover 규칙에 묶었는데, 사이드바는
+   기본이 열림이라 그 버튼이 **늘 강조 테두리**를 두르고 있었다 — 넷과 같은 버튼으로
+   만든 바로 그 지시를 반대편에서 다시 깨는 꼴이다(실측 2026-09-09: 쉬는 상태에서
+   테두리가 ring 색). 문 모양 아이콘은 방향으로 말하지 않으므로 채움이 그 일을 한다. */
+#tb-shell-toggle.on { color: hsl(var(--foreground)); }
+@media (prefers-reduced-motion: reduce) { #tb-viewpoints { transition: none; } }
+/* 칩 좌우 여백을 줄여 넷이 `--lnb-w` 안에 **한 줄로** 들어간다. 자연 폭은 237px 로
+   232px 보다 5px 넓어서 `Weave` 가 두 줄로 내려갔다(실측 2026-09-09) - 세그의 기본
+   여백(.7rem)은 좁은 슬롯을 전제하지 않은 값이다. 여기서만 좁힌다: 렌즈 패널 안의
+   세그들은 자기 폭이 넉넉하므로 기본값 그대로 둔다. */
+/* 세그가 슬롯을 **꽉 채운다** — `Weave` 의 오른쪽 끝이 LNB 카드의 오른쪽 끝과 같은
+   선에 서야 한다(발주자 지시 2026-09-09). 여태 자연 폭(211px)이라 21px 짧았다.
+   칩이 남는 자리를 나눠 가지므로 넷의 폭은 글자에 비례해 갈리고, 그것이 세그의
+   본래 문법이다(고정 폭 넷으로 만들면 `2D` 와 `타임라인` 이 같은 폭이 된다). */
+/* 관점 세그는 **접히지 않는다.** `.seg` 의 `flex-wrap: wrap` 은 5지선다(Layout)를
+   위해 붙은 것이고 이 4지선다가 그것을 물려받고 있었다 — 232px 에서 여유가 2.9px
+   뿐이라(칩 자연폭 201.1 + gap 6 + padding 4 = 211.1 / 214) 열이 8px 만 좁아져도
+   Weave 가 아랫줄로 내려갔다. 접힘 전이 중에는 열이 0 까지 가므로 매번 그랬다.
+   칩에도 `nowrap` 이 함께 필요하다: 묶음만 막으면 칩이 줄어들면서 **글자가 칩 안에서**
+   접혀 칸 높이가 37 → 107px 로 뛴다(실측 2026-09-09). 둘을 같이 걸면 190px 까지
+   37.3px 로 버틴다. 더 좁아지면 `#tb-viewpoints` 의 `overflow: hidden` 이 잘라 내는데,
+   그 구간은 사이드바가 사라지는 중이라 잘리는 것이 맞다. */
+#tb-viewpoints .seg { width: 100%; flex-wrap: nowrap; }
+#tb-viewpoints .seg .chip {
+  padding: 0 var(--space-2, .5rem); flex: 1 1 auto;
+  white-space: nowrap; min-width: 0;
+}
+/* 앱 손잡이(설정·도구·GRAPH.md)와 **패널 손잡이**(트리·문서 접기)를 가른다.
+   같은 묶음에 두는 이유는 둘 다 크롬이기 때문이고, 가르는 이유는 하는 일이
+   다르기 때문이다(무엇을 여는가 대 무엇을 접는가). */
+.tb-sep {
+  width: 1px; height: 1.25rem; margin: 0 var(--space-1, .25rem);
+  background: hsl(var(--border)); flex: 0 0 auto;
+}
 .tb-icon {
-  display: inline-grid; place-items: center; width: 2.15rem; height: 2.15rem;
+  display: inline-grid; place-items: center;
+  width: var(--ctl-h); height: var(--ctl-h);
+  /* `padding: 0` 이 필요하다 - 브라우저가 button 에 1px 6px 를 기본으로 주고
+     (실측 2026-09-09), 크기를 고정해도 그 값이 계산 스타일에 남아 격자 검사를
+     거짓으로 떨어뜨린다. */
+  padding: 0;
   border: 1px solid transparent; border-radius: var(--radius-sm, .625rem);
   background: none; color: hsl(var(--muted-foreground)); cursor: pointer;
 }
@@ -784,6 +1258,36 @@ body {
   background: hsl(var(--muted) / .5); color: hsl(var(--muted-foreground));
 }
 .conv .conv-genlabel, .conv .conv-warn { margin: .2rem 0 0; }
+/* **쓰는 자리가 주인공이다**(발주자 지시 2026-09-10: "현 작성된 부분이 더 크게 하고
+   하단 두 가지는 펼치거나 가른 방식"). 여태 셋이 같은 8rem 이라, 손으로 쓰는 산문과
+   기계가 만든 블록과 비준 대기 목록이 같은 무게로 서 있었다. 쓰는 칸만 키우고
+   나머지 둘은 접는 상자로 내린다 — 접혀 있어도 요약 줄이 무엇인지·몇 건인지 말한다. */
+.conv .conv-ta-main { min-height: 20rem; }
+.conv-fold {
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted) / .35);
+}
+.conv-fold > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  min-height: var(--row-h); padding: 0 var(--pad-row);
+  font-size: var(--fs-sm); font-weight: 600; color: hsl(var(--foreground));
+  border-radius: var(--radius-sm, .625rem);
+}
+.conv-fold > summary::-webkit-details-marker { display: none; }
+/* 삼각형은 직접 그린다 — 트리의 캐럿과 같은 글리프·같은 회전이라 두 곳이 같은 말을 한다. */
+.conv-fold > summary::before {
+  content: "›"; flex: 0 0 auto; width: .7rem; text-align: center;
+  color: hsl(var(--caption-foreground));
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.conv-fold[open] > summary::before { transform: rotate(90deg); }
+.conv-fold > summary:hover { background: hsl(var(--ring) / .1); }
+.conv-fold > *:not(summary) { margin: 0 var(--pad-row) var(--pad-row); }
+.conv-fold > .conv-ta { width: calc(100% - var(--pad-row) * 2); }
+@media (prefers-reduced-motion: reduce) {
+  .conv-fold > summary::before { transition: none; }
+}
 .conv .conv-h3 { margin: 1.2rem 0 .4rem; font-size: .9375rem; font-weight: 650; }
 .conv .conv-acts { display: flex; gap: .35rem; }
 .conv .conv-rename { width: 100%; font: inherit; padding: .2rem .4rem;
@@ -832,12 +1336,18 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .sheet-center { place-items: center; padding: 1rem; }
 .sheet-scrim {
   position: fixed; inset: 0; z-index: 70;
-  background: hsl(var(--foreground) / .22);
+  /* 딤은 설정 모달과 **같은 값**이다(발주자 지시 2026-09-09: 모달 셋을 설정 모달로
+     통일). 여태 시트는 `--foreground / .22` 였고 설정은 `0 0% 0% / .5` 라, 같은 층에
+     뜨는 상자인데 뒤가 다른 깊이로 어두워졌다. */
+  background: hsl(0 0% 0% / .5);
   /* `overflow: hidden` 이 중요하다(2026-08-05 버그). auto 였던 동안에는 딤 자체에
      스크롤바가 생겼고, 그 스크롤바를 잡으면 클릭 대상이 **딤**이라 바깥 클릭으로
      읽혀 시트가 닫혔다("스크롤하다 갑자기 닫힘"의 정체). 시트는 84vh 로 묶여 있고
      내용은 .sheet-body 가 스크롤하므로 딤이 스크롤할 이유가 없다(8+84+2 = 94vh). */
-  display: grid; place-items: start center; padding: 8vh 1rem 2rem; overflow: hidden;
+  /* 설정 모달과 **같은 자리**다: 화면 중앙(2026-09-09). 여태 위에서 8vh 였고,
+     그래서 같은 손잡이 묶음에서 여는 창 셋이 서로 다른 높이에 떴다.
+     ⚠ `overflow: hidden` 이 중요하다(위 주석) — 중앙 정렬로 바꿔도 그대로 둔다. */
+  display: grid; place-items: center; padding: 2rem 1rem; overflow: hidden;
 }
 .sheet {
   /* 크기 단계는 셋뿐이다(내용의 종류 = 크기). 시트가 임의 폭을 쓰지 못하게
@@ -866,6 +1376,11 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 /* 쓰는 자리도 높이 **고정** — 시트가 내용(52vh 편집기)에 맞춰 크기를 잡던 역전을
    끊는다. 문서는 패널에 맞춰 흐르고 스크롤은 .sheet-body 가 진다(doc-editor.ts). */
 .sheet[data-size="write"]  { width: 52rem; height: 84vh; }
+/* **설정 모달과 같은 상자**(2026-09-09). 도구(만들기·가져오기·공유)와 GRAPH.md 가
+   이 단계를 쓴다 — 그 둘과 설정은 "앱을 다루는 창" 한 종류인데 여태 상자가 셋이었다
+   (설정 42×34rem 중앙 · 도구 68vw×72vh 상단 · GRAPH.md 52rem×84vh 상단).
+   값의 정본은 `--modal-w`·`--modal-h` 이고 설정 모달도 그 둘을 읽는다. */
+.sheet[data-size="panel"] { width: var(--modal-w); height: var(--modal-h); }
 /* 훑는 자리 — 목록은 한 번에 많이 보여야 훑을 수 있다(화면의 2/3 남짓).
    높이도 **고정**이다: 주제 5줄 → 문서 44줄로 드릴할 때 상자가 같이 커지면
    방금 누른 줄이 눈앞에서 달아난다. 상자는 가만히 두고 안쪽만 스크롤한다.
@@ -1158,6 +1673,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       `.pack-field` 는 시트의 커뮤니티 게시 폼, 나머지 둘은 Tools 공유 탭의 백업 링크. ── */
 .pack-field { display: flex; flex-direction: column; gap: .25rem; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
 .pack-field select { min-width: 12rem; }   /* 모양은 공용 select 규칙 */
+/* 텍스트 입력에는 규칙이 없어 브라우저 기본(흰 바탕·회색 2px)이 어두운 시트 위에 떴다.
+   위 드롭다운 주석의 그 구멍이다 — 클래스로만 칠하면 새 요소는 아무것도 안 걸친 채
+   태어난다. 그래서 컨테이너 안에서는 요소로 건다(`.settings-body input` 과 같은 꼴).
+   모서리는 --radius-sm: 이 폼 안의 <select> 가 공용 규칙으로 그 값이라 한 폼에서 갈리지 않게. */
+.pack-field input {
+  width: 100%; font: inherit; padding: var(--space-2, .5rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
 /* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
    (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
 #tools-pane .intake-stage { margin-top: 0; max-width: none; }
@@ -1197,14 +1721,50 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #view-detail {
   flex: 1 1 auto; min-height: 0; overflow: auto;
   padding: var(--space-4, 1rem);
+}
+/* 발췌는 문서의 **조각**이라 문서와 같은 여백을 쓰면 카드가 늘어진다. 모습(제목
+   굵기·목록 점·코드 배경)은 문서 그대로 두고 위아래 여백만 죽인다 — 같은 문단이
+   두 자리에서 다르게 보이지 않게 하는 것이 목적이지, 조각을 문서처럼 앉히는 것이
+   목적이 아니다. */
+.rdr-excerpt { margin: .15rem 0 0; }
+.rdr-excerpt > :first-child { margin-top: 0; }
+.rdr-excerpt > :last-child { margin-bottom: 0; }
+.rdr-excerpt h1, .rdr-excerpt h2, .rdr-excerpt h3,
+.rdr-excerpt h4, .rdr-excerpt h5, .rdr-excerpt h6 {
+  font-size: 1em; margin: .3rem 0 .1rem;
+}
+.rdr-excerpt p, .rdr-excerpt ul, .rdr-excerpt ol, .rdr-excerpt pre { margin: .15rem 0; }
+.rdr-excerpt ul, .rdr-excerpt ol { padding-left: 1.1rem; }
 
+/* 키 입력칸과 저장 버튼은 **한 줄**이다 — 버튼이 다음 줄로 내려가면 무엇을 저장하는
+   버튼인지 자리로 말하지 못한다. */
+.s-keyrow { display: flex; align-items: center; gap: var(--space-2, .5rem); }
+.s-keyrow > input { flex: 1 1 auto; min-width: 0; }
+.s-keyrow > .btn { flex: 0 0 auto; }
+
+/* 문서 패널의 머리도 **스크롤 밖에 남는다**(발주자 지시 2026-09-10 — 렌즈·LNB 와
+   같은 요구). 여기서만 `sticky` 를 쓰는 이유: 이 패널의 내용은 모드마다 통째로
+   innerHTML 로 갈린다(상세·관계·드릴다운·기간·리더). 머리를 스크롤러 밖으로 빼면
+   그 다섯 경로를 전부 고쳐야 하는데, `sticky` 는 마크업을 안 건드리고 같은 결과를
+   낸다 — 머리를 그리는 모드는 자동으로 얻고, 안 그리는 모드는 잃을 것이 없다.
+   배경이 필요하다: 없으면 굴러 올라온 본문이 머리 글자 뒤로 비친다. 패널이 유리라
+   여기에 또 블러를 얹으면 스크롤마다 다시 계산돼 끊기므로(같은 파일의 렌즈 주석),
+   불투명 `--card` 한 겹으로 덮는다. */
+#view-detail > .rail-head {
+  position: sticky; top: calc(var(--space-4, 1rem) * -1); z-index: 2;
+  margin: calc(var(--space-4, 1rem) * -1) calc(var(--space-4, 1rem) * -1) 0;
+  padding: var(--space-4, 1rem) var(--space-4, 1rem) var(--space-2, .5rem);
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border) / .6);
 }
 /* 잡는 면은 6px 이되 보이는 선은 1px — 손이 닿는 넓이와 눈에 보이는 두께는 다르다.
    열의 **오른쪽** 모서리에 선다: 끌면 지도가 넓어지고 문서가 좁아진다(겹쳐 있던
    시절에는 왼쪽 모서리였다 — 그때는 패널이 오른쪽 벽에 붙어 있었다). */
+/* 패널의 **왼쪽** 모서리다(R1 로 패널이 오른쪽에 붙었다). 오른쪽에 두면 창 끝에
+   붙어 잡을 수 없다. */
 #rail-grip {
   position: absolute; top: 0; bottom: 0; z-index: 3;
-  right: -3px; width: 6px;
+  left: -3px; width: 6px;
   cursor: col-resize; touch-action: none;
 }
 /* 캔버스 안 크롬은 이제 비켜설 이유가 없다 — 패널이 겹치지 않고 표면 자체가 줄어든다.
@@ -1218,7 +1778,8 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    밀었는데, 이제 --rail-w 하나로 CSS 가 스스로 한다. */
 #view-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
 #view-tools {
-  position: absolute; top: var(--space-4, 1rem); z-index: 2;
+  /* 떠 있는 바 아래에서 시작한다 — 여기 `--space-4` 만 두면 바 밑에 깔린다. */
+  position: absolute; top: calc(var(--chrome-top) + var(--space-2, .5rem)); z-index: 2;
   right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
   display: flex; gap: .5rem;
 }
@@ -1313,15 +1874,39 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    가로 스크롤은 이 상자가 진다: 본문 스크롤러에 맡기면 좁은 레일에서 문서 전체가
    옆으로 밀린다. */
 .doc-render .cm-r-tablewrap { overflow-x: auto; margin: .5rem 0; }
-.doc-render .cm-r-tbl {
+/* 표는 렌더러가 둘이라 클래스도 둘이다(`cm-r-tbl` = 라이브 프리뷰, `md-tbl` =
+   `renderMarkdown`). 규칙을 나누지 않는 이유는 그 둘이 **같게 보여야** 하기 때문이다 —
+   같은 문서가 문서 열과 발췌에서 다르게 생기면 안 된다는 규율이 그 함수 머리에 있다. */
+.doc-render .cm-r-tbl, .doc-render .md-tbl, .rdr-excerpt .md-tbl {
   border-collapse: collapse; width: 100%;
   font-size: .92em; line-height: 1.45;
 }
-.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td {
+.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td,
+.doc-render .md-tbl th, .doc-render .md-tbl td,
+.rdr-excerpt .md-tbl th, .rdr-excerpt .md-tbl td {
   border: 1px solid hsl(var(--border));
   padding: .25rem .45rem; text-align: left; vertical-align: top;
 }
-.doc-render .cm-r-tbl th { font-weight: 600; background: hsl(var(--muted)); }
+.doc-render .cm-r-tbl th, .doc-render .md-tbl th, .rdr-excerpt .md-tbl th {
+  font-weight: 600; background: hsl(var(--muted));
+}
+/* 문서 참조는 **누를 수 있는 것처럼 보이지 않게** 둔다 — 발췌·폴백에는 그 문을 여는
+   배선이 없다(CM 쪽만 `onDocLink` 를 갖는다). 원문 대괄호를 감추는 것이 목적이고,
+   없는 동작을 약속하는 것이 목적이 아니다. */
+.md-doclink { text-decoration-style: dotted; }
+/* 수식·다이어그램 — 늦게 채워지므로 **자리를 미리 잡지 않는다.** 높이를 박아 두면
+   빈 상자가 먼저 보이고 내용이 도착하며 글이 밀린다. 비어 있는 동안은 아무 자리도
+   차지하지 않고, 채워진 뒤 자기 크기를 갖는다. */
+.md-math { margin: .5rem 0; overflow-x: auto; }
+.md-mermaid { margin: .5rem 0; }
+.md-mermaid svg { max-width: 100%; height: auto; }
+/* 실패한 다이어그램은 원문을 코드처럼 보인다(rich-blocks 의 폴백) — 문서가 조용히
+   내용을 잃는 것보다 소스가 보이는 편이 낫다. */
+.md-mermaid pre {
+  margin: 0; padding: .5rem .6rem; overflow-x: auto;
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted) / .5); font-family: ui-monospace, monospace; font-size: .8125rem;
+}
 /* 프론트매터 접이 줄 — 문서가 가진 값이지 문서의 글이 아니다. 산문 타이포에서
    떼어 내 상단에 한 줄로 세우고, 눌러야 원문 YAML 이 펼쳐진다. */
 .doc-render .cm-r-fm {
@@ -1562,7 +2147,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #view-legend { flex: 0 0 auto; }
 /* 렌즈 = 아이콘 하나. 지도 위 크롬은 최소 잉크로 — 이름표는 툴팁이 맡는다. */
 .lens-btn {
-  display: grid; place-items: center; width: 2.15rem; height: 2.15rem;
+  /* 규격 밖에 남아 있던 값(2.15rem = 34.4px)이었다. 그 2px 때문에 보기·범례 묶음의
+     폭이 326 이 되어 패널(328)과 오른쪽 끝이 어긋났다 - 정렬이 컨트롤 하나의 크기에
+     걸려 있었다는 뜻이다. 다른 아이콘 버튼과 같은 높이를 쓴다. */
+  display: grid; place-items: center;
+  width: var(--ctl-h); height: var(--ctl-h); padding: 0;
   border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
   background: hsl(var(--card) / .82); color: hsl(var(--muted-foreground)); cursor: pointer;
 }
@@ -1629,7 +2218,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   position: fixed; left: var(--space-4, 1rem); top: 4rem;
   /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다.
      v2(견본 타일 + 개수 막대)에서 1rem 더: 타일 4장 + 활성값 이름이 한 줄에 선다. */
-  z-index: 46; width: 20.5rem;
+  z-index: 46; width: var(--lens-panel-w);
   max-height: calc(100vh - 8rem);
   /* ⚠ 유리면을 스크롤 면의 **조상에서 떼어낸다**(2026-08-05 — 스크롤이 계단처럼
      끊겼다). `backdrop-filter` 가 조상에 있으면 그 안에서 스크롤할 때마다 블러가
@@ -1665,7 +2254,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .lens-scroll {
   position: relative; z-index: 1;   /* 유리 층 위 */
   flex: 1 1 auto; min-height: 0; overflow: auto;
-  padding: var(--space-4, 1rem);
+  /* 좌우만. 위아래 여백은 머리(`.lg-tabrow`)와 발(`.lens-foot`)이 갖는다 — 시트의
+     `.sheet-body` 와 같은 배분이다. 여기에 위 여백을 주면 스크롤한 내용이 그
+     여백 위로 올라와 머리 밑에 붙는다. */
+  padding: 0 var(--space-4, 1rem);
   /* `will-change: transform` 을 쓰지 않는다 — 스크롤 컨테이너를 미리 레이어로 올려도
      이득이 없고(브라우저가 스크롤 레이어는 스스로 만든다) 메모리만 잡는다. 끊김의
      원인은 레이어가 아니라 **조상의 블러**였다. */
@@ -1676,16 +2268,48 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    접힌다 — 좁은 것을 좁게 쓰는 최악의 조합이다. 문서 패널과 같은 처분을 한다:
    좁으면 한 번에 하나만 보여 준다. 좌표(inline top/left)는 JS 가 지운다
    (view.ts positionPanel — 인라인은 미디어쿼리를 이긴다). */
+/* ── 좁은 창(<900px) — 셸이 두 칸이 된다 ─────────────────────────────────
+   여태 이 폭에 **셸 규칙이 아예 없었다**(렌즈 패널만 승격 규칙을 갖고 있었다).
+   그래서 375px 에서 격자가 `64px 232px 47.2px` 가 되어 지도가 47px 로 찌그러지고,
+   상단 바는 3열에 살므로 그 47px 안에서 내용이 화면 밖 873px 까지 넘쳤다
+   (실측 2026-09-10). 두 층 중 **자리를 되찾고 싶은 것은 목록**이라는 규율은
+   여기서도 같다 — 레일은 남고 트리가 접힌다.
+   ⚠ 접는다고 손잡이가 죽으면 안 된다("보이는 손잡이는 반드시 무언가를 한다").
+   그래서 열면 열을 뺏는 대신 **지도 위로 뜬다** — 좁은 화면에서 목록과 지도를
+   나란히 두는 것은 둘 다 못 쓰게 만드는 일이다. */
 @media (max-width: 900px) {
+  #shell { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
+  #shell[data-lnb="open"] #lnb {
+    /* ⚠ `grid-column` 을 **전체로 편다.** 절대배치된 격자 자식은 자리 지정이 있으면
+       그 **격자 영역**이 좌표계가 된다(패딩 상자가 아니라) — 2열에 둔 채로 두면
+       left 가 2열 시작점(80px)에 더해져 서랍이 그만큼 오른쪽으로 밀린다
+       (실측 2026-09-10: 72 로 적었는데 152 에 섰다). */
+    grid-column: 1 / -1;
+    position: absolute; z-index: 45;
+    left: calc(var(--kind-rail-w) + var(--shell-gap));
+    top: var(--shell-gap); bottom: var(--shell-gap);
+    width: var(--lnb-w);
+  }
+  /* 서랍이 닫혀 있으면 그리지 않는다 — 폭 0 인 열에 남은 테두리가 레일 옆에
+     1px 띠로 보인다(넓은 창의 접힘이 같은 이유로 테두리를 지우는 것과 같다). */
+  #shell:not([data-lnb="open"]) #lnb { border: none; box-shadow: none; }
+  /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
+     375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
+     일이라, 간격을 좁히고 남으면 그 줄 안에서만 굴린다(넘침은 자기 상자가 받는다). */
+  #view-metrics {
+    gap: var(--space-2, .5rem); font-size: .66rem;
+    min-width: 0; overflow-x: auto; scrollbar-width: none;
+  }
+  #view-metrics::-webkit-scrollbar { display: none; }
   #view-lens-panel {
-    top: 3.25rem; left: 0; right: 0; bottom: 0;
+    top: calc(var(--topbar-h) + var(--shell-gap) * 2); left: 0; right: 0; bottom: 0;
     width: auto; max-height: none;
     border-radius: 0; border-left: none; border-right: none; border-bottom: none;
     box-shadow: none;
   }
   /* 상단 바 위에 무엇이 더 있는지가 스킨마다 다르다 — 데스크탑은 타이틀바,
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
-  [data-shell] #view-lens-panel { top: calc(3.25rem + var(--titlebar-h)); }
+  [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -1726,7 +2350,18 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    알약 한 줄. 설명은 바닥 고정 줄 하나가 받고(`?` 로 상시 펼침 전환), 범례는
    렌더러가 실제로 그리는 마크(3D 실루엣/평면 markSvg)와 물러남 4단, 그리고 갈래
    행의 3단 상호작용(가리키기·누르기·이것만)을 싣는다. */
-.lg-tabrow { display: flex; align-items: center; gap: .4rem; }
+/* 패널의 **머리** — 스크롤 밖에 고정된다(`.sheet-head` 와 같은 자리·같은 여백). */
+.lg-tabrow {
+  display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  position: relative; z-index: 1;                     /* 유리 층 위 */
+  padding: var(--space-4, 1rem) var(--space-4, 1rem) var(--space-2, .5rem);
+}
+/* 패널의 **발** — 설명 줄이 여기 산다. 스크롤 밖이라 값을 가리키는 동안 설명이
+   사라지지 않는다(WCAG 1.4.13). */
+.lens-foot {
+  flex: 0 0 auto; position: relative; z-index: 1;
+  padding: 0 var(--space-4, 1rem) var(--space-4, 1rem);
+}
 .lg-tabrow .lg-tabs { flex: 1 1 auto; margin: 0; }
 .lens-qhelp {
   flex: 0 0 auto; display: grid; place-items: center; width: 1.6rem; height: 1.6rem;
@@ -1764,6 +2399,44 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .opt-swrow .seg { flex: 0 0 auto; }
+/* 진짜 on/off 는 **스위치 하나**다(발주자 지시 2026-09-10). 여태 알약 두 칸이었고
+   그 두 칸의 어휘가 행마다 달랐다 — 켬/끔 · 표시/숨김 · 가리킬 때만/끔. 같은 종류의
+   결정을 세 벌의 말로 물으면 읽는 쪽이 매번 다시 판정한다. 스위치는 그 어휘를
+   **없앤다**: 켜짐과 꺼짐이 자리와 색으로 말한다.
+   ⚠ 다값 행은 여기 오지 않는다. 그 구분은 `view.ts` 의 `swRow` 대 `tileRow` 가
+   이미 하고 있다("한쪽이 다른 쪽의 부정인 것들만"). 두 갈래를 섞으면 스위치가
+   `연결 수에 따라 / 모두 같게` 같은 행에 걸리는데, 거기서 꺼짐은 거짓이 된다.
+   상태의 **말**은 사라져도 뜻은 남는다: 그때의 라벨이 `data-hname` 으로 붙어 있어
+   패널 바닥의 고정 설명 줄(`.lens-help`)이 그대로 받는다. */
+.switch {
+  position: relative; flex: 0 0 auto;
+  width: 2.25rem; height: 1.25rem; padding: 0;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
+  background: hsl(var(--muted)); cursor: pointer;
+  transition: background-color var(--dur-hover) var(--ease-out),
+              border-color var(--dur-hover) var(--ease-out);
+}
+.switch-knob {
+  position: absolute; top: 50%; left: 1px; width: 1rem; height: 1rem;
+  margin-top: -.5rem; border-radius: 999px;
+  background: hsl(var(--foreground) / .5);
+  transition: transform var(--dur-hover) var(--ease-out),
+              background-color var(--dur-hover) var(--ease-out);
+}
+.switch:hover { border-color: hsl(var(--ring) / .6); }
+.switch[aria-checked="true"] {
+  background: hsl(var(--ring)); border-color: hsl(var(--ring));
+}
+/* 이동 거리 = 트랙 안쪽(36 − 테두리 2 − 여백 2) − 손잡이 16 = 16px. 값을 적지 않고
+   빼는 이유는 트랙 폭을 바꾸는 날 손잡이가 밖으로 나가지 않게 하려는 것이다. */
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(calc(2.25rem - 2px - 2px - 1rem));
+  background: hsl(var(--card));
+}
+.switch:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .switch, .switch-knob { transition: none; }
+}
 /* 바닥 고정 설명 줄 — 자리를 비워 두어(min-height) 줄이 바뀌어도 아래가 안 민다.
    패널 안의 고정 자리라 WCAG 1.4.13 을 구조로 만족한다(뜨는 툴팁 아님). */
 .lens-help {
@@ -2130,33 +2803,12 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 
 /* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
    플로팅 글라스 문법(D37 @supports 블록이 유리화). */
-#settings-scrim {
-  position: fixed; inset: 0; z-index: 40;
-  background: hsl(0 0% 0% / .5);
-}
-/* 중앙 정렬을 `inset:0 + margin:auto` 로 한다 — 예전의 `top/left 50% + translate(-50%)`
-   는 **transform 을 정렬에 써 버려서** 모션이 그 위에 얹힐 자리가 없었다(그래서 옛
-   키프레임이 translate 를 매 프레임 다시 적어야 했고, 기준점을 트리거로 옮기는 것은
-   아예 불가능했다). 이제 transform 은 모션 전용이다(motion.ts popIn/popOut). */
-/* 크기는 **탭 내용과 무관하게 고정**이다(발주자 지시 2026-08-05). `height: max-content`
-   였던 동안에는 탭마다(그 안의 세그·행 개수마다) 모달이 늘었다 줄었다 해서, 탭을
-   누를 때 창이 출렁이고 내용이 그때마다 다른 자리로 갔다. 높이를 박고 **본문만**
-   스크롤한다(.settings-body 가 overflow-y: auto). 열 때 내용이 늦게 도착해도
-   상자 크기가 먼저 정해져 있으므로 깜빡임도 사라진다. */
-#settings-popover {
-  position: fixed; inset: 0; margin: auto; z-index: 41;
-  width: min(42rem, 94vw); height: min(34rem, 86vh);
-  display: flex; flex-direction: column;
-  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
-  border-radius: .9rem; box-shadow: 0 24px 64px hsl(0 0% 0% / .5);
-  overflow: hidden;
-}
-
-/* 탭바(GNB) + 닫기 */
-.settings-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  padding: .5rem .6rem .5rem 1rem; border-bottom: 1px solid hsl(var(--border)); flex: 0 0 auto;
-}
+/* ⚠ `#settings-scrim` 과 `#settings-popover` 의 규칙은 **사라졌다**(2026-09-09).
+   설정은 시트다(`openSheet`, size "panel") — 상자·자리·딤·모션이 전부 시트의
+   것이다. 아래 `.settings-*` 는 그 시트 **안의 내용**(탭바·몸)이라 남는다.
+   머리의 ✕ 도 시트 것이므로 `.settings-close` 는 쓰이지 않는다. */
+/* 탭바 — 시트 몸의 첫 줄. */
+.settings-head { display: flex; align-items: center; flex: 0 0 auto; }
 .settings-tabs { display: flex; gap: .15rem; flex-wrap: wrap; }
 .settings-tab {
   font: inherit; border: none; background: none; cursor: pointer;
@@ -2164,11 +2816,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .settings-tab:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .settings-tab.active { background: hsl(var(--muted)); color: hsl(var(--foreground)); font-weight: 600; }
-.settings-close {
-  font: inherit; font-size: 1.05rem; line-height: 1; border: none; background: none; cursor: pointer;
-  color: hsl(var(--muted-foreground)); padding: .35rem .55rem; border-radius: .5rem; flex: 0 0 auto;
-}
-.settings-close:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+/* ⚠ `.settings-close` 규칙도 사라졌다 — 닫기는 시트 제목 줄의 ✕ 하나다. */
 /* 고정 높이 상자 안에서 **본문만** 늘어나고 스크롤한다(모달 크기는 불변). */
 .settings-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
@@ -2176,8 +2824,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .settings-body > label:first-child { margin-top: 0; }
 .settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
-#settings-popover label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
-#settings-popover input {
+/* 설정 몸 안의 label·input — 선택자가 `#settings-popover` 였다(그 요소는 사라졌다).
+   시트 안의 설정 내용을 가리키도록 `.settings-body` 로 옮긴다. */
+.settings-body label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+.settings-body input {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
   background: hsl(var(--background)); color: hsl(var(--foreground));
@@ -2190,13 +2840,19 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
     /* #view-lens-panel 은 여기서 뺐다(2026-08-17): 그 패널의 유리는 ::before 형제 층이
        맡는다(위 #view-lens-panel 주석 — 조상 블러는 스크롤을 끊는다). 여기 남겨 두면
        패널 자신에게 블러가 한 번 더 걸려 같은 화면을 두 겹 블러하고 있었다. */
-    .palette-card, #view-detail, #settings-popover, .tip, .float-card {
+    /* 상단 바가 이 목록에 든다(2026-09-09): 지도 위에 떠 있게 된 뒤로는 **부유
+       크롬**이고, D37 은 부유 크롬을 유리로 규정한다(불투명 카드로 두면 지도의
+       위 띠가 통째로 가려져 "떠 있다"가 "잘려 있다"로 읽힌다).
+       ⚠ 조상 블러는 그 안의 스크롤을 끊는다(`#view-lens-panel` 주석) — 바 안에서
+       스크롤하는 것은 검색 결과 목록(`#tb-results`)이고 그것은 바 **밖으로** 뻗는
+       absolute 층이라 여기서는 안전하다. 바 안에 스크롤 면을 새로 넣지 말 것. */
+    #topbar, .palette-card, #view-detail, .tip, .float-card {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
       box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
     }
-    .palette-card, #settings-popover, .tip, .float-card {
+    .palette-card, .tip, .float-card {
       border: 1px solid hsl(var(--border) / .6);
     }
   }
@@ -2274,43 +2930,35 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .hint-sm { font-size: .78rem; margin-top: .35rem; }
 .break-all { word-break: break-all; }
 
+/* 여럿 중 하나 고르기. **통(trough)도 미끄러지는 알약도 없다** — 고른 칸이 알약을
+   직접 갖는다(발주자 지시 2026-09-09: "렌즈가 쓰는 컴포넌트 … 다른 거 쓸 수 없나 …
+   선택된 것과 칸의 높낮이도 안 맞아서 바꾸는 게 맞음").
+   두 가지가 함께 해결된다:
+   ① **어긋남이 구조적으로 불가능해진다.** 떠 있던 알약은 자리를 JS 가 `offset*`(정수
+      반올림)로 잡았는데 세그 테두리가 0.8px 라 **1px 위에 섰다**(실측 2026-09-09:
+      알약 top 1.8 / 칩 top 2.8). 이제 배경이 곧 칩이라 잴 것이 없다.
+   ② **카드 안에 상자를 하나 덜 만든다.** 이 컨트롤이 사는 곳은 이미 카드 안이고
+      (LNB · 시트 · 렌즈 패널), 통은 그 안의 또 한 겹이었다. 묶음이라는 사실은 통이
+      아니라 **옆의 라벨**이 이미 말한다(설정은 `<label>`, 렌즈 행은 캡션, 관점 세그는
+      그 줄에 그것뿐이다).
+   알약 값(`--ring` 10%/14%)은 지어낸 것이 아니라 **바로 아래 트리의 것과 같다**
+   (`.lnb-group.on` · `.lnb-doc:hover`) — 같은 화면에서 같은 뜻이면 같은 그림이어야 한다.
+   높이는 `--row-h` 라 트리 한 줄과도 같은 줄에 선다.
+   ⚠ 함께 사라진 것: `.seg-thumb` · `initSegMotion` · `document.body` 전역
+      MutationObserver(무관한 변화마다 문서 전체를 강제 측정하던 것). */
 .seg {
-  position: relative;                 /* 움직이는 알약의 좌표계 */
-  display: inline-flex; gap: 2px; padding: 2px; vertical-align: middle;
+  display: inline-flex; gap: var(--space-1, .25rem); vertical-align: middle;
   flex-wrap: wrap; max-width: 100%;   /* 5지선다(Layout)는 두 줄로 접힘 */
-  background: hsl(var(--muted) / .85);
-  border: 1px solid hsl(var(--border) / .7);
-  border-radius: .6rem;
 }
-/* 선택이 **미끄러진다**(components.ts initSegMotion 이 자리를 잡아 준다).
-   빠르게 나가 부드럽게 안착한다. 튕김(1.4 오버슈트)은 뺐다 — 하루 수십 번 누르는 탭에서
-   튕김은 관성이 아니라 지연으로 읽힌다. */
-.seg-thumb {
-  position: absolute; left: 0; top: 0; z-index: 0; opacity: 0;
-  background: hsl(var(--card)); border-radius: .45rem;
-  box-shadow: 0 1px 2px hsl(var(--foreground) / .22), inset 0 1px 0 hsl(0 0% 100% / .3);
-  pointer-events: none;
-  transition: transform .22s var(--ease-out),
-              width .22s var(--ease-out),
-              height .2s ease, opacity .16s ease;
-}
-/* 다크에서 알약은 `--card`(어두운 면)가 아니라 **밝은 회색**이다(다크 mac 세그먼트).
-   어두운 바탕에 어두운 알약을 두면 무엇이 선택됐는지 글자 굵기로만 읽힌다. */
-[data-theme="dark"] .seg-thumb {
-  background: hsl(var(--foreground) / .16);
-  box-shadow: 0 1px 2px hsl(0 0% 0% / .5), inset 0 1px 0 hsl(0 0% 100% / .12);
-}
-@media (prefers-reduced-motion: reduce) { .seg-thumb { transition: none; } }
 .seg .chip {
-  position: relative; z-index: 1;     /* 글자는 알약 위에 */
-  border: none; border-radius: .45rem; background: none;
-  padding: .14rem .7rem; color: hsl(var(--muted-foreground));
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--row-h);
+  border: none; border-radius: var(--radius-sm, .625rem); background: none;
+  padding: 0 var(--pad-row); color: hsl(var(--muted-foreground));
 }
-/* 배경도 그림자도 **알약이** 갖는다 — 칩까지 가지면 이동 중에 두 칸이 켜져 보인다.
-   활성 칩은 글자만 바꾼다. 다크 오버라이드가 이 규칙을 비켜 가 있었고(칩이 배경을
-   되찾아 갔다), 기본 테마가 다크라 대다수가 보는 쪽이 깨져 있었다. */
+.seg .chip:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
 .seg .chip.active {
-  color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
 }
 
 .btn {

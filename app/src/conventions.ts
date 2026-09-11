@@ -55,7 +55,8 @@ export async function proposedCount(): Promise<number> {
 
 export async function openConventions() {
   const C = COPY.ui.conv;
-  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "write" });
+  // 설정 모달과 같은 상자(size "panel") — 위 tools.ts 와 같은 이유.
+  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "panel" });
   sheet.body.innerHTML = `<p class="hint">${C.loading}</p>`;
 
   let themeId = "";
@@ -69,11 +70,13 @@ export async function openConventions() {
       <div class="conv">
         ${broken ? `<p class="hint conv-warn">${C.broken}</p>` : ""}
         <label class="hint" for="conv-head">${C.prose}</label>
-        <textarea id="conv-head" class="conv-ta" spellcheck="false">${esc(head)}</textarea>
+        <textarea id="conv-head" class="conv-ta conv-ta-main" spellcheck="false">${esc(head)}</textarea>
         ${broken ? "" : `
-          <p class="hint conv-genlabel">${C.generated}</p>
-          <pre class="conv-gen" aria-readonly="true">${esc(gen)}</pre>
-          <textarea id="conv-tail" class="conv-ta" spellcheck="false">${esc(tail)}</textarea>`}
+          <details class="conv-fold">
+            <summary>${C.generated}</summary>
+            <pre class="conv-gen" aria-readonly="true">${esc(gen)}</pre>
+            <textarea id="conv-tail" class="conv-ta" spellcheck="false">${esc(tail)}</textarea>
+          </details>`}
         <div id="conv-ratify"></div>
       </div>`;
     sheet.foot.innerHTML = sheetActions(
@@ -128,8 +131,11 @@ export async function openConventions() {
       if (themeId) types = ((await api.types(themeId, "proposed"))?.types || []).filter(isPending);
     } catch { host.innerHTML = ""; return; }
     if (!themeId) { host.innerHTML = ""; return; }
+    // 대기가 있으면 펼친 채로, 없으면 접어 둔다 — 할 일이 없는 상자가 자리를
+    // 차지하지 않게. 대기 수는 접혀 있어도 요약 줄에 그대로 보인다.
     host.innerHTML = `
-      <h3 class="conv-h3">${C.pending(types.length)}</h3>
+      <details class="conv-fold"${types.length ? " open" : ""}>
+      <summary>${C.pending(types.length)}</summary>
       ${types.length === 0 ? `<p class="hint">${C.noPending}</p>` : `
         <div class="sheet-list">${types.map((t, i) => `
           <div class="list-row" data-row="${i}">
@@ -140,7 +146,7 @@ export async function openConventions() {
               <button class="btn" data-act="reject" data-name="${esc(t.name)}">${C.reject}</button>
               <button class="btn btn-primary" data-act="ratify" data-name="${esc(t.name)}">${C.ratify}</button>
             </span>
-          </div>`).join("")}</div>`}`;
+          </div>`).join("")}</div>`}</details>`;
     host.querySelectorAll<HTMLElement>("[data-act]").forEach((b) =>
       b.addEventListener("click", () => act(b.dataset.act!, b.dataset.name!, b)));
   }

@@ -189,6 +189,9 @@ const DEFAULTS: ViewPrefs = {
   labels: "hover", arrows: true, edges: "focus", spread: 1, cone: 1,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
+  //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
+  //: ⚠ 한때 21 이었다 — 왼쪽 끝을 범례 버튼의 시작점에 맞추려고 상단 바 손잡이의
+  //: 폭에서 계산한 값이었는데, 그 규율은 철회됐다(발주자 지시 2026-09-09).
   railW: 20,
   timeBasis: "recorded",
   when: 1,

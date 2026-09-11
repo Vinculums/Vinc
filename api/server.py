@@ -1008,8 +1008,11 @@ class VincApp:
         # D69 — 좌측 문서 트리: 주제 → 문서(개념 계층 깊이순) + 미분류.
         # `nodes=1` 이면 주제마다 노드 목록도 싣는다(좌측 트리의 노드 갈래). 기본은
         # 꺼짐이라 이 경로를 이미 쓰는 곳의 응답은 바뀌지 않는다.
+        # `kind=` 는 그 종 **하나**로 모집단을 좁힌다(종 레일). 목록을 종별로 가져가는
+        # 것이 계약이라 여기에 "전부" 값은 없다 - 개수는 counts.kinds 가 따로 준다.
         return self._read(lambda r: q.nav_tree(
-            owner=_req(p, "owner"), nodes=_flag(p.get("nodes")), store=r))
+            owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
+            kind=p.get("kind"), store=r))
 
     def write_doc_put(self, body):
         owner = body.get("owner") or None

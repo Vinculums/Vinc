@@ -7,7 +7,8 @@ import { absoluteViewUrl, formatViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
-import { bucketRange, markSvg, mountColumns, pickGrain, timelinePool, type Grain,
+import { bucketRange, gateway3dSvg, mark3dSvg, markSvg, mountColumns, pickGrain,
+         timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
 import { bundleStatsByType, mountBundle, type BundleEdge,
          type BundleNode } from "./view-bundle";
@@ -17,7 +18,8 @@ import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { isTypingTarget } from "../keys";
-import { disposeEditorsIn } from "../doc-editor";
+import { disposeEditorsIn, renderMarkdown } from "../doc-editor";
+import { hydrateRich } from "../rich-blocks";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
@@ -27,8 +29,10 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker, repaintLnb } from "../lnb";
-import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
+         repaintLnb } from "../lnb";
+import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
+         floatCeiling } from "../float-panel";
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
@@ -236,16 +240,41 @@ export async function renderView(el: HTMLElement) {
    *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
   let keepCam: Cam3 | null = null;
   let g2: Handle2d | null = null;     // 2D 인스턴스 (D46 — 독립 렌더러)
+  /** 재생이 밟고 있는 커서. `null` 이면 저장값(`prefs.when`)이 정본이다.
+   *  저장하지 않는 이유: 걸음마다 localStorage 를 쓰면 재생이 곧 60번의 쓰기가 되고,
+   *  중간에 멈췄을 때 사용자가 고른 적 없는 자리가 저장된 채로 남는다. */
+  let replayWhen: number | null = null;
+  let replayTimer = 0;
   let planar: PlanarHandle | null = null;           // 평면 관점(타임라인 · 번들)
   /** 지금 밝히고 있는 것(범례 갈래 hover · 인과 원뿔). **프리퍼런스가 아니다** —
    *  일시 상태라 localStorage·주소·applyPrefs 어디에도 실리지 않는다. 평면 관점
    *  (타임라인 · Weave)에는 걸지 않는다: 거기 선은 관계가 아니라 흐름이고, Weave 는
    *  선 하나가 여러 관계를 묶은 것이라 엣지 정체성이 남지 않는다. */
   let spot: Spot | null = null;
+  /** 레일에서 고른 종 — **서 있는** 점등이다(원뿔·범례 hover 는 일시적이다).
+   *  둘을 한 변수로 섞지 않는 이유: 노드를 눌러 원뿔이 서면 그것이 종 강조를 덮고,
+   *  원뿔이 끝나면 종 강조로 **돌아와야** 한다. hover 가 이미 같은 규칙으로 도는데
+   *  (`손을 떼면 점등이 있던 자리로 돌아간다`, view3d) 그 자리를 여기서도 만들어
+   *  준다 — 기구를 두 벌로 늘리지 않고 `null` 의 뜻만 "서 있는 것으로 복귀"로 정한다. */
+  let kindSpot: Spot | null = null;
   function setSpot(s: Spot | null) {
-    spot = s;
-    (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(s);
-    g2?.spotlight?.(s);
+    // `null` = 일시 점등이 끝났다 = 서 있는 종 렌즈로 돌아간다.
+    spot = s ?? kindSpot;
+    const eff = spot;
+    (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(eff);
+    g2?.spotlight?.(eff);
+  }
+  /** 지금 그려진 노드 중 그 종만 밝힌다. 엣지는 비운다 — 종은 노드의 성질이고
+   *  "그 종에 닿는 선"은 종의 집합이 아니다(선을 함께 밝히면 두 뜻이 섞인다).
+   *  ⚠ 평면 관점(타임라인 · Weave)에는 점등이 걸리지 않는다(위 `spot` 주석) —
+   *  거기서 종 렌즈는 조용히 아무 일도 하지 않고, 그것이 기존 계약이다. */
+  function applyKindLens(kind: string | null): void {
+    kindSpot = kind
+      ? { nodes: new Set(curNodes.filter((x) => (x.kind || "concept") === kind)
+                                 .map((x) => x.id)), edges: new Set<string>() }
+      : null;
+    // 원뿔이 서 있는 동안에는 그것이 위다 — 그때는 종 렌즈를 예약만 해 둔다.
+    if (!lastNode || detail.hidden) setSpot(null);
   }
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
@@ -254,6 +283,18 @@ export async function renderView(el: HTMLElement) {
   // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
   // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
   let curNodes: GraphNode[] = [];
+  /** 지금 그려진 노드를 갈아 끼운다. **여기 한 곳으로 모은 이유**는 서 있는 종
+   *  렌즈가 이 집합 위에서 정의되기 때문이다 — 층을 옮기거나 스코프를 좁히면 강조할
+   *  대상이 통째로 바뀌는데, 대입만 세 곳에 흩어져 있으면 그중 하나에서 렌즈가 옛
+   *  집합을 들고 남는다(강조가 지도에 없는 id 를 가리켜 아무것도 안 밝는다). */
+  function setCurNodes(next: GraphNode[]): void {
+    curNodes = next;
+    // ⚠ **여기서 종 렌즈를 걸지 않는다.** 이 함수는 데이터가 도착한 시점이고
+    // 렌더러는 아직 안 세워졌다(`swapSurface` 가 그 뒤에 돈다). 여기서 걸면 교체
+    // 직전의 `spot = null` 이 곧바로 지워 버려 **계산은 맞는데 화면이 그대로**다
+    // (실측 2026-09-09: 레일을 눌러도 지도가 안 흐려졌다). 거는 자리는 `show` 의
+    // `finally` 다 — 마운트가 끝난 뒤이고 모든 관점이 그 길을 지난다.
+  }
   // 지금 타임라인이 쓰는 버킷 알갱이(D72) — 밴드 클릭이 같은 구간을 만들어야 한다.
   let periodGrain: Grain = "month";
   // 마지막으로 짚은 곳(D70) — 합계의 `기타` 병합 핀에 쓴다. trail 과 별개다:
@@ -331,27 +372,23 @@ export async function renderView(el: HTMLElement) {
     edgeBring: `<circle cx="14" cy="12" r="3" ${AF}/><circle cx="14" cy="4.5" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="8" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="14" cy="19.5" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="8" r="1.5" ${AF} opacity=".8"/>`,
     layoutHub: `<circle cx="14" cy="12" r="3" ${AF}/><path d="M14 12 14 4M14 12 21 7.5M14 12 21 16.5M14 12 14 20M14 12 7 16.5M14 12 7 7.5" ${AS} stroke-width=".9" opacity=".45"/><circle cx="14" cy="4" r="1.5" ${AF}/><circle cx="21" cy="7.5" r="1.5" ${AF}/><circle cx="21" cy="16.5" r="1.5" ${AF}/><circle cx="14" cy="20" r="1.5" ${AF}/><circle cx="7" cy="16.5" r="1.5" ${AF}/><circle cx="7" cy="7.5" r="1.5" ${AF}/>`,
     layoutRank: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
-    basisRecorded: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M18 18v-4M20.5 18v-6M23 18v-3" ${AS} stroke-width="1.6"/><circle cx="18" cy="12.6" r="1.3" ${AF}/><circle cx="20.5" cy="10.6" r="1.3" ${AF}/><circle cx="23" cy="13.6" r="1.3" ${AF}/>`,
-    basisContent: `<path d="M2 18h24" ${AS} stroke-width="1"/><path d="M5 18v-4M11 18v-6M17 18v-3M23 18v-5" ${AS} stroke-width="1.6"/><circle cx="5" cy="12.6" r="1.3" ${AF}/><circle cx="11" cy="10.6" r="1.3" ${AF}/><circle cx="17" cy="13.6" r="1.3" ${AF}/><circle cx="23" cy="11.6" r="1.3" ${AF}/>`,
-    depth1: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C12 13 16 13 21.6 8.4" ${AS} stroke-width="1.5"/><circle cx="6.4" cy="8.4" r="1.7" ${AF}/><circle cx="21.6" cy="8.4" r="1.7" ${AF}/><circle cx="9" cy="19" r="1.1" ${AF} opacity=".5"/><circle cx="19" cy="19" r="1.1" ${AF} opacity=".5"/>`,
-    depth2: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4C11 12 13 15 9 19M21.6 8.4C17 12 15 15 19 19" ${AS} stroke-width="1.3"/><circle cx="6.4" cy="8.4" r="1.5" ${AF}/><circle cx="21.6" cy="8.4" r="1.5" ${AF}/><circle cx="9" cy="19" r="1.5" ${AF}/><circle cx="19" cy="19" r="1.5" ${AF}/>`,
-    depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width="1" opacity=".5"/><path d="M6.4 8.4 19 19M21.6 8.4 9 19M6.4 8.4 21.6 8.4M9 19h10M6.4 8.4 9 19" ${AS} stroke-width="1"/><circle cx="6.4" cy="8.4" r="1.4" ${AF}/><circle cx="21.6" cy="8.4" r="1.4" ${AF}/><circle cx="9" cy="19" r="1.4" ${AF}/><circle cx="19" cy="19" r="1.4" ${AF}/>`,
+    /* 시간 기준 — 가르는 것은 **몰림 대 퍼짐**이다(도움말: "한 번에 적재한 것들이
+       같은 자리에 몰려요" 대 "적은 날과 무관하게 퍼져요"). 여태 둘 다 "축 + 눈금 +
+       점"이라 눈금 개수만 달랐고, 28×24 에서 그 차이는 안 보였다(발주자 지적
+       2026-09-10). 이제 실루엣 자체가 다르다: 한 기둥 대 흩어진 점. */
+    basisRecorded: `<path d="M3 19.5h22" ${AS} stroke-width="1" opacity=".4"/><path d="M17 19.5v-11" ${AS} stroke-width="1.2" opacity=".55"/><circle cx="17" cy="8.5" r="1.9" ${AF}/><circle cx="17" cy="13" r="1.9" ${AF}/><circle cx="17" cy="17.5" r="1.9" ${AF}/>`,
+    basisContent: `<path d="M3 19.5h22" ${AS} stroke-width="1" opacity=".4"/><path d="M6 19.5v-5M12 19.5v-9M18 19.5v-4M23 19.5v-8" ${AS} stroke-width="1" opacity=".35"/><circle cx="6" cy="14.5" r="1.9" ${AF}/><circle cx="12" cy="10.5" r="1.9" ${AF}/><circle cx="18" cy="15.5" r="1.9" ${AF}/><circle cx="23" cy="11.5" r="1.9" ${AF}/>`,
+    /* 선 묶기 — 가르는 것은 **얼마나 잘게 묶느냐**다. 굵고 적은 줄기(주제)에서
+       가늘고 많은 실(개별)로 단조롭게 간다: 묶음이 거칠수록 선이 합쳐져 굵어지고
+       수가 준다. 끝점의 크기도 함께 줄어 "묶인 덩어리 → 낱개"가 읽힌다.
+       여태는 셋 다 원 안의 곡선이라 개수도 굵기도 뜻을 안 실었다. */
+    depth1: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M5.4 12 22.6 12" ${AS} stroke-width="2.6" stroke-linecap="round"/><circle cx="5.4" cy="12" r="2.4" ${AF}/><circle cx="22.6" cy="12" r="2.4" ${AF}/>`,
+    depth2: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M7.9 5.9 20.1 18.1M7.9 18.1 20.1 5.9M5.4 12 22.6 12" ${AS} stroke-width="1.4" stroke-linecap="round"/><circle cx="7.9" cy="5.9" r="1.6" ${AF}/><circle cx="20.1" cy="5.9" r="1.6" ${AF}/><circle cx="7.9" cy="18.1" r="1.6" ${AF}/><circle cx="20.1" cy="18.1" r="1.6" ${AF}/><circle cx="5.4" cy="12" r="1.6" ${AF}/><circle cx="22.6" cy="12" r="1.6" ${AF}/>`,
+    depth3: `<circle cx="14" cy="12" r="8.6" ${AS} stroke-width=".9" opacity=".3"/><path d="M22.6 12 5.4 12M20.1 18.1 7.9 5.9M14 20.6 14 3.4M7.9 18.1 20.1 5.9M22.6 12 7.9 18.1M5.4 12 20.1 5.9" ${AS} stroke-width=".75" stroke-linecap="round" opacity=".9"/><circle cx="22.6" cy="12" r="1.15" ${AF}/><circle cx="20.1" cy="18.1" r="1.15" ${AF}/><circle cx="14" cy="20.6" r="1.15" ${AF}/><circle cx="7.9" cy="18.1" r="1.15" ${AF}/><circle cx="5.4" cy="12" r="1.15" ${AF}/><circle cx="7.9" cy="5.9" r="1.15" ${AF}/><circle cx="14" cy="3.4" r="1.15" ${AF}/><circle cx="20.1" cy="5.9" r="1.15" ${AF}/>`,
   };
 
-  /** v2 범례 마크 — 3D 셋은 실제 지오메트리(구 · 정사면체 DOC_ROT · 정팔면체
-   *  rot.y 0.5 · 겹껍질 · 윤곽선)를 기본 카메라에서 투영한 실루엣이다(view3d.ts
-   *  kindGeometry/nodeObject 와 짝). 평면 셋은 여기서 그리지 않는다 — 정본
-   *  `markSvg`(view-planar) 를 좌표째 불러 쓴다: 범례가 손으로 재현하다 어긋난
-   *  전력이 있다(주제 겹껍질을 토성 고리로, 다리를 1.45배로). */
-  const MARK3D: Record<string, string> = {
-    // ds-allow: 이 흰색은 팔레트가 아니라 **조명**이다 — 구 실루엣의 상단 하이라이트
-    // (램버트 음영의 밝은 면)를 30% 투명 백색으로 흉내낸다. 잉크는 currentColor 다.
-    concept: `<defs><radialGradient id="v3sph" cx="52%" cy="26%" r="72%"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><circle cx="12" cy="12" r="8.4" fill="currentColor" opacity=".92"/><circle cx="12" cy="12" r="8.4" fill="url(#v3sph)"/>`,
-    document: `<polygon points="7.39,16.96 16.31,17.88 18.39,6.51" fill="currentColor" opacity=".69"/><polygon points="5.9,6.66 7.39,16.96 18.39,6.51" fill="currentColor" opacity=".92"/>`,
-    bridge: `<polygon points="20.9,11.94 12.16,15.16 12,20.32" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12,20.32 12.16,15.16" fill="currentColor" opacity=".6"/><polygon points="3.1,12.06 12.16,15.16 12,3.68" fill="currentColor" opacity=".9"/><polygon points="20.9,11.94 12,3.68 12.16,15.16" fill="currentColor" opacity=".94"/>`,
-    topic: `<circle cx="12" cy="12" r="9.4" fill="currentColor" opacity=".28"/><circle cx="12" cy="12" r="4.2" fill="currentColor"/>`,
-    gateway: `<path d="M8.09 4.59L15.32 5.62M15.32 5.62L7.72 9.43M8.09 4.59L7.72 9.43M7.72 9.43L3.62 12.21M8.09 17.95L7.72 9.43M8.09 17.95L3.62 12.21M15.32 13.88L15.32 5.62M15.32 13.88L7.72 9.43M15.32 5.62L20.38 11.79M8.09 17.95L8.68 18.38M8.09 17.95L15.91 19.41M8.09 17.95L15.32 13.88M15.91 19.41L15.32 13.88M15.32 13.88L20.38 11.79M15.91 19.41L20.38 11.79" fill="none" stroke="currentColor" stroke-width=".7" opacity=".22"/><path d="M8.09 4.59L3.62 12.21M8.68 10.12L3.62 12.21M8.09 4.59L8.68 10.12M15.91 6.05L8.68 10.12M8.09 4.59L15.91 6.05M8.68 10.12L16.28 14.57M15.91 6.05L16.28 14.57M8.68 18.38L3.62 12.21M8.68 18.38L8.68 10.12M15.91 6.05L20.38 11.79M15.91 19.41L16.28 14.57M8.68 18.38L16.28 14.57M15.91 19.41L8.68 18.38M20.38 11.79L16.28 14.57" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>`,
-  };
+  // 3D 실루엣 표식은 어휘 파일에 있다(view-planar `mark3dSvg`) — 좌측 레일도 같은
+  // art 를 쓰므로 범례 안에 사본을 두지 않는다.
   /** 선 갈래 견본(18×12) — 실제 변별 채널(굵기·화살촉·농도) 그대로. */
   const LINE_ART: Record<EdgeKind, string> = {
     directed: `<path d="M1 6h11" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 3.4 17 6l-6 2.6Z" fill="currentColor"/>`,
@@ -376,20 +413,20 @@ export async function renderView(el: HTMLElement) {
     const flatMark = (kind: string, gateway = false) =>
       `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${
         markSvg(kind, gateway, 12, 12, 8, "")}</svg>`;
-    const m3 = (svg: string) =>
-      `<svg class="lg-mark2" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+    // `lg-` 접두 gid — 같은 문서의 레일(`rail-`)과 겹치지 않게(mark3dSvg 주석).
+    const m3 = (kind: string) => mark3dSvg(kind, 24, `lg-${kind}`, "lg-mark2");
     const shapeRow = (art: string, label: string, noteTxt: string) =>
       `<span class="lg-shape">${art}<span class="lg-shape-t">${esc(label)}`
       + `<span class="lg-note">${esc(noteTxt)}</span></span></span>`;
     const shapes = [
-      shapeRow(is3d ? m3(MARK3D.concept) : flatMark("concept"), L.concept, note.concept),
-      shapeRow(is3d ? m3(MARK3D.document) : flatMark("record"), L.document, note.document),
-      shapeRow(is3d ? m3(MARK3D.bridge) : flatMark("bridge"), L.bridge, note.bridge),
-      shapeRow(is3d ? m3(MARK3D.topic) : flatMark("domain"), L.topic, note.topic),
+      shapeRow(is3d ? m3("concept") : flatMark("concept"), L.concept, note.concept),
+      shapeRow(is3d ? m3("record") : flatMark("record"), L.document, note.document),
+      shapeRow(is3d ? m3("bridge") : flatMark("bridge"), L.bridge, note.bridge),
+      shapeRow(is3d ? m3("domain") : flatMark("domain"), L.topic, note.topic),
       // Weave 는 관문 윤곽을 안 그린다(view-bundle markSvg(gateway=false)) — 그리지
       // 않는 것은 가르치지 않는다.
       ...(p.view === "bundle" ? [] :
-        [shapeRow(is3d ? m3(MARK3D.gateway) : flatMark("concept", true),
+        [shapeRow(is3d ? gateway3dSvg(24, "lg-mark2") : flatMark("concept", true),
                   L.gateway, note.gateway)]),
     ].join("");
     // 물러남 4단 — 수치는 recede.ts 가 토큰에서 읽는다(범례는 그리는 그대로).
@@ -557,6 +594,10 @@ export async function renderView(el: HTMLElement) {
   function setRailWidth(rem: number) {
     const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
     (shell ?? el).style.setProperty("--rail-size", `${w}rem`);
+    // 열려 있는 렌즈 패널은 이 폭에 걸려 있다(positionPanel 이 읽는 면의 왼쪽 끝을
+    // 오른쪽 한계로 쓴다). 폭의 단일 원천이 여기 하나이므로 재배치도 여기서 부른다 -
+    // 안 부르면 폭을 넓히는 동안 패널이 읽는 면 아래로 들어간다.
+    if (!viewPanel.hidden) positionPanel();
     return w;
   }
   function railChrome(open: boolean) {
@@ -565,6 +606,10 @@ export async function renderView(el: HTMLElement) {
     if (shell) shell.dataset.doc = open ? "open" : "closed";
     if (docpane) docpane.hidden = !open;
     railGrip.hidden = !open;
+    // 읽는 면이 열리거나 닫히면 렌즈 패널의 오른쪽 한계가 바뀐다(positionPanel 이
+    // 그 왼쪽 끝을 읽는다). 폭 변경(setRailWidth)과 **열림 변경**은 다른 사건이라
+    // 둘 다 걸어야 한다 - 안 걸면 "렌즈를 열어 둔 채 문서를 여는" 순서에서만 겹친다.
+    if (!viewPanel.hidden) positionPanel();
   }
   function closeRail() {
     detail.hidden = true;
@@ -603,7 +648,9 @@ export async function renderView(el: HTMLElement) {
       const startW = detail.getBoundingClientRect().width / root;
       let live = startW;
       const move = (ev: PointerEvent) => {
-        live = setRailWidth(startW + (ev.clientX - startX) / root);
+        // ⚠ 부호가 **뺄셈**이다: 패널이 오른쪽에 붙어 있으므로(R1) 왼쪽으로 끌 때
+        // 넓어진다. 더하기로 두면 잡은 손과 모서리가 반대로 움직인다.
+        live = setRailWidth(startW - (ev.clientX - startX) / root);
       };
       const up = () => {
         grip.removeEventListener("pointermove", move);
@@ -723,6 +770,7 @@ export async function renderView(el: HTMLElement) {
     if (window.matchMedia(NARROW).matches) {
       viewPanel.style.top = "";
       viewPanel.style.left = "";
+      viewPanel.style.width = "";   // 좁은 창은 전폭 승격 — 인라인 폭이 남으면 그것을 이긴다
       return;
     }
     // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
@@ -736,9 +784,48 @@ export async function renderView(el: HTMLElement) {
     // 여백 8px 는 이웃 클램프(float-panel.ts · components.ts)와 같은 값이고,
     // Math.max 가 왼쪽 끝도 막는다. 패널이 보일 때만 부르므로 offsetWidth 는 실측이다.
     const m = 8;
+    // 폭은 **패널 자기 것**이다(CSS `--lens-panel-w`) — 여기서 인라인으로 정하지
+    // 않는다. ⚠ 한때 손잡이 묶음의 실측 폭을 그대로 받아 양 끝을 맞췄는데, 그
+    // 규율은 철회됐다(발주자 지시 2026-09-09: "패널이나 모달에 대해 범례 끝에 크기
+    // 맞추는 것을 하지 말자"). 상단 바에 버튼이 하나 늘거나 관점 이름이 길어지는
+    // 것과 이 패널의 내용은 아무 상관이 없고, 묶음이 자리를 바꾸면 같은 패널이
+    // 열릴 때마다 다른 폭이 됐다. 인라인 폭을 지워 CSS 로 돌려준다.
+    // ⚠ **지우는 것이 재기보다 먼저다.** 아래 `offsetWidth` 가 이 값을 읽으므로
+    // 순서가 뒤집히면 직전 배치의 폭으로 자리를 계산한다 — 실측으로 물렸다
+    // (지우기를 뒤에 뒀더니 w=0 으로 읽혀 패널이 뷰포트 오른쪽으로 넘어갔다).
+    viewPanel.style.width = "";
     const w = viewPanel.offsetWidth;
-    viewPanel.style.top = `${Math.round(r.bottom + 6)}px`;
-    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, window.innerWidth - w - m)))}px`;
+    // ⚠ 오른쪽 한계는 **뷰포트가 아니라 지도 카드의 끝**이다. 읽는 면이 오른쪽으로
+    // 온 뒤(R1) 뷰포트로 재면 렌즈 버튼이 오른쪽 위에 있으므로 패널이 열릴 자리가
+    // 곧 읽는 면 위가 된다 — 지도를 보는 손잡이가 지도가 아닌 것을 덮는다.
+    // 패널이 떠 있는 동안 폭이 바뀔 수 있으므로(정지점) 실측으로 읽는다.
+    const pane = document.getElementById("docpane");
+    const paneLeft = pane && !pane.hidden && shell?.dataset.doc === "open"
+      ? pane.getBoundingClientRect().left : window.innerWidth;
+    const rightEdge = Math.max(paneLeft, w + m * 2);   // 패널이 들어갈 자리는 남긴다
+    // 위 한계도 **캔버스 카드**다. 렌즈 버튼 바로 아래(+6px)로 두면 상단 바와 캔버스
+    // 카드 사이의 여백 위에 패널이 걸친다 — 지도를 보는 손잡이가 지도 밖에서 열리는
+    // 꼴이다(발주자 `수정항목/보기설정 및 범례.JPG`). 카드 안쪽에서 시작하게 한다.
+    // ⚠ 천장은 **상단 바 아래**다(발주자 지적 2026-09-10: "살짝 gnb 를 가린다").
+    //    여태 캔버스 카드의 위끝을 썼는데 그 카드는 바와 **같은 칸에 겹쳐** 천장까지
+    //    올라온다(바가 지도 위에 뜬 뒤로) — 그래서 이 값이 바보다 위였고, 아래 계산이
+    //    버튼 밑(60+6=66)으로 잡히면 바 밑변(68)을 2px 파고들었다(실측).
+    //    떠 있는 것들이 한 천장을 쓰도록 `floatCeiling()` 하나로 모은다.
+    const cardTop = floatCeiling() - m;
+    // ⚠ **아래로 못 들어가면 위로 연다**(2026-09-09). 렌즈 버튼이 레일 **맨 아래**로
+    // 내려간 뒤(발주자 지시) 버튼 아래에 남는 자리가 40px 뿐이라, 아래로만 여는 코드는
+    // 패널을 화면 밖으로 밀어냈다. 트리거에서 자라는 것은 지키고 방향만 뒤집는다 —
+    // 그것이 팝오버의 규칙이다(`float-panel.ts`·`components.ts` 도 같은 처분).
+    const h = viewPanel.offsetHeight;
+    const below = Math.max(r.bottom + 6, floatCeiling());
+    const above = r.top - 6 - h;
+    const fitsBelow = below + h + m <= window.innerHeight;
+    const top = fitsBelow ? below
+      : (above >= cardTop + m ? above
+         : Math.max(cardTop + m, window.innerHeight - h - m));
+    viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
+    // 자리는 렌즈 버튼에 왼쪽을 맞춘다. 화면·읽는 면 밖으로 나가면 접어 넣는다.
+    viewPanel.style.left = `${Math.round(Math.max(m, Math.min(r.left, rightEdge - w - m)))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
   // 좌표가 남아 있으면 팝오버가 어정쩡하게 걸린다. 마운트 세대가 지나면 스스로 뗀다.
@@ -760,6 +847,11 @@ export async function renderView(el: HTMLElement) {
     // (관점 발견 힌트와 그 seen 플래그는 2026-08-17 에 걷어냈다 — 세그먼트가 상단 바로
     //  올라간 뒤 힌트를 띄우는 코드가 없어 쓰는 곳 없이 지우는 곳만 남아 있었다.)
     drawViewPanel();
+    // ⚠ **내용이 찬 뒤에 한 번 더 잡는다.** 위 `positionPanel()` 은 빈 패널을 재므로
+    // 높이가 0 에 가깝고, "아래로 들어가는가"의 판정이 늘 참이 된다 — 렌즈 버튼이
+    // 레일 맨 아래로 내려간 뒤 그 오판이 패널을 화면 밖(아래끝 1529 대 화면 900)으로
+    // 밀어냈다(실측 2026-09-09). 폭 때와 같은 종의 함정이다: **재는 것은 채운 뒤에.**
+    positionPanel();
     // 활성 칩이 없는 프레임(Compare — 관점도 프레임도 활성이 아니다)에서도 포커스는
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.
@@ -768,7 +860,7 @@ export async function renderView(el: HTMLElement) {
     // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
     // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
     if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
-    popIn(viewPanel, lensBtn);
+    popIn(viewPanel);
     // 바깥을 누르면 닫힌다(발주자 지시 2026-08-05). 딤이 없는 패널이라 스크림 대신
     // 문서 전체를 듣는다 — 렌즈 버튼은 스스로 토글하므로 예외로 둔다(안 그러면 닫고
     // 다시 여는 두 처리가 겹친다). 배선은 닫을 때 반드시 해제한다.
@@ -785,7 +877,7 @@ export async function renderView(el: HTMLElement) {
     const seq = ++panelSeq;
     unwirePanelDismiss?.();
     unwirePanelDismiss = null;
-    await popOut(viewPanel, lensBtn);      // 퇴장을 기다린 뒤 숨긴다
+    await popOut(viewPanel);      // 퇴장을 기다린 뒤 숨긴다
     if (seq !== panelSeq) return;          // 그 사이 다시 열렸다 — 이 닫힘은 무효다
     viewPanel.hidden = true;
     const b = lensBtn;
@@ -828,7 +920,7 @@ export async function renderView(el: HTMLElement) {
       // 시간은 **자기 묶음**을 갖는다 — 투영(3D·2D)과 직교하는 축이라 "그 밖"에
       // 섞어 두면 다른 손잡이들과 같은 급으로 읽힌다. 축(basis)과 커서(when)는
       // 한 쌍이다: 커서는 어느 시계를 자르는지 말하지 않으면 뜻이 없다.
-      { label: COPY.ui.panel.groupTime, keys: pick("when", "basis") },
+      { label: COPY.ui.panel.groupTime, keys: pick("basis", "when", "replay") },
     ].filter((g) => g.keys.length > 0);
   }
 
@@ -839,12 +931,17 @@ export async function renderView(el: HTMLElement) {
       // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
       // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
       // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
+      // ⚠ `basis` 가 `when` **앞**이다(발주자 지시 2026-09-10). 기준이 시점의 뜻을
+      // 정하기 때문이다: 같은 슬라이더 자리라도 "기록한 때"냐 "일어난 때"냐에 따라
+      // 다른 축을 자른다. 고르는 순서가 읽는 순서와 어긋나면 슬라이더를 먼저 만지고
+      // 기준을 바꿔 방금 고른 시점이 다른 곳을 가리키게 된다. Timeline 은 처음부터
+      // 이 순서였다 — 셋을 맞춘다.
       case "3d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
-                "spread", "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
+                "spread", "edgeWidth", "edgeShow", "domainTint", "basis", "when", "replay"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
-                "edgeWidth", "edgeShow", "domainTint", "when", "basis"];
+                "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
@@ -852,7 +949,10 @@ export async function renderView(el: HTMLElement) {
       // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
       // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
-      case "bundle": return ["bundleDepth", "bundleRels", "labels", "domainTint"];
+      // Weave 도 시간을 갖는다(발주자 지시 2026-09-10 — 신설). 링 각도가 전량으로
+      // 잡혀 있어 커서가 자리를 안 흔든다는 것이 그 전제다.
+      case "bundle":
+        return ["bundleDepth", "bundleRels", "labels", "domainTint", "basis", "when", "replay"];
     }
   }
 
@@ -929,10 +1029,14 @@ export async function renderView(el: HTMLElement) {
     const swRow = (cap: string, pref: string, isOn: boolean,
                    onLabel: string, offLabel: string, onVal: string, offVal: string,
                    onHelp: string, offHelp: string) =>
-      `<div class="opt-swrow"><span class="hint">${esc(cap)}</span><span class="seg">`
-      + chip(pref, onVal, onLabel, isOn, onHelp)
-      + chip(pref, offVal, offLabel, !isOn, offHelp)
-      + `</span></div>`
+      // 스위치는 **누르면 갈 값**을 싣는다(지금 값이 아니라) — 그래야 위 `[data-pref]`
+      // 공용 배선이 칩 때와 똑같이 동작한다(고르기 = 그 값으로 설정). 라벨은 화면에서
+      // 사라지지만 `dh` 로 남아 바닥 설명 줄이 받는다.
+      `<div class="opt-swrow"><span class="hint">${esc(cap)}</span>`
+      + `<button class="switch" type="button" role="switch" aria-checked="${isOn}"`
+      + ` aria-label="${esc(cap)}" data-pref="${pref}" data-val="${esc(isOn ? offVal : onVal)}"`
+      + dh(isOn ? onLabel : offLabel, isOn ? onHelp : offHelp)
+      + `><span class="switch-knob"></span></button></div>`
       + (helpOn ? `<p class="hint sub">${esc(H[isOn ? onHelp : offHelp] || "")}</p>` : "");
     // 활성 표시는 "지금 그려지는 것"만 따른다(shownViewpoint).
     const shown = shownViewpoint(lv);
@@ -998,6 +1102,11 @@ export async function renderView(el: HTMLElement) {
       // D74 — 원인·결과 겹치기. 기본은 꺼짐: 촘촘한 그래프에서는 선이 마디를 덮는다.
       lineage: swRow(COPY.ui.panel.lineage, "timelineLineage", p.timelineLineage,
         COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "lineageOn", "lineageOff"),
+      // 흐름 재생. `data-pref` 를 **안 쓴다** — 이것은 저장되는 값이 아니라 동작이라
+      // 공용 배선(값 설정)에 걸리면 안 된다.
+      replay: `<div class="opt-swrow"><span class="hint">${esc(COPY.ui.panel.replay)}</span>`
+        + `<button class="btn" id="pref-replay" type="button">${
+            esc(COPY.ui.panel.replayPlay)}</button></div>`,
       // D72 — 시간축. 관점이 아니라 그 관점 **안의 옵션**이다.
       basis: tileRow(COPY.ui.panel.timeBasis, [
         { val: "recorded", label: COPY.ui.panel.basisRecorded, art: ART.basisRecorded,
@@ -1065,18 +1174,29 @@ export async function renderView(el: HTMLElement) {
       ? `<p class="lens-help"><b id="lens-help-name"></b><span id="lens-help-text">${
           esc(COPY.ui.panel.helpHint)}</span></p>`
       : "";
-    viewPanel.innerHTML = `<div class="lens-scroll">`
-      + head + tabSeg
+    // **머리와 발은 스크롤 밖이다**(발주자 지적 2026-09-10: 스크롤 시작 지점이 더
+    // 아래여야 한다). 여태 셋 다 `.lens-scroll` 안이라 패널 전체가 굴렀다 — 탭이
+    // 밀려 올라가 지금 어느 갈래인지 화면에서 사라졌고, 설명 줄도 함께 사라졌다.
+    // ⚠ 그 설명 줄은 **고정이라고 적혀 있던 것**이다(`.lens-help` 주석: "패널 안의
+    //    고정 자리라 WCAG 1.4.13 을 구조로 만족한다"). 값을 가리키는 동안 설명이
+    //    스크롤 밖으로 나가면 그 근거가 성립하지 않는다.
+    // 구조는 시트와 같다(`.sheet-head` / `.sheet-body` / `.sheet-foot`) — 화면마다
+    // 다른 구조를 익히게 하지 않는다는 D63 의 규율이 오버레이 전체에 걸린다.
+    viewPanel.innerHTML = head + tabSeg
+      + `<div class="lens-scroll">`
       + (tab === "opts" ? groupsHTML : legendHTML())
-      + helpLine
-      + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p>`
-      + `</div>`;
+      + `</div>`
+      + `<div class="lens-foot">` + helpLine
+      + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p></div>`;
     if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
     viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {
         localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
         drawViewPanel();
       }));
+    viewPanel.querySelector<HTMLElement>("#pref-replay")?.addEventListener("click", () => {
+      if (replayTimer) stopReplay(); else startReplay();
+    });
     viewPanel.querySelectorAll<HTMLElement>("[data-pref]").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.pref as keyof ViewPrefs;
@@ -1105,19 +1225,34 @@ export async function renderView(el: HTMLElement) {
       });
     });
 
-    // 가지 벌어짐도 **놓을 때** 적용한다 — 좌표를 사이드카가 다시 만드는 값이라
-    // 드래그마다 왕복하면 손끝보다 네트워크가 느려 값이 튄다(spread 와 같은 이유).
-    viewPanel.querySelector<HTMLInputElement>("#pref-cone")?.addEventListener("change", (e) =>
-      applyPrefs({ cone: Number((e.target as HTMLInputElement).value) }, "#pref-cone"));
-    // 시간 커서도 **놓을 때** 적용한다. 서버는 안 부르지만(좌표는 그대로) 보이는
-    // 노드 집합이 바뀌므로 제자리 반영이 안 되고 재마운트가 필요하다 — 드래그마다
-    // 재마운트하면 손끝보다 화면이 느려진다. 숫자(=잘린 날짜)는 끄는 동안 따라
-    // 움직이므로 손잡이가 죽어 보이지는 않는다.
-    // ponytail: 놓을 때만 반영. 진짜 스크럽(끄는 내내 장면이 따라옴)은 렌더러가
-    // 노드를 제자리에서 숨길 수 있어야 한다(3D 는 nodeVisibility, 2D 는 필터) —
-    // 그 배선이 생기면 __update 화이트리스트에 `when` 을 넣고 input 으로 옮긴다.
-    viewPanel.querySelector<HTMLInputElement>("#pref-when")?.addEventListener("change", (e) =>
-      applyPrefs({ when: Number((e.target as HTMLInputElement).value) }, "#pref-when"));
+    // 밀도(cone)만 **라이브가 안 된다.** 다른 슬라이더와 달리 이 값은 진짜로 서버로
+    // 간다(`fetchGraph` 가 `/graph?cone=` 에 싣는다 — 좌표를 사이드카가 다시 만든다).
+    // 실측 왕복이 **로컬에서도 240ms** 라(웹모드는 계정 프록시를 더 건넌다) 끄는 동안
+    // 매번 부르면 지도가 엄지보다 네 칸쯤 뒤에서 따라온다 — 그건 "즉시"가 아니라
+    // 더 나쁜 상태다.
+    // ⚠ `spread` 도 한때 같은 이유로 묶여 있었는데 그건 **거짓이었다**(소비처를 읽으면
+    //   좌표에 곱하기만 한다). 그래서 이번엔 짐작하지 않고 요청을 재서 확인했다.
+    // 절충: **손을 멈추면** 반영한다(놓을 때까지 안 기다린다). 끄는 도중 잠깐 멈추는
+    // 것이 값을 고르는 실제 동작이라, 거기서 화면이 따라오면 대부분의 체감이 산다.
+    {
+      const cone = viewPanel.querySelector<HTMLInputElement>("#pref-cone");
+      let hold = 0;
+      const send = () => applyPrefs({ cone: Number(cone!.value) }, "#pref-cone");
+      cone?.addEventListener("input", () => {
+        if (hold) clearTimeout(hold);
+        hold = window.setTimeout(() => { hold = 0; void send(); }, 200);
+      });
+      // 놓을 때는 기다릴 이유가 없다 — 대기 중인 것을 걷어내고 곧바로 보낸다.
+      cone?.addEventListener("change", () => {
+        if (hold) { clearTimeout(hold); hold = 0; }
+        void send();
+      });
+    }
+    // ⚠ 시간 커서는 **끄는 내내 따라온다**(2026-09-10). 바로 위 줄에 "그 배선이
+    //    생기면 input 으로 옮긴다"고 적어 둔 그 배선이 생겼다: 렌더러가 노드를
+    //    제자리에서 숨기므로(3D `nodeVisibility` · 2D 리듀서 · Weave `visible`)
+    //    재마운트가 사라졌고, 서버는 원래 안 불렀다(실측 요청 0건).
+    //    그래서 아래 `liveScale` 이 맡는다 — 배율 슬라이더들과 같은 급이 됐다.
     // 이 셋은 좌표를 안 바꾸므로 **재조회가 필요 없다** — input(드래그 중)에서
     // 바로 반영해 손끝에 붙게 한다.
     //
@@ -1132,7 +1267,7 @@ export async function renderView(el: HTMLElement) {
     // 스텝을 0.1 → 0.02 로 잘게 나눈 만큼 input 이 다섯 배 자주 온다. 그대로 매번
     // 다시 그리면 손끝은 부드러워지고 화면이 밀린다 — **프레임당 한 번**으로 묶는다
     // (마지막 값만 쓰므로 중간 값을 버려도 결과가 같다).
-    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread") => {
+    const liveScale = (sel: string, key: "nodeScale" | "edgeScale" | "spread" | "when") => {
       const s = viewPanel.querySelector<HTMLInputElement>(sel);
       // 조용히 돌아가면 그 손잡이는 **아무 일도 안 하는 슬라이더**가 된다 — 끌리기는
       // 하고 숫자도 움직이는데(값 표시는 별도 배선) 화면만 안 바뀐다. 행 목록과 이
@@ -1153,6 +1288,7 @@ export async function renderView(el: HTMLElement) {
     liveScale("#pref-nodescale", "nodeScale");
     liveScale("#pref-edgescale", "edgeScale");
     liveScale("#pref-spread", "spread");
+    liveScale("#pref-when", "when");     // 위 주석 — 이제 좌표도 망도 안 건드린다
     viewPanel.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => applyViewpoint(b.dataset.view as Viewpoint)));
     // D74 — 범례 항목 = 선 갈래 스위치. 좌표를 안 바꾸므로 **재조회 없이** 지금
@@ -1291,6 +1427,25 @@ export async function renderView(el: HTMLElement) {
       if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
+    // 시간 커서만 바뀌었으면 **장면을 다시 짓지 않는다.** 위 번들 빠른 길과 같은
+    // 태도이고 근거도 같다: 조회가 필요 없는 변경에 전량 재조회 + 재마운트를 붙이면
+    // 카메라·배치·점등이 매 걸음 되감긴다. 3D·2D 는 전량을 싣고 있으므로 가시성만
+    // 갈아 끼우면 끝이다. 평면 관점(타임라인)은 축 자체가 시간이라 여기 안 걸린다
+    // (`g3`·`g2` 가 없다) — 그쪽은 원래 경로로 다시 그린다.
+    const timeOnly = (Object.keys(mut) as string[])
+      .every((k) => k === "when" || k === "timeBasis");
+    if (timeOnly && (g3 || g2 || curPrefs().view === "bundle")) {
+      // ⚠ **패널을 다시 그리지 않는다**(발주자 지적 2026-09-10: "마우스로 커서
+      //    움직이려 해도 한 칸만 움직인다"). `openPanel()` 은 `drawViewPanel()` 을
+      //    거쳐 패널을 innerHTML 로 통째로 갈아 끼우는데, 그러면 **끌고 있던 그
+      //    슬라이더가 새 요소로 바뀌어** 드래그가 그 자리에서 죽는다. 한 칸 움직이고
+      //    멈추는 것이 정확히 그 모양이다.
+      //    다른 배율 슬라이더가 멀쩡했던 이유도 같다 — 그쪽 경로는 패널을 안 그린다.
+      //    여기서 다시 그릴 이유도 없다: 값을 끌고 있다는 것은 패널이 이미 열려
+      //    있다는 뜻이고, 바뀌는 표시(숫자)는 `applyTimeCut` 이 직접 맞춘다.
+      applyTimeCut();
+      return;
+    }
     const lv = trail[trail.length - 1];
     // layout·cone 만 서버가 좌표를 새로 만든다. 그 둘이 아니면 (1) 서버는 안 부르고
     // (2) 카메라를 잇고 (3) 렌더러가 제자리에서 소화할 수 있으면 다시 그리지도 않는다.
@@ -1393,8 +1548,9 @@ export async function renderView(el: HTMLElement) {
    *  숨겼기 때문이다(정의상 엣지가 없다) — 커서는 다르다. */
   function timeCut(): string {
     const p = curPrefs();
-    if (p.when >= 1) return "";
-    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), p.when);
+    const w = replayWhen ?? p.when;      // 재생 중에는 그 걸음이 커서다
+    if (w >= 1) return "";
+    return timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), w);
   }
   function atTime<T extends { ts?: string; content_ts?: string }>(ns: T[]): T[] {
     const cut = timeCut();
@@ -1402,6 +1558,115 @@ export async function renderView(el: HTMLElement) {
     const basis = curPrefs().timeBasis;
     return ns.filter((n) => visibleAt(nodeTimeOn(n, basis), cut));
   }
+  /** 지금 커서가 남긴 노드 id. `null` 이면 전량이다.
+   *
+   *  **렌더러는 시간으로 노드를 빼지 않고 숨긴다**(발주자 지시 2026-09-10: "화면이
+   *  이동 시점에 맞게 하나씩 생기거나 사라지는 렌더링... 지금은 뚝뚝 그래프가
+   *  바뀌니까"). 빼면 장면을 다시 지어야 하고, 그때 카메라·배치·점등이 전부
+   *  되감긴다 — 그것이 "뚝뚝"의 정체다. 실측으로 확인한 것 하나: 이 슬라이더는
+   *  **네트워크를 안 탄다**(요청 0건). 즉 값은 이미 손에 있고 문제는 그리는 방식뿐이다.
+   *  좌표가 미리 계산돼 오므로(3D `__x0`, 2D `px/py`) 숨긴 점이 남의 자리를 안
+   *  건드린다 — 그래서 숨기기가 배치를 보존한다. */
+  function timeVisibleIds(): Set<string> | null {
+    if (!timeCut()) return null;
+    return new Set(atTime(curNodes).map((n) => n.id));
+  }
+  /** 커서를 **살아 있는 렌더러에** 건다. 마운트 직후에도 한 번 불러 첫 화면이
+   *  커서를 반영하게 한다(마운트는 이제 전량을 싣는다). */
+  function applyTimeCut(): void {
+    const ids = timeVisibleIds();
+    if (g3) {
+      const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
+      g3.nodeVisibility((n: any) => !ids || ids.has(n.id));
+      g3.linkVisibility((l: any) => !ids || (ids.has(lid(l.source)) && ids.has(lid(l.target))));
+    }
+    g2?.setTimeVisible(ids);
+    // Weave — 링 각도는 마운트 때 전량으로 잡혀 있으므로 그리기만 다시 한다
+    // (`view-bundle` 의 `visible` 주석). 안무는 끈다: 걸음 자체가 모션이다.
+    const bh0 = planar as (PlanarHandle & { update?: (o: unknown, a?: boolean) => void }) | null;
+    if (curPrefs().view === "bundle" && bh0?.update) bh0.update({ visible: ids }, false);
+    drawMetrics(atTime(curNodes));     // 지표는 커서가 고른 모집단을 센다(위 규칙)
+    const w = replayWhen ?? curPrefs().when;
+    // ⚠ **슬라이더는 건드리지 않는다**(발주자 지시 2026-09-10: "play 버튼 누르면
+    //    커서가 움직이는데 별개로 작동시키면 안 되나"). 재생은 커서를 **빌려 볼 뿐**
+    //    옮기지 않는다 — 끝나면 사용자가 놓아 둔 자리로 돌아온다.
+    //    드래그 중에 되쓰면 엄지와도 싸운다: `input` 은 1px 마다 뜨는데(step 0.005)
+    //    반영은 프레임당 한 번이라, 한 프레임 늦은 값이 앞서 간 엄지를 뒤로 당긴다.
+    // 값 표시만 따라간다 — `<output>` 이라 손과 다투지 않고, 재생 중에 지금 어느
+    // 시점을 보고 있는지는 읽혀야 한다.
+    const out = viewPanel.querySelector<HTMLElement>("#pref-when-val");
+    if (out) out.textContent = whenLabel(w);
+  }
+
+  /** 첫 시점부터 지금까지를 **밟아 보여 준다**(발주자 지시 2026-09-10).
+   *
+   *  걸음 단위로 도는 이유: 이 커서는 분위수라 매 프레임 값을 조금씩 올려도 실제로
+   *  보이는 것은 **다음 시각에 닿을 때만** 바뀐다. 프레임을 태우면 같은 그림을
+   *  수십 번 다시 그리고, 걸음을 태우면 한 걸음이 곧 "이때 이것들이 생겼다"가 된다.
+   *  걸음 수는 실제 시각 종수로 잡되 상한을 둔다 — 종수가 수천이면 재생이 길어진다. */
+  /** 표면이 갈리면 재생도 끝난다. 타이머만 끊는다 — `applyTimeCut` 은 이 시점에
+   *  가리킬 렌더러가 없다(방금 dispose 됐다). */
+  /** 재생이 걸어 둔 배선을 거두는 손. 재생이 없으면 아무 일도 안 한다. */
+  let replayCleanup: (() => void) | null = null;
+  function killReplay(): void {
+    if (replayTimer) { cancelAnimationFrame(replayTimer); replayTimer = 0; }
+    replayCleanup?.(); replayCleanup = null;
+    replayWhen = null;
+  }
+  function stopReplay(): void {
+    if (replayTimer) { cancelAnimationFrame(replayTimer); replayTimer = 0; }
+    replayCleanup?.(); replayCleanup = null;
+    replayWhen = null;
+    applyTimeCut();
+    const b = viewPanel.querySelector<HTMLElement>("#pref-replay");
+    if (b) b.textContent = COPY.ui.panel.replayPlay;
+  }
+  function startReplay(): void {
+    const p = curPrefs();
+    const times = [...new Set(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)).filter(Boolean))];
+    if (times.length < 2) return;              // 밟을 것이 없다 — 아무 일도 안 한다
+    const steps = Math.min(times.length, 60);
+    const DUR = 2400;                                     // 총 ~2.4초
+    const b = viewPanel.querySelector<HTMLElement>("#pref-replay");
+    if (b) b.textContent = COPY.ui.panel.replayStop;
+    // **걸음을 세지 않고 경과 시간을 읽는다.** 프레임을 세면 느린 기계에서 재생이
+    // 길어지고, 타이머를 세면 창이 가려진 동안 조여져(브라우저가 배경 타이머를
+    // 재운다) 도중에 멎은 채 남는다 — 실측으로 20개에서 멈춘 채 버튼이 "멈춤"에
+    // 걸렸다. 시계를 정본으로 두면 몇 프레임을 건너뛰어도 제자리에 도착한다.
+    const t0 = performance.now();
+    const finish = () => {
+      // 끝나면 **사용자가 놓아 둔 커서로 돌아간다.** 저장값을 안 건드리는 것이
+      // "별개로 작동"의 뜻이다 — 재생은 흐름을 한 번 보여 주는 동작이지 값을
+      // 고르는 동작이 아니다. `replayWhen` 만 비우면 `timeCut` 이 저장값을 다시
+      // 읽으므로 되돌리는 코드가 따로 필요 없다.
+      replayWhen = null;
+      stopReplay();
+    };
+    // ⚠ 가림은 **이벤트로** 받는다. `step` 안에서 `document.hidden` 만 보면 늦는다 —
+    //    창이 가려지는 순간 rAF 가 멎으므로 그 검사가 영영 안 돌고, 재생이 반쯤
+    //    그려진 채로 굳는다(실측 2026-09-10: 9개에서 멈추고 버튼이 "멈춤"에 걸렸다).
+    const onHide = () => { if (document.hidden) finish(); };
+    document.addEventListener("visibilitychange", onHide);
+    replayCleanup = () => document.removeEventListener("visibilitychange", onHide);
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / DUR);
+      replayWhen = Math.floor(k * steps) / steps;    // 시각 종수만큼만 계단을 밟는다
+      applyTimeCut();
+      if (k >= 1) { finish(); return; }
+      replayTimer = requestAnimationFrame(step);
+    };
+    // 시작할 수 없는 두 자리에서는 **아예 시작하지 않는다.** 창이 이미 가려져 있으면
+    // rAF 가 한 번도 안 뛰어 첫 걸음에서 굳고 버튼만 "멈춤"에 걸린다(가림 이벤트는
+    // 이미 가려진 상태에서는 다시 오지 않는다). 움직임을 줄이라고 한 환경에서는
+    // 밟는 것 자체가 그 요청에 어긋난다.
+    if (document.hidden
+        || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      stopReplay();
+      return;
+    }
+    step();
+  }
+
   function pruneEdges(es: GraphEdge[], ns: { id: string }[]): GraphEdge[] {
     if (!timeCut()) return es;
     const live = new Set(ns.map((n) => n.id));
@@ -1469,7 +1734,7 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     curEdges = res.edges || [];
-    curNodes = nodes;
+    setCurNodes(nodes);
     // 지표는 **커서가 고른 모집단**을 센다. 시간을 잘라 놓고 수는 전량을 말하면
     // 그 줄이 화면을 거짓으로 서술한다. 다만 `unlinked` 는 반영하지 않는다 — 고아
     // 칸이 곧 그것을 되돌리는 컨트롤이라, 숨긴 순간 0 이 되면 돌아올 길이 사라진다.
@@ -1478,8 +1743,11 @@ export async function renderView(el: HTMLElement) {
     // 초점 마크(닫힌 층의 단일 초점색)는 이제 **지금 짚고 있는 노드**가 든다. 예전엔
     // L2 씨앗이 그 자리였는데 층이 사라졌고, 스코프를 넓혀 데려온 노드가 어느 점인지
     // 말해 주는 일은 남아야 한다 — 카메라만 옮기면 "어디로 갔는지"가 안 남는다.
-    // 시간 필터는 **toN3 앞**이다 — N3 는 렌더 전용 형태라 시간 열을 안 들고 간다.
-    const shown3 = filterUnlinked(toN3(atTime(nodes), domains, lnbFocus.nodeId));
+    // ⚠ **전량을 싣는다**(2026-09-10). 여기서 시간을 걸러 내면 커서를 밀 때마다
+    //    장면을 다시 지어야 한다 — 아래 `applyTimeCut` 이 가시성으로 대신 한다.
+    //    `filterUnlinked` 는 전량 기준이 오히려 옳다: 커서가 이웃을 잠시 가렸다고
+    //    그 노드가 고아가 되는 것은 아니다.
+    const shown3 = filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId));
     g3 = mount3d(canvas, shown3, toL3(pruneEdges(visibleEdges(), shown3)), {
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
@@ -1490,6 +1758,7 @@ export async function renderView(el: HTMLElement) {
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
     }, p, keepCam);
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
+    applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
   }
 
@@ -1575,6 +1844,16 @@ export async function renderView(el: HTMLElement) {
 
   /** 노드의 화면 좌표(카드를 그 옆에 띄우기 위한 것). 렌더러마다 좌표계가 달라
    *  구할 수 없으면 캔버스 우상단 근처로 강등한다 — 카드가 안 뜨는 것보다 낫다. */
+  /** 부유 카드의 집 — 지도 카드의 좌상단에서 한 칸 들어온 자리.
+   *  뷰포트 상수가 아니라 **실측 rect** 에서 뽑는다: 왼쪽 열이 접히거나 창이 바뀌면
+   *  지도 카드의 위치도 바뀌고, 상수로 두면 그때 카드가 크롬 위에 얹힌다. */
+  function homeCardPos(): { x: number; y: number } {
+    const r = (el.querySelector("#view-canvas") ?? el).getBoundingClientRect();
+    const step = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue("--shell-gap")) * 16 || 8;
+    return { x: Math.round(r.left + step * 2), y: Math.round(r.top + step * 2) };
+  }
+
   function nodeScreenPos(id: string): { x: number; y: number } {
     const r = canvas.getBoundingClientRect();
     const n = g3 ? findNode3d(g3, id) : null;
@@ -1646,6 +1925,16 @@ export async function renderView(el: HTMLElement) {
    *  카드는 자기 응답을 직접 들고 있지만 레일은 `loadNodeSource` 가 따로 받으므로,
    *  그 자리에서 부를 수 있도록 여기 둔다. 레일이 닫히면 다음 열기가 덮어쓴다. */
   let railAskCounts: ((deg: number, docs: number) => void) | null = null;
+  /** 문서 열의 **읽기/편집 모드**(발주자 지시 2026-09-10 — 되살림).
+   *
+   *  ⚠ 이것은 2026-08-05 의 "상시 편집" 지시를 **되돌린 것**이다. 그때의 근거는
+   *  "고치려면 매번 두 번 눌러야 한다"였고 그건 지금도 참이다. 다만 상시 편집이
+   *  치르던 값이 그보다 컸다: 읽으려고 연 문서에서 클릭 한 번이 곧 커서였고,
+   *  드래그해서 복사하려는 손과 고치려는 손이 같은 과녁을 나눠 갖지 못했다.
+   *  기본은 **읽기**다 — 문서를 여는 대부분의 이유가 읽는 것이라서.
+   *  세션 안에서만 사는 이유: 방금 고치던 사람이 다음 문서에서도 고칠 확률이
+   *  높지만, 앱을 다시 열었을 때까지 편집으로 남아 있을 이유는 없다. */
+  let docWriting = false;
 
   let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
   const nodeContextOnce = (id: string) => {
@@ -1669,10 +1958,20 @@ export async function renderView(el: HTMLElement) {
    *  인과 원뿔은 줄에서 뺐다 — 노드를 고르는 순간 `focusOnMap` 이 이미 과거·미래
    *  폐포를 점등하므로 카드가 다시 부를 일이 아니다. */
   async function openRelsCard(nd: N3) {
-    const pos = nodeScreenPos(nd.id);
+    // 카드의 **집은 지도 카드의 좌상단**이다(발주자 지시 2026-09-09,
+    // `수정항목/노드 클릭 플로팅 모달.JPG` 가 그 자리를 가리킨다). 여태는 노드의
+    // 화면좌표 옆이었고, 그것이 낸 문제 둘:
+    //   ① 자리가 매번 다르다 — 카드를 읽으려면 눈이 카드를 먼저 찾아야 했다.
+    //   ② 읽는 면이 오른쪽으로 온 뒤(R1) 오른쪽 노드를 누르면 카드가 본문 위에 겹쳤다.
+    // 고정 자리는 그 둘을 함께 없앤다. 노드와의 연결은 좌표가 아니라 **인과 원뿔의
+    // 점등**이 말한다(focusOnMap 이 이미 그 일을 한다) — 카드가 노드 옆에 있어야
+    // 한다는 요구는 그 점등이 없던 시절의 것이다.
+    // 사용자가 끌어 옮기면 그 자리를 기억한다(float-panel.ts) — 고정은 집일 뿐이고
+    // 손이 옮긴 자리를 되돌리지 않는다.
+    const home = homeCardPos();
     const V = COPY.ui.viewx;
     const card = openFloatPanel({
-      title: nd.label, x: pos.x, y: pos.y, closeLabel: V.railClose,
+      title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose,
     });
     // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
     const tint = nd.domain ? tintMap([nd.domain], curMode()).get(nd.domain) : undefined;
@@ -1748,7 +2047,8 @@ export async function renderView(el: HTMLElement) {
 
     // 프롬프트 메뉴 — 카드면 위의 카드면이다(유리 아님). 디자인 주석의 이유:
     // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
-    const setCounts = wireAsk(card.body, nd, () => card.el.isConnected);
+    const setCounts = wireAsk(card.body, () => card.el.isConnected,
+      (deg, docs) => nodeAskItems(nd, deg, docs));
 
     try {
       const res = await nodeContextOnce(nd.id);
@@ -1828,7 +2128,8 @@ export async function renderView(el: HTMLElement) {
       <div id="ties-suggest"></div>`;
     detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
     // 카드와 **같은 줄**이다. 수치는 loadNodeSource 가 node-context 를 받고 채운다.
-    railAskCounts = wireAsk(detail, nd, () => !detail.hidden);
+    railAskCounts = wireAsk(detail, () => !detail.hidden,
+      (deg, docs) => nodeAskItems(nd, deg, docs));
     // 공유는 "스코프의 출구" — 이 노드의 ego 를 기본 범위로 시트를 연다(D56 상단 바
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
@@ -2032,8 +2333,42 @@ export async function renderView(el: HTMLElement) {
    *  프롬프트 셋은 번호가 아니라 **이름**이다. 숫자(깊이 1/2/3)는 크기를 말해 주지 않아
    *  늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지 스스로 말한다.
    *  근거: 디자인 정본 `Vinc Node Card.dc.html` (2b). */
-  function wireAsk(scope: HTMLElement, nd: N3,
-                   alive: () => boolean): (deg: number, docs: number) => void {
+  /** 메뉴 한 칸 — 이름·부제·담아 갈 프롬프트·따라갈 주소. */
+  type AskItem = { name: string; sub: string; body: string; url: string };
+  /** 노드에서 여는 셋. **에이전트 역할이면 한 칸이 더 붙는다**(발주자 지시
+   *  2026-09-10: "에이전트 노드 클릭 시 ask assistant 가 에이전트를 쓰게").
+   *  그 노드는 개념이 아니라 시킬 일이라, 설명을 청하는 것이 아니라 그 역할을
+   *  맡기는 말이 첫 칸에 온다. 판별은 주제 하나로 한다 — 레일의 Agent 칸이 읽는
+   *  그 주제와 **같은 값**이어야 두 자리가 같은 것을 가리킨다(`lnb.ts` RAIL). */
+  const AGENT_DOMAIN = "vinc/agent/roles";
+  function nodeAskItems(nd: N3, deg: number, docs: number): AskItem[] {
+    const V = COPY.ui.viewx;
+    const at = (depth: number) => absoluteViewUrl({ kind: "node", id: nd.id },
+                                                  { depth, viewpoint: curPrefs().view });
+    const items: AskItem[] = [
+      { name: V.askExplain, sub: V.askExplainSub, body: V.askExplainBody, url: at(1) },
+      { name: V.askCompare, sub: V.askCompareSub(deg), body: V.askCompareBody, url: at(SHARE_DEPTH) },
+      { name: V.askDocs, sub: V.askDocsSub(docs), body: V.askDocsBody, url: at(1) },
+    ];
+    if ((nd.domain || "").trim() === AGENT_DOMAIN) {
+      items.unshift({ name: V.askRole, sub: V.askRoleSub, body: V.askRoleBody, url: at(1) });
+    }
+    return items;
+  }
+  /** 문서에서 여는 셋(2026-09-10 신설). 주소는 `kind: "doc"` — 이미 있던 갈래다. */
+  function docAskItems(docId: string): AskItem[] {
+    const V = COPY.ui.viewx;
+    const url = absoluteViewUrl({ kind: "doc", id: docId }, { viewpoint: curPrefs().view });
+    return [
+      { name: V.askDocSum, sub: V.askDocSumSub, body: V.askDocSumBody, url },
+      { name: V.askDocConcepts, sub: V.askDocConceptsSub, body: V.askDocConceptsBody, url },
+      { name: V.askDocCheck, sub: V.askDocCheckSub, body: V.askDocCheckBody, url },
+    ];
+  }
+
+  function wireAsk(scope: HTMLElement, alive: () => boolean,
+                   build: (deg: number, docs: number) => AskItem[]):
+                   (deg: number, docs: number) => void {
     const V = COPY.ui.viewx;
     const trigger = scope.querySelector<HTMLButtonElement>(".js-ask");
     if (!trigger) return () => {};
@@ -2070,26 +2405,21 @@ export async function renderView(el: HTMLElement) {
     });
 
     return (deg: number, docs: number) => {
-      const items: [string, string, string, number][] = [
-        [V.askExplain, V.askExplainSub, V.askExplainBody, 1],
-        [V.askCompare, V.askCompareSub(deg), V.askCompareBody, SHARE_DEPTH],
-        [V.askDocs, V.askDocsSub(docs), V.askDocsBody, 1],
-      ];
-      menu.innerHTML = items.map(([name, sub], i) => `
+      const items = build(deg, docs);
+      menu.innerHTML = items.map((it, i) => `
         <button type="button" role="menuitem" class="menu-item" data-i="${i}">
-          <span class="menu-name">${esc(name)}</span>
-          <span class="menu-sub">${esc(sub)}</span>
+          <span class="menu-name">${esc(it.name)}</span>
+          <span class="menu-sub">${esc(it.sub)}</span>
         </button>`).join("");
       menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
         b.addEventListener("click", () => {
-          const [, , body, depth] = items[Number(b.dataset.i)];
+          const it = items[Number(b.dataset.i)];
           // 되먹임은 트리거 버튼에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
           label(V.copyLinkDone);
           window.setTimeout(() => label(V.cardAskCopy), 1400);
           close();
-          const url = absoluteViewUrl({ kind: "node", id: nd.id },
-                                      { depth, viewpoint: curPrefs().view });
-          void navigator.clipboard.writeText(`${body} ${url}`).catch(() => label(V.copyLinkFail));
+          void navigator.clipboard.writeText(`${it.body} ${it.url}`)
+            .catch(() => label(V.copyLinkFail));
         }));
     };
   }
@@ -2158,7 +2488,7 @@ export async function renderView(el: HTMLElement) {
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
       const parts: string[] = [];
-      if (res.one_liner) parts.push(`<p>${esc(res.one_liner)}</p>`);
+      if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];
       if (ex.length > 0) {
         const header = res.arm === "fts"
@@ -2171,12 +2501,13 @@ export async function renderView(el: HTMLElement) {
                  style="display:block;cursor:pointer">
               <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
                 e.section ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
-              <p class="hint" style="margin:.15rem 0 0">${underlineTerms(e.excerpt, nd.label)}</p>
+              <div class="hint doc-render rdr-excerpt">${renderExcerpt(e.excerpt, nd.label)}</div>
             </div>`).join(""));
       } else if (!res.one_liner) {
         parts.push(`<p class="hint">${COPY.ui.viewx.sourceNone}</p>`);
       }
       box.innerHTML = parts.join("");
+      hydrateRich(box);          // 발췌 안의 수식·다이어그램을 채운다(늦게 싣는다)
       box.querySelectorAll<HTMLElement>(".rdr-open").forEach((row) =>
         row.addEventListener("click", () =>
           void openReader(row.dataset.doc!, nd.id)));
@@ -2204,6 +2535,34 @@ export async function renderView(el: HTMLElement) {
       }
     }
     return out + esc(text.slice(last));
+  }
+
+  /** 발췌·한 줄 요약을 **문서와 같은 모습으로** 그린다(발주자 지적 2026-09-10:
+   *  "관련문서 보여주는 칸이나 노드 디테일 쪽에서는 마크다운 렌더링이 안 되어 보인다").
+   *
+   *  여태 이 두 자리만 원문을 그대로 냈다 — 같은 문단이 문서 열에서는 제목·굵기로
+   *  보이고 여기서는 `##`·`**` 로 보였다. 렌더러가 둘이라는 사실이 화면에 드러나면
+   *  안 된다는 규율은 이미 `renderMarkdown` 머리말에 있다(편집기와 폴백 사이).
+   *
+   *  ⚠ 순서가 중요하다: **마크다운을 먼저 그리고, 밑줄은 그 결과의 텍스트 노드에만**
+   *  건다. 원문에 밑줄을 먼저 치면 `<u>` 가 마크다운 문법 안에 끼어 렌더가 깨지고,
+   *  렌더된 HTML 에 문자열 치환을 하면 태그 속으로 `<u>` 가 들어간다. DOM 을 걸어
+   *  텍스트만 건드리는 것이 그 둘을 다 피하는 유일한 길이다. */
+  function renderExcerpt(text: string, label: string): string {
+    const host = document.createElement("div");
+    host.innerHTML = renderMarkdown(text);
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const texts: Text[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n as Text);
+    for (const t of texts) {
+      // `underlineTerms` 는 이스케이프까지 하므로 그 결과를 그대로 심는다.
+      const html = underlineTerms(t.data, label);
+      if (!html.includes("<u>")) continue;          // 바뀐 것이 없으면 손대지 않는다
+      const span = document.createElement("span");
+      span.innerHTML = html;
+      t.replaceWith(span);
+    }
+    return host.innerHTML;
   }
 
   /** Reader 서브뷰(D45-V2 2단계) — 상세 패널을 정본 전문으로 확장한다. 새 표면
@@ -2320,7 +2679,17 @@ export async function renderView(el: HTMLElement) {
         <p class="rail-acts">
           <button class="btn" id="rdr-back">${COPY.ui.viewx.readerBack}</button>
           <button class="btn" id="rdr-expand">${COPY.ui.viewx.edExpand}</button>
+          <button class="btn" id="rdr-copy">${COPY.ui.viewx.edCopy}</button>
+          <button class="btn" id="rdr-mode">${
+            docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite}</button>
+          <span class="hint" id="rdr-mode-state">${
+            docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead}</span>
         </p>
+        <!-- 문서도 프롬프트를 나눠 준다(발주자 지시 2026-09-10). 노드 카드·노드 상세와
+             같은 줄·같은 메뉴를 쓴다 — 세 자리가 같은 일을 다른 모양으로 하면 어느
+             쪽이 맞는지 매번 다시 정해야 한다(askRowHTML 머리말과 같은 이유).
+             ⚠ 이 주석은 템플릿 리터럴 **안**이다 — 백틱을 쓰면 문자열이 거기서 끊긴다. -->
+        ${askRowHTML()}
         ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
         ${mentionsHTML}
@@ -2332,6 +2701,13 @@ export async function renderView(el: HTMLElement) {
       detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
         b.addEventListener("click", () =>
           void focusNode(b.dataset.go!, b.dataset.dom || undefined)));
+      // 문서의 프롬프트 셋. 수치를 안 쓰므로 한 번 그리고 끝이다(노드 쪽은 관계·
+      // 문서 수가 늦게 오지만 문서는 자기 자신이 이미 전부다).
+      // ⚠ **노드 쪽 손을 먼저 끊는다.** 두 화면이 같은 패널을 쓰는데 메뉴는 문서에
+      //    하나뿐이라, 노드 상세가 남긴 늦은 콜백(nodeContextOnce 응답)이 방금 그린
+      //    문서 메뉴를 노드 항목으로 덮는다. 널로 두면 그 호출이 조용히 무시된다.
+      railAskCounts = null;
+      wireAsk(detail, () => !detail.hidden, () => docAskItems(docId))(0, 0);
       // 여기서 손수 dispose 하지 않는다 — 둘 다 레일을 다시 여닫으므로 위의
       // openRail/closeRail 이 확정까지 맡는다. 두 벌로 두면 다시 갈린다.
       detail.querySelector("#rdr-back")!.addEventListener("click", () => {
@@ -2343,12 +2719,17 @@ export async function renderView(el: HTMLElement) {
       // 소스를 그대로 노출했다(실측).
       const { mountDocEditor, openDocSheet } = await import("../doc-editor");
       const state = detail.querySelector<HTMLElement>("#rdr-state")!;
-      const handle = await mountDocEditor(detail.querySelector<HTMLElement>("#rdr-host")!, {
+      const rdrHost = detail.querySelector<HTMLElement>("#rdr-host")!;
+      let handle = await mountDocEditor(rdrHost, {
         owner: cfg.owner, docId, initial: doc.text, title: doc.title,
         contentHash: doc.content_hash, hideTitle: true,
-        // 상시 편집. 커서는 켜지 않는다 — 문서 열은 지도와 나란히 서므로, 열자마자
-        // 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이 글자로 들어간다.
-        readOnly: false, autoFocus: false,
+        // 모드가 정한다(위 `docWriting`). 커서는 켜지 않는다 — 문서 열은 지도와
+        // 나란히 서므로, 열자마자 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이
+        // 글자로 들어간다.
+        // ⚠ 읽기 모드에서는 CM 의 장식이 **더 완전하다**: 편집 가능일 때는 커서가
+        //    놓인 줄의 소스를 되살려 보여 주는데(라이브 프리뷰의 규칙), 읽기에서는
+        //    그럴 이유가 없어 문법이 끝까지 감춰진다. 읽는 화면이 더 깨끗해진다.
+        readOnly: !docWriting, autoFocus: false,
         // 제목 줄이 숨어 있어 편집기 자신의 상태 글자도 함께 숨는다 — 저장 신호를
         // 여기로 받아 레일 머리 옆에서 말한다.
         onStatus: (t) => { state.textContent = t; },
@@ -2358,6 +2739,40 @@ export async function renderView(el: HTMLElement) {
         // 아니고, 노드로 갈 문은 바로 위 칩이 이미 들고 있다.
         onDocLink: (id) => void openReader(id),
       });
+      // 본문 복사. 화면을 긁는 대신 **소스 그대로**를 준다 — 문서의 정본은
+      // 마크다운이라, 렌더된 글자를 복사하면 붙여넣은 곳에서 다른 문서가 된다.
+      detail.querySelector<HTMLElement>("#rdr-copy")?.addEventListener("click", (e) => {
+        const btn = e.currentTarget as HTMLElement;
+        const text = handle.getText();
+        if (!text) return;                     // 아직 못 읽은 문서 — 조용히 아무 일도 안 한다
+        const back = COPY.ui.viewx.edCopy;
+        btn.textContent = COPY.ui.viewx.copyLinkDone;
+        window.setTimeout(() => { btn.textContent = back; }, 1400);
+        void navigator.clipboard.writeText(text)
+          .catch(() => { btn.textContent = COPY.ui.viewx.copyLinkFail; });
+      });
+      // 읽기 ↔ 편집. **다시 읽지 않는다** — 같은 본문 위에서 커서만 켜고 끄는 일이라
+      // 왕복을 붙이면 모드 전환이 문서 열기만큼 비싸진다. 나가면서 확정하는 규율은
+      // `dispose` 가 이미 진다(대기 중이던 디바운스를 저장하고 놓는다).
+      detail.querySelector<HTMLElement>("#rdr-mode")?.addEventListener("click", () => void (async () => {
+        const btn = detail.querySelector<HTMLElement>("#rdr-mode");
+        const tag = detail.querySelector<HTMLElement>("#rdr-mode-state");
+        const text = handle.getText();          // 방금까지 친 것을 그대로 물려준다
+        await handle.dispose();
+        docWriting = !docWriting;
+        if (btn) btn.textContent = docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite;
+        if (tag) tag.textContent = docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead;
+        handle = await mountDocEditor(rdrHost, {
+          owner: cfg.owner, docId, initial: text || doc.text, title: doc.title,
+          contentHash: doc.content_hash, hideTitle: true,
+          readOnly: !docWriting,
+          // 편집으로 들어갈 때만 커서를 준다 — 그것이 이 버튼을 누른 이유다.
+          autoFocus: docWriting,
+          onStatus: (t) => { state.textContent = t; },
+          highlights: hl.ranges || [],
+          onDocLink: (id) => void openReader(id),
+        });
+      })());
       // 목차 클릭·청크 히트 착지 — 편집기가 이미 오프셋으로 스크롤할 줄 안다
       // (밑줄 첫 위치로 가던 그 길). 마운트가 앉은 뒤라야 좌표가 맞는다.
       detail.querySelectorAll<HTMLElement>(".rdr-sec").forEach((b) =>
@@ -2442,7 +2857,7 @@ export async function renderView(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
-    curNodes = gnodes;
+    setCurNodes(gnodes);
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
@@ -2451,7 +2866,8 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
-    const shown2 = atTime(gnodes).map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
+    // 3D 와 같은 이유로 **전량**이다(위 `shown3` 주석) — 커서는 가시성이 건다.
+    const shown2 = gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
     g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
       markId: lnbFocus.nodeId,
       onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
@@ -2459,6 +2875,7 @@ export async function renderView(el: HTMLElement) {
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
     }, p);
+    applyTimeCut();
   }
 
   const showL1 = (domains: string[]) => showGraphScope({ domains });
@@ -2500,7 +2917,7 @@ export async function renderView(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
-    curNodes = gnodes;
+    setCurNodes(gnodes);
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
       setMsg(level.kind === "l0"
@@ -2672,6 +3089,7 @@ export async function renderView(el: HTMLElement) {
   function swapSurface() {
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
+    killReplay();
     if (planar) { planar.dispose(); planar = null; }
     if (g2) { g2.dispose(); g2 = null; }
     if (g3) { g3._destructor?.(); g3 = null; }
@@ -2696,6 +3114,7 @@ export async function renderView(el: HTMLElement) {
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
+    kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
     detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
@@ -2749,7 +3168,13 @@ export async function renderView(el: HTMLElement) {
         if (pre) pre.textContent = why;
       }
     } finally {
-      if (seq === showSeq) { setBusy(false); revealSurface(); }   // 새 세대가 돌고 있으면 그쪽이 끈다
+      if (seq === showSeq) {
+        setBusy(false); revealSurface();   // 새 세대가 돌고 있으면 그쪽이 끈다
+        // 서 있는 종 렌즈를 **새 렌더러에** 다시 건다. 관점 넷이 전부 이 길을
+        // 지나므로 걸어 주는 자리도 하나다(2D·3D 는 점등을 받고 평면 둘은 조용히
+        // 무시한다 — 기존 계약).
+        applyKindLens(lnbKind());
+      }
     }
   }
 
@@ -2820,6 +3245,10 @@ export async function renderView(el: HTMLElement) {
     if (next.length) trail.push({ kind: "l1", domains: next });
     void show(trail[trail.length - 1]);
   });
+
+  // 종 렌즈 — 레일이 고른 종을 지도에서도 강조한다. 등록 즉시 현재 값으로 한 번
+  // 부르므로(setLnbKindLens 안에서) 마운트 직후에도 왼쪽과 오른쪽이 같은 것을 본다.
+  setLnbKindLens((kind) => applyKindLens(kind));
 
   await show(trail[trail.length - 1]);
   if (landOn) await focusNode(landOn);

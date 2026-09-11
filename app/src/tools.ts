@@ -49,7 +49,9 @@ function withTimeout<T>(p: Promise<T>, ms = OP_TIMEOUT): Promise<T> {
 
 export function openTools(tab: Tab = "create") {
   const T = COPY.ui.tools;
-  const sheet = openSheet({ title: T.title, size: "browse" });
+  // 설정 모달과 **같은 상자**다(size "panel", 2026-09-09) — 설정·도구·GRAPH.md 는
+  // "앱을 다루는 창" 한 종류인데 여태 상자가 셋이었다.
+  const sheet = openSheet({ title: T.title, size: "panel" });
   let cleanup: (() => void) | null = null;
 
   const draw = (t: Tab) => {

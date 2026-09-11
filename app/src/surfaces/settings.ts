@@ -32,7 +32,10 @@ export async function renderSettings(el: HTMLElement) {
   ];
   let activeTab: TabId = "account";
 
-  // ── 모달 크롬(탭바 + 닫기) ────────────────────────────────────────────────
+  // ── 탭바 + 몸 ─────────────────────────────────────────────────────────────
+  //  ⚠ **닫기 버튼이 없다**(2026-09-09). 이 화면은 이제 시트 안에서 열리고
+  //  (`openSheet`), 시트가 제목 줄에 ✕ 를 이미 갖고 있다 — 여기서 하나 더 그리면
+  //  같은 상자에 닫기가 둘이 된다. Esc·스크림·✕ 세 탈출구도 시트의 것이다.
   function shell() {
     el.innerHTML = `
       <div class="settings-head">
@@ -40,12 +43,8 @@ export async function renderSettings(el: HTMLElement) {
           ${TABS.map((t) => `<button class="settings-tab${t.id === activeTab ? " active" : ""}"
             data-tab="${t.id}" role="tab">${t.label}</button>`).join("")}
         </div>
-        <button class="settings-close" id="settings-x" aria-label="${U.close}">✕</button>
       </div>
       <div class="settings-body" id="settings-body"></div>`;
-    // 닫기 = Esc 디스패치(닫힘 로직은 main.ts 소유 — 결합 최소화).
-    el.querySelector("#settings-x")!.addEventListener("click", () =>
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     el.querySelectorAll<HTMLElement>(".settings-tab").forEach((b) =>
       b.addEventListener("click", () => {
         activeTab = b.dataset.tab as TabId;
@@ -451,7 +450,10 @@ export async function renderSettings(el: HTMLElement) {
       <input id="s-owner" value="${cfg.owner}" />
       <label for="s-sync-key">${U.syncKey}</label>
       <p class="hint">${U.syncKeyHint}</p>
-      <input id="s-sync-key" type="password" placeholder="vinc_sk_…" autocomplete="off" />
+      <p class="s-keyrow"><input id="s-sync-key" type="password" placeholder="vinc_sk_…"
+         autocomplete="off" /><button class="btn" id="s-sync-key-save" type="button">${
+        U.syncKeySave}</button></p>
+      <p class="hint" id="s-sync-key-said" hidden></p>
       <label for="s-base">${U.engine}</label>
       <input id="s-base" value="${cfg.base}" />
       <label for="s-token">${U.secret}</label>
@@ -475,13 +477,25 @@ export async function renderSettings(el: HTMLElement) {
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
     // 그것을 없애자는 것이 이 변경의 목적이다(감사 M8). 비어 있으면 "안 바꿈"이다.
     const keyInput = body.querySelector<HTMLInputElement>("#s-sync-key")!;
-    keyInput.addEventListener("change", () => {
+    const keySaid = body.querySelector<HTMLElement>("#s-sync-key-said")!;
+    // **저장했다고 말한다**(발주자 지적 2026-09-10: "키 입력하면 저장되는 게 아니던데").
+    // 실은 저장되고 있었다 — 다만 곧바로 입력칸을 비우는데(위 M8 규칙) 아무 말도
+    // 안 해서, 비워지는 것이 "버려졌다"로 읽혔다. 지우는 것을 되돌리지 않고
+    // **왜 지우는지를 말한다**: 키를 화면에 남기지 않는 것이 그 규칙의 목적이므로.
+    const save = () => {
       const v = keyInput.value.trim();
       if (!v) return;
       void setAccountKey(v);
       localStorage.removeItem("vinc.sync.email");   // 수동 키 = 이메일 미상
       keyInput.value = "";                          // 입력칸에도 남기지 않는다
-    });
+      keySaid.textContent = U.syncKeySaved;
+      keySaid.hidden = false;
+    };
+    // 버튼이 **정본 경로**다. `change` 만 두면 입력칸에 포커스를 둔 채 시트를 닫을 때
+    // 이벤트가 아예 안 뜨고 키가 조용히 사라진다(실측 경로: Esc·딤 클릭).
+    body.querySelector<HTMLElement>("#s-sync-key-save")!.addEventListener("click", save);
+    keyInput.addEventListener("change", save);
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   }
 
   shell();
