@@ -5633,6 +5633,33 @@ def _domains_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict
     return out
 
 
+def _validity_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict:
+    """논리 id → (valid_from, valid_until). Record 는 열, Decision 은 props 의 임시 인코딩
+    (시간 정책 §8 항목 5). 미러(NodeVec)에는 구간이 없어 의미 팔이 올린 후보는 여기서
+    되찾아 본다. Concept·Episode 는 구간이 없다 — 목록에 없으면 호출부가 ('', '') 로
+    읽고 그것은 current 다. 조회가 막히면 예외를 그대로 올린다: 호출부(의미 팔)의
+    except 가 `node_error` 를 남기고 그 팔을 비운다 — 조용히 통과시키는 쪽이 이 필터가
+    막으려는 고장이다."""
+    if not ids:
+        return {}
+    out: dict[str, tuple[str, str]] = {}
+    params: dict = {"ids": pkns.keys(owner, list(ids))}
+    own = ""
+    if owner:
+        own = " AND n.owner_id = $o"
+        params["o"] = owner
+    for r in store.run("MATCH (n:Record) WHERE n.record_id IN $ids" + own
+                       + " RETURN n.record_id AS id, " + _validity_cols("n"), params) or []:
+        if r.get("id"):
+            out[r["id"]] = (r.get("valid_from") or "", r.get("valid_until") or "")
+    for r in store.run("MATCH (n:Decision) WHERE n.decision_id IN $ids" + own
+                       + " RETURN n.decision_id AS id, n.props AS props_raw", params) or []:
+        if r.get("id"):
+            p = _props_to_obj(r.get("props_raw"))
+            out[r["id"]] = (str(p.get("valid_from") or ""), str(p.get("valid_until") or ""))
+    return out
+
+
 def _node_semantic_arm_on() -> bool:
     """의미 암을 켤 것인가. **기본은 켜짐**이고 `VINC_NODE_SEMANTIC_ARM=off` 가 비상구다.
 
@@ -5904,6 +5931,22 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
                 _raw = store.node_vector_search(
                     query_embedding, top_k, owner=owner) or []
+                # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
+                # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
+                # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
+                # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
+                # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더한다.
+                if not historical and _raw:
+                    _vf = _validity_for_ids(
+                        store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
+                    _keep = []
+                    for h in _raw:
+                        if validity_state(*_vf.get(h.get("id"), ("", ""))) == "current":
+                            _keep.append(h)
+                        else:
+                            _vstats["dropped_not_current"] = (
+                                _vstats.get("dropped_not_current", 0) + 1)
+                    _raw = _keep
                 vec_hits = [{"id": h.get("id"),
                              "title": h.get("title") or h.get("text") or "",
                              "kind": h.get("kind") or "", "domain": "",
@@ -5928,6 +5971,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         pass
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
+        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔의 합.
+        if _vstats.get("dropped_not_current"):
+            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base.setdefault("validity_best_dropped",
+                            list(_vstats.get("best_dropped_score") or (0, 0)))
+            base.setdefault("validity_note", ("hid nodes whose claim is no longer current; "
+                                              "pass historical=true to include them"))
 
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
