@@ -274,3 +274,36 @@ python -X utf8 scripts/roster_probe.py
 빈손일 때 "로스터가 없다"와 "여기서는 안 보인다"는 다른 말이다. 실제로 잘못된
 디렉터리에서 `ls` 한 결과를 보고 앞의 것으로 단정한 적이 있다. 이 도구는 개수만
 세지 않고 **어디서 시작해 어디까지 걸었는지**를 함께 말한다.
+
+## 7. PR 제목은 영어 · 타입 접두 · 대시 없음 (2026-09-11 지시)
+
+**스쿼시 머지에서 PR 제목이 곧 `main` 의 커밋 제목이다.** 그래서 이것은 PR 화면의
+취향이 아니라 `git log` 의 계약이고, 히스토리는 되돌릴 수 없다.
+
+```
+type(scope): subject          # scope 는 선택, `!` 는 파괴적 변경
+fix(share): unchecked documents stay behind
+feat(search): say when the meaning arm is missing
+ci(release): pin the interpreter the container can run
+```
+
+- **타입은 소문자** 고정: `feat` `fix` `ci` `chore` `design` `docs` `release` `test`
+  `infra` `agents` `refactor` `security` `perf` `build` `style` `revert`.
+  대문자(`Fix:`)로 바꾸지 않는 이유는 이미 소문자가 162건이고 표기를 섞으면 얻는 것이
+  없어서다(실측 2026-09-11, 최근 200 커밋 중 접두 없는 것이 38건이었다).
+- **제목은 영어(ASCII)**. 한국어와 영어가 섞여 `--oneline` 이 한 화면에서 두 언어로
+  읽히던 것을 닫는다. 본문·코드 주석·이 문서는 **그대로 한국어다** — 제목 한 줄만이다.
+- **em-dash(`—`)·en-dash(`–`) 금지.** 화면 텍스트 규칙(§1)을 제목까지 넓힌 것이다.
+  좁은 목록에서 폭이 넓어 줄을 밀어낸다. 대체는 콜론·괄호·새 문장.
+- subject 는 소문자로 시작하고 마침표로 끝내지 않는다(약어는 예외 — `MCP`·`CI`).
+  제목은 100자 안. 자세한 것은 본문에 쓴다.
+
+강제는 `scripts/gate_pr_title.py` 이고 `ci.yml` 의 `changes` 잡에서 PR 마다 돈다
+(잡을 새로 세우지 않은 이유는 청구가 1분부터 시작해서다). 손으로 보려면:
+
+```bash
+python -X utf8 scripts/gate_pr_title.py "fix(share): unchecked documents stay behind"
+```
+
+⚠ 이 규칙은 **제목만** 본다. 게이트가 본문을 읽지 않으므로 본문의 한국어는 위반이
+아니고, 반대로 게이트가 초록이라고 본문이 검토된 것도 아니다.
