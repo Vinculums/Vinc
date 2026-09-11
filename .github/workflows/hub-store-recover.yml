@@ -29,9 +29,9 @@ on:
         type: string
         default: ""
       src:
-        description: "switch 가 VINC_DATA_DIR 로 삼을 /data 안의 파일명"
+        description: "switch 가 VINC_DATA_DIR 로 삼을 /data 안의 파일명 (preserve 의 RECOVER_COPIED 줄이 말한 이름)"
         type: string
-        default: "db.pre-768-keep"
+        default: "db.pkns.pre-768-keep"
 
 # hub-deploy 와 같은 줄에 선다 — 복구 도중 배포가 끼어들면 두 리비전이 겹친다.
 concurrency:
@@ -83,10 +83,16 @@ jobs:
           set -euo pipefail
           cat > keep.sh <<'SH'
           echo "RECOVER_WORK $(ls -la /var/lib/vinc 2>&1 | tr '\n' ';')"
-          for f in /var/lib/vinc/db.pre-768 /var/lib/vinc/db.pre-768.wal; do
+          # 작업본 이름은 VINC_DATA_DIR 의 basename 이다(지금은 db.pkns). 이름을 박지 않고
+          # 훅이 남기는 접미 .pre-<차원> 으로 찾는다 — 첫 실행이 db.pre-768 을 박아서 빈손이었다.
+          for f in /var/lib/vinc/*.pre-[0-9]* ; do
             [ -e "$f" ] || continue
-            d="/data/$(basename "$f" | sed 's/pre-768/pre-768-keep/')"
-            cp "$f" "$d" && echo "RECOVER_COPIED $f -> $d $(stat -c %s "$d") bytes"
+            case "$f" in *.wal) continue ;; esac
+            for part in "$f" "$f.wal"; do
+              [ -e "$part" ] || continue
+              d="/data/$(basename "$part" | sed 's/\.pre-\([0-9]*\)/.pre-\1-keep/')"
+              cp "$part" "$d" && echo "RECOVER_COPIED $part -> $d $(stat -c %s "$d") bytes"
+            done
           done
           echo "RECOVER_DATA $(ls -la /data 2>&1 | tr '\n' ';')"
           SH
