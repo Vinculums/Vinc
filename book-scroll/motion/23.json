@@ -1,7 +1,0 @@
-{
-  "_": "Chapter 23 (Chapter 24 on the page). The document's own diagrams carry most beats; two are re-authored where the ASCII does not parse (the supersession arrow, the two-claim contrast).",
-  "beats": {
-    "7": {"diagram": "old claim, valid_until = T ──superseded by──> new claim, valid_from = T"},
-    "9": {"diagram": "A happened before B\n≠\nA caused B"}
-  }
-}
