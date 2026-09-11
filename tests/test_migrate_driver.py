@@ -273,6 +273,50 @@ class RebuildPathTests(unittest.TestCase):
         again = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
         self.assertFalse(again["changed"], "차원이 같으면 아무것도 안 해야 한다(멱등)")
 
+    def test_네임스페이스_스토어의_재구축은_물리_키를_지킨다(self):
+        """🔴 2026-09-11 라이브 사고의 회귀 시험. 플래그가 켜진 런타임에서 export 는 읽기
+        경로를 지나며 물리 키(owner U+001F id)를 논리 id 로 벗기고, import 가 그것을 그대로
+        써서 정확 id 조회가 전부 죽었다. 같은 논리 id 를 가진 소유자 둘은 한 행으로 접혔다.
+        재구축은 raw 로 읽어야 하고, 두 소유자의 행이 각자의 물리 키로 다시 찾아져야 한다."""
+        import os
+        from unittest import mock
+        from store import pkns
+        with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
+            src, _ = self._mkstore()
+            for o in ("user:a", "user:b"):
+                src.run("MERGE (c:Concept {concept_id: $k}) SET c.owner_id = $o, c.title = 'X'",
+                        {"k": pkns.key(o, "concept:x"), "o": o})
+            dst, _ = self._mkstore(dim=1024)
+            try:
+                migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+            except RuntimeError as exc:
+                if "확장" in str(exc) or "extension" in str(exc).lower():
+                    self.skipTest(f"FTS 확장 미가용 — {exc}")
+                raise
+            finally:
+                src.close()
+            rows = dst.run("MATCH (c:Concept) WHERE c.title = 'X' RETURN c.owner_id AS o")
+            self.assertEqual(len(rows), 2, "두 소유자의 같은 논리 id 가 한 행으로 접혔다")
+            for o in ("user:a", "user:b"):
+                hit = dst.run("MATCH (c:Concept {concept_id: $k}) RETURN c.owner_id AS o",
+                              {"k": pkns.key(o, "concept:x")})
+                self.assertEqual([r["o"] for r in hit], [o], f"{o} 의 물리 키로 정확 조회가 안 된다")
+            dst.close()
+
+    def test_네임스페이스_런타임에서_논리_키_스토어는_재구축을_거절한다(self):
+        """벗겨진 키를 가진 스토어를 그대로 옮기면 같은 고장을 새 파일에 복제한다. 멈춘다."""
+        import os
+        from unittest import mock
+        src, _ = self._mkstore()
+        src.run("MERGE (c:Concept {concept_id: 'concept:bare'}) SET c.owner_id = 'user:a', c.title = 'B'")
+        dst, _ = self._mkstore(dim=1024)
+        with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
+            with self.assertRaises(RuntimeError) as ctx:
+                migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        self.assertIn("migrate_pk_namespacing", str(ctx.exception))
+        src.close()
+        dst.close()
+
 
 class SchemaLagExportTests(unittest.TestCase):
     """스토어가 코드보다 낮은 스키마일 때 export 가 **행을 잃지 않는다**.

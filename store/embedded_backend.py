@@ -552,8 +552,13 @@ class _ReaderView:
             pass   # 이미 닫혔거나 구 드라이버 — 참조를 놓은 것으로 충분하다
 
 
-def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
-    """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리."""
+def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False) -> list[dict]:
+    """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리.
+
+    ``raw=True`` 는 아래 PK 분해 훅을 **건너뛴다** — 물리 키(owner U+001F id)가 그대로
+    나온다. 소비자는 하나다: 재구축의 export(`store/migrate.py`). 읽기 경로가 벗긴 논리
+    id 를 새 스토어에 그대로 쓰면 정확 id 조회가 전부 죽고 같은 논리 id 를 가진 소유자
+    둘이 한 행으로 접힌다 — 2026-09-11 라이브에서 그렇게 됐다."""
     res = conn.execute(cypher, params) if params else conn.execute(cypher)
     # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
     results = res if isinstance(res, list) else [res]
@@ -578,7 +583,7 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
     # 그래서 `WHERE pk CONTAINS $sep` 로 이관 진척을 세는 것은 여기서 안 막힌다(PR-D 는
     # 훅 우회 읽기 경로도 행별 표식도 필요 없다). 실측:
     # tests/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
-    if pkns.enabled():
+    if pkns.enabled() and not raw:
         out = [pkns.strip_deep(row) for row in out]
     return out
 
@@ -661,8 +666,10 @@ class EmbeddedBackend:
         finally:
             session.close()
 
-    def run(self, query: str, params: dict | None = None, *, conn=None) -> list[dict]:
-        return _exec_to_dicts(conn or self._conn, query, params or None)
+    def run(self, query: str, params: dict | None = None, *, conn=None,
+            raw: bool = False) -> list[dict]:
+        # ``raw``: 물리 키 그대로(PK 분해 훅 생략). 재구축 export 전용 — `_exec_to_dicts` 주석.
+        return _exec_to_dicts(conn or self._conn, query, params or None, raw=raw)
 
     # ── 서버 read 경로 — 별도 Connection(R4) ──────────────────────────────────
     # 사이드카(§11 P2)는 단일 Database 를 프로세스 수명 동안 소유하고, 쓰기는 잡

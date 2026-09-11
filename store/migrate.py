@@ -64,16 +64,24 @@ def _narrow_to_existing(store, table: str, wanted: list[str], probe: str) -> lis
         "빈 집합으로 넘기면 이 라벨의 행이 조용히 사라진다")
 
 
-def export_store(store) -> dict:
+def export_store(store, *, raw: bool = False) -> dict:
     """스토어 전량을 드라이버 무관 dict 로 덤프. 노드(라벨별 행)·엣지(라벨별 끝점+
-    props). 스키마 SSoT 의 열만 조회(투기 없음)."""
+    props). 스키마 SSoT 의 열만 조회(투기 없음).
+
+    ``raw=True``: PK 네임스페이싱이 켜진 스토어에서 **물리 키 그대로** 읽는다. 기본 읽기
+    경로는 물리 키를 논리 id 로 벗기므로(`embedded_backend._exec_to_dicts`), 벗긴 덤프를
+    같은 런타임의 새 스토어에 적재하면 키가 논리로 남아 정확 id 조회가 전부 죽는다.
+    재구축(:func:`rebuild_store`)은 이 값을 `pkns.enabled()` 로 정한다."""
+    def _q(q: str):
+        return store.run(q, raw=True) if raw else store.run(q)
+
     node_specs = _schema.node_table_specs()
     nodes: dict[str, list[dict]] = {}
     for label, spec in node_specs.items():
         cols = spec["cols"]
         proj = ", ".join(f"n.{c} AS {c}" for c in cols)
         try:
-            rows = store.run(f"MATCH (n:{label}) RETURN {proj}")
+            rows = _q(f"MATCH (n:{label}) RETURN {proj}")
         except Exception:
             # 빠른 길이 깨졌다. 여기서 빈 집합으로 넘기는 것이 예전의 무음 손실이었다.
             have = _narrow_to_existing(store, label, cols,
@@ -85,7 +93,7 @@ def export_store(store) -> dict:
                 raise RuntimeError(f"{label}: pk {spec['pk']} 열이 없다 — 이관 불가")
             else:
                 proj = ", ".join(f"n.{c} AS {c}" for c in have)
-                rows = store.run(f"MATCH (n:{label}) RETURN {proj}")
+                rows = _q(f"MATCH (n:{label}) RETURN {proj}")
         nodes[label] = rows or []
     edges: list[dict] = []
     for spec in _schema.rel_table_specs():
@@ -95,7 +103,7 @@ def export_store(store) -> dict:
         proj = [f"a.{src_pk} AS _from", f"b.{dst_pk} AS _to"]
         proj += [f"r.{p} AS {p}" for p in props]
         try:
-            rows = store.run(
+            rows = _q(
                 f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(proj)}")
         except Exception:
             # 노드와 같은 이유로 같은 처방 — 관계 테이블도 열이 늘어난 적이 있다.
@@ -107,7 +115,7 @@ def export_store(store) -> dict:
             else:
                 proj = [f"a.{src_pk} AS _from", f"b.{dst_pk} AS _to"]
                 proj += [f"r.{p} AS {p}" for p in have]
-                rows = store.run(
+                rows = _q(
                     f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(proj)}")
         for r in rows or []:
             # 끝점 라벨을 함께 적는다 — 다중 FROM/TO 쌍 테이블(v11 IN_DOMAIN)에서는
@@ -117,16 +125,18 @@ def export_store(store) -> dict:
                           "to": r.pop("_to"), "from_label": src, "to_label": dst,
                           "props": r})
     return {"dump_version": _DUMP_VERSION, "schema_version": _schema.SCHEMA_VERSION,
-            "nodes": nodes, "edges": edges, "meta": _export_meta(store)}
+            "nodes": nodes, "edges": edges, "meta": _export_meta(store, raw=raw)}
 
 
-def _export_meta(store) -> dict[str, list[dict]]:
-    """메타(`_`-접두) 테이블 행. 없는 테이블은 빈 집합(구 스토어 호환)."""
+def _export_meta(store, *, raw: bool = False) -> dict[str, list[dict]]:
+    """메타(`_`-접두) 테이블 행. 없는 테이블은 빈 집합(구 스토어 호환).
+    툼스톤·동기화 기준본은 노드 키를 열에 품으므로 노드와 같은 ``raw`` 로 읽는다."""
     out: dict[str, list[dict]] = {}
     for label, spec in _schema.meta_table_specs().items():
         proj = ", ".join(f"n.{c} AS {c}" for c in spec["cols"])
         try:
-            out[label] = store.run(f"MATCH (n:{label}) RETURN {proj}") or []
+            q = f"MATCH (n:{label}) RETURN {proj}"
+            out[label] = (store.run(q, raw=True) if raw else store.run(q)) or []
         except Exception:
             out[label] = []
     return out
@@ -249,8 +259,31 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
     # 두면 그 방향이 뒤집힌다), 재큐를 호출부에 미루면 "재구축했는데 재큐를 안 한"
     # 스토어를 만들 수 있다 — 그것이 정확히 이 함수가 막으려는 무음 실패다.
     from api.docstore import switch_embed_model
+    from . import pkns
 
-    dump = export_store(src)
+    # 🔴 물리 키로 읽는다. 플래그가 켜진 런타임에서 기본 읽기는 owner U+001F id 를 논리 id 로
+    # 벗기고, 그 덤프를 적재하면 새 스토어의 키가 논리로 남아 정확 id 조회가 전부 죽고
+    # 같은 논리 id 를 가진 소유자 둘이 한 행으로 접힌다. 2026-09-11 라이브 재구축이 정확히
+    # 그렇게 됐다. 근거: [[decision:bge-m3-adoption]]
+    dump = export_store(src, raw=pkns.enabled())
+    if pkns.enabled():
+        # 원본이 이미 논리 키면(네임스페이싱 이관을 안 거친 스토어, 또는 사고로 벗겨진
+        # 스토어) 재구축은 그것을 고칠 수 없다 — 그대로 옮기면 같은 고장을 새 파일에
+        # 복제한다. 큰 소리로 멈춘다. 처방은 scripts/migrate_pk_namespacing.py 다.
+        # 합성되는 것은 **그래프 노드의 id** 다(fragment 쓰기 경로가 `pkns.key` 로 바인딩하는
+        # 네 종). Chunk·ChunkVec 의 키는 문서 id 를 품어 소유자별로 이미 유일하고, NodeVec 은
+        # `owner#node_id` 라는 자기 규약을 쓴다 — 셋은 SEP 이 없는 것이 정상이라 여기서 보지
+        # 않는다(보면 정상 스토어를 거절한다. 실측: 시험의 Chunk 'doc:0#00000').
+        specs = _schema.node_table_specs()
+        for label in ("Concept", "Record", "Decision", "Episode"):
+            pk = specs[label]["pk"]
+            bare = [r.get(pk) for r in dump["nodes"].get(label) or []
+                    if r.get(pk) and pkns.SEP not in str(r.get(pk))]
+            if bare:
+                raise RuntimeError(
+                    f"{label}: 네임스페이싱이 켜진 런타임인데 논리 키 행이 {len(bare)}건이다"
+                    f"(예: {bare[0]!r}). 재구축은 키를 고치지 못한다 — "
+                    "scripts/migrate_pk_namespacing.py 로 먼저 합성할 것")
     dropped = len(dump["nodes"].pop("ChunkVec", None) or [])
     # 노드 미러(NodeVec, v17)도 같은 이유로 버린다: 옛 차원의 벡터라 새 열에 안 들어가고,
     # 어차피 컨테이너 기동이 전량 재구축한다(`docker-entrypoint.sh` 의 미러 재구축).
