@@ -1,0 +1,69 @@
+{
+ "n": 31,
+ "no": 32,
+ "part": 4,
+ "file": "Ch31.dc.html",
+ "slot": "vinc.book.31-migration.en",
+ "title": "The Cost of Changing a Model and Storage Structure",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "32.0",
+   "eyebrow": "Part 4 · Chapter 32",
+   "h": "The Cost of Changing a Model and Storage Structure",
+   "paras": [
+    "An embedding vector's dimension isn't just a model property. If storage is built to hold vectors of a particular width, that width becomes a storage contract.",
+    "So adding an embedding model with a different width isn't a simple configuration change: a model using a different vector width can't just be dropped into the existing structure."
+   ],
+   "claim": "VINC's existing store uses a fixed vector width."
+  },
+  {
+   "paras": [
+    "One distinction matters here:",
+    "Even after the storage structure changes, embeddings for existing chunks still need to be regenerated.",
+    "The process required looks like this:",
+    "So the cost of changing a model shouldn't be calculated as just the cost of a schema migration."
+   ],
+   "h": "Changing the Schema and Regenerating Data Are Different Things",
+   "diagrams": [
+    "Schema migration ≠ Embedding migration",
+    "existing chunks\n    ↓\nnew embedding model\n    ↓\nre-embed\n    ↓\nnew vectors\n    ↓\nrebuild the vector index\n    ↓\nvalidate retrieval"
+   ],
+   "claim": "Changing the DDL alone doesn't transform existing documents' embeddings into the new semantic space.",
+   "label": "32.1"
+  },
+  {
+   "paras": [
+    "In VINC's measurements, reindexing a few hundred chunks took around 25 seconds. Embedding generation varied far more by model: some models took more than three times longer to re-embed than others.",
+    "Scale that up proportionally, and you're looking at hours for thousands of chunks, and half a day or more for tens of thousands.",
+    "These numbers are observations from a specific environment, not an absolute baseline for every environment. But one fact is clear:"
+   ],
+   "h": "The Actual Cost of Rebuilding",
+   "claim": "Changing an embedding model can become a migration workload, not a configuration change.",
+   "label": "32.2"
+  },
+  {
+   "paras": [
+    "Changing a model affects more than data structure: it also touches things like an embedding worker's branching logic. Problems can surface in places like prefix handling meant to distinguish between models.",
+    "Issues like this don't show up in benchmark numbers alone. So migration evaluation has to include:"
+   ],
+   "h": "Implementation Bugs Are Part of the Migration Cost Too",
+   "diagrams": [
+    "Schema compatibility\n+ Worker compatibility\n+ Model registry\n+ Re-embedding\n+ Index rebuild\n+ Retrieval validation"
+   ],
+   "claim": "In the end, choosing a model isn't a comparison of model performance: it's a comparison of the cost of changing the entire storage and execution path.",
+   "label": "32.3"
+  },
+  {
+   "kind": "close",
+   "label": "32.close",
+   "paras": [
+    "The next chapter is the most dangerous case in Part 4: the run that produced normal numbers and measured the wrong thing."
+   ],
+   "nextLabel": "Chapter 33. Failures That Look Like Success",
+   "nextHref": "Ch32.dc.html"
+  }
+ ]
+}

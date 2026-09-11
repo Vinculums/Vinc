@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/depth.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/tokens/base.css">
+  <link rel="stylesheet" href="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/styles.css">
+  <script src="_ds/vinc-signal-design-system-5dc39aea-1902-4017-ba17-3e68c3f914bb/_ds_bundle.js"></script>
+  <style>
+    html, body { margin: 0; background: #F2F2F0; color: #17171A; }
+    a { color: #17171A; text-decoration: none; }
+    a:hover { color: #4A4F8C; }
+    [data-step] p { text-wrap: pretty; word-break: keep-all; }
+    @media (max-width: 900px) {
+      [data-layout="main"] { grid-template-columns: minmax(0, 1fr) !important; }
+      [data-layout="canvas"] { order: 0 !important; height: 46vh !important; padding: 56px 24px 8px !important; background: #F2F2F0; z-index: 1; }
+      [data-layout="text"] { order: 1 !important; padding: 0 24px !important; }
+      [data-layout="text"] [data-step] { min-height: 60vh !important; }
+    }
+    @media (prefers-reduced-motion: reduce) { [data-step], [data-mark], [data-line] { transition: none !important; } }
+  </style>
+</helmet>
+<div style="font-family: Pretendard, ui-sans-serif, system-ui, sans-serif; background: #F2F2F0; color: #17171A; min-height: 100vh; -webkit-font-smoothing: antialiased;">
+  <header style="position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; font-size: 13px; color: #55565E; z-index: 2; pointer-events: none;">
+    <a href="Vinc About.dc.html" style="pointer-events: auto; font-weight: 500;">Vinc Book</a>
+    <span style="font-variant-numeric: tabular-nums;">Part 0, Chapter 7</span>
+  </header>
+  <main data-layout="main" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start;">
+    <div data-layout="text" style="padding: 0 48px 0 max(48px, 7vw); order: {{ textOrder }};">
+
+      <section data-step="0" data-screen-label="7.0" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 96px 0 64px; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 16px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">Chapter 7</p>
+        <h1 style="margin: 0 0 28px; font-size: 36px; line-height: 1.15; font-weight: 600; letter-spacing: -0.022em; text-wrap: pretty; word-break: keep-all;">The Being That Uses Memory</h1>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">But memory does not act by itself.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Something has to read it, compare it with the present, find what matters, and create new judgments when necessary.</p>
+        <p style="margin: 28px 0 12px; font-size: 21px; line-height: 1.45; font-weight: 500;">Memory needs a user.</p>
+        <p style="margin: 0; font-size: 17px; line-height: 1.6;">We call that user an Agent.</p>
+      </section>
+
+      <section data-step="1" data-screen-label="7.1" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.1</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">An Agent Changes According to What It Reads</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Even with the same model, behavior changes according to what the model is allowed to read.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">An Agent that sees only the current question and an Agent that also sees past decisions and failures will approach the same problem differently.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">An agent is what it reads.</p>
+      </section>
+
+      <section data-step="2" data-screen-label="7.2" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.2</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Giving Memory to an Agent</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Giving an LLM a graph-search tool does not by itself create an Agent with memory.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">If an Agent reads the current situation, finds related Concepts, checks past Decisions, avoids previously failed approaches, and proposes new memory when necessary, the graph becomes more than a knowledge base.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">It becomes the Agent's working context.</p>
+      </section>
+
+      <section data-step="3" data-screen-label="7.3" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.3</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">An Agent Can Also Be a Node in the Graph</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">If we think of an Agent only as a prompt or code bundle, changing roles or connecting multiple Agents becomes difficult.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">So in Vinc, a Role can be treated as a node.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">The Agent is not merely an executor. It becomes a graph node with a contract.</p>
+      </section>
+
+      <section data-step="4" data-screen-label="7.4" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.4</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">But an Agent Node Is Not a Static Manual</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Real work keeps changing.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">A role may begin simply and then encounter a new problem. Another Agent may deliver new information. The Agent may discover its own failure. A person may change a priority.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">Node identity and node content are not the same thing.</p>
+      </section>
+
+      <section data-step="5" data-screen-label="7.5" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.5</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Communication Between Agents Becomes Memory</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">A Design Agent may discover a constraint during implementation. Passing that fact to an Implementation Agent changes the conditions of the next task.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">The important thing is not the conversation itself, but how the graph's meaning changes because of the conversation.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">One Agent's experience becomes another Agent's memory.</p>
+      </section>
+
+      <section data-step="6" data-screen-label="7.6" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.6</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Workflow Is Also a Relationship</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">When several Agents work together, an order naturally appears.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">This order could be hard-coded in orchestration code. But when represented in the graph, the relationship between Agents becomes memory itself.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">Workflow is also a relationship.</p>
+      </section>
+
+      <section data-step="7" data-screen-label="7.7" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.7</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">One Failure Becomes Memory for the Next Task</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">An Agent can make a mistake. What matters is that the failure does not disappear into a log.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">If its cause is understood and preserved as memory applicable to a role or task, the next Agent can read it.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">One failure can become a constraint on the next task.</p>
+      </section>
+
+      <section data-step="8" data-screen-label="7.8" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.8</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">Controlling an Agent Is Not the Same as Trusting It</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Recording a role and its rules in the graph does not mean the graph physically enforces every behavior.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">Vinc is therefore neither merely a scheduler nor an executor. It is a memory structure that describes the context in which an Agent should act.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">Providing memory and enforcing action are different problems.</p>
+      </section>
+
+      <section data-step="9" data-screen-label="7.9" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.9</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">When Memory Changes, the Agent Changes</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">The initial Agent has limited information. As work proceeds, it learns Concepts, forms relationships with other Agents, experiences failures, and receives new judgments from people.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">These values change over time. But the change should not be arbitrary overwriting.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">We should be able to trace what changed and why.</p>
+      </section>
+
+      <section data-step="10" data-screen-label="7.10" style="min-height: 92vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 13px; color: #82838D; font-variant-numeric: tabular-nums;">7.10</p>
+        <h2 style="margin: 0 0 20px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;">The Agent Is Both User and Producer of Memory</h2>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">At first, the Agent appears to be something that takes memory from the graph. But the flow also goes in the opposite direction.</p>
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">The Agent reads memory, makes judgments, performs work, and produces new facts, failures, and decisions. Those are then recorded back into the graph.</p>
+        <p style="margin: 28px 0 0; font-size: 21px; line-height: 1.45; font-weight: 500;">The Agent is both a user of memory and a producer of new memory.</p>
+      </section>
+
+      <section data-step="11" data-screen-label="7.close" style="min-height: 70vh; display: flex; flex-direction: column; justify-content: center; max-width: 32rem; padding: 64px 0 128px; transition: opacity .3s cubic-bezier(.22,1,.36,1);">
+        <p style="margin: 0 0 12px; font-size: 17px; line-height: 1.6;">If an Agent reads memory and acts on it, what happens when that memory is wrong?</p>
+        <p style="margin: 0 0 32px; font-size: 17px; line-height: 1.6;">Once we give an Agent memory, we have to ask whether that memory deserves to be trusted.</p>
+        <a href="Vinc About.dc.html" style="font-size: 15px; line-height: 1.5; color: #55565E;">Chapter 8. Can We Trust Memory</a>
+      </section>
+
+    </div>
+    <div data-layout="canvas" style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 64px 48px; box-sizing: border-box; order: {{ canvasOrder }};">
+      {{ canvas }}
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;textSide&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;left&quot;,&quot;right&quot;],&quot;default&quot;:&quot;left&quot;,&quot;tsType&quot;:&quot;'left' | 'right'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;triggerLine&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.5,&quot;min&quot;:0.3,&quot;max&quot;:0.7,&quot;step&quot;:0.05,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Scroll&quot;}}">
+const INK = '#17171A', PAPER = '#F2F2F0';
+const ENTER = 'cubic-bezier(.22,1,.36,1)', LEAVE = 'cubic-bezier(.4,0,.7,1)';
+const pol = (cx, cy, rad, deg) => [cx + rad * Math.cos(deg * Math.PI / 180), cy + rad * Math.sin(deg * Math.PI / 180)];
+const CONTRACT = ['Mission', 'Reading list', 'Allowed surface', 'Gates', 'Never', 'Person only', 'Model rung'];
+const MARKS = [
+  { id: 'g0', shape: 'circle', p: [130, 330], r: 11, at: 0 },
+  { id: 'g1', shape: 'hex', p: [80, 290], r: 9, at: 0 },
+  { id: 'g2', shape: 'circle', p: [90, 382], r: 8, at: 0 },
+  { id: 'g3', shape: 'hex', p: [172, 268], r: 9, at: 0 },
+  { id: 'g4', shape: 'circle', p: [182, 392], r: 8, at: 0 },
+  { id: 'q', shape: 'hex', p: [270, 110], r: 10, at: 1, label: 'the current question', labelAt: 1, pos: 'above' },
+  { id: 'A', shape: 'ring', p: [330, 190], r: 16, at: 1, dim: 2 },
+  { id: 'B', shape: 'ring', p: [330, 360], r: 16, at: 1, label: 'Agent(t)', labelAt: 9, pos: 'above' },
+  { id: 'oA', shape: 'circle', p: [412, 190], r: 7, at: 1, dim: 2 },
+  { id: 'oB', shape: 'diamond', p: [412, 360], r: 8, at: 1 },
+  ...CONTRACT.map((t, i) => ({ id: 'c' + i, shape: 'circle', p: [450, 300 + i * 28], r: 4.5, at: 3, label: t, labelAt: 3, pos: 'right' })),
+  { id: 'h1', shape: 'hex', p: [330, 482], r: 9, at: 4, label: 'current state', labelAt: 4, pos: 'below' },
+  { id: 'h2', shape: 'hex', p: [400, 506], r: 9, at: 4, label: 'discovered problem', labelAt: 4, pos: 'below' },
+  { id: 'h3', shape: 'hex', p: [472, 526], r: 9, at: 4, label: 'new knowledge', labelAt: 4, pos: 'below' },
+  { id: 'D', shape: 'ring', p: [620, 100], r: 12, at: 5, label: 'Design Agent', labelAt: 5, pos: 'left' },
+  { id: 'cst', shape: 'hex', p: [560, 150], r: 8, at: 5, label: 'Constraint', labelAt: 5, pos: 'left' },
+  { id: 'I', shape: 'ring', p: [620, 200], r: 12, at: 5, label: 'Implementation Agent', labelAt: 5, pos: 'left' },
+  { id: 'V', shape: 'ring', p: [620, 300], r: 12, at: 5, label: 'Verification Agent', labelAt: 5, pos: 'left' },
+  { id: 'Del', shape: 'diamond', p: [620, 400], r: 9, at: 6, label: 'Delivery', labelAt: 6, pos: 'left' },
+  { id: 'b1', shape: 'circle', p: [232, 470], r: 7, at: 7, dim: 7 },
+  { id: 'b2', shape: 'circle', p: [172, 540], r: 7, at: 7, dim: 7 },
+  { id: 'f', shape: 'hex', p: [104, 472], r: 9, at: 7, label: 'Failure Record', labelAt: 7, pos: 'below' },
+];
+const LINES = [
+  { from: 'g0', to: 'g1', at: 0 }, { from: 'g0', to: 'g2', at: 0 }, { from: 'g0', to: 'g3', at: 0 }, { from: 'g0', to: 'g4', at: 0 }, { from: 'g1', to: 'g3', at: 0 },
+  { from: 'q', to: 'A', at: 1, dir: true }, { from: 'q', to: 'B', at: 1, dir: true, side: 1 },
+  { from: 'g0', to: 'B', at: 1, dir: true, side: -1, label: 'read', labelAt: 2 }, { from: 'g3', to: 'B', at: 1, dir: true },
+  { from: 'A', to: 'oA', at: 1, dir: true, dim: 2 }, { from: 'B', to: 'oB', at: 1, dir: true },
+  { from: 'g1', to: 'B', at: 2, dir: true, side: -1 }, { from: 'g4', to: 'B', at: 2, dir: true, side: 1 },
+  ...CONTRACT.map((t, i) => ({ from: 'B', to: 'c' + i, at: 3, side: i < 3 ? -1 : 1 })),
+  { from: 'h1', to: 'B', at: 4, dir: true }, { from: 'h2', to: 'B', at: 4, dir: true }, { from: 'h3', to: 'B', at: 4, dir: true },
+  { from: 'D', to: 'cst', at: 5, dir: true, label: 'discovery', labelAt: 5, side: -1 },
+  { from: 'cst', to: 'I', at: 5, dir: true, label: 'transfer', labelAt: 5, side: -1 },
+  { from: 'I', to: 'V', at: 5, dir: true, label: 'change', labelAt: 5, side: 1 },
+  { from: 'D', to: 'I', at: 6, dir: true, side: -1 }, { from: 'V', to: 'Del', at: 6, dir: true, side: 1 },
+  { from: 'B', to: 'b1', at: 7, dir: true, dim: 7 }, { from: 'b1', to: 'b2', at: 7, dir: true, dim: 7 },
+  { from: 'f', to: 'B', at: 7, dir: true, label: 'applies to', labelAt: 7, side: 1 },
+  { from: 'B', to: 'g0', at: 10, dir: true, side: -1, label: 'write', labelAt: 10 },
+];
+const BY = {}; MARKS.forEach(m => BY[m.id] = m);
+const GI = {}; { const c = {}; MARKS.forEach(m => { GI[m.id] = c[m.at] = (c[m.at] || 0); c[m.at]++; }); }
+const LAST_STEP = 11;
+
+function shapePath(m) {
+  const [x, y] = m.p, r = m.r;
+  if (m.shape === 'hex') return Array.from({ length: 6 }, (_, k) => pol(x, y, r, 60 * k - 30).join(',')).join(' ');
+  if (m.shape === 'diamond') return [[x, y - r], [x + r, y], [x, y + r], [x - r, y]].map(p => p.join(',')).join(' ');
+  return null;
+}
+function labelAttrs(m) {
+  const [x, y] = m.p, r = m.r;
+  if (m.pos === 'right') return { x: x + r + 8, y: y + 4, textAnchor: 'start' };
+  if (m.pos === 'left') return { x: x - r - 8, y: y + 4, textAnchor: 'end' };
+  if (m.pos === 'above') return { x, y: y - r - 10, textAnchor: 'middle' };
+  return { x, y: y + r + 16, textAnchor: 'middle' };
+}
+
+class Component extends DCLogic {
+  state = { step: 0 };
+  componentDidMount() {
+    this.reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.onScroll = () => { if (this.raf) return; this.raf = requestAnimationFrame(() => { this.raf = 0; this.spy(); }); };
+    document.addEventListener('scroll', this.onScroll, true);
+    window.addEventListener('resize', this.onScroll);
+    this.spy(); setTimeout(() => this.spy(), 300); setTimeout(() => this.spy(), 1200);
+    this.onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
+      const dir = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : (e.key === 'ArrowUp' || e.key === 'k') ? -1 : 0;
+      if (!dir) return;
+      const els = Array.from(document.querySelectorAll('[data-step]'));
+      const next = els[Math.max(0, Math.min(els.length - 1, this.state.step + dir))];
+      if (!next) return;
+      e.preventDefault();
+      const line = window.innerHeight * (this.props.triggerLine ?? 0.5);
+      const top = next.getBoundingClientRect().top;
+      const target = window.innerWidth <= 900 ? top - window.innerHeight * 0.46 - 16 : top - line + Math.min(48, next.getBoundingClientRect().height * 0.1);
+      window.scrollBy({ top: target, behavior: this.reduced ? 'auto' : 'smooth' });
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() {
+    document.removeEventListener('scroll', this.onScroll, true);
+    window.removeEventListener('resize', this.onScroll);
+    window.removeEventListener('keydown', this.onKey);
+  }
+  spy() {
+    const els = Array.from(document.querySelectorAll('[data-step]'));
+    if (!els.length) return;
+    const line = window.innerWidth <= 900 ? window.innerHeight * 0.46 + 80 : window.innerHeight * (this.props.triggerLine ?? 0.5);
+    let a = 0;
+    els.forEach((el, i) => { if (el.getBoundingClientRect().top <= line) a = i; });
+    els.forEach((el, i) => { el.style.opacity = i === a ? '1' : '0.35'; });
+    const step = Math.min(a, LAST_STEP);
+    if (step !== this.state.step) this.setState({ step });
+  }
+  renderCanvas() {
+    const s = this.state.step, E = React.createElement;
+    const marks = MARKS.map(m => {
+      const vis = s >= m.at, dim = m.dim != null && s >= m.dim;
+      const op = vis ? (dim ? 0.4 : 1) : 0;
+      const tr = !vis ? `opacity .2s ${LEAVE}, transform .2s ${LEAVE}`
+        : dim ? `opacity .2s ${LEAVE}` : `opacity .3s ${ENTER} ${GI[m.id] * 25}ms, transform .3s ${ENTER} ${GI[m.id] * 25}ms`;
+      const kids = [];
+      if (m.shape === 'circle') kids.push(E('circle', { key: 's', cx: m.p[0], cy: m.p[1], r: m.r, fill: INK }));
+      else if (m.shape === 'ring') kids.push(
+        E('circle', { key: 's', cx: m.p[0], cy: m.p[1], r: m.r, fill: PAPER, stroke: INK, strokeWidth: 1.5 }),
+        E('circle', { key: 'd', cx: m.p[0], cy: m.p[1], r: m.r * 0.42, fill: INK }));
+      else kids.push(E('polygon', { key: 's', points: shapePath(m), fill: m.shape === 'diamond' ? INK : PAPER, stroke: INK, strokeWidth: 1.25, strokeLinejoin: 'round' }));
+      if (m.label) {
+        const lv = s >= m.labelAt;
+        kids.push(E('text', { key: 'l', ...labelAttrs(m), fontSize: 12.5, fontStyle: 'italic', fill: INK,
+          style: { opacity: lv ? 1 : 0, transition: `opacity .3s ${ENTER} 150ms` } }, m.label));
+      }
+      return E('g', { key: m.id, 'data-mark': m.id, style: { opacity: op, transform: vis ? 'scale(1)' : 'scale(.85)', transformBox: 'fill-box', transformOrigin: 'center', transition: tr } }, kids);
+    });
+    // the contract is described, not enforced: one hairline beside the column
+    const brk = E('g', { key: 'brk', style: { opacity: s >= 8 ? 1 : 0, transition: `opacity .3s ${ENTER}` } },
+      E('path', { d: 'M438,292 L438,478', fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1, style: { strokeDashoffset: s >= 8 ? 0 : 1, transition: s >= 8 ? `stroke-dashoffset .5s ${ENTER}` : `stroke-dashoffset .2s ${LEAVE}` } }),
+      E('text', { x: 438, y: 496, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic', fill: INK }, 'describes the context'));
+    const lines = LINES.map((l, i) => {
+      const a = BY[l.from], b = BY[l.to], vis = s >= l.at, dim = l.dim != null && s >= l.dim;
+      const dx = b.p[0] - a.p[0], dy = b.p[1] - a.p[1], d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
+      const P0 = [a.p[0] + ux * (a.r + 2), a.p[1] + uy * (a.r + 2)];
+      const gap = b.r + 2 + (l.dir ? 5 : 0);
+      const P2 = [b.p[0] - ux * gap, b.p[1] - uy * gap];
+      const side = l.side ?? (i % 2 ? 1 : -1);
+      const k = d * 0.1 * side, nx = -uy, ny = ux;
+      const C = [(P0[0] + P2[0]) / 2 + nx * k, (P0[1] + P2[1]) / 2 + ny * k];
+      const mid = [0.25 * P0[0] + 0.5 * C[0] + 0.25 * P2[0], 0.25 * P0[1] + 0.5 * C[1] + 0.25 * P2[1]];
+      const dAttr = `M${P0[0]},${P0[1]} Q${C[0]},${C[1]} ${P2[0]},${P2[1]}`;
+      const delay = (a.at === l.at || b.at === l.at) ? 450 : 150;
+      const tr = vis ? `stroke-dashoffset .5s ${ENTER} ${delay}ms, opacity .2s ${ENTER} ${delay}ms` : `stroke-dashoffset .2s ${LEAVE}, opacity .2s ${LEAVE}`;
+      const kids = [E('path', { key: 'p', d: dAttr, fill: 'none', stroke: INK, strokeWidth: 1, pathLength: 1, strokeDasharray: 1, style: { strokeDashoffset: vis ? 0 : 1, transition: tr } })];
+      if (l.dir) {
+        const ang = Math.atan2(P2[1] - C[1], P2[0] - C[0]) * 180 / Math.PI;
+        kids.push(E('path', { key: 'h', d: 'M-6,-4 L0,0 L-6,4', fill: 'none', stroke: INK, strokeWidth: 1, strokeLinecap: 'round',
+          transform: `translate(${P2[0]},${P2[1]}) rotate(${ang})`, style: { opacity: vis ? 1 : 0, transition: vis ? `opacity .2s ${ENTER} ${delay + 450}ms` : `opacity .15s ${LEAVE}` } }));
+      }
+      if (l.label) {
+        const lv = s >= l.labelAt;
+        kids.push(E('text', { key: 'l', x: mid[0] + nx * 12 * side, y: mid[1] + ny * 12 * side + 4, textAnchor: 'middle', fontSize: 12.5, fontStyle: 'italic', fill: INK,
+          style: { opacity: lv ? 1 : 0, transition: `opacity .3s ${ENTER}` } }, l.label));
+      }
+      return E('g', { key: l.from + '-' + l.to, 'data-line': l.from + '-' + l.to, style: { opacity: vis ? (dim ? 0.12 : 0.85) : 0, transition: `opacity .2s ${LEAVE}` } }, kids);
+    });
+    return E('svg', { viewBox: '40 60 620 540', width: '100%', height: '100%', style: { maxWidth: 'min(100%, calc((100vh - 128px) * 1.15))', maxHeight: '100%', display: 'block', overflow: 'visible', fontFamily: 'Pretendard, ui-sans-serif, system-ui, sans-serif' } },
+      E('g', { key: 'lines' }, lines), brk, E('g', { key: 'marks' }, marks));
+  }
+  renderVals() {
+    const side = this.props.textSide ?? 'left';
+    return { canvas: this.renderCanvas(), textOrder: side === 'left' ? 0 : 1, canvasOrder: side === 'left' ? 1 : 0 };
+  }
+}
+</script>
+</body>
+</html>

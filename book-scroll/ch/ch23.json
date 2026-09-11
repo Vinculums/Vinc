@@ -1,0 +1,162 @@
+{
+ "n": 23,
+ "no": 24,
+ "part": 3,
+ "file": "Ch23.dc.html",
+ "slot": "vinc.book.23-temporal.en",
+ "title": "What Time Exists in Memory",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "24.0",
+   "eyebrow": "Part 3 · Chapter 24",
+   "h": "What Time Exists in Memory",
+   "paras": [
+    "Time isn't singular in memory.",
+    "When an event described by a record actually happened, when that record entered the Graph, and how long the claim it makes holds are three different questions."
+   ],
+   "claim": "VINC keeps them on three axes: world time, graph time, and validity."
+  },
+  {
+   "paras": [
+    "World time belongs to whatever memory is describing. When a Concept or Record describes an event or fact, content_time can express when that referent occurred."
+   ],
+   "h": "World Time",
+   "diagrams": [
+    "Record\n  content_time = 2026-08-20"
+   ],
+   "claim": "That value can differ from when the Record was actually stored in the Graph.",
+   "label": "24.1"
+  },
+  {
+   "paras": [
+    "Graph time describes when an object was created or changed inside the Graph itself. Concepts and Records carry graph-state fields like created, updated_at, rev, sync_seq."
+   ],
+   "h": "Graph Time",
+   "diagrams": [
+    "World time\n    ↓\nwhat happened\n\nGraph time\n    ↓\nwhen the graph knew about it or changed it"
+   ],
+   "claim": "Neither can substitute for the other.",
+   "label": "24.2"
+  },
+  {
+   "paras": [
+    "Say an event happened on August 20 and got recorded on September 1.",
+    "Likewise, an old event's record being edited recently doesn't mean the event happened again."
+   ],
+   "h": "Mixing the Two Clocks Causes Errors",
+   "diagrams": [
+    "Event\ncontent_time = Aug 20\n\nRecord\ncreated = Sep 1"
+   ],
+   "claim": "A Record being recently created doesn't mean the event happened on September 1.",
+   "label": "24.3"
+  },
+  {
+   "paras": [
+    "If content_time marks when an event occurred, valid_from and valid_until mark the interval over which the claim itself holds. Pricing or policy information can be true at one point and no longer true now. In cases like that, the event's timing has to stay separate from the claim's window.",
+    "The window is half-open: a claim holds from valid_from until, but not including, valid_until. And a claim with no window stated is read as current. That reading is load-bearing rather than tidy. When the policy was adopted, seven Records in ten in the graph carried no validity at all, because most of them assert nothing about a present state. A default that hid every unstated claim would have hidden the present, not the stale."
+   ],
+   "h": "Validity Is the Third Axis",
+   "diagrams": [
+    "Record\n  content_time = when it happened\n  valid_from   = from when the claim holds\n  valid_until  = from when it no longer does"
+   ],
+   "claim": "What hides a claim is one thing only: an explicit valid_until.",
+   "label": "24.4"
+  },
+  {
+   "paras": [
+    "Whether a claim is current, historical, or not yet in force follows from the window and the clock. It is computed at read time and never written down. A stored status would duplicate what the fields already say, and would drift from them the moment either moved.",
+    "A Record whose valid_until has passed is still a true account of what held then. Invalidation means the claim is no longer the operative one, not that it was wrong."
+   ],
+   "h": "Currency Is Derived, Never Stored",
+   "diagrams": [
+    "current     = valid_from unset or past, and valid_until unset or ahead\nhistorical  = valid_until has passed\nfuture      = valid_from is still ahead"
+   ],
+   "claim": "Historical is not false.",
+   "label": "24.5"
+  },
+  {
+   "paras": [
+    "A Decision represents a judgment made inside the system rather than an external event, so it carries no content_time; its graph time says when it was made. But a Decision that sets a policy, \"we encode with this model\", \"this many replicas\", can be replaced by a later one, and then it needs a window as much as a Record does. A Decision that records a one-time judgment does not.",
+    "This is a kind-by-kind model, and that has to be accepted rather than flattened away."
+   ],
+   "h": "Decisions Carry Validity When They Can Be Replaced",
+   "claim": "So operational and policy Decisions carry a validity interval.",
+   "label": "24.6"
+  },
+  {
+   "paras": [
+    "When a new claim replaces an old one at time T, the old claim's valid_until is set to T, the new claim's valid_from to T, and the old points at the new as superseded.",
+    "For material that carries authority, supersession is required, not optional, and the reason was measured on a document about this very subject. A measurement report was true when written in the early morning and false in four places by mid-morning, overtaken by the work it described. No valid_until could have caught it, because nobody knew at dawn that the claims would be replaced; a window needs an author who already knows the end. What that document needed was a successor pointing back at it.",
+    "As of this writing the write path cannot store the succession as a relation, so it is carried as a property on the claim. That is an encoding, not the design."
+   ],
+   "h": "Supersession",
+   "diagrams": [
+    "old claim\n  valid_until = T\n  ── superseded by ──►  new claim\n                          valid_from = T"
+   ],
+   "claim": "Both remain: a timeline can show the succession without anything being deleted.",
+   "label": "24.7"
+  },
+  {
+   "paras": [
+    "An Episode exists to recall what happened, in chronological order. So its core property is its position on a timeline.",
+    "Applying the graph's creation-time model straight onto an Episode can blur its meaning."
+   ],
+   "h": "Episodes Have Yet Another Temporal Structure",
+   "claim": "Which is why forcing the same time fields onto every Node kind, uniformly, isn't the right design.",
+   "label": "24.8"
+  },
+  {
+   "paras": [
+    "Two events sitting in chronological order doesn't prove one caused the other.",
+    "and",
+    "are different claims.",
+    "Relations like prerequisite_of, derives_from, and inherits_from carry a structural meaning stronger than a simple date comparison.",
+    "This doesn't just mean A's date comes earlier than B's."
+   ],
+   "h": "Causal Time Is a Different Problem Entirely",
+   "diagrams": [
+    "A happened before B",
+    "A caused B",
+    "A ──prerequisite_of──> B"
+   ],
+   "claim": "It means A has to come first for B to be understood or to hold at all.",
+   "label": "24.9"
+  },
+  {
+   "paras": [
+    "Apply causal relationships to the Graph, and you can explore, from a given Node, both what influenced it and what it influences.",
+    "This isn't a fourth clock."
+   ],
+   "h": "A Causal Cone Spatializes Time",
+   "diagrams": [
+    "        upstream\n           ↑\n           │\n      ┌────A────┐\n      │    │    │\n      B    C    D\n           │\n           ↓\n        downstream"
+   ],
+   "claim": "It's time and causal relationships expressed as two different structures within the graph.",
+   "label": "24.10"
+  },
+  {
+   "paras": [
+    "VINC's View design doesn't treat time as a separate viewpoint: it treats it as a state axis shared across 3D and 2D.",
+    "Blur these two together, and the View model gets needlessly complicated."
+   ],
+   "h": "Time Is Not a Viewpoint",
+   "diagrams": [
+    "Viewpoint\n= how it's being viewed\n\nTime\n= which temporal state is being viewed"
+   ],
+   "claim": "Time isn't a matter of swapping camera or renderer: it constrains the state of the data itself.",
+   "label": "24.11"
+  },
+  {
+   "kind": "close",
+   "label": "24.close",
+   "paras": [
+    "The next chapter turns to what nodes and edges look like once they are on a screen."
+   ],
+   "nextLabel": "Chapter 25. How Nodes and Edges Become Visible",
+   "nextHref": "Ch24.dc.html"
+  }
+ ]
+}

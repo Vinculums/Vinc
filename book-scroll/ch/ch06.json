@@ -1,0 +1,120 @@
+{
+ "n": 6,
+ "no": 6,
+ "part": 0,
+ "file": "Ch06.dc.html",
+ "slot": "vinc.book.06-space.en",
+ "title": "Memory Needs Space",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "6.0",
+   "eyebrow": "Part 0 · Chapter 6",
+   "h": "Memory Needs Space",
+   "paras": [
+    "In Chapter 5 we saw that memory needs grammar. Defining what to remember is not enough; when several people read and write the same graph, the memory needs common rules.",
+    "Once memory begins to have structure, another question appears. How should we look at it?",
+    "We can view memory as a list. But a list shows individual items without making their relationships easy to see at a glance.",
+    "A graph has relationships. Those relationships need a space in which people can read them."
+   ],
+   "claim": "A view does not create a new graph. It looks at the same graph through a different question."
+  },
+  {
+   "label": "6.1",
+   "h": "A List Is Not Enough",
+   "paras": [
+    "Imagine a project with hundreds of concepts, records, and decisions. Search can find individual items.",
+    "But understanding where a decision began, what record supported it, and which later decisions followed it requires more than a page of search results.",
+    "One view shows surrounding connections. Another shows overall structure. Another shows the flow of time.",
+    "These are not different graphs. They are windows through which the same memory can be read from different directions.",
+    "Where the decision began, what supported it, and what followed from it are three questions a result list answers one row at a time."
+   ]
+  },
+  {
+   "label": "6.2",
+   "h": "Space Makes Relationships Visible",
+   "paras": [
+    "People are accustomed to understanding connected information spatially. We perceive nearby things as related, and distant things as belonging to different areas.",
+    "That does not mean spatial position always represents real meaning accurately.",
+    "So Vinc does not try to reproduce the physical world as a map. Space here is a representation for reading graph structure.",
+    "The important question is not whether the layout is beautiful, but whether the same layout communicates the same meaning consistently from the same graph.",
+    "The layout is doing work either way; the only question is whether the work is repeatable."
+   ]
+  },
+  {
+   "label": "6.3",
+   "h": "The Same Memory Stays in the Same Place",
+   "paras": [
+    "A force-directed layout that produces a new arrangement on every pass may look natural, but it makes spatial memory impossible.",
+    "If a concept is in the upper left today and the lower right tomorrow, people cannot learn the space itself.",
+    "So the coordinates are not decoration. Layout should be reproducible derived state from the graph: the same input produces the same arrangement, and changes in the graph change the space accordingly.",
+    "The space does not move randomly. It moves with the structure of memory."
+   ],
+   "claim": "Within one graph, the same memory should be in the same place."
+  },
+  {
+   "label": "6.4",
+   "h": "More Than One Kind of Time",
+   "paras": [
+    "Once we talk about space, time appears. And when we record a memory, when may not be a single question.",
+    "Suppose an event happened in 2020 and we recorded it in 2026. The time of the event and the time we began remembering it are different.",
+    "World time is the time in the world the memory describes. Graph time is the time that memory began to exist in the graph.",
+    "Combining them into one timestamp loses information. Recording a past event today does not mean the event happened today, and the fact that the record entered the graph today is itself part of the history."
+   ],
+   "claim": "When something happened and when we began remembering it are different questions."
+  },
+  {
+   "label": "6.5",
+   "h": "Time Changes What a Relationship Means",
+   "paras": [
+    "Time is not merely a label. It lets us understand the order of decisions and events, and consider which memories could have influenced a later judgment.",
+    "If decision A existed before decision B, and B was made on the basis of A, the two have more than a link between them. They have an order.",
+    "When graph relationships and temporal relationships are read together, a causal structure appears.",
+    "Two things happening in sequence is not the same claim as one causing the other, and the graph has to be able to say which it means."
+   ]
+  },
+  {
+   "label": "6.6",
+   "h": "Physics as a Lens, Not a Copy",
+   "paras": [
+    "Relativistic spacetime gives events a past and a future and, under the constraint that influence cannot travel faster than light, regions that can be causally connected. The light cone is an intuitive picture of that.",
+    "Vinc is not implementing physics.",
+    "It borrows the concept as a way to think about which memories can be causally close to which others.",
+    "So physics does not define the laws here. It provides one lens for reading the graph."
+   ]
+  },
+  {
+   "label": "6.7",
+   "h": "Do Not Invent Meaning",
+   "paras": [
+    "Representing relationships in space and time does not mean everything has to become a number.",
+    "If there is no evidence for how one day should correspond to a distance in the graph, there is no reason to invent a figure for it. That number would be a designer's assumption, not data.",
+    "Likewise, a layout that looks Gaussian does not prove a Gaussian distribution exists behind it.",
+    "Borrow structures where they help, but do not invent meanings that are not present. Something can look plausible without having any semantic evidence behind it."
+   ]
+  },
+  {
+   "label": "6.8",
+   "h": "Space Does Not Replace Memory",
+   "paras": [
+    "The space itself may now seem like the important thing. But space is not the source of memory.",
+    "The graph holds the structure. Space represents that structure so people can read it.",
+    "Whether we see the graph in three dimensions, in two, or along a timeline, we should still be reading the same graph.",
+    "This is the separation of view and source. Space helps us understand memory; it cannot replace the evidence of memory."
+   ],
+   "claim": "Changing the view must not change the memory."
+  },
+  {
+   "kind": "close",
+   "label": "6.close",
+   "paras": [
+    "We distinguished what to remember, made a grammar for recording it, connected the relationships, and made the graph readable through space and time.",
+    "But memory does not act by itself. Someone has to read it, find what matters to the question at hand, follow the relevant relationships, and sometimes propose new memory."
+   ],
+   "nextLabel": "Chapter 7. The Being That Uses Memory",
+   "nextHref": "Ch07.dc.html"
+  }
+ ]
+}

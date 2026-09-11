@@ -1,0 +1,84 @@
+{
+ "n": 10,
+ "no": 10,
+ "part": 1,
+ "file": "Ch10.dc.html",
+ "slot": "vinc.book.10-architecture.en",
+ "title": "What VINC Stores",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "10.0",
+   "eyebrow": "Part 1 · Chapter 10",
+   "h": "What VINC Stores",
+   "paras": [
+    "Turning memory into a system starts with a question most people skip: in what form is memory actually stored?",
+    "VINC does not store everything as one loose, freeform structure. Depending on what kind of memory something is, it becomes a certain kind of Node, and the relationships between Nodes are expressed as a Graph."
+   ],
+   "claim": "The core distinction is a set of Node kinds: Concept, Episode, Record, Decision, Bridge, and Entity."
+  },
+  {
+   "paras": [
+    "A Concept represents an idea the system can keep referring back to. An Episode represents a specific event or experience. A Record captures something observed or reported as fact. A Decision represents a choice or judgment made about something. A Bridge is a relationship unit that connects otherwise separate domains or structures. An Entity is a structure for identifying a particular object.",
+    "The idea that a team adopted a particular technology, and the fact that a particular test ran on a particular day, are both memories, but they are not the same kind of memory.",
+    "Store a Concept and an Episode in the same shape, and later retrieval and relationship interpretation lose the ability to tell them apart."
+   ],
+   "h": "Six Kinds, Six Questions",
+   "claim": "These kinds exist because not every memory gets used the same way.",
+   "label": "10.1"
+  },
+  {
+   "paras": [
+    "What varies is the actual content of a Node. Each Node can carry properties suited to its role, and connects to other Nodes through relationships."
+   ],
+   "h": "Kinds Are Closed, Contents Are Not",
+   "claim": "So VINC's Node model keeps the set of kinds closed and gives each one a clearly defined role.",
+   "label": "10.2"
+  },
+  {
+   "paras": [
+    "An Edge in the Graph is not just a line, either.",
+    "about can express what a piece of memory concerns. prerequisite_of expresses a precondition relationship. derives_from expresses derivation, and inherits_from expresses inheritance.",
+    "Direction matters here too.",
+    "So the Graph has to preserve both the kind of relationship and its direction, alongside the Nodes themselves."
+   ],
+   "h": "An Edge Is Not a Line",
+   "claim": "Recording that A is a prerequisite of B is a different claim from recording that B is a prerequisite of A.",
+   "label": "10.3"
+  },
+  {
+   "paras": [
+    "Time is part of this structure as well.",
+    "This book calls the first world time (content_time) and the second graph time (created). That distinction gets its own full treatment later.",
+    "Which space a Graph belongs to matters just as much. A personal space and a team space define different boundaries for what memory is reachable."
+   ],
+   "h": "Two Clocks and One Space",
+   "claim": "When an event actually happened and when that memory entered the system are two different questions.",
+   "label": "10.4"
+  },
+  {
+   "paras": [
+    "In the end, a single memory is never made of a single value.",
+    "The Node defines what it is. The Edge defines how it relates. Time defines the context it sits in. Space defines the boundary it belongs to.",
+    "And the original text is preserved separately from all of this.",
+    "When a document gets structured, its original wording should not be discarded in the process.",
+    "None of this separation exists to make storage more complicated. It exists so the system can hold a clear, explicit understanding of what kind of memory something is and what role it plays."
+   ],
+   "h": "The Source Text Is Kept Beside It",
+   "claim": "The graph is not a replacement copy of the document: it is a structure that captures the meaning and relationships a document can be used for again.",
+   "label": "10.5"
+  },
+  {
+   "kind": "close",
+   "label": "10.close",
+   "paras": [
+    "Once the physical model is settled, the next question is how this model connects back to the original text.",
+    "VINC does not merge documents and graphs into one thing. It keeps their roles distinct, while making sure each can be followed back to the other."
+   ],
+   "nextLabel": "Chapter 11. What Are Nodes and Edges",
+   "nextHref": "Ch11.dc.html"
+  }
+ ]
+}
