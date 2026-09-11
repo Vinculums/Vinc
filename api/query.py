@@ -2804,19 +2804,30 @@ _BRIEF_FALLTHROUGH = 3        # 1위가 안 열릴 때 시도할 후보 수 상�
 
 #: 질문 속 노드 id — brief 직참조의 탐지 대상. bridge 는 node_context 가 읽지
 #: 못해 넣으면 항상 실패해 fell_through 소음만 늘므로 뺀다(랭킹 경로가 받는다).
-#: 끝 문자를 영숫자로 조여 문장부호(`concept:foo.` 의 마침표)가 id 에 안 붙는다.
+#: 끝 문자를 글자·숫자로 조여 문장부호(`concept:foo.` 의 마침표)가 id 에 안 붙는다.
+#: 슬러그는 **유니코드**다. 한국어 슬러그 개념이 있고, ASCII 로 조이면 첫 한글에서
+#: 잘린 접두를 열어 버린다 — 그 접두가 실재하면 조용히 **다른 노드**다.
+#: 근거: [[record:brief-direct-id-pattern-was-ascii-only-2026-09-12]]
 _BRIEF_ID_RE = re.compile(
-    r"\b(?:concept|record|decision|episode):[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+    r"\b(?:concept|record|decision|episode):[^\W_](?:[\w.-]*[^\W_])?")
+#: 위 매치의 ASCII 접두 — 되물림 후보. 한국어 문장은 조사를 id 에 붙여 쓰는데
+#: (`concept:foo는`) 문법으로는 한국어 슬러그와 못 가르므로 스토어가 가른다: 긴 쪽이
+#: 안 열리면 이 접두를 열고, 그 대체는 `fell_through` 로 밝힌다.
+_BRIEF_ID_ASCII_RE = re.compile(
+    r"(?:concept|record|decision|episode):[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 
 
 def _brief_query_ids(query: str) -> list[str]:
-    """질문에 그대로 들어 있는 노드 id — 등장 순서, 중복 제거."""
+    """질문에 그대로 들어 있는 노드 id — 등장 순서, 중복 제거. 매치마다 바로 뒤에
+    그 ASCII 접두를 되물림 후보로 둔다(매치와 다를 때만)."""
     seen: set[str] = set()
     out: list[str] = []
     for m in _BRIEF_ID_RE.findall(query or ""):
-        if m not in seen:
-            seen.add(m)
-            out.append(m)
+        a = _BRIEF_ID_ASCII_RE.match(m)
+        for cand in (m, a.group(0) if a else ""):
+            if cand and cand not in seen:
+                seen.add(cand)
+                out.append(cand)
     return out
 
 
@@ -3075,6 +3086,10 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 base["executed"] = True
                 base["status"] = "resolved"
                 base["resolved_via"] = "id"
+                # 앞선 후보가 안 열려 ASCII 접두나 다음 id 로 열었으면 그 대체를
+                # 밝힌다 — 잘린 접두는 우연히 실재하는 다른 노드일 수 있다.
+                if unread_ids:
+                    base["fell_through"] = list(unread_ids)
                 return _brief_material(base, {"id": qid}, got)
             # 준 id 가 안 열리면 **밝히고** 랭킹으로 간다 — 조용히 다른 노드를
             # 답하면 직참조가 지키려는 성질(묻는 노드를 답한다)을 스스로 깬다.

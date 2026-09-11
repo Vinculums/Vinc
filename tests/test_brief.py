@@ -194,6 +194,25 @@ class ShrinkTests(unittest.TestCase):
 # ── 2. 실엔진 층 ──────────────────────────────────────────────────────────────
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class QueryIdTests(unittest.TestCase):
+    """질문 속 id 탐지 — 순수 함수. 이유는 `_BRIEF_ID_RE` 주석에 있다."""
+
+    def test_한국어_슬러그를_통째로_잡고_ASCII_접두를_뒤에_둔다(self):
+        self.assertEqual(q._brief_query_ids("concept:graph-md는-설명서가-아니다 는 뭔가"),
+                         ["concept:graph-md는-설명서가-아니다", "concept:graph-md"])
+
+    def test_한글로_시작하는_슬러그도_잡는다(self):
+        self.assertEqual(q._brief_query_ids("concept:사과-나무 는?"), ["concept:사과-나무"])
+
+    def test_끝의_마침표는_id_에_붙지_않는다(self):
+        self.assertEqual(q._brief_query_ids("See concept:사과-나무."), ["concept:사과-나무"])
+        self.assertEqual(q._brief_query_ids("See concept:alpha-core."), ["concept:alpha-core"])
+
+    def test_조사가_붙은_ASCII_id_는_접두를_되물림_후보로_둔다(self):
+        self.assertEqual(q._brief_query_ids("concept:alpha-core는 무엇인가"),
+                         ["concept:alpha-core는", "concept:alpha-core"])
+
+
 class BriefE2E(unittest.TestCase):
     OWNER = "user:a"
 
@@ -490,6 +509,35 @@ class BriefRecordE2E(unittest.TestCase):
         fell = out.get("fell_through", [])
         self.assertEqual([f["id"] for f in fell], ["concept:no-such-node"])
         self.assertIn("unknown node", fell[0]["note"])
+
+    def test_한국어_슬러그_id_는_잘리지_않고_그_노드를_연다(self):
+        """ASCII 로 조인 패턴은 첫 한글에서 id 를 잘랐고, 잘린 접두가 실재하면
+        **다른 노드**를 직참조로 확정했다 — fell_through 도 빈 채로."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:graph-md", "type": "concept", "title": "graph md",
+             "domain": "eng"},
+            {"id": "concept:graph-md는-설명서가-아니다", "type": "concept",
+             "title": "GRAPH.md는 설명서가 아니다", "domain": "eng"},
+        ]}, store=self.store)
+        out = self._brief("concept:graph-md는-설명서가-아니다 에 대해 알려줘")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "concept:graph-md는-설명서가-아니다")
+        self.assertEqual(out.get("resolved_via"), "id")
+        self.assertEqual(out.get("fell_through", []), [])
+
+    def test_조사가_붙은_id_는_접두로_열고_그_대체를_밝힌다(self):
+        """한국어 문장은 조사를 id 에 붙여 쓴다. 긴 쪽이 안 열리면 ASCII 접두를
+        열되, 조용히 갈아타지 않고 fell_through 에 싣는다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:graph-md", "type": "concept", "title": "graph md",
+             "domain": "eng"},
+        ]}, store=self.store)
+        out = self._brief("concept:graph-md는 무엇인가")
+        self.assertEqual(out["status"], "resolved", out.get("note"))
+        self.assertEqual(out["node"]["id"], "concept:graph-md")
+        self.assertEqual(out.get("resolved_via"), "id")
+        self.assertEqual([f["id"] for f in out.get("fell_through", [])],
+                         ["concept:graph-md는"])
 
     def test_아무것도_못_읽으면_읽지_못했다고_말한다(self):
         """전부 실패하면 status 는 none 으로 남지만, 무엇을 못 읽었는지는 남긴다 —
