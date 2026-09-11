@@ -2823,6 +2823,14 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   padding: var(--space-4, 1rem) var(--space-5, 1.25rem) var(--space-6, 1.5rem);
 }
 .settings-body > label:first-child { margin-top: 0; }
+/* 이 앱이 몇 버전인가 — 설정 시트 바닥의 한 줄. 탭과 무관하게 늘 보인다.
+   2026-09-11 에 화면만 보고 웹 Vinc 가 0.9.1 인지 판정할 방법이 없어서 넣었다. */
+.settings-ver {
+  flex: 0 0 auto; margin-top: .75rem; padding-top: .6rem;
+  border-top: 1px solid hsl(var(--border));
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+}
 .settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
 /* 설정 몸 안의 label·input — 선택자가 `#settings-popover` 였다(그 요소는 사라졌다).
    시트 안의 설정 내용을 가리키도록 `.settings-body` 로 옮긴다. */

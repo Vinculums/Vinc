@@ -1,4 +1,4 @@
-import { cfg, teamsApi, WEB, shellInvoke } from "../api";
+import { buildId, cfg, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
@@ -44,7 +44,15 @@ export async function renderSettings(el: HTMLElement) {
             data-tab="${t.id}" role="tab">${t.label}</button>`).join("")}
         </div>
       </div>
-      <div class="settings-body" id="settings-body"></div>`;
+      <div class="settings-body" id="settings-body"></div>
+      <!-- 이 앱이 몇 버전인가. **화면에서 그것을 알 수 있는 유일한 자리다.**
+           2026-09-11 에 웹 Vinc 가 0.9.1 인지 아닌지를 놓고 한나절이 갔다. 서빙되는
+           번들에는 0.9.1+491d92e 가 박혀 있었지만 그 값은 사이드카 진단 문자열에만
+           쓰여서 화면을 보고는 판정할 방법이 없었다. 탭이 아니라 셸에 두는 이유는
+           탭 구성이 웹과 데스크탑에서 다르기 때문이다(WEB 이 둘을 숨긴다).
+           번역하지 않는다 — 값이 버전 문자열이라 언어가 없고, 덱에 키를 늘리면
+           그만큼 두 덱이 갈릴 자리가 는다. -->
+      <div class="settings-ver hint">Vinc ${esc(buildId)}</div>`;
     el.querySelectorAll<HTMLElement>(".settings-tab").forEach((b) =>
       b.addEventListener("click", () => {
         activeTab = b.dataset.tab as TabId;
