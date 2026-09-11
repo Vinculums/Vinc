@@ -26,7 +26,16 @@ SURFACES = sorted((ROOT / "app" / "src" / "surfaces").glob("view*.ts"))
 #  \w* 는 접두사를 흡수한다 — 실제로 놓쳤던 것이 s.shared_tags 였다.
 FIELD = re.compile(r"\.\s*\w*(label|title|domain|tags|one_liner)\b")
 #: 이 조각 안에 이스케이프가 있는가. `underlineTerms` 처럼 내부에서 esc 하는 것도 통과.
-SAFE = re.compile(r"\b(esc|escHtml|underlineTerms|textContent|encodeURI)\s*\(")
+#:
+#: `renderMarkdown` 은 2026-09-11 에 들어왔다. 노드 상세가 한 줄 요약을 마크다운으로
+#: 그리기 시작하면서인데, `esc()` 로 감싸면 마크다운이 글자로 보이므로 감쌀 수가 없다.
+#: 목록에 넣기 전에 그 함수를 읽어 확인한 것: **본문은 esc 를 먼저 통과하고**(함수 첫
+#: 줄의 지역 `esc`), 태그를 만드는 보간이 전부 `esc(...)` 나 `inline(esc(...))` 를 지나며,
+#: 속성 자리 둘(`data-src`)도 `esc()` 다. 즉 이스케이프하는 함수라서 넣는 것이지
+#: 마크다운이라서 넣는 것이 아니다.
+#: ⚠ 그 신뢰는 `tests/test_render_markdown_escapes.py` 가 붙잡는다. 저 함수가 이스케이프를
+#: 그만두면 이 줄이 구멍이 되므로, 목록에서 빼기 전에 그 시험부터 볼 것.
+SAFE = re.compile(r"\b(esc|escHtml|underlineTerms|textContent|encodeURI|renderMarkdown)\s*\(")
 #: `${ ... }` 한 조각. 중첩 한 겹까지 받아 삼항 안의 템플릿도 통째로 본다.
 INTERP = re.compile(r"\$\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}")
 #: 템플릿 리터럴이 닫히는 줄(대략적이지만 이 파일들에선 충분하다).
