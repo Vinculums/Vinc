@@ -271,11 +271,12 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
         # 스토어) 재구축은 그것을 고칠 수 없다 — 그대로 옮기면 같은 고장을 새 파일에
         # 복제한다. 큰 소리로 멈춘다. 처방은 scripts/migrate_pk_namespacing.py 다.
         # 합성되는 것은 **그래프 노드의 id** 다(fragment 쓰기 경로가 `pkns.key` 로 바인딩하는
-        # 네 종). Chunk·ChunkVec 의 키는 문서 id 를 품어 소유자별로 이미 유일하고, NodeVec 은
-        # `owner#node_id` 라는 자기 규약을 쓴다 — 셋은 SEP 이 없는 것이 정상이라 여기서 보지
+        # owner-스코프 여섯 종 = `api/fragment.py` `_OWNER_SCOPED_LABELS`). Chunk·ChunkVec 의
+        # 키는 문서 id 를 품어 소유자별로 이미 유일하고, NodeVec 은 `owner#node_id` 라는 자기
+        # 규약을 쓰고, Domain 은 소유가 없다 — 그것들은 SEP 이 없는 것이 정상이라 여기서 보지
         # 않는다(보면 정상 스토어를 거절한다. 실측: 시험의 Chunk 'doc:0#00000').
         specs = _schema.node_table_specs()
-        for label in ("Concept", "Record", "Decision", "Episode"):
+        for label in ("Concept", "Record", "Decision", "Episode", "Bridge", "Entity"):
             pk = specs[label]["pk"]
             bare = [r.get(pk) for r in dump["nodes"].get(label) or []
                     if r.get(pk) and pkns.SEP not in str(r.get(pk))]
@@ -391,6 +392,24 @@ def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int) -> dict
     out.update(res)
     out.update(changed=True, previous_dim=cur, kept=keep,
                wall_s=round(time.perf_counter() - t0, 2))
+    # 되돌림 사본을 **영속 볼륨에도** 둔다. `keep` 은 컨테이너 로컬 디스크라 리비전이
+    # 바뀌면 사라진다 — 2026-09-11 에 깨진 재구축을 되돌리려고 그것을 `az containerapp
+    # exec` 로 급히 건져야 했다. 복사 실패는 재구축을 되돌리지 않는다(작업본은 옳다).
+    snap = persistence.resolve_snapshot_path()
+    if snap:
+        import shutil
+        vol = f"{snap}.pre-{cur}"
+        try:
+            for part, _req in persistence._parts(vol):
+                persistence._rm(part)
+            for part, _req in persistence._parts(keep):
+                if os.path.isdir(part):
+                    shutil.copytree(part, vol + part[len(keep):])
+                elif os.path.exists(part):
+                    shutil.copy2(part, vol + part[len(keep):])
+            out["kept_on_volume"] = vol
+        except Exception as exc:                               # noqa: BLE001
+            out["kept_on_volume_error"] = f"{type(exc).__name__}: {exc}"
     return out
 
 

@@ -61,6 +61,12 @@ def fetch_docs() -> list[str]:
 #: 전송 오류 재시도 횟수. 타임아웃은 일시적이고, 이 판정은 배포를 막는다.
 _TRIES = 3
 
+#: 쓰기 모드가 받아 주는 '없다' 의 상한(건). 인용된 노드의 10% 와 이 값 중 큰 쪽.
+#: 인용 몇 건이 죽는 것은 정상 드리프트지만, 수십 건이 한 번에 '없다' 로 오는 것은
+#: 허브의 정확 id 조회가 깨진 것이다 — 2026-09-11 에 126건이 그렇게 왔고, 그때 refresh
+#: 를 돌렸다면 살아 있는 노드 126개를 매니페스트에서 지운 채 커밋했을 것이다.
+_MISS_CEILING = 20
+
 
 def verify_nodes(ids: list[str]) -> tuple[list[str], list[str]]:
     """인용된 노드가 실재하는지 한 건씩 본다. `(있다, 못 물어봤다)` 를 돌려준다.
@@ -159,6 +165,15 @@ def main() -> int:
         # 도는 --check 와 반대인 것이 맞다: 잘못된 대조표를 쓰는 것이 멈추는 것보다 나쁘다.
         print(f"[refresh] 중단 — 노드 {len(unreachable)}건을 물어보지 못했다. "
               "매니페스트를 구멍 난 채로 쓰지 않는다.", file=sys.stderr)
+        return 1
+    missing = set(cited_nodes) - set(nodes)
+    ceiling = max(_MISS_CEILING, len(set(cited_nodes)) // 10)
+    if len(missing) > ceiling:
+        # '없다' 가 상한을 넘으면 그래프가 아니라 허브가 고장난 것이다. 이 매니페스트를
+        # 쓰면 살아 있는 인용이 대량으로 빠지고 오프라인 게이트가 그것을 '죽었다' 고 잡는다.
+        print(f"[refresh] 중단 — 인용 노드 {len(set(cited_nodes))}종 중 {len(missing)}건이 "
+              f"'없다'로 왔다(상한 {ceiling}). 이 규모는 인용이 썩은 것이 아니라 허브의 "
+              "정확 id 조회가 깨진 것이다. 매니페스트를 쓰지 않는다.", file=sys.stderr)
         return 1
     print(f"[refresh] 노드 {len(nodes)}개 확인")
 

@@ -246,12 +246,16 @@ class RebuildPathTests(unittest.TestCase):
         """허브 기동의 `migrate-dim`. 768 스토어에 1024 모델을 대면 새 파일로 재구축해
         자리에 놓고 옛것은 `.pre-768` 로 남긴다. 같은 차원이면 손대지 않는다(멱등)."""
         import os
+        import tempfile
+        from unittest import mock
         src, cfg = self._mkstore()                    # 768
         self._seed_docs(src, 3)
         path = cfg.data_dir
         src.close()
+        snap = tempfile.mkdtemp() + "/snap"           # 영속 볼륨 자리(다른 디렉터리)
         try:
-            out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+            with mock.patch.dict(os.environ, {"VINC_STORE_SNAPSHOT": snap}):
+                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -260,6 +264,10 @@ class RebuildPathTests(unittest.TestCase):
         self.assertEqual(out["previous_dim"], 768)
         self.assertEqual((out["docs"], out["requeued"]), (3, 3))
         self.assertTrue(os.path.exists(out["kept"]), "옛 스토어가 되돌림용으로 남아야 한다")
+        # 2026-09-11: `kept` 는 컨테이너 로컬이라 리비전이 바뀌면 사라진다. 볼륨에도 있어야 한다.
+        self.assertEqual(out.get("kept_on_volume"), f"{snap}.pre-768",
+                         out.get("kept_on_volume_error"))
+        self.assertTrue(os.path.exists(f"{snap}.pre-768"), "되돌림 사본이 볼륨에 없다")
         st = open_store(load_config({"data_dir": path, "embedding_model": "BAAI/bge-m3"}))
         try:
             self.assertEqual(migrate.vector_dim(st, "ChunkVec"), 1024)
@@ -307,15 +315,22 @@ class RebuildPathTests(unittest.TestCase):
         """벗겨진 키를 가진 스토어를 그대로 옮기면 같은 고장을 새 파일에 복제한다. 멈춘다."""
         import os
         from unittest import mock
-        src, _ = self._mkstore()
-        src.run("MERGE (c:Concept {concept_id: 'concept:bare'}) SET c.owner_id = 'user:a', c.title = 'B'")
-        dst, _ = self._mkstore(dim=1024)
-        with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
-            with self.assertRaises(RuntimeError) as ctx:
-                migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
-        self.assertIn("migrate_pk_namespacing", str(ctx.exception))
-        src.close()
-        dst.close()
+        # fragment 가 `pkns.key` 로 합성하는 라벨은 여섯이다 — Bridge·Entity 도 든다
+        # (`api/fragment.py` `_OWNER_SCOPED_LABELS`). 넷만 보던 가드가 그 둘을 놓쳤다.
+        for label, pk in (("Concept", "concept_id"), ("Bridge", "bridge_id"),
+                          ("Entity", "entity_id")):
+            with self.subTest(label=label):
+                src, _ = self._mkstore()
+                src.run(f"MERGE (c:{label} {{{pk}: '{label.lower()}:bare'}}) "
+                        "SET c.owner_id = 'user:a', c.title = 'B'")
+                dst, _ = self._mkstore(dim=1024)
+                with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+                self.assertIn("migrate_pk_namespacing", str(ctx.exception))
+                self.assertIn(label, str(ctx.exception))
+                src.close()
+                dst.close()
 
 
 class SchemaLagExportTests(unittest.TestCase):
