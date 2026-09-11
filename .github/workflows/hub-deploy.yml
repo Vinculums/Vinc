@@ -407,10 +407,16 @@ jobs:
             echo "ENCODE_PRESENT=0" >> "$GITHUB_ENV"
             exit 0
           fi
+          # --min-replicas 1: 콜드스타트 26.5초가 검색 아홉 건을 조용히 전문검색으로
+          # 강등시키던 것을 월 23.33달러(유휴 요율)로 없앤다. 배포마다 다시 단언하므로
+          # 포털에서 0으로 되돌려도 다음 배포가 되살린다. 기준선(app-config-baseline.json)은
+          # 같은 커밋에서 1로 옮겼다. 아래 드리프트 게이트가 이 스텝 뒤에 돈다.
+          # 근거: [[decision:vinc-encode-holds-one-replica]]
           az containerapp update \
             --name vinc-encode --resource-group vincsRG \
-            --image vincacr.azurecr.io/vinc-hub:${{ github.sha }} --output none
-          echo "vinc-encode 갱신: ${{ github.sha }}"
+            --image vincacr.azurecr.io/vinc-hub:${{ github.sha }} \
+            --min-replicas 1 --output none
+          echo "vinc-encode 갱신: ${{ github.sha }} (minReplicas 1)"
 
       - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
         # 위 스텝이 성공을 보고해도 갱신이 라이브에 반영됐는지는 별개다. 여기서 다시

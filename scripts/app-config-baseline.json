@@ -97,7 +97,7 @@
     "scale": {
       "cooldownPeriod": 300,
       "maxReplicas": 1,
-      "minReplicas": 0
+      "minReplicas": 1
     },
     "secret_names": [
       "encode-token",
