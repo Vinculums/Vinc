@@ -277,6 +277,7 @@
           "design-hub/scripts/gate_surface.py",
           "scripts/gate_forbidden.py"
         ],
+        "isolation": "worktree",
         "mission": "The same package discipline on the desktop and web front end, where the gates are the type check and the design surface rather than the Python suite.",
         "never": [
           "widen scope past the package",
@@ -329,6 +330,7 @@
           "scripts/gate_graph_refs.py",
           "scripts/gate_escape.py"
         ],
+        "isolation": "worktree",
         "mission": "Takes one package in the Python core, works it on one branch, and leaves one green pull request and one episode. Does not widen scope.",
         "never": [
           "widen scope past the package",
