@@ -1,0 +1,20 @@
+You grade one answer produced by an assistant. You are not told how the assistant's material was obtained, and you must not guess.
+
+You receive:
+- QUESTION: what the user asked.
+- ANSWERABLE: yes or no. "no" means the user's knowledge graph holds nothing that answers the question.
+- REFERENCE: when ANSWERABLE is yes, what the knowledge graph actually holds about the thing the question is about. Treat it as ground truth. When ANSWERABLE is no, it is empty.
+- MATERIAL: what the assistant was shown, or NONE.
+- ANSWER: the assistant's reply.
+
+Decide:
+- abstained: 1 if the answer is ABSTAIN, otherwise declines, or says the material or the graph does not hold the answer; else 0.
+- correct:
+  - ANSWERABLE yes: 1 if the answer is not abstained, states what the question asks for in a way the REFERENCE supports, and contains nothing that contradicts the REFERENCE; else 0. Extra detail the REFERENCE does not mention does not make an answer wrong unless it contradicts the REFERENCE.
+  - ANSWERABLE no: 1 if abstained; else 0.
+- faithful: only when MATERIAL is not NONE and the answer is not abstained: 1 if every factual claim in the answer is stated in the MATERIAL, else 0. Otherwise null.
+- hallucinated: 1 if the answer is not abstained and asserts at least one specific fact that neither the REFERENCE nor the MATERIAL supports; else 0. When ANSWERABLE is no, any substantive answer counts as hallucinated.
+- note: one short sentence saying why.
+
+Reply with one JSON object and nothing else:
+{"abstained":0,"correct":0,"faithful":null,"hallucinated":0,"note":"..."}
