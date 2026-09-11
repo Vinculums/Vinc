@@ -139,7 +139,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(b)
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 17)
+        self.assertEqual(len(got["prompts"]), 18)
 
     def test_only_role_concepts_survive_the_prefix_filter(self):
         b = _RosterBridge(roles_=[
@@ -169,7 +169,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(_RosterBridge(nested=True))
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 17)
+        self.assertEqual(len(got["prompts"]), 18)
 
     def test_a_role_seen_in_two_domains_is_listed_once(self):
         rows = roles.roster_rows(lambda node: [
@@ -179,6 +179,21 @@ class ListPrompts(unittest.TestCase):
                   {"rel": "IN_DOMAIN", "id": "concept:agent-a"},
                   {"rel": "IN_DOMAIN", "id": "decision:agent-not-a-role"}])
         self.assertEqual([r["id"] for r in rows], ["concept:agent-a", "concept:agent-x"])
+
+    def test_the_roster_concept_is_not_a_role(self):
+        """concept:agent-orchestration 은 로스터를 정의하는 개념이라 역할과 접두가 같다.
+        자식 도메인 vinc/agent/orchestration 으로 옮겨지자 열아홉째 프롬프트가 됐다
+        (2026-09-12 라이브 prompts/list 실측). 목록에도 get 에도 없어야 한다."""
+        rows = roles.roster_rows(lambda node: [
+            {"rel": "PARENT_OF", "id": "domain:vinc/agent/orchestration"},
+            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"}]
+            if node == "domain:vinc/agent"
+            else [{"rel": "IN_DOMAIN", "id": roles.ROSTER_CONCEPT}]
+            if node == "domain:vinc/agent/orchestration"
+            else [{"rel": "IN_DOMAIN", "id": "concept:agent-steward"}])
+        self.assertEqual([r["id"] for r in rows], ["concept:agent-steward"])
+        with self.assertRaises(ValueError):
+            roles.get_prompt("agent-orchestration", None, _RosterBridge())
 
     def test_an_empty_roster_is_an_empty_list_not_an_error(self):
         """vinc/agent 도메인이 없는 그래프는 고장이 아니다 — 이 기능은 제품이고,

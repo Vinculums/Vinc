@@ -104,6 +104,59 @@
       }
     },
     {
+      "id": "concept:agent-deploy",
+      "name": "agent-deploy",
+      "label": "Agent role: deploy",
+      "domain": "vinc/agent/roles",
+      "tags": [
+        "agent",
+        "deliver",
+        "role"
+      ],
+      "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
+        "enforcement_note": "Merge authority is bounded by preconditions, not by trust. Orchestrator keeps never-merge so assignment and landing stay separate roles.",
+        "gates": [],
+        "mission": "Takes a verified change to production through the GitHub plane: merges when the preconditions hold, watches the deploy run to a terminal state, and says what went out. A deployment is not done when the merge lands; it is done when the run finishes and someone has looked.",
+        "never": [
+          "merge without a verification result that names where it ran",
+          "merge while a run for an earlier commit is queued in the same deploy concurrency group (Vinc#129: it will block, not supersede)",
+          "touch the cloud plane",
+          "push a tag or publish a release (that is agent-release)",
+          "report a deployment from the merge alone"
+        ],
+        "paths": [
+          ".github/workflows/"
+        ],
+        "person_only": [
+          "the scope of what may be merged",
+          "any cloud-plane command",
+          "the PK namespacing migration run"
+        ],
+        "reads": [
+          "vinc.plan.agent-lifecycle-and-the-deploy-plane",
+          "vinc.canon.repo-workflow",
+          "vinc.ops.deployment"
+        ],
+        "repos": [
+          "Vinc",
+          "Vinc-homepage",
+          "Vincs-app"
+        ],
+        "rung": "strong",
+        "tier": "deliver",
+        "verify": "Read the deploy run for the merged sha to a terminal conclusion. A pending run is not a deployment.",
+        "writes_graph": [
+          "episode",
+          "record"
+        ]
+      }
+    },
+    {
       "id": "concept:agent-design",
       "name": "agent-design",
       "label": "Agent role: design",
@@ -497,19 +550,21 @@
           "Write",
           "NotebookEdit"
         ],
-        "enforcement_note": "the denylist stops file edits, not state changes: az and gh run through Bash, which this role needs to diagnose. Every state changing command stays a person's act by discipline, not by permission.",
+        "enforcement_note": "The propose-only rule is no longer discipline alone, but the mechanism differs by where the role runs. In a cloud session there is no az and no Azure credentials, so the cloud plane is unreachable because the tool is absent. On the desktop the tool and a credential are both present and the ambient identity is Reader (vinc-agent-reader), so a write returns 403 rather than being impossible to attempt. The denylist still only stops file edits. Warning: the desktop guarantee is a placement: a Contributor secret returning to the ambient environment restores discipline as the only barrier. Canon: vinc.ops.azure-identity-split-2026-08-30.",
         "gates": [],
-        "mission": "Watches the three deployments, diagnoses incidents and proposes the recovery. Proposes only: every command that changes state is run by a person, one step at a time.",
+        "mission": "Diagnoses incidents on the cloud plane (Azure, the hub store, the storage account) and proposes the recovery. Proposes only.",
         "never": [
           "change environment variables",
           "scale replicas",
           "restore a snapshot",
           "edit DNS",
-          "run az from a POSIX shell (path translation rewrites the value)"
+          "run az from a POSIX shell (path translation rewrites the value)",
+          "merge a pull request",
+          "treat the GitHub plane as this role's surface"
         ],
         "paths": [
-          ".github/workflows/",
-          "scripts/check_hub_env.py"
+          "scripts/check_hub_env.py",
+          "infra/"
         ],
         "person_only": [
           "every state changing command"
@@ -520,7 +575,8 @@
           "vinc.ops.incident-2026-08-04-easyauth",
           "vinc.ops.incident-2026-07-16-macos-sidecar",
           "vinc.ops.cost-management",
-          "vinc.spec.azure-infrastructure"
+          "vinc.spec.azure-infrastructure",
+          "vinc.ops.azure-identity-split-2026-08-30"
         ],
         "repos": [
           "Vinc",
@@ -569,11 +625,11 @@
           "wave approval",
           "operator steps a plan marks as person operated"
         ],
-        "pre_merge_check": "gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha. Read it before ANY act that lands a run on main: a merge, a push, or a workflow_dispatch. A run in progress there is the previous commit's verification and survives (ci sets cancel-in-progress only for pull_request). A run that is merely QUEUED does not survive: the group keeps one pending run and a newer arrival supersedes it. So the question is not only whether something is running, it is whether something is waiting. Filter by workflowName; several workflows share a branch and only ci matters here. Never assert that nothing is in flight without running this.\n\nAND READ THE JOBS, NOT THE RUN: gh run view <id> --json jobs. A run's status stays 'queued' until its LAST job finishes, so on a serial runner a run that is actively being worked looks identical to one nothing has picked up. Measured 2026-08-25: seven jobs behind one runner showed run=queued for over half an hour while jobs completed one after another, and hub-deploy was seen going from in_progress back to queued, which reads as a lost runner and is ordinary churn. A monitor that only emits on completion cannot tell the two apart at all.\n\nThe rule covers acts that STOP the runner as well as acts that start a run. Restarting the host lands nothing, so it falls outside a rule written in terms of triggers, and it destroys whatever is executing. Two runs were lost that way in one evening, one of them a 25 minute cold build.",
+        "pre_merge_check": "Before any act that lands a run on main (merge, push, or workflow_dispatch), answer: is a run in flight, and is a run merely QUEUED. Where gh exists: gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha, then gh run view <id> --json jobs. Where gh does not, the same read through GitHub MCP (list workflow runs and jobs). Filter by workflowName. Read JOBS, not run status alone: a serial runner keeps run=queued while jobs work. For ci, a queued run is superseded and lost; for hub-deploy, a queued run is kept and blocks the concurrency group (Vinc#129). Never assert that nothing is in flight without this read. The rule also covers acts that STOP the runner (restart Docker Desktop, restart the runner service, reboot), which destroy in-flight work without landing a new run.",
         "reads": [
           "vinc.plan.agent-domain",
-          "vinc.release.0-8-4-agents",
-          "vinc.release.0-8-4-wave1-report",
+          "vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11",
+          "vinc.plan.agent-lifecycle-and-the-deploy-plane",
           "vinc.canon.repo-workflow",
           "vinc.canon.graph-conventions"
         ],

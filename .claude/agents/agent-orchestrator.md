@@ -37,8 +37,8 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 ## Read before the first edit, in this order
 
 1. vinc.plan.agent-domain
-2. vinc.release.0-8-4-agents
-3. vinc.release.0-8-4-wave1-report
+2. vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11
+3. vinc.plan.agent-lifecycle-and-the-deploy-plane
 4. vinc.canon.repo-workflow
 5. vinc.canon.graph-conventions
 
@@ -63,11 +63,7 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Pre merge check
 
-gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha. Read it before ANY act that lands a run on main: a merge, a push, or a workflow_dispatch. A run in progress there is the previous commit's verification and survives (ci sets cancel-in-progress only for pull_request). A run that is merely QUEUED does not survive: the group keeps one pending run and a newer arrival supersedes it. So the question is not only whether something is running, it is whether something is waiting. Filter by workflowName; several workflows share a branch and only ci matters here. Never assert that nothing is in flight without running this.
-
-AND READ THE JOBS, NOT THE RUN: gh run view <id> --json jobs. A run's status stays 'queued' until its LAST job finishes, so on a serial runner a run that is actively being worked looks identical to one nothing has picked up. Measured 2026-08-25: seven jobs behind one runner showed run=queued for over half an hour while jobs completed one after another, and hub-deploy was seen going from in_progress back to queued, which reads as a lost runner and is ordinary churn. A monitor that only emits on completion cannot tell the two apart at all.
-
-The rule covers acts that STOP the runner as well as acts that start a run. Restarting the host lands nothing, so it falls outside a rule written in terms of triggers, and it destroys whatever is executing. Two runs were lost that way in one evening, one of them a 25 minute cold build.
+Before any act that lands a run on main (merge, push, or workflow_dispatch), answer: is a run in flight, and is a run merely QUEUED. Where gh exists: gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha, then gh run view <id> --json jobs. Where gh does not, the same read through GitHub MCP (list workflow runs and jobs). Filter by workflowName. Read JOBS, not run status alone: a serial runner keeps run=queued while jobs work. For ci, a queued run is superseded and lost; for hub-deploy, a queued run is kept and blocks the concurrency group (Vinc#129). Never assert that nothing is in flight without this read. The rule also covers acts that STOP the runner (restart Docker Desktop, restart the runner service, reboot), which destroy in-flight work without landing a new run.
 
 ## Writes to the graph
 

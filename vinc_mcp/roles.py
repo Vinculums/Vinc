@@ -27,6 +27,14 @@ import re
 
 DOMAIN = "vinc/agent"
 ID_PREFIX = "concept:agent-"
+#: 로스터를 정의하는 개념 자신. 역할과 접두가 같아서 접두만 보면 역할로 잡힌다 —
+#: `vinc/agent/orchestration`(직계 자식 도메인)으로 옮겨진 뒤 `prompts/list` 와
+#: `--pull` 이 이것을 열아홉째 역할로 냈다(2026-09-12 라이브 실측).
+ROSTER_CONCEPT = "concept:agent-orchestration"
+
+
+def is_role_id(rid: str) -> bool:
+    return rid.startswith(ID_PREFIX) and rid != ROSTER_CONCEPT
 
 #: rung → 하네스가 아는 모델 이름. 정본은 [[decision:agent-model-ladder]] 이고 여기는
 #: 그 **실행 사본**이다. 역할 노드에 모델 이름을 박지 않는 이유가 이 표다 — 모델이
@@ -252,7 +260,7 @@ def roster_rows(neighbors) -> list[dict]:
     out = []
     for row in rows:
         rid = str(row.get("id") or "")
-        if rid.startswith(ID_PREFIX) and rid not in seen:
+        if is_role_id(rid) and rid not in seen:
             seen.add(rid)
             out.append(row)
     return sorted(out, key=lambda r: str(r.get("id") or ""))
@@ -298,7 +306,7 @@ def get_prompt(name: str, arguments: dict | None, bridge,
     번역돼 조회로 나가는 자리를 아예 없앤다."""
     slug = str(name or "").strip()
     rid = "concept:" + slug
-    if not rid.startswith(ID_PREFIX):
+    if not is_role_id(rid):
         raise ValueError(f"unknown prompt: {slug}")
     owner = _owner_of(bridge, forced_owner)
     got = bridge.request("GET", "/graph", params={
