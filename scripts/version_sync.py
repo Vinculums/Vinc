@@ -197,6 +197,33 @@ def cmd_set(version: str) -> int:
     for c in changed:
         print(f"  {c}")
     print()
+
+    # 🔴 **태그 밖에 무엇이 있는지 여기서 보여 준다.** 2026-09-11: v0.9.1 을 찍을 때
+    # 셸 크롬 개편 30커밋이 머지도 푸시도 안 된 브랜치에 있었고, `main` 만 세는 판정에는
+    # 보이지 않았다. 릴리스에 들어간 줄 알았던 그 작업은 설치본에 한 글자도 없었다.
+    #
+    # 자리가 여기인 이유: **범프는 릴리스 내용을 정하는 그 순간**이고, 이 명령을 거치지
+    # 않고 태그를 찍는 길이 없다(릴리스 게이트가 자리 열한 곳의 일치를 요구한다).
+    # 나중에 CI 어디에 붙이면 로그에 묻히고, 태그 런에 붙이면 이미 늦다.
+    #
+    # 막지 않는다 — 실험 브랜치가 태그를 볼모로 잡으면 안 되고, 판단은 사람이 한다.
+    # 실패해도 범프를 되돌리지 않는다(목록을 못 냈다고 버전 갱신이 무효가 되면 그것이
+    # 더 나쁘다). 자세한 것은 `scripts/unmerged_work.py`.
+    try:
+        # 이 파일은 스크립트로 불린다(`python scripts/version_sync.py`). 그러면 sys.path
+        # 의 첫 항목이 `scripts/` 라 `scripts` 패키지를 못 찾는다 — 리포 루트를 넣어야
+        # 한다. 실측으로 물렸다: 처음 판이 ModuleNotFoundError 로 떨어졌고, 아래 except
+        # 가 그것을 경고로 바꿔 범프는 살렸지만 목록은 못 냈다.
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from scripts import unmerged_work
+        rows, saw = unmerged_work.survey()
+        print(unmerged_work.render(rows, saw, markdown=False), end="")
+        print()
+    except Exception as exc:                                  # noqa: BLE001
+        print(f"[version_sync] ⚠ 태그 밖 목록을 못 냈다 — {type(exc).__name__}: {exc}")
+        print("  범프 자체는 끝났다. `python scripts/unmerged_work.py` 를 손으로 돌려 볼 것.")
+
     return cmd_check(version)
 
 
