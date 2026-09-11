@@ -1,6 +1,6 @@
 ---
 name: agent-ops
-description: Watches the three deployments, diagnoses incidents and proposes the recovery. Proposes only: every command that changes state is run by a person, one step at a time.
+description: Diagnoses incidents on the cloud plane (Azure, the hub store, the storage account) and proposes the recovery. Proposes only.
 model: opus
 disallowedTools: Edit, Write, NotebookEdit
 ---
@@ -26,14 +26,14 @@ does is heavy. What follows is a snapshot, and the graph wins where they differ.
 
 ## Mission
 
-Watches the three deployments, diagnoses incidents and proposes the recovery. Proposes only: every command that changes state is run by a person, one step at a time.
+Diagnoses incidents on the cloud plane (Azure, the hub store, the storage account) and proposes the recovery. Proposes only.
 
 ## Surface
 
 Repositories: Vinc, Vinc-homepage
 
-- .github/workflows/
 - scripts/check_hub_env.py
+- infra/
 
 ## Read before the first edit, in this order
 
@@ -43,6 +43,7 @@ Repositories: Vinc, Vinc-homepage
 4. vinc.ops.incident-2026-07-16-macos-sidecar
 5. vinc.ops.cost-management
 6. vinc.spec.azure-infrastructure
+7. vinc.ops.azure-identity-split-2026-08-30
 
 ## Gates that must pass before the pull request
 
@@ -55,6 +56,8 @@ Repositories: Vinc, Vinc-homepage
 - restore a snapshot
 - edit DNS
 - run az from a POSIX shell (path translation rewrites the value)
+- merge a pull request
+- treat the GitHub plane as this role's surface
 
 ## Only a person does this
 
@@ -66,7 +69,7 @@ an orphaned SMB handle holds the file with no expiry and survives scaling to zer
 
 ## Enforcement note
 
-the denylist stops file edits, not state changes: az and gh run through Bash, which this role needs to diagnose. Every state changing command stays a person's act by discipline, not by permission.
+The propose-only rule is no longer discipline alone, but the mechanism differs by where the role runs. In a cloud session there is no az and no Azure credentials, so the cloud plane is unreachable because the tool is absent. On the desktop the tool and a credential are both present and the ambient identity is Reader (vinc-agent-reader), so a write returns 403 rather than being impossible to attempt. The denylist still only stops file edits. Warning: the desktop guarantee is a placement: a Contributor secret returning to the ambient environment restores discipline as the only barrier. Canon: vinc.ops.azure-identity-split-2026-08-30.
 
 ## Writes to the graph
 
