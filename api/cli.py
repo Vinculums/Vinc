@@ -180,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
                          "디렉터리를 주면 열리지 않는다")
     sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
 
+    md = sub.add_parser("migrate-dim",
+                        help="기동 전: 벡터 열의 차원이 이 배포의 모델과 다르면 재구축해 갈아 끼운다")
+    md.add_argument("--data", default=None, help="db 파일 경로 (serve 와 같은 규칙)")
+
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
     bk.add_argument("--out", required=True, help="archive output dir")
     bk.add_argument("--data", default=None,
@@ -370,6 +374,32 @@ def main(argv: list[str] | None = None) -> int:
         from . import share, packfile
         pack = packfile.read_file(args.pack)
         return _emit(share.import_share_pack(pack, owner=args.owner))
+    if args.cmd == "migrate-dim":
+        # 허브 엔트리포인트가 사이드카 **앞에서** 부른다. 복원은 serve 와 같은 함수·같은
+        # 판정이라 여기서 했으면 serve 는 `present` 를 본다. 종료코드: 0 할 일 없음/끝남 ·
+        # 1 복원 실패(기동 중단, serve 와 같은 fail-closed) · 3 재구축 실패(옛 스토어는
+        # 그대로다 — 엔트리포인트가 워커를 꺼서 벡터를 지우지 않게 하고 기동은 계속한다).
+        from store import migrate, persistence
+        from store.config import load_config, resolve_data_dir
+        data_dir = resolve_data_dir(args.data)
+        _restore = persistence.restore_if_missing(data_dir)
+        if _restore not in ("off", "present"):
+            print(f"vinc-migrate-dim: store restore — {_restore}", file=sys.stderr, flush=True)
+        _fatal = persistence.restore_state_is_fatal(_restore)
+        if _fatal:
+            print(f"vinc-migrate-dim: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
+            return 1
+        cfg = load_config({"data_dir": data_dir})
+        model = (os.environ.get("VINC_EMBED_MODEL") or "").strip() or cfg.embedding_model
+        try:
+            out = migrate.migrate_dim_if_needed(data_dir, model=model,
+                                                target_dim=cfg.embedding_dim)
+        except Exception as exc:                     # noqa: BLE001 — 사유를 전부 내보낸다
+            print(f"vinc-migrate-dim: ⚠ 재구축 실패 — {type(exc).__name__}: {exc}",
+                  file=sys.stderr, flush=True)
+            return 3
+        print(json.dumps(out, ensure_ascii=False), flush=True)
+        return 0
     if args.cmd == "serve":
         from . import server
         from store.config import load_config, resolve_data_dir

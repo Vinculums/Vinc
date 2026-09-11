@@ -1,0 +1,175 @@
+# 허브 스토어 복구 — 컨테이너 안의 되돌림 사본을 영속 볼륨으로 보존하고(preserve),
+# 허브를 그 사본으로 갈아탄다(switch).
+#
+# 2026-09-11 사고 대응으로 만들었다. bge-m3 재구축(#306)의 export 가 PK 네임스페이싱이
+# 켜진 읽기 경로를 지나면서 물리 키(owner\x1fid)가 논리 id 로 벗겨졌고, import 가 그것을
+# 그대로 써서 정확 id 조회가 전부 죽었다(제목 검색·문서는 살아 있었다). 재구축 훅은
+# 원본을 `<data_dir>.pre-768` 로 남기는데 그 자리는 **컨테이너 로컬 디스크**라 레플리카가
+# 바뀌면 사라진다. 그래서 먼저 볼륨(/data)으로 옮기고(preserve), 고친 이미지가 배포된 뒤
+# 허브의 VINC_DATA_DIR 을 그 사본으로 돌린다(switch) — 새 리비전은 작업본이 없어 그
+# 사본에서 복원하고, 고친 재구축 훅이 키를 지키며 다시 넓힌다.
+#
+# 세 동작(컨테이너 exec·볼륨 쓰기·env 교체)이 전부 쓰기 권한이라 배포 신원으로만 된다.
+# 유지보수자의 로컬 az 는 Reader 다. pk-migrate.yml 과 같은 이유, 같은 모양.
+#
+# ⚠ 자동으로 돌지 않는다. switch 는 확인 문자열을 요구하고 허브를 잠깐 내린다.
+# 근거: [[decision:bge-m3-adoption]]
+name: hub-store-recover
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "preserve = 컨테이너의 .pre-768 을 /data 로 복사(무중단) · switch = 허브를 src 로 갈아탄다(잠깐 중단)"
+        type: choice
+        options: [preserve, switch]
+        default: preserve
+      confirm:
+        description: "switch 일 때만: 정확히 SWITCH 라고 적을 것"
+        type: string
+        default: ""
+      src:
+        description: "switch 가 VINC_DATA_DIR 로 삼을 /data 안의 파일명 (preserve 의 RECOVER_COPIED 줄이 말한 이름)"
+        type: string
+        default: "db.pkns.pre-768-keep"
+
+# hub-deploy 와 같은 줄에 선다 — 복구 도중 배포가 끼어들면 두 리비전이 겹친다.
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP: "--name vinc-hub -g vincsRG"
+  ACCOUNT: vincstorage01
+  SHARE: hub-data
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.mode }}" = "switch" ] && [ "${{ inputs.confirm }}" != "SWITCH" ]; then
+            echo "::error::switch 하려면 confirm 에 SWITCH 를 적을 것" >&2
+            exit 1
+          fi
+          case "${{ inputs.src }}" in
+            ""|*..*|*/*|*" "*) echo "::error::src 는 /data 안의 파일명 하나여야 한다" >&2; exit 1 ;;
+          esac
+
+      - name: Azure 프로필을 이 잡 전용으로
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── preserve ──────────────────────────────────────────────────────────
+      # `az containerapp exec` 는 TTY 를 요구하고(`script` 로 pty 를 만든다) `--command` 를
+      # 공백으로 잘라 argv 로 보낸다(파이프의 공백을 ${IFS} 로 적는다). 둘 다
+      # container-latency-probe.yml 의 실측 주석이 근거다. 스크립트는 base64 로 나른다.
+      - name: 보존 스크립트를 만든다
+        if: inputs.mode == 'preserve'
+        run: |
+          set -euo pipefail
+          cat > keep.sh <<'SH'
+          echo "RECOVER_WORK $(ls -la /var/lib/vinc 2>&1 | tr '\n' ';')"
+          # 작업본 이름은 VINC_DATA_DIR 의 basename 이다(지금은 db.pkns). 이름을 박지 않고
+          # 훅이 남기는 접미 .pre-<차원> 으로 찾는다 — 첫 실행이 db.pre-768 을 박아서 빈손이었다.
+          for f in /var/lib/vinc/*.pre-[0-9]* ; do
+            [ -e "$f" ] || continue
+            case "$f" in *.wal) continue ;; esac
+            for part in "$f" "$f.wal"; do
+              [ -e "$part" ] || continue
+              d="/data/$(basename "$part" | sed 's/\.pre-\([0-9]*\)/.pre-\1-keep/')"
+              cp "$part" "$d" && echo "RECOVER_COPIED $part -> $d $(stat -c %s "$d") bytes"
+            done
+          done
+          echo "RECOVER_DATA $(ls -la /data 2>&1 | tr '\n' ';')"
+          SH
+          B64="$(base64 -w0 keep.sh)"
+          echo "keep.sh base64: ${#B64} 바이트"
+          echo "B64=$B64" >> "$GITHUB_ENV"
+
+      - name: 허브 안에서 .pre-768 을 볼륨으로 복사한다
+        if: inputs.mode == 'preserve'
+        run: |
+          set -uo pipefail
+          timeout 900 script -qec "az containerapp exec $APP --command 'sh -c echo\${IFS}$B64|base64\${IFS}-d|sh'" /dev/null > hub.raw 2>&1 || true
+          tr -d '\r' < hub.raw > hub.out
+          grep -E '^RECOVER_' hub.out || { echo "::error::exec 출력에 RECOVER_ 줄이 없다 — exec 자체가 실패했다" >&2; sed -n '1,30p' hub.out; exit 1; }
+          grep -q '^RECOVER_COPIED' hub.out || { echo "::error::복사된 파일이 없다 — /var/lib/vinc 에 .pre-768 이 이미 없다(레플리카가 바뀌었다). 위 RECOVER_WORK 줄을 볼 것" >&2; exit 1; }
+          echo "보존 완료. 다음은 고친 이미지 배포 뒤 mode=switch."
+
+      # ── switch ────────────────────────────────────────────────────────────
+      - name: Storage key
+        if: inputs.mode == 'switch'
+        run: |
+          set -euo pipefail
+          key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG --query "[0].value" -o tsv)
+          [ -n "$key" ] || { echo "::error::스토리지 계정 키를 못 읽는다" >&2; exit 1; }
+          echo "::add-mask::$key"
+          echo "AZ_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: src 가 볼륨에 있는가
+        if: inputs.mode == 'switch'
+        run: |
+          set -euo pipefail
+          ok=$(az storage file exists --share-name "$SHARE" --path "${{ inputs.src }}" \
+                 --account-name "$ACCOUNT" --account-key "$AZ_KEY" --query exists -o tsv)
+          [ "$ok" = "true" ] || { echo "::error::/data/${{ inputs.src }} 가 없다 — preserve 를 먼저 돌릴 것" >&2; exit 1; }
+          echo "/data/${{ inputs.src }} 있음"
+
+      - name: Stop the hub
+        if: inputs.mode == 'switch'
+        run: |
+          set -euo pipefail
+          actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
+          for rev in $actives; do
+            echo "deactivating: $rev"
+            az containerapp revision deactivate $APP --revision "$rev" --output none
+          done
+          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
+          gone=0
+          for i in $(seq 1 20); do
+            act=$(az containerapp revision list $APP --query "[?properties.active] | length(@)" -o tsv)
+            reps=$(az containerapp revision list $APP --query "[].properties.replicas" -o tsv 2>/dev/null \
+                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
+            echo "  active=$act replicas=$reps"
+            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
+            sleep 10
+          done
+          [ "$gone" = "1" ] || { echo "::error::레플리카가 사라지지 않았다 — 갈아타지 않는다." >&2; exit 1; }
+          sleep 10
+          echo "레플리카 0 확인"
+
+      - name: Switch VINC_DATA_DIR
+        if: inputs.mode == 'switch'
+        run: |
+          set -euo pipefail
+          # 이미지는 그대로(현재 latest = 고친 이미지여야 한다), env 만 바꾼다. 새 리비전은
+          # 작업본이 없어 /data/<src> 에서 복원하고 migrate-dim 이 키를 지키며 넓힌다.
+          if ! az containerapp update $APP --set-env-vars "VINC_DATA_DIR=/data/${{ inputs.src }}" --output none; then
+            echo "::error::env 교체 실패 — **허브는 지금 내려가 있다.** 데이터는 안전하다(/data 의 파일들 무변)." >&2
+            exit 1
+          fi
+          latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          echo "latest revision: $latest"
+          for i in $(seq 1 40); do
+            st=$(az containerapp revision show $APP --revision "$latest" \
+                 --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
+            echo "  state: $st"
+            case "$st" in Running|RunningAtMaxScale) echo "허브가 /data/${{ inputs.src }} 위에서 떴다"; exit 0 ;; esac
+            sleep 15
+          done
+          echo "::error::새 리비전이 기동하지 못했다 — 허브는 내려가 있다. VINC_DATA_DIR 을 이전 값으로 되돌릴 것." >&2
+          exit 1

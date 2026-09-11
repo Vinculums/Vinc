@@ -9,9 +9,11 @@ callers — and tests — get a deterministic result without a live database.
 from __future__ import annotations
 
 import base64
+import datetime as _dt
 import hashlib
 import itertools
 import json
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -170,6 +172,24 @@ def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
 #: 페이지네이션 후보 풀 상한(암별 LIMIT 이자 total_count 의 상한). 200을 넘는
 #: 순회는 검색이 아니라 열람이다 — 그쪽은 vinc_doc_list/vinc_recall 이 담당한다.
 SEARCH_POOL_CAP = 200
+
+#: 청크 하이브리드 융합의 RRF 상수. `rrf_fuse` 의 기본은 60 이고 **여태 아무도 안
+#: 넘겼다** — 즉 60 은 한 번도 측정된 적 없는 값이었다. 176문서 split 스토어에서
+#: k 를 10·20·60·100 으로 쓸어 보니 작은 쪽이 단조로 낫다:
+#:
+#:     질의 셋        k=10              k=20              k=100
+#:     캐논 118      +0.0169(0 포함)    +0.0109 [+0.001,+0.021]  -0.0071
+#:     사람 75       +0.0931 [+0.048,+0.147]  +0.0613 [+0.035,+0.093]  -0.0128 [-0.027,-0.002]
+#:
+#: k=10 이 더 크지만 캐논 셋과 사람 셋의 한국어 축에서 구간이 0을 스친다. **두 셋
+#: 모두에서 유의하고 어느 축도 나빠지지 않는 값은 20 하나다** — 한쪽에서 최고인 값이
+#: 아니라 양쪽에서 버티는 값을 택한다.
+#: 근거: [[record:rrf-k-and-weight-sweep-on-full176-2026-09-08]] ·
+#: [[record:rrf-k-20-reproduces-on-the-human-control-2026-09-08]]
+#:
+#: ⚠ 노드 융합(`title_hits`+`graph_hits`)에는 **적용하지 않는다.** 그 팔들은 재 본
+#: 적이 없고, 같은 상수를 쓴다고 같은 최적값을 갖지 않는다.
+CHUNK_RRF_K = 20
 
 
 def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
@@ -519,6 +539,64 @@ def _validity_cols(alias: str, prefix: str = "") -> str:
 #: Record 아닌 UNION 팔의 자리 맞춤 — 빈 문자열은 결손이 아니라 사실이다
 #: (그 종류엔 구간이 없다).
 _VALIDITY_EMPTY = "'' AS valid_from, '' AS valid_until"
+
+
+def _today() -> str:
+    """오늘(UTC, `YYYY-MM-DD`). 구간 비교는 사전식이라 문자열이면 충분하다."""
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def validity_state(valid_from: str | None, valid_until: str | None,
+                   *, now: str | None = None) -> str:
+    """반개구간 `[valid_from, valid_until)` 에서 파생하는 상태.
+    `future` · `current` · `historical` 셋 중 하나를 낸다.
+
+    🔴 **미기재 `valid_from` 은 current 다.** 이 한 줄이 이 함수의 전부라 해도 된다.
+    정책 초안은 `current = valid_from <= now` 였는데 거기엔 미기재 분기가 없고,
+    W13 계약이 "빈 값 = 미기재"인 이상 그건 예외가 아니라 **다수**다 — 실측으로
+    Record 610건 중 **432건(70.8%)** 이 `valid_from` 을 안 달고 있다. 그 정의로
+    기본 읽기를 걸면 낡은 것이 아니라 코퍼스의 7할이 사라진다. 그래서 무언가를
+    감추는 것은 **명시된 `valid_until` 뿐**이고, 그것이 "stale ≠ false"와도
+    실제 저작 관행(`valid_until` 사용 7건)과도 맞는다.
+
+    구간 형식은 `YYYY[-MM[-DD]]` 이고 비교는 사전식이다. `2026` 은 `2026-09-09`
+    보다 작으므로 연도만 적힌 시작은 그 해 내내 current 이고, 연도만 적힌 끝은
+    그 해가 시작되는 순간부터 historical 이다(반개구간의 뜻 그대로).
+
+    근거: [[decision:temporal-model-operational-policy-2026-09-09]] ·
+    [[record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09]]"""
+    now = now or _today()
+    vf = (valid_from or "").strip()
+    vu = (valid_until or "").strip()
+    if vf and now < vf:
+        return "future"
+    if vu and now >= vu:
+        return "historical"
+    return "current"
+
+
+def _row_validity(r: dict) -> tuple[str, str]:
+    """검색 행의 유효구간 — Record 는 열, Decision 은 props 의 임시 인코딩이다
+    (`props.valid_from`/`props.valid_until`, 시간 정책 §8 항목 5). "읽기는 종류별로
+    두 자리를 본다"는 그 조항이 이 함수다. 여기 없던 동안 71건에 채운 결정 구간은
+    어떤 읽기도 보지 않았고, 폐기된 결정(d44)이 후속 결정과 동점으로 나왔다
+    (라이브 재현 2026-09-11)."""
+    if r.get("kind") == "decision":
+        p = _props_to_obj(r.get("props_raw"))
+        return str(p.get("valid_from") or ""), str(p.get("valid_until") or "")
+    return str(r.get("valid_from") or ""), str(r.get("valid_until") or "")
+
+
+def _stamp_validity(base: dict, valid_from, valid_until) -> None:
+    """노드 **자신**의 유효구간과 파생 상태를 상세에 싣는다. 부착 목록(links.items)만
+    구간을 갖고 노드가 안 가지면, id 로 직접 연 historical 기록이 현재형 사실로
+    읽힌다(라이브 재현: `record:fact-engines-orphans`). `superseded_by` 는 props 의
+    임시 인코딩(§8 항목 4)이라 같은 자리에서 꺼내 준다 — 후속으로 건너갈 유일한 길."""
+    base["valid_from"] = str(valid_from or "")
+    base["valid_until"] = str(valid_until or "")
+    base["validity"] = validity_state(base["valid_from"], base["valid_until"])
+    props = base.get("props") if isinstance(base.get("props"), dict) else {}
+    base["superseded_by"] = str(props.get("superseded_by") or "")
 
 
 def graph_plan(*, owner: str, domain: str | None = None,
@@ -2336,6 +2414,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
        세는 자리를 노드 자신으로 옮겨 어느 동선으로 열어도 같은 숫자가 나온다.
 
     반환: {executed, node, node_kind, title, domain, one_liner, rev, updated_at, props,
+           valid_from, valid_until, validity('current'|'historical'|'future'), superseded_by,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree, out, in, attached,
                    items: [{id, title, domain, type, dir, evidence, confidence, note,
@@ -2355,7 +2434,10 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                   "one_liner": "", "domain": "", "props": {}, "excerpts": [],
                   "arm": "none",
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
-                  "rev": 0, "updated_at": ""}
+                  "rev": 0, "updated_at": "",
+                  # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
+                  "valid_from": "", "valid_until": "", "validity": "",
+                  "superseded_by": ""}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -2396,6 +2478,10 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         rev=rows[0].get("rev") or 0,
                         updated_at=rows[0].get("updated_at") or "",
                         props=_props_to_obj(rows[0].get("props")))
+            # Decision 의 구간은 props 에 있다(§8 항목 5 임시 인코딩). Concept 은
+            # 구간이 없고, 미기재는 current 다.
+            _p = base["props"] if meta_label == "Decision" else {}
+            _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
@@ -2416,7 +2502,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         "AND r.owner_id = $owner "
                         "RETURN r.title AS title, r.props AS props, "
                         "r.domain AS domain, "
-                        + _track_cols("r"),
+                        + _track_cols("r") + ", " + _validity_cols("r"),
                         {"id": pkns.key(owner, node), "owner": owner})
                     if rc:
                         # one_liner 열이 없다 — 카드 본문은 props 다(부착 목록이
@@ -2428,6 +2514,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                                     rev=rc[0].get("rev") or 0,
                                     updated_at=rc[0].get("updated_at") or "",
                                     props=_props_to_obj(rc[0].get("props")))
+                        _stamp_validity(base, rc[0].get("valid_from"),
+                                        rc[0].get("valid_until"))
                         # MENTIONS 는 Chunk→Concept 이라 Record 는 대상이 아니다.
                         # 관계는 있다(ATTACHES_TO). 여기서 links 를 비워 두면
                         # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
@@ -2443,7 +2531,17 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         one_liner=ep[0].get("s") or "",
                         rev=ep[0].get("rev") or 0,
                         updated_at=ep[0].get("updated_at") or "")
-            return base   # Episode 는 MENTIONS 대상이 아니다 — 요약이 곧 설명.
+            _stamp_validity(base, "", "")   # 사건은 구간이 없다 — 꼴만 맞춘다
+            # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
+            # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
+            # 일찍 빠져나가면서 그 둘을 함께 건너뛰고 있었고, 사건이 해소 후보가 되면서
+            # (2026-09-09) 확정된 사건만 관계 없이 답하게 됐다. 바로 위 Record 갈래가
+            # 같은 사유로 이미 링크를 채운다.
+            base["arm"] = "none"
+            base["excerpts"] = []
+            base["links"] = _episode_links(store, node, owner=owner,
+                                           with_evidence=with_evidence)
+            return base
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
             f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
@@ -2530,6 +2628,47 @@ def _record_links(store, node: str, *, owner: str,
     items = [{
         "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
         "domain": r.get("domain") or "", "type": "ATTACHES_TO", "dir": "out",
+        "evidence": bool((r.get("ev") or "").strip()),
+        "confidence": float(r.get("conf") or 0.0), "note": "",
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
+    } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
+                                           str(r.get("id") or "")))]
+    return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
+            "items": items[:_NODE_LINKS_CAP],
+            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+
+
+def _episode_links(store, node: str, *, owner: str,
+                   with_evidence: bool = False) -> dict:
+    """Episode 시드의 관계 목록 — 그 사건이 **무엇에 대한 것인가**(ABOUT).
+
+    :func:`_record_links` 와 같은 모양이다. 부착 엣지가 시드에서 **나가므로**
+    "무엇이 이 노드에 붙어 있나"를 묻는 :func:`_node_links` 의 팔들은 구조적으로 0행을
+    낸다. 게다가 Episode 는 `_SEMANTIC_LABELS` 가 아니라 그쪽에서 Concept 으로 접히는데,
+    그러면 **다른 테이블을 조회하고 조용히 빈 목록**을 낸다.
+
+    이 함수가 없던 동안 `node_context` 의 Episode 갈래는 링크를 아예 안 실었다. 사건이
+    해소 후보가 아니던 시절에는 눈에 띄지 않았지만, 2026-09-09 에 후보로 올리면서
+    **확정된 사건만 관계 없이 답하는** 상태가 됐다. 이 스토어 실측: 사건 160건에 ABOUT
+    256개(개념 226 · 결정 30)이고 관계가 0인 사건은 둘뿐이다.
+    근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]]"""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+             "truncated": False, "executed": False}
+    try:
+        rows = store.run(" UNION ALL ".join(
+            f"MATCH (e:Episode)-[r:ABOUT]->(o:{ol}) "
+            "WHERE e.episode_id = $id AND e.owner_id = $owner "
+            "AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "r.evidence AS ev, r.confidence AS conf "
+            for ol, opk in _SEMANTIC_PK.items()),
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+    except Exception:
+        return empty
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        "domain": r.get("domain") or "", "type": "ABOUT", "dir": "out",
         "evidence": bool((r.get("ev") or "").strip()),
         "confidence": float(r.get("conf") or 0.0), "note": "",
         "valid_from": "", "valid_until": "",
@@ -2689,7 +2828,18 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     base["node"] = {"id": nid,
                     "title": ctx.get("title") or cand.get("title") or nid,
                     "domain": cand.get("domain") or ctx.get("domain") or "",
-                    "kind": ctx.get("node_kind") or cand.get("kind") or ""}
+                    "kind": ctx.get("node_kind") or cand.get("kind") or "",
+                    # 노드 자신의 유효구간 — 직참조는 필터를 거치지 않으므로 여기가
+                    # historical 을 말할 유일한 자리다.
+                    "valid_from": ctx.get("valid_from") or "",
+                    "valid_until": ctx.get("valid_until") or "",
+                    "validity": ctx.get("validity") or "current",
+                    "superseded_by": ctx.get("superseded_by") or ""}
+    if base["node"]["validity"] != "current":
+        _sb = base["node"]["superseded_by"]
+        base.setdefault("validity_note",
+                        f"this claim is {base['node']['validity']}, not current"
+                        + (f"; superseded by {_sb}" if _sb else ""))
     body = _brief_body(ctx)
     base["one_liner"] = body["text"]
     base["body_src"] = body["src"]
@@ -2717,12 +2867,43 @@ def _brief_norm(s) -> str:
     return str(s or "").strip().lower()
 
 
+def _brief_strict_on() -> bool:
+    """엄격 판정을 켤 것인가. **기본은 켜짐**이고 `VINC_BRIEF_STRICT=off` 가 옛 규칙으로
+    되돌린다(비상구 — 켠 채로 두는 것이 맞다는 근거는 아래에 있다).
+
+    옛 규칙은 토큰 하나 차이면 확신했다. 실측(2026-09-09, 정답 66문항 · 1365노드):
+    답 가능 60건 중 **46건을 확신하고 그중 36건이 틀렸다**. 확신 46번에 정답 10번은
+    답이 아니라 소음이고, 지식 도구에서 그것은 되묻는 것보다 나쁘다.
+
+    엄격 판정은 확신 15건 · 그중 정답 8건 · **오답 7건**이다. 맞는 확신 둘과 노출 R@1
+    한 건을 내주고 확신 오답 29건을 지운다. 의미 팔까지 켜면 확신 20 · 정답 13 · 오답 7
+    이고 노출 R@1 이 0.1667 에서 0.2833 으로 오른다 — 두 변경은 **따로 재면 둘 다 안
+    오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
+    그 위에 확신 오답을 얹고 목록을 감췄다).
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
+        "0", "off", "false", "no")
+
+
+#: 확신에 필요한 토큰 차. 옛 값 1 은 **토큰 하나 차이면 확신한다**는 뜻이라 사실상
+#: 문턱이 없었다. 이 값을 내리기 전에 :func:`_brief_strict_on` 의 수치를 볼 것.
+_STRICT_MARGIN = 2
+
+
 def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
 
     ⚠ 그래프 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 청크 인접은
     "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은
-    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계)."""
+    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계).
+
+    **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
+    `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
+    함께 가리켰다는 뜻이라, 토큰 하나를 더 맞힌 것보다 강한 증거다.
+    ⚠ **융합 점수(RRF)로 정렬하는 안은 기각됐다.** 팔을 켜면 좋아 보이지만 끄면 나빠진다
+    (오답확정 37 → 44) — 팔이 둘뿐일 때 RRF 순위는 토큰 순서보다 못하다. 판정은 팔의
+    기본값과 무관하게 모두에게 적용되므로 팔에 의존하는 규칙은 쓸 수 없다.
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
     rows = [h for h in hits if isinstance(h, dict) and h.get("id")]
     if not rows:
         return "none", []
@@ -2732,13 +2913,22 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
             return "resolved", [h]
     if len(rows) == 1:
         return "resolved", [rows[0]]
+    strict = _brief_strict_on()
     # 안정 정렬 — 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
-    ranked = sorted(rows, key=lambda h: (-_brief_int(h.get("hit_tokens")),
-                                         -_brief_int(h.get("title_tokens"))))
+    # `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다.
+    ranked = sorted(rows, key=lambda h: (
+        # 의미 팔이 자기 기준으로 단호했던 노드를 먼저 놓는다(`_SEM_GAP` 주석).
+        # **순서만** 바꾼다 — 아래 `decisive` 는 여전히 어휘 여유를 요구한다.
+        -1 if (strict and h.get("sem_decisive")) else 0,
+        -len(h.get("arms") or []) if strict else 0,
+        -_brief_int(h.get("hit_tokens")),
+        -_brief_int(h.get("title_tokens"))))
     top, second = ranked[0], ranked[1]
+    margin = _STRICT_MARGIN if strict else 1     # 1 이면 현행과 글자 그대로 같다
     decisive = _brief_int(top.get("hit_tokens")) > 0 and (
-        _brief_int(top.get("hit_tokens")) > _brief_int(second.get("hit_tokens"))
-        or _brief_int(top.get("title_tokens")) > _brief_int(second.get("title_tokens")))
+        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
+        or _brief_int(top.get("title_tokens"))
+        - _brief_int(second.get("title_tokens")) >= margin)
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
     return ("resolved", ranked) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
@@ -2786,8 +2976,66 @@ def _brief_grounds(node_id: str, excerpts: list[dict], items: list[dict]) -> lis
     return sorted(x for x in out if x)
 
 
+def _brief_answerability_on() -> bool:
+    """답변 가능성 게이트를 켤 것인가. **기본은 꺼짐**(`VINC_BRIEF_ANSWERABILITY`).
+
+    끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
+    답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
+    수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
+    return str(os.environ.get("VINC_BRIEF_ANSWERABILITY", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+#: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
+#: 확신하지 않는다. 실측으로 고른 자리다(2026-09-10, 정답 81문항 · 확신 18건):
+#:
+#:     문턱   확신  정답  오답  답불가확정
+#:     꺼짐    18     8     7      3
+#:     0.34     9     5     4      0
+#:     0.67    14     7     7      0
+#:
+#: 0.34 는 오답 확정도 셋 줄이지만 그것은 **이 게이트의 일이 아니라 랭킹의 일**이고
+#: (`_brief_strict_on` 이 한 것), 그 대가로 맞는 확신을 둘 더 잃는다. 0.67 은 목적
+#: (답 불가에 확신을 주지 않는다)을 최소 비용으로 달성한다 — 맞는 확신 하나.
+#:
+#: ⚠ 잃는 그 하나는 **형태 변화** 때문이다: 질문의 `sent` 가 코퍼스의 `send` 와 표면이
+#: 달라 고아로 보인다. 이것이 이 게이트의 알려진 천장이다.
+#:
+#: ⚠ **"어간 분석을 붙이면 된다"는 처방이 아니다 — 기각됐다(2026-09-10).** 한때 이 자리에
+#: 그렇게 적혀 있었으나 재 본 적이 없는 추측이었다. 붙이면 표면이 뭉쳐 고아율이 함께
+#: 낮아지므로 게이트가 무뎌질 수 있고, 그 방향은 측정되지 않았다. 그리고 이 리포에는
+#: 반대 방향의 실측이 이미 있다 — 한국어 전문 검색이 지는 원인은 어간 처리가 아니었다
+#: (`scripts/r1c_ko_column.py`). 천장을 넘으려면 새 측정이 필요하고, 그 측정 전에는
+#: 이 문장을 처방으로 읽지 말 것.
+_ORPHAN_BLOCK = 0.67
+
+
+def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
+    """질문에서 확정 노드의 제목이 안 먹은 부분 중, **아무 데서도 못 본** 토큰의 비율.
+
+    어떤 토큰이 검색이 가져온 후보 제목과 청크 발췌 어디에도 없다면, 그 노드가 아니라
+    **어느 노드도** 질문의 그 부분을 다루지 못한다. 주제는 맞는데 물은 것이 없는 자리다.
+
+    코퍼스 어휘 전량과 대조하는 것이 정확하지만 질의당 402ms 다(실측). 이미 가져온
+    것만 보는 이 근사는 공짜이고, 운용 문턱(0.34~0.50)에서 정확판과 **결과가 같았다**.
+    근거: [[record:answerability-is-a-residual-coverage-question-2026-09-10]]"""
+    qt = normalize_query_tokens(query)
+    if not qt:
+        return 0.0
+    tt = set(normalize_query_tokens(str(picked_title or "")))
+    resid = [t for t in qt if t not in tt]
+    if not resid:
+        return 0.0
+    seen: set = set()
+    for h in res.get("node_hits") or []:
+        seen |= set(normalize_query_tokens(str(h.get("title") or ""), cap=64))
+    for r in res.get("rows") or []:
+        seen |= set(normalize_query_tokens(str(r.get("snippet") or ""), cap=256))
+    return sum(1 for t in resid if t not in seen) / len(resid)
+
+
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
-          max_excerpts: int = 3, cfg=None, store=None) -> dict:
+          max_excerpts: int = 3, historical: bool = False, cfg=None, store=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -2833,7 +3081,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             unread_ids.append({"id": qid,
                                "note": got.get("note") or ("node not found: " + qid)})
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
-                     owner=owner, store=store)
+                     owner=owner, store=store, historical=historical)
         base["executed"] = bool(res.get("executed"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
         # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
@@ -2841,12 +3089,44 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
         for k in ("error", "note", "node_error",
-                  "arms", "vector_note", "vector_rebuilding"):
+                  "arms", "vector_note", "vector_rebuilding",
+                  "validity_filtered", "validity_note", "validity_best_dropped"):
             if res.get(k):
                 base[k] = res[k]
         if base.get("error"):
             return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
+        # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
+        # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
+        # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
+        # 바가 아니다. 실측(2026-09-09): 이 갈래가 없는 동안 답 불가 질문 6건 중 1건이
+        # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
+        # 하나가 단독 승자가 된 모양이었다.
+        # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
+        if status == "resolved" and picked and base.get("validity_filtered"):
+            _bd = tuple(base.get("validity_best_dropped") or (0, 0))
+            _w = (_brief_int(picked[0].get("hit_tokens")),
+                  _brief_int(picked[0].get("title_tokens")))
+            if _bd >= _w:
+                status = "choose"
+                base["validity_note"] = (
+                    "a claim that is no longer current tied with the leading candidate, "
+                    "so this was not resolved; pass historical=true to see it")
+        # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
+        # 인용하고 그 **속성**을 물으면(“…는 문장은 누가 썼나”) 제목이 통째로 맞아
+        # 토큰 여유가 넘치고, 확신 문턱은 그것을 못 거른다 — 랭킹 문제가 아니기 때문이다.
+        # 실측(2026-09-10, 답 불가 21문항): 이 갈래가 없으면 '주제는 있는데 속성이 없는'
+        # 7건 중 3건을 확신했다. 이 게이트는 그 셋을 전부 막고(답불가 확정 0.1429 → 0.0000)
+        # 맞는 확신 하나를 잃는다. **노출 R@1 은 안 변한다** — 강등된 질문도 후보 목록에
+        # 정답을 1위로 싣기 때문이다.
+        # ⚠ 기본은 꺼져 있다 — 이유는 :func:`_brief_answerability_on` 에 있다.
+        if status == "resolved" and picked and _brief_answerability_on():
+            _orphan = _brief_orphan_residual(query, picked[0].get("title"), res)
+            if _orphan >= _ORPHAN_BLOCK:
+                status = "choose"
+                base["answerability_note"] = (
+                    "the topic matched but the question asks for something this graph "
+                    "does not hold, so this was not resolved")
         base["status"] = status
         if unread_ids and status in ("choose", "none"):
             base["unreadable"] = list(unread_ids)
@@ -4098,6 +4378,13 @@ def path_candidates_plan(seed: str, *, depth: int = 6,
 WEIGHT_HOPS = "hops"
 WEIGHT_CONFIDENCE = "confidence"
 
+#: 이 표면은 **개념 층만** 걷는다(`shortest_path_plan` 의 패턴이 `(:Concept)` 이다).
+#: 그래서 record·decision·episode id 를 주면 노드가 멀쩡히 있어도 매치가 0이고,
+#: 여태 그 답이 `found:false` 였다 — "안 이어져 있다"와 구분이 안 됐다. 실제로
+#: 그 답을 연결 부재로 읽고 "노드들이 섬이다"라고 보고한 적이 있다(2026-09-07).
+#: 접두만 본다: 알려진 비-개념 접두일 때만 말하므로 정상 개념을 거짓으로 막지 않는다.
+_NON_CONCEPT_PREFIXES = ("record:", "decision:", "episode:", "domain:", "bridge:")
+
 
 def _weighted_shortest_path(a_id: str, b_id: str, *, max_depth: int, owner: str | None,
                             cfg, store) -> dict:
@@ -4175,8 +4462,25 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         # F7 — 여태 `found:false` 뿐이라 **끝점이 없는 것**과 **길이 없는 것**이
         # 구분되지 않았다. 둘은 다음 행동이 완전히 다르다: 앞은 id 를 고쳐야 하고
         # 뒤는 depth 를 늘리거나 엣지를 이어야 한다. 어느 끝이 문제인지 짚어 준다.
-        missing = [x for x in (a_id, b_id)
-                   if not any(c["id"] == x for c in near_nodes(store, x, owner=owner))]
+        #
+        # ⚠ **존재는 PK 로 묻는다.** 이 판정이 `near_nodes`(제목·props **유사도** 검색)
+        # 였고, 유사도는 존재의 증거가 아니다: 슬러그 id 는 제 산문 제목 안에 글자
+        # 그대로 안 나타나는 일이 흔해서 후보가 0이 되고, 그러면 **실재하는 노드가
+        # `unknown node` 로 보고된다.** 라이브 실측(2026-09-08): `concept:hybrid-search`
+        # 는 이웃 28개를 가진 멀쩡한 개념인데 이 표면만 "unknown node" 라고 답했다.
+        # `neighbors()` 가 정확히 같은 결함을 3860행대에서 이미 고쳤는데(그 주석이
+        # 이 처방을 적어 놓았다) **형제 함수만 안 받았다.** 그리고 이 검사가 먼저라,
+        # 아래의 "개념 층만 걷는다" 안내가 대부분 도달조차 못 했다.
+        # 근거: [[record:path-called-an-existing-concept-unknown-2026-09-08]]
+        def _exists(x: str) -> bool:
+            probe = execute(seed_lookup_plan(x, owner=owner), cfg, store=store)
+            if not probe.get("executed"):
+                # 프로브가 못 돌았으면 **모르는 것**이지 없는 것이 아니다 —
+                # 조회 실패를 부재로 단언하지 않는다(`neighbors()` 와 같은 태도).
+                return True
+            return any(r.get("id") == x for r in probe.get("rows", []))
+
+        missing = [x for x in (a_id, b_id) if not _exists(x)]
         if missing:
             base["error"] = "unknown node: " + ", ".join(missing)
             cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
@@ -4188,10 +4492,24 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
             if cands:
                 base["candidates"] = cands[:3]
         else:
-            base["error"] = f"no path within max_depth={max_depth}"
-            base["hint"] = ("Both nodes exist but nothing connects them within this "
-                            "depth. Raise `max_depth`, or use vinc_neighbors on each "
-                            "end to see what they do connect to.")
+            # 개념이 아닌 끝점은 **연결 부재가 아니라 층 부재**다. 이걸 안 가르면
+            # 읽는 쪽이 빈 답을 "안 이어져 있다"로 읽는다.
+            wrong = [x for x in (a_id, b_id)
+                     if x.lower().startswith(_NON_CONCEPT_PREFIXES)]
+            if wrong:
+                base["error"] = ("this tool walks the concept layer only: "
+                                 + ", ".join(wrong) + " is not a concept id")
+                base["hint"] = ("Shortest paths are computed between `concept:` nodes. "
+                                "A record, decision or episode is attached to concepts "
+                                "rather than sitting on the path graph, so it can never "
+                                "be an endpoint here even when it exists and is well "
+                                "connected. Use vinc_neighbors on that id to see what it "
+                                "attaches to, then path between those concepts.")
+            else:
+                base["error"] = f"no path within max_depth={max_depth}"
+                base["hint"] = ("Both nodes exist but nothing connects them within this "
+                                "depth. Raise `max_depth`, or use vinc_neighbors on each "
+                                "end to see what they do connect to.")
     return base
 
 
@@ -4501,6 +4819,28 @@ def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
     return ids | {r["id"] for r in drows if r.get("id")}
 
 
+#: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.
+#:
+#: 🔴 owner 스코프를 논리 id 문자열 집합과의 교차로 걸기 때문에 생긴다
+#: (`_owner_concept_ids`). 한 소유자 안에서 id 는 기본키라 유일하니 교차는 안전해
+#: 보이는데, 같은 슬러그를 가진 남의 노드가 문자열이 같다는 이유로 통과한다. 새
+#: 스페이스는 전부 같은 기본 역할 넷으로 시작하므로 드문 일이 아니다.
+#:
+#: 어느 쪽이 내 것인지는 알 방법이 없다 — 알고리즘 행에 소유자가 없고, owner 만
+#: 투영하는 길은 엔진이 막는다(cypher 투영 그래프는 WCC 를 Binder 가 거절한다).
+#: 그래서 **고르지 않고 갈라 낸다.** 세 진단이 같은 함수를 쓴다.
+#: 근거: [[record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10]]
+def _ambiguous_algo_ids(rows, scope: set[str] | None) -> list[str]:
+    """한 id 가 서로 다른 그룹 값으로 두 번 이상 나오면 그것은 두 스페이스의 노드다."""
+    seen: dict = {}
+    for r in rows or []:
+        cid = r.get("id")
+        if not cid or (scope is not None and cid not in scope):
+            continue
+        seen.setdefault(cid, set()).add(r.get("value"))
+    return sorted(cid for cid, vals in seen.items() if len(vals) > 1)
+
+
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
     """store.graph_algo 안전 호출 — (rows, None) 또는 (None, note). ``rel_tables``
     미지정 시 어댑터 기본(개념 관계 4종). Louvain 은 단일 엣지 테이블만 지원하므로
@@ -4540,7 +4880,11 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
 
     반환 {executed, components:[{group, size, members, members_truncated}],
-    orphans:[id…], component_count, orphan_count}. algo 부재 시 executed=False + note.
+    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count}.
+    algo 부재 시 executed=False + note.
+
+    ``ambiguous`` — **두 스페이스에 같은 슬러그로 존재해 어느 쪽이 내 것인지 못 가리는
+    id**. 컴포넌트에도 고아에도 안 넣는다. 왜 생기는지는 아래 계산 자리의 주석에 있다.
 
     ``member_limit`` — 컴포넌트당 실을 구성원 수(기본 50, 상한 1000). 여태 50 으로
     **말없이** 잘라서, `size:173` 인 컴포넌트도 50개만 보이고 그게 전부인 줄 알기
@@ -4561,10 +4905,14 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
+        # 2026-09-10 실측: `concept:agent-steward` 가 크기 1 컴포넌트로 **네 번** 나왔고
+        # 그 수가 그 슬러그를 가진 스페이스 수와 맞았다. 사유는 `_ambiguous_algo_ids`.
+        ambiguous = _ambiguous_algo_ids(rows, scope)
+        drop = set(ambiguous)
         groups: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
-            if not cid or (scope is not None and cid not in scope):
+            if not cid or cid in drop or (scope is not None and cid not in scope):
                 continue
             groups.setdefault(grp, []).append(cid)
         mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
@@ -4574,7 +4922,12 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
         orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
         base.update(executed=True, components=comps, orphans=orphans,
-                    component_count=len(comps), orphan_count=len(orphans))
+                    component_count=len(comps), orphan_count=len(orphans),
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+        if ambiguous:
+            base["ambiguous_note"] = (
+                "these ids exist in more than one space, so this diagnosis cannot tell "
+                "which node is yours and leaves them out of components and orphans")
     finally:
         if owns:
             store.close()
@@ -4718,6 +5071,10 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
+        # 컴포넌트 쪽과 같은 자리다 — 두 스페이스에 사는 슬러그는 커뮤니티 둘에 들어가
+        # `size` 를 부풀린다. 고르지 않고 갈라 낸다(`_ambiguous_algo_ids`).
+        ambiguous = _ambiguous_algo_ids(rows, scope)
+        drop = set(ambiguous)
         # 도메인 부착(지배 도메인 산정) — owner 스코프 개념 도메인 맵.
         dwhere = "WHERE c.owner_id = $owner " if owner else ""
         dparams = {"owner": owner} if owner else None
@@ -4727,7 +5084,8 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         groups: dict = {}
         for r in rows:
             cid, com = r.get("id"), r.get("value")
-            if not cid or com == -1 or (scope is not None and cid not in scope):
+            if not cid or com == -1 or cid in drop \
+                    or (scope is not None and cid not in scope):
                 continue   # -1 = Louvain 미배정(고립) — 커뮤니티 아님
             groups.setdefault(com, []).append(cid)
         out = []
@@ -4745,7 +5103,12 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
                         "members": sorted(members)[:_ml],
                         "members_truncated": len(members) > _ml})
         out.sort(key=lambda c: (-c["size"], str(c["community"])))
-        base.update(executed=True, communities=out, community_count=len(out))
+        base.update(executed=True, communities=out, community_count=len(out),
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+        if ambiguous:
+            base["ambiguous_note"] = (
+                "these ids exist in more than one space, so this diagnosis cannot tell "
+                "which node is yours and leaves them out of the communities")
     finally:
         if owns:
             store.close()
@@ -4793,7 +5156,19 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
             base["note"] = note
             return base
         scope = _owner_concept_ids(store, owner)
-        assign = {r["id"]: r["value"] for r in rows if r.get("id")}
+        # 🔴 **여기가 셋 중 가장 조용한 자리였다.** `assign` 은 논리 id 로 키를 잡는
+        # dict 라, 같은 슬러그가 두 스페이스에 있으면 **마지막 행이 이긴다** — 씨앗의
+        # 커뮤니티로 남의 스페이스 값을 집어 그 위에서 대표와 발췌를 만들고, 아무 표시도
+        # 없다. 컴포넌트 쪽은 중복이 눈에 보이기라도 했다.
+        # 씨앗이 모호하면 **답하지 않는다**: 고르는 것은 추측이다.
+        ambiguous = set(_ambiguous_algo_ids(rows, scope))
+        if node in ambiguous:
+            base["note"] = (f"{node} exists in more than one space, so this cannot tell "
+                            "which node is yours")
+            base["ambiguous"] = True
+            return base
+        assign = {r["id"]: r["value"] for r in rows
+                  if r.get("id") and r["id"] not in ambiguous}
         com = assign.get(node)
         if com is None or com == -1 or (scope is not None and node not in scope):
             base["note"] = f"unknown or isolated node: {node}"
@@ -4934,7 +5309,7 @@ def _chunk_arms(store, query, query_embedding, top_k,
     # 접두만 보면 되고(추가 질의 0), **융합 전에** 걸러야 상위 k 를 관례가 잠식하지 않는다.
     for a in arms:
         a[:] = [r for r in a if not str(r.get("id") or "").startswith(_CONV_PREFIX)]
-    rows = (rrf_fuse(arms, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
+    rows = (rrf_fuse(arms, k=CHUNK_RRF_K, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
     return rows, vnote, arm_names
@@ -5057,7 +5432,8 @@ def miss(kind: str, *, error: str, hint: str, **extra) -> dict:
 
 
 def _node_fallback_search(store, query: str, *, limit: int = 20,
-                          owner: str | None = None) -> list[dict]:
+                          owner: str | None = None, historical: bool = False,
+                          stats: dict | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -5073,7 +5449,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
       ③ **파이썬에서 점수를 매긴다**(§4-2 — Cypher 안에 점수식을 두지 않는다):
          맞은 토큰 수(주) → 제목에서 맞은 토큰 수 → 필드 강도 → id.
 
-    반환 행: {id, title, kind('concept'|'record'), domain, matched_in('title'|
+    반환 행: {id, title, kind('concept'|'record'|'decision'|'episode'), domain, matched_in('title'|
     'one_liner'|'props'), hit_tokens, title_tokens, token_total} — 뒤 세 개가 신설이다.
     호출부(묻기 등)가 "얼마나 확실한 매치인가"를 **임의 임계값 없이** 판정하려면 맞은
     토큰 수가 필요하다. 구 소비처는 새 키를 무시하면 그만이다(가산 변경).
@@ -5087,10 +5463,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     params: dict = {f"q{i}": t for i, t in enumerate(toks)}
     idx = range(len(toks))
     # SEC-1: 소유자 스코프. 없으면(로컬 단일 사용자) 기존 전역 검색.
-    own_c = own_r = own_d = ""
+    own_c = own_r = own_d = own_e = ""
     if owner:
         own_c, own_r = " AND c.owner_id = $owner", " AND r.owner_id = $owner"
-        own_d = " AND d.owner_id = $owner"
+        own_d, own_e = " AND d.owner_id = $owner", " AND e.owner_id = $owner"
         params["owner"] = owner
 
     # PK 네임스페이싱 — id 열은 물리 키(`owner슬러그`)라, **owner 문자열의
@@ -5118,22 +5494,71 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 없으면 `vinc_neighbors` 가 실재하는 결정을 "unknown node" 라고 답한다 — 실제로
     # 라이브에서 그렇게 나왔다(2026-08-09 이관 직전 탐침).
     d_fields = ("d.title", "d.props", "d.decision_id")
+    # Episode 도 같은 폴백에 넣는다(2026-09-09). 여기 없던 동안 **사건은 어떤 팔로도
+    # 후보가 될 수 없었다** — 제목 팔의 UNION 은 셋뿐이고 그래프 팔은 Concept 만
+    # 승격하므로, 스토어에 160건이 있어도 `brief` 가 이름을 댈 방법이 0이었다. Decision
+    # 이 v12 전까지 있던 자리와 같고, 그때 남긴 이유("빠뜨리면 검색으로 도달 불가")도 같다.
+    #
+    # 실측으로 골랐다: 정답 60문항에서 R@1 0.133 → 0.183, R@5 0.283 → 0.367 이고
+    # **다른 종류는 한 문항도 잃지 않는다**(Episode 만 0/10 → 3/10). 같이 재 본 "맞은
+    # 토큰 수를 제목 길이로 나눈다"는 정반대였다(R@1 0.033) — 짧은 제목이 토큰 하나로
+    # 다 이겨서, 그 가설은 기각한다.
+    #
+    # ⚠ **`summary` 는 검색 필드에 넣지 않는다.** 처음엔 넣었다가 되돌렸다(2026-09-09).
+    # 사건의 요약은 문단이라 토큰 표면이 넓고, 그건 Record 제목이 남의 질문을 가져가는
+    # 것과 **같은 기전**이다. 실측: 요약을 포함하면 답 불가 질문 6건 중 1건이 사건으로
+    # **확정**됐다(정직성 0.0 → 0.1667). 빼면 이득은 그대로다 — R@1 0.1667 유지, 후보
+    # 진입 0.3333 → 0.3500, 확정 오답 0.6167 → 0.6000, 답 불가 확정 0.0 복구. R@3 만
+    # 0.2000 → 0.1833(한 문항)이 값이다.
+    #
+    # 확정된 뒤의 재료는 그대로다 — `node_context` 가 `summary` 를 one_liner 자리로
+    # 올리므로 서술 문단은 답변 재료에 실린다. 여기서 빼는 것은 **찾는 표면**뿐이다.
+    # 근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]] ·
+    # [[record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09]] ·
+    # [[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]
+    e_fields = ("e.title", "e.episode_id")
     cypher = (
         f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
         "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
-        "c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw "
+        f"c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw, "
+        f"{_VALIDITY_EMPTY} "
         "UNION ALL "
         f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
         "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
-        "r.domain AS domain, '' AS one_liner, r.props AS props_raw "
+        f"r.domain AS domain, '' AS one_liner, r.props AS props_raw, {_validity_cols('r')} "
         "UNION ALL "
         f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
         "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
-        "d.domain AS domain, '' AS one_liner, d.props AS props_raw"
+        f"d.domain AS domain, '' AS one_liner, d.props AS props_raw, {_VALIDITY_EMPTY} "
+        "UNION ALL "
+        f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
+        "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
+        f"e.domain AS domain, '' AS one_liner, '' AS props_raw, {_VALIDITY_EMPTY}"
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
+    dropped = 0
+    best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
     for r in rows:
+        # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
+        # 그 절이 빠지면 낡은 것이 아니라 코퍼스의 7할이 사라진다(`validity_state` 참조).
+        # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
+        # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
+        if not historical:
+            st = validity_state(*_row_validity(r))
+            if st != "current":
+                dropped += 1
+                # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
+                # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
+                # 부르는 쪽이 그것을 알아야 판단할 수 있다.
+                _dt_ = sum(1 for t in toks if t in str(r.get("title") or "").lower())
+                _dh_ = sum(1 for t in toks
+                           if t in str(r.get("title") or "").lower()
+                           or t in str(r.get("one_liner") or "").lower()
+                           or t in str(r.get("props_raw") or "").lower())
+                if (_dh_, _dt_) > best_dropped:
+                    best_dropped = (_dh_, _dt_)
+                continue
         title = str(r.get("title") or "").lower()
         one = str(r.get("one_liner") or "").lower()
         props = str(r.get("props_raw") or "").lower()
@@ -5156,6 +5581,9 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 결정론 랭킹: 맞은 토큰 수 ↓ → 제목 토큰 수 ↓ → 필드 강도 ↑ → id ↑.
     scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
                                _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
+    if stats is not None:
+        stats["dropped_not_current"] = dropped
+        stats["best_dropped_score"] = best_dropped
     return scored[:max(1, int(limit))]
 
 
@@ -5219,20 +5647,137 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
     return out[:max(1, int(limit))]
 
 
+#: 의미 팔이 낸 id 들의 도메인. **미러는 그 열을 안 담는다** — `NodeVec` 은 찾는 표면과
+#: 라벨만 들고 있고 도메인은 노드 표에 있다.
+#:
+#: 🔴 여기까지 빈 문자열을 채워 보내면 받는 쪽이 **"무주제"로 읽는다.** 2026-09-10 에
+#: 고아 조사를 하다가 의미 팔이 낸 `domain: ""` 을 보고 "무주제 노드가 있다, 그런데
+#: 센서스는 0을 답한다 → 센서스가 틀렸다"까지 갔다. 센서스는 옳았고 이 필드가 거짓이었다.
+#: 같은 노드가 그래프 팔로는 제 도메인을, 의미 팔로는 빈 문자열을 내는 것이 증거다.
+#: **없는 것과 비어 있는 것은 다르다**, 그리고 이 팔은 이제 기본으로 켜져 있다.
+def _domains_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict:
+    """논리 id → domain. 네 라벨을 각각 한 번씩 훑는다(반환은 top_k 규모라 작다)."""
+    if not ids:
+        return {}
+    out: dict[str, str] = {}
+    for label, pk in (("Concept", "concept_id"), ("Record", "record_id"),
+                      ("Decision", "decision_id"), ("Episode", "episode_id")):
+        where = f"WHERE n.{pk} IN $ids"
+        # PK 네임스페이싱이 켜진 스토어에서 PK 열은 물리 키(owner\x1fid)다 — 논리
+        # 슬러그로 바인딩하면 한 건도 안 맞고 domain 이 통째로 빈다(PKNS 잡에서만
+        # 붉었다). 되돌리기는 읽기 훅이 한다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+        params: dict = {"ids": pkns.keys(owner, list(ids))}
+        if owner:
+            where += " AND n.owner_id = $o"
+            params["o"] = owner
+        try:
+            rows = store.run(f"MATCH (n:{label}) {where} "
+                             f"RETURN n.{pk} AS id, n.domain AS domain", params) or []
+        except Exception:
+            continue        # 한 라벨이 막혀도 나머지는 채운다 — 이 값은 증강이다
+        for r in rows:
+            if r.get("id"):
+                out[r["id"]] = r.get("domain") or ""
+    return out
+
+
+def _validity_for_ids(store, ids: list[str], *, owner: str | None = None) -> dict:
+    """논리 id → (valid_from, valid_until). Record 는 열, Decision 은 props 의 임시 인코딩
+    (시간 정책 §8 항목 5). 미러(NodeVec)에는 구간이 없어 의미 팔이 올린 후보는 여기서
+    되찾아 본다. Concept·Episode 는 구간이 없다 — 목록에 없으면 호출부가 ('', '') 로
+    읽고 그것은 current 다. 조회가 막히면 예외를 그대로 올린다: 호출부(의미 팔)의
+    except 가 `node_error` 를 남기고 그 팔을 비운다 — 조용히 통과시키는 쪽이 이 필터가
+    막으려는 고장이다."""
+    if not ids:
+        return {}
+    out: dict[str, tuple[str, str]] = {}
+    params: dict = {"ids": pkns.keys(owner, list(ids))}
+    own = ""
+    if owner:
+        own = " AND n.owner_id = $o"
+        params["o"] = owner
+    for r in store.run("MATCH (n:Record) WHERE n.record_id IN $ids" + own
+                       + " RETURN n.record_id AS id, " + _validity_cols("n"), params) or []:
+        if r.get("id"):
+            out[r["id"]] = (r.get("valid_from") or "", r.get("valid_until") or "")
+    for r in store.run("MATCH (n:Decision) WHERE n.decision_id IN $ids" + own
+                       + " RETURN n.decision_id AS id, n.props AS props_raw", params) or []:
+        if r.get("id"):
+            p = _props_to_obj(r.get("props_raw"))
+            out[r["id"]] = (str(p.get("valid_from") or ""), str(p.get("valid_until") or ""))
+    return out
+
+
+def _node_semantic_arm_on() -> bool:
+    """의미 암을 켤 것인가. **기본은 켜짐**이고 `VINC_NODE_SEMANTIC_ARM=off` 가 비상구다.
+
+    ⚠ 2026-09-10 에 뒤집혔다. 전에는 꺼져 있었고 근거는 "팔이 후보만 올리고 해상은 안
+    바꾼다"였다 — 후보 진입은 21/60 → 35/60 인데 확정된 46건의 **선택이 하나도 안
+    바뀌었다**. 그 전제가 거짓이 됐다: 팔 자신의 1-2위 거리 격차를 순서 키에 넣자
+    노출 R@1 이 0.2833 → **0.4833**, 확신 오답 7 → 3 이 됐고 답 불가 확정은 그대로다.
+    한국어 축이 0.100 → 0.500 으로 가장 크게 움직인다.
+
+    **비용은 질의가 아니라 릴리스가 낸다.** 이 팔은 `NodeVec` 미러를 읽는데 미러는
+    전량 재구축만 있고(HNSW 증분 삽입이 세그폴트를 낸다) 그 재구축은 배포 경계에서
+    한 번 돈다(`api/server.py::write_node_mirror_rebuild`). 미러가 비어 있으면 이 팔은
+    **빈 목록**이지 예외가 아니다 — 그래서 켜 두는 것이 안전하다.
+    근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
+    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() not in (
+        "0", "off", "false", "no")
+
+
+def _node_sem_rank_on() -> bool:
+    """의미 팔의 단호함을 순서에 반영할 것인가. **기본은 켜짐**(`VINC_NODE_SEM_RANK=off`).
+
+    팔과 **한 몸이다** — 위의 0.4833 은 둘 다 켠 값이고, 팔만 켜면 0.2833 으로 돌아간다.
+    따로 끌 수 있게 둔 이유는 격차 문턱(`_SEM_GAP`)을 다시 잴 때 순서 기여만 떼어
+    보기 위해서다."""
+    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() not in (
+        "0", "off", "false", "no")
+
+
+#: 의미 팔이 **자기 기준으로 단호하다**고 볼 1-2위 거리 격차.
+#:
+#: 절대 거리는 못 쓴다: 완전 일치가 0.077 인데 아무 말이나 던져도 0.170 이라 범위가
+#: 좁고 크게 겹친다(실측 2026-09-10). 가르는 것은 **1위가 2위보다 뚜렷하게 가까운가**이고,
+#: 그 격차의 중앙값은 맞혔을 때 0.0215 · 틀렸을 때 0.0047 로 4.6배 갈린다. 어휘 층이
+#: "1위가 2위를 2토큰 차로 이겨야 한다"고 요구하는 것과 같은 모양이다.
+#:
+#: 문턱별 의미 팔 1위 정밀도(답 가능 60): 0.000 → 28/60(0.47) · 0.010 → 26/31(0.84)
+#: · 0.025 → 12/13(0.92) · 0.040 → 9/9(1.00).
+#: ⚠ 이 단호함은 **순서만** 바꾼다. 확신은 여전히 어휘 여유를 요구한다 — 답 불가
+#: 21문항 중 9건도 0.010 격차를 통과하므로 이것으로 확정을 주면 정직성이 무너진다.
+#: 근거: [[record:the-semantic-arm-decides-by-its-own-margin-not-its-distance-2026-09-10]]
+_SEM_GAP = 0.010
+
+
 def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
-                    top_k: int) -> list[dict]:
-    """title 폴백 + 그래프 암을 개념-공간 RRF 융합(§4-2, D24 매치 표기). 각 행에
-    ``arms``(title/graph 멤버십)를 부여한다. 그래프 암이 비면 **융합하지 않고**
-    title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변)."""
+                    top_k: int, vec_hits: list[dict] | None = None) -> list[dict]:
+    """title 폴백 + 그래프 암 (+ v17 의미 암)을 개념-공간 RRF 융합(§4-2, D24 매치 표기).
+    각 행에 ``arms``(title/graph/semantic 멤버십)를 부여한다. 다른 팔이 다 비면
+    **융합하지 않고** title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변).
+
+    의미 암은 **어휘가 하나도 안 겹쳐도 닿는 유일한 팔**이다. 실측(2026-09-09): 후보
+    진입을 21/60 에서 35/60 으로 올리고, 그 이득은 제목이 안 겹치는 축에 몰린다
+    (제목 재사용 ≤0.34 인 한국어 질문 1/8 → 5/8). 다만 **답이 바뀌지는 않는다** —
+    기본이 꺼진 이유는 :func:`_node_semantic_arm_on` 에 있다.
+    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
     membership: dict = {}
-    for name, rows_ in (("title", title_hits), ("graph", graph_hits)):
+    arms_in = [("title", title_hits), ("graph", graph_hits),
+               ("semantic", vec_hits or [])]
+    for name, rows_ in arms_in:
         for r in rows_:
             membership.setdefault(r.get("id"), set()).add(name)
-    if not graph_hits:
-        for r in title_hits:
+    lists = [rows_ for _, rows_ in arms_in if rows_]
+    if len(lists) < 2:
+        # 융합할 것이 없으면 그 한 팔의 순서를 그대로 낸다. `title_hits` 로 못 박으면
+        # **제목 팔이 빈 채 다른 팔만 찬 경우가 통째로 버려진다**(융합 전 동작은 그때
+        # 그 팔의 행을 냈다).
+        out = lists[0] if lists else []
+        for r in out:
             r["arms"] = sorted(membership.get(r.get("id"), []))
-        return title_hits
-    fused = rrf_fuse([title_hits, graph_hits], top_k=top_k)   # title 우선(행 유지)
+        return out
+    fused = rrf_fuse(lists, top_k=top_k)   # title 우선(행 유지)
     for r in fused:
         r["arms"] = sorted(membership.get(r.get("id"), []))
     return fused
@@ -5241,7 +5786,7 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
-           cfg=None, store=None) -> dict:
+           historical: bool = False, cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -5299,10 +5844,19 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
         # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
         title_hits: list[dict] = []
+        _vstats: dict = {}
         try:
-            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner)
+            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
+                                               historical=historical, stats=_vstats)
         except Exception as exc:
             base["node_error"] = f"{type(exc).__name__}: {exc}"
+        # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
+        # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
+        if _vstats.get("dropped_not_current"):
+            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
+            base["validity_note"] = ("hid nodes whose claim is no longer current; "
+                                     "pass historical=true to include them")
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
@@ -5410,15 +5964,85 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
 
-        # (4) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
+        # (4-a) v17 의미 암 — 노드 미러(NodeVec)를 질의 벡터로 찾는다. **어휘가 하나도
+        # 안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
+        # 순위에 얹혀 있어(graph), 패러프레이즈를 못 건넌다.
+        #
+        # 기본은 **켜져 있다**(`VINC_NODE_SEMANTIC_ARM=off` 가 비상구). 미러가 비면
+        # 빈 목록이라 켜 둬도 안 깨지고, 미러는 배포 경계에서 전량 재구축된다.
+        # 뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다.
+        vec_hits: list[dict] = []
+        _sem_decisive: str | None = None
+        if query_embedding is not None and _node_semantic_arm_on():
+            try:
+                # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
+                # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
+                _raw = store.node_vector_search(
+                    query_embedding, top_k, owner=owner) or []
+                # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
+                # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
+                # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
+                # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
+                # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더한다.
+                if not historical and _raw:
+                    _vf = _validity_for_ids(
+                        store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
+                    _keep = []
+                    for h in _raw:
+                        if validity_state(*_vf.get(h.get("id"), ("", ""))) == "current":
+                            _keep.append(h)
+                        else:
+                            _vstats["dropped_not_current"] = (
+                                _vstats.get("dropped_not_current", 0) + 1)
+                    _raw = _keep
+                vec_hits = [{"id": h.get("id"),
+                             "title": h.get("title") or h.get("text") or "",
+                             "kind": h.get("kind") or "", "domain": "",
+                             "matched_in": "semantic", "hit_tokens": 0,
+                             "title_tokens": 0, "token_total": 0,
+                             "distance": h.get("distance")}
+                            for h in _raw]
+                # 도메인은 미러에 없다. 빈 문자열로 두면 "무주제"로 읽히므로 채운다
+                # (사유는 `_domains_for_ids` 주석).
+                _doms = _domains_for_ids(
+                    store, [h["id"] for h in vec_hits if h.get("id")], owner=owner)
+                for _h in vec_hits:
+                    _h["domain"] = _doms.get(_h.get("id"), "")
+                # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
+                # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
+                if len(_raw) > 1 and _node_sem_rank_on():
+                    try:
+                        if (float(_raw[1]["distance"])
+                                - float(_raw[0]["distance"])) >= _SEM_GAP:
+                            _sem_decisive = _raw[0].get("id")
+                    except (TypeError, ValueError, KeyError):
+                        pass
+            except Exception as exc:
+                base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
+        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔의 합.
+        if _vstats.get("dropped_not_current"):
+            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base.setdefault("validity_best_dropped",
+                            list(_vstats.get("best_dropped_score") or (0, 0)))
+            base.setdefault("validity_note", ("hid nodes whose claim is no longer current; "
+                                              "pass historical=true to include them"))
+
+        # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
         try:
             chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")]
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k)
+            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
+                                                vec_hits=vec_hits)
+            # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
+            # 융합 **뒤에** id 로 찾아 단다.
+            for _r in base["node_hits"]:
+                if _sem_decisive and _r.get("id") == _sem_decisive:
+                    _r["sem_decisive"] = True
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k)
+            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k,
+                                                vec_hits=vec_hits)
     finally:
         if owns:
             store.close()

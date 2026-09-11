@@ -58,25 +58,46 @@ def fetch_docs() -> list[str]:
             return docs
 
 
-def verify_nodes(ids: list[str]) -> list[str]:
-    """인용된 노드가 실재하는지 한 건씩 본다. `found:false` 는 싣지 않는다 — 못 실으면
-    게이트가 그 인용을 잡는데, 그게 맞다(없는 노드를 가리키는 주석이다).
+#: 전송 오류 재시도 횟수. 타임아웃은 일시적이고, 이 판정은 배포를 막는다.
+_TRIES = 3
 
-    ⚠ **`vinc_graph` 로 물으면 안 된다.** 그쪽은 이웃 전체를 좌표·랭킹까지 실어 오므로
-    허브 노드에서 응답 상한(72KB)을 넘고, 그러면 `isError` 로 돌아온다. 그것을 부재로
-    읽으면 **중심 개념일수록 인용이 막히는** 정반대의 게이트가 된다 — 실제로
-    `concept:agent-orchestration`(이웃 31개, 170KB)이 "그래프에 없다"로 찍혔다.
-    `vinc_neighbors` 는 같은 `found` 를 주면서 `limit=1` 로 잘리므로 크기에 걸리지
-    않는다. 존재 확인에 이웃 목록은 필요 없다."""
-    out: list[str] = []
+#: 쓰기 모드가 받아 주는 '없다' 의 상한(건). 인용된 노드의 10% 와 이 값 중 큰 쪽.
+#: 인용 몇 건이 죽는 것은 정상 드리프트지만, 수십 건이 한 번에 '없다' 로 오는 것은
+#: 허브의 정확 id 조회가 깨진 것이다 — 2026-09-11 에 126건이 그렇게 왔고, 그때 refresh
+#: 를 돌렸다면 살아 있는 노드 126개를 매니페스트에서 지운 채 커밋했을 것이다.
+_MISS_CEILING = 20
+
+
+def verify_nodes(ids: list[str]) -> tuple[list[str], list[str]]:
+    """인용된 노드가 실재하는지 한 건씩 본다. `(있다, 못 물어봤다)` 를 돌려준다.
+
+    🔴 **"없다"와 "못 물어봤다"를 가른다.** `remote.call` 은 전송 실패에만 `isError` 를
+    달고 진짜 부재는 `found:false` 로 온다. 둘을 같이 처리하면 **타임아웃 한 번이 죽은
+    인용으로 찍혀 배포를 죽인다** — 2026-09-09 에 실제로 그랬다(hub-deploy 실패, 그
+    노드는 라이브에 멀쩡히 있었다). 로그에는 "그래프에 없다"고 적히고 바로 아랫줄에
+    `remote unreachable: URLError: timed out` 이 있었다.
+
+    ⚠ 같은 부류의 결함을 한 번 고친 적이 있다. **`vinc_graph` 로 물으면 안 된다** —
+    그쪽은 이웃 전체를 좌표·랭킹까지 실어 오므로 허브 노드에서 응답 상한(72KB)을 넘고
+    `isError` 로 돌아온다. 그것을 부재로 읽으면 **중심 개념일수록 인용이 막히는** 정반대의
+    게이트가 된다(`concept:agent-orchestration`, 이웃 31개·170KB 가 "없다"로 찍혔다).
+    그때는 질문을 바꿔 증상만 닫았고 `isError` == 부재라는 부류는 남아 있었다. 여기서 닫는다.
+    `vinc_neighbors` 는 같은 `found` 를 주면서 `limit=1` 로 잘리므로 크기에 안 걸린다."""
+    alive: list[str] = []
+    unreachable: list[str] = []
     for node_id in sorted(set(ids)):
-        res = remote.call("vinc_neighbors", {"node": node_id, "limit": 1})
-        if res.get("isError") or not res.get("found"):
-            why = res.get("error") or res.get("text") or "그래프에 없다"
-            print(f"  [miss] {node_id} — {why}")
-            continue
-        out.append(node_id)
-    return out
+        for _ in range(_TRIES):
+            res = remote.call("vinc_neighbors", {"node": node_id, "limit": 1})
+            if not res.get("isError"):
+                break
+        if res.get("isError"):          # 전송 실패 — 이 노드에 대해 아무것도 모른다
+            unreachable.append(node_id)
+            print(f"  [unreachable] {node_id} — {res.get('error')}")
+        elif res.get("found"):
+            alive.append(node_id)
+        else:                            # 서버가 답했고 없다고 했다 — 이것만 부재다
+            print(f"  [miss] {node_id} — 그래프에 없다")
+    return alive, unreachable
 
 
 def check() -> int:
@@ -101,7 +122,14 @@ def check() -> int:
     cited_nodes = [r for r in cited if r.startswith(_NODE_KINDS)]
     cited_docs = [r for r in cited if not r.startswith(_NODE_KINDS)]
     live_docs = set(fetch_docs())
-    alive_nodes = set(verify_nodes(cited_nodes))
+    alive_nodes, unreachable = verify_nodes(cited_nodes)
+    alive_nodes = set(alive_nodes)
+    if unreachable:
+        # 못 물어본 것을 죽었다고 말하지 않는다. 이 스텝은 배포 안에서 도는데, 원격이
+        # 잠깐 안 닿는 것과 인용이 썩은 것은 다른 사건이고 호출부의 다음 수가 다르다.
+        print(f"::notice::라이브 대조를 완료하지 못했다 — 노드 {len(unreachable)}건을 "
+              "물어보지 못했다(원격 도달 실패). 인용이 썩었다는 뜻이 아니다.")
+        return 0
     dead = ([d for d in cited_docs if d not in live_docs]
             + [n for n in cited_nodes if n not in alive_nodes])
     if dead:
@@ -130,7 +158,23 @@ def main() -> int:
 
     docs = fetch_docs()
     print(f"[refresh] 문서 {len(docs)}개")
-    nodes = verify_nodes(cited_nodes)
+    nodes, unreachable = verify_nodes(cited_nodes)
+    if unreachable:
+        # 쓰기 경로는 **멈춘다**. 못 물어본 노드를 빼고 매니페스트를 쓰면 구멍이 그대로
+        # 커밋되고, 오프라인 게이트가 나중에 그 인용을 죽었다고 잡는다. 배포 안에서
+        # 도는 --check 와 반대인 것이 맞다: 잘못된 대조표를 쓰는 것이 멈추는 것보다 나쁘다.
+        print(f"[refresh] 중단 — 노드 {len(unreachable)}건을 물어보지 못했다. "
+              "매니페스트를 구멍 난 채로 쓰지 않는다.", file=sys.stderr)
+        return 1
+    missing = set(cited_nodes) - set(nodes)
+    ceiling = max(_MISS_CEILING, len(set(cited_nodes)) // 10)
+    if len(missing) > ceiling:
+        # '없다' 가 상한을 넘으면 그래프가 아니라 허브가 고장난 것이다. 이 매니페스트를
+        # 쓰면 살아 있는 인용이 대량으로 빠지고 오프라인 게이트가 그것을 '죽었다' 고 잡는다.
+        print(f"[refresh] 중단 — 인용 노드 {len(set(cited_nodes))}종 중 {len(missing)}건이 "
+              f"'없다'로 왔다(상한 {ceiling}). 이 규모는 인용이 썩은 것이 아니라 허브의 "
+              "정확 id 조회가 깨진 것이다. 매니페스트를 쓰지 않는다.", file=sys.stderr)
+        return 1
     print(f"[refresh] 노드 {len(nodes)}개 확인")
 
     payload = {

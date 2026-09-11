@@ -54,6 +54,8 @@ PIECE_TOKENS = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 
 #: `rrf_fuse` 의 k(60). 게이트 규칙 `top-agree` 가 "두 팔이 다 1위로 놓았다"를 점수로
 #: 알아보는 데 쓴다: 그때 rrf_score = 2/(k+1) 이다.
+#: 이 파일이 아는 융합 k 의 **역사적** 기본값. `gate()` 는 이제 이 값을 안 쓴다 —
+#: 부르는 쪽이 자기 풀의 k 를 말한다. 남겨 두는 것은 옛 결과 JSON 을 읽을 때 필요해서다.
 RRF_K = 60
 
 
@@ -122,13 +124,21 @@ def pick_piece(pieces: list[str], seq: int | None) -> str:
     return pieces[seq]
 
 
-def gate(rows: list[dict], policy: str, *, k: int = RRF_K,
+def gate(rows: list[dict], policy: str, *, k: int,
          score_key: str = "rrf_score") -> bool:
     """이 융합 풀에 리랭커를 **돌릴지**를 정한다(True = 돌린다).
 
     `always`      언제나.
     `top-agree`   두 팔이 같은 청크를 1위로 놓았으면 **건너뛴다**(rrf_score = 2/(k+1)).
                   "FTS 와 벡터가 동의한다"는 이 융합에서 얻을 수 있는 가장 강한 신호다.
+
+    🔴 **`k` 는 이 풀이 실제로 융합된 값이어야 하고, 그래서 기본값이 없다.** 여기 상수를
+    기본값으로 두었더니 프로덕션 k 가 60에서 20으로 바뀐 뒤(Vinc#270) 이 게이트가
+    **75건 중 0건** 발화했다 — k=20 융합의 1위 점수는 최소 1/21 = 0.0476 인데 임계값은
+    2/61 = 0.0328 이라 비교가 구조적으로 성립하지 않는다. 그런데 조용했다: `gated` 열이
+    `rrf` 와 똑같이 나올 뿐이라 "게이트가 잘 걸러낸다"로 읽힌다. 부르는 쪽이 k 를 말하게
+    하면 두 상수가 갈리는 순간이 호출부에서 보인다.
+    근거: [[record:the-top-agree-gate-never-fired-after-the-k-change-2026-09-09]]
     `margin:x`    1위와 2위의 상대 간격 (s1-s2)/s1 이 x 미만일 때만 돌린다. 1위가
                   멀찍이 앞서면 리랭커가 바꿀 것이 적다는 가정이다.
     행이 둘 미만이면 돌릴 이유가 없다(순서가 없다)."""
@@ -305,7 +315,7 @@ def peak_rss_mb() -> float:
 
 
 def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16,
-              reps: int = 3) -> dict:
+              reps: int = 3, batch: int = 8) -> dict:
     """모델 하나만 든 프로세스의 로드 시간·첫 호출·피크 RSS·쌍당 비용. **한 프로세스에
     모델 하나**여야 한다: 피크 카운터는 내려가지 않아서 두 모델을 한 프로세스에서 재면
     둘째 값이 첫째에 오염된다(성능 정본 §4 와 같은 규칙).
@@ -319,9 +329,14 @@ def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16,
     그 수치로 예산을 짜면 안 된다는 뜻이고, 그건 숨길 것이 아니라 결과다.
 
     피크 RSS 는 반대로 안정적이었다(같은 두 런에서 1% 안). 반복해도 피크는 최대치이므로
-    의미가 그대로다."""
+    의미가 그대로다.
+
+    ``batch`` 는 **한 프로세스에 하나만** 재야 한다. 피크 카운터는 안 내려가므로 배치 8을
+    잰 뒤 같은 프로세스에서 1을 재면 8의 값을 다시 읽는다. 배치별로 프로세스를 새로 띄울
+    것 — 워크플로가 도커를 두 번 도는 이유가 이것이다.
+    근거: [[record:encoder-resident-set-leaves-1-1-gib-for-a-reranker-2026-09-08]]"""
     before = peak_rss_mb()
-    rr = Reranker(model, onnx, max_tokens=max_tokens)
+    rr = Reranker(model, onnx, max_tokens=max_tokens, batch=batch)
     t0 = time.perf_counter()
     rr._load()
     load_s = time.perf_counter() - t0
@@ -335,7 +350,7 @@ def rss_probe(model: str, onnx: str | None, *, max_tokens: int, pairs: int = 16,
         t2 = time.perf_counter()
         rr.score("무엇이 문제인가", [long] * pairs)
         runs.append((time.perf_counter() - t2) * 1000 / pairs)
-    return {"model": model, "onnx": onnx, "max_tokens": max_tokens,
+    return {"model": model, "onnx": onnx, "max_tokens": max_tokens, "batch": batch,
             "load_s": round(load_s, 3), "first_call_s": round(first_call_s, 3),
             "cold_total_s": round(load_s + first_call_s, 3),
             "long_pairs": pairs,
@@ -354,6 +369,9 @@ def main() -> int:
     ap.add_argument("--window", choices=("first", "max", "child"), default="first")
     ap.add_argument("--reps", type=int, default=3,
                     help="--rss-probe 의 쌍 측정 반복 횟수. 1 이면 스프레드를 못 본다")
+    ap.add_argument("--batch", type=int, default=8,
+                    help="추론 배치. 상주 크기의 절반 이상이 아레나라 이 값이 그것을 정한다 "
+                         "— 배치별로 프로세스를 새로 띄울 것(피크는 안 내려간다)")
     ap.add_argument("--rss-probe", action="store_true",
                     help="이 모델만 든 프로세스의 로드·첫 호출·피크 RSS 를 JSON 으로")
     ap.add_argument("text", nargs="*", help="첫 인자가 질의, 나머지가 본문")
@@ -362,11 +380,12 @@ def main() -> int:
     if args.rss_probe:
         import json
         print(json.dumps(rss_probe(name, path, max_tokens=args.max_tokens,
-                                   reps=args.reps), ensure_ascii=False))
+                                   reps=args.reps, batch=args.batch),
+                         ensure_ascii=False))
         return 0
     if len(args.text) < 2:
         ap.error("질의 하나와 본문 하나 이상을 주거나 --rss-probe 를 쓸 것")
-    rr = Reranker(name, path, max_tokens=args.max_tokens)
+    rr = Reranker(name, path, max_tokens=args.max_tokens, batch=args.batch)
     scores, pairs = rr.score_texts(args.text[0], args.text[1:], window=args.window)
     print(f"{name} · pairs={pairs} · load={rr.load_s:.2f}s")
     for row in rerank_rows([{"text": t} for t in args.text[1:]], scores):

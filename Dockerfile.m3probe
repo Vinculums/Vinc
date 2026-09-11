@@ -1,0 +1,21 @@
+# bge-m3 인코더를 **재기 위해서만** 존재하는 오버레이. 프로덕션 이미지 위에 m3
+# 아티팩트 한 장과 환경 삼중만 얹는다.
+#
+# 왜 `Dockerfile.hub` 를 안 고치나: 그 파일의 ENV 세 줄은 프로덕션이 어느 모델을
+# 도는지의 정본이고, CI 테스트 둘이 그것을 `EMBEDDING_DIM_BY_MODEL` 과 basename 에
+# 대조한다. 측정하려고 그 정본을 흔들면 측정이 끝난 뒤에도 흔들린 채로 남는다.
+#
+# 왜 base 를 인자로 받나: **허브가 지금 도는 그 이미지** 위에 얹어야 코드가 같다.
+# 다른 SHA 위에 얹으면 모델 차이와 코드 차이가 섞여 무엇을 쟀는지 말할 수 없다.
+ARG BASE
+FROM ${BASE}
+
+# 러너에서 구운 것을 그대로 올린다(ACR 에이전트는 양자화에서 OOM 이다 —
+# `hub-deploy.yml` 의 굽기 스텝 주석이 실측을 든다).
+COPY models/bge-m3-int8-rr.onnx /srv/vinc/models/bge-m3-int8-rr.onnx
+
+# e5 아티팩트는 이미지에 그대로 남는다. 지우지 않는 이유는 지우는 층이 하나 더
+# 생길 뿐 이 측정에 영향이 없어서다 — 어느 것을 여는지는 아래 경로가 정한다.
+ENV VINC_EMBED_MODEL=BAAI/bge-m3
+ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/bge-m3-int8-rr.onnx
+ENV VINC_EMBED_DIM=1024

@@ -55,9 +55,9 @@ RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
 # 확인하던 것은 파일 크기뿐이라, 로드는 되는데 폭이 틀린 아티팩트를 아무것도 안 잡았다.
 # 이제 굽기가 실제로 한 번 돌려 폭을 재고 이 값과 대조한다 — 어긋나면 **빌드가 선다.**
 # 그 검사가 없으면 어긋남은 재구축 도중, 옛 벡터를 이미 지운 뒤에 드러난다.
-ENV VINC_EMBED_MODEL=intfloat/multilingual-e5-base
-ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/e5-int8-rr.onnx
-ENV VINC_EMBED_DIM=768
+ENV VINC_EMBED_MODEL=BAAI/bge-m3
+ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/bge-m3-int8-rr.onnx
+ENV VINC_EMBED_DIM=1024
 #
 # ── 굽기는 러너에서, 검증은 여기서 (2026-09-03) ──────────────────────────────
 #

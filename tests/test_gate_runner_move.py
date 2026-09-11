@@ -165,7 +165,7 @@ class DoesNotCatch(unittest.TestCase):
 
 
 class ThisRepo(unittest.TestCase):
-    def test_직렬화하는_워크플로가_실제로_넷이다(self):
+    def test_직렬화하는_워크플로가_실제로_다섯이다(self):
         """게이트가 겨누는 대상이 이 리포에 실재하는지 고정한다. 늘거나 줄면
         이 테스트가 먼저 말한다 — 게이트가 조용히 아무것도 안 겨누게 두지 않는다.
 
@@ -180,7 +180,21 @@ class ThisRepo(unittest.TestCase):
         넷이 된 경위: `pk-migrate.yml`(#136)은 자기 이름이 아니라 **`hub-deploy` 의
         그룹 키를 빌려 쓴다** — 같은 줄에 서야 이관 도중 배포가 끼어들지 못하기
         때문이다. 그래서 이 목록에서 유일하게 그룹 이름이 파일 이름과 다르고,
-        막히는 방식도 다르다: 큐가 막히면 이관과 배포가 **서로** 밀린다."""
+        막히는 방식도 다르다: 큐가 막히면 이관과 배포가 **서로** 밀린다.
+
+        다섯이 된 경위: `encode-m3-probe.yml`(2026-09-08)은 앞의 넷과 **성질이 다르다.**
+        제품의 상태를 바꾸지 않는다 — 임시 앱 하나와 임시 ACR 리포지토리 하나를 만들었다
+        지운다. 그래서 큐가 막혀도 밀리는 것은 측정뿐이고 사용자에게 가는 것은 없다.
+        직렬화하는 이유는 **이름이 고정이라서**다: 둘이 겹치면 뒤의 `create` 가 이미 있는
+        앱에 부딪혀 죽거나, 한쪽의 정리가 다른 쪽이 재는 중인 앱을 지운다.
+        그리고 이쪽은 **취소가 더 나쁘다** — 중간에 끊기면 정리가 못 돌아 앱과 이미지가
+        남는다(그래서 워크플로 자신도 시작 전에 잔여를 지운다). `cancel-in-progress: false`
+        가 여기서는 "밀려도 좋으니 끊지 마라" 다.
+
+        여섯이 된 경위: `hub-store-recover.yml`(2026-09-11)은 pk-migrate 와 같은 모양으로
+        `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 다른 스토어 파일로 갈아타는 도중에
+        배포가 끼어들면 두 리비전이 겹치기 때문이다. 컨테이너 exec·볼륨 복사·env 교체를
+        배포 신원으로 돌리는 복구 도구이고, dispatch 로만 돈다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -188,8 +202,8 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["hub-deploy.yml", "infra.yml", "pk-migrate.yml",
-                                  "release.yml"], serial)
+        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-deploy.yml", "hub-store-recover.yml",
+                                  "infra.yml", "pk-migrate.yml", "release.yml"], serial)
 
 
 if __name__ == "__main__":

@@ -113,14 +113,25 @@ _FRAGMENT_SCHEMA = {
                                    "description": "Record only — when the claim this record makes became "
                                                   "true. Same YYYY[-MM[-DD]] contract as content_time; "
                                                   "empty string clears it. Omitting the field on a resend "
-                                                  "preserves the stored value."},
+                                                  "preserves the stored value. SET IT when this record "
+                                                  "asserts a present state of the product, infra or "
+                                                  "process, because the default read path now returns "
+                                                  "current claims only. Leaving it empty is not an error "
+                                                  "and does not hide the record — unstated reads as "
+                                                  "current — but a record that will one day be replaced "
+                                                  "cannot be retired without a start."},
                     "valid_until": {"type": "string",
                                     "description": "Record only — when the claim stopped being true "
                                                    "(half-open: the claim does not hold at this instant). "
                                                    "Setting it is how a record is invalidated without "
                                                    "deleting it — resend just {id, type, valid_until}. "
                                                    "Same format contract as valid_from; empty string "
-                                                   "clears it (the claim holds again)."},
+                                                   "clears it (the claim holds again). This is the ONLY field that "
+                                                   "removes a node from the default read: an unstated "
+                                                   "valid_from does not. When you supersede a claim, "
+                                                   "set this on the old one to the date the new one "
+                                                   "starts, and do not delete it — a retired claim is "
+                                                   "still a true description of what held then."},
                     "props": {"type": "object", "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."},
                 },
                 "required": ["id", "type"],
@@ -188,6 +199,7 @@ def _t_search(args, bridge):
     return bridge.request("GET", "/search", params={
         "query": args["query"], "top_k": args.get("limit", 20),
         "cursor": args.get("cursor"), "detail": args.get("detail"),
+        "historical": "true" if args.get("historical") else None,
         "owner": _owner(args, bridge)})
 
 
@@ -414,7 +426,8 @@ def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
     return bridge.request("GET", "/brief", params={
         "owner": _owner(args, bridge), "query": args["query"],
-        "max_excerpts": args.get("max_excerpts", 3)})
+        "max_excerpts": args.get("max_excerpts", 3),
+        "historical": "true" if args.get("historical") else None})
 
 
 TOOLS: list[dict] = [
@@ -452,6 +465,13 @@ TOOLS: list[dict] = [
                        "description": "Opaque next_cursor from a previous page."},
             "detail": {"type": "string", "enum": ["summary", "full"],
                        "default": "summary"},
+            "historical": {"type": "boolean", "default": False,
+                           "description": "Include nodes whose claim is no longer current "
+                                          "(valid_until in the past, or a Decision whose "
+                                          "props.valid_until has passed). The default hides "
+                                          "them and reports how many in `validity_filtered`; "
+                                          "pass true when the question is about what USED to "
+                                          "hold."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -466,7 +486,8 @@ TOOLS: list[dict] = [
                        "silently substituted. Otherwise it resolves the "
                        "question to ONE node by strict ranking, then returns that node's description, "
                        "its canonical document excerpts and its typed relations in a single call. "
-                       "Returns {kind, executed, query, status, node:{id,title,domain,kind}, one_liner, "
+                       "Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,"
+                       "valid_until,validity,superseded_by}, one_liner, "
                        "body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], "
                        "links:{degree,out,in,attached,items:[{id,title,domain,type,dir,evidence,"
                        "confidence,note}],truncated}, candidates:[...], grounds:[id...]}. "
@@ -485,6 +506,12 @@ TOOLS: list[dict] = [
                        "fit the size limit. `links.items[].evidence` is a BOOLEAN (does this relation "
                        "carry a source sentence) and `evidence_text` is that sentence when one exists, "
                        "so a relation can be QUOTED rather than merely counted. "
+                       "`node.validity` is 'current', 'historical' or 'future', derived from the "
+                       "node's OWN interval (a Record's columns, a Decision's props); when it is not "
+                       "current a `validity_note` says so and names `superseded_by` if the graph "
+                       "holds a successor. A node reached by id skips the default filter, so this "
+                       "is the one place a retired claim announces itself: do not quote a "
+                       "historical node as the present state. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string",
@@ -492,6 +519,13 @@ TOOLS: list[dict] = [
             "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},
+            "historical": {"type": "boolean", "default": False,
+                           "description": "Include nodes whose claim is no longer current "
+                                          "(valid_until in the past, or a Decision whose "
+                                          "props.valid_until has passed). The default hides "
+                                          "them and reports how many in `validity_filtered`; "
+                                          "pass true when the question is about what USED to "
+                                          "hold."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
@@ -656,7 +690,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_path",
-        "description": "Find the shortest relation path(s) between two concepts — the physically "
+        "description": "Find the shortest relation path(s) between two concepts. **Concept ids only**: this walks the concept layer, so a record, decision or episode id can never be an endpoint even when it exists and is well connected (it attaches to concepts rather than sitting on the path graph) — you get an explicit error saying so, not a bare not-found. Returns the physically "
                        "connected edge chain, returned as an ordered id/title sequence. Use this to "
                        "give a model concrete evidence of HOW two concepts connect instead of "
                        "guessing. Two distance measures, chosen with `weight`: 'hops' (default, "
@@ -668,8 +702,8 @@ TOOLS: list[dict] = [
                        "degenerates exactly to 'hops'. Returns {found, length, weight, "
                        "paths:[{ids,titles,length,[cost]}], count}. Read-only.",
         "inputSchema": {"type": "object", "properties": {
-            "a": {"type": "string", "description": "Exact source concept id."},
-            "b": {"type": "string", "description": "Exact target concept id."},
+            "a": {"type": "string", "description": "Exact source concept id (must start with `concept:`)."},
+            "b": {"type": "string", "description": "Exact target concept id (must start with `concept:`)."},
             "max_depth": {"type": "integer", "default": 6, "minimum": 1, "maximum": 8,
                           "description": "Max path length in hops."},
             "weight": {"type": "string", "enum": ["hops", "confidence"], "default": "hops",

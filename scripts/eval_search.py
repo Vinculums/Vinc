@@ -40,6 +40,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -167,19 +168,128 @@ def lang_of(text: str) -> str:
 
 # ── 실행 ────────────────────────────────────────────────────────────────────
 def _docs_of(store, rows: list[dict]) -> list[str]:
-    """검색 결과(청크) → 문서 id 순서(중복 제거, 순위 보존)."""
+    """검색 결과(청크) → 문서 id 순서(중복 제거, 순위 보존).
+
+    ⚠ **행마다 스토어를 때리지 않는다.** 예전에는 청크 하나에 질의 하나였는데, 조건이
+    늘자 그것이 배터리 전체의 지배 비용이 됐다: 융합 스윕 하나가 조건 80 × 질의 118 ×
+    행 10 = **94,400 왕복**이라 51분을 썼고, 그 시간의 거의 전부가 이 함수였다.
+    한 번에 묻는다 — 매핑도 순서도 그대로다."""
+    ids = [r.get("id") for r in rows if r.get("id")]
+    if not ids:
+        return []
+    got = store.run("MATCH (c:Chunk) WHERE c.chunk_id IN $ids "
+                    "RETURN c.chunk_id AS i, c.doc_id AS d", {"ids": ids}) or []
+    by_id = {g.get("i"): g.get("d") for g in got}
     out, seen = [], set()
-    for r in rows:
-        cid = r.get("id")
-        if not cid:
-            continue
-        got = store.run("MATCH (c:Chunk) WHERE c.chunk_id = $i RETURN c.doc_id AS d",
-                        {"i": cid}) or []
-        d = got[0].get("d") if got else None
+    for cid in ids:                      # 순위는 rows 순서가 정한다 — 질의 결과가 아니라
+        d = by_id.get(cid)
         if d and d not in seen:
             seen.add(d)
             out.append(d)
     return out
+
+
+# ── 실행 매니페스트 ─────────────────────────────────────────────────────────
+#: 관심 있는 명령어 집합만 남긴다. 정본은 `.github/workflows/rerank-probe.yml` 의 같은
+#: 목록이고 여기 사본이 있는 이유는 그 워크플로가 CI 안에서만 돌기 때문이다 — 로컬에서
+#: 돌린 측정에는 CPU 신원이 아예 안 붙어 있었다.
+_CPU_FLAGS = ("avx", "avx2", "avx512f", "avx512_vnni", "avx_vnni", "amx_int8", "f16c", "fma")
+
+
+def _pkg_version(name: str) -> str | None:
+    try:
+        from importlib.metadata import version
+        return version(name)
+    except Exception:
+        return None
+
+
+def _cpu_identity() -> dict:
+    """CPU 모델과 int8 커널이 타는 명령어 집합. 리눅스 밖에서는 flags 가 None 이다."""
+    import platform
+    cpu: dict = {"model": None, "cores": os.cpu_count(), "flags": None}
+    try:
+        txt = Path("/proc/cpuinfo").read_text(encoding="utf-8")
+        m = re.search(r"^model name\s*:\s*(.+)$", txt, re.M)
+        cpu["model"] = m.group(1).strip() if m else None
+        f = re.search(r"^flags\s*:\s*(.+)$", txt, re.M)
+        have = set((f.group(1) if f else "").split())
+        cpu["flags"] = [x for x in _CPU_FLAGS if x in have]
+    except OSError:
+        # 윈도우·맥에는 /proc 이 없다. 모델명만이라도 남긴다 — flags 가 None 이면
+        # "안 쟀다"는 뜻이고 빈 리스트(= 하나도 없다)와 구분된다.
+        cpu["model"] = platform.processor() or None
+    return cpu
+
+
+def run_manifest(store, owner: str | None, data: str | None) -> dict:
+    """이 측정이 **무엇 위에서** 났는지. 두 결과를 비교해도 되는지 이것으로 가른다.
+
+    없이는 두 JSON 이 사람 기억으로만 비교된다 — 실제로 그 상태였다. 코퍼스가 같은지,
+    split 스토어인지, 청커가 같은지, 어떤 CPU 였는지가 어느 출력에도 없었다.
+
+    **비교 규칙**: 순위 지표(nDCG·Recall·MRR)는 ``corpus_sha256`` · ``split_inferred`` ·
+    ``docstore_sha256`` · ``ladybug`` 가 같을 때만 비교한다. 시간 지표는 거기에
+    ``cpu.model`` · ``threads`` · ``onnxruntime`` 이 더 같아야 한다(같은 아티팩트가
+    러너 CPU 에 따라 147ms 와 271ms 로 갈린 실측이 있다).
+
+    ``corpus_sha256`` 은 doc_id 와 content_hash 만 읽는다 — 본문을 다시 읽지 않고도
+    내용 변경이 잡힌다(`_DocMeta.content_hash` 가 정본 텍스트의 sha256 이다).
+    """
+    import hashlib
+    man: dict = {"data": data, "owner": owner}
+
+    cy = ("MATCH (d:_DocMeta) WHERE $o IS NULL OR d.owner_id = $o "
+          "RETURN d.doc_id AS doc_id, d.content_hash AS h ORDER BY d.doc_id")
+    try:
+        rows = store.run(cy, {"o": owner}) or []
+        h = hashlib.sha256()
+        for r in rows:
+            h.update(f"{r.get('doc_id')}\t{r.get('h')}\n".encode())
+        man["corpus_sha256"] = h.hexdigest()
+        man["docs"] = len(rows)
+    except Exception as exc:
+        man["corpus_sha256"] = None
+        man["corpus_error"] = f"{type(exc).__name__}: {exc}"
+        man["docs"] = -1
+
+    for key, cypher in (("chunks", "MATCH (c:Chunk) RETURN count(c) AS c"),
+                        ("vecs", "MATCH (v:ChunkVec) RETURN count(v) AS c")):
+        try:
+            r = store.run(cypher)
+            man[key] = int(r[0]["c"]) if r else 0
+        except Exception:
+            man[key] = -1
+    # 청크당 벡터 수가 split 여부를 말한다: 비-split 은 정확히 1.0, split 은 ~2.08.
+    # `reindex --split` 을 안 쓴 스토어로 낸 품질 수치는 프로덕션 모양이 아니다.
+    man["vecs_per_chunk"] = (round(man["vecs"] / man["chunks"], 3)
+                             if man.get("chunks") else None)
+    man["split_inferred"] = (man["vecs"] > man["chunks"]
+                             if man.get("chunks", 0) > 0 and man.get("vecs", -1) >= 0
+                             else None)
+
+    root = Path(__file__).resolve().parents[1]
+    try:
+        import subprocess
+        man["code_rev"] = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=root,
+            capture_output=True, text=True, timeout=10).stdout.strip() or None
+    except Exception:
+        man["code_rev"] = None
+    # 청커에 버전 상수가 없다 — 파일 바이트가 곧 버전이다(`api/docstore.py::chunk_doc`).
+    try:
+        import hashlib as _h
+        man["docstore_sha256"] = _h.sha256(
+            (root / "api" / "docstore.py").read_bytes()).hexdigest()[:16]
+    except OSError:
+        man["docstore_sha256"] = None
+
+    man["ladybug"] = _pkg_version("ladybug")
+    man["onnxruntime"] = _pkg_version("onnxruntime")
+    man["python"] = sys.version.split()[0]
+    man["threads"] = int(os.environ.get("VINC_EVAL_THREADS", "1") or "1")
+    man["cpu"] = _cpu_identity()
+    return man
 
 
 def main() -> int:
@@ -338,6 +448,8 @@ def main() -> int:
     # 정상 rrf 로 읽는다 — 라이브에서 오늘 세 번 연속 그 상태였다.
     out["arms_census"] = arm_notes
     out["vector_dropped"] = vector_dropped
+    # 무엇 위에서 쟀는지 — 이게 없으면 다음 실행과 비교가 불가능하다.
+    out["manifest"] = run_manifest(store, args.owner, args.data)
     store.close()
 
     if args.json:

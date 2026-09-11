@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from contextlib import contextmanager
 
 from . import pkns
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
-                              EPISODE_TIME_BACKFILL_VERSION, SCHEMA_VERSION,
+                              EPISODE_TIME_BACKFILL_VERSION,
+                              NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
                               migration_statements, render_embedded_ddl)
 
 
@@ -461,6 +463,20 @@ class _ReaderView:
     def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
         return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
 
+    def node_vector_search(self, embedding, top_k, *, owner=None) -> list[dict]:
+        """노드 미러(NodeVec) 의미 검색 — **이 뷰가 노출해야 조회 경로에서 산다.**
+
+        ⚠ 2026-09-10 에 이 자리에서 세 번째로 물렸다(앞의 둘은 아래 `graph_algo` 주석에
+        있다). 미러도 팔도 다 있었는데 이 줄이 없어서, 사이드카를 지나는 **모든** 검색이
+        `node_error: '_ReaderView' object has no attribute 'node_vector_search'` 로
+        의미 팔을 잃었다. 팔이 기본으로 꺼져 있던 동안에는 아무도 못 봤고, 켠 첫날
+        라이브 질의 한 번에 드러났다.
+
+        `graph_algo`·`ensure_search_indexes` 와 달리 **쓰기 지점으로 보내지 않는다** —
+        이건 순수 조회이고 DDL 을 안 돌린다. 인덱스가 없으면 백엔드가 빈 목록을 준다."""
+        return self._b.node_vector_search(embedding, top_k, owner=owner,
+                                          conn=self._conn)
+
     def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
         """검색 인덱스 지연 보장(T3b) — **쓰기 지점으로 되돌려 보낸다**(R4).
 
@@ -536,8 +552,13 @@ class _ReaderView:
             pass   # 이미 닫혔거나 구 드라이버 — 참조를 놓은 것으로 충분하다
 
 
-def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
-    """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리."""
+def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False) -> list[dict]:
+    """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리.
+
+    ``raw=True`` 는 아래 PK 분해 훅을 **건너뛴다** — 물리 키(owner U+001F id)가 그대로
+    나온다. 소비자는 하나다: 재구축의 export(`store/migrate.py`). 읽기 경로가 벗긴 논리
+    id 를 새 스토어에 그대로 쓰면 정확 id 조회가 전부 죽고 같은 논리 id 를 가진 소유자
+    둘이 한 행으로 접힌다 — 2026-09-11 라이브에서 그렇게 됐다."""
     res = conn.execute(cypher, params) if params else conn.execute(cypher)
     # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
     results = res if isinstance(res, list) else [res]
@@ -562,7 +583,7 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None) -> list[dict]:
     # 그래서 `WHERE pk CONTAINS $sep` 로 이관 진척을 세는 것은 여기서 안 막힌다(PR-D 는
     # 훅 우회 읽기 경로도 행별 표식도 필요 없다). 실측:
     # tests/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
-    if pkns.enabled():
+    if pkns.enabled() and not raw:
         out = [pkns.strip_deep(row) for row in out]
     return out
 
@@ -645,8 +666,10 @@ class EmbeddedBackend:
         finally:
             session.close()
 
-    def run(self, query: str, params: dict | None = None, *, conn=None) -> list[dict]:
-        return _exec_to_dicts(conn or self._conn, query, params or None)
+    def run(self, query: str, params: dict | None = None, *, conn=None,
+            raw: bool = False) -> list[dict]:
+        # ``raw``: 물리 키 그대로(PK 분해 훅 생략). 재구축 export 전용 — `_exec_to_dicts` 주석.
+        return _exec_to_dicts(conn or self._conn, query, params or None, raw=raw)
 
     # ── 서버 read 경로 — 별도 Connection(R4) ──────────────────────────────────
     # 사이드카(§11 P2)는 단일 Database 를 프로세스 수명 동안 소유하고, 쓰기는 잡
@@ -706,10 +729,34 @@ class EmbeddedBackend:
         2) 버전 게이트 — _SchemaMeta 의 기록 버전 이후 ALTER 스텝 적용(구 설치의 기존
            테이블에 추적열 ADD+DEFAULT 백필; 신규 설치는 이미 있어 no-op 흡수).
         3) 버전 기록. **ALTER ADD 는 additive → 롤백 시 구코드가 새 열을 단순 무시.**"""
+        # 0) **base DDL 보다 먼저** 도는 유일한 스텝(v18). NodeVec 의 기본키가 바뀌는데
+        #    기본키는 ALTER 로 못 고친다. 미러는 배포마다 통째로 다시 만드는 파생물이라
+        #    버리는 것이 옳은 이행이고(잃을 원본이 없다), 버린 자리는 바로 아래 base DDL
+        #    이 새 모양으로 다시 만든다. 뒤에 두면 방금 만든 것을 도로 지운다.
+        #    근거: [[record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10]]
+        rekeying = 0 < self._schema_version() < NODE_VEC_REKEY_VERSION
+        if rekeying:
+            self.drop_node_vector_index()
+            try:
+                self._conn.execute("DROP TABLE NodeVec")
+            except Exception:
+                pass        # 없으면 없는 대로 — base DDL 이 만든다
         for stmt in render_embedded_ddl(dim=dim):
             self._exec_idem(stmt)
+        # 🔴 **버렸다고 믿지 말고 확인한다.** 드롭이 실패하면(인덱스가 안 떨어졌다거나
+        #    확장이 안 올라왔다거나) 그 예외는 위에서 삼켜지고, base DDL 은 "이미 있다"를
+        #    또 삼킨다. 그러면 옛 모양 그대로인 테이블에 새 버전만 기록되어 **다시는
+        #    고칠 기회가 없는 반쪽 상태**가 남는다 — 재구축은 계속 죽고 이유는 안 보인다.
+        #    확인이 실패하면 버전을 올리지 않는다: 다음 기동이 그대로 다시 시도한다.
+        if rekeying and not self._node_vec_rekeyed():
+            print("vinc-store: ⚠ NodeVec 재키잉 실패 — 옛 기본키가 남아 있다. 스키마"
+                  " 버전을 올리지 않는다(다음 기동이 다시 시도한다). 의미 팔은 그동안"
+                  " 빈 목록을 낸다.", file=sys.stderr, flush=True)
+            rekeying = False
+            target = self._schema_version()      # 올리지 않는다
+        else:
+            target = SCHEMA_VERSION
         cur = self._schema_version()
-        target = SCHEMA_VERSION
         for stmt in migration_statements(cur):
             self._exec_idem(stmt)
         # 데이터 스텝(v9, F9) — DDL 로 표현할 수 없는 이관은 여기서 돈다. 열 ALTER 가
@@ -743,6 +790,15 @@ class EmbeddedBackend:
                 "episode_time_backfilled": backfilled,
                 "domain_links_backfilled": domain_links}
 
+    def _node_vec_rekeyed(self) -> bool:
+        """미러가 실제로 새 기본키를 갖는가(v18). 열이 없으면 엔진이 바인딩에서 던진다 —
+        빈 테이블이어도 던지므로 행 수와 무관하게 판정된다."""
+        try:
+            self.run("MATCH (n:NodeVec) RETURN n.vec_id AS v LIMIT 1")
+            return True
+        except Exception:
+            return False
+
     def provision(self, *, dim: int) -> list[str]:
         """호환 진입점 — migrate() 로 위임(기존 호출부 무변경으로 마이그레이션 획득)."""
         self.migrate(dim=dim)
@@ -756,6 +812,10 @@ class EmbeddedBackend:
     #: SEC-1 — 청크 팔이 owner_id 필터를 적용한다(`_ReaderView.scoped_chunk_search` 주석).
     scoped_chunk_search = True
     _VEC_INDEX = "chunk_vec"
+    #: v17 — 노드 미러의 HNSW. Chunk 쪽과 **다른 인덱스**다: 라이프사이클이 다르고
+    #: (노드 미러는 문서 쓰기마다 흔들리지 않는다) 드롭 범위를 섞으면 문서 한 건 쓰기가
+    #: 노드 색인까지 무너뜨린다.
+    _NODE_VEC_INDEX = "node_vec"
     # 자식 과추출 배수 — 한 부모의 조각들이 상위 k 를 다 차지하지 않게(:meth:`vector_search`).
     _CHILD_FANOUT = 4
     _FTS_INDEX = "chunk_ft"
@@ -1060,6 +1120,71 @@ class EmbeddedBackend:
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
         return list(best.values())[:int(top_k)]
+
+    def node_vector_search(self, embedding, top_k, *, owner=None, conn=None) -> list[dict]:
+        """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
+
+        Chunk 쪽 :meth:`vector_search` 와 **모양이 다르다**. 저쪽은 자식(ChunkVec)에서
+        찾아 부모로 접지만, 노드는 제목이 짧아 한 행에 벡터 하나다. 접을 것이 없다.
+
+        SEC-1: owner 를 반드시 건다. 미러는 노드의 사본이라 스코프가 새면 남의 그래프
+        제목이 후보로 올라온다 — Chunk 팔이 같은 이유로 fail-closed 인 것과 같다.
+
+        인덱스가 없거나 미러가 비어 있으면 **예외가 아니라 빈 목록**이다. 이 팔은 증강이고,
+        없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도).
+        근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+        c = conn or self._conn
+        try:
+            self._load_ext("vector", reader=conn is not None)
+        except Exception:
+            return []
+        k = int(top_k) * (self._OVERSAMPLE if owner else 1)
+        params: dict = {"emb": list(embedding), "k": k}
+        where = ""
+        if owner:
+            where = "WHERE node.owner_id = $owner "
+            params["owner"] = owner
+        cypher = (
+            f"CALL QUERY_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}', $emb, $k) "
+            f"{where}"
+            "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
+            "node.text AS text, distance "
+            "ORDER BY distance"
+        )
+        try:
+            rows = _exec_to_dicts(c, cypher, params)
+        except Exception:
+            return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
+        return rows[:int(top_k)]
+
+    def drop_node_vector_index(self) -> None:
+        """노드 미러의 HNSW 만 제거(멱등).
+
+        🔴 **미러를 채우기 전에 반드시 부른다.** "없던 벡터가 생기는" 것이 HNSW 삽입이고
+        그것만 세그폴트를 낸다(:meth:`drop_vector_index` 주석의 실측 — exit 139). 미러
+        채우기는 정확히 그 모양이라 드롭이 방어 장치다."""
+        try:
+            self._load_ext("vector")
+            self._conn.execute(
+                f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')")
+        except Exception:
+            pass
+
+    def create_node_vector_index(self) -> str:
+        """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다.
+
+        반환은 **삼킨 사유**다(성공이면 빈 문자열). 멱등이어야 하므로 예외를 밖으로
+        내보내지 않지만, 그냥 삼키면 "이미 있음"과 "쓰기 트랜잭션을 못 잡았음"이 같은
+        침묵이 된다 — 뒤엣것은 행만 있고 인덱스가 없는 미러를 남기고, 그 상태의 의미
+        팔은 예외가 아니라 빈 목록이라 밖에서 **팔을 안 켠 것과 구분되지 않는다**
+        (2026-09-10 라이브). 부르는 쪽은 무시해도 되고, 값을 보면 이유를 안다."""
+        try:
+            self._load_ext("vector")
+            self._conn.execute(
+                f"CALL CREATE_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}','embedding')")
+            return ""
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         c = conn or self._conn

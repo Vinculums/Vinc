@@ -97,6 +97,46 @@ def weighted_rrf(ranked_lists: list[list[dict]], weights: list[float], *, k: int
     return out
 
 
+#: 한국어 조사를 벗길 때 쓰는 낱말 경계. `api.query.normalize_query_tokens` 가 쓰는 것과
+#: 같은 집합이다 — 색인 쪽과 질의 쪽이 다르게 자르면 그 자체가 결과를 바꾼다.
+_KO_SPLIT = re.compile(r"[\s,./?!;:()\[\]{}\"'`~]+")
+
+
+def ko_stripped_text(text: str) -> str:
+    """낱말마다 조사를 한 번 벗겨 다시 잇는다. 색인 쪽 백필과 질의 쪽이 **같은 함수**를
+    써야 한다 — 그래서 여기 한 벌만 둔다(`scripts/r1c_ko_column.py` 가 이것을 부른다).
+
+    벗기는 규칙 자체는 `api.query._strip_ko_suffix` 다. 새로 짜지 않는다: 그 함수는
+    이미 프로덕션의 노드 검색이 쓰고 있고, 두 벌이 되면 언젠가 갈라진다.
+    ⚠ 그 함수의 docstring 은 과잉 절단('전문가'→'전문')이 무해하다고 적는데, 그 근거는
+    노드 검색이 `CONTAINS` 로 맞춘다는 것이다. FTS 는 **토큰 완전일치**라 그 근거가
+    여기서는 성립하지 않는다 — 과잉 절단의 손해는 재보는 수밖에 없고, 그것이 이
+    실험이 재는 것의 절반이다. 근거: [[record:korean-fts-analyser-2026-09-08]]"""
+    from api.query import _strip_ko_suffix
+    return " ".join(_strip_ko_suffix(t) for t in _KO_SPLIT.split(text or "") if t)
+
+
+#: 가중 RRF 대조군의 기본값. `api.query.rrf_fuse` 의 k 와 같은 수이고, 프로덕션에서는
+#: 아무 호출부도 이 인자를 안 넘긴다 — 그래서 60 이 측정된 적 없는 기본값이다.
+#: 근거와 스윕 범위: [[vinc.plan.retrieval-research-2026-09-08 §4]]
+DEFAULT_RRF_K = 60
+
+
+def cond_name(w: float, k: int, depth: int) -> str:
+    """가중 RRF 조건의 이름. **기본값이면 접미를 안 붙인다.**
+
+    이 플래그가 생기기 전에 잰 결과 JSON 의 조건 이름이 `rrf_w1` 이다. 기본 조건에도
+    `_k60_d0` 을 붙이면 같은 조건이 다른 이름을 갖게 되어 옛 측정과 나란히 못 놓는다
+    (계획 §2 의 비교 규칙은 이름이 아니라 매니페스트로 판정하지만, 이름이 갈리면
+    사람이 표를 못 읽는다)."""
+    n = f"rrf_w{w:g}"
+    if k != DEFAULT_RRF_K:
+        n += f"_k{k}"
+    if depth:
+        n += f"_d{depth}"
+    return n
+
+
 def score_ext(ranked_doc_ids: list[str], truth: str, k: int) -> dict:
     """eval_search.score 에 recall@1 · recall@3 · rank 를 더한다. 앞의 셋은 그 함수의
     값을 **그대로** 쓴다(따로 계산하면 언젠가 갈라진다)."""
@@ -201,6 +241,16 @@ def main() -> int:
                     help="적응형 게이트 정책(반복 가능): top-agree · margin:0.2")
     ap.add_argument("--vec-weight", action="append", type=float, default=[],
                     help="가중 RRF 대조군의 벡터 팔 가중치(반복 가능)")
+    ap.add_argument("--ko-strip", action="store_true",
+                    help="한국어 조사를 벗긴 전문 질의로 도는 조건을 **함께** 낸다(`_ko` 접미). "
+                         "스토어에 `stripped` 열이 색인돼 있어야 뜻이 있다 — "
+                         "scripts/r1c_ko_column.py 로 사본을 만들 것")
+    ap.add_argument("--rrf-k", action="append", type=int, default=[],
+                    help=f"가중 RRF 의 k(반복 가능, 미지정={DEFAULT_RRF_K}). 프로덕션은 "
+                         "이 인자를 아무도 안 넘겨 60 이 한 번도 측정된 적 없다")
+    ap.add_argument("--arm-depth", action="append", type=int, default=[],
+                    help="팔마다 융합에 넣을 후보 수(반복 가능, 미지정=SEARCH_POOL_CAP 전량). "
+                         "두 팔을 같은 깊이로 자른다 — 재조회는 안 한다")
     ap.add_argument("--bootstrap", type=int, default=1000)
     ap.add_argument("--out", help="결과 JSON 경로(없으면 stdout 표)")
     args = ap.parse_args()
@@ -224,6 +274,9 @@ def main() -> int:
 
     depths = sorted({int(x) for x in args.depth.split(",") if x.strip()})
     max_k = max(depths)
+    # 미지정이면 각각 한 값짜리 목록 = 예전과 똑같은 한 조건. 스윕은 옵트인이다.
+    rrf_ks = sorted({int(x) for x in (args.rrf_k or [DEFAULT_RRF_K])})
+    arm_depths = sorted({int(x) for x in (args.arm_depth or [0])})
     filters = {"owner_id": args.owner} if args.owner else None
 
     # 임베더: 루프백 창구(프로덕션 형상) 우선, 없으면 프로세스 안.
@@ -250,7 +303,13 @@ def main() -> int:
     rr = Reranker(rname, rpath, max_tokens=args.max_tokens)
     warm_s = rr.warm()
 
-    conds = ["fts", "rrf"] + [f"rrf_w{w:g}" for w in args.vec_weight]
+    conds = ["fts", "rrf"] + [cond_name(w, kk, d) for w in args.vec_weight
+                              for kk in rrf_ks for d in arm_depths]
+    if args.ko_strip:
+        # 같은 런 안에서 짝으로 낸다. 두 번 돌려 비교하면 같은 이름이 런마다 다른 뜻을
+        # 갖게 되고(§ cond_name 의 사유), 질의별 짝 비교도 못 한다.
+        conds += ["fts_ko"] + [cond_name(w, kk, d) + "_ko" for w in args.vec_weight
+                               for kk in rrf_ks for d in arm_depths]
     for K in depths:
         conds.append(f"rerank@{K}")
         for g in args.gate:
@@ -324,11 +383,34 @@ def main() -> int:
                 vec = []
             kw = [r for r in kw if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
             vec = [r for r in vec if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
+            # ⚠ 조사 절단은 **전문 팔에만** 건다. 질의 자체를 바꿔 인코딩하면 벡터 팔도
+            # 함께 변해 두 원인이 섞인다 — 재려는 것은 전문 팔 하나다.
+            kw_ko = None
+            if args.ko_strip:
+                kw_ko = store.fulltext_search(ko_stripped_text(text),
+                                              q.SEARCH_POOL_CAP, filters)
+                kw_ko = [r for r in kw_ko
+                         if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
+                s = score_ext(es._docs_of(store, kw_ko[:PAGE]), truth, PAGE)
+                per["fts_ko"].append(s); by_lang[lang]["fts_ko"].append(s)
+                rec["fts_ko"] = s["rank"]
             for w in args.vec_weight:
-                fused = weighted_rrf([kw, vec], [1.0, w])
-                s = score_ext(es._docs_of(store, fused[:PAGE]), truth, PAGE)
-                c = f"rrf_w{w:g}"
-                per[c].append(s); by_lang[lang][c].append(s); rec[c] = s["rank"]
+                for kk in rrf_ks:
+                    for d in arm_depths:
+                        # 깊이는 이미 받아 둔 풀을 자르기만 한다 — 팔을 다시 조회하면
+                        # 스토어를 depth 수만큼 더 때리는데 얻는 것이 없다.
+                        fused = weighted_rrf([kw[:d] if d else kw,
+                                              vec[:d] if d else vec], [1.0, w], k=kk)
+                        s = score_ext(es._docs_of(store, fused[:PAGE]), truth, PAGE)
+                        c = cond_name(w, kk, d)
+                        per[c].append(s); by_lang[lang][c].append(s); rec[c] = s["rank"]
+                        if kw_ko is not None:
+                            fk = weighted_rrf([kw_ko[:d] if d else kw_ko,
+                                               vec[:d] if d else vec], [1.0, w], k=kk)
+                            s = score_ext(es._docs_of(store, fk[:PAGE]), truth, PAGE)
+                            c = cond_name(w, kk, d) + "_ko"
+                            per[c].append(s); by_lang[lang][c].append(s)
+                            rec[c] = s["rank"]
 
         # 리랭크: 가장 깊은 K 를 **한 번만** 재고 얕은 K 는 그 점수의 접두를 쓴다. 쌍의
         # 점수는 서로 독립이라 결과는 K 마다 따로 잰 것과 같다(질의당 쌍 수가 곧 비용이라
@@ -367,7 +449,11 @@ def main() -> int:
             per[c].append(s_rr); by_lang[lang][c].append(s_rr); rec[c] = s_rr["rank"]
             for g in args.gate:
                 gc = f"gated:{g}@{K}"
-                on = gate(cand, g)
+                # 🔴 이 풀은 `q.search` 가 낸 것이라 **프로덕션 k** 로 융합돼 있다.
+                # 아래 `--rrf-k` 조건들과는 다른 값이다. 게이트에 그 k 를 넘기지 않으면
+                # 임계값이 다른 융합을 재게 되고, 그때 결과는 "게이트가 한 번도 안 켜졌다"
+                # 인데 화면에는 `gated` 열이 `rrf` 와 같게만 보인다(실제로 물렸다).
+                on = gate(cand, g, k=q.CHUNK_RRF_K)
                 gate_hits[gc] = gate_hits.get(gc, 0) + (1 if on else 0)
                 s_g = s_rr if on else per["rrf"][-1]
                 per[gc].append(s_g); by_lang[lang][gc].append(s_g); rec[gc] = s_g["rank"]
@@ -382,18 +468,23 @@ def main() -> int:
             stats[key] = int(r[0]["c"]) if r else 0
         except Exception:
             stats[key] = -1
+    # 코퍼스 지문·split 여부·청커·런타임·CPU. `store` 셋만으로는 두 실행이
+    # 같은 것 위에서 났는지 말할 수 없다([[vinc.plan.retrieval-research-2026-09-08 §3]]).
+    manifest = es.run_manifest(store, args.owner, args.data)
     store.close()
 
     out = {
         "kind": "eval.rerank",
         "queries": len(qs), "source": paths, "top_k": PAGE,
         "store": {"data": args.data, "owner": args.owner, **stats},
+        "manifest": manifest,
         "encoder": (encode_url or args.encoder),
         "reranker": {"model": rname, "onnx": rpath, "window": args.window,
                      "max_tokens": args.max_tokens, "load_s": round(rr.load_s or 0, 3),
                      "warm_s": round(warm_s, 3),
                      "threads": int(os.environ.get("VINC_EVAL_THREADS", "1") or "1")},
         "depths": depths, "gates": args.gate, "vec_weights": args.vec_weight,
+        "rrf_ks": rrf_ks, "arm_depths": arm_depths, "ko_strip": bool(args.ko_strip),
         "overall": {c: summarize(v) for c, v in per.items() if v},
         "by_lang": {lg: {c: summarize(v) for c, v in cs.items() if v}
                     for lg, cs in by_lang.items()},

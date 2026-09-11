@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""버전 동기화·검증 게이트 — 릴리스 버전이 박히는 7곳을 한 번에 다룬다.
+"""버전 동기화·검증 게이트 — 릴리스 버전이 박히는 자리를 한 번에 다룬다.
 
 배경: 버전 범프는 여태 **손으로 6곳**을 고치는 일이었고, 어디를 고쳐야 하는지
 열거한 표는 DEPLOYMENT.md 개정 과정에서 한때 소실되기도 했다. 그 결과 실제로
@@ -12,7 +12,7 @@
 
     python scripts/version_sync.py --check          # 검증만(CI 게이트)
     python scripts/version_sync.py --check --expect 0.6.8
-    python scripts/version_sync.py --set 0.6.8      # 7곳 일괄 갱신
+    python scripts/version_sync.py --set 0.6.8      # 모든 자리 일괄 갱신
 
 exit 0=일치 · 1=불일치/실패 · 3=내부 오류.
 
@@ -64,7 +64,13 @@ def _render(version: str, kind: str) -> str:
 
 
 def _sites() -> list[Site]:
-    """7곳. 순서 = 사람이 확인하기 좋은 순서(앱 → 셸 → 패키징 → 기록)."""
+    """버전이 박히는 자리 전부. 순서 = 사람이 확인하기 좋은 순서
+    (앱 → 셸 → 패키징 → 기록 → MCP).
+
+    개수를 문장으로 적지 않는다. 여기 적혀 있던 "7곳"은 자리가 늘어나는 동안
+    갱신되지 않아 거짓이 됐고, 그 숫자를 믿고 목록을 안 읽으면 빠진 자리를 못 본다
+    (실제로 `vinc_mcp/__init__.py` 가 그렇게 빠져 있었다). 세는 것은 `cmd_check` 의
+    출력이 한다."""
     return [
         Site(ROOT / "app/package.json",
              re.compile(r'"version"\s*:\s*"(?P<v>\d+\.\d+\.\d+)"'),
@@ -99,6 +105,13 @@ def _sites() -> list[Site]:
         Site(ROOT / "packaging/version_info.txt",
              re.compile(r"현재 (?P<v>\d+\.\d+\.\d+)\)"),
              "version_info.txt 주석"),
+        # MCP 핸드셰이크가 알리는 버전. 이 자리가 목록에 없어서 **v0.3.0 에 멈춘 채
+        # 제품이 0.9.1 이 될 때까지 아무도 몰랐다**(2026-09-11 측정). 어시스턴트가
+        # 화면에 그리는 유일한 Vinc 버전이라 사람에게 보이는 자리이면서, 어긋나도
+        # 아무 기능이 깨지지 않아 증상이 없는 종류다.
+        Site(ROOT / "vinc_mcp/__init__.py",
+             re.compile(r'^__version__\s*=\s*"(?P<v>\d+\.\d+\.\d+)"', re.M),
+             "vinc_mcp/__init__.py serverInfo"),
     ]
 
 
@@ -192,10 +205,10 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
 
-    ap = argparse.ArgumentParser(description="릴리스 버전 7곳 동기화·검증")
+    ap = argparse.ArgumentParser(description="릴리스 버전 자리 동기화·검증")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--check", action="store_true", help="검증만(CI 게이트)")
-    g.add_argument("--set", metavar="X.Y.Z", help="7곳을 이 버전으로 갱신")
+    g.add_argument("--set", metavar="X.Y.Z", help="모든 자리를 이 버전으로 갱신")
     ap.add_argument("--expect", metavar="X.Y.Z",
                     help="--check 와 함께: 이 버전과 같아야 통과(태그 대조용)")
     args = ap.parse_args(argv)

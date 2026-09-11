@@ -33,7 +33,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "scripts", "graph-refs.json")
 
-_SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md")
+# ⚠ YAML 과 Terraform 이 2026-09-08 까지 빠져 있었다. 같은 종류의 사각이 `design-hub`
+# 에서 이미 한 번 났는데(아래) 확장자 쪽은 안 봤다. 워크플로에 단 인용은 CI 가 검사하지
+# 않았고, `infra/*.tf` 도 마찬가지였다. 인용은 소스에 남는 것이지 파이썬에만 남는 것이
+# 아니다 — `gate_forbidden` 이 소스를 읽는 것과 같은 사유다.
+_SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md", ".yml", ".yaml", ".tf")
 # ⚠ `design-hub` 는 2026-09-06 까지 여기 있었다. 그 사이 허브 스크립트가 그래프를
 # 인용하기 시작했고(게이트 셋의 근거 문서), 그 인용은 **한 번도 대조되지 않았다** —
 # 여섯 건 중 넷이 매니페스트에 없는 실재 노드였고 하나는 문법 예시였다. 뺐다.

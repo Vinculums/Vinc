@@ -184,6 +184,40 @@ class TemplateTests(unittest.TestCase):
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class ValiditySectionTests(unittest.TestCase):
+    """유효구간 절은 **모든 그래프**에 나가는 자리에 있어야 한다.
+
+    채택된 시간 정책이 집 관례가 됐으므로 소유자 문서 한 장이 아니라 기본 템플릿에 있다.
+    그리고 **선택 절**이어야 한다 — 필수로 넣으면 그날 이전에 만들어진 모든 파일이 BLOCK
+    되고(산문은 build 가 안 채운다), 그건 Roles·Topics 때 이미 배운 것이다.
+
+    근거: [[decision:temporal-model-operational-policy-2026-09-09]]
+    """
+
+    def test_both_templates_carry_the_section(self):
+        for lang, body in (("en", graphmd._TPL_EN), ("ko", graphmd._TPL_KO)):
+            self.assertIn("valid_from", body, lang)
+            self.assertIn("valid_until", body, lang)
+
+    def test_the_load_bearing_clause_is_stated_not_implied(self):
+        """미기재가 current 라는 것을 안 적으면, 읽는 사람은 비워 두면 숨겨진다고 읽는다."""
+        self.assertIn("unstated valid_from reads as current", graphmd._TPL_EN)
+        self.assertIn("current 로 읽으므로", graphmd._TPL_KO)
+
+    def test_the_section_is_optional_so_older_files_do_not_block(self):
+        self.assertIn("validity", graphmd.OPTIONAL_SECTIONS)
+
+    def test_it_has_a_place_in_the_order(self):
+        keys = [k for k, _ in graphmd.SECTIONS]
+        self.assertIn("validity", keys)
+        self.assertLess(keys.index("documents"), keys.index("validity"))
+
+    def test_the_stored_status_enum_is_forbidden_in_the_house_style(self):
+        """관례가 이것을 말하지 않으면 다음 사람이 status 열을 만든다."""
+        self.assertIn("never store a status of stale, current or new", graphmd._TPL_EN)
+        self.assertIn("저장하지 마십시오", graphmd._TPL_KO)
+
+
 class _StoreCase(unittest.TestCase):
     """실엔진 픽스처만. 케이스를 상속으로 나누면 부모 테스트가 두 번 돈다."""
 

@@ -106,6 +106,42 @@ _NODE_TABLES: dict[str, dict] = {
     "Entity": {"pk": "entity_id", "cols": [
         ("entity_id", "STRING"), ("type", "STRING"), ("title", "STRING"),
         ("owner_id", "STRING"), ("theme_id", "STRING"), ("tags", "STRING[]")]},
+    # v17 — **노드 미러**. 노드 층에는 색인이 하나도 없었다: 제목 검색은 Cypher
+    # CONTAINS 전수 스캔이고 점수는 파이썬에서 맞은 토큰을 세는 것이다. 그래서 질문과
+    # 노드가 낱말을 안 나누면 그 노드는 **어떤 팔로도 후보가 못 된다**(실측: 답 가능
+    # 60건 중 39건).
+    #
+    # 왜 라벨마다가 아니라 미러 한 벌인가. 색인은 테이블마다 걸리는데 의미층 노드는
+    # 라벨이 넷이다. 넷에 각각 걸면 색인이 넷이고 조회도 UNION 넷이다. 노드당 한 행을
+    # 두면 **한 번 채워 두 팔(HNSW·FTS)이 먹는다**.
+    #
+    # `text` 는 찾는 표면이고 답변 재료가 아니다 — 좁게 담는다. 오늘 Episode 의 요약을
+    # 검색 표면에 넣었다가 답 불가 질문을 확정하게 만든 적이 있다
+    # ([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
+    #
+    # ⚠ 채우기는 **드롭 → 벡터와 함께 전량 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
+    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측).
+    # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+    #
+    # 🔴 **키는 소유자와 함께 잡는다**(v18). 처음엔 `node_id` 를 pk 로 뒀는데, 이 스토어는
+    # 멀티테넌트고 **같은 논리 id 가 스페이스마다 산다** — 새 스페이스는 전부 같은 네
+    # 역할(`concept:agent-steward` 외 셋)로 시작하므로 소유자가 여섯이면 그 넷이 여섯
+    # 벌이다. 그 상태에서 미러를 채우면 삽입이 통째로 죽고(`Found duplicated primary
+    # key value`), 2026-09-10 에 그것으로 재구축 네 번이 조용히 실패했다.
+    # 같은 자리의 `ChunkVec` 이 이미 `vec_id` 를 따로 두고 있다 — 그 전례를 안 따른 것이
+    # 원인이었다. `node_id` 는 열로 남아 조회가 그대로 논리 id 를 돌려준다.
+    "NodeVec": {"pk": "vec_id", "cols": [
+        ("vec_id", "STRING"),            # f"{owner_id}#{node_id}" — 스페이스당 한 행
+        ("node_id", "STRING"),           # 논리 id 그대로(concept:x · record:y …)
+        ("kind", "STRING"),              # concept | record | decision | episode
+        ("owner_id", "STRING"),
+        ("title", "STRING"),             # 화면에 낼 이름. **text 와 다르다** — 이 팔의
+                                         # 행이 후보 목록에 뜰 때 라벨이 되는 자리라,
+                                         # 여기에 찾는 표면을 넣으면 "제목. 한줄설명…"
+                                         # 이 그대로 사용자에게 나간다(1365 중 225 행).
+        ("text", "STRING"),              # 임베딩한 그 문자열 — 재현과 FTS 용
+        ("model", "STRING"),             # 어느 모델로 만든 벡터인가(혼재 방지)
+        ("embedding", "FLOAT[{dim}]")]},
 }
 
 # ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
@@ -208,7 +244,19 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
                                    "INHERITS_FROM", "ABOUT")
 
 # 현재 스키마 목표 버전. 올릴 때마다 migration_statements 에 스텝 추가.
-SCHEMA_VERSION = 16
+#
+# ⚠ v19 는 **DDL 이 없다.** 순전히 도메인 계층 백필을 한 번 더 돌리려고 있는 버전이고,
+# 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
+# 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
+# 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
+SCHEMA_VERSION = 19
+
+#: v18 — **테이블을 버리는 마이그레이션**(ALTER 아님). NodeVec 의 기본키가 `node_id`
+#: 에서 `vec_id`(소유자+id)로 바뀐다. 기본키는 ALTER 로 못 고치고, 미러는 배포마다
+#: 통째로 다시 만드는 파생물이라 **버리는 것이 옳은 이행**이다 — 잃을 원본이 없다.
+#: ⚠ 이 스텝은 `migration_statements` 가 아니라 `migrate` 안에서, **base DDL 보다
+#: 먼저** 돈다. 뒤에 두면 방금 새 모양으로 만들어진 테이블을 도로 지운다.
+NODE_VEC_REKEY_VERSION = 18
 
 #: v9 — **데이터 마이그레이션**(DDL 아님). Episode 의 `props.date`/`props.summary` →
 #: 동명 열 백필. 구현은 `store.embedded_backend.backfill_episode_time_fields`(JSON
@@ -223,7 +271,14 @@ EPISODE_TIME_BACKFILL_VERSION = 9
 #: ⚠ **의미층이 늘 때마다 이 상수를 올린다.** v12 가 Decision 을 늘렸는데 백필의 라벨
 #: 표에 안 들어가 결정 67건이 엣지 없이 배포됐고, 그래서 v13 이 존재한다. 재실행은
 #: 0.1초대다(5000노드 0.14s). 계보: [[vinc.spec.dataplane §7]].
-DOMAIN_HIERARCHY_VERSION = 13
+#:
+#: 🔴 **v19 로 올린 이유는 실측된 드리프트다**(2026-09-10). 센서스는 `vinc/engineering`
+#: 에 개념 1건을 세는데 `domain:vinc/engineering` 의 IN_DOMAIN 은 0건이었다 — 열은
+#: 있고 엣지가 없는 그 상태이고, 같은 드리프트가 2026-09-05 에도 잡혔다
+#: ([[record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05]]).
+#: 그때는 노드를 손으로 재전송해 고쳤는데, **도메인으로 노드를 열거하는 표면이 없어서**
+#: 이번에는 어느 노드인지 특정할 수가 없었다. 백필은 집합 연산이라 특정할 필요가 없다.
+DOMAIN_HIERARCHY_VERSION = 19
 
 
 def migration_statements(from_version: int) -> list[str]:
@@ -315,6 +370,15 @@ def migration_statements(from_version: int) -> list[str]:
         # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
         stmts.append("ALTER TABLE ATTACHES_TO ADD evidence STRING DEFAULT ''")
         stmts.append("ALTER TABLE ATTACHES_TO ADD confidence DOUBLE DEFAULT 0.0")
+    # v17 — 노드 미러(NodeVec). **ALTER 스텝이 없다**: 신규 노드 테이블은 매 부팅
+    # 멱등 DDL(render_node_tables)이 만든다(ChunkVec·_MergeRejection 전례). 백필도
+    # 여기 못 쓴다 — 임베딩은 DDL 이 아니라 모델을 부르는 데이터 스텝이고, 비어 있는
+    # 동안은 의미 팔이 0행을 낼 뿐 기존 경로가 멀쩡하다(ChunkVec 과 같은 태도).
+    #
+    # ⚠ **v18 도 여기 없는데 이유가 다르다.** 기본키를 바꾸는 것이라 ALTER 로는 안 되고,
+    # 테이블을 버렸다 다시 만든다. 그 스텝은 `embedded_backend.migrate` 안에서 base DDL
+    # **앞**에 선다(`NODE_VEC_REKEY_VERSION`) — 여기 두면 순서가 뒤집혀 방금 만들어진
+    # 테이블을 도로 지운다. 이 목록을 유일한 이행 경로로 읽지 말 것.
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

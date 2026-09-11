@@ -38,6 +38,24 @@ class ConfigTests(unittest.TestCase):
             cfgmod.StoreConfig(embedding_model="intfloat/multilingual-e5-base").embedding_dim, 768)
         self.assertEqual(cfgmod.StoreConfig(embedding_model="BAAI/bge-m3").embedding_dim, 1024)
 
+    def test_별칭이_없으면_워커의_HF_id_가_문이_된다(self):
+        """허브는 MEMORY_EMBEDDING_MODEL 을 안 준다. Dockerfile 이 VINC_EMBED_MODEL 로
+        bge-m3 를 선언하면 스토어 열도 1024 여야 한다 — 두 이름 공간을 잇는 유일한 줄.
+        별칭이 있으면 별칭이 이긴다(데스크탑 무영향)."""
+        saved = {k: os.environ.get(k) for k in ("MEMORY_EMBEDDING_MODEL", "VINC_EMBED_MODEL")}
+        try:
+            os.environ.pop("MEMORY_EMBEDDING_MODEL", None)
+            os.environ["VINC_EMBED_MODEL"] = "BAAI/bge-m3"
+            self.assertEqual(cfgmod.load_config().embedding_dim, 1024)
+            os.environ["MEMORY_EMBEDDING_MODEL"] = "local-en"
+            self.assertEqual(cfgmod.load_config().embedding_dim, 768)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_미지_모델은_768_로_강등되지_않고_죽는다(self):
         """전에는 `.get(model, 768)` 이라 오타가 조용히 768 이 됐다. 차원은 되돌리는 데
         스토어 재구축이 드는 값이라 기본값으로 때울 자리가 아니다 — 설정 시점에
@@ -184,7 +202,31 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 16)   # v16 — ATTACHES_TO 근거(E-G6)
+        self.assertEqual(eschema.SCHEMA_VERSION, 19)   # v19 — 도메인 계층 백필 재실행
+        # v17 이 주장한 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
+        # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
+        # 데이터 스텝이라 여기 못 쓴다.
+        #
+        # 🔴 v18 은 그 예외다. 기본키가 `node_id` → `vec_id`(소유자+id)로 바뀌는데
+        # 기본키는 ALTER 로 못 고친다. 그래서 유일하게 **base DDL 보다 먼저** 테이블을
+        # 버리는 스텝이 있다(`embedded_backend.migrate` 0번). 미러는 배포마다 통째로
+        # 다시 만드는 파생물이라 버려도 잃을 원본이 없다.
+        # 왜 바꿨나: 같은 논리 id 가 스페이스마다 산다(새 스페이스는 전부 같은 네
+        # 역할로 시작한다). `node_id` 를 키로 두면 소유자가 둘만 돼도 삽입이 죽는다.
+        self.assertIn("CREATE NODE TABLE NodeVec(vec_id STRING", ddl)
+        # 이 상수는 **v18 에 묶여 있다** — 그때 한 번 일어난 재키잉이고, 뒤 버전이
+        # 올라간다고 다시 돌 일이 아니다. 아래 도메인 백필 상수와 성질이 다르다.
+        self.assertEqual(eschema.NODE_VEC_REKEY_VERSION, 18)
+        # v19 는 DDL 이 없다 — 도메인 계층 백필을 한 번 더 돌리려고만 있는 버전이다.
+        # 백필은 `cur < DOMAIN_HIERARCHY_VERSION` 일 때만 도니까, 라이브가 이미
+        # 최신을 기록한 상태에서 다시 돌리려면 **목표 버전이 함께 움직여야 한다.**
+        # 다음에 이 줄이 실패하면 그 bump 가 주제 트리와 상관있는지 먼저 정할 것.
+        self.assertEqual(eschema.DOMAIN_HIERARCHY_VERSION, 19)
+        # 미러의 `title` 은 화면 라벨이고 `text` 는 찾는 표면이다 — 둘은 다른 열이어야 한다.
+        nodevec_ddl = next(s for s in ddl.splitlines()
+                           if s.startswith("CREATE NODE TABLE NodeVec"))
+        for col in ("title STRING", "text STRING", "owner_id STRING", "embedding FLOAT["):
+            self.assertIn(col, nodevec_ddl)
         # v10 은 ALTER 가 아니라 **신규 메타 테이블**이라 base DDL 이 만든다.
         self.assertIn("CREATE NODE TABLE _MergeRejection(pair_key STRING", ddl)
         # v11 도 같은 형태 — 신규 rel 테이블이라 ALTER 스텝이 없다.
@@ -197,6 +239,10 @@ class ProvisionTests(unittest.TestCase):
         def only(v):
             later = set(eschema.migration_statements(v))
             return [s for s in eschema.migration_statements(v - 1) if s not in later]
+
+        # v17 의 몫은 **비어 있어야 한다**. 비지 않았다면 노드 테이블에 ALTER 를 붙인
+        # 것이고, 그것은 부팅 DDL 이 이미 하는 일을 두 번 하는 것이다.
+        self.assertEqual(only(17), [], "v17 은 ALTER 스텝이 없어야 한다")
 
         v12 = only(12)
         self.assertIn("ALTER TABLE ABOUT ADD FROM Decision TO Concept", v12)

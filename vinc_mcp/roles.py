@@ -341,5 +341,33 @@ def _focus_block(focus: str, owner: str, bridge) -> str:
     if not lines:
         # 없다는 것도 재료다. 빈 울타리는 "조회가 실패했나"로 읽힌다.
         return f"(nothing in this graph matched {focus!r})"
-    return "\n".join(lines)
+    note = _degraded_note(res)
+    return "\n".join(lines + ([note] if note else []))
+
+
+def _degraded_note(res: dict) -> str:
+    """의미 팔이 안 돌았으면 그 사실을 재료에 **적는다**. 없으면 빈 문자열.
+
+    이 블록은 에이전트의 맥락으로 그대로 들어간다. 그런데 강등된 검색과 온전한 검색은
+    결과만 보면 **똑같이 생겼다** - 그래서 아무 말도 안 하면 "이게 전부다"로 읽힌다.
+    인코더 콜드스타트는 26.5초이고 창구는 1.5초에 포기하므로, 그 창에 걸린 재료는
+    정상적으로 생긴 어휘 검색 결과다.
+
+    판단은 **구조화 필드로만** 한다(`vector_note` 의 영문 문장은 카피가 아니다) -
+    데스크탑 `armsNotice` 와 같은 규칙, 같은 순서다. 규칙이 두 벌이 되면 같은 고장이
+    표면에 따라 보이거나 안 보인다.
+    근거: [[vinc.plan.encode-cold-start-declaration §3]]"""
+    if not isinstance(res, dict):
+        return ""
+    pending = (res.get("embed_migration") or {}).get("pending")
+    if pending:
+        return (f"(note: the semantic arm is rebuilding for a model migration, "
+                f"{pending} documents left. This material is keyword matches only.)")
+    if res.get("vector_rebuilding"):
+        return ("(note: the semantic index is rebuilding after a write. This material is "
+                "keyword matches only and the semantic arm returns on a later call.)")
+    if res.get("vector_note"):
+        return ("(note: the semantic arm did not run, so this material is keyword matches "
+                "only. Treat absence here as unknown, not as nothing existing.)")
+    return ""
 

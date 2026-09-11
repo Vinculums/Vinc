@@ -55,6 +55,7 @@ SECTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("size", ("How big is one concept", "개념 하나의 크기")),
     ("relations", ("Relations", "관계")),
     ("documents", ("Documents", "문서")),
+    ("validity", ("Validity", "유효구간")),
     ("roles", ("Roles", "역할")),
     ("topics", ("Topics", "주제")),
     ("domains", ("Domains in this graph", "이 그래프의 도메인")),
@@ -63,7 +64,7 @@ SECTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
 )
 #: 있으면 순서를 보고, 없어도 결함이 아닌 절. 2026-09-05 에 더한 둘이다 — 필수로
 #: 넣으면 그날 이전에 만들어진 모든 파일이 BLOCK 이 된다(산문은 build 가 안 채운다).
-OPTIONAL_SECTIONS = frozenset({"roles", "topics"})
+OPTIONAL_SECTIONS = frozenset({"roles", "topics", "validity"})
 
 
 def _title(key: str, lang: str) -> str:
@@ -74,7 +75,11 @@ def _title(key: str, lang: str) -> str:
 #: 경고 60 → 70(2026-09-05). Roles·Topics 두 절이 아홉 줄을 더했고, 그만큼을 예시
 #: 절에서 깎는 것은 규격이 "규칙 아니라 예시로" 두기로 한 것을 깎는 일이었다.
 #: 근거: [[vinc.canon.graph-conventions §2]] (F2 개정) 와 그 결정 노드.
-LINE_WARN, LINE_FAIL = 70, 100
+#:
+#: 70 → 75(2026-09-09). Validity 절 넉 줄. 같은 판단이다 — 채택된 시간 정책이 집
+#: 관례가 됐으니 이 파일에 있어야 하고([[decision:temporal-model-operational-policy-2026-09-09]]),
+#: 자리를 만들려고 예시를 깎는 것은 위와 같은 이유로 거절한다. 하드 상한(100)은 그대로다.
+LINE_WARN, LINE_FAIL = 75, 100
 #: 화면 노출 금지 문자(D38). 이 템플릿은 문서 사이트에 그대로 실린다.
 FORBIDDEN_GLYPHS = ("—",)   # em-dash
 
@@ -130,6 +135,12 @@ Not sure: use relates_to. Never flip a directed edge to make it fit.
 ## Documents [schema-fixed]
 Source text goes in through vinc_doc_put and the store keeps the canonical copy. Do
 not paste a whole document into a Record; link concepts through the document, not a copy.
+
+## Validity [this graph decides]
+A Record asserting a present state carries valid_from; retire it with valid_until instead of
+deleting it, because a retired claim still describes what held then. Reads default to current
+only, and an unstated valid_from reads as current, so leaving it empty hides nothing.
+Currency is derived from the interval: never store a status of stale, current or new.
 
 ## Roles [schema-fixed]
 An Agent role is a Concept: id concept:agent-<name>, topic vinc/agent (a reserved topic).
@@ -192,6 +203,12 @@ Record 에서 둘 중 어디로든 위 넷 중 아무거나. 그 엣지들과 ab
 ## 문서 [스키마 고정]
 원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다. 문서 전문을 Record 에
 붙여넣지 마십시오. 개념은 문서를 통해 연결하고, 사본을 통해 연결하지 마십시오.
+
+## 유효구간 [이 그래프가 정함]
+현재 상태를 주장하는 Record 에는 valid_from 을 답니다. 폐기는 지우기가 아니라
+valid_until 입니다. 지나간 주장도 그때 무엇이 참이었는지는 그대로 말하기 때문입니다.
+읽기 기본값은 current 뿐이고, valid_from 을 안 적으면 current 로 읽으므로 비워도
+숨겨지지 않습니다. 현재성은 구간에서 파생합니다. stale·current·new 를 저장하지 마십시오.
 
 ## 역할 [스키마 고정]
 Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 주제는 vinc/agent(예약된 주제).
