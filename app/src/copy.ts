@@ -2,7 +2,7 @@
  *  EN voice: precise, warm, craftsmanlike. Verb-first CTAs. No learning/memory
  *  narrative (F2). KO voice(D42): 번역이 아닌 저작 — 자연스러운 SaaS UX 라이팅.
  *  2026-07-12 개선: 개발자 직역 용어를 사용자 언어로 재작성([[vinc.spec.ui-copy]] §17):
- *    record→document/문서 · domain→topic/주제 · corpus→data/데이터 ·
+ *    record→document/문서 · domain→topic/주제 · corpus→data/정보 ·
  *    mine/ingest→analyze,add/분석,추가 · source→file/파일 · tie→link/연결.
  *  표면 고유명사(Intake·Records·View·Search·Packs)는 미번역 유지. */
 import { cfg } from "./api";
@@ -70,12 +70,12 @@ const EN = {
     actions: { view: "Show in View", pin: "Pin", tag: "Tag" },
   },
   view: {
-    idle: "No knowledge map yet. Add files or run a search, and the map builds itself from your documents.",
+    idle: "No graph yet. Add files or run a search, and the graph builds itself from your documents.",
     idleCta: "Import files",
     loading: (d: number) => `Arranging ${d} topics…`,
-    error: "The map couldn't load. Retry anytime. Your documents are untouched.",
+    error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
-    // 사이드카가 읽지 못하는 것을 빈 지도로 그리면 데이터 유실과 구분되지 않는다.
+    // 사이드카가 읽지 못하는 것을 빈 View 로 그리면 정보 유실과 구분되지 않는다.
     // 사유(락 충돌·손상)는 사람이 쓸 수 없는 문장이라 접어 두고 [자세히]로 연다.
     storeDown: "Vinc can't read your knowledge store right now. Nothing is lost: this is a read problem, not missing data. Restart Vinc, and check that another copy isn't already running.",
     storeDownWhy: "Details",
@@ -195,7 +195,7 @@ const EN = {
       // 하단 바에 살던 시절의 "Bottom left" 로 남아 D71(상단 바 이동) 이후 줄곧
       // 틀린 곳을 가리키고 있었다 — 코치 문구는 틀리면 안 가르치는 것보다 나쁘다.
       lensTitle: "Top right",
-      lensBody: "switch how you look at the map, and read the legend.",
+      lensBody: "switch how you look at the View, and read the legend.",
       menuTitle: "Right-click a node",
       // 메뉴에 실제로 있는 것만 적는다: 열기 · 여기서부터 공유하기 · 지우기
       // (`COPY.ui.menu` 둘 + `COPY.ui.viewx.del`, 조립은 `surfaces/view.ts` nodeMenu).
@@ -271,7 +271,7 @@ const EN = {
     lnb: {
       // 이 절은 **주제 트리**다. 문서는 주제 아래에 매달릴 뿐이라, 제목이
       // "Documents" 이던 동안 줄들이 문서 목록으로 읽혔다 — 실제로는 그 줄을
-      // 누르면 지도가 그 주제로 좁혀지는데도. 문서 총계는 지도 아래 지표바가 이미
+      // 누르면 View 가 그 주제로 좁혀지는데도. 문서 총계는 View 아래 지표바가 이미
       // 말하므로 여기서 두 번 세지 않는다.
       documents: "Topics",
       topicTip: "Show only this topic. Ctrl or Cmd click to add another.",
@@ -279,7 +279,7 @@ const EN = {
       scopedClear: "Show all",
       open: "Open the sidebar", close: "Close the sidebar",
       unfiled: "No topic yet",
-      unfiledTip: "These aren't linked to any concept yet, so they have no place on the map.",
+      unfiledTip: "These aren't linked to any concept yet, so they have no place in View.",
       empty: "No documents yet.",
       emptyCta: "Add one",
       loading: "Loading…",
@@ -299,11 +299,11 @@ const EN = {
       } as Record<string, string>,
       kindTip: (name: string, n: number) =>
         `${name} · ${n === 1 ? "1 node" : `${n} nodes`}`,
-      nodeTip: "Show this on the map",
+      nodeTip: "Show this in View",
       noNodes: "Nothing of this kind in this topic yet.",
       docsElsewhere: "Documents that land on another kind",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
-      editOnly: "No place on the map yet. Opens in the editor.",
+      editOnly: "No place in View yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
@@ -352,7 +352,7 @@ const EN = {
       retry: "Try those again",
       scope: "What to share",
       scopeAll: "Everything", scopeTopic: "One topic", scopeHere: "What I'm looking at",
-      scopeHereOff: "Open the map first to share what you're looking at.",
+      scopeHereOff: "Open View first to share what you're looking at.",
       go: "Continue",
       // 소스 스페이스(P15) — 구 Packs 화면의 `개인 → 팀 불러오기`가 이 칸 하나로
       // 일반화됐다. 목록은 계정이 주는 활동 중인 팀뿐이고, 그 밖의 소속은 고를 수
@@ -388,13 +388,13 @@ const EN = {
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
         uniform: "Every mark the same size. Size then means nothing at all.",
-        hover: "Only the name you point at appears, so the map is never covered in type.",
+        hover: "Only the name you point at appears, so the View is never covered in type.",
         fit: "As many as the ring has room for, best-connected first. The rest answer on hover.",
         none: "No names drawn. Shape and place carry everything.",
         arrowsOn: "Directed relations get an arrowhead.",
-        arrowsOff: "Lines without arrowheads. Less ink on a dense map.",
+        arrowsOff: "Lines without arrowheads. Less ink on a dense View.",
         always: "Every line, always. The whole relation set at once, at the cost of density.",
-        focus: "Lines stay hidden and the map stays clear. Point at a mark and its lines appear.",
+        focus: "Lines stay hidden and the View stays clear. Point at a mark and its lines appear.",
         particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
         bring: "No lines. Point at a mark and its neighbours ring around it, then fly home.",
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
@@ -413,7 +413,7 @@ const EN = {
         d2: "Lines join kind to kind inside a topic. Links inside one kind are dropped.",
         d3: "Lines join item to item. Nothing is dropped.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
-        nodeScale: "Keeps the size encoding and scales the whole map.",
+        nodeScale: "Keeps the size encoding and scales the whole View.",
         edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
         cone: "How wide a topic's branch fans from the centre. Applied when you let go.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
@@ -422,7 +422,7 @@ const EN = {
       // 목록이 아니라 선이므로, 도움말이 그 사실을 먼저 말한다(모든 항목은 늘 있다).
       bundleDepth: "Bundling",
       bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
-      // Weave 의 라벨은 지도와 뜻이 다르다. 지도는 짚어야 뜨지만 여기서는 **둘레에
+      // Weave 의 라벨은 다른 관점과 뜻이 다르다. 그쪽은 짚어야 뜨지만 여기서는 **둘레에
       // 들어갈 만큼** 상시로 뜬다(2026-08-16). 같은 이름에 같은 값을 쓰면 화면이
       // 하지 않는 약속을 하게 된다.
       labelsFit: "shown",
@@ -573,7 +573,7 @@ const EN = {
       readerRetry: "Try again",
       readerTitle: "Document",
       readerUnverified: "Reconstructed (not verified)",
-      // 문서→노드 · 문서 안의 지도. 둘 다 본문 앞에 서므로 짧아야 한다.
+      // 문서→노드 · 문서 안의 그래프. 둘 다 본문 앞에 서므로 짧아야 한다.
       readerMentions: "Mentions",
       readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
@@ -863,7 +863,7 @@ const EN = {
       importTitle: "Import a pack",
       updateNote: (c: number, e: number, r: number) =>
         `${c} concepts · ${e} connections · ${r} documents. Safe update: anything already here is refreshed in place, never duplicated.`,
-      importMine: "Import as mine", viewMap: "View the map",
+      importMine: "Import as mine", viewMap: "Open in View",
     },
   },
 };
@@ -877,11 +877,11 @@ const KO: Deck = {
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
     idleBody: "문서 파일(.md·.txt·.rst·.pdf)이나 지식 팩(.vincpack·.json)을 가져올 수 있어요. 여기에 끌어다 놓거나 파일을 고르세요",
-    idleCta: "데이터 추가하기",
+    idleCta: "정보 추가하기",
     loading: (n, m, d) => `문서 ${m}개 중 ${n}개 분석 중 · 지금까지 찾은 주제 ${d}개`,
     success: (n, m) => `주제 ${m}개에 걸쳐 문서 ${n}개를 추가했어요`,
     successCta: "View에서 열기",
-    error: (src) => `${src}을(를) 읽지 못했어요. 파일을 확인하고 다시 시도해 보세요. 이미 추가한 데이터는 그대로 있어요`,
+    error: (src) => `${src}을(를) 읽지 못했어요. 파일을 확인하고 다시 시도해 보세요. 이미 추가한 정보는 그대로 있어요`,
   },
   firstRun: {
     title: "로그인할까요, 아니면 이 기기에만 둘까요",
@@ -929,11 +929,11 @@ const KO: Deck = {
     actions: { view: "View에서 보기", pin: "고정", tag: "태그" },
   },
   view: {
-    idle: "아직 지도가 없어요. 파일을 추가하면 문서에서 지도를 만들어요",
+    idle: "아직 그래프가 없어요. 파일을 추가하면 문서에서 그래프를 만들어요",
     idleCta: "파일 추가하기",
     loading: (d) => `주제 ${d}개를 배치하는 중…`,
-    error: "지도를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
-    storeDown: "지금은 저장된 데이터를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
+    error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
+    storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",
   },
   search: {
@@ -961,7 +961,7 @@ const KO: Deck = {
     error: "팩을 만들지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
   },
   settings: {
-    lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요. 어느 쪽이든 데이터는 이 기기에 남아요.",
+    lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요. 어느 쪽이든 정보는 이 기기에 남아요.",
     mcp: "연결된 클라이언트의 도구 호출이 일어나는 대로 여기에 보여요",
   },
   ui: {
@@ -1032,7 +1032,7 @@ const KO: Deck = {
     },
     coach: {
       lensTitle: "오른쪽 위에서",
-      lensBody: "지도 보는 방식을 바꾸고 범례를 볼 수 있어요",
+      lensBody: "View 보는 방식을 바꾸고 범례를 볼 수 있어요",
       menuTitle: "점을 오른쪽 클릭하면",
       // 메뉴에 실제로 있는 것만 적는다(EN 덱 같은 자리에 이유가 있다).
       // "거기서부터 따라가거나" 는 2026-08-17 에 사라진 제스처였다.
@@ -1098,7 +1098,7 @@ const KO: Deck = {
       scopedClear: "전체 보기",
       open: "사이드바 열기", close: "사이드바 닫기",
       unfiled: "주제 없음",
-      unfiledTip: "아직 어떤 개념과도 이어지지 않아서 지도에 자리가 없어요",
+      unfiledTip: "아직 어떤 개념과도 이어지지 않아서 View에 자리가 없어요",
       empty: "아직 문서가 없어요",
       emptyCta: "문서 추가하기",
       loading: "불러오는 중…",
@@ -1111,11 +1111,11 @@ const KO: Deck = {
         "agent.short": "Agent",
       } as Record<string, string>,
       kindTip: (name: string, n: number) => `${name} · 노드 ${n}개`,
-      nodeTip: "지도에서 봅니다",
+      nodeTip: "View에서 보기",
       noNodes: "이 주제에는 아직 이 종이 없어요",
       docsElsewhere: "다른 종에 붙은 문서",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
-      editOnly: "아직 지도에 자리가 없어요. 편집기로 열려요",
+      editOnly: "아직 View에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",
     },
     conv: {
@@ -1155,7 +1155,7 @@ const KO: Deck = {
       retry: "실패한 것만 다시 시도하기",
       scope: "공유할 범위",
       scopeAll: "전체", scopeTopic: "주제 하나", scopeHere: "지금 보고 있는 곳",
-      scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 지도를 여세요",
+      scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 View를 여세요",
       go: "계속하기",
       source: "어느 공간",
       sourceNote: "다른 공간의 팩은 지금 있는 공간으로 복사돼요",
@@ -1181,17 +1181,17 @@ const KO: Deck = {
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
         uniform: "모두 같은 크기입니다. 크기가 아무 뜻도 갖지 않아요",
-        hover: "가리킨 마디의 이름만 떠요. 지도가 글자로 덮이지 않아요",
+        hover: "가리킨 마디의 이름만 떠요. View가 글자로 덮이지 않아요",
         fit: "둘레에 들어갈 만큼만, 연결이 많은 것부터 보여요. 나머지는 가리키면 떠요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
         arrowsOn: "앞뒤가 있는 연결에 화살촉을 붙여요",
-        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 지도에서 잉크가 줄어요",
+        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 View에서 잉크가 줄어요",
         always: "모든 선을 늘 그려요. 관계 전체를 한눈에 보는 대신 촘촘해져요",
-        focus: "평소에는 선을 감춰서 지도가 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
+        focus: "평소에는 선을 감춰서 View가 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
         particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
         bring: "선을 그리지 않아요. 가리키면 이웃이 둘레로 모여 고리로 서고, 손을 떼면 돌아가요",
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
-        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 지도가 조용해져요",
+        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 View가 조용해져요",
         hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
         rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
@@ -1410,14 +1410,14 @@ const KO: Deck = {
       someFailed: (names) => `읽지 못한 파일: ${names}. 파일을 확인하고 다시 추가해 보세요. 나머지는 모두 추가됐어요`,
       // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
       importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했어요. 검색으로 언제든 찾을 수 있어요`,
-      tooLarge: (name, mb) => `${name}은(는) 너무 커서 추가하지 못했어요(브라우저 제한 ${mb}MB). 데스크탑 앱에서는 제한 없이 추가할 수 있어요. 이미 추가한 데이터는 그대로 있어요`,
+      tooLarge: (name, mb) => `${name}은(는) 너무 커서 추가하지 못했어요(브라우저 제한 ${mb}MB). 데스크탑 앱에서는 제한 없이 추가할 수 있어요. 이미 추가한 정보는 그대로 있어요`,
       // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
       docError: {
-        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 읽지 못했어요. 암호를 해제한 뒤 다시 추가해 주세요. 다른 데이터는 그대로 있어요`,
-        pdf_no_text: (name) => `${name}은(는) 읽을 수 있는 텍스트가 없어요. 스캔한 문서라면 OCR을 거친 뒤 다시 추가해 주세요. 다른 데이터는 그대로 있어요`,
-        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했어요. 파일이 손상됐을 수 있으니 원본을 확인해 주세요. 다른 데이터는 그대로 있어요`,
-        pdf_support_missing: (name) => `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었어요. 텍스트 파일로 바꿔 추가해 보세요. 다른 데이터는 그대로 있어요`,
-        unsupported_format: (name) => `${name}은(는) 아직 읽을 수 없는 형식이에요. 문서(.md·.txt·.rst)나 PDF로 바꿔 다시 추가해 보세요. 다른 데이터는 그대로 있어요`,
+        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 읽지 못했어요. 암호를 해제한 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_no_text: (name) => `${name}은(는) 읽을 수 있는 텍스트가 없어요. 스캔한 문서라면 OCR을 거친 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했어요. 파일이 손상됐을 수 있으니 원본을 확인해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_support_missing: (name) => `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었어요. 텍스트 파일로 바꿔 추가해 보세요. 다른 정보는 그대로 있어요`,
+        unsupported_format: (name) => `${name}은(는) 아직 읽을 수 없는 형식이에요. 문서(.md·.txt·.rst)나 PDF로 바꿔 다시 추가해 보세요. 다른 정보는 그대로 있어요`,
       },
       mcpTitle: "어시스턴트로 더 깊이 분석하기",
       mcpBody: "일반 문서는 Vinc가 직접 읽고 원문 그대로 보관해요. 코드나 읽지 못하는 형식은 Settings → MCP에서 AI 어시스턴트를 연결해 보세요. 연결한 어시스턴트가 내용을 읽고 개념을 Vinc에 대신 써넣어요",
@@ -1495,7 +1495,7 @@ const KO: Deck = {
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
       syncKeySave: "키 저장", syncKeySaved: "저장했어요. 입력칸을 비우는 것은 일부러예요 · 키를 화면에 남기지 않아요",
       syncDomains: "동기화할 주제",
-      syncNoDomains: "아직 주제가 없어요. 먼저 데이터를 추가해 보세요.",
+      syncNoDomains: "아직 주제가 없어요. 먼저 정보를 추가해 보세요.",
       syncNonePicked: "고른 주제가 없어서 이 기기를 떠나는 것이 없어요. 아래에서 고르기 전까지는 여기에 쓴 것이 전부 이 기기에만 남아요.",
       syncNow: "지금 동기화하기", syncing: "동기화 중…",
       syncNeedKey: "먼저 계정을 연결해 주세요",
@@ -1513,7 +1513,7 @@ const KO: Deck = {
     palette: {
       typeCommand: "명령 입력…", noCommands: "맞는 명령이 없어요",
       goTo: (s) => `${s} 열기`,
-      ingest: "데이터 추가하기", share: "팩 공유하기", settings: "Settings 열기",
+      ingest: "정보 추가하기", share: "팩 공유하기", settings: "Settings 열기",
       keyboard: "단축키", goSurface: "화면 이동", cmdPalette: "명령 팔레트",
       fit: "선택 맞춤 (View)",
       back: "한 단계 뒤로", thisSheet: "이 도움말",
@@ -1556,7 +1556,7 @@ const KO: Deck = {
       destClose: "완료",
       importTitle: "팩 가져오기",
       updateNote: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개. 이미 있는 것은 그 자리에서 갱신되고, 절대 중복되지 않아요`,
-      importMine: "내 지식으로 가져오기", viewMap: "지도 보기",
+      importMine: "내 지식으로 가져오기", viewMap: "View에서 열기",
       shareSub: "아래에 있는 것만 팩으로 나가요. 그 밖에는 아무것도 나가지 않아요",
       importSub: "내 그래프에 합쳐져요. 이미 있는 것은 그 자리에서 갱신돼요",
       specScope: "범위", specConcepts: "개념", specLinks: "연결",
