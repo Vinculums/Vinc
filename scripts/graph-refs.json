@@ -397,6 +397,7 @@
     "record:what-the-spec-permits-is-not-what-the-peer-accepts",
     "record:which-identity-reaches-what-on-this-subscription",
     "record:worker-heartbeat-separates-backlog-from-death",
+    "record:worktree-isolation-makes-one-branch-per-package-physical",
     "record:writing-a-trap-down-does-not-stop-it-a-check-does"
   ]
 }

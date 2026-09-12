@@ -82,6 +82,14 @@ class Shell(unittest.TestCase):
         role = build_payload([node])["roles"][0]
         self.assertIn("description: two lines here", render_shell(role))
 
+    def test_isolation_reaches_the_frontmatter_only_when_the_node_asks(self):
+        """격리는 역할 노드가 정한다. 빈 값이 `isolation:` 줄을 내면 하네스가 빈 낱말을
+        읽고, 그 실패는 껍데기가 아니라 실행 시점에 나온다 — 여기서 막는다."""
+        self.assertNotIn("isolation:", render_shell(build_payload([_NODE])["roles"][0]))
+        node = dict(_NODE, props=dict(_NODE["props"], isolation="worktree"))
+        head = render_shell(build_payload([node])["roles"][0]).splitlines()
+        self.assertEqual(head[4], "isolation: worktree")
+
     def test_every_rung_maps_to_a_model(self):
         for rung in ("strongest", "strong", "fast", "cheapest"):
             self.assertTrue(RUNG_TO_MODEL.get(rung), rung)

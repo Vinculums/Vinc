@@ -108,6 +108,13 @@ def render_shell(role: dict) -> str:
     # 정본: [[record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does]]
     front = ["---", f"name: {name}", f"description: {mission}",
              f"model: {RUNG_TO_MODEL.get(rung, '')}"]
+    # `isolation: worktree` 는 하네스가 그 역할에 **리포 사본 하나**를 따로 준다. 값은
+    # 역할 노드가 정하고 여기는 옮기기만 한다 — 어느 역할이 격리되는지는 모델 사다리와
+    # 같이 그래프의 판단이다. 값 문자열을 검사하지 않는 것도 같은 이유다: 하네스가 아는
+    # 낱말이 늘면 노드만 고치면 된다.
+    # 정본: [[record:worktree-isolation-makes-one-branch-per-package-physical]]
+    if props.get("isolation"):
+        front.append(f"isolation: {props['isolation']}")
     if props.get("disallowed_tools"):
         front.append("disallowedTools: " + ", ".join(props["disallowed_tools"]))
     body = front + [
