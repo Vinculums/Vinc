@@ -37,7 +37,7 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 ## Read before the first edit, in this order
 
 1. vinc.plan.agent-domain
-2. vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11
+2. vinc.ops.orchestration-session-boot
 3. vinc.plan.agent-lifecycle-and-the-deploy-plane
 4. vinc.canon.repo-workflow
 5. vinc.canon.graph-conventions
