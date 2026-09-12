@@ -77,12 +77,54 @@ class TestF9KoreanCopy(unittest.TestCase):
         self.assertEqual(1, len(v))
         self.assertEqual("F9", v[0].gate)
 
-    def test_all_seven_words_are_wired(self):
-        src = "".join(f'x{i}: "{w}",\n' for i, w in enumerate(
-            ("말뭉치", "채굴", "표면", "레일", "관문", "당신", "귀하")))
+    def test_all_korean_words_are_wired(self):
+        words = ("말뭉치", "코퍼스", "데이터", "지도",
+                 "채굴", "표면", "레일", "관문", "당신", "귀하")
+        src = "".join(f'x{i}: "{w}",\n' for i, w in enumerate(words))
         v = _scan_text("app/src/copy.ts", src)
-        self.assertEqual(7, len(v))
+        self.assertEqual(len(words), len(v))
         self.assertEqual({"F9"}, {x.gate for x in v})
+
+    def test_retired_nouns_fire_in_both_scripts(self):
+        """2026-09-12 발주자 지시 둘. 한 낱말의 은퇴가 한쪽 언어에서만 걸리면
+        나머지 절반이 조용히 남는다 — 그래서 같은 F9 안에 둘 다 있다.
+        `map` 은 GRAPH.md 영어 템플릿에도 걸려야 한다(사용자에게 파일로 나간다)."""
+        for rel, src in (
+            ("app/src/copy.ts", 'x: "The map couldn\'t load.",\n'),
+            ("app/src/copy.ts", 'x: "Your maps are safe.",\n'),
+            ("api/graphmd.py", 'x = "a knowledge map"\n'),
+            ("app/src/copy.ts", 'x: "지도를 불러오지 못했어요",\n'),
+            ("api/graphmd.py", 'x = "데이터 유실"\n'),
+        ):
+            with self.subTest(rel=rel, src=src):
+                v = _scan_text(rel, src)
+                self.assertEqual(1, len(v), v)
+                self.assertEqual("F9", v[0].gate)
+
+    def test_database_compound_and_capital_map_are_carved_out(self):
+        """부정 전방탐색이 실제로 무엇을 빼는가. `데이터베이스` 는 합성어라 남고
+        (api/graphmd.py 의 GRAPH.md 한국어 템플릿이 이 낱말을 실제로 쓴다),
+        `개인정보` 와 대체어 `정보` 자체는 애초에 대상이 아니다."""
+        for rel, src in (
+            ("api/graphmd.py", 'x = "데이터베이스 관련"\n'),
+            ("app/src/copy.ts", 'x: "개인정보 처리방침",\n'),
+            ("app/src/copy.ts", 'x: "정보는 그대로 있어요",\n'),
+            ("app/src/copy.ts", "const m = new Map();\n"),
+            ("app/src/copy.ts", 'x: "our roadmap",\n'),
+        ):
+            with self.subTest(rel=rel, src=src):
+                self.assertEqual([], _scan_text(rel, src))
+
+    def test_english_map_is_scoped_to_the_copy_deck_not_all_of_app_src(self):
+        """실측: `app/src/` 전체에 걸면 `.map(` 배열 호출 170건이 위반이 된다
+        (view.ts 40 · view2d.ts 23 …). 그 상태의 게이트는 잡음으로 학습되고,
+        그러면 진짜 금지어가 지나간다. 영어 규칙만 덱과 템플릿으로 좁힌 이유다."""
+        self.assertEqual([], _scan_text("app/src/surfaces/view.ts",
+                                        "const ys = xs.map((x) => x);\n"))
+        self.assertEqual([], _scan_text("app/src/lnb.ts",
+                                        'const s = "the map";\n'))
+        self.assertEqual(1, len(_scan_text("app/src/copy.ts",
+                                           'x: "the map",\n')))
 
     def test_comment_in_app_src_is_not_a_violation(self):
         # 이 리포의 주석 언어는 한국어다(CLAUDE.md). "제품 표면"·"레일은 좁다" 는
