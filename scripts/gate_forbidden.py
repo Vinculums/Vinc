@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""반입 금지 게이트 — WO-MEM-SA-001 §3 하드 룰 (F1–F8).
+"""반입 금지 게이트 — WO-MEM-SA-001 §3 하드 룰 (F1–F9).
 
 Vinc 는 memory 데이터플레인을 흡수하되 **CP 계측 코드·학습 프레이밍·구 명칭**을
 반입하지 않는다. 본 게이트가 그 하드 룰의 실행체(executable SSoT)다.
@@ -15,6 +15,9 @@ Vinc 는 memory 데이터플레인을 흡수하되 **CP 계측 코드·학습 �
 stdlib 전용. exit 0=PASS(0건) · 1=위반 발견 · 3=내부 오류.
 
     python scripts/gate_forbidden.py [--root .] [--json]
+
+`--json` 은 위반과 함께 **실재하는 규칙 표**(`rules`·`rule_count`)를 싣는다.
+정본 §8 의 대조("룰 수 대 §4-7 의 살아 있는 행 수")가 그것 없이는 안 돌았다.
 """
 from __future__ import annotations
 
@@ -205,6 +208,34 @@ _F9 = [
 ALL_RULES = _F1 + _F2 + _F7 + _F8 + _F9
 
 
+def rule_inventory() -> list[dict]:
+    """코드에 **실재하는** 규칙 표. `--json` 이 위반과 함께 싣는다.
+
+    위반 목록만으로는 "게이트가 무엇을 거는가"를 밖에서 알 수 없다. 그래서 정본
+    `vinc.canon.terminology` §8 이 규정한 대조 방법("`--json` 의 룰 수와 §4-7 의 살아
+    있는 행 수를 맞춘다")이 **돌아갈 수가 없었다** — 문서가 있지도 않은 출력을
+    가리키고 있었다. 규정된 검사를 아무도 못 돌리면 문서와 게이트는 조용히 갈라진다.
+    `scripts/refresh_graph_refs.py` 가 `ALL_RULES` 를 직접 import 하므로 `Rule` 의
+    모양은 건드리지 않는다 — 이 함수는 읽기 전용 투영이다.
+    근거: [[vinc.canon.terminology §8]] (그 절이 규정한 대조가 이 함수의 존재 이유다)
+    """
+    return [
+        {
+            "gate": r.gate,
+            "label": r.label,
+            "pattern": r.pattern.pattern,
+            # F8-a 는 대소문자 무관이다. 이 플래그가 없으면 패턴 문자열만 보고
+            # 대소문자를 가린다고 오독하게 되고, 그 상태의 대조는 틀린다.
+            "ignorecase": bool(r.pattern.flags & re.IGNORECASE),
+            # 빈 튜플 = 리포 전체. F9 만 경로 한정이다.
+            "scope": list(r.scope),
+            "code_only": r.code_only,
+            "note": r.note,
+        }
+        for r in ALL_RULES
+    ]
+
+
 @dataclass
 class Violation:
     gate: str
@@ -269,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
 
-    ap = argparse.ArgumentParser(description="반입 금지 게이트 (WO §3 F1–F7)")
+    ap = argparse.ArgumentParser(description="반입 금지 게이트 (F1–F9)")
     ap.add_argument("--root", default=".", help="검사 루트(기본 cwd)")
     ap.add_argument("--json", action="store_true", help="JSON 출력")
     args = ap.parse_args(argv)
@@ -282,10 +313,16 @@ def main(argv: list[str] | None = None) -> int:
     violations = scan(root)
 
     if args.json:
+        # 기존 네 키(root·status·count·violations)는 **모양이 그대로다** — 아래
+        # 둘은 더하기만 한 것이다. 소비자가 깨지지 않아야 한다(tests 가 잠근다).
         print(json.dumps({
             "root": str(root),
             "status": "PASS" if not violations else "FAIL",
             "count": len(violations),
+            "rule_count": len(ALL_RULES),
+            "rules_by_gate": {g: sum(1 for r in ALL_RULES if r.gate == g)
+                              for g in sorted({r.gate for r in ALL_RULES})},
+            "rules": rule_inventory(),
             "violations": [v.__dict__ for v in violations],
         }, ensure_ascii=False, indent=2))
     else:

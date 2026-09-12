@@ -4,6 +4,9 @@
 게이트가 no-op 이 아님을 잠근다: F1/F2/F7 검출 + F7 경계 구분
 (weg-memory 금지 / weg-9000-memory 허용).
 """
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
@@ -137,6 +140,76 @@ class TestExcludeIsRootAnchored(unittest.TestCase):
         for entry in starter:
             sibling = str(Path(entry).parent / "sibling-not-allowlisted.md").replace("\\", "/")
             self.assertIn(sibling, self._seen(sibling), entry)
+
+
+class TestRuleInventory(unittest.TestCase):
+    """`--json` 이 실재하는 규칙 표를 싣는가.
+
+    이 테스트가 이 패키지의 본체다. 정본 `vinc.canon.terminology` §8 은 "`--json` 의
+    룰 수와 §4-7 의 살아 있는 행 수를 대조한다"고 **방법까지** 규정하는데, 출력에
+    룰이 없어서 그 대조를 돌릴 수가 없었다. 규칙을 코드에만 늘리고 정본에 안 올려도
+    아무도 모르는 상태가 그래서 생겼다(F9 일곱 줄이 실제로 그렇다).
+
+    그러니 여기서 잠그는 것은 "인벤토리가 ALL_RULES 를 빠짐없이 싣는다"다 — 규칙을
+    더하고 인벤토리를 안 더하면 이 테스트가 떨어진다.
+    근거: [[vinc.canon.terminology §8]]
+    """
+
+    def _emit(self, name: str = "", content: str = ""):
+        """`main(--json)` 을 통째로 통과시켜 stdout 을 파싱한다.
+
+        `rule_inventory()` 를 직접 부르지 않는 이유: 정본이 가리키는 것은 **CLI 출력**
+        이고, `re.Pattern` 은 JSON 직렬화가 안 되므로 직렬화 경계까지 지나야 실제로
+        돌아가는 대조인지 알 수 있다.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            if name:
+                f = Path(d) / name
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(content, encoding="utf-8")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = g.main(["--root", d, "--json"])
+        return rc, json.loads(buf.getvalue())
+
+    def test_코드의_모든_규칙이_출력에_실린다(self):
+        rc, payload = self._emit()
+        self.assertEqual(0, rc)
+        emitted = {(r["gate"], r["label"]) for r in payload["rules"]}
+        missing = {(r.gate, r.label) for r in g.ALL_RULES} - emitted
+        self.assertEqual(set(), missing, "코드에 있고 인벤토리에 없는 규칙")
+        self.assertEqual(len(g.ALL_RULES), payload["rule_count"])
+        self.assertEqual(len(g.ALL_RULES), len(payload["rules"]))
+
+    def test_각_항목이_대조에_필요한_것을_싣는다(self):
+        # 정본 §4-7 의 표 열과 맞대 볼 수 있어야 한다: 어느 게이트 · 무슨 패턴 ·
+        # 어디에 걸리는가 · 주석을 걷어 내는가.
+        for r in self._emit()[1]["rules"]:
+            self.assertTrue(r["gate"], r)
+            self.assertTrue(r["pattern"], r)
+            self.assertIsInstance(r["scope"], list)
+            self.assertIsInstance(r["code_only"], bool)
+
+    def test_게이트별_집계가_규칙_수와_맞는다(self):
+        payload = self._emit()[1]
+        self.assertEqual(payload["rule_count"], sum(payload["rules_by_gate"].values()))
+        # F9 는 경로 한정이고 주석을 걷어 낸다 — 이 둘이 인벤토리에 보여야 정본과
+        # 대조가 된다(F9 가 정본에 없다는 사실이 그래서 드러난다).
+        f9 = [r for r in payload["rules"] if r["gate"] == "F9"]
+        self.assertTrue(f9)
+        self.assertTrue(all(r["code_only"] and r["scope"] for r in f9))
+
+    def test_위반_출력_모양은_그대로다(self):
+        """기존 네 키는 더하기 전과 같다. 인벤토리는 **추가**지 변경이 아니다."""
+        rc, payload = self._emit("a.py", "usage_record = 1" + chr(10))
+        self.assertEqual(1, rc)
+        self.assertEqual("FAIL", payload["status"])
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(
+            {"gate", "label", "file", "line", "text"},
+            set(payload["violations"][0]),
+        )
+        self.assertEqual("F1", payload["violations"][0]["gate"])
 
 
 if __name__ == "__main__":
