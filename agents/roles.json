@@ -630,7 +630,7 @@
         "pre_merge_check": "Before any act that lands a run on main (merge, push, or workflow_dispatch), answer: is a run in flight, and is a run merely QUEUED. Where gh exists: gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha, then gh run view <id> --json jobs. Where gh does not, the same read through GitHub MCP (list workflow runs and jobs). Filter by workflowName. Read JOBS, not run status alone: a serial runner keeps run=queued while jobs work. For ci, a queued run is superseded and lost; for hub-deploy, a queued run is kept and blocks the concurrency group (Vinc#129). Never assert that nothing is in flight without this read. The rule also covers acts that STOP the runner (restart Docker Desktop, restart the runner service, reboot), which destroy in-flight work without landing a new run.",
         "reads": [
           "vinc.plan.agent-domain",
-          "vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11",
+          "vinc.ops.orchestration-session-boot",
           "vinc.plan.agent-lifecycle-and-the-deploy-plane",
           "vinc.canon.repo-workflow",
           "vinc.canon.graph-conventions"
@@ -640,6 +640,7 @@
           "Vinc-homepage",
           "Vincs-app"
         ],
+        "roster_is_read_not_retyped": "A role's scope comes from its own node (props.repos, props.paths, props.gates), never from a list written into an execution prompt. Compare the whole roster before concluding a package has no owner. decision:all-agent-roles-run-on-claude-code-no-grok-room-2026-09-12.",
         "rung": "strongest",
         "tier": "orchestrate",
         "writes_graph": [
