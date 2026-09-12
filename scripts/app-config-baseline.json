@@ -56,7 +56,7 @@
     },
     "scale": {
       "cooldownPeriod": 300,
-      "maxReplicas": 2,
+      "maxReplicas": 1,
       "minReplicas": 1
     },
     "secret_names": [
