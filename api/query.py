@@ -2997,6 +2997,41 @@ def _brief_answerability_on() -> bool:
         "1", "on", "true", "yes")
 
 
+def _brief_choose_material_on() -> bool:
+    """choose 에서 첫 후보 둘레로 답변 재료를 모을 것인가. **기본은 꺼짐**
+    (`VINC_BRIEF_CHOOSE_MATERIAL`). 꺼져 있으면 응답은 이 플래그가 없던 때와 같다.
+    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
+    return str(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+#: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
+_BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
+                        "links", "grounds", "validity_note")
+
+
+def _brief_candidate_material(cand: dict, **kw) -> dict:
+    """choose 의 첫 후보 둘레 재료. 그 후보의 **정확한 제목으로 다시 묻는다** — 계약이
+    호출부에 시키는 되묻기 그대로다. 다시 물은 답이 **그 후보로** 확정될 때만 재료를
+    싣고(landed), 아니면 못 실었다고 밝힌다. 다른 노드의 재료를 이 후보의 것으로 내면
+    안 된다.
+
+    ⚠ 제목 임베딩은 넘기지 않는다 — 이 층에는 인코더가 없다. 제목 완전일치는 팔과
+    무관하게 확정하므로(:func:`_brief_resolve`) 갈릴 수 있는 곳은 같은 제목이 둘인
+    경우이고, 그것은 landed=False 로 드러난다."""
+    cid = str(cand.get("id") or "")
+    again = brief(str(cand.get("title") or cid), _reask=True, **kw)
+    out: dict = {"candidate": cid}
+    if again.get("status") == "resolved" and (again.get("node") or {}).get("id") == cid:
+        out["landed"] = True
+        out.update({k: again[k] for k in _BRIEF_MATERIAL_KEYS if k in again})
+    else:
+        out["landed"] = False
+        out["status"] = again.get("status") or "none"
+        out["note"] = "asking again by this candidate's exact title did not resolve to it"
+    return out
+
+
 #: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
 #: 확신하지 않는다. 실측으로 고른 자리다(2026-09-10, 정답 81문항 · 확신 18건):
 #:
@@ -3046,7 +3081,8 @@ def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
 
 
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
-          max_excerpts: int = 3, historical: bool = False, cfg=None, store=None) -> dict:
+          max_excerpts: int = 3, historical: bool = False, cfg=None, store=None,
+          _reask: bool = False) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -3059,7 +3095,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
            links:{degree,out,in,attached,items,truncated} (items 는 evidence 불리언과
            evidence_text 문장을 함께 싣는다), candidates:[...], grounds:[id...],
            resolved_via("id" — 직참조로 확정된 경우에만),
-           fell_through/unreadable(안 열린 후보·질문 속 id 의 공개)}.
+           fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),
+           candidate_material(`VINC_BRIEF_CHOOSE_MATERIAL` 을 켠 choose 에서만)}.
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
@@ -3154,6 +3191,17 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 "hit_tokens": _brief_int(h.get("hit_tokens")),
                 "title_tokens": _brief_int(h.get("title_tokens")),
             } for h in picked]
+            # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
+            # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
+            # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
+            # 끝이 없다).
+            # ponytail: vinc_mcp 축소기는 이 키 안을 덜지 않는다. 켠 채 예산을 넘으면
+            # 거부된다 — 기본값을 켜기 전에 축소기에 넣을 것.
+            # 근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]
+            if base["candidates"] and not _reask and _brief_choose_material_on():
+                base["candidate_material"] = _brief_candidate_material(
+                    base["candidates"][0], owner=owner, max_excerpts=max_excerpts,
+                    historical=historical, cfg=cfg, store=store)
             return base
         if status == "none":
             return base
