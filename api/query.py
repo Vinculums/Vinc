@@ -2416,7 +2416,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     반환: {executed, node, node_kind, title, domain, one_liner, rev, updated_at, props,
            valid_from, valid_until, validity('current'|'historical'|'future'), superseded_by,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
-           links: {degree, out, in, attached,
+           links: {degree(=out+in), out, in, attached(=degree 에 안 든 나머지),
+                   total(=degree+attached · vinc_neighbors 의 count 와 같은 연결수),
                    items: [{id, title, domain, type, dir, evidence, confidence, note,
                             valid_from, valid_until}]}}
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
@@ -2618,7 +2619,7 @@ def _record_links(store, node: str, *, owner: str,
     항상 False 로 냈고 그것이 결측이 아니라 사실이었다
     ([[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
     실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
-    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
              "truncated": False, "executed": False}
     try:
         rows = store.run(" UNION ALL ".join(
@@ -2641,7 +2642,7 @@ def _record_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "items": items[:_NODE_LINKS_CAP],
+            "total": len(items), "items": items[:_NODE_LINKS_CAP],
             "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
 
 
@@ -2659,7 +2660,7 @@ def _episode_links(store, node: str, *, owner: str,
     **확정된 사건만 관계 없이 답하는** 상태가 됐다. 이 스토어 실측: 사건 160건에 ABOUT
     256개(개념 226 · 결정 30)이고 관계가 0인 사건은 둘뿐이다.
     근거: [[record:episode-can-never-be-a-brief-candidate-2026-09-09]]"""
-    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
              "truncated": False, "executed": False}
     try:
         rows = store.run(" UNION ALL ".join(
@@ -2682,7 +2683,7 @@ def _episode_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "items": items[:_NODE_LINKS_CAP],
+            "total": len(items), "items": items[:_NODE_LINKS_CAP],
             "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
 
 
@@ -2694,10 +2695,15 @@ def _node_links(store, node: str, *, owner: str,
     ABOUT·Record ATTACHES_TO)은 따로 센다 — 화면이 "연결 N · → 나감 · ← 들어옴"과
     "부착 N"을 다른 줄에 싣기 때문이다.
 
+    그래서 ``degree`` 는 **out + in 뿐**이고 ``attached`` 는 거기 안 든 나머지다.
+    ``total`` 이 그 둘을 합친 수 — 그 노드의 연결수이고 vinc_neighbors 의 ``count``
+    와 같다. 이 셋은 세 갈래(:func:`_record_links`·:func:`_episode_links` 포함)에서
+    같은 뜻이다: 기록·사건은 부착 축이 구조적으로 0이라 total 이 degree 와 같다.
+
     SEC-1: 양 끝을 owner 로 건다. Bridge 만 과도기 술어(:func:`_bridge_owner_pred`).
     실패는 조용히 빈 요약으로 강등한다 — 관계 목록은 증강이고, 미마이그레이션
     스토어(E-G6 열 부재)에서 상세 패널 자체가 죽으면 안 된다."""
-    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "items": [],
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
              "truncated": False, "executed": False}
     # v12 — 시드 라벨을 접두사에서 꺼낸다. 상대편(o)은 의미층 둘을 다 본다.
     # 박아 두면 결정의 상세 패널이 "연결 0"으로 뜬다(관계는 있는데 안 보인다).
@@ -2789,8 +2795,15 @@ def _node_links(store, node: str, *, owner: str,
             # 한 바이트도 안 변한다. 근거: [[vinc.plan.mcp-agent-surface §4]]
             item["evidence_text"] = (r.get("ev") or "").strip()
         items.append(item)
+    # `degree` 는 out + in 이고 `attached` 는 **거기 안 든 나머지**다. 둘이 한 dict 에
+    # 나란히 나가면서 어느 쪽도 그 사실을 말하지 않아, 받는 쪽이 degree 를 그 노드의
+    # 연결수로 읽었다. 실측 2026-09-14: concept:node-resolution-accuracy 가
+    # degree 9 · attached 50 으로 답하는 동안 vinc_neighbors 는 count 59 를 냈고(85%
+    # 과소), 그 수를 합산한 연결성 결론이 나갔다가 철회됐다. 그래서 총수를 **직접
+    # 싣는다** — 받는 쪽이 더해서 복원할 것을 남겨 두지 않는다.
+    # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
-            "items": items[:_NODE_LINKS_CAP],
+            "total": len(rows) + len(attached), "items": items[:_NODE_LINKS_CAP],
             "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
 
 
@@ -3098,7 +3111,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
 
     반환: {kind, executed, query, status: resolved|choose|none, node:{id,title,
            domain,kind}, one_liner, body_src, body_cite, excerpts:[...],
-           links:{degree,out,in,attached,items,truncated} (items 는 evidence 불리언과
+           links:{degree(=out+in),out,in,attached,total(=degree+attached, 연결수),
+           items,truncated} (items 는 evidence 불리언과
            evidence_text 문장을 함께 싣는다), candidates:[...], grounds:[id...],
            resolved_via("id" — 직참조로 확정된 경우에만),
            fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),

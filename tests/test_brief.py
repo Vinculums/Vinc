@@ -270,6 +270,26 @@ class BriefE2E(unittest.TestCase):
         self.assertIn("concept:alpha-core", out["grounds"])
         self.assertIn("record:note-card", out["grounds"])
 
+    def test_links_는_연결수를_직접_싣고_neighbors_와_같다(self):
+        """`degree` 는 개념·결정층(out+in)만 세고 `attached` 가 그 나머지인데, 둘이
+        한 dict 에 나란히 나가면서 어느 쪽도 그 사실을 말하지 않았다. 실측
+        2026-09-14: concept:node-resolution-accuracy 가 degree 9 · attached 50 으로
+        답하는 동안 vinc_neighbors 는 count 59 를 냈고(85% 과소), 그 수를 합산한
+        연결성 결론이 나갔다가 철회됐다. 그래서 `total` 을 직접 싣는다 — 받는 쪽이
+        더해서 복원할 것을 남겨 두지 않는다. 두 표면이 같은 노드를 두고 다른 수를
+        말하는 것이 이 결함의 실체이므로 여기서 **두 수를 직접 맞댄다**.
+        근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]"""
+        links = self._brief("alpha core")["links"]
+        # 부착이 실제로 있어야 검사가 공회전하지 않는다(record:note-card 한 건).
+        self.assertEqual(links["attached"], 1, "부착이 안 심겼으면 이 비교는 무의미하다")
+        self.assertEqual(links["degree"], links["out"] + links["in"])
+        self.assertEqual(links["total"], links["degree"] + links["attached"])
+        self.assertGreater(links["total"], links["degree"],
+                           "degree 가 연결수와 같아 보이면 이 검사가 결함을 못 잡는다")
+        n = q.neighbors("concept:alpha-core", owner=self.OWNER, store=self.store)
+        self.assertEqual(links["total"], n["count"],
+                         "brief 와 neighbors 가 같은 노드를 두고 다른 수를 말한다")
+
     def test_근거_있는_관계가_앞에_선다(self):
         items = self._brief("alpha core")["links"]["items"]
         self.assertEqual(items[0]["id"], "concept:alpha-edge")
