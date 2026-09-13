@@ -409,6 +409,7 @@
     "record:token-estimate-weights-came-from-a-real-corpus",
     "record:two-linux-runners-share-a-label-but-not-a-toolcache-2026-09-07",
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
+    "record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",
     "record:what-the-spec-permits-is-not-what-the-peer-accepts",

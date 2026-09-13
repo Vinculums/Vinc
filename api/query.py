@@ -5611,11 +5611,17 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     for r in rows:
         # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
         # 그 절이 빠지면 낡은 것이 아니라 코퍼스의 7할이 사라진다(`validity_state` 참조).
+        # 🔴 **거르는 것은 `historical` 뿐이다.** `!= "current"` 로 적으면 `future` 가
+        # 함께 떨어지는데, 그 상태는 `valid_until` 이 아니라 `valid_from` 에서 나온다 —
+        # 감출 수 있는 것은 명시된 `valid_until` 뿐이라는 것이 `validity_state` 의 정책이고
+        # 도구 계약도 같은 말을 한다. UTC 시계가 KST 저작본을 매일 아침 아홉 시간 동안
+        # `future` 로 떨어뜨려 이 모순이 날마다 발화했다:
+        # [[record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14]].
         # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
         # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
         if not historical:
             st = validity_state(*_row_validity(r))
-            if st != "current":
+            if st == "historical":
                 dropped += 1
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
                 # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
@@ -6052,13 +6058,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
                 # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
                 # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
-                # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더한다.
+                # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더하고,
+                # **판정도 제목 팔과 같다** — `historical` 만 거른다(사유는 그쪽 주석).
                 if not historical and _raw:
                     _vf = _validity_for_ids(
                         store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
                     _keep = []
                     for h in _raw:
-                        if validity_state(*_vf.get(h.get("id"), ("", ""))) == "current":
+                        if validity_state(*_vf.get(h.get("id"), ("", ""))) != "historical":
                             _keep.append(h)
                         else:
                             _vstats["dropped_not_current"] = (
