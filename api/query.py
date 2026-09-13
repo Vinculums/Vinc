@@ -2549,7 +2549,13 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "AND (ch.owner_id = $owner OR ch.owner_id = '') "
             "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
             "ch.section_title AS section, ch.text AS text, m.method AS method "
-            f"ORDER BY ch.doc_id, ch.chunk_index LIMIT {lim}",
+            # 링크 방법이 강한 순(title > stem > source)으로 먼저 정렬한다. source 는
+            # 파일 제공처(provenance)라 그 파일의 **모든** 청크가 걸리므로, 문서 순서만으로
+            # 자르면 창이 앞 문서 머리말로 채워지고 정작 이 노드를 말하는 청크가 밀려난다.
+            # doc_id·chunk_index 는 동순위 타이브레이크로 남겨 결과를 결정론으로 유지할 것.
+            # 근거: [[record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14]]
+            "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+            f"ch.doc_id, ch.chunk_index LIMIT {lim}",
             {"id": pkns.key(owner, node), "owner": owner}) or []
         arm = "mentions" if ment else "none"
         # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강, 실패 무해).
