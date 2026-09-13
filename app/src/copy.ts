@@ -70,10 +70,10 @@ const EN = {
     actions: { view: "Show in View", pin: "Pin", tag: "Tag" },
   },
   view: {
-    idle: "No knowledge map yet. Add files or run a search, and the map builds itself from your documents.",
+    idle: "No graph yet. Add files or run a search, and the graph builds itself from your documents.",
     idleCta: "Import files",
     loading: (d: number) => `Arranging ${d} topics…`,
-    error: "The map couldn't load. Retry anytime. Your documents are untouched.",
+    error: "The graph couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 지도로 그리면 데이터 유실과 구분되지 않는다.
     // 사유(락 충돌·손상)는 사람이 쓸 수 없는 문장이라 접어 두고 [자세히]로 연다.
@@ -195,7 +195,7 @@ const EN = {
       // 하단 바에 살던 시절의 "Bottom left" 로 남아 D71(상단 바 이동) 이후 줄곧
       // 틀린 곳을 가리키고 있었다 — 코치 문구는 틀리면 안 가르치는 것보다 나쁘다.
       lensTitle: "Top right",
-      lensBody: "switch how you look at the map, and read the legend.",
+      lensBody: "switch how you look at the graph, and read the legend.",
       menuTitle: "Right-click a node",
       // 메뉴에 실제로 있는 것만 적는다: 열기 · 여기서부터 공유하기 · 지우기
       // (`COPY.ui.menu` 둘 + `COPY.ui.viewx.del`, 조립은 `surfaces/view.ts` nodeMenu).
@@ -279,7 +279,7 @@ const EN = {
       scopedClear: "Show all",
       open: "Open the sidebar", close: "Close the sidebar",
       unfiled: "No topic yet",
-      unfiledTip: "These aren't linked to any concept yet, so they have no place on the map.",
+      unfiledTip: "These aren't linked to any concept yet, so they have no place in the graph.",
       empty: "No documents yet.",
       emptyCta: "Add one",
       loading: "Loading…",
@@ -299,11 +299,11 @@ const EN = {
       } as Record<string, string>,
       kindTip: (name: string, n: number) =>
         `${name} · ${n === 1 ? "1 node" : `${n} nodes`}`,
-      nodeTip: "Show this on the map",
+      nodeTip: "Show this in View",
       noNodes: "Nothing of this kind in this topic yet.",
       docsElsewhere: "Documents that land on another kind",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
-      editOnly: "No place on the map yet. Opens in the editor.",
+      editOnly: "No place in the graph yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
@@ -352,7 +352,7 @@ const EN = {
       retry: "Try those again",
       scope: "What to share",
       scopeAll: "Everything", scopeTopic: "One topic", scopeHere: "What I'm looking at",
-      scopeHereOff: "Open the map first to share what you're looking at.",
+      scopeHereOff: "Open View first to share what you're looking at.",
       go: "Continue",
       // 소스 스페이스(P15) — 구 Packs 화면의 `개인 → 팀 불러오기`가 이 칸 하나로
       // 일반화됐다. 목록은 계정이 주는 활동 중인 팀뿐이고, 그 밖의 소속은 고를 수
@@ -388,13 +388,13 @@ const EN = {
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
         uniform: "Every mark the same size. Size then means nothing at all.",
-        hover: "Only the name you point at appears, so the map is never covered in type.",
+        hover: "Only the name you point at appears, so the screen is never covered in type.",
         fit: "As many as the ring has room for, best-connected first. The rest answer on hover.",
         none: "No names drawn. Shape and place carry everything.",
         arrowsOn: "Directed relations get an arrowhead.",
-        arrowsOff: "Lines without arrowheads. Less ink on a dense map.",
+        arrowsOff: "Lines without arrowheads. Less ink on a dense graph.",
         always: "Every line, always. The whole relation set at once, at the cost of density.",
-        focus: "Lines stay hidden and the map stays clear. Point at a mark and its lines appear.",
+        focus: "Lines stay hidden and the screen stays clear. Point at a mark and its lines appear.",
         particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
         bring: "No lines. Point at a mark and its neighbours ring around it, then fly home.",
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
@@ -413,7 +413,7 @@ const EN = {
         d2: "Lines join kind to kind inside a topic. Links inside one kind are dropped.",
         d3: "Lines join item to item. Nothing is dropped.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
-        nodeScale: "Keeps the size encoding and scales the whole map.",
+        nodeScale: "Keeps the size encoding and scales the whole screen.",
         edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
         cone: "How wide a topic's branch fans from the centre. Applied when you let go.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
@@ -778,6 +778,12 @@ const EN = {
       // 고른 것이 없으면 push 가 아무것도 안 보낸다(export 가 선택 도메인만 훑는다).
       // 그 사실을 화면이 말하지 않으면 사용자는 연결해 두고도 왜 안 올라가는지 모른다.
       syncNonePicked: "Nothing is picked, so nothing leaves this machine. Anything you write here stays local until you choose a topic below.",
+      syncAll: "All", syncClear: "None",
+      syncFilter: "Filter topics",
+      syncNoMatch: "No topic matches that.",
+      syncNoTopic: "(no topic)",
+      syncPicked: (n: number, m: number, k: number) =>
+        `${n} of ${m} topics · ${k} node${k === 1 ? "" : "s"} go to your account.`,
       syncNow: "Sync now", syncing: "Syncing…",
       syncNeedKey: "Connect your account first.",
       syncDone: (up: number, down: number) => `Synced. ${up} sent, ${down} received.`,
@@ -863,7 +869,7 @@ const EN = {
       importTitle: "Import a pack",
       updateNote: (c: number, e: number, r: number) =>
         `${c} concepts · ${e} connections · ${r} documents. Safe update: anything already here is refreshed in place, never duplicated.`,
-      importMine: "Import as mine", viewMap: "View the map",
+      importMine: "Import as mine", viewMap: "Open in View",
     },
   },
 };
@@ -929,10 +935,10 @@ const KO: Deck = {
     actions: { view: "View에서 보기", pin: "고정", tag: "태그" },
   },
   view: {
-    idle: "아직 지도가 없어요. 파일을 추가하면 문서에서 지도를 만들어요",
+    idle: "아직 그래프가 없어요. 파일을 추가하면 문서에서 그래프를 만들어요",
     idleCta: "파일 추가하기",
     loading: (d) => `주제 ${d}개를 배치하는 중…`,
-    error: "지도를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
+    error: "그래프를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 데이터를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",
   },
@@ -1032,7 +1038,7 @@ const KO: Deck = {
     },
     coach: {
       lensTitle: "오른쪽 위에서",
-      lensBody: "지도 보는 방식을 바꾸고 범례를 볼 수 있어요",
+      lensBody: "그래프 보는 방식을 바꾸고 범례를 볼 수 있어요",
       menuTitle: "점을 오른쪽 클릭하면",
       // 메뉴에 실제로 있는 것만 적는다(EN 덱 같은 자리에 이유가 있다).
       // "거기서부터 따라가거나" 는 2026-08-17 에 사라진 제스처였다.
@@ -1098,7 +1104,7 @@ const KO: Deck = {
       scopedClear: "전체 보기",
       open: "사이드바 열기", close: "사이드바 닫기",
       unfiled: "주제 없음",
-      unfiledTip: "아직 어떤 개념과도 이어지지 않아서 지도에 자리가 없어요",
+      unfiledTip: "아직 어떤 개념과도 이어지지 않아서 그래프에 자리가 없어요",
       empty: "아직 문서가 없어요",
       emptyCta: "문서 추가하기",
       loading: "불러오는 중…",
@@ -1111,11 +1117,11 @@ const KO: Deck = {
         "agent.short": "Agent",
       } as Record<string, string>,
       kindTip: (name: string, n: number) => `${name} · 노드 ${n}개`,
-      nodeTip: "지도에서 봅니다",
+      nodeTip: "View에서 봅니다",
       noNodes: "이 주제에는 아직 이 종이 없어요",
       docsElsewhere: "다른 종에 붙은 문서",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
-      editOnly: "아직 지도에 자리가 없어요. 편집기로 열려요",
+      editOnly: "아직 그래프에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",
     },
     conv: {
@@ -1155,7 +1161,7 @@ const KO: Deck = {
       retry: "실패한 것만 다시 시도하기",
       scope: "공유할 범위",
       scopeAll: "전체", scopeTopic: "주제 하나", scopeHere: "지금 보고 있는 곳",
-      scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 지도를 여세요",
+      scopeHereOff: "지금 보고 있는 곳을 공유하려면 먼저 View를 여세요",
       go: "계속하기",
       source: "어느 공간",
       sourceNote: "다른 공간의 팩은 지금 있는 공간으로 복사돼요",
@@ -1181,17 +1187,17 @@ const KO: Deck = {
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
         uniform: "모두 같은 크기입니다. 크기가 아무 뜻도 갖지 않아요",
-        hover: "가리킨 마디의 이름만 떠요. 지도가 글자로 덮이지 않아요",
+        hover: "가리킨 마디의 이름만 떠요. 화면이 글자로 덮이지 않아요",
         fit: "둘레에 들어갈 만큼만, 연결이 많은 것부터 보여요. 나머지는 가리키면 떠요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
         arrowsOn: "앞뒤가 있는 연결에 화살촉을 붙여요",
-        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 지도에서 잉크가 줄어요",
+        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 그래프에서 잉크가 줄어요",
         always: "모든 선을 늘 그려요. 관계 전체를 한눈에 보는 대신 촘촘해져요",
-        focus: "평소에는 선을 감춰서 지도가 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
+        focus: "평소에는 선을 감춰서 화면이 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
         particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
         bring: "선을 그리지 않아요. 가리키면 이웃이 둘레로 모여 고리로 서고, 손을 떼면 돌아가요",
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
-        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 지도가 조용해져요",
+        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 화면이 조용해져요",
         hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
         rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
@@ -1497,6 +1503,12 @@ const KO: Deck = {
       syncDomains: "동기화할 주제",
       syncNoDomains: "아직 주제가 없어요. 먼저 데이터를 추가해 보세요.",
       syncNonePicked: "고른 주제가 없어서 이 기기를 떠나는 것이 없어요. 아래에서 고르기 전까지는 여기에 쓴 것이 전부 이 기기에만 남아요.",
+      syncAll: "전체", syncClear: "해제",
+      syncFilter: "주제 거르기",
+      syncNoMatch: "맞는 주제가 없어요",
+      syncNoTopic: "(주제 없음)",
+      syncPicked: (n: number, m: number, k: number) =>
+        `주제 ${m}개 중 ${n}개 · 노드 ${k}개가 계정에 올라가요`,
       syncNow: "지금 동기화하기", syncing: "동기화 중…",
       syncNeedKey: "먼저 계정을 연결해 주세요",
       syncDone: (up, down) => `동기화했어요. ${up}개 보내고 ${down}개 받았어요.`,
@@ -1556,7 +1568,7 @@ const KO: Deck = {
       destClose: "완료",
       importTitle: "팩 가져오기",
       updateNote: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개. 이미 있는 것은 그 자리에서 갱신되고, 절대 중복되지 않아요`,
-      importMine: "내 지식으로 가져오기", viewMap: "지도 보기",
+      importMine: "내 지식으로 가져오기", viewMap: "View에서 열기",
       shareSub: "아래에 있는 것만 팩으로 나가요. 그 밖에는 아무것도 나가지 않아요",
       importSub: "내 그래프에 합쳐져요. 이미 있는 것은 그 자리에서 갱신돼요",
       specScope: "범위", specConcepts: "개념", specLinks: "연결",
