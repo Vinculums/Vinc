@@ -267,11 +267,12 @@ CI 에서 걸렸다).
 아니라 **워크스페이스 루트**(`Vinc` 의 부모)의 `.claude/agents` 에 한 벌 둔다 — 루트와
 그 아래 어느 체크아웃·worktree 에서 열어도 닿는 자리다. 리포는 추적 사본
 `agents/shells/` 만 갖고(CI 가 `agents_sync.py --check` 로 대조), 설치는 사람이 머지 뒤에
-한다. 같은 명령이 격리 역할(dev-core·dev-app)용 WorktreeCreate/WorktreeRemove 훅도 건다
-(루트는 git 리포가 아니라서 훅 없이는 하네스가 그 역할을 거절한다):
+한다. 같은 명령이 격리 역할(dev-core·dev-app)용 WorktreeCreate/WorktreeRemove/SubagentStop
+훅도 건다(루트는 git 리포가 아니라서 훅 없이는 하네스가 그 역할을 거절하고, 훅이 만든 트리는
+하네스가 치우지 않는다):
 
 ```bash
-python -X utf8 scripts/agents_sync.py --install   # 반복해도 같다. 쓰는 것은 agents/·hooks/ 와 settings.json 의 훅 두 키뿐
+python -X utf8 scripts/agents_sync.py --install   # 반복해도 같다. 쓰는 것은 agents/·hooks/ 와 settings.json 의 훅 세 키뿐
 python -X utf8 scripts/roster_probe.py
 ```
 

@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -46,7 +47,8 @@ class WorktreeHookTests(unittest.TestCase):
         origin = cls.root / "origin.git"
         subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
         subprocess.run(["git", "init", "-q", "-b", "main", str(cls.repo)], check=True)
-        (cls.repo / ".gitignore").write_text("node_modules\n", encoding="utf-8")
+        (cls.repo / ".gitignore").write_text(
+            "node_modules\n__pycache__/\n.claude/\nvinc_store\n*.lbug\n", encoding="utf-8")
         _git(cls.repo, "add", ".gitignore")
         _git(cls.repo, "commit", "-q", "-m", "seed")
         _git(cls.repo, "remote", "add", "origin", str(origin))
@@ -67,6 +69,114 @@ class WorktreeHookTests(unittest.TestCase):
         r = self._hook("create", {"name": name, "hook_event_name": "WorktreeCreate"})
         self.assertEqual(r.returncode, 0, r.stderr)
         return Path(r.stdout.strip().splitlines()[-1])
+
+    def _stop(self, payload: dict) -> subprocess.CompletedProcess:
+        r = self._hook("subagent-stop", {"hook_event_name": "SubagentStop", **payload})
+        self.assertEqual(r.returncode, 0, f"SubagentStop 훅이 0 아닌 값으로 끝났다: {r.stderr}")
+        return r
+
+    def _push_own_commit(self, wt: Path, branch: str) -> None:
+        """dev 역할이 하는 그대로: origin/main 에서 브랜치를 따고, 커밋하고, 푸시한다."""
+        _git(wt, "switch", "-q", "-c", branch)
+        (wt / f"{branch.replace('/', '-')}.py").write_text("x = 1\n", encoding="utf-8")
+        _git(wt, "add", "-A")
+        _git(wt, "commit", "-q", "-m", "work")
+        _git(wt, "push", "-q", "-u", "origin", branch)
+
+    def _age(self, wt: Path, hours: float) -> None:
+        """청소가 재는 신호(그 worktree 의 git 관리 디렉터리 index·HEAD 의 mtime)를 되돌린다."""
+        gitdir = Path(_git(wt, "rev-parse", "--absolute-git-dir"))
+        then = time.time() - hours * 3600
+        for f in (gitdir / "index", gitdir / "HEAD"):
+            os.utime(f, (then, then))
+
+    def test_subagent_stop_removes_an_unchanged_tree_found_by_id_or_by_cwd(self):
+        for label, payload_of in (
+            ("bare id", lambda wt: {"agent_id": wt.name[len("agent-"):], "cwd": "C:/elsewhere"}),
+            ("prefixed id", lambda wt: {"agent_id": wt.name}),
+            ("cwd only", lambda wt: {"cwd": str(wt / "__pycache__")}),
+        ):
+            with self.subTest(label):
+                wt = self._create(f"agent-stop-{label.replace(' ', '-')}")
+                # 버려도 되는 무시 파일(캐시·테스트 스토어·훅 로그)은 제거를 막지 않는다
+                (wt / "__pycache__").mkdir()
+                (wt / "__pycache__" / "m.pyc").write_bytes(b"\0")
+                (wt / ".claude").mkdir()
+                (wt / ".claude" / "ui-events.jsonl").write_text("{}\n", encoding="utf-8")
+                (wt / "vinc_store").write_bytes(b"\0")
+                _git(wt, "switch", "-q", "-c", f"fix/unchanged-{label.replace(' ', '-')}")
+                r = self._stop(payload_of(wt))
+                self.assertFalse(wt.exists(), r.stderr)
+                self.assertEqual(_git(self.repo, "branch", "--list", f"worktree-{wt.name}"), "")
+
+    def test_subagent_stop_of_a_child_does_not_remove_the_parent_tree_it_ran_in(self):
+        """비격리 자식은 부모의 cwd 를 물려받는다. 자식의 id 로는 트리가 없으니 아무것도
+        지우지 않아야 한다 — cwd 를 따르면 아직 일하는 부모의 손대지 않은 트리가 사라진다."""
+        parent = self._create("agent-stop-parent")
+        self._stop({"agent_id": "child-of-parent", "cwd": str(parent)})
+        self.assertTrue(parent.exists(), "자식이 멈추자 부모의 트리를 지웠다")
+
+    def test_subagent_stop_keeps_a_tree_with_its_own_pushed_commit(self):
+        wt = self._create("agent-stop-pushed")
+        self._push_own_commit(wt, "fix/stop-pushed")
+        self._stop({"agent_id": "stop-pushed", "cwd": str(wt)})
+        self.assertTrue(wt.exists(), "푸시했지만 제 커밋이 있는 트리를 멈춤에서 지웠다")
+
+    def test_subagent_stop_keeps_a_dirty_tree(self):
+        wt = self._create("agent-stop-dirty")
+        (wt / "draft.py").write_text("x = 1\n", encoding="utf-8")
+        self._stop({"agent_id": "stop-dirty"})
+        self.assertTrue((wt / "draft.py").exists())
+
+    def test_subagent_stop_refuses_paths_outside_wt_and_names_that_are_not_agent_trees(self):
+        self._stop({"agent_id": "../Vinc"})
+        self._stop({"cwd": str(self.repo)})
+        self.assertTrue((self.repo / ".gitignore").exists())
+        other = self._create("pkg-not-an-agent")
+        self._stop({"cwd": str(other)})
+        self.assertTrue(other.exists(), "agent- 가 아닌 트리를 멈춤에서 지웠다")
+
+    def test_create_sweeps_an_idle_pushed_tree_but_not_a_recent_one_or_a_non_agent_one(self):
+        idle, recent = self._create("agent-sweep-idle"), self._create("agent-sweep-recent")
+        other = self._create("pkg-sweep-idle")
+        self._push_own_commit(idle, "fix/sweep-idle")
+        self._push_own_commit(recent, "fix/sweep-recent")
+        self._push_own_commit(other, "fix/sweep-other")
+        self._age(idle, 25)
+        self._age(other, 25)
+        r = self._hook("create", {"name": "agent-sweep-next"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([ln for ln in r.stdout.splitlines() if ln.strip()],
+                         [str(self.into / "agent-sweep-next")], "청소가 stdout 에 샜다")
+        self.assertFalse(idle.exists(), r.stderr)
+        self.assertTrue(recent.exists(), "하루가 안 된 트리를 쓸었다")
+        self.assertTrue(other.exists(), "agent- 가 아닌 트리를 쓸었다")
+
+    def test_create_does_not_sweep_an_idle_tree_with_unpushed_work(self):
+        wt = self._create("agent-sweep-unpushed")
+        (wt / "done.py").write_text("x = 1\n", encoding="utf-8")
+        _git(wt, "add", "done.py")
+        _git(wt, "commit", "-q", "-m", "work")
+        self._age(wt, 25)
+        self._create("agent-sweep-after-unpushed")
+        self.assertTrue((wt / "done.py").exists())
+
+    def test_remove_refuses_a_tree_holding_another_worktree_under_its_ignored_claude_dir(self):
+        """`.claude` 는 버려도 되는 무시 디렉터리지만, 그 아래 `worktrees/*` 는 남의 일이다."""
+        wt = self._create("agent-nested")
+        inner = wt / ".claude" / "worktrees" / "inner"
+        _git(wt, "worktree", "add", "-q", "-b", "inner-nested", str(inner))
+        r = self._hook("remove", {"worktree_path": str(wt)})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertTrue(inner.exists(), "트리 안의 다른 worktree 를 지웠다")
+
+    def test_remove_refuses_a_tree_holding_an_ignored_file_that_is_not_a_cache(self):
+        wt = self._create("agent-ignored")
+        (wt / "local.lbug").write_bytes(b"data")
+        r = self._hook("remove", {"worktree_path": str(wt)})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("local.lbug", r.stderr)
+        self.assertTrue((wt / "local.lbug").exists())
 
     def test_create_prints_only_the_path_of_a_worktree_on_origin_main(self):
         r = self._hook("create", {"name": "pkg-create"})
