@@ -93,7 +93,7 @@ jobs:
   #
   # ⚠ `core` 는 **거르지 않는다.** 파이썬 스위트뿐 아니라 금지어·이스케이프·대비·디자인
   # 동기화·로스터 게이트가 전부 여기 살고, 그것들은 `app/src` 와 `design-hub/` 와
-  # `.claude/agents/` 를 읽는다. 입력이 리포 거의 전체라 조건을 달면 그 조건이 곧
+  # `agents/shells/` 를 읽는다. 입력이 리포 거의 전체라 조건을 달면 그 조건이 곧
   # 다음 구멍이다. 이 잡은 안전망이고 안전망은 조건부가 아니다.
   changes:
     name: changes (path gate)
@@ -433,8 +433,9 @@ jobs:
       - name: Figma app board copy gate
         run: python -X utf8 design-hub/scripts/figma_app_copy.py
 
-      # 역할 껍데기(.claude/agents/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
+      # 역할 껍데기(agents/shells/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
       # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.
+      # 하네스가 읽는 사본은 리포 밖 워크스페이스 루트에 --install 이 쓰므로 CI 는 못 본다.
       # 오프라인이다 — 대조 대상은 커밋된 agents/roles.json 이고 CI 에 그래프 키는
       # 없다(그래프 인용 게이트와 같은 사유). 스냅샷 갱신은 토큰 있는 곳에서
       # scripts/agents_sync.py --pull 이 하고, 그 diff 는 사람이 읽는다.

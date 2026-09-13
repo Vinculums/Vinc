@@ -263,11 +263,15 @@ CI 에서 걸렸다).
 
 ## 6. 세션 시작 — 로스터가 보이는지 먼저 답할 것
 
-하위 에이전트 정의는 **cwd 에서 위로 걸어 올라가며** 찾는다. 로스터는
-`Vinc/.claude/agents` 에 열여덟 벌 있고 이 워크스페이스는 그 **부모**에서 열린다.
-그래서 루트에서 연 세션에는 역할이 통째로 없고, 그 사실을 알려 주는 것이 없었다.
+하위 에이전트 정의는 **cwd 에서 위로 걸어 올라가며** 찾는다. 그래서 로스터는 리포 안이
+아니라 **워크스페이스 루트**(`Vinc` 의 부모)의 `.claude/agents` 에 한 벌 둔다 — 루트와
+그 아래 어느 체크아웃·worktree 에서 열어도 닿는 자리다. 리포는 추적 사본
+`agents/shells/` 만 갖고(CI 가 `agents_sync.py --check` 로 대조), 설치는 사람이 머지 뒤에
+한다. 같은 명령이 격리 역할(dev-core·dev-app)용 WorktreeCreate/WorktreeRemove 훅도 건다
+(루트는 git 리포가 아니라서 훅 없이는 하네스가 그 역할을 거절한다):
 
 ```bash
+python -X utf8 scripts/agents_sync.py --install   # 반복해도 같다. 쓰는 것은 agents/·hooks/ 와 settings.json 의 훅 두 키뿐
 python -X utf8 scripts/roster_probe.py
 ```
 

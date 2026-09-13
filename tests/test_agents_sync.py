@@ -10,7 +10,9 @@
 """
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # 렌더러는 `vinc_mcp/roles.py` 로 옮겼다 — `prompts/get` 이 같은 함수를 쓴다(W2).
 # 여기서 그 자리를 그대로 임포트하는 이유는, 재수출로 가리면 사본이 둘이 됐을 때도
 # 이 파일이 계속 초록이기 때문이다.
-from scripts.agents_sync import (_manifest_docs, dangling_reads, main,  # noqa: E402
-                                 read_snapshot)
+from scripts.agents_sync import (GENERATED_MARK, HOOK_SRC,  # noqa: E402
+                                 _manifest_docs, dangling_reads, install,
+                                 main, main_checkout, read_snapshot,
+                                 shell_path)
 from vinc_mcp.roles import RUNG_TO_MODEL, build_payload, render_shell  # noqa: E402
 
 _NODE = {
@@ -100,6 +104,62 @@ class RepoIsClean(unittest.TestCase):
         """CI 와 같은 검사를 로컬에서도 돌린다 — 게이트를 푸시 후에 처음 만나면 고치는
         자리가 이미 멀다."""
         self.assertEqual(main(["--check"]), 0, "역할 껍데기가 스냅샷과 어긋난다(출력 참조)")
+
+
+class Install(unittest.TestCase):
+    """`--install` 은 리포 밖(워크스페이스 루트)에 쓴다. 그래서 여기서는 임시 루트에 대고
+    부른다 — 사람의 실제 루트를 테스트가 만지면 안 되고, 결과가 체크아웃 위치에 따라
+    갈려도 안 된다. 근거: [[record:role-shells-at-the-workspace-root-load-in-every-session-2026-09-13]]"""
+
+    def test_installs_the_roster_and_hooks_touches_nothing_else_and_repeats_as_a_no_op(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            claude = root / ".claude"
+            (claude / "agents").mkdir(parents=True)
+            launch = b'{"configurations": []}\r\n'
+            (claude / "launch.json").write_bytes(launch)
+            (claude / "settings.json").write_text(json.dumps({
+                "permissions": {"allow": ["Bash(ls)"]},
+                "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "true"}]}]},
+            }, indent=4), encoding="utf-8")
+            mine = claude / "agents" / "mine.md"
+            mine.write_text("---\nname: mine\n---\n", encoding="utf-8")
+            gone = claude / "agents" / "agent-gone.md"
+            gone.write_text(f"<!-- {GENERATED_MARK} from agents/roles.json -->\n", encoding="utf-8")
+
+            first = install(root, root / "Vinc", "python")
+            self.assertTrue(first)
+
+            snap = read_snapshot()
+            for role in snap["roles"]:
+                got = (claude / "agents" / f"{role['name']}.md").read_text(encoding="utf-8")
+                # 설치본은 추적 사본과 바이트가 같다 — CI 가 대조한 것이 곧 하네스가 읽는 것이다.
+                self.assertEqual(got, shell_path(role).read_text(encoding="utf-8"), role["name"])
+            self.assertIn("\nisolation: worktree\n",
+                          (claude / "agents" / "agent-dev-core.md").read_text(encoding="utf-8"))
+            self.assertTrue(mine.exists(), "사람이 둔 에이전트 파일을 지웠다")
+            self.assertFalse(gone.exists(), "그래프에서 사라진 역할의 생성 껍데기가 남았다")
+            self.assertEqual((claude / "launch.json").read_bytes(), launch)
+
+            hook = claude / "hooks" / HOOK_SRC.name
+            self.assertEqual(hook.read_text(encoding="utf-8"), HOOK_SRC.read_text(encoding="utf-8"))
+            settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(settings["permissions"], {"allow": ["Bash(ls)"]})
+            self.assertIn("PreToolUse", settings["hooks"])
+            for event, verb in (("WorktreeCreate", "create"), ("WorktreeRemove", "remove")):
+                (entry,) = settings["hooks"][event]
+                (cmd,) = entry["hooks"]
+                self.assertEqual(cmd["command"], "python")
+                self.assertEqual(cmd["args"], ["-I", "-X", "utf8", str(hook), verb,
+                                               "--repo", str(root / "Vinc"),
+                                               "--into", str(root / "_wt")])
+
+            self.assertEqual(install(root, root / "Vinc", "python"), [], "두 번째 설치가 뭔가를 썼다")
+
+    def test_the_main_checkout_is_found_from_any_worktree(self):
+        """`ROOT.parent` 는 worktree 에서 루트가 아니다(`_wt/x` 의 부모는 `_wt`). 공용 git
+        디렉터리로 찾으면 어느 worktree 에서 물어도 `.git` 디렉터리를 가진 체크아웃이다."""
+        self.assertTrue((main_checkout() / ".git").is_dir())
 
 
 class Reads(unittest.TestCase):
