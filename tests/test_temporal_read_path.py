@@ -110,6 +110,39 @@ class ReadPathDefault(unittest.TestCase):
         self.assertIn("record:quorum-note-current", ids)
         self.assertNotIn("record:quorum-note-retired", ids)
 
+    def test_a_future_dated_claim_is_not_hidden_but_an_expired_one_still_is(self):
+        """감추는 것은 **명시된 `valid_until` 뿐**이다 — 시작이 미래인 것은 아니다.
+
+        `future` 는 `valid_from` 에서 나오므로 `!= "current"` 로 거르면 정책이 감추라고
+        한 적 없는 것이 사라진다. `_today()` 가 UTC 라 KST 로 저작한 당일 기록이 매일
+        아침 아홉 시간 동안 그 상태로 떨어졌다:
+        [[record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14]]."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:quorum-note-ahead", "type": "record",
+             "title": "quorum settings for the cluster next year", "domain": "eng",
+             "valid_from": "2099-01-01"},
+            # 제목이 질의에 안 걸리는 짝 — 의미 팔로만 닿으므로 그 팔의 판정을 잰다.
+            # 제목 팔이 같은 id 를 실어 주면 아래 단언이 빈 단언이 된다.
+            {"id": "record:unrelated-note-ahead", "type": "record",
+             "title": "an unrelated claim not yet in force", "domain": "eng",
+             "valid_from": "2099-01-01"},
+        ]}, store=self.store)
+        ids, _ = self._ids()
+        self.assertIn("record:quorum-note-ahead", ids,
+                      "시작이 미래라는 이유로 감췄다 — 정책은 valid_until 만 감춘다")
+        self.assertNotIn("record:quorum-note-retired", ids,
+                         "명시된 valid_until 은 그대로 감춰야 한다")
+        # 의미 팔도 같은 판정이어야 한다 — 지난번에 빠진 자리가 거기다(PR #305).
+        # 이 스토어에는 미러가 없으므로 가짜 팔로 같은 모양을 만든다.
+        self.store.node_vector_search = lambda emb, k, owner=None: [
+            {"id": "record:unrelated-note-ahead", "title": "a", "kind": "record",
+             "distance": 0.1},
+            {"id": "record:quorum-note-retired", "title": "b", "kind": "record",
+             "distance": 0.2}]
+        sem, _ = self._ids(query_embedding=[0.0, 0.0, 0.0, 1.0])
+        self.assertIn("record:unrelated-note-ahead", sem, "의미 팔이 미래 시작을 감췄다")
+        self.assertNotIn("record:quorum-note-retired", sem, "의미 팔이 폐기 기록을 되살렸다")
+
     def test_the_historical_switch_brings_the_retired_one_back(self):
         ids, _ = self._ids(historical=True)
         self.assertIn("record:quorum-note-retired", ids)
