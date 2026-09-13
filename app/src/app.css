@@ -2280,19 +2280,29 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 @media (max-width: 900px) {
   #shell { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
   #shell[data-lnb="open"] #lnb {
-    /* ⚠ `grid-column` 을 **전체로 편다.** 절대배치된 격자 자식은 자리 지정이 있으면
-       그 **격자 영역**이 좌표계가 된다(패딩 상자가 아니라) — 2열에 둔 채로 두면
-       left 가 2열 시작점(80px)에 더해져 서랍이 그만큼 오른쪽으로 밀린다
-       (실측 2026-09-10: 72 로 적었는데 152 에 섰다). */
-    grid-column: 1 / -1;
+    /* ⚠ 절대배치된 격자 자식은 자리 지정이 있으면 그 **격자 영역**이 좌표계가
+       된다(패딩 상자가 아니라). 한때 `grid-column: 1 / -1` 에 `left: 레일+간격`
+       으로 적었는데(2026-09-10), 그 둘을 곱하면 같은 값을 두 군데서 세는 셈이라
+       한 번 틀렸다. 지금은 **자리로만** 말한다: 2열에서 시작해 오른쪽 끝까지,
+       그리고 **2행** — 즉 상단 바 아래다.
+       ⚠ 행을 적는 것이 핵심이다. 1행까지 덮으면 서랍(z 45)이 상단 바(z 41) 위로
+       올라와 **검색을 못 쓴다**(실측 2026-09-13, 창 768·900: 바 왼쪽 216px 이
+       서랍 뒤에 있었다). 행으로 적어 두면 바가 두 줄이 되는 폭(아래 520)에서도
+       서랍의 천장이 따라 내려온다 — 픽셀을 다시 셀 일이 없다. */
+    grid-column: 2 / -1; grid-row: 2;
     position: absolute; z-index: 45;
-    left: calc(var(--kind-rail-w) + var(--shell-gap));
-    top: var(--shell-gap); bottom: var(--shell-gap);
+    left: 0; top: 0; bottom: 0;
     width: var(--lnb-w);
   }
   /* 서랍이 닫혀 있으면 그리지 않는다 — 폭 0 인 열에 남은 테두리가 레일 옆에
      1px 띠로 보인다(넓은 창의 접힘이 같은 이유로 테두리를 지우는 것과 같다). */
   #shell:not([data-lnb="open"]) #lnb { border: none; box-shadow: none; }
+  /* 안내 카드는 왼쪽에 붙어 있는데, 그 자리가 이제 서랍 자리다 — 서랍이 열리면
+     카드가 그 뒤로 들어가 **글자가 중간에서 잘린 것처럼** 보인다(실측 2026-09-13,
+     창 768: 카드 16~320 · 서랍 80~312). 오른쪽으로 붙여 지도 위에 세운다.
+     19rem 고정폭도 푼다 — 좁은 창에서 그 폭이 화면을 넘는다. */
+  .coach { left: auto; right: var(--space-4, 1rem); width: auto; max-width: 22rem; }
+
   /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
      375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
      일이라, 간격을 좁히고 남으면 그 줄 안에서만 굴린다(넘침은 자기 상자가 받는다). */
@@ -2311,6 +2321,51 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
   [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
+}
+
+/* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
+   상단 바의 고정비를 재 봤다(2026-09-13, 창 360~1000 사다리):
+     오른쪽 손잡이 묶음 168 · 모드 버튼 84 · 단축키 힌트 45 · 여백 32 = **329**
+   창에서 레일과 여백 112 를 빼고 나면 입력에 남는 자리는 `창폭 − 441` 이다.
+   600 에서 159px, 그 아래로는 음수라 **입력이 4px 로 눌린다**(360·390·430 실측).
+   원인은 양보가 한쪽에만 있는 것이다: `#tb-search` 만 `flex:1 1 auto` 이고
+   `#tb-right` 는 `0 0 auto` 라, 줄어드는 몫을 검색이 전부 떠안는다.
+   ⚠ 이건 목업만의 일이 아니다. 폰으로 웹앱을 열어도, 데스크탑 창을 좁혀도 같다.
+
+   그래서 여기서부터 **덜 중요한 것부터 접는다.** 감추는 것은 잃는 것이므로
+   순서가 규율이다: 단축키 힌트(키보드가 없는 폭이다) → 모드 라벨(아이콘 색이
+   이미 어느 모드인지 말한다) → 줄바꿈(아래 520). 손잡이는 하나도 안 사라진다. */
+@media (max-width: 600px) {
+  #tb-kbd { display: none; }
+  /* 모드는 아이콘만 남는다. 어느 모드인지는 `#tb-search[data-mode="ask"] .tb-sicon`
+     이 색으로 이미 말하고 있어서, 라벨과 캐럿 48px 은 여기서 가장 싼 값이다. */
+  .tb-mode-label, .tb-caret { display: none; }
+
+  /* 서랍이 폭을 다 쓴다. 14.5rem 에 묶어 두면 360 에서 레일 64 + 서랍 232 가
+     296 을 먹어 지도에 64px 만 남는다(실측) — 트리도 지도도 못 쓰는 폭이다.
+     천장은 위 900 블록이 행으로 정해 두었으므로 여기서 다시 적지 않는다. */
+  #shell[data-lnb="open"] #lnb { right: 0; width: auto; }
+}
+
+/* ── 폰(≤520) — 손잡이 묶음이 줄을 하나 더 쓴다 ────────────────────────
+   위의 둘을 접고도 입력에 남는 자리는 `창폭 − 348` 이라 520 에서 172px 이고
+   그 아래로는 다시 못 쓰게 된다. 남은 고정비는 오른쪽 묶음 168 하나인데,
+   그것을 넘침 메뉴로 **감추지 않는다**: 감추면 손잡이가 두 번 눌러야 닿고
+   새 메뉴 표면이 하나 더 생긴다. 줄을 하나 더 쓰면 마크업도 스크립트도 안 늘고
+   손잡이가 전부 보이는 채로 남는다("보이는 손잡이는 반드시 무언가를 한다"의
+   반대편 — 있는 손잡이를 숨기지 않는다).
+   바가 높아진 만큼 지도가 낮아지는데, 서랍이 격자 행을 좌표계로 쓰므로
+   그 천장은 따로 적지 않아도 따라 내려온다. */
+@media (max-width: 520px) {
+  #topbar {
+    flex-wrap: wrap; height: auto;
+    row-gap: var(--space-2, .5rem);
+    padding-top: var(--space-2, .5rem); padding-bottom: var(--space-2, .5rem);
+  }
+  /* 검색이 첫 줄을 통째로 쓴다. 오른쪽 여백은 줄이 갈렸으니 필요 없다. */
+  #tb-search { flex: 1 1 100%; margin-right: 0; }
+  /* 손잡이 묶음은 둘째 줄 오른쪽 끝에 선다. */
+  #tb-right { margin-left: auto; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #view-lens-panel::before { background: hsl(var(--card)); }
