@@ -120,7 +120,8 @@ class Install(unittest.TestCase):
             (claude / "launch.json").write_bytes(launch)
             (claude / "settings.json").write_text(json.dumps({
                 "permissions": {"allow": ["Bash(ls)"]},
-                "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "true"}]}]},
+                "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "true"}]}],
+                          "SubagentStop": [{"hooks": [{"type": "command", "command": "notify"}]}]},
             }, indent=4), encoding="utf-8")
             mine = claude / "agents" / "mine.md"
             mine.write_text("---\nname: mine\n---\n", encoding="utf-8")
@@ -146,8 +147,13 @@ class Install(unittest.TestCase):
             settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
             self.assertEqual(settings["permissions"], {"allow": ["Bash(ls)"]})
             self.assertIn("PreToolUse", settings["hooks"])
-            for event, verb in (("WorktreeCreate", "create"), ("WorktreeRemove", "remove")):
-                (entry,) = settings["hooks"][event]
+            self.assertEqual(settings["hooks"]["SubagentStop"][0],
+                             {"hooks": [{"type": "command", "command": "notify"}]},
+                             "남이 건 SubagentStop 훅을 지웠다")
+            for event, verb in (("WorktreeCreate", "create"), ("WorktreeRemove", "remove"),
+                                ("SubagentStop", "subagent-stop")):
+                entry = settings["hooks"][event][-1]
+                self.assertEqual(len(settings["hooks"][event]), 2 if event == "SubagentStop" else 1)
                 (cmd,) = entry["hooks"]
                 self.assertEqual(cmd["command"], "python")
                 self.assertEqual(cmd["args"], ["-I", "-X", "utf8", str(hook), verb,
