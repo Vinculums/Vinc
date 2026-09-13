@@ -281,6 +281,92 @@ class RebuildPathTests(unittest.TestCase):
         again = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
         self.assertFalse(again["changed"], "차원이 같으면 아무것도 안 해야 한다(멱등)")
 
+    def _seed_v17_source(self, store):
+        """노드 미러가 v18 이전 모양인 원본: NodeVec 의 pk 가 `node_id` 이고 `vec_id` 가 없다.
+        모양은 커밋 03c4167 직전 스키마 그대로 적는다(현재 명세에서 파생하면 역사가 흐른다).
+        문서 3건 · 개념 2개와 엣지 1개 · 옛 모양의 미러 행 1개를 싣는다."""
+        from store import pkns
+        self._seed_docs(store, 3)
+        a, b = pkns.key("user:a", "concept:a"), pkns.key("user:a", "concept:b")
+        for k in (a, b):
+            store.run("MERGE (c:Concept {concept_id: $k}) SET c.owner_id = 'user:a', "
+                      "c.title = 'X'", {"k": k})
+        store.run("MATCH (a:Concept {concept_id: $a}), (b:Concept {concept_id: $b}) "
+                  "MERGE (a)-[:RELATED_TO]->(b)", {"a": a, "b": b})
+        store.drop_node_vector_index()
+        store.run("DROP TABLE NodeVec")
+        store.run("CREATE NODE TABLE NodeVec(node_id STRING, kind STRING, owner_id STRING, "
+                  "title STRING, text STRING, model STRING, embedding FLOAT[768], "
+                  "PRIMARY KEY(node_id))")
+        store.run("CREATE (:NodeVec {node_id:'concept:a', kind:'concept', owner_id:'user:a', "
+                  "title:'X', text:'X', model:'e5', embedding:$e})", {"e": [0.0] * 768})
+        store.run("MERGE (m:_SchemaMeta {key:'schema_version'}) SET m.value = '17'")
+        return a, b
+
+    def _assert_rebuilt_intact(self, store, a, b):
+        n = store.run("MATCH (c:Concept) RETURN count(c) AS c")[0]["c"]
+        self.assertEqual(int(n), 2, "개념이 재구축에서 사라졌다")
+        e = store.run("MATCH (x:Concept {concept_id: $a})-[r:RELATED_TO]->"
+                      "(y:Concept {concept_id: $b}) RETURN count(r) AS c", {"a": a, "b": b})
+        self.assertEqual(int(e[0]["c"]), 1, "엣지가 재구축에서 사라졌다")
+        d = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c")[0]["c"]
+        self.assertEqual(int(d), 3, "_DocMeta 가 재구축에서 사라졌다")
+        self.assertEqual(migrate.vector_dim(store, "NodeVec"), 1024)
+
+    def test_v17_노드_미러를_가진_원본도_재구축된다(self):
+        """🔴 원본의 NodeVec 이 v17 모양이면 export 가 `vec_id` 로 투영하다 깨져 아무것도
+        옮기기 전에 멈췄다. 그 표는 재구축이 어차피 버리는 표다.
+        근거: [[record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13]]"""
+        src, _ = self._mkstore()
+        a, b = self._seed_v17_source(src)
+        dst, _ = self._mkstore(dim=1024)
+        try:
+            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        except RuntimeError as exc:
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        finally:
+            src.close()
+        try:
+            self.assertEqual((out["docs"], out["requeued"]), (3, 3))
+            self.assertEqual(out["node_vectors_dropped"], 1)
+            self._assert_rebuilt_intact(dst, a, b)
+        finally:
+            dst.close()
+
+    def test_차원_이행_훅이_v17_노드_미러_원본을_읽기만_하고_갈아_끼운다(self):
+        """부팅 훅은 원본을 마이그레이션하지 않고 연다. 그 원본이 되돌림 사본(`.pre-768`)이
+        되므로 재구축은 원본에 쓰지 않아야 하고, 사본은 v17 모양 그대로 남아야 한다."""
+        import os
+        import tempfile
+        from unittest import mock
+        src, cfg = self._mkstore()
+        a, b = self._seed_v17_source(src)
+        path = cfg.data_dir
+        src.close()
+        try:
+            with mock.patch.dict(os.environ, {"VINC_STORE_SNAPSHOT": tempfile.mkdtemp() + "/s"}):
+                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+        except RuntimeError as exc:
+            if "확장" in str(exc) or "extension" in str(exc).lower():
+                self.skipTest(f"FTS 확장 미가용 — {exc}")
+            raise
+        self.assertTrue(out["changed"])
+        self.assertEqual((out["docs"], out["requeued"]), (3, 3))
+        st = open_store(load_config({"data_dir": path, "embedding_model": "BAAI/bge-m3"}))
+        try:
+            self._assert_rebuilt_intact(st, a, b)
+        finally:
+            st.close()
+        kept = open_store(load_config({"data_dir": out["kept"]}))
+        try:
+            v = kept.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' RETURN m.value AS v")
+            self.assertEqual(v[0]["v"], "17", "되돌림 사본이 마이그레이션됐다")
+            self.assertFalse(kept._node_vec_rekeyed(), "되돌림 사본의 미러가 재키잉됐다")
+        finally:
+            kept.close()
+
     def test_네임스페이스_스토어의_재구축은_물리_키를_지킨다(self):
         """🔴 2026-09-11 라이브 사고의 회귀 시험. 플래그가 켜진 런타임에서 export 는 읽기
         경로를 지나며 물리 키(owner U+001F id)를 논리 id 로 벗기고, import 가 그것을 그대로
