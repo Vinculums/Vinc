@@ -180,8 +180,9 @@ class MentionsLinkTests(unittest.TestCase):
     def setUp(self):
         self.m = importlib.import_module("engines.mentions_link")
 
-    def test_source_basename_match_is_strongest(self):
-        # source_file basename 이 같으면 method='source'(절대 vs 상대경로 무관)
+    def test_source_basename_matches_when_the_chunk_does_not_state_the_title(self):
+        # source_file basename 이 같으면 method='source'(절대 vs 상대경로 무관).
+        # 단 이 청크는 개념의 제목("쌍대성")을 **말하지 않는다** — 말하면 아래 테스트다.
         chunks = [{"chunk_id": "ch1", "source_file": "/abs/path/03-duality.md",
                    "text": "무관한 본문"}]
         concepts = [{"concept_id": "c1", "title": "쌍대성", "stem": "03-duality",
@@ -189,6 +190,18 @@ class MentionsLinkTests(unittest.TestCase):
         links = self.m.compute_links(chunks, concepts)
         self.assertEqual(links, [{"chunk_id": "ch1", "concept_id": "c1",
                                   "method": "source"}])
+
+    def test_title_wins_over_shared_source_file(self):
+        # 출처도 같고 제목도 말하는 청크는 'title' 이다. 순서가 뒤집혀 있던 동안에는
+        # 이런 쌍이 전부 'source' 로 찍혀, 한 문서에서 통째로 뽑힌 개념은 발췌 창에
+        # 올릴 것이 하나도 없었다. 실측·이유는 engines/mentions_link.py 모듈 docstring.
+        chunks = [{"chunk_id": "ch1", "source_file": "/abs/path/03-duality.md",
+                   "text": "이 절은 쌍대성 을 정의한다"}]
+        concepts = [{"concept_id": "c1", "title": "쌍대성", "stem": "03-duality",
+                     "source_file": "math/topo/03-duality.md"}]
+        links = self.m.compute_links(chunks, concepts)
+        self.assertEqual(links, [{"chunk_id": "ch1", "concept_id": "c1",
+                                  "method": "title"}])
 
     def test_title_all_tokens_present(self):
         # title 의 유의 토큰이 전부 chunk 에 있으면 method='title'

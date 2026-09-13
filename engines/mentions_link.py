@@ -5,18 +5,25 @@
 리서치 ①(다중 홉 가교)·HippoRAG 이부 그래프를 **LLM 없이 결정론**으로 번역한다.
 Chunk(벡터/FTS 검색 노드)를 그것이 언급하는 Concept 에 잇는 규칙:
 
-  1. **source_file basename 일치**(가장 강함, method='source') — 같은 원본 문서에서
-     파생된 Chunk 와 Concept. Chunk.source_file 은 절대경로, Concept.source_file 은
-     hub-상대경로라 basename(파일명)으로 비교한다.
-  2. **title 토큰 매칭**(method='title') — Concept.title 의 유의 토큰(길이≥2, 상한 6)이
+  1. **title 토큰 매칭**(method='title') — Concept.title 의 유의 토큰(길이≥2, 상한 6)이
      **전부** Chunk.text(소문자)에 포함되고, 토큰이 둘 이상이면 그 전부가 **연속
      `_TITLE_WINDOW` 토큰 안에 함께** 나와야 한다. "이 청크가 그 개념을 논한다"의
      결정론 근사. 창 조건이 없던 때는 "Vinc Design Hub" 같은 짧은 제목이 vinc·design·
      hub 를 문단 곳곳에 하나씩만 담은 2000자 청크에도 걸려, 디자인과 무관한 문서
      8건의 대표 개념이 그 개념이 됐다(2026-09-05 실측). 근거·창 크기 선택:
      [[decision:mention-title-tokens-within-a-window]]
+  2. **source_file basename 일치**(method='source') — 같은 원본 문서에서 파생된 Chunk
+     와 Concept. Chunk.source_file 은 절대경로, Concept.source_file 은 hub-상대경로라
+     basename(파일명)으로 비교한다.
   3. **stem 매칭**(method='stem') — Concept.stem 이 Chunk.text 에 토큰으로 포함(파일
      stem 이 식별자 역할 하는 코퍼스 보완). 1·2 가 잡으면 3 은 생략(우선순위).
+
+⚠ **1 과 2 의 순서가 곧 발췌 순서다.** 쌍 하나에 method 는 하나뿐이라(아래 if/elif),
+출처를 공유하는 개념은 청크가 제 제목을 **글자 그대로 말하고 있어도** 'source' 로
+찍혔다. 그런데 발췌 정렬(`api/query.py`)은 title·stem·source 순이므로, 한 문서에서
+통째로 뽑힌 개념은 창 전체가 'source' 라 올릴 것이 없었다. 순서를 맞바꿔도 링크는
+하나도 늘거나 줄지 않는다(3858 → 3858, 라벨만 142건 이동). 실측:
+[[record:title-before-source-clears-every-all-source-korean-window-while-suffix-stripping-buys-nothing-2026-09-14]]
 
 규칙이 바뀌면 `MENTIONS_RULE` 을 올린다. 재링크는 `put_doc` 에서만 일어나므로 규칙만
 바꾸면 **이미 적재된 문서의 링크는 옛 규칙 그대로 남는다** — `ensure_rule` 이 기동 시
@@ -58,7 +65,7 @@ _MAX_TITLE_TOKENS = 6
 _TITLE_WINDOW = 12
 #: 링크 규칙의 식별자. 규칙을 바꾸면 이 값을 바꿔야 `ensure_rule` 이 재링크한다 —
 #: 값이 같으면 코드를 바꿔도 기존 링크는 그대로다.
-MENTIONS_RULE = "2:title-window-12"
+MENTIONS_RULE = "3:title-before-source"
 _RULE_KEY = "mentions_rule"
 
 
@@ -101,7 +108,7 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
 
     ``chunks``: [{chunk_id, source_file, text}]. ``concepts``: [{concept_id,
     title, stem, source_file}]. 각 (chunk, concept) 쌍에 대해 우선순위 규칙으로
-    최대 1개 method 를 부여한다(source > title > stem). 반환은 정렬 리스트(결정론)."""
+    최대 1개 method 를 부여한다(title > source > stem). 반환은 정렬 리스트(결정론)."""
     # concept 전처리: basename·title 토큰셋·stem 소문자.
     prepped = []
     for c in concepts:
@@ -129,11 +136,13 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
         ch_tokset = set(positions)
         for c in prepped:
             method = None
-            if ch_base and c["base"] and ch_base == c["base"]:
-                method = "source"
-            elif (c["has_title"] and c["title_toks"] <= ch_tokset
-                  and _within_window(positions, c["title_toks"])):
+            # 순서 주의 — 쌍마다 method 는 하나다. title 이 source 보다 먼저인 이유는
+            # 모듈 docstring ⚠ 절에 있다(바꾸면 MENTIONS_RULE 도 올릴 것).
+            if (c["has_title"] and c["title_toks"] <= ch_tokset
+                    and _within_window(positions, c["title_toks"])):
                 method = "title"
+            elif ch_base and c["base"] and ch_base == c["base"]:
+                method = "source"
             elif c["stem"] and len(c["stem"]) >= 2 and c["stem"] in ch_tokset:
                 method = "stem"
             if method:
