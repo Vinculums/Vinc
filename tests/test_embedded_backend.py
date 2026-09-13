@@ -414,8 +414,15 @@ class EmbeddedE2E(unittest.TestCase):
                   t="refund policy and dispute resolution", e=[1.0, 0.1, 0.0, 0.0])
             # 개념 gauge: title 이 'gauge' 라 쿼리 'refund' 와 title 매치 안 됨.
             # 그러나 source_file basename(topo.md) 이 청크와 같아 MENTIONS 로 이어진다.
+            # ⚠ 이 청크는 'gauge' 라는 낱말을 담지 않는다 — 그래서 title 이 source 보다
+            #    먼저 시도돼도 여기서는 여전히 'source' 다. 둘 다 걸리는 쪽은 아래 refund.
             _seed(s.run, "MERGE (c:Concept {concept_id:'gauge'}) SET c.title='gauge', "
                   "c.owner_id='u', c.domain='physics', c.source_file='physics/topo.md'")
+            # 개념 refund policy: 출처(topo.md)도 같고 제목도 청크 본문에 그대로 있다.
+            # 우선순위가 title 먼저라 'title' 로 찍힌다(같은 쌍에 method 는 하나뿐).
+            _seed(s.run, "MERGE (c:Concept {concept_id:'refund-policy'}) "
+                  "SET c.title='refund policy', c.owner_id='u', c.domain='physics', "
+                  "c.source_file='physics/topo.md'")
             # 이웃 개념 duality: gauge 와 RELATED_TO — 1-hop 확산 대상.
             _seed(s.run, "MERGE (c:Concept {concept_id:'duality'}) SET c.title='duality', "
                   "c.owner_id='u', c.domain='physics', c.source_file='physics/x.md'")
@@ -429,7 +436,8 @@ class EmbeddedE2E(unittest.TestCase):
         stats = link_mentions(store, owner="u")   # 결정론 링커
         store.close()
         self.assertGreaterEqual(stats["links"], 1)
-        self.assertEqual(stats["by_method"].get("source"), 1)   # basename 일치
+        self.assertEqual(stats["by_method"].get("source"), 1)   # basename 만 일치
+        self.assertEqual(stats["by_method"].get("title"), 1)    # basename + 제목 → title
 
         r = q.search("refund", owner="u", top_k=5)
         self.assertTrue(r["executed"])
