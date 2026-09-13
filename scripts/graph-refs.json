@@ -359,6 +359,7 @@
     "record:planar-leaves-cluster-because-arms-read-as-a-vortex",
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on",
     "record:r3a-sampler-runs-on-a-heavy-write-day-2026-09-08",
+    "record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13",
     "record:rel-tables-take-multiple-endpoint-pairs",
     "record:risk-doc-title-collides-with-topic",
     "record:risk-search-chunk-unscoped",
