@@ -64,20 +64,24 @@ def _narrow_to_existing(store, table: str, wanted: list[str], probe: str) -> lis
         "빈 집합으로 넘기면 이 라벨의 행이 조용히 사라진다")
 
 
-def export_store(store, *, raw: bool = False) -> dict:
+def export_store(store, *, raw: bool = False, skip: tuple[str, ...] = ()) -> dict:
     """스토어 전량을 드라이버 무관 dict 로 덤프. 노드(라벨별 행)·엣지(라벨별 끝점+
     props). 스키마 SSoT 의 열만 조회(투기 없음).
 
     ``raw=True``: PK 네임스페이싱이 켜진 스토어에서 **물리 키 그대로** 읽는다. 기본 읽기
     경로는 물리 키를 논리 id 로 벗기므로(`embedded_backend._exec_to_dicts`), 벗긴 덤프를
     같은 런타임의 새 스토어에 적재하면 키가 논리로 남아 정확 id 조회가 전부 죽는다.
-    재구축(:func:`rebuild_store`)은 이 값을 `pkns.enabled()` 로 정한다."""
+    재구축(:func:`rebuild_store`)은 이 값을 `pkns.enabled()` 로 정한다.
+
+    ``skip``: 읽지 않을 노드 라벨. 덤프에 키 자체가 없다. 엣지가 걸리지 않는 표에만 쓸 것."""
     def _q(q: str):
         return store.run(q, raw=True) if raw else store.run(q)
 
     node_specs = _schema.node_table_specs()
     nodes: dict[str, list[dict]] = {}
     for label, spec in node_specs.items():
+        if label in skip:
+            continue
         cols = spec["cols"]
         proj = ", ".join(f"n.{c} AS {c}" for c in cols)
         try:
@@ -239,7 +243,7 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
 
     순서가 계약이다. 각 단계가 왜 그 자리인지:
 
-    1. **덤프에서 ChunkVec 을 뺀다.** export 는 옛 768 벡터를 그대로 싣는데 import 는
+    1. **ChunkVec·NodeVec 을 덤프하지 않는다.** 실으면 옛 768 벡터를 싣는데 import 는
        1024 열에 넣으려 하므로 행마다 캐스팅 예외가 난다. 어차피 전량 재임베딩할
        벡터라 버리는 것이 맞다 — 대가는 재임베딩이 끝날 때까지 **벡터 검색이 빈다**.
     2. **메타를 포함해 적재한다**(`import_store` 가 한다). `_DocMeta` 가 없으면 4번의
@@ -265,7 +269,13 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
     # 벗기고, 그 덤프를 적재하면 새 스토어의 키가 논리로 남아 정확 id 조회가 전부 죽고
     # 같은 논리 id 를 가진 소유자 둘이 한 행으로 접힌다. 2026-09-11 라이브 재구축이 정확히
     # 그렇게 됐다. 근거: [[decision:bge-m3-adoption]]
-    dump = export_store(src, raw=pkns.enabled())
+    #
+    # 버릴 벡터 표 둘은 **읽지도 않는다.** 원본 스키마가 코드보다 낮으면 읽기 자체가 깨진다
+    # (v17 미러는 pk 가 `node_id` 라 `vec_id` 투영이 export 를 멈췄다). 원본을 마이그레이션해
+    # 맞추지 말 것 — 원본은 되돌림 사본이라 읽기만 한다.
+    # 근거: [[record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13]]
+    discard = ("ChunkVec", "NodeVec")
+    dump = export_store(src, raw=pkns.enabled(), skip=discard)
     if pkns.enabled():
         # 원본이 이미 논리 키면(네임스페이싱 이관을 안 거친 스토어, 또는 사고로 벗겨진
         # 스토어) 재구축은 그것을 고칠 수 없다 — 그대로 옮기면 같은 고장을 새 파일에
@@ -285,11 +295,8 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
                     f"{label}: 네임스페이싱이 켜진 런타임인데 논리 키 행이 {len(bare)}건이다"
                     f"(예: {bare[0]!r}). 재구축은 키를 고치지 못한다 — "
                     "scripts/migrate_pk_namespacing.py 로 먼저 합성할 것")
-    dropped = len(dump["nodes"].pop("ChunkVec", None) or [])
-    # 노드 미러(NodeVec, v17)도 같은 이유로 버린다: 옛 차원의 벡터라 새 열에 안 들어가고,
-    # 어차피 컨테이너 기동이 전량 재구축한다(`docker-entrypoint.sh` 의 미러 재구축).
-    # 리허설(2026-08-30) 때는 이 표가 없어서 빠져 있었다.
-    node_dropped = len(dump["nodes"].pop("NodeVec", None) or [])
+    # 버린 행 수는 세기만 한다 — count 는 열을 투영하지 않아 낮은 스키마에서도 답한다.
+    dropped, node_dropped = (_count_rows(src, label) for label in discard)
     stats = import_store(dst, dump, dim=dim)
     dst.ensure_search_indexes(dim=dim)
     sw = switch_embed_model(dst, model)
@@ -299,6 +306,15 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
             "nodes": stats["nodes"], "edges": stats["edges"], "meta": stats["meta"],
             "docs": int(docs[0]["c"]) if docs else 0,
             "requeued": sw.get("requeued", 0)}
+
+
+def _count_rows(store, label: str) -> int:
+    """`label` 의 행 수. 표가 없으면 0."""
+    try:
+        rows = store.run(f"MATCH (n:{label}) RETURN count(n) AS c") or []
+    except Exception:
+        return 0
+    return int(rows[0]["c"]) if rows else 0
 
 
 def vector_dim(store, table: str = "ChunkVec") -> int | None:
