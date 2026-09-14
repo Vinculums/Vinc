@@ -433,7 +433,14 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
         # 얼마나 자주 나는지 셀 수 있다. 무음 자기복구는 "안 나는 것"처럼 보인다.
         print(f"[WARN] FTS 색인 불일치 — 재빌드 후 1회 재시도: "
               f"{str(exc).splitlines()[0][:200]}", file=sys.stderr)
+        # 소요 시간을 남긴다 — 로컬 실측(5.8초)이 허브 코퍼스에서도 같은지는
+        # 추정이 아니라 로그로 알아야 한다. 이 호출이 도는 동안 /health 가 굶을
+        # 수 있다는 것이 이 재구축의 실제 위험이므로(entrypoint.sh 의
+        # sidecar_healthy 주석 참고) 소요 시간이 그대로 진단이다.
+        # 근거: [[record:editing-the-conventions-document-restarts-the-hub-2026-09-09]]
+        _t0 = time.monotonic()
         rebuild()
+        print(f"[WARN] FTS 재빌드 완료 — {time.monotonic() - _t0:.1f}s", file=sys.stderr)
         return fn()
 
 
