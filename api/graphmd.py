@@ -18,17 +18,64 @@ exit code 는 기존 게이트와 동형: 0 PASS · 1 FIX-only · 2 BLOCK.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 
 from store import theme_store
 
 SPEC_VERSION = 1
 
-#: 스토어에 관례를 문서로 둘 때의 고정 doc_id. 동기화에서 제외된다(`docsync`) —
-#: 로컬 그래프와 계정 그래프는 **각자의 관례**를 갖는다는 것이 불변식이다.
-CONVENTIONS_DOC_ID = "graph.md"
+#: owner 차원이 없던 시절의 고정 doc_id. **한 owner 가 아직 이 자리를 쥐고 있다** —
+#: `_DocMeta` 가 doc_id 단독으로 키를 잡으므로 이 문자열의 행은 전 시스템에 하나뿐이고,
+#: 먼저 쓴 owner 가 영구 점유한다. 그래서 둘째 테넌트는 읽기·쓰기 양쪽에서 owner
+#: mismatch 를 받았다([[vinc.ops.risk-audit-2026-08-05 §3.4]], 2026-09-14 재현).
+#: 지금은 **새로 이 자리를 겨냥하는 경로가 없고**(아래 conventions_doc_id), 이미 쥔
+#: owner 만 계속 쓴다 — 그 행을 옮기지 않는 이유는 옮김이 곧 마이그레이션이고
+#: 이 리포가 키 재작성으로 하드다운을 겪었기 때문이다([[vinc.plan.node-pk-namespacing]] §3).
+LEGACY_CONVENTIONS_DOC_ID = "graph.md"
+#: owner 파생 관례 id 의 접두. 뒤에 owner 해시 16 자가 붙는다.
+_CONVENTIONS_PREFIX = LEGACY_CONVENTIONS_DOC_ID + "~"
+_OWNER_TAG_RE = re.compile(r"^[0-9a-f]{16}$")
 #: 그 문서의 출처 표식(일반 자료와 구분하는 유일한 표시).
 CONVENTIONS_ORIGIN = "vinc:conventions"
+
+
+def conventions_doc_id(owner: str | None) -> str:
+    """이 owner 가 **새로 쓸 때** 쓰는 관례 문서 id.
+
+    owner 가 없으면(단일 사용자 로컬 스토어) 구 고정 id 그대로다 — 가를 소유자가
+    없는 자리에 해시를 붙이면 읽을 수 없는 id 만 남는다. 동기화에서 제외된다
+    (`docsync`) — 로컬 그래프와 계정 그래프는 **각자의 관례**를 갖는다는 것이
+    불변식이다([[vinc.canon.graph-conventions]] §6.3).
+
+    ⚠ 이미 구 id 에 관례를 써 둔 owner 는 이 값이 아니라 **그 자리**를 계속 쓴다.
+    판정은 `docstore.resolve_conventions_doc_id` 하나이고, 여기를 직접 부르는 곳은
+    그 함수뿐이어야 한다."""
+    if not owner:
+        return LEGACY_CONVENTIONS_DOC_ID
+    tag = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:16]
+    return _CONVENTIONS_PREFIX + tag
+
+
+def is_conventions_doc_id(doc_id: str) -> bool:
+    """관례 문서인가 — 구 고정 id 와 owner 파생 id **둘 다**.
+
+    문서 목록·좌측 트리·동기화·검색이 관례를 걸러내는 판정이 전부 이 한 자리다.
+    한 곳이라도 구 리터럴 동등비교로 남으면 그쪽만 조용히 새 id 를 놓친다(목록에
+    관례가 섞여 나오거나, 기기와 계정이 서로의 관례를 덮어쓴다)."""
+    if doc_id == LEGACY_CONVENTIONS_DOC_ID:
+        return True
+    if not doc_id.startswith(_CONVENTIONS_PREFIX):
+        return False
+    # 접두만 보면 `graph.md~notes` 같은 남의 문서를 삼킨다 — 꼬리가 해시인지까지 본다.
+    return bool(_OWNER_TAG_RE.match(doc_id[len(_CONVENTIONS_PREFIX):]))
+
+
+def is_conventions_chunk_id(chunk_id: str) -> bool:
+    """관례 문서의 청크인가(`docstore.chunk_id_of` 규약: ``{doc_id}#{index:05d}``).
+
+    검색 팔이 쥐고 있는 것은 chunk_id 뿐이라 추가 질의 없이 여기서 가른다."""
+    return is_conventions_doc_id(str(chunk_id or "").rsplit("#", 1)[0])
 
 HEADER_RE = re.compile(r"^<!--\s*vinc-graph-md:\s*(\d+)\b(.*)-->\s*$")
 GEN_START_RE = re.compile(r"^<!--\s*vinc:generated start\b.*-->\s*$")

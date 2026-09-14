@@ -162,7 +162,7 @@ class ConventionsAreRecomputed(unittest.TestCase):
                               day="2026-01-01")
         self.assertIn("design", built["text"])
         ds.put_doc(self.store, owner=OWNER, text=built["text"],
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
+                   doc_id=graphmd.conventions_doc_id(OWNER), title="GRAPH.md",
                    origin=graphmd.CONVENTIONS_ORIGIN)
 
     def tearDown(self):
@@ -199,7 +199,7 @@ class ConventionsAreRecomputed(unittest.TestCase):
 
     def test_마커가_깨진_문서는_손대지_않는다(self):
         ds.put_doc(self.store, owner=OWNER, text="# GRAPH.md\n\n손으로 쓴 것\n",
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
+                   doc_id=graphmd.conventions_doc_id(OWNER), title="GRAPH.md",
                    origin=graphmd.CONVENTIONS_ORIGIN)
         got = self._read()
         self.assertFalse(got["generated_recomputed"])

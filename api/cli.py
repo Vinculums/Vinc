@@ -218,7 +218,6 @@ def main(argv: list[str] | None = None) -> int:
     dl.add_argument("--data", default=None)
 
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
-    from .graphmd import CONVENTIONS_DOC_ID as _GM_DOC
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)
     gb = gmsub.add_parser("build", help="write the generated region from the store (prose untouched)")
@@ -227,8 +226,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="existing GRAPH.md to refresh in place; omit to print a new one")
     gb.add_argument("--out", default=None, help="write to this path instead of stdout")
     gb.add_argument("--doc", action="store_true",
-                    help=f"read/write the conventions document in the store "
-                         f"(doc_id {_GM_DOC}) instead of a file — needs --owner")
+                    help="read/write the conventions document in the store "
+                         "(its doc_id is derived from the owner) instead of a file "
+                         "— needs --owner")
     gb.add_argument("--lang", choices=("en", "ko"), default=None,
                     help="template language for a new file (default en; refresh keeps the file's own)")
     gb.add_argument("--data", default=None)
@@ -513,7 +513,8 @@ def main(argv: list[str] | None = None) -> int:
                 existing = None
                 path = args.file
                 if args.doc:
-                    got = docstore.get_doc(store, graphmd.CONVENTIONS_DOC_ID, owner=args.owner)
+                    conv_id = docstore.resolve_conventions_doc_id(store, args.owner)
+                    got = docstore.get_doc(store, conv_id, owner=args.owner)
                     existing = got.get("text") if got.get("executed") else None
                 elif path and os.path.exists(path):
                     with open(path, encoding="utf-8") as fh:
@@ -527,7 +528,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.doc:
                     # 스토어에 둘 때만 origin 표식을 단다 — 일반 자료와 구분하는 유일한 표시.
                     put = docstore.put_doc(store, owner=args.owner, text=res["text"],
-                                           doc_id=graphmd.CONVENTIONS_DOC_ID,
+                                           doc_id=conv_id,
                                            title="GRAPH.md", origin=graphmd.CONVENTIONS_ORIGIN)
                     return _emit(slim | {"doc": put})
                 out = args.out or (path if existing is not None else None)
@@ -540,7 +541,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.gmcmd == "check":
                 if args.doc:
                     from . import docstore
-                    got = docstore.get_doc(store, graphmd.CONVENTIONS_DOC_ID, owner=args.owner)
+                    got = docstore.get_doc(
+                        store, docstore.resolve_conventions_doc_id(store, args.owner),
+                        owner=args.owner)
                     if not got.get("executed"):
                         return _emit({"error": "no conventions document in this store "
                                                "(run `graph-md build --doc` first)"})

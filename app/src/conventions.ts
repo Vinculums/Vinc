@@ -61,6 +61,10 @@ export async function openConventions() {
 
   let themeId = "";
   let text = "";
+  // 관례 문서의 id 는 owner 마다 다르다(서버가 정한다). 여기서 문자열을 지어내면
+  // 한 자리가 더 생기고, 그 자리가 서버와 어긋나면 저장은 성공하는데 다음에 읽히는
+  // 것은 옛 본문이 된다. **읽기 응답이 준 값만** 쓴다.
+  let docId = "";
 
   async function draw() {
     const parts = splitConventions(text);
@@ -95,13 +99,20 @@ export async function openConventions() {
     return gen ? `${head}\n${gen}\n${tail}`.replace(/\n{3,}/g, "\n\n") : head;
   }
 
+  /** 편집분을 관례 문서 자리에 쓴다. id 를 모르면 **쓰지 않는다** — 모르는 채로
+   *  보내면 새 문서 하나가 생기고 관례는 그대로 남는다. */
+  async function put(): Promise<boolean> {
+    if (!docId) return false;
+    const res = await api.docPut(cfg.owner, compose(), docId, "GRAPH.md",
+                                 undefined, "vinc:conventions");
+    return !!res.executed;
+  }
+
   async function save() {
     const btn = sheet.foot.querySelector<HTMLButtonElement>("#conv-save")!;
     btn.disabled = true;
     try {
-      const res = await api.docPut(cfg.owner, compose(), "graph.md", "GRAPH.md",
-                                   undefined, "vinc:conventions");
-      btn.textContent = res.executed ? C.saved : C.saveFailed;
+      btn.textContent = (await put()) ? C.saved : C.saveFailed;
     } catch { btn.textContent = C.saveFailed; }
     setTimeout(() => { btn.textContent = C.save; btn.disabled = false; }, 1600);
   }
@@ -112,8 +123,7 @@ export async function openConventions() {
     try {
       // 먼저 편집분을 저장한다 — 안 그러면 서버가 읽는 것은 옛 산문이고,
       // 방금 쓴 문장이 [다시 생성] 한 번에 사라진 것처럼 보인다.
-      await api.docPut(cfg.owner, compose(), "graph.md", "GRAPH.md",
-                       undefined, "vinc:conventions");
+      await put();
       const res = await api.conventionsBuild(cfg.owner);
       if (res?.executed && res.text) { text = res.text; await draw(); }
     } catch { /* 실패는 화면을 바꾸지 않는다 — 방금 쓴 것을 지우지 않는다 */ }
@@ -186,6 +196,7 @@ export async function openConventions() {
   try {
     const res = await api.conventions(cfg.owner);
     text = res?.text || "";
+    docId = res?.doc_id || "";
   } catch {
     sheet.body.innerHTML = `<p class="hint">${C.loadFailed}</p>`;
     return;

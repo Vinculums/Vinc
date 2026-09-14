@@ -978,7 +978,11 @@ class VincApp:
         lang = p.get("lang") or None
 
         def _run(r):
-            got = docstore.get_doc(r, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            # 관례 id 는 owner 마다 다르다 — 구 고정 id 를 이미 쥔 owner 만 그 자리를
+            # 유지한다(docstore.resolve_conventions_doc_id). 응답의 `doc_id` 는 앱의
+            # 저장 경로가 그대로 쓰는 값이라, 여기서 정한 것이 곧 쓰기 대상이다.
+            doc_id = docstore.resolve_conventions_doc_id(r, owner)
+            got = docstore.get_doc(r, doc_id, owner=owner)
             # 이 도구는 규율상 **세션 첫 쓰기 전에** 부르는 자리다(CLAUDE.md).
             # 그래서 정체를 여기 실으면 따로 묻지 않아도 필요한 순간에 도착한다 —
             # whoami 를 하나 더 만드는 대신 이미 첫 번째인 문에 붙인다.
@@ -993,14 +997,14 @@ class VincApp:
                 text = fresh["text"] if fresh.get("executed") else got["text"]
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),
-                        "doc_id": graphmd.CONVENTIONS_DOC_ID, "text": text,
+                        "doc_id": doc_id, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
             return {"kind": "conventions", "executed": True, "source": "default",
                     "owner": owner or "", "scope": _owner_scope(owner),
-                    "missing": True, "doc_id": graphmd.CONVENTIONS_DOC_ID,
+                    "missing": True, "doc_id": doc_id,
                     "text": built.get("text") or ""}
         return self._read(_run)
 
@@ -1047,7 +1051,8 @@ class VincApp:
         lang = body.get("lang") or None
 
         def _job():
-            got = docstore.get_doc(self.store, graphmd.CONVENTIONS_DOC_ID, owner=owner)
+            doc_id = docstore.resolve_conventions_doc_id(self.store, owner)
+            got = docstore.get_doc(self.store, doc_id, owner=owner)
             existing = got.get("text") if got.get("executed") else None
             built = graphmd.build(self.store, owner=owner, themes=self.themes,
                                   existing=existing, lang=lang,
@@ -1055,7 +1060,7 @@ class VincApp:
             if not built.get("executed"):
                 return built
             put = docstore.put_doc(self.store, owner=owner, text=built["text"],
-                                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
+                                   doc_id=doc_id, title="GRAPH.md",
                                    origin=graphmd.CONVENTIONS_ORIGIN)
             return {"kind": "conventions.build", "executed": True, "text": built["text"],
                     "replaced": bool(built.get("replaced")), "doc": put}
