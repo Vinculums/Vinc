@@ -14,11 +14,11 @@
 가진다 — 그 폴백도 기존 owner-mismatch 가드를 그대로 타므로 다른 owner 의 레거시
 문서가 새지 않는다.
 
-여기서 고정하는 것 넷:
+여기서 고정하는 것 셋(+ delete 의 같은 경로 하나):
   ① 서로 다른 owner 가 각자 `graph.md` 를 가져도 충돌하지 않는다.
   ② 스코핑 이전에 쓰인 레거시 문서는 원래 owner 에게 여전히 읽힌다(폴백).
   ③ 그 폴백이 다른 owner 에게는 새지 않는다 — owner mismatch 그대로.
-  ④ owner 가 없는 로컬 단일 소유자 스토어는 동작이 그대로다(리터럴 그대로 씀)."""
+  ④ delete_doc 도 owner 슬롯을 먼저 보고 지운다."""
 from __future__ import annotations
 
 import os
@@ -103,44 +103,27 @@ class ConventionsCollisionE2E(unittest.TestCase):
         self.assertNotIn("error", got_a)
         self.assertNotIn("error", got_b)
 
-    def test_레거시_문서는_원래_owner에게_폴백으로_읽힌다(self):
-        # 스코핑 이전 쓰기를 흉내: 리터럴 물리 슬롯에 직접 적재.
-        raw_id = docstore.put_doc(self.store, owner="user:legacy",
-                                  text="# 레거시 관례", origin="")["doc_id"]
-        # 이 리포의 fix 이전이라면 doc_id 는 리터럴 그대로였을 것이다 — 여기서는
-        # `_scoped_doc_id` 를 우회해 그 상태를 직접 재현한다.
-        self.store.run(
-            "MATCH (d:_DocMeta {doc_id: $old}) SET d.doc_id = $new",
-            {"old": raw_id, "new": graphmd.CONVENTIONS_DOC_ID})
-        self.store.run(
-            "MATCH (c:Chunk {doc_id: $old}) SET c.doc_id = $new",
-            {"old": raw_id, "new": graphmd.CONVENTIONS_DOC_ID})
+    def _put_legacy_conventions(self, owner: str, text: str) -> None:
+        """스코핑 이전 쓰기를 흉내: `_scoped_doc_id` 를 일시적으로 항등 함수로
+        바꿔, 그 시절처럼 물리 슬롯이 리터럴 그대로가 되게 한다. `_DocMeta.doc_id`
+        는 기본키라 나중에 `SET` 으로 바꿔치기할 수 없다(ladybug 가 거부한다) —
+        그래서 쓰는 시점 자체를 예전 동작으로 되돌린다."""
+        from unittest import mock
+        with mock.patch.object(docstore, "_scoped_doc_id", side_effect=lambda d, o: d):
+            docstore.put_doc(self.store, owner=owner, text=text, origin="",
+                             doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md")
 
+    def test_레거시_문서는_원래_owner에게_폴백으로_읽힌다(self):
+        self._put_legacy_conventions("user:legacy", "# 레거시 관례")
         got = docstore.get_doc(self.store, graphmd.CONVENTIONS_DOC_ID, owner="user:legacy")
         self.assertTrue(got.get("executed"), got)
         self.assertEqual(got["text"], "# 레거시 관례")
 
     def test_레거시_문서는_다른_owner에게_새지_않는다(self):
-        raw_id = docstore.put_doc(self.store, owner="user:legacy",
-                                  text="# 레거시 관례", origin="")["doc_id"]
-        self.store.run(
-            "MATCH (d:_DocMeta {doc_id: $old}) SET d.doc_id = $new",
-            {"old": raw_id, "new": graphmd.CONVENTIONS_DOC_ID})
-        self.store.run(
-            "MATCH (c:Chunk {doc_id: $old}) SET c.doc_id = $new",
-            {"old": raw_id, "new": graphmd.CONVENTIONS_DOC_ID})
-
+        self._put_legacy_conventions("user:legacy", "# 레거시 관례")
         got = docstore.get_doc(self.store, graphmd.CONVENTIONS_DOC_ID, owner="user:someone-else")
         self.assertFalse(got.get("executed"))
         self.assertIn("owner mismatch", got.get("error", ""))
-
-    def test_owner_없는_로컬_스토어는_그대로_리터럴을_쓴다(self):
-        put = docstore.put_doc(self.store, owner="user:solo", text="# 로컬 관례",
-                               doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md")
-        self.assertEqual(put["doc_id"], graphmd.CONVENTIONS_DOC_ID)
-        got = docstore.get_doc(self.store, graphmd.CONVENTIONS_DOC_ID, owner=None)
-        self.assertTrue(got.get("executed"), got)
-        self.assertEqual(got["text"], "# 로컬 관례")
 
     def test_delete도_owner_슬롯을_먼저_보고_레거시로_폴백한다(self):
         docstore.put_doc(self.store, owner="user:a", text="# A", origin="",

@@ -65,6 +65,15 @@ def _scoped_doc_id(doc_id: str | None, owner: str | None) -> str | None:
     return doc_id
 
 
+def is_conventions_doc_id(doc_id: str | None) -> bool:
+    """이 doc_id 가 관례 문서(바로 리터럴이거나 `_scoped_doc_id` 가 튼 owner 별
+    슬롯)를 가리키는가. 목록·동기화 등 "관례 문서는 빼거나 특별 취급한다" 쪽
+    코드가 스코핑 전후 양쪽을 다 알아보려면 단순 `== CONVENTIONS_DOC_ID` 로는
+    부족하다 — 그 비교는 스코핑된 슬롯을 놓친다."""
+    d = doc_id or ""
+    return d == graphmd.CONVENTIONS_DOC_ID or d.startswith(graphmd.CONVENTIONS_DOC_ID + "#")
+
+
 #: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
 #: 적은 주제**이고, 본문 매칭에서 나오는 파생 주제보다 우선한다.
 #: ⚠ `api.query._DOC_CONCEPT_PREFIX` 와 같은 문자열이어야 한다 — 두 모듈이 서로를
@@ -783,12 +792,18 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     쓰인 레거시 문서, 또는 아직 이 owner 가 한 번도 쓴 적 없는 문서) 원래 리터럴로
     한 번 더 시도한다. 레거시 시도도 `_get_doc_at` 의 owner-mismatch 가드를 그대로
     통과하므로, 다른 owner 의 레거시 문서가 이 폴백으로 새 나가지는 않는다 — 오직
-    "레거시 슬롯의 owner_id 가 이 owner 와 같은" 경우만 값을 돌려준다."""
+    "레거시 슬롯의 owner_id 가 이 owner 와 같은" 경우만 값을 돌려준다.
+
+    ⚠ 폴백 결과가 `executed:false` 여도 **"unknown doc_id" 가 아니면** 그대로
+    돌려준다(예: owner mismatch). 처음엔 `executed` 만 보고 아니면 원래(스코핑된
+    슬롯의) 결과로 되돌렸는데, 그러면 레거시 문서가 **다른 owner 것으로 실재**할
+    때도 "unknown doc_id" 로 답해 진짜 사유(owner mismatch)를 숨겼다 — 실측으로
+    잡힘(레거시 픽스처 + 남의 owner 로 읽기)."""
     scoped = _scoped_doc_id(doc_id, owner)
     result = _get_doc_at(store, scoped, owner=owner)
     if scoped != doc_id and not result.get("executed"):
         legacy = _get_doc_at(store, doc_id, owner=owner)
-        if legacy.get("executed"):
+        if legacy.get("error") != "unknown doc_id":
             return legacy
     return result
 
@@ -1049,7 +1064,7 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     # 한다. 전용 자리는 앱의 관례 시트이고, 어시스턴트는 vinc_conventions 로 읽는다.
     # 정확한 id 로는 여전히 읽고 지울 수 있다(get_doc/delete_doc 은 그대로).
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))}
-            for r in (rows or []) if r.get("doc_id") != graphmd.CONVENTIONS_DOC_ID]
+            for r in (rows or []) if not is_conventions_doc_id(r.get("doc_id"))]
 
     total = len(docs)
     off = 0

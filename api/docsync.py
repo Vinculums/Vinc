@@ -22,7 +22,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from . import docstore as ds
-from . import graphmd
 from . import revstamp
 
 
@@ -48,7 +47,7 @@ def export_docs(store, *, owner: str, since: int = 0) -> dict:
         # 불변식이다([[vinc.canon.graph-conventions]] §6.3). 이 문서의 생성 구역은 그 스토어의 도메인·재가
         # 어휘를 서술하므로, 기기와 계정 사이를 오가면 도착하는 쪽에서 즉시 거짓이 된다.
         # 커서는 그대로 전진시킨다(건너뛴 seq 를 다음 pull 이 다시 집어오지 않게).
-        if r["doc_id"] == graphmd.CONVENTIONS_DOC_ID:
+        if ds.is_conventions_doc_id(r["doc_id"]):
             cursor = max(cursor, int(r.get("sync_seq") or 0))
             continue
         got = ds.get_doc(store, r["doc_id"])
@@ -96,7 +95,7 @@ def import_docs(store, *, owner: str, payload: dict,
         doc_id = d.get("doc_id")
         if not doc_id:
             continue
-        if doc_id == graphmd.CONVENTIONS_DOC_ID:
+        if ds.is_conventions_doc_id(doc_id):
             # 대칭 가드 — 구 버전 송신자가 관례 문서를 실어 보내도 받지 않는다.
             # 내보내는 쪽만 막으면 한쪽만 갱신된 짝에서 여전히 덮어써진다.
             skipped += 1
@@ -133,7 +132,7 @@ def import_docs(store, *, owner: str, payload: dict,
             pass
     for t in payload.get("tombstones", []) or []:
         doc_id = t.get("doc_id")
-        if not doc_id or doc_id == graphmd.CONVENTIONS_DOC_ID:
+        if not doc_id or ds.is_conventions_doc_id(doc_id):
             continue          # 남의 관례 삭제가 내 관례를 지우지 않는다(같은 이유)
         cur = _local(store, doc_id)
         if cur is not None and _newer(cur.get("updated_at") or "", t.get("deleted_at") or ""):
