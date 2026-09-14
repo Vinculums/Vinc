@@ -53,6 +53,18 @@ from . import graphmd
 # (토큰 기준)이 담당하고, 여기는 **정본 보관 단위**라 다소 커도 무방하다.
 DEFAULT_MAX_CHARS = 2000
 
+def _scoped_doc_id(doc_id: str | None, owner: str | None) -> str | None:
+    """`graph.md`(`graphmd.CONVENTIONS_DOC_ID`) 리터럴은 테넌트 전체에 걸친 단
+    하나의 물리 행이었다 — 먼저 쓴 owner 가 그 자리를 영구 점유하고 나머지는
+    owner mismatch 를 받았다(P1, 2026-08-05 감사 §3.4, 6주 뒤에도 안 고쳐진 채 재현:
+    [[record:conventions-doc-id-collision-still-live-2026-09-14]]). owner 가 있으면
+    그 owner 전용 물리 슬롯으로 튼다. owner 가 없으면(로컬 단일 소유자 스토어) 리터럴
+    그대로 둔다 — 거기에는 애당초 충돌할 두 번째 소유자가 없다."""
+    if doc_id == graphmd.CONVENTIONS_DOC_ID and owner:
+        return f"{doc_id}#{owner}"
+    return doc_id
+
+
 #: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
 #: 적은 주제**이고, 본문 매칭에서 나오는 파생 주제보다 우선한다.
 #: ⚠ `api.query._DOC_CONCEPT_PREFIX` 와 같은 문자열이어야 한다 — 두 모듈이 서로를
@@ -480,6 +492,10 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
 
+    # 관례 문서(`graph.md`)는 owner 별 물리 슬롯으로 튼다 — 그 이유와 위험은
+    # _scoped_doc_id 자체의 문서화 참조.
+    doc_id = _scoped_doc_id(doc_id, owner)
+
     content_hash = _sha(text)
     doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin)
     base["doc_id"] = doc_id
@@ -671,7 +687,7 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
         return 0
 
 
-def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
+def _get_doc_at(store, doc_id: str, *, owner: str | None = None) -> dict:
     """doc_id 의 원문을 청크 오프셋 연결로 복원 + 무손실 검증.
 
     verified = (연속성: b0=0 · char_start_i == char_end_{i-1}) AND
@@ -761,6 +777,22 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     return base
 
 
+def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
+    """공개 진입점. 관례 문서(`graph.md`)는 owner 별 물리 슬롯으로 옮겨졌을 수
+    있다(put_doc 의 _scoped_doc_id) — 먼저 그 슬롯을 찾고, 없으면(스코핑 이전에
+    쓰인 레거시 문서, 또는 아직 이 owner 가 한 번도 쓴 적 없는 문서) 원래 리터럴로
+    한 번 더 시도한다. 레거시 시도도 `_get_doc_at` 의 owner-mismatch 가드를 그대로
+    통과하므로, 다른 owner 의 레거시 문서가 이 폴백으로 새 나가지는 않는다 — 오직
+    "레거시 슬롯의 owner_id 가 이 owner 와 같은" 경우만 값을 돌려준다."""
+    scoped = _scoped_doc_id(doc_id, owner)
+    result = _get_doc_at(store, scoped, owner=owner)
+    if scoped != doc_id and not result.get("executed"):
+        legacy = _get_doc_at(store, doc_id, owner=owner)
+        if legacy.get("executed"):
+            return legacy
+    return result
+
+
 def near_docs(store, needle: str, *, owner: str | None = None,
               limit: int = 3) -> list[str]:
     """놓친 doc_id 에 가까운 문서 후보(F7). id 와 제목 양쪽을 본다 — 사용자는 둘 중
@@ -798,9 +830,18 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     다른 기기에도 전파된다) 그것은 P11c(공유 시트 제외) 범위 밖의 제품 판정이다.
     당장의 피해는 팩 쪽에서 막혀 있다: `share._docs_for_concepts` 가 부재 doc_id 를
     걸러 빈 문서를 안 싣는다(`tests/test_share.py`
-    `test_a_mirror_whose_document_is_gone_ships_no_document` 가 그 상태를 고정한다)."""
+    `test_a_mirror_whose_document_is_gone_ships_no_document` 가 그 상태를 고정한다).
+
+    관례 문서는 get_doc 과 같은 이유로 owner 별 슬롯을 먼저 보고, 없으면 스코핑
+    이전의 레거시 리터럴로 폴백한다(_scoped_doc_id)."""
+    requested_doc_id = doc_id
+    doc_id = _scoped_doc_id(doc_id, owner)
     base: dict[str, Any] = {"kind": "doc.delete", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
+    if meta is None and doc_id != requested_doc_id:
+        doc_id = requested_doc_id
+        base["doc_id"] = doc_id
+        meta = _meta(store, doc_id)
     if meta is not None and owner is not None and meta.get("owner_id") != owner:
         base["error"] = "owner mismatch — 남의 문서는 지울 수 없다(SEC-1)"
         return base

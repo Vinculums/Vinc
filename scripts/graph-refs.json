@@ -328,6 +328,7 @@
     "record:code-citations-rot-silently-without-a-gate",
     "record:concurrent-replica-overlap-clobbers-the-final-snapshot-2026-09-04",
     "record:content-time-writable-through-ingest",
+    "record:conventions-doc-id-collision-still-live-2026-09-14",
     "record:core-pkns-if-skips-app-and-agents-changes-2026-09-05",
     "record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09",
     "record:decision-columns-measured-from-live-rows",
