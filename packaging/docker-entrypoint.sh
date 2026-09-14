@@ -131,7 +131,13 @@ start_sidecar() {
 
 # 한 번만 묻는다. 워치독이 매 주기 이걸 쓰므로 대기 루프와 갈라 둔다.
 sidecar_healthy() {
-  curl -sf http://127.0.0.1:8787/health 2>/dev/null \
+  # ⚠ --max-time 없이는 이 호출이 무한 대기할 수 있다: /health 가 DDL 락(예: FTS
+  # 재구축, api/docstore.py _with_fts_repair) 뒤에서 응답을 못 하면 curl 이
+  # 영원히 블로킹되고, 워치독은 자기 폴링 주기(SIDECAR_POLL_S)와 무관하게 이
+  # 한 줄 안에 갇힌다 — 그러면 아래 SIDECAR_HUNG_S 판정 자체가 못 돈다. 타임박스를
+  # 둬야 "느림"과 "멈춤"을 구분할 수 있다.
+  # 근거: [[record:editing-the-conventions-document-restarts-the-hub-2026-09-09]]
+  curl -sf --max-time "${VINC_HEALTH_CURL_MAX_S:-10}" http://127.0.0.1:8787/health 2>/dev/null \
     | grep -q '"status":[[:space:]]*"ok"'
 }
 
