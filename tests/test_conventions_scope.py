@@ -169,7 +169,8 @@ class ConventionsResponseE2E(unittest.TestCase):
         from api import docstore, graphmd
         body = "\n".join(["# GRAPH.md", "", "## Node kinds",
                           "- Concept: one idea.", ""])
-        docstore.put_doc(self.store, text=body, doc_id=graphmd.CONVENTIONS_DOC_ID,
+        docstore.put_doc(self.store, text=body,
+                         doc_id=graphmd.conventions_doc_id("user:a"),
                          owner="user:a", title="GRAPH.md")
         source, scope, owner = self._scope("user:a")
         self.assertEqual((source, scope, owner), ("doc", "personal", "user:a"))

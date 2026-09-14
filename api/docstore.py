@@ -93,6 +93,24 @@ def make_doc_id(owner: str, content_hash: str, title: str = "", origin: str = ""
     return "d" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
+def resolve_conventions_doc_id(store, owner: str | None) -> str:
+    """이 owner 의 관례 문서가 **실제로 앉아 있는** doc_id — 읽기와 쓰기가 같이 쓴다.
+
+    구 고정 id(`graph.md`)는 전 시스템에 행이 하나뿐이라 먼저 쓴 owner 가 점유한다.
+    그 행을 owner 파생 id 로 **옮기지 않는다**: 옮김은 마이그레이션이고, 여기서 얻을
+    것이 id 의 생김새뿐인데 잃을 것은 되돌릴 수 없는 쓰기다. 대신 점유자는 제자리를
+    계속 쓰고, 그 밖의 전원은 owner 파생 id 를 쓴다 — 그것만으로 충돌이 닫힌다.
+    근거: [[vinc.ops.risk-audit-2026-08-05 §3.4]]
+
+    ⚠ 이 판정을 건너뛰고 `graphmd.conventions_doc_id` 를 직접 쓰면, 점유자의 기존
+    관례가 안 보이고 둘째 사본이 생긴다."""
+    if owner:
+        legacy = _meta(store, graphmd.LEGACY_CONVENTIONS_DOC_ID)
+        if legacy is not None and legacy.get("owner_id") == owner:
+            return graphmd.LEGACY_CONVENTIONS_DOC_ID
+    return graphmd.conventions_doc_id(owner)
+
+
 def chunk_id_of(doc_id: str, index: int) -> str:
     """위치 안정 chunk_id(F4) — 내용이 아니라 (doc, 순번) 에 종속. 편집 시 같은
     자리의 청크가 같은 id 로 MERGE 되고, 줄어든 꼬리만 삭제된다."""
@@ -1008,7 +1026,7 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     # 한다. 전용 자리는 앱의 관례 시트이고, 어시스턴트는 vinc_conventions 로 읽는다.
     # 정확한 id 로는 여전히 읽고 지울 수 있다(get_doc/delete_doc 은 그대로).
     docs = [{**r, "needs_embed": bool(int(r.get("needs_embed") or 0))}
-            for r in (rows or []) if r.get("doc_id") != graphmd.CONVENTIONS_DOC_ID]
+            for r in (rows or []) if not graphmd.is_conventions_doc_id(r.get("doc_id") or "")]
 
     total = len(docs)
     off = 0

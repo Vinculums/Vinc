@@ -282,23 +282,38 @@ class StoreTests(_StoreCase):
         rebuilt = graphmd.build(self.A, owner="user:a", existing=text, day=DAY)["text"]
         self.assertEqual(graphmd.check(rebuilt, store=self.A, owner="user:a")["exit_code"], 0)
 
-    def _put_conventions(self, text="# GRAPH.md\nOptimistic concurrency is an example.\n"):
-        return ds.put_doc(self.A, owner="user:a", text=text,
-                          doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
-                          origin=graphmd.CONVENTIONS_ORIGIN)
+    def _put_conventions(self, text="# GRAPH.md\nOptimistic concurrency is an example.\n",
+                         owner="user:a", doc_id=None):
+        return ds.put_doc(self.A, owner=owner, text=text,
+                          doc_id=doc_id or graphmd.conventions_doc_id(owner),
+                          title="GRAPH.md", origin=graphmd.CONVENTIONS_ORIGIN)
 
     def test_hidden_from_the_document_list(self):
         self._put_conventions()
         ds.put_doc(self.A, owner="user:a", text="# Real\nOptimistic concurrency in practice.\n",
                    title="Real")
         ids = [d["doc_id"] for d in ds.list_docs(self.A, owner="user:a")["docs"]]
-        self.assertNotIn(graphmd.CONVENTIONS_DOC_ID, ids)
+        self.assertNotIn(graphmd.conventions_doc_id("user:a"), ids)
         self.assertEqual(len(ids), 1)
+
+    def test_the_legacy_fixed_id_is_hidden_too(self):
+        """구 고정 id 를 쥔 owner 가 아직 있다 — 판정이 신 id 만 보면 그 사람의
+        관례가 자기 자료 목록 사이로 올라온다."""
+        self._put_conventions(doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID)
+        ids = [d["doc_id"] for d in ds.list_docs(self.A, owner="user:a")["docs"]]
+        self.assertEqual(ids, [])
+
+    def test_a_document_merely_named_like_it_is_not_hidden(self):
+        """접두가 같다고 삼키면 사용자가 자기 문서를 목록에서 잃는다."""
+        ds.put_doc(self.A, owner="user:a", text="# notes\n본문\n",
+                   doc_id="graph.md~notes", title="notes")
+        ids = [d["doc_id"] for d in ds.list_docs(self.A, owner="user:a")["docs"]]
+        self.assertEqual(ids, ["graph.md~notes"])
 
     def test_still_reachable_by_exact_id(self):
         """목록에서 감추는 것과 없는 것은 다르다 — 정확한 id 로는 여전히 읽힌다."""
         self._put_conventions()
-        got = ds.get_doc(self.A, graphmd.CONVENTIONS_DOC_ID, owner="user:a")
+        got = ds.get_doc(self.A, graphmd.conventions_doc_id("user:a"), owner="user:a")
         self.assertTrue(got.get("executed"))
         self.assertIn("GRAPH.md", got.get("text") or "")
 
@@ -308,31 +323,35 @@ class StoreTests(_StoreCase):
         self._put_conventions()
         tree = q.nav_tree(owner="user:a", store=self.A)
         blob = repr(tree)
-        self.assertNotIn(graphmd.CONVENTIONS_DOC_ID, blob)
+        self.assertNotIn(graphmd.conventions_doc_id("user:a"), blob)
 
     def test_conventions_doc_never_syncs(self):
+        conv = graphmd.conventions_doc_id("user:a")
         ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\nrules\n",
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="Conventions",
+                   doc_id=conv, title="Conventions",
                    origin=graphmd.CONVENTIONS_ORIGIN)
         ds.put_doc(self.A, owner="user:a", text="# 보통 문서\n본문\n", title="보통")
 
         delta = docsync.export_docs(self.A, owner="user:a", since=0)
         ids = [d["doc_id"] for d in delta["docs"]]
-        self.assertNotIn(graphmd.CONVENTIONS_DOC_ID, ids)
+        self.assertNotIn(conv, ids)
         self.assertEqual(len(ids), 1)
         # 커서는 건너뛴 문서까지 포함해 전진한다 — 다음 pull 이 되돌아가지 않게.
         self.assertGreaterEqual(delta["cursor"], 2)
 
-        # 구 버전 송신자가 실어 보내도 받지 않는다(대칭 가드).
+        # 송신자가 실어 보내도 받지 않는다(대칭 가드). 구 고정 id 와 owner 파생 id
+        # 둘 다 — 한쪽만 막으면 나머지 한쪽이 상대의 관례를 덮어쓴다.
         B = self._open("B")
         try:
-            payload = {"docs": [{"doc_id": graphmd.CONVENTIONS_DOC_ID, "title": "theirs",
-                                 "text": "# theirs\n", "updated_at": "2099", "origin": ""}],
-                       "tombstones": []}
-            res = docsync.import_docs(B, owner="user:b", payload=payload)
+            docs = [{"doc_id": d, "title": "theirs", "text": "# theirs\n",
+                     "updated_at": "2099", "origin": ""}
+                    for d in (graphmd.LEGACY_CONVENTIONS_DOC_ID, conv)]
+            res = docsync.import_docs(B, owner="user:b", payload={"docs": docs,
+                                                                  "tombstones": []})
             self.assertEqual(res["applied"], 0)
-            self.assertEqual(res["skipped"], 1)
-            self.assertFalse(ds.get_doc(B, graphmd.CONVENTIONS_DOC_ID).get("executed"))
+            self.assertEqual(res["skipped"], 2)
+            for d in (graphmd.LEGACY_CONVENTIONS_DOC_ID, conv):
+                self.assertFalse(ds.get_doc(B, d).get("executed"), d)
         finally:
             B.close()
 
@@ -354,14 +373,20 @@ class SearchFilterTests(unittest.TestCase):
         return q._chunk_arms(Stub(), "x", None, top_k, None)[0]
 
     def test_conventions_chunks_are_dropped(self):
-        out = self._arms([{"id": "graph.md#00000", "text": "conventions"},
+        conv = graphmd.conventions_doc_id("user:a")
+        out = self._arms([{"id": "graph.md#00000", "text": "legacy conventions"},
+                          {"id": f"{conv}#00000", "text": "conventions"},
                           {"id": "doc-42#00000", "text": "real"}])
         self.assertEqual([r["id"] for r in out], ["doc-42#00000"])
 
     def test_a_document_merely_named_like_it_survives(self):
-        """접두는 `graph.md#` 다 — `graph.md-notes` 같은 남의 문서를 삼키지 않는다."""
-        out = self._arms([{"id": "graph.md-notes#00000", "text": "mine"}])
-        self.assertEqual([r["id"] for r in out], ["graph.md-notes#00000"])
+        """`graph.md-notes` 도 `graph.md~notes` 도 남의 문서다 — 꼬리가 owner 해시일
+        때만 관례다. 접두만 보면 사용자가 검색에서 자기 문서를 잃는다."""
+        rows = [{"id": "graph.md-notes#00000", "text": "mine"},
+                {"id": "graph.md~notes#00000", "text": "mine too"}]
+        out = self._arms(rows)
+        self.assertEqual([r["id"] for r in out],
+                         ["graph.md-notes#00000", "graph.md~notes#00000"])
 
     def test_filtering_happens_before_the_top_k_cut(self):
         """융합·절단 뒤에 걸렀다면 관례가 상위 k 를 잠식해 실 결과가 줄어든다."""
@@ -436,13 +461,65 @@ class ConventionsRouteTests(_StoreCase):
 
     def test_the_owners_own_document_wins(self):
         ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n내 관례\n",
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md",
+                   doc_id=graphmd.conventions_doc_id("user:a"), title="GRAPH.md",
                    origin=graphmd.CONVENTIONS_ORIGIN)
         code, out = self._app().read_conventions({"owner": "user:a"})
         self.assertEqual(code, 200, out)
         self.assertEqual(out["source"], "doc")
         self.assertNotIn("missing", out)
         self.assertIn("내 관례", out["text"])
+
+    def test_the_response_names_the_id_the_app_must_write_to(self):
+        """앱의 [저장]은 이 값으로 쓴다. 응답이 실제 자리와 다르면 저장은 성공하고
+        다음 읽기는 옛 본문을 준다."""
+        app = self._app()
+        code, out = app.read_conventions({"owner": "user:a"})
+        self.assertEqual(code, 200, out)
+        self.assertEqual(out["doc_id"], graphmd.conventions_doc_id("user:a"))
+        ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n내 관례\n",
+                   doc_id=out["doc_id"], title="GRAPH.md")
+        self.assertIn("내 관례", app.read_conventions({"owner": "user:a"})[1]["text"])
+
+    def test_a_second_owner_can_write_its_own_conventions(self):
+        """2026-08-05 감사 §3.4 가 P1 로 지목하고 2026-09-14 에 재현된 결함 본체다.
+        고정 리터럴 시절에는 먼저 쓴 owner 가 그 한 행을 점유해, 둘째 테넌트는
+        읽기·쓰기 양쪽에서 owner mismatch 를 받고 기본 템플릿으로 강등됐다."""
+        app = self._app()
+        first = app.write_conventions_build({"owner": "user:a"})[1]
+        self.assertTrue(first["executed"], first)
+        second = app.write_conventions_build({"owner": "team:t1"})
+        self.assertEqual(second[0], 200, second[1])
+        self.assertTrue(second[1]["doc"]["executed"], second[1]["doc"])
+        self.assertNotEqual(graphmd.conventions_doc_id("user:a"),
+                            graphmd.conventions_doc_id("team:t1"))
+        for owner in ("user:a", "team:t1"):
+            got = app.read_conventions({"owner": owner})[1]
+            self.assertEqual(got["source"], "doc", owner)
+
+    def test_the_owner_holding_the_legacy_id_keeps_that_seat(self):
+        """구 고정 id 에 이미 관례를 써 둔 owner 가 있다. 그 행을 옮기지 않는 것이
+        이 변경의 전제다 — 읽기도 쓰기도 그 자리로 가야 관례가 두 벌이 되지 않는다."""
+        ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n구 자리\n",
+                   doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID, title="GRAPH.md",
+                   origin=graphmd.CONVENTIONS_ORIGIN)
+        app = self._app()
+        got = app.read_conventions({"owner": "user:a"})[1]
+        self.assertEqual(got["doc_id"], graphmd.LEGACY_CONVENTIONS_DOC_ID)
+        self.assertIn("구 자리", got["text"])
+        app.write_conventions_build({"owner": "user:a"})
+        self.assertFalse(
+            ds.get_doc(self.A, graphmd.conventions_doc_id("user:a")).get("executed"),
+            "구 자리를 쥔 owner 에게 둘째 사본이 생겼다")
+
+    def test_the_legacy_seat_does_not_block_anybody_else(self):
+        """점유자가 있어도 다른 owner 는 자기 관례를 쓴다 — 그것이 이 결함의 닫힘이다."""
+        ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n먼저 쓴 사람\n",
+                   doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID, title="GRAPH.md")
+        app = self._app()
+        code, res = app.write_conventions_build({"owner": "user:b"})
+        self.assertEqual(code, 200, res)
+        self.assertTrue(res["doc"]["executed"], res["doc"])
+        self.assertNotIn("먼저 쓴 사람", app.read_conventions({"owner": "user:b"})[1]["text"])
 
     def test_language_choice_applies_to_the_default(self):
         code, out = self._app().read_conventions({"owner": "user:a", "lang": "ko"})
@@ -481,13 +558,13 @@ class ConventionsRouteTests(_StoreCase):
         mine = first["text"].replace("- Do not invent a domain name inline.",
                                      "- Do not invent a domain name inline.\n- My rule.")
         ds.put_doc(self.A, owner="user:a", text=mine,
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md")
+                   doc_id=graphmd.conventions_doc_id("user:a"), title="GRAPH.md")
         self._seed_domains()                       # 그 사이 그래프가 자란다
         code, second = app.write_conventions_build({"owner": "user:a"})
         self.assertEqual(code, 200, second)
         self.assertIn("- My rule.", second["text"])        # 산문 보존
         self.assertIn("research", second["text"])          # 생성 구역은 갱신
-        stored = ds.get_doc(self.A, graphmd.CONVENTIONS_DOC_ID, owner="user:a")
+        stored = ds.get_doc(self.A, graphmd.conventions_doc_id("user:a"), owner="user:a")
         self.assertEqual(stored.get("text"), second["text"])   # 저장까지 끝난다
 
     def test_build_route_needs_an_owner(self):
@@ -497,7 +574,7 @@ class ConventionsRouteTests(_StoreCase):
 
     def test_another_owner_does_not_see_it(self):
         ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n내 관례\n",
-                   doc_id=graphmd.CONVENTIONS_DOC_ID, title="GRAPH.md")
+                   doc_id=graphmd.conventions_doc_id("user:a"), title="GRAPH.md")
         code, out = self._app().read_conventions({"owner": "user:b"})
         self.assertEqual(code, 200, out)
         self.assertEqual(out["source"], "default")   # SEC-1 — 남의 관례는 안 보인다
