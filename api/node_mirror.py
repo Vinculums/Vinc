@@ -95,7 +95,7 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
             query = (
                 f"MATCH (c:{label}) {where}"
                 f"OPTIONAL MATCH (c)-[:{rel}]->(x:Concept) "
-                "WITH c, collect(x.one_liner)[0] AS extra "
+                "WITH c, collect(x.one_liner)[1] AS extra "
                 f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, extra"
             )
         else:
