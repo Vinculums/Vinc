@@ -650,6 +650,56 @@
       }
     },
     {
+      "id": "concept:agent-qa",
+      "name": "agent-qa",
+      "label": "Agent role: QA",
+      "domain": "vinc/agent/roles",
+      "tags": [
+        "agent",
+        "qa",
+        "role",
+        "verify"
+      ],
+      "props": {
+        "disallowed_tools": [
+          "Edit",
+          "Write",
+          "NotebookEdit"
+        ],
+        "gates": [],
+        "mission": "Own the end-to-end QA loop: turn policy documents into test cases stored as searchable chunks with embeddings, execute batches with Playwright under strict locator and evidence rules, run automatic diagnosis on Fail/Error/Not_Reproducible, and record every run as a reproducible Model Episode. Keep test cases, failure patterns, and policy links queryable so other agents can retrieve them.",
+        "never": [
+          "edit product or test code",
+          "merge or deploy",
+          "assign a bucket_id without at least one concrete evidence item (console, DOM, HTTP, or toast)",
+          "replace or duplicate the work of agent-gate-runner, agent-reviewer-checklist, or agent-reviewer-judgement",
+          "run tests from memory instead of retrieving the authoritative test-case chunks"
+        ],
+        "paths": [
+          "scripts/qa"
+        ],
+        "person_only": [],
+        "reads": [
+          "d79e32d8ed347c749",
+          "d77f47c7465264b6f",
+          "vinc.spec.viewpoints",
+          "vinc.spec.surface-tree",
+          "vinc.reference.view-controls"
+        ],
+        "repos": [
+          "Vinc"
+        ],
+        "rung": "strong",
+        "tier": "verify",
+        "writes_graph": [
+          "document",
+          "concept",
+          "record",
+          "episode"
+        ]
+      }
+    },
+    {
       "id": "concept:agent-release",
       "name": "agent-release",
       "label": "Agent role: release",
