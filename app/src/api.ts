@@ -41,18 +41,13 @@ export const cfg = {
   set token(v: string) { localStorage.setItem(TOKEN_KEY, v); },
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
   set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
-  // D42 — 표면 언어. 무설정 = OS 로케일 추종(ko-* → 한국어), 그 외 영어.
-  // 2026-08-23 재활성화. 잠근 이유(2026-08-15)는 카피 재작성 대기였고 v0.8.4 에서
-  // 끝났다 — 영어는 W8, 한국어 덱은 W9(#60, 화면 단위 7커밋). 사이트 쪽 네 자리는
-  // Vinc-homepage 가 함께 풀었다.
-  // ⚠ 이 자물쇠의 진짜 게이트는 카피 완성이 아니라 **사람이 도는 빌드에서 한국어
-  // 화면을 전부 읽고 승인하는 것**이다([[decision:korean-deck-reopens-only-after-authored-pass]] ·
-  // [[vinc.spec.ui-copy-ko]] §8 — "덱은 화면과 다르게 읽힌다"). 그 승인 없이 이 줄을
-  // 되돌리지 말 것.
+  // D42 — 표면 언어. 무설정 = **영어**. OS 로케일은 보지 않는다: 한국어는 설정에서
+  // 사람이 고른 뒤에만 나온다([[decision:english-is-the-default-surface-language]]).
+  // 덱 둘은 그대로 한 빌드에 실린다(D42). 고른 값은 LANG_KEY 에 남아 그대로 따라온다.
   get lang(): "en" | "ko" {
     const v = localStorage.getItem(LANG_KEY);
     if (v === "ko" || v === "en") return v;
-    return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+    return "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
   /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다
