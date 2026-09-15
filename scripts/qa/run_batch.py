@@ -85,6 +85,29 @@ def _fail(tc_id: str, flow: str, detail: str, bucket: str = "policy_mismatch", *
     return TCResult(tc_id, flow, "Fail", detail=detail, bucket_id=bucket, evidence=evidence)
 
 
+def _open_lens_opts(page) -> None:
+    """Open view lens panel (defaults to Options tab — do not re-click opts; redraw breaks handlers)."""
+    page.locator("#tb-viewpoints button[data-view='3d']").click()
+    page.wait_for_timeout(800)
+    page.wait_for_selector("#view-lens", timeout=15_000)
+    panel = page.locator("#view-lens-panel")
+    if panel.evaluate("el => el.hidden"):
+        page.locator("#view-lens").click()
+        page.wait_for_timeout(600)
+    page.wait_for_selector('[data-pref="timeBasis"]', timeout=10_000)
+
+
+def _click_pref(page, pref: str, val: str) -> None:
+    """Click a panel pref tile (Playwright click can miss SVG children)."""
+    page.evaluate(
+        """([pref, val]) => {
+            const el = document.querySelector(`[data-pref="${pref}"][data-val="${val}"]`);
+            el?.click();
+        }""",
+        [pref, val],
+    )
+
+
 # ── Test implementations ─────────────────────────────────────────────────────
 
 def tc_f_shell_01(page) -> TCResult:
@@ -224,6 +247,136 @@ def tc_f_share_01(page) -> TCResult:
     return _pass("F-SHARE-01", flow, "share scope picker reachable", options=scope.count())
 
 
+def tc_f_time_01(page) -> TCResult:
+    """Time basis tiles: active UI must match stored pref after click."""
+    flow = "F-TIME"
+    _open_lens_opts(page)
+    if page.locator('[data-pref="timeBasis"][data-val="content"]').count() == 0:
+        return TCResult("F-TIME-01", flow, "Skip", "time basis tiles missing")
+    _click_pref(page, "timeBasis", "content")
+    page.wait_for_timeout(500)
+    state = page.evaluate("""() => {
+        const raw = localStorage.getItem('vinc.view.prefs');
+        const prefs = raw ? JSON.parse(raw) : {};
+        return {
+            stored: prefs.timeBasis || 'recorded',
+            recordedActive: document.querySelector('[data-pref="timeBasis"][data-val="recorded"]')
+                ?.classList.contains('active'),
+            contentActive: document.querySelector('[data-pref="timeBasis"][data-val="content"]')
+                ?.classList.contains('active'),
+        };
+    }""")
+    if state["stored"] != "content":
+        return _fail("F-TIME-01", flow, "timeBasis not saved as content", **state)
+    if not state["contentActive"] or state["recordedActive"]:
+        return _fail(
+            "F-TIME-01", flow,
+            "timeBasis tile highlight stale (stored=content but UI shows recorded)",
+            **state,
+        )
+    return _pass("F-TIME-01", flow, "timeBasis tile syncs with stored pref", **state)
+
+
+def tc_f_time_02(page) -> TCResult:
+    """When slider: drag must change value without replacing the input element."""
+    flow = "F-TIME"
+    _open_lens_opts(page)
+    slider = page.locator("#pref-when")
+    if slider.count() == 0:
+        return TCResult("F-TIME-02", flow, "Skip", "when slider missing")
+    before = slider.input_value()
+    label_before = page.locator("#pref-when-val").inner_text()
+    page.evaluate("""() => {
+        const s = document.querySelector('#pref-when');
+        if (!s) return;
+        s.value = '0';
+        s.dispatchEvent(new Event('input', { bubbles: true }));
+    }""")
+    page.wait_for_timeout(300)
+    after = slider.input_value()
+    label_after = page.locator("#pref-when-val").inner_text()
+    stored_when = page.evaluate(
+        "() => JSON.parse(localStorage.getItem('vinc.view.prefs')||'{}').when"
+    )
+    if after == before and label_after == label_before:
+        return TCResult(
+            "F-TIME-02", flow, "Skip",
+            "when slider has no visible range in fixture (stuck at All)",
+            evidence={"before": before, "label": label_before},
+        )
+    if stored_when != 0 and float(stored_when or 1) > 0.01:
+        return _fail("F-TIME-02", flow, "when pref not saved after input",
+                     stored=stored_when, after=after)
+    if label_after == label_before:
+        return _fail("F-TIME-02", flow, "when label stale after slider input",
+                     label_before=label_before, label_after=label_after)
+    return _pass("F-TIME-02", flow, f"when cursor {label_before} -> {label_after}",
+                 stored=stored_when)
+
+
+def tc_f_time_03(page) -> TCResult:
+    """Opts/legend tab round-trip must not break time basis controls."""
+    flow = "F-TIME"
+    _open_lens_opts(page)
+    page.locator('#view-lens-panel [data-tab="legend"]').click()
+    page.wait_for_timeout(300)
+    page.locator('#view-lens-panel [data-tab="opts"]').click()
+    page.wait_for_timeout(300)
+    _click_pref(page, "timeBasis", "content")
+    page.wait_for_timeout(400)
+    state = page.evaluate("""() => {
+        const raw = localStorage.getItem('vinc.view.prefs');
+        const prefs = raw ? JSON.parse(raw) : {};
+        return {
+            stored: prefs.timeBasis || 'recorded',
+            contentActive: document.querySelector('[data-pref="timeBasis"][data-val="content"]')
+                ?.classList.contains('active'),
+            whenPresent: !!document.querySelector('#pref-when'),
+        };
+    }""")
+    if not state["whenPresent"]:
+        return _fail("F-TIME-03", flow, "when slider missing after tab switch", **state)
+    if state["stored"] != "content":
+        return _fail("F-TIME-03", flow, "timeBasis not saved after tab round-trip",
+                     **state)
+    if not state["contentActive"] or state.get("recordedActive"):
+        return _fail(
+            "F-TIME-03", flow,
+            "timeBasis UI stale after opts/legend tab round-trip",
+            **state,
+        )
+    return _pass("F-TIME-03", flow, "time controls survive tab switch", **state)
+
+
+def tc_f_time_04(page) -> TCResult:
+    """Replay button toggles Play/Stop when graph has >=2 timestamps."""
+    flow = "F-TIME"
+    _open_lens_opts(page)
+    replay = page.locator("#pref-replay")
+    if replay.count() == 0:
+        return TCResult("F-TIME-04", flow, "Skip", "replay button missing on 3D")
+    before = replay.inner_text()
+    replay.click()
+    page.wait_for_timeout(500)
+    during = replay.inner_text()
+    if before == during:
+        return TCResult(
+            "F-TIME-04", flow, "Skip",
+            "replay did not start (fewer than 2 timestamps in fixture)",
+            evidence={"label": before},
+        )
+    replay.click()
+    page.wait_for_timeout(300)
+    after = replay.inner_text()
+    if during == before:
+        return _fail("F-TIME-04", flow, "replay never entered playing state",
+                     before=before, during=during)
+    if after != before:
+        return _fail("F-TIME-04", flow, "replay did not return to Play",
+                     before=before, during=during, after=after)
+    return _pass("F-TIME-04", flow, "replay toggles Play/Stop", before=before)
+
+
 BATCHES: dict[str, list[tuple[str, Callable]]] = {
     "W0": [("env", lambda p: _pass("ENV-01", "ENV", "manual"))],
     "W1": [
@@ -239,6 +392,12 @@ BATCHES: dict[str, list[tuple[str, Callable]]] = {
     "W3": [
         ("F-VIEW-01", tc_f_view_01),
         ("F-VIEW-02", tc_f_view_02),
+    ],
+    "W4": [
+        ("F-TIME-01", tc_f_time_01),
+        ("F-TIME-02", tc_f_time_02),
+        ("F-TIME-03", tc_f_time_03),
+        ("F-TIME-04", tc_f_time_04),
     ],
 }
 
