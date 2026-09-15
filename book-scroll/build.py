@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit one .dc.html artboard per chapter from ch/*.json + engine.js.
+"""Emit one .dc.html artboard per chapter from ch/*.json + motion.js.
 
 Never hand-edit out/*.dc.html. The engine is shared so the chapters cannot
 drift apart the way Ch1/Ch3/Ch7 did; regenerate instead.
@@ -33,7 +33,7 @@ def words(beat):
     return sum(len(re.findall(r"\S+", p)) for p in beat.get("paras", []))
 
 
-def section(b, i, last):
+def section(b, i, last, seconds=None):
     kind = b.get("kind", "beat")
     parts = []
     if kind == "open":
@@ -42,6 +42,10 @@ def section(b, i, last):
         minh, pad = "70vh", "64px 0 128px"
     else:
         minh, pad = "92vh", "64px 0"
+    # a scene's nominal seconds become scroll distance: one second is 120px. The
+    # scroll is the only clock (vinc.canon.book-motion-grammar section 2, ruling 1)
+    if seconds:
+        minh = f"max({minh}, {int(seconds * 120)}px)"
     sty = (f"min-height: {minh}; display: flex; flex-direction: column; "
            f"justify-content: center; max-width: 32rem; padding: {pad}; "
            f"transition: opacity .3s cubic-bezier(.22,1,.36,1);")
@@ -75,22 +79,41 @@ PROPS = ('{&#39;textSide&#39;:{&#39;editor&#39;:&#39;enum&#39;,&#39;options&#39;
          '&#39;min&#39;:0.3,&#39;max&#39;:0.7,&#39;step&#39;:0.05,&#39;tsType&#39;:&#39;number&#39;,&#39;section&#39;:&#39;Scroll&#39;}}')
 
 
+REF = re.compile(r"^(\d+:)?(claim|h|paras\.\d+)$")
+
+
+def check_scenes(motion, slot):
+    """A scene refers to the chapter's own words and never carries prose: every
+    string field except `lang` must be claim | h | paras.N, optionally prefixed
+    with a beat index (0:claim). Refused at build time so the rule holds by
+    construction (vinc.canon.book-motion-grammar section 2, ruling 5)."""
+    for k, sc in (motion.get("scenes") or {}).items():
+        for key, v in sc.items():
+            if isinstance(v, str) and key != "lang" and not REF.match(v):
+                sys.exit(f"motion/{slot}.json scenes[{k}].{key}: text must be a reference "
+                         f"(claim | h | paras.N, optionally beat:), got {v!r}")
+
+
 def build(ch, engine):
     # `no` is the part-local chapter number the index calls canonical;
     # `n` is the document slot, which the index warns is not a chapter number
     n, part = ch.get("no", ch["n"]), ch["part"]
     plabel = "Closing" if part == 5 else f"Part {part}"
-    secs = []
-    for i, b in enumerate(ch["beats"]):
-        secs.append(section(b, i, i == len(ch["beats"]) - 1))
-    body = "\n\n".join(secs)
-
-    # what the motion engine gets: the beats' text (heading, claim, the
-    # document's diagrams) and the chapter's authored motion, if any
-    beats = [{"h": b.get("h", ""), "claim": b.get("claim", ""), "diagrams": b.get("diagrams", [])} for b in ch["beats"]]
     slot = ch["n"] if isinstance(ch["n"], str) else f"{ch['n']:02d}"
     mpath = os.path.join(HERE, "motion", f"{slot}.json")
     motion = json.load(open(mpath, encoding="utf-8")) if os.path.exists(mpath) else {}
+    check_scenes(motion, slot)
+    scenes = motion.get("scenes") or {}
+    secs = []
+    for i, b in enumerate(ch["beats"]):
+        secs.append(section(b, i, i == len(ch["beats"]) - 1, scenes.get(str(i), {}).get("seconds")))
+    body = "\n\n".join(secs)
+
+    # what the motion engine gets: the beats' text (heading, claim, prose, the
+    # document's diagrams) and the chapter's authored motion, if any. The prose
+    # rides along so a scene can quote the chapter instead of carrying text
+    beats = [{"h": b.get("h", ""), "claim": b.get("claim", ""), "paras": b.get("paras", []),
+              "diagrams": b.get("diagrams", [])} for b in ch["beats"]]
     data = [
         f"const PART = {part}, CHAPTER = {json.dumps(ch['title'])};",
         f"const BEATS = {json.dumps(beats, ensure_ascii=False)};",
@@ -120,12 +143,9 @@ def build(ch, engine):
     a {{ color: {INK}; text-decoration: none; }}
     a:hover {{ color: {LINK}; }}
     [data-step] p {{ text-wrap: pretty; word-break: keep-all; }}
-    [data-layout="text"] {{ position: relative; z-index: 1; }}
     @media (max-width: 900px) {{
-      [data-layout="main"] {{ grid-template-columns: minmax(0, 1fr) !important; }}
-      [data-layout="canvas"] {{ order: 0 !important; height: 46vh !important; padding: 56px 24px 8px !important; background: {PAPER}; z-index: 1; }}
-      [data-layout="text"] {{ order: 1 !important; padding: 0 24px !important; }}
-      [data-layout="text"] [data-step] {{ min-height: 60vh !important; }}
+      [data-layout="canvas"] {{ height: 40vh !important; margin-bottom: 0 !important; background: {PAPER}; z-index: 2 !important; }}
+      [data-layout="text"] {{ margin-left: 0 !important; max-width: none !important; padding: 0 24px !important; }}
     }}
     @media (prefers-reduced-motion: reduce) {{ [data-step], [data-mark], [data-line], [data-fig], [data-wash], [data-spoke] {{ transition: none !important; }} }}
   </style>
@@ -135,14 +155,14 @@ def build(ch, engine):
     <span style="font-weight: 500;">Vinc Book</span>
     <span style="font-variant-numeric: tabular-nums;">{plabel}, Chapter {n}</span>
   </header>
-  <main data-side="{{{{ side }}}}" data-layout="main" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start;">
-    <div data-layout="text" style="padding: 0 48px 0 max(48px, 7vw); order: {{{{ textOrder }}}};">
+  <main data-side="{{{{ side }}}}" data-layout="main" style="position: relative;">
+    <div data-layout="canvas" style="position: sticky; top: 0; height: 100vh; margin-bottom: -100vh; z-index: 0; pointer-events: none; overflow: hidden;">
+      {{{{ canvas }}}}
+    </div>
+    <div data-layout="text" style="position: relative; z-index: 1; box-sizing: border-box; max-width: 568px; margin-left: max(24px, 21.7vw); padding: 0 24px; background: rgba(242,242,240,.84);">
 
 {body}
 
-    </div>
-    <div data-layout="canvas" style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 64px 48px; box-sizing: border-box; order: {{{{ canvasOrder }}}};">
-      {{{{ canvas }}}}
     </div>
   </main>
 </div>
@@ -165,7 +185,7 @@ SHIM = """<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/r
 // stands in for the canvas runtime (support.js) when a page is opened on its own
 class DCLogic { constructor(props) { this.props = props || {}; this.state = {}; } setState(s) { Object.assign(this.state, s); if (this._rerender) this._rerender(); } forceUpdate() { if (this._rerender) this._rerender(); } }
 window.addEventListener('DOMContentLoaded', () => {
-  const c = new Component({});
+  const c = new Component({}); window.book = c;   // a handle for shots.py
   const mount = document.querySelector('[data-layout="canvas"]'); mount.textContent = '';
   const root = ReactDOM.createRoot(mount);
   c._rerender = () => root.render(c.renderVals().canvas);
@@ -177,10 +197,7 @@ window.addEventListener('DOMContentLoaded', () => {
 def localize(html, side):
     """The same page with the runtime's placeholders filled and the shim in place."""
     html = html.replace('<script src="./support.js"></script>', SHIM)
-    return (html.replace("{{ side }}", side)
-                .replace("{{ textOrder }}", "0" if side == "left" else "1")
-                .replace("{{ canvasOrder }}", "1" if side == "left" else "0")
-                .replace("{{ canvas }}", ""))
+    return html.replace("{{ side }}", side).replace("{{ canvas }}", "")
 
 
 def main():

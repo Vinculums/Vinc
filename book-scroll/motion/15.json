@@ -1,0 +1,12 @@
+{
+  "_": "Chapter 15. Fragmentation: the chapter's own sentences break into chunks where their words stand, take seeded positions, become nodes and converge on one centre. Beat 2 enacts the document's diagram, so the diagram itself is hidden there (an empty diagram string). Beat 3 reuses the seed, so the second document's pieces land where the first one's nodes are. Text fields are references into ch15.json, never prose.",
+  "beats": {
+    "2": {"diagram": ""}
+  },
+  "scenes": {
+    "0": {"seconds": 6, "cam": {"to": {"s": 1.1}}},
+    "2": {"lang": "fragment", "seconds": 14, "text": "0:claim", "seed": 15},
+    "3": {"lang": "fragment", "seconds": 10, "text": "paras.0", "sentence": 0, "seed": 15, "keep": true},
+    "4": {"seconds": 8, "cam": {"to": {"x": 320, "y": 320, "s": 0.7}}}
+  }
+}

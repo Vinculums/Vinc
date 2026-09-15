@@ -7,9 +7,15 @@
      graph3d   a small constellation of nodes projected from three dimensions,
                the camera turned by scroll, edges explained one at a time
      figure    a drawn form that travels and morphs (a bone thrown, a ship)
+   and, over them, scenes: one visual language per beat (fragment, field, ...),
+   authored under `scenes` in motion/<slot>.json. Everything is drawn in a
+   640 x 640 authoring box on one full-viewport stage behind the prose, and one
+   camera (x, y, s) maps the box onto the stage for the SVG and the canvas
+   layer alike. The camera is keyed per beat and scrubbed like everything else.
    Beat `step` and progress `p` (0..1 inside the beat) come from the scroll
    spy below; nothing plays on a timer; scrolling back reverses everything.
-   Colours are the token palette; hierarchy is ink, never hue. */
+   Colours are the token palette; hierarchy is ink, never hue.
+   Grammar and rulings: vinc.canon.book-motion-grammar (graph). */
 
 const INK = '#17171A', EDGE = '#747790', FADE = '#D1D2D6', PAPER = '#F2F2F0';
 const FOCUS = '#7E86D3', META = '#82838D', TINT = '#E4E6F6';
@@ -25,6 +31,23 @@ const mixHex = (a, b, t) => {
   const ch = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const A = ch(a), B = ch(b);
   return '#' + A.map((v, i) => Math.round(lerp(v, B[i], clamp(t, 0, 1))).toString(16).padStart(2, '0')).join('');
+};
+const DPR = () => (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+/* one camera for both layers: the box point (x, y) sits at the stage anchor
+   (ax, ay: the centre of the free area beside the prose, or of the top band
+   under 900px) and s is pixels per box unit. A zoom therefore happens around
+   the anchor and only a keyed x moves the picture (travel). Kept to three
+   decimals so a zoom does not step. */
+const camTransform = cam => {
+  const s = Math.round(cam.s * 1000) / 1000, tx = cam.ax - cam.x * s, ty = cam.ay - cam.y * s;
+  return { s, tx, ty, svg: `translate(${fx(tx)} ${fx(ty)}) scale(${s})` };
+};
+/* a small seeded generator, so a field or a ring lays out the same on every render */
+const mulberry32 = seed => () => {
+  seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
 };
 
 /* ---------- text diagrams -------------------------------------------------
@@ -342,6 +365,110 @@ function strokePath(s, x, y, size, rot) {
   return s.map((p, i) => { const X = x + (p[0] * c - p[1] * sn) * size, Y = y + (p[0] * sn + p[1] * c) * size; return (i ? 'L' : 'M') + fx(X) + ',' + fx(Y); }).join(' ');
 }
 
+/* ---------- scenes ---------------------------------------------------------
+   One visual language per beat, authored under `scenes` in motion/<slot>.json.
+   Each is a pure function of the chapter's state through scrub(k, ...), so a
+   past scene reads as finished and reduced motion reads as the resting frame.
+   Text fields are references into the chapter's own words (textOf), never
+   prose; build.py refuses anything else. */
+const chunksOf = text => {                                    // clauses, then up to three words each
+  const out = [];
+  text.split(/(?<=[,:;.!?])\s+/).forEach(pc => {
+    const w = pc.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < w.length; i += 3) out.push(w.slice(i, i + 3).join(' '));
+  });
+  return out;
+};
+const SCENE = {
+  /* fragment: the sentence stands whole, breaks into chunks where its words
+     are, the chunks take seeded positions on a ring, become nodes and connect
+     to one centre. Three movements on the beat: 0-.25 the sentence, .3-.65
+     the break and the spread, .65-1 the convergence. */
+  fragment(ch, sc, k) {
+    const E = React.createElement;
+    const text = ch.textOf(k, sc.text, sc), rnd = mulberry32(sc.seed || 1);
+    if (!text) return null;
+    const FS2 = 15, CH2 = 7.6, LH2 = 24, cx = 320, cy = 320, R = 11, RC = NODE_R * 0.9;
+    const lines = wrap(text, 44);
+    const wmax = Math.max(...lines.map(l => l.length)) * CH2, x0 = cx - wmax / 2, y0 = cy - (lines.length - 1) * LH2 / 2;
+    const chunks = chunksOf(text), starts = [];
+    let li = 0, cursor = 0, lineWords = lines[0].split(' ');
+    chunks.forEach(c => {                                     // where each chunk starts inside the wrapped sentence
+      while (cursor >= lineWords.length && li < lines.length - 1) { cursor -= lineWords.length; li++; lineWords = lines[li].split(' '); }
+      const xoff = lineWords.slice(0, cursor).join(' ').length * CH2 + (cursor ? CH2 : 0);
+      starts.push({ x: x0 + xoff + c.length * CH2 / 2, y: y0 + li * LH2, w: c.length * CH2 + PAD, h: LH2 - 2 });
+      cursor += c.split(' ').length;
+    });
+    const ring = chunks.map(() => { const a = rnd() * Math.PI * 2, r = 170 + rnd() * 90; return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }; });
+    const tA = ch.scrub(k, 0, 0.25), tB = ch.scrub(k, 0.3, 0.65), tC = ch.scrub(k, 0.65, 1);
+    const els = [];
+    if (tB < 1) els.push(E('g', { key: 'sentence', style: { opacity: tA * (1 - tB) } },
+      lines.map((l, i) => E('text', { key: i, x: x0, y: y0 + i * LH2 + FS2 * 0.35, fontSize: FS2, fontFamily: FONT, fill: INK }, l))));
+    const n = chunks.length;
+    chunks.forEach((c, i) => {
+      const st = starts[i], ui = smooth(clamp((tB - (i / n) * 0.35) / 0.65, 0, 1));
+      const shrink = lerp(1, 0.82, tC);
+      const bx = lerp(st.x, cx + (ring[i].x - cx) * shrink, ui), by = lerp(st.y, cy + (ring[i].y - cy) * shrink, ui);
+      const w = lerp(st.w, 2 * R, tC), h = lerp(st.h, 2 * R, tC), rx = lerp(6, R, tC);
+      const op = clamp(tB * 3, 0, 1);
+      if (op <= 0) return;
+      const g = [E('rect', { key: 'r', x: bx - w / 2, y: by - h / 2, width: w, height: h, rx, fill: PAPER, stroke: mixHex(INK, EDGE, tC), strokeWidth: 1.25 })];
+      if (tC < 1) g.push(E('text', { key: 'in', x: bx, y: by + FS2 * 0.35, textAnchor: 'middle', fontSize: FS2 * lerp(1, 0.6, tC), fontFamily: FONT, fill: INK, opacity: 1 - tC }, c));
+      if (tC > 0) g.push(E('text', { key: 'under', x: bx, y: by + R + 13, textAnchor: 'middle', fontSize: 11, fontFamily: FONT, fill: META, opacity: tC }, c));
+      if (tC > 0) {
+        const dx = cx - bx, dy = cy - by, L = Math.hypot(dx, dy) || 1;
+        const p0 = [bx + dx / L * (R + 1), by + dy / L * (R + 1)], p1 = [cx - dx / L * (RC + 3), cy - dy / L * (RC + 3)];
+        const u = smooth(clamp((tC - 0.3 - (i / n) * 0.2) / 0.5, 0, 1));
+        g.push(E('path', { key: 'to', d: arrowPath(p0, p1, true), fill: 'none', stroke: EDGE, strokeWidth: 1.25, strokeLinecap: 'round', strokeLinejoin: 'round',
+          pathLength: 1, strokeDasharray: 1, strokeDashoffset: fx(1 - u) }));
+      }
+      els.push(E('g', { key: 'c' + i, style: { opacity: op } }, g));
+    });
+    if (tC > 0) els.push(E('circle', { key: 'centre', cx, cy, r: RC * smooth(tC / 0.4), fill: TINT, stroke: FOCUS, strokeWidth: 1.8 }));
+    return els;
+  },
+  /* field: drawn on the canvas layer (fieldState and drawField); nothing in SVG */
+  field() { return null; },
+};
+
+/* field: n particles scattered over the plane gather around one phrase; a few
+   smaller clusters labelled with the chapter's other headings sit further out,
+   so the space appears when the camera pulls back. `gather: 0` keeps the
+   scatter; `reseed` scatters a gathered field and gathers it again at new
+   positions (the re-embed). All positions are box units under the camera. */
+function fieldState(ch, sc, k) {
+  const rnd = mulberry32(sc.seed || 1), n = sc.n || 1500;
+  const gauss = r => (r() + r() + r() + r() - 2) * 1.4;
+  const pts = Array.from({ length: n }, () => ({ sx: (rnd() - 0.5) * 1800, sy: (rnd() - 0.5) * 1800, gx: 320 + gauss(rnd) * 90, gy: 320 + gauss(rnd) * 30 }));
+  if (sc.reseed) { const r2 = mulberry32(sc.reseed); pts.forEach(q => { q.hx = 320 + gauss(r2) * 90; q.hy = 320 + gauss(r2) * 30; }); }
+  const labels = sc.others ? ch.BEATS.map((b, i) => i !== k && b.h ? b.h : null).filter(Boolean).slice(0, 6) : [];
+  const clusters = labels.map(l => {
+    const a = rnd() * Math.PI * 2, r = 380 + rnd() * 260, x = 320 + Math.cos(a) * r, y = 320 + Math.sin(a) * r;
+    return { label: l, x, y, pts: Array.from({ length: 70 }, () => [x + gauss(rnd) * 26, y + gauss(rnd) * 14]) };
+  });
+  return { pts, clusters, reseed: !!sc.reseed, u: sc.gather === 0 ? 0 : ch.scrub(k, 0.1, 0.85), phrase: ch.textOf(k, sc.text, sc) };
+}
+function drawField(ctx, tf, dpr, W, H, f) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W * dpr, H * dpr);
+  ctx.setTransform(tf.s * dpr, 0, 0, tf.s * dpr, tf.tx * dpr, tf.ty * dpr);
+  const d = 1.7 / tf.s, u = f.u;                              // a particle stays under two screen pixels at any zoom
+  // ponytail: n fillRects per commit on Canvas2D; WebGL points if shots.py measures under 50 fps
+  ctx.fillStyle = mixHex(FADE, EDGE, u * 0.8);
+  f.pts.forEach(q => {
+    let x, y;
+    if (f.reseed) { const a = smooth(clamp(u / 0.5, 0, 1)), b = smooth(clamp((u - 0.5) / 0.5, 0, 1)); x = lerp(lerp(q.gx, q.sx, a), q.hx, b); y = lerp(lerp(q.gy, q.sy, a), q.hy, b); }
+    else { const a = smooth(u); x = lerp(q.sx, q.gx, a); y = lerp(q.sy, q.gy, a); }
+    ctx.fillRect(x, y, d, d);
+  });
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = mixHex(FADE, EDGE, 0.5);
+  f.clusters.forEach(c => c.pts.forEach(q => ctx.fillRect(q[0], q[1], d, d)));
+  // labels keep a floor of about eleven screen pixels however far the camera pulls back
+  ctx.fillStyle = META; ctx.font = `${Math.max(10, 10 / tf.s)}px ${FONT}`;
+  f.clusters.forEach(c => ctx.fillText(c.label, c.x, c.y + 32));
+  if (u > 0 && f.phrase) { ctx.globalAlpha = u; ctx.fillStyle = INK; ctx.font = `500 ${Math.max(9, 11 / tf.s)}px ${FONT}`; ctx.fillText(f.phrase, 320, 320); ctx.globalAlpha = 1; }
+}
+
 class BookChapter extends DCLogic {
   state = { step: 0, p: 0 };
 
@@ -361,10 +488,9 @@ class BookChapter extends DCLogic {
       const next = els[clamp(this.state.step + dir, 0, els.length - 1)];
       if (!next) return;
       e.preventDefault();
-      const stacked = window.innerWidth <= 900;
       const line = window.innerHeight * (this.props.triggerLine ?? 0.5);
       const top = next.getBoundingClientRect().top;
-      const target = stacked ? top - window.innerHeight * 0.46 - 16 : top - line + Math.min(48, next.getBoundingClientRect().height * 0.1);
+      const target = top - line + Math.min(48, next.getBoundingClientRect().height * 0.1);
       window.scrollBy({ top: target, behavior: this.reduced ? 'auto' : 'smooth' });
     };
     window.addEventListener('keydown', this.onKey);
@@ -377,8 +503,9 @@ class BookChapter extends DCLogic {
   spy() {
     const els = Array.from(document.querySelectorAll('[data-step]'));
     if (!els.length) return;
-    const stacked = window.innerWidth <= 900;
-    const line = stacked ? window.innerHeight * 0.46 + 80 : window.innerHeight * (this.props.triggerLine ?? 0.5);
+    const W = window.innerWidth, H = window.innerHeight, resized = W !== this.W || H !== this.H;
+    this.W = W; this.H = H;                                    // the stage is the viewport; the camera fits the box into it
+    const line = H * (this.props.triggerLine ?? 0.5);
     const tops = els.map(el => el.getBoundingClientRect().top);
     let a = 0;
     tops.forEach((t, i) => { if (t <= line) a = i; });
@@ -386,7 +513,7 @@ class BookChapter extends DCLogic {
     const span = a + 1 < tops.length ? tops[a + 1] - tops[a] : els[a].getBoundingClientRect().height * 0.5;
     const p = this.reduced ? 1 : clamp((line - tops[a]) / Math.max(1, span), 0, 1);
     const step = Math.min(a, this.LAST);
-    if (step !== this.state.step || Math.abs(p - this.state.p) > 0.002) this.setState({ step, p });
+    if (resized || step !== this.state.step || Math.abs(p - this.state.p) > 0.002) this.setState({ step, p });
   }
   /* 0 before beat `at`, scrubbed by p over [from, to] on it, 1 after it */
   scrub(at, from, to) {
@@ -414,14 +541,80 @@ class BookChapter extends DCLogic {
   }
   lastDiagramBeat(i) { for (let k = i; k >= 0; k--) if (this.layoutOf(k)) return k; return -1; }
 
+  /* ---- scenes and the camera ---- */
+  sceneFor(i) { return ((this.MOTION || {}).scenes || {})[String(i)] || null; }
+  sceneKeys() {
+    const S = (this.MOTION || {}).scenes || {};
+    return Object.keys(S).map(Number).filter(k => S[k].lang && SCENE[S[k].lang]).sort((a, b) => a - b);
+  }
+  /* a text reference resolved against the chapter's own words: claim | h |
+     paras.N, optionally prefixed with a beat index (0:claim); `sentence` or
+     `clause` on the scene picks one piece of it. Never prose. */
+  textOf(i, spec, part) {
+    if (!spec) return '';
+    let b = i, f = String(spec);
+    if (f.includes(':')) { const q = f.split(':'); b = +q[0]; f = q[1]; }
+    const beat = this.BEATS[b] || {};
+    let t = (f === 'h' ? beat.h : f === 'claim' ? beat.claim : (beat.paras || [])[+f.split('.')[1]]) || '';
+    if (part && part.clause != null) t = t.split(/(?<=[,:;.!?])\s+/)[part.clause] || t;
+    else if (part && part.sentence != null) t = t.split(/(?<=[.!?:])\s+/)[part.sentence] || t;
+    return t.trim();
+  }
+  /* the authoring box fitted into the free area beside the prose column, or
+     into the top band under 900px. Every legacy chapter lands here unchanged. */
+  defaultCam() {
+    const W = this.W || 1440, H = this.H || 900;
+    const [vx, vy, vw, vh] = (this.VIEWBOX || '0 0 640 640').split(/\s+/).map(Number);
+    const narrow = W <= 900, x0 = narrow ? 0 : 0.611 * W;
+    const k = narrow ? Math.min((W - 48) / vw, (0.4 * H - 32) / vh) : Math.min((W - x0 - 48) / vw, (H - 104) / vh);
+    const ax = narrow ? W / 2 : (x0 + W) / 2, ay = narrow ? 0.2 * H + 8 : H / 2;
+    return { x: vx + vw / 2, y: vy + vh / 2, s: k, ax, ay };
+  }
+  /* authored keys: x, y in box units (the point held at the anchor), s as a
+     multiple of the default fit. The latest key at or before the beat holds;
+     on its own beat it runs from `from` (or where the previous key left it)
+     to `to` under scrub. */
+  camera() {
+    const S = (this.MOTION || {}).scenes || {}, s = this.state.step, base = this.defaultCam();
+    let cur = { x: base.x, y: base.y, s: 1 };
+    Object.keys(S).map(Number).sort((a, b) => a - b).forEach(k => {
+      const c = S[k] && S[k].cam;
+      if (!c || k > s) return;
+      const to = Object.assign({}, cur, c.to || c);
+      if (k < s) { cur = { x: to.x, y: to.y, s: to.s }; return; }
+      const from = Object.assign({}, cur, c.from || {}), u = this.scrub(k, c.span ? c.span[0] : 0, c.span ? c.span[1] : 1);
+      cur = { x: lerp(from.x, to.x, u), y: lerp(from.y, to.y, u), s: lerp(from.s, to.s, u) };
+    });
+    return { x: cur.x, y: cur.y, s: base.s * cur.s, ax: base.ax, ay: base.ay };
+  }
+  /* the latest language scene at or before the beat holds (its own scrub
+     calls read 1 once its beat has passed); the one before it fades out over
+     the first 35 percent of the new beat */
+  renderScene() {
+    const E = React.createElement, S = (this.MOTION || {}).scenes || {}, { step: s, p } = this.state;
+    const keys = this.sceneKeys().filter(k => k <= s);
+    if (!keys.length) return null;
+    const k = keys[keys.length - 1], prev = keys.length > 1 ? keys[keys.length - 2] : -1, out = [];
+    if (prev >= 0 && (k === s || S[k].keep)) {
+      const fade = S[k].keep ? 1 : 1 - smooth(p / 0.35);   // `keep`: the previous scene stays at rest under this one
+      if (fade > 0) out.push(E('g', { key: 'sp' + prev, style: { opacity: fade } }, SCENE[S[prev].lang](this, S[prev], prev)));
+    }
+    out.push(E('g', { key: 'sc' + k }, SCENE[S[k].lang](this, S[k], k)));
+    return out;
+  }
+
   renderDiagrams() {
     const E = React.createElement;
     const { step: s, p } = this.state;
     const here = this.layoutOf(s) ? s : -1;
     const prev = this.lastDiagramBeat(here >= 0 ? s - 1 : s);
+    const sk = this.sceneKeys().filter(k => k <= s), lastScene = sk.length ? sk[sk.length - 1] : -1;
     const t = this.reduced ? 1 : smooth(p / 0.45);
     const out = [];
-    if (prev >= 0 && (here < 0 || t < 1)) {                    // the last picture recedes as the new one draws
+    // the last picture recedes as the new one draws, and stays at rest while a
+    // beat has none of its own; a language scene counts as a picture, so a
+    // diagram from before the scene is not carried over it
+    if (prev >= 0 && prev > lastScene && (here < 0 || t < 1)) {
       const fade = here >= 0 ? 1 - smooth(p / 0.35) : 1;
       out.push(E('g', { key: 'prev' + prev, style: { opacity: here >= 0 ? fade : 1, transform: `scale(${fx(1 - 0.04 * (1 - fade))})`, transformOrigin: '320px 320px' } },
         renderDiagram(this.layoutOf(prev), 1, 'd' + prev, here >= 0 || true)));
@@ -525,11 +718,30 @@ class BookChapter extends DCLogic {
     return E('g', { key: 'figs' }, els);
   }
 
+  /* the stage: one camera over the canvas layer (when the current language
+     scene is a field) and the SVG with every primitive and scene inside */
   renderCanvas() {
     const E = React.createElement;
-    const layers = [this.renderGraph3d(), this.renderDiagrams(), this.renderFigures()].filter(Boolean);
-    return E('svg', { viewBox: this.VIEWBOX || '0 0 640 640', width: '100%', height: '100%',
-      style: { maxWidth: 'min(100%, calc(100vh - 128px))', maxHeight: '100%', display: 'block', overflow: 'visible', fontFamily: FONT } }, layers);
+    const { step } = this.state, W = this.W || 1440, H = this.H || 900;
+    const tf = camTransform(this.camera());
+    const keys = this.sceneKeys().filter(k => k <= step), k = keys.length ? keys[keys.length - 1] : -1;
+    const sc = k >= 0 ? this.sceneFor(k) : null;
+    const layers = [];
+    if (sc && sc.lang === 'field') {
+      // the ref captures this render's values: the commit is asynchronous and
+      // this.state may already be the next beat by the time React calls it
+      const dpr = DPR(), field = fieldState(this, sc, k);
+      layers.push(E('canvas', { key: 'c2d', width: Math.round(W * dpr), height: Math.round(H * dpr),
+        style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: '0 0' },
+        ref: el => { if (el) drawField(el.getContext('2d'), tf, dpr, W, H, field); } }));
+    }
+    // both layers are viewport-sized and anchored top-left, so a stage box
+    // shorter than the viewport (the 40vh band under 900px) shows the top of
+    // the same picture instead of squashing it; a sheet tile shows all of it
+    layers.push(E('svg', { key: 'svg', viewBox: `0 0 ${W} ${H}`, width: '100%', height: '100%', preserveAspectRatio: 'xMinYMin slice',
+      style: { position: 'absolute', inset: 0, display: 'block', overflow: 'visible', fontFamily: FONT } },
+      E('g', { transform: tf.svg }, this.renderGraph3d(), this.renderDiagrams(), this.renderFigures(), this.renderScene())));
+    return E('div', { style: { position: 'relative', width: '100%', height: '100%' } }, layers);
   }
   renderVals() {
     const side = this.props.textSide ?? this.SIDE ?? 'left';

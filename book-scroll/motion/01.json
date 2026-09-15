@@ -1,11 +1,23 @@
 {
-  "_": "Chapter 1. The monolith, the bone, the ship. Figures keyed by beat index; from/to are canvas coordinates, span is the slice of the beat's scroll that drives the move.",
+  "_": "Chapter 1. The monolith, the bone, the ship. Figures keyed by beat index; from/to are canvas coordinates, span is the slice of the beat's scroll that drives the move. Scenes carry the camera only: a slow push toward the monolith (cinematic), a settle as the bone flies, a travel to the right as the record outlives its maker, and a pull back for the chain of carriers.",
+  "scenes": {
+    "0": {"seconds": 10, "cam": {"from": {"x": 320, "y": 400, "s": 0.9}, "to": {"x": 320, "y": 330, "s": 1.6}}},
+    "1": {"seconds": 12, "cam": {"to": {"x": 330, "y": 300, "s": 1.0}, "span": [0, 0.5]}},
+    "3": {"seconds": 8, "cam": {"to": {"x": 500, "y": 320, "s": 1.0}}},
+    "7": {"seconds": 10, "cam": {"to": {"x": 320, "y": 320, "s": 0.7}}}
+  },
   "figures": {
     "0": [
-      {"id": "mono", "glyph": "monolith", "fill": true, "from": {"x": 320, "y": 470, "s": 90, "o": 0}, "to": {"x": 320, "y": 330, "s": 110, "o": 1}, "span": [0.05, 0.7]}
+      {"id": "mono", "glyph": "monolith", "fill": true, "from": {"x": 320, "y": 470, "s": 90, "o": 0}, "to": {"x": 320, "y": 330, "s": 110, "o": 1}, "span": [0.05, 0.7]},
+      {"id": "pt", "glyph": "dot", "fill": true, "from": {"x": 320, "y": 560, "s": 0, "o": 0}, "to": {"x": 320, "y": 560, "s": 3, "o": 1}, "span": [0.55, 0.85]}
     ],
     "1": [
       {"id": "mono", "glyph": "monolith", "fill": true, "from": {"x": 320, "y": 330, "s": 110, "o": 1}, "to": {"x": 470, "y": 250, "s": 70, "o": 0.18}, "span": [0.0, 0.5]},
+      {"id": "w1", "glyph": "dot", "from": {"x": 150, "y": 470, "s": 0, "o": 0}, "to": {"x": 150, "y": 470, "s": 7, "o": 1}, "span": [0.0, 0.2]},
+      {"id": "w2", "glyph": "dot", "from": {"x": 205, "y": 560, "s": 0, "o": 0}, "to": {"x": 205, "y": 560, "s": 7, "o": 1}, "span": [0.03, 0.23]},
+      {"id": "w3", "glyph": "dot", "from": {"x": 300, "y": 575, "s": 0, "o": 0}, "to": {"x": 300, "y": 575, "s": 7, "o": 1}, "span": [0.06, 0.26]},
+      {"id": "w4", "glyph": "dot", "from": {"x": 335, "y": 480, "s": 0, "o": 0}, "to": {"x": 335, "y": 480, "s": 7, "o": 1}, "span": [0.09, 0.29]},
+      {"id": "w5", "glyph": "dot", "from": {"x": 245, "y": 430, "s": 0, "o": 0}, "to": {"x": 245, "y": 430, "s": 7, "o": 1}, "span": [0.12, 0.32]},
       {"id": "bone", "glyph": "bone", "from": {"x": 190, "y": 520, "s": 54, "rot": -35}, "to": {"x": 430, "y": 140, "s": 60, "rot": 30}, "arc": 190, "span": [0.1, 0.95],
        "morph": {"glyph": "ship", "at": 0.62, "over": 0.22}, "caption": "one cut"}
     ],
