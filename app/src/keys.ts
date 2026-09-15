@@ -14,3 +14,17 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA"
     || el.isContentEditable === true;
 }
+
+/** 표면 단축키(1·2·f·?)를 막아야 하는가 — `isTypingTarget` 만으로는 부족하다.
+ *
+ *  문서 열은 지도 옆에 `autoFocus:false` 로 열린다(열자마자 키보드를 뺏으면 `f`·Esc
+ *  같은 지도 조작이 글자로 들어간다). 포커스가 지도·트리에 남아 있어도 숫자가
+ *  `#search` 로 새어 나갔다(F-DOC-KB-01, 2026-09-15). 편집기가 보이면 표면 단축키는
+ *  쉰다 — 사용자가 타이핑을 시작하면 그때 포커스를 에디터로 옮긴다(main.ts). */
+export function blocksSurfaceShortcuts(target: EventTarget | null): boolean {
+  if (isTypingTarget(target) || isTypingTarget(document.activeElement)) return true;
+  const pane = document.getElementById("docpane");
+  if (!pane || pane.hidden) return false;
+  // 읽기 전용도 `contenteditable="false"` — 속성 값으로 거르면 빠진다(F-DOC-KB-01).
+  return !!pane.querySelector(".cm-content");
+}

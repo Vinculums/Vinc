@@ -12,7 +12,7 @@
  *
  *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다. */
 import assert from "node:assert/strict";
-import { isTypingTarget } from "../src/keys.ts";
+import { blocksSurfaceShortcuts, isTypingTarget } from "../src/keys.ts";
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
@@ -42,5 +42,11 @@ ok("보통 요소는 단축키를 막지 않는다");
 assert.equal(isTypingTarget(null), false);
 assert.equal(isTypingTarget({} as EventTarget), false);
 ok("target 이 없거나 요소가 아니면 단축키가 산다");
+
+// ── 5. 문서 열이 열려 있으면 표면 단축키를 막는다(F-DOC-KB-01) ───────────────
+// keys.ts 는 DOM 을 안 쓰므로 여기서는 판정 함수의 **오리** 부분만 검증한다.
+// (docpane 열림은 브라우저/Playwright 가 본다.)
+assert.equal(blocksSurfaceShortcuts({ tagName: "DIV", isContentEditable: true }), true);
+ok("타이핑 중이면 표면 단축키를 막는다");
 
 console.log(`\nkeys: ${n}개 검사 통과`);
