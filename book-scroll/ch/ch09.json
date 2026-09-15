@@ -1,0 +1,129 @@
+{
+ "n": 9,
+ "no": 9,
+ "part": 0,
+ "file": "Ch09.dc.html",
+ "slot": "vinc.book.09-boundaries.en",
+ "title": "What We Deliberately Do Not Do",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "9.0",
+   "eyebrow": "Part 0 · Chapter 9",
+   "h": "What We Deliberately Do Not Do",
+   "paras": [
+    "Chapter 8 showed that trusting memory means being able to doubt it. Memory should be verifiable, and its evidence, time, and changes should remain visible.",
+    "One final question remains.",
+    "If deciding what to build matters, should we not also decide what not to build?",
+    "AI systems are increasingly able to do more: generate more, automate more, judge more, and act on our behalf. But being able to do something is not the same as needing to do it."
+   ],
+   "claim": "Vinc treats that difference not as a lack of features, but as a design boundary."
+  },
+  {
+   "label": "9.1",
+   "h": "Not a System That Does Everything",
+   "paras": [
+    "Vinc deliberately refuses some things.",
+    "It does not place a model inside the core memory store. It does not silently generate memory on our behalf. It does not invent unsupported values. It does not merge memories merely because they appear similar. It does not turn the graph itself into an executor. It does not claim to have checked something it did not check.",
+    "These look like six different decisions, but they serve one purpose.",
+    "They keep human judgment and sources from disappearing while memory is being handled. The things Vinc does not do are not empty spaces in the product; the boundary itself is part of the design."
+   ]
+  },
+  {
+   "label": "9.2",
+   "h": "Refusal Is Not Failure",
+   "paras": [
+    "When a system refuses a request, we usually think it is limited.",
+    "In a memory system the opposite can be true. If performing a request would corrupt the nature of a record, refusing it is the action most faithful to the system's purpose.",
+    "Filling an empty value with a plausible default makes data look complete, but it creates a fact that never existed. Automatically merging two concepts because they look similar makes the graph cleaner, but can silently erase a meaning nobody agreed to erase.",
+    "So the refusals should be read one way."
+   ],
+   "claim": "A refusal exists not because the system cannot, but because it should not."
+  },
+  {
+   "label": "9.3",
+   "h": "The Blank Is a Record",
+   "paras": [
+    "We do not fabricate timestamps, unverified locations, unspecified owners, or unmeasured metrics.",
+    "Fill one in and it looks complete, and it is no longer evidence of anything.",
+    "An empty field can be more than a data defect. It can be a record of what we do not yet know.",
+    "So the empty state has to read as intact rather than as broken, because a system that treats blanks as damage will keep filling them."
+   ]
+  },
+  {
+   "label": "9.4",
+   "h": "The Graph Does Not Do Everything Either",
+   "paras": [
+    "Chapter 7 examined the relationship between agent and graph. The graph can steer an agent, but it is not itself the scheduler or the executor.",
+    "It can provide what should be read, which relationships exist, and which memories matter.",
+    "Actual execution and authorization may belong to separate systems.",
+    "The boundary is simple, and it is the same one Chapter 8 arrived at from the other side: providing memory and enforcing action are different problems.",
+    "Steering and compelling look similar from outside and are not the same guarantee."
+   ]
+  },
+  {
+   "label": "9.5",
+   "h": "Boundaries on What We Say",
+   "paras": [
+    "Vinc's boundaries do not apply only to stored data. What Vinc says about itself matters too.",
+    "A system should not describe itself as doing something it does not actually do. It should not make its architecture sound larger than it is merely to create the impression of memory or learning.",
+    "Privacy claims require the same discipline. Saying that data stays local in a particular environment is different from claiming the entire product is permanently disconnected from the internet.",
+    "So we do not use claims stronger than the facts support. The system's statements about itself should be as accurate as the data it stores."
+   ]
+  },
+  {
+   "label": "9.6",
+   "h": "Refusal Should Be Verifiable Too",
+   "paras": [
+    "There is an important limitation. Not every boundary can be perfectly enforced on every surface.",
+    "A vocabulary gate might inspect repository files without being able to inspect the graph corpus through the same mechanism.",
+    "Instead of hiding that limitation, we record it. Knowing where we do not have control is itself system knowledge.",
+    "This is the same principle as Chapter 8. We do not claim perfect control; we make it possible to verify what we control and what we do not. The boundary of control becomes a record."
+   ]
+  },
+  {
+   "label": "9.7",
+   "h": "Every Refusal Protects the Same Thing",
+   "paras": [
+    "Technical refusals and refusals about language share a purpose.",
+    "A technical refusal blocks unsupported judgments and values from entering the store. A refusal about language blocks unsupported trust from entering the reader's mind.",
+    "These are not separate problems. Both prevent memory from amplifying error.",
+    "An assistant reads the store and creates answers. An agent reads the store and acts. Shared memory can move into another person's graph. A small error grows as it connects, and refusal breaks that amplification at its source."
+   ]
+  },
+  {
+   "label": "9.8",
+   "h": "Checkable Over Impressive",
+   "paras": [
+    "A model answering every question fluently is impressive. In a memory system something else matters more.",
+    "What is recorded? Where did the record come from? When was it created? What is it connected to? Who confirmed it? Is it still valid?",
+    "If we can answer those, the system may be less flashy and it can endure longer.",
+    "Not having a model inside the core is a choice for reproducibility. Not merging automatically preserves semantic ownership. Leaving unknowns unknown is a choice for accuracy."
+   ],
+   "claim": "Vinc chooses a verifiable system over an impressive one."
+  },
+  {
+   "label": "9.9",
+   "h": "The Name Returns at the End",
+   "paras": [
+    "Chapter 1 began with humans using tools, recording memory, and passing it on. Across that history, one thing humans repeatedly did was connect things: experience to experience, person to person, record to record, past to present.",
+    "The name Vinc comes from the Latin vinculum, which means bond, tie, connection.",
+    "At first it may have looked like nothing more than a name. After nine chapters it reads as a design principle.",
+    "To connect is not simply to draw a line between two points. We need to know what the two ends are, why they are connected, when the connection was made, and what supports it."
+   ],
+   "claim": "So what Vinc makes is not connection. It is connection that can be trusted."
+  },
+  {
+   "kind": "close",
+   "label": "9.close",
+   "paras": [
+    "Humans built tools, recorded memory, shared it, and passed it on, and civilization could build again on what earlier generations left behind. AI has now become another kind of entity capable of reading that memory.",
+    "But giving AI memory is not simply giving it more data. It means deciding what to remember, how to connect it, what to trust, what to doubt, and what not to do. A tool does not exist to replace people. It exists to let people carry farther what they could not carry alone."
+   ],
+   "nextLabel": "Part 1. How Memory Is Stored",
+   "nextHref": "Ch10.dc.html"
+  }
+ ]
+}

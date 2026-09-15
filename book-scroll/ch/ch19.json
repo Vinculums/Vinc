@@ -1,0 +1,103 @@
+{
+ "n": 19,
+ "no": 19,
+ "part": 2,
+ "file": "Ch19.dc.html",
+ "slot": "vinc.book.19-brief.en",
+ "title": "How Memory Becomes Material",
+ "side": "right",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "19.0",
+   "eyebrow": "Part 2 · Chapter 19",
+   "h": "How Memory Becomes Material",
+   "paras": [
+    "Finding a memory doesn't mean an Agent can immediately produce an answer.",
+    "What an Agent needs is a set of memories connected to a question, and those memories can carry different kinds of evidence and relationships."
+   ],
+   "diagrams": [
+    "Question\n   ↓\nSearch\n   ↓\nResolution\n   ↓\nselected Node\n   ↓\ncontext + relations + evidence\n   ↓\nanswer material"
+   ],
+   "claim": "That selected, connected set of memory can be called answer material."
+  },
+  {
+   "paras": [
+    "A tool like vinc_brief isn't simply a search that returns a bit more. Its job is to resolve a question down to one Node, and assemble the material needed to understand that Node.",
+    "A tool like this combines several retrieval steps into a single surface.",
+    "Search asks \"what could be relevant.\" So returning a single search hit isn't enough: the resolved Node's graph relationships, connected Records, and relevant document excerpts all get pulled in together."
+   ],
+   "h": "Brief Isn't Just Another Name for Search",
+   "diagrams": [
+    "brief\n    │\n    ├─ search\n    ├─ resolve\n    └─ node context"
+   ],
+   "claim": "Brief asks something slightly different: \"what memories need to be seen together to understand this question.\"",
+   "label": "19.1"
+  },
+  {
+   "paras": [
+    "This structure makes provenance traceable. You can see why a given sentence was included, which Record or relationship it connects to, and which document it was drawn from."
+   ],
+   "h": "The Resolved Node Sits at the Center of the Material",
+   "diagrams": [
+    "Question\n   ↓\nresolved Node\n   ├─ Concept\n   ├─ Record\n   ├─ Decision\n   ├─ relations\n   └─ document excerpts"
+   ],
+   "claim": "Material construction is centered not on the question itself, but on the resolved Node.",
+   "label": "19.2"
+  },
+  {
+   "paras": [
+    "The graph provides relationships. The document provides the text that serves as evidence. With only the graph, you know the relationships but might lack fine-grained textual support. With only the document, you have text but still have to work out which concept a given sentence relates to.",
+    "Relationships like MENTIONS are the axis that connects them. If a document mentions a particular Concept, that connection lets you move from Node to document and back from document to related concept."
+   ],
+   "h": "Graph and Document Provide Different Information",
+   "claim": "So building material means connecting the graph and the document.",
+   "label": "19.3"
+  },
+  {
+   "paras": [
+    "So results need a budget.",
+    "At VINC's MCP surface, oversized results don't get returned as-is: a shrinker can reduce their size. What matters isn't blind truncation, but preserving the structure a question actually needs within a bounded result.",
+    "This isn't just UI optimization. An Agent's usable context is limited too, so the amount and shape of material has a direct effect on call cost and the quality of judgment downstream."
+   ],
+   "h": "More Material Is Not Always Better",
+   "claim": "Pull in every possible connection while building material, and an Agent's judgment actually gets harder, not easier.",
+   "label": "19.4"
+  },
+  {
+   "paras": [
+    "Brief's purpose isn't to always produce something substantial. There may be no matching Node for a question, too few relationships, or not enough supporting documents.",
+    "Hiding this state behind a plausible-sounding fabricated answer runs directly against the point of a memory system."
+   ],
+   "h": "When Material Is Insufficient, Say So",
+   "diagrams": [
+    "Question\n   ↓\nSearch\n   ↓\ninsufficient evidence\n   ↓\ninsufficient material"
+   ],
+   "claim": "In that case, insufficiency itself becomes the result.",
+   "label": "19.5"
+  },
+  {
+   "paras": [
+    "In this structure, answer material is neither the final answer nor raw data.",
+    "Answer material is the intermediate layer that organizes memory before an Agent has to judge anything. With this layer, an Agent doesn't need to search the whole document set and traverse the graph from scratch every time. Without it, the Agent has to understand the memory system's internals directly and repeatedly call multiple tools.",
+    "So a tool like this doesn't turn memory into an answer."
+   ],
+   "h": "Answer Material Is an Intermediate Layer",
+   "diagrams": [
+    "raw memory\n    ↓\nretrieval\n    ↓\nresolved memory\n    ↓\nanswer material\n    ↓\nAgent interpretation\n    ↓\nanswer"
+   ],
+   "claim": "It turns memory into material an Agent can actually use.",
+   "label": "19.6"
+  },
+  {
+   "kind": "close",
+   "label": "19.close",
+   "paras": [
+    "The next chapter follows the material out through the boundary where an external agent actually reaches it."
+   ],
+   "nextLabel": "Chapter 20. How Memory Leaves the System",
+   "nextHref": "Ch20.dc.html"
+  }
+ ]
+}

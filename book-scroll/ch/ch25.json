@@ -1,0 +1,148 @@
+{
+ "n": 25,
+ "no": 26,
+ "part": 3,
+ "file": "Ch25.dc.html",
+ "slot": "vinc.book.25-space.en",
+ "title": "How Graph Space Gets Created",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "26.0",
+   "eyebrow": "Part 3 · Chapter 26",
+   "h": "How Graph Space Gets Created",
+   "paras": [
+    "A Graph isn't just Nodes and Edges. Who owns that Graph, what range of data it holds, and who can access it are all part of the Graph too.",
+    "VINC expresses this boundary as Space."
+   ],
+   "diagrams": [
+    "Space\n   ↓\nOwner\n   ↓\nGraph Data"
+   ],
+   "claim": "The key idea is that Space isn't some separate, complicated graph object: it's a boundary determined by ownership scope."
+  },
+  {
+   "paras": [
+    "VINC can have Personal Graphs and Team Graphs.",
+    "What matters is that these aren't just different folders in the same storage."
+   ],
+   "h": "Personal Graphs and Team Graphs",
+   "diagrams": [
+    "Personal\n   ↓\none owner\n\nTeam\n   ↓\nteam owner / team space"
+   ],
+   "claim": "A different Owner means a different memory boundary.",
+   "label": "26.1"
+  },
+  {
+   "paras": [
+    "When a tool executes, which Space it's operating in has to be clear.",
+    "VINC's tool API can take space as an argument; omit it, and the personal Graph is the default. That default exists for convenience."
+   ],
+   "h": "Space Becomes Part of a Call",
+   "diagrams": [
+    "Tool Call\n   ↓\nspace\n   ↓\nGraph"
+   ],
+   "claim": "Using a Team Graph requires specifying the right Space explicitly.",
+   "label": "26.2"
+  },
+  {
+   "paras": [
+    "At the MCP boundary, a Team endpoint can identify the Space by itself.",
+    "This distinction matters especially at the MCP boundary."
+   ],
+   "h": "An Address Can Determine Space Too",
+   "diagrams": [
+    "Address\n= which Graph\n\nCredential\n= is this caller allowed in"
+   ],
+   "claim": "In that case, the URL address decides which Graph you're entering, and the credential proves you're allowed to enter it.",
+   "label": "26.3"
+  },
+  {
+   "paras": [
+    "A user picking a Team in the interface can look like a plain UI action. At the system level, though, Space determines the boundary of data access."
+   ],
+   "h": "Space Is Not Just a Screen Setting",
+   "diagrams": [
+    "Space\n  ↓\nSearch Scope\n  ↓\nGraph Scope\n  ↓\nDocument Scope\n  ↓\nWrite Scope"
+   ],
+   "claim": "So Space isn't a UI selection: it's part of the data model and the permission model.",
+   "label": "26.4"
+  },
+  {
+   "paras": [
+    "Mixing Graphs across different Owners breaks the reliability of a memory system. So search and graph traversal both have to stay within the same Owner's scope.",
+    "This isn't only a security concern: it's a retrieval-correctness concern too."
+   ],
+   "h": "Owner Isolation",
+   "diagrams": [
+    "Owner A\n └─ Graph A\n\nOwner B\n └─ Graph B"
+   ],
+   "claim": "A search under Owner A should never surface a Node from Owner B's graph.",
+   "label": "26.5"
+  },
+  {
+   "paras": [
+    "Having access to a Team Graph doesn't mean permission to do everything inside it. A Team can carry roles like viewer, editor, admin. These decide, separately from whether you can enter the Space at all, what you're allowed to do once you're inside it."
+   ],
+   "h": "Team Roles Are Separate From Space",
+   "diagrams": [
+    "Space\n  ↓\nMembership\n  ↓\nRole\n  ↓\nAllowed Operation"
+   ],
+   "claim": "So authentication, Space, and Role shouldn't get collapsed into one thing.",
+   "label": "26.6"
+  },
+  {
+   "paras": [
+    "When a Graph exists across multiple devices or environments, Space also shapes the boundary of synchronization."
+   ],
+   "h": "Space and Sync",
+   "claim": "The same Owner's Graph can converge across environments, but Graphs belonging to different Owners should never merge into one sync scope.",
+   "label": "26.7"
+  },
+  {
+   "paras": [
+    "As the Space model gets richer, a caller needs to know which Graph it's actually accessing. A surface for confirming this reports the Spaces available in the current connection, and the role held in each.",
+    "This isn't just a convenience."
+   ],
+   "h": "Why a \"Who Am I\" Surface Is Needed",
+   "diagrams": [
+    "whoami\n   ↓\nIdentity\n   ↓\nAvailable Spaces\n   ↓\nRole"
+   ],
+   "claim": "Call a tool without knowing what Space even exists, and you can end up reading or writing against the wrong Graph.",
+   "label": "26.8"
+  },
+  {
+   "paras": [
+    "Requiring Space to always be stated explicitly would raise safety. But to stay compatible with existing personal connections, VINC chose to keep Personal as the default when Space is omitted."
+   ],
+   "h": "Balancing Defaults Against Explicitness",
+   "diagrams": [
+    "space omitted\n      ↓\npersonal\n\nspace specified\n      ↓\nspecified graph\n\nteam endpoint\n      ↓\nteam graph"
+   ],
+   "claim": "What matters isn't the default existing: it's that the default is clearly defined as part of the system's contract.",
+   "label": "26.9"
+  },
+  {
+   "paras": [
+    "So a Graph's space isn't just a visible area on a screen. It's a system boundary that decides whose memory it is, what data gets searched together, and who's allowed to change it.",
+    "At this point, a Graph can no longer be described by Nodes and Edges alone. A Graph has time, it has evidence, it has shape, it has viewpoints, and it has a Space wrapping the whole thing."
+   ],
+   "h": "Graph Space Is a Memory Boundary",
+   "diagrams": [
+    "Space\n ├─ Owner\n ├─ Nodes\n ├─ Relations\n ├─ Documents\n ├─ Search\n └─ Permissions"
+   ],
+   "claim": "In the end, Space decides how far a Graph should be treated as one single memory.",
+   "label": "26.10"
+  },
+  {
+   "kind": "close",
+   "label": "26.close",
+   "paras": [
+    "The next chapter returns to causal order, and asks how it becomes a space."
+   ],
+   "nextLabel": "Chapter 27. How Causal Relationships Become Space",
+   "nextHref": "Ch26.dc.html"
+  }
+ ]
+}

@@ -1,0 +1,117 @@
+{
+ "n": 1,
+ "no": 1,
+ "part": 0,
+ "file": "Main.dc.html",
+ "slot": "vinc.book.01-human-memory.en",
+ "title": "How Humanity Learned to Carry Memory Forward",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "1.0",
+   "eyebrow": "Part 0 · Chapter 1",
+   "h": "How Humanity Learned to Carry Memory Forward",
+   "paras": [
+    "When we talk about human progress, we often talk about the development of tools.",
+    "We shaped stone, learned to use fire, began farming, created writing, developed paper, and moved through printing, computers, and the internet.",
+    "And now we are creating a new kind of tool.",
+    "But the history of tools can also be viewed from another angle."
+   ],
+   "claim": "Was humanity advanced not only by the ability to discover and use tools, but also by the ability to share them with other beings?"
+  },
+  {
+   "label": "1.1",
+   "h": "From One Bone to a Spaceship",
+   "paras": [
+    "At the beginning of Stanley Kubrick's 2001: A Space Odyssey, a group gathers on a barren landscape and one of them picks up a bone.",
+    "At first it is simply a bone.",
+    "Everything changes when it is discovered that the bone can be used as a tool.",
+    "Then it is thrown into the sky, and the film cuts across millions of years to a spaceship. The scene is usually read as a symbol of the development of tools, an enormous leap compressed into a single cut.",
+    "But what matters here is not only the bone. It is the group standing around it. One being discovering a tool does not yet make a civilization. What matters is that the others watched, imitated, and eventually used it too."
+   ],
+   "claim": "A personal discovery becomes a collective capability."
+  },
+  {
+   "label": "1.2",
+   "h": "Tools Turn Individual Capability into Collective",
+   "paras": [
+    "Suppose one person discovered fire.",
+    "The fact that this person could use fire would not by itself become a capability of the whole group.",
+    "But if that person taught someone else how to make fire, everything would change. That person could make fire too, and could teach the next person.",
+    "One person's discovery becomes many people's capability. And that capability crosses generations.",
+    "The same is true of knowledge, not only of tools. Humans told stories about what they experienced, left drawings, recorded things in writing, copied them into books, and eventually shared them across the world.",
+    "One important reason civilization could keep moving forward is that we did not have to learn everything from the beginning again."
+   ]
+  },
+  {
+   "label": "1.3",
+   "h": "Memory Moves Beyond the Individual",
+   "paras": [
+    "An individual's experience can disappear when that person is gone.",
+    "But recording it changes the situation.",
+    "One person's experience is passed to another, that person interprets it again, and a new record can be created. The record outlives whoever made it, and keeps working after they stop.",
+    "This is also an important starting point for what we call history.",
+    "An interesting problem appears here, though. A record surviving does not fix its meaning, and seeing the same thing does not mean creating the same memory. Two readers can hold the same page and come away with different accounts of it."
+   ],
+   "claim": "At that moment, memory moves beyond individual ownership."
+  },
+  {
+   "label": "1.4",
+   "h": "We Interpret the Same Information Differently",
+   "paras": [
+    "People are not machines that simply store information.",
+    "The same information is interpreted differently depending on each person's experience, interests, background, values, and the memories they already carry.",
+    "The same is true of history. Historians studying one event present different interpretations. An event can be read politically, economically, socially, or from a single person's perspective.",
+    "That does not mean only one of those interpretations may exist. They can conflict, and they can also reveal parts that were previously invisible.",
+    "Ask who the most influential artist of the last century was and the answers diverge immediately. What matters is not simply who is correct. The more interesting question is why they think so, and what the judgement rests on."
+   ]
+  },
+  {
+   "label": "1.5",
+   "h": "What We Share Is More Than Information",
+   "paras": [
+    "We can share our data. But what is actually shared is more than data.",
+    "We also share how we understood that data.",
+    "Someone's experience, interpretation, observation, failure, or discovered connection is passed to someone else. The other person compares it with their own memory. They may agree, challenge it, or read it in a completely different way.",
+    "New knowledge does not always appear suddenly out of nothing. It can emerge when we find relationships that were previously invisible among existing observations, records, and interpretations.",
+    "This is how science moves too. One person revisits an observation left by another, finds something that does not fit, and a third tries to explain it from a new position. New questions emerge before new answers do."
+   ]
+  },
+  {
+   "label": "1.6",
+   "h": "Memory Needs Relationships",
+   "paras": [
+    "The problem is that having many memories does not automatically mean understanding more.",
+    "Which record supports another record? Which claim conflicts with another claim? Who interpreted the same problem differently? Which decision came from which experience?",
+    "And how did that experience change over time?",
+    "When these relationships disappear, we may have plenty of data and still have to start again from the beginning.",
+    "When they are preserved, one person's memory can connect to another's, and one generation's experience can become the starting point for the next."
+   ],
+   "claim": "What matters is the relationships among memories."
+  },
+  {
+   "label": "1.7",
+   "h": "The Tool Has Changed",
+   "paras": [
+    "Humans have spent a long time developing tools for connecting memory. Cave walls, clay tablets, paper, books, libraries, computers, and the internet.",
+    "And now a new kind of user has appeared.",
+    "An AI Agent does not simply read stored documents. It can read memory, combine it, use other tools, and use the result as input for its next task.",
+    "So the questions have to be asked again. What should it remember? Which relationships should remain? How should different interpretations be preserved?",
+    "And how will we know later why a particular memory was created? This is where the problem stops being storage."
+   ],
+   "claim": "What should memory that AI can use look like?"
+  },
+  {
+   "kind": "close",
+   "label": "1.close",
+   "paras": [
+    "Vinc starts from that question. Not by compressing every piece of information into one correct answer, but by looking for a structure in which records, relationships, and interpretations can continue without erasing one another.",
+    "To understand that structure, we first have to examine what we mean when we say memory."
+   ],
+   "nextLabel": "Chapter 2. Memory in the Age of AI",
+   "nextHref": "Ch02.dc.html"
+  }
+ ]
+}

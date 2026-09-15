@@ -1,0 +1,66 @@
+{
+ "n": 35,
+ "no": 35,
+ "part": 5,
+ "file": "Ch35.dc.html",
+ "slot": "vinc.book.35-cycle.en",
+ "title": "Memory Is a Cycle",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "35.0",
+   "eyebrow": "Closing · Chapter 35",
+   "h": "Memory Is a Cycle",
+   "paras": [
+    "The first question that comes to mind about a memory system is usually about storage. What goes where, and how do you get it back out.",
+    "Documents alone couldn't be searched, so chunks were needed. Chunks alone couldn't hold the relationships between meanings, so vectors and a graph were needed. The graph alone couldn't say who should use what, so roles and space were needed. Search alone gave no grounds to trust its results, so evidence was needed. And to confirm any of this actually works, measurement was needed."
+   ],
+   "claim": "Having come this far, though, it's clear how narrow that question was."
+  },
+  {
+   "paras": [
+    "It was a cycle."
+   ],
+   "h": "Each Chapter Solved One Problem",
+   "diagrams": [
+    "record\n  ↓\nstructure\n  ↓\nsearch\n  ↓\ninterpret\n  ↓\nuse\n  ↓\nmeasure\n  ↓\ndecide\n  ↓\nrecord again"
+   ],
+   "claim": "Each chapter solved one problem at a time, but string the solutions together, and what was actually there from the start wasn't a storage problem.",
+   "label": "35.1"
+  },
+  {
+   "paras": [
+    "What's worth paying attention to in this cycle isn't any single technology. Vectors don't make memory. The graph doesn't make memory. Neither does the interface, nor the Agent."
+   ],
+   "h": "No Single Technology",
+   "claim": "Memory only becomes a system once every one of these layers holds its own responsibility and still connects into a single flow.",
+   "label": "35.2"
+  },
+  {
+   "paras": [
+    "It's the ability to answer these questions:",
+    "What did it know. When did it know it. Where does it belong. What is it connected to. Why was that judgment made. Under what conditions was it measured. What turned out wrong. And what got decided as a result."
+   ],
+   "h": "The Questions That Have to Survive",
+   "claim": "And what really needs to survive in this system isn't a single answer.",
+   "label": "35.3"
+  },
+  {
+   "paras": [
+    "Answer these structurally, and what you're looking at is no longer just stored data. It's a system's experience."
+   ],
+   "h": "Then It Is Not Data",
+   "claim": "Memory isn't the stored past: it's experience structured so it can be used again.",
+   "label": "35.4"
+  },
+  {
+   "kind": "close",
+   "label": "35.close",
+   "paras": [
+    "That is the end of the book, and the beginning of the part that is not a book: a graph somebody keeps."
+   ]
+  }
+ ]
+}

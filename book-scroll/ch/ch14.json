@@ -1,0 +1,72 @@
+{
+ "n": 14,
+ "no": 14,
+ "part": 1,
+ "file": "Ch14.dc.html",
+ "slot": "vinc.book.14-graph-md.en",
+ "title": "What Grammar the System Remembers By",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "14.0",
+   "eyebrow": "Part 1 · Chapter 14",
+   "h": "What Grammar the System Remembers By",
+   "paras": [
+    "Structure and concepts alone aren't enough for a system to exchange memory reliably.",
+    "A person can look at context and paper over a certain amount of error. That's what the system's grammar does."
+   ],
+   "claim": "A system has to know explicitly what kind of Node something is, which fields are required, and which relationships are allowed."
+  },
+  {
+   "paras": [
+    "It covers what Node kinds exist, what structure each Node kind has, what Edges exist, which direction each Edge runs in, and which Node kinds are allowed to connect through which relationship.",
+    "The Node kinds that matter in VINC are Concept, Episode, Record, Decision, Bridge, and Entity, and each plays a different role. A Concept marks a unit of meaning that gets referenced repeatedly. An Episode marks an event or experience. A Record marks something observed or reported as fact. A Decision marks a choice or judgment made about something.",
+    "Relationships have their own fixed grammar too. relates_to expresses a general association. prerequisite_of is a directed precondition relationship. derives_from expresses derivation, inherits_from expresses inheritance, and about marks what a piece of memory concerns."
+   ],
+   "h": "What the Grammar Covers",
+   "claim": "Grammar here doesn't just mean a data format.",
+   "label": "14.1"
+  },
+  {
+   "paras": [
+    "So getting the relation name right isn't enough on its own. Which Node kinds are even allowed to use a given relationship also matters."
+   ],
+   "h": "The Name Alone Is Not Enough",
+   "claim": "Connecting A to B with prerequisite_of is a different structure from connecting B to A with the same name.",
+   "label": "14.2"
+  },
+  {
+   "paras": [
+    "System grammar should never silently strip out errors in the input.",
+    "Filling in a missing required value with something made up, quietly ignoring an unrecognized field, storing a bad relationship without any indication that something's wrong: all of these cause problems later, when the system tries to search or interpret what it holds.",
+    "So the point of grammar validation isn't to reject data.",
+    "The same principle holds on the read side. If the write path uses a particular Node-and-Edge grammar, the read path has to understand the same structure. A writing system and a reading system that use different grammars can look at the same Graph and interpret different memories out of it."
+   ],
+   "h": "Errors Don't Get Silently Erased",
+   "claim": "It's to keep the system's picture of what it knows and doesn't know explicit and clear.",
+   "label": "14.3"
+  },
+  {
+   "paras": [
+    "In VINC, a Fragment can be used as the unit for carrying this structure. A Fragment is the format that moves memory's structure between systems. The Graph is the structure where that memory persists.",
+    "Keeping the two apart matters. A Fragment is not memory itself. It's a representation for carrying memory between systems.",
+    "In the end, grammar doesn't stand in for meaning. Grammar defines what the system reads and writes, and how. Meaning is built out of a Node's content, its relationships, and the documents and evidence behind it.",
+    "Grammar is what makes the system extensible. A new Agent or a new client, whatever it is, can connect to the same memory system as long as it understands the same structure."
+   ],
+   "h": "Fragment and Graph Are Not the Same Thing",
+   "claim": "System grammar, then, is the boundary between memory and the environment that runs on top of it.",
+   "label": "14.4"
+  },
+  {
+   "kind": "close",
+   "label": "14.close",
+   "paras": [
+    "The next chapter follows the whole path a document takes on the way to becoming nodes."
+   ],
+   "nextLabel": "Chapter 15. How a Document Becomes Nodes",
+   "nextHref": "Ch15.dc.html"
+  }
+ ]
+}

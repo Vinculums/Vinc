@@ -1,0 +1,122 @@
+{
+ "n": 5,
+ "no": 5,
+ "part": 0,
+ "file": "Ch05.dc.html",
+ "slot": "vinc.book.05-graph-md.en",
+ "title": "Memory Needs a Grammar",
+ "side": "left",
+ "viewBox": "0 0 640 640",
+ "beats": [
+  {
+   "kind": "open",
+   "label": "5.0",
+   "eyebrow": "Part 0 · Chapter 5",
+   "h": "Memory Needs a Grammar",
+   "paras": [
+    "In Chapter 4 we distinguished what should be remembered. There are people, events, decisions, and records, and there are relationships between them.",
+    "Once these objects are defined, the graph begins to take shape.",
+    "But another problem appears. What happens when several people begin creating that memory together?",
+    "A person can record something freely when the memory is private. Shared memory is different."
+   ],
+   "claim": "A person writes a record. An assistant proposes one. An agent finds a connection. Someone brings memory in from elsewhere."
+  },
+  {
+   "label": "5.1",
+   "h": "Written Differently, Memory Splits",
+   "paras": [
+    "Two people may record the same event differently. One calls it an event, another an episode, and a third leaves it as a record.",
+    "Relationships diverge the same way. One person records that a decision happened because of an event. Another expresses the relationship in the opposite direction.",
+    "Each record can look perfectly reasonable on its own.",
+    "But once they are connected, the reader and the AI interpret the same meaning differently. Shared memory cannot depend only on personal expression."
+   ],
+   "claim": "It needs common agreements."
+  },
+  {
+   "label": "5.2",
+   "h": "What to Remember, and How",
+   "paras": [
+    "Ontology distinguishes the world we remember. It defines concepts, records, decisions, and the kinds of relationships that may exist.",
+    "But ontology alone is not enough. How should the same concept actually be recorded? How should relationship direction be expressed? At what granularity should a new node be created? What should happen when duplicate memories are found?",
+    "These questions require convention, the shared rules for recording.",
+    "Ontology is the language of memory. Convention is its grammar. That distinction is a large part of why a graph here is more than a database."
+   ]
+  },
+  {
+   "label": "5.3",
+   "h": "Machines Have to Read It Too",
+   "paras": [
+    "If only people worked together, the rules could be explained in a document and agreed upon over time.",
+    "Vinc also has to account for AI and agents reading and writing the graph directly. So the rules need to be machine-readable.",
+    "What counts as a concept in this graph? Which edges are allowed? Which areas may be generated automatically? What requires human review?",
+    "If a person has to explain these every time, the same knowledge drifts whenever the agent changes.",
+    "And the drift is silent: nothing announces that this agent read the rule differently from the last one."
+   ],
+   "claim": "GRAPH.md is closer to a machine-readable contract than to a manual."
+  },
+  {
+   "label": "5.4",
+   "h": "The Contract Is Not the Memory",
+   "paras": [
+    "GRAPH.md does not replace the contents of the graph. The canonical source of memory remains the graph and the records connected to it.",
+    "What the contract explains is how that memory should be read, extended, and connected.",
+    "So it separates areas maintained by people from areas that can be generated from the current graph state. Human-defined rules stay the responsibility of people. Anything derivable from present state can be regenerated at will.",
+    "The distinction looks small and is not: human judgment and reproducible system state should not be mixed together in one file."
+   ]
+  },
+  {
+   "label": "5.5",
+   "h": "Not Every Rule Has the Same Force",
+   "paras": [
+    "Graph rules should not all be treated as equally strong.",
+    "Some are fixed by the system, such as schema and basic integrity constraints. Some are decided by the owner or operator of a particular graph. Others vary with topic or situation.",
+    "Schema-fixed, this-graph-decides, varies-by-topic.",
+    "This matters because an agent should not mistake every sentence for an instruction of identical force. A memory structure contains both requirements and choices."
+   ]
+  },
+  {
+   "label": "5.6",
+   "h": "Checking Is Not Judging",
+   "paras": [
+    "Is the format valid? Are the required sections present? Are the generated-zone boundaries intact? Do the references exist?",
+    "A system can check all of that.",
+    "But other questions are different. Is this really a good concept? Are these two records really the same memory? Is this decision still valid?",
+    "Those are judgments about meaning and context, so Vinc separates verification from judgment. The system reports broken structure. AI proposes merges and new relationships. Semantic changes stay reviewable by people.",
+    "A checker that tried to answer them would be guessing, and a guess recorded as a check is worse than no check."
+   ],
+   "claim": "An agent may propose a memory. It should not decide that the memory is true."
+  },
+  {
+   "label": "5.7",
+   "h": "Grammar Makes Memory Repeatable",
+   "paras": [
+    "Chapter 3 argued that what we show AI conditions its answer, and Chapter 4 that the material should be structured memory. One more step follows.",
+    "For structured memory to preserve meaning over time, it needs a grammar for recording it.",
+    "If today's decision and another person's decision months later follow different conventions, the two cannot be used reliably in the same graph.",
+    "With shared conventions, memory accumulates. One record sits on another. One decision leads to another. Experiences from different people connect inside the same structure."
+   ],
+   "claim": "The same memory can be read by the same rules, and new memory added in the same shape."
+  },
+  {
+   "label": "5.8",
+   "h": "The Grammar Protects People",
+   "paras": [
+    "Rules like these can look as though they exist for machines.",
+    "But what they ultimately protect is human memory.",
+    "They keep meaning from changing arbitrarily when the person changes, the assistant changes, the agent changes, or simply when enough time passes.",
+    "So the rules are not coding style. They are social and technical agreements that let memory continue in the same structure regardless of whose hands it enters.",
+    "Which is why the grammar is written down and versioned rather than carried in whoever happens to be maintaining the graph this month."
+   ]
+  },
+  {
+   "kind": "close",
+   "label": "5.close",
+   "paras": [
+    "If we can distinguish memory, connect it, and hold it to a common grammar, one question is still open: where does that memory exist?",
+    "There is time. There is position. There is distance. And the meaning of a graph can change depending on how we look at that space."
+   ],
+   "nextLabel": "Chapter 6. Memory Needs Space",
+   "nextHref": "Ch06.dc.html"
+  }
+ ]
+}
