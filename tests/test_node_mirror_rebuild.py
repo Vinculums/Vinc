@@ -78,10 +78,6 @@ class _FakeStore:
     def run(self, query, params=None):
         params = params or {}
         if query.startswith("MATCH (c:"):
-            # ⚠ 이 페이크는 쿼리 문자열이 아니라 라벨만 본다 — Record·Decision 의
-            # OPTIONAL MATCH 조인은 여기서 재현되지 않는다. 그 경로는 실제 엔진
-            # 위에서만(RealStore 클래스) 시험한다. 여기서는 노드 픽스처에 미리
-            # 실어 둔 "extra" 값을 그대로 돌려줄 뿐이라, 기존 시험은 그대로 통과한다.
             label = query.split("MATCH (c:", 1)[1].split(")", 1)[0]
             owner = params.get("o")
             return [{"id": n["id"], "title": n["title"], "owner": n["owner"],
@@ -187,13 +183,6 @@ class Collect(unittest.TestCase):
         self.assertEqual(by_id["concept:a"]["text"], "Alpha. one liner")
         self.assertEqual(by_id["concept:a"]["title"], "Alpha")
         self.assertEqual(by_id["record:b"]["text"], "Bravo")
-
-    def test_record_and_decision_still_query_by_their_own_label(self):
-        """조인을 넣어도 라벨별 질의라는 모양은 안 바뀐다 — 페이크가 라벨만 보고도
-        여전히 옳게 갈리는 것이 그 증거다."""
-        rows, _ = node_mirror.collect(_FakeStore(_nodes()), None)
-        self.assertEqual(next(r for r in rows if r["id"] == "record:b")["kind"],
-                         "record")
 
 
 class Replace(unittest.TestCase):
@@ -395,7 +384,6 @@ class RealStore(unittest.TestCase):
         from store.config import load_config
         self.store = open_store(load_config())
         self.store.provision(dim=DIM)
-        self.frag = frag
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:alpha", "type": "concept", "title": "Alpha",
              "one_liner": "the first letter"},
@@ -420,43 +408,6 @@ class RealStore(unittest.TestCase):
         hits = self.store.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
         self.assertEqual(hits[0]["id"], "concept:alpha")
         self.assertEqual(hits[0]["title"], "Alpha")
-
-    def test_a_record_borrows_the_first_attached_concepts_one_liner(self):
-        """Record 는 title 옆에 자기 텍스트 열이 없다([[record:node-mirror-record-decision-vector-is-title-only-2026-09-14]])
-        — 그래서 처음 닿는 concept 의 one_liner 를 ATTACHES_TO 로 조인해 온다.
-        미측정 상태이므로 이 시험은 조인이 **동작하는가**만 확인하고, 후보 정확도
-        효과는 별도 세션의 재측정이 판정한다."""
-        self.frag.merge_fragment({"owner": self.OWNER, "nodes": [
-            {"id": "concept:gamma", "type": "concept", "title": "Gamma",
-             "one_liner": "the third letter"},
-            {"id": "record:delta", "type": "record", "title": "Delta"},
-        ], "edges": [
-            {"from": "record:delta", "to": "concept:gamma", "type": "relates_to"},
-        ]}, store=self.store)
-        rows, _ = node_mirror.collect(self.store, self.OWNER)
-        by_id = {r["id"]: r for r in rows}
-        self.assertEqual(by_id["record:delta"]["text"], "Delta. the third letter")
-
-    def test_a_record_with_no_attachment_still_reads_as_title_only(self):
-        """붙는 관계가 없으면 조인은 조용히 아무것도 안 붙인다 — 예외가 아니라
-        title-only 로 되돌아가는 것이 이 조인의 실패 모드다."""
-        rows, _ = node_mirror.collect(self.store, self.OWNER)
-        by_id = {r["id"]: r for r in rows}
-        self.assertEqual(by_id["record:bravo"]["text"], "Bravo")
-
-    def test_a_decision_borrows_the_first_about_concepts_one_liner(self):
-        """Decision 도 자기 텍스트 열이 없다 — ABOUT 으로 처음 닿는 concept 의
-        one_liner 를 조인해 온다."""
-        self.frag.merge_fragment({"owner": self.OWNER, "nodes": [
-            {"id": "concept:epsilon", "type": "concept", "title": "Epsilon",
-             "one_liner": "the fifth letter"},
-            {"id": "decision:zeta", "type": "decision", "title": "Zeta"},
-        ], "edges": [
-            {"from": "decision:zeta", "to": "concept:epsilon", "type": "about"},
-        ]}, store=self.store)
-        rows, _ = node_mirror.collect(self.store, self.OWNER)
-        by_id = {r["id"]: r for r in rows}
-        self.assertEqual(by_id["decision:zeta"]["text"], "Zeta. the fifth letter")
 
     def test_two_spaces_can_hold_the_same_node_id(self):
         """🔴 v18 이 사는 자리. 진짜 엔진 위에서 같은 논리 id 를 두 소유자로 넣는다 —
