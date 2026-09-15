@@ -348,6 +348,136 @@ def tc_f_time_03(page) -> TCResult:
     return _pass("F-TIME-03", flow, "time controls survive tab switch", **state)
 
 
+def _prep_search(page) -> None:
+    page.evaluate(
+        """() => {
+            localStorage.setItem('vinc.firstrun.seen', '1');
+            localStorage.setItem('vinc.search.mode', 'find');
+        }"""
+    )
+    page.reload(wait_until="networkidle", timeout=60_000)
+    page.wait_for_timeout(1500)
+
+
+def tc_f_search_01(page) -> TCResult:
+    """Enter before debounce must not open the browse-all sheet."""
+    flow = "F-SEARCH"
+    _prep_search(page)
+    page.locator("#tb-q").fill("billing")
+    page.locator("#tb-q").press("Enter")
+    page.wait_for_timeout(400)
+    state = page.evaluate(
+        """() => ({
+            sheet: !!document.querySelector('.sheet'),
+            title: document.querySelector('.sheet h2')?.textContent || '',
+            hash: location.hash,
+        })"""
+    )
+    if state["sheet"] and "document" in state["title"].lower():
+        return _fail(
+            "F-SEARCH-01", flow,
+            "immediate Enter opened browse sheet before search completed",
+            bucket="policy_mismatch",
+            **state,
+        )
+    return _pass("F-SEARCH-01", flow, "no browse sheet on immediate Enter", **state)
+
+
+def tc_f_search_02(page) -> TCResult:
+    """After debounce, Enter should land on first hit (not browse sheet)."""
+    flow = "F-SEARCH"
+    _prep_search(page)
+    page.locator("#tb-q").fill("billing")
+    page.wait_for_timeout(700)
+    page.locator("#tb-q").press("Enter")
+    page.wait_for_timeout(500)
+    state = page.evaluate(
+        """() => ({
+            sheet: !!document.querySelector('.sheet'),
+            hash: location.hash,
+        })"""
+    )
+    if state["sheet"]:
+        return _fail("F-SEARCH-02", flow, "sheet opened after debounced Enter", **state)
+    if not state["hash"].startswith("#view/"):
+        return _fail("F-SEARCH-02", flow, "did not navigate to view hit", **state)
+    return _pass("F-SEARCH-02", flow, "debounced Enter navigates to hit", **state)
+
+
+def tc_f_search_03(page) -> TCResult:
+    """#search surface alone must not auto-open a sheet."""
+    flow = "F-SEARCH"
+    _prep_search(page)
+    page.evaluate("() => { location.hash = '#search'; }")
+    page.wait_for_timeout(800)
+    state = page.evaluate(
+        """() => ({
+            hash: location.hash,
+            sheet: !!document.querySelector('.sheet'),
+        })"""
+    )
+    if state["sheet"]:
+        return _fail("F-SEARCH-03", flow, "sheet opened on #search navigation", **state)
+    return _pass("F-SEARCH-03", flow, "#search has no sheet", **state)
+
+
+def tc_f_packs_01(page) -> TCResult:
+    """Legacy #packs alias opens Tools share tab (documented, not a defect)."""
+    flow = "F-PACKS"
+    _prep_search(page)
+    page.evaluate("() => { location.hash = '#packs'; }")
+    page.wait_for_timeout(1200)
+    state = page.evaluate(
+        """() => ({
+            hash: location.hash,
+            sheet: !!document.querySelector('.sheet'),
+            title: document.querySelector('.sheet h2')?.textContent || '',
+            shareTab: document.querySelector('[data-tab="share"]')?.classList.contains('active'),
+        })"""
+    )
+    if not state["sheet"] or state["title"] != "Tools":
+        return _fail("F-PACKS-01", flow, "expected Tools sheet from #packs alias", **state)
+    return _pass("F-PACKS-01", flow, "#packs opens Tools share (alias)", **state)
+
+
+def tc_f_vincpack_01(page) -> TCResult:
+    """Tools import tab ingests a starter .vincpack."""
+    flow = "F-VINCPACK"
+    pack = ROOT / "starter-packs" / "vinc-pack-math.vincpack"
+    if not pack.exists():
+        return TCResult("F-VINCPACK-01", flow, "Skip", f"missing fixture {pack}")
+    _prep_search(page)
+    page.locator("#tb-tools").click()
+    page.wait_for_timeout(400)
+    tab = page.locator('[data-tab="import"]')
+    if tab.count() == 0:
+        return TCResult("F-VINCPACK-01", flow, "Skip", "import tab missing")
+    tab.first.click()
+    page.wait_for_timeout(400)
+    file_input = page.locator('input[type="file"]').first
+    if file_input.count() == 0:
+        return _fail("F-VINCPACK-01", flow, "file input missing in import tab")
+    file_input.set_input_files(str(pack))
+    deadline = time.time() + 30
+    body = ""
+    while time.time() < deadline:
+        page.wait_for_timeout(1000)
+        body = page.evaluate(
+            "() => document.querySelector('#tools-pane')?.innerText || ''"
+        )
+        low = body.lower()
+        if "imported" in low or "error" in low or "failed" in low:
+            break
+    if "imported" not in body.lower():
+        return _fail(
+            "F-VINCPACK-01", flow,
+            "import did not finish within 30s",
+            bucket="downstream_failure",
+            body=body[:200],
+        )
+    return _pass("F-VINCPACK-01", flow, "starter pack imported", snippet=body[:120])
+
+
 def tc_f_time_04(page) -> TCResult:
     """Replay button toggles Play/Stop when graph has >=2 timestamps."""
     flow = "F-TIME"
@@ -398,6 +528,13 @@ BATCHES: dict[str, list[tuple[str, Callable]]] = {
         ("F-TIME-02", tc_f_time_02),
         ("F-TIME-03", tc_f_time_03),
         ("F-TIME-04", tc_f_time_04),
+    ],
+    "W5": [
+        ("F-SEARCH-01", tc_f_search_01),
+        ("F-SEARCH-02", tc_f_search_02),
+        ("F-SEARCH-03", tc_f_search_03),
+        ("F-PACKS-01", tc_f_packs_01),
+        ("F-VINCPACK-01", tc_f_vincpack_01),
     ],
 }
 
