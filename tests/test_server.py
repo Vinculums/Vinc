@@ -983,9 +983,9 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
         기다려 봐야 사용자만 세운다."""
         with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
             app._qvec_ok = time.monotonic()
-            t0 = time.time()
+            t0 = time.monotonic()
             vec, note = app._query_embedding("양자역학")
-            elapsed = time.time() - t0
+            elapsed = time.monotonic() - t0
         self.assertIsNone(vec)
         self.assertTrue(note, "조용히 강등됐다 — 사유가 없다")
         self.assertLess(elapsed, self.srv._QVEC_COLD_TIMEOUT,
@@ -994,13 +994,18 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
     def test_인코더가_죽어_있으면_긴_상한을_무는_질의는_하나뿐이다(self):
         """이 패키지의 급소. 콜드 재시도를 무조건 하면 죽은 인코더가 **모든** 질의를
         긴 상한만큼 세운다 — 짧은 상한이 원래 막던 사고를 되살리는 것이다."""
+        # ⚠ 구간은 **단조시계로만** 잰다(2026-09-15). `time.time()` 으로 재던 것이
+        # CI 에서 1.27s 로 읽혀 빨개졌는데, 소켓 상한은 단조시계로 세므로 부하로는
+        # 짧아질 수 없다 — 짧게 읽힌 것은 벽시계가 **뒤로 물러선** 것이다(WSL 이
+        # 호스트와 시각을 다시 맞출 때 그렇게 된다). 여기 아래 단언은 "긴 상한을
+        # 실제로 물었나"라는 뜻이어야지, 시계가 정직했나에 걸리면 안 된다.
         with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
-            t0 = time.time()
+            t0 = time.monotonic()
             self.assertIsNone(app._query_embedding("q1")[0])
-            first = time.time() - t0
-            t1 = time.time()
+            first = time.monotonic() - t0
+            t1 = time.monotonic()
             self.assertIsNone(app._query_embedding("q2")[0])
-            second = time.time() - t1
+            second = time.monotonic() - t1
             self.assertGreater(app._qvec_cold_until, time.monotonic(),
                                "긴 시도가 실패했는데 쿨다운이 안 걸렸다")
         self.assertGreaterEqual(first, self.srv._QVEC_COLD_TIMEOUT,
