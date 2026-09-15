@@ -14,15 +14,14 @@
 근거: [[decision:the-node-mirror-is-rebuilt-whole-or-not-at-all]]
 
 **찾는 표면은 좁게 담는다.** 제목이 기본이고 Concept 은 one_liner, Episode 는 summary
-앞부분을 붙인다. Record·Decision 은 title 옆에 자기 텍스트 열이 없다 — `api/fragment.py`
-의 `_KEPT_FIELDS` 계약을 직접 읽어 확인했다
-([[record:node-mirror-record-decision-vector-is-title-only-2026-09-14]]). 그래서 이 둘은
-자기 열 대신, 이미 갖고 있는 자기 관계로 처음 닿는 Concept 의 one_liner 를 조인해 온다 —
-Record 는 `ATTACHES_TO`, Decision 은 `ABOUT`. 이 조인은 **아직 측정 전**이고, 넓히는
-것은 측정 없이 하지 않는다는 규율은 그대로다
-([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]] 가 넓혔다가
-되돌린 전례). 배포에는 아직 걸리지 않는다 — `POST /node-mirror/rebuild` 는 릴리스에서만
-트리거되고, 이 변경은 병합 전 브랜치에 머문다.
+앞부분을 붙인다. Record·Decision 은 제목만이다. 넓히는 것은 측정 없이 하지 않는다
+([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
+
+⚠ **Record·Decision 에 연결된 Concept 의 one_liner 를 조인하는 것은 이미 재 봤고 졌다**
+(Vinc#338, 2026-09-15 적재 → 2026-09-16 되돌림). 개인 골드 81행 페어 A/B 에서 **좋아진
+항목이 0건**이고 R@1 은 0.4833 → 0.4167, 맞던 확정 3건이 tie 로 무너졌으며(record 가
+concept 의 산문을 그대로 물려받아 둘이 같은 낱말로 묶인다) 인코드는 2.4배가 됐다.
+다시 제안하기 전에 읽을 것: [[record:the-one-liner-join-improves-no-item-and-costs-four-2026-09-16]]
 
 이 모듈은 **스토어 연산만** 한다. 인코딩은 부르는 쪽이 한다 — 허브는 사이드카가
 원격 인코더에 묻고(`api/server.py`), 로컬은 `scripts/fill_node_mirror.py` 가 onnx 를
@@ -37,12 +36,6 @@ SPEC = [
     ("Decision", "decision_id", "decision", None),
     ("Episode", "episode_id", "episode", "summary"),
 ]
-#: Record·Decision 에는 SPEC 의 네 번째 자리(부가 텍스트 열)가 없다. 대신 이 관계로
-#: 처음 닿는 Concept 의 one_liner 를 조인해 붙인다. 라벨에 없으면 SPEC 의 열 그대로다.
-_JOIN_EXTRA = {
-    "Record": "ATTACHES_TO",
-    "Decision": "ABOUT",
-}
 #: 부가 텍스트를 이만큼만 쓴다. 문단 전체를 넣으면 제목이 묻힌다.
 EXTRA_CHARS = 300
 #: CREATE 한 문장에 실을 행 수. 파라미터 목록이 너무 길면 엔진이 준비 단계에서 샌다.
@@ -86,25 +79,12 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
     seen: dict[tuple[str, str], str] = {}
     collisions: list[dict] = []
     for label, pk, kind, extra_col in SPEC:
+        proj = f"c.{extra_col} AS extra" if extra_col else "'' AS extra"
         where = "WHERE c.owner_id = $o " if owner else ""
-        rel = _JOIN_EXTRA.get(label)
-        if rel:
-            # Record·Decision 에는 자기 텍스트 열이 없다 — 처음 닿는 Concept 의
-            # one_liner 를 조인한다. 관계가 없거나 대상이 one_liner 를 안 가지면
-            # extra 는 null 이고 mirror_text 가 그것을 빈 문자열로 취급한다.
-            query = (
-                f"MATCH (c:{label}) {where}"
-                f"OPTIONAL MATCH (c)-[:{rel}]->(x:Concept) "
-                "WITH c, collect(x.one_liner)[1] AS extra "
-                f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, extra"
-            )
-        else:
-            proj = f"c.{extra_col} AS extra" if extra_col else "'' AS extra"
-            query = (
-                f"MATCH (c:{label}) {where}"
-                f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, {proj}"
-            )
-        rows = store.run(query, {"o": owner} if owner else None) or []
+        rows = store.run(
+            f"MATCH (c:{label}) {where}"
+            f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, {proj}",
+            {"o": owner} if owner else None) or []
         for r in rows:
             title = " ".join(str(r.get("title") or "").split())
             text = mirror_text(title, r.get("extra"))
