@@ -17,14 +17,20 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 
 /** 표면 단축키(1·2·f·?)를 막아야 하는가 — `isTypingTarget` 만으로는 부족하다.
  *
- *  문서 열은 지도 옆에 `autoFocus:false` 로 열린다(열자마자 키보드를 뺏으면 `f`·Esc
- *  같은 지도 조작이 글자로 들어간다). 포커스가 지도·트리에 남아 있어도 숫자가
- *  `#search` 로 새어 나갔다(F-DOC-KB-01, 2026-09-15). 편집기가 보이면 표면 단축키는
- *  쉰다 — 사용자가 타이핑을 시작하면 그때 포커스를 에디터로 옮긴다(main.ts). */
-export function blocksSurfaceShortcuts(target: EventTarget | null): boolean {
-  if (isTypingTarget(target) || isTypingTarget(document.activeElement)) return true;
-  const pane = document.getElementById("docpane");
-  if (!pane || pane.hidden) return false;
-  // 읽기 전용도 `contenteditable="false"` — 속성 값으로 거르면 빠진다(F-DOC-KB-01).
-  return !!pane.querySelector(".cm-content");
+ *  문서 열은 View 옆에 `autoFocus:false` 로 열린다(열자마자 키보드를 뺏으면 `f`·Esc
+ *  같은 조작이 글자로 들어간다). 그래서 포커스가 아직 View·트리에 남아 있는데도
+ *  숫자가 `#search` 로 새어 나갔다 — 문서를 읽는 중에 화면이 통째로 갈렸다
+ *  (F-DOC-KB-01, 2026-09-15 실측). 편집기가 떠 있으면 표면 단축키는 쉰다.
+ *
+ *  ⚠ **DOM 은 여기서 읽지 않는다.** 위 주석이 말하는 조건 — 이 파일이 DOM 을 안
+ *  쓴다는 것 — 이 `app/dev/keys-check.ts` 를 성립시킨다. 처음 고칠 때 이 함수가
+ *  `document.getElementById` 를 직접 불렀고, 그러면 노드에서 도는 그 검사가 첫
+ *  조건에서 단락될 때만 우연히 통과한다. 문서 열이 떠 있는지는 부르는 쪽이 재서
+ *  넘긴다(`doc-editor.docEditorOpen`). */
+export function blocksSurfaceShortcuts(
+  target: EventTarget | null,
+  active: EventTarget | null,
+  docEditorOpen: boolean,
+): boolean {
+  return docEditorOpen || isTypingTarget(target) || isTypingTarget(active);
 }

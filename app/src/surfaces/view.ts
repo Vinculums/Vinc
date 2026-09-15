@@ -18,7 +18,7 @@ import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
-import { disposeEditorsIn, renderMarkdown } from "../doc-editor";
+import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
@@ -675,7 +675,8 @@ export async function renderView(el: HTMLElement) {
     // 있으면 레일을 Esc 로 닫을 수 없었다 — 들어가는 문은 모든 마크에 달려 있는데
     // 나오는 문이 ✕ 하나로 줄었다. 이제 어느 문으로 나가도 대기 중 편집이 확정되므로
     // (doc-editor 의 dispose) 이 문을 되살려도 잃는 것이 없다.
-    if (blocksSurfaceShortcuts(e.target) && e.key !== "Escape") return;
+    if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())
+        && e.key !== "Escape") return;
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
