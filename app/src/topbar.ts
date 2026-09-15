@@ -355,9 +355,14 @@ export function mountTopbar() {
     void (async () => {
       window.clearTimeout(timer);
       timer = undefined;
-      if (raw.length >= 2) await run(raw);
-      if (hits.length) go(hits[0]);
-      else if (raw.length >= 2) void openAllDocs();
+      if (raw.length >= 2) {
+        await run(raw);
+        if (hits.length) { go(hits[0]); return; }
+      }
+      // 두 글자가 안 되면 debounce 가 돈 적이 없어 `hits` 는 **이전 질의의 것**이다.
+      // 그것으로 착지하면 친 글자와 다른 곳에 떨어지므로 쓰지 않는다. 그렇다고 아무
+      // 일도 안 하면 막다른 골목이라(이 자리의 원래 규칙) 전체 목록을 연다.
+      if (raw) void openAllDocs();
     })();
   });
 
