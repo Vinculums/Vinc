@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Callable
 
 from .bridge import Bridge
 
@@ -1288,7 +1289,7 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
 #: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
 #: (JSON 을 중간에서 자르면 깨진 구문이 된다). 등재된 것도 문자 단위로는 안 자른다 —
 #: 덜 중요한 **필드나 항목**을 통째로 덜어낸다.
-def _shrink_material_lists(block: dict, over: callable) -> tuple[int, int]:
+def _shrink_material_lists(block: dict, over: Callable[[], bool]) -> tuple[int, int]:
     """발췌를 먼저, 관계를 나중에. `over()` 가 참인 동안 항목을 덜어낸다."""
     dropped_ex = dropped_ln = 0
     ex = block.get("excerpts")

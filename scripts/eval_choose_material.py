@@ -58,20 +58,20 @@ def classify(off: dict, on: dict, gold: str, answerable: bool) -> dict:
     gold_first = bool(gold) and first == gold
     mat = on.get("candidate_material") if isinstance(on.get("candidate_material"), dict) else {}
     landed = bool(mat.get("landed"))
-    landed_id = ((mat.get("node") or {}).get("id") or "") if landed else ""
     identical = _bytes(off) == _bytes(strip_material(on))
+    # 재료는 첫 후보 둘레에서만 모이므로 landed 노드는 곧 first 다.
     return {
         "answerable": answerable,
         "gold": gold or "",
         "status": status,
+        "arms": off.get("arms"),
         "first": first,
         "gold_first": gold_first,
         "has_material": "candidate_material" in on,
         "landed": landed,
-        "landed_id": landed_id,
-        "landed_is_gold": bool(gold) and landed_id == gold,
-        "would_attach_wrong": bool(answerable) and status == "choose" and landed and (
-            (not gold_first) or (landed_id != gold)),
+        "landed_is_gold": gold_first and landed,
+        "would_attach_wrong": (bool(answerable) and status == "choose"
+                               and landed and not gold_first),
         "identical_except_material": identical,
         "bytes_off": n2.nbytes(off),
         "bytes_on": n2.nbytes(on),
@@ -83,9 +83,16 @@ def summarize(rows: list[dict]) -> dict:
     gold_first = [r for r in choose if r["gold_first"]]
     wrong_first = [r for r in choose if r["answerable"] and not r["gold_first"]]
     non_choose = [r for r in rows if r["status"] != "choose"]
+    unanswerable = [r for r in rows if not r["answerable"]]
     return {
         "n": len(rows),
         "by_status": dict(Counter(r["status"] for r in rows)),
+        "by_arms": dict(Counter(r.get("arms") or "" for r in rows)),
+        # 답할 수 없는 질문에 재료가 붙으면 그 자체로 오답이다.
+        "unanswerable": {
+            "n": len(unanswerable),
+            "landed": sum(r["landed"] for r in unanswerable),
+        },
         "choose": {
             "n": len(choose),
             "landed": sum(r["landed"] for r in choose),
