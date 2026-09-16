@@ -48,6 +48,29 @@ _LOUD_ROLE = {
 }
 
 
+def _graph_node(r: dict) -> dict:
+    return {"id": r["id"], "label": r["label"], "kind": "concept",
+            "domain": r["domain"], "tags": r["tags"], "props": r["props"]}
+
+
+def _ring(node: dict, roster: list[dict]) -> dict:
+    """스냅샷의 `works_with` 를 `/graph` 깊이 1 응답(이웃 노드 + 엣지)으로 되돌린다.
+    라이브 그래프가 주는 모양을 흉내내야 `prompts/get` 이 협업 절까지 껍데기와 같은
+    바이트를 내는지 볼 수 있다."""
+    by_name = {r["id"].split(":", 1)[1]: r for r in roster}
+    nodes, edges = [_graph_node(node)], []
+    for key, items in (node.get("works_with") or {}).items():
+        for item in items:
+            slug = item.split(" ", 1)[0]
+            other = f"concept:{slug}"
+            if slug in by_name:
+                nodes.append(_graph_node(by_name[slug]))
+            src, dst = (other, node["id"]) if key == "receives_from" else (node["id"], other)
+            kind = "RELATED_TO" if key == "works_beside" else "PREREQUISITE_OF"
+            edges.append({"source": src, "target": dst, "type": kind})
+    return {"nodes": nodes, "edges": edges}
+
+
 class _RosterBridge(Bridge):
     """로스터를 답하는 가짜 사이드카. 호출 궤적을 남긴다."""
 
@@ -81,11 +104,9 @@ class _RosterBridge(Bridge):
         if path == "/graph":
             seed = (params or {}).get("seed")
             node = next((r for r in self.roles if r["id"] == seed), None)
-            return {"executed": True, "found": bool(node),
-                    "nodes": [] if node is None else [
-                        {"id": node["id"], "label": node["label"], "kind": "concept",
-                         "domain": node["domain"], "tags": node["tags"],
-                         "props": node["props"]}]}
+            if node is None:
+                return {"executed": True, "found": False, "nodes": []}
+            return {"executed": True, "found": True, **_ring(node, self.roles)}
         if path == "/search":
             return {"executed": True, "node_hits": [
                 {"id": "concept:searched", "title": "Searched"}], "rows": []}
@@ -139,7 +160,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(b)
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 19)
+        self.assertEqual(len(got["prompts"]), 21)
 
     def test_only_role_concepts_survive_the_prefix_filter(self):
         b = _RosterBridge(roles_=[
@@ -169,7 +190,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(_RosterBridge(nested=True))
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 19)
+        self.assertEqual(len(got["prompts"]), 21)
 
     def test_a_role_seen_in_two_domains_is_listed_once(self):
         rows = roles.roster_rows(lambda node: [

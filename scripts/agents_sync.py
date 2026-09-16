@@ -72,7 +72,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from vinc_mcp.roles import (DOMAIN, ID_PREFIX, build_payload,  # noqa: E402
-                            render_shell, roster_rows)
+                            render_shell, roster_rows, works_with)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / "agents" / "shells"
@@ -175,7 +175,8 @@ def cmd_pull() -> int:
             # ([[record:isolated-seed-read-back-reported-empty-fields]]). 조용히 빈
             # 역할을 쓰느니 여기서 죽는 편이 낫다.
             raise SystemExit(f"[agents] {rid} 가 자기 응답의 nodes 에 없다")
-        roles.append(node)
+        roles.append(dict(node, works_with=works_with(rid, got.get("nodes") or [],
+                                                      got.get("edges") or [])))
 
     write_snapshot(build_payload(roles))
     print(f"[agents] 썼다: {SNAPSHOT.relative_to(ROOT)} — git diff 가 그래프가 앞서간 만큼이다")
