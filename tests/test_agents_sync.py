@@ -25,7 +25,8 @@ from scripts.agents_sync import (GENERATED_MARK, HOOK_SRC,  # noqa: E402
                                  _manifest_docs, dangling_reads, install,
                                  main, main_checkout, read_snapshot,
                                  shell_path)
-from vinc_mcp.roles import RUNG_TO_MODEL, build_payload, render_shell  # noqa: E402
+from vinc_mcp.roles import (RUNG_TO_MODEL, build_payload,  # noqa: E402
+                            render_shell, works_with)
 
 _NODE = {
     "id": "concept:agent-example",
@@ -97,6 +98,61 @@ class Shell(unittest.TestCase):
     def test_every_rung_maps_to_a_model(self):
         for rung in ("strongest", "strong", "fast", "cheapest"):
             self.assertTrue(RUNG_TO_MODEL.get(rung), rung)
+
+    def _render(self, **props):
+        node = dict(_NODE, props=dict(_NODE["props"], **props))
+        return render_shell(build_payload([node])["roles"][0])
+
+    def test_job_title_and_team_lead_the_description_and_name_the_team(self):
+        text = self._render(job_title="Product Owner", team="Program Office",
+                            team_role="lead")
+        self.assertIn("\ndescription: Product Owner (Program Office). Does one thing",
+                      text)
+        self.assertIn("\nTeam Program Office, lead.\n", text)
+
+    def test_a_role_without_a_team_keeps_the_mission_as_its_description(self):
+        text = self._render()
+        self.assertIn("\ndescription: Does one thing and stops.\n", text)
+        self.assertNotIn("\nTeam ", text)
+
+    def test_tools_are_declared_in_the_body_and_never_as_an_allowlist(self):
+        """허용목록은 부팅 호출까지 자른다. 도구는 본문 선언으로만 싣는다."""
+        text = self._render(tools=["vinc: the graph", "Linear: the backlog"])
+        self.assertIn("## Tools and MCP servers\n\n- vinc: the graph\n- Linear: the backlog",
+                      text)
+        self.assertNotIn("\ntools:", text.split("---")[1])
+
+    def test_works_with_comes_from_edges_between_roles_only(self):
+        nodes = [{"id": "concept:agent-qa", "label": "Agent role: QA Engineer"}]
+        edges = [
+            {"source": "concept:agent-example", "target": "concept:agent-qa",
+             "type": "PREREQUISITE_OF"},
+            {"source": "concept:agent-po", "target": "concept:agent-example",
+             "type": "PREREQUISITE_OF"},
+            {"source": "concept:agent-qa", "target": "concept:agent-example",
+             "type": "RELATED_TO"},
+            # 역할이 아닌 끝점·자기 고리·로스터 개념은 협업이 아니다
+            {"source": "concept:agent-example", "target": "concept:repo-workflow",
+             "type": "RELATED_TO"},
+            {"source": "concept:agent-example", "target": "concept:agent-example",
+             "type": "PREREQUISITE_OF"},
+            {"source": "concept:agent-orchestration", "target": "concept:agent-example",
+             "type": "RELATED_TO"},
+        ]
+        got = works_with("concept:agent-example", nodes, edges)
+        self.assertEqual(got, {"hands_to": ["agent-qa (QA Engineer)"],
+                               "receives_from": ["agent-po"],
+                               "works_beside": ["agent-qa (QA Engineer)"]})
+        node = dict(_NODE, works_with=got)
+        text = render_shell(build_payload([node])["roles"][0])
+        self.assertIn("## Works with\n\n- Hands off to: agent-qa (QA Engineer)\n"
+                      "- Receives from: agent-po\n- Works beside: agent-qa (QA Engineer)",
+                      text)
+
+    def test_no_edges_means_no_works_with_key_or_section(self):
+        role = build_payload([_NODE])["roles"][0]
+        self.assertNotIn("works_with", role)
+        self.assertNotIn("## Works with", render_shell(role))
 
 
 class RepoIsClean(unittest.TestCase):
