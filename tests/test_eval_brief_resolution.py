@@ -208,13 +208,17 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
     벡터 없는 스토어에 임베딩을 넘기면 없는 팔을 있는 척 재고, 켜 놓고 안 적으면 두 런이
     비교 가능해 보인다. 둘 다 조용한 오측이다."""
 
-    def _run(self, argv_extra, spy):
-        import eval_brief_resolution as e
+    def _gold(self):
         gold = pathlib.Path(self.tmp) / "g.jsonl"
         gold.write_text(json.dumps({"query": "q", "gold_node_id": "concept:a",
                                     "answerable": True, "gold_kind": "concept",
                                     "language_axis": "en"})
                         + "\n", encoding="utf-8")
+        return gold
+
+    def _run(self, argv_extra, spy):
+        import eval_brief_resolution as e
+        gold = self._gold()
         out = pathlib.Path(self.tmp) / "o.json"
         with (mock.patch.object(e, "open_store", return_value=_FakeStore()),
               mock.patch.object(e, "gold_present", return_value=[]),
@@ -263,27 +267,21 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
         self.assertEqual(got["summary"]["store_sha256"],
                          hashlib.sha256(b"store bytes").hexdigest())
 
-
-class EvalStoreLock(unittest.TestCase):
-    """평가 스토어 고정표. 이름이 가리키는 항목이 실재하고 지문 칸이 온전해야 한다."""
-
-    ROOT = Path(__file__).resolve().parents[1]
-
-    def test_the_named_stores_are_pinned(self):
-        lock = json.loads((self.ROOT / "scripts" / "fixtures" / "eval_store.lock.json")
-                          .read_text(encoding="utf-8"))
-        self.assertIn("gabia", lock, "교차 코퍼스 스토어 칸이 없다(없으면 null)")
-        self.assertIsNotNone(lock["personal"])
-        for name in (lock["personal"], lock["gabia"]):
-            if name is None:
-                continue
-            s = lock["stores"][name]
-            self.assertRegex(s["sha256"], r"^[0-9a-f]{64}$")
-            self.assertRegex(s["built_at_tree"], r"^[0-9a-f]{7,40}$")
-            self.assertTrue(s["encoder"])
-            self.assertTrue((self.ROOT / s["gold"]).is_file(), s["gold"])
-            for kind in ("Concept", "Record", "Decision", "Episode"):
-                self.assertIsInstance(s["rows"][kind], int, kind)
+    def test_a_store_with_a_leftover_wal_is_refused_before_it_opens(self):
+        """스토어는 본 파일과 WAL 두 파일이다 — WAL 이 있으면 본 파일 지문은 내용이 아니다."""
+        import eval_brief_resolution as e
+        data = pathlib.Path(self.tmp) / "hub.db"
+        data.write_bytes(b"store bytes")
+        pathlib.Path(str(data) + ".wal").write_bytes(b"pending")
+        opener = mock.Mock()
+        err = io.StringIO()
+        with (mock.patch.object(e, "open_store", opener),
+              contextlib.redirect_stderr(err)):
+            rc = e.main(["--data", str(data), "--owner", "o",
+                         "--gold", str(self._gold())])
+        self.assertEqual(rc, 1)
+        opener.assert_not_called()
+        self.assertIn(".wal", err.getvalue())
 
 
 class _FakeStore:

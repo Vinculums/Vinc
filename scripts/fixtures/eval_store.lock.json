@@ -1,7 +1,5 @@
 {
-  "note": "Eval stores live outside every repository, under _eval-stores/ at the workspace root (the parent of the Vinc checkout). Measure on a copy, never on the file named here. Two results are comparable only when their summary.store_sha256 matches an entry below.",
-  "personal": "m3-2026-09-13",
-  "gabia": null,
+  "note": "stores[].sha256 is the byte hash of the store file, taken from an unopened copy right before that copy is opened. Opening a store, a read-only query included, can change its bytes, so a copy is spent once opened: a reused copy no longer matches this value and a run on it is not comparable. A store derived from a pinned one (a filled copy, for example) is compared by content fingerprint, and the fingerprint output is kept beside the results. Eval stores live outside every repository, under _eval-stores/ at the workspace root (the parent of the Vinc checkout).",
   "stores": {
     "m3-2026-09-13": {
       "path": "_eval-stores/m3-2026-09-13/hub.db",
@@ -10,9 +8,7 @@
       "gold": "scripts/fixtures/brief_gold.jsonl",
       "built_at_tree": "5c26e6f833f369b68ab1acf8187d07de9527519a",
       "encoder": "BAAI/bge-m3",
-      "encoder_file": "bge-m3-int8-rr.onnx",
       "encoder_sha256": "e05d27e444606cd8b04e81c89afb911af54ea3cca0813dd0530422a396a09611",
-      "vec_dim": 1024,
       "rows": {
         "Concept": 442,
         "Record": 610,

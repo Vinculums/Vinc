@@ -140,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--encoder", help="이름=onnx. 없으면 제목 팔만")
     a = ap.parse_args(argv)
 
+    store_sha = n2.file_sha(pathlib.Path(a.data))   # 열기 전 값 — 여는 것만으로 바이트가 바뀔 수 있다
     store = open_store(load_config({"data_dir": a.data}))
     if store is None:
         print(f"스토어에 도달할 수 없다: {a.data}", file=sys.stderr)
@@ -169,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         print("채점할 행이 0건이다", file=sys.stderr)
         return 1
     report = summarize(rows)
+    report["store_sha256"] = store_sha
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if a.out:
         pathlib.Path(a.out).write_text(
