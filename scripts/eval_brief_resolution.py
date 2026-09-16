@@ -301,6 +301,10 @@ def main(argv: list[str] | None = None) -> int:
     if check_gold(rows):
         return 1
 
+    # 스토어 지문은 **열기 전에** 잰다. 두 결과를 나란히 둬도 되는지는 이 값이 같은지로
+    # 판정하고, 기대값은 `scripts/fixtures/eval_store.lock.json` 에 있다.
+    from eval_answer_material import file_sha            # noqa: PLC0415
+    store_sha = file_sha(pathlib.Path(a.data))
     store = open_store(load_config({"data_dir": a.data}))
     if store is None:
         print(f"스토어에 도달할 수 없다: {a.data}", file=sys.stderr)
@@ -351,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         if enc else
         "query_embedding 미전달 — 의미 팔 없음. 이 수치는 어휘·그래프 경로만의 해소 정확도다")
     summ["encoder"] = a.encoder or ""
+    summ["store_sha256"] = store_sha
     summ["missing_gold_nodes"] = missing
     out = {"kind": "brief.resolution", "store": a.data, "owner": a.owner,
            "encoder": a.encoder or "",

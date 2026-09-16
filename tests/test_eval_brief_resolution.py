@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import pathlib
@@ -253,6 +254,36 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
         self.assertEqual(seen["vec"], [0.5, 0.5])
         self.assertIn("의미 팔이 돌았다", got["summary"]["arms_note"])
         self.assertEqual(got["encoder"], "some/model=art.onnx")
+
+    def test_the_summary_carries_the_hash_of_the_store_file_it_read(self):
+        """지문이 다른 두 결과는 나란히 두면 안 된다 — 그 판정 재료가 요약에 있어야 한다."""
+        data = pathlib.Path(self.tmp) / "hub.db"
+        data.write_bytes(b"store bytes")
+        got = self._run(["--data", str(data)], lambda query, **kw: _res("none"))
+        self.assertEqual(got["summary"]["store_sha256"],
+                         hashlib.sha256(b"store bytes").hexdigest())
+
+
+class EvalStoreLock(unittest.TestCase):
+    """평가 스토어 고정표. 이름이 가리키는 항목이 실재하고 지문 칸이 온전해야 한다."""
+
+    ROOT = Path(__file__).resolve().parents[1]
+
+    def test_the_named_stores_are_pinned(self):
+        lock = json.loads((self.ROOT / "scripts" / "fixtures" / "eval_store.lock.json")
+                          .read_text(encoding="utf-8"))
+        self.assertIn("gabia", lock, "교차 코퍼스 스토어 칸이 없다(없으면 null)")
+        self.assertIsNotNone(lock["personal"])
+        for name in (lock["personal"], lock["gabia"]):
+            if name is None:
+                continue
+            s = lock["stores"][name]
+            self.assertRegex(s["sha256"], r"^[0-9a-f]{64}$")
+            self.assertRegex(s["built_at_tree"], r"^[0-9a-f]{7,40}$")
+            self.assertTrue(s["encoder"])
+            self.assertTrue((self.ROOT / s["gold"]).is_file(), s["gold"])
+            for kind in ("Concept", "Record", "Decision", "Episode"):
+                self.assertIsInstance(s["rows"][kind], int, kind)
 
 
 class _FakeStore:
