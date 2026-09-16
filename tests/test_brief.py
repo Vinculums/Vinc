@@ -192,6 +192,25 @@ class ShrinkTests(unittest.TestCase):
         self.assertIs(mcp_tools.SHRINKERS["vinc_brief"],
                       mcp_tools._shrink_brief_result)
 
+    def test_choose_후보_재료의_발췌도_던다(self):
+        """플래그 켠 choose 는 재료가 candidate_material 안에만 있다. 그 키를
+        건너뛰면 예산 초과가 거부가 되고 기본값을 못 켠다."""
+        fat = {"kind": "brief", "status": "choose", "candidates": [{"id": "c"}],
+               "grounds": ["c"] + [f"d{i}" for i in range(20)],
+               "candidate_material": {
+                   "candidate": "c", "landed": True,
+                   "excerpts": [{"doc_id": f"d{i}", "excerpt": "가" * 400}
+                                for i in range(20)],
+                   "links": {"items": [{"id": f"concept:{i}", "title": "나" * 100}
+                                       for i in range(20)]},
+                   "grounds": [f"d{i}" for i in range(20)]}}
+        out = mcp_tools._shrink_brief_result(fat, 6000)
+        self.assertIsNotNone(out)
+        self.assertLess(len(out["candidate_material"]["excerpts"]), 20)
+        self.assertEqual(len(out["candidate_material"]["links"]["items"]), 20)
+        self.assertEqual(len(out["candidate_material"]["grounds"]), 20)
+        self.assertIn("shrunk to fit", out["note"])
+
 
 # ── 2. 실엔진 층 ──────────────────────────────────────────────────────────────
 

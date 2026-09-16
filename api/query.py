@@ -3214,9 +3214,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
             # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
             # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
-            # 끝이 없다).
-            # ponytail: vinc_mcp 축소기는 이 키 안을 덜지 않는다. 켠 채 예산을 넘으면
-            # 거부된다 — 기본값을 켜기 전에 축소기에 넣을 것.
+            # 끝이 없다). 축소기는 이 키 안의 발췌·관계를 확정 답과 같은 순서로 던다.
             # 근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]
             if base["candidates"] and not _reask and _brief_choose_material_on():
                 base["candidate_material"] = _brief_candidate_material(

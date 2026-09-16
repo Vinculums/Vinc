@@ -1288,31 +1288,52 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
 #: 봉투가 참조하는 도구별 축소기 레지스트리. 미등재 도구는 기존 거부 유지
 #: (JSON 을 중간에서 자르면 깨진 구문이 된다). 등재된 것도 문자 단위로는 안 자른다 —
 #: 덜 중요한 **필드나 항목**을 통째로 덜어낸다.
+def _shrink_material_lists(block: dict, over: callable) -> tuple[int, int]:
+    """발췌를 먼저, 관계를 나중에. `over()` 가 참인 동안 항목을 덜어낸다."""
+    dropped_ex = dropped_ln = 0
+    ex = block.get("excerpts")
+    links = block.get("links")
+    items = links.get("items") if isinstance(links, dict) else None
+    if isinstance(ex, list):
+        while ex and over():
+            ex.pop()
+            dropped_ex += 1
+    if isinstance(items, list):
+        while items and over():
+            items.pop()
+            dropped_ln += 1
+    return dropped_ex, dropped_ln
+
+
 def _shrink_brief_result(out: dict, budget: int) -> dict | None:
     """vinc_brief 결과를 예산 안으로 줄인다 — **발췌를 먼저, 관계를 나중에** 덜어낸다.
 
     관계는 그 노드의 근거 지도라 마지막까지 남긴다. 발췌는 `grounds` 에 doc_id 가
     남으므로 vinc_doc_get 으로 되찾을 수 있다 — 덜어내도 길이 끊기지 않는다는 뜻이다.
+    choose 에서 플래그로 붙는 `candidate_material` 도 같은 순서로 덜어낸다. 그 키를
+    건너뛰면 켠 채 예산을 넘길 때 거부가 나고, 기본값을 못 켠다.
     줄일 수 없으면 None 을 돌려 기존 거부 경로로 보낸다(조용한 절단보다 거부가 정직하다).
-    근거: [[vinc.plan.mcp-agent-surface §4]]"""
+    근거: [[vinc.plan.mcp-agent-surface §4]]
+    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
     if not isinstance(out, dict):
         return None
 
     def _size() -> int:
         return len(json.dumps(out, ensure_ascii=False))
 
-    ex = out.get("excerpts")
-    links = out.get("links")
-    items = links.get("items") if isinstance(links, dict) else None
+    def _over() -> bool:
+        return _size() > budget
+
     dropped_ex = dropped_ln = 0
-    if isinstance(ex, list):
-        while ex and _size() > budget:
-            ex.pop()
-            dropped_ex += 1
-    if isinstance(items, list):
-        while items and _size() > budget:
-            items.pop()
-            dropped_ln += 1
+    # 부가 키부터. 확정 답의 재료보다 choose 후보 재료가 먼저 빠져야 한다.
+    cm = out.get("candidate_material")
+    if isinstance(cm, dict):
+        de, dl = _shrink_material_lists(cm, _over)
+        dropped_ex += de
+        dropped_ln += dl
+    de, dl = _shrink_material_lists(out, _over)
+    dropped_ex += de
+    dropped_ln += dl
     if _size() > budget:
         return None
     if dropped_ex or dropped_ln:
