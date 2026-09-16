@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    ap = argparse.ArgumentParser(description="weg-9000-memory query API")
+    ap = argparse.ArgumentParser(description="Vinc query API")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
