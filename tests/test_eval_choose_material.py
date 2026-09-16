@@ -5,9 +5,15 @@
 """
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -98,3 +104,22 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual([r["arms"] for r in rows], ["title+semantic", "title", None])
         self.assertEqual(oc.summarize(rows)["by_arms"],
                          {"title+semantic": 1, "title": 1, "": 1})
+
+
+class ReportStoreHashTests(unittest.TestCase):
+    def test_보고서에_열기_전_스토어_지문이_실린다(self):
+        with tempfile.TemporaryDirectory() as d:
+            data, gold, out = Path(d) / "hub.db", Path(d) / "g.jsonl", Path(d) / "r.json"
+            data.write_bytes(b"store bytes")
+            gold.write_text(json.dumps({"query": "q", "gold_node_id": "concept:gold",
+                                        "answerable": True}) + "\n", encoding="utf-8")
+            pair = (_resolved("concept:gold"), _resolved("concept:gold"))
+            with (mock.patch.object(oc, "open_store", return_value=mock.Mock()),
+                  mock.patch.object(oc, "brief_pair", return_value=pair),
+                  mock.patch.object(oc.n2, "tree_ref", return_value="t"),
+                  contextlib.redirect_stdout(io.StringIO())):
+                rc = oc.main(["--data", str(data), "--owner", "o",
+                              "--gold", str(gold), "--out", str(out)])
+            self.assertEqual(rc, 0)
+            report = json.loads(out.read_text(encoding="utf-8"))["report"]
+        self.assertEqual(report["store_sha256"], hashlib.sha256(b"store bytes").hexdigest())

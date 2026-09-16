@@ -72,8 +72,13 @@ def sha(p: pathlib.Path) -> str:
 
 
 def file_sha(p: pathlib.Path) -> str:
+    """스토어 파일 지문(열기 전에 잰다). 스토어는 본 파일과 `<파일>.wal` 두 파일이라 WAL 이
+    남아 있으면 본 파일 바이트가 내용을 대표하지 못한다 — 그때는 해시 대신 "wal-present"
+    를 돌려줘 어떤 고정값과도 같지 않게 한다."""
     if not p.is_file():
         return "not-a-file"
+    if p.with_name(p.name + ".wal").exists():
+        return "wal-present"
     h = hashlib.sha256()
     with p.open("rb") as f:
         for block in iter(lambda: f.read(1 << 20), b""):
