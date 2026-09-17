@@ -911,8 +911,9 @@ class _Handler(BaseHTTPRequestHandler):
         self._raw_body = b""
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > MAX_BODY:
-            # 상한 초과는 본문을 **읽지 않고** 400 으로 끝낸다(읽으면 그게 메모리 공격
-            # 통로다). 미수신 바이트가 남지만 무해하다 — `protocol_version` 이
+            # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다(읽으면 그게 메모리 공격
+            # 통로다). 상태 코드는 이 함수가 정하지 않는다 — 초과를 오류로 알려야 하는
+            # 라우트는 부르기 전에 스스로 본다(`_internal_graph`). 미수신 바이트가 남지만 무해하다 — `protocol_version` 이
             # HTTP/1.0(기본)이라 매 응답 뒤 커넥션이 닫히기 때문이다.
             # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
             # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
@@ -1329,6 +1330,11 @@ class _Handler(BaseHTTPRequestHandler):
         owner 는 서명된 sub 에서만 강제된다. 바디 = op 인자(owner 제외), 어서션 = op 지정."""
         if not self.app.graph_enabled():
             return self._json(503, {"error": "graph_proxy_disabled"})
+        # 상한을 넘으면 `_body()` 가 빈 본문을 돌려주고, 그러면 서명 지문이 어긋나 401 이
+        # 됐다. 계정은 그것을 "세션 만료"로 옮겨 로그인된 사람을 로그인 화면으로 보냈다.
+        # 근거: [[record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18]]
+        if int(self.headers.get("Content-Length") or 0) > MAX_BODY:
+            return self._json(413, {"error": "request body is too large"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""
         args = self._body()
         try:

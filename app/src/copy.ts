@@ -866,6 +866,13 @@ const EN = {
       destDoneCommunity: "Published. Anyone signed in can find it in the community gallery.",
       destFailed: "That didn't go through. Nothing was changed on either side.",
       destClose: "Done",
+      // 스페이스로 보내기는 조각 단위로 간다(packchunks.ts). 막대 셋과 그 뒤의 문구다.
+      gaugeNodes: "Nodes", gaugeLinks: "Links", gaugeDocs: "Documents",
+      gaugeCount: (done: number, total: number) => `${done} / ${total}`,
+      destBackground: (done: number, total: number) =>
+        `Sending in the background (${done} of ${total}). You can keep working, but leaving this page stops it.`,
+      destPartial: "Stopped partway. What already went in stays, and sending again fills in the rest.",
+      destTooBig: (n: number) => `${n} were too large to send (over 3 MB each).`,
       importTitle: "Import a pack",
       updateNote: (c: number, e: number, r: number) =>
         `${c} concepts · ${e} connections · ${r} documents. Safe update: anything already here is refreshed in place, never duplicated.`,
@@ -1566,6 +1573,12 @@ const KO: Deck = {
       destDoneCommunity: "게시했어요. 로그인한 누구나 커뮤니티 갤러리에서 찾을 수 있어요",
       destFailed: "보내지 못했어요. 다시 시도해 보세요. 양쪽 모두 그대로예요",
       destClose: "완료",
+      gaugeNodes: "노드", gaugeLinks: "연결", gaugeDocs: "문서",
+      gaugeCount: (done, total) => `${done} / ${total}`,
+      destBackground: (done, total) =>
+        `뒤에서 보내는 중이에요(${done}/${total}). 다른 일을 해도 되지만, 이 페이지를 떠나면 멈춰요`,
+      destPartial: "중간에 멈췄어요. 이미 들어간 것은 그대로 있고, 다시 보내면 나머지가 채워져요",
+      destTooBig: (n) => `${n}개는 너무 커서 보내지 못했어요(한 개에 3MB 초과)`,
       importTitle: "팩 가져오기",
       updateNote: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개. 이미 있는 것은 그 자리에서 갱신되고, 절대 중복되지 않아요`,
       importMine: "내 지식으로 가져오기", viewMap: "View에서 열기",

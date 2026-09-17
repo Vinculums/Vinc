@@ -1447,9 +1447,9 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .dest-pick button:hover { border-color: hsl(var(--ring)); background: hsl(var(--ring) / .08); }
 .dest-pick .title { font-weight: 600; }
 .dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
-/* 진행 표시 — 공유 시트의 기다림 전부가 이 한 벌을 쓴다(팩 준비 · 스페이스로 보내기
-   · 파일로 받기 · 커뮤니티 게시). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데
-   모양이 자리마다 달랐다.
+/* 진행 표시 — 공유 시트의 기다림이 이 한 벌을 쓴다(팩 준비 · 파일로 받기 · 커뮤니티
+   게시). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데 모양이 자리마다 달랐다.
+   스페이스로 보내기는 아래 확정 막대를 쓴다.
    **불확정 막대다.** 네 자리가 기다리는 모양은 하나가 아니라 셋으로 갈리는데
    (`call()` · `communityPost` · `toBytes`), 셋 다 보고할 단계가 없거나 셀 수 있어도
    이 막대가 그릴 값이 못 된다. 판정과 그 근거는 `sheets.ts` 의 `sheetProgress`
@@ -1484,6 +1484,21 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
    애초에 말할 것이 없으므로 손해가 없다 — "무엇을 기다리는지"는 위의 문구가 진다. */
 @media (prefers-reduced-motion: reduce) {
   .sheet-progress-track > span { animation: none; width: 100%; opacity: .5; }
+}
+/* 확정 막대 — 스페이스로 보내기의 노드·연결·문서 셋(sheets.ts `mountGauges`). 셀 단계가
+   실제로 있는 유일한 자리다. 폭은 스크립트가 인라인으로 주고, 위 불확정 규칙(움직임 ·
+   40% · 감소 모션의 반투명)을 선택자 우선순위로 덮는다. */
+.sheet-gauge { margin-top: var(--space-2, .5rem); }
+.sheet-gauge > p {
+  display: flex; justify-content: space-between; gap: .5rem;
+  margin: 0 0 .3rem; font-variant-numeric: tabular-nums;
+}
+.sheet-progress-track.is-determinate > span {
+  width: 0; opacity: 1; animation: none;
+  transition: width .2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-progress-track.is-determinate > span { transition: none; }
 }
 
 /* Command palette / cheatsheet overlay */

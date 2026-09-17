@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
-"""공유·백업 동선의 기다림은 **한 벌**이고, 그 게이지는 **불확정**이다.
+"""공유·백업 동선의 기다림은 **두 벌뿐**이고, 셀 단계가 없는 곳은 **불확정**이다.
 
 두 가지를 지킨다.
 
-1. 기다림 자리가 전부 `sheetProgress` 를 지난다. 여섯이다 — 공유 시트 넷(팩 준비 ·
-   스페이스로 보내기 · 파일로 받기 · 커뮤니티 게시)과 Tools 공유 탭 둘(탭 진입 ·
-   전체 백업). 전에는 자리마다 `<p class="hint">` 한 줄이라, 같은 동선에서 같은 일을
-   기다리는데 모양이 자리마다 달랐다.
+1. 기다림 자리가 전부 `sheetProgress` 나 `mountGauges` 를 지난다. `sheetProgress`
+   (불확정)는 다섯이다 — 공유 시트 셋(팩 준비 · 파일로 받기 · 커뮤니티 게시)과 Tools
+   공유 탭 둘(탭 진입 · 전체 백업). 전에는 자리마다 `<p class="hint">` 한 줄이라, 같은
+   동선에서 같은 일을 기다리는데 모양이 자리마다 달랐다.
+
+   **스페이스로 보내기만 `mountGauges`(확정 막대 셋)를 쓴다.** 팩을 조각으로 나눠
+   보내게 되면서(`app/src/packchunks.ts`) 셀 단계가 실제로 생겼기 때문이다. 그 퍼센트는
+   `api.importPack` 이 조각 하나를 끝낼 때마다 주는 보고에서만 온다 — 아래 2번의
+   금지(시계로 지어낸 단계)는 그 자리에도 그대로 걸린다.
+   근거: [[decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents]]
 
    ⚠ Tools 의 둘은 P16 이 한 벌을 세울 때 사정거리 밖이었다. 탭 진입은 다른 파일에
    있었고, 전체 백업은 P15 가 P16 **머지 뒤에** Tools 로 들여왔다. 그래서 한 벌을
@@ -18,7 +24,7 @@
    셋을 한 번에 옮기는 것은 별건이라(하나는 `<p>` 안의 `<span>` 자리다) 여기서는
    관할 밖으로 둔다 — `setUp` 의 슬라이스가 그 경계다.
 
-2. 그 게이지가 **퍼센트를 지어내지 않는다.** 여섯 자리가 지나는 네 경로 어디에도
+2. 그 게이지가 **퍼센트를 지어내지 않는다.** 불확정 다섯 자리가 지나는 경로 어디에도
    보고할 단계가 없다(근거는 `sheetProgress` 주석). 그런데 참조 원본(공홈 커뮤니티
    페이지)은 요청이 하나인데 `setInterval(…, 550)` 로 막대를 8 → 32 → 56 → 80% 로
    밀고 응답이 오면 100% 로 점프한다 — 서버가 어디까지 갔는지와 무관한 수치다.
@@ -98,7 +104,7 @@ class ShareProgressTests(unittest.TestCase):
             for i, line in enumerate(src.splitlines(), 1):
                 if line.lstrip().startswith(("*", "//", "/*")):
                     continue
-                if not BUSY.search(line) or "sheetProgress(" in line:
+                if not BUSY.search(line) or "sheetProgress(" in line or "mountGauges(" in line:
                     continue
                 loose.append(f"{name}:{i}: {line.strip()}")
         self.assertEqual(
@@ -113,12 +119,30 @@ class ShareProgressTests(unittest.TestCase):
                 f"{name} 에 결과를 화면에 안 붙이는 sheetProgress 호출이 있다 "
                 "— 버튼을 눌러도 아무것도 안 뜬다")
 
-    def test_여섯_자리_전부_걸려_있다(self):
-        """시트 넷(팩 준비 · 목적지 확정 · 목적지 선택 · 커뮤니티) + Tools 둘."""
-        self.assertEqual(self.share.count("sheetProgress("), 4,
-                         "공유 시트의 네 자리가 아니다")
+    def test_자리가_전부_걸려_있다(self):
+        """불확정: 시트 셋(팩 준비 · 파일로 받기 · 커뮤니티) + Tools 둘.
+        확정: 스페이스로 보내기 한 자리(목적지 확정 · 내 공간 선택이 함께 쓴다)."""
+        self.assertEqual(self.share.count("sheetProgress("), 3,
+                         "공유 시트의 불확정 세 자리가 아니다")
         self.assertEqual(self.tl_share.count("sheetProgress("), 2,
                          "Tools 공유 탭의 두 자리(탭 진입 · 전체 백업)가 아니다")
+        code = _code_only(self.share)
+        self.assertEqual(code.count("mountGauges(sheet.body"), 1,
+                         "스페이스로 보내기의 확정 막대가 한 자리가 아니다")
+        self.assertEqual(code.count("sendToSpace(sheet,"), 2,
+                         "목적지 확정과 내 공간 선택이 같은 보내기를 쓰지 않는다")
+
+    def test_확정_막대의_수치는_조각_보고에서만_온다(self):
+        """확정 막대는 `aria-valuenow` 를 싣는다 — 그 값이 참이려면 **조각을 끝낼 때마다
+        오는 보고**가 유일한 출처여야 한다. 타이머 금지는 아래 검사가 함께 본다."""
+        code = _code_only(self.share)
+        self.assertIn("api.importPack(out, cfg.owner, scope, (p) =>", code,
+                      "막대가 importPack 의 조각 보고를 받지 않는다")
+        api_src = (ROOT / "app" / "src" / "api.ts").read_text(encoding="utf-8")
+        body = api_src[api_src.index("async function importPackInChunks"):]
+        body = body[: body.index(chr(10) + "}")]
+        self.assertIn("onStep?.(", body, "조각 보고가 없다")
+        self.assertIn("for (const c of chunks)", body, "보고가 조각 단위가 아니다")
 
     def test_막대를_세운_뒤의_기다림에는_끝이_있다(self):
         """불확정 막대는 **끝을 그리지 않는다** — 끝나지 않는 실패를 `살아 있음`으로
@@ -162,7 +186,7 @@ class ShareProgressTests(unittest.TestCase):
         `sheetProgress` 의 마크업은 내용과 함께 삽입되므로, 거기에 `role="status"` 를
         달면 스크린리더가 관찰할 대상이 애초에 없다 — 알리는 척만 하는 것이다. 붙일
         상주 자리가 있는 곳은 커뮤니티 게시(`#pub-progress`)와 전체 백업
-        (`#tl-backup-msg`) 둘뿐이고, 나머지 넷은 담는 자리를 통째로 갈아치운다.
+        (`#tl-backup-msg`) 둘뿐이고, 나머지 셋은 담는 자리를 통째로 갈아치운다.
 
         라벨 중복도 같이 막는다. 보이는 `<p>` 와 `aria-label` 로 두 번 실으면 두 번
         읽힌다 — 가리키는 것(`aria-labelledby`)은 한 번이다.

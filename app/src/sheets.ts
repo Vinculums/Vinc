@@ -1,7 +1,7 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { AccountError, api, cfg, community, WEB, type Scope } from "./api";
+import { AccountError, api, cfg, community, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, sheetProgress } from "./components";
@@ -77,8 +77,10 @@ export async function openShareSheet(
   scope: { ids?: string[]; seed?: string; domain?: string; depth?: number },
   opts: { from?: Scope; into?: Scope; intoLabel?: string } = {},
 ) {
+  const life: SheetLife = { onClose: () => {} };
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
-                            subtitle: COPY.ui.sheet.shareSub });
+                            subtitle: COPY.ui.sheet.shareSub,
+                            onClose: () => life.onClose() });
   sheet.body.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
   try {
     const pack = await api.share(cfg.owner, {
@@ -118,21 +120,11 @@ export async function openShareSheet(
       delete (out as any).executed;
       // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
       if (opts.into) {
-        const U = COPY.ui.sheet;
-        const where = opts.intoLabel || U.destTeam;
-        sheet.body.innerHTML = sheetProgress(U.destWorking);
-        sheet.foot.innerHTML = "";
-        void api.importPack(out, cfg.owner, opts.into).then(
-          (res) => {
-            sheet.body.innerHTML = landedLines(landedOf(res, keep.length), where);
-            sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
-            sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
-          },
-          () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
-        );
+        void sendToSpace(sheet, life, out, keep.length, opts.into,
+                         opts.intoLabel || COPY.ui.sheet.destTeam);
         return;
       }
-      void chooseDestination(sheet, out, keep.length,
+      void chooseDestination(sheet, life, out, keep.length,
         `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`, scopeLabel);
     });
   } catch {
@@ -154,7 +146,7 @@ async function downloadPack(out: Record<string, unknown>, filename: string): Pro
 
 type Sheet = ReturnType<typeof openSheet>;
 type Dest = { key: string; label: string; note: string; where: string;
-              run: () => Promise<Landed | void> };
+              run: () => Promise<void> };
 
 /** 적재 응답에서 **실제로 착지한 것**만 추린다. */
 type Landed = { nodes: number; skipped: number; conflicts: number; docs: number };
@@ -183,13 +175,119 @@ function landedOf(res: any, requested: number): Landed {
 }
 
 /** 착지 요약 → 사람이 읽는 문장들. 하나도 안 들어갔으면 그렇게 말한다. */
-function landedLines(l: Landed, where: string): string {
+function landedTexts(l: Landed, where: string): string[] {
   const U = COPY.ui.sheet;
   const out = [l.nodes > 0 ? U.destDone(l.nodes, where) : U.destNone(where)];
   if (l.conflicts > 0) out.push(U.destSkippedIds(l.conflicts));
   else if (l.skipped > 0) out.push(U.destSkippedOther(l.skipped));
   if (l.docs > 0) out.push(U.destDoneDocs(l.docs));
-  return out.map((t) => `<p class="hint">${esc(t)}</p>`).join("");
+  return out;
+}
+
+/** 시트가 닫힐 때 할 일. 보내는 중에만 바뀐다(닫으면 알림으로 넘어간다). */
+type SheetLife = { onClose: () => void };
+
+const STAGES = ["nodes", "edges", "documents"] as const;
+
+/**
+ * 보내기 진행 — 노드·연결·문서 막대 셋. **확정 막대다.** `sheetProgress` 가 불확정인
+ * 이유(셀 단계가 없다)의 반대 경우라서다: 조각이 실제 단위이고 각 조각의 항목 수를
+ * 보내기 전에 안다. 막대는 한 번 세우고 폭만 바꾼다(다시 그리면 전환이 끊긴다).
+ */
+function mountGauges(host: HTMLElement, label: string): (p: PackProgress) => void {
+  const U = COPY.ui.sheet;
+  const names = { nodes: U.gaugeNodes, edges: U.gaugeLinks, documents: U.gaugeDocs };
+  host.innerHTML = `
+    <div class="sheet-progress">
+      <p class="hint">${esc(label)}</p>
+      ${STAGES.map((k) => `
+        <div class="sheet-gauge" data-stage="${k}">
+          <p class="hint"><span>${esc(names[k])}</span><span data-n></span></p>
+          <div class="sheet-progress-track is-determinate" role="progressbar"
+               aria-label="${esc(names[k])}" aria-valuemin="0"><span></span></div>
+        </div>`).join("")}
+    </div>`;
+  return (p) => {
+    for (const k of STAGES) {
+      const row = host.querySelector<HTMLElement>(`[data-stage="${k}"]`);
+      if (!row) return;   // 담던 자리가 다른 내용으로 바뀌었다
+      const total = p.total[k], done = p.done[k];
+      row.querySelector("[data-n]")!.textContent = U.gaugeCount(done, total);
+      const bar = row.querySelector<HTMLElement>("[role=progressbar]")!;
+      bar.setAttribute("aria-valuemax", String(total));
+      bar.setAttribute("aria-valuenow", String(done));
+      bar.querySelector("span")!.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+    }
+  };
+}
+
+/** 시트를 닫은 뒤의 자리 — 화면 아래 알림 한 줄. 끝나면 결과와 닫기 버튼을 단다. */
+function transferToast(): { say: (text: string) => void; finish: (text: string) => void } {
+  const el = document.createElement("div");
+  // 모양은 업데이트 알림의 한 벌을 쓴다. 그것은 데스크탑 셸에만 뜨고 스페이스 보내기는
+  // 웹에만 있어서 두 알림이 한 화면에 겹치지 않는다.
+  el.className = "update-toast";
+  el.setAttribute("role", "status");
+  el.innerHTML = `<span class="update-msg"></span><span class="update-actions"></span>`;
+  document.body.appendChild(el);
+  const msg = el.querySelector<HTMLElement>(".update-msg")!;
+  return {
+    say: (text) => { msg.textContent = text; },
+    finish: (text) => {
+      msg.textContent = text;
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = COPY.ui.sheet.destClose;
+      b.addEventListener("click", () => el.remove());
+      el.querySelector(".update-actions")!.appendChild(b);
+    },
+  };
+}
+
+/**
+ * 한 스페이스로 보낸다 — 개인 → 팀, 팀 → 개인 둘 다 여기다.
+ *
+ * **시트를 닫아도 멈추지 않는다.** 조각은 이 페이지가 순서대로 쥐고 있으므로 서버에
+ * 작업을 따로 맡길 것이 없다. 닫으면 진행과 결과가 화면 아래 알림으로 옮겨 가고,
+ * 도는 동안은 페이지를 떠나려 할 때 브라우저가 한 번 묻는다. 떠나면 거기서 멈추지만
+ * 다시 보내면 들어간 것은 그대로 두고 나머지를 채운다(`api.importPack` 주석).
+ */
+async function sendToSpace(sheet: Sheet, life: SheetLife, out: any, requested: number,
+                           scope: Scope, where: string): Promise<void> {
+  const U = COPY.ui.sheet;
+  sheet.foot.innerHTML = "";
+  const sum = (c: PackProgress["total"]) => c.nodes + c.edges + c.documents;
+  const at: { show: (p: PackProgress) => void; last?: PackProgress;
+              toast?: ReturnType<typeof transferToast> } =
+    { show: mountGauges(sheet.body, U.destWorking) };
+  life.onClose = () => {
+    const toast = transferToast();
+    at.toast = toast;
+    at.show = (p) => toast.say(U.destBackground(sum(p.done), sum(p.total)));
+    if (at.last) at.show(at.last);
+  };
+  const stay = (e: BeforeUnloadEvent) => e.preventDefault();
+  addEventListener("beforeunload", stay);
+
+  let lines: string[];
+  let failed = false;
+  try {
+    const res = await api.importPack(out, cfg.owner, scope, (p) => { at.last = p; at.show(p); });
+    lines = landedTexts(landedOf(res, requested), where);
+    if (res.too_big > 0) lines.push(U.destTooBig(res.too_big));
+  } catch (e) {
+    failed = true;
+    lines = [(e as any)?.sent > 0 ? U.destPartial : U.destFailed];
+  } finally {
+    removeEventListener("beforeunload", stay);
+    life.onClose = () => {};
+  }
+  if (at.toast) { at.toast.finish(lines.join(" ")); return; }
+  sheet.body.innerHTML = failed
+    ? `<div class="error-banner">${esc(lines[0]!)}</div>`
+    : lines.map((t) => `<p class="hint">${esc(t)}</p>`).join("");
+  sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
+  sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
 }
 
 /**
@@ -203,7 +301,8 @@ function landedLines(l: Landed, where: string): string {
  * 거기에 모달을 띄우면 선택 없는 선택지를 강요하는 꼴이 된다.
  */
 async function chooseDestination(
-  sheet: Sheet, out: any, conceptCount: number, filename: string, scopeLabel: string,
+  sheet: Sheet, life: SheetLife, out: any, conceptCount: number, filename: string,
+  scopeLabel: string,
 ): Promise<void> {
   const U = COPY.ui.sheet;
   const dests: Dest[] = [];
@@ -211,8 +310,7 @@ async function chooseDestination(
   if (cfg.team) {
     dests.push({
       key: "personal", label: U.destPersonal, note: U.destPersonalNote, where: U.destPersonal,
-      run: async () => landedOf(await api.importPack(out, cfg.owner, { team: null }),
-                                conceptCount),
+      run: () => sendToSpace(sheet, life, out, conceptCount, { team: null }, U.destPersonal),
     });
   }
   // 커뮤니티는 계정 세션이 필요하다 — 셸·로컬 dev 에는 세션이 없다.
@@ -253,16 +351,14 @@ async function chooseDestination(
 
   for (const d of dests) {
     sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
-      // 커뮤니티는 자체 폼으로 이어지므로 여기서 완료 화면을 그리지 않는다.
-      if (d.key === "community") { void d.run(); return; }
+      // 커뮤니티는 자체 폼으로, 스페이스는 자체 진행 막대로 이어지므로 여기서 그리지 않는다.
+      if (d.key === "community" || d.key === "personal") { void d.run(); return; }
       sheet.body.innerHTML = sheetProgress(U.destWorking);
       sheet.foot.innerHTML = "";
       void d.run().then(
-        (landed) => {
-          // 파일 저장처럼 적재가 아닌 목적지는 요약이 없다 — 고른 개수 그대로가 참이다.
-          sheet.body.innerHTML = landed
-            ? landedLines(landed, d.where)
-            : `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
+        () => {
+          // 여기 오는 것은 파일 저장뿐이다. 적재가 아니라 요약이 없고, 고른 개수가 곧 참이다.
+          sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
           sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
           sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
         },
