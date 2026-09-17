@@ -301,6 +301,17 @@ def main(argv: list[str] | None = None) -> int:
     if check_gold(rows):
         return 1
 
+    # 스토어는 본 파일과 `<data>.wal` 두 파일이다(store/embedded_backend.py). WAL 이
+    # 남아 있으면 본 파일 지문이 내용을 대표하지 못하므로 재지 않고 거부한다.
+    wal = pathlib.Path(a.data + ".wal")
+    if wal.exists():
+        print(f"WAL 이 남아 있다({wal}) — 본 파일 지문이 스토어 내용을 대표하지 못한다. "
+              f"WAL 없는 새 사본으로 돌릴 것", file=sys.stderr)
+        return 1
+    # 스토어 지문은 **열기 전에** 잰다(여는 것만으로 바이트가 바뀔 수 있다). 기대값은
+    # `scripts/fixtures/eval_store.lock.json` 에 있다.
+    from eval_answer_material import file_sha            # noqa: PLC0415
+    store_sha = file_sha(pathlib.Path(a.data))
     store = open_store(load_config({"data_dir": a.data}))
     if store is None:
         print(f"스토어에 도달할 수 없다: {a.data}", file=sys.stderr)
@@ -351,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
         if enc else
         "query_embedding 미전달 — 의미 팔 없음. 이 수치는 어휘·그래프 경로만의 해소 정확도다")
     summ["encoder"] = a.encoder or ""
+    summ["store_sha256"] = store_sha
     summ["missing_gold_nodes"] = missing
     out = {"kind": "brief.resolution", "store": a.data, "owner": a.owner,
            "encoder": a.encoder or "",

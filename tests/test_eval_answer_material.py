@@ -39,6 +39,18 @@ class FrozenPromptTests(unittest.TestCase):
             self.assertEqual(n2.sha(lf), n2.sha(crlf))
 
 
+class StoreHashTests(unittest.TestCase):
+    def test_WAL_이_남은_스토어는_해시_대신_표지를_돌려준다(self):
+        """본 파일만 해시하면 WAL 에 남은 쓰기가 지문에서 빠져 고정값과 같게 나온다."""
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "hub.db"
+            db.write_bytes(b"store bytes")
+            clean = n2.file_sha(db)
+            Path(str(db) + ".wal").write_bytes(b"pending")
+            self.assertEqual(n2.file_sha(db), "wal-present")
+            self.assertNotEqual(clean, "wal-present")
+
+
 class ParseTests(unittest.TestCase):
     def test_답과_인용을_가른다(self):
         ans, cited = n2.parse_answer("ANSWER: 사과다.\nCITED: concept:a, `record:b`")

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import pathlib
@@ -207,13 +208,17 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
     벡터 없는 스토어에 임베딩을 넘기면 없는 팔을 있는 척 재고, 켜 놓고 안 적으면 두 런이
     비교 가능해 보인다. 둘 다 조용한 오측이다."""
 
-    def _run(self, argv_extra, spy):
-        import eval_brief_resolution as e
+    def _gold(self):
         gold = pathlib.Path(self.tmp) / "g.jsonl"
         gold.write_text(json.dumps({"query": "q", "gold_node_id": "concept:a",
                                     "answerable": True, "gold_kind": "concept",
                                     "language_axis": "en"})
                         + "\n", encoding="utf-8")
+        return gold
+
+    def _run(self, argv_extra, spy):
+        import eval_brief_resolution as e
+        gold = self._gold()
         out = pathlib.Path(self.tmp) / "o.json"
         with (mock.patch.object(e, "open_store", return_value=_FakeStore()),
               mock.patch.object(e, "gold_present", return_value=[]),
@@ -253,6 +258,30 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
         self.assertEqual(seen["vec"], [0.5, 0.5])
         self.assertIn("의미 팔이 돌았다", got["summary"]["arms_note"])
         self.assertEqual(got["encoder"], "some/model=art.onnx")
+
+    def test_the_summary_carries_the_hash_of_the_store_file_it_read(self):
+        """지문이 다른 두 결과는 나란히 두면 안 된다 — 그 판정 재료가 요약에 있어야 한다."""
+        data = pathlib.Path(self.tmp) / "hub.db"
+        data.write_bytes(b"store bytes")
+        got = self._run(["--data", str(data)], lambda query, **kw: _res("none"))
+        self.assertEqual(got["summary"]["store_sha256"],
+                         hashlib.sha256(b"store bytes").hexdigest())
+
+    def test_a_store_with_a_leftover_wal_is_refused_before_it_opens(self):
+        """스토어는 본 파일과 WAL 두 파일이다 — WAL 이 있으면 본 파일 지문은 내용이 아니다."""
+        import eval_brief_resolution as e
+        data = pathlib.Path(self.tmp) / "hub.db"
+        data.write_bytes(b"store bytes")
+        pathlib.Path(str(data) + ".wal").write_bytes(b"pending")
+        opener = mock.Mock()
+        err = io.StringIO()
+        with (mock.patch.object(e, "open_store", opener),
+              contextlib.redirect_stderr(err)):
+            rc = e.main(["--data", str(data), "--owner", "o",
+                         "--gold", str(self._gold())])
+        self.assertEqual(rc, 1)
+        opener.assert_not_called()
+        self.assertIn(".wal", err.getvalue())
 
 
 class _FakeStore:
