@@ -65,15 +65,22 @@ esac
 # 에서는 전부 통과해 원인을 가리는 데 시간이 들었다. 그래서 부팅만 넉넉히 준다.
 # 그리고 **어느 분기로 죽었는지 표를 남긴다** — 종료코드만으로는 "안 떴다"와 "안 닫았다"가
 # 안 갈린다.
+# ⚠ TERM 은 **검사가 전제하는 프로세스가 전부 trap 을 걸고 선 뒤에** 보낸다(`{ready}` 표식
+# 전부). MCP 표식만 보면 배경 서브셸(미러 재구축의 curl)이나 사이드카 대역이 아직 안 떴을
+# 수 있다 — 가짜 헬스는 대역이 없어도 ok 라서 엔트리포인트의 기동 대기가 그걸 보장하지
+# 않는다. 그때 TERM 이 가면 붙들 재구축이 애초에 없어 표식이 안 남고, 검사는 계약이 아니라
+# 기동 순서를 잰다. 근거: [[record:the-shutdown-test-sent-term-before-the-rebuild-it-guards-had-started-2026-09-17]]
 _BOOT_TICKS = 450        # ×0.2s = 90초. 프로세스가 뜨기를 기다리는 시간(계약 아님)
 _WAIT_TICKS = 150        # ×0.2s = 30초. 종료를 기다리는 시간(이것이 계약이다)
 _DRIVER = """
 sh "{entry}" > "{out}/log" 2>&1 &
 ENTRY=$!
+ready() {{ for f in {ready}; do [ -f "{out}/$f" ] || return 1; done; }}
 i=0
-while [ "$i" -lt {boot} ] && [ ! -f "{out}/mcp-started" ]; do i=$((i+1)); sleep 0.2; done
-if [ ! -f "{out}/mcp-started" ]; then
-  echo "DRIVER: MCP 미기동 ({boot} ticks) — 계약이 아니라 기동 실패다"; cat "{out}/log"; exit 2
+while [ "$i" -lt {boot} ] && ! ready; do i=$((i+1)); sleep 0.2; done
+if ! ready; then
+  echo "DRIVER: 기동 미완 ({boot} ticks, 표식: {ready}) — 계약이 아니라 기동 실패다"
+  ls "{out}"; cat "{out}/log"; exit 2
 fi
 kill -TERM "$ENTRY" 2>/dev/null
 i=0
@@ -142,7 +149,8 @@ class EntrypointShutdownTests(unittest.TestCase):
         })
         env.pop("VINC_ROLE", None)          # 허브 역할로 돈다(encode 는 즉시 exec)
         driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix(),
-                                boot=_BOOT_TICKS, wait=_WAIT_TICKS)
+                                boot=_BOOT_TICKS, wait=_WAIT_TICKS,
+                                ready="mcp-started sidecar-started")
         proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True, timeout=240)
@@ -166,6 +174,7 @@ class EntrypointShutdownTests(unittest.TestCase):
             "case \"$*\" in\n"
             "  *node-mirror/rebuild*)\n"
             f"      trap 'echo killed > \"{self.out.as_posix()}/mirror-killed\"; exit 0' TERM\n"
+            f"      echo running > \"{self.out.as_posix()}/mirror-running\"\n"
             "      i=0; while [ \"$i\" -lt 600 ]; do i=$((i+1)); sleep 0.2; done ;;\n"
             "  *) echo '{\"status\": \"ok\"}' ;;\n"
             "esac\n", encoding="utf-8")
@@ -193,7 +202,8 @@ class EntrypointShutdownTests(unittest.TestCase):
         })
         env.pop("VINC_ROLE", None)
         driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix(),
-                                boot=_BOOT_TICKS, wait=_WAIT_TICKS)
+                                boot=_BOOT_TICKS, wait=_WAIT_TICKS,
+                                ready="mcp-started sidecar-started mirror-running")
         proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True, timeout=240)
