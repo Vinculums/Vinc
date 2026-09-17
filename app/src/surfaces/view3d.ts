@@ -91,6 +91,90 @@ export type L3 = { source: string; target: string; type?: string; cross?: boolea
 // 명암 그라데이션이 라이트 테마의 깊이 단서다. 유리를 걷어내되 그 단서는 지킨다.
 const NODE_OP = 0.72;   // 일반 노드 프로스트
 const GATE_OP = 0.35;   // 게이트웨이 — 더 투명("여기 소속 아님")
+//: 정사면체의 고정 자세. 앱 노드는 자전하지 않으므로 이 각도가 곧 실루엣이다 —
+//: face·view dot 0.76 / 0.21 로 두 면의 음영이 갈려 입체로 읽힌다(시안 §2).
+const DOC_ROT: [number, number, number] = [-0.5, 0.6, 0.2];
+
+// ── 대량 노드 인스턴싱 ──────────────────────────────────────────────────────
+// 노드마다 개별 지오메트리 + MeshPhysicalMaterial 로 그리면 드로우콜과 셰이딩 비용이
+// 노드 수에 비례한다. 3D 의 기본 선 모드는 입자라(edgeShowFor) F6 유휴 정지를 못 받고
+// 매 프레임 이 비용을 낸다. 그래서 몸통이 종류(구·팔면체·사면체)만 다른 노드는 종류당
+// InstancedMesh 하나로 묶는다. gateway·domain·focus 는 형태가 특수하고 수가 적어
+// 개별 메시로 남긴다. 재질 파라미터(색 제외)는 skinFor("body")와 같다 — 2026-08-15 의
+// MeshPhysical 결정은 그대로 두고 그리는 방식만 바꾼다.
+// 근거·기각안: [[decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background]]
+// 실측: [[record:view-3d-instancing-frame-cost-measured-2026-09-18]]
+type InstKind = "sphere" | "bridge" | "doc";
+const instKindOf = (n: N3): InstKind =>
+  n.kind === "concept" || n.kind === "decision" ? "sphere"
+  : n.kind === "bridge" ? "bridge" : "doc";
+//: 인스턴싱 대상에서 뺀다 — gateway(윤곽선, 이미 저가) · domain(겹껍질 특수형) ·
+//: focus(초점색 특례, 뷰당 보통 0~1개).
+const canInstance = (n: N3): boolean => !n.gateway && n.kind !== "domain" && !n.focus;
+const UNIT_GEOM: Record<InstKind, THREE.BufferGeometry> = {
+  sphere: new THREE.SphereGeometry(1, 20, 14),
+  bridge: new THREE.OctahedronGeometry(1.06),
+  doc: new THREE.TetrahedronGeometry(1.22),
+};
+const INST_ROT: Record<InstKind, THREE.Quaternion> = {
+  sphere: new THREE.Quaternion(),
+  bridge: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.5, 0)),
+  doc: new THREE.Quaternion().setFromEuler(new THREE.Euler(...DOC_ROT)),
+};
+/** 인스턴스 재질. 색은 흰색 기준(인스턴스 색이 곱해진다) — 나머지는 skinFor("body")와
+ *  같은 값이다. 단 **불투명**으로 둔다: 투명으로 바꾸면 수백 인스턴스가 투명 패스로 가서
+ *  조기 깊이 기각을 잃고, 한 InstancedMesh 안은 깊이 정렬도 안 된다.
+ *
+ *  hover 페이드(D32-a)는 알파 대신 **최종 색을 배경색으로 섞는다**(`instanceFade`).
+ *  fog 가 하는 연산과 같고, 뒤가 배경뿐인 자리에서는 알파 합성과 수학적으로 같다.
+ *  인스턴스 색(알베도)만 섞으면 안 된다 — clearcoat·sheen·환경 반사가 그대로 남는다. */
+function instMaterial(pal: Palette): THREE.MeshPhysicalMaterial {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, roughness: .52, metalness: .08,
+    clearcoat: .25, clearcoatRoughness: .3,
+    sheen: .2, sheenColor: new THREE.Color(pal.point), sheenRoughness: .6,
+    envMapIntensity: .85,
+  });
+  // fog 유니폼과 같은 색공간(renderer.outputColorSpace — 이 앱은 기본 sRGB 그대로)으로
+  // 넣는다. 섞는 자리가 colorspace_fragment 뒤라 선형값을 넣으면 색이 어긋난다.
+  const fadeColor = new THREE.Color(pal.fog);
+  fadeColor.getRGB(fadeColor, THREE.SRGBColorSpace);
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uFadeColor = { value: fadeColor };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float instanceFade;\nvarying float vInstanceFade;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvInstanceFade = instanceFade;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uFadeColor;\nvarying float vInstanceFade;")
+      .replace("#include <premultiplied_alpha_fragment>",
+        "gl_FragColor.rgb = mix( gl_FragColor.rgb, uFadeColor, vInstanceFade );\n\t#include <premultiplied_alpha_fragment>");
+  };
+  m.customProgramCacheKey = () => "vinc-inst-fade";
+  return m;
+}
+/** 레이캐스트 전용 유령 메시 — 실제로 그리지 않는다(`visible=false`, 렌더러가
+ *  순회에서 건너뛴다). three-forcegraph 가 노드마다 요구하는 오브젝트 계약(위치
+ *  추적·hover·클릭)만 채운다. 지오메트리는 노드 형태와 무관한 저폴리 구 하나로
+ *  충분하다 — 안 보이는 히트 영역이라 실루엣이 몸통과 정확히 같을 필요가 없다. */
+function ghostNode(r: number): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), new THREE.MeshBasicMaterial());
+  m.visible = false;
+  return m;
+}
+/** 인스턴스 하나의 장부 — hover 페이드(아래 applyFade)와 nodeScale 슬라이더
+ *  (아래 __update)·Bring&Go 비행이 이 레퍼런스로 인스턴스 행렬·페이드를 다시 쓴다. */
+type InstRef = {
+  kind: InstKind; idx: number; mesh: THREE.InstancedMesh; baseR: number;
+  /** `applyFade`의 tween 이 그대로 다루는 대상. `.opacity` 자리에 **배경 혼합비**
+   *  (0 = 그대로, 1 = 배경색)를 담는다 — 쓰면 `instanceFade` 속성에 바로 반영된다. */
+  proxy: { opacity: number };
+};
+function fadeProxy(attr: THREE.InstancedBufferAttribute, idx: number): { opacity: number } {
+  return {
+    get opacity() { return attr.getX(idx); },
+    set opacity(v: number) { attr.setX(idx, v); attr.needsUpdate = true; },
+  };
+}
 
 /** 발광 패널 4장 + PMREM — 이미지 없이 굽는 스튜디오 환경(시안 §3, 외부 요청 0).
  *  반무광 재질의 clearcoat·sheen 이 반사할 것이 있어야 조형이 판재로 읽힌다. */
@@ -255,9 +339,6 @@ function kindGeometry(kind: string | undefined, r: number): THREE.BufferGeometry
       return new THREE.TetrahedronGeometry(r * 1.22);
   }
 }
-//: 정사면체의 고정 자세. 앱 노드는 자전하지 않으므로 이 각도가 곧 실루엣이다 —
-//: face·view dot 0.76 / 0.21 로 두 면의 음영이 갈려 입체로 읽힌다(시안 §2).
-const DOC_ROT: [number, number, number] = [-0.5, 0.6, 0.2];
 
 /** Gateway = 자기 종의 **윤곽선**. 구는 에지가 격자로 뭉개지므로 이코사 detail 1 로
  *  대체한다(시안 §2). 색은 팔레트의 mute — 하드코딩 hex 금지(게이트가 잡는다). */
@@ -415,11 +496,84 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
   };
   applyTints();
+  // 인스턴싱 상태 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초
+  // 빌드에서는 scene?.add 가 아무 일도 안 하고, 생성 직후 명시적으로 한 번 더 붙인다.
+  let scene: THREE.Scene | undefined;
+  let instMeshes: THREE.InstancedMesh[] = [];
+  const instRefs = new Map<string, InstRef>();
+  // 지오메트리는 인스턴스 수만큼의 `instanceFade` 속성을 지니므로 빌드마다 복제본이고,
+  // 재질도 빌드마다 새로 만든다 — 둘 다 여기서 함께 버린다(InstancedMesh.dispose 는
+  // 인스턴스 버퍼만 놓는다).
+  const disposeInstMeshes = () => {
+    for (const im of instMeshes) {
+      scene?.remove(im);
+      im.geometry.dispose();
+      (im.material as THREE.Material).dispose();
+      im.dispose();
+    }
+    instMeshes = [];
+    instRefs.clear();
+  };
+  const buildInstancedNodes = () => {
+    disposeInstMeshes();
+    const counts: Record<InstKind, number> = { sphere: 0, bridge: 0, doc: 0 };
+    for (const n of nodes) if (canInstance(n)) counts[instKindOf(n)]++;
+    const built: Partial<Record<InstKind, THREE.InstancedMesh>> = {};
+    (Object.keys(counts) as InstKind[]).forEach((k) => {
+      if (!counts[k]) return;
+      const geom = UNIT_GEOM[k].clone();
+      geom.setAttribute("instanceFade",
+        new THREE.InstancedBufferAttribute(new Float32Array(counts[k]), 1));
+      const mesh = new THREE.InstancedMesh(geom, instMaterial(pal), counts[k]);
+      // 인스턴스가 씬 전체에 흩어져 있어 컬링용 바운딩구는 전체를 감싸야 정확한데,
+      // Bring&Go 비행·nodeScale 슬라이더로 개별 행렬을 나중에 또 고친 뒤에도 그
+      // 값이 조용히 갱신 안 될 수 있다(재계산은 null 일 때만 지연 실행). 드로우콜이
+      // 이제 종류당 하나뿐이라 컬링 이득보다 "각도에 따라 조용히 사라짐" 위험이 크다.
+      mesh.frustumCulled = false;
+      built[k] = mesh; instMeshes.push(mesh);
+    });
+    const cursor: Record<InstKind, number> = { sphere: 0, bridge: 0, doc: 0 };
+    const m4 = new THREE.Matrix4();
+    for (const n of nodes) {
+      if (!canInstance(n)) continue;
+      const kind = instKindOf(n);
+      const mesh = built[kind]!;
+      const idx = cursor[kind]++;
+      const r = nodeRadius(n, prefs);
+      m4.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[kind],
+                 new THREE.Vector3(r, r, r));
+      mesh.setMatrixAt(idx, m4);
+      const tint = (n as { __tint?: string }).__tint;
+      mesh.setColorAt(idx, new THREE.Color(tint ? parseInt(tint.slice(1), 16) : pal.ink));
+      instRefs.set(n.id, { kind, idx, mesh, baseR: r / (prefs.nodeScale ?? 1),
+        proxy: fadeProxy(mesh.geometry.getAttribute("instanceFade") as THREE.InstancedBufferAttribute, idx) });
+    }
+    scene?.add(...instMeshes);
+  };
+  buildInstancedNodes();
+  let builtScale = prefs.nodeScale ?? 1;         // 마지막으로 메시를 구웠을 때의 배율
   /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
    *  다시 만든다 — 크기 인코딩·틴트·라벨을 제자리에서 갈아 끼우는 값싼 길이다
-   *  (씬·렌더러·컨텍스트는 그대로). 배율(nodeScale)은 여기 안 넣고 scale 로 곱한다. */
-  let builtScale = prefs.nodeScale ?? 1;         // 마지막으로 메시를 구웠을 때의 배율
+   *  (씬·렌더러·컨텍스트는 그대로). 배율(nodeScale)은 여기 안 넣고 scale 로 곱한다.
+   *
+   *  인스턴싱 대상(canInstance)은 진짜 몸통 대신 안 보이는 레이캐스트용 유령을
+   *  돌려준다 — 실제 몸통은 위 InstancedMesh 가 그린다(그려지는 것과 hover/클릭이
+   *  물리는 오브젝트가 분리된다). 허브 라벨은 유령의 자식이 아니라 **보이는 빈
+   *  그룹의 형제**로 단다(유령이 invisible 이라 자식째 렌더 순회에서 빠지므로) —
+   *  위치 추적과 hover 페이드(아래 applyFade 의 traverse)는 그대로 얻는다. */
   const nodeFactory = () => (n: any) => {
+    if (canInstance(n)) {
+      const ghost = ghostNode(nodeRadius(n, prefs));
+      // 유령은 `visible=false` 라 렌더러가 순회에서 자식째 건너뛴다 — 허브 라벨을
+      // 유령의 자식으로 달면 라벨도 함께 안 그려진다. 라벨이 있는 노드만 보이는
+      // 빈 그룹으로 감싸 유령과 라벨을 형제로 둔다(위치 추적은 그룹이 받는다).
+      if (prefs.labels !== "none" && hubIds.has(n.id)) {
+        const group = new THREE.Group();
+        group.add(ghost, labelSprite(n.label, pal));
+        return group;
+      }
+      return ghost;
+    }
     const mesh = nodeObject(n, prefs, pal, true);
     // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
     // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
@@ -488,7 +642,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   sizeTo();
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
-  const scene = g.scene();
+  scene = g.scene();
+  scene.add(...instMeshes);   // buildInstancedNodes() 최초 호출분 — scene 이 이제 있다
   // 환경맵이 돌아왔다(발주자 결정 2026-08-15). D77 이 유리와 함께 은퇴시켰던 것인데,
   // 반무광 재질의 clearcoat·sheen 이 반사할 것이 없으면 조형이 평면으로 죽는다.
   scene.environment = studioEnv(g.renderer(), pal);
@@ -600,6 +755,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     controls?.removeEventListener?.("change", onWakeEvent);
     for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
       el.removeEventListener(ev, onWakeEvent);
+    disposeInstMeshes();
     baseDestructor?.();
     // dispose() 만으로는 WebGL 컨텍스트가 GC 때까지 살아 있다 — 옵션 클릭 16번에
     // "Too many active WebGL contexts" 가 났다(2026-08-17). 명시적으로 잃게 한다.
@@ -629,12 +785,26 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (changed.some((k) => k === "labels" || k === "domainTint" || k === "size")) {
       applyTints();
       builtScale = np.nodeScale ?? 1;
+      buildInstancedNodes();                     // 인스턴스 배치도 새 인코딩으로 다시 굽는다
       g.nodeThreeObject(nodeFactory());          // 새 함수 = 노드 오브젝트 전부 다시 굽기
     } else if (changed.includes("nodeScale")) {
       // 반지름을 다시 굽지 않고 메시를 곱한다 — 라벨·글로우도 같이 커지지만 슬라이더
       // 한 프레임에 175개 지오메트리를 새로 만드는 것보다 훨씬 싸다.
       const k = (np.nodeScale ?? 1) / builtScale;
       for (const n of g.graphData().nodes as any[]) n.__threeObj?.scale.setScalar(k);
+      // 인스턴스 노드는 유령의 scale 이 아니라 행렬 자체를 다시 쓴다(안 그리므로
+      // 무의미) — baseR(빌드 시점 nodeScale=1 기준 반지름)에 새 배율만 곱해 절대값을
+      // 다시 세운다(반복 호출에도 누적 오차가 안 생기게).
+      const m4 = new THREE.Matrix4();
+      for (const n of nodes) {
+        const ref = instRefs.get(n.id);
+        if (!ref) continue;
+        const r = ref.baseR * (np.nodeScale ?? 1);
+        m4.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[ref.kind],
+                   new THREE.Vector3(r, r, r));
+        ref.mesh.setMatrixAt(ref.idx, m4);
+        ref.mesh.instanceMatrix.needsUpdate = true;
+      }
     }
     if (changed.includes("edgeScale")) g.linkWidth(linkWidthFn());
     if (changed.includes("arrows")) g.linkDirectionalArrowLength(arrowLenFn());
@@ -719,7 +889,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return l.cross ? pal.link.cross : pal.link.base;
   };
   g.linkColor(linkColorFn);
-  const fadeTargets = new Map<THREE.Material, number>();
+  const fadeTargets = new Map<THREE.Material | { opacity: number }, number>();
   let raf = 0;
   /** 모션을 줄여 달라는 설정에서는 **이징만** 버리고 효과는 남긴다(카피가 그렇게
    *  약속한다). 여태 이 트윈에는 가드가 없어 그 약속이 3D 에서만 지켜지지 않았다 —
@@ -743,10 +913,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 비이웃이 배경 대비 1.15:1 로 **소멸**했다(가시성 연구 C4). 루프 밖에서 한 번 읽는다
     // (getComputedStyle 은 레이아웃 읽기라 마크마다 부르면 안 된다).
     const recedeNode = recede("node");
+    const mixTarget = 1 - recedeNode;   // 인스턴스 노드 — 알파 대신 배경색 혼합비
     g.graphData().nodes.forEach((m: any) => {
+      const fade = keep ? !keep.has(m.id) : false;
+      const ref = instRefs.get(m.id);
+      if (ref) fadeTargets.set(ref.proxy, fade ? mixTarget : 0);
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
-      const fade = keep ? !keep.has(m.id) : false;
       obj.traverse((c: THREE.Object3D) => {
         const mat = (c as any).material as THREE.Material | undefined;
         if (mat && "opacity" in mat) {   // mesh fill·링·글로우 스프라이트 공통 — 각자 저장한 base 로 복귀
@@ -870,7 +1043,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         const obj = m?.__threeObj as THREE.Object3D | undefined;
         if (obj && !hubIds.has(nid) && prefs.labels !== "none") {
           const sp = labelSprite(m.label, pal);
-          obj.add(sp);
+          if (instRefs.has(nid)) {
+            // 인스턴싱된 노드는 몸통(유령)이 `visible=false` 라 자식은 렌더러가 통째로
+            // 건너뛴다 — 씬에 직접 달고 위치는 stepFly3d 가 매 프레임 따라간다.
+            const offset = sp.position.clone();
+            sp.userData.flyOffset = offset;
+            sp.position.copy(obj.position).add(offset);
+            scene?.add(sp);
+          } else {
+            obj.add(sp);
+          }
           ringSprites.set(nid, sp);
         }
       });
@@ -879,16 +1061,30 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (jumpFly) { stepFly3d(1); return; }
     if (!flyRaf) flyRaf = requestAnimationFrame(tickFly3d);
   }
-  /** 한 프레임 전진. 도착 판정은 씬 단위(S=140)에서 0.1 이면 화면에서 같은 픽셀이다. */
+  /** 한 프레임 전진. 도착 판정은 씬 단위(S=140)에서 0.1 이면 화면에서 같은 픽셀이다.
+   *
+   *  인스턴싱된 노드는 몸통이 유령(obj)이 아니라 InstancedMesh 에 있으므로, 유령
+   *  위치를 옮기는 것만으로는 화면이 안 따라온다 — 같은 프레임에 그 인스턴스의
+   *  행렬도 새 위치로 다시 쓴다(회전·반지름은 그대로, 이동만). 고리 인원은
+   *  보통 수십 개 이하라 매 프레임 다시 써도 비용이 무시할 만하다. */
+  const flyM4 = new THREE.Matrix4();
   function stepFly3d(t: number): boolean {
     let live = false;
     for (const m of g.graphData().nodes as any[]) {
       const to = flyTarget.get(m.id);
       const obj = m.__threeObj as THREE.Object3D | undefined;
       if (!to || !obj) continue;
-      if (obj.position.distanceToSquared(to) < 0.01) { obj.position.copy(to); continue; }
-      obj.position.lerp(to, t);
-      live = true;
+      if (obj.position.distanceToSquared(to) < 0.01) obj.position.copy(to);
+      else { obj.position.lerp(to, t); live = true; }
+      const ref = instRefs.get(m.id);
+      if (ref) {
+        const r = ref.baseR * (prefs.nodeScale ?? 1);
+        flyM4.compose(obj.position, INST_ROT[ref.kind], new THREE.Vector3(r, r, r));
+        ref.mesh.setMatrixAt(ref.idx, flyM4);
+        ref.mesh.instanceMatrix.needsUpdate = true;
+        const rsp = ringSprites.get(m.id);   // 씬에 직접 단 임시 라벨(위) — 따라오게
+        if (rsp?.userData.flyOffset) rsp.position.copy(obj.position).add(rsp.userData.flyOffset);
+      }
     }
     return live;
   }
