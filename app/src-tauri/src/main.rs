@@ -204,9 +204,9 @@ fn b64(bytes: &[u8]) -> String {
 /// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
 /// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
 /// `--help`·`-h` 를 포함하는 이유는 argparse 가 그 자리에서 사용법을 찍어 주기 때문이다.
-const CLI_VERBS: [&str; 22] = [
-    "activate", "backup", "decide", "doc", "domain-backfill", "domains", "graph",
-    "graph-md", "import", "learner", "mcp", "onboard", "pin", "plan", "recall",
+const CLI_VERBS: [&str; 24] = [
+    "activate", "backup", "brief", "decide", "doc", "domain-backfill", "domains", "graph",
+    "graph-md", "import", "learner", "mcp", "migrate-dim", "onboard", "pin", "plan", "recall",
     "search", "serve", "share", "tag", "touch", "--help", "-h",
 ];
 
@@ -676,7 +676,7 @@ mod tests {
     /// 목록 자체를 고정해 두어, `api/cli.py` 를 고칠 때 이 테스트가 같이 깨지게 한다.
     #[test]
     fn 동사_목록은_사이드카_cli_와_짝이다() {
-        for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard"] {
+        for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard", "brief", "migrate-dim"] {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");

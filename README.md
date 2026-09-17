@@ -150,13 +150,15 @@ Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇
 - 로컬 호스트 연결/제거: 앱 **Settings → Connections** 의 버튼
   (desktop·code·cursor·codex). 등록 관례는 두 종류뿐 — JSON 병합
   (`mcpServers.vinc` 키만, 백업 후) 또는 호스트 CLI 위임(`claude|codex mcp add`).
-  ⚠ **`vinc` 라는 실행 파일은 아직 없다.** CLI 는 동결 바이너리 `vinc-sidecar` 로
-  나가고(`packaging/sidecar.spec`), pyproject 에 console_scripts 도 PyPI 배포도
-  없다. 터미널에서는 `vinc-sidecar mcp install --client <host>`(리눅스 패키지는
-  `/usr/bin/vinc-sidecar` 로 PATH 에 둔다) 또는 체크아웃에서
-  `python -m api.cli mcp install --client <host>`.
-  ⚠⚠ 리눅스에서 `vinc` 는 **데스크톱 앱 자신**이다(deb 실측: `/usr/bin/vinc`).
-  `vinc mcp …` 를 치면 argv 가 `openable_from_args` 에서 버려져 창만 뜬다.
+  터미널에서도 된다 — `vinc mcp install --client <host>`(v0.8.3부터). 데스크톱
+  앱 바이너리 자신이 CLI 디스패처를 겸해서(`app/src-tauri/src/main.rs` 의
+  `cli_forward`/`run_cli`), 알려진 하위 명령이면 창을 열지 않고 번들 엔진
+  `vinc-sidecar` 로 인자를 그대로 넘기고 종료코드까지 전달한다.
+  리눅스 deb·rpm 은 패키지가 이미 앱 바이너리를 `/usr/bin/vinc` 로 깔아서
+  바로 된다. macOS·Windows·AppImage 는 앱 **설정 → Connections → 명령줄(CLI)
+  → "설치하기"** 버튼으로 표준 위치에 `vinc` 링크를 한 번 걸어야 한다(채널별
+  현황과 근거는 그래프 `vinc.plan.vinc-command-on-path`). 체크아웃에서 직접
+  돌릴 땐 여전히 `python -m api.cli mcp install --client <host>`.
 - 그 밖의 호스트: `vinc-sidecar mcp manual` 이 붙여넣을 stdio 설정 조각을 출력한다.
   자동 등록이 없을 뿐 **서버는 동일하게 동작**한다.
 
