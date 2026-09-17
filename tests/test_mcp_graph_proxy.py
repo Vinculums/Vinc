@@ -202,3 +202,25 @@ def test_a_body_that_does_not_match_the_digest_is_refused(app):
         app.graph_owner_request(_assertion(op="search"), {"query": "x"},
                                 raw_body=b'{"query":"attacker chose this"}')
     assert app.bridge.calls == []
+
+
+def test_an_oversized_body_is_413_not_an_auth_failure(app):
+    """상한을 넘는 본문은 읽지 않고 413 이다. 전에는 빈 본문으로 읽혀 지문이 어긋났고,
+    그 401 을 계정이 "세션 만료"로 옮겨 로그인된 사람을 로그인 화면으로 보냈다."""
+    import http.client
+    import threading
+    from vinc_mcp.http_server import MAX_BODY, make_server
+
+    httpd = make_server(app, "127.0.0.1", 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.putrequest("POST", "/internal/graph-owner")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", str(MAX_BODY + 1))
+        conn.putheader("X-Vinc-Assertion", _assertion(op="ingest-pack"))
+        conn.endheaders(b"{}")          # 선언한 만큼 보내지 않는다 — 허브는 읽지 않아야 한다
+        assert conn.getresponse().status == 413
+    finally:
+        httpd.shutdown()
+    assert app.bridge.calls == []

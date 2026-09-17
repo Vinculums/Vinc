@@ -1,5 +1,6 @@
 /** Sidecar client — data plane is localhost HTTP + session token (control will
  *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
+import { chunkPack, type StageCounts } from "./packchunks";
 
 const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
@@ -275,6 +276,55 @@ export type NavTreeRes = {
              kinds?: Record<string, number>; kind?: string };
 };
 
+export type PackProgress = { total: StageCounts; done: StageCounts };
+
+/** 팩 적재 — 조각으로 나눠 **순서대로 하나씩** 보낸다.
+ *
+ *  나누는 이유는 허브의 본문 상한(4MB)이고, 순서와 단위는 `packchunks.ts` 가 정한다.
+ *  병렬로 보내지 않는다: 허브 쓰기는 잡 큐 하나로 줄을 서므로(`api/server.py`
+ *  `run_sync`) 빨라지지 않고, 기다리는 요청마다 계정 프록시의 45초 제한만 먼저 닳는다.
+ *
+ *  응답은 한 번에 보냈을 때와 **같은 모양**으로 합친다(`merged`·`id_conflicts`·
+ *  `documents`) — 호출부가 조각을 몰라도 된다. 중간에 실패하면 던지되 `sent`(성공한
+ *  조각 수)를 달아 둔다. 적재는 id 로 MERGE 하고 같은 문서는 건너뛰므로, 처음부터 다시
+ *  보내면 들어간 것은 그대로 두고 나머지를 채운다. */
+async function importPackInChunks(pack: any, owner: string, scope?: Scope,
+                                  onStep?: (p: PackProgress) => void): Promise<any> {
+  const { chunks, tooBig } = chunkPack(pack);
+  const zero = (): StageCounts => ({ nodes: 0, edges: 0, documents: 0 });
+  const total = zero(), done = zero();
+  for (const c of chunks) total[c.stage] += c.count;
+  const out: any = {
+    executed: true, too_big: tooBig, id_conflicts: [] as string[],
+    merged: { nodes: { created: 0, matched: 0 }, edges: { created: 0 } },
+    documents: { applied: 0, skipped: 0, total: total.documents },
+  };
+  onStep?.({ total, done: { ...done } });
+  let sent = 0;
+  for (const c of chunks) {
+    let r: any;
+    try {
+      r = await call("/ingest/pack", undefined, { pack: c.pack, owner }, scope);
+    } catch (e) {
+      if (e && typeof e === "object") (e as any).sent = sent;
+      throw e;
+    }
+    const n = r?.merged?.nodes || {};
+    out.merged.nodes.created += n.created || 0;
+    out.merged.nodes.matched += n.matched || 0;
+    out.merged.edges.created += r?.merged?.edges?.created || 0;
+    out.id_conflicts.push(...(r?.id_conflicts || []));
+    out.documents.applied += r?.documents?.applied || 0;
+    out.documents.skipped += r?.documents?.skipped || 0;
+    // 주제 상한 같은 거절은 오류가 아니라 응답으로 온다 — 그 뒤 조각은 보내지 않는다.
+    if (r?.executed === false) return { ...out, executed: false, error: r.error, sent };
+    sent++;
+    done[c.stage] += c.count;
+    onStep?.({ total, done: { ...done } });
+  }
+  return out;
+}
+
 export const api = {
   health: () => call("/health"),
   viewL0: (owner: string) => call("/view", { owner }),
@@ -428,8 +478,7 @@ export const api = {
   ingestFragment: (fragment: unknown) => call("/ingest/fragment", undefined, fragment),
   // scope 를 주면 그 스페이스로 적재한다(생략 = 현재 스페이스). 스페이스 간 이동은
   // "한쪽에서 share → 다른 쪽으로 importPack" 이라는 한 가지 동작으로 통일돼 있다.
-  importPack: (pack: unknown, owner: string, scope?: Scope) =>
-    call("/ingest/pack", undefined, { pack, owner }, scope),
+  importPack: importPackInChunks,
   backup: (out: string) => call("/backup", undefined, { out }),
   pin: (episode: string) => call("/pin", undefined, { episode }),
 
