@@ -150,9 +150,22 @@ _F2 = [
 # ── F7 구 명칭 (vinc.a.terms §6 · 설계 §0) — 사용자 가시 식별자 0건 ────────
 # weg-memory 는 금지. weg-9000-memory 는 코드 출처 표기에서만 허용.
 # weg-memory 는 weg-9000-memory 의 부분문자열이 아니므로 단순 검색으로 구분됨.
+#
+# weg-9000-memory 는 여기서 `code_only=True` + 무제한 scope 로 걸지 **않는다**(F9 와
+# 달리). `strip_comments` 는 `/* */`·`<!-- -->`·`//` 만 벗기고 파이썬 `#` 줄 주석도
+# docstring 도 모른다 — 그런데 이 이름이 정당하게 남는 곳(`store/*.py`·`api/query.py`
+# 의 계보 주석)은 전부 그 두 형태다. 무제한으로 걸면 그 정당한 주석이 전부 오탐으로
+# 뜬다(실측 2026-09-17, `python scripts/gate_forbidden.py` 로 재현 가능). 대신 이번에
+# 실제로 사용자에게 샜던 자리(`api/cli.py` 의 argparse `description=` — `--help` 가
+# 그대로 화면에 찍는다)만 좁게 고정한다. `api/activate.py` 의 `"kind":
+# "weg-9000-memory/context-pack"` 은 포터블 팩 포맷의 필드값이라 `tests/test_activate.py`
+# 가 고정하는 계약이고, 바꾸려면 포맷 하위호환 판단이 먼저 필요해 여기 포함하지 않는다.
 _F7 = [
     Rule("F7", "weg-memory", re.compile(r"weg-memory"),
          note="구 데이터 디렉토리·패키지 명칭 → vinc 로 대체"),
+    Rule("F7", "weg-9000-memory (CLI --help)", re.compile(r"weg-9000-memory"),
+         note="api/cli.py 의 argparse description 은 --help 로 그대로 노출된다 — 코드 계보 주석이 아니다",
+         scope=("api/cli.py",)),
 ]
 
 # ── F8 구 서피스명 atlas (vinc.canon.terminology §7) — 현재 코드·UI·라우트·문서 0건 ──
