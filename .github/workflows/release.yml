@@ -1,6 +1,6 @@
 # Vinc 릴리스 파이프라인(D43 — P4). 태그 v* 푸시 시 3 OS에서
 # ① PyInstaller로 사이드카 단일 바이너리를 만들고
-# ② Tauri externalBin 규약 위치(binaries/vinc-sidecar-<target-triple>)에 배치한 뒤
+# ② Tauri externalBin 규약 위치(binaries/vinc-<target-triple>)에 배치한 뒤
 # ③ tauri-action으로 설치본 + **업데이터 아티팩트(서명본)**를 "빌드만" 하고
 #    (릴리스 생성 안 함) 아티팩트로 업로드.
 # ④ 단일 publish 잡이 모든 설치본·업데이터 번들을 모으고 latest.json(업데이터 매니페스트)을
@@ -310,8 +310,8 @@ jobs:
           mkdir -p app/src-tauri/binaries
           ext=""
           if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
-          cp "dist/vinc-sidecar${ext}" \
-             "app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}"
+          cp "dist/vinc${ext}" \
+             "app/src-tauri/binaries/vinc-${{ matrix.triple }}${ext}"
       - name: Smoke test sidecar (real store open — v0.5.1/v0.5.2 회귀 재발 방지)
         # ⚠ 이전엔 `--help` 만 실행해 "빌드 성공"만 확인했다. v0.5.1/v0.5.2 는 그래서
         # ladybug 네이티브 서브모듈이 동적 import(PyInstaller 정적분석 사각)로 빠진
@@ -323,7 +323,7 @@ jobs:
         run: |
           ext=""
           if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
-          BIN="app/src-tauri/binaries/vinc-sidecar-${{ matrix.triple }}${ext}"
+          BIN="app/src-tauri/binaries/vinc-${{ matrix.triple }}${ext}"
           "$BIN" --help
           DATA="$(mktemp -d)/db"
           "$BIN" serve --host 127.0.0.1 --port 18787 --token smoketest --data "$DATA" &

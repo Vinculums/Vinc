@@ -1,7 +1,7 @@
 # -*- mode: python -*-
 # Vinc 사이드카 단일 바이너리(D43) — 빌드: `pyinstaller packaging/sidecar.spec`
 # (레포 루트에서). ladybug 네이티브 라이브러리는 PyInstaller 가 패키지 수집으로
-# 동봉한다. 산출물: dist/vinc-sidecar(.exe) — Tauri externalBin 으로 번들.
+# 동봉한다. 산출물: dist/vinc(.exe) — Tauri externalBin 으로 번들.
 import pathlib, sys
 
 from PyInstaller.utils.hooks import collect_all
@@ -98,7 +98,7 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas,
-    name="vinc-sidecar",
+    name="vinc",
     console=True,          # 로그 = stdout(셸이 수집)
     upx=False,             # UPX 는 오탐을 오히려 키운다 — 끈 상태 유지(§9)
     version=VERSION_FILE,  # Windows 버전 리소스(메타데이터로 오탐 완화)

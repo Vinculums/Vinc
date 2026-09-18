@@ -221,7 +221,7 @@ jobs:
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p app/src-tauri/binaries
-          f="app/src-tauri/binaries/vinc-sidecar-${triple}"
+          f="app/src-tauri/binaries/vinc-${triple}"
           [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
           chmod +x "$f" 2>/dev/null || true
           echo "placed $f"
@@ -251,7 +251,7 @@ jobs:
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p app/src-tauri/binaries
-          f="app/src-tauri/binaries/vinc-sidecar-${triple}.exe"
+          f="app/src-tauri/binaries/vinc-${triple}.exe"
           [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
           echo "placed $f"
       - name: cargo check

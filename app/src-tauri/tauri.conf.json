@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Vinc",
+  "mainBinaryName": "vinc-app",
   "version": "0.9.2",
   "identifier": "app.vinc.desktop",
   "build": {
@@ -41,7 +42,7 @@
     "category": "Productivity",
     "shortDescription": "Offline-first desktop data mining.",
     "longDescription": "Ingest a corpus, map it as a graph, search it by meaning, and export packs — entirely on this machine.",
-    "externalBin": ["binaries/vinc-sidecar"],
+    "externalBin": ["binaries/vinc"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

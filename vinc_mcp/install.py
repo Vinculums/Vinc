@@ -147,6 +147,73 @@ def uninstall_json(client: str, path: Path | None = None) -> dict:
                     else "no 'vinc' entry was present"}
 
 
+def repair_json(client: str, path: Path | None = None) -> dict:
+    """우리 항목이 **없어진 파일**을 가리키면 지금 경로로 고쳐 쓴다.
+
+    `install_json` 이 적는 `command` 는 `sys.executable` 의 절대경로다. 그래서 이
+    바이너리의 이름이나 자리가 바뀌면 호스트 설정은 그대로 남은 채 **조용히 죽는다**
+    — 사용자 쪽에서는 "Vinc MCP 가 안 뜬다" 로만 보인다. 실제로 바뀐 적이 둘 있다:
+    엔진이 `vinc-sidecar` 에서 `vinc` 로 이름을 넘겨받았고(VIN-72), 사용자가 앱을
+    다른 폴더로 옮기는 경우도 같은 고장이다.
+
+    우리 항목만 본다. `command` 가 실제로 존재하면 손대지 않는다.
+    """
+    label = client_label(client)
+    cfg_path = path or config_path(client)
+    if not cfg_path.exists():
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path), "note": "no config"}
+    cfg = _read_config(cfg_path)
+    servers = cfg.get("mcpServers")
+    if not isinstance(servers, dict):
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path), "note": "no 'vinc' entry"}
+    entry = servers.get("vinc")
+    if not isinstance(entry, dict):
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path), "note": "no 'vinc' entry"}
+    old = entry.get("command")
+    # ⚠ `command` 가 없는 항목은 **우리가 쓴 것이 아니다.** 같은 이름으로 원격 항목
+    # (`{"url": "https://mcp.vincs.io/mcp"}`)을 손으로 적어 둔 사람이 있고, 그것을
+    # 로컬 실행으로 덮으면 멀쩡히 되던 연결을 끊는다. 2026-09-18 에 실제로 한 번
+    # 덮어썼다가 백업에서 되돌렸다. 고치는 대상은 **경로가 있었는데 그 파일이 사라진
+    # 경우** 하나뿐이다.
+    if not isinstance(old, str) or not old:
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path),
+                "note": "entry has no command path — not ours to repair"}
+    if Path(old).exists():
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path), "note": "entry still points at a file"}
+    command, args = _server_command()
+    if old == command:
+        return {"client": client, "label": label, "repaired": False,
+                "config": str(cfg_path), "note": "nothing to point it at"}
+    backup = str(cfg_path) + f".bak.{int(time.time())}"
+    shutil.copy2(cfg_path, backup)
+    servers["vinc"] = {"command": command, "args": args}
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    return {"client": client, "label": label, "repaired": True, "was": old,
+            "config": str(cfg_path), "backup": backup, "entry": servers["vinc"],
+            "note": f"restart {label} to pick up the moved server"}
+
+
+def repair() -> dict:
+    """JSON 설정을 쓰는 호스트 전부를 훑어 고친다. 멱등하고, 조용히 실패한다.
+
+    CLI 로 등록하는 호스트(`_CLI_CLIENTS`)는 그 CLI 가 자기 설정을 쥐고 있어 여기서
+    건드리지 않는다 — 그쪽은 `mcp install` 을 다시 부르는 것이 정상 경로다.
+    """
+    out = []
+    for client in _JSON_CLIENTS:
+        try:
+            out.append(repair_json(client))
+        except Exception as exc:  # 설정 하나가 깨져도 나머지는 고친다
+            out.append({"client": client, "repaired": False, "error": str(exc)})
+    return {"repaired": [r for r in out if r.get("repaired")], "checked": out}
+
+
 def install_desktop(path: Path | None = None) -> dict:
     """하위호환 별칭 — `install_json('desktop', path)`."""
     return install_json("desktop", path)
