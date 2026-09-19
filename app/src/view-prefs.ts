@@ -79,21 +79,25 @@ export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKin
  *    particles 3D 전용 — 선을 지우고 궤적 위로 입자를 흘린다
  *    bring     양쪽 다 — 짚으면 이웃이 초점 둘레로 날아와 고리로 선다
  *
- *  ⚠ 렌더러가 모르는 값은 **가까운 등가물**로 보낸다(`focus` ↔ `particles`). 무조건
+ *  ⚠ 렌더러가 모르는 값은 **가까운 등가물**로 보낸다(3D 에서 `focus` → `bring`). 무조건
  *  `always` 로 떨어뜨리면 "상시 전량을 그만두겠다"고 고른 사람이 관점을 옮기는 순간
  *  정반대를 받는다. 정말 모르는 값만 `always` 로 간다 — 선이 조용히 사라지는 일은
- *  없다. */
+ *  없다.
+ *
+ *  ⚠ **3D 의 등가물은 `particles` 가 아니라 `bring` 이다**(지시 2026-09-18). 입자는
+ *  상시 애니메이션이라 F6 유휴 정지를 못 받아, 아무도 안 만지는 화면이 계속 그려진다.
+ *  입자를 고른 사람은 그대로 입자를 받는다 — 바뀐 것은 **기본으로 떨어지는 자리**다. */
 export type EdgeShow = "always" | "focus" | "particles" | "bring";
 /** 관점마다 고를 수 있는 것이 다르다 — 보이는 손잡이는 반드시 무언가를 해야 한다. */
 export const edgeShowsFor = (view: Viewpoint): EdgeShow[] =>
   view === "3d" ? ["always", "particles", "bring"] : ["always", "focus", "bring"];
 
 /** 저장된 값을 **이 관점이 실제로 하는 것**으로 해석한다. 화면과 패널이 같은 함수를
- *  거치므로, 3D 에서 `focus` 가 입자로 그려지는데 패널의 활성 칩만 아무것도 없는
+ *  거치므로, 3D 에서 `focus` 가 모아 보기로 그려지는데 패널의 활성 칩만 아무것도 없는
  *  상태가 되지 않는다(그 어긋남이 "손잡이가 안 먹는다"로 읽힌다). */
 export const edgeShowFor = (view: Viewpoint, v: EdgeShow): EdgeShow =>
   edgeShowsFor(view).includes(v) ? v
-    : v === "focus" || v === "particles" ? (view === "3d" ? "particles" : "focus")
+    : v === "focus" || v === "particles" ? (view === "3d" ? "bring" : "focus")
     : "always";
 
 export type ViewPrefs = {
@@ -186,7 +190,10 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 const KEY = "vinc.view.prefs";
 const DEFAULTS: ViewPrefs = {
   view: "3d", size: "links", nodeScale: 1, edgeScale: 1,
-  labels: "hover", arrows: true, edges: "focus", spread: 1, cone: 1,
+  //: `edges` 기본은 **모아 보기**다. 전에는 `focus` 였고 3D 가 그것을 입자로 풀어서,
+  //: 손대지 않은 화면이 상시 애니메이션으로 계속 그려졌다.
+  //: 근거·실측: [[decision:the-default-edge-mode-is-bring-not-particles]]
+  labels: "hover", arrows: true, edges: "bring", spread: 1, cone: 1,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
   //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
