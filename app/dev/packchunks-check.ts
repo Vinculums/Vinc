@@ -4,7 +4,7 @@
  *
  *  `packchunks.ts` 가 import 0 인 것이 성립 조건이다. */
 import assert from "node:assert/strict";
-import { chunkPack } from "../src/packchunks.ts";
+import { chunkPack, DOC_CHUNK_BYTES } from "../src/packchunks.ts";
 
 const node = (i: number) => ({ id: `concept:n${i}`, type: "concept", title: "가".repeat(40) });
 const edge = (i: number) => ({ from: `concept:n${i}`, to: `concept:n${i + 1}`, type: "relates_to" });
@@ -44,6 +44,21 @@ for (const c of chunks as any[]) {
   // 항목 몫이 상한 안이다(매니페스트·감싸는 키는 상한 밖의 여유로 받는다).
   const items = c.stage === "documents" ? c.pack.documents : c.pack.fragment[c.stage];
   assert.ok(Buffer.byteLength(JSON.stringify(items)) <= LIMIT + 2);
+}
+
+// 문서 단계는 **자기 상한**을 쓴다 — 노드·엣지보다 훨씬 작다(이유는 packchunks.ts 주석).
+// 기본값으로 부르면 300KB 문서 열둘이 두 개씩 여섯 조각이 된다(3MB 상한이면 한 조각).
+{
+  const big = {
+    vinc_pack: 1, manifest: {}, fragment: { nodes: [], edges: [] },
+    documents: Array.from({ length: 12 },
+      (_, i) => ({ doc_id: `b${i}`, title: "t", text: "y".repeat(300 * 1024) })),
+  };
+  const r = chunkPack(big);
+  assert.equal(r.chunks.length, 6);
+  assert.equal(r.tooBig, 0);
+  for (const c of r.chunks as any[])
+    assert.ok(Buffer.byteLength(JSON.stringify(c.pack.documents)) <= DOC_CHUNK_BYTES + 2);
 }
 
 // 빈 팩은 조각이 없다.

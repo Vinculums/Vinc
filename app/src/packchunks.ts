@@ -13,6 +13,13 @@
  *  감싸는 키, 계정 프록시를 지나며 붙는 몫을 남기고 3MB 에서 자른다. */
 export const CHUNK_BYTES = 3 * 1024 * 1024;
 
+/** 문서 단계만 훨씬 작게 자른다. 여기서 상한을 정하는 것은 본문 크기가 아니라 **한 요청이
+ *  머무는 시간**이다: 노드·엣지는 MERGE 한 번이지만 문서는 받는 쪽에서 재청킹과 색인까지
+ *  한다. 실측(2026-09-20 라이브) 3.0MB 한 조각이 허브에서 25.5초였고 계정 프록시가 45초에
+ *  끊으므로 여유가 두 배도 안 됐다. 768KB 면 같은 속도로 6~7초다.
+ *  근거: [[record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20]] */
+export const DOC_CHUNK_BYTES = 768 * 1024;
+
 export type Stage = "nodes" | "edges" | "documents";
 export type StageCounts = Record<Stage, number>;
 export type Chunk = { stage: Stage; count: number; pack: Record<string, unknown> };
@@ -27,7 +34,7 @@ export function chunkPack(pack: any, limit = CHUNK_BYTES): { chunks: Chunk[]; to
   const chunks: Chunk[] = [];
   let tooBig = 0;
   const cut = (stage: Stage, items: unknown[],
-               wrap: (xs: unknown[]) => Record<string, unknown>) => {
+               wrap: (xs: unknown[]) => Record<string, unknown>, cap = limit) => {
     let cur: unknown[] = [];
     let size = 0;
     const flush = () => {
@@ -37,8 +44,8 @@ export function chunkPack(pack: any, limit = CHUNK_BYTES): { chunks: Chunk[]; to
     };
     for (const it of items) {
       const n = bytesOf(it) + 1;   // 배열 구분자 몫
-      if (n > limit) { tooBig++; continue; }
-      if (size + n > limit) flush();
+      if (n > cap) { tooBig++; continue; }
+      if (size + n > cap) flush();
       cur.push(it);
       size += n;
     }
@@ -47,7 +54,9 @@ export function chunkPack(pack: any, limit = CHUNK_BYTES): { chunks: Chunk[]; to
   const f = pack?.fragment || {};
   cut("nodes", f.nodes || [], (xs) => ({ fragment: { nodes: xs, edges: [] } }));
   cut("edges", f.edges || [], (xs) => ({ fragment: { nodes: [], edges: xs } }));
+  // `min` 인 이유: 부르는 쪽이 상한을 낮춰 잡으면(자체 검사) 문서만 더 커지면 안 된다.
   cut("documents", pack?.documents || [],
-      (xs) => ({ fragment: { nodes: [], edges: [] }, documents: xs }));
+      (xs) => ({ fragment: { nodes: [], edges: [] }, documents: xs }),
+      Math.min(limit, DOC_CHUNK_BYTES));
   return { chunks, tooBig };
 }
