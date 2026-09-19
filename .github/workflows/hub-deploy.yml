@@ -625,3 +625,70 @@ jobs:
           echo "지금 레지스트리: $(python3 -c "print(f'{$size/1e9:.2f}')") GB"
           echo "  ⚠ 이 용량은 방금 삭제분을 아직 안 담는다 — ACR 레이어 회수가 지연된다."
           echo "  실제 감소는 다음 배포의 이 줄에서 보인다."
+
+  # ── 배포 실패를 조용히 두지 않는다 ─────────────────────────────────────────
+  # 🔴 2026-09-18 이 잡의 이유다. `8c7e363` 의 배포가 모델 굽기에서 exit 137 로
+  # 죽었고(러너 메모리 부족), **허브가 만 하루 넘게 옛 이미지로 남았는데 아무도
+  # 몰랐다**. 소유자가 다른 일로 배포 목록을 열어 보고 나서야 드러났다.
+  #
+  # 실패한 것은 **배포**이지 CI 가 아니라는 것이 급소다. PR 은 초록으로 머지되고
+  # main 의 붉은 것은 Actions 목록에만 남는다. GitHub 은 실행자에게 메일을 보내지만
+  # 그 메일은 다른 알림 수백 통과 같은 곳에 쌓인다. 그래서 사라지지 않는 자리에
+  # 남긴다: 이슈. 배포 실패는 드물어야 하는 사건이고, 드물지 않게 되면 이슈 목록이
+  # 그 사실 자체를 말한다(같은 판단을 Vinc-homepage 의 site-deploy 도 한다).
+  #
+  # ⚠ 이 잡은 실패를 **삼키지 않는다** — `if: failure()` 는 앞 잡의 결론을 안 바꾸고,
+  # 이슈 생성이 실패해도(권한·한도) 경고만 남긴다. 그리고 이것으로 **못 잡는 고장이
+  # 하나 있다: 러너가 아예 안 뜨면 이 잡도 안 돈다.** 그때는 실행 목록에 아무것도
+  # 안 생기는 것으로만 드러나고, 여기서 막을 방법이 없다.
+  #
+  # `gh` 대신 REST 를 쓰는 이유는 셀프호스티드 러너에 gh 가 있다는 보장이 없어서고,
+  # 호스티드 러너를 안 쓰는 이유는 청구가 1분부터 시작해서다(이 잡은 실패에만 돈다).
+  report:
+    needs: [gate, build-and-deploy]
+    if: failure()
+    runs-on: [self-hosted, linux, vinc-local]
+    permissions:
+      contents: read
+      issues: write      # 이 잡만 — 워크플로 기본 권한은 그대로 둔다
+    steps:
+      - name: 실패를 이슈로 남긴다
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          API: ${{ github.api_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WHY: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          GATE: ${{ needs.gate.result }}
+          DEPLOY: ${{ needs.build-and-deploy.result }}
+        run: |
+          set -uo pipefail
+          python3 - > /tmp/issue.json <<'PYEOF'
+          import json, os
+          e = os.environ
+          sha, gate, deploy = e["SHA"], e["GATE"], e["DEPLOY"]
+          which = "게이트" if gate == "failure" else "빌드·배포"
+          body = f"""허브 배포가 실패했다. **허브는 이 실패 시점의 이미지로 남아 있다** —
+          `api/**`·`vinc_mcp/**` 를 고쳐 머지해도 실제로는 안 나간다.
+
+          - 실행: {e['RUN_URL']}
+          - 죽은 잡: **{which}** (gate={gate}, build-and-deploy={deploy})
+          - 무엇이 불렀나: `{e['WHY']}`
+          - 커밋: `{sha}`
+
+          다음에 볼 것: 어느 스텝이 죽었는가. **exit 137 이면 메모리 부족이고**, 그
+          자리는 보통 모델 굽기다(2026-09-18 에 그것으로 하루가 갔다 — VIN-73).
+          게이트라면 게이트가 옳고 코드 쪽을 고쳐야 한다는 뜻이다.
+
+          고친 뒤 Actions → hub-deploy → Run workflow 로 다시 돌린다."""
+          print(json.dumps({"title": f"hub-deploy failed ({e['WHY']}, {sha[:7]})",
+                            "body": body}, ensure_ascii=False))
+          PYEOF
+          code=$(curl -sS -o /tmp/issue.out -w '%{http_code}' -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" --data @/tmp/issue.json "$API/repos/$REPO/issues")
+          if [ "$code" = "201" ]; then
+            echo "실패를 이슈로 남겼다: $(python3 -c "import json;print(json.load(open('/tmp/issue.out'))['html_url'])")"
+          else
+            echo "::warning::이슈를 만들지 못했다(HTTP $code) — 배포 실패는 그대로다."
+            head -c 500 /tmp/issue.out || true
+          fi
