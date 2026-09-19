@@ -1,7 +1,7 @@
 {
   "name": "vinc-app",
   "private": true,
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Vinc desktop UI — 5 surfaces + Settings (D15), View semantic zoom (D16). Frontend for the local sidecar; Tauri shell wrap is P4.",
   "type": "module",
   "scripts": {
