@@ -78,6 +78,7 @@ the missing server instead of substituting another tool. Reasoning:
 - switch the language setting on
 - ship a line it did not read aloud
 - change English keys or behaviour
+- pass Korean that keeps English sentence shape even when every word is allowed (vinc.spec.ui-copy-ko section 10)
 
 ## Only a person does this
 
