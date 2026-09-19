@@ -1,5 +1,5 @@
 // Vinc Tauri shell (P4 — D43) — control plane only.
-// Spawns the bundled sidecar (externalBin `vinc-sidecar`) with a per-session
+// Spawns the bundled sidecar (externalBin `vinc`) with a per-session
 // random token, and hands the connection info (port + token) to the webview via
 // the `sidecar_conn` command — the frontend invokes it on startup and configures
 // its HTTP client. (A `win.eval` localStorage write is kept as a best-effort
@@ -76,7 +76,7 @@ async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Resul
     }
     let out = app
         .shell()
-        .sidecar("vinc-sidecar")
+        .sidecar("vinc")
         .map_err(|e| e.to_string())?
         .args(["mcp", action, "--client", client])
         .output()
@@ -188,15 +188,19 @@ fn b64(bytes: &[u8]) -> String {
 }
 
 // ── CLI 디스패치 (`vinc <동사> …`) ──────────────────────────────────────────
-// 리눅스 패키지는 **이 바이너리**를 `/usr/bin/vinc` 로 깐다(v0.8.2 deb 실측:
-// `/usr/bin/vinc` 23MB = 앱, `/usr/bin/vinc-sidecar` 37MB = 엔진). 그래서 문서가
-// 안내하던 `vinc mcp install --client desktop` 이 "명령 없음"이 아니라 **창만 띄우고
-// 끝났다** — argv 가 `openable_from_args` 에서 조용히 버려졌기 때문이다. 조용한
-// 오작동은 없는 명령보다 나쁘다.
+// ⚠ 이 절의 전제가 2026-09-18 에 뒤집혔다(VIN-72). 그 전에는 **이 바이너리**가
+// `/usr/bin/vinc` 였고 엔진이 `/usr/bin/vinc-sidecar` 였다(v0.8.2 deb 실측: 앱 23MB ·
+// 엔진 37MB). 그래서 문서가 안내하던 `vinc mcp install --client desktop` 이 "명령
+// 없음"이 아니라 **창만 띄우고 끝났고** — argv 가 `openable_from_args` 에서 조용히
+// 버려졌다 — 조용한 오작동은 없는 명령보다 나쁘다는 이유로 이 디스패처를 달았다.
 //
-// 그래서 shim 을 새로 깔지 않고 **이 바이너리가 디스패처가 된다.** `vinc` 라는 이름은
-// 이미 이 바이너리가 갖고 있어서, shim 을 놓으려면 데스크톱 항목·파일 연결이 가리키는
-// 이름을 옮기거나 아무도 배운 적 없는 둘째 이름을 만들어야 한다. 둘 다 더 비싸다.
+// 이제는 **엔진이 `vinc` 를 갖고 이 바이너리가 `vinc-app` 으로 비켰다**
+// (`tauri.conf.json` 의 `mainBinaryName`). 그래서 리눅스에서 `vinc <동사>` 는 이 코드를
+// 거치지 않고 엔진에 바로 닿는다.
+//
+// 그런데도 이 디스패처는 **남긴다.** macOS 와 AppImage 는 패키지 설치 훅이 없어
+// `cli_link` 가 앱 바이너리로 링크를 걸고, 이미 깔린 설치본에는 옛 배치가 그대로
+// 남아 있기 때문이다. 지우면 그 두 경우에서 다시 창만 뜬다.
 //
 // 정본은 그래프의 `vinc.plan.vinc-command-on-path`.
 
@@ -225,15 +229,34 @@ fn cli_forward<I: IntoIterator<Item = String>>(args: I) -> Option<Vec<String>> {
     Some(fwd)
 }
 
-/// 번들 사이드카의 경로 — Tauri externalBin 은 **이 바이너리 옆**에 놓인다.
-/// 개발 트리에는 타깃 트리플이 붙은 이름(`vinc-sidecar-x86_64-…`)으로 있어 둘 다 본다.
+/// 번들 엔진의 경로 — Tauri externalBin 은 **이 바이너리 옆**에 놓인다.
+/// 개발 트리에는 타깃 트리플이 붙은 이름(`vinc-x86_64-…`)으로 있어 둘 다 본다.
+///
+/// ⚠ 접두사로 찾을 때 **자기 자신을 집으면 앱이 앱을 부른다.** 엔진이 `vinc` 라는
+/// 짧은 이름을 가져가면서(VIN-72) 앱 바이너리는 `vinc-app` 이 됐는데, 둘 다 `vinc`
+/// 로 시작한다. 그래서 현재 실행 파일과 `vinc-app` 은 후보에서 먼저 걷어낸다.
+/// 옛 이름(`vinc-sidecar`)도 계속 찾는다 — 이미 깔린 설치본과 그 이름으로 등록된
+/// MCP 호스트 설정이 남아 있다.
 fn sidecar_binary() -> Option<std::path::PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?.to_path_buf();
-    let exact = dir.join(if cfg!(windows) { "vinc-sidecar.exe" } else { "vinc-sidecar" });
-    if exact.is_file() {
-        return Some(exact);
+    let exe_name = exe.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    for name in ["vinc", "vinc-sidecar"] {
+        let exact = dir.join(if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_string()
+        });
+        if exact.is_file() && exact != exe {
+            return Some(exact);
+        }
     }
+    // 트리플이 붙은 개발 트리 이름. 앱 자신과 `vinc-app` 은 제외한다.
+    let usable = |n: &str| {
+        n != exe_name
+            && !n.starts_with("vinc-app")
+            && (n.starts_with("vinc-sidecar") || n.starts_with("vinc-"))
+    };
     std::fs::read_dir(&dir)
         .ok()?
         .flatten()
@@ -242,7 +265,7 @@ fn sidecar_binary() -> Option<std::path::PathBuf> {
             p.is_file()
                 && p.file_name()
                     .and_then(|s| s.to_str())
-                    .map_or(false, |n| n.starts_with("vinc-sidecar"))
+                    .map_or(false, usable)
         })
 }
 
@@ -264,7 +287,7 @@ fn run_cli(fwd: Vec<String>) -> ! {
         AttachConsole(ATTACH_PARENT_PROCESS);
     }
     let Some(bin) = sidecar_binary() else {
-        eprintln!("vinc: 번들 엔진(vinc-sidecar)을 찾지 못했다 — 설치본이 온전한지 확인할 것.");
+        eprintln!("vinc: 번들 엔진(vinc)을 찾지 못했다 — 설치본이 온전한지 확인할 것.");
         std::process::exit(127);
     };
     match std::process::Command::new(&bin).args(&fwd).status() {
@@ -490,7 +513,7 @@ fn main() {
             // (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
             //
             // 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
-            // Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc-sidecar.exe mcp serve`)
+            // Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc.exe mcp serve`)
             // 와 그 자식까지 같은 이미지명이라 죽여 실행 중 MCP 세션을 끊는다. 누수는
             // single-instance(중복 셸 차단)+parent-pid heartbeat(크래시 고아 자가종료)+
             // 종료 시 트리-kill 로 대신 막고, 구버전 잔존 고아는 설치 시 NSIS 훅이 정리한다.
@@ -498,7 +521,7 @@ fn main() {
             // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
             let sidecar = app
                 .shell()
-                .sidecar("vinc-sidecar")?
+                .sidecar("vinc")?
                 .args([
                     "serve",
                     "--port",

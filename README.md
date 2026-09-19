@@ -153,13 +153,13 @@ Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇
   터미널에서도 된다 — `vinc mcp install --client <host>`(v0.8.3부터). 데스크톱
   앱 바이너리 자신이 CLI 디스패처를 겸해서(`app/src-tauri/src/main.rs` 의
   `cli_forward`/`run_cli`), 알려진 하위 명령이면 창을 열지 않고 번들 엔진
-  `vinc-sidecar` 로 인자를 그대로 넘기고 종료코드까지 전달한다.
+  번들 엔진(`vinc`)으로 인자를 그대로 넘기고 종료코드까지 전달한다.
   리눅스 deb·rpm 은 패키지가 이미 앱 바이너리를 `/usr/bin/vinc` 로 깔아서
   바로 된다. macOS·Windows·AppImage 는 앱 **설정 → Connections → 명령줄(CLI)
   → "설치하기"** 버튼으로 표준 위치에 `vinc` 링크를 한 번 걸어야 한다(채널별
   현황과 근거는 그래프 `vinc.plan.vinc-command-on-path`). 체크아웃에서 직접
   돌릴 땐 여전히 `python -m api.cli mcp install --client <host>`.
-- 그 밖의 호스트: `vinc-sidecar mcp manual` 이 붙여넣을 stdio 설정 조각을 출력한다.
+- 그 밖의 호스트: `vinc mcp manual` 이 붙여넣을 stdio 설정 조각을 출력한다.
   자동 등록이 없을 뿐 **서버는 동일하게 동작**한다.
 
 ## 게이트

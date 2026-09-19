@@ -3,7 +3,7 @@
 
 실사고. `VINC_STORE_LOCAL=on` 을 켰더니 복원이 이렇게 실패했다:
 
-    vinc-sidecar: store restore — error: PermissionError: [Errno 13] Permission denied
+    vinc: store restore — error: PermissionError: [Errno 13] Permission denied
     {"host": "127.0.0.1", "port": 8787, ..., "driver": "ladybug"}
 
 두 줄 사이에 아무 분기가 없었다 — 상태를 **찍기만 하고** `server.serve()` 로

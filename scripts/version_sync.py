@@ -86,9 +86,11 @@ def _sites() -> list[Site]:
         Site(ROOT / "app/src-tauri/Cargo.toml",
              re.compile(r'^version\s*=\s*"(?P<v>\d+\.\d+\.\d+)"', re.M),
              "app/src-tauri/Cargo.toml"),
-        # Cargo.lock 은 name = "vinc" 바로 뒤의 version 만 대상(다른 crate 무관).
+        # Cargo.lock 은 우리 패키지 바로 뒤의 version 만 대상(다른 crate 무관).
+        # 이름은 `vinc-app` 이다 — 엔진이 `vinc` 를 가져가면서 옮겼다(VIN-72). 그때
+        # 이 패턴을 같이 안 옮겨서 CI 가 "형식이 바뀌었는지 확인"으로 빨개졌다.
         Site(ROOT / "app/src-tauri/Cargo.lock",
-             re.compile(r'name\s*=\s*"vinc"\nversion\s*=\s*"(?P<v>\d+\.\d+\.\d+)"'),
+             re.compile(r'name\s*=\s*"vinc-app"\nversion\s*=\s*"(?P<v>\d+\.\d+\.\d+)"'),
              "app/src-tauri/Cargo.lock"),
         Site(ROOT / "packaging/version_info.txt",
              re.compile(r"filevers=\((?P<v>\d+,\s*\d+,\s*\d+,\s*\d+)\)"),

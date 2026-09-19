@@ -362,6 +362,7 @@
     "decision:vinc-encode-holds-one-replica",
     "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
+    "record:a-code-comment-is-not-evidence-for-a-documentation-claim-2026-09-18",
     "record:a-crashed-rustc-poisons-the-shared-cargo-target-and-every-later-run-dies-in-fifty-seconds-2026-09-07",
     "record:a-failed-restore-must-stop-the-process",
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",

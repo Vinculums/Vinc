@@ -726,7 +726,7 @@ jobs:
           triple=$(rustc -vV | sed -n 's/^host: //p')
           ext=""; [ "${RUNNER_OS:-}" = "Windows" ] && ext=".exe"
           mkdir -p app/src-tauri/binaries
-          f="app/src-tauri/binaries/vinc-sidecar-${triple}${ext}"
+          f="app/src-tauri/binaries/vinc-${triple}${ext}"
           [ -f "$f" ] || printf 'ci placeholder, not a real sidecar' > "$f"
           chmod +x "$f" 2>/dev/null || true
           echo "placed $f"

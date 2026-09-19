@@ -292,7 +292,7 @@ class VincApp:
         provision_error = None
         if store is not None:
             # 첫 실행 스키마 멱등 생성. serve 경로엔 별도 provision 단계가 없어(데스크톱
-            # 앱은 `vinc-sidecar serve` 만 띄운다) 미프로비저닝 스토어면 모든 적재가
+            # 앱은 `vinc serve` 만 띄운다) 미프로비저닝 스토어면 모든 적재가
             # 'Table Concept does not exist' 로 실패한다. store.provision 은 멱등이라
             # 매 기동 안전(이미 있으면 무시). 별도 store 를 여는 store.provision.provision()
             # 은 배타 락 충돌 때문에 쓰지 않고, 이미 열린 store 에 직접 적용한다.
@@ -305,7 +305,7 @@ class VincApp:
                 # 스토어·락·손상)는 조회 응답의 error 로 표면화하는 편이 진단 가능하다.
                 # 기동은 계속하되 사유를 stderr(셸이 수집)와 /health 에 남긴다.
                 provision_error = f"{type(exc).__name__}: {exc}"
-                print(f"vinc-sidecar: provision failed — {provision_error}", file=sys.stderr)
+                print(f"vinc: provision failed — {provision_error}", file=sys.stderr)
         app = cls(cfg, store=store, provision_error=provision_error, **kw)
         if store is not None and provision_error is None:
             app._schedule_mentions_rule()
@@ -325,20 +325,20 @@ class VincApp:
             from engines.mentions_link import ensure_rule
             res = ensure_rule(store)
             if res.get("changed"):
-                print(f"vinc-sidecar: MENTIONS 재링크 — 규칙 {res.get('previous') or '(없음)'}"
+                print(f"vinc: MENTIONS 재링크 — 규칙 {res.get('previous') or '(없음)'}"
                       f" → {res.get('rule')} · {res.get('owners')}", file=sys.stderr)
             # owner 를 귀속 못 한 청크는 전량 재링크가 **건너뛴다.** 조용히 넘어가면
             # "전량이라고 적힌 경로가 아무것도 안 한" 상태가 표식만 남기고 굳는다 —
             # 2026-09-06 에 실제로 그렇게 굳어 있었다.
             if (res.get("ownerless_remaining") or 0) > 0:
-                print(f"vinc-sidecar: ⚠ owner 없는 청크 {res['ownerless_remaining']}개 — "
+                print(f"vinc: ⚠ owner 없는 청크 {res['ownerless_remaining']}개 — "
                       "재링크가 건너뛴다(문서 메타가 없는 고아)", file=sys.stderr)
             return res
 
         try:
             self.jobs.submit("mentions.rule", _run)
         except Exception as exc:      # noqa: BLE001 — 기동 경로, 죽이지 않는다
-            print(f"vinc-sidecar: mentions rule check skipped — {exc}", file=sys.stderr)
+            print(f"vinc: mentions rule check skipped — {exc}", file=sys.stderr)
 
     # ── 영속 스냅샷 ──────────────────────────────────────────────────────
     def _maybe_snapshot(self, *, force: bool = False, wrote: bool = True) -> str | None:
@@ -362,13 +362,13 @@ class VincApp:
         state = save_snapshot(self.store)
         self._snapshots.done(state)
         if state.startswith("error"):
-            print(f"vinc-sidecar: store snapshot — {state}", file=sys.stderr, flush=True)
+            print(f"vinc: store snapshot — {state}", file=sys.stderr, flush=True)
         elif not force and state != "off":
             # **성공도 찍는다.** 여태 성공은 아무 흔적을 안 남겼고, 그래서 로그에서
             # "마지막으로 안전해진 시각"을 알 수 없었다 — 2026-08-19 에 배포가 무엇을
             # 삼켰는지 사후에 셀 수 없었던 이유가 이것이다([[vinc.ops.deployment]]).
             # force 경로는 close() 가 따로 찍으므로 여기서는 주기 스냅샷만.
-            print(f"vinc-sidecar: store snapshot — {state} (every {self._snapshots.every:.0f}s)",
+            print(f"vinc: store snapshot — {state} (every {self._snapshots.every:.0f}s)",
                   file=sys.stderr, flush=True)
         return state
 
@@ -452,7 +452,7 @@ class VincApp:
         if self.store is not None:
             state = self._maybe_snapshot(force=True)
             if state and state != "off":
-                print(f"vinc-sidecar: final snapshot — {state}", file=sys.stderr, flush=True)
+                print(f"vinc: final snapshot — {state}", file=sys.stderr, flush=True)
             self.store.close()
             self.store = None
 
@@ -681,7 +681,7 @@ class VincApp:
             # `vector_note` 는 못 쓴다 — 그 필드의 계약이 "의미 팔이 **안** 돌았을 때만
             # 나타난다"이고(`vinc_mcp/tools.py`) 여기서는 돌았다. 화면에 보이게 하는 것은
             # 별건이고, 그때까지 최소한 로그에는 남는다.
-            print(f"vinc-sidecar: 질의 임베딩 콜드 재시도 성공 — "
+            print(f"vinc: 질의 임베딩 콜드 재시도 성공 — "
                   f"{time.monotonic() - t0:.1f}s 기다렸다", file=sys.stderr, flush=True)
             return out
         except Exception as exc:
@@ -1199,7 +1199,7 @@ class VincApp:
                     "embed.model", lambda: docstore.switch_embed_model(self.store, model),
                     timeout=120.0)
             except Exception as exc:      # 전환 실패가 임베딩 자체를 막지는 않는다
-                print(f"vinc-sidecar: embed model switch failed — {exc}", file=sys.stderr)
+                print(f"vinc: embed model switch failed — {exc}", file=sys.stderr)
         return self._read(lambda r: {
             "kind": "embed.pending",
             "chunks": docstore.pending_embed_chunks(r, limit=_int(p.get("limit"), 256))})
@@ -1929,10 +1929,10 @@ def _gc_tombstones_loop(app: VincApp, stop: threading.Event, interval: float = 8
         try:
             n = app.jobs.run_sync("gc.tombstones",
                                   lambda: {"removed": sync.gc_tombstones(app.store)})
-            print(f"vinc-sidecar: gc tombstones — removed {n.get('removed', 0)}",
+            print(f"vinc: gc tombstones — removed {n.get('removed', 0)}",
                   file=sys.stderr, flush=True)
         except Exception as exc:
-            print(f"vinc-sidecar: gc tombstones failed — {exc}",
+            print(f"vinc: gc tombstones failed — {exc}",
                   file=sys.stderr, flush=True)
         if stop.wait(interval):
             return

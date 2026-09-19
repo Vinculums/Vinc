@@ -276,6 +276,8 @@ def main(argv: list[str] | None = None) -> int:
         mx.add_argument("--config-path", "--desktop-config", dest="config_path",
                         default=None,
                         help="override the host config path (tests/portable installs)")
+    msub.add_parser("repair",
+                    help="point host configs back at this binary after it moved or was renamed")
     msub.add_parser("manual",
                     help="print a paste-ready stdio entry for hosts without an installer")
 
@@ -411,13 +413,13 @@ def main(argv: list[str] | None = None) -> int:
         # 파일이 바뀐 것을 모른다. 미설정이면 'off' 로 즉시 빠진다.
         _restore = persistence.restore_if_missing(data_dir)
         if _restore not in ("off", "present"):
-            print(f"vinc-sidecar: store restore — {_restore}", file=sys.stderr, flush=True)
+            print(f"vinc: store restore — {_restore}", file=sys.stderr, flush=True)
         # ⚠ **복원 실패는 fail-closed 다.** 여기서 멈추면 사람이 보고 고치지만, 진행하면
         # 빈 DB 가 생기고 다음 스냅샷이 영속본을 덮는다:
         # [[record:a-failed-restore-must-stop-the-process]].
         _fatal = persistence.restore_state_is_fatal(_restore)
         if _fatal:
-            print(f"vinc-sidecar: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
+            print(f"vinc: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
             return 1
         packs = args.packs
         if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
@@ -567,6 +569,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.mcpcmd == "uninstall":
             from vinc_mcp.install import uninstall
             return _emit(uninstall(args.client, config_path_override=args.config_path))
+        if args.mcpcmd == "repair":
+            from vinc_mcp.install import repair
+            return _emit(repair())
         if args.mcpcmd == "manual":
             from vinc_mcp.install import manual_entry
             return _emit(manual_entry())

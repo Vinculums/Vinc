@@ -51,7 +51,7 @@ az containerapp revision list -n vinc-hub -g vincsRG --query "[?properties.activ
 **로그에서 두 줄을 확인한다** — 이게 없으면 다음 단계로 가지 않는다:
 
 ```
-vinc-sidecar: final snapshot — ok                    ← 순서상 먼저
+vinc: final snapshot — ok                    ← 순서상 먼저
 [entrypoint] 사이드카 정상 종료 — 스토어 close 완료(Ns)
 ```
 
