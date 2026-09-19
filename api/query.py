@@ -1572,12 +1572,14 @@ def _build_tree(nodes: list[dict]) -> _Branch:
 
 
 def _ordered_children(b: _Branch) -> list:
-    """가지 안 순서 — **무거운 가지 먼저, 그다음 연결 많은 개념**.
+    """가지 안 순서 — **가지가 이름순으로 먼저, 그다음 연결 많은 개념**.
 
-    무거운 것이 먼저 오면 원뿔/부채꼴에서 축에 가까운 자리를 받는다(주 분사구).
-    개념은 degree 내림차순이라 가지 안에서도 "중심순"이 그대로 산다(D32).
+    앞에 오는 것이 원뿔/부채꼴에서 축에 가까운 자리를 받는다. 개념은 degree
+    내림차순이라 가지 안에서 "중심순"이 그대로 산다(D32).
     반환 원소는 (weight, kind, key, payload) — kind 로 재귀/배치를 가른다."""
-    subs = sorted(b.kids.values(), key=lambda k: (-k.weight, k.seg))
+    #: 가지 순서는 **이름**이다. 무게로 세우면 노드 하나가 들어와 순위가 뒤집힐 때
+    #: 그 아래 전부가 자리를 옮긴다 — 실측으로 이것 하나가 순번 띠를 통째로 무효화했다.
+    subs = sorted(b.kids.values(), key=lambda k: k.seg)
     items = sorted(b.items, key=lambda n: (-int(bool(n.get("pinned"))),
                                            -int(n.get("degree") or 0), str(n.get("id"))))
     return ([(k.weight, "branch", k.seg, k) for k in subs]
@@ -1752,13 +1754,20 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
     "무엇이 무엇 아래인가"를 화면이 답하지 못한다. 중심성은 버리지 않는다: 가지
     **안에서** degree 순으로 축에 가까운 자리를 준다(D32 는 이제 가지 단위로 산다).
 
-    3D: 자식 방향 = 부모 방향 주위 **원뿔** 안. 극각 θ ∝ √(누적 무게 비율)이라
-    캡 면적이 무게에 비례하고(고른 밀도), 방위각은 황금각이라 어느 개수에서도
-    겹치지 않는다. 무거운 가지가 축 가까이 = 주 분사구.
+    3D: 자식 방향 = 부모 방향 주위 **원뿔** 안. 극각 θ ∝ √(형제 순번 비율)이고
+    방위각은 황금각이라 어느 개수에서도 겹치지 않는다. 순번은 degree 내림차순이라
+    연결 많은 것이 축 가까이 앉는다(D32).
 
-    2D: 같은 트리를 **부채꼴**로 — 자식마다 무게 비례 각도 구간을 나눠 갖고 그
+    2D: 같은 트리를 **부채꼴**로 — 자식마다 같은 폭의 각도 구간을 나눠 갖고 그
     구간 안에서 다시 나눈다. 원뿔의 평면 대응물이라 3D 와 같은 이야기를 한다.
     투영이 아니므로 z 평탄화에 따른 겹침이 **원리적으로** 생기지 않는다.
+
+    ⚠ 띠도 부채꼴도 **무게가 아니라 순번**으로 나눈다. 무게로 나누면 어디에 노드
+    하나가 들어와도 형제 전부의 좌표가 바뀌어 지도가 매번 다시 깔린다 — 결정론이긴
+    해도 삽입에 안정적이지 않다. 대가는 D74 의 무게 비례 인코딩이고(가지 크기는
+    주제 마크 크기로 남는다), 얻는 것은 삽입이 그 가지 안에서 끝나는 것이다.
+    근거·기각안: [[decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing]]
+    실측: [[record:the-layout-becomes-insertion-stable-when-sibling-bands-come-from-rank-and-branches-are-ordered-by-name-2026-09-19]]
 
     Bridge 는 이 트리의 잎이 **아니다**(item 12) — 소속이 저작되지 않고 연결로
     정해지므로 끝점 가지들의 평균 방향에 따로 앉힌다(`seat_bridges`). 트리에서
@@ -1842,10 +1851,8 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
             mark["y2"] = round(math.sin((a0 + a1) / 2) * rb, 6)
             marks.append(mark)
         kids = _ordered_children(b)
-        total = max(sum(w for w, *_ in kids), 1)
         r_here = _shell(depth)
         span = a1 - a0
-        acc = 0
         # 2D — 이 가지 자신의 자리. 잎은 **그 점 둘레에 뭉친다**(아래 주석).
         bx2 = math.cos((a0 + a1) / 2) * r_here
         by2 = math.sin((a0 + a1) / 2) * r_here
@@ -1855,24 +1862,21 @@ def _global_hub(nodes: list[dict], math, GOLDEN, topic_marks: bool = False,
         disc = min(_R_LEAF * 0.85, 0.28 * max(r_here, 0.3) * span)
         spots = _cluster(leafnodes, disc, math, float(b.weight), adj=adj)
         leaf_i = 0
-        for i, (w, kind, _key, payload) in enumerate(kids):
-            mid = (acc + w / 2) / total            # 누적 무게 비율(0~1)
-            frac = (i + 0.5) / len(kids)           # 순번 비율 — 반경 램프에 쓴다
+        for i, (_w, kind, _key, payload) in enumerate(kids):
+            mid = (i + 0.5) / len(kids)            # 순번 비율(0~1) — 띠·부채꼴·반경 램프
             # 3D — 뿌리는 구면 전체로, 그 아래는 부모 방향 주위 원뿔 안으로.
-            # (원뿔에서는 무게가 앞쪽 = 축 근처일수록 θ 가 작다 = 주 분사구.)
+            # (원뿔에서는 순번이 앞쪽 = 축 근처일수록 θ 가 작다 = 연결 많은 것이 안쪽.)
             nd3 = (sphere(mid, i) if depth == 0
                    else spray(d3, cone * math.sqrt(mid), i * GOLDEN))
-            # 2D — 부채꼴: 무게 비례로 구간을 나눠 갖는다.
-            b0 = a0 + span * (acc / total)
-            b1 = a0 + span * ((acc + w) / total)
-            ang = (b0 + b1) / 2
-            acc += w
+            # 2D — 부채꼴: 형제 수로 등분한다.
+            b0 = a0 + span * (i / len(kids))
+            b1 = a0 + span * ((i + 1) / len(kids))
             if kind == "branch":
                 place(payload, depth + 1, nd3, b0, b1, cone * 0.58, path + (payload.seg,))
                 continue
             n = payload
             # 잎 — 자기 가지 껍질 **바깥**으로. 순번이 뒤일수록 더 멀리(중심순 유지).
-            rr = r_here + _R_LEAF * (0.30 + 0.70 * math.sqrt(frac))
+            rr = r_here + _R_LEAF * (0.30 + 0.70 * math.sqrt(mid))
             n["x"] = round(nd3[0] * rr, 6)
             n["y"] = round(nd3[1] * rr, 6)
             n["z"] = round(nd3[2] * rr, 6)

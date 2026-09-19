@@ -74,6 +74,15 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   `tags` 를 빈 배열로 지운다. 그리고 `themes=None` 으로 부르는 경로(sync·share·
   테스트)는 `theme_id` 를 `""` 로 덮는다. 개방 타입 노드를 다시 보낼 때는 tags 를
   함께 실을 것.
+- **도메인은 `vinc/` 아래에 둔다 — 접두를 빼면 지도가 통째로 다시 뿌리내린다.**
+  배치는 모든 노드 도메인의 **공통 접두**를 뿌리로 벗긴다(`api/query.py` `_build_tree`).
+  2026-09-18 에 노드 **셋**이 `product`·`engineering` 으로 들어오자 공통 접두가
+  `vinc` 에서 빈 것으로 떨어졌고, 나머지 2,276개 전부가 `vinc` 라는 자식 **하나의
+  원뿔 안**으로 들어갔다 — 원점에서 사방으로 터지던 지도가 한쪽 부채꼴이 됐다.
+  아래 §4 의 "신 도메인 7종"은 **`vinc/` 다음 칸**을 말한다: `vinc/engineering/...`
+  이지 `engineering` 이 아니다. 고치는 법은 도메인만 실은 부분 재전송이다(제목·
+  태그·props·유효구간은 키가 없으면 보존된다).
+  정본: [[record:three-nodes-without-the-vinc-prefix-collapsed-the-whole-map-into-one-cone-2026-09-19]]
 - 화면에 노출되는 텍스트에 **em-dash(`—`) 금지**. 대체는 `·`·괄호·콜론.
   (이 규칙은 UI 텍스트에만 해당한다. 커밋 메시지·이 문서는 무관하다.)
 - **"atlas" 절대 금지어 — 후속 명칭은 "view"다(F8, 2026-08-15 발주자 지시).** 그래프 맵
@@ -194,7 +203,7 @@ python -X utf8 scripts/push_ssot.py                            # Claude Design �
 적재 · 구 문서 49건 삭제. 남은 것은 학습자료 퍼지 · 도메인 재매핑 · doc-concept 정리
 · 상속 엣지 96건이다.
 
-신 도메인은 7종(design·engineering·infra·governance·security·product·ai). 원장 밖
+신 도메인은 7종(design·engineering·infra·governance·security·product·ai)이고 **전부 `vinc/` 아래 둘째 칸**이다(`vinc/design`·`vinc/engineering`…). 원장 밖
 노드 30건이 아직 구 도메인(`vinc/mcp`·`vinc/architecture`·`vinc/web`)을 달고 있고
 `remap_domains.py` 가 그걸 옮긴다(`vinc/web` 4건은 원장에서 갈려 사람 판정 대기).
 
