@@ -427,10 +427,19 @@ jobs:
       # Vinc-homepage/.github/workflows/site-ci.yml · site-deploy.yml.
 
       # 사이트 문구가 위 게이트라면 이쪽은 **앱 보드**다. 보드는 실행 중인 앱의 캡처라
-      # 글자 대조는 물음이 아니고, 남는 물음은 캡처가 낡았는가다: 매니페스트의 sourceRev
-      # 뒤에 app/src 를 바꾼 커밋이 있으면 FAIL, 처방은 재캡처. 위 체크아웃의 fetch-depth 0
-      # 이 이 단계의 전제다. 사이트와 달리 Vinc-homepage 가 필요 없어 늘 돈다.
-      - name: Figma app board copy gate
+      # 글자 대조는 물음이 아니고, 남는 물음은 캡처가 낡았는가다: 캡처 시점의 app/src
+      # 트리 지문과 지금이 다르면 낡았다. 위 체크아웃의 fetch-depth 0 이 커밋 목록의
+      # 전제다(판정 자체는 얕아도 선다). 사이트와 달리 Vinc-homepage 가 필요 없어 늘 돈다.
+      #
+      # ⚠ **여기서는 막지 않는다(2026-09-19 판정, VIN-74).** 처방이 재캡처 하나뿐인데
+      # 그것은 실행 중인 사이드카와 실제 데이터가 있어야 도는 60상태·약 7분짜리 사람
+      # 작업이다. CI 가 스스로 못 하는 일을 CI 가 요구하면 규칙이 지켜지지 않는다 —
+      # 실제로 #358 이 재캡처 없이 머지돼 main 이 이 게이트로 빨간 채였다. 막는 자리는
+      # **릴리스 태그 앞**으로 옮겼다(`release.yml` 의 `version-gate`). 보드가 낡아서
+      # 생기는 손해는 디자이너가 옛 화면을 보는 것이고, 그 시계는 머지가 아니라
+      # 릴리스다. 여기서는 낡았다고 말만 하고 지나간다.
+      - name: Figma app board copy gate (advisory — blocks at the release tag)
+        continue-on-error: true
         run: python -X utf8 design-hub/scripts/figma_app_copy.py
 
       # 역할 껍데기(agents/shells/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
