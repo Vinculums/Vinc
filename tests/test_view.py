@@ -800,6 +800,24 @@ class LayoutPresetTests(unittest.TestCase):
         across = sum(x * y for x, y in zip(unit(out["vinc/a0"]), unit(out["vinc/b0"])))
         self.assertGreater(within, across)
 
+    def test_a_new_node_leaves_the_other_branches_where_they_were(self):
+        """삽입은 **그 가지 안에서 끝난다**. 무게로 띠를 나누던 때는 어디에 하나만
+        들어와도 형제 전부가 움직여 지도가 매번 다시 깔렸다(실측: 140개 중 140개).
+        근거: [[decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing]]"""
+        import copy
+        nodes = [{"id": f"n{i}", "domain": f"vinc/d{i % 7}", "degree": i % 4}
+                 for i in range(140)]
+        before = {n["id"]: (n["x"], n["y"], n["z"])
+                  for n in q.layout_positions(copy.deepcopy(nodes), [], "hub")}
+        grown = nodes + [{"id": f"new{i}", "domain": "vinc/d0", "degree": 1}
+                         for i in range(20)]
+        after = {n["id"]: (n["x"], n["y"], n["z"])
+                 for n in q.layout_positions(copy.deepcopy(grown), [], "hub")}
+        moved = [k for k, v in before.items() if after[k] != v]
+        # 움직여도 되는 것은 새 노드를 받은 그 가지의 잎뿐이다.
+        self.assertTrue(all(k.startswith("n") and int(k[1:]) % 7 == 0 for k in moved),
+                        f"다른 가지가 움직였다: {sorted(moved)[:10]}")
+
     def test_planar_coords_are_separate_and_never_collide(self):
         """2D 는 3D 의 투영이 아니라 **독립 산출**이다(D74). z 를 눌러 접는 방식은
         원뿔 배치에서 서로 다른 노드를 같은 점으로 만든다 — 여기서는 원리적으로
