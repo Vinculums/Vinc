@@ -41,9 +41,10 @@ Repositories: Vinc, Vinc-homepage
 
 1. vinc.book.index
 2. vinc.canon.terminology
-3. vinc.spec.product-overview
-4. vinc.canon.book-motion-grammar
-5. vinc.plan.book-content-review-2026-09-10
+3. vinc.spec.ui-copy-ko
+4. vinc.spec.product-overview
+5. vinc.canon.book-motion-grammar
+6. vinc.plan.book-content-review-2026-09-10
 
 ## Gates that must pass before the pull request
 
@@ -74,7 +75,9 @@ the missing server instead of substituting another tool. Reasoning:
 - use an em dash in anything that renders
 - hand edit a book-scroll/src snapshot (re-fetch it)
 - rewrite a chapter without re-reading the canon document it inherits from
-- touch Korean UI copy (the Localization Engineer)
+- touch the app's Korean UI copy (that is the Localization Engineer's); the Korean deck of a docs or book page is this role's own and follows vinc.spec.ui-copy-ko
+- write a Korean sentence by composing it in English and swapping in Korean words (vinc.spec.ui-copy-ko section 10 lists the shapes this produces)
+- ship a page's Korean deck without reading it aloud, or without the UX Writer reading it when the page is new
 
 ## Only a person does this
 

@@ -23,7 +23,8 @@
         "never": [
           "switch the language setting on",
           "ship a line it did not read aloud",
-          "change English keys or behaviour"
+          "change English keys or behaviour",
+          "pass Korean that keeps English sentence shape even when every word is allowed (vinc.spec.ui-copy-ko section 10)"
         ],
         "paths": [
           "app/src/copy.ts",
@@ -103,7 +104,8 @@
           "touch code",
           "put a particle after a variable",
           "use the second person or an object honorific",
-          "use an em dash in anything that renders"
+          "use an em dash in anything that renders",
+          "compose the line in English first and then translate it (vinc.spec.ui-copy-ko section 10)"
         ],
         "paths": [
           "the deck of the assigned surface only"
@@ -1500,7 +1502,9 @@
           "use an em dash in anything that renders",
           "hand edit a book-scroll/src snapshot (re-fetch it)",
           "rewrite a chapter without re-reading the canon document it inherits from",
-          "touch Korean UI copy (the Localization Engineer)"
+          "touch the app's Korean UI copy (that is the Localization Engineer's); the Korean deck of a docs or book page is this role's own and follows vinc.spec.ui-copy-ko",
+          "write a Korean sentence by composing it in English and swapping in Korean words (vinc.spec.ui-copy-ko section 10 lists the shapes this produces)",
+          "ship a page's Korean deck without reading it aloud, or without the UX Writer reading it when the page is new"
         ],
         "paths": [
           "vinc.book.* documents in the graph",
@@ -1514,6 +1518,7 @@
         "reads": [
           "vinc.book.index",
           "vinc.canon.terminology",
+          "vinc.spec.ui-copy-ko",
           "vinc.spec.product-overview",
           "vinc.canon.book-motion-grammar",
           "vinc.plan.book-content-review-2026-09-10"

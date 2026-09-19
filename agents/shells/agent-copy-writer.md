@@ -69,6 +69,7 @@ the missing server instead of substituting another tool. Reasoning:
 - put a particle after a variable
 - use the second person or an object honorific
 - use an em dash in anything that renders
+- compose the line in English first and then translate it (vinc.spec.ui-copy-ko section 10)
 
 ## Only a person does this
 
