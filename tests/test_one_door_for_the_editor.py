@@ -55,13 +55,16 @@ class OneGuardTest(unittest.TestCase):
     def test_전역_단축키_핸들러가_공용_판정을_쓴다(self):
         """이걸 안 쓰면 `1`·`2` 가 본문에 글자를 넣으면서 표면을 갈아엎는다.
 
-        main.ts 의 keydown 리스너는 둘이다(설정 Esc · 단축키). 뒤엣것이 표면을
-        옮기는 쪽이므로 `inField` 가 사는 블록으로 집는다."""
-        head = MAIN.rindex('document.addEventListener("keydown"', 0, MAIN.index("const inField"))
+        집는 자리는 **표면을 옮기는 줄 바로 앞의 keydown 리스너**다. 예전에는
+        `const inField` 로 집었는데 그 이름이 사라지면서 테스트만 멈췄다 — 이름이
+        아니라 이 파일이 지키려는 동작(표면 이동)에 걸어 둔다."""
+        head = MAIN.rindex('document.addEventListener("keydown"', 0,
+                           MAIN.index("location.hash = `#${ORDER"))
         guard = body_of(MAIN[head:], 'document.addEventListener("keydown"')
-        self.assertIn("isTypingTarget(e.target)", guard)
+        self.assertIn("blocksSurfaceShortcuts(e.target", guard)
         # 그 판정이 실제로 표면 이동을 막는 자리 앞에 있어야 한다.
-        self.assertLess(guard.index("isTypingTarget"), guard.index("location.hash = `#${ORDER"))
+        self.assertLess(guard.index("blocksSurfaceShortcuts"),
+                        guard.index("location.hash = `#${ORDER"))
 
     def test_판정의_구현은_리포에_한_벌뿐이다(self):
         """이 결함의 형태가 "같은 계약을 두 곳이 각자 구현했고 벌어졌다"였다.
@@ -82,8 +85,11 @@ class OneGuardTest(unittest.TestCase):
         """가드가 옳게 비켜서는 바람에 나오는 문이 ✕ 하나로 줄었던 자리.
 
         이제 어느 문으로 나가도 확정되므로(아래 ExitsTest) 이 문을 열어 둘 수 있다."""
-        onkey = body_of(VIEW, "const onKey = (e: KeyboardEvent)")
-        self.assertIn('isTypingTarget(e.target) && e.key !== "Escape"', onkey)
+        # 가드가 두 줄로 접혀 있어 공백을 눌러 놓고 본다 — 잠그는 것은 줄바꿈이 아니라
+        # "Esc 는 예외"라는 계약이다.
+        onkey = re.sub(r"\s+", " ", body_of(VIEW, "const onKey = (e: KeyboardEvent)"))
+        self.assertIn('blocksSurfaceShortcuts(e.target, document.activeElement,'
+                      ' docEditorOpen()) && e.key !== "Escape"', onkey)
         self.assertIn("closeRail();", onkey)
 
 
