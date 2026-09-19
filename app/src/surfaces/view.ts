@@ -927,7 +927,8 @@ export async function renderView(el: HTMLElement) {
   function rowsFor(p: ViewPrefs): string[] {
     switch (p.view) {
       // `선 보이기`(edgeShow)는 둘 다에 있지만 **고를 수 있는 값이 다르다**
-      // (edgeShowsFor) — 3D 는 입자, 2D 는 짚을 때만. sigma 에 입자가 없어서다.
+      // (edgeShowsFor) — 3D 만 입자를 고를 수 있다(sigma 에 입자가 없다). 기본으로
+      // 떨어지는 자리는 양쪽 다 모아 보기·짚을 때만이다(edgeShowFor).
       // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
       // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
       // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
