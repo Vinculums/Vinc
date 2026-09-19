@@ -622,12 +622,13 @@ def main(argv: list[str] | None = None) -> int:
             quota_cfg = None
             if os.environ.get("VINC_QUOTA") == "on":
                 quota_cfg = {
-                    # AP-1: 무료 한도를 Pro 급으로 올렸다 — 차별축이 호출 횟수에서
-                    # **주제 개수**로 옮겨갔기 때문이다(VINC_FREE_MAX_DOMAINS).
-                    # 기본값을 정책값으로 둬야 env 를 빠뜨렸을 때 구 정책(15회)이
-                    # 조용히 살아나지 않는다.
+                    # 등급이 Free·Team 둘뿐이 되면서(2026-09-19) 차별축이 다시
+                    # **호출 횟수**로 돌아왔다: Free 2,000 · Team 6,000. 주제 개수는
+                    # 더 이상 축이 아니다(아래 주석 참조). 기본값을 정책값으로 둬야
+                    # env 를 빠뜨렸을 때 구 정책이 조용히 살아나지 않는다.
+                    # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
                     "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
-                    "pro_limit": int(os.environ.get("VINC_PRO_DAILY_LIMIT", "2000")),
+                    "team_limit": int(os.environ.get("VINC_TEAM_DAILY_LIMIT", "6000")),
                     "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
                     "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
                     # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
@@ -638,13 +639,14 @@ def main(argv: list[str] | None = None) -> int:
                         o.strip() for o in
                         os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
                 }
-            # 무료 등급 주제 개수 상한(AP-1 §3.4) — 미설정이면 기능 자체가 꺼진다.
-            # 쿼터와 달리 별도 on 스위치를 두지 않는다: 값의 존재가 곧 스위치다.
-            cap_raw = os.environ.get("VINC_FREE_MAX_DOMAINS")
-            try:
-                free_cap = int(cap_raw) if cap_raw else None
-            except ValueError:
-                free_cap = None
+            # 무료 등급 주제 상한은 **없다**(2026-09-19). Pro 를 없애면서 개인이
+            # 주제를 더 쓸 길이 사라졌으므로 상한을 함께 걷었다 — 유일한 개인 유료
+            # 등급이 없는데 개인을 5개에 가두면 올라갈 자리가 없다.
+            # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
+            # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
+            # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
+            # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+            free_cap = None
             # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
             # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
             from vinc_mcp import edverify as _ev

@@ -72,9 +72,9 @@ def _min_args(name: str) -> dict:
 
 # ── HTTP E2E ─────────────────────────────────────────────────────────────────
 def _vk(raw, team=None):
-    return ({"owner": "user:ro", "plan": "pro", "scope": "read"}
+    return ({"owner": "user:ro", "plan": "free", "scope": "read"}
             if raw == "vinc_ro_key" else
-            {"owner": "user:full", "plan": "pro", "scope": "full"}
+            {"owner": "user:full", "plan": "free", "scope": "full"}
             if raw == "vinc_sk_key" else None)
 
 
@@ -177,7 +177,7 @@ def test_resolve_auth_scope_missing_falls_to_read():
     """verify_key 가 scope 를 안 실으면 read 다(무음 승격 금지)."""
     app = MCPHTTPApp(_StubBridge(),
                      verify_key=lambda raw, team=None: {"owner": "user:u1",
-                                                        "plan": "pro"})
+                                                        "plan": "free"})
     assert app.resolve_auth("Bearer vinc_sk_x")["scope"] == "read"
 
 
@@ -242,17 +242,17 @@ def _with_account(monkeypatch, responder):
 
 def test_verify_key_carries_scope_from_account(monkeypatch):
     _with_account(monkeypatch,
-                  lambda req: _Resp({"sub": "u1", "plan": "pro", "scope": "read"}))
+                  lambda req: _Resp({"sub": "u1", "plan": "free", "scope": "read"}))
     try:
         got = entitlement.verify_key("vinc_ro_k")
-        assert got == {"owner": "user:u1", "plan": "pro", "scope": "read"}
+        assert got == {"owner": "user:u1", "plan": "free", "scope": "read"}
     finally:
         entitlement._cache.clear()
 
 
 def test_verify_key_legacy_account_without_scope(monkeypatch):
     """구 계정 응답(scope 없음): vinc_sk 는 full, vinc_ro 는 read 로 정규화."""
-    _with_account(monkeypatch, lambda req: _Resp({"sub": "u1", "plan": "pro"}))
+    _with_account(monkeypatch, lambda req: _Resp({"sub": "u1", "plan": "free"}))
     try:
         assert entitlement.verify_key("vinc_sk_k")["scope"] == "full"
         entitlement._cache.clear()
@@ -267,7 +267,7 @@ def test_verify_key_cache_keeps_scope(monkeypatch):
 
     def responder(req):
         hits["n"] += 1
-        return _Resp({"sub": "u1", "plan": "pro", "scope": "read"})
+        return _Resp({"sub": "u1", "plan": "free", "scope": "read"})
 
     _with_account(monkeypatch, responder)
     try:

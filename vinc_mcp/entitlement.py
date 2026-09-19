@@ -34,12 +34,20 @@ _lock = threading.Lock()
 
 _log = logging.getLogger("vinc.mcp.entitlement")
 
-#: 와이어에서 허용되는 등급 값. DB 열거형(`users.plan`)은 free|pro 뿐이고 `team` 은
-#: 어서션·verify-key 응답에만 실리는 와이어 전용 값이다([[vinc.canon.account-policy]] §2.1).
-PLANS = ("free", "pro", "team")
+#: 와이어에서 허용되는 등급 값. **Free 와 Team 둘뿐이다**(2026-09-19 지시로 Pro 폐기).
+#: DB 열거형(`users.plan`)은 free 뿐이고 `team` 은 어서션·verify-key 응답에만 실리는
+#: 와이어 전용 값이다([[vinc.canon.account-policy]] §2.1).
+#: 근거·기각안: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+PLANS = ("free", "team")
 
-#: 유료로 취급하는 등급(한도·업셀 문구 분기의 단일 기준).
-PAID_PLANS = ("pro", "team")
+#: 유료로 취급하는 등급(한도 분기의 단일 기준).
+PAID_PLANS = ("team",)
+
+#: 폐기된 등급 → 지금 등급. 아직 `pro` 를 실어 오는 토큰·캐시·미배포 계정이 있을 수
+#: 있어 **조용히** 접는다 — 아래 normalize_plan 의 경고는 "배포 순서가 어긋났다"는
+#: 신호인데 이건 의도된 폐기라 경고가 거짓 경보가 된다. free 가 주제 무제한이 되어
+#: pro→free 로 잃는 것이 없다는 것이 조용해도 되는 이유다.
+RETIRED_PLANS = {"pro": "free"}
 
 #: 회원 키 접두 — vinc_sk(전권) · vinc_ro(읽기 전용, W18). 접두는 사람 눈 구분용이고
 #: 권한의 정본은 계정 verify-key 응답의 `scope` 다. 근거: [[decision:scoped-key-tier]]
@@ -66,6 +74,8 @@ def normalize_plan(raw: object, *, source: str) -> str:
     """
     if isinstance(raw, str) and raw in PLANS:
         return raw
+    if isinstance(raw, str) and raw in RETIRED_PLANS:
+        return RETIRED_PLANS[raw]
     if raw is not None:
         _log.warning("unknown plan %r from %s — treating as 'free' "
                      "(hub older than account?)", raw, source)

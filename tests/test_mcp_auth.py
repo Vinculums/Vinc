@@ -51,13 +51,13 @@ def test_resolve_auth_apikey_via_verify_key():
 
     def vk(raw):
         seen["raw"] = raw
-        return {"owner": "user:u1", "plan": "pro"} if raw == "vinc_sk_good" else None
+        return {"owner": "user:u1", "plan": "team"} if raw == "vinc_sk_good" else None
 
     app = _app(static_token="S", verify_key=vk)
     ok = app.resolve_auth("Bearer vinc_sk_good")
     # scope: 스텁이 scope 를 안 실었다 = 모르는 스코프 → 'read'(fail-closed, W18).
     # 실물 entitlement.verify_key 는 항상 싣는다(구 계정 응답의 vinc_sk 는 full 정규화).
-    assert ok == {"ok": True, "owner": "user:u1", "plan": "pro", "scope": "read",
+    assert ok == {"ok": True, "owner": "user:u1", "plan": "team", "scope": "read",
                   "source": "apikey"}
     assert seen["raw"] == "vinc_sk_good"
     assert app.resolve_auth("Bearer vinc_sk_bad")["ok"] is False
@@ -122,7 +122,7 @@ class _Srv:
 
 
 # ── B-D2 쿼터 ────────────────────────────────────────────────────────────────
-_QCFG = {"free_limit": 3, "pro_limit": 10, "window_s": 86400, "lock_s": 43200}
+_QCFG = {"free_limit": 3, "team_limit": 10, "window_s": 86400, "lock_s": 43200}
 
 
 def _quota_app(plan="free"):
@@ -146,21 +146,21 @@ def test_quota_allows_then_denies_with_human_message():
 def test_quota_exempt_owner_is_never_denied_while_others_still_count():
     cfg = dict(_QCFG, exempt_owners=frozenset({"user:owner"}))
     app = MCPHTTPApp(_StubBridge(), store=Store(":memory:"), quota_config=cfg,
-                     verify_key=lambda raw: {"owner": "user:owner", "plan": "pro"})
+                     verify_key=lambda raw: {"owner": "user:owner", "plan": "team"})
     for _ in range(3):
         assert app.quota_check("user:u1", "free") is None
     assert app.quota_check("user:u1", "free")["isError"] is True   # 남은 owner 는 그대로 센다
-    for _ in range(_QCFG["pro_limit"] * 2):
-        assert app.quota_check("user:owner", "pro") is None         # 한도·잠금 무관
+    for _ in range(_QCFG["team_limit"] * 2):
+        assert app.quota_check("user:owner", "team") is None         # 한도·잠금 무관
 
 
-def test_quota_pro_gets_higher_ceiling_and_no_upsell():
-    app = _quota_app("pro")
+def test_quota_team_gets_higher_ceiling_and_no_upsell():
+    app = _quota_app("team")
     for _ in range(10):
-        assert app.quota_check("user:u1", "pro") is None        # pro_limit=10
-    denial = app.quota_check("user:u1", "pro")
+        assert app.quota_check("user:u1", "team") is None        # team_limit=10
+    denial = app.quota_check("user:u1", "team")
     assert denial["_meta"]["vinc_quota"]["limit"] == 10
-    assert "Upgrade" not in denial["content"][0]["text"]         # pro 에겐 업셀 없음
+    assert "Upgrade" not in denial["content"][0]["text"]         # 유료 등급에겐 업셀 없음
 
 
 def test_quota_unlimited_without_config_or_owner():
@@ -193,7 +193,7 @@ def test_http_quota_blocks_tools_call_but_ping_stays_free():
 def test_http_apikey_owner_is_stamped_end_to_end():
     stub = _StubBridge()
     app = MCPHTTPApp(stub, verify_key=lambda raw:
-                     {"owner": "user:u1", "plan": "pro"} if raw == "vinc_sk_k" else None)
+                     {"owner": "user:u1", "plan": "team"} if raw == "vinc_sk_k" else None)
     srv = _Srv(app)
     try:
         # 클라이언트가 owner=user:attacker 를 실어도 스탬핑은 user:u1

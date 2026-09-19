@@ -1191,7 +1191,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
             return _finalize({"merged": None, "executed": False, **denial}, warnings + [
                 f"topic limit reached ({denial['current']}/{max_domains}) — "
                 f"new topics rejected: {', '.join(denial['attempted'])}. "
-                "Existing topics keep working; Pro removes the limit."])
+                "Existing topics keep working."])
     fold = _ThemeFold(themes, fragment)
     # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다 — 스킵된 노드가 끝점으로
     # 등록되면 그리로 향하는 엣지가 0행을 만나고도 created 로 세어진다.
