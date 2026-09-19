@@ -171,7 +171,6 @@ def _app(cap=5):
 def test_free_gets_the_number_and_paid_gets_nothing():
     app = _app(5)
     assert app.entitlements_for("free") == {"max_domains": 5}
-    assert app.entitlements_for("pro") == {}
     assert app.entitlements_for("team") == {}
 
 

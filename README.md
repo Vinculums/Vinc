@@ -105,7 +105,7 @@ Azure Container Apps (리소스 그룹 vincsRG, Korea Central)
 - **커뮤니티 공유**(`vincs.io/community/`): 회원이 지식팩을 공개 갤러리에 게시 +
   시각요약(도메인 분포·교차도메인%·top 태그·엣지 타입). 즉시 공개 + 경량 모더레이션.
 - **회원 커넥터·티어**(v0.2.0): 공홈에서 `vinc_sk_` API 키 발급, `/connect` 온보딩으로
-  claude.ai 커넥터 승인(관리 키 복붙 종식), 무료/Pro 플랜 쿼터.
+  claude.ai 커넥터 승인(관리 키 복붙 종식), Free/Team 플랜 쿼터.
 - **owner 격리**(SEC-1/2/3): 읽기·쓰기 전 경로가 owner 스코프(모든 Concept MATCH 에
   `owner_id` 술어), MCP 호출은 클라이언트가 보낸 owner 를 강제로 덮어쓴다(forced_owner) —
   실엔진 2-소유자 테스트로 검증.

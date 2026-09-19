@@ -126,6 +126,15 @@ _ADMIN_OPS = frozenset({
 })
 _TEAM_ROLES = ("viewer", "editor", "admin")
 
+#: 팀 그래프에서 일하면 등급은 **Team** 이다 — 사람이 아니라 **공간**이 등급을 정한다.
+#: 전에는 팀 주소로 들어와도 계정이 준 개인 등급이 그대로 쓰였고, 그래서 와이어 값
+#: `team` 을 실제로 내는 곳이 **한 군데도 없었다**. 두 등급의 한도가 같던 동안에는
+#: 아무 증상이 없었지만(Free·Pro 둘 다 2,000), Team 이 6,000 이 되는 순간 그것은
+#: "팀이 팀 한도를 못 받는다"가 된다. 소유자가 이미 `team:` 으로 확인된 자리라
+#: 여기서 단정해도 틀릴 수 없다. 카운터도 owner 단위라 6,000 은 **팀이 나눠 쓴다**.
+#: 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+_TEAM_PLAN = "team"
+
 
 def _role_allows(role: str, op: str) -> bool:
     """팀 역할이 이 op 를 할 수 있는가. 모르는 역할은 **거부**(fail-closed)."""
@@ -379,23 +388,23 @@ class MCPHTTPApp:
         if owner in cfg.get("exempt_owners", ()):
             return None                              # 면제 owner — 도그푸딩 계정
         paid = plan in entitlement.PAID_PLANS
-        limit = cfg["pro_limit"] if paid else cfg["free_limit"]
+        limit = cfg["team_limit"] if paid else cfg["free_limit"]
         r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
                                    lock_s=cfg["lock_s"])
         if r["allowed"]:
             return None
         secs = r["retry_after_s"]
         hh, mm = secs // 3600, (secs % 3600) // 60
-        tier = {"pro": "Pro", "team": "Team"}.get(plan or "", "Free")
-        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. AP-1 이후
-        # 무료 한도가 Pro 와 같아지므로(차별축이 주제 개수로 옮겨갔다), 같은 값에서
-        # "더 높은 한도로 업그레이드"는 거짓말이 된다. 그때는 주제 무제한을 근거로 든다.
-        if paid:
+        tier = "Team" if plan == "team" else "Free"
+        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. 2026-09-19 에
+        # 차별축이 다시 호출 횟수가 되어(Free 2,000 · Team 6,000) 대개 다르지만, 두
+        # 값을 같게 설정한 배포에서는 "더 높은 한도"가 거짓말이 되므로 입을 다문다.
+        # 그때 댈 다른 근거도 없다 — 주제 상한이 사라져 Free 와 Team 이 개인 기능에서
+        # 같아졌기 때문이다.
+        if paid or cfg["free_limit"] >= cfg["team_limit"]:
             upsell = ""
-        elif cfg["free_limit"] < cfg["pro_limit"]:
-            upsell = " Upgrade for a higher limit: https://vincs.io/account"
         else:
-            upsell = " Pro removes the topic limit: https://vincs.io/account"
+            upsell = " A team raises the limit: https://vincs.io/pricing"
         text = (f"{tier} tier limit reached ({limit} tool calls per "
                 f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
                 + upsell)
@@ -464,7 +473,7 @@ class MCPHTTPApp:
                 ent = self.verify_key(tok, space)
                 if not ent or not str(ent.get("owner") or "").startswith("team:"):
                     return miss
-                return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                return {"ok": True, "owner": ent["owner"], "plan": _TEAM_PLAN,
                         "scope": ent.get("scope") or "read",
                         "source": "apikey", "role": ent.get("role"),
                         "member": ent.get("member")}
@@ -487,8 +496,7 @@ class MCPHTTPApp:
             # scope 가 'full' 인 것은 OAuth 가 스코프 개념 이전의 신원이라서다(개인
             # 경로와 같다). 팀에서 무엇을 할 수 있는지는 scope 가 아니라 **role** 이
             # 정한다 — 그 게이트는 do_POST 에 있다.
-            return {"ok": True, "owner": mem["owner"],
-                    "plan": self._fresh_plan(owner, (rec or {}).get("plan")),
+            return {"ok": True, "owner": mem["owner"], "plan": _TEAM_PLAN,
                     "scope": "full", "source": "oauth", "role": mem["role"],
                     "member": mem.get("member")}
         token = header[len("Bearer "):].strip()

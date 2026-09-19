@@ -52,7 +52,7 @@ def _register_and_begin(app):
     return reg, frag["req"][0], frag["cra"][0]
 
 
-def _aa(req, sub="u-1", plan="pro", seed=ACCT_SEED, **over):
+def _aa(req, sub="u-1", plan="free", seed=ACCT_SEED, **over):
     now = int(time.time())
     body = {"typ": "aa", "iss": "account", "aud": "mcp", "req": req,
             "sub": sub, "plan": plan, "iat": now, "exp": now + 120}
@@ -82,7 +82,7 @@ def test_begin_uses_fragment_not_query(app):
 
 def test_complete_issues_code_and_stamps_owner(app):
     reg, req, _ = _register_and_begin(app)
-    loc = app.complete_member_connect({"req": req, "aa": _aa(req, sub="u-1", plan="pro")})
+    loc = app.complete_member_connect({"req": req, "aa": _aa(req, sub="u-1", plan="free")})
     code = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)["code"][0]
     assert urllib.parse.urlparse(loc).netloc == "claude.ai"
     # 코드에 owner/plan 이 스탬핑되고 토큰까지 전파돼야 한다
@@ -91,7 +91,7 @@ def test_complete_issues_code_and_stamps_owner(app):
                            "redirect_uri": "https://claude.ai/cb",
                            "code_verifier": "v" * 48})
     rec = app.oauth.resolve(tok["access_token"])
-    assert rec["owner"] == "user:u-1" and rec["plan"] == "pro"
+    assert rec["owner"] == "user:u-1" and rec["plan"] == "free"
     # 그 토큰으로 들어오면 resolve_auth 가 owner 를 강제한다
     got = app.resolve_auth("Bearer " + tok["access_token"])
     assert got["owner"] == "user:u-1" and got["source"] == "oauth"
