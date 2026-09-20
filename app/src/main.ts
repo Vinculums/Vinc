@@ -3,7 +3,7 @@ import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
-import { renderRead } from "./surfaces/read";
+import { renderRead, disposeRead } from "./surfaces/read";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
@@ -104,6 +104,7 @@ function current(): Surface {
 }
 
 async function route() {
+  disposeRead();
   // 구 표면 해시로 진입 시 정본 해시로 정규화(활성 하이라이트·딥링크 일치).
   const rawHead = location.hash.replace(/^#/, "").split("/")[0];
   if (rawHead in ALIAS) {
