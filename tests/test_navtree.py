@@ -114,8 +114,8 @@ class NavTreeE2E(unittest.TestCase):
         return ds.put_doc(self.store, owner=owner or self.OWNER, text=body,
                           title=title)["doc_id"]
 
-    def _tree(self, owner=None, nodes=False):
-        res = q.nav_tree(owner=owner or self.OWNER, store=self.store, nodes=nodes)
+    def _tree(self, owner=None, nodes=False, **kw):
+        res = q.nav_tree(owner=owner or self.OWNER, store=self.store, nodes=nodes, **kw)
         self.assertTrue(res["executed"], res.get("note"))
         return res
 
@@ -247,6 +247,61 @@ class NavTreeE2E(unittest.TestCase):
         docs = self._group(self._tree(), "phys")["docs"]
         self.assertEqual(len(docs), 1)
         self.assertLessEqual(docs[0]["depth"], q._DEPTH_CAP)
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class NavTreeDomainScope(NavTreeE2E):
+    """`domain=` — 주제 **하위 트리**로 모집단을 좁힌다(VIN-89).
+
+    이 인자가 없던 동안 좌측 레일의 Agent 갈래는 주제를 선언만 하고 실어 보낼 자리가
+    없어 **모든 개념**을 세웠다(실측 2026-09-20).
+    근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §3]]."""
+
+    def _seed_agents(self):
+        self._concept("concept:agent-root", "vinc/agent", title="루트역할")
+        self._concept("concept:agent-dev", "vinc/agent/roles", title="개발역할")
+        self._concept("concept:agent-deep", "vinc/agent/orchestration/sub", title="깊은역할")
+        self._concept("concept:ordinary", "work", title="보통개념")
+        # ⚠ 슬래시 경계가 요점이다 — 접두만 보면 이것도 걸린다.
+        self._concept("concept:agentic", "vinc/agentic", title="에이전틱")
+
+    def _ids(self, res):
+        return sorted(n["id"] for g in res["domains"] for n in g.get("nodes", []))
+
+    def test_scope_takes_the_subtree_and_stops_at_the_slash(self):
+        self._seed_agents()
+        got = self._ids(self._tree(nodes=True, kind="concept", domain="vinc/agent"))
+        # 정확일치(`vinc/agent`)와 그 아래 전부. `vinc/agentic` 과 `work` 는 밖이다.
+        self.assertEqual(got, ["concept:agent-deep", "concept:agent-dev",
+                               "concept:agent-root"])
+        # 한 단계 더 좁히면 그 아래만.
+        self.assertEqual(self._ids(self._tree(nodes=True, kind="concept",
+                                              domain="vinc/agent/roles")),
+                         ["concept:agent-dev"])
+
+    def test_counts_and_rows_come_from_the_same_predicate(self):
+        # 머리의 숫자가 갈래의 줄 수와 다르면 화면이 스스로를 반박한다.
+        self._seed_agents()
+        res = self._tree(nodes=True, kind="concept", domain="vinc/agent")
+        self.assertEqual(res["counts"]["kinds"]["concept"], len(self._ids(res)))
+        self.assertEqual(res["counts"]["scope"], ["vinc/agent"])
+
+    def test_scope_drops_outside_documents_and_the_unfiled_bucket(self):
+        self._seed_agents()
+        self._doc("보통개념 을 다룬 글.", "밖의 글")          # 주제 `work`
+        self._doc("아무 노드도 안 무는 글.", "미분류 글")      # 언급 없음 → unfiled
+        res = self._tree(nodes=True, kind="concept", domain="vinc/agent")
+        self.assertEqual([g["domain"] for g in res["domains"] if g["docs"]], [])
+        # 주제 스코프에 주제 없는 문서는 들지 않는다.
+        self.assertEqual(res["unfiled"], [])
+        self.assertEqual(res["counts"]["docs"], 0)
+
+    def test_no_scope_keeps_the_old_answer(self):
+        # 기본 호출의 응답은 종전과 같아야 한다(이 인자는 더하기지 바꾸기가 아니다).
+        self._seed_agents()
+        res = self._tree(nodes=True, kind="concept")
+        self.assertEqual(len(self._ids(res)), 5)
+        self.assertNotIn("scope", res["counts"])
 
 
 if __name__ == "__main__":

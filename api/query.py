@@ -3677,6 +3677,7 @@ def _domain_depths(concepts: dict[str, str],
 
 
 def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
+             domain: str | None = None, domains: list[str] | None = None,
              cfg=None, store=None) -> dict:
     """좌측 문서 트리(D69) — 주제 → 그 주제의 문서, **개념 계층 깊이순**.
 
@@ -3716,6 +3717,17 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
 
     ⚠ 주제 아래 설 수 있는 종은 **넷뿐이다**(`_TREE_PK`). Bridge 와 개방 타입은
     스키마가 `IN_DOMAIN` 을 주지 않는다 — 레일에 그 줄을 세우면 영원히 빈 갈래가 된다.
+
+    ``domain``/``domains`` 는 모집단을 그 **하위 트리**로 좁힌다(정확일치 OR `d + "/"`
+    접두 — 판정은 `domain_subtree_where` 한 벌이다). 목록·개수·문서·미분류가 **같은
+    술어**를 지난다: 세는 집합과 그리는 집합이 어긋나면 화면이 스스로를 반박한다.
+    스코프가 걸리면 `unfiled`(주제 없는 문서)는 비는 것이 정답이다 — 주제 스코프에
+    주제 없는 문서는 들지 않는다. 응답은 `counts.scope` 로 무엇으로 좁혔는지 에코한다.
+
+    ⚠ 이 인자가 없던 동안 좌측 레일의 Agent 갈래는 **아무것도 거르지 못했다**:
+    `lnb.ts` 가 `domain: "vinc/agent/roles"` 를 선언해도 실어 보낼 자리가 없어
+    모든 Concept 이 그 갈래에 섰다(실측 2026-09-20, 예약 주제 밖 `vinc/agentic` 과
+    무관한 `work` 까지 6/6 이 나왔다). 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §3]].
     """
     from api import docstore as _ds
 
@@ -3731,6 +3743,17 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
     if kind and not want:
         base["note"] = f"unknown kind: {kind}"
         return base
+    # 주제 스코프 — 목록·개수·문서가 모두 이 한 벌을 지난다.
+    scope = normalize_domains(domain, domains)
+    dom_params: dict = {"owner": owner}
+    dom_where = ""
+    if scope:
+        dom_where = " AND " + domain_subtree_where(["c.domain"], scope, dom_params)
+
+    def _in_scope(dom: str) -> bool:
+        """문서 주제가 스코프 안인가. Cypher 쪽 `domain_subtree_where` 와 같은 판정."""
+        return not scope or any(dom == d or dom.startswith(d.rstrip("/") + "/")
+                                for d in scope)
     try:
         # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
         # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
@@ -3743,17 +3766,19 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
         crows = store.run(
             " UNION ALL ".join(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
+                f"AND c.domain <> ''{dom_where} "
+                f"RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
                 f"'{lbl.lower()}' AS kind"
                 for lbl, pk in pop.items()),
-            {"owner": owner}) or []
+            dom_params) or []
         # 레일의 개수 — 제목을 싣지 않는 집계 하나. 종을 고르는 손잡이가 "없는 것"과
         # "아직 안 가져온 것"을 구별할 수 있어야 하므로 0 도 키로 남긴다.
         kind_counts: dict[str, int] = {}
         for lbl, pk in _TREE_PK.items():
             rows = store.run(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> '' RETURN count(c.{pk}) AS n", {"owner": owner}) or []
+                f"AND c.domain <> ''{dom_where} RETURN count(c.{pk}) AS n",
+                dom_params) or []
             kind_counts[lbl.lower()] = int((rows[0] or {}).get("n") or 0) if rows else 0
         by_domain: dict[str, dict[str, str]] = {}
         cdom: dict[str, str] = {}
@@ -3798,7 +3823,11 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
             row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
                    "updated_at": d.get("updated_at") or ""}
             if not topic or not node:
-                unfiled.append(row)
+                # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
+                if not scope:
+                    unfiled.append(row)
+                continue
+            if not _in_scope(topic):
                 continue
             groups.setdefault(topic, []).append(
                 {**row, "node_id": node, "node_title": d.get("primary_concept_title") or "",
@@ -3825,10 +3854,15 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
                     key=lambda r: (r["depth"], r["title"], r["id"]))
             out.append(g)
         out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
-        counts = {"domains": len(out), "docs": len(docs), "unfiled": len(unfiled),
-                  "kinds": kind_counts}
+        # 스코프가 걸리면 문서 수도 **실은 줄**만 센다 — 머리의 숫자와 갈래의 줄
+        # 수가 어긋나면 화면이 스스로를 반박한다.
+        counts = {"domains": len(out),
+                  "docs": sum(len(g["docs"]) for g in out) if scope else len(docs),
+                  "unfiled": len(unfiled), "kinds": kind_counts}
         if want:
             counts["kind"] = want.lower()
+        if scope:
+            counts["scope"] = list(scope)
         base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
         return base
     except Exception as exc:

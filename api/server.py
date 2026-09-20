@@ -1034,9 +1034,10 @@ class VincApp:
         # 꺼짐이라 이 경로를 이미 쓰는 곳의 응답은 바뀌지 않는다.
         # `kind=` 는 그 종 **하나**로 모집단을 좁힌다(종 레일). 목록을 종별로 가져가는
         # 것이 계약이라 여기에 "전부" 값은 없다 - 개수는 counts.kinds 가 따로 준다.
+        # `domain=` 은 그 주제의 **하위 트리**로 좁힌다(목록·개수·문서가 같은 술어).
         return self._read(lambda r: q.nav_tree(
             owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
-            kind=p.get("kind"), store=r))
+            kind=p.get("kind"), domain=p.get("domain"), store=r))
 
     def write_doc_put(self, body):
         owner = body.get("owner") or None
