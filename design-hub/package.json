@@ -2,7 +2,7 @@
   "name": "vinc-design-hub",
   "private": true,
   "type": "module",
-  "description": "Capture pipeline: renders the running site and app to PNGs that Figma boards are built against (vinc.plan.figma-product-structure \u00a78, D1\u00b7D7).",
+  "description": "Capture pipeline: renders the running site and app to PNGs that Figma boards are built against (vinc.plan.figma-product-structure §8, D1·D7).",
   "scripts": {
     "capture:site": "node scripts/capture_site.mjs",
     "capture:app": "node scripts/capture_app.mjs",
