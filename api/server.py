@@ -901,9 +901,15 @@ class VincApp:
 
     def read_node_context(self, p):
         # D45-V — 뷰 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
+        # `links_offset` 은 관계 목록의 **이어 읽을 자리**다. 상한만 있고 이것이
+        # 없으면 보이는 것이 전부인지 알 길이 없다(`_links_window`).
+        # `evidence=1` 은 관계에 저장된 **문장 자체**를 싣는다 - 기본 응답은 종전대로
+        # 불리언만이라 한 바이트도 안 변한다.
         return self._read(lambda r: q.node_context(
             owner=_req(p, "owner"), node=_req(p, "node"),
-            limit=_int(p.get("limit"), 4), store=r))
+            limit=_int(p.get("limit"), 4),
+            with_evidence=_flag(p.get("evidence")),
+            links_offset=_int(p.get("links_offset"), 0), store=r))
 
     def read_brief(self, p):
         # W1 — 질문 하나로 답변 재료(본문·발췌·관계·근거 id)를 한 번에 낸다.
