@@ -159,5 +159,123 @@ class NodeListE2E(unittest.TestCase):
         self.assertIn("unknown kind", res.get("note", ""))
 
 
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class NodeListAgentsScope(unittest.TestCase):
+    """Agents 컬렉션의 판별식 — 주제 **와** 신분 둘이다.
+
+    화면의 브레드크럼은 `vinc / agent`(뿌리)다. 그 주제만으로 거르면 역할이 아닌
+    것이 섞이고(실측 2026-09-20: 라이브에서 Concept 29 중 7이 QA·OpenClaw·Steward
+    산출물), `vinc/agent/roles` 로 좁히면 오늘은 맞지만 **역할이 자식 주제로 옮겨지는
+    순간 빈다** — 2026-09-04 에 실제로 일어나 `prompts/list` 가 0건을 냈다.
+    근거: [[decision:roster-readers-descend-one-child-domain]].
+    """
+
+    # setUp·헬퍼는 위 클래스와 같은 것을 **복사한다**(이 리포의 다른 노드 테스트
+    # 파일들도 같은 모양이다). 상속하면 부모의 개수 단언이 이 시드 위에서 다시 돌아
+    # 깨지고, 메서드 별칭으로 빌려오면 정적 분석이 그것을 못 따라간다.
+    OWNER = "user:a"
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {
+            "MEMORY_STORE_BACKEND": "embedded",
+            "MEMORY_DATA_DIR": os.path.join(self._tmp, "store"),
+        }.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.config import load_config
+        from store.backend import open_store
+        self.store = open_store(load_config())
+        self.store.provision(dim=4)
+        self._seed()
+
+    def tearDown(self):
+        self.store.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _dom_node(self, lbl, pk, nid, title, dom):
+        self.store.run(
+            f"MERGE (n:{lbl} {{{pk}:$i}}) SET n.title=$t, n.domain=$d, n.owner_id=$o",
+            {"i": pkns.key(self.OWNER, nid), "t": title, "d": dom, "o": self.OWNER})
+
+    def _list(self, **kw):
+        return q.node_list(owner=kw.pop("owner", self.OWNER), store=self.store, **kw)
+
+    def _seed(self):
+        # 역할 둘 — 하나는 뿌리에, 하나는 자식 주제에. 주제 이동에 안 깨지는지 본다.
+        self._dom_node("Concept", "concept_id", "concept:agent-designer",
+                       "제품 디자이너", "vinc/agent")
+        self._dom_node("Concept", "concept_id", "concept:agent-reviewer",
+                       "코드 리뷰어", "vinc/agent/roles")
+        # 접두를 갖지만 역할이 아닌 것(라이브의 concept:agent-orchestration 자리).
+        self._dom_node("Concept", "concept_id", "concept:agent-orchestration",
+                       "에이전트 오케스트레이션", "vinc/agent/orchestration")
+        # 예약 주제 아래지만 접두가 아닌 산출물(라이브의 QA·Steward 자리).
+        self._dom_node("Concept", "concept_id", "concept:qa-test-case-chunk",
+                       "QA 테스트 케이스", "vinc/agent/qa")
+        # 예약 주제 **밖**. 슬래시 경계가 요점이다.
+        self._dom_node("Concept", "concept_id", "concept:agentic-thing",
+                       "에이전틱한 것", "vinc/agentic")
+
+    def test_the_root_topic_alone_lets_non_roles_in(self):
+        # 왜 판별식이 둘이어야 하는지 — 주제만으로는 산출물이 섞인다.
+        got = self._list(domain="vinc/agent", kind="concept")
+        self.assertEqual(len(got["items"]), 4)
+        self.assertIn("concept:qa-test-case-chunk", [i["id"] for i in got["items"]])
+        # 예약 주제 밖은 안 든다(슬래시 경계).
+        self.assertNotIn("concept:agentic-thing", [i["id"] for i in got["items"]])
+
+    def test_topic_plus_identity_finds_roles_wherever_the_topic_moved_them(self):
+        got = self._list(domain="vinc/agent", kind="concept",
+                         id_prefix="concept:agent-")
+        ids = [i["id"] for i in got["items"]]
+        # 뿌리에 있는 것과 자식 주제로 옮겨진 것이 **둘 다** 나온다.
+        self.assertIn("concept:agent-designer", ids)
+        self.assertIn("concept:agent-reviewer", ids)
+        self.assertNotIn("concept:qa-test-case-chunk", ids)
+        self.assertEqual(got["id_prefix"], "concept:agent-")
+
+    def test_narrowing_to_the_roles_child_loses_a_role_that_moved(self):
+        # 이 테스트는 **기각된 대안을 고정한다**. `vinc/agent/roles` 로 좁히면
+        # 뿌리에 있는 역할이 사라진다 — 그래서 뿌리 + 판별식을 택했다.
+        got = self._list(domain="vinc/agent/roles", kind="concept",
+                         id_prefix="concept:agent-")
+        self.assertEqual([i["id"] for i in got["items"]], ["concept:agent-reviewer"])
+
+    def test_the_prefix_alone_still_lets_the_known_non_role_through(self):
+        # 접두만으로는 모자란다. `concept:agent-orchestration` 은 접두를 갖지만 역할이
+        # 아니고, 2026-09-12 에 라이브 prompts/list 가 그것을 **열아홉 번째 역할로**
+        # 내보냈다([[record:the-roster-concept-leaks-into-prompts-list-2026-09-12]]).
+        # 이 테스트는 그 틈이 아직 열려 있음을 고정한다 — 다음 테스트가 닫는 법을 고정한다.
+        ids = [i["id"] for i in self._list(domain="vinc/agent", kind="concept",
+                                           id_prefix="concept:agent-")["items"]]
+        self.assertIn("concept:agent-orchestration", ids)
+
+    def test_the_caller_can_exclude_the_known_non_role(self):
+        got = self._list(domain="vinc/agent", kind="concept",
+                         id_prefix="concept:agent-",
+                         id_exclude=["concept:agent-orchestration"])
+        ids = [i["id"] for i in got["items"]]
+        self.assertNotIn("concept:agent-orchestration", ids)
+        # 역할은 그대로 남는다 — 제외가 목록을 통째로 지우지 않는다.
+        self.assertIn("concept:agent-designer", ids)
+        self.assertIn("concept:agent-reviewer", ids)
+        # 무엇을 뺐는지 응답이 말한다. 조용히 사라지면 "없다"와 구별이 안 된다.
+        self.assertEqual(got["id_excluded"], ["concept:agent-orchestration"])
+
+    def test_an_exclusion_that_matches_nothing_changes_nothing(self):
+        base = self._list(domain="vinc/agent", kind="concept",
+                          id_prefix="concept:agent-")
+        same = self._list(domain="vinc/agent", kind="concept",
+                          id_prefix="concept:agent-", id_exclude=["concept:nope"])
+        self.assertEqual([i["id"] for i in same["items"]],
+                         [i["id"] for i in base["items"]])
+
+
 if __name__ == "__main__":
     unittest.main()

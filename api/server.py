@@ -1049,9 +1049,12 @@ class VincApp:
         # 평평한 노드 목록 — 주제 트리(`/nav-tree`)와 **다른 계약**이다. 왼쪽 목록은
         # 주제 머리 없이 종이 섞여 나오고 바닥에 "다음"이 있다(트리 응답으로는 그룹
         # 경계를 넘는 창을 만들 수 없다).
+        # `prefix` 는 id 접두 — Agents 컬렉션이 주제와 **함께** 거는 판별식이다.
         return self._read(lambda r: q.node_list(
             owner=_req(p, "owner"), domain=p.get("domain"), kind=p.get("kind"),
-            query=p.get("q"), limit=_int(p.get("limit"), q._NODE_LIST_CAP),
+            query=p.get("q"), id_prefix=p.get("prefix"),
+            id_exclude=[i for i in (p.get("exclude") or "").split(",") if i],
+            limit=_int(p.get("limit"), q._NODE_LIST_CAP),
             offset=_int(p.get("offset"), 0), store=r))
 
     def write_doc_put(self, body):

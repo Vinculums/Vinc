@@ -4107,8 +4107,10 @@ _LIST_KIND_LABEL: dict[str, str] = {**_TREE_KIND_LABEL,
 
 def node_list(*, owner: str, domain: str | None = None,
               domains: list[str] | None = None, kind: str | None = None,
-              query: str | None = None, limit: int = _NODE_LIST_CAP,
-              offset: int = 0, cfg=None, store=None) -> dict:
+              query: str | None = None, id_prefix: str | None = None,
+              id_exclude: list[str] | None = None,
+              limit: int = _NODE_LIST_CAP, offset: int = 0,
+              cfg=None, store=None) -> dict:
     """스코프 안의 **평평한** 노드 목록 — 제목순, 창 있음, 여섯 종 전부.
 
     `nav_tree` 와 **다른 계약**이다. 저쪽은 주제 트리(주제 → 그 주제의 문서·노드)이고
@@ -4129,6 +4131,30 @@ def node_list(*, owner: str, domain: str | None = None,
     ``query`` 는 제목 부분일치(대소문자 무시)다. 서버에서 거르는 이유는 창이 **거른
     뒤**에 잘려야 하기 때문이다 — 화면이 한 창을 받아 거르면 50개 중 3개만 남고
     "다음"이 무엇을 뜻하는지 아무도 모른다.
+
+    ``id_prefix`` 는 id 접두로 좁힌다. Agents 컬렉션이 쓰는 자리다 — 주제(`vinc/agent`)
+    **와** 신분(`concept:agent-`) 둘이 판별식이고 도메인 하나로는 모자란다.
+    실측 2026-09-20: `vinc/agent` 아래 Concept 29개 중 접두를 가진 것이 22개이고
+    나머지 일곱은 QA·OpenClaw·Steward 산출물이다.
+
+    왜 `vinc/agent/roles` 로 좁히지 않나: 그 주제만 보면 오늘은 21개가 맞지만
+    **역할이 자식 주제로 옮겨지는 순간 목록이 빈다**. 2026-09-04 에 실제로 일어났고
+    `prompts/list` 가 0건을 냈다([[decision:roster-readers-descend-one-child-domain]]).
+    주제는 뿌리로 잡고 판별식으로 거르는 편이 그 이동에 안 깨진다.
+
+    ``id_exclude`` 는 그 id 들을 뺀다. **접두만으로는 모자란다**: `concept:agent-orchestration`
+    은 접두를 갖지만 역할이 아니라 개념이고, 2026-09-12 에 라이브 `prompts/list` 가
+    그것을 **열아홉 번째 역할로 내보냈다**([[record:the-roster-concept-leaks-into-prompts-list-2026-09-12]]).
+    MCP 로스터는 그 뒤로 `ROSTER_CONCEPT` 로 뺀다. 여기서 그 상수를 직접 알지 않는
+    이유는 층이다(`api` 가 `vinc_mcp` 를 부르지 않는다) — 무엇을 빼는지는 **호출자가**
+    말한다.
+
+    ⚠ 이 인자가 메우는 틈은 원래 **데이터 쪽**이다. 설계([[vinc.plan.agent-domain]] §3)는
+    역할을 `vinc/agent` 직속에, `concept:agent-orchestration` 은 `vinc/governance` 에,
+    실행 기록은 각자의 작업 주제에 두기로 했다. 라이브는 그 셋 다 어긋나 있고, 그래서
+    2026-09-04 이후 고침이 전부 코드 쪽이었다(리더를 한 단계 내려보내기 → 누출 →
+    상수로 막기 → 이 인자). 주제를 설계대로 되돌리면 이 인자는 Agents 에 필요 없어진다.
+    도메인 이동은 사람이 판정한다(같은 문서 §12).
 
     ⚠ 정렬 키는 제목을 접은 것(`casefold`)이고 동순위는 id 다. 안정적이어야 창이
     페이지 사이에서 줄을 잃거나 두 번 내지 않는다(IA §3: 제목순 + 안정적 id 타이브레이크).
@@ -4200,6 +4226,15 @@ def node_list(*, owner: str, domain: str | None = None,
             rs = store.run("MATCH (n:Entity) WHERE n.owner_id = $owner "
                            "RETURN count(n.entity_id) AS c", {"owner": owner}) or []
             kinds["entity"] = int((rs[0] or {}).get("c") or 0) if rs else 0
+        # 신분 필터가 제목 질의보다 **앞**이다: 둘 다 걸리면 "이 컬렉션 안에서 찾기"가
+        # 되어야 하고, 그 반대(찾은 것 중 이 컬렉션)는 같은 집합이지만 뜻이 다르다.
+        pfx = (id_prefix or "").strip()
+        if pfx:
+            items = [i for i in items if i["id"].startswith(pfx)]
+        # 접두를 가진 비역할을 호출자가 뺀다. 무엇을 빼는지 여기서 알지 않는다.
+        drop = {str(i).strip() for i in (id_exclude or []) if str(i).strip()}
+        if drop:
+            items = [i for i in items if i["id"] not in drop]
         q = (query or "").strip().casefold()
         if q:
             items = [i for i in items if q in i["title"].casefold()]
@@ -4211,6 +4246,10 @@ def node_list(*, owner: str, domain: str | None = None,
             base["scope"] = list(scope)
         if q:
             base["query"] = (query or "").strip()
+        if pfx:
+            base["id_prefix"] = pfx
+        if drop:
+            base["id_excluded"] = sorted(drop)
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
