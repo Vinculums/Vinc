@@ -126,6 +126,55 @@ class NodeLinksContinuationE2E(unittest.TestCase):
         self._hub()
         self.assertEqual(self._links(offset=-5)["offset"], 0)
 
+    # ── 계약이 픽스처로 남기라고 이름 붙인 모양들 ──────────────────────────────
+    # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §8]] IA-03 — 사이클과 두 부모는
+    # "결과 신분 하나, 관계 둘 다 보존, 재귀 루프 없음"이다.
+
+    def _edge(self, rel, a, b):
+        self.store.run(
+            f"MATCH (x:Concept {{concept_id:$a}}), (y:Concept {{concept_id:$b}}) "
+            f"MERGE (x)-[:{rel}]->(y)",
+            {"a": pkns.key(self.OWNER, a), "b": pkns.key(self.OWNER, b)})
+
+    def test_a_cycle_answers_once_and_does_not_recurse(self):
+        # A→B→A. 이웃만 보는 계약이라 순환이 응답을 늘리거나 멈추게 해서는 안 된다.
+        for cid in ("concept:a", "concept:b"):
+            self._concept(cid, cid.split(":")[1])
+        self._edge("PREREQUISITE_OF", "concept:a", "concept:b")
+        self._edge("PREREQUISITE_OF", "concept:b", "concept:a")
+        got = q.node_context(owner=self.OWNER, node="concept:a", store=self.store)
+        self.assertTrue(got["executed"])
+        ids = [i["id"] for i in got["links"]["items"]]
+        # 같은 이웃이 양방향으로 한 번씩. **한쪽으로 접지 않는다** — 나감과 들어옴은
+        # 다른 사실이고, 접으면 화면이 반대 방향을 잃는다.
+        self.assertEqual(sorted(ids), ["concept:b", "concept:b"])
+        self.assertEqual(sorted(i["dir"] for i in got["links"]["items"]), ["in", "out"])
+
+    def test_two_parents_both_survive_as_incoming(self):
+        for cid in ("concept:p1", "concept:p2", "concept:child"):
+            self._concept(cid, cid.split(":")[1])
+        self._edge("PREREQUISITE_OF", "concept:p1", "concept:child")
+        self._edge("PREREQUISITE_OF", "concept:p2", "concept:child")
+        got = q.node_context(owner=self.OWNER, node="concept:child", store=self.store)
+        items = got["links"]["items"]
+        self.assertEqual(sorted(i["id"] for i in items),
+                         ["concept:p1", "concept:p2"])
+        self.assertTrue(all(i["dir"] == "in" for i in items), items)
+        # 결과 신분은 하나다 — 부모가 둘이라고 자식이 두 줄이 되지 않는다.
+        self.assertEqual(got["node"], "concept:child")
+
+    def test_an_orphan_answers_executed_with_zero_rather_than_failing(self):
+        # 연결 0 은 오류가 아니다. `executed:false` 로 내면 화면이 "못 읽었다"로 읽는다.
+        self._concept("concept:lonely", "외톨")
+        got = q.node_context(owner=self.OWNER, node="concept:lonely", store=self.store)
+        self.assertTrue(got["executed"])
+        self.assertEqual(got["links"]["total"], 0)
+        self.assertEqual(got["links"]["items"], [])
+        self.assertFalse(got["links"]["truncated"])
+        # 그리고 고립돼도 목록에는 선다 — 연결은 목록의 조건이 아니다.
+        listed = q.node_list(owner=self.OWNER, store=self.store, kind="concept")
+        self.assertIn("concept:lonely", [i["id"] for i in listed["items"]])
+
 
 if __name__ == "__main__":
     unittest.main()
