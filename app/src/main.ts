@@ -3,6 +3,7 @@ import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
+import { renderRead } from "./surfaces/read";
 import { renderSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
@@ -19,15 +20,25 @@ import { disposeEditorsIn } from "./doc-editor";
 
 // 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
 // 갔다(P15) — 다섯 기능이 전부 거기 산다.
-type Surface = "view" | "search";
+//
+// ⚠ `read` 는 셋째지만 **차례(`ORDER`)에 안 선다.** 0.9.4 리더의 구조 조각이고 시각
+// 라운드가 아직 승인 전이라, 주소(`#read/...`)로만 닿게 둔다 — 상단바에 세우는 순간
+// 그것이 곧 "이 화면을 내놓았다"가 된다. 승인된 고해상도가 오면 그때 차례와 카피가
+// 함께 선다. 근거: [[vinc.spec.desktop-content-first-ia-0-9-4]].
+type Surface = "view" | "search" | "read";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
   view: renderView,
   search: renderSearch,
+  read: renderRead,
 };
-const ORDER: Surface[] = ["view", "search"];
+const ORDER = ["view", "search"] as const satisfies readonly Surface[];
 // 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
 // 이지만 사용자에게는 `Home` 이다 — 발주자 지시 2026-07-27.
-const SURFACE_LABEL: Record<Surface, string> = {
+//
+// 라벨은 **차례에 서는 표면만** 갖는다(`Record<Surface, …>` 가 아니다). 안 서는
+// 표면에 라벨을 지어 두면 쓰이지도 않는 화면 문자열이 하나 생기고, 카피 대조는
+// 그것을 앱이 말하는 말로 센다.
+const SURFACE_LABEL: Record<(typeof ORDER)[number], string> = {
   view: COPY.ui.topbar.home, search: "Search",
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
