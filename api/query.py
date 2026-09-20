@@ -2687,6 +2687,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     어느 정본이 근거인가". 조회 전용.
 
     1) 노드 자체 설명: Concept 이면 one_liner, Episode 면 summary.
+       Bridge 는 `bridge:{status, source_domain, target_domain}` 을 따로 싣고
+       (`domain` 열이 없다), 개방 타입은 `node_kind` 가 **저작된 타입** 그대로이며
+       `tags` 를 싣는다(그 캐리어에 props·domain 이 없다 — 없는 값을 지어내지 않는다).
     2) 근거 발췌: (ch:Chunk)-[:MENTIONS]->(c) 역참조 — 이 개념을 언급하는 정본
        청크의 발췌 + 문서 제목(_DocMeta 조인). 청크 owner 는 과도기 술어
        (owner OR '' — v4 이전 파일 파생 레거시, Bridge F5 전례와 동일).
@@ -2824,6 +2827,61 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         base["links"] = _node_links(store, node, owner=owner,
                                                     with_evidence=with_evidence,
                                                     offset=links_offset)
+                        return base
+                # Bridge 와 개방 타입(Entity)은 **그래프에는 있는데** 이 표면만
+                # "unknown node" 로 답하고 있었다(실측 2026-09-20 · VIN-86 이 먼저
+                # 관측). 두 종이 주제 트리에 못 서는 것은 스키마지만(`IN_DOMAIN` 이
+                # 안 걸린다), 그것이 **읽을 수 없다**는 뜻은 아니다. 노드를 열 수
+                # 없으면 전체 목록에서 닿아도 빈 화면이 나온다.
+                # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §3]].
+                _sk = _seed_table(node)[0]
+                if _sk == "Bridge":
+                    br = store.run(
+                        "MATCH (b:Bridge) WHERE b.bridge_id = $id "
+                        f"AND {_bridge_owner_pred('b')} "
+                        "RETURN b.title AS title, b.props AS props, "
+                        "b.status AS status, b.source_domain AS sd, "
+                        "b.target_domain AS td, " + _track_cols("b"),
+                        {"id": pkns.key(owner, node), "owner": owner})
+                    if br:
+                        base.update(executed=True, node_kind="bridge",
+                                    title=br[0].get("title") or node,
+                                    # Bridge 에는 `domain` 열이 없다 — 지어내지 않고
+                                    # 잇는 두 주제를 아래 `bridge` 로 따로 낸다.
+                                    domain="",
+                                    rev=br[0].get("rev") or 0,
+                                    updated_at=br[0].get("updated_at") or "",
+                                    props=_props_to_obj(br[0].get("props")))
+                        base["bridge"] = {
+                            "status": str(br[0].get("status") or ""),
+                            "source_domain": str(br[0].get("sd") or ""),
+                            "target_domain": str(br[0].get("td") or "")}
+                        _stamp_validity(base, "", "")
+                        base["links"] = _bridge_links(store, node, owner=owner,
+                                                      with_evidence=with_evidence,
+                                                      offset=links_offset)
+                        return base
+                if _sk == "Entity":
+                    en = store.run(
+                        "MATCH (e:Entity) WHERE e.entity_id = $id "
+                        "AND e.owner_id = $owner "
+                        "RETURN e.type AS type, e.title AS title, e.tags AS tags, "
+                        + _track_cols("e"),
+                        {"id": pkns.key(owner, node), "owner": owner})
+                    if en:
+                        # 캐리어가 실제로 가진 열만 낸다: 개방 타입에는 `props` 도
+                        # `domain` 도 없다(스키마). 없는 값을 빈 dict 으로 두는 것과
+                        # 지어내는 것은 다르다.
+                        base.update(executed=True,
+                                    node_kind=str(en[0].get("type") or "entity"),
+                                    title=en[0].get("title") or node, domain="",
+                                    rev=en[0].get("rev") or 0,
+                                    updated_at=en[0].get("updated_at") or "")
+                        base["tags"] = list(en[0].get("tags") or [])
+                        _stamp_validity(base, "", "")
+                        base["links"] = _entity_links(store, node, owner=owner,
+                                                      with_evidence=with_evidence,
+                                                      offset=links_offset)
                         return base
                 base["note"] = f"unknown node: {node}"
                 return base
@@ -3033,6 +3091,100 @@ def _episode_links(store, node: str, *, owner: str,
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
             "total": len(items), "executed": True, **_links_window(items, offset)}
+
+
+def _bridge_links(store, node: str, *, owner: str,
+                  with_evidence: bool = False, offset: int = 0) -> dict:
+    """Bridge 시드의 관계 목록 — 그 다리가 **무엇을 잇는가**.
+
+    두 축이다: `CONNECTS` 가 개념·결정으로 가고(선택적 `role`), `CROSSES` 가 주제로
+    간다. 둘을 한 쿼리로 합치지 않는 이유는 Domain 에 `title`·`domain`·`owner_id` 가
+    없어서다 — UNION 은 열 모양이 같아야 하고, 없는 열을 RETURN 하면 조회가 통째로
+    죽는다(`_SEED_FIELDS` 머리의 경고와 같은 자리).
+
+    SEC-1: Bridge 쪽은 과도기 술어(:func:`_bridge_owner_pred`), 건너편은 엄격 owner.
+    Domain 은 소유 열이 없어 걸 것이 없다(구조 노드).
+
+    `role` 은 `note` 에 싣는다 — 부착이 카드 본문을 거기 싣는 것과 같은 자리이고,
+    화면이 새 열을 배우지 않아도 "무슨 자격으로 이었나"를 읽는다."""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
+             "truncated": False, "executed": False}
+    try:
+        rows = store.run(" UNION ALL ".join(
+            f"MATCH (b:Bridge)-[r:CONNECTS]->(o:{ol}) "
+            f"WHERE b.bridge_id = $id AND {_bridge_owner_pred('b')} "
+            "AND o.owner_id = $owner "
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "r.role AS role "
+            for ol, opk in _SEMANTIC_PK.items()),
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+        drows = store.run(
+            "MATCH (b:Bridge)-[:CROSSES]->(d:Domain) "
+            f"WHERE b.bridge_id = $id AND {_bridge_owner_pred('b')} "
+            "RETURN d.name AS name",
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+    except Exception:
+        return empty
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        "domain": r.get("domain") or "", "type": "CONNECTS", "dir": "out",
+        "evidence": False, "confidence": 0.0, "note": str(r.get("role") or ""),
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": ""} if with_evidence else {}),
+    } for r in rows]
+    items += [{
+        # 주제는 좌표지 소유 노드가 아니다. id 를 `domain:` 꼴로 내는 것은
+        # vinc_neighbors 가 같은 주제를 부르는 이름과 같다(두 도구가 어긋나지 않게).
+        "id": f"domain:{r.get('name') or ''}", "title": str(r.get("name") or ""),
+        "domain": str(r.get("name") or ""), "type": "CROSSES", "dir": "out",
+        "evidence": False, "confidence": 0.0, "note": "",
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": ""} if with_evidence else {}),
+    } for r in drows]
+    items.sort(key=lambda i: (i["type"], i["title"], i["id"]))
+    return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
+            "total": len(items), "executed": True, **_links_window(items, offset)}
+
+
+def _entity_links(store, node: str, *, owner: str,
+                  with_evidence: bool = False, offset: int = 0) -> dict:
+    """개방 타입 노드의 관계 목록 — 범용 캐리어 `TYPED`(Entity→Entity), **양방향**.
+
+    사용자 저작 엣지 타입은 열거할 수 없으므로 관계 이름은 행의 `type` 값에서 온다.
+    비어 있으면 `TYPED` 로 낸다 — 캐리어 이름이 곧 그 관계에 대해 아는 전부다.
+
+    방향을 접지 않는다: 같은 두 노드 사이의 나감과 들어옴은 **다른 사실**이고,
+    한쪽으로 접으면 화면이 반대 방향을 잃는다."""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
+             "truncated": False, "executed": False}
+    try:
+        rows = store.run(
+            "MATCH (a:Entity)-[r:TYPED]->(b:Entity) "
+            "WHERE a.entity_id = $id AND a.owner_id = $owner "
+            "AND b.owner_id = $owner "
+            "RETURN b.entity_id AS id, b.title AS title, r.type AS t, 'out' AS dir "
+            "UNION ALL "
+            "MATCH (b:Entity)-[r:TYPED]->(a:Entity) "
+            "WHERE a.entity_id = $id AND a.owner_id = $owner "
+            "AND b.owner_id = $owner "
+            "RETURN b.entity_id AS id, b.title AS title, r.type AS t, 'in' AS dir",
+            {"id": pkns.key(owner, node), "owner": owner}) or []
+    except Exception:
+        return empty
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        # 개방 타입은 `domain` 열이 없다(스키마) — 없는 값을 지어내지 않는다.
+        "domain": "", "type": str(r.get("t") or "TYPED"),
+        "dir": str(r.get("dir") or "out"),
+        "evidence": False, "confidence": 0.0, "note": "",
+        "valid_from": "", "valid_until": "",
+        **({"evidence_text": ""} if with_evidence else {}),
+    } for r in rows]
+    items.sort(key=lambda i: (i["dir"], i["type"], i["title"], i["id"]))
+    out_n = sum(1 for i in items if i["dir"] == "out")
+    return {"degree": len(items), "out": out_n, "in": len(items) - out_n,
+            "attached": 0, "total": len(items), "executed": True,
+            **_links_window(items, offset)}
 
 
 def _node_links(store, node: str, *, owner: str,
