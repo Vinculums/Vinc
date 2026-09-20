@@ -159,10 +159,10 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "s4Body": None, "s5Body": None, "s6Body": None, "showKoBlock": None,
     }),
     "/community/": ("community/", {
-        "h1a": "h1", "heroBody": "lede",
-        "shareCta": "shareCta", "shareNote": "shareNote",
-        "sortRecent": "sRecent",
-        "cardBadge": "mkOfficial", "cardImport": "mGo",
+        "h1a": "h1", "empty": "empty", "browseDocs": "browseDocs",
+        # 공개 팩 중단으로 사라진 문구는 역사 프레임에만 남는다.
+        "heroBody": None, "shareCta": None, "shareNote": None,
+        "sortRecent": None, "cardBadge": None, "cardImport": None,
         "h1b": None, "searchPlaceholder": None, "resultCount": None,
         "tag1": None, "tag2": None, "tag3": None, "tag4": None, "cardAuthor": None,
         "card1Domain": None, "card1Title": None, "card1Meta": None, "card1Imports": None,
