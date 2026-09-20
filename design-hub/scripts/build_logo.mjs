@@ -25,7 +25,12 @@ for (const name of readdirSync(assets).filter(name => name.endsWith('.svg'))) {
 function emit(path, bytes) {
   const actual = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   let matches = false;
-  try { matches = readFileSync(path).equals(actual); } catch { /* 새 산출물 */ }
+  try {
+    const prior = readFileSync(path);
+    matches = path.endsWith('.py')
+      ? prior.toString('utf8').replace(/\r\n/g, '\n') === actual.toString('utf8')
+      : prior.equals(actual);
+  } catch { /* 새 산출물 */ }
   if (matches) return;
   if (check) { console.error(`DRIFT ${path}`); drift++; }
   else { writeFileSync(path, actual); console.log(`Generated ${path}`); }
@@ -76,7 +81,7 @@ try {
   }
   const raster = readFileSync(join(temporary, '128x128.png'));
   const serverPath = join(repo, 'vinc_mcp/http_server.py');
-  let server = readFileSync(serverPath, 'utf8');
+  let server = readFileSync(serverPath, 'utf8').replace(/\r\n/g, '\n');
   const pngPattern = /_FAVICON_PNG = base64\.b64decode\([\s\S]*?\r?\n\)/;
   const svgPattern = /_FAVICON_SVG = """[\s\S]*?"""/;
   if (!pngPattern.test(server) || !svgPattern.test(server)) throw new Error('MCP favicon constants not found');
