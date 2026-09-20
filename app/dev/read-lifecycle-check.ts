@@ -1,6 +1,6 @@
-// The actual Reader module runs with deferred transport and deterministic DOM/frame scheduling.
-// Run: node --experimental-strip-types --disable-warning=ExperimentalWarning dev/read-lifecycle-check.ts
-// Existing app CI runs every dev/*-check.ts. Optional source path reproduces the pre-fix failure.
+// 실제 Reader 모듈을 지연 응답과 고정 DOM/프레임 순서로 검사한다.
+// 실행: node --experimental-strip-types --disable-warning=ExperimentalWarning dev/read-lifecycle-check.ts
+// 기존 앱 CI가 dev/*-check.ts를 실행한다. 선택 인자로 이전 소스를 주면 수정 전 실패를 재현한다.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
