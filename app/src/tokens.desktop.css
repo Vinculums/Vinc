@@ -1,6 +1,6 @@
-/* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
-   SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
-/* sync-sha256: a29ba30fd856af0aa00adc716239469067c9e1760570bd8607c697d102f64d59 */
+/* AUTO-GENERATED — design-tokens.json → gen_tokens.py. Do not hand-edit.
+   SSoT: DESIGN · mode: light-first · color: HSL channels. */
+/* sync-sha256: 44b9732b922cd28c6f779bfbd133d6d4c142438db5408c8b817754e1a1a2dcab */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -28,9 +28,10 @@
   --warning-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
   --danger: 0 47% 43%; /* #A03A3A  ← {danger_700} */
   --danger-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
-  --logo-tip: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --logo-tip: 0 0% 0%; /* #000000  ← {brand_black} */
   --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
   --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+  --logo: 0 0% 0%; /* #000000  ← {brand_black} */
 
   /* Motion — 곡선·시간(gen_motion.py, SSoT motion 그룹). 등장·퇴장·작은 UI 는 ease-out,
      화면 위 이동은 ease-in-out, 큰 면(패널·시트)은 drawer, 메뉴·모달 성장은 settle */
@@ -109,9 +110,10 @@
   --warning-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
   --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
   --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
-  --logo-tip: 237 40% 82%; /* #BDBFE3  ← {peri_250} */
+  --logo-tip: 0 0% 100%; /* #FFFFFF  ← {brand_white} */
   --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
   --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */
+  --logo: 0 0% 100%; /* #FFFFFF  ← {brand_white} */
 
   /* Depth (dark overrides) */
   --shadow-elev-1: 0 1px 2px hsl(0 0% 0% / 0.35);
