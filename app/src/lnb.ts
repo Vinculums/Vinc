@@ -438,7 +438,7 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
       // 응답은 지역에 받고, 세대가 그대로일 때만 상태에 쓴다(늦게 온 앞 종의 응답이
       // 뒤 종의 트리를 덮지 않게).
-      let next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
+      let next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind, domain: r?.domain });
       if (stale()) return;
       if (next?.executed && r?.domain) next = filterAgentTree(next);
       // Agent 목록의 팀·관계는 `/graph` 의 역할 노드와 그 사이 엣지에서 접는다.
