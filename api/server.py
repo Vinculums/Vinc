@@ -1045,6 +1045,15 @@ class VincApp:
             owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
             kind=p.get("kind"), domain=p.get("domain"), store=r))
 
+    def read_node_list(self, p):
+        # 평평한 노드 목록 — 주제 트리(`/nav-tree`)와 **다른 계약**이다. 왼쪽 목록은
+        # 주제 머리 없이 종이 섞여 나오고 바닥에 "다음"이 있다(트리 응답으로는 그룹
+        # 경계를 넘는 창을 만들 수 없다).
+        return self._read(lambda r: q.node_list(
+            owner=_req(p, "owner"), domain=p.get("domain"), kind=p.get("kind"),
+            query=p.get("q"), limit=_int(p.get("limit"), q._NODE_LIST_CAP),
+            offset=_int(p.get("offset"), 0), store=r))
+
     def write_doc_put(self, body):
         owner = body.get("owner") or None
         if not owner:
@@ -1816,6 +1825,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널([[vinc.canon.graph-conventions]]).
             "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
+            "/node-list": app.read_node_list,  # 평평한 노드 목록(0.9.4 리더 왼쪽)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,

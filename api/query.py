@@ -2712,7 +2712,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                             valid_from, valid_until}]}}
            ``items`` 는 `links_offset` 부터 최대 `_NODE_LINKS_CAP` 줄이다. `truncated`
            가 참이면 `next_offset` 이 **이어 읽을 자리**를 준다 — 그것을 따라가면
-           이웃 전체에 닿는다(`_links_window`). `total` 은 창과 무관하게 언제나
+           이웃 전체에 닿는다(`_window`). `total` 은 창과 무관하게 언제나
            이웃 전체 수다.
 
            sources: {total, truncated, items: [{doc_id, title, mentions}]}
@@ -2992,8 +2992,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
 _NODE_LINKS_CAP = 24
 
 
-def _links_window(items: list[dict], offset: int) -> dict:
-    """관계 목록의 **한 창**과 이어 읽을 자리. 세 링크 팔이 같은 말을 하게 묶는다.
+def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
+    """목록의 **한 창**과 이어 읽을 자리. 창을 내는 자리가 같은 말을 하게 묶는다.
 
     `truncated` 는 "이 창 뒤에 더 있나"다. `offset` 이 0 이면 종전 뜻(전체가 상한보다
     큼)과 값이 같으므로 이미 이 응답을 읽던 화면은 바뀌지 않는다.
@@ -3006,7 +3006,7 @@ def _links_window(items: list[dict], offset: int) -> dict:
     25개 중 24개를 내면서 `total:25` 만 말하던 자리가 그랬다(실측 2026-09-20).
     근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §6]]."""
     off = max(0, int(offset or 0))
-    page = items[off:off + _NODE_LINKS_CAP]
+    page = items[off:off + cap]
     more = len(items) > off + len(page)
     out: dict = {"items": page, "truncated": more, "offset": off}
     if more:
@@ -3050,7 +3050,7 @@ def _record_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "executed": True, **_links_window(items, offset)}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _episode_links(store, node: str, *, owner: str,
@@ -3090,7 +3090,7 @@ def _episode_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "executed": True, **_links_window(items, offset)}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _bridge_links(store, node: str, *, owner: str,
@@ -3143,7 +3143,7 @@ def _bridge_links(store, node: str, *, owner: str,
     } for r in drows]
     items.sort(key=lambda i: (i["type"], i["title"], i["id"]))
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "executed": True, **_links_window(items, offset)}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _entity_links(store, node: str, *, owner: str,
@@ -3184,7 +3184,7 @@ def _entity_links(store, node: str, *, owner: str,
     out_n = sum(1 for i in items if i["dir"] == "out")
     return {"degree": len(items), "out": out_n, "in": len(items) - out_n,
             "attached": 0, "total": len(items), "executed": True,
-            **_links_window(items, offset)}
+            **_window(items, offset)}
 
 
 def _node_links(store, node: str, *, owner: str,
@@ -3305,7 +3305,7 @@ def _node_links(store, node: str, *, owner: str,
     # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "total": len(rows) + len(attached), "executed": True,
-            **_links_window(items, offset)}
+            **_window(items, offset)}
 
 
 # ── vinc_brief — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기 ──────────────
@@ -4085,6 +4085,132 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
         if scope:
             counts["scope"] = list(scope)
         base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
+        return base
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+        return base
+    finally:
+        if owns:
+            store.close()
+
+
+#: 평평한 노드 목록의 한 창. 관계(24)보다 크다 — 이것은 사람이 훑어 고르는 목록이라
+#: 한 화면에 더 들어간다.
+_NODE_LIST_CAP = 50
+
+#: 목록이 세울 수 있는 종 전부. 앞 넷은 주제 아래 서고(`_TREE_PK`), Bridge 와 개방
+#: 타입은 **주제를 갖지 않는다**(스키마가 `IN_DOMAIN` 을 안 준다). 그래서 주제 스코프가
+#: 걸리면 뒤의 둘은 구조적으로 빠진다 — 없는 열로 거를 수는 없다.
+_LIST_KIND_LABEL: dict[str, str] = {**_TREE_KIND_LABEL,
+                                    "bridge": "Bridge", "entity": "Entity"}
+
+
+def node_list(*, owner: str, domain: str | None = None,
+              domains: list[str] | None = None, kind: str | None = None,
+              query: str | None = None, limit: int = _NODE_LIST_CAP,
+              offset: int = 0, cfg=None, store=None) -> dict:
+    """스코프 안의 **평평한** 노드 목록 — 제목순, 창 있음, 여섯 종 전부.
+
+    `nav_tree` 와 **다른 계약**이다. 저쪽은 주제 트리(주제 → 그 주제의 문서·노드)이고
+    이쪽은 사람이 훑어 고르는 **한 줄짜리 목록**이다. 화면의 왼쪽 목록에는 주제 머리가
+    없고 종이 섞여 나오며 바닥에 "다음 항목 불러오기"가 있다 — 트리 응답으로는 그
+    모양을 만들 수 없다(그룹 경계를 넘는 창이 없다).
+    근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §3]].
+
+    반환::
+
+        {executed, items: [{id, title, kind, domain}], total, offset, truncated,
+         next_offset(더 있을 때만), kinds: {종: 수}, scope(좁혔을 때만)}
+
+    `kinds` 는 **스코프만** 반영한 종별 총수다 — 질의와 종 필터는 안 본다. 화면의 종
+    손잡이가 묻는 것이 "이 스코프에 무엇이 몇 개 있나"이지 "지금 걸러 낸 뒤 몇 개"가
+    아니기 때문이고, 0 도 키로 남겨 "없다"와 "안 가져왔다"를 구별한다.
+
+    ``query`` 는 제목 부분일치(대소문자 무시)다. 서버에서 거르는 이유는 창이 **거른
+    뒤**에 잘려야 하기 때문이다 — 화면이 한 창을 받아 거르면 50개 중 3개만 남고
+    "다음"이 무엇을 뜻하는지 아무도 모른다.
+
+    ⚠ 정렬 키는 제목을 접은 것(`casefold`)이고 동순위는 id 다. 안정적이어야 창이
+    페이지 사이에서 줄을 잃거나 두 번 내지 않는다(IA §3: 제목순 + 안정적 id 타이브레이크).
+    """
+    cfg = cfg or load_config()
+    base: dict = {"kind": "node-list", "executed": False, "items": [], "total": 0,
+                  "offset": 0, "truncated": False, "kinds": {}}
+    want = _LIST_KIND_LABEL.get((kind or "").strip().lower()) if kind else None
+    if kind and not want:
+        base["note"] = f"unknown kind: {kind}"
+        return base
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    scope = normalize_domains(domain, domains)
+    try:
+        dom_params: dict = {"owner": owner}
+        dom_where = (" AND " + domain_subtree_where(["n.domain"], scope, dom_params)
+                     if scope else "")
+        rows: list[dict] = []
+        for lbl, pk in _TREE_PK.items():
+            if want and want != lbl:
+                continue
+            for r in store.run(
+                    f"MATCH (n:{lbl}) WHERE n.owner_id = $owner "
+                    f"AND n.{pk} IS NOT NULL{dom_where} "
+                    f"RETURN n.{pk} AS id, n.title AS title, n.domain AS domain",
+                    dom_params) or []:
+                rows.append({**r, "kind": lbl.lower()})
+        # 주제가 없는 두 종. 스코프가 걸린 질의에는 구조적으로 들 수 없다.
+        if not scope:
+            if not want or want == "Bridge":
+                for r in store.run(
+                        f"MATCH (n:Bridge) WHERE {_bridge_owner_pred('n')} "
+                        "RETURN n.bridge_id AS id, n.title AS title",
+                        {"owner": owner}) or []:
+                    rows.append({**r, "kind": "bridge", "domain": ""})
+            if not want or want == "Entity":
+                for r in store.run(
+                        "MATCH (n:Entity) WHERE n.owner_id = $owner "
+                        "RETURN n.entity_id AS id, n.title AS title, n.type AS t",
+                        {"owner": owner}) or []:
+                    # 개방 타입의 종은 **저작된 타입**이다(`node_context` 와 같은 태도).
+                    rows.append({**r, "kind": str(r.get("t") or "entity"),
+                                 "domain": ""})
+        items: list[dict] = []
+        for r in rows:
+            rid = pkns.strip(str(r.get("id") or ""))
+            if not rid:
+                continue
+            items.append({"id": rid, "title": str(r.get("title") or "") or rid,
+                          "kind": str(r.get("kind") or ""),
+                          "domain": str(r.get("domain") or "")})
+        # 종 집계 — 스코프만 반영한다(위 docstring). 제목을 싣지 않는 집계라 가볍다.
+        kinds: dict[str, int] = {}
+        for lbl, pk in _TREE_PK.items():
+            rs = store.run(
+                f"MATCH (n:{lbl}) WHERE n.owner_id = $owner "
+                f"AND n.{pk} IS NOT NULL{dom_where} RETURN count(n.{pk}) AS c",
+                dom_params) or []
+            kinds[lbl.lower()] = int((rs[0] or {}).get("c") or 0) if rs else 0
+        if not scope:
+            rs = store.run(f"MATCH (n:Bridge) WHERE {_bridge_owner_pred('n')} "
+                           "RETURN count(n.bridge_id) AS c", {"owner": owner}) or []
+            kinds["bridge"] = int((rs[0] or {}).get("c") or 0) if rs else 0
+            rs = store.run("MATCH (n:Entity) WHERE n.owner_id = $owner "
+                           "RETURN count(n.entity_id) AS c", {"owner": owner}) or []
+            kinds["entity"] = int((rs[0] or {}).get("c") or 0) if rs else 0
+        q = (query or "").strip().casefold()
+        if q:
+            items = [i for i in items if q in i["title"].casefold()]
+        items.sort(key=lambda i: (i["title"].casefold(), i["id"]))
+        cap = max(1, min(int(limit or _NODE_LIST_CAP), 200))
+        base.update(executed=True, total=len(items), kinds=kinds,
+                    **_window(items, offset, cap))
+        if scope:
+            base["scope"] = list(scope)
+        if q:
+            base["query"] = (query or "").strip()
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"

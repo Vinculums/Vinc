@@ -73,6 +73,11 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
     "nav-tree": ("GET", "/nav-tree"),   # 좌측 문서 트리(D69) — 주제→문서 깊이순
+    # 평평한 노드 목록(0.9.4 리더 왼쪽) — 주제 머리 없이 종이 섞이고 창이 있다.
+    # ⚠ 이것만 열고 계정 `GET_OPS` 를 안 열면 **웹에서만 조용히 죽는다**(데스크탑은
+    # 사이드카를 직접 타므로 멀쩡하다 — 그래서 데스크탑 테스트로는 절대 안 잡힌다).
+    # 근거: [[concept:proxy-allowlist]] · [[episode:2026-07-25-totals-web-dead]]
+    "node-list": ("GET", "/node-list"),
     # 관례(GRAPH.md) — 읽기와 재생성을 **짝으로** 연다. 웹 Vinc 도 같은 것을 봐야 한다
     # (계정 GET_OPS/POST_OPS 와 1:1). 읽기만 열면 [다시 생성]만 404 로 죽는다.
     "conventions": ("GET", "/conventions"),

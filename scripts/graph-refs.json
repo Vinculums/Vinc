@@ -354,6 +354,7 @@
   ],
   "nodes": [
     "concept:agent-orchestration",
+    "concept:proxy-allowlist",
     "concept:tool-response-disclosure",
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
     "decision:a-selection-becomes-an-address-you-paste",
@@ -392,6 +393,7 @@
     "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22",
     "decision:vinc-encode-holds-one-replica",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
+    "episode:2026-07-25-totals-web-dead",
     "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-code-comment-is-not-evidence-for-a-documentation-claim-2026-09-18",
