@@ -7,8 +7,8 @@
    들여오기가 `api/fragment.merge_fragment`(id 정확 매칭 MERGE·멱등) 재사용 하나로
    끝난다 — 별도 import 기계 없음.
 2. **커스텀 스코프**. 도메인 전체가 아니라 "이 영역까지만"을 지원한다:
-   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(View L2 와 동일한
-   ego 서브그래프 — 그래프에서 고른 영역 그대로 패키징).
+   ``domain``(데이터셋 구획) · ``tags``(교집합) · ``seed``+``depth``(ego 서브그래프).
+   구조 노드를 경유하되 팩에는 Concept/Episode/Record/Decision만 싣는다.
 3. **preference 신호 미포함**. pinned/access_count/last_access 는 원 계정의 개인
    신호라 공유 팩에 싣지 않는다(투영에서 제외 — 스크럽 단계 불요). 수신자는
    자신의 owner 로 재스탬핑해 들여온다(fragment.owner 명시 → §1 스코프 불변 유지).
@@ -24,6 +24,7 @@ from . import fragment as frag
 from . import packfile
 from . import query as q
 from store import pkns
+from store.embedded_schema import _NODE_TABLES, _REL_TABLES
 from . import docstore as ds
 
 PACK_VERSION = 1
@@ -68,19 +69,115 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
     return q.QueryPlan("share_concepts", cypher, params, note="share projection (no preference)")
 
 
-def _episodes_plan(*, owner: str, domain: str | None = None) -> q.QueryPlan:
+def _episodes_plan(*, owner: str, domain: str | None = None,
+                   ids: list[str] | None = None) -> q.QueryPlan:
     where = ["e.owner_id = $owner"]
     params: dict = {"owner": owner}
-    if domain:
+    if ids is not None:
+        where.append("e.episode_id IN $ids")
+        params["ids"] = pkns.keys(owner, ids)
+    elif domain:
         # 개념과 **같은 술어**를 쓴다 — 한쪽만 하위 트리로 두면 부모 주제를 공유할 때
         # Episode 만 빠져 팩이 반쪽이 된다.
         where.append(q.domain_subtree_where(["e.domain"], [domain], params))
     cypher = (
         f"MATCH (e:Episode) WHERE {' AND '.join(where)} "
         "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
-        "e.date AS date, e.summary AS summary, e.tags AS tags"
+        "e.date AS date, e.summary AS summary, e.tags AS tags, e.props AS props"
     )
     return q.QueryPlan("share_episodes", cypher, params, note="share projection (no preference)")
+
+
+def _content_plan(kind: str, *, owner: str, domain: str | None = None,
+                  ids: list[str] | None = None) -> q.QueryPlan:
+    label, pk = frag._NODE_MAP[kind]
+    where, params = ["n.owner_id = $owner"], {"owner": owner}
+    if ids is not None:
+        where.append(f"n.{pk} IN $ids")
+        params["ids"] = pkns.keys(owner, ids)
+    elif domain:
+        where.append(q.domain_subtree_where(["n.domain"], [domain], params))
+    fields = ["title", "domain", "tags", "props", "created"]
+    if kind == "record":
+        fields += ["content_time", "valid_from", "valid_until"]
+    return q.QueryPlan(
+        f"share_{kind}s", f"MATCH (n:{label}) WHERE {' AND '.join(where)} "
+        f"RETURN n.{pk} AS id, " + ", ".join(f"n.{f} AS {f}" for f in fields),
+        params, note="share projection (no preference)")
+
+
+def _records_plan(**scope) -> q.QueryPlan:
+    return _content_plan("record", **scope)
+
+
+def _decisions_plan(**scope) -> q.QueryPlan:
+    return _content_plan("decision", **scope)
+
+
+def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
+    """네 종류 사이 저작 관계만, 양 끝 owner를 매 홉에서 검사한다.
+
+    구조 경유는 _share_reach_plan에서 다루고, 여기서는 내보낼 관계만 고른다.
+    근거: [[vinc.canon.mcp-contract §5.2]].
+    """
+    pairs = []
+    for source in ("concept", "decision"):
+        for target in ("concept", "decision"):
+            for relation in frag._CC_EDGES.values():
+                if relation != "RELATED_TO" or source == target == "concept":
+                    pairs.append((source, target, relation))
+    pairs += [(s, t, "ABOUT") for s in ("episode", "decision")
+              for t in ("concept", "decision")]
+    pairs += [("record", t, "ATTACHES_TO") for t in ("concept", "decision")]
+    arms = []
+    for source, target, relation in pairs:
+        sl, sp = frag._NODE_MAP[source]
+        tl, tp = frag._NODE_MAP[target]
+        role = "r.type" if relation == "ATTACHES_TO" else "''"
+        arms.append(
+            f"MATCH (a:{sl})-[r:{relation}]->(b:{tl}) "
+            f"WHERE a.owner_id = $owner AND b.owner_id = $owner "
+            f"AND (a.{sp} IN $ids OR b.{tp} IN $ids) "
+            f"RETURN a.{sp} AS id, b.{tp} AS target, '{relation}' AS rel, "
+            f"{role} AS role, r.evidence AS evidence, r.confidence AS confidence, "
+            "r.created AS edge_created")
+    return q.QueryPlan("share_edges", " UNION ALL ".join(arms),
+                       {"owner": owner, "ids": pkns.keys(owner, ids)})
+
+
+def _share_reach_plan(*, owner: str, frontier: dict[str, set[str]]) -> q.QueryPlan:
+    """기존 ego의 구조 경유를 유지하되 매 홉의 소유자를 검사한다.
+
+    Bridge/Chunk/Domain은 순회용이며 팩의 노드가 아니다. 라벨마다 PK와 소유 열이
+    다르므로 스키마에서 승인된 쌍을 파생한다. 근거: [[vinc.spec.dataplane §2]].
+    """
+    pairs = set()
+    for relation, sources, targets, _ in _REL_TABLES:
+        sources = (sources,) if isinstance(sources, str) else sources
+        targets = (targets,) if isinstance(targets, str) else targets
+        for source in sources:
+            for target in targets:
+                pairs.add((source, target, relation))
+                pairs.add((target, source, relation))
+    arms, params = [], {"owner": owner}
+    for source, target, relation in sorted(pairs):
+        if not frontier.get(source):
+            continue
+        sp, tp = _NODE_TABLES[source]["pk"], _NODE_TABLES[target]["pk"]
+        param = f"ids_{source}"
+        values = sorted(frontier[source])
+        params[param] = values if source in ("Chunk", "Domain") else pkns.keys(owner, values)
+        where = [f"a.{sp} IN ${param}"]
+        for alias, label in (("a", source), ("b", target)):
+            if label == "Bridge":
+                where.append(q._bridge_owner_pred(alias))
+            elif any(col == "owner_id" for col, _ in _NODE_TABLES[label]["cols"]):
+                where.append(f"{alias}.owner_id = $owner")
+        arms.append(f"MATCH (a:{source})-[:{relation}]-(b:{target}) "
+                    f"WHERE {' AND '.join(where)} RETURN '{target}' AS kind, b.{tp} AS id")
+    if not arms:
+        return q.QueryPlan("share_reach", "RETURN '' AS kind, '' AS id LIMIT 0", {})
+    return q.QueryPlan("share_reach", " UNION ALL ".join(arms), params)
 
 
 def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
@@ -91,7 +188,7 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
 
 
 def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
-                       cfg=None) -> list[dict]:
+                       decision_ids: list[str] | None = None, cfg=None) -> list[dict]:
     """팩의 개념이 가리키는 원문 문서를 export 형태로 모은다 — 자기완결 공유 팩
     (개념 + 그 소스 원문). 길이 **둘**이다: `(Chunk)-[:MENTIONS]->(Concept)` 역추적과
     문서 미러(`concept:doc.<doc_id>`) id 풀기. Chunk=SSoT(D45) 이후에만 존재;
@@ -107,7 +204,7 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
     `documents: 0` 인 팩을 **성공으로** 받아 갔다. 같은 스코프를 store 주입으로 부르면
     `documents: 1` 이 나오던 자리다(실측 2026-09-07). 개념은 `query.execute` 가 스스로
     열어 제대로 나왔으므로, 팩은 "개념은 있는데 원문만 없는" 반쪽으로 저장됐다."""
-    if not concept_ids:
+    if not concept_ids and not decision_ids:
         return []
     owns = store is None
     if owns:
@@ -123,6 +220,13 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
             "RETURN DISTINCT c.doc_id AS doc_id",
             {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
         dids = {r.get("doc_id") for r in rows or [] if r.get("doc_id")}
+        if decision_ids:
+            rows = store.run(
+                "MATCH (c:Chunk)-[:MENTIONS]->(d:Decision) "
+                "WHERE d.decision_id IN $ids AND d.owner_id = $o AND c.owner_id = $o "
+                "RETURN DISTINCT c.doc_id AS doc_id",
+                {"ids": pkns.keys(owner, decision_ids), "o": owner})
+            dids.update(r["doc_id"] for r in rows or [] if r.get("doc_id"))
         # MENTIONS 만으로는 부족하다 — 그 엣지는 **본문이 개념 이름을 담을 때** 생기므로,
         # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
         # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
@@ -164,36 +268,68 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                      depth: int = 2, include_records: bool = True,
                      generated_at: str | None = None,
                      cfg=None, store=None) -> dict:
-    """스코프된 공유 팩을 만든다. 반환 dict 를 그대로 JSON 파일로 저장해 전달한다."""
+    """네 종류의 콘텐츠를 선택한다: ids > seed > domain, 이후 태그 교집합.
+
+    ego는 구조 노드를 포함해 무방향 1~4홉 순회하며 출력 관계 방향은 보존한다.
+    include_records=False는 기존 CLI 계약대로 Concept만 포함한다.
+    """
     # 1) 스코프 결정 — ids(명시 집합: lasso 영역 선택, Phase B) > seed(ego) > domain.
     if ids is not None:
         c_res = q.execute(_concepts_plan(owner=owner, ids=sorted(ids)), cfg, store=store)
     elif seed:
-        # SEC-2: 순회도 owner 스코프 — 안 그러면 남의 시드에서 남의 서브그래프를 뽑는다.
-        ids_res = q.execute(q.subgraph_ids_plan(seed, depth=depth, owner=owner),
-                            cfg, store=store)
-        if not ids_res.get("executed"):
-            return {"executed": False, "note": ids_res.get("note", "no reachable store")}
-        ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+        reached = {label: {seed} for label in ("Concept", "Episode", "Record", "Decision")}
+        frontier = reached
+        for _ in range(max(1, min(int(depth), 4))):
+            ids_res = q.execute(_share_reach_plan(owner=owner, frontier=frontier),
+                                cfg, store=store)
+            if not ids_res.get("executed"):
+                return {"executed": False, "note": ids_res.get("note", "no reachable store")}
+            frontier = {}
+            for row in ids_res.get("rows", []):
+                label, nid = row["kind"], row["id"]
+                if nid not in reached.setdefault(label, set()):
+                    frontier.setdefault(label, set()).add(nid)
+                    reached[label].add(nid)
+            if not frontier:
+                break
+        ids = sorted({nid for label in ("Concept", "Episode", "Record", "Decision")
+                      for nid in reached.get(label, set())})
         c_res = q.execute(_concepts_plan(owner=owner, ids=ids), cfg, store=store)
     else:
         c_res = q.execute(_concepts_plan(owner=owner, domain=domain), cfg, store=store)
     if not c_res.get("executed"):
         return {"executed": False, "note": c_res.get("note", "no reachable store")}
     concepts = _tag_filter(c_res.get("rows", []), tags)
-    id_set = {c["id"] for c in concepts}
+    concept_ids = {c["id"] for c in concepts}
+    selected = {}
+    for kind, builder in (("decision", _decisions_plan), ("record", _records_plan),
+                          ("episode", _episodes_plan)):
+        if not include_records:
+            selected[kind] = []
+            continue
+        result = q.execute(builder(owner=owner, domain=domain, ids=ids), cfg, store=store)
+        if not result.get("executed"):
+            return {"executed": False, "note": result.get("note", "no reachable store")}
+        selected[kind] = _tag_filter(result.get("rows", []), tags)
+    id_set = concept_ids | {r["id"] for rows in selected.values() for r in rows}
 
-    # 2) 스코프 내 엣지 — View 와 동일 플랜 재사용, 경계 밖은 잘라낸다.
+    # 2) 스코프 내 저작 엣지 — 네 종류의 관계를 읽고 경계 밖은 잘라낸다.
     edges: list[dict] = []
     if id_set:
-        e_res = q.execute(q.graph_rows_for_ids_plan(sorted(id_set), owner=owner),
+        e_res = q.execute(_share_edges_plan(ids=sorted(id_set), owner=owner),
                           cfg, store=store)
+        if not e_res.get("executed"):
+            return {"executed": False, "note": e_res.get("note", "no reachable store")}
         seen = set()
         for r in e_res.get("rows", []):
-            ftype = _REL_TO_FRAGMENT.get(r.get("rel") or "")
+            relation = r.get("rel") or ""
+            ftype = (r.get("role") if relation == "ATTACHES_TO" else
+                     "about" if relation == "ABOUT" else _REL_TO_FRAGMENT.get(relation))
             tgt = r.get("target")
-            if not ftype or not tgt or tgt not in id_set or r["id"] not in id_set:
+            if not tgt or tgt not in id_set or r["id"] not in id_set:
                 continue
+            if (not ftype or (relation == "ATTACHES_TO" and ftype not in frag._CC_EDGES)):
+                return {"executed": False, "note": "unsupported stored share relation"}
             key = (r["id"], ftype, tgt)
             if key in seen:
                 continue
@@ -204,13 +340,10 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             # (ON CREATE SET — 기존 엣지는 안 덮는다).
             if r.get("edge_created"):
                 e["created"] = r["edge_created"]
+            for field in ("evidence", "confidence"):
+                if r.get(field) is not None:
+                    e[field] = r[field]
             edges.append(e)
-
-    # 3) 레코드(Episode) — 도메인/태그 스코프에서만(ids/ego 스코프는 개념 중심).
-    episodes: list[dict] = []
-    if include_records and not seed and ids is None:
-        ep_res = q.execute(_episodes_plan(owner=owner, domain=domain), cfg, store=store)
-        episodes = _tag_filter(ep_res.get("rows", []), tags)
 
     # 4) fragment 노드로 사상.
     nodes: list[dict] = []
@@ -234,15 +367,29 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         if props:
             n["props"] = props
         nodes.append(n)
-    for e in episodes:
-        nodes.append({"id": e["id"], "type": "episode", "title": e.get("title") or e["id"],
-                      "domain": e.get("domain") or "", "tags": e.get("tags") or [],
-                      "date": e.get("date"), "summary": e.get("summary")})
+    for kind, rows in selected.items():
+        for row in rows:
+            node = {"id": row["id"], "type": kind, "title": row.get("title") or "",
+                    "domain": row.get("domain") or "", "tags": row.get("tags") or []}
+            for field in ("created", "content_time", "valid_from", "valid_until", "date", "summary"):
+                if row.get(field) is not None:
+                    node[field] = row[field]
+            if row.get("props"):
+                try:
+                    props = json.loads(row["props"])
+                except (TypeError, ValueError):
+                    return {"executed": False, "note": f"invalid stored props for {row['id']}"}
+                if not isinstance(props, dict):
+                    return {"executed": False, "note": f"invalid stored props for {row['id']}"}
+                node["props"] = props
+            nodes.append(node)
 
     # 자기완결(D45) — 팩 개념이 참조하는 원문 문서를 함께 싣는다(Chunk=SSoT 이후).
     # vinc_pack 버전은 그대로 두고 **선택 필드**로 더한다 — 구버전 앱은 이 필드를
     # 무시하고 개념만 임포트(하위호환), 신버전은 원문까지 복원한다.
-    documents = _docs_for_concepts(store, owner=owner, concept_ids=sorted(id_set), cfg=cfg)
+    documents = _docs_for_concepts(
+        store, owner=owner, concept_ids=sorted(concept_ids),
+        decision_ids=sorted(r["id"] for r in selected["decision"]), cfg=cfg)
 
     created = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     pack = {
@@ -253,8 +400,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             "scope": {"domain": domain, "tags": tags or [],
                       "seed": seed, "depth": depth if seed else None,
                       "ids": len(ids) if ids is not None else None},
-            "counts": {"concepts": len(concepts), "records": len(episodes),
+            "counts": {"concepts": len(concepts),
+                       "records": len(selected["episode"]) + len(selected["record"]),
+                       "decisions": len(selected["decision"]),
                        "edges": len(edges), "documents": len(documents)},
+            "supported_kinds": ["concept", "episode", "record", "decision"],
+            "selection_note": "Ego traversal retains structural paths; intermediate Bridge, "
+                              "Entity, Domain and Chunk nodes are not exported.",
             "note": "Preference signals are not included — they stay with the origin account.",
         },
         "fragment": {"nodes": nodes, "edges": edges},

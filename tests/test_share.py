@@ -64,7 +64,7 @@ class BuildPackTests(unittest.TestCase):
         return _FakeStore({
             "one_liner": _CONCEPTS,
             "e.summary AS summary": _EPISODES,
-            "OPTIONAL MATCH": _EDGE_ROWS,
+            "UNION ALL": _EDGE_ROWS,
         })
 
     def test_domain_scope_pack_shape(self):
@@ -73,7 +73,7 @@ class BuildPackTests(unittest.TestCase):
         self.assertTrue(pack["executed"])
         self.assertEqual(pack["vinc_pack"], 1)
         self.assertEqual(pack["manifest"]["counts"],
-                         {"concepts": 2, "records": 1, "edges": 1, "documents": 0})   # 경계 밖 엣지 절단; 원문 없음
+                         {"concepts": 2, "records": 1, "decisions": 0, "edges": 1, "documents": 0})   # 경계 밖 엣지 절단; 원문 없음
         types = {n["type"] for n in pack["fragment"]["nodes"]}
         self.assertEqual(types, {"concept", "episode"})
         self.assertEqual(pack["fragment"]["edges"],
@@ -98,18 +98,18 @@ class BuildPackTests(unittest.TestCase):
         ids = {n["id"] for n in pack["fragment"]["nodes"]}
         self.assertEqual(ids, {"concept:a", "ep:1"})    # 'misc'만 가진 b 제외
 
-    def test_seed_scope_uses_subgraph_and_skips_records(self):
+    def test_seed_scope_walks_only_supported_relations(self):
         store = _FakeStore({
-            "DISTINCT m.concept_id": [{"id": "concept:b"}],
+            "AS kind, b.": [{"kind": "Concept", "id": "concept:b"}],
             "one_liner": _CONCEPTS,
-            "OPTIONAL MATCH": _EDGE_ROWS,
+            "UNION ALL": _EDGE_ROWS,
         })
         pack = share.build_share_pack(owner="user:alice", seed="concept:a", depth=1,
                                       generated_at="x", store=store)
         self.assertEqual(pack["manifest"]["scope"]["seed"], "concept:a")
-        self.assertEqual(pack["manifest"]["counts"]["records"], 0)   # ego 스코프 = 개념 중심
-        # G1 — ego 순회는 도달집합 의미론(SHORTEST). 구 TRAIL 에서 교체됐다.
-        self.assertTrue(any("SHORTEST" in cy for cy, _ in store.calls))
+        self.assertEqual(pack["manifest"]["counts"]["records"], 0)   # 이 fixture에는 Episode/Record 행이 없다
+        # 매 홉에서 두 끝의 소유자를 제한한다.
+        self.assertTrue(any("a.owner_id = $owner AND b.owner_id = $owner" in cy for cy, _ in store.calls))
 
     def test_without_store_degrades(self):
         pack = share.build_share_pack(owner="user:alice", domain="math", store=None)
@@ -153,11 +153,11 @@ if __name__ == "__main__":
 
 class IdsScopeAndInboxTests(unittest.TestCase):
     def test_ids_scope_packs_exact_set(self):
-        store = _FakeStore({"one_liner": _CONCEPTS, "OPTIONAL MATCH": _EDGE_ROWS})
+        store = _FakeStore({"one_liner": _CONCEPTS, "UNION ALL": _EDGE_ROWS})
         pack = share.build_share_pack(owner="user:alice", ids=["concept:a", "concept:b"],
                                       generated_at="x", store=store)
         self.assertEqual(pack["manifest"]["scope"]["ids"], 2)
-        self.assertEqual(pack["manifest"]["counts"]["records"], 0)  # ids 스코프 = 개념 중심
+        self.assertEqual(pack["manifest"]["counts"]["records"], 0)  # 이 fixture에는 Episode/Record 행이 없다
         cy = [c for c, p in store.calls if "IN $ids" in c]
         self.assertTrue(cy)                                          # 명시 집합 질의
 
@@ -684,3 +684,209 @@ class PackTimeContract(unittest.TestCase):
         self.assertTrue(rows, "수신측에 문서가 없다")
         self.assertEqual(rows[0]["ct"], "1905")
         self.assertTrue(rows[0]["born"], "수신 문서는 자기 공간의 출생을 가져야 한다")
+
+
+@unittest.skipIf(_DRIVER is None, "embedded driver unavailable")
+class MixedKindShareTests(unittest.TestCase):
+    def setUp(self):
+        from store.backend import open_store
+        from store.config import load_config
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.st = open_store(load_config({"data_dir": str(Path(self.tmp.name) / "db")}))
+        self.st.provision(dim=4)
+        self.addCleanup(self.st.close)
+        self.nodes = [
+            {"id": "concept:scope", "type": "concept", "title": "Scope", "domain": "vinc/share/child"},
+            {"id": "decision:scope", "type": "decision", "title": "Choice", "domain": "vinc/share/child",
+             "tags": ["picked"], "created": "2020-01-01T00:00:00.000Z",
+             "props": {"decided_at": "2020-01", "valid_until": "2027", "nested": {"ok": True}}},
+            {"id": "record:scope", "type": "record", "title": "Measurement", "domain": "vinc/share/child",
+             "tags": ["picked"], "created": "2020-02-01T00:00:00.000Z", "content_time": "2019",
+             "valid_from": "2020", "valid_until": "2028", "props": {"value": 0}},
+            {"id": "episode:scope", "type": "episode", "title": "Run", "domain": "vinc/share/child",
+             "date": "2020-03-01", "summary": "A result", "props": {"outcome": "passed"}},
+            {"id": "concept:far", "type": "concept", "title": "Far", "domain": "vinc/other"},
+            {"id": "record:sibling", "type": "record", "title": "Sibling", "domain": "vinc/shared"},
+        ]
+        self.edges = [
+            {"from": "decision:scope", "to": "concept:scope", "type": "about"},
+            {"from": "record:scope", "to": "decision:scope", "type": "derives_from"},
+            {"from": "episode:scope", "to": "decision:scope", "type": "about"},
+            {"from": "decision:scope", "to": "concept:far", "type": "prerequisite_of"},
+        ]
+        for edge in self.edges:
+            edge.update(evidence="Measured support", confidence=0.0, created="2020-04-01T00:00:00.000Z")
+        result = share.frag.merge_fragment({"owner": "user:alice", "nodes": self.nodes,
+                                           "edges": self.edges}, store=self.st)
+        self.assertFalse(result.get("warnings"), result)
+
+    def pack(self, **scope):
+        result = share.build_share_pack(owner="user:alice", store=self.st, **scope)
+        self.assertTrue(result.get("executed"), result)
+        return result
+
+    def test_domain_roundtrip_preserves_kinds_fields_and_directed_metadata(self):
+        pack = self.pack(domain="vinc/share")
+        self.assertEqual({n["type"] for n in pack["fragment"]["nodes"]},
+                         {"concept", "decision", "record", "episode"})
+        self.assertCountEqual(pack["fragment"]["edges"], self.edges[:3])
+        from store.backend import open_store
+        from store.config import load_config
+        dst = open_store(load_config({"data_dir": str(Path(self.tmp.name) / "dst")}))
+        self.addCleanup(dst.close)
+        dst.provision(dim=4)
+        imported = share.import_share_pack(pack, owner="team:reader", store=dst)
+        self.assertFalse(imported.get("warnings"), imported)
+        again = share.build_share_pack(owner="team:reader", domain="vinc/share", store=dst)
+        first_nodes = {n["id"]: n for n in pack["fragment"]["nodes"]}
+        self.assertEqual({n["id"]: n for n in again["fragment"]["nodes"]}, first_nodes)
+        self.assertCountEqual(again["fragment"]["edges"], pack["fragment"]["edges"])
+        repeat = share.import_share_pack(pack, owner="team:reader", store=dst)
+        self.assertEqual(repeat["merged"]["nodes"]["created"], 0)
+
+    def test_exact_ids_tags_and_empty_scope(self):
+        pack = self.pack(ids=["record:scope", "decision:scope"], domain="vinc/other")
+        self.assertEqual({n["id"] for n in pack["fragment"]["nodes"]},
+                         {"record:scope", "decision:scope"})
+        self.assertEqual(pack["fragment"]["edges"], [self.edges[1]])
+        filtered = self.pack(domain="vinc/share", tags=["picked"])
+        self.assertEqual(filtered["fragment"], pack["fragment"])
+        self.assertEqual(self.pack(ids=[])["fragment"], {"nodes": [], "edges": []})
+        self.assertEqual(self.pack(domain="missing")["fragment"], {"nodes": [], "edges": []})
+
+    def test_record_and_decision_seeds_have_exact_hop_boundaries(self):
+        one = self.pack(seed="record:scope", depth=1)
+        self.assertEqual({n["id"] for n in one["fragment"]["nodes"]},
+                         {"record:scope", "decision:scope"})
+        two = self.pack(seed="record:scope", depth=2)
+        self.assertEqual({n["id"] for n in two["fragment"]["nodes"]},
+                         {"record:scope", "decision:scope", "concept:scope", "concept:far", "episode:scope"})
+        self.assertEqual(len(self.pack(seed="decision:scope", depth=1)["fragment"]["nodes"]), 5)
+
+    def test_no_records_keeps_cli_concepts_only_contract(self):
+        self.assertEqual([n["type"] for n in self.pack(domain="vinc/share", include_records=False)
+                          ["fragment"]["nodes"]], ["concept"])
+
+    def test_bridge_siblings_keep_the_existing_concept_ego_reach(self):
+        result = share.frag.merge_fragment({"owner": "user:alice", "nodes": [
+            {"id": "concept:bridge-a", "type": "concept", "title": "A", "domain": "vinc/left"},
+            {"id": "concept:bridge-b", "type": "concept", "title": "B", "domain": "vinc/right"},
+            {"id": "bridge:ab", "type": "bridge", "title": "Connection"}], "edges": [
+                {"from": "bridge:ab", "to": "concept:bridge-a", "type": "connects_via"},
+                {"from": "bridge:ab", "to": "concept:bridge-b", "type": "connects_via"}]}, store=self.st)
+        self.assertFalse(result.get("warnings"), result)
+        baseline = share.q.execute(share.q.subgraph_ids_plan("concept:bridge-a", depth=2,
+                                                             owner="user:alice"), store=self.st)
+        expected = {"concept:bridge-a"} | {r["id"] for r in baseline["rows"]}
+        self.assertEqual(expected, {"concept:bridge-a", "concept:bridge-b"})
+        for include_records in (False, True):
+            pack = self.pack(seed="concept:bridge-a", depth=2, include_records=include_records)
+            self.assertEqual({n["id"] for n in pack["fragment"]["nodes"] if n["type"] == "concept"}, expected)
+            self.assertNotIn("bridge:ab", str(pack["fragment"]))
+        self.assertEqual({n["id"] for n in self.pack(seed="concept:bridge-a", depth=1)["fragment"]["nodes"]},
+                         {"concept:bridge-a"})
+        # 오염된 교차-owner 중간 노드를 통해 도달 범위를 넓혀서는 안 된다.
+        self.st.run("MATCH (b:Bridge) WHERE b.bridge_id=$id SET b.owner_id='team:other'",
+                    {"id": pkns.key("user:alice", "bridge:ab")})
+        self.assertEqual({n["id"] for n in self.pack(seed="concept:bridge-a", depth=2)["fragment"]["nodes"]},
+                         {"concept:bridge-a"})
+
+    def test_other_owner_and_space_never_export_even_via_corrupt_cross_owner_edge(self):
+        share.frag.merge_fragment({"owner": "team:other", "nodes": [
+            {"id": "decision:secret", "type": "decision", "title": "Secret", "domain": "vinc/share"}],
+            "edges": []}, store=self.st)
+        self.st.run("MATCH (a:Record), (b:Decision) WHERE a.record_id=$a AND b.decision_id=$b "
+                    "MERGE (a)-[r:ATTACHES_TO]->(b) SET r.type='derives_from'",
+                    {"a": pkns.key("user:alice", "record:scope"),
+                     "b": pkns.key("team:other", "decision:secret")})
+        for scope in ({"domain": "vinc/share"}, {"ids": ["decision:secret"]},
+                      {"seed": "decision:secret", "depth": 4}, {"seed": "record:scope", "depth": 4}):
+            pack = self.pack(**scope)
+            self.assertNotIn("Secret", str(pack))
+            self.assertNotIn("decision:secret", str(pack["fragment"]))
+
+    def test_shared_domain_and_chunk_transit_match_existing_concept_reach(self):
+        from api import docstore as ds
+        extra = [
+            {"id": "concept:domain-a", "type": "concept", "title": "Domain A", "domain": "vinc/domain-transit"},
+            {"id": "concept:domain-b", "type": "concept", "title": "Domain B", "domain": "vinc/domain-transit"},
+            {"id": "concept:chunk-a", "type": "concept", "title": "Chunk A", "domain": "vinc/chunk-left"},
+            {"id": "concept:chunk-b", "type": "concept", "title": "Chunk B", "domain": "vinc/chunk-right"},
+        ]
+        share.frag.merge_fragment({"owner": "user:alice", "nodes": extra, "edges": []}, store=self.st)
+        doc = ds.put_doc(self.st, owner="user:alice", title="Carrier", text="Evidence.")["doc_id"]
+        for nid in ("concept:chunk-a", "concept:chunk-b"):
+            self.st.run("MATCH (c:Chunk), (n:Concept) WHERE c.doc_id=$doc AND n.concept_id=$id "
+                        "MERGE (c)-[:MENTIONS]->(n)", {"doc": doc, "id": pkns.key("user:alice", nid)})
+        for prefix in ("domain", "chunk"):
+            seed = f"concept:{prefix}-a"
+            before = share.q.execute(share.q.subgraph_ids_plan(seed, depth=2, owner="user:alice"), store=self.st)
+            self.assertTrue(before["executed"], before)
+            expected = {seed} | {r["id"] for r in before["rows"]}
+            self.assertEqual(expected, {seed, f"concept:{prefix}-b"})
+            after = self.pack(seed=seed, depth=2)
+            self.assertEqual({n["id"] for n in after["fragment"]["nodes"]}, expected)
+
+    def test_reach_frontier_handles_empty_and_namespaced_entity_keys(self):
+        empty = share.q.execute(share._share_reach_plan(owner="user:alice", frontier={}), store=self.st)
+        self.assertTrue(empty["executed"], empty)
+        self.assertEqual(empty["rows"], [])
+        share.frag.merge_fragment({"owner": "user:alice", "nodes": [
+            {"id": "item:a", "type": "item", "title": "A"},
+            {"id": "item:b", "type": "item", "title": "B"}], "edges": [
+                {"from": "item:a", "to": "item:b", "type": "follows"}]}, store=self.st)
+        out = share.q.execute(share._share_reach_plan(owner="user:alice", frontier={"Entity": {"item:a"}}), store=self.st)
+        self.assertTrue(out["executed"], out)
+        self.assertEqual(out["rows"], [{"kind": "Entity", "id": "item:b"}])
+        self.assertEqual(self.pack(ids=["item:a"])["fragment"], {"nodes": [], "edges": []})
+
+    def test_failed_kind_query_cannot_report_successful_partial_pack(self):
+        from unittest.mock import patch
+        original = share.q.execute
+        def failing(plan, *args, **kwargs):
+            if plan.kind == "share_records":
+                return {"executed": False, "note": "unavailable record table"}
+            return original(plan, *args, **kwargs)
+        with patch.object(share.q, "execute", side_effect=failing):
+            result = share.build_share_pack(owner="user:alice", store=self.st)
+        self.assertFalse(result["executed"])
+        self.assertNotIn("fragment", result)
+
+    def test_colliding_logical_ids_stay_scoped_when_namespaced(self):
+        if not pkns.enabled():
+            return  # 동일 테스트를 core-pkns에서도 실행한다.
+        other = [{**n, "title": "Other owner"} for n in self.nodes]
+        share.frag.merge_fragment({"owner": "team:other", "nodes": other, "edges": self.edges}, store=self.st)
+        for scope in ({"domain": "vinc/share"}, {"ids": ["record:scope", "decision:scope"]},
+                      {"seed": "record:scope", "depth": 4}):
+            pack = self.pack(**scope)
+            self.assertNotIn("Other owner", str(pack))
+            self.assertNotIn(pkns.SEP, str(pack))
+
+    def test_decision_mentions_carry_owned_documents_only(self):
+        from api import docstore as ds
+        own = ds.put_doc(self.st, owner="user:alice", title="Evidence", text="Supporting text.")["doc_id"]
+        other = ds.put_doc(self.st, owner="team:other", title="Private", text="Private text.")["doc_id"]
+        for doc in (own, other):
+            self.st.run("MATCH (c:Chunk), (d:Decision) WHERE c.doc_id=$doc AND d.decision_id=$id "
+                        "MERGE (c)-[:MENTIONS]->(d)",
+                        {"doc": doc, "id": pkns.key("user:alice", "decision:scope")})
+        pack = self.pack(ids=["decision:scope"])
+        self.assertEqual([d["doc_id"] for d in pack["documents"]], [own])
+        self.assertNotIn("Private text", str(pack))
+
+    def test_malformed_stored_record_properties_fail_explicitly(self):
+        self.st.run("MATCH (r:Record) WHERE r.record_id=$id SET r.props=$props",
+                    {"id": pkns.key("user:alice", "record:scope"), "props": "not json"})
+        result = share.build_share_pack(owner="user:alice", ids=["record:scope"], store=self.st)
+        self.assertFalse(result["executed"])
+        self.assertIn("invalid stored props", result["note"])
+
+    def test_unsupported_attachment_type_is_not_silently_dropped(self):
+        self.st.run("MATCH (r:Record)-[a:ATTACHES_TO]->(d:Decision) "
+                    "WHERE r.record_id=$id SET a.type='unknown'",
+                    {"id": pkns.key("user:alice", "record:scope")})
+        result = share.build_share_pack(owner="user:alice", domain="vinc/share", store=self.st)
+        self.assertFalse(result["executed"])
+        self.assertIn("unsupported stored share relation", result["note"])
