@@ -146,6 +146,63 @@ class GraphUrlArgumentTests(unittest.TestCase):
         self.assertIsNone(b.last)
 
 
+class SurfaceAndSourceTests(unittest.TestCase):
+    """0.9.4 — 머리가 셋이 됐고 소스 꼬리가 생겼다(거울 반대쪽은 `app/src/view-url.ts`).
+
+    선택 문법은 셋이 **같은 것**을 쓴다. 표면마다 복제하면 같은 것을 다르게 적게 되고
+    거울 둘이 넷이 된다. 도구는 표면을 읽고 **선택만** 쓴다.
+    """
+
+    def test_머리_셋이_같은_선택_문법을_쓴다(self):
+        for head, surface in (("#view", "view"), ("#read", "read"),
+                              ("#agents", "agents")):
+            got = viewurl.parse(f"{head}/trace/concept:x")
+            self.assertEqual(got["kind"], "node", head)
+            self.assertEqual(got["seed"], "concept:x", head)
+            self.assertEqual(got["surface"], surface, head)
+
+    def test_모르는_머리는_여전히_none_이다(self):
+        # 구 표면명(F8 금지어)이 이 자리다. 조용히 틀리지 않으므로 그것으로 충분하다.
+        for url in ("#nope/trace/concept:x", "#search/x", "https://vincs.io/"):
+            self.assertEqual(viewurl.parse(url)["kind"], "none", url)
+
+    def test_소스_꼬리는_선택을_잡아먹지_않는다(self):
+        got = viewurl.parse("#read/trace/concept:x/src/d4ab94561078498e3")
+        self.assertEqual(got["kind"], "node")
+        self.assertEqual(got["seed"], "concept:x")
+        self.assertEqual(got["source_doc"], "d4ab94561078498e3")
+
+    # ⚠ 픽스처의 문서 id 를 `d1` 로 쓰면 안 된다 — 깊이 꼬리(`d` + 숫자 한두 자리)와
+    # 글자가 같아서 깊이로 떨어져 나간다. 실제 문서 id 는 hex 17자나 점 표기라 이
+    # 상한(`{1,2}`)에 안 걸리지만, 짧은 이름을 지어 쓰면 테스트만 조용히 거짓말한다.
+    DOC = "d4ab94561078498e3"
+
+    def test_소스와_깊이와_관점이_한_주소에_같이_산다(self):
+        got = viewurl.parse(f"#read/trace/concept:x/src/{self.DOC}/d2/as/timeline")
+        self.assertEqual((got["kind"], got["seed"], got["source_doc"], got["depth"]),
+                         ("node", "concept:x", self.DOC, 2))
+
+    def test_머리의_doc_과_꼬리의_src_는_다른_것이다(self):
+        # 머리의 `doc` 은 노드 없이 선 독립 문서, 꼬리의 `src` 는 그 노드의 어느 소스.
+        head = viewurl.parse(f"#read/doc/{self.DOC}")
+        self.assertEqual((head["kind"], head["doc"], head["source_doc"]),
+                         ("doc", self.DOC, ""))
+        tail = viewurl.parse(f"#read/trace/concept:x/src/{self.DOC}")
+        self.assertEqual((tail["kind"], tail["doc"], tail["source_doc"]),
+                         ("node", "", self.DOC))
+
+    def test_깊이_꼬리와_글자가_같은_짧은_id_는_깊이로_읽힌다(self):
+        # 문법의 알려진 한계를 고정한다. `{1,2}` 상한이 그 대가이고, 실제 id 는 그보다
+        # 길어서 걸리지 않는다. 이것이 바뀌면 여기가 먼저 빨개져야 한다.
+        self.assertEqual(viewurl.parse("#read/doc/d1")["depth"], 1)
+        self.assertEqual(viewurl.parse("#read/doc/d999")["doc"], "d999")
+
+    def test_분기_없는_예약어는_주제가_되지_않는다(self):
+        # `src` 를 `_KEYWORDS` 에 안 넣으면 "src 라는 이름의 주제"가 되고 오류조차 안 난다.
+        for url in ("#read/src", "#read/as"):
+            self.assertNotEqual(viewurl.parse(url)["kind"], "domains", url)
+
+
 class SchemaTests(unittest.TestCase):
     def test_seed_id_가_더는_필수가_아니고_url_이_선언돼_있다(self):
         spec = next(t for t in TOOLS if t["name"] == "vinc_graph")

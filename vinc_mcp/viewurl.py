@@ -37,7 +37,15 @@ from urllib.parse import unquote
 
 #: 첫 세그먼트가 이것들이면 주제 목록이 아니라 지시어다. **새 형태를 더할 때 여기부터**
 #: — 빠뜨리면 그 키워드가 주제 이름이 되고, 아무 오류 없이 빈 화면이 나온다.
-_KEYWORDS = ("trace", "ids", "doc", "as")
+_KEYWORDS = ("trace", "ids", "doc", "src", "as")
+
+#: 머리 한 칸이 정하는 표면. 선택 문법은 셋이 **같은 것**을 쓴다 — 표면마다 문법을
+#: 복제하면 `#read/node/<id>` 와 `#view/trace/<id>` 가 같은 것을 다르게 적게 되고
+#: 거울 둘이 넷이 된다. 도구는 표면을 읽고 **선택만 쓴다**: 화면이 그것을 읽기로 보든
+#: 지도로 보든 그래프 조회의 답은 같기 때문이다.
+#: ⚠ 여기 없는 머리는 `none` 이다. 구 표면명(F8 금지어)이 그 자리이고, 조용히 틀리지
+#: 않으므로 그것으로 충분하다.
+_HEADS: dict[str, str] = {"#view": "view", "#read": "read", "#agents": "agents"}
 
 #: 깊이 꼬리. 앞에 `d` 를 붙이는 이유는 숫자만 두면 주제 이름과 구분이 안 되기 때문이다.
 _DEPTH_RE = re.compile(r"\Ad([0-9]{1,2})\Z")
@@ -56,6 +64,17 @@ GRAMMAR: tuple[str, ...] = (
     "#view/doc/vinc.spec.dataplane",
     "#view/as/2d",
     "#view/trace/concept:x/d2/as/timeline",
+    # 0.9.4 — 머리가 셋이 됐다(리더 · Agents · 지도). 선택 문법은 그대로다.
+    "#read",
+    "#read/vinc/engineering",
+    "#read/trace/concept:optimistic-locking",
+    "#read/doc/d4ab94561078498e3",
+    # 노드 하나에 소스가 여럿일 때 **어느 것**을 펴고 있나. 머리의 `doc` 은 노드 없이
+    # 선 독립 문서라 뜻이 다르다.
+    "#read/trace/concept:x/src/d4ab94561078498e3",
+    "#read/trace/concept:x/src/d4ab94561078498e3/d2/as/timeline",
+    "#agents",
+    "#agents/trace/concept:agent-dev-core",
 )
 
 
@@ -66,15 +85,20 @@ def parse(url: str) -> dict:
     관점(`/as/…`)은 읽고 **버린다**: 화면이 무엇을 그리느냐는 도구가 알 바 아니다.
     """
     out: dict = {"kind": "none", "seed": "", "depth": 0,
-                 "domains": [], "ids": [], "doc": ""}
+                 "domains": [], "ids": [], "doc": "",
+                 # 머리 한 칸이 정하는 표면(노드 읽기 · Agents · 지도). 도구는 선택만
+                 # 쓰지만, 모르는 머리를 `none` 으로 떨구지 않으려면 읽어야 한다.
+                 "surface": "", "source_doc": ""}
     if not isinstance(url, str) or "#" not in url:
         return out
     frag = url[url.index("#"):]
     parts = [unquote(p) for p in frag.split("/")]
     # 표면명 하나만 받는다. 구 이름의 딥링크는 여기서 `none` 이 되고 도구가 "못 읽었다"고
     # 말한다 — 조용히 틀리지 않으므로 그것으로 충분하고, 그 이름은 F8 금지어다.
-    if not parts or parts[0] != "#view":
+    surface = _HEADS.get(parts[0] if parts else "")
+    if not surface:
         return out
+    out["surface"] = surface
     body = parts[1:]
     # 관점을 떼어 낸다 — **탐색으로** 찾는다. 위치로 찾으면 꼬리를 붙이는 순간 깨진다.
     if "as" in body:
@@ -85,8 +109,14 @@ def parse(url: str) -> dict:
         if m:
             out["depth"] = int(m.group(1))
             body = body[:-1]
+    # 소스 꼬리도 **탐색으로** 뗀다(`as` 와 같은 이유). 떼지 않으면 body 에 남아
+    # 선택 해석을 틀어 놓는다.
+    if "src" in body:
+        i = body.index("src")
+        out["source_doc"] = body[i + 1] if len(body) > i + 1 else ""
+        body = body[:i]
     if not body:
-        out["kind"] = "all" if out["depth"] or frag.startswith("#view") else "none"
+        out["kind"] = "all"
         return out
     head = body[0]
     if head == "trace":
