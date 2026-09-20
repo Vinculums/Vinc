@@ -2676,6 +2676,11 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
     return {"executed": True, "ids": sorted(members)}
 
 
+#: 한 노드에 딸린 문서(소스) 목록 상한. 관계(`_NODE_LINKS_CAP`)보다 훨씬 후하게 잡는다
+#: — 이것은 잘라 보는 목록이 아니라 소스 선택기가 **다 보여야 하는** 목록이라서다.
+_NODE_SOURCES_CAP = 50
+
+
 def node_context(*, owner: str, node: str, limit: int = 4,
                  with_evidence: bool = False, links_offset: int = 0,
                  cfg=None, store=None) -> dict:
@@ -2707,6 +2712,12 @@ def node_context(*, owner: str, node: str, limit: int = 4,
            가 참이면 `next_offset` 이 **이어 읽을 자리**를 준다 — 그것을 따라가면
            이웃 전체에 닿는다(`_links_window`). `total` 은 창과 무관하게 언제나
            이웃 전체 수다.
+
+           sources: {total, truncated, items: [{doc_id, title, mentions}]}
+           이 노드에 딸린 **문서 전부**. ``excerpts`` 와 다른 계약이다 — 저쪽은 청크를
+           `limit` 개로 자르므로 거기 보이는 문서는 "이 노드의 문서"가 아니라 "상위 몇
+           청크가 우연히 속한 문서"다(실측: 문서 여섯 중 발췌에 뜬 것은 넷). 소스
+           선택기는 이 목록을 써야 한다.
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
            ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
@@ -2721,6 +2732,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     base: dict = {"kind": "node-context", "executed": False, "node": node,
                   "one_liner": "", "domain": "", "props": {}, "excerpts": [],
                   "arm": "none",
+                  # 이 노드에 딸린 문서 전부(발췌 캡과 다른 계약). 못 읽었을 때도
+                  # 키는 있다 — 없는 키와 0 은 다른 말이다.
+                  "sources": {"total": 0, "items": [], "truncated": False},
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
                   "rev": 0, "updated_at": "",
                   # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
@@ -2863,14 +2877,39 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                     arm = "fts" if ment else "none"
             except Exception:
                 pass   # 인덱스/확장 부재 — 발췌 없이 반환(arm='none')
+        # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
+        # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
+        # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
+        # 읽으면 사용자는 있는 줄도 모르는 문서를 고를 수 없다.
+        # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §4]].
+        srows = store.run(
+            f"MATCH (ch:Chunk)-[:MENTIONS]->(c:{meta_label}) "
+            f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+            "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+            "RETURN ch.doc_id AS doc_id, count(ch.chunk_id) AS n",
+            {"id": pkns.key(owner, node), "owner": owner}) or []
         # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
+        # 제목은 발췌에 뜬 문서와 소스 목록 **양쪽**에 필요하므로 한 번에 받는다.
         doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
+        all_ids = sorted({str(r.get("doc_id") or "") for r in srows
+                          if r.get("doc_id")} | set(doc_ids))
         titles: dict[str, str] = {}
-        if doc_ids:
+        if all_ids:
             for r in store.run(
                     "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
-                    "RETURN d.doc_id AS id, d.title AS t", {"ids": doc_ids}) or []:
+                    "RETURN d.doc_id AS id, d.title AS t", {"ids": all_ids}) or []:
                 titles[r["id"]] = r.get("t") or ""
+        # 정렬은 제목 → id(결정론). 상한을 넘으면 `truncated` 가 말한다 — 한 노드가
+        # 문서 쉰 개에 언급되는 일은 이 그래프에 없고, 선택기는 자를 목록이 아니라
+        # **다 보여야 하는** 목록이라 창(offset)을 달지 않았다. 실제로 넘치면 그때 단다.
+        _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
+                        "title": titles.get(str(r.get("doc_id") or ""), "")
+                        or str(r.get("doc_id") or ""),
+                        "mentions": int(r.get("n") or 0)} for r in srows
+                       if r.get("doc_id")),
+                      key=lambda s: (s["title"], s["doc_id"]))
+        base["sources"] = {"total": len(_src), "items": _src[:_NODE_SOURCES_CAP],
+                           "truncated": len(_src) > _NODE_SOURCES_CAP}
         base["excerpts"] = [{
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
