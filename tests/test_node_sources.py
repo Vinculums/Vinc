@@ -100,7 +100,7 @@ class NodeSourcesE2E(unittest.TestCase):
     def test_a_node_with_no_documents_says_zero_rather_than_nothing(self):
         # 키가 없는 것과 0 은 다른 말이다 — 받는 쪽이 "못 읽었다"와 "없다"를 갈라야 한다.
         src = self._ctx()["sources"]
-        self.assertEqual(src, {"total": 0, "items": [], "truncated": False})
+        self.assertEqual(src, {"total": 0, "items": [], "truncated": False, "offset": 0})
 
     def test_the_excerpt_limit_does_not_change_the_source_total(self):
         # 발췌를 더 달라고 해도 소스 총수는 그대로여야 한다(두 계약이 독립이라는 뜻).
@@ -109,6 +109,120 @@ class NodeSourcesE2E(unittest.TestCase):
                        text=f"{self.TITLE} 에 관한 {i}번 글.")
         self.assertEqual(self._ctx(limit=1)["sources"]["total"],
                          self._ctx(limit=12)["sources"]["total"])
+
+    def _source(self, index, owner=None):
+        own = owner or self.OWNER
+        did = f"{own}:source:{index:03}"
+        cid = did + "#00000"
+        self.store.run(
+            "CREATE (c:Chunk {chunk_id:$cid, doc_id:$did, text:$text, "
+            "owner_id:$own, chunk_index:0})",
+            {"cid": cid, "did": did, "text": self.TITLE, "own": own})
+        self.store.run(
+            "CREATE (d:_DocMeta {doc_id:$did, title:$title, owner_id:$own})",
+            {"did": did, "title": f"Source {index // 2:03}", "own": own})
+        self.store.run(
+            "MATCH (c:Chunk {chunk_id:$cid}), (n:Concept {concept_id:$nid}) "
+            "CREATE (c)-[:MENTIONS {method:'title'}]->(n)",
+            {"cid": cid, "nid": pkns.key(self.OWNER, "concept:lock")})
+        return did
+
+    def test_source_continuation_reaches_every_document_without_duplicates(self):
+        expected = [self._source(i) for i in reversed(range(103))]
+        self._source(999, owner="user:b")
+        seen, offset = [], 0
+        for size in (50, 50, 3):
+            result = self._ctx(sources_offset=offset, limit=1)
+            page = result["sources"]
+            self.assertEqual(page["total"], 103)
+            self.assertEqual(page["offset"], offset)
+            self.assertEqual(len(page["items"]), size)
+            self.assertLessEqual(len(result["excerpts"]), 1)
+            seen.extend(page["items"])
+            if page["truncated"]:
+                self.assertGreater(page["next_offset"], offset)
+                offset = page["next_offset"]
+            else:
+                self.assertNotIn("next_offset", page)
+        self.assertEqual([i["doc_id"] for i in seen], sorted(expected))
+        self.assertEqual(len({i["doc_id"] for i in seen}), 103)
+        self.assertEqual(seen, sorted(seen, key=lambda i: (i["title"], i["doc_id"])))
+        self.assertEqual(self._ctx(sources_offset=103)["sources"]["items"], [])
+        self.assertEqual(self._ctx(sources_offset=-5)["sources"]["offset"], 0)
+        denied = q.node_context(owner="user:b", node="concept:lock",
+                                sources_offset=50, store=self.store)
+        missing = q.node_context(owner="user:b", node="concept:missing",
+                                 sources_offset=50, store=self.store)
+        self.assertEqual(denied["sources"], missing["sources"])
+        self.assertEqual(denied["sources"]["total"], 0)
+
+    def test_source_continuation_boundary_51(self):
+        for i in range(51):
+            self._source(i)
+        first = self._ctx()["sources"]
+        self.assertEqual((first["total"], len(first["items"]), first["next_offset"]),
+                         (51, 50, 50))
+        last = self._ctx(sources_offset=first["next_offset"])["sources"]
+        self.assertEqual(len(last["items"]), 1)
+        self.assertFalse(last["truncated"])
+        self.assertNotIn("next_offset", last)
+
+    def test_shared_document_id_cannot_replace_another_owners_source(self):
+        first = ds.put_doc(self.store, owner=self.OWNER, doc_id="source:shared",
+                           title="Owned source", text=self.TITLE)
+        self.assertTrue(first["executed"], first)
+        rejected = ds.put_doc(self.store, owner="user:b", doc_id="source:shared",
+                              title="Foreign secret", text=self.TITLE)
+        self.assertFalse(rejected["executed"], rejected)
+        self.assertIn("owner mismatch", rejected["error"])
+        self.assertEqual(self._ctx()["sources"]["items"][0]["title"], "Owned source")
+        denied = q.node_context(owner="user:b", node="concept:lock", store=self.store)
+        self.assertEqual(denied["sources"]["items"], [])
+        self.assertNotIn("Foreign secret", str(self._ctx()))
+
+    def test_decision_sources_use_the_same_continuation_contract(self):
+        self.store.run(
+            "CREATE (n:Decision {decision_id:$id, title:'Choice', owner_id:$owner})",
+            {"id": pkns.key(self.OWNER, "decision:choice"), "owner": self.OWNER})
+        for i in range(51):
+            did = self._source(i)
+            self.store.run(
+                "MATCH (c:Chunk {chunk_id:$cid}), (n:Decision {decision_id:$nid}) "
+                "CREATE (c)-[:MENTIONS {method:'title'}]->(n)",
+                {"cid": did + "#00000", "nid": pkns.key(self.OWNER, "decision:choice")})
+        result = q.node_context(owner=self.OWNER, node="decision:choice",
+                                sources_offset=50, store=self.store)
+        self.assertTrue(result["executed"], result)
+        self.assertEqual(result["sources"]["total"], 51)
+        self.assertEqual(len(result["sources"]["items"]), 1)
+        self.assertFalse(result["sources"]["truncated"])
+
+    def test_non_mention_carriers_have_no_invented_sources(self):
+        for label, pk, node in (("Record", "record_id", "record:plain"),
+                                ("Episode", "episode_id", "episode:plain"),
+                                ("Bridge", "bridge_id", "bridge:plain"),
+                                ("Entity", "entity_id", "theory:plain")):
+            self.store.run(
+                f"CREATE (n:{label} {{{pk}:$id, title:'Plain', owner_id:$owner}})",
+                {"id": pkns.key(self.OWNER, node), "owner": self.OWNER})
+            result = q.node_context(owner=self.OWNER, node=node, sources_offset=50,
+                                    store=self.store)
+            self.assertTrue(result["executed"], result)
+            self.assertEqual(result["sources"],
+                             {"total": 0, "items": [], "offset": 50, "truncated": False})
+
+    def test_http_adapter_forwards_source_and_relation_offsets_separately(self):
+        from test_server import _EmptyStore, _app, _req, running_server
+        from unittest.mock import patch
+        with patch("api.server.q.node_context", return_value={"executed": True}) as context:
+            with running_server(_app(_EmptyStore())) as base:
+                code, result = _req(base, "/node-context?owner=user:a&node=concept:lock"
+                                    "&sources_offset=50&links_offset=24&limit=1")
+        self.assertEqual(code, 200)
+        self.assertTrue(result["executed"])
+        self.assertEqual(context.call_args.kwargs["sources_offset"], 50)
+        self.assertEqual(context.call_args.kwargs["links_offset"], 24)
+        self.assertEqual(context.call_args.kwargs["limit"], 1)
 
 
 if __name__ == "__main__":

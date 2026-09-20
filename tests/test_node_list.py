@@ -152,11 +152,58 @@ class NodeListE2E(unittest.TestCase):
         self.assertEqual(res["total"], 0)
         self.assertEqual(res["items"], [])
 
-    def test_an_unknown_kind_is_refused_rather_than_answered_empty(self):
-        # 빈 목록으로 답하면 화면이 "그 종이 없다"로 읽는다.
+    def test_missing_authored_kind_is_an_empty_collection(self):
         res = self._list(kind="없는종")
-        self.assertFalse(res["executed"])
-        self.assertIn("unknown kind", res.get("note", ""))
+        self.assertTrue(res["executed"], res.get("note"))
+        self.assertEqual(res["total"], 0)
+
+    def test_authored_kinds_filter_page_and_count_without_carrier_overlap(self):
+        for nid, kind, title, owner in (
+            ("theory:second", "theory", "쌍대성", self.OWNER),
+            ("model:first", "model", "모델", self.OWNER),
+            ("model:foreign", "model", "비공개", "user:b"),
+        ):
+            self.store.run(
+                "CREATE (n:Entity {entity_id:$id, type:$kind, title:$title, owner_id:$owner})",
+                {"id": pkns.key(owner, nid), "kind": kind, "title": title, "owner": owner})
+        first = self._list(kind="theory", limit=1)
+        second = self._list(kind="theory", limit=1, offset=first["next_offset"])
+        self.assertEqual(first["total"], 2)
+        self.assertEqual([first["items"][0]["id"], second["items"][0]["id"]],
+                         ["theory:dual", "theory:second"])
+        self.assertFalse(second["truncated"])
+        self.assertEqual(first["kinds"]["theory"], 2)
+        self.assertEqual(first["kinds"]["model"], 1)
+        self.assertNotIn("entity", first["kinds"])
+        self.assertEqual(first["carrier_counts"]["entity"], 3)
+        self.assertEqual(self._list(kind="entity")["total"], 3)
+        self.assertEqual(self._list(kind="MODEL")["total"], 0)
+        self.assertEqual(self._list(kind="model")["total"], 1)
+        self.assertEqual(sum(self._list()["kinds"].values()), self._list()["total"])
+        self.assertEqual(self._list(kind="CONCEPT")["total"], 3)
+        self.assertEqual(self._list(kind="theory", domain="제품")["total"], 0)
+        foreign = self._list(owner="user:b", kind="theory")
+        self.assertEqual(foreign["total"], 0)
+        self.assertNotIn("theory", foreign["kinds"])
+        self.assertEqual(self._list(kind="theory", query="없는 제목")["total"], 0)
+        self.assertEqual(self._list(kind="theory", query="없는 제목")["kinds"], first["kinds"])
+
+    def test_reserved_names_keep_carrier_precedence_for_malformed_entities(self):
+        for index, kind in enumerate(("concept", "CONCEPT", "entity")):
+            self.store.run(
+                "CREATE (n:Entity {entity_id:$id, type:$kind, title:'Legacy', owner_id:$owner})",
+                {"id": self._k(f"legacy:{index}"), "kind": kind, "owner": self.OWNER})
+        all_nodes = self._list()
+        self.assertEqual(all_nodes["total"], 11)
+        self.assertEqual(self._list(kind="concept")["total"], 3)
+        self.assertEqual(self._list(kind="CONCEPT")["total"], 3)
+        entities = self._list(kind="entity")
+        self.assertEqual(entities["total"], 4)
+        self.assertEqual(entities["carrier_counts"]["entity"], 4)
+        self.assertEqual(all_nodes["kinds"]["concept"], 3)
+        self.assertNotIn("CONCEPT", all_nodes["kinds"])
+        self.assertNotIn("entity", all_nodes["kinds"])
+        self.assertEqual(all_nodes["kinds"]["theory"], 1)
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
@@ -267,6 +314,7 @@ class NodeListAgentsScope(unittest.TestCase):
         self.assertIn("concept:agent-reviewer", ids)
         # 무엇을 뺐는지 응답이 말한다. 조용히 사라지면 "없다"와 구별이 안 된다.
         self.assertEqual(got["id_excluded"], ["concept:agent-orchestration"])
+        self.assertEqual(got["kinds"]["concept"], len(ids))
 
     def test_an_exclusion_that_matches_nothing_changes_nothing(self):
         base = self._list(domain="vinc/agent", kind="concept",

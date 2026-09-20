@@ -2675,14 +2675,13 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
     return {"executed": True, "ids": sorted(members)}
 
 
-#: 한 노드에 딸린 문서(소스) 목록 상한. 관계(`_NODE_LINKS_CAP`)보다 훨씬 후하게 잡는다
-#: — 이것은 잘라 보는 목록이 아니라 소스 선택기가 **다 보여야 하는** 목록이라서다.
+#: 문서 목록의 응답별 상한. sources_offset 으로 다음 창을 읽는다.
 _NODE_SOURCES_CAP = 50
 
 
 def node_context(*, owner: str, node: str, limit: int = 4,
                  with_evidence: bool = False, links_offset: int = 0,
-                 cfg=None, store=None) -> dict:
+                 sources_offset: int = 0, cfg=None, store=None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
     어느 정본이 근거인가". 조회 전용.
 
@@ -2715,11 +2714,14 @@ def node_context(*, owner: str, node: str, limit: int = 4,
            이웃 전체에 닿는다(`_window`). `total` 은 창과 무관하게 언제나
            이웃 전체 수다.
 
-           sources: {total, truncated, items: [{doc_id, title, mentions}]}
+           sources: {total, offset, truncated, next_offset(더 있을 때만),
+                     items: [{doc_id, title, mentions}]}
+           sources_offset 부터 최대 50개씩 읽으며 next_offset 으로 이어 간다.
            이 노드에 딸린 **문서 전부**. ``excerpts`` 와 다른 계약이다 — 저쪽은 청크를
            `limit` 개로 자르므로 거기 보이는 문서는 "이 노드의 문서"가 아니라 "상위 몇
            청크가 우연히 속한 문서"다(실측: 문서 여섯 중 발췌에 뜬 것은 넷). 소스
-           선택기는 이 목록을 써야 한다.
+           선택기는 이 목록을 써야 한다. MENTIONS 대상은 Concept/Decision 이며
+           그 밖의 캐리어는 현재 스키마상 소스 목록이 비어 있다.
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
            ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
@@ -2736,7 +2738,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                   "arm": "none",
                   # 이 노드에 딸린 문서 전부(발췌 캡과 다른 계약). 못 읽었을 때도
                   # 키는 있다 — 없는 키와 0 은 다른 말이다.
-                  "sources": {"total": 0, "items": [], "truncated": False},
+                  "sources": {"total": 0, **_window([], sources_offset, _NODE_SOURCES_CAP)},
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
                   "rev": 0, "updated_at": "",
                   # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
@@ -2956,17 +2958,15 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                     "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
                     "RETURN d.doc_id AS id, d.title AS t", {"ids": all_ids}) or []:
                 titles[r["id"]] = r.get("t") or ""
-        # 정렬은 제목 → id(결정론). 상한을 넘으면 `truncated` 가 말한다 — 한 노드가
-        # 문서 쉰 개에 언급되는 일은 이 그래프에 없고, 선택기는 자를 목록이 아니라
-        # **다 보여야 하는** 목록이라 창(offset)을 달지 않았다. 실제로 넘치면 그때 단다.
+        # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
         _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
                         "title": titles.get(str(r.get("doc_id") or ""), "")
                         or str(r.get("doc_id") or ""),
                         "mentions": int(r.get("n") or 0)} for r in srows
                        if r.get("doc_id")),
                       key=lambda s: (s["title"], s["doc_id"]))
-        base["sources"] = {"total": len(_src), "items": _src[:_NODE_SOURCES_CAP],
-                           "truncated": len(_src) > _NODE_SOURCES_CAP}
+        base["sources"] = {"total": len(_src),
+                           **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
         base["excerpts"] = [{
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
@@ -4122,11 +4122,16 @@ def node_list(*, owner: str, domain: str | None = None,
     반환::
 
         {executed, items: [{id, title, kind, domain}], total, offset, truncated,
-         next_offset(더 있을 때만), kinds: {종: 수}, scope(좁혔을 때만)}
+         next_offset(더 있을 때만), kinds: {종: 수}, carrier_counts: {캐리어: 수},
+         scope(좁혔을 때만)}
 
-    `kinds` 는 **스코프만** 반영한 종별 총수다 — 질의와 종 필터는 안 본다. 화면의 종
-    손잡이가 묻는 것이 "이 스코프에 무엇이 몇 개 있나"이지 "지금 걸러 낸 뒤 몇 개"가
-    아니기 때문이고, 0 도 키로 남겨 "없다"와 "안 가져왔다"를 구별한다.
+    `kinds` 는 주제·접두·제외를 반영한 저작된 종별 총수이며 제목 질의와 선택한 종은 제외한다.
+    기본 종 필터는 대소문자를 무시하고, 개방 타입은 반환된 이름 그대로 선택한다.
+    `kind=entity` 는 기존 개방 타입 캐리어 전체를 선택하며 `carrier_counts` 에서 센다.
+    일치하는 종이 없으면 빈 목록이다. 저작된 종 이름은 쿼리 식별자로 삽입하지 않는다.
+    예약된 기본 종 이름이 Entity 에 저장된 비정상 행은 All/entity 에서만 조회된다.
+    그 행은 저작된 종 집계를 부풀리지 않으며 carrier_counts.entity 에만 포함된다.
+    따라서 kinds 의 합을 total 대신 사용하면 안 된다.
 
     ``query`` 는 제목 부분일치(대소문자 무시)다. 서버에서 거르는 이유는 창이 **거른
     뒤**에 잘려야 하기 때문이다 — 화면이 한 창을 받아 거르면 50개 중 3개만 남고
@@ -4162,10 +4167,9 @@ def node_list(*, owner: str, domain: str | None = None,
     cfg = cfg or load_config()
     base: dict = {"kind": "node-list", "executed": False, "items": [], "total": 0,
                   "offset": 0, "truncated": False, "kinds": {}}
-    want = _LIST_KIND_LABEL.get((kind or "").strip().lower()) if kind else None
-    if kind and not want:
-        base["note"] = f"unknown kind: {kind}"
-        return base
+    requested = (kind or "").strip()
+    builtin = requested.lower() if requested.lower() in _LIST_KIND_LABEL else None
+    want = builtin or requested
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -4179,30 +4183,26 @@ def node_list(*, owner: str, domain: str | None = None,
                      if scope else "")
         rows: list[dict] = []
         for lbl, pk in _TREE_PK.items():
-            if want and want != lbl:
-                continue
             for r in store.run(
                     f"MATCH (n:{lbl}) WHERE n.owner_id = $owner "
                     f"AND n.{pk} IS NOT NULL{dom_where} "
                     f"RETURN n.{pk} AS id, n.title AS title, n.domain AS domain",
                     dom_params) or []:
-                rows.append({**r, "kind": lbl.lower()})
+                rows.append({**r, "kind": lbl.lower(), "carrier": lbl.lower()})
         # 주제가 없는 두 종. 스코프가 걸린 질의에는 구조적으로 들 수 없다.
         if not scope:
-            if not want or want == "Bridge":
-                for r in store.run(
-                        f"MATCH (n:Bridge) WHERE {_bridge_owner_pred('n')} "
-                        "RETURN n.bridge_id AS id, n.title AS title",
-                        {"owner": owner}) or []:
-                    rows.append({**r, "kind": "bridge", "domain": ""})
-            if not want or want == "Entity":
-                for r in store.run(
-                        "MATCH (n:Entity) WHERE n.owner_id = $owner "
-                        "RETURN n.entity_id AS id, n.title AS title, n.type AS t",
-                        {"owner": owner}) or []:
-                    # 개방 타입의 종은 **저작된 타입**이다(`node_context` 와 같은 태도).
-                    rows.append({**r, "kind": str(r.get("t") or "entity"),
-                                 "domain": ""})
+            for r in store.run(
+                    f"MATCH (n:Bridge) WHERE {_bridge_owner_pred('n')} "
+                    "RETURN n.bridge_id AS id, n.title AS title",
+                    {"owner": owner}) or []:
+                rows.append({**r, "kind": "bridge", "carrier": "bridge", "domain": ""})
+            for r in store.run(
+                    "MATCH (n:Entity) WHERE n.owner_id = $owner "
+                    "RETURN n.entity_id AS id, n.title AS title, n.type AS t",
+                    {"owner": owner}) or []:
+                # 개방 타입의 종은 **저작된 타입**이다(`node_context` 와 같은 태도).
+                rows.append({**r, "kind": str(r.get("t") or "entity"),
+                             "carrier": "entity", "domain": ""})
         items: list[dict] = []
         for r in rows:
             rid = pkns.strip(str(r.get("id") or ""))
@@ -4210,22 +4210,8 @@ def node_list(*, owner: str, domain: str | None = None,
                 continue
             items.append({"id": rid, "title": str(r.get("title") or "") or rid,
                           "kind": str(r.get("kind") or ""),
+                          "carrier": r["carrier"],
                           "domain": str(r.get("domain") or "")})
-        # 종 집계 — 스코프만 반영한다(위 docstring). 제목을 싣지 않는 집계라 가볍다.
-        kinds: dict[str, int] = {}
-        for lbl, pk in _TREE_PK.items():
-            rs = store.run(
-                f"MATCH (n:{lbl}) WHERE n.owner_id = $owner "
-                f"AND n.{pk} IS NOT NULL{dom_where} RETURN count(n.{pk}) AS c",
-                dom_params) or []
-            kinds[lbl.lower()] = int((rs[0] or {}).get("c") or 0) if rs else 0
-        if not scope:
-            rs = store.run(f"MATCH (n:Bridge) WHERE {_bridge_owner_pred('n')} "
-                           "RETURN count(n.bridge_id) AS c", {"owner": owner}) or []
-            kinds["bridge"] = int((rs[0] or {}).get("c") or 0) if rs else 0
-            rs = store.run("MATCH (n:Entity) WHERE n.owner_id = $owner "
-                           "RETURN count(n.entity_id) AS c", {"owner": owner}) or []
-            kinds["entity"] = int((rs[0] or {}).get("c") or 0) if rs else 0
         # 신분 필터가 제목 질의보다 **앞**이다: 둘 다 걸리면 "이 컬렉션 안에서 찾기"가
         # 되어야 하고, 그 반대(찾은 것 중 이 컬렉션)는 같은 집합이지만 뜻이 다르다.
         pfx = (id_prefix or "").strip()
@@ -4235,12 +4221,25 @@ def node_list(*, owner: str, domain: str | None = None,
         drop = {str(i).strip() for i in (id_exclude or []) if str(i).strip()}
         if drop:
             items = [i for i in items if i["id"] not in drop]
+        # 컬렉션 술어로 집계한다. 기존처럼 제목 질의와 선택한 종은 집계에 반영하지 않는다.
+        # entity 필터는 기존 캐리어 집합이며, 저작된 종 집계와 섞어 더하지 않는다.
+        kinds = {k: 0 for k in _LIST_KIND_LABEL if k != "entity"}
+        carrier_counts = {k: 0 for k in _LIST_KIND_LABEL}
+        for item in items:
+            if item["carrier"] != "entity" or item["kind"].lower() not in _LIST_KIND_LABEL:
+                kinds[item["kind"]] = kinds.get(item["kind"], 0) + 1
+            carrier_counts[item["carrier"]] += 1
+        if want:
+            items = [i for i in items if
+                     (i["carrier"] == want if builtin else i["kind"] == want)]
+        items = [{k: v for k, v in i.items() if k != "carrier"} for i in items]
         q = (query or "").strip().casefold()
         if q:
             items = [i for i in items if q in i["title"].casefold()]
         items.sort(key=lambda i: (i["title"].casefold(), i["id"]))
         cap = max(1, min(int(limit or _NODE_LIST_CAP), 200))
         base.update(executed=True, total=len(items), kinds=kinds,
+                    carrier_counts=carrier_counts,
                     **_window(items, offset, cap))
         if scope:
             base["scope"] = list(scope)
