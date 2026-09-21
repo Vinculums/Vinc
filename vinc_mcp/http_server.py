@@ -915,6 +915,28 @@ class _Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host") or "127.0.0.1"
         return f"http://{host}"
 
+    def _basic_client_id(self) -> str:
+        """`Authorization: Basic` 에 실려 온 client_id(RFC 6749 §2.3.1).
+
+        client_secret 을 설정한 클라이언트는 **본문에 client_id 를 안 싣고** 헤더로만
+        보낸다. PlayMCP(카카오)가 그랬고, 본문만 보던 `/token` 은 그것을
+        `client_id mismatch` 로 거절했다 — 동의까지 통과한 뒤 마지막 한 걸음에서
+        막히는 고장이라 밖에서는 원인이 안 보인다.
+
+        비밀번호 칸은 **읽지 않는다.** 이 서버는 공개 클라이언트만 발급하고
+        (`token_endpoint_auth_methods_supported: ["none"]`), 코드의 소유 증명은
+        PKCE S256 이 한다. 여기서 헤더는 신원의 출처일 뿐 인증 수단이 아니므로
+        광고도 바꾸지 않는다 — 검증하지 않는 방식을 지원한다고 적으면 거짓말이다."""
+        header = self.headers.get("Authorization") or ""
+        if header[:6].lower() != "basic ":
+            return ""
+        try:
+            raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+        except Exception:
+            return ""
+        # 자격증명은 base64 전에 form-urlencode 된다(같은 절).
+        return urllib.parse.unquote(raw.split(":", 1)[0]) if ":" in raw else ""
+
     def _body(self) -> dict:
         self._raw_body = b""
         n = int(self.headers.get("Content-Length") or 0)
@@ -1097,6 +1119,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "oauth disabled"})
             try:
                 form = self._body()
+                if isinstance(form, dict) and not form.get("client_id"):
+                    form["client_id"] = self._basic_client_id()
                 return self._json(200, gate.token(form))
             except ValueError as e:
                 # 거절 이유를 남긴다. /token 은 **상대 서버가** 부르는 경로라
