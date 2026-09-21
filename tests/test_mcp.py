@@ -416,6 +416,24 @@ class OAuthFlowTests(_HTTPFixture):
         self.oauth = OAuthGate("http://issuer.test", admin_key="adminkey")
         super().setUp()
 
+    def test_rebind_needs_the_admin_key(self):
+        """client_id 지정 재등록은 관리 키에서만 먹는다(심사중 플랫폼 구제용)."""
+        _, first = self._post("/register", {"redirect_uris": ["http://127.0.0.1:7777/cb"]})
+        cid = first["client_id"]
+        # 키 없이 같은 client_id 를 요구하면 무시되고 새 id 가 나온다
+        _, anon = self._post("/register", {"client_id": cid,
+                                           "redirect_uris": ["http://127.0.0.1:7777/new"]})
+        self.assertNotEqual(anon["client_id"], cid)
+        self.assertEqual(self.oauth.store.get_client(cid)["redirect_uris"],
+                         ["http://127.0.0.1:7777/cb"])
+        # 키가 맞으면 같은 id 에 redirect 가 갈린다
+        _, admin = self._post("/register?key=adminkey",
+                              {"client_id": cid,
+                               "redirect_uris": ["http://127.0.0.1:7777/new"]})
+        self.assertEqual(admin["client_id"], cid)
+        self.assertEqual(self.oauth.store.get_client(cid)["redirect_uris"],
+                         ["http://127.0.0.1:7777/new"])
+
     def _full_flow(self, key="adminkey"):
         _, reg = self._post("/register", {"redirect_uris": ["http://127.0.0.1:7777/cb"],
                                           "client_name": "t"})

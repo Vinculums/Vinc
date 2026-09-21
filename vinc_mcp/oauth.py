@@ -78,11 +78,23 @@ class OAuthGate:
         }
 
     # ── 동적 등록(RFC 7591) ─────────────────────────────────────────────────
-    def register(self, body: dict) -> dict:
+    def register(self, body: dict, *, rebind: bool = False) -> dict:
+        """RFC 7591 등록. `rebind` 는 **관리 키 경로에서만 참**이고, 그때만 본문의
+        `client_id` 를 그대로 쓴다(`add_client` 가 REPLACE 라 redirect 가 갈린다).
+
+        왜 필요한가: 심사 플랫폼은 자기 redirect uri 를 **등록을 받은 뒤에** 통보한다
+        (PlayMCP 는 메일로 주고 24시간 내 설정을 요구한다). 통보가 온 시점에 상대
+        콘솔은 이미 심사중이라 client_id 를 못 바꾸므로, 먼저 발급된 client_id 에
+        redirect 를 나중에 붙이는 길이 없으면 등록이 영영 성립하지 않는다.
+
+        무인증 경로에 열지 않는 이유: 남의 client_id 를 자기 redirect 로 돌려놓는
+        탈취가 된다. PKCE S256 이 필수라 코드를 바꿔 갈 수는 없지만, 그 커넥터를
+        망가뜨리는 것만으로 충분히 고장이다."""
         uris = body.get("redirect_uris") or []
         if not isinstance(uris, list) or not all(isinstance(u, str) for u in uris) or not uris:
             raise ValueError("redirect_uris (non-empty list) is required")
-        client_id = secrets.token_urlsafe(16)
+        given = body.get("client_id")
+        client_id = given if rebind and isinstance(given, str) and given else secrets.token_urlsafe(16)
         self.store.add_client(client_id, uris, body.get("client_name") or "")
         return {"client_id": client_id, "redirect_uris": uris,
                 "token_endpoint_auth_method": "none",
