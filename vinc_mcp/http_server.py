@@ -1096,8 +1096,17 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             try:
-                return self._json(200, gate.token(self._body()))
+                form = self._body()
+                return self._json(200, gate.token(form))
             except ValueError as e:
+                # 거절 이유를 남긴다. /token 은 **상대 서버가** 부르는 경로라
+                # 브라우저 캡처에 안 잡히고, 이 줄이 없으면 접근 로그에 `400` 만
+                # 남아 다섯 가지 거절(코드 만료·client_id·redirect_uri·PKCE·grant)을
+                # 구분할 길이 없다. 실제로 PlayMCP 등록에서 그 벽을 만났다.
+                # 값이 아니라 **키 이름만** 싣는다 — code·code_verifier 는 비밀이고,
+                # 어느 필드가 빠졌는지만 알면 원인이 갈린다.
+                keys = ",".join(sorted(form)) if isinstance(form, dict) else "?"
+                sys.stdout.write("[oauth] token rejected: %s (fields=%s)\n" % (e, keys))
                 return self._json(400, {"error": "invalid_grant", "error_description": str(e)})
         space, spath = split_space(url.path)
         if spath == "/mcp":
