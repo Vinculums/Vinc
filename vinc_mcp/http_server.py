@@ -1086,7 +1086,10 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             try:
-                return self._json(201, gate.register(self._body()))
+                # key= 가 맞으면 본문의 client_id 로 재등록(redirect 교체) — 운영자 전용.
+                key = urllib.parse.parse_qs(url.query).get("key", [""])[0]
+                rebind = bool(gate.admin_key) and key == gate.admin_key
+                return self._json(201, gate.register(self._body(), rebind=rebind))
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
         if url.path == "/token":
