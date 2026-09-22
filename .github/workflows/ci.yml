@@ -113,11 +113,7 @@ jobs:
     # 원래 만료를 만들던 기제(도커 데스크탑이 닫히면 WSL 이 내려가 리눅스 라벨이
     # org 에서 사라지는 것)는 러너를 상주작업으로 올려 닫았다.
     # 되돌릴 조건: 분이 다시 넉넉해지거나 러너가 다시 조용히 사라지면.
-    #
-    # 2026-09-22 임시: vinc-local 리눅스 라벨이 없다(도커 데스크탑 off → WSL 다운).
-    # 잡은 실패가 아니라 큐에 남는다. 이 PR 검사를 풀려고 호스티드로 잠깐 되돌린다.
-    # 분이 또 마르면 큐가 아니라 실패로 드러난다. 러너가 다시 보이면 위 라벨로.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     timeout-minutes: 10
     outputs:
       app: ${{ steps.f.outputs.app }}
@@ -272,8 +268,7 @@ jobs:
     #
     # ⚠ **2026-09-06 에 되돌렸다** — 그 "분이 마르면" 이 실제로 왔다. 자세한 사정은
     # `changes` 잡의 같은 표식에 적었다.
-    # 2026-09-22 임시: `changes` 와 같은 이유. vinc-local 이 내려가 큐에 묶인다.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     # 실측 4~5분(4코어 컨테이너 250초). 셀프호스티드는 더 빠르지만 아래 TMPDIR 이
     # 안 걸리면 49분이다. 여유를 크게 뒀다 — 일정을 조이는 장치가 아니라
     # **행(hang)을 잡는 장치**다.
@@ -517,8 +512,7 @@ jobs:
     # (런 33389200262, 12:16:25 → 13:07:20). 하나만 옮기면 남은 쪽이 그대로 큐를
     # 붙잡으므로, 둘을 갈라 두는 것은 이 변경의 목적을 반만 이룬다.
     # (2026-09-06: `core` 와 함께 셀프호스티드로 되돌렸다. 같은 이유, 같은 조건.)
-    # 2026-09-22 임시: `changes` 와 같은 이유. vinc-local 이 내려가 큐에 묶인다.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     timeout-minutes: 45
     env:
       VINC_PK_NAMESPACED: "on"
@@ -589,8 +583,7 @@ jobs:
     # `changes` 와 같은 이유로 옮긴다(그 잡의 주석이 근거다). 이쪽은 `npm ci` 와 `tsc`
     # 와 순수 노드 스크립트뿐이라 기계를 안 가린다 — 실측 1분 14초(런 33412567123).
     # (2026-09-06: `changes` 와 함께 셀프호스티드로 되돌렸다.)
-    # 2026-09-22 임시: `changes` 와 같은 이유. ci.yml 을 고치면 이 잡이 켜진다.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vinc-local]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -671,10 +664,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          # 2026-09-22 임시: ci.yml 변경은 rust 를 켠다. vinc-local 이 없으면
-          # 이 매트릭스가 다시 큐를 붙잡으므로 호스티드로 같이 옮긴다.
-          - ubuntu-latest
-          - windows-latest
+          - [self-hosted, linux, vinc-local]
+          - [self-hosted, windows, vinc-local]
     runs-on: ${{ matrix.os }}
     # 매달린 잡을 자르는 장치. 셀프호스티드에서는 분이 아니라 **러너 하나를 붙잡는
     # 것**이 대가다 — 이 워크플로는 잡 다섯이 같은 기계를 나눠 쓴다.
@@ -705,14 +696,14 @@ jobs:
         run: echo "CARGO_TARGET_DIR=$RUNNER_WORKSPACE/cargo-target" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # 2026-09-22 임시: 러너가 다시 호스티드라 디스크가 매 잡마다 사라진다.
-      # 셀프호스티드에서 이 액션을 뺀 이유([[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]])
-      # 는 영속 디스크가 이미 `CARGO_TARGET_DIR` 를 들고 있어서다. 호스티드에서는
-      # 그 전제가 없고, 캐시가 없으면 찬 컴파일이 분을 그대로 태운다. 러너를 되돌리면
-      # 이 스텝도 같이 뺀다.
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: app/src-tauri
+      # ⚠ `swatinem/rust-cache` 를 여기서 **일부러 안 쓴다.** 그 액션은 파일시스템이
+      # 매번 파괴되는 **호스티드** 러너용이다. 이 두 잡은 영속 셀프호스티드라 디스크가
+      # 이미 들고 있고, 위의 `CARGO_TARGET_DIR` 가 `git clean` 사정권 밖에 둔다.
+      # 그 조건에서 캐시 액션은 **복원 10분 · 저장 9분 대 컴파일 4분**이었다
+      # (실측 2026-08-26 run 32910956646,
+      # [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
+      # release.yml 은 호스티드 macOS 다리가 있어 거기서는 계속 쓴다.
+      # (#151 에서 호스티드로 옮기며 이 액션을 넣었고, 2026-09-06 에 다시 뺐다.)
       # 리눅스만 필요한 시스템 헤더(webkit·appindicator). release.yml 과 같은 목록.
       - name: Linux webkit deps
         if: runner.os == 'Linux'
