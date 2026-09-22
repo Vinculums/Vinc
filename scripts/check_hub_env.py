@@ -54,6 +54,8 @@ REQUIRED: dict[str, str] = {
 # 있어야 정책이 맞는 것들(없어도 기동은 한다) — 경고만.
 EXPECTED: dict[str, str] = {
     "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 Free 2,000 · Team 6,000 으로 안내 중",
+    "VINC_OPENAI_APPS_CHALLENGE": "ChatGPT 디렉터리 도메인 검증 토큰. 없으면 "
+                                 "/.well-known/openai-apps-challenge 가 404",
 }
 
 # 있으면 **안 되는** 것들 — 정책이 코드로 옮겨가 env 가 남으면 혼동만 남긴다.

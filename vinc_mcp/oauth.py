@@ -23,15 +23,51 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 
 from .store import Store
 
 CODE_TTL = 300
 TOKEN_TTL = 3600
 CONNECT_TTL = 600      # 회원 승인 대기(B-B3) — 10분
+_CIMD_TIMEOUT = 5
+_CIMD_MAX_BYTES = 64 * 1024
+
+
+def fetch_cimd(url: str) -> dict:
+    """CIMD 문서를 가져온다. https 만, 크기·시간 상한.
+
+    ChatGPT 는 `client_id` 자리에 이 URL 을 넣고 DCR 을 건너뛴다
+    (`client_id_metadata_document_supported`). 디렉터리 트래픽이
+    연결마다 클라이언트를 늘리지 않게 하려는 자리다.
+    근거: [[vinc.spec.remote-profile]]
+    """
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("CIMD client_id must be an https URL")
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=_CIMD_TIMEOUT) as resp:
+            raw = resp.read(_CIMD_MAX_BYTES + 1)
+    except urllib.error.URLError as exc:
+        raise ValueError(f"CIMD fetch failed: {exc}") from exc
+    if len(raw) > _CIMD_MAX_BYTES:
+        raise ValueError("CIMD document too large")
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("CIMD document is not JSON") from exc
+    if not isinstance(doc, dict):
+        raise ValueError("CIMD document must be an object")
+    uris = doc.get("redirect_uris")
+    if not isinstance(uris, list) or not uris or not all(isinstance(u, str) for u in uris):
+        raise ValueError("CIMD redirect_uris (non-empty list) is required")
+    return doc
 
 
 def _s256(verifier: str) -> str:
@@ -41,11 +77,13 @@ def _s256(verifier: str) -> str:
 
 class OAuthGate:
     def __init__(self, issuer: str, admin_key: str | None,
-                 token_ttl: int = TOKEN_TTL, *, store: Store | None = None):
+                 token_ttl: int = TOKEN_TTL, *, store: Store | None = None,
+                 cimd_fetch=None):
         self.issuer = issuer.rstrip("/")
         self.admin_key = admin_key or None
         self.token_ttl = token_ttl
         self.store = store if store is not None else Store(":memory:")
+        self._cimd_fetch = cimd_fetch or fetch_cimd
 
     # ── 메타데이터 ──────────────────────────────────────────────────────────
     def resource_metadata(self, resource_path: str = "/mcp") -> dict:
@@ -75,6 +113,10 @@ class OAuthGate:
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
+            # ChatGPT·Claude 디렉터리는 CIMD 를 우선하고 DCR 로 폴백한다.
+            # 이 플래그가 없으면 연결마다 /register 가 클라이언트를 늘리고
+            # MAX_CLIENTS 프루닝이 옛 등록을 밀어낸다.
+            "client_id_metadata_document_supported": True,
         }
 
     # ── 동적 등록(RFC 7591) ─────────────────────────────────────────────────
@@ -102,9 +144,25 @@ class OAuthGate:
                 "response_types": ["code"]}
 
     # ── 인가 파라미터 검증(두 승인 모드 공통) ────────────────────────────────
+    def _client_of(self, client_id: str) -> dict | None:
+        """DCR 표 조회. 없으면 https `client_id` 를 CIMD 로 푼다.
+
+        CIMD 클라이언트는 표에 안 남긴다 — 인가 때 문서를 다시 읽으면 되고,
+        남기면 무인증 DCR 과 같은 표 증가가 다시 열린다.
+        """
+        rec = self.store.get_client(client_id)
+        if rec is not None:
+            return rec
+        if client_id.startswith("https://"):
+            doc = self._cimd_fetch(client_id)
+            return {"redirect_uris": list(doc["redirect_uris"]),
+                    "name": doc.get("client_name") or ""}
+        return None
+
     def _validate_authorize(self, params: dict) -> tuple[str, str, str]:
         """(client_id, redirect_uri, challenge) 반환 — 검증 실패 시 예외."""
-        client = self.store.get_client(params.get("client_id") or "")
+        client_id = params.get("client_id") or ""
+        client = self._client_of(client_id)
         if client is None:
             raise ValueError("unknown client_id")
         redirect = params.get("redirect_uri") or ""
@@ -115,7 +173,12 @@ class OAuthGate:
         challenge = params.get("code_challenge") or ""
         if not challenge or params.get("code_challenge_method") != "S256":
             raise ValueError("PKCE S256 code_challenge is required")
-        return params["client_id"], redirect, challenge
+        return client_id, redirect, challenge
+
+    @staticmethod
+    def _resource_of(params: dict) -> str:
+        """RFC 8707 `resource`. 없으면 빈 문자열(구 커넥터 하위호환)."""
+        return (params.get("resource") or "").strip()
 
     # ── 인가: 관리 키 자동 승인(코드 + PKCE) ─────────────────────────────────
     def authorize(self, params: dict) -> str:
@@ -128,7 +191,8 @@ class OAuthGate:
         code = secrets.token_urlsafe(24)
         # 관리 키 경로 = 단일 테넌트 하위호환 → owner/plan 미지정(None).
         self.store.add_code(code, client_id, redirect, challenge,
-                            owner=None, plan=None, exp=time.time() + CODE_TTL)
+                            owner=None, plan=None, exp=time.time() + CODE_TTL,
+                            resource=self._resource_of(params))
         return self._redirect_with(redirect, {"code": code}, params.get("state"))
 
     # ── 인가: 회원 승인 대기 등록(B-B3) ──────────────────────────────────────
@@ -139,10 +203,11 @@ class OAuthGate:
         승인은 계정 서비스가 하고, complete() 로 코드가 발급된다.
         """
         client_id, redirect, challenge = self._validate_authorize(params)
-        client = self.store.get_client(client_id)
+        client = self._client_of(client_id)
         req_id = secrets.token_urlsafe(18)
         self.store.add_connect_request(req_id, client_id, redirect, challenge,
-                                       params.get("state"), exp=time.time() + CONNECT_TTL)
+                                       params.get("state"), exp=time.time() + CONNECT_TTL,
+                                       resource=self._resource_of(params))
         return req_id, {"client_id": client_id, "client_name": (client or {}).get("name", ""),
                         "redirect_uri": redirect}
 
@@ -156,7 +221,8 @@ class OAuthGate:
             raise ValueError("connect request not found, expired, or already used")
         code = secrets.token_urlsafe(24)
         self.store.add_code(code, rec["client_id"], rec["redirect_uri"], rec["challenge"],
-                            owner=owner, plan=plan, exp=time.time() + CODE_TTL)
+                            owner=owner, plan=plan, exp=time.time() + CODE_TTL,
+                            resource=rec.get("resource") or "")
         self.store.set_owner_plan(owner, plan)
         return self._redirect_with(rec["redirect_uri"], {"code": code}, rec.get("state"))
 
@@ -180,22 +246,43 @@ class OAuthGate:
                 raise ValueError("redirect_uri mismatch")
             if _s256(form.get("code_verifier") or "") != rec["challenge"]:
                 raise ValueError("PKCE verification failed")
-            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"))
+            resource = self._bound_resource(form, rec)
+            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"),
+                               resource=resource)
         if grant == "refresh_token":
             rec = self.store.pop_refresh(form.get("refresh_token") or "")
             if rec is None:
                 raise ValueError("invalid refresh_token")
-            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"))
+            resource = self._bound_resource(form, rec)
+            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"),
+                               resource=resource)
         raise ValueError(f"unsupported grant_type: {grant}")
 
+    def _bound_resource(self, form: dict, rec: dict) -> str:
+        """인가·토큰 요청의 `resource` 를 코드에 묶인 값과 맞춘다.
+
+        ChatGPT 는 두 요청 모두에 `resource=` 를 붙이고, 그 값이 토큰
+        audience 로 돌아와야 한다. 구 커넥터는 이 파라미터를 안 보내므로
+        빈 값은 하위호환으로 통과한다.
+        """
+        requested = self._resource_of(form)
+        stored = (rec.get("resource") or "").strip()
+        if requested and stored and requested != stored:
+            raise ValueError("resource mismatch")
+        return stored or requested
+
     def _issue(self, client_id: str, owner: str | None = None,
-               plan: str | None = None) -> dict:
+               plan: str | None = None, resource: str = "") -> dict:
         access = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
-        self.store.add_token(access, client_id, owner, plan, time.time() + self.token_ttl)
-        self.store.add_refresh(refresh, client_id, owner, plan)
-        return {"access_token": access, "token_type": "Bearer",
-                "expires_in": self.token_ttl, "refresh_token": refresh}
+        self.store.add_token(access, client_id, owner, plan, time.time() + self.token_ttl,
+                             resource=resource)
+        self.store.add_refresh(refresh, client_id, owner, plan, resource=resource)
+        out = {"access_token": access, "token_type": "Bearer",
+               "expires_in": self.token_ttl, "refresh_token": refresh}
+        if resource:
+            out["resource"] = resource
+        return out
 
     # ── 자원 접근 검증 ──────────────────────────────────────────────────────
     def verify(self, token: str) -> bool:
