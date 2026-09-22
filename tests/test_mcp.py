@@ -279,7 +279,8 @@ class HTTPTransportTests(_HTTPFixture):
         code, obj = self._post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                                token=self.static)
         self.assertEqual(code, 200)
-        self.assertEqual({t["name"] for t in obj["result"]["tools"]}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in obj["result"]["tools"]},
+                         D11_TOOLS | {t["name"] for t in tools.HOST_TOOLS})
 
     def test_notification_gets_202(self):
         req = urllib.request.Request(

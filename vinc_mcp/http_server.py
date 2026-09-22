@@ -10,6 +10,7 @@
   DELETE /mcp                            세션 종료(선택 — 보내는 호스트만)
   GET  /.well-known/oauth-protected-resource     RFC 9728
   GET  /.well-known/oauth-authorization-server   RFC 8414
+  GET  /.well-known/openai-apps-challenge        ChatGPT 디렉터리 도메인 검증
   POST /register    동적 클라이언트 등록
   GET  /authorize   인가(관리 키 + PKCE) → 302 code
   POST /token       코드/리프레시 → bearer
@@ -487,6 +488,10 @@ class MCPHTTPApp:
             owner = (rec or {}).get("owner") or ""
             if not owner.startswith("user:"):
                 return miss
+            bound = (rec.get("resource") or "").strip()
+            want = self.oauth.issuer + f"/t/{space}/mcp"
+            if bound and bound != want:
+                return miss
             mem = self.verify_member(owner.split(":", 1)[1], space)
             if not mem or not str(mem.get("owner") or "").startswith("team:"):
                 return miss
@@ -514,6 +519,11 @@ class MCPHTTPApp:
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
             if rec:
+                bound = (rec.get("resource") or "").strip()
+                if bound and bound != self.oauth.issuer + "/mcp":
+                    # ChatGPT 가 붙인 resource 가 이 개인 주소와 안 맞으면
+                    # 토큰을 거절하고 WWW-Authenticate 로 다시 인가하게 한다.
+                    return miss
                 owner = rec.get("owner")
                 return {"ok": True, "owner": owner,
                         "plan": self._fresh_plan(owner, rec.get("plan")),
@@ -885,6 +895,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _plain(self, code: int, text: str, headers: dict | None = None) -> None:
+        """text/plain 본문. 디렉터리 도메인 검증은 JSON 을 거절한다."""
+        raw = text.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(raw)))
+        for k, v in self._cors_headers().items():
+            self.send_header(k, v)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(raw)
+
     def _redirect(self, location: str) -> None:
         self.send_response(302)
         self.send_header("Location", location)
@@ -1023,6 +1046,14 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             return self._json(200, gate.as_metadata())
+        if url.path == "/.well-known/openai-apps-challenge":
+            # ChatGPT 제출 포털이 초안마다 토큰을 주고, 이 URL 의 본문과
+            # 바이트 단위로 대조한다. JSON·다른 토큰·빈 본문은 검증 실패.
+            # 값은 env 라 초안이 바뀔 때 재배포 없이 갈아끼운다.
+            token = (os.environ.get("VINC_OPENAI_APPS_CHALLENGE") or "").strip()
+            if not token:
+                return self._json(404, {"error": "openai apps challenge not configured"})
+            return self._plain(200, token)
         if url.path == "/authorize":
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})

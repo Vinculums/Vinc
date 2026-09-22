@@ -42,6 +42,8 @@ def test_every_tool_carries_annotations():
         assert ann, f"{spec['name']} 에 annotations 없음 — 디렉토리 거부 사유"
         assert ann.get("title"), f"{spec['name']} 에 title 없음"
         assert "readOnlyHint" in ann, spec["name"]
+        assert "openWorldHint" in ann, spec["name"]
+        assert "destructiveHint" in ann, spec["name"]
 
 
 def test_read_tools_are_marked_read_only():

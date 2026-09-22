@@ -173,8 +173,17 @@ class Store:
             self.journal_mode = (row[0] if row else "").lower()
             self._db.execute("PRAGMA busy_timeout=3000")
             self._db.executescript(_SCHEMA)
+            # 구 스냅샷은 CREATE IF NOT EXISTS 로 열이 안 늘어난다. resource 는
+            # ChatGPT 가 인가·토큰 요청에 붙이는 audience 라, 없으면 에코할 자리가 없다.
+            for table in ("codes", "tokens", "refresh", "connect_requests"):
+                self._ensure_column(table, "resource", "TEXT NOT NULL DEFAULT ''")
             self._db.commit()
         self._save_snapshot()   # 첫 기동에 스키마만이라도 남긴다(경로 쓰기 가능 확인)
+
+    def _ensure_column(self, table: str, column: str, decl: str) -> None:
+        cols = {row[1] for row in self._db.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     # ── 영속 스냅샷 ──────────────────────────────────────────────────────────
     # 전 구간 fail-soft 다: 스냅샷은 **증강**이지 서비스의 성립 조건이 아니다.
@@ -280,19 +289,21 @@ class Store:
 
     # ── codes(단일 소비) ──────────────────────────────────────────────────────
     def add_code(self, code: str, client_id: str, redirect_uri: str, challenge: str,
-                 owner: str | None, plan: str | None, exp: float) -> None:
+                 owner: str | None, plan: str | None, exp: float,
+                 resource: str = "") -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO codes(code,client_id,redirect_uri,challenge,owner,plan,exp) "
-                "VALUES(?,?,?,?,?,?,?)",
-                (code, client_id, redirect_uri, challenge, owner, plan, exp))
+                "INSERT INTO codes(code,client_id,redirect_uri,challenge,owner,plan,exp,resource) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (code, client_id, redirect_uri, challenge, owner, plan, exp, resource or ""))
             self._db.commit()
             self._save_snapshot()
 
     def pop_code(self, code: str) -> dict | None:
         with self._lock:
             row = self._db.execute(
-                "SELECT client_id,redirect_uri,challenge,owner,plan,exp FROM codes WHERE code=?",
+                "SELECT client_id,redirect_uri,challenge,owner,plan,exp,resource "
+                "FROM codes WHERE code=?",
                 (code,)).fetchone()
             if row is None:
                 return None
@@ -303,7 +314,8 @@ class Store:
 
     # ── tokens ────────────────────────────────────────────────────────────────
     def add_token(self, token: str, client_id: str, owner: str | None,
-                  plan: str | None, exp: float, now: float | None = None) -> None:
+                  plan: str | None, exp: float, now: float | None = None,
+                  resource: str = "") -> None:
         with self._lock:
             # 만료 토큰은 get_token 이 **읽힐 때만** 지운다 — 아무도 다시 안 부르는
             # 토큰은 영영 남는다. 발급 시점이 그걸 쓸어 담기 좋은 자리다(같은 락,
@@ -314,8 +326,9 @@ class Store:
             # 보인다.
             self._purge_expired_locked(time.time() if now is None else now)
             self._db.execute(
-                "INSERT OR REPLACE INTO tokens(token,client_id,owner,plan,exp) VALUES(?,?,?,?,?)",
-                (token, client_id, owner, plan, exp))
+                "INSERT OR REPLACE INTO tokens(token,client_id,owner,plan,exp,resource) "
+                "VALUES(?,?,?,?,?,?)",
+                (token, client_id, owner, plan, exp, resource or ""))
             self._db.commit()
             self._save_snapshot()
 
@@ -323,7 +336,8 @@ class Store:
         """유효 토큰이면 {client_id,owner,plan,exp}, 만료면 삭제 후 None."""
         t = time.time() if now is None else now
         row = self._db.execute(
-            "SELECT client_id,owner,plan,exp FROM tokens WHERE token=?", (token,)).fetchone()
+            "SELECT client_id,owner,plan,exp,resource FROM tokens WHERE token=?",
+            (token,)).fetchone()
         if row is None:
             return None
         if row["exp"] < t:
@@ -335,18 +349,20 @@ class Store:
 
     # ── refresh(단일 소비) ────────────────────────────────────────────────────
     def add_refresh(self, token: str, client_id: str, owner: str | None,
-                    plan: str | None) -> None:
+                    plan: str | None, resource: str = "") -> None:
         with self._lock:
             self._db.execute(
-                "INSERT OR REPLACE INTO refresh(token,client_id,owner,plan) VALUES(?,?,?,?)",
-                (token, client_id, owner, plan))
+                "INSERT OR REPLACE INTO refresh(token,client_id,owner,plan,resource) "
+                "VALUES(?,?,?,?,?)",
+                (token, client_id, owner, plan, resource or ""))
             self._db.commit()
             self._save_snapshot()
 
     def pop_refresh(self, token: str) -> dict | None:
         with self._lock:
             row = self._db.execute(
-                "SELECT client_id,owner,plan FROM refresh WHERE token=?", (token,)).fetchone()
+                "SELECT client_id,owner,plan,resource FROM refresh WHERE token=?",
+                (token,)).fetchone()
             if row is None:
                 return None
             self._db.execute("DELETE FROM refresh WHERE token=?", (token,))
@@ -356,19 +372,21 @@ class Store:
 
     # ── connect_requests(회원 승인 흐름, 단일 소비) ────────────────────────────
     def add_connect_request(self, req_id: str, client_id: str, redirect_uri: str,
-                            challenge: str, state: str | None, exp: float) -> None:
+                            challenge: str, state: str | None, exp: float,
+                            resource: str = "") -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO connect_requests(req_id,client_id,redirect_uri,challenge,state,exp) "
-                "VALUES(?,?,?,?,?,?)",
-                (req_id, client_id, redirect_uri, challenge, state, exp))
+                "INSERT INTO connect_requests"
+                "(req_id,client_id,redirect_uri,challenge,state,exp,resource) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (req_id, client_id, redirect_uri, challenge, state, exp, resource or ""))
             self._db.commit()
             self._save_snapshot()
 
     def get_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
         t = time.time() if now is None else now
         row = self._db.execute(
-            "SELECT client_id,redirect_uri,challenge,state,exp,consumed "
+            "SELECT client_id,redirect_uri,challenge,state,exp,consumed,resource "
             "FROM connect_requests WHERE req_id=?", (req_id,)).fetchone()
         if row is None or row["consumed"] or row["exp"] < t:
             return None
@@ -379,7 +397,7 @@ class Store:
         t = time.time() if now is None else now
         with self._lock:
             row = self._db.execute(
-                "SELECT client_id,redirect_uri,challenge,state,exp,consumed "
+                "SELECT client_id,redirect_uri,challenge,state,exp,consumed,resource "
                 "FROM connect_requests WHERE req_id=?", (req_id,)).fetchone()
             if row is None or row["consumed"] or row["exp"] < t:
                 return None
