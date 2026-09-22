@@ -1191,7 +1191,8 @@ class _Handler(BaseHTTPRequestHandler):
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, {"error": bad})
-            auth = self._auth(space)
+            # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
+            auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
             if not auth["ok"]:
                 # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
                 # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
@@ -1237,7 +1238,9 @@ class _Handler(BaseHTTPRequestHandler):
                     return auth
                 if not _UUID_RE.match(want):
                     return None          # 모양이 틀린 것은 계정에 묻지도 않는다
-                got = self._auth(want)
+                # 인자로 고른 팀: 요청은 **개인 끝점**에 도착했다. 주소가 아니라
+                # 인자이므로 토큰의 audience 는 `/mcp` 여야 맞다.
+                got = self._auth(want, presented_at="/mcp")
                 return got if got["ok"] else None
 
             pairs = [(m, _auth_for(m)) for m in msgs]
@@ -1500,11 +1503,13 @@ class _Handler(BaseHTTPRequestHandler):
         카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
         [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
         """
-        # 주소로 온 팀(`/t/<uuid>/mcp`)만 그 주소로 검사한다. `space` **인자**로 고른
-        # 팀은 요청이 개인 끝점에 도착한 것이므로 기본값이 맞다(_resource_ok 주석).
-        at = presented_at if presented_at is not None else (f"/t/{space}/mcp" if space else "/mcp")
+        # ⚠ `presented_at` 을 `space` 에서 **유도하지 않는다.** 2026-09-22 에 이 자리에서
+        # `f"/t/{space}/mcp" if space else "/mcp"` 로 유도했다가 같은 결함을 한 층 아래로
+        # 옮겼을 뿐이었다 — `space` 인자로 고른 팀도 그 유도를 타서 여전히 거절됐다.
+        # 도착한 주소를 아는 것은 **호출부**다. 그러니 호출부가 말하게 두고 여기서는
+        # 개인 끝점을 기본으로 둔다(세 호출부 중 둘이 실제로 그것이다).
         auth = self.app.resolve_auth(self.headers.get("Authorization"), space,
-                                     presented_at=at)
+                                     presented_at=presented_at or "/mcp")
         self._owner_tag = _owner_tag(auth.get("owner")) if auth.get("ok") else None
         return auth
 

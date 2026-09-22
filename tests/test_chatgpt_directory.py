@@ -247,6 +247,42 @@ def test_a_team_address_token_is_refused_at_a_different_team_address():
     assert app.resolve_auth("Bearer tok")["ok"] is False
 
 
+def test_the_space_argument_reaches_a_team_through_the_real_http_path():
+    """⚠ 앞의 두 테스트는 `resolve_auth` 를 **직접** 부른다. 그것만으로는 부족하다.
+
+    2026-09-22 에 그 둘이 통과하는 채로 고침이 반쪽이었다: `_Handler._auth` 가
+    `presented_at` 을 `space` 에서 유도하고 있어서, 인자로 고른 팀은 실제 HTTP 경로에서
+    여전히 거절됐다. 직접 호출은 그 래퍼를 안 지나므로 초록이었다. 그래서 여기서는
+    **소켓으로 tools/call 을 쏜다** — `_auth_for` 와 `_Handler._auth` 를 실제로 태운다.
+    """
+    team = "01a074fe-5709-7735-b2a3-56228be26497"
+    gate = OAuthGate("https://mcp.example", None, store=Store(":memory:"))
+    gate.store.add_token("tok", "cid", "user:u1", "free", exp=9e9,
+                         resource="https://mcp.example/mcp")
+    app = MCPHTTPApp(_StubBridge(), oauth=gate,
+                     verify_member=lambda sub, sp: {"owner": f"team:{sp}",
+                                                    "role": "admin", "member": sub})
+    httpd = make_server(app, "127.0.0.1", 0)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": "vinc_whoami",
+                                      "arguments": {"space": team}}}).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp", data=body, method="POST",
+            headers={"Authorization": "Bearer tok", "Content-Type": "application/json",
+                     "Accept": "application/json, text/event-stream"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            raw = r.read().decode()
+        # SSE 봉투일 수도 있다. 마지막 JSON 한 줄만 본다.
+        line = [l for l in raw.replace("data: ", "").splitlines() if l.strip().startswith("{")][-1]
+        got = json.loads(line)
+        assert "no such space" not in json.dumps(got), got
+    finally:
+        httpd.shutdown()
+
+
 class _Srv:
     def __init__(self, env=None):
         self._old = os.environ.get("VINC_OPENAI_APPS_CHALLENGE")
