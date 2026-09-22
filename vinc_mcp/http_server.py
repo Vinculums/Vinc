@@ -1060,6 +1060,9 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 # key= 있으면 관리 키 자동승인(부트스트랩), 없으면 회원 승인 흐름.
                 # 회원 경로가 켜져 있으면 이쪽이 정상 경로다(B-B3).
+                # ChatGPT 디렉터리 검토자의 로그인은 여기가 아니라 공홈 /connect 다.
+                # 매직링크는 거절 사유라 비밀번호 예외를 그 화면에 둔다.
+                # 근거: [[vinc.plan.chatgpt-reviewer-login]]
                 if params.get("key") or not self.app.member_connect_enabled():
                     location = gate.authorize(params)
                 else:
