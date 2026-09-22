@@ -426,7 +426,8 @@ class MCPHTTPApp:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
         return self._dispatcher
 
-    def resolve_auth(self, header: str | None, space: str | None = None) -> dict:
+    def resolve_auth(self, header: str | None, space: str | None = None,
+                     *, presented_at: str = "/mcp") -> dict:
         """Bearer 를 해석해 {ok, owner, plan, scope, source[, role, member]}. 스탬핑의 출처.
 
         `scope`(W18, [[decision:scoped-key-tier]]): 'full' 정확일치만 쓰기를 연다.
@@ -488,9 +489,7 @@ class MCPHTTPApp:
             owner = (rec or {}).get("owner") or ""
             if not owner.startswith("user:"):
                 return miss
-            bound = (rec.get("resource") or "").strip()
-            want = self.oauth.issuer + f"/t/{space}/mcp"
-            if bound and bound != want:
+            if not self._resource_ok(rec, presented_at):
                 return miss
             mem = self.verify_member(owner.split(":", 1)[1], space)
             if not mem or not str(mem.get("owner") or "").startswith("team:"):
@@ -519,16 +518,35 @@ class MCPHTTPApp:
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
             if rec:
-                bound = (rec.get("resource") or "").strip()
-                if bound and bound != self.oauth.issuer + "/mcp":
-                    # ChatGPT 가 붙인 resource 가 이 개인 주소와 안 맞으면
-                    # 토큰을 거절하고 WWW-Authenticate 로 다시 인가하게 한다.
+                if not self._resource_ok(rec, presented_at):
                     return miss
                 owner = rec.get("owner")
                 return {"ok": True, "owner": owner,
                         "plan": self._fresh_plan(owner, rec.get("plan")),
                         "scope": "full", "source": "oauth"}
         return miss
+
+    def _resource_ok(self, rec: dict, presented_at: str) -> bool:
+        """RFC 8707 audience — 토큰은 **자기가 발급된 끝점에 제시**돼야 한다.
+
+        ⚠ 여기서 보는 것은 요청이 **도착한 주소**지 `space` 인자가 아니다. 2026-09-22 에
+        그 둘을 섞어서, 개인 주소(`/mcp`)로 붙은 커넥터가 `space` 인자로 팀을 고르면
+        기대값이 `/t/<uuid>/mcp` 로 잡혀 **모든 팀 호출이 "no such space" 로 떨어졌다**.
+        증상이 고약했던 것은 `vinc_whoami` 가 계정에 묻는 다른 경로라 팀 목록을 계속
+        보여 줬다는 점이다 — 목록에는 있는데 접근만 안 되니, 스페이스가 사라진 것처럼
+        읽힌다. 정적 키는 이 분기를 안 지나서 멀쩡했고, 그 대비가 원인을 갈랐다.
+
+        스페이스는 주소가 아니라 **인자**다
+        ([[decision:the-space-is-an-argument-and-the-default-is-personal]]). 그러니
+        개인 주소로 발급된 토큰이 팀을 고르는 것은 정상이고, 그때 검사해야 하는 것은
+        "이 토큰이 이 끝점에 와도 되는가" 하나뿐이다. 멤버십은 그 다음에 `verify_member`
+        가 계정에 따로 묻는다 — 이 검사는 그 자리를 대신하지 않는다.
+
+        빈 `resource` 는 통과한다. 구 커넥터는 이 파라미터를 안 보내고, 없는 것을
+        불일치로 읽으면 이미 연결된 것들이 전부 끊긴다.
+        """
+        bound = (rec.get("resource") or "").strip()
+        return not bound or bound == self.oauth.issuer + presented_at
 
     def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
         """OAuth 토큰에 **동결된** 등급을 주기적으로 계정에 되묻는다.
@@ -1474,7 +1492,7 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(200, out)
 
     # ── 인증 + 로깅 ───────────────────────────────────────────────────────
-    def _auth(self, space: str | None = None) -> dict:
+    def _auth(self, space: str | None = None, *, presented_at: str | None = None) -> dict:
         """`resolve_auth` 를 부르고 **누가 불렀는지를 응답 로그에 실을 수 있게** 남긴다.
 
         호출부 셋이 각자 `self.app.resolve_auth(...)` 를 부르는데 owner 를 기억하는
@@ -1482,7 +1500,11 @@ class _Handler(BaseHTTPRequestHandler):
         카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
         [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
         """
-        auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
+        # 주소로 온 팀(`/t/<uuid>/mcp`)만 그 주소로 검사한다. `space` **인자**로 고른
+        # 팀은 요청이 개인 끝점에 도착한 것이므로 기본값이 맞다(_resource_ok 주석).
+        at = presented_at if presented_at is not None else (f"/t/{space}/mcp" if space else "/mcp")
+        auth = self.app.resolve_auth(self.headers.get("Authorization"), space,
+                                     presented_at=at)
         self._owner_tag = _owner_tag(auth.get("owner")) if auth.get("ok") else None
         return auth
 
