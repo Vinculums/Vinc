@@ -205,6 +205,48 @@ def test_bound_resource_must_match_this_server():
     assert app.resolve_auth("Bearer oktok")["ok"] is True
 
 
+def test_a_personal_token_can_still_name_a_team_with_the_space_argument():
+    """2026-09-22 회귀. `resource` 검사가 **도착한 주소**가 아니라 `space` 인자와
+    비교하고 있어서, 개인 주소(`/mcp`)로 붙은 커넥터가 `space` 로 팀을 고르면
+    기대값이 `/t/<uuid>/mcp` 로 잡혀 팀 호출이 전부 "no such space" 였다.
+
+    증상이 고약했던 것은 `vinc_whoami` 가 계정에 묻는 다른 경로라 팀 목록을 계속
+    보여 줬다는 점이다. 그리고 정적 키는 이 분기를 안 지나서 멀쩡했다 — 그 대비가
+    원인을 갈랐다. 스페이스는 주소가 아니라 인자다
+    (decision:the-space-is-an-argument-and-the-default-is-personal)."""
+    team = "01a074fe-5709-7735-b2a3-56228be26497"
+    gate = OAuthGate("https://mcp.example", None, store=Store(":memory:"))
+    gate.store.add_token("tok", "cid", "user:u1", "free", exp=9e9,
+                         resource="https://mcp.example/mcp")
+    app = MCPHTTPApp(_StubBridge(), oauth=gate,
+                     verify_member=lambda sub, sp: {"owner": f"team:{sp}",
+                                                    "role": "admin", "member": sub})
+    # 인자로 고른 팀: 요청은 개인 끝점에 도착했다. 기본 presented_at 이 그것이다.
+    got = app.resolve_auth("Bearer tok", team)
+    assert got["ok"] is True
+    assert got["owner"] == f"team:{team}"
+    assert got["role"] == "admin"
+
+
+def test_a_team_address_token_is_refused_at_a_different_team_address():
+    """반대쪽도 못 박는다. 주소로 붙은 토큰은 **그 주소**에만 제시할 수 있다 —
+    안 그러면 audience 바인딩이 이름만 남는다."""
+    a = "01a074fe-5709-7735-b2a3-56228be26497"
+    b = "01a05206-553c-7cad-97e7-69d6230c12b7"
+    gate = OAuthGate("https://mcp.example", None, store=Store(":memory:"))
+    gate.store.add_token("tok", "cid", "user:u1", "free", exp=9e9,
+                         resource=f"https://mcp.example/t/{a}/mcp")
+    app = MCPHTTPApp(_StubBridge(), oauth=gate,
+                     verify_member=lambda sub, sp: {"owner": f"team:{sp}",
+                                                    "role": "admin", "member": sub})
+    ok = app.resolve_auth("Bearer tok", a, presented_at=f"/t/{a}/mcp")
+    assert ok["ok"] is True
+    bad = app.resolve_auth("Bearer tok", b, presented_at=f"/t/{b}/mcp")
+    assert bad["ok"] is False
+    # 그 토큰은 개인 끝점에도 못 온다.
+    assert app.resolve_auth("Bearer tok")["ok"] is False
+
+
 class _Srv:
     def __init__(self, env=None):
         self._old = os.environ.get("VINC_OPENAI_APPS_CHALLENGE")
