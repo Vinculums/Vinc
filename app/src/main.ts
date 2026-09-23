@@ -3,7 +3,7 @@ import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
-import { renderSettings } from "./surfaces/settings";
+import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
 import { checkForUpdate } from "./update";
 import { mountSyncScheduler } from "./sync-scheduler";
@@ -12,8 +12,7 @@ import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { openSheet, wireScrimDismiss,
-         type SheetHandle } from "./components";
+import { openSheet, wireScrimDismiss } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 
@@ -26,7 +25,7 @@ const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
 };
 const ORDER: Surface[] = ["view", "search"];
 // 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
-// 이지만 사용자에게는 `Home` 이다 — 발주자 지시 2026-07-27.
+// 이고 화면 이름도 View 다(2026-09-22). D61 의 Home 노출은 이 지시가 덮는다.
 const SURFACE_LABEL: Record<Surface, string> = {
   view: COPY.ui.topbar.home, search: "Search",
 };
@@ -102,7 +101,7 @@ async function route() {
     const rest = location.hash.replace(/^#[^/]*/, "");
     location.hash = `#${ALIAS[rawHead]}${rest}`;
     if (rawHead in ALIAS_TOOLS) {
-      void import("./tools").then((m) => m.openTools(ALIAS_TOOLS[rawHead]));
+      openSettings("data", ALIAS_TOOLS[rawHead]);
     }
     return;                                                          // hashchange → 재진입
   }
@@ -140,16 +139,7 @@ document.title = `Vinc · ${COPY.tagline}`;
 // 여기 있던 popIn/popOut/fadeIn/fadeOut/wireScrimDismiss/Esc 배선 여섯 벌
 // (시트가 전부 갖고 있다: 트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리).
 const settingsBtn = document.getElementById("settings-btn")!;
-let settingsSheet: SheetHandle | null = null;
-settingsBtn.addEventListener("click", () => {
-  if (settingsSheet) { settingsSheet.close(); settingsSheet = null; return; }
-  const sheet = openSheet({
-    title: COPY.ui.topbar.settings, size: "panel",
-    onClose: () => { settingsSheet = null; },
-  });
-  settingsSheet = sheet;
-  void renderSettings(sheet.body);
-});
+settingsBtn.addEventListener("click", () => openSettings("general", undefined, true));
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
 const palette = document.getElementById("palette")!;
@@ -162,10 +152,10 @@ const COMMANDS: Cmd[] = [
   // 여태 이 둘은 `#packs` 로 보냈다. 표면이 사라졌으니 이제 직접 그 갈래를 연다 —
   // 별칭을 한 번 거치게 두면 팔레트가 주소창을 흔들고 화면이 한 번 갈아엎힌다.
   { label: COPY.ui.palette.ingest, hint: COPY.ui.tools.title,
-    run: () => void import("./tools").then((m) => m.openTools("import")) },
+    run: () => openSettings("data", "import") },
   { label: COPY.ui.palette.share, hint: COPY.ui.tools.title,
-    run: () => void import("./tools").then((m) => m.openTools("share")) },
-  { label: COPY.ui.palette.settings, hint: "", run: () => (document.getElementById("settings-btn") as HTMLElement).click() },
+    run: () => openSettings("data", "share") },
+  { label: COPY.ui.palette.settings, hint: "", run: () => openSettings("general", undefined, true) },
 ];
 
 function openPalette() {

@@ -249,10 +249,10 @@ body {
   /* 렌즈 패널 자기 폭. 세그가 두 줄로 접히지 않는 하한이 이 값의 이유다
      (상단 바 손잡이 묶음과는 무관하다 — 그 연결은 2026-09-09 에 철회됐다). */
   --lens-panel-w: 20.5rem;
-  /* 앱을 다루는 창(설정 · 도구 · GRAPH.md)의 규격. 셋이 같은 상자를 쓴다 —
-     여태 셋이 각자 다른 폭·높이·자리였다(발주자 지시 2026-09-09). */
-  --modal-w: min(42rem, 94vw);
-  --modal-h: min(34rem, 86vh);
+  /* 앱을 다루는 창(설정). 분류 레일(256px) + 본문이 Figma 1168×792 에 맞는다.
+     도구·GRAPH.md 는 이제 이 상자 안의 분류라 상자가 하나다(2026-09-22). */
+  --modal-w: min(73rem, 94vw);
+  --modal-h: min(49.5rem, 90vh);
 
   /* ── 면의 층(깊이 → 칠) ──────────────────────────────────────────────
      깊이는 세 값으로 말한다: **판(홈) → 내용 → 구조 크롬**. 그 위는 칠이 아니라
@@ -409,7 +409,7 @@ body {
 .rail-home { text-decoration: none; color: hsl(var(--muted-foreground)); }
 .rail-home.on { color: hsl(var(--foreground)); }
 .rail-home.on .rail-name { color: hsl(var(--foreground)); font-weight: 600; }
-.rail-home svg { width: 18px; height: 18px; }
+.rail-home svg, .rail-dest svg { width: 18px; height: 18px; }
 .rail-btn:hover, .rail-home:hover { background: hsl(var(--ring) / .12); }
 /* 고른 종은 **글자로만** 말한다(발주자 지시 2026-09-09) — 홈이 이미 그렇게 하고
    있어서 둘이 같은 언어가 된다(`.rail-home.on`).
@@ -430,16 +430,23 @@ body {
 }
 .rail-btn[aria-pressed="true"] .rail-n { color: hsl(var(--muted-foreground)); }
 .rail-btn { position: relative; }
-/* 구분선은 **하나뿐이다**: 위는 가는 곳(홈), 아래는 고르는 것(종·주제).
-   ⚠ Agent 앞에도 같은 선이 있었는데 걷어냈다(발주자 지시 2026-09-09). 같은 그림이
-   두 경계를 말하면(내비/종 · 종/주제) 어느 쪽도 못 말한다 — 뜻을 나누려면 선마다
-   캡션이 필요한데 46px 레일에 `종`·`주제` 두 줄을 새로 들이는 값이 그 정보값보다
-   크다. Agent 가 종이 아니라는 사실은 툴팁("Agent 역할")과 **개수가 없다는 것**이
-   이미 말한다(종별 집계로 셀 수 없어서 안 그린다).
+/* 구분선은 **하나뿐이다**: 위는 가는 곳(홈·Agent), 아래는 고르는 것(종).
+   2026-09-21 scope-back 이 Agent 를 선 위로 올렸다. 선이 둘이면(내비/종 · 종/주제)
+   46px 레일에 캡션이 더 필요해지고, 그 값이 정보값보다 크다.
    폭은 레일 안쪽 전체다 — 32px 짜리 토막은 나누는 선이 아니라 떠 있는 대시로 읽힌다. */
 .rail-sep {
   width: 100%; height: 0; margin: var(--space-1, .25rem) 0; flex: 0 0 auto;
   border: none; border-top: 1px solid hsl(var(--border));
+}
+/* 같은 표식을 쓰는 종 묶음(구 = 개념·결정, 정사면체 = 기록·사건·엔티티).
+   채움은 토큰만 쓴다. Figma 의 흰 5% 는 다크 전제라 라이트에서 뒤집힌다. */
+.rail-group {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: var(--space-1, .25rem);
+  width: 100%;
+  padding: 2px 0;
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--foreground) / .05);
 }
 /* 남는 자리 — 아래 손잡이를 레일 **맨 밑**으로 밀어 내린다. */
 .rail-fill { flex: 1 1 auto; }
@@ -807,6 +814,28 @@ body {
 .lnb-doc[style*="--ink:2"] .lnb-dot { width: 4px; height: 4px; }
 .lnb-doc.on .lnb-dot { background: hsl(var(--ring)); border-color: hsl(var(--ring)); }
 .lnb-dtitle { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Agent 로스터 목록 — 주제 트리가 아니라 팀 섹션 + 각 줄의 관계.
+   근거: [[decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22]] */
+.lnb-agent-list { gap: var(--space-1, .25rem); }
+.lnb-agent-team {
+  margin: var(--space-2, .5rem) 0 0; padding: 0 var(--pad-row);
+  font-size: .7rem; font-weight: 600; line-height: 1.4;
+  color: hsl(var(--caption-foreground));
+}
+.lnb-agent-team:first-child { margin-top: 0; }
+.lnb-agent-role {
+  flex-direction: column; align-items: stretch; gap: .1rem;
+  min-height: unset; height: auto;
+  padding-top: .35rem; padding-bottom: .35rem;
+}
+.lnb-agent-role .lnb-dtitle {
+  overflow: visible; text-overflow: unset; white-space: normal;
+  font-weight: 600; color: hsl(var(--foreground));
+}
+.lnb-agent-rel {
+  display: block; font-size: .7rem; line-height: 1.35; font-weight: 400;
+  color: hsl(var(--caption-foreground));
+}
 .lnb-none { margin: .35rem .6rem; font-size: var(--fs-sm); }
 .lnb-retry { margin: .25rem .5rem; }
 .lnb-navrow:focus-visible, .lnb-group:focus-visible, .lnb-doc:focus-visible {
@@ -1131,6 +1160,19 @@ body {
    레일이 `align-items: stretch` 라 가로로 늘어나므로 중앙에 세워 준다 — 그러면
    아래 레일 버튼들과 같은 중심선(레일 폭의 절반)에 선다. */
 #tb-shell-toggle { flex: 0 0 auto; align-self: center; }
+#rail-settings {
+  flex: 0 0 auto;
+  position: relative;
+  margin-top: var(--space-1, .25rem);
+}
+#rail-settings .rail-name { color: hsl(var(--caption-foreground)); }
+#rail-settings-badge {
+  position: absolute; top: .1rem; right: .1rem; min-width: .9rem; height: .9rem;
+  padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
+  color: hsl(var(--background)); font-size: .5625rem; line-height: .9rem;
+  font-weight: 650; text-align: center;
+}
+#rail-settings-badge[hidden] { display: none; }
 /* 종 목록 — 손잡이 아래의 나머지 전부. 남는 자리를 이 칸이 먹는다(`.rail-fill` 이
    그 안에서 같은 일을 한 번 더 한다 — 종 목록이 짧을 때 위로 붙게). */
 #rail-kinds {
@@ -2871,44 +2913,92 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   }
 }
 
-/* Settings — 중앙 모달 + 상단 탭(GNB). 딤은 사이드바 포함 전면 커버.
-   플로팅 글라스 문법(D37 @supports 블록이 유리화). */
-/* ⚠ `#settings-scrim` 과 `#settings-popover` 의 규칙은 **사라졌다**(2026-09-09).
-   설정은 시트다(`openSheet`, size "panel") — 상자·자리·딤·모션이 전부 시트의
-   것이다. 아래 `.settings-*` 는 그 시트 **안의 내용**(탭바·몸)이라 남는다.
-   머리의 ✕ 도 시트 것이므로 `.settings-close` 는 쓰이지 않는다. */
-/* 탭바 — 시트 몸의 첫 줄. */
-.settings-head { display: flex; align-items: center; flex: 0 0 auto; }
-.settings-tabs { display: flex; gap: .15rem; flex-wrap: wrap; }
-.settings-tab {
-  font: inherit; border: none; background: none; cursor: pointer;
-  padding: .4rem .7rem; border-radius: .5rem; color: hsl(var(--muted-foreground));
+/* Settings — 왼쪽 분류 레일 + 본문(2026-09-22). 딤·머리·✕ 는 시트의 것이다.
+   분류는 일반·화면 · 읽기·View · 계정·동기화 · AI 연결 · 데이터 · GRAPH.md ·
+   고급 · 앱 정보. 웹 Vinc 는 AI·고급을 숨긴다. */
+.sheet[data-size="panel"]:has(.settings) .sheet-body {
+  padding: 0; overflow: hidden; display: flex;
 }
-.settings-tab:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-.settings-tab.active { background: hsl(var(--muted)); color: hsl(var(--foreground)); font-weight: 600; }
-/* ⚠ `.settings-close` 규칙도 사라졌다 — 닫기는 시트 제목 줄의 ✕ 하나다. */
-/* 고정 높이 상자 안에서 **본문만** 늘어나고 스크롤한다(모달 크기는 불변). */
-.settings-body {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  padding: var(--space-4, 1rem) var(--space-5, 1.25rem) var(--space-6, 1.5rem);
+.settings {
+  display: flex; flex: 1 1 auto; min-height: 0; width: 100%;
 }
-.settings-body > label:first-child { margin-top: 0; }
-/* 이 앱이 몇 버전인가 — 설정 시트 바닥의 한 줄. 탭과 무관하게 늘 보인다.
-   2026-09-11 에 화면만 보고 웹 Vinc 가 0.9.1 인지 판정할 방법이 없어서 넣었다. */
+.settings-cats {
+  flex: 0 0 16rem; width: 16rem;
+  display: flex; flex-direction: column; gap: .5rem;
+  padding: 1.5rem 1.5rem 1.25rem;
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+}
+.settings-cat {
+  position: relative;
+  display: flex; align-items: center;
+  width: 100%; height: 2.5rem; padding: 0 .75rem;
+  border: none; border-radius: 10px; background: none;
+  color: hsl(var(--foreground)); font: inherit; font-size: .9375rem; font-weight: 500;
+  text-align: left; cursor: pointer;
+}
+.settings-cat:hover { background: hsl(var(--muted) / .55); }
+.settings-cat.on { background: hsl(var(--muted)); font-weight: 600; }
+.settings-cat-space { flex: 1 1 auto; min-height: .5rem; }
+.settings-cat-badge {
+  margin-left: auto; min-width: 1rem; height: 1rem; padding: 0 .22rem;
+  border-radius: .5rem; background: hsl(var(--ring));
+  color: hsl(var(--background)); font-size: .625rem; line-height: 1rem;
+  font-weight: 650; text-align: center;
+}
+.settings-cat-badge[hidden] { display: none; }
+.settings-main {
+  flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto;
+  padding: 2rem 2rem 1.5rem;
+}
+.settings-main > h2 {
+  margin: 0 0 .35rem; font-size: 1.5rem; font-weight: 600; line-height: 1.25;
+}
+.settings-main > h2 + .hint { margin-top: 0; margin-bottom: 1.25rem; }
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1.5rem; min-height: 5.5rem;
+}
+.settings-row-copy { flex: 1 1 auto; min-width: 0; }
+.settings-row-copy strong { display: block; font-size: 1.0625rem; font-weight: 600; }
+.settings-row-copy .hint { margin: .25rem 0 0; }
+.settings-select {
+  width: 15.5rem; font: inherit; padding: .5rem .75rem;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.settings-px {
+  display: flex; align-items: center; gap: .4rem;
+  color: hsl(var(--muted-foreground)); font-size: .875rem;
+}
+.settings-px input {
+  width: 5.5rem; font: inherit; padding: .45rem .55rem;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.settings-build {
+  font-size: 1.0625rem; font-variant-numeric: tabular-nums; margin: .5rem 0 1rem;
+}
 .settings-ver {
-  flex: 0 0 auto; margin-top: .75rem; padding-top: .6rem;
-  border-top: 1px solid hsl(var(--border));
-  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
 .settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
-/* 설정 몸 안의 label·input — 선택자가 `#settings-popover` 였다(그 요소는 사라졌다).
-   시트 안의 설정 내용을 가리키도록 `.settings-body` 로 옮긴다. */
-.settings-body label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
-.settings-body input {
+.settings-main label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+.settings-main input:not([type="checkbox"]):not([type="radio"]):not([type="number"]) {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
   background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+@media (max-width: 52rem) {
+  .settings { flex-direction: column; }
+  .settings-cats {
+    flex: 0 0 auto; width: auto; flex-direction: row; flex-wrap: nowrap;
+    overflow-x: auto; border-right: none;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .settings-cat { width: auto; white-space: nowrap; }
+  .settings-cat-space { display: none; }
 }
 
 /* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.

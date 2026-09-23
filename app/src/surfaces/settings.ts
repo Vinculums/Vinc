@@ -2,93 +2,245 @@ import { buildId, cfg, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
-import { esc } from "../components";
+import { esc, openSheet, type SheetHandle } from "../components";
+import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 
-/** Settings — 중앙 모달 + 상단 탭(GNB). 3탭:
- *  · Account   계정 연결(디바이스 플로우) + 그래프 동기화 + Theme + Language + Lock
- *  · Connections MCP(로컬 MCP 호스트 연결·해제) — 셸 전용
- *  · Advanced  작업공간(owner)·엔진·시크릿·수동 동기화 키 — 셸 전용
- *
- *  Data 탭은 없앴다(P15). 그 탭에는 `Packs 열기` 버튼 하나뿐이었고, 그 버튼은 상단
- *  바에 가져오기·공유가 올라간 뒤 고아가 된 표면에 걸어 둔 임시 구명줄이었다. 이제
- *  그 표면의 다섯 기능이 전부 Tools 에 있으므로 구명줄도 함께 걷는다.
- *  웹 Vinc(호스티드)는 셸 전용 탭(Connections/Advanced)과 계정연결·동기화 섹션을 숨긴다.
- *
- *  계정 연결(디바이스 플로우): 회원 키 복붙 대체 — [계정 연결]이 시스템 브라우저로
- *  vincs.io/connect-app 을 열고, 발급된 vinc_sk_* 가 사이드카 루프백으로 돌아오면
- *  폴링으로 1회 수령해 localStorage 에 저장한다(B1 유지 — 앱은 계정 API 미호출). */
-export async function renderSettings(el: HTMLElement) {
+/** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
+ *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
+ *  를 한 상자에 담는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
+ *  웹 Vinc 는 셸 전용 분류(AI 연결 · 고급)와 계정연결·동기화 섹션을 숨긴다. */
+
+export type SettingsCat =
+  | "general" | "reading" | "account" | "ai"
+  | "data" | "graphmd" | "advanced" | "about";
+export type DataTab = "create" | "import" | "share";
+
+type Live = {
+  go: (cat: SettingsCat, dataTab?: DataTab) => void;
+  close: () => void;
+};
+let live: Live | null = null;
+
+/** 설정 시트를 연다. 이미 열려 있으면 `toggle` 이 참일 때만 닫고, 아니면 분류만 옮긴다. */
+export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, toggle = false) {
+  if (live) {
+    if (toggle) { live.close(); return; }
+    live.go(start, dataTab);
+    return;
+  }
+  const sheet = openSheet({
+    title: COPY.ui.settingsUi.title,
+    size: "panel",
+    onClose: () => { live = null; },
+  });
+  let queued: { cat: SettingsCat; tab?: DataTab } | null = null;
+  live = {
+    go: (cat, tab) => { queued = { cat, tab }; },
+    close: sheet.close,
+  };
+  void renderSettings(sheet.body, sheet, start, dataTab).then((go) => {
+    if (!live) return;
+    live.go = go;
+    if (queued) go(queued.cat, queued.tab);
+  });
+}
+
+export async function renderSettings(
+  el: HTMLElement,
+  sheet: SheetHandle,
+  start: SettingsCat = "general",
+  dataTab?: DataTab,
+): Promise<(cat: SettingsCat, tab?: DataTab) => void> {
   const U = COPY.ui.settingsUi;
   // 셸이면 계정/MCP/동기화용 API 를 미리 로드(웹은 불요).
   const mod = WEB ? null : await import("../api");
   const api = mod?.api;
   const pollJob = mod?.pollJob;
 
-  type TabId = "account" | "connections" | "advanced";
-  const TABS: { id: TabId; label: string }[] = [
-    { id: "account", label: U.tabAccount },
-    ...(!WEB ? [{ id: "connections" as TabId, label: U.tabConnections }] : []),
-    ...(!WEB ? [{ id: "advanced" as TabId, label: U.tabAdvanced }] : []),
+  const ALL_CATS: { id: SettingsCat; label: string; desktop?: boolean }[] = [
+    { id: "general", label: U.navGeneral },
+    { id: "reading", label: U.navReading },
+    { id: "account", label: U.navAccount },
+    { id: "ai", label: U.navAi, desktop: true },
+    { id: "data", label: U.navData },
+    { id: "graphmd", label: U.navGraphmd },
+    { id: "advanced", label: U.navAdvanced, desktop: true },
+    { id: "about", label: U.navAbout },
   ];
-  let activeTab: TabId = "account";
+  const CATS = ALL_CATS.filter((c) => !c.desktop || !WEB);
 
-  // ── 탭바 + 몸 ─────────────────────────────────────────────────────────────
-  //  ⚠ **닫기 버튼이 없다**(2026-09-09). 이 화면은 이제 시트 안에서 열리고
-  //  (`openSheet`), 시트가 제목 줄에 ✕ 를 이미 갖고 있다 — 여기서 하나 더 그리면
-  //  같은 상자에 닫기가 둘이 된다. Esc·스크림·✕ 세 탈출구도 시트의 것이다.
+  let active: SettingsCat = CATS.some((c) => c.id === start) ? start : "general";
+  let toolsTab: DataTab = dataTab ?? "create";
+  let cleanup: (() => void) | null = null;
+
   function shell() {
+    cleanup?.();
+    cleanup = null;
+    sheet.foot.innerHTML = "";
     el.innerHTML = `
-      <div class="settings-head">
-        <div class="settings-tabs" role="tablist">
-          ${TABS.map((t) => `<button class="settings-tab${t.id === activeTab ? " active" : ""}"
-            data-tab="${t.id}" role="tab">${t.label}</button>`).join("")}
-        </div>
-      </div>
-      <div class="settings-body" id="settings-body"></div>
-      <!-- 이 앱이 몇 버전인가. **화면에서 그것을 알 수 있는 유일한 자리다.**
-           2026-09-11 에 웹 Vinc 가 0.9.1 인지 아닌지를 놓고 한나절이 갔다. 서빙되는
-           번들에는 0.9.1+491d92e 가 박혀 있었지만 그 값은 사이드카 진단 문자열에만
-           쓰여서 화면을 보고는 판정할 방법이 없었다. 탭이 아니라 셸에 두는 이유는
-           탭 구성이 웹과 데스크탑에서 다르기 때문이다(WEB 이 둘을 숨긴다).
-           번역하지 않는다 — 값이 버전 문자열이라 언어가 없고, 덱에 키를 늘리면
-           그만큼 두 덱이 갈릴 자리가 는다. -->
-      <div class="settings-ver hint">Vinc ${esc(buildId)}</div>`;
-    el.querySelectorAll<HTMLElement>(".settings-tab").forEach((b) =>
+      <div class="settings">
+        <nav class="settings-cats" aria-label="${esc(U.title)}">
+          ${CATS.map((c) => `<button type="button" class="settings-cat${c.id === active ? " on" : ""}"
+            data-cat="${c.id}" role="tab" aria-selected="${c.id === active}">${esc(c.label)}${
+              c.id === "graphmd" ? `<span id="settings-graphmd-badge" class="settings-cat-badge" hidden></span>` : ""
+            }</button>`).join("")}
+          <span class="settings-cat-space"></span>
+          <div class="settings-ver hint">Vinc ${esc(buildId)}</div>
+        </nav>
+        <div class="settings-main" id="settings-body"></div>
+      </div>`;
+    el.querySelectorAll<HTMLElement>(".settings-cat").forEach((b) =>
       b.addEventListener("click", () => {
-        activeTab = b.dataset.tab as TabId;
+        const next = b.dataset.cat as SettingsCat;
+        if (next === active) return;
+        active = next;
         shell();
       }));
+    void import("../conventions").then((m) => m.refreshBadge());
     renderBody();
   }
 
   function renderBody() {
+    cleanup?.();
+    cleanup = null;
+    sheet.foot.innerHTML = "";
     const body = el.querySelector<HTMLElement>("#settings-body")!;
-    if (activeTab === "account") renderAccount(body);
-    else if (activeTab === "connections") renderConnections(body);
-    else renderAdvanced(body);
+    if (active === "general") renderGeneral(body);
+    else if (active === "reading") renderReading(body);
+    else if (active === "account") renderAccount(body);
+    else if (active === "ai") renderConnections(body);
+    else if (active === "data") renderData(body);
+    else if (active === "graphmd") renderGraphmd(body);
+    else if (active === "advanced") renderAdvanced(body);
+    else renderAbout(body);
   }
 
-  // 세그먼트 빌더(테마·언어) — 활성 표시.
-  const themeSeg = () => ["dark", "light", "auto"].map((t) =>
-    `<button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t ? " active" : ""}"
-      data-theme-opt="${t}">${t}</button>`).join("");
-  const langSeg = () => (["en", "ko"] as const).map((l) =>
-    `<button class="chip${cfg.lang === l ? " active" : ""}"
-      data-lang-opt="${l}">${l === "en" ? "English" : "한국어"}</button>`).join("");
+  const THEME_OPTS = [
+    { id: "light", label: U.themeLight },
+    { id: "dark", label: U.themeDark },
+    { id: "auto", label: U.themeSystem },
+  ] as const;
+  const themeSeg = () => THEME_OPTS.map((t) =>
+    `<button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t.id ? " active" : ""}"
+      data-theme-opt="${t.id}">${esc(t.label)}</button>`).join("");
 
   function wireThemeLang(body: HTMLElement) {
-    body.querySelectorAll<HTMLElement>("[data-lang-opt]").forEach((b) =>
-      b.addEventListener("click", () => {   // D42 — 언어 전환은 전 표면 재렌더 필요 → reload
-        cfg.lang = b.dataset.langOpt as "en" | "ko";
-        location.reload();
-      }));
+    body.querySelector<HTMLSelectElement>("#s-lang")?.addEventListener("change", (e) => {
+      cfg.lang = (e.target as HTMLSelectElement).value as "en" | "ko";
+      location.reload();
+    });
     body.querySelectorAll<HTMLElement>("[data-theme-opt]").forEach((b) =>
       b.addEventListener("click", async () => {
         localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
         const { applyTheme } = await import("../main");
         applyTheme();
-        renderAccount(body);   // 활성 칩 갱신
+        renderGeneral(body);
       }));
+  }
+
+  function renderGeneral(body: HTMLElement) {
+    const lang = cfg.lang === "en" ? "en" : "ko";
+    body.innerHTML = `
+      <h2>${esc(U.navGeneral)}</h2>
+      <p class="hint">${esc(U.generalIntro)}</p>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>${esc(U.theme)}</strong>
+          <p class="hint">${esc(U.themeHint)}</p>
+        </div>
+        <span class="seg">${themeSeg()}</span>
+      </div>
+      <hr class="settings-sep" />
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>${esc(U.language)}</strong>
+          <p class="hint">${esc(U.languageHint)}</p>
+        </div>
+        <select id="s-lang" class="settings-select">
+          <option value="ko"${lang === "ko" ? " selected" : ""}>한국어</option>
+          <option value="en"${lang === "en" ? " selected" : ""}>English</option>
+        </select>
+      </div>
+      <p class="hint">${esc(U.languageReload)}</p>`;
+    wireThemeLang(body);
+  }
+
+  function renderReading(body: HTMLElement) {
+    const rem = loadPrefs().railW;
+    const px = Math.round(rem * 16);
+    const minPx = Math.round(RAIL_MIN * 16);
+    const maxPx = Math.round(RAIL_MAX * 16);
+    body.innerHTML = `
+      <h2>${esc(U.navReading)}</h2>
+      <p class="hint">${esc(U.readingIntro)}</p>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>${esc(U.readingPane)}</strong>
+          <p class="hint">${esc(U.readingPaneHint)}</p>
+        </div>
+        <label class="settings-px">
+          <input id="s-rail-w" type="number" min="${minPx}" max="${maxPx}" step="16" value="${px}" />
+          <span>px</span>
+        </label>
+      </div>
+      <hr class="settings-sep" />
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>${esc(U.readingOpenOpts)}</strong>
+          <p class="hint">${esc(U.readingOpenOptsHint)}</p>
+        </div>
+        <button class="btn" type="button" id="s-open-lens">${esc(U.readingOpenOpts)}</button>
+      </div>
+      <p class="hint" id="s-lens-note" hidden></p>`;
+    body.querySelector<HTMLInputElement>("#s-rail-w")!.addEventListener("change", (e) => {
+      const n = Number((e.target as HTMLInputElement).value);
+      const next = Math.min(RAIL_MAX, Math.max(RAIL_MIN, n / 16));
+      savePrefs({ ...loadPrefs(), railW: next });
+      document.getElementById("shell")?.style.setProperty("--rail-size", `${next}rem`);
+      (e.target as HTMLInputElement).value = String(Math.round(next * 16));
+    });
+    body.querySelector("#s-open-lens")!.addEventListener("click", () => {
+      const lens = document.getElementById("view-lens");
+      if (!lens) {
+        const note = body.querySelector<HTMLElement>("#s-lens-note")!;
+        note.hidden = false;
+        note.textContent = U.readingOpenOptsNeedView;
+        return;
+      }
+      sheet.close();
+      lens.click();
+    });
+  }
+
+  function renderAbout(body: HTMLElement) {
+    body.innerHTML = `
+      <h2>${esc(U.navAbout)}</h2>
+      <p class="hint">${esc(U.aboutIntro)}</p>
+      <p class="settings-build">Vinc ${esc(buildId)}</p>
+      <p class="hint">${esc(WEB ? COPY.sovereigntyWeb : COPY.sovereignty)}</p>`;
+  }
+
+  function renderData(body: HTMLElement) {
+    body.innerHTML = `
+      <h2>${esc(U.navData)}</h2>
+      <p class="hint">${esc(U.dataIntro)}</p>
+      <div id="settings-tools"></div>`;
+    const pane = body.querySelector<HTMLElement>("#settings-tools")!;
+    void import("../tools").then((m) => {
+      cleanup = m.mountTools(
+        { el: sheet.el, body: pane, foot: sheet.foot, close: sheet.close }, toolsTab);
+    });
+  }
+
+  function renderGraphmd(body: HTMLElement) {
+    body.innerHTML = `
+      <h2>${esc(U.navGraphmd)}</h2>
+      <p class="hint">${esc(U.graphmdIntro)}</p>
+      <div id="settings-conv"></div>`;
+    const pane = body.querySelector<HTMLElement>("#settings-conv")!;
+    void import("../conventions").then((m) => {
+      void m.mountConventions(pane, sheet);
+    });
   }
 
   // ── Account 탭 ────────────────────────────────────────────────────────────
@@ -98,14 +250,15 @@ export async function renderSettings(el: HTMLElement) {
     // "셸 편집 충돌 회피"였는데 그 충돌은 이미 없고, 덱 밖 카피는 언어 프록시도
     // 게이트도 타지 않는다(tests/test_copy_parity.py 가 이제 막는다).
     body.innerHTML = `
+      <h2>${esc(U.navAccount)}</h2>
+      <p class="hint">${esc(U.accountIntro)}</p>
       ${WEB ? `
       <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
       <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
-      <div id="space-note" class="hint" style="font-size:.8rem"></div>
-      <hr class="settings-sep" />` : ""}
+      <div id="space-note" class="hint" style="font-size:.8rem"></div>` : ""}
       ${!WEB ? `
       <!-- 저장 위치 — 상단 바에 상시로 떠 있던 "● 로컬" 칩이 여기로 왔다(발주자 지시
            2026-08-05). 바뀌지 않는 사실은 상시 점유할 자격이 없다: 궁금할 때 와서 보는
@@ -136,16 +289,7 @@ export async function renderSettings(el: HTMLElement) {
       <div id="sync-domains" class="syncdom">…</div>
       <p class="hint" id="sync-picked" style="font-size:.78rem;margin:.35rem 0 0"></p>
       <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
-      <div id="sync-result" class="hint" style="font-size:.78rem"></div>
-      <hr class="settings-sep" />` : ""}
-      <label>${U.appearance}</label>
-      <label>${U.language}</label>
-      <p><span class="seg">${langSeg()}</span></p>
-      <label>${U.theme}</label>
-      <p><span class="seg">${themeSeg()}</span></p>
-      <hr class="settings-sep" />
-      <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>`;
-    wireThemeLang(body);
+      <div id="sync-result" class="hint" style="font-size:.78rem"></div>` : ""}`;
     if (WEB) {
       // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
       const box = body.querySelector<HTMLElement>("#web-acct");
@@ -444,6 +588,8 @@ export async function renderSettings(el: HTMLElement) {
         </span>
       </li>`).join("");
     body.innerHTML = `
+      <h2>${esc(U.navAi)}</h2>
+      <p class="hint">${esc(U.aiIntro)}</p>
       <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
       <ul class="rowlist">${rows}</ul>
       <p class="hint hint-sm">${U.mcpOtherHint}</p>
@@ -581,6 +727,10 @@ export async function renderSettings(el: HTMLElement) {
   // ── Advanced 탭 (셸 전용) ─────────────────────────────────────────────────
   function renderAdvanced(body: HTMLElement) {
     body.innerHTML = `
+      <h2>${esc(U.navAdvanced)}</h2>
+      <p class="hint">${esc(U.advancedIntro)}</p>
+      <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>
+      <hr class="settings-sep" />
       <label for="s-owner">${U.workspace}</label>
       <p class="hint">${U.workspaceHint}</p>
       <input id="s-owner" value="${cfg.owner}" />
@@ -634,5 +784,11 @@ export async function renderSettings(el: HTMLElement) {
     keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   }
 
+  function go(cat: SettingsCat, tab?: DataTab) {
+    if (tab) toolsTab = tab;
+    active = CATS.some((c) => c.id === cat) ? cat : "general";
+    shell();
+  }
   shell();
+  return go;
 }
