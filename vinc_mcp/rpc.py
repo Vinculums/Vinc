@@ -225,6 +225,19 @@ _NARROW_HINT = {
 }
 
 
+def _tool_result(text: str, name: str, *, is_error: bool) -> dict:
+    """도구 결과 봉투. ChatGPT 인용 쌍은 structuredContent 도 같이 싣는다."""
+    out = {"content": [{"type": "text", "text": text}], "isError": is_error}
+    if not is_error and name in ("search", "fetch"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            out["structuredContent"] = payload
+    return out
+
+
 def _result_text(text: str, name: str, args: dict) -> dict:
     """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
 
@@ -233,7 +246,7 @@ def _result_text(text: str, name: str, args: dict) -> dict:
     도구별 표식(has_more/next_cursor, shrunk)이 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
     미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다)."""
     if len(text) <= MAX_RESULT_CHARS:
-        return {"content": [{"type": "text", "text": text}], "isError": False}
+        return _tool_result(text, name, is_error=False)
     shrink = tools.SHRINKERS.get(name)
     if shrink is not None:
         try:
@@ -243,8 +256,7 @@ def _result_text(text: str, name: str, args: dict) -> dict:
         if slim is not None:
             slim_text = json.dumps(slim, ensure_ascii=False)
             if len(slim_text) <= MAX_RESULT_CHARS:
-                return {"content": [{"type": "text", "text": slim_text}],
-                        "isError": False}
+                return _tool_result(slim_text, name, is_error=False)
     hint = _NARROW_HINT.get(name, "request a narrower slice")
     msg = (f"Result too large: {len(text):,} characters (limit {MAX_RESULT_CHARS:,}). "
            f"Nothing was changed. Narrow the request — {hint}.")
