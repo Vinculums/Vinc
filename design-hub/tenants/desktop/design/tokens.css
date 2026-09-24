@@ -1,5 +1,5 @@
-/* AUTO-GENERATED — design-tokens.json → gen_tokens.py. Do not hand-edit.
-   SSoT: DESIGN · mode: light-first · color: HSL channels. */
+/* AUTO-GENERATED — design-tokens.json → lime-design gen_tokens. Do not hand-edit.
+   SSoT: DESIGN/design-tokens.json · mode: light-first · color: HSL channels. */
 :root {
   /* Colors (semantic, light) — resolved from primitive references */
   --background: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -11,15 +11,15 @@
   --caption-foreground: 235 5% 53%; /* #82838D  ← {ink_400} */
   --border: 60 6% 86%; /* #DEDEDA  ← {hairline} */
   --input: 60 6% 86%; /* #DEDEDA  ← {hairline} */
-  --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --focus: 236 30% 28%; /* #32355C  ← {indigo_900} */
-  --primary: 236 30% 28%; /* #32355C  ← {indigo_900} */
+  --ring: 235 5% 53%; /* #82838D  ← {ink_400} */
+  --focus: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --primary: 240 6% 10%; /* #17171A  ← {ink_900} */
   --primary-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --accent: 60 6% 91%; /* #E9E9E6  ← {grain_200} */
   --accent-foreground: 240 6% 10%; /* #17171A  ← {ink_900} */
-  --link: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
-  --info: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
-  --info-strong: 235 31% 42%; /* #4A4F8C  ← {indigo_600} */
+  --link: 240 6% 10%; /* #17171A  ← {ink_900} */
+  --info: 233 5% 35%; /* #55565E  ← {ink_600} */
+  --info-strong: 240 6% 10%; /* #17171A  ← {ink_900} */
   --info-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
   --success: 151 39% 30%; /* #2F6B4E  ← {ok_700} */
   --success-foreground: 60 7% 95%; /* #F2F2F0  ← {grain_100} */
@@ -61,41 +61,41 @@
   --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
 
   /* Depth */
-  --shadow-soft: 0 20px 40px -12px hsl(230 20% 6% / 0.08);
-  --shadow-float: 0 30px 60px -16px hsl(230 20% 6% / 0.12);
+  --shadow-soft: 0 20px 40px -12px hsl(0 0% 0% / 0.08);
+  --shadow-float: 0 30px 60px -16px hsl(0 0% 0% / 0.12);
   --shadow-elev-0: none;
-  --shadow-elev-1: 0 1px 2px hsl(230 20% 6% / 0.07);
-  --shadow-elev-2: 0 4px 12px hsl(230 20% 6% / 0.11);
-  --shadow-elev-3: 0 10px 30px hsl(230 20% 6% / 0.16);
+  --shadow-elev-1: 0 1px 2px hsl(0 0% 0% / 0.07);
+  --shadow-elev-2: 0 4px 12px hsl(0 0% 0% / 0.11);
+  --shadow-elev-3: 0 10px 30px hsl(0 0% 0% / 0.16);
 }
 
 /* Dark — opt-in (light-first). Enable via <html data-theme="dark">. */
 [data-theme="dark"] {
-  --background: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
-  --foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
-  --card: 229 25% 13%; /* #191C2A  ← {d_bg2} */
-  --card-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
-  --muted: 229 23% 9%; /* #12141D  ← {d_bg1} */
-  --muted-foreground: 235 16% 70%; /* #A7A9BF  ← {d_soft} */
-  --caption-foreground: 233 11% 48%; /* #6E7189  ← {d_mute} */
-  --border: 230 23% 19%; /* #262A3D  ← {d_line} */
-  --input: 230 23% 19%; /* #262A3D  ← {d_line} */
-  --ring: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --focus: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --primary: 233 32% 33%; /* #3A4070  ← {indigo_700} */
-  --primary-foreground: 235 65% 83%; /* #B9BEF0  ← {peri_200} */
-  --accent: 229 25% 13%; /* #191C2A  ← {d_bg2} */
-  --accent-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
-  --link: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --info: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --info-strong: 234 49% 71%; /* #8F96D9  ← {peri_400} */
-  --info-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --background: 0 0% 4%; /* #0A0A0A  ← {d_bg0} */
+  --foreground: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --card: 0 0% 10%; /* #1A1A1A  ← {d_bg2} */
+  --card-foreground: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --muted: 0 0% 7%; /* #121212  ← {d_bg1} */
+  --muted-foreground: 60 2% 65%; /* #A8A8A4  ← {d_soft} */
+  --caption-foreground: 60 2% 54%; /* #8C8C88  ← {d_mute} */
+  --border: 0 0% 16%; /* #2A2A2A  ← {d_line} */
+  --input: 0 0% 16%; /* #2A2A2A  ← {d_line} */
+  --ring: 60 2% 65%; /* #A8A8A4  ← {d_soft} */
+  --focus: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --primary: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --primary-foreground: 0 0% 4%; /* #0A0A0A  ← {d_bg0} */
+  --accent: 0 0% 10%; /* #1A1A1A  ← {d_bg2} */
+  --accent-foreground: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --link: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --info: 60 2% 65%; /* #A8A8A4  ← {d_soft} */
+  --info-strong: 60 5% 93%; /* #EDEDEB  ← {d_text} */
+  --info-foreground: 0 0% 4%; /* #0A0A0A  ← {d_bg0} */
   --success: 145 37% 68%; /* #8FCBA8  ← {ok_300} */
-  --success-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --success-foreground: 0 0% 4%; /* #0A0A0A  ← {d_bg0} */
   --warning: 42 21% 24%; /* #4A4230  ← {d_warn_bg} */
-  --warning-foreground: 248 20% 92%; /* #E8E7EF  ← {d_text} */
+  --warning-foreground: 60 5% 93%; /* #EDEDEB  ← {d_text} */
   --danger: 0 59% 70%; /* #E08585  ← {danger_300} */
-  --danger-foreground: 231 23% 6%; /* #0C0D13  ← {d_bg0} */
+  --danger-foreground: 0 0% 4%; /* #0A0A0A  ← {d_bg0} */
   --logo-tip: 0 0% 100%; /* #FFFFFF  ← {brand_white} */
   --titlebar-close: 0 72% 51%; /* #DC2828  ← {win_close} */
   --titlebar-close-foreground: 60 11% 98%; /* #FBFBFA  ← {grain_50} */

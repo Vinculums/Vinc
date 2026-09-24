@@ -14,6 +14,8 @@
  *  실패는 **삼키지 않고 원문으로 되돌린다**. 수식이 안 그려졌을 때 빈 칸을 남기면
  *  문서가 조용히 내용을 잃는다 — 소스가 보이는 것이 낫다. */
 
+import { palette, hexStr } from "./theme";
+
 let katexP: Promise<typeof import("katex")> | null = null;
 let mermaidP: Promise<typeof import("mermaid")> | null = null;
 
@@ -28,12 +30,26 @@ function katex() {
 
 const isDark = () => document.documentElement.dataset.theme === "dark";
 
+/** 다이어그램도 흑백이다(2026-09-24). 라이트는 mermaid 의 `neutral` 이 이미 회색조이고,
+ *  다크 기본 테마는 강조색이 섞여서 `base` 에 토큰을 직접 먹인다. */
+function mermaidTheme() {
+  if (!isDark()) return { theme: "neutral" as const };
+  const p = palette.dark, c = hexStr;
+  return { theme: "base" as const, themeVariables: {
+    darkMode: true, background: c(p.background), fontFamily: "inherit",
+    primaryColor: c(p.card), primaryTextColor: c(p.text), primaryBorderColor: c(p.textSoft),
+    secondaryColor: c(p.surface), tertiaryColor: c(p.background),
+    lineColor: c(p.textSoft), textColor: c(p.text), mainBkg: c(p.card), nodeBorder: c(p.textSoft),
+    clusterBkg: c(p.surface), clusterBorder: c(p.line), edgeLabelBackground: c(p.surface),
+    noteBkgColor: c(p.surface), noteTextColor: c(p.text), noteBorderColor: c(p.line),
+  } };
+}
+
 function mermaid() {
   if (!mermaidP) mermaidP = import("mermaid").then((m) => {
     // `startOnLoad` 를 끄는 것이 핵심이다 — 켜 두면 문서에 붙는 순간 스스로 훑어
     // 그리려 들고, 우리가 부르는 것과 두 벌이 된다.
-    m.default.initialize({ startOnLoad: false, securityLevel: "strict",
-                           theme: isDark() ? "dark" : "default" });
+    m.default.initialize({ startOnLoad: false, securityLevel: "strict", ...mermaidTheme() });
     return m;
   });
   return mermaidP;

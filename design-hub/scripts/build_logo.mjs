@@ -50,15 +50,21 @@ function orderedIcns(bytes) {
   chunks.sort((a, b) => Buffer.compare(a.subarray(0, 4), b.subarray(0, 4)));
   return Buffer.concat([bytes.subarray(0, 8), ...chunks]);
 }
-const circle = readFileSync(join(assets, 'vinc-ring-circle.svg'), 'utf8');
+const favicon = readFileSync(join(assets, 'vinc-ring-favicon.svg'), 'utf8');
 const white = readFileSync(join(assets, 'vinc-ring-white.svg'), 'utf8');
 const black = readFileSync(join(assets, 'vinc-ring-black.svg'), 'utf8');
+// 판(plate)은 없다(2026-09-24): 래스터는 투명 바탕의 검정 링이다. 정사각 캔버스에
+// 가운데 두려고 viewBox 만 바꾼다. tight 는 파비콘용(여백 0), clear 는 앱 아이콘용
+// (README 의 여백 규격: 마크 폭의 25% = 109).
+const square = (svg, box) => svg.replace('viewBox="42 38 436 604"', `viewBox="${box}"`);
+const tight = square(black, '-42 38 604 604');
+const clear = square(black, '-151 -71 822 822');
 emit(join(assets, 'vinc-ring-white-email@2x.png'), png(white, 64, 'height'));
 // 밝은 메일 템플릿의 잉크판. 흰 마크와 같은 46x64 로 뽑는다.
 emit(join(assets, 'vinc-ring-ink-email@2x.png'), png(black, 64, 'height'));
-emit(join(assets, 'vinc-ring-favicon-48.png'), png(circle, 48));
+emit(join(assets, 'vinc-ring-favicon-48.png'), png(tight, 48));
 const sizes = [16, 32, 48];
-const images = sizes.map(size => png(circle, size));
+const images = sizes.map(size => png(tight, size));
 const header = Buffer.alloc(6 + sizes.length * 16);
 header.writeUInt16LE(1, 2); header.writeUInt16LE(sizes.length, 4);
 let offset = header.length;
@@ -74,22 +80,25 @@ emit(join(assets, 'vinc-ring-favicon.ico'), Buffer.concat([header, ...images]));
 // Tauri의 실제 아이콘 생성기를 쓰되 모바일 미사용 산출물은 리포에 추가하지 않는다.
 const temporary = mkdtempSync(join(tmpdir(), 'vinc-logo-'));
 try {
+  const source = join(temporary, 'icon-source.svg');
+  writeFileSync(source, clear);
   execFileSync(process.execPath, [join(repo, 'app/node_modules/@tauri-apps/cli/tauri.js'),
-    'icon', join(assets, 'vinc-ring.svg'), '--output', temporary], { stdio: 'pipe' });
+    'icon', source, '--output', temporary], { stdio: 'pipe' });
   const native = join(repo, 'app/src-tauri/icons');
   for (const name of readdirSync(native)) {
     if (!/\.(png|ico|icns)$/.test(name)) continue;
     const bytes = readFileSync(join(temporary, name));
     emit(join(native, name), name.endsWith('.icns') ? orderedIcns(bytes) : bytes);
   }
-  const raster = readFileSync(join(temporary, '128x128.png'));
+  // 커넥터 PNG 는 앱 아이콘(여백 있음)이 아니라 파비콘과 같은 tight 래스터다.
+  const raster = png(tight, 128);
   const serverPath = join(repo, 'vinc_mcp/http_server.py');
   let server = readFileSync(serverPath, 'utf8').replace(/\r\n/g, '\n');
   const pngPattern = /_FAVICON_PNG = base64\.b64decode\([\s\S]*?\r?\n\)/;
   const svgPattern = /_FAVICON_SVG = """[\s\S]*?"""/;
   if (!pngPattern.test(server) || !svgPattern.test(server)) throw new Error('MCP favicon constants not found');
   server = server.replace(pngPattern, `_FAVICON_PNG = base64.b64decode(\n    "${raster.toString('base64')}"\n)`)
-    .replace(svgPattern, `_FAVICON_SVG = """${circle.trim()}"""`);
+    .replace(svgPattern, `_FAVICON_SVG = """${favicon.trim()}"""`);
   emit(serverPath, server);
 } finally { rmSync(temporary, { recursive: true, force: true }); }
 if (drift) process.exitCode = 1;

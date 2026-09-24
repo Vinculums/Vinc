@@ -10,32 +10,28 @@
         "ink_900": "#17171A",
         "ink_600": "#55565E",
         "ink_400": "#82838D",
-        "indigo_900": "#32355C",
-        "indigo_700": "#3A4070",
-        "indigo_600": "#4A4F8C",
-        "peri_400": "#8F96D9",
-        "peri_200": "#B9BEF0",
-        "peri_500": "#7E86D3",
-        "slate_400": "#9496A9",
-        "slate_500": "#747790",
-        "slate_700": "#525466",
         "ok_700": "#2F6B4E",
         "ok_300": "#8FCBA8",
         "warn_bg": "#E5DCC3",
         "d_warn_bg": "#4A4230",
         "danger_700": "#A03A3A",
         "danger_300": "#E08585",
-        "d_bg0": "#0C0D13",
-        "d_bg1": "#12141D",
-        "d_bg2": "#191C2A",
-        "d_line": "#262A3D",
-        "d_text": "#E8E7EF",
-        "d_soft": "#A7A9BF",
-        "d_mute": "#6E7189",
-        "peri_250": "#BDBFE3",
+        "d_bg0": "#0A0A0A",
+        "d_bg1": "#121212",
+        "d_bg2": "#1A1A1A",
+        "d_line": "#2A2A2A",
+        "d_text": "#EDEDEB",
+        "d_soft": "#A8A8A4",
+        "d_mute": "#8C8C88",
         "win_close": "#DC2828",
         "brand_black": "#000000",
-        "brand_white": "#FFFFFF"
+        "brand_white": "#FFFFFF",
+        "gray_200": "#C8C8C4",
+        "gray_400": "#969692",
+        "gray_500": "#7A7A76",
+        "gray_600": "#6E6E6A",
+        "gray_700": "#565652",
+        "gray_800": "#3A3A38"
       }
     },
     "Semantic": {
@@ -49,14 +45,14 @@
         "caption-foreground": "{ink_400}",
         "border": "{hairline}",
         "input": "{hairline}",
-        "ring": "{peri_400}",
-        "primary": "{indigo_900}",
+        "ring": "{ink_400}",
+        "primary": "{ink_900}",
         "primary-foreground": "{grain_100}",
         "accent": "{grain_200}",
         "accent-foreground": "{ink_900}",
-        "link": "{indigo_600}",
-        "info": "{indigo_600}",
-        "info-strong": "{indigo_600}",
+        "link": "{ink_900}",
+        "info": "{ink_600}",
+        "info-strong": "{ink_900}",
         "info-foreground": "{grain_100}",
         "success": "{ok_700}",
         "success-foreground": "{grain_100}",
@@ -64,7 +60,7 @@
         "warning-foreground": "{ink_900}",
         "danger": "{danger_700}",
         "danger-foreground": "{grain_100}",
-        "focus": "{indigo_900}",
+        "focus": "{ink_900}",
         "logo-tip": "{brand_black}",
         "titlebar-close": "{win_close}",
         "titlebar-close-foreground": "{grain_50}",
@@ -80,14 +76,14 @@
         "caption-foreground": "{d_mute}",
         "border": "{d_line}",
         "input": "{d_line}",
-        "ring": "{peri_400}",
-        "primary": "{indigo_700}",
-        "primary-foreground": "{peri_200}",
+        "ring": "{d_soft}",
+        "primary": "{d_text}",
+        "primary-foreground": "{d_bg0}",
         "accent": "{d_bg2}",
         "accent-foreground": "{d_text}",
-        "link": "{peri_400}",
-        "info": "{peri_400}",
-        "info-strong": "{peri_400}",
+        "link": "{d_text}",
+        "info": "{d_soft}",
+        "info-strong": "{d_text}",
         "info-foreground": "{d_bg0}",
         "success": "{ok_300}",
         "success-foreground": "{d_bg0}",
@@ -95,7 +91,7 @@
         "warning-foreground": "{d_text}",
         "danger": "{danger_300}",
         "danger-foreground": "{d_bg0}",
-        "focus": "{peri_400}",
+        "focus": "{d_text}",
         "logo-tip": "{brand_white}",
         "titlebar-close": "{win_close}",
         "titlebar-close-foreground": "{grain_50}",
@@ -151,9 +147,9 @@
           "radius": 40,
           "boundVariables": {},
           "color": {
-            "r": 0.04800000041723251,
-            "g": 0.052000001072883606,
-            "b": 0.07199999690055847,
+            "r": 0,
+            "g": 0,
+            "b": 0,
             "a": 0.07999999821186066
           },
           "offset": {
@@ -175,9 +171,9 @@
           "radius": 60,
           "boundVariables": {},
           "color": {
-            "r": 0.04800000041723251,
-            "g": 0.052000001072883606,
-            "b": 0.07199999690055847,
+            "r": 0,
+            "g": 0,
+            "b": 0,
             "a": 0.11999999731779099
           },
           "offset": {
@@ -199,9 +195,9 @@
           "radius": 2,
           "boundVariables": {},
           "color": {
-            "r": 0.04800000041723251,
-            "g": 0.052000001072883606,
-            "b": 0.07199999690055847,
+            "r": 0,
+            "g": 0,
+            "b": 0,
             "a": 0.07000000029802322
           },
           "offset": {
@@ -223,9 +219,9 @@
           "radius": 12,
           "boundVariables": {},
           "color": {
-            "r": 0.04800000041723251,
-            "g": 0.052000001072883606,
-            "b": 0.07199999690055847,
+            "r": 0,
+            "g": 0,
+            "b": 0,
             "a": 0.10999999940395355
           },
           "offset": {
@@ -247,9 +243,9 @@
           "radius": 30,
           "boundVariables": {},
           "color": {
-            "r": 0.04800000041723251,
-            "g": 0.052000001072883606,
-            "b": 0.07199999690055847,
+            "r": 0,
+            "g": 0,
+            "b": 0,
             "a": 0.1599999964237213
           },
           "offset": {
@@ -283,9 +279,9 @@
           "radius": 30,
           "boundVariables": {},
           "color": {
-            "r": 0.7254902124404907,
-            "g": 0.7450980544090271,
-            "b": 0.9411764740943909,
+            "r": 1,
+            "g": 1,
+            "b": 1,
             "a": 0.8999999761581421
           },
           "offset": {
@@ -307,9 +303,9 @@
           "radius": 16,
           "boundVariables": {},
           "color": {
-            "r": 0.5607843399047852,
-            "g": 0.5882353186607361,
-            "b": 0.8509804010391235,
+            "r": 0.7843137383460999,
+            "g": 0.7843137383460999,
+            "b": 0.7686274647712708,
             "a": 0.5
           },
           "offset": {
@@ -331,9 +327,9 @@
           "radius": 10,
           "boundVariables": {},
           "color": {
-            "r": 0.5607843399047852,
-            "g": 0.5882353186607361,
-            "b": 0.8509804010391235,
+            "r": 0.658823549747467,
+            "g": 0.658823549747467,
+            "b": 0.6431372761726379,
             "a": 0.3499999940395355
           },
           "offset": {
@@ -355,9 +351,9 @@
           "radius": 6,
           "boundVariables": {},
           "color": {
-            "r": 0.5803921818733215,
+            "r": 0.5882353186607361,
             "g": 0.5882353186607361,
-            "b": 0.6627451181411743,
+            "b": 0.572549045085907,
             "a": 0.18000000715255737
           },
           "offset": {
