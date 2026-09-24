@@ -216,7 +216,8 @@ _MARKER_RESERVE = 1_000
 _NARROW_HINT = {
     "vinc_graph": "lower `depth` (e.g. 1) or pick a more specific `seed_id`",
     "vinc_decide": "lower `depth` (e.g. 1)",
-    "vinc_recall": "lower `limit`, or narrow by `domain`/`tags`",
+    "vinc_recall": "lower `limit` and continue with `next_cursor`, or narrow by "
+                   "`domain`/`tags`",
     "vinc_search": "lower `limit`, use detail:'summary' (the default), or continue "
                    "with `next_cursor`",
     "vinc_brief": "lower `max_excerpts`, or ask a narrower question",

@@ -66,10 +66,21 @@ def score_preference(rows: list[dict], *, weights: dict | None = None,
     return scored[:limit]
 
 
+#: recall 의 정렬 키. **날짜가 있는 행이 먼저, 없는 행은 끝**이고 같은 날짜 안에서는
+#: id 오름차순이다. 임베디드 엔진은 `ORDER BY e.date DESC` 에서 NULL 을 가장 큰 값으로
+#: 두어서, 날짜 없는 에피소드가 "가장 최근"으로 맨 위에 섰다. 엔진이 `NULLS LAST` 를
+#: 파싱하지 못해(실측, ladybug 0.18.0) 표현식 키로 뒤로 민다. 빈 문자열도 날짜가 아니다.
+#: id 키는 커서 페이징이 오프셋을 쓸 수 있게 순서를 **완전히** 고정한다.
+#: `score_preference` 는 이 순서를 동점 처리(recency tie-break)로 그대로 물려받는다.
+#: 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S2.
+RECALL_ORDER = ("ORDER BY (CASE WHEN e.date IS NULL OR e.date = '' THEN 1 ELSE 0 END), "
+                "e.date DESC, e.episode_id")
+
+
 def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None = None,
                 domain: str | None = None, workspace: str | None = None,
                 tags: list[str] | None = None, rank: str = "recency", limit: int = 10,
-                weights: dict | None = None) -> QueryPlan:
+                weights: dict | None = None, offset: int = 0) -> QueryPlan:
     """Recall an individual's *learning* episodes, scoped by ownership and domain,
     ordered by recency or by owner-preference alignment.
 
@@ -80,19 +91,37 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
     is the governance boundary; ``workspace`` narrows further. Each filter is
     optional and ANDed. Text filter matches title/summary.
 
+    ``domain`` 은 **하위 트리**다: `vinc/agent` 는 `vinc/agent/*` 의 에피소드까지 담는다
+    (:func:`domain_subtree_where`, 공유 팩과 같은 술어).
+
     ``rank``:
-      - ``"recency"`` (default): ``ORDER BY e.date DESC``.
+      - ``"recency"`` (default): dated rows newest first, undated rows last
+        (:data:`RECALL_ORDER`). ``tags`` is a **filter** here: an episode is kept
+        when it carries at least one of them.
       - ``"preference"``: score each Episode by the owner's signals — pin (strong),
         access frequency (saturating), and tag overlap with ``tags`` — then order
-        by that score, recency as tie-break ("내 선호에 맞춤")."""
+        by that score, recency as tie-break ("내 선호에 맞춤"). Here ``tags`` stays a
+        **boost**, not a filter: 컨텍스트 팩(`api/activate.py`)이 이 모드로 선호를
+        앞세워 내보내는데, 걸러 버리면 팩에서 에피소드가 빠진다."""
     where = []
     params: dict = {"limit": int(limit)}
     if owner:
         where.append("e.owner_id = $owner")
         params["owner"] = owner
     if domain:
-        where.append("e.domain = $domain")
-        params["domain"] = domain
+        # 하위 트리 — 정확일치만 보면 `vinc/agent` 가 자식 주제의 에피소드를 0건으로
+        # 답했다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S1.
+        where.append(domain_subtree_where(["e.domain"], [domain], params))
+    if tags and rank != "preference":
+        # 태그 필터(하나라도 겹치면 통과). 여태 tags 는 preference 점수에만 쓰여서
+        # recency 에서는 **조용히 무시**됐다 — 없는 태그를 줘도 전량이 나왔다.
+        # ⚠ 엔진이 람다·`any()` 안의 파라미터를 못 푼다(실측: `any(t IN … WHERE t IN
+        # $tags)` 가 파서 단언으로 죽는다). 그래서 태그마다 list_contains 를 OR 로 편다.
+        ors = []
+        for i, t in enumerate(dict.fromkeys(tags)):
+            params[f"tag{i}"] = t
+            ors.append(f"list_contains(coalesce(e.tags, []), $tag{i})")
+        where.append("(" + " OR ".join(ors) + ")")
     if tenant:
         where.append("e.tenant_id = $tenant")
         params["tenant"] = tenant
@@ -124,15 +153,21 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
         cypher = (
             f"MATCH (e:Episode) {clause} "
             f"RETURN {projection} "
-            "ORDER BY e.date DESC"        # 안정 정렬 기반(동점 시 recency tie-break)
+            f"{RECALL_ORDER}"             # 안정 정렬 기반(동점 시 recency tie-break)
         )
         return QueryPlan("recall", cypher, params,
                          note="episodic recall (preference — scored in-process)")
 
+    skip = ""
+    if offset and int(offset) > 0:
+        # 커서 페이지(opt-in). 오프셋 0 이면 SKIP 이 붙지 않는다 — 커서를 안 쓰는
+        # 호출자(activate·CLI·/plan/recall)의 플랜 모양은 그대로다.
+        skip = "SKIP $skip "
+        params["skip"] = int(offset)
     cypher = (
         f"MATCH (e:Episode) {clause} "
         f"RETURN {projection} "
-        "ORDER BY e.date DESC LIMIT $limit"
+        f"{RECALL_ORDER} {skip}LIMIT $limit"
     )
     return QueryPlan("recall", cypher, params, note="3-tier episodic memory (owner-scoped)")
 
@@ -309,17 +344,86 @@ def recall(query: str = "", *, owner: str | None = None, tenant: str | None = No
            domain: str | None = None, workspace: str | None = None,
            tags: list[str] | None = None, rank: str = "recency", limit: int = 10,
            weights: dict | None = None, cfg=None, store=None,
-           debug: bool = False) -> dict:
-    res = execute(
-        recall_plan(query, owner=owner, tenant=tenant, domain=domain,
-                    workspace=workspace, tags=tags, rank=rank, limit=limit, weights=weights),
-        cfg, store=store, debug=debug,
-    )
-    # preference 랭킹은 백엔드 밖 순수 함수로(§4-2). 플랜은 후보 전량을 date DESC 로
-    # 가져오고, 여기서 점수·상한을 적용한다.
-    if rank == "preference" and res.get("executed"):
-        res["rows"] = score_preference(res["rows"], weights=weights, tags=tags, limit=limit)
+           debug: bool = False, page: bool = False, cursor: str | None = None) -> dict:
+    """에피소드 타임라인. ``page`` 나 ``cursor`` 를 주면 **커서 페이징**으로 답한다:
+    응답에 ``has_more``·``next_cursor`` 가 실리고, ``cursor`` 는 그다음 페이지를 준다.
+    둘 다 안 주면 응답 모양이 예전 그대로다(activate·CLI·웹 op 가 이 모양을 쓴다).
+
+    커서는 검색 커서 코덱(:func:`cursor_encode`)을 쓴다: 오프셋 + 질의 지문(qh) + 기대
+    id(eid). 다른 질의의 커서는 ``invalid_cursor``, 그새 타임라인이 바뀌었으면
+    ``stale_cursor`` 로 **명시 거절**한다(조용히 첫 페이지로 돌아가지 않는다).
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3."""
+    if not (page or cursor):
+        res = execute(
+            recall_plan(query, owner=owner, tenant=tenant, domain=domain,
+                        workspace=workspace, tags=tags, rank=rank, limit=limit, weights=weights),
+            cfg, store=store, debug=debug,
+        )
+        # preference 랭킹은 백엔드 밖 순수 함수로(§4-2). 플랜은 후보 전량을 recency 순으로
+        # 가져오고, 여기서 점수·상한을 적용한다.
+        if rank == "preference" and res.get("executed"):
+            res["rows"] = score_preference(res["rows"], weights=weights, tags=tags, limit=limit)
+        return res
+
+    limit = max(1, int(limit))
+    qh = _recall_fingerprint(query, owner, domain=domain, tenant=tenant,
+                             workspace=workspace, tags=tags, rank=rank)
+    off, want_eid = 0, None
+    if cursor:
+        try:
+            c = cursor_decode(cursor)
+            if c.get("qh") != qh:
+                raise ValueError(
+                    "invalid_cursor: cursor was issued for a different recall query/scope")
+            off = int(c.get("off") or 0)
+            if off < 0:
+                raise ValueError("invalid_cursor: negative offset")
+            want_eid = c.get("eid")
+        except (TypeError, ValueError) as exc:
+            msg = str(exc) if str(exc).startswith("invalid_cursor") else f"invalid_cursor: {exc}"
+            return _recall_refusal(msg)
+    # 한 행을 더 읽어 다음 페이지가 있는지 안다(개수 질의를 따로 돌리지 않는다).
+    if rank == "preference":
+        plan = recall_plan(query, owner=owner, tenant=tenant, domain=domain,
+                           workspace=workspace, tags=tags, rank=rank, weights=weights)
+    else:
+        plan = recall_plan(query, owner=owner, tenant=tenant, domain=domain,
+                           workspace=workspace, tags=tags, rank=rank,
+                           limit=limit + 1, offset=off)
+    res = execute(plan, cfg, store=store, debug=debug)
+    res.setdefault("has_more", False)
+    res.setdefault("next_cursor", None)
+    if not res.get("executed"):
+        return res
+    rows = res["rows"]
+    if rank == "preference":
+        rows = score_preference(rows, weights=weights, tags=tags,
+                                limit=off + limit + 1)[off:]
+    if want_eid is not None and (not rows or rows[0].get("id") != want_eid):
+        return _recall_refusal("stale_cursor: the timeline changed since this cursor was "
+                               "issued; start again without a cursor")
+    has_more = len(rows) > limit
+    res["rows"] = rows[:limit]
+    res["has_more"] = has_more
+    if has_more:
+        res["next_cursor"] = cursor_encode(
+            {"v": 1, "off": off + limit, "qh": qh, "eid": rows[limit].get("id")})
     return res
+
+
+def _recall_fingerprint(query: str, owner: str | None, *, domain, tenant, workspace,
+                        tags, rank) -> str:
+    """recall 커서의 질의 지문. 검색 지문과 같은 함수를 쓰되 detail 자리에 `recall` 을
+    넣는다 — 검색 커서가 recall 에서 통하지 않고 반대도 같다."""
+    filters = {"domain": domain or "", "tenant": tenant or "", "workspace": workspace or "",
+               "tags": ",".join(sorted(set(tags or []))), "rank": rank or "recency"}
+    return _query_fingerprint(query or "", owner, filters, "recall")
+
+
+def _recall_refusal(msg: str) -> dict:
+    """무효·실효 커서의 답. 검색과 같이 최상위 ``error`` 로 말하고 행은 비운다."""
+    return {"kind": "recall", "executed": False, "rows": [], "has_more": False,
+            "next_cursor": None, "error": msg, "note": msg}
 
 
 def domains_plan(*, owner: str | None = None) -> QueryPlan:
