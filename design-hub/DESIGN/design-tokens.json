@@ -3,31 +3,31 @@
     "name": "vinc-design",
     "version": "0.3.0",
     "ssot": "Vinc/design-hub/DESIGN",
-    "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
+    "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). Monochrome since 2026-09-24: dark is neutral black and every accent is black, white or grey in both modes; only success, warning and danger keep a hue, plus the domain tint (a user toggle). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
     "layers": "primitive → semantic",
     "theme_mode": "light-first",
     "format": "hsl-channels",
     "a11y": "WCAG 2.2 AA. Only tokens verified at a body contrast of 4.5:1 or better may be used as text."
   },
   "viewScene": {
-    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Verified by Vinc/scripts/gate_contrast.py",
+    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Values may be a {primitive} reference (resolved by gen_theme_ts.py). Monochrome since 2026-09-24. Verified by Vinc/scripts/gate_contrast.py",
     "node": {
       "focus": {
-        "fill": "#B9BEF0",
+        "fill": "{brand_white}",
         "glowOpacity": 0.9
       },
       "near": {
-        "fill": "#8F96D9",
+        "fill": "{gray_200}",
         "glowOpacity": 0.5
       },
       "mid": {
-        "fill": "#3A4070",
-        "stroke": "#8F96D9",
+        "fill": "{gray_800}",
+        "stroke": "{d_soft}",
         "glowOpacity": 0.35
       },
       "far": {
-        "fill": "#191C2A",
-        "stroke": "#9496A9",
+        "fill": "{d_bg2}",
+        "stroke": "{gray_400}",
         "glowOpacity": 0.18
       }
     }
@@ -79,36 +79,6 @@
       "$type": "color",
       "$description": "Captions and meta only (light). Forbidden for body text (the caption layer)"
     },
-    "indigo_900": {
-      "$value": "#32355C",
-      "$type": "color",
-      "$description": "The indigo of the logo tip. Light CTA surface · the constant CTA band"
-    },
-    "indigo_700": {
-      "$value": "#3A4070",
-      "$type": "color",
-      "$description": "Dark CTA surface · active fill (the application's accent/deep)"
-    },
-    "indigo_600": {
-      "$value": "#4A4F8C",
-      "$type": "color",
-      "$description": "Light link and info (AA ✓ on grain)"
-    },
-    "peri_400": {
-      "$value": "#8F96D9",
-      "$type": "color",
-      "$description": "Periwinkle. The focus ring in both modes · dark link · the source colour of the graph glow"
-    },
-    "peri_200": {
-      "$value": "#B9BEF0",
-      "$type": "color",
-      "$description": "Periwinkle, lightened. Dark CTA text · active emphasis"
-    },
-    "peri_250": {
-      "$value": "#BDBFE3",
-      "$type": "color",
-      "$description": "The end of the logo tip gradient (dark), one step brighter than peri_200. The body of the mark is currentColor and only the tip falls to this colour"
-    },
     "ok_700": {
       "$value": "#2F6B4E",
       "$type": "color",
@@ -140,39 +110,39 @@
       "$description": "Hover on the titlebar close button. This is an operating-system convention (Windows), not a brand colour, so it does not change with the mode and sits on a different axis from danger: danger states a condition, this follows a window-control convention. The counterpart of the Figma Window collection (223:35)"
     },
     "d_bg0": {
-      "$value": "#0C0D13",
+      "$value": "#0A0A0A",
       "$type": "color",
-      "$description": "Dark page and application background, the deepest layer (Deep Signal)"
+      "$description": "Dark page and application background, the deepest layer. Neutral black since 2026-09-24 (was a navy black)"
     },
     "d_bg1": {
-      "$value": "#12141D",
+      "$value": "#121212",
       "$type": "color",
       "$description": "Dark surface · alternating section · panel base"
     },
     "d_bg2": {
-      "$value": "#191C2A",
+      "$value": "#1A1A1A",
       "$type": "color",
       "$description": "Dark card · left navigation · raised surface"
     },
     "d_line": {
-      "$value": "#262A3D",
+      "$value": "#2A2A2A",
       "$type": "color",
       "$description": "Dark 1px border and separator"
     },
     "d_text": {
-      "$value": "#E8E7EF",
+      "$value": "#EDEDEB",
       "$type": "color",
-      "$description": "Dark body text (cool ivory)"
+      "$description": "Dark body text (neutral ivory), 16.9:1 on d_bg0. Also the dark primary, focus and link: accents are monochrome since 2026-09-24"
     },
     "d_soft": {
-      "$value": "#A7A9BF",
+      "$value": "#A8A8A4",
       "$type": "color",
-      "$description": "Dark secondary text (AA ✓)"
+      "$description": "Dark secondary text, 8.3:1 on d_bg0 (AA ✓) · dark ring and info"
     },
     "d_mute": {
-      "$value": "#6E7189",
+      "$value": "#8C8C88",
       "$type": "color",
-      "$description": "Dark caption · meta · disabled. Forbidden for body text"
+      "$description": "Dark caption · meta · disabled, 5.9:1 / APCA Lc 40 on d_bg0. Forbidden for body text"
     },
     "d_warn_bg": {
       "$value": "#4A4230",
@@ -184,35 +154,45 @@
       "$type": "color",
       "$description": "The floor for the light fade channel, APCA Lc 16.0. hairline (Lc 9.3) falls below the invisibility floor of 15, so it cannot be the faded colour of a graph line"
     },
-    "peri_500": {
-      "$value": "#7E86D3",
-      "$type": "color",
-      "$description": "Cross-domain edge in light mode: peri_400 darkened until it reaches WCAG 3:1 (2.49 → 3.00). In light mode WCAG is the stricter of the two measures"
-    },
-    "slate_400": {
-      "$value": "#9496A9",
-      "$type": "color",
-      "$description": "Dark node ring and cross edge, APCA Lc 45.9. A thin line is held to the fine-detail threshold (Lc 45), not the solid one (Lc 30)"
-    },
-    "slate_500": {
-      "$value": "#747790",
-      "$type": "color",
-      "$description": "The main edge line. Dark Lc 30.9 / 4.42:1 · light Lc 62.6 / 3.92:1, the **neutral that passes both gates in both modes**"
-    },
-    "slate_700": {
-      "$value": "#525466",
-      "$type": "color",
-      "$description": "The floor for the dark fade channel, just above the APCA invisibility floor of Lc 15 (15.9). The fade channel is exempt from 3:1 but must never disappear entirely"
-    },
     "brand_black": {
       "$value": "#000000",
       "$type": "color",
-      "$description": "Black logo on light backgrounds. Brand only; ordinary UI accents retain their colours."
+      "$description": "Black logo on light backgrounds. Brand only."
     },
     "brand_white": {
       "$value": "#FFFFFF",
       "$type": "color",
       "$description": "White logo on dark backgrounds. Brand only."
+    },
+    "gray_200": {
+      "$value": "#C8C8C4",
+      "$type": "color",
+      "$description": "Neutral line and mark shade: dark heavy edge and the near tier of the View 3D mark (11.8:1 / Lc 73 on d_bg0)"
+    },
+    "gray_400": {
+      "$value": "#969692",
+      "$type": "color",
+      "$description": "Dark node ring and cross-domain edge, APCA Lc 45.4 on d_bg0. A thin line is held to the fine-detail threshold (Lc 45), which d_mute (Lc 40.3) misses, so this is one step brighter"
+    },
+    "gray_500": {
+      "$value": "#7A7A76",
+      "$type": "color",
+      "$description": "The main edge line. Dark 4.59:1 / Lc 31.7 · light 3.84:1 / Lc 62.0, the neutral that passes both gates in both modes"
+    },
+    "gray_600": {
+      "$value": "#6E6E6A",
+      "$type": "color",
+      "$description": "Cross-domain edge in light mode, 4.57:1 / Lc 67.5 on grain_100: one step darker than the main edge so the two stay apart without a hue"
+    },
+    "gray_700": {
+      "$value": "#565652",
+      "$type": "color",
+      "$description": "The floor for the dark fade channel, just above the APCA invisibility floor of Lc 15 (16.3). The fade channel is exempt from 3:1 but must never disappear entirely"
+    },
+    "gray_800": {
+      "$value": "#3A3A38",
+      "$type": "color",
+      "$description": "Fill of the mid tier of the View 3D mark (depth impression; its ring d_soft carries the visibility)"
     }
   },
   "semantic": {
@@ -226,15 +206,15 @@
       "caption-foreground": "{ink_400}",
       "border": "{hairline}",
       "input": "{hairline}",
-      "ring": "{peri_400}",
-      "focus": "{indigo_900}",
-      "primary": "{indigo_900}",
+      "ring": "{ink_400}",
+      "focus": "{ink_900}",
+      "primary": "{ink_900}",
       "primary-foreground": "{grain_100}",
       "accent": "{grain_200}",
       "accent-foreground": "{ink_900}",
-      "link": "{indigo_600}",
-      "info": "{indigo_600}",
-      "info-strong": "{indigo_600}",
+      "link": "{ink_900}",
+      "info": "{ink_600}",
+      "info-strong": "{ink_900}",
       "info-foreground": "{grain_100}",
       "success": "{ok_700}",
       "success-foreground": "{grain_100}",
@@ -257,15 +237,15 @@
       "caption-foreground": "{d_mute}",
       "border": "{d_line}",
       "input": "{d_line}",
-      "ring": "{peri_400}",
-      "focus": "{peri_400}",
-      "primary": "{indigo_700}",
-      "primary-foreground": "{peri_200}",
+      "ring": "{d_soft}",
+      "focus": "{d_text}",
+      "primary": "{d_text}",
+      "primary-foreground": "{d_bg0}",
       "accent": "{d_bg2}",
       "accent-foreground": "{d_text}",
-      "link": "{peri_400}",
-      "info": "{peri_400}",
-      "info-strong": "{peri_400}",
+      "link": "{d_text}",
+      "info": "{d_soft}",
+      "info-strong": "{d_text}",
       "info-foreground": "{d_bg0}",
       "success": "{ok_300}",
       "success-foreground": "{d_bg0}",
@@ -312,12 +292,12 @@
     "mono": "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace"
   },
   "shadow": {
-    "soft": "0 20px 40px -12px hsl(230 20% 6% / 0.08)",
-    "float": "0 30px 60px -16px hsl(230 20% 6% / 0.12)",
+    "soft": "0 20px 40px -12px hsl(0 0% 0% / 0.08)",
+    "float": "0 30px 60px -16px hsl(0 0% 0% / 0.12)",
     "elev-0": "none",
-    "elev-1": "0 1px 2px hsl(230 20% 6% / 0.07)",
-    "elev-2": "0 4px 12px hsl(230 20% 6% / 0.11)",
-    "elev-3": "0 10px 30px hsl(230 20% 6% / 0.16)"
+    "elev-1": "0 1px 2px hsl(0 0% 0% / 0.07)",
+    "elev-2": "0 4px 12px hsl(0 0% 0% / 0.11)",
+    "elev-3": "0 10px 30px hsl(0 0% 0% / 0.16)"
   },
   "shadowDark": {
     "elev-1": "0 1px 2px hsl(0 0% 0% / 0.35)",

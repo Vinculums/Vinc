@@ -6,7 +6,9 @@
 One rounded lozenge ring, wall thickness 22% of the ring's width, and a sphere in the middle
 at about a third of the inner width. Drawn as a single even-odd path plus that circle, so the
 hole is real geometry rather than a second shape laid on top. Only solid black (#000000) on light surfaces and solid white (#FFFFFF) on dark surfaces.
-The 2026-09-20 owner ruling retires coloured marks and plates while preserving this geometry.
+The 2026-09-20 owner ruling retired coloured marks; the 2026-09-24 ruling retired the plates.
+The mark never sits on a black circle or a rounded square: it is only the transparent ring,
+black on light and white on dark.
 
 ## Files
 
@@ -15,18 +17,22 @@ The 2026-09-20 owner ruling retires coloured marks and plates while preserving t
 | `vinc-ring-black.svg` | **default mark**, transparent black, for light grounds |
 | `vinc-ring-white.svg` | transparent, solid white, for dark grounds |
 | `vinc-ring-mono.svg` | single colour, `currentColor`, for masks using the dedicated `--logo` token |
-| `vinc-ring.svg` | plate, 40px rounded square, **application icon** |
-| `vinc-ring-circle.svg` | plate, circular, **favicon and avatar** |
+| `vinc-ring-favicon.svg` | **favicon**, black, switching itself to white under `prefers-color-scheme: dark` |
 
-The mark variants use `viewBox="42 38 436 604"`, tight to the art. The two plates are
-`viewBox="0 0 180 180"` and carry a neutral black ground with a solid white mark. The legacy filename
+Every SVG uses `viewBox="42 38 436 604"`, tight to the art. There is no plate file any more
+(`vinc-ring.svg` and `vinc-ring-circle.svg` were deleted on 2026-09-24). Rasters are generated,
+never drawn: the favicon `.ico` (16, 32, 48), the 48px PNG and the MCP connector PNG are the
+transparent black mark on a square canvas with no margin; the native Tauri icons are the same
+mark with the clear space below on a square canvas. The legacy filename
 `vinc-ring-indigo.svg` is retained as a black compatibility asset and has no active sync mapping.
 
 ## Specification
 
 - **Size ladder**: 128 · 96 · 64 · 40 · 24 · 18 · 16. The mark holds its shape all the way
   down to 16px, which is what the single ring buys over a stacked figure.
-- **Clear space**: at least 25% of the mark's width on every side.
+- **Clear space**: at least 25% of the mark's width on every side (the application icon canvas
+  is exactly that: 822 units square around the 436 by 604 mark). Favicons drop the margin
+  because a 16px tab icon cannot afford it.
 - **Colour**: black and white only. Use `--logo` for theme-aware masks; pin white explicitly
   on a permanently dark surface. Functional UI accent tokens must not tint the logo.
 - **Forbidden**: rotation, distorting the aspect ratio, filling the ring's hole, detaching the
@@ -46,7 +52,8 @@ changes.
 
 **Canonical**: the Claude Design project `Vinc 홈페이지`
 (`444928b4-67cb-4af6-91cd-acfb15595487`), file `Vinc Logo.dc.html` and the five SVGs under
-`logo/`. These files are those vectors as they are. Change the shape there and re-extract
+`logo/`. These files are those vectors as they are (the favicon adds only the colour-scheme
+switch). Change the shape there and re-extract
 here. This replaces the Figma canon the two-stroke V used.
 
 ⚠ **The old logo had exactly this README and it still reached nobody.** `sync_out.py` carried

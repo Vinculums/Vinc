@@ -2140,7 +2140,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   position: fixed; z-index: 60; width: 246px;
   display: flex; flex-direction: column; gap: 2px; padding: 6px;
   border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
-  box-shadow: var(--shadow-elev-2, 0 16px 40px -12px hsl(231 40% 2% / .85));
+  box-shadow: var(--shadow-elev-2, 0 16px 40px -12px hsl(0 0% 2% / .85));
 }
 .card-menu[hidden] { display: none; }
 .menu-item {

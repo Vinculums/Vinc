@@ -28,6 +28,10 @@ def resolve(tokens: dict, mode: str, name: str) -> str:
 def ts_hex(h: str) -> str:
     return "0x" + h.lstrip("#").upper()
 
+def scene_hex(tokens: dict, v: str) -> str:
+    """viewScene 값은 hex 이거나 `{primitive}` 참조다."""
+    return ts_hex(prim(tokens, v[1:-1]) if v.startswith("{") else v)
+
 def prim(tokens: dict, name: str) -> str:
     return tokens["primitive"][name]["$value"]
 
@@ -38,15 +42,17 @@ def link_ramp(tokens: dict, mode: str) -> dict:
     indigo_700·fade=d_line 처럼 캡션·CTA·보더 토큰을 빌려 썼는데, 그 토큰들은
     자기 용도(텍스트·면)에서는 충분해도 **다크 배경 위 가는 선**으로는 미달이었다
     (d_mute = APCA Lc 28.2 < 30, indigo_700 = 9.6, d_line = 0). 그래서 선 전용
-    프리미티브(slate_*·peri_500·grain_300)를 따로 둔다 — 텍스트 토큰을 밝히면
+    프리미티브(gray_*·grain_300)를 따로 둔다 — 텍스트 토큰을 밝히면
     본문 대비가 함께 흔들리기 때문이다. 검증은 `Vinc/scripts/gate_contrast.py`.
+    2026-09-24 부터 무채색이다(peri·slate 폐기). 다크 mid 만 d_soft 를 빌리는데,
+    그 값이 3D 마크 mid 티어의 링과 같은 자리라서다.
     """
     if mode == "dark":
-        return {"heavy": prim(tokens, "peri_200"), "mid": prim(tokens, "peri_400"),
-                "base": prim(tokens, "slate_500"), "cross": prim(tokens, "slate_400"),
-                "fade": prim(tokens, "slate_700")}
+        return {"heavy": prim(tokens, "gray_200"), "mid": prim(tokens, "d_soft"),
+                "base": prim(tokens, "gray_500"), "cross": prim(tokens, "gray_400"),
+                "fade": prim(tokens, "gray_700")}
     return {"heavy": prim(tokens, "ink_900"), "mid": prim(tokens, "ink_600"),
-            "base": prim(tokens, "ink_400"), "cross": prim(tokens, "peri_500"),
+            "base": prim(tokens, "ink_400"), "cross": prim(tokens, "gray_600"),
             "fade": prim(tokens, "grain_300")}
 
 def label_css(tokens: dict, mode: str) -> str:
@@ -87,8 +93,8 @@ def emit(tokens: dict, scene: dict) -> str:
     L.append("export const viewScene = {")
     L.append("  node: {")
     for tier, spec in sc["node"].items():
-        stroke = f", stroke: {ts_hex(spec['stroke'])}" if "stroke" in spec else ""
-        L.append(f"    {tier}: {{ fill: {ts_hex(spec['fill'])}{stroke}, glowOpacity: {spec['glowOpacity']} }},")
+        stroke = f", stroke: {scene_hex(tokens, spec['stroke'])}" if "stroke" in spec else ""
+        L.append(f"    {tier}: {{ fill: {scene_hex(tokens, spec['fill'])}{stroke}, glowOpacity: {spec['glowOpacity']} }},")
     L.append("  },")
     L.append("} as const;")
     L.append("")

@@ -39,13 +39,18 @@ const PARTICLE_WIDTH = 1.1;
 const isDirectedLink = (l: { type?: string }) => DIRECTED_RELS.includes(l.type || "");
 
 /** Signal 팔레트 — 토큰과 같은 원천(Vinc-design 허브 gen_theme_ts 생성물).
- *  다크(기본) = Deep Signal: 딥 차콜 위 페리윙클 포커스. 라이트 = 그레인+잉크.
+ *  다크(기본) = 무채색 검정 위 흰 포커스. 라이트 = 그레인+잉크(2026-09-24 흑백).
  *  themePalette()가 유일한 런타임 seam — 하드코딩 hex 금지. */
 type Palette = {
   ink: number; inkMute: number; point: number; fog: number; primary: number;
   link: { heavy: string; mid: string; base: string; cross: string; fade: string };
   label: string;
 };
+// 조명과 재질의 기준색. 하늘은 라이트 배경 토큰을 빌리고, 흰색과 지면만 리터럴이다.
+// ds-allow: 흰색은 곱셈 항등원(틴트 없음)이고 지면은 무채색 gray_700 이다(2026-09-24 흑백 규칙,
+// 예전 값 0xf0f1fa·0x565b74 는 푸른 기가 있었다). 팔레트에 조명용 항목이 없어 여기 둔다.
+const WHITE = 0xffffff, GROUND = 0x565652;
+const SKY = signal.light.background;
 const themeMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 function themePalette(): Palette {
@@ -130,7 +135,7 @@ const INST_ROT: Record<InstKind, THREE.Quaternion> = {
  *  인스턴스 색(알베도)만 섞으면 안 된다 — clearcoat·sheen·환경 반사가 그대로 남는다. */
 function instMaterial(pal: Palette): THREE.MeshPhysicalMaterial {
   const m = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, roughness: .52, metalness: .08,
+    color: WHITE, roughness: .52, metalness: .08,
     clearcoat: .25, clearcoatRoughness: .3,
     sheen: .2, sheenColor: new THREE.Color(pal.point), sheenRoughness: .6,
     envMapIntensity: .85,
@@ -189,10 +194,10 @@ function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette): THREE.Texture {
     m.position.set(...pos); if (rot) m.rotation.set(...rot); sc.add(m);
   };
   panel(12, 12, .1, pal.point, 3.2, [0, 6.5, -3], [Math.PI / 2.6, 0, 0]);
-  panel(9, 9, .1, 0xFFFFFF, 1.5, [-6, 2, 4], [0, Math.PI / 2.4, 0]);
+  panel(9, 9, .1, WHITE, 1.5, [-6, 2, 4], [0, Math.PI / 2.4, 0]);
   panel(9, 9, .1, pal.ink, 1.1, [6.5, 1, 3], [0, -Math.PI / 2.4, 0]);
   panel(16, .1, 16, pal.fog, 2.6, [0, -2.6, 0]);
-  panel(10, 10, .1, 0xFFFFFF, .55, [0, -1.2, 5], [Math.PI / 2.6, 0, 0]);
+  panel(10, 10, .1, WHITE, .55, [0, -1.2, 5], [Math.PI / 2.6, 0, 0]);
   const pm = new THREE.PMREMGenerator(renderer);
   pm.compileEquirectangularShader();
   _envTex = pm.fromScene(sc, .04).texture;
@@ -654,11 +659,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
   scene.fog = fog;
   g.lights([
-    new THREE.AmbientLight(0xffffff, darkTheme ? 0.9 : 1.1),
+    new THREE.AmbientLight(WHITE, darkTheme ? 0.9 : 1.1),
     // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
     // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33). 다크는 감광.
-    new THREE.HemisphereLight(0xf0f1fa, 0x565b74, darkTheme ? 0.7 : 0.9),
-    (() => { const d = new THREE.DirectionalLight(0xf0f1fa, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
+    new THREE.HemisphereLight(SKY, GROUND, darkTheme ? 0.7 : 0.9),
+    (() => { const d = new THREE.DirectionalLight(SKY, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
   ]);
   const controls: any = g.controls();
   // 컨트롤은 3d-force-graph 기본 **TrackballControls** 다 — enableDamping·autoRotate·
@@ -1140,9 +1145,9 @@ export function mountMinis3d(
                 rad: number; pad: number; dir: THREE.Vector3 };
   const built: Cell[] = cells.map((c) => {
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-    scene.add(new THREE.HemisphereLight(0xf0f1fa, 0x565b74, 0.9));
-    const dl = new THREE.DirectionalLight(0xf0f1fa, 1.5);
+    scene.add(new THREE.AmbientLight(WHITE, 1.1));
+    scene.add(new THREE.HemisphereLight(SKY, GROUND, 0.9));
+    const dl = new THREE.DirectionalLight(SKY, 1.5);
     dl.position.set(30, 60, 40);
     scene.add(dl);
     // 셀 로컬 정규화: 무게중심을 원점으로(클러스터 오프셋 제거 — z 포함, 3D 컷에서

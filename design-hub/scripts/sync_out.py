@@ -34,14 +34,15 @@ MAP = [
     # 19개 파일에 22벌이 인라인으로 박혀 있었고, 그래서 정본이 있어도 아무 데도
     # 닿지 않았다(로고 교체 한 번에 44곳을 손으로 고쳐야 했다). `<img src>` 로
     # 참조하면 이 복사 하나가 전부를 갱신한다. 근거: [[record:a-logo-ssot-that-reaches-nobody]]
-    ("assets/logo/vinc-ring-circle.svg", "../app/public/favicon.svg"),
+    # 파비콘은 판 없는 링 하나다(2026-09-24). 밝은 탭엔 검정, 어두운 탭엔 흰색으로
+    # SVG 안의 `prefers-color-scheme` 이 스스로 바꾼다.
+    ("assets/logo/vinc-ring-favicon.svg", "../app/public/favicon.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../app/public/vinc-mark-mono.svg"),
-    ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/favicon.svg"),
-    ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/demo/favicon.svg"),
+    ("assets/logo/vinc-ring-favicon.svg", "../../Vinc-homepage/site/favicon.svg"),
+    ("assets/logo/vinc-ring-favicon.svg", "../../Vinc-homepage/site/demo/favicon.svg"),
     ("assets/logo/vinc-ring-black.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
     ("assets/logo/vinc-ring-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
-    ("assets/logo/vinc-ring.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
     # 이메일용 래스터. **메일 클라이언트는 SVG 를 못 받는다** — Gmail 은 `<svg>` 를
     # 통째로 걷어내고 Outlook 데스크탑도 안 그린다. 그래서 이 한 자리만 PNG 다.
     # 소스는 흰 램프 마크(이메일 셸 배경이 #0A0B10 로 어둡다), 2배 크기(46x64).

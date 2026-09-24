@@ -84,6 +84,32 @@ def _vendor_findings(root: Path) -> list:
     return out
 
 
+#: 엔진의 D-S01 은 `#hex` 만 본다. 그래서 three.js 의 `0xRRGGBB` 와 CSS 폴백의
+#: 푸른 `hsl(2xx ...)` 는 게이트 밖이었고, 흑백 전환(2026-09-24) 때 조명·그림자에 남색이
+#: 그대로 남아 있었다. 둘을 **이 래퍼가** 더 본다(엔진 유무와 무관). 주석 안은 보지 않는다.
+_EXTRA = re.compile(r"\b0x[0-9a-fA-F]{6}\b|hsl\(\s*2[0-4]\d\s")
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def _extra_findings(root: Path) -> list:
+    out = []
+    for fp in sorted(root.rglob("*")):
+        if not fp.is_file() or fp.suffix not in _VENDOR_EXTS:
+            continue
+        if "node_modules" in fp.parts or fp.name == "tokens.css":
+            continue
+        try:
+            text = fp.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        text = _BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+        for i, line in enumerate(text.splitlines()):
+            code = line.split("//", 1)[0]
+            if _EXTRA.search(code):
+                out.append(_Finding(i, f"{fp.name}: {line.strip()[:160]}"))
+    return out
+
+
 #: 벤더 사본이 사는 디렉터리. 남의 라이브러리는 우리 표면이 아니다 — three.js 하나가
 #: 위반 3건과 선택자 의심 17건을 만들어 진짜 6건을 묻어 버렸다(2026-09-06 실측).
 #: 이름이 아니라 **경로**로 거른다: 파일명만 보면 우리 파일과 구분이 안 된다.
@@ -188,7 +214,7 @@ def main() -> int:
         engine = "내장(D-S01 복제)"
         surface_findings = _vendor_findings
 
-    raw = surface_findings(root)
+    raw = list(surface_findings(root)) + _extra_findings(root)
     kept, skipped, suspect, waived = [], [], [], []
     gen_cache: dict[str, bool] = {}
     for f in raw:

@@ -1,7 +1,7 @@
 // AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.
 // SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports viewScene.
 // Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.
-// sync-sha256: d20781ae170eb3b8b3428530c1f8966b078e33de3bebfd5dbdd26f0ffb9e2230
+// sync-sha256: 712eab3552c8366121e3fbfc50eca08fc8c6d9f46c73d6aea530616dbd48cd36
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -14,29 +14,29 @@ export const palette = {
     text: 0x17171A, // #17171A ← semantic.light.foreground
     textSoft: 0x55565E, // #55565E ← semantic.light.muted-foreground
     textMute: 0x82838D, // #82838D ← semantic.light.caption-foreground
-    ring: 0x8F96D9, // #8F96D9 ← semantic.light.ring
-    focus: 0x32355C, // #32355C ← semantic.light.focus
-    primary: 0x32355C, // #32355C ← semantic.light.primary
+    ring: 0x82838D, // #82838D ← semantic.light.ring
+    focus: 0x17171A, // #17171A ← semantic.light.focus
+    primary: 0x17171A, // #17171A ← semantic.light.primary
     primaryText: 0xF2F2F0, // #F2F2F0 ← semantic.light.primary-foreground
-    link: 0x4A4F8C, // #4A4F8C ← semantic.light.link
-    linkRamp: { heavy: '#17171A', mid: '#55565E', base: '#82838D', cross: '#7E86D3', fade: '#D1D2D6' },
+    link: 0x17171A, // #17171A ← semantic.light.link
+    linkRamp: { heavy: '#17171A', mid: '#55565E', base: '#82838D', cross: '#6E6E6A', fade: '#D1D2D6' },
     labelCss: 'color:#17171A;background:#FBFBFA;border:1px solid #DEDEDA',
   },
   dark: {
-    background: 0x0C0D13, // #0C0D13 ← semantic.dark.background
-    surface: 0x12141D, // #12141D ← semantic.dark.muted
-    card: 0x191C2A, // #191C2A ← semantic.dark.card
-    line: 0x262A3D, // #262A3D ← semantic.dark.border
-    text: 0xE8E7EF, // #E8E7EF ← semantic.dark.foreground
-    textSoft: 0xA7A9BF, // #A7A9BF ← semantic.dark.muted-foreground
-    textMute: 0x6E7189, // #6E7189 ← semantic.dark.caption-foreground
-    ring: 0x8F96D9, // #8F96D9 ← semantic.dark.ring
-    focus: 0x8F96D9, // #8F96D9 ← semantic.dark.focus
-    primary: 0x3A4070, // #3A4070 ← semantic.dark.primary
-    primaryText: 0xB9BEF0, // #B9BEF0 ← semantic.dark.primary-foreground
-    link: 0x8F96D9, // #8F96D9 ← semantic.dark.link
-    linkRamp: { heavy: '#B9BEF0', mid: '#8F96D9', base: '#747790', cross: '#9496A9', fade: '#525466' },
-    labelCss: 'color:#E8E7EF;background:#191C2A;border:1px solid #262A3D',
+    background: 0x0A0A0A, // #0A0A0A ← semantic.dark.background
+    surface: 0x121212, // #121212 ← semantic.dark.muted
+    card: 0x1A1A1A, // #1A1A1A ← semantic.dark.card
+    line: 0x2A2A2A, // #2A2A2A ← semantic.dark.border
+    text: 0xEDEDEB, // #EDEDEB ← semantic.dark.foreground
+    textSoft: 0xA8A8A4, // #A8A8A4 ← semantic.dark.muted-foreground
+    textMute: 0x8C8C88, // #8C8C88 ← semantic.dark.caption-foreground
+    ring: 0xA8A8A4, // #A8A8A4 ← semantic.dark.ring
+    focus: 0xEDEDEB, // #EDEDEB ← semantic.dark.focus
+    primary: 0xEDEDEB, // #EDEDEB ← semantic.dark.primary
+    primaryText: 0x0A0A0A, // #0A0A0A ← semantic.dark.primary-foreground
+    link: 0xEDEDEB, // #EDEDEB ← semantic.dark.link
+    linkRamp: { heavy: '#C8C8C4', mid: '#A8A8A4', base: '#7A7A76', cross: '#969692', fade: '#565652' },
+    labelCss: 'color:#EDEDEB;background:#1A1A1A;border:1px solid #2A2A2A',
   },
 } as const;
 
@@ -46,10 +46,10 @@ export function hexStr(n: number): string { return '#' + n.toString(16).padStart
 // 소비처는 view3d.ts 의 다크 글로우 분기 하나뿐 — fill·stroke·glowOpacity 만 읽는다.
 export const viewScene = {
   node: {
-    focus: { fill: 0xB9BEF0, glowOpacity: 0.9 },
-    near: { fill: 0x8F96D9, glowOpacity: 0.5 },
-    mid: { fill: 0x3A4070, stroke: 0x8F96D9, glowOpacity: 0.35 },
-    far: { fill: 0x191C2A, stroke: 0x9496A9, glowOpacity: 0.18 },
+    focus: { fill: 0xFFFFFF, glowOpacity: 0.9 },
+    near: { fill: 0xC8C8C4, glowOpacity: 0.5 },
+    mid: { fill: 0x3A3A38, stroke: 0xA8A8A4, glowOpacity: 0.35 },
+    far: { fill: 0x1A1A1A, stroke: 0x969692, glowOpacity: 0.18 },
   },
 } as const;
 

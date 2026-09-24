@@ -22,8 +22,7 @@ from pathlib import Path
 from vinc_mcp import http_server, rpc
 
 ROOT = Path(__file__).resolve().parents[1]
-HUB_SVG = ROOT / "design-hub/assets/logo/vinc-ring-circle.svg"
-APP_PNG = ROOT / "app/src-tauri/icons/128x128.png"
+HUB_SVG = ROOT / "design-hub/assets/logo/vinc-ring-favicon.svg"
 
 ICON_FIELDS = ("icons", "websiteUrl")
 
@@ -179,19 +178,14 @@ class EmbeddedIconMatchesCanon(unittest.TestCase):
     깨지면 정본을 바꾸고 임베드를 안 고친 것이다. **임베드를 정본에 맞춘다**(반대가 아니다).
     """
 
-    def test_SVG_는_허브의_원형_플레이트다(self):
+    def test_SVG_는_허브의_파비콘_링이다(self):
         self.assertEqual(
             http_server._FAVICON_SVG, _hub_svg(),
-            "커넥터 SVG 가 design-hub 의 원형 플레이트와 다르다 — 정본이 바뀌었는데 "
+            "커넥터 SVG 가 design-hub 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
             "_FAVICON_SVG 를 안 고쳤다.")
 
-    def test_PNG_는_앱_아이콘과_같은_래스터다(self):
-        """따로 뽑으면 커넥터 카드의 아이콘과 작업표시줄 아이콘이 서서히 갈라진다.
-        `tauri icon` 이 만드는 128px 를 그대로 쓴다."""
-        self.assertEqual(
-            http_server._FAVICON_PNG, APP_PNG.read_bytes(),
-            "커넥터 PNG 가 app/src-tauri/icons/128x128.png 와 다르다 — 아이콘을 다시 "
-            "뽑고 base64 를 안 갈아 끼웠다.")
+    # PNG 는 앱 아이콘과 바이트가 같지 않다(2026-09-24): 앱 아이콘은 여백을 둔 캔버스이고
+    # 커넥터 PNG 는 파비콘과 같은 tight 래스터다. 정본과의 대조는 `npm run logo:check` 가 한다.
 
     def test_임베드된_PNG_가_실제로_PNG_다(self):
         """base64 를 잘못 잘라 붙이면 디코드는 되는데 이미지가 아닐 수 있다. 그 상태로도
@@ -201,7 +195,6 @@ class EmbeddedIconMatchesCanon(unittest.TestCase):
     def test_정본이_사라지면_위_대조가_공허하게_통과하지_않는다(self):
         """파일이 없으면 빈 값끼리 비교해 통과로 보일 수 있는 구성을 막는다."""
         self.assertTrue(HUB_SVG.is_file(), f"정본이 없다: {HUB_SVG}")
-        self.assertTrue(APP_PNG.is_file(), f"앱 아이콘이 없다: {APP_PNG}")
         self.assertGreater(len(_hub_svg()), 200)
 
 
