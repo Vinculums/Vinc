@@ -391,6 +391,7 @@
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
     "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22",
     "decision:vinc-encode-holds-one-replica",
+    "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
     "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-code-comment-is-not-evidence-for-a-documentation-claim-2026-09-18",

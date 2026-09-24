@@ -1011,7 +1011,8 @@ def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
     return shaped
 
 
-def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
+def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None,
+                      seed_label: str = "Concept") -> QueryPlan:
     """Seed+depth 순회 — View L2 노드 포커스와 MCP `vinc_graph` 의 공유 플랜(D16,
     MCP-SKELETON §10 공백 해소). seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
 
@@ -1038,23 +1039,108 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None) ->
     남의 개념을 순회**했다(`vinc_graph` 는 seed 필수라 항상 이 경로). owner 를 주면
     시드와 도달 노드를 모두 그 소유자로 제한한다. 중간 홉은 필터하지 않지만, 쓰기가
     owner 스탬프를 강제하므로 교차 소유자 엣지가 생기지 않아 결과는 owner-clean 이다.
-    owner=None(로컬 단일 사용자)이면 기존 동작."""
+    owner=None(로컬 단일 사용자)이면 기존 동작.
+
+    ``seed_label`` — **시드 한 칸만** 라벨을 바꾼다(기본 Concept, 그때 플랜 문자열은
+    종전과 바이트 동일). 도달 집합은 여전히 Concept 이다. 결정 시드가 여기서 0행을
+    내서 `vinc_graph` 가 결정에서 퍼지지 않았다(감사 §5-6). 공유 팩·동기화·decide 는
+    이 인자를 안 넘기므로 결과가 그대로다.
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4"""
     depth = max(1, min(int(depth), 4))
     # PK 네임스페이싱 — `$seed` 는 노드 PK 바인딩이라 물리 키다(반환 id 는 읽기 훅이
     # 논리로 되돌린다). 근거: [[vinc.plan.node-pk-namespacing]] §7
     params: dict = {"seed": pkns.key(owner, seed)}
-    n_where, m_where = "n.concept_id = $seed", ""
+    seed_pk = _SEMANTIC_PK[seed_label]
+    n_where, m_where = f"n.{seed_pk} = $seed", ""
     if owner:
         n_where += " AND n.owner_id = $owner"
         m_where = " WHERE m.owner_id = $owner"
         params["owner"] = owner
     cypher = (
-        f"MATCH (n:Concept) WHERE {n_where} "
+        f"MATCH (n:{seed_label}) WHERE {n_where} "
         f"MATCH (n)-[* SHORTEST 1..{depth}]-(m:Concept){m_where} "
         "RETURN DISTINCT m.concept_id AS id"
     )
     return QueryPlan("subgraph_ids", cypher, params,
                      note=f"seed+depth reach set (depth={depth}, SHORTEST)")
+
+
+def subgraph_hops_plan(seed: str, *, depth: int = 2, owner: str | None = None,
+                       seed_label: str = "Concept") -> QueryPlan:
+    """:func:`subgraph_ids_plan` 과 같은 도달 집합에 **홉 수**를 붙인다.
+
+    노드 예산(`max_nodes`)을 받은 :func:`graph` 만 쓴다. 예산을 넘으면 깊이를 층
+    단위로 줄이려면 각 노드가 몇 홉에 있는지 알아야 해서다. SHORTEST 는 (시드, m)
+    쌍마다 경로 하나만 펴므로 행도 m 마다 하나다. 예산 없는 호출(View L2·공유 팩·
+    동기화)은 이 플랜을 타지 않는다 — 그 결과는 바이트 단위로 그대로다.
+
+    ⚠ 무라벨 순회라 IN_DOMAIN·PARENT_OF 도 홉이다. 그래서 depth 2 는 시드와 **같은
+    주제의 개념 전부**에 닿고(Domain 노드 경유), depth 4 면 주제 트리를 타고 형제
+    주제의 개념까지 번진다(임베디드 스토어 실측, 2026-09-24). 허브의 depth 2+ 가 무거운 까닭 하나이고, 예산이 층 단위로 깊이를
+    줄이는 것이 그 비용을 끊는다(순회 의미 자체는 공유 플랜이라 여기서 안 바꾼다).
+    근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]"""
+    depth = max(1, min(int(depth), 4))
+    params: dict = {"seed": pkns.key(owner, seed)}
+    seed_pk = _SEMANTIC_PK[seed_label]
+    n_where, m_where = f"n.{seed_pk} = $seed", ""
+    if owner:
+        n_where += " AND n.owner_id = $owner"
+        m_where = " WHERE m.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (
+        f"MATCH (n:{seed_label}) WHERE {n_where} "
+        f"MATCH (n)-[r* SHORTEST 1..{depth}]-(m:Concept){m_where} "
+        "RETURN m.concept_id AS id, min(length(r)) AS hops"
+    )
+    return QueryPlan("subgraph_hops", cypher, params,
+                     note=f"seed+depth reach set with hop counts (depth={depth})")
+
+
+def decision_seed_rows_plan(seed: str, *, owner: str | None = None,
+                            other: str = "Concept", outgoing: bool = True) -> QueryPlan:
+    """결정 시드 자신의 의미층 엣지(PREREQUISITE_OF·DERIVES_FROM·INHERITS_FROM) 한 방향·
+    한 상대 라벨. :func:`graph_rows_for_ids_plan` 은 `(c:Concept)-[r]->(d:Concept)` 만
+    보고 결정 축(:func:`decision_rows_plan`)은 ABOUT 만 보므로, 이 셋이 결정 시드에서
+    **어느 플랜에도** 안 잡혔다. 시드 단계에서만 쓴다(공유 플랜은 그대로).
+
+    행 모양은 graph_rows 와 같다(id=출발, target=도착). Decision 에는 one_liner·
+    content_time 열이 없어 그 자리는 리터럴이다 — 열 없는 라벨에 옮겨 붙이면 Binder
+    가 조회 전체를 죽인다(decision_rows_plan 경고와 같은 자리).
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4"""
+    params: dict = {"seed": pkns.key(owner, seed)}
+    s_where, o_where = "s.decision_id = $seed", ""
+    if owner:
+        s_where += " AND s.owner_id = $owner"
+        o_where = " WHERE o.owner_id = $owner"
+        params["owner"] = owner
+    o_pk = _SEMANTIC_PK[other]
+    o_kind = other.lower()
+    o_ol = "coalesce(o.one_liner, '')" if other == "Concept" else "''"
+    o_ct = "coalesce(o.content_time, '')" if other == "Concept" else "''"
+    rels = "PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"
+    s_cols = ("s.decision_id AS {i}, s.title AS {p}label, s.domain AS {p}domain, "
+              "s.props AS {p}props, coalesce(s.tags, []) AS {p}tags, "
+              "'decision' AS {p}kind, coalesce(s.created, s.updated_at, '') AS {p}ts, "
+              "'' AS {p}content_ts, '' AS {p}one_liner, ")
+    o_cols = (f"o.{o_pk} AS {{i}}, o.title AS {{p}}label, o.domain AS {{p}}domain, "
+              "o.props AS {p}props, coalesce(o.tags, []) AS {p}tags, "
+              f"'{o_kind}' AS {{p}}kind, coalesce(o.created, o.updated_at, '') AS {{p}}ts, "
+              f"{o_ct} AS {{p}}content_ts, {o_ol} AS {{p}}one_liner, ")
+    src, dst = (s_cols, o_cols) if outgoing else (o_cols, s_cols)
+    src_a, dst_a = ("s", "o") if outgoing else ("o", "s")
+    if outgoing:
+        pattern = f"(s)-[r:{rels}]->(o:{other})"
+    else:
+        pattern = f"(o:{other})-[r:{rels}]->(s)"
+    cypher = (
+        f"MATCH (s:Decision) WHERE {s_where} "
+        f"MATCH {pattern}{o_where} "
+        "RETURN " + src.format(p="", i="id") + dst.format(p="target_", i="target")
+        + "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        + _track_cols(src_a) + ", " + _track_cols(dst_a, "target_")
+    )
+    return QueryPlan("graph_decision_seed", cypher, params,
+                     note=f"decision seed edges ({'out' if outgoing else 'in'} {other})")
 
 
 def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
@@ -2118,7 +2204,7 @@ def _apply_basis(shaped: dict, basis: str) -> str:
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
           depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
           domains: list[str] | None = None, cone: float = 1.0,
-          cfg=None, store=None) -> dict:
+          max_nodes: int | None = None, cfg=None, store=None) -> dict:
     """지식 그래프 — 기본은 owner(±domain) 스코프 전체(View L1), ``seed`` 지정 시
     seed+depth ego 서브그래프(View L2 = MCP `vinc_graph` 동일 경로). 노드에는
     결정론 레이아웃 좌표(x,y,z)가 포함된다(D17) — ``layout`` 프리셋은 D34
@@ -2127,19 +2213,60 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     F2(2026-07-19): Concept 단일 축 해소 — 축 플랜 3종(Bridge·Episode·Record)이
     합류해 부착 노드·엣지가 렌더된다. L2 에선 매개자(브릿지 등)가 keep 집합에
     편입돼 '보이지 않는 접착제'(kept 개념 둘이 엣지 없이 떠 있던 문제)가 사라진다.
-    entity: 시드는 전용 순회(TYPED 폐쇄 성분 — :func:`entity_subgraph_ids_plan`)."""
+    entity: 시드는 전용 순회(TYPED 폐쇄 성분 — :func:`entity_subgraph_ids_plan`).
+
+    decision: 시드는 시드 칸만 Decision 으로 바꿔 같은 도달 집합 플랜을 탄다(개념
+    시드와 같은 모양으로 퍼진다). 결정 자신의 PREREQUISITE_OF·DERIVES_FROM·
+    INHERITS_FROM 은 :func:`decision_seed_rows_plan` 이 따로 싣는다.
+
+    ``max_nodes`` — 노드 예산(개념 도달 집합 기준). **주는 호출만** 영향을 받는다:
+    도달 집합이 예산을 넘으면 깊이를 층 단위로 줄여(최소 1) 그 층까지만 싣고
+    ``depth_budget`` 으로 무엇을 줄였는지 말한다. 층 중간을 자르지 않는 이유는 "몇
+    홉까지 다 봤다"는 말이 참으로 남아야 해서다. 주지 않으면(View L2·공유 팩·동기화)
+    플랜도 결과도 종전과 같다. 예산 값은 MCP 핸들러가 정한다.
+    근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]"""
     if seed:
         # SEC-1: seed 갈래도 owner 스코프를 지킨다. 여태 owner 를 받고도 쓰지 않아
         # 호스티드에서 남의 서브그래프가 그대로 보였다(vinc_graph 는 seed 필수).
         # entity 판정은 접두사 라우팅(_seed_table) — 개방층 id 는 임의 접두사(F1).
-        entity_seed = _seed_table(seed)[0] == "Entity"
-        ids_res = execute(
-            entity_subgraph_ids_plan(seed, depth=depth, owner=owner) if entity_seed
-            else subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
+        seed_label = _seed_table(seed)[0]
+        entity_seed = seed_label == "Entity"
+        decision_seed = seed_label == "Decision"
+        budget: dict | None = None
+        if entity_seed:
+            ids_res = execute(entity_subgraph_ids_plan(seed, depth=depth, owner=owner),
+                              cfg, store=store)
+        elif max_nodes and int(depth) > 1:
+            ids_res = execute(subgraph_hops_plan(
+                seed, depth=depth, owner=owner,
+                seed_label="Decision" if decision_seed else "Concept"), cfg, store=store)
+        elif decision_seed:
+            ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner,
+                                                seed_label="Decision"), cfg, store=store)
+        else:
+            ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner),
+                              cfg, store=store)
         if not ids_res.get("executed"):
             return {"kind": "graph", "executed": False, "seed": seed, "depth": depth,
                     "nodes": [], "edges": [], "note": ids_res.get("note", "")}
-        ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
+        reach_rows = [r for r in ids_res.get("rows", []) if r.get("id")]
+        if max_nodes and int(depth) > 1 and not entity_seed:
+            want = max(1, min(int(depth), 4))
+            hops = {r["id"]: int(r.get("hops") or 1) for r in reach_rows}
+            served = 1
+            for k in range(1, want + 1):
+                if sum(1 for h in hops.values() if h <= k) <= int(max_nodes):
+                    served = k
+                else:
+                    break
+            if served < want:
+                budget = {"requested_depth": want, "served_depth": served,
+                          "reach_at_requested": len(hops),
+                          "reach_served": sum(1 for h in hops.values() if h <= served),
+                          "max_nodes": int(max_nodes)}
+                reach_rows = [r for r in reach_rows if hops[r["id"]] <= served]
+                depth = served
+        ids = sorted({seed, *(r["id"] for r in reach_rows)})
         res = execute(
             entity_rows_for_ids_plan(ids, owner=owner) if entity_seed
             else graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
@@ -2161,6 +2288,21 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                         keep.add(r["id"])
                     if r.get("target"):
                         keep.add(r["target"])
+        if decision_seed:
+            # 결정 시드 자신의 의미층 엣지 — 위 두 플랜 어느 쪽에도 안 잡힌다.
+            for other in ("Concept", "Decision"):
+                for outgoing in (True, False):
+                    dx = execute(decision_seed_rows_plan(seed, owner=owner, other=other,
+                                                         outgoing=outgoing),
+                                 cfg, store=store)
+                    if not dx.get("executed"):
+                        continue
+                    for r in dx.get("rows", []):
+                        rows.append(r)
+                        if r.get("id"):
+                            keep.add(r["id"])
+                        if r.get("target"):
+                            keep.add(r["target"])
         shaped = shape_graph(rows)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
         shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
@@ -2213,7 +2355,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                              + "Use vinc_search to find the id first."),
                     **({"candidates": cands} if cands else {}), **shaped}
         return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
-                "found": found, "basis": used, **shaped}
+                "found": found, "basis": used,
+                **({"depth_budget": budget} if budget else {}), **shaped}
     doms = normalize_domains(domain, domains)
     res = execute(graph_plan(owner=owner, domains=doms), cfg, store=store)
     rows = list(res.get("rows", []))

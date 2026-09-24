@@ -77,7 +77,11 @@ def test_annotations_survive_tools_list():
 
 # ── 결과 크기 상한 (25k 토큰 요건) ───────────────────────────────────────────
 def test_oversized_result_degrades_to_actionable_error():
-    big = {"rows": ["x" * 100 for _ in range(2000)]}     # 상한 초과
+    """거부가 남는 곳은 시드 노드 자신이 상한을 넘길 때뿐이다(허브의 고리는 축소기가
+    줄인다). 그때 depth 를 낮추라는 말은 소용이 없으므로 다른 읽기 길을 가리킨다."""
+    big = {"kind": "graph", "seed": "concept:x", "depth": 1,
+           "nodes": [{"id": "concept:x", "label": "x",
+                      "props": {"note": "x" * 200_000}}], "edges": []}
     d = rpc.Dispatcher(_StubBridge(big))
     r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                   "params": {"name": "vinc_graph",
@@ -86,8 +90,127 @@ def test_oversized_result_degrades_to_actionable_error():
     assert res["isError"] is True
     text = res["content"][0]["text"]
     assert "Result too large" in text
-    assert "depth" in text                      # 어떻게 줄일지 알려준다
+    assert "vinc_neighbors" in text and "vinc_brief" in text   # 어떻게 읽을지 알려준다
     assert res["_meta"]["vinc_too_large"]["tool"] == "vinc_graph"
+
+
+def _hub(seed="concept:vinc-mcp", ring=900, props_chars=300, second_ring=0):
+    """허브 모양 — 직접 고리만으로 상한을 넘긴다(라이브 depth 1 = 342,008자)."""
+    fat = _fat_graph(seed=seed, neighbours=ring, chars=props_chars,
+                     second_ring=second_ring)
+    for i, n in enumerate(fat["nodes"][1:]):
+        n.update({"x": 1.25, "y": -3.5, "z": 0.0, "ppr": 0.000123, "rev": 3,
+                  "updated_at": "2026-09-24T00:00:00.000Z",
+                  "tags": ["t1", "t2"], "degree": (i % 7) + 1,
+                  "label": f"a neighbour with a fairly long title number {i}"})
+    return fat
+
+
+def test_a_depth1_hub_keeps_its_ring_as_ids_titles_and_kinds():
+    """감사 §5-4: `concept:vinc-mcp depth=1` 이 342,008자로 거부됐다. 축소기에 고리 단이
+    없어서 허브는 어느 깊이로도 못 읽었다. 이제 고리를 id·label·kind 로 싣는다."""
+    fat = _hub(ring=300)
+    assert len(json.dumps(fat, ensure_ascii=False)) > 150_000
+    out = tools._shrink_graph_result(fat, rpc.MAX_RESULT_CHARS - rpc._MARKER_RESERVE)
+    assert out is not None
+    seed = out["nodes"][0]
+    assert seed["id"] == "concept:vinc-mcp" and seed["props"]["mission"] == "m"
+    ring = out["nodes"][1:]
+    assert len(ring) == 300, "고리가 잘렸다"
+    assert all(set(n) == {"id", "label", "kind"} for n in ring)
+    assert out["shrunk"]["ring_slimmed"] == 300 and out["shrunk"]["ring_dropped"] == 0
+    assert "ring_truncated" not in out
+    assert "300 of 300 direct neighbour(s)" in out["note"]
+
+
+def test_a_hub_too_big_even_as_ids_leaves_the_least_connected_out_and_says_so():
+    fat = _hub(ring=3000)
+    budget = rpc.MAX_RESULT_CHARS - rpc._MARKER_RESERVE
+    out = tools._shrink_graph_result(fat, budget)
+    assert out is not None
+    assert len(json.dumps(out, ensure_ascii=False)) <= rpc.MAX_RESULT_CHARS
+    kept = len(out["nodes"]) - 1
+    assert 0 < kept < 3000
+    assert out["ring_truncated"] == 3000 - kept == out["shrunk"]["ring_dropped"]
+    assert out["shrunk"]["ring_kept"] == kept and out["shrunk"]["ring_total"] == 3000
+    assert f"{kept} of 3000 direct neighbour(s)" in out["note"]
+    assert "vinc_neighbors node=concept:vinc-mcp" in out["note"]
+    # 많이 이어진 이웃이 먼저 남는다 — 남은 것 중 가장 약한 것이 버린 것 중 가장 강한 것
+    # 보다 약하지 않다.
+    degree = {n["id"]: n["degree"] for n in _hub(ring=3000)["nodes"][1:]}
+    kept_ids = {n["id"] for n in out["nodes"][1:]}
+    dropped_ids = set(degree) - kept_ids
+    assert min(degree[i] for i in kept_ids) >= max(degree[i] for i in dropped_ids)
+    # 엣지는 남은 노드 사이에만.
+    ids = kept_ids | {"concept:vinc-mcp"}
+    assert all(e["source"] in ids and e["target"] in ids for e in out["edges"])
+
+
+def test_a_depth1_hub_goes_through_the_dispatcher_instead_of_being_refused():
+    d = rpc.Dispatcher(_StubBridge(_hub(ring=2000)))
+    r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "vinc_graph",
+                             "arguments": {"seed_id": "concept:vinc-mcp", "depth": 1}}})
+    res = r["result"]
+    assert res["isError"] is False, res["content"][0]["text"][:200]
+    assert len(res["content"][0]["text"]) <= rpc.MAX_RESULT_CHARS
+    out = json.loads(res["content"][0]["text"])
+    assert out["nodes"][0]["id"] == "concept:vinc-mcp"
+
+
+def test_the_shrink_note_counts_what_survived():
+    """감사 §5-5: `concept:signal-design depth=2` 가 9노드만 남았는데 note 는 "시드와 직접
+    고리는 온전하다"고 말했다. 고정 문구가 아니라 남은 것을 센다."""
+    fat = _fat_graph(neighbours=7, chars=10, second_ring=60)
+    out = tools._shrink_graph_result(fat, 12_000)
+    assert out is not None
+    s = out["shrunk"]
+    assert (s["ring_total"], s["ring_kept"]) == (7, 7)
+    assert (s["far_total"], s["far_kept"]) == (420, 0)
+    assert "7 of 7 direct neighbour(s) and 0 of 420 node(s) beyond them" in out["note"]
+    assert "intact" not in out["note"]
+
+
+class _RecordingBridge(_StubBridge):
+    def __init__(self, payload):
+        super().__init__(payload)
+        self.calls = []
+
+    def request(self, method, path, params=None, body=None, timeout=60):
+        self.calls.append((path, dict(params or {})))
+        return json.loads(json.dumps(self._payload))
+
+
+def _graph_args(bridge, arguments):
+    d = rpc.Dispatcher(bridge)
+    r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "vinc_graph", "arguments": arguments}})
+    return json.loads(r["result"]["content"][0]["text"])
+
+
+def test_depth_two_and_beyond_carry_the_node_budget_and_depth_one_does_not():
+    """D3: 예산은 MCP 핸들러에만 있다. 사이드카 /graph 는 받았을 때만 쓴다."""
+    small = {"kind": "graph", "seed": "concept:x", "depth": 2, "nodes": [], "edges": []}
+    for arguments, expect in (({"seed_id": "concept:x"}, tools.GRAPH_NODE_BUDGET),
+                              ({"seed_id": "concept:x", "depth": 3}, tools.GRAPH_NODE_BUDGET),
+                              ({"seed_id": "concept:x", "depth": 1}, None)):
+        b = _RecordingBridge(small)
+        _graph_args(b, arguments)
+        path, params = b.calls[-1]
+        assert path == "/graph"
+        assert params.get("max_nodes") == expect, arguments
+
+
+def test_a_hub_with_no_depth_given_says_it_got_depth_one():
+    served = {"kind": "graph", "seed": "concept:vinc-mcp", "depth": 1, "nodes": [],
+              "edges": [], "depth_budget": {"requested_depth": 2, "served_depth": 1,
+                                            "reach_at_requested": 640, "reach_served": 95,
+                                            "max_nodes": tools.GRAPH_NODE_BUDGET}}
+    out = _graph_args(_RecordingBridge(served), {"seed_id": "concept:vinc-mcp"})
+    assert "served depth 1 instead of 2" in out["depth_note"]
+    assert "hub" in out["depth_note"] and "640 concepts" in out["depth_note"]
+    out = _graph_args(_RecordingBridge(served), {"seed_id": "concept:vinc-mcp", "depth": 2})
+    assert "requested depth was lowered" in out["depth_note"]
 
 
 def _fat_graph(seed="concept:agent-x", neighbours=40, chars=2500, second_ring=0):
