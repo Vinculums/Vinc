@@ -12,7 +12,7 @@ import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { openSheet, wireScrimDismiss } from "./components";
+import { wireScrimDismiss } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 
@@ -151,11 +151,13 @@ const COMMANDS: Cmd[] = [
   })),
   // 여태 이 둘은 `#packs` 로 보냈다. 표면이 사라졌으니 이제 직접 그 갈래를 연다 —
   // 별칭을 한 번 거치게 두면 팔레트가 주소창을 흔들고 화면이 한 번 갈아엎힌다.
-  { label: COPY.ui.palette.ingest, hint: COPY.ui.tools.title,
+  // 힌트는 명령이 닿는 자리다: Tools 가 설정의 정보 분류로 들어갔으므로 설정.
+  // 팔레트의 설정 명령은 **연다**(토글 아님) — 이미 열려 있으면 일반으로 옮길 뿐이다.
+  { label: COPY.ui.palette.ingest, hint: COPY.ui.topbar.settings,
     run: () => openSettings("data", "import") },
-  { label: COPY.ui.palette.share, hint: COPY.ui.tools.title,
+  { label: COPY.ui.palette.share, hint: COPY.ui.topbar.settings,
     run: () => openSettings("data", "share") },
-  { label: COPY.ui.palette.settings, hint: "", run: () => openSettings("general", undefined, true) },
+  { label: COPY.ui.palette.settings, hint: "", run: () => openSettings("general") },
 ];
 
 function openPalette() {

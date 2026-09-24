@@ -23,7 +23,6 @@ import { viewHooks } from "./topbar";
  *  대표 개념 사이에 `relates_to` 를 긋고, 그 사실을 화면이 그대로 말한다. */
 
 type Tab = "create" | "import" | "share";
-export type ToolsTab = Tab;
 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
@@ -281,6 +280,9 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
     owner: cfg.owner,
     onSaved: (id) => { docId = id; },
   });
+  // 편집기가 뜨는 사이 다른 탭·분류로 옮겼으면 이 판은 떨어져 나갔고, 그 전환의
+  // 정리는 이미 지나갔다(그때는 핸들이 없었다). 여기서 바로 해제하고 발도 쓰지 않는다.
+  if (!pane.isConnected) { void handle.dispose(); return; }
   setCleanup(() => handle.dispose());
 
   // 연결 후보 — 대표 개념이 없는 문서는 연결할 자리가 없다(고를 수는 있어도 그을

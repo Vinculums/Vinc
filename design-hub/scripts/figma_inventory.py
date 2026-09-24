@@ -163,20 +163,19 @@ ROUTE_STATES = _MANIFEST_STATES
 DIALOGS = {
     # 값은 05 · Overlays 의 캡처 보드다(App · Topbar|View · <state> / dark). None 은 선언된 결손.
     "ask.ts:c.historyTitle": "App · Topbar · ask-history / dark",
-    "conventions.ts:C.title": "App · Topbar · graphmd / dark",
     # 문서 편집기 시트의 충돌 배너는 다른 기기의 쓰기가 있어야 뜬다 — 단일 스토어 캡처로는 못 만든다.
     "doc-editor.ts:opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew": None,
     "empty-invite.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
     "main.ts:COPY.ui.palette.keyboard": "App · Topbar · cheatsheet / dark",
-    # 설정이 시트로 합쳐지며(2026-09-09) 이 모달이 `main.ts` 에서 열리게 됐는데 표에
-    # 아무도 넣지 않아 미선언으로 빨갰다. Figma 쪽 보드는 **처음부터 있었다**
-    # (settings-account / connections / data / advanced / light) — 결손이 아니라
-    # 선언 누락이다. 탭이 넷이지만 표의 단위는 모달 하나라, 다른 다중 탭 모달과
-    # 같이 **기본 탭**을 대표로 적는다(`tools.ts:T.title` 이 tools-create 인 것과 같다).
-    "main.ts:COPY.ui.topbar.settings": "App · Topbar · settings-account / dark",
+    # 2026-09-22 scope-back(VIN-88): 설정 · GRAPH.md · Tools(쓰기/가져오기/공유) 세 모달이
+    # 레일 바닥 설정 버튼이 여는 **시트 하나**(분류 여덟)로 합쳐졌다. 그래서 여기 있던
+    # `main.ts:COPY.ui.topbar.settings` · `conventions.ts:C.title` · `tools.ts:T.title`
+    # 세 줄이 이 한 줄이 됐다. 옛 보드(settings-account · graphmd · tools-create)는 탭이
+    # 가로로 선 옛 상자를 찍은 것이라 이 시트를 대표하지 못한다 — 분류 레일 시트의
+    # 캡처 보드가 생기기 전까지는 **선언된 결손**으로 둔다.
+    "surfaces/settings.ts:COPY.ui.topbar.settings": None,
     "sheets.ts:COPY.ui.sheet.shareTitle": "App · Topbar · share-sheet / dark",
     "sheets.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
-    "tools.ts:T.title": "App · Topbar · tools-create / dark",
     "lnb.ts:openContextMenu": "App · View · topic-context-menu / dark",
     "lnb.ts:promptText": "App · View · topic-rename-prompt / dark",
     # 캔버스 위 노드 우클릭 메뉴는 캔버스 좌표가 필요해 아직 캡처하지 않았다(매트릭스의 갭).

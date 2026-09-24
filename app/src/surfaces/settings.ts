@@ -4,6 +4,7 @@ import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyI
 import { COPY } from "../copy";
 import { esc, openSheet, type SheetHandle } from "../components";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
+import { disposeEditorsIn } from "../doc-editor";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -28,10 +29,16 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
     live.go(start, dataTab);
     return;
   }
-  const sheet = openSheet({
-    title: COPY.ui.settingsUi.title,
+  // 시트 이름은 설정 버튼과 같은 말이다(`설정`). `settingsUi.title` 은 한국어 덱에서도
+  // "Settings" 라 머리만 영어가 된다.
+  // ⚠ `title:` 을 여는 괄호 바로 다음 줄에 둔다 — design-hub `figma_inventory.py` 가
+  // 이 자리의 제목식으로 모달을 센다(사이에 주석이 끼면 제목 없는 호출로 읽는다).
+  const sheet: SheetHandle = openSheet({
+    title: COPY.ui.topbar.settings,
     size: "panel",
-    onClose: () => { live = null; },
+    // 닫힐 때 살아 있는 편집기(정보 › 쓰기)를 확정·해제한다. 마운트 지점만 걷어 가면
+    // 디바운스 저장이 화면 없는 곳에서 터진다.
+    onClose: () => { live = null; disposeEditorsIn(sheet.el); },
   });
   let queued: { cat: SettingsCat; tab?: DataTab } | null = null;
   live = {
@@ -140,6 +147,9 @@ export async function renderSettings(
 
   function renderGeneral(body: HTMLElement) {
     const lang = cfg.lang === "en" ? "en" : "ko";
+    // 언어 이름은 덱에 넣지 않는다: 각 언어가 자기 이름으로 선다(영어 화면에서 "Korean"
+    // 이 되면 영어를 못 읽는 사람이 자기 언어를 못 찾는다). `data-lang-opt` 가 카피
+    // 인벤토리(tests/test_copy_parity.py)의 그 면제 표식이다.
     body.innerHTML = `
       <h2>${esc(U.navGeneral)}</h2>
       <p class="hint">${esc(U.generalIntro)}</p>
@@ -157,8 +167,8 @@ export async function renderSettings(
           <p class="hint">${esc(U.languageHint)}</p>
         </div>
         <select id="s-lang" class="settings-select">
-          <option value="ko"${lang === "ko" ? " selected" : ""}>한국어</option>
-          <option value="en"${lang === "en" ? " selected" : ""}>English</option>
+          <option data-lang-opt="ko" value="ko"${lang === "ko" ? " selected" : ""}>한국어</option>
+          <option data-lang-opt="en" value="en"${lang === "en" ? " selected" : ""}>English</option>
         </select>
       </div>
       <p class="hint">${esc(U.languageReload)}</p>`;
@@ -226,7 +236,12 @@ export async function renderSettings(
       <p class="hint">${esc(U.dataIntro)}</p>
       <div id="settings-tools"></div>`;
     const pane = body.querySelector<HTMLElement>("#settings-tools")!;
+    // 분류들은 시트의 발(`sheet.foot`)을 함께 쓴다. 모듈이 오는 사이 다른 분류로
+    // 옮겼으면 이 판은 이미 떨어져 나갔으므로 아무것도 안 그린다 — 그리면 그 발
+    // 버튼이 지금 분류 밑에 선다. 판 안의 늦은 쓰기도 같은 규칙이다(tools.ts ·
+    // conventions.ts 가 `isConnected` 로 본다).
     void import("../tools").then((m) => {
+      if (!pane.isConnected) return;
       cleanup = m.mountTools(
         { el: sheet.el, body: pane, foot: sheet.foot, close: sheet.close }, toolsTab);
     });
@@ -239,6 +254,7 @@ export async function renderSettings(
       <div id="settings-conv"></div>`;
     const pane = body.querySelector<HTMLElement>("#settings-conv")!;
     void import("../conventions").then((m) => {
+      if (!pane.isConnected) return;       // 위 renderData 와 같은 이유
       void m.mountConventions(pane, sheet);
     });
   }

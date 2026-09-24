@@ -70,6 +70,10 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
   let docId = "";
 
   async function draw() {
+    // 설정의 분류들은 발(`sheet.foot`)을 함께 쓴다. 읽기를 기다리는 사이 다른 분류로
+    // 옮겼으면 이 판은 떨어져 나갔다 — 여기서 발을 쓰면 저장·재생성(실제 쓰기)
+    // 버튼이 다른 분류 밑에 선다.
+    if (!host.isConnected) return;
     const parts = splitConventions(text);
     const broken = parts === null;
     const [head, gen, tail] = parts || [text, "", ""];

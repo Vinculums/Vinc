@@ -29,7 +29,9 @@ import { mark3dSvg, markSvg } from "./surfaces/view-planar";
 type Navigator = (nodeId: string, domain?: string, docId?: string) => void;
 /** 주제를 고른다. `add` 면 지금 고른 것에 **더한다**(Ctrl·⌘ 클릭).
  *  화면이 즉시 따라간다 — 고르는 것과 보는 것이 어긋나는 중간 상태를 두지 않는다. */
-type TopicPicker = (path: string, add: boolean) => void;
+type TopicPicker = (path: string, add: boolean, set?: boolean) => void;
+/** `set` 이 참이면 토글하지 않고 그 주제 하나로 **건다**(이미 그것뿐이면 그대로 둔다).
+ *  Agent 레일이 쓴다 — 토글이면 이미 걸린 스코프를 Agent 를 고르는 손이 벗긴다. */
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
@@ -167,7 +169,19 @@ function saveExpanded() {
 }
 
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
-export function setLnbTopicPicker(fn: TopicPicker | null) { pickTopic = fn; }
+export function setLnbTopicPicker(fn: TopicPicker | null) {
+  pickTopic = fn;
+  // 저장된 레일이 Agent 인 채로 새로 열면 setRailKey 를 안 거치므로 스코프가 안 걸린다.
+  // View 가 피커를 처음 걸 때 한 번만 건다(딥링크로 들어왔으면 그 착지를 덮지 않는다).
+  // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
+  if (fn && !launchScoped && railKey === "agent") {
+    launchScoped = true;
+    const here = location.hash.replace(/^#/, "");
+    if (here === "" || here === "view") queueMicrotask(scopeAgentGraph);
+  }
+}
+/** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
+let launchScoped = false;
 
 /** 종 렌즈 — 레일에서 고른 종을 **지도에도** 건다. 훅이 없으면(표면이 없거나 떠났으면)
  *  레일은 트리만 바꾼다: 눌러도 아무 일 없는 손잡이를 만들지 않는다는 규율의 반대편
@@ -380,8 +394,14 @@ function paintAgentList(roles: AgentRole[]): string {
   return parts.join("");
 }
 
+/** 다시 읽기의 세대 번호. 종을 빠르게 갈아 끼우면 앞 종의 응답이 늦게 와서 뒤 종의
+ *  트리를 덮는다 — 가장 최근 호출의 응답만 상태에 쓴다. */
+let refreshSeq = 0;
+
 /** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후). */
 export async function refreshLnb(): Promise<void> {
+  const seq = ++refreshSeq;
+  const stale = () => seq !== refreshSeq;
   loading = true; failed = false;
   paint();
   try {
@@ -398,6 +418,7 @@ export async function refreshLnb(): Promise<void> {
       if (!Object.keys(kindCounts).length) {
         try {
           const c = await api.navTree(cfg.owner);
+          if (stale()) return;
           if (c?.counts?.kinds) kindCounts = c.counts.kinds;
         } catch { /* 개수만 못 받았다 */ }
       }
@@ -407,22 +428,28 @@ export async function refreshLnb(): Promise<void> {
       // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
       // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
       // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
-      tree = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
-      failed = !tree?.executed;
-      if (tree?.executed && r?.domain) tree = filterAgentTree(tree);
+      // 응답은 지역에 받고, 세대가 그대로일 때만 상태에 쓴다(늦게 온 앞 종의 응답이
+      // 뒤 종의 트리를 덮지 않게).
+      let next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
+      if (stale()) return;
+      if (next?.executed && r?.domain) next = filterAgentTree(next);
       // Agent 목록의 팀·관계는 `/graph` 의 역할 노드와 그 사이 엣지에서 접는다.
       // nav-tree 는 제목·주제만 주고 props.team 과 works_with 를 안 싣는다.
       // 그래프를 못 받으면 주제 트리로 강등한다(빈 목록을 "역할이 없다"로 읽히게 두지 않는다).
-      agentRoster = null;
-      if (r?.domain && tree?.executed) {
+      let roster: AgentRole[] | null = null;
+      if (r?.domain && next?.executed) {
         try {
           const rows = buildAgentRoster(
             await api.graph(cfg.owner, { domains: ["vinc/agent"] }));
           // 접은 역할이 없으면 주제 트리로 강등한다. 빈 배열을 그리면
           // 트리에 있던 역할이 "없다"로 읽힌다.
-          agentRoster = rows.length ? rows : null;
-        } catch { agentRoster = null; }
+          roster = rows.length ? rows : null;
+        } catch { roster = null; }
+        if (stale()) return;
       }
+      tree = next;
+      failed = !tree?.executed;
+      agentRoster = roster;
     }
     // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
     // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
@@ -432,6 +459,7 @@ export async function refreshLnb(): Promise<void> {
     // (실측 2026-09-08: 마운트 직후 툴팁이 "노드 0개"였다).
     paintRail();
   } catch {
+    if (stale()) return;
     tree = null; failed = true; agentRoster = null;
   }
   loading = false;
@@ -439,9 +467,11 @@ export async function refreshLnb(): Promise<void> {
 }
 
 /** Agent 를 고르면 지도는 `vinc/agent` 하위 트리다(역할 도메인 전량).
- *  상세는 목록에서 역할을 고른 뒤에만 연다. 근거: 소유자 지시 2026-09-22. */
+ *  상세는 목록에서 역할을 고른 뒤에만 연다. 근거: 소유자 지시 2026-09-22.
+ *  **토글이 아니라 건다**(`set`) — 이미 vinc/agent 로 좁혀져 있을 때 Agent 를 다시
+ *  고르면 토글 피커는 스코프를 벗겨 버린다. */
 function scopeAgentGraph(): void {
-  pickTopic?.("vinc/agent", false);
+  pickTopic?.("vinc/agent", false, true);
 }
 
 /** Agent 를 떠나면 그 주제 스코프를 벗긴다. pickTopic 은 해시를 안 바꾸므로
@@ -473,6 +503,9 @@ function setRailKey(next: string): void {
   // 다른 것을 보고 있는 셈이다(발주자 지적 2026-09-09).
   kindLens?.(lnbKind());
   void refreshLnb().then(() => {
+    // 그 사이 다른 종을 골랐으면 이 전환의 뒷일은 없다. 늦게 끝난 Agent 전환이
+    // 뒤에 고른 종 위에 Agent 스코프를 걸면 안 된다.
+    if (railKey !== next) return;
     if (next === "agent") scopeAgentGraph();
     else if (prev === "agent") unscopeAgentGraph();
   });
@@ -683,6 +716,15 @@ function paintHead(n?: number, label?: string): void {
       + `<span class="hint">${n || "·"}</span></div>`;
 }
 
+/** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */
+function scopeChip(): string {
+  if (!picked.size) return "";
+  return `<div class="lnb-scope">
+      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
+      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
+    </div>`;
+}
+
 function paint() {
   const body = $("lnb-body");
   if (!body) return;
@@ -699,7 +741,10 @@ function paint() {
   }
   if (rail()?.offTopic) {
     paintHead();
-    body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind)}</p>`;
+    // 트리는 없어도 주제 스코프는 살아 있을 수 있다. 칩을 빼면 걸린 스코프를
+    // 볼 길도 풀 길도 없다.
+    body.innerHTML = scopeChip()
+      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind)}</p>`;
     return;
   }
   // Agent 목적지는 주제 트리가 아니라 로스터 목록이다. 팀을 섹션으로 두고
@@ -720,12 +765,7 @@ function paint() {
   let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
-  if (picked.size) {
-    html += `<div class="lnb-scope">
-      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
-      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
-    </div>`;
-  }
+  html += scopeChip();
   // 노드 갈래를 골랐는데 응답이 노드를 안 실어 왔다. 데스크탑에서는 사이드카가 앱과
   // 한 벌이라 날 수 없지만 **웹모드는 다르다** — 사이트가 배포한 앱과 허브의 사이드카가
   // 따로 올라가므로 앱이 먼저 새것일 수 있다. 그때 빈 트리를 그리면 "내 개념이
