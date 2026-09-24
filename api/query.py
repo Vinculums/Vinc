@@ -229,6 +229,35 @@ def _summary_row(r: dict) -> dict:
     return out
 
 
+def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> None:
+    """요약 행에 문서 제목(`doc_title`)을 단다 — 페이지의 doc_id 들을 한 번에 조회한다.
+
+    행은 doc_id 만 들고 있어서, 제목이 필요한 소비자(허브 `search`)가 발췌 첫 줄을
+    제목으로 썼다 — 그래서 "```mermaid …"·"--- doc_id: …" 가 제목으로 나갔다(감사 §5
+    #19). node_context 의 `_DocMeta` 조인과 같은 모양이고, 비용은 코퍼스가 아니라
+    페이지 크기에 묶인다. `_DocMeta.doc_id` 는 소유자로 네임스페이싱되지 않으므로
+    owner 를 반드시 건다 — 같은 doc_id 를 가진 남의 문서 제목이 새면 안 된다.
+    실패는 삼킨다: 제목은 부가 정보이고, 없으면 소비자가 doc_id 로 대신한다.
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S12"""
+    ids = sorted({r.get("doc_id") for r in rows if r.get("doc_id")})
+    if not ids:
+        return
+    where = "d.doc_id IN $ids" + (" AND d.owner_id = $owner" if owner else "")
+    params: dict = {"ids": ids}
+    if owner:
+        params["owner"] = owner
+    try:
+        got = store.run(f"MATCH (d:_DocMeta) WHERE {where} "
+                        "RETURN d.doc_id AS id, d.title AS t", params) or []
+    except Exception:
+        return
+    titles = {str(g.get("id") or ""): str(g.get("t") or "") for g in got}
+    for r in rows:
+        t = titles.get(r.get("doc_id") or "")
+        if t:
+            r["doc_title"] = t
+
+
 def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> QueryPlan:
     """Decision support: traverse policy/concept relations around a topic to
     surface conflicts, prerequisites, and cross-domain bridges.
@@ -5928,14 +5957,25 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     if store is None:
         base["note"] = base["error"] = "no reachable store"
         return base
+    # 🔴 **node_hits 는 첫 페이지에만 싣는다.** 커서는 청크 풀 위의 오프셋이고
+    # (off·eid·has_more 전부 rows 의 좌표다), 노드 팔들은 그 풀과 무관한 자기 top_k
+    # 목록이다 — 그래서 여태 모든 페이지가 같은 node_hits 를 되풀이했다(감사 §5 #17:
+    # `query=design limit=5` 세 페이지 모두에 concept:design-hub). 노드 쪽에 오프셋을
+    # 주지 않는 이유: 그래프 팔은 **그 페이지의** 청크에서 이웃을 뽑으므로 노드 목록이
+    # 페이지마다 다른 풀이 되고, 안정된 순서도 두 번째 has_more 도 없다. 이어 읽기
+    # 페이지는 비운 node_hits 와 `node_hits_omitted` 를 싣는다 — 첫 페이지는 한 바이트도
+    # 안 바뀐다(brief·Ask·검색창은 커서를 안 쓴다).
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
+    continuation = bool(cursor)
     try:
         # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
         # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
         title_hits: list[dict] = []
         _vstats: dict = {}
         try:
-            title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
-                                               historical=historical, stats=_vstats)
+            if not continuation:
+                title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
+                                                   historical=historical, stats=_vstats)
         except Exception as exc:
             base["node_error"] = f"{type(exc).__name__}: {exc}"
         # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
@@ -6031,6 +6071,12 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
                                  str(r.get("id") or "")))
         base["total_count"] = len(pool)
+        # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
+        # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
+        # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
+        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
+        if len(pool) >= SEARCH_POOL_CAP:
+            base["total_count_capped"] = True
         if cursor and (off >= len(pool)
                        or (want_eid is not None
                            and str(pool[off].get("id") or "") != str(want_eid))):
@@ -6048,6 +6094,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 {"v": 1, "off": next_off, "qh": qh,
                  "eid": str(pool[next_off].get("id") or ""), "tc": len(pool)})
         base["rows"] = page if detail == "full" else [_summary_row(r) for r in page]
+        if detail != "full":
+            _attach_doc_titles(store, base["rows"], owner=owner)
         # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
@@ -6061,7 +6109,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다.
         vec_hits: list[dict] = []
         _sem_decisive: str | None = None
-        if query_embedding is not None and _node_semantic_arm_on():
+        if query_embedding is not None and not continuation and _node_semantic_arm_on():
             try:
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
@@ -6118,6 +6166,11 @@ def search(query: str, *, query_embedding: list[float] | None = None,
 
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
+        if continuation:
+            # 이어 읽기 페이지 — 노드 팔을 돌리지 않았다(위 `continuation` 주석).
+            base["node_hits"] = []
+            base["node_hits_omitted"] = "first_page_only"
+            return base
         try:
             chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")]
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
