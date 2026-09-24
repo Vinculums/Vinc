@@ -45,6 +45,7 @@ import time
 import uuid
 from typing import Any, Callable
 
+from engines import domain_hierarchy
 from store import pkns
 
 from . import graphmd
@@ -647,7 +648,9 @@ def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
 
     빈 문자열·공백만이면 아무것도 하지 않는다(주제를 **지우는** 것은 이 인자의 일이
     아니다 — 지우려면 미러를 지우거나 domain 을 직접 고친다)."""
-    dom = (topic or "").strip()
+    # 열에도 정규화된 값을 넣는다 — `IN_DOMAIN` 이 가리키는 Domain 이름과 글자까지
+    # 같아야 열 집계와 엣지 조회가 같은 답을 준다(`fragment._merge_node` 와 같은 규약).
+    dom = domain_hierarchy.normalize(topic)
     if not dom:
         return ""
     # 물리 키로 바인딩한다(`extract_doc` 과 같은 규약) — 논리 id 로 쓰면 네임스페이싱이
@@ -669,7 +672,24 @@ def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
             {"id": mid, "t": title or doc_id, "owner": owner, "dom": dom,
              "now": st["updated_at"], "ua": st["updated_at"], "rev": st["rev"],
              "seq": st["sync_seq"]})
+    _link_domain(store, mid, dom)
     return dom
+
+
+def _link_domain(store, key: str, dom: str) -> None:
+    """Concept 의 `IN_DOMAIN` 을 방금 쓴 `domain` 열에 맞춘다(옛 엣지는 `link_node` 가 지운다).
+
+    `n.domain` 을 쓰는 곳은 이 엣지도 같이 옮겨야 한다. 안 그러면 `vinc_domains`(열
+    집계)는 노드를 세는데 `vinc_neighbors domain:…`(엣지 조회)는 못 찾는다 — 다음
+    기동 백필까지 둘이 갈린다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S9.
+
+    실패는 삼킨다: 계층은 열에서 언제든 다시 파생되는 파생물이고(`scripts/
+    relink_domains.py`), 여기서 죽으면 문서 쓰기가 통째로 실패한다. `fragment` 와 같은 태도다.
+    ``key`` 는 **물리 키**다(`link_node` 가 PK 로 바인딩한다)."""
+    try:
+        domain_hierarchy.link_node(store, "Concept", key, dom)
+    except Exception as exc:
+        print(f"[docstore] domain hierarchy not updated ({key}): {exc}", file=sys.stderr)
 
 
 def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
@@ -1872,6 +1892,8 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
             "then apply again.")
         return base
     base["domain"] = dom
+    # 개념 열·엣지에 넣는 값은 정규화한다(`_set_authored_topic` 과 같은 규약).
+    ndom = domain_hierarchy.normalize(dom)
     created = matched = 0
     # v7(D72) — 문서의 내용 시점을 파생 개념에 물려준다. 개념은 그 문서에서 나왔으므로
     # 문서가 가리키는 시점이 곧 그 개념이 말하는 시점이다. **비파괴**다: 이미 값이
@@ -1906,9 +1928,11 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
                 if fill_ct:
                     sets.append("n.content_time = $ct"); prm["ct"] = ctime
                 if fill_dom:
-                    sets.append("n.domain = $dom"); prm["dom"] = dom
+                    sets.append("n.domain = $dom"); prm["dom"] = ndom
                 store.run("MATCH (n:Concept) WHERE n.concept_id = $id SET "
                           + ", ".join(sets), prm)
+                if fill_dom:
+                    _link_domain(store, key, ndom)
             continue
         # 추적열(updated_at·rev·sync_seq)을 함께 찍는다 — 없으면 이 개념은 delta 에
         # 안 실려 다른 기기로 못 간다(:func:`_node_stamp` 주석의 실측).
@@ -1919,13 +1943,14 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
             "n.stem = $slug, n.source_file = $origin, n.created = $now, "
             "n.content_time = $ct, n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
             {"id": key, "t": c["title"], "ol": c["one_liner"], "owner": owner,
-             "dom": dom, "slug": c["slug"], "origin": meta.get("origin") or "",
+             "dom": ndom, "slug": c["slug"], "origin": meta.get("origin") or "",
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
              # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교
              # (`x.created > $born`)로 화해되는데 그 비교가 사전식이라, 초 단위
              # `_now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
              "now": st["updated_at"], "ct": ctime,
              "ua": st["updated_at"], "rev": st["rev"], "seq": st["sync_seq"]})
+        _link_domain(store, key, ndom)
         created += 1
     linked = _relink_mentions(store, doc_id, owner=owner,
                               origin=meta.get("origin") or "")
