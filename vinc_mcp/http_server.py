@@ -73,6 +73,9 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
     "nav-tree": ("GET", "/nav-tree"),   # 좌측 문서 트리(D69) — 주제→문서 깊이순
+    # 변경 표식(VIN-129) — 열린 화면이 몇 초마다 "그 뒤로 쓰기가 있었나"를 묻는다.
+    # 사이드카가 메모리에서 답하므로 폴링이 스토어를 안 읽는다. 조회라 열람자도 된다.
+    "changes": ("GET", "/changes"),
     # 관례(GRAPH.md) — 읽기와 재생성을 **짝으로** 연다. 웹 Vinc 도 같은 것을 봐야 한다
     # (계정 GET_OPS/POST_OPS 와 1:1). 읽기만 열면 [다시 생성]만 404 로 죽는다.
     "conventions": ("GET", "/conventions"),

@@ -112,6 +112,7 @@ from . import activate as act
 from . import fragment as frag
 from . import share
 from . import spaceproxy
+from . import changes
 from . import sync
 from . import docstore
 from . import node_mirror
@@ -260,6 +261,8 @@ class VincApp:
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
         self._sync_running = False            # 동시 sync 거부 플래그(S2, 커서 경합 방지)
+        # 열린 화면이 다시 읽을 때를 아는 값(VIN-129). 메모리에만 있다(`api.changes`).
+        self.changes = changes.ChangeMarker()
         # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
@@ -980,6 +983,26 @@ class VincApp:
                         "error": str(exc), "note": str(exc)}
 
         return self._read(_list)
+
+    def read_changes(self, p):
+        """변경 표식(VIN-129). 스토어를 안 읽는다: 폴링이 단일 writer 에 짐을 얹지 않게
+        하려고 쓰기 관문에서 센 값을 메모리에서 준다. 그래서 스토어가 죽어도 답한다."""
+        return 200, {"executed": True, "marker": self.changes.read(p.get("owner"))}
+
+    def note_write(self, path: str, owner, code: int, obj) -> None:
+        """POST 한 건이 끝났다. 성공한 쓰기면 그 소유자의 표식을 올린다.
+
+        비동기 잡(202)은 접수가 아니라 **끝**을 센다(`ChangeMarker.bump_when_done`).
+        동기화 세션은 무엇이든 들였을 때만 센다: 10분마다 도는 빈 세션까지 세면 열린
+        화면이 까닭 없이 다시 그려진다."""
+        if code >= 400 or not changes.counts(path):
+            return
+        owner = owner if isinstance(owner, str) and owner else None
+        if code == 202 and isinstance(obj, dict) and obj.get("job_id"):
+            pred = changes.sync_brought_something if path == "/sync" else None
+            self.changes.bump_when_done(owner, self.jobs.get(str(obj["job_id"])), pred)
+            return
+        self.changes.bump(owner)
 
     def read_conventions(self, p):
         """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널([[vinc.canon.graph-conventions]] §6.2).
@@ -1782,7 +1805,11 @@ class _Handler(BaseHTTPRequestHandler):
                 params = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
                 code, obj = self._route_get(path, params)
             else:
-                code, obj = self._route_post(path, self._body())
+                body = self._body()
+                # 소유자는 **라우팅 전에** 읽는다. 핸들러가 바디를 고쳐 쓰는 일이 있다.
+                owner = body.get("owner") if isinstance(body, dict) else None
+                code, obj = self._route_post(path, body)
+                self.app.note_write(path, owner, code, obj)
         except _Missing as exc:
             code, obj = 400, {"error": f"missing field: {exc.args[0]}"}
         except json.JSONDecodeError as exc:
@@ -1812,6 +1839,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널([[vinc.canon.graph-conventions]]).
             "/conventions": app.read_conventions,
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
+            # 변경 표식(VIN-129) — 열린 화면이 몇 초마다 묻는다. 스토어를 안 읽는다.
+            "/changes": app.read_changes,
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node-context": app.read_node_context,
