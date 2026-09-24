@@ -203,6 +203,16 @@
       "$value": "#525466",
       "$type": "color",
       "$description": "The floor for the dark fade channel, just above the APCA invisibility floor of Lc 15 (15.9). The fade channel is exempt from 3:1 but must never disappear entirely"
+    },
+    "brand_black": {
+      "$value": "#000000",
+      "$type": "color",
+      "$description": "Black logo on light backgrounds. Brand only; ordinary UI accents retain their colours."
+    },
+    "brand_white": {
+      "$value": "#FFFFFF",
+      "$type": "color",
+      "$description": "White logo on dark backgrounds. Brand only."
     }
   },
   "semantic": {
@@ -232,9 +242,10 @@
       "warning-foreground": "{ink_900}",
       "danger": "{danger_700}",
       "danger-foreground": "{grain_100}",
-      "logo-tip": "{indigo_900}",
+      "logo-tip": "{brand_black}",
       "titlebar-close": "{win_close}",
-      "titlebar-close-foreground": "{grain_50}"
+      "titlebar-close-foreground": "{grain_50}",
+      "logo": "{brand_black}"
     },
     "dark": {
       "background": "{d_bg0}",
@@ -262,9 +273,10 @@
       "warning-foreground": "{d_text}",
       "danger": "{danger_300}",
       "danger-foreground": "{d_bg0}",
-      "logo-tip": "{peri_250}",
+      "logo-tip": "{brand_white}",
       "titlebar-close": "{win_close}",
-      "titlebar-close-foreground": "{grain_50}"
+      "titlebar-close-foreground": "{grain_50}",
+      "logo": "{brand_white}"
     }
   },
   "radius": {

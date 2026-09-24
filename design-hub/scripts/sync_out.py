@@ -37,7 +37,8 @@ MAP = [
     ("assets/logo/vinc-ring-circle.svg", "../app/public/favicon.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../app/public/vinc-mark-mono.svg"),
     ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/favicon.svg"),
-    ("assets/logo/vinc-ring-indigo.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
+    ("assets/logo/vinc-ring-circle.svg", "../../Vinc-homepage/site/demo/favicon.svg"),
+    ("assets/logo/vinc-ring-black.svg", "../../Vinc-homepage/site/assets/vinc-mark.svg"),
     ("assets/logo/vinc-ring-white.svg", "../../Vinc-homepage/site/assets/vinc-mark-white.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
     ("assets/logo/vinc-ring.svg", "../../Vinc-homepage/site/assets/vinc-plate.svg"),
@@ -53,7 +54,10 @@ MAP = [
     # 그 URL 의 파일을 바꾸면 **이미 발송돼 받은편지함에 있는 메일이 전부 같이 바뀐다.**
     # 옛 어두운 메일에 잉크 마크가 얹히면 어두운 바탕에 어두운 마크가 되어 안 보인다.
     # 그래서 흰 마크는 그 자리에 영원히 남기고 새 템플릿만 이쪽을 가리킨다.
-    ("assets/logo/vinc-ring-indigo-email@2x.png",
+    # 흑백 로고 정책(VIN-104)으로 잉크판은 검정 링에서 뽑는다(build_logo.mjs). 같은
+    # URL 을 인디고에서 검정으로 바꾸는 것은 안전하다: 이 마크를 받은 메일은 전부 밝은
+    # 바탕이라 어두운 마크가 계속 보인다. 위의 경고는 바탕이 뒤집히는 경우의 이야기다.
+    ("assets/logo/vinc-ring-ink-email@2x.png",
      "../../Vinc-homepage/site/assets/vinc-mark-ink-email@2x.png"),
     # 검색엔진·수집기용 래스터 파비콘. **SVG 파비콘만으로는 부족하다** — 상당수가
     # `<link rel=icon>` 을 안 보고 루트의 `/favicon.ico` 만 집어 가고, 없으면 아이콘을

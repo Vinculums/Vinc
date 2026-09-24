@@ -1,474 +1,470 @@
 {
- "$meta": {
-  "source": "figma",
-  "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-09-06",
-  "how": "use_figma with the JS in scripts/figma_diff.py's docstring, verbatim.",
-  "scope": "Only the four collections figma_diff.py compares (Primitive, Semantic, Scale, Motion) plus the effect styles. Graph, Window, Email, Domain and Locale are deliberately absent: the first three reach code through gen_theme_ts.py, Domain uses a different model on each side, and Locale is copy whose canon is the site.",
-  "note": "Unlike imports/figma-variables-*.json this is NOT a hand-written provenance record, it is the machine input to the drift gate. Never patch it by hand: re-run the dump. A hand-patched dump makes the gate agree with a file instead of with Figma, which is the exact failure this gate exists to catch."
- },
- "variables": {
-  "Primitive": {
-   "Value": {
-    "grain_50": "#FBFBFA",
-    "grain_100": "#F2F2F0",
-    "grain_200": "#E9E9E6",
-    "grain_300": "#D1D2D6",
-    "hairline": "#DEDEDA",
-    "ink_900": "#17171A",
-    "ink_600": "#55565E",
-    "ink_400": "#82838D",
-    "indigo_900": "#32355C",
-    "indigo_700": "#3A4070",
-    "indigo_600": "#4A4F8C",
-    "peri_400": "#8F96D9",
-    "peri_200": "#B9BEF0",
-    "peri_500": "#7E86D3",
-    "slate_400": "#9496A9",
-    "slate_500": "#747790",
-    "slate_700": "#525466",
-    "ok_700": "#2F6B4E",
-    "ok_300": "#8FCBA8",
-    "warn_bg": "#E5DCC3",
-    "d_warn_bg": "#4A4230",
-    "danger_700": "#A03A3A",
-    "danger_300": "#E08585",
-    "d_bg0": "#0C0D13",
-    "d_bg1": "#12141D",
-    "d_bg2": "#191C2A",
-    "d_line": "#262A3D",
-    "d_text": "#E8E7EF",
-    "d_soft": "#A7A9BF",
-    "d_mute": "#6E7189",
-    "peri_250": "#BDBFE3",
-    "win_close": "#DC2828"
-   }
-  },
-  "Semantic": {
-   "Light": {
-    "background": "{grain_100}",
-    "foreground": "{ink_900}",
-    "card": "{grain_50}",
-    "card-foreground": "{ink_900}",
-    "muted": "{grain_200}",
-    "muted-foreground": "{ink_600}",
-    "caption-foreground": "{ink_400}",
-    "border": "{hairline}",
-    "input": "{hairline}",
-    "ring": "{peri_400}",
-    "primary": "{indigo_900}",
-    "primary-foreground": "{grain_100}",
-    "accent": "{grain_200}",
-    "accent-foreground": "{ink_900}",
-    "link": "{indigo_600}",
-    "info": "{indigo_600}",
-    "info-strong": "{indigo_600}",
-    "info-foreground": "{grain_100}",
-    "success": "{ok_700}",
-    "success-foreground": "{grain_100}",
-    "warning": "{warn_bg}",
-    "warning-foreground": "{ink_900}",
-    "danger": "{danger_700}",
-    "danger-foreground": "{grain_100}",
-    "focus": "{indigo_900}",
-    "logo-tip": "{indigo_900}",
-    "titlebar-close": "{win_close}",
-    "titlebar-close-foreground": "{grain_50}"
-   },
-   "Dark": {
-    "background": "{d_bg0}",
-    "foreground": "{d_text}",
-    "card": "{d_bg2}",
-    "card-foreground": "{d_text}",
-    "muted": "{d_bg1}",
-    "muted-foreground": "{d_soft}",
-    "caption-foreground": "{d_mute}",
-    "border": "{d_line}",
-    "input": "{d_line}",
-    "ring": "{peri_400}",
-    "primary": "{indigo_700}",
-    "primary-foreground": "{peri_200}",
-    "accent": "{d_bg2}",
-    "accent-foreground": "{d_text}",
-    "link": "{peri_400}",
-    "info": "{peri_400}",
-    "info-strong": "{peri_400}",
-    "info-foreground": "{d_bg0}",
-    "success": "{ok_300}",
-    "success-foreground": "{d_bg0}",
-    "warning": "{d_warn_bg}",
-    "warning-foreground": "{d_text}",
-    "danger": "{danger_300}",
-    "danger-foreground": "{d_bg0}",
-    "focus": "{peri_400}",
-    "logo-tip": "{peri_250}",
-    "titlebar-close": "{win_close}",
-    "titlebar-close-foreground": "{grain_50}"
-   }
-  },
-  "Scale": {
-   "Value": {
-    "radius/default": 14,
-    "radius/sm": 10,
-    "radius/lg": 20,
-    "radius/pill": 999,
-    "space/1": 4,
-    "space/2": 8,
-    "space/3": 12,
-    "space/4": 16,
-    "space/5": 24,
-    "space/6": 32,
-    "space/8": 48,
-    "fs/sm": 13,
-    "fs/base": 15,
-    "fs/lg": 17,
-    "fs/xl": 36,
-    "fs/display": 56,
-    "icon/app": 18,
-    "icon/base": 24,
-    "layout/lnb-w": 232,
-    "layout/gnb-h": 52
-   }
-  },
-  "Motion": {
-   "Value": {
-    "ease-out": "cubic-bezier(.22, 1, .36, 1)",
-    "ease-in-out": "cubic-bezier(.77, 0, .175, 1)",
-    "ease-drawer": "cubic-bezier(.32, .72, 0, 1)",
-    "ease-settle": "cubic-bezier(.16, 1, .3, 1)",
-    "dur-fast": 150,
-    "dur-hover": 200,
-    "dur-base": 300,
-    "dur-in": 400,
-    "dur-out": 240,
-    "dur-panel": 320
-   }
-  }
- },
- "effectStyles": [
-  {
-   "name": "shadow/soft",
-   "effects": [
-    {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 40,
-     "boundVariables": {},
-     "color": {
-      "r": 0.04800000041723251,
-      "g": 0.052000001072883606,
-      "b": 0.07199999690055847,
-      "a": 0.07999999821186066
-     },
-     "offset": {
-      "x": 0,
-      "y": 20
-     },
-     "spread": -12,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
+  "variables": {
+    "Primitive": {
+      "Value": {
+        "grain_50": "#FBFBFA",
+        "grain_100": "#F2F2F0",
+        "grain_200": "#E9E9E6",
+        "grain_300": "#D1D2D6",
+        "hairline": "#DEDEDA",
+        "ink_900": "#17171A",
+        "ink_600": "#55565E",
+        "ink_400": "#82838D",
+        "indigo_900": "#32355C",
+        "indigo_700": "#3A4070",
+        "indigo_600": "#4A4F8C",
+        "peri_400": "#8F96D9",
+        "peri_200": "#B9BEF0",
+        "peri_500": "#7E86D3",
+        "slate_400": "#9496A9",
+        "slate_500": "#747790",
+        "slate_700": "#525466",
+        "ok_700": "#2F6B4E",
+        "ok_300": "#8FCBA8",
+        "warn_bg": "#E5DCC3",
+        "d_warn_bg": "#4A4230",
+        "danger_700": "#A03A3A",
+        "danger_300": "#E08585",
+        "d_bg0": "#0C0D13",
+        "d_bg1": "#12141D",
+        "d_bg2": "#191C2A",
+        "d_line": "#262A3D",
+        "d_text": "#E8E7EF",
+        "d_soft": "#A7A9BF",
+        "d_mute": "#6E7189",
+        "peri_250": "#BDBFE3",
+        "win_close": "#DC2828",
+        "brand_black": "#000000",
+        "brand_white": "#FFFFFF"
+      }
+    },
+    "Semantic": {
+      "Light": {
+        "background": "{grain_100}",
+        "foreground": "{ink_900}",
+        "card": "{grain_50}",
+        "card-foreground": "{ink_900}",
+        "muted": "{grain_200}",
+        "muted-foreground": "{ink_600}",
+        "caption-foreground": "{ink_400}",
+        "border": "{hairline}",
+        "input": "{hairline}",
+        "ring": "{peri_400}",
+        "primary": "{indigo_900}",
+        "primary-foreground": "{grain_100}",
+        "accent": "{grain_200}",
+        "accent-foreground": "{ink_900}",
+        "link": "{indigo_600}",
+        "info": "{indigo_600}",
+        "info-strong": "{indigo_600}",
+        "info-foreground": "{grain_100}",
+        "success": "{ok_700}",
+        "success-foreground": "{grain_100}",
+        "warning": "{warn_bg}",
+        "warning-foreground": "{ink_900}",
+        "danger": "{danger_700}",
+        "danger-foreground": "{grain_100}",
+        "focus": "{indigo_900}",
+        "logo-tip": "{brand_black}",
+        "titlebar-close": "{win_close}",
+        "titlebar-close-foreground": "{grain_50}",
+        "logo": "{brand_black}"
+      },
+      "Dark": {
+        "background": "{d_bg0}",
+        "foreground": "{d_text}",
+        "card": "{d_bg2}",
+        "card-foreground": "{d_text}",
+        "muted": "{d_bg1}",
+        "muted-foreground": "{d_soft}",
+        "caption-foreground": "{d_mute}",
+        "border": "{d_line}",
+        "input": "{d_line}",
+        "ring": "{peri_400}",
+        "primary": "{indigo_700}",
+        "primary-foreground": "{peri_200}",
+        "accent": "{d_bg2}",
+        "accent-foreground": "{d_text}",
+        "link": "{peri_400}",
+        "info": "{peri_400}",
+        "info-strong": "{peri_400}",
+        "info-foreground": "{d_bg0}",
+        "success": "{ok_300}",
+        "success-foreground": "{d_bg0}",
+        "warning": "{d_warn_bg}",
+        "warning-foreground": "{d_text}",
+        "danger": "{danger_300}",
+        "danger-foreground": "{d_bg0}",
+        "focus": "{peri_400}",
+        "logo-tip": "{brand_white}",
+        "titlebar-close": "{win_close}",
+        "titlebar-close-foreground": "{grain_50}",
+        "logo": "{brand_white}"
+      }
+    },
+    "Scale": {
+      "Value": {
+        "radius/default": 14,
+        "radius/sm": 10,
+        "radius/lg": 20,
+        "radius/pill": 999,
+        "space/1": 4,
+        "space/2": 8,
+        "space/3": 12,
+        "space/4": 16,
+        "space/5": 24,
+        "space/6": 32,
+        "space/8": 48,
+        "fs/sm": 13,
+        "fs/base": 15,
+        "fs/lg": 17,
+        "fs/xl": 36,
+        "fs/display": 56,
+        "icon/app": 18,
+        "icon/base": 24,
+        "layout/lnb-w": 232,
+        "layout/gnb-h": 52
+      }
+    },
+    "Motion": {
+      "Value": {
+        "ease-out": "cubic-bezier(.22, 1, .36, 1)",
+        "ease-in-out": "cubic-bezier(.77, 0, .175, 1)",
+        "ease-drawer": "cubic-bezier(.32, .72, 0, 1)",
+        "ease-settle": "cubic-bezier(.16, 1, .3, 1)",
+        "dur-fast": 150,
+        "dur-hover": 200,
+        "dur-base": 300,
+        "dur-in": 400,
+        "dur-out": 240,
+        "dur-panel": 320
+      }
     }
-   ]
   },
-  {
-   "name": "shadow/float",
-   "effects": [
+  "effectStyles": [
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 60,
-     "boundVariables": {},
-     "color": {
-      "r": 0.04800000041723251,
-      "g": 0.052000001072883606,
-      "b": 0.07199999690055847,
-      "a": 0.11999999731779099
-     },
-     "offset": {
-      "x": 0,
-      "y": 30
-     },
-     "spread": -16,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/elev-1",
-   "effects": [
+      "name": "shadow/soft",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 40,
+          "boundVariables": {},
+          "color": {
+            "r": 0.04800000041723251,
+            "g": 0.052000001072883606,
+            "b": 0.07199999690055847,
+            "a": 0.07999999821186066
+          },
+          "offset": {
+            "x": 0,
+            "y": 20
+          },
+          "spread": -12,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 2,
-     "boundVariables": {},
-     "color": {
-      "r": 0.04800000041723251,
-      "g": 0.052000001072883606,
-      "b": 0.07199999690055847,
-      "a": 0.07000000029802322
-     },
-     "offset": {
-      "x": 0,
-      "y": 1
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/elev-2",
-   "effects": [
+      "name": "shadow/float",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 60,
+          "boundVariables": {},
+          "color": {
+            "r": 0.04800000041723251,
+            "g": 0.052000001072883606,
+            "b": 0.07199999690055847,
+            "a": 0.11999999731779099
+          },
+          "offset": {
+            "x": 0,
+            "y": 30
+          },
+          "spread": -16,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 12,
-     "boundVariables": {},
-     "color": {
-      "r": 0.04800000041723251,
-      "g": 0.052000001072883606,
-      "b": 0.07199999690055847,
-      "a": 0.10999999940395355
-     },
-     "offset": {
-      "x": 0,
-      "y": 4
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/elev-3",
-   "effects": [
+      "name": "shadow/elev-1",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 2,
+          "boundVariables": {},
+          "color": {
+            "r": 0.04800000041723251,
+            "g": 0.052000001072883606,
+            "b": 0.07199999690055847,
+            "a": 0.07000000029802322
+          },
+          "offset": {
+            "x": 0,
+            "y": 1
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 30,
-     "boundVariables": {},
-     "color": {
-      "r": 0.04800000041723251,
-      "g": 0.052000001072883606,
-      "b": 0.07199999690055847,
-      "a": 0.1599999964237213
-     },
-     "offset": {
-      "x": 0,
-      "y": 10
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "glass/panel",
-   "effects": [
+      "name": "shadow/elev-2",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 12,
+          "boundVariables": {},
+          "color": {
+            "r": 0.04800000041723251,
+            "g": 0.052000001072883606,
+            "b": 0.07199999690055847,
+            "a": 0.10999999940395355
+          },
+          "offset": {
+            "x": 0,
+            "y": 4
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "BACKGROUND_BLUR",
-     "visible": true,
-     "radius": 14,
-     "boundVariables": {},
-     "blurType": "NORMAL"
-    }
-   ]
-  },
-  {
-   "name": "glow/focus",
-   "effects": [
+      "name": "shadow/elev-3",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 30,
+          "boundVariables": {},
+          "color": {
+            "r": 0.04800000041723251,
+            "g": 0.052000001072883606,
+            "b": 0.07199999690055847,
+            "a": 0.1599999964237213
+          },
+          "offset": {
+            "x": 0,
+            "y": 10
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 30,
-     "boundVariables": {},
-     "color": {
-      "r": 0.7254902124404907,
-      "g": 0.7450980544090271,
-      "b": 0.9411764740943909,
-      "a": 0.8999999761581421
-     },
-     "offset": {
-      "x": 0,
-      "y": 0
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "glow/near",
-   "effects": [
+      "name": "glass/panel",
+      "effects": [
+        {
+          "type": "BACKGROUND_BLUR",
+          "visible": true,
+          "radius": 14,
+          "boundVariables": {},
+          "blurType": "NORMAL"
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 16,
-     "boundVariables": {},
-     "color": {
-      "r": 0.5607843399047852,
-      "g": 0.5882353186607361,
-      "b": 0.8509804010391235,
-      "a": 0.5
-     },
-     "offset": {
-      "x": 0,
-      "y": 0
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "glow/mid",
-   "effects": [
+      "name": "glow/focus",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 30,
+          "boundVariables": {},
+          "color": {
+            "r": 0.7254902124404907,
+            "g": 0.7450980544090271,
+            "b": 0.9411764740943909,
+            "a": 0.8999999761581421
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 10,
-     "boundVariables": {},
-     "color": {
-      "r": 0.5607843399047852,
-      "g": 0.5882353186607361,
-      "b": 0.8509804010391235,
-      "a": 0.3499999940395355
-     },
-     "offset": {
-      "x": 0,
-      "y": 0
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "glow/far",
-   "effects": [
+      "name": "glow/near",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 16,
+          "boundVariables": {},
+          "color": {
+            "r": 0.5607843399047852,
+            "g": 0.5882353186607361,
+            "b": 0.8509804010391235,
+            "a": 0.5
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 6,
-     "boundVariables": {},
-     "color": {
-      "r": 0.5803921818733215,
-      "g": 0.5882353186607361,
-      "b": 0.6627451181411743,
-      "a": 0.18000000715255737
-     },
-     "offset": {
-      "x": 0,
-      "y": 0
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/dark-elev-1",
-   "effects": [
+      "name": "glow/mid",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 10,
+          "boundVariables": {},
+          "color": {
+            "r": 0.5607843399047852,
+            "g": 0.5882353186607361,
+            "b": 0.8509804010391235,
+            "a": 0.3499999940395355
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 2,
-     "boundVariables": {},
-     "color": {
-      "r": 0,
-      "g": 0,
-      "b": 0,
-      "a": 0.3499999940395355
-     },
-     "offset": {
-      "x": 0,
-      "y": 1
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/dark-elev-2",
-   "effects": [
+      "name": "glow/far",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 6,
+          "boundVariables": {},
+          "color": {
+            "r": 0.5803921818733215,
+            "g": 0.5882353186607361,
+            "b": 0.6627451181411743,
+            "a": 0.18000000715255737
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 12,
-     "boundVariables": {},
-     "color": {
-      "r": 0,
-      "g": 0,
-      "b": 0,
-      "a": 0.3499999940395355
-     },
-     "offset": {
-      "x": 0,
-      "y": 4
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/dark-elev-3",
-   "effects": [
+      "name": "shadow/dark-elev-1",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 2,
+          "boundVariables": {},
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.3499999940395355
+          },
+          "offset": {
+            "x": 0,
+            "y": 1
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 24,
-     "boundVariables": {},
-     "color": {
-      "r": 0,
-      "g": 0,
-      "b": 0,
-      "a": 0.44999998807907104
-     },
-     "offset": {
-      "x": 0,
-      "y": 8
-     },
-     "spread": 0,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
-    }
-   ]
-  },
-  {
-   "name": "shadow/dark-float",
-   "effects": [
+      "name": "shadow/dark-elev-2",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 12,
+          "boundVariables": {},
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.3499999940395355
+          },
+          "offset": {
+            "x": 0,
+            "y": 4
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
     {
-     "type": "DROP_SHADOW",
-     "visible": true,
-     "radius": 60,
-     "boundVariables": {},
-     "color": {
-      "r": 0,
-      "g": 0,
-      "b": 0,
-      "a": 0.550000011920929
-     },
-     "offset": {
-      "x": 0,
-      "y": 30
-     },
-     "spread": -16,
-     "blendMode": "NORMAL",
-     "showShadowBehindNode": true
+      "name": "shadow/dark-elev-3",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 24,
+          "boundVariables": {},
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.44999998807907104
+          },
+          "offset": {
+            "x": 0,
+            "y": 8
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
+    {
+      "name": "shadow/dark-float",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 60,
+          "boundVariables": {},
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.550000011920929
+          },
+          "offset": {
+            "x": 0,
+            "y": 30
+          },
+          "spread": -16,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

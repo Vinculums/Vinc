@@ -839,7 +839,7 @@ body {
      currentColor 가 img 경계를 못 넘어 검정이 된다.
      vite 가 CSS url() 에도 base 를 붙인다(실측: 웹 빌드에서 <base>/vinc-mark-mono.svg
      로 고쳐 쓴다). 그래서 절대경로 그대로 두면 셸·웹 두 빌드가 각자 맞게 나간다. */
-  color: hsl(var(--foreground));
+  color: hsl(var(--logo));
   background-color: currentColor;
   -webkit-mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
   mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
