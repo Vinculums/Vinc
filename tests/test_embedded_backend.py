@@ -820,7 +820,9 @@ class EmbeddedE2E(unittest.TestCase):
 
         calls = {
             "vinc_domains":      lambda: q.domains(owner="u", store=store),
-            "vinc_recall":       lambda: q.recall(owner="u", store=store),
+            # MCP 도구는 늘 page=true 로 부른다(`_t_recall`) — 설명이 약속하는
+            # has_more·next_cursor 는 그 모양에서만 실린다.
+            "vinc_recall":       lambda: q.recall(owner="u", store=store, page=True),
             "vinc_graph":        lambda: q.graph(owner="u", seed="concept:alpha",
                                                  depth=1, store=store),
             "vinc_decide":       lambda: q.decide("concept:alpha", depth=1, owner="u",

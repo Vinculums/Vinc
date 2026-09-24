@@ -462,7 +462,10 @@ class VincApp:
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
-            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")))))
+            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")),
+            # 커서 페이징은 opt-in 이다 — `page`·`cursor` 없이 오는 호출(웹 op recall)은
+            # 응답 모양이 그대로다. [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
+            page=_flag(p.get("page")), cursor=p.get("cursor") or None)))
 
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,

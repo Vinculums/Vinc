@@ -139,7 +139,9 @@ class EpisodeDateE2E(unittest.TestCase):
         self.assertFalse(self._row("episode:p6")["date"])
 
     def test_승격된_date_는_recall_정렬에_실제로_실린다(self):
-        """열이 비면 `ORDER BY e.date DESC` 가 무의미해진다 — 그 자리를 못박는다."""
+        """열이 비면 recall 정렬(`q.RECALL_ORDER`, 날짜 내림차순 · 날짜 없는 행은 끝)이
+        그 행을 맨 뒤로 보낸다 — 승격이 열을 채워야 제자리에 선다. 날짜 없는 행의
+        위치 자체는 `test_recall_filters_and_cursor.py` 가 못박는다."""
         from api import query as q
         for eid, d in (("episode:s-old", "2026-01-01"), ("episode:s-new", "2026-08-07")):
             self._ingest({"id": eid, "type": "episode", "title": eid,

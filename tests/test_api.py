@@ -39,15 +39,17 @@ class PlanTests(unittest.TestCase):
 
     def test_recall_domain_filter_is_open(self):
         # domain is a free string filter — any value the learner used, no enum
+        # 하위 트리 술어(정확일치 OR `art/` 접두) — 공유 팩과 같은 domain_subtree_where.
         plan = q.recall_plan(owner="user:doheon", domain="art")
-        self.assertIn("e.domain = $domain", plan.cypher)
-        self.assertEqual(plan.params["domain"], "art")
+        self.assertIn("(e.domain = $dom0 OR e.domain STARTS WITH $domp0)", plan.cypher)
+        self.assertEqual(plan.params["dom0"], "art")
+        self.assertEqual(plan.params["domp0"], "art/")
         self.assertIn("e.domain AS domain", plan.cypher)  # projected too
 
     def test_recall_no_domain_spans_all(self):
         plan = q.recall_plan(owner="user:doheon")
-        self.assertNotIn("e.domain = $domain", plan.cypher)
-        self.assertNotIn("domain", plan.params)
+        self.assertNotIn("$dom0", plan.cypher)
+        self.assertNotIn("dom0", plan.params)
 
     def test_domains_discovery_is_data_driven(self):
         plan = q.domains_plan(owner="user:doheon")
@@ -302,8 +304,11 @@ class MergeCandidatesTests(unittest.TestCase):
         self.assertEqual(q.merge_candidates(rows), [])
 
     def test_recall_recency_is_default(self):
+        # 날짜 있는 행 먼저, 없는 행은 끝(엔진은 DESC 에서 NULL 을 맨 위에 둔다).
         plan = q.recall_plan(owner="u1")
-        self.assertIn("ORDER BY e.date DESC", plan.cypher)
+        self.assertIn(q.RECALL_ORDER, plan.cypher)
+        self.assertIn("e.date DESC", plan.cypher)
+        self.assertNotIn("SKIP", plan.cypher)         # 오프셋 0 이면 예전 모양
         self.assertNotIn("pref_score", plan.cypher)
 
     def test_recall_preference_plan_fetches_signal_columns_by_date(self):
@@ -312,7 +317,7 @@ class MergeCandidatesTests(unittest.TestCase):
         plan = q.recall_plan(owner="u1", rank="preference")
         self.assertIn("access_count", plan.cypher)   # 점수 신호 투영
         self.assertIn("coalesce(e.pinned, false) AS pinned", plan.cypher)
-        self.assertIn("ORDER BY e.date DESC", plan.cypher)
+        self.assertIn(q.RECALL_ORDER, plan.cypher)
         self.assertNotIn("toFloat", plan.cypher)      # 방언 함수 제거
         self.assertNotIn("pref_score", plan.cypher)
 

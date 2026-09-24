@@ -212,6 +212,10 @@ def _t_recall(args, bridge):
         "owner": _owner(args, bridge), "domain": args.get("domain"),
         "tags": ",".join(args["tags"]) if args.get("tags") else None,
         "limit": args.get("limit", 50),
+        # MCP 는 늘 페이지 모양으로 받는다(has_more·next_cursor). 사이드카의 다른
+        # 호출자는 page 를 안 보내서 예전 모양 그대로다.
+        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
+        "page": "true", "cursor": args.get("cursor"),
         "debug": "true" if args.get("debug") else None})
 
 
@@ -620,9 +624,16 @@ TOOLS: list[dict] = [
     },
     {
         "name": "vinc_recall",
-        "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first. "
+        "description": "Read back the episode timeline — what was recorded as having HAPPENED, newest first; "
+                       "episodes with no date come last. "
                        "Returns {kind, executed, rows:[{id,title,date,owner,domain,tenant,workspace,summary,"
-                       "pinned,tags,access_count,last_access}]}. `tenant`/`workspace` and `access_count`/"
+                       "pinned,tags,access_count,last_access}], has_more, next_cursor}. When `has_more` is "
+                       "true, pass `next_cursor` back as `cursor` with the same other arguments to read the "
+                       "next page; a cursor from a different query is refused with `error` (invalid_cursor), "
+                       "and one whose timeline changed meanwhile with stale_cursor, never a silent restart. "
+                       "`domain` covers the whole subtree ('vinc/agent' includes 'vinc/agent/roles'); "
+                       "`tags` keeps episodes carrying at least one of the given tags. "
+                       "`tenant`/`workspace` and `access_count`/"
                        "`last_access` are reserved columns, not settable through vinc_ingest: the first pair "
                        "comes only from the learn-log batch import, the second only from the preference-touch "
                        "signal (neither is an MCP tool). An episode written through vinc_ingest alone reads "
@@ -638,6 +649,8 @@ TOOLS: list[dict] = [
             "domain": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
             "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200},
+            "cursor": {"type": "string",
+                       "description": "Opaque next_cursor from a previous page of the same query."},
             "debug": {"type": "boolean", "default": False,
                       "description": "Include the internal query plan (Cypher + params) "
                                      "in the response. Off by default — it is large and "
