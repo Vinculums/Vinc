@@ -2,7 +2,7 @@ import { COPY } from "../copy";
 import { readPackFile } from "../packfile";
 import { header } from "../components";
 import { icon, stateDot } from "../icons";
-import { api, cfg, sidecarDiag, WEB } from "../api";
+import { api, cfg, sidecarDiag, remote, WEB } from "../api";
 import {
   isDocFile, importDocFile, originIndex, previewExtract, applyExtract, docImportError,
 } from "../doc-import";
@@ -37,11 +37,11 @@ export function renderIntake(el: HTMLElement,
           <span class="dz-mark">${icon("recall", 34)}</span>
           <h2>${COPY.intake.idleTitle}</h2>
           <p class="dz-body">${COPY.intake.idleBody}</p>
-          <p class="hint dz-sov">${WEB ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
+          <p class="hint dz-sov">${remote() ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
           <div class="dz-actions">
             <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
             ${newDoc}
-            ${WEB ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
+            ${remote() ? "" : `<button class="btn" id="try-sample">${ui.trySample}</button>`}
           </div>
         </div>
         ${WEB ? "" : `

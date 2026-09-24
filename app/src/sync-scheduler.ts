@@ -11,7 +11,7 @@
  *
  *  근거: [[record:figma-shrinks-the-divergence-window-it-does-not-remove-reconciliation]]
  */
-import { api, cfg, WEB } from "./api";
+import { api, cfg, remote } from "./api";
 import { accountKey } from "./account-connect";
 
 // 타이핑이 멎고 이만큼 뒤. 짧으면 글자마다 왕복하고, 길면 자동으로 안 느껴진다.
@@ -41,8 +41,9 @@ export function syncSoon(delay = WRITE_DEBOUNCE_MS): void {
 
 /** 앱 시작 시 한 번 건다(셸·로컬 dev 전용). */
 export function mountSyncScheduler(): void {
-  // 웹 Vinc 는 계정 그래프를 직접 본다. 스토어가 하나뿐이라 화해할 것이 없다.
-  if (WEB) return;
+  // 웹 Vinc 와 셸 계정 모드는 계정 그래프를 직접 본다. 스토어가 하나뿐이라 화해할 것이
+  // 없다(VIN-128). 로컬 모드의 동기화는 VIN-130 이 걷어 낸다.
+  if (remote()) return;
   syncSoon(0);
   // 로컬 쓰기 — api.ts 가 낸다. 이벤트인 이유는 import 순환을 피하려서다.
   addEventListener("vinc:write", () => syncSoon());

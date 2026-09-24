@@ -28,6 +28,37 @@ const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 export const WEB = !IN_SHELL
   && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
 
+// ── 데스크톱 데이터 모드(VIN-128) ──────────────────────────────────────────
+// 셸은 두 모드 중 하나다. **계정 모드**면 화면이 읽고 쓰는 그래프가 계정 그래프이고
+// (웹과 같은 `/api/graph/*`), 사이드카는 그 호출을 계정으로 넘기는 통과로일 뿐이다
+// (`/space/proxy`, 키는 바디로만). **로컬 모드**면 종전대로 이 기기의 스토어다.
+// 계정 모드가 기본이지만, 로컬 스토어에 이미 데이터가 있는 설치는 이행 흐름(VIN-131)이
+// 생기기 전까지 로컬로 남는다: 빈 계정 화면이 기존 작업을 가리면 그게 곧 유실처럼 보인다.
+// 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
+const MODE_KEY = "vinc.mode";
+export type DataMode = "account" | "local";
+
+export const dataMode = {
+  /** 정해졌으면 그 값, 아직이면 null(부팅이 `decideDataMode` 로 한 번 정한다). */
+  get(): DataMode | null {
+    const v = localStorage.getItem(MODE_KEY);
+    return v === "account" || v === "local" ? v : null;
+  },
+  set(v: DataMode) { localStorage.setItem(MODE_KEY, v); },
+};
+
+/** 셸이고 계정 모드인가. 모드는 로그인 뒤에 바뀔 수 있어서 상수가 아니라 함수다. */
+export function accountMode(): boolean {
+  return IN_SHELL && dataMode.get() === "account";
+}
+
+/** 화면이 보는 그래프가 이 기기 밖(계정)에 있는가 — 웹이거나 셸의 계정 모드.
+ *  원격이라서 달라지는 것(본문 4MB 분할·가져오기 한도·어휘 재가 화면·샘플·동기화 UI)은
+ *  이것으로 가른다. 쿠키·CSRF·`/login` 이동처럼 **브라우저라서** 달라지는 것은 `WEB` 그대로. */
+export function remote(): boolean {
+  return WEB || accountMode();
+}
+
 /** __Host-csrf(JS-readable) 쿠키 값 — 웹모드 쓰기의 CSRF 더블서브밋 헤더용. */
 function csrfToken(): string {
   const m = document.cookie.match(/(?:^|;\s*)__Host-csrf=([^;]+)/);
@@ -51,10 +82,10 @@ export const cfg = {
     return "en";
   },
   set lang(v: "en" | "ko") { localStorage.setItem(LANG_KEY, v); },
-  /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 웹모드에서만 의미가 있다
-   *  (셸은 로컬 사이드카에 붙고 팀은 계정 프록시 경유라서). 셸에서 남은 값이
-   *  조용히 따라다니지 않도록 getter 에서 WEB 을 함께 본다. */
-  get team(): string { return WEB ? localStorage.getItem(TEAM_KEY) || "" : ""; },
+  /** 현재 스페이스 — "" = 개인, 그 외 = 팀 publicId. 그래프가 계정에 있을 때만
+   *  의미가 있다(웹, 셸의 계정 모드). 로컬 모드에서 남은 값이 조용히 따라다니지 않도록
+   *  getter 에서 `remote()` 를 함께 본다. */
+  get team(): string { return remote() ? localStorage.getItem(TEAM_KEY) || "" : ""; },
   set team(v: string) {
     if (v) localStorage.setItem(TEAM_KEY, v);
     else localStorage.removeItem(TEAM_KEY);
@@ -140,8 +171,105 @@ export async function connectSidecar(): Promise<void> {
  *  스페이스를 건너다니는 공유/불러오기가 이걸 쓴다. */
 export type Scope = { team: string | null };
 
+// 계정 모드에서도 **사이드카가 직접** 답하는 경로. 기기 연결은 루프백 콜백이라 사이드카가
+// 받아야 하고, 동기화·백업·헬스는 이 기기의 일이며, 통과로 자신을 통과로에 실을 수는 없다.
+// 이 목록 밖의 데이터 호출은 전부 계정으로 간다.
+const SIDECAR_ONLY = ["/health", "/connect/", "/sync", "/backup", "/space/"];
+const sidecarOnly = (path: string): boolean =>
+  SIDECAR_ONLY.some((p) => path === p || path.startsWith(p));
+
+// 멤버 키 — OS 키체인에서 한 번 읽어 이 창이 사는 동안 들고 있는다. 호출마다 IPC 를
+// 태우면 화면 하나에 수십 번이다. 계정이 키를 거절하거나 로그아웃하면 비운다.
+let memberKeyCache = "";
+async function memberKey(): Promise<string> {
+  if (memberKeyCache) return memberKeyCache;
+  // 동적 import: account-connect 가 이 모듈을 읽으므로 정적으로 쓰면 순환이다.
+  const { accountKey } = await import("./account-connect");
+  memberKeyCache = await accountKey().catch(() => "");
+  return memberKeyCache;
+}
+/** 들고 있던 멤버 키를 버린다(로그아웃·키 교체·거절 뒤). */
+export function forgetMemberKey(): void { memberKeyCache = ""; }
+
+/** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
+ *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
+ *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). */
+function accountFailure(message: string, kind: "signIn" | "unreachable" | "other",
+                        status = 0): Error {
+  const err: any = new Error(message);
+  err.account = kind;
+  err.status = status;
+  if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
+  if (kind === "unreachable") dispatchEvent(new CustomEvent("vinc:account-unreachable"));
+  return err;
+}
+
+/** 통과로를 한 번 태운다. 계정의 상태코드와 몸통이 그대로 돌아온다(`api/spaceproxy.py`). */
+async function viaProxy(key: string, method: "GET" | "POST", path: string,
+                        params: Record<string, string>, body: unknown,
+                        team: string): Promise<Response> {
+  return fetch(new URL("/space/proxy", cfg.base), {
+    method: "POST",
+    headers: {
+      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      method, path, params, token: key,
+      ...(method === "POST" ? { body } : {}),
+      // 개인이면 싣지 않는다. 빈 문자열도 계정 쪽에서는 "팀을 말했다"로 읽힐 수 있다.
+      ...(team ? { team } : {}),
+    }),
+  });
+}
+
+/** 셸 계정 모드의 데이터 호출. 경로는 웹과 같은 이름이고(`/view`·`/ingest/fragment`),
+ *  사이드카 통과로가 `/api/graph` 접두를 붙여 계정으로 넘긴다. */
+async function accountCall(path: string, params: Record<string, string | number | undefined> | undefined,
+                           body: unknown, scope?: Scope): Promise<any> {
+  const key = await memberKey();
+  if (!key) throw accountFailure("sign in required", "signIn", 401);
+  const q: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params || {}))
+    if (v !== undefined && v !== "") q[k] = String(v);
+  const team = scope ? scope.team || "" : cfg.team;
+  const method = body !== undefined ? "POST" : "GET";
+  let res: Response;
+  try {
+    res = await viaProxy(key, method, path, q, body, team);
+  } catch (e: any) {
+    // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
+    throw new Error(`engine unreachable: ${e?.message || e}`);
+  }
+  if (res.ok) return res.json();
+  const b: any = await res.json().catch(() => ({}));
+  // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
+  const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
+  const detail = typeof b?.error === "object" ? String(b.error?.message || code) : code;
+  if (res.status === 401 && code === "unauthorized") {
+    // 사이드카 세션 토큰이 틀렸다(셸이 준 값). 로그인과는 무관하다.
+    throw new Error("engine session rejected");
+  }
+  if (code === "account_unreachable" || res.status === 502 || res.status === 504) {
+    throw accountFailure(detail || "account unreachable", "unreachable", res.status);
+  }
+  if (res.status === 401 && code === "not_authenticated") {
+    // 계정은 **키 거절**과 **권한 거절**(팀 역할·읽기 전용 키)을 같은 코드로 준다.
+    // 둘을 가르지 않으면 팀에서 권한 없는 일을 한 번 눌렀다고 로그아웃된다. 그래서
+    // 키만 보는 가벼운 읽기(`/spaces`)로 한 번 더 묻는다: 그것도 거절이면 키가 죽은 것이다.
+    const probe = await viaProxy(key, "GET", "/spaces", {}, undefined, "").catch(() => null);
+    if (probe && probe.status === 401) {
+      forgetMemberKey();
+      throw accountFailure(detail, "signIn", 401);
+    }
+    throw accountFailure(detail, "other", 401);
+  }
+  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status);
+}
+
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown, scope?: Scope): Promise<any> {
+  if (accountMode() && !sidecarOnly(path)) return accountCall(path, params, body, scope);
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
   //   call("/view") → /api/graph/view · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
@@ -191,6 +319,36 @@ async function call(path: string, params?: Record<string, string | number | unde
   if (isWrite && !WEB && !path.startsWith("/sync") && !path.startsWith("/connect/"))
     dispatchEvent(new CustomEvent("vinc:write"));
   return res.json();
+}
+
+/** 이 기기 스토어에 사용자 데이터가 있는가. 모드를 처음 정할 때만 묻는다.
+ *
+ *  모드가 아직 없으니 `call` 은 로컬 사이드카로 간다. 소유자는 둘 다 본다: 앱은
+ *  `tenant:local` 로, 로컬 stdio MCP 는 `user:local` 로 쓴다(VIN-131 이 통일한다).
+ *  샘플 스페이스(`sample:demo`)는 세지 않는다. **모르면 있다고 답한다** — 모를 때 계정으로
+ *  넘기면 있던 작업이 빈 계정 화면 뒤로 가려진다. */
+export async function localStoreHasData(): Promise<boolean> {
+  try {
+    for (const owner of ["tenant:local", "user:local"]) {
+      const d = await call("/domains", { owner });
+      if ((d?.rows || []).length) return true;
+      const docs = await call("/docs", { owner, limit: 1, detail: "summary" });
+      if (Number(docs?.total_count ?? (docs?.docs || []).length) > 0) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** 이 셸이 볼 그래프를 한 번 정한다. 이미 정해졌으면 그대로다(설정의 로컬 모드가
+ *  나중에 이 값을 바꾼다, VIN-130). 새 설치는 계정, 데이터가 있는 기존 설치는 로컬. */
+export async function decideDataMode(): Promise<DataMode> {
+  const held = dataMode.get();
+  if (held) return held;
+  const next: DataMode = (await localStoreHasData()) ? "local" : "account";
+  dataMode.set(next);
+  return next;
 }
 
 /** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
@@ -555,6 +713,11 @@ async function communityPost(path: string, body: unknown): Promise<any> {
  *  웹모드가 아니면 팀 자체가 없으므로 빈 배열로 끝낸다(호출부 분기 제거). */
 export const teamsApi = {
   list: async (): Promise<Array<{ id: string; name: string; role: string; status: string }>> => {
+    // 셸 계정 모드: 쿠키가 없으니 `/api/teams` 는 못 부른다. 같은 목록을 계정의 그래프
+    // 평면(`/api/graph/spaces`, 키로 열린다)에서 통과로로 받는다(VIN-127).
+    if (accountMode()) {
+      try { return ((await call("/spaces")) as any).teams || []; } catch { return []; }
+    }
     if (!WEB) return [];
     const res = await fetch(new URL("/api/teams", location.origin), { credentials: "include" });
     if (!res.ok) return [];

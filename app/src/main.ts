@@ -4,7 +4,7 @@ import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
-import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL } from "./api";
+import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode } from "./api";
 import { checkForUpdate } from "./update";
 import { mountSyncScheduler } from "./sync-scheduler";
 import { wireFileAssociations } from "./openfiles";
@@ -305,6 +305,17 @@ applyTheme();
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).
   if (!WEB) {
     await connectSidecar();
+    // 데스크톱은 로그인이 먼저다(VIN-128). 로그인은 사이드카 루프백으로 키를 받으므로
+    // `connectSidecar` 뒤여야 한다. 브라우저 dev(셸 아님)는 종전대로 로컬 사이드카를 본다.
+    const { needsSignIn, requireSignIn } = await import("./firstrun");
+    if (needsSignIn()) await requireSignIn("first");
+    if (IN_SHELL) {
+      // 어느 그래프를 볼지 한 번 정한다. 로컬 스토어에 이미 데이터가 있으면 이행 흐름
+      // (VIN-131)이 생기기 전까지 로컬로 남고, 없으면 계정이다.
+      await decideDataMode();
+      const { mountAccountSignals } = await import("./account-signals");
+      mountAccountSignals();
+    }
   } else {
     // 웹모드: 서피스를 그리기 **전에** 세션을 확인한다 — 미인증이면 즉시 /login 으로
     // (앱이 잠깐 떴다가 데이터 401 로 뒤늦게 리다이렉트되는 깜빡임 제거).
@@ -319,11 +330,4 @@ applyTheme();
   // `.vincpack` 더블클릭으로 넘어온 argv 를 연다(Q1). 화면을 그린 **뒤**에
   // 부른다 — 임포트 시트가 뜰 자리가 먼저 있어야 한다. 셸 아니면 no-op.
   wireFileAssociations();
-
-  // 첫 실행에 계정을 **묻는다**(막지 않는다). 화면을 그린 뒤라 넘기면 곧바로 빈
-  // 상태 초대가 뒤에 있다. 웹 Vinc 는 이미 로그인해야 여기까지 오므로 제외한다.
-  if (!WEB) {
-    const { offerAccount } = await import("./firstrun");
-    offerAccount();
-  }
 })();

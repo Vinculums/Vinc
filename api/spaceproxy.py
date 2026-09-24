@@ -1,5 +1,13 @@
 # -*- coding: utf-8 -*-
-"""팀 스페이스 통과로 — 데스크탑의 그래프 호출을 계정으로 넘긴다.
+"""스페이스 통과로 — 데스크탑의 그래프 호출을 계정으로 넘긴다.
+
+## 팀만이 아니라 개인 그래프도 (계정 모드, 2026-09-24)
+
+처음에는 팀 그래프만 이 길로 갔다(`team` 필수). 데스크톱 계정 모드에서는 개인 그래프도
+로컬 스토어가 아니라 계정에서 읽고 쓰므로 `team` 이 선택이 됐다. 없으면 `team` 파라미터를
+**아예 싣지 않고**, 계정은 키의 주인(개인 그래프)으로 답한다. 빈 문자열을 실으면 안 된다:
+계정의 `teamScope` 가 그것을 팀 id 로 읽으려 들 수 있다.
+근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
 
 ## 왜 사이드카가 하나 (앱이 직접 안 하고)
 
@@ -43,7 +51,10 @@ DEFAULT_BASE = "https://vincs.io"
 #: 계정의 그래프 평면 접두. 경로는 **여기서만** 붙는다.
 PREFIX = "/api/graph"
 
-_TIMEOUT = 30.0
+#: 계정 프록시가 무거운 연산에 주는 한도(`account/src/services/mcpProxy.ts`
+#: `HEAVY_TIMEOUT_MS` 45초)와 같게 둔다. 짧으면 계정이 답하기 전에 여기서 먼저 끊겨
+#: 호출부는 계정이 성공한 쓰기를 실패로 본다.
+_TIMEOUT = 45.0
 
 
 def _safe_path(path: str) -> str | None:
@@ -93,14 +104,15 @@ def call(*, token: str, team: str, method: str, path: str,
     """
     if not token:
         return 400, {"error": "missing field: token (member key)"}
-    if not team:
-        return 400, {"error": "missing field: team"}
     safe = _safe_path(path)
     if safe is None:
         return 400, {"error": f"bad path: {path!r}"}
 
     q = {k: str(v) for k, v in (params or {}).items() if v not in (None, "")}
-    q["team"] = team
+    # 호출부가 params 로 `team` 을 몰래 실어도 여기서 정하는 값 하나만 남긴다.
+    q.pop("team", None)
+    if team:
+        q["team"] = team
     url = (base or DEFAULT_BASE).rstrip("/") + PREFIX + safe
     if q:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(q)
