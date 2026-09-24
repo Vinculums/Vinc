@@ -1362,6 +1362,9 @@ def specs(*, allow_target: bool = True) -> list[dict]:
             props["space"] = sp
         else:
             props.update(_SPACE_PROP)
+            # 허브는 `debug` 를 실행 경로에서 벗긴다(call). 광고도 하지 않는다 —
+            # 안 듣는 스위치를 목록에 두면 호스트가 켜 놓고 효과를 기다린다.
+            props.pop("debug", None)
         spec = {"name": t["name"], "description": t["description"],
                 "inputSchema": {**sch, "properties": props}}
         if t.get("outputSchema"):
@@ -1562,6 +1565,124 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
              "vinc_graph": _shrink_graph_result}
 
 
+# ── 인자 검증(D5) ────────────────────────────────────────────────────────────
+# 스키마의 `required`·`minimum`·`maximum`·`enum` 은 여태 **권고**였다: `required` 만
+# 봤고 범위는 아무도 안 봤다. 그래서 `limit=101` 이 조용히 잘리거나(쿼리층 max/min)
+# 그대로 사이드카까지 갔다. 이제 MCP 층이 **먼저 거절한다** — 자르지 않는다.
+# 거절은 JSON-RPC -32602 가 아니라 **도구 결과**(isError + 행동 가능한 문장 +
+# `_meta.vinc_invalid_argument`)다: 호스트 다수가 프로토콜 오류를 모델에게 안 보여
+# 주고, 모델은 고칠 근거 없이 같은 호출을 되풀이한다.
+# 쿼리층 클램프는 **그대로 둔다** — 사이드카·CLI 는 MCP 를 안 지난다.
+# 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
+
+class InvalidArgument(Exception):
+    """도구 인자 거절. ⚠ ValueError 를 상속하지 말 것 — rpc 의 `except (KeyError,
+    ValueError)` → -32602 경로에 삼켜져 결과 봉투가 되지 못한다."""
+
+    def __init__(self, tool: str, argument: str, *, value=None, minimum=None,
+                 maximum=None, reason: str | None = None, text: str = ""):
+        self.meta: dict = {"tool": tool, "argument": argument}
+        if reason is not None:
+            self.meta["reason"] = reason
+        else:
+            self.meta.update({"value": value, "minimum": minimum, "maximum": maximum})
+        self.text = text
+        super().__init__(text)
+
+    def result(self) -> dict:
+        """tools/call 결과 봉투. 스택·Cypher 는 싣지 않는다 — 문장과 좌표뿐."""
+        return {"content": [{"type": "text", "text": self.text}], "isError": True,
+                "_meta": {"vinc_invalid_argument": dict(self.meta)}}
+
+
+def _as_number(v, integer: bool):
+    """스키마 수치 인자를 비교용 수로. 수가 아니면 None(= 형식 거절)."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return (int(v) if v.is_integer() else None) if integer else v
+    if isinstance(v, str):
+        try:
+            return int(v.strip()) if integer else float(v.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _cursor_shape_ok(cur) -> bool:
+    """커서 **모양**만 본다(코덱 v1 · 음 아닌 정수 오프셋). 어느 질의의 것인가(qh)는
+    사이드카가 판정한다 — owner·질의·detail 이 거기에만 다 모여 있다."""
+    if not isinstance(cur, str) or not cur:
+        return False
+    try:
+        pad = "=" * (-len(cur) % 4)
+        data = json.loads(base64.urlsafe_b64decode((cur + pad).encode("ascii")))
+    except Exception:
+        return False
+    if not isinstance(data, dict) or data.get("v") != 1:
+        return False
+    off = data.get("off", 0)
+    return isinstance(off, int) and not isinstance(off, bool) and off >= 0
+
+
+def _invalid_cursor(tool: str, reason: str) -> InvalidArgument:
+    return InvalidArgument(
+        tool, "cursor", reason=reason,
+        text=(f"Invalid argument: cursor for {tool} was refused ({reason}). "
+              "Nothing was returned. Retry without `cursor` to start from the first page, "
+              "or pass the next_cursor returned by the same call with the same arguments."))
+
+
+def validate_args(name: str, args: dict | None) -> None:
+    """스키마 대조. 모르는 도구는 KeyError(프로토콜 오류로 남긴다), 인자 위반은
+    InvalidArgument. rpc 가 **쿼터를 세기 전에** 부르고, `call` 도 한 번 더 부른다
+    (rpc 를 안 지나는 호출자 — 테스트·평가 스크립트 — 도 같은 판정을 받게)."""
+    tool = _BY_NAME.get(name)
+    if tool is None:
+        raise KeyError(f"unknown tool: {name}")
+    args = args if isinstance(args, dict) else {}
+    sch = tool["inputSchema"]
+    props = sch.get("properties") or {}
+    for req in sch.get("required", []):
+        if args.get(req) in (None, ""):
+            raise InvalidArgument(
+                name, req, reason="missing required argument",
+                text=(f"Invalid argument: {req} is required for {name} and was not given. "
+                      f"Nothing was run. Retry with {req} set."))
+    for key, spec in props.items():
+        v = args.get(key)
+        if v is None:
+            continue
+        typ = spec.get("type")
+        if typ in ("integer", "number") and ("minimum" in spec or "maximum" in spec):
+            lo, hi = spec.get("minimum"), spec.get("maximum")
+            n = _as_number(v, typ == "integer")
+            if n is None:
+                kind = "an integer" if typ == "integer" else "a number"
+                raise InvalidArgument(
+                    name, key, value=v, minimum=lo, maximum=hi,
+                    text=(f"Invalid argument: {key}={v!r} is not {kind} for {name}. "
+                          f"Nothing was run. Retry with {key} between {lo} and {hi}."))
+            if (lo is not None and n < lo) or (hi is not None and n > hi):
+                more = (", and continue with next_cursor for more"
+                        if key == "limit" and "cursor" in props else "")
+                raise InvalidArgument(
+                    name, key, value=v, minimum=lo, maximum=hi,
+                    text=(f"Invalid argument: {key}={v} is outside {lo}..{hi} for {name}. "
+                          f"Nothing was run. Retry with {key} between {lo} and {hi}{more}."))
+        elif typ == "string" and spec.get("enum") and v not in spec["enum"]:
+            allowed = ", ".join(spec["enum"])
+            raise InvalidArgument(
+                name, key, reason=f"must be one of: {allowed}",
+                text=(f"Invalid argument: {key}={v!r} is not accepted by {name}. "
+                      f"Nothing was run. Retry with {key} set to one of: {allowed}."))
+    if "cursor" in props and args.get("cursor") not in (None, "") \
+            and not _cursor_shape_ok(args["cursor"]):
+        raise _invalid_cursor(name, "malformed cursor")
+
+
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
          entitlements: dict | None = None,
@@ -1617,14 +1738,25 @@ def call(name: str, args: dict | None, bridge: Bridge,
     args.pop("_entitlements", None)
     if entitlements and name in CAPPED_TOOLS:
         args["_entitlements"] = dict(entitlements)
-    for req in tool["inputSchema"].get("required", []):
-        if args.get(req) in (None, ""):
-            raise ValueError(f"missing required argument: {req}")
+    # 인증된(forced_owner) 경로에서는 `debug` 를 벗긴다 — 실행 계획에는 Cypher 와
+    # 다른 소유자 스코프를 가늠할 파라미터가 실린다. 로컬 사이드카 진단은 그대로다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
+    if forced_owner:
+        args.pop("debug", None)
+    validate_args(name, args)
     if target == "remote":
         from . import remote                    # 지연 import — 로컬 경로엔 부담 0
         out = remote.call(name, args)
     else:
         out = tool["run"](args, bridge)
+    # 커서가 **어느 질의의 것인가**는 사이드카만 안다(owner·질의·detail 이 거기 모인다).
+    # 그 판정(`invalid_cursor: …`)도 같은 봉투로 올린다 — 빈 결과처럼 보이면 안 된다.
+    if args.get("cursor") and isinstance(out, dict):
+        err = str(out.get("error") or "")
+        if err.startswith("invalid_cursor"):
+            reason = ("cursor does not belong to this query" if "different" in err
+                      else "malformed cursor")
+            raise _invalid_cursor(name, reason)
     return _stamp_identity(name, out, target, allow_target)
 
 

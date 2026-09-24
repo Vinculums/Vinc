@@ -166,6 +166,14 @@ class Dispatcher:
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
+            # 인자 검증은 **쿼터보다 먼저** 한다 — 거절된 호출이 한도를 갉아먹으면
+            # 모델이 인자를 고쳐 다시 부를 여력을 잃는다. 모르는 도구는 KeyError 로
+            # 여전히 -32602 다(그건 인자가 아니라 호출 자체의 오류).
+            # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
+            try:
+                tools.validate_args(name, args)
+            except tools.InvalidArgument as e:
+                return e.result()
             # 쿼터는 여기서만 소비(B-D2) — initialize/tools_list/ping 은 무료라
             # 커넥터 등록·핸드셰이크가 한도를 갉아먹지 않는다. 로컬 stdio 는
             # forced_owner 가 없어 quota 가 호출되지 않는다(무제한).
@@ -177,8 +185,10 @@ class Dispatcher:
                 out = tools.call(name, args, self.bridge, forced_owner=forced_owner,
                                  entitlements=entitlements,
                                  allow_target=self.allow_target)
+            except tools.InvalidArgument as e:
+                return e.result()           # 인자 거절 = 도구 결과(isError), -32602 아님
             except (KeyError, ValueError):
-                raise                       # 잘못된 도구/인자 = 프로토콜 오류(-32602)
+                raise                       # 모르는 도구·target/space 조합 = 프로토콜 오류(-32602)
             except Exception as e:          # 실행 오류 = 도구 결과로 강등(스펙)
                 return {"content": [{"type": "text", "text": f"{type(e).__name__}: {e}"}],
                         "isError": True}

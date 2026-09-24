@@ -1030,12 +1030,24 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
 
     total = len(docs)
     off = 0
+    # 순환 임포트 회피 — query 가 이 모듈을 이미 쓴다(nav_tree). 지연 임포트로
+    # 커서 규약을 **한 벌만** 유지한다(검색과 같은 코덱·같은 지문).
+    from .query import _query_fingerprint, cursor_decode, cursor_encode
+    # 커서에 **어느 목록의 것인가**를 싣는다(검색 커서의 qh 와 같은 방식). 여태 오프셋
+    # 하나뿐이라 남의 owner·다른 detail 로 발급된 커서, 음수 오프셋(`off:-5` 를 0 으로
+    # 조용히 당겼다)이 전부 통과했다. 이제 셋 다 ValueError("invalid_cursor: …").
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S10.
+    qh = _query_fingerprint("doc.list", owner, None,
+                            "summary" if detail == "summary" else "full")
     if cursor:
-        # 순환 임포트 회피 — query 가 이 모듈을 이미 쓴다(nav_tree). 지연 임포트로
-        # 커서 규약을 **한 벌만** 유지한다(검색과 같은 코덱).
-        from .query import cursor_decode
         data = cursor_decode(cursor)        # 무효면 ValueError — 호출부가 표면화
-        off = max(0, int(data.get("off") or 0))
+        if data.get("qh") != qh:
+            raise ValueError(
+                "invalid_cursor: cursor was issued for a different query/scope")
+        raw_off = data.get("off", 0)
+        if not isinstance(raw_off, int) or isinstance(raw_off, bool) or raw_off < 0:
+            raise ValueError("invalid_cursor: offset is not a non-negative integer")
+        off = raw_off
     page = docs[off:off + limit] if limit else docs[off:]
 
     if detail == "summary":
@@ -1059,11 +1071,10 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     if limit or cursor:
         # 페이지를 자를 때만 항해 정보를 싣는다 — 전량 호출(nav_tree·CLI)의 응답
         # 형태를 바꾸지 않기 위해서다.
-        from .query import cursor_encode
         nxt = off + len(page)
         out["total_count"] = total
         out["has_more"] = nxt < total
-        out["next_cursor"] = (cursor_encode({"v": 1, "off": nxt, "tc": total})
+        out["next_cursor"] = (cursor_encode({"v": 1, "off": nxt, "tc": total, "qh": qh})
                               if nxt < total else None)
     return out
 

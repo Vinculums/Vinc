@@ -72,6 +72,13 @@ def test_read_op_forces_owner_into_params(app):
     assert params["query"] == "x" and body is None
 
 
+def test_debug_is_stripped_on_the_web_plane(app):
+    """웹 평면은 쿼리 인자를 그대로 흘린다 — `debug` 는 허브에서 벗긴다(P4 S13)."""
+    app.graph_owner_request(_assertion(op="domains"), {"debug": "true"})
+    _m, _p, params, _b = app.bridge.calls[0]
+    assert "debug" not in params
+
+
 def test_search_pagination_params_pass_through(app):
     """GM-14 웹 등재 회귀 — cursor/detail 은 **파라미터**라 프록시 코드 변경 없이
     opaque 로 통과해야 한다(등재가 필요한 것은 라우트/op 뿐). 여기가 깨지면 웹에서만
