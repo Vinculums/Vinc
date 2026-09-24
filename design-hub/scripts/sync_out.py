@@ -48,6 +48,13 @@ MAP = [
     # (resvg 는 `tauri icon` 이 쓰는 엔진과 같아 앱 아이콘과 렌더가 어긋나지 않는다)
     ("assets/logo/vinc-ring-white-email@2x.png",
      "../../Vinc-homepage/site/assets/vinc-mark-email@2x.png"),
+    # 잉크 마크. 메일이 밝은 배경으로 옮겨 가며 생겼다(2026-09-22).
+    # ⚠ **위 흰 마크를 갈아 끼우지 않고 새 경로를 연 이유**: 메일의 이미지는 핫링크라
+    # 그 URL 의 파일을 바꾸면 **이미 발송돼 받은편지함에 있는 메일이 전부 같이 바뀐다.**
+    # 옛 어두운 메일에 잉크 마크가 얹히면 어두운 바탕에 어두운 마크가 되어 안 보인다.
+    # 그래서 흰 마크는 그 자리에 영원히 남기고 새 템플릿만 이쪽을 가리킨다.
+    ("assets/logo/vinc-ring-indigo-email@2x.png",
+     "../../Vinc-homepage/site/assets/vinc-mark-ink-email@2x.png"),
     # 검색엔진·수집기용 래스터 파비콘. **SVG 파비콘만으로는 부족하다** — 상당수가
     # `<link rel=icon>` 을 안 보고 루트의 `/favicon.ico` 만 집어 가고, 없으면 아이콘을
     # 아예 못 가져가거나 옛 캐시를 계속 쓴다(실측: 검색 결과에 구 로고가 남아 있었다).
