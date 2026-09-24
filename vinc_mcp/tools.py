@@ -215,6 +215,14 @@ def _t_recall(args, bridge):
         "debug": "true" if args.get("debug") else None})
 
 
+#: vinc_graph depth 2 이상의 노드 예산(시드에서 닿는 개념 수). 넘으면 깊이를 층
+#: 단위로 줄인다. 값의 크기: depth 1 결과가 노드당 ~780자(concept:signal-design 90노드
+#: 69,990자)였고 개념 하나에 부착(record·episode)이 딸려 오므로, 이 수를 넘기면 결과
+#: 대부분이 축소기에서 다시 덜려 나간다 — 받아도 못 싣는 층을 계산하지 않는다.
+#: 근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]
+GRAPH_NODE_BUDGET = 120
+
+
 def _t_graph(args, bridge):
     # `url` — 사람이 화면에서 복사한 주소를 그대로 받는다(D: 선택이 주소가 된다).
     # 인자로 받는 이유: 스페이스와 달리 **빠뜨리면 요청 자체가 성립하지 않아** 조용히
@@ -242,11 +250,32 @@ def _t_graph(args, bridge):
     if not seed:
         return {"kind": "graph", "executed": False, "seed": "",
                 "note": "seed_id or url is required"}
-    out = bridge.request("GET", "/graph", params={
-        "owner": _owner(args, bridge), "seed": seed,
-        "depth": depth if depth is not None else 2})
+    explicit = depth is not None
+    want = depth if explicit else 2
+    params = {"owner": _owner(args, bridge), "seed": seed, "depth": want}
+    # depth 2 이상에는 노드 예산을 붙인다. 사이드카는 도달 집합이 예산을 넘으면 깊이를
+    # 층 단위로 줄이고(최소 1) `depth_budget` 으로 알린다 — 허브의 depth 2+ 가 Bridge
+    # 60초에 걸려 죽던 것을 무거운 단계(행 조회·축 합류·배치) **전에** 끊는다.
+    # 예산은 이 핸들러에만 있다: View L2·공유 팩·동기화는 이 인자를 안 보낸다.
+    # 근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]
+    try:
+        if int(want) > 1:
+            params["max_nodes"] = GRAPH_NODE_BUDGET
+    except (TypeError, ValueError):
+        pass
+    out = bridge.request("GET", "/graph", params=params)
     if (not (args.get("seed_id") or "").strip()) and args.get("url")             and isinstance(out, dict):
         out.setdefault("from_url", seed)
+    if isinstance(out, dict) and isinstance(out.get("depth_budget"), dict):
+        b = out["depth_budget"]
+        why = ("depth was not given and this seed is a hub, so it got the lower default"
+               if not explicit else "the requested depth was lowered")
+        msg = (f"served depth {b.get('served_depth')} instead of "
+               f"{b.get('requested_depth')}: depth {b.get('requested_depth')} reaches "
+               f"{b.get('reach_at_requested')} concepts, over this tool's budget of "
+               f"{b.get('max_nodes')}; {why}. Walk further with vinc_neighbors "
+               f"node={seed}, or seed on one of the neighbours")
+        out["depth_note"] = msg
     return out
 
 
@@ -654,8 +683,16 @@ TOOLS: list[dict] = [
                        "(ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, "
                        "vinc_neighbors returns the same relations without them and is far cheaper; to walk step "
                        "by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — "
-                       "if you only have a phrase, run vinc_search first. depth 2 is the working default, 4 the "
-                       "ceiling. `rev` and `updated_at` are the node's current version, so you can hold what "
+                       "if you only have a phrase, run vinc_search first. Concept and decision seeds both expand. "
+                       "depth 2 is the working default, 4 the ceiling, and depth 2 and beyond carry a node "
+                       "budget: when the seed reaches more concepts than the budget allows, the depth is "
+                       "lowered a whole layer at a time (never below 1) and the result says so in "
+                       "`depth_budget` and `depth_note`. That is how a hub seed with no `depth` given comes "
+                       "back at depth 1. A result that is still too large is shrunk rather than refused: "
+                       "the seed stays whole, the ring may come back as id, label and kind only, and if even "
+                       "that does not fit the least connected neighbours are left out and counted in "
+                       "`ring_truncated`; read the full ring with vinc_neighbors. `shrunk` and `note` count "
+                       "what was kept. `rev` and `updated_at` are the node's current version, so you can hold what "
                        "you read before you overwrite it; nothing on the write path demands them yet. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
@@ -1483,72 +1520,156 @@ def _shrink_graph_result(out: dict, budget: int) -> dict | None:
     """vinc_graph 결과를 예산 안으로 줄인다 — **시드는 통째로, 이웃은 껍데기만**.
 
     순서: 이웃 노드의 `props` → 이웃 노드의 `one_liner` → 엣지의 `evidence` → 시드에
-    닿지 않는 엣지 → 시드의 직접 이웃이 아닌 노드. 시드 노드는 손대지 않는다. 이
-    도구로 노드 **하나**의 props 를 읽는 독자가 있기 때문이다:
-    `agents_sync --pull` 과 역할 껍데기의 "두 호출"이 그것이고, 2026-09-05 에
-    `concept:agent-dev-account` 의 depth 1 이 75,481자로 거부되자 `--pull` 이 죽었다
-    (Vinc#204 후속). depth 는 1 아래로 내려가지 않으므로 더 가벼운 읽기가 없었다.
+    닿지 않는 엣지 → 시드의 직접 이웃이 아닌 노드 → **직접 고리를 id·label·kind 로**
+    → **직접 고리의 꼬리**. 시드 노드는 손대지 않는다. 이 도구로 노드 **하나**의
+    props 를 읽는 독자가 있기 때문이다: `agents_sync --pull` 과 역할 껍데기의 "두
+    호출"이 그것이고, 2026-09-05 에 `concept:agent-dev-account` 의 depth 1 이 75,481자로
+    거부되자 `--pull` 이 죽었다(Vinc#204 후속).
 
-    뒤의 두 단은 왜 있나: depth 1 은 개념 이웃만이 아니라 그 이웃들에 붙은 record·
+    둘째 고리 단은 왜 있나: depth 1 은 개념 이웃만이 아니라 그 이웃들에 붙은 record·
     episode 와 그들 사이의 엣지까지 싣는다(F14 합류). `concept:agent-dev-app` 은 직접
-    이웃이 일곱인데 depth 1 이 87,417자였고, 이웃의 props 를 전부 비워도 둘째 고리와
-    그 엣지들이 상한을 넘겼다(2026-09-05). 시드를 읽으러 온 독자에게 둘째 고리는 덤이다.
+    이웃이 일곱인데 depth 1 이 87,417자였다(2026-09-05).
+
+    고리 단 둘은 왜 있나: 허브는 직접 고리만으로 상한을 넘긴다(`concept:vinc-mcp`
+    depth 1 = 342,008자). 여태 여기서 None 을 돌려 **허브는 어느 깊이로도 못 읽었다**.
+    이제 고리를 id·제목·종류만 남기고, 그래도 넘치면 고리의 꼬리를 덜고 몇 개를
+    덜었는지(`ring_truncated`)와 나머지를 읽을 길(vinc_neighbors)을 말한다. 고리
+    순서는 degree 내림차순(동률은 id)이라 남는 것은 가장 많이 이어진 이웃이다.
+
+    `note` 는 **남은 것을 세어서** 쓴다. 고정 문구("직접 고리는 온전하다")가 고리를
+    잃은 결과에도 붙어 있었다(감사 §5-5).
 
     덜어낸 것은 되찾을 수 있다: 이웃의 props 는 그 이웃의 id 로 다시 부르면 나오고,
     엣지의 evidence 는 `vinc_brief` 가, 둘째 고리는 이웃을 시드로 다시 부르면 나온다.
-    그래서 자르는 게 아니라 **덜 싣는** 것이다. 그래도 안 들어가면 None 을 돌려 기존
-    거부 경로로 보낸다."""
+    시드 자신이 예산을 넘길 때만 None 을 돌려 거부 경로로 보낸다.
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4"""
     if not isinstance(out, dict) or not isinstance(out.get("nodes"), list):
         return None
 
-    def _size() -> int:
-        return len(json.dumps(out, ensure_ascii=False))
+    def _j(v) -> int:
+        return len(json.dumps(v, ensure_ascii=False))
 
+    # 매 단계 전체를 다시 직렬화하면 허브(노드 수백·34만 자)에서 제곱 비용이 된다.
+    # 값 하나를 바꿀 때 전체 길이의 변화는 그 값의 직렬화 길이 차와 정확히 같으므로
+    # 그 차로 따라가고, 끝에서 한 번 실제로 잰다.
+    cur = _j(out)
     seed = out.get("seed")
+    nodes = out["nodes"]
+    edges = out.get("edges") if isinstance(out.get("edges"), list) else None
+
+    # 원본 기준 고리·바깥 — note 가 "무엇이 남았나"를 이 둘에 대어 센다.
+    ring0: set = set()
+    for e in edges or []:
+        if isinstance(e, dict) and seed in (e.get("source"), e.get("target")):
+            ring0.add(e.get("target") if e.get("source") == seed else e.get("source"))
+    ring0.discard(seed)
+    all_ids = {n.get("id") for n in nodes if isinstance(n, dict)}
+    ring0 &= all_ids
+    far0 = all_ids - ring0 - {seed}
+
     dropped = {"neighbour_props": 0, "neighbour_one_liners": 0, "edge_evidence": 0}
     for key, empty, counter in (("props", {}, "neighbour_props"),
                                 ("one_liner", "", "neighbour_one_liners")):
-        for n in out["nodes"]:
-            if _size() <= budget:
+        for n in nodes:
+            if cur <= budget:
                 break
             if isinstance(n, dict) and n.get("id") != seed and n.get(key):
+                cur += _j(empty) - _j(n[key])
                 n[key] = empty
                 dropped[counter] += 1
-    edges = out.get("edges")
-    if isinstance(edges, list):
+    if edges is not None:
         for e in edges:
-            if _size() <= budget:
+            if cur <= budget:
                 break
             if isinstance(e, dict) and e.get("evidence"):
+                cur += _j("") - _j(e["evidence"])
                 e["evidence"] = ""
                 dropped["edge_evidence"] += 1
     dropped["far_edges"] = dropped["far_nodes"] = 0
-    if isinstance(edges, list) and seed and _size() > budget:
+    if edges is not None and seed and cur > budget:
         # 시드에 닿지 않는 엣지(이웃끼리, 이웃과 그 record 사이)를 덜어낸다.
         near = [e for e in edges
                 if isinstance(e, dict) and seed in (e.get("source"), e.get("target"))]
         dropped["far_edges"] = len(edges) - len(near)
         edges[:] = near
-        if _size() > budget:
+        cur = _j(out)
+        if cur > budget:
             # 시드의 직접 이웃이 아닌 노드(둘째 고리)를 덜어낸다.
-            keep = {seed}
-            for e in edges:
-                keep.add(e.get("source"))
-                keep.add(e.get("target"))
-            before = len(out["nodes"])
-            out["nodes"][:] = [n for n in out["nodes"]
-                               if isinstance(n, dict) and n.get("id") in keep]
-            dropped["far_nodes"] = before - len(out["nodes"])
-    if _size() > budget:
+            keep = {seed} | ring0
+            before = len(nodes)
+            nodes[:] = [n for n in nodes if isinstance(n, dict) and n.get("id") in keep]
+            dropped["far_nodes"] = before - len(nodes)
+            cur = _j(out)
+    dropped["ring_slimmed"] = dropped["ring_dropped"] = 0
+    if seed and cur > budget:
+        # 고리 단 ①: 이웃을 id·label·kind 로. 엣지도 끝점과 타입만.
+        for i, n in enumerate(nodes):
+            if isinstance(n, dict) and n.get("id") != seed:
+                nodes[i] = {"id": n.get("id"), "label": n.get("label"),
+                            "kind": n.get("kind"), "_deg": n.get("degree") or 0}
+                dropped["ring_slimmed"] += 1
+        if edges is not None:
+            edges[:] = [{"source": e.get("source"), "target": e.get("target"),
+                         "type": e.get("type")} for e in edges if isinstance(e, dict)]
+        # 고리 순서: 많이 이어진 이웃이 먼저 남는다(결정론 — 동률은 id).
+        head = [n for n in nodes if n.get("id") == seed]
+        rest = sorted((n for n in nodes if n.get("id") != seed),
+                      key=lambda n: (-int(n.get("_deg") or 0), str(n.get("id"))))
+        for n in rest:
+            n.pop("_deg", None)
+        nodes[:] = head + rest
+        cur = _j(out)
+        if cur > budget:
+            # 고리 단 ②: 꼬리부터 던다. 노드와 그 노드에 닿는 엣지를 함께.
+            by_node: dict = {}
+            for e in edges or []:
+                other = e["target"] if e.get("source") == seed else e.get("source")
+                by_node.setdefault(other, []).append(e)
+            # 뒤에 붙을 표식(ring_truncated·note)의 자리는 봉투의 예비분이 맡는다.
+            gone: set = set()
+            while cur > budget and len(nodes) > 1 and nodes[-1].get("id") != seed:
+                n = nodes.pop()
+                gone.add(n.get("id"))
+                cur -= _j(n) + 2          # ", " 구분자
+                for e in by_node.get(n.get("id"), []):
+                    cur -= _j(e) + 2
+                dropped["ring_dropped"] += 1
+            if edges is not None and gone:
+                edges[:] = [e for e in edges
+                            if e.get("source") not in gone and e.get("target") not in gone]
+            cur = _j(out)
+            while cur > budget and len(nodes) > 1:
+                # 추정이 모자랐을 때의 안전판(구분자 계산이 어긋나도 예산은 지킨다).
+                n = nodes.pop()
+                if edges is not None:
+                    edges[:] = [e for e in edges if n.get("id") not in
+                                (e.get("source"), e.get("target"))]
+                dropped["ring_dropped"] += 1
+                cur = _j(out)
+    if _j(out) > budget:
         return None
     if any(dropped.values()):
+        final = {n.get("id") for n in nodes if isinstance(n, dict)}
+        ring_kept, far_kept = len(ring0 & final), len(far0 & final)
+        dropped.update(ring_total=len(ring0), ring_kept=ring_kept,
+                       far_total=len(far0), far_kept=far_kept)
         out["shrunk"] = dropped
-        note = ("shrunk to fit the result size limit: emptied props on %d neighbour(s), "
-                "one_liner on %d, evidence on %d edge(s), dropped %d edge(s) and %d "
-                "node(s) not touching the seed; the seed and its direct ring are intact, "
-                "and anything dropped comes back by reading that node's own id"
-                % (dropped["neighbour_props"], dropped["neighbour_one_liners"],
-                   dropped["edge_evidence"], dropped["far_edges"], dropped["far_nodes"]))
+        parts = [f"kept the seed whole, {ring_kept} of {len(ring0)} direct neighbour(s) "
+                 f"and {far_kept} of {len(far0)} node(s) beyond them",
+                 f"emptied props on {dropped['neighbour_props']} node(s), one_liner on "
+                 f"{dropped['neighbour_one_liners']}, evidence on "
+                 f"{dropped['edge_evidence']} edge(s)",
+                 f"dropped {dropped['far_edges']} edge(s) and {dropped['far_nodes']} "
+                 f"node(s) not touching the seed"]
+        if dropped["ring_slimmed"]:
+            parts.append("direct neighbours are reduced to id, label and kind")
+        if dropped["ring_dropped"]:
+            out["ring_truncated"] = dropped["ring_dropped"]
+            parts.append(f"{dropped['ring_dropped']} direct neighbour(s) left out "
+                         f"(the least connected); read the whole ring with "
+                         f"vinc_neighbors node={seed} limit=500")
+        note = ("shrunk to fit the result size limit: " + "; ".join(parts)
+                + "; anything dropped comes back by reading that node's own id")
         out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
     return out
 
@@ -1559,6 +1680,7 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
              "vinc_brief": _shrink_brief_result,
              # 조밀한 노드의 depth 1 이 상한을 넘겼다(2026-09-05, 75,481자). 시드를
              # 지키고 이웃의 props 부터 던다 — 시드 하나를 읽으러 온 독자가 있다.
+             # 허브는 고리까지 줄여 싣는다(거부는 시드 자신이 넘칠 때뿐).
              "vinc_graph": _shrink_graph_result}
 
 

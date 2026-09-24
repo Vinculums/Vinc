@@ -487,6 +487,10 @@ class VincApp:
                                             # 계산하는 쪽에 두어야 한 곳에서만 산다.
                                             cone=_float(p.get("cone"), 1.0),
                                             basis=p.get("basis") or q.BASIS_RECORDED,
+                                            # 노드 예산 — MCP vinc_graph 만 보낸다. 안
+                                            # 보내면 None 이고 결과는 종전과 같다.
+                                            # 근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]
+                                            max_nodes=_int(p.get("max_nodes"), 0) or None,
                                             store=r))
 
     def read_view(self, p):
