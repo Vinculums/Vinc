@@ -140,6 +140,18 @@ export function disposeEditorsIn(root: HTMLElement): void {
   }
 }
 
+/** 문서 열이 떠 있고 그 안에 편집기가 있는가 — 표면 단축키가 쉬어야 하는 조건.
+ *
+ *  판정은 `keys.blocksSurfaceShortcuts` 가 하고 DOM 은 여기서만 읽는다: keys.ts 가
+ *  DOM 을 안 쓰는 것이 `app/dev/keys-check.ts` 를 성립시키는 조건이다.
+ *
+ *  ⚠ 읽기 전용 편집기도 `contenteditable="false"` 인 `.cm-content` 다. 속성 **값**으로
+ *  거르면 그 경우가 빠지고, 문서를 읽는 중에 숫자가 표면을 갈아엎는다(F-DOC-KB-01). */
+export function docEditorOpen(): boolean {
+  const pane = document.getElementById("docpane");
+  return !!pane && !pane.hidden && !!pane.querySelector(".cm-content");
+}
+
 export type DocEditorOpts = {
   owner: string;
   docId?: string;         // 없으면 신규(첫 저장 시 생성 → 반환 id 로 이후 편집)

@@ -349,10 +349,21 @@ export function mountTopbar() {
       void (async () => { (await ask())?.askSubmit(raw); })();
       return;
     }
-    // 결과가 있으면 첫 줄로 착지, 없으면 전체 목록을 연다(막다른 골목 금지).
-    // 여기도 표면 이동이 아니라 시트다 — 드롭다운의 `모든 문서` 와 같은 자리로 간다.
-    if (hits.length) go(hits[0]);
-    else if (raw) void openAllDocs();
+    // Enter 는 질의를 **끝맺는다** — debounce 가 돌기 전에 누르면 hits 가 비어 있어
+    // 곧바로 전체 목록 시트가 뜨는 사고가 있었다(2026-09-15). 타이머를 먼저 끊고
+    // run 을 기다린 뒤에 착지/목록을 고른다.
+    void (async () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+      if (raw.length >= 2) {
+        await run(raw);
+        if (hits.length) { go(hits[0]); return; }
+      }
+      // 두 글자가 안 되면 debounce 가 돈 적이 없어 `hits` 는 **이전 질의의 것**이다.
+      // 그것으로 착지하면 친 글자와 다른 곳에 떨어지므로 쓰지 않는다. 그렇다고 아무
+      // 일도 안 하면 막다른 골목이라(이 자리의 원래 규칙) 전체 목록을 연다.
+      if (raw) void openAllDocs();
+    })();
   });
 
   // Ctrl/Cmd+K 는 팔레트가 이미 쓰는 키다 — 여기서는 **검색 필드 포커스**로 통일한다

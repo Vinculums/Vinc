@@ -17,8 +17,8 @@ import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
-import { isTypingTarget } from "../keys";
-import { disposeEditorsIn, renderMarkdown } from "../doc-editor";
+import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
+import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
 import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
@@ -675,7 +675,8 @@ export async function renderView(el: HTMLElement) {
     // 있으면 레일을 Esc 로 닫을 수 없었다 — 들어가는 문은 모든 마크에 달려 있는데
     // 나오는 문이 ✕ 하나로 줄었다. 이제 어느 문으로 나가도 대기 중 편집이 확정되므로
     // (doc-editor 의 dispose) 이 문을 되살려도 잃는 것이 없다.
-    if (isTypingTarget(e.target) && e.key !== "Escape") return;
+    if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())
+        && e.key !== "Escape") return;
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
@@ -1595,8 +1596,32 @@ export async function renderView(el: HTMLElement) {
     //    반영은 프레임당 한 번이라, 한 프레임 늦은 값이 앞서 간 엄지를 뒤로 당긴다.
     // 값 표시만 따라간다 — `<output>` 이라 손과 다투지 않고, 재생 중에 지금 어느
     // 시점을 보고 있는지는 읽혀야 한다.
+    syncTimePanelChrome(w);
+  }
+
+  /** 시간 옵션만 바꿨을 때 패널을 통째로 다시 그리지 않고 칩·타일·라벨만 맞춘다.
+   *  `applyTimeCut` 은 이미 커서 숫자를 갱신한다 — 여기서 timeBasis `.active` 와
+   *  `.tile-active` 캡션을 같이 맞추지 않으면 저장값과 화면이 어긋난다(F-TIME-01). */
+  function syncTimePanelChrome(whenOverride?: number): void {
+    const p = curPrefs();
+    viewPanel.querySelectorAll<HTMLElement>('[data-pref="timeBasis"]').forEach((b) => {
+      const on = b.dataset.val === p.timeBasis;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    const basisBtn = viewPanel.querySelector<HTMLElement>(
+      `[data-pref="timeBasis"][data-val="${p.timeBasis}"]`);
+    const basisGrid = basisBtn?.closest(".tile-grid");
+    const activeSpan = basisGrid?.previousElementSibling
+      ?.querySelector<HTMLElement>(".tile-active");
+    if (activeSpan && basisBtn)
+      activeSpan.textContent = basisBtn.getAttribute("aria-label") || p.timeBasis;
+    const w = whenOverride ?? replayWhen ?? p.when;
     const out = viewPanel.querySelector<HTMLElement>("#pref-when-val");
     if (out) out.textContent = whenLabel(w);
+    const slider = viewPanel.querySelector<HTMLInputElement>("#pref-when");
+    if (slider && Math.abs(Number(slider.value) - p.when) > 1e-6)
+      slider.value = String(p.when);
   }
 
   /** 첫 시점부터 지금까지를 **밟아 보여 준다**(발주자 지시 2026-09-10).

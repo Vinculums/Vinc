@@ -12,7 +12,7 @@
  *
  *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다. */
 import assert from "node:assert/strict";
-import { isTypingTarget } from "../src/keys.ts";
+import { blocksSurfaceShortcuts, isTypingTarget } from "../src/keys.ts";
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
@@ -42,5 +42,21 @@ ok("보통 요소는 단축키를 막지 않는다");
 assert.equal(isTypingTarget(null), false);
 assert.equal(isTypingTarget({} as EventTarget), false);
 ok("target 이 없거나 요소가 아니면 단축키가 산다");
+
+// ── 5. 문서 열이 열려 있으면 표면 단축키를 막는다(F-DOC-KB-01) ───────────────
+// 문서 열이 떠 있는지는 부르는 쪽이 재서 넘긴다(doc-editor.docEditorOpen) — 그래서
+// 이 검사가 그 갈래까지 **실제로** 돈다. keys.ts 가 DOM 을 직접 읽던 판본에서는
+// 첫 조건에서 단락될 때만 통과했고, 갈래 자체는 브라우저 없이는 못 밟았다.
+assert.equal(blocksSurfaceShortcuts({ tagName: "DIV", isContentEditable: true }, null, false), true);
+ok("타이핑 중이면 표면 단축키를 막는다");
+
+assert.equal(blocksSurfaceShortcuts(null, { tagName: "TEXTAREA" }, false), true);
+ok("포커스가 입력에 있으면 target 이 비어도 막는다");
+
+assert.equal(blocksSurfaceShortcuts(null, null, true), true);
+ok("문서 열이 떠 있으면 포커스가 어디 있든 막는다");
+
+assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+ok("문서 열이 닫혀 있고 타이핑도 아니면 단축키가 산다");
 
 console.log(`\nkeys: ${n}개 검사 통과`);

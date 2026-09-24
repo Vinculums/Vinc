@@ -14,8 +14,8 @@ import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { openSheet, wireScrimDismiss,
          type SheetHandle } from "./components";
-import { isTypingTarget } from "./keys";
-import { disposeEditorsIn } from "./doc-editor";
+import { blocksSurfaceShortcuts } from "./keys";
+import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 
 // 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
 // 갔다(P15) — 다섯 기능이 전부 거기 산다.
@@ -224,13 +224,13 @@ async function openCheatsheet() {
 document.addEventListener("keydown", (e) => {
   // 판정은 keys.ts 한 벌뿐이다. 여기 `tagName` 검사를 다시 적으면 표면 쪽 가드와
   // 또 갈리고, 그 틈으로 지도 단축키가 문서 본문에 떨어진다(2026-09-07 실측).
-  const inField = isTypingTarget(e.target);
   // ⌘/Ctrl+K 는 상단 바 검색이 가져갔다(D57 — 조회가 제1 동선). 팔레트는 같은 키에
   // Shift 를 더해 남긴다: 한 키에 두 동작이 붙으면 어느 쪽이 뜰지 예측할 수 없다.
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
     e.preventDefault(); openPalette(); return;
   }
-  if (inField) return;
+  // 문서 열이 떠 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
+  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())) return;
   // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가
   // 줄어드는 순간 조용히 틀리는 종류다 — 3 을 누르면 `#undefined` 로 간다. 타입은
   // 문자열 비교라 아무 말도 안 하고, 게이트도 이 자리를 안 본다.

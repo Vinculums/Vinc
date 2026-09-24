@@ -191,6 +191,13 @@ def tc_f_doc_kb_01(page) -> TCResult:
         page.wait_for_selector(".cm-content", timeout=15_000)
     except Exception:
         return _fail("F-DOC-KB-01", flow, "CodeMirror editor not found after doc open")
+    # 기본은 읽기 모드(readOnly) — 숫자를 넣으려면 편집 모드로 전환한다.
+    mode = page.locator("#rdr-mode")
+    if mode.count():
+        label = mode.inner_text()
+        if "Write" in label or "쓰기" in label or "편집" in label:
+            mode.click()
+            page.wait_for_timeout(600)
     editor = page.locator(".cm-content")
     editor.click()
     page.keyboard.press("2")
@@ -281,6 +288,9 @@ def tc_f_time_02(page) -> TCResult:
     """When slider: drag must change value without replacing the input element."""
     flow = "F-TIME"
     _open_lens_opts(page)
+    # F-TIME-01 직후 content 축이면 content_ts 없는 노드만 있어 라벨이 안 바뀐다.
+    _click_pref(page, "timeBasis", "recorded")
+    page.wait_for_timeout(300)
     slider = page.locator("#pref-when")
     if slider.count() == 0:
         return TCResult("F-TIME-02", flow, "Skip", "when slider missing")
