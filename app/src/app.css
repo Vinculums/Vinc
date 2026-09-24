@@ -130,9 +130,9 @@ option {
   padding: .48rem .7rem; border-radius: .5rem;
   font: inherit; cursor: pointer;
 }
-option:hover, option:focus-visible { background: hsl(var(--ring) / .1); outline: none; }
+option:hover, option:focus-visible { background: hsl(var(--muted-foreground) / .1); outline: none; }
 option:checked { font-weight: 600; }
-option::checkmark { order: 1; margin-left: auto; content: "✓"; font-family: var(--font-mono); color: hsl(var(--ring)); }
+option::checkmark { order: 1; margin-left: auto; content: "✓"; font-family: var(--font-mono); color: hsl(var(--point-text)); }
 @media (prefers-reduced-motion: no-preference) {
   ::picker(select) {
     opacity: 1; transform: translateY(0);
@@ -410,7 +410,7 @@ body {
 .rail-home.on { color: hsl(var(--foreground)); }
 .rail-home.on .rail-name { color: hsl(var(--foreground)); font-weight: 600; }
 .rail-home svg, .rail-dest svg { width: 18px; height: 18px; }
-.rail-btn:hover, .rail-home:hover { background: hsl(var(--ring) / .12); }
+.rail-btn:hover, .rail-home:hover { background: hsl(var(--muted-foreground) / .12); }
 /* 고른 종은 **글자로만** 말한다(발주자 지시 2026-09-09) — 홈이 이미 그렇게 하고
    있어서 둘이 같은 언어가 된다(`.rail-home.on`).
    한때 여기서 "올라온 면"(card 채움 + 테두리 + elev-1)을 그렸는데, 레일 자체가
@@ -663,7 +663,7 @@ body {
   color: hsl(var(--muted-foreground)); text-decoration: none;
   font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
 }
-.lnb-navrow:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
+.lnb-navrow:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
 /* 활성 = **채워진 알약 + 굵기**. 좌측 색띠(box-shadow inset 2px)를 쓰지 말 것.
    각 줄 옆에 색 막대가 서면 장식이 내용보다 먼저 읽힌다(발주자 지적 2026-07-31,
    문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 View 표면에서
@@ -697,7 +697,7 @@ body {
 }
 .lnb-scope-clear {
   border: 0; background: none; padding: .1rem .2rem; cursor: pointer;
-  color: hsl(var(--focus)); font-size: var(--fs-sm); text-decoration: underline;
+  color: hsl(var(--point-text)); font-size: var(--fs-sm); text-decoration: underline;
 }
 .lnb-scope-clear:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 
@@ -739,7 +739,7 @@ body {
   color: hsl(var(--foreground)); cursor: pointer; text-align: left;
   padding: 0 var(--pad-row); border-radius: var(--radius-sm, .625rem);
 }
-.lnb-group:hover { background: hsl(var(--ring) / .1); }
+.lnb-group:hover { background: hsl(var(--muted-foreground) / .1); }
 /* 홈 행과 같은 알약. 색띠를 걷어내면서 배경을 함께 준다 — 굵기만 남기면 hover
    배경(--ring/.1)이 활성보다 더 눈에 띄는 역전이 난다. */
 .lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .14); }
@@ -790,7 +790,7 @@ body {
 }
 .lnb-doc[style*="--ink:0"] { color: hsl(var(--foreground)); }
 .lnb-doc[style*="--ink:2"] { color: hsl(var(--caption-foreground)); }
-.lnb-doc:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
+.lnb-doc:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
 .lnb-doc.on {
   background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
@@ -1010,12 +1010,12 @@ body {
   border: none; background: none; padding: .5rem; border-radius: .5rem;
   cursor: pointer; font: inherit; color: inherit;
 }
-.tb-mrow:hover, .tb-mrow:focus-visible { background: hsl(var(--ring) / .1); }
+.tb-mrow:hover, .tb-mrow:focus-visible { background: hsl(var(--muted-foreground) / .1); }
 .tb-mrow .icon { color: hsl(var(--caption-foreground)); }
 .tb-mrow[aria-checked="true"] .icon { color: hsl(var(--ring)); }
 .tb-mname { display: block; font-weight: 600; }
 .tb-mhint { display: block; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
-.tb-mtick { color: hsl(var(--ring)); font-family: var(--font-mono); }
+.tb-mtick { color: hsl(var(--point-text)); font-family: var(--font-mono); }
 
 #tb-q {
   flex: 1 1 auto; min-width: 0; border: none; outline: none; background: none;
@@ -1047,8 +1047,8 @@ body {
   border: none; background: none; padding: .5rem; border-radius: .5rem;
   cursor: pointer; font: inherit; color: inherit;
 }
-.tb-row:hover, .tb-row:focus-visible { background: hsl(var(--ring) / .1); }
-.tb-mark { font-family: var(--font-mono); color: hsl(var(--ring)); font-size: .8rem; }
+.tb-row:hover, .tb-row:focus-visible { background: hsl(var(--muted-foreground) / .1); }
+.tb-mark { font-family: var(--font-mono); color: hsl(var(--point-text)); font-size: .8rem; }
 .tb-rmain { min-width: 0; }
 .tb-rtitle { display: block; font-weight: 600; }
 .tb-rsnip { display: block; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1059,7 +1059,7 @@ body {
   background: none; font: inherit; font-size: var(--fs-sm); cursor: pointer;
   color: hsl(var(--link)); border-radius: 0 0 .5rem .5rem;
 }
-.tb-all:hover { background: hsl(var(--ring) / .1); }
+.tb-all:hover { background: hsl(var(--muted-foreground) / .1); }
 
 /* ── 묻기 · 대화 패널 (D73) ───────────────────────────────────────────────
    검색바에 매달린 떠 있는 패널이라 바와 **같은 폭**으로 선다(left:0;right:0).
@@ -1081,7 +1081,7 @@ body {
   border: none; background: none; font: inherit; font-size: var(--fs-sm);
   color: hsl(var(--link)); padding: .25rem .45rem; border-radius: .4rem; cursor: pointer;
 }
-.ask-hbtn:hover { background: hsl(var(--ring) / .1); }
+.ask-hbtn:hover { background: hsl(var(--muted-foreground) / .1); }
 .ask-hbtn[disabled] { color: hsl(var(--caption-foreground)); cursor: default; background: none; }
 
 /* 로그 — 자라는 자리. 상한을 넘으면 스크롤(패널이 화면을 삼키지 않게). */
@@ -1099,7 +1099,7 @@ body {
   overflow-wrap: anywhere;
 }
 .you .ask-bubble {
-  background: hsl(var(--ring) / .16); color: hsl(var(--foreground));
+  background: hsl(var(--muted-foreground) / .16); color: hsl(var(--foreground));
   border-bottom-right-radius: .3rem;
 }
 .vinc .ask-bubble {
@@ -1131,7 +1131,7 @@ body {
   color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm);
   padding: .25rem .55rem; border-radius: var(--radius-pill, 999px); cursor: pointer;
 }
-.ask-chip:hover { background: hsl(var(--ring) / .12); border-color: hsl(var(--ring) / .5); }
+.ask-chip:hover { background: hsl(var(--muted-foreground) / .12); border-color: hsl(var(--muted-foreground) / .5); }
 .ask-empty { padding: 1.1rem .9rem; text-align: center; color: hsl(var(--caption-foreground));
   font-size: var(--fs-sm); line-height: var(--lh-prose, 1.6); }
 /* 이력 시트 안의 목록(대화 이력 조회). */
@@ -1140,7 +1140,7 @@ body {
   width: 100%; text-align: left; border: none; background: none;
   padding: .5rem; border-radius: .5rem; cursor: pointer; font: inherit; color: inherit;
 }
-.ask-hrow:hover { background: hsl(var(--ring) / .1); }
+.ask-hrow:hover { background: hsl(var(--muted-foreground) / .1); }
 .ask-hday { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
   color: hsl(var(--caption-foreground)); margin: .6rem .5rem .2rem; }
 
@@ -1226,7 +1226,7 @@ body {
 #tb-right > .tb-icon:hover, #tb-right > .tb-icon[aria-expanded="true"],
 #tb-shell-toggle:hover {
   background: hsl(var(--card)); color: hsl(var(--foreground));
-  border-color: hsl(var(--ring));
+  border-color: hsl(var(--muted-foreground));
 }
 /* 열림 표시는 **잉크만** 바꾼다. ⚠ 한때 이 상태를 위 hover 규칙에 묶었는데, 사이드바는
    기본이 열림이라 그 버튼이 **늘 강조 테두리**를 두르고 있었다 — 넷과 같은 버튼으로
@@ -1324,7 +1324,7 @@ body {
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .conv-fold[open] > summary::before { transform: rotate(90deg); }
-.conv-fold > summary:hover { background: hsl(var(--ring) / .1); }
+.conv-fold > summary:hover { background: hsl(var(--muted-foreground) / .1); }
 .conv-fold > *:not(summary) { margin: 0 var(--pad-row) var(--pad-row); }
 .conv-fold > .conv-ta { width: calc(100% - var(--pad-row) * 2); }
 @media (prefers-reduced-motion: reduce) {
@@ -1368,7 +1368,7 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   border: none; background: none; font: inherit; text-align: left; cursor: pointer;
   padding: .4rem .6rem; border-radius: .4rem; color: hsl(var(--foreground));
 }
-.ctx-item:hover, .ctx-item:focus-visible { background: hsl(var(--ring) / .12); }
+.ctx-item:hover, .ctx-item:focus-visible { background: hsl(var(--muted-foreground) / .12); }
 .ctx-danger { color: hsl(var(--caption-foreground)); }
 .ctx-danger:hover { color: hsl(var(--danger)); }
 
@@ -1451,7 +1451,7 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   margin: .2rem 0 .3rem; font-size: .62rem; letter-spacing: .075em; text-transform: uppercase;
 }
 .dl-topic { cursor: pointer; }
-.dl-topic:hover { background: hsl(var(--ring) / .08); }
+.dl-topic:hover { background: hsl(var(--muted-foreground) / .08); }
 .dl-topic .title { font-weight: 600; }
 .dl-topic:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 /* 시트 안 공통 블록 — 스펙 표(이름/값)와 목록. 모든 시트가 같은 모양을 쓴다. */
@@ -1486,7 +1486,7 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
   background: hsl(var(--card)); color: hsl(var(--foreground));
 }
-.dest-pick button:hover { border-color: hsl(var(--ring)); background: hsl(var(--ring) / .08); }
+.dest-pick button:hover { border-color: hsl(var(--muted-foreground)); background: hsl(var(--muted-foreground) / .08); }
 .dest-pick .title { font-weight: 600; }
 .dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
 /* 진행 표시 — 공유 시트의 기다림이 이 한 벌을 쓴다(팩 준비 · 파일로 받기 · 커뮤니티
@@ -1828,7 +1828,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    변수를 0 으로 눌러 두면 아래 오프셋 규칙들(view-tools·float·hint)을 손대지 않고도
    효력이 사라진다: 규칙은 남아 있으므로 임베드처럼 열이 없는 배치에서 그대로 쓰인다. */
 #surface { --rail-w: 0px; }
-#rail-grip:hover, #rail-grip:active { background: hsl(var(--ring) / .35); }
+#rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
 
 /* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
    두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
@@ -1862,7 +1862,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   color: hsl(var(--caption-foreground)); padding: .2rem .35rem;
   border-radius: var(--radius-sm, .625rem);
 }
-.rail-x:hover { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); }
+.rail-x:hover { background: hsl(var(--muted-foreground) / .14); color: hsl(var(--foreground)); }
 /* 수치 행 — 이름/값 두 칸. 값은 표 숫자(tabular)라 자릿수가 흔들리지 않는다. */
 .stat-row {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -1996,7 +1996,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 관계 행 — 방향 기호는 등폭이라 세로로 줄이 맞는다(→/←/·). */
 .rel-dir { font-family: var(--font-mono); color: hsl(var(--caption-foreground)); }
 .rel-type { text-transform: lowercase; }
-.rel-row:hover { background: hsl(var(--ring) / .08); }
+.rel-row:hover { background: hsl(var(--muted-foreground) / .08); }
 /* 근거 줄은 행 안의 곁가지 버튼 — 행의 주된 일(그 노드로 이동)과 구분된다(D70). */
 .rel-ev {
   display: block; margin: .1rem 0 0; padding: 0; border: none; background: none;
@@ -2070,7 +2070,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   padding: 9px 12px; border: 0; border-bottom: 1px solid hsl(var(--border) / .6);
   background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.card-row:hover, .card-row:focus-visible { background: hsl(var(--ring) / .07); outline: none; }
+.card-row:hover, .card-row:focus-visible { background: hsl(var(--muted-foreground) / .07); outline: none; }
 /* 컨트롤을 든 줄은 줄 자체가 과녁이 아니다 — 안쪽 손잡이가 과녁이다. */
 .card-row--static { cursor: default; position: relative; }
 .card-row--static:hover { background: none; }
@@ -2094,7 +2094,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   padding: 5px 6px; border: 0; border-radius: .5rem;
   background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.link-row:hover, .link-row:focus-visible { background: hsl(var(--ring) / .08); outline: none; }
+.link-row:hover, .link-row:focus-visible { background: hsl(var(--muted-foreground) / .08); outline: none; }
 .link-dir { flex: none; width: 11px; color: hsl(var(--caption-foreground)); }
 .link-title {
   flex: 1; min-width: 0; font-size: 12.5px;
@@ -2119,7 +2119,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font: inherit; font-size: 12px; color: hsl(var(--muted-foreground)); cursor: pointer;
 }
 .card-ctl:hover, .card-ctl[aria-expanded="true"] {
-  border-color: hsl(var(--ring) / .45); background: hsl(var(--muted));
+  border-color: hsl(var(--muted-foreground) / .45); background: hsl(var(--muted));
   color: hsl(var(--foreground));
 }
 .card-step {
@@ -2148,7 +2148,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border: 0; border-radius: .55rem; background: none;
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.menu-item:hover, .menu-item:focus-visible { background: hsl(var(--ring) / .12); outline: none; }
+.menu-item:hover, .menu-item:focus-visible { background: hsl(var(--muted-foreground) / .12); outline: none; }
 .menu-name { display: block; font-size: 12.5px; font-weight: 500; }
 .menu-sub { display: block; margin-top: 2px; font-size: 11px; color: hsl(var(--caption-foreground)); }
 
@@ -2178,7 +2178,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .coach {
   position: absolute; left: var(--space-4, 1rem); bottom: 3.4rem; z-index: 7;
   width: 19rem; padding: .8rem .9rem;
-  background: hsl(var(--card)); border: 1px solid hsl(var(--ring) / .5);
+  background: hsl(var(--card)); border: 1px solid hsl(var(--muted-foreground) / .5);
   border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
   animation: lensRise .2s var(--ease-settle);
 }
@@ -2213,7 +2213,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   background: hsl(var(--card) / .82); color: hsl(var(--muted-foreground)); cursor: pointer;
 }
 .lens-btn:hover, .lens-btn[aria-expanded="true"] {
-  background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--ring));
+  background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground));
 }
 .lens-btn svg { width: 17px; height: 17px; }
 .lg-body { display: flex; flex-direction: column; gap: .18rem; }
@@ -2252,7 +2252,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .view-busy #view-canvas { opacity: .5; transition: opacity .12s ease; }
 .view-busy::after {
   content: ""; position: absolute; left: 0; top: 0; width: 40%; height: 2px; z-index: 8;
-  background: linear-gradient(90deg, transparent, hsl(var(--ring)), transparent);
+  background: linear-gradient(90deg, transparent, hsl(var(--muted-foreground)), transparent);
   animation: busySweep 1s linear infinite;
 }
 /* 합성만 한다 — background-position 은 매 프레임 띠 전체를 다시 칠했다. 40% 폭이라 350% 가 오른쪽 끝 밖이다. */
@@ -2481,7 +2481,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   background: hsl(var(--card) / .7); color: hsl(var(--muted-foreground));
   font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
 }
-.lens-qhelp:hover { border-color: hsl(var(--ring)); color: hsl(var(--foreground)); }
+.lens-qhelp:hover { border-color: hsl(var(--muted-foreground)); color: hsl(var(--foreground)); }
 .lens-qhelp.active { background: hsl(var(--foreground) / .16); color: hsl(var(--foreground)); }
 .opt-caprow { display: flex; align-items: baseline; gap: .4rem; margin: .5rem 0 0; }
 .opt-caprow .hint {
@@ -2498,7 +2498,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border: 1px solid hsl(var(--border) / .7); border-radius: var(--radius-sm, .5rem);
   background: hsl(var(--card) / .45); color: hsl(var(--muted-foreground)); cursor: pointer;
 }
-.tile:hover { border-color: hsl(var(--ring) / .7); color: hsl(var(--foreground)); }
+.tile:hover { border-color: hsl(var(--muted-foreground) / .7); color: hsl(var(--foreground)); }
 .tile:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .tile.active {
   border-color: hsl(var(--ring)); background: hsl(var(--foreground) / .1);
@@ -2535,7 +2535,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   transition: transform var(--dur-hover) var(--ease-out),
               background-color var(--dur-hover) var(--ease-out);
 }
-.switch:hover { border-color: hsl(var(--ring) / .6); }
+.switch:hover { border-color: hsl(var(--muted-foreground) / .6); }
 .switch[aria-checked="true"] {
   background: hsl(var(--ring)); border-color: hsl(var(--ring));
 }
@@ -2592,7 +2592,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .lg-bar > span {
   display: block; height: 100%; border-radius: 999px;
-  background: hsl(var(--ring) / .75);
+  background: hsl(var(--muted-foreground) / .75);
 }
 /* `이것만`(솔로) — 행을 가리키거나 키보드가 그 행에 있을 때만 보인다. */
 .lg-solo {
@@ -2602,7 +2602,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font: inherit; font-size: .68rem; cursor: pointer;
 }
 .lg-rowwrap:hover .lg-solo, .lg-rowwrap:focus-within .lg-solo { visibility: visible; }
-.lg-solo:hover { color: hsl(var(--foreground)); border-color: hsl(var(--ring)); }
+.lg-solo:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground)); }
 /* 행을 가리키면 다른 행이 물러난다 — 지도의 물러남과 같은 문법(꺼진 행은 이미
    .off 로 물러나 있어 건드리지 않는다). */
 .lens-scroll:has(.lg-rowwrap:hover) .lg-rowwrap:not(:hover) .lg-sw:not(.off) { opacity: .55; }
@@ -2642,7 +2642,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 초점 선 — 짚은 점에서 이어진 곳으로만 긋는다(상시 아님). 마크보다 옅고 가늘게:
    이건 배경 구조가 아니라 "지금 이것과 이어져 있다"만 말하는 한 겹이다. */
 .pl-hovline {
-  fill: none; stroke: hsl(var(--ring)); stroke-width: 1.1;
+  fill: none; stroke: hsl(var(--muted-foreground)); stroke-width: 1.1;
   opacity: .5; stroke-linecap: round; pointer-events: none;
 }
 .pl-cols .pl-mark { stroke-width: 1; }
@@ -2723,7 +2723,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-hl .pl-mark, .pl-hl .pl-edge, .pl-hl .pl-lane-line { stroke: hsl(var(--focus)); }
 .pl-hl .pl-lane-band { fill: hsl(var(--focus)); }
 .pl-hl .pl-mark { stroke-width: 2; }
-.pl-hl .pl-lab { fill: hsl(var(--focus)); font-weight: 600; }
+.pl-hl .pl-lab { fill: hsl(var(--point-text)); font-weight: 600; }
 .pl-hl .pl-seg { stroke: hsl(var(--focus)); }
 
 /* 물러남(recede) — DEC D32-a 확정값(vinc.d.view-visual-language §1.6 표).
@@ -2747,7 +2747,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-bd { display: block; margin: 0 auto; overflow: visible; }
 .pl-bd-link {
   fill: none;
-  stroke: hsl(var(--link));
+  stroke: hsl(var(--foreground));
   stroke-width: clamp(.5px, calc(.5px * var(--n, 1)), 3px);
   stroke-opacity: .38;
   stroke-linecap: round;
@@ -3124,7 +3124,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   border: none; border-radius: var(--radius-sm, .625rem); background: none;
   padding: 0 var(--pad-row); color: hsl(var(--muted-foreground));
 }
-.seg .chip:hover { background: hsl(var(--ring) / .1); color: hsl(var(--foreground)); }
+.seg .chip:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
 .seg .chip.active {
   background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
 }
@@ -3246,3 +3246,8 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   font-variant-numeric: tabular-nums; font-size: .74rem;
 }
 
+/* 강조 구절 — 제목·카드마다 **하나만**, 눈이 그 하나를 찾게 하는 자리에만.
+   포인트색은 점이지 면이 아니다: 배경·버튼에 쓰지 않는다.
+   파일 맨 끝에 두는 이유: 같은 요소의 다른 한 클래스(.hint·.ask-qmeta)보다 뒤에 와야 이긴다.
+   근거: [[decision:restore-one-point-colour-per-mode-2026-09-25]] */
+.pt { color: hsl(var(--point-text)); }

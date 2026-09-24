@@ -311,7 +311,7 @@ function cardHtml(card: Card): string {
   // 본문이 정본 인용이면 어디서 왔는지 밝힌다 — 생성이 아니라 인용이라는 것이
   // 이 표면의 성립 조건이므로, 출처 없는 인용은 그 조건을 흐린다.
   const cite = card.bodySrc === "doc" && card.bodyCite
-    ? `<p class="ask-qmeta">${esc(c.bodyFromDoc(card.bodyCite))}</p>` : "";
+    ? `<p class="ask-qmeta pt">${esc(c.bodyFromDoc(card.bodyCite))}</p>` : "";
   // 근거 = 관련 노드. 칩은 **id 를 들고 있어** 누르면 그대로 다음 턴의 개체가 된다
   // (대명사 해소 없이 성립하는 멀티턴 — 이 모듈의 원래 설계 그대로).
   const more = card.relatedTotal - card.related.length;

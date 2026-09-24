@@ -17,6 +17,7 @@ SEMANTIC_KEYS = [
     ("line", "border"), ("text", "foreground"), ("textSoft", "muted-foreground"),
     ("textMute", "caption-foreground"), ("ring", "ring"), ("focus", "focus"),
     ("primary", "primary"), ("primaryText", "primary-foreground"), ("link", "link"),
+    ("point", "point"), ("pointText", "point-text"),
 ]
 
 def resolve(tokens: dict, mode: str, name: str) -> str:

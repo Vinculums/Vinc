@@ -3,21 +3,21 @@
     "name": "vinc-design",
     "version": "0.3.0",
     "ssot": "Vinc/design-hub/DESIGN",
-    "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). Monochrome since 2026-09-24: dark is neutral black and every accent is black, white or grey in both modes; only success, warning and danger keep a hue, plus the domain tint (a user toggle). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
+    "note": "The source of truth for the Vinc 'Signal' design system. base = the homepage and web Vinc theme (Home · Signal); tenants/desktop = the desktop application (Deep Signal). Operated dark first: the runtime default is data-theme=dark, while the engine is light-first and emits :root=light, so the consuming shell pins dark itself. Derivation: imports/figma-variables-2026-07-19.json (mapped by hand from Figma). Monochrome since 2026-09-24: dark is neutral black and surfaces and buttons are black, white or grey in both modes. Since 2026-09-25 one point colour per mode (point · point-text) marks where the eye should look: focus, selection, the graph focus and one emphasised phrase; it is never a surface. Otherwise only success, warning and danger keep a hue, plus the domain tint (a user toggle). The state notation (●◐○·≡≈) is kept alongside colour, never instead of it. Glow is for graph nodes only.",
     "layers": "primitive → semantic",
     "theme_mode": "light-first",
     "format": "hsl-channels",
     "a11y": "WCAG 2.2 AA. Only tokens verified at a body contrast of 4.5:1 or better may be used as text."
   },
   "viewScene": {
-    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Values may be a {primitive} reference (resolved by gen_theme_ts.py). Monochrome since 2026-09-24. Verified by Vinc/scripts/gate_contrast.py",
+    "note": "Depth tiers for the View 3D mark, used only by the dark glow branch (app/src/surfaces/view3d.ts). This is the canonical copy; imports/figma-variables-*.json is only the record of the original import. Just three keys are consumed: fill, stroke and glowOpacity. glowRadius, edge and grid were removed on 2026-08-02 because no code read them (they were dead handles: changing the value changed nothing on screen). Values may be a {primitive} reference (resolved by gen_theme_ts.py). Monochrome since 2026-09-24 except the focus and near tiers, which carry the dark point colour since 2026-09-25. Verified by Vinc/scripts/gate_contrast.py",
     "node": {
       "focus": {
-        "fill": "{brand_white}",
+        "fill": "{peri_200}",
         "glowOpacity": 0.9
       },
       "near": {
-        "fill": "{gray_200}",
+        "fill": "{peri_400}",
         "glowOpacity": 0.5
       },
       "mid": {
@@ -79,6 +79,21 @@
       "$type": "color",
       "$description": "Captions and meta only (light). Forbidden for body text (the caption layer)"
     },
+    "indigo_600": {
+      "$value": "#4A4F8C",
+      "$type": "color",
+      "$description": "The light point colour (restored 2026-09-25): focus ring, selection, the graph focus node and its edges, emphasised phrases and links. 6.7:1 on grain_100. A point, never a surface"
+    },
+    "peri_400": {
+      "$value": "#8F96D9",
+      "$type": "color",
+      "$description": "The dark point colour (restored 2026-09-25): focus ring, selection, the graph focus node and its edges. 7.1:1 / APCA Lc 48 on d_bg0. Marks only; small text uses peri_200"
+    },
+    "peri_200": {
+      "$value": "#B9BEF0",
+      "$type": "color",
+      "$description": "The dark point text colour (restored 2026-09-25): emphasised phrases and links, APCA Lc 69 on d_bg0 so it holds at small sizes. Also the focus tier fill of the View 3D mark"
+    },
     "ok_700": {
       "$value": "#2F6B4E",
       "$type": "color",
@@ -132,12 +147,12 @@
     "d_text": {
       "$value": "#EDEDEB",
       "$type": "color",
-      "$description": "Dark body text (neutral ivory), 16.9:1 on d_bg0. Also the dark primary, focus and link: accents are monochrome since 2026-09-24"
+      "$description": "Dark body text (neutral ivory), 16.9:1 on d_bg0. Also the dark primary: buttons stay monochrome. Focus and link moved to the point colour on 2026-09-25"
     },
     "d_soft": {
       "$value": "#A8A8A4",
       "$type": "color",
-      "$description": "Dark secondary text, 8.3:1 on d_bg0 (AA ✓) · dark ring and info"
+      "$description": "Dark secondary text, 8.3:1 on d_bg0 (AA ✓) · dark info"
     },
     "d_mute": {
       "$value": "#8C8C88",
@@ -167,7 +182,7 @@
     "gray_200": {
       "$value": "#C8C8C4",
       "$type": "color",
-      "$description": "Neutral line and mark shade: dark heavy edge and the near tier of the View 3D mark (11.8:1 / Lc 73 on d_bg0)"
+      "$description": "Neutral line shade: the dark heavy edge (11.8:1 / Lc 73 on d_bg0). The near tier of the View 3D mark moved to peri_400 on 2026-09-25"
     },
     "gray_400": {
       "$value": "#969692",
@@ -206,13 +221,15 @@
       "caption-foreground": "{ink_400}",
       "border": "{hairline}",
       "input": "{hairline}",
-      "ring": "{ink_400}",
-      "focus": "{ink_900}",
+      "ring": "{indigo_600}",
+      "focus": "{indigo_600}",
+      "point": "{indigo_600}",
+      "point-text": "{indigo_600}",
       "primary": "{ink_900}",
       "primary-foreground": "{grain_100}",
       "accent": "{grain_200}",
       "accent-foreground": "{ink_900}",
-      "link": "{ink_900}",
+      "link": "{indigo_600}",
       "info": "{ink_600}",
       "info-strong": "{ink_900}",
       "info-foreground": "{grain_100}",
@@ -237,13 +254,15 @@
       "caption-foreground": "{d_mute}",
       "border": "{d_line}",
       "input": "{d_line}",
-      "ring": "{d_soft}",
-      "focus": "{d_text}",
+      "ring": "{peri_400}",
+      "focus": "{peri_400}",
+      "point": "{peri_400}",
+      "point-text": "{peri_200}",
       "primary": "{d_text}",
       "primary-foreground": "{d_bg0}",
       "accent": "{d_bg2}",
       "accent-foreground": "{d_text}",
-      "link": "{d_text}",
+      "link": "{peri_200}",
       "info": "{d_soft}",
       "info-strong": "{d_text}",
       "info-foreground": "{d_bg0}",

@@ -12,7 +12,7 @@
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import * as THREE from "three";
 import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
-import { palette as signal, viewScene, type ThemeMode } from "../theme";
+import { palette as signal, viewScene, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
@@ -882,6 +882,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     if (spot && !hoverId && !near) return pal.link.fade;
     if (hoverId && !near) return pal.link.fade;   // 배경으로 후퇴
+    // 짚은 노드에 닿은 선은 포인트색 — 2D 와 같은 규칙(view2d 도 짚은 노드의 선을 point() 로 칠한다).
+    if (hoverId && near) return hexStr(pal.point);
     // D33 — 농도 = 관계의 세기(굵기 개정). 다크는 반전(D39).
     // B1(2026-08-03): 그 "세기"를 **기록된 증거의 신뢰도**(E-G6 confidence)가 말한다.
     // 여태 이 램프는 `weight` 로 갈렸는데 그 값을 싣는 곳이 없어 heavy/mid 가 죽은

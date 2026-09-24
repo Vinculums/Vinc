@@ -26,12 +26,14 @@
 | `--caption-foreground` | {ink_400} (#82838D) | _Describe usage_ |
 | `--border` | {hairline} (#DEDEDA) | _Describe usage_ |
 | `--input` | {hairline} (#DEDEDA) | _Describe usage_ |
-| `--ring` | {ink_400} (#82838D) | _Describe usage_ |
+| `--ring` | {indigo_600} (#4A4F8C) | Focus ring and selection; aliases `--point` (dark {peri_400} #8F96D9) |
+| `--point` | {indigo_600} (#4A4F8C) | The one point colour: focus, selection, active item, graph focus node and its edges. Never a surface or a button (dark {peri_400} #8F96D9) |
+| `--point-text` | {indigo_600} (#4A4F8C) | Links and at most one emphasised phrase per heading or card, class `.pt` (dark {peri_200} #B9BEF0, Lc 69) |
 | `--primary` | {ink_900} (#17171A) | _Describe usage_ |
 | `--primary-foreground` | {grain_100} (#F2F2F0) | _Describe usage_ |
 | `--accent` | {grain_200} (#E9E9E6) | _Describe usage_ |
 | `--accent-foreground` | {ink_900} (#17171A) | _Describe usage_ |
-| `--link` | {ink_900} (#17171A) | _Describe usage_ |
+| `--link` | {indigo_600} (#4A4F8C) | Text links; aliases `--point-text` (dark {peri_200} #B9BEF0) |
 | `--info` | {ink_600} (#55565E) | _Describe usage_ |
 | `--info-strong` | {ink_900} (#17171A) | _Describe usage_ |
 | `--info-foreground` | {grain_100} (#F2F2F0) | _Describe usage_ |

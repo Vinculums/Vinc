@@ -167,6 +167,12 @@ def run(theme_path: Path) -> tuple[int, list[Finding]]:
                     "후퇴 채널은 3:1 면제이나 완전 소멸은 안 된다"))
         _check(f"[{mode}] text", _hex_of(blk, "text"), bgs[mode],
                wcag_min=WCAG_TEXT, lc_min=LC_SOLID, out=findings)
+        # 포인트색(2026-09-25): point 는 링·선택·초점 노드라 비텍스트 3:1 + 가는 선
+        # 기준(Lc 45), point-text 는 작은 글자에도 쓰므로 본문 4.5:1 + Lc 60.
+        _check(f"[{mode}] point", _hex_of(blk, "point"), bgs[mode],
+               wcag_min=WCAG_NONTEXT, lc_min=LC_THIN, out=findings)
+        _check(f"[{mode}] pointText", _hex_of(blk, "pointText"), bgs[mode],
+               wcag_min=WCAG_TEXT, lc_min=60.0, out=findings)
 
     # viewScene — 다크 전용 분기(view3d 의 glow 브랜치)라 다크로만 잰다.
     dark_bg = bgs["dark"]

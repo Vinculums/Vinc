@@ -28,7 +28,7 @@ const EN = {
       "Pick up the same topics on another device.",
       "Share packs, and keep a copy of what you have gathered.",
     ],
-    offlineNote: "You do not need an account to use Vinc. Reading, writing and connecting Claude Desktop or Claude Code all work offline, and your documents stay here either way.",
+    offlineNote: "<span class=\"pt\">You do not need an account to use Vinc.</span> Reading, writing and connecting Claude Desktop or Claude Code all work offline, and your documents stay here either way.",
     signInCta: "Sign in",
     offlineCta: "Continue offline",
     opening: "Opening your browser to sign in and approve.",
@@ -36,7 +36,7 @@ const EN = {
     failed: "That did not complete. You can try again in Settings.",
   },
   emptyInvite: {
-    dropHint: "Drag a file here, or start from a single note.",
+    dropHint: "Drag a file here, or <span class=\"pt\">start from a single note</span>.",
     leadDocsNoNodes: "Your documents are in, and no concepts have been drawn from them yet. Open a document to pull concepts out of it, or write one node by hand.",
     seeDocsCta: "See documents",
     pickCta: "Choose a file",
@@ -561,7 +561,7 @@ const EN = {
       suggestNone: "Unlinked. No suggestions yet. Add a tag to surface matches.",
       suggestHeader: "Unlinked · possible links",
       bind: "Link",
-      bound: (t: string) => `Linked to <b>${t}</b> · one connection added.`,
+      bound: (t: string) => `Linked to <b class="pt">${t}</b> · one connection added.`,
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
@@ -932,7 +932,7 @@ const KO: Deck = {
     title: "로그인할까요, 아니면 이 기기에만 둘까요",
     lead: "Vinc는 문서를 이 컴퓨터에 둬요. 계정은 여러 기기와 웹을 이어 주는 부분을 더해요",
     reasons: ["이 기기에 닿지 못하는 claude.ai 같은 웹 어시스턴트에서도 Vinc를 써요", "다른 기기에서 같은 주제를 이어서 봐요", "팩을 공유하고, 모아 둔 것을 백업해요"],
-    offlineNote: "계정이 없어도 Vinc를 쓰는 데는 아무 지장이 없어요. 읽고 쓰기도, Claude Desktop이나 Claude Code 연결도 오프라인에서 그대로 돼요. 문서는 어느 쪽이든 여기 남아요",
+    offlineNote: "<span class=\"pt\">계정이 없어도 Vinc를 쓰는 데는 아무 지장이 없어요.</span> 읽고 쓰기도, Claude Desktop이나 Claude Code 연결도 오프라인에서 그대로 돼요. 문서는 어느 쪽이든 여기 남아요",
     signInCta: "로그인하기",
     offlineCta: "오프라인으로 계속하기",
     opening: "로그인하고 승인할 수 있게 브라우저를 여는 중이에요",
@@ -940,7 +940,7 @@ const KO: Deck = {
     failed: "연결을 마치지 못했어요. Settings에서 다시 시도할 수 있어요",
   },
   emptyInvite: {
-    dropHint: "파일을 여기에 끌어다 놓거나, 노드 하나로 시작해도 돼요",
+    dropHint: "파일을 여기에 끌어다 놓거나, <span class=\"pt\">노드 하나로 시작해도 돼요</span>",
     leadDocsNoNodes: "아직 문서에서 뽑아낸 개념이 없어요. 문서를 열어 개념을 뽑거나, 노드 하나를 직접 적어 보세요. 문서는 그대로 들어와 있어요",
     seeDocsCta: "문서 보기",
     pickCta: "파일 고르기",
@@ -1359,7 +1359,7 @@ const KO: Deck = {
       suggestNone: "아직 연결된 곳이 없어요. 지금은 후보도 없어요. 태그를 달면 후보가 생겨요",
       suggestHeader: "연결 안 됨 · 연결 후보",
       bind: "연결하기",
-      bound: (t) => `'${t}'과(와) 연결했어요`,
+      bound: (t) => `'<span class="pt">${t}</span>'과(와) 연결했어요`,
       bindFail: "연결하지 못했어요. 잠시 후 다시 시도해 보세요. 바뀐 것은 없어요",
       unavailable: "지금은 연결 제안을 쓸 수 없어요",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
