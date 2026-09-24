@@ -730,3 +730,117 @@ jobs:
             echo "::warning::이슈를 만들지 못했다(HTTP $code) — 배포 실패는 그대로다."
             head -c 500 /tmp/issue.out || true
           fi
+
+  # ── 뒤의 배포가 성공하면 그 실패 이슈를 닫는다 ─────────────────────────────
+  # 위 `report` 가 연 이슈는 닫는 자리가 없었다. 뒤의 배포가 성공해 허브가 이미 새
+  # 이미지로 돌아도 이슈는 열린 채 쌓였고 사람이 손으로 닫았다(2026-09-20 #366·#368).
+  # 열린 실패 이슈는 "허브가 지금 옛 이미지에 남아 있다"로만 읽혀야 신호로 남는다.
+  # 닫을 것이 없으면 아무것도 안 한다.
+  #
+  # ⚠ **닫는 것은 이번 커밋이 그 실패 커밋을 포함할 때뿐이다**(compare API 로 판정).
+  # 옛 런을 손으로 재실행해 성공하면 허브는 더 옛 이미지로 가고 뒤 커밋의 실패는
+  # 여전히 참이다. 그것까지 닫으면 `report` 가 막으려던 "아무도 모르는 옛 이미지"가
+  # 그대로 돌아온다. 제목에서 커밋을 못 읽으면(사람이 연 이슈 등) 열어 둔다.
+  #
+  # 러너·토큰·REST(curl) 는 `report` 와 같고 이유도 같다(그 잡의 주석이 근거다).
+  close-report:
+    needs: [gate, build-and-deploy]
+    if: success()
+    runs-on: [self-hosted, linux, vinc-local]
+    # 이 런이 끝나야 다음 허브 배포가 줄에서 풀린다(워크플로 concurrency). 걸린 호출
+    # 하나가 배포 줄을 붙잡지 않게 짧게 끊는다.
+    timeout-minutes: 5
+    permissions:
+      contents: read     # compare API(포함 판정)는 이것으로 된다
+      issues: write      # 이 잡만 — 워크플로 기본 권한은 그대로 둔다
+    steps:
+      # ⚠ 배포는 이미 나갔다. 여기서 무엇이 실패해도 런을 빨갛게 만들지 않는다 —
+      # 빨간 런을 본 사람이 멀쩡한 리비전을 다시 배포하러 간다(레지스트리 정리
+      # 스텝과 같은 이유). 실패는 경고로 남고 다음 성공 배포가 다시 시도한다.
+      - name: 성공했으니 열린 실패 이슈를 닫는다
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          API: ${{ github.api_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WHY: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # HTTP 는 `report` 처럼 curl 로, 판정은 python3 로 한다(러너의 jq 에 기대지 않는다).
+          # 이 스크립트는 tests/test_hub_deploy_close_report.py 가 꺼내 돌린다.
+          python3 - <<'PYEOF'
+          import json, os, re, subprocess
+          e = os.environ
+          api, repo, sha = e["API"], e["REPO"], e["SHA"]
+          PREFIX = "hub-deploy failed ("   # `report` 가 붙이는 제목 머리다. 둘은 같이 바꾼다
+
+          def call(method, path, body=None):
+              """curl 한 번. (HTTP 코드, JSON 본문 또는 None) 을 돌려준다."""
+              cmd = ["curl", "-sS", "-X", method, "-w", "\n%{http_code}",
+                     "-H", "Authorization: Bearer " + e["GH_TOKEN"],
+                     "-H", "Accept: application/vnd.github+json"]
+              data = None
+              if body is not None:
+                  cmd += ["--data-binary", "@-"]
+                  data = json.dumps(body).encode("utf-8")
+              r = subprocess.run(cmd + [api + path], input=data, capture_output=True)
+              text, _, code = r.stdout.decode("utf-8", "replace").rpartition("\n")
+              try:
+                  return code.strip(), (json.loads(text) if text.strip() else None)
+              except ValueError:
+                  return code.strip(), None
+
+          def main():
+              stale = []
+              for page in range(1, 11):   # 열린 이슈 1,000개까지 본다
+                  code, items = call("GET", f"/repos/{repo}/issues?state=open&per_page=100&page={page}")
+                  if code != "200" or not isinstance(items, list):
+                      print(f"::warning::열린 이슈를 못 읽었다(HTTP {code}) — 닫지 않고 넘어간다.")
+                      return
+                  # /issues 는 PR 도 돌려준다. PR 은 건드리지 않는다.
+                  stale += [i for i in items
+                            if "pull_request" not in i and i.get("title", "").startswith(PREFIX)]
+                  if len(items) < 100:
+                      break
+              if not stale:
+                  print("닫을 실패 이슈 없음")
+                  return
+              closed = 0
+              for i in stale:
+                  n, title = i["number"], i["title"]
+                  m = re.search(r", ([0-9a-f]{7,40})\)$", title)
+                  if not m:
+                      print(f"::notice::#{n} 제목에서 커밋을 못 읽었다 — 열어 둔다: {title}")
+                      continue
+                  failed = m.group(1)
+                  code, cmp = call("GET", f"/repos/{repo}/compare/{failed}...{sha}?per_page=1")
+                  status = (cmp or {}).get("status")
+                  # ahead = 이번 커밋이 실패 커밋 뒤에 있다(포함한다). identical = 같은 커밋.
+                  if code != "200" or status not in ("ahead", "identical"):
+                      print(f"::notice::#{n} 이번 커밋이 {failed} 를 포함하지 않는다"
+                            f"(HTTP {code}, {status}) — 그 실패는 아직 참이라 열어 둔다.")
+                      continue
+                  note = (f"뒤의 배포가 성공해서 닫는다. 허브는 이제 `{sha[:7]}` 의 이미지로 돌고,"
+                          f" 이 커밋은 실패한 `{failed}` 를 포함한다.\n\n"
+                          f"- 실행: {e['RUN_URL']}\n- 커밋: `{sha}` (`{e['WHY']}`)")
+                  code, _ = call("POST", f"/repos/{repo}/issues/{n}/comments", {"body": note})
+                  if code != "201":
+                      # 이유 없이 닫힌 이슈는 열린 이슈보다 나쁘다. 댓글이 안 붙으면 닫지 않는다.
+                      print(f"::warning::#{n} 에 댓글을 못 남겼다(HTTP {code}) — 닫지 않는다.")
+                      continue
+                  code, _ = call("PATCH", f"/repos/{repo}/issues/{n}",
+                                 {"state": "closed", "state_reason": "completed"})
+                  if code == "200":
+                      closed += 1
+                      print(f"#{n} 을 닫았다: {title}")
+                  else:
+                      print(f"::warning::#{n} 을 닫지 못했다(HTTP {code}).")
+              print(f"실패 이슈 {len(stale)}개 중 {closed}개를 닫았다")
+
+          try:
+              main()
+          except Exception as x:   # 배포는 이미 나갔다. 여기서 죽어 런을 빨갛게 만들지 않는다
+              print(f"::warning::실패 이슈 정리가 멈췄다: {x!r}")
+          PYEOF
