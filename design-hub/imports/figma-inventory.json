@@ -273,7 +273,8 @@
     "App / DocRow": [
      "Ink=0",
      "Ink=1",
-     "Ink=2"
+     "Ink=2",
+     "Ink=On"
     ],
     "App / ListRow": [
      "State=Default",
