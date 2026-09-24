@@ -203,10 +203,12 @@ class EnvelopeIntegrationTests(unittest.TestCase):
             def request(self, method, path, params=None, body=None):
                 return big
 
+        # limit 은 스키마 상한(100) 안이어야 한다 — 200 은 이제 실행 전에 거절된다(D5).
+        # 스텁이 limit 과 무관하게 200행을 주므로 축소기 경로는 그대로 선다.
         d = Dispatcher(_Bridge())
         res = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                         "params": {"name": "vinc_search",
-                                   "arguments": {"query": "x", "limit": 200}}})
+                                   "arguments": {"query": "x", "limit": 100}}})
         result = res["result"]
         self.assertFalse(result.get("isError"), "거부됐다 — shrinker 가 안 돌았다")
         text = result["content"][0]["text"]
@@ -215,6 +217,21 @@ class EnvelopeIntegrationTests(unittest.TestCase):
         self.assertTrue(out["has_more"])
         self.assertTrue(out["next_cursor"])
         self.assertLess(len(out["rows"]), 200)
+
+    def test_상한_밖_limit_은_자르지_않고_거절한다(self):
+        """D5: limit=200 은 조용히 100 으로 잘리지 않는다 — 실행 전에 도구 결과로 거절."""
+        from vinc_mcp.rpc import Dispatcher
+
+        class _Bridge:
+            owner = "user:local"
+            def request(self, method, path, params=None, body=None):
+                raise AssertionError("거절된 호출이 사이드카까지 갔다")
+
+        res = Dispatcher(_Bridge()).handle(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"name": "vinc_search", "arguments": {"query": "x", "limit": 200}}})
+        self.assertTrue(res["result"]["isError"])
+        self.assertEqual(res["result"]["_meta"]["vinc_invalid_argument"]["value"], 200)
 
     def test_비등재_도구_초과는_여전히_거부다(self):
         # tests/test_mcp_directory.py 의 vinc_graph 케이스가 정본 — 여기서는
@@ -248,10 +265,12 @@ class ToolContractAdditionsTests(unittest.TestCase):
                 seen.update({"method": method, "path": path, "params": params})
                 return {"ok": True}
 
+        # 모양이 맞는 커서여야 한다: "CUR" 같은 쓰레기는 이제 MCP 층이 먼저 거절한다(D5).
+        cur = mcp_tools._cursor_encode({"v": 1, "off": 20, "qh": "a" * 12})
         mcp_tools.call("vinc_search",
-                       {"query": "x", "cursor": "CUR", "detail": "full"}, _Bridge())
+                       {"query": "x", "cursor": cur, "detail": "full"}, _Bridge())
         self.assertEqual(seen["path"], "/search")
-        self.assertEqual(seen["params"]["cursor"], "CUR")
+        self.assertEqual(seen["params"]["cursor"], cur)
         self.assertEqual(seen["params"]["detail"], "full")
 
 

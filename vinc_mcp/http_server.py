@@ -658,6 +658,10 @@ class MCPHTTPApp:
         # ⚠ **이것으로 닫히는 것은 웹 평면뿐이다** — 호스티드 MCP 는 이 함수를 아예
         # 지나지 않는다. 여기 한 줄을 근거로 "테넌시 막았다"고 적지 말 것.
         args.pop("theme_id", None)
+        # `debug` 는 내부 실행 계획(Cypher·파라미터)을 싣는 **로컬 진단용** 스위치다.
+        # 웹 평면은 쿼리 인자를 그대로 흘리므로 여기서 벗긴다 — 허브에서 남에게 스토어
+        # 내부를 보여 줄 이유가 없다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
+        args.pop("debug", None)
 
         if op == "job":   # /jobs/{id} 폴링 — id 는 토큰꼴만(경로주입·타 라우트 차단)
             jid = str(args.get("id") or "")
@@ -695,7 +699,15 @@ MAX_CONNECTIONS = max(1, int(os.environ.get("VINC_MCP_MAX_CONNECTIONS") or 64))
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "vinc-mcp"
+    # `Server:` 헤더에 런타임 버전을 싣지 않는다. BaseHTTPRequestHandler 기본값은
+    # `vinc-mcp Python/3.x.y` 라 공격자에게 인터프리터 패치 수준을 공짜로 알려 줬다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
+    # (`sys_version = ""` 만으로는 `"vinc-mcp "` 처럼 꼬리 공백이 남아 version_string 을 덮는다.)
+    sys_version = ""
     timeout = READ_TIMEOUT
+
+    def version_string(self) -> str:
+        return self.server_version
 
     @property
     def app(self) -> MCPHTTPApp:

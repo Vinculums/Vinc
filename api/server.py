@@ -959,10 +959,23 @@ class VincApp:
         # nav_tree·CLI·앱이 이 경로를 그대로 쓰고 있어 기본을 바꾸면 조용히 깨진다.
         # 잘라 달라고 말한 쪽(MCP)만 잘린 응답을 받는다.
         lim = _int(p.get("limit"), 0) or None
-        return self._read(lambda r: docstore.list_docs(
-            r, owner=p.get("owner") or None, limit=lim,
-            cursor=p.get("cursor") or None,
-            detail=(p.get("detail") or "full")))
+
+        def _list(r):
+            try:
+                return docstore.list_docs(
+                    r, owner=p.get("owner") or None, limit=lim,
+                    cursor=p.get("cursor") or None,
+                    detail=(p.get("detail") or "full"))
+            except ValueError as exc:
+                # 무효 커서는 500 이 아니라 사유 있는 거절이다. 본문 모양은 검색의
+                # 무효 커서와 같다(executed:false + error) — MCP 층이 그 문장으로
+                # 같은 인자 거절 봉투를 만든다.
+                if not str(exc).startswith("invalid_cursor"):
+                    raise
+                return {"kind": "doc.list", "executed": False, "docs": [], "count": 0,
+                        "error": str(exc), "note": str(exc)}
+
+        return self._read(_list)
 
     def read_conventions(self, p):
         """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널([[vinc.canon.graph-conventions]] §6.2).

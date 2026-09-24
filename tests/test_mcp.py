@@ -107,7 +107,8 @@ class ToolContractTests(unittest.TestCase):
         self.assertEqual(b.calls[1][2]["owner"], "user:alice")
 
     def test_required_argument_enforced(self):
-        with self.assertRaises(ValueError):
+        # D5: 필수 인자 누락은 ValueError(-32602)가 아니라 InvalidArgument(도구 결과).
+        with self.assertRaises(tools.InvalidArgument):
             tools.call("vinc_search", {}, _StubBridge())
         with self.assertRaises(KeyError):
             tools.call("vinc_nope", {}, _StubBridge())
@@ -185,8 +186,18 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(self._rpc("resources/subscribe")["error"]["code"], -32601)
         self.assertEqual(self._rpc("completion/complete")["error"]["code"], -32601)
 
-    def test_bad_arguments_is_32602(self):
+    def test_missing_argument_is_a_tool_result_not_32602(self):
+        # D5(2026-09-24): 필수 인자 누락은 프로토콜 오류가 아니라 isError 도구 결과다.
+        # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
         r = self._rpc("tools/call", {"name": "vinc_search", "arguments": {}})
+        self.assertNotIn("error", r)
+        self.assertTrue(r["result"]["isError"])
+        self.assertEqual(r["result"]["_meta"]["vinc_invalid_argument"],
+                         {"tool": "vinc_search", "argument": "query",
+                          "reason": "missing required argument"})
+
+    def test_unknown_tool_is_still_32602(self):
+        r = self._rpc("tools/call", {"name": "vinc_nope", "arguments": {}})
         self.assertEqual(r["error"]["code"], -32602)
 
     def test_tool_runtime_failure_becomes_isError(self):

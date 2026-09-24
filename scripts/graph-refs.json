@@ -369,6 +369,7 @@
     "decision:every-written-field-has-a-read-path",
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mention-title-tokens-within-a-window",
     "decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13",
     "decision:relax-the-evidence-producer-rule",
