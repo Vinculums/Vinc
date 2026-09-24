@@ -1,5 +1,5 @@
 import { api, cfg } from "./api";
-import type { NavGroup, NavNode, NavTreeRes } from "./api";
+import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 import type { ThemeMode } from "./theme";
@@ -29,7 +29,9 @@ import { mark3dSvg, markSvg } from "./surfaces/view-planar";
 type Navigator = (nodeId: string, domain?: string, docId?: string) => void;
 /** 주제를 고른다. `add` 면 지금 고른 것에 **더한다**(Ctrl·⌘ 클릭).
  *  화면이 즉시 따라간다 — 고르는 것과 보는 것이 어긋나는 중간 상태를 두지 않는다. */
-type TopicPicker = (path: string, add: boolean) => void;
+type TopicPicker = (path: string, add: boolean, set?: boolean) => void;
+/** `set` 이 참이면 토글하지 않고 그 주제 하나로 **건다**(이미 그것뿐이면 그대로 둔다).
+ *  Agent 레일이 쓴다 — 토글이면 이미 걸린 스코프를 Agent 를 고르는 손이 벗긴다. */
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
@@ -66,25 +68,31 @@ const tintStyle = (domain: string): string => {
   return c ? `;--tint:${c}` : "";
 };
 
-/** 종 레일이 고를 수 있는 것. 앞 넷은 **종**이고 마지막 하나는 **예약된 주제**다
- *  (`vinc/agent/roles`). 섞여 있는 것이 아니라, 레일이 "무엇으로 그래프를 자르나"를
- *  묻고 그 답이 대체로는 종이지만 한 번은 주제라는 뜻이다 — 그래서 화면에서도
- *  구분선 아래에 따로 선다.
+/** 종 레일 한 칸. `dest` 는 종이 아니라 목적지(Agent). `offTopic` 은 주제 트리에
+ *  서지 않는 종(Entity·Bridge)이라 조회를 보내지 않고 지도 렌즈만 건다.
+ *  `group` 은 같은 표식을 쓰는 종을 자리로 묶는다(구/정사면체). */
+type RailItem = {
+  key: string; kind?: string; domain?: string; mark: string;
+  dest?: boolean; offTopic?: boolean; group?: "sphere" | "tetra"; icon?: string;
+};
+
+/** 종 레일이 고를 수 있는 것. 2026-09-21 scope-back: 홈과 Agent 가 구분선 **위**
+ *  (같은 급의 목적지), 선 아래는 종 묶음이다. Agent 를 선 아래에 두던 2026-09-09
+ *  배치는 이 지시가 덮는다.
  *
- *  ⚠ 브리지와 개방 타입은 **없다**. 취향이 아니라 스키마다: `IN_DOMAIN` 이 네
- *  라벨에만 걸리고 Bridge 는 `CROSSES` 로 Domain 에 붙는다(그래서 fragment ingest 가
- *  Bridge 의 domain 을 저장하지 않는다고 경고한다). 레일에 그 줄을 세우면 영원히
- *  빈 갈래가 된다. 정본은 `api/query.py` 의 `_TREE_PK`.
- *
- *  기본이 `concept` 인 이유: 문서의 착지 노드가 개념이라 그 종에서 **문서가 하나도
- *  숨지 않는다**. 즉 여태의 기본 화면(문서 목록)이 잃는 것 없이 이 안에 들어온다. */
-const RAIL: readonly { key: string; kind?: string; domain?: string; mark: string }[] = [
-  { key: "concept", kind: "concept", mark: "concept" },
-  { key: "decision", kind: "decision", mark: "decision" },
-  { key: "record", kind: "record", mark: "record" },
-  { key: "episode", kind: "episode", mark: "episode" },
-  // Agent - 종이 아니라 주제. 표식은 개념 원 그대로다(형태=타입, D35). 자리로 가른다.
-  { key: "agent", kind: "concept", domain: "vinc/agent/roles", mark: "concept" },
+ *  Entity·Bridge 는 `/nav-tree` 모집단이 아니다(`IN_DOMAIN` 이 넷에만 걸리고
+ *  Bridge 는 `CROSSES`). 레일에 세우는 이유는 지도 렌즈이지 빈 주제를 만들기
+ *  위함이 아니다. 정본은 `api/query.py` 의 `_TREE_PK`. */
+const RAIL: readonly RailItem[] = [
+  { key: "agent", kind: "concept", domain: "vinc/agent/roles", mark: "concept",
+    dest: true, icon: "domains" },
+  { key: "concept", kind: "concept", mark: "concept", group: "sphere" },
+  { key: "decision", kind: "decision", mark: "decision", group: "sphere" },
+  { key: "record", kind: "record", mark: "record", group: "tetra" },
+  { key: "episode", kind: "episode", mark: "episode", group: "tetra" },
+  // Entity 는 기록과 같은 정사면체 표식. 묶음이 같은 모양의 형제를 가른다.
+  { key: "entity", kind: "entity", mark: "record", group: "tetra", offTopic: true },
+  { key: "bridge", kind: "bridge", mark: "bridge", offTopic: true },
 ];
 const RAIL_KEYS = RAIL.map((r) => r.key);
 /** 레일의 현재 선택. **빈 문자열이 뜻을 가진 상태다: "아무것도 안 고름" = 전체**
@@ -161,7 +169,19 @@ function saveExpanded() {
 }
 
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
-export function setLnbTopicPicker(fn: TopicPicker | null) { pickTopic = fn; }
+export function setLnbTopicPicker(fn: TopicPicker | null) {
+  pickTopic = fn;
+  // 저장된 레일이 Agent 인 채로 새로 열면 setRailKey 를 안 거치므로 스코프가 안 걸린다.
+  // View 가 피커를 처음 걸 때 한 번만 건다(딥링크로 들어왔으면 그 착지를 덮지 않는다).
+  // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
+  if (fn && !launchScoped && railKey === "agent") {
+    launchScoped = true;
+    const here = location.hash.replace(/^#/, "");
+    if (here === "" || here === "view") queueMicrotask(scopeAgentGraph);
+  }
+}
+/** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
+let launchScoped = false;
 
 /** 종 렌즈 — 레일에서 고른 종을 **지도에도** 건다. 훅이 없으면(표면이 없거나 떠났으면)
  *  레일은 트리만 바꾼다: 눌러도 아무 일 없는 손잡이를 만들지 않는다는 규율의 반대편
@@ -220,17 +240,217 @@ const hasNodes = (t: NavTreeRes | null): boolean =>
  *  종을 갈아 끼워도 이 값은 안 바뀌므로 마지막으로 받은 것을 들고 있는다. */
 let kindCounts: Record<string, number> = {};
 
+/** Agent 레일은 주제 필터다. 역할은 `vinc/agent/roles` 아래이고, Default Agents
+ *  넷은 뿌리에도 선다. 둘 다 남겨야 한다 — 역할 id 접두 `concept:agent-` 가
+ *  뿌리를 구한다. */
+function isAgentRow(domain: string, nodes?: { id: string }[]): boolean {
+  if (/(^|\/)agent(\/|$)/.test(domain)) return true;
+  return (nodes || []).some((n) => n.id.startsWith("concept:agent-"));
+}
+function filterAgentTree(t: NavTreeRes): NavTreeRes {
+  const domains = (t.domains || []).filter((g) => isAgentRow(g.domain, g.nodes));
+  return { ...t, domains };
+}
+
+/** 역할 id 접두. 로스터 개념 `concept:agent-orchestration` 은 접두가 같아
+ *  역할이 아니다(`vinc_mcp.roles.is_role_id`). */
+const AGENT_ID_PREFIX = "concept:agent-";
+const AGENT_ROSTER_CONCEPT = "concept:agent-orchestration";
+const isRoleId = (id: string): boolean =>
+  id.startsWith(AGENT_ID_PREFIX) && id !== AGENT_ROSTER_CONCEPT;
+
+/** 여섯 팀의 화면 순서. 이름은 `props.team` 정본이고, 순서는 로스터 v2 가
+ *  비준한 그대로다. 여기 일곱 번째 팀을 만들지 않는다.
+ *  근거: [[decision:roster-v2-ratified-2026-09-16]]
+ *  [[decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22]] */
+const AGENT_TEAM_ORDER = [
+  "Program Office",
+  "Product Engineering",
+  "Design",
+  "Content and Marketing",
+  "Quality and Security",
+  "Platform and Release",
+] as const;
+
+type AgentRel = { from: string[]; then: string[]; beside: string[] };
+type AgentRole = {
+  id: string; domain: string; title: string; team: string;
+  teamRole: string; rel: AgentRel;
+};
+
+/** `/graph` 가 노드에 싣는 props. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
+type GraphRoleNode = {
+  id: string; label?: string; domain?: string; kind?: string;
+  props?: Record<string, unknown>;
+};
+
+let agentRoster: AgentRole[] | null = null;
+
+function strProp(props: Record<string, unknown> | undefined, key: string): string {
+  const v = props?.[key];
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function roleTitle(n: GraphRoleNode): string {
+  const job = strProp(n.props, "job_title");
+  if (job) return job;
+  return String(n.label || n.id).replace(/^Agent role:\s*/i, "");
+}
+
+/** 역할 사이 엣지 → from / then / beside. 계산은 `vinc_mcp.roles.works_with` 와
+ *  같다(prerequisite_of 방향이 뜻, relates_to 는 옆). 화면에 쓰는 이름은
+ *  셸의 `slug (title)` 이 아니라 직함이다 — 목록 폭이 그 접두를 못 받는다. */
+function roleRels(rid: string, byId: Map<string, GraphRoleNode>,
+                  edges: GraphEdge[]): AgentRel {
+  const from = new Set<string>();
+  const then = new Set<string>();
+  const beside = new Set<string>();
+  const show = (other: string): string => {
+    const n = byId.get(other);
+    return n ? roleTitle(n) : other.replace(AGENT_ID_PREFIX, "");
+  };
+  for (const e of edges) {
+    const src = e.source || "";
+    const dst = e.target || "";
+    if (rid !== src && rid !== dst) continue;
+    if (src === dst || !isRoleId(src) || !isRoleId(dst)) continue;
+    const other = src === rid ? dst : src;
+    const kind = String(e.type || "").toUpperCase();
+    if (kind === "PREREQUISITE_OF") {
+      (src === rid ? then : from).add(show(other));
+    } else if (kind === "RELATED_TO") {
+      beside.add(show(other));
+    }
+  }
+  const sort = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+  return { from: sort(from), then: sort(then), beside: sort(beside) };
+}
+
+function teamRank(team: string): number {
+  const i = (AGENT_TEAM_ORDER as readonly string[]).indexOf(team);
+  return i < 0 ? AGENT_TEAM_ORDER.length : i;
+}
+function teamRoleRank(role: string): number {
+  if (role === "lead") return 0;
+  if (role === "coordinator") return 1;
+  return 2;
+}
+
+function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
+                          | undefined): AgentRole[] {
+  const nodes = (g?.nodes || []).filter((n) => isRoleId(n.id));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const edges = g?.edges || [];
+  const rows: AgentRole[] = nodes.map((n) => ({
+    id: n.id,
+    domain: n.domain || "vinc/agent/roles",
+    title: roleTitle(n),
+    team: strProp(n.props, "team"),
+    teamRole: strProp(n.props, "team_role"),
+    rel: roleRels(n.id, byId, edges),
+  }));
+  rows.sort((a, b) => {
+    const td = teamRank(a.team) - teamRank(b.team);
+    if (td) return td;
+    if (a.team !== b.team) return a.team.localeCompare(b.team);
+    const rd = teamRoleRank(a.teamRole) - teamRoleRank(b.teamRole);
+    if (rd) return rd;
+    return a.title.localeCompare(b.title);
+  });
+  return rows;
+}
+
+function relLine(label: string, names: string[]): string {
+  if (!names.length) return "";
+  return `<span class="lnb-agent-rel">${esc(label)} · ${esc(names.join(" · "))}</span>`;
+}
+
+function paintAgentList(roles: AgentRole[]): string {
+  if (!roles.length) {
+    return `<p class="lnb-none hint">${esc(COPY.ui.lnb.noNodes)}</p>`;
+  }
+  const L = COPY.ui.lnb;
+  const parts: string[] = [`<div class="lnb-tree lnb-agent-list" role="tree">`];
+  let team = "\0";
+  for (const r of roles) {
+    const t = r.team || L.agentNoTeam;
+    if (t !== team) {
+      team = t;
+      parts.push(`<p class="lnb-agent-team">${esc(t)}</p>`);
+    }
+    const on = active.nodeId === r.id;
+    const lead = r.teamRole === "lead" ? ` · ${esc(L.agentLead)}` : "";
+    parts.push(`<button class="lnb-doc lnb-node lnb-agent-role${on ? " on" : ""}"
+      role="treeitem" aria-level="2"${on ? ' aria-selected="true"' : ""}
+      data-nodeid="${esc(r.id)}" data-dom="vinc/agent"
+      data-tip="${esc(L.nodeTip)}">
+      <span class="lnb-dtitle">${esc(r.title)}${lead}</span>
+      ${relLine(L.agentFrom, r.rel.from)}
+      ${relLine(L.agentThen, r.rel.then)}
+      ${relLine(L.agentBeside, r.rel.beside)}
+    </button>`);
+  }
+  parts.push(`</div>`);
+  return parts.join("");
+}
+
+/** 다시 읽기의 세대 번호. 종을 빠르게 갈아 끼우면 앞 종의 응답이 늦게 와서 뒤 종의
+ *  트리를 덮는다 — 가장 최근 호출의 응답만 상태에 쓴다. */
+let refreshSeq = 0;
+
 /** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후). */
 export async function refreshLnb(): Promise<void> {
+  const seq = ++refreshSeq;
+  const stale = () => seq !== refreshSeq;
   loading = true; failed = false;
   paint();
   try {
-    // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
-    // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
-    // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
-    // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
-    tree = await api.navTree(cfg.owner, { nodes: true, kind: rail()?.kind });
-    failed = !tree?.executed;
+    const r = rail();
+    if (r?.offTopic) {
+      // Entity·Bridge 는 주제 트리 계약 밖이다. 없는 종을 물으면 서버가
+      // unknown kind 로 실패하고, 그때 레일이 "종이 없어졌다"로 읽힌다.
+      tree = { executed: true, domains: [], unfiled: [] };
+      agentRoster = null;
+      failed = false;
+      // 레일 개수는 nav-tree 응답에만 실려 온다. 이 종을 고른 채 새로 열면 그 조회를
+      // 한 번도 안 하므로, 제목 없이 개수만 받는 호출로 채운다(노드 목록을 안 실어 가볍다).
+      // 못 받으면 레일은 지난 값 그대로 둔다.
+      if (!Object.keys(kindCounts).length) {
+        try {
+          const c = await api.navTree(cfg.owner);
+          if (stale()) return;
+          if (c?.counts?.kinds) kindCounts = c.counts.kinds;
+        } catch { /* 개수만 못 받았다 */ }
+      }
+      paintRail();
+    } else {
+      // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
+      // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
+      // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
+      // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
+      // 응답은 지역에 받고, 세대가 그대로일 때만 상태에 쓴다(늦게 온 앞 종의 응답이
+      // 뒤 종의 트리를 덮지 않게).
+      let next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
+      if (stale()) return;
+      if (next?.executed && r?.domain) next = filterAgentTree(next);
+      // Agent 목록의 팀·관계는 `/graph` 의 역할 노드와 그 사이 엣지에서 접는다.
+      // nav-tree 는 제목·주제만 주고 props.team 과 works_with 를 안 싣는다.
+      // 그래프를 못 받으면 주제 트리로 강등한다(빈 목록을 "역할이 없다"로 읽히게 두지 않는다).
+      let roster: AgentRole[] | null = null;
+      if (r?.domain && next?.executed) {
+        try {
+          const rows = buildAgentRoster(
+            await api.graph(cfg.owner, { domains: ["vinc/agent"] }));
+          // 접은 역할이 없으면 주제 트리로 강등한다. 빈 배열을 그리면
+          // 트리에 있던 역할이 "없다"로 읽힌다.
+          roster = rows.length ? rows : null;
+        } catch { roster = null; }
+        if (stale()) return;
+      }
+      tree = next;
+      failed = !tree?.executed;
+      agentRoster = roster;
+    }
     // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
     // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
     if (tree?.counts?.kinds) kindCounts = tree.counts.kinds;
@@ -239,10 +459,31 @@ export async function refreshLnb(): Promise<void> {
     // (실측 2026-09-08: 마운트 직후 툴팁이 "노드 0개"였다).
     paintRail();
   } catch {
-    tree = null; failed = true;
+    if (stale()) return;
+    tree = null; failed = true; agentRoster = null;
   }
   loading = false;
   paint();
+}
+
+/** Agent 를 고르면 지도는 `vinc/agent` 하위 트리다(역할 도메인 전량).
+ *  상세는 목록에서 역할을 고른 뒤에만 연다. 근거: 소유자 지시 2026-09-22.
+ *  **토글이 아니라 건다**(`set`) — 이미 vinc/agent 로 좁혀져 있을 때 Agent 를 다시
+ *  고르면 토글 피커는 스코프를 벗겨 버린다. */
+function scopeAgentGraph(): void {
+  pickTopic?.("vinc/agent", false, true);
+}
+
+/** Agent 를 떠나면 그 주제 스코프를 벗긴다. pickTopic 은 해시를 안 바꾸므로
+ *  `#view` 가 이미 자리여도 hashchange 를 한 번 보내 L0 로 되돌린다. */
+function unscopeAgentGraph(): void {
+  const agentScope = [...picked].some((d) => d === "vinc/agent" || d.startsWith("vinc/agent/"));
+  if (!agentScope) return;
+  const here = location.hash.replace(/^#/, "");
+  if (here === "view" || here.startsWith("view/")) {
+    if (here !== "view") location.hash = "#view";
+    else window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }
 }
 
 /** 종 전환 — **늘 다시 읽는다.** 응답이 한 종만 싣기 때문이고, 캐시를 두지 않는
@@ -251,13 +492,23 @@ export async function refreshLnb(): Promise<void> {
 function setRailKey(next: string): void {
   // 빈 값(= 전체)도 유효한 목적지다. 그것을 거르면 홈이 아무 일도 못 한다.
   if (railKey === next || (next !== "" && !RAIL_KEYS.includes(next))) return;
+  const prev = railKey;
   railKey = next;
   localStorage.setItem(KEY_KIND, next);
+  // Agent 목록은 역할을 고르기 전엔 줄이 켜지지 않는다. 직전 표면의 노드
+  // 초점이 그대로 남으면 다른 종이 선택된 것처럼 보인다.
+  if (next === "agent") active = { domain: "vinc/agent" };
   paintRail();
   // 지도에도 같은 종을 건다 — 왼쪽에서 고른 것이 오른쪽에서 안 보이면 두 화면이
   // 다른 것을 보고 있는 셈이다(발주자 지적 2026-09-09).
   kindLens?.(lnbKind());
-  void refreshLnb();
+  void refreshLnb().then(() => {
+    // 그 사이 다른 종을 골랐으면 이 전환의 뒷일은 없다. 늦게 끝난 Agent 전환이
+    // 뒤에 고른 종 위에 Agent 스코프를 걸면 안 된다.
+    if (railKey !== next) return;
+    if (next === "agent") scopeAgentGraph();
+    else if (prev === "agent") unscopeAgentGraph();
+  });
 }
 
 /** 층 1 — 종 레일. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
@@ -282,23 +533,43 @@ function paintRail(): void {
       data-tip="${esc(COPY.ui.topbar.home)}">
       <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
       <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
-    </a><hr class="rail-sep">`;
-  el.innerHTML = home + RAIL.map((r) => {
+    </a>`;
+  const railBtn = (r: RailItem): string => {
     const on = r.key === railKey;
     const name = names[r.key] || r.key;
-    // 개수는 그 **종**의 수다. Agent 는 주제라 종별 집계로 셀 수 없으므로 숫자를
-    // 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
-    const cnt = r.domain ? 0 : (kindCounts[r.key] || 0);
-    // ⚠ Agent 앞 구분선은 **없다**(2026-09-09). 레일의 선은 홈 아래 하나뿐이고
-    //    그것 하나여야 뜻이 하나다 — 근거는 app.css `.rail-sep` 주석.
-    return `<button class="rail-btn" type="button" data-rail="${esc(r.key)}"
-      aria-pressed="${on}" aria-label="${esc(name)}"
-      data-tip="${esc(r.domain ? name : COPY.ui.lnb.kindTip(name, cnt))}">
-      ${kindMark3d(r.mark, r.key, 20)}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
+    // 개수는 그 **종**의 수다. Agent 는 주제라, Entity·Bridge 는 주제 집계 밖이라
+    // 숫자를 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
+    const cnt = (r.dest || r.offTopic) ? 0 : (kindCounts[r.key] || 0);
+    const mark = r.icon
+      ? `<span class="lnb-mk" aria-hidden="true">${icon(r.icon, 18)}</span>`
+      : kindMark3d(r.mark, r.key, 20);
+    const tip = (r.dest || r.offTopic) ? name : COPY.ui.lnb.kindTip(name, cnt);
+    return `<button class="rail-btn${r.dest ? " rail-dest" : ""}" type="button"
+      data-rail="${esc(r.key)}" aria-pressed="${on}" aria-label="${esc(name)}"
+      data-tip="${esc(tip)}">
+      ${mark}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
       cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
     </button>`;
-  }).join("")
+  };
+  // 구분선은 홈·Agent(목적지)와 종 묶음 사이다. Agent 를 선 아래로 두던 배치는
+  // 2026-09-21 scope-back 이 덮는다.
+  const destHtml = RAIL.filter((r) => r.dest).map(railBtn).join("");
+  const kindItems = RAIL.filter((r) => !r.dest);
+  let kindHtml = "";
+  for (let i = 0; i < kindItems.length; ) {
+    const g = kindItems[i].group;
+    if (!g) { kindHtml += railBtn(kindItems[i]); i += 1; continue; }
+    const chunk: RailItem[] = [];
+    while (i < kindItems.length && kindItems[i].group === g) {
+      chunk.push(kindItems[i]); i += 1;
+    }
+    kindHtml += `<div class="rail-group" data-group="${g}">${chunk.map(railBtn).join("")}</div>`;
+  }
+  el.innerHTML = home + destHtml + `<hr class="rail-sep">` + kindHtml
     + `<span class="rail-fill"></span>`;
+  // 설정 버튼은 `#rail-kinds` **밖**(레일 바닥)에 산다. 종을 다시 그려도 그 자리는
+  // 그대로다. 뱃지만 여기서 다시 묻는다 — 제안 적체가 레일 바닥에 남아 있어야 한다.
+  void import("./conventions").then((m) => m.refreshBadge());
   // ⚠ 레일에 접기 버튼을 두었다가 뺐다(2026-09-09). 접는 대상이 레일까지이므로
   // 손잡이가 그 안에 있으면 함께 사라진다 — 상단 바 왼쪽 끝으로 갔다.
 }
@@ -437,12 +708,21 @@ function groupRows(n: DomNode, level = 1): string {
 
 /** 스크롤 밖의 머리 — 지금 몇 주제를 보고 있는지. 인자가 없으면 비운다(아직
  *  못 세었거나 셀 것이 없는 상태에서 `0` 을 내면 "주제가 없다"로 읽힌다). */
-function paintHead(n?: number): void {
+function paintHead(n?: number, label?: string): void {
   const h = $("lnb-head");
   if (!h) return;
   h.innerHTML = n === undefined ? ""
-    : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(COPY.ui.lnb.documents)}</span>`
+    : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(label || COPY.ui.lnb.documents)}</span>`
       + `<span class="hint">${n || "·"}</span></div>`;
+}
+
+/** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */
+function scopeChip(): string {
+  if (!picked.size) return "";
+  return `<div class="lnb-scope">
+      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
+      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
+    </div>`;
 }
 
 function paint() {
@@ -459,6 +739,22 @@ function paint() {
       + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
     return;
   }
+  if (rail()?.offTopic) {
+    paintHead();
+    // 트리는 없어도 주제 스코프는 살아 있을 수 있다. 칩을 빼면 걸린 스코프를
+    // 볼 길도 풀 길도 없다.
+    body.innerHTML = scopeChip()
+      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind)}</p>`;
+    return;
+  }
+  // Agent 목적지는 주제 트리가 아니라 로스터 목록이다. 팀을 섹션으로 두고
+  // 각 줄에 이미 있는 관계를 붙인다. 그래프 스코프 칩은 목적지가 이미
+  // `vinc/agent` 이라 내지 않는다.
+  if (rail()?.dest && agentRoster) {
+    paintHead(agentRoster.length, COPY.ui.lnb.agents);
+    body.innerHTML = paintAgentList(agentRoster);
+    return;
+  }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
   // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
@@ -469,12 +765,7 @@ function paint() {
   let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
-  if (picked.size) {
-    html += `<div class="lnb-scope">
-      <span>${esc(COPY.ui.lnb.scoped(picked.size))}</span>
-      <button class="lnb-scope-clear" type="button">${esc(COPY.ui.lnb.scopedClear)}</button>
-    </div>`;
-  }
+  html += scopeChip();
   // 노드 갈래를 골랐는데 응답이 노드를 안 실어 왔다. 데스크탑에서는 사이드카가 앱과
   // 한 벌이라 날 수 없지만 **웹모드는 다르다** — 사이트가 배포한 앱과 허브의 사이드카가
   // 따로 올라가므로 앱이 먼저 새것일 수 있다. 그때 빈 트리를 그리면 "내 개념이
@@ -488,8 +779,11 @@ function paint() {
     return;
   }
   if (!groups.length && !unfiled.length) {
-    html += `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`
-      + `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
+    html += `<p class="lnb-none hint">${esc(
+      rail()?.domain ? COPY.ui.lnb.noNodes : COPY.ui.lnb.empty)}</p>`;
+    if (!rail()?.domain) {
+      html += `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
+    }
   } else {
     const tops = nestGroups(groups);
     // 뿌리가 하나뿐이면(지금은 전부 `vinc/*` 다) 한 번은 펼쳐 둔다 — 안 그러면
@@ -580,8 +874,24 @@ export function mountLnb() {
 
   // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
   paintRail();
+  const settingsBtn = $("rail-settings");
+  if (settingsBtn) {
+    settingsBtn.setAttribute("aria-label", COPY.ui.topbar.settings);
+    settingsBtn.setAttribute("data-tip", COPY.ui.topbar.settings);
+    if (!settingsBtn.querySelector(".icon")) {
+      settingsBtn.insertAdjacentHTML("afterbegin", icon("settings", 18));
+    }
+    if (!settingsBtn.querySelector(".rail-name")) {
+      settingsBtn.insertAdjacentHTML("beforeend",
+        `<span class="rail-name">${esc(COPY.ui.topbar.settings)}</span>`);
+    }
+  }
   $("lnb-rail")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".rail-btn");
+    if (b?.id === "rail-settings") {
+      void import("./surfaces/settings").then((m) => m.openSettings("general", undefined, true));
+      return;
+    }
     // ⚠ `if (b?.dataset.rail)` 이면 홈의 빈 값이 falsy 라 걸러진다 — 있는지를 묻는다.
     if (b?.dataset.rail !== undefined) setRailKey(b.dataset.rail);
   });
@@ -632,7 +942,10 @@ export function mountLnb() {
     }
     if (t.closest("#lnb-retry")) { void refreshLnb(); return; }
     // 트리가 비었을 때의 CTA — 쓸지 가져올지 아직 모르므로 Tools 를 연다(D71).
-    if (t.closest("#lnb-add")) { void import("./tools").then((m) => m.openTools()); return; }
+    if (t.closest("#lnb-add")) {
+      void import("./surfaces/settings").then((m) => m.openSettings("data"));
+      return;
+    }
   });
   // 주제 우클릭 = 이름 변경(S2). L0 주제 표의 `⋯` 가 하던 일이 여기로 왔다 —
   // 표가 사라졌으므로 이 경로가 없으면 이름을 바꿀 길이 없어진다.

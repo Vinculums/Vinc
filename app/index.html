@@ -88,22 +88,15 @@
           <div id="tb-chat" hidden></div>
         </div>
 
-        <!-- 오른쪽 넷(범례 · 설정 · 도구 · GRAPH.md)이 한 상자에서 등간격으로 선다.
-             ⚠ **여기가 이것들의 자리다**(발주자 지적 2026-09-09: "난 gnb에 검색만
-             놔두라고 한 적 없는데 이전에 있던 범례 설정 어디감"). 한 번 레일 맨
-             아래로 내렸다가 되돌렸다 — "나머지 손잡이 버튼"은 왼쪽에 남아 있던
-             LNB 손잡이 하나를 말한 것이었고, 이 넷은 바에 남는다.
-             바가 짧아진 만큼(`--gnb-tail`) 검색이 줄고 넷은 그 오른쪽에 선다.
-             렌즈 내용은 View 가 채우고 떠날 때 비운다(setViewHooks). -->
+        <!-- 오른쪽은 렌즈만 남는다(2026-09-22). 설정·도구·GRAPH.md 는 종 레일
+             하단 설정 버튼이 흡수한다. 숨긴 버튼은 팔레트·딥링크가 아직 id 로
+             찾을 수 있게 남겨 둔다. 렌즈 내용은 View 가 채우고 떠날 때 비운다. -->
         <div id="tb-right">
           <div id="tb-lens"></div>
-          <button class="tb-icon" id="settings-btn" data-icon="settings"
+          <button class="tb-icon" id="settings-btn" data-icon="settings" hidden
                   aria-haspopup="dialog"></button>
-          <!-- D71 — 지식이 드나드는 문 셋(만들기·가져오기·공유)을 버튼 하나로 모은다. -->
-          <button class="tb-icon" id="tb-tools"></button>
-          <!-- GRAPH.md(GM-8 관례 파일) — 아이콘 하나가 두 일을 겸한다: 편집 + 재가 대기.
-               뱃지가 없으면 이 자리에 있을 자격이 없다(상시 점유의 근거가 뱃지다). -->
-          <button class="tb-icon tb-conv" id="tb-conv" data-icon="ring"
+          <button class="tb-icon" id="tb-tools" hidden></button>
+          <button class="tb-icon tb-conv" id="tb-conv" data-icon="ring" hidden
                   aria-haspopup="dialog"><span id="tb-conv-badge" hidden></span></button>
         </div>
       </header>
@@ -122,6 +115,12 @@
         <button class="tb-icon" id="tb-shell-toggle" type="button"
                 aria-controls="lnb"></button>
         <div id="rail-kinds"></div>
+        <!-- 종 목록 **아래**에 고정(2026-09-22). 설정 · GRAPH.md · 쓰기/가져오기/공유
+             를 한 버튼이 연다. 종 키(`data-rail`)가 아니라서 종을 고르지 않는다. -->
+        <button class="rail-btn rail-settings" id="rail-settings" type="button"
+                aria-haspopup="dialog">
+          <span id="rail-settings-badge" class="rail-n" hidden></span>
+        </button>
       </nav>
       <!-- 층 2 - 문서 트리. 첫 칸이 **관점 세그**다(3D·2D·타임라인·Weave):
            상단 바에서 내려왔고, 이 층의 폭을 그대로 채운다(발주자 지시 2026-09-09). -->

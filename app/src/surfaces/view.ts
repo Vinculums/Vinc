@@ -3257,12 +3257,15 @@ export async function renderView(el: HTMLElement) {
     void (docId ? openDocAt(docId, id, dom) : focusNode(id, dom)));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
-  setLnbTopicPicker((path, add) => {
+  setLnbTopicPicker((path, add, set) => {
     const lv = trail[trail.length - 1];
     const cur = lv.kind === "l1" ? lv.domains : [];
+    // `set` 은 토글이 아니라 "이 주제 하나로" 다(Agent 레일). 이미 그 주제거나 그 안쪽
+    // (`vinc/agent/roles`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.
+    if (set && cur.length && cur.every((d) => d === path || d.startsWith(path + "/"))) return;
     // 이미 고른 것을 다시 누르면 **뺀다** — 더하는 길만 있고 빼는 길이 없으면
     // 되돌리려고 홈까지 갔다 와야 한다.
-    const next = add
+    const next = set ? [path] : add
       ? (cur.includes(path) ? cur.filter((d) => d !== path) : [...cur, path])
       : (cur.length === 1 && cur[0] === path ? [] : [path]);
     // 전부 빼면 그것은 L0(전체)다 — 빈 L1 은 "아무것도 안 보이는 주제 화면"이라

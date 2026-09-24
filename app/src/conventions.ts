@@ -14,7 +14,7 @@
  */
 import { api, cfg, WEB } from "./api";
 import { COPY } from "./copy";
-import { openSheet, sheetActions } from "./components";
+import { sheetActions } from "./components";
 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
@@ -53,11 +53,14 @@ export async function proposedCount(): Promise<number> {
   } catch { return 0; }
 }
 
-export async function openConventions() {
+export function openConventions() {
+  void import("./surfaces/settings").then((m) => m.openSettings("graphmd"));
+}
+
+/** 설정 시트의 GRAPH.md 분류 안에 그린다. 시트를 새로 열지 않는다. */
+export async function mountConventions(host: HTMLElement, sheet: { body: HTMLElement; foot: HTMLElement; close: () => void }) {
   const C = COPY.ui.conv;
-  // 설정 모달과 같은 상자(size "panel") — 위 tools.ts 와 같은 이유.
-  const sheet = openSheet({ title: C.title, subtitle: C.sub, size: "panel" });
-  sheet.body.innerHTML = `<p class="hint">${C.loading}</p>`;
+  host.innerHTML = `<p class="hint">${C.loading}</p>`;
 
   let themeId = "";
   let text = "";
@@ -67,10 +70,14 @@ export async function openConventions() {
   let docId = "";
 
   async function draw() {
+    // 설정의 분류들은 발(`sheet.foot`)을 함께 쓴다. 읽기를 기다리는 사이 다른 분류로
+    // 옮겼으면 이 판은 떨어져 나갔다 — 여기서 발을 쓰면 저장·재생성(실제 쓰기)
+    // 버튼이 다른 분류 밑에 선다.
+    if (!host.isConnected) return;
     const parts = splitConventions(text);
     const broken = parts === null;
     const [head, gen, tail] = parts || [text, "", ""];
-    sheet.body.innerHTML = `
+    host.innerHTML = `
       <div class="conv">
         ${broken ? `<p class="hint conv-warn">${C.broken}</p>` : ""}
         <label class="hint" for="conv-head">${C.prose}</label>
@@ -93,9 +100,9 @@ export async function openConventions() {
   }
 
   function compose(): string {
-    const head = sheet.body.querySelector<HTMLTextAreaElement>("#conv-head")?.value ?? "";
-    const gen = sheet.body.querySelector<HTMLElement>(".conv-gen")?.textContent ?? "";
-    const tail = sheet.body.querySelector<HTMLTextAreaElement>("#conv-tail")?.value ?? "";
+    const head = host.querySelector<HTMLTextAreaElement>("#conv-head")?.value ?? "";
+    const gen = host.querySelector<HTMLElement>(".conv-gen")?.textContent ?? "";
+    const tail = host.querySelector<HTMLTextAreaElement>("#conv-tail")?.value ?? "";
     return gen ? `${head}\n${gen}\n${tail}`.replace(/\n{3,}/g, "\n\n") : head;
   }
 
@@ -131,19 +138,19 @@ export async function openConventions() {
   }
 
   async function drawRatify() {
-    const host = sheet.body.querySelector<HTMLElement>("#conv-ratify");
-    if (!host) return;
-    if (WEB) { host.innerHTML = `<p class="hint">${C.webOnly}</p>`; return; }
+    const hostEl = host.querySelector<HTMLElement>("#conv-ratify");
+    if (!hostEl) return;
+    if (WEB) { hostEl.innerHTML = `<p class="hint">${C.webOnly}</p>`; return; }
     let types: any[] = [];
     try {
       const th = await api.themes();
       themeId = th?.active_theme_id || "";
       if (themeId) types = ((await api.types(themeId, "proposed"))?.types || []).filter(isPending);
-    } catch { host.innerHTML = ""; return; }
-    if (!themeId) { host.innerHTML = ""; return; }
+    } catch { hostEl.innerHTML = ""; return; }
+    if (!themeId) { hostEl.innerHTML = ""; return; }
     // 대기가 있으면 펼친 채로, 없으면 접어 둔다 — 할 일이 없는 상자가 자리를
     // 차지하지 않게. 대기 수는 접혀 있어도 요약 줄에 그대로 보인다.
-    host.innerHTML = `
+    hostEl.innerHTML = `
       <details class="conv-fold"${types.length ? " open" : ""}>
       <summary>${C.pending(types.length)}</summary>
       ${types.length === 0 ? `<p class="hint">${C.noPending}</p>` : `
@@ -157,7 +164,7 @@ export async function openConventions() {
               <button class="btn btn-primary" data-act="ratify" data-name="${esc(t.name)}">${C.ratify}</button>
             </span>
           </div>`).join("")}</div>`}</details>`;
-    host.querySelectorAll<HTMLElement>("[data-act]").forEach((b) =>
+    hostEl.querySelectorAll<HTMLElement>("[data-act]").forEach((b) =>
       b.addEventListener("click", () => act(b.dataset.act!, b.dataset.name!, b)));
   }
 
@@ -198,18 +205,22 @@ export async function openConventions() {
     text = res?.text || "";
     docId = res?.doc_id || "";
   } catch {
-    sheet.body.innerHTML = `<p class="hint">${C.loadFailed}</p>`;
+    host.innerHTML = `<p class="hint">${C.loadFailed}</p>`;
     return;
   }
   await draw();
 }
 
-/** 상단 바 뱃지 갱신 — 시트 안에서 재가하면 즉시 반영된다. */
+/** 제안 적체 뱃지. 레일 설정 버튼 · GRAPH.md 분류 · (숨긴) 상단 바 자리에 같은 수를 그린다. */
 export function refreshBadge() {
-  const el = document.getElementById("tb-conv-badge");
-  if (!el) return;
-  proposedCount().then((n) => {
+  const paint = (el: HTMLElement | null, n: number) => {
+    if (!el) return;
     el.textContent = n > 0 ? String(n) : "";
     el.hidden = n === 0;
+  };
+  proposedCount().then((n) => {
+    paint(document.getElementById("tb-conv-badge"), n);
+    paint(document.getElementById("rail-settings-badge"), n);
+    paint(document.getElementById("settings-graphmd-badge"), n);
   });
 }

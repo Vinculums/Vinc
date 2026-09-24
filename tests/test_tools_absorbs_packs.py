@@ -32,6 +32,12 @@ def _body(src: str, head: str) -> str:
     return body[:body.index("\n}")]
 
 
+def _inner(src: str, head: str) -> str:
+    """두 칸 들여 쓴 안쪽 함수의 본문 — 열 2 의 `}` 가 끝이다."""
+    body = src[src.index(head):]
+    return body[:body.index("\n  }")]
+
+
 class ToolsAbsorbsPacksTests(unittest.TestCase):
     def setUp(self):
         self.tools = (APP / "tools.ts").read_text(encoding="utf-8")
@@ -121,8 +127,19 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
                 self.assertRegex(alias, r"\b" + old + r':\s*"\w+"', f"#{old} 를 아무도 안 받는다")
                 self.assertRegex(tools, r"\b" + old + r':\s*"(import|share)"',
                                  f"#{old} 가 Tools 를 안 연다")
-        self.assertIn("m.openTools(ALIAS_TOOLS[rawHead])", main,
-                      "라우터가 ALIAS_TOOLS 를 안 쓴다")
+        # 2026-09-22 scope-back 뒤로 Tools 는 설정 시트의 `정보`(data) 분류다. 라우터는
+        # 그 분류를 **별칭이 가리킨 탭으로** 열어야 한다 — 탭을 빼면 `#packs` 가 공유가
+        # 아니라 쓰기 탭에 떨어진다.
+        route = _body(main, "async function route")
+        self.assertRegex(route, r'openSettings\(\s*"data"\s*,\s*ALIAS_TOOLS\[rawHead\]\s*\)',
+                         "라우터가 ALIAS_TOOLS 의 탭으로 설정의 정보 분류를 안 연다")
+        # 그 탭이 실제로 Tools 까지 닿는가: 시작 탭 → toolsTab → mountTools.
+        settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
+        self.assertRegex(settings, r"let toolsTab: DataTab = dataTab\b",
+                         "openSettings 가 받은 탭을 정보 분류가 안 쓴다")
+        data = _inner(settings, "  function renderData")
+        self.assertRegex(data, r"mountTools\([^;]*toolsTab\s*\)",
+                         "정보 분류가 Tools 를 고른 탭으로 안 심는다")
 
     def test_지운_표면이_트리에_남아_있지_않다(self):
         """반쯤 지우면 죽은 코드가 살아 있는 화면처럼 읽힌다."""
@@ -136,9 +153,30 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
     def test_Tools_를_여는_자리가_앱에_남아_있다(self):
         """이 파일의 나머지 전부가 Tools 안을 재는 것이라, Tools 를 여는 손잡이가
         사라지면 전부 초록인 채로 다섯 기능이 함께 도달 불가가 된다."""
-        openers = [p.name for p in sorted(APP.rglob("*.ts"))
-                   if p.name != "tools.ts" and "openTools(" in p.read_text(encoding="utf-8")]
-        self.assertTrue(openers, "Tools 를 여는 곳이 앱에 하나도 없다")
+        # ⚠ `openTools(` 를 부르는 파일이 있는지로 재면 안 된다 — 숨긴(`hidden`) 상단 바
+        # 버튼이 그것을 부르고 있어도 초록이었다. 사람이 누를 수 있는 손잡이에서
+        # Tools 까지 사슬을 따라간다: 보이는 레일 설정 버튼 → openSettings → 정보 분류 →
+        # mountTools.
+        html = (ROOT / "app" / "index.html").read_text(encoding="utf-8")
+        tag = re.search(r'<button[^>]*\bid="rail-settings"[^>]*>', html)
+        self.assertIsNotNone(tag, "레일 설정 버튼이 셸에 없다")
+        self.assertNotRegex(tag.group(0), r"\bhidden\b", "레일 설정 버튼이 숨겨져 있다")
+
+        lnb = (APP / "lnb.ts").read_text(encoding="utf-8")
+        self.assertRegex(lnb, r'id\s*===\s*"rail-settings"\)\s*\{[^}]*openSettings\(',
+                         "레일 설정 버튼이 설정 시트를 안 연다")
+
+        settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
+        cats = settings[settings.index("const ALL_CATS"):settings.index("const CATS")]
+        data_row = re.search(r'\{\s*id:\s*"data"[^}]*\}', cats)
+        self.assertIsNotNone(data_row, "설정에 정보(data) 분류가 없다")
+        self.assertNotIn("desktop: true", data_row.group(0),
+                         "정보 분류가 데스크탑 전용이다 · 웹에서 Tools 가 사라진다")
+        self.assertRegex(_inner(settings, "  function renderBody"),
+                         r'active === "data"\) renderData\(',
+                         "정보 분류가 자기 본문을 안 그린다")
+        self.assertIn("mountTools(", _inner(settings, "  function renderData"),
+                      "정보 분류가 Tools 를 안 심는다")
 
 
 if __name__ == "__main__":

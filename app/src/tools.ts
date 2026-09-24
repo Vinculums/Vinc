@@ -1,6 +1,6 @@
 import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
-import { openSheet, sheetActions, sheetProgress, type SheetHandle } from "./components";
+import { sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
@@ -48,16 +48,19 @@ function withTimeout<T>(p: Promise<T>, ms = OP_TIMEOUT): Promise<T> {
 }
 
 export function openTools(tab: Tab = "create") {
+  void import("./surfaces/settings").then((m) => m.openSettings("data", tab));
+}
+
+/** 설정 시트의 데이터 분류 안에 그린다. 시트를 새로 열지 않는다. */
+export function mountTools(host: SheetHandle, tab: Tab = "create"): () => void {
   const T = COPY.ui.tools;
-  // 설정 모달과 **같은 상자**다(size "panel", 2026-09-09) — 설정·도구·GRAPH.md 는
-  // "앱을 다루는 창" 한 종류인데 여태 상자가 셋이었다.
-  const sheet = openSheet({ title: T.title, size: "panel" });
   let cleanup: (() => void) | null = null;
+  const sheet = host;
 
   const draw = (t: Tab) => {
     cleanup?.();
     cleanup = null;
-    sheet.body.innerHTML = `
+    host.body.innerHTML = `
       <div class="tools-tabs">
         <span class="seg">
           ${(["create", "import", "share"] as Tab[]).map((k) =>
@@ -66,17 +69,18 @@ export function openTools(tab: Tab = "create") {
         <span class="hint tools-sub"></span>
       </div>
       <div class="tools-pane" id="tools-pane"></div>`;
-    sheet.body.querySelector<HTMLElement>(".tools-sub")!.textContent =
+    host.body.querySelector<HTMLElement>(".tools-sub")!.textContent =
       t === "create" ? T.createSub : t === "import" ? T.importSub : T.shareSub;
-    sheet.body.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
+    host.body.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => draw(b.dataset.tab as Tab)));
-    const pane = sheet.body.querySelector<HTMLElement>("#tools-pane")!;
-    sheet.foot.innerHTML = "";
+    const pane = host.body.querySelector<HTMLElement>("#tools-pane")!;
+    host.foot.innerHTML = "";
     if (t === "create") void renderCreate(pane, sheet, (fn) => { cleanup = fn; });
     else if (t === "import") renderImport(pane, sheet);
     else void renderShare(pane, sheet);
   };
   draw(tab);
+  return () => { cleanup?.(); cleanup = null; };
 }
 
 // ── 가져오기 ────────────────────────────────────────────────────────────────
@@ -276,6 +280,9 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
     owner: cfg.owner,
     onSaved: (id) => { docId = id; },
   });
+  // 편집기가 뜨는 사이 다른 탭·분류로 옮겼으면 이 판은 떨어져 나갔고, 그 전환의
+  // 정리는 이미 지나갔다(그때는 핸들이 없었다). 여기서 바로 해제하고 발도 쓰지 않는다.
+  if (!pane.isConnected) { void handle.dispose(); return; }
   setCleanup(() => handle.dispose());
 
   // 연결 후보 — 대표 개념이 없는 문서는 연결할 자리가 없다(고를 수는 있어도 그을
