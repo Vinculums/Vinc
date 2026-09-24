@@ -29,10 +29,42 @@ function specRows(c: Record<string, number>, scopeLabel: string): string {
     <div class="sheet-spec">
       <div><span class="hint">${S.specScope}</span><b>${esc(scopeLabel)}</b></div>
       <div><span class="hint">${S.specConcepts}</span><b>${c.concepts ?? 0}</b></div>
+      <div><span class="hint">${S.specRecords}</span><b>${c.records ?? 0}</b></div>
+      <div><span class="hint">${S.specDecisions}</span><b>${c.decisions ?? 0}</b></div>
       <div><span class="hint">${S.specLinks}</span><b>${c.edges ?? 0}</b></div>
       <div><span class="hint">${S.specDocs}</span><b>${c.documents ?? 0}</b></div>
       <div><span class="hint">${S.specFormat}</span><b>.vincpack</b></div>
     </div>`;
+}
+
+/** VIN-105 매니페스트와 같은 술어: `records` 는 Episode+Record, `decisions` 는 Decision.
+ *  구버전 팩에 `decisions` 키가 없어도 노드 타입으로 다시 센다. */
+function recount(
+  nodes: any[], edges: any[], docs: any[], prev: Record<string, number>,
+): Record<string, number> {
+  return {
+    ...prev,
+    concepts: nodes.filter((n) => n.type === "concept").length,
+    records: nodes.filter((n) => n.type === "record" || n.type === "episode").length,
+    decisions: nodes.filter((n) => n.type === "decision").length,
+    edges: edges.length,
+    documents: docs.length,
+  };
+}
+
+function packDoneTexts(c: Record<string, number>, where: string): string[] {
+  const U = COPY.ui.sheet;
+  const concepts = c.concepts ?? 0;
+  const records = c.records ?? 0;
+  const decisions = c.decisions ?? 0;
+  const docs = c.documents ?? 0;
+  if (concepts + records + decisions + docs === 0) return [U.destNone(where)];
+  const out: string[] = [];
+  if (concepts > 0) out.push(U.destDone(concepts, where));
+  if (records > 0) out.push(U.destDoneRecords(records));
+  if (decisions > 0) out.push(U.destDoneDecisions(decisions));
+  if (docs > 0) out.push(U.destDoneDocs(docs));
+  return out;
 }
 
 /** 문서 미러 개념의 id 접두 — 서버의 `api/docstore._DOC_MIRROR_PREFIX` 와 같은 값. */
@@ -116,7 +148,7 @@ export async function openShareSheet(
       const docs = keptDocs(pack.documents, excluded);
       const out = { ...pack, fragment: { nodes: keep, edges },
         ...(pack.documents ? { documents: docs } : {}),
-        manifest: { ...pack.manifest, counts: { ...c, concepts: keep.filter((n) => n.type === "concept").length, edges: edges.length, documents: docs.length } } };
+        manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
       delete (out as any).executed;
       // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
       if (opts.into) {
@@ -175,8 +207,11 @@ function landedOf(res: any, requested: number): Landed {
 }
 
 /** 착지 요약 → 사람이 읽는 문장들. 하나도 안 들어갔으면 그렇게 말한다. */
-function landedTexts(l: Landed, where: string): string[] {
+function landedTexts(l: Landed, where: string, counts?: Record<string, number>): string[] {
   const U = COPY.ui.sheet;
+  if (l.skipped === 0 && counts) {
+    return packDoneTexts({ ...counts, documents: l.docs }, where);
+  }
   const out = [l.nodes > 0 ? U.destDone(l.nodes, where) : U.destNone(where)];
   if (l.conflicts > 0) out.push(U.destSkippedIds(l.conflicts));
   else if (l.skipped > 0) out.push(U.destSkippedOther(l.skipped));
@@ -273,7 +308,7 @@ async function sendToSpace(sheet: Sheet, life: SheetLife, out: any, requested: n
   let failed = false;
   try {
     const res = await api.importPack(out, cfg.owner, scope, (p) => { at.last = p; at.show(p); });
-    lines = landedTexts(landedOf(res, requested), where);
+    lines = landedTexts(landedOf(res, requested), where, out.manifest?.counts);
     if (res.too_big > 0) lines.push(U.destTooBig(res.too_big));
   } catch (e) {
     failed = true;
@@ -332,10 +367,7 @@ async function chooseDestination(
   }
 
   // 수치는 여기서도 보인다 — 나가는 순간은 [공유]가 아니라 **이 클릭**이다.
-  // 개별 제외로 다시 세는 것은 `concepts`·`edges`·`documents` 셋이고, 세 값 모두
-  // `out` 이 실제로 나르는 것을 센다(보이는 수 = 실제로 나가는 수). 여기 "documents
-  // 는 손대지 않으니 표시가 거짓이 되지 않는다"고 적혀 있던 것이 blocker 였다:
-  // 미러 행을 끄면 노드는 빠지는데 원문은 그대로 나갔고 수치는 끈 것을 세고 있었다.
+  // 개별 제외로 다시 세는 것은 `recount` 가 매니페스트 키 전부를 다시 채운 값이다.
   sheet.body.innerHTML = `
     ${specRows(out.manifest?.counts || {}, scopeLabel)}
     <p class="hint">${esc(U.destSub)}</p>
@@ -357,8 +389,9 @@ async function chooseDestination(
       sheet.foot.innerHTML = "";
       void d.run().then(
         () => {
-          // 여기 오는 것은 파일 저장뿐이다. 적재가 아니라 요약이 없고, 고른 개수가 곧 참이다.
-          sheet.body.innerHTML = `<p class="hint">${esc(U.destDone(conceptCount, d.where))}</p>`;
+          // 여기 오는 것은 파일 저장뿐이다. 적재가 아니라 요약이 없고, 다시 센 수가 곧 참이다.
+          sheet.body.innerHTML = packDoneTexts(out.manifest?.counts || {}, d.where)
+            .map((t) => `<p class="hint">${esc(t)}</p>`).join("");
           sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
           sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
         },
@@ -437,10 +470,12 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
     <div class="sheet-spec">
       <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(String(m.created || "?").slice(0, 10))}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? n}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specRecords}</span><b>${c.records ?? 0}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specDecisions}</span><b>${c.decisions ?? 0}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specLinks}</span><b>${c.edges ?? 0}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specDocs}</span><b>${(pack?.documents || []).length}</b></div>
     </div>
-    <p>${COPY.ui.sheet.updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0)}</p>
+    <p>${COPY.ui.sheet.updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0, c.decisions ?? 0, (pack?.documents || []).length)}</p>
     <div id="sheet-result" role="status"></div>`;
   sheet.foot.innerHTML = sheetActions(
     { id: "sheet-import", label: COPY.ui.sheet.importMine },
