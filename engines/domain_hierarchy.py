@@ -226,6 +226,56 @@ def backfill(store, *, owner: str | None = None, rename: dict | None = None) -> 
     return out
 
 
+def drift(store, *, owner: str | None = None) -> list[dict]:
+    """`domain` 열과 `IN_DOMAIN` 엣지가 **어긋난** 노드 목록(노드 단위).
+
+    기대는 "열이 비면 엣지 0개, 차면 정규화한 열 이름으로 정확히 1개"다. 어긋남은
+    셋이다 — ``missing``(열은 있는데 엣지가 없다), ``stale``(엣지가 다른 도메인을
+    가리키거나 둘 이상이다), ``stray``(열은 비었는데 엣지가 남아 있다).
+    앞의 것이 감사가 본 모양이다: `vinc_domains` 는 세는데 `vinc_neighbors domain:…`
+    는 못 찾는다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S9.
+
+    반환 원소 ``{label, key, column, domain, edges, kind}``. ``key`` 는 **물리 키**
+    (:func:`link_node` 에 그대로 넘긴다), ``domain`` 은 정규화한 열 값이다.
+
+    :func:`backfill` 과 달리 **읽기만** 하고, 노드 전수를 한 번씩 읽는다(라벨마다 질의
+    둘). 부팅 경로가 아니라 수리 스크립트용이다."""
+    out: list[dict] = []
+    for label, pk in DOMAIN_LABELS.items():
+        where = "WHERE n.owner_id = $owner" if owner else ""
+        params: dict = {"owner": owner} if owner else {}
+        cols = store.run(f"MATCH (n:{label}) {where} "
+                         f"RETURN n.{pk} AS id, n.domain AS domain", params) or []
+        edges = store.run(f"MATCH (n:{label})-[:IN_DOMAIN]->(d:Domain) {where} "
+                          f"RETURN n.{pk} AS id, d.name AS d", params) or []
+        have: dict[str, list[str]] = {}
+        for e in edges:
+            have.setdefault(e.get("id"), []).append(e.get("d") or "")
+        for r in cols:
+            want = normalize(r.get("domain"))
+            got = sorted(have.get(r.get("id"), []))
+            if got == ([want] if want else []):
+                continue
+            kind = "stray" if not want else ("missing" if not got else "stale")
+            out.append({"label": label, "key": r.get("id"),
+                        "column": r.get("domain") or "", "domain": want,
+                        "edges": got, "kind": kind})
+    return out
+
+
+def relink(store, rows: list[dict]) -> int:
+    """:func:`drift` 가 준 행을 :func:`link_node` 로 맞춘다. 반환은 고친 수.
+
+    revstamp 를 찍지 **않는다** — :func:`backfill` 과 같은 이유다(표현 보정이지 내용
+    변경이 아니고, 찍으면 모든 기기가 그 노드를 다시 받는다). 열은 건드리지 않는다:
+    열이 정본이고 엣지는 그 파생물이다."""
+    n = 0
+    for r in rows:
+        link_node(store, r["label"], r["key"], r.get("domain"))
+        n += 1
+    return n
+
+
 def subtree_scoped_cypher(label: str, *, depth: int = MAX_DEPTH) -> str:
     """``$domain`` 하위 전체에서 ``$owner`` 의 ``label`` 노드를 모으는 Cypher.
 

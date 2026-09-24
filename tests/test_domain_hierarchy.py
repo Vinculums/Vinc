@@ -486,5 +486,164 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(before, after)
 
 
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DocstoreWriterTests(unittest.TestCase):
+    """문서 쓰기도 열과 엣지를 **같이** 옮기는가(P7, 감사 결함 14).
+
+    `fragment` 는 `link_node` 를 불렀지만 문서 쪽 두 writer(미러의 주제·`extract_doc`)는
+    `n.domain` 만 썼다. 그래서 `vinc_domains` 는 `vinc/engineering/data-model` 을 1로
+    세는데 `vinc_neighbors domain:vinc/engineering/data-model` 은 found:false 였다.
+    여기 판정은 늘 **두 읽기 표면을 서로 대조**한다 — 한쪽만 보면 그 결함이 안 보인다.
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S9"""
+
+    OWNER = "u1"
+
+    def setUp(self):
+        self._cfg = load_config({"data_dir": tempfile.mkdtemp() + "/db"})
+        self._store = open_store(self._cfg)
+        self._store.provision(dim=self._cfg.embedding_dim)
+
+    def tearDown(self):
+        self._store.close()
+
+    def _counted(self, domain):
+        """`vinc_domains` 가 그 도메인에 세는 노드 수(열 집계)."""
+        from api.query import domains
+        rows = domains(owner=self.OWNER, store=self._store)["rows"]
+        return next((r["total"] for r in rows if r["domain"] == domain), 0)
+
+    def _members(self, domain):
+        """`vinc_neighbors domain:…` 가 찾는 직속 멤버 id(엣지 조회)."""
+        from api.query import neighbors
+        res = neighbors(dh.make_id(domain), owner=self.OWNER, store=self._store)
+        if not res.get("found", True):
+            return []
+        return sorted(r["id"] for r in res["neighbors"] if r["rel"] == "IN_DOMAIN")
+
+    def _put(self, text, *, topic=None, doc_id=None):
+        from api import docstore as ds
+        return ds.put_doc(self._store, owner=self.OWNER, text=text, doc_id=doc_id,
+                          title="Doc", topic=topic, link=False)
+
+    def test_doc_put_topic_is_found_by_both_surfaces(self):
+        out = self._put("# Doc\n\nbody.\n", topic="vinc/engineering/data-model")
+        mirror = "concept:doc." + out["doc_id"]
+        self.assertEqual(1, self._counted("vinc/engineering/data-model"))
+        self.assertEqual([mirror], self._members("vinc/engineering/data-model"))
+        self.assertEqual([], dh.drift(self._store, owner=self.OWNER))
+
+    def test_topic_change_moves_membership(self):
+        """주제를 바꾸면 옛 도메인에서 **빠져야** 한다 — 양쪽에 뜨면 조용히 틀린 답이다."""
+        out = self._put("# Doc\n\nbody.\n", topic="vinc/product")
+        mirror = "concept:doc." + out["doc_id"]
+        # 본문이 같아 skipped 로 가는 재전송도 주제는 적는다(그 가지를 같이 덮는다).
+        again = self._put("# Doc\n\nbody.\n", topic="vinc/product/promo-film",
+                          doc_id=out["doc_id"])
+        self.assertTrue(again.get("skipped"))
+        self.assertEqual([mirror], self._members("vinc/product/promo-film"))
+        self.assertEqual([], self._members("vinc/product"))
+        self.assertEqual(0, self._counted("vinc/product"))
+        # 본문이 바뀌는 재전송 가지
+        self._put("# Doc\n\nbody two.\n", topic="vinc/product/business-plan",
+                  doc_id=out["doc_id"])
+        self.assertEqual([mirror], self._members("vinc/product/business-plan"))
+        self.assertEqual([], self._members("vinc/product/promo-film"))
+        self.assertEqual([], dh.drift(self._store, owner=self.OWNER))
+
+    def test_topic_is_normalized_in_the_column_too(self):
+        out = self._put("# Doc\n\nbody.\n", topic=" vinc // design ")
+        self.assertEqual("vinc/design", out["topic"])
+        self.assertEqual(["concept:doc." + out["doc_id"]], self._members("vinc/design"))
+        self.assertEqual([], dh.drift(self._store, owner=self.OWNER))
+
+    def test_extract_doc_links_created_and_filled_concepts(self):
+        from api import docstore as ds
+        from api.fragment import merge_fragment
+        # 이미 있던 무주제 개념 — 반영이 주제를 **채우는** 가지.
+        merge_fragment({"owner": self.OWNER, "edges": [], "nodes": [
+            {"type": "concept", "id": "concept:특수상대성", "title": "특수상대성"}]},
+            store=self._store)
+        text = ("---\ndomain: vinc/research\n---\n# 문서\n\n## 특수상대성\n\n"
+                "광속은 불변이다.\n\n## 일반상대성\n\n중력은 곡률이다.\n")
+        out = self._put(text)
+        ap = ds.extract_doc(self._store, out["doc_id"], owner=self.OWNER, apply=True)
+        self.assertTrue(ap["executed"], ap)
+        self.assertEqual(1, ap["applied"]["matched"])
+        self.assertGreaterEqual(ap["applied"]["created"], 1)
+        members = self._members("vinc/research")
+        self.assertIn("concept:특수상대성", members)       # 채운 것
+        self.assertIn("concept:일반상대성", members)       # 새로 만든 것
+        self.assertEqual(len(members), self._counted("vinc/research"))
+        self.assertEqual([], dh.drift(self._store, owner=self.OWNER))
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DriftRepairTests(unittest.TestCase):
+    """이미 생긴 어긋남을 찾고 고치는가(`scripts/relink_domains.py` 의 몸통)."""
+
+    def setUp(self):
+        self._cfg = load_config({"data_dir": tempfile.mkdtemp() + "/db"})
+        self._store = open_store(self._cfg)
+        self._store.provision(dim=self._cfg.embedding_dim)
+        from api.fragment import merge_fragment
+        for owner, nid, dom in (("u1", "c:ok", "vinc/design"),
+                                ("u1", "c:missing", "vinc/engineering/data-model"),
+                                ("u1", "c:stale", "vinc/product/promo-film"),
+                                ("u2", "c:other", "vinc/secret")):
+            merge_fragment({"owner": owner, "edges": [], "nodes": [
+                {"type": "concept", "id": nid, "title": nid, "domain": dom}]},
+                store=self._store)
+        st = self._store
+        # 고장을 손으로 만든다 — 옛 docstore 가 남긴 두 모양(엣지 없음 · 열만 바뀜)과
+        # 열만 비운 모양 하나. 남의 노드도 어긋나게 둔다(owner 스코프가 거르는지 본다).
+        st.run("MATCH (n:Concept {concept_id:$i})-[r:IN_DOMAIN]->() DELETE r",
+               {"i": pkns.key("u1", "c:missing")})
+        st.run("MATCH (n:Concept {concept_id:$i}) "
+               "SET n.domain = 'vinc/product/business-plan'",
+               {"i": pkns.key("u1", "c:stale")})
+        st.run("MATCH (n:Concept {concept_id:$i}) SET n.domain = ''",
+               {"i": pkns.key("u1", "c:ok")})
+        st.run("MATCH (n:Concept {concept_id:$i})-[r:IN_DOMAIN]->() DELETE r",
+               {"i": pkns.key("u2", "c:other")})
+
+    def tearDown(self):
+        self._store.close()
+
+    def _rev(self, nid):
+        return self._store.run("MATCH (n:Concept {concept_id:$i}) RETURN n.rev AS r",
+                               {"i": pkns.key("u1", nid)})[0]["r"]
+
+    def test_drift_names_each_kind_for_the_owner_only(self):
+        rows = dh.drift(self._store, owner="u1")
+        got = {(pkns.strip(r["key"]), r["kind"]) for r in rows}
+        self.assertEqual({("c:missing", "missing"), ("c:stale", "stale"),
+                          ("c:ok", "stray")}, got)
+
+    def test_relink_repairs_without_restamping(self):
+        rows = dh.drift(self._store, owner="u1")
+        before = self._rev("c:missing")
+        self.assertEqual(3, dh.relink(self._store, rows))
+        self.assertEqual([], dh.drift(self._store, owner="u1"))
+        self.assertEqual(before, self._rev("c:missing"),
+                         "수리가 revstamp 를 찍으면 모든 기기가 그 노드를 다시 받는다")
+        # 고친 뒤 두 읽기 표면이 같은 답을 준다.
+        from api.query import neighbors
+        res = neighbors("domain:vinc/product/business-plan", owner="u1", store=self._store)
+        self.assertIn("c:stale", [r["id"] for r in res["neighbors"]])
+        # 남의 것은 안 건드렸다.
+        self.assertEqual(1, len(dh.drift(self._store, owner="u2")))
+
+    def test_script_reports_and_emits_a_domain_only_resend(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        import relink_domains as rd
+        rows = dh.drift(self._store, owner="u1")
+        self.assertEqual({"missing": 1, "stale": 1, "stray": 1},
+                         rd.summarize(rows)["by_kind"])
+        nodes = {n["id"]: n for b in rd.ingest_batches(rows) for n in b["nodes"]}
+        self.assertEqual({"id": "c:missing", "type": "concept",
+                          "domain": "vinc/engineering/data-model"}, nodes["c:missing"])
+        self.assertEqual("", nodes["c:ok"]["domain"])      # 빈 값 = 엣지만 지운다
+
+
 if __name__ == "__main__":
     unittest.main()
