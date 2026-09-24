@@ -36,6 +36,7 @@ import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
 import { popIn, popOut } from "../motion";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
+import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
@@ -3278,6 +3279,16 @@ export async function renderView(el: HTMLElement) {
   // 종 렌즈 — 레일이 고른 종을 지도에서도 강조한다. 등록 즉시 현재 값으로 한 번
   // 부르므로(setLnbKindLens 안에서) 마운트 직후에도 왼쪽과 오른쪽이 같은 것을 본다.
   setLnbKindLens((kind) => applyKindLens(kind));
+
+  // 저절로 새로워지는 갱신(VIN-129). 지금 층을 다시 받되 카메라와 렌즈 패널은 잇는다 —
+  // 옵션 재마운트(`applyPrefs`)와 같은 길이라 "보던 곳을 잃는다"가 다시 생기지 않는다.
+  // 재생 중이거나 카드·상세가 떠 있으면 "지금은 아니다"(`false`): 다시 그리기가 그것들을
+  // 닫는다. 바뀐 것은 `live.ts` 가 기억했다가 손을 뗀 뒤 적용한다.
+  setLiveRefresher(async () => {
+    if (myGen !== liveGen) return;
+    if (replayTimer || isFloatPanelOpen() || !detail.hidden) return false;
+    await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
+  });
 
   await show(trail[trail.length - 1]);
   if (landOn) await focusNode(landOn);

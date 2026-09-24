@@ -398,12 +398,18 @@ function paintAgentList(roles: AgentRole[]): string {
  *  트리를 덮는다 — 가장 최근 호출의 응답만 상태에 쓴다. */
 let refreshSeq = 0;
 
-/** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후). */
-export async function refreshLnb(): Promise<void> {
+/** 문서가 늘거나 주제가 바뀐 뒤 다시 읽는다(가져오기·추출·이름 변경 후).
+ *
+ *  `quiet` 는 저절로 새로워지는 갱신(`live.ts`)이 쓴다. 로딩 표시를 안 띄우고, 실패하면
+ *  있던 트리를 그대로 둔다: 사람이 누르지 않은 갱신이 트리를 깜빡이거나 "못 불러왔다"로
+ *  바꾸면 그것이 곧 고장으로 읽힌다. */
+export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> {
   const seq = ++refreshSeq;
   const stale = () => seq !== refreshSeq;
-  loading = true; failed = false;
-  paint();
+  if (!opts.quiet) {
+    loading = true; failed = false;
+    paint();
+  }
   try {
     const r = rail();
     if (r?.offTopic) {
@@ -460,6 +466,7 @@ export async function refreshLnb(): Promise<void> {
     paintRail();
   } catch {
     if (stale()) return;
+    if (opts.quiet) return;          // 있던 트리를 지우지 않는다
     tree = null; failed = true; agentRoster = null;
   }
   loading = false;
