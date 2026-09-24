@@ -98,19 +98,6 @@ class BuildPackTests(unittest.TestCase):
         ids = {n["id"] for n in pack["fragment"]["nodes"]}
         self.assertEqual(ids, {"concept:a", "ep:1"})    # 'misc'만 가진 b 제외
 
-    def test_seed_scope_walks_only_supported_relations(self):
-        store = _FakeStore({
-            "AS kind, b.": [{"kind": "Concept", "id": "concept:b"}],
-            "one_liner": _CONCEPTS,
-            "UNION ALL": _EDGE_ROWS,
-        })
-        pack = share.build_share_pack(owner="user:alice", seed="concept:a", depth=1,
-                                      generated_at="x", store=store)
-        self.assertEqual(pack["manifest"]["scope"]["seed"], "concept:a")
-        self.assertEqual(pack["manifest"]["counts"]["records"], 0)   # 이 fixture에는 Episode/Record 행이 없다
-        # 매 홉에서 두 끝의 소유자를 제한한다.
-        self.assertTrue(any("a.owner_id = $owner AND b.owner_id = $owner" in cy for cy, _ in store.calls))
-
     def test_without_store_degrades(self):
         pack = share.build_share_pack(owner="user:alice", domain="math", store=None)
         if not pack.get("executed"):
@@ -716,7 +703,8 @@ class MixedKindShareTests(unittest.TestCase):
             {"from": "decision:scope", "to": "concept:far", "type": "prerequisite_of"},
         ]
         for edge in self.edges:
-            edge.update(evidence="Measured support", confidence=0.0, created="2020-04-01T00:00:00.000Z")
+            # 0.0 은 열 기본값("모름")과 같아 싣지 않는 값이다. 왕복을 보려면 실제 값을 쓴다.
+            edge.update(evidence="Measured support", confidence=0.8, created="2020-04-01T00:00:00.000Z")
         result = share.frag.merge_fragment({"owner": "user:alice", "nodes": self.nodes,
                                            "edges": self.edges}, store=self.st)
         self.assertFalse(result.get("warnings"), result)
@@ -876,17 +864,114 @@ class MixedKindShareTests(unittest.TestCase):
         self.assertEqual([d["doc_id"] for d in pack["documents"]], [own])
         self.assertNotIn("Private text", str(pack))
 
-    def test_malformed_stored_record_properties_fail_explicitly(self):
-        self.st.run("MATCH (r:Record) WHERE r.record_id=$id SET r.props=$props",
-                    {"id": pkns.key("user:alice", "record:scope"), "props": "not json"})
-        result = share.build_share_pack(owner="user:alice", ids=["record:scope"], store=self.st)
-        self.assertFalse(result["executed"])
-        self.assertIn("invalid stored props", result["note"])
+    def test_import_keeps_recipient_values_the_sender_does_not_have(self):
+        # 열을 ALTER 로 얻은 스토어는 빈 칸을 ''·0.0 으로 돌려준다. 그 모습을 재현한다.
+        rid = pkns.key("user:alice", "record:scope")
+        self.st.run("MATCH (r:Record) WHERE r.record_id=$id "
+                    "SET r.content_time='', r.valid_from='', r.valid_until=''", {"id": rid})
+        self.st.run("MATCH (r:Record)-[a:ATTACHES_TO]->(d:Decision) WHERE r.record_id=$id "
+                    "SET a.evidence='', a.confidence=0.0", {"id": rid})
+        pack = self.pack(ids=["record:scope", "decision:scope"])
+        record = next(n for n in pack["fragment"]["nodes"] if n["id"] == "record:scope")
+        for field in ("content_time", "valid_from", "valid_until"):
+            self.assertNotIn(field, record)
+        self.assertEqual(pack["fragment"]["edges"],
+                         [{"from": "record:scope", "to": "decision:scope",
+                           "type": "derives_from", "created": "2020-04-01T00:00:00.000Z"}])
+        from store.backend import open_store
+        from store.config import load_config
+        dst = open_store(load_config({"data_dir": str(Path(self.tmp.name) / "dst")}))
+        self.addCleanup(dst.close)
+        dst.provision(dim=4)
+        seeded = share.frag.merge_fragment({"owner": "team:reader", "nodes": [
+            {"id": "decision:scope", "type": "decision", "title": "Choice"},
+            {"id": "record:scope", "type": "record", "title": "Measurement",
+             "content_time": "2020", "valid_until": "2026-09"}], "edges": [
+            {"from": "record:scope", "to": "decision:scope", "type": "derives_from",
+             "evidence": "team note", "confidence": 0.9}]}, store=dst)
+        self.assertEqual(seeded["merged"]["edges"]["created"], 1, seeded)
+        imported = share.import_share_pack(pack, owner="team:reader", store=dst)
+        self.assertTrue(imported.get("executed"), imported)
+        mine = pkns.key("team:reader", "record:scope")
+        row = dst.run("MATCH (r:Record) WHERE r.record_id=$id "
+                      "RETURN r.content_time AS ct, r.valid_until AS vu", {"id": mine})[0]
+        self.assertEqual((row["ct"], row["vu"]), ("2020", "2026-09"))
+        edge = dst.run("MATCH (r:Record)-[a:ATTACHES_TO]->(d:Decision) WHERE r.record_id=$id "
+                       "RETURN a.evidence AS ev, a.confidence AS conf", {"id": mine})[0]
+        self.assertEqual((edge["ev"], edge["conf"]), ("team note", 0.9))
 
-    def test_unsupported_attachment_type_is_not_silently_dropped(self):
+    def test_bad_stored_props_leave_only_the_props_behind_and_are_reported(self):
+        # 한 행이 팩 전체를 실패시키지 않는다. 노드는 싣고 못 읽는 props 만 뺀다.
+        self.st.run("MATCH (r:Record) WHERE r.record_id=$id SET r.props=$props",
+                    {"id": pkns.key("user:alice", "record:scope"), "props": "[1, 2]"})
+        self.st.run("MATCH (c:Concept) WHERE c.concept_id=$id SET c.props=$props",
+                    {"id": pkns.key("user:alice", "concept:scope"), "props": "not json"})
+        pack = self.pack(domain="vinc/share")
+        nodes = {n["id"]: n for n in pack["fragment"]["nodes"]}
+        self.assertEqual(nodes["record:scope"]["valid_until"], "2028")
+        self.assertNotIn("props", nodes["record:scope"])
+        self.assertNotIn("props", nodes["concept:scope"])
+        self.assertEqual(nodes["decision:scope"]["props"]["decided_at"], "2020-01")
+        warned = pack["manifest"]["warnings"]
+        self.assertEqual(len(warned), 2, warned)
+        self.assertIn("record:scope", " ".join(warned))
+        self.assertIn("concept:scope", " ".join(warned))
+
+    def test_untyped_and_unknown_attachments_are_left_out_and_reported(self):
+        rid = pkns.key("user:alice", "record:scope")
+        # 병합 경로(api/query.py)는 타입 없는 ATTACHES_TO 를 실제로 쓴다.
+        self.st.run("MATCH (r:Record), (c:Concept) WHERE r.record_id=$r AND c.concept_id=$c "
+                    "MERGE (r)-[:ATTACHES_TO]->(c)",
+                    {"r": rid, "c": pkns.key("user:alice", "concept:scope")})
         self.st.run("MATCH (r:Record)-[a:ATTACHES_TO]->(d:Decision) "
-                    "WHERE r.record_id=$id SET a.type='unknown'",
-                    {"id": pkns.key("user:alice", "record:scope")})
-        result = share.build_share_pack(owner="user:alice", domain="vinc/share", store=self.st)
-        self.assertFalse(result["executed"])
-        self.assertIn("unsupported stored share relation", result["note"])
+                    "WHERE r.record_id=$id SET a.type='unknown'", {"id": rid})
+        pack = self.pack(domain="vinc/share")
+        self.assertCountEqual(pack["fragment"]["edges"], [self.edges[0], self.edges[2]])
+        warned = pack["manifest"]["warnings"]
+        self.assertEqual(len(warned), 2, warned)
+        self.assertTrue(all(w.startswith("ATTACHES_TO record:scope -> ") for w in warned), warned)
+
+    def test_legacy_unowned_chunk_still_carries_the_ego_path(self):
+        from api import docstore as ds
+        share.frag.merge_fragment({"owner": "user:alice", "nodes": [
+            {"id": "concept:legacy-a", "type": "concept", "title": "Legacy A", "domain": "vinc/legacy-left"},
+            {"id": "concept:legacy-b", "type": "concept", "title": "Legacy B", "domain": "vinc/legacy-right"}],
+            "edges": []}, store=self.st)
+        doc = ds.put_doc(self.st, owner="user:alice", title="Legacy", text="Old text.")["doc_id"]
+        for nid in ("concept:legacy-a", "concept:legacy-b"):
+            self.st.run("MATCH (c:Chunk), (n:Concept) WHERE c.doc_id=$doc AND n.concept_id=$id "
+                        "MERGE (c)-[:MENTIONS]->(n)", {"doc": doc, "id": pkns.key("user:alice", nid)})
+        # v4 이전 청크는 owner_id 가 '' 다.
+        self.st.run("MATCH (c:Chunk) WHERE c.doc_id=$doc SET c.owner_id=''", {"doc": doc})
+        reached = {n["id"] for n in self.pack(seed="concept:legacy-a", depth=2)["fragment"]["nodes"]}
+        self.assertEqual(reached, {"concept:legacy-a", "concept:legacy-b"})
+        # 남의 청크는 여전히 경로가 되지 못한다.
+        self.st.run("MATCH (c:Chunk) WHERE c.doc_id=$doc SET c.owner_id='team:other'", {"doc": doc})
+        reached = {n["id"] for n in self.pack(seed="concept:legacy-a", depth=2)["fragment"]["nodes"]}
+        self.assertEqual(reached, {"concept:legacy-a"})
+
+    def test_ego_never_walks_through_another_owners_nodes(self):
+        # 오염된 교차 소유 엣지로 alice 의 먼 노드에 닿는 경로를 만든다.
+        # 매 홉의 소유자 검사가 빠지면 hop-b·hop-c 가 팩에 들어온다.
+        share.frag.merge_fragment({"owner": "user:alice", "nodes": [
+            {"id": f"concept:hop-{x}", "type": "concept", "title": f"Hop {x}",
+             "domain": f"vinc/hop-{x}"} for x in "abc"], "edges": []}, store=self.st)
+        share.frag.merge_fragment({"owner": "team:other", "nodes": [
+            {"id": "concept:hop-x", "type": "concept", "title": "Other X", "domain": "vinc/hop-x"},
+            {"id": "record:hop-r", "type": "record", "title": "Other R", "domain": "vinc/hop-r"}],
+            "edges": []}, store=self.st)
+        a, b, c = (pkns.key("user:alice", f"concept:hop-{x}") for x in "abc")
+        x = pkns.key("team:other", "concept:hop-x")
+        r = pkns.key("team:other", "record:hop-r")
+        link = ("MATCH (s:Concept), (t:Concept) WHERE s.concept_id=$s AND t.concept_id=$t "
+                "MERGE (s)-[:RELATED_TO]->(t)")
+        self.st.run(link, {"s": a, "t": x})
+        self.st.run(link, {"s": x, "t": b})
+        attach = ("MATCH (s:Record), (t:Concept) WHERE s.record_id=$s AND t.concept_id=$t "
+                  "MERGE (s)-[e:ATTACHES_TO]->(t) SET e.type='derives_from'")
+        self.st.run(attach, {"s": r, "t": a})
+        self.st.run(attach, {"s": r, "t": c})
+        pack = self.pack(seed="concept:hop-a", depth=2)
+        self.assertEqual({n["id"] for n in pack["fragment"]["nodes"]}, {"concept:hop-a"})
+        self.assertEqual(pack["fragment"]["edges"], [])
+        self.assertNotIn("Other", str(pack))

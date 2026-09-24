@@ -106,14 +106,6 @@ def _content_plan(kind: str, *, owner: str, domain: str | None = None,
         params, note="share projection (no preference)")
 
 
-def _records_plan(**scope) -> q.QueryPlan:
-    return _content_plan("record", **scope)
-
-
-def _decisions_plan(**scope) -> q.QueryPlan:
-    return _content_plan("decision", **scope)
-
-
 def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
     """네 종류 사이 저작 관계만, 양 끝 owner를 매 홉에서 검사한다.
 
@@ -137,7 +129,7 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
         arms.append(
             f"MATCH (a:{sl})-[r:{relation}]->(b:{tl}) "
             f"WHERE a.owner_id = $owner AND b.owner_id = $owner "
-            f"AND (a.{sp} IN $ids OR b.{tp} IN $ids) "
+            f"AND a.{sp} IN $ids AND b.{tp} IN $ids "
             f"RETURN a.{sp} AS id, b.{tp} AS target, '{relation}' AS rel, "
             f"{role} AS role, r.evidence AS evidence, r.confidence AS confidence, "
             "r.created AS edge_created")
@@ -171,6 +163,10 @@ def _share_reach_plan(*, owner: str, frontier: dict[str, set[str]]) -> q.QueryPl
         for alias, label in (("a", source), ("b", target)):
             if label == "Bridge":
                 where.append(q._bridge_owner_pred(alias))
+            elif label == "Chunk":
+                # v4 이전 청크는 owner_id 가 ''(레거시 무소유)다. Bridge 와 같은 과도기
+                # 술어라야 구 ego 가 걷던 청크 경로가 끊기지 않는다. 남의 청크는 여전히 막힌다.
+                where.append(f"({alias}.owner_id = $owner OR {alias}.owner_id = '')")
             elif any(col == "owner_id" for col, _ in _NODE_TABLES[label]["cols"]):
                 where.append(f"{alias}.owner_id = $owner")
         arms.append(f"MATCH (a:{source})-[:{relation}]-(b:{target}) "
@@ -185,6 +181,25 @@ def _tag_filter(rows: list[dict], tags: list[str] | None) -> list[dict]:
         return rows
     want = set(tags)
     return [r for r in rows if want & set(r.get("tags") or [])]
+
+
+def _read_props(row: dict, warnings: list[str]) -> dict:
+    """저장된 props JSON 을 dict 로 푼다. 객체가 아니면 props 만 빼고 경고한다.
+
+    행 하나가 팩 전체를 실패시키지 않는다. props 를 안 실으면 수신측은 자기 값을
+    보존하므로(키 부재 = 미지정) 빼는 쪽이 지우는 쪽보다 안전하다."""
+    raw = row.get("props")
+    if not raw:
+        return {}
+    try:
+        props = json.loads(raw)
+    except (TypeError, ValueError):
+        props = None
+    if not isinstance(props, dict):
+        warnings.append(f"stored props of {row['id']} are not a JSON object; "
+                        "exported the node without them")
+        return {}
+    return props
 
 
 def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
@@ -301,13 +316,17 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         return {"executed": False, "note": c_res.get("note", "no reachable store")}
     concepts = _tag_filter(c_res.get("rows", []), tags)
     concept_ids = {c["id"] for c in concepts}
+    # 못 읽는 값(노드의 props · 엣지의 타입)은 팩을 실패시키지 않는다. 그 값만 빠지고
+    # (타입 없는 엣지는 엣지째), 무엇이 빠졌는지는 manifest 의 warnings 에 남는다.
+    warnings: list[str] = []
     selected = {}
-    for kind, builder in (("decision", _decisions_plan), ("record", _records_plan),
-                          ("episode", _episodes_plan)):
+    for kind in ("decision", "record", "episode"):
         if not include_records:
             selected[kind] = []
             continue
-        result = q.execute(builder(owner=owner, domain=domain, ids=ids), cfg, store=store)
+        plan = (_episodes_plan(owner=owner, domain=domain, ids=ids) if kind == "episode"
+                else _content_plan(kind, owner=owner, domain=domain, ids=ids))
+        result = q.execute(plan, cfg, store=store)
         if not result.get("executed"):
             return {"executed": False, "note": result.get("note", "no reachable store")}
         selected[kind] = _tag_filter(result.get("rows", []), tags)
@@ -329,7 +348,11 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             if not tgt or tgt not in id_set or r["id"] not in id_set:
                 continue
             if (not ftype or (relation == "ATTACHES_TO" and ftype not in frag._CC_EDGES)):
-                return {"executed": False, "note": "unsupported stored share relation"}
+                # 타입 없는 ATTACHES_TO 는 병합 경로(query.py)가 실제로 쓴다. 그 엣지
+                # 하나 때문에 팩 전체를 거절하지 않고, 빼고 말한다.
+                warnings.append(f"{relation} {r['id']} -> {tgt} has no exportable "
+                                f"type ({ftype!r}); left out of the pack")
+                continue
             key = (r["id"], ftype, tgt)
             if key in seen:
                 continue
@@ -340,8 +363,10 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             # (ON CREATE SET — 기존 엣지는 안 덮는다).
             if r.get("edge_created"):
                 e["created"] = r["edge_created"]
+            # 값이 있을 때만 싣는다. ALTER 로 열을 얻은 스토어는 빈 엣지도 ''·0.0 을
+            # 돌려주고, 그것을 실으면 수신측의 실제 근거·신뢰도를 덮어 지운다.
             for field in ("evidence", "confidence"):
-                if r.get(field) is not None:
+                if r.get(field):
                     e[field] = r[field]
             edges.append(e)
 
@@ -359,11 +384,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             props["topic"] = c["topic"]
         if c.get("one_liner"):
             props["one_liner"] = c["one_liner"]
-        if c.get("props"):
-            try:
-                props.update(json.loads(c["props"]))
-            except (TypeError, ValueError):
-                pass
+        props.update(_read_props(c, warnings))
         if props:
             n["props"] = props
         nodes.append(n)
@@ -371,16 +392,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         for row in rows:
             node = {"id": row["id"], "type": kind, "title": row.get("title") or "",
                     "domain": row.get("domain") or "", "tags": row.get("tags") or []}
+            # 개념 분기와 같은 규칙: 값이 있을 때만 싣는다. 구 스토어의 열 기본값 ''
+            # 는 "모름"인데, 실으면 임포트가 명시적 지우기로 읽어 수신측 값을 지운다.
             for field in ("created", "content_time", "valid_from", "valid_until", "date", "summary"):
-                if row.get(field) is not None:
+                if row.get(field):
                     node[field] = row[field]
-            if row.get("props"):
-                try:
-                    props = json.loads(row["props"])
-                except (TypeError, ValueError):
-                    return {"executed": False, "note": f"invalid stored props for {row['id']}"}
-                if not isinstance(props, dict):
-                    return {"executed": False, "note": f"invalid stored props for {row['id']}"}
+            props = _read_props(row, warnings)
+            if props:
                 node["props"] = props
             nodes.append(node)
 
@@ -404,14 +422,13 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                        "records": len(selected["episode"]) + len(selected["record"]),
                        "decisions": len(selected["decision"]),
                        "edges": len(edges), "documents": len(documents)},
-            "supported_kinds": ["concept", "episode", "record", "decision"],
-            "selection_note": "Ego traversal retains structural paths; intermediate Bridge, "
-                              "Entity, Domain and Chunk nodes are not exported.",
             "note": "Preference signals are not included — they stay with the origin account.",
         },
         "fragment": {"nodes": nodes, "edges": edges},
         "executed": True,
     }
+    if warnings:
+        pack["manifest"]["warnings"] = warnings
     if documents:
         pack["documents"] = documents
     return pack
