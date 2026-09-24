@@ -3152,10 +3152,18 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 if unread_ids:
                     base["fell_through"] = list(unread_ids)
                 return _brief_material(base, {"id": qid}, got)
-            # 준 id 가 안 열리면 **밝히고** 랭킹으로 간다 — 조용히 다른 노드를
-            # 답하면 직참조가 지키려는 성질(묻는 노드를 답한다)을 스스로 깬다.
             unread_ids.append({"id": qid,
                                "note": got.get("note") or ("node not found: " + qid)})
+        # 질문이 준 id 가 하나도 안 열리면 **없다고 답한다**(status="none" + unreadable).
+        # 랭킹으로 넘어가면 다른 노드가 resolved 로 나오고, 호출부는 그것을 자기가
+        # 물은 노드로 읽는다 — fell_through 한 줄로는 그 대체를 막지 못했다.
+        # 접두 되물림(위 루프)은 여전히 id 경로 안에서의 대체라 그대로 둔다.
+        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+        if unread_ids:
+            base["executed"] = True
+            base["unreadable"] = list(unread_ids)
+            base["note"] = unread_ids[0]["note"]
+            return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical)
         base["executed"] = bool(res.get("executed"))
@@ -3204,8 +3212,6 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     "the topic matched but the question asks for something this graph "
                     "does not hold, so this was not resolved")
         base["status"] = status
-        if unread_ids and status in ("choose", "none"):
-            base["unreadable"] = list(unread_ids)
         if status == "choose":
             base["candidates"] = [{
                 "id": h.get("id") or "",
@@ -3236,9 +3242,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 노드"가 아니라 "열리기만 하는 노드"를 답하게 되고, 그것은 이 도구가 임의
         # 임계값을 거부하며 지키려던 성질을 정반대로 뒤집는다.
         hit = ctx = None
-        # 질문 속 id 가 안 열렸던 사실도 여기 실려 폴스루와 같은 대접을 받는다 —
-        # 최종 답이 나오면 fell_through 로, 전멸이면 unreadable 로.
-        unread: list[dict] = list(unread_ids)
+        unread: list[dict] = []
         for cand in picked[:_BRIEF_FALLTHROUGH]:
             cid = str(cand.get("id") or "")
             if not cid:
