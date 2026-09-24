@@ -392,6 +392,15 @@ export async function refreshLnb(): Promise<void> {
       tree = { executed: true, domains: [], unfiled: [] };
       agentRoster = null;
       failed = false;
+      // 레일 개수는 nav-tree 응답에만 실려 온다. 이 종을 고른 채 새로 열면 그 조회를
+      // 한 번도 안 하므로, 제목 없이 개수만 받는 호출로 채운다(노드 목록을 안 실어 가볍다).
+      // 못 받으면 레일은 지난 값 그대로 둔다.
+      if (!Object.keys(kindCounts).length) {
+        try {
+          const c = await api.navTree(cfg.owner);
+          if (c?.counts?.kinds) kindCounts = c.counts.kinds;
+        } catch { /* 개수만 못 받았다 */ }
+      }
       paintRail();
     } else {
       // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이

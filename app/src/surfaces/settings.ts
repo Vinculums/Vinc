@@ -87,7 +87,7 @@ export async function renderSettings(
           <span class="settings-cat-space"></span>
           <div class="settings-ver hint">Vinc ${esc(buildId)}</div>
         </nav>
-        <div class="settings-main" id="settings-body"></div>
+        <div class="settings-main settings-body" id="settings-body"></div>
       </div>`;
     el.querySelectorAll<HTMLElement>(".settings-cat").forEach((b) =>
       b.addEventListener("click", () => {
