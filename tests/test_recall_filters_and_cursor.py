@@ -61,12 +61,13 @@ class _RecordingBridge(Bridge):
 
 class RecallToolWiring(unittest.TestCase):
     def test_tool_asks_for_pages_and_forwards_the_cursor(self):
+        # 모양이 맞는 커서(v1·off 1)를 준다 — 인자 검사가 모양 틀린 커서를 사이드카 전에 거절한다(#392).
         b = _RecordingBridge()
-        tools.call("vinc_recall", {"tags": ["x", "y"], "cursor": "abc"}, b)
+        tools.call("vinc_recall", {"tags": ["x", "y"], "cursor": "eyJ2IjoxLCJvZmYiOjF9"}, b)
         _, path, params = b.calls[-1]
         self.assertEqual(path, "/recall")
         self.assertEqual(params["page"], "true")
-        self.assertEqual(params["cursor"], "abc")
+        self.assertEqual(params["cursor"], "eyJ2IjoxLCJvZmYiOjF9")
         self.assertEqual(params["tags"], "x,y")
 
     def test_schema_and_description_name_the_cursor(self):
