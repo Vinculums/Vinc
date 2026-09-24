@@ -27,6 +27,8 @@
 """
 from __future__ import annotations
 
+from store import pkns
+
 SEP = "/"
 
 #: 전이 질의의 깊이 상한. 무한 확장(`*`)은 순환이 생기면 안 끝나고, 계층은
@@ -245,19 +247,25 @@ def drift(store, *, owner: str | None = None) -> list[dict]:
         where = "WHERE n.owner_id = $owner" if owner else ""
         params: dict = {"owner": owner} if owner else {}
         cols = store.run(f"MATCH (n:{label}) {where} "
-                         f"RETURN n.{pk} AS id, n.domain AS domain", params) or []
+                         f"RETURN n.{pk} AS id, n.owner_id AS owner, n.domain AS domain",
+                         params) or []
         edges = store.run(f"MATCH (n:{label})-[:IN_DOMAIN]->(d:Domain) {where} "
-                          f"RETURN n.{pk} AS id, d.name AS d", params) or []
-        have: dict[str, list[str]] = {}
+                          f"RETURN n.{pk} AS id, n.owner_id AS owner, d.name AS d",
+                          params) or []
+        # 논리 id 는 owner 사이에서 겹칠 수 있다(무스코프 호출) — (owner, id) 로 묶는다.
+        have: dict[tuple, list[str]] = {}
         for e in edges:
-            have.setdefault(e.get("id"), []).append(e.get("d") or "")
+            have.setdefault((e.get("owner"), e.get("id")), []).append(e.get("d") or "")
         for r in cols:
             want = normalize(r.get("domain"))
-            got = sorted(have.get(r.get("id"), []))
+            got = sorted(have.get((r.get("owner"), r.get("id")), []))
             if got == ([want] if want else []):
                 continue
             kind = "stray" if not want else ("missing" if not got else "stale")
-            out.append({"label": label, "key": r.get("id"),
+            # 읽기 경계가 물리 키를 논리 id 로 벗기므로(`pkns.strip_deep`) owner 로 다시
+            # 합성해야 :func:`link_node` 의 PK 바인딩과 맞는다. 꺼진 스토어에선 항등.
+            key = pkns.key(r.get("owner") or "", r.get("id"))
+            out.append({"label": label, "key": key,
                         "column": r.get("domain") or "", "domain": want,
                         "edges": got, "kind": kind})
     return out
