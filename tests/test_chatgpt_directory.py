@@ -63,8 +63,11 @@ def test_hub_lists_search_and_fetch_desktop_does_not():
 
 
 def test_search_maps_rows_and_nodes_to_citable_results():
+    # 제목은 문서 메타(doc_title)다 — 발췌 첫 줄이 아니다(감사 §5 #19: "```mermaid …"
+    # 와 "--- doc_id: …" 가 인용 제목으로 나갔다).
     payload = {
-        "rows": [{"doc_id": "vinc.plan.x", "snippet": "Listing the Vinc MCP server\nmore"},
+        "rows": [{"doc_id": "vinc.plan.x", "doc_title": "Listing plan",
+                  "snippet": "```mermaid flowchart TB\nmore"},
                  {"doc_id": "vinc.plan.x", "snippet": "duplicate"},
                  {"doc_id": "", "snippet": "no id"}],
         "node_hits": [{"id": "concept:vinc-mcp", "title": "Vinc MCP server"}],
@@ -72,9 +75,49 @@ def test_search_maps_rows_and_nodes_to_citable_results():
     out = tools.call("search", {"query": "chatgpt"}, _StubBridge(payload),
                      allow_target=False)
     assert [r["id"] for r in out["results"]] == ["doc:vinc.plan.x", "concept:vinc-mcp"]
-    assert out["results"][0]["title"] == "Listing the Vinc MCP server"
+    assert out["results"][0]["title"] == "Listing plan"
+    assert out["results"][1]["title"] == "Vinc MCP server"
     assert out["results"][0]["url"] == "https://vincs.io/#view/doc/vinc.plan.x"
     assert out["results"][1]["url"] == "https://vincs.io/#view/trace/concept:vinc-mcp"
+
+
+def test_search_without_a_doc_title_falls_back_to_the_id_not_the_snippet():
+    payload = {"rows": [{"doc_id": "vinc.canon.mcp-contract",
+                         "snippet": "--- doc_id: vinc.canon.mcp-contract layer: canon"}],
+               "node_hits": []}
+    out = tools.call("search", {"query": "MCP contract"}, _StubBridge(payload),
+                     allow_target=False)
+    assert out["results"][0]["title"] == "vinc.canon.mcp-contract"
+
+
+@pytest.mark.parametrize("limit", [1, 3, 20])
+def test_search_limit_counts_documents_and_nodes_together(limit):
+    # 감사 재현: limit 20 이 문서 20 + 노드 14 = 34 건이 됐다.
+    rows = [{"doc_id": f"d{i}", "doc_title": f"D{i}", "snippet": "s"} for i in range(20)]
+    hits = [{"id": f"concept:c{i}", "title": f"C{i}"} for i in range(14)]
+    b = _StubBridge({"rows": rows, "node_hits": hits})
+    out = tools.call("search", {"query": "x", "limit": limit}, b, allow_target=False)
+    assert len(out["results"]) == limit
+    assert b.calls[0][2]["top_k"] == limit
+    if limit >= 2:
+        # 번갈아 채운다 — 한쪽이 상한을 다 먹어 다른 쪽이 통째로 빠지지 않는다.
+        assert [r["id"] for r in out["results"][:2]] == ["doc:d0", "concept:c0"]
+
+
+def test_search_never_emits_ids_fetch_cannot_open():
+    # fetch 는 노드를 brief 로 여는데 brief 는 domain:·bridge: 를 못 연다(P1).
+    hits = [{"id": "domain:vinc/engineering", "title": "engineering"},
+            {"id": "bridge:x", "title": "Bridge"},
+            {"id": "record:r", "title": "R"},
+            {"id": "decision:d", "title": "D"},
+            {"id": "episode:e", "title": "E"},
+            {"id": "concept:c", "title": "C"}]
+    out = tools.call("search", {"query": "x"}, _StubBridge({"rows": [], "node_hits": hits}),
+                     allow_target=False)
+    ids = [r["id"] for r in out["results"]]
+    assert ids == ["record:r", "decision:d", "episode:e", "concept:c"]
+    for r in out["results"]:
+        assert set(r) == {"id", "title", "url"}
 
 
 def test_fetch_reads_a_document_and_a_node():

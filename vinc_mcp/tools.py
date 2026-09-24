@@ -481,12 +481,23 @@ def _cite_url(kind: str, ident: str) -> str:
 
 
 def _t_host_search(args, bridge):
-    raw = _t_search({"query": args["query"], "limit": args.get("limit", 20),
+    # 감사 §5 #19 의 세 가지를 여기서 닫는다.
+    #  ① 제목은 문서 메타(`doc_title`, 사이드카가 단다)다. 발췌 첫 줄을 제목으로 쓰면
+    #    "```mermaid …"·"--- doc_id: …" 가 인용 제목으로 나갔다. 구 사이드카처럼
+    #    제목이 없으면 doc_id 로 대신한다 — 본문 조각을 제목으로 꾸미지 않는다.
+    #  ② `limit` 은 문서와 노드를 **합친** 수다. 여태 양쪽에 따로 걸려 20 이 34 가 됐다.
+    #    둘을 번갈아 채워, 한쪽이 상한을 다 먹어 다른 쪽이 통째로 빠지지 않게 한다.
+    #  ③ fetch 가 못 여는 id 는 내지 않는다. fetch 는 brief 로 노드를 여는데 brief 는
+    #    domain:·bridge: 를 못 연다 — 검색이 내고 fetch 가 NotFound 로 답하면 인용이 깨진다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S12, §5 P8
+    fetchable = ("concept:", "record:", "decision:", "episode:")
+    limit = int(args.get("limit", 20))
+    raw = _t_search({"query": args["query"], "limit": limit,
                      "owner": args.get("owner")}, bridge)
     if not isinstance(raw, dict):
         return {"results": []}
-    results: list[dict] = []
     seen: set[str] = set()
+    docs: list[dict] = []
     for row in raw.get("rows") or []:
         if not isinstance(row, dict):
             continue
@@ -494,20 +505,23 @@ def _t_host_search(args, bridge):
         if not doc_id or doc_id in seen:
             continue
         seen.add(doc_id)
-        snippet = str(row.get("snippet") or "").strip().splitlines()
-        title = snippet[0][:160] if snippet else doc_id
-        results.append({"id": f"doc:{doc_id}", "title": title,
-                        "url": _cite_url("doc", doc_id)})
+        title = str(row.get("doc_title") or "").strip()[:160] or doc_id
+        docs.append({"id": f"doc:{doc_id}", "title": title,
+                     "url": _cite_url("doc", doc_id)})
+    nodes: list[dict] = []
     for hit in raw.get("node_hits") or []:
         if not isinstance(hit, dict):
             continue
         nid = str(hit.get("id") or "").strip()
-        if not nid or nid in seen:
+        if not nid.startswith(fetchable) or nid in seen:
             continue
         seen.add(nid)
         title = str(hit.get("title") or nid).strip() or nid
-        results.append({"id": nid, "title": title, "url": _cite_url("node", nid)})
-    return {"results": results}
+        nodes.append({"id": nid, "title": title, "url": _cite_url("node", nid)})
+    results: list[dict] = []
+    for i in range(max(len(docs), len(nodes))):
+        results += docs[i:i + 1] + nodes[i:i + 1]
+    return {"results": results[:limit]}
 
 
 class NotFound(Exception):
@@ -580,6 +594,10 @@ TOOLS: list[dict] = [
                        "`total_count`, `has_more` and `next_cursor` describe the result window; "
                        "pass `cursor` to continue where the last page ended (an invalid or "
                        "expired cursor errors explicitly instead of restarting from page one). "
+                       "The cursor pages `rows` only: `node_hits` come on the first page, and a "
+                       "continuation page carries an empty list with `node_hits_omitted`. "
+                       "`total_count_capped:true` means the candidate pool hit its ceiling, so "
+                       "`total_count` is a lower bound, not the whole match count. "
                        "Call this before vinc_ingest to find existing node ids to reuse. If the "
                        "backend search fails, a top-level `error` string says why (e.g. "
                        "index_missing vs extension_unavailable) instead of silently returning "
@@ -1269,7 +1287,8 @@ HOST_TOOLS: list[dict] = [
     {
         "name": "search",
         "description": "Search the signed-in Vinc graph for documents and nodes. "
-                       "Returns {results:[{id, title, url}]}. Use fetch with a "
+                       "Returns {results:[{id, title, url}]}, at most `limit` in "
+                       "total across documents and nodes. Use fetch with a "
                        "result id to read the full text. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
