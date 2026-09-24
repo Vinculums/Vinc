@@ -53,8 +53,16 @@ REQUIRED: dict[str, str] = {
 
 # 있어야 정책이 맞는 것들(없어도 기동은 한다) — 경고만.
 EXPECTED: dict[str, str] = {
-    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 '하루 2,000회'로 안내 중",
-    "VINC_FREE_MAX_DOMAINS": "없으면 무료 주제 상한이 꺼진다 — AP-1 의 유일한 무료/유료 차별축",
+    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 Free 2,000 · Team 6,000 으로 안내 중",
+    "VINC_OPENAI_APPS_CHALLENGE": "ChatGPT 디렉터리 도메인 검증 토큰. 없으면 "
+                                 "/.well-known/openai-apps-challenge 가 404",
+}
+
+# 있으면 **안 되는** 것들 — 정책이 코드로 옮겨가 env 가 남으면 혼동만 남긴다.
+RETIRED: dict[str, str] = {
+    "VINC_FREE_MAX_DOMAINS": "무료 주제 상한은 2026-09-19 에 폐지됐다. 값이 남아 있어도 "
+                             "코드가 안 읽으니 지울 것(api/cli.py 가 None 고정)",
+    "VINC_PRO_DAILY_LIMIT": "Pro 등급 폐지. 지금 키는 VINC_TEAM_DAILY_LIMIT(기본 6000)",
 }
 
 # 값까지 보는 항목(2026-08-03). 위 규율("존재만 본다")의 의도적 예외다 — 이건
@@ -197,6 +205,11 @@ def check(env_list: list[dict]) -> int:
 
     for k in warn:
         print(f"::warning::허브 env 권고값 없음: {k} — {EXPECTED[k]}")
+
+    # 폐기된 키가 아직 붙어 있으면 말한다. 경고로 두는 이유: 코드가 읽지 않으므로
+    # 배포를 막을 고장은 아니고, 막으면 정리 전까지 배포가 통째로 선다.
+    for k in (k for k in RETIRED if k in have):
+        print(f"::warning::허브 env 폐기값 잔존: {k} — {RETIRED[k]}")
 
     bad_paths = (_check_state_dir(env_list) + _check_data_dir(env_list)
                  + _check_plaintext_and_hosts(env_list)

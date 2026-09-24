@@ -62,8 +62,12 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "plan1Tagline": None,
         "plan1Item1": "fFree1", "plan1Item2": "fFree2", "plan1Item3": "fFree3", "plan1Item4": "fFree4",
         "plan1Cta": "ctaFree",
-        "plan2Name": "tPro", "plan2Badge": "tagPro", "plan2Period": "perYear", "plan2Tagline": "trialOn",
-        "plan2Item1": "fPro1", "plan2Item2": "fPro2", "plan2Item3": "fPro3", "plan2Cta": "ctaPro",
+        # Pro 는 2026-09-19 에 없어졌다(Vinc#365 · Vinc-homepage#168). 그 카드만 쓰던 일곱 줄은
+        # Figma 에서도 지웠으므로 대응표에서도 뺀다 — 여기 남겨 두면 `--check` 가 영원히
+        # "라이브에서 사라졌다"로 붉다.
+        # 체험 배너만은 살아남았는데, 그것은 애초에 Pro 카드의 태그라인이 아니라 **페이지
+        # 레벨 배너**였다. 이름이 거짓이 되므로 Figma 변수와 함께 trialBanner 로 옮겼다.
+        "trialBanner": "trialOn",
         "plan3Name": "tTeam", "plan3Period": "perSeatYear", "plan3Tagline": "perTeam",
         "plan3Item1": "fTeam1", "plan3Item2": "fTeam2", "plan3Item3": "fTeam3", "plan3Item4": "fTeam4",
         "plan3Cta": "ctaTeam",

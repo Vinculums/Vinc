@@ -279,7 +279,8 @@ class HTTPTransportTests(_HTTPFixture):
         code, obj = self._post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                                token=self.static)
         self.assertEqual(code, 200)
-        self.assertEqual({t["name"] for t in obj["result"]["tools"]}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in obj["result"]["tools"]},
+                         D11_TOOLS | {t["name"] for t in tools.HOST_TOOLS})
 
     def test_notification_gets_202(self):
         req = urllib.request.Request(
@@ -415,6 +416,60 @@ class OAuthFlowTests(_HTTPFixture):
     def setUp(self):
         self.oauth = OAuthGate("http://issuer.test", admin_key="adminkey")
         super().setUp()
+
+    def test_rebind_needs_the_admin_key(self):
+        """client_id 지정 재등록은 관리 키에서만 먹는다(심사중 플랫폼 구제용)."""
+        _, first = self._post("/register", {"redirect_uris": ["http://127.0.0.1:7777/cb"]})
+        cid = first["client_id"]
+        # 키 없이 같은 client_id 를 요구하면 무시되고 새 id 가 나온다
+        _, anon = self._post("/register", {"client_id": cid,
+                                           "redirect_uris": ["http://127.0.0.1:7777/new"]})
+        self.assertNotEqual(anon["client_id"], cid)
+        self.assertEqual(self.oauth.store.get_client(cid)["redirect_uris"],
+                         ["http://127.0.0.1:7777/cb"])
+        # 키가 맞으면 같은 id 에 redirect 가 갈린다
+        _, admin = self._post("/register?key=adminkey",
+                              {"client_id": cid,
+                               "redirect_uris": ["http://127.0.0.1:7777/new"]})
+        self.assertEqual(admin["client_id"], cid)
+        self.assertEqual(self.oauth.store.get_client(cid)["redirect_uris"],
+                         ["http://127.0.0.1:7777/new"])
+
+    def test_client_id_may_arrive_in_the_basic_header(self):
+        """client_secret 을 쥔 클라이언트는 client_id 를 본문이 아니라 헤더로 보낸다.
+
+        PlayMCP(카카오)가 그랬고, 본문만 보던 교환은 `client_id mismatch` 였다.
+        """
+        _, reg = self._post("/register", {"redirect_uris": ["http://127.0.0.1:7777/cb"]})
+        verifier = "v" * 48
+        q = urllib.parse.urlencode({
+            "client_id": reg["client_id"], "redirect_uri": reg["redirect_uris"][0],
+            "response_type": "code", "code_challenge": _s256(verifier),
+            "code_challenge_method": "S256", "key": "adminkey"})
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            resp = opener.open(self.base + "/authorize?" + q, timeout=5)
+            location = resp.headers.get("Location")
+        except urllib.error.HTTPError as e:
+            location = e.headers.get("Location")
+        code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)["code"][0]
+
+        body = urllib.parse.urlencode({
+            "grant_type": "authorization_code", "code": code,
+            "redirect_uri": reg["redirect_uris"][0],
+            "code_verifier": verifier}).encode()          # client_id 를 일부러 뺀다
+        creds = base64.b64encode(
+            (reg["client_id"] + ":none").encode()).decode()
+        req = urllib.request.Request(self.base + "/token", data=body, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        req.add_header("Authorization", "Basic " + creds)
+        with urllib.request.urlopen(req, timeout=5) as r:
+            self.assertEqual(r.status, 200)
+            self.assertIn("access_token", json.loads(r.read()))
 
     def _full_flow(self, key="adminkey"):
         _, reg = self._post("/register", {"redirect_uris": ["http://127.0.0.1:7777/cb"],

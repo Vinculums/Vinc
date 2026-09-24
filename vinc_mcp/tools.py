@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from typing import Callable
 
 from .bridge import Bridge
@@ -429,6 +430,85 @@ def _t_brief(args, bridge):
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None})
+
+
+#: ChatGPT deep research / company knowledge 는 이름이 정확히 `search`·`fetch` 인
+#: 읽기 쌍만 조회한다. 허브 프로파일에만 노출하고, 구현은 vinc_search / vinc_doc_get
+#: (노드는 vinc_brief) 의 얇은 별칭이다.
+#: 근거: [[vinc.canon.mcp-contract]]
+_CITE_ORIGIN = (os.environ.get("VINC_CITE_ORIGIN") or "https://vincs.io").rstrip("/")
+_NODE_PREFIXES = ("concept:", "record:", "decision:", "episode:", "domain:", "bridge:")
+
+
+def _cite_url(kind: str, ident: str) -> str:
+    """인용용 URL. 비어 있으면 ChatGPT 가 출처로 만들지 않는다."""
+    if kind == "doc":
+        return f"{_CITE_ORIGIN}/#view/doc/{ident}"
+    return f"{_CITE_ORIGIN}/#view/trace/{ident}"
+
+
+def _t_host_search(args, bridge):
+    raw = _t_search({"query": args["query"], "limit": args.get("limit", 20),
+                     "owner": args.get("owner")}, bridge)
+    if not isinstance(raw, dict):
+        return {"results": []}
+    results: list[dict] = []
+    seen: set[str] = set()
+    for row in raw.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        doc_id = str(row.get("doc_id") or "").strip()
+        if not doc_id or doc_id in seen:
+            continue
+        seen.add(doc_id)
+        snippet = str(row.get("snippet") or "").strip().splitlines()
+        title = snippet[0][:160] if snippet else doc_id
+        results.append({"id": f"doc:{doc_id}", "title": title,
+                        "url": _cite_url("doc", doc_id)})
+    for hit in raw.get("node_hits") or []:
+        if not isinstance(hit, dict):
+            continue
+        nid = str(hit.get("id") or "").strip()
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        title = str(hit.get("title") or nid).strip() or nid
+        results.append({"id": nid, "title": title, "url": _cite_url("node", nid)})
+    return {"results": results}
+
+
+def _t_host_fetch(args, bridge):
+    ident = str(args.get("id") or "").strip()
+    if ident.startswith("doc:"):
+        doc_id = ident[4:]
+        raw = _t_doc_get({"doc_id": doc_id, "owner": args.get("owner")}, bridge)
+        if not isinstance(raw, dict):
+            raw = {}
+        title = str(raw.get("title") or doc_id)
+        return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
+                "url": _cite_url("doc", doc_id),
+                "metadata": {"kind": "document", "verified": raw.get("verified")}}
+    if ident.startswith(_NODE_PREFIXES):
+        raw = _t_brief({"query": ident, "owner": args.get("owner")}, bridge)
+        if not isinstance(raw, dict):
+            raw = {}
+        node = raw.get("node") if isinstance(raw.get("node"), dict) else {}
+        title = str(node.get("title") or ident)
+        parts = [str(raw.get("one_liner") or "").strip()]
+        for ex in raw.get("excerpts") or []:
+            if isinstance(ex, dict) and ex.get("excerpt"):
+                parts.append(str(ex["excerpt"]))
+        return {"id": ident, "title": title, "text": "\n\n".join(p for p in parts if p),
+                "url": _cite_url("node", ident),
+                "metadata": {"kind": node.get("kind") or "node",
+                             "status": raw.get("status")}}
+    raw = _t_doc_get({"doc_id": ident, "owner": args.get("owner")}, bridge)
+    if not isinstance(raw, dict):
+        raw = {}
+    title = str(raw.get("title") or ident)
+    return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
+            "url": _cite_url("doc", ident),
+            "metadata": {"kind": "document", "verified": raw.get("verified")}}
 
 
 TOOLS: list[dict] = [
@@ -1114,7 +1194,43 @@ TOOLS: list[dict] = [
     },
 ]
 
-_BY_NAME = {t["name"]: t for t in TOOLS}
+HOST_TOOLS: list[dict] = [
+    {
+        "name": "search",
+        "description": "Search the signed-in Vinc graph for documents and nodes. "
+                       "Returns {results:[{id, title, url}]}. Use fetch with a "
+                       "result id to read the full text. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50},
+        }, "required": ["query"]},
+        "outputSchema": {"type": "object", "properties": {
+            "results": {"type": "array", "items": {"type": "object", "properties": {
+                "id": {"type": "string"}, "title": {"type": "string"},
+                "url": {"type": "string"},
+            }, "required": ["id", "title", "url"]}},
+        }, "required": ["results"]},
+        "run": _t_host_search,
+    },
+    {
+        "name": "fetch",
+        "description": "Fetch the full text of a search result by id. "
+                       "Document ids start with doc:, node ids keep their "
+                       "type prefix (concept:, record:, …). Returns "
+                       "{id, title, text, url, metadata}. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "id": {"type": "string"},
+        }, "required": ["id"]},
+        "outputSchema": {"type": "object", "properties": {
+            "id": {"type": "string"}, "title": {"type": "string"},
+            "text": {"type": "string"}, "url": {"type": "string"},
+            "metadata": {"type": "object"},
+        }, "required": ["id", "title", "text", "url"]},
+        "run": _t_host_fetch,
+    },
+]
+
+_BY_NAME = {t["name"]: t for t in TOOLS + HOST_TOOLS}
 
 # ── 도구 안전 주석 (MCP annotations) ─────────────────────────────────────────
 # 원격 디렉토리 제출 요건이라 누락하면 거부된다. 호스트가 이걸로 확인 프롬프트를 정한다.
@@ -1170,7 +1286,23 @@ _ANNOTATIONS: dict[str, dict] = {
                          "destructiveHint": False, "idempotentHint": True},
     "vinc_doc_delete": {"title": "Delete a document (irreversible)", "readOnlyHint": False,
                         "destructiveHint": True, "idempotentHint": True},
+    "search": {"title": "Search (ChatGPT)", "readOnlyHint": True},
+    "fetch": {"title": "Fetch (ChatGPT)", "readOnlyHint": True},
 }
+
+
+def _directory_annotations(ann: dict) -> dict:
+    """디렉터리 스캔이 요구하는 세 힌트를 빠짐없이 채운다.
+
+    ChatGPT 제출은 도구마다 readOnlyHint·openWorldHint·destructiveHint 를
+    명시해야 한다. 그래프는 닫힌 계정 공간이므로 openWorld 는 전부 false.
+    읽기 도구의 destructiveHint 기본을 false 로 고정한다(스펙 기본은 true).
+    """
+    out = dict(ann)
+    out.setdefault("openWorldHint", False)
+    if "destructiveHint" not in out:
+        out["destructiveHint"] = False if out.get("readOnlyHint") else True
+    return out
 
 # A1.9 A2 — 데스크탑 커넥터 1개 통합: 모든 도구가 target 으로 로컬/원격을 고른다.
 # 원본 스키마는 깨끗이 두고 specs() 에서 주입한다(9개 스키마 반복 편집 회피).
@@ -1216,7 +1348,7 @@ def specs(*, allow_target: bool = True) -> list[dict]:
     자신 밖으로 아웃바운드를 시도한다 — 서버가 스스로에게 클라이언트가 되는,
     의도한 적 없는 경로다. 허브(`vinc_mcp.http_server`)는 False 로 부른다."""
     out = []
-    for t in TOOLS:
+    for t in (TOOLS if allow_target else TOOLS + HOST_TOOLS):
         sch = t["inputSchema"]
         props = {**sch.get("properties", {})}
         # `space` 는 **양쪽 프로파일에** 싣는다. 허브에서는 주소 대신 스페이스를 고르는
@@ -1232,9 +1364,11 @@ def specs(*, allow_target: bool = True) -> list[dict]:
             props.update(_SPACE_PROP)
         spec = {"name": t["name"], "description": t["description"],
                 "inputSchema": {**sch, "properties": props}}
+        if t.get("outputSchema"):
+            spec["outputSchema"] = t["outputSchema"]
         ann = _ANNOTATIONS.get(t["name"])
         if ann:
-            spec["annotations"] = dict(ann)
+            spec["annotations"] = _directory_annotations(ann)
         out.append(spec)
     return out
 

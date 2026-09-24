@@ -174,6 +174,27 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
   pane.querySelector("#tl-space")?.addEventListener("change", (e) =>
     void renderShare(pane, sheet, (e.target as HTMLSelectElement).value));
 
+  // 드롭다운에서 주제를 고르는 것이 곧 `주제로` 를 고르는 것이다.
+  //
+  // 라디오와 같은 `<label>` 안에 있어도 저절로 켜지지 않는다: 브라우저는 라벨 안의 **다른
+  // 조작 요소**로 간 클릭을 라벨의 대상에 넘기지 않는다(실측 — select 를 클릭한 뒤
+  // `input[name=tl-scope]:checked` 는 여전히 `all` 이었고, 라벨의 글자를 클릭했을 때만
+  // `topic` 이 됐다). 그래서 주제를 골라 보낸 사람의 요청에는 `domain` 이 실리지 않았고,
+  // 그래프 **전체**가 나갔다. 화면은 고른 것을 보여주고 있으므로 보내기 전에 알 길이 없다.
+  //
+  // click 과 change 를 **둘 다** 듣는다: change 는 이미 첫 항목이 골라져 있을 때 안 뜨고
+  // (드롭다운을 열어 그 항목을 그대로 고르면 값이 안 바뀐다), click 은 키보드로 고를 때
+  // 안 뜬다. 상한이 없는 쪽으로 틀리는 편이 낫다 — 잘못 켜지면 고른 주제가 나가고,
+  // 안 켜지면 전부가 나간다.
+  // 근거: [[record:choosing-a-topic-in-the-share-picker-did-not-arm-its-own-radio-2026-09-20]]
+  const topicSel = pane.querySelector("#tl-topic");
+  const armTopic = () => {
+    const r = pane.querySelector<HTMLInputElement>('input[name=tl-scope][value=topic]');
+    if (r) r.checked = true;
+  };
+  topicSel?.addEventListener("click", armTopic);
+  topicSel?.addEventListener("change", armTopic);
+
   // 전체 백업 — 내 전체 컨텍스트 팩(/activate, 이관용). 구 Packs 하단의 보조 링크가
   // 그대로 왔다. 범위를 고르는 일이 아니라 통째로 내보내는 일이라, 발의 주 액션이
   // 아니라 본문 아래 링크로 둔다(그 화면에서도 같은 이유로 같은 자리였다).

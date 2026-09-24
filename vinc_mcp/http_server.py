@@ -10,6 +10,7 @@
   DELETE /mcp                            세션 종료(선택 — 보내는 호스트만)
   GET  /.well-known/oauth-protected-resource     RFC 9728
   GET  /.well-known/oauth-authorization-server   RFC 8414
+  GET  /.well-known/openai-apps-challenge        ChatGPT 디렉터리 도메인 검증
   POST /register    동적 클라이언트 등록
   GET  /authorize   인가(관리 키 + PKCE) → 302 code
   POST /token       코드/리프레시 → bearer
@@ -125,6 +126,15 @@ _ADMIN_OPS = frozenset({
     "delete", "delete-edge", "merge-nodes", "doc-delete", "domain-rename",
 })
 _TEAM_ROLES = ("viewer", "editor", "admin")
+
+#: 팀 그래프에서 일하면 등급은 **Team** 이다 — 사람이 아니라 **공간**이 등급을 정한다.
+#: 전에는 팀 주소로 들어와도 계정이 준 개인 등급이 그대로 쓰였고, 그래서 와이어 값
+#: `team` 을 실제로 내는 곳이 **한 군데도 없었다**. 두 등급의 한도가 같던 동안에는
+#: 아무 증상이 없었지만(Free·Pro 둘 다 2,000), Team 이 6,000 이 되는 순간 그것은
+#: "팀이 팀 한도를 못 받는다"가 된다. 소유자가 이미 `team:` 으로 확인된 자리라
+#: 여기서 단정해도 틀릴 수 없다. 카운터도 owner 단위라 6,000 은 **팀이 나눠 쓴다**.
+#: 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+_TEAM_PLAN = "team"
 
 
 def _role_allows(role: str, op: str) -> bool:
@@ -379,23 +389,23 @@ class MCPHTTPApp:
         if owner in cfg.get("exempt_owners", ()):
             return None                              # 면제 owner — 도그푸딩 계정
         paid = plan in entitlement.PAID_PLANS
-        limit = cfg["pro_limit"] if paid else cfg["free_limit"]
+        limit = cfg["team_limit"] if paid else cfg["free_limit"]
         r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
                                    lock_s=cfg["lock_s"])
         if r["allowed"]:
             return None
         secs = r["retry_after_s"]
         hh, mm = secs // 3600, (secs % 3600) // 60
-        tier = {"pro": "Pro", "team": "Team"}.get(plan or "", "Free")
-        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. AP-1 이후
-        # 무료 한도가 Pro 와 같아지므로(차별축이 주제 개수로 옮겨갔다), 같은 값에서
-        # "더 높은 한도로 업그레이드"는 거짓말이 된다. 그때는 주제 무제한을 근거로 든다.
-        if paid:
+        tier = "Team" if plan == "team" else "Free"
+        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. 2026-09-19 에
+        # 차별축이 다시 호출 횟수가 되어(Free 2,000 · Team 6,000) 대개 다르지만, 두
+        # 값을 같게 설정한 배포에서는 "더 높은 한도"가 거짓말이 되므로 입을 다문다.
+        # 그때 댈 다른 근거도 없다 — 주제 상한이 사라져 Free 와 Team 이 개인 기능에서
+        # 같아졌기 때문이다.
+        if paid or cfg["free_limit"] >= cfg["team_limit"]:
             upsell = ""
-        elif cfg["free_limit"] < cfg["pro_limit"]:
-            upsell = " Upgrade for a higher limit: https://vincs.io/account"
         else:
-            upsell = " Pro removes the topic limit: https://vincs.io/account"
+            upsell = " A team raises the limit: https://vincs.io/pricing"
         text = (f"{tier} tier limit reached ({limit} tool calls per "
                 f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
                 + upsell)
@@ -416,7 +426,8 @@ class MCPHTTPApp:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
         return self._dispatcher
 
-    def resolve_auth(self, header: str | None, space: str | None = None) -> dict:
+    def resolve_auth(self, header: str | None, space: str | None = None,
+                     *, presented_at: str = "/mcp") -> dict:
         """Bearer 를 해석해 {ok, owner, plan, scope, source[, role, member]}. 스탬핑의 출처.
 
         `scope`(W18, [[decision:scoped-key-tier]]): 'full' 정확일치만 쓰기를 연다.
@@ -464,7 +475,7 @@ class MCPHTTPApp:
                 ent = self.verify_key(tok, space)
                 if not ent or not str(ent.get("owner") or "").startswith("team:"):
                     return miss
-                return {"ok": True, "owner": ent["owner"], "plan": ent.get("plan"),
+                return {"ok": True, "owner": ent["owner"], "plan": _TEAM_PLAN,
                         "scope": ent.get("scope") or "read",
                         "source": "apikey", "role": ent.get("role"),
                         "member": ent.get("member")}
@@ -478,6 +489,8 @@ class MCPHTTPApp:
             owner = (rec or {}).get("owner") or ""
             if not owner.startswith("user:"):
                 return miss
+            if not self._resource_ok(rec, presented_at):
+                return miss
             mem = self.verify_member(owner.split(":", 1)[1], space)
             if not mem or not str(mem.get("owner") or "").startswith("team:"):
                 return miss
@@ -487,8 +500,7 @@ class MCPHTTPApp:
             # scope 가 'full' 인 것은 OAuth 가 스코프 개념 이전의 신원이라서다(개인
             # 경로와 같다). 팀에서 무엇을 할 수 있는지는 scope 가 아니라 **role** 이
             # 정한다 — 그 게이트는 do_POST 에 있다.
-            return {"ok": True, "owner": mem["owner"],
-                    "plan": self._fresh_plan(owner, (rec or {}).get("plan")),
+            return {"ok": True, "owner": mem["owner"], "plan": _TEAM_PLAN,
                     "scope": "full", "source": "oauth", "role": mem["role"],
                     "member": mem.get("member")}
         token = header[len("Bearer "):].strip()
@@ -506,11 +518,35 @@ class MCPHTTPApp:
         if self.oauth is not None:
             rec = self.oauth.resolve(token)
             if rec:
+                if not self._resource_ok(rec, presented_at):
+                    return miss
                 owner = rec.get("owner")
                 return {"ok": True, "owner": owner,
                         "plan": self._fresh_plan(owner, rec.get("plan")),
                         "scope": "full", "source": "oauth"}
         return miss
+
+    def _resource_ok(self, rec: dict, presented_at: str) -> bool:
+        """RFC 8707 audience — 토큰은 **자기가 발급된 끝점에 제시**돼야 한다.
+
+        ⚠ 여기서 보는 것은 요청이 **도착한 주소**지 `space` 인자가 아니다. 2026-09-22 에
+        그 둘을 섞어서, 개인 주소(`/mcp`)로 붙은 커넥터가 `space` 인자로 팀을 고르면
+        기대값이 `/t/<uuid>/mcp` 로 잡혀 **모든 팀 호출이 "no such space" 로 떨어졌다**.
+        증상이 고약했던 것은 `vinc_whoami` 가 계정에 묻는 다른 경로라 팀 목록을 계속
+        보여 줬다는 점이다 — 목록에는 있는데 접근만 안 되니, 스페이스가 사라진 것처럼
+        읽힌다. 정적 키는 이 분기를 안 지나서 멀쩡했고, 그 대비가 원인을 갈랐다.
+
+        스페이스는 주소가 아니라 **인자**다
+        ([[decision:the-space-is-an-argument-and-the-default-is-personal]]). 그러니
+        개인 주소로 발급된 토큰이 팀을 고르는 것은 정상이고, 그때 검사해야 하는 것은
+        "이 토큰이 이 끝점에 와도 되는가" 하나뿐이다. 멤버십은 그 다음에 `verify_member`
+        가 계정에 따로 묻는다 — 이 검사는 그 자리를 대신하지 않는다.
+
+        빈 `resource` 는 통과한다. 구 커넥터는 이 파라미터를 안 보내고, 없는 것을
+        불일치로 읽으면 이미 연결된 것들이 전부 끊긴다.
+        """
+        bound = (rec.get("resource") or "").strip()
+        return not bound or bound == self.oauth.issuer + presented_at
 
     def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
         """OAuth 토큰에 **동결된** 등급을 주기적으로 계정에 되묻는다.
@@ -877,6 +913,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _plain(self, code: int, text: str, headers: dict | None = None) -> None:
+        """text/plain 본문. 디렉터리 도메인 검증은 JSON 을 거절한다."""
+        raw = text.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(raw)))
+        for k, v in self._cors_headers().items():
+            self.send_header(k, v)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(raw)
+
     def _redirect(self, location: str) -> None:
         self.send_response(302)
         self.send_header("Location", location)
@@ -906,6 +955,28 @@ class _Handler(BaseHTTPRequestHandler):
             return self.app.oauth.issuer
         host = self.headers.get("Host") or "127.0.0.1"
         return f"http://{host}"
+
+    def _basic_client_id(self) -> str:
+        """`Authorization: Basic` 에 실려 온 client_id(RFC 6749 §2.3.1).
+
+        client_secret 을 설정한 클라이언트는 **본문에 client_id 를 안 싣고** 헤더로만
+        보낸다. PlayMCP(카카오)가 그랬고, 본문만 보던 `/token` 은 그것을
+        `client_id mismatch` 로 거절했다 — 동의까지 통과한 뒤 마지막 한 걸음에서
+        막히는 고장이라 밖에서는 원인이 안 보인다.
+
+        비밀번호 칸은 **읽지 않는다.** 이 서버는 공개 클라이언트만 발급하고
+        (`token_endpoint_auth_methods_supported: ["none"]`), 코드의 소유 증명은
+        PKCE S256 이 한다. 여기서 헤더는 신원의 출처일 뿐 인증 수단이 아니므로
+        광고도 바꾸지 않는다 — 검증하지 않는 방식을 지원한다고 적으면 거짓말이다."""
+        header = self.headers.get("Authorization") or ""
+        if header[:6].lower() != "basic ":
+            return ""
+        try:
+            raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+        except Exception:
+            return ""
+        # 자격증명은 base64 전에 form-urlencode 된다(같은 절).
+        return urllib.parse.unquote(raw.split(":", 1)[0]) if ":" in raw else ""
 
     def _body(self) -> dict:
         self._raw_body = b""
@@ -993,12 +1064,23 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             return self._json(200, gate.as_metadata())
+        if url.path == "/.well-known/openai-apps-challenge":
+            # ChatGPT 제출 포털이 초안마다 토큰을 주고, 이 URL 의 본문과
+            # 바이트 단위로 대조한다. JSON·다른 토큰·빈 본문은 검증 실패.
+            # 값은 env 라 초안이 바뀔 때 재배포 없이 갈아끼운다.
+            token = (os.environ.get("VINC_OPENAI_APPS_CHALLENGE") or "").strip()
+            if not token:
+                return self._json(404, {"error": "openai apps challenge not configured"})
+            return self._plain(200, token)
         if url.path == "/authorize":
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             try:
                 # key= 있으면 관리 키 자동승인(부트스트랩), 없으면 회원 승인 흐름.
                 # 회원 경로가 켜져 있으면 이쪽이 정상 경로다(B-B3).
+                # ChatGPT 디렉터리 검토자의 로그인은 여기가 아니라 공홈 /connect 다.
+                # 매직링크는 거절 사유라 비밀번호 예외를 그 화면에 둔다.
+                # 근거: [[vinc.plan.chatgpt-reviewer-login]]
                 if params.get("key") or not self.app.member_connect_enabled():
                     location = gate.authorize(params)
                 else:
@@ -1078,15 +1160,29 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             try:
-                return self._json(201, gate.register(self._body()))
+                # key= 가 맞으면 본문의 client_id 로 재등록(redirect 교체) — 운영자 전용.
+                key = urllib.parse.parse_qs(url.query).get("key", [""])[0]
+                rebind = bool(gate.admin_key) and key == gate.admin_key
+                return self._json(201, gate.register(self._body(), rebind=rebind))
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
         if url.path == "/token":
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             try:
-                return self._json(200, gate.token(self._body()))
+                form = self._body()
+                if isinstance(form, dict) and not form.get("client_id"):
+                    form["client_id"] = self._basic_client_id()
+                return self._json(200, gate.token(form))
             except ValueError as e:
+                # 거절 이유를 남긴다. /token 은 **상대 서버가** 부르는 경로라
+                # 브라우저 캡처에 안 잡히고, 이 줄이 없으면 접근 로그에 `400` 만
+                # 남아 다섯 가지 거절(코드 만료·client_id·redirect_uri·PKCE·grant)을
+                # 구분할 길이 없다. 실제로 PlayMCP 등록에서 그 벽을 만났다.
+                # 값이 아니라 **키 이름만** 싣는다 — code·code_verifier 는 비밀이고,
+                # 어느 필드가 빠졌는지만 알면 원인이 갈린다.
+                keys = ",".join(sorted(form)) if isinstance(form, dict) else "?"
+                sys.stdout.write("[oauth] token rejected: %s (fields=%s)\n" % (e, keys))
                 return self._json(400, {"error": "invalid_grant", "error_description": str(e)})
         space, spath = split_space(url.path)
         if spath == "/mcp":
@@ -1095,7 +1191,8 @@ class _Handler(BaseHTTPRequestHandler):
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, {"error": bad})
-            auth = self._auth(space)
+            # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
+            auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
             if not auth["ok"]:
                 # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
                 # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
@@ -1141,7 +1238,9 @@ class _Handler(BaseHTTPRequestHandler):
                     return auth
                 if not _UUID_RE.match(want):
                     return None          # 모양이 틀린 것은 계정에 묻지도 않는다
-                got = self._auth(want)
+                # 인자로 고른 팀: 요청은 **개인 끝점**에 도착했다. 주소가 아니라
+                # 인자이므로 토큰의 audience 는 `/mcp` 여야 맞다.
+                got = self._auth(want, presented_at="/mcp")
                 return got if got["ok"] else None
 
             pairs = [(m, _auth_for(m)) for m in msgs]
@@ -1396,7 +1495,7 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(200, out)
 
     # ── 인증 + 로깅 ───────────────────────────────────────────────────────
-    def _auth(self, space: str | None = None) -> dict:
+    def _auth(self, space: str | None = None, *, presented_at: str | None = None) -> dict:
         """`resolve_auth` 를 부르고 **누가 불렀는지를 응답 로그에 실을 수 있게** 남긴다.
 
         호출부 셋이 각자 `self.app.resolve_auth(...)` 를 부르는데 owner 를 기억하는
@@ -1404,7 +1503,13 @@ class _Handler(BaseHTTPRequestHandler):
         카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
         [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
         """
-        auth = self.app.resolve_auth(self.headers.get("Authorization"), space)
+        # ⚠ `presented_at` 을 `space` 에서 **유도하지 않는다.** 2026-09-22 에 이 자리에서
+        # `f"/t/{space}/mcp" if space else "/mcp"` 로 유도했다가 같은 결함을 한 층 아래로
+        # 옮겼을 뿐이었다 — `space` 인자로 고른 팀도 그 유도를 타서 여전히 거절됐다.
+        # 도착한 주소를 아는 것은 **호출부**다. 그러니 호출부가 말하게 두고 여기서는
+        # 개인 끝점을 기본으로 둔다(세 호출부 중 둘이 실제로 그것이다).
+        auth = self.app.resolve_auth(self.headers.get("Authorization"), space,
+                                     presented_at=presented_at or "/mcp")
         self._owner_tag = _owner_tag(auth.get("owner")) if auth.get("ok") else None
         return auth
 
