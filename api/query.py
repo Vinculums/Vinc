@@ -4508,6 +4508,74 @@ def _weighted_shortest_path(a_id: str, b_id: str, *, max_depth: int, owner: str 
     return base
 
 
+def _concept_only_refusal(base: dict, wrong: list[str]) -> dict:
+    """개념이 아닌 끝점은 **연결 부재가 아니라 층 부재**다. 이걸 안 가르면 읽는 쪽이
+    빈 답을 "안 이어져 있다"로 읽는다."""
+    base["error"] = ("this tool walks the concept layer only: "
+                     + ", ".join(wrong) + " is not a concept id")
+    base["hint"] = ("Shortest paths are computed between `concept:` nodes. "
+                    "A record, decision or episode is attached to concepts "
+                    "rather than sitting on the path graph, so it can never "
+                    "be an endpoint here even when it exists and is well "
+                    "connected. Use vinc_neighbors on that id to see what it "
+                    "attaches to, then path between those concepts.")
+    return base
+
+
+def _unknown_node_refusal(base: dict, missing: list[str], *, owner, store) -> dict:
+    base["error"] = "unknown node: " + ", ".join(missing)
+    cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
+    base["hint"] = ("Node ids are exact and type-prefixed (e.g. `concept:view`). "
+                    + ("Did you mean: "
+                       + ", ".join(dict.fromkeys(c["id"] for c in cands)) + "? "
+                       if cands else "")
+                    + "Use vinc_search to find the id first.")
+    if cands:
+        base["candidates"] = cands[:3]
+    return base
+
+
+def _probe_node(x: str, *, owner, cfg, store) -> dict | None:
+    """PK 로 노드 하나를 묻는다. 반환: 행(dict) · 없으면 None · 프로브가 못 돌았으면
+    ``{"_unknown": True}``(모르는 것이지 없는 것이 아니다)."""
+    probe = execute(seed_lookup_plan(x, owner=owner), cfg, store=store)
+    if not probe.get("executed"):
+        return {"_unknown": True, "note": probe.get("note", "")}
+    return next((r for r in probe.get("rows", []) if r.get("id") == x), None)
+
+
+def _same_endpoint_path(x: str, *, weight: str, owner, cfg, store) -> dict:
+    """a == b — 길이 0 경로 하나(노드 자신)로 답한다. hops·confidence 두 갈래 공통.
+
+    ⚠ 엔진 패턴이 `1..d` 라 자기 자신까지의 경로는 매치가 0이고, 여태 이 입력이
+    `no path within max_depth` 로 답했다 — 노드가 멀쩡히 있는데 "안 이어져 있다"고
+    말한 셈이다. 거절은 그대로 둔다: 개념이 아니거나 없는 id 는 a != b 일 때와 같은
+    문장으로 거절한다(같은 id 두 번이 거절을 우회하는 길이 되면 안 된다).
+    근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]"""
+    base = {"kind": "shortest_path", "executed": True, "found": False,
+            "a": x, "b": x, "length": None, "paths": [], "count": 0, "weight": weight}
+    if weight == WEIGHT_CONFIDENCE:
+        base["cost"] = None
+    if x.lower().startswith(_NON_CONCEPT_PREFIXES):
+        return _concept_only_refusal(base, [x])
+    row = _probe_node(x, owner=owner, cfg=cfg, store=store)
+    if row is not None and row.get("_unknown"):
+        base["executed"] = False
+        base["note"] = row.get("note", "")
+        return base
+    if row is None:
+        return _unknown_node_refusal(base, [x], owner=owner, store=store)
+    if _seed_table(x)[0] != "Concept":
+        # 개방층(Entity) 노드 — 있지만 개념이 아니다.
+        return _concept_only_refusal(base, [x])
+    path = {"ids": [x], "titles": [row.get("title") or x], "length": 0}
+    if weight == WEIGHT_CONFIDENCE:
+        path["cost"] = 0.0
+        base["cost"] = 0.0
+    base.update(found=True, length=0, paths=[path], count=1)
+    return base
+
+
 def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
                   owner: str | None = None, weight: str = WEIGHT_HOPS,
                   cfg=None, store=None) -> dict:
@@ -4517,8 +4585,14 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
     ``weight``: ``"hops"``(기본, E-G7 — 엔진 ALL SHORTEST, 동률 전부) 또는
     ``"confidence"``(E-G8 — 파이썬 다익스트라, 비용 = 1-confidence). 가중 갈래는
     ``cost``(경로 비용 합)를 추가로 싣는다. 미지 값은 조용히 ``hops`` 로 강등하고
-    응답의 ``weight`` 가 **실제로 적용한 축**을 에코한다(`_apply_basis` 와 같은 태도)."""
-    if (weight or "").strip().lower() == WEIGHT_CONFIDENCE:
+    응답의 ``weight`` 가 **실제로 적용한 축**을 에코한다(`_apply_basis` 와 같은 태도).
+
+    ``a == b`` 는 길이 0 경로 하나(노드 자신)로 답한다(:func:`_same_endpoint_path`)."""
+    confidence = (weight or "").strip().lower() == WEIGHT_CONFIDENCE
+    if a_id == b_id:
+        return _same_endpoint_path(a_id, weight=WEIGHT_CONFIDENCE if confidence
+                                   else WEIGHT_HOPS, owner=owner, cfg=cfg, store=store)
+    if confidence:
         return _weighted_shortest_path(a_id, b_id, max_depth=max_depth, owner=owner,
                                        cfg=cfg, store=store)
     res = execute(shortest_path_plan(a_id, b_id, max_depth=max_depth, owner=owner),
@@ -4541,6 +4615,11 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
     for s in sorted(seqs, key=lambda s: (s["length"], s["ids"])):
         uniq.setdefault(tuple(s["ids"]), s)
     paths = list(uniq.values())
+    # 최단만 남긴다. 설명이 "ALL shortest paths (ties included)"를 약속하는데 행 안에
+    # 더 긴 경로가 섞여 나온 적이 있다 — 계약은 여기서 지킨다(엔진 의미론에 기대지 않는다).
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+    if paths:
+        paths = [p for p in paths if p["length"] == paths[0]["length"]]
     base.update(found=bool(paths), paths=paths, count=len(paths),
                 length=paths[0]["length"] if paths else None)
     if not paths:
@@ -4548,53 +4627,31 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         # 구분되지 않았다. 둘은 다음 행동이 완전히 다르다: 앞은 id 를 고쳐야 하고
         # 뒤는 depth 를 늘리거나 엣지를 이어야 한다. 어느 끝이 문제인지 짚어 준다.
         #
+        # 순서: **층(접두) → 존재(PK) → depth**. 층 판정이 먼저다 — 개념 층 밖 id 는
+        # 있든 없든 여기서 끝점이 될 수 없으므로, 없는 `record:x` 에 "unknown node"
+        # 라고 답하면 id 만 고치면 될 것처럼 읽힌다. 문서화된 거절은 개념 전용이다.
+        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+        wrong = [x for x in (a_id, b_id) if x.lower().startswith(_NON_CONCEPT_PREFIXES)]
+        if wrong:
+            return _concept_only_refusal(base, wrong)
         # ⚠ **존재는 PK 로 묻는다.** 이 판정이 `near_nodes`(제목·props **유사도** 검색)
         # 였고, 유사도는 존재의 증거가 아니다: 슬러그 id 는 제 산문 제목 안에 글자
         # 그대로 안 나타나는 일이 흔해서 후보가 0이 되고, 그러면 **실재하는 노드가
         # `unknown node` 로 보고된다.** 라이브 실측(2026-09-08): `concept:hybrid-search`
         # 는 이웃 28개를 가진 멀쩡한 개념인데 이 표면만 "unknown node" 라고 답했다.
         # `neighbors()` 가 정확히 같은 결함을 3860행대에서 이미 고쳤는데(그 주석이
-        # 이 처방을 적어 놓았다) **형제 함수만 안 받았다.** 그리고 이 검사가 먼저라,
-        # 아래의 "개념 층만 걷는다" 안내가 대부분 도달조차 못 했다.
+        # 이 처방을 적어 놓았다) **형제 함수만 안 받았다.**
         # 근거: [[record:path-called-an-existing-concept-unknown-2026-09-08]]
-        def _exists(x: str) -> bool:
-            probe = execute(seed_lookup_plan(x, owner=owner), cfg, store=store)
-            if not probe.get("executed"):
-                # 프로브가 못 돌았으면 **모르는 것**이지 없는 것이 아니다 —
-                # 조회 실패를 부재로 단언하지 않는다(`neighbors()` 와 같은 태도).
-                return True
-            return any(r.get("id") == x for r in probe.get("rows", []))
-
-        missing = [x for x in (a_id, b_id) if not _exists(x)]
+        # 프로브가 못 돌았으면 **모르는 것**이지 없는 것이 아니다 — 조회 실패를
+        # 부재로 단언하지 않는다(`neighbors()` 와 같은 태도).
+        missing = [x for x in (a_id, b_id)
+                   if _probe_node(x, owner=owner, cfg=cfg, store=store) is None]
         if missing:
-            base["error"] = "unknown node: " + ", ".join(missing)
-            cands = [c for x in missing for c in near_nodes(store, x, owner=owner)]
-            base["hint"] = ("Node ids are exact and type-prefixed (e.g. `concept:view`). "
-                            + ("Did you mean: "
-                               + ", ".join(dict.fromkeys(c["id"] for c in cands)) + "? "
-                               if cands else "")
-                            + "Use vinc_search to find the id first.")
-            if cands:
-                base["candidates"] = cands[:3]
-        else:
-            # 개념이 아닌 끝점은 **연결 부재가 아니라 층 부재**다. 이걸 안 가르면
-            # 읽는 쪽이 빈 답을 "안 이어져 있다"로 읽는다.
-            wrong = [x for x in (a_id, b_id)
-                     if x.lower().startswith(_NON_CONCEPT_PREFIXES)]
-            if wrong:
-                base["error"] = ("this tool walks the concept layer only: "
-                                 + ", ".join(wrong) + " is not a concept id")
-                base["hint"] = ("Shortest paths are computed between `concept:` nodes. "
-                                "A record, decision or episode is attached to concepts "
-                                "rather than sitting on the path graph, so it can never "
-                                "be an endpoint here even when it exists and is well "
-                                "connected. Use vinc_neighbors on that id to see what it "
-                                "attaches to, then path between those concepts.")
-            else:
-                base["error"] = f"no path within max_depth={max_depth}"
-                base["hint"] = ("Both nodes exist but nothing connects them within this "
-                                "depth. Raise `max_depth`, or use vinc_neighbors on each "
-                                "end to see what they do connect to.")
+            return _unknown_node_refusal(base, missing, owner=owner, store=store)
+        base["error"] = f"no path within max_depth={max_depth}"
+        base["hint"] = ("Both nodes exist but nothing connects them within this "
+                        "depth. Raise `max_depth`, or use vinc_neighbors on each "
+                        "end to see what they do connect to.")
     return base
 
 
