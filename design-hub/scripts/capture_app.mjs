@@ -153,7 +153,7 @@ V("reader", "LNB: click a document: reader in the docpane", async (p) => { const
 V("topic-context-menu", "LNB: right-click a topic", async (p) => { await firstTopic(p).click({ button: "right" }); await sleep(300); });
 V("topic-rename-prompt", "LNB: right-click a topic, Rename: text prompt", async (p) => { await firstTopic(p).click({ button: "right" }); await sleep(300); await p.locator("[role=menu] button, .ctx button, .menu button").filter({ hasText: /rename/i }).first().click(); await sleep(300); });
 V("coachmark", "first visit: coachmark", undefined, { ls: { "vinc.view.coach.seen": "" } });
-V("first-run", "first launch in the shell: sign in or stay on this machine", undefined, { ls: { "vinc.firstrun.seen": "" } });
+V("first-run", "first launch in the shell: sign in first (VIN-128)", undefined, { ls: { "vinc.dev.signin": "1" } });
 V("light", "theme light", undefined, { ls: { "vinc.theme": "light" }, scheme: "light" });
 V("light-lens", "theme light, lens Options", openLens, { ls: { "vinc.theme": "light" }, scheme: "light" });
 V("empty-invite", "empty store: empty invite on the canvas, LNB empty", undefined, { ls: { "vinc.owner": "tenant:capture-empty" } });

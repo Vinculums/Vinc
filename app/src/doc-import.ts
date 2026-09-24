@@ -1,5 +1,5 @@
 import { COPY } from "./copy";
-import { api, WEB } from "./api";
+import { api, remote } from "./api";
 
 /** 문서 정본 import(D45) — 팩이 아니라 **원문 파일**을 그대로 그래프에 넣는 경로.
  *
@@ -101,7 +101,8 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 function guardJsonSize(body: unknown, name: string): void {
-  if (!WEB) return;
+  // 계정 프록시의 본문 상한은 웹과 셸 계정 모드에 똑같이 걸린다(둘 다 계정을 지난다).
+  if (!remote()) return;
   const n = new TextEncoder().encode(JSON.stringify(body)).length;
   if (n > WEB_BODY_LIMIT) throw tooLarge(name, WEB_BODY_LIMIT);
 }
@@ -116,7 +117,7 @@ export async function importDocFile(
   const id = index?.get(origin);
   const binary = BIN_EXT.test(f.name) || !TEXT_EXT.test(f.name);
 
-  if (WEB && f.size > (binary ? WEB_BINARY_LIMIT : WEB_BODY_LIMIT)) {
+  if (remote() && f.size > (binary ? WEB_BINARY_LIMIT : WEB_BODY_LIMIT)) {
     throw tooLarge(f.name, binary ? WEB_BINARY_LIMIT : WEB_BODY_LIMIT);
   }
 

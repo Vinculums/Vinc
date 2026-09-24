@@ -12,7 +12,7 @@
  *  계정 프록시가 의도적으로 막는다(`vinc_mcp/http_server.py` _PROXY_OPS 주석) —
  *  웹에서 열면 남의 어휘를 만지게 된다. 웹에서는 관례 구역만 보인다.
  */
-import { api, cfg, WEB } from "./api";
+import { api, cfg, remote } from "./api";
 import { COPY } from "./copy";
 import { sheetActions } from "./components";
 
@@ -41,9 +41,10 @@ export function splitConventions(text: string): [string, string, string] | null 
  *  그만둔다. 재가를 기다리는 것은 **어시스턴트가 실제로 제안한 것**(ingest_proposed)뿐이다. */
 const isPending = (t: any) => t?.provenance === "ingest_proposed";
 
-/** 상단 바 뱃지에 쓰는 제안 적체 수. 어휘를 못 읽는 환경(웹)에서는 0 이다. */
+/** 상단 바 뱃지에 쓰는 제안 적체 수. 어휘를 못 읽는 환경(웹, 셸 계정 모드)에서는 0 이다.
+ *  어휘 재가는 사이드카 전용이고 계정 프록시가 의도적으로 막는다. */
 export async function proposedCount(): Promise<number> {
-  if (WEB) return 0;
+  if (remote()) return 0;
   try {
     const th = await api.themes();
     const id = th?.active_theme_id;
@@ -140,7 +141,7 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
   async function drawRatify() {
     const hostEl = host.querySelector<HTMLElement>("#conv-ratify");
     if (!hostEl) return;
-    if (WEB) { hostEl.innerHTML = `<p class="hint">${C.webOnly}</p>`; return; }
+    if (remote()) { hostEl.innerHTML = `<p class="hint">${C.webOnly}</p>`; return; }
     let types: any[] = [];
     try {
       const th = await api.themes();
