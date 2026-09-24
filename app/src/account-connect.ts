@@ -5,12 +5,13 @@
  *  Account 탭), 클로저인 채로 두면 셋이 각자 폴링 루프를 갖는다. 하나로 모으면
  *  중단 신호도 하나다.
  *
- *  ⚠ 앱은 계정 API 를 직접 부르지 않는다(B1). 브라우저가 승인하고 사이드카
- *  루프백으로 되돌아온 키를 폴링으로 **한 번** 수령해 이 기기 localStorage 에만 둔다.
+ *  ⚠ 앱은 계정 API 를 직접 부르지 않는다. 브라우저가 승인하고 사이드카 루프백으로
+ *  되돌아온 키를 폴링으로 **한 번** 수령해 이 기기에만 둔다. 계정 모드의 데이터 호출도
+ *  이 키를 사이드카 통과로에 실어 보낼 뿐 계정을 직접 부르지 않는다(`api.ts` accountCall).
  *
- *  왜 계정을 강제하지 않고 길로 두는가: [[decision:account-is-a-path-not-a-wall]]
+ *  데스크톱은 로그인해야 쓴다(2026-09-24, `firstrun.ts`). 이 모듈은 그 로그인의 한 벌이다.
  */
-import { cfg, shellInvoke } from "./api";
+import { cfg, forgetMemberKey, shellInvoke } from "./api";
 
 const K_KEY = "vinc.sync.key";
 const K_MAIL = "vinc.sync.email";
@@ -72,6 +73,9 @@ async function storeKey(value: string): Promise<void> {
   // 쓰기가 실패해도(catch 로 삼킨다) 화면은 연결됨으로 그려져야 한다 — 안 그러면
   // 사용자는 키를 넣고도 미연결 화면을 보며 같은 일을 반복한다.
   localStorage.setItem(K_LINKED, "1");
+  // 들고 있던 옛 키를 버린다. 계정 모드는 키를 메모리에 캐시하므로(`api.ts`), 여기서
+  // 안 비우면 키를 바꿔도 이 창이 닫힐 때까지 옛 키로 계정을 부른다.
+  forgetMemberKey();
   const store = await secretStore();
   if (store) {
     await store("secret_set", { name: K_KEY, value }).catch(() => null);
@@ -116,6 +120,7 @@ export function accountWho(): string | null {
 /** 이 기기에서 키를 지운다(폐기는 아니다 — 계정 쪽 키 관리에서 한다). */
 export function forgetAccount(): void {
   aborted = true;
+  forgetMemberKey();
   localStorage.removeItem(K_LINKED);
   localStorage.removeItem(K_KEY);
   localStorage.removeItem(K_MAIL);

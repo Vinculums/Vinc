@@ -1,4 +1,4 @@
-import { buildId, cfg, teamsApi, WEB, shellInvoke } from "../api";
+import { accountMode, buildId, cfg, forgetMemberKey, remote, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
@@ -227,7 +227,7 @@ export async function renderSettings(
       <h2>${esc(U.navAbout)}</h2>
       <p class="hint">${esc(U.aboutIntro)}</p>
       <p class="settings-build">Vinc ${esc(buildId)}</p>
-      <p class="hint">${esc(WEB ? COPY.sovereigntyWeb : COPY.sovereignty)}</p>`;
+      <p class="hint">${esc(remote() ? COPY.sovereigntyWeb : COPY.sovereignty)}</p>`;
   }
 
   function renderData(body: HTMLElement) {
@@ -268,14 +268,20 @@ export async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAccount)}</h2>
       <p class="hint">${esc(U.accountIntro)}</p>
-      ${WEB ? `
+      ${accountMode() ? `
+      <!-- 셸 계정 모드(VIN-128): 그래프는 계정에 있고 이 기기에는 사본이 없다. 로컬
+           분기의 저장 위치 줄과 같은 자리에서 그 사실을 말한다. -->
+      <label>${U.storage}</label>
+      <p class="rail-sync"><span class="sync-dot"></span><span>${U.storageAccount}</span></p>
+      <hr class="settings-sep" />` : ""}
+      ${remote() ? `
       <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
       <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
       <div id="space-note" class="hint" style="font-size:.8rem"></div>` : ""}
-      ${!WEB ? `
+      ${!remote() ? `
       <!-- 저장 위치 — 상단 바에 상시로 떠 있던 "● 로컬" 칩이 여기로 왔다(발주자 지시
            2026-08-05). 바뀌지 않는 사실은 상시 점유할 자격이 없다: 궁금할 때 와서 보는
            것으로 충분하다. 데스크탑 분기 안에만 두는 것도 의도다 — 웹 Vinc 의 데이터는
@@ -306,10 +312,23 @@ export async function renderSettings(
       <p class="hint" id="sync-picked" style="font-size:.78rem;margin:.35rem 0 0"></p>
       <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
       <div id="sync-result" class="hint" style="font-size:.78rem"></div>` : ""}`;
-    if (WEB) {
+    if (remote()) {
       // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
+      // 셸 계정 모드: 쿠키가 없어 /api/me 를 못 부른다. 기기 플로우가 남긴 이름을 쓰고,
+      // 로그아웃을 여기 둔다(로그아웃하면 로그인 시트로 돌아간다, VIN-128).
       const box = body.querySelector<HTMLElement>("#web-acct");
-      if (box) {
+      if (box && accountMode()) {
+        const who = accountWho();
+        box.innerHTML = `${who ? U.webSignedAs(esc(who)) : U.acctSignedIn}
+          <p><button class="btn" id="acct-signout" type="button">${U.acctSignOut}</button></p>
+          <p class="hint">${U.acctSignOutHint}</p>`;
+        box.querySelector("#acct-signout")!.addEventListener("click", () => {
+          forgetAccount();
+          forgetMemberKey();
+          // 화면 전체가 계정 그래프를 들고 있다. 부분 갱신하면 옛 계정의 데이터가 남는다.
+          location.reload();
+        });
+      } else if (box) {
         fetch("/api/me", { credentials: "include" })
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
