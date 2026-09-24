@@ -261,7 +261,8 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / NavItem":     {"State=Default": "lnb-navrow", "State=Active": "lnb-navrow.on"},
     "App / DomainRow":   {"State=Default": "lnb-group", "State=Active": "lnb-group.on"},
     # 잉크 1단은 코드에서 색을 주지 않는 기본값이라 표식이 없다. 0 과 2 만 CSS 에 산다.
-    "App / DocRow":      {"Ink=0": "--ink:0", "Ink=1": None, "Ink=2": "--ink:2"},
+    "App / DocRow":      {"Ink=0": "--ink:0", "Ink=1": None, "Ink=2": "--ink:2",
+                          "Ink=On": "lnb-doc.on"},
     "App / ListRow":     {"State=Default": "list-row", "State=Hover": "list-row:hover"},
     "App / StateMark":   {"State=Filled": '"filled"', "State=Half": '"half"',
                           "State=Empty": '"empty"'},

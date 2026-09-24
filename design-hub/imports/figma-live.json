@@ -31,7 +31,10 @@
         "gray_500": "#7A7A76",
         "gray_600": "#6E6E6A",
         "gray_700": "#565652",
-        "gray_800": "#3A3A38"
+        "gray_800": "#3A3A38",
+        "indigo_600": "#4A4F8C",
+        "peri_400": "#8F96D9",
+        "peri_200": "#B9BEF0"
       }
     },
     "Semantic": {
@@ -45,12 +48,12 @@
         "caption-foreground": "{ink_400}",
         "border": "{hairline}",
         "input": "{hairline}",
-        "ring": "{ink_400}",
+        "ring": "{indigo_600}",
         "primary": "{ink_900}",
         "primary-foreground": "{grain_100}",
         "accent": "{grain_200}",
         "accent-foreground": "{ink_900}",
-        "link": "{ink_900}",
+        "link": "{indigo_600}",
         "info": "{ink_600}",
         "info-strong": "{ink_900}",
         "info-foreground": "{grain_100}",
@@ -60,11 +63,13 @@
         "warning-foreground": "{ink_900}",
         "danger": "{danger_700}",
         "danger-foreground": "{grain_100}",
-        "focus": "{ink_900}",
+        "focus": "{indigo_600}",
         "logo-tip": "{brand_black}",
         "titlebar-close": "{win_close}",
         "titlebar-close-foreground": "{grain_50}",
-        "logo": "{brand_black}"
+        "logo": "{brand_black}",
+        "point": "{indigo_600}",
+        "point-text": "{indigo_600}"
       },
       "Dark": {
         "background": "{d_bg0}",
@@ -76,12 +81,12 @@
         "caption-foreground": "{d_mute}",
         "border": "{d_line}",
         "input": "{d_line}",
-        "ring": "{d_soft}",
+        "ring": "{peri_400}",
         "primary": "{d_text}",
         "primary-foreground": "{d_bg0}",
         "accent": "{d_bg2}",
         "accent-foreground": "{d_text}",
-        "link": "{d_text}",
+        "link": "{peri_200}",
         "info": "{d_soft}",
         "info-strong": "{d_text}",
         "info-foreground": "{d_bg0}",
@@ -91,11 +96,13 @@
         "warning-foreground": "{d_text}",
         "danger": "{danger_300}",
         "danger-foreground": "{d_bg0}",
-        "focus": "{d_text}",
+        "focus": "{peri_400}",
         "logo-tip": "{brand_white}",
         "titlebar-close": "{win_close}",
         "titlebar-close-foreground": "{grain_50}",
-        "logo": "{brand_white}"
+        "logo": "{brand_white}",
+        "point": "{peri_400}",
+        "point-text": "{peri_200}"
       }
     },
     "Scale": {

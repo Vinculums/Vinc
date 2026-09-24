@@ -43,7 +43,7 @@ const EN = {
     retry: "Try again",
   },
   emptyInvite: {
-    dropHint: "Drag a file here, or start from a single note.",
+    dropHint: "Drag a file here, or <span class=\"pt\">start from a single note</span>.",
     leadDocsNoNodes: "Your documents are in, and no concepts have been drawn from them yet. Open a document to pull concepts out of it, or write one node by hand.",
     seeDocsCta: "See documents",
     pickCta: "Choose a file",
@@ -568,7 +568,7 @@ const EN = {
       suggestNone: "Unlinked. No suggestions yet. Add a tag to surface matches.",
       suggestHeader: "Unlinked · possible links",
       bind: "Link",
-      bound: (t: string) => `Linked to <b>${t}</b> · one connection added.`,
+      bound: (t: string) => `Linked to <b class="pt">${t}</b> · one connection added.`,
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
@@ -956,7 +956,7 @@ const KO: Deck = {
     retry: "다시 시도하기",
   },
   emptyInvite: {
-    dropHint: "파일을 여기에 끌어다 놓거나, 노드 하나로 시작해도 돼요",
+    dropHint: "파일을 여기에 끌어다 놓거나, <span class=\"pt\">노드 하나로 시작해도 돼요</span>",
     leadDocsNoNodes: "아직 문서에서 뽑아낸 개념이 없어요. 문서를 열어 개념을 뽑거나, 노드 하나를 직접 적어 보세요. 문서는 그대로 들어와 있어요",
     seeDocsCta: "문서 보기",
     pickCta: "파일 고르기",
@@ -1375,7 +1375,7 @@ const KO: Deck = {
       suggestNone: "아직 연결된 곳이 없어요. 지금은 후보도 없어요. 태그를 달면 후보가 생겨요",
       suggestHeader: "연결 안 됨 · 연결 후보",
       bind: "연결하기",
-      bound: (t) => `'${t}'과(와) 연결했어요`,
+      bound: (t) => `'<span class="pt">${t}</span>'과(와) 연결했어요`,
       bindFail: "연결하지 못했어요. 잠시 후 다시 시도해 보세요. 바뀐 것은 없어요",
       unavailable: "지금은 연결 제안을 쓸 수 없어요",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.

@@ -13,11 +13,13 @@ export const palette = {
     text: 0x17171A, // #17171A ← semantic.light.foreground
     textSoft: 0x55565E, // #55565E ← semantic.light.muted-foreground
     textMute: 0x82838D, // #82838D ← semantic.light.caption-foreground
-    ring: 0x82838D, // #82838D ← semantic.light.ring
-    focus: 0x17171A, // #17171A ← semantic.light.focus
+    ring: 0x4A4F8C, // #4A4F8C ← semantic.light.ring
+    focus: 0x4A4F8C, // #4A4F8C ← semantic.light.focus
     primary: 0x17171A, // #17171A ← semantic.light.primary
     primaryText: 0xF2F2F0, // #F2F2F0 ← semantic.light.primary-foreground
-    link: 0x17171A, // #17171A ← semantic.light.link
+    link: 0x4A4F8C, // #4A4F8C ← semantic.light.link
+    point: 0x4A4F8C, // #4A4F8C ← semantic.light.point
+    pointText: 0x4A4F8C, // #4A4F8C ← semantic.light.point-text
     linkRamp: { heavy: '#17171A', mid: '#55565E', base: '#82838D', cross: '#6E6E6A', fade: '#D1D2D6' },
     labelCss: 'color:#17171A;background:#FBFBFA;border:1px solid #DEDEDA',
   },
@@ -29,11 +31,13 @@ export const palette = {
     text: 0xEDEDEB, // #EDEDEB ← semantic.dark.foreground
     textSoft: 0xA8A8A4, // #A8A8A4 ← semantic.dark.muted-foreground
     textMute: 0x8C8C88, // #8C8C88 ← semantic.dark.caption-foreground
-    ring: 0xA8A8A4, // #A8A8A4 ← semantic.dark.ring
-    focus: 0xEDEDEB, // #EDEDEB ← semantic.dark.focus
+    ring: 0x8F96D9, // #8F96D9 ← semantic.dark.ring
+    focus: 0x8F96D9, // #8F96D9 ← semantic.dark.focus
     primary: 0xEDEDEB, // #EDEDEB ← semantic.dark.primary
     primaryText: 0x0A0A0A, // #0A0A0A ← semantic.dark.primary-foreground
-    link: 0xEDEDEB, // #EDEDEB ← semantic.dark.link
+    link: 0xB9BEF0, // #B9BEF0 ← semantic.dark.link
+    point: 0x8F96D9, // #8F96D9 ← semantic.dark.point
+    pointText: 0xB9BEF0, // #B9BEF0 ← semantic.dark.point-text
     linkRamp: { heavy: '#C8C8C4', mid: '#A8A8A4', base: '#7A7A76', cross: '#969692', fade: '#565652' },
     labelCss: 'color:#EDEDEB;background:#1A1A1A;border:1px solid #2A2A2A',
   },
@@ -45,8 +49,8 @@ export function hexStr(n: number): string { return '#' + n.toString(16).padStart
 // 소비처는 view3d.ts 의 다크 글로우 분기 하나뿐 — fill·stroke·glowOpacity 만 읽는다.
 export const viewScene = {
   node: {
-    focus: { fill: 0xFFFFFF, glowOpacity: 0.9 },
-    near: { fill: 0xC8C8C4, glowOpacity: 0.5 },
+    focus: { fill: 0xB9BEF0, glowOpacity: 0.9 },
+    near: { fill: 0x8F96D9, glowOpacity: 0.5 },
     mid: { fill: 0x3A3A38, stroke: 0xA8A8A4, glowOpacity: 0.35 },
     far: { fill: 0x1A1A1A, stroke: 0x969692, glowOpacity: 0.18 },
   },
