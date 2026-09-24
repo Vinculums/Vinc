@@ -106,15 +106,14 @@ class PathBoundaryTests(unittest.TestCase):
 class CredentialTests(unittest.TestCase):
     """② — 자격 없이는 나가지 않는다."""
 
-    def test_키나_팀이_없으면_400_이고_안_나간다(self):
+    def test_키가_없으면_400_이고_안_나간다(self):
         called = []
         old = spaceproxy.urllib.request.urlopen
         spaceproxy.urllib.request.urlopen = lambda *a, **k: called.append(a) or _Resp(b"{}")
         try:
-            self.assertEqual(spaceproxy.call(token="", team=TEAM, method="GET",
-                                             path="/view")[0], 400)
-            self.assertEqual(spaceproxy.call(token="k", team="", method="GET",
-                                             path="/view")[0], 400)
+            for team in (TEAM, ""):
+                self.assertEqual(spaceproxy.call(token="", team=team, method="GET",
+                                                 path="/view")[0], 400)
         finally:
             spaceproxy.urllib.request.urlopen = old
         self.assertEqual(called, [])
@@ -149,6 +148,46 @@ class WireTests(unittest.TestCase):
         self.assertIn("team=" + TEAM, seen["url"])
         self.assertIn("depth=2", seen["url"])
         self.assertEqual(seen["headers"]["authorization"], "Bearer vinc_sk_x")
+
+    def test_팀이_없으면_개인_그래프로_가고_team_을_안_싣는다(self):
+        """계정 모드(VIN-126): 개인 그래프도 이 길로 간다. `team` 이 없으면 파라미터
+        자체를 빼야 한다 — `team=` 빈 값을 실으면 계정의 팀 판정이 그것을 id 로 읽으려
+        든다. 키는 그대로 Bearer 로 간다(계정이 키의 주인으로 답한다)."""
+        st, _out, seen = self._capture(token="vinc_sk_x", team="", method="GET",
+                                       path="/view", params={"owner": "tenant:local"})
+        self.assertEqual(st, 200)
+        self.assertTrue(seen["url"].startswith("https://vincs.io/api/graph/view"),
+                        seen["url"])
+        self.assertNotIn("team", seen["url"])
+        self.assertEqual(seen["headers"]["authorization"], "Bearer vinc_sk_x")
+
+    def test_params_로_실은_team_은_버리고_한_값만_남는다(self):
+        """스페이스는 `team` 인자 하나로만 정한다. 호출부가 params 에 섞어 넣은 값이
+        살아남으면 개인으로 보낸 호출이 조용히 팀으로 가거나 그 반대가 된다."""
+        _st, _out, seen = self._capture(token="k", team="", method="GET", path="/view",
+                                        params={"team": "other"})
+        self.assertNotIn("team", seen["url"])
+        _st, _out, seen = self._capture(token="k", team=TEAM, method="GET", path="/view",
+                                        params={"team": "other"})
+        self.assertEqual(seen["url"].count("team="), 1, seen["url"])
+        self.assertIn("team=" + TEAM, seen["url"])
+
+    def test_타임아웃은_계정의_무거운_연산_한도보다_짧지_않다(self):
+        """계정 프록시는 무거운 연산에 45초를 준다(`mcpProxy.ts` HEAVY_TIMEOUT_MS).
+        여기가 더 짧으면 계정이 끝낸 쓰기를 호출부는 실패로 본다."""
+        seen = {}
+
+        def _open(req, timeout=None):
+            seen["timeout"] = timeout
+            return _Resp(b"{}")
+
+        old = spaceproxy.urllib.request.urlopen
+        spaceproxy.urllib.request.urlopen = _open
+        try:
+            spaceproxy.call(token="k", team="", method="POST", path="/doc/put", body={})
+        finally:
+            spaceproxy.urllib.request.urlopen = old
+        self.assertGreaterEqual(seen["timeout"], 45.0)
 
     def test_빈_파라미터는_안_싣는다(self):
         """사이드카가 `None`·빈 문자열을 그대로 실으면 계정이 op 인자로 오해한다."""
