@@ -52,7 +52,10 @@ function orderedIcns(bytes) {
 }
 const circle = readFileSync(join(assets, 'vinc-ring-circle.svg'), 'utf8');
 const white = readFileSync(join(assets, 'vinc-ring-white.svg'), 'utf8');
+const black = readFileSync(join(assets, 'vinc-ring-black.svg'), 'utf8');
 emit(join(assets, 'vinc-ring-white-email@2x.png'), png(white, 64, 'height'));
+// 밝은 메일 템플릿의 잉크판. 흰 마크와 같은 46x64 로 뽑는다.
+emit(join(assets, 'vinc-ring-ink-email@2x.png'), png(black, 64, 'height'));
 emit(join(assets, 'vinc-ring-favicon-48.png'), png(circle, 48));
 const sizes = [16, 32, 48];
 const images = sizes.map(size => png(circle, size));
