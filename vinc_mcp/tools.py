@@ -477,13 +477,31 @@ def _t_host_search(args, bridge):
     return {"results": results}
 
 
+class NotFound(Exception):
+    """없는 id 를 받은 읽기. ValueError·KeyError 가 **아니어야** 한다 — 그 둘은
+    rpc 가 프로토콜 오류(-32602)로 올리고, 그 밖의 예외는 `isError:true` 인 도구
+    결과로 강등한다(rpc.py `tools/call`). 빈 성공은 인용 가능한 답으로 읽힌다."""
+
+
+def _fetch_doc_or_fail(ident: str, raw) -> dict:
+    # /doc 이 오류를 내면(없는 id · 남의 문서 · 교체 중) 빈 text 로 성공을 꾸미지
+    # 않고 도구 오류로 올린다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+    if not isinstance(raw, dict):
+        raw = {}
+    err = raw.get("error")
+    if err or not raw.get("executed", True):
+        hint = str(raw.get("hint") or "").strip()
+        raise NotFound(f"{err or 'unknown doc_id'}: {ident}"
+                       + (f". {hint}" if hint else ""))
+    return raw
+
+
 def _t_host_fetch(args, bridge):
     ident = str(args.get("id") or "").strip()
     if ident.startswith("doc:"):
         doc_id = ident[4:]
-        raw = _t_doc_get({"doc_id": doc_id, "owner": args.get("owner")}, bridge)
-        if not isinstance(raw, dict):
-            raw = {}
+        raw = _fetch_doc_or_fail(ident, _t_doc_get(
+            {"doc_id": doc_id, "owner": args.get("owner")}, bridge))
         title = str(raw.get("title") or doc_id)
         return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
                 "url": _cite_url("doc", doc_id),
@@ -493,6 +511,10 @@ def _t_host_fetch(args, bridge):
         if not isinstance(raw, dict):
             raw = {}
         node = raw.get("node") if isinstance(raw.get("node"), dict) else {}
+        # fetch 의 id 는 정확한 id 다. 그 노드 자체가 열린 경우만 답한다 — 다른
+        # 노드(랭킹 승자·접두 되물림)를 그 id 의 본문으로 내보내지 않는다.
+        if raw.get("status") != "resolved" or node.get("id") != ident:
+            raise NotFound(f"node not found: {ident}")
         title = str(node.get("title") or ident)
         parts = [str(raw.get("one_liner") or "").strip()]
         for ex in raw.get("excerpts") or []:
@@ -502,9 +524,8 @@ def _t_host_fetch(args, bridge):
                 "url": _cite_url("node", ident),
                 "metadata": {"kind": node.get("kind") or "node",
                              "status": raw.get("status")}}
-    raw = _t_doc_get({"doc_id": ident, "owner": args.get("owner")}, bridge)
-    if not isinstance(raw, dict):
-        raw = {}
+    raw = _fetch_doc_or_fail(ident, _t_doc_get(
+        {"doc_id": ident, "owner": args.get("owner")}, bridge))
     title = str(raw.get("title") or ident)
     return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
             "url": _cite_url("doc", ident),
@@ -563,8 +584,8 @@ TOOLS: list[dict] = [
                        "replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that "
                        "CONTAINS A NODE ID (concept:x, record:x, decision:x, episode:x) resolves to "
                        "that node directly, skipping search and ranking (resolved_via:'id'); an id "
-                       "that fails to load is disclosed in fell_through/unreadable rather than "
-                       "silently substituted. Otherwise it resolves the "
+                       "that fails to load answers status:'none' with that id in `unreadable`, and "
+                       "no other node is ranked in its place. Otherwise it resolves the "
                        "question to ONE node by strict ranking, then returns that node's description, "
                        "its canonical document excerpts and its typed relations in a single call. "
                        "Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,"
@@ -576,9 +597,9 @@ TOOLS: list[dict] = [
                        "links are filled; 'choose' means the leading candidates TIED and nothing was "
                        "guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the "
                        "numbers that tied) and ask again by its exact title; 'none' means the question "
-                       "matched nothing — unless `unreadable` is present, which means it MATCHED and "
-                       "the named nodes could not be loaded (deleted or re-owned between search and "
-                       "read): a different next move, so branch on that field, not the note. "
+                       "matched nothing — unless `unreadable` is present, which means the named nodes "
+                       "could not be loaded (an id in the question that does not exist, or a match "
+                       "deleted or re-owned between search and read): a different next move, so branch on that field, not the note. "
                        "NOTHING IS GENERATED: `one_liner` is quoted, never written — "
                        "`body_src` says whether it came from the one_liner column, a props key, or a "
                        "document excerpt, and `body_cite` names the document when it is an excerpt. "
@@ -1217,7 +1238,9 @@ HOST_TOOLS: list[dict] = [
         "description": "Fetch the full text of a search result by id. "
                        "Document ids start with doc:, node ids keep their "
                        "type prefix (concept:, record:, …). Returns "
-                       "{id, title, text, url, metadata}. Read-only.",
+                       "{id, title, text, url, metadata}. An id that does not "
+                       "exist (or that another account owns) is a tool error, "
+                       "never an empty text. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "id": {"type": "string"},
         }, "required": ["id"]},

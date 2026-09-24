@@ -540,16 +540,27 @@ class BriefRecordE2E(unittest.TestCase):
         # 직참조도 근거는 같은 꼴로 실린다.
         self.assertIn("concept:silent-truncation", out["grounds"])
 
-    def test_질문의_id_가_안_열리면_밝히고_랭킹으로_간다(self):
-        """준 id 가 없는 노드면 조용히 다른 노드로 갈아타지 않는다 — 랭킹이 답을
-        내더라도 fell_through 가 그 id 의 실패를 실어 나른다(대체의 공개)."""
+    def test_질문의_id_가_안_열리면_없다고_답하고_랭킹으로_가지_않는다(self):
+        """준 id 가 없는 노드면 status 는 none 이고 unreadable 이 그 id 를 싣는다.
+        나머지 낱말이 다른 노드(record:agent-test-card)에 맞더라도 랭킹 승자를
+        대신 내지 않는다 — 전에는 resolved 로 그 노드를 냈다(감사 §5 결함 11)."""
         out = self._brief("concept:no-such-node agent test card")
-        self.assertEqual(out["status"], "resolved", out.get("note"))
-        self.assertEqual(out["node"]["id"], "record:agent-test-card")
+        self.assertEqual(out["status"], "none", out.get("node"))
+        self.assertNotIn("node", out)
         self.assertNotIn("resolved_via", out)
-        fell = out.get("fell_through", [])
-        self.assertEqual([f["id"] for f in fell], ["concept:no-such-node"])
-        self.assertIn("unknown node", fell[0]["note"])
+        self.assertNotIn("fell_through", out)
+        self.assertEqual(out["candidates"], [])
+        unread = out.get("unreadable", [])
+        self.assertEqual([u["id"] for u in unread], ["concept:no-such-node"])
+        self.assertIn("unknown node", unread[0]["note"])
+        self.assertIn("unknown node", out["note"])
+
+    def test_id_만_담은_질문도_없으면_none(self):
+        """감사 재현 인자 그대로: 질문 전체가 없는 id 하나."""
+        out = self._brief("concept:does-not-exist-xyz")
+        self.assertEqual(out["status"], "none")
+        self.assertEqual([u["id"] for u in out["unreadable"]],
+                         ["concept:does-not-exist-xyz"])
 
     def test_한국어_슬러그_id_는_잘리지_않고_그_노드를_연다(self):
         """ASCII 로 조인 패턴은 첫 한글에서 id 를 잘랐고, 잘린 접두가 실재하면

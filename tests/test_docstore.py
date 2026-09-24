@@ -657,13 +657,36 @@ class DocstoreE2E(unittest.TestCase):
     def test_owner_isolation_sec1(self):
         out = ds.put_doc(self.store, owner="user:a", text="alice 의 정본", title="t")
         did = out["doc_id"]
-        for res in (
-            ds.put_doc(self.store, owner="user:b", text="탈취 시도", doc_id=did),
-            ds.get_doc(self.store, did, owner="user:b"),
-            ds.delete_doc(self.store, did, owner="user:b"),
-        ):
-            self.assertIn("owner mismatch", res.get("error", ""), res)
+        ghost = did + "-does-not-exist"
+
+        def same_as_missing(res, missing):
+            # 남의 문서와 없는 문서는 doc_id 말고는 한 글자도 다르면 안 된다 — 다르면
+            # 그 차이가 "이 id 는 누군가 쓰고 있다"를 알려 준다.
+            strip = lambda d: {k: v for k, v in d.items() if k != "doc_id"}
+            self.assertEqual(strip(res), strip(missing))
+            self.assertNotIn(did, res.get("candidates", []))
+            self.assertNotIn(did, res.get("hint", ""))
+
+        # 쓰기는 여전히 거절되고(덮어쓰지 않는다), 문구가 소유자를 밝히지 않는다.
+        put = ds.put_doc(self.store, owner="user:b", text="탈취 시도", doc_id=did)
+        self.assertFalse(put["executed"], put)
+        self.assertIn("doc_id unavailable", put["error"])
+        self.assertNotIn("owner", put["error"])
+        # 읽기·지우기·재임베딩·추출은 없는 문서와 **똑같이** 답한다.
+        got = ds.get_doc(self.store, did, owner="user:b")
+        self.assertEqual(got["error"], "unknown doc_id")
+        same_as_missing(got, ds.get_doc(self.store, ghost, owner="user:b"))
+        dele = ds.delete_doc(self.store, did, owner="user:b")
+        self.assertFalse(dele["found"])
+        same_as_missing(dele, ds.delete_doc(self.store, ghost, owner="user:b"))
+        emb = lambda texts: [[0.0] * 4 for _ in texts]
+        same_as_missing(ds.reembed_doc(self.store, did, owner="user:b", embed=emb),
+                        ds.reembed_doc(self.store, ghost, owner="user:b", embed=emb))
+        same_as_missing(ds.extract_doc(self.store, did, owner="user:b"),
+                        ds.extract_doc(self.store, ghost, owner="user:b"))
         self.assertEqual(self._count_chunks(did), out["chunks"])   # 무손상
+        mine = ds.get_doc(self.store, did, owner="user:a")
+        self.assertEqual(mine["text"], "alice 의 정본")
 
     def test_delete_removes_chunks_and_meta(self):
         out = ds.put_doc(self.store, owner="user:a", text="지울 문서", title="d")

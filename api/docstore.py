@@ -511,7 +511,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     kept_title = title if title is not None else str((prev or {}).get("title") or "")
     if prev is not None:
         if prev.get("owner_id") and prev["owner_id"] != owner:
-            base["error"] = "owner mismatch — 남의 문서에는 쓸 수 없다(SEC-1)"
+            # 거절은 그대로다(덮어쓰지도 만들지도 않는다). 문구만 소유자를 밝히지
+            # 않는다 — doc_id 는 허브 전체가 한 이름공간이라 이 id 는 쓸 수 없다는
+            # 것까지만 말한다(vinc_ingest 의 id_conflicts 와 같은 대접)(SEC-1).
+            base["error"] = ("doc_id unavailable: this id cannot be written from this "
+                             "account; choose a different doc_id")
             return base
         # `chunk_count < 0` 은 아래 ⓪ 이 찍고 크래시가 남긴 **쓰기 창 표식**이다. 그
         # 문서는 지금 읽히지 않으므로 무변경이라도 스킵하면 안 된다 — 스킵하면 표식이
@@ -700,20 +704,12 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     `chunk_count = -1` 로 표식하므로 루프 **전체**가 덮인다 — 아래 주석 참조."""
     base: dict[str, Any] = {"kind": "doc.get", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
-    if meta is None:
-        # F7 — 여태 `"unknown doc_id"` 한 줄이었다. 오타 하나에 다음 수가 없었다.
-        base["error"] = "unknown doc_id"
-        cands = near_docs(store, doc_id, owner=owner)
-        base["hint"] = ("doc_id must match exactly. "
-                        + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
-                        + "Use vinc_doc_list to browse, or vinc_search to find a "
-                          "document by its content.")
-        if cands:
-            base["candidates"] = cands
-        return base
-    if owner is not None and meta.get("owner_id") != owner:
-        base["error"] = "owner mismatch — 남의 문서는 읽을 수 없다(SEC-1)"
-        return base
+    # 남의 문서는 **없는 문서와 똑같이** 답한다(SEC-1). "owner mismatch" 는 그 id 가
+    # 이 허브에 있다는 사실을 남에게 알려 주었다. 후보(near_docs)는 부르는 쪽 소유로만
+    # 좁혀지므로 남의 id 가 거기로 새지 않는다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+    if meta is None or (owner is not None and meta.get("owner_id") != owner):
+        return _unknown_doc(base, store, doc_id, owner)
     rows = store.run(
         "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_index AS idx, "
         "c.char_start AS cs, c.char_end AS ce, c.text AS text "
@@ -779,6 +775,36 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
     return base
 
 
+def _unknown_doc(base: dict, store, doc_id: str, owner: str | None) -> dict:
+    """없는 doc_id 의 읽기 응답 — get_doc 과 남의 문서 거절이 **같은 꼴**을 내도록
+    한 자리로 모은 것. F7: 오타 하나에 다음 수가 없던 한 줄 오류를 후보로 보강한다."""
+    base["error"] = "unknown doc_id"
+    cands = near_docs(store, doc_id, owner=owner)
+    base["hint"] = ("doc_id must match exactly. "
+                    + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
+                    + "Use vinc_doc_list to browse, or vinc_search to find a "
+                      "document by its content.")
+    if cands:
+        base["candidates"] = cands
+    return base
+
+
+def _nothing_deleted(base: dict, store, doc_id: str, owner: str | None) -> dict:
+    """지울 것이 없던 삭제의 응답 — 없는 문서와 남의 문서가 같은 꼴을 낸다."""
+    base.update(executed=True, deleted_chunks=0, deleted_meta=False, found=False)
+    # F7 — 여태 없는 문서를 지워도 응답이 성공과 **똑같았다**. 멱등이라 오류는
+    # 아니지만, 오타로 지운 줄 알고 넘어가는 것이 실제 피해다.
+    base["error"] = "unknown doc_id — nothing was deleted"
+    cands = near_docs(store, doc_id, owner=owner)
+    base["hint"] = ("The delete is idempotent, so this is not an error — but "
+                    "nothing matched. "
+                    + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
+                    + "Use vinc_doc_list to check the id.")
+    if cands:
+        base["candidates"] = cands
+    return base
+
+
 def near_docs(store, needle: str, *, owner: str | None = None,
               limit: int = 3) -> list[str]:
     """놓친 doc_id 에 가까운 문서 후보(F7). id 와 제목 양쪽을 본다 — 사용자는 둘 중
@@ -820,8 +846,8 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     base: dict[str, Any] = {"kind": "doc.delete", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     if meta is not None and owner is not None and meta.get("owner_id") != owner:
-        base["error"] = "owner mismatch — 남의 문서는 지울 수 없다(SEC-1)"
-        return base
+        # 거절은 그대로, 답은 없는 문서와 같게(SEC-1) — 아무것도 지우지 않는다.
+        return _nothing_deleted(base, store, doc_id, owner)
     cnt = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c",
                     {"d": doc_id})
     n = int(cnt[0].get("c")) if cnt else 0
@@ -849,17 +875,7 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
              "seq": _next_doc_seq(store, owner_id)})
     base.update(executed=True, deleted_chunks=n, deleted_meta=meta is not None)
     if meta is None and not n:
-        # F7 — 여태 없는 문서를 지워도 응답이 성공과 **똑같았다**. 멱등이라 오류는
-        # 아니지만, 오타로 지운 줄 알고 넘어가는 것이 실제 피해다.
-        base["found"] = False
-        base["error"] = "unknown doc_id — nothing was deleted"
-        cands = near_docs(store, doc_id, owner=owner)
-        base["hint"] = ("The delete is idempotent, so this is not an error — but "
-                        "nothing matched. "
-                        + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")
-                        + "Use vinc_doc_list to check the id.")
-        if cands:
-            base["candidates"] = cands
+        _nothing_deleted(base, store, doc_id, owner)
     else:
         base["found"] = True
     return base
@@ -1077,11 +1093,9 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
     내린다. 인덱스가 걸린 열 변이라 drop→SET→(검색 경로 지연 재빌드). SEC-1 가드."""
     base: dict[str, Any] = {"kind": "doc.reembed", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
-    if meta is None:
+    # 남의 문서는 없는 문서와 같게 답한다(SEC-1).
+    if meta is None or (owner is not None and meta.get("owner_id") != owner):
         base["error"] = "unknown doc_id"
-        return base
-    if owner is not None and meta.get("owner_id") != owner:
-        base["error"] = "owner mismatch (SEC-1)"
         return base
     rows = store.run(
         "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, c.text AS text "
@@ -1809,11 +1823,9 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
       matched}, mentions}."""
     base: dict[str, Any] = {"kind": "doc.extract", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
-    if meta is None:
+    # 남의 문서는 없는 문서와 같게 답한다(SEC-1).
+    if meta is None or meta.get("owner_id") != owner:
         base["error"] = "unknown doc_id"
-        return base
-    if meta.get("owner_id") != owner:
-        base["error"] = "owner mismatch — 남의 문서에서 추출할 수 없다(SEC-1)"
         return base
     text = ""
     if candidates is None or apply:

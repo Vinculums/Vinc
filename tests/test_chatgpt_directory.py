@@ -99,6 +99,42 @@ def test_fetch_reads_a_document_and_a_node():
     assert node["url"] == "https://vincs.io/#view/trace/concept:vinc-mcp"
 
 
+def _fetch_missing(method, path, params, body):
+    if path == "/doc":
+        return {"kind": "doc.get", "executed": False, "doc_id": params["id"],
+                "error": "unknown doc_id", "hint": "doc_id must match exactly."}
+    if path == "/brief":
+        # 없는 id 의 brief 는 none + unreadable 이다(랭킹 대체 없음).
+        return {"status": "none", "executed": True, "candidates": [],
+                "unreadable": [{"id": params["query"],
+                                "note": "unknown node: " + params["query"]}]}
+    return {}
+
+
+@pytest.mark.parametrize("ident", ["doc:vinc.plan.nope", "gabia.cloud-docs.user-guide",
+                                   "concept:does-not-exist-audit-probe"])
+def test_fetch_of_a_missing_id_is_a_tool_error_not_an_empty_text(ident):
+    """감사 §5 결함 10: 없는 id 에 text:"" 인 성공을 주었고, 딥리서치 호스트는
+    그것을 인용 가능한 빈 문서로 읽었다. 이제 rpc 가 isError:true 로 내린다."""
+    d = rpc.Dispatcher(_StubBridge(_fetch_missing), allow_target=False)
+    r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "fetch", "arguments": {"id": ident}}})
+    assert "error" not in r, r                      # 프로토콜 오류가 아니라 도구 오류
+    assert r["result"]["isError"] is True
+    assert "structuredContent" not in r["result"]
+    text = r["result"]["content"][0]["text"]
+    assert text.startswith("NotFound:") and ident in text
+
+
+def test_fetch_does_not_answer_a_node_id_with_another_node():
+    """brief 가 다른 노드를 resolved 로 내더라도 fetch 는 그것을 그 id 의 본문으로
+    내보내지 않는다."""
+    b = _StubBridge({"status": "resolved", "one_liner": "Other.",
+                     "node": {"id": "concept:other", "title": "Other"}})
+    with pytest.raises(tools.NotFound):
+        tools.call("fetch", {"id": "concept:asked"}, b, allow_target=False)
+
+
 def test_search_and_fetch_carry_structured_content():
     d = rpc.Dispatcher(
         _StubBridge({"rows": [{"doc_id": "d1", "snippet": "T"}], "node_hits": []}),

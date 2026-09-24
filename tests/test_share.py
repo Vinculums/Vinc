@@ -274,7 +274,9 @@ class PackDocumentsE2E(unittest.TestCase):
         self.assertEqual(a_owners, {"user:alice"})    # A 원문 불변
         cross = ds.get_doc(st, doc_a, owner="user:bob")
         self.assertFalse(cross.get("executed"))
-        self.assertIn("mismatch", cross.get("error") or "")
+        # 남의 문서는 없는 문서와 같게 답한다 — 후보에도 남의 id 가 새지 않는다.
+        self.assertEqual(cross.get("error"), "unknown doc_id")
+        self.assertNotIn(doc_a, cross.get("candidates") or [])
 
 
 @unittest.skipIf(_SHARE_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
