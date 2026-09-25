@@ -69,7 +69,13 @@ export function markTexture(kind: string | undefined, gateway: boolean): string 
 /** `focus(id)` 는 hover 로만 되던 강조를 **밖에서도** 걸 수 있게 연다(D70) —
  *  좌측 트리·검색 착지가 평면 관점에서도 같은 노드를 가리켜야 하기 때문이다.
  *  마운트된 집합에 없으면 false 를 돌려주고 호출측이 스코프 교체를 판단한다. */
-export type PlanarHandle = { dispose(): void; focus?(id: string): boolean };
+export type PlanarHandle = {
+  dispose(): void; focus?(id: string): boolean;
+  /** 주제 틴트 표를 갈아 끼운다(테마 전환 — 명도가 모드별 토큰이다). 나머지 색은 전부
+   *  CSS 토큰 참조라 테마를 스스로 따르고, 인라인으로 실린 틴트만 굳어 있다.
+   *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+  retint?(tint: Map<string, string> | null): void;
+};
 /** 타임라인이 받는 마크 — 원래 Flow 와 공유하던 모양이라 이름이 Flow* 였다.
  *  Flow 폐기(D53) 후에도 모양은 그대로라 이름만 중립화한다. */
 export type PlanarNode = { id: string; label: string; domain: string };
@@ -623,6 +629,17 @@ const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
       focus(id);
       hit.scrollIntoView({ block: "center", inline: "center" });
       return true;
+    },
+    /** 다시 그리지 않는다 — 스크롤·고정 초점·짚은 선이 그대로 남아야 한다. 점마다 실린
+     *  `--ink` 만 고치고, 노드 값도 고쳐 두어 다음 리사이즈의 `draw` 가 같은 색을 낸다. */
+    retint(tint) {
+      for (const n of nodes) n.tint = tint?.get((n.domain || "").trim());
+      for (const g of nodeEls) {
+        const t = seen.get(g.dataset.id || "")?.tint || "";
+        const ok = HEX6.test(t);
+        g.classList.toggle("pl-tint", ok);
+        if (ok) g.style.setProperty("--ink", t); else g.style.removeProperty("--ink");
+      }
     },
   };
 }

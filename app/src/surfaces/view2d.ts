@@ -48,6 +48,10 @@ export type Handle2d = {
   /** 점등 집합을 **밖에서** 건다(범례 갈래 hover · 인과 원뿔). `null` 이면 hover
    *  기본 문법으로 돌아간다. 프리퍼런스가 아니라 일시 상태라 저장되지 않는다. */
   spotlight(s: Spot | null): void;
+  /** 테마가 뒤집혔을 때 색만 다시 칠한다(노드·선·라벨·배경 혼합). 카메라·끌어 둔 자리·
+   *  모아 둔 고리·점등은 건드리지 않는다 — 다시 마운트하면 그것들과 함께 읽던 문서 열도
+   *  닫힌다. 근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+  retheme(): void;
   /** 시간 커서가 남긴 집합. `null` 이면 전량이다.
    *
    *  **빼는 것이 아니라 숨긴다**(2026-09-10). 노드를 그래프에서 덜어 내면 배치가
@@ -163,7 +167,8 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
        onEdge?: (e: GraphEdge) => void; markId?: string },
   prefs: ViewPrefs): Handle2d {
-  const bg = hexStr(pal().background);
+  // 물러난 선과 미니맵이 섞어 드는 배경. 테마 전환이 다시 읽는다(`retheme`).
+  let bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
     <div class="a2-badges"></div>
     <canvas class="a2-minimap" width="180" height="120" hidden></canvas>`;
@@ -251,7 +256,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   //: 색상표는 **받은 노드 전부**로 짓는다(`shown` 이 아니다). 색은 주제의 순위로 매겨
   //: 지므로, 고아 숨김으로 주제 하나가 빠지면 나머지 주제의 색이 한 칸씩 밀려 3D·
   //: 타임라인·노드 카드와 같은 주제가 다른 색이 된다.
-  let tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
+  //: 명도가 모드별 토큰이라 테마가 뒤집히면 표도 다시 짓는다(`retheme`).
+  const tintsNow = () =>
+    prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
+  let tints = tintsNow();
   const inkOf = (n: GraphNode) => {
     if (n.id === o.markId) return point();
     return tints?.get((n.domain || "").trim()) ?? ink();
@@ -268,6 +276,17 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       ...markOf(n),
     });
   }
+  // 선의 기준색은 **엣지 램프**(theme.ts linkRamp)다. 여태 보더 토큰(`line`)을 섞어
+  // 썼는데 그 토큰은 다크에서 Lc 0(#262A3D)이라 아무리 섞어도 선이 배경 밑에
+  // 있었다(실효 1.20:1). 램프는 선 전용으로 대비를 맞춰 둔 값이다.
+  // 서열(방향 > 무방향 > 크로스 > 다리)은 그대로 두되, 아래 두 단은 mixFloor 가
+  // 불가시 하한(Lc 15) 위에서 멈춘다 — 물러남이지 삭제가 아니다.
+  // 마운트와 테마 전환(`retheme`)이 이 한 벌을 읽는다.
+  const edgeColor = (e: GraphEdge) => {
+    if (DIRECTED.includes(e.type)) return ramp().mid;
+    return e.type === "CONNECTS" ? mixFloor(ramp().base, bg, 0.6)
+      : e.cross_domain ? mixFloor(ramp().base, bg, 0.8) : ramp().base;
+  };
   // D50 — 방향 관계는 **뼈대**, 나머지(RELATED_TO 등)는 **살**이다. 흐름 관점이
   // 방향 3종만 그려 나머지를 통째로 버리는 것과 달리, 여기서는 둘 다 그리되 위계를
   // 준다: 방향 엣지만 화살촉을 달고 진하게, 무방향은 옅고 가늘게 배경으로 깐다.
@@ -289,14 +308,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       // (2026-08-02 사용자 손잡이). 가중치 표현은 D33 대로 색 농도가 계속 맡는다.
       size: (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9)
             * (prefs.edgeScale ?? 1),
-      // 기준색은 **엣지 램프**(theme.ts linkRamp)다. 여태 보더 토큰(`line`)을 섞어
-      // 썼는데 그 토큰은 다크에서 Lc 0(#262A3D)이라 아무리 섞어도 선이 배경 밑에
-      // 있었다(실효 1.20:1). 램프는 선 전용으로 대비를 맞춰 둔 값이다.
-      // 서열(방향 > 무방향 > 크로스 > 다리)은 그대로 두되, 아래 두 단은 mixFloor 가
-      // 불가시 하한(Lc 15) 위에서 멈춘다 — 물러남이지 삭제가 아니다.
-      color: dir ? ramp().mid
-        : bridged ? mixFloor(ramp().base, bg, 0.6)
-        : e.cross_domain ? mixFloor(ramp().base, bg, 0.8) : ramp().base,
+      color: edgeColor(e),                     // 램프와 하한(위 edgeColor 주석)
       directed: dir,
     });
     edgeOf.set(key, e);
@@ -345,6 +357,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     labelGridCellSize: 140,
     labelDensity: 0.6,
   });
+
+  // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 3D 의 `__g3` 와 같은
+  // 자리다. 노드·선 색과 설정값을 수치로 대조하는 데 쓴다(테마 전환 검증).
+  if (import.meta.env.DEV) (window as any).__s2 = sigma;
 
   // ── 초점 문법(D32-a) — 초점과 이웃만 남고 나머지는 물러난다 ────────────────
   const nbr = new Map<string, Set<string>>();
@@ -882,6 +898,16 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       cam.animate({ ratio: want }, { duration: 260 });
     },
     spotlight(s) { spot = s; sigma.refresh(); },
+    retheme() {
+      // 리듀서·hover 판·미니맵은 팔레트를 부를 때 읽어 저절로 따른다. 굳어 있던 것은
+      // 그래프 속성(노드·선 색)과 라벨 설정, 그리고 섞을 때 쓰는 배경이다.
+      bg = hexStr(pal().background);
+      tints = tintsNow();
+      for (const n of shown) if (g.hasNode(n.id)) g.setNodeAttribute(n.id, "color", inkOf(n));
+      edgeOf.forEach((e, key) => { if (g.hasEdge(key)) g.setEdgeAttribute(key, "color", edgeColor(e)); });
+      sigma.setSetting("labelColor", { color: ink() });
+      sigma.refresh();
+    },
     /** 제자리 반영(2026-08-17). 노드 집합·엣지 집합이 그대로인 변경만 받는다:
      *  크기 인코딩·배율·선 굵기·화살촉·라벨·주제 틴트·간격. 값은 그래프 속성에 다시
      *  쓰고 `refresh()` 한 번 — 마운트를 새로 하면 카메라·컨텍스트·패널이 전부
@@ -894,7 +920,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
       if (!changed.every((k) => ok.has(k))) return false;
       prefs = np;
-      tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
+      tints = tintsNow();
       for (const n of shown) {
         if (!g.hasNode(n.id)) continue;
         g.setNodeAttribute(n.id, "size", sizeOf(n));

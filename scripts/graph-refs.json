@@ -372,6 +372,7 @@
     "decision:a-node-address-names-its-space",
     "decision:a-node-keeps-its-own-colour-in-every-state",
     "decision:a-selection-becomes-an-address-you-paste",
+    "decision:a-theme-switch-repaints-the-open-view-in-place",
     "decision:account-is-a-path-not-a-wall",
     "decision:agent-deploy-ratified-2026-09-11",
     "decision:agent-model-ladder",
