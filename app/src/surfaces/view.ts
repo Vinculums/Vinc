@@ -3,7 +3,7 @@ import Sigma from "sigma";
 import { api, cfg, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
-import { absoluteViewUrl, formatViewUrl } from "../view-url";
+import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
@@ -269,6 +269,14 @@ export async function renderView(el: HTMLElement) {
     (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(eff);
     g2?.spotlight?.(eff);
   }
+  /** 명시 집합(`#view/ids/…`)을 점등한다 — 그 노드들과 **그들 사이의** 선만.
+   *  일시 점등이라 hover 가 이기고 손을 떼면 여기로 돌아온다(setSpot 규칙 그대로). */
+  function spotIds(ids: string[]): void {
+    const want = new Set(ids);
+    const s = spotOf(curEdges.filter((e) => want.has(e.source) && want.has(e.target)));
+    for (const id of ids) s.nodes.add(id);
+    setSpot(s);
+  }
   /** 지금 그려진 노드 중 그 종만 밝힌다. 엣지는 비운다 — 종은 노드의 성질이고
    *  "그 종에 닿는 선"은 종의 집합이 아니다(선을 함께 밝히면 두 뜻이 섞인다).
    *  ⚠ 평면 관점(타임라인 · Weave)에는 점등이 걸리지 않는다(위 `spot` 주석) —
@@ -312,14 +320,21 @@ export async function renderView(el: HTMLElement) {
   let lnbFocus: { domain?: string; nodeId?: string } = {};
   const trail: Level[] = [];
 
-  // deep links: #view/<domain> · #view/compare/<a>/<b> · #view/trace/<id> · …/as/<view>
-  const parts = location.hash.split("/").map(decodeURIComponent);
-  const deep = parts[1] || "";
+  // deep links — 공유 문법은 `parseViewUrl` **하나**로 읽는다(`#view` · `#view/<a,b>` ·
+  // `trace/<id>` · `ids/<a,b>` · `doc/<id>` · `/d<n>` · `/as/<vp>`). 여기 손으로 짠 파서가
+  // `trace`·`as` 만 알던 동안, 앱이 스스로 복사하는 `doc`·`ids` 주소가 "doc"·"ids" 라는
+  // 주제로 읽혀 빈 지도가 오류 없이 떴다(view-url.ts 머리말의 그 함정).
+  // 근거: [[decision:the-app-reads-its-own-view-addresses-through-the-shared-parser]]
+  // 공유 문법 밖은 앱 전용 `#view/read/<id>[/<doc>]`(LNB 착지) 하나라 그것만 따로 읽는다.
+  const rawParts = location.hash.split("/").map(decodeURIComponent);
+  const readRoute = rawParts[1] === "read";
+  const addr = readRoute ? null : parseViewUrl(location.hash);
   // /as/<view> 는 이 마운트에서만 저장값을 이긴다 — 절대 savePrefs 하지 않는다
   // (공유 링크가 받는 사람의 저장 관점을 영구히 덮어쓰지 않게).
-  const asAt = parts.indexOf("as");
+  const asAt = rawParts.indexOf("as");
+  const wantVp = addr ? addr.viewpoint : asAt > 0 ? rawParts[asAt + 1] || "" : "";
   let hashViewpoint: Viewpoint | null =
-    asAt > 0 && VIEWPOINTS.includes(parts[asAt + 1] as Viewpoint) ? (parts[asAt + 1] as Viewpoint) : null;
+    VIEWPOINTS.includes(wantVp as Viewpoint) ? (wantVp as Viewpoint) : null;
   /** 저장된 프리퍼런스를 **지금 관점이 실제로 하는 것**으로 해석해 내려보낸다.
    *  해석을 여기 한 곳에 두는 이유: 패널의 활성 칩과 렌더러가 같은 값을 봐야 한다.
    *  저장값 자체는 건드리지 않는다 — 사용자가 고른 뜻은 그대로 남고, 관점을 옮기면
@@ -3419,16 +3434,21 @@ export async function renderView(el: HTMLElement) {
   // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
   // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
-  const landOn = deep === "trace" || deep === "read" ? (parts[2] || "") : "";
+  const sel = addr?.sel;
   // `#view/read/<id>[/<doc>]` 는 LNB 가 View 밖에서 쓰는 착지다 — trace 와 같되 카드
   // 대신 넓은 문서 열로 연다(openFromNav). 착지한 뒤 주소는 syncHash 가 trace 로 쓴다.
-  const landWide = deep === "read";
-  const landDoc = landWide && parts[3] && parts[3] !== "as" ? parts[3] : "";
+  const landWide = readRoute;
+  const landOn = readRoute ? (rawParts[2] || "") : sel?.kind === "node" ? sel.id : "";
+  const landDoc = readRoute && rawParts[3] && rawParts[3] !== "as" ? rawParts[3] : "";
+  // `#view/doc/<id>` — 그 문서를 리더로 연다(리더의 "어시스턴트에게 묻기 · 프롬프트
+  // 복사"가 만드는 주소다). `#view/ids/<a,b>` — 고른 집합을 점등한다(올가미가 만든다).
+  const landReader = sel?.kind === "doc" ? sel.id : "";
+  const landIds = sel?.kind === "ids" ? sel.ids : [];
   // 주제 여럿은 쉼표로 잇는다(`#view/a,b`) — 주제 이름에 쉼표가 없다는 관례가 전제고,
   // 백엔드의 `domains=a,b` 파라미터와 같은 문법이라 주소와 질의가 한 모양이다.
-  // `trace` 를 여기서 빼는 이유: 씨앗 없는 `#view/trace` 가 "trace"라는 주제를 만들었다.
-  if (deep && deep !== "as" && deep !== "trace" && deep !== "read")
-    trail.push({ kind: "l1", domains: deep.split(",").map(decodeURIComponent).filter(Boolean) });
+  // 옛 `#view/compare/…` 는 주제가 아니다(위 주석) — 전체로 받는다.
+  if (sel?.kind === "domains" && !sel.domains.some((d) => d === "compare" || d.startsWith("compare/")))
+    trail.push({ kind: "l1", domains: sel.domains });
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라
   // 발견되지 않았고, 우클릭 메뉴는 아직 없다.
@@ -3484,5 +3504,7 @@ export async function renderView(el: HTMLElement) {
   await show(trail[trail.length - 1]);
   if (landOn) await (landWide ? openFromNav(landOn, undefined, landDoc || undefined)
                             : focusNode(landOn));
+  else if (landReader) await openDocAt(landReader);
+  else if (landIds.length) spotIds(landIds);
   maybeCoach();
 }
