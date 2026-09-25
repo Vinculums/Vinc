@@ -1349,6 +1349,11 @@ class VincApp:
                      "wall_s": round(time.monotonic() - t0, 1)}
 
     def write_embed_apply(self, body):
+        # 운영자 스위치: 켜져 있으면 벡터를 안 넣는다. 백로그(needs_embed)는 그대로
+        # 남아 스위치를 끄면 이어서 채워진다. 검색은 이미 있는 벡터로 계속 돈다.
+        # 근거: [[record:hub-segfault-loop-on-embedding-apply-2026-09-24]]
+        if embed_apply_paused():
+            return 503, {"executed": False, "error": "embedding_apply_paused"}
         doc_id = _req(body, "doc_id")
         embeddings = body.get("embeddings") or {}
         res = self.jobs.run_sync("embed.apply", lambda: docstore.apply_embeddings(
@@ -1649,6 +1654,11 @@ def _int(val, default: int) -> int:
         return default
 
 
+def embed_apply_paused() -> bool:
+    """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가(on/1/true/yes). 매번 env 를 읽는다."""
+    return _flag(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
+
+
 def _flag(val) -> bool:
     """쿼리스트링·JSON 양쪽에서 오는 불리언. HTTP 로 오면 문자열 `"true"` 이고
     MCP/CLI 로 오면 진짜 bool 이라 둘 다 받아야 한다 — `bool("false")` 가 True 인
@@ -1784,6 +1794,8 @@ class _Handler(BaseHTTPRequestHandler):
                     det = getattr(snaps, "detail", None)
                     body["snapshot"] = (det() if callable(det)
                                         else getattr(snaps, "last_state", "unknown"))
+            if embed_apply_paused():
+                body["embed_apply_paused"] = True
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,

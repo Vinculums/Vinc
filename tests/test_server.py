@@ -196,6 +196,45 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj["status"], "ok")
 
+    def test_embed_apply_pause_switch(self):
+        """`VINC_EMBED_APPLY_PAUSED` 가 켜지면 `/embed/apply` 는 503 으로 거절하고
+        `/health` 에 드러난다. 꺼지면 둘 다 평소대로다."""
+        class _FakeStore:
+            driver_name = "fake"
+
+            def close(self):
+                pass
+        from api import docstore
+        calls = []
+        real = docstore.apply_embeddings
+        docstore.apply_embeddings = lambda *a: calls.append(a) or {"embedded": 0}
+        old = os.environ.get("VINC_EMBED_APPLY_PAUSED")
+        try:
+            with running_server(_app(store=_FakeStore())) as base:
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = "on"
+                code, obj = _req(base, "/embed/apply", method="POST",
+                                 body={"doc_id": "d1", "embeddings": {}})
+                self.assertEqual(code, 503)
+                self.assertEqual(obj, {"executed": False,
+                                       "error": "embedding_apply_paused"})
+                self.assertEqual(calls, [])
+                self.assertIs(_req(base, "/health", token=None)[1]
+                              .get("embed_apply_paused"), True)
+
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = ""
+                code, _ = _req(base, "/embed/apply", method="POST",
+                               body={"doc_id": "d1", "embeddings": {}})
+                self.assertEqual(code, 200)
+                self.assertEqual(len(calls), 1)
+                self.assertNotIn("embed_apply_paused",
+                                 _req(base, "/health", token=None)[1])
+        finally:
+            docstore.apply_embeddings = real
+            if old is None:
+                os.environ.pop("VINC_EMBED_APPLY_PAUSED", None)
+            else:
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = old
+
     def test_missing_token_401(self):
         with running_server(_app()) as base:
             code, obj = _req(base, "/recall", token=None)
