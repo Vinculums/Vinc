@@ -181,7 +181,6 @@ const EN = {
       // v2 — 물러남(recede) 단계. 값은 recede.ts 가 토큰에서 읽어 채운다.
       tiersCap: "Recede = dimming",
       tierFocus: "Focus",
-      tierNode: (p: number) => `Nodes ${p}%`,
       tierLine: (p: number) => `Lines ${p}%`,
       tierText: (p: number) => `Text ${p}%`,
       tiersHelp: "Point at something and all but it and its neighbours step back to "
@@ -1121,7 +1120,6 @@ const KO: Deck = {
       } as Record<string, string>,
       tiersCap: "물러남 = 흐림",
       tierFocus: "초점",
-      tierNode: (p) => `노드 ${p}%`,
       tierLine: (p) => `선 ${p}%`,
       tierText: (p) => `이름 ${p}%`,
       tiersHelp: "짚으면 초점과 이웃만 남고 나머지가 이 값으로 물러나요. 전 관점 공통이고, 모션을 줄여도 값은 그대로예요",
