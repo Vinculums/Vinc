@@ -12,7 +12,7 @@
       {
         "id": "concept:agent-developer",
         "type": "concept",
-        "title": "Agent role: developer",
+        "title": "Software engineer",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "One change, one branch, one pull request, one episode. Never widen the scope.",
@@ -41,7 +41,7 @@
       {
         "id": "concept:agent-gate-runner",
         "type": "concept",
-        "title": "Agent role: gate runner",
+        "title": "CI gate runner",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Run the gates and report pass or fail with the names of what failed. Never edit.",
@@ -67,7 +67,7 @@
       {
         "id": "concept:agent-reviewer-checklist",
         "type": "concept",
-        "title": "Agent role: checklist reviewer",
+        "title": "Checklist reviewer",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Tick every row of the plan against the diff and name the rows with no matching change. Never judge.",
@@ -93,7 +93,7 @@
       {
         "id": "concept:agent-reviewer-judgement",
         "type": "concept",
-        "title": "Agent role: judgement reviewer",
+        "title": "Judgement reviewer",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "An adversarial read of the diff for correctness and over-engineering. Never edit, never merge.",
@@ -119,7 +119,7 @@
       {
         "id": "concept:agent-security",
         "type": "concept",
-        "title": "Agent role: security",
+        "title": "Security engineer",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Re-audit the trust boundaries and hand every fix to the developer as a package. Never fix in place.",

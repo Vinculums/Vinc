@@ -76,7 +76,10 @@ class PackContract(unittest.TestCase):
                     self.assertEqual(n["type"], "concept")
                     self.assertEqual(n["domain"], roles.DOMAIN)
                     self.assertTrue(domain_hierarchy.is_reserved(n["domain"]))
-                    self.assertTrue(n["title"].startswith("Agent role: "))
+                    # 제목은 직무명이다. 접두는 GRAPH.md 감사 규칙(2026-09-24)이 금한다 —
+                    # 여기서 요구하던 것을 뒤집었다([[vinc.canon.agent-roles §7]]).
+                    self.assertTrue(n["title"].strip())
+                    self.assertFalse(n["title"].lower().startswith("agent role:"))
                     props = n["props"]
                     for k in REQUIRED_PROPS:
                         self.assertIn(k, props)
