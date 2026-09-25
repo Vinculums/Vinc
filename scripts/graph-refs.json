@@ -369,6 +369,7 @@
     "concept:app-narrow-window-contract",
     "concept:tool-response-disclosure",
     "decision:2d-marks-are-baked-at-256-px",
+    "decision:2d-selection-outlines-the-kept-nodes",
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
     "decision:a-node-address-names-its-space",
     "decision:a-node-keeps-its-own-colour-in-every-state",

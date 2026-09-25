@@ -39,5 +39,27 @@ class MarksAreBakedLarge(unittest.TestCase):
         self.assertRegex(prog, r'size: \{ mode: "force", value: MARK_TEX_PX \}')
 
 
+class SelectionOutlinesKeptNodes(unittest.TestCase):
+    """평소엔 평면, 클릭·점등으로 남은 노드에만 외곽선([[decision:2d-selection-outlines-the-kept-nodes]])."""
+
+    def test_외곽선_판을_따로_굽는다(self):
+        src = (SRC / "view-planar.ts").read_text(encoding="utf-8")
+        self.assertRegex(src, r"export function markTexture\(kind: string \| undefined, gateway: boolean,\s*ring = false\)")
+        body = src[src.index("export function markTexture"):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("|${ring ? 1 : 0}`", body, "캐시 키가 링 유무를 갈라야 한다")
+        self.assertIn("RING_R", body)
+
+    def test_hover_에는_두르지_않는다(self):
+        src = (SRC / "view2d.ts").read_text(encoding="utf-8")
+        red = src[src.index('sigma.setSetting("nodeReducer"'):]
+        red = red[:red.index("\n  });")]
+        self.assertIn("const ring = hovered ? {} : { image:", red)
+        # 링은 남은(keep) 노드 분기 안에만 있다 — 물러난 노드에는 안 두른다.
+        kept = red[red.index("if (keep.has(id))"):red.index('return { ...data, label: "" }')]
+        self.assertIn("...ring", kept)
+        self.assertNotIn("ringImage", red[red.index('return { ...data, label: "" }'):])
+
+
 if __name__ == "__main__":
     unittest.main()
