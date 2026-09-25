@@ -590,11 +590,13 @@ jobs:
       # ⚠ 22 인 이유는 **`--experimental-strip-types` 가 22.6+ 라서**다(아래 dev 검사).
       # `release.yml` 은 20 그대로 둔다 — 실제로 배포되는 것을 짓는 환경이라 바꿀 이유가
       # 없고, 이 잡이 하는 일은 `tsc` 와 순수 스크립트뿐이라 런타임 차이가 걸리지 않는다.
+      # 원격 npm 캐시(`cache: npm`)를 쓰지 않는다(2026-09-25). 셀프호스티드 러너에는
+      # `~/.npm` 이 실행 사이에 그대로 남아 있는데, 이 옵션은 그것을 GitHub 캐시 서버에서
+      # 매번 다시 받았다(107MB, 초당 0.2MB로 시작해 이 스텝만 59초). `npm ci` 는 로컬
+      # 캐시를 그대로 쓴다. 호스티드로 되돌리면 다시 켤 것 — 거기서는 캐시가 이것뿐이다.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
       - name: Install
         working-directory: app
         run: npm ci --no-audit --no-fund
