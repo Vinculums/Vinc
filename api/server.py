@@ -104,6 +104,7 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
         return (json.load(resp) or {}).get("vectors") or []
 
 from store.config import load_config
+from store import config as store_config
 from store.backend import open_store
 
 from . import query as q
@@ -113,6 +114,7 @@ from . import fragment as frag
 from . import share
 from . import spaceproxy
 from . import changes
+from . import localmode
 from . import sync
 from . import docstore
 from . import node_mirror
@@ -1498,6 +1500,13 @@ class VincApp:
         우회한다(허브는 "이 owner 의 전부를 서빙"이 맞는 의미 — 로컬쪽 도메인 선택은
         push 시 로컬 스토어에서 이미 적용됨, apply_delta 는 도메인 필터가 없다)."""
         owner = _req(p, "owner")
+        if _flag(p.get("all")):
+            # 모드 전환의 전량 받기(VIN-130). 아래 도메인 목록은 **주제가 빈 노드를 못
+            # 잡는다**(`IN` 은 빈 값과 맞지 않는다) — 그대로 두면 계정에서 기기로 옮길 때
+            # 주제 없는 노드가 조용히 남는다. 그래서 주제를 아예 안 가린다.
+            return self._read(lambda r: sync.export_delta(
+                owner=owner, since=_int(p.get("since"), 0), everything=True,
+                cfg=self.cfg, store=r))
         return self._read(lambda r: sync.export_delta(
             owner=owner, since=_int(p.get("since"), 0),
             domains=[row["domain"] for row in q.domains(owner=owner, store=r).get("rows", [])
@@ -1516,8 +1525,9 @@ class VincApp:
         """문서 정본 delta(D45 P3) — sync_seq > since 인 문서(복원 텍스트)+삭제 표식.
         노드 sync 와 별개 채널: 텍스트만 전송하고 embedding·청크는 수신측 재생성."""
         owner = _req(p, "owner")
+        # `all` = 순번과 무관하게 전부(모드 전환의 전량 받기, VIN-130 · docsync 주석).
         return self._read(lambda r: docsync.export_docs(
-            r, owner=owner, since=_int(p.get("since"), 0)))
+            r, owner=owner, since=_int(p.get("since"), 0), everything=_flag(p.get("all"))))
 
     def write_sync_docs_apply(self, body):
         """문서 정본 delta 적용(D45 P3 — doc 단위 LWW, 로컬 재청킹). 쓰기 → 잡 직렬화.
@@ -1587,6 +1597,163 @@ class VincApp:
 
         job = self.jobs.submit("sync", _job)
         return 202, job.to_dict()
+
+    # ── 저장 위치와 모드 전환(VIN-130) ─────────────────────────────────────────
+    # 데스크톱의 저장 설정은 `~/.vinc/config.json` 한 곳이다(`store.config`). 앱은 여기로
+    # 읽고 쓰고, 폴더가 바뀌면 셸이 사이드카를 다시 띄운다(열린 스토어를 갈아 끼우는 일은
+    # 이 프로세스가 하지 않는다: 단일 writer 를 중간에 바꾸면 도는 잡이 옛 파일에 쓴다).
+    # 그래서 이 라우트들은 **스토어 없이도** 답한다. 폴더를 잘못 골라 스토어가 안 열렸을 때
+    # 다시 고를 길이 여기뿐이다.
+
+    #: `--data` 로 띄웠는가(`serve` 가 채운다). 그러면 설정의 폴더는 이 프로세스에 안 먹는다.
+    data_pinned = False
+
+    def _data_pinned(self) -> bool:
+        return bool(self.data_pinned or os.environ.get("MEMORY_DATA_DIR"))
+
+    def _config_view(self) -> dict:
+        home = store_config.vinc_home()
+        conf = store_config.read_local_config(home)
+        cur = getattr(self.cfg, "data_dir", None)
+        pinned = self._data_pinned()
+        want = store_config.resolve_data_dir(create=False)
+        mode = conf.get("mode")
+        return {
+            "executed": True,
+            # 아직 안 정했으면 None 이다. 앱이 첫 기동에 정해 적는다(기존 설치의 데이터를
+            # 보고). 여기서 "account" 로 채우면 앱은 "이미 정했다"로 읽고 그 판단을 건너뛴다.
+            "mode": mode if mode in ("account", "local") else None,
+            "data_path": conf.get("data_path") or None,
+            "data_file": cur,
+            "default_folder": str(home),
+            "suggested_folder": localmode.suggested_folder(home),
+            "pinned": pinned,
+            # 설정이 가리키는 파일과 지금 연 파일이 다르다 = 셸이 사이드카를 다시 띄워야 한다.
+            "restart_needed": bool(cur) and not pinned
+                              and os.path.abspath(want) != os.path.abspath(cur),
+            "store_open": self.store is not None,
+        }
+
+    def read_config(self, p):
+        """저장 설정과 지금 연 스토어. 설정 화면의 데이터원."""
+        return 200, self._config_view()
+
+    def read_config_inspect(self, p):
+        """폴더 하나를 받기 전에 살핀다(`api.localmode.inspect_folder`). 아무것도 안 쓴다."""
+        return 200, {"executed": True, **localmode.inspect_folder(str(p.get("path") or ""))}
+
+    def write_config(self, body):
+        """저장 설정을 바꾼다: `mode`(account|local) · `data_path`(폴더, 빈 값 = 기본).
+
+        폴더는 받기 전에 살핀다. 쓸 수 없으면 400, 동기화 폴더·네트워크 드라이브면
+        `accept_risk` 없이 409 다(사람이 경고를 보고 한 번 더 골라야 받는다). 폴더는
+        **만들기만 한다**: 안에 있던 것은 지우지도 덮지도 않는다. 이미 스토어(`db`)가
+        있으면 다음 기동이 그것을 연다.
+
+        설정만 쓴다. 새 폴더로 옮기는 것은 셸의 재기동이고(`restart_needed`), 데이터를
+        나르는 것은 `/sync/pull-all`·`/sync/push-all` 이다."""
+        updates: dict = {}
+        info = None
+        if "mode" in body:
+            mode = body.get("mode")
+            if mode not in ("account", "local"):
+                return 400, {"error": "mode must be 'account' or 'local'"}
+            updates["mode"] = mode
+        if "data_path" in body:
+            if self._data_pinned():
+                return 409, {"error": "pinned",
+                             "note": "this process was started with a fixed data path "
+                                     "(--data or MEMORY_DATA_DIR)"}
+            raw = body.get("data_path")
+            if raw in (None, ""):
+                updates["data_path"] = None
+            else:
+                info = localmode.inspect_folder(str(raw))
+                if not info["ok"]:
+                    return 400, {"error": info["problem"], "inspect": info}
+                if info["risks"] and not _flag(body.get("accept_risk")):
+                    return 409, {"error": "risky_folder", "inspect": info}
+                try:
+                    os.makedirs(info["path"], exist_ok=True)
+                except OSError as exc:
+                    return 400, {"error": "not_writable", "inspect": info,
+                                 "note": f"{type(exc).__name__}: {exc}"}
+                home = store_config.vinc_home()
+                same = os.path.normcase(os.path.abspath(info["path"])) \
+                    == os.path.normcase(os.path.abspath(str(home)))
+                # 기본 폴더를 고른 것은 설정이 없는 것과 같다. 적어 두면 홈을 옮겼을 때
+                # 옛 경로를 가리키는 설정만 남는다.
+                updates["data_path"] = None if same else info["path"]
+        if not updates:
+            return 400, {"error": "nothing to change (mode, data_path)"}
+        store_config.write_local_config(updates)
+        view = self._config_view()
+        if info is not None:
+            view["inspect"] = info
+        return 200, view
+
+    #: `serve` 가 채우는 정지 스위치. 테스트·임베드처럼 `serve` 밖에서 만든 앱은 None 이다.
+    _request_stop = None
+
+    def write_shutdown(self, body):
+        """스스로 닫는다(VIN-130). 셸이 저장 폴더를 바꾼 뒤 사이드카를 다시 띄울 때 먼저
+        부른다. 죽이지 않고 부탁하는 이유: 이 길은 `close()` 를 지나 스토어를 닫는다
+        (체크포인트). 강제로 끊으면 다음 기동이 WAL 재생에 기대는데, 허브를 세 번
+        세운 고장이 그 재생이었다.
+
+        응답을 먼저 보내고 잠깐 뒤에 멈춘다. 스토어 없이도 받는다: 폴더를 잘못 골라
+        스토어가 안 열린 사이드카야말로 다시 띄워야 한다."""
+        stop = self._request_stop
+        if stop is None:
+            return 409, {"error": "this process was not started by serve"}
+        threading.Timer(0.2, stop).start()
+        return 202, {"executed": True, "note": "stopping"}
+
+    def _submit_move(self, name: str, fn):
+        """모드 전환의 데이터 이동을 잡으로. 동기화 세션과 같은 깃발을 쓴다(커서는 안
+        건드리지만 같은 원격에 같은 소유자로 쓰므로 겹치면 안 된다). 깃발은 **접수 때**
+        세운다: 잡 안에서 세우면 연달아 두 번 누른 요청이 둘 다 통과한다."""
+        if self._sync_running:
+            return 409, {"error": "a sync or move is already in progress"}
+        self._sync_running = True
+
+        def _job():
+            try:
+                return fn()
+            finally:
+                self._sync_running = False
+
+        try:
+            job = self.jobs.submit(name, _job)
+        except Exception:
+            self._sync_running = False
+            raise
+        return 202, job.to_dict()
+
+    def submit_sync_push_all(self, body):
+        """로컬 → 계정: 이 기기의 모든 주제를 계정으로(`sync.push_everything`). 202+job.
+
+        이 스토어에는 아무것도 안 쓴다. 결과의 `missing` 이 0 이 아니면 앱은 모드를
+        바꾸지 않는다."""
+        token = body.get("token")
+        if not token:
+            return 400, {"error": "missing field: token (member key)"}
+        owners = body.get("owners") or ["tenant:local", "user:local"]
+        if not isinstance(owners, list) or not all(isinstance(o, str) and o for o in owners):
+            return 400, {"error": "owners must be a list of owner ids"}
+        remote = sync.RemoteHTTP(token, body.get("base"))
+        return self._submit_move("sync:push-all", lambda: sync.push_everything(
+            self.store, self.cfg, owners=owners, remote=remote))
+
+    def submit_sync_pull_all(self, body):
+        """계정 → 로컬: 계정 그래프 전부를 이 스토어로(`sync.pull_everything`). 202+job."""
+        token = body.get("token")
+        if not token:
+            return 400, {"error": "missing field: token (member key)"}
+        owner = body.get("owner") or "tenant:local"
+        remote = sync.RemoteHTTP(token, body.get("base"))
+        return self._submit_move("sync:pull-all", lambda: sync.pull_everything(
+            self.store, self.cfg, owner=owner, remote=remote))
 
     def submit_backup(self, body):
         out = body.get("out")
@@ -1891,6 +2058,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/sync/domains": app.read_sync_domains,
             "/sync/pull-delta": app.read_sync_pull_delta,
             "/sync/docs-export": app.read_sync_docs_export,   # 문서 정본 delta(D45 P3)
+            # 저장 설정(VIN-130) — 스토어 없이 답한다.
+            "/config": app.read_config, "/config/inspect": app.read_config_inspect,
             "/embed/pending": app.read_embed_pending,   # 자체호스팅 임베딩 워커(B, 내부)
             # 계정 연결(디바이스 플로우) — 메일박스 1회 수령(인증).
             "/connect/status": app.read_connect_status,
@@ -1915,6 +2084,11 @@ class _Handler(BaseHTTPRequestHandler):
         # 팀 그래프는 로컬에 없다. 스토어가 안 열렸다고 막으면, 로컬이 깨진 기기에서
         # **팀 스페이스까지 같이 죽는다** — 그쪽은 이 스토어와 아무 상관이 없다.
         "/space/proxy",
+        # 저장 설정은 그래프 밖 파일이다. 폴더를 잘못 골라 스토어가 안 열렸을 때 다시
+        # 고를 길이 이것뿐이다(VIN-130).
+        "/config",
+        # 안 열린 사이드카도 닫고 다시 띄울 수 있어야 한다(VIN-130).
+        "/shutdown",
     })
 
     def _route_post(self, path: str, body: dict):
@@ -1967,6 +2141,11 @@ class _Handler(BaseHTTPRequestHandler):
             "/sync/purge-owner": app.write_sync_purge_owner,
             # 동기화 세션 트리거(S2) — pull→push 오케스트레이션(202+job_id).
             "/sync": app.submit_sync,
+            # 모드 전환의 데이터 이동(VIN-130) — 전량, 한 번, 202+job_id.
+            "/sync/push-all": app.submit_sync_push_all,
+            "/sync/pull-all": app.submit_sync_pull_all,
+            "/config": app.write_config,   # 저장 설정(VIN-130)
+            "/shutdown": app.write_shutdown,   # 셸의 재기동 전 정상 종료(VIN-130)
             # 계정 연결(디바이스 플로우) — state 발급(인증). callback 은 _dispatch 의
             # 무인증 예외 경로(여기 표에 없음 — 표는 인증 이후에만 닿는다).
             "/connect/start": app.write_connect_start,
@@ -2031,7 +2210,7 @@ def _gc_tombstones_loop(app: VincApp, stop: threading.Event, interval: float = 8
 
 def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int | None = None,
           token: str | None = None, packs_dir=None, profile_path=None,
-          print_info: bool = True) -> dict:
+          print_info: bool = True, data_pinned: bool = False) -> dict:
     """사이드카를 기동해 종료 신호까지 서비스한다(블로킹). 기동 정보(host/port/token/
     driver)를 stdout 에 1줄 JSON 으로 내보낸다. SIGTERM/SIGINT 또는 부모 사망 시 정리.
 
@@ -2045,6 +2224,7 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     `stdout=DEVNULL` 로 아예 버린다.)"""
     app = VincApp.open(cfg, auth=SessionAuth(token), packs_dir=packs_dir,
                        profile_path=profile_path)
+    app.data_pinned = data_pinned
     httpd = make_server(app, host, port)
     bound_host, bound_port = httpd.server_address[:2]
     shown = f"<supplied:{len(app.auth.token)}ch>" if token else app.auth.token
@@ -2059,6 +2239,7 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         sys.stdout.flush()
 
     stop = threading.Event()
+    app._request_stop = stop.set
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     if parent_pid:

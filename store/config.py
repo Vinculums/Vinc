@@ -7,7 +7,9 @@ Vinc 는 임베디드 전용(설계 §1 — 외부 인프라·API 키 없이 오
 """
 from __future__ import annotations
 
+import json
 import os
+import pathlib
 from dataclasses import dataclass, field
 
 # Embedding dimensions are model-dependent (must match embed_pipeline.py).
@@ -142,21 +144,85 @@ def load_config(overrides: dict | None = None) -> StoreConfig:
     cfg.archival_days = int(pick("archival_days", "MEMORY_ARCHIVAL_DAYS", 90))
     return cfg
 
+def vinc_home() -> pathlib.Path:
+    """설치형 데이터 홈 `~/.vinc`. 세션 파일·확장·MCP 상태·설정은 늘 여기 산다."""
+    return pathlib.Path.home() / ".vinc"
+
+
+#: 데스크톱 저장 설정(VIN-130). 앱이 쓰고, 사이드카와 로컬 MCP 가 읽는다.
+#: `{"mode": "account"|"local", "data_path": "<폴더>"}`. 폴더를 고르면 **DB 만** 그리로
+#: 간다(`<폴더>/db`). 세션 파일·확장·MCP 상태·packs 는 `~/.vinc` 에 남는다.
+LOCAL_CONFIG = "config.json"
+
+
+def read_local_config(home: pathlib.Path | None = None) -> dict:
+    """`~/.vinc/config.json`. 없거나 깨졌으면 빈 dict(기본 경로로 간다)."""
+    path = (home or vinc_home()) / LOCAL_CONFIG
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_local_config(updates: dict, home: pathlib.Path | None = None) -> dict:
+    """설정을 합쳐 원자적으로 쓴다(tmp → replace). 값이 None 인 키는 지운다."""
+    root = home or vinc_home()
+    root.mkdir(parents=True, exist_ok=True)
+    cur = read_local_config(root)
+    for k, v in updates.items():
+        if v is None:
+            cur.pop(k, None)
+        else:
+            cur[k] = v
+    path = root / LOCAL_CONFIG
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return cur
+
+
+def configured_data_file(home: pathlib.Path | None = None) -> str | None:
+    """설정이 고른 폴더의 DB 파일(`<폴더>/db`). 없거나 상대경로면 None.
+
+    상대경로를 받지 않는 이유: 사이드카의 작업 디렉터리는 띄우는 쪽마다 다르다(셸·
+    MCP 호스트·CLI). 같은 설정이 프로세스마다 다른 폴더를 가리키면 안 된다."""
+    folder = read_local_config(home).get("data_path")
+    if not isinstance(folder, str) or not folder.strip():
+        return None
+    folder = os.path.expanduser(folder.strip())
+    if not os.path.isabs(folder):
+        return None
+    return os.path.join(folder, "db")
+
+
 def resolve_data_dir(cli_value: str | None = None, *, create: bool = True) -> str:
-    """앱 진입점(cli serve·데스크톱 셸)용 데이터 경로 해석(D43):
-    ``--data`` > ``MEMORY_DATA_DIR`` > **``~/.vinc/db``**(설치형 기본 홈).
+    """앱 진입점(cli serve·데스크톱 셸·로컬 MCP)용 데이터 경로 해석(D43, VIN-130):
+    ``--data`` > ``MEMORY_DATA_DIR`` > **``~/.vinc/config.json`` 의 data_path** >
+    **``~/.vinc/db``**(설치형 기본 홈).
 
     라이브러리 기본값(load_config 의 data_dir=None)은 그대로 둔다 — 검증
     (verify.py 무 DB 강등)의 순수성을 앱 기본 경로가 오염하지 않게, 홈 폴더
-    적용은 진입점만의 결정이다. 기본 홈일 때만 표준 하위 구조를 만든다:
-    ``~/.vinc/{db, packs/, inbox/, backups/}`` — 백업 = 폴더 하나 복사."""
-    import pathlib
+    적용은 진입점만의 결정이다. 표준 하위 구조는 늘 `~/.vinc` 에 만든다:
+    ``~/.vinc/{packs/, inbox/, backups/}``.
 
+    ⚠ 고른 폴더를 못 만들면(빠진 외장 디스크 등) **기본 경로로 물러서지 않는다.**
+    그러면 다른 스토어가 조용히 열려 빈 그래프가 "데이터가 사라졌다"로 읽힌다. 그 경로를
+    그대로 돌려주고, 여는 쪽이 사유를 들고 실패하게 둔다(설정에서 폴더를 다시 고를 수
+    있다: `/config` 는 스토어 없이도 답한다)."""
     explicit = cli_value or os.environ.get("MEMORY_DATA_DIR")
     if explicit:
         return explicit
-    root = pathlib.Path.home() / ".vinc"
+    root = vinc_home()
     if create:
         for sub in ("packs", "inbox", "backups"):
             (root / sub).mkdir(parents=True, exist_ok=True)
+    chosen = configured_data_file(root)
+    if chosen:
+        if create:
+            try:
+                os.makedirs(os.path.dirname(chosen), exist_ok=True)
+            except OSError:
+                pass
+        return chosen
     return str(root / "db")

@@ -19,6 +19,10 @@ const SIDECAR_PORT: u16 = 8787; // 폴백 전용 — 실제 포트는 pick_free_
 
 struct Sidecar(std::sync::Mutex<Option<CommandChild>>);
 
+/// 끝난 사이드카의 pid. 재기동(`sidecar_restart`)이 옛 프로세스가 스토어를 닫고 나갔는지
+/// 이것으로 안다. 이벤트 스트림이 `Terminated` 를 주거나 닫히면 넣는다.
+struct SidecarExited(std::sync::Mutex<std::collections::HashSet<u32>>);
+
 /// 사이드카 수명 이벤트 기록 — 죽은 이유를 프론트 진단에 실어 보내기 위한 버퍼.
 /// 이게 없으면 사이드카가 즉사해도 화면엔 "health TIMEOUT" 뿐이라 원인 추적이
 /// 불가능하다(macOS 격리로 Gatekeeper 가 조용히 SIGKILL 하는 사례 — 2026-07).
@@ -434,6 +438,171 @@ fn kill_sidecar_tree(pid: u32) {
         .output();
 }
 
+/// 사이드카를 띄우고 수명 이벤트를 기록한다. 기동과 재기동이 같은 길을 탄다.
+///
+/// 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
+/// RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
+/// (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
+///
+/// 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
+/// Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc.exe mcp serve`)
+/// 와 그 자식까지 같은 이미지명이라 죽여 실행 중 MCP 세션을 끊는다. 누수는
+/// single-instance(중복 셸 차단)+parent-pid heartbeat(크래시 고아 자가종료)+
+/// 종료 시 트리-kill 로 대신 막고, 구버전 잔존 고아는 설치 시 NSIS 훅이 정리한다.
+fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, String> {
+    let parent_pid = std::process::id().to_string();
+    let port_arg = port.to_string();
+    // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
+    // `--data` 는 넘기지 않는다: 저장 폴더는 사이드카가 `~/.vinc/config.json` 에서 읽는다
+    // (VIN-130). 넘기면 설정 화면이 바꾼 폴더가 이 프로세스에 영영 안 먹는다.
+    let sidecar = app
+        .shell()
+        .sidecar("vinc")
+        .map_err(|e| e.to_string())?
+        .args([
+            "serve",
+            "--port",
+            &port_arg,
+            "--token",
+            token,
+            "--parent-pid",
+            &parent_pid,
+        ]);
+    let (mut events, child) = sidecar.spawn().map_err(|e| {
+        // spawn 자체가 실패하면 CommandEvent 조차 안 온다 → 여기서 안 남기면 증거 0.
+        log::error!(target: "sidecar", "spawn failed: {e}");
+        e.to_string()
+    })?;
+    let pid = child.pid();
+    log::info!(
+        target: "sidecar",
+        "spawned v{} pid={} port={} parent={}",
+        app.package_info().version, pid, port, parent_pid,
+    );
+    *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
+    // MCP 브리지가 이 사이드카를 찾아 붙도록 세션 파일 기록(A1.9).
+    write_session(app, port, token);
+    // 사이드카 수명 이벤트를 흘려보내지 않고 기록한다 — 프론트가
+    // `sidecar_status` 로 읽어 진단에 싣는다(조용한 즉사 방지).
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(ev) = events.recv().await {
+            let line = match ev {
+                CommandEvent::Stderr(b) => {
+                    let s = String::from_utf8_lossy(&b).trim().to_string();
+                    if s.is_empty() { continue; }
+                    format!("stderr: {}", s.chars().take(200).collect::<String>())
+                }
+                // stdout 도 남긴다. 여태 `_ => continue` 가 이것을 통째로
+                // 버려서, 사이드카가 stdout 으로 낸 것은 **어디에도** 안
+                // 남았다(파일 로그에도, 진단 문자열에도). 기동 실패를 조사할
+                // 때 stderr 만 있고 stdout 이 없으면 반쪽이다.
+                CommandEvent::Stdout(b) => {
+                    let s = String::from_utf8_lossy(&b).trim().to_string();
+                    if s.is_empty() { continue; }
+                    format!("stdout: {}", s.chars().take(200).collect::<String>())
+                }
+                CommandEvent::Error(e) => format!("spawn error: {e}"),
+                CommandEvent::Terminated(p) => {
+                    handle.state::<SidecarExited>().0.lock().unwrap().insert(pid);
+                    format!("terminated: code={:?} signal={:?}", p.code, p.signal)
+                }
+                _ => continue,
+            };
+            handle.state::<SidecarLog>().push(line);
+        }
+        // 스트림이 닫혔다 = 프로세스가 끝났다(`Terminated` 를 못 받았어도).
+        handle.state::<SidecarExited>().0.lock().unwrap().insert(pid);
+    });
+    Ok(pid)
+}
+
+/// 사이드카에 스스로 닫으라고 부탁한다(`POST /shutdown`). 202 를 받았으면 true.
+///
+/// 죽이지 않고 부탁하는 이유: 그 길은 사이드카의 `close()` 를 지나 스토어를 닫는다.
+/// 강제 종료는 다음 기동을 WAL 재생에 맡기는데, 허브를 세 번 세운 고장이 그 재생이었다.
+/// HTTP 클라이언트 크레이트를 들이지 않으려고 루프백에 요청 한 줄을 직접 쓴다.
+fn request_shutdown(port: u16, token: &str) -> bool {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(2)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+    let req = format!(
+        "POST /shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\n\
+         Content-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 64];
+    match s.read(&mut buf) {
+        Ok(n) if n > 0 => status_is_accepted(&String::from_utf8_lossy(&buf[..n])),
+        _ => false,
+    }
+}
+
+/// 응답 첫 줄이 202 인가(`HTTP/1.x 202 ...`).
+fn status_is_accepted(head: &str) -> bool {
+    head.lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .map(|code| code == "202")
+        .unwrap_or(false)
+}
+
+/// `pid` 가 끝났다는 기록을 `ms` 동안 기다린다.
+fn wait_exit(app: &tauri::AppHandle, pid: u32, ms: u64) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    loop {
+        if app.state::<SidecarExited>().0.lock().unwrap().contains(&pid) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// 저장 폴더를 바꾼 뒤(VIN-130) 사이드카를 다시 띄운다. 포트와 토큰은 그대로라 프론트의
+/// 접속 정보(`sidecar_conn`)도 세션 파일도 그대로 유효하다.
+///
+/// 옛 프로세스가 **끝난 것을 확인한 뒤에** 띄운다. 스토어는 한 프로세스만 연다: 겹치면 새
+/// 사이드카가 락에 걸려 "스토어가 안 열린다"로 뜬다. 부탁해도 20초 안에 안 끝나면 그때
+/// 강제로 끝낸다.
+#[tauri::command]
+async fn sidecar_restart(app: tauri::AppHandle) -> Result<u32, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (port, token) = {
+            let c = app.state::<Conn>();
+            (c.port, c.token.clone())
+        };
+        let old = app.state::<Sidecar>().0.lock().unwrap().take();
+        if let Some(child) = old {
+            let pid = child.pid();
+            let asked = request_shutdown(port, &token);
+            log::info!(target: "sidecar", "restart: pid={pid} shutdown requested={asked}");
+            if !(asked && wait_exit(&app, pid, 20_000)) {
+                log::warn!(target: "sidecar", "restart: pid={pid} did not stop, killing");
+                #[cfg(windows)]
+                kill_sidecar_tree(pid);
+                let _ = child.kill();
+                if !wait_exit(&app, pid, 5_000) {
+                    return Err(format!("the previous sidecar (pid {pid}) did not exit"));
+                }
+            }
+        }
+        // 진단 버퍼는 새 프로세스의 것만 담는다(24줄 상한이라 옛 줄이 새 사인을 가린다).
+        app.state::<SidecarLog>().0.lock().unwrap().clear();
+        spawn_sidecar(&app, port, &token)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     // CLI 호출이면 여기서 갈린다 — Tauri 를 세우기 전에, 창을 열지 않고.
     if let Some(fwd) = cli_forward(std::env::args()) {
@@ -441,7 +610,6 @@ fn main() {
     }
     let token = session_token();
     let port = pick_free_port();
-    let port_arg = port.to_string();
     let mut builder = tauri::Builder::default();
     // 단일 인스턴스 가드는 **가장 먼저** 등록(다른 플러그인 개입 전 선점). 두 번째 실행은
     // 기존 창을 포커스하고 즉시 종료 → 사이드카 중복 spawn·누수 근절.
@@ -494,6 +662,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(Sidecar(std::sync::Mutex::new(None)))
+        .manage(SidecarExited(std::sync::Mutex::new(std::collections::HashSet::new())))
         .manage(SidecarLog(std::sync::Mutex::new(Vec::new())))
         .manage(Conn {
             port,
@@ -504,73 +673,12 @@ fn main() {
             std::env::args().collect::<Vec<_>>(),
         ))))
         .invoke_handler(tauri::generate_handler![
-            sidecar_conn, sidecar_status, mcp_install, mcp_uninstall, take_pending_files,
+            sidecar_conn, sidecar_status, sidecar_restart, mcp_install, mcp_uninstall,
+            take_pending_files,
             cli_link_status, cli_link_install, cli_link_remove,
             secret_get, secret_set, secret_delete, secret_available])
         .setup(move |app| {
-            // 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
-            // RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
-            // (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
-            //
-            // 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
-            // Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc.exe mcp serve`)
-            // 와 그 자식까지 같은 이미지명이라 죽여 실행 중 MCP 세션을 끊는다. 누수는
-            // single-instance(중복 셸 차단)+parent-pid heartbeat(크래시 고아 자가종료)+
-            // 종료 시 트리-kill 로 대신 막고, 구버전 잔존 고아는 설치 시 NSIS 훅이 정리한다.
-            let parent_pid = std::process::id().to_string();
-            // 동적 포트(Conn 과 동일 값) — 옛 사이드카가 고정 포트를 물고 있어도 무충돌.
-            let sidecar = app
-                .shell()
-                .sidecar("vinc")?
-                .args([
-                    "serve",
-                    "--port",
-                    &port_arg,
-                    "--token",
-                    &token,
-                    "--parent-pid",
-                    &parent_pid,
-                ]);
-            let (mut events, child) = sidecar.spawn().inspect_err(|e| {
-                // spawn 자체가 실패하면 CommandEvent 조차 안 온다 → 여기서 안 남기면 증거 0.
-                log::error!(target: "sidecar", "spawn failed: {e}");
-            })?;
-            log::info!(
-                target: "sidecar",
-                "spawned v{} pid={} port={} parent={}",
-                app.package_info().version, child.pid(), port, parent_pid,
-            );
-            *app.state::<Sidecar>().0.lock().unwrap() = Some(child);
-            // MCP 브리지가 이 사이드카를 찾아 붙도록 세션 파일 기록(A1.9).
-            write_session(&app.handle(), port, &token);
-            // 사이드카 수명 이벤트를 흘려보내지 않고 기록한다 — 프론트가
-            // `sidecar_status` 로 읽어 진단에 싣는다(조용한 즉사 방지).
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                while let Some(ev) = events.recv().await {
-                    let line = match ev {
-                        CommandEvent::Stderr(b) => {
-                            let s = String::from_utf8_lossy(&b).trim().to_string();
-                            if s.is_empty() { continue; }
-                            format!("stderr: {}", s.chars().take(200).collect::<String>())
-                        }
-                        // stdout 도 남긴다. 여태 `_ => continue` 가 이것을 통째로
-                        // 버려서, 사이드카가 stdout 으로 낸 것은 **어디에도** 안
-                        // 남았다(파일 로그에도, 진단 문자열에도). 기동 실패를 조사할
-                        // 때 stderr 만 있고 stdout 이 없으면 반쪽이다.
-                        CommandEvent::Stdout(b) => {
-                            let s = String::from_utf8_lossy(&b).trim().to_string();
-                            if s.is_empty() { continue; }
-                            format!("stdout: {}", s.chars().take(200).collect::<String>())
-                        }
-                        CommandEvent::Error(e) => format!("spawn error: {e}"),
-                        CommandEvent::Terminated(p) => format!(
-                            "terminated: code={:?} signal={:?}", p.code, p.signal),
-                        _ => continue,
-                    };
-                    handle.state::<SidecarLog>().push(line);
-                }
-            });
+            spawn_sidecar(app.handle(), port, &token)?;
             // 폴백(정본은 sidecar_conn 커맨드): 웹뷰 localStorage 에도 토큰 주입 시도.
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.eval(&format!(
@@ -703,6 +811,16 @@ mod tests {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");
+    }
+
+    /// 재기동은 사이드카가 "닫겠다"(202)고 답했을 때만 기다린다. 401·409 를 정상 종료로
+    /// 읽으면 안 끝나는 프로세스를 20초 기다린 뒤에야 끊는다.
+    #[test]
+    fn 재기동은_202_만_정상_종료로_본다() {
+        assert!(status_is_accepted("HTTP/1.0 202 Accepted\r\nServer: x\r\n"));
+        assert!(!status_is_accepted("HTTP/1.0 401 Unauthorized\r\n"));
+        assert!(!status_is_accepted("HTTP/1.0 409 Conflict\r\n"));
+        assert!(!status_is_accepted(""));
     }
 
     /// 바이트를 JSON 배열로 실으면 5MB 팩이 15MB 로 부푼다. base64 는 그래서 쓰는데,

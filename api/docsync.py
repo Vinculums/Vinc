@@ -26,14 +26,20 @@ from . import graphmd
 from . import revstamp
 
 
-def export_docs(store, *, owner: str, since: int = 0) -> dict:
+def export_docs(store, *, owner: str, since: int = 0, everything: bool = False) -> dict:
     """``owner`` 의 문서 중 sync_seq > since 인 것 + 삭제 표식을 델타로 낸다.
+
+    ``everything=True`` 는 순번을 보지 않고 **이 소유자의 문서 전부**를 낸다(삭제 표식은
+    싣지 않는다). 모드 전환이 쓴다(VIN-130). 이유: `_DocMeta.sync_seq` 는 나중에
+    `DEFAULT 0` 으로 붙은 열이라 그 전부터 있던 문서는 0 이고, `> since` 는 since=0 에서도
+    그것들을 못 잡는다. 델타 동기화에서는 그 문서들이 한 번도 안 떠났다.
 
     문서 payload 는 복원 텍스트(get_doc)까지 실어 수신측이 재청킹하게 한다 —
     embedding·청크 오프셋은 **보내지 않는다**(수신측 재생성). 반환 커서(cursor)는
     이번 배치의 최대 sync_seq(docs·tombstones 통틀어) — 다음 pull 의 since."""
+    seq = "" if everything else " AND d.sync_seq > $s"
     rows = store.run(
-        "MATCH (d:_DocMeta) WHERE d.owner_id = $o AND d.sync_seq > $s "
+        f"MATCH (d:_DocMeta) WHERE d.owner_id = $o{seq} "
         "RETURN d.doc_id AS doc_id, d.title AS title, d.origin AS origin, "
         "d.content_hash AS content_hash, d.updated_at AS updated_at, "
         # v7(D72) — 시간축 두 열도 함께 나른다. 안 실으면 수신 기기가 자기 시각으로
@@ -62,6 +68,9 @@ def export_docs(store, *, owner: str, since: int = 0) -> dict:
             "content_time": r.get("content_time") or "",
         })
         cursor = max(cursor, int(r.get("sync_seq") or 0))
+    if everything:
+        return {"kind": "docsync.export", "owner": owner, "since": int(since),
+                "cursor": cursor, "docs": docs, "tombstones": [], "everything": True}
     trows = store.run(
         "MATCH (t:_DocTombstone) WHERE t.owner_id = $o AND t.sync_seq > $s "
         "RETURN t.doc_id AS doc_id, t.deleted_at AS deleted_at, t.sync_seq AS sync_seq "

@@ -1357,12 +1357,17 @@ class _Handler(BaseHTTPRequestHandler):
         body = self._body()
         try:
             if path == "/sync/pull":
-                out = self.app.bridge.request("GET", "/sync/pull-delta", params={
-                    "owner": owner, "since": int(body.get("since") or 0)})
+                params = {"owner": owner, "since": int(body.get("since") or 0)}
+                # 모드 전환의 전량 받기(VIN-130) — 주제 없는 노드까지.
+                if body.get("all") is True:
+                    params["all"] = "1"
+                out = self.app.bridge.request("GET", "/sync/pull-delta", params=params)
             elif path == "/sync/docs-pull":
                 # 문서 정본 채널(D45 P3) — 노드 delta 와 별개(레일이 다르다).
-                out = self.app.bridge.request("GET", "/sync/docs-export", params={
-                    "owner": owner, "since": int(body.get("since") or 0)})
+                params = {"owner": owner, "since": int(body.get("since") or 0)}
+                if body.get("all") is True:          # 전량 받기(VIN-130)
+                    params["all"] = "1"
+                out = self.app.bridge.request("GET", "/sync/docs-export", params=params)
             elif path == "/sync/docs-push":
                 out = self.app.bridge.request("POST", "/sync/docs-apply", body={
                     "owner": owner, "payload": body.get("payload") or {}})

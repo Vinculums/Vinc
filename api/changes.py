@@ -106,6 +106,8 @@ class ChangeMarker:
 QUIET_WRITES = frozenset({
     "/touch", "/doc/reembed", "/embed/apply", "/node-mirror/rebuild", "/backup",
     "/sync/domains", "/connect/start", "/space/proxy", "/conventions/build",
+    # 저장 설정(그래프 밖 파일)과 전량 올리기(이 스토어를 안 바꾼다), VIN-130.
+    "/config", "/sync/push-all", "/shutdown",
 })
 
 

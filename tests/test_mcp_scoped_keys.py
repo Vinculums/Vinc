@@ -288,3 +288,19 @@ def test_verify_key_team_answer_carries_scope(monkeypatch):
         assert got["owner"] == "team:t1" and got["scope"] == "read"
     finally:
         entitlement._cache.clear()
+
+
+def test_sync_pull_all_flag_reaches_the_sidecar():
+    """모드 전환의 전량 받기(VIN-130). 허브가 `all` 을 안 넘기면 주제 없는 노드와 순번 0 인
+    옛 문서가 계정에서 기기로 조용히 안 온다."""
+    bridge = _StubBridge()
+    s = _Srv(MCPHTTPApp(bridge, verify_key=_vk))
+    try:
+        s.post("/sync/pull", {"since": 0, "all": True}, "vinc_sk_key")
+        s.post("/sync/docs-pull", {"since": 0, "all": True}, "vinc_sk_key")
+        s.post("/sync/pull", {"since": 0}, "vinc_sk_key")
+    finally:
+        s.stop()
+    got = [(path, (params or {}).get("all")) for _, path, params, _ in bridge.calls]
+    assert got == [("/sync/pull-delta", "1"), ("/sync/docs-export", "1"),
+                   ("/sync/pull-delta", None)]

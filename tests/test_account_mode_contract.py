@@ -16,7 +16,6 @@ API_TS = (ROOT / "app/src/api.ts").read_text(encoding="utf-8")
 MAIN_TS = (ROOT / "app/src/main.ts").read_text(encoding="utf-8")
 FIRSTRUN_TS = (ROOT / "app/src/firstrun.ts").read_text(encoding="utf-8")
 CONNECT_TS = (ROOT / "app/src/account-connect.ts").read_text(encoding="utf-8")
-SCHED_TS = (ROOT / "app/src/sync-scheduler.ts").read_text(encoding="utf-8")
 COPY_TS = (ROOT / "app/src/copy.ts").read_text(encoding="utf-8")
 
 
@@ -108,6 +107,13 @@ class ExistingDataTest(unittest.TestCase):
         decide = _fn(API_TS, "decideDataMode")
         self.assertIn('(await localStoreHasData()) ? "local" : "account"', decide)
 
+    def test_모드의_정본은_사이드카_설정이다(self):
+        """VIN-130: 설정 화면·사이드카·로컬 MCP 가 같은 파일을 본다. 창 저장소는 사본이다.
+        설정이 먼저이고, 정한 값은 설정에 적는다(다음 기동이 창과 무관하게 같은 답을 낸다)."""
+        decide = _fn(API_TS, "decideDataMode")
+        self.assertLess(decide.index("storage.config()"), decide.index("dataMode.get()"))
+        self.assertIn("storage.setConfig({ mode: next })", decide)
+
     def test_모르면_있다고_답하고_두_소유자를_본다(self):
         """모를 때 계정으로 넘기면 있던 작업이 가려진다. 로컬 MCP 는 `user:local` 로
         쓰므로(VIN-131) 그쪽도 세야 MCP 로만 쓴 사람의 작업이 안 가려진다."""
@@ -118,8 +124,12 @@ class ExistingDataTest(unittest.TestCase):
 
 class SyncTest(unittest.TestCase):
 
-    def test_계정_모드에는_동기화가_없다(self):
-        self.assertIn("if (remote()) return;", SCHED_TS)
+    def test_계속_도는_동기화가_없다(self):
+        """VIN-130: 데이터는 모드를 바꿀 때만 옮긴다. 스케줄러가 돌아오면 로컬 모드에서
+        계정에 사본이 생긴다(발주자 결정: 로컬 모드의 계정에는 사본이 없다)."""
+        self.assertFalse((ROOT / "app/src/sync-scheduler.ts").exists())
+        self.assertNotIn("sync-scheduler", MAIN_TS)
+        self.assertNotIn("syncNow", API_TS)
 
     def test_스페이스는_계정에_있을_때만_의미가_있다(self):
         self.assertIn('get team(): string { return remote() ?', API_TS)
