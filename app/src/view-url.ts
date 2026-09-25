@@ -27,6 +27,8 @@
  *    빈 화면이 뜨고 **오류조차 안 난다**.
  */
 
+import { spaceName } from "./api";
+
 /** 첫 세그먼트가 이것들이면 주제 목록이 아니라 지시어다. 새 형태를 더할 때 여기부터. */
 export const KEYWORDS = ["trace", "ids", "doc", "as"] as const;
 
@@ -104,9 +106,13 @@ export function parseViewUrl(
     : { ...none, depth, viewpoint };
 }
 
-/** 복사해서 건넬 절대 주소. 해시만 주면 받는 쪽이 어느 설치인지 모른다. */
+/** 복사해서 건넬 절대 주소. 해시만 주면 받는 쪽이 어느 설치인지 모른다.
+ *  스페이스는 해시 **앞** 쿼리로 싣는다(`?space=personal` · 팀 id · `local`). 해시
+ *  안에 두면 위의 급소 둘에 걸려 구버전 파서가 조용히 틀리고, 쿼리는 둘 다 지나친다.
+ *  근거: [[decision:a-node-address-names-its-space]] */
 export function absoluteViewUrl(
   sel: ViewSelection, opts: { depth?: number; viewpoint?: string } = {},
 ): string {
-  return location.origin + location.pathname + formatViewUrl(sel, opts);
+  return location.origin + location.pathname + "?space=" + enc(spaceName())
+    + formatViewUrl(sel, opts);
 }

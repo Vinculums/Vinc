@@ -242,7 +242,17 @@ def _t_graph(args, bridge):
             # 임의 선택은 시드가 여럿이다. 이 도구는 하나만 받으므로 첫 개를 쓰고
             # **그렇게 했다고 말한다** — 조용히 고르면 나머지를 본 줄 안다.
             seed = got["ids"][0]
-        elif got["kind"] in ("domains", "doc", "all"):
+        elif got["kind"] == "doc":
+            # 문서 주소다. 다음 호출을 **그대로 적어 준다** — 스페이스까지. 이 호출은
+            # 주소의 스페이스로 이미 왔지만 vinc_doc_get 에는 url 이 없어서, 안 적어
+            # 주면 다음 호출이 개인으로 떨어진다.
+            sp = viewurl.space_of(str(args["url"]))
+            nxt = f"vinc_doc_get doc_id={got['doc']}"
+            if sp and sp not in (viewurl.PERSONAL, viewurl.LOCAL):
+                nxt += f" space={sp}"
+            return {"kind": "graph", "executed": False, "seed": "",
+                    "note": f"that url selects a doc, not one node: read it with {nxt}"}
+        elif got["kind"] in ("domains", "all"):
             return {"kind": "graph", "executed": False, "seed": "",
                     "note": f"that url selects a {got['kind']}, not one node — "
                             f"vinc_graph needs a seed; use vinc_search or vinc_doc_get"}
@@ -473,11 +483,17 @@ _CITE_ORIGIN = (os.environ.get("VINC_CITE_ORIGIN") or "https://vincs.io").rstrip
 _NODE_PREFIXES = ("concept:", "record:", "decision:", "episode:", "domain:", "bridge:")
 
 
-def _cite_url(kind: str, ident: str) -> str:
-    """인용용 URL. 비어 있으면 ChatGPT 가 출처로 만들지 않는다."""
-    if kind == "doc":
-        return f"{_CITE_ORIGIN}/#view/doc/{ident}"
-    return f"{_CITE_ORIGIN}/#view/trace/{ident}"
+def _cite_url(kind: str, ident: str, owner: str = "") -> str:
+    """인용용 URL. 비어 있으면 ChatGPT 가 출처로 만들지 않는다.
+
+    앱이 복사하는 주소와 **같은 모양**이다: `/app/` 아래, 해시 앞에 `?space=`.
+    전에는 사이트 루트(`/#view/…`)를 가리켰는데 루트는 `#view` 를 모르므로 인용을
+    누르면 랜딩이 떴고, 스페이스가 없어 팀 결과도 개인 주소로 나갔다.
+    근거: [[decision:a-node-address-names-its-space]]"""
+    owner = str(owner or "")
+    space = owner[len("team:"):] if owner.startswith("team:") else "personal"
+    where = "doc" if kind == "doc" else "trace"
+    return f"{_CITE_ORIGIN}/app/?space={space}#view/{where}/{ident}"
 
 
 def _t_host_search(args, bridge):
@@ -507,7 +523,7 @@ def _t_host_search(args, bridge):
         seen.add(doc_id)
         title = str(row.get("doc_title") or "").strip()[:160] or doc_id
         docs.append({"id": f"doc:{doc_id}", "title": title,
-                     "url": _cite_url("doc", doc_id)})
+                     "url": _cite_url("doc", doc_id, args.get("owner"))})
     nodes: list[dict] = []
     for hit in raw.get("node_hits") or []:
         if not isinstance(hit, dict):
@@ -517,7 +533,8 @@ def _t_host_search(args, bridge):
             continue
         seen.add(nid)
         title = str(hit.get("title") or nid).strip() or nid
-        nodes.append({"id": nid, "title": title, "url": _cite_url("node", nid)})
+        nodes.append({"id": nid, "title": title,
+                      "url": _cite_url("node", nid, args.get("owner"))})
     results: list[dict] = []
     for i in range(max(len(docs), len(nodes))):
         results += docs[i:i + 1] + nodes[i:i + 1]
@@ -551,7 +568,7 @@ def _t_host_fetch(args, bridge):
             {"doc_id": doc_id, "owner": args.get("owner")}, bridge))
         title = str(raw.get("title") or doc_id)
         return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
-                "url": _cite_url("doc", doc_id),
+                "url": _cite_url("doc", doc_id, args.get("owner")),
                 "metadata": {"kind": "document", "verified": raw.get("verified")}}
     if ident.startswith(_NODE_PREFIXES):
         raw = _t_brief({"query": ident, "owner": args.get("owner")}, bridge)
@@ -568,14 +585,14 @@ def _t_host_fetch(args, bridge):
             if isinstance(ex, dict) and ex.get("excerpt"):
                 parts.append(str(ex["excerpt"]))
         return {"id": ident, "title": title, "text": "\n\n".join(p for p in parts if p),
-                "url": _cite_url("node", ident),
+                "url": _cite_url("node", ident, args.get("owner")),
                 "metadata": {"kind": node.get("kind") or "node",
                              "status": raw.get("status")}}
     raw = _fetch_doc_or_fail(ident, _t_doc_get(
         {"doc_id": ident, "owner": args.get("owner")}, bridge))
     title = str(raw.get("title") or ident)
     return {"id": ident, "title": title, "text": str(raw.get("text") or ""),
-            "url": _cite_url("doc", ident),
+            "url": _cite_url("doc", ident, args.get("owner")),
             "metadata": {"kind": "document", "verified": raw.get("verified")}}
 
 
@@ -758,7 +775,11 @@ TOOLS: list[dict] = [
                                    "document (#view/doc/<id>), with an optional /d<n> depth "
                                    "and a trailing /as/<viewpoint> this tool ignores. When "
                                    "both are given, seed_id wins and the url's seed is "
-                                   "ignored; `depth` given explicitly beats the url's."},
+                                   "ignored; `depth` given explicitly beats the url's. "
+                                   "The address also names the space it was copied in "
+                                   "(?space=personal or a team id, before the #): the call "
+                                   "goes to that space, so pass the url as is and leave "
+                                   "`space` out. An explicit `space` beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
             "owner": {"type": "string"},
         }}, "run": _t_graph,
@@ -1426,7 +1447,9 @@ _SPACE_PROP = {"space": {
                    "see the ids you can reach and your role in each. Your role there decides "
                    "what you may do, and a space you are not an active member of answers the "
                    "same way as one that does not exist. Ignored when you connected at a team "
-                   "address (/t/<team-uuid>/mcp) — there the address already fixed the space."}}
+                   "address (/t/<team-uuid>/mcp) — there the address already fixed the space. "
+                   "A View address passed as `url` names its own space (?space=...), so you "
+                   "can leave this out when you have one."}}
 
 #: 데스크탑 프로파일에서 덧붙는 한 문장. 거기에는 `target` 이 있고, 스페이스는
 #: **계정 그래프에만 존재한다** — 로컬 스토어에는 고를 것이 없다. 그래서 두 인자의
@@ -1894,6 +1917,19 @@ def call(name: str, args: dict | None, bridge: Bridge,
                 "space applies to your account graph: pass target:'remote' with it "
                 "(target:'local' has no spaces to choose from).")
         args["space"] = space
+    # 붙여넣은 주소가 계정 그래프의 스페이스를 말하는데(`?space=personal`·팀 id)
+    # 로컬 스토어로 가려는 호출이다. 조용히 로컬에서 찾으면 **같은 id 의 다른 노드**나
+    # "없음"을 답한다. 위의 space + local 조합과 같은 이유로 거절하고 길을 말한다.
+    # `target:"remote"` 면 url 을 그대로 실어 보내고 허브가 주소에서 스페이스를 읽는다.
+    # 근거: [[decision:a-node-address-names-its-space]]
+    if allow_target and not space and target != "remote" and args.get("url"):
+        from . import viewurl
+        at = viewurl.space_of(str(args["url"]))
+        if at and at != viewurl.LOCAL:
+            raise ValueError(
+                f"that address was copied from your account graph (space {at}), and "
+                "this desktop connector reads the local store unless told otherwise: "
+                "pass target:'remote' to read it where it lives.")
     # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
     # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
     if not allow_target and target != "local":

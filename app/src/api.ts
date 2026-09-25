@@ -788,6 +788,59 @@ export const teamsApi = {
   },
 };
 
+// ── 주소의 스페이스 ─────────────────────────────────────────────────────────
+// 노드 주소는 자기 스페이스를 말한다: 해시 앞 쿼리 `?space=`. 값은 셋 중 하나다 —
+// `personal` · 팀 id · `local`(이 기기에만 있는 그래프, 로컬 모드). 그래서 채팅에
+// 붙인 주소 하나로 어시스턴트가 스페이스를 두드려 보지 않고 곧장 간다(허브가 같은
+// 쿼리를 읽는다, `vinc_mcp/viewurl.space_of`).
+// 근거: [[decision:a-node-address-names-its-space]]
+
+/** 지금 보고 있는 그래프의 주소용 이름. */
+export function spaceName(): string {
+  if (!remote()) return "local";
+  return cfg.team || "personal";
+}
+
+// 주소창의 `?space=` 가 **우리가 쓴 것인지** 가리는 표식. 스페이스 전환·모드 전환·
+// 로그아웃은 상태를 바꾼 뒤 새로고침하는데, 주소창에는 옛 `?space=` 가 남아 있다.
+// 그걸 밖에서 온 링크로 읽으면 방금 바꾼 스페이스를 도로 되돌린다. 탭마다 따로인
+// sessionStorage 라서 새 탭에 붙인 링크는 표식이 없고 그대로 따른다.
+const SPACE_MARK = "vinc.space.written";
+
+/** 주소창의 `?space=` 를 지금 스페이스로 맞춘다 — 주소창에서 복사해도 따라가게. */
+export function writeSpaceToAddress(): void {
+  const q = new URLSearchParams(location.search);
+  const name = spaceName();
+  q.set("space", name);
+  try { sessionStorage.setItem(SPACE_MARK, name); } catch {}
+  history.replaceState(history.state, "",
+    location.pathname + "?" + q.toString() + location.hash);
+}
+
+/** 부팅에서 첫 화면 전에 한 번. 주소가 들고 온 스페이스로 연다.
+ *  못 열면 그 이유("member" | "local")를, 아니면 ""를 돌려준다 — 화면이 알린다.
+ *  멤버인지는 팀 목록으로 본다: 모르는 팀을 그냥 넣으면 모든 조회가 거절되고
+ *  그 값이 localStorage 에 남아 다음 실행도 망가진다. */
+export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> {
+  const raw = (new URLSearchParams(location.search).get("space") || "").trim().toLowerCase();
+  let mark = "";
+  try { mark = sessionStorage.getItem(SPACE_MARK) || ""; } catch {}
+  let refused: "" | "member" | "local" = "";
+  // 로컬 모드는 고를 스페이스가 없다(셸은 밖에서 오는 링크도 받지 않는다).
+  if (raw && raw !== mark && remote() && raw !== spaceName().toLowerCase()) {
+    if (raw === "personal") cfg.team = "";
+    else if (raw === "local") refused = "local";
+    else {
+      const rows = await teamsApi.list();
+      const hit = rows.find((t) => t.status === "active" && t.id.toLowerCase() === raw);
+      if (hit) cfg.team = hit.id;
+      else refused = "member";
+    }
+  }
+  writeSpaceToAddress();
+  return refused;
+}
+
 export const community = {
   /** 지식 팩을 공개 갤러리에 게시. 반환 {publicId}. 데이터가 공개된다(호출부가 동의 확인). */
   publish: (title: string, description: string, pack: unknown): Promise<{ publicId: string }> =>
