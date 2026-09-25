@@ -20,10 +20,13 @@ _backend.py`) PyInstaller 정적 분석이 못 보고 통째로 누락 — `impo
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
 import sys
+import threading
+import time
 from contextlib import contextmanager
 
 from . import pkns
@@ -31,7 +34,16 @@ from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
                               EPISODE_TIME_BACKFILL_VERSION,
                               NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
-                              migration_statements, render_embedded_ddl)
+                              migration_statements, node_table_specs,
+                              render_embedded_ddl, render_node_table)
+
+
+class VectorIndexRemnant(RuntimeError):
+    """`ChunkVec` 에 카탈로그 없는 같은 이름 색인이 남아 벡터 색인을 만들 수 없다.
+
+    재시도로 풀리지 않는다. 기동 때 :meth:`EmbeddedBackend.heal_vector_index` 가 표를
+    다시 떠서 고친다. 그 전까지 `ChunkVec` 삽입은 **세그폴트**이므로 쓰기도 멈춘다.
+    근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]"""
 
 
 # ── v9 데이터 마이그레이션 — Episode props.date/summary → 열 (F9) ─────────────
@@ -390,6 +402,124 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
     return (f"{keyword} " + " AND ".join(preds) + " ") if preds else ""
 
 
+# ── DDL 배타 가드 — 인덱스·스키마 DDL 은 혼자 돈다 ─────────────────────────────
+# 쓰기는 잡 큐로 한 줄이지만 읽기는 쓰기와 동시에 돈다(R4 — 그게 P2 게이트다).
+# 그런데 인덱스 DDL(벡터·FTS 생성/드롭, project_graph, 스키마 ALTER) 이 **다른
+# 커넥션의 스캔과 겹치면** 엔진이 힙을 깨고 프로세스가 죽는다(파이썬 예외가 아니라
+# SIGABRT — except 로 못 막는다). 그래서 DDL 은 배타, 모든 문장 실행은 공유로 잡는다.
+# 공유는 `_exec_to_dicts` 한 곳에서 잡으므로 호출부는 이 가드를 모른다.
+# 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+#
+# 규칙(깨면 교착이나 크래시다):
+#   - 배타 대기 중이면 **새** 공유는 기다린다(라이터 우선 — DDL 이 굶지 않게).
+#   - 같은 스레드의 중첩은 막지 않는다: 배타 보유 스레드의 읽기는 그냥 통과하고,
+#     공유 보유 스레드의 재진입 공유는 대기 없이 센다.
+#   - 공유를 쥔 스레드가 배타를 원하면 쥔 것을 **내려놓고** 배타를 잡은 뒤, 풀 때
+#     되돌려 받는다(승격 교착 방지). 공유는 문장 단위라 실제로는 거의 안 일어난다.
+#   - 대기는 유한하다. 넘으면 `DdlGuardTimeout`(TimeoutError) — 매달리지 않는다.
+# ponytail: 프로세스 전역 락 하나. Database 가 둘 이상 열려도 서로 막는다(테스트만 해당).
+EXCLUSIVE_WAIT_S = 30.0
+SHARED_WAIT_S = 60.0
+
+
+class DdlGuardTimeout(TimeoutError):
+    """가드를 제한 시간 안에 못 잡았다. 삼키면 안 된다 — 특히 드롭 실패를 삼키면
+    인덱스가 걸린 채 벡터를 넣게 되고, 그게 세그폴트 경로다."""
+
+
+class _DdlGuard:
+    def __init__(self):
+        self._cond = threading.Condition(threading.Lock())
+        self._readers = 0          # 공유 보유 수(재진입 포함)
+        self._owner = None         # 배타 보유 스레드 id
+        self._depth = 0            # 배타 재진입 깊이
+        self._waiting = 0          # 배타 대기 수(라이터 우선)
+        self._local = threading.local()
+
+    def _mine(self) -> int:
+        return getattr(self._local, "n", 0)
+
+    def _retake(self, n: int) -> None:
+        # 내려놓았던 공유를 되돌려 받는다. 배타 보유자가 없을 때만 셀 수 있다.
+        # _cond 를 쥔 상태에서 부른다.
+        if n:
+            self._cond.wait_for(lambda: self._owner is None)
+            self._readers += n
+            self._local.n = n
+
+    @contextmanager
+    def shared(self, timeout: float | None = None):
+        me = threading.get_ident()
+        if self._owner == me:      # 배타 보유 중의 읽기 — 자기 자신과는 경합하지 않는다
+            yield
+            return
+        with self._cond:
+            if not self._mine() and not self._cond.wait_for(
+                    lambda: self._owner is None and not self._waiting,
+                    SHARED_WAIT_S if timeout is None else timeout):
+                raise DdlGuardTimeout("store busy: index/schema DDL held the store "
+                                      f"longer than {SHARED_WAIT_S if timeout is None else timeout}s")
+            self._readers += 1
+            self._local.n = self._mine() + 1
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._readers -= 1
+                self._local.n -= 1
+                if not self._readers:
+                    self._cond.notify_all()
+
+    @contextmanager
+    def exclusive(self, timeout: float | None = None):
+        me = threading.get_ident()
+        with self._cond:
+            if self._owner == me:
+                self._depth += 1
+                held = None
+            else:
+                held = self._mine()
+                self._readers -= held
+                self._local.n = 0
+                self._waiting += 1
+                try:
+                    ok = self._cond.wait_for(
+                        lambda: self._owner is None and not self._readers,
+                        EXCLUSIVE_WAIT_S if timeout is None else timeout)
+                finally:
+                    self._waiting -= 1
+                if not ok:
+                    self._cond.notify_all()
+                    self._retake(held)
+                    raise DdlGuardTimeout(
+                        "index/schema DDL could not get the store alone within "
+                        f"{EXCLUSIVE_WAIT_S if timeout is None else timeout}s "
+                        f"({self._readers} statements still reading)")
+                self._owner, self._depth = me, 1
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._depth -= 1
+                if not self._depth:
+                    self._owner = None
+                    self._retake(held or 0)
+                    self._cond.notify_all()
+
+
+#: 프로세스에 하나. 테스트가 직접 쓴다.
+DDL_GUARD = _DdlGuard()
+
+
+def _exclusive_ddl(fn):
+    """이 메서드는 DDL 을 돈다 — 도는 동안 다른 스레드의 문장 실행을 막는다."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        with DDL_GUARD.exclusive():
+            return fn(*a, **kw)
+    return wrapper
+
+
 class _Result:
     """neo4j Result 동형 — 반복 가능 + `.single()`, 레코드는 dict(컬럼명 키)."""
 
@@ -506,9 +636,19 @@ class _ReaderView:
 
         타임아웃 0 = 예약(잡만 걸고 즉시 반환)이라는 약속을 쓰기 지점이 안다
         (`api.server.VincApp._at_write_point`). 통로가 없으면(CLI·테스트) 기다릴
-        요청 스레드도 없으므로 그 자리에서 만든다."""
+        요청 스레드도 없으므로 그 자리에서 만든다.
+
+        잔해가 확인된 스토어에서는 **예약하지 않는다.** 실패할 빌드를 검색마다 잡으로 걸면
+        잡마다 스냅샷이 떠서, 허브는 812MB 복사를 85초마다 되풀이하며 CPU 한도에
+        붙었다(2026-09-25). 수리는 기동이 한다(:meth:`EmbeddedBackend.heal_vector_index`)."""
+        if getattr(self._b, "vector_index_remnant", False):
+            return
         self._at_write_point(
             "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 0.0)
+
+    @property
+    def vector_index_remnant(self) -> bool:
+        return getattr(self._b, "vector_index_remnant", False)
 
     def graph_algo(self, algo: str, **kw) -> list[dict]:
         """그래프 알고리즘(E-G3 WCC·Louvain·PageRank) — **쓰기 지점으로 보낸다**(R4).
@@ -559,18 +699,21 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
     나온다. 소비자는 하나다: 재구축의 export(`store/migrate.py`). 읽기 경로가 벗긴 논리
     id 를 새 스토어에 그대로 쓰면 정확 id 조회가 전부 죽고 같은 논리 id 를 가진 소유자
     둘이 한 행으로 접힌다 — 2026-09-11 라이브에서 그렇게 됐다."""
-    res = conn.execute(cypher, params) if params else conn.execute(cypher)
-    # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
-    results = res if isinstance(res, list) else [res]
     out: list[dict] = []
-    for r in results:
-        try:
-            cols = r.get_column_names()
-        except Exception:
-            cols = None
-        while r.has_next():
-            row = r.get_next()
-            out.append(dict(zip(cols, row)) if cols else {"_": row})
+    # 모든 문장 실행이 여기를 지난다 — 그래서 DDL 가드의 공유 쪽은 여기 하나다.
+    # 결과 소비까지 쥔다(행을 읽는 동안에도 스캔은 살아 있다). 가드 설명은 `_DdlGuard` 위.
+    with DDL_GUARD.shared():
+        res = conn.execute(cypher, params) if params else conn.execute(cypher)
+        # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
+        results = res if isinstance(res, list) else [res]
+        for r in results:
+            try:
+                cols = r.get_column_names()
+            except Exception:
+                cols = None
+            while r.has_next():
+                row = r.get_next()
+                out.append(dict(zip(cols, row)) if cols else {"_": row})
     # PK 네임스페이싱(design A)의 **유일한** 분해 지점. 프로젝션 64개·별칭 10개를
     # 하나하나 고치지 않는 이유가 이것이다 — `run()`·`_Session.run`·reader 커넥션·
     # 전문/벡터 검색이 전부 여기를 지난다. 판별자는 U+001F 존재이고, 좁히기는
@@ -611,6 +754,10 @@ class EmbeddedBackend:
         #: 있다"). 드롭은 멱등이지만 **공짜가 아니다**. 이 플래그로 라운드 첫 번째만
         #: 실제 DDL 을 내보내고 나머지는 접는다. 만든 쪽이 다시 False 로 내린다.
         self._vec_index_dropped = False
+        #: `ChunkVec` 에 잔해 색인이 있어 벡터 색인을 **만들 수 없다고 확인된** 상태.
+        #: 서면 재빌드 예약을 멈추고(실패하는 빌드를 검색마다 다시 돌리지 않게) 벡터
+        #: 삽입을 거절한다(삽입은 세그폴트다). 기동 때 수리가 내린다.
+        self._vec_index_remnant = False
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -721,6 +868,7 @@ class EmbeddedBackend:
                 return 0
         return 0
 
+    @_exclusive_ddl
     def migrate(self, *, dim: int) -> dict:
         """스키마 제자리 마이그레이션(S0). 신규 설치·구 설치 모두 최종형으로 수렴.
 
@@ -855,6 +1003,12 @@ class EmbeddedBackend:
             raise RuntimeError(
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
                 f"번들 필요(§9·G0). 기동 시 로드되지 않았다(재시작 후 재확인).")
+        with DDL_GUARD.exclusive():     # LOAD 도 쓰기 트랜잭션이다 — DDL 과 같이 혼자 돈다
+            self._load_ext_now(ext)
+
+    def _load_ext_now(self, ext: str) -> None:
+        if ext in self._exts:           # 배타를 기다리는 사이 다른 스레드가 로드했다
+            return
         c = self._conn
         p = _bundled_ext_path(ext)
         bundled_err = ""
@@ -964,15 +1118,35 @@ class EmbeddedBackend:
         그 접기가 없으면 5분마다 DDL 이 16번 나가고, 그 사이에 들어온 검색이 매번
         재빌드를 물어 벡터 팔이 사실상 상시 꺼져 있게 된다. 다시 만드는 쪽
         (:meth:`ensure_search_indexes`·:meth:`build_search_indexes`)이 플래그를 내린다."""
-        if self._vec_index_dropped:
+        if self._vec_index_dropped:     # 접힌 드롭은 DDL 이 아니다 — 가드도 안 잡는다
             return
-        self._load_ext("vector")
-        try:
-            self._conn.execute(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')")
-        except Exception:
-            pass  # 미존재 — 무시(멱등)
-        self._vec_index_dropped = True
+        with DDL_GUARD.exclusive():     # 시간 초과는 삼키지 않는다(`DdlGuardTimeout`)
+            self._load_ext("vector")
+            try:
+                self._conn.execute(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')")
+            except Exception:
+                pass  # 미존재 — 무시(멱등)
+            else:
+                self._checkpoint_after_drop("ChunkVec 벡터 색인")
+            self._vec_index_dropped = True
 
+    def _checkpoint_after_drop(self, what: str) -> None:
+        """확장 색인(벡터·FTS)을 드롭한 **바로 뒤에** 체크포인트한다.
+
+        🔴 드롭이 WAL 에만 있는 채로 프로세스가 죽으면, 재기동 때 WAL 이 **확장을 올리기
+        전에** 재생되어 카탈로그 항목만 지워지고 저장층에는 로드되지 않은 같은 이름의
+        색인이 남는다. 그 뒤로 같은 이름의 생성은 `... is not loaded yet` 로 실패하고,
+        그 표에 행을 넣으면 **세그폴트**다. 벡터·FTS 둘 다 그렇다. 생성이 WAL 에 남는
+        것은 무해하다. 실패는 삼키고 알린다 — 드롭은 이미 됐고, 막아야 하는 것은 이
+        프로세스가 아니라 다음 기동이다.
+        근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]"""
+        try:
+            self._conn.execute("CHECKPOINT")
+        except Exception as exc:     # noqa: BLE001
+            print(f"vinc: ⚠ {what} 드롭 뒤 체크포인트 실패 — 다음 체크포인트 전에 죽으면 "
+                  f"잔해가 남는다: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+
+    @_exclusive_ddl
     def drop_search_indexes(self) -> None:
         """벡터+FTS 인덱스 **둘 다** 제거(멱등). 전량 재적재·재빌드 구간 전용이다.
 
@@ -984,6 +1158,8 @@ class EmbeddedBackend:
             self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
         except Exception:
             pass  # 미존재 — 무시(멱등)
+        else:
+            self._checkpoint_after_drop("Chunk FTS 색인")
 
     #: 엔진이 FTS 색인 불일치를 **스스로 식별해** 던지는 문구의 판별 표지.
     #: 실측 원문(ladybug 0.18.0, 2026-08-09 라이브·사본 양쪽):
@@ -999,6 +1175,7 @@ class EmbeddedBackend:
         m = str(exc).lower()
         return all(k in m for k in cls._FTS_INCONSISTENT_MARKS)
 
+    @_exclusive_ddl
     def rebuild_fts_index(self) -> None:
         """FTS 색인**만** 드롭 후 재생성(벡터는 건드리지 않는다).
 
@@ -1021,8 +1198,11 @@ class EmbeddedBackend:
             self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
         except Exception:
             pass  # 미존재 — 그냥 만든다(멱등)
+        else:
+            self._checkpoint_after_drop("Chunk FTS 색인")
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
+    @_exclusive_ddl
     def build_search_indexes(self, *, dim: int) -> None:
         """**빈 자리에** 벡터(HNSW)+FTS(BM25) 인덱스 생성. `drop_search_indexes()` 와
         **짝으로만** 쓴다.
@@ -1047,6 +1227,7 @@ class EmbeddedBackend:
         self._vec_index_dropped = False
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
+    @_exclusive_ddl
     def ensure_search_indexes(self, *, dim: int | None = None, conn=None) -> dict:
         """검색 인덱스 **지연 보장**(멱등) — 부재 시에만 생성한다(T3b 실사용 사고 대응).
 
@@ -1079,13 +1260,139 @@ class EmbeddedBackend:
 
         built["fts"] = _create("fts", f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
         if dim is not None:
-            built["vector"] = _create(
-                "vector",
-                f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
+            # 잔해가 확인된 뒤로는 빌드를 다시 돌리지 않는다 — 매번 수십 초 돌고 같은 자리에서
+            # 실패한다. 허브에서는 검색마다 그 잡이 걸렸고 잡마다 스냅샷을 불렀다.
+            if self._vec_index_remnant:
+                raise VectorIndexRemnant(self._REMNANT_NOTE)
+            try:
+                built["vector"] = _create(
+                    "vector",
+                    f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
+            except Exception as exc:
+                if not self.is_index_remnant(exc):
+                    raise
+                self._vec_index_remnant = True
+                print(f"vinc: ⚠ {self._REMNANT_NOTE}", file=sys.stderr, flush=True)
+                raise VectorIndexRemnant(self._REMNANT_NOTE) from exc
             # 방금 만들었든 이미 있었든(`already exists` 흡수) 결과는 같다 — 인덱스는
             # 존재한다. 드롭 접기 플래그를 내려 다음 쓰기가 제대로 한 번 드롭하게 한다.
             self._vec_index_dropped = False
         return built
+
+    #: 잔해 색인의 판별 표지(ladybug 0.18.0 실측 원문, 2026-09-25):
+    #:   "Runtime exception: Index chunk_vec is not loaded yet. Please load the index
+    #:    before accessing it."
+    _INDEX_REMNANT_MARK = "is not loaded yet"
+    _REMNANT_NOTE = ("vector index cannot be built: ChunkVec holds a remnant index "
+                     "left by a crash; restarting the sidecar repairs it")
+    #: 수리 중 옮겨 담는 표. 이 이름이 남아 있으면 앞선 수리가 중간에 죽은 것이다.
+    _CHUNK_VEC_REBUILD = "ChunkVecRebuild"
+
+    @classmethod
+    def is_index_remnant(cls, exc: BaseException) -> bool:
+        return cls._INDEX_REMNANT_MARK in str(exc).lower()
+
+    @property
+    def vector_index_remnant(self) -> bool:
+        return self._vec_index_remnant
+
+    @_exclusive_ddl
+    def heal_vector_index(self, *, dim: int) -> dict:
+        """**기동 때 한 번, 요청을 받기 전에** 부른다. 벡터가 있는데 색인이 없으면 세우고,
+        잔해 때문에 못 세우면 `ChunkVec` 을 새 표로 떠서 옮긴 뒤 세운다.
+
+        표를 버리고 다시 만드는 DDL 이라 다른 커넥션이 읽는 중에 돌리면 안 된다 — 그래서
+        실행 중에는 잔해를 **표시만** 하고(`_vec_index_remnant`) 수리는 다음 기동에 맡긴다.
+        옮기는 동안 행은 하나도 버리지 않는다: 옮긴 수가 다르면 옛 표를 그대로 두고 던진다.
+        허브 사본(벡터 11,905개) 1코어 실측: 빌드 시도가 실패하기까지 포함해 64초.
+        근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+
+        반환 ``state``: empty(벡터 없음) · present(이미 있음) · built(세움) ·
+        repaired(표를 다시 떠서 세움)."""
+        t0 = time.monotonic()
+        self._finish_interrupted_rebuild()
+        n = self._count("ChunkVec")
+        if not n:
+            return {"state": "empty"}
+        if self._has_index("ChunkVec", self._VEC_INDEX):
+            return {"state": "present", "rows": n}
+        try:
+            self.ensure_search_indexes(dim=dim)
+            return {"state": "built", "rows": n, "seconds": round(time.monotonic() - t0, 1)}
+        except VectorIndexRemnant:
+            pass
+        self._rebuild_chunk_vec_table(dim=dim, rows=n)
+        self._vec_index_remnant = False
+        self.ensure_search_indexes(dim=dim)
+        return {"state": "repaired", "rows": n, "seconds": round(time.monotonic() - t0, 1)}
+
+    def _count(self, label: str) -> int:
+        r = _exec_to_dicts(self._conn, f"MATCH (v:{label}) RETURN count(v) AS n", None)
+        return int(r[0]["n"]) if r else 0
+
+    def _has_index(self, table: str, name: str) -> bool:
+        rows = _exec_to_dicts(self._conn, "CALL SHOW_INDEXES() RETURN table_name AS t, "
+                                          "index_name AS i", None)
+        return any(r.get("t") == table and r.get("i") == name for r in rows)
+
+    def _has_table(self, name: str) -> bool:
+        rows = _exec_to_dicts(self._conn, "CALL SHOW_TABLES() RETURN name AS n", None)
+        return any(r.get("n") == name for r in rows)
+
+    def _rebuild_chunk_vec_table(self, *, dim: int, rows: int) -> None:
+        """`ChunkVec` 을 같은 열의 새 표로 옮기고 옛 표(잔해 포함)를 버린다.
+
+        순서: 새 표 → COPY → 수 대조 → 옛 표 DROP → RENAME → 체크포인트. DROP 과 RENAME
+        사이에서 죽으면 다음 기동의 :meth:`_finish_interrupted_rebuild` 가 마저 한다."""
+        tmp = self._CHUNK_VEC_REBUILD
+        cols = node_table_specs()["ChunkVec"]["cols"]
+        # 폭은 설정이 아니라 **지금 표의 열**에서 읽는다 — 수리는 옮기는 것이지 바꾸는 것이
+        # 아니다. 설정과 저장이 어긋난 스토어에서 설정 폭으로 만들면 COPY 가 타입 오류로 선다.
+        self._conn.execute(render_node_table("ChunkVec", dim=self._stored_vec_dim(dim),
+                                             as_label=tmp))
+        try:
+            self._conn.execute(f"COPY {tmp} FROM (MATCH (v:ChunkVec) RETURN "
+                               + ", ".join(f"v.{c}" for c in cols) + ")")
+        except Exception:
+            self._conn.execute(f"DROP TABLE {tmp}")
+            raise
+        copied = self._count(tmp)
+        if copied != rows:
+            self._conn.execute(f"DROP TABLE {tmp}")
+            raise RuntimeError(f"ChunkVec 수리 중단: 옮긴 행 {copied} ≠ 원래 {rows} "
+                               "(옛 표는 그대로다)")
+        self._conn.execute("DROP TABLE ChunkVec")
+        self._conn.execute(f"ALTER TABLE {tmp} RENAME TO ChunkVec")
+        self._conn.execute("CHECKPOINT")
+        self._vec_index_dropped = False
+
+    def _stored_vec_dim(self, fallback: int) -> int:
+        """`ChunkVec.embedding` 의 저장된 폭(`FLOAT[n]`). 못 읽으면 ``fallback``."""
+        try:
+            for r in _exec_to_dicts(self._conn, "CALL TABLE_INFO('ChunkVec') RETURN *", None):
+                if r.get("name") == "embedding":
+                    m = re.search(r"\[(\d+)\]", str(r.get("type") or ""))
+                    if m:
+                        return int(m.group(1))
+        except Exception:
+            pass
+        return fallback
+
+    def _finish_interrupted_rebuild(self) -> None:
+        """앞선 수리가 중간에 죽었으면 마무리한다. 옮겨 담던 표가 남아 있을 때만 움직인다.
+
+        옛 표가 비었고(DROP 뒤에 죽었다 — 기동의 프로비저닝이 빈 `ChunkVec` 을 다시
+        만든다) 옮긴 표에 행이 있으면 교체를 마저 한다. 아니면 옛 표가 온전하므로 옮기던
+        표를 버린다."""
+        tmp = self._CHUNK_VEC_REBUILD
+        if not self._has_table(tmp):
+            return
+        if self._count("ChunkVec") == 0 and self._count(tmp) > 0:
+            self._conn.execute("DROP TABLE ChunkVec")
+            self._conn.execute(f"ALTER TABLE {tmp} RENAME TO ChunkVec")
+        else:
+            self._conn.execute(f"DROP TABLE {tmp}")
+        self._conn.execute("CHECKPOINT")
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         """벡터 검색 — **자식(ChunkVec)에서 찾아 부모(Chunk)로 되돌린다**(v8).
@@ -1157,6 +1464,7 @@ class EmbeddedBackend:
             return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
         return rows[:int(top_k)]
 
+    @_exclusive_ddl
     def drop_node_vector_index(self) -> None:
         """노드 미러의 HNSW 만 제거(멱등).
 
@@ -1169,7 +1477,10 @@ class EmbeddedBackend:
                 f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')")
         except Exception:
             pass
+        else:
+            self._checkpoint_after_drop("NodeVec 벡터 색인")
 
+    @_exclusive_ddl
     def create_node_vector_index(self) -> str:
         """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다.
 
@@ -1268,6 +1579,7 @@ class EmbeddedBackend:
                 else "coalesce(" + ", ".join(f"node.{p}" for p in pks) + ")")
         return tuple(labels), expr
 
+    @_exclusive_ddl
     def graph_algo(self, algo: str, *, node_tables: tuple | None = None,
                    rel_tables: tuple | None = None, id_col: str | None = None,
                    graph_name: str = "_vinc_algo", conn=None) -> list[dict]:
@@ -1357,6 +1669,12 @@ class EmbeddedBackend:
         except (PermissionError, OSError):
             pass   # 락으로 막혔다 — 아래에서 닫고 다시 시도한다
 
+        # 닫았다 여는 동안 다른 스레드가 이 Database 로 문장을 돌리면 해제된 메모리를
+        # 밟는다 — DDL 과 같이 혼자 돈다.
+        with DDL_GUARD.exclusive():
+            return self._snapshot_reopen(src, _copy, dest)
+
+    def _snapshot_reopen(self, src: str, _copy, dest: str) -> str:
         drv, _name = _import_driver()
         for obj in (self._conn, self._db):
             try:

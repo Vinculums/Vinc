@@ -196,6 +196,63 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj["status"], "ok")
 
+    def test_vector_index_remnant_is_surfaced(self):
+        """벡터 색인이 잔해로 막힌 스토어는 `/health` 에 `vector_index: remnant` 를 싣는다.
+        의미 팔이 꺼져 있고 임베딩 적용이 거절되는 상태라 밖에서 보여야 한다. 정상이면
+        키가 없다(헬스 계약 불변)."""
+        class _FakeStore:
+            driver_name = "fake"
+            vector_index_remnant = False
+
+            def close(self):
+                pass
+        store = _FakeStore()
+        with running_server(_app(store=store)) as base:
+            self.assertNotIn("vector_index", _req(base, "/health", token=None)[1])
+            store.vector_index_remnant = True
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj.get("vector_index"), "remnant")
+
+    def test_embed_apply_pause_switch(self):
+        """`VINC_EMBED_APPLY_PAUSED` 가 켜지면 `/embed/apply` 는 503 으로 거절하고
+        `/health` 에 드러난다. 꺼지면 둘 다 평소대로다."""
+        class _FakeStore:
+            driver_name = "fake"
+
+            def close(self):
+                pass
+        from api import docstore
+        calls = []
+        real = docstore.apply_embeddings
+        docstore.apply_embeddings = lambda *a: calls.append(a) or {"embedded": 0}
+        old = os.environ.get("VINC_EMBED_APPLY_PAUSED")
+        try:
+            with running_server(_app(store=_FakeStore())) as base:
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = "on"
+                code, obj = _req(base, "/embed/apply", method="POST",
+                                 body={"doc_id": "d1", "embeddings": {}})
+                self.assertEqual(code, 503)
+                self.assertEqual(obj, {"executed": False,
+                                       "error": "embedding_apply_paused"})
+                self.assertEqual(calls, [])
+                self.assertIs(_req(base, "/health", token=None)[1]
+                              .get("embed_apply_paused"), True)
+
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = ""
+                code, _ = _req(base, "/embed/apply", method="POST",
+                               body={"doc_id": "d1", "embeddings": {}})
+                self.assertEqual(code, 200)
+                self.assertEqual(len(calls), 1)
+                self.assertNotIn("embed_apply_paused",
+                                 _req(base, "/health", token=None)[1])
+        finally:
+            docstore.apply_embeddings = real
+            if old is None:
+                os.environ.pop("VINC_EMBED_APPLY_PAUSED", None)
+            else:
+                os.environ["VINC_EMBED_APPLY_PAUSED"] = old
+
     def test_missing_token_401(self):
         with running_server(_app()) as base:
             code, obj = _req(base, "/recall", token=None)
@@ -900,6 +957,37 @@ class BriefArmsTests(unittest.TestCase):
             self.assertTrue(res.get("vector_note"), name)
             self.assertIs(res.get("vector_rebuilding"), True,
                           f"{name}: 재빌드 창을 진짜 실패와 가를 표식이 없다")
+
+    def test_잔해로_막힌_색인은_재빌드_창이_아니라_실패로_말하고_빌드를_걸지_않는다(self):
+        """색인이 없는 이유가 쓰기 뒤 재빌드가 아니라 **잔해**라면 다시 서지 않는다.
+        양성 표식을 달면 "곧 돌아온다"는 거짓이 되고, 빌드를 걸면 검색마다 실패할 잡과
+        스냅샷이 돈다(허브 2026-09-25: 812MB 복사를 85초마다, CPU 한도)."""
+        scheduled = []
+
+        class _RemnantReader(QueryEmbeddingWiringTests._Reader):
+            vector_index_remnant = True
+
+            def vector_search(self, e, k, f=None):
+                raise RuntimeError("Table ChunkVec doesn't have an index with name chunk_vec")
+
+            def schedule_search_indexes(self, *, dim=None):
+                scheduled.append(dim)
+
+        class _RemnantStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self): return _RemnantReader(self.o)
+
+        with _encode_stub([1.0, 0.0, 0.0, 0.0]) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            app = _app(store=_RemnantStore(self))
+            try:
+                res = app.read_search({"query": "양자역학", "owner": "u"})[1]
+            finally:
+                app.jobs.shutdown(drain=True)
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertIn("remnant", res.get("vector_note") or "")
+        self.assertIsNot(res.get("vector_rebuilding"), True,
+                         "다시 서지 않는 색인을 양성 재빌드로 그린다")
+        self.assertEqual(scheduled, [], "실패할 빌드를 검색이 또 걸었다")
 
     def test_청크_팔이_통째로_죽으면_돌지_않은_팔의_이름을_안_단다(self):
         """`arms` 를 검색 **전에** 세우던 자리의 거짓말(2026-09-07 적대적 검토가 재현).

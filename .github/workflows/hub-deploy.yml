@@ -378,6 +378,9 @@ jobs:
           if [ -n "${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}" ]; then
             ENVARGS=(--set-env-vars "VINC_QUOTA_EXEMPT_OWNERS=${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}")
           fi
+          # 임베딩 적용 멈춤 스위치. 위와 달리 **매번 싣는다**: 변수를 비우면 off 가
+          # 들어가 멈춤이 풀린다(건너뛰면 한 번 켠 on 이 env 에 영영 남는다).
+          ENVARGS+=(--set-env-vars "VINC_EMBED_APPLY_PAUSED=${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}")
           if ! az containerapp update $APP --image "$IMAGE" "${ENVARGS[@]}" --output none; then
             echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
             echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2

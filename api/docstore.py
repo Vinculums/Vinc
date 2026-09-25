@@ -47,6 +47,7 @@ from typing import Any, Callable
 
 from engines import domain_hierarchy
 from store import pkns
+from store.embedded_backend import DDL_GUARD
 
 from . import graphmd
 
@@ -410,6 +411,11 @@ def _drop_vector_index_if_any(store) -> None:
         return
     try:
         fn()
+    except TimeoutError:
+        # DDL 가드를 못 잡았다 = 인덱스가 **아직 걸려 있다.** 여기서 삼키고 벡터를 넣으면
+        # 그게 세그폴트 경로다. 쓰기를 실패시킨다(잡이 재시도한다).
+        # 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+        raise
     except Exception:
         pass
 
@@ -1178,6 +1184,17 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
 
 
 def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
+    """임베딩 적용 전체를 **배타로** 돈다(허브·CLI 공통 단일 지점).
+
+    지금까지의 허브 크래시는 전부 이 적용 도중에 났다. 인덱스 드롭만이 아니라 ChunkVec
+    삭제·삽입과 메타 갱신(커밋)까지 다른 커넥션의 스캔과 겹치지 않게 한다. 안의 드롭은
+    같은 스레드 재진입이라 교착하지 않는다. 대가: 적용하는 동안 읽기가 기다린다.
+    근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]"""
+    with DDL_GUARD.exclusive():
+        return _apply_embeddings(store, doc_id, embeddings)
+
+
+def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
     """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에 강건).
 
     **값은 벡터 하나 또는 벡터 목록**이다(v8 — 부모-자식). 청크는 2000자 단위인데 모델
@@ -1191,6 +1208,12 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
     base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
     if not embeddings:
         base["error"] = "no embeddings"
+        return base
+    # 잔해 색인이 있는 `ChunkVec` 에 행을 넣으면 프로세스가 **세그폴트**로 죽는다(예외가
+    # 아니다). 거절하면 needs_embed 가 남아 수리(다음 기동) 뒤에 워커가 다시 넣는다.
+    # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+    if getattr(store, "vector_index_remnant", False):
+        base["error"] = "vector_index_remnant"
         return base
     rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
                      "RETURN c.chunk_id AS id, c.owner_id AS owner", {"d": doc_id}) or []

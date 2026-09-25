@@ -311,6 +311,8 @@ class VincApp:
                 # 기동은 계속하되 사유를 stderr(셸이 수집)와 /health 에 남긴다.
                 provision_error = f"{type(exc).__name__}: {exc}"
                 print(f"vinc: provision failed — {provision_error}", file=sys.stderr)
+        if store is not None and provision_error is None:
+            _heal_vector_index(store, cfg.embedding_dim)
         app = cls(cfg, store=store, provision_error=provision_error, **kw)
         if store is not None and provision_error is None:
             app._schedule_mentions_rule()
@@ -1351,6 +1353,11 @@ class VincApp:
                      "wall_s": round(time.monotonic() - t0, 1)}
 
     def write_embed_apply(self, body):
+        # 운영자 스위치: 켜져 있으면 벡터를 안 넣는다. 백로그(needs_embed)는 그대로
+        # 남아 스위치를 끄면 이어서 채워진다. 검색은 이미 있는 벡터로 계속 돈다.
+        # 근거: [[record:hub-segfault-loop-on-embedding-apply-2026-09-24]]
+        if embed_apply_paused():
+            return 503, {"executed": False, "error": "embedding_apply_paused"}
         doc_id = _req(body, "doc_id")
         embeddings = body.get("embeddings") or {}
         res = self.jobs.run_sync("embed.apply", lambda: docstore.apply_embeddings(
@@ -1816,6 +1823,32 @@ def _int(val, default: int) -> int:
         return default
 
 
+def embed_apply_paused() -> bool:
+    """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가(on/1/true/yes). 매번 env 를 읽는다."""
+    return _flag(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
+
+
+def _heal_vector_index(store, dim: int) -> None:
+    """기동 때 벡터 색인을 세우고, 잔해가 막으면 `ChunkVec` 을 다시 떠서 고친다.
+
+    **HTTP 가 뜨기 전에** 돈다 — 표를 버리고 만드는 DDL 이라 읽기와 겹치면 안 된다.
+    허브 사본(벡터 11,905개) 1코어 실측: 실패하는 빌드 시도를 포함해 64초라 엔트리포인트의
+    기동 대기(300초) 안이다.
+    실패는 기동을 죽이지 않는다: 키워드 검색은 살아 있고, 사유는 로그와 `/health` 에 남는다."""
+    heal = getattr(store, "heal_vector_index", None)
+    if heal is None:
+        return
+    try:
+        res = heal(dim=dim)
+    except Exception as exc:     # noqa: BLE001 — 기동 경로, 죽이지 않는다
+        print(f"vinc: ⚠ vector index heal failed — {type(exc).__name__}: {exc}",
+              file=sys.stderr, flush=True)
+        return
+    if res.get("state") in ("built", "repaired"):
+        print(f"vinc: vector index {res['state']} at boot "
+              f"({res.get('rows')} vectors, {res.get('seconds')}s)", file=sys.stderr, flush=True)
+
+
 def _flag(val) -> bool:
     """쿼리스트링·JSON 양쪽에서 오는 불리언. HTTP 로 오면 문자열 `"true"` 이고
     MCP/CLI 로 오면 진짜 bool 이라 둘 다 받아야 한다 — `bool("false")` 가 True 인
@@ -1951,6 +1984,12 @@ class _Handler(BaseHTTPRequestHandler):
                     det = getattr(snaps, "detail", None)
                     body["snapshot"] = (det() if callable(det)
                                         else getattr(snaps, "last_state", "unknown"))
+            if embed_apply_paused():
+                body["embed_apply_paused"] = True
+            # 벡터 색인이 잔해로 막혔다 — 의미 팔이 꺼져 있고 임베딩 적용이 거절된다.
+            # 재기동이 고친다(`_heal_vector_index`). 정상이면 키가 없다.
+            if getattr(self.app.store, "vector_index_remnant", False):
+                body["vector_index"] = "remnant"
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,
