@@ -19,6 +19,7 @@
     "env_names": [
       "ACCOUNT_ED25519_SEED",
       "ALLOWED_ORIGINS",
+      "BO_ADMIN_EMAILS",
       "CSRF_SECRET",
       "DB_HOST",
       "DB_NAME",
