@@ -149,8 +149,8 @@ function ghostNode(r: number): THREE.Mesh {
   m.visible = false;
   return m;
 }
-/** 인스턴스 하나의 장부 — nodeScale 슬라이더(아래 __update)·Bring&Go 비행이 이
- *  레퍼런스로 인스턴스 행렬을 다시 쓴다. */
+/** 인스턴스 하나의 장부 — nodeScale 슬라이더(아래 __update)가 이 레퍼런스로
+ *  인스턴스 행렬을 다시 쓴다. */
 type InstRef = {
   kind: InstKind; idx: number; mesh: THREE.InstancedMesh; baseR: number;
 };
@@ -509,8 +509,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 되돌린다 — 이 모드의 이득(덜 붐빔)이 그 비용을 정당화하지 못하는 유일한 경우다.
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const particlesOn = prefs.edges === "particles" && !reduceMotion;
-  //: Bring & Go — 선을 안 그리고 짚으면 이웃을 데려온다(아래 planFly3d).
-  const bringOn = prefs.edges === "bring";
+  //: 노드만 — 선을 그리지 않는다(기본). 관계는 점등과 카드가 말한다.
+  //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
+  const nodesOnly = prefs.edges === "none";
   // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
@@ -560,7 +561,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       const geom = UNIT_GEOM[k].clone();
       const mesh = new THREE.InstancedMesh(geom, instMaterial(pal), counts[k]);
       // 인스턴스가 씬 전체에 흩어져 있어 컬링용 바운딩구는 전체를 감싸야 정확한데,
-      // Bring&Go 비행·nodeScale 슬라이더로 개별 행렬을 나중에 또 고친 뒤에도 그
+      // nodeScale 슬라이더로 개별 행렬을 나중에 또 고친 뒤에도 그
       // 값이 조용히 갱신 안 될 수 있다(재계산은 null 일 때만 지연 실행). 드로우콜이
       // 이제 종류당 하나뿐이라 컬링 이득보다 "각도에 따라 조용히 사라짐" 위험이 크다.
       mesh.frustumCulled = false;
@@ -623,7 +624,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
   // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
   const arrowLenFn = () => (l: any) =>
-    prefs.arrows && !particlesOn && !bringOn && isDirectedLink(l) ? 2.6 : 0;
+    prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(l) ? 2.6 : 0;
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
@@ -861,15 +862,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
 
   g.onNodeClick((n: any) => {
-    // 고르는 행위가 곧 모으는 행위다. 같은 것을 다시 누르면 풀린다.
-    if (bringOn) {
-      gathered = gathered === n.id ? null : n.id;
-      planFly3d(gathered);
-    } else {
-      // 클릭은 **중심에 놓기만** 한다(줌 없음). 파고드는 것은 카드의 줌 버튼이다 —
-      // 고르는 손짓 하나가 카메라까지 끌고 들어가면 되돌릴 방법이 손에 없었다.
-      centerOn3d(g, n, prefs);
-    }
+    // 클릭은 **중심에 놓기만** 한다(줌 없음). 파고드는 것은 카드의 줌 버튼이다 —
+    // 고르는 손짓 하나가 카메라까지 끌고 들어가면 되돌릴 방법이 손에 없었다.
+    centerOn3d(g, n, prefs);
     handlers.onClick?.(n);
   });
   if (handlers.onRightClick)
@@ -892,8 +887,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const linkColorFn = (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
-    // 데려오는 방식엔 선이 없다 — 고리 자체가 이웃을 말하므로 hover 복귀도 없다.
-    if (bringOn) return pal.link.base + ALPHA0;
+    // 노드만 — 선이 없다. hover 로도 돌아오지 않는다(그것이 이 모드의 뜻이다).
+    if (nodesOnly) return pal.link.base + ALPHA0;
     const near = spot && !hoverId
       ? spot.edges.has(edgeKey({ source: s, target: t, type: l.type || "" }))
       : !hoverId || s === hoverId || t === hoverId;
@@ -929,7 +924,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   let raf = 0;
   /** 모션을 줄여 달라는 설정에서는 **이징만** 버리고 효과는 남긴다(카피가 그렇게
    *  약속한다). 여태 이 트윈에는 가드가 없어 그 약속이 3D 에서만 지켜지지 않았다 —
-   *  비행(`jumpFly`)과 평면(app.css 미디어 쿼리)은 이미 지키고 있었다. */
+   *  평면(app.css 미디어 쿼리)은 이미 지키고 있었다. */
   const jumpFade = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const tween = () => {
     let live = false;
@@ -967,10 +962,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (!raf) raf = requestAnimationFrame(tween);
   };
   g.onNodeHover((n: any) => {
-    // hover 는 **어둡게만** 한다. 모으는 것은 클릭이다(2D 와 같은 규칙, 발주자 지시
-    // 2026-08-15) — 지나가기만 해도 씬이 재배열되면 눈이 쉴 곳이 없다. 고리가 서
-    // 있는 동안 그 구성원 위를 지나도 흐림 기준은 흔들리지 않는다.
-    if (bringOn && gathered && n && ring.has(n.id)) return;
+    // hover 는 **어둡게만** 한다 — 지나가기만 해도 씬이 재배열되면 눈이 쉴 곳이 없다.
     hoverId = n ? n.id : null;
     // 손을 떼면 점등이 있던 자리로 **돌아간다** — 점등 중에 지도 위를 지나갔다고
     // 걸어 둔 것이 사라지면, 밖에서 건 상태를 hover 가 조용히 지우는 셈이 된다.
@@ -981,167 +973,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     el.style.cursor = n ? "pointer" : "";
   });
 
-  // ── Bring & Go — 3D 판 ────────────────────────────────────────────────────
-  //
-  //  2D 와 같은 문법이되 두 가지가 다르다.
-  //   ① 고리를 **카메라를 향한 평면**에 세운다. 월드 축에 세우면 보는 각도에 따라
-  //      고리가 납작한 선으로 눌린다 — 2D 에는 없는 3D 고유의 함정이다.
-  //   ② 옮기는 것은 노드 좌표가 아니라 **메시**다. 엔진이 `cooldownTicks(0)` 으로
-  //      멈춰 있어 x/y/z 를 고쳐도 씬이 안 따라오고, 반대로 좌표를 그대로 두면
-  //      집으로 돌아갈 정본(fx/fy/fz — 사이드카 D17)이 흔들리지 않는다.
-  //
-  //  이름은 hover 때 스프라이트를 달았다 뗀다. 전부 미리 달면 큰 그래프에서 텍스처가
-  //  노드 수만큼 살아 있게 된다(허브 8개만 상시로 다는 이유와 같다).
-  const flyTarget = new Map<string, THREE.Vector3>();
-  const ringSprites = new Map<string, THREE.Sprite>();
-  /** 지금 고리에 서 있는 것들(초점 포함) — 위 hover 배선이 이걸로 진동을 막는다. */
-  let ring = new Set<string>();
-  /** 모아 놓은 초점 — 클릭으로만 선다(위 onNodeHover 주석). */
-  let gathered: string | null = null;
-  let flyRaf = 0;
-  const jumpFly = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  const homeOf = (m: any) =>
-    new THREE.Vector3(m.fx ?? m.x ?? 0, m.fy ?? m.y ?? 0, m.fz ?? m.z ?? 0);
-  // 방향 3종만 방향을 갖는다. 고리에서 각도가 그것을 말한다(2D 와 같은 규칙).
-  const inbound = new Map<string, Set<string>>();
-  const outbound = new Map<string, Set<string>>();
-  for (const l of links) {
-    if (!isDirectedLink(l as any)) continue;
-    const s = typeof l.source === "object" ? (l.source as any).id : l.source;
-    const t = typeof l.target === "object" ? (l.target as any).id : l.target;
-    (outbound.get(s) || outbound.set(s, new Set()).get(s)!).add(t);
-    (inbound.get(t) || inbound.set(t, new Set()).get(t)!).add(s);
-  }
-  function arcAngles(count: number, center: number, width: number): number[] {
-    if (count <= 0) return [];
-    if (count === 1) return [center];
-    const step = width / count;
-    return Array.from({ length: count }, (_, i) => center - width / 2 + step * (i + 0.5));
-  }
-  /** 고리 자리 = 방향. 위 = 들어옴 · 아래 = 나감 · 좌우 = 무방향, 폭은 갈래 크기에
-   *  비례한다. 왜 폭을 고정하지 않는지(그리고 순서만 주면 왜 안 되는지)는
-   *  view2d.ts 의 같은 이름 함수에 적혀 있다 — 규칙이 갈라지면 두 관점이 다른
-   *  말을 하므로 식은 글자 그대로 같게 둔다. 여기서도 sin 이 양수일 때 위다
-   *  (카메라 up 벡터를 쓰므로 정의상 그렇다). */
-  function ringSlots(id: string, list: string[]): { id: string; a: number }[] {
-    const inn = inbound.get(id), out = outbound.get(id);
-    const isIn = (x: string) => !!inn?.has(x);
-    const isOut = (x: string) => !inn?.has(x) && !!out?.has(x);
-    const up = list.filter(isIn);
-    const down = list.filter(isOut);
-    const side = list.filter((x) => !isIn(x) && !isOut(x));
-    const n = list.length || 1;
-    const wUp = (up.length / n) * Math.PI * 2;
-    const wDown = (down.length / n) * Math.PI * 2;
-    const wSide = Math.PI - (wUp + wDown) / 2;
-    const half = Math.ceil(side.length / 2);
-    const R = side.slice(0, half), L = side.slice(half);
-    return [
-      ...R.map((x, i) => ({ id: x, a: arcAngles(R.length, 0, wSide)[i] })),
-      ...up.map((x, i) => ({ id: x, a: arcAngles(up.length, Math.PI / 2, wUp)[i] })),
-      ...L.map((x, i) => ({ id: x, a: arcAngles(L.length, Math.PI, wSide)[i] })),
-      ...down.map((x, i) => ({ id: x, a: arcAngles(down.length, -Math.PI / 2, wDown)[i] })),
-    ];
-  }
-
-  function dropSprites() {
-    ringSprites.forEach((sp) => {
-      sp.parent?.remove(sp);
-      (sp.material as THREE.SpriteMaterial).map?.dispose();
-      sp.material.dispose();
-    });
-    ringSprites.clear();
-  }
-  function planFly3d(id: string | null) {
-    flyTarget.clear();
-    dropSprites();
-    ring = new Set(id ? [id] : []);
-    const data = g.graphData().nodes as any[];
-    const byId = new Map<string, any>(data.map((m) => [m.id, m]));
-    const hub = id ? byId.get(id) : null;
-    if (hub) {
-      const c = homeOf(hub);
-      const cam: any = g.camera();
-      const right = new THREE.Vector3(), up = new THREE.Vector3(), fwd = new THREE.Vector3();
-      cam.matrixWorld.extractBasis(right, up, fwd);
-      const slots = ringSlots(id!, [...(neighbors.get(id!) || [])].filter((x) => byId.has(x)));
-      // 반지름은 씬 규모(S)에 매다. 화면 픽셀로 환산하는 2D 와 달리 3D 는 노드마다
-      // 카메라 거리가 달라 "화면에서 몇 px" 이 한 값으로 정해지지 않는다.
-      const r0 = S * (0.3 + Math.min(slots.length, 24) / 60);
-      slots.forEach((s, i) => {
-        const nid = s.id;
-        const r = slots.length > 8 && i % 2 ? r0 * 1.6 : r0;   // 두 겹(2D 와 같은 이유)
-        flyTarget.set(nid, c.clone()
-          .add(right.clone().multiplyScalar(Math.cos(s.a) * r))
-          .add(up.clone().multiplyScalar(Math.sin(s.a) * r)));
-        ring.add(nid);
-        const m = byId.get(nid);
-        const obj = m?.__threeObj as THREE.Object3D | undefined;
-        if (obj && !hubIds.has(nid) && prefs.labels !== "none") {
-          const sp = labelSprite(m.label, pal);
-          if (instRefs.has(nid)) {
-            // 인스턴싱된 노드는 몸통(유령)이 `visible=false` 라 자식은 렌더러가 통째로
-            // 건너뛴다 — 씬에 직접 달고 위치는 stepFly3d 가 매 프레임 따라간다.
-            const offset = sp.position.clone();
-            sp.userData.flyOffset = offset;
-            sp.position.copy(obj.position).add(offset);
-            scene?.add(sp);
-          } else {
-            obj.add(sp);
-          }
-          ringSprites.set(nid, sp);
-        }
-      });
-    }
-    for (const m of data) if (!flyTarget.has(m.id)) flyTarget.set(m.id, homeOf(m));
-    if (jumpFly) { stepFly3d(1); return; }
-    if (!flyRaf) flyRaf = requestAnimationFrame(tickFly3d);
-  }
-  /** 한 프레임 전진. 도착 판정은 씬 단위(S=140)에서 0.1 이면 화면에서 같은 픽셀이다.
-   *
-   *  인스턴싱된 노드는 몸통이 유령(obj)이 아니라 InstancedMesh 에 있으므로, 유령
-   *  위치를 옮기는 것만으로는 화면이 안 따라온다 — 같은 프레임에 그 인스턴스의
-   *  행렬도 새 위치로 다시 쓴다(회전·반지름은 그대로, 이동만). 고리 인원은
-   *  보통 수십 개 이하라 매 프레임 다시 써도 비용이 무시할 만하다. */
-  const flyM4 = new THREE.Matrix4();
-  function stepFly3d(t: number): boolean {
-    let live = false;
-    for (const m of g.graphData().nodes as any[]) {
-      const to = flyTarget.get(m.id);
-      const obj = m.__threeObj as THREE.Object3D | undefined;
-      if (!to || !obj) continue;
-      if (obj.position.distanceToSquared(to) < 0.01) obj.position.copy(to);
-      else { obj.position.lerp(to, t); live = true; }
-      const ref = instRefs.get(m.id);
-      if (ref) {
-        const r = ref.baseR * (prefs.nodeScale ?? 1);
-        flyM4.compose(obj.position, INST_ROT[ref.kind], new THREE.Vector3(r, r, r));
-        ref.mesh.setMatrixAt(ref.idx, flyM4);
-        ref.mesh.instanceMatrix.needsUpdate = true;
-        const rsp = ringSprites.get(m.id);   // 씬에 직접 단 임시 라벨(위) — 따라오게
-        if (rsp?.userData.flyOffset) rsp.position.copy(obj.position).add(rsp.userData.flyOffset);
-      }
-    }
-    return live;
-  }
-  function tickFly3d() { wake(200); flyRaf = stepFly3d(0.22) ? requestAnimationFrame(tickFly3d) : 0; }
-
-  // 해체는 호출부가 `_destructor()` 로 한다(view.ts). 그 자리에 정리를 얹는다 —
-  // 안 하면 관점을 바꾼 뒤에도 rAF 가 죽은 씬을 계속 돌린다.
-  // 고리는 지도 밖으로 나갈 때 풀린다(노드에서 벗어나는 것만으로는 안 풀린다).
-  const leaveMap = () => {
-    if (!bringOn || !ring.size) return;
-    hoverId = null; gathered = null; planFly3d(null);
-  };
-  el.addEventListener("mouseleave", leaveMap);
-
   /** 테마가 뒤집혔을 때 **제자리에서** 다시 칠한다(`__update` 와 같은 관례).
    *
    *  팔레트에서 온 값은 전부 마운트 때 굳는다: 잉크·초점·안개·조명 세기·환경맵, 그리고
    *  주제 틴트(명도가 모드별 토큰이다). 다시 마운트하면 풀리지만 그 길(`show`)은 읽던
    *  문서 열과 노드 카드를 닫는다. 그래서 씬·카메라·오브젝트는 그대로 두고 **색만**
-   *  갈아 끼운다. 오브젝트를 다시 짓지 않으므로(`nodeThreeObject` 를 안 부른다) Bring &
-   *  Go 고리의 자리와 라벨의 물러남도 그대로 남는다.
+   *  갈아 끼운다. 오브젝트를 다시 짓지 않으므로(`nodeThreeObject` 를 안 부른다) 라벨의
+   *  물러남도 그대로 남는다.
    *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
   (g as any).__retheme = (): void => {
     const mode = themeMode();
@@ -1155,8 +993,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (im.instanceColor) im.instanceColor.needsUpdate = true;
       (im.material as THREE.MeshPhysicalMaterial).sheenColor.setHex(pal.point);
     }
-    // 라벨은 몸통의 자식(허브)이거나 씬 직속(인스턴스 노드의 고리 라벨)이다 — 둘 다 모은다.
-    const labels = new Set<THREE.Sprite>(ringSprites.values());
+    // 라벨은 몸통의 자식으로만 달린다.
+    const labels = new Set<THREE.Sprite>();
     for (const m of g.graphData().nodes as any[]) {
       const obj = m.__threeObj as THREE.Object3D | undefined;
       if (!obj) continue;
@@ -1170,18 +1008,6 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 선·화살촉·입자는 링크 digest 가 접근자를 다시 읽을 때 새 팔레트로 칠해진다.
     g.linkColor(linkColorFn);
     wake(600);
-  };
-
-  const dropped = (g as any)._destructor?.bind(g);
-  (g as any)._destructor = () => {
-    el.removeEventListener("mouseleave", leaveMap);
-    if (flyRaf) cancelAnimationFrame(flyRaf);
-    flyRaf = 0;
-    // ⚠ 여기서 planFly3d(null) 를 부르면 안 된다 — 그 함수는 집으로 돌아가는 rAF 를
-    // **다시 띄운다**. 해체 중에 되살아나면 죽은 씬을 계속 돌린다.
-    dropSprites();
-    flyTarget.clear();
-    dropped?.();
   };
   return g;
 }

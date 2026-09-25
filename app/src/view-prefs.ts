@@ -75,29 +75,32 @@ export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKin
 /** 선을 **언제** 그리는가. 인코딩(화살촉·굵기·농도)은 하나도 바꾸지 않고 그려지는
  *  순간만 좁힌다 — 헤어볼의 정체는 선 자체가 아니라 관심 밖 선까지 늘 그려져 있다는
  *  것이다([[vinc.research.link-expression]]).
+ *    none      노드만 — 선을 그리지 않는다(기본). 관계는 짚거나 고를 때 점등·카드가 말한다
  *    always    전량 상시 · focus 짚은 노드에 걸린 선만(2D)
  *    particles 3D 전용 — 선을 지우고 궤적 위로 입자를 흘린다
- *    bring     양쪽 다 — 짚으면 이웃이 초점 둘레로 날아와 고리로 선다
  *
- *  ⚠ 렌더러가 모르는 값은 **가까운 등가물**로 보낸다(3D 에서 `focus` → `bring`). 무조건
+ *  `bring`(Bring & Go: 짚으면 이웃이 날아와 고리로 서던 것)은 걷었다(사람 지시
+ *  2026-09-26). 저장값에 남은 `bring` 은 가장 가까운 뜻인 `none` 으로 읽는다 — 둘 다
+ *  "선을 그리지 않는다"가 출발점이다.
+ *  근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
+ *
+ *  ⚠ 렌더러가 모르는 값은 **가까운 등가물**로 보낸다(3D 에서 `focus` → `none`). 무조건
  *  `always` 로 떨어뜨리면 "상시 전량을 그만두겠다"고 고른 사람이 관점을 옮기는 순간
- *  정반대를 받는다. 정말 모르는 값만 `always` 로 간다 — 선이 조용히 사라지는 일은
- *  없다.
+ *  정반대를 받는다. 정말 모르는 값만 `always` 로 간다.
  *
- *  ⚠ **3D 의 등가물은 `particles` 가 아니라 `bring` 이다**(지시 2026-09-18). 입자는
- *  상시 애니메이션이라 F6 유휴 정지를 못 받아, 아무도 안 만지는 화면이 계속 그려진다.
- *  입자를 고른 사람은 그대로 입자를 받는다 — 바뀐 것은 **기본으로 떨어지는 자리**다. */
-export type EdgeShow = "always" | "focus" | "particles" | "bring";
+ *  ⚠ **3D 의 등가물은 `particles` 가 아니다**(지시 2026-09-18). 입자는 상시
+ *  애니메이션이라 F6 유휴 정지를 못 받아, 아무도 안 만지는 화면이 계속 그려진다. */
+export type EdgeShow = "none" | "always" | "focus" | "particles";
 /** 관점마다 고를 수 있는 것이 다르다 — 보이는 손잡이는 반드시 무언가를 해야 한다. */
 export const edgeShowsFor = (view: Viewpoint): EdgeShow[] =>
-  view === "3d" ? ["always", "particles", "bring"] : ["always", "focus", "bring"];
+  view === "3d" ? ["none", "always", "particles"] : ["none", "always", "focus"];
 
 /** 저장된 값을 **이 관점이 실제로 하는 것**으로 해석한다. 화면과 패널이 같은 함수를
- *  거치므로, 3D 에서 `focus` 가 모아 보기로 그려지는데 패널의 활성 칩만 아무것도 없는
+ *  거치므로, 3D 에서 `focus` 가 노드만으로 그려지는데 패널의 활성 칩만 아무것도 없는
  *  상태가 되지 않는다(그 어긋남이 "손잡이가 안 먹는다"로 읽힌다). */
 export const edgeShowFor = (view: Viewpoint, v: EdgeShow): EdgeShow =>
   edgeShowsFor(view).includes(v) ? v
-    : v === "focus" || v === "particles" ? (view === "3d" ? "bring" : "focus")
+    : v === "focus" || v === "particles" ? (view === "3d" ? "none" : "focus")
     : "always";
 
 export type ViewPrefs = {
@@ -188,12 +191,13 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 // loadPrefs 가 그냥 읽지 않는다(마이그레이션 불필요 — 남은 키는 무해).
 
 const KEY = "vinc.view.prefs";
+/** 저장값의 판. 2 = 2026-09-26 기본값 개정 이후(loadPrefs 의 옮겨 읽기). */
+const PREFS_VERSION = 2;
 const DEFAULTS: ViewPrefs = {
-  view: "3d", size: "links", nodeScale: 1, edgeScale: 1,
-  //: `edges` 기본은 **모아 보기**다. 전에는 `focus` 였고 3D 가 그것을 입자로 풀어서,
-  //: 손대지 않은 화면이 상시 애니메이션으로 계속 그려졌다.
-  //: 근거·실측: [[decision:the-default-edge-mode-is-bring-not-particles]]
-  labels: "hover", arrows: true, edges: "bring", spread: 1, cone: 1,
+  //: 크기 배율·밀도(`cone`) 기본은 0.7, 선은 **노드만**(`none`)이다(사람 지시 2026-09-26).
+  //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
+  view: "3d", size: "links", nodeScale: 0.7, edgeScale: 1,
+  labels: "hover", arrows: true, edges: "none", spread: 1, cone: 0.7,
   unlinked: "show", layout: "hub",
   timelineDocs: true,
   //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
@@ -261,18 +265,26 @@ export function loadPrefs(): ViewPrefs {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULTS };
     const p = JSON.parse(raw);
+    // 기본값 개정(2026-09-26) 이전의 저장값: 저장은 늘 **객체 통째로** 하므로, 손대지 않은
+    // 사람도 옛 기본(크기 1 · 밀도 1 · bring)을 값으로 들고 있다. 판(`pv`)이 없고 값이
+    // 옛 기본과 **같으면** 손대지 않은 것으로 보고 새 기본을 준다 — 고른 값은 그대로다.
+    if (!(Number(p.pv) >= PREFS_VERSION)) {
+      if (p.nodeScale === 1) p.nodeScale = DEFAULTS.nodeScale;
+      if (p.cone === 1) p.cone = DEFAULTS.cone;
+    }
     return {
       view: VIEWPOINTS.includes(p.view) ? p.view : "3d",
       size: p.size === "uniform" ? "uniform" : "links",
-      nodeScale: clamp(p.nodeScale, NODE_SCALE.min, NODE_SCALE.max, 1),
+      nodeScale: clamp(p.nodeScale, NODE_SCALE.min, NODE_SCALE.max, DEFAULTS.nodeScale),
       edgeScale: clamp(p.edgeScale, EDGE_SCALE.min, EDGE_SCALE.max, 1),
       labels: p.labels === "none" ? "none" : "hover",
       arrows: p.arrows !== false,
       // 키가 없으면(구버전 저장값) **기본값**이다 — 여태 always 로 떨어져 기본 focus 가
       // 저장 파일 하나로 조용히 뒤집혔다(2026-08-17). 아는 값은 그대로, 정말 모르는
       // 값만 always(위 EdgeShow 주석의 규율).
-      edges: p.edges == null ? DEFAULTS.edges
-        : ["always", "focus", "particles", "bring"].includes(p.edges) ? p.edges : "always",
+      // 걷어 낸 `bring` 은 `none` 으로 읽는다(위 EdgeShow 주석).
+      edges: p.edges == null || p.edges === "bring" ? DEFAULTS.edges
+        : ["none", "always", "focus", "particles"].includes(p.edges) ? p.edges : "always",
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
       unlinked: p.unlinked === "hide" ? "hide" : "show",
       // 폐기된 프리셋(radial 등)이 저장돼 있어도 조용히 hub 로 접는다.
@@ -290,7 +302,7 @@ export function loadPrefs(): ViewPrefs {
       // 저장값이 문자열로 돌아올 수 있어(구 버전·수기 편집) Number 로 접어 받는다.
       bundleDepth: BUNDLE_DEPTHS.includes(Number(p.bundleDepth) as BundleDepth)
         ? (Number(p.bundleDepth) as BundleDepth) : DEFAULTS.bundleDepth,
-      cone: clamp(p.cone, CONE_SCALE.min, CONE_SCALE.max, 1),
+      cone: clamp(p.cone, CONE_SCALE.min, CONE_SCALE.max, DEFAULTS.cone),
       bundleOff: Array.isArray(p.bundleOff)
         ? p.bundleOff.filter((k: unknown) => BUNDLE_RELS.includes(String(k))) : [],
       // `=== true` 는 키가 없는 저장값을 끔으로 읽어 "기본은 켬"을 무효화했다. 다른
@@ -303,5 +315,5 @@ export function loadPrefs(): ViewPrefs {
 }
 
 export function savePrefs(p: ViewPrefs) {
-  localStorage.setItem(KEY, JSON.stringify(p));
+  localStorage.setItem(KEY, JSON.stringify({ ...p, pv: PREFS_VERSION }));
 }

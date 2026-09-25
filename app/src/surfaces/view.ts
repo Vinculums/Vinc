@@ -426,7 +426,7 @@ export async function renderView(el: HTMLElement) {
     edgeAlways: `<circle cx="5" cy="12" r="2.8" ${AF}/><path d="M7.4 11 21 5M7.6 12h13.6M7.4 13 21 19" ${AS} stroke-width="1.2"/><circle cx="23" cy="5" r="1.8" ${AF}/><circle cx="23" cy="12" r="1.8" ${AF}/><circle cx="23" cy="19" r="1.8" ${AF}/>`,
     edgeFocus: `<circle cx="5" cy="12" r="2.8" ${AF}/><path d="M7.6 12h13.6" ${AS} stroke-width="1.5"/><path d="M7.4 11 21 5M7.4 13 21 19" ${AS} stroke-width="1.1" opacity=".18"/><circle cx="23" cy="12" r="1.8" ${AF}/><circle cx="23" cy="5" r="1.8" ${AF} opacity=".25"/><circle cx="23" cy="19" r="1.8" ${AF} opacity=".25"/>`,
     edgeParticles: `<circle cx="4" cy="12" r="2.6" ${AF}/><circle cx="10" cy="12" r="1.5" ${AF} opacity=".9"/><circle cx="14.5" cy="12" r="1.2" ${AF} opacity=".7"/><circle cx="18.5" cy="12" r="1" ${AF} opacity=".5"/><circle cx="24" cy="12" r="2.2" ${AF} opacity=".85"/>`,
-    edgeBring: `<circle cx="14" cy="12" r="3" ${AF}/><circle cx="14" cy="4.5" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="8" r="1.5" ${AF} opacity=".8"/><circle cx="20.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="14" cy="19.5" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="16" r="1.5" ${AF} opacity=".8"/><circle cx="7.5" cy="8" r="1.5" ${AF} opacity=".8"/>`,
+    edgeNone: `<circle cx="5" cy="12" r="2.8" ${AF}/><circle cx="14" cy="6" r="2" ${AF}/><circle cx="14" cy="18" r="2" ${AF}/><circle cx="22" cy="12" r="2.4" ${AF}/>`,
     layoutHub: `<circle cx="14" cy="12" r="3" ${AF}/><path d="M14 12 14 4M14 12 21 7.5M14 12 21 16.5M14 12 14 20M14 12 7 16.5M14 12 7 7.5" ${AS} stroke-width=".9" opacity=".45"/><circle cx="14" cy="4" r="1.5" ${AF}/><circle cx="21" cy="7.5" r="1.5" ${AF}/><circle cx="21" cy="16.5" r="1.5" ${AF}/><circle cx="14" cy="20" r="1.5" ${AF}/><circle cx="7" cy="16.5" r="1.5" ${AF}/><circle cx="7" cy="7.5" r="1.5" ${AF}/>`,
     layoutRank: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
     /* 시간 기준 — 가르는 것은 **몰림 대 퍼짐**이다(도움말: "한 번에 적재한 것들이
@@ -1161,8 +1161,8 @@ export async function renderView(el: HTMLElement) {
     // 그리는 것을 따른다. 저장값 기준이면 활성이 없는 행이 생긴다.
     const shownEdges = edgeShowFor(p.view, p.edges);
     const showArt: Record<string, string> = {
-      always: ART.edgeAlways, focus: ART.edgeFocus,
-      particles: ART.edgeParticles, bring: ART.edgeBring,
+      none: ART.edgeNone, always: ART.edgeAlways, focus: ART.edgeFocus,
+      particles: ART.edgeParticles,
     };
 
     const rows: Record<string, string> = {
@@ -1183,7 +1183,7 @@ export async function renderView(el: HTMLElement) {
       // 선을 **언제** 그리는가(2026-08-14). "보일까"가 "얼마나 굵을까"보다 먼저다.
       edgeShow: tileRow(COPY.ui.panel.edgeShow, edgeShowsFor(p.view).map((v) => ({
         val: v, label: COPY.ui.panel.edgeShowName[v] || v, art: showArt[v],
-        help: v, active: shownEdges === v,
+        help: v === "none" ? "edgesNone" : v, active: shownEdges === v,
       })), "edges"),
       domainTint: swRow(COPY.ui.panel.domainTint, "domainTint", p.domainTint,
         COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "tintOn", "tintOff"),

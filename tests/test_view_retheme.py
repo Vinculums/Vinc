@@ -72,7 +72,7 @@ class ThreeDTests(unittest.TestCase):
         self.body = _fn(self.src, "(g as any).__retheme = (): void => {")
 
     def test_오브젝트를_다시_짓지_않는다(self):
-        """다시 지으면 Bring & Go 고리의 자리와 라벨 물러남이 사라진다."""
+        """다시 지으면 라벨 물러남과 강조 상태가 사라진다."""
         self.assertNotIn("nodeThreeObject(", self.body)
         self.assertNotIn("buildInstancedNodes(", self.body)
 
