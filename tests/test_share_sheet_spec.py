@@ -63,8 +63,10 @@ class ShareSheetSpecTests(unittest.TestCase):
                       "제외 집합을 원문에 적용하지 않는다")
         self.assertIn("{ documents: docs }", share,
                       "거른 목록이 나가는 팩에 안 실린다 — 끈 원문이 그대로 나간다")
-        self.assertIn("documents: docs.length", share,
+        self.assertIn("recount(keep, edges, docs, c)", share,
                       "매니페스트 수가 실제 나가는 수와 갈린다(시트가 저장 전에 그 수를 보여준다)")
+        self.assertIn("documents: docs.length", _body(_src(), "function recount"),
+                      "다시 센 문서 수가 거른 목록 길이가 아니다")
 
     def test_미러가_아닌_개념을_끄는_것은_원문을_안_뺀다(self):
         """판정을 고정한다 — 두 경우는 다르게 다룬다.
@@ -88,6 +90,47 @@ class ShareSheetSpecTests(unittest.TestCase):
         """앱이 읽는 키를 빌더가 실제로 넣는가 — 이름이 갈리면 화면은 조용히 0 이다."""
         src = (ROOT / "api" / "share.py").read_text(encoding="utf-8")
         self.assertIn('"documents": len(documents)', src)
+
+    def test_공유_시트가_기록과_결정_수를_보여준다(self):
+        """VIN-105 가 counts.records·decisions 를 넣는데 사양 표가 그 키를 안 읽으면
+        화면은 오류 없이 개념·연결·문서만 보여 준다. 구버전 팩은 키가 없어도
+        `?? 0` 으로 0 을 찍는다."""
+        src = _src()
+        spec = _body(src, "function specRows")
+        self.assertIn("specRecords", spec)
+        self.assertIn("specDecisions", spec)
+        self.assertIn("c.records", spec)
+        self.assertIn("c.decisions", spec)
+        self.assertIn("?? 0", spec, "구버전 매니페스트에 decisions 가 없으면 조용히 터진다")
+        share = _body(src, "export async function openShareSheet")
+        self.assertIn("specRows(c, scopeLabel)", share)
+
+    def test_제외_후_카운트가_모든_종을_다시_센다(self):
+        """개별 제외가 concepts·edges·documents 만 다시 쓰면 Record/Decision 은
+        끈 뒤에도 원래 수가 남는다. `recount` 가 VIN-105 술어(Episode+Record,
+        Decision)로 다시 채운다."""
+        src = _src()
+        helper = _body(src, "function recount")
+        self.assertIn('n.type === "record" || n.type === "episode"', helper)
+        self.assertIn('n.type === "decision"', helper)
+        self.assertIn("documents: docs.length", helper)
+        share = _body(src, "export async function openShareSheet")
+        self.assertIn("recount(keep, edges, docs, c)", share)
+
+    def test_가져오기_요약이_기록과_결정을_문서와_섞지_않는다(self):
+        """updateNote 세 번째 자리에 records 를 넣고 라벨은 문서였다. 원문 수와
+        기록 수가 한 줄에서 갈린다."""
+        src = _src()
+        imp = _body(src, "export function openImportSheet")
+        self.assertIn("specRecords", imp)
+        self.assertIn("specDecisions", imp)
+        self.assertIn("c.decisions ?? 0", imp)
+        self.assertIn("updateNote(c.concepts ?? n, c.edges ?? 0, c.records ?? 0, c.decisions ?? 0", imp)
+
+    def test_서버가_같은_이름으로_결정과_기록을_센다(self):
+        src = (ROOT / "api" / "share.py").read_text(encoding="utf-8")
+        self.assertIn('"decisions": len(selected["decision"])', src)
+        self.assertIn('"records": len(selected["episode"]) + len(selected["record"])', src)
 
 
 if __name__ == "__main__":
