@@ -49,15 +49,30 @@ import { COPY } from "../copy";
  *  `default-src 'self'` 로 폴백되면 조용히 차단된다(2026-08-17 홈페이지에서 그 고장으로
  *  하루를 썼다. 앱·사이트 양쪽 CSP 에 `data:` 를 열어 두었다). */
 const TEX = 64, TEX_R = 24;          // 넉넉한 여백 — 파선 링과 삼각형 꼭짓점이 잘리지 않게
+/** 텍스처로 **굽는** 크기(px). 좌표(`TEX`)와 따로 둔다 — viewBox 는 64 로 두고 그림의
+ *  고유 크기만 키운다. `@sigma/node-image` 는 그림을 고유 크기로 텍스처 판에 굽고 그것을
+ *  확대해 그린다(기본 `size:{mode:"max",value:512}` 는 고유 크기를 **넘지 않는다**).
+ *  고유 크기가 64 이던 동안 모든 마크가 64×64 비트맵으로 구워져, 레티나·확대에서
+ *  흐릿하고 가장자리가 계단졌다. 프로그램 쪽도 같은 값으로 못박는다(view2d.ts).
+ *  근거: [[decision:2d-marks-are-baked-at-256-px]] */
+export const MARK_TEX_PX = 256;
 const texCache = new Map<string, string>();
-export function markTexture(kind: string | undefined, gateway: boolean): string {
-  const key = `${kind || "concept"}|${gateway ? 1 : 0}`;
+/** 외곽선 링 — 선택(클릭·점등)으로 남은 노드에만 끼우는 판. 몸통과 링 사이는 비워
+ *  둔다(투명 = 배경이 비친다). 그래서 붙은 노드끼리도 하나하나 갈라진다. 링은 마스크
+ *  안에서 반투명이라 노드 색의 옅은 선으로 칠해진다. 반경은 여백(32) 안에 들어온다.
+ *  근거: [[decision:2d-selection-outlines-the-kept-nodes]] */
+const RING_R = TEX_R * 1.22, RING_W = 2, RING_A = 0.5;
+export function markTexture(kind: string | undefined, gateway: boolean,
+                            ring = false): string {
+  const key = `${kind || "concept"}|${gateway ? 1 : 0}|${ring ? 1 : 0}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   // 흰 실루엣. 채움은 상속시키고, 인라인 `fill="none"`(관문)은 그대로 이긴다.
   // stroke-width 는 평면 마크의 CSS 값(1.4)을 반경 비율로 옮긴 값이다.
-  const body = markSvg(kind, gateway, TEX / 2, TEX / 2, TEX_R, "");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TEX} ${TEX}" width="${TEX}" height="${TEX}">`
+  const body = markSvg(kind, gateway, TEX / 2, TEX / 2, TEX_R, "")
+    + (ring ? `<circle cx="${TEX / 2}" cy="${TEX / 2}" r="${RING_R}" fill="none"`
+      + ` stroke-width="${RING_W}" stroke-opacity="${RING_A}"/>` : "");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TEX} ${TEX}" width="${MARK_TEX_PX}" height="${MARK_TEX_PX}">`
     // ds-allow: 마스크의 흰색은 디자인 색이 아니라 곱셈의 항등원이다 — sigma 가
     // `drawingMode:"color"` 로 이 그림에 노드 color 를 곱해 칠한다(view3d.ts 스프라이트와 같은 사유).
     + `<g fill="#fff" stroke="#fff" stroke-width="${(1.4 * TEX_R) / 5.2}">${body}</g></svg>`;
