@@ -5689,6 +5689,10 @@ _ARM_LABEL = {"keyword": "fts", "semantic": "vector"}
 #: 신호다(서버가 `vector_note` 를 붙이는 자리와 같다 — 화면은 파싱하지 않는다).
 _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
                       "full-text results only for now")
+#: 벡터 색인이 **다시 서지 못하는** 스토어의 사유(잔해 — `VectorIndexRemnant`). 위와 달리
+#: 실패다: `vector_rebuilding` 을 달지 않는다.
+_VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
+                   "the rebuild until the sidecar restarts; full-text results only")
 
 
 def _chunk_arms(store, query, query_embedding, top_k,
@@ -6364,7 +6368,12 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
         if query_embedding is not None and "semantic" not in ran and base.get("error"):
             base.setdefault("vector_note", base["error"])
-        if vnote:
+        if vnote and getattr(store, "vector_index_remnant", False):
+            # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
+            # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
+            # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+            base["vector_note"] = _VECTOR_REMNANT
+        elif vnote:
             # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
             # (`vector_note`)를 둘 다 남긴다.
             base["vector_note"] = vnote
