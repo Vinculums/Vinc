@@ -482,6 +482,13 @@ def render_node_tables(*, dim: int) -> list[str]:
     return _render_node_tables(_NODE_TABLES, dim=dim)
 
 
+def render_node_table(label: str, *, dim: int, as_label: str | None = None) -> str:
+    """노드 테이블 하나의 DDL. ``as_label`` 을 주면 같은 열로 **다른 이름의 표**를 만든다 —
+    표를 새로 떠서 옮기는 수리가 쓴다(`EmbeddedBackend.heal_vector_index`). 열을 손으로
+    다시 적으면 스키마와 두 벌이 되므로 여기서 파생한다."""
+    return _render_node_tables({as_label or label: _NODE_TABLES[label]}, dim=dim)[0]
+
+
 def render_meta_tables() -> list[str]:
     """동기화 메타 테이블 DDL(S0). 데이터플레인과 독립(관계 참조 없음)."""
     return _render_node_tables(_META_TABLES, dim=0)

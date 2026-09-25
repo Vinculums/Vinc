@@ -1209,6 +1209,12 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
     if not embeddings:
         base["error"] = "no embeddings"
         return base
+    # 잔해 색인이 있는 `ChunkVec` 에 행을 넣으면 프로세스가 **세그폴트**로 죽는다(예외가
+    # 아니다). 거절하면 needs_embed 가 남아 수리(다음 기동) 뒤에 워커가 다시 넣는다.
+    # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+    if getattr(store, "vector_index_remnant", False):
+        base["error"] = "vector_index_remnant"
+        return base
     rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
                      "RETURN c.chunk_id AS id, c.owner_id AS owner", {"d": doc_id}) or []
     all_ids = {r["id"] for r in rows}
