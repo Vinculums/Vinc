@@ -364,14 +364,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // 손이 가리키는 것이 언제나 지금 관심사다. (아래 `pinned` 는 드래그로 자리를
   // 옮긴 노드 집합이라 다른 개념이다 — 이름을 겹치지 않게 둔다.)
   let landed: string | null = null;
-  /** 모아 놓은 초점 — **클릭**으로만 선다(발주자 지시 2026-08-15). hover 와 갈라
-   *  두는 이유: 지나가기만 해도 지도가 재배열되면 눈이 쉴 곳이 없다. 이제 hover 는
-   *  어둡게만 하고, 모으는 것은 고르는 행위(클릭)의 결과다. */
-  let gathered: string | null = null;
   /** 밖에서 건 점등 집합. **hover 가 이긴다**(바로 위 주석의 규칙 그대로: 손이
    *  가리키는 것이 언제나 지금 관심사다) — 그래서 우선순위 코드가 따로 없다. */
   let spot: Spot | null = null;
-  const focusId = () => hovered ?? gathered ?? landed;
+  const focusId = () => hovered ?? landed;
   const keepOf = (id: string) => new Set([id, ...(nbr.get(id) || [])]);
   /** 시간 커서. `null` = 전량. 리듀서가 매 프레임 읽으므로 Set 조회 하나로 끝난다. */
   let timeVisible: Set<string> | null = null;
@@ -383,137 +379,34 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     const keep = spot && !hovered ? spot.nodes : focus ? keepOf(focus) : null;
     if (!keep) return data;
     if (keep.has(id)) {
-      // 데려온 이웃은 **이름이 붙어야** 데려온 값이 있다 — 고리에 선 점 여덟 개가
-      // 무엇인지 모르면 선을 지운 대가만 치른 셈이다. 그래서 상시 라벨을 강제한다.
-      // 이름은 **모였을 때만** 강제한다. 그냥 지나가는 hover 에까지 붙이면
-      // 흐리게 하려던 화면이 글자로 다시 시끄러워진다.
-      const lab = bringOn() && gathered && prefs.labels !== "none"
-        ? { forceLabel: true } : {};
       // 외곽선은 **고른 것**(클릭·점등)에만 두른다. 지나가는 hover 에는 안 두른다 —
       // 손이 움직일 때마다 링이 깜빡이면 평소의 조용한 평면이 깨진다.
       // 근거: [[decision:2d-selection-outlines-the-kept-nodes]]
       const ring = hovered ? {} : { image: (data as { ringImage?: string }).ringImage };
-      return id === focus ? { ...data, ...lab, ...ring, color: point(), zIndex: 1 }
-                          : { ...data, ...lab, ...ring };
+      return id === focus ? { ...data, ...ring, color: point(), zIndex: 1 }
+                          : { ...data, ...ring };
     }
     // 물러나는 것은 **이름뿐**이다. 노드는 제 색 그대로 두고, 남은 것은 엣지와
     // 라벨이 말한다 — 몸통을 배경 쪽으로 섞던 동안 같은 노드가 상태에 따라 진한 색과
     // 옅은 틴트를 오갔다. 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
     return { ...data, label: "" };
   });
-  // ── Bring & Go (`edges: "bring"`) — 선을 안 그리고 이웃을 **데려온다** ──────
-  //
-  //  짚으면 이웃이 초점 둘레로 날아와 고리로 서고, 손을 떼면 제자리로 돌아간다.
-  //  연결을 그림이 아니라 **움직임**으로 말하므로 교차가 원리적으로 생기지 않는다.
-  //  좌표 정본은 그대로 사이드카(D17)다 — `home` 이 그 정본을 쥐고 있고 화면 좌표만
-  //  잠시 벗어났다 돌아온다. 드래그(아래 pinned)와 같은 층위의 "이 세션에서만"이다.
-  const bringOn = () => prefs.edges === "bring";
-  // 방향 3종만 방향을 갖는다(위 DIRECTED). 고리에서 각도가 그것을 말한다.
-  const inbound = new Map<string, Set<string>>();
-  const outbound = new Map<string, Set<string>>();
-  for (const e of edges) {
-    if (!DIRECTED.includes(e.type)) continue;
-    (outbound.get(e.source) || outbound.set(e.source, new Set()).get(e.source)!).add(e.target);
-    (inbound.get(e.target) || inbound.set(e.target, new Set()).get(e.target)!).add(e.source);
-  }
-  /** 부채꼴 안에 고르게 — 양 끝을 경계에 붙이지 않고 반 칸 안쪽에 둔다(옆 갈래와 붙지 않게). */
-  function arcAngles(count: number, center: number, width: number): number[] {
-    if (count <= 0) return [];
-    if (count === 1) return [center];
-    const step = width / count;
-    return Array.from({ length: count }, (_, i) => center - width / 2 + step * (i + 0.5));
-  }
-  /** 고리 자리 = 방향(D85 후속). **위 = 들어옴 · 아래 = 나감 · 좌우 = 무방향.**
-   *
-   *  자리는 고정이되 **폭이 비율**이라는 것이 요지다. 폭까지 고정하면 무방향이
-   *  대다수인 그래프에서 그것들만 좁은 쐐기에 몰리고(이 그래프가 그렇다 —
-   *  RELATED_TO 가 다수다), 순서만 주면 반대로 방향 갈래가 위아래에 안 선다
-   *  (나가는 관계가 없는 노드에서 들어옴이 옆으로 밀렸다 — 2026-08-14 실측).
-   *  폭을 갈래 크기에 비례시키면 넷이 정확히 원을 채운다: 좌우 폭은
-   *  `π - (위폭 + 아래폭)/2` 이고, 방향이 하나도 없으면 그 값이 π 라 예전처럼
-   *  고른 고리로 자연히 돌아간다.
-   *
-   *  위가 선행·상위인 것은 `rank` 프리셋이 좌표로 만드는 흐름과 같은 방향이라
-   *  새로 배울 것이 없다. */
-  function ringSlots(id: string, list: string[]): { id: string; a: number; t: number }[] {
-    const inn = inbound.get(id), out = outbound.get(id);
-    const isIn = (x: string) => !!inn?.has(x);
-    const isOut = (x: string) => !inn?.has(x) && !!out?.has(x);
-    const up = list.filter(isIn);
-    const down = list.filter(isOut);
-    const side = list.filter((x) => !isIn(x) && !isOut(x));
-    const n = list.length || 1;
-    const wUp = (up.length / n) * Math.PI * 2;
-    const wDown = (down.length / n) * Math.PI * 2;
-    const wSide = Math.PI - (wUp + wDown) / 2;
-    const half = Math.ceil(side.length / 2);
-    const R = side.slice(0, half), L = side.slice(half);
-    // sin 이 양수일 때 화면에서 위다(실측 2026-08-14) — 그래서 들어옴이 +π/2 다.
-    const lay = (list: string[], center: number, width: number) =>
-      list.map((x, i) => {
-        const [t, cnt, j] = tier(list.length, i);
-        return { id: x, a: arcAngles(cnt, center, width)[j], t };
-      });
-    return [
-      ...lay(R, 0, wSide),
-      ...lay(up, Math.PI / 2, wUp),
-      ...lay(L, Math.PI, wSide),
-      ...lay(down, -Math.PI / 2, wDown),
-    ];
-  }
   const home = new Map<string, [number, number]>(
     shown.map((n) => [n.id, [px(n) * prefs.spread, py(n) * prefs.spread]]));
-  const target = new Map<string, [number, number]>();
-  /** 지금 고리에 서 있는 것들(초점 포함). 아래 입력 배선이 이걸로 진동을 막는다. */
-  let ring = new Set<string>();
-  let flyRaf = 0;
-  // 모션 감도를 밝힌 사용자에게는 **배치는 주고 이동만 뺀다** — 고리로 서는 것이
-  // 이 방식의 내용이고 날아가는 동작은 전달 방식이라, 통째로 끄면 기능이 사라진다.
-  const jumpFly = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  /** 고리 반지름 — 화면 픽셀을 그래프 단위로 환산한다. 줌이 바뀌어도 고리가 같은
-   *  크기로 보이게(그래프 단위 상수로 두면 파고들었을 때 화면 밖으로 나간다). */
-  function ringRadius(count: number): number {
-    const a = sigma.viewportToGraph({ x: 0, y: 0 });
-    const b = sigma.viewportToGraph({ x: 0, y: 110 });
-    const unit = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    return unit * (1 + Math.min(count, 24) / 24);
-  }
-  /** 여덟을 넘으면 **두 겹**으로 세운다. 한 겹에 다 세우면 각 사이 간격이 라벨보다
-   *  좁아져 이름이 서로 먹는다(실측: 이웃 14 인 허브에서 라벨 여섯 쌍이 겹쳤다).
-   *  번갈아 안팎으로 보내면 같은 겹 안의 간격이 두 배가 되고, 이웃한 라벨이 반지름
-   *  방향으로도 엇갈려 두 축 모두에서 떨어진다. */
-  const ringOf = (count: number, i: number, r0: number) =>
-    count > 8 && i % 2 ? r0 * 1.6 : r0;
-  /** 한 갈래를 두 겹으로 나눌 때의 (겹 번호, 그 겹의 개수, 겹 안 순번).
-   *  **연속 블록**으로 나눈다 — 번갈아 넣으면 같은 겹의 이웃 사이가 두 칸씩 벌어져
-   *  고리가 규칙적으로 안 보인다(발주자 지적 2026-08-15). 연속으로 자르면 각 겹이
-   *  자기 개수로 등각이라 두 개의 고른 호가 된다. */
-  function tier(count: number, i: number): [number, number, number] {
-    if (count <= 6) return [0, count, i];
-    const inner = Math.ceil(count / 2);
-    return i < inner ? [0, inner, i] : [1, count - inner, i - inner];
-  }
-  /** 정규화 상자를 **집 좌표에 고정한다.** 이 여섯 줄이 "클릭하면 지도가 쪼그라든다"의
-   *  해결이다(2026-08-15).
+  /** 정규화 상자를 **집 좌표에 고정한다**(2026-08-15).
    *
-   *  원인은 sigma 의 계약이었다: `nodeExtent = graphExtent(graph)` 를 매번 다시 재서
-   *  그것으로 정규화 함수를 만든다(sigma.cjs.dev.js — 소스로 확인). 그래서 모은 고리가
-   *  기존 범위 **밖으로 한 점이라도** 나가면 범위가 커지고 화면 전체가 그만큼 작아진다.
-   *  증거는 움직이지도 않은 도메인 마크들의 간격이 0.80 배로 줄어든 것이었다 — 마크에는
-   *  엣지가 없어 모일 수가 없으니, 줄어든 것은 노드가 아니라 배율이다.
-   *
-   *  고리를 상자 안에 **가두는** 처방도 됐지만 버렸다: 가장자리 노드를 짚으면 고리가
-   *  경계에 눌려 찌그러진다 — 규칙적으로 모이게 한 것과 정면으로 어긋난다. 상자를
-   *  고정하면 고리는 제 모양대로 나가고 배율만 안 흔들린다. 끌기도 같이 낫는다
-   *  (밖으로 끌면 마찬가지로 전체가 줄어들고 있었다). */
+   *  sigma 는 `nodeExtent = graphExtent(graph)` 를 매번 다시 재서 정규화한다(소스로
+   *  확인). 그래서 노드 하나라도 기존 범위 **밖으로** 끌려 나가면 범위가 커지고 화면
+   *  전체가 그만큼 작아진다. 상자를 고정하면 끈 노드는 제자리대로 나가고 배율만 안
+   *  흔들린다. (처음 이 처방이 막던 것은 걷어 낸 Bring & Go 의 고리였다 — 끌기는 같은
+   *  고장을 그대로 갖고 있어 남긴다.) */
   {
     const xs = [...home.values()].map((v) => v[0]);
     const ys = [...home.values()].map((v) => v[1]);
     if (xs.length) {
-      //: 고리·끌기가 나갈 여유. 크게 잡으면 **평소 지도가 그만큼 작게** 그려진다
-      //: (상자가 곧 `fit` 의 대상이다). 0.15 면 배율 손해가 13% 쯤이고 가장자리
-      //: 고리도 화면 안에 남는다. 이보다 더 나가는 것은 잘리지 않고 그냥 상자 밖에
-      //: 그려진다 — 배율은 어떤 경우에도 안 흔들린다는 것이 이 처방의 요지다.
+      //: 끌기가 나갈 여유. 크게 잡으면 **평소 지도가 그만큼 작게** 그려진다(상자가
+      //: 곧 `fit` 의 대상이다). 0.15 면 배율 손해가 13% 쯤이다. 이보다 더 나가는 것은
+      //: 잘리지 않고 상자 밖에 그려진다 — 배율은 어떤 경우에도 안 흔들린다.
       const mx = (Math.max(...xs) - Math.min(...xs)) * 0.15 || 1;
       const my = (Math.max(...ys) - Math.min(...ys)) * 0.15 || 1;
       sigma.setCustomBBox({ x: [Math.min(...xs) - mx, Math.max(...xs) + mx],
@@ -521,41 +414,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     }
   }
 
-  function planFly(id: string | null) {
-    target.clear();
-    ring = new Set(id ? [id] : []);
-    if (id && bringOn() && g.hasNode(id)) {
-      const [hx, hy] = home.get(id) ?? [0, 0];
-      const slots = ringSlots(id, [...(nbr.get(id) || [])].filter((x) => g.hasNode(x)));
-      const r0 = ringRadius(slots.length);
-      slots.forEach((s) => {
-        const r = s.t ? r0 * 1.6 : r0;
-        target.set(s.id, [hx + Math.cos(s.a) * r, hy + Math.sin(s.a) * r]);
-        ring.add(s.id);
-      });
-    }
-    // 목적지가 안 잡힌 것은 전부 집으로 — 초점이 바뀌면 지난 고리가 저절로 풀린다.
-    for (const [nid, xy] of home) if (!target.has(nid)) target.set(nid, xy);
-    if (jumpFly) { stepFly(1); return; }
-    if (!flyRaf) flyRaf = requestAnimationFrame(tickFly);
-  }
-  /** 한 프레임 전진. `t`=1 이면 즉시 도착(모션 감도 경로). 도착 판정은 좌표계가
-   *  단위원 규모라(사이드카 정본) 1e-4 면 화면에서 이미 같은 픽셀이다. */
-  function stepFly(t: number): boolean {
-    let live = false;
-    for (const [nid, [tx, ty]] of target) {
-      if (!g.hasNode(nid)) continue;
-      const cx = g.getNodeAttribute(nid, "x") as number;
-      const cy = g.getNodeAttribute(nid, "y") as number;
-      const dx = tx - cx, dy = ty - cy;
-      if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) continue;
-      g.setNodeAttribute(nid, "x", cx + dx * t);
-      g.setNodeAttribute(nid, "y", cy + dy * t);
-      live = true;
-    }
-    return live;
-  }
-  function tickFly() { flyRaf = stepFly(0.22) ? requestAnimationFrame(tickFly) : 0; }
 
   // `edges: "focus"` — 선을 **짚을 때만** 그린다(2026-08-14). 헤어볼의 정체는 선
   // 자체가 아니라 "관심 밖 선까지 늘 그려져 있다"는 것이라, 인코딩(화살촉·굵기·
@@ -569,7 +427,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       const [a2, b2] = g.extremities(id);
       if (!timeVisible.has(a2) || !timeVisible.has(b2)) return { ...data, hidden: true };
     }
-    if (bringOn()) return { ...data, hidden: true };   // 데려오는 방식엔 선이 없다
+    // 노드만(기본) — 선을 그리지 않는다. 고른 것은 외곽선이 말한다.
+    // 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
+    if (prefs.edges === "none") return { ...data, hidden: true };
     const focus = focusId();
     // 점등 중에는 **그 집합에 든 선만** 켜진다. 열쇠로 대조하는 이유: 이 렌더러는
     // 같은 쌍의 평행 엣지를 하나로 접으므로(위 `g.hasEdge` 가드) 양 끝만으로는
@@ -816,14 +676,13 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     pinned.add(dragging);
     addAnchor(dragging);
     dragFrom = null;
-    // 딸려 온 것들도 그 자리가 새 집이다 — 안 그러면 다음 모으기가 전부 되돌린다.
+    // 딸려 온 것들도 그 자리가 새 집이다 — 앵커를 풀 때(releaseAnchor) 돌아갈 자리다.
     for (const id of dragIds()) {
       if (!pull(dragging!, id)) continue;
       home.set(id, [g.getNodeAttribute(id, "x") as number,
                     g.getNodeAttribute(id, "y") as number]);
     }
-    // 손으로 옮긴 자리가 그 노드의 새 집이다 — 안 그러면 Bring & Go 가 이웃을
-    // 돌려보낼 때 방금 옮긴 것을 원래 자리로 되돌려 버린다.
+    // 손으로 옮긴 자리가 그 노드의 새 집이다.
     home.set(dragging, [g.getNodeAttribute(dragging, "x") as number,
                         g.getNodeAttribute(dragging, "y") as number]);
     g.setNodeAttribute(dragging, "type", "circle");
@@ -835,29 +694,12 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   stage.addEventListener("mouseleave", endDrag);
 
   // ── 입력 ────────────────────────────────────────────────────────────────
-  // 데려오는 방식에서는 초점이 **끈적하다**. 이유는 실측이다(2026-08-14): 날아온
-  // 이웃이 가만히 있는 커서 밑으로 미끄러져 들어오면 그것이 새 초점이 되어 고리를
-  // 다시 계획하고, 그러면 둘이 번갈아 초점을 뺏는 진동이 생긴다(palette ↔ tokens).
-  //   · 고리 **구성원**으로의 hover 는 초점을 바꾸지 않는다(그 자리로 가려면 누른다.
-  //     기법 이름의 "Go" 가 그것이다)
-  //   · 노드에서 벗어나도 초점을 놓지 않는다. 고리는 지도 밖으로 나갈 때 풀린다
-  // hover 는 **어둡게만** 한다 — 배치는 건드리지 않는다. 고리가 서 있는 동안에는
-  // 그 구성원 위를 지나도 흐림 기준이 흔들리지 않게 초점을 그대로 둔다.
-  sigma.on("enterNode", ({ node }) => {
-    if (bringOn() && gathered && ring.has(node)) return;
-    hovered = node; sigma.refresh();
-  });
+  // hover 는 **어둡게만** 한다 — 배치는 건드리지 않는다.
+  sigma.on("enterNode", ({ node }) => { hovered = node; sigma.refresh(); });
   sigma.on("leaveNode", () => { hovered = null; sigma.refresh(); });
   sigma.on("clickNode", ({ node }) => {
-    // 고르는 행위가 곧 모으는 행위다. 같은 것을 다시 누르면 풀린다.
-    if (bringOn()) { gathered = gathered === node ? null : node; planFly(gathered); }
     const n = byId.get(node);
     if (n) o.onClick(n);
-  });
-  // 빈 곳을 누르면 흩어진다 — 고리를 푸는 길이 반드시 눈에 보여야 한다.
-  sigma.on("clickStage", () => {
-    if (!bringOn() || !gathered) return;
-    gathered = null; planFly(null); sigma.refresh();
   });
   // 선 클릭 → 관계 근거(D45-V). 방향 관계에만 근거가 실리므로 그때만 연다.
   sigma.on("clickEdge", ({ edge }) => {
@@ -877,7 +719,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.refresh();          // 좌표는 그대로 — 리듀서만 다시 돈다
     },
     dispose() {
-      if (flyRaf) cancelAnimationFrame(flyRaf);
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";
@@ -930,8 +771,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     focus(id) {
       if (!g.hasNode(id)) return false;
       landed = id;
-      // 트리·검색으로 고른 것도 "고른 행위"다 — 클릭과 같이 모아 준다.
-      if (bringOn()) { gathered = id; planFly(id); }
       // 미니맵 클릭과 같은 좌표 변환 경로 — 그래프 좌표를 카메라 좌표계로 접는다.
       const v = sigma.graphToViewport({ x: g.getNodeAttribute(id, "x") as number,
                                         y: g.getNodeAttribute(id, "y") as number });
