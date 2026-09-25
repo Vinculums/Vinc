@@ -81,9 +81,34 @@ function storedMode(): Mode {
   return localStorage.getItem(MODE_KEY) === "ask" ? "ask" : "find";
 }
 
+/** 바 아래 크롬의 천장(`--chrome-top`)을 **바의 실측 바닥**에서 뗀다.
+ *
+ *  CSS 기본값은 "바 한 줄 높이 + 여백 두 칸"이다. 폰(≤520)에서는 바가 두 줄이 돼
+ *  그 값이 모자라다 — 그 천장을 쓰는 문서 열 머리(크기 전환 · ✕)가 바 둘째 줄 뒤에
+ *  가려졌다(실측 2026-09-26, 창 390: 바 16~114, 문서 열 천장 76). 두 줄 높이를 상수로
+ *  다시 적으면 바의 구성이 바뀌는 날 조용히 어긋나므로 바의 크기를 지켜보고 잰다.
+ *  값의 뜻은 CSS 와 같다: 지도 칸 윗변에서 바 바닥까지 + 바 아래 여백.
+ *  근거: [[concept:app-narrow-window-contract]] */
+function trackChromeTop() {
+  const bar = $("topbar");
+  const shell = $("shell");
+  if (!bar || !shell || typeof ResizeObserver === "undefined") return;
+  const apply = () => {
+    const b = bar.getBoundingClientRect();
+    if (!b.height) return;                 // 숨은 바(임베드)는 CSS 값 그대로
+    const s = shell.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(shell).paddingTop) || 0;
+    const gap = parseFloat(getComputedStyle(bar).marginBottom) || 0;
+    shell.style.setProperty("--chrome-top", `${Math.round(b.bottom - s.top - pad + gap)}px`);
+  };
+  new ResizeObserver(apply).observe(bar);
+  apply();
+}
+
 export function mountTopbar() {
   if (wired) return;
   wired = true;
+  trackChromeTop();
   const qEl = $<HTMLInputElement>("tb-q");
   const boxEl = $("tb-results");
   const sicon = document.querySelector<HTMLElement>(".tb-sicon");

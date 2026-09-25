@@ -366,6 +366,7 @@
   ],
   "nodes": [
     "concept:agent-orchestration",
+    "concept:app-narrow-window-contract",
     "concept:tool-response-disclosure",
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
     "decision:a-selection-becomes-an-address-you-paste",

@@ -269,6 +269,11 @@ body {
   --surface-1: var(--background);   /* 내용(지도·산문 표면) */
   --surface-2: var(--card);         /* 구조 크롬(종 레일 · 주제 트리) */
 }
+/* 모달 높이도 **보이는** 높이 기준이다(셸 `height` 주석). 변수라서 두 줄 선언으로 못
+   받으므로 지원할 때만 덮는다. */
+@supports (height: 1dvh) {
+  :root { --modal-h: min(49.5rem, 90dvh); }
+}
 [data-theme="dark"] {
   /* 위 주석의 뒤집힘을 여기서 되돌린다. `--card` 는 두 테마 다 맨 위라 안 적는다. */
   --surface-0: var(--background);
@@ -292,7 +297,11 @@ body {
   position: relative;
   grid-template-columns: var(--kind-rail-w) var(--lnb-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
-  height: 100vh; min-height: 0; overflow: hidden;
+  /* 높이는 **보이는** 높이다(`dvh`). `vh` 는 폰 브라우저에서 주소창·아래 도구막대가
+     숨었을 때의 높이라 보이는 면보다 길다 — 셸 바닥에 선 설정 단추가 도구막대 뒤로
+     들어가 눌리지 않는다(2026-09-26 지적). `dvh` 를 모르는 엔진은 윗줄 `vh` 를 쓴다.
+     데스크탑 창에는 도구막대가 없어 둘이 같다. */
+  height: 100vh; height: 100dvh; min-height: 0; overflow: hidden;
   padding: var(--shell-gap);
   gap: var(--shell-gap);
   background: hsl(var(--surface-0));
@@ -852,7 +861,7 @@ body {
 /* ── 공홈 GNB 레이아웃(웹 빌드) ──────────────────────────────────────────
    GNB 마크업·스타일은 공유 /assets/gnb.js(단일 소스)가 web skin에서 런타임 주입한다.
    여기선 셸 높이만 GNB(3.25rem)만큼 줄인다 — 데스크탑은 GNB 미주입이라 영향 없음. */
-[data-skin="web"] #shell { height: calc(100vh - 3.25rem); }
+[data-skin="web"] #shell { height: calc(100vh - 3.25rem); height: calc(100dvh - 3.25rem); }
 
 /* ── 커스텀 타이틀바 (데스크탑 셸 전용 · tauri decorations:false 프레임리스).
    웹 빌드·브라우저 dev 는 [data-shell] 미부여로 숨김 → OS/브라우저 크롬 그대로. ── */
@@ -865,7 +874,7 @@ body {
   background: hsl(var(--muted));
   user-select: none; -webkit-user-select: none;
 }
-[data-shell] #shell { height: calc(100vh - var(--titlebar-h)); }
+[data-shell] #shell { height: calc(100vh - var(--titlebar-h)); height: calc(100dvh - var(--titlebar-h)); }
 /* 타이틀바 = 로고 + 이름. 창 좌상단에서 제품을 말하는 자리는 여기 하나다. */
 .tb-title { display: flex; align-items: center; gap: .45rem; padding-left: .75rem; font-size: .72rem; font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
 /* 로고 마크 — 타이틀바·설정 앱 정보가 같이 쓴다. 크기는 쓰는 자리가 준다.
@@ -1044,7 +1053,7 @@ body {
   position: absolute; top: 2.3rem; left: 0; right: 0;
   border: 1px solid hsl(var(--border) / .6); border-radius: var(--radius);
   background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
-  padding: .5rem; z-index: 60; max-height: 60vh; overflow: auto;
+  padding: .5rem; z-index: 60; max-height: 60vh; max-height: 60dvh; overflow: auto;
 }
 .tb-rhead { display: flex; justify-content: space-between; align-items: baseline; padding: .25rem .5rem .5rem; }
 .tb-rhead .hint { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }
@@ -1096,7 +1105,7 @@ body {
 /* 로그 — 자라는 자리. 상한을 넘으면 스크롤(패널이 화면을 삼키지 않게). */
 .ask-log {
   display: flex; flex-direction: column; gap: .55rem;
-  padding: .75rem; overflow-y: auto; max-height: min(56vh, 34rem);
+  padding: .75rem; overflow-y: auto; max-height: min(56vh, 34rem); max-height: min(56dvh, 34rem);
 }
 .ask-turn { display: flex; max-width: 100%; }
 /* 질문 = 우측 · 답변 = 좌측. */
@@ -1406,7 +1415,7 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   width: 38rem; max-width: 94vw; background: hsl(var(--card));
   border: 1px solid hsl(var(--border)); border-radius: var(--radius);
   box-shadow: var(--shadow-elev-3, none);
-  display: flex; flex-direction: column; max-height: 84vh;
+  display: flex; flex-direction: column; max-height: 84vh; max-height: 84dvh;
   /* 등·퇴장 모션은 CSS 가 아니라 motion.ts 가 준다(WAAPI). 여기서 `animation` 을
      함께 걸면 두 겹으로 움직이고, 무엇보다 **닫기를 기다릴 수 없다** — 옛 규칙은
      들어오는 0.18s 만 있고 나가는 모션이 없어 시트가 뚝 사라졌다. */
@@ -2065,7 +2074,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    모션을 잃었다. 이 둘은 트리거 지점이 없어(노드 옆·화면 구석) WAAPI 대상이 아니다. */
 @keyframes lensRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .float-card {
-  position: fixed; z-index: 48; width: 19rem; max-height: 60vh;
+  position: fixed; z-index: 48; width: 19rem; max-height: 60vh; max-height: 60dvh;
   display: flex; flex-direction: column; overflow: hidden;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius); box-shadow: var(--shadow-float, var(--shadow-elev-3, none));
@@ -2313,7 +2322,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다.
      v2(견본 타일 + 개수 막대)에서 1rem 더: 타일 4장 + 활성값 이름이 한 줄에 선다. */
   z-index: 46; width: var(--lens-panel-w);
-  max-height: calc(100vh - 8rem);
+  max-height: calc(100vh - 8rem); max-height: calc(100dvh - 8rem);
   /* ⚠ 유리면을 스크롤 면의 **조상에서 떼어낸다**(2026-08-05 — 스크롤이 계단처럼
      끊겼다). `backdrop-filter` 가 조상에 있으면 그 안에서 스크롤할 때마다 블러가
      다시 계산된다. 그래서 블러는 **형제 층**(::before)이 갖고, 스크롤은
@@ -2374,19 +2383,23 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 @media (max-width: 900px) {
   #shell { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
   #shell[data-lnb="open"] #lnb {
-    /* ⚠ 절대배치된 격자 자식은 자리 지정이 있으면 그 **격자 영역**이 좌표계가
-       된다(패딩 상자가 아니라). 한때 `grid-column: 1 / -1` 에 `left: 레일+간격`
-       으로 적었는데(2026-09-10), 그 둘을 곱하면 같은 값을 두 군데서 세는 셈이라
-       한 번 틀렸다. 지금은 **자리로만** 말한다: 2열에서 시작해 오른쪽 끝까지,
-       그리고 **2행** — 즉 상단 바 아래다.
-       ⚠ 행을 적는 것이 핵심이다. 1행까지 덮으면 서랍(z 45)이 상단 바(z 41) 위로
-       올라와 **검색을 못 쓴다**(실측 2026-09-13, 창 768·900: 바 왼쪽 216px 이
-       서랍 뒤에 있었다). 행으로 적어 두면 바가 두 줄이 되는 폭(아래 520)에서도
-       서랍의 천장이 따라 내려온다 — 픽셀을 다시 셀 일이 없다. */
-    grid-column: 2 / -1; grid-row: 2;
-    position: absolute; z-index: 45;
-    left: 0; top: 0; bottom: 0;
+    /* 서랍은 **지도 칸(3열) 2행에 겹쳐 놓는 보통 격자 항목**이다. 절대배치가 아니다.
+       ⚠ 한때 절대배치(`grid-column: 2 / -1` + `left/top/bottom: 0`)였다. 그러면
+       격자 **마지막 선**이 트랙 끝이 아니라 셸의 패딩 모서리로 풀려(Chrome 실측) 서랍의
+       아래·오른쪽 끝이 지도 카드보다 8px 밖으로 나갔고, 왼쪽은 지도 카드보다 8px 앞
+       (2열 시작)에서 섰다 — 떠 있는 카드 둘의 모서리 선이 어디에도 안 맞아 흔들려
+       보였다(2026-09-26 지적, 창 390: 서랍 80~390 × 130~844, 지도 88~382 × 8~836).
+       보통 격자 항목이면 선은 실제 트랙 끝이라 엔진마다 다르게 풀 여지도 없다.
+       자리는 **상단 바와 같은 규칙**이다: 지도 카드 안쪽으로 한 칸(`--shell-gap`)
+       들여 뜨고, 위는 바 바로 아래 한 칸이다(음수 위 여백이 행 간격을 되돌린다).
+       ⚠ 행을 적는 것이 여전히 핵심이다. 1행까지 덮으면 서랍(z 45)이 상단 바(z 41)
+       위로 올라와 **검색을 못 쓴다**(실측 2026-09-13). 행으로 적어 두면 바가 두 줄이
+       되는 폭(아래 520)에서도 천장이 따라 내려온다. */
+    grid-column: 3; grid-row: 2;
+    position: relative; z-index: 45;
+    justify-self: start; align-self: stretch;
     width: var(--lnb-w);
+    margin: calc(var(--shell-gap) * -1) var(--shell-gap) var(--shell-gap);
   }
   /* 서랍이 닫혀 있으면 그리지 않는다 — 폭 0 인 열에 남은 테두리가 레일 옆에
      1px 띠로 보인다(넓은 창의 접힘이 같은 이유로 테두리를 지우는 것과 같다). */
@@ -2438,7 +2451,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   /* 서랍이 폭을 다 쓴다. 14.5rem 에 묶어 두면 360 에서 레일 64 + 서랍 232 가
      296 을 먹어 지도에 64px 만 남는다(실측) — 트리도 지도도 못 쓰는 폭이다.
      천장은 위 900 블록이 행으로 정해 두었으므로 여기서 다시 적지 않는다. */
-  #shell[data-lnb="open"] #lnb { right: 0; width: auto; }
+  #shell[data-lnb="open"] #lnb { justify-self: stretch; width: auto; }
 }
 
 /* ── 폰(≤520) — 손잡이 묶음이 줄을 하나 더 쓴다 ────────────────────────
@@ -2460,6 +2473,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   #tb-search { flex: 1 1 100%; margin-right: 0; }
   /* 손잡이 묶음은 둘째 줄 오른쪽 끝에 선다. */
   #tb-right { margin-left: auto; }
+}
+/* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
+   레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을
+   단 48px 단추로는 높이 390 에서 종 셋(Episodes · Entity · Bridge)이 화면 밖으로
+   밀렸다(실측 2026-09-26). 종 칸이 스크롤은 되지만 64px 기둥에 스크롤 표시가 없어
+   **없는 것**으로 보였다. 이름은 단추마다 `aria-label` · 툴팁이 이미 말하고 있으므로
+   여기서 가장 싼 값이다(넓이 쪽 접는 순서와 같은 규율: 감추는 것은 잃는 것이라
+   싼 것부터). 그래도 넘치면 종 칸이 스크롤한다(`#rail-kinds`). */
+@media (max-height: 560px) {
+  :root { --rail-btn-h: 2.25rem; }
+  #lnb-rail .rail-name { display: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #view-lens-panel::before { background: hsl(var(--card)); }
@@ -2973,6 +2997,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .settings-cats {
   flex: 0 0 16rem; width: 16rem;
   display: flex; flex-direction: column; gap: .5rem;
+  /* 낮은 창에서는 분류가 상자보다 길다. 스크롤을 안 주면 아래 분류와 버전 줄이
+     모달 **밖**에 그려졌다(실측 2026-09-26, 창 844×390: 내용 313 · 상자 274). */
+  min-height: 0; overflow-y: auto;
   padding: 1.5rem 1.5rem 1.25rem;
   border-right: 1px solid hsl(var(--border));
   background: hsl(var(--surface-2));
@@ -3054,7 +3081,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   .settings { flex-direction: column; }
   .settings-cats {
     flex: 0 0 auto; width: auto; flex-direction: row; flex-wrap: nowrap;
-    overflow-x: auto; border-right: none;
+    overflow-x: auto; overflow-y: hidden; border-right: none;
     border-bottom: 1px solid hsl(var(--border));
   }
   .settings-cat { width: auto; white-space: nowrap; }

@@ -134,12 +134,22 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
+/** 저장된 **넓은 창의** 선호 — 트리를 열로 펴 둘지. */
 function isOpen(): boolean {
   return localStorage.getItem(KEY_OPEN) !== "closed";
 }
 
-function setOpen(open: boolean) {
-  localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
+/** 좁은 창(≤900, app.css 와 같은 경계)에서 트리는 열이 아니라 지도 위에 뜨는 **서랍**이다.
+ *  서랍은 저장된 선호를 따르지 않는다: 열린 채로 새로 열리면 폰에서 첫 화면이 지도가
+ *  아니라 목록으로 덮이고(실측 2026-09-26, 창 390: 서랍이 지도 폭 전부를 덮고 떴다),
+ *  넓은 창을 좁히는 순간 열이 서랍으로 바뀌며 지도를 가린다. 그래서 좁은 창에서는
+ *  **닫힌 채 시작하고**, 여닫기는 저장하지 않는다(저장값은 넓은 창의 것이다).
+ *  근거: [[concept:app-narrow-window-contract]] */
+const COMPACT = "(max-width: 900px)";
+const compact = () => window.matchMedia(COMPACT).matches;
+
+function setOpen(open: boolean, persist = true) {
+  if (persist) localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
   document.getElementById("shell")?.setAttribute("data-lnb", open ? "open" : "closed");
   // 손잡이는 **상단 바 왼쪽 끝**에 하나다(발주자 지시 2026-09-09). 접는 대상이
   // 레일 + 트리 **둘 다**이므로, 접히는 것 안에 손잡이를 두면 함께 사라진다.
@@ -542,7 +552,7 @@ function paintRail(): void {
   const atAll = here === "view" && !railKey;
   const home = `<a class="rail-btn rail-home${atAll ? " on" : ""}"
       href="#view" data-rail="" aria-current="${atAll ? "page" : "false"}"
-      data-tip="${esc(COPY.ui.topbar.home)}">
+      aria-label="${esc(COPY.ui.topbar.home)}" data-tip="${esc(COPY.ui.topbar.home)}">
       <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
       <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
     </a>`;
@@ -881,9 +891,15 @@ export function mountLnb() {
   const shellToggle = $("tb-shell-toggle");
   if (shellToggle) {
     shellToggle.innerHTML = icon("sidebar", 18);
-    shellToggle.addEventListener("click", () => setOpen(!isOpen()));
+    // 지금 화면의 상태를 뒤집는다(저장값이 아니라). 좁은 창의 서랍 여닫기는 저장하지
+    // 않는다 — 위 COMPACT 주석.
+    shellToggle.addEventListener("click", () =>
+      setOpen($("shell")?.dataset.lnb !== "open", !compact()));
   }
-  setOpen(isOpen());
+  setOpen(isOpen() && !compact(), false);
+  // 경계를 넘으면 다시 정한다: 좁아지면 서랍을 닫고, 넓어지면 저장된 선호로 돌아간다.
+  window.matchMedia(COMPACT).addEventListener("change", (e) =>
+    setOpen(!e.matches && isOpen(), false));
 
 
   // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
@@ -907,7 +923,12 @@ export function mountLnb() {
       return;
     }
     // ⚠ `if (b?.dataset.rail)` 이면 홈의 빈 값이 falsy 라 걸러진다 — 있는지를 묻는다.
-    if (b?.dataset.rail !== undefined) setRailKey(b.dataset.rail);
+    if (b?.dataset.rail !== undefined) {
+      setRailKey(b.dataset.rail);
+      // 좁은 창에서는 서랍이 닫힌 채 시작하므로 종을 고르면 그 목록이 보여야 한다.
+      // 홈(빈 값)은 목록이 아니라 지도로 가는 것이라 열지 않는다.
+      if (compact() && b.dataset.rail) setOpen(true, false);
+    }
   });
 
   const body = $("lnb-body")!;
@@ -923,11 +944,14 @@ export function mountLnb() {
       else location.hash = `#view/read/${encodeURIComponent(id)}`;
       active = { domain: nd.dataset.dom || "", nodeId: id };
       paint();
+      // 좁은 창에서는 고른 것이 서랍 **뒤**에 열린다 — 닫아서 보여 준다.
+      if (compact()) setOpen(false, false);
       return;
     }
     const doc = t.closest<HTMLElement>(".lnb-doc");
     if (doc) {
       void openDoc(doc.dataset.doc || "", doc.dataset.node || "", doc.dataset.dom || "");
+      if (compact()) setOpen(false, false);
       return;
     }
     const group = t.closest<HTMLElement>(".lnb-group");

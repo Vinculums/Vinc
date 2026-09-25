@@ -814,7 +814,15 @@ export async function renderView(el: HTMLElement) {
   const NARROW = "(max-width: 900px)";
   function positionPanel() {
     if (window.matchMedia(NARROW).matches) {
-      viewPanel.style.top = "";
+      // 좁은 창의 전폭 판은 상단 바 **바로 아래**에서 시작한다. 천장을 CSS 상수
+      // (`--topbar-h`)로 두면 바가 두 줄이 되는 폭(≤520)에서 판이 둘째 줄, 즉 렌즈
+      // 단추 자신을 덮는다(실측 2026-09-26, 창 390: 바 16~114, 판 천장 68). 그래서
+      // 바의 실측 바닥 + 바깥 여백에서 뗀다. 바가 없는 배치(임베드)는 CSS 값 그대로.
+      const bar = document.getElementById("topbar");
+      const br = bar?.getBoundingClientRect();
+      viewPanel.style.top = bar && br && br.height
+        ? `${Math.round(br.bottom + (parseFloat(getComputedStyle(bar).marginBottom) || 0))}px`
+        : "";
       viewPanel.style.left = "";
       viewPanel.style.width = "";   // 좁은 창은 전폭 승격 — 인라인 폭이 남으면 그것을 이긴다
       return;
