@@ -174,6 +174,20 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                            f"긴 청크가 조각나지 않았다(벡터 {len(vecs)}개)")
         self.assertTrue(all(isinstance(v, list) for v in vecs))
 
+    def test_멈춤_스위치가_켜지면_조회도_적용도_안_한다(self):
+        """`VINC_EMBED_APPLY_PAUSED` 는 백로그를 건드리지 않는다: pending 을 묻지도
+        인코딩하지도 않는다. 꺼지면 평소대로 적용한다."""
+        chunk = [{"doc_id": "d1", "chunk_id": "c1", "text": "hello"}]
+        with _env(VINC_EMBED_APPLY_PAUSED="on"):
+            sidecar = _FakeSidecar([chunk])
+            self.assertEqual(self._run(sidecar), 0)
+            self.assertEqual(sidecar.applied, [])
+            self.assertEqual(sidecar.rounds, [chunk], "멈춤인데 pending 을 조회했다")
+        with _env(VINC_EMBED_APPLY_PAUSED=None):
+            sidecar = _FakeSidecar([chunk])
+            self.assertEqual(self._run(sidecar), 0)
+            self.assertEqual([b["doc_id"] for b in sidecar.applied], ["d1"])
+
     def test_pending_조회_실패는_예외를_밖으로_던지지_않는다(self):
         """사이드카 재시작 중에 워커가 죽으면 안 된다 — 엔트리포인트가 워커
         사망으로 컨테이너를 내리지는 않지만, 그래도 스스로 물러났다 와야 한다."""
