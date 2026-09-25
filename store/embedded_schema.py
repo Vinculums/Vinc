@@ -585,12 +585,21 @@ def rel_table_specs() -> list[dict]:
 
     ⚠ 그래서 `label` 은 더 이상 유일 키가 아니다. `{s["label"]: s for s in ...}` 로
     접으면 마지막 쌍만 남고 나머지가 **조용히 사라진다**(store/migrate.py 가 리스트로
-    묶는 이유)."""
+    묶는 이유).
+
+    ``props`` 는 표가 **실제로 가진** 열이다 — `render_rel_tables` 가 붙이는 출생 열
+    (`created`, v14)까지. 여기서 빠지면 export 가 그 열을 안 읽고 import 가 안 써서,
+    백업 복원·기기 이관·재구축을 지난 엣지의 출생이 **오류 없이** 빈다(실측 2026-09-25,
+    출생을 가진 여덟 관계 전부). 열이 없는 v14 이전 스토어는 export 가 좁혀서 읽는다
+    (`migrate._narrow_to_existing`).
+    근거: [[record:export-and-import-dropped-every-edge-birth-stamp-2026-09-25]]"""
     out: list[dict] = []
     for lbl, src, dst, props in _REL_TABLES:
         srcs = (src,) if isinstance(src, str) else tuple(src)
         dsts = (dst,) if isinstance(dst, str) else tuple(dst)
         cols = [p for p, _ in props]
+        if lbl in EDGE_BIRTH_RELS:        # render_rel_tables 와 같은 규칙
+            cols.append(_EDGE_BIRTH_COL[0])
         for s in srcs:
             for d in dsts:
                 out.append({"label": lbl, "from": s, "to": d, "props": list(cols)})

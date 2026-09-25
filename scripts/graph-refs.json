@@ -448,6 +448,7 @@
     "record:endpoint-types-resolve-only-within-one-payload",
     "record:episode-can-never-be-a-brief-candidate-2026-09-09",
     "record:every-recurring-deploy-now-runs-on-the-local-runner-and-tmpdir-travels-with-the-job-2026-09-06",
+    "record:export-and-import-dropped-every-edge-birth-stamp-2026-09-25",
     "record:fact-builtin-extraction-is-headings",
     "record:fact-doc-concept-is-a-layer",
     "record:fact-merge-excludes-any-doc-pair",
