@@ -57,9 +57,9 @@ def check(node: dict, *, created: bool) -> list[str]:
     dom = node.get("domain")
     if dom is None:
         if created:
-            out.append(f"role {nid} was created with no domain; prompts/list and the "
-                       f"Agent rail read {DOMAIN} and one level below it, so this role is "
-                       f"invisible to both ({why})")
+            out.append(f"role {nid} was created with no domain; roles are found under "
+                       f"{DOMAIN} (prompts/list reads it and one level below), so neither "
+                       f"prompts/list nor the Agent rail will show this role ({why})")
     else:
         d = str(dom).strip().strip("/")
         if d != DOMAIN and not d.startswith(DOMAIN + "/"):
