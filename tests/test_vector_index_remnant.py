@@ -118,6 +118,24 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertFalse(res.get("executed"))
         self.assertEqual(s.run("MATCH (v:ChunkVec) RETURN count(v) AS n")[0]["n"], ROWS)
 
+    def test_every_write_to_the_table_is_refused_not_just_apply(self):
+        """잔해 위에서는 삽입만이 아니라 삭제·아무 열의 SET 도 세그폴트다(실측). #407 은 적용만
+        막았는데 문서 저장·삭제와 모델 전환도 `ChunkVec` 행을 지운다 — 백엔드가 문장을
+        엔진에 보내기 전에 던진다. 읽기는 된다."""
+        from api import docstore
+        self._crash_after_drop(raw=True)
+        s = self._open()
+        with self.assertRaises(VectorIndexRemnant):
+            s.ensure_search_indexes(dim=DIM)
+        for q in ("MATCH (v:ChunkVec) WHERE v.doc_id = 'd' DETACH DELETE v",
+                  "MATCH (v:ChunkVec) WHERE v.vec_id = 'c#001' SET v.doc_id = 'x'",
+                  "CREATE (:ChunkVec {vec_id: 'n', chunk_id: 'c', doc_id: 'd', seq: 0})"):
+            with self.assertRaises(VectorIndexRemnant, msg=q):
+                s.run(q)
+        res = docstore.switch_embed_model(s, "another-model")
+        self.assertEqual(res.get("error"), "vector_index_remnant", res)
+        self.assertEqual(s.run("MATCH (v:ChunkVec) RETURN count(v) AS n")[0]["n"], ROWS)
+
     def test_reader_view_does_not_schedule_a_build_on_a_remnant(self):
         submitted = []
         self._crash_after_drop(raw=True)
@@ -171,9 +189,41 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "built")
         self.assertGreater(self._vector_hits(), 0)
 
-    def test_heal_on_an_empty_store_does_nothing(self):
+    def test_heal_on_an_empty_store_reports_empty(self):
         s = self._open()
         self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "empty")
+        self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "empty")
+
+    def test_heal_finds_a_remnant_on_an_empty_table(self):
+        """행이 없어도 잔해는 남는다. #407 은 빈 표를 건너뛰어서 표시가 안 섰고, 그러면
+        거절도 없이 첫 임베딩 적용이 세그폴트였다. 빈 표도 세워 보고, 잔해면 옮긴다."""
+        child = (r"""
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from store.backend import open_store
+from store.config import load_config
+s = open_store(load_config({"data_dir": sys.argv[2]}))
+s.provision(dim=%d)
+s.ensure_search_indexes(dim=%d)
+s.run("CHECKPOINT")
+s._load_ext("vector")
+s._conn.execute("CALL DROP_VECTOR_INDEX('ChunkVec','chunk_vec')")
+os._exit(0)
+""" % (DIM, DIM))
+        r = subprocess.run([sys.executable, "-c", child, str(ROOT), self.dir],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=180)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        s = self._open()
+        res = s.heal_vector_index(dim=DIM)
+        self.assertEqual(res["state"], "repaired", res)
+        self.assertEqual(res["rows"], 0)
+        self.assertFalse(s.vector_index_remnant)
+        s.drop_vector_index()
+        s.run("CREATE (:ChunkVec {vec_id: 'n#000', chunk_id: 'n', doc_id: 'd', owner_id: 'o', "
+              "seq: 0, embedding: $e})", {"e": [1.0, 1.0, 1.0, 1.0]})
+        s.ensure_search_indexes(dim=DIM)
+        self.assertGreater(self._vector_hits(), 0)
 
     def test_heal_finishes_a_swap_that_died_after_the_drop(self):
         """수리가 옛 표를 버린 직후 죽었다: 기동의 프로비저닝이 빈 `ChunkVec` 을 다시 만들고,
@@ -214,6 +264,100 @@ class VectorIndexRemnantTests(unittest.TestCase):
             self.store = None
             self.assertFalse(app.store.vector_index_remnant)
             self.assertTrue(app.store._has_index("ChunkVec", app.store._VEC_INDEX))
+        finally:
+            app.close()
+
+
+# 노드 미러 자식: 미러를 채우고 색인을 세워 체크포인트한 뒤, 드롭하고 체크포인트 없이 죽는다.
+_NODE_CHILD = r"""
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from store.backend import open_store
+from store.config import load_config
+s = open_store(load_config({"data_dir": sys.argv[2]}))
+s.provision(dim=%(dim)d)
+for i in range(%(rows)d):
+    s.run("CREATE (:NodeVec {vec_id: $v, node_id: $n, kind: 'concept', owner_id: 'o', "
+          "title: 't', text: 't', model: 'm', embedding: $e})",
+          {"v": "o#n%%03d" %% i, "n": "n%%03d" %% i,
+           "e": [float(i %% 7), float(i %% 5), 1.0, 2.0]})
+assert s.create_node_vector_index() == ""
+s.run("CHECKPOINT")
+s._load_ext("vector")
+s._conn.execute("CALL DROP_VECTOR_INDEX('NodeVec','node_vec')")
+os._exit(0)
+""" % {"dim": DIM, "rows": ROWS}
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class NodeMirrorRemnantTests(unittest.TestCase):
+    """노드 미러(`NodeVec`)도 같은 잔해를 물려받는다. 배포 때의 재구축(`node_mirror.replace`)이
+    고치지 못한다 — 옛 행을 지우고 새 행을 넣는데 잔해 위에서는 둘 다 세그폴트다(실측)."""
+
+    def setUp(self):
+        self.dir = os.path.join(tempfile.mkdtemp(), "store")
+        self.store = None
+        r = subprocess.run([sys.executable, "-c", _NODE_CHILD, str(ROOT), self.dir],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=180)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+
+    def tearDown(self):
+        if self.store is not None:
+            try:
+                self.store.close()
+            except Exception:
+                pass
+
+    def _open(self):
+        from store.backend import open_store
+        from store.config import load_config
+        self.store = open_store(load_config({"data_dir": self.dir}))
+        self.store.provision(dim=DIM)
+        return self.store
+
+    def _rows(self, s) -> int:
+        return s.run("MATCH (n:NodeVec) RETURN count(n) AS n")[0]["n"]
+
+    def test_the_mirror_rebuild_refuses_instead_of_crashing(self):
+        from api import node_mirror
+        s = self._open()
+        reason = s.create_node_vector_index()
+        self.assertIn("not loaded yet", reason)
+        self.assertTrue(s.node_vector_index_remnant)
+        self.assertFalse(s.vector_index_remnant)
+        with self.assertRaises(VectorIndexRemnant):
+            s.run("MATCH (n:NodeVec) WHERE n.owner_id IN ['o'] DELETE n")
+        rows = [{"id": "x", "kind": "concept", "owner": "o", "title": "t", "text": "t",
+                 "emb": [1.0, 2.0, 3.0, 4.0]}]
+        res = node_mirror.replace(s, rows, "m")
+        self.assertEqual(res.get("error"), "node_vector_index_remnant", res)
+        self.assertEqual(self._rows(s), ROWS)
+
+    def test_heal_moves_the_mirror_keeping_every_row(self):
+        from api import node_mirror
+        s = self._open()
+        res = s.heal_node_vector_index(dim=DIM)
+        self.assertEqual(res["state"], "repaired", res)
+        self.assertEqual(res["rows"], ROWS)
+        self.assertFalse(s.node_vector_index_remnant)
+        self.assertFalse(s._has_table("NodeVecRebuild"))
+        self.assertTrue(s.node_vector_search([1.0, 1.0, 1.0, 2.0], 3, owner="o"))
+        rows = [{"id": "x", "kind": "concept", "owner": "o", "title": "t", "text": "t",
+                 "emb": [1.0, 2.0, 3.0, 4.0]}]
+        self.assertTrue(node_mirror.replace(s, rows, "m").get("index_ok"))
+        self.assertEqual(self._rows(s), 1)
+        self.assertEqual(s.heal_node_vector_index(dim=DIM)["state"], "present")
+
+    def test_server_boot_heals_the_mirror(self):
+        from api.server import VincApp
+        from store.config import load_config
+        app = VincApp.open(load_config({"data_dir": self.dir, "embedding_model": "local-en"}))
+        try:
+            self.assertFalse(app.store.node_vector_index_remnant)
+            self.assertTrue(app.store._has_index("NodeVec", app.store._NODE_VEC_INDEX))
+            self.assertEqual(app.store.run("MATCH (n:NodeVec) RETURN count(n) AS n")[0]["n"],
+                             ROWS)
         finally:
             app.close()
 

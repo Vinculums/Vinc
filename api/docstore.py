@@ -420,6 +420,21 @@ def _drop_vector_index_if_any(store) -> None:
         pass
 
 
+def _remnant_refusal(store, *, chunks: bool = True, vectors: bool = True) -> str | None:
+    """이 쓰기가 건드릴 표(`Chunk`·`ChunkVec`)에 잔해 색인이 확인됐으면 그 사유(`error` 값).
+
+    잔해가 있는 표의 쓰기는 예외가 아니라 **세그폴트**다(삽입·삭제·아무 열의 SET 전부 —
+    실측). 백엔드도 그 문장을 거절하지만(`EmbeddedBackend.run`) 그건 쓰기 **도중**에
+    던지므로 앞 문장들만 들어간 반쪽 쓰기가 남는다. 여기서 쓰기 전에 멈춘다. 수리는
+    재기동이 하고(`heal_fts_index`·`heal_vector_index`), 그 뒤 같은 쓰기를 다시 하면 된다.
+    근거: [[record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25]]"""
+    if chunks and getattr(store, "fts_index_remnant", False):
+        return "fts_index_remnant"
+    if vectors and getattr(store, "vector_index_remnant", False):
+        return "vector_index_remnant"
+    return None
+
+
 def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
     """FTS 색인 불일치로 실패하면 색인을 재빌드하고 **1회만** 재시도한다.
 
@@ -540,6 +555,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
                                                     title=kept_title)
             return base
+
+    # 청크는 언제나 쓰고, 옛 문서면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
+    refusal = _remnant_refusal(store, vectors=prev is not None)
+    if refusal:
+        base["error"] = refusal
+        return base
 
     chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
     vectors = embed([c["text"] for c in chunks]) if embed and chunks else None
@@ -878,6 +899,10 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
                     {"d": doc_id})
     n = int(cnt[0].get("c")) if cnt else 0
     if n:
+        refusal = _remnant_refusal(store)       # 아래 두 삭제가 잔해 표를 친다
+        if refusal:
+            base["error"] = refusal
+            return base
         # 인덱스를 드롭하지 않는다 — 문서 하나 지우자고 끊으면 그동안 검색이 죽는다.
         # 대신 삭제를 `_with_fts_repair` 로 감싼다: 오래 증분 유지된 FTS 색인은 존재하는
         # 행의 문서를 잃고, 그 행을 지우면 엔진이 불일치로 던진다([[vinc.ops.fts-index-drift]]).
@@ -1141,6 +1166,10 @@ def reembed_doc(store, doc_id: str, *, owner: str | None,
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
                   {"id": doc_id})
         base.update(executed=True, embedded=0)
+        return base
+    refusal = _remnant_refusal(store, vectors=False)     # 아래 SET 이 `Chunk` 를 친다
+    if refusal:
+        base["error"] = refusal
         return base
     vectors = embed([r.get("text") or "" for r in rows])
     # 여기는 드롭이 **필수**다 — 벡터가 없던(또는 낡은) 청크에 벡터를 채우는 경로라
@@ -1408,6 +1437,12 @@ def switch_embed_model(store, model: str) -> dict:
     base["previous"] = st["stored"]
     if st["stored"] == model:
         base.update(executed=True, changed=False)
+        return base
+    # 아래 전량 삭제가 `ChunkVec` 을 친다. 거절하면 모델 기록이 안 바뀌므로 수리 뒤 기동이
+    # 다시 건다.
+    refusal = _remnant_refusal(store, chunks=False)
+    if refusal:
+        base["error"] = refusal
         return base
     # 인덱스가 걸린 채로 대량 삭제해도 안전하다(실측 2,000청크) — 다만 곧이어 워커가
     # 벡터를 새로 만들 것이므로 어차피 드롭이 필요하다. 여기서 한 번에 처리한다.

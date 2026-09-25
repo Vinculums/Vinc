@@ -214,6 +214,27 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj.get("vector_index"), "remnant")
 
+    def test_fts_and_node_mirror_remnants_are_surfaced(self):
+        """FTS 잔해(`Chunk` — 문서 저장·삭제가 전부 거절된다)와 노드 미러 잔해도 같은 모양으로
+        싣는다. 정상이면 키가 없다."""
+        class _FakeStore:
+            driver_name = "fake"
+            fts_index_remnant = False
+            node_vector_index_remnant = False
+
+            def close(self):
+                pass
+        store = _FakeStore()
+        with running_server(_app(store=store)) as base:
+            obj = _req(base, "/health", token=None)[1]
+            self.assertNotIn("fts_index", obj)
+            self.assertNotIn("node_vector_index", obj)
+            store.fts_index_remnant = store.node_vector_index_remnant = True
+            obj = _req(base, "/health", token=None)[1]
+            self.assertEqual(obj.get("fts_index"), "remnant")
+            self.assertEqual(obj.get("node_vector_index"), "remnant")
+            self.assertNotIn("vector_index", obj)
+
     def test_live_probe_does_not_read_the_store(self):
         """`/health?live=1` 은 워치독용 생존 확인이다. 5초마다 불리므로 스토어를 읽으면
         (리더를 열고 백로그를 세면) 허브가 하루 종일 활성 요금 구간에 머문다. 상태 판정은
@@ -1017,6 +1038,37 @@ class BriefArmsTests(unittest.TestCase):
         self.assertIsNot(res.get("vector_rebuilding"), True,
                          "다시 서지 않는 색인을 양성 재빌드로 그린다")
         self.assertEqual(scheduled, [], "실패할 빌드를 검색이 또 걸었다")
+
+    def test_FTS_잔해면_청크_팔이_섰다고_말하고_빌드를_걸지_않는다(self):
+        """FTS 색인이 잔해면 청크 검색이 통째로 선다(FTS 로 시작한다). 빌드를 걸면 검색마다
+        실패할 잡이 돈다 — 벡터 잔해 때 허브가 겪은 그 폭주다. 사유는 구조화해서 싣는다."""
+        built = []
+
+        class _FtsRemnantReader(QueryEmbeddingWiringTests._Reader):
+            fts_index_remnant = True
+
+            def run(self, cypher, params=None):
+                return [{"c": 3}] if "count(" in cypher else []
+
+            def fulltext_search(self, t, k, f=None):
+                raise RuntimeError("Binder exception: Table Chunk doesn't have an index "
+                                   "with name chunk_ft.")
+
+            def ensure_search_indexes(self, *, dim=None):
+                built.append(dim)
+                return {}
+
+        class _FtsRemnantStore(QueryEmbeddingWiringTests._Store):
+            def reader_view(self): return _FtsRemnantReader(self.o)
+
+        os.environ.pop("VINC_EMBED_ENCODE", None)
+        app = _app(store=_FtsRemnantStore(self))
+        try:
+            res = app.read_search({"query": "양자역학", "owner": "u"})[1]
+        finally:
+            app.jobs.shutdown(drain=True)
+        self.assertTrue(str(res.get("error") or "").startswith("fts_index_remnant"), res)
+        self.assertEqual(built, [], "다시 서지 않는 FTS 색인을 검색이 또 빌드하려 했다")
 
     def test_청크_팔이_통째로_죽으면_돌지_않은_팔의_이름을_안_단다(self):
         """`arms` 를 검색 **전에** 세우던 자리의 거짓말(2026-09-07 적대적 검토가 재현).

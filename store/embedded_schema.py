@@ -501,17 +501,54 @@ def render_rel_tables() -> list[str]:
     (``FROM A TO D, FROM B TO D``). ladybug 0.18.0 이 다중 쌍을 지원한다 —
     구 주석이 말하는 "FROM/TO 고정"은 kuzu 0.11.3 시절이다(2026-08-09 실엔진 확인).
     덕분에 `IN_DOMAIN` 을 라벨 셋으로 쪼개지 않는다."""
-    out = []
+    return [_render_rel_table(*entry) for entry in _REL_TABLES]
+
+
+def _rel_props(label: str, props) -> list[tuple[str, str]]:
+    # v14 — 출생 열은 표(EDGE_BIRTH_RELS)에서 파생한다. `_REL_TABLES` 의 props 에
+    # 손으로 적으면 마이그레이션 ALTER 목록과 두 벌이 되고, 언젠가 갈린다.
+    return list(props) + [_EDGE_BIRTH_COL] if label in EDGE_BIRTH_RELS else list(props)
+
+
+def _rel_pairs(src, dst) -> list[tuple[str, str]]:
+    srcs = (src,) if isinstance(src, str) else tuple(src)
+    dsts = (dst,) if isinstance(dst, str) else tuple(dst)
+    return [(s, d) for s in srcs for d in dsts]
+
+
+def _render_rel_table(label, src, dst, props, *, as_label: str | None = None,
+                      swap: dict[str, str] | None = None) -> str:
+    sw = swap or {}
+    cols = "".join(f", {p} {t}" for p, t in _rel_props(label, props))
+    pairs = ", ".join(f"FROM {sw.get(s, s)} TO {sw.get(d, d)}" for s, d in _rel_pairs(src, dst))
+    return f"CREATE REL TABLE {as_label or label}({pairs}{cols})"
+
+
+def render_rel_table(label: str, *, as_label: str | None = None,
+                     swap: dict[str, str] | None = None) -> str:
+    """관계 테이블 하나의 DDL. ``as_label`` 은 같은 모양의 다른 이름 표를, ``swap`` 은
+    끝점 노드 표를 바꿔 끼운 표를 만든다(``{"Chunk": "ChunkRebuild"}``) — 노드 표를 새로
+    떠서 옮기는 수리가 그 표에 걸린 관계 표도 함께 옮길 때 쓴다(`EmbeddedBackend.
+    _rebuild_table`). 열을 손으로 다시 적으면 스키마와 두 벌이 되므로 여기서 파생한다."""
+    for entry in _REL_TABLES:
+        if entry[0] == label:
+            return _render_rel_table(*entry, as_label=as_label, swap=swap)
+    raise KeyError(label)
+
+
+def rel_tables_on(node_label: str) -> list[dict]:
+    """``node_label`` 을 끝점으로 갖는 관계 표 — ``{label, pairs: [(from, to)], props}``.
+
+    노드 표는 관계 표가 걸려 있으면 버릴 수 없으므로, 노드 표를 새로 떠서 옮기는 수리는
+    이것들을 **전부** 함께 옮긴다. ``pairs`` 는 그 관계 표의 쌍 전부다(노드 표와 무관한
+    쌍까지) — 관계 표는 통째로 버려지므로 한 쌍이라도 빠지면 그 엣지가 사라진다.
+    ``props`` 는 출생 열까지 포함한 실제 열 목록이다(`rel_table_specs` 와 다르다)."""
+    out: list[dict] = []
     for label, src, dst, props in _REL_TABLES:
-        # v14 — 출생 열은 표(EDGE_BIRTH_RELS)에서 파생한다. `_REL_TABLES` 의 props 에
-        # 손으로 적으면 마이그레이션 ALTER 목록과 두 벌이 되고, 언젠가 갈린다.
-        if label in EDGE_BIRTH_RELS:
-            props = list(props) + [_EDGE_BIRTH_COL]
-        cols = "".join(f", {p} {t}" for p, t in props)
-        srcs = (src,) if isinstance(src, str) else tuple(src)
-        dsts = (dst,) if isinstance(dst, str) else tuple(dst)
-        pairs = ", ".join(f"FROM {s} TO {d}" for s in srcs for d in dsts)
-        out.append(f"CREATE REL TABLE {label}({pairs}{cols})")
+        pairs = _rel_pairs(src, dst)
+        if any(node_label in pair for pair in pairs):
+            out.append({"label": label, "pairs": pairs,
+                        "props": [p for p, _ in _rel_props(label, props)]})
     return out
 
 

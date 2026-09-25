@@ -108,6 +108,12 @@ def replace(store, rows: list[dict], model: str) -> dict:
     소유자의 미러가 살아남고, 인덱스는 그 남은 벡터들 위에서 다시 만들어진다(빌드는
     삽입이 아니라 일괄 구축이라 위의 세그폴트 자리가 아니다)."""
     owners = sorted({str(r.get("owner") or "") for r in rows})
+    # 🔴 미러에 잔해 색인이 있으면 아래 삭제·삽입이 **세그폴트**다 — 이 재구축은 잔해를
+    # 고치지 못한다. 고치는 것은 기동이다(`heal_node_vector_index`). 먼저 말하고 멈춘다.
+    # 근거: [[record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25]]
+    if getattr(store, "node_vector_index_remnant", False):
+        return {"kind": "node-mirror.replace", "rows": 0, "owners": owners, "model": model,
+                "index_ok": False, "error": "node_vector_index_remnant"}
     store.drop_node_vector_index()
     store.run("MATCH (n:NodeVec) WHERE n.owner_id IN $o DELETE n", {"o": owners})
     for i in range(0, len(rows), INSERT_BATCH):
