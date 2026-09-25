@@ -95,6 +95,8 @@ jobs:
   # 동기화·로스터 게이트가 전부 여기 살고, 그것들은 `app/src` 와 `design-hub/` 와
   # `agents/shells/` 를 읽는다. 입력이 리포 거의 전체라 조건을 달면 그 조건이 곧
   # 다음 구멍이다. 이 잡은 안전망이고 안전망은 조건부가 아니다.
+  # (2026-09-26: 잡 안의 **꺼진 모드 스위트 스텝만** PR 에서 빠진다. 게이트는 그대로다 —
+  # 이유는 그 스텝 위 주석.)
   changes:
     name: changes (path gate)
     # ⚠ **이 잡이 셀프호스티드로 남으면 호스티드로 옮긴 잡들이 인질이 된다.**
@@ -324,9 +326,24 @@ jobs:
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
 
+      # ── 꺼진 모드 스위트는 main 에서만 돈다 (2026-09-26) ─────────────────────
+      # PR 에서는 아래 두 스텝(드라이버 확인 · verify.py)을 건너뛰고 게이트만 돈다.
+      # 같은 PR 에서 `core-pkns` 가 **무조건** 전량 pytest 를 돌리고(그쪽이 허브가 실제로
+      # 쓰는 켠 모드다), 이 잡의 unittest 수집은 그 pytest 수집의 부분집합이라(1536 ⊂
+      # 1977, core-pkns 주석) PR 이 잃는 것은 "꺼진 모드에서만 깨지는 픽스처" 하나다.
+      # 그것은 main push 가 잡는다 — main 은 여기를 전량 돌고, 빨가면 hub-deploy 가
+      # 막히고 이슈가 열린다(hub-deploy 의 report 잡).
+      #
+      # 왜 줄이나: 스위트 하나가 셀프호스티드에서 5~8분이고 러너 둘이 같은 노트북의 같은
+      # 8코어다. PR 마다 켠·꺼진 두 벌이 나란히 돌아 그 기계가 100% 에 붙었다.
+      # ⚠ 게이트(금지어·인용·이스케이프·대비·디자인·로스터)는 **조건이 없다** — 이 잡을
+      # 안전망으로 만드는 것은 그쪽이고, 입력이 리포 거의 전체라 조건을 달면 구멍이 된다.
+      # ⚠ `core-pkns` 에는 이런 `if` 를 달지 말 것 — tests/test_ci_suite_is_unconditional.py 가
+      # 막는다. 그쪽이 PR 에 남은 유일한 전량 스위트다.
       # 드라이버가 실제로 열리는지 확인 — 여기서 막아야 17개 파일의 조용한 skip 을
       # "통과"로 오독하지 않는다.
       - name: Assert driver is importable (no silent skips)
+        if: github.event_name != 'pull_request'
         run: |
           python - <<'PY'
           import sys
@@ -343,6 +360,7 @@ jobs:
       # 늘면 이 숫자는 그대로 둬도 되고, 대폭 줄었다면 그건 의도한 삭제인지 확인해야
       # 한다는 신호다.
       - name: Run test suite (verify.py)
+        if: github.event_name != 'pull_request'
         run: |
           set -o pipefail
           python verify.py 2>&1 | tee verify.log
