@@ -30,6 +30,7 @@ import json
 from engines import domain_hierarchy
 
 from . import revstamp
+from . import role_contract
 from store import pkns
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS
@@ -451,6 +452,12 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 f"one global namespace, so this slug is not available to you. Author it "
                 f"under a different id.")
             return None
+
+    # Agent 역할이면 작성 계약과 어긋난 곳을 말한다(쓰기는 그대로 한다). 신규인지는
+    # 여기서야 알므로 이 자리다 — 신규가 아니면 보내지 않은 필드는 보존되니 묻지 않는다.
+    # 근거: [[vinc.canon.agent-roles §6]]
+    if label == "Concept" and role_contract.is_role_id(nid):
+        warnings.extend(role_contract.check(node, created=not matched))
 
     sets, params = [], {"id": key}
     def _set(col, val):

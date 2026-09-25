@@ -190,8 +190,8 @@ only, and an unstated valid_from reads as current, so leaving it empty hides not
 Currency is derived from the interval: never store a status of stale, current or new.
 
 ## Roles [schema-fixed]
-An Agent role is a Concept: id concept:agent-<name>, topic vinc/agent (a reserved topic).
-Its contract is props: mission, tier, rung, reads (ordered doc ids), gates, never, person_only.
+An Agent role is a Concept: id concept:agent-<name>, titled with the job name (no "Agent role:" prefix), topic vinc/agent or one level below it.
+Required props: mission, tier (orchestrate|execute|verify|deliver|knowledge), rung (strongest|strong|fast|cheapest), never, person_only. Lists stay lists.
 props replace whole on every write: read them back, then resend. A change ships with a Decision about the role.
 
 ## Topics [this graph decides]
@@ -258,8 +258,8 @@ valid_until 입니다. 지나간 주장도 그때 무엇이 참이었는지는 �
 숨겨지지 않습니다. 현재성은 구간에서 파생합니다. stale·current·new 를 저장하지 마십시오.
 
 ## 역할 [스키마 고정]
-Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 주제는 vinc/agent(예약된 주제).
-계약은 props 에 둡니다: mission, tier, rung, reads(순서 있는 문서 id), gates, never, person_only.
+Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 제목은 직무명("Agent role:" 접두 없이), 주제는 vinc/agent 이거나 그 바로 아래입니다.
+필수 props: mission, tier(orchestrate|execute|verify|deliver|knowledge), rung(strongest|strong|fast|cheapest), never, person_only. 목록은 목록으로 둡니다.
 props 는 쓸 때마다 통째로 바뀝니다: 먼저 되읽고 다시 보내십시오. 변경은 그 역할에 대한 Decision 과 함께 갑니다.
 
 ## 주제 [이 그래프가 정함]
@@ -422,6 +422,45 @@ def build(store, *, owner: str | None = None, themes=None, existing: str | None 
                       generated=generated_block(facts, lang=use))
     return {"kind": "graphmd.build", "executed": True, "text": _tidy(text),
             "lang": use, "replaced": False, "facts": facts}
+
+
+def _is_heading(line: str, key: str) -> bool:
+    """이 줄이 그 절의 제목인가. 두 언어의 제목을 다 본다(한 파일에 섞일 수 있다)."""
+    return any(re.match(r"^##\s+" + re.escape(t) + r"(\s|\[|$)", line)
+               for t in dict(SECTIONS)[key])
+
+
+def _template_section(key: str, lang: str) -> list[str]:
+    """템플릿에서 절 하나(제목 줄 포함)를 잘라 온다. 덧붙일 문구를 두 벌로 두지 않으려고
+    템플릿 상수를 그대로 읽는다 — 템플릿을 고치면 덧붙는 절도 같이 바뀐다."""
+    lines: list[str] = [str(ln) for ln in (_TPL_KO if lang == "ko" else _TPL_EN).splitlines()]
+    start = next(i for i, ln in enumerate(lines) if _is_heading(ln, key))
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("## ") or lines[i].startswith("{")), len(lines))
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    return lines[start:end]
+
+
+def with_roles_section(text: str) -> tuple[str, bool]:
+    """Roles 절이 없는 GRAPH.md 에 기본 Roles 절을 끼운 **읽기용** 본문. (본문, 끼웠나).
+
+    저장본은 바꾸지 않는다 — `/conventions` 응답만 바뀐다. 왜 필요한가: Roles 는 선택
+    절이라(OPTIONAL_SECTIONS) 2026-09-05 이전에 만들어졌거나 사람이 직접 쓴 파일에는
+    없고, 그 소유자의 어시스턴트는 역할을 쓰기 직전에 읽는 이 문에서 역할 계약을 못 봤다.
+    자리는 순서 검사가 요구하는 곳이다: Topics 앞, 없으면 생성 구역 앞, 그것도 없으면 끝.
+    앱의 관례 시트는 이 응답을 편집기에 싣고 저장하므로, 사람이 저장하면 그때 파일에 남는다.
+    근거: [[vinc.canon.agent-roles §5]]"""
+    lines = text.splitlines()
+    if any(_is_heading(ln, "roles") for ln in lines):
+        return text, False
+    sec = _template_section("roles", _lang_of(text))
+    at = next((i for i, ln in enumerate(lines) if _is_heading(ln, "topics")), None)
+    if at is None:
+        at = next((i for i, ln in enumerate(lines) if GEN_START_RE.match(ln)), len(lines))
+    lead = [""] if at > 0 and lines[at - 1].strip() else []
+    out = lines[:at] + lead + sec + [""] + lines[at:]
+    return "\n".join(out).rstrip("\n") + ("\n" if text.endswith("\n") else ""), True
 
 
 def _restamp(head: str, lang: str, day: str) -> str:

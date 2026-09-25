@@ -12,7 +12,7 @@
       {
         "id": "concept:agent-steward",
         "type": "concept",
-        "title": "Agent role: steward",
+        "title": "Graph steward",
         "domain": "vinc/agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Keep the graph honest: conventions, duplicates and topics. Propose merges and retopics with evidence, and never apply them.",
@@ -43,7 +43,7 @@
       {
         "id": "concept:agent-researcher",
         "type": "concept",
-        "title": "Agent role: researcher",
+        "title": "Research analyst",
         "domain": "vinc/agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Measured research that ends in a document, its concepts and an episode. Assemble the material a decision needs, and never take the decision.",
@@ -70,7 +70,7 @@
       {
         "id": "concept:agent-curator",
         "type": "concept",
-        "title": "Agent role: curator",
+        "title": "Document curator",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Take documents in: store the source with vinc_doc_put, preview extraction, link mentions, and propose one topic per document.",
@@ -98,7 +98,7 @@
       {
         "id": "concept:agent-reviewer",
         "type": "concept",
-        "title": "Agent role: reviewer",
+        "title": "Claim reviewer",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Check every claim against the graph and label it cited, assumed or unsourced. Never edit.",

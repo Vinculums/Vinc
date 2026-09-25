@@ -12,7 +12,7 @@
       {
         "id": "concept:agent-infra",
         "type": "concept",
-        "title": "Agent role: infrastructure",
+        "title": "Infrastructure engineer",
         "domain": "vinc/agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Write the declaration of the infrastructure and stop at plan. A person applies.",
@@ -41,7 +41,7 @@
       {
         "id": "concept:agent-ops",
         "type": "concept",
-        "title": "Agent role: operations",
+        "title": "Operations engineer",
         "domain": "vinc/agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Diagnose deploys and incidents from the logs and propose recovery. Never change state.",
@@ -70,7 +70,7 @@
       {
         "id": "concept:agent-release",
         "type": "concept",
-        "title": "Agent role: release",
+        "title": "Release manager",
         "domain": "vinc/agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Version bump, changelog and tag readiness. A person publishes.",

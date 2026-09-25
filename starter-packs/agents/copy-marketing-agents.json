@@ -12,7 +12,7 @@
       {
         "id": "concept:agent-copy-writer",
         "type": "concept",
-        "title": "Agent role: copy writer",
+        "title": "Copywriter",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Write product copy surface by surface, as lines for review. Never commit, never touch code.",
@@ -40,7 +40,7 @@
       {
         "id": "concept:agent-copy-owner",
         "type": "concept",
-        "title": "Agent role: copy owner",
+        "title": "Copy owner",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Own the copy branch: inventory, parity between languages, dead keys. Ship only lines you read aloud.",
@@ -68,7 +68,7 @@
       {
         "id": "concept:agent-marketing",
         "type": "concept",
-        "title": "Agent role: marketing",
+        "title": "Product marketer",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Every capability claim tied to the build it is true on. Never price, never send.",
