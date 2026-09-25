@@ -77,6 +77,42 @@ class MigrationRoundTripTests(unittest.TestCase):
         self.assertAlmostEqual(float(rr[0]["c"]), 0.8)
         dst.close()
 
+    def test_왕복이_엣지의_출생을_보존한다(self):
+        """출생 열(`created`, v14)을 가진 관계 전부 — 백업 복원·기기 이관·재구축이 이 왕복을
+        탄다. 이관 명세가 그 열을 빠뜨려서 엣지의 출생이 **오류 없이** 비어 돌아왔다.
+        관계마다 명세의 첫 쌍으로 엣지 하나를 만들어 본다(라벨 목록을 손으로 적지 않는다)."""
+        import tempfile
+        from store import embedded_schema as es
+        pks = {lbl: spec["pk"] for lbl, spec in es.node_table_specs().items()}
+        born = {}
+        cfg = load_config({"data_dir": tempfile.mkdtemp() + "/src"})
+        src = open_store(cfg)
+        src.provision(dim=cfg.embedding_dim)
+        for i, rel in enumerate(es.EDGE_BIRTH_RELS):
+            spec = next(s for s in es.rel_table_specs() if s["label"] == rel)
+            a, b = spec["from"], spec["to"]
+            aid, bid = f"{a.lower()}:{rel.lower()}-a", f"{b.lower()}:{rel.lower()}-b"
+            born[rel] = f"2026-01-{i + 1:02d}T00:00:00Z"
+            src.run(f"MERGE (x:{a} {{{pks[a]}: $i}})", {"i": aid})
+            src.run(f"MERGE (y:{b} {{{pks[b]}: $i}})", {"i": bid})
+            src.run(f"MATCH (x:{a} {{{pks[a]}: $a}}), (y:{b} {{{pks[b]}: $b}}) "
+                    f"CREATE (x)-[:{rel} {{created: $c}}]->(y)",
+                    {"a": aid, "b": bid, "c": born[rel]})
+        dump = migrate.export_store(src)
+        src.close()
+        dumped = {e["label"]: e["props"].get("created") for e in dump["edges"]}
+        self.assertEqual({r: dumped.get(r) for r in born}, born, "덤프에 출생이 없다")
+
+        cfg2 = load_config({"data_dir": tempfile.mkdtemp() + "/dst"})
+        dst = open_store(cfg2)
+        migrate.import_store(dst, dump, dim=cfg2.embedding_dim)
+        got = {}
+        for rel in born:
+            rows = dst.run(f"MATCH ()-[r:{rel}]->() RETURN r.created AS c")
+            got[rel] = rows[0]["c"] if rows else None
+        dst.close()
+        self.assertEqual(got, born, "재적재본에서 엣지의 출생이 비었다")
+
 
 class RebuildPathTests(unittest.TestCase):
     """M3R — 차원이 바뀌는 모델 교체의 재구축 경로(`migrate.rebuild_store`).
@@ -450,6 +486,25 @@ class SchemaLagExportTests(unittest.TestCase):
             self.assertEqual(rows[0]["record_id"], "r:1")
             self.assertEqual(rows[0]["title"], "보존")
             self.assertNotIn("valid_from", rows[0], "없는 열은 덤프에도 없다")
+        finally:
+            st.close()
+
+    def test_출생_열이_없는_관계도_엣지를_잃지_않는다(self):
+        """v14 이전 스토어에는 관계의 출생 열(`created`)이 없다. 명세가 그 열을 싣게 된
+        뒤에도 그런 스토어의 엣지는 좁혀서 덤프된다 — 열 하나 때문에 엣지가 빠지면 안 된다."""
+        st, _cfg = self._mkstore()
+        try:
+            with st.session() as s:
+                s.run("MERGE (a:Concept {concept_id:'c:a'}) SET a.owner_id='u'")
+                s.run("MERGE (b:Concept {concept_id:'c:b'}) SET b.owner_id='u'")
+                s.run("MATCH (a:Concept{concept_id:'c:a'}),(b:Concept{concept_id:'c:b'}) "
+                      "CREATE (a)-[:RELATED_TO {evidence: '근거'}]->(b)")
+            st.run("ALTER TABLE RELATED_TO DROP created")
+            dump = migrate.export_store(st)
+            rels = [e for e in dump["edges"] if e["label"] == "RELATED_TO"]
+            self.assertEqual(len(rels), 1, "출생 열이 없다고 엣지가 사라지면 안 된다")
+            self.assertEqual(rels[0]["props"].get("evidence"), "근거")
+            self.assertNotIn("created", rels[0]["props"], "없는 열은 덤프에도 없다")
         finally:
             st.close()
 
