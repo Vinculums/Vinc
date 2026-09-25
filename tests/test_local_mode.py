@@ -441,15 +441,27 @@ class ServeProcessTests(unittest.TestCase):
     """실제 `serve` 프로세스. 셸이 하는 일(폴더 설정 → 정상 종료 → 다시 띄우기)을 그대로 한다."""
 
     def _serve(self, home: Path):
+        import site
         import subprocess
         env = {k: v for k, v in os.environ.items() if k != "MEMORY_DATA_DIR"}
-        env.update({"HOME": str(home), "USERPROFILE": str(home)})
+        env.update({"HOME": str(home), "USERPROFILE": str(home),
+                    # 홈을 바꾸면 사용자 site(`~/.local`)도 따라 바뀐다. CI 러너는 드라이버를
+                    # 거기 깔아서, 자식이 ladybug 를 못 찾고 스토어 없이 떴다(실측 2026-09-25).
+                    "PYTHONUSERBASE": site.getuserbase()})
+        self.err = Path(tempfile.mkdtemp()) / "serve.err"
+        errf = open(self.err, "w", encoding="utf-8")
+        self.addCleanup(errf.close)
         proc = subprocess.Popen(
             [sys.executable, "-m", "api.cli", "serve", "--port", "0", "--token", _TOKEN],
             cwd=str(Path(__file__).resolve().parents[1]), env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            stdout=subprocess.PIPE, stderr=errf, text=True)
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         banner = json.loads(proc.stdout.readline())
+        if _DRIVER is not None:
+            # 여기서 막아야 아래 "폴더에 파일이 없다"가 원인 모를 실패로 끝나지 않는다.
+            self.assertEqual(banner.get("driver"), _NAME,
+                             f"serve started without a store: {banner} | "
+                             f"{self.err.read_text(encoding='utf-8')[-800:]}")
         return proc, f"http://127.0.0.1:{banner['port']}"
 
     def test_설정의_폴더를_열고_부탁하면_스스로_닫는다(self):
