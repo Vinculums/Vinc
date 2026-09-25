@@ -422,11 +422,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"vinc: 기동 중단 — {_fatal}", file=sys.stderr, flush=True)
             return 1
         packs = args.packs
-        if packs is None and data_dir.endswith(os.sep.join((".vinc", "db"))):
-            packs = os.path.join(os.path.dirname(data_dir), "packs")
+        pinned = bool(args.data or os.environ.get("MEMORY_DATA_DIR"))
+        if packs is None:
+            if not pinned:
+                # 저장 폴더를 옮겨도(VIN-130) packs 는 데이터 홈에 남는다: DB 만 간다.
+                from store.config import vinc_home
+                packs = str(vinc_home() / "packs")
+            elif data_dir.endswith(os.sep.join((".vinc", "db"))):
+                packs = os.path.join(os.path.dirname(data_dir), "packs")
         server.serve(load_config({"data_dir": data_dir}),
                      host=args.host, port=args.port, parent_pid=args.parent_pid,
-                     token=args.token, packs_dir=packs, profile_path=args.profile)
+                     token=args.token, packs_dir=packs, profile_path=args.profile,
+                     data_pinned=pinned)
         return 0
     if args.cmd == "backup":
         # 단발(오프라인) 백업. ⚠ 서버 기동 중에는 임베디드 드라이버 배타 락으로 열리지

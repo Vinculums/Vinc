@@ -52,12 +52,18 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _session_path() -> str | None:
-    """앱(main.rs)이 기록하는 `~/.vinc/session.json` 경로 — `resolve_data_dir` 의 홈과
-    정합(db 의 부모 = `.vinc` 루트)."""
+    """앱(main.rs)이 기록하는 `~/.vinc/session.json` 경로.
+
+    `MEMORY_DATA_DIR` 로 데이터를 옮긴 개발 환경은 그 DB 의 부모를 쓴다(종전 그대로).
+    그 밖에는 늘 데이터 홈이다: 저장 폴더를 옮겨도(VIN-130, `~/.vinc/config.json`)
+    옮겨 가는 것은 DB 뿐이고 셸은 세션 파일을 홈에 쓴다. 여기서 DB 의 부모를 따라가면
+    MCP 가 앱을 못 찾고 **자기 사이드카를 따로 띄워 같은 스토어를 두 프로세스가 연다**."""
     try:
-        from store.config import resolve_data_dir
-        db = resolve_data_dir(create=False)
-        return os.path.join(os.path.dirname(db) or ".", "session.json")
+        explicit = os.environ.get("MEMORY_DATA_DIR")
+        if explicit:
+            return os.path.join(os.path.dirname(explicit) or ".", "session.json")
+        from store.config import vinc_home
+        return str(vinc_home() / "session.json")
     except Exception:
         return None
 

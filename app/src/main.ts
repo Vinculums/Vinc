@@ -6,7 +6,6 @@ import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode } from "./api";
 import { checkForUpdate } from "./update";
-import { mountSyncScheduler } from "./sync-scheduler";
 import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
@@ -313,8 +312,8 @@ applyTheme();
     const { needsSignIn, requireSignIn } = await import("./firstrun");
     if (needsSignIn()) await requireSignIn("first");
     if (IN_SHELL) {
-      // 어느 그래프를 볼지 한 번 정한다. 로컬 스토어에 이미 데이터가 있으면 이행 흐름
-      // (VIN-131)이 생기기 전까지 로컬로 남고, 없으면 계정이다.
+      // 어느 그래프를 볼지 정한다. 정본은 사이드카의 저장 설정이다(VIN-130). 처음이면
+      // 로컬 스토어에 데이터가 있는 기존 설치는 로컬로 남고, 없으면 계정이다.
       await decideDataMode();
       const { mountAccountSignals } = await import("./account-signals");
       mountAccountSignals();
@@ -328,9 +327,8 @@ applyTheme();
   // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
   mountLiveRefresh();
   route();
-  // 자동 동기화(§8) — 화면을 그린 뒤에 건다. 조용히 돌고 실패해도 아무것도 안 알린다
-  // (오프라인은 정상이다). 웹 Vinc 는 내부에서 no-op.
-  mountSyncScheduler();
+  // 계속 도는 동기화는 없다(VIN-130). 계정 모드는 계정 그래프를 직접 보고, 로컬 모드의
+  // 그래프는 고른 폴더에만 있다. 데이터는 설정에서 모드를 바꿀 때만 옮긴다(storage-mode).
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).
   void checkForUpdate();
   // `.vincpack` 더블클릭으로 넘어온 argv 를 연다(Q1). 화면을 그린 **뒤**에

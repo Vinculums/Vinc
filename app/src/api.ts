@@ -143,7 +143,17 @@ export async function connectSidecar(): Promise<void> {
   }
   // 사이드카 기동 대기 ≤ ~12s — PyInstaller 단일파일은 첫 실행에 압축 해제가 있어
   // (특히 macOS 콜드 스타트) 5s 로는 정상 기동도 오판할 수 있다.
-  for (let i = 0; i < 48; i++) {
+  if (await waitForSidecar(48)) return;
+  // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
+  // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
+  let why = "";
+  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${e?.message || e}`; }
+  sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
+}
+
+/** `/health` 가 답할 때까지 250ms 간격으로 `tries` 번 묻는다. 답하면 true. */
+async function waitForSidecar(tries: number): Promise<boolean> {
+  for (let i = 0; i < tries; i++) {
     try {
       const res = await fetch(new URL("/health", cfg.base));
       if (res.ok) {
@@ -154,16 +164,12 @@ export async function connectSidecar(): Promise<void> {
         sidecarDiag += h?.status === "degraded"
           ? ` · health DEGRADED[${h.provision_error || h.error || "?"}]`
           : " · health ok";
-        return;
+        return true;
       }
     } catch {}
     await new Promise((r) => setTimeout(r, 250));
   }
-  // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
-  // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
-  let why = "";
-  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${e?.message || e}`; }
-  sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
+  return false;
 }
 
 /** 호출 하나의 스페이스를 명시적으로 못박는다. 생략하면 현재 스페이스(`cfg.team`)를
@@ -174,7 +180,8 @@ export type Scope = { team: string | null };
 // 계정 모드에서도 **사이드카가 직접** 답하는 경로. 기기 연결은 루프백 콜백이라 사이드카가
 // 받아야 하고, 동기화·백업·헬스는 이 기기의 일이며, 통과로 자신을 통과로에 실을 수는 없다.
 // 이 목록 밖의 데이터 호출은 전부 계정으로 간다.
-const SIDECAR_ONLY = ["/health", "/connect/", "/sync", "/backup", "/space/"];
+const SIDECAR_ONLY = ["/health", "/connect/", "/sync", "/backup", "/space/", "/config",
+                      "/shutdown"];
 const sidecarOnly = (path: string): boolean =>
   SIDECAR_ONLY.some((p) => path === p || path.startsWith(p));
 
@@ -270,6 +277,13 @@ async function accountCall(path: string, params: Record<string, string | number 
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown, scope?: Scope): Promise<any> {
   if (accountMode() && !sidecarOnly(path)) return accountCall(path, params, body, scope);
+  return localCall(path, params, body, scope);
+}
+
+/** 계정 모드와 무관하게 이 기기의 사이드카(웹이면 계정 프록시)로 간다. 모드 전환이 쓴다:
+ *  계정 모드에서 도는 옮기기 잡의 진행(`/jobs/`)은 계정이 아니라 사이드카에 있다. */
+async function localCall(path: string, params?: Record<string, string | number | undefined>,
+                         body?: unknown, scope?: Scope): Promise<any> {
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
   //   call("/view") → /api/graph/view · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
@@ -341,14 +355,69 @@ export async function localStoreHasData(): Promise<boolean> {
   }
 }
 
-/** 이 셸이 볼 그래프를 한 번 정한다. 이미 정해졌으면 그대로다(설정의 로컬 모드가
- *  나중에 이 값을 바꾼다, VIN-130). 새 설치는 계정, 데이터가 있는 기존 설치는 로컬. */
+/** 이 셸이 볼 그래프를 정한다. **정본은 사이드카의 저장 설정**(`~/.vinc/config.json`,
+ *  VIN-130)이고 localStorage 는 그 사본이다(`accountMode()` 가 동기로 읽어야 해서).
+ *  정본을 파일에 두는 이유: 설정 화면이 모드와 폴더를 한 번에 바꾸고, 사이드카와 로컬
+ *  MCP 가 같은 파일을 읽는다. 창 저장소는 그 둘이 못 본다.
+ *
+ *  설정에 모드가 없으면 한 번 정해 적는다. 창에 이미 정한 값이 있으면(0.9.4 첫 판의
+ *  설치) 그것을 옮기고, 없으면 새 설치는 계정, 데이터가 있는 기존 설치는 로컬이다. */
 export async function decideDataMode(): Promise<DataMode> {
+  const conf = await storage.config().catch(() => null);
+  const saved = conf?.mode;
+  if (saved === "account" || saved === "local") {
+    dataMode.set(saved);
+    return saved;
+  }
   const held = dataMode.get();
-  if (held) return held;
-  const next: DataMode = (await localStoreHasData()) ? "local" : "account";
+  const next: DataMode = held ?? ((await localStoreHasData()) ? "local" : "account");
   dataMode.set(next);
+  // 사이드카가 설정을 못 받아도(옛 엔진) 창의 값으로 계속 간다. 다음 기동이 다시 적는다.
+  if (conf) await storage.setConfig({ mode: next }).catch(() => {});
   return next;
+}
+
+// ── 저장 위치와 모드 전환(VIN-130) ──────────────────────────────────────────
+// 전부 **이 기기의 사이드카**로 간다(`localCall`). 계정 모드에서 부르는 것들이라 `call` 로
+// 보내면 계정으로 간다.
+export type StorageConfig = {
+  executed: boolean; mode: DataMode | null; data_path: string | null; data_file: string | null;
+  default_folder: string; suggested_folder: string; pinned: boolean;
+  restart_needed: boolean; store_open: boolean;
+};
+export type FolderCheck = {
+  path: string; ok: boolean; exists: boolean; has_store: boolean; store_bytes: number;
+  writable: boolean; synced: string | null; network: boolean; risks: string[];
+  problem: string | null;
+};
+export const storage = {
+  config: (): Promise<StorageConfig> => localCall("/config"),
+  inspect: (path: string): Promise<FolderCheck> => localCall("/config/inspect", { path }),
+  /** 400·409 는 던지지 않고 그대로 준다: 화면이 사유(`error`·`inspect`)를 그려야 한다. */
+  setConfig: async (body: { mode?: DataMode; data_path?: string | null;
+                            accept_risk?: boolean }): Promise<any> => {
+    try { return await localCall("/config", undefined, body); }
+    catch (e: any) {
+      const m = /^(400|409) (.*)$/s.exec(String(e?.message || ""));
+      if (m) { try { return { status: Number(m[1]), ...JSON.parse(m[2]!) }; } catch {} }
+      throw e;
+    }
+  },
+  /** 이 기기의 모든 주제를 계정으로(202 잡). 이 스토어에는 아무것도 안 쓴다. */
+  pushAll: (token: string) => localCall("/sync/push-all", undefined, { token }),
+  /** 계정 그래프 전부를 이 스토어로(202 잡). 앱의 소유자로 받는다. */
+  pullAll: (token: string, owner: string) =>
+    localCall("/sync/pull-all", undefined, { token, owner }),
+  job: (id: string) => localCall(`/jobs/${id}`),
+};
+
+/** 사이드카를 다시 띄운다(셸 `sidecar_restart`). 폴더를 바꾼 뒤에 부른다. 포트·토큰은
+ *  그대로라 접속 정보를 다시 받을 필요가 없고, `/health` 가 답할 때까지만 기다린다. */
+export async function restartSidecar(): Promise<boolean> {
+  const invoke = await shellInvoke();
+  if (!invoke) return false;
+  await invoke("sidecar_restart");
+  return waitForSidecar(120);   // ≤ 30초: 큰 스토어를 여는 데 걸리는 시간
 }
 
 /** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
@@ -662,14 +731,6 @@ export const api = {
     executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
   }> => call("/doc/delete", undefined, { owner, id }),
 
-  // ── 계정 그래프 동기화(S5) ──────────────────────────────────────────────
-  // 선택 가능 도메인 + 현재 선택. 오프라인 우선 UI 의 데이터원.
-  syncDomains: (owner: string) => call("/sync/domains", { owner }),
-  setSyncDomains: (domains: string[]) => call("/sync/domains", undefined, { domains }),
-  // 회원 키는 **바디로만** 사이드카에 전달(env·디스크·레포 반입 없음). 긴 작업 →
-  // 202+job_id; 진행은 pollJob 으로. base 는 테스트용 override(기본 mcp.vincs.io).
-  syncNow: (token: string, owner: string, base?: string) =>
-    call("/sync", undefined, { token, owner, ...(base ? { base } : {}) }),
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
   // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.
   connectStart: () => call("/connect/start", undefined, {}),
@@ -755,10 +816,11 @@ export async function ensureWebAuth(): Promise<boolean> {
 
 /** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */
 export async function pollJob(jobId: string, onTick?: (s: any) => void,
-                             { intervalMs = 900, timeoutMs = 300000 } = {}): Promise<any> {
+                             { intervalMs = 900, timeoutMs = 300000,
+                               status = api.jobStatus } = {}): Promise<any> {
   const t0 = Date.now();
   for (;;) {
-    const s = await api.jobStatus(jobId);
+    const s = await status(jobId);
     onTick?.(s);
     if (s.status === "done") return s;
     if (s.status === "error") throw new Error(s.error || "sync job failed");

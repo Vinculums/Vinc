@@ -318,10 +318,20 @@ def reset_cursors_on_account_change(store, remote) -> bool:
 
 
 # ── export ────────────────────────────────────────────────────────────────────
-def _concepts_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+def _scope(where: list[str], owner: str, domains: list[str] | None,
+           var: str) -> tuple[list[str], dict]:
+    """주제 스코프. `domains=None` 은 **주제를 안 가린다** — 모드 전환(VIN-130)이 이 기기의
+    전부를 옮길 때다. 주제가 비어 있는 노드도 그때는 함께 간다(`IN` 은 그것을 못 잡는다)."""
+    params: dict = {"owner": owner}
+    if domains is not None:
+        where = [*where, f"{var}.domain IN $domains"]
+        params["domains"] = domains
+    return where, params
+
+
+def _concepts_delta_plan(*, owner: str, domains: list[str] | None, since: int) -> q.QueryPlan:
     """선택 도메인 안에서 `sync_seq > since` 인 Concept. since=0 이면 전량(최초 push)."""
-    where = ["c.owner_id = $owner", "c.domain IN $domains"]
-    params: dict = {"owner": owner, "domains": domains}
+    where, params = _scope(["c.owner_id = $owner"], owner, domains, "c")
     if since > 0:
         where.append("c.sync_seq > $since")
         params["since"] = since
@@ -339,9 +349,8 @@ def _concepts_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
     return q.QueryPlan("sync_concepts", cypher, params, note="owner+domain scoped delta")
 
 
-def _episodes_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
-    where = ["e.owner_id = $owner", "e.domain IN $domains"]
-    params: dict = {"owner": owner, "domains": domains}
+def _episodes_delta_plan(*, owner: str, domains: list[str] | None, since: int) -> q.QueryPlan:
+    where, params = _scope(["e.owner_id = $owner"], owner, domains, "e")
     if since > 0:
         where.append("e.sync_seq > $since")
         params["since"] = since
@@ -355,10 +364,9 @@ def _episodes_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Que
     return q.QueryPlan("sync_episodes", cypher, params, note="owner+domain scoped delta")
 
 
-def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+def _decisions_delta_plan(*, owner: str, domains: list[str] | None, since: int) -> q.QueryPlan:
     """선택 도메인 안에서 `sync_seq > since` 인 Decision(v12). Concept 플랜과 동형."""
-    where = ["d.owner_id = $owner", "d.domain IN $domains"]
-    params: dict = {"owner": owner, "domains": domains}
+    where, params = _scope(["d.owner_id = $owner"], owner, domains, "d")
     if since > 0:
         where.append("d.sync_seq > $since")
         params["since"] = since
@@ -374,12 +382,11 @@ def _decisions_delta_plan(*, owner: str, domains: list[str], since: int) -> q.Qu
     return q.QueryPlan("sync_decisions", cypher, params, note="owner+domain scoped delta")
 
 
-def _records_delta_plan(*, owner: str, domains: list[str], since: int) -> q.QueryPlan:
+def _records_delta_plan(*, owner: str, domains: list[str] | None, since: int) -> q.QueryPlan:
     """선택 도메인 안에서 `sync_seq > since` 인 Record. Concept 플랜과 동형이고
     시간 두 열도 같다 — Record 는 `created` 와 `content_time` 을 **둘 다** 갖는다
     (스키마 v7 이 Concept 과 함께 붙였다)."""
-    where = ["r.owner_id = $owner", "r.domain IN $domains"]
-    params: dict = {"owner": owner, "domains": domains}
+    where, params = _scope(["r.owner_id = $owner"], owner, domains, "r")
     if since > 0:
         where.append("r.sync_seq > $since")
         params["since"] = since
@@ -459,16 +466,26 @@ def _node_from_episode(r: dict) -> dict:
 
 
 def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None,
+                 everything: bool = False, with_tombstones: bool = True,
                  cfg=None, store=None) -> dict:
     """owner + 선택 도메인 스코프의 delta 번들.
 
     반환 `{executed, since, next_cursor, full, nodes, edges, counts}`. `full=True` 는
     최초 동기화(전량)를 뜻한다. 노드에는 `_rev/_updated_at/_seq` 가 실려 수신측이
-    LWW 가드와 커서를 판단한다."""
-    sel = domains if domains is not None else get_selected_domains(store)
+    LWW 가드와 커서를 판단한다.
+
+    `everything=True` 는 주제를 가리지 않는다(주제 없는 노드 포함). 모드 전환이 이 기기의
+    전부를 옮길 때와, 그것을 받는 허브의 전량 pull 이 쓴다(VIN-130).
+    `with_tombstones=False` 는 삭제 표식을 싣지 않는다. 옮기기는 **있는 것을 더하는** 일이지
+    이 기기에서 지운 이력으로 계정의 것을 지우는 일이 아니다."""
+    sel = None if everything else (domains if domains is not None else get_selected_domains(store))
     base = {"executed": False, "since": since, "next_cursor": since,
             "full": since <= 0, "nodes": [], "edges": [], "counts": {}}
-    if not sel:
+    if everything:
+        # 받는 쪽이 "주제 없는 노드까지 왔다"를 알 수 있게. 옛 허브는 플래그를 몰라
+        # 이 키 없이 주제 있는 노드만 준다(`pull_everything` 이 그것을 말한다).
+        base["everything"] = True
+    if not everything and not sel:
         # 선택 도메인 없음 = 아무것도 내보내지 않는다(오프라인 우선 기본값).
         base["executed"] = True
         base["note"] = "no domains selected — nothing leaves the device"
@@ -536,15 +553,16 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
 
     # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된
     # 노드의 도메인을 알 수 없으니 owner 전체). 수신측이 부활 가드로 안전 적용.
-    t_res = q.execute(_tombstones_delta_plan(owner=owner, since=since), cfg, store=store)
+    t_res = (q.execute(_tombstones_delta_plan(owner=owner, since=since), cfg, store=store)
+             if with_tombstones else {"executed": False})
     tombstones = [{"node_id": r["node_id"], "label": r["label"],
                    "deleted_at": r.get("deleted_at") or "", "rev": int(r.get("rev") or 0),
                    "_seq": int(r.get("sync_seq") or 0)}
                   for r in (t_res.get("rows", []) if t_res.get("executed") else [])]
 
     # 엣지 삭제 표식(S4 확장) — 노드 툼스톤과 같은 커서 공간(sync_seq).
-    et_res = q.execute(_edge_tombstones_delta_plan(owner=owner, since=since),
-                       cfg, store=store)
+    et_res = (q.execute(_edge_tombstones_delta_plan(owner=owner, since=since),
+                        cfg, store=store) if with_tombstones else {"executed": False})
     edge_tombstones = [{"src": r["src"], "rel": r["rel"], "dst": r["dst"],
                         "deleted_at": r.get("deleted_at") or "",
                         "_seq": int(r.get("sync_seq") or 0)}
@@ -751,7 +769,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
-           "edges": 0, "deleted": 0, "resurrected": 0, "warnings": []}
+           "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}
     if store is None:
         out["note"] = "no reachable store"
         return out
@@ -776,6 +794,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         if tomb:
             if tomb["deleted_at"] >= r_ua:
                 out["skipped_stale"] += 1
+                # 따로도 센다: 이 노드는 받는 쪽에 **없다**. 모드 전환의 대조가 이것을
+                # "이미 있다"와 섞으면 사라진 노드를 무손실로 읽는다(VIN-130).
+                out["kept_deleted"] += 1
                 continue
             del_tombstone(store, nid, owner)
             out["resurrected"] += 1
@@ -933,17 +954,19 @@ class RemoteHTTP:
         self.token = token
         self.base = base or "https://mcp.vincs.io"
 
-    def pull(self, since: int) -> dict:
+    def pull(self, since: int, everything: bool = False) -> dict:
         from vinc_mcp import syncclient
-        return syncclient.pull(since=since, token=self.token, base=self.base)
+        return syncclient.pull(since=since, token=self.token, base=self.base,
+                               everything=everything)
 
     def push(self, chunks: list[dict]) -> dict:
         from vinc_mcp import syncclient
         return syncclient.push(chunks, token=self.token, base=self.base)
 
-    def docs_pull(self, since: int) -> dict:
+    def docs_pull(self, since: int, everything: bool = False) -> dict:
         from vinc_mcp import syncclient
-        return syncclient.docs_pull(since=since, token=self.token, base=self.base)
+        return syncclient.docs_pull(since=since, token=self.token, base=self.base,
+                                    everything=everything)
 
     def docs_push(self, payload: dict) -> dict:
         from vinc_mcp import syncclient
@@ -1067,6 +1090,164 @@ def pull_docs(store, cfg, *, owner: str, remote) -> dict:
             "applied": r.get("applied", 0), "updated": r.get("updated", 0),
             "skipped": r.get("skipped", 0), "deleted": r.get("deleted", 0),
             "cursor": max(nxt, since)}
+
+
+# ── 모드 전환의 데이터 이동(VIN-130) ─────────────────────────────────────────
+# 데스크톱에는 계속 도는 동기화가 없다. 데이터는 **모드를 바꿀 때만**, 사람이 확인한 뒤
+# 한 번 옮긴다: 로컬 → 계정은 이 기기의 전부를 올리고, 계정 → 로컬은 계정 전부를 새
+# 폴더로 받는다. 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
+
+
+def owner_counts(store, owner: str) -> dict:
+    """이 소유자의 노드(동기화 라벨별)와 문서 수. 옮기기 전후를 대조하는 숫자다.
+    관례 문서(GRAPH.md)는 세지 않는다: 동기화가 일부러 안 나른다(`docsync` 주석)."""
+    from . import graphmd
+    out: dict = {}
+    for label in _SYNC_LABELS:
+        rows = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c",
+                         {"o": owner})
+        out[label] = int((rows[0].get("c") if rows else 0) or 0)
+    rows = store.run("MATCH (d:_DocMeta) WHERE d.owner_id = $o RETURN d.doc_id AS id",
+                     {"o": owner})
+    out["docs"] = sum(1 for r in rows or []
+                      if not graphmd.is_conventions_doc_id(r.get("id") or ""))
+    out["nodes"] = sum(out[lbl] for lbl in _SYNC_LABELS)
+    # 동기화가 나르지 않는 라벨(개방 타입의 Entity 캐리어·Bridge). 옮기기가 이것들을
+    # "무손실"에 섞어 세면 안 된다: 폴더에는 남지만 다른 쪽으로는 안 간다. 따로 알린다.
+    left = 0
+    for label in _UNSYNCED_LABELS:
+        try:
+            rows = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c",
+                             {"o": owner})
+        except Exception:                    # noqa: BLE001 — 옛 스키마엔 표가 없을 수 있다
+            continue
+        left += int((rows[0].get("c") if rows else 0) or 0)
+    out["left_behind"] = left
+    return out
+
+
+#: owner_id 가 있지만 동기화가 나르지 않는 라벨(`fragment._OWNER_SCOPED_LABELS` 의 나머지).
+_UNSYNCED_LABELS = tuple(lbl for lbl in frag._OWNER_SCOPED_LABELS if lbl not in _SYNC_LABELS)
+
+
+def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
+    """로컬 모드 → 계정 모드: 이 기기의 **모든 주제**를 계정으로 올린다.
+
+    델타 동기화(`push_local`)와 다른 점 셋:
+      - 주제를 가리지 않고(주제 없는 노드 포함) 순번도 보지 않는다(문서는 전부).
+      - 삭제 표식을 싣지 않는다. 옮기기는 더하는 일이지, 이 기기에서 지운 이력으로
+        계정의 것을 지우는 일이 아니다.
+      - 이 스토어에 **아무것도 쓰지 않는다**(커서·base 그대로). 옮긴 뒤에도 폴더는 손대지
+        않은 채 남고, 다시 로컬 모드로 오면 그대로 열린다.
+
+    무손실은 수로 확인한다. 노드 하나는 계정에서 반영되거나(`applied`), 계정 쪽이 이미
+    같거나 더 새것이라 건너뛴다(`skipped_stale`). 둘 다 계정에 남아 있다는 뜻이다. 문서도
+    같다(`applied`·`updated`·`skipped`). 세어 둔 수·보낸 수·받았다는 수가 어긋나면
+    `missing` 에 남고, 부르는 쪽은 모드를 바꾸지 않는다."""
+    from . import docsync
+    rep: dict = {"phase": "push-all", "executed": False, "owners": {}, "nodes": 0,
+                 "edges": 0, "docs": 0, "missing": 0, "kept_deleted": 0, "left_behind": 0,
+                 "warnings": []}
+    for owner in owners:
+        before = owner_counts(store, owner)
+        bundle = export_delta(owner=owner, since=0, everything=True, with_tombstones=False,
+                              cfg=cfg, store=store)
+        if not bundle.get("executed"):
+            raise RuntimeError(bundle.get("note") or "could not read this device's graph")
+        nodes = bundle.get("nodes") or []
+        edges = bundle.get("edges") or []
+        chunks = chunk_bundle(bundle)
+        # 끝점이 갈라진 엣지의 청크는 노드를 한 번 더 싣는다. 받았다는 수는 청크마다
+        # 세므로 대조도 청크에 실린 수로 한다(노드 수로 하면 넘친 만큼 빠진 것을 가린다).
+        carried = sum(len(ch.get("nodes") or []) for ch in chunks)
+        node_res: dict = {}
+        if chunks:
+            node_res = remote.push(chunks)
+        docs = docsync.export_docs(store, owner=owner, everything=True).get("docs") or []
+        doc_res = {"applied": 0, "updated": 0, "skipped": 0}
+        if docs:
+            for ch in _chunk_docs({"docs": docs, "tombstones": []}):
+                res = remote.docs_push(ch)
+                for k in doc_res:
+                    doc_res[k] += int(res.get(k) or 0)
+        # 계정에서 먼저 지워진 노드(삭제가 이 기기의 마지막 편집보다 새것)는 계정의 삭제가
+        # 이긴다. 받았다는 수에 들지만 계정에는 없으므로 따로 알린다.
+        kept_deleted = int(node_res.get("kept_deleted") or 0)
+        acked_nodes = (int(node_res.get("applied") or 0)
+                       + int(node_res.get("skipped_stale") or 0) - kept_deleted)
+        acked_docs = sum(doc_res.values())
+        missing = (max(0, before["nodes"] - len(nodes))
+                   + max(0, carried - kept_deleted - acked_nodes)
+                   + max(0, before["docs"] - len(docs)) + max(0, len(docs) - acked_docs))
+        rep["left_behind"] += int(before.get("left_behind") or 0)
+        rep["owners"][owner] = {"before": before, "sent_nodes": len(nodes),
+                                "sent_edges": len(edges), "sent_docs": len(docs),
+                                "acked_nodes": acked_nodes, "acked_docs": acked_docs,
+                                "kept_deleted": kept_deleted, "missing": missing}
+        rep["kept_deleted"] += kept_deleted
+        rep["nodes"] += len(nodes)
+        rep["edges"] += len(edges)
+        rep["docs"] += len(docs)
+        rep["missing"] += missing
+        rep["warnings"] += node_res.get("warnings") or []
+    rep["executed"] = True
+    return rep
+
+
+def pull_everything(store, cfg, *, owner: str, remote) -> dict:
+    """계정 모드 → 로컬 모드: 계정 그래프 전부를 이 기기의 (새) 폴더로 받는다.
+
+    노드는 페이지로 받고(`everything` — 주제 없는 노드 포함), 문서는 순번과 무관하게 한
+    번에 받는다. 삭제 표식은 싣지 않는다(빈 폴더를 채우는 일이다). 옛 허브가 `everything`
+    을 모르면 노드는 주제 있는 것만 오고(`nodes_mode: "topics"`), 문서는 델타 페이지로
+    물러서서 받는다(그때 순번 0 인 옛 문서는 못 받는다 — `docs_mode: "delta"`). 부르는
+    쪽은 둘 중 하나라도 전량이 아니면 "전부 받았다"고 말하면 안 된다. 무손실 대조는
+    `push_everything` 과 같다."""
+    from . import docsync
+    since = pages = received = applied = skipped = kept_deleted = 0
+    nodes_mode = "everything"
+    warnings: list[str] = []
+    while pages < 1000:                       # 안전 상한(무한루프 방어)
+        page = remote.pull(since, everything=True)
+        if not page.get("everything"):
+            nodes_mode = "topics"             # 옛 허브 — 주제 없는 노드는 안 왔다
+        nodes = page.get("nodes") or []
+        received += len(nodes)
+        r = apply_delta(owner=owner, bundle={**page, "tombstones": [], "edge_tombstones": []},
+                        cfg=cfg, store=store)
+        applied += int(r.get("applied") or 0)
+        skipped += int(r.get("skipped_stale") or 0)
+        kept_deleted += int(r.get("kept_deleted") or 0)
+        warnings += r.get("warnings") or []
+        pages += 1
+        nxt = int(page.get("next_cursor", since) or since)
+        if not nodes or nxt <= since:
+            break
+        since = nxt
+    first = remote.docs_pull(0, everything=True)
+    docs = list(first.get("docs") or [])
+    docs_mode = "everything"
+    if not first.get("everything"):
+        docs_mode = "delta"                   # 옛 허브 — 커서가 멈출 때까지 페이지로
+        cur = int(first.get("cursor") or 0)
+        for _ in range(1000):
+            if cur <= 0:
+                break
+            page = remote.docs_pull(cur)
+            more = page.get("docs") or []
+            nxt = int(page.get("cursor") or cur)
+            docs += more
+            if not more or nxt <= cur:
+                break
+            cur = nxt
+    dres = docsync.import_docs(store, owner=owner, payload={"docs": docs, "tombstones": []})
+    acked_docs = sum(int(dres.get(k) or 0) for k in ("applied", "updated", "skipped"))
+    missing = max(0, received - (applied + skipped)) + max(0, len(docs) - acked_docs)
+    return {"phase": "pull-all", "executed": True, "received_nodes": received,
+            "applied": applied, "skipped_stale": skipped, "kept_deleted": kept_deleted,
+            "pages": pages, "nodes_mode": nodes_mode,
+            "received_docs": len(docs), "acked_docs": acked_docs, "docs_mode": docs_mode,
+            "missing": missing, "after": owner_counts(store, owner), "warnings": warnings}
 
 
 #: 일회성 전량 왕복 표식. 다음에 또 한 번이 필요하면 **키 이름을 올린다**(v2) —

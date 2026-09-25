@@ -5,6 +5,7 @@ import { COPY } from "../copy";
 import { esc, openSheet, type SheetHandle } from "../components";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
+import { mountStorage } from "../storage-mode";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -59,10 +60,6 @@ export async function renderSettings(
   dataTab?: DataTab,
 ): Promise<(cat: SettingsCat, tab?: DataTab) => void> {
   const U = COPY.ui.settingsUi;
-  // 셸이면 계정/MCP/동기화용 API 를 미리 로드(웹은 불요).
-  const mod = WEB ? null : await import("../api");
-  const api = mod?.api;
-  const pollJob = mod?.pollJob;
 
   const ALL_CATS: { id: SettingsCat; label: string; desktop?: boolean }[] = [
     { id: "general", label: U.navGeneral },
@@ -268,12 +265,10 @@ export async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAccount)}</h2>
       <p class="hint">${esc(U.accountIntro)}</p>
-      ${accountMode() ? `
-      <!-- 셸 계정 모드(VIN-128): 그래프는 계정에 있고 이 기기에는 사본이 없다. 로컬
-           분기의 저장 위치 줄과 같은 자리에서 그 사실을 말한다. -->
-      <label>${U.storage}</label>
-      <p class="rail-sync"><span class="sync-dot"></span><span>${U.storageAccount}</span></p>
-      <hr class="settings-sep" />` : ""}
+      ${!WEB ? `
+      <!-- 저장 위치와 로컬 모드(VIN-130, storage-mode.ts). 셸이면 두 모드 모두 여기서
+           어디에 있는지 말하고 바꾼다. 웹 Vinc 의 데이터는 늘 계정에 있다. -->
+      <div id="st-box"></div>` : ""}
       ${remote() ? `
       <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
@@ -282,36 +277,10 @@ export async function renderSettings(
       <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
       <div id="space-note" class="hint" style="font-size:.8rem"></div>` : ""}
       ${!remote() ? `
-      <!-- 저장 위치 — 상단 바에 상시로 떠 있던 "● 로컬" 칩이 여기로 왔다(발주자 지시
-           2026-08-05). 바뀌지 않는 사실은 상시 점유할 자격이 없다: 궁금할 때 와서 보는
-           것으로 충분하다. 데스크탑 분기 안에만 두는 것도 의도다 — 웹 Vinc 의 데이터는
-           계정에 있으므로 그쪽에서 "로컬"은 애초에 참이 아니었다(칩은 양쪽에 다 떴다). -->
-      <label>${U.storage}</label>
-      <p class="rail-sync"><span class="sync-dot"></span><span>${
-        // 로그인 여부로 갈린다. **"로컬"은 계정을 안 붙였을 때만 참이다** — 붙이면
-        // 고른 주제가 계정에도 올라가고(바로 아래 syncHint 가 그 약속이다), 팀
-        // 스페이스는 아예 계정에만 있다. 상시 "로컬"은 그 둘을 다 부정하는 말을
-        // 화면에 고정하는 것이라, 사용자가 자기 데이터가 어디 있는지 틀리게 안다.
-        // 연결·해제는 renderAccount 가 이 패널을 통째로 다시 그리므로 즉시 따라온다.
-        hasAccount() ? U.storageSynced : COPY.ui.common.local
-      }</span></p>
-      <hr class="settings-sep" />
       <label>${U.account}</label>
-      <p class="hint">${U.syncHint}</p>
-      <div id="acct-box"></div>
-      <div class="syncdom-head">
-        <p class="hint" style="margin:.5rem 0 0">${U.syncDomains}</p>
-        <span class="syncdom-acts">
-          <button class="btn quiet" id="sync-all" type="button">${U.syncAll}</button>
-          <button class="btn quiet" id="sync-clear" type="button">${U.syncClear}</button>
-        </span>
-      </div>
-      <input id="sync-filter" class="syncdom-filter" type="search" autocomplete="off"
-             spellcheck="false" placeholder="${U.syncFilter}" hidden />
-      <div id="sync-domains" class="syncdom">…</div>
-      <p class="hint" id="sync-picked" style="font-size:.78rem;margin:.35rem 0 0"></p>
-      <p><button class="btn" id="sync-now">${U.syncNow}</button></p>
-      <div id="sync-result" class="hint" style="font-size:.78rem"></div>` : ""}`;
+      <div id="acct-box"></div>` : ""}`;
+    const stBox = body.querySelector<HTMLElement>("#st-box");
+    if (stBox) mountStorage(stBox);
     if (remote()) {
       // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
       // 셸 계정 모드: 쿠키가 없어 /api/me 를 못 부른다. 기기 플로우가 남긴 이름을 쓰고,
@@ -364,7 +333,7 @@ export async function renderSettings(
       }
       return;
     }
-    if (!api || !pollJob) return;
+    if (WEB) return;
 
     // 계정 연결(디바이스 플로우) — 흐름은 `account-connect` 한 벌을 쓴다.
     // 여기서 하는 일은 **그리기**뿐이다: 같은 플로우를 첫 실행 카드와 원격 커넥터
@@ -414,188 +383,6 @@ export async function renderSettings(
     }
     drawAcct();
 
-    // 그래프 동기화(S5) — 도메인 선택 + 지금 동기화.
-    //
-    // 주제는 **나무다**. 슬래시가 계층을 만들고(`vinc/design/surfaces`), 그 나무가
-    // 이 앱의 다른 곳에서는 이미 나무로 보인다(LNB 트리). 여기만 평면 목록이었다 —
-    // 주제가 예순 개면 스물다섯 번 스크롤해서 하나씩 짚는 화면이다.
-    //
-    // ⚠ 평면 목록이 감추고 있던 것이 하나 더 있다. export 의 매칭은 **정확 일치**다
-    // (`api/sync.py`: `c.domain IN $domains`). 그래서 `vinc/design` 만 고르면
-    // `vinc/design/surfaces` 는 안 올라간다. 목록에서는 둘이 나란한 줄이라 그 차이가
-    // 안 보였고, 고른 사람은 아래가 딸려 간다고 믿을 이유가 충분했다. 나무로 그리고
-    // 상위를 고르면 아래가 함께 골라지게 하면, 화면이 하는 말과 실제가 같아진다.
-    // 계정으로 가는 것은 여전히 **실재하는 도메인 문자열 목록**이다(중간 마디는 화면의
-    // 셈일 뿐 보내지 않는다).
-    const domBox = body.querySelector<HTMLElement>("#sync-domains")!;
-    const syncResult = body.querySelector<HTMLElement>("#sync-result")!;
-    const pickedLine = body.querySelector<HTMLElement>("#sync-picked")!;
-    const filterBox = body.querySelector<HTMLInputElement>("#sync-filter")!;
-
-    type DomRow = { domain: string; total?: number };
-    type DomNode = { seg: string; path: string; row?: DomRow; kids: DomNode[] };
-
-    let domRows: DomRow[] = [];
-    let domTree: DomNode[] = [];
-    let picked = new Set<string>();
-    //: 펼친 마디. 기본은 1단만 펼친다 — 예순 줄을 한 번에 펴면 목록으로 돌아간다.
-    const open = new Set<string>();
-    let filter = "";
-
-    function buildTree(rows: DomRow[]): DomNode[] {
-      const root: DomNode = { seg: "", path: "", kids: [] };
-      const at = new Map<string, DomNode>([["", root]]);
-      for (const r of rows) {
-        let cur = root, path = "";
-        for (const seg of r.domain.split("/")) {
-          path = path ? path + "/" + seg : seg;
-          let n = at.get(path);
-          if (!n) { n = { seg, path, kids: [] }; at.set(path, n); cur.kids.push(n); }
-          cur = n;
-        }
-        cur.row = r;              // 실재하는 도메인만 행을 갖는다
-      }
-      return root.kids;
-    }
-    //: 이 마디 아래의 **실재 도메인** 전부(자기 포함). 계정으로 보내는 단위다.
-    function leavesOf(n: DomNode): string[] {
-      const out = n.row ? [n.row.domain] : [];
-      for (const k of n.kids) out.push(...leavesOf(k));
-      return out;
-    }
-    function totalOf(n: DomNode): number {
-      return (Number(n.row?.total) || 0) + n.kids.reduce((a, k) => a + totalOf(k), 0);
-    }
-    //: 거르개에 걸리는가 — 자기 경로나 자손 중 하나라도 맞으면 남는다.
-    function matches(n: DomNode): boolean {
-      if (!filter) return true;
-      if (n.path.toLowerCase().includes(filter)) return true;
-      return n.kids.some(matches);
-    }
-
-    function rowHtml(n: DomNode, depth: number): string {
-      const kids = n.kids.filter(matches);
-      const mine = leavesOf(n);
-      const on = mine.filter((d) => picked.has(d)).length;
-      const state = on === 0 ? "" : on === mine.length ? " checked" : " data-part=\"1\"";
-      // 거르개가 켜져 있으면 맞는 가지는 펴서 보여 준다 — 거르고도 접혀 있으면
-      // 거른 보람이 없다.
-      const isOpen = kids.length > 0 && (open.has(n.path) || !!filter);
-      const label = n.path === "(none)" ? U.syncNoTopic : n.seg;
-      const caret = kids.length
-        ? `<button class="syncdom-caret" type="button" data-open="${n.path}"
-             aria-expanded="${isOpen}">${isOpen ? "▾" : "▸"}</button>`
-        : `<span class="syncdom-caret"></span>`;
-      const head = `<div class="syncdom-row" style="padding-left:${depth * 1.1}rem">
-        ${caret}
-        <label class="syncdom-lab">
-          <input type="checkbox" data-dom="${n.path}"${state} />
-          <span class="syncdom-name">${label}</span>
-        </label>
-        <span class="syncdom-n">${totalOf(n)}</span>
-      </div>`;
-      return head + (isOpen ? kids.map((k) => rowHtml(k, depth + 1)).join("") : "");
-    }
-
-    async function save() {
-      try { await api!.setSyncDomains([...picked]); } catch { /* 사이드카 미가동 무시 */ }
-    }
-
-    function draw() {
-      const top = domTree.filter(matches);
-      if (!domRows.length) { domBox.textContent = U.syncNoDomains; pickedLine.textContent = ""; return; }
-      // 거르개는 목록이 길 때만 나온다. 여덟 줄짜리 화면에 검색칸을 두는 것은
-      // 자리를 쓰면서 아무 것도 덜어 주지 않는다.
-      filterBox.hidden = domRows.length < 12;
-      // 안내는 "고른 것이 없다"는 **사실**이라 그 사실이 뒤집힐 때 함께 뒤집힌다.
-      const nudge = hasAccount() && !picked.size
-        ? `<p class="hint" style="margin:.2rem 0 .5rem">${U.syncNonePicked}</p>` : "";
-      domBox.innerHTML = nudge + (top.length
-        ? top.map((n) => rowHtml(n, 0)).join("")
-        : `<p class="hint" style="margin:.2rem 0">${U.syncNoMatch}</p>`);
-      // 반선택은 속성으로 못 준다 — DOM 프로퍼티다.
-      domBox.querySelectorAll<HTMLInputElement>("[data-part]").forEach((cb) => { cb.indeterminate = true; });
-      const nodes = domRows.reduce((a, r) => a + (Number(r.total) || 0), 0);
-      const picking = domRows.filter((r) => picked.has(r.domain));
-      pickedLine.textContent = U.syncPicked(picking.length, domRows.length,
-        picking.reduce((a, r) => a + (Number(r.total) || 0), 0));
-      // 셈이 0 이면 위 문장이 "노드 0개"라 오히려 시끄럽다 — 아무것도 안 골랐을 때는
-      // 위의 nudge 가 이미 그 말을 한다.
-      if (!picking.length) pickedLine.textContent = "";
-      void nodes;
-    }
-
-    function nodeAt(path: string): DomNode | null {
-      let list = domTree, found: DomNode | null = null;
-      for (const seg of path.split("/")) {
-        found = list.find((n) => n.seg === seg) || null;
-        if (!found) return null;
-        list = found.kids;
-      }
-      return found;
-    }
-
-    domBox.addEventListener("change", (e) => {
-      const cb = (e.target as HTMLElement).closest<HTMLInputElement>("[data-dom]");
-      if (!cb) return;
-      const n = nodeAt(cb.dataset.dom!);
-      if (!n) return;
-      // 상위를 고르면 그 아래가 함께 간다. 정확 일치로 내보내므로 여기서 펴 두지
-      // 않으면 화면이 한 말과 올라가는 것이 갈린다.
-      for (const d of leavesOf(n)) { if (cb.checked) picked.add(d); else picked.delete(d); }
-      void save();
-      draw();
-    });
-    domBox.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-open]");
-      if (!b) return;
-      const p = b.dataset.open!;
-      if (open.has(p)) open.delete(p); else open.add(p);
-      draw();
-    });
-    filterBox.addEventListener("input", () => { filter = filterBox.value.trim().toLowerCase(); draw(); });
-    body.querySelector("#sync-all")!.addEventListener("click", () => {
-      picked = new Set(domRows.map((r) => r.domain)); void save(); draw();
-    });
-    body.querySelector("#sync-clear")!.addEventListener("click", () => {
-      picked = new Set(); void save(); draw();
-    });
-
-    async function loadDomains() {
-      try {
-        const res = await api!.syncDomains(cfg.owner);
-        domRows = (res.domains || []) as DomRow[];
-        picked = new Set<string>(res.selected || []);
-        domTree = buildTree(domRows);
-        open.clear();
-        for (const n of domTree) if (n.kids.length) open.add(n.path);   // 1단만 편다
-        draw();
-      } catch { domBox.textContent = U.syncNoDomains; }
-    }
-    void loadDomains();
-
-    body.querySelector("#sync-now")!.addEventListener("click", async () => {
-      const key = await accountKey();
-      if (!key) { syncResult.textContent = U.syncNeedKey; return; }
-      syncResult.textContent = U.syncing;
-      try {
-        const job = await api!.syncNow(key, cfg.owner);
-        const done = await pollJob!(job.job_id, (s) => {
-          if (s.status === "running") syncResult.textContent = U.syncing;
-        });
-        const r = done.result || {};
-        const up = r?.push?.sent ?? 0;
-        const down = (r?.pull?.applied ?? 0) + (r?.pull?.merged ?? 0);
-        // 문서 채널(D45 P3 배선) — 오간 게 있을 때만 한 줄 덧붙인다.
-        const dUp = r?.docs_push?.sent ?? 0;
-        const dDown = (r?.docs_pull?.applied ?? 0) + (r?.docs_pull?.updated ?? 0);
-        syncResult.textContent = U.syncDone(up, down)
-          + (dUp || dDown ? U.syncDocs(dUp, dDown) : "");
-        void loadDomains();
-      } catch (e: any) {
-        syncResult.textContent = `${U.syncFail}: ${(e && e.message) || e}`;
-      }
-    });
   }
 
   // ── Connections 탭 (MCP, 셸 전용) ─────────────────────────────────────────

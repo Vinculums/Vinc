@@ -51,7 +51,7 @@ def _post(base: str, path: str, token: str, payload: dict, *, timeout: float) ->
 def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
          timeout: float = TIMEOUT) -> dict:
     """청크를 순차 전송. 각 청크는 자기완결·멱등이라 중단 후 재전송해도 안전하다."""
-    applied = skipped = edges = 0
+    applied = skipped = edges = kept_deleted = 0
     warnings: list[str] = []
     for i, ch in enumerate(bundle_chunks):
         out = _post(base, "/sync/push", token, {"bundle": ch}, timeout=timeout)
@@ -61,24 +61,38 @@ def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
         applied += int(out.get("applied") or 0)
         skipped += int(out.get("skipped_stale") or 0)
         edges += int(out.get("edges") or 0)
+        kept_deleted += int(out.get("kept_deleted") or 0)
         warnings += out.get("warnings") or []
     return {"executed": True, "chunks": len(bundle_chunks), "applied": applied,
-            "skipped_stale": skipped, "edges": edges, "warnings": warnings}
+            "skipped_stale": skipped, "edges": edges, "kept_deleted": kept_deleted,
+            "warnings": warnings}
 
 
 def pull(*, since: int, token: str, base: str = DEFAULT_URL,
-         timeout: float = TIMEOUT) -> dict:
-    """원격 delta 한 페이지. 커서 전진은 호출부(오케스트레이터)가 **적용 성공 후에만**."""
-    out = _post(base, "/sync/pull", token, {"since": int(since)}, timeout=timeout)
+         timeout: float = TIMEOUT, everything: bool = False) -> dict:
+    """원격 delta 한 페이지. 커서 전진은 호출부(오케스트레이터)가 **적용 성공 후에만**.
+
+    `everything` 은 주제가 비어 있는 노드까지 받는다(모드 전환의 전량 받기, VIN-130).
+    그 플래그를 모르는 옛 허브는 무시하고 종전대로 답한다(주제 있는 노드만)."""
+    payload: dict = {"since": int(since)}
+    if everything:
+        payload["all"] = True
+    out = _post(base, "/sync/pull", token, payload, timeout=timeout)
     if not out.get("executed"):
         raise SyncError(out.get("note") or out.get("error") or "pull failed")
     return out
 
 
 def docs_pull(*, since: int, token: str, base: str = DEFAULT_URL,
-              timeout: float = TIMEOUT) -> dict:
-    """문서 정본 delta(D45 P3). docsync 응답에는 `executed` 키가 없다 — `error` 로 판정."""
-    out = _post(base, "/sync/docs-pull", token, {"since": int(since)}, timeout=timeout)
+              timeout: float = TIMEOUT, everything: bool = False) -> dict:
+    """문서 정본 delta(D45 P3). docsync 응답에는 `executed` 키가 없다 — `error` 로 판정.
+
+    `everything` 은 순번과 무관하게 전부를 한 번에 받는다(VIN-130). 응답에 `everything`
+    이 없으면 옛 허브가 플래그를 모르고 델타로 답한 것이다."""
+    payload: dict = {"since": int(since)}
+    if everything:
+        payload["all"] = True
+    out = _post(base, "/sync/docs-pull", token, payload, timeout=timeout)
     if out.get("error"):
         raise SyncError(str(out["error"]))
     return out
