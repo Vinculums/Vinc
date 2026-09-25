@@ -10,7 +10,7 @@ import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { edgeKey, type Spot } from "../spotlight";
-import { markTexture } from "./view-planar";
+import { markTexture, MARK_TEX_PX } from "./view-planar";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -330,6 +330,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         keepWithinCircle: false,
         correctCentering: true,
         padding: 0,
+        //: 굽는 크기를 **강제**한다. 기본(`max 512`)은 그림의 고유 크기를 넘지 않아서
+        //: 마크가 64px 비트맵으로 구워졌다(view-planar.ts `MARK_TEX_PX` 주석).
+        size: { mode: "force", value: MARK_TEX_PX },
       }),
     },
     renderLabels: prefs.labels !== "none",
