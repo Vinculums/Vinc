@@ -1047,10 +1047,15 @@ class VincApp:
                 fresh = graphmd.build(r, owner=owner, themes=self.themes,
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
+                # Roles 절이 없는 파일이면 기본 절을 끼워 읽힌다(저장본은 그대로).
+                # 역할을 쓰는 어시스턴트가 계약을 보는 문이 여기 하나라서다.
+                # 근거: [[vinc.canon.agent-roles §5]]
+                text, roles_default = graphmd.with_roles_section(text)
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": doc_id, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
+                        "roles_section": "default" if roles_default else "own",
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
