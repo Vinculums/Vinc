@@ -124,7 +124,7 @@ from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
-from store.persistence import (SnapshotPolicy, resolve_snapshot_every,
+from store.persistence import (SnapshotPolicy, claim_writer, resolve_snapshot_every,
                                resolve_snapshot_path, save_snapshot)
 
 
@@ -477,6 +477,11 @@ class VincApp:
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
                                               debug=_flag(p.get("debug"))))
+
+    def read_owner_stats(self, p):
+        # 소유자 전체의 노드·문서 수(W1c). 허브의 계정 서명 경로 `/internal/usage` 만
+        # 부른다 — 웹 프록시(`_PROXY_OPS`)에 올리지 않는다(`q.owner_stats` 주석).
+        return self._read(lambda r: q.owner_stats(store=r))
 
     def read_learner(self, p):
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
@@ -2097,6 +2102,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 저장 설정(VIN-130) — 스토어 없이 답한다.
             "/config": app.read_config, "/config/inspect": app.read_config_inspect,
             "/embed/pending": app.read_embed_pending,   # 자체호스팅 임베딩 워커(B, 내부)
+            "/owner-stats": app.read_owner_stats,   # 운영자 사용량 덤프(W1c, 허브 내부 전용)
             # 계정 연결(디바이스 플로우) — 메일박스 1회 수령(인증).
             "/connect/status": app.read_connect_status,
         }
@@ -2282,6 +2288,11 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
     threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
 
+    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이보다 늦으면 ACA 가 이 리비전을
+    # 준비됐다고 보고 구 리비전을 내리는 쪽이 먼저 올 수 있다(persistence.claim_writer).
+    writer = claim_writer()
+    if writer != "off":
+        print(f"vinc: store writer — {writer}", file=sys.stderr, flush=True)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         stop.wait()

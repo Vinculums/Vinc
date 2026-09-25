@@ -7232,3 +7232,59 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
         if owns:
             store.close()
     return base
+
+
+# ── 운영자 사용량 덤프의 그래프 쪽 절반(W1c) ─────────────────────────────────────
+#: 소유자별로 세는 라벨과 응답 키. 앞의 넷은 `/domains` 가 세는 것과 같고 `nodes` 는
+#: 그 넷의 합이다(운영자가 "노드 수"라고 부르는 값). Entity·Bridge 는 따로 싣는다.
+_OWNER_STAT_LABELS = (("Concept", "concepts"), ("Record", "records"),
+                      ("Episode", "episodes"), ("Decision", "decisions"),
+                      ("Entity", "entities"), ("Bridge", "bridges"))
+_OWNER_STAT_NODE_KEYS = ("concepts", "records", "episodes", "decisions")
+
+
+def owner_stats(*, cfg=None, store=None) -> dict:
+    """소유자 **전체**의 노드·문서 수 — `{owner: {nodes, concepts, …, docs}}`.
+
+    ⚠ 이 모듈에서 owner 술어 없이 소유자를 가로지르는 조회는 이것뿐이다. 개수만
+    돌려주고(제목·본문·도메인 없음) 부르는 곳도 하나다: 허브의 계정 서명 경로
+    `/internal/usage`(`vinc_mcp.http_server.MCPHTTPApp.usage_request`). 웹 프록시
+    허용목록(`_PROXY_OPS`)에 올리면 로그인한 누구나 남의 규모를 보게 된다.
+
+    문서 수는 문서 목록과 같은 기준이다: 관례 문서(GRAPH.md)는 자료가 아니라 빼고 센다.
+    owner 가 '' 인 행(소유 스탬프 이전의 레거시)도 그대로 싣는다. 버리면 합계가
+    맞지 않고, 그 차이가 무엇인지 아무도 모르게 된다.
+    근거: [[vinc.plan.backoffice-and-stats-2026-09-12]]"""
+    cfg = cfg or load_config()
+    base: dict = {"kind": "owner.stats", "executed": False}
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
+
+    def slot(owner: str) -> dict:
+        return owners.setdefault(owner, {**{k: 0 for _l, k in _OWNER_STAT_LABELS},
+                                         "docs": 0})
+
+    owners: dict[str, dict] = {}
+    try:
+        for label, key in _OWNER_STAT_LABELS:
+            for row in store.run(f"MATCH (n:{label}) RETURN n.owner_id AS owner, "
+                                 "count(*) AS c") or []:
+                slot(row.get("owner") or "")[key] += int(row.get("c") or 0)
+        for row in store.run("MATCH (d:_DocMeta) RETURN d.owner_id AS owner, "
+                             "d.doc_id AS doc_id") or []:
+            if not graphmd.is_conventions_doc_id(row.get("doc_id") or ""):
+                slot(row.get("owner") or "")["docs"] += 1
+        for s in owners.values():
+            s["nodes"] = sum(s[k] for k in _OWNER_STAT_NODE_KEYS)
+        base["executed"] = True
+        base["owners"] = owners
+    except Exception as exc:
+        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns:
+            store.close()
+    return base

@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import time
 
@@ -49,6 +50,21 @@ STAGE_PREFIX = ".stage-"
 #: 그래서 교체를 **두 단계**로 가른다. 먼저 옛 세대를 rename 으로 `.prev` 에 물리고,
 #: 그다음 새 세대를 자리에 옮긴다. 어느 지점에서 죽어도 둘 중 하나는 온전하다.
 PREV_SUFFIX = ".prev"
+
+#: 쓰기 자격 표식의 접미. 스냅샷 옆에 **자격을 가진 리비전 이름 한 줄**을 둔다.
+#:
+#: 배포마다 구 리비전이 한 번 더 뜬다. ACA 는 단일 리비전 모드의 롤링 전환에서
+#: 방금 내린 구 리비전에 트래픽을 되돌려 다시 띄우고, 그것은 /data 에서 복원해 1분쯤
+#: 살다가 종료 훅의 최종 스냅샷을 **새 리비전 뒤에** 영속본 위에 쓴다. 표식은 그 쓰기를
+#: 막는다: 나보다 번호가 큰 리비전이 자격을 가져갔으면 나는 영속본을 건드리지 않는다.
+#: 근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
+WRITER_SUFFIX = ".writer"
+
+#: ACA 가 컨테이너에 넣어 주는 리비전 이름(`vinc-hub--0000235`). **없으면 울타리는
+#: 꺼진다** — 데스크탑·테스트·로컬 docker 는 리비전이 하나라 막을 상대가 없다.
+REVISION_ENV = "CONTAINER_APP_REVISION"
+
+_REVISION_NO = re.compile(r"--(\d+)$")
 
 
 def resolve_snapshot_path() -> str | None:
@@ -152,6 +168,70 @@ def restore_state_is_fatal(state: str) -> str | None:
             f"다음 스냅샷이 영속본을 덮는다(2026-08-09 실증). 스토어를 열지 않는다")
 
 
+def _revision_no(name: str) -> int | None:
+    m = _REVISION_NO.search(name or "")
+    return int(m.group(1)) if m else None
+
+
+def newer_writer(snapshot_path: str | None = None) -> str | None:
+    """나보다 **번호가 큰 리비전**이 쓰기 자격을 가져갔으면 그 이름, 아니면 None.
+
+    표식이 없거나 못 읽거나 이름에서 번호를 못 읽으면 None 이다 — 울타리 없이 예전처럼
+    쓴다. 여기서 닫힌 쪽으로 넘어지면 SMB 딸꾹질 한 번에 살아 있는 writer 의 스냅샷이
+    멈춘다. 이 울타리가 막는 것은 배포 중 1분짜리 경합 하나뿐이다."""
+    snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
+    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    if not snapshot_path or not mine:
+        return None
+    try:
+        with open(snapshot_path + WRITER_SUFFIX, encoding="utf-8") as f:
+            holder = f.read().strip()
+    except OSError:
+        return None
+    held, own = _revision_no(holder), _revision_no(mine)
+    if held is None or own is None or held <= own:
+        return None
+    return holder
+
+
+def claim_writer(snapshot_path: str | None = None) -> str:
+    """쓰기 자격을 가져온다. ``off`` · ``claimed`` · ``fenced: <이름>`` · ``error: …``
+
+    **HTTP 를 열기 직전에** 불러야 한다(``api/server.py`` serve). 순서가 이 울타리의
+    전부다: 사이드카 HTTP → 엔트리포인트의 헬스 대기 → MCP 가 8790 을 연다 → ACA 의
+    TCP 준비 판정 → 그제서야 구 리비전에 SIGTERM. 그래서 구 리비전의 최종 스냅샷은
+    언제나 이 표식을 본 뒤에 온다(시각이 아니라 인과로 앞선다).
+
+    같은 번호면 쓰지 않는다. 구 리비전이 다시 떠도 표식은 제 이름 그대로라 쓸 일이
+    없고, 그래서 두 리비전이 동시에 표식을 쓰는 경합이 생기지 않는다.
+
+    ⚠ 자격을 가져간 뒤 몇 초 안에 죽기를 되풀이하는 리비전이면 ACA 는 구 리비전으로
+    계속 서빙하는데 그 스냅샷은 여기에 막힌다. 그때는 표식 파일을 지우면 풀린다."""
+    snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
+    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    if not snapshot_path or not mine:
+        return "off"
+    marker = snapshot_path + WRITER_SUFFIX
+    try:
+        holder = newer_writer(snapshot_path)
+        if holder:
+            return f"fenced: {holder}"
+        try:
+            with open(marker, encoding="utf-8") as f:
+                if f.read().strip() == mine:
+                    return "claimed"
+        except OSError:
+            pass
+        os.makedirs(os.path.dirname(os.path.abspath(marker)) or ".", exist_ok=True)
+        tmp = f"{marker}.{mine}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(mine + "\n")
+        os.replace(tmp, marker)
+        return "claimed"
+    except Exception as exc:                                   # noqa: BLE001
+        return f"error: {type(exc).__name__}: {exc}"
+
+
 def _rm(path: str) -> None:
     if os.path.isdir(path):
         shutil.rmtree(path, ignore_errors=True)
@@ -220,6 +300,10 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
     snap = getattr(store, "snapshot", None)
     if not callable(snap):
         return "off"     # 백엔드가 스냅샷을 모른다(테스트 스텁 등) — 조용히 지나간다
+    # 새 리비전이 자격을 가져갔으면 나는 영속본을 건드리지 않는다(:data:`WRITER_SUFFIX`).
+    holder = newer_writer(snapshot_path)
+    if holder:
+        return f"fenced: {holder}"
     stage = ""
     try:
         dest_dir = os.path.dirname(os.path.abspath(snapshot_path)) or "."
@@ -242,6 +326,11 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
                  for src, req in _parts(produced)]
         if not all(os.path.exists(s) for s, req, _ in parts if req):
             return "error: snapshot produced nothing"
+        # 복사는 수십 초 걸린다(757MB 에 25초 안팎). 그 사이에 새 리비전이 자격을
+        # 가져갔을 수 있으므로 세대를 물리기 **직전에** 한 번 더 본다.
+        holder = newer_writer(snapshot_path)
+        if holder:
+            return f"fenced: {holder}"
 
         _retire_generation(snapshot_path)
 
