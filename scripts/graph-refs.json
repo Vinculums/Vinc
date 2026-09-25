@@ -398,6 +398,7 @@
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents",
     "decision:temporal-model-operational-policy-2026-09-09",
     "decision:the-ambient-azure-identity-is-read-only",
+    "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser",
     "decision:the-default-edge-mode-is-bring-not-particles",
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting",
     "decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right",
