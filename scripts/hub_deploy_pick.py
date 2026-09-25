@@ -2,7 +2,7 @@
 """허브 배포가 **무엇을** 내보낼지 고른다. 안 내보낸다는 판정도 여기서 한다.
 
 hub-deploy 는 main 의 CI(ci.yml)가 끝날 때마다 불린다(`workflow_run`). 그때 내보내는
-것은 불러낸 커밋이 아니라 **main 에서 CI 가 초록인 가장 새 커밋**이다. 불러낸 커밋을
+것은 불러낸 커밋이 아니라 **main 에서 CI 의 core 잡(파이썬 게이트)이 초록인 가장 새 커밋**이다. 불러낸 커밋을
 그대로 내보내면 두 가지가 깨진다:
 
 - CI 는 커밋마다 따로 돌아서(ci.yml concurrency) **끝나는 순서가 머지 순서가 아니다.**
@@ -14,12 +14,12 @@ hub-deploy 는 main 의 CI(ci.yml)가 끝날 때마다 불린다(`workflow_run`)
 
 규칙(위에서부터):
 
-1. `workflow_dispatch` 는 사람이 고른 커밋을 내보낸다. 단 그 커밋의 CI 가 초록이어야
+1. `workflow_dispatch` 는 사람이 고른 커밋을 내보낸다. 단 그 커밋의 core 잡이 초록이어야
    한다. 배포 안의 테스트 게이트를 걷었으므로 CI 가 유일한 게이트이고, 손으로 누른
    배포도 그것을 건너뛰지 않는다. 경로·순서 검사는 안 한다(같은 커밋 재배포가 이 길의
    용도다).
 2. `workflow_run` 은 main 의 first-parent 를 새것부터 훑어 **지금 허브에 떠 있는 커밋
-   앞에서** 멈추고, 그 사이에서 CI 가 초록인 가장 새 커밋을 고른다.
+   앞에서** 멈추고, 그 사이에서 core 잡이 초록인 가장 새 커밋을 고른다(`classify`).
 3. 고른 커밋이 이미 허브에 들어 있거나(조상), 떠 있는 커밋과 비교해 허브 경로가
    하나도 안 바뀌었으면 내보내지 않는다. 옛 `on.push.paths` 가 하던 일이다.
 4. 불러낸 CI 가 **빨갛고** 그 커밋 자신이 허브 경로를 건드렸으면 `withheld` 로 표시한다.
@@ -105,9 +105,9 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
         st = ci_status(dispatch_sha)
         if st != "success":
             raise Unanswered(
-                f"손으로 부른 배포지만 {dispatch_sha[:7]} 의 CI 가 초록이 아니다({st}). "
+                f"손으로 부른 배포지만 {dispatch_sha[:7]} 의 core 잡이 초록이 아니다({st}). "
                 "ci 를 그 커밋에서 다시 돌리고 초록이 된 뒤 부를 것")
-        say(f"workflow_dispatch: {dispatch_sha[:7]} 를 그대로 내보낸다(CI 초록)")
+        say(f"workflow_dispatch: {dispatch_sha[:7]} 를 그대로 내보낸다(core 잡 초록)")
         plan.deploy, plan.sha = True, dispatch_sha
         return plan
 
@@ -115,12 +115,16 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
         raise Unanswered(f"모르는 이벤트: {event!r}")
 
     # 4. 불러낸 CI 가 빨갛고 그 커밋 자신이 허브를 건드렸으면 알린다(배포 여부와 무관).
+    #    런 전체가 빨개도 core 잡이 초록이면(러스트·앱만 빨강) 허브는 막히지 않았다.
     if trigger_conclusion != "success" and trigger_sha:
+        gate = ci_status(trigger_sha)
         parent = parent_of(trigger_sha)
-        if parent and touches_hub(changed(parent, trigger_sha)):
+        if gate == "failure" and parent and touches_hub(changed(parent, trigger_sha)):
             plan.withheld = trigger_sha
-            say(f"불러낸 CI 가 {trigger_conclusion}: {trigger_sha[:7]} 의 허브 변경은 "
-                "CI 가 초록이 될 때까지 안 나간다")
+            say(f"불러낸 CI 가 {trigger_conclusion}(core 잡 {gate}): {trigger_sha[:7]} 의 "
+                "허브 변경은 core 잡이 초록이 될 때까지 안 나간다")
+        elif gate == "success":
+            say(f"불러낸 CI 는 {trigger_conclusion} 이지만 core 잡은 초록이다 — 허브는 막히지 않았다")
 
     live_known = bool(live) and is_commit(live)
     window = main_commits
@@ -144,7 +148,7 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
             break
         say(f"  {sha[:7]}: CI {st} — 건너뛴다")
     if not target:
-        say("떠 있는 것보다 새 커밋 중 CI 가 초록인 것이 없다 — 내보낼 것 없음")
+        say("떠 있는 것보다 새 커밋 중 core 잡이 초록인 것이 없다 — 내보낼 것 없음")
         return plan
 
     if live_known:
@@ -158,7 +162,7 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
         say(f"{live[:7]}..{target[:7]} 허브 경로 변경 {len(hub)}건: "
             + ", ".join(hub[:8]) + (" …" if len(hub) > 8 else ""))
 
-    say(f"내보낸다: {target[:7]} (CI 초록인 가장 새 main 커밋)")
+    say(f"내보낸다: {target[:7]} (core 잡이 초록인 가장 새 main 커밋)")
     plan.deploy, plan.sha = True, target
     return plan
 
@@ -187,31 +191,63 @@ def _live_tag() -> str:
     return tag if _SHA.match(tag) else ""
 
 
+#: 허브를 막는 잡. ci.yml 런 **전체**의 결론이 아니라 이 잡들만 본다 — 옛 `gate` 가
+#: 지키던 범위(파이썬 스위트)와 같다. 런 전체를 보면 허브와 무관한 데스크탑 러스트·앱
+#: 잡이 허브를 막는다: 2026-09-25 e9be2fa 의 main CI 가 윈도우 `cargo test` 의 메모리
+#: 부족(호스트가 core 둘과 겹쳐 돌았다) 하나로 빨개졌고, 그대로면 허브 변경이 보류됐다.
+#: core 잡 이름이 바뀌면 여기를 같이 고칠 것 — 하나도 못 찾으면 판정하지 않고 죽는다.
+GATE_JOB_PREFIX = "core ("
+
+
+def classify(runs: list[dict]) -> str:
+    """한 커밋의 ci.yml 런들(각각 `jobs` 를 실은 것)을 success·pending·failure·none 으로.
+
+    런 하나라도 core 잡이 **전부** 성공이면 success 다(재실행은 같은 런의 다음 시도라
+    jobs 가 최신 시도를 준다). 아직 안 끝난 core 잡이 있으면 pending.
+    """
+    if not runs:
+        return "none"
+    pending = False
+    for r in runs:
+        jobs = r.get("jobs") or []
+        gate = [j for j in jobs if str(j.get("name", "")).startswith(GATE_JOB_PREFIX)]
+        if not gate:
+            if r.get("status") != "completed":
+                pending = True          # 잡이 아직 안 만들어졌다
+            elif jobs:
+                raise Unanswered(
+                    f"ci.yml 런 {r.get('id')} 에 '{GATE_JOB_PREFIX}' 로 시작하는 잡이 없다 — "
+                    "잡 이름이 바뀌었으면 GATE_JOB_PREFIX 를 고칠 것")
+            continue                    # 잡 0개 = 워크플로 검증 실패. 실패로 센다
+        if all(j.get("conclusion") == "success" for j in gate):
+            return "success"
+        if any(j.get("status") != "completed" for j in gate):
+            pending = True
+    return "pending" if pending else "failure"
+
+
 def _ci_status_via_api(api: str, repo: str, token: str) -> Callable[[str], str]:
     memo: dict[str, str] = {}
+
+    def get(path: str) -> dict:
+        req = urllib.request.Request(f"{api}/repos/{repo}{path}", headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.load(resp)
 
     def status(sha: str) -> str:
         if sha in memo:
             return memo[sha]
-        url = f"{api}/repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=20"
-        req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json"})
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                runs = json.load(resp).get("workflow_runs") or []
-        except (urllib.error.URLError, TimeoutError, ValueError) as e:
+            runs = get(f"/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=20"
+                       ).get("workflow_runs") or []
+            for r in runs:
+                r["jobs"] = get(f"/actions/runs/{r['id']}/jobs?per_page=100").get("jobs") or []
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as e:
             raise Unanswered(f"{sha[:7]} 의 CI 상태를 못 읽었다: {e}") from e
-        if any(r.get("conclusion") == "success" for r in runs):
-            st = "success"
-        elif any(r.get("status") != "completed" for r in runs):
-            st = "pending"
-        elif runs:
-            st = "failure"
-        else:
-            st = "none"
-        memo[sha] = st
-        return st
+        memo[sha] = classify(runs)
+        return memo[sha]
 
     return status
 
